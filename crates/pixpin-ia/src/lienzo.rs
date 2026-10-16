@@ -141,6 +141,36 @@ impl Fabrica {
     }
 
     pub(crate) fn texto(&mut self, x: f64, y: f64, texto: &str, tam: f64, color: &str, alinear: &str) {
+        // **Texto rico** (`$...$` en linea, `\color{rojo}{X}`, `**negrita**`,
+        // `\centro`): la fuente viaja en `textoRico` y `text` lleva su
+        // version plana, la que lee quien no la entiende
+        // (`pixpin_motor2d::texto_rico`, `docs/texto-rico-del-lienzo.md`).
+        let limpio = pixpin_motor2d::texto_rico::sin_barras_dobles(texto);
+        if pixpin_motor2d::texto_rico::tiene_marcas(&limpio) {
+            use pixpin_motor2d::texto;
+            let texto = limpio.as_str();
+            let familia = texto::nombre_de_familia(Some(1));
+            let (w, h) = texto_rico_medida(texto, tam as f32, familia);
+            let plano = pixpin_motor2d::texto_rico::plano(texto);
+            let (ancho, alto) = (w as f64, h as f64);
+            let x = match alinear {
+                "center" => x - ancho / 2.0,
+                "right" => x - ancho,
+                _ => x,
+            };
+            let mut e = self.base("text", [x, y, ancho, alto], color, None);
+            e["text"] = json!(plano);
+            e["originalText"] = json!(plano);
+            e["textoRico"] = json!(texto);
+            e["fontSize"] = json!(tam);
+            e["fontFamily"] = json!(1);
+            e["textAlign"] = json!(alinear);
+            e["verticalAlign"] = json!("top");
+            e["lineHeight"] = json!(1.25);
+            e["containerId"] = Value::Null;
+            self.salida.push(e);
+            return;
+        }
         let ancho = tam * 0.6 * texto.chars().count().max(1) as f64;
         let alto = tam * 1.25;
         let x = match alinear {
@@ -511,6 +541,12 @@ pub(crate) fn medir(texto: &str, tam: f32) -> (f32, f32) {
     medir_con(texto, tam, "Nunito")
 }
 
+/// Lo que mide un texto rico compuesto (con DirectWrite si lo hay; si no,
+/// con la estimacion del motor).
+pub(crate) fn texto_rico_medida(fuente: &str, tam: f32, familia: &str) -> (f32, f32) {
+    pixpin_motor2d::texto_rico::medida(fuente, tam, familia, pixpin_motor2d::texto::EstiloDeTexto::default())
+}
+
 pub(crate) fn medir_con(texto: &str, tam: f32, familia: &str) -> (f32, f32) {
     use pixpin_motor2d::texto;
     if texto::hay_medidor() {
@@ -736,6 +772,24 @@ mod pruebas {
         let v: Value = serde_json::from_str(&doc).unwrap();
         assert_eq!(v["elements"][0]["x"], 1040.0);
         assert_eq!(v["elements"][2]["points"][1], json!([430.0, 0.0]));
+    }
+
+    /// El texto rico del asistente: formulas en linea y colores, con las
+    /// barras de mas de los modelos, y su texto plano de reserva.
+    #[test]
+    fn el_texto_rico_del_asistente_llega_compuesto_al_lienzo() {
+        let l = llamada(
+            "dibujar_en_lienzo",
+            r##"{"elementos":[{"tipo":"texto","x":40,"y":60,"texto":"Nos piden $m\\\\sphericalangle COD = \\\\color{rojo}{X}$\n\\\\centro $\\\\overline{AB}$"},
+                {"tipo":"texto","x":40,"y":200,"texto":"cuesta $5"}]}"##,
+        );
+        let doc = documento(elementos(&l, (0.0, 0.0), 7));
+        let els = pixpin_motor2d::excalidraw::leer(&doc).unwrap().elementos();
+        let rico = els[0].extras.rico.as_deref().expect("es rico");
+        assert_eq!(rico, "Nos piden $m\\sphericalangle COD = \\color{rojo}{X}$\n\\centro $\\overline{AB}$");
+        assert!(matches!(&els[0].figura, FiguraLienzo::Texto { texto, .. } if texto == "Nos piden m∢COD = X\nA̅B̅"));
+        // Lo que no lleva marcas sigue como siempre.
+        assert_eq!(els[1].extras.rico, None);
     }
 
     #[test]

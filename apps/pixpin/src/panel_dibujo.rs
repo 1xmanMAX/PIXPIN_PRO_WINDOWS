@@ -505,6 +505,38 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
         // El modo guia: la palabra, que un icono de regla no dice que lo que
         // se trace sera andamio.
         AccionPanel::ModoGuia(_) => Some(textos().t("lienzo-guia-corto").to_string()),
+        // Las de las laminas de geometria, con su palabra: no hay iconos de
+        // Excalidraw para «sector» ni para «radial».
+        AccionPanel::Forma(CambioForma::Degradado(t)) => Some(
+            textos()
+                .t(match t {
+                    None => "lienzo-degradado-liso",
+                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Lineal) => "lienzo-degradado-lineal",
+                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Radial) => "lienzo-degradado-radial",
+                })
+                .to_string(),
+        ),
+        AccionPanel::Forma(CambioForma::CierreArco(c)) => Some(
+            textos()
+                .t(match c {
+                    None => "lienzo-cierre-abierto",
+                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Sector) => "lienzo-cierre-sector",
+                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Segmento) => "lienzo-cierre-segmento",
+                })
+                .to_string(),
+        ),
+        AccionPanel::Forma(CambioForma::ModoArco(m)) => Some(
+            textos()
+                .t(match m {
+                    pixpin_motor2d::geometria_exacta::ModoArco::Guia => "lienzo-arco-modo-guia",
+                    pixpin_motor2d::geometria_exacta::ModoArco::CentroYPuntos => "lienzo-arco-modo-centro",
+                    pixpin_motor2d::geometria_exacta::ModoArco::TresPuntos => "lienzo-arco-modo-tres",
+                })
+                .to_string(),
+        ),
+        AccionPanel::Forma(CambioForma::ArcosAngulo(n)) => Some(")".repeat(n as usize)),
+        // El raya-punto: el dibujo con letras, que Excalidraw no lo tiene.
+        AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::RayaPunto)) => Some("— · —".into()),
         _ => None,
     }
 }
@@ -636,6 +668,17 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         // esconde), cerrado y marcado mientras estan escondidas.
         AccionPanel::VerGuias(false) => &i::EYE_ICON,
         AccionPanel::VerGuias(true) => &i::EYE_CLOSED_ICON,
+        // Las de las laminas de geometria van con su palabra
+        // (`rotulo_de_imagen`); estos son los iconos de reserva.
+        AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::RayaPunto)) => {
+            &i::STROKE_STYLE_DASHED_ICON
+        }
+        AccionPanel::Forma(CambioForma::Degradado(None)) => &i::FILL_SOLID_ICON,
+        AccionPanel::Forma(CambioForma::Degradado(Some(_))) => &i::FILL_ZIG_ZAG_ICON,
+        AccionPanel::Forma(CambioForma::CierreArco(None)) => &i::EDGE_ROUND_ICON,
+        AccionPanel::Forma(CambioForma::CierreArco(Some(_))) => &i::ANGLE_ICON,
+        AccionPanel::Forma(CambioForma::ModoArco(_)) => &i::EDGE_ROUND_ICON,
+        AccionPanel::Forma(CambioForma::ArcosAngulo(_)) => &i::ANGLE_ICON,
         _ => return None,
     })
 }
@@ -677,6 +720,10 @@ fn clave(s: Seccion) -> &'static str {
         Seccion::GuiaLupa => "lienzo-panel-guia",
         Seccion::Oscurecer => "lienzo-panel-oscurecer",
         Seccion::ZonaFoco => "lienzo-panel-zona-foco",
+        Seccion::Degradado => "lienzo-panel-degradado",
+        Seccion::CierreArco => "lienzo-panel-cierre-arco",
+        Seccion::ModoArco => "lienzo-panel-modo-arco",
+        Seccion::ArcosAngulo => "lienzo-panel-arcos-angulo",
     }
 }
 
@@ -1577,6 +1624,11 @@ mod pruebas {
             (CambioForma::ZonaFoco(z), Figura::Foco { cristal }) => {
                 let caja = pixpin_motor2d::lupa_elemento::caja_de(e);
                 (pixpin_motor2d::lupa_elemento::zona_de(cristal, caja) - z).abs() < 0.01
+            }
+            (CambioForma::Degradado(t), _) => e.extras.degradado.map(|d| d.tipo) == t,
+            (CambioForma::CierreArco(c), Figura::Arco { .. }) => e.extras.cierre == c,
+            (CambioForma::ArcosAngulo(n), Figura::Arco { .. }) => {
+                e.extras.marca_angulo.as_ref().is_some_and(|m| m.arcos == n)
             }
             _ => false,
         }

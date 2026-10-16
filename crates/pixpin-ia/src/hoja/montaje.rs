@@ -288,6 +288,12 @@ pub(crate) fn un_texto(t: &str, x: f64, y: f64, tam: f64, familia: &str, negrita
     let mut el = elemento_texto(t, x as f32, y as f32, medida, tam as f32, false, &estilo);
     el.extras.negrita = negrita;
     el.extras.alineacion = Some(alineacion_motor(al));
+    // **Texto rico** (`$...$`, `\color{rojo}{X}`, `**negrita**`): las
+    // lineas de una resolucion con sus formulas en linea y sus colores
+    // (`pixpin_motor2d::texto_rico`). Un texto sin marcas queda igual.
+    if pixpin_motor2d::texto_rico::tiene_marcas(t) {
+        pixpin_motor2d::texto_rico::poner_fuente(&mut el, t);
+    }
     // Un enlace sigue siendo un enlace: el lienzo lo abre con Ctrl+clic.
     el.enlace = enlace_de(t);
     el

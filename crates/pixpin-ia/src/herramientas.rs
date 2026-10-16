@@ -112,11 +112,20 @@ pub fn para_la_nube(lista: &mut [Herramienta]) {
                         json!({"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "tabla: filas de celdas, la primera es la cabecera"}),
                     );
                     p.insert("rugosidad".into(), json!({"type": "number", "description": "0 trazo exacto (geometria, planos), 1 a mano"}));
+                    // El texto rico del lienzo (`pixpin_motor2d::texto_rico`).
+                    p.insert(
+                        "texto".into(),
+                        json!({"type": "string", "description": "texto rico: formulas en linea entre $...$ (LaTeX), \\color{rojo}{X}, **negrita**, *cursiva*, <u>sub</u>, renglones con \\n, \\centro al inicio de un renglon"}),
+                    );
                 }
                 "Tambien: tabla (con «x», «y» y «filas»:[[\"Planeta\",\"UA\"],[\"Mercurio\",\"0.39\"]], la primera fila es la cabecera; es LA forma de hacer una tabla en el lienzo, no una nota) \
                  y paralelogramo (con «caja»). En un diagrama de flujo: inicio/fin elipse, proceso rectangulo, decision rombo, leer/escribir paralelogramo. \
                  En geometria, fisica o planos pon «rugosidad»:0 en cada figura (la circunferencia exacta, no a mano), calcula las coordenadas de verdad \
-                 (centro y radio de una inscrita), y cada punto lleva su letra UNA vez: los textos de al lado no la repiten («incentro», no «I incentro»)."
+                 (centro y radio de una inscrita), y cada punto lleva su letra UNA vez: los textos de al lado no la repiten («incentro», no «I incentro»). \
+                 Un «texto» es TEXTO RICO: formulas en linea entre $...$ con LaTeX (\\frac, ^, _, \\sqrt, \\overline{AB} segmento, \\overset{\\frown}{AC} arco, \\vec{v}, \\sphericalangle o ∢ para «m∢AOB», ^\\circ grados, \\theta, \\pi, \\therefore ∴, \\perp, \\parallel, \\cong, \\boxed{}), \
+                 colores con \\color{rojo}{X} (dentro o fuera de $...$), **negrita**, *cursiva*, <u>subrayado</u>, ~~tachado~~, \\tam{1.4}{grande}; varios renglones con \\n y \\centro, \\derecha o \\justificado al inicio de un renglon. \
+                 Para la resolucion de un problema, UN texto por bloque con sus formulas en linea, no ecuaciones sueltas: \
+                 {\"tipo\":\"texto\",\"x\":40,\"y\":60,\"texto\":\"Nos piden $m\\\\sphericalangle COD = \\\\color{rojo}{X}$\\n• Se observa que $\\\\overline{AB}$ es diametro:\\n\\\\centro $45^\\\\circ = \\\\frac{\\\\color{azul}{2a+2b}}{2}$\"}."
             }
             PROBLEMA => {
                 "Es LA herramienta para «pasa en limpio el problema/ejercicio» (no hoja_a_lienzo). El enunciado SIN las formulas; cada formula entera una sola vez en «ecuaciones» \
@@ -156,7 +165,8 @@ pub fn catalogo_base() -> Vec<Herramienta> {
                 "Un paso de un diagrama: {\"tipo\":\"rectangulo\",\"caja\":[60,260,160,70],\"texto\":\"Inicio\"},",
                 "{\"tipo\":\"flecha\",\"puntos\":[220,295,320,295]}. ",
                 "Para copiar exacta una foto adjunta usa calcar_imagen; para dibujarla con figuras o a lapiz, interpretala con estas figuras. ",
-                "Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg."
+                "Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg. ",
+                "Para geometria exacta de lamina (arcos, semicircunferencias, cuadrantes, sectores, marcas de angulo, angulo recto, puntos con letra, degradados, raya-punto) usa geometria_precisa."
             )
             .into(),
             parametros: json!({

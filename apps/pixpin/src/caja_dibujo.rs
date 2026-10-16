@@ -41,7 +41,10 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
         // cuentagotas— y no se usaban todavia: aqui se les da su boton para
         // que el dia que la caja los ofrezca no haya que volver por aqui.
         BotonCaja::Elegir(Herramienta::Rombo) => &i::DIAMOND_ICON,
-        BotonCaja::Elegir(Herramienta::Arco) => &i::ANGLE_ICON,
+        // El arco, la esquina redonda (un cuarto de vuelta); y la marca de
+        // angulo, el angulo de Excalidraw, que es justo lo que dibuja.
+        BotonCaja::Elegir(Herramienta::Arco) => &i::EDGE_ROUND_ICON,
+        BotonCaja::Elegir(Herramienta::Angulo) => &i::ANGLE_ICON,
         BotonCaja::Elegir(Herramienta::FlechaCodos) => &i::ELBOW_ARROW_ICON,
         BotonCaja::Elegir(Herramienta::FlechaLibre) => &i::ROUND_ARROW_ICON,
         BotonCaja::Elegir(Herramienta::Lazo) => &i::LASSO_ICON,

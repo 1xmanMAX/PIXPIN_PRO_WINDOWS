@@ -58,6 +58,7 @@ pub fn nombre_de(h: Herramienta) -> Option<&'static str> {
         Herramienta::Lupa => "lupa",
         Herramienta::Mosaico => "mosaico",
         Herramienta::Arco => "arco",
+        Herramienta::Angulo => "angulo",
         Herramienta::Serie => "serie",
         Herramienta::Punto => "punto",
         Herramienta::Cota => "cota",
@@ -122,6 +123,9 @@ pub fn rotulo_de_boton(b: BotonCaja, textos: &pixpin_store::Catalogo) -> Option<
         // El foco tambien es varita, y los pasos se ponen de un clic.
         BotonCaja::Elegir(Herramienta::Foco) => Some(textos.t("lienzo-pista-foco")),
         BotonCaja::Elegir(Herramienta::Serie) => Some(textos.t("lienzo-pista-serie")),
+        // Las dos de las laminas de geometria dicen como se usan.
+        BotonCaja::Elegir(Herramienta::Arco) => Some(textos.t("lienzo-pista-arco")),
+        BotonCaja::Elegir(Herramienta::Angulo) => Some(textos.t("lienzo-pista-angulo")),
         // Tambien lo de siempre, con su atajo: el usuario pidio globo en
         // todo, y quien no sabe `Ctrl+Z` es justo quien lo necesita.
         BotonCaja::Elegir(Herramienta::Mano) => Some(textos.t("barra-pista-mano")),

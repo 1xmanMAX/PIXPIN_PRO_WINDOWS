@@ -151,6 +151,14 @@ fn ajustes_rendimiento() -> pixpin_store::Rendimiento {
 fn gesto_inicial(ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Gesto {
     let mut gesto = Gesto::nuevo();
     gesto.enganche = ajustes_iman;
+    // **El iman fino**: los cruces, el canto (puntos sobre la circunferencia)
+    // y las tangentes, para las laminas de geometria. El gesto los trae
+    // apagados porque cuestan memoria en cada movimiento del raton; el
+    // editor, que es donde se dibuja de verdad, los paga a sabiendas. Se
+    // apagan con el iman.
+    if ajustes_iman.activo {
+        gesto.finos = pixpin_motor2d::enganche::AjustesFinos::default();
+    }
     gesto
 }
 
@@ -4602,6 +4610,9 @@ fn pintar_zona(
                 dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
             }
         }
+    }
+    for orden in gesto.seleccion_de_texto(escena) {
+        dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
     }
     if let Some(cursor) = gesto.cursor_de_texto(escena, camara.zoom) {
         dibujar_orden(p, &cursor, vista, None, imagenes, camara.zoom, None);

@@ -339,7 +339,14 @@ fn girar_orden(o: &mut Orden, centro: Punto2, angulo: f32) {
 /// segun como este relleno el interior, y rellenar una figura ya dibujada la
 /// redibujaria distinta (D38).
 fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
-    let Some(r) = e.relleno.filter(|c| c.a > 0.0) else {
+    // Con degradado se rellena aunque no haya color de relleno: el
+    // degradado ya trae los suyos.
+    let degradado = e.extras.degradado;
+    let Some(r) = e
+        .relleno
+        .filter(|c| c.a > 0.0)
+        .or(degradado.map(|d| d.desde))
+    else {
         return Vec::new();
     };
     let color = con_opacidad(r, e.opacidad);
@@ -357,7 +364,7 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
         _ => None,
     };
 
-    if e.estilo_relleno == EstiloRelleno::Solido {
+    if e.estilo_relleno == EstiloRelleno::Solido || degradado.is_some() {
         // La figura LISA, no la rugosa: rellenar la temblorosa deja huecos
         // por donde se escapa el fondo.
         let puntos = if elipse {
@@ -379,6 +386,9 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
         };
         if puntos.is_empty() {
             return Vec::new();
+        }
+        if let Some(d) = &degradado {
+            return crate::geometria_exacta::ordenes_de_degradado(&puntos, e.caja(), d, e.opacidad);
         }
         return vec![Orden::Relleno { puntos, color }];
     }
@@ -454,6 +464,11 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
 /// El puente se busca entre el par de vertices MAS CERCANO, que es el que
 /// menos se nota y el que menos riesgo corre de cruzar otro trozo del
 /// contorno.
+/// [`anillo_con_huecos`] para el resto del motor (los degradados).
+pub(crate) fn anillo_con_huecos_pub(contorno: &[Punto2], huecos: &[Vec<Punto2>]) -> Vec<Punto2> {
+    anillo_con_huecos(contorno, huecos)
+}
+
 fn anillo_con_huecos(contorno: &[Punto2], huecos: &[Vec<Punto2>]) -> Vec<Punto2> {
     let mut anillo = contorno.to_vec();
     for hueco in huecos.iter().filter(|h| h.len() >= 3) {
@@ -846,6 +861,39 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             e.grosor,
         )),
 
+        // **El texto rico** (`texto_rico`): tramos de color y formulas en
+        // linea, compuestos en ordenes de las de siempre (textos y rayas),
+        // asi que sale igual en pantalla, PNG, SVG y PDF.
+        Figura::Texto { tam, familia, .. } if e.extras.rico.is_some() => {
+            let estilo = crate::texto::EstiloDeTexto {
+                negrita: e.extras.negrita,
+                cursiva: e.extras.cursiva,
+                tachado: e.extras.tachado,
+            };
+            let ancho_max = if e.extras.contenedor.is_none() {
+                crate::texto::SIN_PARTIR
+            } else {
+                e.ancho.max(1.0)
+            };
+            let m = crate::texto_rico::componer(
+                e.extras.rico.as_deref().unwrap_or_default(),
+                &crate::texto_rico::Opciones {
+                    tam: *tam,
+                    familia,
+                    estilo,
+                    alineacion: e.extras.alineacion,
+                    ancho_max,
+                },
+            );
+            // Centrado o a la derecha, el bloque dentro de su caja (si la
+            // caja es mas ancha que lo escrito).
+            let dx = e
+                .extras
+                .alineacion
+                .map_or(0.0, |a| ((e.ancho - m.ancho) * a.fraccion()).max(0.0));
+            salida.extend(crate::texto_rico::ordenes(&m, e.x + dx, e.y, familia, color));
+        }
+
         Figura::Texto {
             texto,
             tam,
@@ -1022,6 +1070,11 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         // plantilla y un transportador que tiembla no sirve de plantilla. El
         // detalle —el repasado a mano, el reajuste al estirar— es del grupo
         // que lo herede; esto es lo que hace falta para que se VEA.
+        // El sector, el segmento y la marca de angulo de las laminas
+        // (`geometria_exacta`); el arco de siempre, como siempre.
+        Figura::Arco { .. } if crate::geometria_exacta::ordenes_de_arco(e, color).is_some() => {
+            salida.extend(crate::geometria_exacta::ordenes_de_arco(e, color).unwrap_or_default());
+        }
         Figura::Arco { inicio, barrido } => {
             let puntos = arco_muestreado(e, *inicio, *barrido);
             if puntos.len() >= 2 {
@@ -1094,7 +1147,14 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         Figura::Region { contorno, huecos } => {
             if contorno.len() >= 3 {
                 let relleno = e.relleno.filter(|c| c.a > 0.0);
-                if let Some(r) = relleno {
+                if let Some(d) = &e.extras.degradado {
+                    salida.extend(crate::geometria_exacta::ordenes_de_degradado(
+                        &anillo_con_huecos(contorno, huecos),
+                        e.caja(),
+                        d,
+                        e.opacidad,
+                    ));
+                } else if let Some(r) = relleno {
                     salida.push(Orden::Relleno {
                         puntos: anillo_con_huecos(contorno, huecos),
                         color: con_opacidad(r, e.opacidad),
@@ -1143,7 +1203,9 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                 });
             }
             if !letra.is_empty() {
-                let tam = (e.grosor * 5.0).max(10.0);
+                // El tamano del pincel si lo trae (`fontSize`); si no, el de
+                // siempre, que sale del grosor.
+                let tam = e.extras.tam_letra.unwrap_or((e.grosor * 5.0).max(10.0));
                 salida.push(Orden::Texto {
                     texto: letra.clone(),
                     x: e.x + radio * angulo.cos(),
@@ -1173,6 +1235,10 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             ));
         }
     }
+
+    // El raya-punto, partido en tramos lisos: asi lo pintan igual los cinco
+    // que pintan ordenes sin saber de el.
+    crate::geometria_exacta::desplegar_raya_punto(&mut salida);
 
     // El angulo se aplica aqui, una vez, sobre la geometria ya generada.
     if e.angulo != 0.0 {

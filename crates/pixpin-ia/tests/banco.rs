@@ -265,6 +265,30 @@ fn archivo_de(v: &Value, que: &str) -> bool {
 /// Solo estos: `PIXPIN_IA_SOLO=app15-`.
 fn casos_de_la_app_15_oct() -> Vec<Caso> {
     vec![
+        // El texto rico del lienzo (`pixpin_motor2d::texto_rico`): la
+        // resolucion de una lamina con sus formulas EN LINEA y sus colores,
+        // en textos del lienzo y no en ecuaciones sueltas.
+        Caso {
+            nombre: "app15-texto-rico-resolucion",
+            pedido: "Escribe en el lienzo, como texto, la resolucion de este problema de geometria, linea a linea: \
+                     «Nos piden m∢COD = X» con la X en rojo; «Se observa que AB es diametro» con la raya encima de AB; \
+                     «m∢AOB = 90°»; «mAC = 2a» con el arco encima de AC, en verde; «45° = (2a+2b)/2» con la fraccion \
+                     de verdad; y al final «∴ X = 45°» en rojo.",
+            imagen: None,
+            comprobar: |r| {
+                let ricos: Vec<&str> = r.elementos.iter().filter_map(|e| e["textoRico"].as_str()).collect();
+                si(!ricos.is_empty(), "ningun texto rico")?;
+                let todo = ricos.join("\n");
+                si(todo.contains('$'), "sin formulas en linea")?;
+                si(todo.contains("\\overline") || todo.contains("\\bar"), "sin la raya encima de AB")?;
+                si(todo.contains("frown") || todo.contains("wideparen") || todo.contains("arc"), "sin el arco de AC")?;
+                si(todo.contains("\\frac") || todo.contains("\\dfrac"), "sin la fraccion")?;
+                si(todo.contains("\\color"), "sin colores")?;
+                // Lo que vera quien no entiende el formato: legible.
+                let planos: String = r.elementos.iter().filter(|e| e.get("textoRico").is_some()).filter_map(|e| e["text"].as_str()).collect();
+                si(!planos.contains('\\') && !planos.contains('$'), "el texto plano lleva la fuente")
+            },
+        },
         Caso {
             nombre: "app15-grabar-pantalla",
             pedido: "Graba en un GIF lo que hago en la pantalla para mandárselo al ingeniero.",

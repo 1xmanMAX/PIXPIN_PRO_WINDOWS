@@ -69,6 +69,10 @@ impl Estilo {
 }
 
 /// Una pieza ya colocada respecto de la esquina de su caja.
+///
+/// `color: None` es «el del estilo de quien la pinta»; un tramo de color
+/// (`\color{red}{X}`, un tramo rojo de un texto rico) lo lleva puesto, y el
+/// de dentro gana al de fuera ([`Caja::tenida`]).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pieza {
     Texto {
@@ -79,10 +83,13 @@ pub enum Pieza {
         texto: String,
         tam: f32,
         cursiva: bool,
+        negrita: bool,
+        color: Option<ColorRgba>,
     },
     Raya {
         puntos: Vec<Punto2>,
         grosor: f32,
+        color: Option<ColorRgba>,
     },
 }
 
@@ -125,6 +132,36 @@ impl Caja {
         self.piezas_en(x, y)
             .map(|p| a_elemento(p, estilo))
             .collect()
+    }
+
+    /// Las piezas con su esquina en `(x, y)`, para quien las pinta sin
+    /// hacerlas elementos (el texto rico del lienzo).
+    pub fn piezas_colocadas(&self, x: f32, y: f32) -> Vec<Pieza> {
+        self.piezas_en(x, y).collect()
+    }
+
+    /// **De un color**, salvo lo que ya tenia el suyo: en
+    /// `\color{red}{a + \color{blue}{b}}` la `b` sigue azul.
+    pub fn tenida(mut self, c: ColorRgba) -> Caja {
+        for p in &mut self.piezas {
+            match p {
+                Pieza::Texto { color, .. } | Pieza::Raya { color, .. } => {
+                    color.get_or_insert(c);
+                }
+            }
+        }
+        self
+    }
+
+    /// Con las letras en negrita y las rayas un poco mas gordas.
+    pub fn en_negrita(mut self) -> Caja {
+        for p in &mut self.piezas {
+            match p {
+                Pieza::Texto { negrita, .. } => *negrita = true,
+                Pieza::Raya { grosor, .. } => *grosor *= 1.4,
+            }
+        }
+        self
     }
 }
 
@@ -195,8 +232,16 @@ fn a_elemento(p: Pieza, estilo: &Estilo) -> Elemento {
             texto,
             tam,
             cursiva,
-        } => elemento_texto(&texto, x, y, (ancho, alto), tam, cursiva, estilo),
-        Pieza::Raya { puntos, grosor } => elemento_linea(puntos, grosor, estilo),
+            negrita,
+            color,
+        } => {
+            let mut e = elemento_texto(&texto, x, y, (ancho, alto), tam, cursiva, &estilo.con_color(color.unwrap_or(estilo.color)));
+            e.extras.negrita = negrita;
+            e
+        }
+        Pieza::Raya { puntos, grosor, color } => {
+            elemento_linea(puntos, grosor, &estilo.con_color(color.unwrap_or(estilo.color)))
+        }
     }
 }
 
@@ -429,6 +474,8 @@ pub fn letra(texto: &str, t: f32, cursiva: bool, medir: Medir<'_>) -> Caja {
             texto: texto.to_string(),
             tam: t,
             cursiva,
+            negrita: false,
+            color: None,
         }],
     }
 }
@@ -488,6 +535,7 @@ fn raya(puntos: &[(f32, f32)], t: f32) -> Pieza {
     Pieza::Raya {
         puntos: puntos.iter().map(|&(x, y)| Punto2::nuevo(x, y)).collect(),
         grosor: trazo(t),
+        color: None,
     }
 }
 
@@ -700,6 +748,265 @@ pub fn llave(alto: f32, t: f32) -> Caja {
             ],
             t,
         )],
+    }
+}
+
+// ---------------------------------------------------------------------
+// Adornos, recuadros y lo pequeno encima (15-oct-2026)
+// ---------------------------------------------------------------------
+
+/// Donde empieza y donde acaba **la tinta** de una caja en vertical, no su
+/// caja: la caja de una letra lleva el interlineado, y una raya encima de
+/// `AB` puesta sobre la caja quedaba a media letra de distancia.
+///
+/// Las letras se cuentan por su linea base estimada (el eje de la letra
+/// mas un cuarto de su tamano) y su altura de mayuscula (siete decimos).
+fn tinta_vertical(c: &Caja) -> (f32, f32) {
+    let (mut arriba, mut abajo) = (f32::MAX, f32::MIN);
+    for p in &c.piezas {
+        match p {
+            Pieza::Texto { y, alto, tam, .. } => {
+                let base = y + alto * 0.55 + tam * 0.25;
+                arriba = arriba.min(base - tam * 0.72);
+                abajo = abajo.max(base);
+            }
+            Pieza::Raya { puntos, .. } => {
+                for q in puntos {
+                    arriba = arriba.min(q.y);
+                    abajo = abajo.max(q.y);
+                }
+            }
+        }
+    }
+    if arriba > abajo { (0.0, c.alto) } else { (arriba, abajo) }
+}
+
+/// **Una marca encima (o debajo) del ancho de lo que cubre**: la raya de
+/// `AB`, el arco de `AC`, la flecha de un vector, el gorro, la tilde, el
+/// subrayado. Pegada a la tinta y no a la caja; si no cabe, la caja crece.
+pub fn adornada(dentro: Caja, adorno: crate::formulas::Adorno, t: f32) -> Caja {
+    use crate::formulas::Adorno;
+    let (arriba, abajo) = tinta_vertical(&dentro);
+    let w = dentro.ancho;
+    let m = t * 0.06;
+    let (x0, x1) = (m, (w - m).max(m + 1.0));
+    let separa = t * 0.1;
+    let h = match adorno {
+        Adorno::ArcoEncima => (t * 0.16 + w * 0.04).min(t * 0.32),
+        Adorno::Gorro | Adorno::Tilde => t * 0.16,
+        Adorno::Flecha => t * 0.12,
+        Adorno::RayaEncima | Adorno::RayaDebajo => 0.0,
+    };
+    if adorno == Adorno::RayaDebajo {
+        let y = abajo + t * 0.12;
+        let alto = dentro.alto.max(y + trazo(t));
+        let mut piezas = dentro.piezas.clone();
+        piezas.push(raya(&[(x0, y), (x1, y)], t));
+        return Caja { ancho: w, alto, eje: dentro.eje, piezas };
+    }
+    // La marca acaba `separa` por encima de la tinta; si se sale de la
+    // caja, todo baja lo que falte.
+    let fondo = arriba - separa;
+    let baja = (h + trazo(t) - fondo).max(0.0);
+    let fondo = fondo + baja;
+    let tope = fondo - h;
+    let mut piezas: Vec<Pieza> = dentro.piezas_en(0.0, baja).collect();
+    let marca: Vec<(f32, f32)> = match adorno {
+        Adorno::RayaEncima => vec![(x0, fondo), (x1, fondo)],
+        Adorno::ArcoEncima => (0..=20)
+            .map(|k| {
+                let s = k as f32 / 20.0;
+                // Un trozo de circulo achatado: sube rapido y se aplana arriba.
+                // `max(0)`: el seno de pi en f32 sale un pelo negativo, y su
+                // potencia es NaN (la raya entera desaparecia).
+                (x0 + (x1 - x0) * s, fondo - h * (std::f32::consts::PI * s).sin().max(0.0).powf(0.8))
+            })
+            .collect(),
+        Adorno::Gorro => vec![(x0, fondo), ((x0 + x1) / 2.0, tope), (x1, fondo)],
+        Adorno::Tilde => (0..=16)
+            .map(|k| {
+                let s = k as f32 / 16.0;
+                (x0 + (x1 - x0) * s, tope + h / 2.0 - h / 2.0 * (2.0 * std::f32::consts::PI * s).sin())
+            })
+            .collect(),
+        Adorno::Flecha => {
+            let y = fondo - h / 2.0;
+            piezas.push(raya(&[(x1 - t * 0.18, y - t * 0.1), (x1, y), (x1 - t * 0.18, y + t * 0.1)], t));
+            vec![(x0, y), (x1, y)]
+        }
+        Adorno::RayaDebajo => Vec::new(),
+    };
+    piezas.push(raya(&marca, t));
+    Caja { ancho: w, alto: dentro.alto + baja, eje: dentro.eje + baja, piezas }
+}
+
+/// **Dentro de un recuadro** (`\boxed`): un margen alrededor de la tinta y
+/// el marco de cuatro rayas.
+pub fn recuadro(dentro: Caja, t: f32) -> Caja {
+    let (arriba, abajo) = tinta_vertical(&dentro);
+    let m = t * 0.25;
+    let dy = (m - arriba).max(0.0);
+    let ancho = dentro.ancho + m * 2.0;
+    let (y0, y1) = (arriba + dy - m, abajo + dy + m);
+    let mut piezas: Vec<Pieza> = dentro.piezas_en(m, dy).collect();
+    piezas.push(raya(&[(0.0, y0), (ancho, y0), (ancho, y1), (0.0, y1), (0.0, y0)], t));
+    Caja { ancho, alto: (dentro.alto + dy).max(y1 + trazo(t)), eje: dentro.eje + dy, piezas }
+}
+
+/// Lo pequeno centrado encima de la base (`\overset{?}{=}`).
+pub fn encima(base: Caja, arriba: Caja, t: f32) -> Caja {
+    let ancho = base.ancho.max(arriba.ancho);
+    let hueco = t * 0.02;
+    let mut piezas: Vec<Pieza> = arriba.piezas_en((ancho - arriba.ancho) / 2.0, 0.0).collect();
+    let dy = arriba.alto * 0.7 + hueco;
+    piezas.extend(base.piezas_en((ancho - base.ancho) / 2.0, dy));
+    Caja { ancho, alto: base.alto + dy, eje: base.eje + dy, piezas }
+}
+
+/// Los signos de angulo que se dibujan con rayas en vez de con la letra.
+pub const ANGULOS: [char; 3] = ['∢', '∡', '∠'];
+
+/// **Un signo de angulo dibujado** (`∢` de «m∢AOB», `∡`, `∠`). Con rayas y
+/// no con la letra: casi ninguna fuente de texto los trae, y el de reserva
+/// de Windows salia diminuto y torcido junto a las letras (lamina del
+/// 15-oct); asi ademas sale igual en el PNG, el SVG y el PDF.
+///
+/// La caja es la de una letra del mismo tamano (`medir("m")`), con la base
+/// donde la estiman los adornos (`tinta_vertical`).
+pub fn angulo(signo: char, t: f32, medir: Medir<'_>) -> Caja {
+    let (_, alto) = medir("m", t);
+    let eje = alto * 0.55;
+    let base = eje + t * 0.25;
+    let w = t * 0.62;
+    let (x0, x1) = (w * 0.1, w * 0.9);
+    let arco = |cx: f32, cy: f32, r: f32, a0: f32, a1: f32| -> Vec<(f32, f32)> {
+        (0..=10)
+            .map(|k| {
+                let a = a0 + (a1 - a0) * k as f32 / 10.0;
+                (cx + r * a.cos(), cy - r * a.sin())
+            })
+            .collect()
+    };
+    let mut piezas = Vec::new();
+    match signo {
+        // Esferico: un «<» con un arco que corta los dos lados.
+        '∢' => {
+            let v = (x0, base - t * 0.3);
+            let (arriba, abajo) = ((x1, base - t * 0.66), (x1, base + t * 0.04));
+            piezas.push(raya(&[arriba, v, abajo], t));
+            let a = ((arriba.1 - v.1) / (arriba.0 - v.0)).atan().abs();
+            piezas.push(raya(&arco(v.0, v.1, w * 0.48, -a * 1.25, a * 1.25), t));
+        }
+        // Medido y plano: la base horizontal y el lado subiendo.
+        _ => {
+            let v = (x0, base);
+            let sube = (x1 * 0.85, base - t * 0.68);
+            piezas.push(raya(&[sube, v, (x1, base)], t));
+            if signo == '∡' {
+                let a = ((v.1 - sube.1) / (sube.0 - v.0)).atan();
+                piezas.push(raya(&arco(v.0, v.1, w * 0.5, 0.0, a), t));
+            }
+        }
+    }
+    Caja { ancho: w, alto, eje, piezas }
+}
+
+/// **De un arbol de formula de las notas** (`formulas::leer`, el LaTeX de
+/// bolsillo y la escritura corriente) **a la caja compuesta**. Es el unico
+/// compositor: lo usan la herramienta `escribir_ecuacion` del asistente
+/// (antes vivia alli, en `pixpin-ia`) y el texto rico del lienzo.
+///
+/// `en_linea`: la formula va dentro de un renglon de texto, como `$...$`:
+/// sus fracciones encogen para no abrir el renglon (las de `\dfrac` no).
+pub fn de_formula(p: &crate::formulas::Pieza, t: f32, medir: Medir<'_>, en_linea: bool) -> Caja {
+    use crate::formulas::Pieza as F;
+    let sigue = |p: &F, t: f32| de_formula(p, t, medir, en_linea);
+    match p {
+        F::Texto { texto, cursiva } => {
+            if texto.is_empty() {
+                hueco(0.0)
+            } else if texto.chars().any(|c| ANGULOS.contains(&c)) {
+                // Los angulos, dibujados; lo de alrededor, en letra.
+                let mut cajas = Vec::new();
+                let mut trozo = String::new();
+                for c in texto.chars() {
+                    if ANGULOS.contains(&c) {
+                        if !trozo.is_empty() {
+                            cajas.push(letra(&std::mem::take(&mut trozo), t, *cursiva, medir));
+                        }
+                        cajas.push(angulo(c, t, medir));
+                    } else {
+                        trozo.push(c);
+                    }
+                }
+                if !trozo.is_empty() {
+                    cajas.push(letra(&trozo, t, *cursiva, medir));
+                }
+                fila(cajas)
+            } else {
+                letra(texto, t, *cursiva, medir)
+            }
+        }
+        F::Fila(l) => fila(l.iter().map(|p| sigue(p, t)).collect()),
+        F::Fraccion(a, b) => {
+            // Una fraccion dentro de otra, mas pequena (como en un libro);
+            // en un renglon de texto, ya de entrada mas pequena.
+            let menor_ = if en_linea { (t * 0.78).max(MINIMO) } else { menor(t).max(t * 0.85) };
+            fraccion(sigue(a, menor_), sigue(b, menor_), t)
+        }
+        F::Grande(d) => de_formula(d, t, medir, false),
+        F::ConIndices { base, arriba, abajo } => {
+            let mut c = sigue(base, t);
+            if let Some(b) = abajo {
+                c = subindice(c, sigue(b, menor(t)), t);
+            }
+            if let Some(a) = arriba {
+                c = potencia(c, sigue(a, menor(t)), t);
+            }
+            c
+        }
+        F::Raiz { dentro, indice } => raiz(
+            sigue(dentro, t),
+            indice.as_ref().map(|i| sigue(i, menor(menor(t)))),
+            t,
+        ),
+        F::Agrupado { dentro, abre, cierra } => {
+            let d = sigue(dentro, t);
+            match abre.as_str() {
+                "(" => entre_parentesis(d, t, medir),
+                "|" => entre_barras(d, t),
+                _ => fila(vec![letra(abre, t, false, medir), d, letra(cierra, t, false, medir)]),
+            }
+        }
+        // Matrices y sistemas: la rejilla de celdas y su delimitador
+        // dibujado del alto de la rejilla.
+        F::Tabla { filas, abre, cierra, izquierda } => {
+            let celdas = filas.iter().map(|f| f.iter().map(|p| sigue(p, t)).collect()).collect();
+            let m = matriz(celdas, t, *izquierda);
+            match (abre.as_str(), cierra.as_str()) {
+                ("[", _) => entre_corchetes(m, t),
+                ("(", _) => entre_parentesis(m, t, medir),
+                ("|", _) => entre_barras(m, t),
+                ("‖", _) => entre_barras(entre_barras(m, t), t),
+                ("{", "") => {
+                    let alto = m.alto;
+                    fila(vec![llave(alto, t), hueco(t * 0.3), m])
+                }
+                ("{", _) => entre_corchetes(m, t),
+                _ => m,
+            }
+        }
+        F::Adorno { dentro, adorno } => adornada(sigue(dentro, t), *adorno, t),
+        F::Color { color, dentro } => {
+            let c = sigue(dentro, t);
+            match crate::texto_rico::color_de_nombre(color) {
+                Some(col) => c.tenida(col),
+                None => c,
+            }
+        }
+        F::Negrita(d) => sigue(d, t).en_negrita(),
+        F::Recuadro(d) => recuadro(sigue(d, t), t),
+        F::Encima { base, arriba } => encima(sigue(base, t), sigue(arriba, menor(t)), t),
     }
 }
 

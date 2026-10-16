@@ -113,7 +113,7 @@ pub const QUE: &str = "lo que ya hay: «#12», «#3 #5», «el circulo rojo», �
 
 const COLOR: Campo = c("color", Tipo::Texto, false, "rojo, azul, verde, amarillo, naranja, morado, rosa, gris, marron, negro, blanco o #rrggbb");
 const GROSOR: Campo = c("grosor", Tipo::Numero, false, "grosor del trazo, 1 a 40");
-const TRAZO: Campo = c("trazo", Tipo::Opciones(&["solido", "discontinuo", "punteado"]), false, "");
+const TRAZO: Campo = c("trazo", Tipo::Opciones(&["solido", "discontinuo", "punteado", "raya_punto"]), false, "");
 const DUREZA: Campo = c("dureza", Tipo::Opciones(&["4H", "2H", "HB", "2B", "4B", "6B", "8B"]), false, "dureza del grafito");
 
 /// **La tabla.** Cada fila es una herramienta; [`herramienta`] la convierte
@@ -191,17 +191,46 @@ pub const FILAS: &[Fila] = &[
     },
     Fila {
         nombre: GEOMETRIA,
-        descripcion: "Dibuja geometria exacta: recta por dos puntos o por punto, angulo y longitud; circulo por centro y radio o por tres puntos; arco; perpendicular o paralela a una recta que ya esta. Angulos en grados: 0 a la derecha, 90 arriba.",
+        descripcion: "Dibuja geometria exacta de lamina: recta (con flecha si se pide) por dos puntos o por punto, angulo y longitud; circulo por centro y radio o por tres puntos; arco por centro y angulos o por tres puntos; semicircunferencia sobre un diametro; cuadrante, sector y segmento circular (rellenos, tambien con degradado); marca de angulo entre dos lados (arquitos, relleno translucido, valor) y la del angulo recto; punto con su letra; perpendicular o paralela a una recta que ya esta. Angulos en grados: 0 a la derecha, 90 arriba.",
         campos: &[
-            c("figura", Tipo::Opciones(&["recta", "circulo", "arco", "perpendicular", "paralela"]), true, ""),
-            c("puntos", Tipo::Numeros, false, "recta: [x1, y1, x2, y2]; circulo por tres puntos: [x1, y1, x2, y2, x3, y3]"),
+            c(
+                "figura",
+                Tipo::Opciones(&[
+                    "recta", "circulo", "arco", "semicircunferencia", "cuadrante", "sector", "segmento", "marca_angulo",
+                    "angulo_recto", "punto", "perpendicular", "paralela",
+                ]),
+                true,
+                "",
+            ),
+            c("puntos", Tipo::Numeros, false, "recta: [x1, y1, x2, y2]; circulo por tres puntos: [x1, y1, x2, y2, x3, y3]; arco por tres puntos: [inicio, por donde pasa, fin]; semicircunferencia: [x1, y1, x2, y2] del diametro; cuadrante con «centro»: [ax, ay, bx, by] las puntas de sus dos radios; marca_angulo y angulo_recto: [x1, y1, x2, y2] un punto de cada lado; punto: [x, y]"),
             c("desde", Tipo::Numeros, false, "recta: [x, y] de donde sale, con «angulo» y «longitud»"),
             c("angulo", Tipo::Numero, false, "recta: grados"),
             c("longitud", Tipo::Numero, false, "recta, perpendicular: px"),
-            c("centro", Tipo::Numeros, false, "circulo y arco: [x, y]"),
-            c("radio", Tipo::Numero, false, "circulo y arco"),
-            c("inicio", Tipo::Numero, false, "arco: grados donde empieza"),
-            c("fin", Tipo::Numero, false, "arco: grados donde acaba (antihorario)"),
+            c("centro", Tipo::Numeros, false, "circulo, arco, cuadrante, sector, segmento: [x, y]; punto: [x, y]"),
+            c("radio", Tipo::Numero, false, "circulo, arco, cuadrante, sector, segmento; marca_angulo: radio de la marca (22); angulo_recto: lado del cuadradito (14)"),
+            c("inicio", Tipo::Numero, false, "arco, cuadrante, sector, segmento: grados donde empieza"),
+            c("fin", Tipo::Numero, false, "arco, sector, segmento: grados donde acaba"),
+            c("sentido", Tipo::Opciones(&["antihorario", "horario"]), false, "arco, cuadrante, sector, segmento: de «inicio» a «fin» (omitir: antihorario)"),
+            c("vertice", Tipo::Numeros, false, "marca_angulo y angulo_recto: [x, y] del vertice"),
+            c("lado", Tipo::Numeros, false, "semicircunferencia: [x, y] un punto del lado al que va (omitir: arriba)"),
+            c("arcos", Tipo::Numero, false, "marca_angulo: 1 a 3 arquitos"),
+            c("valor", Tipo::Texto, false, "marca_angulo: lo que se escribe al lado («45°», «θ», «x»)"),
+            c("letra", Tipo::Texto, false, "punto: su letra («A», «P», «O»)"),
+            c(
+                "letra_hacia",
+                Tipo::Opciones(&[
+                    "arriba", "abajo", "izquierda", "derecha", "arriba_izquierda", "arriba_derecha", "abajo_izquierda",
+                    "abajo_derecha",
+                ]),
+                false,
+                "punto: donde va la letra (omitir: donde no estorba)",
+            ),
+            c("tam_letra", Tipo::Numero, false, "punto y marca_angulo: tamano de la letra"),
+            c("relleno", Tipo::Texto, false, "cuadrante, sector, segmento, circulo: color de relleno; marca_angulo: el suyo (translucido; omitir: el del color)"),
+            c("degradado", Tipo::Opciones(&["lineal", "radial"]), false, "relleno degradado: de «relleno» a «relleno_hasta»"),
+            c("relleno_hasta", Tipo::Texto, false, "con «degradado»: el otro color (omitir: casi blanco)"),
+            c("flecha", Tipo::Opciones(&["ninguna", "fin", "inicio", "ambas"]), false, "recta: puntas de flecha"),
+            c("punta", Tipo::Opciones(&["rellena", "abierta"]), false, "con «flecha»: la forma de la punta (omitir: rellena)"),
             c("a", Tipo::Referencia, false, "perpendicular/paralela: la recta que ya esta"),
             c("por", Tipo::Numeros, false, "perpendicular/paralela: [x, y] por donde pasa"),
             c("distancia", Tipo::Numero, false, "paralela: a cuantos px (positivo: a la izquierda de la recta)"),
@@ -211,7 +240,9 @@ pub const FILAS: &[Fila] = &[
         ],
         claves: &[
             "recta", "circulo", "circunferencia", "arco", "perpendicular", "paralela", "radio", "centro", "angulo",
-            "grados", "tres puntos", "exact", "segmento",
+            "grados", "tres puntos", "exact", "segmento", "semicircunferencia", "semicirculo", "cuadrante", "sector",
+            "cuerda", "diametro", "tangente", "marca", "angulo recto", "degradado", "punteada", "raya punto",
+            "lamina", "geometria",
         ],
     },
     Fila {

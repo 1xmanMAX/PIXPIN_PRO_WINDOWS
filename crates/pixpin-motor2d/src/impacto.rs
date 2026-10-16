@@ -163,6 +163,17 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
         // El arco se toca por la raya que se ve, no por su caja: la caja es
         // la del ovalo entero y agarrarlo por ahi seria agarrar aire en tres
         // cuartos de ella.
+        // El sector, el segmento y la marca de angulo: por su borde, y por
+        // dentro si van rellenos.
+        Figura::Arco { .. } if crate::geometria_exacta::contorno_cerrado(e).is_some() => {
+            let mut borde = crate::geometria_exacta::contorno_cerrado(e).unwrap_or_default();
+            let dentro = (e.tiene_relleno() || e.extras.degradado.is_some())
+                && crate::lazo::dentro_del_poligono(&borde, p);
+            if let Some(q) = borde.first().copied() {
+                borde.push(q);
+            }
+            dentro || cerca_de_la_polilinea(&borde, p, margen)
+        }
         Figura::Arco { inicio, barrido } => cerca_de_la_polilinea(
             &crate::pintado::arco_muestreado(e, *inicio, *barrido),
             p,

@@ -770,6 +770,10 @@ pub fn rayas(estilo: crate::elemento::EstiloTrazo, grosor: f32) -> Option<(f32, 
         EstiloTrazo::Solido => None,
         EstiloTrazo::Discontinuo => Some((8.0, 8.0 + grosor)),
         EstiloTrazo::Punteado => Some((1.5, 6.0 + grosor)),
+        // El motor lo entrega ya partido en tramos lisos
+        // (`geometria_exacta::desplegar_raya_punto`); si alguna orden llegara
+        // entera, a rayas largas, que es lo mas parecido.
+        EstiloTrazo::RayaPunto => Some((5.0 * grosor + 4.0, 2.0 * grosor + 2.0)),
     }
 }
 

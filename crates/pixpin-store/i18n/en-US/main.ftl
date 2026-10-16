@@ -2611,3 +2611,21 @@ notif-ver-galeria = Open the gallery
 notif-captura-se-va = This screenshot goes away { $cuando }
 notif-capturas-se-van = { $n } screenshots go away in the next 24 h
 notif-capturas-titulo = Screenshots expiring
+
+# Geometry sheets (exact arc, angle mark, gradient)
+herramientas-angulo = Angle mark
+lienzo-pista-arco = Arc (on a guide: trace a reference oval; or by centre and two points, or by three points, in the panel)
+lienzo-pista-angulo = Angle: click inside the angle, near where two lines meet
+lienzo-panel-degradado = Gradient fill
+lienzo-panel-cierre-arco = Arc closure
+lienzo-panel-modo-arco = Draw the arc
+lienzo-panel-arcos-angulo = Arcs
+lienzo-degradado-liso = Flat
+lienzo-degradado-lineal = Linear
+lienzo-degradado-radial = Radial
+lienzo-cierre-abierto = Open
+lienzo-cierre-sector = Sector
+lienzo-cierre-segmento = Segment
+lienzo-arco-modo-guia = Guide
+lienzo-arco-modo-centro = Centre
+lienzo-arco-modo-tres = 3 points

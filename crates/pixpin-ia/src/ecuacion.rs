@@ -201,85 +201,13 @@ pub fn partir_lineas(texto: &str) -> Vec<String> {
 
 /// Los mandatos que el lector no entendio (salen con su barra).
 fn desconocidos(p: &Pieza) -> Vec<String> {
-    match p {
-        Pieza::Texto { texto, .. } if texto.starts_with('\\') && texto.len() > 1 => vec![texto.clone()],
-        Pieza::Texto { .. } => Vec::new(),
-        Pieza::Fila(l) => l.iter().flat_map(desconocidos).collect(),
-        Pieza::Fraccion(a, b) => [desconocidos(a), desconocidos(b)].concat(),
-        Pieza::ConIndices { base, arriba, abajo } => {
-            let mut v = desconocidos(base);
-            v.extend(arriba.iter().flat_map(|a| desconocidos(a)));
-            v.extend(abajo.iter().flat_map(|a| desconocidos(a)));
-            v
-        }
-        Pieza::Raiz { dentro, indice } => {
-            let mut v = desconocidos(dentro);
-            v.extend(indice.iter().flat_map(|a| desconocidos(a)));
-            v
-        }
-        Pieza::Agrupado { dentro, .. } => desconocidos(dentro),
-        Pieza::Tabla { filas, .. } => filas.iter().flatten().flat_map(desconocidos).collect(),
-    }
+    formulas::desconocidos(p)
 }
 
-/// **Del arbol de la formula a la caja compuesta**, con las cajas del motor.
+/// **Del arbol de la formula a la caja compuesta**: el compositor del motor
+/// (`ecuacion::de_formula`), el mismo que usa el texto rico del lienzo.
 pub fn componer(p: &Pieza, t: f32, medir: caja::Medir<'_>) -> Caja {
-    match p {
-        Pieza::Texto { texto, cursiva } => {
-            if texto.is_empty() {
-                caja::hueco(0.0)
-            } else {
-                caja::letra(texto, t, *cursiva, medir)
-            }
-        }
-        Pieza::Fila(l) => caja::fila(l.iter().map(|p| componer(p, t, medir)).collect()),
-        Pieza::Fraccion(a, b) => {
-            // Una fraccion dentro de otra, mas pequena (como en un libro).
-            let menor = caja::menor(t).max(t * 0.85);
-            caja::fraccion(componer(a, menor, medir), componer(b, menor, medir), t)
-        }
-        Pieza::ConIndices { base, arriba, abajo } => {
-            let mut c = componer(base, t, medir);
-            if let Some(b) = abajo {
-                c = caja::subindice(c, componer(b, caja::menor(t), medir), t);
-            }
-            if let Some(a) = arriba {
-                c = caja::potencia(c, componer(a, caja::menor(t), medir), t);
-            }
-            c
-        }
-        Pieza::Raiz { dentro, indice } => caja::raiz(
-            componer(dentro, t, medir),
-            indice.as_ref().map(|i| componer(i, caja::menor(caja::menor(t)), medir)),
-            t,
-        ),
-        Pieza::Agrupado { dentro, abre, cierra } => {
-            let d = componer(dentro, t, medir);
-            match abre.as_str() {
-                "(" => caja::entre_parentesis(d, t, medir),
-                "|" => caja::entre_barras(d, t),
-                _ => caja::fila(vec![caja::letra(abre, t, false, medir), d, caja::letra(cierra, t, false, medir)]),
-            }
-        }
-        // Matrices y sistemas: la rejilla de celdas y su delimitador
-        // dibujado del alto de la rejilla.
-        Pieza::Tabla { filas, abre, cierra, izquierda } => {
-            let celdas = filas.iter().map(|f| f.iter().map(|p| componer(p, t, medir)).collect()).collect();
-            let m = caja::matriz(celdas, t, *izquierda);
-            match (abre.as_str(), cierra.as_str()) {
-                ("[", _) => caja::entre_corchetes(m, t),
-                ("(", _) => caja::entre_parentesis(m, t, medir),
-                ("|", _) => caja::entre_barras(m, t),
-                ("‖", _) => caja::entre_barras(caja::entre_barras(m, t), t),
-                ("{", "") => {
-                    let alto = m.alto;
-                    caja::fila(vec![caja::llave(alto, t), caja::hueco(t * 0.3), m])
-                }
-                ("{", _) => caja::entre_corchetes(m, t),
-                _ => m,
-            }
-        }
-    }
+    caja::de_formula(p, t, medir, false)
 }
 
 /// Las piezas del motor de la ecuacion, ya colocadas. Devuelve tambien lo
