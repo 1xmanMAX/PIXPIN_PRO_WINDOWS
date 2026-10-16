@@ -60,3 +60,5 @@ mod pruebas;
 mod pruebas_pensado;
 #[cfg(test)]
 mod pruebas_diagramas;
+#[cfg(test)]
+mod banco_documentos;
