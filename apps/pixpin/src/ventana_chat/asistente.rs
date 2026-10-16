@@ -576,6 +576,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 p.marco,
                 p.hoja.as_ref(),
                 &p.imagenes,
+                p.junto_a,
             );
             cambio = true;
             let r = match r {
@@ -800,7 +801,7 @@ pub(super) fn meter_en_el_lienzo_del_chat(
     documento: &str,
 ) -> Result<(String, String), String> {
     let (r, referencia) =
-        trabajar_en_el_lienzo_del_chat(ubicacion, abierto, proyecto, destino, &al_lienzo::Trabajo::Dibujar, documento, None, None, &[])?;
+        trabajar_en_el_lienzo_del_chat(ubicacion, abierto, proyecto, destino, &al_lienzo::Trabajo::Dibujar, documento, None, None, &[], None)?;
     Ok((r.texto, referencia.unwrap_or_default()))
 }
 
@@ -820,6 +821,8 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
     // fotos (a `imagenes/` del chat, como una imagen pegada).
     en_hoja: Option<&al_lienzo::EnHoja>,
     fotos_de_hoja: &[(u64, pixpin_codec::ImagenRgba)],
+    // La imagen del lienzo de la que sale lo dibujado: va a su lado.
+    junto_a: Option<(f32, f32, f32, f32)>,
 ) -> Result<(al_lienzo::Respuesta, Option<String>), String> {
     let raiz = ubicacion.raiz();
     let es_el_abierto = abierto.as_deref().is_some_and(|a| a.ficha.id == proyecto);
@@ -881,6 +884,14 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
             return Ok((al_lienzo::Respuesta { vista: Some(Box::new(enc)), ..Default::default() }, Some(referencia)));
         }
         al_lienzo::Trabajo::Juntar { .. } => return Ok((al_lienzo::Respuesta::default(), Some(referencia))),
+        // La imagen del lienzo (la ultima pegada) para calcarla: de su fichero.
+        al_lienzo::Trabajo::Imagen => {
+            let (id, caja) = al_lienzo::imagen_de_escena(&escena, &[]).ok_or("no hay ninguna imagen en el lienzo")?;
+            let ruta = hoja.fotos.iter().find(|(i, _)| *i == id).map(|(_, r)| r.clone()).ok_or("la imagen del lienzo no esta en su carpeta")?;
+            let img = crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(&ruta)).ok_or("no se pudo leer la imagen del lienzo")?;
+            let imagen = al_lienzo::ImagenDelLienzo { rgba: img.pixeles, ancho: img.ancho, alto: img.alto, caja };
+            return Ok((al_lienzo::Respuesta { imagen: Some(Box::new(imagen)), ..Default::default() }, Some(referencia)));
+        }
         _ => {}
     }
     let respuesta = match trabajo {
@@ -903,7 +914,7 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
             al_lienzo::Respuesta { texto: al_lienzo::resumen(n), ..Default::default() }
         }
         al_lienzo::Trabajo::Dibujar => {
-            let ids = al_lienzo::meter_al_lado_ids(&mut escena, documento)?;
+            let ids = al_lienzo::meter_en_sitio(&mut escena, documento, junto_a, None)?;
             al_lienzo::resumen_con_ids(&escena, ids, marco)
         }
         otro => {

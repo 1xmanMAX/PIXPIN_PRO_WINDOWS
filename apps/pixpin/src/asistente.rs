@@ -58,3 +58,5 @@ pub mod en_el_chat;
 mod pruebas;
 #[cfg(test)]
 mod pruebas_pensado;
+#[cfg(test)]
+mod pruebas_diagramas;

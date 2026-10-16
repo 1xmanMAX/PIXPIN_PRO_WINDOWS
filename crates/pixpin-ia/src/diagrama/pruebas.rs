@@ -1,0 +1,409 @@
+//! Pruebas del diagrama con dibujos sinteticos (con antialias, como los de
+//! una captura) y tolerancias en pixeles.
+
+use super::ajuste::dist;
+use super::*;
+
+/// Un lienzo RGBA blanco donde se pinta con antialias.
+pub(crate) struct Lamina {
+    pub w: usize,
+    pub h: usize,
+    pub px: Vec<[f32; 3]>,
+}
+
+impl Lamina {
+    pub fn nueva(w: usize, h: usize) -> Lamina {
+        Lamina { w, h, px: vec![[255.0; 3]; w * h] }
+    }
+    fn mezclar(&mut self, x: usize, y: usize, c: [u8; 3], a: f64) {
+        if a <= 0.0 || x >= self.w || y >= self.h {
+            return;
+        }
+        let a = a.min(1.0) as f32;
+        let p = &mut self.px[y * self.w + x];
+        for q in 0..3 {
+            p[q] = p[q] * (1.0 - a) + c[q] as f32 * a;
+        }
+    }
+    /// Pinta con una cobertura dada por pixel (4x4 de muestras).
+    fn pintar(&mut self, caja: (f64, f64, f64, f64), c: [u8; 3], cubre: impl Fn(f64, f64) -> bool) {
+        let (x0, y0, x1, y1) = caja;
+        for y in (y0.floor().max(0.0) as usize)..((y1.ceil() as usize).min(self.h)) {
+            for x in (x0.floor().max(0.0) as usize)..((x1.ceil() as usize).min(self.w)) {
+                let mut n = 0;
+                for sy in 0..4 {
+                    for sx in 0..4 {
+                        if cubre(x as f64 + (sx as f64 + 0.5) / 4.0, y as f64 + (sy as f64 + 0.5) / 4.0) {
+                            n += 1;
+                        }
+                    }
+                }
+                self.mezclar(x, y, c, n as f64 / 16.0);
+            }
+        }
+    }
+    pub fn raya(&mut self, a: (f64, f64), b: (f64, f64), g: f64, c: [u8; 3]) {
+        let m = g + 2.0;
+        let caja = (a.0.min(b.0) - m, a.1.min(b.1) - m, a.0.max(b.0) + m, a.1.max(b.1) + m);
+        self.pintar(caja, c, |x, y| ajuste::dist_a_segmento((x, y), a, b) <= g / 2.0);
+    }
+    pub fn discontinua(&mut self, a: (f64, f64), b: (f64, f64), g: f64, c: [u8; 3], trazo: f64, hueco: f64) {
+        let l = dist(a, b);
+        let d = ((b.0 - a.0) / l, (b.1 - a.1) / l);
+        let mut t = 0.0;
+        while t < l {
+            let t1 = (t + trazo).min(l);
+            self.raya((a.0 + d.0 * t, a.1 + d.1 * t), (a.0 + d.0 * t1, a.1 + d.1 * t1), g, c);
+            t = t1 + hueco;
+        }
+    }
+    /// Un arco de `desde` a `hasta` (radianes de pantalla, en sentido del reloj).
+    pub fn arco(&mut self, c0: (f64, f64), r: f64, desde: f64, hasta: f64, g: f64, c: [u8; 3]) {
+        let m = r + g + 2.0;
+        self.pintar((c0.0 - m, c0.1 - m, c0.0 + m, c0.1 + m), c, |x, y| {
+            if (dist((x, y), c0) - r).abs() > g / 2.0 {
+                return false;
+            }
+            let a = (y - c0.1).atan2(x - c0.0).rem_euclid(std::f64::consts::TAU);
+            let (d0, d1) = (desde.rem_euclid(std::f64::consts::TAU), hasta.rem_euclid(std::f64::consts::TAU));
+            if d0 <= d1 { a >= d0 && a <= d1 } else { a >= d0 || a <= d1 }
+        });
+    }
+    pub fn circunferencia(&mut self, c0: (f64, f64), r: f64, g: f64, c: [u8; 3]) {
+        self.arco(c0, r, 0.0, std::f64::consts::TAU - 1e-9, g, c);
+    }
+    pub fn disco(&mut self, c0: (f64, f64), r: f64, c: [u8; 3]) {
+        self.pintar((c0.0 - r - 1.0, c0.1 - r - 1.0, c0.0 + r + 1.0, c0.1 + r + 1.0), c, |x, y| dist((x, y), c0) <= r);
+    }
+    pub fn poligono(&mut self, p: &[(f64, f64)], c: [u8; 3]) {
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for q in p {
+            x0 = x0.min(q.0);
+            y0 = y0.min(q.1);
+            x1 = x1.max(q.0);
+            y1 = y1.max(q.1);
+        }
+        let pol = p.to_vec();
+        self.pintar((x0, y0, x1, y1), c, move |x, y| {
+            let mut dentro = false;
+            let n = pol.len();
+            let mut j = n - 1;
+            for i in 0..n {
+                let (xi, yi) = pol[i];
+                let (xj, yj) = pol[j];
+                if (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi {
+                    dentro = !dentro;
+                }
+                j = i;
+            }
+            dentro
+        });
+    }
+    pub fn rgba(&self) -> Vec<u8> {
+        self.px.iter().flat_map(|p| [p[0].round() as u8, p[1].round() as u8, p[2].round() as u8, 255]).collect()
+    }
+    pub fn medir(&self) -> Diagrama {
+        vectorizar(&self.rgba(), self.w as u32, self.h as u32, &[], &Opciones::default(), None)
+    }
+}
+
+const NEGRO: [u8; 3] = [20, 20, 20];
+const AZUL: [u8; 3] = [40, 60, 200];
+const VERDE: [u8; 3] = [30, 160, 70];
+const ROJO: [u8; 3] = [220, 40, 40];
+
+fn cerca(a: (f64, f64), b: (f64, f64), tol: f64) -> bool {
+    dist(a, b) <= tol
+}
+
+/// El segmento que va de `a` a `b` (en cualquier sentido), con tolerancia.
+fn hay_segmento(d: &Diagrama, a: (f64, f64), b: (f64, f64), tol: f64) -> Option<&Segmento> {
+    d.segmentos.iter().find(|s| (cerca(s.a, a, tol) && cerca(s.b, b, tol)) || (cerca(s.a, b, tol) && cerca(s.b, a, tol)))
+}
+
+#[test]
+fn una_raya_y_una_circunferencia() {
+    let mut l = Lamina::nueva(420, 320);
+    l.raya((40.0, 40.0), (380.0, 90.0), 2.0, NEGRO);
+    l.circunferencia((210.0, 190.0), 90.0, 2.0, NEGRO);
+    let d = l.medir();
+    eprintln!("{}
+{:#?}
+{:?}", d.resumen(), d.segmentos, d.arcos);
+    assert_eq!(d.segmentos.len(), 1, "{:?}", d.segmentos);
+    assert!(hay_segmento(&d, (40.0, 40.0), (380.0, 90.0), 2.5).is_some(), "{:?}", d.segmentos);
+    let s = &d.segmentos[0];
+    assert!((s.grosor - 2.0).abs() <= 1.0, "grosor {}", s.grosor);
+    assert_eq!(d.arcos.len(), 1, "{:?}", d.arcos);
+    let c = &d.arcos[0];
+    assert!(c.entera());
+    assert!(cerca(c.c, (210.0, 190.0), 1.0), "centro {:?}", c.c);
+    assert!((c.r - 90.0).abs() <= 1.0, "radio {}", c.r);
+    assert!(d.es_diagrama(), "explica {}", d.explica);
+    assert!(d.ms < 2000, "tardo {} ms", d.ms);
+}
+
+#[test]
+fn un_arco_de_otro_color_parte_la_circunferencia() {
+    let mut l = Lamina::nueva(400, 400);
+    l.circunferencia((200.0, 200.0), 120.0, 2.0, NEGRO);
+    // Encima, de 0 a 90 grados (abajo a la derecha), un arco verde mas grueso.
+    l.arco((200.0, 200.0), 120.0, 0.0, std::f64::consts::FRAC_PI_2, 4.0, VERDE);
+    let d = l.medir();
+    eprintln!("{}
+{:#?}
+{:?}", d.resumen(), d.segmentos, d.arcos);
+    let verdes: Vec<&Arco> = d.arcos.iter().filter(|a| a.color[1] > a.color[0] + 60).collect();
+    assert_eq!(verdes.len(), 1, "{:?}", d.arcos);
+    let v = verdes[0];
+    let (ini, fin) = (v.inicio.to_degrees(), (v.inicio + v.barrido).to_degrees());
+    assert!(ini.rem_euclid(360.0) < 6.0 || ini.rem_euclid(360.0) > 354.0, "inicio {ini}");
+    assert!((fin - 90.0).abs() < 6.0, "fin {fin}");
+    assert!(v.grosor >= 3.0, "grosor {}", v.grosor);
+    let negros: f64 = d.arcos.iter().filter(|a| a.color[1] < 90).map(|a| a.barrido.to_degrees()).sum();
+    assert!((negros - 270.0).abs() < 10.0, "lo negro barre {negros}");
+    for a in &d.arcos {
+        assert!(cerca(a.c, (200.0, 200.0), 1.5) && (a.r - 120.0).abs() < 1.5, "{a:?}");
+    }
+}
+
+#[test]
+fn una_discontinua_es_discontinua_y_una_continua_no() {
+    let mut l = Lamina::nueva(400, 200);
+    l.discontinua((30.0, 50.0), (370.0, 60.0), 1.5, NEGRO, 9.0, 6.0);
+    l.raya((30.0, 150.0), (370.0, 150.0), 1.5, NEGRO);
+    let d = l.medir();
+    eprintln!("{}
+{:#?}
+{:?}", d.resumen(), d.segmentos, d.arcos);
+    assert_eq!(d.segmentos.len(), 2, "{:?}", d.segmentos);
+    let disc = hay_segmento(&d, (30.0, 50.0), (370.0, 60.0), 4.0).expect("la discontinua, entera");
+    assert_eq!(disc.estilo, Estilo::Discontinuo);
+    let cont = hay_segmento(&d, (30.0, 150.0), (370.0, 150.0), 3.0).expect("la continua");
+    assert_eq!(cont.estilo, Estilo::Solido);
+}
+
+#[test]
+fn el_triangulo_inscrito_acaba_en_sus_puntos() {
+    let mut l = Lamina::nueva(400, 400);
+    let c = (200.0, 205.0);
+    let r = 140.0;
+    let ang = [200f64, 320.0, 80.0].map(|g| g.to_radians());
+    let v: Vec<(f64, f64)> = ang.iter().map(|a| (c.0 + r * a.cos(), c.1 + r * a.sin())).collect();
+    l.circunferencia(c, r, 1.5, NEGRO);
+    for i in 0..3 {
+        l.raya(v[i], v[(i + 1) % 3], 2.0, AZUL);
+    }
+    for &p in &v {
+        l.disco(p, 4.5, NEGRO);
+    }
+    l.disco(c, 3.5, NEGRO);
+    let d = l.medir();
+    eprintln!("{}
+{:#?}
+{:?}", d.resumen(), d.segmentos, d.arcos);
+    assert_eq!(d.puntos.len(), 4, "{:?}", d.puntos);
+    for &p in &v {
+        assert!(d.puntos.iter().any(|q| cerca(q.c, p, 1.0)), "falta el punto {p:?}: {:?}", d.puntos);
+    }
+    // Los lados acaban EXACTAMENTE en los puntos detectados.
+    for i in 0..3 {
+        let s = hay_segmento(&d, v[i], v[(i + 1) % 3], 2.0).unwrap_or_else(|| panic!("falta el lado {i}: {:?}", d.segmentos));
+        for e in [s.a, s.b] {
+            assert!(d.puntos.iter().any(|q| dist(q.c, e) < 1e-6), "el extremo {e:?} no esta pegado a un punto");
+        }
+        assert!(s.color[2] > s.color[0] + 80, "el lado es azul: {:?}", s.color);
+    }
+    let circ = d.arcos.iter().find(|a| a.entera()).expect("la circunferencia entera");
+    assert!(cerca(circ.c, c, 1.5) && (circ.r - r).abs() < 1.5, "{circ:?}");
+}
+
+#[test]
+fn una_flecha_rellena_es_flecha() {
+    let mut l = Lamina::nueva(300, 160);
+    l.raya((30.0, 80.0), (250.0, 80.0), 1.5, NEGRO);
+    l.poligono(&[(270.0, 80.0), (248.0, 71.0), (248.0, 89.0)], NEGRO);
+    let d = l.medir();
+    eprintln!("{} {:?}", d.resumen(), d.segmentos);
+    assert_eq!(d.segmentos.len(), 1);
+    let s = &d.segmentos[0];
+    assert!(s.flecha_a || s.flecha_b, "{s:?}");
+    let punta = if s.flecha_b { s.b } else { s.a };
+    assert!(cerca(punta, (270.0, 80.0), 3.0), "la punta {punta:?}");
+    assert!(d.regiones.is_empty(), "la punta no es una region: {:?}", d.regiones.len());
+}
+
+#[test]
+fn un_cuadrante_relleno_es_region_y_un_recuadro_es_recuadro() {
+    let mut l = Lamina::nueva(400, 300);
+    // Un cuadrante amarillo con borde rojo.
+    let o = (60.0, 250.0);
+    let mut p = vec![o];
+    for k in 0..=30 {
+        let a = -std::f64::consts::FRAC_PI_2 * k as f64 / 30.0;
+        p.push((o.0 + 180.0 * a.cos(), o.1 + 180.0 * a.sin()));
+    }
+    l.poligono(&p, [250, 215, 140]);
+    l.raya(o, (240.0, 250.0), 2.0, ROJO);
+    l.raya(o, (60.0, 70.0), 2.0, ROJO);
+    // Un recuadro aparte.
+    l.raya((280.0, 30.0), (380.0, 30.0), 2.0, NEGRO);
+    l.raya((380.0, 30.0), (380.0, 90.0), 2.0, NEGRO);
+    l.raya((380.0, 90.0), (280.0, 90.0), 2.0, NEGRO);
+    l.raya((280.0, 90.0), (280.0, 30.0), 2.0, NEGRO);
+    let d = l.medir();
+    eprintln!("{}
+{:#?}
+{:?}", d.resumen(), d.segmentos, d.arcos);
+    let amarilla = d.regiones.iter().find(|r| r.color[0] > 200 && r.color[2] < 190).expect("la region amarilla");
+    let esperada = std::f64::consts::PI * 180.0 * 180.0 / 4.0;
+    assert!((amarilla.area - esperada).abs() / esperada < 0.08, "area {} vs {esperada}", amarilla.area);
+    assert_eq!(d.recuadros.len(), 1, "{:?}", d.recuadros);
+    let r = &d.recuadros[0];
+    assert!((r.x0 - 280.0).abs() < 2.5 && (r.y0 - 30.0).abs() < 2.5 && (r.x1 - 380.0).abs() < 2.5 && (r.y1 - 90.0).abs() < 2.5, "{r:?}");
+    assert!(hay_segmento(&d, o, (240.0, 250.0), 3.0).is_some(), "{:?}", d.segmentos);
+    assert!(hay_segmento(&d, o, (60.0, 70.0), 3.0).is_some(), "{:?}", d.segmentos);
+}
+
+/// Una «foto» de paisaje con grano: no es un diagrama (va al calco).
+pub(crate) fn foto(w: usize, h: usize) -> Lamina {
+    let mut l = Lamina::nueva(w, h);
+    let mut s: u32 = 7;
+    for y in 0..h {
+        for x in 0..w {
+            s = s.wrapping_mul(1103515245).wrapping_add(12345);
+            let ruido = ((s >> 16) % 40) as f32 - 20.0;
+            let (fx, fy) = (x as f32 / w as f32, y as f32 / h as f32);
+            let colina = 0.6 + 0.12 * (fx * 9.0).sin() + 0.05 * (fx * 23.0).cos();
+            let c = if fy > colina { [60.0 + 50.0 * fy, 120.0 + 40.0 * fx, 50.0] } else { [110.0 + 80.0 * fy, 160.0 + 60.0 * fy, 230.0] };
+            l.px[y * w + x] = [(c[0] + ruido).clamp(0.0, 255.0), (c[1] + ruido).clamp(0.0, 255.0), (c[2] + ruido).clamp(0.0, 255.0)];
+        }
+    }
+    l
+}
+
+#[test]
+fn una_foto_no_es_un_diagrama() {
+    let d = foto(320, 240).medir();
+    eprintln!("{}
+{:#?}
+{:?}", d.resumen(), d.segmentos, d.arcos);
+    assert!(!d.es_diagrama(), "una foto no es diagrama: {}", d.resumen());
+}
+
+#[test]
+fn las_letras_sueltas_se_leen_con_el_lector() {
+    let mut l = Lamina::nueva(300, 200);
+    l.raya((40.0, 150.0), (260.0, 150.0), 2.0, NEGRO);
+    l.disco((40.0, 150.0), 4.0, NEGRO);
+    // Una «A» de tres rayas, suelta, encima del punto.
+    l.raya((30.0, 135.0), (37.0, 115.0), 1.6, NEGRO);
+    l.raya((37.0, 115.0), (44.0, 135.0), 1.6, NEGRO);
+    l.raya((33.0, 127.0), (41.0, 127.0), 1.6, NEGRO);
+    static LEIDAS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let leidas = &LEIDAS;
+    let lector = |_rgba: &[u8], w: u32, h: u32| {
+        leidas.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // La hoja de letras: una sola, la primera celda.
+        assert!(w > 0 && h > 0);
+        // Lo oscuro de la hoja es la letra: alli se «lee» la A.
+        let (mut x0, mut y0, mut x1, mut y1) = (u32::MAX, u32::MAX, 0, 0);
+        for y in 0..h {
+            for x in 0..w {
+                if _rgba[((y * w + x) * 4) as usize] < 128 {
+                    x0 = x0.min(x);
+                    y0 = y0.min(y);
+                    x1 = x1.max(x);
+                    y1 = y1.max(y);
+                }
+            }
+        }
+        vec![PalabraHoja::nueva("A", x0 as f64, y0 as f64, (x1 - x0) as f64, (y1 - y0) as f64)]
+    };
+    let d = vectorizar(&l.rgba(), l.w as u32, l.h as u32, &[], &Opciones::default(), Some(&lector));
+    eprintln!("{} {:?}", d.resumen(), d.rotulos);
+    assert_eq!(leidas.load(std::sync::atomic::Ordering::SeqCst), 1, "una sola lectura para todas las letras");
+    let a = d.rotulos.iter().find(|r| r.texto == "A").expect("la A leida");
+    assert!(a.caja.contiene(37.0, 125.0), "{:?}", a.caja);
+    assert!(d.glifos.is_empty());
+    // Y la A no se dibujo como rayas.
+    assert_eq!(d.segmentos.len(), 1, "{:?}", d.segmentos);
+}
+
+#[test]
+fn el_texto_del_ocr_no_se_vectoriza() {
+    let mut l = Lamina::nueva(300, 200);
+    l.raya((20.0, 160.0), (280.0, 160.0), 2.0, NEGRO);
+    // Un «texto» de rayitas donde el OCR dijo «HOLA».
+    for k in 0..4 {
+        let x = 60.0 + k as f64 * 14.0;
+        l.raya((x, 40.0), (x, 60.0), 2.0, NEGRO);
+        l.raya((x, 40.0), (x + 8.0, 60.0), 2.0, NEGRO);
+    }
+    let palabras = vec![PalabraHoja::nueva("HOLA", 56.0, 38.0, 62.0, 24.0)];
+    let d = vectorizar(&l.rgba(), l.w as u32, l.h as u32, &palabras, &Opciones::default(), None);
+    assert_eq!(d.segmentos.len(), 1, "{:?}", d.segmentos);
+    assert!(d.rotulos.iter().any(|r| r.texto == "HOLA"));
+}
+
+#[test]
+fn los_elementos_salen_con_sus_figuras() {
+    let mut l = Lamina::nueva(300, 300);
+    l.circunferencia((150.0, 150.0), 100.0, 2.0, NEGRO);
+    l.arco((150.0, 150.0), 100.0, 0.0, 1.2, 4.0, VERDE);
+    l.raya((50.0, 150.0), (250.0, 150.0), 2.0, AZUL);
+    l.disco((50.0, 150.0), 4.0, NEGRO);
+    l.disco((250.0, 150.0), 4.0, NEGRO);
+    let d = l.medir();
+    let els = a_elementos(&d, (1000.0, 2000.0), 1.0, 77, "Work Sans");
+    let doc = crate::lienzo::documento(els);
+    let leido = pixpin_motor2d::excalidraw::leer(&doc).expect("el lienzo lo entiende");
+    let figuras: Vec<String> = leido.elementos().iter().map(|e| format!("{:?}", std::mem::discriminant(&e.figura))).collect();
+    let tiene = |f: fn(&pixpin_motor2d::Figura) -> bool| leido.elementos().iter().any(|e| f(&e.figura));
+    assert!(tiene(|f| matches!(f, pixpin_motor2d::Figura::Arco { .. })), "{figuras:?}");
+    assert!(tiene(|f| matches!(f, pixpin_motor2d::Figura::Punto { .. })), "{figuras:?}");
+    assert!(tiene(|f| matches!(f, pixpin_motor2d::Figura::Linea { .. })), "{figuras:?}");
+    // Desplazados al origen pedido.
+    for e in leido.elementos() {
+        let c = e.caja();
+        assert!(c.0 >= 990.0 && c.1 >= 1990.0, "{c:?}");
+    }
+}
+
+#[test]
+fn el_calco_conserva_las_rayas_finas() {
+    // Una raya de 1 px y una circunferencia de 1,5 px junto a una mancha:
+    // reducida a 256 px, la raya fina desaparecia o salia mancha.
+    let mut l = Lamina::nueva(900, 600);
+    l.raya((40.0, 60.0), (860.0, 120.0), 1.0, NEGRO);
+    l.circunferencia((450.0, 360.0), 160.0, 1.5, AZUL);
+    l.disco((200.0, 450.0), 60.0, ROJO);
+    let c = crate::calcar::calcar(&l.rgba(), l.w as u32, l.h as u32, &crate::calcar::Parametros::default());
+    let rayas: Vec<&Vec<(f64, f64)>> = c
+        .trazos
+        .iter()
+        .filter_map(|t| match t {
+            crate::calcar::Trazo::Raya { puntos, .. } => Some(puntos),
+            _ => None,
+        })
+        .collect();
+    let a_imagen = |p: (f64, f64)| ((p.0 - c.desplazamiento.0) / c.escala, (p.1 - c.desplazamiento.1) / c.escala);
+    // La recta: una raya de punta a punta.
+    let recta = rayas.iter().find(|r| {
+        let (a, b) = (a_imagen(r[0]), a_imagen(r[r.len() - 1]));
+        (cerca(a, (40.0, 60.0), 4.0) && cerca(b, (860.0, 120.0), 4.0)) || (cerca(b, (40.0, 60.0), 4.0) && cerca(a, (860.0, 120.0), 4.0))
+    });
+    assert!(recta.is_some(), "la raya fina se perdio: {} rayas", rayas.len());
+    // La circunferencia: rayas cuyos puntos caen a 160 px del centro.
+    let en_circ: usize = rayas.iter().flat_map(|r| r.iter()).filter(|&&p| (dist(a_imagen(p), (450.0, 360.0)) - 160.0).abs() < 2.5).count();
+    assert!(en_circ >= 20, "la circunferencia fina se perdio ({en_circ} puntos)");
+    // Y la mancha roja sigue siendo mancha.
+    assert!(c.trazos.iter().any(|t| matches!(t, crate::calcar::Trazo::Mancha { color, .. } if color.starts_with("#d") || color.starts_with("#e"))), "la mancha roja");
+}
+
+#[test]
+fn el_calco_de_una_foto_no_saca_rayas() {
+    let l = foto(400, 300);
+    let c = crate::calcar::calcar(&l.rgba(), l.w as u32, l.h as u32, &crate::calcar::Parametros::default());
+    assert!(!c.trazos.iter().any(|t| matches!(t, crate::calcar::Trazo::Raya { .. })), "una foto no tiene rayas finas");
+}

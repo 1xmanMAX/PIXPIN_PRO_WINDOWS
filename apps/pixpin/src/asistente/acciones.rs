@@ -263,9 +263,28 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
 /// **Calca** una imagen del disco: los elementos de Excalidraw, listos para
 /// el lienzo, y cuantos son.
 pub fn calcar_fichero(ruta: &Path, p: &Parametros, semilla: u64) -> Result<Vec<Value>, String> {
-    let img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    let mut img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    // El texto no se calca como forma (salian garabatos): lo que lee el OCR
+    // se tapa y va como texto editable (15-oct). Sin OCR, como antes.
+    let palabras: Vec<pixpin_ia::hoja::PalabraHoja> = if pixpin_ocr::disponible() {
+        let mut v = super::hoja_a_lienzo::ocr(&img.pixeles, img.ancho, img.alto).unwrap_or_default();
+        v.retain(|w| w.texto.chars().filter(|c| c.is_alphanumeric()).count() >= 2 && w.caja.w > 0.0 && w.caja.h > 0.0);
+        // Solo lo de la zona que se calca.
+        if let Some([zx, zy, zw, zh]) = p.zona {
+            let (fw, fh) = (img.ancho as f64, img.alto as f64);
+            v.retain(|w| (zx * fw..=(zx + zw) * fw).contains(&w.caja.cx()) && (zy * fh..=(zy + zh) * fh).contains(&w.caja.cy()));
+        }
+        for w in &mut v {
+            w.color = pixpin_ia::hoja::imagen::color_de_tinta(&img.pixeles, img.ancho, img.alto, &w.caja, 150);
+        }
+        v
+    } else {
+        Vec::new()
+    };
+    calcar::tapar_texto(&mut img.pixeles, img.ancho, img.alto, &palabras);
     let c = calcar::calcar(&img.pixeles, img.ancho, img.alto, p);
-    let els = lienzo::elementos_de_calcado(&c, (0.0, 0.0), semilla);
+    let mut els = lienzo::elementos_de_calcado(&c, (0.0, 0.0), semilla);
+    els.extend(calcar::textos_del_calco(&c, &palabras, semilla));
     if els.is_empty() {
         return Err("la imagen no tiene formas que calcar (esta en blanco o casi)".into());
     }

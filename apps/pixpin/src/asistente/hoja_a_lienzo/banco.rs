@@ -216,7 +216,7 @@ fn hoja_b() -> (Vec<Elemento>, HashMap<u64, pixpin_codec::ImagenRgba>) {
 }
 
 /// Papel gris, grano y un poco de desenfoque: como un escaneo.
-fn escanear(img: &mut pixpin_codec::ImagenRgba) {
+pub(super) fn escanear(img: &mut pixpin_codec::ImagenRgba) {
     let (w, h) = (img.ancho as usize, img.alto as usize);
     let orig = img.pixeles.clone();
     let mut s: u32 = 99;
@@ -244,7 +244,7 @@ fn salida() -> PathBuf {
     std::env::var_os("PIXPIN_IA_IMAGENES").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("banco-imagenes"))
 }
 
-fn motores() -> Vec<(&'static str, Arc<dyn pixpin_ia::Motor>)> {
+pub(super) fn motores() -> Vec<(&'static str, Arc<dyn pixpin_ia::Motor>)> {
     let mut v: Vec<(&'static str, Arc<dyn pixpin_ia::Motor>)> = Vec::new();
     let clave = |var: &str, p: Proveedor| std::env::var(var).ok().filter(|k| !k.trim().is_empty()).or_else(|| pixpin_ia::nube::claves::leer(p));
     let solo = std::env::var("PIXPIN_HOJA_MOTOR").unwrap_or_default();
@@ -552,7 +552,7 @@ fn inclinar(img: &pixpin_codec::ImagenRgba, grados: f32) -> pixpin_codec::Imagen
 
 /// Elementos pintados a `ancho` px: en una hoja de `w x h` puntos con
 /// `caja`, o recortados a lo dibujado si `caja` es `None`.
-fn pintar_medida(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba>, (w, h): (f32, f32), caja: Option<(f32, f32, f32, f32)>, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
+pub(super) fn pintar_medida(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba>, (w, h): (f32, f32), caja: Option<(f32, f32, f32, f32)>, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
     let mut escena = pixpin_motor2d::Escena::nueva();
     for e in els {
         escena.anadir(e);
@@ -576,7 +576,7 @@ fn pintar_medida(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRg
 }
 
 /// La franja de arriba: renglones sobre gris claro, a `ancho` px.
-fn franja(renglones: &[String], ancho: u32) -> pixpin_codec::ImagenRgba {
+pub(super) fn franja(renglones: &[String], ancho: u32) -> pixpin_codec::ImagenRgba {
     let (w, tam) = (1000.0f32, 17.0f32);
     let h = 14.0 + renglones.len() as f32 * tam * 1.45 + 8.0;
     let mut v = vec![Elemento {
@@ -600,7 +600,7 @@ fn franja(renglones: &[String], ancho: u32) -> pixpin_codec::ImagenRgba {
 }
 
 /// La franja encima del resultado (con margen blanco).
-fn apilar(arriba: &pixpin_codec::ImagenRgba, abajo: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
+pub(super) fn apilar(arriba: &pixpin_codec::ImagenRgba, abajo: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
     let w = arriba.ancho.max(abajo.ancho);
     let margen = 16u32;
     let h = arriba.alto + margen + abajo.alto;

@@ -552,10 +552,16 @@ pub fn elementos_de_calcado(c: &crate::calcar::Calcado, origen: (f64, f64), semi
             Trazo::Fondo { caja, color } => f.caja("rectangle", *caja, color, Some(color)),
             Trazo::Mancha { contorno, huecos, color } => f.region(contorno, huecos, color, color),
             Trazo::Linea { puntos, color, .. } => f.trazo("line", puntos, color, None),
+            Trazo::Raya { puntos, color, grosor } => {
+                f.trazo("line", puntos, color, None);
+                if let Some(e) = f.salida.last_mut() {
+                    e["strokeWidth"] = json!(((grosor * 2.0).round() / 2.0).max(0.5));
+                }
+            }
         }
         if let Some(e) = f.salida.last_mut() {
             e["roughness"] = json!(0);
-            if !matches!(t, Trazo::Linea { .. }) {
+            if !matches!(t, Trazo::Linea { .. } | Trazo::Raya { .. }) {
                 // 2: el borde del mismo color tapa la rendija que deja el
                 // simplificado entre dos manchas vecinas.
                 e["strokeWidth"] = json!(2);

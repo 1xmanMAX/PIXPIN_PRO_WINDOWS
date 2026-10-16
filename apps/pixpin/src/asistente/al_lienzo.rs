@@ -52,6 +52,9 @@ pub enum Trabajo {
     /// si desde `desde` se cerraron justo `esperados` pasos (los del turno),
     /// se juntan; si el usuario hizo algo entre medias, no.
     Juntar { desde: u64, esperados: u64 },
+    /// **La imagen del lienzo** para «calca esto» (15-oct): la elegida o,
+    /// si no hay, la ultima pegada.
+    Imagen,
 }
 
 /// Lo que contesta el lienzo: el texto para el modelo, los ids que toco
@@ -66,6 +69,8 @@ pub struct Respuesta {
     /// En el lienzo abierto, los pasos de deshacer cerrados antes y despues
     /// de dibujar o editar (para [`Trabajo::Juntar`]).
     pub pasos: Option<(u64, u64)>,
+    /// Al pedir la imagen ([`Trabajo::Imagen`]): la elegida o la ultima pegada.
+    pub imagen: Option<Box<ImagenDelLienzo>>,
 }
 
 /// Un pedido al lienzo.
@@ -90,6 +95,9 @@ pub struct Pedido {
     /// Las imagenes nuevas que usan sus elementos `image` (su `fileId` es
     /// `pc<hex>` de este id): las fotos de una hoja.
     pub imagenes: Vec<(u64, pixpin_codec::ImagenRgba)>,
+    /// La imagen de la que sale lo dibujado (su caja en el lienzo): va a su
+    /// lado, sin taparla.
+    pub junto_a: Option<(f32, f32, f32, f32)>,
 }
 
 impl Pedido {
@@ -108,6 +116,7 @@ impl Pedido {
             responder,
             hoja: None,
             imagenes: Vec::new(),
+            junto_a: None,
         }
     }
 
@@ -166,6 +175,9 @@ pub struct EnHoja {
     pub ultima: bool,
     /// Lo que mide la hoja en el lienzo.
     pub tam: (f32, f32),
+    /// La imagen de la que sale (su caja en el lienzo), si estaba en el: lo
+    /// nuevo va a su lado (`sitio_libre`).
+    pub junto_a: Option<(f32, f32, f32, f32)>,
 }
 
 /// Lo que se sabe de una hoja a medio meter.
@@ -184,18 +196,26 @@ static SESIONES: Mutex<Option<std::collections::HashMap<u64, Sesion>>> = Mutex::
 /// abierto); `None`, lienzo cerrado. Un documento vacio con `ultima` solo
 /// cierra la hoja. Devuelve cuantos elementos entraron.
 pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: Option<(f32, f32)>) -> Result<usize, String> {
+    // Lo que se ve: una vista del tamano de la hoja alrededor del centro
+    // (las pruebas de antes; el editor pasa la suya con `meter_de_hoja_en`).
+    let vista = centro.map(|(cx, cy)| (cx - h.tam.0, cy - h.tam.1, cx + h.tam.0, cy + h.tam.1));
+    meter_de_hoja_en(escena, documento, h, vista)
+}
+
+/// Lo mismo con lo que se ve `(x0, y0, x1, y1)` (`None`: lienzo cerrado). La
+/// hoja entera va a un sitio libre (`sitio_libre`): junto a su imagen si
+/// salio de una del lienzo, a la vista, sin tapar nada.
+pub fn meter_de_hoja_en(escena: &mut Escena, documento: &str, h: &EnHoja, vista: Option<(f32, f32, f32, f32)>) -> Result<usize, String> {
     let mut g = SESIONES.lock().map_err(|_| "el lienzo esta ocupado")?;
     let sesiones = g.get_or_insert_with(Default::default);
     let s = sesiones.entry(h.sesion).or_insert_with(|| {
-        let desplazamiento = match centro {
-            Some((cx, cy)) => (cx - h.tam.0 / 2.0, cy - h.tam.1 / 2.0),
-            None => escena
-                .visibles()
-                .map(Elemento::caja)
-                .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
-                .filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite()))
-                .map_or((0.0, 0.0), |c| (c.2 + HUECO, c.1)),
-        };
+        let desplazamiento = sitio_libre(escena, h.tam, h.junto_a, vista);
+        if let Some(v) = vista {
+            let caja = (desplazamiento.0, desplazamiento.1, desplazamiento.0 + h.tam.0, desplazamiento.1 + h.tam.1);
+            if desplazar_para_ver(v, caja) != (0.0, 0.0) {
+                pedir_mostrar(caja);
+            }
+        }
         Sesion { desplazamiento, zonas: Default::default(), pasos_al_empezar: escena.pasos_cerrados(), pasos: 0 }
     });
     let mut n = 0;
@@ -408,6 +428,14 @@ pub fn trabajar(
             }
             Ok(Respuesta::default())
         }
+        Trabajo::Imagen => {
+            let (id, caja) = imagen_de_escena(escena, elegidos).ok_or("no hay ninguna imagen en el lienzo")?;
+            let img = imagenes.rgba(id).ok_or("la imagen del lienzo no esta cargada")?;
+            Ok(Respuesta {
+                imagen: Some(Box::new(ImagenDelLienzo { rgba: img.pixeles.clone(), ancho: img.ancho, alto: img.alto, caja })),
+                ..Default::default()
+            })
+        }
         Trabajo::Dibujar => Err("eso no es un trabajo de editar".into()),
     }
 }
@@ -497,11 +525,13 @@ pub fn caja(els: &[Elemento]) -> Option<(f32, f32, f32, f32)> {
 
 /// **Mete lo dibujado con su centro en `centro`** (el de la vista), en un
 /// solo paso de deshacer. Devuelve cuantos elementos entraron.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn meter(escena: &mut Escena, documento: &str, centro: (f32, f32)) -> Result<usize, String> {
     meter_ids(escena, documento, centro).map(|v| v.len())
 }
 
 /// Lo mismo, devolviendo los ids de lo que entro (para listarlo al modelo).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn meter_ids(escena: &mut Escena, documento: &str, centro: (f32, f32)) -> Result<Vec<u64>, String> {
     let els = elementos_de(documento)?;
     let c = caja(&els).ok_or("las figuras no tienen medida")?;
@@ -511,15 +541,18 @@ pub fn meter_ids(escena: &mut Escena, documento: &str, centro: (f32, f32)) -> Re
 }
 
 /// Hueco entre lo que habia y lo nuevo.
+#[cfg_attr(not(test), allow(dead_code))]
 const HUECO: f32 = 80.0;
 
 /// **Mete lo dibujado a la derecha de lo que ya hay** (con un lienzo
 /// cerrado), alineado arriba; en un lienzo vacio, donde lo puso el modelo.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn meter_al_lado(escena: &mut Escena, documento: &str) -> Result<usize, String> {
     meter_al_lado_ids(escena, documento).map(|v| v.len())
 }
 
 /// Lo mismo, devolviendo los ids de lo que entro.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn meter_al_lado_ids(escena: &mut Escena, documento: &str) -> Result<Vec<u64>, String> {
     let els = elementos_de(documento)?;
     let nueva = caja(&els).ok_or("las figuras no tienen medida")?;
@@ -556,6 +589,7 @@ pub fn resumen_con_ids(escena: &Escena, ids: Vec<u64>, marco: Option<(f32, f32)>
 
 /// Vacia la cola **en el editor abierto** sin imagenes ni seleccion (las
 /// pruebas de antes). Ver [`atender_en_editor_con`].
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn atender_en_editor(escena: &mut Escena, centro: (f32, f32)) -> bool {
     let mut imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(16_384);
     let vista = (centro.0 - 400.0, centro.1 - 300.0, centro.0 + 400.0, centro.1 + 300.0);
@@ -576,13 +610,12 @@ pub fn atender_en_editor_con(
     if !hay_pedidos() {
         return false;
     }
-    let centro = ((vista.0 + vista.2) / 2.0, (vista.1 + vista.3) / 2.0);
     let mut algo = false;
     for mut p in tomar() {
         let r = match &p.trabajo {
             Trabajo::Dibujar if p.hoja.is_some() => {
                 let h = p.hoja.expect("se acaba de mirar");
-                let r = meter_de_hoja(escena, &p.documento, &h, Some(centro)).map(|n| Respuesta { texto: resumen(n), ..Default::default() });
+                let r = meter_de_hoja_en(escena, &p.documento, &h, Some(vista)).map(|n| Respuesta { texto: resumen(n), ..Default::default() });
                 if r.is_ok() {
                     // Las fotos de la hoja, al almacen (nuevas: se guardan con el lienzo).
                     for (id, img) in std::mem::take(&mut p.imagenes) {
@@ -593,7 +626,7 @@ pub fn atender_en_editor_con(
             }
             Trabajo::Dibujar => {
                 let antes = escena.pasos_cerrados();
-                meter_ids(escena, &p.documento, centro).map(|ids| Respuesta {
+                meter_en_sitio(escena, &p.documento, p.junto_a, Some(vista)).map(|ids| Respuesta {
                     pasos: Some((antes, escena.pasos_cerrados())),
                     ..resumen_con_ids(escena, ids, p.marco)
                 })
@@ -655,4 +688,146 @@ pub fn contestar_lo_elegido(escena: &Escena, elegidos: &[u64]) {
 pub(crate) fn vaciar_para_pruebas() {
     let _ = tomar();
     EDITOR.store(0, Ordering::SeqCst);
+}
+
+// ---------------------------------------------------------------------------
+// La imagen del lienzo como entrada y lo nuevo, a la vista (15-oct)
+
+/// **Una imagen del lienzo** (la elegida o la ultima pegada) para calcarla o
+/// pasarla: sus pixeles y su caja en el lienzo.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImagenDelLienzo {
+    pub rgba: Vec<u8>,
+    pub ancho: u32,
+    pub alto: u32,
+    /// (x0, y0, x1, y1) en el lienzo.
+    pub caja: (f32, f32, f32, f32),
+}
+
+/// **Que imagen del lienzo se usa**: la elegida (si alguna de lo elegido es
+/// una imagen) o, si no, la ultima pegada (la de encima). Su id de objeto y
+/// su caja.
+pub fn imagen_de_escena(escena: &Escena, elegidos: &[u64]) -> Option<(u64, (f32, f32, f32, f32))> {
+    let es_imagen = |e: &&Elemento| matches!(e.figura, pixpin_motor2d::Figura::Imagen { .. });
+    let elegida = escena.visibles().filter(es_imagen).filter(|e| elegidos.contains(&e.id)).last();
+    let e = elegida.or_else(|| escena.visibles().filter(es_imagen).last())?;
+    let pixpin_motor2d::Figura::Imagen { id_objeto } = e.figura else { return None };
+    Some((id_objeto, e.caja()))
+}
+
+/// Hueco entre lo que habia y lo nuevo, y con lo que no se puede pisar.
+const AIRE: f32 = 40.0;
+
+/// **Donde poner algo nuevo de `tam`** (su esquina de arriba a la
+/// izquierda) sin tapar nada: a la derecha de la imagen de la que sale (o
+/// debajo, o a su izquierda, o encima); si no hay imagen, en el centro de lo
+/// que se ve o, con el lienzo cerrado, junto a lo ultimo que se puso. Con
+/// lo que se ve, se prefiere un sitio que se vea entero.
+///
+/// Antes, con el lienzo cerrado, lo nuevo iba «a la derecha de todo lo que
+/// habia»: en un lienzo ancho acababa en x = 15000, fuera de la vista y
+/// lejos de la imagen de la que salia (queja del 15-oct, «traelo»).
+pub fn sitio_libre(escena: &Escena, tam: (f32, f32), junto_a: Option<(f32, f32, f32, f32)>, vista: Option<(f32, f32, f32, f32)>) -> (f32, f32) {
+    let (w, h) = (tam.0.max(1.0), tam.1.max(1.0));
+    let cajas: Vec<(f32, f32, f32, f32)> =
+        escena.visibles().map(Elemento::caja).filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite())).collect();
+    let libre = |x: f32, y: f32| {
+        let (x0, y0, x1, y1) = (x - AIRE / 2.0, y - AIRE / 2.0, x + w + AIRE / 2.0, y + h + AIRE / 2.0);
+        !cajas.iter().any(|c| c.0 < x1 && c.2 > x0 && c.1 < y1 && c.3 > y0)
+    };
+    let se_ve = |x: f32, y: f32| vista.is_none_or(|v| x >= v.0 && y >= v.1 && x + w <= v.2 && y + h <= v.3);
+    let mut candidatos: Vec<(f32, f32)> = Vec::new();
+    if let Some(s) = junto_a {
+        candidatos.push((s.2 + AIRE, s.1));
+        candidatos.push((s.0, s.3 + AIRE));
+        candidatos.push((s.0 - AIRE - w, s.1));
+        candidatos.push((s.0, s.1 - AIRE - h));
+    }
+    if let Some(v) = vista {
+        candidatos.push(((v.0 + v.2) / 2.0 - w / 2.0, (v.1 + v.3) / 2.0 - h / 2.0));
+    } else if let Some(u) = cajas.last() {
+        // Lo ultimo que se puso (lo de encima).
+        candidatos.push((u.2 + AIRE, u.1));
+        candidatos.push((u.0, u.3 + AIRE));
+    }
+    if candidatos.is_empty() {
+        return (0.0, 0.0);
+    }
+    // 1. Libre y a la vista; 2. libre.
+    if let Some(&c) = candidatos.iter().find(|c| libre(c.0, c.1) && se_ve(c.0, c.1)) {
+        return c;
+    }
+    if vista.is_none()
+        && let Some(&c) = candidatos.iter().find(|c| libre(c.0, c.1))
+    {
+        return c;
+    }
+    // 3. En espiral alrededor del primero, hasta encontrar sitio (primero a
+    //    la vista).
+    let (bx, by) = candidatos[0];
+    let paso = (w.max(h) / 2.0).max(40.0);
+    let mut libres = Vec::new();
+    for anillo in 1..=10 {
+        let n = anillo as i32;
+        for i in -n..=n {
+            for j in -n..=n {
+                if i.abs() != n && j.abs() != n {
+                    continue;
+                }
+                let (x, y) = (bx + i as f32 * paso, by + j as f32 * paso);
+                if libre(x, y) {
+                    if se_ve(x, y) {
+                        return (x, y);
+                    }
+                    libres.push((x, y));
+                }
+            }
+        }
+        if !libres.is_empty() && vista.is_none() {
+            break;
+        }
+    }
+    libres.first().copied().or_else(|| candidatos.iter().copied().find(|c| libre(c.0, c.1))).unwrap_or(candidatos[0])
+}
+
+/// Lo que se pide que la ventana del lienzo ensene (lo nuevo no se veia).
+static MOSTRAR: Mutex<Option<(f32, f32, f32, f32)>> = Mutex::new(None);
+
+/// Pide que el lienzo abierto se desplace hasta ensenar la caja.
+pub fn pedir_mostrar(caja: (f32, f32, f32, f32)) {
+    if let Ok(mut m) = MOSTRAR.lock() {
+        *m = Some(caja);
+    }
+}
+
+/// Lo que hay que ensenar (lo toma el bucle del lienzo).
+pub fn tomar_mostrar() -> Option<(f32, f32, f32, f32)> {
+    MOSTRAR.lock().ok().and_then(|mut m| m.take())
+}
+
+/// **Cuanto mover la vista para que se vea la caja**: nada si ya se ve
+/// entera; si no, lo que lleva su centro al centro de la vista.
+pub fn desplazar_para_ver(vista: (f32, f32, f32, f32), caja: (f32, f32, f32, f32)) -> (f32, f32) {
+    let dentro = caja.0 >= vista.0 && caja.1 >= vista.1 && caja.2 <= vista.2 && caja.3 <= vista.3;
+    if dentro {
+        return (0.0, 0.0);
+    }
+    (((caja.0 + caja.2) - (vista.0 + vista.2)) / 2.0, ((caja.1 + caja.3) - (vista.1 + vista.3)) / 2.0)
+}
+
+/// **Mete lo dibujado en un sitio libre**: junto a la imagen de la que sale
+/// (si hay), a la vista si la hay (y si no se ve, pide que la vista se
+/// mueva). En un solo paso de deshacer. Devuelve los ids.
+pub fn meter_en_sitio(escena: &mut Escena, documento: &str, junto_a: Option<(f32, f32, f32, f32)>, vista: Option<(f32, f32, f32, f32)>) -> Result<Vec<u64>, String> {
+    let els = elementos_de(documento)?;
+    let c = caja(&els).ok_or("las figuras no tienen medida")?;
+    let (x, y) = sitio_libre(escena, (c.2 - c.0, c.3 - c.1), junto_a, vista);
+    let (dx, dy) = (x - c.0, y - c.1);
+    if let Some(v) = vista {
+        let nueva = (x, y, x + c.2 - c.0, y + c.3 - c.1);
+        if desplazar_para_ver(v, nueva) != (0.0, 0.0) {
+            pedir_mostrar(nueva);
+        }
+    }
+    Ok(pixpin_motor2d::portapapeles::pegar(escena, &els, dx, dy))
 }

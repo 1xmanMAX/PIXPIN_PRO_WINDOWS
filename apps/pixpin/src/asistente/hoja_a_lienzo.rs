@@ -50,7 +50,9 @@ use super::al_lienzo::EnHoja;
 #[cfg(test)]
 mod banco;
 #[cfg(test)]
-mod pruebas;
+pub(crate) mod banco_diagramas;
+#[cfg(test)]
+pub(crate) mod pruebas;
 
 /// El ancho al que se pinta una pagina de PDF (~200 ppp en A4).
 pub const ANCHO_PAGINA: u32 = 1700;
@@ -105,7 +107,7 @@ pub fn leer(ruta: &Path, pagina: Option<usize>) -> Result<Pagina, String> {
 }
 
 /// Las palabras del OCR de Windows.
-fn ocr(rgba: &[u8], ancho: u32, alto: u32) -> Result<Vec<PalabraHoja>, String> {
+pub fn ocr(rgba: &[u8], ancho: u32, alto: u32) -> Result<Vec<PalabraHoja>, String> {
     if !pixpin_ocr::disponible() {
         return Err("el OCR de Windows no esta disponible (falta el idioma en Windows)".into());
     }
@@ -178,16 +180,25 @@ pub struct PorLaCola {
     pub destino: Option<String>,
     pub espera: Duration,
     respuestas: Vec<Receiver<Result<super::al_lienzo::Respuesta, String>>>,
+    /// La imagen del lienzo de la que sale la hoja: va a su lado.
+    pub junto_a: Option<(f32, f32, f32, f32)>,
 }
 
 impl PorLaCola {
     pub fn nuevo(proyecto: String, destino: Option<String>, espera: Duration) -> PorLaCola {
-        PorLaCola { proyecto, destino, espera, respuestas: Vec::new() }
+        PorLaCola { proyecto, destino, espera, respuestas: Vec::new(), junto_a: None }
+    }
+
+    /// Junto a la imagen del lienzo de la que sale (su caja).
+    pub fn junto_a(mut self, c: Option<(f32, f32, f32, f32)>) -> PorLaCola {
+        self.junto_a = c;
+        self
     }
 }
 
 impl Destino for PorLaCola {
-    fn entregar(&mut self, h: Option<&Hecho>, en: EnHoja) -> Result<(), String> {
+    fn entregar(&mut self, h: Option<&Hecho>, mut en: EnHoja) -> Result<(), String> {
+        en.junto_a = en.junto_a.or(self.junto_a);
         let (documento, imagenes) = documento_de(h);
         let (tx, rx) = channel();
         super::al_lienzo::pedir(
@@ -235,6 +246,7 @@ enum Pregunta {
     Latex,
     Tipo,
     Grafica,
+    Rotulos,
 }
 
 /// Si el LaTeX de una formula ya dice lo que dice `texto` (otra zona que
@@ -313,6 +325,7 @@ fn preguntar(motor: &dyn Motor, png: Vec<u8>, q: Pregunta) -> Result<Option<Leid
         Pregunta::Latex => vision::pedir_latex(motor, png).map(Some),
         Pregunta::Tipo => vision::pedir_tipo(motor, png).map(Some),
         Pregunta::Grafica => vision::pedir_grafica(motor, png),
+        Pregunta::Rotulos => vision::pedir_rotulos(motor, png).map(Some),
     }
 }
 
@@ -361,20 +374,87 @@ pub fn pasar(
     let (hw, hh) = mapa.hoja(&s);
     let tam = (hw as f32, hh as f32);
     let sesion = semilla;
-    let en = |zona: usize, rehacer: bool, ultima: bool| EnHoja { sesion, zona, rehacer, ultima, tam };
-    let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla };
+    let en = |zona: usize, rehacer: bool, ultima: bool| EnHoja { sesion, zona, rehacer, ultima, tam, junto_a: None };
+    let lector = lector_de_letras();
+    // El texto de cada zona: para las demas (un diagrama no lo vectoriza).
+    let ajenas: Vec<Caja> = s.zonas.iter().flat_map(|z| z.renglones.iter().flat_map(|r| r.palabras.iter().map(|p| p.caja))).collect();
+    let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: Some(&lector), ajenas: &ajenas };
     let via_base = |z: &hoja::Zona| if fiel && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Tabla) { Via::Fiel } else { Via::Editable };
+    let pisa = |a: &Caja, b: &Caja| {
+        let c = a.comun(b);
+        c > 0.0 && c >= 0.4 * a.area().min(b.area())
+    };
+    // 0. **Lo primero que se ve, ya** (latencia, 15-oct): el texto, las
+    //    tablas, las fotos y las rayas que no pisan nada que pueda esperar
+    //    al modelo (una formula, un dibujo que quiza es diagrama) salen
+    //    antes de mirar los dibujos, en milisegundos.
+    let posibles: Vec<usize> = s
+        .zonas
+        .iter()
+        .filter(|z| matches!(z.tipo, Tipo::Dibujo | Tipo::Grafica) || (vision.is_some() && pregunta(z, o, s.alto_letra).is_some()))
+        .map(|z| z.id)
+        .collect();
+    let mut tempranas: Vec<Hecho> = Vec::new();
+    let mut ms_temprana = None;
+    for z in &s.zonas {
+        if parar.load(Ordering::Relaxed) {
+            break;
+        }
+        let suelta = !posibles.contains(&z.id)
+            && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Linea | Tipo::Tabla | Tipo::Foto)
+            && !posibles.iter().any(|&e| pisa(&z.caja, &s.zonas[e].caja));
+        if !suelta {
+            continue;
+        }
+        let h = montaje::hacer(&entrada(z.id), None, via_base(z));
+        destino.entregar(Some(&h), en(z.id, false, false))?;
+        ms_temprana.get_or_insert(t0.elapsed().as_millis());
+        progreso(tempranas.len() + 1, s.zonas.len());
+        tempranas.push(h);
+    }
+    // Los dibujos que son diagramas (figuras exactas): salen ya, sin
+    // esperar; a la nube solo se le preguntan sus rotulos, y al llegar se
+    // rehacen con ellos. Se miran a la vez (un hilo por dibujo).
+    // (Hechos ya, con sus letras leidas: al entregarlos no se rehacen.)
+    let precalculados: std::cell::RefCell<HashMap<usize, Hecho>> = std::cell::RefCell::new({
+        let candidatos: Vec<usize> = s.zonas.iter().filter(|z| matches!(z.tipo, Tipo::Dibujo | Tipo::Grafica)).map(|z| z.id).collect();
+        std::thread::scope(|sc| {
+            let hilos: Vec<_> = candidatos
+                .iter()
+                .map(|&id| {
+                    (
+                        id,
+                        sc.spawn(move || {
+                            // El OCR de las letras sueltas es WinRT: su COM.
+                            let _com = pixpin_shell::ComDelHilo::iniciar();
+                            montaje::hacer(&entrada(id), None, Via::Editable)
+                        }),
+                    )
+                })
+                .collect();
+            hilos.into_iter().filter_map(|(id, h)| h.join().ok().filter(|h| h.tipo == Tipo::Diagrama).map(|h| (id, h))).collect()
+        })
+    });
+    let diagramas: std::collections::HashSet<usize> = precalculados.borrow().keys().copied().collect();
     let preguntas: Vec<(usize, Pregunta)> = match &vision {
-        Some(_) => s.zonas.iter().filter_map(|z| pregunta(z, o, s.alto_letra).map(|q| (z.id, q))).collect(),
+        Some(_) => s
+            .zonas
+            .iter()
+            .filter_map(|z| if diagramas.contains(&z.id) { Some((z.id, Pregunta::Rotulos)) } else { pregunta(z, o, s.alto_letra).map(|q| (z.id, q)) })
+            .collect(),
         None => Vec::new(),
     };
     let total = s.zonas.len();
     let mut hechos: Vec<Option<Hecho>> = vec![None; total];
+    for h in tempranas {
+        let id = h.zona;
+        hechos[id] = Some(h);
+    }
     let mut leidos: HashMap<usize, Leido> = HashMap::new();
-    let mut ms_primera = None;
+    let mut ms_primera = ms_temprana;
     let mut fallos = Vec::new();
     let mut error_entrega: Option<String> = None;
-    let mut n_hechas = 0;
+    let mut n_hechas = hechos.iter().flatten().count();
     let (tx, rx) = channel::<(usize, Result<Option<Leido>, String>)>();
     // 1. La nube primero: es lo que mas tarda. Hilos sueltos (no de un
     //    `scope`): si la red se cuelga, el pool no deja colgada la hoja; al
@@ -416,11 +496,8 @@ pub fn pasar(
     // respuesta: si esa zona sale editable (formula, tabla, grafica) los
     // lleva dentro y el texto sobra; si sale como imagen o calco y los
     // textos la cubren, sobra la imagen.
-    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).collect();
-    let pisa = |a: &Caja, b: &Caja| {
-        let c = a.comun(b);
-        c > 0.0 && c >= 0.4 * a.area().min(b.area())
-    };
+    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).filter(|id| !diagramas.contains(id)).collect();
+    let mut rehechos_diagrama: Vec<Hecho> = Vec::new();
     let aplazadas: Vec<usize> = s
         .zonas
         .iter()
@@ -449,7 +526,8 @@ pub fn pasar(
             progreso(n_hechas, total);
             return;
         }
-        let h = montaje::hacer(&entrada(id), leido.as_ref(), via_base(z));
+        let precalculado = if leido.is_none() { precalculados.borrow_mut().remove(&id) } else { None };
+        let h = precalculado.unwrap_or_else(|| montaje::hacer(&entrada(id), leido.as_ref(), via_base(z)));
         let latex = match &leido {
             Some(Leido::Latex(l)) => Some(l.join(" ")),
             _ => None,
@@ -496,7 +574,8 @@ pub fn pasar(
     };
     // 2. Lo que no necesita modelo, ya, en orden de lectura (menos los
     //    textos aplazados).
-    for z in s.zonas.iter().filter(|z| !esperan.contains(&z.id) && !aplazadas.contains(&z.id)) {
+    let ya: Vec<usize> = (0..total).filter(|&i| hechos[i].is_some()).collect();
+    for z in s.zonas.iter().filter(|z| !esperan.contains(&z.id) && !aplazadas.contains(&z.id) && !ya.contains(&z.id)) {
         if parar.load(Ordering::Relaxed) {
             break;
         }
@@ -504,7 +583,8 @@ pub fn pasar(
     }
     // 3. Lo del modelo, segun llega, hasta el plazo.
     let plazo = Instant::now() + o.plazo_nube;
-    let mut pendientes: Vec<usize> = esperan.clone();
+    // (Con los diagramas: sus rotulos llegan despues de que ya se vean.)
+    let mut pendientes: Vec<usize> = preguntas.iter().map(|(id, _)| *id).collect();
     while !pendientes.is_empty() && !parar.load(Ordering::Relaxed) {
         let queda = plazo.saturating_duration_since(Instant::now());
         match rx.recv_timeout(queda.min(Duration::from_millis(200))) {
@@ -518,7 +598,19 @@ pub fn pasar(
                         None
                     }
                 };
-                if contenidas.contains(&id) {
+                if diagramas.contains(&id) {
+                    // Los rotulos de un diagrama que ya esta en el lienzo: se
+                    // rehace con ellos (la geometria es la misma).
+                    match leido {
+                        Some(l) => {
+                            let h = montaje::hacer(&entrada(id), Some(&l), Via::Editable);
+                            if h.tipo == Tipo::Diagrama && destino.entregar(Some(&h), en(id, true, false)).is_ok() {
+                                rehechos_diagrama.push(h);
+                            }
+                        }
+                        None => {}
+                    }
+                } else if contenidas.contains(&id) {
                     retenidas.borrow_mut().insert(id, leido);
                 } else {
                     entregar(id, leido, destino, &mut hechos);
@@ -529,7 +621,7 @@ pub fn pasar(
         }
     }
     // Lo que no llego a tiempo (la red colgada): sin modelo.
-    for id in pendientes {
+    for id in pendientes.into_iter().filter(|id| !diagramas.contains(id)) {
         if parar.load(Ordering::Relaxed) {
             break;
         }
@@ -561,6 +653,11 @@ pub fn pasar(
         return Err(e);
     }
     let mut hechos: Vec<Hecho> = hechos.into_iter().flatten().collect();
+    for r in rehechos_diagrama {
+        if let Some(h) = hechos.iter_mut().find(|h| h.zona == r.zona) {
+            *h = r;
+        }
+    }
 
     // 4. Comprobar y rehacer lo que se parece poco (una vez).
     let tc = Instant::now();
@@ -584,7 +681,7 @@ pub fn pasar(
                     // 15-oct: el sistema b) volvia a salir como recorte).
                     let leida = h.tipo == Tipo::Formula && matches!(leidos.get(&h.zona), Some(Leido::Latex(_)));
                     let umbral = if leida { o.rehacer_bajo * 0.5 } else { o.rehacer_bajo };
-                    if v >= umbral || matches!(h.tipo, Tipo::Linea | Tipo::Foto) || h.via == Via::Imagen {
+                    if v >= umbral || matches!(h.tipo, Tipo::Linea | Tipo::Foto | Tipo::Diagrama) || h.via == Via::Imagen {
                         continue;
                     }
                     let otra = match h.tipo {
@@ -720,7 +817,11 @@ pub fn hacer(
     if let Some(w) = pedido.ancho {
         o.ancho = w;
     }
-    let inf = pasar(&p, Some(vision), &o, pedido.fiel, semilla, parar, destino, progreso)?;
+    contar(&p, &pasar(&p, Some(vision), &o, pedido.fiel, semilla, parar, destino, progreso)?)
+}
+
+/// Lo que se le cuenta al modelo de una hoja pasada.
+pub fn contar(p: &Pagina, inf: &Informe) -> Result<String, String> {
     tracing::info!(
         zonas = inf.hechos.len(),
         ms_leer = p.ms_leer,
@@ -731,10 +832,34 @@ pub fn hacer(
         "hoja al lienzo"
     );
     let mut r = hoja::resumen(&inf.seccionado, inf.hechos.len(), inf.rehechas, inf.ms_total + p.ms_leer);
+    let diagramas = inf.hechos.iter().filter(|h| h.tipo == Tipo::Diagrama).count();
+    if diagramas > 0 {
+        r.push_str(&format!("; {diagramas} figura(s) con rectas, circunferencias, arcos y puntos exactos"));
+    }
     if !inf.fallos.is_empty() {
         r.push_str(&format!(" ({} zona(s) que el modelo no leyo van como imagen)", inf.fallos.len()));
     }
     Ok(r)
+}
+
+/// **Si una imagen es una lamina** (texto y figuras: un apunte, una
+/// diapositiva, un problema de geometria) y no un dibujo o una foto: lo que
+/// se pide «calcar» se pasa entonces con figuras exactas y texto (como una
+/// hoja), no con manchas de color. Con texto (4 palabras o mas) o con una
+/// figura que es diagrama; una foto (sin papel liso) nunca.
+pub fn es_lamina(p: &Pagina) -> bool {
+    let s = hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    let area = (p.ancho as f64 * p.alto as f64).max(1.0);
+    let fotos: f64 = s.zonas.iter().filter(|z| z.tipo == Tipo::Foto).map(|z| z.caja.area()).sum();
+    if fotos >= 0.6 * area {
+        return false;
+    }
+    let palabras = p.palabras.iter().filter(|w| w.texto.chars().filter(|c| c.is_alphanumeric()).count() >= 2).count();
+    if palabras >= 4 {
+        return true;
+    }
+    let o = pixpin_ia::diagrama::Opciones { alto_letra: s.alto_letra, ..Default::default() };
+    pixpin_ia::diagrama::vectorizar(&p.rgba, p.ancho, p.alto, &p.palabras, &o, None).es_diagrama()
 }
 
 /// **Sin la ventana del chat** (el pedido `asistente` de Flow Launcher, una
@@ -761,4 +886,11 @@ impl Destino for SinVentana {
 pub fn letra_segoe() -> Option<&'static pixpin_pdf::letra::Letra> {
     static LETRA: std::sync::OnceLock<Option<pixpin_pdf::letra::Letra>> = std::sync::OnceLock::new();
     LETRA.get_or_init(|| pixpin_pdf::letra::del_sistema("Segoe UI")).as_ref()
+}
+
+/// **El lector de las letras sueltas de un diagrama** (`pixpin_ia::diagrama`):
+/// el OCR de Windows sobre la hoja de letras que arma el diagrama (una sola
+/// llamada para todas). Sin OCR, no lee nada (las letras van como trazos).
+pub fn lector_de_letras() -> impl Fn(&[u8], u32, u32) -> Vec<PalabraHoja> + Sync {
+    |rgba: &[u8], w: u32, h: u32| ocr(rgba, w, h).unwrap_or_default()
 }

@@ -165,6 +165,9 @@ pub enum Tipo {
     Foto,
     Grafica,
     Dibujo,
+    /// Un dibujo hecho de figuras exactas (una figura geometrica, un
+    /// esquema): rectas, circunferencias, puntos, flechas (`diagrama`).
+    Diagrama,
     /// Una raya separadora (entre columnas, bajo un titulo).
     Linea,
     /// No esta claro: se le pregunta al modelo con su recorte.
@@ -181,13 +184,14 @@ impl Tipo {
             Tipo::Foto => "foto",
             Tipo::Grafica => "grafica",
             Tipo::Dibujo => "dibujo",
+            Tipo::Diagrama => "diagrama",
             Tipo::Linea => "linea",
             Tipo::Dudosa => "dudosa",
         }
     }
     /// Si su trabajo necesita el modelo con vision.
     pub fn usa_modelo(self) -> bool {
-        matches!(self, Tipo::Formula | Tipo::Dudosa | Tipo::Grafica)
+        matches!(self, Tipo::Formula | Tipo::Dudosa | Tipo::Grafica | Tipo::Diagrama)
     }
 }
 
@@ -399,6 +403,7 @@ pub fn resumen(s: &Seccionado, hechas: usize, rehechas: usize, ms: u128) -> Stri
         Tipo::Foto,
         Tipo::Grafica,
         Tipo::Dibujo,
+        Tipo::Diagrama,
         Tipo::Linea,
     ] {
         let n = s.cuantas(t);

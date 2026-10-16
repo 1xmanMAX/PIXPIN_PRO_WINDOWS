@@ -127,10 +127,10 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
     let mut ocupado: Vec<(Caja, usize)> = Vec::new(); // (caja, indice en figuras)
     let mut figuras: Vec<Figura> = Vec::new();
     for f in &fotos {
-        figuras.push(Figura { tipo: Tipo::Foto, caja: *f, confianza: 0.85, rayas: Vec::new() });
+        figuras.push(Figura { tipo: Tipo::Foto, caja: *f, confianza: 0.85, rayas: Vec::new(), palabras: Vec::new() });
     }
     for g in &graficas {
-        figuras.push(Figura { tipo: Tipo::Grafica, caja: g.0, confianza: 0.7, rayas: g.1.clone() });
+        figuras.push(Figura { tipo: Tipo::Grafica, caja: g.0, confianza: 0.7, rayas: g.1.clone(), palabras: Vec::new() });
     }
     let mut tablas: Vec<TablaR> = tablas_r.iter().map(|t| TablaR { caja: t.0, rayas: t.1.clone(), palabras: Vec::new(), iconos: Vec::new() }).collect();
     // Una foto dentro de una tabla es un icono de una celda.
@@ -194,6 +194,19 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
     unir_figuras(&mut figuras, hm);
     // Los restos dentro de una figura son de ella.
     restos.retain(|r| !figuras.iter().any(|f| r.dentro_de(&f.caja.crecer(hm * 0.5)) > 0.6));
+    // Los rotulos cortos dentro de un dibujo (A, B, 2a, 45°) son suyos: van
+    // con el (sus letras, que un diagrama pone junto a sus puntos), no
+    // sueltos como parrafos de una letra (15-oct, la lamina de geometria).
+    for f in figuras.iter_mut().filter(|f| f.tipo == Tipo::Dibujo) {
+        let caja = f.caja.crecer(hm * 0.3);
+        let (suyas, otras): (Vec<PalabraHoja>, Vec<PalabraHoja>) =
+            libres.drain(..).partition(|p| caja.contiene(p.caja.cx(), p.caja.cy()) && p.texto.chars().count() <= 6);
+        libres = otras;
+        for p in &suyas {
+            f.caja = f.caja.union(&p.caja);
+        }
+        f.palabras.extend(suyas);
+    }
 
     // 5. Renglones.
     let separadores: Vec<Raya> = lineas.iter().filter(|r| r.vertical).copied().collect();
@@ -268,21 +281,23 @@ struct Figura {
     caja: Caja,
     confianza: f32,
     rayas: Vec<[f64; 5]>,
+    /// Sus rotulos (las letras de un dibujo).
+    palabras: Vec<PalabraHoja>,
 }
 
 fn figura_de_mancha(m: &Mancha, _hm: f64) -> Figura {
     let e = m.est;
     if e.parece_foto() {
-        Figura { tipo: Tipo::Foto, caja: m.caja, confianza: (0.55 + e.medios as f32).min(0.9), rayas: Vec::new() }
+        Figura { tipo: Tipo::Foto, caja: m.caja, confianza: (0.55 + e.medios as f32).min(0.9), rayas: Vec::new(), palabras: Vec::new() }
     } else if e.tinta < 0.01 {
         // Sin tinta de verdad, solo grises claros (una marca de agua, un
         // sombreado): calcarlo lo oscureceria; va como imagen.
-        Figura { tipo: Tipo::Foto, caja: m.caja, confianza: 0.6, rayas: Vec::new() }
+        Figura { tipo: Tipo::Foto, caja: m.caja, confianza: 0.6, rayas: Vec::new(), palabras: Vec::new() }
     } else if e.tinta < 0.22 && e.medios < 0.12 {
         // Trazos finos sobre papel: un dibujo de lineas.
-        Figura { tipo: Tipo::Dibujo, caja: m.caja, confianza: 0.6, rayas: Vec::new() }
+        Figura { tipo: Tipo::Dibujo, caja: m.caja, confianza: 0.6, rayas: Vec::new(), palabras: Vec::new() }
     } else {
-        Figura { tipo: Tipo::Dudosa, caja: m.caja, confianza: 0.35, rayas: Vec::new() }
+        Figura { tipo: Tipo::Dudosa, caja: m.caja, confianza: 0.35, rayas: Vec::new(), palabras: Vec::new() }
     }
 }
 
@@ -298,6 +313,7 @@ fn unir_figuras(f: &mut Vec<Figura>, hm: f64) {
                     let a = &mut f[i];
                     a.caja = a.caja.union(&b.caja);
                     a.rayas.extend(b.rayas);
+                    a.palabras.extend(b.palabras);
                     if b.tipo == Tipo::Grafica || (a.tipo != Tipo::Grafica && b.confianza > a.confianza) {
                         a.tipo = b.tipo;
                         a.confianza = b.confianza;
@@ -869,7 +885,7 @@ impl Bloque<'_> {
                 Clase::Figura(f) => {
                     cerrar(&mut actual, &mut restos_actual, tipo_actual, &mut out);
                     let fi = &self.figuras[f];
-                    out.push(zona(fi.tipo, fi.caja, fi.confianza, Vec::new(), None, fi.rayas.clone()));
+                    out.push(zona(fi.tipo, fi.caja, fi.confianza, renglones(&fi.palabras, &[], self.hm), None, fi.rayas.clone()));
                     ultimo = None;
                 }
                 Clase::Tabla(t) => {

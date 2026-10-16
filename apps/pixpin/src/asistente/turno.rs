@@ -213,6 +213,8 @@ impl Turno {
                 // El OCR y el PDF son WinRT: este hilo necesita su COM. Va
                 // primero para soltarse el ultimo, cuando ya no vive nada.
                 let _com = pixpin_shell::ComDelHilo::iniciar();
+                let con_foto = foto.is_some();
+                let adjuntos_con_imagen = adjuntos.iter().any(|a| super::ocr::es_imagen(&a.ruta));
                 if let Some(ruta) = foto {
                     poner_foto(&mut historial, &ruta);
                 }
@@ -234,6 +236,26 @@ impl Turno {
                         super::acciones::mandar_a_pixpin(),
                     )
                     .con_raiz(raiz);
+                // «Calca esto» con la imagen pegada EN EL LIENZO y nada adjunto
+                // (15-oct: contestaba «no hay imagen adjunta»): la del lienzo
+                // (la elegida o la ultima) entra como adjunto y el modelo la ve.
+                // Solo con la nube (el modelo local no se toca).
+                if motor.catalogo_completo()
+                    && !con_foto
+                    && !adjuntos_con_imagen
+                    && pide_imagen_del_lienzo(&pedido)
+                    && super::al_lienzo::hay_quien_conteste()
+                    && let Some(ruta) = ejecutor.imagen_del_lienzo()
+                {
+                    poner_foto(&mut historial, &ruta);
+                    if let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario) {
+                        m.partes.push(pixpin_ia::motor::Parte::Texto(
+                            "
+
+(La imagen adjunta es la ultima imagen pegada en el lienzo: «imagen del lienzo». Para calcarla o pasarla al lienzo usa calcar_imagen o hoja_a_lienzo con ella.)".into(),
+                        ));
+                    }
+                }
                 // El lienzo destino, resumido (tipos, #id, cajas, colores,
                 // textos) al final del pedido: solo si el pedido es de dibujar
                 // o editar y hay quien conteste (`pixpin_ia::edicion`).
@@ -459,4 +481,12 @@ fn ocr_de_la_foto(ruta: &std::path::Path) -> String {
             String::new()
         }
     }
+}
+
+/// Si el pedido es calcar, dibujar o pasar «esto» (una imagen): «calca
+/// esto», «dibújalo con las herramientas», «pásalo al lienzo».
+pub fn pide_imagen_del_lienzo(pedido: &str) -> bool {
+    let q = pixpin_ia::acciones::normalizar(pedido);
+    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
+    pixpin_ia::seleccion::pide_la_imagen(&palabras) && !pixpin_ia::seleccion::pide_pegar_o_recortar(&palabras)
 }

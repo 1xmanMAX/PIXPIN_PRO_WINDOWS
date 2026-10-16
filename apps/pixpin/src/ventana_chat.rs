@@ -74,6 +74,7 @@ pub(crate) mod sin_ventana {
             None,
             Some(hoja),
             imagenes,
+            hoja.junto_a,
         )?;
         Ok((r.texto, referencia.unwrap_or_default()))
     }

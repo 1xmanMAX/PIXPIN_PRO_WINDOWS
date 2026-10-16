@@ -89,6 +89,7 @@ pub mod conocimiento;
 pub mod complejidad;
 pub mod contexto;
 pub mod cronograma;
+pub mod diagrama;
 pub mod descarga;
 pub mod fechas;
 pub mod documentos;

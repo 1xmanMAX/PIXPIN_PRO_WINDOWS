@@ -294,7 +294,7 @@ fn seccionar_es_rapido() {
 // Montaje
 
 fn entrada<'a>(z: &'a Zona, pagina: (&'a [u8], u32, u32), o: &'a Opciones) -> Entrada<'a> {
-    Entrada { zona: z, mapa: Mapa { escala: 0.5, origen: (0.0, 0.0) }, opciones: o, pagina, alto_letra: 18.0, semilla: 77 }
+    Entrada { zona: z, mapa: Mapa { escala: 0.5, origen: (0.0, 0.0) }, opciones: o, pagina, alto_letra: 18.0, semilla: 77, lector: None, ajenas: &[] }
 }
 
 fn leer(els: &[serde_json::Value]) -> Vec<pixpin_motor2d::Elemento> {
@@ -407,7 +407,8 @@ fn una_dudosa_toma_el_tipo_que_dice_el_modelo() {
     };
     let o = Opciones::default();
     let e = entrada(&z, (&p.rgba, p.w, p.h), &o);
-    assert_eq!(montaje::hacer(&e, Some(&Leido::Tipo(Tipo::Dibujo)), Via::Editable).tipo, Tipo::Dibujo);
+    // (Un dibujo de rayas sale con figuras exactas: diagrama.)
+    assert!(matches!(montaje::hacer(&e, Some(&Leido::Tipo(Tipo::Dibujo)), Via::Editable).tipo, Tipo::Dibujo | Tipo::Diagrama));
     assert_eq!(montaje::hacer(&e, None, Via::Editable).imagenes.len(), 1, "sin modelo: imagen");
     // Un dibujo por el que la app pregunto y que es una formula (el sistema
     // con llave escaneado, banco del 15-oct): formula, no calco.
@@ -416,7 +417,7 @@ fn una_dudosa_toma_el_tipo_que_dice_el_modelo() {
     let e = entrada(&d, (&p.rgba, p.w, p.h), &o);
     let latex = Leido::Latex(vec![r"\begin{cases} x + y = 1 \\ x - y = 0 \end{cases}".into()]);
     assert_eq!(montaje::hacer(&e, Some(&latex), Via::Editable).tipo, Tipo::Formula);
-    assert_eq!(montaje::hacer(&e, Some(&Leido::Tipo(Tipo::Dibujo)), Via::Editable).tipo, Tipo::Dibujo);
+    assert!(matches!(montaje::hacer(&e, Some(&Leido::Tipo(Tipo::Dibujo)), Via::Editable).tipo, Tipo::Dibujo | Tipo::Diagrama));
 }
 
 #[test]

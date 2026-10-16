@@ -259,7 +259,7 @@ fn las_zonas_de_una_hoja_van_juntas_y_rehacer_cambia_solo_la_suya() {
     let mut e = Escena::nueva();
     // Algo que ya habia (lienzo cerrado: lo de la hoja va a su derecha).
     pixpin_motor2d::portapapeles::pegar(&mut e, &al_lienzo::elementos_de(&doc(0.0)).unwrap(), 0.0, 0.0);
-    let en = |zona, rehacer, ultima| EnHoja { sesion: 9001, zona, rehacer, ultima, tam: (1000.0, 1400.0) };
+    let en = |zona, rehacer, ultima| EnHoja { sesion: 9001, zona, rehacer, ultima, tam: (1000.0, 1400.0), junto_a: None };
     al_lienzo::meter_de_hoja(&mut e, &doc(100.0), &en(0, false, false), None).unwrap();
     al_lienzo::meter_de_hoja(&mut e, &doc(300.0), &en(1, false, false), None).unwrap();
     let xs: Vec<f32> = e.visibles().map(|x| x.x).collect();
@@ -302,7 +302,7 @@ fn rehacer_una_zona_no_toca_las_demas_aunque_repitan_ids() {
     };
     let mut e = Escena::nueva();
     pixpin_motor2d::portapapeles::pegar(&mut e, &al_lienzo::elementos_de(&doc(0.0)).unwrap(), 0.0, 0.0);
-    let en = |zona, rehacer, ultima| EnHoja { sesion: 9003, zona, rehacer, ultima, tam: (1000.0, 1400.0) };
+    let en = |zona, rehacer, ultima| EnHoja { sesion: 9003, zona, rehacer, ultima, tam: (1000.0, 1400.0), junto_a: None };
     al_lienzo::meter_de_hoja(&mut e, &doc(100.0), &en(0, false, false), None).unwrap();
     al_lienzo::meter_de_hoja(&mut e, &doc(300.0), &en(1, false, false), None).unwrap();
     assert_eq!(e.cuantos_visibles(), 6);
@@ -338,7 +338,7 @@ fn si_el_usuario_dibuja_en_medio_cada_zona_se_deshace_por_su_cuenta() {
         })])
     };
     let mut e = Escena::nueva();
-    let en = |zona, ultima| EnHoja { sesion: 9002, zona, rehacer: false, ultima, tam: (1000.0, 1400.0) };
+    let en = |zona, ultima| EnHoja { sesion: 9002, zona, rehacer: false, ultima, tam: (1000.0, 1400.0), junto_a: None };
     al_lienzo::meter_de_hoja(&mut e, &doc(0.0), &en(0, false), Some((500.0, 700.0))).unwrap();
     // El usuario pega algo suyo entre dos zonas.
     pixpin_motor2d::portapapeles::pegar(&mut e, &al_lienzo::elementos_de(&doc(900.0)).unwrap(), 0.0, 0.0);

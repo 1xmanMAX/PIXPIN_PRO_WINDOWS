@@ -75,6 +75,9 @@ pub struct EjecutorDelChat {
     /// En el lienzo abierto: el primer paso de deshacer antes del turno y
     /// cuantos cerro el turno (para juntarlos en uno al acabar).
     pasos: Option<(u64, u64)>,
+    /// La imagen del lienzo que se pidio calcar (su caja): lo nuevo va a su
+    /// lado (15-oct).
+    fuente: Option<(f32, f32, f32, f32)>,
 }
 
 impl EjecutorDelChat {
@@ -97,6 +100,7 @@ impl EjecutorDelChat {
             con_marco: false,
             del_turno: Vec::new(),
             pasos: None,
+            fuente: None,
         }
     }
 
@@ -179,6 +183,35 @@ impl EjecutorDelChat {
     /// editor abierto o el chat) y se queda con el marco y lo elegido. `None`
     /// si el lienzo esta vacio o no contesta a tiempo (entonces no se dice
     /// nada: mejor sin resumen que esperar).
+    /// **La imagen del lienzo como entrada** (15-oct): «calca esto» con una
+    /// imagen pegada en el lienzo (la elegida o la ultima) y nada adjunto. Se
+    /// guarda en un PNG de paso, entra como un adjunto mas y lo que se dibuje
+    /// ira a su lado. Devuelve la ruta (para ensenarsela al modelo).
+    pub fn imagen_del_lienzo(&mut self) -> Option<std::path::PathBuf> {
+        let (tx, rx) = channel();
+        super::al_lienzo::pedir(super::al_lienzo::Pedido::de_trabajo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            super::al_lienzo::Trabajo::Imagen,
+            tx,
+        ));
+        let r = match rx.recv_timeout(ESPERA_RESUMEN) {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                tracing::info!(%e, "asistente: no hay imagen en el lienzo");
+                return None;
+            }
+            Err(_) => return None,
+        };
+        let img = r.imagen?;
+        let ruta = std::env::temp_dir().join(format!("pixpin-lienzo-{}-{}.png", std::process::id(), self.semilla()));
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: img.ancho, alto: img.alto, pixeles: img.rgba }).ok()?;
+        std::fs::write(&ruta, png).ok()?;
+        self.fuente = Some(img.caja);
+        self.adjuntos.push(Adjunto { nombre: "imagen del lienzo".into(), ruta: ruta.clone() });
+        Some(ruta)
+    }
+
     pub fn resumen_del_lienzo(&mut self) -> Option<String> {
         let (tx, rx) = channel();
         super::al_lienzo::pedir(super::al_lienzo::Pedido::de_trabajo(
@@ -272,6 +305,7 @@ impl EjecutorDelChat {
         let (responder, rx) = channel();
         let mut pedido = super::al_lienzo::Pedido::nuevo(self.proyecto.clone(), self.destino.clone(), documento, responder);
         pedido.marco = self.con_marco.then_some(self.ctx.marco);
+        pedido.junto_a = self.fuente;
         self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
     }
 }
@@ -285,12 +319,42 @@ impl EjecutorDelChat {
         }
         let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
         let semilla = self.semilla();
-        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(self.proyecto.clone(), self.destino.clone(), self.espera);
+        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(self.proyecto.clone(), self.destino.clone(), self.espera).junto_a(self.fuente);
         let tx = self.tx.clone();
         let mut progreso = |hechas: usize, total: usize| {
             let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!("{}:{hechas}/{total}", pixpin_ia::hoja::NOMBRE))));
         };
-        super::hoja_a_lienzo::hacer(args, &self.adjuntos, vision, semilla, &self.parar, &mut destino, &mut progreso)
+        // Del mismo tamano que la imagen del lienzo de la que sale.
+        let mut args = args.clone();
+        if let Some(f) = self.fuente
+            && args.get("ancho").is_none()
+            && let Some(m) = args.as_object_mut()
+        {
+            m.insert("ancho".into(), serde_json::json!(((f.2 - f.0) as f64).clamp(200.0, 4000.0)));
+        }
+        super::hoja_a_lienzo::hacer(&args, &self.adjuntos, vision, semilla, &self.parar, &mut destino, &mut progreso)
+    }
+
+    /// **Una lamina que se pidio calcar**, pasada como hoja: texto, formulas
+    /// y figuras exactas (diagramas), junto a su imagen si salio del lienzo.
+    fn lamina_al_lienzo(&mut self, pagina: &super::hoja_a_lienzo::Pagina) -> Result<String, String> {
+        let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
+        let semilla = self.semilla();
+        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(self.proyecto.clone(), self.destino.clone(), self.espera).junto_a(self.fuente);
+        let tx = self.tx.clone();
+        let mut progreso = |hechas: usize, total: usize| {
+            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!("{}:{hechas}/{total}", pixpin_ia::hoja::NOMBRE))));
+        };
+        let mut o = pixpin_ia::hoja::Opciones::default();
+        // Del tamano de la imagen (la del lienzo, o la original).
+        o.ancho = match self.fuente {
+            Some(f) => (f.2 - f.0) as f64,
+            None => pagina.ancho as f64,
+        }
+        .clamp(200.0, 4000.0);
+        let inf = super::hoja_a_lienzo::pasar(pagina, vision, &o, false, semilla, &self.parar, &mut destino, &mut progreso)?;
+        let r = super::hoja_a_lienzo::contar(pagina, &inf)?;
+        Ok(format!("{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"))
     }
 
     /// **`anotar_inteligente`**: con el modelo de la nube (el de Ajustes, o
@@ -495,6 +559,15 @@ impl Ejecutor for EjecutorDelChat {
                 let ruta = super::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
                     .ruta
                     .clone();
+                // Con la nube, una lamina (texto y figuras) no se calca por
+                // manchas: se pasa con figuras exactas y texto (15-oct: la
+                // lamina de geometria salio en borrones).
+                if self.nube || self.vision.is_some() {
+                    let pagina = super::hoja_a_lienzo::leer(&ruta, None)?;
+                    if super::hoja_a_lienzo::es_lamina(&pagina) {
+                        return self.lamina_al_lienzo(&pagina);
+                    }
+                }
                 let semilla = self.semilla();
                 let elementos = super::acciones::calcar_fichero(&ruta, p, semilla)?;
                 self.al_lienzo_elementos(elementos)

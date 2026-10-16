@@ -168,6 +168,9 @@ pub enum Trazo {
     },
     /// El fondo, si no era blanco: un rectangulo lleno detras de todo.
     Fondo { caja: [f64; 4], color: String },
+    /// Una raya fina del dibujo, por su linea central, con su grosor (en
+    /// el lienzo).
+    Raya { puntos: Vec<(f64, f64)>, color: String, grosor: f64 },
 }
 
 /// El resultado y como volver a la imagen original (para las pruebas y para
@@ -208,7 +211,12 @@ pub fn calcar(rgba: &[u8], ancho: u32, alto: u32, p: &Parametros) -> Calcado {
     let lado = p.detalle.lado();
     let f = (lado as f64 / zw.max(zh) as f64).min(1.0);
     let (w, h) = (((zw as f64 * f).round() as usize).max(1), ((zh as f64 * f).round() as usize).max(1));
-    let img = reducir(rgba, ancho as usize, (zx as usize, zy as usize, zw as usize, zh as usize), w, h);
+    // Las rayas finas (1-3 px) se sacan antes, a toda resolucion, por su
+    // linea central: reducida, una raya de un pixel se volvia una mancha
+    // borrosa o desaparecia (15-oct, la lamina de geometria). Lo que queda
+    // (rellenos, manchas) se calca como siempre, sin ellas.
+    let (limpia, finas) = if p.solo_contornos { (None, Vec::new()) } else { rayas_finas(rgba, ancho as usize, (zx as usize, zy as usize, zw as usize, zh as usize)) };
+    let img = reducir(limpia.as_deref().unwrap_or(rgba), ancho as usize, (zx as usize, zy as usize, zw as usize, zh as usize), w, h);
 
     // 2. A coordenadas del lienzo: cabe en 800x600 con margen y centrada.
     let margen = 20.0;
@@ -248,11 +256,17 @@ pub fn calcar(rgba: &[u8], ancho: u32, alto: u32, p: &Parametros) -> Calcado {
                 huecos.iter_mut().flatten().for_each(|q| *q = a_lienzo(*q));
             }
             Trazo::Linea { puntos, .. } => puntos.iter_mut().for_each(|q| *q = a_lienzo(*q)),
+            Trazo::Raya { .. } => {}
             Trazo::Fondo { caja, .. } => {
                 let (x, y) = a_lienzo((0.0, 0.0));
                 *caja = [x, y, w as f64 * esc_red, h as f64 * esc_red];
             }
         }
+    }
+    // Las rayas finas, encima de todo y ya en el lienzo.
+    for (puntos, color, grosor) in finas {
+        let puntos: Vec<(f64, f64)> = puntos.iter().map(|&(x, y)| (x * escala + desplazamiento.0, y * escala + desplazamiento.1)).collect();
+        trazos.push(Trazo::Raya { puntos, color, grosor: (grosor * escala).max(0.5) });
     }
     Calcado {
         trazos,
@@ -265,7 +279,7 @@ pub fn calcar(rgba: &[u8], ancho: u32, alto: u32, p: &Parametros) -> Calcado {
 fn tamano(t: &Trazo) -> f64 {
     match t {
         Trazo::Mancha { contorno, .. } => area(contorno).abs(),
-        Trazo::Linea { puntos, .. } => puntos.windows(2).map(|p| dist(p[0], p[1])).sum::<f64>() * 3.0,
+        Trazo::Linea { puntos, .. } | Trazo::Raya { puntos, .. } => puntos.windows(2).map(|p| dist(p[0], p[1])).sum::<f64>() * 3.0,
         Trazo::Fondo { .. } => f64::MAX,
     }
 }
@@ -1569,4 +1583,146 @@ mod pruebas {
         assert_eq!(c.len(), 4, "{c:?}");
         assert!((area(&c).abs() - 100.0).abs() < 1e-6);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Rayas finas, a toda resolucion
+
+/// Lo mas grande (en pixeles) que se mira a toda resolucion buscando rayas
+/// finas; por encima, se reduce primero a esto.
+const LADO_FINAS: usize = 1600;
+
+/// **Las rayas finas** de la zona `(zx, zy, zw, zh)`: la tinta que no
+/// aguanta una erosion de 2 px (lo de 1-4 px de ancho), por su linea
+/// central (el esqueleto, alisado con las curvas de `trazado`), con su color
+/// y su grosor. Devuelve tambien la imagen sin ellas (pintadas del color
+/// del papel) para calcar el resto. En coordenadas de la imagen original.
+#[allow(clippy::type_complexity)]
+fn rayas_finas(rgba: &[u8], ancho: usize, (zx, zy, zw, zh): (usize, usize, usize, usize)) -> (Option<Vec<u8>>, Vec<(Vec<(f64, f64)>, String, f64)>) {
+    use crate::diagrama::mascara;
+    if zw.max(zh) > LADO_FINAS || zw < 8 || zh < 8 {
+        return (None, Vec::new());
+    }
+    let mut sub = vec![0u8; zw * zh * 4];
+    for y in 0..zh {
+        let o = ((zy + y) * ancho + zx) * 4;
+        let Some(fila) = rgba.get(o..o + zw * 4) else { return (None, Vec::new()) };
+        sub[y * zw * 4..(y + 1) * zw * 4].copy_from_slice(fila);
+    }
+    let img = mascara::Img::de_rgba(&sub, zw, zh);
+    let papel = mascara::fondo(&img);
+    let dpap: Vec<f32> = img.px.iter().map(|&c| mascara::dist_color(c, papel)).collect();
+    let tinta: Vec<bool> = dpap.iter().map(|&d| d > 40.0).collect();
+    // Una foto (sin papel liso) no tiene «rayas» que sacar: su textura son
+    // mil rayitas.
+    let lisas = dpap.iter().filter(|&&d| d < 12.0).count();
+    if (lisas as f64) < 0.3 * (zw * zh) as f64 {
+        return (None, Vec::new());
+    }
+    let nucleo = mascara::erosionar(&tinta, zw, zh, 2.0);
+    let grueso = mascara::dilatar(&nucleo, zw, zh, 2.6);
+    let fino: Vec<bool> = (0..zw * zh).map(|i| tinta[i] && !grueso[i]).collect();
+    let minimo = 12f64.max(0.02 * zw.max(zh) as f64);
+    let mut salida: Vec<(Vec<(f64, f64)>, String, f64)> = Vec::new();
+    let mut quitar = vec![false; zw * zh];
+    for comp in mascara::componentes(&fino, zw, zh) {
+        if comp.len() < 10 {
+            continue;
+        }
+        let (x0, y0, x1, y1) = mascara::caja_de(&comp, zw);
+        let (ox, oy) = (x0.saturating_sub(2), y0.saturating_sub(2));
+        let (gw, gh) = ((x1 + 3).min(zw) - ox, (y1 + 3).min(zh) - oy);
+        let mut m = vec![false; gw * gh];
+        for &i in &comp {
+            m[(i / zw - oy) * gw + (i % zw - ox)] = true;
+        }
+        let esq = mascara::esqueleto(&m, gw, gh);
+        let cadenas: Vec<Vec<(f64, f64)>> = mascara::cadenas(&esq, gw, gh).into_iter().filter(|c| c.len() >= 3).collect();
+        let largo: f64 = cadenas.iter().map(|c| c.windows(2).map(|w| dist(w[0], w[1])).sum::<f64>()).sum();
+        if largo < minimo {
+            continue;
+        }
+        // Fina de verdad: lo que pesa entre lo que mide.
+        let peso: f64 = comp.iter().map(|&i| (dpap[i] as f64 / 180.0).min(1.0)).sum();
+        let grosor = peso / largo.max(1.0);
+        if grosor > 4.0 {
+            continue;
+        }
+        let mut cs: Vec<(f32, [f32; 3])> = comp.iter().map(|&i| (dpap[i], img.px[i])).collect();
+        cs.sort_by(|a, b| b.0.total_cmp(&a.0));
+        cs.truncate((cs.len() / 2).max(1));
+        let media = mascara::media(cs.iter().map(|c| c.1));
+        let color = hex(media);
+        for c in cadenas {
+            let puntos: Vec<(f64, f64)> = c.iter().map(|&(x, y)| (x + (ox + zx) as f64, y + (oy + zy) as f64)).collect();
+            let lisa = curva(&puntos, false, 0.6, 0.3);
+            if lisa.len() >= 2 {
+                salida.push((lisa, color.clone(), grosor.max(1.0)));
+            }
+        }
+        for &i in &comp {
+            quitar[i] = true;
+        }
+    }
+    if salida.is_empty() {
+        return (None, Vec::new());
+    }
+    // Lo que se quito, del color del papel (y su halo de antialias).
+    let quitar = mascara::dilatar(&quitar, zw, zh, 1.0);
+    let mut limpia = rgba.to_vec();
+    for y in 0..zh {
+        for x in 0..zw {
+            if quitar[y * zw + x] && !grueso[y * zw + x] {
+                let o = ((zy + y) * ancho + zx + x) * 4;
+                limpia[o] = papel[0] as u8;
+                limpia[o + 1] = papel[1] as u8;
+                limpia[o + 2] = papel[2] as u8;
+                limpia[o + 3] = 255;
+            }
+        }
+    }
+    salida.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    salida.truncate(400);
+    (Some(limpia), salida)
+}
+
+/// **El texto de una imagen que se calca, como texto** (15-oct): lo que
+/// leyo el OCR (palabras con caja en pixeles de la imagen) se tapa con el
+/// color del papel antes de calcar ([`tapar_texto`]) y va al lienzo como
+/// texto editable, en su sitio, con su tamano y su color.
+pub fn tapar_texto(rgba: &mut [u8], ancho: u32, alto: u32, palabras: &[crate::hoja::PalabraHoja]) {
+    let (w, h) = (ancho as usize, alto as usize);
+    let img = crate::diagrama::mascara::Img::de_rgba(rgba, w, h);
+    let papel = crate::diagrama::mascara::fondo(&img);
+    for p in palabras {
+        let c = p.caja.crecer(2.0).dentro(w as f64, h as f64);
+        for y in c.y.floor() as usize..(c.y1().ceil() as usize).min(h) {
+            for x in c.x.floor() as usize..(c.x1().ceil() as usize).min(w) {
+                let i = (y * w + x) * 4;
+                rgba[i] = papel[0] as u8;
+                rgba[i + 1] = papel[1] as u8;
+                rgba[i + 2] = papel[2] as u8;
+                rgba[i + 3] = 255;
+            }
+        }
+    }
+}
+
+/// Las palabras como textos del lienzo, colocadas como el calco.
+pub fn textos_del_calco(c: &Calcado, palabras: &[crate::hoja::PalabraHoja], semilla: u64) -> Vec<serde_json::Value> {
+    let familia = "Work Sans";
+    let k = pixpin_motor2d::texto::interlineado_de(familia).unwrap_or(pixpin_motor2d::texto::INTERLINEADO) as f64;
+    let piezas: Vec<pixpin_motor2d::Elemento> = palabras
+        .iter()
+        .map(|p| {
+            let (x, y) = (p.caja.x * c.escala + c.desplazamiento.0, p.caja.y * c.escala + c.desplazamiento.1);
+            let alto = p.caja.h * c.escala;
+            let tam = ((alto * 1.05 * 2.0).round() / 2.0).max(5.0);
+            crate::hoja::montaje::un_texto(&p.texto, x, y + alto / 2.0 - tam * k / 2.0, tam, familia, p.negrita, crate::hoja::Alineacion::Izquierda, p.color)
+        })
+        .collect();
+    let mut f = crate::lienzo::Fabrica::nueva((0.0, 0.0), semilla ^ 0x7e57);
+    f.grupo = Some(format!("ia-{semilla:x}-calco"));
+    f.de_motor(&piezas);
+    f.salida
 }

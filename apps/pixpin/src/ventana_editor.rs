@@ -1044,6 +1044,18 @@ fn abrir_en_modo(
                 interfaz_sucia = true;
                 ventana.invalidar();
             }
+            // Lo que dibujo el asistente no se veia: la vista va hasta ello
+            // (15-oct, «traelo»).
+            if let Some(caja) = crate::asistente::al_lienzo::tomar_mostrar() {
+                let (dx, dy) = crate::asistente::al_lienzo::desplazar_para_ver((x0, y0, x1, y1), caja);
+                if (dx, dy) != (0.0, 0.0) {
+                    camara.x += dx;
+                    camara.y += dy;
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
+            }
             let llegadas = crate::al_frente::tomar_para(h);
             if !llegadas.is_empty() {
                 for r in &llegadas {

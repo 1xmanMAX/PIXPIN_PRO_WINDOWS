@@ -51,6 +51,8 @@ pub enum Leido {
     Tipo(Tipo),
     /// Una grafica de funciones (los argumentos de `graficar_funcion`).
     Funciones(Map<String, Value>),
+    /// Los rotulos de una figura (texto y centro en fracciones del recorte).
+    Rotulos(Vec<(String, f64, f64)>),
 }
 
 /// Una imagen que nace con la zona: va al almacen del lienzo con este id
@@ -85,6 +87,11 @@ pub struct Entrada<'a> {
     /// El alto de letra del cuerpo, en pixeles de la pagina.
     pub alto_letra: f64,
     pub semilla: u64,
+    /// Quien lee las letras sueltas de un diagrama (el OCR de la app).
+    pub lector: Option<&'a crate::diagrama::Lector>,
+    /// El texto de la hoja que no es de esta zona (cajas en pixeles de la
+    /// pagina): un diagrama no lo vectoriza aunque caiga en su recorte.
+    pub ajenas: &'a [Caja],
 }
 
 impl Entrada<'_> {
@@ -102,6 +109,11 @@ impl Entrada<'_> {
         let mut f = Fabrica::nueva((0.0, 0.0), self.semilla_de_zona());
         f.grupo = Some(f.nombre_de_grupo(&format!("hoja-{}", self.zona.id)));
         f
+    }
+    /// El texto ajeno que cae en la zona, en pixeles del recorte.
+    pub fn ajenas_en_zona(&self) -> Vec<Caja> {
+        let z = &self.zona.caja;
+        self.ajenas.iter().filter(|c| c.comun(z) > 0.0).map(|c| Caja::nueva(c.x - z.x, c.y - z.y, c.w, c.h)).collect()
     }
     /// El recorte de la zona (RGBA, ancho, alto).
     pub fn recorte(&self) -> (Vec<u8>, u32, u32) {
@@ -177,9 +189,9 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
                 Some(els) => (els, "grafica de funciones".into()),
                 None => (calco(e), "grafica calcada".into()),
             },
-            _ => (calco(e), "grafica calcada".into()),
+            _ => diagrama(e, leido).unwrap_or_else(|| (calco(e), "grafica calcada".into())),
         },
-        (_, Tipo::Dibujo) => (calco(e), "dibujo calcado".into()),
+        (_, Tipo::Dibujo | Tipo::Diagrama) => diagrama(e, leido).unwrap_or_else(|| (calco(e), "dibujo calcado".into())),
         (_, Tipo::Dudosa) => {
             // Sin modelo que lo diga: como imagen, que es lo que menos
             // inventa.
@@ -196,6 +208,9 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         h.nota = format!("{nota}: no salio nada, imagen");
         return h;
     }
+    // Lo que salio como figuras exactas es un diagrama (para el registro,
+    // el banco y la app, que le pregunta los rotulos a la nube).
+    let tipo = if nota.starts_with("diagrama") { Tipo::Diagrama } else { tipo };
     Hecho { zona: z.id, tipo, via, elementos, imagenes, nota }
 }
 
@@ -264,7 +279,7 @@ fn color_motor(c: Option<[u8; 3]>) -> ColorRgba {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn un_texto(t: &str, x: f64, y: f64, tam: f64, familia: &str, negrita: bool, al: Alineacion, color: Option<[u8; 3]>) -> Elemento {
+pub(crate) fn un_texto(t: &str, x: f64, y: f64, tam: f64, familia: &str, negrita: bool, al: Alineacion, color: Option<[u8; 3]>) -> Elemento {
     let estilo = Estilo { color: color_motor(color), tam: tam as f32, opacidad: 1.0, familia: familia.to_string() };
     let medida = medir(t, tam as f32, familia, negrita);
     let mut el = elemento_texto(t, x as f32, y as f32, medida, tam as f32, false, &estilo);
@@ -581,6 +596,7 @@ pub fn calco_en_caja(c: &crate::calcar::Calcado, destino: Caja, escala_pagina: f
                 color: color.clone(),
             },
             Trazo::Linea { puntos, cerrada, color } => Trazo::Linea { puntos: todos(puntos), cerrada: *cerrada, color: color.clone() },
+            Trazo::Raya { puntos, color, grosor } => Trazo::Raya { puntos: todos(puntos), color: color.clone(), grosor: grosor / c.escala * escala_pagina },
             Trazo::Fondo { caja, color } => {
                 let (x0, y0) = a((caja[0], caja[1]));
                 let (x1, y1) = a((caja[0] + caja[2], caja[1] + caja[3]));
@@ -604,4 +620,52 @@ fn grafica(e: &Entrada, args: &Map<String, Value>) -> Option<Vec<Value>> {
     let mut f = e.fabrica();
     f.de_motor(&piezas);
     Some(f.salida)
+}
+
+// ---------------------------------------------------------------------------
+// Diagrama
+
+/// **El diagrama con figuras exactas** (`diagrama::vectorizar`): segmentos,
+/// circunferencias y arcos, puntos, flechas, regiones, recuadros y los
+/// rotulos (el texto del OCR de dentro y las letras sueltas). `None` si no
+/// es un diagrama (un dibujo a mano, una foto): va al calco.
+fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> {
+    let (rgba, w, h) = e.recorte();
+    if w < 8 || h < 8 {
+        return None;
+    }
+    let z = e.zona;
+    let palabras: Vec<super::PalabraHoja> = z
+        .renglones
+        .iter()
+        .flat_map(|r| r.palabras.iter())
+        .map(|p| {
+            let mut q = p.clone();
+            q.caja = Caja::nueva(p.caja.x - z.caja.x, p.caja.y - z.caja.y, p.caja.w, p.caja.h);
+            q
+        })
+        .collect();
+    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar: e.ajenas_en_zona(), ..Default::default() };
+    let mut d = crate::diagrama::vectorizar(&rgba, w, h, &palabras, &o, e.lector);
+    if !d.es_diagrama() {
+        return None;
+    }
+    if let Some(Leido::Rotulos(v)) = leido {
+        crate::diagrama::corregir_rotulos(&mut d, v, e.alto_letra);
+    }
+    let dest = e.destino();
+    let mut f = e.fabrica();
+    crate::diagrama::elementos(&d, (dest.x, dest.y), e.mapa.escala, &mut f, &e.opciones.familia);
+    Some((f.salida, format!("diagrama: {}", d.resumen())))
+}
+
+/// Si la zona es un diagrama (sin leer sus letras: rapido), para saber de
+/// antemano que no hay que esperar a la nube para ponerla.
+pub fn es_diagrama(e: &Entrada) -> bool {
+    let (rgba, w, h) = e.recorte();
+    if w < 8 || h < 8 {
+        return false;
+    }
+    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar: e.ajenas_en_zona(), ..Default::default() };
+    crate::diagrama::vectorizar(&rgba, w, h, &[], &o, None).es_diagrama()
 }

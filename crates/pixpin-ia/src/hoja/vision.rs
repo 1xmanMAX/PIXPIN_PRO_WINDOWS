@@ -36,8 +36,14 @@ responde SOLO un JSON como {\"funciones\":[\"x^2\"],\"x_desde\":-3,\"x_hasta\":3
 
 /// Pregunta con una imagen y devuelve el texto de la respuesta.
 pub fn preguntar(motor: &dyn Motor, sistema: &str, png: Vec<u8>, pregunta: &str) -> Result<String, String> {
+    preguntar_con(motor, sistema, png, pregunta, TOKENS)
+}
+
+/// Lo mismo con otro tope de tokens (la lista de rotulos de una figura es
+/// mas larga que una formula).
+pub fn preguntar_con(motor: &dyn Motor, sistema: &str, png: Vec<u8>, pregunta: &str, tokens: u32) -> Result<String, String> {
     let mut p = Peticion::nueva(vec![Mensaje::sistema(sistema), Mensaje::usuario_con_imagen(pregunta, png, "image/png")]);
-    p.max_tokens = TOKENS;
+    p.max_tokens = tokens;
     p.temperatura = 0.0;
     let r = motor.completar(&p, &mut |_| Seguir::Si).map_err(|e| e.to_string())?;
     Ok(r.texto.trim().to_string())
@@ -144,4 +150,61 @@ pub fn leer_grafica(t: &str) -> Option<Map<String, Value>> {
     let m = v.as_object()?.clone();
     let n = m.get("funciones").and_then(Value::as_array).map_or(0, Vec::len);
     (n > 0).then_some(m)
+}
+
+const SISTEMA_ROTULOS: &str = "Recibes el recorte de una figura geometrica o un diagrama. Lista TODOS sus rotulos de texto: \
+letras de puntos (A, B, O, P...), medidas y angulos (2a, 45°, θ, x), palabras y formulas cortas. \
+Responde SOLO un JSON: [{\"t\":\"A\",\"x\":0.12,\"y\":0.40}, ...] con el texto tal cual se ve (griegas en Unicode, grados con °) \
+y el centro de cada rotulo en fracciones del ancho y del alto del recorte (0 a 1). Sin explicaciones.";
+
+/// **Los rotulos de una figura** (letras de los puntos, medidas, angulos)
+/// con su centro en fracciones del recorte: la nube corrige al OCR en lo
+/// que lee mal o no ve (una letra suelta, una griega).
+pub fn pedir_rotulos(motor: &dyn Motor, png: Vec<u8>) -> Result<Leido, String> {
+    let t = preguntar_con(motor, SISTEMA_ROTULOS, png, "Lista los rotulos de esta figura.", 1500)?;
+    leer_rotulos(&t).map(Leido::Rotulos).ok_or_else(|| format!("el modelo no dio los rotulos: «{}»", corto(&t)))
+}
+
+/// Lee la lista de rotulos (`[{"t":..,"x":..,"y":..}]`, con o sin bloque).
+pub fn leer_rotulos(t: &str) -> Option<Vec<(String, f64, f64)>> {
+    let t = sin_bloque(t);
+    // Objeto a objeto: una lista cortada por el tope de tokens vale hasta
+    // donde llego (banco del 15-oct: la de la lamina llegaba a medias).
+    let mut lista = Vec::new();
+    let mut resto = t.as_str();
+    let mut alguno = false;
+    while let Some(a) = resto.find('{') {
+        let Some(b) = resto[a..].find('}') else { break };
+        alguno = true;
+        if let Ok(r) = serde_json::from_str::<Value>(&resto[a..a + b + 1]) {
+            let texto = r.get("t").or_else(|| r.get("texto")).and_then(Value::as_str).map(|s| s.trim().to_string());
+            let x = r.get("x").and_then(Value::as_f64);
+            let y = r.get("y").and_then(Value::as_f64);
+            if let (Some(texto), Some(x), Some(y)) = (texto, x, y)
+                && !texto.is_empty()
+                && (0.0..=1.0).contains(&x)
+                && (0.0..=1.0).contains(&y)
+            {
+                lista.push((texto, x, y));
+            }
+        }
+        resto = &resto[a + b + 1..];
+    }
+    (alguno || t.contains('[')).then_some(lista)
+}
+
+#[cfg(test)]
+mod pruebas_rotulos {
+    use super::*;
+
+    #[test]
+    fn los_rotulos_se_leen_aunque_lleguen_cortados() {
+        let t = "```json\n[{\"t\":\"A\",\"x\":0.27,\"y\":0.12},{\"t\":\"2a\",\"x\":0.37,\"y\":0.04},{\"t\":\"B\",\"x\":0.8";
+        let v = leer_rotulos(t).unwrap();
+        assert_eq!(v, vec![("A".to_string(), 0.27, 0.12), ("2a".to_string(), 0.37, 0.04)]);
+        assert_eq!(leer_rotulos("[]"), Some(Vec::new()));
+        assert!(leer_rotulos("No veo rotulos").is_none());
+        // Fuera de 0-1: no.
+        assert!(leer_rotulos("[{\"t\":\"A\",\"x\":3,\"y\":0.1}]").unwrap().is_empty());
+    }
 }
