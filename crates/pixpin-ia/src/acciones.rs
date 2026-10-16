@@ -810,6 +810,32 @@ pub const SOLO_NUBE: &[&str] = &[
     "leer_documento",
 ];
 
+/// **Las opciones que solo ve la nube** en una fila de las de siempre
+/// (herramienta, parametro, valores), como los campos de la nube de
+/// `edicion`: misma fila y mismo `hacer`; el esquema del local no cambia
+/// y el local no las manda. 16-oct: la tabla de una foto, al LIENZO con su
+/// aspecto medido (no solo a la tabla del chat o al Excel).
+pub const OPCIONES_NUBE: &[(&str, &str, &[&str])] = &[(crate::acciones_documentos::TABLA, "destino", &["lienzo"])];
+
+fn opcion_de_la_nube(herramienta: &str, param: &str, valor: &str) -> bool {
+    let v = normalizar(valor.trim());
+    OPCIONES_NUBE.iter().any(|(h, p, vs)| *h == herramienta && *p == param && vs.contains(&v.as_str()))
+}
+
+/// Pone en el esquema de la nube sus [`OPCIONES_NUBE`] (lo llama
+/// `herramientas::para_la_nube`).
+pub fn para_la_nube(h: &mut crate::herramientas::Herramienta) {
+    for (_, param, valores) in OPCIONES_NUBE.iter().filter(|(n, _, _)| *n == h.nombre) {
+        if let Some(e) = h.parametros.pointer_mut(&format!("/properties/{param}/enum")).and_then(Value::as_array_mut) {
+            for v in *valores {
+                if !e.iter().any(|x| x == v) {
+                    e.push(json!(v));
+                }
+            }
+        }
+    }
+}
+
 /// Si la herramienta es solo para la nube ([`SOLO_NUBE`]).
 pub fn es_solo_nube(herramienta: &str) -> bool {
     SOLO_NUBE.contains(&herramienta)
@@ -1089,6 +1115,8 @@ pub fn validar(a: &'static Accion, args: &Map<String, Value>) -> Result<AccionAp
     let mut por_resolver = Map::new();
     for p in a.params {
         let v = match args.get(p.nombre).filter(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.trim().is_empty())) {
+            // Una opcion que solo ofrece la nube ([`OPCIONES_NUBE`]).
+            Some(v) if v.as_str().is_some_and(|s| opcion_de_la_nube(a.herramienta, p.nombre, s)) => json!(normalizar(v.as_str().unwrap_or_default().trim())),
             Some(v) => valor(p, v)?,
             None => match p.defecto {
                 Some(d) => serde_json::from_str(d).unwrap_or(Value::Null),

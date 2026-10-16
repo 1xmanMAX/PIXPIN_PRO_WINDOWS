@@ -115,6 +115,8 @@ pub mod rotulos;
 pub mod seleccion;
 pub mod servidor;
 pub mod tabla_escaneada;
+pub mod tabla_aspecto;
+pub mod revision_tabla;
 pub mod sse;
 pub mod tareas;
 pub mod svg;
