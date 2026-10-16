@@ -124,6 +124,19 @@ pub struct Region {
     pub area: f64,
 }
 
+/// **Un ovalo** de ejes horizontales: centro, semiejes, su trazo y su relleno.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ovalo {
+    pub c: P,
+    pub rx: f64,
+    pub ry: f64,
+    pub grosor: f64,
+    pub color: [u8; 3],
+    pub relleno: Option<[u8; 3]>,
+    /// Un rombo (la decision de un diagrama de flujo) con esa caja, no un ovalo.
+    pub rombo: bool,
+}
+
 /// **Una marca de angulo**: el sector relleno de vertice `v` entre sus dos
 /// rayas (de `inicio`, barriendo `barrido`, radianes de pantalla).
 #[derive(Debug, Clone, PartialEq)]
@@ -144,6 +157,8 @@ pub struct Recuadro {
     pub y1: f64,
     pub grosor: f64,
     pub color: [u8; 3],
+    /// Su relleno (el azul claro de una caja de un diagrama de flujo).
+    pub relleno: Option<[u8; 3]>,
 }
 
 /// Un texto del diagrama (del OCR o una letra suelta leida aparte).
@@ -179,6 +194,10 @@ pub struct Diagrama {
     pub puntos: Vec<Punto>,
     pub regiones: Vec<Region>,
     pub recuadros: Vec<Recuadro>,
+    /// Las puntas de flecha ABIERTAS (dos rayas en V, no un triangulo).
+    pub puntas_abiertas: Vec<P>,
+    /// Los ovalos (el «Inicio» y el «Fin» de un diagrama de flujo).
+    pub ovalos: Vec<Ovalo>,
     /// Las marcas de angulo (sectores rellenos en un vertice).
     pub marcas: Vec<Marca>,
     pub rotulos: Vec<Rotulo>,
@@ -202,7 +221,7 @@ pub struct Diagrama {
 impl Diagrama {
     /// Cuantas figuras salieron (sin los rotulos).
     pub fn figuras(&self) -> usize {
-        self.segmentos.len() + self.arcos.len() + self.puntos.len() + self.regiones.len() + self.recuadros.len() + self.marcas.len()
+        self.segmentos.len() + self.arcos.len() + self.puntos.len() + self.regiones.len() + self.recuadros.len() + self.marcas.len() + self.ovalos.len()
     }
     /// **Si esto es de verdad un diagrama** (y no una ilustracion o una
     /// foto): la geometria explica casi toda la tinta, y hay geometria.

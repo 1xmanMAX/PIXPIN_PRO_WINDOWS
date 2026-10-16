@@ -27,7 +27,7 @@ fn salida() -> PathBuf {
 }
 
 fn lamina() -> PathBuf {
-    PathBuf::from(SCRATCH).join("hoja-real").join("circunferencia-geometria.png")
+    std::env::var_os("PIXPIN_LAMINA_RUTA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(SCRATCH).join("hoja-real").join("circunferencia-geometria.png"))
 }
 
 fn guardar(img: &pixpin_codec::ImagenRgba, ruta: &std::path::Path) {
@@ -84,7 +84,8 @@ fn lamina_sin_red() {
     for w in &p.palabras {
         println!("  palabra {:?} [{:.0},{:.0} {:.0}x{:.0}]", w.texto, w.caja.x, w.caja.y, w.caja.w, w.caja.h);
     }
-    let s = pixpin_ia::hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    let mut s = pixpin_ia::hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    pixpin_ia::hoja::seccion::unir_dibujos(&mut s, &p.rgba);
     for z in &s.zonas {
         let t: String = z.texto().chars().take(50).collect::<String>().replace('\n', " | ");
         println!("zona {:>2} {:<10} {:.2} [{:.0},{:.0} {:.0}x{:.0}] {t}", z.id, z.tipo.nombre(), z.confianza, z.caja.x, z.caja.y, z.caja.w, z.caja.h);
@@ -141,6 +142,9 @@ fn lamina_sin_red() {
             for a in &d.arcos {
                 println!("  z arco c({:.0},{:.0}) r {:.0} {:.0}+{:.0} g {:.1} {:?}", a.c.0, a.c.1, a.r, a.inicio.to_degrees(), a.barrido.to_degrees(), a.grosor, a.color);
             }
+            for p in &d.puntos {
+                println!("  z punto ({:.0},{:.0}) r {:.1} {:?}", p.c.0, p.c.1, p.r, p.color);
+            }
             for g in &d.glifos {
                 println!("  z glifo [{:.0},{:.0} {:.0}x{:.0}] g {:.1}", g.caja.x, g.caja.y, g.caja.w, g.caja.h, g.grosor);
             }
@@ -157,7 +161,7 @@ fn lamina_sin_red() {
     }
     // Y por el camino de la hoja sin modelo.
     let mut dest = EnEscena::nueva();
-    let inf = pasar(&p, None, &Opciones::default(), false, 4242, &AtomicBool::new(false), &mut dest, &mut |_, _| {}).unwrap();
+    let inf = pasar(&p, None, &Opciones { rico: true, ..Default::default() }, false, 4242, &AtomicBool::new(false), &mut dest, &mut |_, _| {}).unwrap();
     for h in &inf.hechos {
         println!("hecho zona {:>2} {:<10} {}", h.zona, h.tipo.nombre(), h.nota);
     }
@@ -569,7 +573,7 @@ fn mixta_con_haiku() {
     let textos = inf.hechos.iter().filter(|h| matches!(h.tipo, pixpin_ia::hoja::Tipo::Parrafo | pixpin_ia::hoja::Tipo::Encabezado)).count();
     assert!(textos >= 2, "los parrafos, como texto");
     // La formula, compuesta: sola, o dentro del bloque de texto rico (`$...$`).
-    let compuesta = |h: &&pixpin_ia::hoja::montaje::Hecho| h.nota.starts_with("ecuacion") || h.elementos.iter().any(|v| v["textoRico"].as_str().is_some_and(|t| t.contains("\frac")));
+    let compuesta = |h: &&pixpin_ia::hoja::montaje::Hecho| h.nota.starts_with("ecuacion") || h.elementos.iter().any(|v| v["textoRico"].as_str().is_some_and(|t| t.contains(r"\frac")));
     assert!(inf.hechos.iter().any(|h| compuesta(&h)), "la formula, compuesta");
     let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
     let res = pintar_gpu(els, &d.imagenes, 1400).expect("el lienzo");

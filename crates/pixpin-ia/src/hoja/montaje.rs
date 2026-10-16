@@ -146,6 +146,12 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         (t, _) => t,
     };
     let mut imagenes = Vec::new();
+    // Una «tabla» que es un recuadro de color con texto (un aviso, un dato).
+    if tipo == Tipo::Tabla && via != Via::Imagen
+        && let Some(elementos) = caja_de_color(e)
+    {
+        return Hecho { zona: z.id, tipo, via, elementos, imagenes: Vec::new(), nota: "recuadro de color con su texto en su sitio".into() };
+    }
     // Un bloque que la nube paso a texto rico: un solo texto, en su sitio.
     if let Some(Leido::Rico(fuente)) = leido {
         let elementos = bloque_rico(e, fuente);
@@ -501,7 +507,7 @@ pub fn id_de_imagen(semilla: u64, zona: usize) -> u64 {
 /// hoja entera va una sola vez al almacen (el mismo id en todas las zonas)
 /// y cada zona la ensena recortada, con 2 px de aire.
 fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
-    match foto_recortada(e, &e.zona.caja.crecer(2.0)) {
+    match foto_recortada(e, &sin_texto_alrededor(e, e.zona.caja).crecer(2.0)) {
         Some((v, img)) => (vec![v], vec![img]),
         None => (Vec::new(), Vec::new()),
     }
@@ -798,7 +804,10 @@ fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> 
             q
         })
         .collect();
-    let tapar: Vec<Caja> = e.ajenas.iter().filter(|c| c.comun(&caja) > 0.0).map(|c| Caja::nueva(c.x - caja.x, c.y - caja.y, c.w, c.h)).collect();
+    // El texto de las OTRAS zonas (el de esta va como rotulo: «Inicio» en su ovalo).
+    let propias: Vec<Caja> = z.renglones.iter().flat_map(|r| r.palabras.iter().map(|p| p.caja)).collect();
+    let es_propia = |c: &Caja| propias.iter().any(|q| (q.x - c.x).abs() < 0.5 && (q.y - c.y).abs() < 0.5 && (q.w - c.w).abs() < 0.5);
+    let tapar: Vec<Caja> = e.ajenas.iter().filter(|c| c.comun(&caja) > 0.0 && !es_propia(c)).map(|c| Caja::nueva(c.x - caja.x, c.y - caja.y, c.w, c.h)).collect();
     let mut pistas: Vec<String> = e.pistas.to_vec();
     pistas.extend(z.renglones.iter().map(|r| r.texto.clone()));
     let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar, pistas, ..Default::default() };
@@ -913,4 +922,99 @@ fn bloque_rico(e: &Entrada, fuente: &str) -> Vec<Value> {
         recta(&mut f, a, b, r[4] * esc);
     }
     f.salida
+}
+
+/// **Un recuadro de color con texto** (16-oct, el «Dato del mes» del
+/// boletin: borde naranja y fondo crema): el seccionado lo toma por una
+/// tabla de una celda, y salia con el borde negro y un trozo de su fondo
+/// como «icono». Si la zona es un solo recuadro (el que mide el diagrama en
+/// su recorte), va como el rectangulo del lienzo con su color y su relleno,
+/// y encima sus renglones en su sitio.
+fn caja_de_color(e: &Entrada) -> Option<Vec<Value>> {
+    let (rgba, w, h) = e.pagina;
+    let z = &e.zona;
+    let c = z.caja.crecer(4.0).dentro(w as f64, h as f64);
+    let (sub, sw, sh) = imagen::recortar(rgba, w, h, &c);
+    if sw < 16 || sh < 16 {
+        return None;
+    }
+    let tapar: Vec<Caja> = z.renglones.iter().flat_map(|r| r.palabras.iter()).map(|p| Caja::nueva(p.caja.x - c.x, p.caja.y - c.y, p.caja.w, p.caja.h)).collect();
+    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar, exacta: false, ..Default::default() };
+    let d = crate::diagrama::vectorizar(&sub, sw, sh, &[], &o, None);
+    // Un recuadro que es casi toda la zona, y nada mas que lo parta (una tabla
+    // de verdad tiene rayas por dentro).
+    let q = d.recuadros.iter().find(|q| (q.x1 - q.x0) >= 0.85 * z.caja.w && (q.y1 - q.y0) >= 0.85 * z.caja.h)?;
+    let dentro = d.segmentos.iter().filter(|s| s.largo() >= 0.5 * (q.x1 - q.x0).min(q.y1 - q.y0) && s.a.0 > q.x0 + 4.0 && s.a.0 < q.x1 - 4.0 && s.a.1 > q.y0 + 4.0 && s.a.1 < q.y1 - 4.0).count();
+    if dentro > 0 {
+        return None;
+    }
+    let mut q = q.clone();
+    // Su relleno: lo que hay dentro sin letras (el crema), si no es papel.
+    if q.relleno.is_none() {
+        let papel = crate::diagrama::mascara::fondo(&crate::diagrama::mascara::Img::de_rgba(&sub, sw as usize, sh as usize));
+        let mut v: Vec<[f32; 3]> = Vec::new();
+        for y in (q.y0 + q.grosor + 3.0) as u32..(q.y1 - q.grosor - 3.0).max(0.0) as u32 {
+            for x in ((q.x0 + q.grosor + 3.0) as u32..(q.x1 - q.grosor - 3.0).max(0.0) as u32).step_by(3) {
+                let i = ((y * sw + x) * 4) as usize;
+                v.push([sub[i] as f32, sub[i + 1] as f32, sub[i + 2] as f32]);
+            }
+        }
+        if !v.is_empty() {
+            let mut canal = |k: usize| {
+                let mut x: Vec<f32> = v.iter().map(|p| p[k]).collect();
+                x.sort_by(f32::total_cmp);
+                x[x.len() / 2]
+            };
+            let m = [canal(0), canal(1), canal(2)];
+            if crate::diagrama::mascara::dist_color(m, papel) >= 8.0 {
+                q.relleno = Some([m[0] as u8, m[1] as u8, m[2] as u8]);
+            }
+        }
+    }
+    let solo = crate::diagrama::Diagrama { ancho: d.ancho, alto: d.alto, recuadros: vec![q], ..Default::default() };
+    let dest = e.mapa.caja(&c);
+    let mut f = e.fabrica();
+    crate::diagrama::elementos(&solo, (dest.x, dest.y), e.mapa.escala, &mut f, &e.opciones.familia);
+    // Sus renglones en su sitio, sin las rayas de la «tabla» (ya estan).
+    let mut sin_rayas = (*e.zona).clone();
+    sin_rayas.rayas.clear();
+    let e2 = Entrada { zona: &sin_rayas, mapa: e.mapa, opciones: e.opciones, pagina: e.pagina, alto_letra: e.alto_letra, semilla: e.semilla, lector: e.lector, ajenas: e.ajenas, pistas: e.pistas };
+    // (Con su propio id: la fabrica de los renglones empieza por los mismos.)
+    let mut els: Vec<Value> = f
+        .salida
+        .into_iter()
+        .map(|mut v| {
+            let id = v["id"].as_str().unwrap_or_default().to_string();
+            v["id"] = json!(format!("{id}-caja"));
+            v
+        })
+        .collect();
+    els.extend(fiel(&e2));
+    Some(els)
+}
+
+/// La caja de una foto sin el texto que el seccionado le metio arriba o
+/// abajo (el parrafo de encima de la foto del boletin salia dos veces: como
+/// texto y dentro del recorte).
+fn sin_texto_alrededor(e: &Entrada, caja: Caja) -> Caja {
+    // Solo una zona sin texto propio (una foto): el recorte de una formula o un
+    // titulo leido como imagen es su texto.
+    if !e.zona.renglones.is_empty() {
+        return caja;
+    }
+    let mut c = caja;
+    let palabras: Vec<&Caja> = e.ajenas.iter().filter(|w| caja.contiene(w.cx(), w.cy())).collect();
+    let arriba = palabras.iter().filter(|w| w.cy() < caja.y + 0.4 * caja.h).map(|w| w.y1()).fold(f64::MIN, f64::max);
+    let abajo = palabras.iter().filter(|w| w.cy() > caja.y1() - 0.4 * caja.h).map(|w| w.y).fold(f64::MAX, f64::min);
+    let (mut y0, mut y1) = (c.y, c.y1());
+    if arriba > f64::MIN {
+        y0 = arriba + 2.0;
+    }
+    if abajo < f64::MAX {
+        y1 = abajo - 2.0;
+    }
+    if y1 - y0 >= 0.3 * caja.h {
+        c = Caja::de_esquinas(c.x, y0, c.x1(), y1);
+    }
+    c
 }

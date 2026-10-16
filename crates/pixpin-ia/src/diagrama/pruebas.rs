@@ -602,3 +602,51 @@ fn una_marca_de_angulo_palida_sale_como_sector() {
     l.raya(v, (v.0 + 330.0 * a.cos(), v.1 + 330.0 * a.sin()), 2.0, NEGRO);
     assert!(l.medir().marcas.is_empty());
 }
+
+/// **Las formas de un diagrama de flujo** (16-oct): el ovalo de «Inicio»
+/// con su relleno sale como ovalo (no en arcos sueltos), la caja con su
+/// relleno y el rombo de la decision como rombo.
+#[test]
+fn ovalo_caja_y_rombo_de_un_diagrama_de_flujo() {
+    let azul = [40, 90, 170];
+    let claro = [222, 236, 252];
+    let mut l = Lamina::nueva(600, 640);
+    // El ovalo: relleno y borde.
+    let ovalo: Vec<(f64, f64)> = (0..120).map(|k| {
+        let t = std::f64::consts::TAU * k as f64 / 120.0;
+        (300.0 + 110.0 * t.cos(), 80.0 + 42.0 * t.sin())
+    }).collect();
+    l.poligono(&ovalo, claro);
+    for k in 0..120 {
+        l.raya(ovalo[k], ovalo[(k + 1) % 120], 2.5, azul);
+    }
+    // La caja.
+    let caja = [(190.0, 200.0), (410.0, 200.0), (410.0, 290.0), (190.0, 290.0)];
+    l.poligono(&caja, claro);
+    for k in 0..4 {
+        l.raya(caja[k], caja[(k + 1) % 4], 2.5, azul);
+    }
+    // El rombo.
+    let rombo = [(300.0, 360.0), (460.0, 450.0), (300.0, 540.0), (140.0, 450.0)];
+    l.poligono(&rombo, claro);
+    for k in 0..4 {
+        l.raya(rombo[k], rombo[(k + 1) % 4], 2.5, azul);
+    }
+    // Las flechas que los unen.
+    l.raya((300.0, 122.0), (300.0, 200.0), 2.0, NEGRO);
+    l.raya((300.0, 290.0), (300.0, 360.0), 2.0, NEGRO);
+    let d = l.medir();
+    for r in &d.regiones {
+        let b = r.contorno.iter().fold((f64::MAX, f64::MAX, f64::MIN, f64::MIN), |a, p| (a.0.min(p.0), a.1.min(p.1), a.2.max(p.0), a.3.max(p.1)));
+        eprintln!("region {:?} area {:.0} caja {b:?}", r.color, r.area);
+    }
+    let ov = d.ovalos.iter().find(|o| !o.rombo).expect("el ovalo");
+    assert!(cerca(ov.c, (300.0, 80.0), 3.0) && (ov.rx - 110.0).abs() < 4.0 && (ov.ry - 42.0).abs() < 4.0, "{ov:?}");
+    assert!(ov.relleno.is_some());
+    let ro = d.ovalos.iter().find(|o| o.rombo).expect("el rombo");
+    assert!(cerca(ro.c, (300.0, 450.0), 3.0) && (ro.rx - 160.0).abs() < 6.0, "{ro:?}");
+    let q = d.recuadros.iter().find(|q| (q.x1 - q.x0 - 220.0).abs() < 6.0).expect("la caja");
+    assert!(q.relleno.is_some(), "con su relleno: {q:?}");
+    // Y sin arcos sueltos del ovalo.
+    assert!(d.arcos.is_empty(), "{:?}", d.arcos);
+}

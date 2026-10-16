@@ -203,8 +203,30 @@ pub fn leer_rico(t: &str) -> Option<String> {
                 None => ("", l),
             };
             let n = resto.matches('$').count();
-            if n == 0 && (resto.contains('\\') || resto.contains('^')) {
+            // (No si lleva palabras: «Grafica de f(x) = x^2» como formula entera
+            // perdia sus espacios.)
+            let sin_mandatos: String = {
+                let mut s = String::new();
+                let mut c = resto.chars().peekable();
+                while let Some(ch) = c.next() {
+                    if ch == '\\' {
+                        while c.peek().is_some_and(|x| x.is_ascii_alphabetic()) {
+                            c.next();
+                        }
+                        s.push(' ');
+                    } else {
+                        s.push(ch);
+                    }
+                }
+                s
+            };
+            let con_palabras = sin_mandatos.split(|c: char| !c.is_alphabetic()).any(|p| p.chars().count() >= 4);
+            if n == 0 && !con_palabras && (resto.contains('\\') || resto.contains('^')) {
                 format!("{pre}${resto}$")
+            } else if n == 0 && (resto.contains('\\') || resto.contains('^')) {
+                // Con palabras: solo los trozos de formula («x^2»).
+                let t: Vec<String> = resto.split(' ').map(|p| if p.contains('\\') || p.contains('^') { format!("${p}$") } else { p.to_string() }).collect();
+                format!("{pre}{}", t.join(" "))
             } else if n % 2 == 1 {
                 format!("{pre}{resto}$")
             } else {
@@ -225,6 +247,7 @@ mod pruebas_rico {
         assert_eq!(super::leer_rico("Por ∢ interior:\n$45^\\circ=\\frac{2a").unwrap(), "Por ∢ interior:\n$45^\\circ=\\frac{2a$");
         assert_eq!(super::leer_rico("```\nNos piden $X$\n\n\n\nY\n```").unwrap(), "Nos piden $X$\n\nY");
         assert!(super::leer_rico("NADA").is_none());
+        assert_eq!(super::leer_rico("Grafica de f(x) = x^2 - 2").unwrap(), "Grafica de f(x) = $x^2$ - 2");
     }
 }
 

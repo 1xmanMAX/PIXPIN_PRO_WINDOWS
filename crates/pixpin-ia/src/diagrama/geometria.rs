@@ -237,6 +237,7 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
     }
     let sin_texto: Vec<bool> = (0..w * h).map(|i| tinta[i] && !texto[i]).collect();
     let centros = mascara::colores(img, &sin_texto, papel, 9);
+    let rotulos = juntar_renglones(rotulos);
     let mut d = Diagrama { ancho: w, alto: h, rotulos, ..Default::default() };
     d.tinta = sin_texto.iter().filter(|&&b| b).count();
     let (mut n_papel, mut s_papel) = (0usize, 0f64);
@@ -552,7 +553,7 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
         let grosor = (peso / perimetro).clamp(1.0, 6.0);
         let medio = grosor / 2.0;
         let color = a_u8(media_mas_tinta(&m, &comp));
-        d.recuadros.push(Recuadro { x0: x0 as f64 + medio, y0: y0 as f64 + medio, x1: x1 as f64 + 1.0 - medio, y1: y1 as f64 + 1.0 - medio, grosor, color });
+        d.recuadros.push(Recuadro { x0: x0 as f64 + medio, y0: y0 as f64 + medio, x1: x1 as f64 + 1.0 - medio, y1: y1 as f64 + 1.0 - medio, grosor, color, relleno: None });
         for &i in &comp {
             m.linea[i] = false;
         }
@@ -621,7 +622,9 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
     // 6. Flechas, topologia, recuadros.
     let colores_peq: Vec<[u8; 3]> = pequenas.iter().map(|c| a_u8(media_mas_tinta(&m, c))).collect();
     let usadas = flechas(&mut d, &pequenas, &colores_peq, w, hm);
+    arquitos_a_alas(&mut d, hm);
     flechas_abiertas(&mut d, hm);
+    sin_puntos_en_las_puntas(&mut d);
     puntas_de_discontinuas(&mut d, hm);
     juntar_colineales(&mut d);
     topologia(&mut d, hm);
@@ -665,6 +668,7 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
         }
     }
     d.regiones = regiones(&m, &region, hm);
+    formas_rellenas(&mut d, hm);
 
     // 8. Lo que explican las figuras.
     d.explica = explicado(&m, &d, &region, &glifos_px);
@@ -1301,7 +1305,7 @@ fn flechas_abiertas(d: &mut Diagrama, hm: f64) {
     let mut quitar = vec![false; n];
     for i in 0..n {
         let s = d.segmentos[i].clone();
-        if s.largo() < 3.0 * corto {
+        if s.largo() < 2.0 * corto {
             continue;
         }
         for fin in [true, false] {
@@ -1313,11 +1317,12 @@ fn flechas_abiertas(d: &mut Diagrama, hm: f64) {
                     continue;
                 }
                 let t = &d.segmentos[j];
-                if t.largo() > corto || t.largo() < 3.0 {
+                // (Un ala puede ser larga si la raya lo es: las del diagrama de flujo.)
+                if t.largo() > corto.max(0.45 * s.largo()).min(2.5 * hm.max(10.0)) || t.largo() < 3.0 {
                     continue;
                 }
                 let (cerca, lejos) = if dist(t.a, e) < dist(t.b, e) { (t.a, t.b) } else { (t.b, t.a) };
-                if dist(cerca, e) > 4.0 {
+                if dist(cerca, e) > 4f64.max(0.8 * hm) {
                     continue;
                 }
                 // El ala vuelve hacia atras, abierta 15-60 grados.
@@ -1331,6 +1336,7 @@ fn flechas_abiertas(d: &mut Diagrama, hm: f64) {
                 for j in alas {
                     quitar[j] = true;
                 }
+                d.puntas_abiertas.push(e);
                 if fin {
                     d.segmentos[i].flecha_b = true;
                 } else {
@@ -1494,7 +1500,7 @@ fn recuadros(d: &mut Diagrama) {
             {
                 let s = &d.segmentos;
                 let grosor = (s[i].grosor + s[j].grosor + s[l].grosor + s[r].grosor) / 4.0;
-                nuevos.push(Recuadro { x0, y0: ay, x1, y1: by, grosor, color: s[i].color });
+                nuevos.push(Recuadro { x0, y0: ay, x1, y1: by, grosor, color: s[i].color, relleno: None });
                 for k in [i, j, l, r] {
                     usado[k] = true;
                 }
@@ -1788,7 +1794,10 @@ pub(super) fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64
             .min_by(|&a, &b| dist((d.rotulos[a].caja.cx(), d.rotulos[a].caja.cy()), p).total_cmp(&dist((d.rotulos[b].caja.cx(), d.rotulos[b].caja.cy()), p)));
         if let Some(k) = r {
             let r = &mut d.rotulos[k];
-            if r.texto.chars().count() <= 3 && t.chars().count() <= 8 && r.texto != t {
+            // (O uno largo que la nube lee igual pero bien: «iN mod 2 O?» -> «¿N mod 2 = 0?».)
+            let corto_y_corto = r.texto.chars().count() <= 3 && t.chars().count() <= 8;
+            let mismo_largo = !corto_y_corto && se_parecen(&r.texto, t);
+            if (corto_y_corto || mismo_largo) && r.texto != t {
                 // Lo que crece el texto («2» -> «2a», «e» -> «θ=45°»): la caja
                 // tambien (del alto de las letras), y lo que tapa ya es de el
                 // (glifos y rotulos sueltos mal leidos, que se pintaban encima).
@@ -2760,4 +2769,212 @@ fn tono_de(c: [f32; 3]) -> Option<f32> {
         (r - g) / (mx - mn) + 4.0
     };
     Some(h * 60.0)
+}
+
+/// **Las formas rellenas** (16-oct, el diagrama de flujo): un relleno cuyo
+/// borde es un ovalo es un ovalo (con su trazo: los arcos que lo partian en
+/// trozos «Inicio» y «Fin» se quitan), y el relleno de dentro de un
+/// recuadro es el relleno del recuadro (las cajas salian blancas).
+fn formas_rellenas(d: &mut Diagrama, hm: f64) {
+    let mut quitar_reg: Vec<usize> = Vec::new();
+    for (ri, r) in d.regiones.iter().enumerate() {
+        if r.contorno.len() < 3 {
+            continue;
+        }
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for &(x, y) in &r.contorno {
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x);
+            y1 = y1.max(y);
+        }
+        // El relleno de un recuadro.
+        if let Some(q) = d.recuadros.iter_mut().find(|q| {
+            let t = q.grosor + 5.0;
+            x0 >= q.x0 - t && x1 <= q.x1 + t && y0 >= q.y0 - t && y1 <= q.y1 + t && (x1 - x0) * (y1 - y0) >= 0.6 * (q.x1 - q.x0) * (q.y1 - q.y0)
+        }) {
+            if q.relleno.is_none() {
+                q.relleno = Some(r.color);
+            }
+            quitar_reg.push(ri);
+            continue;
+        }
+        // Un ovalo.
+        let (c, a, b) = (((x0 + x1) / 2.0, (y0 + y1) / 2.0), (x1 - x0) / 2.0, (y1 - y0) / 2.0);
+        if a < 0.6 * hm || b < 0.6 * hm {
+            continue;
+        }
+        let mut e: Vec<f64> = r.contorno.iter().map(|&(x, y)| ((((x - c.0) / a).powi(2) + ((y - c.1) / b).powi(2)).sqrt() - 1.0).abs()).collect();
+        e.sort_by(f64::total_cmp);
+        let (med, p90) = (e[e.len() / 2], e[e.len() * 9 / 10]);
+        // Un rombo (la decision): |x|/a + |y|/b = 1.
+        let mut er: Vec<f64> = r.contorno.iter().map(|&(x, y)| ((x - c.0).abs() / a + (y - c.1).abs() / b - 1.0).abs()).collect();
+        er.sort_by(f64::total_cmp);
+        if er[er.len() / 2] <= 0.03 && er[er.len() * 9 / 10] <= 0.08 && a >= hm && b >= 0.7 * hm {
+            let en_borde = |p: P, g: f64| {
+                let (ax, by) = (a + g, b + g);
+                (((p.0 - c.0).abs() / ax + (p.1 - c.1).abs() / by) - 1.0).abs() * a.min(b) <= g + 4.0
+            };
+            let mut grosores: Vec<f64> = Vec::new();
+            let mut color: Option<[u8; 3]> = None;
+            d.segmentos.retain(|s| {
+                let m = ((s.a.0 + s.b.0) / 2.0, (s.a.1 + s.b.1) / 2.0);
+                let suyo = s.largo() <= 1.2 * a.hypot(b) && en_borde(s.a, s.grosor) && en_borde(s.b, s.grosor) && en_borde(m, s.grosor);
+                if suyo {
+                    grosores.push(s.grosor);
+                    color.get_or_insert(s.color);
+                }
+                !suyo
+            });
+            if grosores.len() >= 2 {
+                grosores.sort_by(f64::total_cmp);
+                let g = grosores[grosores.len() / 2];
+                d.ovalos.push(super::Ovalo { c, rx: a + g / 2.0, ry: b + g / 2.0, grosor: g, color: color.unwrap_or([30, 30, 30]), relleno: Some(r.color), rombo: true });
+                quitar_reg.push(ri);
+                continue;
+            }
+        }
+        if med > 0.03 || p90 > 0.08 || r.contorno.len() < 12 {
+            continue;
+        }
+        // Su trazo: los arcos y rayas que van por su borde.
+        let en_borde = |p: P, g: f64| {
+            let (ax, by) = (a + g / 2.0, b + g / 2.0);
+            let k = (((p.0 - c.0) / ax).powi(2) + ((p.1 - c.1) / by).powi(2)).sqrt();
+            (k - 1.0).abs() * a.min(b) <= g / 2.0 + 3.5
+        };
+        let mut grosores: Vec<f64> = Vec::new();
+        let mut color: Option<[u8; 3]> = None;
+        let mut largo_max = 0.0;
+        d.arcos.retain(|x| {
+            let pts: Vec<P> = (0..=8).map(|k| {
+                let t = x.inicio + x.barrido * k as f64 / 8.0;
+                (x.c.0 + x.r * t.cos(), x.c.1 + x.r * t.sin())
+            }).collect();
+            let suyo = pts.iter().all(|&p| en_borde(p, x.grosor));
+            if suyo {
+                grosores.push(x.grosor);
+                if x.r * x.barrido > largo_max {
+                    largo_max = x.r * x.barrido;
+                    color = Some(x.color);
+                }
+            }
+            !suyo
+        });
+        d.segmentos.retain(|s| {
+            let suyo = s.largo() < a.max(b) && en_borde(s.a, s.grosor) && en_borde(s.b, s.grosor) && en_borde(((s.a.0 + s.b.0) / 2.0, (s.a.1 + s.b.1) / 2.0), s.grosor);
+            if suyo {
+                grosores.push(s.grosor);
+            }
+            !suyo
+        });
+        grosores.sort_by(f64::total_cmp);
+        // Sin trazo alrededor no es un ovalo dibujado (una marca de angulo rellena).
+        if grosores.is_empty() {
+            continue;
+        }
+        let grosor = grosores[grosores.len() / 2];
+        d.ovalos.push(super::Ovalo { c, rx: a + grosor / 2.0, ry: b + grosor / 2.0, grosor, color: color.unwrap_or([30, 30, 30]), relleno: Some(r.color), rombo: false });
+        quitar_reg.push(ri);
+    }
+    let mut k = 0;
+    d.regiones.retain(|_| {
+        k += 1;
+        !quitar_reg.contains(&(k - 1))
+    });
+}
+
+/// **Las alas de una punta abierta** (16-oct, el diagrama de flujo): la «V»
+/// de una flecha, al esqueletizarse con su raya, sale a veces como un
+/// arquito y no como dos rayitas. Un arco pequeno que nace en la punta de
+/// una raya larga y por el otro lado no toca nada es un ala: su cuerda.
+fn arquitos_a_alas(d: &mut Diagrama, hm: f64) {
+    let largas: Vec<(P, P)> = d.segmentos.iter().filter(|s| s.largo() >= 3.0 * hm).map(|s| (s.a, s.b)).collect();
+    let mut alas: Vec<Segmento> = Vec::new();
+    d.arcos.retain(|a| {
+        if a.entera() || a.r > 2.0 * hm || a.barrido > 2.2 {
+            return true;
+        }
+        let (p, q) = a.extremos();
+        let alcance = 4f64.max(0.8 * hm);
+        let en_punta = |x: P| largas.iter().any(|&(s0, s1)| dist(x, s0) <= alcance || dist(x, s1) <= alcance);
+        let cuerda = dist(p, q);
+        if cuerda > 2.5 * hm || !(en_punta(p) ^ en_punta(q)) {
+            return true;
+        }
+        alas.push(Segmento { a: p, b: q, grosor: a.grosor, color: a.color, estilo: Estilo::Solido, flecha_a: false, flecha_b: false });
+        false
+    });
+    d.segmentos.extend(alas);
+}
+
+/// Los «puntos» en la punta de una flecha son el nudo de la V, no puntos.
+fn sin_puntos_en_las_puntas(d: &mut Diagrama) {
+    let puntas: Vec<P> = d.segmentos.iter().flat_map(|s| {
+        let mut v = Vec::new();
+        if s.flecha_a {
+            v.push(s.a);
+        }
+        if s.flecha_b {
+            v.push(s.b);
+        }
+        v
+    }).collect();
+    d.puntos.retain(|p| !puntas.iter().any(|&q| dist(p.c, q) <= p.r + 6.0));
+}
+
+/// **Las palabras de un renglon, un rotulo** (16-oct, el rombo «¿N mod 2 =
+/// 0?»: salia en cinco trozos de tamanos distintos, con huecos). Las
+/// palabras seguidas a la misma altura y del mismo color van juntas.
+fn juntar_renglones(mut v: Vec<Rotulo>) -> Vec<Rotulo> {
+    v.sort_by(|a, b| a.caja.cy().total_cmp(&b.caja.cy()).then(a.caja.x.total_cmp(&b.caja.x)));
+    let mut salida: Vec<Rotulo> = Vec::new();
+    let mut usado = vec![false; v.len()];
+    for i in 0..v.len() {
+        if usado[i] {
+            continue;
+        }
+        usado[i] = true;
+        let mut r = v[i].clone();
+        loop {
+            let h = r.caja.h;
+            let siguiente = (0..v.len()).filter(|&j| !usado[j]).filter(|&j| {
+                let o = &v[j];
+                let hueco = o.caja.x - r.caja.x1();
+                let mismo_color = match (o.color, r.color) {
+                    (Some(a), Some(b)) => a.iter().zip(b.iter()).all(|(x, y)| (*x as i32 - *y as i32).abs() < 60),
+                    _ => true,
+                };
+                (o.caja.cy() - r.caja.cy()).abs() <= 0.4 * h.max(o.caja.h) && hueco >= -0.3 * h && hueco <= 0.9 * h.max(o.caja.h) && mismo_color
+            }).min_by(|&a, &b| v[a].caja.x.total_cmp(&v[b].caja.x));
+            let Some(j) = siguiente else { break };
+            usado[j] = true;
+            let o = &v[j];
+            r.texto = format!("{} {}", r.texto, o.texto);
+            r.caja = Caja::de_esquinas(r.caja.x.min(o.caja.x), r.caja.y.min(o.caja.y), r.caja.x1().max(o.caja.x1()), r.caja.y1().max(o.caja.y1()));
+            r.negrita |= o.negrita;
+        }
+        salida.push(r);
+    }
+    salida
+}
+
+/// Si dos textos dicen casi lo mismo (lo que lee el OCR y lo que lee la
+/// nube): pares de letras en comun.
+fn se_parecen(a: &str, b: &str) -> bool {
+    let limpio = |s: &str| -> Vec<char> { s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).map(|c| if c == 'o' { '0' } else { c }).collect() };
+    let (x, y) = (limpio(a), limpio(b));
+    if x.len() < 2 || y.len() < 2 || x.len().max(y.len()) > 2 * x.len().min(y.len()) {
+        return false;
+    }
+    let pares = |v: &[char]| -> Vec<(char, char)> { v.windows(2).map(|w| (w[0], w[1])).collect() };
+    let (px, mut py) = (pares(&x), pares(&y));
+    let mut comun = 0;
+    for p in &px {
+        if let Some(k) = py.iter().position(|q| q == p) {
+            py.remove(k);
+            comun += 1;
+        }
+    }
+    2.0 * comun as f64 / (px.len() + pares(&y).len()) as f64 >= 0.5
 }

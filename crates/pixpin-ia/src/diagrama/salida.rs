@@ -69,6 +69,36 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
         e.rugosidad = 0.0;
         e
     };
+    // Las cajas y los ovalos (con su relleno, debajo de lo demas).
+    for r in &d.recuadros {
+        let (x0, y0) = a((r.x0, r.y0));
+        let (x1, y1) = a((r.x1, r.y1));
+        let mut e = base(r.color, r.grosor);
+        e.figura = Figura::Rectangulo;
+        e.x = x0 as f32;
+        e.y = y0 as f32;
+        e.ancho = (x1 - x0) as f32;
+        e.alto = (y1 - y0) as f32;
+        if let Some(c) = r.relleno {
+            e.relleno = Some(color(c));
+            e.estilo_relleno = pixpin_motor2d::relleno::EstiloRelleno::Solido;
+        }
+        piezas.push(e);
+    }
+    for o in &d.ovalos {
+        let (cx, cy) = a(o.c);
+        let mut e = base(o.color, o.grosor);
+        e.figura = if o.rombo { Figura::Rombo } else { Figura::Elipse };
+        e.x = (cx - o.rx * escala) as f32;
+        e.y = (cy - o.ry * escala) as f32;
+        e.ancho = (2.0 * o.rx * escala) as f32;
+        e.alto = (2.0 * o.ry * escala) as f32;
+        if let Some(c) = o.relleno {
+            e.relleno = Some(color(c));
+            e.estilo_relleno = pixpin_motor2d::relleno::EstiloRelleno::Solido;
+        }
+        piezas.push(e);
+    }
     // Las marcas de angulo: el sector del motor comun (`geometria_exacta`),
     // relleno de su color y con su arquito.
     for mk in &d.marcas {
@@ -90,17 +120,8 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
         e.estilo = estilo(arco.estilo);
         piezas.push(e);
     }
-    for r in &d.recuadros {
-        let (x0, y0) = a((r.x0, r.y0));
-        let (x1, y1) = a((r.x1, r.y1));
-        let mut e = base(r.color, r.grosor);
-        e.figura = Figura::Rectangulo;
-        e.x = x0 as f32;
-        e.y = y0 as f32;
-        e.ancho = (x1 - x0) as f32;
-        e.alto = (y1 - y0) as f32;
-        piezas.push(e);
-    }
+    // La punta como en el papel: abierta (dos rayas) o rellena.
+    let punta = |p: (f64, f64)| if d.puntas_abiertas.iter().any(|&q| super::ajuste::dist(p, q) <= 3.0) { TipoPunta::Flecha } else { TipoPunta::Triangulo };
     for s in &d.segmentos {
         let puntos = vec![ap(s.a), ap(s.b)];
         let mut e = base(s.color, s.grosor);
@@ -112,8 +133,8 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
         e.figura = if s.flecha_a || s.flecha_b {
             Figura::Flecha {
                 puntos,
-                punta_inicio: if s.flecha_a { TipoPunta::Triangulo } else { TipoPunta::Ninguna },
-                punta_fin: if s.flecha_b { TipoPunta::Triangulo } else { TipoPunta::Ninguna },
+                punta_inicio: if s.flecha_a { punta(s.a) } else { TipoPunta::Ninguna },
+                punta_fin: if s.flecha_b { punta(s.b) } else { TipoPunta::Ninguna },
                 codos: false,
             }
         } else {
@@ -138,7 +159,8 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
         let c = crate::hoja::Caja::nueva(origen.0 + r.caja.x * escala, origen.1 + r.caja.y * escala, r.caja.w * escala, r.caja.h * escala);
         // Una letra suelta mide su alto de mayuscula (~0,7 de la letra); una
         // palabra del OCR, el renglon.
-        let tam = if r.letra_suelta { c.h / 0.72 } else { c.h * 1.05 };
+        // (Varias letras sueltas leidas juntas miden como un renglon.)
+        let tam = if r.letra_suelta && r.texto.chars().count() <= 2 { c.h / 0.72 } else { c.h * 1.05 };
         let tam = ((tam * 2.0).round() / 2.0).max(6.0);
         piezas.push(crate::hoja::montaje::un_texto(&r.texto, c.x, c.cy() - tam * k / 2.0, tam, familia, r.negrita, Alineacion::Izquierda, r.color.map(limpio)));
     }

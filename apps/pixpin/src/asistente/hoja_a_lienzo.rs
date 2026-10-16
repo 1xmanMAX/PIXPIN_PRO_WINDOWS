@@ -372,7 +372,12 @@ pub fn pasar(
     progreso: &mut dyn FnMut(usize, usize),
 ) -> Result<Informe, String> {
     let t0 = Instant::now();
-    let s = hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    let mut s = hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    // Una lamina: cada dibujo, una zona (con sus flechas y su texto de dentro).
+    if o.rico {
+        hoja::seccion::unir_dibujos(&mut s, &p.rgba);
+    }
+    let s = s;
     let ms_seccionar = t0.elapsed().as_millis();
     if s.zonas.is_empty() {
         return Err("la hoja esta en blanco: no hay nada que pasar al lienzo".into());
@@ -1072,7 +1077,10 @@ pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::
     let de_dibujo = |z: &hoja::Zona| s.zonas.iter().any(|o| o.id != z.id && matches!(o.tipo, Tipo::Dibujo | Tipo::Grafica | Tipo::Diagrama) && z.caja.dentro_de(&o.caja) >= 0.5);
     // (Una letra suelta no es un bloque: es el rotulo de una figura, la «C».)
     let letras = |z: &hoja::Zona| z.renglones.iter().map(|r| r.texto.chars().filter(|c| c.is_alphanumeric()).count()).sum::<usize>();
-    let mut ids: Vec<usize> = s.zonas.iter().filter(|z| matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Formula) && !de_dibujo(z) && letras(z) >= 3).map(|z| z.id).collect();
+    // (Ni unos rotulos sueltos que el OCR junto en un renglon con huecos grandes:
+    // «Ene   Feb   Mar» bajo las barras de una grafica van cada uno en su sitio.)
+    let esparcida = |z: &hoja::Zona| z.renglones.iter().any(|r| r.palabras.windows(2).any(|w| w[1].caja.x - w[0].caja.x1() > 2.5 * a.max(r.caja.h)));
+    let mut ids: Vec<usize> = s.zonas.iter().filter(|z| matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Formula) && !de_dibujo(z) && letras(z) >= 3 && !esparcida(z)).map(|z| z.id).collect();
     ids.sort_by(|&x, &y| s.zonas[x].caja.y.total_cmp(&s.zonas[y].caja.y));
     let mut padre: Vec<usize> = (0..s.zonas.len()).collect();
     fn raiz(p: &mut [usize], mut i: usize) -> usize {
