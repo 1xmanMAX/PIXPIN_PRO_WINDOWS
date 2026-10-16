@@ -246,7 +246,38 @@ pub fn reconstruir(palabras: &[Palabra]) -> TablaLeida {
         }
         tabla.filas.push(fila);
     }
+    tabla.sin_prosa_alrededor();
     tabla
+}
+
+impl TablaLeida {
+    /// **Quita el texto de la pagina que no es tabla** (banco de documentos,
+    /// 15-oct: de un PDF con un titulo, una linea de docente y una
+    /// observacion al pie, el Excel salia con esas filas pegadas en la
+    /// columna A). Arriba y abajo, mientras la fila tenga una sola celda con
+    /// algo y sea larga (una frase: un titulo corto combinado se queda), en tablas de 3
+    /// columnas o mas. Siempre quedan 2 filas.
+    pub fn sin_prosa_alrededor(&mut self) {
+        if self.columnas() < 3 {
+            return;
+        }
+        let es_prosa = |t: &TablaLeida, f: usize| {
+            let llenas: Vec<&String> = t.filas[f].iter().filter(|c| !c.trim().is_empty()).collect();
+            llenas.len() == 1 && llenas[0].chars().count() >= 25
+        };
+        while self.filas.len() > 2 && es_prosa(self, 0) {
+            self.filas.remove(0);
+            self.combinadas.retain(|c| c.fila != 0);
+            for c in &mut self.combinadas {
+                c.fila -= 1;
+            }
+        }
+        while self.filas.len() > 2 && es_prosa(self, self.filas.len() - 1) {
+            let f = self.filas.len() - 1;
+            self.filas.pop();
+            self.combinadas.retain(|c| c.fila != f);
+        }
+    }
 }
 
 /// Se pisan si comparten mas de un cuarto del menor de los dos.
@@ -325,6 +356,23 @@ mod pruebas {
         pal[0].y += 2.0;
         let t = reconstruir(&pal);
         assert_eq!(t.filas, vec![vec!["A", "", "C"], vec!["a1", "b1", "c1"], vec!["", "b2", ""]]);
+    }
+
+    #[test]
+    fn el_texto_de_la_pagina_alrededor_no_entra_en_la_tabla() {
+        let pasos = [80.0, 80.0, 80.0];
+        let mut pal = escribir(&[(0, 1, "x"), (1, 1, "y"), (2, 1, "z"), (0, 2, "1"), (1, 2, "2"), (2, 2, "3")], &pasos);
+        // Un parrafo encima y otro debajo, en la columna A.
+        pal.extend(escribir(&[(0, 0, "Registro de notas del curso de Resistencia")], &pasos));
+        pal.extend(escribir(&[(0, 3, "Observacion: el promedio es la media de las notas")], &pasos));
+        let t = reconstruir(&pal);
+        assert_eq!(t.filas.len(), 2, "{t:?}");
+        assert_eq!(t.filas[0][0], "x");
+        // Negativo: una tabla de dos columnas no se toca (podria ser
+        // «concepto | importe» con conceptos largos).
+        let mut dos = escribir(&[(0, 1, "a"), (1, 1, "b")], &pasos);
+        dos.extend(escribir(&[(0, 0, "Una frase larga que va encima de la tabla")], &pasos));
+        assert_eq!(reconstruir(&dos).filas.len(), 2);
     }
 
     #[test]

@@ -646,7 +646,11 @@ fn vueltas(
             .cloned()
             .collect();
         peticion.herramientas = con_topes(&ofrecidas, est.tope);
-        peticion.max_tokens = tope_de_tokens(&peticion);
+        // La nube no tiene la ventana de 8192 del local: con su catalogo
+        // entero (~13k tokens) la cuenta del local la dejaba SIEMPRE en
+        // `MIN_TOKENS` (512) y un resumen o una llamada larga salian
+        // cortados (banco de documentos, 15-oct).
+        peticion.max_tokens = if motor.catalogo_completo() { MAX_TOKENS_NUBE } else { tope_de_tokens(&peticion) };
         let mut sep = Separador::nuevo();
         let respuesta = motor.completar(&peticion, &mut |t| repartir(t, &mut sep, crono, None, al_evento));
         for t in sep.acabar() {
@@ -947,6 +951,10 @@ pub const HECHO: &str = "Hecho.";
 /// letras por token); con el doble de margen es la gramatica, y no el tope,
 /// quien corta.
 pub const MAX_TOKENS_CON_HERRAMIENTAS: u32 = 3072;
+/// Tope de cada vuelta con la nube (Claude, DeepSeek): un resumen largo o
+/// una llamada de 16 figuras con textos ricos caben de sobra; se paga lo que
+/// sale, no el tope.
+pub const MAX_TOKENS_NUBE: u32 = 8192;
 /// Lo minimo que se le deja contestar aunque el contexto vaya lleno.
 pub const MIN_TOKENS: u32 = 512;
 /// Cuantas figuras puede llevar una llamada (las listas de objetos). Las
@@ -1167,6 +1175,35 @@ mod pruebas {
         })
         .unwrap();
         (f, eventos, h, motor)
+    }
+
+    /// Un motor «de la nube»: el guionado con el catalogo entero.
+    struct Nube(MotorGuionado);
+
+    impl Motor for Nube {
+        fn completar(&self, p: &Peticion, t: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+            self.0.completar(p, t)
+        }
+        fn catalogo_completo(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn la_nube_no_hereda_el_tope_de_la_ventana_del_local() {
+        // Con el catalogo entero, la cuenta del local daria MIN_TOKENS.
+        let nube = Nube(MotorGuionado::nuevo(vec![Respuesta::de_texto("Resumen largo")]));
+        let mut h = historial();
+        let mut ej = Apunta::default();
+        turno(&nube, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        assert_eq!(nube.0.recibido.lock().unwrap()[0].max_tokens, MAX_TOKENS_NUBE);
+        // El local sigue con su cuenta (negativo: no cambia).
+        let local = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]);
+        let mut h = historial();
+        turno(&local, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        let p = &local.recibido.lock().unwrap()[0];
+        assert_eq!(p.max_tokens, tope_de_tokens(p));
+        assert!(p.max_tokens < MAX_TOKENS_NUBE);
     }
 
     #[test]

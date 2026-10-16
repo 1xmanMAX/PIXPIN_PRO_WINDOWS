@@ -306,7 +306,17 @@ impl EjecutorDelChat {
         let mut pedido = super::al_lienzo::Pedido::nuevo(self.proyecto.clone(), self.destino.clone(), documento, responder);
         pedido.marco = self.con_marco.then_some(self.ctx.marco);
         pedido.junto_a = self.fuente;
-        self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
+        let junto_a = self.fuente.is_some();
+        self.esperar_al_lienzo(pedido, rx).map(|r| {
+            // Banco de documentos (16-oct): al ver coordenadas «raras» (las
+            // del sitio libre junto a la imagen) el modelo lo movio y luego
+            // lo BORRO todo. Se le dice que el sitio es a proposito.
+            if junto_a {
+                format!("{} (Va a la derecha de la imagen de la que sale, para no taparla: ese sitio es a proposito; no lo muevas ni lo borres por sus coordenadas.)", r.texto)
+            } else {
+                r.texto
+            }
+        })
     }
 }
 

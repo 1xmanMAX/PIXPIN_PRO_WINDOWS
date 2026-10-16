@@ -379,47 +379,54 @@ fn banco_de_anotar() {
                 "BANCO {nombre_motor} {}: {} | leer {} ms, primera a {:?} ms del primer trozo ({:?} ms del pedido), poner max {} ms (anclar max {} ms), total {} ms, ocr {}",
                 caso.nombre, h.resumen, h.ms_leer, h.ms_a_la_primera, primera_ms, h.ms_poner_max, h.ms_anclar_max, h.ms_total, h.con_ocr
             );
-            let formato = formato_de(&ruta).unwrap();
-            for (pagina, capa) in &h.capas {
-                let mut els = del_turno(capa, &h.grupo, formato == Formato::Foto);
-                let fondo = match formato {
-                    Formato::Pdf => fondo_pdf(&ruta, *pagina),
-                    Formato::Office => {
-                        // La hoja tal como la maqueta el lector: cada palabra
-                        // en su caja (lo que el anotador uso para anclar),
-                        // en negro sobre papel blanco, y lo anotado encima.
-                        let l = leer(&raiz, &ruta, &json!({"pagina": pagina + 1}), &AtomicBool::new(false)).unwrap();
-                        let p = &l.paginas[0];
-                        let mut todo: Vec<Elemento> = p
-                            .renglones
-                            .iter()
-                            .flat_map(|r| r.palabras.iter())
-                            .map(|w| {
-                                let tam = (w.caja[3] - w.caja[1]) * 0.78;
-                                let mut e = texto(&w.texto, w.caja[0], w.caja[1], tam);
-                                e.figura = Figura::Texto { texto: w.texto.clone(), tam, familia: "Nunito".into() };
-                                e
-                            })
-                            .collect();
-                        todo.extend(els.drain(..));
-                        els = todo;
-                        Fondo { img: pixpin_codec::ImagenRgba { ancho: 1, alto: 1, pixeles: vec![255; 4] }, caja: p.caja }
-                    }
-                    Formato::Foto => fondo_foto(&ruta),
-                    Formato::Plano => fondo_plano(&raiz, &ruta),
-                    Formato::Libro => {
-                        let c = caja_de(&els).unwrap_or([0.0, 0.0, 800.0, 600.0]);
-                        fondo_libro(&ruta, c[2].max(400.0), c[3].max(300.0))
-                    }
-                };
-                let png = if h.capas.len() > 1 {
-                    salida.join(format!("{}-p{}.png", caso.nombre, pagina + 1))
-                } else {
-                    salida.join(format!("{}.png", caso.nombre))
-                };
-                pintar(&fondo, &els, &png);
+            for png in pintar_lo_anotado(&raiz, &ruta, &h.grupo, &h.capas, &salida, caso.nombre) {
                 println!("PNG {}", png.display());
             }
         }
     }
+}
+
+/// **Lo anotado en un turno, a PNG**: cada pagina tocada con lo del turno
+/// (`grupo`) encima, pintada con la tinta de los visores, en
+/// `salida\<nombre>[-p<n>].png`. Lo usan este banco y el de documentos.
+pub(crate) fn pintar_lo_anotado(raiz: &Path, ruta: &Path, grupo: &str, capas: &[(usize, PathBuf)], salida: &Path, nombre: &str) -> Vec<PathBuf> {
+    let Some(formato) = formato_de(ruta) else { return Vec::new() };
+    let mut hechos = Vec::new();
+    for (pagina, capa) in capas {
+        let mut els = del_turno(capa, grupo, formato == Formato::Foto);
+        let fondo = match formato {
+            Formato::Pdf => fondo_pdf(ruta, *pagina),
+            Formato::Office => {
+                // La hoja tal como la maqueta el lector: cada palabra
+                // en su caja (lo que el anotador uso para anclar),
+                // en negro sobre papel blanco, y lo anotado encima.
+                let l = leer(raiz, ruta, &json!({"pagina": pagina + 1}), &AtomicBool::new(false)).unwrap();
+                let p = &l.paginas[0];
+                let mut todo: Vec<Elemento> = p
+                    .renglones
+                    .iter()
+                    .flat_map(|r| r.palabras.iter())
+                    .map(|w| {
+                        let tam = (w.caja[3] - w.caja[1]) * 0.78;
+                        let mut e = texto(&w.texto, w.caja[0], w.caja[1], tam);
+                        e.figura = Figura::Texto { texto: w.texto.clone(), tam, familia: "Nunito".into() };
+                        e
+                    })
+                    .collect();
+                todo.extend(els.drain(..));
+                els = todo;
+                Fondo { img: pixpin_codec::ImagenRgba { ancho: 1, alto: 1, pixeles: vec![255; 4] }, caja: p.caja }
+            }
+            Formato::Foto => fondo_foto(ruta),
+            Formato::Plano => fondo_plano(raiz, ruta),
+            Formato::Libro => {
+                let c = caja_de(&els).unwrap_or([0.0, 0.0, 800.0, 600.0]);
+                fondo_libro(ruta, c[2].max(400.0), c[3].max(300.0))
+            }
+        };
+        let png = if capas.len() > 1 { salida.join(format!("{nombre}-p{}.png", pagina + 1)) } else { salida.join(format!("{nombre}.png")) };
+        pintar(&fondo, &els, &png);
+        hechos.push(png);
+    }
+    hechos
 }

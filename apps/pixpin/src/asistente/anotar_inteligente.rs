@@ -44,7 +44,7 @@ use serde_json::{Value, json};
 use super::documentos_acciones::{Contexto, Sirve, elegir};
 
 #[cfg(test)]
-mod banco;
+pub(crate) mod banco;
 #[cfg(test)]
 mod pruebas;
 
@@ -617,11 +617,27 @@ pub fn anotar_en(
         con_ocr: leido.con_ocr,
         ..Default::default()
     };
+    let texto = anotacion::mensaje(&pedido_de(args), &leido.paginas, anotacion::MAX_LETRAS);
+    // Una foto, con la foto (banco de documentos, 15-oct): el OCR leyo
+    // «mdAC = 350» por «m∢BAC = 35°» y el anotador corrigio un error que no
+    // estaba. Con la imagen delante entiende la hoja; ancla igual por el
+    // texto leido.
+    let foto = (leido.formato == Formato::Foto && motor.ve_imagenes())
+        .then(|| super::foto::preparar_fichero(ruta).ok())
+        .flatten();
+    let usuario = match foto {
+        Some((bytes, mime)) => Mensaje::usuario_con_imagen(
+            format!(
+                "{texto}\n\n(La imagen adjunta es la hoja original. El texto de arriba sale del OCR y puede traer letras mal leidas \
+                 (simbolos, grados, subindices): entiende la hoja por la imagen, pero cita el texto TAL COMO lo leyo el OCR para anclar.)"
+            ),
+            bytes,
+            mime,
+        ),
+        None => Mensaje::usuario(texto),
+    };
     let peticion = Peticion {
-        mensajes: vec![
-            Mensaje::sistema(anotacion::instrucciones(leido.formato == Formato::Libro)),
-            Mensaje::usuario(anotacion::mensaje(&pedido_de(args), &leido.paginas, anotacion::MAX_LETRAS)),
-        ],
+        mensajes: vec![Mensaje::sistema(anotacion::instrucciones(leido.formato == Formato::Libro)), usuario],
         herramientas: Vec::new(),
         max_tokens: 3000,
         temperatura: 0.3,
@@ -732,6 +748,11 @@ pub fn motor_de_la_nube() -> Option<Arc<dyn Motor>> {
     super::hoja_a_lienzo::motor_de_vision()
 }
 
+/// Lo ultimo que anoto la herramienta en las pruebas (el documento, el grupo
+/// del turno y las capas tocadas), para pintarlo en el banco de documentos.
+#[cfg(test)]
+pub static ULTIMO_EN_PRUEBAS: std::sync::Mutex<Option<(PathBuf, String, Vec<(usize, PathBuf)>)>> = std::sync::Mutex::new(None);
+
 /// Lo que dice la herramienta cuando solo hay modelo local.
 pub const SOLO_NUBE: &str = "anotar con criterio necesita el modelo de la nube (Claude o DeepSeek en Ajustes → Asistente); \
                              con el local puedo resaltar o encerrar un texto concreto con anotar_documento";
@@ -760,6 +781,10 @@ pub fn hacer(args: &Value, cx: &Contexto, motor: Option<Arc<dyn Motor>>) -> Resu
         }
     };
     let h = anotar_en(cx.raiz, &c.ruta, args, motor.as_ref(), cx.parar, &mut al_poner)?;
+    #[cfg(test)]
+    {
+        *ULTIMO_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()) = Some((c.ruta.clone(), h.grupo.clone(), h.capas.clone()));
+    }
     if h.puestas == 0 {
         return Ok(match h.nada {
             Some(m) => format!("no anote nada en «{}»: {m}", c.nombre),

@@ -753,6 +753,28 @@ pub const ACCIONES: &[Accion] = &[
         confirmar: None,
         hecho: "Excel leído.",
     },
+    // Banco de documentos (15-oct): «resume este Word», «¿qué dice el
+    // comunicado?», «pásame sus fórmulas»: el texto ENTERO, no los trozos
+    // de `buscar_en_mis_cosas` (con ellos el resumen salia de un apartado).
+    // Lee con el mismo lector que la busqueda y la voz (`documentos::leer_fichero`)
+    // y, en un PDF escaneado o una foto, con el OCR de siempre.
+    Accion {
+        herramienta: "leer_documento",
+        accion: EN_EL_CHAT,
+        descripcion: "Lee el texto entero de un archivo del chat (PDF, Word, PowerPoint, Excel, nota, o una foto/escaneo con OCR), pagina a pagina, \
+                      para resumirlo, contestar sobre el, revisarlo o sacar sus formulas. Usala ANTES de contestar sobre un archivo adjunto \
+                      (buscar_en_mis_cosas solo da trozos sueltos). Si el archivo es una foto que ya ves, no hace falta.",
+        categoria: Categoria::Notas,
+        // Sin claves: solo para la nube, que la elige por su descripcion.
+        claves: &[],
+        fijos: "{}",
+        params: &[
+            p("archivo", Tipo::Texto, false, "nombre o descripcion del archivo; omitir: el mas reciente del chat"),
+            p("paginas", Tipo::Texto, false, "paginas o diapositivas, como \"3\" o \"2-5\"; omitir: todo"),
+        ],
+        confirmar: None,
+        hecho: "Documento leído.",
+    },
     Accion {
         herramienta: "resumen_de_actividad",
         accion: EN_EL_CHAT,
@@ -785,6 +807,7 @@ pub const SOLO_NUBE: &[&str] = &[
     "transcribir_audio",
     "leer_excel",
     "resumen_de_actividad",
+    "leer_documento",
 ];
 
 /// Si la herramienta es solo para la nube ([`SOLO_NUBE`]).
@@ -1228,7 +1251,7 @@ mod pruebas {
         assert_eq!(a.por_resolver["chat"], "Obra");
         let a = validar(por_nombre("resumen_de_actividad").unwrap(), &Map::new()).unwrap();
         assert_eq!(a.pedido["periodo"], "hoy");
-        for n in ["leer_en_voz_alta", "comprimir_pdf", "transcribir_audio", "leer_excel", "resumen_de_actividad"] {
+        for n in ["leer_en_voz_alta", "comprimir_pdf", "transcribir_audio", "leer_excel", "resumen_de_actividad", "leer_documento"] {
             assert!(es_en_el_chat(n), "{n}");
             assert!(por_nombre(n).unwrap().confirmar.is_none(), "{n}");
         }

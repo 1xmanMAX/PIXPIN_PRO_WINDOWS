@@ -418,6 +418,26 @@ fn mover_escalar_girar_duplicar_borrar_y_estilo() {
 }
 
 #[test]
+fn el_tamano_de_letra_de_la_nube_cambia_los_textos_y_su_caja() {
+    let (mut s, h, _) = cruce();
+    let ctx = Contexto::default();
+    let t = s.anadir(texto("Cemento Portland", 10.0, 10.0, 30.0));
+    let antes = s.buscar(t).unwrap().ancho;
+    un_paso(&mut s, &ctx, ESTILO, json!({"que": format!("#{t}"), "tam_letra": 15}));
+    let e = s.buscar(t).unwrap();
+    assert!(matches!(e.figura, Figura::Texto { tam, .. } if (tam - 15.0).abs() < 1e-3));
+    assert!(e.ancho < antes * 0.7, "la caja se encoge con la letra: {} -> {}", antes, e.ancho);
+    // Negativo: en una recta no hay texto que cambiar.
+    assert!(llamar(&mut s, &ctx, ESTILO, json!({"que": format!("#{h}"), "tam_letra": 15})).is_err());
+    // El local no lo ve en su esquema; la nube si.
+    let local = herramienta(fila(ESTILO).unwrap());
+    assert!(local.parametros["properties"].get("tam_letra").is_none());
+    let mut nube = local.clone();
+    para_la_nube(&mut nube);
+    assert!(nube.parametros["properties"].get("tam_letra").is_some());
+}
+
+#[test]
 fn seleccionar_devuelve_ids_para_encadenar() {
     let (mut s, h, d) = cruce();
     let ctx = Contexto::default();

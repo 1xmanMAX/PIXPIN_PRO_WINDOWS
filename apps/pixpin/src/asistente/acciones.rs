@@ -73,6 +73,10 @@ pub fn confirmar_en_la_burbuja(tx: Sender<Aviso>, parar: Arc<AtomicBool>) -> Con
 /// Lo que las pruebas mandaron a «PixPin» (nunca sale de verdad).
 #[cfg(test)]
 pub static MANDADOS_EN_PRUEBAS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// Lo que contesta esa «PixPin» de mentira (0: nada; el banco de documentos
+/// pone `1`, aceptado, para que lo mandado siga su camino como en la app).
+#[cfg(test)]
+pub static RESPUESTA_EN_PRUEBAS: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 /// A la PixPin que corre (esta misma), como el plugin.
 pub fn mandar_a_pixpin() -> Mandar {
@@ -81,7 +85,7 @@ pub fn mandar_a_pixpin() -> Mandar {
     #[cfg(test)]
     return Box::new(|j| {
         MANDADOS_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).push(j.to_string());
-        0
+        RESPUESTA_EN_PRUEBAS.load(std::sync::atomic::Ordering::Relaxed)
     });
     #[cfg(not(test))]
     Box::new(pixpin_shell::mensajero::enviar_pedido)
@@ -249,6 +253,14 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
         .cloned()
         .collect();
     if imagenes.is_empty() {
+        // Un PDF adjunto no es «no hay nada» (banco de documentos, 15-oct:
+        // el modelo pedia al usuario que adjuntara otra vez el boletin).
+        if let Some(pdf) = adjuntos.iter().rev().find(|a| super::ocr::es_pdf(&a.ruta)) {
+            return Err(format!(
+                "«{}» es un PDF, no una imagen: para pasar una pagina suya al lienzo usa hoja_a_lienzo (con su archivo y pagina)",
+                pdf.nombre
+            ));
+        }
         return Err("no hay ninguna imagen adjunta que calcar; pide al usuario que adjunte la foto".into());
     }
     // Un nombre que no esta (el 2B pidio «perro» con «perrito.png» adjunto,
