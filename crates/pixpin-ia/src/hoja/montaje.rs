@@ -52,7 +52,7 @@ pub enum Leido {
     /// Una grafica de funciones (los argumentos de `graficar_funcion`).
     Funciones(Map<String, Value>),
     /// Los rotulos de una figura (texto y centro en fracciones del recorte).
-    Rotulos(Vec<(String, f64, f64)>),
+    Rotulos(Vec<(String, f64, f64)>, Vec<String>),
 }
 
 /// Una imagen que nace con la zona: va al almacen del lienzo con este id
@@ -92,6 +92,9 @@ pub struct Entrada<'a> {
     /// El texto de la hoja que no es de esta zona (cajas en pixeles de la
     /// pagina): un diagrama no lo vectoriza aunque caiga en su recorte.
     pub ajenas: &'a [Caja],
+    /// **El texto de toda la hoja** (renglones): las pistas de la geometria
+    /// exacta de un diagrama («AB es diametro» en la columna de al lado).
+    pub pistas: &'a [String],
 }
 
 impl Entrada<'_> {
@@ -535,29 +538,82 @@ pub fn reducir(rgba: &[u8], w: u32, h: u32, lado: u32) -> (Vec<u8>, u32, u32) {
 // ---------------------------------------------------------------------------
 // Formula
 
-/// **La ecuacion compuesta** (`escribir_ecuacion`), encajada en su caja.
+/// **Una formula leida, compuesta en su sitio.** Punto de enganche de las
+/// lineas de formulas de una lamina (la columna «RESOLUCION»): aqui se
+/// decide su color (el de la tinta del OCR) y su marco (el recuadro verde
+/// de «θ=90°»); el texto rico con formulas en linea, cuando exista, entra
+/// por aqui.
 fn formula(e: &Entrada, latex: &[String]) -> Option<Vec<Value>> {
     let mut args = Map::new();
-    args.insert("ecuacion".into(), json!(latex.join("\n")));
+    let lineas: Vec<String> = latex.iter().map(|l| latex_para_el_motor(l)).collect();
+    args.insert("ecuacion".into(), json!(lineas.join("\n")));
     let mut avisos = Vec::new();
     let mut ec = crate::ecuacion::validar(&args, &mut avisos).ok()?;
     let d = e.destino();
-    ec.color = NEGRO.into();
+    ec.color = color_de_la_zona(e.zona).map_or_else(|| NEGRO.to_string(), |c| format!("#{:02x}{:02x}{:02x}", c[0], c[1], c[2]));
     ec.tam = (e.alto_letra * e.mapa.escala * 1.1).clamp(8.0, 96.0);
     ec.donde = Some((d.x, d.y));
     let (_, (w, h)) = crate::ecuacion::piezas(&ec);
     if w <= 0.0 || h <= 0.0 {
         return None;
     }
-    let k = (d.h / h as f64).min(d.w * 1.15 / w as f64).clamp(0.5, 2.0);
+    let k = (d.h / h as f64).min(d.w * 1.15 / w as f64).clamp(0.5, 1.3);
     ec.tam = (ec.tam * k).clamp(8.0, 120.0);
+    // Un renglon: del alto de su letra en el papel (salia diminuta).
+    if lineas.len() == 1 {
+        ec.tam = ec.tam.max(0.85 * d.h).min(120.0);
+    }
     let (_, (w, h)) = crate::ecuacion::piezas(&ec);
     // Centrada en la caja del papel.
     ec.donde = Some((d.cx() - w as f64 / 2.0, d.cy() - h as f64 / 2.0));
     let (piezas, _) = crate::ecuacion::piezas(&ec);
     let mut f = e.fabrica();
     f.de_motor(&piezas);
+    marco(e, &mut f);
     Some(f.salida)
+}
+
+/// El color de la tinta de una zona (el de sus palabras, el mas comun por
+/// letras), si no es negro.
+fn color_de_la_zona(z: &Zona) -> Option<[u8; 3]> {
+    let mut cuenta: Vec<([u8; 3], usize)> = Vec::new();
+    for p in z.renglones.iter().flat_map(|r| r.palabras.iter()) {
+        let Some(c) = p.color else { continue };
+        let n = p.texto.chars().count();
+        match cuenta.iter_mut().find(|(k, _)| k.iter().zip(c.iter()).all(|(a, b)| (*a as i32 - *b as i32).abs() < 40)) {
+            Some(x) => x.1 += n,
+            None => cuenta.push((c, n)),
+        }
+    }
+    let (c, _) = cuenta.into_iter().max_by_key(|x| x.1)?;
+    let (mx, mn) = (*c.iter().max()? as i32, *c.iter().min()? as i32);
+    (mx - mn >= 40).then_some(c)
+}
+
+/// **El recuadro alrededor de una formula** («θ=90°» en su caja verde): se
+/// busca en el papel de alrededor y se dibuja con el rectangulo del lienzo.
+fn marco(e: &Entrada, f: &mut Fabrica) {
+    let (rgba, w, h) = e.pagina;
+    let z = &e.zona.caja;
+    let aire = e.alto_letra * 2.0;
+    let c = z.crecer(aire).dentro(w as f64, h as f64);
+    let (sub, sw, sh) = imagen::recortar(rgba, w, h, &c);
+    if sw < 8 || sh < 8 {
+        return;
+    }
+    let tapar: Vec<Caja> = e.zona.renglones.iter().flat_map(|r| r.palabras.iter()).map(|p| Caja::nueva(p.caja.x - c.x, p.caja.y - c.y, p.caja.w, p.caja.h)).collect();
+    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar, exacta: false, ..Default::default() };
+    let mut d = crate::diagrama::vectorizar(&sub, sw, sh, &[], &o, None);
+    // Solo un recuadro que rodea la formula (y no mucho mas grande).
+    let (zx, zy) = (z.cx() - c.x, z.cy() - c.y);
+    d.recuadros.retain(|r| r.x0 < zx && r.x1 > zx && r.y0 < zy && r.y1 > zy && (r.x1 - r.x0) <= z.w + 3.0 * aire && (r.y1 - r.y0) <= z.h + 3.0 * aire);
+    if d.recuadros.is_empty() {
+        return;
+    }
+    d.recuadros.truncate(1);
+    let solo = crate::diagrama::Diagrama { ancho: d.ancho, alto: d.alto, recuadros: d.recuadros, ..Default::default() };
+    let dest = e.mapa.caja(&c);
+    crate::diagrama::elementos(&solo, (dest.x, dest.y), e.mapa.escala, f, &e.opciones.familia);
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +686,13 @@ fn grafica(e: &Entrada, args: &Map<String, Value>) -> Option<Vec<Value>> {
 /// rotulos (el texto del OCR de dentro y las letras sueltas). `None` si no
 /// es un diagrama (un dibujo a mano, una foto): va al calco.
 fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> {
-    let (rgba, w, h) = e.recorte();
+    // Con aire (12 px): un recuadro pegado al borde de la zona («θ=45°»)
+    // entra entero.
+    let (pagina, pw, ph) = e.pagina;
+    let caja = e.zona.caja.crecer(12.0).dentro(pw as f64, ph as f64);
+    // Lo que ve la nube (`png_del_recorte`): la zona con 6 px de aire.
+    let de_la_nube = e.zona.caja.crecer(6.0).dentro(pw as f64, ph as f64);
+    let (rgba, w, h) = imagen::recortar(pagina, pw, ph, &caja);
     if w < 8 || h < 8 {
         return None;
     }
@@ -641,19 +703,29 @@ fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> 
         .flat_map(|r| r.palabras.iter())
         .map(|p| {
             let mut q = p.clone();
-            q.caja = Caja::nueva(p.caja.x - z.caja.x, p.caja.y - z.caja.y, p.caja.w, p.caja.h);
+            q.caja = Caja::nueva(p.caja.x - caja.x, p.caja.y - caja.y, p.caja.w, p.caja.h);
             q
         })
         .collect();
-    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar: e.ajenas_en_zona(), ..Default::default() };
+    let tapar: Vec<Caja> = e.ajenas.iter().filter(|c| c.comun(&caja) > 0.0).map(|c| Caja::nueva(c.x - caja.x, c.y - caja.y, c.w, c.h)).collect();
+    let mut pistas: Vec<String> = e.pistas.to_vec();
+    pistas.extend(z.renglones.iter().map(|r| r.texto.clone()));
+    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar, pistas, ..Default::default() };
     let mut d = crate::diagrama::vectorizar(&rgba, w, h, &palabras, &o, e.lector);
     if !d.es_diagrama() {
         return None;
     }
-    if let Some(Leido::Rotulos(v)) = leido {
-        crate::diagrama::corregir_rotulos(&mut d, v, e.alto_letra);
+    if let Some(Leido::Rotulos(v, hechos)) = leido {
+        // Sus fracciones, pasadas a este recorte.
+        let v: Vec<(String, f64, f64)> = v.iter().map(|(t, fx, fy)| (t.clone(), (de_la_nube.x + fx * de_la_nube.w - caja.x) / w as f64, (de_la_nube.y + fy * de_la_nube.h - caja.y) / h as f64)).collect();
+        crate::diagrama::corregir_rotulos(&mut d, &v, e.alto_letra, Some((&rgba, w, h)));
+        // Con las letras y los hechos de la nube, otra vuelta de geometria
+        // exacta (lo ya exacto no se mueve).
+        let mut pistas = o.pistas.clone();
+        pistas.extend(hechos.iter().cloned());
+        crate::diagrama::exacta(&mut d, &pistas, e.alto_letra);
     }
-    let dest = e.destino();
+    let dest = e.mapa.caja(&caja);
     let mut f = e.fabrica();
     crate::diagrama::elementos(&d, (dest.x, dest.y), e.mapa.escala, &mut f, &e.opciones.familia);
     Some((f.salida, format!("diagrama: {}", d.resumen())))
@@ -666,6 +738,40 @@ pub fn es_diagrama(e: &Entrada) -> bool {
     if w < 8 || h < 8 {
         return false;
     }
-    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar: e.ajenas_en_zona(), ..Default::default() };
+    let o = crate::diagrama::Opciones { alto_letra: e.alto_letra, tapar: e.ajenas_en_zona(), exacta: false, ..Default::default() };
     crate::diagrama::vectorizar(&rgba, w, h, &[], &o, None).es_diagrama()
+}
+
+/// **El LaTeX de la nube, en lo que entiende el motor de formulas comun**
+/// (sin tocarlo): el angulo `\measuredangle` es el signo ∢ y el arco sobre
+/// letras (`\overset{\frown}{AC}`, `\overarc`, `\wideparen`) la marca de
+/// arco de `\widehat`. Lo que no se sabe pasar se queda (y el motor avisa).
+pub fn latex_para_el_motor(l: &str) -> String {
+    let mut s = l.to_string();
+    for (de, a) in [
+        (r"\measuredangle", r"∢"),
+        (r"\sphericalangle", r"∢"),
+        (r"\angle", r"∠"),
+        (r"\overset{\frown}", r"\widehat"),
+        (r"\overset{\smile}", r"\widehat"),
+        (r"\overarc", r"\widehat"),
+        (r"\wideparen", r"\widehat"),
+        (r"\gets", r"∢"),
+    ] {
+        // Con un espacio detras si lo que sigue es una letra (`\angle COD`
+        // -> `∢COD`; `\angleCOD` tambien).
+        s = s.replace(&format!("{de} "), a).replace(de, a);
+    }
+    s
+}
+
+#[cfg(test)]
+mod pruebas_latex {
+    #[test]
+    fn el_angulo_y_el_arco_de_la_nube_se_pasan_al_motor() {
+        assert_eq!(super::latex_para_el_motor(r"m\measuredangle COD = X"), "m∢COD = X");
+        assert_eq!(super::latex_para_el_motor(r"m\overset{\frown}{AC}=2a"), r"m\widehat{AC}=2a");
+        assert_eq!(super::latex_para_el_motor(r"m\getsCOD"), "m∢COD");
+        assert_eq!(super::latex_para_el_motor(r"\frac{a}{b}"), r"\frac{a}{b}");
+    }
 }

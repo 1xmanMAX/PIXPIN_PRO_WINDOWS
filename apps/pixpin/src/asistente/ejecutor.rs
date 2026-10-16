@@ -561,12 +561,12 @@ impl Ejecutor for EjecutorDelChat {
                     .clone();
                 // Con la nube, una lamina (texto y figuras) no se calca por
                 // manchas: se pasa con figuras exactas y texto (15-oct: la
-                // lamina de geometria salio en borrones).
-                if self.nube || self.vision.is_some() {
-                    let pagina = super::hoja_a_lienzo::leer(&ruta, None)?;
-                    if super::hoja_a_lienzo::es_lamina(&pagina) {
-                        return self.lamina_al_lienzo(&pagina);
-                    }
+                // lamina de geometria salio en borrones). Lo decide el
+                // ejecutor con los Ajustes, no la marca `nube` del turno (la
+                // cola de encargos no la ponia).
+                let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
+                if let Some(pagina) = super::hoja_a_lienzo::lamina_de_calcar(&ruta, p, vision.as_ref()) {
+                    return self.lamina_al_lienzo(&pagina);
                 }
                 let semilla = self.semilla();
                 let elementos = super::acciones::calcar_fichero(&ruta, p, semilla)?;

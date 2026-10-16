@@ -92,6 +92,21 @@ pub fn hacer(
     permiso: Permiso,
     mandar: Mandar,
 ) -> Result<Respuesta, String> {
+    // El modelo con vision de los Ajustes de ESTOS datos (el de las zonas de
+    // una lamina: `calcar_imagen` con una lamina pasa como hoja).
+    let vision = crate::asistente::hoja_a_lienzo::motor_de_vision_en(ent.ubicacion.raiz());
+    hacer_con_vision(ent, motor, vision, e, permiso, mandar)
+}
+
+/// [`hacer`] con el modelo de vision dado (las pruebas ponen el suyo).
+pub fn hacer_con_vision(
+    ent: &Entorno,
+    motor: Arc<dyn Motor>,
+    vision: Option<Arc<dyn Motor>>,
+    e: &Encargo,
+    permiso: Permiso,
+    mandar: Mandar,
+) -> Result<Respuesta, String> {
     let raiz = ent.ubicacion.raiz().to_path_buf();
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
     let (asistente, carpeta) = super::chat_del_asistente(&raiz, &ent.aparato, ahora).map_err(|x| x.to_string())?;
@@ -185,9 +200,15 @@ pub fn hacer(
     let vivo = Arc::new(Mutex::new(vivo0));
     let confirmar = confirmar_en_la_nota(permiso, vivo.clone(), carpeta.clone(), asistente.clone(), nota.id.clone(), parar.clone());
     let mandar = envolver(mandar, contexto.as_ref().map(|(id, _)| id.clone()), e.bloquear);
+    let mut dentro = EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar)
+        .con_acciones(confirmar, mandar)
+        .con_raiz(Some(ent.ubicacion.raiz().to_path_buf()));
+    if let Some(v) = &vision {
+        dentro = dentro.con_vision(v.clone());
+    }
     let mut ejecutor = SinVentana {
-        dentro: EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar).con_acciones(confirmar, mandar)
-            .con_raiz(Some(ent.ubicacion.raiz().to_path_buf())),
+        dentro,
+        vision,
         ubicacion: ent.ubicacion.clone(),
         proyecto: asistente.clone(),
         adjuntos,
@@ -365,6 +386,9 @@ struct SinVentana {
     ubicacion: Ubicacion,
     proyecto: String,
     adjuntos: Vec<Adjunto>,
+    /// El modelo con vision (Ajustes): una lamina que se pide calcar pasa
+    /// como hoja, zona a zona en paralelo.
+    vision: Option<Arc<dyn Motor>>,
     /// El lienzo donde dibujo (su referencia), para «Abrir lienzo».
     lienzo: Option<String>,
     semilla: u64,
@@ -392,6 +416,27 @@ impl SinVentana {
     }
 }
 
+impl SinVentana {
+    /// **Una lamina, zona a zona** (un trabajador de la nube por zona, a la
+    /// vez), directa al lienzo del asistente.
+    fn lamina(&mut self, pagina: &crate::asistente::hoja_a_lienzo::Pagina) -> Result<String, String> {
+        let s = self.semilla();
+        let mut d = crate::asistente::hoja_a_lienzo::SinVentana {
+            ubicacion: self.ubicacion.clone(),
+            proyecto: self.proyecto.clone(),
+            lienzo: None,
+        };
+        let o = pixpin_ia::hoja::Opciones { ancho: (pagina.ancho as f64).clamp(200.0, 4000.0), ..Default::default() };
+        let inf = crate::asistente::hoja_a_lienzo::pasar(pagina, self.vision.clone(), &o, false, s, &AtomicBool::new(false), &mut d, &mut |_, _| {})?;
+        if d.lienzo.is_some() {
+            self.lienzo = d.lienzo;
+            crate::ventana_chat::refrescar();
+        }
+        let r = crate::asistente::hoja_a_lienzo::contar(pagina, &inf)?;
+        Ok(format!("{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"))
+    }
+}
+
 impl Ejecutor for SinVentana {
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
         if crate::asistente::al_lienzo::hay_editor() {
@@ -406,6 +451,12 @@ impl Ejecutor for SinVentana {
                 let ruta = crate::asistente::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
                     .ruta
                     .clone();
+                // Una lamina (texto y figuras) no se calca: como hoja, con
+                // figuras exactas (el mismo criterio que el chat:
+                // `hoja_a_lienzo::lamina_de_calcar`).
+                if let Some(pagina) = crate::asistente::hoja_a_lienzo::lamina_de_calcar(&ruta, p, self.vision.as_ref()) {
+                    return self.lamina(&pagina);
+                }
                 let s = self.semilla();
                 let els = crate::asistente::acciones::calcar_fichero(&ruta, p, s)?;
                 self.al_lienzo(els)

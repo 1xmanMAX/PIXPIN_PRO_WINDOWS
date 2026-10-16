@@ -23,7 +23,7 @@ const SISTEMA_LATEX: &str = "Eres un transcriptor de formulas. Recibes el recort
 Responde SOLO con la formula en LaTeX, sin $ ni explicaciones ni bloques de codigo. \
 Si tiene varios renglones, separalos con \\\\. Si no hay ninguna formula, responde NADA. \
 Usa SOLO este LaTeX: \\frac{}{}, \\sqrt{} y \\sqrt[n]{}, ^ y _, \\int, \\sum, \\lim, \\infty, griegas, \\cdot, \\pm, \\le, \\ge, \\neq, \\to, \\sin \\cos \\tan \\ln \\log, \
-\\text{} para palabras, \\begin{bmatrix}...\\end{bmatrix} (o pmatrix, vmatrix) para matrices y \\begin{cases}...\\end{cases} para sistemas con llave. \
+\\text{} para palabras, \\measuredangle para el angulo (∢), \\overset{\\frown}{AC} para el arco AC, \\overline{AB} para un segmento, \\therefore, \\begin{bmatrix}...\\end{bmatrix} (o pmatrix, vmatrix) para matrices y \\begin{cases}...\\end{cases} para sistemas con llave. \
 Nada de \\displaystyle, \\left/\\right, \\mathrm, \\operatorname ni otros paquetes. \
 Si delante de la formula hay una etiqueta (a), b), 1.), copiala al principio con \\text{a)}.";
 
@@ -155,14 +155,35 @@ pub fn leer_grafica(t: &str) -> Option<Map<String, Value>> {
 const SISTEMA_ROTULOS: &str = "Recibes el recorte de una figura geometrica o un diagrama. Lista TODOS sus rotulos de texto: \
 letras de puntos (A, B, O, P...), medidas y angulos (2a, 45°, θ, x), palabras y formulas cortas. \
 Responde SOLO un JSON: [{\"t\":\"A\",\"x\":0.12,\"y\":0.40}, ...] con el texto tal cual se ve (griegas en Unicode, grados con °) \
-y el centro de cada rotulo en fracciones del ancho y del alto del recorte (0 a 1). Sin explicaciones.";
+y el centro de cada rotulo en fracciones del ancho y del alto del recorte (0 a 1). \
+Despues, en la misma lista, los HECHOS geometricos que se ven o que dice el texto, uno por objeto: \
+{\"h\":\"semicircunferencia AB\"}, {\"h\":\"AB es diametro\"}, {\"h\":\"AOB es un cuadrante\"}, {\"h\":\"centro O\"}, {\"h\":\"m∢APB=90°\"} \
+(angulos con ∢ y tres letras, vertice en medio). Sin explicaciones.";
 
 /// **Los rotulos de una figura** (letras de los puntos, medidas, angulos)
 /// con su centro en fracciones del recorte: la nube corrige al OCR en lo
 /// que lee mal o no ve (una letra suelta, una griega).
 pub fn pedir_rotulos(motor: &dyn Motor, png: Vec<u8>) -> Result<Leido, String> {
     let t = preguntar_con(motor, SISTEMA_ROTULOS, png, "Lista los rotulos de esta figura.", 1500)?;
-    leer_rotulos(&t).map(Leido::Rotulos).ok_or_else(|| format!("el modelo no dio los rotulos: «{}»", corto(&t)))
+    let hechos = leer_hechos(&t);
+    leer_rotulos(&t).map(|r| Leido::Rotulos(r, hechos)).ok_or_else(|| format!("el modelo no dio los rotulos: «{}»", corto(&t)))
+}
+
+/// Los hechos de la lista (`{"h":"AB es diametro"}`), tal cual.
+pub fn leer_hechos(t: &str) -> Vec<String> {
+    let mut v = Vec::new();
+    let mut resto = t;
+    while let Some(a) = resto.find('{') {
+        let Some(b) = resto[a..].find('}') else { break };
+        if let Ok(r) = serde_json::from_str::<Value>(&resto[a..a + b + 1])
+            && let Some(h) = r.get("h").and_then(Value::as_str)
+            && !h.trim().is_empty()
+        {
+            v.push(h.trim().to_string());
+        }
+        resto = &resto[a + b + 1..];
+    }
+    v
 }
 
 /// Lee la lista de rotulos (`[{"t":..,"x":..,"y":..}]`, con o sin bloque).

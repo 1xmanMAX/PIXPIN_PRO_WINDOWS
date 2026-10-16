@@ -45,28 +45,36 @@ impl Mapas<'_> {
     /// **El ancho de verdad de un trazo**: en cada muestra (punto y normal)
     /// se suma, a lo ancho, cuanto de tinta tiene cada medio pixel respecto
     /// al centro del trazo (el antialias cuenta en su parte). Asi una raya
-    /// de 1 px mide 1 y no los 3 que pinta el antialias.
+    /// de 1 px mide 1 y no los 3 que pinta el antialias. Cada lado contra SU
+    /// fondo: una raya roja en el borde de un relleno amarillo median el
+    /// amarillo como tinta (salia de 4 px y no de 2).
     fn ancho(&self, muestras: &[(P, P)]) -> f64 {
         let mut v: Vec<f64> = Vec::new();
         for &(p, n) in muestras.iter().step_by((muestras.len() / 80).max(1)) {
-            // Lo de alrededor (papel, o el relleno sobre el que pasa la raya):
-            // el color a 5 px de cada lado, el mas parecido al papel.
             let color_en = |s: f64| self.i((p.0 + n.0 * s, p.1 + n.1 * s)).map(|i| self.img.px[i]);
-            let fondo = [5.0, -5.0, 6.0, -6.0]
-                .iter()
-                .filter_map(|&s| color_en(s))
-                .min_by(|a, b| mascara::dist_color(*a, self.papel).total_cmp(&mascara::dist_color(*b, self.papel)))
-                .unwrap_or(self.papel);
-            let en = |s: f64| self.i((p.0 + n.0 * s, p.1 + n.1 * s)).map_or(0.0, |i| if self.texto[i] { 0.0 } else { mascara::dist_color(self.img.px[i], fondo) as f64 });
-            let nucleo = (-4..=4).map(|k| en(k as f64 * 0.5)).fold(0.0, f64::max);
-            if nucleo < 34.0 {
+            let es_texto = |s: f64| self.i((p.0 + n.0 * s, p.1 + n.1 * s)).is_some_and(|i| self.texto[i]);
+            // El centro: lo mas apartado del papel cerca del esqueleto.
+            let Some((k0, c0)) = (-4..=4)
+                .filter_map(|k| color_en(k as f64 * 0.5).filter(|_| !es_texto(k as f64 * 0.5)).map(|c| (k, c)))
+                .max_by(|a, b| mascara::dist_color(a.1, self.papel).total_cmp(&mascara::dist_color(b.1, self.papel)))
+            else {
+                continue;
+            };
+            if mascara::dist_color(c0, self.papel) < 34.0 {
                 continue;
             }
-            let mut suma = 0.0;
+            let mut suma = 0.5;
             for lado in [1.0, -1.0] {
-                let mut k = if lado > 0.0 { 0 } else { 1 };
+                let base = k0 as f64 * 0.5;
+                let fondo = color_en(base + lado * 6.0).unwrap_or(self.papel);
+                let nucleo = mascara::dist_color(c0, fondo) as f64;
+                if nucleo < 25.0 {
+                    continue;
+                }
+                let mut k = 1;
                 while k <= 16 {
-                    let c = (en(lado * k as f64 * 0.5) / nucleo).min(1.0);
+                    let s = base + lado * k as f64 * 0.5;
+                    let c = color_en(s).filter(|_| !es_texto(s)).map_or(0.0, |x| (mascara::dist_color(x, fondo) as f64 / nucleo).min(1.0));
                     if c < 0.15 {
                         break;
                     }
@@ -81,6 +89,28 @@ impl Mapas<'_> {
         }
         v.sort_by(f64::total_cmp);
         v[v.len() / 2].max(1.0)
+    }
+    /// **Lo que hay alrededor de un trazo** (el papel, o el relleno por el
+    /// que pasa): en cada punto, lo menos entintado a 5 px; la mediana.
+    fn fondo_de(&self, puntos: &[P]) -> [u8; 3] {
+        let mut cs: Vec<[f32; 3]> = Vec::new();
+        for &p in puntos.iter().step_by((puntos.len() / 40).max(1)) {
+            let mut mejor: Option<(f32, [f32; 3])> = None;
+            for dy in (-5..=5).step_by(2) {
+                for dx in (-5..=5).step_by(2) {
+                    if let Some(i) = self.i((p.0 + dx as f64, p.1 + dy as f64))
+                        && !self.texto[i]
+                        && mejor.is_none_or(|m| self.dpap[i] < m.0)
+                    {
+                        mejor = Some((self.dpap[i], self.img.px[i]));
+                    }
+                }
+            }
+            if let Some((_, c)) = mejor {
+                cs.push(c);
+            }
+        }
+        if cs.is_empty() { a_u8(self.papel) } else { mediana_color(&cs) }
     }
     /// El color de un trazo: en cada punto, el pixel mas entintado de
     /// alrededor; la mediana por canal.
@@ -427,6 +457,118 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
         d.glifos.push(Glifo { caja: Caja::de_esquinas(x0 as f64, y0 as f64, x1 as f64 + 1.0, y1 as f64 + 1.0), color, trazos, grosor, pixeles });
     }
 
+    // 3b. **Los recuadros, de una vez** (el marco verde de «θ=90°»): una
+    //     mancha de trazo cuyos pixeles van casi todos por el borde de su
+    //     caja, con los cuatro lados cubiertos, es un rectangulo. Por el
+    //     esqueleto sus esquinas salian redondeadas y los lados cortos como
+    //     arcos.
+    for comp in mascara::componentes(&m.linea, w, h) {
+        let (x0, y0, x1, y1) = mascara::caja_de(&comp, w);
+        let (bw, bh) = ((x1 - x0 + 1) as f64, (y1 - y0 + 1) as f64);
+        if bw < 12.0 || bh < 8.0 || comp.len() < 30 {
+            continue;
+        }
+        let banda = 4usize;
+        let en_borde = |i: usize| {
+            let (x, y) = (i % w, i / w);
+            x <= x0 + banda || x + banda >= x1 || y <= y0 + banda || y + banda >= y1
+        };
+        let borde = comp.iter().filter(|&&i| en_borde(i)).count();
+        if std::env::var_os("PIXPIN_DIAGRAMA_DEPURAR").is_some() {
+            eprintln!("caja? {x0},{y0}-{x1},{y1} borde {borde}/{}", comp.len());
+        }
+        if (borde as f64) < 0.9 * comp.len() as f64 {
+            continue;
+        }
+        // Cada lado, cubierto casi entero.
+        let mut arriba = vec![false; x1 - x0 + 1];
+        let mut abajo = vec![false; x1 - x0 + 1];
+        let mut izq = vec![false; y1 - y0 + 1];
+        let mut der = vec![false; y1 - y0 + 1];
+        for &i in &comp {
+            let (x, y) = (i % w, i / w);
+            if y <= y0 + banda {
+                arriba[x - x0] = true;
+            }
+            if y + banda >= y1 {
+                abajo[x - x0] = true;
+            }
+            if x <= x0 + banda {
+                izq[y - y0] = true;
+            }
+            if x + banda >= x1 {
+                der[y - y0] = true;
+            }
+        }
+        // Un lado que se separo de las esquinas (otra mancha, un poco mas
+        // alla): la columna o la fila de tinta casi entera mas cercana.
+        let (mut x0, mut y0, mut x1, mut y1) = (x0, y0, x1, y1);
+        let col = |x: usize, ya: usize, yb: usize| (ya..=yb).filter(|&y| m.tinta[y * w + x] && !m.texto[y * w + x]).count() as f64 / (yb - ya + 1) as f64;
+        let fila = |y: usize, xa: usize, xb: usize| (xa..=xb).filter(|&x| m.tinta[y * w + x] && !m.texto[y * w + x]).count() as f64 / (xb - xa + 1) as f64;
+        let alcance = ((x1 - x0).max(y1 - y0) as f64 * 0.3) as usize;
+        let mut lado_movido = false;
+        if !(der.iter().filter(|&&b| b).count() as f64 >= 0.85 * der.len() as f64) {
+            if let Some(x) = (x1 + 1..=(x1 + alcance).min(w - 1)).find(|&x| col(x, y0 + 2, y1.saturating_sub(2)) >= 0.7) {
+                x1 = x;
+                der.iter_mut().for_each(|b| *b = true);
+                lado_movido = true;
+            }
+        }
+        if !(izq.iter().filter(|&&b| b).count() as f64 >= 0.85 * izq.len() as f64) {
+            if let Some(x) = (x0.saturating_sub(alcance)..x0).rev().find(|&x| col(x, y0 + 2, y1.saturating_sub(2)) >= 0.7) {
+                x0 = x;
+                izq.iter_mut().for_each(|b| *b = true);
+                lado_movido = true;
+            }
+        }
+        if !(abajo.iter().filter(|&&b| b).count() as f64 >= 0.85 * abajo.len() as f64) {
+            if let Some(y) = (y1 + 1..=(y1 + alcance).min(h - 1)).find(|&y| fila(y, x0 + 2, x1.saturating_sub(2)) >= 0.7) {
+                y1 = y;
+                abajo.iter_mut().for_each(|b| *b = true);
+                lado_movido = true;
+            }
+        }
+        if !(arriba.iter().filter(|&&b| b).count() as f64 >= 0.85 * arriba.len() as f64) {
+            if let Some(y) = (y0.saturating_sub(alcance)..y0).rev().find(|&y| fila(y, x0 + 2, x1.saturating_sub(2)) >= 0.7) {
+                y0 = y;
+                arriba.iter_mut().for_each(|b| *b = true);
+                lado_movido = true;
+            }
+        }
+        let lleno = |v: &[bool]| v.iter().filter(|&&b| b).count() as f64 >= 0.85 * v.len() as f64;
+        if std::env::var_os("PIXPIN_DIAGRAMA_DEPURAR").is_some() {
+            eprintln!("recuadro? caja {x0},{y0}-{x1},{y1} borde {borde}/{} lados {} {} {} {}", comp.len(), lleno(&arriba), lleno(&abajo), lleno(&izq), lleno(&der));
+        }
+        // Tres lados enteros y el cuarto al menos a medias (una esquina o un
+        // lado que el antialias corta).
+        let medio_lleno = |v: &[bool]| v.iter().filter(|&&b| b).count() as f64 >= 0.5 * v.len() as f64;
+        let lados = [&arriba, &abajo, &izq, &der];
+        if lados.iter().filter(|v| lleno(v)).count() < 3 || !lados.iter().all(|v| medio_lleno(v)) {
+            continue;
+        }
+        // Grosor: lo que pesa entre el perimetro; el lado, por el centro del trazo.
+        let perimetro = 2.0 * (bw + bh);
+        let peso: f64 = comp.iter().map(|&i| (m.dpap[i] as f64 / 160.0).min(1.0)).sum();
+        let grosor = (peso / perimetro).clamp(1.0, 6.0);
+        let medio = grosor / 2.0;
+        let color = a_u8(media_mas_tinta(&m, &comp));
+        d.recuadros.push(Recuadro { x0: x0 as f64 + medio, y0: y0 as f64 + medio, x1: x1 as f64 + 1.0 - medio, y1: y1 as f64 + 1.0 - medio, grosor, color });
+        for &i in &comp {
+            m.linea[i] = false;
+        }
+        // Y el lado suelto que se le junto.
+        if lado_movido {
+            for y in y0.saturating_sub(1)..=(y1 + 3).min(h - 1) {
+                for x in x0.saturating_sub(1)..=(x1 + 3).min(w - 1) {
+                    let borde = x <= x0 + banda || x + banda >= x1 + 3 || y <= y0 + banda || y + banda >= y1 + 3;
+                    if borde {
+                        m.linea[y * w + x] = false;
+                    }
+                }
+            }
+        }
+    }
+
     // 4. Esqueleto, cadenas y tramos.
     let esq = mascara::esqueleto(&m.linea, w, h);
     let radio_max = 3.0 * w.max(h) as f64;
@@ -473,6 +615,8 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
     }
     // Lo que queda de una letra pegada a una raya: arquitos y rayitas sueltas.
     limpiar_sueltos(&mut d, hm);
+    consolidar_arcos(&m, &mut d, hm);
+    partir_por_grosor(&m, &mut d);
 
     // 6. Flechas, topologia, recuadros.
     let colores_peq: Vec<[u8; 3]> = pequenas.iter().map(|c| a_u8(media_mas_tinta(&m, c))).collect();
@@ -486,6 +630,30 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
     normalizar_grosores(&mut d, hm);
     d.segmentos.retain(|s| s.largo() >= 2.0);
     recuadros(&mut d);
+    // Los trazos finos, con su color pleno (no el del centro emborronado).
+    // Contra lo que tienen alrededor (el amarillo de un relleno, el papel),
+    // (`vivo` deja lo pleno como esta).
+    for s in d.segmentos.iter_mut().filter(|s| s.grosor <= 5.0) {
+        let pts: Vec<P> = (0..=8).map(|k| (s.a.0 + (s.b.0 - s.a.0) * k as f64 / 8.0, s.a.1 + (s.b.1 - s.a.1) * k as f64 / 8.0)).collect();
+        let fondo = m.fondo_de(&pts);
+        s.color = vivo(s.color, fondo);
+    }
+    for a in d.arcos.iter_mut().filter(|a| a.grosor <= 5.0) {
+        let pts: Vec<P> = (0..=8)
+            .map(|k| {
+                let t = a.inicio + a.barrido * k as f64 / 8.0;
+                (a.c.0 + a.r * t.cos(), a.c.1 + a.r * t.sin())
+            })
+            .collect();
+        a.color = vivo(a.color, m.fondo_de(&pts));
+    }
+    for r in d.recuadros.iter_mut().filter(|r| r.grosor <= 5.0) {
+        r.color = vivo(r.color, m.fondo_de(&[(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1)]));
+    }
+
+    // Un «punto» palido es un trozo de una marca de color translucida, no un
+    // punto (los puntos se pintan con tinta plena).
+    d.puntos.retain(|p| *p.color.iter().min().unwrap() < 150 || mascara::dist_color([p.color[0] as f32, p.color[1] as f32, p.color[2] as f32], papel) >= 120.0);
 
     // 7. Regiones (lo relleno que no fue punto ni punta).
     let mut region = m.relleno.clone();
@@ -496,7 +664,7 @@ pub(super) fn medir(img: &Img, palabras: &[PalabraHoja], o: &Opciones) -> Diagra
             }
         }
     }
-    d.regiones = regiones(&m, &region);
+    d.regiones = regiones(&m, &region, hm);
 
     // 8. Lo que explican las figuras.
     d.explica = explicado(&m, &d, &region, &glifos_px);
@@ -1363,7 +1531,7 @@ fn dentro(pol: &[P], (px, py): P) -> bool {
 /// por donde las cruzaba una raya), con su color medio. Un agujero tapado
 /// por otro relleno no se corta (las bandas de un degradado no dejan
 /// rendijas: la de dentro se pinta encima).
-fn regiones(m: &Mapas, region: &[bool]) -> Vec<Region> {
+fn regiones(m: &Mapas, region: &[bool], hm: f64) -> Vec<Region> {
     let (w, h) = (m.w, m.h);
     let mut salida = Vec::new();
     for k in 0..m.centros.len() {
@@ -1412,7 +1580,8 @@ fn regiones(m: &Mapas, region: &[bool]) -> Vec<Region> {
                     dentro_n > 0 && (relleno_n as f64) < 0.4 * dentro_n as f64
                 })
                 .map(|hq| crate::calcar::curva(&hq, true, 0.6, 0.3))
-                .filter(|hq| hq.len() >= 3)
+                // El agujero de una letra (la X sobre el relleno) no: la letra va encima.
+                .filter(|hq| hq.len() >= 3 && crate::calcar::area(hq).abs() >= 4.0 * hm * hm)
                 .collect();
             let area = crate::calcar::area(&contorno).abs();
             // Casi del color del papel (el borde blanco de un degradado): nada.
@@ -1595,26 +1764,47 @@ pub(super) fn leer_glifos(d: &mut Diagrama, img: &Img, lector: &Lector, o: &Opci
     }
 }
 
-/// Lo que dijo la nube de los rotulos: corrige al vecino o lee el glifo.
-pub(super) fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64)], hm: f64) {
+/// Lo que dijo la nube de los rotulos: corrige al vecino o lee el glifo; lo
+/// que no cae cerca de nada (una «a» sobre un sector de color, que se fue
+/// con la region) se anade en su sitio, del alto de las otras letras y con
+/// el color de la tinta de alli (si hay imagen).
+pub(super) fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64)], hm: f64, img: Option<&Img>) {
     let (w, h) = (d.ancho as f64, d.alto as f64);
+    // El alto de las letras sueltas que ya hay (el de una nueva).
+    let mut altos: Vec<f64> = d.rotulos.iter().filter(|r| r.letra_suelta).map(|r| r.caja.h).collect();
+    altos.sort_by(f64::total_cmp);
+    let alto_letra = altos.get(altos.len() / 2).copied().unwrap_or(0.75 * hm).max(6.0);
     for (t, fx, fy) in de_la_nube {
         let t = t.trim();
-        if t.is_empty() {
+        if t.is_empty() || t.chars().count() > 12 || t.contains(['?', '¿']) {
             continue;
         }
         let p = (fx * w, fy * h);
         let alcance = 1.6 * hm;
         // Un rotulo que ya esta: si dice casi lo mismo se queda (el OCR lee la
         // posicion exacta); si la nube dice otra cosa corta (una letra), gana.
-        let r = d
-            .rotulos
-            .iter_mut()
-            .filter(|r| dist((r.caja.cx(), r.caja.cy()), p) <= alcance + r.caja.w.max(r.caja.h) / 2.0)
-            .min_by(|a, b| dist((a.caja.cx(), a.caja.cy()), p).total_cmp(&dist((b.caja.cx(), b.caja.cy()), p)));
-        if let Some(r) = r {
-            if r.texto.chars().count() <= 3 && t.chars().count() <= 4 && r.texto != t {
+        let r = (0..d.rotulos.len())
+            .filter(|&k| dist((d.rotulos[k].caja.cx(), d.rotulos[k].caja.cy()), p) <= alcance + d.rotulos[k].caja.w.max(d.rotulos[k].caja.h) / 2.0)
+            .min_by(|&a, &b| dist((d.rotulos[a].caja.cx(), d.rotulos[a].caja.cy()), p).total_cmp(&dist((d.rotulos[b].caja.cx(), d.rotulos[b].caja.cy()), p)));
+        if let Some(k) = r {
+            let r = &mut d.rotulos[k];
+            if r.texto.chars().count() <= 3 && t.chars().count() <= 8 && r.texto != t {
+                // Lo que crece el texto («2» -> «2a», «e» -> «θ=45°»): la caja
+                // tambien (del alto de las letras), y lo que tapa ya es de el
+                // (glifos y rotulos sueltos mal leidos, que se pintaban encima).
+                let n1 = t.chars().count() as f64;
+                let ancho = (alto_letra * 0.6 * n1).max(r.caja.w);
+                if ancho > r.caja.w {
+                    r.caja = Caja::nueva(r.caja.x, r.caja.y, ancho, r.caja.h);
+                }
                 r.texto = t.to_string();
+                let c = r.caja.crecer(2.0);
+                d.glifos.retain(|g| g.caja.comun(&c) <= 0.3 * g.caja.area().max(1.0));
+                let mut j = 0;
+                d.rotulos.retain(|o| {
+                    j += 1;
+                    j - 1 == k || o.texto.chars().count() > 2 || !c.contiene(o.caja.cx(), o.caja.cy())
+                });
             }
             continue;
         }
@@ -1623,9 +1813,155 @@ pub(super) fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64
             .min_by(|&a, &b| dist((d.glifos[a].caja.cx(), d.glifos[a].caja.cy()), p).total_cmp(&dist((d.glifos[b].caja.cx(), d.glifos[b].caja.cy()), p)))
         {
             let g = d.glifos.remove(k);
-            d.rotulos.push(Rotulo { texto: t.to_string(), caja: g.caja, color: Some(g.color), negrita: false, letra_suelta: true });
+            // Los glifos de al lado son del mismo rotulo («45°» en tres trozos).
+            let mut caja = g.caja;
+            let ancho_t = alto_letra * 0.62 * t.chars().count() as f64;
+            let zona = Caja::nueva(caja.x - ancho_t, caja.y - 0.3 * alto_letra, caja.w + 2.0 * ancho_t, caja.h + 0.6 * alto_letra);
+            let mut k = 0;
+            while k < d.glifos.len() {
+                if t.chars().count() > 1 && d.glifos[k].caja.comun(&zona) > 0.5 * d.glifos[k].caja.area() {
+                    let o = d.glifos.remove(k);
+                    caja = Caja::de_esquinas(caja.x.min(o.caja.x), caja.y.min(o.caja.y), caja.x1().max(o.caja.x1()), caja.y1().max(o.caja.y1()));
+                } else {
+                    k += 1;
+                }
+            }
+            d.rotulos.push(Rotulo { texto: t.to_string(), caja, color: Some(g.color), negrita: false, letra_suelta: true });
+            continue;
+        }
+        // Nada cerca: se anade, si no pisa otro rotulo ni cae fuera.
+        if !(0.0..=1.0).contains(fx) || !(0.0..=1.0).contains(fy) {
+            continue;
+        }
+        let ancho = alto_letra * 0.62 * t.chars().count() as f64;
+        let caja = Caja::nueva(p.0 - ancho / 2.0, p.1 - alto_letra / 2.0, ancho, alto_letra);
+        if d.rotulos.iter().any(|r| r.caja.comun(&caja) > 0.25 * caja.area()) {
+            continue;
+        }
+        // Solo un rotulo de verdad (corto, sin dudas) y donde hay tinta: la
+        // nube a veces inventa («2a=?» sobre un recuadro vacio).
+        if t.chars().count() > 5 || t.contains(['?', '¿']) {
+            continue;
+        }
+        let color = match img {
+            Some(i) => match color_de_tinta(i, &caja) {
+                Some(c) => Some(c),
+                None => continue,
+            },
+            None => None,
+        };
+        d.rotulos.push(Rotulo { texto: t.to_string(), caja, color, negrita: false, letra_suelta: true });
+    }
+}
+
+/// El color de la tinta de una caja (lo mas entintado: la letra, no el
+/// sector de color sobre el que va), vivo si es de color.
+fn color_de_tinta(img: &Img, caja: &Caja) -> Option<[u8; 3]> {
+    let papel = [255f32, 255.0, 255.0];
+    let mut v: Vec<(f32, [f32; 3])> = Vec::new();
+    let c = caja.crecer(2.0);
+    for y in c.y.floor() as i64..c.y1().ceil() as i64 {
+        for x in c.x.floor() as i64..c.x1().ceil() as i64 {
+            if let Some(p) = img.en(x, y) {
+                v.push((mascara::dist_color(p, papel), p));
+            }
         }
     }
+    if v.len() < 4 {
+        return None;
+    }
+    v.sort_by(|a, b| b.0.total_cmp(&a.0));
+    if v[0].0 < 60.0 {
+        return None;
+    }
+    v.truncate((v.len() / 8).max(2));
+    let m = mascara::media(v.iter().map(|x| x.1));
+    Some(vivo(a_u8(m), [255, 255, 255]))
+}
+
+/// **El color de verdad de un trazo fino**: en una captura reducida, el
+/// centro de una raya roja de 1 px queda marron (mezclado con el papel y
+/// con lo que la reduccion oscurece) y el borde rosa. El tono esta en lo
+/// que se aparta del fondo; se lleva en esa direccion hasta un color pleno.
+/// Lo gris (negro, gris de una punteada) se queda como esta.
+pub(super) fn vivo(c: [u8; 3], fondo: [u8; 3]) -> [u8; 3] {
+    let d: Vec<f64> = (0..3).map(|q| c[q] as f64 - fondo[q] as f64).collect();
+    let m = d.iter().map(|x| x.abs()).fold(0.0, f64::max);
+    if m < 20.0 {
+        return c;
+    }
+    let u: Vec<f64> = d.iter().map(|x| x / m).collect();
+    // Gris o negro sobre un fondo de color: el trazo sale del tono del fondo
+    // (oscurecido) y no de otro. Una punteada gris sobre el amarillo salia
+    // oliva.
+    let tono = |x: [u8; 3]| -> Option<f64> {
+        let (r, g, b) = (x[0] as f64, x[1] as f64, x[2] as f64);
+        let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
+        if mx < 1.0 || (mx - mn) / mx < 0.15 {
+            return None;
+        }
+        let h = if mx == r {
+            ((g - b) / (mx - mn)).rem_euclid(6.0)
+        } else if mx == g {
+            (b - r) / (mx - mn) + 2.0
+        } else {
+            (r - g) / (mx - mn) + 4.0
+        };
+        Some(h * 60.0)
+    };
+    if let (Some(tc), Some(tf)) = (tono(c), tono(fondo)) {
+        let dt = (tc - tf).rem_euclid(360.0);
+        let lum = |x: [u8; 3]| 0.3 * x[0] as f64 + 0.59 * x[1] as f64 + 0.11 * x[2] as f64;
+        if dt.min(360.0 - dt) < 20.0 && lum(c) < 0.7 * lum(fondo) {
+            let g = (255.0 * lum(c) / lum(fondo).max(1.0)).round().clamp(0.0, 255.0) as u8;
+            return [g, g, g];
+        }
+    }
+    // Lo pleno ya es su color.
+    {
+        let (mx, mn) = (*c.iter().max().unwrap() as f64, *c.iter().min().unwrap() as f64);
+        if mx >= 1.0 && (mx - mn) / mx >= 0.6 {
+            return c;
+        }
+    }
+    // Gris o negro: oscurece lo mismo, en proporcion, cada canal del fondo
+    // (una punteada gris sobre el amarillo salia oliva): un gris.
+    if (0..3).all(|q| c[q] as f64 <= fondo[q] as f64 + 5.0) {
+        let osc: Vec<f64> = (0..3).map(|q| 1.0 - c[q] as f64 / (fondo[q] as f64).max(1.0)).collect();
+        let (omax, omin) = (osc.iter().copied().fold(f64::MIN, f64::max), osc.iter().copied().fold(f64::MAX, f64::min));
+        if omax > 0.0 && (omax - omin) / omax < 0.1 {
+            let k = 1.0 - osc.iter().sum::<f64>() / 3.0;
+            let g = (255.0 * k).round().clamp(0.0, 255.0) as u8;
+            return [g, g, g];
+        }
+    }
+    // De color de verdad: unos canales se apartan del fondo mas que otros.
+    let (umax, umin) = (u.iter().copied().fold(f64::MIN, f64::max), u.iter().copied().fold(f64::MAX, f64::min));
+    if umax - umin < 0.2 {
+        return c;
+    }
+    // Hasta donde se puede ir antes de que un canal se salga (el 90 %).
+    let mut t = f64::MAX;
+    for q in 0..3 {
+        if u[q].abs() > 0.05 {
+            let sitio = if u[q] < 0.0 { fondo[q] as f64 } else { 255.0 - fondo[q] as f64 };
+            t = t.min(sitio / u[q].abs());
+        }
+    }
+    let t = (0.9 * t).max(m);
+    let mut out = [0u8; 3];
+    for q in 0..3 {
+        out[q] = (fondo[q] as f64 + u[q] * t).round().clamp(0.0, 255.0) as u8;
+    }
+    // Y luminoso: lo que la reduccion oscurecio no es del color (el rojo
+    // fino salia granate).
+    let mx = *out.iter().max().unwrap_or(&0) as f64;
+    if mx > 1.0 && mx < 190.0 {
+        for o in out.iter_mut() {
+            *o = (*o as f64 * 190.0 / mx).round().min(255.0) as u8;
+        }
+    }
+    out
 }
 
 /// Dos segmentos en la misma recta que se tocan (o casi) son uno: al
@@ -2040,4 +2376,245 @@ fn puntas_de_discontinuas(d: &mut Diagrama, hm: f64) {
         k += 1;
         !quitar.contains(&(k - 1))
     });
+}
+
+/// **Cada arco en su circunferencia de verdad** (15-oct, la lamina del
+/// usuario: el arco grueso AB del cuadrante salio en tres trozos, dos de
+/// ellos ajustados con circunferencias que no eran —r 154 y r 48 en vez de
+/// 261—, y se veia como un trazo a mano). Un arco cuyos puntos caen sobre
+/// una circunferencia mayor ya encontrada es de ella (con sus angulos); y
+/// los arcos de una misma circunferencia, del mismo color y grosor, que se
+/// tocan o tienen entre medias un hueco con tinta (cruces, un punto), uno.
+pub(super) fn consolidar_arcos(m: &Mapas, d: &mut Diagrama, hm: f64) {
+    if d.arcos.len() < 2 {
+        return;
+    }
+    let muestras = |a: &Arco| -> Vec<P> {
+        let n = ((a.r * a.barrido / 2.0).ceil() as usize).clamp(3, 400);
+        (0..=n).map(|k| {
+            let t = a.inicio + a.barrido * k as f64 / n as f64;
+            (a.c.0 + a.r * t.cos(), a.c.1 + a.r * t.sin())
+        }).collect()
+    };
+    // 1. A su circunferencia: de las mas largas a las mas cortas.
+    let mut orden: Vec<usize> = (0..d.arcos.len()).collect();
+    orden.sort_by(|&a, &b| (d.arcos[b].r * d.arcos[b].barrido).total_cmp(&(d.arcos[a].r * d.arcos[a].barrido)));
+    let mut refs: Vec<(P, f64)> = Vec::new();
+    let mut ref_colores: Vec<[u8; 3]> = Vec::new();
+    let parecido = |x: [u8; 3], y: [u8; 3]| mascara::dist_color([x[0] as f32, x[1] as f32, x[2] as f32], [y[0] as f32, y[1] as f32, y[2] as f32]) < 110.0;
+    for &i in &orden {
+        let a = d.arcos[i].clone();
+        let pts = muestras(&a);
+        // Un trozo corto ajustado con otra curvatura se aparta unos pixeles
+        // en medio aunque su tinta este sobre la circunferencia.
+        let tol = 4.5f64.max(1.2 * a.grosor);
+        // O, aunque su ajuste se aparte, su tinta va por esa circunferencia:
+        // los extremos cerca de ella y tinta casi seguida a lo largo de ella
+        // entre los dos (un arco de 39 grados ajustado con r 154 en vez de
+        // 261: era el mismo trazo).
+        let por_tinta = |c: P, r: f64| -> bool {
+            let (p0, p1) = (pts[0], pts[pts.len() - 1]);
+            let tol_e = 6f64.max(0.04 * r);
+            if (dist(p0, c) - r).abs() > tol_e || (dist(p1, c) - r).abs() > tol_e {
+                return false;
+            }
+            let medio = pts[pts.len() / 2];
+            let am = (medio.1 - c.1).atan2(medio.0 - c.0);
+            let rel = |p: P| {
+                let mut x = ((p.1 - c.1).atan2(p.0 - c.0) - am).rem_euclid(TAU);
+                if x > PI {
+                    x -= TAU;
+                }
+                x
+            };
+            let (t0, t1) = (rel(p0).min(rel(p1)), rel(p0).max(rel(p1)));
+            let n = (((t1 - t0) * r).ceil() as usize).max(2);
+            let si = (0..=n)
+                .filter(|k| {
+                    let t = am + t0 + (t1 - t0) * *k as f64 / n as f64;
+                    [-1.5f64, -0.5, 0.5, 1.5].iter().any(|dr| m.i((c.0 + (r + dr) * t.cos(), c.1 + (r + dr) * t.sin())).is_some_and(|i| m.tinta[i]))
+                })
+                .count();
+            si as f64 >= 0.85 * (n + 1) as f64
+        };
+        let suya = refs.iter().copied().zip(ref_colores.iter().copied()).filter(|&(_, col)| parecido(col, a.color)).map(|(x, _)| x).filter(|&(c, r)| {
+            r >= 0.8 * a.r && (dist(c, a.c) > 1.0 || (r - a.r).abs() > 1.0) && (pts.iter().all(|&p| (dist(p, c) - r).abs() <= tol) || por_tinta(c, r))
+        }).min_by(|x, y| {
+            let e = |(c, r): (P, f64)| pts.iter().map(|&p| (dist(p, c) - r).abs()).sum::<f64>();
+            e(*x).total_cmp(&e(*y))
+        });
+        match suya {
+            Some((c, r)) => {
+                // Lo que abarcan sus puntos vistos desde el centro nuevo,
+                // alrededor del de en medio (un arquito que se dobla no da
+                // la vuelta entera).
+                let medio = pts[pts.len() / 2];
+                let am = (medio.1 - c.1).atan2(medio.0 - c.0);
+                let (mut lo, mut hi) = (0f64, 0f64);
+                for p in &pts {
+                    let mut x = ((p.1 - c.1).atan2(p.0 - c.0) - am).rem_euclid(TAU);
+                    if x > PI {
+                        x -= TAU;
+                    }
+                    lo = lo.min(x);
+                    hi = hi.max(x);
+                }
+                let x = &mut d.arcos[i];
+                x.c = c;
+                x.r = r;
+                x.inicio = (am + lo).rem_euclid(TAU);
+                x.barrido = (hi - lo).max(1e-3);
+            }
+            None => {
+                refs.push((a.c, a.r));
+                ref_colores.push(a.color);
+            }
+        }
+    }
+    // 2. Juntar los de una circunferencia.
+    let tinta_en = |c: P, r: f64, desde: f64, hasta: f64| -> f64 {
+        let largo = (hasta - desde) * r;
+        let n = (largo.ceil() as usize).max(1);
+        let si = (0..=n).filter(|k| {
+            let t = desde + (hasta - desde) * *k as f64 / n as f64;
+            let p = (c.0 + r * t.cos(), c.1 + r * t.sin());
+            (-1..=1).any(|dr| {
+                let q = (c.0 + (r + dr as f64) * t.cos(), c.1 + (r + dr as f64) * t.sin());
+                m.i(q).is_some_and(|i| m.tinta[i]) || m.i(p).is_some_and(|i| m.texto[i])
+            })
+        }).count();
+        si as f64 / (n + 1) as f64
+    };
+    loop {
+        let mut junto = false;
+        'fuera: for i in 0..d.arcos.len() {
+            for j in 0..d.arcos.len() {
+                if i == j {
+                    continue;
+                }
+                let (a, b) = (&d.arcos[i], &d.arcos[j]);
+                if a.entera() || b.entera() || dist(a.c, b.c) > 1.0 || (a.r - b.r).abs() > 1.0 || a.estilo != b.estilo {
+                    continue;
+                }
+                let color = mascara::dist_color([a.color[0] as f32, a.color[1] as f32, a.color[2] as f32], [b.color[0] as f32, b.color[1] as f32, b.color[2] as f32]);
+                let (g0, g1) = (a.grosor.min(b.grosor), a.grosor.max(b.grosor));
+                if color > 80.0 || g1 > 1.7 * g0 + 0.6 {
+                    continue;
+                }
+                // Donde empieza b visto desde el principio de a (0..2pi): b
+                // tiene que empezar dentro de a o poco despues de su final.
+                let fin_a = a.inicio + a.barrido;
+                let rel = (b.inicio - a.inicio).rem_euclid(TAU);
+                if rel > PI + a.barrido / 2.0 {
+                    continue;
+                }
+                let hueco = rel - a.barrido;
+                let tapado = hueco <= 0.0 || hueco * a.r <= 10f64.max(0.7 * hm) || (hueco <= 40f64.to_radians() && tinta_en(a.c, a.r, fin_a, fin_a + hueco) >= 0.6);
+                if !tapado {
+                    continue;
+                }
+                let barrido = a.barrido.max(rel + b.barrido).min(TAU);
+                let (la, lb) = (a.barrido, b.barrido);
+                let grosor = (a.grosor * la + b.grosor * lb) / (la + lb);
+                let color = if la >= lb { a.color } else { b.color };
+                let nuevo = Arco { c: a.c, r: a.r, inicio: a.inicio, barrido: if barrido >= TAU - 0.05 { TAU } else { barrido }, grosor, color, estilo: a.estilo };
+                d.arcos[i] = nuevo;
+                d.arcos.remove(j);
+                junto = true;
+                break 'fuera;
+            }
+        }
+        if !junto {
+            break;
+        }
+    }
+}
+
+/// **Un arco grueso sobre una circunferencia fina** es un arco con su
+/// grosor (el AB del cuadrante, repasado, y su prolongacion fina hasta el
+/// punto de la izquierda): el grosor de cada tramo de 3 grados, y donde
+/// cambia de verdad (vez y media, al menos 12 grados seguidos), dos arcos.
+pub(super) fn partir_por_grosor(m: &Mapas, d: &mut Diagrama) {
+    let mut nuevos: Vec<Arco> = Vec::new();
+    for a in std::mem::take(&mut d.arcos) {
+        if a.r * a.barrido < 40.0 {
+            nuevos.push(a);
+            continue;
+        }
+        let paso = 3f64.to_radians();
+        let n = ((a.barrido / paso).floor() as usize).max(1);
+        let anchos: Vec<f64> = (0..n)
+            .map(|k| {
+                let t0 = a.inicio + a.barrido * k as f64 / n as f64;
+                let muestras: Vec<(P, P)> = (0..5)
+                    .map(|q| {
+                        let t = t0 + a.barrido / n as f64 * (q as f64 + 0.5) / 5.0;
+                        ((a.c.0 + a.r * t.cos(), a.c.1 + a.r * t.sin()), (t.cos(), t.sin()))
+                    })
+                    .collect();
+                m.ancho(&muestras)
+            })
+            .collect();
+        // Mediana de 3 (un cruce engorda un tramo).
+        let suave: Vec<f64> = (0..n)
+            .map(|k| {
+                let mut v = [anchos[k.saturating_sub(1)], anchos[k], anchos[(k + 1).min(n - 1)]];
+                v.sort_by(f64::total_cmp);
+                v[1]
+            })
+            .collect();
+        let (mn, mx) = (suave.iter().copied().fold(f64::MAX, f64::min), suave.iter().copied().fold(f64::MIN, f64::max));
+        if mx < 1.5 * mn || n < 8 {
+            nuevos.push(a);
+            continue;
+        }
+        let corte = (mn + mx) / 2.0;
+        let mut clase: Vec<bool> = suave.iter().map(|&g| g >= corte).collect();
+        // Las corridas de menos de 12 grados, con la vecina.
+        let minimo = 4;
+        loop {
+            let mut cambio = false;
+            let mut k = 0;
+            while k < n {
+                let mut j = k;
+                while j < n && clase[j] == clase[k] {
+                    j += 1;
+                }
+                if j - k < minimo && !(k == 0 && j == n) {
+                    let v = if k > 0 { clase[k - 1] } else { clase[j.min(n - 1)] };
+                    if v != clase[k] {
+                        for c in clase.iter_mut().take(j).skip(k) {
+                            *c = v;
+                        }
+                        cambio = true;
+                    }
+                }
+                k = j;
+            }
+            if !cambio {
+                break;
+            }
+        }
+        let mut k = 0;
+        while k < n {
+            let mut j = k;
+            while j < n && clase[j] == clase[k] {
+                j += 1;
+            }
+            let mut g: Vec<f64> = anchos[k..j].to_vec();
+            g.sort_by(f64::total_cmp);
+            let inicio = a.inicio + a.barrido * k as f64 / n as f64;
+            let barrido = a.barrido * (j - k) as f64 / n as f64 + if j == n { a.barrido - a.barrido * n as f64 / n as f64 } else { 0.0 };
+            // Su color, el de su propia tinta (la parte fina de un arco verde
+            // grueso era la circunferencia negra).
+            let pts: Vec<P> = (0..=12).map(|q| {
+                let t = inicio + barrido * q as f64 / 12.0;
+                (a.c.0 + a.r * t.cos(), a.c.1 + a.r * t.sin())
+            }).collect();
+            let color = m.color(&pts, (g[g.len() / 2] / 2.0).max(1.0));
+            nuevos.push(Arco { inicio: inicio.rem_euclid(TAU), barrido, grosor: g[g.len() / 2], color, ..a.clone() });
+            k = j;
+        }
+    }
+    d.arcos = nuevos;
 }

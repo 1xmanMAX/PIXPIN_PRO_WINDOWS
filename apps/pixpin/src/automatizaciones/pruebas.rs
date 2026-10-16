@@ -712,3 +712,107 @@ fn el_encargo_con_una_orden_rapida_no_toca_el_modelo() {
     assert!(r.texto.contains("Una casa"), "{}", r.texto);
     let _ = std::fs::remove_dir_all(&raiz);
 }
+
+// ---------------------------------------------------------------------------
+// «Calca esto» con una lamina, por el camino de la cola (15-oct)
+
+/// Un modelo con vision que no contesta (sin red): la lamina pasa igual
+/// como hoja, con lo que no necesita modelo.
+struct VisionSinRed;
+
+impl pixpin_ia::motor::Motor for VisionSinRed {
+    fn completar(
+        &self,
+        _: &pixpin_ia::motor::Peticion,
+        _: &mut dyn FnMut(&pixpin_ia::motor::Trozo) -> pixpin_ia::motor::Seguir,
+    ) -> Result<pixpin_ia::motor::Respuesta, pixpin_ia::ErrorIa> {
+        Err(pixpin_ia::ErrorIa::Nube("sin red en la prueba".into()))
+    }
+    fn ve_imagenes(&self) -> bool {
+        true
+    }
+    fn a_la_vez(&self) -> usize {
+        8
+    }
+}
+
+/// La lamina sintetica del teorema de Tales, en un PNG de la prueba.
+fn png_de_lamina(raiz: &Path) -> PathBuf {
+    let p = crate::asistente::hoja_a_lienzo::banco_diagramas::lamina_tales();
+    let ruta = raiz.join("lamina-prueba.png");
+    std::fs::create_dir_all(raiz).unwrap();
+    let img = pixpin_codec::ImagenRgba { ancho: p.ancho, alto: p.alto, pixeles: p.rgba };
+    std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
+    ruta
+}
+
+/// El encargo de un pedido `asistente`, como lo arma la cola.
+fn encargo_del_pedido(json: &str) -> encargo::Encargo {
+    use crate::pedidos::{Pedido, leer as leer_pedido};
+    let Pedido::Asistente { texto, proyecto, imagenes, .. } = leer_pedido(json).unwrap() else { panic!("no es un pedido asistente") };
+    let e = encargo::Encargo { texto, proyecto, imagenes, origen: None, bloquear: None };
+    super::cola::Registro::nuevo("prueba".into(), &e, 1).encargo()
+}
+
+/// **El usuario, por la cola** (Flow, `pixpinmax --pedido`): «[img 01]
+/// calca esto en el canvas» con una lamina. El modelo llama a
+/// `calcar_imagen` y el EJECUTOR la pasa como hoja (figuras exactas y
+/// texto), no la calca. Caso negativo: sin modelo con vision (el local),
+/// se calca como siempre.
+#[test]
+fn calca_esto_con_una_lamina_por_la_cola_va_como_hoja() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    for (con_vision, nombre) in [(true, "calca-lamina"), (false, "calca-lamina-local")] {
+        let raiz = raiz_de_prueba(nombre);
+        let ruta = png_de_lamina(&raiz);
+        let json = json!({"pixpin":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
+        let e = encargo_del_pedido(&json);
+        let ent = encargo::Entorno { ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() }, aparato: "PC01".into() };
+        let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_llamada("calcar_imagen", "{}"), Respuesta::de_texto("Listo.")]));
+        let vision: Option<Arc<dyn pixpin_ia::motor::Motor>> = if con_vision { Some(Arc::new(VisionSinRed)) } else { None };
+        let r = encargo::hacer_con_vision(&ent, motor.clone(), vision, &e, encargo::Permiso::Fijo(Box::new(|_| false)), Box::new(|_| 1)).unwrap();
+        // Lo que le volvio al modelo de la herramienta.
+        let recibido = motor.recibido.lock().unwrap();
+        let ultimo = recibido.last().unwrap().mensajes.iter().map(|m| m.texto_entero()).collect::<Vec<_>>().join("\n");
+        eprintln!("{nombre}: {}", ultimo.chars().rev().take(400).collect::<String>().chars().rev().collect::<String>());
+        if con_vision {
+            assert!(ultimo.contains("era una lamina"), "con vision la lamina va como hoja: {ultimo}");
+            assert!(ultimo.contains("figura(s) con rectas"), "con su figura exacta: {ultimo}");
+        } else {
+            assert!(!ultimo.contains("era una lamina"), "sin vision se calca: {ultimo}");
+        }
+        assert!(r.lienzo.is_some(), "dibujo en el lienzo del asistente: {r:?}");
+        drop(recibido);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+}
+
+/// **El mismo pedido, con Claude de verdad** (la clave de Ajustes, leida en
+/// memoria): exactamente `{"accion":"asistente","texto":"[img 01] calca esto
+/// en el canvas","imagenes":["E:/pixpin-demo/lamina-prueba.png"]}` (copiada
+/// a una carpeta de la prueba: no se toca el original).
+///
+/// ```text
+/// cargo test -p pixpin -- --ignored --nocapture pedido_calca_esto_con_claude
+/// ```
+#[test]
+#[ignore = "con la nube de verdad"]
+fn pedido_calca_esto_con_claude() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let raiz = raiz_de_prueba("calca-claude");
+    std::fs::create_dir_all(&raiz).unwrap();
+    let ruta = raiz.join("lamina-prueba.png");
+    std::fs::copy(r"E:\pixpin-demo\lamina-prueba.png", &ruta).expect("la lamina de E:/pixpin-demo");
+    let json = json!({"pixpin":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
+    let e = encargo_del_pedido(&json);
+    let ent = encargo::Entorno { ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() }, aparato: "PC01".into() };
+    let p = pixpin_ia::nube::Proveedor::Claude;
+    let motor = crate::asistente::nube::motor(p, None, false).expect("la clave de Claude en Ajustes");
+    let clave = pixpin_ia::nube::claves::leer(p).unwrap();
+    let vision: Arc<dyn pixpin_ia::motor::Motor> = Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero());
+    let t = std::time::Instant::now();
+    let r = encargo::hacer_con_vision(&ent, motor, Some(vision), &e, encargo::Permiso::Fijo(Box::new(|_| false)), Box::new(|_| 1)).unwrap();
+    println!("{:.1} s, bien {}, lienzo {:?}\n{}", t.elapsed().as_secs_f32(), r.bien, r.lienzo, r.texto);
+    assert!(r.lienzo.is_some(), "{r:?}");
+    let _ = std::fs::remove_dir_all(&raiz);
+}

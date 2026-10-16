@@ -294,7 +294,7 @@ fn seccionar_es_rapido() {
 // Montaje
 
 fn entrada<'a>(z: &'a Zona, pagina: (&'a [u8], u32, u32), o: &'a Opciones) -> Entrada<'a> {
-    Entrada { zona: z, mapa: Mapa { escala: 0.5, origen: (0.0, 0.0) }, opciones: o, pagina, alto_letra: 18.0, semilla: 77, lector: None, ajenas: &[] }
+    Entrada { zona: z, mapa: Mapa { escala: 0.5, origen: (0.0, 0.0) }, opciones: o, pagina, alto_letra: 18.0, semilla: 77, lector: None, ajenas: &[], pistas: &[] }
 }
 
 fn leer(els: &[serde_json::Value]) -> Vec<pixpin_motor2d::Elemento> {

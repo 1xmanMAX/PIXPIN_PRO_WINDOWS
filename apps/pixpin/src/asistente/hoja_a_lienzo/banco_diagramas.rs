@@ -23,7 +23,7 @@ use super::*;
 const SCRATCH: &str = r"C:\Users\MaxBook\AppData\Local\Temp\claude\F--THE-FORGE-PIXPIN-PC-VERSION-MAX\afe461c5-d9fa-4287-b8b5-3ab7961f6cb3\scratchpad";
 
 fn salida() -> PathBuf {
-    std::env::var_os("PIXPIN_BANCO_DIAGRAMAS").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(SCRATCH).join("banco-diagramas"))
+    std::env::var_os("PIXPIN_BANCO_DIAGRAMAS").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(SCRATCH).join("banco-geometria"))
 }
 
 fn lamina() -> PathBuf {
@@ -125,10 +125,13 @@ fn lamina_sin_red() {
     guardar(&lado_a_lado(&a_ancho(&original, 1400), &res), &base.join("lamina-comparar-entero.png"));
     // Cada zona de dibujo, de cerca: el recorte | lo vectorizado (al doble).
     for z in s.zonas.iter().filter(|z| matches!(z.tipo, pixpin_ia::hoja::Tipo::Dibujo | pixpin_ia::hoja::Tipo::Grafica)) {
-        let (rgba, w, h) = pixpin_ia::hoja::imagen::recortar(&p.rgba, p.ancho, p.alto, &z.caja);
+        // Como `montaje::diagrama`: con 12 px de aire.
+        let zc = z.caja.crecer(12.0).dentro(p.ancho as f64, p.alto as f64);
+        let (rgba, w, h) = pixpin_ia::hoja::imagen::recortar(&p.rgba, p.ancho, p.alto, &zc);
         let palabras: Vec<pixpin_ia::hoja::PalabraHoja> = Vec::new();
-        let tapar: Vec<pixpin_ia::hoja::Caja> = p.palabras.iter().filter(|q| q.caja.comun(&z.caja) > 0.0).map(|q| pixpin_ia::hoja::Caja::nueva(q.caja.x - z.caja.x, q.caja.y - z.caja.y, q.caja.w, q.caja.h)).collect();
-        let oz = pixpin_ia::diagrama::Opciones { tapar, ..o.clone() };
+        let tapar: Vec<pixpin_ia::hoja::Caja> = p.palabras.iter().filter(|q| q.caja.comun(&zc) > 0.0).map(|q| pixpin_ia::hoja::Caja::nueva(q.caja.x - zc.x, q.caja.y - zc.y, q.caja.w, q.caja.h)).collect();
+        let pistas = s.zonas.iter().flat_map(|z| z.renglones.iter().map(|r| r.texto.clone())).collect();
+        let oz = pixpin_ia::diagrama::Opciones { tapar, pistas, ..o.clone() };
         let d = pixpin_ia::diagrama::vectorizar(&rgba, w, h, &palabras, &oz, Some(&lector));
         println!("zona {} de cerca: {} en {} ms", z.id, d.resumen(), d.ms);
         if std::env::var_os("PIXPIN_DIAGRAMA_LISTA").is_some() {
@@ -379,7 +382,8 @@ fn banco_diagramas() {
     if sin_nube {
         todos.push(("sin-nube", None));
     } else {
-        for (n, m) in motores() {
+        let solo_motor = std::env::var("PIXPIN_DIAGRAMA_MOTOR").ok();
+        for (n, m) in motores().into_iter().filter(|(n, _)| solo_motor.as_deref().is_none_or(|s| *n == s)) {
             todos.push((n, Some(m)));
         }
     }
@@ -421,11 +425,12 @@ fn banco_diagramas() {
                 &[
                     format!("Pedido: \u{ab}Calca esto\u{bb} (imagen en el lienzo) \u{b7} caso: {nombre} \u{b7} lamina: {}", if lamina_si { "si" } else { "no" }),
                     format!(
-                        "Motor: {motor_nombre} \u{b7} 1\u{ba} visible {:.2} s \u{b7} total {:.1} s \u{b7} {} zonas ({diagramas} diagrama), {} peticiones, {} fallos \u{b7} build de pruebas (debug)",
+                        "Motor: {motor_nombre} \u{b7} 1\u{ba} visible {:.2} s \u{b7} total {:.1} s \u{b7} {} zonas ({diagramas} diagrama), {} peticiones ({} a la vez), {} fallos \u{b7} build de pruebas (debug)",
                         primero as f32 / 1000.0,
                         total as f32 / 1000.0,
                         inf.seccionado.zonas.len(),
                         inf.peticiones,
+                        inf.a_la_vez,
                         inf.fallos.len()
                     ),
                 ],
@@ -464,5 +469,26 @@ fn depurar_plano() {
     println!("{}", d.resumen());
     for s in &d.segmentos {
         println!("  seg ({:.0},{:.0})-({:.0},{:.0}) g {:.1} {:?} {:?}", s.a.0, s.a.1, s.b.0, s.b.1, s.grosor, s.color, s.estilo);
+    }
+}
+
+#[test]
+#[ignore = "depurar el recuadro de una formula"]
+fn depurar_recuadro() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let p = leer(&lamina(), None).unwrap();
+    for c in [pixpin_ia::hoja::Caja::nueva(92.0, 226.0, 95.0, 63.0), pixpin_ia::hoja::Caja::nueva(80.0, 500.0, 120.0, 80.0)] {
+        let (rgba, w, h) = pixpin_ia::hoja::imagen::recortar(&p.rgba, p.ancho, p.alto, &c);
+        let tapar: Vec<pixpin_ia::hoja::Caja> = p.palabras.iter().filter(|q| q.caja.comun(&c) > 0.0).map(|q| pixpin_ia::hoja::Caja::nueva(q.caja.x - c.x, q.caja.y - c.y, q.caja.w, q.caja.h)).collect();
+        println!("tapar {tapar:?}");
+        let o = pixpin_ia::diagrama::Opciones { alto_letra: 12.0, exacta: false, tapar, ..Default::default() };
+        let d = pixpin_ia::diagrama::vectorizar(&rgba, w, h, &[], &o, None);
+        println!("{}", d.resumen());
+        for s in &d.segmentos {
+            println!("  seg ({:.1},{:.1})-({:.1},{:.1}) g {:.1} {:?}", s.a.0, s.a.1, s.b.0, s.b.1, s.grosor, s.color);
+        }
+        for r in &d.recuadros {
+            println!("  rec {r:?}");
+        }
     }
 }

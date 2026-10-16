@@ -63,13 +63,9 @@ pub(crate) fn elementos(d: &Diagrama, origen: (f64, f64), escala: f64, f: &mut F
     for arco in &d.arcos {
         let (cx, cy) = a(arco.c);
         let r = (arco.r * escala) as f32;
-        let mut e = base(arco.color, arco.grosor);
-        e.x = cx as f32 - r;
-        e.y = cy as f32 - r;
-        e.ancho = 2.0 * r;
-        e.alto = 2.0 * r;
+        let barrido = if arco.entera() { None } else { Some(arco.barrido as f32) };
+        let mut e = figura_de_arco((cx as f32, cy as f32), r, arco.inicio as f32, barrido, base(arco.color, arco.grosor));
         e.estilo = estilo(arco.estilo);
-        e.figura = if arco.entera() { Figura::Elipse } else { Figura::Arco { inicio: arco.inicio as f32, barrido: Some(arco.barrido as f32) } };
         piezas.push(e);
     }
     for r in &d.recuadros {
@@ -151,4 +147,21 @@ pub fn a_elementos(d: &Diagrama, origen: (f64, f64), escala: f64, semilla: u64, 
     f.grupo = Some(f.nombre_de_grupo("diagrama"));
     elementos(d, origen, escala, &mut f, familia);
     f.salida
+}
+
+/// **La capa fina del arco** (15-oct): una circunferencia (`barrido`
+/// `None`) o el arco de centro `c` y radio `r` que empieza en `inicio` y
+/// barre `barrido` (radianes de pantalla), con lo que hay hoy en el motor
+/// comun (`Figura::Elipse` y `Figura::Arco`, «circulo + recorte»). Si el
+/// motor gana una figura de arco/sector propia, se cambia solo aqui.
+pub(crate) fn figura_de_arco(c: (f32, f32), r: f32, inicio: f32, barrido: Option<f32>, mut e: Elemento) -> Elemento {
+    e.x = c.0 - r;
+    e.y = c.1 - r;
+    e.ancho = 2.0 * r;
+    e.alto = 2.0 * r;
+    e.figura = match barrido {
+        None => Figura::Elipse,
+        Some(b) => Figura::Arco { inicio, barrido: Some(b) },
+    };
+    e
 }

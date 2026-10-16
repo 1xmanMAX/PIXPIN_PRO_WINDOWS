@@ -464,6 +464,13 @@ impl Motor for MotorNube {
         true
     }
 
+    fn a_la_vez(&self) -> usize {
+        match self.proveedor() {
+            Proveedor::Claude => 8,
+            Proveedor::DeepSeek => 3,
+        }
+    }
+
     /// Claude Haiku 5.5 y DeepSeek V4.1 Flash ven imagenes.
     fn ve_imagenes(&self) -> bool {
         true
@@ -657,6 +664,10 @@ impl Motor for MotorConRespaldo {
 
     fn catalogo_completo(&self) -> bool {
         self.nube.catalogo_completo()
+    }
+
+    fn a_la_vez(&self) -> usize {
+        self.nube.a_la_vez()
     }
 
     fn ve_imagenes(&self) -> bool {

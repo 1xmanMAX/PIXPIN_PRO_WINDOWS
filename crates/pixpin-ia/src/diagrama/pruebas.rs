@@ -407,3 +407,170 @@ fn el_calco_de_una_foto_no_saca_rayas() {
     let c = crate::calcar::calcar(&l.rgba(), l.w as u32, l.h as u32, &crate::calcar::Parametros::default());
     assert!(!c.trazos.iter().any(|t| matches!(t, crate::calcar::Trazo::Raya { .. })), "una foto no tiene rayas finas");
 }
+
+// ---------------------------------------------------------------------------
+// Geometria exacta (15-oct): arcos de verdad, restricciones, figuras con su
+// propio marco, colores de nucleo y el caso negativo.
+
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
+
+const AMARILLO: [u8; 3] = [255, 230, 170];
+
+fn medir_con(l: &Lamina, pistas: &[&str]) -> Diagrama {
+    let o = Opciones { pistas: pistas.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+    vectorizar(&l.rgba(), l.w as u32, l.h as u32, &[], &o, None)
+}
+
+/// El arco mas largo del diagrama.
+fn el_arco(d: &Diagrama) -> &Arco {
+    d.arcos.iter().max_by(|a, b| (a.r * a.barrido).total_cmp(&(b.r * b.barrido))).expect("algun arco")
+}
+
+fn casi_angulo(a: f64, b: f64, tol_grados: f64) -> bool {
+    let mut x = (a - b).rem_euclid(TAU);
+    if x > PI {
+        x = TAU - x;
+    }
+    x <= tol_grados.to_radians()
+}
+
+#[test]
+fn la_semicircunferencia_es_un_arco_de_180_con_su_diametro() {
+    let mut l = Lamina::nueva(460, 300);
+    // Un poco torcido a proposito (como a mano): 181 grados.
+    l.arco((230.0, 240.0), 170.0, PI - 0.01, TAU, 2.0, NEGRO);
+    l.raya((60.0, 240.0), (400.0, 240.0), 2.0, NEGRO);
+    l.disco((60.0, 240.0), 4.0, AZUL);
+    l.disco((400.0, 240.0), 4.0, AZUL);
+    let d = medir_con(&l, &["SEMI CIRCUNFERENCIA"]);
+    let a = el_arco(&d);
+    eprintln!("{:?}", d.arcos);
+    assert!(!a.entera(), "un arco, no la circunferencia entera");
+    // Exacta: 180 grados, centro en el punto medio de los extremos.
+    assert!((a.barrido - PI).abs() < 1e-6, "barrido {}", a.barrido.to_degrees());
+    let (p, q) = a.extremos();
+    assert!(dist(a.c, ((p.0 + q.0) / 2.0, (p.1 + q.1) / 2.0)) < 1e-6);
+    assert!(cerca(a.c, (230.0, 240.0), 2.0), "centro {:?}", a.c);
+    assert!((a.r - 170.0).abs() < 2.0, "radio {}", a.r);
+    // Y va por arriba (de pi a 2 pi en la pantalla).
+    assert!(casi_angulo(a.inicio, PI, 2.0), "inicio {}", a.inicio.to_degrees());
+}
+
+#[test]
+fn el_cuadrante_tiene_90_grados_y_oa_igual_a_ob() {
+    let mut l = Lamina::nueva(380, 380);
+    let o = (60.0, 320.0);
+    // OA vertical, OB casi horizontal (medio grado), y el arco de A a B.
+    let a = (60.0, 70.0);
+    let b = (310.0, 322.0);
+    l.raya(o, a, 2.0, NEGRO);
+    l.raya(o, b, 2.0, NEGRO);
+    l.arco(o, 250.0, -FRAC_PI_2, 0.0, 2.5, NEGRO);
+    for p in [o, a, b] {
+        l.disco(p, 4.0, NEGRO);
+    }
+    let d = medir_con(&l, &["AOB es un cuadrante"]);
+    let arco = el_arco(&d);
+    eprintln!("{:?}\n{:?}", d.arcos, d.segmentos);
+    assert!((arco.barrido - FRAC_PI_2).abs() < 1e-6, "90 exactos: {}", arco.barrido.to_degrees());
+    let (pa, pb) = arco.extremos();
+    assert!((dist(arco.c, pa) - dist(arco.c, pb)).abs() < 1e-6, "OA = OB");
+    assert!(cerca(arco.c, o, 2.5), "centro en O: {:?}", arco.c);
+    // Los lados, exactamente vertical y horizontal, y llegan a los extremos.
+    let vertical = d.segmentos.iter().find(|s| (s.a.0 - s.b.0).abs() < 1e-6 && s.largo() > 200.0).expect("OA vertical exacta");
+    let horizontal = d.segmentos.iter().find(|s| (s.a.1 - s.b.1).abs() < 1e-6 && s.largo() > 200.0).expect("OB horizontal exacta");
+    assert!([vertical.a, vertical.b].iter().any(|&p| dist(p, pa) < 1e-6 || dist(p, pb) < 1e-6));
+    assert!([horizontal.a, horizontal.b].iter().any(|&p| dist(p, pa) < 1e-6 || dist(p, pb) < 1e-6));
+}
+
+#[test]
+fn el_angulo_casi_recto_y_el_punto_casi_en_la_circunferencia_salen_exactos() {
+    let mut l = Lamina::nueva(420, 420);
+    let c = (210.0, 210.0);
+    l.circunferencia(c, 150.0, 2.0, NEGRO);
+    // Un diametro AB y P sobre la circunferencia (dibujado 2 px fuera).
+    let (a, b) = ((60.0, 210.0), (360.0, 210.0));
+    let ang = -1.1f64;
+    let p = (c.0 + 152.0 * ang.cos(), c.1 + 152.0 * ang.sin());
+    l.raya(a, b, 2.0, NEGRO);
+    l.raya(a, p, 2.0, AZUL);
+    l.raya(p, b, 2.0, AZUL);
+    for q in [a, b, p] {
+        l.disco(q, 4.0, NEGRO);
+    }
+    let d = l.medir();
+    let circ = el_arco(&d);
+    eprintln!("arcos {:?}
+puntos {:?}
+segs {:?}", d.arcos, d.puntos, d.segmentos);
+    assert!(circ.entera());
+    // P, sobre la circunferencia exacta.
+    let pp = d.puntos.iter().map(|q| q.c).min_by(|x, y| dist(*x, p).total_cmp(&dist(*y, p))).unwrap();
+    assert!((dist(pp, circ.c) - circ.r).abs() < 1e-6, "P a {} del radio", dist(pp, circ.c) - circ.r);
+    // AB es diametro: el centro, en su punto medio.
+    let ab = d.segmentos.iter().max_by(|x, y| x.largo().total_cmp(&y.largo())).unwrap();
+    assert!(dist(circ.c, ((ab.a.0 + ab.b.0) / 2.0, (ab.a.1 + ab.b.1) / 2.0)) < 1e-6, "centro {:?} AB {:?}", circ.c, ab);
+    // Y el angulo en P (Tales), recto.
+    let azules: Vec<&Segmento> = d.segmentos.iter().filter(|s| s.color[2] as i32 > s.color[0] as i32 + 40).collect();
+    assert_eq!(azules.len(), 2, "{:?}", d.segmentos);
+    let v = |s: &Segmento| if dist(s.a, pp) < dist(s.b, pp) { (s.b.0 - s.a.0, s.b.1 - s.a.1) } else { (s.a.0 - s.b.0, s.a.1 - s.b.1) };
+    let (u, w) = (v(azules[0]), v(azules[1]));
+    let coseno = (u.0 * w.0 + u.1 * w.1) / (u.0.hypot(u.1) * w.0.hypot(w.1));
+    assert!(coseno.abs() < 1e-3, "recto en P: coseno {coseno}");
+}
+
+#[test]
+fn dos_figuras_con_escalas_distintas_cada_una_en_su_marco() {
+    let mut l = Lamina::nueva(760, 420);
+    // Una semicircunferencia grande y una pequena, lejos.
+    l.arco((220.0, 330.0), 180.0, PI, TAU, 2.0, NEGRO);
+    l.raya((40.0, 330.0), (400.0, 330.0), 2.0, NEGRO);
+    l.arco((620.0, 200.0), 60.0, PI, TAU, 1.5, ROJO);
+    l.raya((560.0, 200.0), (680.0, 200.0), 1.5, ROJO);
+    let d = medir_con(&l, &["semicircunferencia"]);
+    let figs = restricciones::figuras(&d, 6.0);
+    assert_eq!(figs.len(), 2, "dos figuras: {figs:?}");
+    let escalas: Vec<f64> = figs.iter().map(|f| f.escala()).collect();
+    assert!(escalas.iter().cloned().fold(0.0, f64::max) > 2.5 * escalas.iter().cloned().fold(f64::MAX, f64::min), "{escalas:?}");
+    let grande = d.arcos.iter().find(|a| a.r > 150.0).expect("la grande");
+    let chica = d.arcos.iter().find(|a| a.r < 80.0).expect("la chica");
+    for a in [grande, chica] {
+        assert!((a.barrido - PI).abs() < 1e-6, "{a:?}");
+    }
+    assert!(cerca(chica.c, (620.0, 200.0), 2.0) && (chica.r - 60.0).abs() < 2.0, "{chica:?}");
+    assert!(cerca(grande.c, (220.0, 330.0), 2.0) && (grande.r - 180.0).abs() < 2.5, "{grande:?}");
+}
+
+#[test]
+fn una_raya_roja_fina_junto_a_un_relleno_amarillo_es_roja_y_fina() {
+    let mut l = Lamina::nueva(360, 300);
+    // El relleno amarillo y su borde rojo de 1,5 px (como OA y OB).
+    l.poligono(&[(60.0, 40.0), (300.0, 40.0), (300.0, 250.0), (60.0, 250.0)], AMARILLO);
+    l.raya((60.0, 250.0), (300.0, 250.0), 1.5, ROJO);
+    l.raya((60.0, 40.0), (60.0, 250.0), 1.5, ROJO);
+    let d = l.medir();
+    let rojas: Vec<&Segmento> = d.segmentos.iter().filter(|s| s.largo() > 150.0).collect();
+    assert!(rojas.len() >= 2, "{:?}", d.segmentos);
+    for s in rojas {
+        let c = s.color;
+        assert!(c[0] as i32 > 150 && (c[1] as i32) < 110 && (c[2] as i32) < 110, "roja, no marron: {c:?}");
+        assert!(s.grosor <= 2.6, "fina (sin el amarillo de al lado): {}", s.grosor);
+    }
+}
+
+#[test]
+fn una_curva_libre_no_se_fuerza_a_arco() {
+    let mut l = Lamina::nueva(500, 260);
+    // Una onda (seno): no es ninguna circunferencia.
+    let pts: Vec<(f64, f64)> = (0..=200).map(|k| (40.0 + 2.1 * k as f64, 130.0 + 70.0 * (k as f64 * 0.045).sin())).collect();
+    for w in pts.windows(2) {
+        l.raya(w[0], w[1], 2.0, NEGRO);
+    }
+    let d = l.medir();
+    eprintln!("{:?}", d.arcos);
+    // Ningun arco que se la quede entera (uno por joroba como mucho), ni
+    // una circunferencia.
+    assert!(d.arcos.iter().all(|a| !a.entera()), "{:?}", d.arcos);
+    let largo_curva: f64 = pts.windows(2).map(|w| dist(w[0], w[1])).sum();
+    assert!(d.arcos.iter().all(|a| a.r * a.barrido < 0.6 * largo_curva), "{:?}", d.arcos);
+}

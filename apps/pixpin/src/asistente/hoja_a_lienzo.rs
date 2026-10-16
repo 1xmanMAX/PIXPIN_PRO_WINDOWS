@@ -347,6 +347,10 @@ pub struct Informe {
     /// Cuantas peticiones al modelo y las que fallaron (con su motivo).
     pub peticiones: usize,
     pub fallos: Vec<String>,
+    /// Cuantos trabajadores de la nube se lanzaron y cuantas peticiones
+    /// llegaron a estar en vuelo a la vez (lo medido, no lo pedido).
+    pub trabajadores: usize,
+    pub a_la_vez: usize,
 }
 
 /// **Pasa la hoja al lienzo.** `vision`: el modelo de la nube (ligero); sin
@@ -378,7 +382,9 @@ pub fn pasar(
     let lector = lector_de_letras();
     // El texto de cada zona: para las demas (un diagrama no lo vectoriza).
     let ajenas: Vec<Caja> = s.zonas.iter().flat_map(|z| z.renglones.iter().flat_map(|r| r.palabras.iter().map(|p| p.caja))).collect();
-    let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: Some(&lector), ajenas: &ajenas };
+    // Y todo su texto: las pistas de la geometria exacta («AB es diametro»).
+    let pistas: Vec<String> = s.zonas.iter().flat_map(|z| z.renglones.iter().map(|r| r.texto.clone())).collect();
+    let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: Some(&lector), ajenas: &ajenas, pistas: &pistas };
     let via_base = |z: &hoja::Zona| if fiel && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Tabla) { Via::Fiel } else { Via::Editable };
     let pisa = |a: &Caja, b: &Caja| {
         let c = a.comun(b);
@@ -459,25 +465,39 @@ pub fn pasar(
     // 1. La nube primero: es lo que mas tarda. Hilos sueltos (no de un
     //    `scope`): si la red se cuelga, el pool no deja colgada la hoja; al
     //    pasar el plazo lo que falte sale como imagen.
+    // **Un trabajador por zona, a la vez** (15-oct, el usuario: «que divida
+    // la lamina y use varios agentes»): cada uno con SOLO su recorte y su
+    // tarea (los rotulos y hechos de una figura, el LaTeX de una formula, que
+    // es una dudosa). Cuantos a la vez, segun el motor: Claude 8, DeepSeek 3.
+    let en_vuelo = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let max_en_vuelo = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut trabajadores = 0usize;
     if let Some(motor) = &vision
         && !preguntas.is_empty()
     {
         let trabajos: VecDeque<(usize, Pregunta, Result<Vec<u8>, String>)> =
             preguntas.iter().map(|&(id, q)| (id, q, png_del_recorte(p, &s.zonas[id].caja))).collect();
         let cola = Arc::new(Mutex::new(trabajos));
-        for _ in 0..o.concurrencia.clamp(1, 8).min(preguntas.len()) {
+        let a_la_vez = if motor.a_la_vez() > 1 { motor.a_la_vez() } else { o.concurrencia };
+        trabajadores = a_la_vez.clamp(1, 8).min(preguntas.len());
+        for _ in 0..trabajadores {
             let (cola, tx, motor) = (cola.clone(), tx.clone(), motor.clone());
+            let (en_vuelo, max_en_vuelo) = (en_vuelo.clone(), max_en_vuelo.clone());
             let lanzado = std::thread::Builder::new().name("hoja-al-lienzo-nube".into()).spawn(move || {
                 loop {
                     let Some((id, q, png)) = cola.lock().ok().and_then(|mut c| c.pop_front()) else { break };
+                    let ahora = en_vuelo.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_en_vuelo.fetch_max(ahora, Ordering::SeqCst);
                     let r = png.and_then(|png| match preguntar(motor.as_ref(), png.clone(), q) {
-                        // Un 429 que el motor ya reintento: una vez mas, con calma.
-                        Err(e) if e.contains("Demasiadas peticiones") => {
+                        // Un 429 o un 529 que el motor ya reintento: una vez
+                        // mas, con calma.
+                        Err(e) if e.contains("Demasiadas peticiones") || e.contains("saturado") => {
                             std::thread::sleep(Duration::from_secs(3));
                             preguntar(motor.as_ref(), png, q)
                         }
                         r => r,
                     });
+                    en_vuelo.fetch_sub(1, Ordering::SeqCst);
                     if tx.send((id, r)).is_err() {
                         break;
                     }
@@ -521,7 +541,11 @@ pub fn pasar(
     let mut sobran: std::collections::HashSet<usize> = Default::default();
     let mut entregar = |id: usize, leido: Option<Leido>, destino: &mut dyn Destino, hechos: &mut Vec<Option<Hecho>>| {
         let z = &s.zonas[id];
-        if sobran.contains(&id) {
+        // Una raya suelta que cae dentro de un diagrama es de el (el lado
+        // rojo OA de la figura salia aparte, marron y gorda, encima): ya va
+        // con sus figuras exactas.
+        let del_diagrama = z.tipo == Tipo::Linea && diagramas.iter().any(|&d| z.caja.dentro_de(&s.zonas[d].caja) >= 0.8);
+        if sobran.contains(&id) || del_diagrama {
             n_hechas += 1;
             progreso(n_hechas, total);
             return;
@@ -722,10 +746,21 @@ pub fn pasar(
     }
     hechos.retain(|h| !sobra.contains(&h.zona));
     let ms_comprobar = tc.elapsed().as_millis();
+    tracing::info!(
+        zonas = s.zonas.len(),
+        peticiones = preguntas.len(),
+        trabajadores,
+        a_la_vez = max_en_vuelo.load(Ordering::SeqCst),
+        ms_primera = ?ms_primera,
+        ms_total = t0.elapsed().as_millis() as u64,
+        "hoja_a_lienzo: hecha"
+    );
     destino.entregar(None, en(0, false, true))?;
     destino.esperar(parar)?;
     Ok(Informe {
         peticiones: preguntas.len(),
+        trabajadores,
+        a_la_vez: max_en_vuelo.load(Ordering::SeqCst),
         seccionado: s,
         hechos,
         parecidos,
@@ -772,13 +807,36 @@ pub fn pintar(hechos: &[Hecho], tam: (f32, f32), ancho: u32) -> Result<(Vec<u8>,
 /// Ajustes, en modo ligero. `None` con el local (la herramienta no se hace).
 pub fn motor_de_vision() -> Option<Arc<dyn Motor>> {
     let u = crate::oscuro::ubicacion()?;
-    match super::nube::eleccion_reciente(u.raiz()) {
+    motor_de_vision_en(u.raiz())
+}
+
+/// Lo mismo con los ajustes de los datos de `raiz` (la cola de encargos
+/// sabe cuales son los suyos).
+pub fn motor_de_vision_en(raiz: &Path) -> Option<Arc<dyn Motor>> {
+    match super::nube::eleccion_reciente(raiz) {
         super::nube::Eleccion::Nube(p) => {
             let clave = pixpin_ia::nube::claves::leer(p)?;
             Some(Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero()))
         }
         super::nube::Eleccion::Local => None,
     }
+}
+
+/// **¿Calcar o pasar como lamina?** (15-oct). Lo decide quien EJECUTA
+/// `calcar_imagen` —el ejecutor del chat y el de la cola de encargos, el
+/// mismo criterio en los dos— y no el prompt: en la app real la lamina de
+/// geometria salia «calcada con 115 elementos» porque el desvio solo estaba
+/// en un camino. Con un modelo con vision y una imagen entera (sin `zona`)
+/// que es lamina (texto y figuras), la pagina leida; si no, `None` y se calca.
+pub fn lamina_de_calcar(ruta: &Path, p: &pixpin_ia::calcar::Parametros, vision: Option<&Arc<dyn Motor>>) -> Option<Pagina> {
+    vision?;
+    if p.zona.is_some() {
+        return None;
+    }
+    let pagina = leer(ruta, None).ok()?;
+    let si = es_lamina(&pagina);
+    tracing::info!(lamina = si, ruta = %ruta.display(), "calcar_imagen: lamina o dibujo");
+    si.then_some(pagina)
 }
 
 /// El adjunto de la hoja: por su nombre, o la ultima foto o PDF del chat.
@@ -833,6 +891,9 @@ pub fn contar(p: &Pagina, inf: &Informe) -> Result<String, String> {
     );
     let mut r = hoja::resumen(&inf.seccionado, inf.hechos.len(), inf.rehechas, inf.ms_total + p.ms_leer);
     let diagramas = inf.hechos.iter().filter(|h| h.tipo == Tipo::Diagrama).count();
+    if inf.trabajadores > 0 {
+        r.push_str(&format!("; {} consulta(s) a la nube con {} trabajadores ({} a la vez)", inf.peticiones, inf.trabajadores, inf.a_la_vez));
+    }
     if diagramas > 0 {
         r.push_str(&format!("; {diagramas} figura(s) con rectas, circunferencias, arcos y puntos exactos"));
     }

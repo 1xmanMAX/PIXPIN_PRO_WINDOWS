@@ -326,6 +326,13 @@ pub trait Motor: Send + Sync {
     fn ve_imagenes(&self) -> bool {
         false
     }
+
+    /// **Cuantas peticiones a la vez** aguanta (15-oct: una lamina se
+    /// secciona y cada zona va a su trabajador en paralelo). Claude, 8;
+    /// DeepSeek, 3 (pocos creditos y limites mas bajos); el local, 1.
+    fn a_la_vez(&self) -> usize {
+        1
+    }
 }
 
 /// Un motor de mentira que contesta lo que se le dice, en orden. Para las

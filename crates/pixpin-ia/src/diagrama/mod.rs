@@ -41,6 +41,7 @@
 pub mod ajuste;
 mod geometria;
 pub mod mascara;
+pub mod restricciones;
 mod salida;
 
 #[cfg(test)]
@@ -236,18 +237,25 @@ pub struct Opciones {
     /// Texto de alrededor que no es del diagrama (de otras zonas de la hoja
     /// que caen en el recorte): no se vectoriza ni va como rotulo.
     pub tapar: Vec<Caja>,
+    /// **El texto de la hoja** (renglones del OCR de alrededor, lo que dijo
+    /// la nube): de aqui salen los hechos ([`restricciones::Hecho`]) que
+    /// hacen exacta la geometria («AB es diametro», «cuadrante»).
+    pub pistas: Vec<String>,
+    /// Aplicar la geometria exacta ([`restricciones::aplicar`]).
+    pub exacta: bool,
 }
 
 impl Default for Opciones {
     fn default() -> Self {
-        Opciones { alto_letra: 14.0, umbral_tinta: 34.0, tapar: Vec::new() }
+        Opciones { alto_letra: 14.0, umbral_tinta: 34.0, tapar: Vec::new(), pistas: Vec::new(), exacta: true }
     }
 }
 
 /// **Mide el diagrama** de un recorte RGBA. `palabras`: lo que leyo el OCR
 /// dentro (en pixeles del recorte), que va como rotulo y no se vectoriza.
 /// `lector`: para las letras sueltas que el OCR no vio (sin el, van como
-/// trazos).
+/// trazos). Con `o.exacta`, la geometria sale exacta figura a figura, con
+/// los hechos de `o.pistas` y de sus propios rotulos.
 pub fn vectorizar(rgba: &[u8], ancho: u32, alto: u32, palabras: &[PalabraHoja], o: &Opciones, lector: Option<&Lector>) -> Diagrama {
     let t0 = Instant::now();
     let (w, h) = (ancho as usize, alto as usize);
@@ -259,13 +267,27 @@ pub fn vectorizar(rgba: &[u8], ancho: u32, alto: u32, palabras: &[PalabraHoja], 
     if let Some(l) = lector {
         geometria::leer_glifos(&mut d, &img, l, o);
     }
+    if o.exacta {
+        exacta(&mut d, &o.pistas, o.alto_letra);
+    }
     d.ms = t0.elapsed().as_millis();
     d
 }
 
+/// **La geometria exacta** ([`restricciones`]): los hechos de `pistas` y de
+/// los rotulos del diagrama, figura a figura.
+pub fn exacta(d: &mut Diagrama, pistas: &[String], alto_letra: f64) {
+    let mut textos: Vec<String> = pistas.to_vec();
+    textos.extend(d.rotulos.iter().map(|r| r.texto.clone()));
+    let hechos = restricciones::hechos_de_texto(&textos);
+    restricciones::aplicar(d, &hechos, alto_letra.max(6.0));
+}
+
 /// Los rotulos que dijo la nube (texto y su centro en fracciones 0-1 del
 /// recorte) puestos en el diagrama: corrigen al OCR o a la letra suelta
-/// que caen cerca, y lo que no cae cerca de nada se anade (si no pisa).
-pub fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64)], alto_letra: f64) {
-    geometria::corregir_rotulos(d, de_la_nube, alto_letra);
+/// que caen cerca, y lo que no cae cerca de nada se anade (si no pisa), con
+/// el color de la tinta de alli si se pasa el recorte (`rgba`, ancho, alto).
+pub fn corregir_rotulos(d: &mut Diagrama, de_la_nube: &[(String, f64, f64)], alto_letra: f64, recorte: Option<(&[u8], u32, u32)>) {
+    let img = recorte.filter(|r| r.0.len() >= (r.1 * r.2 * 4) as usize).map(|r| Img::de_rgba(r.0, r.1 as usize, r.2 as usize));
+    geometria::corregir_rotulos(d, de_la_nube, alto_letra, img.as_ref());
 }
