@@ -3,13 +3,16 @@
 //!
 //! Una herramienta de la app es una fila de `pixpin_ia::acciones::todas()`:
 //! nombre, descripcion y JSON Schema (`acciones::herramienta`) tal cual. Se
-//! quedan fuera solo dos:
+//! quedan fuera solo tres:
 //!
 //! - `consultar_tareas`, que no es un pedido sino una consulta: se contesta
 //!   aqui, leyendo las listas del disco, con el mismo `tareas::consultar`
 //!   del asistente (asi funciona tambien con PixPin cerrada).
 //! - `hoja_a_lienzo`, que dibuja en el lienzo abierto del chat del
 //!   asistente: desde fuera no hay chat ni lienzo al que llevarla.
+//! - `leer_documento`, que en la tabla lee un adjunto del chat: aqui la
+//!   tapa la de leer del mismo nombre, que lee una ruta del disco. Vale
+//!   para cualquier fila que se llame como una local: gana la local.
 //!
 //! Las herramientas de leer son cosas que el asistente hace dentro del chat
 //! con sus adjuntos (buscar, OCR) o que no tiene (ver la pantalla, el texto
@@ -47,7 +50,7 @@ pub const MODIFICA: &[&str] = &["marcar_tarea", "mover_tarea", "editar_tarea", p
 
 /// Las filas de la tabla que no se ofrecen (ver la cabecera).
 fn fuera(a: &Accion) -> bool {
-    a.accion == CONSULTA || a.herramienta == pixpin_ia::hoja::NOMBRE
+    a.accion == CONSULTA || a.herramienta == pixpin_ia::hoja::NOMBRE || local(a.herramienta).is_some()
 }
 
 /// Las filas de la tabla que se ofrecen como herramientas de la app.
@@ -244,8 +247,8 @@ mod pruebas {
         nombres.sort();
         nombres.dedup();
         assert_eq!(nombres.len(), n, "un nombre repetido");
-        // Todas las filas de la tabla menos las dos de fuera, y las locales.
-        assert_eq!(n, acciones::todas().count() - 2 + LOCALES.len());
+        // Todas las filas de la tabla menos las tres de fuera, y las locales.
+        assert_eq!(n, acciones::todas().count() - 3 + LOCALES.len());
         for h in &l {
             assert_eq!(h["inputSchema"]["type"], "object", "{}", h["name"]);
             assert!(!h["description"].as_str().unwrap().is_empty());

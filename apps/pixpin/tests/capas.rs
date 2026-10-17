@@ -16,7 +16,11 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-lecciones` es la logica de las lecciones aprendidas copiada
         // del movil (JSON, buscador, etiquetador, repaso): solo serde_json, y
         // la usa `pixpin-sincro` para juntar dos versiones de una leccion.
-        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline" => 0,
+        // `pixpin-docs` (cuentas del texto), `pixpin-hojas` (las hojas de
+        // calculo) y `pixpin-cad` (el visor de planos) no dependen de ningun
+        // crate de PixPin: tambien son cimientos.
+        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline"
+        | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
@@ -31,25 +35,34 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pdfsqueeze-core` es el compresor de PDF del autor, copiado de
         // Thesis (ver su PROCEDENCIA.md): solo lopdf, image y compania, sin
         // ningun crate de PixPin ni de Windows. Cimiento puro.
-        "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
-        | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web"
-        | "pdfsqueeze-core" => 1,
+        // `pixpin-office` (Word/PowerPoint/Excel sin Office) solo usa
+        // `pixpin-docs`; `pixpin-bim` solo usa `pixpin-cad`.
+        "pixpin-shell" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d" | "pixpin-sincro"
+        | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web" | "pdfsqueeze-core"
+        | "pixpin-office" | "pixpin-bim" => 1,
         // El plugin de Flow Launcher es un ejecutable aparte que no enlaza
         // ningun crate de PixPin: habla con la app por WM_COPYDATA. La app si
         // usa su libreria (el borrador de las imagenes pegadas en Flow).
         "pixpin-lanzador" => 2,
-        "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
-        | "pixpin-store" | "pixpin-proyecto" | "pixpin-docs" | "pixpin-pila" => 2,
+        "pixpin-capture" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record" | "pixpin-store"
+        | "pixpin-proyecto" => 2,
         // El compresor de PDF en su propio ejecutable: solo pdfsqueeze y la
         // prioridad de pixpin-shell. `pixpin` solo lo usa en sus pruebas.
         "pixpin-aligerar" => 2,
+        // El puente de la extension del navegador: un exe que solo usa
+        // `pixpin-shell`.
+        "pixpin-puente" => 2,
+        // `pixpin-render` pinta las vistas previas de PDF, Office y hojas, asi
+        // que va encima de `pixpin-pdf` (capa 2).
+        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" | "pixpin-render" => 3,
         // `pixpin-notas` es la ventana del editor de notas Markdown (H12): usa
-        // las cuentas de `pixpin-docs` (capa 2), asi que va encima.
-        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
-        // Usa los componentes de `pixpin-ui` (botones, cajas), asi que va justo
-        // encima de la interfaz y debajo de la app.
-        "pixpin-notas" => 4,
-        "pixpin" => 5,
+        // los componentes de `pixpin-ui` y `pixpin-render`, asi que va encima.
+        // Los pines y la pila tambien pintan con `pixpin-render`.
+        "pixpin-notas" | "pixpin-pin" | "pixpin-pila" => 4,
+        // El asistente usa el editor de notas, el OCR, los PDF y la voz.
+        "pixpin-ia" => 5,
+        // La app y el servidor MCP, que usan el asistente.
+        "pixpin" | "pixpin-mcp" => 6,
         _ => return None,
     })
 }
@@ -81,12 +94,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_dos_paquetes() {
+fn estan_los_treinta_y_nueve_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        32,
-        "se esperan 29 crates de libreria y los tres ejecutables, encontrados: {:?}",
+        39,
+        "se esperan 34 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
