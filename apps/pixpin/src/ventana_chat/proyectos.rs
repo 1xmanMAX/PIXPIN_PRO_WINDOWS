@@ -1149,12 +1149,12 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
     }
     if es_dibujo {
         let mensajes: Vec<_> = d.hojas.iter().map(|h| h.mensaje.clone()).collect();
-        // Modal: vuelve al cerrar el lienzo, con lo dibujado ya guardado.
-        super::abrir_hojas(b.ubicacion.raiz(), id, &mensajes, indice, b.lienzo);
+        // En su hilo (`lienzo_aparte`): al cerrarlo, el chat relee lo abierto.
+        let (raiz, proyecto, opciones) = (b.ubicacion.raiz().to_path_buf(), id.to_string(), b.lienzo);
+        super::lienzo_aparte(move || {
+            super::abrir_hojas(&raiz, &proyecto, &mensajes, indice, opciones);
+        });
         v.olvidar(id);
-        if let Some(a) = b.abierto.as_mut().filter(|a| a.ficha.id == id) {
-            super::releer_lo_abierto(b.ubicacion, a);
-        }
         return true;
     }
     // Una foto, en SU lienzo como al tocar su burbuja (K11): la foto
@@ -1163,24 +1163,16 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
     // ensenaba la captura sin la tinta guardada en su lienzo.
     if m.clase == Some(Clase::Imagen) {
         let mut mensajes: Vec<_> = d.hojas.iter().map(|h| h.mensaje.clone()).collect();
-        if crate::foto_anotada::abrir_en_su_lienzo(
-            b.ubicacion.raiz(),
-            id,
-            &mut mensajes,
-            indice,
-            b.lienzo,
-        ) {
-            v.olvidar(id);
-            if let Some(a) = b.abierto.as_mut().filter(|a| a.ficha.id == id) {
-                super::releer_lo_abierto(b.ubicacion, a);
+        crate::foto_anotada::asegurar_lienzo(b.ubicacion.raiz(), id, &mut mensajes, indice);
+        let (raiz, proyecto, opciones) = (b.ubicacion.raiz().to_path_buf(), id.to_string(), b.lienzo);
+        let plana = super::ruta_del_mensaje(&raiz, id, &m);
+        super::lienzo_aparte(move || {
+            if !crate::foto_anotada::abrir_si_tiene_lienzo(&raiz, &proyecto, &mensajes, indice, opciones)
+                && let Some(ruta) = plana
+            {
+                super::abrir_foto_en_lienzo(&ruta, opciones);
             }
-            return true;
-        }
-    }
-    if m.clase == Some(Clase::Imagen)
-        && let Some(ruta) = super::ruta_del_mensaje(b.ubicacion.raiz(), id, &m)
-    {
-        super::abrir_foto_en_lienzo(&ruta, b.lienzo);
+        });
         v.olvidar(id);
         return true;
     }

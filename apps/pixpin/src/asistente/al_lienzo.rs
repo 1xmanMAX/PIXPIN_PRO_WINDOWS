@@ -481,6 +481,11 @@ pub fn hay_editor() -> bool {
     EDITOR.load(Ordering::SeqCst) != 0
 }
 
+/// La ventana del editor abierto (0: ninguno), para traerlo al frente.
+pub fn editor() -> isize {
+    EDITOR.load(Ordering::SeqCst)
+}
+
 fn despertar(hwnd: isize) {
     if hwnd != 0 {
         pixpin_shell::overlay::despertar(hwnd);

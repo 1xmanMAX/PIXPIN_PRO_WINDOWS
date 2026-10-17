@@ -6408,50 +6408,27 @@ fn tocar_la_burbuja(
         // en el menu del boton derecho.
         Some(a) if es_foto => {
             // Una foto se abre en SU lienzo, como en el movil: el que trajo
-            // de alli o el que se estrena aqui (K11, `foto_anotada`).
-            if crate::foto_anotada::abrir_en_su_lienzo(
-                ubicacion.raiz(),
-                &a.ficha.id,
-                &mut a.mensajes,
-                indice,
-                lienzo,
-            ) {
-                if let Some(m) = a.mensajes.get(indice).cloned() {
-                    a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
+            // de alli o el que se estrena aqui (K11, `foto_anotada`). Se
+            // estrena aqui (toca el mensaje) y se abre en su hilo.
+            crate::foto_anotada::asegurar_lienzo(ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, indice);
+            let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
+            let plana = a.mensajes.get(indice).and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m));
+            lienzo_aparte(move || {
+                if !crate::foto_anotada::abrir_si_tiene_lienzo(&raiz, &proyecto, &mensajes, indice, lienzo)
+                    && let Some(ruta) = plana
+                {
+                    abrir_foto_en_lienzo(&ruta, lienzo);
                 }
-                a.colocado.borrow_mut().ancho = 0;
-            } else if let Some(ruta) = a
-                .mensajes
-                .get(indice)
-                .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-            {
-                abrir_foto_en_lienzo(&ruta, lienzo);
-                // Al volver, la burbuja tiene que ensenar lo que se dibujo.
-                if let Some(m) = a.mensajes.get(indice).cloned() {
-                    a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
-                }
-                a.colocado.borrow_mut().ancho = 0;
-            }
+            });
         }
         Some(a) if es_dibujo => {
-            let mut guardadas = abrir_dibujo(ubicacion, a, indice, lienzo);
-            // La pagina que estreno su dibujo al abrirse lo apunta tambien en
-            // su mensaje: la proxima vez se abre ese, y su vista ensena lo
-            // dibujado encima de la pagina.
-            if let Some(m) = a.mensajes.get_mut(indice)
-                && crate::pdf_en_chat::es_pagina_sin_dibujo(m)
-                && let Some(d) =
-                    crate::pdf_en_chat::dibujo_de_la_hoja(ubicacion.raiz(), &a.ficha.id, m)
-            {
-                m.referencia = Some(d);
-                guardadas.push(indice);
-            }
-            for i in guardadas {
-                if let Some(m) = a.mensajes.get(i).cloned() {
-                    a.vistas[i] = leer_vista(ubicacion, &a.ficha.id, &m);
-                }
-            }
-            a.colocado.borrow_mut().ancho = 0;
+            // Al cerrarlo, `lienzo_aparte` hace releer el chat: las vistas de
+            // las hojas guardadas y la pagina que estreno su dibujo (apuntado
+            // en `proyecto.json`) salen de ahi.
+            let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
+            lienzo_aparte(move || {
+                abrir_hojas(&raiz, &proyecto, &mensajes, indice, lienzo);
+            });
         }
         Some(a) => abrir_mensaje(ubicacion, a, indice, textos, idioma),
         None => {}
@@ -10007,8 +9984,8 @@ fn dibujo_de_foto(foto: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// Abre el editor con la foto de fondo, centrada, y guarda lo dibujado al
-/// cerrar. Bloquea el hilo del chat mientras dura, que es lo que se quiere:
-/// el editor tapa la pantalla y el chat no tiene nada que hacer.
+/// cerrar. Bloquea el hilo que la llama mientras dura: el chat la llama en
+/// el suyo propio (`lienzo_aparte`), y no se queda sin contestar.
 fn abrir_foto_en_lienzo(foto: &std::path::Path, opciones: OpcionesLienzo) {
     let fondo = match pixpin_codec::cargar(foto) {
         Ok(i) => i,
@@ -12898,18 +12875,35 @@ mod pruebas_pdf {
     }
 }
 
-/// Abre un dibujo del proyecto en el lienzo grande, para verlo entero.
-///
-/// Guarda lo que se haga al cerrar, y tambien al saltar a otra hoja por un
-/// enlace. Devuelve las hojas que se guardaron, para que quien llama rehaga
-/// sus burbujas: sin eso el chat seguiria ensenando el dibujo de antes.
-fn abrir_dibujo(
-    ubicacion: &Ubicacion,
-    a: &Abierto,
-    indice: usize,
-    opciones: OpcionesLienzo,
-) -> Vec<usize> {
-    abrir_hojas(ubicacion.raiz(), &a.ficha.id, &a.mensajes, indice, opciones)
+/// Si hay un lienzo abierto desde el chat (en su hilo, `lienzo_aparte`).
+static LIENZO_APARTE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// **Abre el lienzo en su propio hilo** (17-oct-2026), como los pedidos de
+/// fuera (`pedidos::abrir_hoja`): antes se abria en el hilo del chat y lo
+/// bloqueaba mientras durara. Valia cuando el lienzo tapaba la pantalla,
+/// pero desde que Esc lo deja en una ventana el chat se quedaba detras sin
+/// contestar («calca, y luego no puedo mandar mensajes»). Al cerrarlo, el
+/// chat relee lo abierto (`refrescar`): las burbujas ensenan lo dibujado.
+/// Uno a la vez: si ya hay uno, se trae al frente.
+fn lienzo_aparte(abrir: impl FnOnce() + Send + 'static) {
+    use std::sync::atomic::Ordering;
+    if LIENZO_APARTE.swap(true, Ordering::SeqCst) {
+        let h = crate::asistente::al_lienzo::editor();
+        if h != 0 {
+            VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(h as *mut _));
+        }
+        return;
+    }
+    let lanzado = std::thread::Builder::new().name("lienzo-del-chat".into()).spawn(move || {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        abrir();
+        LIENZO_APARTE.store(false, Ordering::SeqCst);
+        refrescar();
+    });
+    if let Err(e) = lanzado {
+        LIENZO_APARTE.store(false, Ordering::SeqCst);
+        tracing::warn!(?e, "no se pudo lanzar el hilo del lienzo");
+    }
 }
 
 /// Lo de `abrir_dibujo` sin el proyecto abierto en el chat: el universo abre
@@ -17648,11 +17642,10 @@ fn abrir_el_origen(
     let Some(j) = hoja else {
         return Efecto::Aviso(textos.t("chat-sin-origen"));
     };
-    for k in abrir_dibujo(ubicacion, a, j, lienzo) {
-        if let Some(m) = a.mensajes.get(k).cloned() {
-            a.vistas[k] = leer_vista(ubicacion, &a.ficha.id, &m);
-        }
-    }
+    let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
+    lienzo_aparte(move || {
+        abrir_hojas(&raiz, &proyecto, &mensajes, j, lienzo);
+    });
     Efecto::Cambio
 }
 
