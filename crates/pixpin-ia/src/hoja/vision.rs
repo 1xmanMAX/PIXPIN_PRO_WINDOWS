@@ -225,7 +225,12 @@ pub fn leer_renglones(t: &str, ocr: &[String]) -> Option<Vec<String>> {
                 // (Ni uno mucho mas largo o mas corto: la frase entera para un
                 // renglon que era un trozo salia encima de la otra mitad.)
                 let (n, v) = (cuantas_letras(&nuevo) as f64, cuantas_letras(viejo).max(1) as f64);
-                if nuevo.is_empty() || es_charla(&nuevo) || parecido_de_letras(&nuevo, viejo) < 0.5 || n > v * 1.35 + 2.0 || n < v * 0.65 - 2.0 { viejo.clone() } else { nuevo }
+                if nuevo.is_empty() || es_charla(&nuevo) || parecido_de_letras(&nuevo, viejo) < 0.5 || n > v * 1.35 + 2.0 || n < v * 0.65 - 2.0 {
+                    viejo.clone()
+                } else {
+                    // (LaTeX sin `$` —«16,5^\circ»— se envuelve, como en `leer_rico`.)
+                    leer_rico(&nuevo).unwrap_or(nuevo)
+                }
             })
             .collect(),
     )
@@ -371,6 +376,8 @@ mod pruebas_rico {
         assert!(super::leer_renglones("[\"uno\"]", &ocr).is_none(), "otro numero de renglones");
         let r = super::leer_renglones("[{\"renglon\":1,\"texto\":\"A) 16,5°\"},{\"n\":2,\"texto\":\"2293\"}]", &ocr).unwrap();
         assert_eq!(r, vec!["A) 16,5°".to_string(), "2293".to_string()]);
+        let r = super::leer_renglones(r#"["A) 16,5^\\circ", "2293"]"#, &ocr).unwrap();
+        assert!(r[0].contains('$'), "{r:?}");
         // La frase entera para un trozo: se queda el trozo.
         let o2 = vec!["Se tiene un".to_string()];
         assert_eq!(super::leer_renglones("[\"Se tiene un paralelogramo ABCD y se traza AP\"]", &o2).unwrap(), o2);
