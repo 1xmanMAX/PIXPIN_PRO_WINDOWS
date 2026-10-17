@@ -26,6 +26,7 @@ fn local(nombre: &str, cuando: i64, bytes: i64) -> Local {
         cuando,
         bytes,
         mime: "image/png".into(),
+        texto: String::new(),
     }
 }
 
@@ -370,6 +371,23 @@ impl EnCarpeta {
         listado(&self.carpeta)
     }
 
+    /// Donde guarda este «aparato» el texto leido de cada captura (en el
+    /// PC, la cache del OCR de la galeria).
+    fn ruta_del_texto(&self, nombre: &str) -> PathBuf {
+        self.raiz.join("textos").join(format!("{nombre}.txt"))
+    }
+
+    /// El texto leido de una captura, como si la galeria la hubiera leido.
+    fn leer_texto(&self, nombre: &str, texto: &str) {
+        let r = self.ruta_del_texto(nombre);
+        std::fs::create_dir_all(r.parent().unwrap()).unwrap();
+        std::fs::write(r, texto).unwrap();
+    }
+
+    fn texto(&self, nombre: &str) -> String {
+        std::fs::read_to_string(self.ruta_del_texto(nombre)).unwrap_or_default()
+    }
+
     fn se_va(&self, nombre: &str, ahora: i64) -> Option<i64> {
         let cuando = hora_de(&self.carpeta.join(nombre));
         se_va_el(&self.caducidad(ahora), nombre, cuando, self.dias)
@@ -430,6 +448,7 @@ impl CapturasDelAparato for EnCarpeta {
                         } else {
                             "image/png".into()
                         },
+                        texto: self.texto(&n),
                         nombre: n,
                     }
                 })
@@ -455,7 +474,14 @@ impl CapturasDelAparato for EnCarpeta {
             return Ok(false);
         }
         poner_hora(&ruta, e.cuando);
+        if !e.texto.is_empty() {
+            self.leer_texto(&e.nombre, &e.texto);
+        }
         Ok(true)
+    }
+
+    fn apuntar_texto(&self, nombre: &str, texto: &str) {
+        self.leer_texto(nombre, texto);
     }
 
     fn tirar(&self, nombres: &[String]) {
@@ -761,4 +787,122 @@ fn un_nombre_con_ruta_que_llega_se_rechaza_y_la_conversacion_sigue() {
     });
     assert!(!fuera.exists());
     assert!(p.gal_tab.nombres().is_empty());
+}
+
+// ------------------------------------------------------------ el texto
+
+#[test]
+fn el_texto_viaja_en_la_entrada_y_sin_texto_no_se_escribe() {
+    let e = Entrada {
+        texto: "Factura 123\nTotal 45,60".into(),
+        ..entrada("a.png", 1)
+    };
+    let t = entradas_a_texto(std::slice::from_ref(&e));
+    assert_eq!(
+        t,
+        r#"[{"nombre":"a.png","cuando":1,"texto":"Factura 123\nTotal 45,60"}]"#
+    );
+    assert_eq!(entradas_de_texto(&t).unwrap(), vec![e]);
+    // Lo de Android (sin texto) se lee con el texto vacio.
+    let l = entradas_de_texto(r#"[{"nombre":"a.png","cuando":1}]"#).unwrap();
+    assert!(l[0].texto.is_empty());
+}
+
+#[test]
+fn al_juntar_el_texto_no_se_pierde_aunque_gane_la_entrada_sin_el() {
+    let con = Entrada {
+        texto: "hola".into(),
+        cambiado: 1,
+        ..entrada("a.png", T)
+    };
+    // La de Android, cambiada mas tarde (conservada alli), no trae texto.
+    let sin = Entrada {
+        conservada: true,
+        cambiado: 2,
+        ..entrada("a.png", T)
+    };
+    for j in [
+        juntar(std::slice::from_ref(&con), std::slice::from_ref(&sin)),
+        juntar(std::slice::from_ref(&sin), std::slice::from_ref(&con)),
+    ] {
+        assert!(j[0].conservada, "gana la mas nueva");
+        assert_eq!(j[0].texto, "hola", "con el texto de la otra");
+    }
+}
+
+#[test]
+fn al_dia_apunta_el_texto_leido_despues_sin_contarlo_como_cambio() {
+    let antes = al_dia(&Estado::default(), Some(&[local("a.png", T, 10)]), &r0(), 7, T, "pc");
+    assert!(antes.entradas[0].texto.is_empty());
+    let leida = Local {
+        texto: "dentro".into(),
+        ..local("a.png", T, 10)
+    };
+    let despues = al_dia(&antes, Some(&[leida]), &r0(), 7, T + 5, "pc");
+    assert_eq!(despues.entradas[0].texto, "dentro");
+    assert_eq!(despues.entradas[0].cambiado, antes.entradas[0].cambiado);
+}
+
+#[test]
+fn una_captura_y_su_texto_van_y_vuelven_entre_dos_aparatos() {
+    let p = montar("texto");
+    p.gal_tel.hacer("captura-tel.png", T0 - DIA_MS, 3000);
+    p.gal_tel.leer_texto("captura-tel.png", "Reunion a las 10:30");
+    p.gal_tab.hacer("captura-tab.png", T0 - DIA_MS, 2000);
+    p.gal_tab.leer_texto("captura-tab.png", "Lista de la compra");
+    p.poner_reloj(T0);
+    assert_eq!(p.sincronizar(true).capturas, 2);
+    // Cada captura llega con su texto, donde lo busca la galeria del otro.
+    assert_eq!(p.gal_tab.texto("captura-tel.png"), "Reunion a las 10:30");
+    assert_eq!(p.gal_tel.texto("captura-tab.png"), "Lista de la compra");
+    // Y en el estado compartido de los dos.
+    for raiz in [&p.gal_tel.raiz, &p.gal_tab.raiz] {
+        let e = leer(raiz);
+        let pn = e.por_nombre();
+        assert_eq!(pn["captura-tel.png"].texto, "Reunion a las 10:30");
+        assert_eq!(pn["captura-tab.png"].texto, "Lista de la compra");
+    }
+}
+
+#[test]
+fn el_texto_leido_despues_llega_a_una_captura_que_el_otro_ya_tenia() {
+    let p = montar("texto-tarde");
+    p.gal_tel.hacer("a.png", T0 - DIA_MS, 3000);
+    p.poner_reloj(T0);
+    p.sincronizar(true);
+    assert_eq!(p.gal_tab.nombres(), ["a.png"]);
+    assert_eq!(p.gal_tab.texto("a.png"), "");
+    // El telefono la lee despues; dirige la tableta: ninguna captura pasa,
+    // pero el texto si.
+    p.gal_tel.leer_texto("a.png", "leida luego");
+    p.poner_reloj(T0 + 1000);
+    assert_eq!(p.sincronizar(false).capturas, 0);
+    assert_eq!(p.gal_tab.texto("a.png"), "leida luego");
+}
+
+#[test]
+fn caso_negativo_lo_juntado_sin_textos_no_borra_los_de_aqui() {
+    // Quien dirige es un Android, que no sabe de textos: su «galeriajunta»
+    // llega sin ellos y aqui no se puede olvidar ninguno.
+    let p = montar("junta-android");
+    p.gal_tab.hacer("a.png", T0 - DIA_MS, 3000);
+    p.gal_tab.leer_texto("a.png", "de aqui");
+    p.poner_reloj(T0);
+    let mia = poner_al_dia(&p.gal_tab, "id-tab", T0).unwrap();
+    assert_eq!(mia.entradas[0].texto, "de aqui");
+    let de_android = entradas_de_texto(&entradas_a_texto(&mia.entradas)).unwrap();
+    let de_android: Vec<Entrada> = de_android
+        .into_iter()
+        .map(|e| Entrada {
+            texto: String::new(),
+            conservada: true,
+            cambiado: T0 + 1,
+            ..e
+        })
+        .collect();
+    aplicar_juntas(&p.gal_tab, &de_android, T0 + 1).unwrap();
+    let e = leer(&p.gal_tab.raiz);
+    assert!(e.entradas[0].conservada, "lo de Android se aplica");
+    assert_eq!(e.entradas[0].texto, "de aqui", "y el texto se queda");
+    assert_eq!(p.gal_tab.texto("a.png"), "de aqui");
 }
