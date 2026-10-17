@@ -50,6 +50,8 @@ use super::al_lienzo::EnHoja;
 #[cfg(test)]
 mod banco;
 #[cfg(test)]
+mod banco_17oct;
+#[cfg(test)]
 pub(crate) mod banco_diagramas;
 #[cfg(test)]
 pub(crate) mod pruebas;
@@ -249,6 +251,8 @@ enum Pregunta {
     Rotulos,
     /// Un bloque de texto, en texto rico.
     Rico,
+    /// Los renglones de una zona de texto, corregidos (cada uno en su sitio).
+    Renglones,
 }
 
 /// Si el LaTeX de una formula ya dice lo que dice `texto` (otra zona que
@@ -300,6 +304,9 @@ fn pregunta(z: &hoja::Zona, o: &Opciones, alto_letra: f64) -> Option<Pregunta> {
         // preguntar (el modelo no sabria que decir de tan poco).
         Tipo::Dudosa if z.caja.w < alto_letra * 3.0 && z.caja.h < alto_letra * 3.0 => None,
         Tipo::Formula => Some(Pregunta::Latex),
+        // Una lamina (17-oct): el texto sale ya con el OCR, cada renglon en su
+        // sitio, y la nube lo corrige (tildes, °, θ, ∢, formulas en linea).
+        Tipo::Parrafo | Tipo::Encabezado if o.rico && !z.renglones.is_empty() => Some(Pregunta::Renglones),
         Tipo::Dudosa => Some(Pregunta::Tipo),
         Tipo::Grafica => Some(Pregunta::Grafica),
         // Un dibujo de tinta (sin fotografia) puede ser una formula que el
@@ -329,6 +336,7 @@ fn preguntar(motor: &dyn Motor, png: Vec<u8>, q: Pregunta, pista: &str) -> Resul
         Pregunta::Grafica => vision::pedir_grafica(motor, png),
         Pregunta::Rotulos => vision::pedir_rotulos(motor, png).map(Some),
         Pregunta::Rico => vision::pedir_rico(motor, png, pista).map(Some),
+        Pregunta::Renglones => vision::pedir_renglones(motor, png, &pista.split('\n').map(str::to_string).collect::<Vec<_>>()).map(Some),
     }
 }
 
@@ -372,12 +380,19 @@ pub fn pasar(
     progreso: &mut dyn FnMut(usize, usize),
 ) -> Result<Informe, String> {
     let t0 = Instant::now();
-    let mut s = hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
-    // Una lamina: cada dibujo, una zona (con sus flechas y su texto de dentro).
-    if o.rico {
-        hoja::seccion::unir_dibujos(&mut s, &p.rgba);
-    }
-    let s = s;
+    // Por recuadros (17-oct): cada tarjeta o caja se secciona aparte, y lo
+    // que es adorno (la marca de agua) no entra. Una lamina: cada dibujo, una
+    // zona (con sus flechas y su texto de dentro).
+    let (s, limpia) = hoja::paneles::seccionar_limpia(&p.rgba, p.ancho, p.alto, p.palabras.clone(), o.rico);
+    // (Sin la marca de agua de las tarjetas: las zonas se montan de la hoja limpia.)
+    let limpia_p;
+    let p: &Pagina = match limpia {
+        Some(rgba) => {
+            limpia_p = Pagina { rgba, ancho: p.ancho, alto: p.alto, palabras: p.palabras.clone(), ms_leer: p.ms_leer };
+            &limpia_p
+        }
+        None => p,
+    };
     let ms_seccionar = t0.elapsed().as_millis();
     if s.zonas.is_empty() {
         return Err("la hoja esta en blanco: no hay nada que pasar al lienzo".into());
@@ -393,10 +408,15 @@ pub fn pasar(
     // Y todo su texto: las pistas de la geometria exacta («AB es diametro»).
     let pistas: Vec<String> = s.zonas.iter().flat_map(|z| z.renglones.iter().map(|r| r.texto.clone())).collect();
     let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: Some(&lector), ajenas: &ajenas, pistas: &pistas };
-    let via_base = |z: &hoja::Zona| if fiel && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Tabla) { Via::Fiel } else { Via::Editable };
+    // (En una lamina, el texto con cada renglon en su sitio: rehecho como
+    // parrafo se corria hacia abajo y pisaba lo de debajo.)
+    let via_base = |z: &hoja::Zona| if (fiel && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Tabla)) || (o.rico && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado)) { Via::Fiel } else { Via::Editable };
     // **Los bloques de texto rico** (laminas con la nube): sus zonas no
     // preguntan por su cuenta; el bloque entero va a la nube de una vez.
-    let bloques: Vec<(usize, Vec<usize>, hoja::Zona)> = if o.rico && vision.is_some() { bloques_de_texto(&s) } else { Vec::new() };
+    // (17-oct: ya no se piden por bloques: el bloque recolocado movia el
+    // texto y la nube juntaba renglones ajenos. Cada zona de texto pide sus
+    // renglones corregidos, `Pregunta::Renglones`.)
+    let bloques: Vec<(usize, Vec<usize>, hoja::Zona)> = Vec::new();
     let miembros: std::collections::HashSet<usize> = bloques.iter().flat_map(|b| b.1.iter().copied()).collect();
     let es_bloque = |id: usize| bloques.iter().any(|b| b.0 == id);
     let pregunta_de = |z: &hoja::Zona| if miembros.contains(&z.id) { None } else { pregunta(z, o, s.alto_letra) };
@@ -411,7 +431,7 @@ pub fn pasar(
     let posibles: Vec<usize> = s
         .zonas
         .iter()
-        .filter(|z| matches!(z.tipo, Tipo::Dibujo | Tipo::Grafica) || (vision.is_some() && pregunta_de(z).is_some()))
+        .filter(|z| matches!(z.tipo, Tipo::Dibujo | Tipo::Grafica) || (vision.is_some() && pregunta_de(z).is_some_and(|q| q != Pregunta::Renglones)))
         .map(|z| z.id)
         .collect();
     let mut tempranas: Vec<Hecho> = Vec::new();
@@ -420,8 +440,10 @@ pub fn pasar(
         if parar.load(Ordering::Relaxed) {
             break;
         }
-        let suelta = !posibles.contains(&z.id)
-            && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Linea | Tipo::Tabla | Tipo::Foto)
+        // (Un recuadro va siempre ya: es el fondo de lo suyo.)
+        let suelta = z.tipo == Tipo::Recuadro
+            || !posibles.contains(&z.id)
+            && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Linea | Tipo::Tabla | Tipo::Foto | Tipo::Recuadro)
             && !posibles.iter().any(|&e| pisa(&z.caja, &s.zonas[e].caja));
         if !suelta {
             continue;
@@ -495,7 +517,8 @@ pub fn pasar(
             preguntas.iter().map(|&(id, q)| {
                 let bloque = if q == Pregunta::Rico { bloques.iter().find(|b| b.0 == id) } else { None };
                 let caja = bloque.map_or(s.zonas[id].caja, |b| b.2.caja);
-                (id, q, png_del_recorte(p, &caja), bloque.map(|b| pista_de_colores(&b.2)).unwrap_or_default())
+                let pista = if q == Pregunta::Renglones { s.zonas[id].renglones.iter().map(|r| r.texto.replace('\n', " ")).collect::<Vec<_>>().join("\n") } else { bloque.map(|b| pista_de_colores(&b.2)).unwrap_or_default() };
+                (id, q, png_del_recorte(p, &caja), pista)
 
             }).collect();
         let cola = Arc::new(Mutex::new(trabajos));
@@ -537,7 +560,9 @@ pub fn pasar(
     // respuesta: si esa zona sale editable (formula, tabla, grafica) los
     // lleva dentro y el texto sobra; si sale como imagen o calco y los
     // textos la cubren, sobra la imagen.
-    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).filter(|id| !diagramas.contains(id) && !es_bloque(*id)).collect();
+    // (Los renglones a corregir ya salieron con el OCR: no esperan.)
+    let corregir: std::collections::HashSet<usize> = preguntas.iter().filter(|(_, q)| *q == Pregunta::Renglones).map(|(id, _)| *id).collect();
+    let esperan: Vec<usize> = preguntas.iter().map(|(id, _)| *id).filter(|id| !diagramas.contains(id) && !es_bloque(*id) && !corregir.contains(id)).collect();
     let mut rehechos_diagrama: Vec<Hecho> = Vec::new();
     let aplazadas: Vec<usize> = s
         .zonas
@@ -559,6 +584,9 @@ pub fn pasar(
         })
         .collect();
     let retenidas: std::cell::RefCell<HashMap<usize, Option<Leido>>> = Default::default();
+    // Los renglones corregidos que llegan antes de que su zona salga (un texto
+    // aplazado): salen ya corregidos cuando toque, no dos veces.
+    let mut corregidos: HashMap<usize, Leido> = HashMap::new();
     let mut sobran: std::collections::HashSet<usize> = Default::default();
     // Las zonas que ya van dentro de un bloque de texto rico: no se vuelven a poner.
     let absorbidas: std::cell::RefCell<std::collections::HashSet<usize>> = Default::default();
@@ -674,6 +702,18 @@ pub fn pasar(
                         }
                         None => {}
                     }
+                } else if corregir.contains(&id) {
+                    // Sus renglones corregidos, en el sitio de los del OCR.
+                    if hechos[id].is_none() {
+                        if let Some(l) = leido {
+                            corregidos.insert(id, l);
+                        }
+                    } else if let Some(l) = leido {
+                        let h = montaje::hacer(&entrada(id), Some(&l), Via::Fiel);
+                        if !h.elementos.is_empty() && destino.entregar(Some(&h), en(id, true, false)).is_ok() {
+                            rehechos_diagrama.push(h);
+                        }
+                    }
                 } else if contenidas.contains(&id) {
                     retenidas.borrow_mut().insert(id, leido);
                 } else {
@@ -685,7 +725,7 @@ pub fn pasar(
         }
     }
     // Lo que no llego a tiempo (la red colgada): sin modelo.
-    for id in pendientes.into_iter().filter(|id| !diagramas.contains(id) && !es_bloque(*id)) {
+    for id in pendientes.into_iter().filter(|id| !diagramas.contains(id) && !es_bloque(*id) && !corregir.contains(id)) {
         if parar.load(Ordering::Relaxed) {
             break;
         }
@@ -706,7 +746,7 @@ pub fn pasar(
         if parar.load(Ordering::Relaxed) {
             break;
         }
-        entregar(id, None, destino, &mut hechos);
+        entregar(id, corregidos.remove(&id), destino, &mut hechos);
     }
     if parar.load(Ordering::Relaxed) {
         let _ = destino.entregar(None, en(0, false, true));
@@ -813,7 +853,9 @@ pub fn pasar(
                     // de la imagen (mejor el original que una figura equivocada).
                     let umbral = if leida { o.rehacer_bajo * 0.5 } else if h.tipo == Tipo::Diagrama { o.rehacer_bajo * 0.6 } else { o.rehacer_bajo };
                     // (Un bloque de texto rico se queda: sus zonas ya van dentro.)
-                    if v >= umbral || matches!(h.tipo, Tipo::Linea | Tipo::Foto) || h.via == Via::Imagen || h.nota.starts_with("texto rico") {
+                    // (Ni el texto de una lamina: cambiarlo por su recorte era «pegar una captura».)
+                    let texto_de_lamina = o.rico && matches!(h.tipo, Tipo::Parrafo | Tipo::Encabezado);
+                    if v >= umbral || texto_de_lamina || matches!(h.tipo, Tipo::Linea | Tipo::Foto | Tipo::Recuadro) || h.via == Via::Imagen || h.nota.starts_with("texto rico") {
                         continue;
                     }
                     let otra = match h.tipo {
@@ -853,6 +895,46 @@ pub fn pasar(
         }
     }
     hechos.retain(|h| !sobra.contains(&h.zona));
+    // 6. **Nada dos veces** (17-oct, «varias zonas son segmentadas varias
+    //    veces y se superponen»): dos zonas que no son recuadro y que se pisan
+    //    en mas de la mitad de la menor son la misma cosa hecha dos veces; se
+    //    queda la que salio antes en el orden de lectura (la mayor si es
+    //    imagen contra texto: el texto ya va tapado en ella, `montaje::foto`).
+    let caja_de = |h: &Hecho| s.zonas[h.zona].caja;
+    let mut dobles: Vec<usize> = Vec::new();
+    for (i, a) in hechos.iter().enumerate() {
+        if a.elementos.is_empty() || a.tipo == Tipo::Recuadro || dobles.contains(&a.zona) {
+            continue;
+        }
+        for b in hechos[i + 1..].iter() {
+            if b.elementos.is_empty() || b.tipo == Tipo::Recuadro || dobles.contains(&b.zona) {
+                continue;
+            }
+            let (ca, cb) = (caja_de(a), caja_de(b));
+            let menor = ca.area().min(cb.area()).max(1.0);
+            let texto = |h: &Hecho| matches!(h.tipo, Tipo::Parrafo | Tipo::Encabezado);
+            // (Un texto dentro de una figura es su rotulo; dentro de una imagen ya esta tapado.)
+            if ca.comun(&cb) > 0.5 * menor && texto(a) == texto(b) {
+                dobles.push(b.zona);
+                continue;
+            }
+            // Una formula suelta dentro de un renglon de texto («13 y» de «Si
+            // AD=13 y»): el renglon ya la dice (corregido por la nube).
+            let (f, t) = if b.tipo == Tipo::Formula && texto(a) { (b, a) } else if a.tipo == Tipo::Formula && texto(b) { (a, b) } else { continue };
+            let cf = caja_de(f);
+            let en_renglon = s.zonas[t.zona].renglones.iter().any(|r| r.caja.comun(&cf) > 0.5 * cf.area().max(1.0));
+            if en_renglon && !dobles.contains(&f.zona) {
+                dobles.push(f.zona);
+            }
+        }
+    }
+    for id in &dobles {
+        let vacio = Hecho { zona: *id, tipo: Tipo::Dudosa, via: Via::Imagen, elementos: Vec::new(), imagenes: Vec::new(), nota: "la misma cosa que otra zona: quitada".into() };
+        if destino.entregar(Some(&vacio), en(*id, true, false)).is_ok() {
+            tracing::info!(zona = id, "hoja al lienzo: zona repetida, quitada");
+        }
+    }
+    hechos.retain(|h| !dobles.contains(&h.zona));
     let ms_comprobar = tc.elapsed().as_millis();
     tracing::info!(
         zonas = s.zonas.len(),
@@ -1102,7 +1184,9 @@ pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::
                 eprintln!("bloque? {i}-{j} hueco {hueco:.0} solape {solape:.0} altos {hi:.0} {hj:.0}");
             }
             let titulo = s.zonas[i].tipo == Tipo::Encabezado || s.zonas[j].tipo == Tipo::Encabezado || hi.max(hj) > 1.35 * hi.min(hj).max(1.0);
-            if !titulo && hueco >= -0.5 * a && hueco <= 2.0 * a && solape >= 0.3 * ci.w.min(cj.w) {
+            // (Ni lo de dos recuadros distintos: cada tarjeta es suya.)
+            let mismo_recuadro = panel_de(s, ci) == panel_de(s, cj);
+            if !titulo && mismo_recuadro && hueco >= -0.5 * a && hueco <= 2.0 * a && solape >= 0.3 * ci.w.min(cj.w) {
                 let (ri, rj) = (raiz(&mut padre, i), raiz(&mut padre, j));
                 if ri != rj {
                     padre[rj] = ri;
@@ -1122,6 +1206,13 @@ pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::
         if g.len() == 1 && s.zonas[g[0]].tipo == Tipo::Formula && !de_formula(&s.zonas[g[0]]) {
             continue;
         }
+        // **Sin ninguna formula, el texto del OCR** (17-oct): un pantallazo
+        // (los comentarios de TikTok) no es una lamina; en texto rico la nube
+        // juntaba renglones de comentarios distintos y dejaba marcas rotas
+        // («*·Buscar*}»). El texto rico es para lo que lleva formulas.
+        if !g.iter().any(|&k| s.zonas[k].tipo == Tipo::Formula || de_formula(&s.zonas[k])) {
+            continue;
+        }
         let mut z = s.zonas[g[0]].clone();
         z.tipo = Tipo::Parrafo;
         z.renglones = g.iter().flat_map(|&k| s.zonas[k].renglones.iter().cloned()).collect();
@@ -1132,6 +1223,11 @@ pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::
         salida.push((g[0], g, z));
     }
     salida
+}
+
+/// El recuadro mas pequeno donde cae una caja (`None`: en la hoja).
+fn panel_de(s: &Seccionado, c: &Caja) -> Option<usize> {
+    (0..s.paneles.len()).filter(|&i| s.paneles[i].contiene(c.cx(), c.cy())).min_by(|&x, &y| s.paneles[x].area().total_cmp(&s.paneles[y].area()))
 }
 
 /// **Lo que el OCR vio de color** en un bloque, para la nube: «"m<AOC=a"

@@ -30,7 +30,7 @@ fn lamina() -> PathBuf {
     std::env::var_os("PIXPIN_LAMINA_RUTA").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(SCRATCH).join("hoja-real").join("circunferencia-geometria.png"))
 }
 
-fn guardar(img: &pixpin_codec::ImagenRgba, ruta: &std::path::Path) {
+pub(super) fn guardar(img: &pixpin_codec::ImagenRgba, ruta: &std::path::Path) {
     if let Some(d) = ruta.parent() {
         let _ = std::fs::create_dir_all(d);
     }
@@ -38,7 +38,7 @@ fn guardar(img: &pixpin_codec::ImagenRgba, ruta: &std::path::Path) {
 }
 
 /// Reescala (vecino mas proximo con media de area) a `ancho`.
-fn a_ancho(img: &pixpin_codec::ImagenRgba, ancho: u32) -> pixpin_codec::ImagenRgba {
+pub(super) fn a_ancho(img: &pixpin_codec::ImagenRgba, ancho: u32) -> pixpin_codec::ImagenRgba {
     if img.ancho == ancho {
         return img.clone();
     }
@@ -47,7 +47,7 @@ fn a_ancho(img: &pixpin_codec::ImagenRgba, ancho: u32) -> pixpin_codec::ImagenRg
 }
 
 /// Original | resultado, a la misma altura.
-fn lado_a_lado(a: &pixpin_codec::ImagenRgba, b: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
+pub(super) fn lado_a_lado(a: &pixpin_codec::ImagenRgba, b: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
     let h = a.alto.max(b.alto);
     let b = if b.alto != h { pixpin_codec::redimensionar(b.clone(), ((b.ancho as f64 * h as f64 / b.alto as f64) as u32).max(1), h).unwrap() } else { b.clone() };
     let a = if a.alto != h { pixpin_codec::redimensionar(a.clone(), ((a.ancho as f64 * h as f64 / a.alto as f64) as u32).max(1), h).unwrap() } else { a.clone() };
@@ -584,7 +584,7 @@ fn mixta_con_haiku() {
 /// **Lo hecho, pintado como en el lienzo** (Direct2D, por el mismo camino
 /// que «Exportar a PNG» del editor): el texto rico sale compuesto, con sus
 /// colores y su cursiva (el camino del PDF del banco no los pinta).
-fn pintar_gpu(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba>, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
+pub(super) fn pintar_gpu(els: Vec<Elemento>, fotos: &HashMap<u64, pixpin_codec::ImagenRgba>, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
     let mut escena = pixpin_motor2d::Escena::nueva();
     escena.fondo = pixpin_motor2d::elemento::ColorRgba::opaco(1.0, 1.0, 1.0);
     for e in els {
@@ -614,8 +614,8 @@ fn el_parrafo_y_su_formula_son_un_bloque_y_el_titulo_no() {
     let parrafo = con("pendiente").expect("el bloque del parrafo");
     assert!(parrafo.2.renglones.iter().any(|r| r.texto.contains("grupo")), "los dos renglones juntos");
     assert!(parrafo.1.len() >= 2, "{:?}", parrafo.1);
-    let titulo = con("Excursion").expect("el titulo");
-    assert!(!titulo.2.renglones.iter().any(|r| r.texto.contains("grupo")), "el titulo, solo");
+    // El titulo no va con el parrafo (y sin formula ni siquiera es bloque rico).
+    assert!(con("Excursion").is_none_or(|t| !t.2.renglones.iter().any(|r| r.texto.contains("grupo"))), "el titulo, solo");
     // La foto no es texto.
     assert!(bloques.iter().all(|b| b.1.iter().all(|&k| s.zonas[k].tipo != pixpin_ia::hoja::Tipo::Foto)));
 }

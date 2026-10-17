@@ -51,6 +51,7 @@
 pub mod comparar;
 pub mod imagen;
 pub mod montaje;
+pub mod paneles;
 pub mod seccion;
 pub mod vision;
 
@@ -172,6 +173,10 @@ pub enum Tipo {
     Linea,
     /// No esta claro: se le pregunta al modelo con su recorte.
     Dudosa,
+    /// **Un recuadro** (17-oct): una tarjeta con su fondo o una caja con su
+    /// borde ([`paneles`]). Va como un rectangulo relleno, debajo de lo suyo,
+    /// que se secciona aparte.
+    Recuadro,
 }
 
 impl Tipo {
@@ -187,6 +192,7 @@ impl Tipo {
             Tipo::Diagrama => "diagrama",
             Tipo::Linea => "linea",
             Tipo::Dudosa => "dudosa",
+            Tipo::Recuadro => "recuadro",
         }
     }
     /// Si su trabajo necesita el modelo con vision.
@@ -254,6 +260,8 @@ pub struct Zona {
     /// Imagenes dentro de la zona (los iconos de las celdas de una tabla),
     /// en pixeles de la pagina: van recortadas encima.
     pub dentro: Vec<Caja>,
+    /// Su relleno y su borde, en un [`Tipo::Recuadro`].
+    pub panel: Option<paneles::Estilo>,
 }
 
 impl Zona {
@@ -274,6 +282,9 @@ pub struct Seccionado {
     pub columnas: usize,
     /// El alto de letra del cuerpo (mediana de los renglones), en pixeles.
     pub alto_letra: f64,
+    /// Las cajas de los recuadros: lo de un recuadro no se junta con lo de
+    /// otro (`bloques_de_texto` de la app).
+    pub paneles: Vec<Caja>,
 }
 
 impl Seccionado {

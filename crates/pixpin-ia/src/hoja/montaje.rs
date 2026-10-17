@@ -55,6 +55,10 @@ pub enum Leido {
     Rotulos(Vec<(String, f64, f64)>, Vec<String>),
     /// Un bloque de texto en texto rico del lienzo (`$...$`, colores, cursiva).
     Rico(String),
+    /// **Los renglones de la zona, corregidos** (17-oct): uno por renglon del
+    /// OCR, en el mismo orden, en texto rico. Cada uno va en el sitio de su
+    /// renglon ([`Via::Fiel`]): nada se mueve, solo se arreglan las letras.
+    Renglones(Vec<String>),
 }
 
 /// Una imagen que nace con la zona: va al almacen del lienzo con este id
@@ -146,11 +150,23 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         (t, _) => t,
     };
     let mut imagenes = Vec::new();
+    // Un recuadro (`paneles`): su fondo y su borde, con la herramienta de
+    // relleno; lo de dentro son otras zonas.
+    if tipo == Tipo::Recuadro {
+        return Hecho { zona: z.id, tipo, via: Via::Editable, elementos: recuadro(e), imagenes: Vec::new(), nota: "recuadro con su fondo y su borde".into() };
+    }
     // Una «tabla» que es un recuadro de color con texto (un aviso, un dato).
     if tipo == Tipo::Tabla && via != Via::Imagen
         && let Some(elementos) = caja_de_color(e)
     {
         return Hecho { zona: z.id, tipo, via, elementos, imagenes: Vec::new(), nota: "recuadro de color con su texto en su sitio".into() };
+    }
+    // Sus renglones corregidos por la nube: cada uno en su sitio.
+    if let Some(Leido::Renglones(ls)) = leido
+        && ls.len() == z.renglones.len()
+        && matches!(tipo, Tipo::Parrafo | Tipo::Encabezado)
+    {
+        return Hecho { zona: z.id, tipo, via: Via::Fiel, elementos: fiel_con(e, Some(ls)), imagenes: Vec::new(), nota: "renglones en su sitio, corregidos".into() };
     }
     // Un bloque que la nube paso a texto rico: un solo texto, en su sitio.
     if let Some(Leido::Rico(fuente)) = leido {
@@ -231,6 +247,8 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
             imagenes.extend(img);
             (els, "dudosa: imagen".into())
         }
+        // (Ya salio arriba: aqui solo con `Via::Imagen` no llega.)
+        (_, Tipo::Recuadro) => (recuadro(e), "recuadro con su fondo y su borde".into()),
     };
     // Nada salio (un «texto» sin palabras que dijo el modelo, una tabla
     // vacia, un calco en blanco): el recorte, que algo hay.
@@ -387,15 +405,28 @@ fn texto(e: &Entrada, titulo: bool) -> Vec<Value> {
 
 /// **Cada renglon en su sitio**, con las rayas de la zona: lo fiel.
 fn fiel(e: &Entrada) -> Vec<Value> {
+    fiel_con(e, None)
+}
+
+/// Lo mismo con otro texto para cada renglon (los corregidos por la nube).
+fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
     let z = e.zona;
     let familia = &e.opciones.familia;
     let esc = e.mapa.escala;
     let k = pixpin_motor2d::texto::interlineado_de(familia).unwrap_or(pixpin_motor2d::texto::INTERLINEADO) as f64;
     let mut piezas = Vec::new();
-    for r in &z.renglones {
+    for (i, r) in z.renglones.iter().enumerate() {
         let tam = tam_de_letra(std::slice::from_ref(r), esc, familia, r.negrita);
         let d = e.mapa.caja(&r.caja);
-        piezas.push(un_texto(&r.texto, d.x, d.cy() - tam * k / 2.0, tam, familia, r.negrita, Alineacion::Izquierda, r.color));
+        let t = textos.and_then(|v| v.get(i)).map_or(r.texto.as_str(), String::as_str);
+        let mut el = un_texto(t, d.x, d.cy() - tam * k / 2.0, tam, familia, r.negrita, Alineacion::Izquierda, r.color);
+        // Corregido (con sus formulas compuestas) no puede pasar del ancho de
+        // su renglon: se pisaba con lo de al lado.
+        if textos.is_some() && el.ancho as f64 > d.w * 1.06 {
+            let t2 = tam * (d.w * 1.02 / el.ancho as f64).max(0.6);
+            el = un_texto(t, d.x, d.cy() - t2 * k / 2.0, t2, familia, r.negrita, Alineacion::Izquierda, r.color);
+        }
+        piezas.push(el);
     }
     let mut f = e.fabrica();
     f.de_motor(&piezas);
@@ -412,6 +443,25 @@ fn recta(f: &mut Fabrica, a: (f64, f64), b: (f64, f64), grosor: f64) {
         v["roughness"] = json!(0);
         v["strokeWidth"] = json!((grosor.max(1.0) * 2.0).round() / 2.0);
     }
+}
+
+/// **Un recuadro**: un rectangulo con su fondo (relleno solido), su borde y
+/// sus esquinas, del tamano del de la hoja.
+fn recuadro(e: &Entrada) -> Vec<Value> {
+    let Some(st) = e.zona.panel else { return Vec::new() };
+    let d = e.destino();
+    let mut f = e.fabrica();
+    let trazo = st.borde.map(imagen::hex).unwrap_or_else(|| "transparent".into());
+    let relleno = st.relleno.map(imagen::hex);
+    let mut v = f.base("rectangle", [d.x, d.y, d.w, d.h], &trazo, relleno.as_deref());
+    v["strokeWidth"] = json!(if st.borde.is_some() { (st.grosor * e.mapa.escala).max(1.0) } else { 0.0 });
+    v["roughness"] = json!(0);
+    // (El radio del lienzo es fijo: en uno pequeno se ve enorme.)
+    if st.redondo && d.w.min(d.h) >= 160.0 {
+        v["roundness"] = json!({"type": 3});
+    }
+    f.salida.push(v);
+    f.salida
 }
 
 fn linea(e: &Entrada) -> Vec<Value> {
@@ -507,7 +557,24 @@ pub fn id_de_imagen(semilla: u64, zona: usize) -> u64 {
 /// hoja entera va una sola vez al almacen (el mismo id en todas las zonas)
 /// y cada zona la ensena recortada, con 2 px de aire.
 fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
-    match foto_recortada(e, &sin_texto_alrededor(e, e.zona.caja).crecer(2.0)) {
+    let caja = sin_texto_alrededor(e, e.zona.caja).crecer(2.0);
+    // **Sin el texto de otras zonas** (17-oct, «imagenes que se comen algo del
+    // texto»): lo que cae dentro del recorte y es de otra zona ya va como
+    // texto; en la imagen se tapa con su fondo, y el texto sale una sola vez.
+    let suyas: Vec<Caja> = e.zona.renglones.iter().flat_map(|r| r.palabras.iter().map(|p| p.caja)).collect();
+    let ajenas: Vec<Caja> = e
+        .ajenas
+        .iter()
+        .filter(|w| w.comun(&caja) > 0.25 * w.area().max(1.0))
+        .filter(|w| !suyas.iter().any(|s| s.comun(w) > 0.5 * w.area().max(1.0)))
+        .copied()
+        .collect();
+    if !ajenas.is_empty()
+        && let Some((v, img)) = foto_tapada(e, &caja, &ajenas)
+    {
+        return (vec![v], vec![img]);
+    }
+    match foto_recortada(e, &caja) {
         Some((v, img)) => (vec![v], vec![img]),
         None => (Vec::new(), Vec::new()),
     }
@@ -546,6 +613,55 @@ pub fn foto_recortada(e: &Entrada, caja: &Caja) -> Option<(Value, ImagenNueva)> 
     Some((v, ImagenNueva { id, rgba: hoja, ancho: hw, alto: hh }))
 }
 
+
+/// El recorte de `caja` con las palabras `tapar` cubiertas del color del
+/// papel de alrededor (la mediana del borde del recorte), como imagen propia.
+fn foto_tapada(e: &Entrada, caja: &Caja, tapar: &[Caja]) -> Option<(Value, ImagenNueva)> {
+    let (rgba, w, h) = e.pagina;
+    let c = caja.dentro(w as f64, h as f64);
+    let (mut sub, sw, sh) = imagen::recortar(rgba, w, h, &c);
+    if sw < 2 || sh < 2 {
+        return None;
+    }
+    let mut borde: [Vec<u8>; 3] = Default::default();
+    for x in 0..sw {
+        for y in [0, sh - 1] {
+            let i = ((y * sw + x) * 4) as usize;
+            for k in 0..3 {
+                borde[k].push(sub[i + k]);
+            }
+        }
+    }
+    let mut fondo = [255u8; 3];
+    for k in 0..3 {
+        borde[k].sort_unstable();
+        fondo[k] = borde[k][borde[k].len() / 2];
+    }
+    for t in tapar {
+        let q = t.crecer(1.5);
+        let (x0, y0) = ((q.x - c.x).max(0.0) as u32, (q.y - c.y).max(0.0) as u32);
+        let (x1, y1) = (((q.x1() - c.x).max(0.0) as u32).min(sw), ((q.y1() - c.y).max(0.0) as u32).min(sh));
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let i = ((y * sw + x) * 4) as usize;
+                sub[i..i + 3].copy_from_slice(&fondo);
+            }
+        }
+    }
+    let d = e.mapa.caja(&c);
+    let lado = (d.w.max(d.h) * 2.0).clamp(64.0, LADO_FOTO);
+    let (sub, sw, sh) = reducir(&sub, sw, sh, lado as u32);
+    let id = id_de_imagen(e.semilla, e.zona.id * 1000 + 999);
+    let mut f = e.fabrica();
+    let mut v = f.base("image", [d.x, d.y, d.w, d.h], "transparent", None);
+    v["id"] = json!(format!("ia-{:x}-foto-0", e.semilla_de_zona()));
+    v["fileId"] = json!(pixpin_motor2d::enlace::id_de_texto(id));
+    v["status"] = json!("saved");
+    v["scale"] = json!([1.0, 1.0]);
+    v["roughness"] = json!(0);
+    v["strokeWidth"] = json!(0);
+    Some((v, ImagenNueva { id, rgba: sub, ancho: sw, alto: sh }))
+}
 
 /// **Un trozo de la hoja como imagen del lienzo** (la foto de la zona, o el
 /// icono `k` de una celda), en su sitio. `grupo`: el de la zona, si ya hay.

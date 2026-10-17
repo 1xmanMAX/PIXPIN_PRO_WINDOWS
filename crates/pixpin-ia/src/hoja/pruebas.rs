@@ -404,6 +404,7 @@ fn una_dudosa_toma_el_tipo_que_dice_el_modelo() {
         tabla: None,
         rayas: Vec::new(),
         dentro: Vec::new(),
+        panel: None,
     };
     let o = Opciones::default();
     let e = entrada(&z, (&p.rgba, p.w, p.h), &o);

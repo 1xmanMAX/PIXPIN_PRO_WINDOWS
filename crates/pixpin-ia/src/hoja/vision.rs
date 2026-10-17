@@ -86,6 +86,20 @@ pub fn pedir_grafica(motor: &dyn Motor, png: Vec<u8>) -> Result<Option<Leido>, S
     Ok(leer_grafica(&t).map(Leido::Funciones))
 }
 
+/// **Si la respuesta es el modelo hablando** y no lo que se le pidio («Solo
+/// veo un icono de corazon... enviame el recorte correcto»): eso acabo
+/// escrito en el lienzo como si fuera texto de la hoja (17-oct). Una
+/// transcripcion de verdad no habla de la imagen ni pide nada.
+pub fn es_charla(t: &str) -> bool {
+    let q = crate::acciones::normalizar(t);
+    const FRASES: &[&str] = &[
+        "solo veo", "no veo", "no hay ningun", "no hay texto", "no puedo", "enviame", "envia el", "si quieres", "no contiene",
+        "la imagen muestra", "la imagen contiene", "el recorte", "este recorte", "lo siento", "parece ser", "no se ve", "no se distingue",
+        "i can't", "i cannot", "i only see", "the image",
+    ];
+    FRASES.iter().any(|f| q.contains(f))
+}
+
 fn corto(t: &str) -> String {
     t.chars().take(80).collect()
 }
@@ -107,7 +121,7 @@ pub fn leer_latex(t: &str) -> Option<Vec<String>> {
     let t = t.trim().trim_matches('$').trim();
     let t = t.trim_start_matches("\\[").trim_end_matches("\\]").trim();
     let t = t.trim_start_matches("\\(").trim_end_matches("\\)").trim();
-    if t.is_empty() || t.eq_ignore_ascii_case("nada") || t.len() > crate::ecuacion::MAX_LARGO {
+    if t.is_empty() || t.eq_ignore_ascii_case("nada") || t.len() > crate::ecuacion::MAX_LARGO || (es_charla(t) && !t.contains('\\')) {
         return None;
     }
     // Una frase de mas («Aqui esta: ...»): lo de despues de los dos puntos.
@@ -170,6 +184,104 @@ Los renglones que en el papel van centrados o sangrados bajo una vineta (las for
 Fuera de $...$ no uses otros mandatos (ni \\text ni \\boxed: los recuadros ya estan dibujados). \
 Copia las letras tal cual (con sus tildes), sin corregir ni resumir. \
 Responde SOLO el texto, sin explicaciones ni bloques de codigo.";
+
+const SISTEMA_RENGLONES: &str = "Recibes el recorte de un trozo de una hoja (una lamina, un apunte, una captura de pantalla) \
+y lo que el OCR leyo en el, renglon a renglon y numerado. El OCR se equivoca: pierde tildes, lee ° como 0, θ como o, ∢ como <, la raya de AB, las griegas. \
+Devuelve SOLO un JSON: una lista con EXACTAMENTE el mismo numero de renglones y en el mismo orden, cada uno corregido mirando la imagen. \
+Cada renglon en texto rico: formulas en linea entre $...$ con LaTeX (\\sphericalangle para ∢, \\overline{AB}, \\overset{\\frown}{AC}, 90^\\circ, \\theta), \
+*cursiva*, **negrita** y el color de un tramo que no es negro con \\color{rojo}{...} (rojo, verde, azul, naranja, morado, gris). \
+No juntes, partas, anadas ni quites renglones; no resumas; si un renglon esta bien, copialo igual. Sin explicaciones.";
+
+/// **Los renglones de una zona, corregidos** (17-oct): el OCR de cada renglon
+/// va con el recorte, y vuelve la misma lista arreglada. Cada renglon se
+/// queda en su sitio; un renglon que no se parece a lo leido (el modelo
+/// inventando o hablando) se queda como lo leyo el OCR.
+pub fn pedir_renglones(motor: &dyn Motor, png: Vec<u8>, ocr: &[String]) -> Result<Leido, String> {
+    let lista: String = ocr.iter().enumerate().map(|(i, r)| format!("{}. {r}\n", i + 1)).collect();
+    let t = preguntar_con(motor, SISTEMA_RENGLONES, png, &format!("Lo que leyo el OCR ({} renglones):\n{lista}", ocr.len()), 2500)?;
+    leer_renglones(&t, ocr).map(Leido::Renglones).ok_or_else(|| format!("el modelo no devolvio los renglones: «{}»", corto(&t)))
+}
+
+/// Lee la lista corregida: tiene que traer los mismos renglones; cada uno se
+/// acepta si se parece al del OCR (`parecido_de_letras` >= 0.5) y no es el
+/// modelo hablando.
+pub fn leer_renglones(t: &str, ocr: &[String]) -> Option<Vec<String>> {
+    let t = sin_bloque(t);
+    let (a, b) = (t.find('[')?, t.rfind(']')?);
+    // (Haiku a veces devuelve objetos, `{"renglon":1,"texto":"..."}`: su texto.)
+    let v: Vec<String> = serde_json::from_str::<Vec<Value>>(t.get(a..=b)?).ok()?.into_iter().map(|x| match x {
+        Value::String(s) => s,
+        Value::Object(m) => ["texto", "text", "t", "renglon_corregido"].iter().find_map(|k| m.get(*k).and_then(Value::as_str)).or_else(|| m.values().find_map(Value::as_str)).unwrap_or_default().to_string(),
+        otro => otro.to_string(),
+    }).collect();
+    if v.len() != ocr.len() {
+        return None;
+    }
+    Some(
+        v.into_iter()
+            .zip(ocr)
+            .map(|(nuevo, viejo)| {
+                let nuevo = pixpin_motor2d::texto_rico::sin_barras_dobles(nuevo.trim());
+                // (Ni uno mucho mas largo o mas corto: la frase entera para un
+                // renglon que era un trozo salia encima de la otra mitad.)
+                let (n, v) = (cuantas_letras(&nuevo) as f64, cuantas_letras(viejo).max(1) as f64);
+                if nuevo.is_empty() || es_charla(&nuevo) || parecido_de_letras(&nuevo, viejo) < 0.5 || n > v * 1.35 + 2.0 || n < v * 0.65 - 2.0 { viejo.clone() } else { nuevo }
+            })
+            .collect(),
+    )
+}
+
+/// Las letras y cifras de un texto, sin los mandatos de LaTeX.
+fn cuantas_letras(s: &str) -> usize {
+    let mut n = 0;
+    let mut c = s.chars().peekable();
+    while let Some(ch) = c.next() {
+        if ch == '\\' {
+            while c.peek().is_some_and(|x| x.is_ascii_alphabetic()) {
+                c.next();
+            }
+        } else if ch.is_alphanumeric() {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// Cuanto se parecen las letras y cifras de dos textos (0-1), sin los
+/// mandatos de LaTeX ni las marcas del texto rico: «16,5°» y «16,50», si;
+/// «Solo veo un icono» y «2293», no.
+pub fn parecido_de_letras(a: &str, b: &str) -> f64 {
+    let letras = |s: &str| -> Vec<char> {
+        let mut v = Vec::new();
+        let mut c = s.chars().peekable();
+        while let Some(ch) = c.next() {
+            if ch == '\\' {
+                while c.peek().is_some_and(|x| x.is_ascii_alphabetic()) {
+                    c.next();
+                }
+            } else if ch.is_alphanumeric() {
+                v.extend(ch.to_lowercase());
+            }
+        }
+        v
+    };
+    let (x, y) = (letras(a), letras(b));
+    if x.is_empty() && y.is_empty() {
+        return 1.0;
+    }
+    let mut hay: std::collections::HashMap<char, usize> = Default::default();
+    for c in &y {
+        *hay.entry(*c).or_default() += 1;
+    }
+    let mut comun = 0;
+    for c in &x {
+        if let Some(n) = hay.get_mut(c).filter(|n| **n > 0) {
+            *n -= 1;
+            comun += 1;
+        }
+    }
+    comun as f64 / x.len().max(y.len()) as f64
+}
 
 /// **Un bloque de texto en texto rico del lienzo** (`pixpin_motor2d::texto_rico`):
 /// la columna «RESOLUCION» de una lamina con sus formulas en linea, sus
@@ -235,7 +347,7 @@ pub fn leer_rico(t: &str) -> Option<String> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    (!t.is_empty() && !t.eq_ignore_ascii_case("nada")).then_some(t)
+    (!t.is_empty() && !t.eq_ignore_ascii_case("nada") && !es_charla(&t)).then_some(t)
 }
 
 #[cfg(test)]
@@ -247,6 +359,21 @@ mod pruebas_rico {
         assert_eq!(super::leer_rico("Por ∢ interior:\n$45^\\circ=\\frac{2a").unwrap(), "Por ∢ interior:\n$45^\\circ=\\frac{2a$");
         assert_eq!(super::leer_rico("```\nNos piden $X$\n\n\n\nY\n```").unwrap(), "Nos piden $X$\n\nY");
         assert!(super::leer_rico("NADA").is_none());
+        // El modelo hablando no es texto de la hoja (17-oct, salia en el lienzo).
+        assert!(super::leer_rico("Solo veo un ícono de corazón con el número 2293, sin bloque de texto ni fórmulas. Si quieres transcribir una lámina, envíame el recorte correcto.").is_none());
+        assert!(super::leer_latex("No veo ninguna formula en la imagen").is_none());
+        assert!(super::leer_rico("Nos piden $m\\sphericalangle COD = X$").is_some());
+        // Los renglones corregidos: los mismos, y el que no se parece se queda como el OCR.
+        let ocr = vec!["A) 16,50".to_string(), "2293".to_string()];
+        let r = super::leer_renglones("[\"A) $16{,}5^\\\\circ$\", \"Solo veo un icono de corazon\"]", &ocr).unwrap();
+        assert_eq!(r[1], "2293");
+        assert!(r[0].contains("circ"), "{r:?}");
+        assert!(super::leer_renglones("[\"uno\"]", &ocr).is_none(), "otro numero de renglones");
+        let r = super::leer_renglones("[{\"renglon\":1,\"texto\":\"A) 16,5°\"},{\"n\":2,\"texto\":\"2293\"}]", &ocr).unwrap();
+        assert_eq!(r, vec!["A) 16,5°".to_string(), "2293".to_string()]);
+        // La frase entera para un trozo: se queda el trozo.
+        let o2 = vec!["Se tiene un".to_string()];
+        assert_eq!(super::leer_renglones("[\"Se tiene un paralelogramo ABCD y se traza AP\"]", &o2).unwrap(), o2);
         assert_eq!(super::leer_rico("Grafica de f(x) = x^2 - 2").unwrap(), "Grafica de f(x) = $x^2$ - 2");
     }
 }

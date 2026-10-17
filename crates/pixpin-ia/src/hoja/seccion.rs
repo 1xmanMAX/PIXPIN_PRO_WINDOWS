@@ -259,6 +259,7 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
             tabla: None,
             rayas: vec![[l.x0, l.y0, l.x1, l.y1, l.grosor]],
             dentro: Vec::new(),
+            panel: None,
         });
     }
     for (i, z) in zonas.iter_mut().enumerate() {
@@ -271,6 +272,7 @@ pub fn seccionar_con(a: &Analisis, ancho: u32, alto: u32, palabras: Vec<PalabraH
         zonas,
         columnas: n_columnas,
         alto_letra: alto_cuerpo,
+        paneles: Vec::new(),
     }
 }
 
@@ -1013,7 +1015,7 @@ impl Bloque<'_> {
 }
 
 fn zona(tipo: Tipo, caja: Caja, confianza: f32, renglones: Vec<Renglon>, tabla: Option<tabla_escaneada::TablaLeida>, rayas: Vec<[f64; 5]>) -> Zona {
-    Zona { id: 0, tipo, caja, orden: 0, columna: 0, confianza, renglones, alineacion: Alineacion::Izquierda, tabla, rayas, dentro: Vec::new() }
+    Zona { id: 0, tipo, caja, orden: 0, columna: 0, confianza, renglones, alineacion: Alineacion::Izquierda, tabla, rayas, dentro: Vec::new(), panel: None }
 }
 
 /// Como van los renglones dentro del bloque.
