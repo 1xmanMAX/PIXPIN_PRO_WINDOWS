@@ -1030,12 +1030,52 @@ impl Pintor<'_> {
         tramos: &[Tramo],
         color: Color,
     ) {
+        self.parrafo_con_enlaces(texto, x, y, tam, ancho_max, tramos, color, &[], color);
+    }
+
+    /// Un parrafo como [`Self::parrafo`] con **enlaces**: los trozos
+    /// `(inicio, largo)` (unidades UTF-16) van subrayados y en
+    /// `color_enlace`, como un enlace de cualquier pagina. Subrayar y tenir
+    /// no mueven ninguna letra: se mide y se pulsa con la misma disposicion
+    /// que sin ellos (`medir_parrafo`, `cajas_de_trozo` con los mismos
+    /// tramos).
+    #[allow(clippy::too_many_arguments)] // lo de `parrafo` y los enlaces
+    pub fn parrafo_con_enlaces(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[Tramo],
+        color: Color,
+        enlaces: &[(u32, u32)],
+        color_enlace: Color,
+    ) {
         let Some((disposicion, _, _)) =
             disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, tramos, false)
         else {
             return;
         };
         self.motor.conto(|c| c.disposiciones += 1);
+        if !enlaces.is_empty()
+            && let Some(efecto) = self
+                .pincel(color_enlace)
+                .and_then(|p| p.cast::<windows::core::IUnknown>().ok())
+        {
+            for &(inicio, longitud) in enlaces {
+                let rango = DWRITE_TEXT_RANGE {
+                    startPosition: inicio,
+                    length: longitud,
+                };
+                // SAFETY: disposicion viva y recien hecha para este texto;
+                // DirectWrite recorta los rangos que se pasen del final.
+                unsafe {
+                    let _ = disposicion.SetUnderline(true, rango);
+                    let _ = disposicion.SetDrawingEffect(&efecto, rango);
+                }
+            }
+        }
         self.dibujar_disposicion(&disposicion, x, y, color);
     }
 

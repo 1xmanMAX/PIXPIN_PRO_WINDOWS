@@ -76,6 +76,62 @@ pub fn primer_enlace(texto: &str) -> Option<Enlace> {
     Some(Enlace { url, donde, de_que })
 }
 
+/// **Todos los enlaces del texto**, donde estan (bytes de `texto`) y la
+/// direccion que abren: lo que se pinta como enlace dentro de la burbuja y
+/// se abre con un clic (el usuario, 17-oct-2026: «los enlaces no se ven
+/// como tal y no son clicables»). Las mismas reglas que [`primer_enlace`]:
+/// `http://`, `https://` o `www.` al principio de una palabra, sin la
+/// puntuacion pegada al final, y con un punto en el servidor. Lo que empieza
+/// por `www.` se abre con `https://` delante.
+pub fn enlaces(texto: &str) -> Vec<(std::ops::Range<usize>, String)> {
+    const INICIOS: [&str; 3] = ["https://", "http://", "www."];
+    let minusculas = texto.to_ascii_lowercase();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < texto.len() {
+        let antes = texto[..i].chars().next_back();
+        let al_principio = antes.is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+        let resto = &texto[i..];
+        if al_principio
+            && let Some(inicio) = INICIOS.iter().find(|p| minusculas[i..].starts_with(*p))
+        {
+            let fin = resto.find(char::is_whitespace).unwrap_or(resto.len());
+            let crudo = recortar_lo_pegado(&resto[..fin]);
+            let protocolo = if *inicio == "www." { 0 } else { inicio.len() };
+            let sin_protocolo = &crudo[protocolo.min(crudo.len())..];
+            let servidor = &sin_protocolo[..sin_protocolo.find(['/', '?', '#']).unwrap_or(sin_protocolo.len())];
+            if crudo.len() > inicio.len() && servidor.contains('.') && !servidor.ends_with('.') {
+                let url = if *inicio == "www." {
+                    format!("https://{crudo}")
+                } else {
+                    crudo.to_string()
+                };
+                out.push((i..i + crudo.len(), url));
+                i += fin.max(1);
+                continue;
+            }
+        }
+        // A la siguiente letra (no al siguiente blanco: «(https://…» empieza
+        // detras del parentesis).
+        i += resto.chars().next().map_or(1, char::len_utf8);
+    }
+    out
+}
+
+/// [`enlaces`] con sus sitios en unidades UTF-16 `(inicio, largo)`, que es
+/// como cuenta DirectWrite: lo que se subraya y se pregunta al pintor.
+/// Confundir bytes y UTF-16 no se nota hasta la primera tilde.
+pub fn enlaces_utf16(texto: &str) -> Vec<((u32, u32), String)> {
+    let u16_hasta = |b: usize| texto[..b].encode_utf16().count() as u32;
+    enlaces(texto)
+        .into_iter()
+        .map(|(r, url)| {
+            let inicio = u16_hasta(r.start);
+            ((inicio, u16_hasta(r.end) - inicio), url)
+        })
+        .collect()
+}
+
 /// El primer trozo sin espacios que empieza por alguno de `inicios` al
 /// principio de una palabra, sin mirar mayusculas (el `\b` de la expresion
 /// regular del movil, que con `IGNORE_CASE` acepta `HTTPS://`).
@@ -153,6 +209,45 @@ pub fn mes_corto(nombre: &str) -> String {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn todos_los_enlaces_del_texto_con_su_sitio() {
+        let t = "Mira https://github.com/forge/pixpin, y (www.Ejemplo.com/cosa).";
+        let v = enlaces(t);
+        assert_eq!(v.len(), 2, "{v:?}");
+        assert_eq!(&t[v[0].0.clone()], "https://github.com/forge/pixpin");
+        assert_eq!(v[0].1, "https://github.com/forge/pixpin");
+        assert_eq!(&t[v[1].0.clone()], "www.Ejemplo.com/cosa");
+        assert_eq!(v[1].1, "https://www.Ejemplo.com/cosa");
+        // Con tildes delante: los sitios son bytes, no letras.
+        let t = "Canción: HTTP://a.es/ñ y fin";
+        let v = enlaces(t);
+        assert_eq!(&t[v[0].0.clone()], "HTTP://a.es/ñ");
+        // En UTF-16 la «ó» y la «ñ» cuentan uno; en bytes, dos.
+        assert_eq!(v[0].0, 10..24);
+        assert_eq!(enlaces_utf16(t)[0].0, (9, 13));
+        // Y un emoji, dos unidades.
+        assert_eq!(enlaces_utf16("😀 www.a.es")[0].0, (3, 8));
+        // El parentesis de un enlace de enciclopedia es suyo.
+        let t = "https://es.wikipedia.org/wiki/Rust_(lenguaje)";
+        assert_eq!(enlaces(t)[0].0, 0..t.len());
+    }
+
+    #[test]
+    fn lo_que_no_es_un_enlace_no_se_marca() {
+        for t in [
+            "",
+            "sin enlaces aqui",
+            "https://localhost:8080",
+            "unawww.cosa.com",
+            "xhttps://a.com",
+            "www.",
+            "https://",
+            "https://sinpunto/camino",
+        ] {
+            assert!(enlaces(t).is_empty(), "{t:?}: {:?}", enlaces(t));
+        }
+    }
 
     fn e(texto: &str) -> Enlace {
         primer_enlace(texto).expect("tenia que encontrar un enlace")
