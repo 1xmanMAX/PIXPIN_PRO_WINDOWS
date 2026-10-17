@@ -204,6 +204,12 @@ struct Tema {
     buscador: Color,
     /// El azul del boton de enviar (`historySendIconFg`).
     enviar: Color,
+    /// El color de un enlace dentro del texto de una burbuja, sobre la
+    /// burbuja del asistente (`enlace`) y sobre la del usuario
+    /// (`enlace_mio`): de noche la del usuario es azul, y el azul de enviar
+    /// encima no se leeria.
+    enlace: Color,
+    enlace_mio: Color,
     /// El fondo sobre el que se ensena un lienzo: una hoja de papel.
     papel: Color,
     /// Lo que se escribe ENCIMA del papel. No vale `texto`: en el tema
@@ -289,6 +295,10 @@ const CLARO: Tema = Tema {
     // filterInputInactiveBg.
     buscador: hex(0xf1f1f1),
     enviar: hex(0x40a7e3),
+    // El azul de los enlaces de Windows: se lee sobre el blanco y sobre el
+    // verde claro de la burbuja (mas de 4,5:1 en los dos).
+    enlace: hex(0x0f6cbd),
+    enlace_mio: hex(0x0f6cbd),
     papel: hex(0xffffff),
     texto_papel: hex(0x111111),
     pestana_activa: hex(0xe3f1fa),
@@ -348,6 +358,10 @@ const OSCURO: Tema = Tema {
     // filterInputInactiveBg.
     buscador: hex(0x242f3d),
     enviar: hex(0x5288c1),
+    // El de los enlaces de Telegram de noche, y uno mas claro sobre la
+    // burbuja azul del usuario.
+    enlace: hex(0x6ab3f3),
+    enlace_mio: hex(0xb8dcff),
     // En oscuro tampoco se pinta negro sobre negro: el lienzo lleva su
     // hoja clara, solo un poco apagada para no deslumbrar.
     papel: hex(0xe8e8e8),
@@ -1541,6 +1555,7 @@ pub fn abrir(
                                 Zona::VieneDe(i) => {
                                     abrir_el_origen(ubicacion, a, i, lienzo, textos)
                                 }
+                                Zona::EnlaceDelTexto(k) => abrir_enlace_del_texto(a, k, textos),
                                 Zona::Enlace(i) => match asistente::lienzo_de(a, i) {
                                     Some(j) => {
                                         abrir_lienzo = Some(j);
@@ -2299,6 +2314,10 @@ pub fn abrir(
                                     // Sobre lo escrito, la barra de texto:
                                     // ahi se puede pulsar para escribir.
                                     FormaCursorWin::Texto
+                                } else if abierto.as_ref().is_some_and(|a| enlace_bajo(a, l)) {
+                                    // Sobre un enlace del texto, la mano
+                                    // (`IDC_HAND`): se puede pulsar.
+                                    FormaCursorWin::Giro
                                 } else {
                                     FormaCursorWin::Flecha
                                 });
@@ -2965,6 +2984,17 @@ pub fn abrir(
                     // La rueda va a la columna donde esta el raton, no a la
                     // que se pincho la ultima vez: es lo que espera la mano.
                     let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
+                    // Sobre la caja de escribir con mas texto del que cabe,
+                    // la rueda recorre lo escrito y no el historial.
+                    let paso_caja = (chat::FILA * escala / 100) as i32;
+                    if abierto.as_ref().is_some_and(|a| {
+                        a.letras
+                            .borrow_mut()
+                            .rodar(aqui, giro_de_rueda(delta, paso_caja) as f32)
+                    }) {
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     if let Some(a) = abierto.as_mut().filter(|_| disposicion.chat.contiene(aqui)) {
                         let area = area_del_historial(&disposicion, a, escala);
                         let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
@@ -3426,8 +3456,9 @@ pub fn abrir(
                 }
                 EventoOverlay::Caracter(c) if abierto.is_some() => {
                     // WM_CHAR trae tambien los mandos (retroceso, enter);
-                    // esos se atienden por tecla, no como letra.
-                    if c >= ' ' || c == '\n' {
+                    // esos se atienden por tecla, no como letra (el DEL de
+                    // Ctrl+Retroceso tampoco: ver `caja_texto::se_escribe`).
+                    if redaccion::se_escribe(c) {
                         if let Some(a) = abierto.as_mut() {
                             let mut b = [0u8; 4];
                             a.cursor.escribir(&mut a.borrador, c.encode_utf8(&mut b));
@@ -3955,6 +3986,7 @@ pub fn abrir(
                         // Lo que se puede pulsar se apunta de nuevo en cada
                         // fotograma: lo que ya no se ve no se puede pulsar.
                         a.zonas.borrow_mut().clear();
+                        a.enlaces_pintados.borrow_mut().clear();
                         // Y la caja de escribir igual: si este fotograma no
                         // la pinta (grabando, una pantalla encima), sus
                         // letras no se pueden pulsar.
@@ -4364,14 +4396,45 @@ struct LetrasPintadas {
     tam: f32,
     ancho: f32,
     cajas: Vec<(usize, RectF)>,
-    /// La esquina del texto en la ventana.
+    /// La esquina del texto en la ventana (ya corrido hacia arriba).
     origen: (f32, f32),
     /// Donde se puede pulsar para poner la rayita: el campo de escribir.
     /// Vacio mientras se dicta (lo que se ve no es aun lo escrito).
     zona: Option<RectF>,
+    /// Cuanto se corre lo escrito hacia arriba: la caja crece hasta su tope
+    /// y a partir de ahi el texto se desplaza por dentro, siguiendo a la
+    /// rayita (17-oct-2026). Lo mueve tambien la rueda sobre la caja.
+    corrido: f32,
+    /// Lo que mide todo lo escrito y lo que se ve de ello, a lo alto: hasta
+    /// donde deja bajar la rueda.
+    largo: f32,
+    visible: f32,
+    /// La rayita (posicion y largo del texto) a la que se siguio por ultima
+    /// vez: solo cuando cambia se corre la caja hasta ella, y entre medias
+    /// manda la rueda.
+    seguido: Option<(usize, usize)>,
 }
 
 impl LetrasPintadas {
+    /// La rueda sobre la caja de escribir: si `l` cae en ella y lo escrito
+    /// no cabe, corre el texto `giro` hacia abajo (positivo, hacia arriba
+    /// del texto) sin pasarse. Devuelve si la rueda era suya.
+    fn rodar(&mut self, l: Punto, giro: f32) -> bool {
+        let Some(z) = self.zona else {
+            return false;
+        };
+        let (x, y) = (l.x as f32, l.y as f32);
+        let dentro = x >= z.x && y >= z.y && x < z.x + z.ancho && y < z.y + z.alto;
+        let tope = (self.largo - self.visible).max(0.0);
+        if !dentro || tope <= 0.0 {
+            return false;
+        }
+        let nuevo = (self.corrido - giro).clamp(0.0, tope);
+        self.origen.1 += self.corrido - nuevo;
+        self.corrido = nuevo;
+        true
+    }
+
     /// La letra bajo `l` (coordenadas de la ventana), si cae en la caja.
     fn indice_en(&self, l: Punto) -> Option<usize> {
         redaccion::indice_en(
@@ -4524,6 +4587,10 @@ struct Abierto {
     /// La caja de cada letra de lo escrito tal como se pinto, para saber que
     /// letra hay bajo el raton. La apunta el pintado (`pintar_redaccion`).
     letras: std::cell::RefCell<LetrasPintadas>,
+    /// Las direcciones de los enlaces pintados dentro del texto de las
+    /// burbujas en este fotograma: `Zona::EnlaceDelTexto(k)` abre la `k`.
+    /// Se vacia con las zonas, al empezar cada fotograma.
+    enlaces_pintados: std::cell::RefCell<Vec<String>>,
     /// Se esta seleccionando lo escrito con el boton pulsado.
     eligiendo_texto: bool,
     /// El ultimo clic en la caja de escribir y donde cayo: el segundo, si
@@ -5628,11 +5695,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         // del color de su lienzo si viene de uno (`colorDelDibujo`).
         // Las del asistente, del otro color (`burbuja_otra`, la blanca de
         // Telegram): con cada uno a su lado, el color dice tambien quien habla.
-        let (color, color_texto, color_hora) = if crate::asistente::chat::es_del_asistente(m) {
-            (tema.burbuja_otra, tema.texto, tema.apagado)
-        } else {
-            (tema.burbuja_mia, tema.texto_mio, tema.hora_mia)
-        };
+        let (color, color_texto, color_hora, color_enlace) =
+            if crate::asistente::chat::es_del_asistente(m) {
+                (tema.burbuja_otra, tema.texto, tema.apagado, tema.enlace)
+            } else {
+                (tema.burbuja_mia, tema.texto_mio, tema.hora_mia, tema.enlace_mio)
+            };
         let radio = RADIO_BURBUJA * e;
         let grosor = GROSOR_BORDE * e;
         let dentro_del_borde = match piezas.borde {
@@ -6030,15 +6098,47 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             // burbuja. El movil lo tine de fondo; aqui el pintor no sabe
             // pintar fondos por tramo, y la negrita es lo que ya se usa en el
             // panel de informacion: lo mismo en los dos sitios.
-            p.parrafo(
+            //
+            // Y los enlaces, subrayados y en su color, se abren con un clic
+            // (el usuario, 17-oct-2026: «los enlaces no se ven como tal y no
+            // son clicables»). Lo pulsable de cada uno son sus cajas en la
+            // MISMA disposicion que se pinta: un renglon partido da dos.
+            let tramos = negritas(&piezas.texto, &aguja);
+            let enlaces = tarjetas::enlaces_utf16(&piezas.texto);
+            let sitios: Vec<(u32, u32)> = enlaces.iter().map(|(s, _)| *s).collect();
+            let (tx, tam, tw) = (dentro.x as f32, h::TEXTO_TAM * e, dentro.ancho as f32);
+            p.parrafo_con_enlaces(
                 &piezas.texto,
-                dentro.x as f32,
+                tx,
                 y,
-                h::TEXTO_TAM * e,
-                dentro.ancho as f32,
-                &negritas(&piezas.texto, &aguja),
+                tam,
+                tw,
+                &tramos,
                 color_texto,
+                &sitios,
+                color_enlace,
             );
+            for ((inicio, largo), url) in enlaces {
+                let k = {
+                    let mut pintados = a.enlaces_pintados.borrow_mut();
+                    pintados.push(url);
+                    pintados.len() - 1
+                };
+                let mut zonas = a.zonas.borrow_mut();
+                for c in p.cajas_de_trozo(&piezas.texto, tam, tw, &tramos, inicio, largo) {
+                    let r = Rect {
+                        x: (tx + c.x).floor() as i32,
+                        y: (y + c.y).floor() as i32,
+                        ancho: c.ancho.ceil().max(1.0) as u32,
+                        alto: c.alto.ceil().max(1.0) as u32,
+                    };
+                    // Solo lo que se ve del historial: un enlace que se
+                    // salio por arriba no se pulsa a traves de la cabecera.
+                    if let Some(r) = area.interseccion(r) {
+                        zonas.push((r, Zona::EnlaceDelTexto(k)));
+                    }
+                }
+            }
         }
 
         // Abajo a la IZQUIERDA: la chapa del codigo, la etiqueta, la
@@ -7195,11 +7295,34 @@ fn abrir_enlace(a: &Abierto, i: usize, textos: &Catalogo) -> Efecto {
     else {
         return Efecto::Nada;
     };
-    let url = en.url.to_ascii_lowercase();
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
+    abrir_direccion(&en.url, textos)
+}
+
+/// Si lo que se pulsaria en `l` es un enlace del texto de una burbuja: la
+/// misma busqueda que el clic (la ultima zona apuntada que lo contiene).
+fn enlace_bajo(a: &Abierto, l: Punto) -> bool {
+    a.zonas
+        .borrow()
+        .iter()
+        .rev()
+        .find(|(r, _)| r.contiene(l))
+        .is_some_and(|(_, z)| matches!(z, Zona::EnlaceDelTexto(_)))
+}
+
+/// Abre fuera un enlace pulsado dentro del texto de una burbuja: el
+/// `k`-esimo que apunto el pintado en este fotograma.
+fn abrir_enlace_del_texto(a: &Abierto, k: usize, textos: &Catalogo) -> Efecto {
+    let url = a.enlaces_pintados.borrow().get(k).cloned();
+    url.map_or(Efecto::Nada, |u| abrir_direccion(&u, textos))
+}
+
+/// Abre `url` con el navegador de Windows, solo si es `http`/`https`.
+fn abrir_direccion(url: &str, textos: &Catalogo) -> Efecto {
+    let minusculas = url.to_ascii_lowercase();
+    if !(minusculas.starts_with("https://") || minusculas.starts_with("http://")) {
         return Efecto::Nada;
     }
-    match pixpin_shell::abrir::abrir(std::path::Path::new(&en.url)) {
+    match pixpin_shell::abrir::abrir(std::path::Path::new(url)) {
         Ok(()) => Efecto::Nada,
         Err(e) => {
             tracing::warn!(?e, "no se pudo abrir el enlace");
@@ -7893,6 +8016,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         borrador: String::new(),
         cursor: Default::default(),
         letras: Default::default(),
+        enlaces_pintados: Default::default(),
         eligiendo_texto: false,
         clic_en_caja: None,
         info: None,
@@ -9877,6 +10001,32 @@ fn pintar_info(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn la_rueda_sobre_la_caja_de_escribir_recorre_lo_que_no_cabe() {
+        let mut l = LetrasPintadas {
+            zona: Some(RectF { x: 0.0, y: 500.0, ancho: 300.0, alto: 100.0 }),
+            origen: (10.0, 500.0 - 200.0),
+            corrido: 200.0,
+            largo: 300.0,
+            visible: 100.0,
+            ..Default::default()
+        };
+        let dentro = Punto { x: 50, y: 550 };
+        // Hacia arriba del texto: se corre menos y el origen baja.
+        assert!(l.rodar(dentro, 60.0));
+        assert_eq!((l.corrido, l.origen.1), (140.0, 360.0));
+        // Sin pasarse del principio ni del final.
+        assert!(l.rodar(dentro, 1000.0));
+        assert_eq!(l.corrido, 0.0);
+        assert!(l.rodar(dentro, -1000.0));
+        assert_eq!((l.corrido, l.origen.1), (200.0, 300.0));
+        // Casos negativos: fuera de la caja, o con todo a la vista, la rueda
+        // es del historial.
+        assert!(!l.rodar(Punto { x: 50, y: 450 }, 60.0));
+        l.largo = 80.0;
+        assert!(!l.rodar(dentro, 60.0));
+    }
 
     #[test]
     fn la_lista_vacia_por_la_busqueda_dice_que_no_hay_nada_y_no_que_no_hay_proyectos() {
@@ -13337,6 +13487,9 @@ enum Zona {
     VieneDe(usize),
     /// La tarjeta del enlace de una nota: lo abre fuera.
     Enlace(usize),
+    /// Un enlace dentro del texto de una burbuja, por su sitio en
+    /// `Abierto::enlaces_pintados`: lo abre fuera.
+    EnlaceDelTexto(usize),
     /// Ir a un mensaje: la cita de una respuesta o la barra del fijado.
     Ir(usize),
     /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
@@ -14772,7 +14925,6 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         let mut l = a.letras.borrow_mut();
         let campo = d.campo(alto_texto, escala);
         l.zona = (provisional.is_none()).then(|| rf(campo));
-        l.origen = (x, y);
         if l.texto != a.borrador || l.tam != tam || l.ancho != ancho {
             l.cajas = redaccion::cajas_de_letras(&a.borrador, |desde, largo| {
                 p.cajas_de_trozo(&a.borrador, tam, ancho, &[], desde, largo)
@@ -14783,7 +14935,29 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
             l.tam = tam;
             l.ancho = ancho;
         }
+        // La caja crece hasta su tope; lo que no cabe se corre hacia arriba
+        // para que la rayita siga a la vista, como el `TextField` del movil
+        // con su `maxLines`. Antes se escribia por debajo, donde no se veia.
+        let pos = a.cursor.pos(&a.borrador);
+        let (_, cy, alto_rayita) =
+            redaccion::sitio_del_cursor(&l.texto, &l.cajas, pos, tam * 1.3);
+        let largo = l.cajas.iter().map(|(_, b)| b.y + b.alto).fold(0.0, f32::max);
+        let visible = zona.alto as f32;
+        let llave = (pos, a.borrador.len());
+        l.corrido = if l.seguido != Some(llave) || l.visible != visible {
+            redaccion::corrido_a_la_vista(l.corrido, cy, cy + alto_rayita, largo, visible)
+        } else {
+            // La rueda lo movio: se respeta, sin pasarse de lo escrito.
+            l.corrido.min((largo.max(cy + alto_rayita) - visible).max(0.0)).max(0.0)
+        };
+        l.seguido = Some(llave);
+        l.largo = largo.max(cy + alto_rayita);
+        l.visible = visible;
+        l.origen = (x, y - l.corrido);
     }
+    // Lo escrito se pinta corrido; la invitacion de la caja vacia no (sin
+    // texto no hay nada que correr).
+    let y_texto = a.letras.borrow().origen.1;
     if borrador.is_empty() {
         let invitacion = if let Some(d) = a.dictado.as_ref() {
             textos.t(if d.oyendo {
@@ -14810,9 +14984,11 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     }
     p.empujar_recorte(rf(zona));
     if provisional.is_some() {
-        p.parrafo(borrador, x, y, tam, ancho, &[], tema.texto);
-        // Dictando, el cursor va al final de lo escrito y de lo oido.
+        // Dictando, el cursor va al final de lo escrito y de lo oido, y es
+        // ese final el que tiene que verse.
         let (_, alto_todo) = p.medir_texto_ajustado(borrador, tam, ancho);
+        let y = y - (alto_todo - zona.alto as f32).max(0.0);
+        p.parrafo(borrador, x, y, tam, ancho, &[], tema.texto);
         let ultima = borrador.rsplit('\n').next().unwrap_or("");
         let (ancho_ultima, _) = p.medir_texto(ultima, tam);
         p.rellenar(
@@ -14828,6 +15004,7 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         return;
     }
     let letras = a.letras.borrow();
+    let y = y_texto;
     // Lo seleccionado, debajo del texto: la caja de cada letra elegida.
     if let Some(r) = a.cursor.seleccion(&a.borrador) {
         for (_, b) in letras.cajas.iter().filter(|(i, _)| r.contains(i)) {

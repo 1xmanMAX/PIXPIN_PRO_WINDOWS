@@ -195,6 +195,8 @@ struct Pintado {
     ancho: f32,
     /// Cuanto se corre el texto a la izquierda para que se vea la rayita.
     corrido: f32,
+    /// Y cuanto hacia arriba, en la de varios renglones.
+    corrido_y: f32,
 }
 
 /// **Una caja de texto de una linea.** Se lee como un `&str` (`Deref`), asi
@@ -907,14 +909,20 @@ impl CajaLinea {
             pin.ancho = ancho_disp;
         }
         let (_, alto_linea) = p.medir_texto("Ág", tam);
-        let y = if self.varias {
-            hueco.y
-        } else {
-            hueco.y + (hueco.alto - alto_linea) / 2.0
-        };
         let grosor = (tam / 14.0).max(1.0).round();
         let (cx, cy, alto_rayita) =
             sitio_del_cursor(&self.texto, &pin.cajas, self.pos(), alto_linea);
+        // En varias, lo que no cabe a lo alto se corre hacia arriba para
+        // que la rayita siga a la vista (la misma cuenta que a lo ancho).
+        let y = if self.varias {
+            let largo = pin.cajas.iter().map(|(_, b)| b.y + b.alto).fold(0.0, f32::max);
+            pin.corrido_y =
+                super::corrido_a_la_vista(pin.corrido_y, cy, cy + alto_rayita, largo, hueco.alto);
+            hueco.y - pin.corrido_y
+        } else {
+            pin.corrido_y = 0.0;
+            hueco.y + (hueco.alto - alto_linea) / 2.0
+        };
         if self.varias {
             pin.corrido = 0.0;
         } else {
@@ -1033,18 +1041,9 @@ impl CajaLinea {
 /// Cuanto correr el texto para que la rayita (en `x` desde el principio del
 /// texto) quede dentro de un hueco de `ancho`. Se corre lo justo, y si lo
 /// escrito ya cabe (o se borro el final) se vuelve atras para no dejar
-/// hueco vacio a la derecha.
+/// hueco vacio a la derecha. Es [`super::corrido_a_la_vista`] a lo ancho.
 fn corrido_para_ver(antes: f32, x: f32, largo: f32, ancho: f32) -> f32 {
-    let ancho = ancho.max(1.0);
-    let mut c = antes;
-    if x - c > ancho {
-        c = x - ancho;
-    }
-    if x < c {
-        c = x;
-    }
-    // Sin hueco a la derecha de lo escrito si se puede evitar.
-    c.min((largo.max(x) - ancho).max(0.0)).max(0.0)
+    super::corrido_a_la_vista(antes, x, x, largo, ancho)
 }
 
 #[cfg(test)]

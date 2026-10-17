@@ -1377,7 +1377,7 @@ extern "system" fn procedimiento_overlay(
                     char::from_u32(unidad as u32)
                 }
             });
-            if let Some(c) = caracter {
+            if let Some(c) = caracter.filter(|c| es_letra_de_wm_char(*c)) {
                 encolar(EventoOverlay::Caracter(c));
             }
             LRESULT(0)
@@ -1536,10 +1536,35 @@ fn avisar_de_horizontal(camino: &'static str, delta: i32) {
     }
 }
 
+/// Si lo que trae WM_CHAR es una letra para escribir.
+///
+/// **Ctrl+Retroceso** manda su WM_KEYDOWN (VK_BACK con Ctrl, que es lo que
+/// borra la palabra) y DETRAS un WM_CHAR con `0x7F` (DEL), que no es ninguna
+/// letra. Las cajas que solo miraban `c >= ' '` lo escribian: un caracter
+/// invisible detras de la rayita, y el siguiente Ctrl+Retroceso se gastaba
+/// en borrarlo a el en vez de la palabra (el usuario, 17-oct-2026: «solo se
+/// borra la primera palabra y luego ya no funciona»). Se quita aqui, en el
+/// unico sitio por el que entra lo tecleado, y vale para todas las cajas.
+/// Los demas mandos (Intro `\r`, Retroceso `\x08`, Tab) siguen llegando:
+/// hay quien los atiende como letra.
+pub fn es_letra_de_wm_char(c: char) -> bool {
+    c != '\u{7f}'
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
     use pixpin_geom::Rect;
+
+    #[test]
+    fn el_del_de_ctrl_retroceso_no_es_una_letra() {
+        // Lo que manda Windows detras de Ctrl+Retroceso: fuera.
+        assert!(!es_letra_de_wm_char('\u{7f}'));
+        // Caso negativo: las letras y los mandos de siempre siguen pasando.
+        for c in ['a', 'ñ', ' ', '€', '\r', '\u{8}', '\t'] {
+            assert!(es_letra_de_wm_char(c), "{c:?}");
+        }
+    }
 
     #[test]
     fn ctrl_y_shift_de_la_rueda_salen_del_propio_mensaje() {
