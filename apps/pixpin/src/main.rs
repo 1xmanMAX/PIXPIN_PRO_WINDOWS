@@ -1679,7 +1679,11 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Atajo(id) if id == atajos::ID_PORTAPAPELES => {
+            // Por el comando, venga del atajo, del menu o del panel de la
+            // bandeja: antes se miraba un `ID_PORTAPAPELES` fijo (6) que ya no
+            // era el del comando (es el 10), y «Pinear lo copiado» caia en
+            // «comando sin accion» (17-oct).
+            _ if pide_pinear_lo_copiado(&evento) => {
                 // Pinear el portapapeles NO abre overlay: aparece un pin
                 // centrado en el monitor del cursor y sin robar el foco
                 // (4.4), asi que no interrumpe donde estabas escribiendo.
@@ -2519,6 +2523,14 @@ pub(crate) fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
 
 /// Crea un pin por cada cosa del portapapeles, en el monitor del cursor.
 /// Devuelve cuantos nacieron: varias rutas copiadas dan varias fichas.
+/// Si el evento es «Pinear lo copiado» (`Comando::PinearPortapapeles`),
+/// llegue por su atajo, por el menu o por el panel de la bandeja: los tres
+/// traen el identificador del comando en el catalogo.
+fn pide_pinear_lo_copiado(evento: &Evento) -> bool {
+    matches!(evento, Evento::Atajo(id) | Evento::Menu(id)
+        if comandos::Comando::desde_id(*id) == Some(comandos::Comando::PinearPortapapeles))
+}
+
 fn pinear_portapapeles(
     pines: &mut Pines,
     contenido: pixpin_codec::ContenidoPortapapeles,
@@ -2689,6 +2701,18 @@ fn iniciar_registro(ubicacion: &Ubicacion) -> tracing_appender::non_blocking::Wo
 #[cfg(test)]
 mod pruebas_bandeja {
     use super::*;
+
+    #[test]
+    fn pinear_lo_copiado_se_atiende_por_su_comando() {
+        let id = comandos::Comando::PinearPortapapeles.id();
+        assert!(pide_pinear_lo_copiado(&Evento::Atajo(id)));
+        assert!(pide_pinear_lo_copiado(&Evento::Menu(id)));
+        // El 6 fijo de antes es «repetir la ultima region», no esto.
+        assert_ne!(id, 6);
+        assert!(!pide_pinear_lo_copiado(&Evento::Atajo(6)));
+        assert!(!pide_pinear_lo_copiado(&Evento::Menu(comandos::Comando::Pinear.id())));
+        assert!(!pide_pinear_lo_copiado(&Evento::Despertar));
+    }
 
     #[test]
     fn timeline_galeria_y_tareas_salen_justo_debajo_del_chat() {

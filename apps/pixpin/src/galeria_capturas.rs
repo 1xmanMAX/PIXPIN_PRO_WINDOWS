@@ -248,6 +248,45 @@ fn ruta_en_cache(cache: &Path, e: &Entrada) -> PathBuf {
     cache.join(format!("{nombre}-{segundos}-{}.png", e.bytes))
 }
 
+/// La cache de la galeria (miniaturas y texto leido), desde la raiz de los
+/// datos.
+pub(crate) fn cache_en(raiz: &Path) -> PathBuf {
+    raiz.join("cache").join("galeria")
+}
+
+/// La captura `ruta` como la lista la galeria, si esta.
+fn entrada_de(ruta: &Path) -> Option<Entrada> {
+    let meta = std::fs::metadata(ruta).ok().filter(|m| m.is_file())?;
+    Some(Entrada {
+        ruta: ruta.to_path_buf(),
+        cuando: meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+        bytes: meta.len(),
+    })
+}
+
+/// **El texto ya leido de una captura** (el OCR que la galeria guarda en su
+/// cache), para que viaje con ella al sincronizar. Vacio si aun no se leyo
+/// o no tiene texto; no se lee aqui: el OCR es lento y va en la galeria.
+pub(crate) fn texto_leido(raiz: &Path, e: &Entrada) -> String {
+    std::fs::read_to_string(ruta_del_texto(&cache_en(raiz), e)).unwrap_or_default()
+}
+
+/// **El texto de una captura llegado de otro aparato**, a la cache de la
+/// galeria: alli lo encuentra el buscador sin volver a leer la imagen. No
+/// pisa uno que ya se leyo aqui.
+pub(crate) fn apuntar_texto(raiz: &Path, ruta: &Path, texto: &str) -> std::io::Result<()> {
+    let Some(e) = entrada_de(ruta) else {
+        return Ok(());
+    };
+    let cache = cache_en(raiz);
+    let destino = ruta_del_texto(&cache, &e);
+    if std::fs::metadata(&destino).is_ok_and(|m| m.len() > 0) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(&cache)?;
+    std::fs::write(destino, texto)
+}
+
 /// Lleva una captura a `papelera/capturas/`. Si ya hay una con ese nombre,
 /// la nueva lleva la hora delante: nada se pisa.
 pub fn a_la_papelera(raiz: &Path, ruta: &Path) -> std::io::Result<PathBuf> {
@@ -712,7 +751,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
     ABIERTA.store(hwnd, Ordering::SeqCst);
 
     let dir = carpeta(ubicacion);
-    let cache = ubicacion.raiz().join("cache").join("galeria");
+    let cache = cache_en(ubicacion.raiz());
     let (pedir, hechas) = lanzar_lector(cache.clone(), hwnd);
     let (pedir_texto, leidos) = lanzar_lector_de_texto(cache.clone(), hwnd);
     // Lo caducado se va antes de ensenar nada: no tiene que salir una

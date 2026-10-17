@@ -177,6 +177,15 @@ pub struct Entrada {
     /// El aparato donde se hizo, solo para ensenarlo.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub de: String,
+    /// **Lo que pone dentro**: el texto reconocido de la captura (el OCR de
+    /// Windows en el PC), con el que la galeria la encuentra al buscar.
+    /// Viaja con la entrada para que el otro aparato la encuentre por su
+    /// texto sin volver a leerla. Vacio: sin leer o sin texto, y entonces
+    /// no se escribe. Android aun no lo tiene: lo ignora al leer
+    /// (`ignoreUnknownKeys`) y lo pierde al juntar, por eso aqui nunca se
+    /// olvida un texto que ya se tenia ([`juntar`], [`aplicar_juntas`]).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub texto: String,
 }
 
 impl Entrada {
@@ -192,6 +201,7 @@ impl Entrada {
             borrada: false,
             cambiado: 0,
             de: String::new(),
+            texto: String::new(),
         }
     }
 
@@ -234,6 +244,8 @@ pub struct Local {
     pub cuando: i64,
     pub bytes: i64,
     pub mime: String,
+    /// El texto que ya se leyo de ella (vacio: aun no, o no tiene).
+    pub texto: String,
 }
 
 // ------------------------------------------------------------ reglas
@@ -285,9 +297,16 @@ pub fn al_dia(
                 borrada: false,
                 cambiado: c.cuando,
                 de: aparato.to_string(),
+                texto: c.texto.clone(),
             });
             continue;
         };
+        // El texto leido aqui despues de apuntarla (la galeria lo lee en
+        // segundo plano): se anade sin tocar `cambiado`, que no es un cambio
+        // del usuario sino algo mas que se sabe de la misma imagen.
+        if nuevas[i].texto.is_empty() && !c.texto.is_empty() {
+            nuevas[i].texto = c.texto.clone();
+        }
         let vieja = &nuevas[i];
         if vieja.borrada {
             // Se quito en otro: la quitara `a_tirar`.
@@ -361,11 +380,18 @@ pub fn juntar(a: &[Entrada], b: &[Entrada]) -> Vec<Entrada> {
         .map(|n| match (pa.get(n), pb.get(n)) {
             (Some(x), Some(y)) => {
                 // `ganadora`: a igual clave, la del primero, como alli.
-                if clave(x) >= clave(y) {
-                    (*x).clone()
+                let (mut g, otra) = if clave(x) >= clave(y) {
+                    ((*x).clone(), *y)
                 } else {
-                    (*y).clone()
+                    ((*y).clone(), *x)
+                };
+                // El texto es de la imagen, no de lo que se decidio sobre
+                // ella: si la que gana no lo trae (Android no lo conoce), se
+                // queda el de la otra.
+                if g.texto.is_empty() {
+                    g.texto = otra.texto.clone();
                 }
+                g
             }
             (Some(x), None) => (*x).clone(),
             (None, Some(y)) => (*y).clone(),
@@ -542,6 +568,10 @@ pub trait CapturasDelAparato {
     -> io::Result<()>;
     /// Algo de la galeria cambio (para refrescar lo que este abierto).
     fn avisar(&self) {}
+    /// El texto de una captura que ya esta aqui, llegado de otro aparato:
+    /// a donde lo busca la galeria (en el PC, la cache del OCR). Las que
+    /// llegan enteras traen el suyo en la entrada de [`guardar`](Self::guardar).
+    fn apuntar_texto(&self, _nombre: &str, _texto: &str) {}
 }
 
 /// **Lo de aqui, al dia y escrito** (`ponerAlDia`), con el registro de
@@ -565,23 +595,53 @@ pub fn aplicar_juntas(
     juntas: &[Entrada],
     ahora: i64,
 ) -> io::Result<usize> {
-    let aqui: BTreeSet<String> = c
-        .listar()
-        .map(|l| l.into_iter().map(|x| x.nombre).collect())
-        .unwrap_or_default();
+    let locales = c.listar().unwrap_or_default();
+    let aqui: BTreeSet<String> = locales.iter().map(|x| x.nombre.clone()).collect();
     let tirar = a_tirar(juntas, &aqui);
     if !tirar.is_empty() {
         c.tirar(&tirar);
     }
-    cambiar(&c.raiz(), |e| Estado {
-        entradas: juntas.to_vec(),
-        tenia: e
-            .tenia
-            .into_iter()
-            .filter(|n| !tirar.contains(n))
-            .collect(),
+    // Lo juntado por quien no sabe de textos (Android) llega sin ellos: se
+    // completan con lo que ya habia aqui, en el estado o leido de la
+    // captura, para no olvidarlos.
+    let texto_local: HashMap<&str, &str> = locales
+        .iter()
+        .filter(|l| !l.texto.is_empty())
+        .map(|l| (l.nombre.as_str(), l.texto.as_str()))
+        .collect();
+    let mut juntas = juntas.to_vec();
+    let e = cambiar(&c.raiz(), |e| {
+        let texto_viejo: HashMap<&str, &str> = e
+            .entradas
+            .iter()
+            .filter(|x| !x.texto.is_empty())
+            .map(|x| (x.nombre.as_str(), x.texto.as_str()))
+            .collect();
+        for j in juntas.iter_mut().filter(|j| j.texto.is_empty()) {
+            if let Some(t) = texto_viejo
+                .get(j.nombre.as_str())
+                .or_else(|| texto_local.get(j.nombre.as_str()))
+            {
+                j.texto = t.to_string();
+            }
+        }
+        Estado {
+            entradas: juntas.clone(),
+            tenia: e
+                .tenia
+                .into_iter()
+                .filter(|n| !tirar.contains(n))
+                .collect(),
+        }
     })?;
-    c.cambiar_caducidad(ahora, &mut |r| *r = aplicar(r, juntas))?;
+    // Y al reves: el texto que trae el otro de una captura que ya esta aqui
+    // pero aun no se leyo, a donde lo busca la galeria.
+    for j in e.entradas.iter().filter(|j| !j.borrada && !j.texto.is_empty()) {
+        if aqui.contains(&j.nombre) && !texto_local.contains_key(j.nombre.as_str()) {
+            c.apuntar_texto(&j.nombre, &j.texto);
+        }
+    }
+    c.cambiar_caducidad(ahora, &mut |r| *r = aplicar(r, &e.entradas))?;
     Ok(tirar.len())
 }
 
