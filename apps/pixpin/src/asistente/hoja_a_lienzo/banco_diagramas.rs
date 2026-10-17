@@ -614,7 +614,7 @@ fn el_parrafo_y_su_formula_son_un_bloque_y_el_titulo_no() {
     let parrafo = con("pendiente").expect("el bloque del parrafo");
     assert!(parrafo.2.renglones.iter().any(|r| r.texto.contains("grupo")), "los dos renglones juntos");
     assert!(parrafo.1.len() >= 2, "{:?}", parrafo.1);
-    // El titulo no va con el parrafo (y sin formula ni siquiera es bloque rico).
+    // El titulo no va con el parrafo.
     assert!(con("Excursion").is_none_or(|t| !t.2.renglones.iter().any(|r| r.texto.contains("grupo"))), "el titulo, solo");
     // La foto no es texto.
     assert!(bloques.iter().all(|b| b.1.iter().all(|&k| s.zonas[k].tipo != pixpin_ia::hoja::Tipo::Foto)));

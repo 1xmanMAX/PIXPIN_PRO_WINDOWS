@@ -569,8 +569,10 @@ fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
         .filter(|w| !suyas.iter().any(|s| s.comun(w) > 0.5 * w.area().max(1.0)))
         .copied()
         .collect();
-    if !ajenas.is_empty()
-        && let Some((v, img)) = foto_tapada(e, &caja, &ajenas)
+    // (Un dibujo, una formula o una dudosa recortados: sin la marca de agua.)
+    let palido = !matches!(e.zona.tipo, Tipo::Foto);
+    if (!ajenas.is_empty() || palido)
+        && let Some((v, img)) = foto_tapada(e, &caja, &ajenas, palido)
     {
         return (vec![v], vec![img]);
     }
@@ -616,7 +618,9 @@ pub fn foto_recortada(e: &Entrada, caja: &Caja) -> Option<(Value, ImagenNueva)> 
 
 /// El recorte de `caja` con las palabras `tapar` cubiertas del color del
 /// papel de alrededor (la mediana del borde del recorte), como imagen propia.
-fn foto_tapada(e: &Entrada, caja: &Caja, tapar: &[Caja]) -> Option<(Value, ImagenNueva)> {
+/// `palido`: ademas, lo gris claro (la marca de agua de una lamina) pasa a
+/// ser papel; para lo que no es una foto de verdad.
+fn foto_tapada(e: &Entrada, caja: &Caja, tapar: &[Caja], palido: bool) -> Option<(Value, ImagenNueva)> {
     let (rgba, w, h) = e.pagina;
     let c = caja.dentro(w as f64, h as f64);
     let (mut sub, sw, sh) = imagen::recortar(rgba, w, h, &c);
@@ -636,6 +640,16 @@ fn foto_tapada(e: &Entrada, caja: &Caja, tapar: &[Caja]) -> Option<(Value, Image
     for k in 0..3 {
         borde[k].sort_unstable();
         fondo[k] = borde[k][borde[k].len() / 2];
+    }
+    if palido {
+        let gris = |p: &[u8]| (p[0] as f64 * 299.0 + p[1] as f64 * 587.0 + p[2] as f64 * 114.0) / 1000.0;
+        let gf = gris(&fondo);
+        for px in sub.chunks_exact_mut(4) {
+            let sat = px[..3].iter().max().unwrap() - px[..3].iter().min().unwrap();
+            if sat < 30 && gris(px) >= gf - 50.0 {
+                px[..3].copy_from_slice(&fondo);
+            }
+        }
     }
     for t in tapar {
         let q = t.crecer(1.5);

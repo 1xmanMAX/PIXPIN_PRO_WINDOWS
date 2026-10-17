@@ -914,7 +914,10 @@ pub fn pasar(
             let menor = ca.area().min(cb.area()).max(1.0);
             let texto = |h: &Hecho| matches!(h.tipo, Tipo::Parrafo | Tipo::Encabezado);
             // (Un texto dentro de una figura es su rotulo; dentro de una imagen ya esta tapado.)
-            if ca.comun(&cb) > 0.5 * menor && texto(a) == texto(b) {
+            // (De tamano parecido: una formula dentro de un dibujo grande es suya,
+            // no la misma cosa; quitarla dejaba vacias las cajitas de «MN = (b+a)/2».)
+            let parecidas = ca.area().max(cb.area()) <= 2.5 * menor;
+            if parecidas && ca.comun(&cb) > 0.5 * menor && texto(a) == texto(b) {
                 dobles.push(b.zona);
                 continue;
             }
@@ -1204,13 +1207,6 @@ pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::
     for (_, mut g) in grupos {
         g.sort_by(|&x, &y| s.zonas[x].caja.y.total_cmp(&s.zonas[y].caja.y));
         if g.len() == 1 && s.zonas[g[0]].tipo == Tipo::Formula && !de_formula(&s.zonas[g[0]]) {
-            continue;
-        }
-        // **Sin ninguna formula, el texto del OCR** (17-oct): un pantallazo
-        // (los comentarios de TikTok) no es una lamina; en texto rico la nube
-        // juntaba renglones de comentarios distintos y dejaba marcas rotas
-        // («*·Buscar*}»). El texto rico es para lo que lleva formulas.
-        if !g.iter().any(|&k| s.zonas[k].tipo == Tipo::Formula || de_formula(&s.zonas[k])) {
             continue;
         }
         let mut z = s.zonas[g[0]].clone();
