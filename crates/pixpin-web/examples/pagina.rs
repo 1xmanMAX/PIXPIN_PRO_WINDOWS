@@ -16,6 +16,8 @@ fn main() {
         fondo: (0x13, 0x14, 0x15),
         pagina: html,
         servir: Box::new(|_| None),
+        padre: None,
+        oscuro: None,
     });
     let p = match p {
         Ok(p) => p,

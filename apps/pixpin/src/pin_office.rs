@@ -40,17 +40,14 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use pixpin_geom::Rect;
 use pixpin_render::icono::material;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_shell::vista_previa::{self, Carteles, Estado, VistaPrevia};
 use pixpin_store::{Catalogo, Ubicacion};
 
-use crate::lector_pin::{AccionPin, BotonLector, PinLector};
+use crate::lector_pin::{AccionPin, BotonLector, PinLector, area_de_la_vista, tecla};
 use crate::overlay::Recursos;
 
-const VK_ESCAPE: u32 = 0x1B;
-const VK_F11: u32 = 0x7A;
 
 /// Lo que abre el pin de Office, si el equipo tiene previsualizador para
 /// ello: los formatos que el motor nativo NO lee. Word 97-2003 y RTF; Excel
@@ -121,24 +118,6 @@ fn botones(nombre: &str) -> Vec<BotonLector> {
     }
     v.push(BotonLector { id: ABRIR_CON, icono: &material::OPEN_IN_NEW, encendido: false });
     v
-}
-
-/// Donde va la vista dentro de la ventana: todo menos el borde por donde
-/// se estira (en pantalla completa no hay borde).
-pub fn area_de_la_vista(ancho: u32, alto: u32, borde: i32) -> Rect {
-    let b = borde.max(0);
-    Rect { x: b, y: b, ancho: (ancho as i32 - 2 * b).max(1) as u32, alto: (alto as i32 - 2 * b).max(1) as u32 }
-}
-
-/// Lo que pide una tecla: `Some(true)` cerrar, `Some(false)` pantalla
-/// completa (o volver), `None` nada.
-pub fn tecla(vk: u32, pantalla_completa: bool) -> Option<bool> {
-    match vk {
-        VK_F11 => Some(false),
-        VK_ESCAPE if pantalla_completa => Some(false),
-        VK_ESCAPE => Some(true),
-        _ => None,
-    }
 }
 
 fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &Path, idioma: pixpin_store::Idioma) -> Result<()> {
@@ -313,24 +292,6 @@ mod pruebas {
         for ext in ["pdf", "png", "csv", "txt", "zip", "", "doc.txt"] {
             assert!(!va_al_pin(ext, true, false), "{ext}");
         }
-    }
-
-    #[test]
-    fn la_vista_deja_el_borde_para_estirar() {
-        assert_eq!(area_de_la_vista(800, 600, 7), Rect { x: 7, y: 7, ancho: 786, alto: 586 });
-        // En pantalla completa, sin borde.
-        assert_eq!(area_de_la_vista(1920, 1080, 0), Rect { x: 0, y: 0, ancho: 1920, alto: 1080 });
-        // Caso negativo: una ventana diminuta no da tamanos negativos.
-        assert_eq!(area_de_la_vista(10, 10, 7), Rect { x: 7, y: 7, ancho: 1, alto: 1 });
-    }
-
-    #[test]
-    fn esc_cierra_o_sale_de_pantalla_completa_y_f11_alterna() {
-        assert_eq!(tecla(VK_ESCAPE, false), Some(true));
-        assert_eq!(tecla(VK_ESCAPE, true), Some(false));
-        assert_eq!(tecla(VK_F11, false), Some(false));
-        // Caso negativo: otra tecla no hace nada.
-        assert_eq!(tecla(0x41, false), None);
     }
 
     #[test]

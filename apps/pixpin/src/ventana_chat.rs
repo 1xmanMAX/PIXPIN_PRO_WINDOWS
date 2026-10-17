@@ -9382,7 +9382,7 @@ fn abrir_mensaje(
     ubicacion: &Ubicacion,
     a: &Abierto,
     indice: usize,
-    textos: &Catalogo,
+    _textos: &Catalogo,
     idioma: pixpin_store::Idioma,
 ) {
     let Some(m) = a.mensajes.get(indice) else {
@@ -9428,18 +9428,11 @@ fn abrir_mensaje(
     // Un `.html` se abre DENTRO de PixPin, en el visor propio: su boton de
     // guardar escribe encima de este mismo fichero, mientras que en el
     // navegador descargaria una copia y el del chat se quedaria igual.
+    // Va en su propio hilo, como pin (antes corria aqui y el chat se quedaba
+    // quieto mientras estaba abierto); sin WebView2 o si falla, al navegador.
     if crate::visor_html::se_abre(&m.nombre) || crate::visor_html::se_abre(relativa) {
-        match crate::visor_html::abrir(textos, &ruta) {
-            Ok(guardado) => {
-                if guardado {
-                    tracing::info!(ruta = %ruta.display(), "html guardado desde el visor");
-                }
-                return;
-            }
-            // Sin runtime de WebView2 o si algo falla, el navegador de
-            // siempre: mejor abrirlo fuera que no abrirlo.
-            Err(e) => tracing::warn!(?e, "sin visor de HTML propio; se abre fuera"),
-        }
+        crate::visor_html::lanzar(idioma, &ruta);
+        return;
     }
     // Un Word, un libro o un PDF se leen DENTRO, como al tocar la burbuja en
     // el movil: sin esperar a otra aplicacion y con los marcadores y lo
