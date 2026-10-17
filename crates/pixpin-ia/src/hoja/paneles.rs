@@ -437,7 +437,9 @@ fn juntar_formulas_al_renglon(s: &mut Seccionado) {
         if f.tipo != Tipo::Formula || f.renglones.len() != 1 || f.texto().chars().count() > 30 {
             continue;
         }
-        let fr = f.renglones[0].clone();
+        // (La caja de la ZONA: lleva la tinta que el OCR no leyo, el «AD=» de «AD=13 y».)
+        let mut fr = f.renglones[0].clone();
+        fr.caja = fr.caja.union(&f.caja);
         let sitio = s.zonas.iter().enumerate().filter(|(i, z)| *i != fi && matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado)).find_map(|(i, z)| {
             z.renglones.iter().position(|r| {
                 let misma_linea = r.caja.solape_y(&fr.caja) >= 0.6 * r.caja.h.min(fr.caja.h);
