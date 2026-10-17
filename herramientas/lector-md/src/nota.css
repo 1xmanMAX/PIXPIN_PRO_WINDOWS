@@ -1069,3 +1069,39 @@ body.con-comentarios .papel .cm-content {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ------------------------------------------------------------ como pin
+   (17-oct-2026) Abierta como pin, la barra de arriba es la comun de los
+   visores de PixPin, fuera de la pagina (`lector_pin.rs`): la cabecera
+   propia no se ve y la barra de herramientas sube. Al cambiar el titulo
+   asoma solo su pastilla. Al ver la nota (el ojo), sin herramientas. */
+body.en-pin .cabecera {
+  display: none;
+}
+body.en-pin.titulo-a-la-vista .cabecera {
+  display: flex;
+  background: transparent;
+  pointer-events: none;
+  z-index: 6;
+}
+body.en-pin.titulo-a-la-vista .cabecera > :not(#titulo) {
+  visibility: hidden;
+}
+body.en-pin.titulo-a-la-vista #titulo {
+  pointer-events: auto;
+}
+body.en-pin .herramientas {
+  top: 0;
+}
+body.en-pin .papel {
+  top: 38px;
+}
+body.leyendo .herramientas {
+  display: none;
+}
+body.leyendo .papel {
+  top: 44px;
+}
+body.en-pin.leyendo .papel {
+  top: 0;
+}

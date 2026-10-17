@@ -6,9 +6,9 @@
 // Con PixPin se habla por `chrome.webview` (JSON con `tipo`): ver
 // `apps/pixpin/src/notas_md/lector_web.rs`.
 
-import { EditorState, Transaction, Annotation, EditorSelection } from '@codemirror/state'
+import { EditorState, Transaction, Annotation, EditorSelection, Compartment } from '@codemirror/state'
 import { EditorView, keymap, drawSelection, placeholder, dropCursor } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, redo } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, redo, undo } from '@codemirror/commands'
 import { markdown, markdownLanguage, insertNewlineContinueMarkup, deleteMarkupBackward } from '@codemirror/lang-markdown'
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search'
 import { vivo, clicEnCasilla, acciones, RE_CASILLA, RE_LISTA } from './vivo.js'
@@ -21,6 +21,65 @@ const desdeFuera = Annotation.define()
 let tx = TEXTOS.es
 let vista = null
 let nombreFichero = ''
+
+// ------------------------------------------------------------------ como pin
+// (17-oct-2026, el usuario: «que el visor de MD tenga una UI igual a la de
+// los demas visores en formato de pin»). Abierta por PixPin como pin, la
+// ventana no es de la pagina: su barra (asa, nombre, ver/editar, deshacer,
+// buscar, comentarios, compartir, ⋯, luna/sol, pantalla completa, pin y
+// cerrar) es la comun de los visores (`lector_pin.rs`) y va FUERA. Aqui se
+// esconde la cabecera propia y la barra manda sus botones como `orden`.
+let enPin = false
+// Ver la nota sin escribir (el «ojo» del movil): sin la barra de
+// herramientas y sin poder tocar el texto.
+let leyendo = false
+const soloLectura = new Compartment()
+const modoLectura = si => [EditorState.readOnly.of(si), EditorView.editable.of(!si)]
+
+/** Le cuenta a la barra del pin lo que tiene que encender. */
+function mandarEstado() {
+  if (enPin) mandar({ tipo: 'estado', leyendo, comentarios: !!com?.abierto() })
+}
+
+function ponerLectura(si) {
+  leyendo = si
+  document.body.classList.toggle('leyendo', si)
+  vista?.dispatch({ effects: soloLectura.reconfigure(modoLectura(si)) })
+  if (si) {
+    flotante.hidden = true
+    guardarYa()
+  } else vista?.focus()
+  mandarEstado()
+}
+
+/** Lo que pulsa la barra del pin. */
+function orden(que) {
+  switch (que) {
+    case 'leer':
+      return ponerLectura(true)
+    case 'editar':
+      return ponerLectura(false)
+    case 'deshacer':
+      vista.focus()
+      return undo(vista)
+    case 'rehacer':
+      vista.focus()
+      return redo(vista)
+    case 'buscar':
+      vista.focus()
+      return openSearchPanel(vista)
+    case 'comentarios':
+      com.abrir()
+      return mandarEstado()
+    case 'compartir':
+      guardarYa()
+      return mandar({ tipo: 'compartir' })
+    case 'mas':
+      return menuTitulo()
+    case 'titulo':
+      return editarTitulo()
+  }
+}
 
 // ------------------------------------------------------------------ puente
 
@@ -112,6 +171,8 @@ function editarTitulo() {
   input.value = actual
   const txt = $('titulo-texto')
   txt.hidden = true
+  // Como pin la cabecera no se ve: asoma solo la pastilla mientras se escribe.
+  document.body.classList.add('titulo-a-la-vista')
   chip.insertBefore(input, txt)
   input.select()
   input.focus()
@@ -122,6 +183,7 @@ function editarTitulo() {
     if (aplicar && input.value.trim() !== actual) cambiarTitulo(input.value)
     input.remove()
     txt.hidden = false
+    document.body.classList.remove('titulo-a-la-vista')
     vista.focus()
   }
   input.addEventListener('keydown', e => {
@@ -400,7 +462,9 @@ document.addEventListener('mousedown', e => {
 })
 
 function menuTitulo() {
-  const r = $('titulo').getBoundingClientRect()
+  // Como pin lo abre el ⋯ de la barra de fuera: el menu sale arriba a la
+  // derecha, bajo donde queda ese boton.
+  const r = enPin ? { left: Math.max(8, innerWidth - 300), bottom: 4 } : $('titulo').getBoundingClientRect()
   abrirMenu(
     [
       { icono: '✎', texto: tx.cambiarTitulo, accion: ORDENES.cambiarTitulo },
@@ -637,7 +701,7 @@ function mostrarFlotante() {
   if (!vista) return
   const st = vista.state
   const r = st.selection.main
-  if (r.empty || !vista.hasFocus || menuActual) {
+  if (r.empty || !vista.hasFocus || menuActual || leyendo) {
     flotante.hidden = true
     return
   }
@@ -1028,6 +1092,7 @@ const com = crearComentarios({
   abrirMenu,
   insignia: $('insignia'),
   boton: $('b-comentarios'),
+  alCambiar: () => mandarEstado(),
 })
 document.addEventListener(
   'keydown',
@@ -1081,6 +1146,7 @@ function crear(textoInicial) {
       doc: textoInicial,
       extensions: [
         history(),
+        soloLectura.of(modoLectura(leyendo)),
         drawSelection(),
         dropCursor(),
         search({ top: true }),
@@ -1214,7 +1280,7 @@ $('grande').addEventListener('click', () => ($('grande').hidden = true))
 const BORDE = 5
 const CURSORES = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', o: 'ew-resize', ne: 'nesw-resize', so: 'nesw-resize', no: 'nwse-resize', se: 'nwse-resize' }
 function bordeEn(x, y) {
-  if (pantallaCompleta) return ''
+  if (pantallaCompleta || enPin) return ''
   const v = y < BORDE ? 'n' : y > innerHeight - BORDE ? 's' : ''
   const h = x < BORDE ? 'o' : x > innerWidth - BORDE ? 'e' : ''
   return v + h
@@ -1246,6 +1312,8 @@ function recibir(msg) {
       nombreFichero = msg.nombre || ''
       preferencias = { ...preferencias, ...(msg.vista || {}) }
       capacidades = { ...capacidades, ...(msg.capacidades || {}) }
+      enPin = !!msg.enPin
+      document.body.classList.toggle('en-pin', enPin)
       aplicarPreferencias()
       crear(msg.texto || '')
       com.pedir()
@@ -1253,10 +1321,14 @@ function recibir(msg) {
       ultimoTitulo = null
       ponerTitulo()
       vista.focus()
+      mandarEstado()
       break
     }
     case 'guardado':
       alGuardar(msg)
+      break
+    case 'orden':
+      if (vista) orden(msg.que)
       break
     case 'adjuntado':
       alAdjuntar(msg)

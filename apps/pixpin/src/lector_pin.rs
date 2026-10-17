@@ -212,6 +212,30 @@ pub fn colocar(ventana: Rect, trabajo: Rect, ancho: u32, alto: u32, sep: i32) ->
     (x + sep, ventana.y.max(trabajo.y) + sep)
 }
 
+/// **Donde va lo que se ve** (una vista de Windows o una pagina web metida
+/// dentro de la ventana del pin) en su zona de cliente: todo menos el borde
+/// por donde se estira (`borde`, 0 a pantalla completa). Lo usan el pin de
+/// Office y los visores de HTML y de Markdown.
+pub fn area_de_la_vista(ancho: u32, alto: u32, borde: i32) -> Rect {
+    let b = borde.max(0);
+    Rect { x: b, y: b, ancho: (ancho as i32 - 2 * b).max(1) as u32, alto: (alto as i32 - 2 * b).max(1) as u32 }
+}
+
+const VK_ESCAPE: u32 = 0x1B;
+const VK_F11: u32 = 0x7A;
+
+/// **Lo que pide una tecla** en un visor como pin: `Some(true)` cerrar,
+/// `Some(false)` pantalla completa (o volver de ella), `None` nada. F11
+/// alterna; Esc sale de pantalla completa y, si no lo esta, cierra.
+pub fn tecla(vk: u32, pantalla_completa: bool) -> Option<bool> {
+    match vk {
+        VK_F11 => Some(false),
+        VK_ESCAPE if pantalla_completa => Some(false),
+        VK_ESCAPE => Some(true),
+        _ => None,
+    }
+}
+
 /// La ventana estirada desde `area` por `bordes` lo que se movio el raton,
 /// sin bajar de `minimo`.
 pub fn estirada(area: Rect, bordes: u8, dx: i32, dy: i32, minimo: (u32, u32)) -> Rect {
@@ -320,6 +344,13 @@ impl PinLector {
     /// Si este lector va en oscuro ahora.
     pub fn oscuro(&self) -> bool {
         self.con_oscuro && crate::oscuro::activo()
+    }
+
+    /// **Donde va la vista** metida en la ventana ahora (zona de cliente):
+    /// toda menos el borde de estirar, que a pantalla completa no hay.
+    pub fn area_de_la_vista(&self) -> Rect {
+        let borde = if self.pantalla_completa { 0 } else { (BORDE * self.e).round() as i32 };
+        area_de_la_vista(self.area.ancho, self.area.alto, borde)
     }
 
     /// Crea la barra (escondida), duena la ventana del lector: va siempre
@@ -766,6 +797,27 @@ pub(crate) fn pintar_barra_de_muestra(p: &pixpin_render::Pintor, origen: (f32, f
     (ancho, alto)
 }
 
+/// **La disposicion de la barra** de izquierda a derecha, por nombres, para
+/// probar sin ventana lo que lleva cada visor: `asa`, `nombre`,
+/// `propio:<id>`, `oscuro`, `pantalla`, `fijar` y `cerrar`.
+#[cfg(test)]
+pub(crate) fn disposicion(nombre: &str, ext: &str, propios: &[BotonLector], con_oscuro: bool) -> Vec<String> {
+    piezas_de(nombre, ext, propios, con_oscuro, 1.0)
+        .0
+        .into_iter()
+        .map(|(_, _, p)| match p {
+            Pieza::Asa => "asa".to_string(),
+            Pieza::Nombre => "nombre".to_string(),
+            Pieza::Oscuro => "oscuro".to_string(),
+            Pieza::Boton(AccionPin::Propio(id)) => format!("propio:{id}"),
+            Pieza::Boton(AccionPin::PantallaCompleta) => "pantalla".to_string(),
+            Pieza::Boton(AccionPin::Fijar) => "fijar".to_string(),
+            Pieza::Boton(AccionPin::Cerrar) => "cerrar".to_string(),
+            Pieza::Boton(AccionPin::Nombre) => "nombre".to_string(),
+        })
+        .collect()
+}
+
 /// Lo que mide la barra (ancho, alto) en pixeles, para colocar la muestra.
 #[cfg(test)]
 pub(crate) fn medida_de_la_barra(e: f32, nombre: &str, ext: &str, con_oscuro: bool) -> (u32, u32) {
@@ -897,6 +949,43 @@ mod pruebas {
             p.al_nacer(&v);
             assert!(v.siempre_encima());
         }
+    }
+
+    #[test]
+    fn la_vista_deja_el_borde_para_estirar() {
+        assert_eq!(area_de_la_vista(800, 600, 7), Rect { x: 7, y: 7, ancho: 786, alto: 586 });
+        // En pantalla completa, sin borde.
+        assert_eq!(area_de_la_vista(1920, 1080, 0), Rect { x: 0, y: 0, ancho: 1920, alto: 1080 });
+        // Caso negativo: una ventana diminuta no da tamanos negativos.
+        assert_eq!(area_de_la_vista(10, 10, 7), Rect { x: 7, y: 7, ancho: 1, alto: 1 });
+        // La del pin: con su borde a su escala, y sin el a pantalla completa.
+        let p = PinLector::nuevo(Rect { x: 0, y: 0, ancho: 800, alto: 600 }, 2.0);
+        assert_eq!(p.area_de_la_vista(), Rect { x: 14, y: 14, ancho: 772, alto: 572 });
+        let monitor = Rect { x: 0, y: 0, ancho: 1920, alto: 1080 };
+        let q = PinLector::nuevo(Rect { x: 0, y: 0, ancho: 800, alto: 600 }, 2.0).en_pantalla_completa(monitor);
+        assert_eq!(q.area_de_la_vista(), Rect { x: 0, y: 0, ancho: 1920, alto: 1080 });
+    }
+
+    #[test]
+    fn esc_cierra_o_sale_de_pantalla_completa_y_f11_alterna() {
+        assert_eq!(tecla(VK_ESCAPE, false), Some(true));
+        assert_eq!(tecla(VK_ESCAPE, true), Some(false));
+        assert_eq!(tecla(VK_F11, false), Some(false));
+        assert_eq!(tecla(VK_F11, true), Some(false));
+        // Caso negativo: otra tecla no hace nada.
+        assert_eq!(tecla(0x41, false), None);
+    }
+
+    #[test]
+    fn la_barra_comun_rodea_los_botones_de_cada_visor() {
+        let b = |id| BotonLector { id, icono: &material::SEARCH, encendido: false };
+        assert_eq!(
+            disposicion("Plan", "md", &[b(0), b(4)], true),
+            ["asa", "nombre", "propio:0", "propio:4", "oscuro", "pantalla", "fijar", "cerrar"]
+        );
+        // Caso negativo: sin luna/sol (Office) no hay `oscuro`, y sin
+        // nombre ni extension no hay pieza de nombre.
+        assert_eq!(disposicion("", "", &[], false), ["asa", "pantalla", "fijar", "cerrar"]);
     }
 
     #[test]

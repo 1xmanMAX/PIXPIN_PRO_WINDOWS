@@ -35,7 +35,7 @@ function fecha(ms, tx) {
   return `${d.getDate()} ${mes}, ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-export function crearComentarios({ mandar, vistaDe, tx: txDe, abrirMenu, insignia, boton }) {
+export function crearComentarios({ mandar, vistaDe, tx: txDe, abrirMenu, insignia, boton, alCambiar }) {
   let hilos = []
   let abierto = false
   let activo = null
@@ -77,6 +77,7 @@ export function crearComentarios({ mandar, vistaDe, tx: txDe, abrirMenu, insigni
     abierto = si
     document.body.classList.toggle('con-comentarios', si)
     boton.classList.toggle('activo', si)
+    alCambiar?.(si)
     if (si && !panel) montar()
     if (panel) panel.hidden = !si
     pintar()

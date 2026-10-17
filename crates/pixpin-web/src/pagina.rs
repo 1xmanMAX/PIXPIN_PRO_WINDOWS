@@ -94,6 +94,16 @@ pub struct OpcionesPagina {
     /// Lo demas bajo `https://pixpin.nota/`: recibe lo que va detras
     /// (`archivo?r=…`). `None` es un 404.
     pub servir: Box<dyn Fn(&str) -> Option<Recurso>>,
+    /// **Dentro de una ventana de quien llama** (17-oct-2026: el lector de
+    /// notas como pin, con la barra comun de los visores). Con ella no se
+    /// crea ventana: el WebView2 va dentro de esa, en [`Self::area`] (aqui
+    /// en pixeles de su zona de cliente), y la ventana, sus gestos, mostrarla
+    /// y cerrarla son de quien llama; [`Pagina::mover`] lo recoloca.
+    pub padre: Option<isize>,
+    /// El esquema de color de la pagina desde el principio (el
+    /// `prefers-color-scheme`): `Some(true)` oscuro, `Some(false)` claro,
+    /// `None` el del sistema.
+    pub oscuro: Option<bool>,
 }
 
 /// Lo que paso desde la ultima vez.
@@ -138,6 +148,9 @@ pub struct Pagina {
     vista: ICoreWebView2,
     estado: Rc<RefCell<Estado>>,
     temporal: PathBuf,
+    /// Va dentro de una ventana ajena ([`OpcionesPagina::padre`]): soltarla
+    /// no la destruye.
+    dentro_de_otra: bool,
 }
 
 impl Pagina {
@@ -150,8 +163,15 @@ impl Pagina {
             .map_err(|e| ErrorWeb::Creacion(format!("no se pudo crear {temporal:?}: {e}")))?;
 
         let estado = Rc::new(RefCell::new(Estado::default()));
-        let hwnd = crear_ventana(&o.titulo, o.area)?;
-        ESTADOS.with(|e| e.borrow_mut().insert(hwnd.0 as isize, estado.clone()));
+        let dentro_de_otra = o.padre.is_some();
+        let hwnd = match o.padre {
+            Some(p) => HWND(p as *mut _),
+            None => {
+                let h = crear_ventana(&o.titulo, o.area)?;
+                ESTADOS.with(|e| e.borrow_mut().insert(h.0 as isize, estado.clone()));
+                h
+            }
+        };
 
         let entorno = crate::crear_entorno(&temporal)?;
         let controlador = crate::crear_controlador(&entorno, hwnd)?;
@@ -159,6 +179,9 @@ impl Pagina {
         let vista = unsafe { controlador.CoreWebView2() }
             .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
         estado.borrow_mut().controlador = Some(controlador.clone());
+        if let Some(oscuro) = o.oscuro {
+            crate::poner_esquema(&controlador, oscuro);
+        }
 
         if let Ok(c2) = controlador.cast::<ICoreWebView2Controller2>() {
             let (r, g, b) = o.fondo;
@@ -175,6 +198,20 @@ impl Pagina {
         ajustes(&vista)?;
         servir(&vista, &entorno, o.pagina, o.servir)?;
         escuchar(&vista, estado.clone())?;
+
+        if dentro_de_otra {
+            // La ventana es de quien llama, ya a la vista: solo se coloca la
+            // pagina dentro y se le da el teclado.
+            let area = o.area.unwrap_or_else(|| cliente(hwnd));
+            // SAFETY: el controlador es valido; el RECT es local.
+            unsafe {
+                let _ = controlador.SetBounds(crate::a_rect(area));
+                let _ = controlador.SetIsVisible(true);
+                let _ = controlador.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+            }
+            navegar(&vista)?;
+            return Ok(Pagina { hwnd, controlador, vista, estado, temporal, dentro_de_otra });
+        }
 
         recolocar(hwnd, &controlador);
         // SAFETY: ventana propia de este hilo, recien creada.
@@ -196,10 +233,7 @@ impl Pagina {
             let _ = controlador.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
         }
 
-        let url = CoTaskMemPWSTR::from(format!("{ORIGEN}index.html").as_str());
-        // SAFETY: `url` vive durante la llamada y WebView2 la copia.
-        unsafe { vista.Navigate(*url.as_ref().as_pcwstr()) }
-            .map_err(|e| ErrorWeb::Navegacion(e.to_string()))?;
+        navegar(&vista)?;
 
         Ok(Pagina {
             hwnd,
@@ -207,11 +241,39 @@ impl Pagina {
             vista,
             estado,
             temporal,
+            dentro_de_otra,
         })
     }
 
     pub fn hwnd(&self) -> isize {
         self.hwnd.0 as isize
+    }
+
+    /// Recoloca la pagina dentro de la ventana de quien la lleva
+    /// ([`OpcionesPagina::padre`]), en pixeles de su zona de cliente; y le
+    /// dice al WebView2 que la ventana se movio (sus menus salen donde toca).
+    pub fn mover(&self, area: Rect) {
+        // SAFETY: el controlador vive mientras `self`; el RECT es local.
+        unsafe {
+            let _ = self.controlador.SetBounds(crate::a_rect(area));
+            let _ = self.controlador.NotifyParentWindowPositionChanged();
+        }
+    }
+
+    /// Le da el teclado a la pagina (la ventana que la lleva lo tenia).
+    pub fn enfocar(&self) {
+        crate::enfocar(&self.controlador);
+    }
+
+    /// El esquema de color de la pagina (la luna/sol de los visores) y el
+    /// fondo que se ve mientras se repinta.
+    pub fn poner_oscuro(&self, oscuro: bool, fondo: (u8, u8, u8)) {
+        crate::poner_esquema(&self.controlador, oscuro);
+        if let Ok(c2) = self.controlador.cast::<ICoreWebView2Controller2>() {
+            let (r, g, b) = fondo;
+            // SAFETY: interfaz recien consultada del controlador vivo.
+            let _ = unsafe { c2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR { A: 255, R: r, G: g, B: b }) };
+        }
     }
 
     /// Le pasa `texto` a la pagina (le llega como `event.data`, una cadena).
@@ -349,7 +411,10 @@ impl Drop for Pagina {
         // el queda un proceso huerfano). La ventana es de este hilo.
         unsafe {
             let _ = self.controlador.Close();
-            let _ = DestroyWindow(self.hwnd);
+            // La ventana ajena la cierra su dueno.
+            if !self.dentro_de_otra {
+                let _ = DestroyWindow(self.hwnd);
+            }
         }
         ESTADOS.with(|e| e.borrow_mut().remove(&(self.hwnd.0 as isize)));
         let _ = std::fs::remove_dir_all(&self.temporal);
@@ -441,6 +506,21 @@ fn area_por_defecto() -> Rect {
         ancho: aw.max(600) as u32,
         alto: ah.max(420) as u32,
     }
+}
+
+/// Abre la pagina servida desde memoria.
+fn navegar(vista: &ICoreWebView2) -> Result<(), ErrorWeb> {
+    let url = CoTaskMemPWSTR::from(format!("{ORIGEN}index.html").as_str());
+    // SAFETY: `url` vive durante la llamada y WebView2 la copia.
+    unsafe { vista.Navigate(*url.as_ref().as_pcwstr()) }.map_err(|e| ErrorWeb::Navegacion(e.to_string()))
+}
+
+/// La zona de cliente entera de `hwnd`.
+fn cliente(hwnd: HWND) -> Rect {
+    let mut r = RECT::default();
+    // SAFETY: `r` es local; un handle muerto solo da error (y un rect vacio).
+    let _ = unsafe { GetClientRect(hwnd, &mut r) };
+    Rect { x: 0, y: 0, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 }
 }
 
 fn recolocar(hwnd: HWND, controlador: &ICoreWebView2Controller) {
