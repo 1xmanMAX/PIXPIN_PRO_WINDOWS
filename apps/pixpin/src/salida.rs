@@ -182,7 +182,7 @@ fn abrir_o_sumar(ficheros: Vec<PathBuf>, titulo: String) {
 
 /// El idioma de la aplicacion, leido de sus ajustes: quien abre la Salida
 /// (el editor, el lector) no siempre lo tiene a mano.
-fn idioma_actual() -> Idioma {
+pub(crate) fn idioma_actual() -> Idioma {
     let dir_exe = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf))

@@ -485,6 +485,13 @@ ew-malos = Someone tried a wrong code ({ $n } of { $de }).
 ew-esperando = Waiting… Several devices can connect; you press the button for each one. The code stops working when this screen closes.
 ew-quemado = Someone tried a wrong code several times, so this code no longer works. Send again to get another one.
 ew-cerrar = Close
+ew-grupo = Your devices · no code
+ew-grupo-como = They are in your group: it goes straight there, no scanning. It lands in whatever they have open (a chat; a canvas only takes photos) or in Saved messages.
+ew-grupo-se-ve = On the same Wi-Fi
+ew-grupo-no-se-ve = Not visible now: open PixPin on that device
+ew-grupo-enviando = Sending…
+ew-grupo-todos = Send to everyone visible
+ew-grupo-actualiza = Update PixPin on { $movil }: it can't take direct files yet. Let it use the code below.
 
 ## «Update mine / Create as new» when receiving (RecibirActivity.kt)
 rw-ya-tienes = You already have «{ $nombre }» with the same codes
@@ -2404,6 +2411,9 @@ al-movil-cortado = Couldn't send to { $movil }: { $motivo }
 al-movil-sin-grupo = This PC is not in a group: set it up in PixPin's Sync
 al-movil-no-es-del-grupo = That device is no longer in this PC's group
 al-movil-sin-imagenes = There was nothing to send
+al-frente-lienzo = { $de } sent you “{ $nombre }”: it's on the open canvas
+al-frente-chat-abierto = { $de } sent you “{ $nombre }” to the chat “{ $chat }”
+al-frente-guardados = { $de } sent you “{ $nombre }”: it's in Saved messages
 
 ## Excel sheet viewer (visor_hoja)
 hoja-copiado = { $celdas ->

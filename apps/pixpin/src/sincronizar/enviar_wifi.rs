@@ -16,6 +16,14 @@
 //! - **Sin camara.** «Escanear a quien recibe» es aqui «Pegar el codigo de
 //!   quien recibe»: sus seis cifras, que se buscan en la red por la etiqueta
 //!   que anuncia (`_pixpinrecibe._tcp`), o el texto entero de su QR.
+//! - **Tus aparatos, sin codigo** (el usuario, 17-oct-2026: «enviar archivos
+//!   automaticamente sin necesidad de escanear si estan dentro del mismo
+//!   grupo»). Encima del codigo sale la lista del grupo, con quien se ve en
+//!   la Wi-Fi (la sonda de la presencia), y un toque manda directo por el
+//!   canal cifrado del grupo (`suelto`, el de «p s»: `al_movil`), sin QR ni
+//!   aprobar nada. Llega a lo que el otro tenga abierto, como en el movil.
+//!   El movil no lo tiene en su «Enviar» (solo recibe `suelto`), asi que el
+//!   cable es el que ya entiende y no cambia.
 
 use std::collections::{HashMap, HashSet};
 use std::net::{TcpListener, TcpStream};
@@ -30,6 +38,7 @@ use pixpin_store::Catalogo;
 
 use crate::caja_texto::CajaLinea;
 
+use super::al_movil::{self, AparatoDelGrupo, Entregado};
 use super::recibir_wifi::{
     ESPERA_LARGA, boton_apagado, buscar_y_conectar, caja_wifi, campo_grande, conectar, hex_blanco,
     nombre_de, nonce, tamano,
@@ -100,7 +109,15 @@ pub(super) enum Novedad {
         en: EnDestino,
     },
     Malo(u32),
+    /// Acabo de mandarse directo a un aparato del grupo (por su `id`).
+    AlGrupo {
+        id: String,
+        hecho: Result<Entregado, al_movil::Fallo>,
+    },
 }
+
+/// Como va lo mandado directo a un aparato del grupo: `None` mientras sale.
+type EnGrupo = Option<Result<Entregado, al_movil::Fallo>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Toque {
@@ -115,6 +132,10 @@ pub(super) enum Toque {
     Campo,
     Mandar,
     Cerrar,
+    /// Mandar directo al aparato `i` de la lista del grupo.
+    AlGrupo(usize),
+    /// Y a todos los del grupo que se ven en la Wi-Fi.
+    AlGrupoTodos,
 }
 
 pub(super) struct Enviar {
@@ -133,6 +154,13 @@ pub(super) struct Enviar {
     temporal: Option<PathBuf>,
     vivo: Arc<AtomicBool>,
     siguiente: Arc<AtomicU64>,
+    /// Los archivos tal cual se eligieron: lo que va directo al grupo
+    /// (`suelto` lleva el archivo, no el paquete). Un proyecto no va asi.
+    originales: Vec<PathBuf>,
+    /// Los del grupo menos yo, leidos al tener lo que se manda.
+    grupo: Vec<AparatoDelGrupo>,
+    /// Lo mandado directo a cada uno, por su `id`.
+    al_grupo: HashMap<String, EnGrupo>,
 }
 
 impl Drop for Enviar {
@@ -167,6 +195,9 @@ impl Enviar {
             temporal: None,
             vivo: Arc::new(AtomicBool::new(true)),
             siguiente: Arc::new(AtomicU64::new(1)),
+            originales: Vec::new(),
+            grupo: Vec::new(),
+            al_grupo: HashMap::new(),
         }
     }
 
@@ -177,6 +208,7 @@ impl Enviar {
     pub(super) fn con_archivos(turno: u64, rutas: Vec<PathBuf>, cx: &Contexto) -> Enviar {
         let mut s = Enviar::nuevo(turno);
         s.fase = Fase::Preparando;
+        s.originales = rutas.clone();
         preparar(cx, turno, Que::Archivos(rutas));
         s
     }
@@ -203,6 +235,8 @@ pub(super) fn novedad(s: &mut Enviar, n: Novedad, cx: &Contexto) {
         Novedad::Preparado(Ok((cosas, temporal))) => {
             s.cosas = Arc::new(cosas);
             s.temporal = temporal;
+            // Los del grupo, para mandarles sin codigo (solo archivos).
+            s.grupo = grupo_para(&s.originales, &cx.raiz);
             s.fase = match abrir_la_puerta(s, cx) {
                 Ok(f) => f,
                 Err(e) => Fase::Fallo(Falla::Cortado(e.to_string())),
@@ -239,6 +273,9 @@ pub(super) fn novedad(s: &mut Enviar, n: Novedad, cx: &Contexto) {
                 d.en = en;
             }
         }
+        Novedad::AlGrupo { id, hecho } => {
+            s.al_grupo.insert(id, Some(hecho));
+        }
         Novedad::Malo(n) => {
             if n >= envio::INTENTOS {
                 s.fase = Fase::Fallo(Falla::Quemado);
@@ -270,7 +307,7 @@ pub(super) fn tecla(s: &mut Enviar, t: Tecla, cx: &Contexto) -> bool {
             return s.tecleado.tecla(vk, shift, ctrl, pp).atendida();
         }
         Tecla::Intro => {
-            tocar(s, Toque::Mandar, cx, &|| Vec::new());
+            tocar(s, Toque::Mandar, cx, &|| Vec::new(), &HashMap::new());
         }
     }
     true
@@ -285,19 +322,22 @@ pub(super) fn caja_visible(s: &mut Enviar) -> Option<&mut CajaLinea> {
     }
 }
 
-/// Un toque. `elegir` abre el dialogo de archivos de Windows. Devuelve
-/// `true` si hay que volver a la portada.
+/// Un toque. `elegir` abre el dialogo de archivos de Windows; `cerca`, quien
+/// del grupo contesto a la sonda (por su `id`). Devuelve `true` si hay que
+/// volver a la portada.
 pub(super) fn tocar(
     s: &mut Enviar,
     t: Toque,
     cx: &Contexto,
     elegir: &dyn Fn() -> Vec<PathBuf>,
+    cerca: &HashMap<String, bool>,
 ) -> bool {
     match t {
         Toque::Archivos => {
             let rutas = elegir();
             if !rutas.is_empty() {
                 s.fase = Fase::Preparando;
+                s.originales = rutas.clone();
                 preparar(cx, s.turno, Que::Archivos(rutas));
             }
         }
@@ -345,8 +385,59 @@ pub(super) fn tocar(
             }
         }
         Toque::Cerrar => return true,
+        Toque::AlGrupo(i) => {
+            if let Some(id) = s.grupo.get(i).map(|a| a.id.clone()) {
+                mandar_al_grupo(s, id, cx);
+            }
+        }
+        Toque::AlGrupoTodos => {
+            for id in a_todos(s, cerca) {
+                mandar_al_grupo(s, id, cx);
+            }
+        }
     }
     false
+}
+
+/// A quien se le puede mandar directo: los del grupo menos yo, si lo que se
+/// manda son archivos. Un proyecto entero no va por `suelto` (alli se
+/// guardaria como un adjunto, no como proyecto), asi que sin lista.
+fn grupo_para(originales: &[PathBuf], raiz: &Path) -> Vec<AparatoDelGrupo> {
+    if originales.is_empty() {
+        Vec::new()
+    } else {
+        al_movil::aparatos_de(raiz)
+    }
+}
+
+/// A quien va «Enviar a todos»: los del grupo que se ven en la Wi-Fi y no
+/// tienen ya algo saliendo o recien llegado.
+fn a_todos(s: &Enviar, cerca: &HashMap<String, bool>) -> Vec<String> {
+    s.grupo
+        .iter()
+        .filter(|a| cerca.get(&a.id).copied().unwrap_or(false))
+        .filter(|a| !matches!(s.al_grupo.get(&a.id), Some(None | Some(Ok(_)))))
+        .map(|a| a.id.clone())
+        .collect()
+}
+
+/// **Directo a un aparato del grupo, sin codigo**: el mismo canal cifrado y
+/// la misma peticion `suelto` que «p s» (`al_movil::mandar_ya`), en su hilo
+/// porque localizarlo puede tardar segundos. Si ya hay uno saliendo hacia
+/// el, no se manda dos veces.
+fn mandar_al_grupo(s: &mut Enviar, id: String, cx: &Contexto) {
+    if s.originales.is_empty() || matches!(s.al_grupo.get(&id), Some(None)) {
+        return;
+    }
+    s.al_grupo.insert(id.clone(), None);
+    let (cx, turno, ficheros) = (cx.clone(), s.turno, s.originales.clone());
+    let _ = std::thread::Builder::new()
+        .name("enviar-grupo".into())
+        .spawn(move || {
+            let hecho = al_movil::mandar_ya(&cx.raiz, &id, &ficheros, super::vistos_del_grupo);
+            tracing::info!(%id, ?hecho, "directo al grupo");
+            avisar(&cx, turno, Novedad::AlGrupo { id, hecho });
+        });
 }
 
 /// La respuesta a un aparato que espera: suelta el hilo que lo atiende.
@@ -799,6 +890,7 @@ pub(super) fn pintar(
     l: &mut Lienzo<'_>,
     textos: &Catalogo,
     s: &Enviar,
+    cerca: &HashMap<String, bool>,
     x: f32,
     w: f32,
     mut y: f32,
@@ -871,6 +963,7 @@ pub(super) fn pintar(
         Fase::Esperando { codigo, qr, malos } => {
             y = lo_que_se_envia(l, textos, s, x, w, y);
             y += 16.0 * e;
+            y = del_grupo(l, textos, s, cerca, x, w, y);
             y = los_aparatos(l, textos, s, x, w, y);
             y = pegar(l, textos, s, x, w, y);
             l.centrado(&textos.t("ew-en-el-otro"), x, w, y, 16.0 * e, TEXTO);
@@ -1107,6 +1200,110 @@ fn los_aparatos(l: &mut Lienzo<'_>, textos: &Catalogo, s: &Enviar, x: f32, w: f3
     y + h + 16.0 * e
 }
 
+/// Lo que se dice de un aparato del grupo en su fila, y si es un fallo.
+fn estado_en_grupo(textos: &Catalogo, en: Option<&EnGrupo>, se_ve: bool) -> (String, Tono) {
+    match en {
+        Some(None) => (textos.t("ew-grupo-enviando"), Tono::Suave),
+        Some(Some(Ok(e))) => (al_movil::aviso(textos, &Ok(e.clone())), Tono::Bien),
+        // El de siempre dice «te abro Enviar por Wi-Fi»: aqui ya esta abierta.
+        Some(Some(Err(al_movil::Fallo::SinSoporte(n)))) => (
+            con(textos, "ew-grupo-actualiza", &[("movil", n.clone())]),
+            Tono::Mal,
+        ),
+        Some(Some(Err(f))) => (al_movil::aviso(textos, &Err(f.clone())), Tono::Mal),
+        None if se_ve => (textos.t("ew-grupo-se-ve"), Tono::Bien),
+        None => (textos.t("ew-grupo-no-se-ve"), Tono::Suave),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tono {
+    Suave,
+    Bien,
+    Mal,
+}
+
+/// **Tus aparatos**: los del grupo, cada uno con su «Enviar» directo (sin
+/// codigo) y, si se ven dos o mas, «Enviar a todos».
+fn del_grupo(
+    l: &mut Lienzo<'_>,
+    textos: &Catalogo,
+    s: &Enviar,
+    cerca: &HashMap<String, bool>,
+    x: f32,
+    w: f32,
+    y: f32,
+) -> f32 {
+    let e = l.e;
+    if s.grupo.is_empty() {
+        return y;
+    }
+    let t = Accion::Enviar;
+    let fila = 60.0 * e;
+    let todos = a_todos(s, cerca).len() > 1;
+    let como = textos.t("ew-grupo-como");
+    let alto_como = l.alto_de(&como, 12.0 * e, w - 32.0 * e);
+    let h = 36.0 * e
+        + alto_como
+        + 10.0 * e
+        + fila * s.grupo.len() as f32
+        + if todos { 56.0 * e } else { 0.0 }
+        + 10.0 * e;
+    caja(l.p, rect(x, y, w, h), e);
+    let mut yf = y + 36.0 * e;
+    yf += l.parrafo(&como, x + 16.0 * e, yf, w - 32.0 * e, 12.0 * e, SUAVE) + 10.0 * e;
+    l.p.texto(
+        &textos.t("ew-grupo"),
+        x + 16.0 * e,
+        y + 14.0 * e,
+        12.0 * e,
+        SUAVE,
+    );
+    let boton = 110.0 * e;
+    for (i, a) in s.grupo.iter().enumerate() {
+        let en = s.al_grupo.get(&a.id);
+        let saliendo = matches!(en, Some(None));
+        let se_ve = cerca.get(&a.id).copied().unwrap_or(false);
+        let wt = w - 32.0 * e - boton - 8.0 * e;
+        let nombre = if a.nombre.trim().is_empty() {
+            textos.t("ew-un-aparato")
+        } else {
+            a.nombre.clone()
+        };
+        l.p.texto_linea(&nombre, x + 16.0 * e, yf, 15.0 * e, wt, TEXTO);
+        let (estado, tono) = estado_en_grupo(textos, en, se_ve);
+        let color = match tono {
+            Tono::Suave => SUAVE,
+            Tono::Bien => VERDE,
+            Tono::Mal => ERROR,
+        };
+        l.p.texto_linea(&estado, x + 16.0 * e, yf + 22.0 * e, 12.0 * e, wt, color);
+        let rb = rect(x + w - 16.0 * e - boton, yf, boton, 40.0 * e);
+        if saliendo {
+            l.girando(rb.x + rb.ancho / 2.0, rb.y + 20.0 * e, 10.0 * e, 3.0 * e);
+        } else {
+            l.boton(
+                rb,
+                &textos.t("ew-enviar"),
+                None,
+                se_ve,
+                t(Toque::AlGrupo(i)),
+            );
+        }
+        yf += fila;
+    }
+    if todos {
+        l.boton(
+            rect(x + 16.0 * e, yf + 6.0 * e, w - 32.0 * e, 44.0 * e),
+            &textos.t("ew-grupo-todos"),
+            None,
+            true,
+            t(Toque::AlGrupoTodos),
+        );
+    }
+    y + h + 16.0 * e
+}
+
 /// `ElEscaner`, sin camara: pegar el codigo de quien espera recibir.
 fn pegar(l: &mut Lienzo<'_>, textos: &Catalogo, s: &Enviar, x: f32, w: f32, mut y: f32) -> f32 {
     let e = l.e;
@@ -1232,5 +1429,258 @@ mod pruebas {
         responder(&mut s, 7, false);
         assert_eq!(respuesta.recv().ok(), Some(false));
         assert_eq!(s.destinos[0].en, EnDestino::SinAprobar);
+    }
+
+    // ------------------------------------------- directo al grupo (17-oct)
+
+    use pixpin_proyecto::identidad::{Aparato, Identidad};
+
+    const CODIGO: &str = "ABCD2345";
+
+    fn raiz(nombre: &str) -> PathBuf {
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-enviar-grupo-{nombre}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&r);
+        std::fs::create_dir_all(&r).unwrap();
+        r
+    }
+
+    fn ficha(id: &str, nombre: &str, letra: &str) -> Aparato {
+        Aparato {
+            id: id.into(),
+            nombre: nombre.into(),
+            letra: Some(letra.into()),
+            ..Default::default()
+        }
+    }
+
+    /// `r` es el aparato `yo` de un grupo de dos PC: «Portatil» (A) y
+    /// «Torre» (B).
+    fn en_grupo(r: &Path, yo: &str) {
+        let a = ficha("pc-a", "Portatil", "A");
+        let b = ficha("pc-b", "Torre", "B");
+        Identidad {
+            yo: if yo == "pc-a" { a.clone() } else { b.clone() },
+            codigo: Some(CODIGO.into()),
+            miembros: vec![a, b],
+            ..Default::default()
+        }
+        .guardar(r)
+        .unwrap();
+    }
+
+    fn contexto(r: &Path) -> (Contexto, mpsc::Receiver<Aviso>) {
+        let (tx, rx) = mpsc::channel();
+        (
+            Contexto {
+                raiz: r.to_path_buf(),
+                nombre: "Portatil".into(),
+                id: "pc-a".into(),
+                tx,
+            },
+            rx,
+        )
+    }
+
+    /// La pantalla ya con algo que mandar y con la lista del grupo leida,
+    /// como queda tras `Novedad::Preparado` (sin abrir la puerta del codigo,
+    /// que se anunciaria por mDNS en la red de verdad).
+    fn lista_para_mandar(cx: &Contexto, originales: Vec<PathBuf>) -> Enviar {
+        let mut s = Enviar::nuevo(1);
+        s.grupo = grupo_para(&originales, &cx.raiz);
+        s.originales = originales;
+        s
+    }
+
+    #[test]
+    fn con_archivos_sale_la_lista_del_grupo_y_con_un_proyecto_no() {
+        let r = raiz("lista");
+        en_grupo(&r, "pc-a");
+        let (cx, _rx) = contexto(&r);
+        let s = lista_para_mandar(&cx, vec![r.join("a.pdf")]);
+        assert_eq!(
+            s.grupo.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+            ["pc-b"],
+            "los del grupo menos yo"
+        );
+        // Caso negativo: un proyecto entero no va por `suelto`.
+        let s = lista_para_mandar(&cx, Vec::new());
+        assert!(s.grupo.is_empty());
+    }
+
+    #[test]
+    fn enviar_a_todos_va_a_los_que_se_ven_y_no_repite() {
+        let mut s = Enviar::nuevo(1);
+        s.originales = vec![PathBuf::from("a.png")];
+        s.grupo = ["tel", "tablet", "otro-pc"]
+            .iter()
+            .map(|id| AparatoDelGrupo {
+                id: (*id).into(),
+                nombre: (*id).into(),
+                letra: None,
+                direccion: None,
+            })
+            .collect();
+        let cerca: HashMap<String, bool> = [
+            ("tel".to_string(), true),
+            ("tablet".to_string(), true),
+            ("otro-pc".to_string(), false),
+        ]
+        .into();
+        assert_eq!(a_todos(&s, &cerca), ["tel", "tablet"]);
+        // Uno ya saliendo y otro ya entregado: ninguno se manda otra vez.
+        s.al_grupo.insert("tel".into(), None);
+        s.al_grupo.insert(
+            "tablet".into(),
+            Some(Ok(Entregado {
+                movil: "tablet".into(),
+                donde: Vec::new(),
+                negados: 0,
+            })),
+        );
+        assert!(a_todos(&s, &cerca).is_empty());
+        // Caso negativo: el que fallo si se puede volver a intentar.
+        s.al_grupo.insert(
+            "tablet".into(),
+            Some(Err(al_movil::Fallo::NoEsta("tablet".into()))),
+        );
+        assert_eq!(a_todos(&s, &cerca), ["tablet"]);
+    }
+
+    #[test]
+    fn lo_que_dice_cada_fila_del_grupo() {
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert_eq!(
+            estado_en_grupo(&t, None, true),
+            ("En la misma Wi-Fi".to_string(), Tono::Bien)
+        );
+        assert_eq!(estado_en_grupo(&t, None, false).1, Tono::Suave);
+        assert_eq!(estado_en_grupo(&t, Some(&None), true).0, "Enviando…");
+        let viejo = Some(Err(al_movil::Fallo::SinSoporte("Tel".into())));
+        let (texto, tono) = estado_en_grupo(&t, Some(&viejo), true);
+        assert_eq!(tono, Tono::Mal);
+        assert!(texto.starts_with("Actualiza PixPin en Tel"), "{texto}");
+        assert!(!texto.contains("Te abro"), "aqui ya esta abierta");
+        // Caso negativo: nunca una clave sin traducir.
+        for k in [
+            "ew-grupo",
+            "ew-grupo-como",
+            "ew-grupo-todos",
+            "ew-grupo-no-se-ve",
+        ] {
+            assert_ne!(t.t(k), k);
+        }
+    }
+
+    /// **De punta a punta, sin red de verdad**: el Portatil manda un PDF a la
+    /// Torre, otro PC del grupo que escucha en 127.0.0.1 con la misma
+    /// `responder` de la presencia. Sin escanear ni teclear nada: un toque en
+    /// su fila. Llega a «Mensajes guardados» de la Torre (en las pruebas no
+    /// hay ventanas abiertas) y alli queda el aviso de que llego.
+    #[test]
+    fn un_toque_en_la_fila_manda_directo_al_otro_pc_del_grupo() {
+        let a = raiz("ida-a");
+        let b = raiz("ida-b");
+        en_grupo(&a, "pc-a");
+        en_grupo(&b, "pc-b");
+        let escucha = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let puerto = escucha.local_addr().unwrap().port();
+        super::super::apuntar_direccion(&a, "pc-b", "127.0.0.1", puerto);
+        let b2 = b.clone();
+        // Dos llamadas: la sonda (PING) y la del archivo.
+        let torre = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (flujo, _) = escucha.accept().unwrap();
+                super::super::responder(flujo, &b2, puerto).unwrap();
+            }
+        });
+        let pdf = a.join("informe.pdf");
+        std::fs::write(&pdf, b"%PDF-1.7 directo al grupo").unwrap();
+        let (cx, rx) = contexto(&a);
+        let mut s = lista_para_mandar(&cx, vec![pdf]);
+        let _ = al_movil::tomar_avisos();
+        assert!(!tocar(
+            &mut s,
+            Toque::AlGrupo(0),
+            &cx,
+            &|| panic!("no se elige nada"),
+            &HashMap::new()
+        ));
+        assert_eq!(s.al_grupo.get("pc-b"), Some(&None), "saliendo");
+        // Un segundo toque mientras sale no manda otro.
+        tocar(&mut s, Toque::AlGrupo(0), &cx, &Vec::new, &HashMap::new());
+        let n = loop {
+            match rx.recv_timeout(Duration::from_secs(20)).expect("acaba") {
+                Aviso::Enviar(1, n @ Novedad::AlGrupo { .. }) => break n,
+                _ => continue,
+            }
+        };
+        novedad(&mut s, n, &cx);
+        torre.join().unwrap();
+        let Some(Some(Ok(e))) = s.al_grupo.get("pc-b") else {
+            panic!("no llego: {:?}", s.al_grupo.get("pc-b"));
+        };
+        assert_eq!(e.movil, "Torre");
+        assert_eq!(
+            e.donde,
+            [pixpin_sincro::al_lienzo::Llegada::en(
+                pixpin_sincro::al_lienzo::Donde::Chat
+            )]
+        );
+        // En la Torre: el PDF en «Mensajes guardados»...
+        let indice = pixpin_proyecto::almacen::Indice::leer(&b);
+        let guardados = indice
+            .proyectos
+            .iter()
+            .find(|f| f.es_guardados())
+            .expect("se creo Mensajes guardados");
+        let cuaderno = pixpin_proyecto::cuaderno::Cuaderno::leer_de(
+            &pixpin_proyecto::almacen::carpeta(&b, &guardados.id),
+        )
+        .unwrap();
+        assert!(format!("{cuaderno:?}").contains("informe.pdf"));
+        // ...y su aviso, con quien lo mando y que.
+        let avisos = al_movil::tomar_avisos();
+        assert!(
+            avisos
+                .iter()
+                .any(|t| t.contains("Portatil") && t.contains("informe.pdf")),
+            "{avisos:?}"
+        );
+    }
+
+    /// Caso negativo: con otro codigo de grupo no entra nada (el cifrado del
+    /// grupo es la puerta).
+    #[test]
+    fn caso_negativo_otro_codigo_de_grupo_no_entra() {
+        let a = raiz("otro-a");
+        let b = raiz("otro-b");
+        en_grupo(&a, "pc-a");
+        en_grupo(&b, "pc-b");
+        let mut idb = super::super::leer_identidad(&b).unwrap();
+        idb.codigo = Some("ZZZZ9999".into());
+        idb.guardar(&b).unwrap();
+        let escucha = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let puerto = escucha.local_addr().unwrap().port();
+        super::super::apuntar_direccion(&a, "pc-b", "127.0.0.1", puerto);
+        let b2 = b.clone();
+        let torre = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (flujo, _) = escucha.accept().unwrap();
+                let _ = super::super::responder(flujo, &b2, puerto);
+            }
+        });
+        let pdf = a.join("informe.pdf");
+        std::fs::write(&pdf, b"%PDF").unwrap();
+        let hecho = al_movil::mandar_ya(&a, "pc-b", &[pdf], |_| Vec::new());
+        torre.join().unwrap();
+        assert!(
+            matches!(hecho, Err(al_movil::Fallo::Cortado(..))),
+            "{hecho:?}"
+        );
+        let indice = pixpin_proyecto::almacen::Indice::leer(&b);
+        assert!(!indice.proyectos.iter().any(|f| f.es_guardados()));
     }
 }
