@@ -340,6 +340,27 @@ fn por_borde(rgba: &[u8], w: u32, h: u32, a: &Analisis, de_rayas: &Analisis, pal
             break;
         }
     }
+    // **Cajas en U** (17-oct, «¡Tenga en cuenta que...!»): arriba no hay raya
+    // sino la pestana oscura del titulo; la raya de abajo y dos laterales que
+    // empiezan a la misma altura la cierran.
+    for b in &hs {
+        if salida.iter().any(|p| (p.caja.y1() - b.y0).abs() <= hm && (p.caja.x - b.x0).abs() <= hm) {
+            continue;
+        }
+        let lado = |x: f64| vs.iter().filter(|v| (v.x0 - x).abs() <= hm * 0.8 && (v.y1 - b.y0).abs() <= hm && v.largo() >= 3.0 * hm).max_by(|p, q| p.largo().total_cmp(&q.largo())).copied();
+        let (Some(i), Some(d)) = (lado(b.x0), lado(b.x1)) else { continue };
+        if (i.y0 - d.y0).abs() > 2.0 * hm {
+            continue;
+        }
+        let caja = Caja::de_esquinas(b.x0, i.y0.max(d.y0), b.x1, b.y0);
+        let letras: usize = palabras.iter().filter(|p| caja.contiene(p.caja.cx(), p.caja.cy())).map(|p| p.texto.chars().filter(|c| c.is_alphanumeric()).count()).sum();
+        if letras < 4 {
+            continue;
+        }
+        let grosor = ((i.grosor + d.grosor + b.grosor) / 3.0).max(1.0);
+        let borde = color_mediano(rgba, w, h, &b.caja(), 1, |p| gris(p) < 200.0);
+        salida.push(Panel { caja: caja.crecer(grosor / 2.0), estilo: Estilo { relleno: None, borde, grosor, redondo: false } });
+    }
     salida
 }
 
