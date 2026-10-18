@@ -20,7 +20,8 @@ fn capa(nombre: &str) -> Option<u8> {
         // calculo) y `pixpin-cad` (el visor de planos) no dependen de ningun
         // crate de PixPin: tambien son cimientos.
         "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline"
-        | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" => 0,
+        // `pixpin-frase` (18-oct) entiende frases de tareas y fechas, sin nadie.
+        | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" | "pixpin-frase" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
@@ -94,12 +95,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_nueve_paquetes() {
+fn estan_los_cuarenta_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        39,
-        "se esperan 34 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        40,
+        "se esperan 35 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
