@@ -974,10 +974,11 @@ fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> 
     let caja = e.zona.caja.crecer(12.0).dentro(pw as f64, ph as f64);
     // Lo que ve la nube (`png_del_recorte`): la zona con 6 px de aire.
     let de_la_nube = e.zona.caja.crecer(6.0).dentro(pw as f64, ph as f64);
-    let (rgba, w, h) = imagen::recortar(pagina, pw, ph, &caja);
+    let (mut rgba, w, h) = imagen::recortar(pagina, pw, ph, &caja);
     if w < 8 || h < 8 {
         return None;
     }
+    sin_marca_de_agua(&mut rgba);
     let z = e.zona;
     let palabras: Vec<super::PalabraHoja> = z
         .renglones
@@ -1020,10 +1021,38 @@ fn diagrama(e: &Entrada, leido: Option<&Leido>) -> Option<(Vec<Value>, String)> 
     Some((f.salida, format!("diagrama: {}", d.resumen())))
 }
 
+/// **Sin la marca de agua** (18-oct, Practica: el «CÉSAR VALLEJO» gris
+/// detras de las figuras salia como rectas y letras de mas): sobre papel
+/// claro, lo gris y palido (poco color, poco mas oscuro que el papel) pasa
+/// a papel. Las rectas negras y los rellenos de la figura, mucho mas
+/// oscuros, se quedan.
+fn sin_marca_de_agua(rgba: &mut [u8]) {
+    let gris = |p: &[u8]| (p[0] as f64 * 299.0 + p[1] as f64 * 587.0 + p[2] as f64 * 114.0) / 1000.0;
+    let mut g: Vec<u8> = rgba.chunks_exact(4).step_by(3).map(|p| gris(p) as u8).collect();
+    if g.is_empty() {
+        return;
+    }
+    g.sort_unstable();
+    let papel = g[g.len() / 2] as f64;
+    if papel < 215.0 {
+        return;
+    }
+    for p in rgba.chunks_exact_mut(4) {
+        let sat = p[..3].iter().max().unwrap() - p[..3].iter().min().unwrap();
+        if sat < 30 && gris(p) >= papel - 70.0 {
+            let v = papel as u8;
+            p[0] = v;
+            p[1] = v;
+            p[2] = v;
+        }
+    }
+}
+
 /// Si la zona es un diagrama (sin leer sus letras: rapido), para saber de
 /// antemano que no hay que esperar a la nube para ponerla.
 pub fn es_diagrama(e: &Entrada) -> bool {
-    let (rgba, w, h) = e.recorte();
+    let (mut rgba, w, h) = e.recorte();
+    sin_marca_de_agua(&mut rgba);
     if w < 8 || h < 8 {
         return false;
     }
