@@ -33,11 +33,13 @@
 //! - [`tarjetas`]: lo puro de su vista en tarjetas: buscar, agrupar, colocar
 //!   y el foco.
 //! - [`rejilla`]: lo puro de la vista en cuadrados (tareas-v4).
+//! - [`kanban`]: lo puro de la vista Kanban: una columna por lista.
 //! - [`emoticonos`]: los emoticonos de una tarea, que son sus etiquetas.
 
 #![forbid(unsafe_code)]
 
 mod emoticonos;
+mod kanban;
 pub(crate) mod rejilla;
 mod tarjetas;
 mod ventana;

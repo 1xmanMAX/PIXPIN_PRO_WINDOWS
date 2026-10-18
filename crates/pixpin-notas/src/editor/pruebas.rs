@@ -18,6 +18,25 @@ fn la_diferencia_toca_solo_lo_que_cambia() {
 }
 
 #[test]
+fn la_foto_entra_en_el_sitio_del_cursor_no_al_final_del_parrafo() {
+    let f = "![f](r.png)";
+    let t = "hola mundo\rotra";
+    // En medio de «hola mundo» (letra 5): lo parte y queda entre las mitades.
+    assert_eq!(sitio_del_renglon(t, 5, f), (5, format!("\r{f}\r")));
+    // Al principio del renglon: encima, sin partir nada.
+    assert_eq!(sitio_del_renglon(t, 0, f), (0, format!("{f}\r")));
+    assert_eq!(sitio_del_renglon(t, 11, f), (11, format!("{f}\r")));
+    // Al final: debajo.
+    assert_eq!(sitio_del_renglon(t, 10, f), (10, format!("\r{f}")));
+    assert_eq!(sitio_del_renglon(t, 15, f), (15, format!("\r{f}")));
+    // Renglon vacio: lo ocupa.
+    assert_eq!(sitio_del_renglon("a\r\rb", 2, f), (2, f.to_string()));
+    assert_eq!(sitio_del_renglon("", 0, f), (0, f.to_string()));
+    // Caso negativo: un cursor fuera del texto no se sale.
+    assert_eq!(sitio_del_renglon("ab", 99, f), (2, format!("\r{f}")));
+}
+
+#[test]
 fn la_diferencia_de_textos_iguales_o_repetidos_no_se_sale() {
     assert_eq!(diferencia(&u("aaa"), &u("aaa")), (3, 3, 3));
     assert_eq!(diferencia(&u("aa"), &u("aaaa")), (2, 2, 4));

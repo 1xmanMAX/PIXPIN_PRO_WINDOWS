@@ -2352,6 +2352,7 @@ tareas5-guardar = Guardar
 tareas5-corregida = Tarea corregida
 tareas5-vista-lista = Lista · Ctrl+L
 tareas5-vista-tarjetas = Tarjetas · Ctrl+T
+tareas5-vista-kanban = Tablero Kanban · Ctrl+K
 tareas5-marcar = Marcar como hecha
 tareas5-desmarcar = Marcar como pendiente
 tareas5-editar = Editar

@@ -1283,8 +1283,33 @@ fn alternar_casilla(e: &Estado, linea: usize) {
     }
 }
 
-/// Mete un renglon propio en el sitio del cursor (una foto): en el renglon
-/// si esta vacio, o en uno nuevo debajo. Fuera de una tabla.
+/// **Donde entra un renglon propio** (una foto, una tarjeta) con el cursor
+/// en la letra `cursor`: la posicion donde se escribe y lo que se escribe.
+/// La foto va **en el sitio del cursor**, no al final del parrafo (pedido
+/// del usuario del 17-oct: «que se ingresen en el mismo lugar»; antes iba
+/// siempre debajo del renglon entero). En un renglon vacio lo ocupa; al
+/// principio de uno, va encima; al final, debajo; en medio, lo parte y
+/// queda entre las dos mitades: una foto es un renglon entero
+/// (`![alt](ruta)`), asi que partir es la unica forma de ponerla ahi. El
+/// cursor acaba detras de la foto y la siguiente pegada entra a
+/// continuacion, en orden.
+pub(crate) fn sitio_del_renglon(texto: &str, cursor: usize, renglon: &str) -> (usize, String) {
+    let ls = md_vivo::lineas(texto);
+    let l = ls[md_vivo::linea_de(&ls, cursor)];
+    let c = cursor.clamp(l.desde, l.hasta);
+    if l.desde == l.hasta {
+        (l.desde, renglon.to_string())
+    } else if c == l.hasta {
+        (l.hasta, format!("\r{renglon}"))
+    } else if c == l.desde {
+        (l.desde, format!("{renglon}\r"))
+    } else {
+        (c, format!("\r{renglon}\r"))
+    }
+}
+
+/// Mete un renglon propio en el sitio del cursor (una foto): ver
+/// [`sitio_del_renglon`]. Fuera de una tabla.
 fn insertar_renglon(e: &Estado, renglon: &str) {
     let texto = leer(e.edit);
     let (_, b) = seleccion(e.edit);
@@ -1299,13 +1324,7 @@ fn insertar_renglon(e: &Estado, renglon: &str) {
         );
         return;
     }
-    let ls = md_vivo::lineas(&texto);
-    let l = ls[md_vivo::linea_de(&ls, b)];
-    let (pos, puesto) = if l.desde == l.hasta {
-        (l.desde, renglon.to_string())
-    } else {
-        (l.hasta, format!("\r{renglon}"))
-    };
+    let (pos, puesto) = sitio_del_renglon(&texto, b, renglon);
     elegir(e.edit, pos, pos);
     enviar(
         e.edit,
