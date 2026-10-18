@@ -226,10 +226,19 @@ El modelo se cambia desde la pastilla de arriba del propio chat.
 - **Hace**: apunta tareas y recordatorios, crea notas, abre ventanas, pinea, resume lo que hiciste.
 - **Dibuja en el lienzo**: gráficas, figuras exactas, diagramas; crea lienzos nuevos, abre los que
   hay por su nombre y se mira lo que dibujó para corregirlo.
-- **«Calca esto»**: una lámina, un apunte o una captura pasan al lienzo **editables**. Cada
-  recuadro o tarjeta se separa y se rellena con su color; cada renglón queda en su sitio y la IA
-  le corrige las letras (tildes, °, θ, ∢, fórmulas); las figuras salen con rectas, arcos y letras
-  exactas; lo que es foto va recortado sin llevarse texto ajeno, y la marca de agua no se copia.
+- **«Calca esto»**: una lámina, un apunte o una captura pasan al lienzo **editables**. Primero un
+  planificador mira la imagen entera, dice de qué trata y reparte las zonas: qué es texto, tabla,
+  figura, fórmula, icono, caja contenedora o marca de agua. Después cada zona la hace su
+  especialista:
+  - las cajas, tarjetas y botones (de cualquier color, también oscuros) van abajo, rellenos;
+  - el texto queda renglón a renglón en su sitio, con tildes, emojis y negrita de verdad;
+  - las tablas salen como tablas del lienzo, también las de tema oscuro;
+  - las figuras salen con rectas, arcos y letras exactas, y las fórmulas con su recuadro;
+  - los iconos y las fotos van recortados, sin taparle el texto a nadie;
+  - la marca de agua no se copia.
+
+  Lo primero se ve en uno o dos segundos y el resto va llegando, y mientras tanto el chat sigue
+  respondiendo.
 - **Google Drive**: busca, lee y trae archivos de tu Drive, y sube los del chat si le dices que
   sí. Para conectarlo, sigue [docs/conexiones-google-drive.md](docs/conexiones-google-drive.md).
 - **Conversación nueva** empieza de cero sin borrar lo de antes; **Borrar chat** lo vacía.
@@ -282,15 +291,27 @@ de cualquier momento lo convierte en lección.
 toque. Una tarea puede llevar imágenes (`Ctrl V`): en la vista de tarjetas la foto es el fondo y,
 si hay varias, se ven apiladas. Los **emoticonos** de una tarea salen como estados de colores.
 
-- **Al escribir se entiende**: «llamar al banco prioridad alta recordar a las 5 #casa» queda con su
-  prioridad (⏫ 🔼 🔽), su etiqueta y su aviso, y el título limpio. Viaja al móvil como texto.
+- **Al escribir se entiende**: «#casa llamar al banco urgente 18/10 17:00» queda con el título
+  limpio, la etiqueta aparte (en cualquier sitio de la frase), su urgencia y su aviso. Viaja al
+  móvil como texto.
+  - **Urgencia**: normal (si no dices nada), **urgente** o **muy urgente**. Las palabras que la
+    marcan («urgente», «importante», «!», «urgentísimo», «!!»…) se cambian en Ajustes → Tareas.
+  - **Recordatorio**: «18/10 17:00», «18 oct 5pm», «el 20 a las 9», «mañana 7», «viernes 15:30».
+    Sin año es este año; si el día ya pasó, el siguiente. También con el reloj de la caja de
+    apuntar: hoy y los 6 días siguientes, horas comunes y ±15 min.
+  - Las etiquetas salen como chapitas en la lista, las tarjetas, el Kanban y el pin; pulsar una
+    busca las tareas que la llevan.
 - **Pin de una tarea**: una tarea con hora sale como un pin pequeño con solo su título y un botón
   «¿Por qué no ahora?» para apuntar una nota. También desde «Fijar como pin» en su menú.
 - **Kanban** (`Ctrl K`): una columna por lista; arrastrar una tarjeta a otra columna la mueve de lista.
-- **Horario de clases** (bandeja → «Horario de clases…»): una línea por clase («Lun Mie 8:00-10:00
-  Geometría @A-12») o una tabla pegada. Antes de cada clase sale una **llamada** en pantalla;
-  «Contestar» pone la nota de voz que grabaste para esa clase y lee lo apuntado. Las evaluaciones
-  avisan 3 días y 1 día antes.
+- **Horario de clases** (bandeja → «Horario de clases…»): un **calendario semanal**.
+  - A la izquierda apuntas tus asignaturas («Geometría @A-12»); las **arrastras** a la rejilla de
+    la semana, y cada clase se mueve y se alarga con el ratón, en saltos de 15 minutos.
+  - **Cada asignatura es un grupo de tareas**: al apuntar una tarea, el libro de la caja la mete
+    en la asignatura que elijas, y la asignatura enseña sus tareas pendientes.
+  - Antes de cada clase sale una **llamada** en pantalla; «Contestar» pone la nota de voz que
+    grabaste para esa clase. Las evaluaciones avisan 3 días y 1 día antes.
+  - Todo se guarda en un `horario.md` que se lee a mano («Lun Mié 8:00-10:00 Geometría @A-12»).
 
 | Tarjetas | Lista |
 |---|---|
@@ -476,6 +497,9 @@ haciendo. Arriba, fuera de la hoja, sale su barra:
 - Se puede anotar encima, con marcadores y búsqueda.
 - **Markdown** lleva ver/editar, deshacer, buscar, comentarios y compartir; **HTML**, recargar,
   exportar y abrir en el navegador. La misma barra para todos.
+- **Rápidos**: el navegador interno se prepara solo al arrancar PixPin, y un HTML se ve en
+  ~0,1 s en vez de ~0,9 s. En Markdown, las tablas se ven siempre como tablas y se escribe
+  directamente en sus celdas (pulsar una ya no enseña su código).
 
 ### Word, Excel y PowerPoint al instante
 
@@ -530,6 +554,7 @@ El plugin tiene su propio repositorio:
 
 ```
 p t comprar sellador [img 01]   → tarea al Inbox, con la imagen pegada (Ctrl V)
+p t llamar urgente 18/10 17:00 #casa → antes de Intro ya dice «Urgente · #casa · ⏰ …»
 p n idea para la tesis          → nota nueva
 p g muro                        → buscar en la galería (también por el texto de dentro)
 p a revisar la escala           → lección nueva
