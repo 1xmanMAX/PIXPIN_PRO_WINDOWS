@@ -48,10 +48,10 @@ pub struct Plan {
 const SISTEMA: &str = "Eres el planificador de una herramienta que pasa una imagen (una lamina, un apunte, una captura de pantalla, una tabla) a un lienzo EDITABLE. \
 Recibes la imagen con unas zonas marcadas: cada una con su recuadro y su NUMERO en una etiqueta blanca. Tambien la lista de zonas con lo que leyo el OCR. \
 1) Di de que trata la imagen (tema, en una frase: p. ej. «teoremas de cuadrilateros inscritos (Poncelet, Pitot)», «captura del local de votacion de la web de la ONPE», «tabla de variables e indicadores de una tesis»). \
-2) Para CADA numero di que es, con UNA de estas palabras: \
+2) Cada zona trae lo que «parece». Corrige SOLO las que estan mal, con UNA de estas palabras: \
 texto (parrafo o renglones), titulo, tabla (las celdas de una tabla: todas sus zonas con el mismo grupo), figura (dibujo geometrico o esquema de lineas, circulos, flechas), grafica (ejes y curvas o barras), formula, foto (fotografia, logo, ilustracion), icono (un simbolo pequeno: flecha, lupa, mapa), contenedor (una caja, tarjeta, boton o barra de fondo que lleva cosas encima), ignorar (marca de agua, adorno palido, sombra, ruido). \
-3) Agrupa: las zonas que son UNA sola cosa llevan el mismo «grupo» (las filas de una tabla; una figura con sus letras y marcas; un parrafo partido en varias zonas). Un contenedor nunca se agrupa con lo de dentro. \
-Responde SOLO un JSON: {\"tema\":\"...\",\"zonas\":[{\"n\":0,\"es\":\"titulo\",\"grupo\":\"a\"}, ...]} con TODOS los numeros.";
+3) Agrupa: las zonas que son UNA sola cosa van juntas en un grupo (las filas de una tabla; una figura con sus letras y marcas; un parrafo partido en varias zonas). Un contenedor nunca se agrupa con lo de dentro. \
+Responde SOLO un JSON CORTO, solo con lo que cambia (lo que no nombres se queda como «parece»): {\"tema\":\"...\",\"grupos\":[{\"es\":\"tabla\",\"n\":[3,4,5]}],\"cambios\":[{\"n\":2,\"es\":\"titulo\"}],\"contenedores\":[7,9],\"ignorar\":[12]}.";
 
 /// Las palabras de `es` que se entienden.
 const TIPOS: &[&str] = &["texto", "titulo", "tabla", "figura", "grafica", "formula", "foto", "icono", "contenedor", "ignorar"];
@@ -139,7 +139,7 @@ fn lista(s: &Seccionado) -> String {
 /// **Pide el plan.** `Err` si el modelo no contesta o no se entiende.
 pub fn pedir(motor: &dyn Motor, p: &Pagina, s: &Seccionado) -> Result<Plan, String> {
     let marcada = marcar(p, s);
-    let (rgba, w, h) = pixpin_ia::hoja::montaje::reducir(&marcada.pixeles, marcada.ancho, marcada.alto, 1568);
+    let (rgba, w, h) = pixpin_ia::hoja::montaje::reducir(&marcada.pixeles, marcada.ancho, marcada.alto, 1280);
     let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: rgba }).map_err(|e| format!("{e:?}"))?;
     let pregunta = format!("Zonas ({}):\n{}", s.zonas.len(), lista(s));
     let t = vision::preguntar_con(motor, SISTEMA, png, &pregunta, 3000)?;
@@ -152,7 +152,30 @@ pub fn leer(t: &str, n: usize) -> Option<Plan> {
     let (a, b) = (t.find('{')?, t.rfind('}')?);
     let v: Value = serde_json::from_str(t.get(a..=b)?).ok()?;
     let mut plan = Plan { tema: v["tema"].as_str().unwrap_or("").trim().to_string(), ..Default::default() };
-    for z in v["zonas"].as_array()? {
+    // El corto (grupos, cambios, contenedores, ignorar)...
+    let numero = |x: &Value| x.as_u64().map(|x| x as usize).filter(|&i| i < n);
+    let tipo = |x: &Value| x.as_str().map(pixpin_ia::acciones::normalizar).filter(|e| TIPOS.contains(&e.as_str()));
+    for (k, g) in v["grupos"].as_array().into_iter().flatten().enumerate() {
+        let es = tipo(&g["es"]);
+        for i in g["n"].as_array().into_iter().flatten().filter_map(numero) {
+            plan.grupo.insert(i, format!("g{k}"));
+            if let Some(e) = &es {
+                plan.es.insert(i, e.clone());
+            }
+        }
+    }
+    for c in v["cambios"].as_array().into_iter().flatten() {
+        if let (Some(i), Some(e)) = (numero(&c["n"]), tipo(&c["es"])) {
+            plan.es.insert(i, e);
+        }
+    }
+    for (clave, es) in [("contenedores", "contenedor"), ("ignorar", "ignorar")] {
+        for i in v[clave].as_array().into_iter().flatten().filter_map(numero) {
+            plan.es.insert(i, es.to_string());
+        }
+    }
+    // ...y el largo, una fila por zona.
+    for z in v["zonas"].as_array().into_iter().flatten() {
         let Some(i) = z["n"].as_u64().map(|x| x as usize).filter(|&i| i < n) else { continue };
         if let Some(es) = z["es"].as_str().map(|e| pixpin_ia::acciones::normalizar(e)).filter(|e| TIPOS.contains(&e.as_str())) {
             plan.es.insert(i, es);
@@ -161,7 +184,7 @@ pub fn leer(t: &str, n: usize) -> Option<Plan> {
             plan.grupo.insert(i, g.to_string());
         }
     }
-    (!plan.es.is_empty()).then_some(plan)
+    (!plan.es.is_empty() || !plan.grupo.is_empty() || !plan.tema.is_empty()).then_some(plan)
 }
 
 /// El tipo de zona de lo que dijo el planificador.
@@ -329,5 +352,20 @@ mod pruebas {
         // Algo negro (la cifra 0) en la etiqueta, encima de la zona.
         let negros = m.pixeles.chunks_exact(4).filter(|c| c[0] == 0 && c[1] == 0 && c[2] == 0).count();
         assert!(negros > 4);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_corto {
+    #[test]
+    fn el_plan_corto_solo_trae_lo_que_cambia() {
+        let t = r#"{"tema":"tabla KPI","grupos":[{"es":"tabla","n":[1,2,3]}],"cambios":[{"n":0,"es":"titulo"}],"contenedores":[4],"ignorar":[5,99]}"#;
+        let p = super::leer(t, 6).unwrap();
+        assert_eq!(p.es.get(&0).map(String::as_str), Some("titulo"));
+        assert_eq!(p.es.get(&2).map(String::as_str), Some("tabla"));
+        assert_eq!(p.grupo.get(&1), p.grupo.get(&3));
+        assert_eq!(p.es.get(&4).map(String::as_str), Some("contenedor"));
+        assert_eq!(p.es.get(&5).map(String::as_str), Some("ignorar"));
+        assert!(!p.es.contains_key(&99));
     }
 }

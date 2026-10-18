@@ -173,8 +173,7 @@ impl Pagina {
             }
         };
 
-        let entorno = crate::crear_entorno(&temporal)?;
-        let controlador = crate::crear_controlador(&entorno, hwnd)?;
+        let (entorno, controlador) = crate::entorno_y_controlador(hwnd)?;
         // SAFETY: `controlador` acaba de llegar de WebView2 y es valido.
         let vista = unsafe { controlador.CoreWebView2() }
             .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;

@@ -430,14 +430,51 @@ pub fn pasar(
     // cada una, cuales van juntas, que son contenedores y que se ignora
     // (`plan`). Sin respuesta, se sigue con lo de siempre.
     let mut tema = String::new();
+    // **La capa de abajo, ya** (18-oct, latencia): los recuadros que vio Rust
+    // (tarjetas, botones, barras) salen antes de preguntar al planificador;
+    // lo que el plan diga que es adorno se quita despues. Van con zonas
+    // propias (`PREVIAS + i`), para no chocar con las del plan.
+    const PREVIAS: usize = 50_000;
+    let mut previas: Vec<(usize, Caja)> = Vec::new();
+    let mut ms_primera_previa: Option<u128> = None;
+    let planificar = matches!(&vision, Some(_) if o.rico && std::env::var_os("PIXPIN_SIN_PLAN").is_none());
+    if planificar {
+        let mapa0 = Mapa::para(&s, o);
+        let (w0, h0) = mapa0.hoja(&s);
+        for (i, z) in s.zonas.iter().enumerate().filter(|(_, z)| z.tipo == Tipo::Recuadro) {
+            let e0 = Entrada { zona: z, mapa: mapa0, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: None, ajenas: &[], pistas: &[] };
+            let h = montaje::hacer(&e0, None, Via::Editable);
+            let en0 = EnHoja { sesion: semilla, zona: PREVIAS + i, rehacer: false, ultima: false, tam: (w0 as f32, h0 as f32), junto_a: None };
+            if destino.entregar(Some(&h), en0).is_ok() {
+                previas.push((i, z.caja));
+                ms_primera_previa.get_or_insert(t0.elapsed().as_millis());
+            }
+        }
+    }
     let s = match &vision {
-        Some(m) if o.rico && std::env::var_os("PIXPIN_SIN_PLAN").is_none() => {
+        Some(m) if planificar => {
             let tp = Instant::now();
             match plan::pedir(m.as_ref(), p, &s) {
                 Ok(pl) => {
                     tema = plan::contexto(&pl);
                     tracing::info!(tema = %pl.tema, zonas = s.zonas.len(), ms = tp.elapsed().as_millis() as u64, "hoja al lienzo: plan");
-                    plan::aplicar(&pl, &s, p)
+                    let mut s2 = plan::aplicar(&pl, &s, p);
+                    // Los recuadros que ya estan: no otra vez; los que el plan
+                    // ignora, fuera.
+                    let mismas = |a: &Caja, b: &Caja| (a.x - b.x).abs() < 1.0 && (a.y - b.y).abs() < 1.0 && (a.w - b.w).abs() < 1.0 && (a.h - b.h).abs() < 1.0;
+                    for (i, c) in &previas {
+                        if !s2.zonas.iter().any(|z| z.tipo == Tipo::Recuadro && mismas(&z.caja, c)) {
+                            let vacio = Hecho { zona: PREVIAS + i, tipo: Tipo::Recuadro, via: Via::Editable, elementos: Vec::new(), imagenes: Vec::new(), nota: "adorno segun el plan".into() };
+                            let (w0, h0) = Mapa::para(&s, o).hoja(&s);
+                            let _ = destino.entregar(Some(&vacio), EnHoja { sesion: semilla, zona: PREVIAS + i, rehacer: true, ultima: false, tam: (w0 as f32, h0 as f32), junto_a: None });
+                        }
+                    }
+                    s2.zonas.retain(|z| !(z.tipo == Tipo::Recuadro && previas.iter().any(|(_, c)| mismas(&z.caja, c))));
+                    for (k, z) in s2.zonas.iter_mut().enumerate() {
+                        z.id = k;
+                        z.orden = k;
+                    }
+                    s2
                 }
                 Err(e) => {
                     tracing::warn!(%e, "hoja al lienzo: sin plan");
@@ -554,7 +591,7 @@ pub fn pasar(
         hechos[id] = Some(h);
     }
     let mut leidos: HashMap<usize, Leido> = HashMap::new();
-    let mut ms_primera = ms_temprana;
+    let mut ms_primera = ms_primera_previa.or(ms_temprana);
     let mut fallos = Vec::new();
     let mut error_entrega: Option<String> = None;
     let mut n_hechas = hechos.iter().flatten().count();

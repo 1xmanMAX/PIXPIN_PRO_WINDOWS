@@ -884,7 +884,19 @@ pub fn tabla_de_fichero(
         .map(|(f, fila)| fila.iter().map(|t| Celda { negrita: cabecera && f == 0, ..Celda::de(t.clone()) }).collect())
         .collect();
     let tam = (m.tam_letra as f32 * k).clamp(6.0, 120.0);
-    let estilo = pixpin_motor2d::ecuacion::Estilo { color: col(m.texto), tam, opacidad: 1.0, familia: "Segoe UI".into() };
+    // (Una tabla de tema oscuro: si la letra medida casi no se distingue del
+    // fondo de sus celdas, clara sobre oscuro y oscura sobre claro.)
+    let texto = {
+        let fs: Vec<[u8; 3]> = m.fondos.iter().flatten().flatten().copied().collect();
+        let gris = |c: [u8; 3]| c[0] as f32 * 0.299 + c[1] as f32 * 0.587 + c[2] as f32 * 0.114;
+        match fs.get(fs.len() / 2) {
+            Some(&f) if (gris(f) - gris(m.texto)).abs() < 70.0 => {
+                if gris(f) < 128.0 { [235, 235, 235] } else { [25, 25, 25] }
+            }
+            _ => m.texto,
+        }
+    };
+    let estilo = pixpin_motor2d::ecuacion::Estilo { color: col(texto), tam, opacidad: 1.0, familia: "Segoe UI".into() };
     let medir = |s: &str, t: f32| pixpin_motor2d::texto::medida(s, t, "Segoe UI", Default::default());
     let mut els = elementos_de_tabla_con_aspecto(&celdas, &estilo, pixpin_motor2d::vector::Punto2::nuevo(0.0, 0.0), &medir, cabecera, &aspecto);
     if els.is_empty() {

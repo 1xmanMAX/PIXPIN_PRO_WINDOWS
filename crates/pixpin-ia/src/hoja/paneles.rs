@@ -525,6 +525,27 @@ fn juntar_formulas_al_renglon(s: &mut Seccionado) {
     }
 }
 
+/// **El color de cada renglon, que se vea sobre su fondo** (18-oct): sobre la
+/// barra oscura de un navegador o un boton azul, el OCR daba la letra
+/// «negra» (o ningun color) y salia invisible. Si el color leido casi no se
+/// distingue del fondo, se toma el de la tinta del renglon que mas se aparta
+/// de el (la mediana de esos pixeles).
+fn contrastar(s: &mut Seccionado, rgba: &[u8], fondo: [u8; 3]) {
+    let (w, h) = (s.ancho, s.alto);
+    let f = [fondo[0] as f64, fondo[1] as f64, fondo[2] as f64];
+    for z in &mut s.zonas {
+        for r in &mut z.renglones {
+            let actual = r.color.unwrap_or([20, 20, 20]);
+            if dist([actual[0] as f64, actual[1] as f64, actual[2] as f64], f) >= 90.0 {
+                continue;
+            }
+            if let Some(c) = color_mediano(rgba, w, h, &r.caja, 1, |p| dist([p[0] as f64, p[1] as f64, p[2] as f64], f) >= 90.0) {
+                r.color = Some(c);
+            }
+        }
+    }
+}
+
 /// Mueve lo seccionado en un recorte a pixeles de la pagina.
 fn mover(z: &mut Zona, dx: f64, dy: f64) {
     let m = |c: &mut Caja| {
@@ -658,6 +679,7 @@ impl Region<'_> {
         if self.unir {
             juntar_formulas_al_renglon(&mut s);
         }
+        contrastar(&mut s, &sub, fondo);
         // Grupos: cada zona suelta (en el orden de lectura del seccionado), y
         // cada recuadro de dentro con lo suyo, antes de lo primero de su
         // columna que queda debajo de el.

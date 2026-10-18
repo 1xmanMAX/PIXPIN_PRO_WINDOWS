@@ -526,6 +526,15 @@ fn arrancar(
     aligerar::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
     // Whisper, con la misma regla: sin arena y de uno en uno en modo cuidadoso.
     turno_pesado::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
+    // Los visores de Markdown y HTML abren al instante con el navegador ya en
+    // marcha (18-oct): se precalienta a los 6 s, cuando el arranque ya paso, y
+    // solo con memoria de sobra (el proceso del navegador ocupa la suya).
+    if decision.nivel == Nivel::Completo && hechos.ram_fisica_bytes >= 7 * 1024 * 1024 * 1024 {
+        let _ = std::thread::Builder::new().name("precalentar-web".into()).spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(6));
+            pixpin_web::precalentar();
+        });
+    }
 
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);

@@ -103,8 +103,7 @@ impl VisorHtml {
         std::fs::create_dir_all(&temporal)
             .map_err(|e| ErrorWeb::Creacion(format!("no se pudo crear {temporal:?}: {e}")))?;
 
-        let entorno = crear_entorno(&temporal)?;
-        let controlador = crear_controlador(&entorno, padre)?;
+        let (_entorno, controlador) = entorno_y_controlador(padre)?;
 
         // SAFETY: `controlador` acaba de llegar de WebView2 y es valido; el
         // RECT se construye aqui y vive mas que la llamada.
@@ -299,13 +298,79 @@ pub(crate) fn a_rect(area: Rect) -> RECT {
     }
 }
 
+/// **La carpeta de datos de WebView2, una y para siempre** (18-oct-2026).
+/// Antes cada visor estrenaba la suya (`pixpin-web-<pid>-<n>\datos`): cada
+/// apertura era un navegador arrancando en frio, sin cache, y se notaba lento
+/// (el usuario: «se sienten lentos ambos visores»). Con una sola, los visores
+/// comparten el proceso del navegador que ya este vivo y su cache.
+pub fn carpeta_de_datos() -> PathBuf {
+    std::env::temp_dir().join("pixpin-web-datos")
+}
+
+thread_local! {
+    /// El entorno de WebView2 de este hilo, hecho una vez.
+    static ENTORNO: std::cell::RefCell<Option<ICoreWebView2Environment>> = const { std::cell::RefCell::new(None) };
+}
+
+/// **El entorno y un controlador dentro de `padre`**: el entorno de este hilo
+/// si ya hay (y si el navegador murio, uno nuevo y se reintenta una vez).
+pub(crate) fn entorno_y_controlador(padre: HWND) -> Result<(ICoreWebView2Environment, ICoreWebView2Controller), ErrorWeb> {
+    let entorno = match ENTORNO.with(|e| e.borrow().clone()) {
+        Some(e) => e,
+        None => crear_entorno(&carpeta_de_datos())?,
+    };
+    match crear_controlador(&entorno, padre) {
+        Ok(c) => {
+            ENTORNO.with(|e| *e.borrow_mut() = Some(entorno.clone()));
+            Ok((entorno, c))
+        }
+        Err(_) => {
+            ENTORNO.with(|e| *e.borrow_mut() = None);
+            let entorno = crear_entorno(&carpeta_de_datos())?;
+            let c = crear_controlador(&entorno, padre)?;
+            ENTORNO.with(|e| *e.borrow_mut() = Some(entorno.clone()));
+            Ok((entorno, c))
+        }
+    }
+}
+
+/// **Precalienta el navegador** (18-oct): en un hilo suyo, un WebView2 oculto
+/// en una ventana de mensajes que se queda vivo mientras viva la app. El
+/// primer visor que se abra encuentra el proceso del navegador ya en marcha.
+/// Cuesta la memoria de ese proceso: quien llama decide (equipos con memoria).
+pub fn precalentar() {
+    let _ = std::thread::Builder::new().name("webview2-caliente".into()).spawn(|| {
+        use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE};
+        let _com = unsafe { windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED) };
+        if !VisorHtml::hay_runtime() {
+            return;
+        }
+        let t = std::time::Instant::now();
+        // SAFETY: una ventana de mensajes de la clase de sistema «Static», de
+        // este hilo; solo hace de padre del controlador oculto.
+        let hwnd = unsafe { CreateWindowExW(WINDOW_EX_STYLE(0), windows::core::w!("Static"), windows::core::w!("pixpin-webview2"), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, None, None) };
+        let Ok(hwnd) = hwnd else { return };
+        let Ok((_e, controlador)) = entorno_y_controlador(hwnd) else { return };
+        tracing::info!(ms = t.elapsed().as_millis() as u64, "webview2: navegador precalentado");
+        let _vivo = controlador;
+        let mut msg = MSG::default();
+        // SAFETY: el bucle de mensajes de este hilo (WebView2 lo necesita).
+        unsafe {
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+    });
+}
+
 /// Crea el entorno de WebView2, bombeando mensajes hasta que responde.
 ///
-/// La carpeta de datos de usuario se fuerza al temporal nuestro porque la de
-/// serie va al lado del ejecutable, y PixPin puede estar instalado en
-/// `Program Files`, donde no se escribe.
-pub(crate) fn crear_entorno(temporal: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> {
-    let datos = CoTaskMemPWSTR::from(temporal.join("datos").to_string_lossy().as_ref());
+/// La carpeta de datos de usuario se fuerza a la nuestra ([`carpeta_de_datos`])
+/// porque la de serie va al lado del ejecutable, y PixPin puede estar
+/// instalado en `Program Files`, donde no se escribe.
+pub(crate) fn crear_entorno(carpeta: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> {
+    let datos = CoTaskMemPWSTR::from(carpeta.to_string_lossy().as_ref());
     let (tx, rx) = std::sync::mpsc::channel();
 
     CreateCoreWebView2EnvironmentCompletedHandler::wait_for_async_operation(

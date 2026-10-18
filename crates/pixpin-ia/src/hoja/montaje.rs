@@ -160,7 +160,9 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         return Hecho { zona: z.id, tipo, via: Via::Editable, elementos: recuadro(e), imagenes: Vec::new(), nota: "recuadro con su fondo y su borde".into() };
     }
     // Una «tabla» que es un recuadro de color con texto (un aviso, un dato).
+    // (No si el especialista de tablas ya la hizo: eso va primero.)
     if tipo == Tipo::Tabla && via != Via::Imagen
+        && !matches!(leido, Some(Leido::Elementos(v, _)) if !v.is_empty())
         && let Some(elementos) = caja_de_color(e)
     {
         return Hecho { zona: z.id, tipo, via, elementos, imagenes: Vec::new(), nota: "recuadro de color con su texto en su sitio".into() };
