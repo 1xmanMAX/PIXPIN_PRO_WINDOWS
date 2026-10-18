@@ -40,7 +40,7 @@
 
 mod emoticonos;
 pub(crate) mod frase;
-mod kanban;
+pub(crate) mod kanban;
 pub(crate) mod rejilla;
 mod tarjetas;
 mod ventana;

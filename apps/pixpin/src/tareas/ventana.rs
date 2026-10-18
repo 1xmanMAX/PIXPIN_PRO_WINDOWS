@@ -524,6 +524,9 @@ enum Accion {
     /// «Fijar como pin» (17-oct-2026): la tarea a un pin pequeño con su
     /// titulo y la nota de por que no se esta haciendo.
     FijarPin(usize, usize),
+    /// El libro de la caja de apuntar (18-oct-2026): el desplegable de las
+    /// asignaturas del horario.
+    ElegirAsignatura,
 }
 
 /// Una tarjeta pulsada en el tablero Kanban: hasta que el raton se aleja
@@ -723,6 +726,9 @@ struct Estado {
     /// Abierta desde una lista del chat, lo apuntado va a ESA lista (como en
     /// el panel del chat que sustituye); desde el boton, al Inbox.
     apuntar_en: Option<Lista>,
+    /// La asignatura elegida en el desplegable de la caja (18-oct-2026): lo
+    /// apuntado va a su lista del chat «Asignaturas» (`horario::asignaturas`).
+    asignatura: Option<String>,
 }
 
 impl Estado {
@@ -761,6 +767,7 @@ impl Estado {
             ultimo_clic: None,
             ir_a_lista: None,
             apuntar_en: None,
+            asignatura: None,
         }
     }
 
@@ -1639,10 +1646,17 @@ fn hacer(
             } else {
                 frase.texto()
             };
-            let hecho = match &e.apuntar_en {
-                Some(l) => super::apuntar_en(raiz, aparato, l, &texto, &e.campo.imagenes())
+            let hecho = match (&e.asignatura, &e.apuntar_en) {
+                (Some(a), _) => crate::horario::asignaturas::apuntar(
+                    raiz,
+                    aparato,
+                    a,
+                    &texto,
+                    &e.campo.imagenes(),
+                ),
+                (None, Some(l)) => super::apuntar_en(raiz, aparato, l, &texto, &e.campo.imagenes())
                     .map(|m| (l.proyecto.clone(), m)),
-                None => super::apuntar_con(raiz, aparato, &texto, &e.campo.imagenes()).and_then(
+                (None, None) => super::apuntar_con(raiz, aparato, &texto, &e.campo.imagenes()).and_then(
                     |m| {
                         let ahora = pixpin_shell::entorno::ahora_utc_ms();
                         Ok((crate::pedidos::ficha_de(raiz, None, aparato, ahora)?.id, m))
@@ -1672,6 +1686,29 @@ fn hacer(
                     e.decir(err.aviso(textos));
                 }
             }
+        }
+        Accion::ElegirAsignatura => {
+            // El desplegable: las asignaturas del horario y «Sin asignatura».
+            let nombres = crate::horario::asignaturas::nombres(raiz);
+            if nombres.is_empty() {
+                e.asignatura = None;
+                e.decir(textos.t("tareas-sin-asignaturas"));
+                return true;
+            }
+            let Some(hwnd) = e.hwnd else {
+                return true;
+            };
+            let mut entradas: Vec<(u32, String)> = vec![(1, textos.t("tareas-sin-asignatura"))];
+            entradas.extend(nombres.iter().enumerate().map(|(i, n)| {
+                let marca = if e.asignatura.as_deref() == Some(n.as_str()) { "✓ " } else { "" };
+                (i as u32 + 2, format!("{marca}{n}"))
+            }));
+            match pixpin_shell::menu_llano(hwnd, &entradas) {
+                Some(1) => e.asignatura = None,
+                Some(id) => e.asignatura = nombres.get(id as usize - 2).cloned(),
+                None => {}
+            }
+            e.foco = Foco::Apuntar;
         }
         Accion::Imagen(li, fi, k) => {
             let ruta = e.fila(li, fi).and_then(|(l, f)| e.ruta_de(l, f, k));
@@ -2310,7 +2347,26 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         if sobre_imagen { TEXTO } else { GRIS },
     );
     e.botones.zona(imagen, Accion::ElegirImagen);
-    let mut fin = imagen.x - 4.0 * s;
+    // A su izquierda, el libro de la asignatura (18-oct-2026): azul si hay
+    // una elegida.
+    let libro = RectF {
+        x: imagen.x - lado,
+        ..imagen
+    };
+    let sobre_libro = dentro(libro, e.botones.raton);
+    p.icono(
+        &mi::MENU_BOOK,
+        crate::v2::geom::centrado((libro.x + lado / 2.0, libro.y + lado / 2.0), li),
+        if e.asignatura.is_some() {
+            ACENTO
+        } else if sobre_libro {
+            TEXTO
+        } else {
+            GRIS
+        },
+    );
+    e.botones.zona(libro, Accion::ElegirAsignatura);
+    let mut fin = libro.x - 4.0 * s;
 
     // Con algo escrito, el boton de apuntar (o guardar) con su «Intro».
     if !e.campo.texto().trim().is_empty() {
@@ -2354,6 +2410,11 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     if e.campo.texto().is_empty() {
         let pista = match (&e.corrigiendo, &e.apuntar_en) {
             (Some(_), _) => textos.t("tareas5-corregir-pista"),
+            (None, _) if e.asignatura.is_some() => {
+                let mut a = fluent_bundle::FluentArgs::new();
+                a.set("asignatura", e.asignatura.clone().unwrap_or_default());
+                textos.t_args("tareas-apuntar-en-asignatura", &a)
+            }
             (None, Some(l)) => {
                 let mut a = fluent_bundle::FluentArgs::new();
                 a.set("lista", l.titulo.clone());
@@ -2371,6 +2432,19 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             alto: 100_000.0,
         };
         crate::v2::pista::pintar(p, imagen, &textos.t("tareas5-imagen-pista"), limite, s);
+    }
+    if sobre_libro {
+        let limite = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: x + ancho + MARGEN * s,
+            alto: 100_000.0,
+        };
+        let pista = match &e.asignatura {
+            Some(a) => format!("{}: {a}", textos.t("tareas-asignatura-pista")),
+            None => textos.t("tareas-asignatura-pista"),
+        };
+        crate::v2::pista::pintar(p, libro, &pista, limite, s);
     }
 }
 

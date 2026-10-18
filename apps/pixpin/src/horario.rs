@@ -41,8 +41,33 @@
 //! horario cambio o cambio el dia, y entonces la relee.
 //!
 //! Android no tiene horario; es solo de este equipo y no viaja.
+//!
+//! ## La ventana semanal (18-oct-2026)
+//!
+//! El usuario: «una interfaz estilo calendario semanal en la que pueda
+//! ingresar mi horario: en el lado lateral mis asignaturas, y jalarlas sobre
+//! el calendario y soltarlas; que cada asignatura sea un grupo de tareas».
+//! «Horario de clases…» abre ahora [`ventana`]: la lista de asignaturas a
+//! la izquierda y la rejilla de la semana a la derecha. Lo que se hace alli
+//! se escribe en el MISMO `horario.md` ([`semana`] reescribe solo las
+//! lineas de clases y de asignaturas: los titulos, los comentarios, las
+//! evaluaciones y el «avisar» se quedan donde estaban), asi que se sigue
+//! pudiendo escribir a mano y los avisos salen de lo mismo. Dos cosas nuevas
+//! en el texto, las dos legibles:
+//!
+//! ```text
+//! Asignatura Geometría @A-12 #4F8EF7       ← la lista lateral (con su color)
+//! Lun 8:00-9:00 Geometría @A-12 avisar 15  ← esta clase avisa 15 min antes
+//! ```
+//!
+//! Cada asignatura es una lista de tareas en el chat «Asignaturas»
+//! ([`asignaturas`]).
 
 #![forbid(unsafe_code)]
+
+pub mod asignaturas;
+pub(crate) mod semana;
+mod ventana;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -83,6 +108,20 @@ pub struct Clase {
     pub aula: Option<String>,
     /// Lo apuntado con `>` debajo: lo que lee la voz al contestar.
     pub notas: Vec<String>,
+    /// Los minutos de antes en que avisa esta clase (`avisar 15` en su
+    /// linea); `None` es la antelacion de todo el horario.
+    pub antelacion: Option<u32>,
+}
+
+/// Una asignatura de la lista lateral de la ventana (`Asignatura Geometría
+/// @A-12 #4F8EF7`). Las clases que nombran una que no esta en la lista
+/// tambien cuentan ([`Horario::todas_las_asignaturas`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Asignatura {
+    pub nombre: String,
+    pub aula: Option<String>,
+    /// Su color, `0xRRGGBB`; `None` es el de su nombre.
+    pub color: Option<u32>,
 }
 
 /// Una evaluacion (examen, entrega…) con su fecha.
@@ -104,6 +143,28 @@ pub struct Horario {
     pub antelacion: u32,
     /// Dias antes de cada evaluacion.
     pub dias_antes: Vec<u32>,
+    /// La lista lateral, en el orden escrito.
+    pub asignaturas: Vec<Asignatura>,
+}
+
+impl Horario {
+    /// Las asignaturas de la lista lateral y, detras, las de las clases que
+    /// no estan en ella (escritas a mano o pegadas en una tabla), sin
+    /// repetir (sin mirar mayusculas ni tildes).
+    pub fn todas_las_asignaturas(&self) -> Vec<Asignatura> {
+        let mut v = self.asignaturas.clone();
+        for c in &self.clases {
+            let n = normalizar(&c.nombre);
+            if !v.iter().any(|a| normalizar(&a.nombre) == n) {
+                v.push(Asignatura {
+                    nombre: c.nombre.clone(),
+                    aula: c.aula.clone(),
+                    color: None,
+                });
+            }
+        }
+        v
+    }
 }
 
 impl Default for Horario {
@@ -113,6 +174,7 @@ impl Default for Horario {
             evaluaciones: Vec::new(),
             antelacion: ANTELACION,
             dias_antes: DIAS_ANTES.to_vec(),
+            asignaturas: Vec::new(),
         }
     }
 }
@@ -220,7 +282,20 @@ fn nombre_y_aula(palabras: &[&str]) -> (String, Option<String>) {
     let mut i = 0;
     while i < palabras.len() {
         let p = palabras[i];
-        if let Some(a) = p.strip_prefix('@').filter(|a| !a.is_empty()) {
+        if let Some(a) = p.strip_prefix("@(") {
+            // `@(Lab de física)`: un aula de varias palabras (asi la escribe
+            // la ventana).
+            let mut v = vec![a];
+            while !v.last().is_some_and(|x| x.ends_with(')')) && i + 1 < palabras.len() {
+                i += 1;
+                v.push(palabras[i]);
+            }
+            let a = v.join(" ");
+            let a = a.strip_suffix(')').unwrap_or(&a).trim();
+            if !a.is_empty() {
+                aula = Some(a.to_string());
+            }
+        } else if let Some(a) = p.strip_prefix('@').filter(|a| !a.is_empty()) {
             aula = Some(a.to_string());
         } else if matches!(normalizar(p.trim_start_matches('(')).as_str(), "aula" | "salon" | "sala" | "lab" | "laboratorio")
             && let Some(sig) = palabras.get(i + 1)
@@ -289,6 +364,7 @@ fn clase_de_linea(linea: &str) -> Option<Clase> {
         j += 1;
     }
     let (inicio, fin) = arreglar_tramo(tramo?)?;
+    let antelacion = quitar_avisar(&mut resto);
     let (nombre, aula) = nombre_y_aula(&resto);
     dias.sort_unstable();
     dias.dedup();
@@ -302,7 +378,64 @@ fn clase_de_linea(linea: &str) -> Option<Clase> {
         nombre,
         aula,
         notas: Vec::new(),
+        antelacion,
     })
+}
+
+/// Saca de las palabras de una clase su «avisar 15 [min] [antes]»: los
+/// minutos de antes de esa clase.
+fn quitar_avisar(resto: &mut Vec<&str>) -> Option<u32> {
+    let i = resto
+        .iter()
+        .position(|p| matches!(normalizar(p).as_str(), "avisar" | "aviso"))?;
+    let n: u32 = resto.get(i + 1)?.parse().ok()?;
+    let mut j = i + 2;
+    if resto
+        .get(j)
+        .is_some_and(|p| matches!(normalizar(p).as_str(), "min" | "minutos"))
+    {
+        j += 1;
+    }
+    if resto.get(j).is_some_and(|p| normalizar(p) == "antes") {
+        j += 1;
+    }
+    resto.drain(i..j);
+    Some(n.min(24 * 60))
+}
+
+/// **Una linea de la lista lateral**: `Asignatura Geometría @A-12 #4F8EF7`.
+fn asignatura_de_linea(palabras: &[&str]) -> Option<Asignatura> {
+    let primera = normalizar(palabras.first()?.trim_end_matches(':'));
+    if !matches!(primera.as_str(), "asignatura" | "materia") {
+        return None;
+    }
+    let mut color = None;
+    let resto: Vec<&str> = palabras[1..]
+        .iter()
+        .copied()
+        .filter(|p| match color_de(p) {
+            Some(c) => {
+                color = Some(c);
+                false
+            }
+            None => true,
+        })
+        .collect();
+    let (nombre, aula) = nombre_y_aula(&resto);
+    (!nombre.is_empty()).then_some(Asignatura {
+        nombre,
+        aula,
+        color,
+    })
+}
+
+/// Un color `#RRGGBB`.
+fn color_de(p: &str) -> Option<u32> {
+    let h = p.strip_prefix('#')?;
+    if h.len() != 6 {
+        return None;
+    }
+    u32::from_str_radix(h, 16).ok()
 }
 
 /// Lo que dice que una linea es una evaluacion.
@@ -394,6 +527,7 @@ fn clases_de_tabla(filas: &[Vec<String>]) -> Vec<Clase> {
                         nombre,
                         aula,
                         notas: Vec::new(),
+                        antelacion: None,
                     }),
                 }
             }
@@ -425,17 +559,43 @@ fn clases_de_tabla(filas: &[Vec<String>]) -> Vec<Clase> {
 /// jueves»). Lo que no se entiende se salta: es una nota, puede llevar
 /// titulos y comentarios.
 pub fn leer(texto: &str, ahora: Momento) -> Horario {
+    leer_con_sitios(texto, ahora).0
+}
+
+/// Los dos titulos que pone la ventana encima de lo que escribe: son parte
+/// de lo suyo (se quitan y se vuelven a poner al guardar).
+pub(crate) const TITULO_ASIGNATURAS: &str = "## Asignaturas";
+pub(crate) const TITULO_CLASES: &str = "## Clases";
+
+/// Como [`leer`], y ademas que lineas del texto son de clases o de
+/// asignaturas (las que reescribe la ventana, [`semana::reescribir`]): las
+/// lineas de clase, sus `>`, las tablas que dieron clases, las de
+/// `Asignatura …` y los dos titulos de la ventana. Lo demas no se toca.
+pub(crate) fn leer_con_sitios(texto: &str, ahora: Momento) -> (Horario, Vec<bool>) {
     let mut h = Horario::default();
+    let lineas: Vec<&str> = texto.lines().collect();
+    let mut suyas = vec![false; lineas.len()];
     let mut tabla: Vec<Vec<String>> = Vec::new();
+    let mut filas_tabla: Vec<usize> = Vec::new();
     let mut en_comentario = false;
     let mut sueltas: Vec<String> = Vec::new();
-    let cerrar_tabla = |tabla: &mut Vec<Vec<String>>, h: &mut Horario| {
+    let cerrar_tabla = |tabla: &mut Vec<Vec<String>>,
+                        filas: &mut Vec<usize>,
+                        h: &mut Horario,
+                        suyas: &mut Vec<bool>| {
         if !tabla.is_empty() {
-            h.clases.extend(clases_de_tabla(tabla));
+            let clases = clases_de_tabla(tabla);
+            if !clases.is_empty() {
+                for &i in filas.iter() {
+                    suyas[i] = true;
+                }
+            }
+            h.clases.extend(clases);
             tabla.clear();
+            filas.clear();
         }
     };
-    for linea in texto.lines() {
+    for (n, linea) in lineas.iter().enumerate() {
         let t = linea.trim();
         // Los comentarios de HTML (`<!-- … -->`): ahi va el ejemplo.
         if en_comentario {
@@ -450,19 +610,25 @@ pub fn leer(texto: &str, ahora: Momento) -> Horario {
         }
         if let Some(c) = celdas(linea) {
             tabla.push(c);
+            filas_tabla.push(n);
             continue;
         }
-        cerrar_tabla(&mut tabla, &mut h);
+        cerrar_tabla(&mut tabla, &mut filas_tabla, &mut h, &mut suyas);
+        if t == TITULO_ASIGNATURAS || t == TITULO_CLASES {
+            suyas[n] = true;
+            continue;
+        }
         if t.is_empty() || t.starts_with('#') {
             continue;
         }
         // Lo que lee la voz, para la clase de encima.
         if let Some(nota) = t.strip_prefix('>') {
             let nota = nota.trim();
-            if let Some(c) = h.clases.last_mut()
-                && !nota.is_empty()
-            {
-                c.notas.push(nota.to_string());
+            if let Some(c) = h.clases.last_mut() {
+                if !nota.is_empty() {
+                    c.notas.push(nota.to_string());
+                }
+                suyas[n] = true;
             }
             continue;
         }
@@ -485,15 +651,27 @@ pub fn leer(texto: &str, ahora: Momento) -> Horario {
             }
             continue;
         }
+        if let Some(a) = asignatura_de_linea(&palabras) {
+            suyas[n] = true;
+            if !h
+                .asignaturas
+                .iter()
+                .any(|b| normalizar(&b.nombre) == normalizar(&a.nombre))
+            {
+                h.asignaturas.push(a);
+            }
+            continue;
+        }
         if palabras.first().is_some_and(|p| es_evaluacion(p)) {
             sueltas.push(t.to_string());
             continue;
         }
         if let Some(c) = clase_de_linea(t) {
+            suyas[n] = true;
             h.clases.push(c);
         }
     }
-    cerrar_tabla(&mut tabla, &mut h);
+    cerrar_tabla(&mut tabla, &mut filas_tabla, &mut h, &mut suyas);
     // Las evaluaciones al final: nombran clases que pueden ir despues.
     for t in sueltas {
         let Ok((que, Some(cuando))) = fechas::separar(&t, ahora) else {
@@ -506,7 +684,7 @@ pub fn leer(texto: &str, ahora: Momento) -> Horario {
             .position(|c| q.contains(&normalizar(&c.nombre)));
         h.evaluaciones.push(Evaluacion { que, clase, cuando });
     }
-    h
+    (h, suyas)
 }
 
 // ------------------------------------------------------------- avisos
@@ -547,7 +725,7 @@ pub fn avisos(h: &Horario, desde: i64, dias: i64) -> Vec<Aviso> {
                 continue;
             }
             let inicio = d * DIA + i64::from(c.inicio) * MINUTO;
-            let cuando = inicio - i64::from(h.antelacion) * MINUTO;
+            let cuando = inicio - i64::from(c.antelacion.unwrap_or(h.antelacion)) * MINUTO;
             if cuando > desde && cuando <= hasta {
                 v.push(Aviso {
                     id: format!("{PREFIJO}clase:{inicio}:{}", c.nombre),
@@ -625,6 +803,9 @@ pub fn clase_para_grabar(h: &Horario, ahora: i64) -> Option<usize> {
     reciente.or_else(|| {
         let mut h2 = h.clone();
         h2.antelacion = 0;
+        for c in &mut h2.clases {
+            c.antelacion = None;
+        }
         avisos(&h2, ahora, 7).into_iter().find_map(|a| match a.que {
             Que::Clase(i, _) => Some(i),
             Que::Evaluacion(..) => None,
@@ -832,8 +1013,16 @@ pub fn sonar(raiz: &Path, r: &Recordatorio, rotulos: crate::llamada::Rotulos, hw
     crate::llamada::lanzar(llamada, rotulos, hwnd_app);
 }
 
-/// Abre el horario en el editor de notas (lo crea con la plantilla).
-pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion) {
+/// **«Horario de clases…»**: la ventana semanal ([`ventana`]). Vuelve
+/// enseguida: la ventana vive en su propio hilo. `aparato` es el codigo de
+/// este equipo, para las listas de tareas de las asignaturas.
+pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, aparato: &str) {
+    ventana::abrir(idioma, ubicacion, aparato.to_string());
+}
+
+/// Abre el horario como texto en el editor de notas (lo crea con la
+/// plantilla): el boton «Editar como texto» de la ventana.
+pub fn abrir_nota(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion) {
     let r = ruta(ubicacion.raiz());
     if !r.is_file()
         && let Err(e) = std::fs::write(&r, PLANTILLA)
