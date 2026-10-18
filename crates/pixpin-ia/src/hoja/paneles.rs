@@ -644,7 +644,7 @@ fn iconos(s: &mut Seccionado) {
 
 /// Una copia del recorte en la que el `fondo` es blanco y la tinta, oscura
 /// en proporcion a lo que se aparta de el (mas clara o mas oscura).
-fn entintada(rgba: &[u8], fondo: [u8; 3]) -> Vec<u8> {
+pub fn entintada(rgba: &[u8], fondo: [u8; 3]) -> Vec<u8> {
     let f = [fondo[0] as f64, fondo[1] as f64, fondo[2] as f64];
     let mut v = rgba.to_vec();
     for px in v.chunks_exact_mut(4) {

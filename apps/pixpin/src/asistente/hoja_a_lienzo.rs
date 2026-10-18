@@ -115,11 +115,51 @@ pub fn ocr(rgba: &[u8], ancho: u32, alto: u32) -> Result<Vec<PalabraHoja>, Strin
         return Err("el OCR de Windows no esta disponible (falta el idioma en Windows)".into());
     }
     let lineas = pixpin_ocr::reconocer(ancho, alto, rgba).map_err(|e| format!("el OCR fallo: {e}"))?;
-    Ok(lineas
+    let mut v: Vec<PalabraHoja> = lineas
         .iter()
         .flat_map(|l| l.palabras.iter())
         .map(|p| PalabraHoja::nueva(&p.texto, p.caja.x as f64, p.caja.y as f64, p.caja.ancho as f64, p.caja.alto as f64))
-        .collect())
+        .collect();
+    mas_en_recuadros_de_color(rgba, ancho, alto, &mut v);
+    Ok(v)
+}
+
+/// **Lo que el OCR no ve en un boton de color** (18-oct, el «ver» claro y
+/// fino del boton azul de la ONPE): dentro de cada recuadro de color (ni
+/// blanco ni casi blanco), el OCR otra vez sobre su copia «entintada» (fondo
+/// blanco, tinta oscura) y al doble de tamano; lo nuevo se anade.
+fn mas_en_recuadros_de_color(rgba: &[u8], ancho: u32, alto: u32, palabras: &mut Vec<PalabraHoja>) {
+    use pixpin_ia::hoja::paneles;
+    let hm = {
+        let mut v: Vec<f64> = palabras.iter().map(|p| p.caja.h).collect();
+        v.sort_by(f64::total_cmp);
+        v.get(v.len() / 2).copied().unwrap_or(alto as f64 * 0.012).max(4.0)
+    };
+    let a = imagen::analizar(rgba, ancho, alto);
+    let lejos_del_blanco = |c: [u8; 3]| c.iter().map(|&x| (255.0 - x as f64).powi(2)).sum::<f64>().sqrt() > 90.0;
+    for panel in paneles::buscar(rgba, ancho, alto, &a, palabras, hm) {
+        let Some(fondo) = panel.estilo.relleno.filter(|c| lejos_del_blanco(*c)) else { continue };
+        let c = panel.interior();
+        // (Solo botones y tarjetas: un recuadro grande ya lo lee bien el OCR
+        // y repetirlo cuesta segundos.)
+        if c.w < hm * 2.0 || c.h < hm || c.area() > (ancho as f64 * alto as f64) * 0.12 || c.h > hm * 8.0 {
+            continue;
+        }
+        let (sub, sw, sh) = imagen::recortar(rgba, ancho, alto, &c);
+        let tinta = paneles::entintada(&sub, fondo);
+        let doble = match pixpin_codec::imagen::redimensionar(pixpin_codec::ImagenRgba { ancho: sw, alto: sh, pixeles: tinta }, sw * 2, sh * 2) {
+            Ok(i) => i,
+            Err(_) => continue,
+        };
+        let Ok(lineas) = pixpin_ocr::reconocer(doble.ancho, doble.alto, &doble.pixeles) else { continue };
+        for p in lineas.iter().flat_map(|l| l.palabras.iter()) {
+            let caja = Caja::nueva(c.x + p.caja.x as f64 / 2.0, c.y + p.caja.y as f64 / 2.0, p.caja.ancho as f64 / 2.0, p.caja.alto as f64 / 2.0);
+            let ya = palabras.iter().any(|q| q.caja.comun(&caja) > 0.3 * caja.area().min(q.caja.area()));
+            if !ya && p.texto.chars().any(char::is_alphanumeric) {
+                palabras.push(PalabraHoja::nueva(&p.texto, caja.x, caja.y, caja.w, caja.h));
+            }
+        }
+    }
 }
 
 /// Los trozos de la capa de texto del PDF (en puntos, `y` la linea base),
