@@ -447,6 +447,14 @@ fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
         let t = textos.and_then(|v| v.get(i)).map_or(r.texto.as_str(), String::as_str);
         // Un renglon entero en negrita (`**...**`): negrita de verdad, no las
         // marcas a la vista (18-oct, salia «*·IE ADVENTISTA PUNO**}»).
+        // (Unas marcas descuadradas no se ensenan nunca.)
+        let sin_sueltas;
+        let t = if t.matches("**").count() % 2 == 1 {
+            sin_sueltas = t.replace("**", "");
+            sin_sueltas.as_str()
+        } else {
+            t
+        };
         let (t, negrita) = match t.trim().strip_prefix("**").and_then(|x| x.strip_suffix("**")).filter(|x| !x.contains("**")) {
             Some(x) => (x.trim(), true),
             None => (t, r.negrita),

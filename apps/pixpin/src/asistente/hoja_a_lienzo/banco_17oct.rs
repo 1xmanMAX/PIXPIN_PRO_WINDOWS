@@ -158,3 +158,27 @@ fn banco_17oct() {
         }
     }
 }
+
+/// La rejilla que mide el lector de tablas en la tabla KPI (oscura, leida en
+/// negativo): para ver por que parte en filas una celda de cinco renglones.
+#[test]
+#[ignore = "lee una foto de E: con el OCR de Windows; a mano"]
+fn rejilla_de_la_tabla_kpi() {
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let im0 = pixpin_codec::imagen::cargar(std::path::Path::new("E:/pixpin-pruebas/calcar-17oct/tabla-kpi.png")).unwrap();
+    let c = pixpin_ia::hoja::Caja::nueva(2.0, 350.0, 964.0, 336.0);
+    let (mut px, w, h) = pixpin_ia::hoja::imagen::recortar(&im0.pixeles, im0.ancho, im0.alto, &c);
+    for p in px.chunks_exact_mut(4) {
+        p[0] = 255 - p[0];
+        p[1] = 255 - p[1];
+        p[2] = 255 - p[2];
+    }
+    let im = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+    let ruta = std::env::temp_dir().join("pixpin-kpi-negativo.png");
+    std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&im).unwrap()).unwrap();
+    let (m, _) = crate::asistente::documentos_acciones::aspecto_de_tabla(&ruta, None).unwrap();
+    println!("columnas {:?}\nfilas {:?}\nborde {:?}", m.columnas, m.filas, m.borde);
+    for f in &m.celdas {
+        println!("  {:?}", f);
+    }
+}

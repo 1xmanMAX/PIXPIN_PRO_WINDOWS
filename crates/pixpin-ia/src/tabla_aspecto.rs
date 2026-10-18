@@ -311,15 +311,34 @@ fn con_celdas(mut m: Medida, palabras: &[Palabra]) -> Medida {
                             _ => renglones.push(vec![p]),
                         }
                     }
-                    corregir_ocr(&renglones
+                    // (Una lista dentro de la celda, «1. … 2. …» o «• …»: un
+                    // renglon por punto, como en la foto.)
+                    let lineas: Vec<String> = renglones
                         .into_iter()
-                        .flat_map(|mut r| {
+                        .map(|mut r| {
                             r.sort_by(|a, b| a.x.total_cmp(&b.x));
-                            r.into_iter().map(|p| p.texto.trim())
+                            r.into_iter().map(|p| p.texto.trim()).collect::<Vec<_>>().join(" ")
                         })
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                    )
+                        .collect();
+                    let es_punto = |l: &str| {
+                        let l = l.trim_start();
+                        l.starts_with(['•', '-', '–', '▪']) || {
+                            let n = l.chars().take_while(|c| c.is_ascii_digit()).count();
+                            n > 0 && n <= 2 && l[n..].starts_with(['.', ')'])
+                        }
+                    };
+                    // Cada punto, con lo que le sigue hasta el siguiente.
+                    let mut puntos: Vec<String> = Vec::new();
+                    for l in lineas {
+                        match puntos.last_mut() {
+                            Some(u) if !es_punto(&l) => {
+                                u.push(' ');
+                                u.push_str(&l);
+                            }
+                            _ => puntos.push(l),
+                        }
+                    }
+                    puntos.iter().map(|p| corregir_ocr(p)).collect::<Vec<_>>().join("\n")
                 })
                 .collect()
         })

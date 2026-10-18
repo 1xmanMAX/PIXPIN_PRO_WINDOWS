@@ -227,10 +227,18 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
     let mut grupos: BTreeMap<usize, (Vec<usize>, Option<&str>)> = BTreeMap::new();
     let mut de_grupo: HashMap<&str, usize> = HashMap::new();
     let mut sueltas: HashSet<usize> = HashSet::new();
+    // **Un contenedor de verdad lleva cosas dentro** (18-oct, TikTok: el
+    // corazon con su «82» salia como una caja vacia). Si no hay otra zona
+    // dentro y tiene letras, el plan se equivoco: se queda como era.
+    let lleva_algo = |i: usize| {
+        let c = s.zonas[i].caja.crecer(2.0);
+        s.zonas.iter().enumerate().any(|(k, o)| k != i && o.caja.area() < c.area() * 0.9 && o.caja.dentro_de(&c) >= 0.8)
+    };
     for (i, z) in s.zonas.iter().enumerate() {
+        let falso = es(i) == Some("contenedor") && z.tipo != Tipo::Recuadro && !lleva_algo(i);
         match es(i) {
             Some("ignorar") => continue,
-            Some("contenedor") => {
+            Some("contenedor") if !falso => {
                 let mut c = z.clone();
                 if c.tipo != Tipo::Recuadro || c.panel.is_none() {
                     // Un contenedor que el seccionado vio como foto o dudosa:
@@ -272,7 +280,7 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
             }
             None => {
                 sueltas.insert(i);
-                grupos.insert(i, (vec![i], es(i)));
+                grupos.insert(i, (vec![i], if falso { None } else { es(i) }));
             }
         }
     }
@@ -299,8 +307,35 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
         if z.tipo == Tipo::Foto {
             z.renglones.clear();
         }
+        // **Una tabla, con sus celdas** (18-oct, la de KPIs): los recuadros de
+        // sus celdas no van aparte; la tabla los dibuja, y su recorte tiene
+        // que llevar las rayas para medir la rejilla.
+        if z.tipo == Tipo::Tabla {
+            // (Tambien las pegadas, como la fila de cabecera que el plan
+            // dejo fuera: hasta que no se anada ninguna.)
+            loop {
+                let casco = z.caja.crecer(s.alto_letra.max(4.0));
+                let pegada = |c: &Zona| {
+                    c.tipo == Tipo::Recuadro
+                        && c.caja.area() < casco.area() * 0.95
+                        && (casco.contiene(c.caja.cx(), c.caja.cy()) && c.caja.comun(&z.caja) > 0.0
+                            || c.caja.comun(&z.caja.crecer(4.0)) > 0.0 && c.caja.x >= casco.x && c.caja.x1() <= casco.x1())
+                };
+                let celdas: Vec<usize> = zonas.iter().enumerate().filter(|(_, c)| pegada(c)).map(|(k, _)| k).collect();
+                if celdas.is_empty() {
+                    break;
+                }
+                for &k in celdas.iter().rev() {
+                    z.caja = z.caja.union(&zonas[k].caja);
+                    zonas.remove(k);
+                }
+            }
+        }
         zonas.push(z);
     }
+    // Lo suelto que cae dentro de una tabla es de la tabla (la lee entera).
+    let tablas: Vec<Caja> = zonas.iter().filter(|z| z.tipo == Tipo::Tabla).map(|z| z.caja).collect();
+    zonas.retain(|z| z.tipo == Tipo::Tabla || z.tipo == Tipo::Recuadro || !tablas.iter().any(|t| t.contiene(z.caja.cx(), z.caja.cy())));
     for (i, z) in zonas.iter_mut().enumerate() {
         z.id = i;
         z.orden = i;

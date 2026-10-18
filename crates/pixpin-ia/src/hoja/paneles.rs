@@ -677,6 +677,107 @@ fn recolorear(s: &mut Seccionado, rgba: &[u8], fondo: [u8; 3]) {
     }
 }
 
+/// **La negrita, por el grosor del trazo** (18-oct, «las palabras en negrita
+/// ponlas en negrita»): en cada palabra, lo que mide de ancho cada trozo de
+/// tinta en cada fila (la tinta es lo que se aparta de su fondo, sea claro u
+/// oscuro), partido por su alto. La negrita tiene el trazo un tercio mas
+/// grueso que la mediana de la pagina; asi no engañan las mayusculas (mas
+/// tinta por area) ni un boton con una sola palabra.
+fn negritas(rgba: &[u8], w: u32, h: u32, palabras: &mut [PalabraHoja]) {
+    let grosor = |c: &Caja| -> Option<f64> {
+        let c = c.dentro(w as f64, h as f64);
+        let (x0, y0, x1, y1) = (c.x as u32, c.y as u32, c.x1() as u32, c.y1() as u32);
+        if x1 <= x0 + 3 || y1 <= y0 + 4 {
+            return None;
+        }
+        let px = |x: u32, y: u32| {
+            let i = ((y * w + x) * 4) as usize;
+            [rgba[i] as f64, rgba[i + 1] as f64, rgba[i + 2] as f64]
+        };
+        // El fondo: el color mas comun del borde de la caja.
+        let mut borde: [Vec<u8>; 3] = Default::default();
+        for x in x0..x1 {
+            for y in [y0, y1 - 1] {
+                let p = px(x, y);
+                for k in 0..3 {
+                    borde[k].push(p[k] as u8);
+                }
+            }
+        }
+        let mut fondo = [0.0; 3];
+        for k in 0..3 {
+            borde[k].sort_unstable();
+            fondo[k] = borde[k][borde[k].len() / 2] as f64;
+        }
+        let lejos: Vec<f64> = (y0..y1).flat_map(|y| (x0..x1).map(move |x| (x, y))).map(|(x, y)| dist(px(x, y), fondo)).collect();
+        let tope = lejos.iter().cloned().fold(0.0, f64::max);
+        if tope < 60.0 {
+            return None;
+        }
+        // Cada trozo de tinta de cada fila (cortado a media tinta) y su
+        // anchura con fraccion: cada pixel cuenta lo que tiene de tinta.
+        let corte = tope * 0.5;
+        let ancho = (x1 - x0) as usize;
+        let (mut tinta, mut trozos) = (0.0f64, 0usize);
+        for fila in lejos.chunks(ancho) {
+            let mut dentro = false;
+            for &d in fila {
+                tinta += (d / (tope * 0.85)).clamp(0.0, 1.0) * f64::from(u8::from(d >= tope * 0.2));
+                if d >= corte && !dentro {
+                    trozos += 1;
+                }
+                dentro = d >= corte;
+            }
+        }
+        if trozos < 6 {
+            return None;
+        }
+        Some(tinta / trozos as f64 / c.h.max(1.0))
+    };
+    let g: Vec<Option<f64>> = palabras.iter().map(|p| if p.texto.chars().filter(|c| c.is_alphanumeric()).count() >= 2 { grosor(&p.caja) } else { None }).collect();
+    let validos: Vec<f64> = g.iter().flatten().copied().collect();
+    if validos.len() < 8 {
+        return;
+    }
+    let Some(media) = mediana(validos) else { return };
+    if std::env::var_os("PIXPIN_NEGRITA_DEPURAR").is_some() {
+        for (p, g) in palabras.iter().zip(&g) {
+            eprintln!("negrita? {:<24} {:?} media {media:.3}", p.texto, g.map(|g| (g / media * 100.0).round()));
+        }
+    }
+    // Por renglones (misma altura y seguidas): la media de sus palabras,
+    // pesada por letras. Una palabra sola mide con mucho ruido.
+    let mut orden: Vec<usize> = (0..palabras.len()).collect();
+    orden.sort_by(|&i, &j| palabras[i].caja.cy().total_cmp(&palabras[j].caja.cy()).then(palabras[i].caja.x.total_cmp(&palabras[j].caja.x)));
+    let mut renglones: Vec<Vec<usize>> = Vec::new();
+    for i in orden {
+        let p = &palabras[i].caja;
+        let sitio = renglones.iter_mut().find(|r| {
+            let u = &palabras[*r.last().unwrap()].caja;
+            (u.cy() - p.cy()).abs() < u.h.max(p.h) * 0.45 && p.x >= u.x && p.x - u.x1() < 1.6 * u.h.max(p.h)
+        });
+        match sitio {
+            Some(r) => r.push(i),
+            None => renglones.push(vec![i]),
+        }
+    }
+    for r in renglones {
+        let (mut suma, mut letras) = (0.0, 0.0);
+        for &i in &r {
+            if let Some(gi) = g[i] {
+                let n = palabras[i].texto.chars().count() as f64;
+                suma += gi * n;
+                letras += n;
+            }
+        }
+        if letras >= 3.0 && suma / letras > media * 1.15 {
+            for &i in &r {
+                palabras[i].negrita = true;
+            }
+        }
+    }
+}
+
 /// Mueve lo seccionado en un recorte a pixeles de la pagina.
 fn mover(z: &mut Zona, dx: f64, dy: f64) {
     let m = |c: &mut Caja| {
@@ -711,7 +812,8 @@ pub fn seccionar(rgba: &[u8], ancho: u32, alto: u32, palabras: Vec<PalabraHoja>,
 /// Lo mismo, y la hoja con lo palido de los recuadros borrado ([`limpiar`]):
 /// quien monte las zonas tiene que usar ESA (las figuras se vectorizan de
 /// ella). `None`: la de entrada vale.
-pub fn seccionar_limpia(rgba: &[u8], ancho: u32, alto: u32, palabras: Vec<PalabraHoja>, unir: bool) -> (Seccionado, Option<Vec<u8>>) {
+pub fn seccionar_limpia(rgba: &[u8], ancho: u32, alto: u32, mut palabras: Vec<PalabraHoja>, unir: bool) -> (Seccionado, Option<Vec<u8>>) {
+    negritas(rgba, ancho, alto, &mut palabras);
     let a = imagen::analizar(rgba, ancho, alto);
     let hm = mediana(palabras.iter().map(|p| p.caja.h).collect()).unwrap_or(alto as f64 * 0.012).max(4.0);
     let mut paneles = buscar(rgba, ancho, alto, &a, &palabras, hm);

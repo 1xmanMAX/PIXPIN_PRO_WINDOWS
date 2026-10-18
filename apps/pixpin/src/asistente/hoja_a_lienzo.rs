@@ -353,7 +353,14 @@ fn preguntar(motor: &dyn Motor, png: Vec<u8>, q: Pregunta, pista: &str) -> Resul
             let (tema, renglones) = pista.split_once('\u{1f}').unwrap_or(("", pista));
             vision::pedir_renglones(motor, png, &renglones.split('\n').map(str::to_string).collect::<Vec<_>>(), tema).map(Some)
         }
-        Pregunta::Tabla => tabla_del_recorte(motor, png, pista.parse().unwrap_or(1.0)).map(Some),
+        Pregunta::Tabla => {
+            let mut v = pista.split('').map(|x| x.parse::<f64>().unwrap_or(0.0));
+            let (escala, ax, ay) = (v.next().unwrap_or(1.0), v.next().unwrap_or(0.0), v.next().unwrap_or(0.0));
+            tabla_del_recorte(motor, png, escala as f32).map(|l| match l {
+                Leido::Elementos(e, (ox, oy)) => Some(Leido::Elementos(e, (ox - ax, oy - ay))),
+                otro => Some(otro),
+            })
+        }
     }
 }
 
@@ -670,11 +677,16 @@ pub fn pasar(
                 let caja = bloque.map_or(s.zonas[id].caja, |b| b.2.caja);
                 let pista = match q {
                     Pregunta::Renglones => format!("{tema}\u{1f}{}", s.zonas[id].renglones.iter().map(|r| r.texto.replace('\n', " ")).collect::<Vec<_>>().join("\n")),
-                    Pregunta::Tabla => format!("{}", mapa.escala),
                     _ => bloque.map(|b| pista_de_colores(&b.2)).unwrap_or_default(),
                 };
-                // (La tabla, a su tamano y sin aire: su esquina es la de la zona.)
-                let png = if q == Pregunta::Tabla { png_entero(p, &caja) } else { png_del_recorte(p, &caja) };
+                // (La tabla, a su tamano, con un poco de aire para que se vean
+                // sus rayas de fuera: el aire se le descuenta al colocarla.)
+                let (png, pista) = if q == Pregunta::Tabla {
+                    let con_aire = caja.crecer(12.0).dentro(p.ancho as f64, p.alto as f64);
+                    (png_entero(p, &con_aire), format!("{}{}{}", mapa.escala, caja.x - con_aire.x, caja.y - con_aire.y))
+                } else {
+                    (png_del_recorte(p, &caja), pista)
+                };
                 (id, q, png, pista)
 
             }).collect();

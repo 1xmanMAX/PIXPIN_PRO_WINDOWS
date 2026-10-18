@@ -773,6 +773,19 @@ fn tabla(args: &Value, cx: &Contexto) -> Result<String, String> {
 /// **El aspecto de la tabla** (`pixpin_ia::tabla_aspecto`): en la foto, o
 /// en la pagina del PDF pintada, con las palabras del OCR en sus mismos
 /// pixeles. Con el ancho de esa imagen (para pasarlo a la escala del lienzo).
+/// El fondo a blanco y lo que se aparta de el, oscurecido de mas
+/// (`(v/fondo)^4`): la raya casi del color del fondo queda gris y se mide.
+pub(crate) fn rayas_marcadas(px: &mut [u8]) {
+    let mut g: Vec<u8> = px.chunks_exact(4).step_by(5).map(|p| ((p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000) as u8).collect();
+    g.sort_unstable();
+    let fondo = g.get(g.len() / 2).copied().unwrap_or(255).max(1) as f32;
+    for p in px.chunks_exact_mut(4) {
+        for c in &mut p[..3] {
+            *c = (255.0 * (*c as f32 / fondo).min(1.0).powi(4)).round() as u8;
+        }
+    }
+}
+
 pub fn aspecto_de_tabla(ruta: &Path, pagina: Option<usize>) -> Option<(pixpin_ia::tabla_aspecto::Medida, u32)> {
     let img = if super::ocr::es_imagen(ruta) {
         pixpin_codec::imagen::cargar(ruta).ok()?
@@ -785,7 +798,21 @@ pub fn aspecto_de_tabla(ruta: &Path, pagina: Option<usize>) -> Option<(pixpin_ia
         doc.renderizar(p as u32, ANCHO_OCR).ok()?
     };
     let ps = palabras_de_ocr(&img.pixeles, img.ancho, img.alto).ok()?;
-    let m = pixpin_ia::tabla_aspecto::medir(&img.pixeles, img.ancho, img.alto, &ps)?;
+    let mut m = pixpin_ia::tabla_aspecto::medir(&img.pixeles, img.ancho, img.alto, &ps)?;
+    // **Rayas tenues** (18-oct, una tabla de tema oscuro leida en negativo):
+    // sin rejilla, se mide otra vez sobre una copia con las rayas marcadas,
+    // con las palabras de la de verdad (el OCR lee mejor la normal).
+    if m.columnas.is_empty() {
+        let mut fuerte = img.pixeles.clone();
+        rayas_marcadas(&mut fuerte);
+        if let Some(mut m2) = pixpin_ia::tabla_aspecto::medir(&fuerte, img.ancho, img.alto, &ps)
+            && !m2.columnas.is_empty()
+        {
+            // (Los colores, los de la foto: la copia los oscurece.)
+            m2.texto = m.texto;
+            m = m2;
+        }
+    }
     // Torcida: el OCR otra vez sobre la foto enderezada (lee mucho mejor:
     // «p-OI» era «P-01») y la medida con esas palabras.
     if m.inclinacion != 0.0
@@ -840,6 +867,10 @@ pub fn tabla_para_el_lienzo(
 /// (18-oct) con el recorte de una zona que el planificador dijo que es una
 /// tabla. Devuelve ademas donde empieza la tabla en la imagen (pixeles):
 /// los elementos salen con su esquina en (0, 0).
+/// La letra de las tablas del lienzo: una del catalogo del lienzo (18-oct:
+/// con «Segoe UI», que no lo esta, el fichero guardaba la manuscrita).
+const LETRA_DE_TABLA: &str = "Work Sans";
+
 pub fn tabla_de_fichero(
     ruta: &Path,
     nombre: &str,
@@ -875,7 +906,9 @@ pub fn tabla_de_fichero(
         altos: cuadra.then(|| m.altos().iter().map(|a| *a as f32 * k).collect()),
         fondos: cuadra.then(|| m.fondos.iter().map(|f| f.iter().map(|x| x.map(col)).collect()).collect()),
         borde: m.borde.map(|(c, g)| (col(c), (g as f32 * k).max(0.75))),
-        aire: m.aire.filter(|_| cuadra).map(|a| a as f32 * k),
+        // (El aire medido, como mucho una letra: en la de tema oscuro salia
+        // de cuatro y el texto quedaba en mitad de la celda.)
+        aire: m.aire.filter(|_| cuadra).map(|a| a.min(m.tam_letra) as f32 * k),
     };
     let celdas: Vec<Vec<Celda>> = leida
         .filas
@@ -896,11 +929,50 @@ pub fn tabla_de_fichero(
             _ => m.texto,
         }
     };
-    let estilo = pixpin_motor2d::ecuacion::Estilo { color: col(texto), tam, opacidad: 1.0, familia: "Segoe UI".into() };
-    let medir = |s: &str, t: f32| pixpin_motor2d::texto::medida(s, t, "Segoe UI", Default::default());
+    let medir = |s: &str, t: f32| pixpin_motor2d::texto::medida(s, t, LETRA_DE_TABLA, Default::default());
+    // (Que cada renglon quepa en su columna medida: la letra del lienzo es
+    // mas ancha que la de la foto y se salia de la celda.)
+    let tam = match &aspecto.anchos {
+        Some(anchos) => {
+            let aire = aspecto.aire.unwrap_or(tam * 0.5) * 2.0;
+            let mut k_fit = 1.0f32;
+            for fila in &leida.filas {
+                for (c, t) in fila.iter().enumerate() {
+                    let Some(&ancho) = anchos.get(c) else { continue };
+                    let peso = if cabecera { 1.06 } else { 1.0 };
+                    for l in t.lines() {
+                        let (w, _) = medir(l, tam);
+                        if w * peso > 0.0 {
+                            k_fit = k_fit.min(((ancho - aire).max(ancho * 0.5)) / (w * peso));
+                        }
+                    }
+                }
+            }
+            (tam * k_fit.clamp(0.5, 1.0)).max(6.0)
+        }
+        None => tam,
+    };
+    let estilo = pixpin_motor2d::ecuacion::Estilo { color: col(texto), tam, opacidad: 1.0, familia: LETRA_DE_TABLA.into() };
     let mut els = elementos_de_tabla_con_aspecto(&celdas, &estilo, pixpin_motor2d::vector::Punto2::nuevo(0.0, 0.0), &medir, cabecera, &aspecto);
     if els.is_empty() {
         return Err("no salio ninguna celda que dibujar".into());
+    }
+    // **La negrita de la foto** (18-oct): la celda entera, negrita de verdad;
+    // un tramo, como texto rico del lienzo. Unas marcas sueltas, fuera.
+    for e in &mut els {
+        if let pixpin_motor2d::elemento::Figura::Texto { texto, .. } = &mut e.figura
+            && texto.contains("**")
+        {
+            let t = texto.clone();
+            if t.matches("**").count() % 2 == 1 {
+                *texto = t.replace("**", "");
+            } else if let Some(dentro) = t.trim().strip_prefix("**").and_then(|x| x.strip_suffix("**")).filter(|x| !x.contains("**")) {
+                *texto = dentro.to_string();
+                e.extras.negrita = true;
+            } else {
+                pixpin_motor2d::texto_rico::poner_fuente(e, &t);
+            }
+        }
     }
     // El texto de alrededor (un titulo, una nota): en su sitio respecto de
     // la tabla, con su letra (16-oct: faltaba el titulo).
@@ -994,6 +1066,8 @@ fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Optio
     let pedido = format!(
         "Esta es la foto de una tabla y, en JSON, lo que leyo el OCR. Corrige SOLO las letras mal leidas mirando la foto \
          (tildes, eñe, grados, simbolos, mayusculas, 0 por O): no cambies, anadas, quites ni muevas celdas ni palabras. \
+         Las palabras que en la foto estan en NEGRITA van entre **...** (solo esas: un tramo o la celda entera). \
+         Si una celda de la foto tiene texto y en el JSON esta vacia, escribelo. \
          Contesta solo el JSON con la misma forma.\n{leido}"
     );
     let mut p = Peticion::nueva(vec![Mensaje::usuario_con_imagen(pedido, jpg, "image/jpeg")]);
@@ -1009,9 +1083,11 @@ fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Optio
         for (f, fila) in filas.iter().enumerate() {
             let Some(fila) = fila.as_array().filter(|x| x.len() == m.celdas[f].len()) else { continue };
             for (c, nuevo) in fila.iter().enumerate() {
+                // (Las marcas de negrita no cuentan al compararlo; una celda
+                // que el OCR dejo vacia se acepta como venga.)
                 if let Some(n) = nuevo.as_str().map(str::trim)
                     && n != m.celdas[f][c]
-                    && se_parece(n, &m.celdas[f][c])
+                    && (m.celdas[f][c].trim().is_empty() && n.chars().count() <= 80 || se_parece(&n.replace("**", ""), &m.celdas[f][c]))
                 {
                     m.celdas[f][c] = n.to_string();
                     cambios += 1;

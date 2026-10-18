@@ -194,7 +194,7 @@ Devuelve SOLO un JSON: una lista con EXACTAMENTE el mismo numero de renglones y 
 El texto esta en espanol: pon TODAS las tildes y la ñ como deben ir (intencion → intención, ingenieria → ingeniería) y los signos ¿ ¡. \
 Los EMOJIS y simbolos que se ven en la imagen (📋 ✨ 🔗 📝 ✅ • ★ →) van tal cual en su sitio: el OCR los lee mal («+4-», «9») o no los lee. \
 Formulas en linea entre $...$ con LaTeX (\\sphericalangle para ∢, \\overline{AB}, \\overset{\\frown}{AC}, 90^\\circ, \\theta); \
-un renglon ENTERO en negrita va entre **...**; un tramo en cursiva entre *...*. NO pongas colores (\\color): la app ya sabe el color de cada renglon. \
+las palabras que en la imagen estan en NEGRITA van entre **...** (un tramo o el renglon entero, solo lo que es negrita); un tramo en cursiva entre *...*. NO pongas colores (\\color): la app ya sabe el color de cada renglon. \
 No juntes, partas, anadas ni quites renglones; no resumas; si un renglon esta bien, copialo igual. Sin explicaciones.";
 
 /// **Los renglones de una zona, corregidos** (17-oct): el OCR de cada renglon

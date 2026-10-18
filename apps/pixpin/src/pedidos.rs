@@ -362,6 +362,8 @@ pub enum Cual {
     Ajustes,
     Timeline,
     Buscar,
+    /// 18-oct: el horario semanal (bandeja → «Horario de clases…»).
+    Horario,
 }
 
 /// Que captura hace `capturar`: cada una es un comando de la bandeja
@@ -1106,6 +1108,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         // Las mismas entradas que la bandeja: su ventana es la respuesta.
         Pedido::Ventana { cual } => match cual {
             Cual::Tareas => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
+            Cual::Horario => crate::horario::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
             Cual::Galeria => crate::galeria_capturas::abrir(cx.idioma, cx.ubicacion.clone()),
             Cual::Lecciones => crate::timeline::abrir_lecciones(cx.idioma, cx.ubicacion.clone()),
             Cual::Sincronizar => crate::sincronizar::lanzar(cx.idioma, cx.ubicacion.clone()),
