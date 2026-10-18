@@ -1502,6 +1502,7 @@ compartir-word = Word
 ## Pedidos de otros programas (Flow Launcher, scripts; docs/protocolo-pedidos.md)
 pedido-tareas = Tareas
 pedido-escrito = Escrito en «{ $proyecto }».
+pedido-al-lienzo = Apilado en el lienzo «{ $lienzo }».
 microfono-abriendo = Abriendo el micrófono…
 microfono-guardando = Guardando…
 microfono-parar = Clic para parar · Esc la descarta
@@ -2631,7 +2632,11 @@ notif-capturas-titulo = Capturas que caducan
 # Laminas de geometria (arco exacto, marca de angulo, degradado)
 herramientas-angulo = Marca de ángulo
 lienzo-pista-arco = Arco (con la guía: repasa un óvalo de referencia; o por centro y dos puntos, o por tres puntos, en el panel)
-lienzo-pista-angulo = Ángulo: clic dentro del ángulo, cerca de donde se juntan dos rectas
+lienzo-pista-angulo = Ángulo (W): clic dentro del ángulo, cerca de donde se juntan dos rectas; pone α, β, θ… sin repetir (↑ ↓ o Alt+rueda cambian la letra; W otra vez: el de 90° con su cuadradito)
+lienzo-panel-modo-angulo = Letra del ángulo
+lienzo-angulo-modo-griega = α β θ
+lienzo-angulo-modo-simple = Sin letra
+lienzo-angulo-modo-recto = 90° ∟
 lienzo-panel-degradado = Relleno degradado
 lienzo-panel-cierre-arco = Cierre del arco
 lienzo-panel-modo-arco = Trazar el arco

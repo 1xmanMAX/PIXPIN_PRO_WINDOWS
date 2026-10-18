@@ -157,6 +157,7 @@ pub const VERBOS: &[Verbo] = &[
     Verbo { nombres: &["capturas", "galeria"], uso: "capturas", ayuda: "Abre la galeria de capturas.", opciones: &[], por_enlace: true, armar: |_| ventana("galeria") },
     Verbo { nombres: &["nota", "note"], uso: "nota [texto] [imagen…] [--proyecto P]", ayuda: "Abre una nota nueva en el editor, empezada con el texto.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_nota },
     Verbo { nombres: &["lienzo", "dibujo"], uso: "lienzo [nombre] [--proyecto P]", ayuda: "Abre un lienzo nuevo.", opciones: &["proyecto", "nombre"], por_enlace: true, armar: armar_lienzo },
+    Verbo { nombres: &["al-lienzo", "a-lienzo"], uso: "al-lienzo <nombre> [texto] [imagen…] [--proyecto P]", ayuda: "Manda el texto y las imagenes al lienzo de ese nombre, apilados en una columna libre (si no existe, lo crea; si esta abierto, entra en vivo). Con espacios en el nombre: --lienzo \"Plano casa\".", opciones: &["proyecto", "lienzo", "texto"], por_enlace: true, armar: armar_al_lienzo },
     Verbo { nombres: &["lista"], uso: "lista [titulo] [--proyecto P]", ayuda: "Crea una lista de tareas nueva.", opciones: &["proyecto", "titulo"], por_enlace: true, armar: armar_lista },
     Verbo { nombres: &["leccion"], uso: "leccion [texto] [imagen…] [--proyecto P]", ayuda: "Abre la ficha de una leccion aprendida nueva.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_leccion },
     Verbo { nombres: &["lecciones"], uso: "lecciones [buscar] [--proyecto P]", ayuda: "Abre la lista de lecciones (ya buscando, con texto).", opciones: &["proyecto", "consulta"], por_enlace: true, armar: armar_lecciones },
@@ -870,6 +871,35 @@ fn texto_o(e: &Entrada, campo: &str) -> Option<String> {
 
 fn armar_lienzo(e: &Entrada) -> Result<Orden, Fallo> {
     pedidos(vec![pedido("lienzo_nuevo", json!({ "nombre": texto_o(e, "nombre"), "proyecto": e.proyecto() }))])
+}
+
+/// `al-lienzo <nombre> [texto] [imagen…]`: el nombre es el primer suelto (o
+/// `--lienzo`); lo demas, como en `chat`.
+fn armar_al_lienzo(e: &Entrada) -> Result<Orden, Fallo> {
+    let (nombre, resto) = match e.campo("lienzo") {
+        Some(n) => (n, e.sueltos.clone()),
+        None => match e.sueltos.split_first() {
+            Some((n, r)) => (n.trim().to_string(), r.to_vec()),
+            None => return Err(Fallo::no_se_entiende("al-lienzo: falta el nombre del lienzo")),
+        },
+    };
+    if nombre.is_empty() {
+        return Err(Fallo::no_se_entiende("al-lienzo: falta el nombre del lienzo"));
+    }
+    let sin_nombre = Entrada { sueltos: resto, campos: e.campos.clone(), es_fichero: e.es_fichero, enlace: e.enlace };
+    let (texto, ficheros) = sin_nombre.texto_y_ficheros();
+    if texto.is_empty() && ficheros.is_empty() {
+        return Err(Fallo::no_se_entiende("al-lienzo: falta el texto o alguna imagen"));
+    }
+    if let Some(f) = ficheros.iter().find(|f| !es_imagen(f)) {
+        return Err(Fallo::no_se_entiende(format!("al-lienzo: un lienzo solo recibe imagenes y texto ({})", f.display())));
+    }
+    let imagenes: Vec<Value> = ficheros.iter().map(|p| ruta_json(p)).collect();
+    let mut campos = json!({ "lienzo": nombre, "texto": texto, "proyecto": e.proyecto() });
+    if !imagenes.is_empty() {
+        campos["imagenes"] = Value::Array(imagenes);
+    }
+    pedidos(vec![pedido("al_lienzo", campos)])
 }
 
 fn armar_lista(e: &Entrada) -> Result<Orden, Fallo> {

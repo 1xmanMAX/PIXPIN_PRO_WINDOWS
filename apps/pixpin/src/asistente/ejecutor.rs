@@ -493,6 +493,95 @@ impl EjecutorDelChat {
 }
 
 impl EjecutorDelChat {
+    /// Donde viven los chats (la de las pruebas, o la de la app).
+    fn raiz_de_datos(&self) -> Result<std::path::PathBuf, String> {
+        self.raiz
+            .clone()
+            .or_else(super::documentos::raiz)
+            .or_else(|| crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf()))
+            .ok_or_else(|| "no se sabe donde estan los datos de PixPin".to_string())
+    }
+
+    /// **Los lienzos del chat** (17-oct): listarlos, crear uno con nombre y
+    /// pasar a trabajar en uno existente. Crear y usar cambian el destino del
+    /// turno: lo que se dibuje, edite o mire (`ver_lienzo`) despues va a ese
+    /// lienzo, para que el asistente pueda revisar y corregir lo suyo.
+    fn lienzos(&mut self, a: &pixpin_ia::acciones::AccionApp) -> Result<String, String> {
+        use pixpin_ia::acciones::{CREAR_LIENZO, LIENZOS_DEL_CHAT, USAR_LIENZO};
+        use pixpin_proyecto::{almacen, cuaderno};
+        if !self.nube && self.vision.is_none() {
+            return Err("los lienzos del chat solo se manejan con el asistente de la nube".into());
+        }
+        let raiz = self.raiz_de_datos()?;
+        let carpeta = almacen::carpeta(&raiz, &self.proyecto);
+        let mensajes = cuaderno::Cuaderno::leer_de(&carpeta).map(|c| c.mensajes).unwrap_or_default();
+        let nombre = a.pedido.get("nombre").and_then(serde_json::Value::as_str).unwrap_or("").trim().to_string();
+        match a.herramienta {
+            LIENZOS_DEL_CHAT => {
+                let filas: Vec<String> = mensajes
+                    .iter()
+                    .filter(|m| super::chat::es_lienzo(m))
+                    .map(|m| {
+                        let r = m.referencia.clone().unwrap_or_default();
+                        let n = cuantas_cosas(&almacen::lienzo(&raiz, &self.proyecto, &r));
+                        let ahora = if self.destino.as_deref() == Some(r.as_str()) { " (trabajas en este)" } else { "" };
+                        format!("- «{}»: {}{ahora}", super::chat::nombre_de_lienzo(m), n.map_or("no se pudo leer".to_string(), |n| format!("{n} elementos")))
+                    })
+                    .collect();
+                if filas.is_empty() {
+                    return Ok("Este chat no tiene ningun lienzo todavia (crear_lienzo crea uno).".into());
+                }
+                Ok(format!("Lienzos de este chat:\n{}", filas.join("\n")))
+            }
+            CREAR_LIENZO => {
+                if nombre.is_empty() {
+                    return Err("falta el nombre del lienzo".into());
+                }
+                let numero = mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+                let m = crate::ventana_chat::escribir_lienzo(&raiz, &self.proyecto, super::chat::APARATO, numero, Some(&nombre))
+                    .map_err(|e| format!("no se pudo crear el lienzo: {e}"))?;
+                crate::ventana_chat::refrescar();
+                self.cambiar_de_lienzo(m.referencia.clone());
+                Ok(format!(
+                    "Creado el lienzo «{}» en este chat (vacio). Lo que dibujes, edites o mires con ver_lienzo ahora va a el.",
+                    super::chat::nombre_de_lienzo(&m)
+                ))
+            }
+            USAR_LIENZO => {
+                let i = super::chat::lienzo_por_nombre(&mensajes, &nombre).ok_or_else(|| {
+                    let hay: Vec<String> = mensajes.iter().filter(|m| super::chat::es_lienzo(m)).map(super::chat::nombre_de_lienzo).collect();
+                    if hay.is_empty() {
+                        format!("no hay ningun lienzo «{nombre}» en este chat (no tiene ninguno; crear_lienzo crea uno)")
+                    } else {
+                        format!("no hay ningun lienzo «{nombre}» en este chat; los que hay: {}", hay.join(", "))
+                    }
+                })?;
+                let m = &mensajes[i];
+                self.cambiar_de_lienzo(m.referencia.clone());
+                let resumen = self
+                    .resumen_del_lienzo()
+                    .unwrap_or_else(|| "Lienzo destino: vacio.".to_string());
+                Ok(format!(
+                    "Ahora trabajas en el lienzo «{}»: lo que dibujes, edites o mires con ver_lienzo va a el.\n{resumen}",
+                    super::chat::nombre_de_lienzo(m)
+                ))
+            }
+            otra => Err(format!("«{otra}» no es una herramienta de lienzos")),
+        }
+    }
+
+    /// El destino del turno pasa a ser otro lienzo: lo que se sabia del
+    /// anterior (su marco, lo elegido, lo ultimo tocado) ya no vale.
+    fn cambiar_de_lienzo(&mut self, referencia: Option<String>) {
+        if referencia != self.destino {
+            self.destino = referencia;
+            self.ctx = Default::default();
+            self.con_marco = false;
+            self.del_turno.clear();
+            self.fuente = None;
+        }
+    }
+
     /// **Mirar el lienzo** (`ojos.rs`): quien tiene la escena copia la zona
     /// y el hilo de los ojos la pinta.
     fn ver_lienzo(&mut self, m: &pixpin_ia::ojos::Mirada) -> Result<pixpin_ia::ojos::Vista, String> {
@@ -637,6 +726,8 @@ impl Ejecutor for EjecutorDelChat {
             Llamada::App(a) if a.herramienta == pixpin_ia::acciones_documentos::TABLA && a.pedido["destino"] == "lienzo" => {
                 self.tabla_al_lienzo(&a.pedido)
             }
+            // Los lienzos del chat: listar, crear y usar uno (17-oct, nube).
+            Llamada::App(a) if pixpin_ia::acciones::es_de_lienzos(a.herramienta) => self.lienzos(a),
             // Los documentos (tabla escaneada, anotar, buscar dentro, abrir
             // por su nombre, exportar): con los adjuntos de este chat.
             Llamada::App(a) if pixpin_ia::acciones_documentos::es_de_documentos(a.herramienta) => {
@@ -733,6 +824,13 @@ impl Ejecutor for EjecutorDelChat {
         }
         salida.into_iter().map(|r| r.unwrap_or_else(|| Err("no se hizo".into()))).collect()
     }
+}
+
+/// Cuantas cosas se ven en el `.excalidraw` de `ruta` (`None` si no se lee).
+fn cuantas_cosas(ruta: &std::path::Path) -> Option<usize> {
+    let texto = std::fs::read_to_string(ruta).ok()?;
+    let lienzo = pixpin_motor2d::excalidraw::leer(&texto).ok()?;
+    Some(pixpin_motor2d::excalidraw::a_escena(&lienzo).cuantos_visibles())
 }
 
 /// Recorta a `n` letras diciendolo, para que el modelo no crea que el

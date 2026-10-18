@@ -148,10 +148,11 @@ pub const BOTONES_EDITOR: [BotonCaja; 40] = [
     BotonCaja::Elegir(Herramienta::Lupa),
     BotonCaja::Elegir(Herramienta::Mosaico),
     BotonCaja::Elegir(Herramienta::Arco),
-    // La marca de angulo, junto al arco: las dos de las laminas de geometria.
-    BotonCaja::Elegir(Herramienta::Angulo),
     BotonCaja::Elegir(Herramienta::Serie),
     BotonCaja::Elegir(Herramienta::Punto),
+    // La marca de angulo con su letra griega, junto al punto con letra
+    // (17-oct): las dos nombran lo que hay en una figura de geometria.
+    BotonCaja::Elegir(Herramienta::Angulo),
     BotonCaja::Elegir(Herramienta::Cota),
     BotonCaja::Elegir(Herramienta::Escalar),
     BotonCaja::Elegir(Herramienta::EscalaGrafica),
@@ -208,7 +209,8 @@ pub enum GrupoBarra {
     Flechas,
     /// Lo que arregla una raya ya trazada.
     Arreglar,
-    /// Lo que nombra cosas del dibujo: el texto, el numerito y el punto.
+    /// Lo que nombra cosas del dibujo: el texto, el numerito, el punto y el
+    /// angulo con su letra griega.
     Nombrar,
     /// Lo que tapa o senala: pixelar, la lupa, el foco y el laser.
     Tapar,
@@ -241,7 +243,7 @@ impl GrupoBarra {
         match self {
             GrupoBarra::Elegir => &[E(H::Lazo), E(H::Bolita), E(H::Zona)],
             GrupoBarra::Trazar => &[E(H::Grafito), E(H::Resaltador), E(H::Relleno)],
-            GrupoBarra::Formas => &[E(H::Rectangulo), E(H::Elipse), E(H::Rombo), E(H::Arco), E(H::Angulo)],
+            GrupoBarra::Formas => &[E(H::Rectangulo), E(H::Elipse), E(H::Rombo), E(H::Arco)],
             GrupoBarra::Flechas => &[
                 E(H::Flecha),
                 E(H::FlechaLibre),
@@ -254,7 +256,7 @@ impl GrupoBarra {
                 E(H::Nudo),
                 E(H::CopiarEstilo),
             ],
-            GrupoBarra::Nombrar => &[E(H::Texto), E(H::Serie), E(H::Punto)],
+            GrupoBarra::Nombrar => &[E(H::Texto), E(H::Serie), E(H::Punto), E(H::Angulo)],
             GrupoBarra::Tapar => &[E(H::Mosaico), E(H::Lupa), E(H::Foco), E(H::Laser)],
             GrupoBarra::Medir => &[E(H::Cota), E(H::Escalar), E(H::EscalaGrafica)],
             GrupoBarra::Marco => &[E(H::Marco), BotonCaja::Imagen],
@@ -1264,8 +1266,9 @@ mod pruebas {
             (m.marco.x - boton.x).abs() <= 10,
             "bajo su boton: {m:?} {boton:?}"
         );
-        // Rectangulo, ovalo, rombo, arco y la marca de angulo.
-        assert_eq!(m.filas.len(), 5);
+        // Rectangulo, ovalo, rombo y arco (la marca de angulo esta con el
+        // punto, en «Nombrar», desde el 17-oct).
+        assert_eq!(m.filas.len(), 4);
         for (h, r) in &m.filas {
             assert!(m.marco.contiene(Punto { x: r.x, y: r.y }));
             assert_eq!(b.destino(centro(*r)), DestinoClic::Boton(*h));

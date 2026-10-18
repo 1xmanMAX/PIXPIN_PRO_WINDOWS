@@ -62,6 +62,19 @@ pub enum Pedido {
         nombre: Option<String>,
         proyecto: Option<String>,
     },
+    /// **Fotos y texto a un lienzo por su nombre** (17-oct, `pila_lienzo`):
+    /// igual que `chat`, pero se apilan en una columna libre del lienzo
+    /// `lienzo` (del `proyecto` dicho o, sin el, del que se llame asi en
+    /// cualquier chat; si no hay ninguno, se crea en `proyecto` o en Mensajes
+    /// guardados). Si esta abierto, entra en vivo.
+    AlLienzo {
+        lienzo: String,
+        proyecto: Option<String>,
+        #[serde(default)]
+        texto: String,
+        #[serde(default)]
+        imagenes: Vec<PathBuf>,
+    },
     Grabar {
         nombre: String,
         proyecto: Option<String>,
@@ -793,6 +806,48 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 None => crate::notas_md::Destino::Nueva { proyecto: f.id },
             };
             crate::notas_md::abrir(cx.idioma, cx.ubicacion.clone(), destino);
+        }
+        Pedido::AlLienzo {
+            lienzo,
+            proyecto,
+            texto,
+            imagenes,
+        } => {
+            let nombre = lienzo.trim().to_string();
+            if nombre.is_empty() {
+                return Err(Fallo::Roto("al_lienzo sin el nombre del lienzo".into()));
+            }
+            // Se leen ya: el borrador de Flow se vacia solo.
+            let mut fotos = Vec::with_capacity(imagenes.len());
+            for r in &imagenes {
+                if !r.is_file() {
+                    return Err(Fallo::SinImagen(r.clone()));
+                }
+                let img = crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(r))
+                    .ok_or_else(|| Fallo::NoEsImagen(r.clone()))?;
+                fotos.push(img);
+            }
+            let envio = crate::pila_lienzo::Envio {
+                texto: Some(sin_fichas_de_imagen(&texto, imagenes.len())).filter(|t| !t.trim().is_empty()),
+                imagenes: fotos,
+            };
+            if envio.vacio() {
+                return Err(Fallo::Roto("al_lienzo sin texto ni imagenes".into()));
+            }
+            let (pid, referencia, nombre_suyo) = match crate::pila_lienzo::buscar(raiz, proyecto.as_deref(), &nombre) {
+                Some(v) => v,
+                None => {
+                    let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+                    let numero = crate::ventana_chat::siguiente_numero_en(raiz, &f.id)?;
+                    let m = crate::ventana_chat::escribir_lienzo(raiz, &f.id, cx.aparato, numero, Some(&nombre))?;
+                    crate::ventana_chat::subir_en_la_lista(raiz, &f.id, m.cuando, &m.nombre)?;
+                    let r = m.referencia.clone().ok_or_else(|| Fallo::Roto("lienzo sin referencia".into()))?;
+                    (f.id, r, nombre.clone())
+                }
+            };
+            crate::pila_lienzo::mandar(raiz, &pid, &referencia, envio, ahora).map_err(Fallo::Imagen)?;
+            crate::ventana_chat::refrescar();
+            return Ok(aviso("pedido-al-lienzo", &[("lienzo", nombre_suyo)]));
         }
         Pedido::LienzoNuevo { nombre, proyecto } => {
             let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
@@ -2267,7 +2322,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 36] = [
+    const EJEMPLOS: [(&str, &str); 37] = [
         ("pines", r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#),
         ("timeline", r#"{"pixpin":1,"accion":"timeline","texto":"Llego el camion"}"#),
         (
@@ -2381,6 +2436,10 @@ mod pruebas {
         (
             "posponer",
             r#"{"pixpin":1,"accion":"posponer","mensaje":"m1","indice":2,"minutos":10}"#,
+        ),
+        (
+            "al_lienzo",
+            r#"{"pixpin":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta"}"#,
         ),
     ];
 

@@ -128,6 +128,7 @@ mod pedidos;
 mod pegar_en_flow;
 mod vista_rapida;
 mod pila_capturas;
+mod pila_lienzo;
 mod pin_vivo;
 mod modelo_bim;
 mod plano_cad;

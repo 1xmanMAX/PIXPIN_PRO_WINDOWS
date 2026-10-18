@@ -146,11 +146,20 @@ impl Gesto {
                     .collect();
                 if let Some((v, a, b)) = ge::angulo_en(&vivos, p_crudo, alcance) {
                     let r = v.distancia(p_crudo).clamp(8.0, 120.0);
-                    let marca =
-                        self.marca_con_estilo(ge::marca_para(v, a, b, r, self.estilo.arcos_angulo));
+                    // Con letra: la siguiente griega libre del dibujo entero.
+                    let usadas = ge::letras_de_angulo_usadas(&escena.elementos, None);
+                    let marca = self.marca_con_estilo(ge::marca_con_modo(
+                        self.estilo.modo_angulo,
+                        v,
+                        a,
+                        b,
+                        r,
+                        self.estilo.arcos_angulo,
+                        &usadas,
+                    ));
                     let id = escena.anadir(marca);
                     self.seleccion.limpiar();
-                    let _ = id;
+                    self.ultima_marca = Some(id);
                 }
                 Some(respuesta())
             }
@@ -368,5 +377,69 @@ impl Gesto {
                 )
             })
             .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// La letra griega de la marca de angulo (17-oct-2026)
+
+impl Gesto {
+    /// **La marca a la que le cambian la letra la rueda y las flechas**: la
+    /// elegida (si lo elegido es una sola marca de angulo) o, con la
+    /// herramienta Angulo en la mano, la ultima que se puso. `None` si no hay
+    /// ninguna viva o es un recto (el cuadradito no lleva letra).
+    pub fn marca_para_letra(&self, escena: &Escena) -> Option<u64> {
+        let es_marca = |id: u64| {
+            escena
+                .buscar(id)
+                .is_some_and(|e| !e.borrado && e.extras.marca_angulo.as_ref().is_some_and(|m| !m.recto))
+        };
+        let ids = self.seleccion.ids();
+        if ids.len() == 1 && es_marca(ids[0]) {
+            return Some(ids[0]);
+        }
+        if !ids.is_empty() || self.herramienta != Herramienta::Angulo {
+            return None;
+        }
+        self.ultima_marca.filter(|id| es_marca(*id))
+    }
+
+    /// **Cambia la letra griega** de [`Gesto::marca_para_letra`] a la de al
+    /// lado (`paso` > 0 la siguiente, < 0 la anterior), saltando las que ya
+    /// usan otras marcas del dibujo, en un paso de deshacer. `true` si cambio.
+    pub fn cambiar_letra_de_angulo(&mut self, escena: &mut Escena, paso: i32) -> bool {
+        let Some(id) = self.marca_para_letra(escena) else {
+            return false;
+        };
+        let usadas = ge::letras_de_angulo_usadas(&escena.elementos, Some(id));
+        let actual = escena
+            .buscar(id)
+            .and_then(|e| e.extras.marca_angulo.as_ref()?.valor.clone());
+        let nueva = ge::letra_vecina(actual.as_deref(), paso, &usadas);
+        if actual.as_deref() == Some(nueva.as_str()) {
+            return false;
+        }
+        escena.abrir_paso();
+        escena.apuntar_edicion(id);
+        if let Some(e) = escena.buscar_mut(id) {
+            if let Some(m) = e.extras.marca_angulo.as_mut() {
+                m.valor = Some(nueva);
+            }
+            e.tocar();
+        }
+        escena.cerrar_paso();
+        true
+    }
+
+    /// **La variante de 90 grados** de la herramienta Angulo: pulsar su
+    /// atajo con ella ya en la mano pasa del cuadradito a la letra griega y
+    /// al reves (como coger otra vez el mismo lapiz en el movil cambia su
+    /// punta). Devuelve el modo que queda.
+    pub fn alternar_angulo_recto(&mut self) -> ge::ModoAngulo {
+        self.estilo.modo_angulo = match self.estilo.modo_angulo {
+            ge::ModoAngulo::Recto => ge::ModoAngulo::Griega,
+            _ => ge::ModoAngulo::Recto,
+        };
+        self.estilo.modo_angulo
     }
 }

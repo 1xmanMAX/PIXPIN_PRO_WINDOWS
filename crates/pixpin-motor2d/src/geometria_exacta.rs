@@ -1228,5 +1228,114 @@ pub fn marca_para(v: Punto2, p1: Punto2, p2: Punto2, r: f32, arcos: u8) -> Eleme
     }
 }
 
+// ---------------------------------------------------------------------------
+// Los angulos con su letra griega (17-oct-2026)
+//
+// El usuario: «poner los angulos con letras griegas de forma rapida, como la
+// funcion de los puntos, pero para poner rapidamente los angulos en elementos
+// geometricos; ademas el de 90 grados con su cuadradito». Es la misma
+// herramienta Angulo con una variable mas ([`ModoAngulo`]), no otra: la marca
+// sigue siendo un `MarcaAngulo` y la letra va en su `valor`, como cuando la
+// pone el asistente.
+
+/// **Que pone la herramienta Angulo.**
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModoAngulo {
+    /// La marca con la siguiente letra griega libre (α, β, θ...), como el
+    /// punto pone A, B, C. El recto, con su cuadradito y sin letra.
+    #[default]
+    Griega,
+    /// La marca sola, sin letra (lo de antes).
+    Simple,
+    /// Siempre el cuadradito del angulo recto, aunque el dibujo a mano no
+    /// mida 90 justos.
+    Recto,
+}
+
+/// **Las letras de los angulos, en el orden de los libros de colegio**: α, β,
+/// θ, γ y ω primero (las que pidio el usuario, en su orden), y luego las que
+/// se usan tambien para angulos.
+pub const LETRAS_DE_ANGULO: [&str; 16] = [
+    "α", "β", "θ", "γ", "ω", "δ", "φ", "ε", "λ", "μ", "ρ", "σ", "τ", "ψ", "η", "κ",
+];
+
+/// La letra numero `i` de la serie: pasada la ultima sigue con α1, β1... como
+/// los puntos siguen con A1 tras la Z.
+pub fn letra_de_angulo(i: usize) -> String {
+    let n = LETRAS_DE_ANGULO.len();
+    let letra = LETRAS_DE_ANGULO[i % n];
+    match i / n {
+        0 => letra.to_string(),
+        vuelta => format!("{letra}{vuelta}"),
+    }
+}
+
+/// Las letras que ya llevan las marcas de angulo del dibujo (sin `excepto`).
+pub fn letras_de_angulo_usadas(elementos: &[Elemento], excepto: Option<u64>) -> Vec<String> {
+    elementos
+        .iter()
+        .filter(|e| !e.borrado && Some(e.id) != excepto)
+        .filter_map(|e| e.extras.marca_angulo.as_ref()?.valor.clone())
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect()
+}
+
+/// **La siguiente letra libre**, mirando el dibujo y no un contador (lo
+/// mismo que `puntos_etiquetados::siguiente_etiqueta`): borrar la marca β
+/// deja libre la β para la siguiente.
+pub fn siguiente_letra_de_angulo(usadas: &[String]) -> String {
+    (0..10_000)
+        .map(letra_de_angulo)
+        .find(|l| !usadas.iter().any(|u| u == l))
+        .unwrap_or_else(|| LETRAS_DE_ANGULO[0].to_string())
+}
+
+/// **La letra de al lado** (`paso` positivo, la siguiente; negativo, la
+/// anterior) de la serie, saltando las que ya usan otras marcas: es lo que
+/// hacen la rueda y las flechas sobre la marca recien puesta. Sin letra (o
+/// con una que no es de la serie), la primera libre.
+pub fn letra_vecina(actual: Option<&str>, paso: i32, usadas: &[String]) -> String {
+    let n = LETRAS_DE_ANGULO.len() as i32;
+    let Some(i) = actual.and_then(|a| LETRAS_DE_ANGULO.iter().position(|l| *l == a)) else {
+        return siguiente_letra_de_angulo(usadas);
+    };
+    let paso = if paso >= 0 { 1 } else { -1 };
+    let mut j = i as i32;
+    for _ in 0..n {
+        j = (j + paso).rem_euclid(n);
+        let l = LETRAS_DE_ANGULO[j as usize];
+        if !usadas.iter().any(|u| u == l) {
+            return l.to_string();
+        }
+    }
+    LETRAS_DE_ANGULO[i].to_string()
+}
+
+/// **La marca que pone la herramienta Angulo en `modo`**: la de siempre
+/// ([`marca_para`]), el cuadradito a la fuerza o, con letra, la siguiente
+/// griega libre de `usadas` (el recto no la lleva: el cuadradito ya lo dice).
+pub fn marca_con_modo(
+    modo: ModoAngulo,
+    v: Punto2,
+    p1: Punto2,
+    p2: Punto2,
+    r: f32,
+    arcos: u8,
+    usadas: &[String],
+) -> Elemento {
+    let mut e = match modo {
+        ModoAngulo::Recto => marca_de_angulo_recto(v, p1, p2, r * 0.6),
+        ModoAngulo::Griega | ModoAngulo::Simple => marca_para(v, p1, p2, r, arcos),
+    };
+    if modo == ModoAngulo::Griega
+        && let Some(m) = e.extras.marca_angulo.as_mut()
+        && !m.recto
+    {
+        m.valor = Some(siguiente_letra_de_angulo(usadas));
+    }
+    e
+}
+
 #[cfg(test)]
 mod pruebas;

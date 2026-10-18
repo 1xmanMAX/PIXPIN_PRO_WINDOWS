@@ -751,3 +751,102 @@ fn exportar_a_svg_pinta_las_bandas_el_raya_punto_y_la_marca() {
     assert!(svg.contains("45°"), "el valor de la marca");
     assert!(!svg.contains("NaN"));
 }
+
+// ---------------------------------------------------------------------------
+// Los angulos con su letra griega (17-oct)
+
+/// Un triangulo de lados rectos: A(0,0), B(200,0), C(60,-150). Ningun angulo
+/// es recto.
+fn triangulo() -> Escena {
+    escena_con(vec![
+        recta(p(0.0, 0.0), p(200.0, 0.0)),
+        recta(p(200.0, 0.0), p(60.0, -150.0)),
+        recta(p(60.0, -150.0), p(0.0, 0.0)),
+    ])
+}
+
+fn letras(escena: &Escena) -> Vec<Option<String>> {
+    escena
+        .visibles()
+        .filter_map(|e| e.extras.marca_angulo.as_ref())
+        .map(|m| m.valor.clone())
+        .collect()
+}
+
+#[test]
+fn la_serie_griega_sigue_el_orden_pedido_y_no_repite() {
+    assert_eq!(letra_de_angulo(0), "α");
+    assert_eq!(letra_de_angulo(4), "ω");
+    assert_eq!(letra_de_angulo(16), "α1", "pasada la ultima, con numero");
+    let usadas = vec!["α".to_string(), "θ".to_string()];
+    assert_eq!(siguiente_letra_de_angulo(&usadas), "β");
+    // La de al lado salta las que usan otras marcas, y da la vuelta.
+    assert_eq!(letra_vecina(Some("β"), 1, &usadas), "γ");
+    assert_eq!(letra_vecina(Some("β"), -1, &usadas), "κ");
+    // Sin letra, la primera libre (caso negativo: no inventa una usada).
+    assert_eq!(letra_vecina(None, 1, &usadas), "β");
+}
+
+#[test]
+fn la_herramienta_angulo_pone_alfa_beta_theta_y_reutiliza_la_borrada() {
+    let mut escena = triangulo();
+    let mut g = Gesto::nuevo();
+    g.tomar_herramienta(Herramienta::Angulo);
+    assert_eq!(g.estilo.modo_angulo, ModoAngulo::Griega, "de fabrica, con letra");
+    clic(&mut g, &mut escena, p(25.0, -8.0)); // en A
+    clic(&mut g, &mut escena, p(175.0, -8.0)); // en B
+    assert_eq!(letras(&escena), vec![Some("α".into()), Some("β".into())]);
+    // Se borra α: la siguiente vuelve a ser α, no θ (se mira el dibujo).
+    let alfa = escena
+        .visibles()
+        .find(|e| e.extras.marca_angulo.as_ref().and_then(|m| m.valor.as_deref()) == Some("α"))
+        .map(|e| e.id)
+        .unwrap();
+    escena.borrar(alfa);
+    clic(&mut g, &mut escena, p(62.0, -125.0)); // en C
+    assert_eq!(letras(&escena), vec![Some("β".into()), Some("α".into())]);
+}
+
+#[test]
+fn el_recto_lleva_su_cuadradito_y_sin_letra() {
+    // En un angulo recto de verdad, aunque el modo sea con letra.
+    let mut escena = escena_con(vec![
+        recta(p(0.0, 0.0), p(200.0, 0.0)),
+        recta(p(0.0, 0.0), p(0.0, -200.0)),
+    ]);
+    let mut g = Gesto::nuevo();
+    g.tomar_herramienta(Herramienta::Angulo);
+    clic(&mut g, &mut escena, p(20.0, -20.0));
+    let m = escena.visibles().find_map(|e| e.extras.marca_angulo.clone()).unwrap();
+    assert!(m.recto && m.valor.is_none());
+    // La variante de 90: el cuadradito aunque el angulo no mida 90 (el
+    // dibujo a mano), y otra vez el atajo la devuelve a la letra.
+    let mut escena = triangulo();
+    assert_eq!(g.alternar_angulo_recto(), ModoAngulo::Recto);
+    clic(&mut g, &mut escena, p(25.0, -8.0));
+    let m = escena.visibles().find_map(|e| e.extras.marca_angulo.clone()).unwrap();
+    assert!(m.recto, "a la fuerza, el cuadradito");
+    assert!(m.valor.is_none());
+    assert_eq!(g.alternar_angulo_recto(), ModoAngulo::Griega);
+}
+
+#[test]
+fn la_rueda_cambia_la_letra_de_la_ultima_marca_sin_repetir_y_se_deshace() {
+    let mut escena = triangulo();
+    let mut g = Gesto::nuevo();
+    g.tomar_herramienta(Herramienta::Angulo);
+    clic(&mut g, &mut escena, p(25.0, -8.0)); // α
+    clic(&mut g, &mut escena, p(175.0, -8.0)); // β
+    // β -> θ (la siguiente), -> γ; y hacia atras salta α, que es de otra.
+    assert!(g.cambiar_letra_de_angulo(&mut escena, 1));
+    assert_eq!(letras(&escena)[1].as_deref(), Some("θ"));
+    assert!(g.cambiar_letra_de_angulo(&mut escena, -1));
+    assert_eq!(letras(&escena)[1].as_deref(), Some("β"));
+    assert!(g.cambiar_letra_de_angulo(&mut escena, -1));
+    assert_eq!(letras(&escena)[1].as_deref(), Some("κ"), "salta α, que ya la tiene otra");
+    assert!(escena.deshacer());
+    assert_eq!(letras(&escena)[1].as_deref(), Some("β"));
+    // Con otra herramienta y nada elegido no toca nada (caso negativo).
+    g.tomar_herramienta(Herramienta::Lapiz);
+    assert!(!g.cambiar_letra_de_angulo(&mut escena, 1));
+}
