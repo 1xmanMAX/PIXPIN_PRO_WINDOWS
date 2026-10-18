@@ -1037,7 +1037,7 @@ fn atender(
         Accion::Enviar(toque) => {
             let cx = s.contexto();
             if let Sub::Enviar(e) = &mut s.sub
-                && enviar_wifi::tocar(e, toque, &cx, elegir)
+                && enviar_wifi::tocar(e, toque, &cx, elegir, &s.responden)
             {
                 s.volver();
             }
@@ -1615,6 +1615,7 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
                 raiz: raiz.to_path_buf(),
                 yo,
                 de: otro.id.clone(),
+                de_nombre: otro.nombre.clone(),
                 carpeta_lienzo: carpeta_sincro(raiz).join("al-lienzo"),
             })
         }),
@@ -2528,7 +2529,7 @@ fn pintar(
             y = recibir_wifi::pintar(&mut l, textos, r, 20.0 * e, ancho - 40.0 * e, y);
         }
         Sub::Enviar(en) => {
-            y = enviar_wifi::pintar(&mut l, textos, en, 20.0 * e, ancho - 40.0 * e, y);
+            y = enviar_wifi::pintar(&mut l, textos, en, &s.responden, 20.0 * e, ancho - 40.0 * e, y);
         }
         Sub::Elegir(el) => {
             y = elegir::pintar(&mut l, textos, el, &s.identidad.yo.nombre, ancho, y);

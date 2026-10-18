@@ -41,7 +41,7 @@ pub fn aparatos(ubicacion: &Ubicacion) -> Vec<AparatoDelGrupo> {
     aparatos_de(ubicacion.raiz())
 }
 
-fn aparatos_de(raiz: &Path) -> Vec<AparatoDelGrupo> {
+pub(super) fn aparatos_de(raiz: &Path) -> Vec<AparatoDelGrupo> {
     let Ok(id) = super::leer_identidad(raiz) else {
         return Vec::new();
     };
@@ -122,7 +122,7 @@ pub fn enviar(
 
 /// Lo de [`enviar`], sin hilo. `buscar` sale a la red solo si la direccion
 /// recordada no contesta (en las pruebas, nunca).
-fn mandar_ya(
+pub(super) fn mandar_ya(
     raiz: &Path,
     aparato: &str,
     ficheros: &[PathBuf],
@@ -230,7 +230,7 @@ fn traducir(e: ErrorAlLienzo, movil: &str) -> Fallo {
 }
 
 /// El aviso del globo.
-fn aviso(t: &Catalogo, hecho: &Result<Entregado, Fallo>) -> String {
+pub(super) fn aviso(t: &Catalogo, hecho: &Result<Entregado, Fallo>) -> String {
     let mut args = fluent_bundle::FluentArgs::new();
     let (clave, movil) = match hecho {
         Ok(e) => {

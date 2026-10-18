@@ -486,6 +486,13 @@ ew-malos = Alguien probó con un código equivocado ({ $n } de { $de }).
 ew-esperando = Esperando… Pueden conectarse varios aparatos; a cada uno le das tú al botón. El código deja de valer al cerrar esta pantalla.
 ew-quemado = Alguien probó varias veces con un código equivocado, así que este código ya no vale. Vuelve a enviar para sacar otro.
 ew-cerrar = Cerrar
+ew-grupo = Tus aparatos · sin código
+ew-grupo-como = Están en tu grupo: se envía directo, sin escanear. Llega a lo que tengan abierto (un chat; un lienzo solo acepta fotos) o a Mensajes guardados.
+ew-grupo-se-ve = En la misma Wi-Fi
+ew-grupo-no-se-ve = No se ve ahora: abre PixPin en ese aparato
+ew-grupo-enviando = Enviando…
+ew-grupo-todos = Enviar a todos los que se ven
+ew-grupo-actualiza = Actualiza PixPin en { $movil }: aún no recibe archivos directos. Que use el código de abajo.
 
 ## «Actualizar el que tengo / Crear como nuevo» al recibir (RecibirActivity.kt)
 rw-ya-tienes = Ya tienes «{ $nombre }» con los mismos códigos
@@ -2405,6 +2412,9 @@ al-movil-cortado = No se pudo enviar a { $movil }: { $motivo }
 al-movil-sin-grupo = Este PC no está en un grupo: ábrelo en Sincronizar de PixPin
 al-movil-no-es-del-grupo = Ese aparato ya no está en el grupo de este PC
 al-movil-sin-imagenes = No había nada que enviar
+al-frente-lienzo = { $de } te envió «{ $nombre }»: está en el lienzo abierto
+al-frente-chat-abierto = { $de } te envió «{ $nombre }» al chat «{ $chat }»
+al-frente-guardados = { $de } te envió «{ $nombre }»: está en Mensajes guardados
 
 ## Visor de hojas de Excel (visor_hoja)
 hoja-copiado = { $celdas ->
