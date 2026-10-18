@@ -451,19 +451,49 @@ pub fn avisar_al_chat(hwnd: isize) {
     CHAT.store(hwnd, Ordering::SeqCst);
 }
 
+/// **Que hoja tiene el editor abierto** (la referencia de su dibujo), si la
+/// dijo: lo que se pide para OTRO lienzo del chat (`@lienzo:`, o el que eligio
+/// el asistente con `usar_lienzo`/`crear_lienzo`, 17-oct) no le toca a el sino
+/// al chat, que lo hace en el fichero. Sin decirla, todo es suyo (lo de antes).
+static HOJA_DEL_EDITOR: Mutex<Option<String>> = Mutex::new(None);
+
 /// Mientras vive, hay un lienzo abierto y es el quien recibe lo dibujado.
 pub struct EditorAbierto(isize);
 
 impl EditorAbierto {
     pub fn nuevo(hwnd: isize) -> EditorAbierto {
         EDITOR.store(hwnd, Ordering::SeqCst);
+        if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
+            *h = None;
+        }
         EditorAbierto(hwnd)
+    }
+
+    /// Con la hoja que tiene (la referencia de su dibujo).
+    pub fn con_hoja(self, referencia: Option<String>) -> EditorAbierto {
+        if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
+            *h = referencia.filter(|r| !r.is_empty());
+        }
+        self
+    }
+}
+
+/// Si el pedido es para el editor abierto: sin destino, o para su misma hoja,
+/// o si el editor no dijo cual tiene.
+pub fn es_para_el_editor(p: &Pedido) -> bool {
+    let hoja = HOJA_DEL_EDITOR.lock().ok().and_then(|h| h.clone());
+    match (&p.destino, hoja) {
+        (Some(d), Some(h)) => *d == h,
+        _ => true,
     }
 }
 
 impl Drop for EditorAbierto {
     fn drop(&mut self) {
         let _ = EDITOR.compare_exchange(self.0, 0, Ordering::SeqCst, Ordering::SeqCst);
+        if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
+            *h = None;
+        }
         // Lo que quedara en la cola es ya del chat: que se entere.
         if hay_pedidos() {
             despertar(CHAT.load(Ordering::SeqCst));
@@ -494,11 +524,30 @@ fn despertar(hwnd: isize) {
 
 /// Deja el pedido en la cola y despierta a quien lo va a atender.
 pub fn pedir(p: Pedido) {
+    let del_editor = es_para_el_editor(&p);
     if let Ok(mut c) = COLA.lock() {
         c.push(p);
     }
     let editor = EDITOR.load(Ordering::SeqCst);
-    despertar(if editor != 0 { editor } else { CHAT.load(Ordering::SeqCst) });
+    despertar(if editor != 0 && del_editor { editor } else { CHAT.load(Ordering::SeqCst) });
+}
+
+/// Los pedidos que cumplen `para`; los demas se quedan en la cola.
+pub fn tomar_si(para: impl Fn(&Pedido) -> bool) -> Vec<Pedido> {
+    let Ok(mut c) = COLA.lock() else { return Vec::new() };
+    let (si, no): (Vec<Pedido>, Vec<Pedido>) = std::mem::take(&mut *c).into_iter().partition(|p| para(p));
+    *c = no;
+    si
+}
+
+/// Lo que le toca al chat: todo si no hay editor; con editor, lo que es
+/// para otro lienzo ([`es_para_el_editor`]).
+pub fn tomar_para_el_chat() -> Vec<Pedido> {
+    if hay_editor() {
+        tomar_si(|p| !es_para_el_editor(p))
+    } else {
+        tomar()
+    }
 }
 
 pub fn hay_pedidos() -> bool {
@@ -616,7 +665,7 @@ pub fn atender_en_editor_con(
         return false;
     }
     let mut algo = false;
-    for mut p in tomar() {
+    for mut p in tomar_si(es_para_el_editor) {
         let r = match &p.trabajo {
             Trabajo::Dibujar if p.hoja.is_some() => {
                 let h = p.hoja.expect("se acaba de mirar");
@@ -693,6 +742,9 @@ pub fn contestar_lo_elegido(escena: &Escena, elegidos: &[u64]) {
 pub(crate) fn vaciar_para_pruebas() {
     let _ = tomar();
     EDITOR.store(0, Ordering::SeqCst);
+    if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
+        *h = None;
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -786,7 +786,56 @@ pub const ACCIONES: &[Accion] = &[
         confirmar: None,
         hecho: "Hecho.",
     },
+    // 17-oct: «que el bot pueda crear nuevos canvas o analizar existentes y
+    // pueda verlos tambien, de forma que se pueda mejorar su propio trabajo».
+    // Las hace el ejecutor del chat ([`LIENZOS`]): cambian adonde va lo que
+    // dibuja, edita o mira (`ver_lienzo`) en el resto del turno.
+    Accion {
+        herramienta: LIENZOS_DEL_CHAT,
+        accion: EN_EL_CHAT,
+        descripcion: "Lista los lienzos de este chat (nombre y cuantas cosas tiene cada uno) y dice en cual trabajas ahora.",
+        categoria: Categoria::Notas,
+        claves: &[],
+        fijos: "{}",
+        params: &[],
+        confirmar: None,
+        hecho: "Lienzos listados.",
+    },
+    Accion {
+        herramienta: CREAR_LIENZO,
+        accion: EN_EL_CHAT,
+        descripcion: "Crea un lienzo NUEVO con ese nombre en este chat, sin abrirlo, y lo deja como destino: lo que dibujes, edites o mires con ver_lienzo despues va a el.",
+        categoria: Categoria::Notas,
+        claves: &[],
+        fijos: "{}",
+        params: &[p("nombre", Tipo::Texto, true, "nombre del lienzo nuevo")],
+        confirmar: None,
+        hecho: "Lienzo «{nombre}» creado.",
+    },
+    Accion {
+        herramienta: USAR_LIENZO,
+        accion: EN_EL_CHAT,
+        descripcion: "Pasa a trabajar en un lienzo EXISTENTE de este chat por su nombre: devuelve el resumen de sus elementos (con #id) y lo deja como destino de lo que dibujes, edites o mires con ver_lienzo (para revisarlo y corregirlo).",
+        categoria: Categoria::Notas,
+        claves: &[],
+        fijos: "{}",
+        params: &[p("nombre", Tipo::Texto, true, "nombre del lienzo (o un trozo)")],
+        confirmar: None,
+        hecho: "Trabajando en «{nombre}».",
+    },
 ];
+
+/// Las herramientas de los lienzos del chat (17-oct), que hace el ejecutor
+/// del chat con lo que sabe del turno (su lienzo destino).
+pub const LIENZOS_DEL_CHAT: &str = "lienzos_del_chat";
+pub const CREAR_LIENZO: &str = "crear_lienzo";
+pub const USAR_LIENZO: &str = "usar_lienzo";
+pub const LIENZOS: &[&str] = &[LIENZOS_DEL_CHAT, CREAR_LIENZO, USAR_LIENZO];
+
+/// Si es una de las herramientas de los lienzos del chat ([`LIENZOS`]).
+pub fn es_de_lienzos(herramienta: &str) -> bool {
+    LIENZOS.contains(&herramienta)
+}
 
 /// **Las filas del 15-oct, solo para la nube** (Claude, DeepSeek). El
 /// usuario: «con relacion a la IA local, aun dejala ahi, no la toques,
@@ -808,6 +857,9 @@ pub const SOLO_NUBE: &[&str] = &[
     "leer_excel",
     "resumen_de_actividad",
     "leer_documento",
+    LIENZOS_DEL_CHAT,
+    CREAR_LIENZO,
+    USAR_LIENZO,
 ];
 
 /// **Las opciones que solo ve la nube** en una fila de las de siempre

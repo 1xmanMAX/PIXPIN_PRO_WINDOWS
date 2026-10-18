@@ -535,6 +535,15 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
                 .to_string(),
         ),
         AccionPanel::Forma(CambioForma::ArcosAngulo(n)) => Some(")".repeat(n as usize)),
+        AccionPanel::Forma(CambioForma::ModoAngulo(m)) => Some(
+            textos()
+                .t(match m {
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Griega => "lienzo-angulo-modo-griega",
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Simple => "lienzo-angulo-modo-simple",
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Recto => "lienzo-angulo-modo-recto",
+                })
+                .to_string(),
+        ),
         // El raya-punto: el dibujo con letras, que Excalidraw no lo tiene.
         AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::RayaPunto)) => Some("— · —".into()),
         _ => None,
@@ -679,6 +688,7 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         AccionPanel::Forma(CambioForma::CierreArco(Some(_))) => &i::ANGLE_ICON,
         AccionPanel::Forma(CambioForma::ModoArco(_)) => &i::EDGE_ROUND_ICON,
         AccionPanel::Forma(CambioForma::ArcosAngulo(_)) => &i::ANGLE_ICON,
+        AccionPanel::Forma(CambioForma::ModoAngulo(_)) => &i::ANGLE_ICON,
         _ => return None,
     })
 }
@@ -724,6 +734,7 @@ fn clave(s: Seccion) -> &'static str {
         Seccion::CierreArco => "lienzo-panel-cierre-arco",
         Seccion::ModoArco => "lienzo-panel-modo-arco",
         Seccion::ArcosAngulo => "lienzo-panel-arcos-angulo",
+        Seccion::ModoAngulo => "lienzo-panel-modo-angulo",
     }
 }
 
@@ -1630,6 +1641,11 @@ mod pruebas {
             (CambioForma::ArcosAngulo(n), Figura::Arco { .. }) => {
                 e.extras.marca_angulo.as_ref().is_some_and(|m| m.arcos == n)
             }
+            (CambioForma::ModoAngulo(m), Figura::Arco { .. }) => e
+                .extras
+                .marca_angulo
+                .as_ref()
+                .is_some_and(|x| pixpin_ui::panel_lateral::modo_de_marca(x) == m),
             _ => false,
         }
     }

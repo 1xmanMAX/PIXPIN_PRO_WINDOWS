@@ -998,7 +998,12 @@ fn abrir_en_modo(
     // pantalla no es un lienzo.
     let _para_el_asistente = pantalla
         .is_none()
-        .then(|| crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize));
+        .then(|| {
+            // Con la hoja que tiene: lo que el asistente pida para otro
+            // lienzo del chat lo hace el chat en su fichero (17-oct).
+            crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize)
+                .con_hoja(crate::zona_al_chat::hoja_abierta().map(|h| h.dibujo))
+        });
 
     'bucle: loop {
         // D129: se mide siempre (unos nanosegundos por `Instant::now`); solo
@@ -1047,6 +1052,20 @@ fn abrir_en_modo(
             // con lo que se ve, lo elegido y el almacen de imagenes (pegar).
             let elegidos = gesto.seleccion.ids().to_vec();
             if crate::asistente::al_lienzo::atender_en_editor_con(&mut escena, (x0, y0, x1, y1), &elegidos, &mut imagenes) {
+                todo_sucio = true;
+                contenido_sucio = true;
+                interfaz_sucia = true;
+                ventana.invalidar();
+            }
+            // Lo mandado a este lienzo por su nombre (`pila_lienzo`, 17-oct):
+            // apilado en su columna y, si no se ve, la vista va hasta ello.
+            let apilados = crate::pila_lienzo::atender(h, &mut escena, &mut imagenes);
+            if !apilados.is_empty() {
+                if let Some(c) = crate::pila_lienzo::caja_de(&escena, &apilados)
+                    && crate::asistente::al_lienzo::desplazar_para_ver((x0, y0, x1, y1), c) != (0.0, 0.0)
+                {
+                    crate::asistente::al_lienzo::pedir_mostrar(c);
+                }
                 todo_sucio = true;
                 contenido_sucio = true;
                 interfaz_sucia = true;
@@ -1418,6 +1437,21 @@ fn abrir_en_modo(
             } else {
                 navegacion::Modificadores::default()
             };
+            // **Alt+rueda con el angulo en la mano** (17-oct): cambia la letra
+            // griega de la marca recien puesta (o de la elegida), hacia
+            // arriba la siguiente; la rueda sola sigue acercando.
+            if let EventoOverlay::Rueda(delta) = ev
+                && gesto.herramienta == Herramienta::Angulo
+                && pixpin_shell::entrada::modificadores_pulsados().alt
+                && gesto.marca_para_letra(&escena).is_some()
+            {
+                if gesto.cambiar_letra_de_angulo(&mut escena, if delta > 0 { 1 } else { -1 }) {
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
+                continue;
+            }
             // Revision 1: el evento que cerraria el gesto a veces no llega
             // (Alt+Tab suelta el espacio sin `TeclaSoltada`; Windows le
             // quita la captura al raton a mitad de un arrastre sin mandar

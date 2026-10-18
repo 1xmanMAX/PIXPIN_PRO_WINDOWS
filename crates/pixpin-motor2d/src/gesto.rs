@@ -459,6 +459,10 @@ pub struct Gesto {
     clics_arco: geometria::ClicsDeArco,
     /// Repasando una guia: el angulo del cursor la ultima vez.
     arqueando: Option<f32>,
+    /// **La ultima marca de angulo que puso la herramienta Angulo**: la rueda
+    /// y las flechas le cambian la letra griega sin tener que elegirla
+    /// (`Gesto::cambiar_letra_de_angulo`).
+    pub ultima_marca: Option<u64>,
 }
 
 mod geometria;
@@ -472,6 +476,7 @@ impl Default for Gesto {
             herramienta: Herramienta::Lapiz,
             clics_arco: Default::default(),
             arqueando: None,
+            ultima_marca: None,
             trazo: Vec::with_capacity(PUNTOS_RESERVADOS),
             enganche: crate::enganche::Ajustes::default(),
             anclaje_activo: None,

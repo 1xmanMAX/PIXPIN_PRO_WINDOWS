@@ -3344,3 +3344,22 @@ fn intro_espera_a_que_la_app_lo_apunte_y_vuelve_a_la_lista() {
     // Caso negativo: un id que la app no apunto no esta.
     assert!(!crate::asistente::apuntado(&r, "otro"));
 }
+
+/// 17-oct: «lienzo <nombre> > texto» manda el texto a ese lienzo (se apila),
+/// como «<proyecto> > texto» a un chat.
+#[test]
+fn lienzo_nombre_y_separador_manda_al_lienzo() {
+    let r = raiz("al-lienzo");
+    let v = buscar(&r, "lienzo Plano casa > la puerta del fondo @gest");
+    assert_eq!(v[0].titulo, "Mandar al lienzo «Plano casa»: la puerta del fondo");
+    assert_eq!(
+        *pedido_de(&v[0]),
+        json!({ "pixpin": 1, "accion": "al_lienzo", "lienzo": "Plano casa", "texto": "la puerta del fondo", "proyecto": "P1" })
+    );
+    // Sin «>», sigue siendo un lienzo nuevo con ese nombre (caso negativo).
+    let v = buscar(&r, "lienzo Plano casa");
+    assert_eq!(pedido_de(&v[0])["accion"], "lienzo_nuevo");
+    // Sin nombre delante del «>», no manda nada: pide el nombre.
+    let v = buscar(&r, "lienzo > hola");
+    assert!(!matches!(&v[0].accion, Accion::Pedido(_)));
+}

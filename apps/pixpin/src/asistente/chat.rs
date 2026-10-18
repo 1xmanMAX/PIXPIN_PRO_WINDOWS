@@ -159,6 +159,12 @@ pub fn mencion_de_lienzo(m: &Nota) -> String {
     format!("{MENCION_LIENZO}{}", nombre_de_lienzo(m).replace(char::is_whitespace, "_"))
 }
 
+/// Un nombre de lienzo para compararlo: sin tildes ni mayusculas, `_` por
+/// espacio y sin espacios a los lados.
+pub fn nombre_normal(s: &str) -> String {
+    sin_tildes(s.trim()).trim().to_string()
+}
+
 fn sin_tildes(s: &str) -> String {
     s.to_lowercase()
         .chars()
@@ -204,6 +210,23 @@ pub fn resolver_lienzo(pregunta: &str, mensajes: &[Nota]) -> (String, Option<Str
     }
     texto.push_str(resto);
     (texto, destino)
+}
+
+/// **El lienzo de la conversacion que se llama `nombre`** (sin tildes ni
+/// mayusculas, `_` por espacio, como la mencion): el ultimo que se llame
+/// justo asi o, si ninguno, el ultimo cuyo nombre lo contenga. Lo usan las
+/// herramientas de lienzos del asistente y los envios a un lienzo por su
+/// nombre (`pila_lienzo`, 17-oct).
+pub fn lienzo_por_nombre(mensajes: &[Nota], nombre: &str) -> Option<usize> {
+    let buscado = sin_tildes(nombre.trim());
+    if buscado.trim().is_empty() {
+        return None;
+    }
+    let lienzos = || mensajes.iter().enumerate().rev().filter(|(_, m)| es_lienzo(m));
+    lienzos()
+        .find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)) == buscado)
+        .or_else(|| lienzos().find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)).contains(buscado.trim())))
+        .map(|(i, _)| i)
 }
 
 /// El lienzo propio del asistente en esta conversacion: el ultimo que creo

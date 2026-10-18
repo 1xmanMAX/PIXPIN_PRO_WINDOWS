@@ -1494,6 +1494,7 @@ compartir-word = Word
 ## Requests from other programs (Flow Launcher, scripts; docs/protocolo-pedidos.md)
 pedido-tareas = Tasks
 pedido-escrito = Written in “{ $proyecto }”.
+pedido-al-lienzo = Stacked on the canvas “{ $lienzo }”.
 microfono-abriendo = Opening the microphone…
 microfono-guardando = Saving…
 microfono-parar = Click to stop · Esc discards it
@@ -2615,7 +2616,11 @@ notif-capturas-titulo = Screenshots expiring
 # Geometry sheets (exact arc, angle mark, gradient)
 herramientas-angulo = Angle mark
 lienzo-pista-arco = Arc (on a guide: trace a reference oval; or by centre and two points, or by three points, in the panel)
-lienzo-pista-angulo = Angle: click inside the angle, near where two lines meet
+lienzo-pista-angulo = Angle (W): click inside the angle, near where two lines meet; puts α, β, θ… without repeating (↑ ↓ or Alt+wheel change the letter; W again: the 90° one with its little square)
+lienzo-panel-modo-angulo = Angle letter
+lienzo-angulo-modo-griega = α β θ
+lienzo-angulo-modo-simple = No letter
+lienzo-angulo-modo-recto = 90° ∟
 lienzo-panel-degradado = Gradient fill
 lienzo-panel-cierre-arco = Arc closure
 lienzo-panel-modo-arco = Draw the arc

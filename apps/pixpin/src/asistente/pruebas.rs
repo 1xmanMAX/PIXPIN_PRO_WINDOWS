@@ -1064,3 +1064,69 @@ fn el_lienzo_abierto_da_lo_elegido_solo_si_se_lo_piden() {
     al_lienzo::contestar_lo_elegido(&escena, &[]);
     assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap().is_empty());
 }
+
+/// 17-oct: el asistente (nube) lista los lienzos del chat, crea uno con nombre
+/// y pasa a trabajar en otro por su nombre: lo siguiente va a ese lienzo.
+#[test]
+fn el_asistente_lista_crea_y_usa_lienzos_del_chat_por_su_nombre() {
+    use pixpin_ia::agente::Ejecutor;
+    use pixpin_ia::herramientas::Llamada;
+    let raiz = std::env::temp_dir().join(format!("pixpin-lienzos-ia-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&raiz);
+    std::fs::create_dir_all(&raiz).unwrap();
+    crate::ventana_chat::escribir_lienzo(&raiz, "obra", "PC", 1, Some("Fachada")).unwrap();
+    let llamar = |ej: &mut super::ejecutor::EjecutorDelChat, h: &str, args: serde_json::Value| {
+        let fila = pixpin_ia::acciones::por_nombre(h).expect("la fila");
+        let a = pixpin_ia::acciones::validar(fila, args.as_object().unwrap()).expect("valida");
+        ej.ejecutar(&Llamada::App(a))
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let parar = Arc::new(AtomicBool::new(false));
+    let mut ej = super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone())
+        .en_la_nube(true)
+        .con_raiz(Some(raiz.clone()))
+        .con_espera(Duration::from_millis(200));
+    let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
+    assert!(lista.contains("«Fachada»: 0 elementos"), "{lista}");
+    let hecho = llamar(&mut ej, "crear_lienzo", serde_json::json!({"nombre": "Planta baja"})).unwrap();
+    assert!(hecho.contains("«Planta baja»"), "{hecho}");
+    let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
+    assert!(lista.contains("«Planta baja»: 0 elementos (trabajas en este)"), "{lista}");
+    // Usar otro por su nombre (sin tildes ni mayusculas): el destino cambia.
+    let usado = llamar(&mut ej, "usar_lienzo", serde_json::json!({"nombre": "FACHADA"})).unwrap();
+    assert!(usado.contains("«Fachada»"), "{usado}");
+    let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
+    assert!(lista.contains("«Fachada»: 0 elementos (trabajas en este)"), "{lista}");
+    // Casos negativos: un nombre que no esta dice los que hay; y con el
+    // modelo local no se ofrece.
+    let e = llamar(&mut ej, "usar_lienzo", serde_json::json!({"nombre": "Corte"})).unwrap_err();
+    assert!(e.contains("Fachada") && e.contains("Planta baja"), "{e}");
+    let mut local = super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar).con_raiz(Some(raiz.clone()));
+    assert!(llamar(&mut local, "lienzos_del_chat", serde_json::json!({})).is_err());
+    al_lienzo::vaciar_para_pruebas();
+    let _ = std::fs::remove_dir_all(&raiz);
+}
+
+/// 17-oct: con un lienzo abierto, lo pedido para OTRO lienzo del chat no se
+/// lo lleva el editor: lo hace el chat en su fichero.
+#[test]
+fn lo_pedido_para_otro_lienzo_no_se_lo_lleva_el_editor_abierto() {
+    al_lienzo::vaciar_para_pruebas();
+    let editor = al_lienzo::EditorAbierto::nuevo(1).con_hoja(Some("dib-a".into()));
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let para = |d: Option<&str>| al_lienzo::Pedido::de_trabajo("obra".into(), d.map(str::to_string), al_lienzo::Trabajo::Resumir, tx.clone());
+    al_lienzo::pedir(para(Some("dib-b")));
+    al_lienzo::pedir(para(Some("dib-a")));
+    al_lienzo::pedir(para(None));
+    let del_editor = al_lienzo::tomar_si(al_lienzo::es_para_el_editor);
+    assert_eq!(del_editor.iter().map(|p| p.destino.clone()).collect::<Vec<_>>(), vec![Some("dib-a".into()), None]);
+    let del_chat = al_lienzo::tomar_para_el_chat();
+    assert_eq!(del_chat.len(), 1);
+    assert_eq!(del_chat[0].destino.as_deref(), Some("dib-b"));
+    drop(editor);
+    // Sin decir su hoja, el editor se lo lleva todo (lo de antes).
+    let _e = al_lienzo::EditorAbierto::nuevo(1);
+    al_lienzo::pedir(para(Some("dib-b")));
+    assert_eq!(al_lienzo::tomar_si(al_lienzo::es_para_el_editor).len(), 1);
+    al_lienzo::vaciar_para_pruebas();
+}

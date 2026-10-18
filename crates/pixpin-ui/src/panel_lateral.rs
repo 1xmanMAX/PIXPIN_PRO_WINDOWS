@@ -294,6 +294,9 @@ pub enum Seccion {
     ModoArco,
     /// Cuantos arquitos lleva una marca de angulo.
     ArcosAngulo,
+    /// Que pone la herramienta Angulo: letra griega, la marca sola o el
+    /// cuadradito de 90.
+    ModoAngulo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -465,6 +468,22 @@ pub struct Mandos {
     pub cierre_arco: Mando<Option<pixpin_motor2d::geometria_exacta::CierreArco>>,
     pub modo_arco: Mando<pixpin_motor2d::geometria_exacta::ModoArco>,
     pub arcos_angulo: Mando<u8>,
+    pub modo_angulo: Mando<pixpin_motor2d::geometria_exacta::ModoAngulo>,
+}
+
+/// Que modo de la herramienta Angulo dejaria una marca asi: el cuadradito es
+/// el recto, con letra la griega, y si no la sola.
+pub fn modo_de_marca(
+    m: &pixpin_motor2d::geometria_exacta::MarcaAngulo,
+) -> pixpin_motor2d::geometria_exacta::ModoAngulo {
+    use pixpin_motor2d::geometria_exacta::ModoAngulo as M;
+    if m.recto {
+        M::Recto
+    } else if m.valor.as_deref().is_some_and(|v| !v.trim().is_empty()) {
+        M::Griega
+    } else {
+        M::Simple
+    }
 }
 
 impl Mandos {
@@ -610,6 +629,7 @@ impl Mandos {
             cierre_arco: si(h == Herramienta::Arco, estilo.cierre_arco),
             modo_arco: si(h == Herramienta::Arco, estilo.modo_arco),
             arcos_angulo: si(h == Herramienta::Angulo, estilo.arcos_angulo),
+            modo_angulo: si(h == Herramienta::Angulo, estilo.modo_angulo),
             ..Mandos::default()
         }
     }
@@ -685,10 +705,12 @@ impl Mandos {
                 // El arco de lamina: su cierre, o sus arquitos si es la marca
                 // de un angulo (el cuadradito no tiene arquitos que contar).
                 Figura::Arco { barrido: Some(_), .. } => match &e.extras.marca_angulo {
-                    Some(marca) if !marca.recto => {
-                        m.arcos_angulo = m.arcos_angulo.juntar(marca.arcos)
+                    Some(marca) => {
+                        if !marca.recto {
+                            m.arcos_angulo = m.arcos_angulo.juntar(marca.arcos);
+                        }
+                        m.modo_angulo = m.modo_angulo.juntar(modo_de_marca(marca));
                     }
-                    Some(_) => {}
                     None => m.cierre_arco = m.cierre_arco.juntar(e.extras.cierre),
                 },
                 Figura::Foco { cristal } => {
@@ -1490,6 +1512,18 @@ impl PanelLateral {
                 )
             };
             c.fila(&[s(M::Guia), s(M::CentroYPuntos), s(M::TresPuntos)]);
+            c.separar();
+        }
+        if m.modo_angulo.sale() {
+            use pixpin_motor2d::geometria_exacta::ModoAngulo as M;
+            c.titulo(Seccion::ModoAngulo);
+            let s = |v| {
+                (
+                    AccionPanel::Forma(CambioForma::ModoAngulo(v)),
+                    m.modo_angulo.valor() == Some(v),
+                )
+            };
+            c.fila(&[s(M::Griega), s(M::Simple), s(M::Recto)]);
             c.separar();
         }
         if m.arcos_angulo.sale() {

@@ -562,9 +562,10 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
     }
 
     // 1. Lo que hay que meter en un lienzo, si no hay ninguno abierto (si lo
-    //    hay, lo atiende su bucle).
-    if !al_lienzo::hay_editor() {
-        for p in al_lienzo::tomar() {
+    //    hay, lo atiende su bucle) o si es para otro lienzo del chat que no
+    //    es el abierto (17-oct, `al_lienzo::es_para_el_editor`).
+    {
+        for p in al_lienzo::tomar_para_el_chat() {
             // Dibujar, editar o resumir (`pixpin_ia::edicion`), sin abrirlo.
             let r = trabajar_en_el_lienzo_del_chat(
                 ubicacion,
@@ -826,12 +827,30 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
 ) -> Result<(al_lienzo::Respuesta, Option<String>), String> {
     let raiz = ubicacion.raiz();
     let es_el_abierto = abierto.as_deref().is_some_and(|a| a.ficha.id == proyecto);
-    let mensajes: Vec<cuaderno::Mensaje> = match abierto.as_deref() {
-        Some(a) if es_el_abierto => a.mensajes.clone(),
-        _ => cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(raiz, proyecto))
+    let del_disco = || {
+        cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(raiz, proyecto))
             .map(|c| c.mensajes)
-            .unwrap_or_default(),
+            .unwrap_or_default()
     };
+    let mut mensajes: Vec<cuaderno::Mensaje> = match abierto.as_deref() {
+        Some(a) if es_el_abierto => a.mensajes.clone(),
+        _ => del_disco(),
+    };
+    // Un lienzo que el asistente acaba de crear en este turno (`crear_lienzo`,
+    // 17-oct) ya esta en el cuaderno pero aun no en la conversacion abierta:
+    // se busca en el disco, y al acabar entra en la conversacion (`indice`
+    // `None`, mas abajo).
+    let mut del_disco_solo = false;
+    if let Some(r) = destino
+        && es_el_abierto
+        && !mensajes.iter().any(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r))
+    {
+        let leidos = del_disco();
+        if leidos.iter().any(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r)) {
+            mensajes = leidos;
+            del_disco_solo = true;
+        }
+    }
     let elegido = destino
         .and_then(|r| {
             mensajes
@@ -840,6 +859,7 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         })
         .or_else(|| ia_chat::lienzo_propio(&mensajes));
     let (indice, mensaje, nuevo) = match elegido {
+        Some(i) if del_disco_solo => (None, mensajes[i].clone(), false),
         Some(i) => (Some(i), mensajes[i].clone(), false),
         // Resumir o editar no estrenan un lienzo: si aun no hay, esta vacio.
         None if !matches!(trabajo, al_lienzo::Trabajo::Dibujar) => {
@@ -954,6 +974,13 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
     }
     if let Some(a) = abierto.as_deref_mut().filter(|_| es_el_abierto) {
         let vista = leer_vista(ubicacion, proyecto, &mensaje);
+        // Si ya entro por otro camino (la ventana releyo el cuaderno), se
+        // cambia en su sitio en vez de salir dos veces.
+        let indice = indice.or_else(|| {
+            a.mensajes
+                .iter()
+                .position(|m| m.referencia.is_some() && m.referencia == mensaje.referencia)
+        });
         match indice {
             Some(i) if i < a.vistas.len() => a.vistas[i] = vista,
             _ => {

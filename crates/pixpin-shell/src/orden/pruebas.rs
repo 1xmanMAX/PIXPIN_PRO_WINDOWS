@@ -394,3 +394,24 @@ fn una_sola_lista_blanca_para_enlaces_y_botones_de_avisos() {
     // `--atajo capturar` (la Jump List) sigue siendo cosa del arranque.
     assert!(de_argumentos(&args(&["--atajo", "capturar"]), &existe).is_none());
 }
+
+/// 17-oct: `al-lienzo <nombre> …` manda texto y fotos a un lienzo por su
+/// nombre, como `chat` a un chat.
+#[test]
+fn al_lienzo_manda_texto_y_fotos_al_lienzo_por_su_nombre() {
+    let p = pedidos_de(&["al-lienzo", "Plano", "la puerta", "C:\\a\\foto.png", "--proyecto", "pr-1"]);
+    assert_eq!(
+        p,
+        vec![json!({"pixpin":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta","proyecto":"pr-1","imagenes":["C:\\a\\foto.png"]})]
+    );
+    valido(&p[0]);
+    // Con espacios en el nombre, por --lienzo.
+    let p = pedidos_de(&["al-lienzo", "--lienzo", "Plano casa", "hola"]);
+    assert_eq!(p[0]["lienzo"], "Plano casa");
+    assert_eq!(p[0]["texto"], "hola");
+    // Casos negativos: sin nombre, sin nada que mandar, o con un fichero que
+    // no es imagen.
+    assert!(orden(&["al-lienzo"]).is_err());
+    assert!(orden(&["al-lienzo", "Plano"]).is_err());
+    assert!(orden(&["al-lienzo", "Plano", "C:\\a\\plano.pdf"]).is_err());
+}

@@ -1634,6 +1634,31 @@ fn verbo(
             crate::imagenes::con_imagenes(&mut r, resto, ctx);
             v.push(r);
         }
+        // **«lienzo <nombre> > texto»** (17-oct): mandarlo a ese lienzo, como
+        // «<proyecto> > texto» lo manda a un chat; se apila en una columna
+        // libre (y si esta abierto, entra en vivo). `[img NN]`, sus fotos.
+        Funcion::Lienzo if resto.contains(SEPARADOR) => {
+            let (nombre, texto) = resto.split_once(SEPARADOR).unwrap_or((resto, ""));
+            let (nombre, texto) = (nombre.trim(), texto.trim());
+            if nombre.is_empty() {
+                v.push(Resultado::nuevo(
+                    "Mandar a un lienzo: escribe su nombre antes de «>»",
+                    "lienzo <nombre> > <texto> · Ctrl+V pega una foto",
+                    glifo::LIENZO,
+                    Accion::Consulta(ctx.consulta("lienzo ")),
+                ));
+            } else {
+                let mut r = Resultado::nuevo(
+                    if texto.is_empty() { format!("Mandar al lienzo «{nombre}»…") } else { format!("Mandar al lienzo «{nombre}»: {texto}") },
+                    format!("Intro: se apila en el lienzo (si no existe, se crea {destino})"),
+                    glifo::LIENZO,
+                    Accion::Pedido(pedido("al_lienzo", json!({ "lienzo": nombre, "texto": texto, "proyecto": destino_id }))),
+                );
+                r.autocompletar = Some(ctx.consulta(&format!("lienzo {nombre} {SEPARADOR} {texto}")));
+                crate::imagenes::con_imagenes(&mut r, texto, ctx);
+                v.push(r);
+            }
+        }
         Funcion::Lienzo => {
             let (titulo, campos) = if resto.is_empty() {
                 (

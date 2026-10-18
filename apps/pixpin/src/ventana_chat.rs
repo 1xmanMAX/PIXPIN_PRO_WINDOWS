@@ -13010,6 +13010,14 @@ fn abrir_una_hoja(
     let Some(m) = mensajes.get(indice) else {
         return (false, None);
     };
+    // Lo que se mande a este lienzo por su nombre mientras esta abierto entra
+    // en vivo (`pila_lienzo`); se apunta antes de leer el fichero y se suelta
+    // despues de guardarlo.
+    let _pila = m
+        .referencia
+        .as_deref()
+        .filter(|r| !r.is_empty())
+        .map(|r| crate::pila_lienzo::abierto(raiz, proyecto, r));
     let Some(HojaPreparada {
         ruta,
         lienzo,
@@ -13080,7 +13088,7 @@ fn abrir_una_hoja(
 /// deja lo ajeno donde estaba y `escribir` devuelve tal cual lo que no se
 /// toco. Y si no se toco nada, no se escribe: abrir una hoja para mirarla no
 /// puede cambiarle la fecha al fichero, que es lo que mira la sincronizacion.
-fn guardar_hoja_dibujada(
+pub(crate) fn guardar_hoja_dibujada(
     ruta: &std::path::Path,
     lienzo: &pixpin_motor2d::excalidraw::Lienzo,
     escena: &pixpin_motor2d::Escena,

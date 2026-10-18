@@ -140,6 +140,9 @@ pub struct EstiloDibujo {
     pub arcos_angulo: u8,
     /// Como traza la herramienta Arco.
     pub modo_arco: crate::geometria_exacta::ModoArco,
+    /// **Que pone la herramienta Angulo**: con letra griega (de fabrica), la
+    /// marca sola o el cuadradito del recto.
+    pub modo_angulo: crate::geometria_exacta::ModoAngulo,
 }
 
 impl Default for EstiloDibujo {
@@ -177,6 +180,7 @@ impl Default for EstiloDibujo {
             degradado: None,
             arcos_angulo: 1,
             modo_arco: crate::geometria_exacta::ModoArco::Guia,
+            modo_angulo: crate::geometria_exacta::ModoAngulo::Griega,
         }
     }
 }
@@ -248,6 +252,7 @@ impl EstiloDibujo {
             CambioForma::Degradado(t) => self.degradado = t,
             CambioForma::ArcosAngulo(n) => self.arcos_angulo = n.clamp(1, 3),
             CambioForma::ModoArco(m) => self.modo_arco = m,
+            CambioForma::ModoAngulo(m) => self.modo_angulo = m,
             // Solo con un foco elegido: el foco nace de una figura con los de
             // fabrica del movil.
             CambioForma::Oscurecer(_) | CambioForma::ZonaFoco(_) => {}
@@ -403,6 +408,10 @@ pub enum CambioForma {
     /// Como traza la herramienta Arco. Solo es un «actual»: no cambia nada
     /// de lo ya dibujado.
     ModoArco(crate::geometria_exacta::ModoArco),
+    /// **Que pone la herramienta Angulo** (letra griega, sola, recto). En una
+    /// marca elegida, «recto» la pasa al cuadradito y «sola» le quita la
+    /// letra; la letra nueva la pone la herramienta, que ve el dibujo entero.
+    ModoAngulo(crate::geometria_exacta::ModoAngulo),
 }
 
 impl CambioForma {
@@ -445,7 +454,7 @@ impl CambioForma {
             CambioForma::Oscurecer(_) | CambioForma::ZonaFoco(_) => {
                 matches!(figura, Figura::Foco { .. })
             }
-            CambioForma::CierreArco(_) | CambioForma::ArcosAngulo(_) => {
+            CambioForma::CierreArco(_) | CambioForma::ArcosAngulo(_) | CambioForma::ModoAngulo(_) => {
                 matches!(figura, Figura::Arco { barrido: Some(_), .. })
             }
             CambioForma::Degradado(_) => matches!(
@@ -543,6 +552,14 @@ fn cambiaria_forma(e: &crate::elemento::Elemento, cambio: CambioForma) -> bool {
             .marca_angulo
             .as_ref()
             .is_some_and(|m| !m.recto && m.arcos != n.clamp(1, 3)),
+        (CambioForma::ModoAngulo(m), _) => e.extras.marca_angulo.as_ref().is_some_and(|x| {
+            use crate::geometria_exacta::ModoAngulo as M;
+            match m {
+                M::Recto => !x.recto,
+                M::Simple => x.recto || x.valor.is_some(),
+                M::Griega => x.recto,
+            }
+        }),
         (CambioForma::Degradado(t), _) => e.extras.degradado.map(|d| d.tipo) != t,
         _ => false,
     }
@@ -731,6 +748,15 @@ fn escribir_forma(e: &mut crate::elemento::Elemento, cambio: CambioForma) {
             });
         }
         CambioForma::ModoArco(_) => {}
+        CambioForma::ModoAngulo(m) => {
+            use crate::geometria_exacta::ModoAngulo as M;
+            if let Some(x) = e.extras.marca_angulo.as_mut() {
+                x.recto = m == M::Recto;
+                if m != M::Griega {
+                    x.valor = None;
+                }
+            }
+        }
     }
 }
 
