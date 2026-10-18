@@ -98,6 +98,8 @@ pub enum Clase2 {
     /// Lo que lee `leer_documento`: lo de [`Clase2::ConTexto`] y las fotos
     /// (por el OCR).
     Legible,
+    /// Cualquier archivo (subirlo a una conexion: Google Drive...).
+    Cualquiera,
 }
 
 impl Clase2 {
@@ -109,6 +111,7 @@ impl Clase2 {
             Clase2::Audio => matches!(e.as_str(), "m4a" | "mp3" | "wav" | "ogg" | "opus" | "aac" | "flac" | "wma" | "amr"),
             Clase2::Excel => matches!(e.as_str(), "xlsx" | "xlsm" | "xls"),
             Clase2::Legible => Clase2::ConTexto.sirve(nombre) || super::ocr::es_imagen(Path::new(nombre)),
+            Clase2::Cualquiera => true,
         }
     }
 
@@ -119,6 +122,7 @@ impl Clase2 {
             Clase2::Audio => "un audio",
             Clase2::Excel => "un Excel",
             Clase2::Legible => "un documento (PDF, Word, PowerPoint, Excel, nota o foto)",
+            Clase2::Cualquiera => "un archivo",
         }
     }
 }
@@ -237,6 +241,13 @@ fn elegir(cx: &Contexto, archivo: Option<&str>, clase: Clase2) -> Result<Elegido
         ));
     }
     Ok(puntuados.swap_remove(0).1)
+}
+
+/// **Un archivo de los chats** por su nombre o descripcion (sin nada, el
+/// adjunto mas reciente): (nombre, ruta). Lo usan las conexiones para subir
+/// (`conexiones.rs`), con la misma eleccion que estas herramientas.
+pub(super) fn archivo_del_chat(cx: &Contexto, archivo: Option<&str>) -> Result<(String, PathBuf), String> {
+    elegir(cx, archivo, Clase2::Cualquiera).map(|e| (e.c.nombre, e.c.ruta))
 }
 
 // ---------------------------------------------------------------------------

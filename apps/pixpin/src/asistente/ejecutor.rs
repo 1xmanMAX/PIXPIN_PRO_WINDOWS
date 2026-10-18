@@ -751,6 +751,30 @@ impl Ejecutor for EjecutorDelChat {
                     },
                 )
             }
+            // Las conexiones (17-oct, Google Drive...): con los archivos de
+            // este chat, y subir pregunta antes en la burbuja.
+            Llamada::App(a) if pixpin_ia::conexiones::acciones::es_de_conexiones(a.herramienta) => {
+                let ubicacion = match (&self.raiz, crate::oscuro::ubicacion()) {
+                    (Some(r), Some(u)) if u.raiz() == r.as_path() => u,
+                    (Some(r), _) => pixpin_store::Ubicacion::Portable { raiz: r.clone() },
+                    (None, Some(u)) => u,
+                    (None, None) => return Err("no se sabe donde estan los datos de PixPin".into()),
+                };
+                let idioma = crate::compartir::idioma_de(&ubicacion);
+                super::conexiones::hacer(
+                    a,
+                    &super::en_el_chat::Contexto {
+                        ubicacion: &ubicacion,
+                        proyecto: &self.proyecto,
+                        adjuntos: &self.adjuntos,
+                        mandar: &self.mandar,
+                        parar: &self.parar,
+                        idioma,
+                        tx: Some(&self.tx),
+                    },
+                    &self.confirmar,
+                )
+            }
             // Las de la app que devuelven algo al modelo (voz, PDF, audio,
             // Excel, lo hecho hoy): con los adjuntos de este chat.
             Llamada::App(a) if pixpin_ia::acciones::es_en_el_chat(a.herramienta) => {

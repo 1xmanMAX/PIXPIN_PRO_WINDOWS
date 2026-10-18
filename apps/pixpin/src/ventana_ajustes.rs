@@ -316,6 +316,11 @@ enum Clave {
     ClaveNube(u8),
     /// Borrar la clave guardada de un proveedor.
     BorrarClave(u8),
+    /// La caja del ID de cliente de una conexion (indice en
+    /// `conexiones::SERVICIOS`). Va cifrado a su fichero, nunca al TOML.
+    ClienteConexion(u8),
+    /// Conectar o desconectar una conexion (Google Drive...).
+    Conexion(u8),
     /// Una automatizacion del asistente, por su posicion en la lista: su
     /// interruptor y su aspa (13-oct). No es un ajuste: vive en su JSON.
     Automatizacion(u16),
@@ -359,6 +364,8 @@ impl Clave {
                 | Clave::PalabrasFabrica
                 | Clave::ClaveNube(_)
                 | Clave::BorrarClave(_)
+                | Clave::ClienteConexion(_)
+                | Clave::Conexion(_)
                 | Clave::Automatizacion(_)
                 | Clave::CorrerAutomatizacion(_)
                 | Clave::SinAutomatizaciones
@@ -1102,6 +1109,38 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     ));
                 }
             }
+            // Conexiones (17-oct-2026): Google Drive y los que vengan, un
+            // par de filas por servicio con las mismas piezas que las claves.
+            v.push(grupo(t, "ajustes2-g-conexiones"));
+            for (i, s) in pixpin_ia::conexiones::SERVICIOS.iter().enumerate() {
+                use crate::asistente::conexiones as conex;
+                let mut args = FluentArgs::new();
+                args.set("servicio", s.nombre);
+                v.push(op(
+                    a,
+                    Clave::ClienteConexion(i as u8),
+                    t.t_args("ajustes2-conexion-cliente", &args),
+                    conex::estado_cliente(s, t),
+                    Control::Entrada {
+                        marcador: t.t("ajustes2-conexion-cliente-marcador"),
+                        boton: tt("ajustes2-conexion-guardar"),
+                    },
+                ));
+                if conex::hay_cliente(s) {
+                    let boton = if conex::conectado(s) || conex::conectando(s) {
+                        "ajustes2-conexion-desconectar"
+                    } else {
+                        "ajustes2-conexion-conectar"
+                    };
+                    v.push(op(
+                        a,
+                        Clave::Conexion(i as u8),
+                        t.t_args("ajustes2-conexion-de", &args),
+                        conex::estado(s, t),
+                        Control::Boton(tt(boton)),
+                    ));
+                }
+            }
             v.extend(filas_de_automatizaciones(cx));
             v
         }
@@ -1429,6 +1468,8 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::PalabrasFabrica
         | Clave::ClaveNube(_)
         | Clave::BorrarClave(_)
+        | Clave::ClienteConexion(_)
+        | Clave::Conexion(_)
         | Clave::Automatizacion(_)
         | Clave::CorrerAutomatizacion(_)
         | Clave::SinAutomatizaciones => {}
@@ -1779,7 +1820,7 @@ fn ruta_exe() -> Option<std::path::PathBuf> {
 /// Si la fila `i` es la caja de una clave de API (se pinta tapada, no se
 /// copia y se vacia al salir).
 fn es_clave(filas: &[(Clave, Fila)], i: usize) -> bool {
-    matches!(filas.get(i), Some((Clave::ClaveNube(_), _)))
+    matches!(filas.get(i), Some((Clave::ClaveNube(_) | Clave::ClienteConexion(_), _)))
 }
 
 /// «Guardar y probar» la clave del proveedor `n`: lo escrito, o la guardada
@@ -1792,6 +1833,33 @@ fn probar_clave(n: u8, escrito: &str, despertar: std::sync::Arc<dyn Fn() + Send 
         escrito.to_string()
     };
     crate::asistente::nube::guardar_y_probar(p, &clave, despertar);
+}
+
+/// Lo escrito en una caja tapada: la clave de un proveedor (guardar y
+/// probar) o el ID de cliente de una conexion (guardar).
+fn guardar_secreto(clave: Clave, escrito: &str, despertar: std::sync::Arc<dyn Fn() + Send + Sync>) {
+    match clave {
+        Clave::ClaveNube(n) => probar_clave(n, escrito, despertar),
+        Clave::ClienteConexion(n) => {
+            if let Some(s) = pixpin_ia::conexiones::SERVICIOS.get(n as usize) {
+                crate::asistente::conexiones::guardar_cliente(s, escrito, despertar);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Conectar (o desconectar, si ya lo esta o esta esperando al navegador).
+/// Vuelve en seguida: la espera va en su hilo.
+fn pulsar_conexion(clave: Clave, despertar: std::sync::Arc<dyn Fn() + Send + Sync>) {
+    use crate::asistente::conexiones as conex;
+    let Clave::Conexion(n) = clave else { return };
+    let Some(s) = pixpin_ia::conexiones::SERVICIOS.get(n as usize) else { return };
+    if conex::conectado(s) || conex::conectando(s) {
+        conex::desconectar(s, despertar);
+    } else {
+        conex::conectar(s, despertar);
+    }
 }
 
 /// Lo que se hace al pulsar un `Control::Boton`.
@@ -2033,14 +2101,14 @@ fn abrir(
     let zona = contenido(ancho, alto);
     // La prueba de una clave acaba en otro hilo: cuando cambia esto, se
     // repinta su linea de estado.
-    let mut novedades_claves = crate::asistente::nube::novedades();
+    let mut novedades_claves = crate::asistente::nube::novedades() + crate::asistente::conexiones::novedades();
     let hwnd_ventana = ventana.handle().0 as isize;
     let despertar_ventana: std::sync::Arc<dyn Fn() + Send + Sync> =
         std::sync::Arc::new(move || pixpin_shell::overlay::despertar(hwnd_ventana));
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
-        let n = crate::asistente::nube::novedades();
+        let n = crate::asistente::nube::novedades() + crate::asistente::conexiones::novedades();
         if n != novedades_claves {
             novedades_claves = n;
             version += 1;
@@ -2113,14 +2181,14 @@ fn abrir(
                     // «Guardar y probar» una clave: con lo escrito en su
                     // caja, o la guardada si no se escribio nada.
                     if let Some(Golpe::Fila(i, Parte::Pulsar)) = golpe
-                        && let Some((Clave::ClaveNube(n), _)) = filas.get(i)
+                        && let Some((clave @ (Clave::ClaveNube(_) | Clave::ClienteConexion(_)), _)) = filas.get(i)
                     {
                         let escrito = if foco_antes == Foco::Entrada(i) {
                             std::mem::take(&mut estado.entrada)
                         } else {
                             String::new()
                         };
-                        probar_clave(*n, &escrito, despertar_ventana.clone());
+                        guardar_secreto(*clave, &escrito, despertar_ventana.clone());
                     }
                     if let Some(i) = guardar_palabras
                         && let Some((clave, _)) = filas.get(i).cloned()
@@ -2215,7 +2283,10 @@ fn abrir(
                                         });
                                     }
                                     // Ya resuelto arriba, con el foco.
-                                    Parte::Pulsar if matches!(clave, Clave::PalabrasDe(_) | Clave::ClaveNube(_)) => {}
+                                    Parte::Pulsar if matches!(clave, Clave::PalabrasDe(_) | Clave::ClaveNube(_) | Clave::ClienteConexion(_)) => {}
+                                    Parte::Pulsar if matches!(clave, Clave::Conexion(_)) => {
+                                        pulsar_conexion(clave, despertar_ventana.clone())
+                                    }
                                     Parte::Pulsar if clave == Clave::PalabrasFabrica => copia
                                         .cambiar(|a| {
                                             a.pinear = pixpin_store::ajustes::Pinear::default()
@@ -2334,8 +2405,8 @@ fn abrir(
                                 // Intro en una clave: guardar y probar.
                                 Foco::Entrada(i) if es_clave(&filas, i) => {
                                     let texto = std::mem::take(&mut estado.entrada);
-                                    if let Some((Clave::ClaveNube(n), _)) = filas.get(i) {
-                                        probar_clave(*n, &texto, despertar_ventana.clone());
+                                    if let Some((clave, _)) = filas.get(i) {
+                                        guardar_secreto(*clave, &texto, despertar_ventana.clone());
                                     }
                                     estado.foco = Foco::Nada;
                                 }
@@ -3212,7 +3283,7 @@ fn dibujar_fila(
                 );
                 let rotulo = match &fila.control {
                     Control::Boton(s) => s.clone(),
-                    Control::Entrada { boton, .. } if matches!(clave, Clave::ClaveNube(_)) => boton.clone(),
+                    Control::Entrada { boton, .. } if matches!(clave, Clave::ClaveNube(_) | Clave::ClienteConexion(_)) => boton.clone(),
                     Control::Entrada { boton, .. } => format!("+ {boton}"),
                     _ => String::new(),
                 };
@@ -3269,7 +3340,7 @@ fn dibujar_fila(
                     ancho: (caja.ancho - 20.0 * e).max(1.0),
                     ..caja
                 };
-                if enfocada && matches!(clave, Clave::ClaveNube(_)) {
+                if enfocada && matches!(clave, Clave::ClaveNube(_) | Clave::ClienteConexion(_)) {
                     // Una clave se escribe tapada: puntos y la rayita al final
                     // (sin elegir trozos: se pega entera y se prueba).
                     let n = v.cajas.entrada.texto().chars().count();

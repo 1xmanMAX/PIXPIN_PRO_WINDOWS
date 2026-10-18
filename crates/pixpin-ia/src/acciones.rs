@@ -860,6 +860,11 @@ pub const SOLO_NUBE: &[&str] = &[
     LIENZOS_DEL_CHAT,
     CREAR_LIENZO,
     USAR_LIENZO,
+    // Las conexiones (17-oct, `crate::conexiones`): Google Drive y los que vengan.
+    crate::conexiones::acciones::BUSCAR,
+    crate::conexiones::acciones::LEER,
+    crate::conexiones::acciones::BAJAR,
+    crate::conexiones::acciones::SUBIR,
 ];
 
 /// **Las opciones que solo ve la nube** en una fila de las de siempre
@@ -901,7 +906,10 @@ pub fn es_en_el_chat(herramienta: &str) -> bool {
 /// **Todas las filas**: las de esta tabla y las de los documentos
 /// ([`crate::acciones_documentos`], que hace el chat con sus adjuntos).
 pub fn todas() -> impl Iterator<Item = &'static Accion> {
-    ACCIONES.iter().chain(crate::acciones_documentos::ACCIONES_DOCUMENTOS.iter())
+    ACCIONES
+        .iter()
+        .chain(crate::acciones_documentos::ACCIONES_DOCUMENTOS.iter())
+        .chain(crate::conexiones::acciones::ACCIONES_CONEXIONES.iter())
 }
 
 /// Busca una fila por el nombre de su herramienta.
