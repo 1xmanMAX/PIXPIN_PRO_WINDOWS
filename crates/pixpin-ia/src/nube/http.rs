@@ -108,9 +108,87 @@ pub fn partir(url: &str) -> Option<Direccion> {
 /// **Manda el POST** y entrega la respuesta a trozos. Bloquea: llamarlo
 /// desde un hilo de fondo. Devuelve `Ok(true)` si `al_trozo` pidio parar.
 pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<bool, Fallo> {
-    let d = partir(p.url).ok_or_else(|| Fallo::Red(format!("direccion no valida: {}", p.url)))?;
-    let mut cabeceras = String::from("Content-Type: application/json\r\nAccept: text/event-stream\r\n");
-    for (k, v) in &p.cabeceras {
+    let mut cabeceras = vec![
+        ("Content-Type", "application/json".to_string()),
+        ("Accept", "text/event-stream".to_string()),
+    ];
+    cabeceras.extend(p.cabeceras.iter().cloned());
+    let a = abrir("POST", p.url, &cabeceras, p.cuerpo)?;
+    let mut buf = vec![0u8; 16 * 1024];
+    loop {
+        let mut n: u32 = 0;
+        // SAFETY: el asa de la peticion vive en `a` y ya recibio la
+        // respuesta; el bufer vive durante la llamada y se pasa su largo.
+        unsafe { WinHttpReadData(a.peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n) }
+            .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
+        if n == 0 {
+            return Ok(false);
+        }
+        if al_trozo(&buf[..n as usize]) == Seguir::Parar {
+            return Ok(true);
+        }
+    }
+}
+
+/// Lo que contesto una peticion entera ([`pedir`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Respuesta {
+    pub codigo: u32,
+    pub cuerpo: Vec<u8>,
+    /// La cabecera `Location` (la subida reanudable de Drive la usa).
+    pub ubicacion: Option<String>,
+}
+
+/// **Una peticion cualquiera** (GET, POST, PUT...) leida entera, con las
+/// cabeceras que diga quien llama (las conexiones del asistente: Google
+/// Drive y su OAuth). El mismo camino de WinHTTP que [`enviar`]: mismo
+/// proxy, mismos tiempos, y `http://` solo hacia este equipo. Una respuesta
+/// de mas de `limite` bytes se corta con error (nada de llenar la memoria).
+/// Un codigo que no es 2xx es [`Fallo::Http`]. Bloquea.
+pub fn pedir(
+    metodo: &str,
+    url: &str,
+    cabeceras: &[(&'static str, String)],
+    cuerpo: &[u8],
+    limite: usize,
+) -> Result<Respuesta, Fallo> {
+    let a = abrir(metodo, url, cabeceras, cuerpo)?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut todo = Vec::new();
+    loop {
+        let mut n: u32 = 0;
+        // SAFETY: como en `enviar`.
+        unsafe { WinHttpReadData(a.peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n) }
+            .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
+        if n == 0 {
+            break;
+        }
+        todo.extend_from_slice(&buf[..n as usize]);
+        if todo.len() > limite {
+            return Err(Fallo::Red(format!("la respuesta pasa de {} MB", (limite / (1024 * 1024)).max(1))));
+        }
+    }
+    // SAFETY: el asa sigue viva en `a` y ya recibio la respuesta.
+    let ubicacion = unsafe { cabecera(a.peticion.0, "Location") };
+    Ok(Respuesta { codigo: a.codigo, cuerpo: todo, ubicacion })
+}
+
+/// Una peticion mandada y con la respuesta empezada (codigo 2xx). Los
+/// campos se sueltan en este orden: peticion, conexion, sesion.
+struct Abierta {
+    peticion: Asa,
+    _conexion: Asa,
+    _sesion: Asa,
+    codigo: u32,
+}
+
+/// Abre la sesion, manda la peticion y espera la cabecera de la respuesta.
+/// Un codigo que no es 2xx se lee aqui (su JSON de error) y es
+/// [`Fallo::Http`].
+fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8]) -> Result<Abierta, Fallo> {
+    let d = partir(url).ok_or_else(|| Fallo::Red(format!("direccion no valida: {url}")))?;
+    let mut cabeceras = String::new();
+    for (k, v) in extra {
         cabeceras.push_str(k);
         cabeceras.push_str(": ");
         cabeceras.push_str(v);
@@ -118,7 +196,7 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
     }
     let cabeceras = HSTRING::from(cabeceras);
     let error = |que: &str| Fallo::Red(format!("{que}: {}", windows::core::Error::from_thread().message()));
-    if p.cuerpo.len() > u32::MAX as usize {
+    if cuerpo.len() > u32::MAX as usize {
         return Err(Fallo::Red("la peticion es demasiado grande".into()));
     }
     // SAFETY: las cadenas son literales o `HSTRING` vivos durante cada
@@ -156,7 +234,7 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
         }
         let peticion = Asa(WinHttpOpenRequest(
             conexion.0,
-            w!("POST"),
+            &HSTRING::from(metodo),
             &HSTRING::from(d.ruta.as_str()),
             PCWSTR::null(),
             PCWSTR::null(),
@@ -169,9 +247,9 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
         WinHttpSendRequest(
             peticion.0,
             Some(&cabeceras),
-            Some(p.cuerpo.as_ptr().cast()),
-            p.cuerpo.len() as u32,
-            p.cuerpo.len() as u32,
+            (!cuerpo.is_empty()).then(|| cuerpo.as_ptr().cast()),
+            cuerpo.len() as u32,
+            cuerpo.len() as u32,
             0,
         )
         .map_err(|e| Fallo::Red(format!("no se pudo mandar: {}", e.message())))?;
@@ -187,12 +265,12 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
             &mut largo,
             std::ptr::null_mut(),
         );
-        let mut buf = vec![0u8; 16 * 1024];
         if !(200..300).contains(&codigo) {
             let esperar = cabecera(peticion.0, "retry-after")
                 .and_then(|s| s.trim().parse::<f64>().ok())
                 .filter(|s| s.is_finite() && *s >= 0.0)
                 .map(|s| Duration::from_secs_f64(s.min(120.0)));
+            let mut buf = vec![0u8; 16 * 1024];
             let mut cuerpo = Vec::new();
             loop {
                 let mut n: u32 = 0;
@@ -210,17 +288,7 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
                 esperar,
             });
         }
-        loop {
-            let mut n: u32 = 0;
-            WinHttpReadData(peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n)
-                .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
-            if n == 0 {
-                return Ok(false);
-            }
-            if al_trozo(&buf[..n as usize]) == Seguir::Parar {
-                return Ok(true);
-            }
-        }
+        Ok(Abierta { peticion, _conexion: conexion, _sesion: sesion, codigo })
     }
 }
 

@@ -69,6 +69,9 @@
 //! - [`hoja`] (14-oct): una foto o una pagina de una hoja al lienzo,
 //!   interpretada zona a zona (texto, tablas, formulas, fotos, rayas), solo
 //!   con la nube.
+//! - [`conexiones`] (17-oct): Google Drive (y los que vengan, un componente
+//!   con variables) conectado por OAuth con PKCE, tokens cifrados con DPAPI;
+//!   buscar, leer, bajar y subir (preguntando) como herramientas de la nube.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -87,6 +90,7 @@ pub mod calcar;
 pub mod calculo;
 pub mod conocimiento;
 pub mod complejidad;
+pub mod conexiones;
 pub mod contexto;
 pub mod cronograma;
 pub mod diagrama;

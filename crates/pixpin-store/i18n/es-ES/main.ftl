@@ -2567,6 +2567,18 @@ ajustes2-clave-borrar = Borrar
 ajustes2-clave-guardada = Guardada y cifrada en este PC:
 ajustes2-clave-falta = Sin clave. Sácala en
 ajustes2-clave-probando = probando…
+ajustes2-g-conexiones = Conexiones del asistente
+ajustes2-conexion-cliente = ID de cliente de { $servicio }
+ajustes2-conexion-cliente-marcador = Pega el ID de cliente (o el JSON que da Google)
+ajustes2-conexion-guardar = Guardar
+ajustes2-conexion-de = { $servicio }
+ajustes2-conexion-conectar = Conectar
+ajustes2-conexion-desconectar = Desconectar
+ajustes2-conexion-sin-cliente = Sin ID de cliente. Créalo una vez en { $consola } (los pasos: docs/conexiones-google-drive.md).
+ajustes2-conexion-cliente-guardado = ID guardado y cifrado en este PC:
+ajustes2-conexion-conectado = Conectado
+ajustes2-conexion-sin-conectar = Sin conectar. Con permiso, el asistente busca, lee, baja y sube archivos de tu { $servicio }.
+ajustes2-conexion-conectando = Termina en el navegador…
 
 ## Automatizaciones del asistente (13-oct)
 automatizacion-creada = Automatización «{ $nombre }» creada.
