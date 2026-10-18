@@ -21,6 +21,8 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 # Bajar por HTTPS con WinHTTP (lo que ya trae Windows): se reutiliza el de la
 # voz, que ya sigue redirecciones, escribe en `.parte` y se deja cancelar.
 pixpin-voz = { path = "../pixpin-voz" }
+# Las fechas dichas y lo que se reconoce al escribir una tarea (sin dependencias).
+pixpin-frase = { path = "../pixpin-frase" }
 # El proceso del modelo va dentro de un «trabajo» de Windows que lo mata si
 # PixPin muere, y se lanza sin ventana.
 windows = { version = "0.62.2", features = [

@@ -989,6 +989,12 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             codigo,
             imagenes,
         } => {
+            // Lo que se reconoce al escribir una tarea (18-oct-2026), el
+            // mismo parser de la ventana de Tareas y del plugin de Flow:
+            // #etiquetas, urgencia con las palabras de Ajustes y la hora.
+            let ahora_local = crate::tareas::frase::ahora();
+            let hora = crate::tareas::frase::leer(&texto, ahora_local).hora;
+            let texto = crate::tareas::frase::a_guardar(&texto, !imagenes.is_empty(), ahora_local);
             let lista = anadir_pedida(
                 raiz,
                 proyecto.as_deref(),
@@ -999,11 +1005,16 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 &t.t("pedido-tareas"),
                 ahora,
             )?;
+            if hora.is_some() {
+                // Con hora: al vigia, para que suene.
+                crate::recordatorios::releer(raiz);
+            }
             crate::ventana_chat::refrescar();
             return Ok(aviso(
                 "pedido-tarea-anadida",
                 &[
-                    ("tarea", lo_que_se_lee(&texto, imagenes.len())),
+                    // El titulo, sin las marcas de la urgencia ni las etiquetas.
+                    ("tarea", lo_que_se_lee(&crate::tareas::frase::marcas(&texto).titulo, imagenes.len())),
                     ("lista", nombre_de_lista(&lista)),
                 ],
             ));
@@ -3605,6 +3616,37 @@ mod pruebas {
         assert!(h.aviso.is_some());
         let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz"}"#, &cx);
         assert!(h.aviso.is_some(), "sin texto ni ruta no hay nada que leer");
+        let _ = ficha;
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// `anadir_tarea` (el de Flow, el MCP y el asistente) entiende la tarea
+    /// con el mismo parser que la ventana de Tareas (18-oct-2026).
+    #[test]
+    fn anadir_tarea_reconoce_etiquetas_y_urgencia_como_la_ventana() {
+        let (raiz, ficha) = almacen_de_prueba("anadir-tarea-frase");
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let cx = Contexto {
+            idioma: pixpin_store::Idioma::Espanol,
+            ubicacion: &u,
+            opciones: crate::ventana_chat::OpcionesLienzo {
+                enganche: Default::default(),
+                nivel: pixpin_nivel::Nivel::Ligero,
+                medir_fotogramas: false,
+            },
+            aparato: "PC01",
+            textos: &textos,
+        };
+        let h = atender(r##"{"pixpin":1,"accion":"anadir_tarea","texto":"#casa llamar al banco muy urgente"}"##, &cx);
+        assert!(h.aviso.as_deref().is_some_and(|a| a.contains("llamar al banco") && !a.contains('#')), "{:?}", h.aviso);
+        let (listas, _) = crate::tareas::reunir(&raiz);
+        let textos_de: Vec<String> = listas.iter().flat_map(|l| l.filas.iter().map(|f| f.texto.clone())).collect();
+        assert_eq!(textos_de, ["llamar al banco ⏫ #casa"]);
+        // Normal: sin marca.
+        atender(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"comprar pan"}"#, &cx);
+        let (listas, _) = crate::tareas::reunir(&raiz);
+        assert!(listas.iter().flat_map(|l| &l.filas).any(|f| f.texto == "comprar pan"));
         let _ = ficha;
         let _ = std::fs::remove_dir_all(&raiz);
     }

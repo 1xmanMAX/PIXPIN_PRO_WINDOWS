@@ -436,6 +436,8 @@ fn arrancar(
     ventana_editor::fijar_ajustes_tinta(config.tinta);
     // M1: el tema Cosmos lo mira el hilo del chat al abrirse.
     tema_cosmos::fijar(config.tema_cosmos);
+    // Las palabras de cada urgencia de las tareas (Ajustes → Tareas).
+    tareas::frase::fijar(config.tareas.palabras());
     // Las herramientas de dibujo que el usuario apago en los ajustes: fuera
     // de la barra y de sus teclas en el lienzo, el lector, los pines y el
     // anotador de pantalla (`dibujo::permitidas`).
@@ -810,6 +812,7 @@ fn arrancar(
             pixpin_shell::espacio_explorador::activar(config.vista_rapida);
             // M1: vale desde el siguiente chat que se abra.
             tema_cosmos::fijar(config.tema_cosmos);
+            tareas::frase::fijar(config.tareas.palabras());
             aligerar::configurar(&config.pdf);
             // Las herramientas apagadas valen desde el siguiente lienzo,
             // lector, pin o anotador que se abra.

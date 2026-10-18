@@ -393,6 +393,9 @@ pub struct Contexto {
     /// El portapapeles, para ofrecer pegar una imagen en una tarea (en las
     /// pruebas y por defecto, uno que nunca tiene).
     pub portapapeles: crate::imagenes::Portapapeles,
+    /// El «ahora» en hora local para entender la fecha de una tarea. `None`:
+    /// el de Windows a partir de [`Contexto::ahora`] (las pruebas lo fijan).
+    pub ahora_local: Option<pixpin_frase::fechas::Momento>,
 }
 
 impl Contexto {
@@ -414,6 +417,7 @@ impl Contexto {
             faltan: RefCell::new(BTreeSet::new()),
             raiz: None,
             portapapeles: crate::imagenes::SIN_PORTAPAPELES,
+            ahora_local: None,
         }
     }
 
@@ -427,6 +431,33 @@ impl Contexto {
                 .and_then(|c| c.parent())
                 .map(PathBuf::from)
         })
+    }
+
+    /// **Lo que se entiende de una tarea escrita** (18-oct-2026), con el
+    /// mismo parser que la app (`pixpin_frase::tarea`) y las palabras de
+    /// urgencia de su `pixpinmax.toml` (`[tareas]`); sin fichero, las de
+    /// fabrica. Al pulsar, la app lo vuelve a entender con las suyas.
+    pub(crate) fn entender_tarea(&self, texto: &str) -> pixpin_frase::tarea::Frase {
+        let palabras = self
+            .raiz_de_datos()
+            .and_then(|r| std::fs::read_to_string(r.join(crate::datos::NOMBRE_AJUSTES)).ok())
+            .map(|t| pixpin_frase::tarea::Palabras::de_toml(&t))
+            .unwrap_or_default();
+        pixpin_frase::tarea::leer(texto, self.momento_local(), &palabras)
+    }
+
+    /// El «ahora» en hora local, como lo cuenta `pixpin_frase::fechas`.
+    pub(crate) fn momento_local(&self) -> pixpin_frase::fechas::Momento {
+        if let Some(m) = self.ahora_local {
+            return m;
+        }
+        match crate::fecha::local(self.ahora) {
+            Some(l) => pixpin_frase::fechas::Momento {
+                dia: pixpin_frase::fechas::dias_de(i64::from(l.anio), i64::from(l.mes), i64::from(l.dia)),
+                minuto: u32::from(l.hora) * 60 + u32::from(l.minuto),
+            },
+            None => pixpin_frase::fechas::Momento::de_ms_locales(self.ahora),
+        }
     }
 
     pub(crate) fn consulta(&self, texto: &str) -> String {
@@ -1528,6 +1559,19 @@ pub(crate) fn resaltar(v: &mut [Resultado], consulta: &str) {
     }
 }
 
+/// El titulo y lo entendido de una tarea escrita para un resultado de Flow:
+/// el titulo limpio (o lo escrito, si no queda nada) y el resumen («Muy
+/// urgente · #casa · ⏰ mañana 17:00», vacio si no se reconocio nada).
+fn tarea_entendida(texto: &str, ctx: &Contexto) -> (String, String) {
+    let f = ctx.entender_tarea(texto);
+    let titulo = if f.titulo.is_empty() {
+        texto.trim().to_string()
+    } else {
+        f.titulo.clone()
+    };
+    (titulo, f.resumen(ctx.momento_local()))
+}
+
 /// `t <texto>`: apuntar una tarea en el Inbox (pedido `anadir_tarea` sin
 /// lista: la app la pone en el Inbox, y lo crea si no esta).
 fn apuntar(proyectos: &[Proyecto], texto: &str, ctx: &Contexto) -> Vec<Resultado> {
@@ -1535,9 +1579,11 @@ fn apuntar(proyectos: &[Proyecto], texto: &str, ctx: &Contexto) -> Vec<Resultado
     let todas = listas(proyectos);
     let inbox = todas.iter().find(|l| l.es_inbox(proyectos));
     let cuenta = inbox.map(cuenta_de).unwrap_or_default();
+    // Lo que se entendio, a la vista antes de pulsar (18-oct-2026).
+    let (titulo, entendido) = tarea_entendida(texto, ctx);
     let mut r = Resultado::nuevo(
-        format!("Apuntar tarea: {texto}"),
-        unir(&["Tarea", INBOX, &cuenta, "Intro: apuntarla"]),
+        format!("Apuntar tarea: {titulo}"),
+        unir(&[&entendido, "Tarea", INBOX, &cuenta, "Intro: apuntarla"]),
         glifo::ANADIR,
         Accion::Pedido(pedido("anadir_tarea", json!({ "texto": texto }))),
     );
@@ -2119,9 +2165,10 @@ fn anadir_al_inbox(
         }
         None => json!({ "texto": texto }),
     };
+    let (titulo, entendido) = tarea_entendida(texto, ctx);
     let mut r = Resultado::nuevo(
-        format!("Añadir al Inbox: {texto}"),
-        unir(&["Tarea", INBOX, "Intro: apuntarla"]),
+        format!("Añadir al Inbox: {titulo}"),
+        unir(&[&entendido, "Tarea", INBOX, "Intro: apuntarla"]),
         glifo::ANADIR,
         Accion::PedirYSeguir {
             pedido: pedido("anadir_tarea", campos),
@@ -2196,15 +2243,16 @@ fn en_lista(proyectos: &[Proyecto], lista: &str, filtro: &str, ctx: &Contexto) -
     // veces y solo aparece una vez»). Se avisa, pero se deja.
     let exacta = l.tareas.iter().any(|t| normalizar(&t.texto) == q);
     if !q.is_empty() {
+        let (titulo, entendido) = tarea_entendida(filtro, ctx);
         let mut r = Resultado::nuevo(
-            format!("Añadir tarea: {filtro}"),
+            format!("Añadir tarea: {titulo}"),
             if exacta {
-                format!(
-                    "Ya hay una igual · Intro: añadir otra a «{}» · {}",
-                    l.titulo, p.nombre
-                )
+                unir(&[
+                    &entendido,
+                    &format!("Ya hay una igual · Intro: añadir otra a «{}» · {}", l.titulo, p.nombre),
+                ])
             } else {
-                format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre)
+                unir(&[&entendido, &format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre)])
             },
             glifo::ANADIR,
             Accion::PedirYSeguir {

@@ -299,6 +299,13 @@ impl Campo {
         self.caja.poner_texto(t);
     }
 
+    /// Cambia lo escrito sin soltar las imagenes pegadas (el selector de
+    /// dia y hora reescribe la marca `⏰`); la rayita, al final.
+    fn cambiar_texto(&mut self, t: &str) {
+        self.caja.poner_texto(t);
+        self.caja.al_final();
+    }
+
     /// Donde esta cada ficha de una imagen pegada que sigue en el texto (la
     /// primera vez que sale), ordenadas, con su numero y su imagen.
     fn fichas(&self) -> Vec<(std::ops::Range<usize>, u32, &Pegada)> {
@@ -511,6 +518,17 @@ enum Accion {
     /// El circulo del emoticono `.2` de la tarea `.1` de la lista `.0`:
     /// buscar ese emoticono (son las etiquetas de las tareas).
     BuscarEmo(usize, usize, usize),
+    /// La chapita `.2` (urgencia o etiqueta) de la tarea `.1` de la lista
+    /// `.0`: buscar las tareas que la llevan.
+    BuscarChapa(usize, usize, usize),
+    /// El reloj de la caja: abrir o cerrar el selector de dia y hora.
+    Selector,
+    /// En el selector: el dia (dias desde 1970), la hora (minuto del dia),
+    /// mover la hora unos minutos o quitarla.
+    PonerDia(i64),
+    PonerMinuto(u32),
+    MoverMinutos(i32),
+    QuitarHoraEscrita,
     /// Corregir el texto de la tarea `.1` de la lista `.0` (doble clic en
     /// su texto, F2 o «Editar» del menu): pasa a la caja de apuntar.
     Editar(usize, usize),
@@ -558,6 +576,7 @@ fn tarea_de(a: Accion) -> Option<(usize, usize)> {
         | Accion::Quitar(l, f)
         | Accion::PinearTodas(l, f)
         | Accion::BuscarEmo(l, f, _)
+        | Accion::BuscarChapa(l, f, _)
         | Accion::Editar(l, f)
         | Accion::CopiarTexto(l, f)
         | Accion::Recordar(l, f, _)
@@ -723,6 +742,8 @@ struct Estado {
     /// Abierta desde una lista del chat, lo apuntado va a ESA lista (como en
     /// el panel del chat que sustituye); desde el boton, al Inbox.
     apuntar_en: Option<Lista>,
+    /// El selector de dia y hora de la caja, abierto (18-oct-2026).
+    selector: bool,
 }
 
 impl Estado {
@@ -761,6 +782,7 @@ impl Estado {
             ultimo_clic: None,
             ir_a_lista: None,
             apuntar_en: None,
+            selector: false,
         }
     }
 
@@ -1263,6 +1285,8 @@ fn tecla(
         (VK_F2, Foco::Tarjeta(li, fi)) => {
             return hacer(e, Accion::Editar(li, fi), textos, ubicacion, aparato);
         }
+        // El selector de dia y hora abierto: Esc lo cierra, lo primero.
+        (VK_ESCAPE, _) if e.selector => e.selector = false,
         // Corrigiendo, Esc deja la tarea como estaba y la caja vuelve a
         // apuntar: antes que vaciar la busqueda o cerrar.
         (VK_ESCAPE, _) if e.corrigiendo.is_some() => {
@@ -1473,6 +1497,10 @@ fn hacer(
     aparato: &str,
 ) -> bool {
     let raiz = ubicacion.raiz();
+    // El selector de dia y hora se cierra con cualquier otra cosa.
+    if !es_del_selector(a) {
+        e.selector = false;
+    }
     match a {
         Accion::Mover | Accion::Fondo => {}
         Accion::Cerrar => return false,
@@ -1505,9 +1533,15 @@ fn hacer(
             let Some((lista, fila)) = e.corrigiendo.clone() else {
                 return true;
             };
-            match super::corregir(raiz, &lista, &fila, e.campo.texto(), &e.campo.imagenes()) {
+            // Lo escrito se vuelve a entender (18-oct-2026): «urgente», una
+            // #etiqueta o «mañana 7» anadidos al corregir valen como al apuntar.
+            let con_imagenes = !e.campo.imagenes().is_empty() || !fila.imagenes.is_empty();
+            let texto = super::frase::a_guardar(e.campo.texto(), con_imagenes, super::frase::ahora());
+            match super::corregir(raiz, &lista, &fila, &texto, &e.campo.imagenes()) {
                 Ok(true) => {
                     e.decir(textos.t("tareas5-corregida"));
+                    // La hora pudo cambiar: al vigia.
+                    crate::recordatorios::releer(raiz);
                     e.soltar_correccion();
                     crate::ventana_chat::refrescar();
                 }
@@ -1562,10 +1596,36 @@ fn hacer(
                 tracing::warn!("tareas: no contesta la ventana principal");
             }
         }
+        Accion::BuscarChapa(li, fi, k) => {
+            let q = e.fila(li, fi).and_then(|(_, f)| {
+                super::frase::a_la_vista(&f.texto, None)
+                    .chapas
+                    .get(k)
+                    .map(super::frase::Chapa::busqueda)
+            });
+            if let Some(q) = q.filter(|q| !q.is_empty()) {
+                e.buscar.poner(&q);
+                e.buscar.al_final();
+                e.foco = Foco::Buscar;
+                e.scroll = 0.0;
+            }
+        }
+        Accion::Selector => {
+            e.selector = !e.selector;
+            e.foco = Foco::Apuntar;
+        }
+        Accion::PonerDia(_) | Accion::PonerMinuto(_) | Accion::MoverMinutos(_) | Accion::QuitarHoraEscrita => {
+            let ahora = super::frase::ahora();
+            let actual = super::frase::hora_escrita(e.campo.texto(), ahora);
+            let nueva = elegir_hora(a, actual, ahora);
+            let t = super::frase::con_hora_escrita(e.campo.texto(), nueva, ahora);
+            e.campo.cambiar_texto(&t);
+            e.foco = Foco::Apuntar;
+        }
         Accion::BuscarEmo(li, fi, k) => {
             let emo = e
                 .fila(li, fi)
-                .and_then(|(_, f)| super::frase::a_la_vista(&f.texto, Some(super::frase::ahora())).1.get(k).cloned());
+                .and_then(|(_, f)| super::frase::a_la_vista(&f.texto, Some(super::frase::ahora())).emos.get(k).cloned());
             if let Some(emo) = emo {
                 e.buscar.poner(&emo);
                 e.buscar.al_final();
@@ -1631,14 +1691,12 @@ fn hacer(
             if e.campo.texto().trim().is_empty() {
                 return true;
             }
-            // Lo reconocido al escribir (17-oct-2026): prioridad, #etiquetas
-            // y la hora de recordar salen del titulo y van como marcas.
-            let frase = super::frase::leer(e.campo.texto(), super::frase::ahora());
-            let texto = if frase.titulo.is_empty() && e.campo.imagenes().is_empty() {
-                e.campo.texto().to_string()
-            } else {
-                frase.texto()
-            };
+            // Lo reconocido al escribir (17 y 18-oct-2026): urgencia,
+            // #etiquetas y la hora de recordar salen del titulo y van como
+            // marcas (`pixpin_frase::tarea`, el mismo parser que Flow).
+            let ahora = super::frase::ahora();
+            let frase = super::frase::leer(e.campo.texto(), ahora);
+            let texto = super::frase::a_guardar(e.campo.texto(), !e.campo.imagenes().is_empty(), ahora);
             let hecho = match &e.apuntar_en {
                 Some(l) => super::apuntar_en(raiz, aparato, l, &texto, &e.campo.imagenes())
                     .map(|m| (l.proyecto.clone(), m)),
@@ -2238,6 +2296,9 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     if e.repartiendo.is_some() {
         pintar_eleccion(e, p, w, h, s, textos);
     } else {
+        if e.selector {
+            pintar_selector(e, p, m, y_caja + CAJA * s + 6.0 * s, ancho, s, textos);
+        }
         pintar_vista_de_ficha(e, p, w, s);
     }
 
@@ -2245,6 +2306,179 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     // dentro cuando se acaba de quitar una tarea).
     if let Some(a) = &e.aviso {
         crate::v2::aviso::pintar(a, p, &mut e.botones, todo, s);
+    }
+}
+
+// ------------------------------------------- el selector de dia y hora
+
+/// Si la accion es del selector de dia y hora (no lo cierra).
+fn es_del_selector(a: Accion) -> bool {
+    matches!(
+        a,
+        Accion::Selector
+            | Accion::PonerDia(_)
+            | Accion::PonerMinuto(_)
+            | Accion::MoverMinutos(_)
+            | Accion::QuitarHoraEscrita
+            | Accion::EnfocarApuntar
+    )
+}
+
+/// Las horas del selector, en minutos del dia (las de una agenda).
+const HORAS_DEL_SELECTOR: [u32; 7] = [8 * 60, 9 * 60, 12 * 60, 15 * 60, 17 * 60, 19 * 60, 21 * 60];
+/// Cuantos dias ofrece, desde hoy.
+const DIAS_DEL_SELECTOR: i64 = 7;
+
+/// **La hora que queda** al pulsar `a` en el selector, con `actual` la que
+/// ya tenia lo escrito. Un dia sin hora va a las 9:00; una hora sin dia, a
+/// hoy si aun no paso (si no, a mañana), como «Recordarmelo» del movil
+/// (`ElegirHora.alFuturo`).
+fn elegir_hora(
+    a: Accion,
+    actual: Option<pixpin_ia::fechas::Momento>,
+    ahora: pixpin_ia::fechas::Momento,
+) -> Option<pixpin_ia::fechas::Momento> {
+    use pixpin_ia::fechas::{HORA_POR_OMISION, Momento};
+    match a {
+        Accion::PonerDia(dia) => Some(Momento {
+            dia,
+            minuto: actual.map_or(HORA_POR_OMISION, |m| m.minuto),
+        }),
+        Accion::PonerMinuto(minuto) => Some(Momento {
+            dia: actual.map_or(if minuto > ahora.minuto { ahora.dia } else { ahora.dia + 1 }, |m| m.dia),
+            minuto,
+        }),
+        Accion::MoverMinutos(d) => {
+            let base = actual.unwrap_or(Momento {
+                dia: ahora.dia,
+                minuto: ahora.minuto - ahora.minuto % 15,
+            });
+            let total = base.dia * 1440 + i64::from(base.minuto) + i64::from(d);
+            Some(Momento {
+                dia: total.div_euclid(1440),
+                minuto: total.rem_euclid(1440) as u32,
+            })
+        }
+        Accion::QuitarHoraEscrita => None,
+        _ => actual,
+    }
+}
+
+/// El rotulo corto de un dia del selector: «Hoy», «Mañana», «vie 23».
+fn rotulo_de_dia(dia: i64, hoy: i64, textos: &Catalogo) -> String {
+    match dia - hoy {
+        0 => textos.t("tareas-selector-hoy"),
+        1 => textos.t("tareas-selector-manana"),
+        _ => {
+            let sem = pixpin_ia::fechas::dia_de_la_semana(dia);
+            let (_, _, d) = pixpin_ia::fechas::fecha_de(dia);
+            format!("{} {d}", textos.t(&format!("tareas-dia-{sem}")))
+        }
+    }
+}
+
+/// **El selector de dia y hora**, flotando bajo la caja de apuntar: arriba
+/// lo elegido (y quitarlo), debajo los dias de esta semana y debajo las
+/// horas de siempre con ±15 minutos. Cada pulsacion reescribe la marca `⏰`
+/// de lo escrito, a la vista en la caja; se guarda con Intro, como todo.
+/// Son los botones v2 de siempre (`ui::boton_v2`), sin piezas nuevas.
+fn pintar_selector(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, textos: &Catalogo) {
+    let ahora = super::frase::ahora();
+    let actual = super::frase::hora_escrita(e.campo.texto(), ahora);
+    let pad = 12.0 * s;
+    let alto_b = 32.0 * s;
+    let hueco = 6.0 * s;
+    let ancho = ancho.min(560.0 * s);
+    let caja_x = x;
+    // Los botones de cada renglon, para medir el alto antes de pintar.
+    let dias: Vec<(String, Accion, bool)> = (0..DIAS_DEL_SELECTOR)
+        .map(|k| {
+            let d = ahora.dia + k;
+            (rotulo_de_dia(d, ahora.dia, textos), Accion::PonerDia(d), actual.is_some_and(|m| m.dia == d))
+        })
+        .collect();
+    let mut horas: Vec<(String, Accion, bool)> = HORAS_DEL_SELECTOR
+        .iter()
+        .map(|&m| {
+            (
+                format!("{:02}:{:02}", m / 60, m % 60),
+                Accion::PonerMinuto(m),
+                actual.is_some_and(|a| a.minuto == m),
+            )
+        })
+        .collect();
+    horas.push(("−15".to_string(), Accion::MoverMinutos(-15), false));
+    horas.push(("+15".to_string(), Accion::MoverMinutos(15), false));
+    let dentro_ancho = ancho - 2.0 * pad;
+    let renglones = |v: &[(String, Accion, bool)]| -> usize {
+        let mut n = 1;
+        let mut cx = 0.0;
+        for (t, _, _) in v {
+            let w = ui::ancho_de_boton(p, false, t, None, s);
+            if cx > 0.0 && cx + w > dentro_ancho {
+                n += 1;
+                cx = 0.0;
+            }
+            cx += w + hueco;
+        }
+        n
+    };
+    let n = 1 + renglones(&dias) + renglones(&horas);
+    let alto = 2.0 * pad + n as f32 * alto_b + (n as f32 - 1.0) * hueco + 2.0 * hueco;
+    let caja = RectF {
+        x: caja_x,
+        y,
+        ancho,
+        alto,
+    };
+    let radio = crate::v2::RADIO_FLOTANTE * s;
+    p.rellenar_redondeado(encoger(caja, -1.0 * s), radio + 1.0 * s, blanco(0.12));
+    p.rellenar_redondeado(caja, radio, crate::v2::CAJA);
+    // La tarjeta se traga sus clics: fuera de un boton no cierra.
+    e.botones.zona(caja, Accion::EnfocarApuntar);
+    // Arriba: lo elegido y, si hay, quitarlo.
+    let titulo = match actual {
+        Some(m) => format!("⏰ {}", m.legible(ahora)),
+        None => format!("⏰ {}", textos.t("tareas-selector-sin")),
+    };
+    let mut cy = caja.y + pad;
+    let (_, th) = p.medir_texto(&titulo, 14.0 * s);
+    p.texto(&titulo, caja.x + pad, cy + (alto_b - th) / 2.0, 14.0 * s, if actual.is_some() { TEXTO } else { GRIS });
+    if actual.is_some() {
+        let r = textos.t("tareas-selector-quitar");
+        let bw = ui::ancho_de_boton(p, true, &r, None, s);
+        let b = RectF {
+            x: caja.x + caja.ancho - pad - bw,
+            y: cy,
+            ancho: bw,
+            alto: alto_b,
+        };
+        ui::boton_v2(p, &mut e.botones, b, Accion::QuitarHoraEscrita, Some(&mi::CLOSE), &r, None, None, GRIS, s);
+    }
+    cy += alto_b + 2.0 * hueco;
+    for fila in [&dias, &horas] {
+        let mut cx = caja.x + pad;
+        for (t, a, elegido) in fila.iter() {
+            let w = ui::ancho_de_boton(p, false, t, None, s);
+            if cx > caja.x + pad && cx + w > caja.x + pad + dentro_ancho {
+                cx = caja.x + pad;
+                cy += alto_b + hueco;
+            }
+            let b = RectF {
+                x: cx,
+                y: cy,
+                ancho: w,
+                alto: alto_b,
+            };
+            let (fondo, tinta) = if *elegido {
+                (crate::v2::AZUL_LLENO, Color::BLANCO)
+            } else {
+                (blanco(0.07), TEXTO)
+            };
+            ui::boton_v2(p, &mut e.botones, b, *a, None, t, None, Some(fondo), tinta, s);
+            cx += w + hueco;
+        }
+        cy += alto_b + hueco;
     }
 }
 
@@ -2310,7 +2544,27 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         if sobre_imagen { TEXTO } else { GRIS },
     );
     e.botones.zona(imagen, Accion::ElegirImagen);
-    let mut fin = imagen.x - 4.0 * s;
+    // A su izquierda, el reloj: el selector de dia y hora (18-oct-2026).
+    // Azul si lo escrito ya tiene hora o el selector esta abierto.
+    let reloj = RectF {
+        x: imagen.x - lado,
+        ..imagen
+    };
+    let sobre_reloj = dentro(reloj, e.botones.raton);
+    let con_hora = pixpin_frase::tarea::marca_de_hora(e.campo.texto()).is_some();
+    p.icono(
+        &mi::ALARM,
+        crate::v2::geom::centrado((reloj.x + lado / 2.0, reloj.y + lado / 2.0), li),
+        if e.selector || con_hora {
+            ACENTO
+        } else if sobre_reloj {
+            TEXTO
+        } else {
+            GRIS
+        },
+    );
+    e.botones.zona(reloj, Accion::Selector);
+    let mut fin = reloj.x - 4.0 * s;
 
     // Con algo escrito, el boton de apuntar (o guardar) con su «Intro».
     if !e.campo.texto().trim().is_empty() {
@@ -2371,6 +2625,15 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             alto: 100_000.0,
         };
         crate::v2::pista::pintar(p, imagen, &textos.t("tareas5-imagen-pista"), limite, s);
+    }
+    if sobre_reloj && !e.selector {
+        let limite = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: x + ancho + MARGEN * s,
+            alto: 100_000.0,
+        };
+        crate::v2::pista::pintar(p, reloj, &textos.t("tareas-selector-pista"), limite, s);
     }
 }
 
@@ -2822,6 +3085,10 @@ struct Hechura {
     /// Los emoticonos de la tarea: sus etiquetas, en circulos entre la
     /// casilla y el texto, como los estados de WeChat.
     emos: Vec<String>,
+    /// La urgencia y las #etiquetas, en chapitas bajo el texto
+    /// (`super::chapitas`), y donde van desde arriba.
+    chapas: Vec<super::frase::Chapa>,
+    chapas_y: Option<f32>,
 }
 
 /// El rotulo de la edad de una tarea («hace 2 días»), si tiene fecha.
@@ -2855,10 +3122,13 @@ fn hechura(
             chapa_y: None,
             texto: String::new(),
             emos: Vec::new(),
+            chapas: Vec::new(),
+            chapas_y: None,
         };
     };
     let pad = 16.0 * s;
-    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
+    let super::frase::Vista { texto, emos, chapas } =
+        super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     let estados = ancho_de_estados(p, &emos, ESTADO_LISTA * s, s);
     let texto_x = 8.0 * s + CASILLA * s + 10.0 * s + estados;
     // A la derecha va la edad o, con el raton encima, quitar (y «Mover a…»
@@ -2881,8 +3151,14 @@ fn hechura(
         p.medir_texto_ajustado(&texto, TAM_TAREA * s, texto_ancho).1
     };
     let mut y = 18.0 * s + texto_alto;
+    // La urgencia y las etiquetas, en su fila bajo el texto.
+    let chapas_y = (!chapas.is_empty()).then(|| {
+        let en = if texto_alto > 0.0 { y + 8.0 * s } else { 18.0 * s };
+        y = en + super::chapitas::ALTO * s;
+        en
+    });
     let minis_y = (!f.imagenes.is_empty()).then(|| {
-        let en = if texto_alto > 0.0 {
+        let en = if texto_alto > 0.0 || chapas_y.is_some() {
             y + 10.0 * s
         } else {
             12.0 * s
@@ -2903,6 +3179,8 @@ fn hechura(
         chapa_y,
         texto,
         emos,
+        chapas,
+        chapas_y,
     }
 }
 
@@ -3228,6 +3506,15 @@ fn pintar_tarjeta(
         s,
     );
 
+    // La urgencia y las etiquetas, en chapitas bajo el texto: una pulsada
+    // busca las tareas que la llevan.
+    if let Some(cy) = hc.chapas_y {
+        let cajas = super::chapitas::pintar(p, &hc.chapas, tx, r.y + cy, hc.texto_ancho, false, s, textos);
+        for (c, k) in cajas {
+            e.botones.zona(c, Accion::BuscarChapa(li, fi, k));
+        }
+    }
+
     // Arriba a la derecha: la edad o, con el raton o el foco, quitar y, si
     // es del Inbox, «Mover a…» a su lado.
     let derecha = r.x + r.ancho - 16.0 * s;
@@ -3475,7 +3762,7 @@ fn alto_de_cuadrado(e: &Estado, p: &Pintor, li: usize, fi: usize, lado: f32, s: 
     let Some((_, f)) = e.fila(li, fi) else {
         return lado;
     };
-    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
+    let super::frase::Vista { texto, emos, chapas } = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     // Una fila de las hechas (`lado` es entonces todo el ancho): su texto
     // entero entre la casilla y la edad, con su aire arriba y abajo.
     if lado > LADO_CUADRADO * s * 1.5 {
@@ -3502,8 +3789,10 @@ fn alto_de_cuadrado(e: &Estado, p: &Pintor, li: usize, fi: usize, lado: f32, s: 
         negrita: false,
     };
     let (_, texto_alto) = letra.medir(p, &texto, partes.texto.ancho);
-    // Lo de encima del texto, el texto, y lo de debajo (la casilla).
-    partes.texto.y + texto_alto + (lado - partes.texto.y - partes.texto.alto)
+    // Lo de encima del texto, el texto, sus chapitas (urgencia y etiquetas)
+    // y lo de debajo (la casilla).
+    let fila_chapas = if chapas.is_empty() { 0.0 } else { (super::chapitas::ALTO + 8.0) * s };
+    partes.texto.y + texto_alto + fila_chapas + (lado - partes.texto.y - partes.texto.alto)
 }
 
 /// Una tarea en su cuadrado (la vista en tarjetas). Con foto, la primera
@@ -3532,7 +3821,7 @@ fn pintar_cuadrado(
     let Some((lista, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
         return;
     };
-    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
+    let super::frase::Vista { texto, emos, chapas } = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     let partes = rejilla::partes(r, s, !emos.is_empty());
     let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
     let foco = e.foco == Foco::Tarjeta(li, fi);
@@ -3631,14 +3920,23 @@ fn pintar_cuadrado(
         negrita: con_foto,
     };
     let (_, renglon) = letra.medir(p, "Ag", 1000.0 * s);
+    // Sin foto, las chapitas (urgencia y etiquetas) van en su fila bajo el
+    // texto (`alto_de_cuadrado` le hizo sitio); con foto, abajo junto a la
+    // casilla.
+    let fila_chapas = if chapas.is_empty() || con_foto {
+        0.0
+    } else {
+        (super::chapitas::ALTO + 8.0) * s
+    };
     let caben = if con_foto {
         partes.texto.alto.min(renglon * 3.0 + 1.0)
     } else {
-        partes.texto.alto + renglon
+        (partes.texto.alto + renglon - fila_chapas).max(renglon)
     };
     let ancho_t = partes.texto.ancho;
     let mostrado =
         rejilla::recortar_a_renglones(&texto, caben, &mut |t| letra.medir(p, t, ancho_t).1);
+    let mut fin_del_texto = partes.texto.y;
     if !mostrado.is_empty() {
         let (_, th) = letra.medir(p, &mostrado, ancho_t);
         let ty = if con_foto {
@@ -3646,6 +3944,7 @@ fn pintar_cuadrado(
         } else {
             partes.texto.y
         };
+        fin_del_texto = ty + th;
         let color = match (con_foto, f.hecha) {
             (true, false) => Color::BLANCO,
             (true, true) => blanco(0.6),
@@ -3711,6 +4010,30 @@ fn pintar_cuadrado(
         p.texto(&t, derecha - ew, cy - eh / 2.0, tam_e, color);
     }
 
+    // La urgencia y las etiquetas: sin foto, en su fila bajo el texto; con
+    // foto, abajo entre la casilla y el «+N» (o la edad). Las que quepan, con
+    // fondo oscuro (sobre el degradado de la lista el claro no se lee).
+    // Pulsada una, se buscan las que la llevan.
+    if !chapas.is_empty() {
+        let alto = super::chapitas::ALTO * s;
+        let (x, y, ancho) = if con_foto {
+            let reserva = if f.imagenes.len() > 1 {
+                70.0 * s
+            } else {
+                edad(&f, e.hoy, textos).map_or(0.0, |t| p.medir_texto(&t, 12.0 * s).0 + 10.0 * s)
+            };
+            let x = partes.casilla.x + partes.casilla.ancho + 4.0 * s;
+            (x, cy - alto / 2.0, (derecha - reserva - x).max(0.0))
+        } else {
+            let y = (fin_del_texto + 8.0 * s).min(partes.casilla.y - alto - 2.0 * s);
+            (partes.texto.x, y, partes.texto.ancho)
+        };
+        let cajas = super::chapitas::pintar(p, &chapas, x, y, ancho, true, s, textos);
+        for (c, k) in cajas {
+            e.botones.zona(c, Accion::BuscarChapa(li, fi, k));
+        }
+    }
+
     // Con el raton encima o el foco: quitar y, en el Inbox, «Mover a…»
     // (solo icono: en un cuadrado no cabe el rotulo; Intro sigue igual).
     let a_mano = (encima || foco) && e.repartiendo.is_none();
@@ -3772,7 +4095,7 @@ fn pintar_fila_hecha(
         alto: CASILLA * s,
     };
     pintar_casilla(e, p, objetivo, (li, fi), f.hecha, false, true, s);
-    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
+    let super::frase::Vista { texto, emos, .. } = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     // Sin texto (solo emoticonos), los emoticonos; solo una foto, la foto.
     let texto = if texto.is_empty() { emos.join(" ") } else { texto };
     let mut tx = objetivo.x + objetivo.ancho + 6.0 * s;
@@ -4091,7 +4414,7 @@ mod pruebas {
                 "Mensajes guardados",
                 super::super::INBOX,
                 30,
-                "- [ ] llamar al fontanero por la fuga del baño ➕ 2026-09-28\n- [ ] comprar pan ➕ 2026-10-03\n- [x] pagar la luz ➕ 2026-09-20\n- [ ] repasar el presupuesto de la cocina con Ana antes del viernes y mandarle las dudas sobre los muebles altos ➕ 2026-10-02\n- [ ] sin fecha",
+                "- [ ] llamar al fontanero por la fuga del baño ⏫ #casa #baño ➕ 2026-09-28\n- [ ] comprar pan 🔼 #compra ➕ 2026-10-03\n- [x] pagar la luz ➕ 2026-09-20\n- [ ] repasar el presupuesto de la cocina con Ana antes del viernes y mandarle las dudas sobre los muebles altos ➕ 2026-10-02\n- [ ] sin fecha",
             ),
             lista(
                 "o",
@@ -4342,6 +4665,18 @@ mod pruebas {
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
         e.corrigiendo = None;
+        e.campo.vaciar();
+        // El selector de dia y hora abierto (18-oct-2026), con una hora ya
+        // elegida: mañana a las 17:00.
+        let manana = crate::tareas::frase::ahora().dia + 1;
+        e.campo.escribir(&format!("llamar al banco #casa {}", pixpin_ia::fechas::Momento { dia: manana, minuto: 17 * 60 }.marca()));
+        e.selector = true;
+        e.botones.raton = (0.0, 0.0);
+        crate::ventanita::muestra("tareas-v5-selector", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.selector = false;
         e.campo.vaciar();
         // La caja comun: una ficha de imagen como chapa y la rayita en
         // medio de lo escrito (Ctrl+izquierda), con «arena» elegida.
@@ -4703,6 +5038,43 @@ mod pruebas {
                 .any(|x| x.2 == Accion::OlvidarHora(0, 1))
         };
         assert!(quitar(true) && !quitar(false));
+    }
+
+    #[test]
+    fn el_selector_elige_dia_y_hora_y_lo_escribe_en_la_caja() {
+        use pixpin_ia::fechas::Momento;
+        let d = 20_740;
+        let ahora = Momento { dia: d, minuto: 10 * 60 + 30 };
+        let m = |dia, h: u32, mi: u32| Some(Momento { dia, minuto: h * 60 + mi });
+        // Un dia sin hora: a las 9:00; una hora sin dia: hoy si no paso.
+        assert_eq!(elegir_hora(Accion::PonerDia(d + 2), None, ahora), m(d + 2, 9, 0));
+        assert_eq!(elegir_hora(Accion::PonerMinuto(17 * 60), None, ahora), m(d, 17, 0));
+        assert_eq!(elegir_hora(Accion::PonerMinuto(8 * 60), None, ahora), m(d + 1, 8, 0), "las 8 ya pasaron");
+        // Con una ya elegida, cambia solo lo pulsado.
+        assert_eq!(elegir_hora(Accion::PonerMinuto(8 * 60), m(d + 3, 17, 0), ahora), m(d + 3, 8, 0));
+        assert_eq!(elegir_hora(Accion::PonerDia(d), m(d + 3, 17, 0), ahora), m(d, 17, 0));
+        assert_eq!(elegir_hora(Accion::MoverMinutos(15), m(d, 23, 50), ahora), m(d + 1, 0, 5));
+        assert_eq!(elegir_hora(Accion::QuitarHoraEscrita, m(d, 9, 0), ahora), None);
+        // Lo que no es del selector lo cierra.
+        assert!(es_del_selector(Accion::PonerDia(d)) && !es_del_selector(Accion::Fondo));
+        // De punta a punta: abrir, elegir mañana a las 17:00, y Esc lo cierra.
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let u = Ubicacion::Portable {
+            raiz: std::env::temp_dir().join("pixpin-tareas-selector-no-existe"),
+        };
+        let mut e = muestra_estado();
+        e.campo.escribir("llamar al banco #casa");
+        assert!(hacer(&mut e, Accion::Selector, &textos, &u, "PC01"));
+        assert!(e.selector);
+        let hoy = crate::tareas::frase::ahora().dia;
+        hacer(&mut e, Accion::PonerDia(hoy + 1), &textos, &u, "PC01");
+        hacer(&mut e, Accion::PonerMinuto(17 * 60), &textos, &u, "PC01");
+        let marca = Momento { dia: hoy + 1, minuto: 17 * 60 }.marca();
+        assert_eq!(e.campo.texto(), format!("llamar al banco #casa {marca}"));
+        assert!(e.selector, "elegir no lo cierra");
+        assert!(tecla(&mut e, VK_ESCAPE, false, false, &textos, &u, "PC01"));
+        assert!(!e.selector);
+        assert_eq!(e.campo.texto(), format!("llamar al banco #casa {marca}"), "Esc no borra lo escrito");
     }
 
     #[test]

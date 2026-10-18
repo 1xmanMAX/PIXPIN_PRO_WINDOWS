@@ -8,7 +8,8 @@
 # eso no depende de pixpin-proyecto ni de pixpin-shell: arrastrarian D3D, zip y
 # un crate `windows` de cuarenta features para leer tres JSON.
 #
-# La unica excepcion es `pixpin-lecciones` (capa 0, solo serde_json): leer un
+# Las unicas excepciones son `pixpin-frase` (sin dependencias: entender una
+# tarea escrita igual que la app) y `pixpin-lecciones` (capa 0, solo serde_json): leer un
 # `.leccion`, buscar como el movil y saber cuales tocan repasar hoy tiene que
 # dar lo mismo que en la app, y copiar esa logica aqui la haria divergir.
 [package]
@@ -29,4 +30,7 @@ path = "src/main.rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 pixpin-lecciones = { path = "../../crates/pixpin-lecciones" }
+# Lo que se reconoce al apuntar una tarea (#etiquetas, urgencia, fecha): el
+# MISMO parser que la app, sin dependencias (capa 0 como pixpin-lecciones).
+pixpin-frase = { path = "../../crates/pixpin-frase" }
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange", "Win32_System_Time", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_Memory"] }

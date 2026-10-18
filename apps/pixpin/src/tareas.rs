@@ -39,6 +39,7 @@
 #![forbid(unsafe_code)]
 
 mod emoticonos;
+pub(crate) mod chapitas;
 pub(crate) mod frase;
 mod kanban;
 pub(crate) mod rejilla;
@@ -1276,7 +1277,7 @@ mod pruebas {
     #[test]
     fn la_nota_del_pin_se_guarda_en_su_tarea_por_el_titulo() {
         let (raiz, obra) = almacen_de_prueba("nota-pin");
-        let frase = frase::leer("llamar al banco prioridad alta #casa", frase::ahora());
+        let frase = frase::leer("llamar al banco muy urgente #casa", frase::ahora());
         let m = pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, "yeso", "Obra").unwrap();
         pedidos::anadir_tarea(&raiz, &obra.id, "PC01", Some(&m.id), &frase.texto(), "Obra").unwrap();
         let carpeta = almacen::carpeta(&raiz, &obra.id);
