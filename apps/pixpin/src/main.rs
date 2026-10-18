@@ -1202,7 +1202,7 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_HORARIO => {
-                horario::abrir(lengua, ubicacion.clone());
+                horario::abrir(lengua, ubicacion.clone(), &identidad_equipo);
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_HORARIO_GRABAR => {
