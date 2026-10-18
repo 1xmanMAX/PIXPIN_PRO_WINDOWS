@@ -590,3 +590,41 @@ fn geometria_de_lamina_con_las_piezas_del_motor() {
     let e = llamar(&mut s, &ctx, GEOMETRIA, json!({"figura": "semicircunferencia"})).unwrap_err();
     assert!(e.contains("diametro"), "{e}");
 }
+
+/// **Puntos y angulos «entre» dos rectas** (18-oct): el agente nombra las
+/// rectas y el vertice sale exacto, con la letra libre siguiente.
+#[test]
+fn punto_y_angulo_entre_dos_rectas_exactos() {
+    let ctx = Contexto::default();
+    let mut s = Escena::nueva();
+    // Una horizontal y una vertical que se cruzan en (100, 100); y una
+    // diagonal que corta a la horizontal en (200, 100) a 45°.
+    let h = s.anadir(raya((0.0, 100.0), (300.0, 100.0), ROJO));
+    let v = s.anadir(raya((100.0, 0.0), (100.0, 300.0), AZUL));
+    let d = s.anadir(raya((150.0, 50.0), (260.0, 160.0), AZUL));
+    // El punto en el cruce, con la letra siguiente (A).
+    let p = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "punto", "entre": format!("#{h} #{v}")}));
+    let e = s.buscar(p.ids[0]).unwrap().clone();
+    let c = e.caja();
+    assert!(matches!(&e.figura, Figura::Punto { letra, .. } if letra == "A"), "{:?}", e.figura);
+    assert!(((c.0 + c.2) / 2.0 - 100.0).abs() < 1.0 && ((c.1 + c.3) / 2.0 - 100.0).abs() < 1.0, "en el cruce: {c:?}");
+    // El de 90° sale solo con su cuadradito, sin coordenadas.
+    let r = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "marca_angulo", "entre": format!("#{h} #{v}"), "cerca": [150, 150]}));
+    assert!(s.buscar(r.ids[0]).unwrap().extras.marca_angulo.as_ref().unwrap().recto);
+    // El de 45° con la letra griega siguiente (α, luego β).
+    let a = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "marca_angulo", "entre": format!("#{h} #{d}"), "valor": "griega", "cerca": [260, 120]}));
+    let m = s.buscar(a.ids[0]).unwrap().extras.marca_angulo.clone().unwrap();
+    assert!(!m.recto);
+    assert_eq!(m.valor.as_deref(), Some("α"));
+    let b = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "marca_angulo", "entre": format!("#{h} #{d}"), "valor": "griega", "cerca": [150, 120]}));
+    assert_eq!(s.buscar(b.ids[0]).unwrap().extras.marca_angulo.as_ref().unwrap().valor.as_deref(), Some("β"));
+    // «medida»: los grados medidos.
+    let m = un_paso(&mut s, &ctx, GEOMETRIA, json!({"figura": "marca_angulo", "entre": format!("#{h} #{d}"), "valor": "medida", "cerca": [260, 120]}));
+    assert_eq!(s.buscar(m.ids[0]).unwrap().extras.marca_angulo.as_ref().unwrap().valor.as_deref(), Some("45°"));
+    // Negativos: dos paralelas no se cruzan; una sola recta no basta.
+    let par = s.anadir(raya((0.0, 200.0), (300.0, 200.0), ROJO));
+    let e = llamar(&mut s, &ctx, GEOMETRIA, json!({"figura": "punto", "entre": format!("#{h} #{par}")})).unwrap_err();
+    assert!(e.contains("paralelas"), "{e}");
+    let e = llamar(&mut s, &ctx, GEOMETRIA, json!({"figura": "punto", "entre": format!("#{h}")})).unwrap_err();
+    assert!(e.contains("dos rectas"), "{e}");
+}

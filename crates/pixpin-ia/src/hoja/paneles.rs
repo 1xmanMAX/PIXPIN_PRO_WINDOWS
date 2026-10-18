@@ -85,6 +85,11 @@ fn color_mediano(rgba: &[u8], w: u32, h: u32, caja: &Caja, paso: usize, vale: im
     Some(m)
 }
 
+/// La distancia entre dos colores (euclidea en RGB).
+fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
 fn gris(p: [u8; 3]) -> f64 {
     (p[0] as f64 * 299.0 + p[1] as f64 * 587.0 + p[2] as f64 * 114.0) / 1000.0
 }
@@ -128,26 +133,39 @@ fn por_fondo(rgba: &[u8], w: u32, h: u32, a: &Analisis, hm: f64) -> Vec<Panel> {
     if cw < 4 || ch < 4 {
         return Vec::new();
     }
-    let mut media = vec![0u8; cw * ch];
+    // **En color** (18-oct): el boton azul «ver Mapa», la barra oscura de un
+    // navegador, una tarjeta crema. Una celda vale si es lisa en sus tres
+    // canales y no es papel; da igual lo oscura que sea (el texto no forma
+    // rectangulos grandes con los cuatro lados llenos, que es lo que se pide).
+    let kp = CELDA as f64 / a.f;
+    let papel = [a.fondo as f64; 3];
+    let mut color = vec![[0f64; 3]; cw * ch];
     let mut vale = vec![false; cw * ch];
-    let tope = a.fondo.saturating_sub(5);
-    let suelo = a.umbral.saturating_add(25);
     for cy in 0..ch {
         for cx in 0..cw {
-            let (mut s, mut lo, mut hi) = (0u32, 255u8, 0u8);
-            for y in cy * CELDA..(cy + 1) * CELDA {
-                for x in cx * CELDA..(cx + 1) * CELDA {
-                    let g = a.gris[y * a.w + x];
-                    s += g as u32;
-                    lo = lo.min(g);
-                    hi = hi.max(g);
+            let (x0, y0) = ((cx as f64 * kp) as u32, (cy as f64 * kp) as u32);
+            let (x1, y1) = ((((cx + 1) as f64 * kp) as u32).min(w), (((cy + 1) as f64 * kp) as u32).min(h));
+            let (mut s, mut n) = ([0f64; 3], 0f64);
+            let (mut lo, mut hi) = ([255u8; 3], [0u8; 3]);
+            for y in y0..y1.max(y0 + 1).min(h) {
+                for x in x0..x1.max(x0 + 1).min(w) {
+                    let i = ((y * w + x) * 4) as usize;
+                    for c in 0..3 {
+                        let v = rgba[i + c];
+                        s[c] += v as f64;
+                        lo[c] = lo[c].min(v);
+                        hi[c] = hi[c].max(v);
+                    }
+                    n += 1.0;
                 }
             }
-            let m = (s / (CELDA * CELDA) as u32) as u8;
-            media[cy * cw + cx] = m;
-            vale[cy * cw + cx] = hi - lo <= 10 && m <= tope && m >= suelo;
+            let m = [s[0] / n.max(1.0), s[1] / n.max(1.0), s[2] / n.max(1.0)];
+            color[cy * cw + cx] = m;
+            let liso = (0..3).all(|c| hi[c] - lo[c] <= 12);
+            vale[cy * cw + cx] = liso && dist(m, papel) >= 7.0;
         }
     }
+    let media: Vec<u8> = color.iter().map(|m| gris([m[0] as u8, m[1] as u8, m[2] as u8]) as u8).collect();
     // Grupos de celdas vecinas del mismo gris.
     let mut padre: Vec<usize> = (0..cw * ch).collect();
     fn raiz(p: &mut [usize], mut i: usize) -> usize {
@@ -164,7 +182,7 @@ fn por_fondo(rgba: &[u8], w: u32, h: u32, a: &Analisis, hm: f64) -> Vec<Panel> {
                 continue;
             }
             for j in [if cx + 1 < cw { Some(i + 1) } else { None }, if cy + 1 < ch { Some(i + cw) } else { None }].into_iter().flatten() {
-                if vale[j] && media[i].abs_diff(media[j]) <= 6 {
+                if vale[j] && dist(color[i], color[j]) <= 8.0 {
                     let (ri, rj) = (raiz(&mut padre, i), raiz(&mut padre, j));
                     if ri != rj {
                         padre[rj] = ri;
@@ -222,7 +240,13 @@ fn por_fondo(rgba: &[u8], w: u32, h: u32, a: &Analisis, hm: f64) -> Vec<Panel> {
         let caja = Caja::de_esquinas(x0 as f64 * k, y0 as f64 * k, (x1 + 1) as f64 * k, (y1 + 1) as f64 * k);
         // El fondo: lo liso de dentro, en color.
         let g_medio = media.iter().zip(&de).filter(|(_, d)| **d == r).map(|(m, _)| *m as f64).sum::<f64>() / n as f64;
-        let relleno = color_mediano(rgba, w, h, &caja.crecer(-k * 2.0), 3, |p| (gris(p) - g_medio).abs() <= 8.0);
+        let mut suma = [0f64; 3];
+        for (c, _) in color.iter().zip(&de).filter(|(_, d)| **d == r) {
+            for k in 0..3 {
+                suma[k] += c[k];
+            }
+        }
+        let relleno = Some([(suma[0] / n as f64) as u8, (suma[1] / n as f64) as u8, (suma[2] / n as f64) as u8]);
         // El borde: una franja mas oscura justo por fuera, en tres lados o mas.
         let (borde, grosor, caja) = borde_de(rgba, w, h, &caja, g_medio, hm);
         salida.push(Panel { caja, estilo: Estilo { relleno, borde, grosor, redondo } });
@@ -408,7 +432,11 @@ pub fn quitar_adornos(s: &mut Seccionado, rgba: &[u8]) {
 /// **Lo escrito en blanco sobre oscuro** (la pestana «¡Tenga en cuenta
 /// que...!»): como imagen. Como texto salia minusculo y negro sobre blanco,
 /// sin su cartel.
-fn invertidos(s: &mut Seccionado, rgba: &[u8]) {
+fn invertidos(s: &mut Seccionado, rgba: &[u8], fondo: [u8; 3]) {
+    // (Sobre un fondo oscuro la letra blanca es lo normal: es texto.)
+    if gris(fondo) < 128.0 {
+        return;
+    }
     let (w, h) = (s.ancho, s.alto);
     for z in s.zonas.iter_mut().filter(|z| matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado | Tipo::Formula | Tipo::Dudosa)) {
         let Some(c) = color_mediano(rgba, w, h, &z.caja, 2, |_| true) else { continue };
@@ -429,6 +457,10 @@ fn limpiar(rgba: &[u8], w: u32, h: u32, paneles: &[Panel]) -> Option<Vec<u8>> {
     for p in paneles {
         let Some(f) = p.estilo.relleno else { continue };
         let gf = gris(f);
+        // (Solo en los claros: en un boton o una barra oscura no hay marca de agua.)
+        if gf < 150.0 {
+            continue;
+        }
         let c = p.interior().dentro(w as f64, h as f64);
         for y in c.y as u32..c.y1() as u32 {
             for x in c.x as u32..c.x1() as u32 {
@@ -543,7 +575,7 @@ pub fn seccionar_limpia(rgba: &[u8], ancho: u32, alto: u32, palabras: Vec<Palabr
             seccion::unir_dibujos(&mut s, rgba);
         }
         quitar_adornos(&mut s, rgba);
-        invertidos(&mut s, rgba);
+        invertidos(&mut s, rgba, [a.fondo; 3]);
         if unir {
             juntar_formulas_al_renglon(&mut s);
         }
@@ -622,7 +654,7 @@ impl Region<'_> {
             seccion::unir_dibujos(&mut s, &sub);
         }
         quitar_adornos(&mut s, &sub);
-        invertidos(&mut s, &sub);
+        invertidos(&mut s, &sub, fondo);
         if self.unir {
             juntar_formulas_al_renglon(&mut s);
         }

@@ -790,29 +790,54 @@ fn de_lamina(escena: &Escena, figura: &str, e: &Edicion, ctx: &Contexto) -> Resu
             }
         }
         "marca_angulo" | "angulo_recto" => {
-            let v = punto(e, "vertice", ctx).ok_or("la marca necesita «vertice» [x, y]")?;
-            if puntos.len() < 2 {
-                return Err("la marca necesita «puntos» [x1, y1, x2, y2]: un punto de cada lado".into());
-            }
-            let (p1, p2) = (puntos[0], puntos[1]);
+            // **Entre dos rectas que ya estan** (18-oct): el vertice y los
+            // lados exactos, sin coordenadas a ojo.
+            let (v, p1, p2) = match e.texto("entre").filter(|t| !t.trim().is_empty()) {
+                Some(entre) => cruce(escena, entre, ctx, punto(e, "cerca", ctx))?,
+                None => {
+                    let v = punto(e, "vertice", ctx).ok_or("la marca necesita «entre» (dos rectas: «#3 #5») o «vertice» [x, y]")?;
+                    if puntos.len() < 2 {
+                        return Err("la marca necesita «puntos» [x1, y1, x2, y2]: un punto de cada lado".into());
+                    }
+                    (v, puntos[0], puntos[1])
+                }
+            };
             if p1.distancia(v) < 0.5 || p2.distancia(v) < 0.5 {
                 return Err("los puntos de los lados no pueden ser el vertice".into());
             }
-            let mut m = if figura == "angulo_recto" {
+            let medido = {
+                let (a, b) = (p1.restar(v), p2.restar(v));
+                ((a.x * b.x + a.y * b.y) / (a.longitud() * b.longitud()).max(1e-6)).clamp(-1.0, 1.0).acos().to_degrees()
+            };
+            let valor_pedido = e.texto("valor").map(str::trim).filter(|s| !s.is_empty());
+            // Un angulo de 90° entre rectas, sin valor propio: su cuadradito.
+            let recto = figura == "angulo_recto" || (e.texto("entre").is_some() && (medido - 90.0).abs() < 1.5 && matches!(valor_pedido, None | Some("griega")));
+            let valor = match valor_pedido {
+                Some("griega") => Some(ge::siguiente_letra_de_angulo(&ge::letras_de_angulo_usadas(&escena.elementos, None))),
+                Some("medida") => Some(format!("{}°", medido.round())),
+                Some(v) => Some(v.to_string()),
+                None => None,
+            };
+            let mut m = if recto {
                 ge::marca_de_angulo_recto(v, p1, p2, e.numero("radio").unwrap_or(14.0) as f32)
             } else {
                 let arcos = e.numero("arcos").unwrap_or(1.0).clamp(1.0, 3.0) as u8;
                 ge::marca_de_angulo(v, p1, p2, e.numero("radio").unwrap_or(ge::RADIO_MARCA as f64) as f32, arcos)
             };
-            if let Some(marca) = m.extras.marca_angulo.as_mut() {
-                marca.valor = e.texto("valor").filter(|s| !s.trim().is_empty()).map(str::to_string);
+            if let Some(marca) = m.extras.marca_angulo.as_mut()
+                && !recto
+            {
+                marca.valor = valor;
             }
             m
         }
         "punto" => {
-            let p = punto(e, "centro", ctx)
-                .or_else(|| puntos.first().copied())
-                .ok_or("el punto necesita «puntos» [x, y] (o «centro»)")?;
+            // En el cruce de dos rectas (exacto), o donde se diga.
+            let p = match e.texto("entre").filter(|t| !t.trim().is_empty()) {
+                Some(entre) => Some(cruce(escena, entre, ctx, None)?.0),
+                None => punto(e, "centro", ctx).or_else(|| puntos.first().copied()),
+            }
+            .ok_or("el punto necesita «entre» (dos rectas), «puntos» [x, y] o «centro»")?;
             let angulo = match e.texto("letra_hacia") {
                 Some(lado) => {
                     let g: f32 = match lado {
@@ -829,10 +854,78 @@ fn de_lamina(escena: &Escena, figura: &str, e: &Edicion, ctx: &Contexto) -> Resu
                 }
                 None => pixpin_motor2d::puntos_etiquetados::angulo_libre(p, &escena.elementos, 40.0),
             };
-            ge::punto_con_letra(p, e.texto("letra").unwrap_or(""), angulo)
+            // «siguiente» (o sin letra con «entre»): la siguiente libre, A, B, C...
+            let letra = match e.texto("letra").map(str::trim) {
+                Some("siguiente") => pixpin_motor2d::puntos_etiquetados::siguiente_etiqueta(&pixpin_motor2d::puntos_etiquetados::etiquetas_usadas(&escena.elementos), Default::default()),
+                None | Some("") if e.texto("entre").is_some() => pixpin_motor2d::puntos_etiquetados::siguiente_etiqueta(&pixpin_motor2d::puntos_etiquetados::etiquetas_usadas(&escena.elementos), Default::default()),
+                Some(l) => l.to_string(),
+                None => String::new(),
+            };
+            ge::punto_con_letra(p, &letra, angulo)
         }
         otra => return Err(format!("figura desconocida «{otra}»")),
     })
+}
+
+/// **El cruce de dos rectas que ya estan** (18-oct, el usuario: «que los
+/// agentes usen la herramienta de puntos en las intersecciones y que el
+/// angulo sea mas preciso y facil de usar»): `entre` las nombra («#3 #5»,
+/// «la recta roja y la azul»). Devuelve el vertice exacto y un punto de cada
+/// lado: el extremo de cada recta que queda del lado de `cerca` (un punto
+/// dentro del angulo que se quiere; sin el, el extremo mas lejano). Si los
+/// trazos no llegan a tocarse, sus prolongaciones.
+fn cruce(escena: &Escena, entre: &str, ctx: &Contexto, cerca: Option<Punto2>) -> Result<(Punto2, Punto2, Punto2), String> {
+    use pixpin_motor2d::perimetros::{interseccion, segmentos_de};
+    let r = referencia::resolver(escena, entre, ctx, None)?;
+    if r.ids.len() != 2 {
+        return Err(format!("«entre» tiene que nombrar dos rectas, como «#3 #5» (encaja con {})", r.ids.len()));
+    }
+    let tramos = |id: u64| -> Result<Vec<(Punto2, Punto2)>, String> {
+        let el = escena.buscar(id).ok_or_else(|| format!("no esta el #{id}"))?;
+        let s = segmentos_de(el, 2.0);
+        if s.is_empty() { Err(format!("el #{id} no tiene lados")) } else { Ok(s) }
+    };
+    let (sa, sb) = (tramos(r.ids[0])?, tramos(r.ids[1])?);
+    let mut encontrado: Option<(Punto2, (Punto2, Punto2), (Punto2, Punto2))> = None;
+    'fuera: for a in &sa {
+        for b in &sb {
+            if let Some(p) = interseccion(a.0, a.1, b.0, b.1) {
+                encontrado = Some((p, *a, *b));
+                break 'fuera;
+            }
+        }
+    }
+    // Sin cruce dentro de los trazos: las rectas prolongadas (de un extremo
+    // al otro de cada trazo).
+    let (v, la, lb) = match encontrado {
+        Some(x) => x,
+        None => {
+            let (a1, a2) = (sa[0].0, sa[sa.len() - 1].1);
+            let (b1, b2) = (sb[0].0, sb[sb.len() - 1].1);
+            let (d1, d2) = (a2.restar(a1), b2.restar(b1));
+            let den = d1.x * d2.y - d1.y * d2.x;
+            if den.abs() < 1e-4 {
+                return Err("esas dos rectas son paralelas: no se cruzan".into());
+            }
+            let t = ((b1.x - a1.x) * d2.y - (b1.y - a1.y) * d2.x) / den;
+            (Punto2::nuevo(a1.x + d1.x * t, a1.y + d1.y * t), (a1, a2), (b1, b2))
+        }
+    };
+    let lado = |(q1, q2): (Punto2, Punto2)| -> Punto2 {
+        // Los dos sentidos de la recta desde el vertice.
+        let (d1, d2) = (q1.restar(v), q2.restar(v));
+        let elegir = match cerca {
+            Some(c) => {
+                let h = c.restar(v);
+                (d1.x * h.x + d1.y * h.y) >= (d2.x * h.x + d2.y * h.y)
+            }
+            None => d1.longitud() >= d2.longitud(),
+        };
+        let d = if elegir { d1 } else { d2 };
+        // (Un extremo que es el propio vertice: el otro sentido.)
+        if d.longitud() < 1.0 { v.restar(if elegir { d2 } else { d1 }) } else { v.sumar(d) }
+    };
+    Ok((v, lado(la), lado(lb)))
 }
 
 /// Lo de lamina que se pone despues del estilo: relleno (translucido en la

@@ -211,11 +211,13 @@ pub const FILAS: &[Fila] = &[
             c("inicio", Tipo::Numero, false, "arco, cuadrante, sector, segmento: grados donde empieza"),
             c("fin", Tipo::Numero, false, "arco, sector, segmento: grados donde acaba"),
             c("sentido", Tipo::Opciones(&["antihorario", "horario"]), false, "arco, cuadrante, sector, segmento: de «inicio» a «fin» (omitir: antihorario)"),
-            c("vertice", Tipo::Numeros, false, "marca_angulo y angulo_recto: [x, y] del vertice"),
+            c("entre", Tipo::Texto, false, "marca_angulo, angulo_recto y punto: las DOS rectas que ya estan y se cruzan, por su #id («#3 #5»): el vertice (o el punto) y los lados salen exactos; MEJOR que dar coordenadas"),
+            c("cerca", Tipo::Numeros, false, "marca_angulo con «entre»: [x, y] un punto dentro del angulo que se marca (de los cuatro del cruce); omitir: el de los extremos mas lejanos"),
+            c("vertice", Tipo::Numeros, false, "marca_angulo y angulo_recto sin «entre»: [x, y] del vertice"),
             c("lado", Tipo::Numeros, false, "semicircunferencia: [x, y] un punto del lado al que va (omitir: arriba)"),
             c("arcos", Tipo::Numero, false, "marca_angulo: 1 a 3 arquitos"),
-            c("valor", Tipo::Texto, false, "marca_angulo: lo que se escribe al lado («45°», «θ», «x»)"),
-            c("letra", Tipo::Texto, false, "punto: su letra («A», «P», «O»)"),
+            c("valor", Tipo::Texto, false, "marca_angulo: lo que se escribe al lado («45°», «θ», «x»); «griega»: la siguiente letra griega libre (α, β, θ...); «medida»: los grados medidos. Con «entre», un angulo de 90° sale solo con su cuadradito"),
+            c("letra", Tipo::Texto, false, "punto: su letra («A», «P», «O»); «siguiente»: la siguiente libre (con «entre» y sin letra, tambien)"),
             c(
                 "letra_hacia",
                 Tipo::Opciones(&[
