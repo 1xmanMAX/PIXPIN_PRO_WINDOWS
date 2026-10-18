@@ -44,6 +44,9 @@ Dicho fácil, para cualquier persona:
 | 📊 | Abrir Word, Excel y PowerPoint al instante | Sin abrir Office: PixPin los dibuja él mismo, en una décima de segundo. |
 | 📖 | Leer un PDF o un Word mientras trabajo | Se abre pequeño, como un pin, al lado de lo que hago; o a pantalla completa con `F11`. |
 | 📱 | Tenerlo también en el móvil | Se sincroniza con PixPin Android por Wi‑Fi, sin nube y sin cuentas. |
+| 🤖 | Pedirle cosas a una IA | El chat «Asistente» (Claude Haiku o DeepSeek, si tú los activas) lee tus documentos, apunta tareas, dibuja en el lienzo y busca en tu Google Drive. |
+| 📝 | Pasar una lámina o una captura al lienzo | «Calca esto»: cada recuadro, texto, fórmula y figura sale editable y en su sitio. |
+| 🎓 | Que no se me olvide la clase | Escribo mi horario y antes de cada clase me «llama», con la nota de voz que me dejé. |
 
 ## Índice
 
@@ -53,6 +56,7 @@ Dicho fácil, para cualquier persona:
   - [Capturar](#capturar)
   - [Pines flotantes](#pines-flotantes)
   - [Proyectos y chat](#proyectos-y-chat)
+  - [El asistente](#el-asistente)
   - [Timeline y lecciones](#timeline-y-lecciones)
   - [Tareas y galería](#tareas-y-galería)
   - [Buscar en todo](#buscar-en-todo)
@@ -186,9 +190,13 @@ miniatura.
   </tr>
 </table>
 
-- **Menú de cada mensaje** con iconos y letras: Responder `R`, Copiar, Pinear `P`, Anotar `A`,
-  Editar descripción `E`, Reenviar `F`, Hacer lección `L`… Lo menos usado va en «Más». Encima,
-  las etiquetas ⭐ ✅ ⏳ 💡 💰 📍.
+- **Menú de cada mensaje** con iconos y letras, ordenado por uso: Copiar, Responder `R`, Escuchar,
+  Pinear `P` y Renombrar arriba; después lo propio de cada tipo (Anotar `A`, Editar descripción
+  `E`…); luego Reenviar `F`, Compartir, Hacer lección `L`; «Más» y, aparte y en rojo, Borrar.
+  Encima, las etiquetas ⭐ ✅ ⏳ 💡 💰 📍.
+- **Enlaces** subrayados y en su color: un clic los abre en el navegador.
+- **La caja de escribir** crece hasta un tope y luego se desplaza sola para que siempre se vea el
+  cursor; `Ctrl Retroceso` y `Ctrl Supr` borran palabra a palabra, como en Windows.
 - **Adjuntar** como cuadrícula con buscador y teclas `1`–`8`: foto o vídeo, archivo, lienzo,
   nota, lista de tareas, tabla, conversación y captura. Debajo, lo menos usado: teleprónter,
   pronunciar, cronómetro, ruleta, gastos, traer del móvil…
@@ -206,6 +214,27 @@ miniatura.
 | Proyectos, tema claro | Tema oscuro | Ventana estrecha |
 |---|---|---|
 | ![](docs/img/proyectos-claro.png) | ![](docs/img/proyectos-oscuro.png) | ![](docs/img/proyectos-estrecha.png) |
+
+### El asistente
+
+Un chat más, «Asistente», con una IA que hace cosas dentro de PixPin. **Solo si tú la activas**
+en Ajustes → Asistente, con tu propia clave: Claude (Haiku) o DeepSeek; el modelo local va aparte.
+El modelo se cambia desde la pastilla de arriba del propio chat.
+
+- **Lee y entiende lo tuyo**: los PDF, Word, Excel y fotos del chat (con OCR), y busca en todos
+  tus proyectos con la fecha y la hora de cada cosa.
+- **Hace**: apunta tareas y recordatorios, crea notas, abre ventanas, pinea, resume lo que hiciste.
+- **Dibuja en el lienzo**: gráficas, figuras exactas, diagramas; crea lienzos nuevos, abre los que
+  hay por su nombre y se mira lo que dibujó para corregirlo.
+- **«Calca esto»**: una lámina, un apunte o una captura pasan al lienzo **editables**. Cada
+  recuadro o tarjeta se separa y se rellena con su color; cada renglón queda en su sitio y la IA
+  le corrige las letras (tildes, °, θ, ∢, fórmulas); las figuras salen con rectas, arcos y letras
+  exactas; lo que es foto va recortado sin llevarse texto ajeno, y la marca de agua no se copia.
+- **Google Drive**: busca, lee y trae archivos de tu Drive, y sube los del chat si le dices que
+  sí. Para conectarlo, sigue [docs/conexiones-google-drive.md](docs/conexiones-google-drive.md).
+- **Conversación nueva** empieza de cero sin borrar lo de antes; **Borrar chat** lo vacía.
+- Las respuestas con listas se ven como listas, y no se leen solas en voz alta (el altavoz de
+  cada burbuja sigue ahí).
 
 ### Timeline y lecciones
 
@@ -252,6 +281,16 @@ de cualquier momento lo convierte en lección.
 **tarjetas**. Lo que se apunta rápido entra en el **Inbox**, y «Mover a…» lo lleva a la lista que
 toque. Una tarea puede llevar imágenes (`Ctrl V`): en la vista de tarjetas la foto es el fondo y,
 si hay varias, se ven apiladas. Los **emoticonos** de una tarea salen como estados de colores.
+
+- **Al escribir se entiende**: «llamar al banco prioridad alta recordar a las 5 #casa» queda con su
+  prioridad (⏫ 🔼 🔽), su etiqueta y su aviso, y el título limpio. Viaja al móvil como texto.
+- **Pin de una tarea**: una tarea con hora sale como un pin pequeño con solo su título y un botón
+  «¿Por qué no ahora?» para apuntar una nota. También desde «Fijar como pin» en su menú.
+- **Kanban** (`Ctrl K`): una columna por lista; arrastrar una tarjeta a otra columna la mueve de lista.
+- **Horario de clases** (bandeja → «Horario de clases…»): una línea por clase («Lun Mie 8:00-10:00
+  Geometría @A-12») o una tabla pegada. Antes de cada clase sale una **llamada** en pantalla;
+  «Contestar» pone la nota de voz que grabaste para esa clase y lee lo apuntado. Las evaluaciones
+  avisan 3 días y 1 día antes.
 
 | Tarjetas | Lista |
 |---|---|
@@ -307,6 +346,10 @@ grupo enseña su última herramienta y despliega las demás.
   Work Sans, Fraunces, Courier New y Caveat).
 - **Tinta**: lápiz, grafito, resaltador, goma y bote de relleno exacto entre figuras.
 - **Construir**: recortar y extender, soldar vértices, puntos con letra, cotas, escala gráfica y calibrar.
+- **Ángulos** (`W`): un clic junto a un vértice pone la marca con la siguiente letra griega libre
+  (α, β, θ…); `W` otra vez, el de 90° con su cuadradito; `↑` `↓` cambian la letra.
+- **Mandar a un lienzo por su nombre**: desde Flow (`p lienzo Obra > texto`, con fotos pegadas) o
+  la consola (`pixpinmax al-lienzo Obra foto.png`); se apilan en una columna para ordenarlos luego.
 - **Señalar y tapar**: pasos numerados, foco, lupa, pixelar o desenfocar, láser y marcadores.
 - **Gráficas y tablas**; tablas pegadas de Excel o Sheets con celdas combinadas.
 - **Zona al chat**: un rectángulo del lienzo va al chat con su vínculo de vuelta.
@@ -414,7 +457,7 @@ nivel**, ejes de carretera con su perfil, puntos, tuberías y parcelas.
 
 ### Leer PDF y Word como un pin
 
-Los **PDF, Word y EPUB** se abren **pequeños, como un pin**, para leer al lado de lo que estás
+Los **PDF, Word, EPUB, Markdown y HTML** se abren **pequeños, como un pin**, para leer al lado de lo que estás
 haciendo. Arriba, fuera de la hoja, sale su barra:
 
 <img src="docs/img/v2/lector-pdf-pin.png" width="640" alt="Un PDF abierto como un pin, con su barra">
@@ -431,6 +474,8 @@ haciendo. Arriba, fuera de la hoja, sale su barra:
 
 - Se estira por los bordes como cualquier pin.
 - Se puede anotar encima, con marcadores y búsqueda.
+- **Markdown** lleva ver/editar, deshacer, buscar, comentarios y compartir; **HTML**, recargar,
+  exportar y abrir en el navegador. La misma barra para todos.
 
 ### Word, Excel y PowerPoint al instante
 
@@ -541,6 +586,9 @@ flowchart LR
   Un PC del grupo los recibe igual. En el móvil, el chat abierto necesita la versión de Android de
   la [guía del 7-oct](docs/investigacion/2026-10-07-archivos-al-chat-abierto-android.md); hasta
   entonces, las fotos van a su lienzo abierto y lo demás a su conversación general.
+- **A tus aparatos sin código**: en «Enviar por Wi‑Fi» salen los aparatos de tu grupo («En la misma
+  Wi‑Fi» o «No se ve ahora») con su botón «Enviar» y «Enviar a todos». El que recibe ve un aviso.
+- La **galería** viaja con el texto leído dentro de cada captura.
 - Las lecciones se juntan campo a campo.
 
 ### Ajustes
@@ -570,6 +618,8 @@ son letras que **solo valen dentro de la ventana abierta**, y cada botón muestr
 | Plano (DWG) | `M` medir · `I` marcos · `Ctrl P` imprimir · `A` anotar · `3` ver en 3D · `F` todo · `B` tema · `T` encima · `+` `−` y flechas · `Esc` cerrar |
 | Modelo 3D | `C` caja de sección · `L` niveles y categorías · `I` aislar · `F` todo · `P` planta · `A` aristas · `B` fondo · `T` encima · flechas girar · `+` `−` · `Esc` soltar o cerrar |
 | Lector de PDF y Word | `F11` pantalla completa · `Esc` vuelve a pin · `Ctrl F` buscar |
+| Lienzo | `W` ángulo con letra griega (otra vez: 90°) · `↑` `↓` cambiar la letra |
+| Tareas | `Ctrl K` Kanban |
 
 ## Instalar
 
@@ -642,6 +692,9 @@ cargo test --workspace --no-fail-fast -- --test-threads=1
 ## Privacidad
 
 - Nada sale del equipo salvo lo que sincronizas con tu propio móvil en tu Wi‑Fi.
+- **El asistente en la nube es opcional**: solo si pones tu clave de Claude o DeepSeek, y entonces
+  le llega lo que le pidas. Las claves y los permisos de Google Drive se guardan cifrados (DPAPI);
+  Drive solo pide leer y subir lo que PixPin crea, nunca borrar.
 - Sin cuentas, sin nube y sin telemetría. Los registros se quedan en la carpeta de datos.
 - El OCR y la transcripción se hacen en el propio equipo.
 
