@@ -471,21 +471,40 @@ pub fn pasar(
     // propias (`PREVIAS + i`), para no chocar con las del plan.
     const PREVIAS: usize = 50_000;
     let mut previas: Vec<(usize, Caja)> = Vec::new();
+    let mut previas_texto: Vec<usize> = Vec::new();
     let mut ms_primera_previa: Option<u128> = None;
     let planificar = matches!(&vision, Some(_) if o.rico && std::env::var_os("PIXPIN_SIN_PLAN").is_none());
     if planificar {
         let mapa0 = Mapa::para(&s, o);
         let (w0, h0) = mapa0.hoja(&s);
-        for (i, z) in s.zonas.iter().enumerate().filter(|(_, z)| z.tipo == Tipo::Recuadro) {
+        // (Y el texto que leyo el OCR, tal cual, mientras el plan llega: una
+        // hoja sin recuadros, como la de un apunte, no ensenaba nada en 10 s.
+        // En cuanto hay plan se quita y sale el de las zonas del plan.)
+        let dibujos: Vec<Caja> = s.zonas.iter().filter(|z| matches!(z.tipo, Tipo::Dibujo | Tipo::Grafica | Tipo::Formula | Tipo::Dudosa)).map(|z| z.caja).collect();
+        let texto_suelto = |z: &hoja::Zona| matches!(z.tipo, Tipo::Parrafo | Tipo::Encabezado) && !dibujos.iter().any(|d| d.comun(&z.caja) > 0.0);
+        for (i, z) in s.zonas.iter().enumerate().filter(|(_, z)| z.tipo == Tipo::Recuadro || texto_suelto(z)) {
             let e0 = Entrada { zona: z, mapa: mapa0, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: None, ajenas: &[], pistas: &[] };
-            let h = montaje::hacer(&e0, None, Via::Editable);
+            let via = if z.tipo == Tipo::Recuadro { Via::Editable } else { Via::Fiel };
+            let h = montaje::hacer(&e0, None, via);
             let en0 = EnHoja { sesion: semilla, zona: PREVIAS + i, rehacer: false, ultima: false, tam: (w0 as f32, h0 as f32), junto_a: None };
             if destino.entregar(Some(&h), en0).is_ok() {
-                previas.push((i, z.caja));
+                if z.tipo == Tipo::Recuadro {
+                    previas.push((i, z.caja));
+                } else {
+                    previas_texto.push(i);
+                }
                 ms_primera_previa.get_or_insert(t0.elapsed().as_millis());
             }
         }
     }
+    // El texto adelantado, fuera (con plan o sin el: sus zonas salen ahora).
+    let quitar_previas_texto = |destino: &mut dyn Destino, s: &Seccionado| {
+        let (w0, h0) = Mapa::para(s, o).hoja(s);
+        for &i in &previas_texto {
+            let vacio = Hecho { zona: PREVIAS + i, tipo: Tipo::Parrafo, via: Via::Fiel, elementos: Vec::new(), imagenes: Vec::new(), nota: "texto adelantado, sustituido".into() };
+            let _ = destino.entregar(Some(&vacio), EnHoja { sesion: semilla, zona: PREVIAS + i, rehacer: true, ultima: false, tam: (w0 as f32, h0 as f32), junto_a: None });
+        }
+    };
     let s = match &vision {
         Some(m) if planificar => {
             let tp = Instant::now();
@@ -520,6 +539,7 @@ pub fn pasar(
         _ => s,
     };
     let tema = tema;
+    quitar_previas_texto(destino, &s);
     let ms_seccionar = t0.elapsed().as_millis();
     if s.zonas.is_empty() {
         return Err("la hoja esta en blanco: no hay nada que pasar al lienzo".into());

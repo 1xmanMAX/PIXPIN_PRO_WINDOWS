@@ -694,6 +694,9 @@ fn foto_tapada(e: &Entrada, caja: &Caja, tapar: &[Caja], palido: bool) -> Option
             for x in x0..x1 {
                 let i = ((y * sw + x) * 4) as usize;
                 sub[i..i + 3].copy_from_slice(&fondo);
+                // (Transparente, no solo del color del fondo: si la imagen
+                // queda encima del texto de la otra zona, se ve a traves.)
+                sub[i + 3] = 0;
             }
         }
     }
