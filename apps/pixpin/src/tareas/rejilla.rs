@@ -31,6 +31,9 @@ pub enum Vista {
     Lista,
     /// Cuadrados en rejilla, con la foto de fondo.
     Tarjetas,
+    /// Una columna por lista; arrastrar una tarjeta a otra la pasa alli
+    /// (`kanban`, 17-oct-2026).
+    Kanban,
 }
 
 /// Donde se recuerda la vista elegida, en la carpeta de datos: una palabra.
@@ -42,6 +45,7 @@ impl Vista {
     pub fn de_texto(s: &str) -> Vista {
         match s.trim() {
             "tarjetas" => Vista::Tarjetas,
+            "kanban" => Vista::Kanban,
             _ => Vista::Lista,
         }
     }
@@ -50,7 +54,14 @@ impl Vista {
         match self {
             Vista::Lista => "lista",
             Vista::Tarjetas => "tarjetas",
+            Vista::Kanban => "kanban",
         }
+    }
+
+    /// Si las tarjetas son las de la vista en cuadrados (con su foto de
+    /// fondo): en la rejilla y en el tablero Kanban, que usa las mismas.
+    pub fn con_cuadrados(self) -> bool {
+        matches!(self, Vista::Tarjetas | Vista::Kanban)
     }
 
     pub fn leer(raiz: &Path) -> Vista {

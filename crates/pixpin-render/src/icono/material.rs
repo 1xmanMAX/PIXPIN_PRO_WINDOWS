@@ -283,6 +283,16 @@ pub const GRID_VIEW: Icono = Icono {
     )],
 };
 
+/// La vista Kanban de Tareas (17-oct-2026): tres columnas de alto distinto,
+/// como las listas del tablero. Hecho a mano sobre la rejilla de 24.
+pub const VIEW_KANBAN: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 4h5v16H3V4zM9.5 4h5v10h-5V4zM16 4h5v13h-5V4z",
+        false,
+    )],
+};
+
 /// `hearing` (`src/av/hearing/materialicons/24px.svg`).
 pub const HEARING: Icono = Icono {
     vista: VISTA,

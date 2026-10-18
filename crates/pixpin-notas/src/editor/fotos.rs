@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use pixpin_docs::md_imagen::{self, Foto};
 use windows::Win32::UI::Controls::NMHDR;
 use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
-use windows::Win32::UI::Shell::{DragAcceptFiles, HDROP};
+use windows::Win32::UI::Shell::{DragAcceptFiles, DragQueryPoint, HDROP};
 
 use super::*;
 use crate::integracion::{self, Viva};
@@ -298,10 +298,21 @@ pub(super) fn soltar_lo_soltado(e: &mut Estado) {
     }
 }
 
-/// Un `WM_DROPFILES` que llego al propio control.
+/// Un `WM_DROPFILES` que llego al propio control: entra en la letra donde
+/// se solto. El bucle lo atiende antes que el control, asi que Windows no
+/// llega a mandar el `EN_DROPFILES` con esa letra; sin mirar el punto del
+/// arrastre la foto caia donde estuviera el cursor y no bajo el raton.
 pub(super) fn soltar_hdrop(e: &mut Estado, w: usize, liberar: bool) {
-    let rutas = integracion::rutas_de_hdrop(HDROP(w as *mut _), liberar);
-    soltar(e, rutas, None);
+    let h = HDROP(w as *mut _);
+    let mut p = POINT::default();
+    // SAFETY: `h` es el arrastre vivo del mensaje; se lee antes de soltarlo.
+    let dentro = unsafe { DragQueryPoint(h, &mut p).as_bool() };
+    let donde = dentro
+        .then(|| enviar(e.edit, EM_CHARFROMPOS, 0, &p as *const _ as isize))
+        .filter(|&c| c >= 0)
+        .map(|c| c as usize);
+    let rutas = integracion::rutas_de_hdrop(h, liberar);
+    soltar(e, rutas, donde);
 }
 
 /// Lo que el marco recibe para las fotos: el `EN_DROPFILES` del control,

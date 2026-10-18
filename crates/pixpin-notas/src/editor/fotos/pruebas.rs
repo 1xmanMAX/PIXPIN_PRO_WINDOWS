@@ -142,6 +142,51 @@ fn pegar_una_captura_la_copia_junto_a_la_nota_y_escribe_su_renglon() {
 }
 
 #[test]
+fn pegar_con_el_cursor_en_medio_deja_la_foto_ahi_y_la_segunda_detras() {
+    let recibido = Comun::new(Celda::new(Vec::new()));
+    let mut e = abrir_con(
+        "Visita de obra\nfin",
+        Box::new(|_: &str| None),
+        adjuntar_que_apunta(recibido.clone()),
+        Integracion::default(),
+    );
+    let img = pixpin_codec::ImagenRgba {
+        ancho: 4,
+        alto: 3,
+        pixeles: vec![255; 48],
+    };
+    // El cursor detras de «Visita » (letra 7).
+    elegir(e.edit, 7, 7);
+    assert!(pegar_imagen(&mut e, &img));
+    let f = "![Captura](pixpin:files/guardados/pc/p1/notas/9-Captura.png)";
+    assert_eq!(markdown(&e), format!("Visita \n{f}\nde obra\nfin"));
+    // La segunda pegada va justo detras de la primera, no al final.
+    assert!(pegar_imagen(&mut e, &img));
+    assert_eq!(markdown(&e), format!("Visita \n{f}\n{f}\nde obra\nfin"));
+    desmontar(e);
+}
+
+#[test]
+fn soltar_en_medio_de_un_renglon_lo_parte_y_la_foto_queda_entre_medias() {
+    let recibido = Comun::new(Celda::new(Vec::new()));
+    let mut e = abrir_con(
+        "antes\ndespues",
+        Box::new(|_: &str| None),
+        adjuntar_que_apunta(recibido.clone()),
+        Integracion::default(),
+    );
+    let foto = png("medio.png", 8, 6);
+    // Soltada entre «ant» y «es» (letra 3), con el cursor en otro sitio.
+    elegir(e.edit, 0, 0);
+    assert_eq!(soltar(&mut e, vec![foto], Some(3)), 1);
+    assert_eq!(
+        markdown(&e),
+        "ant\n![medio](pixpin:files/guardados/pc/p1/notas/9-medio.png)\nes\ndespues"
+    );
+    desmontar(e);
+}
+
+#[test]
 fn soltar_fotos_las_mete_donde_se_soltaron_y_lo_que_no_es_foto_no() {
     let recibido = Comun::new(Celda::new(Vec::new()));
     let mut e = abrir_con(
