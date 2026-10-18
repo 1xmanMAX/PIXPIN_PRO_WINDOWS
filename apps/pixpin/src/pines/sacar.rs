@@ -15,7 +15,7 @@ use pixpin_pin::magia::{self, Clasificado, MiniApp};
 use pixpin_pin::{CambioPin, Contenido, Paleta};
 
 use super::herramienta::{self, Cuadro, Hecho, Herramienta};
-use super::{Pines, pizarra, textos};
+use super::{Pines, pizarra, tarea, textos};
 
 /// Lo que dura el «Copiado» de un pin de color.
 const DURA_EL_COPIADO_MS: u32 = 1500;
@@ -172,6 +172,118 @@ impl Pines {
         Ok(id)
     }
 
+    /// **El pin pequeño de una tarea** (17-oct-2026, `tarea.rs`): la tarea
+    /// `indice` de la lista del mensaje `vinculo`, arriba a la derecha del
+    /// area de trabajo para no tapar lo que se esta haciendo. Si esa tarea
+    /// ya tiene su pin, no sale otro.
+    pub fn pinear_tarea_del_chat(
+        &mut self,
+        vinculo: herramienta::Vinculo,
+        indice: usize,
+        monitor: &Monitor,
+    ) -> Result<u64> {
+        let m = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&vinculo.carpeta)
+            .context("no se pudo leer el cuaderno del proyecto")?
+            .mensajes
+            .into_iter()
+            .find(|m| m.id == vinculo.mensaje)
+            .context("ese mensaje ya no esta")?;
+        let crudo = pixpin_proyecto::mini::leer_tareas(&m.texto)
+            .into_iter()
+            .nth(indice)
+            .context("esa tarea ya no esta")?
+            .texto;
+        let mut h = Herramienta::nueva(tarea::TAREA, crudo.clone());
+        h.vinculo = Some(vinculo.clone());
+        let titulo = tarea::titulo_de(&h);
+        if let Some((id, _)) = self.herramientas.iter().find(|(id, o)| {
+            o.es_tarea()
+                && o.vinculo.as_ref() == Some(&vinculo)
+                && tarea::titulo_de(o) == titulo
+                && self.vivos.contains_key(id)
+        }) {
+            tracing::info!(id, "esa tarea ya esta en la pantalla");
+            return Ok(*id);
+        }
+        let (ancho, alto) = tarea::tamano_natural(monitor.escala_por_cien);
+        let contenido = Contenido::Herramienta { ancho, alto };
+        // Los pines de tareas que ya hay, uno bajo otro.
+        let ya = self
+            .herramientas
+            .iter()
+            .filter(|(id, o)| o.es_tarea() && self.vivos.contains_key(id))
+            .count() as i32;
+        let hueco = (16 * monitor.escala_por_cien / 100) as i32;
+        let area = monitor.area_trabajo;
+        let donde = Punto {
+            x: area.derecha() - ancho as i32 - hueco,
+            y: area.y + hueco + ya * (alto as i32 + hueco / 2),
+        };
+        let region = self.sitio(&contenido, Some(donde), monitor);
+        let id = self
+            .almacen
+            .borrow_mut()
+            .guardar_nota(
+                &crudo,
+                &herramienta::origen_vinculado(tarea::TAREA, &vinculo),
+                Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
+            )
+            .context("no se pudo guardar la tarea")?;
+        self.herramientas.insert(id, h);
+        self.crear_ventana(id, contenido, region, monitor.escala_por_cien)?;
+        tracing::info!(id, mensaje = %vinculo.mensaje, indice, "tarea pineada");
+        Ok(id)
+    }
+
+    /// Un toque o una tecla en el pin de una tarea: la caja de la nota y,
+    /// al guardarla, la nota dentro de la tarea de su mensaje.
+    fn dentro_de_tarea(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let rect = pin.rect_contenido();
+        let escala = pin.escala_por_cien();
+        let Some(h) = self.herramientas.get_mut(&id) else {
+            return Ok(());
+        };
+        let r = match cambio {
+            CambioPin::ClicInterior { x, y } => {
+                tarea::clic(h, Punto { x, y }, (rect.ancho, rect.alto), escala)
+            }
+            CambioPin::TeclaInterior { vk, .. } => tarea::tecla(h, vk),
+            CambioPin::CaracterInterior(c) => tarea::caracter(h, c),
+            _ => tarea::Respuesta::Nada,
+        };
+        match r {
+            tarea::Respuesta::Nada => {}
+            tarea::Respuesta::Repintar => self.colgar_herramienta(id),
+            tarea::Respuesta::Cerrar => self.cerrar_uno(id),
+            tarea::Respuesta::Guardar(nota) => {
+                h.nota = None;
+                if let Some(v) = h.vinculo.clone() {
+                    match crate::tareas::poner_nota(
+                        &v.carpeta,
+                        &v.mensaje,
+                        &tarea::titulo_de(h),
+                        &nota,
+                    ) {
+                        Ok(Some(crudo)) => h.documento = crudo,
+                        Ok(None) => tracing::warn!(id, "la tarea del pin ya no esta en su lista"),
+                        Err(e) => tracing::warn!(?e, id, "no se pudo guardar la nota de la tarea"),
+                    }
+                    crate::tareas::refrescar();
+                } else {
+                    h.documento = crate::tareas::frase::con_nota(&h.documento, &nota);
+                }
+                self.colgar_herramienta(id);
+                if let Err(e) = self.guardar_herramienta(id) {
+                    tracing::warn!(?e, id, "no se pudo guardar el pin de la tarea");
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// La pizarra, el lienzo y la hoja: pines de imagen con su fondo hecho
     /// aqui y lo dibujado encima, como en el movil.
     fn pinear_dibujo(
@@ -250,12 +362,20 @@ impl Pines {
             // chat o el movil pueden haberla cambiado con PixPin cerrado. Si
             // el mensaje ya no esta, con lo ultimo que se vio.
             let al_dia = vinculo.as_ref().and_then(|v| {
-                pixpin_proyecto::cuaderno::Cuaderno::leer_de(&v.carpeta)
+                let m = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&v.carpeta)
                     .ok()?
                     .mensajes
                     .into_iter()
-                    .find(|m| m.id == v.mensaje)
-                    .map(|m| m.texto)
+                    .find(|m| m.id == v.mensaje)?;
+                if cual != tarea::TAREA {
+                    return Some(m.texto);
+                }
+                // El pin de una tarea: la suya, por su titulo, como este hoy.
+                let titulo = crate::tareas::frase::marcas(texto?).titulo;
+                pixpin_proyecto::mini::leer_tareas(&m.texto)
+                    .into_iter()
+                    .find(|t| crate::tareas::frase::marcas(&t.texto).titulo == titulo)
+                    .map(|t| t.texto)
             });
             let mut h = Herramienta::nueva(cual, al_dia.or(texto.map(str::to_string))?);
             h.vinculo = vinculo;
@@ -402,6 +522,9 @@ impl Pines {
 
     /// Un toque, una tecla, la rueda o el latido de una herramienta.
     fn dentro(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
+        if self.herramientas.get(&id).is_some_and(Herramienta::es_tarea) {
+            return self.dentro_de_tarea(id, cambio);
+        }
         // El pin de color: un toque copia; el latido quita el «Copiado».
         if self.herramientas.get(&id).is_some_and(Herramienta::es_color) {
             match cambio {

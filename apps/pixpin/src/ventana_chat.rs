@@ -10219,6 +10219,28 @@ pub(crate) fn grabar_flotante(
             proyecto,
             aparato,
             nombre,
+            fichero: None,
+        },
+        microfono_flotante::Rotulos::de(textos),
+    );
+}
+
+/// **Graba con el microfono flotante a un fichero** (17-oct-2026): la nota
+/// de voz de una clase del horario (`horario::grabar_para_la_proxima`). Al
+/// guardarla dice `listo`.
+pub(crate) fn grabar_a_fichero(
+    textos: &Catalogo,
+    raiz: std::path::PathBuf,
+    destino: std::path::PathBuf,
+    listo: String,
+) {
+    microfono_flotante::lanzar(
+        microfono_flotante::Pedido {
+            raiz,
+            proyecto: String::new(),
+            aparato: String::new(),
+            nombre: String::new(),
+            fichero: Some((destino, listo)),
         },
         microfono_flotante::Rotulos::de(textos),
     );

@@ -38,6 +38,7 @@
 #![forbid(unsafe_code)]
 
 mod emoticonos;
+pub(crate) mod frase;
 pub(crate) mod rejilla;
 mod tarjetas;
 mod ventana;
@@ -739,6 +740,52 @@ fn imagenes_al_chat(raiz: &Path, desde: &str, hasta: &str, crudo: &str) -> Resul
     }
 }
 
+/// **Pide a la ventana principal el pin pequeño de una tarea** (17-oct-2026):
+/// la tarea `indice` de la lista `mensaje` del chat `proyecto`. Va por el
+/// mismo camino que «Sacar a la pantalla» de una lista del chat (una ruta
+/// que solo dice de que se trata, `herramienta::ruta_de_tarea`). `false` si
+/// la ventana principal no contesta.
+pub fn pedir_pin(raiz: &Path, proyecto: &str, mensaje: &str, indice: usize) -> bool {
+    let carpeta = almacen::carpeta(raiz, proyecto);
+    let ruta = crate::pines::tarea::ruta_de_tarea(&carpeta, mensaje, indice);
+    pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&ruta))
+}
+
+/// Pone la nota de por que no se esta haciendo en la tarea de la lista
+/// `mensaje` (en `carpeta`) cuyo titulo es `titulo` (el pin la busca por su
+/// titulo: el numero puede haber cambiado en el chat o en el movil).
+/// Devuelve el texto crudo nuevo de la tarea, o `None` si ya no esta.
+pub fn poner_nota(
+    carpeta: &Path,
+    mensaje: &str,
+    titulo: &str,
+    nota: &str,
+) -> std::io::Result<Option<String>> {
+    let mut nueva = None;
+    cuaderno::cambiar(carpeta, mensaje, |m| {
+        let mut tareas = mini::leer_tareas(&m.texto);
+        let Some(t) = tareas
+            .iter_mut()
+            .find(|t| frase::marcas(&t.texto).titulo == titulo)
+        else {
+            return false;
+        };
+        let otro = frase::con_nota(&t.texto, nota);
+        if otro == t.texto {
+            nueva = Some(otro);
+            return false;
+        }
+        t.texto = otro.clone();
+        nueva = Some(otro);
+        m.texto = mini::escribir_tareas(&mini::titulo(&m.texto), &tareas);
+        true
+    })?;
+    if nueva.is_some() {
+        crate::sincronizar::automatica::avisar_tareas_en(carpeta);
+    }
+    Ok(nueva)
+}
+
 /// El dia de hoy en el huso del usuario, para contar los dias de cada tarea
 /// igual que el panel del chat.
 pub fn hoy() -> mini::Fecha {
@@ -1221,6 +1268,26 @@ mod pruebas {
             imagenes_al_chat(&raiz, "g", &obra.id, crudo).unwrap(),
             crudo
         );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn la_nota_del_pin_se_guarda_en_su_tarea_por_el_titulo() {
+        let (raiz, obra) = almacen_de_prueba("nota-pin");
+        let frase = frase::leer("llamar al banco prioridad alta #casa", frase::ahora());
+        let m = pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, "yeso", "Obra").unwrap();
+        pedidos::anadir_tarea(&raiz, &obra.id, "PC01", Some(&m.id), &frase.texto(), "Obra").unwrap();
+        let carpeta = almacen::carpeta(&raiz, &obra.id);
+        let crudo = poner_nota(&carpeta, &m.id, "llamar al banco", "no abren")
+            .unwrap()
+            .expect("la encuentra por su titulo");
+        assert!(crudo.starts_with("llamar al banco ⏫ #casa 💬 no abren ➕ "), "{crudo}");
+        let (listas, _) = reunir(&raiz);
+        let l = listas.iter().find(|l| !l.guardados).unwrap();
+        assert_eq!(frase::marcas(&l.filas[1].crudo).nota.as_deref(), Some("no abren"));
+        assert_eq!(l.filas[0].texto, "yeso", "la otra no se toca");
+        // Caso negativo: un titulo que no esta no toca nada.
+        assert_eq!(poner_nota(&carpeta, &m.id, "otra cosa", "x").unwrap(), None);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

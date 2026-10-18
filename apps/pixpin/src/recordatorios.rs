@@ -503,6 +503,11 @@ pub fn de_todos_los_proyectos(raiz: &Path) -> (Agenda, Vec<(String, PathBuf)>) {
             agenda.programar(r);
         }
     }
+    // Y el horario de clases (17-oct-2026): no es de ningun chat, asi que
+    // va sin carpeta; al vencer lo atiende `horario::sonar`.
+    for r in crate::horario::recordatorios(raiz) {
+        agenda.programar(r);
+    }
     (agenda, carpetas)
 }
 

@@ -48,14 +48,34 @@ const TONOS: [&str; 3] = ["Ring01.wav", "Windows Ringin.wav", "Ring02.wav"];
 
 /// Una llamada que sonar: el audio, quien «llama» y de que mensaje es (para
 /// volver a llamar mas tarde).
+///
+/// **La misma tarjeta sirve para el horario de clases** (17-oct-2026,
+/// `horario.rs`): entonces quien «llama» es la asignatura, `detalle` dice
+/// su hora y su aula, la tarjeta sale en el centro de la pantalla (como un
+/// anuncio, lo pidio el usuario) y al contestar suena la nota de voz de esa
+/// clase o, si no hay, la voz de la app lee `texto`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Llamada {
-    pub audio: PathBuf,
+    /// La nota de voz que se oye al contestar, si hay.
+    pub audio: Option<PathBuf>,
     pub nombre: String,
     /// La carpeta de la conversacion y el `id` de la nota de voz
-    /// (`EXTRA_MENSAJE` del movil, v0.98.6).
+    /// (`EXTRA_MENSAJE` del movil, v0.98.6). En una clase, la carpeta va
+    /// vacia y `mensaje` es el id de su aviso (`horario:…`).
     pub carpeta: PathBuf,
     pub mensaje: String,
+    /// Lo que se lee bajo el nombre (la hora y el aula de la clase). Vacio
+    /// en la llamada secreta.
+    pub detalle: String,
+    /// Lo que lee la voz de la app al contestar, tras la nota si la hay.
+    pub texto: Option<String>,
+}
+
+impl Llamada {
+    /// La de una clase: en el centro de la pantalla y no en la esquina.
+    pub fn es_de_horario(&self) -> bool {
+        self.mensaje.starts_with(crate::horario::PREFIJO)
+    }
 }
 
 /// **Los minutos de «Volver a llamar en»** (`VOLVER_EN` del movil, v0.98.6,
@@ -157,10 +177,12 @@ pub fn de_un_cuaderno(c: &Cuaderno, carpeta: &Path, id: &str) -> Option<Llamada>
         return None;
     }
     Some(Llamada {
-        audio,
+        audio: Some(audio),
         nombre: quien_llama_en(carpeta, m),
         carpeta: carpeta.to_path_buf(),
         mensaje: m.id.clone(),
+        detalle: String::new(),
+        texto: None,
     })
 }
 
@@ -244,8 +266,10 @@ pub fn lanzar(llamada: Llamada, rotulos: Rotulos, hwnd_app: isize) {
     let hecho = std::thread::Builder::new()
         .name("llamada-secreta".into())
         .spawn(move || {
+            let pedida = std::time::Instant::now();
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let r = Recursos::nuevos().and_then(|r| sonar(&r, &llamada, &rotulos, hwnd_app));
+            let r = Recursos::nuevos()
+                .and_then(|r| sonar(&r, &llamada, &rotulos, hwnd_app, pedida));
             if let Err(e) = r {
                 tracing::warn!(?e, "no se pudo abrir la llamada secreta");
             }
@@ -320,11 +344,20 @@ pub fn fila_de_volver(ancho: f32, abajo: f32, anchos: &[f32], escala: f32) -> Ve
 }
 
 /// La ventanita: abajo a la derecha del monitor del raton, encima de todo.
-fn marco_de_la_llamada(area: Rect, escala_por_cien: u32) -> Rect {
+/// La de una clase, en el centro (`centrada`): tiene que verse sí o sí.
+fn marco_de_la_llamada(area: Rect, escala_por_cien: u32, centrada: bool) -> Rect {
     let e = |v: u32| (v * escala_por_cien / 100) as i32;
     // 520 de alto y no los 460 de antes: cabe la fila de «Volver a llamar
     // en» entre el nombre y los botones sin apretarlos (v0.98.6).
     let (w, h) = (e(340), e(520));
+    if centrada {
+        return Rect {
+            x: area.x + (area.ancho as i32 - w) / 2,
+            y: area.y + (area.alto as i32 - h) / 2,
+            ancho: w as u32,
+            alto: h as u32,
+        };
+    }
     Rect {
         x: area.x + area.ancho as i32 - w - e(24),
         y: area.y + area.alto as i32 - h - e(24),
@@ -333,7 +366,59 @@ fn marco_de_la_llamada(area: Rect, escala_por_cien: u32) -> Rect {
     }
 }
 
-fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: isize) -> Result<()> {
+/// Lo que tardo la ultima tarjeta desde que se pidio hasta su primer
+/// fotograma en pantalla, en ms (para el registro y las pruebas).
+static ULTIMA_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Lo que tardo en salir la ultima tarjeta, en ms (0 si aun no salio ninguna).
+#[allow(dead_code)] // para mirarlo desde un depurador o una prueba
+pub fn ultima_tardanza_ms() -> u64 {
+    ULTIMA_MS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// **Lo que tarda la tarjeta en tener su primer fotograma**, sin
+/// ensenarla: los mismos pasos que [`sonar`] (recursos de la GPU, ventana,
+/// superficie, pintar y presentar) con la ventana oculta. Para la prueba de
+/// la latencia; devuelve los ms.
+#[cfg(test)]
+fn medir_primer_fotograma(llamada: &Llamada, rotulos: &Rotulos) -> Result<u64> {
+    let pedida = std::time::Instant::now();
+    let recursos = Recursos::nuevos()?;
+    let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
+    let monitor = monitores.principal().context("sin monitor")?.to_owned();
+    let escala = monitor.escala_por_cien as f32 / 100.0;
+    let marco = marco_de_la_llamada(monitor.area_trabajo, monitor.escala_por_cien, true);
+    let ventana = VentanaOverlay::nueva(marco).context("sin ventana")?;
+    let motor = recursos.motor();
+    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
+        .map_err(|e| anyhow::anyhow!("sin superficie: {e:?}"))?;
+    let mut botones: Botones<Accion> = Botones::default();
+    let d = superficie.empezar(&motor).map_err(|e| anyhow::anyhow!("sin fotograma: {e:?}"))?;
+    let _ = motor.dibujar(&d, |p: &Pintor| {
+        pintar(p, marco, escala, &llamada.nombre, &llamada.detalle, rotulos, Fase::Sonando, 0, false, &mut botones)
+    });
+    let _ = superficie.presentar();
+    let ms = pedida.elapsed().as_millis() as u64;
+    ventana.ocultar();
+    Ok(ms)
+}
+
+/// La voz de la app leyendo `texto` (SAPI, la de Windows: ya esta en el
+/// equipo y no hace falta red). `None` si no hay nada que leer o no hay voz.
+fn leer_en_voz(texto: Option<&str>) -> Option<pixpin_voz::sapi::Lector> {
+    let t = texto.map(str::trim).filter(|t| !t.is_empty())?;
+    let l = pixpin_voz::sapi::Lector::nuevo("es")?;
+    l.leer(t);
+    Some(l)
+}
+
+fn sonar(
+    recursos: &Recursos,
+    llamada: &Llamada,
+    rotulos: &Rotulos,
+    hwnd_app: isize,
+    pedida: std::time::Instant,
+) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = monitores
         .monitor_en(pixpin_shell::posicion_del_cursor())
@@ -341,7 +426,11 @@ fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: is
         .context("sin monitor")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
-    let marco = marco_de_la_llamada(monitor.area_trabajo, monitor.escala_por_cien);
+    let marco = marco_de_la_llamada(
+        monitor.area_trabajo,
+        monitor.escala_por_cien,
+        llamada.es_de_horario(),
+    );
     let ventana = VentanaOverlay::nueva(marco).context("no se pudo abrir la llamada")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
@@ -369,11 +458,16 @@ fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: is
     let mut fase = Fase::Sonando;
     let mut desde = pixpin_shell::entorno::ahora_utc_ms() as u64;
     let mut voz: Option<Salida> = None;
+    // La voz de la app, si la clase tiene algo apuntado y no nota de voz (o
+    // tras ella).
+    let mut lector: Option<pixpin_voz::sapi::Lector> = None;
+    let mut por_leer = false;
     let mut en_altavoz = false;
     let mut acabo_en: Option<u64> = None;
     // Al pasar al altavoz: por donde seguir en cuanto la otra salida cargue.
     let mut salto: Option<i64> = None;
     let mut botones: Botones<Accion> = Botones::default();
+    let mut primera = true;
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
@@ -408,35 +502,47 @@ fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: is
             }
             Some(Accion::Contestar) if fase == Fase::Sonando => {
                 timbre = None;
-                match Salida::abrir_por(&llamada.audio, Rol::Comunicaciones, false) {
-                    Ok(s) => {
-                        let _ = s.tocar(1.0);
-                        voz = Some(s);
-                        fase = Fase::Contestada;
-                        desde = ahora;
+                fase = Fase::Contestada;
+                desde = ahora;
+                if let Some(audio) = &llamada.audio {
+                    match Salida::abrir_por(audio, Rol::Comunicaciones, false) {
+                        Ok(s) => {
+                            let _ = s.tocar(1.0);
+                            voz = Some(s);
+                        }
+                        Err(e) => tracing::warn!(?e, "la llamada no pudo abrir su nota"),
                     }
-                    Err(e) => {
-                        tracing::warn!(?e, "la llamada no pudo abrir su nota");
-                        vivo = false;
-                    }
+                }
+                if voz.is_some() {
+                    por_leer = true;
+                } else {
+                    lector = leer_en_voz(llamada.texto.as_deref());
+                }
+                if voz.is_none() && lector.is_none() {
+                    // Nada que decir: cuelga en seguida.
+                    acabo_en = Some(ahora);
                 }
             }
             Some(Accion::Altavoz) if fase == Fase::Contestada => {
                 // Otra salida es otro motor: se abre en la otra y se sigue
                 // por donde iba.
-                let por = voz.as_ref().map(|v| v.posicion_ms()).unwrap_or(0);
-                en_altavoz = !en_altavoz;
-                let rol = if en_altavoz {
-                    Rol::Normal
-                } else {
-                    Rol::Comunicaciones
-                };
-                voz = None;
-                if let Ok(s) = Salida::abrir_por(&llamada.audio, rol, false) {
-                    // El salto espera a que Media Foundation sepa cuanto
-                    // dura (ver abajo): esperarlo aqui pararia la ventana.
-                    salto = Some(por);
-                    voz = Some(s);
+                if let Some(audio) = &llamada.audio
+                    && voz.is_some()
+                {
+                    let por = voz.as_ref().map(|v| v.posicion_ms()).unwrap_or(0);
+                    en_altavoz = !en_altavoz;
+                    let rol = if en_altavoz {
+                        Rol::Normal
+                    } else {
+                        Rol::Comunicaciones
+                    };
+                    voz = None;
+                    if let Ok(s) = Salida::abrir_por(audio, rol, false) {
+                        // El salto espera a que Media Foundation sepa cuanto
+                        // dura (ver abajo): esperarlo aqui pararia la ventana.
+                        salto = Some(por);
+                        voz = Some(s);
+                    }
                 }
             }
             _ => {}
@@ -449,11 +555,20 @@ fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: is
             let _ = v.tocar(1.0);
             salto = None;
         }
-        if let Some(v) = &voz
-            && acabo_en.is_none()
-            && (v.termino() || v.fallo())
-        {
-            acabo_en = Some(ahora);
+        if voz.as_ref().is_some_and(|v| v.termino() || v.fallo()) {
+            voz = None;
+            if std::mem::take(&mut por_leer) {
+                lector = leer_en_voz(llamada.texto.as_deref());
+            }
+            if lector.is_none() && acabo_en.is_none() {
+                acabo_en = Some(ahora);
+            }
+        }
+        if lector.as_ref().is_some_and(|l| l.acabado()) {
+            lector = None;
+            if acabo_en.is_none() {
+                acabo_en = Some(ahora);
+            }
         }
         if toca_colgar(fase, desde, ahora, acabo_en) {
             if fase == Fase::Sonando {
@@ -471,6 +586,7 @@ fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: is
                     marco,
                     escala,
                     &nombre,
+                    &llamada.detalle,
                     rotulos,
                     fase,
                     ahora.saturating_sub(desde),
@@ -479,11 +595,20 @@ fn sonar(recursos: &Recursos, llamada: &Llamada, rotulos: &Rotulos, hwnd_app: is
                 )
             });
             let _ = superficie.presentar();
+            if std::mem::take(&mut primera) {
+                let ms = pedida.elapsed().as_millis() as u64;
+                ULTIMA_MS.store(ms, std::sync::atomic::Ordering::Relaxed);
+                tracing::info!(ms, nombre = %nombre, "la tarjeta de la llamada ya esta en pantalla");
+            }
         }
-        pixpin_shell::overlay::esperar_eventos(Some(if salto.is_some() { 20 } else { 250 }));
+        let rapido = salto.is_some() || lector.is_some();
+        pixpin_shell::overlay::esperar_eventos(Some(if rapido { 20 } else { 250 }));
     }
     drop(timbre);
     drop(voz);
+    if let Some(l) = lector {
+        l.callar();
+    }
     ventana.ocultar();
     Ok(())
 }
@@ -510,6 +635,7 @@ fn pintar(
     marco: Rect,
     escala: f32,
     nombre: &str,
+    detalle: &str,
     rotulos: &Rotulos,
     fase: Fase,
     llevado_ms: u64,
@@ -530,7 +656,7 @@ fn pintar(
         RectF {
             // La banda clara acaba donde acababa con 460 de alto (276):
             // asi no corta por la mitad el rotulo de «Volver a llamar en».
-            alto: 276.0 * escala,
+            alto: if detalle.is_empty() { 276.0 } else { 292.0 } * escala,
             ..todo
         },
         0.0,
@@ -562,6 +688,17 @@ fn pintar(
         TEXTO,
     );
     centrado_en(p, nombre, todo, 206.0 * escala, 24.0 * escala, TEXTO);
+    // La hora y el aula de una clase (o lo que diga), bajo el nombre.
+    if !detalle.is_empty() {
+        // Cada renglon centrado; lo que no quepa, con puntos suspensivos.
+        let tam = 13.5 * escala;
+        for (k, renglon) in detalle.lines().take(2).enumerate() {
+            let (rw, _) = p.medir_texto(renglon, tam);
+            let ancho = w - 32.0 * escala;
+            let x = (w - rw.min(ancho)) / 2.0;
+            p.texto_linea(renglon, x, (238.0 + 20.0 * k as f32) * escala, tam, ancho, blanco_suave);
+        }
+    }
 
     // **Volver a llamar en** (v0.98.6): sonando o ya contestada, por si no
     // se puede escuchar ahora. Encima de los redondos, a 34 de ellos, con su
@@ -710,7 +847,7 @@ mod pruebas {
         };
         let l = de_un_cuaderno(&cu, &c, "m1").expect("es una llamada");
         assert_eq!(l.nombre, "recado");
-        assert_eq!(l.audio, c.join("archivos/recado.m4a"));
+        assert_eq!(l.audio, Some(c.join("archivos/recado.m4a")));
     }
 
     #[test]
@@ -772,7 +909,7 @@ mod pruebas {
             ancho: 1920,
             alto: 1040,
         };
-        let m = marco_de_la_llamada(area, 100);
+        let m = marco_de_la_llamada(area, 100, false);
         assert!(m.x >= area.x && m.x + m.ancho as i32 <= area.x + area.ancho as i32);
         assert!(m.y + m.alto as i32 <= area.alto as i32);
         assert!(m.x > area.x + area.ancho as i32 / 2, "a la derecha");
@@ -785,6 +922,37 @@ mod pruebas {
         if let Some(t) = tono() {
             assert!(t.is_file());
         }
+    }
+
+    /// **La tarjeta de una clase sale en menos de medio segundo** (desde
+    /// que se pide hasta su primer fotograma presentado, con la ventana
+    /// oculta para no tapar nada). En frio, la primera vez en el proceso,
+    /// que es el peor caso: crear el dispositivo de la GPU.
+    #[test]
+    #[ignore = "necesita GPU; mide la latencia de la tarjeta"]
+    fn la_tarjeta_sale_en_menos_de_medio_segundo() {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let r = Rotulos {
+            entrante: "Llamada entrante".into(),
+            contestar: "Contestar".into(),
+            colgar: "Colgar".into(),
+            altavoz: "Altavoz".into(),
+            llamada: "Llamada".into(),
+            perdida: "Llamada perdida".into(),
+            volver_en: "Volver a llamar en".into(),
+        };
+        let l = Llamada {
+            audio: None,
+            nombre: "Geometría".into(),
+            carpeta: PathBuf::new(),
+            mensaje: "horario:clase:1:Geometría".into(),
+            detalle: "08:00–10:00 · A-12\n📝 Evaluación Geometría · vie 23/10 09:00".into(),
+            texto: None,
+        };
+        let frio = medir_primer_fotograma(&l, &r).expect("tarjeta");
+        let caliente = medir_primer_fotograma(&l, &r).expect("tarjeta");
+        println!("primer fotograma: en frio {frio} ms, en caliente {caliente} ms");
+        assert!(frio < 500, "en frio {frio} ms");
     }
 
     /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_llamada --
@@ -809,7 +977,8 @@ mod pruebas {
         };
         let mut b = Botones::default();
         crate::ventanita::muestra("llamada-sonando", 340, 520, |p, _| {
-            pintar(p, marco, 1.0, "recado", &r, Fase::Sonando, 0, false, &mut b)
+            let detalle = "08:00–10:00 · Aula A-12\nHoy: evaluación";
+            pintar(p, marco, 1.0, "Geometría", detalle, &r, Fase::Sonando, 0, false, &mut b)
         });
         crate::ventanita::muestra("llamada-contestada", 340, 520, |p, _| {
             pintar(
@@ -817,6 +986,7 @@ mod pruebas {
                 marco,
                 1.0,
                 "recado",
+                "",
                 &r,
                 Fase::Contestada,
                 83_000,
@@ -929,10 +1099,12 @@ mod pruebas {
     #[test]
     fn volver_a_llamar_se_apunta_para_el_bucle_principal_una_vez() {
         let l = Llamada {
-            audio: PathBuf::from("recado.m4a"),
+            audio: Some(PathBuf::from("recado.m4a")),
             nombre: "Mama".into(),
             carpeta: PathBuf::from("proyectos/p1"),
             mensaje: "m1".into(),
+            detalle: String::new(),
+            texto: None,
         };
         pedir_volver(&l, 30, 1_000, 0);
         assert_eq!(

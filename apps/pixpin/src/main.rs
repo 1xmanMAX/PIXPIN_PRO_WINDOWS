@@ -108,6 +108,7 @@ mod lector_tinta;
 mod leer_en_voz;
 mod letras_que_viajan;
 mod llamada;
+mod horario;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
@@ -216,6 +217,10 @@ const ID_TAREAS: u32 = 907;
 /// «Timeline…» (5-oct): lo que pasa en el dia, minuto a minuto, con la voz,
 /// a mano o con fotos; las ultimas 24 horas y el archivo por calendario.
 const ID_TIMELINE: u32 = 908;
+/// «Horario de clases…» y «Nota de voz para la próxima clase» (17-oct): el
+/// horario que llama por telefono antes de cada clase (`horario.rs`).
+const ID_HORARIO: u32 = 909;
+const ID_HORARIO_GRABAR: u32 = 910;
 
 const _: () = assert!(
     ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -255,6 +260,8 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     }
     // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es
     // lo minimo para abrirlo desde la bandeja y probarlo a mano.
+    v.push((ID_HORARIO, t("bandeja-horario")));
+    v.push((ID_HORARIO_GRABAR, t("bandeja-horario-grabar")));
     v.push((ID_ABRIR_DOCUMENTO, t("bandeja-abrir-documento")));
     v.push((ID_GRUPOS_VENTANAS, t("bandeja-grupos-ventanas")));
     v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
@@ -745,6 +752,8 @@ fn arrancar(
     // del chat porque lo que vencio con el programa cerrado sale de golpe, y
     // asi el primer pin nace con la ventana ya en pie.
     recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
+    // Y el horario de clases: relee la agenda si se edita o cambia el dia.
+    horario::vigilar(ubicacion.raiz());
     // Las automatizaciones del asistente: su hilo mira la hora y espera a
     // las capturas y a la sincronizacion (13-oct).
     automatizaciones::motor::arrancar(automatizaciones::motor::DeLaApp {
@@ -1180,6 +1189,17 @@ fn arrancar(
             }
             Evento::Menu(id) if id == ID_TAREAS => {
                 tareas::abrir(lengua, ubicacion.clone(), &identidad_equipo);
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_HORARIO => {
+                horario::abrir(lengua, ubicacion.clone());
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_HORARIO_GRABAR => {
+                if let Err(motivo) = horario::grabar_para_la_proxima(&textos, ubicacion.raiz()) {
+                    let mut aviso = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd);
+                    let _ = aviso.mostrar(&textos.t("bandeja-horario"), &motivo);
+                }
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_TIMELINE => {
@@ -1854,7 +1874,14 @@ fn atender_recordatorios(
     // «Volver a llamar en» (B11, v0.98.6): la misma alarma a otra hora y el
     // aviso de cuando, como el `Toast` del movil.
     for v in volver {
-        match recordatorios::volver_a_poner(&v.carpeta, &v.mensaje, v.cuando_utc_ms) {
+        // Una clase del horario: el aviso pospuesto vive en el horario.
+        let puesta = if v.mensaje.starts_with(horario::PREFIJO) {
+            horario::posponer(ubicacion.raiz(), &v.mensaje, v.cuando_utc_ms);
+            Ok(true)
+        } else {
+            recordatorios::volver_a_poner(&v.carpeta, &v.mensaje, v.cuando_utc_ms)
+        };
+        match puesta {
             Ok(true) => {
                 let local = pixpin_shell::entorno::a_local(v.cuando_utc_ms);
                 let mut args = fluent_bundle::FluentArgs::new();
@@ -1899,6 +1926,12 @@ fn atender_recordatorios(
     for v in vencidos {
         let r = v.recordatorio;
         tracing::info!(id = %r.id, "vencio un recordatorio");
+        // **Una clase del horario llama por telefono** (17-oct-2026): su
+        // tarjeta de llamada, sin pin, globo ni cuaderno que tocar.
+        if r.id.starts_with(horario::PREFIJO) {
+            horario::sonar(ubicacion.raiz(), &r, rotulos_de_la_llamada(textos), hwnd.0 as isize);
+            continue;
+        }
         // **Una nota de voz con hora es una llamada secreta** (B11,
         // `RecordatorioReceiver`): suena como una llamada y el recado se
         // oye por la salida de llamadas. Lo demas, un pin como siempre.
@@ -2104,11 +2137,16 @@ fn abrir_ficheros(
         let d = pixpin_capture::enumerar_monitores()?;
         let m = d.principal().context("sin monitor")?.to_owned();
         let mut cuantos = 0;
-        for v in listas
-            .iter()
-            .filter_map(|r| pines::herramienta::vinculo_de_ruta(r))
-        {
-            match p.pinear_lista_del_chat(v, &m) {
+        for r in &listas {
+            // Una tarea sola (su pin pequeño, 17-oct-2026) o la lista entera.
+            let hecho = match pines::tarea::tarea_de_ruta(r) {
+                Some((v, i)) => p.pinear_tarea_del_chat(v, i, &m),
+                None => match pines::herramienta::vinculo_de_ruta(r) {
+                    Some(v) => p.pinear_lista_del_chat(v, &m),
+                    None => continue,
+                },
+            };
+            match hecho {
                 Ok(_) => cuantos += 1,
                 Err(e) => tracing::warn!(?e, "no se pudo sacar la lista a la pantalla"),
             }
@@ -2206,7 +2244,9 @@ fn destino_con(ruta: &std::path::Path, office: impl Fn(&std::path::Path) -> bool
         DestinoDeFichero::Lector
     } else if pixpin_shell::asociaciones::es_audio(ruta) {
         DestinoDeFichero::Audio
-    } else if pines::herramienta::vinculo_de_ruta(ruta).is_some() {
+    } else if pines::herramienta::vinculo_de_ruta(ruta).is_some()
+        || pines::tarea::tarea_de_ruta(ruta).is_some()
+    {
         DestinoDeFichero::ListaDelChat
     } else if ruta
         .extension()
