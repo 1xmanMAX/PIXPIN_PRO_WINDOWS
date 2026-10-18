@@ -2633,3 +2633,12 @@ lienzo-cierre-segmento = Segment
 lienzo-arco-modo-guia = Guide
 lienzo-arco-modo-centro = Centre
 lienzo-arco-modo-tres = 3 points
+
+## Tasks: single-task pin and class timetable (17-oct-2026)
+tareas-fijar-pin = 📌 Pin as reminder
+pin-tarea-nota = 💬 Why not now?
+pin-tarea-pista = Why not now · Enter saves
+bandeja-horario = 🎓 Class timetable…
+bandeja-horario-grabar = 🎙 Voice note for the next class
+horario-sin-clases = There are no classes in the timetable yet: open “Class timetable…” and write one per line.
+horario-guardada = You will hear it at the next { $clase } class

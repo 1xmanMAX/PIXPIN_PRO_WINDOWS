@@ -2634,3 +2634,12 @@ lienzo-cierre-segmento = Segmento
 lienzo-arco-modo-guia = Guía
 lienzo-arco-modo-centro = Centro
 lienzo-arco-modo-tres = 3 puntos
+
+## Tareas: pin de una tarea y horario de clases (17-oct-2026)
+tareas-fijar-pin = 📌 Fijar como pin
+pin-tarea-nota = 💬 ¿Por qué no ahora?
+pin-tarea-pista = Por qué no la haces ahora · Intro guarda
+bandeja-horario = 🎓 Horario de clases…
+bandeja-horario-grabar = 🎙 Nota de voz para la próxima clase
+horario-sin-clases = Aún no hay clases en el horario: ábrelo en «Horario de clases…» y escribe una por línea.
+horario-guardada = Se oirá en la próxima clase de { $clase }

@@ -512,6 +512,9 @@ enum Accion {
     Recordar(usize, usize, i64),
     /// Quitarle la hora a la tarea.
     OlvidarHora(usize, usize),
+    /// «Fijar como pin» (17-oct-2026): la tarea a un pin pequeño con su
+    /// titulo y la nota de por que no se esta haciendo.
+    FijarPin(usize, usize),
 }
 
 /// La ultima tarea quitada, para «Deshacer»: de que lista era, en que sitio
@@ -599,6 +602,10 @@ fn menu_de_tarea(
     }
     if con_hora {
         v.push((20, textos.t("chat-recordatorio-quitar"), Accion::OlvidarHora(li, fi)));
+    }
+    // El pin pequeño de la tarea, que solo ensena su titulo (17-oct-2026).
+    if !hecha {
+        v.push((21, textos.t("tareas-fijar-pin"), Accion::FijarPin(li, fi)));
     }
     v.push((6, format!("{}\tSupr", textos.t("tareas5-quitar")), Accion::Quitar(li, fi)));
     v
@@ -1426,7 +1433,7 @@ fn hacer(
         Accion::BuscarEmo(li, fi, k) => {
             let emo = e
                 .fila(li, fi)
-                .and_then(|(_, f)| emoticonos::emoticonos_de(&f.texto).1.get(k).cloned());
+                .and_then(|(_, f)| super::frase::a_la_vista(&f.texto, Some(super::frase::ahora())).1.get(k).cloned());
             if let Some(emo) = emo {
                 e.buscar.poner(&emo);
                 e.buscar.al_final();
@@ -1470,6 +1477,15 @@ fn hacer(
                 }
             }
         }
+        Accion::FijarPin(li, fi) => {
+            if let Some((l, f)) = e.fila(li, fi) {
+                if super::pedir_pin(raiz, &l.proyecto, &l.codigo, f.indice) {
+                    e.decir(textos.t("chat-pineado"));
+                } else {
+                    tracing::warn!("tareas: no contesta la ventana principal");
+                }
+            }
+        }
         Accion::CopiarTexto(li, fi) => {
             let Some((_, f)) = e.fila(li, fi) else {
                 return true;
@@ -1483,12 +1499,34 @@ fn hacer(
             if e.campo.texto().trim().is_empty() {
                 return true;
             }
+            // Lo reconocido al escribir (17-oct-2026): prioridad, #etiquetas
+            // y la hora de recordar salen del titulo y van como marcas.
+            let frase = super::frase::leer(e.campo.texto(), super::frase::ahora());
+            let texto = if frase.titulo.is_empty() && e.campo.imagenes().is_empty() {
+                e.campo.texto().to_string()
+            } else {
+                frase.texto()
+            };
             let hecho = match &e.apuntar_en {
-                Some(l) => super::apuntar_en(raiz, aparato, l, e.campo.texto(), &e.campo.imagenes()),
-                None => super::apuntar_con(raiz, aparato, e.campo.texto(), &e.campo.imagenes()),
+                Some(l) => super::apuntar_en(raiz, aparato, l, &texto, &e.campo.imagenes())
+                    .map(|m| (l.proyecto.clone(), m)),
+                None => super::apuntar_con(raiz, aparato, &texto, &e.campo.imagenes()).and_then(
+                    |m| {
+                        let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                        Ok((crate::pedidos::ficha_de(raiz, None, aparato, ahora)?.id, m))
+                    },
+                ),
             };
             match hecho {
-                Ok(lista) => {
+                Ok((proyecto, lista)) => {
+                    // Con hora: al vigia, y directamente su pin en la pantalla.
+                    if frase.hora.is_some() {
+                        crate::recordatorios::releer(raiz);
+                        let n = pixpin_proyecto::mini::leer_tareas(&lista.texto).len();
+                        if n > 0 {
+                            super::pedir_pin(raiz, &proyecto, &lista.id, n - 1);
+                        }
+                    }
                     let mut args = fluent_bundle::FluentArgs::new();
                     args.set("tarea", e.campo.lo_que_se_lee());
                     args.set("lista", crate::pedidos::nombre_de_lista(&lista));
@@ -2606,7 +2644,7 @@ fn hechura(
         };
     };
     let pad = 16.0 * s;
-    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     let estados = ancho_de_estados(p, &emos, ESTADO_LISTA * s, s);
     let texto_x = 8.0 * s + CASILLA * s + 10.0 * s + estados;
     // A la derecha va la edad o, con el raton encima, quitar (y «Mover a…»
@@ -3223,7 +3261,7 @@ fn alto_de_cuadrado(e: &Estado, p: &Pintor, li: usize, fi: usize, lado: f32, s: 
     let Some((_, f)) = e.fila(li, fi) else {
         return lado;
     };
-    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     // Una fila de las hechas (`lado` es entonces todo el ancho): su texto
     // entero entre la casilla y la edad, con su aire arriba y abajo.
     if lado > LADO_CUADRADO * s * 1.5 {
@@ -3280,7 +3318,7 @@ fn pintar_cuadrado(
     let Some((lista, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
         return;
     };
-    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     let partes = rejilla::partes(r, s, !emos.is_empty());
     let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
     let foco = e.foco == Foco::Tarjeta(li, fi);
@@ -3520,7 +3558,7 @@ fn pintar_fila_hecha(
         alto: CASILLA * s,
     };
     pintar_casilla(e, p, objetivo, (li, fi), f.hecha, false, true, s);
-    let (texto, emos) = emoticonos::emoticonos_de(&f.texto);
+    let (texto, emos) = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
     // Sin texto (solo emoticonos), los emoticonos; solo una foto, la foto.
     let texto = if texto.is_empty() { emos.join(" ") } else { texto };
     let mut tx = objetivo.x + objetivo.ancho + 6.0 * s;
@@ -4240,6 +4278,7 @@ mod pruebas {
                 Accion::Repartir(0, 1),
                 Accion::CopiarTexto(0, 1),
                 Accion::PinearTodas(0, 1),
+                Accion::FijarPin(0, 1),
                 Accion::Quitar(0, 1),
             ]
         );
@@ -4255,7 +4294,13 @@ mod pruebas {
             .iter()
             .map(|x| x.0)
             .collect();
-        assert_eq!(ids.len(), 11, "seis y las cinco horas");
+        assert_eq!(ids.len(), 12, "siete y las cinco horas");
+        // Lo hecho no se fija como pin: ya no hay nada que recordar.
+        let hecha: Vec<Accion> = menu_de_tarea(0, 1, true, false, 0, false, &textos)
+            .into_iter()
+            .map(|(_, _, a)| a)
+            .collect();
+        assert!(!hecha.contains(&Accion::FijarPin(0, 1)));
         // La hora: cinco para elegir en lo pendiente, ninguna en lo hecho, y
         // «Quitar el recordatorio» solo si tiene una.
         let horas = |hecha, con| {

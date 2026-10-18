@@ -15,6 +15,8 @@ pub(crate) mod herramienta;
 mod panel;
 mod pizarra;
 mod sacar;
+// El pin de una tarea sola, con la nota de por que no se hace (17-oct-2026).
+pub(crate) mod tarea;
 // El panel «Pines abiertos» (rediseno v2).
 mod abiertos;
 mod dispositivo;
