@@ -366,10 +366,45 @@ fn tabla_del_recorte(motor: &dyn Motor, png: Vec<u8>, escala: f32) -> Result<Lei
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let ruta = std::env::temp_dir().join(format!("pixpin-tabla-{}-{}.png", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
     std::fs::write(&ruta, &png).map_err(|e| e.to_string())?;
+    // **Una tabla de tema oscuro** (18-oct, la de KPIs): se lee en negativo
+    // (papel claro y letra oscura, lo que entienden el OCR y el medidor de
+    // celdas) y sus colores se vuelven a invertir al final.
+    let mut oscura = false;
+    if let Ok(mut im) = pixpin_codec::imagen::cargar(&ruta) {
+        let mut g: Vec<u8> = im.pixeles.chunks_exact(4).step_by(7).map(|p| ((p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000) as u8).collect();
+        g.sort_unstable();
+        if g.get(g.len() / 2).is_some_and(|&m| m < 100) {
+            for p in im.pixeles.chunks_exact_mut(4) {
+                p[0] = 255 - p[0];
+                p[1] = 255 - p[1];
+                p[2] = 255 - p[2];
+            }
+            if let Ok(b) = pixpin_codec::imagen::codificar_png(&im) {
+                oscura = std::fs::write(&ruta, b).is_ok();
+            }
+        }
+    }
     let r = super::documentos_acciones::tabla_de_fichero(&ruta, "tabla", None, None, Some(escala), Some(motor));
     let _ = std::fs::remove_file(&ruta);
     let (els, _, origen) = r?;
-    Ok(Leido::Elementos(pixpin_motor2d::excalidraw::elementos_a_json(&els), origen))
+    let mut v = pixpin_motor2d::excalidraw::elementos_a_json(&els);
+    if oscura {
+        for e in &mut v {
+            for k in ["strokeColor", "backgroundColor"] {
+                if let Some(c) = e[k].as_str().and_then(invertir_hex) {
+                    e[k] = serde_json::Value::String(c);
+                }
+            }
+        }
+    }
+    Ok(Leido::Elementos(v, origen))
+}
+
+/// «#rrggbb» en negativo (lo demas, «transparent», no cambia).
+fn invertir_hex(c: &str) -> Option<String> {
+    let h = c.strip_prefix('#').filter(|h| h.len() == 6)?;
+    let n = u32::from_str_radix(h, 16).ok()?;
+    Some(format!("#{:06x}", !n & 0xff_ffff))
 }
 
 /// Lo que paso, para el modelo, el chat y el banco.

@@ -286,6 +286,9 @@ pub struct Ajustes {
     pub pinear: Pinear,
     /// El asistente local (`[asistente]`). Tabla: al final.
     pub asistente: Asistente,
+    /// Las palabras de cada urgencia de las tareas (`[tareas]`). Tabla: al
+    /// final.
+    pub tareas: Tareas,
 }
 
 /// Seccion `[pinear]`: las palabras magicas que pone el usuario.
@@ -510,6 +513,38 @@ pub struct Voz {
     pub modo_de_idiomas: ModoDeIdiomas,
 }
 
+// --- Tareas (18-oct-2026) -------------------------------------------------
+
+/// Seccion `[tareas]`: las palabras que, escritas en una tarea, la hacen
+/// urgente o muy urgente (`pixpin_frase::tarea`). Sin ninguna, todo es
+/// normal. El plugin de Flow las lee de aqui con `Palabras::de_toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tareas {
+    pub urgente: Vec<String>,
+    pub muy_urgente: Vec<String>,
+}
+
+impl Default for Tareas {
+    fn default() -> Self {
+        let p = pixpin_frase::tarea::Palabras::preestablecidas();
+        Tareas {
+            urgente: p.urgente,
+            muy_urgente: p.muy_urgente,
+        }
+    }
+}
+
+impl Tareas {
+    /// Las palabras como las usa el parser.
+    pub fn palabras(&self) -> pixpin_frase::tarea::Palabras {
+        pixpin_frase::tarea::Palabras {
+            urgente: self.urgente.clone(),
+            muy_urgente: self.muy_urgente.clone(),
+        }
+    }
+}
+
 // --- Asistente local (13-oct-2026) ---------------------------------------
 
 /// Seccion `[asistente]`: el modelo de lenguaje local del chat
@@ -595,6 +630,7 @@ impl Default for Ajustes {
             voz: Voz::default(),
             pinear: Pinear::default(),
             asistente: Asistente::default(),
+            tareas: Tareas::default(),
         }
     }
 }
@@ -707,6 +743,30 @@ mod pruebas {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Ubicacion::Instalado { raiz: dir }
+    }
+
+    /// Las palabras de urgencia de las tareas (18-oct-2026): de fabrica las
+    /// del parser, se guardan en `[tareas]` y el plugin de Flow las lee del
+    /// fichero tal como lo escriben los dos guardados.
+    #[test]
+    fn las_palabras_de_urgencia_se_guardan_y_las_lee_flow() {
+        let d = Ajustes::default();
+        assert_eq!(d.tareas.palabras(), pixpin_frase::tarea::Palabras::preestablecidas());
+        let u = temporal("tareas-urgencia");
+        let mut a = Ajustes::default();
+        a.tareas.urgente = vec!["pronto".into(), "con \"comillas\"".into()];
+        a.tareas.muy_urgente = vec![];
+        guardar(&u, &a).unwrap();
+        let texto = fs::read_to_string(u.fichero_ajustes()).unwrap();
+        assert_eq!(pixpin_frase::tarea::Palabras::de_toml(&texto), a.tareas.palabras());
+        assert_eq!(cargar(&u).unwrap().tareas, a.tareas);
+        a.tareas.muy_urgente = vec!["ya".into()];
+        guardar_conservando(&u, &a).unwrap();
+        let texto = fs::read_to_string(u.fichero_ajustes()).unwrap();
+        assert_eq!(pixpin_frase::tarea::Palabras::de_toml(&texto), a.tareas.palabras());
+        // Un TOML de antes, sin `[tareas]`: las de fabrica.
+        let viejo: Ajustes = toml::from_str("idioma = \"es\"\n").unwrap();
+        assert_eq!(viejo.tareas, Tareas::default());
     }
 
     /// «Leer siempre las respuestas» se quito (17-oct-2026): un TOML que

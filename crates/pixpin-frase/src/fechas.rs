@@ -13,7 +13,21 @@
 //! «para ayer» es casi siempre un malentendido). Lo que no se entiende no se
 //! adivina: el camino rapido se lo pasa al modelo.
 
-use crate::acciones::normalizar;
+/// Minusculas y sin tildes (la misma que `pixpin_ia::acciones::normalizar`).
+pub fn normalizar(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'á' | 'à' => 'a',
+            'é' | 'è' => 'e',
+            'í' => 'i',
+            'ó' => 'o',
+            'ú' | 'ü' => 'u',
+            'ñ' => 'n',
+            otro => otro,
+        })
+        .collect()
+}
 
 /// Un momento en hora local: dias desde 1970-01-01 y minuto del dia.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -193,6 +207,9 @@ struct Leido {
     /// Si el dia salio de una fecha sin año (para pasarla al año que viene
     /// si ya paso).
     sin_anio: bool,
+    /// Si el dia salio de un numero solo («el 20»): del mes en curso, o del
+    /// siguiente si ya paso.
+    sin_mes: bool,
 }
 
 /// «en 3 dias»: «en» seguido de un numero y una unidad.
@@ -212,10 +229,16 @@ pub fn interpretar(frase: &str, ahora: Momento) -> Result<Momento, ErrorFecha> {
     let original = frase.trim().trim_end_matches(['.', ',', ';']).trim().to_string();
     let q = normalizar(&original);
     // «20/10/2026», «2026-10-20» y «10:30» se parten aparte.
+    // «5pm» y «5:30pm» se leen como «5 pm» y «5:30 pm» (18-oct-2026).
     let palabras: Vec<String> = q
         .split(|c: char| c.is_whitespace() || c == ',')
         .filter(|p| !p.is_empty())
-        .map(str::to_string)
+        .flat_map(|p| match p.strip_suffix("pm").or_else(|| p.strip_suffix("am")) {
+            Some(n) if !n.is_empty() && n.chars().all(|c| c.is_ascii_digit() || c == ':') => {
+                vec![n.to_string(), p[n.len()..].to_string()]
+            }
+            _ => vec![p.to_string()],
+        })
         .collect();
     if palabras.is_empty() {
         return Err(ErrorFecha::NoEntiendo(original));
@@ -369,6 +392,21 @@ pub fn interpretar(frase: &str, ahora: Momento) -> Result<Momento, ErrorFecha> {
                 }
                 l.sin_anio |= y.is_none();
                 poner_dia(&mut l, dias_de(anio, m, n))?;
+            } else if !tras_las
+                && l.dia.is_none()
+                && i >= 1
+                && matches!(palabras[i - 1].as_str(), "el" | "dia")
+                && (1..=31).contains(&n)
+            {
+                // «el 20 (a las 9)»: el dia 20 del mes en curso (18-oct-2026).
+                let (y, m, _) = fecha_de(ahora.dia);
+                let dia = (0..12)
+                    .map(|k| (y + (m - 1 + k) / 12, (m - 1 + k) % 12 + 1))
+                    .find(|&(y, m)| existe(y, m, n))
+                    .map(|(y, m)| dias_de(y, m, n))
+                    .ok_or_else(no_existe)?;
+                l.sin_mes = true;
+                poner_dia(&mut l, dia)?;
             } else if tras_las || matches!(sig, Some("de") | Some("en") | Some("am") | Some("pm") | Some("y")) || i + 1 == palabras.len() {
                 // Hora sola: «a las 5 (de la tarde)», «a las 10 y media».
                 if !(0..=24).contains(&n) {
@@ -419,6 +457,16 @@ pub fn interpretar(frase: &str, ahora: Momento) -> Result<Momento, ErrorFecha> {
         None if minuto > ahora.minuto => ahora.dia,
         None => ahora.dia + 1,
     };
+    if l.sin_mes && dia < ahora.dia {
+        // «el 3» dicho el 18: el 3 del mes que viene (el primero que lo tenga).
+        let (y, m, d) = fecha_de(dia);
+        if let Some((y, m)) = (1..=12)
+            .map(|k| (y + (m - 1 + k) / 12, (m - 1 + k) % 12 + 1))
+            .find(|&(y, m)| existe(y, m, d))
+        {
+            dia = dias_de(y, m, d);
+        }
+    }
     if l.sin_anio && dia < ahora.dia {
         // «el 3 de enero» dicho en octubre: el del año que viene.
         let (y, m, d) = fecha_de(dia);
@@ -544,6 +592,37 @@ mod pruebas {
         assert_eq!(en("a las 12"), "⏰ 2026-10-14 12:00");
         assert_eq!(en("a las 9"), "⏰ 2026-10-15 09:00", "las 9 ya pasaron hoy");
         assert_eq!(en("mañana a las 10 y media"), "⏰ 2026-10-15 10:30");
+    }
+
+    /// El 18-oct-2026: dia, mes y hora sin año son del año en curso; si ya
+    /// paso, del siguiente.
+    #[test]
+    fn dia_mes_y_hora_como_se_apuntan_en_una_tarea() {
+        assert_eq!(en("18/10 17:00"), "⏰ 2026-10-18 17:00");
+        assert_eq!(en("18-10 5pm"), "⏰ 2026-10-18 17:00");
+        assert_eq!(en("18-10 5:30pm"), "⏰ 2026-10-18 17:30");
+        assert_eq!(en("18 oct 17:00"), "⏰ 2026-10-18 17:00");
+        assert_eq!(en("el 20 a las 9"), "⏰ 2026-10-20 09:00");
+        assert_eq!(en("el 20"), "⏰ 2026-10-20 09:00", "«el 20» es un dia, no las 20:00");
+        assert_eq!(en("20 de octubre 8:30"), "⏰ 2026-10-20 08:30");
+        assert_eq!(en("mañana 7"), "⏰ 2026-10-15 07:00");
+        assert_eq!(en("viernes 15:30"), "⏰ 2026-10-16 15:30");
+        assert_eq!(en("a las 8am"), "⏰ 2026-10-15 08:00");
+        // Ya pasado este año: el que viene; «el 3» ya pasado: el mes que viene.
+        assert_eq!(en("2/10 17:00"), "⏰ 2027-10-02 17:00");
+        assert_eq!(en("13 oct"), "⏰ 2027-10-13 09:00");
+        assert_eq!(en("el 3 a las 10"), "⏰ 2026-11-03 10:00");
+        // «el 31» en un mes de 30 dias no existe: el siguiente que lo tenga.
+        let fin_de_nov = Momento {
+            dia: dias_de(2026, 11, 2),
+            minuto: 600,
+        };
+        assert_eq!(interpretar("el 31", fin_de_nov).unwrap().marca(), "⏰ 2026-12-31 09:00");
+        // Negativos: sigue sin adivinar.
+        for f in ["el 32", "18/13 17:00", "5xm"] {
+            assert!(interpretar(f, ahora()).is_err(), "{f}");
+        }
+        assert!(matches!(interpretar("el 32", ahora()), Err(ErrorFecha::NoExiste(_))));
     }
 
     #[test]

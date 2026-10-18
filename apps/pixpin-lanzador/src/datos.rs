@@ -16,7 +16,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 /// El fichero de ajustes cuya presencia junto al exe activa el modo portable
 /// (`pixpin_store::rutas`).
-const NOMBRE_AJUSTES: &str = "pixpinmax.toml";
+pub(crate) const NOMBRE_AJUSTES: &str = "pixpinmax.toml";
 /// Lo que ensena la app para el proyecto de `guardados: true`
 /// (`almacen::NOMBRE_GUARDADOS`), se llame como se llame en el indice.
 pub const NOMBRE_GUARDADOS: &str = "Mensajes guardados";

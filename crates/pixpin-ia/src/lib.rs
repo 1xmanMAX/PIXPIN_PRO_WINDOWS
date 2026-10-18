@@ -95,7 +95,9 @@ pub mod contexto;
 pub mod cronograma;
 pub mod diagrama;
 pub mod descarga;
-pub mod fechas;
+// Las fechas dichas viven en `pixpin-frase` (18-oct-2026): las comparte el
+// plugin de Flow Launcher, que no puede cargar este crate.
+pub use pixpin_frase::fechas;
 pub mod documentos;
 pub mod edicion;
 pub mod ecuacion;

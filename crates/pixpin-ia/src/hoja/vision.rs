@@ -121,7 +121,10 @@ pub fn leer_latex(t: &str) -> Option<Vec<String>> {
     let t = t.trim().trim_matches('$').trim();
     let t = t.trim_start_matches("\\[").trim_end_matches("\\]").trim();
     let t = t.trim_start_matches("\\(").trim_end_matches("\\)").trim();
-    if t.is_empty() || t.eq_ignore_ascii_case("nada") || t.len() > crate::ecuacion::MAX_LARGO || (es_charla(t) && !t.contains('\\')) {
+    // (Ni una respuesta que habla de su formato: «answer = LaTeX only... Output».)
+    let bajo = t.to_lowercase();
+    let habla = ["answer", "latex only", "output", "formula is", "the image"].iter().any(|p| bajo.contains(p));
+    if t.is_empty() || t.eq_ignore_ascii_case("nada") || t.len() > crate::ecuacion::MAX_LARGO || (es_charla(t) && !t.contains('\\')) || habla {
         return None;
     }
     // Una frase de mas («Aqui esta: ...»): lo de despues de los dos puntos.

@@ -1509,6 +1509,7 @@ dependencies = [
  "pixpin-capture",
  "pixpin-codec",
  "pixpin-docs",
+ "pixpin-frase",
  "pixpin-geom",
  "pixpin-hojas",
  "pixpin-ia",
@@ -1626,6 +1627,10 @@ name = "pixpin-flow"
 version = "0.1.0"
 
 [[package]]
+name = "pixpin-frase"
+version = "0.1.0"
+
+[[package]]
 name = "pixpin-geom"
 version = "0.1.0"
 
@@ -1648,6 +1653,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "pixpin-codec",
+ "pixpin-frase",
  "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-notas",
@@ -1668,6 +1674,7 @@ dependencies = [
 name = "pixpin-lanzador"
 version = "0.1.0"
 dependencies = [
+ "pixpin-frase",
  "pixpin-lecciones",
  "serde",
  "serde_json",
@@ -1891,6 +1898,7 @@ name = "pixpin-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
+ "pixpin-frase",
  "pixpin-motor2d",
  "pixpin-shell",
  "serde",

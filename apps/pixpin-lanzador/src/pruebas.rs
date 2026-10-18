@@ -3363,3 +3363,51 @@ fn lienzo_nombre_y_separador_manda_al_lienzo() {
     let v = buscar(&r, "lienzo > hola");
     assert!(!matches!(&v[0].accion, Accion::Pedido(_)));
 }
+
+// --- Tareas entendidas antes de pulsar (18-oct-2026) ------------------------
+
+/// `p t …` y `p tareas …` ensenan lo entendido con el mismo parser que la
+/// app (`pixpin_frase::tarea`); el pedido lleva lo escrito tal cual y la app
+/// lo vuelve a entender con sus palabras.
+#[test]
+fn flow_ensena_lo_que_entendio_de_la_tarea_antes_de_pulsar() {
+    let r = raiz_con_inbox("tarea-entendida");
+    let mut c = ctx_con_raiz(&r, 1000);
+    // Miercoles 14-oct-2026 10:30, en hora local.
+    c.ahora_local = Some(pixpin_frase::fechas::Momento {
+        dia: pixpin_frase::fechas::dias_de(2026, 10, 14),
+        minuto: 10 * 60 + 30,
+    });
+    let buscar_c = |q: &str| {
+        let mut d = Datos::nuevo(r.clone());
+        resultados(&d.proyectos(), q, &c)
+    };
+    let v = buscar_c("t llamar #casa al banco muy urgente 18/10 17:00");
+    assert_eq!(v[0].titulo, "Apuntar tarea: llamar al banco");
+    assert!(
+        v[0].subtitulo.starts_with("Muy urgente · #casa · ⏰ dom 18/10 17:00 · Tarea"),
+        "{}",
+        v[0].subtitulo
+    );
+    assert_eq!(
+        v[0].accion,
+        Accion::Pedido(json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "llamar #casa al banco muy urgente 18/10 17:00" }))
+    );
+    // «tareas …» tambien (el «Añadir al Inbox» de abajo).
+    let v = buscar_c("tareas leche urgente");
+    let ultimo = v.last().unwrap();
+    assert_eq!(ultimo.titulo, "Añadir al Inbox: leche");
+    assert!(ultimo.subtitulo.starts_with("Urgente · Tarea"), "{}", ultimo.subtitulo);
+    // Sin nada que reconocer, como antes: normal y sin resumen.
+    let v = buscar_c("t comprar pan");
+    assert_eq!(v[0].titulo, "Apuntar tarea: comprar pan");
+    assert!(v[0].subtitulo.starts_with("Tarea"), "{}", v[0].subtitulo);
+    // Las palabras de Ajustes, leidas del pixpinmax.toml de la raiz.
+    fs::write(r.join("pixpinmax.toml"), "[tareas]\nurgente = [\"pronto\"]\nmuy_urgente = []\n").unwrap();
+    let v = buscar_c("t llamar pronto");
+    assert_eq!(v[0].titulo, "Apuntar tarea: llamar");
+    assert!(v[0].subtitulo.starts_with("Urgente · Tarea"), "{}", v[0].subtitulo);
+    let v = buscar_c("t llamar muy urgente");
+    assert_eq!(v[0].titulo, "Apuntar tarea: llamar muy urgente", "quitada en Ajustes: es titulo");
+    let _ = fs::remove_dir_all(&r);
+}

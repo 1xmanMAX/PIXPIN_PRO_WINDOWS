@@ -29,7 +29,7 @@ use pixpin_render::{Color, Pintor, RectF};
 use pixpin_store::Catalogo;
 
 use super::herramienta::{Herramienta, Tema, Vinculo};
-use crate::tareas::frase::{self, Prioridad};
+use crate::tareas::frase::{self, Urgencia};
 
 /// El `cual` de la herramienta (y su origen en el almacen: `mini:tarea@…`).
 pub const TAREA: &str = "tarea";
@@ -153,18 +153,19 @@ pub fn caracter(h: &mut Herramienta, c: char) -> Respuesta {
     }
 }
 
-/// El color de la franja de la prioridad.
-fn color_de(p: Option<Prioridad>, tema: &Tema) -> Color {
-    match p {
-        Some(Prioridad::Alta) => crate::caja_dibujo::hex(0xe5534b),
-        Some(Prioridad::Media) => crate::caja_dibujo::hex(0xe8a33d),
-        Some(Prioridad::Baja) => crate::caja_dibujo::hex(0x4caf7a),
-        None => tema.acento,
+/// El color de la franja de la urgencia: el de su chapita, o el acento si
+/// es normal.
+fn color_de(u: Urgencia, tema: &Tema) -> Color {
+    match u {
+        Urgencia::MuyUrgente => crate::tareas::chapitas::ROJO,
+        Urgencia::Urgente => crate::tareas::chapitas::AMBAR,
+        Urgencia::Normal => tema.acento,
     }
 }
 
-/// Pinta el pin: la franja de la prioridad, el titulo, la linea de la hora
-/// y las etiquetas, la nota y el boton (o la caja donde se escribe).
+/// Pinta el pin: la franja de la urgencia, el titulo, la linea de la hora
+/// con las chapitas de la urgencia y las etiquetas, la nota y el boton (o
+/// la caja donde se escribe).
 pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema: &Tema, textos: &Catalogo) {
     let e = escala as f32 / 100.0;
     let m = frase::marcas(&h.documento);
@@ -174,7 +175,7 @@ pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema
             ancho: 4.0 * e,
             ..caja
         },
-        color_de(m.prioridad, tema),
+        color_de(m.urgencia, tema),
     );
     let x = caja.x + margen + 4.0 * e;
     let ancho = (caja.ancho - 2.0 * margen - 4.0 * e).max(1.0);
@@ -200,25 +201,35 @@ pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema
         |p| p.texto_ajustado(&m.titulo, x, y, tam, ancho, tema.texto),
     );
     y += alto_t.min(tope) + 3.0 * e;
-    // La hora y las etiquetas en una linea; la nota en otra.
-    let mut linea = String::new();
-    if let Some(t) = m.hora {
-        linea.push_str(&format!(
-            "⏰ {}",
-            pixpin_ia::fechas::Momento::de_ms_locales(t).legible(frase::ahora())
-        ));
-    }
-    for et in &m.etiquetas {
-        if !linea.is_empty() {
-            linea.push(' ');
-        }
-        linea.push('#');
-        linea.push_str(et);
-    }
+    // La hora y, detras, las chapitas (urgencia y etiquetas) en una linea;
+    // la nota en otra.
+    let vista = frase::a_la_vista(&h.documento, None);
     let chico = 11.5 * e;
-    if !linea.is_empty() && y + chico * 1.3 <= boton.y {
-        p.texto_linea(&linea, x, y, chico, ancho, tema.apagado);
-        y += chico * 1.4;
+    let alto_linea = if vista.chapas.is_empty() {
+        chico * 1.4
+    } else {
+        crate::tareas::chapitas::ALTO * e + 2.0 * e
+    };
+    if (m.hora.is_some() || !vista.chapas.is_empty()) && y + alto_linea <= boton.y {
+        let mut cx = x;
+        if let Some(t) = m.hora {
+            let hora = format!("⏰ {}", t.legible(frase::ahora()));
+            let (hw, hh) = p.medir_texto(&hora, chico);
+            p.texto_linea(&hora, x, y + (alto_linea - hh) / 2.0, chico, ancho, tema.apagado);
+            cx += hw + 8.0 * e;
+        }
+        let alto_c = crate::tareas::chapitas::ALTO * e;
+        crate::tareas::chapitas::pintar(
+            p,
+            &vista.chapas,
+            cx,
+            y + (alto_linea - alto_c) / 2.0,
+            (x + ancho - cx).max(0.0),
+            false,
+            e,
+            textos,
+        );
+        y += alto_linea;
     }
     if h.nota.is_none()
         && let Some(n) = &m.nota

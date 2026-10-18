@@ -116,7 +116,7 @@ fn banco_17oct() {
         let s = pixpin_ia::hoja::paneles::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone(), true);
         for z in &s.zonas {
             let t: String = z.texto().chars().take(60).collect::<String>().replace('\n', " | ");
-            println!("  zona {:>2} {:<10} {:.2} [{:.0},{:.0} {:.0}x{:.0}] {t}", z.id, z.tipo.nombre(), z.confianza, z.caja.x, z.caja.y, z.caja.w, z.caja.h);
+            println!("  zona {:>2} {:<10} {:.2} [{:.0},{:.0} {:.0}x{:.0}] {t} {:?}", z.id, z.tipo.nombre(), z.confianza, z.caja.x, z.caja.y, z.caja.w, z.caja.h, z.renglones.iter().map(|r| r.color).collect::<Vec<_>>());
             if std::env::var_os("PIXPIN_CALCAR_RENGLONES").is_some() {
                 for r in &z.renglones {
                     println!("      renglon [{:.0},{:.0} {:.0}x{:.0}] {}", r.caja.x, r.caja.y, r.caja.w, r.caja.h, r.texto);

@@ -178,6 +178,7 @@ enum Seccion {
     General,
     Captura,
     Pinear,
+    Tareas,
     Lienzo,
     Voz,
     Asistente,
@@ -188,10 +189,11 @@ enum Seccion {
     Avanzado,
 }
 
-const SECCIONES: [Seccion; 11] = [
+const SECCIONES: [Seccion; 12] = [
     Seccion::General,
     Seccion::Captura,
     Seccion::Pinear,
+    Seccion::Tareas,
     Seccion::Lienzo,
     Seccion::Voz,
     Seccion::Asistente,
@@ -208,6 +210,7 @@ impl Seccion {
             Seccion::General => "general",
             Seccion::Captura => "captura",
             Seccion::Pinear => "pinear",
+            Seccion::Tareas => "tareas",
             Seccion::Lienzo => "lienzo",
             Seccion::Voz => "voz",
             Seccion::Asistente => "asistente",
@@ -232,6 +235,7 @@ impl Seccion {
             Seccion::General => &mi::SETTINGS,
             Seccion::Captura => &mi::CROP,
             Seccion::Pinear => &mi::PUSH_PIN,
+            Seccion::Tareas => &mi::CHECK_BOX,
             Seccion::Lienzo => &mi::DRAW,
             Seccion::Voz => &mi::MIC,
             Seccion::Asistente => &ROBOT,
@@ -279,6 +283,10 @@ enum Clave {
     PalabrasDe(u8),
     /// «De fabrica»: todas las palabras como vienen.
     PalabrasFabrica,
+    // Tareas (18-oct-2026)
+    /// Las palabras de una urgencia de las tareas: 0 urgente, 1 muy urgente
+    /// (`[tareas]`).
+    PalabrasUrgencia(u8),
     // Lienzo
     ImanActivo,
     ImanEsquinas,
@@ -1249,6 +1257,34 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
             ));
             v
         }
+        Seccion::Tareas => {
+            // Las palabras de cada urgencia (18-oct-2026): las mismas cajas
+            // que las palabras magicas, separadas por comas.
+            let mut v = vec![grupo(t, "ajustes2-g-urgencia")];
+            for (i, (clave, lista)) in [
+                ("ajustes2-urgente", &a.tareas.urgente),
+                ("ajustes2-muy-urgente", &a.tareas.muy_urgente),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                v.push(op(
+                    a,
+                    Clave::PalabrasUrgencia(i as u8),
+                    tt(clave),
+                    if lista.is_empty() {
+                        tt("ajustes2-urgencia-ninguna")
+                    } else {
+                        lista.join(", ")
+                    },
+                    Control::Entrada {
+                        marcador: tt("ajustes2-palabras-marcador"),
+                        boton: tt("ajustes2-palabras-cambiar"),
+                    },
+                ));
+            }
+            v
+        }
         Seccion::Apariencia => vec![
             grupo(t, "ajustes2-g-tema"),
             op(
@@ -1450,6 +1486,8 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::Paneo => a.rendimiento.paneo_por_composicion = d.rendimiento.paneo_por_composicion,
         Clave::CorteMinimo => a.tinta.corte_minimo = d.tinta.corte_minimo,
         Clave::Beta => a.tinta.beta = d.tinta.beta,
+        Clave::PalabrasUrgencia(0) => a.tareas.urgente = d.tareas.urgente.clone(),
+        Clave::PalabrasUrgencia(_) => a.tareas.muy_urgente = d.tareas.muy_urgente.clone(),
         Clave::PalabrasDe(i) => {
             if let Some(app) = pixpin_pin::magia::MiniApp::por_indice(i) {
                 let de_fabrica =
@@ -1517,6 +1555,20 @@ fn poner_palabras_escritas(a: &mut Ajustes, clave: Clave, escrito: &str) {
     {
         poner_palabras(a, app, &pixpin_pin::magia::partir_escrito(escrito));
     }
+    // Las de una urgencia: partidas igual, sin repetir y sin vacias.
+    if let Clave::PalabrasUrgencia(i) = clave {
+        let mut nuevas: Vec<String> = Vec::new();
+        for p in pixpin_pin::magia::partir_escrito(escrito) {
+            let p = p.trim().to_string();
+            if !p.is_empty() && !nuevas.iter().any(|x| x.to_lowercase() == p.to_lowercase()) {
+                nuevas.push(p);
+            }
+        }
+        match i {
+            0 => a.tareas.urgente = nuevas,
+            _ => a.tareas.muy_urgente = nuevas,
+        }
+    }
 }
 
 /// Lo que sale en la caja de una herramienta al ir a escribir: sus palabras
@@ -1530,6 +1582,8 @@ fn palabras_para_editar(a: &Ajustes, clave: Clave) -> String {
                     .join(", ")
             })
             .unwrap_or_default(),
+        Clave::PalabrasUrgencia(0) => a.tareas.urgente.join(", "),
+        Clave::PalabrasUrgencia(_) => a.tareas.muy_urgente.join(", "),
         _ => String::new(),
     }
 }
@@ -2150,7 +2204,7 @@ fn abrir(
                     estado.capturando = None;
                     let foco_antes = estado.foco;
                     let es_palabras =
-                        |i: usize| matches!(filas.get(i), Some((Clave::PalabrasDe(_), _)));
+                        |i: usize| matches!(filas.get(i), Some((Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_), _)));
                     // «Cambiar» en las palabras de una herramienta: la primera
                     // vez abre su caja con lo de ahora; con la caja abierta,
                     // guarda lo escrito (el Aceptar del dialogo del movil).
@@ -2206,7 +2260,7 @@ fn abrir(
                             estado.entrada.clear();
                         }
                         if let Foco::Entrada(i) = estado.foco
-                            && let Some((clave @ Clave::PalabrasDe(_), _)) = filas.get(i)
+                            && let Some((clave @ (Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_)), _)) = filas.get(i)
                         {
                             estado.entrada = palabras_para_editar(&copia.a, *clave);
                         }
@@ -2283,7 +2337,7 @@ fn abrir(
                                         });
                                     }
                                     // Ya resuelto arriba, con el foco.
-                                    Parte::Pulsar if matches!(clave, Clave::PalabrasDe(_) | Clave::ClaveNube(_) | Clave::ClienteConexion(_)) => {}
+                                    Parte::Pulsar if matches!(clave, Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_) | Clave::ClaveNube(_) | Clave::ClienteConexion(_)) => {}
                                     Parte::Pulsar if matches!(clave, Clave::Conexion(_)) => {
                                         pulsar_conexion(clave, despertar_ventana.clone())
                                     }
@@ -2393,7 +2447,7 @@ fn abrir(
                                 } else {
                                     // Escape en las palabras es Cancelar.
                                     if let Foco::Entrada(i) = estado.foco
-                                        && (matches!(filas.get(i), Some((Clave::PalabrasDe(_), _)))
+                                        && (matches!(filas.get(i), Some((Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_), _)))
                                             || es_clave(&filas, i))
                                     {
                                         estado.entrada.clear();
@@ -2420,7 +2474,7 @@ fn abrir(
                                 }
                                 // Intro guarda las palabras y cierra la caja.
                                 Foco::Entrada(i)
-                                    if matches!(filas.get(i), Some((Clave::PalabrasDe(_), _))) =>
+                                    if matches!(filas.get(i), Some((Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_), _))) =>
                                 {
                                     let texto = std::mem::take(&mut estado.entrada);
                                     if let Some((clave, _)) = filas.get(i).cloned() {
@@ -3711,6 +3765,34 @@ mod pruebas {
         assert!(filas_actuales(&estado, &a, &cx).is_empty());
     }
 
+    /// Ajustes → Tareas (18-oct-2026): las palabras de cada urgencia se
+    /// cambian en su caja, ponen el punto azul y vuelven a fabrica.
+    #[test]
+    fn las_palabras_de_cada_urgencia_se_cambian_y_vuelven_a_fabrica() {
+        let t = textos();
+        let cx = cx(&t);
+        let mut a = Ajustes::default();
+        let filas = filas_de_seccion(Seccion::Tareas, &a, &cx);
+        assert_eq!(filas.len(), 3, "el grupo y una fila por urgencia");
+        assert_eq!(filas[1].1.etiqueta, "Urgente");
+        assert_eq!(filas[2].1.etiqueta, "Muy urgente");
+        assert!(filas[1].1.ayuda.contains("prioridad alta"), "{}", filas[1].1.ayuda);
+        assert!(!filas[1].1.cambiado && !filas[2].1.cambiado);
+        assert!(palabras_para_editar(&a, Clave::PalabrasUrgencia(1)).contains("!!"));
+        poner_palabras_escritas(&mut a, Clave::PalabrasUrgencia(0), "pronto, Pronto,, ya mismo\n");
+        assert_eq!(a.tareas.urgente, ["pronto", "ya mismo"], "sin repetidas ni vacias");
+        let filas = filas_de_seccion(Seccion::Tareas, &a, &cx);
+        assert!(filas[1].1.cambiado);
+        assert!(!filas[2].1.cambiado, "caso negativo: muy urgente no cambio");
+        // Sin ninguna: valido («todo normal») y se dice.
+        poner_palabras_escritas(&mut a, Clave::PalabrasUrgencia(1), " ");
+        assert!(a.tareas.muy_urgente.is_empty());
+        let filas = filas_de_seccion(Seccion::Tareas, &a, &cx);
+        assert_eq!(filas[2].1.ayuda, t.t("ajustes2-urgencia-ninguna"));
+        restablecer_seccion(Seccion::Tareas, &mut a, &cx);
+        assert_eq!(a.tareas, pixpin_store::ajustes::Tareas::default());
+    }
+
     #[test]
     fn las_palabras_de_una_herramienta_se_cambian_y_vuelven_a_fabrica() {
         let t = textos();
@@ -3848,7 +3930,7 @@ mod pruebas {
             (
                 "atajos",
                 Estado {
-                    seccion: 6,
+                    seccion: 7,
                     capturando: Some(3),
                     ..Estado::default()
                 },
@@ -3857,7 +3939,7 @@ mod pruebas {
             (
                 "avanzado",
                 Estado {
-                    seccion: 10,
+                    seccion: 11,
                     ..Estado::default()
                 },
                 None,
@@ -3865,7 +3947,7 @@ mod pruebas {
             (
                 "apps",
                 Estado {
-                    seccion: 8,
+                    seccion: 9,
                     ..Estado::default()
                 },
                 None,
@@ -3873,7 +3955,7 @@ mod pruebas {
             (
                 "asistente",
                 Estado {
-                    seccion: 5,
+                    seccion: 6,
                     ..Estado::default()
                 },
                 None,

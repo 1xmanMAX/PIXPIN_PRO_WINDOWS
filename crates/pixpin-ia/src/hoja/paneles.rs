@@ -532,15 +532,146 @@ fn juntar_formulas_al_renglon(s: &mut Seccionado) {
 /// de el (la mediana de esos pixeles).
 fn contrastar(s: &mut Seccionado, rgba: &[u8], fondo: [u8; 3]) {
     let (w, h) = (s.ancho, s.alto);
-    let f = [fondo[0] as f64, fondo[1] as f64, fondo[2] as f64];
     for z in &mut s.zonas {
+        // El fondo de AQUI (un boton que no se vio como recuadro): lo que mas
+        // hay alrededor de la zona; si casi no hay, el de la region.
+        let marco = z.caja.crecer((z.caja.h * 0.25).clamp(3.0, 12.0));
+        let local = color_mediano(rgba, w, h, &marco, 2, |_| true).unwrap_or(fondo);
+        let f = [local[0] as f64, local[1] as f64, local[2] as f64];
+        let cerca = |c: Option<[u8; 3]>| {
+            let c = c.unwrap_or([20, 20, 20]);
+            dist([c[0] as f64, c[1] as f64, c[2] as f64], f) < 90.0
+        };
         for r in &mut z.renglones {
-            let actual = r.color.unwrap_or([20, 20, 20]);
-            if dist([actual[0] as f64, actual[1] as f64, actual[2] as f64], f) >= 90.0 {
+            // (El renglon o alguna palabra: de las palabras sale el color de
+            // la zona.)
+            if !cerca(r.color) && !r.palabras.iter().any(|p| cerca(p.color)) {
                 continue;
             }
             if let Some(c) = color_mediano(rgba, w, h, &r.caja, 1, |p| dist([p[0] as f64, p[1] as f64, p[2] as f64], f) >= 90.0) {
+                if cerca(r.color) {
+                    r.color = Some(c);
+                }
+                for p in r.palabras.iter_mut().filter(|p| cerca(p.color)) {
+                    p.color = Some(c);
+                }
+            }
+        }
+    }
+}
+
+/// **Una formula enmarcada que el OCR no leyo** (18-oct, «Cα=90°−α» de
+/// Reforzamiento): el marco sale como rayas sueltas (dos horizontales de la
+/// misma anchura, y a veces sus laterales) y lo de dentro, sin letras, se
+/// perdia. Las rayas y lo de dentro pasan a ser UNA zona de formula.
+fn cajitas(s: &mut Seccionado) {
+    let hm = s.alto_letra.max(4.0);
+    let horizontal = |z: &Zona| z.tipo == Tipo::Linea && z.caja.h <= 4.0 && z.caja.w >= hm * 2.0;
+    let mut i = 0;
+    while i < s.zonas.len() {
+        if !horizontal(&s.zonas[i]) {
+            i += 1;
+            continue;
+        }
+        let a = s.zonas[i].caja;
+        let pareja = (0..s.zonas.len()).find(|&j| {
+            let b = s.zonas[j].caja;
+            j != i && horizontal(&s.zonas[j]) && b.y > a.y && (b.y - a.y) >= hm * 1.2 && (b.y - a.y) <= hm * 4.5
+                && (b.x - a.x).abs() <= hm * 0.6 && (b.x1() - a.x1()).abs() <= hm * 0.6
+        });
+        let Some(j) = pareja else {
+            i += 1;
+            continue;
+        };
+        let marco = a.union(&s.zonas[j].caja).crecer(2.0);
+        // (Si dentro hay letras leidas, ya es texto: no se toca.)
+        let con_letras = s.zonas.iter().any(|z| z.renglones.iter().any(|r| marco.contiene(r.caja.cx(), r.caja.cy())));
+        if con_letras {
+            i += 1;
+            continue;
+        }
+        let dentro: Vec<usize> = (0..s.zonas.len()).filter(|&k| k != i && s.zonas[k].renglones.is_empty() && s.zonas[k].caja.dentro_de(&marco) >= 0.8).collect();
+        // (Solo lo de dentro, sin las rayas: el marco lo dibuja la formula.)
+        let b = s.zonas[j].caja;
+        let caja = Caja::de_esquinas(a.x + 3.0, a.y1() + 2.0, a.x1() - 3.0, b.y - 2.0);
+        let z = &mut s.zonas[i];
+        z.caja = caja;
+        z.tipo = Tipo::Formula;
+        z.rayas.clear();
+        for k in dentro.into_iter().rev() {
+            s.zonas.remove(k);
+            if k < i {
+                i -= 1;
+            }
+        }
+        i += 1;
+    }
+}
+
+/// **Los iconos de un boton** (18-oct: el mapa blanco sobre azul salia como
+/// cuatro rayas negras): sobre un fondo de color, lo que no lleva letras y
+/// esta junto (rayas, dudosas, trozos de dibujo) es UN simbolo: una imagen
+/// recortada con sus colores.
+fn iconos(s: &mut Seccionado) {
+    let hm0 = s.alto_letra.max(4.0);
+    let sin_letras = |z: &Zona| z.renglones.is_empty() && matches!(z.tipo, Tipo::Linea | Tipo::Dudosa | Tipo::Dibujo | Tipo::Foto) && z.caja.w <= hm0 * 8.0 && z.caja.h <= hm0 * 8.0;
+    let hm = s.alto_letra.max(4.0);
+    let mut i = 0;
+    while i < s.zonas.len() {
+        if !sin_letras(&s.zonas[i]) {
+            i += 1;
+            continue;
+        }
+        let mut caja = s.zonas[i].caja;
+        let mut j = i + 1;
+        while j < s.zonas.len() {
+            if sin_letras(&s.zonas[j]) && s.zonas[j].caja.crecer(hm * 0.6).comun(&caja.crecer(hm * 0.6)) > 0.0 {
+                caja = caja.union(&s.zonas[j].caja);
+                s.zonas.remove(j);
+                j = i + 1;
+            } else {
+                j += 1;
+            }
+        }
+        let z = &mut s.zonas[i];
+        z.caja = caja;
+        z.tipo = Tipo::Foto;
+        z.rayas.clear();
+        z.dentro.clear();
+        i += 1;
+    }
+}
+
+/// Una copia del recorte en la que el `fondo` es blanco y la tinta, oscura
+/// en proporcion a lo que se aparta de el (mas clara o mas oscura).
+fn entintada(rgba: &[u8], fondo: [u8; 3]) -> Vec<u8> {
+    let f = [fondo[0] as f64, fondo[1] as f64, fondo[2] as f64];
+    let mut v = rgba.to_vec();
+    for px in v.chunks_exact_mut(4) {
+        let d = dist([px[0] as f64, px[1] as f64, px[2] as f64], f);
+        let g = (255.0 - d * 1.6).clamp(0.0, 255.0) as u8;
+        px[0] = g;
+        px[1] = g;
+        px[2] = g;
+    }
+    v
+}
+
+/// Los colores de cada renglon y palabra, medidos en la imagen de verdad:
+/// la tinta que se aparta del fondo (despues de seccionar en la entintada).
+fn recolorear(s: &mut Seccionado, rgba: &[u8], fondo: [u8; 3]) {
+    let (w, h) = (s.ancho, s.alto);
+    let f = [fondo[0] as f64, fondo[1] as f64, fondo[2] as f64];
+    let lejos = |p: [u8; 3]| dist([p[0] as f64, p[1] as f64, p[2] as f64], f) >= 90.0;
+    for z in &mut s.zonas {
+        for r in &mut z.renglones {
+            if let Some(c) = color_mediano(rgba, w, h, &r.caja, 1, lejos) {
                 r.color = Some(c);
+            }
+            for p in &mut r.palabras {
+                if let Some(c) = color_mediano(rgba, w, h, &p.caja, 1, lejos) {
+                    p.color = Some(c);
+                }
             }
         }
     }
@@ -596,6 +727,7 @@ pub fn seccionar_limpia(rgba: &[u8], ancho: u32, alto: u32, palabras: Vec<Palabr
             seccion::unir_dibujos(&mut s, rgba);
         }
         quitar_adornos(&mut s, rgba);
+        cajitas(&mut s);
         invertidos(&mut s, rgba, [a.fondo; 3]);
         if unir {
             juntar_formulas_al_renglon(&mut s);
@@ -670,11 +802,24 @@ impl Region<'_> {
                 q
             })
             .collect();
-        let mut s = seccion::seccionar(&sub, sw, sh, suyas);
+        // **Sobre un fondo que no es papel blanco** (18-oct: un boton azul con
+        // su icono blanco, una tabla de tema oscuro), lo que es tinta es lo
+        // que se aparta del fondo, sea mas claro o mas oscuro: se secciona
+        // una copia «entintada» (fondo blanco, tinta oscura) y los colores
+        // se miden luego en la de verdad.
+        let entintar = dist([fondo[0] as f64, fondo[1] as f64, fondo[2] as f64], [255.0; 3]) > 90.0;
+        let tinta = entintar.then(|| entintada(&sub, fondo));
+        let ver: &[u8] = tinta.as_deref().unwrap_or(&sub);
+        let mut s = seccion::seccionar(ver, sw, sh, suyas);
         if self.unir {
-            seccion::unir_dibujos(&mut s, &sub);
+            seccion::unir_dibujos(&mut s, ver);
         }
-        quitar_adornos(&mut s, &sub);
+        quitar_adornos(&mut s, ver);
+        cajitas(&mut s);
+        if entintar {
+            recolorear(&mut s, &sub, fondo);
+            iconos(&mut s);
+        }
         invertidos(&mut s, &sub, fondo);
         if self.unir {
             juntar_formulas_al_renglon(&mut s);

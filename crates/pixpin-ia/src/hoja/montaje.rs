@@ -599,6 +599,9 @@ fn foto(e: &Entrada) -> (Vec<Value>, Vec<ImagenNueva>) {
         .iter()
         .filter(|w| w.comun(&caja) > 0.25 * w.area().max(1.0))
         .filter(|w| !suyas.iter().any(|s| s.comun(w) > 0.5 * w.area().max(1.0)))
+        // (Lo que cae de lleno dentro de la zona es suyo aunque el OCR lo
+        // apuntara en otra: tapado, la caja de «Cα=90°−α» salia vacia.)
+        .filter(|w| !(matches!(e.zona.tipo, Tipo::Formula | Tipo::Dudosa) && w.dentro_de(&e.zona.caja) >= 0.9))
         .copied()
         .collect();
     // (Un dibujo, una formula o una dudosa recortados: sin la marca de agua.)
@@ -833,6 +836,11 @@ fn formula(e: &Entrada, latex: &[String]) -> Option<Vec<Value>> {
     if lineas.len() == 1 && (h as f64) < 1.6 * ec.tam / k.max(1e-6) && e.zona.renglones.len() <= 1 {
         ec.tam = ec.tam.max(0.85 * d.h).min(120.0);
     }
+    // (Sin renglones del OCR, la caja puede ser la de su marco: no mas de la
+    // letra de la hoja y media.)
+    if e.zona.renglones.is_empty() {
+        ec.tam = ec.tam.min(e.alto_letra * e.mapa.escala * 1.5).max(8.0);
+    }
     let (_, (w, h)) = crate::ecuacion::piezas(&ec);
     // Centrada en la caja del papel.
     ec.donde = Some((d.cx() - w as f64 / 2.0, d.cy() - h as f64 / 2.0));
@@ -883,7 +891,11 @@ fn marco(e: &Entrada, f: &mut Fabrica) {
     d.recuadros.truncate(1);
     let solo = crate::diagrama::Diagrama { ancho: d.ancho, alto: d.alto, recuadros: d.recuadros, ..Default::default() };
     let dest = e.mapa.caja(&c);
+    // (Debajo de la formula: su relleno no la tapa.)
+    let n0 = f.salida.len();
     crate::diagrama::elementos(&solo, (dest.x, dest.y), e.mapa.escala, f, &e.opciones.familia);
+    let nuevos = f.salida.split_off(n0);
+    f.salida.splice(0..0, nuevos);
 }
 
 // ---------------------------------------------------------------------------

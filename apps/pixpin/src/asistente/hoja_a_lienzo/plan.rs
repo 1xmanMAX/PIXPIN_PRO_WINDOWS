@@ -51,6 +51,7 @@ Recibes la imagen con unas zonas marcadas: cada una con su recuadro y su NUMERO 
 2) Cada zona trae lo que «parece». Corrige SOLO las que estan mal, con UNA de estas palabras: \
 texto (parrafo o renglones), titulo, tabla (las celdas de una tabla: todas sus zonas con el mismo grupo), figura (dibujo geometrico o esquema de lineas, circulos, flechas), grafica (ejes y curvas o barras), formula, foto (fotografia, logo, ilustracion), icono (un simbolo pequeno: flecha, lupa, mapa), contenedor (una caja, tarjeta, boton o barra de fondo que lleva cosas encima), ignorar (marca de agua, adorno palido, sombra, ruido). \
 3) Agrupa: las zonas que son UNA sola cosa van juntas en un grupo (las filas de una tabla; una figura con sus letras y marcas; un parrafo partido en varias zonas). Un contenedor nunca se agrupa con lo de dentro. \
+Una tabla es una REJILLA de celdas pegadas con rayas o filas; unas tarjetas sueltas, cada una con su fondo (Pabellon 100 | Piso 2 | Aula 108), NO son una tabla: son texto dentro de contenedores. Un simbolo suelto (flecha, mapa, lupa) es icono, nunca ignorar. \
 Responde SOLO un JSON CORTO, solo con lo que cambia (lo que no nombres se queda como «parece»): {\"tema\":\"...\",\"grupos\":[{\"es\":\"tabla\",\"n\":[3,4,5]}],\"cambios\":[{\"n\":2,\"es\":\"titulo\"}],\"contenedores\":[7,9],\"ignorar\":[12]}.";
 
 /// Las palabras de `es` que se entienden.
@@ -142,8 +143,23 @@ pub fn pedir(motor: &dyn Motor, p: &Pagina, s: &Seccionado) -> Result<Plan, Stri
     let (rgba, w, h) = pixpin_ia::hoja::montaje::reducir(&marcada.pixeles, marcada.ancho, marcada.alto, 1280);
     let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: rgba }).map_err(|e| format!("{e:?}"))?;
     let pregunta = format!("Zonas ({}):\n{}", s.zonas.len(), lista(s));
-    let t = vision::preguntar_con(motor, SISTEMA, png, &pregunta, 3000)?;
-    leer(&t, s.zonas.len()).ok_or_else(|| format!("el planificador no dio un plan: «{}»", t.chars().take(80).collect::<String>()))
+    // (Una vez mas si no contesta o contesta algo que no es un plan.)
+    let mut ultimo = String::new();
+    for _ in 0..2 {
+        match vision::preguntar_con(motor, SISTEMA, png.clone(), &pregunta, 3000) {
+            Ok(t) => match leer(&t, s.zonas.len()) {
+                Some(p) => {
+                    if std::env::var_os("PIXPIN_PLAN_DEPURAR").is_some() {
+                        eprintln!("plan: tema {:?}\n  es {:?}\n  grupos {:?}", p.tema, p.es, p.grupo);
+                    }
+                    return Ok(p);
+                }
+                None => ultimo = format!("el planificador no dio un plan: «{}»", t.chars().take(80).collect::<String>()),
+            },
+            Err(e) => ultimo = e,
+        }
+    }
+    Err(ultimo)
 }
 
 /// Lee el JSON del plan (con o sin bloque de codigo). Solo los numeros que
