@@ -225,7 +225,12 @@ pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema
             cx,
             y + (alto_linea - alto_c) / 2.0,
             (x + ancho - cx).max(0.0),
-            false,
+            // (El pin en tema claro: el papel es claro.)
+            if tema.papel.r + tema.papel.g + tema.papel.b > 1.5 {
+                crate::tareas::chapitas::Sobre::Claro
+            } else {
+                crate::tareas::chapitas::Sobre::Oscuro
+            },
             e,
             textos,
         );

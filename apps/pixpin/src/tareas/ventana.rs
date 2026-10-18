@@ -3584,7 +3584,7 @@ fn pintar_tarjeta(
     // La urgencia y las etiquetas, en chapitas bajo el texto: una pulsada
     // busca las tareas que la llevan.
     if let Some(cy) = hc.chapas_y {
-        let cajas = super::chapitas::pintar(p, &hc.chapas, tx, r.y + cy, hc.texto_ancho, false, s, textos);
+        let cajas = super::chapitas::pintar(p, &hc.chapas, tx, r.y + cy, hc.texto_ancho, super::chapitas::Sobre::Oscuro, s, textos);
         for (c, k) in cajas {
             e.botones.zona(c, Accion::BuscarChapa(li, fi, k));
         }
@@ -4103,7 +4103,7 @@ fn pintar_cuadrado(
             let y = (fin_del_texto + 8.0 * s).min(partes.casilla.y - alto - 2.0 * s);
             (partes.texto.x, y, partes.texto.ancho)
         };
-        let cajas = super::chapitas::pintar(p, &chapas, x, y, ancho, true, s, textos);
+        let cajas = super::chapitas::pintar(p, &chapas, x, y, ancho, super::chapitas::Sobre::Foto, s, textos);
         for (c, k) in cajas {
             e.botones.zona(c, Accion::BuscarChapa(li, fi, k));
         }

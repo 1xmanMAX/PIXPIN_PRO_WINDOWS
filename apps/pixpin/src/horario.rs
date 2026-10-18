@@ -329,6 +329,8 @@ fn clase_de_linea(linea: &str) -> Option<Clase> {
         }
         i += 1;
     }
+    // (Con los dias delante, un dia de mas es del nombre: «Taller del Sabado».)
+    let dias_delante = !dias.is_empty();
     // El tramo: en una palabra, o en tres («8:00 a 10:00», «8 - 10»).
     let mut tramo = None;
     let mut resto: Vec<&str> = Vec::new();
@@ -355,8 +357,12 @@ fn clase_de_linea(linea: &str) -> Option<Clase> {
                 continue;
             }
         }
-        // Dias detras del nombre («Geometría lunes 8-10»): solo los largos.
-        if let Some(d) = dias_de(p, false) {
+        // Dias detras del nombre («Geometría lunes 8-10»): solo los largos,
+        // y no si ya iban delante ni detras de «de»/«del».
+        let tras_de = j > 0 && matches!(normalizar(palabras[j - 1]).as_str(), "de" | "del");
+        if !dias_delante && !tras_de
+            && let Some(d) = dias_de(p, false)
+        {
             dias.extend(d);
         } else {
             resto.push(p);
@@ -1083,6 +1089,18 @@ pub fn vigilar(raiz: &Path) {
         });
     if let Err(e) = hecho {
         tracing::warn!(?e, "no se pudo lanzar el vigia del horario");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_nombres_con_dia {
+    #[test]
+    fn un_dia_en_el_nombre_no_se_pierde() {
+        let c = super::clase_de_linea("Lun Mié 8:00-10:00 Taller del Sábado @A-12").unwrap();
+        assert_eq!(c.nombre, "Taller del Sábado");
+        assert_eq!(c.dias, vec![0, 2]);
+        let c = super::clase_de_linea("Geometría lunes 8-10").unwrap();
+        assert_eq!((c.nombre.as_str(), c.dias.clone()), ("Geometría", vec![0]));
     }
 }
 

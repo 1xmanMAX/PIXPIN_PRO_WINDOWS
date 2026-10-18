@@ -220,6 +220,9 @@ struct Estado {
     rejilla: Option<Rejilla>,
     /// Lunes de esta semana (dias desde 1970) y la hora local de ahora.
     ahora_ms: i64,
+    /// La primera asignatura que se ve en la lista (la rueda la mueve, 18-oct:
+    /// con mas de una docena, las de abajo no se alcanzaban).
+    primera: usize,
 }
 
 fn firma_de(ruta: &Path) -> Option<(SystemTime, u64)> {
@@ -235,6 +238,7 @@ impl Estado {
             antelacion: super::ANTELACION,
             firma: None,
             domingo: false,
+            primera: 0,
             elegida: None,
             bloque: None,
             nueva: ui::Campo::default(),
@@ -505,6 +509,12 @@ fn bucle(
             let local = |p: pixpin_geom::Punto, m: Rect| ((p.x - m.x) as f32, (p.y - m.y) as f32);
             match ev {
                 EventoOverlay::Cerrar => vivo = false,
+                // La rueda sobre la lista de asignaturas: una por muesca.
+                EventoOverlay::Rueda(m) if e.rejilla.is_some_and(|r| e.botones.raton.0 < r.x) => {
+                    let pasos = (m as f32 / 120.0).round() as i64;
+                    let max = e.semana.asignaturas.len().saturating_sub(1) as i64;
+                    e.primera = (e.primera as i64 - pasos).clamp(0, max) as usize;
+                }
                 EventoOverlay::RatonMovido(p) => {
                     if let Some((desde, origen)) = e.moviendo {
                         marco = Rect {
@@ -1070,7 +1080,13 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
         _ => None,
     };
     let cuantas = e.semana.asignaturas.len();
-    for i in 0..cuantas {
+    e.primera = e.primera.min(cuantas.saturating_sub(1));
+    if e.primera > 0 {
+        // Las de arriba que no se ven.
+        p.texto_linea(&format!("↑ {}", e.primera), x + 36.0 * s, y, 12.0 * s, 80.0 * s, GRIS);
+        y += 20.0 * s;
+    }
+    for i in e.primera..cuantas {
         let a = e.semana.asignaturas[i].clone();
         let fila = RectF {
             x,
@@ -1117,8 +1133,8 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
         }
         y += FILA * s;
         if y > h - 200.0 * s && i + 1 < cuantas {
-            // Lo que no cabe (mas de una docena de asignaturas) se corta.
-            p.texto_linea("…", tx, y, tam, 40.0 * s, GRIS);
+            // Lo que no cabe: cuantas quedan (la rueda las trae).
+            p.texto_linea(&format!("↓ {}", cuantas - i - 1), tx, y, 12.0 * s, 80.0 * s, GRIS);
             y += 24.0 * s;
             break;
         }
@@ -1189,7 +1205,9 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
 fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) {
     let dia_hoy = e.ahora_ms.div_euclid(86_400_000);
     let semana_hoy = fechas::dia_de_la_semana(dia_hoy) as u8;
-    let lunes = dia_hoy - i64::from(semana_hoy);
+    // (En domingo, sin la columna del domingo, la semana que empieza mañana:
+    // la pasada ya no sirve para nada, 18-oct.)
+    let lunes = if semana_hoy >= r.dias { dia_hoy + 7 - i64::from(semana_hoy) } else { dia_hoy - i64::from(semana_hoy) };
     let ancho = r.ancho_dia * f32::from(r.dias);
     let zona = RectF {
         x: r.x,

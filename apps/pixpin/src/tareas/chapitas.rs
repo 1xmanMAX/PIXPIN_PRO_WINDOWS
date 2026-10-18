@@ -35,20 +35,32 @@ pub fn rotulo(c: &Chapa, textos: &Catalogo) -> String {
     }
 }
 
-/// Sus colores (fondo y letra). `sobre_foto`: encima de una imagen, con un
-/// fondo oscuro que se lea.
-fn colores(c: &Chapa, sobre_foto: bool) -> (Color, Color) {
-    match c {
-        Chapa::Urgencia(Urgencia::MuyUrgente) => (ROJO, Color::BLANCO),
-        Chapa::Urgencia(_) if sobre_foto => (negro(0.6), AMBAR),
-        Chapa::Urgencia(_) => (con_alfa(AMBAR, 0.22), AMBAR),
-        Chapa::Etiqueta(_) if sobre_foto => (negro(0.55), Color::BLANCO),
-        Chapa::Etiqueta(_) => (blanco(0.08), AZUL_LETRA),
+/// Sobre que va la fila.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sobre {
+    /// La ventana de Tareas y el pin oscuro.
+    Oscuro,
+    /// El pin en tema claro (18-oct: el azul claro casi no se leia).
+    Claro,
+    /// Encima de una imagen: con un fondo oscuro que se lea.
+    Foto,
+}
+
+/// Sus colores (fondo y letra).
+fn colores(c: &Chapa, sobre: Sobre) -> (Color, Color) {
+    match (c, sobre) {
+        (Chapa::Urgencia(Urgencia::MuyUrgente), _) => (ROJO, Color::BLANCO),
+        (Chapa::Urgencia(_), Sobre::Foto) => (negro(0.6), AMBAR),
+        (Chapa::Urgencia(_), Sobre::Claro) => (con_alfa(AMBAR, 0.25), hex(0x8a5300)),
+        (Chapa::Urgencia(_), Sobre::Oscuro) => (con_alfa(AMBAR, 0.22), AMBAR),
+        (Chapa::Etiqueta(_), Sobre::Foto) => (negro(0.55), Color::BLANCO),
+        (Chapa::Etiqueta(_), Sobre::Claro) => (negro(0.07), hex(0x1d5fa8)),
+        (Chapa::Etiqueta(_), Sobre::Oscuro) => (blanco(0.08), AZUL_LETRA),
     }
 }
 
 /// **Pinta la fila** desde `(x, y)` (arriba a la izquierda) sin pasar de
-/// `ancho`: las que no caben no salen. Devuelve la caja de cada una que se
+/// `ancho`: las que no caben no salen, y lo dice un «+N». Devuelve la caja de cada una que se
 /// pinto, con su posicion en `chapas` (para pulsarla).
 #[allow(clippy::too_many_arguments)] // pintor, chapitas, sitio, ancho, foto, escala y textos
 pub fn pintar(
@@ -57,7 +69,7 @@ pub fn pintar(
     x: f32,
     y: f32,
     ancho: f32,
-    sobre_foto: bool,
+    sobre: Sobre,
     s: f32,
     textos: &Catalogo,
 ) -> Vec<(RectF, usize)> {
@@ -70,6 +82,15 @@ pub fn pintar(
         let (tw, th) = p.medir_texto(&t, tam);
         let w = tw + 16.0 * s;
         if cx + w > x + ancho + 0.5 {
+            // Las que faltan, en una pildora tenue si cabe.
+            let mas = format!("+{}", chapas.len() - k);
+            let (mw, mh) = p.medir_texto(&mas, tam);
+            if cx + mw + 12.0 * s <= x + ancho + 0.5 {
+                let caja = RectF { x: cx, y, ancho: mw + 12.0 * s, alto };
+                let (fondo, letra) = colores(&Chapa::Etiqueta(String::new()), sobre);
+                p.rellenar_redondeado(caja, alto / 2.0, fondo);
+                p.texto(&mas, cx + 6.0 * s, y + (alto - mh) / 2.0, tam, letra);
+            }
             break;
         }
         let caja = RectF {
@@ -78,7 +99,7 @@ pub fn pintar(
             ancho: w,
             alto,
         };
-        let (fondo, letra) = colores(c, sobre_foto);
+        let (fondo, letra) = colores(c, sobre);
         p.rellenar_redondeado(caja, alto / 2.0, fondo);
         p.texto(&t, cx + 8.0 * s, y + (alto - th) / 2.0, tam, letra);
         v.push((caja, k));
@@ -107,8 +128,8 @@ mod pruebas {
         );
         // Muy urgente se distingue de urgente de lejos: fondo lleno.
         assert_ne!(
-            colores(&Chapa::Urgencia(Urgencia::MuyUrgente), false).0,
-            colores(&Chapa::Urgencia(Urgencia::Urgente), false).0
+            colores(&Chapa::Urgencia(Urgencia::MuyUrgente), Sobre::Oscuro).0,
+            colores(&Chapa::Urgencia(Urgencia::Urgente), Sobre::Oscuro).0
         );
     }
 }
