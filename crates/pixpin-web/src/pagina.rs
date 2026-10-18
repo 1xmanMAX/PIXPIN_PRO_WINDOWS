@@ -173,10 +173,12 @@ impl Pagina {
             }
         };
 
+        let t0 = std::time::Instant::now();
         let (entorno, controlador) = crate::entorno_y_controlador(hwnd)?;
         // SAFETY: `controlador` acaba de llegar de WebView2 y es valido.
         let vista = unsafe { controlador.CoreWebView2() }
             .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
+        crate::medir_carga(&vista, "pagina", t0);
         estado.borrow_mut().controlador = Some(controlador.clone());
         if let Some(oscuro) = o.oscuro {
             crate::poner_esquema(&controlador, oscuro);

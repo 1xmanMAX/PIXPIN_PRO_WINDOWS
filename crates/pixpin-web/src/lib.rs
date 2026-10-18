@@ -103,6 +103,7 @@ impl VisorHtml {
         std::fs::create_dir_all(&temporal)
             .map_err(|e| ErrorWeb::Creacion(format!("no se pudo crear {temporal:?}: {e}")))?;
 
+        let t0 = std::time::Instant::now();
         let (_entorno, controlador) = entorno_y_controlador(padre)?;
 
         // SAFETY: `controlador` acaba de llegar de WebView2 y es valido; el
@@ -115,6 +116,7 @@ impl VisorHtml {
         }
         .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
 
+        medir_carga(&vista, "html", t0);
         conectar_puente(&vista, al_guardar.clone())?;
         conectar_descargas(&vista, al_guardar, temporal.clone())?;
         conectar_teclas(&controlador, Rc::from(al_tecla))?;
@@ -834,4 +836,21 @@ mod pruebas {
         // prueba y comprobar que el boton de guardar de la pagina llega a
         // `al_guardar`. Sin escritorio no se puede.
     }
+}
+
+/// **Cuanto tarda en verse la pagina** (18-oct, «los visores se sienten
+/// lentos»): desde `desde` hasta que WebView2 termina de cargarla, al
+/// registro (`webview2: pagina lista`). Lo que mide la prueba de latencia.
+pub(crate) fn medir_carga(vista: &ICoreWebView2, que: &'static str, desde: std::time::Instant) {
+    use webview2_com::NavigationCompletedEventHandler;
+    let mut token = 0i64;
+    let hecho = std::cell::Cell::new(false);
+    let manejador = NavigationCompletedEventHandler::create(Box::new(move |_v, _a| {
+        if !hecho.replace(true) {
+            tracing::info!(que, ms = desde.elapsed().as_millis() as u64, "webview2: pagina lista");
+        }
+        Ok(())
+    }));
+    // SAFETY: `token` es un i64 local; el manejador lo guarda WebView2.
+    let _ = unsafe { vista.add_NavigationCompleted(&manejador, &mut token) };
 }

@@ -396,10 +396,16 @@ mod latencia {
     #[test]
     #[ignore = "abre ventanas; mide la latencia a mano"]
     fn latencia_de_los_visores_web() {
+        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
         use std::time::Duration;
         let d = std::env::temp_dir().join(format!("pixpin-latencia-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let idioma = pixpin_store::Idioma::Espanol;
+        // (Como la app: el navegador ya en marcha antes de abrir nada.)
+        if std::env::var_os("PIXPIN_PRECALENTAR").is_some() {
+            pixpin_web::precalentar();
+            std::thread::sleep(Duration::from_secs(3));
+        }
         for vuelta in 0..3 {
             let html = d.join(format!("informe{vuelta}.html"));
             std::fs::write(&html, "<!doctype html><html><body><h1>Informe</h1><p>Hola</p></body></html>").unwrap();
