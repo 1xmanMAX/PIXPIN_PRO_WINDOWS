@@ -51,6 +51,7 @@ use super::al_lienzo::EnHoja;
 mod banco;
 #[cfg(test)]
 mod banco_17oct;
+pub(crate) mod plan;
 #[cfg(test)]
 pub(crate) mod banco_diagramas;
 #[cfg(test)]
@@ -253,6 +254,8 @@ enum Pregunta {
     Rico,
     /// Los renglones de una zona de texto, corregidos (cada uno en su sitio).
     Renglones,
+    /// Una tabla: la tabla del lienzo con su aspecto (`tabla_de_fichero`).
+    Tabla,
 }
 
 /// Si el LaTeX de una formula ya dice lo que dice `texto` (otra zona que
@@ -307,6 +310,8 @@ fn pregunta(z: &hoja::Zona, o: &Opciones, alto_letra: f64) -> Option<Pregunta> {
         // Una lamina (17-oct): el texto sale ya con el OCR, cada renglon en su
         // sitio, y la nube lo corrige (tildes, °, θ, ∢, formulas en linea).
         Tipo::Parrafo | Tipo::Encabezado if o.rico && !z.renglones.is_empty() => Some(Pregunta::Renglones),
+        // Una tabla (la dijo el planificador, o el seccionado): su especialista.
+        Tipo::Tabla if o.rico => Some(Pregunta::Tabla),
         Tipo::Dudosa => Some(Pregunta::Tipo),
         Tipo::Grafica => Some(Pregunta::Grafica),
         // Un dibujo de tinta (sin fotografia) puede ser una formula que el
@@ -317,6 +322,13 @@ fn pregunta(z: &hoja::Zona, o: &Opciones, alto_letra: f64) -> Option<Pregunta> {
         Tipo::Foto | Tipo::Dibujo if z.confianza < o.duda => Some(Pregunta::Tipo),
         _ => None,
     }
+}
+
+/// El recorte de `c` a su tamano, sin aire ni reducir (una tabla: su esquina
+/// es la de la zona).
+fn png_entero(p: &Pagina, c: &Caja) -> Result<Vec<u8>, String> {
+    let (rgba, w, h) = imagen::recortar(&p.rgba, p.ancho, p.alto, c);
+    pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: rgba }).map_err(|e| format!("{e:?}"))
 }
 
 /// Lo mas grande que se manda un recorte al modelo.
@@ -336,8 +348,28 @@ fn preguntar(motor: &dyn Motor, png: Vec<u8>, q: Pregunta, pista: &str) -> Resul
         Pregunta::Grafica => vision::pedir_grafica(motor, png),
         Pregunta::Rotulos => vision::pedir_rotulos(motor, png).map(Some),
         Pregunta::Rico => vision::pedir_rico(motor, png, pista).map(Some),
-        Pregunta::Renglones => vision::pedir_renglones(motor, png, &pista.split('\n').map(str::to_string).collect::<Vec<_>>()).map(Some),
+        Pregunta::Renglones => {
+            // (El tema de la hoja, del planificador, delante y separado por \u{1f}.)
+            let (tema, renglones) = pista.split_once('\u{1f}').unwrap_or(("", pista));
+            vision::pedir_renglones(motor, png, &renglones.split('\n').map(str::to_string).collect::<Vec<_>>(), tema).map(Some)
+        }
+        Pregunta::Tabla => tabla_del_recorte(motor, png, pista.parse().unwrap_or(1.0)).map(Some),
     }
+}
+
+/// **El especialista de tablas** (18-oct): el recorte de la zona a un
+/// fichero y la tabla de foto al lienzo de siempre (`tabla_de_fichero`: celdas
+/// del OCR corregidas por la nube, anchos, altos, fondos y borde medidos), a
+/// `escala` del lienzo. La tabla de las capturas salia como texto suelto y un
+/// pantallazo debajo.
+fn tabla_del_recorte(motor: &dyn Motor, png: Vec<u8>, escala: f32) -> Result<Leido, String> {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let ruta = std::env::temp_dir().join(format!("pixpin-tabla-{}-{}.png", std::process::id(), N.fetch_add(1, Ordering::SeqCst)));
+    std::fs::write(&ruta, &png).map_err(|e| e.to_string())?;
+    let r = super::documentos_acciones::tabla_de_fichero(&ruta, "tabla", None, None, Some(escala), Some(motor));
+    let _ = std::fs::remove_file(&ruta);
+    let (els, _, origen) = r?;
+    Ok(Leido::Elementos(pixpin_motor2d::excalidraw::elementos_a_json(&els), origen))
 }
 
 /// Lo que paso, para el modelo, el chat y el banco.
@@ -393,6 +425,29 @@ pub fn pasar(
         }
         None => p,
     };
+    // **El planificador** (18-oct): con la nube y en una lamina, un agente
+    // mira la hoja entera con sus zonas numeradas y dice de que trata, que es
+    // cada una, cuales van juntas, que son contenedores y que se ignora
+    // (`plan`). Sin respuesta, se sigue con lo de siempre.
+    let mut tema = String::new();
+    let s = match &vision {
+        Some(m) if o.rico && std::env::var_os("PIXPIN_SIN_PLAN").is_none() => {
+            let tp = Instant::now();
+            match plan::pedir(m.as_ref(), p, &s) {
+                Ok(pl) => {
+                    tema = plan::contexto(&pl);
+                    tracing::info!(tema = %pl.tema, zonas = s.zonas.len(), ms = tp.elapsed().as_millis() as u64, "hoja al lienzo: plan");
+                    plan::aplicar(&pl, &s, p)
+                }
+                Err(e) => {
+                    tracing::warn!(%e, "hoja al lienzo: sin plan");
+                    s
+                }
+            }
+        }
+        _ => s,
+    };
+    let tema = tema;
     let ms_seccionar = t0.elapsed().as_millis();
     if s.zonas.is_empty() {
         return Err("la hoja esta en blanco: no hay nada que pasar al lienzo".into());
@@ -406,7 +461,11 @@ pub fn pasar(
     // El texto de cada zona: para las demas (un diagrama no lo vectoriza).
     let ajenas: Vec<Caja> = s.zonas.iter().flat_map(|z| z.renglones.iter().flat_map(|r| r.palabras.iter().map(|p| p.caja))).collect();
     // Y todo su texto: las pistas de la geometria exacta («AB es diametro»).
-    let pistas: Vec<String> = s.zonas.iter().flat_map(|z| z.renglones.iter().map(|r| r.texto.clone())).collect();
+    let mut pistas: Vec<String> = s.zonas.iter().flat_map(|z| z.renglones.iter().map(|r| r.texto.clone())).collect();
+    if !tema.is_empty() {
+        pistas.push(tema.clone());
+    }
+    let pistas = pistas;
     let entrada = |id: usize| Entrada { zona: &s.zonas[id], mapa, opciones: o, pagina: (&p.rgba, p.ancho, p.alto), alto_letra: s.alto_letra, semilla, lector: Some(&lector), ajenas: &ajenas, pistas: &pistas };
     // (En una lamina, el texto con cada renglon en su sitio: rehecho como
     // parrafo se corria hacia abajo y pisaba lo de debajo.)
@@ -517,8 +576,14 @@ pub fn pasar(
             preguntas.iter().map(|&(id, q)| {
                 let bloque = if q == Pregunta::Rico { bloques.iter().find(|b| b.0 == id) } else { None };
                 let caja = bloque.map_or(s.zonas[id].caja, |b| b.2.caja);
-                let pista = if q == Pregunta::Renglones { s.zonas[id].renglones.iter().map(|r| r.texto.replace('\n', " ")).collect::<Vec<_>>().join("\n") } else { bloque.map(|b| pista_de_colores(&b.2)).unwrap_or_default() };
-                (id, q, png_del_recorte(p, &caja), pista)
+                let pista = match q {
+                    Pregunta::Renglones => format!("{tema}\u{1f}{}", s.zonas[id].renglones.iter().map(|r| r.texto.replace('\n', " ")).collect::<Vec<_>>().join("\n")),
+                    Pregunta::Tabla => format!("{}", mapa.escala),
+                    _ => bloque.map(|b| pista_de_colores(&b.2)).unwrap_or_default(),
+                };
+                // (La tabla, a su tamano y sin aire: su esquina es la de la zona.)
+                let png = if q == Pregunta::Tabla { png_entero(p, &caja) } else { png_del_recorte(p, &caja) };
+                (id, q, png, pista)
 
             }).collect();
         let cola = Arc::new(Mutex::new(trabajos));
@@ -528,6 +593,8 @@ pub fn pasar(
             let (cola, tx, motor) = (cola.clone(), tx.clone(), motor.clone());
             let (en_vuelo, max_en_vuelo) = (en_vuelo.clone(), max_en_vuelo.clone());
             let lanzado = std::thread::Builder::new().name("hoja-al-lienzo-nube".into()).spawn(move || {
+                // (El especialista de tablas lee con el OCR de Windows: su COM.)
+                let _com = pixpin_shell::ComDelHilo::iniciar();
                 loop {
                     let Some((id, q, png, pista)) = cola.lock().ok().and_then(|mut c| c.pop_front()) else { break };
                     let ahora = en_vuelo.fetch_add(1, Ordering::SeqCst) + 1;

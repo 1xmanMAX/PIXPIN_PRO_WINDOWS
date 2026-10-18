@@ -188,17 +188,20 @@ Responde SOLO el texto, sin explicaciones ni bloques de codigo.";
 const SISTEMA_RENGLONES: &str = "Recibes el recorte de un trozo de una hoja (una lamina, un apunte, una captura de pantalla) \
 y lo que el OCR leyo en el, renglon a renglon y numerado. El OCR se equivoca: pierde tildes, lee ° como 0, θ como o, ∢ como <, la raya de AB, las griegas. \
 Devuelve SOLO un JSON: una lista con EXACTAMENTE el mismo numero de renglones y en el mismo orden, cada uno corregido mirando la imagen. \
-Cada renglon en texto rico: formulas en linea entre $...$ con LaTeX (\\sphericalangle para ∢, \\overline{AB}, \\overset{\\frown}{AC}, 90^\\circ, \\theta), \
-*cursiva*, **negrita** y el color de un tramo que no es negro con \\color{rojo}{...} (rojo, verde, azul, naranja, morado, gris). \
+El texto esta en espanol: pon TODAS las tildes y la ñ como deben ir (intencion → intención, ingenieria → ingeniería) y los signos ¿ ¡. \
+Los EMOJIS y simbolos que se ven en la imagen (📋 ✨ 🔗 📝 ✅ • ★ →) van tal cual en su sitio: el OCR los lee mal («+4-», «9») o no los lee. \
+Formulas en linea entre $...$ con LaTeX (\\sphericalangle para ∢, \\overline{AB}, \\overset{\\frown}{AC}, 90^\\circ, \\theta); \
+un renglon ENTERO en negrita va entre **...**; un tramo en cursiva entre *...*. NO pongas colores (\\color): la app ya sabe el color de cada renglon. \
 No juntes, partas, anadas ni quites renglones; no resumas; si un renglon esta bien, copialo igual. Sin explicaciones.";
 
 /// **Los renglones de una zona, corregidos** (17-oct): el OCR de cada renglon
 /// va con el recorte, y vuelve la misma lista arreglada. Cada renglon se
 /// queda en su sitio; un renglon que no se parece a lo leido (el modelo
 /// inventando o hablando) se queda como lo leyo el OCR.
-pub fn pedir_renglones(motor: &dyn Motor, png: Vec<u8>, ocr: &[String]) -> Result<Leido, String> {
+pub fn pedir_renglones(motor: &dyn Motor, png: Vec<u8>, ocr: &[String], contexto: &str) -> Result<Leido, String> {
     let lista: String = ocr.iter().enumerate().map(|(i, r)| format!("{}. {r}\n", i + 1)).collect();
-    let t = preguntar_con(motor, SISTEMA_RENGLONES, png, &format!("Lo que leyo el OCR ({} renglones):\n{lista}", ocr.len()), 2500)?;
+    let contexto = if contexto.is_empty() { String::new() } else { format!("{contexto}\n") };
+    let t = preguntar_con(motor, SISTEMA_RENGLONES, png, &format!("{contexto}Lo que leyo el OCR ({} renglones):\n{lista}", ocr.len()), 2500)?;
     leer_renglones(&t, ocr).map(Leido::Renglones).ok_or_else(|| format!("el modelo no devolvio los renglones: «{}»", corto(&t)))
 }
 

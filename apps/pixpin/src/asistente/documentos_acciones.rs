@@ -829,12 +829,34 @@ pub fn tabla_para_el_lienzo(
     escala: Option<f32>,
     corregir: Option<&dyn pixpin_ia::Motor>,
 ) -> Result<(Vec<Elemento>, String), String> {
-    use pixpin_motor2d::tabla_dibujada::{Aspecto, Celda, elementos_de_tabla_con_aspecto};
     let c = elegir(cx, texto_de(args, "archivo"), Sirve::Escaneado)?;
     let pagina = args.get("pagina").and_then(Value::as_u64).filter(|p| *p >= 1).map(|p| p as usize - 1);
-    let leida = leer_tabla(&c.ruta, pagina)?;
-    let cabecera = args.get("cabecera").and_then(Value::as_bool).unwrap_or_else(|| leida.parece_cabecera());
-    let (mut m, ancho_img) = aspecto_de_tabla(&c.ruta, pagina).ok_or("no se pudo medir la tabla en la imagen")?;
+    let cabecera = args.get("cabecera").and_then(Value::as_bool);
+    tabla_de_fichero(&c.ruta, &c.nombre, pagina, cabecera, escala, corregir).map(|(els, texto, _)| (els, texto))
+}
+
+/// **La tabla de un fichero (foto o pagina de PDF) para el lienzo**: lo de
+/// [`tabla_para_el_lienzo`] sin elegir el adjunto. Tambien la usa calcar
+/// (18-oct) con el recorte de una zona que el planificador dijo que es una
+/// tabla. Devuelve ademas donde empieza la tabla en la imagen (pixeles):
+/// los elementos salen con su esquina en (0, 0).
+pub fn tabla_de_fichero(
+    ruta: &Path,
+    nombre: &str,
+    pagina: Option<usize>,
+    cabecera: Option<bool>,
+    escala: Option<f32>,
+    corregir: Option<&dyn pixpin_ia::Motor>,
+) -> Result<(Vec<Elemento>, String, (f64, f64)), String> {
+    use pixpin_motor2d::tabla_dibujada::{Aspecto, Celda, elementos_de_tabla_con_aspecto};
+    struct C<'a> {
+        ruta: &'a Path,
+        nombre: &'a str,
+    }
+    let c = C { ruta, nombre };
+    let leida = leer_tabla(c.ruta, pagina)?;
+    let cabecera = cabecera.unwrap_or_else(|| leida.parece_cabecera());
+    let (mut m, ancho_img) = aspecto_de_tabla(c.ruta, pagina).ok_or("no se pudo medir la tabla en la imagen")?;
     // Lo que el OCR leyo mal (tildes, «°»): con la vista de la nube, si la hay.
     let mut corregidas = 0;
     if let Some(motor) = corregir
@@ -884,6 +906,7 @@ pub fn tabla_para_el_lienzo(
     }
     let fondos = m.fondos.iter().flatten().filter(|f| f.is_some()).count();
     let fuera = if cuadra { m.fuera.len() } else { 0 };
+    let origen = if cuadra { (m.columnas[0], m.filas[0]) } else { (0.0, 0.0) };
     Ok((
         els,
         format!(
@@ -894,6 +917,7 @@ pub fn tabla_para_el_lienzo(
             if fuera > 0 { format!(", y {fuera} renglon(es) de texto de alrededor") } else { String::new() },
             if corregidas > 0 { format!(", {corregidas} lectura(s) del OCR corregidas mirando la foto") } else { String::new() }
         ),
+        origen,
     ))
 }
 

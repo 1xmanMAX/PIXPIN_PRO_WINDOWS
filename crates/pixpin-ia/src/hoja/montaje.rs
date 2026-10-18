@@ -59,6 +59,10 @@ pub enum Leido {
     /// OCR, en el mismo orden, en texto rico. Cada uno va en el sitio de su
     /// renglon ([`Via::Fiel`]): nada se mueve, solo se arreglan las letras.
     Renglones(Vec<String>),
+    /// **Elementos ya hechos por un especialista** (la tabla del lienzo de
+    /// `tabla_de_fichero`), con su esquina en (0, 0) y, aparte, donde cae esa
+    /// esquina en el recorte de la zona (pixeles).
+    Elementos(Vec<Value>, (f64, f64)),
 }
 
 /// Una imagen que nace con la zona: va al almacen del lienzo con este id
@@ -160,6 +164,26 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
         && let Some(elementos) = caja_de_color(e)
     {
         return Hecho { zona: z.id, tipo, via, elementos, imagenes: Vec::new(), nota: "recuadro de color con su texto en su sitio".into() };
+    }
+    // Lo que hizo un especialista (la tabla): en el sitio de la zona.
+    if let Some(Leido::Elementos(v, (ox, oy))) = leido
+        && !v.is_empty()
+    {
+        let d = e.destino();
+        let (dx, dy) = (d.x + ox * e.mapa.escala, d.y + oy * e.mapa.escala);
+        let semilla = e.semilla_de_zona();
+        let elementos = v
+            .iter()
+            .enumerate()
+            .map(|(k, x)| {
+                let mut x = x.clone();
+                x["x"] = json!(x["x"].as_f64().unwrap_or(0.0) + dx);
+                x["y"] = json!(x["y"].as_f64().unwrap_or(0.0) + dy);
+                x["id"] = json!(format!("ia-{semilla:x}-t{k}"));
+                x
+            })
+            .collect();
+        return Hecho { zona: z.id, tipo, via: Via::Editable, elementos, imagenes: Vec::new(), nota: "tabla del lienzo, como en la foto".into() };
     }
     // Sus renglones corregidos por la nube: cada uno en su sitio.
     if let Some(Leido::Renglones(ls)) = leido
@@ -419,12 +443,18 @@ fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
         let tam = tam_de_letra(std::slice::from_ref(r), esc, familia, r.negrita);
         let d = e.mapa.caja(&r.caja);
         let t = textos.and_then(|v| v.get(i)).map_or(r.texto.as_str(), String::as_str);
-        let mut el = un_texto(t, d.x, d.cy() - tam * k / 2.0, tam, familia, r.negrita, Alineacion::Izquierda, r.color);
+        // Un renglon entero en negrita (`**...**`): negrita de verdad, no las
+        // marcas a la vista (18-oct, salia «*·IE ADVENTISTA PUNO**}»).
+        let (t, negrita) = match t.trim().strip_prefix("**").and_then(|x| x.strip_suffix("**")).filter(|x| !x.contains("**")) {
+            Some(x) => (x.trim(), true),
+            None => (t, r.negrita),
+        };
+        let mut el = un_texto(t, d.x, d.cy() - tam * k / 2.0, tam, familia, negrita, Alineacion::Izquierda, r.color);
         // Corregido (con sus formulas compuestas) no puede pasar del ancho de
         // su renglon: se pisaba con lo de al lado.
         if textos.is_some() && el.ancho as f64 > d.w * 1.06 {
             let t2 = tam * (d.w * 1.02 / el.ancho as f64).max(0.6);
-            el = un_texto(t, d.x, d.cy() - t2 * k / 2.0, t2, familia, r.negrita, Alineacion::Izquierda, r.color);
+            el = un_texto(t, d.x, d.cy() - t2 * k / 2.0, t2, familia, negrita, Alineacion::Izquierda, r.color);
         }
         piezas.push(el);
     }
