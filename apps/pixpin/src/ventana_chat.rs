@@ -148,6 +148,7 @@ mod quien_llama;
 /// cae bajo el raton (10-oct). Vive en `caja_texto`, comun a toda la app:
 /// las cajas de una linea (buscar, renombrar, codigos) usan el mismo.
 use crate::caja_texto as redaccion;
+use crate::asistente::nube as asistente_nube;
 mod renombrar;
 /// El reproductor flotante del pedido «reproducir»: un audio suena sin
 /// abrir el chat y la ventanita se va al acabar (3-oct).
@@ -1517,9 +1518,15 @@ pub fn abrir(
                                     }
                                     Efecto::Nada
                                 }
-                                Zona::Menu => {
-                                    Efecto::Menu(menu_de_cabecera(textos, a.ficha.es_guardados()))
-                                }
+                                Zona::Menu => Efecto::Menu(menu_de_cabecera(
+                                    textos,
+                                    a.ficha.es_guardados(),
+                                    a.ficha.es_asistente().then(|| asistente_nube::eleccion_reciente(&a.raiz)),
+                                )),
+                                Zona::ModeloIa => Efecto::Menu(menu_de_modelo(
+                                    textos,
+                                    asistente_nube::eleccion_reciente(&a.raiz),
+                                )),
                                 // El chip filtra por su emoji; pulsado otra
                                 // vez, lo quita. Es un interruptor y no una
                                 // eleccion de uno entre varios: con solo el
@@ -6036,7 +6043,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 y,
                 h::TEXTO_TAM * e,
                 dentro.ancho as f32,
-                &negritas(&piezas.texto, &aguja),
+                &{
+                    let mut t = negritas(&piezas.texto, &aguja);
+                    t.extend_from_slice(&piezas.estilo);
+                    t
+                },
                 color_texto,
             );
         }
@@ -6906,6 +6917,9 @@ fn medir_mensaje(
         }
     });
     let texto = texto_de(m, vista.is_some() || fila.is_some(), textos);
+    // Una respuesta del asistente, con sus listas como listas y sus
+    // negritas en negrita (17-oct-2026, `formato_de_respuesta`).
+    let (texto, estilo) = estilo_de_la_respuesta(m, texto);
     let cita = m
         .responde_a
         .as_deref()
@@ -6969,6 +6983,7 @@ fn medir_mensaje(
             fila: None,
             viene,
             texto,
+            estilo,
             borde,
             voz: None,
             recibido: None,
@@ -7087,7 +7102,8 @@ fn medir_mensaje(
             (en, alto_tarjeta)
         });
     if !texto.is_empty() {
-        let tramos = negritas(&texto, cx.aguja);
+        let mut tramos = negritas(&texto, cx.aguja);
+        tramos.extend_from_slice(&estilo);
         let (w, alto_texto) = if tramos.is_empty() {
             p.medir_texto_ajustado(&texto, h::TEXTO_TAM * e, ancho_max)
         } else {
@@ -7158,6 +7174,7 @@ fn medir_mensaje(
         fila,
         viene,
         texto,
+        estilo,
         borde,
         voz,
         recibido,
@@ -7351,6 +7368,37 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         return;
     }
 
+    // **La pastilla del modelo** (17-oct-2026, el usuario: «una forma de
+    // seleccionar modelo rapido y sencillamente en el mismo chat»): en el
+    // chat «Asistente», a la izquierda de la lupa, quien contesta con su
+    // flechita; al pulsarla, la lista (`menu_de_modelo`). Le quita su sitio
+    // al centro, y si no cabe con el titulo, no sale (queda en los tres
+    // puntos).
+    let mut centro = pil.centro;
+    if a.ficha.es_asistente()
+        && let Some(r) = sitio_de_la_pastilla_del_modelo(p, &pil, asistente_nube::eleccion_reciente(&a.raiz), e)
+    {
+        let rotulo = asistente_nube::nombre_corto(asistente_nube::eleccion_reciente(&a.raiz));
+        let tam = PASTILLA_MODELO_TAM * e;
+        let (w, alto_t) = p.medir_texto(rotulo, tam);
+        pildora(p, tema, rf(r), e);
+        let x = r.x as f32 + 13.0 * e;
+        p.texto(rotulo, x, r.y as f32 + (r.alto as f32 - alto_t) / 2.0, tam, tema.pildora_texto);
+        let flecha = 16.0 * e;
+        p.icono(
+            &mi::KEYBOARD_ARROW_DOWN,
+            RectF {
+                x: x + w + 2.0 * e,
+                y: r.y as f32 + (r.alto as f32 - flecha) / 2.0,
+                ancho: flecha,
+                alto: flecha,
+            },
+            tema.pildora_texto,
+        );
+        zonas.push((r, Zona::ModeloIa));
+        centro.ancho = (r.x - centro.x - (8.0 * e) as i32).max(0) as u32;
+    }
+
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
     // guardados»), el nombre con su flechita y debajo cuantas cosas guarda y
     // cuanto ocupan, que es lo que se pregunta de un cajon de documentos.
@@ -7383,7 +7431,7 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let sitio = Rect {
         y: cab.y + (2.0 * e) as i32,
         alto: cab.alto.saturating_sub((4.0 * e) as u32),
-        ..pil.centro
+        ..centro
     };
     let caja = pixpin_ui::chat::pildora_centro(sitio, contenido.ceil() as u32, escala);
     if caja.ancho == 0 {
@@ -7467,6 +7515,32 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         tema.pildora_sub,
     );
     zonas.push((caja, Zona::Titulo));
+}
+
+/// La letra de la pastilla del modelo.
+const PASTILLA_MODELO_TAM: f32 = 13.0;
+/// Lo que le tiene que quedar al titulo para que salga la pastilla.
+const PASTILLA_MODELO_DEJA: f32 = 150.0;
+
+/// Donde va la pastilla del modelo: pegada a la izquierda de la de la lupa,
+/// tan alta como ella y tan ancha como su rotulo y su flechita. `None` si
+/// no cabe dejandole al titulo [`PASTILLA_MODELO_DEJA`].
+fn sitio_de_la_pastilla_del_modelo(
+    p: &Pintor,
+    pil: &pixpin_ui::chat::Pildoras,
+    actual: asistente_nube::Eleccion,
+    e: f32,
+) -> Option<Rect> {
+    let (w, _) = p.medir_texto(asistente_nube::nombre_corto(actual), PASTILLA_MODELO_TAM * e);
+    let ancho = (w + 16.0 * e + 28.0 * e).ceil() as u32;
+    let aire = (8.0 * e) as i32;
+    let x = pil.derecha.x - aire - ancho as i32;
+    (x - pil.centro.x >= (PASTILLA_MODELO_DEJA * e) as i32).then_some(Rect {
+        x,
+        y: pil.derecha.y,
+        ancho,
+        alto: pil.derecha.alto,
+    })
 }
 
 /// Una pastilla de la cabecera: opaca y con su filete, sin sombra, como la
@@ -13404,6 +13478,9 @@ enum Zona {
     /// El altavoz de una respuesta del asistente: la lee o la calla
     /// (`voz_del_asistente`).
     LeerRespuesta(usize),
+    /// La pastilla del modelo en la cabecera del chat «Asistente»: abre la
+    /// lista Claude Haiku / DeepSeek / Local (17-oct-2026).
+    ModeloIa,
 }
 
 /// La fila de un archivo ya medida.
@@ -13466,6 +13543,9 @@ struct Piezas {
     fila: Option<FilaDeArchivo>,
     viene: Option<Viene>,
     texto: String,
+    /// Los tramos propios del texto (las negritas de una respuesta del
+    /// asistente); los de lo buscado se anaden al pintar.
+    estilo: Vec<pixpin_render::Tramo>,
     borde: Option<Color>,
     /// El texto de una nota de voz bajo su onda, si hay que ensenarlo.
     voz: Option<TextoDeVoz>,
@@ -13914,6 +13994,32 @@ fn texto_de(m: &pixpin_proyecto::cuaderno::Mensaje, con_pieza: bool, textos: &Ca
             }
         }
     }
+}
+
+/// El texto de la burbuja de una respuesta del asistente pasado por
+/// `asistente::chat::formato_de_respuesta`, y sus negritas; lo demas, tal
+/// cual y sin tramos.
+fn estilo_de_la_respuesta(
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    texto: String,
+) -> (String, Vec<pixpin_render::Tramo>) {
+    use pixpin_proyecto::cuaderno::Clase;
+    if !crate::asistente::chat::es_del_asistente(m) || !matches!(m.clase, None | Some(Clase::Nota)) {
+        return (texto, Vec::new());
+    }
+    let (t, b) = crate::asistente::chat::formato_de_respuesta(&texto);
+    let tramos = b
+        .into_iter()
+        .map(|(inicio, longitud)| pixpin_render::Tramo {
+            inicio,
+            longitud,
+            estilo: pixpin_render::EstiloTexto {
+                negrita: true,
+                ..Default::default()
+            },
+        })
+        .collect();
+    (t, tramos)
 }
 
 /// De donde viene un mensaje, si lo dice (`vieneDe` del movil): el texto que
@@ -15023,6 +15129,17 @@ enum Accion {
     GuardarReceta(usize),
     /// Lo del menu de un boton de receta (por su id).
     Receta(String, asistente::recetas::QueReceta),
+    // El chat «Asistente» (17-oct-2026).
+    /// La lista de modelos (la de la pastilla), como submenu.
+    MenuModeloIa,
+    /// Que conteste ese (por su sitio en `asistente::nube::OPCIONES`).
+    ElegirModeloIa(usize),
+    /// Empezar de cero el contexto que se le manda al modelo.
+    NuevaConversacion,
+    /// Borrar todos los mensajes del chat.
+    BorrarChat,
+    /// Leer en voz alta esa respuesta del asistente (o callarla).
+    Escuchar(usize),
 }
 
 /// Una linea de menu: icono, nombre, su tecla y lo que hace. Borrar va en
@@ -15770,8 +15887,18 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
 ///
 /// Ni las lecciones ni la galeria de capturas: estan en los botones de la
 /// lista de proyectos, como en el movil desde el 4-oct-2026.
-fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool) -> Vec<EntradaMenu> {
+fn menu_de_cabecera(
+    textos: &Catalogo,
+    en_guardados: bool,
+    asistente: Option<asistente_nube::Eleccion>,
+) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
+    // En el chat «Asistente», lo suyo arriba: el modelo (lo mismo que la
+    // pastilla), empezar de cero y borrar el chat (17-oct-2026).
+    if let Some(e) = asistente {
+        v.extend(menu_de_asistente(textos, e));
+    }
+    let propias = v.len();
     if en_guardados {
         v.push(entrada(
             Some(&mi::LIBRARY_MUSIC),
@@ -15814,6 +15941,57 @@ fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool) -> Vec<EntradaMenu> {
         Accion::GruposVentanas,
     ));
     v.push(entrada(None, textos.t("chat-ajustes"), Accion::Ajustes));
+    // Lo del asistente, apartado de lo de siempre por una raya.
+    if propias > 0
+        && let Some(x) = v.get_mut(propias)
+    {
+        x.separada = true;
+    }
+    v
+}
+
+/// **Lo del chat «Asistente»** en los tres puntos: el modelo (submenu, con
+/// el elegido en el rotulo), «Conversación nueva» y «Borrar chat» en rojo.
+/// Lo de siempre va debajo, apartado por una raya.
+fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+    let modelo = entrada(
+        None,
+        format!("{}: {}", textos.t("asistente-modelo"), asistente_nube::nombre_corto(actual)),
+        Accion::MenuModeloIa,
+    )
+    .con_tecla(menu_v2::Tecla::Sub);
+    let mut borrar = entrada(Some(&mi::DELETE), textos.t("asistente-borrar-chat"), Accion::BorrarChat);
+    borrar.peligro = true;
+    vec![
+        modelo,
+        entrada(Some(&mi::ADD), textos.t("asistente-nueva-conversacion"), Accion::NuevaConversacion),
+        borrar,
+    ]
+}
+
+/// **La lista de la pastilla del modelo** (17-oct-2026): quien contesta,
+/// con el elegido marcado como en la escala; debajo, separadas, empezar de
+/// cero y borrar el chat. Elegir cambia el MISMO ajuste que Ajustes →
+/// Asistente (`asistente::nube::elegir`).
+fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+    let mut v: Vec<EntradaMenu> = asistente_nube::OPCIONES
+        .iter()
+        .enumerate()
+        .map(|(n, e)| {
+            let icono: &'static Icono = if *e == actual { &mi::CHECK_BOX } else { &mi::CHECK_BOX_OUTLINE_BLANK };
+            let rotulo = match e {
+                asistente_nube::Eleccion::Local => textos.t("ajustes2-asistente-local"),
+                asistente_nube::Eleccion::Nube(p) => p.nombre().to_string(),
+            };
+            entrada(Some(icono), rotulo, Accion::ElegirModeloIa(n))
+        })
+        .collect();
+    v.push(
+        entrada(Some(&mi::ADD), textos.t("asistente-nueva-conversacion"), Accion::NuevaConversacion).separada(),
+    );
+    let mut borrar = entrada(Some(&mi::DELETE), textos.t("asistente-borrar-chat"), Accion::BorrarChat);
+    borrar.peligro = true;
+    v.push(borrar);
     v
 }
 
@@ -15926,8 +16104,10 @@ fn menu_de_proyectos(
 }
 
 /// El menu de un mensaje: el de mantener pulsado en el movil, ordenado como
-/// la v2 (`Menus2.dc.html`, a): lo diario arriba con su tecla, lo raro en
-/// «Más» y Borrar en rojo y apartado. Solo salen las que valen para ESTE
+/// la v2 (`Menus2.dc.html`, a) y, desde el 17-oct-2026, por lo que mas se
+/// usa: copiar, responder, escuchar (respuestas del asistente), pinear y
+/// renombrar arriba (renombrar, como en el movil); luego lo de cada clase;
+/// luego mandarlo y acordarse; lo raro en «Más» y Borrar en rojo y apartado. Solo salen las que valen para ESTE
 /// mensaje, igual que en el movil. La etiqueta no va aqui: va en la fila de
 /// emojis de encima (`MenuAbierto::con_etiquetas`).
 fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
@@ -15939,15 +16119,8 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file());
     let mut v = Vec::new();
 
-    // ── Lo diario ──
-    v.push(
-        entrada(
-            Some(&mi::REPLY),
-            textos.t("v2menus-responder"),
-            Accion::Responder(i),
-        )
-        .con_tecla(Tecla::Letra('r')),
-    );
+    // ── Lo diario, lo mas usado arriba (17-oct-2026, el usuario: «reordenar
+    // el menu del chat»): copiar, responder, escuchar, pinear, renombrar ──
     if !m.texto.trim().is_empty() && m.clase != Some(Clase::MiniApp) {
         v.push(
             entrada(
@@ -15957,6 +16130,23 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             )
             .con_tecla(Tecla::Ctrl('c')),
         );
+    }
+    v.push(
+        entrada(
+            Some(&mi::REPLY),
+            textos.t("v2menus-responder"),
+            Accion::Responder(i),
+        )
+        .con_tecla(Tecla::Letra('r')),
+    );
+    // Oir una respuesta del asistente: ya no se lee sola al acabar
+    // (17-oct-2026), asi que va arriba, junto a copiarla.
+    if voz_del_asistente::se_puede_leer(a, i) {
+        v.push(entrada(
+            Some(&mi::VOLUME_UP),
+            textos.t("asistente-escuchar"),
+            Accion::Escuchar(i),
+        ));
     }
     // Pinear: el pin se hace de un fichero, y una nota escrita no lo tiene
     // (ofrecerlo para contestar «no hay archivo» seria peor que no
@@ -15986,6 +16176,20 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             .con_tecla(Tecla::Letra('p')),
         );
     }
+    // Cambiar el nombre de cualquier archivo, audios incluidos: arriba, como
+    // en el movil («que sea notorio», 4-oct), no escondido en «Más».
+    if renombrar::se_puede(m) {
+        v.push(
+            entrada(
+                Some(&mi::EDIT),
+                textos.t("chat-renombrar"),
+                Accion::Renombrar(i),
+            )
+            .con_tecla(Tecla::F2),
+        );
+    }
+    // ── Lo de cada clase: anotar, describir, editar, pasar a texto ──
+    let desde = v.len();
     // Lo que solo tiene Windows con una foto: dibujar en la propia burbuja
     // o en el lienzo grande.
     if matches!(a.vistas.get(i), Some(Some(Ojeada::Foto { .. }))) {
@@ -16061,13 +16265,8 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         ));
     }
 
-    // Lo que se pide a menudo, como boton encima de la caja del asistente.
-    if asistente::recetas::se_puede_guardar(a, i) {
-        v.push(entrada(
-            Some(&mi::BOOKMARK_BORDER),
-            textos.t("asistente-receta-guardar"),
-            Accion::GuardarReceta(i),
-        ));
+    if let Some(primera) = v.get_mut(desde) {
+        primera.separada = true;
     }
 
     // ── Mandarlo a otro sitio y acordarse ──
@@ -16129,24 +16328,21 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         );
     }
 
+    // Lo que se pide a menudo, como boton encima de la caja del asistente.
+    if asistente::recetas::se_puede_guardar(a, i) {
+        v.push(entrada(
+            Some(&mi::BOOKMARK_BORDER),
+            textos.t("asistente-receta-guardar"),
+            Accion::GuardarReceta(i),
+        ));
+    }
+
     // ── «Más»: lo que se usa poco ──
     v.push(
         entrada(None, textos.t("v2menus-mas"), Accion::Mas)
             .con_tecla(Tecla::Sub)
             .separada(),
     );
-    // Cambiar el nombre de cualquier archivo, audios incluidos.
-    if renombrar::se_puede(m) {
-        v.push(
-            entrada(
-                Some(&mi::EDIT),
-                textos.t("chat-renombrar"),
-                Accion::Renombrar(i),
-            )
-            .con_tecla(Tecla::F2)
-            .en_mas(),
-        );
-    }
     v.push(
         entrada(
             Some(&mi::FLAG),
@@ -16299,6 +16495,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     borrar.peligro = true;
     v.push(borrar);
     v
+}
+
+/// Lo que «Borrar chat» quita: todos los mensajes menos los del sistema
+/// (`auto-*`: la biblioteca de figuras, las automatizaciones), que no son
+/// de la conversacion y la app los vuelve a poner.
+fn indices_para_borrar_el_chat(mensajes: &[pixpin_proyecto::cuaderno::Mensaje]) -> Vec<usize> {
+    (0..mensajes.len())
+        .filter(|&i| !pixpin_proyecto::cuaderno::es_de_sistema(&mensajes[i]))
+        .collect()
 }
 
 /// Lo que tiene que hacer el bucle despues de una accion.
@@ -16786,6 +16991,44 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             Efecto::Nada
         }
         Accion::GuardarReceta(i) => asistente::recetas::guardar_desde(cx.ubicacion, cx.identidad, a, i, cx.textos),
+        Accion::MenuModeloIa => Efecto::Menu(menu_de_modelo(cx.textos, asistente_nube::eleccion_reciente(raiz))),
+        Accion::ElegirModeloIa(n) => {
+            let Some(e) = asistente_nube::OPCIONES.get(n).copied() else {
+                return Efecto::Nada;
+            };
+            match asistente_nube::elegir(cx.ubicacion, e) {
+                Ok(()) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("modelo", asistente_nube::nombre_corto(e));
+                    Efecto::Aviso(cx.textos.t_args("asistente-modelo-cambiado", &args))
+                }
+                Err(e) => fallo(&e),
+            }
+        }
+        Accion::NuevaConversacion => match asistente::nueva_conversacion(cx.ubicacion, a, cx.textos) {
+            Some(t) => Efecto::Aviso(t),
+            None => Efecto::Cambio,
+        },
+        Accion::BorrarChat => {
+            if !pixpin_shell::confirmar_destructivo(
+                cx.ventana.handle(),
+                &cx.textos.t("asistente-borrar-chat"),
+                &cx.textos.t("asistente-borrar-chat-aviso"),
+            ) {
+                return Efecto::Nada;
+            }
+            if asistente::ocupado(&a.ficha.id) {
+                asistente::parar(&a.ficha.id);
+            }
+            match borrar_mensajes(cx.ubicacion, a, &indices_para_borrar_el_chat(&a.mensajes)) {
+                Ok(_) => Efecto::Cambio,
+                Err(e) => fallo(&e),
+            }
+        }
+        Accion::Escuchar(i) => match voz_del_asistente::alternar(cx.ubicacion, a, i, cx.textos) {
+            Some(t) => Efecto::Aviso(t),
+            None => Efecto::Nada,
+        },
         Accion::Receta(id, que) => asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos),
         Accion::HacerLeccion(i) => {
             // Lo que paso suele estar ya en el chat: la leccion sale con su
@@ -17992,7 +18235,10 @@ mod pruebas_menu_sin_repetir {
         let (a, raiz) = abierto_con("v2-orden", vec![mensaje(Clase::Imagen, Some("foto.png"))]);
         let m = menu_de(&a);
         let principal: Vec<&Accion> = m.entradas.iter().map(|e| &e.accion).collect();
-        assert_eq!(principal[0], &Accion::Responder(0), "Responder, lo primero");
+        // Copiar lo primero si hay texto que copiar (17-oct-2026), y
+        // Responder justo detras.
+        assert_eq!(principal[0], &Accion::Copiar(0), "Copiar, lo primero");
+        assert_eq!(principal[1], &Accion::Responder(0), "Responder, lo segundo");
         let borrar = m.entradas.last().unwrap();
         assert_eq!(borrar.accion, Accion::Borrar(vec![0]));
         assert!(
@@ -18001,10 +18247,12 @@ mod pruebas_menu_sin_repetir {
         );
         let n_mas = m.posicion_de_mas().expect("hay «Más»");
         assert_eq!(n_mas, m.entradas.len() - 2, "«Más» justo encima de Borrar");
-        // Lo raro va al submenu: renombrar, fijar, abrir con.
+        // Lo raro va al submenu: fijar, abrir con. Renombrar sube arriba
+        // (17-oct-2026), como en el movil.
         let mas: Vec<&Accion> = m.mas.iter().map(|e| &e.accion).collect();
+        assert!(principal.contains(&&Accion::Renombrar(0)), "renombrar, arriba");
+        assert!(!mas.contains(&&Accion::Renombrar(0)));
         for a in [
-            Accion::Renombrar(0),
             Accion::Fijar(0),
             Accion::AbrirCon(0),
         ] {
@@ -18020,6 +18268,62 @@ mod pruebas_menu_sin_repetir {
         );
         assert!(m.etiquetas.is_some());
         let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// El menu de una respuesta del asistente (17-oct-2026): lo mas usado
+    /// arriba (copiar, responder, escuchar), mandarlo y acordarse en su
+    /// grupo, y borrar el ultimo y apartado.
+    #[test]
+    fn el_menu_de_una_respuesta_lleva_lo_mas_usado_arriba() {
+        let mut r = mensaje(Clase::Nota, None);
+        r.texto = "Tienes 3 archivos:\n- a.pdf\n- b.pdf".into();
+        r.aparato = Some(crate::asistente::chat::APARATO.into());
+        let (a, raiz) = abierto_con("respuesta-ia", vec![r]);
+        let m = menu_de(&a);
+        let principal: Vec<&Accion> = m.entradas.iter().map(|e| &e.accion).collect();
+        assert_eq!(
+            &principal[..3],
+            &[&Accion::Copiar(0), &Accion::Responder(0), &Accion::Escuchar(0)],
+            "copiar, responder y escuchar, por ese orden"
+        );
+        let reenviar = m.entradas.iter().position(|e| e.accion == Accion::Reenviar(vec![0])).unwrap();
+        assert!(m.entradas[reenviar].separada, "mandarlo empieza grupo");
+        assert!(reenviar > 2);
+        let borrar = m.entradas.last().unwrap();
+        assert!(borrar.peligro && borrar.separada && borrar.accion == Accion::Borrar(vec![0]));
+        // Caso negativo: una nota del usuario no lleva «Escuchar».
+        let (a, raiz2) = abierto_con("nota-usuario", vec![mensaje(Clase::Nota, None)]);
+        assert!(!menu_de(&a).entradas.iter().any(|e| matches!(e.accion, Accion::Escuchar(_))));
+        let _ = std::fs::remove_dir_all(raiz);
+        let _ = std::fs::remove_dir_all(raiz2);
+    }
+
+    /// La pastilla y los tres puntos del chat «Asistente» (17-oct-2026):
+    /// los tres modelos con el elegido marcado, y empezar de cero y borrar
+    /// apartados; en otro chat, nada de eso.
+    #[test]
+    fn el_menu_del_modelo_marca_el_elegido_y_aparta_borrar() {
+        use asistente_nube::Eleccion;
+        use pixpin_ia::nube::Proveedor;
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let v = menu_de_modelo(&textos, Eleccion::Nube(Proveedor::DeepSeek));
+        let marcados: Vec<bool> = v[..3]
+            .iter()
+            .map(|e| format!("{:?}", e.icono.unwrap()) == format!("{:?}", mi::CHECK_BOX))
+            .collect();
+        assert_eq!(marcados, vec![false, false, true], "DeepSeek, el tercero, marcado");
+        assert_eq!(v[2].accion, Accion::ElegirModeloIa(2));
+        assert!(v[3].accion == Accion::NuevaConversacion && v[3].separada);
+        assert!(v[4].accion == Accion::BorrarChat && v[4].peligro);
+        let c = menu_de_cabecera(&textos, false, Some(Eleccion::Nube(Proveedor::Claude)));
+        assert!(c[0].texto.contains("Claude Haiku") && c[0].accion == Accion::MenuModeloIa);
+        assert!(!menu_de_cabecera(&textos, false, None).iter().any(|e| e.accion == Accion::BorrarChat));
+        // Borrar el chat deja lo del sistema.
+        let mut sis = mensaje(Clase::Nota, None);
+        sis.id = format!("{}figuras", pixpin_proyecto::cuaderno::PREFIJO_DE_SISTEMA);
+        let mut otro = mensaje(Clase::Nota, None);
+        otro.id = "m2".into();
+        assert_eq!(indices_para_borrar_el_chat(&[mensaje(Clase::Nota, None), sis, otro]), vec![0, 2]);
     }
 
     #[test]
@@ -18077,7 +18381,7 @@ mod pruebas_menu_sin_repetir {
         assert_eq!(m.elegido, Some(Sitio::Principal(0)));
         assert_eq!(
             m.tecla(VK_ENTRAR, false),
-            Respuesta::Hacer(Accion::Responder(0))
+            Respuesta::Hacer(Accion::Copiar(0))
         );
         // Hasta «Más» y a la derecha: se abre y se elige su primera.
         let n = m.posicion_de_mas().unwrap();
@@ -18223,7 +18527,7 @@ mod pruebas_ir_al_chat {
     fn los_tres_puntos_ya_no_llevan_lecciones_ni_galeria_ni_universo() {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         for en_guardados in [false, true] {
-            let v = menu_de_cabecera(&textos, en_guardados);
+            let v = menu_de_cabecera(&textos, en_guardados, None);
             assert!(
                 !v.iter().any(|e| matches!(e.accion, Accion::Lecciones)),
                 "estan en los botones de la lista, como en el movil"

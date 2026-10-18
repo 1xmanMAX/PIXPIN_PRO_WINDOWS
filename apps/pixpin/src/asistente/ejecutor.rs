@@ -136,6 +136,8 @@ impl EjecutorDelChat {
             return Err(super::documentos::SIN_PERMISO_NUBE.into());
         }
         let (hallazgos, aviso) = super::documentos::buscar(p, &self.proyecto)?;
+        // Con la nube, cada hallazgo con su fecha y hora al minuto.
+        self.citas.desfase_ms = self.nube.then(super::desfase_local_ms);
         let texto = self.citas.anadir(&p.consulta, hallazgos, aviso.as_deref());
         if !self.citas.lista.is_empty() {
             let _ = self.tx.send(Aviso::Citas(self.citas.lista.clone()));

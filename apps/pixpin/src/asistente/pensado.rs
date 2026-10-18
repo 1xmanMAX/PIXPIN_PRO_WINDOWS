@@ -212,9 +212,28 @@ pub fn ventana_local() -> u32 {
 }
 
 /// Cuantos mensajes de antes se mandan como mucho, y cuanto de cada uno
-/// (los de `turno::historial_para_el_modelo`).
+/// (los de `turno::historial_para_el_modelo`), con el modelo local (no se
+/// toca: la IA local esta congelada).
 const ULTIMOS: usize = 12;
 const LARGO: usize = 1500;
+
+/// **Lo mismo con la nube** (17-oct-2026, el usuario: «que reciba mas
+/// contexto»). Con 12 mensajes de 1500 letras una respuesta larga de Claude
+/// (una lista de 20 archivos) llegaba cortada al turno siguiente y lo de
+/// hace 7 preguntas ya no estaba. Medido con `contexto::estimar` (prueba
+/// `la_nube_recibe_mas_contexto_sin_reiniciar`, 17-oct): el catalogo
+/// entero son 14 821 tokens; con 40 mensajes normales (~600 letras) y una
+/// lista larga, la peticion entera son 23 928 (el umbral es 44 800, el 70 %
+/// de 64 000); el peor caso, 40 de 4000 letras, pasa y se reinicia como
+/// siempre (con la hoja de trabajo), que es lo que debe pasar.
+pub const ULTIMOS_NUBE: usize = 40;
+pub const LARGO_NUBE: usize = 4000;
+
+/// Los topes de historial para esta ventana: los de la nube con su ventana,
+/// los de siempre con la del local.
+pub fn topes(ventana: u32) -> (usize, usize) {
+    if ventana >= VENTANA_NUBE { (ULTIMOS_NUBE, LARGO_NUBE) } else { (ULTIMOS, LARGO) }
+}
 
 /// **El historial y la memoria de un turno nuevo.** `anteriores`: las notas
 /// del chat antes de la pregunta; `herramientas`: las de este turno (las
@@ -261,11 +280,12 @@ pub fn preparar_con_hoja(
     {
         conv.drain(..i);
     }
-    let desde = conv.len().saturating_sub(ULTIMOS);
+    let (ultimos, largo) = topes(ventana);
+    let desde = conv.len().saturating_sub(ultimos);
     let conv = &conv[desde..];
     let pares: Vec<(bool, String)> = conv
         .iter()
-        .map(|(_, _, u, t)| (*u, t.chars().take(LARGO).collect()))
+        .map(|(_, _, u, t)| (*u, t.chars().take(largo).collect()))
         .collect();
     let sistema = contexto::sistema_con_hoja(&pixpin_ia::agente::instrucciones(), hoja, None);
     let mut herramientas = herramientas.to_vec();

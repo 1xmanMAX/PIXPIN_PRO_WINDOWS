@@ -109,6 +109,28 @@ impl Momento {
     }
 }
 
+/// **Fecha y hora al minuto** para el modelo de la nube (17-oct-2026, el
+/// usuario: «que al agente se le pasen fechas de subida con alto detalle
+/// (minuto) para que barra rapido lo que le pido»): `vie 3-oct-2026 14:05`
+/// en hora local. `ms_utc`: lo guardado (UTC); `desfase_ms`: hora local
+/// menos UTC, que da quien llama (aqui no hay reloj). Antes del 2001 no es
+/// una fecha de verdad (un mensaje sin hora): `None`.
+pub fn fecha_y_hora(ms_utc: i64, desfase_ms: i64) -> Option<String> {
+    if ms_utc < 978_307_200_000 {
+        return None;
+    }
+    let m = Momento::de_ms_locales(ms_utc + desfase_ms);
+    let (y, mes, d) = fecha_de(m.dia);
+    const MESES: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+    let sem = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][dia_de_la_semana(m.dia) as usize];
+    Some(format!(
+        "{sem} {d}-{}-{y} {:02}:{:02}",
+        MESES[(mes - 1) as usize],
+        m.minuto / 60,
+        m.minuto % 60
+    ))
+}
+
 /// Por que no vale una fecha (el texto va al usuario o al modelo).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorFecha {
@@ -466,6 +488,18 @@ pub fn separar(frase: &str, ahora: Momento) -> Result<(String, Option<Momento>),
 
 #[cfg(test)]
 mod pruebas {
+
+    #[test]
+    fn fecha_y_hora_al_minuto_en_hora_local() {
+        // 3-oct-2026 00:00 UTC = 2-oct 19:00 en Lima (UTC-5).
+        let t = 1_790_985_600_000;
+        assert_eq!(fecha_y_hora(t, 0).as_deref(), Some("sáb 3-oct-2026 00:00"));
+        assert_eq!(fecha_y_hora(t, -5 * 3_600_000).as_deref(), Some("vie 2-oct-2026 19:00"));
+        assert_eq!(fecha_y_hora(t + 14 * 3_600_000 + 5 * 60_000 + 59_999, 0).as_deref(), Some("sáb 3-oct-2026 14:05"));
+        // Caso negativo: un mensaje sin hora no lleva fecha.
+        assert_eq!(fecha_y_hora(0, 0), None);
+    }
+
     use super::*;
 
     /// Miercoles 14 de octubre de 2026, 10:30.

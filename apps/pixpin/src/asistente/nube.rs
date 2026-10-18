@@ -43,10 +43,12 @@ pub fn id_de(e: Eleccion) -> &'static str {
     }
 }
 
+/// Lo ultimo leido de los ajustes: cuando, de donde y que.
+static CACHE: Mutex<Option<(Instant, std::path::PathBuf, Eleccion)>> = Mutex::new(None);
+
 /// Lo elegido, mirado como mucho cada 5 s (la tarjeta del chat pregunta en
 /// cada fotograma y el TOML no se lee tanto).
 pub fn eleccion_reciente(raiz_datos: &Path) -> Eleccion {
-    static CACHE: Mutex<Option<(Instant, std::path::PathBuf, Eleccion)>> = Mutex::new(None);
     let Ok(mut g) = CACHE.lock() else { return Eleccion::Local };
     if let Some((t, r, e)) = g.as_ref()
         && r == raiz_datos
@@ -58,6 +60,31 @@ pub fn eleccion_reciente(raiz_datos: &Path) -> Eleccion {
     let e = eleccion(&pixpin_store::cargar(&u).unwrap_or_default().asistente);
     *g = Some((Instant::now(), raiz_datos.to_path_buf(), e));
     e
+}
+
+/// **Cambia quien contesta** desde el propio chat (17-oct-2026, la pastilla
+/// del modelo en la cabecera del chat «Asistente»). Es el MISMO ajuste que
+/// Ajustes → Asistente → Motor (`[asistente] motor`): se lee el TOML, se
+/// cambia solo eso y se guarda; y lo recordado por [`eleccion_reciente`]
+/// pasa a ser lo nuevo al instante (la pastilla no espera 5 s).
+pub fn elegir(u: &Ubicacion, e: Eleccion) -> Result<(), String> {
+    let mut a = pixpin_store::cargar(u).map_err(|e| e.to_string())?;
+    a.asistente.motor = id_de(e).to_string();
+    pixpin_store::guardar(u, &a).map_err(|e| e.to_string())?;
+    if let Ok(mut g) = CACHE.lock() {
+        *g = Some((Instant::now(), u.raiz().to_path_buf(), e));
+    }
+    Ok(())
+}
+
+/// El nombre corto para la pastilla del chat: «Claude Haiku», «DeepSeek»,
+/// «Local».
+pub fn nombre_corto(e: Eleccion) -> &'static str {
+    match e {
+        Eleccion::Local => "Local",
+        Eleccion::Nube(Proveedor::Claude) => "Claude Haiku",
+        Eleccion::Nube(Proveedor::DeepSeek) => "DeepSeek",
+    }
 }
 
 /// **El motor de la nube** con la clave guardada. `local`: el respaldo si
@@ -195,6 +222,29 @@ mod pruebas {
             let a = pixpin_store::ajustes::Asistente { motor: id_de(e).into(), ..Default::default() };
             assert_eq!(eleccion(&a), e);
         }
+    }
+
+    /// La pastilla del chat cambia el mismo ajuste que Ajustes → Asistente,
+    /// sin tocar lo demas del TOML, y la eleccion recordada cambia ya.
+    #[test]
+    fn elegir_desde_el_chat_cambia_el_mismo_ajuste() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-elegir-modelo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let u = Ubicacion::Instalado { raiz: raiz.clone() };
+        let mut a = pixpin_store::ajustes::Ajustes::default();
+        a.asistente.revisar_lo_dicho = true;
+        pixpin_store::guardar(&u, &a).unwrap();
+        assert_eq!(eleccion_reciente(&raiz), Eleccion::Local);
+        elegir(&u, Eleccion::Nube(Proveedor::DeepSeek)).unwrap();
+        // Al instante, sin esperar los 5 s de lo recordado.
+        assert_eq!(eleccion_reciente(&raiz), Eleccion::Nube(Proveedor::DeepSeek));
+        let leido = pixpin_store::cargar(&u).unwrap().asistente;
+        assert_eq!(eleccion(&leido), Eleccion::Nube(Proveedor::DeepSeek));
+        assert!(leido.revisar_lo_dicho, "lo demas de los ajustes no se toca");
+        elegir(&u, Eleccion::Local).unwrap();
+        assert_eq!(pixpin_store::cargar(&u).unwrap().asistente.motor, "");
+        assert_eq!(nombre_corto(Eleccion::Nube(Proveedor::Claude)), "Claude Haiku");
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]

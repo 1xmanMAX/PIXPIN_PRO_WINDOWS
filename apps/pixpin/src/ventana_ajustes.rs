@@ -311,8 +311,6 @@ enum Clave {
     /// Ver lo dicho al microfono del asistente antes de enviarlo
     /// (`[asistente] revisar_lo_dicho`).
     AsistenteRevisarVoz,
-    /// Leer en voz alta cada respuesta (`[asistente] leer_respuestas`).
-    AsistenteLeerSiempre,
     /// La caja de la clave de un proveedor (indice en `Proveedor::TODOS`).
     /// No es un ajuste: la clave va cifrada a su fichero, nunca al TOML.
     ClaveNube(u8),
@@ -1079,13 +1077,6 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     tt("ajustes2-ayuda-asistente-revisar-voz"),
                     Control::Interruptor(a.asistente.revisar_lo_dicho),
                 ),
-                op(
-                    a,
-                    Clave::AsistenteLeerSiempre,
-                    tt("ajustes2-asistente-leer"),
-                    tt("ajustes2-ayuda-asistente-leer"),
-                    Control::Interruptor(a.asistente.leer_respuestas),
-                ),
                 grupo(t, "ajustes2-g-claves"),
             ];
             for (i, p) in Proveedor::TODOS.into_iter().enumerate() {
@@ -1409,7 +1400,6 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::AsistenteMejorVista => a.asistente.mejor_vista = d.asistente.mejor_vista,
         Clave::AsistenteDocsNube => a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone(),
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
-        Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = d.asistente.leer_respuestas,
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1567,7 +1557,6 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
             }
         }
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = !a.asistente.revisar_lo_dicho,
-        Clave::AsistenteLeerSiempre => a.asistente.leer_respuestas = !a.asistente.leer_respuestas,
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::Apilar => {
             // Cero apaga la pila; encenderla vuelve a su numero de fabrica
