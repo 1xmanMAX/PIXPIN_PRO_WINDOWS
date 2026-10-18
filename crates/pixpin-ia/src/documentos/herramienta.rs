@@ -117,6 +117,10 @@ impl Cita {
 #[derive(Debug, Clone, Default)]
 pub struct Citas {
     pub lista: Vec<Cita>,
+    /// Con la nube (17-oct-2026): hora local menos UTC, y cada hallazgo
+    /// lleva su fecha y hora al minuto (`fechas::fecha_y_hora`). `None` (el
+    /// modelo local, congelado): la fecha corta de siempre.
+    pub desfase_ms: Option<i64>,
 }
 
 impl Citas {
@@ -152,14 +156,14 @@ impl Citas {
             if h.tipo == Tipo::Chat && h.seccion.as_deref() == Some("adjunto") {
                 // Una frase entera: con «origen + nombre» el 2B contestaba
                 // «no has mandado ningun plano» (medido el 14-oct).
-                let cuando = h.cuando.and_then(fecha_corta).map(|f| format!(" el {f}")).unwrap_or_default();
+                let cuando = self.cuando(&h).map(|f| format!(" el {f}")).unwrap_or_default();
                 s.push_str(&format!(
                     "\n[{numero}] El usuario SI mando el archivo «{}» al chat «{}»{cuando}.\n",
                     h.fragmento.trim(),
                     h.proyecto_nombre
                 ));
             } else {
-                s.push_str(&format!("\n[{numero}] {}\n«{}»\n", origen(&h), h.fragmento.replace('\n', " ")));
+                s.push_str(&format!("\n[{numero}] {}\n«{}»\n", origen(&h, self.cuando(&h)), h.fragmento.replace('\n', " ")));
             }
         }
         if let Some(a) = aviso {
@@ -167,6 +171,15 @@ impl Citas {
             s.push_str(a);
         }
         s
+    }
+
+    /// La fecha de un hallazgo como se le dice al modelo.
+    fn cuando(&self, h: &Hallazgo) -> Option<String> {
+        let ms = h.cuando?;
+        match self.desfase_ms {
+            Some(d) => crate::fechas::fecha_y_hora(ms, d),
+            None => fecha_corta(ms),
+        }
     }
 
     /// Las que el modelo nombro en su respuesta (`[2]`), en orden de numero;
@@ -187,7 +200,7 @@ impl Citas {
 }
 
 /// De donde es un hallazgo, en una linea para el modelo.
-fn origen(h: &Hallazgo) -> String {
+fn origen(h: &Hallazgo, cuando: Option<String>) -> String {
     let que = match h.tipo {
         Tipo::Chat => match h.seccion.as_deref() {
             // Dicho para que un modelo pequeno entienda que SI lo mando (con
@@ -208,7 +221,7 @@ fn origen(h: &Hallazgo) -> String {
             s
         }
     };
-    match h.cuando.and_then(fecha_corta) {
+    match cuando {
         Some(f) => format!("{que}, {f}"),
         None => que,
     }
@@ -261,6 +274,31 @@ mod pruebas {
         assert!(validar(&args(json!({"consulta": "   "}))).is_err());
         // Solo palabras vacias o de preguntar: nada que buscar.
         assert!(validar(&args(json!({"consulta": "¿qué dice de la?"}))).is_err());
+    }
+
+    #[test]
+    fn con_la_nube_cada_hallazgo_lleva_fecha_y_hora_al_minuto() {
+        use crate::documentos::indice::{Abrir, Hallazgo};
+        let h = Hallazgo {
+            nombre: "Plano.pdf".into(),
+            tipo: Tipo::Chat,
+            proyecto: "p".into(),
+            proyecto_nombre: "Obra".into(),
+            pagina: None,
+            seccion: Some("adjunto".into()),
+            // 3-oct-2026 19:42 UTC
+            cuando: Some(1_790_985_600_000 + (19 * 60 + 42) * 60_000),
+            fragmento: "Plano.pdf".into(),
+            abrir: Abrir::Mensaje { proyecto: Some("p".into()), codigo: "c".into() },
+            puntos: 1.0,
+        };
+        let mut nube = Citas { lista: Vec::new(), desfase_ms: Some(-5 * 3_600_000) };
+        let t = nube.anadir("plano", vec![h.clone()], None);
+        assert!(t.contains("el sáb 3-oct-2026 14:42"), "{t}");
+        // Caso negativo: el local (congelado) sigue con la fecha corta.
+        let mut local = Citas::default();
+        let t = local.anadir("plano", vec![h], None);
+        assert!(t.contains("el 3-oct-2026.") && !t.contains("14:42"), "{t}");
     }
 
     #[test]

@@ -36,7 +36,11 @@ use super::Proveedor;
 /// Las reglas comunes, con variables, y la herramienta sin la que no tienen
 /// sentido (`""`: siempre; `"*"`: si hay alguna herramienta).
 pub const REGLAS: &[(&str, &str)] = &[
-    ("", "Contesta en el idioma del usuario, breve y directo; sin Markdown pesado (el chat es texto plano)."),
+    ("", "Contesta en el idioma del usuario, breve y directo."),
+    // 17-oct-2026 (el usuario: «las respuestas en lista lo dan todo en texto
+    // y confunde»): la burbuja pinta «- » y «1. » como listas y **x** en
+    // negrita (`asistente::chat::formato_de_respuesta` de la app).
+    ("", "Si nombras varias cosas (archivos, pasos, opciones, tareas, fechas), ponlas en lista: una por linea empezando por «- », o por «1. » si el orden importa, con la fecha o el dato clave en la misma linea; **negrita** solo para lo clave. Nada de tablas, encabezados largos ni parrafos con todo seguido."),
     ("*", "Si el pedido se resuelve con una herramienta, usala en vez de explicar como hacerlo. Si solo pregunta algo, contesta con texto."),
     ("*", "Usa solo las herramientas que tienes ({n_herramientas}) y solo los campos de su esquema; no inventes otras."),
     ("*", "Argumentos: un objeto JSON con los campos obligatorios siempre puestos, numeros como numeros (no \"120px\") y los valores de las listas cerradas escritos tal cual. Los ejemplos de las descripciones son la forma correcta: siguelos."),
@@ -174,7 +178,17 @@ mod pruebas {
         // Sin herramientas no se habla de herramientas.
         let c = para(Proveedor::Claude, "x", &[]);
         assert!(!c.contains("ERROR") && !c.contains("JSON"));
-        assert_eq!(reglas(&[]).len(), 1);
+        assert_eq!(reglas(&[]).len(), 2);
+    }
+
+    /// La nube pide las listas como listas (17-oct-2026).
+    #[test]
+    fn pide_las_listas_como_listas() {
+        for p in [Proveedor::Claude, Proveedor::DeepSeek] {
+            let s = para(p, "x", &[]);
+            assert!(s.contains("ponlas en lista") && s.contains("«- »"), "{s}");
+            assert!(!s.contains("texto plano"), "ya no dice que el chat es texto plano");
+        }
     }
 
     #[test]

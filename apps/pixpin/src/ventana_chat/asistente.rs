@@ -250,7 +250,7 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
-    let con_foto = ia_chat::foto_reciente(&a.mensajes).is_some();
+    let con_foto = ia_chat::foto_reciente(ia_chat::desde_el_corte(&a.mensajes)).is_some();
     // Pensar (15-oct): «Siempre», «Nunca» o, en automatico, solo si la
     // tarea es compleja, con el mismo criterio para el local y la nube
     // (`pixpin_ia::complejidad`). La ventana: el local segun su modelo; la
@@ -315,9 +315,13 @@ fn lanzar_con(
     let n = a.mensajes.len();
     let (anteriores, nueva) = a.mensajes.split_at(n.saturating_sub(1));
     let pregunta_id = nueva.first().map(|m| m.id.clone());
+    // Tras «Conversación nueva», lo de antes no se le manda (ni sus fotos,
+    // ni sus adjuntos, ni su hoja de trabajo).
+    let anteriores = ia_chat::desde_el_corte(anteriores);
+    let vivos = ia_chat::desde_el_corte(&a.mensajes);
     // La foto puede ser la misma que se acaba de mandar.
-    let foto = ia_chat::foto_reciente(&a.mensajes).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
-    let adjuntos = ia_chat::adjuntos(&a.mensajes, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
+    let foto = ia_chat::foto_reciente(vivos).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
+    let adjuntos = ia_chat::adjuntos(vivos, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
     // `@lienzo:<nombre>`: donde dibujar si no hay un lienzo abierto.
     let (para_el_modelo, destino) = ia_chat::resolver_lienzo(&pregunta, &a.mensajes);
     let abrir = ia_chat::pide_abrir(&pregunta);
@@ -403,6 +407,52 @@ fn lanzar_con(
         })
     });
     Ok(())
+}
+
+/// **«Conversación nueva»** (17-oct-2026, el usuario: «que pueda borrar el
+/// chat y crear uno nuevo de forma que no tenga el contexto de todo el chat
+/// cada vez»): una nota del asistente que marca el corte
+/// ([`ia_chat::NUEVA_CONVERSACION`]). Lo de arriba sigue a la vista, pero el
+/// siguiente turno empieza de cero: sin historial, sin la hoja de trabajo y
+/// sin las fotos ni los adjuntos de antes. Con un turno en marcha no se
+/// corta (devuelve el aviso); si ya se acaba de cortar, no se repite.
+pub(super) fn nueva_conversacion(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> Option<String> {
+    if ocupado(&a.ficha.id) {
+        return Some(textos.t("asistente-ocupado"));
+    }
+    // Dos cortes seguidos no dicen nada nuevo.
+    if a.mensajes.iter().rev().find(|m| !cuaderno::es_de_sistema(m)).is_some_and(ia_chat::es_corte) {
+        return None;
+    }
+    let raiz = ubicacion.raiz().to_path_buf();
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let hecho = escribir_nota(
+        &raiz,
+        &a.ficha.id,
+        ia_chat::APARATO,
+        ia_chat::TEXTO_NUEVA_CONVERSACION,
+        descripcion::hora_sin_repetir(),
+        numero,
+        None,
+    )
+    .and_then(|mut nota| {
+        nota.resto.insert(ia_chat::NUEVA_CONVERSACION.into(), serde_json::Value::Bool(true));
+        cuaderno::reemplazar(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id), &nota)?;
+        Ok(nota)
+    });
+    match hecho {
+        Ok(nota) => {
+            a.vistas.push(None);
+            a.mensajes.push(nota);
+            a.colocado.borrow_mut().ancho = 0;
+            a.scroll = None;
+            None
+        }
+        Err(e) => {
+            tracing::warn!(?e, "asistente: no se pudo empezar una conversacion nueva");
+            Some(textos.t("chat-no-se-pudo"))
+        }
+    }
 }
 
 /// **El lienzo que pidio abrir al terminar** («dibuja… y ábrelo»), por su
@@ -685,8 +735,8 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                     tracing::warn!(?e, "asistente: no se pudo guardar la respuesta");
                 }
                 if acabo {
-                    // «Leer siempre las respuestas» (`voz_del_asistente`).
-                    super::voz_del_asistente::al_acabar(&s.proyecto, &s.nota);
+                    // Ya no se lee sola al acabar (pedido del usuario,
+                    // 17-oct): queda el altavoz de la burbuja.
                     let resumen: String = texto.chars().take(120).collect();
                     let _ = subir_en_la_lista(&raiz, &s.proyecto, pixpin_shell::entorno::ahora_utc_ms(), &resumen);
                 }

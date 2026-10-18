@@ -565,8 +565,11 @@ fn leer_documento(args: &Value, cx: &Contexto) -> Result<String, String> {
 /// documentos, 15-oct): sin esto no sabia que el usuario habia adjuntado el
 /// comunicado («no veo ningun archivo, ¿me lo pegas?») o lanzaba una captura
 /// para «pasa esta pagina al lienzo». Los mas recientes primero, como
-/// mucho 6; `None` si no hay ninguno.
-pub fn nota_de_archivos(raiz: &Path, proyecto: &str) -> Option<String> {
+/// mucho [`ARCHIVOS_EN_LA_NOTA`], cada uno con la fecha y hora en que se
+/// subio, al minuto y en hora local (`desfase_ms`, 17-oct-2026: «que se le
+/// pasen fechas de subida con alto detalle para que barra rapido»); `None`
+/// si no hay ninguno.
+pub fn nota_de_archivos(raiz: &Path, proyecto: &str, desfase_ms: i64) -> Option<String> {
     // Solo el cuaderno de este chat (un fichero): el turno no espera.
     let c = Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto)).ok()?;
     let mut hay: Vec<(i64, String)> = c
@@ -583,13 +586,25 @@ pub fn nota_de_archivos(raiz: &Path, proyecto: &str) -> Option<String> {
         return None;
     }
     hay.sort_by_key(|(cuando, _)| std::cmp::Reverse(*cuando));
-    let nombres: Vec<String> = hay.iter().take(6).map(|(_, n)| format!("«{n}»")).collect();
+    let nombres: Vec<String> = hay
+        .iter()
+        .take(ARCHIVOS_EN_LA_NOTA)
+        .map(|(cuando, n)| match pixpin_ia::fechas::fecha_y_hora(*cuando, desfase_ms) {
+            Some(f) => format!("«{n}» (subido el {f})"),
+            None => format!("«{n}»"),
+        })
+        .collect();
     Some(format!(
         "\n\n(Archivos adjuntos en este chat, el mas reciente primero: {}. «Esto», «el documento» o «esta pagina» es el primero. \
          Para leerlo entero: leer_documento; un Excel: leer_excel; una pagina de PDF o una foto al lienzo: hoja_a_lienzo.)",
         nombres.join(", ")
     ))
 }
+
+/// Cuantos archivos nombra [`nota_de_archivos`]. Eran 6 (15-oct); con la
+/// fecha cada uno ocupa ~15 tokens y la nube tiene sitio de sobra: 15 son
+/// ~250 tokens, menos del 1 % de la ventana que se mide (`VENTANA_NUBE`).
+pub const ARCHIVOS_EN_LA_NOTA: usize = 15;
 
 // ---------------------------------------------------------------------------
 // Lo hecho hoy
@@ -897,14 +912,14 @@ mod pruebas {
         let r = llamar("{}").unwrap();
         assert!(r.contains("informe.docx") && r.contains("0,85") && r.contains("184 500"), "{r}");
         // La nota para la nube nombra el adjunto.
-        let nota = nota_de_archivos(&raiz, &f.id).unwrap();
+        let nota = nota_de_archivos(&raiz, &f.id, 0).unwrap();
         assert!(nota.contains("«informe.docx»") && nota.contains("leer_documento"), "{nota}");
         assert_eq!(rangos_de_paginas(Some("2-4, 7")), vec![(2, 4), (7, 7)]);
         assert!(rangos_de_paginas(Some("cero")).is_empty());
         // Negativos: un archivo que no esta; un chat sin adjuntos no tiene nota.
         assert!(llamar(r#"{"archivo":"cronograma de vaciados"}"#).is_err());
         let otro = almacen::Ficha::nueva("Vacio", 2, "PC01");
-        assert!(nota_de_archivos(&raiz, &otro.id).is_none());
+        assert!(nota_de_archivos(&raiz, &otro.id, 0).is_none());
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

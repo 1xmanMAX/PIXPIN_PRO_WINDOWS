@@ -233,11 +233,16 @@ impl Turno {
                 // documentos, 15-oct: sin esto pedia que se los pegaran).
                 // Despues de leer el pedido: lo que decide herramientas mira
                 // lo que escribio el usuario, no esta nota.
+                // Y la hora de ahora, al minuto (17-oct-2026): con ella y la
+                // de cada archivo, «lo de esta mañana» se entiende solo.
                 if motor.catalogo_completo()
-                    && let Some(nota) = raiz.as_deref().and_then(|r| super::en_el_chat::nota_de_archivos(r, &proyecto))
                     && let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario)
                 {
-                    m.partes.push(pixpin_ia::motor::Parte::Texto(nota));
+                    let desfase = super::desfase_local_ms();
+                    if let Some(nota) = raiz.as_deref().and_then(|r| super::en_el_chat::nota_de_archivos(r, &proyecto, desfase)) {
+                        m.partes.push(pixpin_ia::motor::Parte::Texto(nota));
+                    }
+                    m.partes.push(pixpin_ia::motor::Parte::Texto(super::nota_de_ahora(pixpin_shell::entorno::ahora_utc_ms(), desfase)));
                 }
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();

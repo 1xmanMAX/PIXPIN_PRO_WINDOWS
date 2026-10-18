@@ -544,9 +544,9 @@ pub struct Asistente {
     /// Voz (13-oct-2026): lo dicho al microfono del asistente se deja en la
     /// caja para repasarlo antes de enviarlo, en vez de enviarse solo.
     pub revisar_lo_dicho: bool,
-    /// Voz: leer en voz alta cada respuesta al acabar (sin esto, solo con el
-    /// altavoz de la burbuja).
-    pub leer_respuestas: bool,
+    // `leer_respuestas` (leer cada respuesta sola al acabar) se quito el
+    // 17-oct-2026 a peticion del usuario: el TOML viejo que lo traiga se
+    // sigue leyendo (sin `deny_unknown_fields`) y al guardar desaparece.
 }
 
 impl Default for Asistente {
@@ -559,7 +559,6 @@ impl Default for Asistente {
             documentos_a_la_nube: String::new(),
             pensar: None,
             revisar_lo_dicho: false,
-            leer_respuestas: false,
         }
     }
 }
@@ -708,6 +707,29 @@ mod pruebas {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Ubicacion::Instalado { raiz: dir }
+    }
+
+    /// «Leer siempre las respuestas» se quito (17-oct-2026): un TOML que
+    /// lo trae encendido (el del usuario) se sigue leyendo entero, y al
+    /// guardar desaparece.
+    #[test]
+    fn el_viejo_leer_respuestas_se_lee_y_se_olvida() {
+        let u = temporal("leer-respuestas");
+        fs::write(
+            u.fichero_ajustes(),
+            "[asistente]
+motor = \"claude\"
+revisar_lo_dicho = true
+leer_respuestas = true
+",
+        )
+        .unwrap();
+        let a = cargar(&u).unwrap();
+        assert_eq!(a.asistente.motor, "claude");
+        assert!(a.asistente.revisar_lo_dicho, "lo demas de la seccion sigue");
+        guardar(&u, &a).unwrap();
+        let texto = fs::read_to_string(u.fichero_ajustes()).unwrap();
+        assert!(!texto.contains("leer_respuestas"), "{texto}");
     }
 
     /// Unos ajustes con TODO cambiado respecto a los de fabrica.

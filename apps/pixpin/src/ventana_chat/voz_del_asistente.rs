@@ -26,8 +26,9 @@
 //! Cada respuesta acabada lleva un **altavoz** junto a la hora: la lee en
 //! voz alta el **lector de voz comun de la app** (`leer_en_voz`: las voces
 //! de Microsoft si estan encendidas en el engranaje de los lectores, con
-//! caida a la de Windows). Con «Leer siempre las respuestas»
-//! (`[asistente] leer_respuestas`) se lee sola al acabar. **No se lee** lo
+//! caida a la de Windows). **Nunca se lee sola al acabar**: el usuario
+//! quito «Leer siempre las respuestas» (17-oct-2026); solo suena al pulsar
+//! el altavoz. **No se lee** lo
 //! que no es la respuesta: el pensamiento (`<think>…</think>`), el JSON de
 //! las herramientas, los bloques de codigo, las lineas de estado
 //! («✏️ dibujando…») ni los avisos (ver [`texto_para_leer`]). Hablarle al
@@ -84,9 +85,6 @@ struct Leyendo {
 thread_local! {
     static PASANDO: RefCell<Option<Pasando>> = const { RefCell::new(None) };
     static LEYENDO: RefCell<Option<Leyendo>> = const { RefCell::new(None) };
-    /// Respuestas recien acabadas: (proyecto, nota). Se leen si el ajuste
-    /// lo pide (ver [`al_acabar`]).
-    static POR_LEER: RefCell<Vec<(String, String)>> = const { RefCell::new(Vec::new()) };
 }
 
 // ------------------------------------------------------------ el microfono
@@ -363,27 +361,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>, t
         }
     }
 
-    // 2. Las respuestas recien acabadas, si se leen siempre.
-    let acabadas = POR_LEER.with_borrow_mut(std::mem::take);
-    if !acabadas.is_empty()
-        && pixpin_store::cargar(ubicacion).is_ok_and(|aj| aj.asistente.leer_respuestas)
-        && let Some(a) = abierto.as_deref()
-        && let Some(i) = acabadas
-            .iter()
-            .rev()
-            .filter(|(p, _)| *p == a.ficha.id)
-            .find_map(|(_, n)| a.mensajes.iter().position(|m| m.id == *n))
-        // Si el usuario ya esta hablando otra vez, no se le pisa.
-        && !grabando_para_el_asistente(a)
-        && !pasando(&a.ficha.id)
-    {
-        if let Some(aviso) = leer(ubicacion, a, i, textos) {
-            tracing::info!(aviso, "asistente: no se pudo leer la respuesta");
-        }
-        v.cambio = true;
-    }
-
-    // 3. Lo que suena: el altavoz cambia al acabar o si otro lector se
+    // 2. Lo que suena: el altavoz cambia al acabar o si otro lector se
     //    quedo con la voz.
     LEYENDO.with_borrow_mut(|l| {
         let Some(x) = l.as_mut() else { return };
@@ -409,10 +387,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>, t
 pub(super) fn espera() -> Option<u32> {
     let pasando = PASANDO.with_borrow(Option::is_some);
     let leyendo = LEYENDO.with_borrow(Option::is_some);
-    let por_leer = POR_LEER.with_borrow(|p| !p.is_empty());
-    if por_leer {
-        Some(50)
-    } else if pasando {
+    if pasando {
         Some(250)
     } else {
         leyendo.then_some(300)
@@ -420,11 +395,6 @@ pub(super) fn espera() -> Option<u32> {
 }
 
 // ------------------------------------------------------------ el altavoz
-
-/// Una respuesta del asistente acabo de escribirse (`asistente::latido`).
-pub(super) fn al_acabar(proyecto: &str, nota: &str) {
-    POR_LEER.with_borrow_mut(|p| p.push((proyecto.to_string(), nota.to_string())));
-}
 
 /// Si la burbuja `i` lleva altavoz: una respuesta del asistente, ya
 /// acabada, con algo que leer.
@@ -705,7 +675,6 @@ pub(super) fn pasando_para_pruebas(
 pub(super) fn olvidar_para_pruebas() {
     PASANDO.with_borrow_mut(|p| *p = None);
     LEYENDO.with_borrow_mut(|l| *l = None);
-    POR_LEER.with_borrow_mut(Vec::clear);
 }
 
 #[cfg(test)]
