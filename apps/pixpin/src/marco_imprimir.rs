@@ -195,28 +195,34 @@ fn pista_arriba(p: &Pintor, pista: &str, ancho: f32, e: f32) {
     p.texto(pista, caja.x + 14.0 * e, caja.y + 7.0 * e, tam, TEXTO);
 }
 
-/// Lo que se imprime: la zona, encajada en el papel.
+/// Lo que se imprime: una hoja por foto (un marco cada una, en su orden),
+/// cada una encajada en el papel.
 struct ZonaImpresa {
-    foto: ImagenRgba,
-    bitmap: Option<ID2D1Bitmap1>,
+    fotos: Vec<ImagenRgba>,
+    bitmaps: Vec<Option<ID2D1Bitmap1>>,
+}
+
+impl ZonaImpresa {
+    fn de(fotos: Vec<ImagenRgba>) -> ZonaImpresa {
+        ZonaImpresa { fotos, bitmaps: Vec::new() }
+    }
 }
 
 impl pixpin_render::imprimir_moderno::Documento for ZonaImpresa {
     fn paginar(&mut self, motor: &MotorRender, _alcance: Option<&str>) -> usize {
-        if self.bitmap.is_none() {
-            self.bitmap = motor.bitmap_desde_pixeles(self.foto.ancho, self.foto.alto, &self.foto.pixeles).ok();
+        if self.bitmaps.len() != self.fotos.len() {
+            self.bitmaps = self.fotos.iter().map(|f| motor.bitmap_desde_pixeles(f.ancho, f.alto, &f.pixeles).ok()).collect();
         }
-        1
+        self.fotos.len()
     }
 
-    fn pintar(&self, _i: usize, hoja: pixpin_render::imprimir_moderno::Pagina, p: &Pintor) {
-        let Some(b) = &self.bitmap else { return };
-        let r = en_el_papel((self.foto.ancho as f32, self.foto.alto as f32), hoja.papel);
+    fn pintar(&self, i: usize, hoja: pixpin_render::imprimir_moderno::Pagina, p: &Pintor) {
+        let (Some(f), Some(Some(b))) = (self.fotos.get(i), self.bitmaps.get(i)) else { return };
+        let r = en_el_papel((f.ancho as f32, f.alto as f32), hoja.papel);
         let k = hoja.escala;
         p.bitmap(b, RectF { x: r.x * k, y: r.y * k, ancho: r.ancho * k, alto: r.alto * k }, None, false);
     }
 }
-
 /// Donde va la foto en el papel (DIP): con 1 cm de margen, lo mas grande
 /// que quepa sin pasar del doble de como se veia (mas grande solo se
 /// emborrona), y centrada arriba.
@@ -254,30 +260,40 @@ fn para_papel(mut foto: ImagenRgba) -> ImagenRgba {
 /// El dialogo moderno de Windows con la vista previa; si no se abre (o ya
 /// fallo en esta sesion), el clasico, que imprime lo mismo.
 fn imprimir(ventana: isize, foto: ImagenRgba, titulo: &str) -> Result<()> {
-    let foto = para_papel(foto);
-    let apaisada = foto.ancho > foto.alto;
+    imprimir_fotos(ventana, vec![foto], titulo)
+}
+
+/// **Imprime en grupo**: una hoja por foto, en su orden (los marcos 1, 2,
+/// 3… de un documento, como las laminas del plano). El papel y su
+/// orientacion los dice la primera, como en el plano y en el lienzo.
+pub fn imprimir_fotos(ventana: isize, fotos: Vec<ImagenRgba>, titulo: &str) -> Result<()> {
+    let fotos: Vec<ImagenRgba> = fotos.into_iter().map(para_papel).collect();
+    let Some(primera) = fotos.first() else { return Ok(()) };
+    let apaisada = primera.ancho > primera.alto;
+    let n = fotos.len() as u32;
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
     if !pixpin_render::imprimir_moderno::roto() {
         let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
         let pedido = pixpin_render::imprimir_moderno::Pedido { titulo: titulo.to_string(), apaisada, opcion: None, ppp_previa: 144.0 };
-        let doc = ZonaImpresa { foto: foto.clone(), bitmap: None };
+        let doc = ZonaImpresa::de(fotos.clone());
         match pixpin_render::imprimir_moderno::mostrar(HWND(ventana as *mut _), pedido, d.d3d().clone(), motor, Box::new(doc)) {
             Ok(()) => return Ok(()),
             Err(e) => tracing::warn!(?e, "marco: sin dialogo moderno de imprimir, el clasico"),
         }
     }
-    let Some(eleccion) = pixpin_shell::imprimir::pedir_impresion(HWND(ventana as *mut _), 1, false, apaisada) else {
+    let Some(eleccion) = pixpin_shell::imprimir::pedir_impresion(HWND(ventana as *mut _), n, false, apaisada) else {
         return Ok(());
     };
     let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
-    a_la_impresora(&motor, foto, &eleccion.impresora, Some(&eleccion.devmode), eleccion.papel, titulo, None)
+    a_la_impresora(&motor, fotos, &eleccion.impresora, Some(&eleccion.devmode), eleccion.papel, titulo, None)
 }
 
-/// Imprime la zona en `impresora` (o, con `fichero`, escribe ahi lo que
-/// saldria por ella: las pruebas con «Microsoft Print to PDF»).
+/// Imprime las fotos en `impresora`, una por hoja (o, con `fichero`,
+/// escribe ahi lo que saldria por ella: las pruebas con «Microsoft Print to
+/// PDF»).
 fn a_la_impresora(
     motor: &MotorRender,
-    foto: ImagenRgba,
+    fotos: Vec<ImagenRgba>,
     impresora: &str,
     devmode: Option<&[u8]>,
     papel: (f32, f32),
@@ -285,15 +301,31 @@ fn a_la_impresora(
     fichero: Option<&std::path::Path>,
 ) -> Result<()> {
     use pixpin_render::imprimir_moderno::Documento;
-    let mut doc = ZonaImpresa { foto, bitmap: None };
-    doc.paginar(motor, None);
+    let mut doc = ZonaImpresa::de(fotos);
+    let n = doc.paginar(motor, None);
+    let papeles = vec![papel; n];
     pixpin_render::imprimir::imprimir(
         motor,
-        &pixpin_render::imprimir::Trabajo { impresora, nombre: titulo, devmode, paginas: &[papel], fichero },
+        &pixpin_render::imprimir::Trabajo { impresora, nombre: titulo, devmode, paginas: &papeles, fichero },
         &mut |i, p| doc.pintar(i, pixpin_render::imprimir_moderno::Pagina { papel, escala: 1.0 }, p),
     )
     .context("la impresora no acepto el trabajo")
 }
+
+/// **La foto de un trozo de la pantalla** (pixeles de pantalla), tal cual:
+/// lo que usa cada visor para imprimir sus marcos (se acerca al marco, se
+/// pinta sin su interfaz y se fotografia).
+pub fn foto_de_pantalla(area: Rect) -> Option<ImagenRgba> {
+    let d = pixpin_capture::Dispositivo::nuevo().ok()?;
+    let monitores = pixpin_capture::enumerar_monitores().ok()?;
+    let centro = Punto { x: area.x + area.ancho as i32 / 2, y: area.y + area.alto as i32 / 2 };
+    let m = monitores.monitores().iter().find(|m| m.area.contiene(centro)).or_else(|| monitores.monitores().first())?.clone();
+    let area = area.interseccion(m.area)?;
+    let foto = pixpin_capture::capturar_monitor(&d, m.id, m.area).ok()?;
+    let recorte = foto.recortar(&d, area).ok()?;
+    pixpin_capture::a_imagen(&d, &recorte).ok()
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -350,7 +382,7 @@ mod pruebas {
         let roja = ImagenRgba { ancho: 300, alto: 100, pixeles: [220u8, 30, 30, 255].repeat(300 * 100) };
         let a4 = pixpin_render::imprimir_moderno::A4;
         let (_, (w, h, px)) = pixpin_render::imprimir_moderno::miniatura_rgba(
-            Box::new(ZonaImpresa { foto: roja, bitmap: None }),
+            Box::new(ZonaImpresa::de(vec![roja])),
             motor,
             d.d3d().clone(),
             a4,
@@ -402,7 +434,7 @@ mod pruebas {
         let pdf = std::env::temp_dir().join(format!("pixpin-marco-{}.pdf", std::process::id()));
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
-        a_la_impresora(&motor, para_papel(foto), "Microsoft Print to PDF", None, pixpin_render::imprimir_moderno::A4, "marco", Some(&pdf)).expect("imprimir");
+        a_la_impresora(&motor, vec![para_papel(foto.clone()), para_papel(foto)], "Microsoft Print to PDF", None, pixpin_render::imprimir_moderno::A4, "marco", Some(&pdf)).expect("imprimir");
         eprintln!("marco: impreso");
         let bytes = std::fs::read(&pdf).expect("el pdf");
         assert!(bytes.starts_with(b"%PDF") && bytes.len() > 1000, "{} bytes", bytes.len());
