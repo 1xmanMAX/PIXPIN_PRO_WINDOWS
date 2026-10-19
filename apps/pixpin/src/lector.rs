@@ -32,12 +32,13 @@ pub const DORADO: Color = hex(0xe8c06a);
 pub const FONDO_PDF: Color = hex(0x1b1b1b);
 /// El papel del margen para anotar de un PDF (`PAPEL_DEL_MARGEN`).
 pub const PAPEL_DEL_MARGEN: Color = hex(0xf3f3f0);
-/// Un boton encendido: el azul `#CC1E88E5` de los espacios del movil.
+/// Un boton encendido: el azul `#0060DF` de lo pulsado en la barra de los
+/// pines (`lector_pin`), el mismo en todos los visores (19-oct-2026).
 pub const ENCENDIDO: Color = Color {
-    r: 0x1e as f32 / 255.0,
-    g: 0x88 as f32 / 255.0,
-    b: 0xe5 as f32 / 255.0,
-    a: 0.8,
+    r: 0x00 as f32 / 255.0,
+    g: 0x60 as f32 / 255.0,
+    b: 0xdf as f32 / 255.0,
+    a: 1.0,
 };
 /// El `#14182B` de los redondeles de las marcas.
 const OSCURO: Color = hex(0x14182b);

@@ -45,6 +45,20 @@ pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::no
     let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
     tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PixPin de prueba (PIXPIN_INSTANCIA)");
     for ruta in &rutas {
+        // Un lienzo (`.excalidraw`): el editor, en su hilo, como desde el chat.
+        if ruta.extension().is_some_and(|e| e.eq_ignore_ascii_case("excalidraw")) {
+            let ruta = ruta.clone();
+            std::thread::spawn(move || {
+                let _com = pixpin_shell::ComDelHilo::iniciar();
+                let Some(lienzo) = std::fs::read_to_string(&ruta).ok().and_then(|j| pixpin_motor2d::excalidraw::leer(&j).ok()) else {
+                    tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: lienzo ilegible");
+                    return;
+                };
+                let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
+                let _ = crate::ventana_editor::abrir(escena, Default::default(), pixpin_nivel::Nivel::Completo, false, None, &[]);
+            });
+            continue;
+        }
         if !crate::lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta)) {
             tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: no hay lector para esto");
         }

@@ -991,7 +991,14 @@ fn abrir_en_modo(
     // G5: la presentacion en curso (F5) y el modo solo mirar (Alt+R), con
     // su arrastre de mover el dibujo.
     let mut presentacion: Option<presentar::Presentacion> = None;
-    let mut solo_mirar = false;
+    // Abierto como pin, el lienzo empieza en solo mirar y el lapiz de su
+    // barra pasa a editar (19-oct-2026, como los demas visores).
+    // Uno nuevo (vacio) empieza ya editando: ahi solo se viene a dibujar.
+    let mut solo_mirar = pin.is_some() && escena.cuantos_visibles() > 0;
+    let mut herramienta_al_editar = gesto.herramienta;
+    if solo_mirar {
+        elegir_herramienta(&mut gesto, Herramienta::Mano);
+    }
     let mut arrastre_mirar: Option<presentar::Arrastre> = None;
     // Lo que dibuje el asistente mientras este lienzo esta abierto cae aqui,
     // centrado en lo que se ve (`asistente::al_lienzo`). El anotador de
@@ -1122,6 +1129,22 @@ fn abrir_en_modo(
                 match accion.map(modo_ventana::de_la_barra) {
                     Some(modo_ventana::DeLaBarra::Alternar) => alternar_modo = true,
                     Some(modo_ventana::DeLaBarra::Fijar) => pn.alternar_fijado(&ventana),
+                    Some(modo_ventana::DeLaBarra::Lapiz) => {
+                        if gesto.esta_escribiendo() {
+                            gesto.cerrar_texto(&mut escena);
+                        }
+                        solo_mirar = !solo_mirar;
+                        arrastre_mirar = None;
+                        if solo_mirar {
+                            herramienta_al_editar = gesto.herramienta;
+                            elegir_herramienta(&mut gesto, Herramienta::Mano);
+                        } else {
+                            elegir_herramienta(&mut gesto, herramienta_al_editar);
+                        }
+                        todo_sucio = true;
+                        interfaz_sucia = true;
+                        ventana.invalidar();
+                    }
                     // Como Escape o Salir: el texto a medias entra en lo
                     // que se guarda al volver.
                     Some(modo_ventana::DeLaBarra::Cerrar) => {
@@ -1290,7 +1313,10 @@ fn abrir_en_modo(
                     solo_mirar = !solo_mirar;
                     arrastre_mirar = None;
                     if solo_mirar {
+                        herramienta_al_editar = gesto.herramienta;
                         elegir_herramienta(&mut gesto, Herramienta::Mano);
+                    } else {
+                        elegir_herramienta(&mut gesto, herramienta_al_editar);
                     }
                     repintar_todo = true;
                 } else if let Some(pr) = presentacion.as_mut() {
@@ -2454,7 +2480,11 @@ fn abrir_en_modo(
                 }
                 interfaz_sucia = con_capas;
             }
-            pn.actualizar(&motor, &nombre_del_pin, &[]);
+            pn.actualizar(
+                &motor,
+                &nombre_del_pin,
+                &[crate::lector_pin::BotonLector { id: modo_ventana::BOTON_LAPIZ, icono: &pixpin_render::icono::material::EDIT, encendido: !solo_mirar }],
+            );
         }
         let vaciar = t_vuelta.elapsed();
         // **Las acciones de la pastilla del anotador** (`pastilla_pantalla`),

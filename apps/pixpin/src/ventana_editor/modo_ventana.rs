@@ -215,9 +215,14 @@ pub(crate) enum DeLaBarra {
     Fijar,
     /// Cerrar el lienzo guardando: lo mismo que Escape o Salir.
     Cerrar,
+    /// El lapiz: de solo mirar a editar y vuelta (19-oct-2026).
+    Lapiz,
     /// Nada (el nombre de una hoja se cambia en el chat).
     Nada,
 }
+
+/// El boton propio del lapiz en la barra del pin del lienzo.
+pub(crate) const BOTON_LAPIZ: u8 = 1;
 
 pub(crate) fn de_la_barra(a: crate::lector_pin::AccionPin) -> DeLaBarra {
     use crate::lector_pin::AccionPin;
@@ -225,6 +230,7 @@ pub(crate) fn de_la_barra(a: crate::lector_pin::AccionPin) -> DeLaBarra {
         AccionPin::PantallaCompleta => DeLaBarra::Alternar,
         AccionPin::Fijar => DeLaBarra::Fijar,
         AccionPin::Cerrar => DeLaBarra::Cerrar,
+        AccionPin::Propio(BOTON_LAPIZ) => DeLaBarra::Lapiz,
         AccionPin::Nombre | AccionPin::Propio(_) => DeLaBarra::Nada,
     }
 }

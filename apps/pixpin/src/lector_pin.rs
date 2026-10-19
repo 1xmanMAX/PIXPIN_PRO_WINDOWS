@@ -92,7 +92,6 @@ const TINTA: Color = Color { r: 0.96, g: 0.96, b: 0.97, a: 1.0 };
 const TENUE: Color = Color { r: 0.78, g: 0.78, b: 0.80, a: 1.0 };
 const ENCIMA: Color = Color { r: 1.0, g: 1.0, b: 1.0, a: 0.12 };
 const AZUL: Color = Color { r: 0.0, g: 0.376, b: 0.875, a: 1.0 };
-const DORADO: Color = Color { r: 0.95, g: 0.77, b: 0.33, a: 1.0 };
 
 /// Que hay en cada sitio de la barra (x desde, x hasta, que).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -748,7 +747,14 @@ fn pintar_barra(p: &pixpin_render::Pintor, tam: (f32, f32), e: f32, piezas: &[(f
     let icono = 20.0 * e;
     for (a, z, pieza) in piezas {
         let caja = RectF { x: *a, y: y0, ancho: z - a, alto: lado };
-        let activo = matches!(pieza, Pieza::Boton(AccionPin::Fijar)) && aspecto.fijado;
+        // Pulsado = relleno azul con el icono blanco, igual para fijar y para
+        // los propios encendidos (el lapiz al editar): un solo aspecto en
+        // todos los visores (19-oct-2026).
+        let activo = match pieza {
+            Pieza::Boton(AccionPin::Fijar) => aspecto.fijado,
+            Pieza::Boton(AccionPin::Propio(id)) => propios.iter().any(|b| b.id == *id && b.encendido),
+            _ => false,
+        };
         if activo {
             p.rellenar_redondeado(caja, 8.0 * e, AZUL);
         } else if aspecto.encima_de == Some(*pieza) && *pieza != Pieza::Asa {
@@ -770,7 +776,7 @@ fn pintar_barra(p: &pixpin_render::Pintor, tam: (f32, f32), e: f32, piezas: &[(f
             Pieza::Oscuro => p.icono(if aspecto.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, centrado, TINTA),
             Pieza::Boton(AccionPin::Propio(id)) => {
                 if let Some(b) = propios.iter().find(|b| b.id == *id) {
-                    p.icono(b.icono, centrado, if b.encendido { DORADO } else { TINTA });
+                    p.icono(b.icono, centrado, if b.encendido { Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 } } else { TINTA });
                 }
             }
             // A pantalla completa (si la barra sigue alli), el de salir de ella.
