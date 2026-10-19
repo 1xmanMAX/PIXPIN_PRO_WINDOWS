@@ -732,6 +732,9 @@ struct Estado {
     hwnd: isize,
     /// Los marcos numerados (`marcos_doc`), con la logica del plano.
     marcos: crate::marcos_doc::Marcos,
+    /// Lo que guarda cada marcador ademas de su sitio: el zoom y el sitio
+    /// exacto (`marcos_doc::Vistas`).
+    vistas: crate::marcos_doc::Vistas,
     /// Fotografiando los marcos para imprimirlos en grupo.
     fotos: Option<FotosDeMarcos>,
     /// Pintar solo las hojas, sin interfaz (para esas fotos).
@@ -919,6 +922,7 @@ fn abrir_con(
         pastilla_hasta: ahora_ms() + MS_DE_LA_PASTILLA,
         hwnd,
         marcos: crate::marcos_doc::Marcos::de(Some(ruta)),
+        vistas: crate::marcos_doc::Vistas::de_documento(Some(ruta)),
         fotos: None,
         fotografiando: false,
         panel: false,
@@ -2932,7 +2936,12 @@ fn poner_marca(e: &mut Estado, i: usize, ruta: &Path) {
     let pagina = s.floor() as i32;
     let (x, y) = marcas::en_la_pagina(pagina, s - pagina as f64, 0.5);
     let emoji = EMOJIS.get(i).copied().unwrap_or(EMOJIS[0]);
+    let antes: Vec<i64> = e.marcas.iter().map(|m| m.id).collect();
     e.marcas = marcas::con(&e.marcas, x, y, emoji, ahora_ms() as i64);
+    // Y la vista de ese momento: volver a ella es volver con el mismo zoom.
+    if let Some(nueva) = e.marcas.iter().find(|m| !antes.contains(&m.id)) {
+        e.vistas.poner(&nueva.id.to_string(), crate::marcos_doc::zoom_a_texto(e.zoom as f64, e.x as f64, e.y as f64));
+    }
     e.poniendo_marca = false;
     guardar_ajustes(e, ruta);
 }
@@ -2941,7 +2950,16 @@ fn poner_marca(e: &mut Estado, i: usize, ruta: &Path) {
 /// ver.
 fn ir_a_la_marca(e: &mut Estado, i: usize) {
     if let Some(mm) = e.marcas.get(i) {
-        e.y = e.hojas.y_de(mm.y);
+        // Con su vista guardada, a ella entera (zoom y sitio exacto); las de
+        // antes, solo a su altura.
+        if let Some((z, x, y)) = e.vistas.de_marca(&mm.id.to_string()).and_then(crate::marcos_doc::zoom_de_texto) {
+            e.zoom = z as f32;
+            e.x = x as f32;
+            e.y = y as f32;
+            e.zoom_cambiado = ahora_ms();
+        } else {
+            e.y = e.hojas.y_de(mm.y);
+        }
     }
 }
 
@@ -3565,6 +3583,7 @@ mod pruebas {
             pastilla_hasta: 0,
             hwnd: 0,
             marcos: Default::default(),
+            vistas: Default::default(),
             fotos: None,
             fotografiando: false,
             panel: false,
