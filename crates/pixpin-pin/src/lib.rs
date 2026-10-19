@@ -25,6 +25,7 @@ pub mod paleta;
 pub mod pegatina;
 pub mod panel_abiertos;
 pub mod remoto;
+mod riel_pin;
 pub mod tabla;
 pub mod ventana;
 pub mod video;

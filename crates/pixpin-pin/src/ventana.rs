@@ -104,6 +104,12 @@ pub enum CambioPin {
     EliminarPedido,
     /// Doble clic sobre imagen o nota: entrar a anotar (D47).
     AnotarPedido,
+    /// El lapiz del riel, pulsado mientras se anota: salir de anotar
+    /// guardando, como el boton de salir de la paleta.
+    SalirDeAnotarPedido,
+    /// El marco del riel: elegir una zona del pin e imprimirla. Lo resuelve
+    /// el gestor (`marco_imprimir` vive en la app).
+    ImprimirPedido,
     /// Menu de un pin de imagen: abrirlo en el lienzo del editor (D131). Lo
     /// resuelve el gestor, que conoce el almacen y el fichero de dibujo.
     AbrirLienzoPedido,
@@ -1204,6 +1210,7 @@ impl Pin {
         // La barra flotante tiene su propia superficie sobre el dispositivo
         // viejo: se suelta y renace con el nuevo la proxima vez.
         crate::barra_flotante::soltar();
+        crate::riel_pin::soltar();
         i.superficie.rehacer(&i.motor, d3d)?;
         rehacer_bitmap(i);
         // El video: un reproductor nuevo sobre el dispositivo nuevo, en el
@@ -1360,6 +1367,15 @@ impl Pin {
         if let Some(i) = interno_de(self.hwnd) {
             i.anotando = anotando;
             pintar(i);
+            // Anotando, el riel se queda a la vista con el lapiz encendido:
+            // pulsarlo otra vez es salir. Al salir se va con la barra y
+            // vuelve con ella al pasar el raton.
+            if anotando {
+                ensenar_riel(i, true);
+            } else {
+                crate::riel_pin::esconder(i.hwnd);
+                i.raton_encima = false;
+            }
         }
     }
 
@@ -1623,10 +1639,25 @@ fn ensenar_barra(i: &PinInterno) {
         t,
         i.tema_claro,
     );
+    ensenar_riel(i, false);
     // SAFETY: temporizador de la ventana propia; se mata al esconderla.
     unsafe {
         SetTimer(Some(i.hwnd), ID_TEMPORIZADOR_BARRA, RITMO_BARRA_MS, None);
     }
+}
+
+/// Ensena el riel del pin (el lapiz y el marco) a su lado.
+fn ensenar_riel(i: &PinInterno, anotando: bool) {
+    crate::riel_pin::mostrar(
+        &i.d3d,
+        &i.motor,
+        i.hwnd,
+        i.estado.rect(),
+        area_de_trabajo(i.hwnd),
+        i.escala_por_cien,
+        crate::menu::anotable(&i.contenido),
+        anotando,
+    );
 }
 
 /// Repinta la barra si es de este pin (cambio el zoom, la pagina, el video).
@@ -1638,6 +1669,7 @@ fn actualizar_barra(i: &PinInterno) {
 
 /// La vuelve a poner junto al pin, que se ha movido o cambiado de tamano.
 fn recolocar_barra(i: &PinInterno) {
+    crate::riel_pin::recolocar(i.hwnd, i.estado.rect(), area_de_trabajo(i.hwnd));
     if crate::barra_flotante::es_de(i.hwnd) {
         crate::barra_flotante::recolocar(i.hwnd, i.estado.rect(), area_de_trabajo(i.hwnd));
         crate::barra_flotante::actualizar(i.hwnd, datos_barra(i));
@@ -1699,9 +1731,38 @@ fn accion_de_marcas(i: &mut PinInterno, accion: crate::barra::AccionBarra) {
 
 fn esconder_barra(hwnd: HWND) {
     crate::barra_flotante::esconder(hwnd);
+    // Anotando, el riel no se va con la barra: lleva el lapiz para salir.
+    if !interno_de(hwnd).is_some_and(|i| i.anotando) {
+        crate::riel_pin::esconder(hwnd);
+    }
     // SAFETY: mata el temporizador propio (si lo habia).
     unsafe {
         let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_BARRA);
+    }
+}
+
+/// Lo que se pulso en el riel de este pin. `anotando` es lo que el riel
+/// ensenaba: el lapiz encendido sale, apagado entra.
+pub(crate) fn accion_de_riel(hwnd: HWND, boton: crate::riel_pin::BotonRiel, anotando: bool) {
+    use crate::riel_pin::BotonRiel;
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    match boton {
+        BotonRiel::Lapiz if anotando || i.anotando => {
+            (i.al_cambiar)(CambioPin::SalirDeAnotarPedido)
+        }
+        BotonRiel::Lapiz => {
+            esconder_barra(hwnd);
+            (i.al_cambiar)(CambioPin::AnotarPedido);
+        }
+        BotonRiel::Marco => {
+            // Fuera la barra (y el riel si no se anota): el marco congela lo
+            // que se ve del pin y no deben salir en la foto.
+            i.raton_encima = false;
+            esconder_barra(hwnd);
+            (i.al_cambiar)(CambioPin::ImprimirPedido);
+        }
     }
 }
 
@@ -4835,6 +4896,9 @@ extern "system" fn procedimiento_pin(
                 && c.y < r.bottom;
             let sigue = en_pin
                 || crate::barra_flotante::contiene(c.x, c.y)
+                || crate::riel_pin::contiene(c.x, c.y)
+                || interno_de(hwnd)
+                    .is_some_and(|i| crate::riel_pin::en_el_paso(i.estado.rect(), c.x, c.y))
                 || interno_de(hwnd)
                     .is_some_and(|i| crate::barra_flotante::en_el_paso(i.estado.rect(), c.x, c.y))
                 || crate::barra_flotante::ocupada();
@@ -5462,6 +5526,7 @@ extern "system" fn procedimiento_pin(
         WM_NCDESTROY => {
             // Un pin que se va no deja su barra ni sus guias a la vista.
             crate::barra_flotante::esconder(hwnd);
+            crate::riel_pin::esconder(hwnd);
             // SAFETY: recupera el Box cedido en Pin::nuevo exactamente una
             // vez y deja el USERDATA a cero antes de soltarlo.
             unsafe {
@@ -6334,6 +6399,108 @@ mod pruebas {
         );
         drop(panel);
         drop(nota);
+        drop(foto);
+        bombear(100);
+    }
+
+    /// **El riel del pin** (19-oct-2026): el lapiz y el marco a la derecha
+    /// de una foto, con la barra (ya sin lapiz) encima; luego anotando, con
+    /// el lapiz encendido y la barra fuera. Deja dos PNG en el temporal
+    /// (`pixpin-riel-pin.png` y `pixpin-riel-pin-anotando.png`).
+    #[test]
+    #[ignore = "necesita GPU y escritorio; --ignored y mirar el PNG"]
+    fn muestra_del_riel_del_pin() {
+        let d3d = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        let textos = crate::menu::pruebas::textos();
+        let (w, h) = (420u32, 260u32);
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                px.extend_from_slice(&[
+                    (200 + x * 50 / w) as u8,
+                    (160 + y * 60 / h) as u8,
+                    (90 + x * 40 / w) as u8,
+                    255,
+                ]);
+            }
+        }
+        let rect = Rect {
+            x: 200,
+            y: 220,
+            ancho: w,
+            alto: h,
+        };
+        let foto = Pin::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Contenido::Imagen(ImagenRgba {
+                ancho: w,
+                alto: h,
+                pixeles: px,
+            }),
+            rect,
+            100,
+            false,
+            16,
+            Box::new(|_| {}),
+        )
+        .unwrap();
+        foto.poner_textos(textos.clone());
+        bombear(300);
+
+        let i = interno_de(foto.hwnd()).unwrap();
+        ensenar_barra(i);
+        // SAFETY: temporizador de una ventana propia de la prueba.
+        unsafe {
+            let _ = KillTimer(Some(foto.hwnd()), ID_TEMPORIZADOR_BARRA);
+        }
+        let r = i.estado.rect();
+        let (rx, ry) = (r.derecha() + 20, r.y + 20);
+        assert!(crate::riel_pin::contiene(rx, ry), "el riel, a la derecha");
+        bombear(500);
+        let k = {
+            use windows::Win32::Graphics::Gdi::{
+                DESKTOPHORZRES, GetDC, GetDeviceCaps, HORZRES, ReleaseDC,
+            };
+            // SAFETY: DC de pantalla pedido y soltado aqui.
+            unsafe {
+                let dc = GetDC(None);
+                let k = GetDeviceCaps(Some(dc), DESKTOPHORZRES) as f32
+                    / GetDeviceCaps(Some(dc), HORZRES).max(1) as f32;
+                ReleaseDC(None, dc);
+                k
+            }
+        };
+        let z = |v: i32| (v as f32 * k) as i32;
+        let zona = Rect {
+            x: z(150),
+            y: z(140),
+            ancho: z(560) as u32,
+            alto: z(380) as u32,
+        };
+        let guardar = |nombre: &str| {
+            let png = pixpin_codec::codificar_png(&capturar_pantalla(zona)).unwrap();
+            let ruta = std::env::temp_dir().join(nombre);
+            std::fs::write(&ruta, png).unwrap();
+            println!("captura en {}", ruta.display());
+        };
+        guardar("pixpin-riel-pin.png");
+
+        // Anotando: la barra se va, el riel se queda con el lapiz encendido.
+        esconder_barra(foto.hwnd());
+        foto.poner_modo_anotacion(true);
+        bombear(400);
+        assert!(!crate::barra_flotante::es_de(foto.hwnd()));
+        assert!(crate::riel_pin::contiene(rx, ry), "anotando, el riel se queda");
+        guardar("pixpin-riel-pin-anotando.png");
+
+        foto.poner_modo_anotacion(false);
+        bombear(100);
+        assert!(
+            !crate::riel_pin::contiene(rx, ry),
+            "caso negativo: al salir de anotar se va"
+        );
         drop(foto);
         bombear(100);
     }

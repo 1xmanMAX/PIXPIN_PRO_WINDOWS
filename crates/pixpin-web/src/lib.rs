@@ -44,8 +44,8 @@ use webview2_com::Microsoft::Web::WebView2::Win32::{
 use webview2_com::{
     AddScriptToExecuteOnDocumentCreatedCompletedHandler, CoTaskMemPWSTR,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    DownloadStartingEventHandler, StateChangedEventHandler, WebMessageReceivedEventHandler,
-    take_pwstr,
+    DownloadStartingEventHandler, ExecuteScriptCompletedHandler, StateChangedEventHandler,
+    WebMessageReceivedEventHandler, take_pwstr,
 };
 use windows::Win32::Foundation::{E_POINTER, HWND, RECT};
 use windows::core::{Interface, PCWSTR, PWSTR};
@@ -170,6 +170,20 @@ impl VisorHtml {
         }
     }
 
+    /// **Corre `js` en la pagina** y le da a `al_volver` lo que devuelva,
+    /// en JSON (`null` si no devuelve nada o fallo). Llega en este mismo
+    /// hilo, al bombear sus mensajes. Es lo que usa el riel de los visores
+    /// (19-oct-2026) para saber por donde va la pagina y llevarla a una
+    /// marca.
+    pub fn ejecutar(&self, js: &str, al_volver: Box<dyn FnOnce(String) + 'static>) {
+        // SAFETY: `self.controlador` vive mientras `self`; la vista sale de
+        // el y solo se usa en esta llamada.
+        match unsafe { self.controlador.CoreWebView2() } {
+            Ok(v) => ejecutar_en(&v, js, al_volver),
+            Err(e) => tracing::warn!(error = %e, "sin vista para correr el guion"),
+        }
+    }
+
     /// Si el runtime de WebView2 esta instalado. Sin el, quien llama abre el
     /// html en el navegador como hasta ahora.
     pub fn hay_runtime() -> bool {
@@ -221,6 +235,21 @@ pub(crate) fn poner_esquema(controlador: &ICoreWebView2Controller, oscuro: bool)
     };
     if let Err(e) = hecho {
         tracing::warn!(error = %e, "el WebView2 no deja elegir el esquema de color");
+    }
+}
+
+/// Corre `js` en `vista` y le pasa el resultado (JSON) a `al_volver`; ver
+/// [`VisorHtml::ejecutar`].
+pub(crate) fn ejecutar_en(vista: &ICoreWebView2, js: &str, al_volver: Box<dyn FnOnce(String) + 'static>) {
+    let guion = CoTaskMemPWSTR::from(js);
+    let manejador = ExecuteScriptCompletedHandler::create(Box::new(move |hecho, resultado| {
+        al_volver(if hecho.is_ok() { resultado } else { "null".into() });
+        Ok(())
+    }));
+    // SAFETY: `guion` vive durante la llamada y WebView2 lo copia; el
+    // manejador es un objeto COM propio que WebView2 retiene hasta llamarlo.
+    if let Err(e) = unsafe { vista.ExecuteScript(*guion.as_ref().as_pcwstr(), &manejador) } {
+        tracing::warn!(error = %e, "no se pudo correr el guion en la pagina");
     }
 }
 

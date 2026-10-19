@@ -156,6 +156,18 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         anyhow::bail!("sin vista previa para {}", ruta.display());
     };
     vista_previa::pintar_fondo(ventana.handle());
+    // **El riel de los visores** (el lapiz y el marco; sin marcas: la vista
+    // de Office no dice por donde va), por encima de la vista de Office.
+    let escala = monitor.escala_por_cien;
+    let mut riel = crate::visor_html::riel::RielDeLaVista::nuevo(
+        motor.clone(),
+        &recursos.d3d(),
+        &ventana,
+        crate::visor_html::riel::en_pantalla(pin.area, dentro),
+        escala,
+        crate::visor_html::riel::Opciones { documento: None, con_pagina: false, titulo: nombre.clone() },
+        textos,
+    );
     let ext = vista_previa::extension_de(ruta);
     let propios = botones(&nombre_fichero);
     let mut contado = false;
@@ -167,6 +179,14 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         pixpin_shell::overlay::bombear_pendientes();
         let mut teclas: Vec<u32> = vista.tomar_teclas();
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if let Some(r) = riel.as_mut()
+                && r.es_suya(hwnd)
+            {
+                if let crate::visor_html::riel::Pide::Tecla(vk) = r.evento(hwnd, &evento, None, textos) {
+                    teclas.push(vk);
+                }
+                continue;
+            }
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
@@ -240,13 +260,22 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
             _ => {}
         }
         pin.actualizar(&motor, &nombre, &propios);
+        if let Some(r) = riel.as_mut() {
+            let dentro = area_de_la_vista(pin.area.ancho, pin.area.alto, borde(&pin));
+            r.seguir(crate::visor_html::riel::en_pantalla(pin.area, dentro), escala, pin.fijado, false);
+            r.tic(None);
+        }
         let tope = if pin.quiere_reloj() { 50 } else { 250 };
+        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
 
     // Cerrar: se esconde ya (que se note al instante) y luego se quita la
     // vista. Si Office esta colgado y el hilo no contesta, la ventana se
     // queda escondida en vez de destruirse: destruirla esperaria al hilo.
+    if let Some(r) = riel.take() {
+        r.cerrar();
+    }
     drop(pin);
     ventana.ocultar();
     let cerrada = vista.cerrar(Duration::from_millis(1500));

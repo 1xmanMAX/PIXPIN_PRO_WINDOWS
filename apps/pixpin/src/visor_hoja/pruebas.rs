@@ -39,6 +39,15 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
         aviso: None,
         hwnd: 0,
         anotado: Default::default(),
+        nombre: String::new(),
+        area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
+        anotando: false,
+        poniendo_marca: false,
+        encima: pixpin_ui::riel_marcas::DestinoRiel::Fuera,
+        marcas: Vec::new(),
+        recuerdo: super::riel::Recuerdo::de(None).0,
+        tinta_cambio: false,
+        trazo: false,
     }
 }
 

@@ -73,6 +73,8 @@ pub fn elegir(area: Rect, textos: &Catalogo) -> Result<Option<ImagenRgba>> {
     let ventana = VentanaOverlay::nueva(area).context("sin ventana")?;
     let superficie = Superficie::nueva(&motor, d.d3d(), ventana.handle(), area.ancho, area.alto).context("sin superficie")?;
     let fondo = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).context("sin fondo")?;
+    #[cfg(test)]
+    pruebas::VENTANA.store(ventana.handle().0 as isize, std::sync::atomic::Ordering::SeqCst);
     ventana.mostrar();
     ventana.enfocar();
     ventana.poner_cursor(pixpin_shell::overlay::FormaCursorWin::Cruz);
@@ -83,16 +85,26 @@ pub fn elegir(area: Rect, textos: &Catalogo) -> Result<Option<ImagenRgba>> {
     let mut elegido: Option<Rect> = None;
     let mut sucio = true;
     let a_local = |p: Punto| Punto { x: p.x - area.x, y: p.y - area.y };
+    let mut quieto = std::time::Instant::now();
     'bucle: loop {
         if sucio {
             pintar(&motor, &superficie, &fondo, area, desde.map(|a| caja(a, hasta)), &pista, escala);
             sucio = false;
         }
         pixpin_shell::overlay::esperar_eventos(Some(100));
+        // Sin bombear, el raton nunca llega a la ventana del marco.
+        pixpin_shell::overlay::bombear_pendientes();
+        // Olvidado abierto (o su ventana perdio el raton): a los 3 minutos sin
+        // nada, se cierra solo y el visor vuelve a atender.
+        if quieto.elapsed().as_secs() >= 180 {
+            tracing::info!("marco: 3 minutos sin nada, se cierra");
+            break 'bucle;
+        }
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
                 continue;
             }
+            quieto = std::time::Instant::now();
             match ev {
                 EventoOverlay::BotonPulsado(p) => {
                     desde = Some(a_local(p));
@@ -216,38 +228,72 @@ fn en_el_papel(foto: (f32, f32), papel: (f32, f32)) -> RectF {
     RectF { x: (papel.0 - w) / 2.0, y: margen, ancho: w, alto: h }
 }
 
-/// El dialogo moderno de Windows con la vista previa; si no se abre, el
-/// clasico.
+/// **Lo congelado, listo para el papel**: si lo que se ve va en modo noche
+/// (fondo oscuro), se le devuelve la luz (la misma inversion que conserva el
+/// tono de `pixpin_render::oscuro`), para no imprimir una hoja negra con
+/// letra blanca. Lo claro va tal cual.
+fn para_papel(mut foto: ImagenRgba) -> ImagenRgba {
+    let n = (foto.pixeles.len() / 4).max(1);
+    let suma: u64 = foto
+        .pixeles
+        .chunks_exact(4)
+        .map(|p| (p[0] as u64 * 299 + p[1] as u64 * 587 + p[2] as u64 * 114) / 1000)
+        .sum();
+    if suma / n as u64 >= 110 {
+        return foto;
+    }
+    for p in foto.pixeles.chunks_exact_mut(4) {
+        let (r, g, b) = pixpin_render::oscuro::invertir_luz_u8(p[0], p[1], p[2]);
+        p[0] = r;
+        p[1] = g;
+        p[2] = b;
+    }
+    foto
+}
+
+/// El dialogo moderno de Windows con la vista previa; si no se abre (o ya
+/// fallo en esta sesion), el clasico, que imprime lo mismo.
 fn imprimir(ventana: isize, foto: ImagenRgba, titulo: &str) -> Result<()> {
+    let foto = para_papel(foto);
     let apaisada = foto.ancho > foto.alto;
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
-    let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
     if !pixpin_render::imprimir_moderno::roto() {
+        let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
         let pedido = pixpin_render::imprimir_moderno::Pedido { titulo: titulo.to_string(), apaisada, opcion: None, ppp_previa: 144.0 };
-        let doc = ZonaImpresa { foto, bitmap: None };
-        return pixpin_render::imprimir_moderno::mostrar(HWND(ventana as *mut _), pedido, d.d3d().clone(), motor, Box::new(doc))
-            .context("el dialogo de imprimir no se abrio");
+        let doc = ZonaImpresa { foto: foto.clone(), bitmap: None };
+        match pixpin_render::imprimir_moderno::mostrar(HWND(ventana as *mut _), pedido, d.d3d().clone(), motor, Box::new(doc)) {
+            Ok(()) => return Ok(()),
+            Err(e) => tracing::warn!(?e, "marco: sin dialogo moderno de imprimir, el clasico"),
+        }
     }
     let Some(eleccion) = pixpin_shell::imprimir::pedir_impresion(HWND(ventana as *mut _), 1, false, apaisada) else {
         return Ok(());
     };
-    let mut doc = ZonaImpresa { foto, bitmap: None };
+    let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
+    a_la_impresora(&motor, foto, &eleccion.impresora, Some(&eleccion.devmode), eleccion.papel, titulo, None)
+}
+
+/// Imprime la zona en `impresora` (o, con `fichero`, escribe ahi lo que
+/// saldria por ella: las pruebas con «Microsoft Print to PDF»).
+fn a_la_impresora(
+    motor: &MotorRender,
+    foto: ImagenRgba,
+    impresora: &str,
+    devmode: Option<&[u8]>,
+    papel: (f32, f32),
+    titulo: &str,
+    fichero: Option<&std::path::Path>,
+) -> Result<()> {
     use pixpin_render::imprimir_moderno::Documento;
-    doc.paginar(&motor, None);
+    let mut doc = ZonaImpresa { foto, bitmap: None };
+    doc.paginar(motor, None);
     pixpin_render::imprimir::imprimir(
-        &motor,
-        &pixpin_render::imprimir::Trabajo {
-            impresora: &eleccion.impresora,
-            nombre: titulo,
-            devmode: Some(&eleccion.devmode),
-            paginas: &[eleccion.papel],
-            fichero: None,
-        },
-        &mut |i, p| doc.pintar(i, pixpin_render::imprimir_moderno::Pagina { papel: eleccion.papel, escala: 1.0 }, p),
+        motor,
+        &pixpin_render::imprimir::Trabajo { impresora, nombre: titulo, devmode, paginas: &[papel], fichero },
+        &mut |i, p| doc.pintar(i, pixpin_render::imprimir_moderno::Pagina { papel, escala: 1.0 }, p),
     )
     .context("la impresora no acepto el trabajo")
 }
-
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -276,5 +322,90 @@ mod pruebas {
         // Una enorme: reducida hasta caber entre los margenes.
         let r = en_el_papel((4000.0, 1000.0), a4);
         assert!(r.ancho <= a4.0 - 2.0 * 96.0 / 2.54 + 0.01);
+    }
+
+    /// La ventana del marco abierta ahora (para mandarle el raton).
+    pub(super) static VENTANA: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+    #[test]
+    fn lo_oscuro_se_aclara_para_el_papel_y_lo_claro_no_se_toca() {
+        // Una hoja en noche: casi todo fondo negro y un poco de letra blanca.
+        let mut pixeles = [20u8, 20, 22, 255].repeat(9);
+        pixeles.extend([240, 240, 240, 255]);
+        let oscura = ImagenRgba { ancho: 10, alto: 1, pixeles };
+        let p = para_papel(oscura);
+        assert!(p.pixeles[0] > 200, "el fondo negro pasa a claro: {:?}", &p.pixeles[..4]);
+        assert!(p.pixeles[36] < 60, "la letra blanca pasa a oscura: {:?}", &p.pixeles[36..]);
+        let clara = ImagenRgba { ancho: 2, alto: 1, pixeles: vec![250, 250, 250, 255, 10, 10, 10, 255] };
+        assert_eq!(para_papel(clara.clone()), clara);
+    }
+
+    /// La vista previa del dialogo: la zona sale en el papel, arriba y al
+    /// centro, y el resto del papel blanco.
+    #[test]
+    #[ignore = "necesita la GPU"]
+    fn la_vista_previa_lleva_la_zona_en_el_papel() {
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let roja = ImagenRgba { ancho: 300, alto: 100, pixeles: [220u8, 30, 30, 255].repeat(300 * 100) };
+        let a4 = pixpin_render::imprimir_moderno::A4;
+        let (_, (w, h, px)) = pixpin_render::imprimir_moderno::miniatura_rgba(
+            Box::new(ZonaImpresa { foto: roja, bitmap: None }),
+            motor,
+            d.d3d().clone(),
+            a4,
+            None,
+            0,
+            a4.0,
+            96.0,
+        )
+        .expect("miniatura");
+        let en = |x: f32, y: f32| {
+            let (x, y) = ((x * w as f32) as usize, (y * h as f32) as usize);
+            let i = (y * w as usize + x) * 4;
+            [px[i], px[i + 1], px[i + 2]]
+        };
+        let r = en_el_papel((300.0, 100.0), a4);
+        let centro = en((r.x + r.ancho / 2.0) / a4.0, (r.y + r.alto / 2.0) / a4.1);
+        assert!(centro[0] > 180 && centro[1] < 90, "la zona, en rojo: {centro:?}");
+        let abajo = en(0.5, 0.9);
+        assert!(abajo.iter().all(|c| *c > 240), "lo demas, papel blanco: {abajo:?}");
+    }
+
+    /// **El gesto entero**: congelar un trozo de la pantalla, arrastrar un
+    /// recuadro (con el raton de mentira, a la ventana del marco) y que lo
+    /// elegido salga por «Microsoft Print to PDF» a un fichero.
+    #[test]
+    #[ignore = "abre una ventana encima de la pantalla y usa la impresora PDF de Windows"]
+    fn el_gesto_entero_imprime_lo_arrastrado() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let area = Rect { x: 200, y: 200, ancho: 600, alto: 400 };
+        let raton = std::thread::spawn(|| {
+            let t = std::time::Instant::now();
+            let mut h = 0;
+            while h == 0 && t.elapsed().as_secs() < 10 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                h = VENTANA.load(std::sync::atomic::Ordering::SeqCst);
+            }
+            eprintln!("marco: ventana {h}");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            pixpin_shell::overlay::simular_raton(h, 0, 50, 40);
+            pixpin_shell::overlay::simular_raton(h, 1, 150, 90);
+            pixpin_shell::overlay::simular_raton(h, 1, 250, 140);
+            pixpin_shell::overlay::simular_raton(h, 2, 250, 140);
+        });
+        eprintln!("marco: eligiendo");
+        let foto = elegir(area, &textos).expect("elegir").expect("un recuadro");
+        eprintln!("marco: elegido {}x{}", foto.ancho, foto.alto);
+        raton.join().unwrap();
+        assert_eq!((foto.ancho, foto.alto), (200, 100), "lo arrastrado, ni mas ni menos");
+        let pdf = std::env::temp_dir().join(format!("pixpin-marco-{}.pdf", std::process::id()));
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        a_la_impresora(&motor, para_papel(foto), "Microsoft Print to PDF", None, pixpin_render::imprimir_moderno::A4, "marco", Some(&pdf)).expect("imprimir");
+        eprintln!("marco: impreso");
+        let bytes = std::fs::read(&pdf).expect("el pdf");
+        assert!(bytes.starts_with(b"%PDF") && bytes.len() > 1000, "{} bytes", bytes.len());
+        let _ = std::fs::remove_file(&pdf);
     }
 }

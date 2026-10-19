@@ -298,6 +298,26 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
     })
     .map_err(|e| anyhow::anyhow!("{e}"))?;
     tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: pagina pedida");
+    // **El riel de los visores** (el marcador, el lapiz de tinta y el marco),
+    // en sus ventanas por encima de la pagina. El lapiz de la barra sigue
+    // siendo el de escribir el texto; el del riel es el de la tinta.
+    let escala = (e * 100.0).round() as u32;
+    let mut riel = match (&recursos, &motor) {
+        (Some(r), Some(m)) => crate::visor_html::riel::RielDeLaVista::nuevo(
+            Rc::clone(m),
+            &r.d3d(),
+            &ventana,
+            crate::visor_html::riel::en_pantalla(pin.area, pin.area_de_la_vista()),
+            escala,
+            crate::visor_html::riel::Opciones {
+                documento: documento_del_riel(&raiz, &cx.actual.borrow()),
+                con_pagina: true,
+                titulo: en_la_barra.clone(),
+            },
+            cx.textos,
+        ),
+        _ => None,
+    };
     let mut area = pin.area;
 
     let mut ultimo_conocido = cx.texto.clone();
@@ -336,9 +356,20 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         // Atiende la cola del hilo: la pagina y, por `pixpin_shell`, la
         // ventana del pin y su barra.
         let tope = if pin.quiere_reloj() { 50 } else { 250 };
+        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
         let sucesos = pagina.esperar(tope);
         let mut teclas: Vec<u32> = Vec::new();
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if let Some(r) = riel.as_mut()
+                && r.es_suya(h)
+            {
+                match r.evento(h, &evento, Some(&pagina), cx.textos) {
+                    crate::visor_html::riel::Pide::Teclado => pagina.enfocar(),
+                    crate::visor_html::riel::Pide::Tecla(vk) => teclas.push(vk),
+                    crate::visor_html::riel::Pide::Nada => {}
+                }
+                continue;
+            }
             if pin.es_de_la_barra(h) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
@@ -398,6 +429,10 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
             // La luna/sol (la de esta barra o la de otro visor abierto).
             pagina.poner_oscuro(pin.oscuro(), fondo(pin.oscuro()));
             pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()));
+        }
+        if let Some(r) = riel.as_mut() {
+            r.seguir(crate::visor_html::riel::en_pantalla(pin.area, pin.area_de_la_vista()), escala, pin.fijado, pin.oscuro());
+            r.tic(Some(&pagina));
         }
         for s in sucesos {
             match s {
@@ -609,6 +644,9 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         }
     }
     // Cerrar: se esconde ya (que se note al instante) y luego se suelta todo.
+    if let Some(r) = riel.take() {
+        r.cerrar();
+    }
     drop(pin);
     ventana.ocultar();
     drop(pagina);
@@ -636,7 +674,7 @@ pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
     let b = |id, icono, encendido| BotonLector { id, icono, encendido };
     let mut v = Vec::with_capacity(7);
     if leyendo {
-        v.push(b(EDITAR, &material::EDIT, false));
+        v.push(b(EDITAR, &material::EDIT_NOTE, false));
     } else {
         v.push(b(VER, &material::VISIBILITY, false));
         v.push(b(DESHACER, &material::UNDO, false));
@@ -694,6 +732,21 @@ fn alternar_pantalla(pin: &mut PinLector, ventana: &mut VentanaOverlay, pagina: 
     pin.alternar_pantalla_completa(ventana);
     pagina.mandar(&json!({"tipo": "pantalla", "si": pin.pantalla_completa}).to_string());
 }
+/// **De que cuelgan las marcas y la tinta del riel** de una nota: un `.md`
+/// suelto, de el mismo (como un Word); una nota de un proyecto, de un
+/// nombre fijo en la cache (solo en este PC); una nota nueva, de nada (solo
+/// mientras este abierta).
+pub fn documento_del_riel(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
+    let limpio = |s: &str| s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect::<String>();
+    match destino {
+        Destino::Fichero { ruta } => Some(ruta.clone()),
+        Destino::Mensaje { proyecto, codigo } => {
+            Some(raiz.join("cache").join("riel-notas").join(format!("{}-{}.md", limpio(proyecto), limpio(codigo))))
+        }
+        Destino::Nueva { .. } => None,
+    }
+}
+
 fn titulo_de_ventana(titulo: &str, t: &Catalogo) -> String {
     if titulo.trim().is_empty() {
         t.t("nota-md-nueva")

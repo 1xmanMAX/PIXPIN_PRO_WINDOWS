@@ -128,8 +128,14 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         };
         // En la barra, el tipo y el nombre, como en los demas pines.
         let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
-        let tipo = crate::plano_cad::tipo_de_archivo(&ruta);
-        if let Err(e) = pixpin_cad::ventana3d::ver_con_tipo(&nombre, tipo, rx, textos(idioma), extras) {
+        // El riel de la derecha: el marco para imprimir de todos los visores
+        // (se congela la ventana, se arrastra un recuadro y se imprime).
+        let titulo_marco = nombre.clone();
+        let barra = pixpin_cad::ventana3d::Barra3d {
+            tipo: crate::plano_cad::tipo_de_archivo(&ruta),
+            marco: Some(Box::new(move |v| crate::marco_imprimir::de_la_ventana(Some(v), &titulo_marco, crate::ventana_editor::exportar::textos()))),
+        };
+        if let Err(e) = pixpin_cad::ventana3d::ver_con_barra(&nombre, barra, rx, textos(idioma), extras) {
             tracing::warn!(%e, "no se pudo abrir el visor de modelos");
             let _ = pixpin_shell::abrir(&ruta);
         }

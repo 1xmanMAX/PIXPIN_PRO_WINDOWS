@@ -485,8 +485,10 @@ pub fn medida(d: f64, unidades: u32) -> String {
 
 /// **La barra, en el orden de la de los demas visores** (la del lector como
 /// pin): el asa, el nombre con el recuadro de su tipo, los botones propios
-/// y, a la derecha, el tema, pantalla completa, el pin y cerrar.
-const BOTONES: [&str; 11] = ["asa", "nombre", "acotar", "marcos", "anotar", "tres", "letras", "tema", "pantalla", "fijar", "cerrar"];
+/// y, a la derecha, el tema, pantalla completa, el pin y cerrar. El lapiz y
+/// el marco para imprimir van en el riel de la derecha ([`riel`]), como en
+/// los lectores de PDF y Word.
+const BOTONES: [&str; 9] = ["asa", "nombre", "acotar", "tres", "letras", "tema", "pantalla", "fijar", "cerrar"];
 pub(crate) const ALTO_BARRA: f64 = 48.0;
 const BOTON: f64 = 40.0;
 /// Las medidas del asa, el nombre y el recuadro del tipo: las del lector.
@@ -495,6 +497,8 @@ const NOMBRE_MAX: f64 = 260.0;
 const TAM_NOMBRE: f64 = 13.0;
 const CUADRO: f64 = 24.0;
 const CUADRO_AIRE: f64 = 7.0;
+/// El icono de cada boton: 20 px, como en la barra del lector.
+const ICONO: f64 = 20.0;
 
 /// **El tipo de archivo** para el recuadro de la barra: el rotulo (la
 /// extension), el color de su familia y si la letra va oscura. Lo pone la
@@ -671,7 +675,7 @@ pub(crate) fn barra(textos: &mut Textos, e: f64, botones: &[&str], cab: &Cabecer
     let (fondo, tinta, hover, tenue) = if claro {
         (rgba(0xF9, 0xF9, 0xFB), rgba(0x1C, 0x1C, 0x1E), 0x14000000u32, rgba(0x6E, 0x6E, 0x73))
     } else {
-        (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x24ffffffu32, rgba(0xC7, 0xC7, 0xCC))
+        (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x1Fffffffu32, rgba(0xC7, 0xC7, 0xCC))
     };
     let (w, h) = (ancho_barra(e, botones, cab), ALTO_BARRA * e);
     rect_en(&mut c, 0.0, 0.0, w, h, fondo, CAPA_FONDO);
@@ -688,225 +692,108 @@ pub(crate) fn barra(textos: &mut Textos, e: f64, botones: &[&str], cab: &Cabecer
         } else if encima == Some(i) && botones[i] != "asa" {
             redondeado_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, 8.0 * e, hover, CAPA_RAYAS * 10.0);
         }
-        let (cx, cy) = ((x0 + x1) / 2.0, h / 2.0);
-        let r = 8.0 * e;
         let col = if activo {
             rgba(255, 255, 255)
         } else if avisos.get(i).copied().unwrap_or(false) {
             rgba(0xFF, 0xB0, 0x20)
+        } else if botones[i] == "asa" {
+            tenue
         } else {
             tinta
         };
-        match botones[i] {
-            "nombre" => {
-                // El recuadro del tipo (su color, la extension dentro) y el
-                // nombre, como en la barra del lector.
-                let mut x = x0 + 8.0 * e;
-                if let Some(t) = &cab.tipo {
-                    let lado = CUADRO * e;
-                    let (bx, by) = (x, (h - lado) / 2.0);
-                    redondeado_en(&mut c, bx, by, bx + lado, by + lado, 5.0 * e, rgba(t.fondo[0], t.fondo[1], t.fondo[2]), CAPA_RAYAS);
-                    let letra = if t.tinta_oscura { rgba(0x3a, 0x2b, 0x00) } else { rgba(255, 255, 255) };
-                    // La letra mas grande que deja la extension dentro, con un margen.
-                    let mut tam = 9.5 * e;
-                    let mut ancho = textos.medir_pantalla(&t.rotulo, tam);
-                    let cabe = lado - 4.0 * e;
-                    if ancho > cabe && ancho > 0.0 {
-                        tam *= cabe / ancho;
-                        ancho = textos.medir_pantalla(&t.rotulo, tam);
-                    }
-                    textos.en_pantalla(&mut c, &t.rotulo, bx + (lado - ancho) / 2.0, by + lado / 2.0 + 0.36 * tam, tam, letra, bx + lado);
-                    x += (CUADRO + CUADRO_AIRE) * e;
+        if botones[i] == "nombre" {
+            // El recuadro del tipo (su color, la extension dentro) y el
+            // nombre, como en la barra del lector.
+            let mut x = x0 + 8.0 * e;
+            if let Some(t) = &cab.tipo {
+                let lado = CUADRO * e;
+                let (bx, by) = (x, (h - lado) / 2.0);
+                redondeado_en(&mut c, bx, by, bx + lado, by + lado, 5.0 * e, rgba(t.fondo[0], t.fondo[1], t.fondo[2]), CAPA_RAYAS);
+                let letra = if t.tinta_oscura { rgba(0x3a, 0x2b, 0x00) } else { rgba(255, 255, 255) };
+                // La letra mas grande que deja la extension dentro, con un margen.
+                let mut tam = 9.5 * e;
+                let mut ancho = textos.medir_pantalla(&t.rotulo, tam);
+                let cabe = lado - 4.0 * e;
+                if ancho > cabe && ancho > 0.0 {
+                    tam *= cabe / ancho;
+                    ancho = textos.medir_pantalla(&t.rotulo, tam);
                 }
-                if !cab.nombre.is_empty() {
-                    let tam = TAM_NOMBRE * e;
-                    textos.en_pantalla(&mut c, &cab.nombre, x, h / 2.0 + 0.36 * tam, tam, tinta, x1 - 8.0 * e);
-                }
+                textos.en_pantalla(&mut c, &t.rotulo, bx + (lado - ancho) / 2.0, by + lado / 2.0 + 0.36 * tam, tam, letra, bx + lado);
+                x += (CUADRO + CUADRO_AIRE) * e;
             }
-            "pantalla" => {
-                // Cuatro esquinas: hacia fuera para entrar, hacia dentro para salir.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                for (sx, sy) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-                    let (esq, a, b2) = if pantalla_completa {
-                        (p(3.0 * sx, 3.0 * sy), p(7.0 * sx, 3.0 * sy), p(3.0 * sx, 7.0 * sy))
-                    } else {
-                        (p(7.0 * sx, 7.0 * sy), p(3.0 * sx, 7.0 * sy), p(7.0 * sx, 3.0 * sy))
-                    };
-                    raya(&mut c, a, esq, 1.8 * e, col);
-                    raya(&mut c, esq, b2, 1.8 * e, col);
-                    // La esquina, llena (dos rayas dejan un mordisco).
-                    rect_en(&mut c, esq[0] - 0.9 * e, esq[1] - 0.9 * e, esq[0] + 0.9 * e, esq[1] + 0.9 * e, col, CAPA_RAYAS);
-                }
+            if !cab.nombre.is_empty() {
+                let tam = TAM_NOMBRE * e;
+                textos.en_pantalla(&mut c, &cab.nombre, x, h / 2.0 + 0.36 * tam, tam, tinta, x1 - 8.0 * e);
             }
-            "cerrar" => {
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                raya(&mut c, p(-6.0, -6.0), p(6.0, 6.0), 1.8 * e, col);
-                raya(&mut c, p(6.0, -6.0), p(-6.0, 6.0), 1.8 * e, col);
-            }
-            "letras" => {
-                // «Aa»: una A grande y una a pequeña, de rayas.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                raya(&mut c, p(-10.0, 7.0), p(-5.0, -7.0), 1.6 * e, col);
-                raya(&mut c, p(-5.0, -7.0), p(0.0, 7.0), 1.6 * e, col);
-                raya(&mut c, p(-8.0, 2.5), p(-2.0, 2.5), 1.4 * e, col);
-                let anillo: Vec<[f64; 2]> = (0..=24)
-                    .map(|k| {
-                        let a = k as f64 / 24.0 * std::f64::consts::TAU;
-                        p(5.5 + 3.4 * a.cos(), 3.6 + 3.4 * a.sin())
-                    })
-                    .collect();
-                for v in anillo.windows(2) {
-                    raya(&mut c, v[0], v[1], 1.4 * e, col);
-                }
-                raya(&mut c, p(8.9, -0.5), p(8.9, 7.0), 1.4 * e, col);
-            }
-            "asa" => {
-                // Seis puntos: de aqui se arrastra la ventana.
-                for (dx, dy) in [(-3.0, -6.0), (3.0, -6.0), (-3.0, 0.0), (3.0, 0.0), (-3.0, 6.0), (3.0, 6.0)] {
-                    let (px, py) = (cx + dx * e, cy + dy * e);
-                    rect(&mut c, px - 1.2 * e, py - 1.2 * e, px + 1.2 * e, py + 1.2 * e, tenue);
-                }
-            }
-            "tema" => {
-                let circ: Vec<[f64; 2]> = (0..=40)
-                    .map(|k| {
-                        let a = k as f64 / 40.0 * std::f64::consts::TAU;
-                        [cx + r * a.cos(), cy + r * a.sin()]
-                    })
-                    .collect();
-                for v in circ.windows(2) {
-                    raya(&mut c, v[0], v[1], 1.6 * e, col);
-                }
-                let mut tri = Vec::new();
-                for k in 0..20 {
-                    let a0 = -std::f64::consts::FRAC_PI_2 + k as f64 / 20.0 * std::f64::consts::PI;
-                    let a1 = -std::f64::consts::FRAC_PI_2 + (k + 1) as f64 / 20.0 * std::f64::consts::PI;
-                    tri.extend_from_slice(&[[cx, cy], [cx + r * a0.cos(), cy + r * a0.sin()], [cx + r * a1.cos(), cy + r * a1.sin()]]);
-                }
-                c.triangulos(&tri, col, Some(CAPA_RAYAS));
-            }
-            "fijar" => {
-                // Una chincheta inclinada: cabeza, cuerpo, ala y aguja.
-                let (ux, uy) = (std::f64::consts::FRAC_1_SQRT_2, -std::f64::consts::FRAC_1_SQRT_2);
-                let (nx, ny) = (-uy, ux);
-                // El eje va de arriba-derecha (cabeza) a abajo-izquierda (punta).
-                let q = |t: f64, s: f64| [cx - ux * t * e + nx * s * e, cy - uy * t * e + ny * s * e];
-                // Cabeza redonda, cuerpo, ala ancha y la aguja.
-                let cab: Vec<[f64; 2]> = (0..=24)
-                    .map(|k| {
-                        let a = k as f64 / 24.0 * std::f64::consts::TAU;
-                        let m = q(-8.0, 0.0);
-                        [m[0] + 4.2 * e * a.cos(), m[1] + 4.2 * e * a.sin()]
-                    })
-                    .collect();
-                let centro_cab = q(-8.0, 0.0);
-                let mut tri = Vec::new();
-                for v in cab.windows(2) {
-                    tri.extend_from_slice(&[centro_cab, v[0], v[1]]);
-                }
-                let cuerpo = [q(-8.0, -3.0), q(-8.0, 3.0), q(-1.5, 2.2), q(-1.5, -2.2)];
-                tri.extend_from_slice(&[cuerpo[0], cuerpo[1], cuerpo[2], cuerpo[0], cuerpo[2], cuerpo[3]]);
-                let ala = [q(-1.5, -5.5), q(-1.5, 5.5), q(1.0, 5.5), q(1.0, -5.5)];
-                tri.extend_from_slice(&[ala[0], ala[1], ala[2], ala[0], ala[2], ala[3]]);
-                c.triangulos(&tri, col, Some(CAPA_RAYAS));
-                raya(&mut c, q(1.0, 0.0), q(9.5, 0.0), 1.6 * e, col);
-            }
-            "corte" => {
-                // Un cubo en perspectiva con un plano que lo corta.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                for (a, b2) in [
-                    ((-7.0, -3.0), (2.0, -3.0)),
-                    ((2.0, -3.0), (2.0, 8.0)),
-                    ((2.0, 8.0), (-7.0, 8.0)),
-                    ((-7.0, 8.0), (-7.0, -3.0)),
-                    ((-7.0, -3.0), (-2.0, -8.0)),
-                    ((2.0, -3.0), (7.0, -8.0)),
-                    ((-2.0, -8.0), (7.0, -8.0)),
-                    ((7.0, -8.0), (7.0, 3.0)),
-                    ((2.0, 8.0), (7.0, 3.0)),
-                ] {
-                    raya(&mut c, p(a.0, a.1), p(b2.0, b2.1), 1.4 * e, col);
-                }
-                let corte = [p(-10.0, 3.0), p(5.0, 3.0), p(10.0, -2.0), p(-5.0, -2.0)];
-                c.triangulos(&[corte[0], corte[1], corte[2], corte[0], corte[2], corte[3]], (col & 0x00ff_ffff) | 0x7000_0000, Some(CAPA_RAYAS));
-            }
-            "anotar" => {
-                // Un lapiz en diagonal, con su punta.
-                let (ux, uy) = (std::f64::consts::FRAC_1_SQRT_2, -std::f64::consts::FRAC_1_SQRT_2);
-                let (nx, ny) = (-uy, ux);
-                let q = |t: f64, s2: f64| [cx + ux * t * e + nx * s2 * e, cy + uy * t * e + ny * s2 * e];
-                let cuerpo = [q(-4.0, -2.6), q(-4.0, 2.6), q(9.0, 2.6), q(9.0, -2.6)];
-                for k in 0..4 {
-                    raya(&mut c, cuerpo[k], cuerpo[(k + 1) % 4], 1.5 * e, col);
-                }
-                raya(&mut c, q(-4.0, -2.6), q(-9.0, 0.0), 1.5 * e, col);
-                raya(&mut c, q(-4.0, 2.6), q(-9.0, 0.0), 1.5 * e, col);
-                raya(&mut c, q(6.0, -2.6), q(6.0, 2.6), 1.3 * e, col);
-            }
-            "marcos" => {
-                // Un recuadro a trazos con las marcas de corte en las esquinas.
-                let (x0, y0, x1, y1) = (cx - 8.0 * e, cy - 6.0 * e, cx + 8.0 * e, cy + 6.0 * e);
-                for (a, b2) in [([x0, y0], [x1, y0]), ([x1, y0], [x1, y1]), ([x1, y1], [x0, y1]), ([x0, y1], [x0, y0])] {
-                    let l = (b2[0] - a[0]).hypot(b2[1] - a[1]);
-                    let n = (l / (3.0 * e)).floor().max(1.0) as usize;
-                    for k in (0..n).step_by(2) {
-                        let t0 = k as f64 / n as f64;
-                        let t1 = ((k + 1) as f64 / n as f64).min(1.0);
-                        raya(&mut c, [a[0] + (b2[0] - a[0]) * t0, a[1] + (b2[1] - a[1]) * t0], [a[0] + (b2[0] - a[0]) * t1, a[1] + (b2[1] - a[1]) * t1], 1.5 * e, col);
-                    }
-                }
-                for (px, py, dx, dy) in [(x0, y0, -1.0, -1.0), (x1, y0, 1.0, -1.0), (x1, y1, 1.0, 1.0), (x0, y1, -1.0, 1.0)] {
-                    raya(&mut c, [px + dx * 1.5 * e, py], [px + dx * 4.0 * e, py], 1.4 * e, col);
-                    raya(&mut c, [px, py + dy * 1.5 * e], [px, py + dy * 4.0 * e], 1.4 * e, col);
-                }
-            }
-            "capas" => {
-                // Una lista: tres rayas con su casilla delante.
-                for k in -1..=1 {
-                    let y = cy + k as f64 * 5.5 * e;
-                    c.triangulos(
-                        &[[cx - 9.0 * e, y - 1.8 * e], [cx - 5.4 * e, y - 1.8 * e], [cx - 5.4 * e, y + 1.8 * e], [cx - 9.0 * e, y - 1.8 * e], [cx - 5.4 * e, y + 1.8 * e], [cx - 9.0 * e, y + 1.8 * e]],
-                        col,
-                        Some(CAPA_RAYAS),
-                    );
-                    raya(&mut c, [cx - 2.5 * e, y], [cx + 9.0 * e, y], 1.6 * e, col);
-                }
-            }
-            "aristas" | "tres" => {
-                // Un cubo de rayas.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                for (a, b2) in [
-                    ((-7.0, -3.0), (3.0, -3.0)),
-                    ((3.0, -3.0), (3.0, 8.0)),
-                    ((3.0, 8.0), (-7.0, 8.0)),
-                    ((-7.0, 8.0), (-7.0, -3.0)),
-                    ((-7.0, -3.0), (-3.0, -8.0)),
-                    ((3.0, -3.0), (7.0, -8.0)),
-                    ((-3.0, -8.0), (7.0, -8.0)),
-                    ((7.0, -8.0), (7.0, 3.0)),
-                    ((3.0, 8.0), (7.0, 3.0)),
-                ] {
-                    raya(&mut c, p(a.0, a.1), p(b2.0, b2.1), 1.6 * e, col);
-                }
-            }
-            _ => {
-                // Una regla en diagonal con sus marcas.
-                let (a, bb) = ([cx - 9.0 * e, cy + 5.0 * e], [cx + 9.0 * e, cy - 5.0 * e]);
-                let (dx, dy) = ((bb[0] - a[0]) / 1.0, (bb[1] - a[1]) / 1.0);
-                let l = dx.hypot(dy);
-                let (ux, uy) = (dx / l, dy / l);
-                let (nx, ny) = (-uy, ux);
-                let ancho = 4.5 * e;
-                let p = |t: f64, s: f64| [a[0] + ux * t + nx * s, a[1] + uy * t + ny * s];
-                for (t0, t1, s0, s1) in [(0.0, l, -ancho, -ancho), (0.0, l, ancho, ancho), (0.0, 0.0, -ancho, ancho), (l, l, -ancho, ancho)] {
-                    raya(&mut c, p(t0, s0), p(t1, s1), 1.5 * e, col);
-                }
-                for k in 1..5 {
-                    let t = l * k as f64 / 5.0;
-                    let largo = if k % 2 == 0 { ancho * 0.9 } else { ancho * 0.4 };
-                    raya(&mut c, p(t, -ancho), p(t, -ancho + largo), 1.3 * e, col);
-                }
-            }
+        } else if let Some(icono) = crate::iconos::de_boton(botones[i], claro, pantalla_completa) {
+            // El icono de Material, de 20 px en el centro del boton, como en
+            // la barra del lector.
+            let lado = ICONO * e;
+            let (ix, iy) = ((x0 + x1 - lado) / 2.0, (h - lado) / 2.0);
+            crate::iconos::pintar(&mut c, icono, ix, iy, lado, col, CAPA_RAYAS);
+        }
+    }
+    c.terminar()
+}
+
+// ------------------------------------------------------------------ el riel
+
+/// **El riel de la derecha, como el de los lectores de PDF y Word**
+/// (`pixpin_ui::riel_marcas`): una isla redondeada arriba a la derecha con
+/// el lapiz (anotar) y el marco para imprimir, uno debajo de otro, botones
+/// de 36 px y lo pulsado en el azul de la barra. Medidas, en pixeles
+/// logicos: las del riel de los lectores.
+const RIEL_LADO: f64 = 36.0;
+const RIEL_BORDE: f64 = 16.0;
+const RIEL_RELLENO: f64 = 4.0;
+
+/// La isla del riel y la caja de cada boton (`[x0, y0, x1, y1]`, pixeles de
+/// la ventana) en una ventana de `w` de ancho. Sin botones, no hay isla.
+pub(crate) fn riel_cajas(w: u32, e: f64, n: usize) -> Option<([f64; 4], Vec<[f64; 4]>)> {
+    if n == 0 {
+        return None;
+    }
+    let (lado, relleno) = (RIEL_LADO * e, RIEL_RELLENO * e);
+    let ancho = lado + 2.0 * relleno;
+    let (x0, y0) = (w as f64 - RIEL_BORDE * e - ancho, RIEL_BORDE * e);
+    let isla = [x0, y0, x0 + ancho, y0 + n as f64 * lado + 2.0 * relleno];
+    let botones = (0..n)
+        .map(|i| {
+            let y = y0 + relleno + i as f64 * lado;
+            [x0 + relleno, y, x0 + relleno + lado, y + lado]
+        })
+        .collect();
+    Some((isla, botones))
+}
+
+/// El boton del riel bajo (x, y), o `Some(None)` si cae en la isla fuera de
+/// todo boton (no es del plano), o `None` si cae fuera.
+pub(crate) fn riel_en(w: u32, e: f64, n: usize, x: i32, y: i32) -> Option<Option<usize>> {
+    let (isla, botones) = riel_cajas(w, e, n)?;
+    let (x, y) = (x as f64, y as f64);
+    let dentro = |c: &[f64; 4]| x >= c[0] && x < c[2] && y >= c[1] && y < c[3];
+    dentro(&isla).then(|| botones.iter().position(dentro))
+}
+
+/// Pinta el riel: `botones` por nombre ("anotar", "marcos"), el que tiene
+/// el raton encima y cuales estan pulsados. Siempre en los colores de los
+/// lectores (el cristal oscuro), sea cual sea el fondo del plano.
+pub(crate) fn riel(e: f64, w: u32, botones: &[&str], encima: Option<usize>, activos: &[bool]) -> Modelo {
+    let mut c = Constructor::nuevo();
+    let Some((isla, cajas)) = riel_cajas(w, e, botones.len()) else { return c.terminar() };
+    let cristal = (rgba(0x26, 0x26, 0x2c) & 0x00ff_ffff) | 0xEB00_0000;
+    redondeado_en(&mut c, isla[0], isla[1], isla[2], isla[3], 8.0 * e, cristal, CAPA_FONDO);
+    for (i, (b, k)) in botones.iter().zip(&cajas).enumerate() {
+        let activo = activos.get(i).copied().unwrap_or(false);
+        if activo {
+            redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, rgba(0x00, 0x60, 0xDF), CAPA_RAYAS * 10.0);
+        } else if encima == Some(i) {
+            redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, 0x1Fff_ffff, CAPA_RAYAS * 10.0);
+        }
+        if let Some(icono) = crate::iconos::de_boton(b, false, false) {
+            let lado = ICONO * e;
+            let color = if activo { rgba(255, 255, 255) } else { rgba(0xe4, 0xe2, 0xe6) };
+            crate::iconos::pintar(&mut c, icono, (k[0] + k[2] - lado) / 2.0, (k[1] + k[3] - lado) / 2.0, lado, color, CAPA_RAYAS);
         }
     }
     c.terminar()
@@ -1266,6 +1153,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let abrir_3d = &acciones.abrir_3d;
     // El motor del lienzo para anotar: nace cuando llega el plano.
     let mut hacer_anotador = acciones.anotador.take();
+    // El riel de la derecha: el lapiz (si se puede anotar) y el marco para
+    // imprimir, y el que tiene el raton encima.
+    let botones_riel: Vec<&str> = if hacer_anotador.is_some() { vec!["anotar", "marcos"] } else { vec!["marcos"] };
+    let mut riel_encima: Option<usize> = None;
     let vista_inicial = acciones.vista_inicial.take();
     let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
     let mut anotando = false;
@@ -1451,6 +1342,38 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         let mut exportar = false;
         let mut ver_letras = false;
         for (de, ev) in eventos {
+            // **El riel de la derecha** (lapiz y marco): sus clics no son del
+            // plano ni del motor del lienzo.
+            if de == De::Plano && plano.is_some() {
+                match ev {
+                    Ev::Mover(x, y) => {
+                        let ahora = riel_en(w, e, botones_riel.len(), x, y).flatten();
+                        if ahora != riel_encima {
+                            riel_encima = ahora;
+                            sucio = true;
+                        }
+                    }
+                    Ev::Salir if riel_encima.is_some() => {
+                        riel_encima = None;
+                        sucio = true;
+                    }
+                    Ev::Bajar(x, y, _) | Ev::Doble(x, y) if arrastre.is_none() => {
+                        if let Some(b) = riel_en(w, e, botones_riel.len(), x, y) {
+                            if matches!(ev, Ev::Bajar(_, _, 0)) {
+                                match b.map(|i| botones_riel[i]) {
+                                    Some("anotar") => cambiar_anotar = true,
+                                    Some("marcos") => cambiar_marcos = true,
+                                    _ => {}
+                                }
+                            }
+                            // SAFETY: suelta la captura que puso el boton.
+                            let _ = unsafe { ReleaseCapture() };
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
+            }
             // F11 y Esc a pantalla completa, como en los demas visores, antes
             // que nada (Esc, salvo si el motor lo quiere para lo que escribe).
             if let (De::Plano, Ev::Tecla(vk)) = (de, ev)
@@ -1529,8 +1452,6 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     }
                     Some("tema") => cambiar_tema = true,
                     Some("acotar") => cambiar_acotar = true,
-                    Some("marcos") => cambiar_marcos = true,
-                    Some("anotar") => cambiar_anotar = true,
                     Some("tres") => ver_en_3d = true,
                     Some("letras") => ver_letras = true,
                     Some("pantalla") => cambiar_pantalla = true,
@@ -1942,8 +1863,6 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         if barra_sucia && barra_visible {
             let activos = BOTONES.map(|b| match b {
                 "acotar" => acotar.activo,
-                "marcos" => marcando,
-                "anotar" => anotando,
                 "fijar" => fijada,
                 _ => false,
             });
@@ -2000,6 +1919,15 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                 None
             };
             if let Some((m, p)) = &civil {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
+            // El riel de la derecha, encima del plano.
+            let riel_m = plano.is_some().then(|| {
+                let activos: Vec<bool> = botones_riel.iter().map(|b| (*b == "anotar" && anotando) || (*b == "marcos" && marcando)).collect();
+                let m = riel(e, w, &botones_riel, riel_encima, &activos);
+                gpu.subir(&m).ok().map(|p| (m, p))
+            }).flatten();
+            if let Some((m, p)) = &riel_m {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
             let dibujado = match (anotador.as_mut(), &plano) {
@@ -2238,6 +2166,26 @@ mod pruebas_letras {
         assert!(barra(&mut Textos::nuevo(), e, &BOTONES, &vacia, Aspecto::default()).letras.is_empty());
     }
 
+    /// **El riel de la derecha** como el de los lectores: arriba a la
+    /// derecha, botones de 36 px uno debajo de otro; fuera de la isla, nada.
+    #[test]
+    fn el_riel_va_arriba_a_la_derecha_con_el_lapiz_y_el_marco() {
+        let (isla, b) = riel_cajas(1000, 1.0, 2).unwrap();
+        assert_eq!(isla, [1000.0 - 16.0 - 44.0, 16.0, 1000.0 - 16.0, 16.0 + 2.0 * 36.0 + 8.0]);
+        assert_eq!(b[0][3], b[1][1]);
+        assert_eq!(riel_en(1000, 1.0, 2, 960, 30), Some(Some(0)));
+        assert_eq!(riel_en(1000, 1.0, 2, 960, 60), Some(Some(1)));
+        // El borde de la isla no es del plano, pero tampoco es un boton.
+        assert_eq!(riel_en(1000, 1.0, 2, 941, 17), Some(None));
+        // Caso negativo: fuera de la isla, o sin botones, le toca al plano.
+        assert_eq!(riel_en(1000, 1.0, 2, 500, 30), None);
+        assert_eq!(riel_en(1000, 1.0, 0, 960, 30), None);
+        // Pulsado, el azul de la barra y el icono en blanco.
+        let m = riel(1.0, 1000, &["anotar", "marcos"], None, &[true, false]);
+        assert!(m.vertices.iter().any(|v| v.color == rgba(0x00, 0x60, 0xDF)));
+        assert!(m.vertices.iter().any(|v| v.color == rgba(255, 255, 255)));
+    }
+
     #[test]
     fn f11_alterna_y_esc_sale_de_pantalla_completa() {
         assert!(tecla_de_pantalla_completa(0x7A, false) && tecla_de_pantalla_completa(0x7A, true));
@@ -2277,5 +2225,19 @@ mod pruebas_letras {
         let filas: Vec<Vec<[u8; 4]>> = l.px.chunks(l.w).map(|f| f.to_vec()).rev().collect();
         l.px = filas.concat();
         l.guardar(&ruta.replace(".png", "-3d.png"));
+        // El riel, sobre un fondo de plano.
+        let (w, h) = (300u32, 200.0);
+        let fondo = {
+            let mut c = Constructor::nuevo();
+            rect_en(&mut c, 0.0, 0.0, w as f64, h, rgba(0x21, 0x26, 0x30), CAPA_FONDO * 10.0);
+            c.terminar()
+        };
+        let m = riel(e, w, &["anotar", "marcos"], Some(1), &[true, false]);
+        let mut l = crate::pruebas_png::Lienzo::nuevo(&fondo, [w as f64 / 2.0, h / 2.0], w as f64, w as usize, h as usize);
+        l.pintar(&fondo);
+        l.pintar(&m);
+        let filas: Vec<Vec<[u8; 4]>> = l.px.chunks(l.w).map(|f| f.to_vec()).rev().collect();
+        l.px = filas.concat();
+        l.guardar(&ruta.replace(".png", "-riel.png"));
     }
 }

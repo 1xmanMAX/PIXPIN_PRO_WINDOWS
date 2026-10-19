@@ -328,6 +328,52 @@ mod pruebas {
         assert!(!se_abre("plano.pdf") && !se_abre("dwg"));
     }
 
+    /// **Los iconos de la barra y el riel de los planos y los modelos son
+    /// los mismos que los de los demas visores** (el usuario, 19-oct-2026:
+    /// «no variar, para evitar confusiones»): `pixpin-cad` los lleva
+    /// copiados y aqui se comprueba que siguen siendo identicos.
+    #[test]
+    fn los_iconos_de_los_planos_son_los_de_los_demas_visores() {
+        use pixpin_render::icono::material as m;
+        let de_material = |nombre: &str| -> &'static pixpin_render::icono::Icono {
+            match nombre {
+                "DRAG_INDICATOR" => &m::DRAG_INDICATOR,
+                "STRAIGHTEN" => &m::STRAIGHTEN,
+                "CROP_FREE" => &m::CROP_FREE,
+                "EDIT" => &m::EDIT,
+                "VIEW_IN_AR" => &m::VIEW_IN_AR,
+                "FONT_DOWNLOAD" => &m::FONT_DOWNLOAD,
+                "CONTENT_CUT" => &m::CONTENT_CUT,
+                "LAYERS" => &m::LAYERS,
+                "DARK_MODE" => &m::DARK_MODE,
+                "LIGHT_MODE" => &m::LIGHT_MODE,
+                "FULLSCREEN" => &m::FULLSCREEN,
+                "FULLSCREEN_EXIT" => &m::FULLSCREEN_EXIT,
+                "PUSH_PIN" => &m::PUSH_PIN,
+                "CLOSE" => &m::CLOSE,
+                otro => panic!("{otro} no esta en la lista: anadelo aqui"),
+            }
+        };
+        for (nombre, i) in pixpin_cad::iconos::TODOS {
+            let t = de_material(nombre).trazos;
+            assert_eq!(t.len(), 1, "{nombre}");
+            assert_eq!((i.d, i.par_impar), (t[0].d, t[0].par_impar), "{nombre} no es el de material");
+        }
+        // Los de la barra comun del lector, con su mismo boton.
+        let mismo = |b: &str, claro: bool, icono: &pixpin_render::icono::Icono| {
+            assert_eq!(pixpin_cad::iconos::de_boton(b, claro, false).map(|i| i.d), Some(icono.trazos[0].d), "{b}");
+        };
+        mismo("fijar", false, &m::PUSH_PIN);
+        mismo("cerrar", false, &m::CLOSE);
+        mismo("pantalla", false, &m::FULLSCREEN);
+        mismo("asa", false, &m::DRAG_INDICATOR);
+        mismo("anotar", false, &m::EDIT);
+        mismo("marcos", false, &m::CROP_FREE);
+        // En oscuro, el sol para volver a claro (como el lector); en claro, la luna.
+        mismo("tema", false, &m::LIGHT_MODE);
+        mismo("tema", true, &m::DARK_MODE);
+    }
+
     #[test]
     fn la_barra_lleva_el_tipo_y_el_nombre_como_los_demas_pines() {
         let t = tipo_de_archivo(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")).expect("tipo");

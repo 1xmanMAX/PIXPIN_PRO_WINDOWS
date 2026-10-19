@@ -1587,6 +1587,7 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
  "ttf-parser",

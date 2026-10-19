@@ -43,7 +43,7 @@ use crate::modelo3d::Modelo3d;
 use arbol::Arbol;
 use crate::texto::Textos;
 use crate::ventana::{
-    ALTO_BARRA, Aspecto, CAPA_ENCIMA, Cabecera, De, ESTADO, Ev, TipoDeArchivo, alternar_pantalla_completa, ancho_barra, aviso, barra, botones_barra,
+    ALTO_BARRA, Aspecto, CAPA_ENCIMA, Cabecera, De, ESTADO, Ev, TipoDeArchivo, alternar_pantalla_completa, ancho_barra, riel, riel_en, aviso, barra, botones_barra,
     colocar_barra, crear_barra, crear_ventana, poner_encima,
     raya, rect, seguir_barra, tecla_de_pantalla_completa, vista_pantalla,
 };
@@ -666,12 +666,22 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
 
 /// [`ver`], con lo que pide un croquis ([`Extras`]).
 pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d, extras: Extras) -> Result<(), String> {
-    ver_con_tipo(titulo, None, cargando, ui, extras)
+    ver_con_barra(titulo, Barra3d::default(), cargando, ui, extras)
 }
 
-/// [`ver_con`], con el tipo de archivo para el recuadro de la barra (junto
-/// al nombre, como en los demas visores).
-pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d, extras: Extras) -> Result<(), String> {
+/// **Lo que la app le pone a la barra y al riel del modelo**: el tipo de
+/// archivo (el recuadro junto al nombre, como en los demas visores) y el
+/// marco para imprimir del riel de la derecha, que recibe la ventana (su
+/// `HWND`): la app congela su zona, se arrastra un recuadro y se imprime.
+#[derive(Default)]
+pub struct Barra3d {
+    pub tipo: Option<TipoDeArchivo>,
+    #[allow(clippy::type_complexity)]
+    pub marco: Option<Box<dyn Fn(isize)>>,
+}
+
+/// [`ver_con`], con lo de la barra y el riel ([`Barra3d`]).
+pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d, extras: Extras) -> Result<(), String> {
     let nombres_de_vistas: Vec<String> = extras.vistas.iter().map(|v| v.nombre.clone()).collect();
     // Encuadrar con la orientacion del croquis, si la trae.
     let encuadre = |caja: [f32; 6], w: u32, h: u32| {
@@ -698,7 +708,12 @@ pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receive
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let e = dpi as f64 / 96.0;
     let mut textos = Textos::nuevo();
+    let Barra3d { tipo, marco } = barra_app;
     let cabecera = Cabecera::nueva(&mut textos, titulo, tipo, e);
+    // El riel de la derecha: el marco para imprimir, si la app lo da (sobre
+    // un modelo 3D no se anota: no lleva lapiz).
+    let botones_riel: Vec<&str> = if marco.is_some() { vec!["marcos"] } else { Vec::new() };
+    let mut riel_encima: Option<usize> = None;
     let (bw, bh) = (ancho_barra(e, &BOTONES, &cabecera).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
     let hbarra = crear_barra(hwnd, bw, bh).map_err(|e| e.to_string())?;
     let mut gpu_barra = Gpu::nueva(hbarra, bw as u32, bh as u32).map_err(|e| e.to_string())?;
@@ -818,6 +833,7 @@ pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receive
         let caja = caja_vista;
         let (mut cambiar_tema, mut cambiar_corte, mut cambiar_encima, mut encuadrar, mut planta) = (false, false, false, false, false);
         let mut cambiar_pantalla = false;
+        let mut pedir_marco = false;
         // Cambio lo que se ve en el panel: hay que rehacer los indices.
         let mut refiltrar = false;
         let mut cambiar_panel = false;
@@ -832,6 +848,34 @@ pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receive
         for (de, ev) in eventos {
             if matches!((de, &ev), (De::Plano, Ev::Tecla(_))) {
                 sin_tocar = false;
+            }
+            // **El riel de la derecha** (el marco): sus clics no son del modelo.
+            if de == De::Plano && modelo.is_some() {
+                match ev {
+                    Ev::Mover(x, y) => {
+                        let ahora = riel_en(w, e, botones_riel.len(), x, y).flatten();
+                        if ahora != riel_encima {
+                            riel_encima = ahora;
+                            sucio = true;
+                        }
+                    }
+                    Ev::Salir if riel_encima.is_some() => {
+                        riel_encima = None;
+                        sucio = true;
+                    }
+                    Ev::Bajar(x, y, _) | Ev::Doble(x, y) if arrastre.is_none() => {
+                        if let Some(b) = riel_en(w, e, botones_riel.len(), x, y) {
+                            // SAFETY: suelta la captura que puso el boton.
+                            let _ = unsafe { ReleaseCapture() };
+                            if matches!(ev, Ev::Bajar(_, _, 0)) && b.map(|i| botones_riel[i]) == Some("marcos") {
+                                riel_encima = None;
+                                pedir_marco = true;
+                            }
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
             }
             // F11 y Esc a pantalla completa, como en los demas visores.
             if let (De::Plano, Ev::Tecla(vk)) = (de, ev)
@@ -1179,6 +1223,14 @@ pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receive
             poner_encima(hwnd, fijada);
             barra_sucia = true;
         }
+        if pedir_marco && let Some(f) = &marco {
+            // Lo que se ve, sin la barra encima: la foto es de la ventana.
+            barra_visible = false;
+            // SAFETY: ventana propia.
+            let _ = unsafe { ShowWindow(hbarra, SW_HIDE) };
+            f(hwnd.0 as isize);
+            sucio = true;
+        }
         if cambiar_pantalla {
             alternar_pantalla_completa(hwnd, &mut antes_de_pantalla_completa);
             barra_sucia = true;
@@ -1274,6 +1326,16 @@ pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receive
                 None
             };
             if let Some((m, p)) = &encima {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
+            // El riel de la derecha, encima del modelo.
+            let riel_m = (modelo.is_some() && !botones_riel.is_empty())
+                .then(|| {
+                    let m = riel(e, w, &botones_riel, riel_encima, &[]);
+                    gpu.subir(&m).ok().map(|p| (m, p))
+                })
+                .flatten();
+            if let Some((m, p)) = &riel_m {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
             let v = vista(&cam, w, h, radio, elegido, seccion, aislado.map(|a| a.0), claro);

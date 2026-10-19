@@ -13,13 +13,25 @@
 //! mide la letra de verdad y a sus ppp, asi que cada punto se lleva a su
 //! celda: la misma fraccion de la misma celda en la rejilla de aqui. Lo
 //! anotado cae siempre en su celda aunque las columnas midan algo distinto.
+//!
+//! **El lapiz del riel** (19-oct-2026, el usuario: «el lapiz, el marcador y
+//! el marco deben ser universales»): la misma capa se anota a mano con las
+//! herramientas del lienzo (`lector_tinta::Tinta`, como en el PDF y el
+//! Word). Se dibuja sobre la capa ya llevada a la rejilla del visor (la
+//! `vista`, con los mismos ids que la del disco) y, al acabar cada gesto, lo
+//! tocado vuelve a las unidades de la capa y se escribe en el mismo fichero
+//! (`hoja-<n>.excalidraw`); lo que no se toco vuelve tal cual del disco.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
+use pixpin_geom::Rect;
 use pixpin_hojas::{Hoja, Libro, Rejilla, Vista};
+use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::{Elemento, Figura};
 use pixpin_render::{Color, Pintor, RectF};
+use pixpin_shell::overlay::EventoOverlay;
 
 use crate::lector_tinta::{self, Capa, Tinta};
 
@@ -46,6 +58,28 @@ pub(super) struct Anotado {
     tinta: Option<Tinta>,
     mirado: Option<Instant>,
     aviso: u64,
+    /// De cada elemento de la `vista`: como quedo en ella y como esta en la
+    /// capa. Al devolver lo anotado, lo que no cambio vuelve tal cual (ir y
+    /// volver por la rejilla en `f32` no siempre deja el mismo numero).
+    originales: HashMap<u64, (Elemento, Elemento)>,
+}
+
+/// El panel que se mueve (el ultimo, donde va lo anotado): su caja en la
+/// ventana y el punto de la hoja de su esquina.
+fn panel_que_se_mueve(real: &Rejilla, v: &Vista, celdas: RectF) -> Option<(RectF, (f32, f32))> {
+    let vc = Vista { ancho: celdas.ancho as f64, alto: celdas.alto as f64, ..*v };
+    let panel = real.paneles(&vc).last().copied()?;
+    let [px, py, pw, ph] = panel.pantalla.map(|x| x as f32);
+    Some((RectF { x: celdas.x + px, y: celdas.y + py, ancho: pw, alto: ph }, (panel.origen.0 as f32, panel.origen.1 as f32)))
+}
+
+/// **La camara de la tinta**: la misma transformada con la que se pinta la
+/// capa en el panel que se mueve, para que el raton caiga donde se ve
+/// (pixeles de ventana a pixeles de la hoja al 100 %).
+pub(super) fn camara(real: &Rejilla, v: &Vista, celdas: RectF) -> Camara {
+    let z = v.escala.max(0.05) as f32;
+    let (caja, (ox, oy)) = panel_que_se_mueve(real, v, celdas).unwrap_or((celdas, (v.x as f32, v.y as f32)));
+    Camara { x: ox - caja.x / z, y: oy - caja.y / z, zoom: z }
 }
 
 /// Lleva una x (o una y) de una rejilla a otra por su celda.
@@ -156,40 +190,135 @@ impl Anotado {
         self.vista = None;
     }
 
+    /// **La capa en la rejilla del visor**, rehecha si cambio la hoja (llegaron
+    /// filas, otro ancho de letra). Conserva los ids y la historia de la capa
+    /// (lo que elige la tinta y el deshacer siguen valiendo).
+    fn asegurar_vista(&mut self, libro: &Libro, hoja: &Hoja, real: &Rejilla) {
+        let clave = hoja.version ^ (real.x(1).to_bits() << 1);
+        if self.vista.as_ref().is_some_and(|(k, _)| *k == clave) {
+            return;
+        }
+        let Some(capa) = self.capa.as_ref() else {
+            self.vista = None;
+            return;
+        };
+        let de = crate::asistente::anotar_inteligente::rejilla_de_la_capa(libro, hoja);
+        let mut vista = Capa::default();
+        vista.escena = capa.escena.clone();
+        self.originales.clear();
+        for e in vista.escena.elementos.iter_mut() {
+            let original = e.clone();
+            *e = llevar(&original, &de, real);
+            self.originales.insert(e.id, (e.clone(), original));
+        }
+        self.vista = Some((clave, vista));
+        if let Some(t) = self.tinta.as_mut() {
+            t.olvidar_lo_calculado();
+        }
+    }
+
+    /// Que haya capa (vacia si no hay nada anotado) y su vista, de la hoja
+    /// `i`.
+    fn preparar(&mut self, libro: &Libro, hoja: &Hoja, i: usize, real: &Rejilla) {
+        // Sin fichero (una tabla del chat sin libro), la capa es de la sesion
+        // y de una hoja: otra hoja empieza en blanco.
+        if self.hoja != Some(i) && self.ruta.as_os_str().is_empty() {
+            self.hoja = Some(i);
+            self.capa = None;
+            self.vista = None;
+        }
+        if self.capa.is_none() {
+            self.capa = Some(Capa::default());
+            self.vista = None;
+        }
+        self.asegurar_vista(libro, hoja, real);
+    }
+
+    /// **Un evento para el lapiz del riel** (`lector_tinta::Tinta`) en la hoja
+    /// `i` del libro, con la camara del panel que se mueve.
+    pub(super) fn evento(&mut self, ev: &EventoOverlay, (libro, hoja, i): (&Libro, &Hoja, usize), real: &Rejilla, camara: &Camara, (area, escala_por_cien): (Rect, u32)) -> lector_tinta::Hecho {
+        self.preparar(libro, hoja, i, real);
+        let tinta = self.tinta.get_or_insert_with(Tinta::nueva);
+        tinta.a_la_hoja(0);
+        let Some((_, vista)) = self.vista.as_mut() else { return lector_tinta::Hecho::default() };
+        tinta.evento(ev, vista, camara, area, escala_por_cien)
+    }
+
+    /// **El gesto del lapiz acabo**: lo de la vista vuelve a la capa (lo
+    /// tocado, de la rejilla del visor a la de la capa; lo demas, tal cual
+    /// estaba) y se escribe.
+    pub(super) fn devolver(&mut self, libro: &Libro, hoja: &Hoja, real: &Rejilla) {
+        let (Some(capa), Some((_, vista))) = (self.capa.as_mut(), self.vista.as_ref()) else { return };
+        let de = crate::asistente::anotar_inteligente::rejilla_de_la_capa(libro, hoja);
+        let mut escena = vista.escena.clone();
+        let mut originales = HashMap::with_capacity(escena.elementos.len());
+        for e in escena.elementos.iter_mut() {
+            let en_la_vista = e.clone();
+            *e = match self.originales.get(&e.id) {
+                Some((m, o)) if *m == en_la_vista => o.clone(),
+                // `llevar` es la misma cuenta al reves: celda a celda.
+                _ => llevar(&en_la_vista, real, &de),
+            };
+            originales.insert(e.id, (en_la_vista, e.clone()));
+        }
+        capa.escena = escena;
+        capa.sucia = true;
+        self.originales = originales;
+        if self.ruta.as_os_str().is_empty() {
+            capa.sucia = false;
+            return;
+        }
+        if let Err(e) = capa.guardar(&self.ruta) {
+            tracing::warn!(?e, "visor de hojas: no se pudo guardar lo anotado");
+        }
+        self.sello = sello_de(&self.ruta);
+    }
+
+    /// **Ctrl+Z / Ctrl+Y del lapiz**: en la vista, y de vuelta a la capa.
+    pub(super) fn deshacer_lo_mio(&mut self, libro: &Libro, hoja: &Hoja, real: &Rejilla, rehacer: bool) -> bool {
+        let Some((_, vista)) = self.vista.as_mut() else { return false };
+        let hecho = if rehacer { vista.rehacer() } else { vista.deshacer() };
+        if hecho {
+            self.devolver(libro, hoja, real);
+        }
+        hecho
+    }
+
+    /// El gesto de pararse: el trazo quieto se vuelve figura.
+    pub(super) fn forma_rapida(&mut self, zoom: f32) -> bool {
+        let (Some(t), Some((_, vista))) = (self.tinta.as_mut(), self.vista.as_mut()) else { return false };
+        t.forma_rapida(vista, zoom)
+    }
+
+    /// La tinta, si ya se uso (para saber si quiere Escape o esta trazando).
+    pub(super) fn tinta(&self) -> Option<&Tinta> {
+        self.tinta.as_ref()
+    }
+
+    /// La barra y el panel del lienzo, arriba (anotando).
+    pub(super) fn pintar_interfaz(&mut self, p: &Pintor, area: Rect, escala_por_cien: u32) {
+        let tinta = self.tinta.get_or_insert_with(Tinta::nueva);
+        tinta.pintar_interfaz(p, self.vista.as_ref().map(|(_, c)| c), area, escala_por_cien);
+    }
+
     /// **Pinta la capa** sobre las celdas: `real`, la rejilla del visor;
-    /// `celdas` y `v`, donde y como se ve la hoja.
+    /// `celdas` y `v`, donde y como se ve la hoja. `activa`: anotando (sale
+    /// lo que se esta trazando y lo elegido).
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn pintar(&mut self, p: &Pintor, libro: &Libro, hoja: &Hoja, real: &Rejilla, v: &Vista, celdas: RectF, oscuro: bool) {
-        let Some(capa) = self.capa.as_ref() else { return };
-        if capa.vacia() {
+    pub(super) fn pintar(&mut self, p: &Pintor, libro: &Libro, hoja: &Hoja, real: &Rejilla, v: &Vista, celdas: RectF, oscuro: bool, activa: bool) {
+        if self.capa.as_ref().is_none_or(|c| c.vacia()) && !activa {
             return;
         }
         // La capa en la rejilla del visor (se rehace si llegaron filas).
-        let clave = hoja.version ^ (real.x(1).to_bits() << 1);
-        if self.vista.as_ref().is_none_or(|(k, _)| *k != clave) {
-            let de = crate::asistente::anotar_inteligente::rejilla_de_la_capa(libro, hoja);
-            let mut vista = Capa::default();
-            for e in capa.escena.visibles() {
-                vista.escena.anadir(llevar(e, &de, real));
-            }
-            self.vista = Some((clave, vista));
-            if let Some(t) = self.tinta.as_mut() {
-                t.olvidar_lo_calculado();
-            }
-        }
+        self.asegurar_vista(libro, hoja, real);
         let Some((_, vista)) = self.vista.as_ref() else { return };
-        // El panel que se mueve (el ultimo): ahi va lo anotado.
-        let vc = Vista { ancho: celdas.ancho as f64, alto: celdas.alto as f64, ..*v };
-        let Some(panel) = real.paneles(&vc).last().copied() else { return };
+        let Some((caja, (ox, oy))) = panel_que_se_mueve(real, v, celdas) else { return };
         let e = v.escala.max(0.05) as f32;
-        let [px, py, pw, ph] = panel.pantalla.map(|x| x as f32);
-        let caja = RectF { x: celdas.x + px, y: celdas.y + py, ancho: pw, alto: ph };
-        let (ox, oy) = (panel.origen.0 as f32, panel.origen.1 as f32);
         let tinta = self.tinta.get_or_insert_with(Tinta::nueva);
         let papel = if oscuro { pixpin_render::oscuro::PAPEL } else { Color::BLANCO };
         p.con_recorte(caja, |p| {
             p.poner_vista((caja.x, caja.y), e, (-ox * e, -oy * e));
-            tinta.pintar_capa(p, 0, vista, (ox, oy, ox + pw / e, oy + ph / e), e, lector_tinta::papel(papel), false);
+            tinta.pintar_capa(p, 0, vista, (ox, oy, ox + caja.ancho / e, oy + caja.alto / e), e, lector_tinta::papel(papel), activa);
             p.desplazar(0.0, 0.0);
         });
     }

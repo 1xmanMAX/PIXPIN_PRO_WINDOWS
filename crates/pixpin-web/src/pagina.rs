@@ -286,6 +286,12 @@ impl Pagina {
         }
     }
 
+    /// **Corre `js` en la pagina** y le da a `al_volver` lo que devuelva, en
+    /// JSON (ver [`crate::VisorHtml::ejecutar`]).
+    pub fn ejecutar(&self, js: &str, al_volver: Box<dyn FnOnce(String) + 'static>) {
+        crate::ejecutar_en(&self.vista, js, al_volver);
+    }
+
     pub fn poner_titulo(&self, titulo: &str) {
         let t: Vec<u16> = titulo.encode_utf16().chain(std::iter::once(0)).collect();
         // SAFETY: ventana propia; la cadena termina en cero y vive durante la

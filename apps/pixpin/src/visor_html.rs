@@ -39,6 +39,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod riel;
+
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -185,6 +187,22 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
     visor.poner_oscuro(pin.oscuro());
     tracing::info!(ms = inicio.elapsed().as_millis() as u64, "visor de HTML: pagina pedida");
 
+    // **El riel de los visores** (el marcador, el lapiz y el marco), en sus
+    // ventanas por encima de la pagina: las marcas y la tinta, junto al html.
+    let escala = monitor.escala_por_cien;
+    let mut riel = match (&recursos, &motor) {
+        (Some(r), Some(m)) => riel::RielDeLaVista::nuevo(
+            Rc::clone(m),
+            &r.d3d(),
+            &ventana,
+            riel::en_pantalla(pin.area, pin.area_de_la_vista()),
+            escala,
+            riel::Opciones { documento: Some(ruta.to_path_buf()), con_pagina: true, titulo: nombre.clone() },
+            textos,
+        ),
+        _ => None,
+    };
+
     let mut area = pin.area;
     let mut guardados = 0usize;
     let mut vivo = true;
@@ -192,6 +210,16 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         pixpin_shell::overlay::bombear_pendientes();
         let mut teclas: Vec<u32> = pulsadas.borrow_mut().drain(..).collect();
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if let Some(r) = riel.as_mut()
+                && r.es_suya(h)
+            {
+                match r.evento(h, &evento, Some(&visor), textos) {
+                    riel::Pide::Teclado => visor.enfocar(),
+                    riel::Pide::Tecla(vk) => teclas.push(vk),
+                    riel::Pide::Nada => {}
+                }
+                continue;
+            }
             if pin.es_de_la_barra(h) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
@@ -260,6 +288,10 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             visor.poner_oscuro(pin.oscuro());
             pixpin_web::pintar_fondo(hwnd, fondo(pin.oscuro()));
         }
+        if let Some(r) = riel.as_mut() {
+            r.seguir(riel::en_pantalla(pin.area, pin.area_de_la_vista()), escala, pin.fijado, pin.oscuro());
+            r.tic(Some(&visor));
+        }
         // Lo que la pagina haya mandado guardar, al fichero del chat. Se
         // escribe aqui y no dentro del aviso del WebView2 para no tocar el
         // disco desde su reentrada.
@@ -280,9 +312,13 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         // es la red para recoger lo que la pagina mande guardar y para que
         // la barra se vaya sola.
         let tope = if pin.quiere_reloj() { 50 } else { 100 };
+        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
     // Cerrar: se esconde ya (que se note al instante) y luego se suelta todo.
+    if let Some(r) = riel.take() {
+        r.cerrar();
+    }
     drop(pin);
     ventana.ocultar();
     drop(visor);
@@ -478,6 +514,27 @@ mod latencia {
             });
             std::thread::sleep(Duration::from_millis(2500));
             foto(&format!("html-{tema}"));
+        }
+    }
+
+    /// **El riel sobre una pagina**, para fotografiarlo desde fuera: abre
+    /// `PIXPIN_RIEL_MUESTRA` (un `.html` en el visor, un `.md` en el lector de
+    /// notas) y espera medio minuto; quien lo lanzo fotografia sus ventanas y
+    /// lo cierra. Con `PIXPIN_RIEL_LAPIZ`, el lapiz nace pulsado. A mano:
+    /// `PIXPIN_RIEL_MUESTRA=<fichero> cargo test -p pixpin --bin pixpinmax muestra_del_riel_web -- --ignored`.
+    #[test]
+    #[ignore = "abre ventanas; para las fotos del riel, a mano"]
+    fn muestra_del_riel_web() {
+        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
+        let Some(ruta) = std::env::var_os("PIXPIN_RIEL_MUESTRA").map(std::path::PathBuf::from) else { return };
+        let idioma = pixpin_store::Idioma::Espanol;
+        if super::se_abre(&pixpin_docs::nombre(&ruta)) {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let _ = super::abrir(&pixpin_store::Catalogo::nuevo(idioma), &ruta);
+        } else {
+            let raiz = ruta.parent().expect("carpeta").to_path_buf();
+            crate::notas_md::abrir(idioma, pixpin_store::Ubicacion::Portable { raiz }, crate::notas_md::Destino::Fichero { ruta });
+            std::thread::sleep(std::time::Duration::from_secs(30));
         }
     }
 }

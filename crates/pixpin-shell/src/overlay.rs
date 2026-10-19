@@ -77,6 +77,26 @@ pub fn area_cliente(hwnd: Option<isize>) -> Option<(isize, Rect)> {
     }
 }
 
+/// **Un clic de mentira para las pruebas**: manda a `hwnd` (una ventana
+/// PROPIA) pulsar (0), mover con el boton pulsado (1) o soltar (2) en `x, y`
+/// de su zona cliente, como si fuera el raton. No mueve el raton de verdad.
+pub fn simular_raton(hwnd: isize, que: u8, x: i32, y: i32) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE};
+    let mensaje = match que {
+        0 => WM_LBUTTONDOWN,
+        1 => WM_MOUSEMOVE,
+        _ => WM_LBUTTONUP,
+    };
+    let lparam = ((y as u16 as isize) << 16) | (x as u16 as isize);
+    let boton = if que == 2 { 0 } else { 1 };
+    // SAFETY: solo deja un mensaje en la cola de esa ventana; un handle
+    // muerto hace fallar la llamada sin mas.
+    unsafe {
+        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), mensaje, WPARAM(boton), LPARAM(lparam));
+    }
+}
+
 /// Espera a que el compositor haya presentado lo ultimo que se dibujo.
 /// Dos vueltas: la primera cierra el fotograma en curso, la segunda
 /// garantiza que el nuestro ya esta en pantalla y, por tanto, en la

@@ -22,6 +22,8 @@ pub mod relleno;
 pub mod shx;
 pub mod teselar;
 pub mod texto;
+pub mod iconos;
+mod trayecto_svg;
 pub mod ventana;
 pub mod web;
 /// Pintar un plano a PNG en la CPU: para las pruebas y, con el rasgo

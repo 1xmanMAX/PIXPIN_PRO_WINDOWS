@@ -1588,6 +1588,18 @@ impl Pines {
             CambioPin::GuardarComoPedido => self.guardar_como(id),
             CambioPin::ExportarPedido => self.exportar(id),
             CambioPin::AnotarPedido => self.entrar_a_anotar(id),
+            // El lapiz del riel, encendido: salir como con el boton de la
+            // paleta. Solo si es este pin el que se anota.
+            CambioPin::SalirDeAnotarPedido => {
+                if self.anotacion.as_ref().is_some_and(|a| a.id == id) {
+                    self.salir_de_anotar()?;
+                }
+                Ok(())
+            }
+            CambioPin::ImprimirPedido => {
+                self.imprimir_zona(id);
+                Ok(())
+            }
             // `purgar` los lleva por `procesar_anotacion` en tandas; esto
             // queda para quien atienda un pedido suelto.
             CambioPin::PunteroPulsado(_)
@@ -1816,6 +1828,33 @@ impl Pines {
             self.repintar_paleta();
         }
         Ok(())
+    }
+
+    /// **El marco del riel del pin**: el de todos los visores
+    /// (`marco_imprimir`), sobre lo que se ve del pin. La zona es la del
+    /// contenido, sin el margen de la sombra; anotando, sale con lo dibujado.
+    fn imprimir_zona(&self, id: u64) {
+        let Some(pin) = self.vivos.get(&id) else {
+            return;
+        };
+        let (hwnd, area) = (pin.hwnd(), pin.rect_contenido());
+        if area.ancho == 0 || area.alto == 0 {
+            return;
+        }
+        // El titulo del trabajo de impresion: el nombre de su fichero.
+        let titulo = {
+            let a = self.almacen.borrow();
+            a.entradas()
+                .iter()
+                .find(|e| e.id == id)
+                .and_then(|e| {
+                    a.ruta_objeto(e)
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                })
+                .unwrap_or_else(|| "PixPin".to_string())
+        };
+        crate::marco_imprimir::imprimir_zona(hwnd.0 as isize, area, &titulo, textos());
     }
 
     /// Sale del modo anotacion guardando el dibujo.
