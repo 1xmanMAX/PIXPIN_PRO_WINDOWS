@@ -126,7 +126,10 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             exportar: Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), Some(ruta.clone()), None)),
             ..Default::default()
         };
-        if let Err(e) = pixpin_cad::ventana3d::ver_con(&titulo, rx, textos(idioma), extras) {
+        // En la barra, el tipo y el nombre, como en los demas pines.
+        let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
+        let tipo = crate::plano_cad::tipo_de_archivo(&ruta);
+        if let Err(e) = pixpin_cad::ventana3d::ver_con_tipo(&nombre, tipo, rx, textos(idioma), extras) {
             tracing::warn!(%e, "no se pudo abrir el visor de modelos");
             let _ = pixpin_shell::abrir(&ruta);
         }

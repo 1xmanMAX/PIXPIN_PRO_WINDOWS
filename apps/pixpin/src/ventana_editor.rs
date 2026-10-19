@@ -1573,6 +1573,11 @@ fn abrir_en_modo(
                     interfaz_sucia = true;
                     ventana.invalidar();
                 }
+                if r.imprimir {
+                    crate::marco_imprimir::de_la_ventana(Some(ventana.handle().0 as isize), &nombre_del_pin, &exportar::textos());
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
                 if r.hojita {
                     rejilla.sincronizar(&escena);
                     let pedido = hojita::abrir(hojita::Editor {

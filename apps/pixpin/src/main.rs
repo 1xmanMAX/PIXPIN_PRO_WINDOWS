@@ -54,6 +54,7 @@ mod abrir_hoja;
 mod croquis3d;
 mod al_frente;
 mod abrir_imagen;
+mod marco_imprimir;
 mod aligerar;
 // El asistente local del chat (modelo pequeno con llama.cpp, `pixpin-ia`).
 mod asistente;

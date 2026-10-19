@@ -49,6 +49,34 @@ pub fn existe(hwnd: isize) -> bool {
     unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
 }
 
+/// **Lo de dentro de una ventana, en pixeles de pantalla**: `hwnd`, o la
+/// activa de este hilo si es `None`. Devuelve tambien cual era. Lo usa el
+/// marco para imprimir de los visores.
+pub fn area_cliente(hwnd: Option<isize>) -> Option<(isize, Rect)> {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    // SAFETY: consultas de solo lectura de una ventana; las estructuras son
+    // locales y un handle muerto solo hace fallar la llamada.
+    unsafe {
+        let h = match hwnd {
+            Some(h) if h != 0 => HWND(h as *mut _),
+            _ => GetActiveWindow(),
+        };
+        let mut r = RECT::default();
+        if h.is_invalid() || GetClientRect(h, &mut r).is_err() {
+            return None;
+        }
+        let mut esquina = POINT { x: 0, y: 0 };
+        let _ = ClientToScreen(h, &mut esquina);
+        Some((
+            h.0 as isize,
+            Rect { x: esquina.x, y: esquina.y, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 },
+        ))
+    }
+}
+
 /// Espera a que el compositor haya presentado lo ultimo que se dibujo.
 /// Dos vueltas: la primera cierra el fotograma en curso, la segunda
 /// garantiza que el nuestro ya esta en pantalla y, por tanto, en la

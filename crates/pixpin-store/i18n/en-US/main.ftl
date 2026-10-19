@@ -2719,3 +2719,7 @@ tareas-asignatura-pista = Task subject
 tareas-sin-asignatura = No subject (to the Inbox)
 tareas-sin-asignaturas = No subjects yet: create them in “Class timetable…”
 tareas-apuntar-en-asignatura = New { $asignatura } task…
+
+# Viewers: the frame to print (2026-10-19)
+marco-imprimir-pista = Drag a box over what you want to print · Enter: everything · Esc: leave
+lector-marco = Frame to print (P)

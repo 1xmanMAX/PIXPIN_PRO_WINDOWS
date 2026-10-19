@@ -2720,3 +2720,7 @@ tareas-asignatura-pista = Asignatura de la tarea
 tareas-sin-asignatura = Sin asignatura (al Inbox)
 tareas-sin-asignaturas = Aún no hay asignaturas: créalas en «Horario de clases…»
 tareas-apuntar-en-asignatura = Nueva tarea de { $asignatura }…
+
+# El marco para imprimir de los visores (19-oct-2026)
+marco-imprimir-pista = Arrastra un recuadro sobre lo que quieres imprimir · Enter: todo · Esc: salir
+lector-marco = Marco para imprimir (P)

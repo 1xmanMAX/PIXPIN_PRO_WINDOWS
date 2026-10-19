@@ -728,6 +728,8 @@ struct Estado {
     x_meta: Option<f32>,
     pastilla_hasta: u64,
     panel: bool,
+    /// La ventana del lector: duena del menu «⋯».
+    hwnd: isize,
     poniendo_marca: bool,
     /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
     /// tocar el documento; la interfaz y la tinta quedan con sus colores.
@@ -909,6 +911,7 @@ fn abrir_con(
         lateral: None,
         x_meta: None,
         pastilla_hasta: ahora_ms() + MS_DE_LA_PASTILLA,
+        hwnd,
         panel: false,
         poniendo_marca: false,
         en_negativo: false,
@@ -1218,6 +1221,11 @@ fn abrir_con(
                     }
                     if !suya && !tecla(&mut e, vk, shift, ctrl, ruta, marco) {
                         vivo = false;
+                    }
+                    // G: el menu «⋯» (la tecla solo lo pide; se abre aqui,
+                    // donde estan los textos).
+                    if std::mem::take(&mut e.panel) {
+                        hacer(&mut e, Accion::Engranaje, textos, ruta, ubicacion, &tx_pedidos, marco);
                     }
                 }
                 // Llevar a la guarda una llamada que cambia `e` la esconderia.
@@ -2069,9 +2077,6 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             botones.push((zona, Accion::Buscar(b)));
         }
     }
-    if e.panel {
-        panel(e, p, m, textos, &mut botones);
-    }
     if let Some((texto, _)) = &e.aviso {
         lector::aviso_abajo(p, texto, m.ancho, m.alto, m.e);
     }
@@ -2158,7 +2163,7 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         ),
         // **Que suba sola** (`KeyboardDoubleArrowDown`, «Desplazar sola»).
         (&lector::DOBLE_FLECHA_ABAJO, e.auto.is_some(), Accion::Auto),
-        (&material::SETTINGS, e.panel, Accion::Engranaje),
+        (&material::MORE_VERT, false, Accion::Engranaje),
         // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
         (if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro),
         // De pantalla completa, de vuelta a pin.
@@ -2188,14 +2193,14 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     }
 }
 
+/// **Lo que va en el «⋯»** (19-oct-2026, el usuario: «muchas son repetidas»):
+/// solo lo que NO tiene ya su boton. Escuchar, desplazar sola y guardar el
+/// PDF con lo anotado se quedan en la barra, no aqui otra vez.
 fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
-    // Un Word o un PowerPoint: imprimir en vez de exportar el PDF, y lo
-    // suyo (presentar, o leerlo reflujado).
+    let mut filas = Vec::new();
+    // Un Word o un PowerPoint: imprimir, y lo suyo (presentar, o leerlo
+    // reflujado).
     if let Some(o) = &e.office {
-        let mut filas = vec![
-            (textos.t("lector-escuchar"), Accion::Escuchar),
-            (textos.t("lector-auto"), Accion::Auto),
-        ];
         if o.tipo == pixpin_office::Tipo::PowerPoint {
             filas.push((textos.t("lector-presentar"), Accion::Presentar));
         } else {
@@ -2204,70 +2209,37 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("lector-imprimir"), Accion::Imprimir));
         // Compartir: un Word con su texto; lo demas, con sus hojas impresas.
         filas.push((textos.t("compartir-lector"), Accion::Compartir));
-        if !e.marcas.is_empty() {
-            filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
-        }
-        filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
-        return filas;
+    } else {
+        // «Ver como texto» va primero, en «Vista», como en el engranaje del movil.
+        filas.push((textos.t("lector-ver-como-texto"), Accion::ComoTexto));
+        filas.push((textos.t("compartir-lector"), Accion::Compartir));
+        filas.push((textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta));
     }
-    // «Ver como texto» va primero, en «Vista», como en el engranaje del movil.
-    let mut filas = vec![
-        (textos.t("lector-ver-como-texto"), Accion::ComoTexto),
-        (textos.t("lector-escuchar"), Accion::Escuchar),
-        (textos.t("lector-auto"), Accion::Auto),
-        (textos.t("compartir-lector"), Accion::Compartir),
-        (textos.t("lector-exportar-pdf"), Accion::Exportar),
-        (textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta),
-    ];
     if !e.marcas.is_empty() {
         filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
     }
     filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
     // Solo si no lo es ya: como en el movil, anotar no crea ningun proyecto.
-    if !e.donde.es_de_un_proyecto() {
+    if e.office.is_none() && !e.donde.es_de_un_proyecto() {
         filas.push((textos.t("lector-al-proyecto"), Accion::AlProyecto));
     }
-    filas
-}
-
-fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<(RectF, Accion)>) {
-    let mut filas = filas_del_panel(e, textos);
     // El apartado «Voz» del movil: las voces de Microsoft y cual.
     filas.extend(
         crate::leer_en_voz::filas(textos, e.ubicacion.raiz())
             .into_iter()
             .map(|(t, a)| (t, Accion::AjusteVoz(a))),
     );
-    let alto_panel = (60.0 + filas.len() as f32 * 30.0) * m.e;
-    let caja = RectF {
-        x: 0.0,
-        y: m.alto - alto_panel,
-        ancho: m.ancho,
-        alto: alto_panel,
-    };
-    p.rellenar(caja, CRISTAL);
-    botones.push((caja, Accion::Engranaje));
-    let x = 90.0 * m.e;
-    for (i, (etiqueta, que)) in filas.into_iter().enumerate() {
-        let y = caja.y + (16.0 + i as f32 * 30.0) * m.e;
-        p.texto(&etiqueta, x, y, 14.0 * m.e, TEXTO);
-        botones.push((
-            RectF {
-                x,
-                y: y - 4.0 * m.e,
-                ancho: 380.0 * m.e,
-                alto: 28.0 * m.e,
-            },
-            que,
-        ));
-    }
-    p.texto(
-        &textos.t(if e.office.is_some() { "lector-ayuda-office" } else { "lector-ayuda-pdf" }),
-        x,
-        m.alto - 22.0 * m.e,
-        12.0 * m.e,
-        APAGADO,
-    );
+    filas
+}
+
+/// **El menu «⋯»**: el desplegable de siempre de la app (el de los pines y
+/// las tarjetas), no un panel abajo. Devuelve lo elegido.
+fn menu(e: &Estado, textos: &Catalogo) -> Option<Accion> {
+    let filas = filas_del_panel(e, textos);
+    let entradas: Vec<(u32, String)> = filas.iter().enumerate().map(|(i, (t, _))| (i as u32 + 1, t.clone())).collect();
+    let hwnd = windows::Win32::Foundation::HWND(e.hwnd as *mut core::ffi::c_void);
+    let k = pixpin_shell::menu_llano(hwnd, &entradas)?;
+    filas.get(k as usize - 1).map(|(_, a)| *a)
 }
 
 // ---------------------------------------------------------------------------
@@ -2342,6 +2314,10 @@ fn pulsar(
     match riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1)) {
         DestinoRiel::PonerMarca => {
             e.poniendo_marca = !e.poniendo_marca;
+            return false;
+        }
+        DestinoRiel::Imprimir => {
+            crate::marco_imprimir::de_la_ventana(Some(e.hwnd), &e.nombre, textos);
             return false;
         }
         DestinoRiel::Hojita => {
@@ -2567,7 +2543,7 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
         }
         (VK_A, false) => alternar_anotar(e, ruta),
         (VK_D, false) => alternar_auto(e, ruta),
-        (VK_G, false) => e.panel = !e.panel,
+        (VK_G, false) => e.panel = true,
         // N: las hojas en negativo y vuelta, como en los pines.
         (VK_N, false) => e.en_negativo = !e.en_negativo,
         (v, true) if (0x31..=0x39).contains(&v) => ir_a_la_marca(e, (v - 0x31) as usize),
@@ -2873,7 +2849,9 @@ fn hacer(
             e.panel = false;
             office::modo_lectura(e, ubicacion, ruta);
         }
-        Accion::Renombrar => e.renombre.empezar(),
+        // Pulsar el nombre ya no lo cambia (19-oct-2026, el usuario: «puede
+        // pasar que se cambie por accidente»).
+        Accion::Renombrar => {}
         // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
         Accion::Oscuro => {
             crate::oscuro::alternar();
@@ -2885,9 +2863,9 @@ fn hacer(
             hecho_de_buscar(e, h, ruta);
         }
         Accion::Engranaje => {
-            let en_la_hoja = e.panel && e.raton.1 > m.alto * 0.5;
-            if !en_la_hoja {
-                e.panel = !e.panel;
+            e.panel = false;
+            if let Some(a) = menu(e, textos) {
+                hacer(e, a, textos, ruta, ubicacion, tx, m);
             }
         }
         Accion::Escuchar => {
@@ -3397,6 +3375,7 @@ mod pruebas {
             lateral: None,
             x_meta: None,
             pastilla_hasta: 0,
+            hwnd: 0,
             panel: false,
             poniendo_marca: false,
             en_negativo: false,
@@ -3481,7 +3460,10 @@ mod pruebas {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let mut e = estado(1);
         assert!(filas_del_panel(&e, &textos).iter().any(|(_, a)| *a == Accion::ComoTexto));
-        assert!(filas_del_panel(&e, &textos).iter().any(|(_, a)| *a == Accion::Auto));
+        // Lo que ya tiene su boton en la barra no se repite en el «⋮».
+        for repetida in [Accion::Auto, Accion::Escuchar, Accion::Exportar] {
+            assert!(!filas_del_panel(&e, &textos).iter().any(|(_, a)| *a == repetida), "{repetida:?}");
+        }
         // Un PDF que es una foto: el hilo contesta y el lector lo avisa.
         let dir = std::env::temp_dir().join(format!("pixpin-como-texto-lector-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -4618,7 +4600,7 @@ fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
     let mut v = vec![
         BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() },
         BotonLector { id: 4, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() },
-        BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel },
+        BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false },
     ];
     // Un PowerPoint: presentar, a mano en la barra.
     if e.office.as_ref().is_some_and(|o| o.tipo == pixpin_office::Tipo::PowerPoint) {

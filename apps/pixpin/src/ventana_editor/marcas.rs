@@ -204,6 +204,8 @@ pub(super) struct Respuesta {
     /// Algo de lo pintado cambio (una marca, el riel o la tira).
     pub repintar: bool,
     pub cursor: Option<FormaCursorWin>,
+    /// Se pidio el marco para imprimir (`marco_imprimir`).
+    pub imprimir: bool,
     /// Se pidio la hojita (F6).
     pub hojita: bool,
 }
@@ -364,6 +366,10 @@ impl Marcador {
                         };
                         Respuesta::suya(true)
                     }
+                    DestinoRiel::Imprimir => Respuesta {
+                        imprimir: true,
+                        ..Respuesta::suya(true)
+                    },
                     DestinoRiel::Hojita => Respuesta {
                         hojita: true,
                         ..Respuesta::suya(true)

@@ -393,6 +393,8 @@ pub fn pintar_riel(
             DestinoRiel::PonerMarca,
         ),
         (riel.hojita, &material::EDIT, anotando, DestinoRiel::Hojita),
+        // El marco para imprimir: igual en todos los visores.
+        (riel.imprimir, &material::CROP_FREE, false, DestinoRiel::Imprimir),
     ] {
         let r = rf(caja);
         if activo {

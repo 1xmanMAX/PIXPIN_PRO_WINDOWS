@@ -447,6 +447,16 @@ pub const MORE_VERT: Icono = Icono {
     )],
 };
 
+/// `crop_free` (`src/image/crop_free/materialicons/24px.svg`): el marco
+/// para imprimir de los visores (las cuatro esquinas de un recuadro).
+pub const CROP_FREE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 5v4h2V5h4V3H5c-1.1 0-2 .9-2 2zm2 10H3v4c0 1.1.9 2 2 2h4v-2H5v-4zm14 4h-4v2h4c1.1 0 2-.9 2-2v-4h-2v4zm0-16h-4v2h4v4h2V5c0-1.1-.9-2-2-2z",
+        false,
+    )],
+};
+
 /// `open_in_new` (`src/action/open_in_new/materialicons/24px.svg`).
 pub const OPEN_IN_NEW: Icono = Icono {
     vista: VISTA,

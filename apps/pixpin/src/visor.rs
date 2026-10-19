@@ -1150,7 +1150,13 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 let lado = (c.ancho.max(c.alto) * m.e * 2.0).ceil() as u32;
                 match e.imagenes.ver(n, img, lado) {
                     imagenes::Vista::Lista(b) => {
-                        p.bitmap(&b, r, None, false);
+                        // En oscuro, la foto tambien (luz invertida, tono
+                        // conservado): todo el documento en modo noche.
+                        if e.oscuro && !e.en_negativo {
+                            p.bitmap_oscuro(&b, r, None);
+                        } else {
+                            p.bitmap(&b, r, None, false);
+                        }
                         continue;
                     }
                     // Mientras llega, su sitio apenas marcado.
@@ -1889,6 +1895,11 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
     match riel.destino(lector::punto(e.raton.0, e.raton.1)) {
         DestinoRiel::PonerMarca => {
             e.poniendo_marca = !e.poniendo_marca;
+            return false;
+        }
+        DestinoRiel::Imprimir => {
+            let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            crate::marco_imprimir::de_la_ventana(None, &titulo, textos);
             return false;
         }
         DestinoRiel::Hojita => {
@@ -2634,7 +2645,9 @@ fn hacer(
     m: Marco,
 ) {
     match a {
-        Accion::Renombrar => e.nombre.empezar(),
+        // Pulsar el nombre ya no lo cambia (19-oct-2026, el usuario: «puede
+        // pasar que se cambie por accidente»).
+        Accion::Renombrar => {}
         Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
         // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
         Accion::Oscuro => {

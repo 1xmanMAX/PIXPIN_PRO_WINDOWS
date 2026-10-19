@@ -39,6 +39,8 @@ pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::no
     std::fs::create_dir_all(&raiz).context("sin carpeta para la PixPin de prueba")?;
     let ubicacion = Ubicacion::Portable { raiz };
     *guardia_registro = Some(crate::iniciar_registro(&ubicacion));
+    // La luna/sol de los visores, como en la app (`estado.toml` de esta copia).
+    crate::oscuro::iniciar(&ubicacion);
     let lengua = idioma::resolver_idioma(&pixpin_shell::entorno::locale_del_sistema(), Default::default());
     let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
     tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PixPin de prueba (PIXPIN_INSTANCIA)");

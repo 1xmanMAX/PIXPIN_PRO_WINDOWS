@@ -224,6 +224,31 @@ fn leer_aparte(raiz: &Path, ruta: &Path) -> std::sync::mpsc::Receiver<Result<pix
     rx
 }
 
+/// **El recuadro del tipo** para la barra de los visores de planos y
+/// modelos: el mismo rotulo y color que en los demas pines (la tabla del
+/// chat: amarillo los DWG, los IFC, los RVT...).
+pub fn tipo_de_archivo(ruta: &Path) -> Option<pixpin_cad::ventana::TipoDeArchivo> {
+    let ext = ruta.extension()?.to_string_lossy().into_owned();
+    let nombre = format!("x.{ext}");
+    let rotulo = pixpin_ui::color_de_extension::rotulo(&nombre);
+    if rotulo.is_empty() {
+        return None;
+    }
+    let (r, g, b) = pixpin_ui::chat::color_de_extension(&ext);
+    let a_byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Some(pixpin_cad::ventana::TipoDeArchivo {
+        rotulo,
+        fondo: [a_byte(r), a_byte(g), a_byte(b)],
+        tinta_oscura: pixpin_ui::color_de_extension::de(&nombre).texto_oscuro,
+    })
+}
+
+/// El nombre para la barra y el titulo: sin la extension ni el numero con
+/// que Android guarda los adjuntos, como en los demas pines.
+pub fn nombre_para_la_barra(ruta: &Path) -> String {
+    crate::lector_pin::nombre_limpio(&ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default())
+}
+
 /// Abre el plano en su ventana, en su propio hilo.
 pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
@@ -235,7 +260,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         // usuario ya tenia. Antes de leer, para leer con lo que queda.
         crate::letras_que_viajan::al_abrir(&raiz);
         let rx = leer_aparte(&raiz, &ruta);
-        let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let titulo = nombre_para_la_barra(&ruta);
         // El boton «3D»: el mismo plano en el visor de modelos.
         let (u3, r3) = (ubicacion.clone(), ruta.clone());
         let abrir_3d: Box<dyn Fn()> = Box::new(move || crate::modelo_bim::lanzar(idioma, u3.clone(), &r3));
@@ -280,6 +305,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             letras: Some(letras),
             exportar: Some(exportar),
             vista_inicial: tomar_vista_al_abrir(&ruta),
+            tipo: tipo_de_archivo(&ruta),
         };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");
@@ -300,6 +326,17 @@ mod pruebas {
         assert!(se_abre("Planta.DWG") && se_abre("corte.dxf"));
         // Caso negativo: lo demas no.
         assert!(!se_abre("plano.pdf") && !se_abre("dwg"));
+    }
+
+    #[test]
+    fn la_barra_lleva_el_tipo_y_el_nombre_como_los_demas_pines() {
+        let t = tipo_de_archivo(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")).expect("tipo");
+        assert_eq!(t.rotulo, pixpin_ui::color_de_extension::rotulo("x.dwg"));
+        let c = crate::lector_pin::color_de_tipo("dwg");
+        assert_eq!(t.fondo, [c.r, c.g, c.b].map(|v| (v * 255.0).round() as u8));
+        assert_eq!(nombre_para_la_barra(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")), "Planta baja");
+        // Caso negativo: sin extension no hay recuadro.
+        assert!(tipo_de_archivo(Path::new(r"C:\planos\plano")).is_none());
     }
 
     #[test]

@@ -11,14 +11,17 @@
 //! - Otro clic (o doble clic) en el elegido: aislarlo, solo el, encuadrado;
 //!   Esc o doble clic en el vacio vuelven a todo el modelo. Tambien la I.
 //! - Doble clic, F o Inicio: el modelo entero.
-//! - Barra: asa, tema, caja de seccion (la de Revit: el modelo dentro de una
+//! - Barra (como la de los demas visores): asa, el tipo y el nombre del
+//!   archivo, caja de seccion (la de Revit: el modelo dentro de una
 //!   caja con un tirador en cada cara; arrastrandolos se corta por donde se
-//!   quiera, y lo cortado se ve macizo) y el pin.
+//!   quiera, y lo cortado se ve macizo), niveles, tema, pantalla completa,
+//!   el pin y cerrar.
 //! - Niveles y categorias (boton de la barra o L): un panel para mostrar u
 //!   ocultar plantas y categorias; lo elegido dice su nivel, su volumen y su
 //!   area (sacados de su malla).
 //! - Teclas: Esc (suelta lo elegido; si no hay, cierra), B tema, C caja,
-//!   A aristas, T encima, P planta, flechas para girar.
+//!   A aristas, T encima, P planta, flechas para girar; F11 pantalla
+//!   completa (y Esc, la primera vez, sale de ella).
 
 mod arbol;
 
@@ -40,12 +43,14 @@ use crate::modelo3d::Modelo3d;
 use arbol::Arbol;
 use crate::texto::Textos;
 use crate::ventana::{
-    ALTO_BARRA, CAPA_ENCIMA, De, ESTADO, Ev, ancho_barra, aviso, barra, botones_barra, colocar_barra, crear_barra, crear_ventana, poner_encima,
-    raya, rect, seguir_barra, vista_pantalla,
+    ALTO_BARRA, Aspecto, CAPA_ENCIMA, Cabecera, De, ESTADO, Ev, TipoDeArchivo, alternar_pantalla_completa, ancho_barra, aviso, barra, botones_barra,
+    colocar_barra, crear_barra, crear_ventana, poner_encima,
+    raya, rect, seguir_barra, tecla_de_pantalla_completa, vista_pantalla,
 };
 
 const INFINITE: u32 = u32::MAX;
-const BOTONES: [&str; 5] = ["asa", "tema", "corte", "capas", "fijar"];
+/// La barra, en el orden de la del plano (y la de los demas visores).
+pub(crate) const BOTONES: [&str; 8] = ["asa", "nombre", "corte", "capas", "tema", "pantalla", "fijar", "cerrar"];
 pub(crate) const FOV: f64 = 0.785_398; // 45 grados
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -661,6 +666,12 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: Texto
 
 /// [`ver`], con lo que pide un croquis ([`Extras`]).
 pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d, extras: Extras) -> Result<(), String> {
+    ver_con_tipo(titulo, None, cargando, ui, extras)
+}
+
+/// [`ver_con`], con el tipo de archivo para el recuadro de la barra (junto
+/// al nombre, como en los demas visores).
+pub fn ver_con_tipo(titulo: &str, tipo: Option<TipoDeArchivo>, cargando: Receiver<Result<Modelo3d, String>>, ui: TextosUi3d, extras: Extras) -> Result<(), String> {
     let nombres_de_vistas: Vec<String> = extras.vistas.iter().map(|v| v.nombre.clone()).collect();
     // Encuadrar con la orientacion del croquis, si la trae.
     let encuadre = |caja: [f32; 6], w: u32, h: u32| {
@@ -686,11 +697,14 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
     // SAFETY: ventana propia.
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let e = dpi as f64 / 96.0;
-    let (bw, bh) = (ancho_barra(e, BOTONES.len()).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
+    let mut textos = Textos::nuevo();
+    let cabecera = Cabecera::nueva(&mut textos, titulo, tipo, e);
+    let (bw, bh) = (ancho_barra(e, &BOTONES, &cabecera).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
     let hbarra = crear_barra(hwnd, bw, bh).map_err(|e| e.to_string())?;
     let mut gpu_barra = Gpu::nueva(hbarra, bw as u32, bh as u32).map_err(|e| e.to_string())?;
     ESTADO.with(|s| s.borrow_mut().barra = Some((hbarra, (8.0 * e) as i32)));
-    let mut textos = Textos::nuevo();
+    // A pantalla completa: donde estaba la ventana antes.
+    let mut antes_de_pantalla_completa: Option<RECT> = None;
     let mut modelo: Option<(Modelo3d, ModeloGpu)> = None;
     let mut mensaje = ui.abriendo.clone();
     let mut cam = Orbita { objetivo: [0.0; 3], rumbo: -0.8, altura: 0.5, dist: 10.0 };
@@ -799,10 +813,11 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
             }
         }
         let eventos: Vec<(De, Ev)> = ESTADO.with(|s| s.borrow_mut().eventos.drain(..).collect());
-        let b_barra = botones_barra(e, BOTONES.len());
+        let b_barra = botones_barra(e, &BOTONES, &cabecera);
         let boton_en = |x: i32| -> Option<usize> { b_barra.iter().position(|(a, b)| (x as f64) >= *a && (x as f64) < *b) };
         let caja = caja_vista;
         let (mut cambiar_tema, mut cambiar_corte, mut cambiar_encima, mut encuadrar, mut planta) = (false, false, false, false, false);
+        let mut cambiar_pantalla = false;
         // Cambio lo que se ve en el panel: hay que rehacer los indices.
         let mut refiltrar = false;
         let mut cambiar_panel = false;
@@ -817,6 +832,13 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
         for (de, ev) in eventos {
             if matches!((de, &ev), (De::Plano, Ev::Tecla(_))) {
                 sin_tocar = false;
+            }
+            // F11 y Esc a pantalla completa, como en los demas visores.
+            if let (De::Plano, Ev::Tecla(vk)) = (de, ev)
+                && tecla_de_pantalla_completa(vk, antes_de_pantalla_completa.is_some())
+            {
+                cambiar_pantalla = true;
+                continue;
             }
             match (de, ev) {
                 (_, Ev::Cerrar) => break 'bucle,
@@ -833,18 +855,21 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
                     boton_encima = None;
                     barra_sucia = true;
                 }
-                (De::Barra, Ev::Bajar(x, _, 0)) => match boton_en(x) {
-                    Some(0) => {
+                (De::Barra, Ev::Bajar(x, _, 0)) => match boton_en(x).map(|i| BOTONES[i]) {
+                    // El asa (o el nombre) mueve la ventana; a pantalla completa, no.
+                    Some("asa" | "nombre") if antes_de_pantalla_completa.is_none() => {
                         // SAFETY: ventanas propias.
                         unsafe {
                             let _ = ReleaseCapture();
                             SendMessageW(hwnd, WM_NCLBUTTONDOWN, Some(WPARAM(HTCAPTION as usize)), Some(LPARAM(0)));
                         }
                     }
-                    Some(1) => cambiar_tema = true,
-                    Some(2) => cambiar_corte = true,
-                    Some(3) => cambiar_panel = true,
-                    Some(4) => cambiar_encima = true,
+                    Some("tema") => cambiar_tema = true,
+                    Some("corte") => cambiar_corte = true,
+                    Some("capas") => cambiar_panel = true,
+                    Some("pantalla") => cambiar_pantalla = true,
+                    Some("fijar") => cambiar_encima = true,
+                    Some("cerrar") => break 'bucle,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -1154,6 +1179,10 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
             poner_encima(hwnd, fijada);
             barra_sucia = true;
         }
+        if cambiar_pantalla {
+            alternar_pantalla_completa(hwnd, &mut antes_de_pantalla_completa);
+            barra_sucia = true;
+        }
         if pista_hasta.is_some_and(|t| Instant::now() > t) {
             pista_hasta = None;
             sucio = true;
@@ -1197,7 +1226,14 @@ pub fn ver_con(titulo: &str, cargando: Receiver<Result<Modelo3d, String>>, ui: T
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let m = barra(e, &BOTONES, boton_encima, claro, &[false, false, seccion.is_some(), panel, fijada]);
+            let activos = BOTONES.map(|b| match b {
+                "corte" => seccion.is_some(),
+                "capas" => panel,
+                "fijar" => fijada,
+                _ => false,
+            });
+            let aspecto = Aspecto { encima: boton_encima, claro, pantalla_completa: antes_de_pantalla_completa.is_some(), activos: &activos, ..Aspecto::default() };
+            let m = barra(&mut textos, e, &BOTONES, &cabecera, aspecto);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };

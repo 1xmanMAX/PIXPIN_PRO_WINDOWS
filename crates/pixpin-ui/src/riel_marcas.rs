@@ -51,6 +51,8 @@ pub enum DestinoRiel {
     PonerMarca,
     /// El boton de la hojita.
     Hojita,
+    /// El marco para imprimir (`marco_imprimir` de la app).
+    Imprimir,
     /// El punto de la marca `i` (en el orden del riel).
     Marca(usize),
     /// El emoticono `i` de la tira.
@@ -68,10 +70,12 @@ pub enum DestinoRiel {
 /// El riel ya colocado para una ventana, una escala y un numero de marcas.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Riel {
-    /// La isla de los dos botones.
+    /// La isla de los tres botones.
     pub isla: Rect,
     pub poner_marca: Rect,
     pub hojita: Rect,
+    /// El marco para imprimir, debajo del lapiz.
+    pub imprimir: Rect,
     /// La columna de los puntos (vacia sin marcas).
     pub columna: Rect,
     /// El centro de cada punto, en el orden del riel.
@@ -114,7 +118,7 @@ impl Riel {
             x: ancho as i32 - (px(BORDE) + ancho_isla) as i32,
             y: px(BORDE) as i32,
             ancho: ancho_isla,
-            alto: 2 * lado + 2 * relleno,
+            alto: 3 * lado + 2 * relleno,
         };
         let poner_marca = Rect {
             x: isla.x + relleno as i32,
@@ -124,6 +128,10 @@ impl Riel {
         };
         let hojita = Rect {
             y: poner_marca.abajo(),
+            ..poner_marca
+        };
+        let imprimir = Rect {
+            y: hojita.abajo(),
             ..poner_marca
         };
         // Los puntos, debajo de la isla. Si no caben al paso de siempre se
@@ -184,6 +192,7 @@ impl Riel {
             isla,
             poner_marca,
             hojita,
+            imprimir,
             columna,
             puntos,
             tira,
@@ -209,6 +218,9 @@ impl Riel {
         }
         if self.hojita.contiene(p) {
             return DestinoRiel::Hojita;
+        }
+        if self.imprimir.contiene(p) {
+            return DestinoRiel::Imprimir;
         }
         if self.isla.contiene(p) {
             return DestinoRiel::Hueco;
@@ -272,6 +284,7 @@ mod pruebas {
         };
         assert_eq!(r.destino(centro(r.poner_marca)), DestinoRiel::PonerMarca);
         assert_eq!(r.destino(centro(r.hojita)), DestinoRiel::Hojita);
+        assert_eq!(r.destino(centro(r.imprimir)), DestinoRiel::Imprimir);
         for (i, p) in r.puntos.iter().enumerate() {
             assert_eq!(r.destino(*p), DestinoRiel::Marca(i));
         }

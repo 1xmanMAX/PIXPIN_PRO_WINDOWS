@@ -15752,8 +15752,9 @@ fn pintar_flecha_sub(p: &Pintor, derecha: f32, fila: Rect, e: f32, color: Color)
 fn pintar_tres_puntos(p: &Pintor, caja: Rect, color: Color, e: f32) {
     let cy = caja.y as f32 + caja.alto as f32 / 2.0;
     let cx = caja.x as f32 + caja.ancho as f32 / 2.0;
-    for dx in [-6.5f32, 0.0, 6.5] {
-        p.circulo((cx + dx * e, cy), 1.9 * e, color);
+    // En columna «⋮», el boton clasico (19-oct-2026).
+    for dy in [-6.0f32, 0.0, 6.0] {
+        p.circulo((cx, cy + dy * e), 1.9 * e, color);
     }
 }
 
