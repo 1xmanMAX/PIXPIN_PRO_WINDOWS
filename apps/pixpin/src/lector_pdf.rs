@@ -730,6 +730,12 @@ struct Estado {
     panel: bool,
     /// La ventana del lector: duena del menu «⋯».
     hwnd: isize,
+    /// Los marcos numerados (`marcos_doc`), con la logica del plano.
+    marcos: crate::marcos_doc::Marcos,
+    /// Fotografiando los marcos para imprimirlos en grupo.
+    fotos: Option<FotosDeMarcos>,
+    /// Pintar solo las hojas, sin interfaz (para esas fotos).
+    fotografiando: bool,
     poniendo_marca: bool,
     /// El contenido en negativo (N, 10-oct-2026): solo al pintar, sin
     /// tocar el documento; la interfaz y la tinta quedan con sus colores.
@@ -912,6 +918,9 @@ fn abrir_con(
         x_meta: None,
         pastilla_hasta: ahora_ms() + MS_DE_LA_PASTILLA,
         hwnd,
+        marcos: crate::marcos_doc::Marcos::de(Some(ruta)),
+        fotos: None,
+        fotografiando: false,
         panel: false,
         poniendo_marca: false,
         en_negativo: false,
@@ -953,6 +962,9 @@ fn abrir_con(
     // Abierto por el asistente para ensenar un texto: la caja de buscar ya
     // escrita; al llegar el texto (`recoger_texto`) salta a la coincidencia
     // desde la pagina pedida y la marca, como con Ctrl+F.
+    // Pruebas: imprimir los marcos solo, a los 2 s de abrir (con
+    // `PIXPIN_IMPRIMIR_A_PDF`, a un fichero), sin Ctrl+P de verdad.
+    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| ahora_ms() + 2000);
     if let Some(q) = tomar_busqueda_al_abrir(ruta) {
         e.hallar.caja.buscar_ya(&q);
         voz::pedir_el_texto(&mut e, ruta);
@@ -1125,6 +1137,44 @@ fn abrir_con(
             }
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
+                // Los marcos numerados (`marcos_doc`), como en el plano: con el
+                // modo puesto, arrastrar en el documento pone uno; los botones y
+                // el riel siguen siendo suyos.
+                EventoOverlay::BotonPulsado(p) if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) => {
+                    e.raton = local(p);
+                    e.marcos.pulsar(doc_del_raton(&e, marco), 0);
+                    ventana.capturar_raton();
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::RatonMovido(p) if e.marcos.arrastrando() => {
+                    e.raton = local(p);
+                    e.marcos.mover(doc_del_raton(&e, marco));
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::BotonSoltado(p) if e.marcos.arrastrando() => {
+                    e.raton = local(p);
+                    e.marcos.soltar(doc_del_raton(&e, marco), px(&e, marco) as f64);
+                    ventana.soltar_raton();
+                    hay_que_pintar = true;
+                }
+                // I: el modo; Supr: quitar el ultimo; Ctrl+P con marcos: todos.
+                EventoOverlay::Tecla { vk, ctrl, shift: false, .. }
+                    if !escribiendo(&e)
+                        && ((vk == crate::marcos_doc::VK_I && !ctrl && !e.anotando)
+                            || (vk == crate::marcos_doc::VK_SUPR && !ctrl && e.marcos.activo)
+                            || (vk == VK_P && ctrl && !e.marcos.lista.is_empty())) =>
+                {
+                    match e.marcos.tecla(vk, ctrl) {
+                        Some(crate::marcos_doc::Pedido::Imprimir) => {
+                            imprimir_marcos(&mut e, ruta);
+                        }
+                        Some(crate::marcos_doc::Pedido::Alternado) if e.marcos.activo => {
+                            e.poniendo_marca = false;
+                        }
+                        _ => {}
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::RatonMovido(p) => {
                     e.raton = local(p);
                     mover_raton(&mut e, marco);
@@ -1343,6 +1393,13 @@ fn abrir_con(
             guardar_capas(&mut e, ruta);
         }
 
+        if imprimir_al_abrir.is_some_and(|t| ahora_ms() > t) {
+            imprimir_al_abrir = None;
+            imprimir_marcos(&mut e, ruta);
+        }
+        if paso_de_las_fotos(&mut e, marco) {
+            hay_que_pintar = true;
+        }
         if hay_que_pintar {
             hay_que_pintar = false;
             acotar(&mut e, marco);
@@ -1857,13 +1914,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // Modo oscuro: el papel (la hoja que aun no llega, los margenes de
     // anotar) y el de la tinta, oscuros; las hojas, al pintarlas.
     let papel = if e.oscuro { pixpin_render::oscuro::PAPEL } else { Color::BLANCO };
-    let papel_margen = if e.oscuro { pixpin_render::oscuro::invertir_luz(PAPEL_DEL_MARGEN) } else { PAPEL_DEL_MARGEN };
+    let papel_margen = if e.oscuro && !e.fotografiando { pixpin_render::oscuro::invertir_luz(PAPEL_DEL_MARGEN) } else { PAPEL_DEL_MARGEN };
     if let Some(o) = e.office.as_ref() {
-        o.poner_oscuro(e.oscuro);
+        o.poner_oscuro(e.oscuro && !e.fotografiando);
     }
     // La hoja de un PDF en oscuro: la matriz de color en la GPU, sin tocar
     // ni duplicar la cache.
-    let oscuro = e.oscuro;
+    // Fotografiando para imprimir, la hoja con sus colores de verdad.
+    let oscuro = e.oscuro && !e.fotografiando;
     let hoja_pdf = |b: &ID2D1Bitmap1, caja: RectF| {
         if oscuro { p.bitmap_oscuro(b, caja, None) } else { p.bitmap(b, caja, None, false) }
     };
@@ -1935,7 +1993,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         }
         // N: la hoja (y sus margenes de anotar) en negativo. Antes de lo
         // encontrado, lo que suena y la tinta, que conservan sus colores.
-        if e.en_negativo {
+        if e.en_negativo && !e.fotografiando {
             p.invertir_colores(
                 RectF {
                     x: -izq,
@@ -1967,12 +2025,21 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 s,
                 // En negativo el papel es negro: la tinta se ajusta a el
                 // como sobre cualquier papel oscuro y se sigue leyendo.
-                lector_tinta::papel(if e.en_negativo { papel.invertido() } else { papel }),
+                lector_tinta::papel(if e.en_negativo && !e.fotografiando { papel.invertido() } else { papel }),
                 activa,
             );
         }
     }
     p.desplazar(0.0, 0.0);
+
+    // Fotografiando un marco para imprimirlo: solo las hojas y su tinta.
+    if e.fotografiando {
+        e.botones = Vec::new();
+        return;
+    }
+    // Los marcos numerados, pegados al documento (`marcos_doc`).
+    let (ex, ey) = (e.x, e.y);
+    e.marcos.pintar(p, 0, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s), m.e, m.alto, &crate::marcos_doc::pista(textos));
 
     // Las marcas, en su sitio del documento: un redondel en el canto
     // derecho de su hoja, a su altura.
@@ -2004,13 +2071,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         emojis.len(),
         e.poniendo_marca,
     );
-    lector::pintar_riel(
+    lector::pintar_riel_con(
         p,
         &riel,
         &emojis,
         e.encima,
         e.poniendo_marca,
         e.anotando,
+        e.marcos.activo,
         &textos.t("marca-elige"),
     );
     // Abajo: la barra de escuchar o los mandos de los lados (los mismos del
@@ -2317,10 +2385,14 @@ fn pulsar(
             return false;
         }
         DestinoRiel::Imprimir => {
-            crate::marco_imprimir::de_la_ventana(Some(e.hwnd), &e.nombre, textos);
+            alternar_marcos(e, ruta);
             return false;
         }
         DestinoRiel::Hojita => {
+            // Anotar y poner marcos no van a la vez (como en el plano).
+            if e.marcos.activo {
+                e.marcos.alternar();
+            }
             alternar_anotar(e, ruta);
             return false;
         }
@@ -2695,6 +2767,122 @@ fn recoger_como_texto(e: &mut Estado, textos: &Catalogo, ubicacion: &Ubicacion) 
 
 // ---------------------------------------------------------------------------
 // Hacer
+
+/// **El boton del marco o la I**: entrar o salir de poner los marcos
+/// numerados. Como en el plano, poner marcos deja de anotar y de marcar.
+fn alternar_marcos(e: &mut Estado, ruta: &Path) {
+    e.marcos.alternar();
+    if e.marcos.activo {
+        e.poniendo_marca = false;
+        if e.anotando {
+            alternar_anotar(e, ruta);
+        }
+    }
+}
+
+/// Si en `q` (pixeles de la ventana) hay interfaz: un boton o el riel.
+fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
+    riel_de(e, m).contiene(lector::punto(q.0, q.1)) || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
+}
+
+/// El documento bajo el raton (unidades del lector: x de la hoja, y de
+/// todas las hojas seguidas).
+fn doc_del_raton(e: &Estado, m: Marco) -> [f64; 2] {
+    let s = px(e, m);
+    [(e.x + e.raton.0 / s) as f64, (e.y + e.raton.1 / s) as f64]
+}
+
+/// Las fotos de los marcos para imprimirlos en grupo (`marcos_doc`): por
+/// cual va, cuando se puso a su vista y lo de antes para volver.
+pub(crate) struct FotosDeMarcos {
+    i: usize,
+    desde: u64,
+    antes: (f32, f32, f32),
+    fotos: Vec<ImagenRgba>,
+}
+
+/// Ctrl+P con marcos: empieza a fotografiarlos (anotando, primero se deja
+/// de anotar, para que lo anotado salga sin la barra). Sin marcos, `false`.
+fn imprimir_marcos(e: &mut Estado, ruta: &Path) -> bool {
+    if e.marcos.lista.is_empty() {
+        return false;
+    }
+    if e.anotando {
+        alternar_anotar(e, ruta);
+    }
+    e.poniendo_marca = false;
+    e.fotos = Some(FotosDeMarcos { i: 0, desde: 0, antes: (e.x, e.y, e.zoom), fotos: Vec::new() });
+    true
+}
+
+/// **Un paso de las fotos de los marcos**: se acerca al siguiente hasta
+/// que llena la ventana, deja que lleguen las hojas nitidas, lo fotografia
+/// y, con el ultimo, vuelve a como estaba y abre el dialogo de imprimir con
+/// todas (una hoja por marco). Devuelve si hay que pintar.
+fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
+    let Some(mut f) = e.fotos.take() else { return false };
+    let ahora = ahora_ms();
+    let Some(marco) = e.marcos.lista.get(f.i).cloned() else {
+        // Se quitaron marcos mientras tanto: lo hecho, a imprimir.
+        terminar_fotos(e, f);
+        return true;
+    };
+    if f.desde == 0 {
+        let base = ancho_base(m) / vista::ANCHO_HOJA;
+        let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
+        e.zoom = (s / base).clamp(0.05, vista::ZOOM_MAXIMO_PDF);
+        let s = px(e, m);
+        let c = marco.centro();
+        e.x = c[0] as f32 - m.ancho / (2.0 * s);
+        e.y = c[1] as f32 - m.alto / (2.0 * s);
+        // Las hojas nitidas ya, sin esperar a que el zoom se quede quieto.
+        e.zoom_cambiado = 0;
+        e.fotografiando = true;
+        f.desde = ahora;
+        e.fotos = Some(f);
+        return true;
+    }
+    // Un Word se pinta en vectores al momento; un PDF espera sus hojas.
+    let espera = if e.office.is_some() { 250 } else { 900 };
+    if ahora < f.desde + espera {
+        e.fotos = Some(f);
+        return false;
+    }
+    pixpin_shell::overlay::esperar_composicion();
+    let s = px(e, m);
+    let (ex, ey) = (e.x, e.y);
+    let r = crate::marcos_doc::caja_en_pantalla(marco.caja, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s));
+    if let Some((_, cliente)) = pixpin_shell::overlay::area_cliente(Some(e.hwnd)) {
+        let area = pixpin_geom::Rect {
+            x: cliente.x + r.x.round() as i32,
+            y: cliente.y + r.y.round() as i32,
+            ancho: r.ancho.round().max(1.0) as u32,
+            alto: r.alto.round().max(1.0) as u32,
+        };
+        match area.interseccion(cliente).and_then(crate::marco_imprimir::foto_de_pantalla) {
+            Some(foto) => f.fotos.push(foto),
+            None => tracing::warn!(i = f.i, "marcos: sin foto del marco"),
+        }
+    }
+    f.i += 1;
+    f.desde = 0;
+    if f.i >= e.marcos.lista.len() {
+        terminar_fotos(e, f);
+    } else {
+        e.fotos = Some(f);
+    }
+    true
+}
+
+fn terminar_fotos(e: &mut Estado, f: FotosDeMarcos) {
+    (e.x, e.y, e.zoom) = f.antes;
+    e.fotografiando = false;
+    e.zoom_cambiado = ahora_ms();
+    tracing::info!(marcos = f.fotos.len(), "marcos: a imprimir en grupo");
+    if let Err(err) = crate::marco_imprimir::imprimir_fotos(e.hwnd, f.fotos, &e.nombre) {
+        tracing::warn!(?err, "marcos: no se pudo imprimir");
+    }
+}
 
 fn alternar_anotar(e: &mut Estado, ruta: &Path) {
     if e.anotando {
@@ -3376,6 +3564,9 @@ mod pruebas {
             x_meta: None,
             pastilla_hasta: 0,
             hwnd: 0,
+            marcos: Default::default(),
+            fotos: None,
+            fotografiando: false,
             panel: false,
             poniendo_marca: false,
             en_negativo: false,

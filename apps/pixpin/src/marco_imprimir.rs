@@ -260,17 +260,29 @@ fn para_papel(mut foto: ImagenRgba) -> ImagenRgba {
 /// El dialogo moderno de Windows con la vista previa; si no se abre (o ya
 /// fallo en esta sesion), el clasico, que imprime lo mismo.
 fn imprimir(ventana: isize, foto: ImagenRgba, titulo: &str) -> Result<()> {
-    imprimir_fotos(ventana, vec![foto], titulo)
+    // Lo congelado de la pantalla puede venir en modo noche: a claro.
+    imprimir_fotos(ventana, vec![para_papel(foto)], titulo)
 }
 
 /// **Imprime en grupo**: una hoja por foto, en su orden (los marcos 1, 2,
 /// 3… de un documento, como las laminas del plano). El papel y su
 /// orientacion los dice la primera, como en el plano y en el lienzo.
 pub fn imprimir_fotos(ventana: isize, fotos: Vec<ImagenRgba>, titulo: &str) -> Result<()> {
-    let fotos: Vec<ImagenRgba> = fotos.into_iter().map(para_papel).collect();
+    // Tal cual: cada visor las fotografia ya con sus colores de verdad (sin
+    // modo noche). Aclarar aqui estropeaba los colores y una foto oscura de
+    // verdad salia invertida.
     let Some(primera) = fotos.first() else { return Ok(()) };
     let apaisada = primera.ancho > primera.alto;
     let n = fotos.len() as u32;
+    // Para las pruebas de los visores: sin dialogo, a un PDF con la impresora
+    // PDF de Windows (`PIXPIN_IMPRIMIR_A_PDF=<fichero.pdf>`).
+    if let Some(pdf) = std::env::var_os("PIXPIN_IMPRIMIR_A_PDF") {
+        let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
+        let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
+        let papel = pixpin_render::imprimir_moderno::papel_por_omision(apaisada);
+        tracing::info!(hojas = n, pdf = ?pdf, "marco: imprimiendo a un PDF (prueba)");
+        return a_la_impresora(&motor, fotos, "Microsoft Print to PDF", None, papel, titulo, Some(std::path::Path::new(&pdf)));
+    }
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
     if !pixpin_render::imprimir_moderno::roto() {
         let motor = MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;

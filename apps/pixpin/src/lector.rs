@@ -383,6 +383,22 @@ pub fn pintar_riel(
     anotando: bool,
     elige: &str,
 ) {
+    pintar_riel_con(p, riel, emojis, encima, poniendo, anotando, false, elige);
+}
+
+/// `pintar_riel` con el marco pulsado si se estan poniendo los marcos
+/// numerados (`marcos_doc`).
+#[allow(clippy::too_many_arguments)]
+pub fn pintar_riel_con(
+    p: &Pintor<'_>,
+    riel: &Riel,
+    emojis: &[&str],
+    encima: DestinoRiel,
+    poniendo: bool,
+    anotando: bool,
+    enmarcando: bool,
+    elige: &str,
+) {
     let e = riel.escala_por_cien as f32 / 100.0;
     let isla = rf(riel.isla);
     p.rellenar_redondeado(isla, 8.0 * e, con_alfa(CRISTAL, 0.92));
@@ -395,7 +411,7 @@ pub fn pintar_riel(
         ),
         (riel.hojita, &material::EDIT, anotando, DestinoRiel::Hojita),
         // El marco para imprimir: igual en todos los visores.
-        (riel.imprimir, &material::CROP_FREE, false, DestinoRiel::Imprimir),
+        (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
     ] {
         let r = rf(caja);
         if activo {
