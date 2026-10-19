@@ -26,6 +26,9 @@ pub const BUSCAR: &str = "buscar_en_conexion";
 pub const LEER: &str = "leer_de_conexion";
 pub const BAJAR: &str = "bajar_de_conexion";
 pub const SUBIR: &str = "subir_a_conexion";
+/// Los eventos de Google Calendar (18-oct): la contesta la app con lo que
+/// ya tiene leido (`calendario_google`), sin esperar a la red.
+pub const VER_CALENDARIO: &str = "ver_calendario";
 
 /// Los ids de los servicios, para el `enum` del esquema.
 const IDS: &[&str] = &["google_drive"];
@@ -113,6 +116,20 @@ pub const ACCIONES_CONEXIONES: &[Accion] = &[
         confirmar: Some("¿Subo[ «{archivo}»] a {servicio}?"),
         hecho: "Hecho.",
     },
+    Accion {
+        herramienta: VER_CALENDARIO,
+        accion: CONEXION,
+        descripcion: "Lee los eventos del Google Calendar del usuario (todos sus calendarios visibles): titulo, dia, hora, lugar.                       Usala para «¿que tengo hoy?», «¿tengo algo el jueves?», «mi agenda de esta semana». Solo lee: no crea ni cambia eventos.",
+        categoria: Categoria::Abrir,
+        claves: &[],
+        fijos: "{}",
+        params: &[
+            d(r#""hoy""#, p("desde", Tipo::Texto, false, "el primer dia: hoy, mañana, un dia de la semana (jueves), semana (esta semana) o una fecha AAAA-MM-DD")),
+            d("1", p("dias", Tipo::Entero, false, "cuantos dias desde ese (1-31); con desde=semana, 7")),
+        ],
+        confirmar: None,
+        hecho: "Hecho.",
+    },
 ];
 
 /// Si la herramienta es de las conexiones.
@@ -121,7 +138,7 @@ pub fn es_de_conexiones(herramienta: &str) -> bool {
 }
 
 /// Los nombres, para `acciones::SOLO_NUBE`.
-pub const NOMBRES: &[&str] = &[BUSCAR, LEER, BAJAR, SUBIR];
+pub const NOMBRES: &[&str] = &[BUSCAR, LEER, BAJAR, SUBIR, VER_CALENDARIO];
 
 /// Cuanto texto se le da al modelo de una vez (lo mismo que `leer_documento`).
 pub const LETRAS: usize = 40_000;
@@ -188,7 +205,13 @@ pub fn hacer(
     chat: &dyn Chat,
 ) -> Result<String, String> {
     let args = &a.pedido;
+    if a.herramienta == VER_CALENDARIO {
+        return Err("los eventos de Google Calendar los da la app".into());
+    }
     let s = por_id(texto(args, "servicio").unwrap_or("google_drive")).ok_or("ese servicio no se puede conectar todavia")?;
+    if s.id == super::calendario::GOOGLE_CALENDAR.id {
+        return Err("Google Calendar no es un servicio de archivos: para sus eventos usa la herramienta calendario".into());
+    }
     // En subir, el archivo es el del chat de verdad (se elige primero) y la
     // pregunta lleva su nombre y su tamano; sin el «Sí» no sale ni un byte.
     let subir = a.herramienta == SUBIR;

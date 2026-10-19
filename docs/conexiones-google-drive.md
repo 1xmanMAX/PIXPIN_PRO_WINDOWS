@@ -1,4 +1,6 @@
-# Conectar Google Drive al asistente
+# Conectar Google Drive y Google Calendar
+
+> **Google Calendar** (18-oct-2026) va con el **mismo ID de cliente**: en el paso 2 habilita también la *Google Calendar API* y, en Ajustes, pulsa **Conectar** en la fila **Google Calendar**. Ver [Google Calendar](#google-calendar) abajo.
 
 Con Google Drive conectado, el asistente de PixPin Max (con Claude o DeepSeek) puede, siempre por encargo tuyo:
 
@@ -25,6 +27,7 @@ Google no deja que una app de escritorio se conecte a Drive con un permiso compa
 1. Menú ☰ → **APIs y servicios → Biblioteca**.
 2. Busca `Google Drive API` y ábrela.
 3. Pulsa **Habilitar**.
+4. Para **Google Calendar**: busca también `Google Calendar API` y pulsa **Habilitar**.
 
 ## 3. Pantalla de consentimiento (Google Auth Platform)
 
@@ -37,6 +40,7 @@ Google no deja que una app de escritorio se conecte a Drive con un permiso compa
 7. (Opcional pero recomendable) **Acceso a los datos → Agregar o quitar permisos** y marca estos dos (puedes pegarlos en «Agregar permisos manualmente»):
    - `https://www.googleapis.com/auth/drive.readonly`
    - `https://www.googleapis.com/auth/drive.file`
+   - `https://www.googleapis.com/auth/calendar.readonly` (para Google Calendar)
 
    Pulsa **Actualizar** y luego **Guardar**. PixPin los pide de todas formas al conectar; aquí solo quedan apuntados.
 
@@ -77,6 +81,16 @@ Con Claude o DeepSeek como motor del asistente (la IA local no usa las conexione
 ## 7. Desconectar
 
 Ajustes → Asistente → Conexiones → **Desconectar**. Los tokens se borran de este PC al momento y PixPin le pide a Google que retire el permiso. El ID de cliente se queda guardado por si vuelves a conectar. También puedes retirar el permiso desde tu cuenta: <https://myaccount.google.com/permissions>.
+
+## Google Calendar
+
+Solo para **ver**: PixPin pide `calendar.readonly` y no puede crear, cambiar ni borrar nada de tu calendario.
+
+1. Con el ID de cliente ya pegado (el de Drive vale: se copia solo), en **Ajustes → Asistente → Conexiones** aparece la fila **Google Calendar** con **Conectar**. Púlsalo y da permiso en el navegador, como con Drive.
+2. PixPin lee tus calendarios visibles (los que tienes marcados en Google) cada **15 minutos**, de ayer a tres semanas, y lo guarda en el PC: todo sale al instante y sin internet.
+3. **En el horario semanal** (bandeja → «Horario de clases…») los eventos salen en la rejilla, translúcidos y con la raya del color de su calendario; los de todo el día, como una tira arriba. Pulsar uno lo abre en Google Calendar.
+4. **Avisos**: antes de cada evento (con la misma antelación que las clases) sale la **llamada** en pantalla, con su hora, su lugar y su calendario.
+5. **El asistente**: «¿qué tengo hoy?», «¿tengo algo el jueves?», «mi agenda de esta semana».
 
 ## Seguridad
 

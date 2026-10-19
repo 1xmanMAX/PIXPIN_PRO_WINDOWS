@@ -27,6 +27,7 @@
 //! las pruebas apunten todo a un servidor falso en 127.0.0.1, sin red.
 
 pub mod acciones;
+pub mod calendario;
 pub mod drive;
 pub mod guardado;
 pub mod oauth;
@@ -105,12 +106,17 @@ impl Servicio {
     }
 }
 
-/// **Los servicios que hay.** Por ahora, Google Drive.
-pub const SERVICIOS: &[Servicio] = &[drive::GOOGLE_DRIVE];
+/// **Los servicios que hay**: Google Drive (archivos) y Google Calendar
+/// (solo ver, 18-oct).
+pub const SERVICIOS: &[Servicio] = &[drive::GOOGLE_DRIVE, calendario::GOOGLE_CALENDAR];
 
 pub fn por_id(id: &str) -> Option<&'static Servicio> {
     let id = id.trim().to_ascii_lowercase().replace([' ', '-'], "_");
-    SERVICIOS.iter().find(|s| s.id == id || (s.id == "google_drive" && (id == "drive" || id == "google")))
+    SERVICIOS.iter().find(|s| {
+        s.id == id
+            || (s.id == "google_drive" && (id == "drive" || id == "google"))
+            || (s.id == "google_calendar" && matches!(id.as_str(), "calendar" | "calendario" | "google_calendario"))
+    })
 }
 
 /// Un archivo (o carpeta) de un servicio, lo que se le cuenta al modelo.
@@ -307,7 +313,11 @@ pub fn conectar_en(
     guardado::guardar_en(carpeta, s, &g)?;
     let cx = Conexion::abrir_en(s, extremos.clone(), carpeta)?;
     // La cuenta es para ensenarla: si no sale, se conecto igual.
-    let cuenta = cx.almacen().cuenta().unwrap_or_default();
+    let cuenta = match s.id {
+        "google_calendar" => calendario::cuenta(&cx),
+        _ => cx.almacen().cuenta(),
+    }
+    .unwrap_or_default();
     if !cuenta.is_empty() {
         cx.apuntar_cuenta(&cuenta);
     }
@@ -344,6 +354,15 @@ pub fn guardar_cliente_en(s: &'static Servicio, carpeta: &Path, pegado: &str) ->
     }
     g.cliente = Some(cliente.clone());
     guardado::guardar_en(carpeta, s, &g)?;
+    // (El mismo ID de cliente de Google vale para Drive y Calendar: a los
+    // otros servicios de la misma cuenta que aun no tienen, se les pone.)
+    for otro in SERVICIOS.iter().filter(|o| o.id != s.id && o.autorizar == s.autorizar) {
+        let mut go = guardado::leer_de(carpeta, otro);
+        if go.cliente.is_none() {
+            go.cliente = Some(cliente.clone());
+            let _ = guardado::guardar_en(carpeta, otro, &go);
+        }
+    }
     Ok(cliente)
 }
 

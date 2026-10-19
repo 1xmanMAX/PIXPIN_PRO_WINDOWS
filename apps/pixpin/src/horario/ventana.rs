@@ -152,6 +152,8 @@ enum Accion {
     Rejilla,
     /// La casilla de la tarea pendiente `.0` de la asignatura elegida.
     Tarea(usize),
+    /// El evento `.0` de Google Calendar de la semana: abrirlo en Google.
+    EventoGoogle(usize),
     AbrirTareas,
     Guardar,
     Cancelar,
@@ -223,6 +225,9 @@ struct Estado {
     /// La primera asignatura que se ve en la lista (la rueda la mueve, 18-oct:
     /// con mas de una docena, las de abajo no se alcanzaban).
     primera: usize,
+    /// Los eventos de Google Calendar que se pintaron (18-oct), para abrir
+    /// el pulsado.
+    google: Vec<pixpin_ia::conexiones::calendario::Evento>,
 }
 
 fn firma_de(ruta: &Path) -> Option<(SystemTime, u64)> {
@@ -239,6 +244,7 @@ impl Estado {
             firma: None,
             domingo: false,
             primera: 0,
+            google: Vec::new(),
             elegida: None,
             bloque: None,
             nueva: ui::Campo::default(),
@@ -864,6 +870,11 @@ fn hacer(
                 e.cargar_tareas(raiz);
             }
         }
+        Accion::EventoGoogle(i) => {
+            if let Some(ev) = e.google.get(i).filter(|ev| !ev.enlace.is_empty()) {
+                let _ = pixpin_shell::abrir(std::path::Path::new(&ev.enlace));
+            }
+        }
         Accion::AbrirTareas => {
             let nombre = e
                 .elegida
@@ -1261,6 +1272,51 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
             p.texto(&t, cx - tw / 2.0, cy - th / 2.0, tam, d::CUERPO);
         }
     }
+    // **Los eventos de Google Calendar** de esta semana (18-oct), debajo de
+    // las clases: translucidos, con la raya de su color a la izquierda.
+    // Son de Google: no se mueven; pulsarlos los abre alli.
+    let desfase = pixpin_shell::entorno::ahora_local_ms() - pixpin_shell::entorno::ahora_utc_ms();
+    let lunes_ms = lunes * 86_400_000;
+    let fin_semana_ms = lunes_ms + i64::from(r.dias) * 86_400_000;
+    e.google = crate::calendario_google::eventos_entre(lunes_ms - desfase - 86_400_000, fin_semana_ms - desfase + 86_400_000);
+    for (k, ev) in e.google.clone().iter().enumerate() {
+        // En hora local (uno de todo el dia ya es una fecha).
+        let (ini, fin) = if ev.todo_el_dia { (ev.inicio_ms, ev.fin_ms) } else { (ev.inicio_ms + desfase, ev.fin_ms + desfase) };
+        let dia = ini.div_euclid(86_400_000) - lunes;
+        if dia < 0 || dia >= i64::from(r.dias) {
+            continue;
+        }
+        let tinte = u32::from_str_radix(ev.color.trim_start_matches('#'), 16).map(crate::caja_dibujo::hex).unwrap_or(ACENTO);
+        let caja = if ev.todo_el_dia {
+            // Arriba del todo de su dia, una tira.
+            let c = r.caja(dia as u8, semana::DESDE, semana::HASTA);
+            RectF { x: c.x + 2.0 * s, y: c.y + 2.0 * s, ancho: c.ancho - 4.0 * s, alto: 18.0 * s }
+        } else {
+            let m0 = (ini.rem_euclid(86_400_000) / 60_000) as u32;
+            let m1 = if fin.div_euclid(86_400_000) > ini.div_euclid(86_400_000) { semana::HASTA } else { (fin.rem_euclid(86_400_000) / 60_000) as u32 };
+            if m1 <= semana::DESDE || m0 >= semana::HASTA {
+                continue;
+            }
+            encoger(r.caja(dia as u8, m0, m1.max(m0 + 15)), 1.5 * s)
+        };
+        p.rellenar_redondeado(caja, 6.0 * s, con_alfa(tinte, 0.30));
+        p.rellenar(RectF { ancho: 3.0 * s, ..caja }, tinte);
+        p.con_recorte(caja, |p| {
+            let tam = 12.0 * s;
+            let (_, th) = p.medir_texto("Ag", tam);
+            let tx = caja.x + 8.0 * s;
+            p.texto_linea(&ev.titulo, tx, caja.y + (if ev.todo_el_dia { (caja.alto - th) / 2.0 } else { 3.0 * s }), tam, caja.ancho - 12.0 * s, TEXTO);
+            if !ev.todo_el_dia && caja.alto > th * 2.2 {
+                let mut d = crate::calendario_google::tramo_legible(ev);
+                if !ev.lugar.is_empty() {
+                    d.push_str(" · ");
+                    d.push_str(&ev.lugar);
+                }
+                p.texto_linea(&d, tx, caja.y + 3.0 * s + th, 11.0 * s, caja.ancho - 12.0 * s, GRIS);
+            }
+        });
+        e.botones.zona(caja, Accion::EventoGoogle(k));
+    }
     // Las clases.
     let movida = match e.agarre {
         Some(Agarre::Bloque {
@@ -1622,6 +1678,31 @@ avisar 10 min antes
         crate::ventanita::muestra("horario-semanal", ANCHO_VENTANA, ALTO_VENTANA, |p, _| {
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
+        // Con Google Calendar (18-oct): un evento el martes de 16:00 a 17:30
+        // y uno de todo el dia el jueves, de la semana que se ve.
+        {
+            let desfase = pixpin_shell::entorno::ahora_local_ms() - pixpin_shell::entorno::ahora_utc_ms();
+            let hoy = e.ahora_ms.div_euclid(86_400_000);
+            let sem = fechas::dia_de_la_semana(hoy) as i64;
+            let lunes = if sem >= 6 { hoy + 7 - sem } else { hoy - sem };
+            let ev = |id: &str, t: &str, dia: i64, h0: i64, h1: i64, todo: bool| pixpin_ia::conexiones::calendario::Evento {
+                id: id.into(),
+                calendario: "Personal".into(),
+                titulo: t.into(),
+                inicio_ms: if todo { (lunes + dia) * 86_400_000 } else { (lunes + dia) * 86_400_000 + h0 * 60_000 - desfase },
+                fin_ms: if todo { (lunes + dia + 1) * 86_400_000 } else { (lunes + dia) * 86_400_000 + h1 * 60_000 - desfase },
+                todo_el_dia: todo,
+                lugar: if todo { String::new() } else { "Aula 12".into() },
+                color: if todo { "#d50000".into() } else { "#0b8043".into() },
+                enlace: String::new(),
+            };
+            crate::calendario_google::poner_para_pruebas(vec![
+                ev("a", "Reunión con el asesor", 1, 16 * 60, 17 * 60 + 30, false),
+                ev("b", "Feriado", 3, 0, 0, true),
+            ]);
+            crate::ventanita::muestra("horario-google", ANCHO_VENTANA, ALTO_VENTANA, |p, _| pintar_todo(&mut e, p, marco, 1.0, &textos));
+            assert_eq!(e.google.len(), 2, "los dos eventos de la semana, pintados");
+        }
         // La ficha de una clase y un arrastre a medias, para mirarlos.
         e.editar(Edicion::Bloque(0));
         crate::ventanita::muestra("horario-ficha", ANCHO_VENTANA, ALTO_VENTANA, |p, _| {

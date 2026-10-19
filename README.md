@@ -241,6 +241,8 @@ El modelo se cambia desde la pastilla de arriba del propio chat.
   respondiendo.
 - **Google Drive**: busca, lee y trae archivos de tu Drive, y sube los del chat si le dices que
   sí. Para conectarlo, sigue [docs/conexiones-google-drive.md](docs/conexiones-google-drive.md).
+- **Google Calendar** (solo ver, con el mismo ID de cliente): tus eventos salen en el horario
+  semanal, avisan con la llamada de las clases y el asistente contesta «¿qué tengo hoy?».
 - **Conversación nueva** empieza de cero sin borrar lo de antes; **Borrar chat** lo vacía.
 - Las respuestas con listas se ven como listas, y no se leen solas en voz alta (el altavoz de
   cada burbuja sigue ahí).

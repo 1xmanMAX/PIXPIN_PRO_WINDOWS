@@ -109,6 +109,8 @@ mod leer_en_voz;
 mod letras_que_viajan;
 mod llamada;
 mod horario;
+/// Google Calendar, solo para ver: sus eventos en el horario y en los avisos.
+mod calendario_google;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
@@ -766,6 +768,7 @@ fn arrancar(
     recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
     // Y el horario de clases: relee la agenda si se edita o cambia el dia.
     horario::vigilar(ubicacion.raiz());
+    calendario_google::vigilar(ubicacion.raiz());
     // Las automatizaciones del asistente: su hilo mira la hora y espera a
     // las capturas y a la sincronizacion (13-oct).
     automatizaciones::motor::arrancar(automatizaciones::motor::DeLaApp {

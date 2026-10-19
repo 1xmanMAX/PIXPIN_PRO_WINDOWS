@@ -974,6 +974,16 @@ pub fn recordatorios(raiz: &Path) -> Vec<Recordatorio> {
             id: a.id,
         })
         .collect();
+    // Los eventos de Google Calendar (18-oct), con la misma antelacion que
+    // las clases. Los de todo el dia no llaman.
+    let ahora_utc = pixpin_shell::entorno::ahora_utc_ms();
+    for e in crate::calendario_google::eventos_entre(ahora_utc, ahora_utc + DIAS_A_LA_VISTA * DIA) {
+        let cuando = e.inicio_ms - i64::from(h.antelacion) * MINUTO;
+        if e.todo_el_dia || cuando <= ahora_utc {
+            continue;
+        }
+        v.push(Recordatorio { id: format!("{PREFIJO}gcal:{}:{}", e.id, e.titulo), cuando_utc_ms: cuando, texto: e.titulo.clone() });
+    }
     if let Ok(p) = POSPUESTOS.lock() {
         v.extend(p.iter().cloned());
     }
@@ -1004,9 +1014,19 @@ pub fn sonar(raiz: &Path, r: &Recordatorio, rotulos: crate::llamada::Rotulos, hw
     }
     let ahora = pixpin_shell::entorno::ahora_local_ms();
     let h = de_disco(raiz, Momento::de_ms_locales(ahora));
-    let llamada = match aviso_de(&h, &r.id, ahora) {
-        Some(a) => llamada_de(&h, &a, &carpeta_de_voz(raiz), guardada_en),
-        None => Llamada {
+    // Un evento de Google Calendar: su titulo, su hora, su lugar.
+    let de_google = r.id.strip_prefix(PREFIJO).and_then(|x| x.strip_prefix("gcal:")).and_then(|x| x.split_once(':')).map(|(id, _)| id.split('|').next().unwrap_or(id).to_string()).and_then(|id| crate::calendario_google::evento(&id));
+    let llamada = match (de_google, aviso_de(&h, &r.id, ahora)) {
+        (Some(e), _) => Llamada {
+            audio: None,
+            nombre: e.titulo.clone(),
+            carpeta: PathBuf::new(),
+            mensaje: r.id.clone(),
+            detalle: [crate::calendario_google::tramo_legible(&e), e.lugar.clone(), e.calendario.clone()].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · "),
+            texto: Some(if e.lugar.is_empty() { e.titulo.clone() } else { format!("{} en {}", e.titulo, e.lugar) }),
+        },
+        (None, Some(a)) => llamada_de(&h, &a, &carpeta_de_voz(raiz), guardada_en),
+        (None, None) => Llamada {
             audio: None,
             nombre: r.texto.clone(),
             carpeta: PathBuf::new(),

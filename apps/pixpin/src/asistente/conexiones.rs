@@ -64,6 +64,9 @@ impl Chat for DelChat<'_> {
 /// **Hace una herramienta de las conexiones** desde el chat. Corre en el
 /// hilo del turno: la ventana sigue suelta.
 pub fn hacer(a: &AccionApp, cx: &Contexto, confirmar: &Confirmar) -> Result<String, String> {
+    if a.herramienta == conexiones::acciones::VER_CALENDARIO {
+        return Ok(ver_calendario(&a.pedido));
+    }
     let r = conexiones::acciones::hacer(a, &|s| conexiones::Conexion::abrir(s), &DelChat { cx, confirmar });
     // Un permiso retirado borra los tokens: que Ajustes lo vea.
     olvidar();
@@ -228,6 +231,10 @@ pub fn conectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>) {
             tracing::warn!("conexiones: no se conecto {}: {e}", s.nombre);
         }
         olvidar();
+        // Google Calendar recien conectado: sus eventos, ya.
+        if r.is_ok() && s.id == pixpin_ia::conexiones::calendario::GOOGLE_CALENDAR.id {
+            crate::calendario_google::leer_ya();
+        }
         con_fichas(|m| {
             let f = m.entry(s.id).or_default();
             f.conectando = false;
@@ -300,4 +307,45 @@ mod pruebas {
             assert!(estado_cliente(s, &t).contains("console.cloud.google.com"));
         }
     }
+}
+
+/// **«¿Que tengo hoy?»**: los eventos de Google Calendar de los dias
+/// pedidos (`desde`: hoy, mañana, un dia de la semana, «semana» o
+/// AAAA-MM-DD; `dias`: cuantos), de lo que la app ya leyo.
+fn ver_calendario(args: &serde_json::Value) -> String {
+    const DIA: i64 = 86_400_000;
+    let hoy = pixpin_shell::entorno::ahora_local_ms().div_euclid(DIA);
+    let desde = args["desde"].as_str().unwrap_or("hoy").trim().to_lowercase();
+    let mut dias = args["dias"].as_i64().unwrap_or(1).clamp(1, 31);
+    // (El dia 0, el 1-1-1970, fue jueves: lunes = 0.)
+    let semana_de = |d: i64| (d + 3).rem_euclid(7);
+    let nombres = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
+    let sin_tildes = desde.replace('á', "a").replace('é', "e");
+    let primero = match sin_tildes.as_str() {
+        "" | "hoy" => hoy,
+        "mañana" | "manana" => hoy + 1,
+        "pasado mañana" | "pasado manana" | "pasado" => hoy + 2,
+        "semana" | "esta semana" => {
+            dias = dias.max(7);
+            hoy - semana_de(hoy)
+        }
+        "semana que viene" | "proxima semana" | "la semana que viene" => {
+            dias = dias.max(7);
+            hoy - semana_de(hoy) + 7
+        }
+        otro => {
+            let sin = otro.replace("sábado", "sabado").replace("miércoles", "miercoles");
+            if let Some(k) = nombres.iter().position(|n| sin.contains(n)) {
+                hoy + (k as i64 - semana_de(hoy)).rem_euclid(7)
+            } else {
+                let p: Vec<i64> = otro.split(['-', '/']).filter_map(|x| x.parse().ok()).collect();
+                match p.as_slice() {
+                    [a, m, d] if *a > 1900 => pixpin_ia::conexiones::calendario::dias_desde_1970(*a, *m as u32, *d as u32),
+                    [d, m, a] if *a > 1900 => pixpin_ia::conexiones::calendario::dias_desde_1970(*a, *m as u32, *d as u32),
+                    _ => hoy,
+                }
+            }
+        }
+    };
+    crate::calendario_google::para_el_modelo(primero * DIA, (primero + dias) * DIA)
 }

@@ -865,6 +865,7 @@ pub const SOLO_NUBE: &[&str] = &[
     crate::conexiones::acciones::LEER,
     crate::conexiones::acciones::BAJAR,
     crate::conexiones::acciones::SUBIR,
+    crate::conexiones::acciones::VER_CALENDARIO,
 ];
 
 /// **Las opciones que solo ve la nube** en una fila de las de siempre

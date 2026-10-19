@@ -201,6 +201,27 @@ fn responder(r: &Recibido, mundo: &Mutex<Mundo>, base: &str) -> (u16, Vec<(Strin
     let q = r.consulta();
     match (r.metodo.as_str(), camino.as_str()) {
         ("GET", "/drive/v3/about") => json_resp(200, json!({"user": {"emailAddress": "ana@example.com"}})),
+        // Google Calendar (18-oct): dos calendarios a la vista y uno oculto.
+        ("GET", "/calendar/v3/calendars/primary") => json_resp(200, json!({"id": "ana@example.com"})),
+        ("GET", "/calendar/v3/users/me/calendarList") => json_resp(200, json!({"items": [
+            {"id": "ana@example.com", "summary": "ana@example.com", "summaryOverride": "Personal", "backgroundColor": "#0b8043"},
+            {"id": "es.pe#holiday@group.v.calendar.google.com", "summary": "Feriados", "backgroundColor": "#d50000"},
+            {"id": "oculto@x", "summary": "Oculto", "hidden": true}
+        ]})),
+        ("GET", c) if c.starts_with("/calendar/v3/calendars/") && c.ends_with("/events") => {
+            let items = if c.contains("holiday") {
+                json!([{"id": "f1", "summary": "Día de la Canción Criolla", "start": {"date": "2026-10-31"}, "end": {"date": "2026-11-01"}}])
+            } else if c.contains("oculto") {
+                json!([{"id": "no", "summary": "no deberia salir", "start": {"date": "2026-10-20"}}])
+            } else {
+                json!([
+                    {"id": "e2", "summary": "Reunión con el asesor", "location": "Aula 12", "start": {"dateTime": "2026-10-20T16:00:00-05:00"}, "end": {"dateTime": "2026-10-20T17:00:00-05:00"}},
+                    {"id": "e1", "summary": "Entrega del informe", "start": {"dateTime": "2026-10-19T09:00:00-05:00"}, "end": {"dateTime": "2026-10-19T10:00:00-05:00"}},
+                    {"id": "x", "status": "cancelled", "start": {"dateTime": "2026-10-19T11:00:00-05:00"}}
+                ])
+            };
+            json_resp(200, json!({"items": items}))
+        }
         ("GET", "/drive/v3/files") => {
             let consulta = valor(&q, "q").unwrap_or_default();
             let files: Vec<Value> = if consulta.contains("folder") {
@@ -594,5 +615,48 @@ fn sin_conectar_lo_dice_y_las_filas_son_solo_de_la_nube() {
     assert!(hacer(&f, &c, &chat, acc::BUSCAR, json!({"servicio": "dropbox"})).is_err());
     assert_eq!(por_id("Google Drive").unwrap().id, "google_drive");
     assert_eq!(por_id("drive").unwrap().id, "google_drive");
+    let _ = std::fs::remove_dir_all(&c);
+}
+
+#[test]
+fn google_calendar_lee_los_eventos_de_los_calendarios_a_la_vista() {
+    use super::calendario::{self, GOOGLE_CALENDAR};
+    let f = Falso::nuevo();
+    let c = carpeta("calendario");
+    // Conectado con un token caducado: se renueva solo.
+    guardado::guardar_en(
+        &c,
+        &GOOGLE_CALENDAR,
+        &Guardado {
+            cliente: Some(Cliente { id: ID_CLIENTE.into(), secreto: "GOCSPX-prueba".into() }),
+            tokens: Some(Tokens { acceso: "ACC-viejo".into(), refresco: "REF-1".into(), caduca_ms: 0 }),
+            cuenta: None,
+        },
+    )
+    .unwrap();
+    let cx = Conexion::abrir_en(&GOOGLE_CALENDAR, GOOGLE_CALENDAR.extremos_en(&f.base), &c).unwrap();
+    assert_eq!(calendario::cuenta(&cx).unwrap(), "ana@example.com");
+    let desde = calendario::ms_de_rfc3339("2026-10-18T00:00:00Z").unwrap();
+    let ev = calendario::eventos(&cx, desde, desde + 21 * 86_400_000).unwrap();
+    let titulos: Vec<&str> = ev.iter().map(|e| e.titulo.as_str()).collect();
+    assert_eq!(titulos, ["Entrega del informe", "Reunión con el asesor", "Día de la Canción Criolla"], "ordenados, sin el oculto ni el cancelado");
+    assert_eq!(ev[1].calendario, "Personal");
+    assert_eq!(ev[1].lugar, "Aula 12");
+    assert!(ev[2].todo_el_dia && ev[2].calendario == "Feriados");
+    let pedido = f.recibidos().into_iter().find(|r| r.camino().contains("/events") && !r.camino().contains("holiday")).unwrap();
+    let q = pedido.consulta();
+    assert_eq!(valor(&q, "singleEvents"), Some("true"), "las repeticiones, ya abiertas");
+    assert_eq!(valor(&q, "timeMin"), Some("2026-10-18T00:00:00Z"));
+    // Y la cache de la app los guarda y los lee igual.
+    assert_eq!(calendario::de_json(&calendario::a_json(&ev)), ev);
+    let _ = std::fs::remove_dir_all(&c);
+}
+
+#[test]
+fn el_id_de_cliente_de_google_vale_para_drive_y_calendar() {
+    let c = carpeta("cliente-compartido");
+    super::guardar_cliente_en(&GOOGLE_DRIVE, &c, &format!("{ID_CLIENTE} GOCSPX-x")).unwrap();
+    let g = guardado::leer_de(&c, &super::calendario::GOOGLE_CALENDAR);
+    assert_eq!(g.cliente.map(|x| x.id), Some(ID_CLIENTE.to_string()));
     let _ = std::fs::remove_dir_all(&c);
 }
