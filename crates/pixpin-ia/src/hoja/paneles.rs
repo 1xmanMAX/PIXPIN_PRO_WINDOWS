@@ -335,7 +335,11 @@ fn por_borde(rgba: &[u8], w: u32, h: u32, a: &Analisis, de_rayas: &Analisis, pal
             if x1 - x0 < 0.85 * t.largo().min(b.largo()) {
                 continue;
             }
-            let cierra = |x: f64| vs.iter().any(|v| (v.x0 - x).abs() <= hm * 0.8 && v.y0 <= t.y0 + hm && v.y1 >= b.y0 - hm && (v.y1.min(b.y0) - v.y0.max(t.y0)) >= 0.8 * (b.y0 - t.y0));
+            // (Una caja cortada por el borde de la imagen, 18-oct: los
+            // recuadros de la columna de la derecha de Polinomios llegan al
+            // borde y no tienen lado derecho. El borde la cierra.)
+            let al_borde = |x: f64| x <= hm * 0.8 || x >= w as f64 - hm * 0.8;
+            let cierra = |x: f64| al_borde(x) || vs.iter().any(|v| (v.x0 - x).abs() <= hm * 0.8 && v.y0 <= t.y0 + hm && v.y1 >= b.y0 - hm && (v.y1.min(b.y0) - v.y0.max(t.y0)) >= 0.8 * (b.y0 - t.y0));
             if !(cierra(x0) && cierra(x1)) {
                 continue;
             }
@@ -372,16 +376,20 @@ fn por_borde(rgba: &[u8], w: u32, h: u32, a: &Analisis, de_rayas: &Analisis, pal
             continue;
         }
         let lado = |x: f64| vs.iter().filter(|v| (v.x0 - x).abs() <= hm * 0.8 && (v.y1 - b.y0).abs() <= hm && v.largo() >= 3.0 * hm).max_by(|p, q| p.largo().total_cmp(&q.largo())).copied();
-        let (Some(i), Some(d)) = (lado(b.x0), lado(b.x1)) else { continue };
-        if (i.y0 - d.y0).abs() > 2.0 * hm {
-            continue;
-        }
-        let caja = Caja::de_esquinas(b.x0, i.y0.max(d.y0), b.x1, b.y0);
+        // (Un lado en el borde de la imagen: vale el otro.)
+        let en_borde = |x: f64| x <= hm * 0.8 || x >= w as f64 - hm * 0.8;
+        let arriba = match (lado(b.x0), lado(b.x1)) {
+            (Some(i), Some(d)) if (i.y0 - d.y0).abs() <= 2.0 * hm => i.y0.max(d.y0),
+            (Some(i), None) if en_borde(b.x1) => i.y0,
+            (None, Some(d)) if en_borde(b.x0) => d.y0,
+            _ => continue,
+        };
+        let caja = Caja::de_esquinas(b.x0, arriba, b.x1, b.y0);
         let letras: usize = palabras.iter().filter(|p| caja.contiene(p.caja.cx(), p.caja.cy())).map(|p| p.texto.chars().filter(|c| c.is_alphanumeric()).count()).sum();
         if letras < 4 {
             continue;
         }
-        let grosor = ((i.grosor + d.grosor + b.grosor) / 3.0).max(1.0);
+        let grosor = b.grosor.max(1.0);
         let borde = color_mediano(rgba, w, h, &b.caja(), 1, |p| gris(p) < 200.0);
         salida.push(Panel { caja: caja.crecer(grosor / 2.0), estilo: Estilo { relleno: None, borde, grosor, redondo: false } });
     }
@@ -482,6 +490,131 @@ fn limpiar(rgba: &[u8], w: u32, h: u32, paneles: &[Panel]) -> Option<Vec<u8>> {
 /// renglon** («... Si AD=13 y» con «13 y» leido como formula aparte): se le
 /// junta. Aparte, la nube que corrige el renglon veia «13 y» en la imagen y
 /// lo ponia tambien, y salia dos veces.
+/// **Renglones de texto con formulas** (18-oct, Polinomios: «P(x)=x⁴+6 es un
+/// polinomio…» salia en tres zonas que se pisaban, y el texto dos veces):
+/// las zonas de texto, formula o tinta suelta que se pisan o siguen en el
+/// mismo renglon son UNA zona de texto, con sus renglones rehechos por
+/// altura. La nube lee cada renglon entero y pone sus formulas en linea
+/// (`$...$`). Un dibujo de verdad (grande y sin letras) no entra.
+fn juntar_texto_y_formulas(s: &mut Seccionado) {
+    let a = s.alto_letra.max(4.0);
+    let entra = |z: &Zona| match z.tipo {
+        Tipo::Parrafo | Tipo::Encabezado | Tipo::Formula | Tipo::Dudosa => z.caja.h <= 14.0 * a,
+        // Un trozo de dibujo pequeno con letras (una formula que el
+        // seccionado vio como dibujo).
+        Tipo::Dibujo => !z.renglones.is_empty() && z.caja.h <= 12.0 * a && z.caja.w <= 30.0 * a,
+        _ => false,
+    };
+    let juntas = |p: &Zona, q: &Zona| {
+        let c = p.caja.comun(&q.caja);
+        if c > 0.0 && c >= 0.15 * p.caja.area().min(q.caja.area()) {
+            return true;
+        }
+        // En el mismo renglon y casi pegadas.
+        let mismo = p.caja.solape_y(&q.caja) >= 0.5 * p.caja.h.min(q.caja.h).min(2.0 * a);
+        let hueco = if q.caja.x >= p.caja.x1() { q.caja.x - p.caja.x1() } else if p.caja.x >= q.caja.x1() { p.caja.x - q.caja.x1() } else { 0.0 };
+        mismo && hueco <= 1.5 * a && (p.caja.h <= 3.0 * a || q.caja.h <= 3.0 * a)
+    };
+    // Grupos por union de vecinos (hasta que no crezcan).
+    let n = s.zonas.len();
+    let mut grupo: Vec<usize> = (0..n).collect();
+    let raiz = |g: &Vec<usize>, mut i: usize| {
+        while g[i] != i {
+            i = g[i];
+        }
+        i
+    };
+    for i in 0..n {
+        if !entra(&s.zonas[i]) {
+            continue;
+        }
+        for j in i + 1..n {
+            if entra(&s.zonas[j]) && juntas(&s.zonas[i], &s.zonas[j]) {
+                let (ri, rj) = (raiz(&grupo, i), raiz(&grupo, j));
+                if ri != rj {
+                    grupo[rj] = ri;
+                }
+            }
+        }
+    }
+    let mut por_raiz: std::collections::BTreeMap<usize, Vec<usize>> = std::collections::BTreeMap::new();
+    for i in 0..n {
+        por_raiz.entry(raiz(&grupo, i)).or_default().push(i);
+    }
+    let mut quitar: Vec<usize> = Vec::new();
+    for (r0, miembros) in por_raiz {
+        // Sola, se rehace si algun renglon es tan alto que son dos.
+        let alto_de_mas = miembros.len() == 1 && entra(&s.zonas[r0]) && s.zonas[r0].renglones.iter().any(|rg| rg.caja.h > 1.9 * a);
+        if miembros.len() < 2 && !alto_de_mas {
+            continue;
+        }
+        // Los renglones de todos, y la tinta sin letras de los que no tienen.
+        let mut renglones: Vec<super::Renglon> = miembros.iter().flat_map(|&k| s.zonas[k].renglones.iter().cloned()).collect();
+        let sueltas: Vec<Caja> = miembros.iter().filter(|&&k| s.zonas[k].renglones.is_empty()).map(|&k| s.zonas[k].caja).collect();
+        let mut caja = s.zonas[r0].caja;
+        for &k in &miembros {
+            caja = caja.union(&s.zonas[k].caja);
+        }
+        // Por altura, palabra a palabra: un renglon por banda (el centro de
+        // cada palabra). Los renglones que traian mezclaban a veces dos
+        // (una formula alta con exponentes).
+        let mut palabras: Vec<PalabraHoja> = renglones.iter().flat_map(|r| r.palabras.iter().cloned()).collect();
+        palabras.sort_by(|p, q| p.caja.cy().total_cmp(&q.caja.cy()));
+        let mut bandas: Vec<(f64, super::Renglon)> = Vec::new();
+        for p in palabras {
+            let c = p.caja.cy();
+            let color = renglones.iter().find(|r| r.palabras.iter().any(|q| q.caja.x == p.caja.x && q.caja.y == p.caja.y)).and_then(|r| r.color);
+            match bandas.iter_mut().find(|(cb, _)| (*cb - c).abs() < 0.55 * a) {
+                Some((cb, b)) => {
+                    let n = b.palabras.len() as f64;
+                    *cb = (*cb * n + c) / (n + 1.0);
+                    b.negrita = b.negrita && p.negrita;
+                    b.caja = b.caja.union(&p.caja);
+                    if b.color.is_none() {
+                        b.color = color;
+                    }
+                    b.palabras.push(p);
+                }
+                None => {
+                    let negrita = p.negrita;
+                    bandas.push((c, super::Renglon { texto: String::new(), caja: p.caja, palabras: vec![p], negrita, color }));
+                }
+            }
+        }
+        let mut bandas: Vec<super::Renglon> = bandas.into_iter().map(|(_, b)| b).collect();
+        for b in &mut bandas {
+            b.palabras.sort_by(|p, q| p.caja.x.total_cmp(&q.caja.x));
+            b.texto = b.palabras.iter().map(|p| p.texto.as_str()).collect::<Vec<_>>().join(" ");
+        }
+        // La tinta suelta (una formula sin leer) alarga el renglon que pisa.
+        for c in &sueltas {
+            if let Some(b) = bandas.iter_mut().max_by(|p, q| p.caja.solape_y(c).total_cmp(&q.caja.solape_y(c))).filter(|b| b.caja.solape_y(c) > 0.0) {
+                b.caja = b.caja.union(&Caja::de_esquinas(c.x, b.caja.y, c.x1(), b.caja.y1()));
+            }
+        }
+        bandas.sort_by(|p, q| p.caja.y.total_cmp(&q.caja.y));
+        let z = &mut s.zonas[r0];
+        z.caja = caja;
+        z.tipo = Tipo::Parrafo;
+        z.renglones = bandas;
+        z.confianza = z.confianza.max(0.8);
+        quitar.extend(miembros.iter().copied().filter(|&k| k != r0));
+    }
+    if quitar.is_empty() {
+        return;
+    }
+    let mut i = 0;
+    s.zonas.retain(|_| {
+        let q = quitar.contains(&i);
+        i += 1;
+        !q
+    });
+    for (i, z) in s.zonas.iter_mut().enumerate() {
+        z.id = i;
+        z.orden = i;
+    }
+}
+
 fn juntar_formulas_al_renglon(s: &mut Seccionado) {
     let a = s.alto_letra.max(4.0);
     let mut quitar: Vec<usize> = Vec::new();
@@ -583,7 +716,8 @@ fn cajitas(s: &mut Seccionado) {
             i += 1;
             continue;
         };
-        let marco = a.union(&s.zonas[j].caja).crecer(2.0);
+        // (Con aire: los laterales del marco quedan un pelo por fuera de las rayas.)
+        let marco = a.union(&s.zonas[j].caja).crecer((hm * 0.5).max(3.0));
         // (Si dentro hay letras leidas, ya es texto: no se toca.)
         let con_letras = s.zonas.iter().any(|z| z.renglones.iter().any(|r| marco.contiene(r.caja.cx(), r.caja.cy())));
         if con_letras {
@@ -639,6 +773,74 @@ fn iconos(s: &mut Seccionado) {
         z.rayas.clear();
         z.dentro.clear();
         i += 1;
+    }
+}
+
+/// **La pestana de un titulo** (18-oct, «¡Recuerde que...!», «Desafío» de
+/// Polinomios: letras blancas sobre una pestana gris): un renglon cuyo fondo
+/// de al lado es otro color que el de la region lleva debajo un recuadro de
+/// ese color (la capa de abajo); su letra ya contrasta (`contrastar`).
+fn etiquetas_de_color(s: &mut Seccionado, rgba: &[u8], fondo: [u8; 3]) {
+    let (w, h) = (s.ancho, s.alto);
+    let f = [fondo[0] as f64, fondo[1] as f64, fondo[2] as f64];
+    let a = s.alto_letra.max(4.0);
+    let mut nuevas: Vec<(usize, Zona)> = Vec::new();
+    let mut tinta: Vec<(usize, [u8; 3])> = Vec::new();
+    for (i, z) in s.zonas.iter().enumerate() {
+        if z.renglones.is_empty() || z.tipo == Tipo::Recuadro || z.caja.h > 4.0 * a {
+            continue;
+        }
+        // Lo que hay alrededor de las letras (sin ellas): su fondo.
+        let marco = z.caja.crecer(2.0);
+        let Some(local) = color_mediano(rgba, w, h, &marco, 2, |_| true) else { continue };
+        let l = [local[0] as f64, local[1] as f64, local[2] as f64];
+        if dist(l, f) < 70.0 {
+            continue;
+        }
+        // Que sea una mancha llena de verdad: casi todo el marco de ese color.
+        let mut iguales = 0usize;
+        let mut total = 0usize;
+        let c = marco.dentro(w as f64, h as f64);
+        for y in (c.y as u32..c.y1() as u32).step_by(2) {
+            for x in (c.x as u32..c.x1() as u32).step_by(2) {
+                let k = ((y * w + x) * 4) as usize;
+                total += 1;
+                if dist([rgba[k] as f64, rgba[k + 1] as f64, rgba[k + 2] as f64], l) < 40.0 {
+                    iguales += 1;
+                }
+            }
+        }
+        if total == 0 || (iguales as f64) < total as f64 * 0.55 {
+            continue;
+        }
+        // La letra: lo que se aparta de la pestana (blanco sobre gris).
+        if let Some(c) = color_mediano(rgba, w, h, &z.caja, 1, |p| dist([p[0] as f64, p[1] as f64, p[2] as f64], l) >= 90.0) {
+            tinta.push((i, c));
+        }
+        let mut r = z.clone();
+        r.tipo = Tipo::Recuadro;
+        r.renglones.clear();
+        r.rayas.clear();
+        r.dentro.clear();
+        r.caja = marco;
+        r.panel = Some(Estilo { relleno: Some(local), borde: None, grosor: 0.0, redondo: true });
+        nuevas.push((i, r));
+    }
+    for (i, c) in tinta {
+        for rg in &mut s.zonas[i].renglones {
+            rg.color = Some(c);
+            for p in &mut rg.palabras {
+                p.color = Some(c);
+            }
+        }
+    }
+    // Cada recuadro antes de su texto (la capa de abajo).
+    for (i, r) in nuevas.into_iter().rev() {
+        s.zonas.insert(i, r);
+    }
+    for (i, z) in s.zonas.iter_mut().enumerate() {
+        z.id = i;
+        z.orden = i;
     }
 }
 
@@ -833,6 +1035,7 @@ pub fn seccionar_limpia(rgba: &[u8], ancho: u32, alto: u32, mut palabras: Vec<Pa
         invertidos(&mut s, rgba, [a.fondo; 3]);
         if unir {
             juntar_formulas_al_renglon(&mut s);
+            juntar_texto_y_formulas(&mut s);
         }
         return (s, None);
     }
@@ -925,8 +1128,10 @@ impl Region<'_> {
         invertidos(&mut s, &sub, fondo);
         if self.unir {
             juntar_formulas_al_renglon(&mut s);
+            juntar_texto_y_formulas(&mut s);
         }
         contrastar(&mut s, &sub, fondo);
+        etiquetas_de_color(&mut s, &sub, fondo);
         // Grupos: cada zona suelta (en el orden de lectura del seccionado), y
         // cada recuadro de dentro con lo suyo, antes de lo primero de su
         // columna que queda debajo de el.

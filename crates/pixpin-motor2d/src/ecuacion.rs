@@ -577,7 +577,10 @@ pub fn potencia(base: Caja, exponente: Caja, t: f32) -> Caja {
 
 /// La base con un indice pequeno y bajado.
 pub fn subindice(base: Caja, indice: Caja, t: f32) -> Caja {
-    let bajada = indice.alto * 0.5;
+    // (Su centro algo por encima del borde de abajo de la base, 18-oct: con
+    // la mitad por debajo caia tan bajo que en un renglon de texto pisaba el
+    // de abajo, «P₍ₓ₎=x⁴+6 es un polinomio…».)
+    let bajada = indice.alto * 0.72;
     let alto = base
         .alto
         .max(base.alto - base.eje + indice.alto - bajada + base.eje);
@@ -795,8 +798,36 @@ pub fn adornada(dentro: Caja, adorno: crate::formulas::Adorno, t: f32) -> Caja {
         Adorno::ArcoEncima => (t * 0.16 + w * 0.04).min(t * 0.32),
         Adorno::Gorro | Adorno::Tilde => t * 0.16,
         Adorno::Flecha => t * 0.12,
-        Adorno::RayaEncima | Adorno::RayaDebajo => 0.0,
+        Adorno::RayaEncima | Adorno::RayaDebajo | Adorno::LlaveDebajo => 0.0,
     };
+    // La llave de `\underbrace`: dos tramos que bajan, van rectos y se juntan
+    // en un pico en medio, bajo la tinta.
+    if adorno == Adorno::LlaveDebajo {
+        let y0 = abajo + t * 0.1;
+        let alto_llave = t * 0.22;
+        let (xm, y1) = ((x0 + x1) / 2.0, y0 + alto_llave);
+        let medio = y0 + alto_llave * 0.55;
+        let lado = |de: f32, a: f32| -> Vec<(f32, f32)> {
+            (0..=10)
+                .map(|k| {
+                    let s = k as f32 / 10.0;
+                    let y = if s < 0.15 {
+                        y0 + (medio - y0) * (s / 0.15)
+                    } else if s < 0.85 {
+                        medio
+                    } else {
+                        medio + (y1 - medio) * ((s - 0.85) / 0.15)
+                    };
+                    (de + (a - de) * s, y)
+                })
+                .collect()
+        };
+        let mut piezas = dentro.piezas.clone();
+        piezas.push(raya(&lado(x0, xm), t));
+        piezas.push(raya(&lado(x1, xm), t));
+        let alto = dentro.alto.max(y1 + trazo(t));
+        return Caja { ancho: w, alto, eje: dentro.eje, piezas };
+    }
     if adorno == Adorno::RayaDebajo {
         let y = abajo + t * 0.12;
         let alto = dentro.alto.max(y + trazo(t));
@@ -834,7 +865,7 @@ pub fn adornada(dentro: Caja, adorno: crate::formulas::Adorno, t: f32) -> Caja {
             piezas.push(raya(&[(x1 - t * 0.18, y - t * 0.1), (x1, y), (x1 - t * 0.18, y + t * 0.1)], t));
             vec![(x0, y), (x1, y)]
         }
-        Adorno::RayaDebajo => Vec::new(),
+        Adorno::RayaDebajo | Adorno::LlaveDebajo => Vec::new(),
     };
     piezas.push(raya(&marca, t));
     Caja { ancho: w, alto: dentro.alto + baja, eje: dentro.eje + baja, piezas }
@@ -1007,6 +1038,7 @@ pub fn de_formula(p: &crate::formulas::Pieza, t: f32, medir: Medir<'_>, en_linea
         F::Negrita(d) => sigue(d, t).en_negrita(),
         F::Recuadro(d) => recuadro(sigue(d, t), t),
         F::Encima { base, arriba } => encima(sigue(base, t), sigue(arriba, menor(t)), t),
+        F::Debajo { base, abajo } => debajo(sigue(base, t), sigue(abajo, menor(t)), t),
     }
 }
 
@@ -1128,4 +1160,13 @@ mod pruebas {
         assert!(v.iter().all(|e| e.rugosidad == 0.0));
         assert!(rayas(&v) >= 3);
     }
+}
+
+/// Lo pequeno centrado debajo de la base (el rotulo de `\underbrace`).
+pub fn debajo(base: Caja, abajo: Caja, t: f32) -> Caja {
+    let ancho = base.ancho.max(abajo.ancho);
+    let mut piezas: Vec<Pieza> = base.piezas_en((ancho - base.ancho) / 2.0, 0.0).collect();
+    let dy = base.alto + t * 0.02;
+    piezas.extend(abajo.piezas_en((ancho - abajo.ancho) / 2.0, dy));
+    Caja { ancho, alto: dy + abajo.alto, eje: base.eje, piezas }
 }

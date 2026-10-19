@@ -52,6 +52,7 @@ mod banco;
 #[cfg(test)]
 mod banco_17oct;
 pub(crate) mod plan;
+pub(crate) mod supervisor;
 #[cfg(test)]
 pub(crate) mod banco_diagramas;
 #[cfg(test)]
@@ -1149,6 +1150,115 @@ pub fn pasar(
         }
     }
     hechos.retain(|h| !dobles.contains(&h.zona));
+    // 7. **El supervisor** (18-oct, `supervisor`): el modelo mira, lado a
+    //    lado con el papel, las zonas que peor se parecen y dice que esta mal;
+    //    se rehacen con lo que dice. Una vuelta, todas a la vez.
+    if let Some(m) = &vision
+        && o.rico
+        && o.comprobar
+        && !parar.load(Ordering::Relaxed)
+        && std::env::var_os("PIXPIN_SIN_SUPERVISOR").is_none()
+        && let Ok(pintado) = pintar(&hechos, tam, p.ancho)
+    {
+        let aire = s.alto_letra * 0.6;
+        let pares: Vec<(usize, f64)> = hechos
+            .iter()
+            .filter(|h| !h.elementos.is_empty())
+            .map(|h| {
+                let c = s.zonas[h.zona].caja;
+                let a = supervisor::recorte(&p.rgba, p.ancho, p.alto, &c, aire);
+                let b = supervisor::recorte(&pintado.0, pintado.1, pintado.2, &c, aire);
+                (h.zona, comparar::parecido((&a.0, a.1, a.2), (&b.0, b.1, b.2)))
+            })
+            .collect();
+        let cand = supervisor::candidatas(&pares, |z| hechos.iter().find(|h| h.zona == z).map(|h| h.tipo));
+        let ts = Instant::now();
+        let veredictos: Vec<(usize, Option<supervisor::Veredicto>)> = std::thread::scope(|sc| {
+            let hilos: Vec<_> = cand
+                .iter()
+                .map(|&z| {
+                    let c = s.zonas[z].caja;
+                    let a = supervisor::recorte(&p.rgba, p.ancho, p.alto, &c, aire);
+                    let b = supervisor::recorte(&pintado.0, pintado.1, pintado.2, &c, aire);
+                    let que_es = match s.zonas[z].tipo {
+                        Tipo::Formula => "una formula",
+                        Tipo::Tabla => "una tabla",
+                        Tipo::Dibujo | Tipo::Diagrama => "un dibujo o una figura",
+                        _ => "texto",
+                    };
+                    let m = m.clone();
+                    sc.spawn(move || (z, supervisor::mirar(m.as_ref(), (&a.0, a.1, a.2), (&b.0, b.1, b.2), que_es)))
+                })
+                .collect();
+            hilos.into_iter().filter_map(|h| h.join().ok()).collect()
+        });
+        let mut arregladas = 0;
+        let depurar = std::env::var_os("PIXPIN_SUPERVISOR_DEPURAR").is_some();
+        if depurar {
+            eprintln!("supervisor: parecidos {:?}
+  mira {:?}", pares.iter().map(|(z, p)| (*z, (p * 100.0).round())).collect::<Vec<_>>(), cand);
+        }
+        for (z, v) in veredictos {
+            if depurar {
+                eprintln!("  zona {z} ({}): {:?}", s.zonas[z].tipo.nombre(), v);
+            }
+            let zona = &s.zonas[z];
+            let nuevo = match v {
+                Some(supervisor::Veredicto::Renglones(r, problema)) if matches!(zona.tipo, Tipo::Parrafo | Tipo::Encabezado) && !zona.renglones.is_empty() => {
+                    let ocr: Vec<String> = zona.renglones.iter().map(|x| x.texto.clone()).collect();
+                    let json = serde_json::to_string(&r).unwrap_or_default();
+                    vision::leer_renglones(&json, &ocr).or(Some(r)).map(|bien| (montaje::hacer(&entrada(z), Some(&Leido::Renglones(bien)), Via::Fiel), problema))
+                }
+                // (Una formula entera, «$...$» de punta a punta; si mezcla texto,
+                // como texto: salian los «$» a la vista.)
+                Some(supervisor::Veredicto::Renglones(r, problema))
+                    if zona.tipo == Tipo::Formula && r.len() == 1 && r[0].trim().starts_with('$') && r[0].trim().ends_with('$') && r[0].matches('$').count() == 2 =>
+                {
+                    let l = r[0].trim().trim_matches('$').to_string();
+                    Some((montaje::hacer(&entrada(z), Some(&Leido::Latex(vec![l])), Via::Editable), problema))
+                }
+                // (Un dibujo o una formula de varias lineas que en verdad es
+                // texto con formulas, los ejemplos de Valor numerico: como texto.)
+                Some(supervisor::Veredicto::Renglones(r, problema)) if !zona.renglones.is_empty() && matches!(zona.tipo, Tipo::Dibujo | Tipo::Dudosa | Tipo::Formula) => {
+                    let mut como_texto = zona.clone();
+                    como_texto.tipo = Tipo::Parrafo;
+                    let ocr: Vec<String> = zona.renglones.iter().map(|x| x.texto.clone()).collect();
+                    let json = serde_json::to_string(&r).unwrap_or_default();
+                    vision::leer_renglones(&json, &ocr).or(Some(r)).map(|bien| {
+                        let e = Entrada { zona: &como_texto, ..entrada(z) };
+                        let mut h = montaje::hacer(&e, Some(&Leido::Renglones(bien)), Via::Fiel);
+                        h.tipo = Tipo::Parrafo;
+                        (h, problema)
+                    })
+                }
+                Some(supervisor::Veredicto::Recorte(problema)) if !matches!(zona.tipo, Tipo::Parrafo | Tipo::Encabezado) => {
+                    Some((montaje::hacer(&entrada(z), None, Via::Imagen), problema))
+                }
+                _ => None,
+            };
+            let Some((nuevo, problema)) = nuevo else {
+                if depurar {
+                    eprintln!("    (sin arreglo para esta zona)");
+                }
+                continue;
+            };
+            if depurar {
+                eprintln!("    arreglo: {} ({} elementos)", nuevo.nota, nuevo.elementos.len());
+            }
+            if nuevo.elementos.is_empty() {
+                continue;
+            }
+            tracing::info!(zona = z, %problema, ahora = %nuevo.nota, "hoja al lienzo: el supervisor la rehizo");
+            if destino.entregar(Some(&nuevo), en(z, true, false)).is_ok() {
+                if let Some(h) = hechos.iter_mut().find(|h| h.zona == z) {
+                    *h = nuevo;
+                }
+                arregladas += 1;
+                rehechas += 1;
+            }
+        }
+        tracing::info!(miradas = cand.len(), arregladas, ms = ts.elapsed().as_millis() as u64, "hoja al lienzo: supervisor");
+    }
     let ms_comprobar = tc.elapsed().as_millis();
     tracing::info!(
         zonas = s.zonas.len(),

@@ -189,7 +189,8 @@ pub fn hacer(e: &Entrada, leido: Option<&Leido>, via: Via) -> Hecho {
     }
     // Sus renglones corregidos por la nube: cada uno en su sitio.
     if let Some(Leido::Renglones(ls)) = leido
-        && ls.len() == z.renglones.len()
+        // (Otro numero que el OCR: `fiel_con` los reparte por la zona, 18-oct.)
+        && !ls.is_empty()
         && matches!(tipo, Tipo::Parrafo | Tipo::Encabezado)
     {
         return Hecho { zona: z.id, tipo, via: Via::Fiel, elementos: fiel_con(e, Some(ls)), imagenes: Vec::new(), nota: "renglones en su sitio, corregidos".into() };
@@ -437,6 +438,12 @@ fn fiel(e: &Entrada) -> Vec<Value> {
 /// Lo mismo con otro texto para cada renglon (los corregidos por la nube).
 fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
     let z = e.zona;
+    // **Otro numero de renglones que el OCR** (`vision::renglones_libres`,
+    // o los del supervisor): repartidos por el alto de la zona, con la letra
+    // de sus renglones.
+    if let Some(v) = textos.filter(|v| !v.is_empty() && v.len() != z.renglones.len()) {
+        return libres(e, v);
+    }
     let familia = &e.opciones.familia;
     let esc = e.mapa.escala;
     let k = pixpin_motor2d::texto::interlineado_de(familia).unwrap_or(pixpin_motor2d::texto::INTERLINEADO) as f64;
@@ -445,6 +452,10 @@ fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
         let tam = tam_de_letra(std::slice::from_ref(r), esc, familia, r.negrita);
         let d = e.mapa.caja(&r.caja);
         let t = textos.and_then(|v| v.get(i)).map_or(r.texto.as_str(), String::as_str);
+        // (Vacio de la nube: lo suyo va en otro renglon, el de la fraccion.)
+        if textos.is_some() && t.trim().is_empty() {
+            continue;
+        }
         // Un renglon entero en negrita (`**...**`): negrita de verdad, no las
         // marcas a la vista (18-oct, salia «*·IE ADVENTISTA PUNO**}»).
         // (Unas marcas descuadradas no se ensenan nunca.)
@@ -462,8 +473,11 @@ fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
         let mut el = un_texto(t, d.x, d.cy() - tam * k / 2.0, tam, familia, negrita, Alineacion::Izquierda, r.color);
         // Corregido (con sus formulas compuestas) no puede pasar del ancho de
         // su renglon: se pisaba con lo de al lado.
-        if textos.is_some() && el.ancho as f64 > d.w * 1.06 {
-            let t2 = tam * (d.w * 1.02 / el.ancho as f64).max(0.6);
+        // (Hasta el borde de su ZONA, no del renglon del OCR: «Calcule P» era
+        // lo leido y la formula entera, mas ancha, salia diminuta.)
+        let hasta = (e.destino().x1() - d.x).max(d.w);
+        if textos.is_some() && el.ancho as f64 > hasta * 1.04 {
+            let t2 = tam * (hasta * 1.02 / el.ancho as f64).max(0.6);
             el = un_texto(t, d.x, d.cy() - t2 * k / 2.0, t2, familia, negrita, Alineacion::Izquierda, r.color);
         }
         piezas.push(el);
@@ -474,6 +488,39 @@ fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
         let (a, b) = (e.mapa.punto(r[0], r[1]), e.mapa.punto(r[2], r[3]));
         recta(&mut f, a, b, r[4] * esc);
     }
+    f.salida
+}
+
+/// Renglones sin sitio del OCR: uno tras otro, repartidos por la zona.
+fn libres(e: &Entrada, lineas: &[String]) -> Vec<Value> {
+    let z = e.zona;
+    let familia = &e.opciones.familia;
+    let d = e.destino();
+    let esc = e.mapa.escala;
+    let k = pixpin_motor2d::texto::interlineado_de(familia).unwrap_or(pixpin_motor2d::texto::INTERLINEADO) as f64;
+    let alto_letra = if z.renglones.is_empty() { e.alto_letra } else { mediana(z.renglones.iter().map(|r| r.alto()).collect()).unwrap_or(e.alto_letra) };
+    let paso_zona = d.h / lineas.len() as f64;
+    // (Que quepan en su zona: con la del titulo salian enormes.)
+    let tam = (alto_letra * esc * 1.05).min(paso_zona / k * 0.95).clamp(8.0, 72.0);
+    let paso = paso_zona.max(tam * k);
+    let color = super::seccion::color_mayoritario(z.renglones.iter().map(|r| (r.color, r.texto.chars().count())));
+    let mut piezas = Vec::new();
+    for (i, l) in lineas.iter().enumerate() {
+        let sin_sueltas = if l.matches("**").count() % 2 == 1 { l.replace("**", "") } else { l.clone() };
+        let (t, negrita) = match sin_sueltas.trim().strip_prefix("**").and_then(|x| x.strip_suffix("**")).filter(|x| !x.contains("**")) {
+            Some(x) => (x.to_string(), true),
+            None => (sin_sueltas.clone(), false),
+        };
+        let y = d.y + paso * i as f64 + (paso - tam * k) / 2.0;
+        let mut el = un_texto(&t, d.x, y, tam, familia, negrita, Alineacion::Izquierda, color);
+        if el.ancho as f64 > d.w * 1.04 {
+            let t2 = tam * (d.w * 1.02 / el.ancho as f64).max(0.6);
+            el = un_texto(&t, d.x, y, t2, familia, negrita, Alineacion::Izquierda, color);
+        }
+        piezas.push(el);
+    }
+    let mut f = e.fabrica();
+    f.de_motor(&piezas);
     f.salida
 }
 

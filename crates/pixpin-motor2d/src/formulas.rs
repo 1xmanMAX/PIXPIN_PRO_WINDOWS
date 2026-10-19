@@ -55,6 +55,9 @@ pub enum Pieza {
     Recuadro(Box<Pieza>),
     /// Algo pequeno encima de otra cosa (`\overset{a}{=}`, `\stackrel`).
     Encima { base: Box<Pieza>, arriba: Box<Pieza> },
+    /// Lo pequeno centrado debajo: `\underset{n}{x}`, el rotulo de
+    /// `\underbrace{SS...S}_{n veces}` (18-oct).
+    Debajo { base: Box<Pieza>, abajo: Box<Pieza> },
     /// **Con su tamano de display** (`\dfrac`, `\displaystyle`): una
     /// fraccion asi no encoge dentro de un renglon de texto.
     Grande(Box<Pieza>),
@@ -75,6 +78,8 @@ pub enum Adorno {
     Tilde,
     /// `\underline`.
     RayaDebajo,
+    /// `\underbrace`: la llave de «"n" veces» (18-oct).
+    LlaveDebajo,
 }
 
 fn texto(t: &str) -> Pieza {
@@ -198,7 +203,23 @@ impl Lector {
             if self.es_fin(fin) {
                 break;
             }
-            let Some(signo) = self.signo_suelto() else { break };
+            let Some(signo) = self.signo_suelto() else {
+                // **Dentro de un grupo** (`{(x; y)}`, 18-oct): una coma o un
+                // punto y coma no lo cierra. Antes se cortaba ahi, el grupo
+                // se tragaba el `;` como si fuera la `}` y la llave salia
+                // suelta («F (x y)}»). Se escribe y se sigue hasta la `}`.
+                match (fin, self.en(self.i)) {
+                    // (Cualquier cosa que no sea el cierre: el «°» de
+                    // `_{50°}` tambien dejaba la llave suelta.)
+                    (Some(f), Some(c)) if c != f => {
+                        self.i += 1;
+                        partes.push(texto(&if c == ',' || c == ';' { format!("{c} ") } else { c.to_string() }));
+                        partes.push(self.termino(fin));
+                        continue;
+                    }
+                    _ => break,
+                }
+            };
             partes.push(texto(&format!(" {signo} ")));
             partes.push(self.termino(fin));
         }
@@ -435,6 +456,24 @@ impl Lector {
                 };
                 Pieza::Adorno { dentro: Box::new(base), adorno }
             }
+            // `\underbrace{SS...S}_{"n" veces}`: la llave debajo y su rotulo
+            // debajo de ella; `\underset{n}{x}`, lo pequeno debajo.
+            "underbrace" => {
+                let base = Pieza::Adorno { dentro: Box::new(self.grupo()), adorno: Adorno::LlaveDebajo };
+                self.saltar_espacios();
+                if self.en(self.i) == Some('_') {
+                    self.i += 1;
+                    let abajo = self.grupo();
+                    Pieza::Debajo { base: Box::new(base), abajo: Box::new(abajo) }
+                } else {
+                    base
+                }
+            }
+            "underset" => {
+                let abajo = self.grupo();
+                let base = self.grupo();
+                Pieza::Debajo { base: Box::new(base), abajo: Box::new(abajo) }
+            }
             // `\overset{\frown}{AC}` es el arco; `\overset{?}{=}`, lo
             // pequeno encima.
             "overset" | "stackrel" => {
@@ -505,6 +544,23 @@ impl Lector {
                 Pieza::ConIndices { base: Box::new(base), arriba: Some(Box::new(texto(marca))), abajo: None }
             }
             "quad" => texto("  "),
+            // `\phantom{xx}`: su hueco, sin tinta (18-oct, salia como codigo).
+            "phantom" | "hphantom" | "vphantom" => {
+                let n = plano(&self.grupo()).chars().count().max(1);
+                texto(&" ".repeat(n))
+            }
+            // `\overbrace{...}^{...}`: el arco encima y lo de arriba, encima.
+            "overbrace" => {
+                let base = Pieza::Adorno { dentro: Box::new(self.grupo()), adorno: Adorno::ArcoEncima };
+                self.saltar_espacios();
+                if self.en(self.i) == Some('^') {
+                    self.i += 1;
+                    let arriba = self.grupo();
+                    Pieza::Encima { base: Box::new(base), arriba: Box::new(arriba) }
+                } else {
+                    base
+                }
+            }
             "qquad" => texto("    "),
             "begin" => self.entorno(),
             "end" => {
@@ -751,11 +807,13 @@ pub fn plano(p: &Pieza) -> String {
                 Adorno::Gorro => "^",
                 Adorno::Tilde => "~",
                 Adorno::RayaDebajo => "_",
+                Adorno::LlaveDebajo => "",
             }
         ),
         Pieza::Color { dentro, .. } | Pieza::Negrita(dentro) | Pieza::Grande(dentro) => plano(dentro),
         Pieza::Recuadro(dentro) => format!("[{}]", plano(dentro)),
         Pieza::Encima { base, arriba } => format!("{}^{}", plano(base), plano(arriba)),
+        Pieza::Debajo { base, abajo } => format!("{} ({})", plano(base), plano(abajo)),
     }
 }
 
@@ -766,7 +824,7 @@ pub fn desconocidos(p: &Pieza) -> Vec<String> {
         Pieza::Texto { texto, .. } if texto.starts_with('\\') && texto.len() > 1 => vec![texto.clone()],
         Pieza::Texto { .. } => Vec::new(),
         Pieza::Fila(l) => l.iter().flat_map(desconocidos).collect(),
-        Pieza::Fraccion(a, b) | Pieza::Encima { base: a, arriba: b } => [desconocidos(a), desconocidos(b)].concat(),
+        Pieza::Fraccion(a, b) | Pieza::Encima { base: a, arriba: b } | Pieza::Debajo { base: a, abajo: b } => [desconocidos(a), desconocidos(b)].concat(),
         Pieza::ConIndices { base, arriba, abajo } => {
             let mut v = desconocidos(base);
             v.extend(arriba.iter().flat_map(|a| desconocidos(a)));
@@ -797,6 +855,7 @@ fn marca_de(a: Adorno) -> &'static str {
         Adorno::Gorro => "\u{302}",
         Adorno::Tilde => "\u{303}",
         Adorno::RayaDebajo => "\u{332}",
+        Adorno::LlaveDebajo => "",
     }
 }
 
@@ -862,6 +921,7 @@ pub fn legible(p: &Pieza) -> String {
             legible(dentro)
         }
         Pieza::Encima { base, arriba } => format!("{}{}", legible(base), alzado(&legible(arriba), true).unwrap_or_default()),
+        Pieza::Debajo { base, abajo } => format!("{} ({})", legible(base), legible(abajo)),
     }
 }
 

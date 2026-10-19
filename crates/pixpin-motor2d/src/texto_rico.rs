@@ -1103,3 +1103,38 @@ mod pruebas {
         });
     }
 }
+
+#[cfg(test)]
+mod pruebas_formula_en_renglon {
+    #[test]
+    fn una_formula_con_punto_y_coma_no_se_corta() {
+        let r = super::leer("$F_{(x; y)}=x^{2}$ es un polinomio");
+        let dbg = format!("{:?}", r);
+        println!("{dbg}");
+        assert!(dbg.contains("F_{(x; y)}=x^{2}"), "{dbg}");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_lector_de_formulas {
+    #[test]
+    fn el_subindice_con_punto_y_coma_no_suelta_la_llave() {
+        let a = format!("{:?}", crate::formulas::leer("F_{(x; y)}=x^{2}"));
+        assert!(!a.contains("texto: \"}\""), "{a}");
+        // Todo el «(x; y)» va abajo, como subindice de la F.
+        let abajo = a.split("abajo: ").nth(1).unwrap_or_default();
+        assert!(abajo.find("\"y\"").unwrap_or(usize::MAX) < abajo.find("\" = \"").unwrap_or(0), "{a}");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_llave_debajo {
+    #[test]
+    fn underbrace_con_su_rotulo_y_underset() {
+        let a = format!("{:?}", crate::formulas::leer(r#"\underbrace{SS\ldots S}_{\text{"n" veces}}=\alpha"#));
+        assert!(a.contains("LlaveDebajo") && a.contains("Debajo {"), "{a}");
+        assert!(!a.contains("underbrace"), "no sale como codigo: {a}");
+        let b = format!("{:?}", crate::formulas::leer(r#"\underset{variables}{(x; y)}"#));
+        assert!(b.contains("Debajo {"), "{b}");
+    }
+}

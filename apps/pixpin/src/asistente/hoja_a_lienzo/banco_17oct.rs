@@ -112,6 +112,11 @@ fn banco_17oct() {
             }
         };
         let lamina = es_lamina(&p);
+        if std::env::var_os("PIXPIN_PALABRAS").is_some() {
+            for w in &p.palabras {
+                println!("  palabra [{:.0},{:.0} {:.0}x{:.0}] {}", w.caja.x, w.caja.y, w.caja.w, w.caja.h, w.texto);
+            }
+        }
         println!("\n== {nombre} {}x{} {} palabras, lamina={lamina}, leer {} ms", p.ancho, p.alto, p.palabras.len(), p.ms_leer);
         let s = pixpin_ia::hoja::paneles::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone(), true);
         for z in &s.zonas {
@@ -137,6 +142,13 @@ fn banco_17oct() {
         };
         for h in &inf.hechos {
             println!("  hecho {:>2} {:<10} {:?} {}", h.zona, h.tipo.nombre(), h.via, h.nota);
+            if std::env::var_os("PIXPIN_TEXTOS").is_some() {
+                for el in &h.elementos {
+                    if let Some(t) = el["textoRico"].as_str().or_else(|| el["text"].as_str()) {
+                        println!("      » {}", t.replace(char::from(10), " ⏎ "));
+                    }
+                }
+            }
         }
         for f in &inf.fallos {
             println!("  FALLO {f}");
