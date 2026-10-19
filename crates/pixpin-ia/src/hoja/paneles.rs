@@ -209,10 +209,14 @@ fn por_fondo(rgba: &[u8], w: u32, h: u32, a: &Analisis, hm: f64) -> Vec<Panel> {
     }
     let k = CELDA as f64 / a.f;
     let mut salida = Vec::new();
-    for (r, (x0, y0, x1, y1, n)) in grupos {
+    for (r, (mut x0, mut y0, mut x1, mut y1, n)) in grupos {
         let (bw, bh) = (x1 - x0 + 1, y1 - y0 + 1);
         if (bw as f64) * k < 5.0 * hm || (bh as f64) * k < 2.2 * hm || bw < 8 || bh < 6 {
             continue;
+        }
+        let depurar = std::env::var_os("PIXPIN_PANELES_DEPURAR").is_some();
+        if depurar {
+            eprintln!("por_fondo: grupo {}x{} celdas en ({x0},{y0}) n={n}", bw, bh);
         }
         if (n as f64) < 0.3 * (bw * bh) as f64 {
             continue;
@@ -227,13 +231,33 @@ fn por_fondo(rgba: &[u8], w: u32, h: u32, a: &Analisis, hm: f64) -> Vec<Panel> {
             }
             if t == 0 { 0.0 } else { s as f64 / t as f64 }
         };
-        let lados = [
-            lleno(&mut (x0 + m..=x1 - m).flat_map(|x| [(x, y0), (x, y0 + 1)])),
-            lleno(&mut (x0 + m..=x1 - m).flat_map(|x| [(x, y1), (x, y1 - 1)])),
-            lleno(&mut (y0 + m..=y1 - m).flat_map(|y| [(x0, y), (x0 + 1, y)])),
-            lleno(&mut (y0 + m..=y1 - m).flat_map(|y| [(x1, y), (x1 - 1, y)])),
-        ];
+        // (Un lado deshilachado, la sombra o el redondeo de un boton que
+        // asoma una celda de mas: se recorta ese lado, hasta 3 celdas. El
+        // boton «Descargar Croquis» de la ONPE se perdia por eso.)
+        let mut recortado = [0usize; 4];
+        let lados = loop {
+            let lados = [
+                lleno(&mut (x0 + m..=x1 - m).flat_map(|x| [(x, y0), (x, y0 + 1)])),
+                lleno(&mut (x0 + m..=x1 - m).flat_map(|x| [(x, y1), (x, y1 - 1)])),
+                lleno(&mut (y0 + m..=y1 - m).flat_map(|y| [(x0, y), (x0 + 1, y)])),
+                lleno(&mut (y0 + m..=y1 - m).flat_map(|y| [(x1, y), (x1 - 1, y)])),
+            ];
+            let peor = (0..4).min_by(|&i, &j| lados[i].total_cmp(&lados[j])).unwrap_or(0);
+            if lados[peor] >= 0.6 || recortado[peor] >= 3 || x1 - x0 < 8 + 2 * m || y1 - y0 < 6 + 2 * m {
+                break lados;
+            }
+            recortado[peor] += 1;
+            match peor {
+                0 => y0 += 1,
+                1 => y1 -= 1,
+                2 => x0 += 1,
+                _ => x1 -= 1,
+            }
+        };
         if lados.iter().any(|&l| l < 0.6) {
+            if depurar {
+                eprintln!("  lados {lados:?}: no");
+            }
             continue;
         }
         let redondo = de[y0 * cw + x0] != r && de[y0 * cw + x0 + m] == r;

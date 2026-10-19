@@ -237,6 +237,9 @@ El modelo se cambia desde la pastilla de arriba del propio chat.
   - los iconos y las fotos van recortados, sin taparle el texto a nadie;
   - la marca de agua no se copia.
 
+  Al final un **supervisor** pone lado a lado el original y lo calcado, zona por zona: si falta
+  un renglón, sobra texto o una fórmula no dice lo mismo, la zona se rehace con el texto bueno.
+
   Lo primero se ve en uno o dos segundos y el resto va llegando, y mientras tanto el chat sigue
   respondiendo.
 - **Google Drive**: busca, lee y trae archivos de tu Drive, y sube los del chat si le dices que

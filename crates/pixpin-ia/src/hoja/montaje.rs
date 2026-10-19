@@ -450,12 +450,22 @@ fn fiel_con(e: &Entrada, textos: Option<&[String]>) -> Vec<Value> {
     let mut piezas = Vec::new();
     for (i, r) in z.renglones.iter().enumerate() {
         let tam = tam_de_letra(std::slice::from_ref(r), esc, familia, r.negrita);
-        let d = e.mapa.caja(&r.caja);
         let t = textos.and_then(|v| v.get(i)).map_or(r.texto.as_str(), String::as_str);
         // (Vacio de la nube: lo suyo va en otro renglon, el de la fraccion.)
         if textos.is_some() && t.trim().is_empty() {
             continue;
         }
+        // (Si se quedo con lo de otro trozo de su misma linea, ocupa los dos:
+        // «2 día(s) Responder» salia diminuto en el sitio de «Responder».)
+        let mut caja = r.caja;
+        if let Some(v) = textos {
+            for (j, o) in z.renglones.iter().enumerate() {
+                if j != i && v.get(j).is_some_and(|x| x.trim().is_empty()) && (o.caja.cy() - r.caja.cy()).abs() < r.caja.h * 0.5 {
+                    caja = caja.union(&o.caja);
+                }
+            }
+        }
+        let d = e.mapa.caja(&caja);
         // Un renglon entero en negrita (`**...**`): negrita de verdad, no las
         // marcas a la vista (18-oct, salia «*·IE ADVENTISTA PUNO**}»).
         // (Unas marcas descuadradas no se ensenan nunca.)

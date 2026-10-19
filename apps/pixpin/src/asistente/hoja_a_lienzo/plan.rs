@@ -234,10 +234,23 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
         let c = s.zonas[i].caja.crecer(2.0);
         s.zonas.iter().enumerate().any(|(k, o)| k != i && o.caja.area() < c.area() * 0.9 && o.caja.dentro_de(&c) >= 0.8)
     };
+    // **Lo escrito sobre un boton de color no es marca de agua** (19-oct,
+    // ONPE: el «ver» claro de «ver Mapa» se ignoraba). La marca de agua va
+    // sobre el papel.
+    let sobre_color = |i: usize| {
+        let z = &s.zonas[i];
+        !z.renglones.is_empty()
+            && s.zonas.iter().any(|o| {
+                o.tipo == Tipo::Recuadro
+                    && o.caja.contiene(z.caja.cx(), z.caja.cy())
+                    && o.panel.as_ref().and_then(|e| e.relleno).is_some_and(|r| r.iter().map(|&c| (255.0 - c as f64).powi(2)).sum::<f64>().sqrt() > 60.0)
+            })
+    };
     for (i, z) in s.zonas.iter().enumerate() {
         let falso = es(i) == Some("contenedor") && z.tipo != Tipo::Recuadro && !lleva_algo(i);
         match es(i) {
-            Some("ignorar") => continue,
+            Some("ignorar") if !sobre_color(i) => continue,
+            Some("ignorar") => {}
             Some("contenedor") if !falso => {
                 let mut c = z.clone();
                 if c.tipo != Tipo::Recuadro || c.panel.is_none() {

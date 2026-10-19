@@ -291,9 +291,9 @@ pub fn leer_renglones(t: &str, ocr: &[String]) -> Option<Vec<String>> {
     } else {
         v
     };
-    Some(
-        v.into_iter()
-            .zip(ocr)
+    let mut hecho: Vec<String> = v
+        .into_iter()
+        .zip(ocr)
             .map(|(nuevo, viejo)| {
                 let nuevo = sin_numero_inventado(&pixpin_motor2d::texto_rico::sin_barras_dobles(nuevo.trim()), viejo);
                 // (Ni uno mucho mas largo o mas corto: la frase entera para un
@@ -310,8 +310,41 @@ pub fn leer_renglones(t: &str, ocr: &[String]) -> Option<Vec<String>> {
                     leer_rico(&nuevo).unwrap_or(nuevo)
                 }
             })
-            .collect(),
-    )
+            .collect();
+    sin_lo_ya_dicho(&mut hecho, ocr);
+    Some(hecho)
+}
+
+/// **Lo que ya dice otro renglon** (19-oct, TikTok: el OCR partia «2 dia(s)
+/// | Responder» en dos y la nube daba «2 día(s) Responder» en uno; el otro
+/// se quedaba con lo del OCR y salia dos veces). Un renglon que se quedo con
+/// lo del OCR y cuyas letras ya van dentro del corregido de otro, vacio.
+fn sin_lo_ya_dicho(hecho: &mut [String], ocr: &[String]) {
+    let plano = |s: &str| -> String {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .map(|c| match c {
+                'á' => 'a',
+                'é' => 'e',
+                'í' => 'i',
+                'ó' => 'o',
+                'ú' => 'u',
+                _ => c,
+            })
+            .collect()
+    };
+    let n = hecho.len().min(ocr.len());
+    for j in 0..n {
+        let pj = plano(&ocr[j]);
+        if pj.chars().count() < 3 || hecho[j] != ocr[j] {
+            continue;
+        }
+        let dicho = (0..n).any(|i| i != j && hecho[i] != ocr[i] && plano(&hecho[i]).contains(&pj) && !plano(&ocr[i]).contains(&pj));
+        if dicho {
+            hecho[j].clear();
+        }
+    }
 }
 
 /// **Sin una numeracion que no estaba** (18-oct: la nube devolvia «1. Si le
@@ -582,5 +615,20 @@ mod pruebas_formula_que_el_ocr_no_leyo {
         // Pero una frase entera de texto para un trozo, no.
         let r = super::leer_renglones(r#"["Sea la funcion que se define en todo el dominio real"]"#, &ocr).unwrap();
         assert_eq!(r[0], "Sea");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_lo_ya_dicho {
+    use super::*;
+
+    #[test]
+    fn un_trozo_que_ya_va_en_otro_renglon_no_sale_dos_veces() {
+        let ocr = vec!["Responder".to_string(), "2 dia(s)".to_string()];
+        let r = leer_renglones(r#"["2 día(s) Responder", "zz"]"#, &ocr).unwrap();
+        assert_eq!(r, vec!["2 día(s) Responder".to_string(), String::new()]);
+        // (Si cada uno dice lo suyo, los dos se quedan.)
+        let r = leer_renglones(r#"["Responder", "2 día(s)"]"#, &ocr).unwrap();
+        assert_eq!(r, vec!["Responder".to_string(), "2 día(s)".to_string()]);
     }
 }

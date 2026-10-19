@@ -26,9 +26,10 @@ Se EXIGENTE: compara palabra a palabra y simbolo a simbolo. Revisa, en orden: \
 1) ¿falta algo? (un renglon, una formula, un recuadro vacio donde habia una formula); \
 2) ¿sobra o esta mal escrito? (letras sueltas, cifras sin sentido como «c -900-500=400» en vez de C50°=90°−50°=40°, codigo LaTeX a la vista como \\underbrace, texto encima de texto); \
 3) ¿las formulas dicen lo mismo? (exponentes, subindices, fracciones, raices, grados °, letras griegas); \
-4) ¿la negrita esta donde esta? \
-Si hay cualquier diferencia de contenido, NO esta bien. Solo dan igual: otra letra, un tamano un poco distinto y la marca de agua \
-(letras grandes y grises de fondo, que NO se copia). \
+4) ¿la negrita esta donde esta? (negrita es SOLO un trazo claramente mas grueso que el texto de al lado; un titulo grande o un color no es negrita) \
+Si hay cualquier diferencia de contenido, NO esta bien. Solo dan igual: otra letra, un tamano un poco distinto, el color, los iconos \
+(se ponen aparte) y la marca de agua (letras grandes y grises de fondo, que NO se copia). \
+NUNCA anadas palabras, iconos ni emojis que no esten escritos en el original, ni repitas una frase: copia lo que pone, tal cual, en su orden. \
 Responde SOLO un JSON: {\"bien\":true} si esta bien. Si no: {\"bien\":false,\"problema\":\"en una frase\",\"renglones\":[\"...\"],\"recorte\":false}. \
 En \"renglones\" va el texto CORRECTO del original, un elemento por renglon visual, en espanol con sus tildes, las formulas en linea entre $...$ con LaTeX \
 (x^{4}, P_{(x)}, \\frac{x+2}{y-1}, \\sqrt{y}, \\sin z) y la negrita entre **...**. Pon \"recorte\":true (y renglones vacio) solo si es un dibujo o un \
@@ -110,6 +111,92 @@ pub fn candidatas(parecidos: &[(usize, f64)], tipo: impl Fn(usize) -> Option<Tip
     v.into_iter().take(MAXIMO).map(|(z, _)| z).collect()
 }
 
+/// **¿Dicen las mismas letras?** Sin negritas, `$`, ordenes de LaTeX,
+/// espacios ni signos, en minusculas: casi iguales (una de cada diez puede
+/// cambiar). Asi se sabe si el supervisor solo cambio la forma.
+pub fn mismas_letras(a: &str, b: &str) -> bool {
+    let (a, b) = (plano(a), plano(b));
+    let mut d: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut antes = d[0];
+        d[0] = i;
+        for j in 1..=b.len() {
+            let t = d[j];
+            d[j] = (d[j] + 1).min(d[j - 1] + 1).min(antes + usize::from(a[i - 1] != b[j - 1]));
+            antes = t;
+        }
+    }
+    d[b.len()] <= (a.len().max(b.len()) / 10).max(1)
+}
+
+/// **¿Repite algo que el papel no repite?** Haiku a veces escribe dos veces
+/// lo mismo («108 108», «1 día(s) Responder 1 día(s)»): una palabra de tres
+/// letras o mas, o un par de palabras, que sale mas veces que en el OCR.
+pub fn repite(dice: &str, ocr: &str) -> bool {
+    let palabras = |s: &str| -> Vec<String> {
+        s.split(|c: char| c.is_whitespace() || c == '$' || c == '*')
+            .map(|w| plano(w).into_iter().map(sin_tilde).collect::<String>())
+            .filter(|w| !w.is_empty())
+            .collect()
+    };
+    let (d, o) = (palabras(dice), palabras(ocr));
+    let veces = |v: &[String], n: usize, g: &[String]| v.windows(n).filter(|w| *w == g).count();
+    for n in 1..=2 {
+        for g in d.windows(n) {
+            if g.iter().map(|w| w.chars().count()).sum::<usize>() < 3 {
+                continue;
+            }
+            let k = veces(&d, n, g);
+            if k >= 2 && k > veces(&o, n, g) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn sin_tilde(c: char) -> char {
+    match c {
+        'á' | 'à' | 'ä' => 'a',
+        'é' | 'è' | 'ë' => 'e',
+        'í' | 'ì' | 'ï' => 'i',
+        'ó' | 'ò' | 'ö' => 'o',
+        'ú' | 'ù' | 'ü' => 'u',
+        _ => c,
+    }
+}
+
+/// **Sus renglones tal cual, pero limpios**: sin las barras dobles
+/// (`\\frac`) y con los `$` cerrados, como los de `vision::leer_renglones`
+/// (19-oct: salia «$\text{Si } x=\frac…$» a la vista).
+pub fn limpio(r: &[String]) -> Vec<String> {
+    r.iter()
+        .map(|l| {
+            let n = pixpin_motor2d::texto_rico::sin_barras_dobles(l.trim());
+            vision::leer_rico(&n).unwrap_or(n)
+        })
+        .collect()
+}
+
+fn plano(s: &str) -> Vec<char> {
+    let mut v = Vec::new();
+    let mut orden = false;
+    for c in s.chars() {
+        if c == '\\' {
+            orden = true;
+            continue;
+        }
+        if orden && c.is_ascii_alphabetic() {
+            continue;
+        }
+        orden = false;
+        if c.is_alphanumeric() {
+            v.extend(c.to_lowercase());
+        }
+    }
+    v
+}
+
 /// El recorte de una caja con aire (para el original y lo pintado).
 pub fn recorte(rgba: &[u8], w: u32, h: u32, c: &Caja, aire: f64) -> (Vec<u8>, u32, u32) {
     imagen::recortar(rgba, w, h, &c.crecer(aire))
@@ -136,6 +223,30 @@ mod pruebas {
         let p = [(0, 0.99), (1, 0.4), (2, 0.7), (3, 0.2)];
         let tipo = |z: usize| Some(if z == 3 { Tipo::Foto } else { Tipo::Parrafo });
         assert_eq!(candidatas(&p, tipo), vec![1, 2]);
+    }
+
+    #[test]
+    fn sabe_si_solo_cambio_la_forma() {
+        assert!(mismas_letras("**Referencia: A DOS CUADRAS**", "Referencia: A DOS CUADRAS"));
+        assert!(mismas_letras("● **N° de Orden:** **270**", "NO de Orden: 270"));
+        assert!(!mismas_letras("**IE ADVENTISTA PUNO** IE ADVENTISTA PUNO", "IE ADVENTISTA PUNO"), "repetir no es solo forma");
+        assert!(!mismas_letras("$B_{(x; y)}=8x+\\sqrt{y}-3$", "y) -8X+vfr-3"), "arreglar lo leido no es solo forma");
+    }
+
+    #[test]
+    fn lo_que_dice_tal_cual_va_sin_barras_dobles() {
+        let r = limpio(&["Si $x=\\\\frac{1}{2}$".to_string()]);
+        assert_eq!(r, vec!["Si $x=\\frac{1}{2}$".to_string()]);
+    }
+
+    #[test]
+    fn ve_cuando_repite_lo_que_el_papel_no_repite() {
+        assert!(repite("**108** 108", "108"));
+        assert!(repite("1 día(s) Responder 1 día(s)", "1 dia(s) Responder"));
+        assert!(repite("**IE ADVENTISTA PUNO** IE ADVENTISTA PUNO", "IE ADVENTISTA PUNO"));
+        assert!(!repite("2 día(s) Responder", "2 dia(s) Responder 2"), "lo que el OCR tambien tiene no cuenta");
+        assert!(!repite("Si $x=2 \\rightarrow P_{(2)}=3(2)+4=10$", "Si x=2 P(2)=3(2)+4=10"));
+        assert!(!repite("la segunda parte vino a mi", "la segunda parte vino a mi"));
     }
 
     #[test]

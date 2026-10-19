@@ -1203,11 +1203,15 @@ pub fn pasar(
                 eprintln!("  zona {z} ({}): {:?}", s.zonas[z].tipo.nombre(), v);
             }
             let zona = &s.zonas[z];
+            let dice: String = match &v {
+                Some(supervisor::Veredicto::Renglones(r, _)) => r.join(" "),
+                _ => String::new(),
+            };
             let nuevo = match v {
                 Some(supervisor::Veredicto::Renglones(r, problema)) if matches!(zona.tipo, Tipo::Parrafo | Tipo::Encabezado) && !zona.renglones.is_empty() => {
                     let ocr: Vec<String> = zona.renglones.iter().map(|x| x.texto.clone()).collect();
                     let json = serde_json::to_string(&r).unwrap_or_default();
-                    vision::leer_renglones(&json, &ocr).or(Some(r)).map(|bien| (montaje::hacer(&entrada(z), Some(&Leido::Renglones(bien)), Via::Fiel), problema))
+                    vision::leer_renglones(&json, &ocr).or_else(|| vision::renglones_libres(&json, &ocr)).or_else(|| Some(supervisor::limpio(&r))).map(|bien| (montaje::hacer(&entrada(z), Some(&Leido::Renglones(bien)), Via::Fiel), problema))
                 }
                 // (Una formula entera, «$...$» de punta a punta; si mezcla texto,
                 // como texto: salian los «$» a la vista.)
@@ -1224,7 +1228,9 @@ pub fn pasar(
                     como_texto.tipo = Tipo::Parrafo;
                     let ocr: Vec<String> = zona.renglones.iter().map(|x| x.texto.clone()).collect();
                     let json = serde_json::to_string(&r).unwrap_or_default();
-                    vision::leer_renglones(&json, &ocr).or(Some(r)).map(|bien| {
+                    // (El OCR de una formula es basura: lo del supervisor
+                    // vale aunque no case; la prueba de los pixeles decide.)
+                    vision::leer_renglones(&json, &ocr).or_else(|| Some(supervisor::limpio(&r))).map(|bien| {
                         let e = Entrada { zona: &como_texto, ..entrada(z) };
                         let mut h = montaje::hacer(&e, Some(&Leido::Renglones(bien)), Via::Fiel);
                         h.tipo = Tipo::Parrafo;
@@ -1246,6 +1252,39 @@ pub fn pasar(
                 eprintln!("    arreglo: {} ({} elementos)", nuevo.nota, nuevo.elementos.len());
             }
             if nuevo.elementos.is_empty() {
+                continue;
+            }
+            // (La prueba de los pixeles: la zona sola, antes y despues, contra
+            // el papel. Haiku a veces inventa una negrita, repite una frase o
+            // anade un emoji; si se parece menos, se queda lo que habia.)
+            let c = zona.caja;
+            let a = supervisor::recorte(&p.rgba, p.ancho, p.alto, &c, aire);
+            let cuanto = |h: &Hecho| {
+                pintar(std::slice::from_ref(h), tam, p.ancho).map(|q| {
+                    let b = supervisor::recorte(&q.0, q.1, q.2, &c, aire);
+                    comparar::parecido((&a.0, a.1, a.2), (&b.0, b.1, b.2))
+                })
+            };
+            let antes = hechos.iter().find(|h| h.zona == z).and_then(|h| cuanto(h).ok()).unwrap_or(0.0);
+            let despues = cuanto(&nuevo).unwrap_or(0.0);
+            if depurar {
+                eprintln!("    pixeles: antes {:.0} despues {:.0}", antes * 100.0, despues * 100.0);
+            }
+            // Solo cambia la forma (una negrita, un emoji: las mismas letras
+            // que el OCR): tiene que parecerse igual o mas. Si arregla lo que
+            // dice (el OCR leyo mal), basta con que no se hunda.
+            let ocr: String = zona.renglones.iter().map(|x| x.texto.as_str()).collect::<Vec<_>>().join(" ");
+            // (Lo que repite algo que el papel no repite, nunca.)
+            let solo_forma = !dice.is_empty() && supervisor::mismas_letras(&dice, &ocr);
+            let vale = if supervisor::repite(&dice, &ocr) {
+                false
+            } else if solo_forma || dice.is_empty() {
+                despues + 0.01 >= antes
+            } else {
+                despues >= antes * 0.3
+            };
+            if !vale {
+                tracing::info!(zona = z, %problema, antes, despues, "hoja al lienzo: el arreglo del supervisor se parece menos, no se pone");
                 continue;
             }
             tracing::info!(zona = z, %problema, ahora = %nuevo.nota, "hoja al lienzo: el supervisor la rehizo");
