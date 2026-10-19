@@ -196,6 +196,7 @@ impl Drop for VisorHtml {
         if let Err(e) = unsafe { self.controlador.Close() } {
             tracing::warn!(error = %e, "el WebView2 no cerro limpiamente");
         }
+        controlador_cerrado();
         // Las descargas interceptadas ya se entregaron en memoria: lo que
         // quede aqui es basura y no debe sobrevivir a la sesion.
         let _ = std::fs::remove_dir_all(&self.temporal);
@@ -305,18 +306,66 @@ pub(crate) fn a_rect(area: Rect) -> RECT {
 /// apertura era un navegador arrancando en frio, sin cache, y se notaba lento
 /// (el usuario: «se sienten lentos ambos visores»). Con una sola, los visores
 /// comparten el proceso del navegador que ya este vivo y su cache.
+/// `PIXPIN_WEB_DATOS` la cambia: las pruebas a mano con la app abierta (otro
+/// proceso no puede usar la misma carpeta, 0x8007139F).
 pub fn carpeta_de_datos() -> PathBuf {
+    if let Some(d) = std::env::var_os("PIXPIN_WEB_DATOS") {
+        return PathBuf::from(d);
+    }
     std::env::temp_dir().join("pixpin-web-datos")
 }
 
 thread_local! {
     /// El entorno de WebView2 de este hilo, hecho una vez.
     static ENTORNO: std::cell::RefCell<Option<ICoreWebView2Environment>> = const { std::cell::RefCell::new(None) };
+    /// Los controladores vivos de este hilo.
+    static VIVOS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// **Un controlador de este hilo se cerro** (19-oct-2026): con el ultimo, el
+/// entorno se suelta YA. Si se quedaba en el `thread_local`, se soltaba al
+/// morir el hilo, despues de su `CoUninitialize`, y el WebView2 tiraba la
+/// app entera (0xC000041D en `EmbeddedBrowserWebView.dll`) al cerrar un
+/// pin de html o de notas. `examples/cerrar_hilos.rs` lo reproduce.
+pub(crate) fn controlador_cerrado() {
+    let quedan = VIVOS.with(|v| {
+        let n = v.get().saturating_sub(1);
+        v.set(n);
+        n
+    });
+    if quedan == 0 {
+        let entorno = ENTORNO.with(|e| e.borrow_mut().take());
+        drop(entorno);
+        bombear_lo_pendiente();
+    }
+}
+
+/// Lo que el WebView2 dejo en la cola al cerrar (sus ultimos avisos y
+/// liberaciones), antes de que el hilo se vaya.
+fn bombear_lo_pendiente() {
+    use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage};
+    let mut msg = MSG::default();
+    let t = std::time::Instant::now();
+    // SAFETY: la cola de mensajes de este hilo; solo se despacha lo que hay.
+    unsafe {
+        while t.elapsed().as_millis() < 200 && PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
 }
 
 /// **El entorno y un controlador dentro de `padre`**: el entorno de este hilo
 /// si ya hay (y si el navegador murio, uno nuevo y se reintenta una vez).
 pub(crate) fn entorno_y_controlador(padre: HWND) -> Result<(ICoreWebView2Environment, ICoreWebView2Controller), ErrorWeb> {
+    let hecho = entorno_y_controlador_sin_contar(padre);
+    if hecho.is_ok() {
+        VIVOS.with(|v| v.set(v.get() + 1));
+    }
+    hecho
+}
+
+fn entorno_y_controlador_sin_contar(padre: HWND) -> Result<(ICoreWebView2Environment, ICoreWebView2Controller), ErrorWeb> {
     let entorno = match ENTORNO.with(|e| e.borrow().clone()) {
         Some(e) => e,
         None => crear_entorno(&carpeta_de_datos())?,

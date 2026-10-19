@@ -418,6 +418,7 @@ impl Drop for Pagina {
             }
         }
         ESTADOS.with(|e| e.borrow_mut().remove(&(self.hwnd.0 as isize)));
+        crate::controlador_cerrado();
         let _ = std::fs::remove_dir_all(&self.temporal);
     }
 }
