@@ -468,6 +468,10 @@ No hace falta tener Revit.
   proyectos de **Revit 2023 a 2025** sin Revit. Lo que esa librería aún no sabe dibujar sale como
   una caja; los Revit 2022 y anteriores todavía no se pueden abrir.
 - El volumen es exacto cuando la pieza es un sólido cerrado; si no, sale con «≈».
+- **Marcadores con todo el estado** (`Ctrl+M`): cámara, zoom, corte, lo aislado y lo oculto, y lo
+  que anotes sobre ese marcador solo se ve en esa vista. La pieza aislada y las plantas ocultas se
+  guardan por su **`GlobalId`** del IFC (sin él, por tipo, nombre y orden), así que el marcador
+  vuelve a lo mismo en otro PC o en el móvil.
 
 ### Terrenos y carreteras (Civil 3D)
 
@@ -491,15 +495,18 @@ haciendo. Arriba, fuera de la hoja, sale su barra:
 | En la barra | Para qué sirve |
 |---|---|
 | ⠿ Asa | Mueve la ventana. |
-| Nombre · página | El nombre del documento y en qué página vas. Un clic lo cambia. |
+| Nombre · página | El nombre del documento y en qué página vas. |
 | 📑 Índice | Salta a un capítulo (en Word y EPUB). |
 | 🗣️ Escuchar | Te lo lee en voz alta. |
-| ⚙️ Ajustes | Las opciones del lector. |
+| ⋮ Más (`G`) | Las opciones que no están en la barra: letra, voz, imprimir o borrar los marcos… |
 | ⛶ Pantalla completa | O `F11`. `Esc` vuelve a pin. |
 | 📌 Pin | Siempre encima, o no. |
 
 - Se estira por los bordes como cualquier pin.
-- Se puede anotar encima, con marcadores y búsqueda.
+- **El riel de la derecha, igual en todos los visores** (PDF, Word, Excel, web, notas, planos y
+  3D): 🔖 marcador con su zoom (`Ctrl+M`), ✏️ anotar (`A`) y ⛶ marcos numerados para imprimir
+  (`I`; `Supr` quita el último, `Ctrl+P` los imprime en grupo con sus colores). Abajo, las fichas
+  1, 2, 3… llevan a cada marco, y cada botón dice su atajo al pasar el ratón.
 - **Markdown** lleva ver/editar, deshacer, buscar, comentarios y compartir; **HTML**, recargar,
   exportar y abrir en el navegador. La misma barra para todos.
 - **Rápidos**: el navegador interno se prepara solo al arrancar PixPin, y un HTML se ve en
@@ -524,7 +531,11 @@ tema) y abren en una décima de segundo, aunque el documento tenga cien páginas
 
 <img src="docs/img/v2/excel-pin.png" width="420" alt="Un presupuesto de Excel abierto como un pin"> <img src="docs/img/v2/excel-informe.png" width="420" alt="Un informe de ventas con formatos y gráficos">
 
-**Un Word antiguo** (`.doc`) se ve con la vista previa de Office, que se cierra con el pin:
+**Un Word o PowerPoint antiguo** (`.doc`, `.ppt`, RTF, OpenDocument) se abre al momento con la
+vista previa de Office y, mientras, PixPin lo **convierte una vez** a `.docx`/`.pptx` con tu
+Office (sin ventana, y Office se cierra al acabar). En unos segundos el pin pasa solo al visor
+propio, donde se anota, se ponen marcos y marcadores, y **todo viaja** con el adjunto del chat
+como el de un `.docx`. La siguiente vez abre directamente en el visor propio:
 
 <img src="docs/img/v2/office-antiguo.png" width="420" alt="Un .doc antiguo en la vista previa de Office">
 
@@ -533,7 +544,8 @@ tema) y abren en una décima de segundo, aunque el documento tenga cien páginas
 | 📝 Word (`.docx`) | Páginas reales con imágenes y tablas; anotar, buscar, seleccionar y copiar texto, imprimir. |
 | 📽️ PowerPoint (`.pptx`) | Diapositiva a diapositiva con las flechas; ▶ o `F5` para presentar a pantalla completa. |
 | 📊 Excel (`.xlsx`) | Pestañas, filas y columnas fijas, colores y bordes; elegir celdas y `Ctrl C`. Hojas de 100 000 filas sin esperar. |
-| 🗂️ Antiguos (`.doc`, `.xls`, `.ppt`, Visio, correos `.msg`) | Con la vista previa que Office instala en Windows; Office se cierra al cerrar el pin. |
+| 🗂️ Antiguos (`.doc`, `.ppt`, RTF, OpenDocument) | Convertidos una vez con Office y leídos en el visor propio: anotar, marcos, marcadores y sincronizar. `.xls` va directo al visor de hojas. |
+| 📮 Visio y correos `.msg` | Con la vista previa que Office instala en Windows; Office se cierra al cerrar el pin. |
 
 - **Vista rápida**: en el Explorador o el escritorio, elige archivos y pulsa **Espacio**: se
   abren en PixPin. Otro Espacio los cierra. Se apaga en Ajustes → Apps.
@@ -547,6 +559,11 @@ pinea desde ahí.
 
 <img src="docs/img/v2/salida.png" width="420" alt="Ventanita para arrastrar lo exportado">
 
+- **`.pixpin` con todo dentro**: el chat entero (o el fichero suelto) con su tinta, marcos
+  numerados, marcadores con su zoom y lo anotado en planos y modelos 3D. Al abrirlo en otro PixPin
+  o en el móvil, todo vuelve a su sitio; «Crear como nuevo» no lo suelta.
+- **Lo editable de un lienzo es el `.pixpin`**: el `.excalidraw` suelto ya no se ofrece. Los
+  `.excalidraw` que tengas se siguen abriendo.
 - Una foto **con anotaciones** sale siempre **fusionada**: al arrastrar o copiar un pin dibujado,
   al arrastrar una foto anotada del chat (también si se dibujó en el móvil) y al compartirla.
 - Un pin se arrastra a otra app con `Ctrl` + arrastrar.
@@ -607,6 +624,9 @@ flowchart LR
 
 - Lo anotado sobre PDF, Word y EPUB viaja en las dos direcciones: tinta, marcadores y espacios
   para anotar. Hace falta PixPin Android 0.96 o superior.
+- También viajan los **marcos numerados**, los **marcadores con su zoom**, la tinta de Excel, de
+  páginas web y notas, y en DWG/BIM los marcadores con toda su vista. Los formatos, para seguir
+  desarrollando en otro aparato: [`docs/sincronizar-marcos-vistas-y-tinta.md`](docs/sincronizar-marcos-vistas-y-tinta.md).
 - Un lienzo enviado desde el PC se abre en el lienzo del móvil y al revés.
 - **Desde Flow (`p s`)**: sale cada móvil del grupo con su estado (🟢 conectado / ⚪ sin conexión) y
   «Todos». Elegir uno sincroniza solo con ese, sin abrir la ventana; al acabar lo dice el globo.
