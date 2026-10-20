@@ -837,7 +837,9 @@ fn abrir_con(
         .context("sin monitor principal")?
         .to_owned();
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0).con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(ruta)));
+    // Un Word o un PowerPoint de antes convertido lleva la etiqueta del
+    // suyo (`.doc`), no la de la copia (`office_convertido`).
+    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0).con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(&pixpin_proyecto::anotado::original_de(ruta).unwrap_or_else(|| ruta.to_path_buf()))));
     let mut area = pin.area;
     let mut marco = Marco {
         ancho: area.ancho as f32,
