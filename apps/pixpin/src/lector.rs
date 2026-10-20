@@ -419,6 +419,17 @@ pub fn pintar_riel_con(
         );
     }
 
+    // El globo del boton bajo el raton: su nombre y su tecla, a su
+    // izquierda (19-oct-2026, el usuario: «que me aparezca su atajo»).
+    if let Some((caja, clave)) = match encima {
+        DestinoRiel::PonerMarca => Some((riel.poner_marca, "riel-marcador")),
+        DestinoRiel::Hojita => Some((riel.hojita, "riel-anotar")),
+        DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
+        _ => None,
+    } {
+        globo_a_la_izquierda(p, rf(caja), &crate::ventana_editor::exportar::textos().t(clave), e);
+    }
+
     // Los puntos: en reposo pequenos y medio transparentes para no tapar la
     // lectura; con el raton encima crecen, y el de debajo se adelanta hacia
     // dentro (lo que hace el movil bajo el dedo).
@@ -810,4 +821,21 @@ mod pruebas {
         assert!(!dentro(&r, 9.9, 12.0));
         assert!(!dentro(&r, 12.0, 15.1));
     }
+}
+
+/// **El globo de un boton**: su nombre y su atajo, en una pastilla oscura a
+/// la izquierda de `junto_a` (pixeles de la ventana), centrada a su altura.
+/// El mismo para todos los rieles de los visores.
+pub fn globo_a_la_izquierda(p: &Pintor<'_>, junto_a: RectF, texto: &str, e: f32) {
+    let tam = 12.0 * e;
+    let (w, h) = p.medir_texto(texto, tam);
+    let (px, py) = (8.0 * e, 5.0 * e);
+    let caja = RectF {
+        x: (junto_a.x - 8.0 * e - w - 2.0 * px).max(0.0),
+        y: junto_a.y + (junto_a.alto - h - 2.0 * py) / 2.0,
+        ancho: w + 2.0 * px,
+        alto: h + 2.0 * py,
+    };
+    p.rellenar_redondeado(caja, 6.0 * e, Color { r: 0.106, g: 0.106, b: 0.122, a: 0.96 });
+    p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
 }

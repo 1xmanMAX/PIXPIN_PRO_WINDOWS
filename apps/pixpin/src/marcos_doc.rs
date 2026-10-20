@@ -217,12 +217,42 @@ impl Marcos {
             p.trazar(caja_en_pantalla(caja, a_pantalla), 1.5 * e, AZUL);
         }
         if self.activo {
+            // Las fichas 1, 2, 3… (pulsar una va a ese marco) y, a su
+            // derecha, la pista.
+            let fichas = self.fichas(alto, e);
+            for (i, r) in fichas.iter().enumerate() {
+                p.rellenar_redondeado(*r, 6.0 * e, AZUL);
+                let n = (i + 1).to_string();
+                let tam = 13.0 * e;
+                let (w, h) = p.medir_texto(&n, tam);
+                p.texto(&n, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, BLANCO);
+            }
+            let x0 = fichas.last().map_or(12.0 * e, |r| r.x + r.ancho + 10.0 * e);
             let tam = 12.0 * e;
             let (w, h) = p.medir_texto(pista, tam);
-            let caja = RectF { x: 12.0 * e, y: alto - 34.0 * e - h / 2.0, ancho: w + 24.0 * e, alto: h + 12.0 * e };
+            let caja = RectF { x: x0, y: alto - 34.0 * e - h / 2.0, ancho: w + 24.0 * e, alto: h + 12.0 * e };
             p.rellenar_redondeado(caja, caja.alto / 2.0, CRISTAL);
             p.texto(pista, caja.x + 12.0 * e, caja.y + 6.0 * e, tam, BLANCO);
         }
+    }
+
+    /// **Las fichas de los marcos** abajo a la izquierda (como en el modelo
+    /// 3D), con el modo puesto: una por marco, en su orden. Pixeles de la
+    /// ventana de `alto`.
+    pub fn fichas(&self, alto: f32, e: f32) -> Vec<RectF> {
+        if !self.activo {
+            return Vec::new();
+        }
+        let lado = 28.0 * e;
+        (0..self.lista.len())
+            .map(|i| RectF { x: 12.0 * e + i as f32 * (lado + 6.0 * e), y: alto - 34.0 * e - lado / 2.0 + 4.0 * e, ancho: lado, alto: lado })
+            .collect()
+    }
+
+    /// La ficha bajo `q` (pixeles de la ventana): el numero de marco (desde
+    /// cero) al que ir.
+    pub fn ficha_en(&self, q: (f32, f32), alto: f32, e: f32) -> Option<usize> {
+        self.fichas(alto, e).iter().position(|r| q.0 >= r.x && q.0 <= r.x + r.ancho && q.1 >= r.y && q.1 <= r.y + r.alto)
     }
 }
 

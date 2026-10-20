@@ -866,6 +866,8 @@ fn abrir_con(
     // mas entre las demas, y su barra fuera.
     pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
+    // El nombre y el atajo de sus botones, para el globo de la barra.
+    pin.poner_pistas(vec![(1, textos.t("lector-escuchar")), (4, textos.t("lector-auto")), (2, textos.t("lector-mas")), (3, textos.t("lector-presentar"))]);
 
     let (tx_pedidos, rx_pedidos) = mpsc::channel::<Pedido>();
     let (tx_llega, rx_llega) = mpsc::channel::<Llega>();
@@ -1150,8 +1152,13 @@ fn abrir_con(
                 // el riel siguen siendo suyos.
                 EventoOverlay::BotonPulsado(p) if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) => {
                     e.raton = local(p);
-                    e.marcos.pulsar(doc_del_raton(&e, marco), 0);
-                    ventana.capturar_raton();
+                    // Una ficha de abajo: a ese marco; si no, uno nuevo.
+                    if let Some(i) = e.marcos.ficha_en(e.raton, marco.alto, marco.e) {
+                        ir_al_marco(&mut e, marco, i);
+                    } else {
+                        e.marcos.pulsar(doc_del_raton(&e, marco), 0);
+                        ventana.capturar_raton();
+                    }
                     hay_que_pintar = true;
                 }
                 EventoOverlay::RatonMovido(p) if e.marcos.arrastrando() => {
@@ -2799,6 +2806,18 @@ fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
 
 /// El documento bajo el raton (unidades del lector: x de la hoja, y de
 /// todas las hojas seguidas).
+/// **A ese marco**: acercarse hasta que llena la ventana, centrado (lo
+/// mismo que para su foto, sin fotografiar).
+fn ir_al_marco(e: &mut Estado, m: Marco, i: usize) {
+    let Some(marco) = e.marcos.lista.get(i).cloned() else { return };
+    let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
+    e.zoom = zoom_para(e, m, s);
+    let s = px(e, m);
+    let c = marco.centro();
+    e.x = c[0] as f32 - m.ancho / (2.0 * s);
+    e.y = c[1] as f32 - m.alto / (2.0 * s);
+}
+
 fn doc_del_raton(e: &Estado, m: Marco) -> [f64; 2] {
     let s = px(e, m);
     [(e.x + e.raton.0 / s) as f64, (e.y + e.raton.1 / s) as f64]
@@ -4867,4 +4886,9 @@ fn nombre_del_pin(e: &Estado) -> String {
     } else {
         e.nombre.clone()
     }
+}
+
+/// El zoom que da `s` pixeles por unidad del lector.
+fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
+    (s / (ancho_base(m) / vista::ANCHO_HOJA)).clamp(0.05, vista::ZOOM_MAXIMO_PDF)
 }

@@ -144,6 +144,9 @@ pub struct PinLector {
     visible: bool,
     fuera_desde: Option<std::time::Instant>,
     encima_de: Option<Pieza>,
+    /// El nombre y el atajo de los botones propios del lector, para su globo
+    /// (`globo_pista`).
+    pistas: Vec<(u8, String)>,
     /// Lo que se pinto la ultima vez (para no repintar si nada cambio): los
     /// botones, el nombre, lo de debajo del raton, el pin y el modo oscuro.
     pintado: Option<(Vec<(u8, bool)>, String, Option<Pieza>, bool, bool)>,
@@ -270,6 +273,7 @@ impl PinLector {
             visible: false,
             fuera_desde: None,
             encima_de: None,
+            pistas: Vec::new(),
             pintado: None,
             piezas: Vec::new(),
             al_abrir: std::time::Instant::now() + std::time::Duration::from_secs(4),
@@ -490,6 +494,7 @@ impl PinLector {
                 let pieza = self.pieza_en(x);
                 if pieza != self.encima_de {
                     self.encima_de = pieza;
+                    self.globo(pieza);
                 }
                 self.fuera_desde = None;
             }
@@ -525,6 +530,33 @@ impl PinLector {
             _ => {}
         }
         (None, Respuesta::default())
+    }
+
+    /// **El nombre y el atajo de cada boton propio** (los del lector), para
+    /// el globo que sale al dejar el raton encima.
+    pub fn poner_pistas(&mut self, pistas: Vec<(u8, String)>) {
+        self.pistas = pistas;
+    }
+
+    /// El globo de `pieza` (o ninguno), bajo su sitio en la barra.
+    fn globo(&self, pieza: Option<Pieza>) {
+        let t = crate::ventana_editor::exportar::textos();
+        let texto = match pieza {
+            Some(Pieza::Asa) => Some(t.t("barra-mover")),
+            Some(Pieza::Oscuro) => Some(t.t("barra-oscuro")),
+            Some(Pieza::Boton(AccionPin::PantallaCompleta)) => Some(t.t("barra-pantalla")),
+            Some(Pieza::Boton(AccionPin::Fijar)) => Some(t.t("barra-fijar")),
+            Some(Pieza::Boton(AccionPin::Cerrar)) => Some(t.t("barra-cerrar")),
+            Some(Pieza::Boton(AccionPin::Propio(id))) => self.pistas.iter().find(|(i, _)| *i == id).map(|(_, s)| s.clone()),
+            _ => None,
+        };
+        let (Some(texto), Some(b), Some(pieza)) = (texto, &self.barra, pieza) else {
+            crate::globo_pista::ocultar();
+            return;
+        };
+        let Some((a, z, _)) = self.piezas.iter().find(|(_, _, p)| *p == pieza) else { return };
+        let boton = Rect { x: b.area.x + *a as i32, y: b.area.y, ancho: (z - a).max(1.0) as u32, alto: b.area.alto };
+        crate::globo_pista::mostrar(&texto, boton, self.e);
     }
 
     fn pieza_en(&self, x: f32) -> Option<Pieza> {
@@ -579,6 +611,7 @@ impl PinLector {
         }
         self.visible = false;
         self.encima_de = None;
+        crate::globo_pista::ocultar();
     }
 
     /// Si hay que seguir despertando al bucle (la barra puede irse sola).

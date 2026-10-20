@@ -117,6 +117,7 @@ const VK_DOWN: u32 = 0x28;
 const VK_0: u32 = 0x30;
 const VK_A: u32 = 0x41;
 const VK_B: u32 = 0x42;
+const VK_C: u32 = 0x43;
 const VK_D: u32 = 0x44;
 const VK_F: u32 = 0x46;
 const VK_F2: u32 = 0x71;
@@ -202,6 +203,12 @@ pub(crate) struct Colocado {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Accion {
+    /// «Letra y espaciado»: el panel de la letra (lo que antes abria el
+    /// engranaje, ahora en el menu ⋮).
+    Letra,
+    /// Los marcos numerados: imprimirlos todos y quitarlos todos.
+    ImprimirMarcos,
+    BorrarMarcos,
     Indice,
     Engranaje,
     QuitarMarcadores,
@@ -414,6 +421,8 @@ pub fn abrir(
     // mas entre las demas, y su barra fuera.
     pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
+    // El nombre y el atajo de sus botones, para el globo de la barra.
+    pin.poner_pistas(vec![(0, textos.t("visor-indice-pista")), (1, textos.t("lector-escuchar")), (3, textos.t("lector-auto")), (2, textos.t("lector-mas"))]);
 
     // De un adjunto del chat, lo que viaja con su mensaje (v0.96).
     let ajustes = crate::anotado_del_adjunto::leer(ruta);
@@ -596,8 +605,13 @@ pub fn abrir(
                 // Los marcos numerados (`marcos_doc`), como en el plano.
                 EventoOverlay::BotonPulsado(p) if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) => {
                     e.raton = local(p);
-                    e.marcos.pulsar(doc_del_raton(&e, marco), 0);
-                    ventana.capturar_raton();
+                    // Una ficha de abajo: a ese marco; si no, uno nuevo.
+                    if let Some(i) = e.marcos.ficha_en(e.raton, marco.alto, marco.e) {
+                        ir_al_marco(&mut e, marco, i);
+                    } else {
+                        e.marcos.pulsar(doc_del_raton(&e, marco), 0);
+                        ventana.capturar_raton();
+                    }
                 }
                 EventoOverlay::RatonMovido(p) if e.marcos.arrastrando() => {
                     e.raton = local(p);
@@ -607,6 +621,9 @@ pub fn abrir(
                     e.raton = local(p);
                     e.marcos.soltar(doc_del_raton(&e, marco), px(&e, marco) as f64);
                     ventana.soltar_raton();
+                }
+                EventoOverlay::Tecla { vk: VK_G, ctrl: false, shift: false, .. } if e.nombre.editando.is_none() && !e.anotando => {
+                    hacer(&mut e, Accion::Engranaje, textos, ruta, ubicacion, marco);
                 }
                 EventoOverlay::Tecla { vk, ctrl, shift: false, .. }
                     if e.nombre.editando.is_none()
@@ -1470,7 +1487,7 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         )),
         // **Que suba sola** (`KeyboardDoubleArrowDown` de la pastilla del movil).
         Some((&lector::DOBLE_FLECHA_ABAJO, e.auto.is_some(), Accion::Auto)),
-        Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
+        Some((&material::MORE_VERT, false, Accion::Engranaje)),
         // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
         (!e.en_pin).then_some((if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro)),
         // De pantalla completa, de vuelta a pin.
@@ -1622,7 +1639,8 @@ fn lista_del_indice(
 /// El engranaje: una hoja desde abajo con todo a la vista y a un toque,
 /// como la del movil.
 fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<(RectF, Accion)>) {
-    let filas = filas_del_panel(e, textos);
+    // Solo la letra y el espaciado: lo demas esta en el menu ⋮ (19-oct-2026).
+    let filas: Vec<(String, Accion)> = Vec::new();
     let alto_panel = (190.0 + filas.len() as f32 * 28.0) * m.e;
     let caja = RectF {
         x: 0.0,
@@ -1775,8 +1793,7 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("lector-ver-pdf-original"), Accion::VerPdf));
     }
     filas.extend([
-        (textos.t("lector-escuchar"), Accion::Escuchar),
-        (textos.t("lector-auto"), Accion::Auto),
+        (textos.t("visor-letra"), Accion::Letra),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
@@ -1793,6 +1810,10 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
             textos.t("visor-quitar-marcadores"),
             Accion::QuitarMarcadores,
         ));
+    }
+    if !e.marcos.lista.is_empty() {
+        filas.push((textos.t("marcos-imprimir"), Accion::ImprimirMarcos));
+        filas.push((textos.t("marcos-borrar"), Accion::BorrarMarcos));
     }
     if e.ajustes.letra_fijada() || !e.capa.vacia() {
         filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
@@ -2227,7 +2248,7 @@ fn tecla(
             e.panel = !e.panel;
             e.viendo_indice = false;
         }
-        (VK_I, false) if !e.indice.is_empty() => {
+        (VK_C, false) if !e.indice.is_empty() => {
             e.viendo_indice = !e.viendo_indice;
             e.panel = false;
             centrar_indice(e, m);
@@ -2304,6 +2325,18 @@ fn alternar_marcos(e: &mut Estado, ruta: &Path, m: Marco) {
 
 fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
     riel_de(e, m).contiene(lector::punto(q.0, q.1)) || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
+}
+
+/// **A ese marco**: acercarse hasta que llena la ventana, centrado (lo
+/// mismo que para su foto, sin fotografiar).
+fn ir_al_marco(e: &mut Estado, m: Marco, i: usize) {
+    let Some(marco) = e.marcos.lista.get(i).cloned() else { return };
+    let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
+    e.zoom = zoom_para(e, m, s);
+    let s = px(e, m);
+    let c = marco.centro();
+    e.x = c[0] as f32 - m.ancho / (2.0 * s);
+    e.y = c[1] as f32 - m.alto / (2.0 * s);
 }
 
 fn doc_del_raton(e: &Estado, m: Marco) -> [f64; 2] {
@@ -2839,14 +2872,22 @@ fn hacer(
                 centrar_indice(e, m);
             }
         }
+        // El ⋮: el desplegable de siempre de la app, sin lo de la barra.
         Accion::Engranaje => {
-            // Igual: dentro de la hoja no se cierra.
-            let en_la_hoja = e.panel && e.raton.1 > m.alto * 0.5;
-            if !en_la_hoja {
-                e.panel = !e.panel;
-                e.viendo_indice = false;
+            e.panel = false;
+            e.viendo_indice = false;
+            let filas = filas_del_panel(e, textos);
+            let entradas: Vec<(u32, String)> = filas.iter().enumerate().map(|(i, (t, _))| (i as u32 + 1, t.clone())).collect();
+            let hwnd = windows::Win32::Foundation::HWND(e.hwnd as *mut core::ffi::c_void);
+            if let Some(k) = pixpin_shell::menu_llano(hwnd, &entradas)
+                && let Some((_, a)) = filas.get(k as usize - 1)
+            {
+                hacer(e, *a, textos, ruta, ubicacion, m);
             }
         }
+        Accion::Letra => e.panel = true,
+        Accion::ImprimirMarcos => empezar_fotos(e, ruta),
+        Accion::BorrarMarcos => e.marcos.borrar(),
         Accion::IrA(i) => {
             if let Some(entrada) = e.indice.get(i) {
                 // Un renglon por encima: el titulo no queda pegado al borde.
@@ -4313,7 +4354,7 @@ fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
     }
     v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
     v.push(BotonLector { id: 3, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() });
-    v.push(BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel });
+    v.push(BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false });
     v
 }
 
@@ -4334,4 +4375,9 @@ fn nombre_del_pin(e: &Estado) -> String {
     } else {
         pixpin_docs::sin_extension(&e.nombre.visto)
     }
+}
+
+/// El zoom que da `s` pixeles por unidad del documento.
+fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
+    (s / m.e).clamp(0.2, 8.0)
 }
