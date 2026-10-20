@@ -1141,9 +1141,16 @@ fn registrar_clase() {
     // SAFETY: registro unico (Once) de una clase con WndProc propio; los
     // campos no usados quedan a cero, que es lo que la API espera.
     unsafe {
+        let instancia: windows::Win32::Foundation::HINSTANCE = GetModuleHandleW(None).expect("modulo propio").into();
+        // El icono de PixPin (recurso 1 del ejecutable, `pixpinmax.rc`): sin
+        // el, el chat, los visores y los pines salian con el icono generico
+        // en la barra de tareas y en Alt+Tab (20-oct-2026, el usuario: «su
+        // icono no aparece de la app»).
+        let icono = windows::Win32::UI::WindowsAndMessaging::LoadIconW(Some(instancia), windows::core::PCWSTR(1 as _)).unwrap_or_default();
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento_overlay),
-            hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
+            hInstance: instancia,
+            hIcon: icono,
             lpszClassName: w!("PixPinOverlay"),
             ..Default::default()
         };

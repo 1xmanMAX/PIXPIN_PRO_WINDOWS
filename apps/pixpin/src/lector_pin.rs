@@ -261,6 +261,12 @@ pub fn estirada(area: Rect, bordes: u8, dx: i32, dy: i32, minimo: (u32, u32)) ->
 
 impl PinLector {
     pub fn nuevo(area: Rect, e: f32) -> PinLector {
+        // Para probar a mano que cerrar un visor con el globo hecho no tira
+        // la app (20-oct-2026): el globo sale al abrir, sin mover el raton.
+        if std::env::var_os("PIXPIN_PRUEBA_GLOBO").is_some() {
+            crate::globo_pista::mostrar("prueba", Rect { x: area.x + 40, y: area.y, ancho: 40, alto: 30 }, e);
+            tracing::info!("globo de prueba puesto (PIXPIN_PRUEBA_GLOBO)");
+        }
         PinLector {
             pantalla_completa: false,
             fijado: FIJADO_AL_NACER,

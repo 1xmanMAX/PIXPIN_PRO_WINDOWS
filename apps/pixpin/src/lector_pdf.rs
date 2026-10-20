@@ -2068,11 +2068,15 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         let y_doc = e.hojas.arriba[i] + marcas::alto_en_la_pagina(mm) as f32 * e.hojas.altos[i];
         let x_doc = vista::ANCHO_HOJA + 20.0;
         let (sx, sy) = ((x_doc - e.x) * s, (y_doc - e.y) * s);
-        if sy > -40.0 && sy < m.alto + 40.0 {
+        // Pegado al canto de su hoja SIEMPRE (20-oct-2026, el usuario: «si
+        // muevo la hoja se mueve para siempre estar dentro de la vista…
+        // tiene que quedarse en el borde de la hoja»): antes se recortaba a
+        // la ventana y perseguia a la vista. Fuera de ella, no se ve.
+        if sy > -40.0 && sy < m.alto + 40.0 && sx > -40.0 && sx < m.ancho + 40.0 {
             lector::redondel(
                 p,
                 &mm.emoji,
-                (sx.min(m.ancho - 90.0 * m.e), sy),
+                (sx, sy),
                 14.0 * m.e,
                 0.8,
             );

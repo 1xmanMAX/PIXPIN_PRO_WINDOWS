@@ -593,7 +593,10 @@ function construir(state) {
 export const vivo = StateField.define({
   create: construir,
   update(v, tr) {
-    if (tr.docChanged || tr.selection || tr.reconfigured) return construir(tr.state)
+    // Y cuando el analizador acaba (o sigue) el arbol en segundo plano: al
+    // crear el editor puede no estar aun, y la nota se quedaba sin formato
+    // (las tablas con sus barras y guiones) hasta el primer clic (20-oct).
+    if (tr.docChanged || tr.selection || tr.reconfigured || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return construir(tr.state)
     return v
   },
   provide: f => [EditorView.decorations.from(f, v => v.todas), EditorView.atomicRanges.of(view => view.state.field(f).atomicas)],

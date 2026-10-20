@@ -112,6 +112,13 @@ pub fn abrir_en_su_lector(
     ruta: &std::path::Path,
     nombre: &str,
 ) -> bool {
+    // Un Markdown, en el lector de notas, como «Abrir con» (`main::destino_con`):
+    // el visor de documentos lo ensenaba en crudo (el usuario, 20-oct-2026:
+    // «las tablas… se ven sin su formato, solo con los guiones»).
+    if crate::notas_md::es_markdown(ruta) {
+        crate::notas_md::abrir(idioma, ubicacion.clone(), crate::notas_md::Destino::Fichero { ruta: ruta.to_path_buf() });
+        return true;
+    }
     // Unos puntos o un LandXML (por su contenido) van al visor 3D antes
     // que al de documentos, que tambien abre los .txt.
     if pixpin_bim::es_de_civil(ruta) {
