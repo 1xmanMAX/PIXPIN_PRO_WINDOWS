@@ -115,8 +115,8 @@ pub(crate) const PIXPIN: &str = "pixpin";
 
 /// **El `.pixpin` de un fichero suelto**: si se sabe su chat (`proyecto`) o
 /// es un adjunto de un chat, el proyecto entero de ese chat (lo que manda el
-/// chat); si no, un proyecto nuevo con el fichero como mensaje y lo anotado
-/// al lado (`archivos/<nombre>` y `archivos/<nombre>.anotado/...`).
+/// chat); si no, un proyecto nuevo con el fichero como mensaje (con codigo)
+/// y todo lo anotado ([`lo_anotado_del_suelto`]).
 pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &Path, anotado: &[PathBuf], cuando: i64) -> Result<(String, Vec<u8>)> {
     let nombre = original.file_name().map(|n| n.to_string_lossy().into_owned()).context("el fichero no tiene nombre")?;
     let tronco = pixpin_docs::sin_extension(&nombre);
@@ -140,9 +140,13 @@ pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &
     let manifiesto = pixpin_proyecto::Manifiesto { escrito: cuando, proyecto: tronco.clone(), ..Default::default() };
     let mut p = pixpin_proyecto::Paquete::nuevo(manifiesto, proyecto);
     let ruta = format!("archivos/{nombre}");
+    // Con codigo propio: es lo que hace de lo anotado lo de este mensaje
+    // (`anot-<uid>…`) en el chat que lo reciba, y lo que viaja de ahi.
+    let uid = pixpin_proyecto::codigos::nuevo();
     let mensaje = pixpin_proyecto::cuaderno::Mensaje {
         id: format!("m-{cuando}"),
         cuando,
+        uid: Some(uid.clone()),
         clase: Some(pixpin_proyecto::cuaderno::Clase::Archivo),
         ruta: Some(ruta.clone()),
         nombre: nombre.clone(),
@@ -150,15 +154,82 @@ pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &
         ..Default::default()
     };
     p.poner_entrada(&ruta, bytes);
-    for a in anotado.iter().filter(|a| a.is_file()) {
-        if let (Some(n), Ok(b)) = (a.file_name(), std::fs::read(a)) {
-            p.poner_entrada(&format!("archivos/{nombre}.anotado/{}", n.to_string_lossy()), b);
-        }
+    for (rel, b) in lo_anotado_del_suelto(raiz, original, anotado, &uid) {
+        p.poner_entrada(&rel, b);
     }
     let linea = serde_json::to_string(&mensaje).context("el mensaje no se escribe")?;
     p.poner_entrada("guardados.jsonl", format!("{linea}\n").into_bytes());
     let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok((format!("{}.pixpin", super::nombre_de_fichero(&tronco)), bytes))
+}
+
+/// **Todo lo anotado de un fichero suelto**, con su sitio dentro del
+/// `.pixpin` (relativo a la carpeta del chat):
+/// - lo que cuelga de su nombre (`<nombre>.pixpin-*`: la tinta de
+///   `.pixpin-anotado/`, los marcadores de `.pixpin-lectura`, los marcos y
+///   las vistas) va igual junto a `archivos/<nombre>`: al abrirlo alli, cada
+///   visor lo pasa a los ficheros del mensaje como con lo de antes;
+/// - la capa de un plano (`cache/cad/<clave>.anot.*`) y lo de los marcadores
+///   de un plano o un modelo 3D (`marcadores/<h>/`), que no cuelgan del
+///   nombre, ya con los del mensaje (`anot-<uid>…`);
+/// - lo demas de `anotado`, en `archivos/<nombre>.pixpin-anotado/`.
+fn lo_anotado_del_suelto(raiz: Option<&Path>, original: &Path, anotado: &[PathBuf], uid: &str) -> Vec<(String, Vec<u8>)> {
+    use pixpin_sincro::anotado as an;
+    let nombre = original.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let del_chat = |terminacion: &str| -> String {
+        let b = pixpin_proyecto::anotado::Base { raiz: PathBuf::from("r"), chat: "c".into(), base: format!("{}{uid}", an::PREFIJO) };
+        let f = b.fichero(terminacion);
+        f.strip_prefix(pixpin_proyecto::almacen::carpeta(Path::new("r"), "c")).unwrap_or(&f).to_string_lossy().replace('\\', "/")
+    };
+    let mut salida: Vec<(String, Vec<u8>)> = Vec::new();
+    let poner = |rel: String, f: &Path, salida: &mut Vec<(String, Vec<u8>)>| {
+        if !salida.iter().any(|(r, _)| r == &rel)
+            && let Ok(b) = std::fs::read(f)
+        {
+            salida.push((rel, b));
+        }
+    };
+    if let Some(carpeta) = original.parent() {
+        let prefijo = format!("{nombre}.pixpin-");
+        let mut pendientes: Vec<PathBuf> = std::fs::read_dir(carpeta)
+            .map(|d| d.flatten().map(|e| e.path()).filter(|r| r.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefijo))).collect())
+            .unwrap_or_default();
+        while let Some(r) = pendientes.pop() {
+            if r.is_dir() {
+                pendientes.extend(std::fs::read_dir(&r).map(|d| d.flatten().map(|e| e.path()).collect::<Vec<_>>()).unwrap_or_default());
+            } else if let Ok(rel) = r.strip_prefix(carpeta) {
+                poner(format!("archivos/{}", rel.to_string_lossy().replace('\\', "/")), &r, &mut salida);
+            }
+        }
+    }
+    if let Some(raiz) = raiz {
+        let marcadores = crate::plano_cad::carpeta_de_marcadores(raiz, original);
+        for e in std::fs::read_dir(&marcadores).map(|d| d.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            let terminacion = match n.as_str() {
+                "vistas.json" => an::VISTAS.to_string(),
+                "marcos.json" => an::MARCOS.to_string(),
+                _ => match (n.strip_suffix(".excalidraw"), n.strip_suffix(".hoja")) {
+                    (Some(id), _) => format!("-{id}.excalidraw.gz"),
+                    (_, Some(id)) => format!("-{id}{}", an::HOJA),
+                    _ => continue,
+                },
+            };
+            poner(del_chat(&terminacion), &e.path(), &mut salida);
+        }
+    }
+    for a in anotado.iter().filter(|a| a.is_file()) {
+        let n = a.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let rel = if n.ends_with(".anot.excalidraw") {
+            del_chat(".excalidraw.gz")
+        } else if n.ends_with(".anot.hoja") {
+            del_chat(an::HOJA)
+        } else {
+            format!("archivos/{nombre}.pixpin-anotado/{n}")
+        };
+        poner(rel, a, &mut salida);
+    }
+    salida
 }
 
 /// Lo que va como un mensaje en un `.pixpin` nuevo ([`pixpin_nuevo`]): su
@@ -425,10 +496,37 @@ mod pruebas {
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
         assert_eq!(p.proyecto.nombre, "plano");
         assert_eq!(p.entrada("archivos/plano.dxf"), Some(&b"0\nEOF\n"[..]));
-        assert!(p.entrada("archivos/plano.dxf.anotado/plano.anot.excalidraw").is_some());
-        assert!(String::from_utf8_lossy(p.entrada("guardados.jsonl").unwrap()).contains("archivos/plano.dxf"));
+        let linea = String::from_utf8_lossy(p.entrada("guardados.jsonl").unwrap()).into_owned();
+        assert!(linea.contains("archivos/plano.dxf"));
+        // La capa del plano ya va como la de su mensaje.
+        let m: pixpin_proyecto::cuaderno::Mensaje = serde_json::from_str(linea.trim()).unwrap();
+        let uid = m.uid.expect("el mensaje lleva codigo");
+        assert_eq!(p.entrada(&format!("lienzos/anot-{uid}.excalidraw")), Some(&b"{}"[..]));
         // Caso negativo: un fichero que no esta.
         assert!(pixpin_de(None, None, &d.join("no-esta.dwg"), &[], 1).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn el_pixpin_de_un_fichero_suelto_lleva_lo_que_cuelga_de_su_nombre() {
+        let d = temporal("hermanos");
+        let f = d.join("informe.docx");
+        std::fs::write(&f, "doc").unwrap();
+        std::fs::write(d.join("informe.docx.pixpin-marcos"), "[1]").unwrap();
+        std::fs::write(d.join("informe.docx.pixpin-vistas"), "{}").unwrap();
+        std::fs::write(d.join("informe.docx.pixpin-lectura"), "{\"m\":1}").unwrap();
+        std::fs::create_dir_all(d.join("informe.docx.pixpin-anotado")).unwrap();
+        let capa = d.join("informe.docx.pixpin-anotado").join("capa.excalidraw");
+        std::fs::write(&capa, "tinta").unwrap();
+        // Lo de otro fichero no va.
+        std::fs::write(d.join("otro.docx.pixpin-marcos"), "[2]").unwrap();
+        let (_, bytes) = pixpin_de(None, None, &f, &[capa], 7).unwrap();
+        let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
+        assert_eq!(p.entrada("archivos/informe.docx.pixpin-marcos"), Some(&b"[1]"[..]));
+        assert_eq!(p.entrada("archivos/informe.docx.pixpin-vistas"), Some(&b"{}"[..]));
+        assert!(p.entrada("archivos/informe.docx.pixpin-lectura").is_some());
+        assert_eq!(p.entrada("archivos/informe.docx.pixpin-anotado/capa.excalidraw"), Some(&b"tinta"[..]));
+        assert!(p.nombres().all(|n| !n.contains("otro.docx")), "{:?}", p.nombres().collect::<Vec<_>>());
         let _ = std::fs::remove_dir_all(&d);
     }
 

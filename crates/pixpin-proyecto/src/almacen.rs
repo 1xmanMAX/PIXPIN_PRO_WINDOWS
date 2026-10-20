@@ -454,20 +454,46 @@ pub fn renovar(paquete: &crate::Paquete, ahora: i64) -> crate::Paquete {
         h.resto.remove("origen");
     }
     let mut nuevo = crate::Paquete::nuevo(paquete.manifiesto.clone(), proyecto);
+    // Lo anotado de un adjunto (tinta, marcos, marcadores con su vista) va
+    // por el codigo de su mensaje (`anot-<uid>…`): el mensaje que lo tiene
+    // estrena su codigo ya aqui y sus ficheros se llaman con el nuevo, o la
+    // copia se quedaria sin nada de lo anotado.
+    let anotados: std::collections::HashSet<String> =
+        paquete.nombres().filter_map(|n| uid_de_lo_anotado(n).map(str::to_string)).collect();
+    let mut cambiados = std::collections::HashMap::new();
+    if let Some(bytes) = paquete.entrada("guardados.jsonl") {
+        nuevo.poner_entrada("guardados.jsonl", renovar_cuaderno(bytes, ahora, &anotados, &mut cambiados).into_bytes());
+    }
     for nombre in paquete.nombres() {
-        if nombre == "manifest.json" || nombre == "proyecto.json" {
+        if nombre == "manifest.json" || nombre == "proyecto.json" || nombre == "guardados.jsonl" {
             continue;
         }
         let Some(bytes) = paquete.entrada(nombre) else {
             continue;
         };
-        if nombre == "guardados.jsonl" {
-            nuevo.poner_entrada(nombre, renovar_cuaderno(bytes, ahora).into_bytes());
-            continue;
-        }
-        nuevo.poner_entrada(nombre, bytes.to_vec());
+        let puesto = match uid_de_lo_anotado(nombre).and_then(|u| cambiados.get(u).map(|n: &String| (u, n))) {
+            Some((viejo, estrenado)) => {
+                let (carpeta, fichero) = nombre.rsplit_once('/').unwrap_or(("", nombre));
+                let fichero = fichero.replacen(viejo, estrenado, 1);
+                if carpeta.is_empty() { fichero } else { format!("{carpeta}/{fichero}") }
+            }
+            None => nombre.to_string(),
+        };
+        nuevo.poner_entrada(&puesto, bytes.to_vec());
     }
     nuevo
+}
+
+/// El codigo de mensaje de un fichero de lo anotado del paquete
+/// (`lienzos/anot-<uid>….excalidraw`, `android/pins/draw/anot-<uid>…`): lo
+/// que sigue a `anot-` hasta el primer `-` o `.`, si tiene el largo de un
+/// codigo.
+fn uid_de_lo_anotado(nombre: &str) -> Option<&str> {
+    let fichero = nombre.rsplit('/').next()?;
+    let resto = fichero.strip_prefix(pixpin_sincro::anotado::PREFIJO)?;
+    let fin = resto.find(['-', '.'])?;
+    let uid = &resto[..fin];
+    (uid.chars().count() == pixpin_sincro::codigo::LARGO).then_some(uid)
 }
 
 /// Los mensajes de un cuaderno con los tres codigos estrenados.
@@ -477,17 +503,28 @@ pub fn renovar(paquete: &crate::Paquete, ahora: i64) -> crate::Paquete {
 /// unico, numero, letra, aparato ni origen, que los pone quien los guarde.
 /// Una linea que no se entienda se copia tal cual: reescribir el cuaderno no
 /// puede ser la forma de perder lo que escriba una version mas nueva.
-fn renovar_cuaderno(bytes: &[u8], ahora: i64) -> String {
+///
+/// Salvo el codigo unico de los que tienen algo anotado (`anotados`): esos
+/// estrenan uno ya, apuntado en `cambiados` (viejo → nuevo).
+fn renovar_cuaderno(
+    bytes: &[u8],
+    ahora: i64,
+    anotados: &std::collections::HashSet<String>,
+    cambiados: &mut std::collections::HashMap<String, String>,
+) -> String {
     use crate::cuaderno::Mensaje;
     let texto = String::from_utf8_lossy(bytes);
     let mut salida = String::with_capacity(texto.len());
     for (i, linea) in texto.lines().filter(|l| !l.trim().is_empty()).enumerate() {
         match serde_json::from_str::<Mensaje>(linea) {
             Ok(m) => {
+                let uid = m.uid.as_ref().filter(|u| anotados.contains(*u)).map(|viejo| {
+                    cambiados.entry(viejo.clone()).or_insert_with(codigos::nuevo).clone()
+                });
                 let puesto = Mensaje {
                     id: (ahora + i as i64).to_string(),
                     cuando: ahora + i as i64,
-                    uid: None,
+                    uid,
                     numero: 0,
                     letra: None,
                     aparato: None,
@@ -1753,6 +1790,53 @@ mod pruebas {
             );
         }
         assert_eq!(ms[0].texto, "del movil", "el contenido se conserva");
+    }
+
+    #[test]
+    fn el_pixpin_lleva_todo_lo_anotado_y_crear_como_nuevo_no_lo_suelta() {
+        // Un chat con un PDF anotado: tinta de una pagina, marcos, vistas de
+        // los marcadores y lo anotado en un marcador del 3D.
+        let raiz = carpeta_temporal("todo-lo-anotado");
+        let p = paquete("Obra", "VVT587BFCA", 1_757_939_357_123);
+        let ficha = importar_paquete(&raiz, &p, "ZZZZ").unwrap();
+        let dir = carpeta(&raiz, &ficha.id);
+        let lado = dir.join("android").join("pins").join("draw");
+        std::fs::create_dir_all(&lado).unwrap();
+        let ficheros = [
+            ("lienzos/anot-MMMMMMMMMM-p0.excalidraw", "tinta"),
+            ("android/pins/draw/anot-MMMMMMMMMM.marcos.json", "[{\"n\":1}]"),
+            ("android/pins/draw/anot-MMMMMMMMMM.vistas.json", "{\"m1\":\"2 0 0\"}"),
+            ("android/pins/draw/anot-MMMMMMMMMM-mm1.hoja", "marco"),
+        ];
+        for (rel, texto) in ficheros {
+            std::fs::write(dir.join(rel), texto).unwrap();
+        }
+
+        let bytes = empaquetar(&raiz, &ficha.id, 9).unwrap();
+        let llegado = crate::Paquete::desde_bytes(&bytes).unwrap();
+        for (rel, texto) in ficheros {
+            assert_eq!(llegado.entrada(rel), Some(texto.as_bytes()), "{rel}");
+        }
+        let otra_raiz = carpeta_temporal("todo-lo-anotado-otro-pc");
+        let puesta = importar_paquete(&otra_raiz, &llegado, "YYYY").unwrap();
+        for (rel, texto) in ficheros {
+            assert_eq!(std::fs::read_to_string(carpeta(&otra_raiz, &puesta.id).join(rel)).unwrap(), texto, "{rel}");
+        }
+
+        // Crear como nuevo: el mensaje anotado estrena codigo y lo suyo se
+        // llama con el; el que no tenia nada se queda sin codigo (Android).
+        let nuevo = renovar(&llegado, 5_000_000);
+        let copia = importar_paquete(&otra_raiz, &nuevo, "YYYY").unwrap();
+        let ms = lineas(&otra_raiz, &copia.id);
+        let anotado = ms.iter().find(|m| m.texto == "del movil").unwrap();
+        let uid = anotado.uid.clone().expect("el anotado estrena codigo");
+        assert_ne!(uid, "MMMMMMMMMM");
+        assert!(ms.iter().find(|m| m.texto == "otro").unwrap().uid.is_none());
+        for (rel, texto) in ficheros {
+            let rel = rel.replace("MMMMMMMMMM", &uid);
+            assert_eq!(std::fs::read_to_string(carpeta(&otra_raiz, &copia.id).join(&rel)).unwrap(), texto, "{rel}");
+        }
+        assert!(nuevo.nombres().all(|n| !n.contains("MMMMMMMMMM")), "nada con el codigo viejo");
     }
 
     #[test]
