@@ -130,6 +130,38 @@ impl Arbol {
         Arbol { niveles, tipos, ocultos: HashSet::new(), desplazar: 0.0 }
     }
 
+    /// **Lo oculto, como texto** (para el estado de un marcador): `n:<nivel>`,
+    /// `n:-` (sin nivel) o `t:<categoria>`, ordenado.
+    pub fn ocultos_en_texto(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .ocultos
+            .iter()
+            .map(|c| match c {
+                Clave::Nivel(Some(n)) => format!("n:{n}"),
+                Clave::Nivel(None) => "n:-".to_string(),
+                Clave::Tipo(t) => format!("t:{t}"),
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// Y al reves: deja oculto justo eso. Dice si cambio algo.
+    pub fn poner_ocultos(&mut self, v: &[String]) -> bool {
+        let nuevos: HashSet<Clave> = v
+            .iter()
+            .filter_map(|t| match t.split_once(':')? {
+                ("n", "-") => Some(Clave::Nivel(None)),
+                ("n", n) => n.parse().ok().map(|n| Clave::Nivel(Some(n))),
+                ("t", t) => Some(Clave::Tipo(t.to_string())),
+                _ => None,
+            })
+            .collect();
+        let cambio = nuevos != self.ocultos;
+        self.ocultos = nuevos;
+        cambio
+    }
+
     /// Si un elemento se ve con lo que esta oculto.
     pub fn visible(&self, el: &Elemento) -> bool {
         if self.ocultos.is_empty() {
@@ -306,6 +338,26 @@ mod pruebas {
         // Caso negativo: una cabecera o fuera del panel no cambian nada.
         assert!(!ar.tocar(40, y_de(1), false, &ui, h, e));
         assert!(!ar.tocar(900, y_de(2), false, &ui, h, e));
+    }
+
+    /// Lo oculto va en el estado de un marcador como texto y vuelve igual.
+    #[test]
+    fn lo_oculto_va_y_vuelve_como_texto() {
+        let ui = TextosUi3d::default();
+        let m = modelo();
+        let mut ar = Arbol::de(&m, &ui);
+        ar.ocultos.insert(Clave::Nivel(None));
+        ar.ocultos.insert(Clave::Nivel(Some(0)));
+        ar.ocultos.insert(Clave::Tipo("Muro".into()));
+        let t = ar.ocultos_en_texto();
+        assert_eq!(t, vec!["n:-", "n:0", "t:Muro"]);
+        let mut otro = Arbol::de(&m, &ui);
+        assert!(otro.poner_ocultos(&t));
+        assert_eq!(otro.ocultos, ar.ocultos);
+        // Lo mismo otra vez no es un cambio; lo que no se entiende se deja.
+        assert!(!otro.poner_ocultos(&t));
+        assert!(otro.poner_ocultos(&["x:1".into(), "n:abc".into()]));
+        assert!(otro.ocultos.is_empty());
     }
 
     #[test]

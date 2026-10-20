@@ -44,13 +44,6 @@ pub fn imprimir_zona(ventana: isize, area: Rect, titulo: &str, textos: &Catalogo
     }
 }
 
-/// **El boton del marco de un visor**: la zona es lo de dentro de su
-/// ventana (`ventana`, o la activa de este hilo si no se sabe cual).
-pub fn de_la_ventana(ventana: Option<isize>, titulo: &str, textos: &Catalogo) {
-    let Some((hwnd, area)) = pixpin_shell::overlay::area_cliente(ventana) else { return };
-    imprimir_zona(hwnd, area, titulo, textos);
-}
-
 /// La foto de `area` y el recuadro elegido encima, recortado. `None` con Esc.
 pub fn elegir(area: Rect, textos: &Catalogo) -> Result<Option<ImagenRgba>> {
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo")?;

@@ -446,6 +446,12 @@ fn botones_de_editar_pintados() {
 // ---------------------------------------------------------------------------
 // Los marcos numerados, las vistas de las marcas y la tinta en su celda
 
+/// Un estado de 900 x 700 sin abrir hoja (para las pruebas de otros
+/// modulos del visor).
+pub(super) fn estado_de_prueba(libro: &mut Libro) -> Estado<'_> {
+    estado(libro, 1.0, 900, 700)
+}
+
 /// Una hoja de tabla abierta y leida entera, de `ancho` x `alto`.
 fn abierta_de_prueba(libro: &mut Libro, ancho: u32, alto: u32) -> Estado<'_> {
     let mut est = estado(libro, 1.0, ancho, alto);

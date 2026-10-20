@@ -107,6 +107,27 @@ pub fn clave(ruta: &Path) -> Option<String> {
     Some(format!("{h:016x}"))
 }
 
+/// **Donde viven los marcadores de un plano o un modelo** (19-oct-2026):
+/// `<raiz>/marcadores/<huella de su ruta>/`, con `vistas.json` (los
+/// marcadores y los marcos del modelo) y, en un modelo, la capa de lo
+/// anotado sobre cada marcador. Por la ruta y no por la fecha: lo marcado
+/// sigue alli aunque el fichero se guarde de nuevo. Fuera de la cache,
+/// que se poda.
+pub fn carpeta_de_marcadores(raiz: &Path, ruta: &Path) -> PathBuf {
+    let texto = ruta.to_string_lossy().to_lowercase().replace('/', "\\");
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in texto.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x0100_0000_01b3);
+    }
+    raiz.join("marcadores").join(format!("{h:016x}"))
+}
+
+/// El fichero de los marcadores de `ruta` (ver [`carpeta_de_marcadores`]).
+pub fn fichero_de_marcadores(raiz: &Path, ruta: &Path) -> PathBuf {
+    carpeta_de_marcadores(raiz, ruta).join("vistas.json")
+}
+
 /// Cambia cuando cambia lo que se guarda del plano leido: la `l1` trae las
 /// letras que faltan (lo leido antes no las tenia y se vuelve a leer).
 const REVISION_DE_LETRAS: &str = "l1";
@@ -306,6 +327,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             exportar: Some(exportar),
             vista_inicial: tomar_vista_al_abrir(&ruta),
             tipo: tipo_de_archivo(&ruta),
+            marcadores: Some(fichero_de_marcadores(&raiz, &ruta)),
         };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");
@@ -351,6 +373,7 @@ mod pruebas {
                 "FULLSCREEN_EXIT" => &m::FULLSCREEN_EXIT,
                 "PUSH_PIN" => &m::PUSH_PIN,
                 "CLOSE" => &m::CLOSE,
+                "BOOKMARK_ADD" => &m::BOOKMARK_ADD,
                 otro => panic!("{otro} no esta en la lista: anadelo aqui"),
             }
         };
@@ -369,6 +392,7 @@ mod pruebas {
         mismo("asa", false, &m::DRAG_INDICATOR);
         mismo("anotar", false, &m::EDIT);
         mismo("marcos", false, &m::CROP_FREE);
+        mismo("marcador", false, &m::BOOKMARK_ADD);
         // En oscuro, el sol para volver a claro (como el lector); en claro, la luna.
         mismo("tema", false, &m::LIGHT_MODE);
         mismo("tema", true, &m::DARK_MODE);
@@ -401,6 +425,30 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&d);
     }
 
+    /// **Los marcadores viven por la ruta del plano** (no por su fecha):
+    /// guardar el fichero otra vez no los pierde; otro fichero, otra carpeta.
+    #[test]
+    fn los_marcadores_van_por_la_ruta_y_no_por_la_fecha() {
+        let raiz = Path::new(r"C:\raiz");
+        let a = carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Planta.DWG"));
+        assert_eq!(a, carpeta_de_marcadores(raiz, Path::new(r"d:/obra/planta.dwg")), "la misma ruta escrita de otra manera");
+        assert!(a.starts_with(raiz.join("marcadores")) && !a.starts_with(raiz.join("cache")), "fuera de la cache, que se poda");
+        assert_eq!(fichero_de_marcadores(raiz, Path::new(r"D:\obra\Planta.DWG")), a.join("vistas.json"));
+        // Caso negativo: otro plano, otra carpeta.
+        assert_ne!(a, carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Alzado.dwg")));
+    }
+
+    /// Lo anotado sobre un marcador 3D: una capa por marcador, con la unidad
+    /// de la pantalla (1) y sin salir de su carpeta.
+    #[test]
+    fn la_tinta_de_un_marcador_3d_tiene_su_capa_y_su_unidad() {
+        let c = Path::new(r"C:\raiz\marcadores\abc");
+        let r = anotar::rutas_de_marcador(c, "m18f2a");
+        assert_eq!(r.tinta, c.join("m18f2a.excalidraw"));
+        assert_eq!(r.hoja, c.join("m18f2a.hoja"));
+        assert!(anotar::rutas_de_marcador(c, r"..\..\x").tinta.starts_with(c));
+        assert!((pixpin_cad::anotado::unidad_de_la_capa(&anotar::modelo_de_pantalla()) - 1.0).abs() < 1e-12);
+    }
     #[test]
     fn la_clave_cambia_si_cambia_el_fichero() {
         let d = std::env::temp_dir().join(format!("pixpin-cad-clave-{}", std::process::id()));

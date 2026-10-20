@@ -4158,6 +4158,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
             _ => 0,
         },
         nota_pagina: i.nota_pagina.map(|n| n as u32),
+        con_marcos: admite_marcos(i) && !i.marcos.is_empty(),
     };
     match crate::menu::mostrar(hwnd, &i.contenido, estado, &t, punto) {
         None => {}
@@ -4232,6 +4233,12 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
                 crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
                 crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
                 crate::menu::CMD_EXPORTAR => Some(CambioPin::ExportarPedido),
+                crate::menu::CMD_IMPRIMIR_MARCOS => Some(CambioPin::MarcoPedido(
+                    crate::marcos_pin::PedidoMarco::Imprimir,
+                )),
+                crate::menu::CMD_BORRAR_MARCOS => Some(CambioPin::MarcoPedido(
+                    crate::marcos_pin::PedidoMarco::Borrar,
+                )),
                 crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
                 crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
                 crate::menu::CMD_CONGELAR => Some(CambioPin::CongelarPedido),
@@ -6881,6 +6888,15 @@ mod pruebas {
         guardar(
             "pixpin-marcos-pin-grande.png",
             Rect { x: z(170), y: z(190), ancho: z(700) as u32, alto: z(440) as u32 },
+        );
+
+        // Pequeno y con el modo puesto: la pista no se corta por el borde.
+        foto.poner_marcos(lista.clone(), true, pista);
+        foto.poner_rect(Rect { x: 200, y: 220, ancho: 260, alto: 160 });
+        bombear(300);
+        guardar(
+            "pixpin-marcos-pin-pequeno.png",
+            Rect { x: z(170), y: z(190), ancho: z(360) as u32, alto: z(230) as u32 },
         );
         drop(foto);
         bombear(100);

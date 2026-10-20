@@ -91,6 +91,7 @@ impl Pines {
             PedidoMarco::QuitarUltimo => {
                 m.quitar_ultimo();
             }
+            PedidoMarco::Borrar => m.borrar(),
             PedidoMarco::Nuevo { a, b, px } => {
                 // La misma regla que en el plano: un clic (8 px o menos de
                 // ancho o de alto en la pantalla) no es un marco.

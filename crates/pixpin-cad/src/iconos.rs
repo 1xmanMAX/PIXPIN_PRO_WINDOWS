@@ -101,6 +101,12 @@ pub const PUSH_PIN: Icono = Icono {
     par_impar: true,
 };
 
+/// `bookmark_add` de Material, el de `pixpin_render::icono::material::BOOKMARK_ADD`.
+pub const BOOKMARK_ADD: Icono = Icono {
+    d: "M21,7h-2v2h-2V7h-2V5h2V3h2v2h2V7z M19,21l-7-3l-7,3V5c0-1.1,0.9-2,2-2l7,0c-0.63,0.84-1,1.87-1,3c0,2.76,2.24,5,5,5 c0.34,0,0.68-0.03,1-0.1V21z",
+    par_impar: false,
+};
+
 /// `close` de Material, el de `pixpin_render::icono::material::CLOSE`.
 pub const CLOSE: Icono = Icono {
     d: "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
@@ -123,6 +129,7 @@ pub const TODOS: &[(&str, Icono)] = &[
     ("FULLSCREEN_EXIT", FULLSCREEN_EXIT),
     ("PUSH_PIN", PUSH_PIN),
     ("CLOSE", CLOSE),
+    ("BOOKMARK_ADD", BOOKMARK_ADD),
 ];
 
 /// **El icono de cada boton de la barra**, el mismo que en los demas
@@ -133,6 +140,7 @@ pub fn de_boton(boton: &str, claro: bool, pantalla_completa: bool) -> Option<Ico
         "asa" => DRAG_INDICATOR,
         "acotar" => STRAIGHTEN,
         "marcos" => CROP_FREE,
+        "marcador" => BOOKMARK_ADD,
         "anotar" => EDIT,
         "tres" => VIEW_IN_AR,
         "letras" => FONT_DOWNLOAD,

@@ -56,6 +56,8 @@ pub(crate) enum Ev {
     Subir(i32, i32, u8),
     Doble(i32, i32),
     Rueda(i32, i32, i32),
+    /// Dos dedos en el panel tactil: mover lo que se ve (pixeles, ver [`que_rueda`]).
+    Desplazar(i32, i32, f64, f64),
     Tecla(u32),
     TeclaSoltada(u32),
     Caracter(u32),
@@ -76,6 +78,46 @@ pub(crate) struct Estado {
 
 thread_local! {
     pub(crate) static ESTADO: RefCell<Estado> = RefCell::new(Estado::default());
+}
+
+/// **Que es un giro de rueda** (19-oct-2026, el usuario: «con dos dedos en
+/// el panel tactil, moverlos debe mover el plano en la direccion de los
+/// dedos, y en el modelo igual, sin acercar; acercar es el pellizco»).
+/// Windows manda el arrastre de dos dedos de un panel tactil de precision
+/// como ruedas con pasos pequenos (no multiplos de 120) y la horizontal
+/// como `WM_MOUSEHWHEEL`; el pellizco, como rueda con Ctrl. Una muesca de
+/// la rueda de un raton (120 justos, sin Ctrl) sigue acercando, como en
+/// AutoCAD.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Rueda {
+    /// Acercar o alejar hacia el cursor (el paso de la rueda, + acerca).
+    Acercar(i32),
+    /// Mover lo que se ve (pixeles de pantalla; lo de dentro sigue a los dedos).
+    Mover(f64, f64),
+}
+
+/// Pixeles de pantalla por unidad de rueda al mover con dos dedos.
+const PIXELES_POR_RUEDA: f64 = 0.8;
+/// Tras un paso del panel tactil, cuanto se siguen tomando por suyos los que
+/// lleguen (alguno puede venir de 120 justos).
+const TACTIL_MS: u64 = 350;
+
+thread_local! {
+    static TACTIL_HASTA: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// Ver [`Rueda`]. `reciente`: llego un paso del panel tactil hace nada.
+pub(crate) fn que_rueda(delta: i32, horizontal: bool, ctrl: bool, reciente: bool) -> Rueda {
+    if ctrl && !horizontal {
+        return Rueda::Acercar(delta);
+    }
+    let del_panel = horizontal || delta % 120 != 0 || reciente;
+    if !del_panel {
+        return Rueda::Acercar(delta);
+    }
+    let d = delta as f64 * PIXELES_POR_RUEDA;
+    // Rueda arriba (positiva): lo de dentro baja; a la derecha: va a la izquierda.
+    if horizontal { Rueda::Mover(-d, 0.0) } else { Rueda::Mover(0.0, d) }
 }
 
 fn apuntar(de: De, e: Ev) {
@@ -196,12 +238,26 @@ unsafe fn procedimiento(de: De, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
             apuntar(de, Ev::Doble(x, y));
             return LRESULT(0);
         }
-        WM_MOUSEWHEEL => {
+        WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
             let (sx, sy) = xy(lp);
             let mut p = POINT { x: sx, y: sy };
             // SAFETY: ventana propia; punto local.
             let _ = unsafe { ScreenToClient(hwnd, &mut p) };
-            apuntar(de, Ev::Rueda(p.x, p.y, ((wp.0 >> 16) & 0xffff) as i16 as i32));
+            let delta = ((wp.0 >> 16) & 0xffff) as i16 as i32;
+            // Ctrl en el estado de las teclas que trae el mensaje (el
+            // pellizco del panel tactil lo pone) o pulsada de verdad.
+            // SAFETY: lee el estado de la tecla Ctrl.
+            let ctrl = wp.0 & 0x0008 != 0 || unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+            let ahora = Instant::now();
+            let reciente = TACTIL_HASTA.with(|t| t.get().is_some_and(|h| ahora < h));
+            let ev = match que_rueda(delta, msg == WM_MOUSEHWHEEL, ctrl, reciente) {
+                Rueda::Acercar(d) => Ev::Rueda(p.x, p.y, d),
+                Rueda::Mover(dx, dy) => {
+                    TACTIL_HASTA.with(|t| t.set(Some(ahora + Duration::from_millis(TACTIL_MS))));
+                    Ev::Desplazar(p.x, p.y, dx, dy)
+                }
+            };
+            apuntar(de, ev);
             return LRESULT(0);
         }
         WM_KEYDOWN => {
@@ -1109,6 +1165,36 @@ pub struct Acciones {
     pub vista_inicial: Option<[f64; 3]>,
     /// El tipo de archivo para el recuadro de la barra, junto al nombre.
     pub tipo: Option<TipoDeArchivo>,
+    /// Donde se guardan los marcadores del plano ([`crate::marcadores`]);
+    /// sin fichero, el boton del marcador sigue y duran lo que la ventana.
+    pub marcadores: Option<std::path::PathBuf>,
+}
+
+/// **El marcador de la vista de ahora** en el plano: el centro (absoluto) y
+/// lo que se ve de ancho y de alto.
+fn marcador_de(camara: &Camara, origen: [f64; 2], w: u32, h: u32) -> crate::marcadores::Marcador2d {
+    crate::marcadores::Marcador2d {
+        id: crate::marcadores::nuevo_id(),
+        nombre: String::new(),
+        x: camara.centro[0] + origen[0],
+        y: camara.centro[1] + origen[1],
+        ancho: w.max(1) as f64 * camara.px,
+        alto: h.max(1) as f64 * camara.px,
+    }
+}
+
+/// La camara que vuelve a un marcador en una ventana de `w` x `h`.
+fn camara_de_marcador(m: &crate::marcadores::Marcador2d, origen: [f64; 2], w: u32, h: u32) -> Camara {
+    Camara { centro: [m.x - origen[0], m.y - origen[1]], px: m.px_en(w, h) }
+}
+
+/// Cual de los marcadores es la vista de ahora (el mismo centro con medio
+/// pixel de margen y el mismo zoom): su punto va en azul.
+fn marcador_actual(lista: &[crate::marcadores::Marcador2d], camara: &Camara, origen: [f64; 2], w: u32, h: u32) -> Option<usize> {
+    lista.iter().position(|m| {
+        let c = camara_de_marcador(m, origen, w, h);
+        (c.px / camara.px - 1.0).abs() < 1e-3 && (c.centro[0] - camara.centro[0]).abs() <= camara.px * 0.5 && (c.centro[1] - camara.centro[1]).abs() <= camara.px * 0.5
+    })
 }
 
 /// La firma de las cotas y los marcos (para saber si cambiaron y guardarlos
@@ -1155,8 +1241,13 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let mut hacer_anotador = acciones.anotador.take();
     // El riel de la derecha: el lapiz (si se puede anotar) y el marco para
     // imprimir, y el que tiene el raton encima.
-    let botones_riel: Vec<&str> = if hacer_anotador.is_some() { vec!["anotar", "marcos"] } else { vec!["marcos"] };
+    // Arriba del todo, el marcador (como en los lectores de PDF).
+    let botones_riel: Vec<&str> = if hacer_anotador.is_some() { vec!["marcador", "anotar", "marcos"] } else { vec!["marcador", "marcos"] };
     let mut riel_encima: Option<usize> = None;
+    // **Los marcadores** (19-oct-2026): la vista (centro y zoom) con su
+    // numero; sus puntos van bajo el riel. El que tiene el raton encima.
+    let mut marcadores = crate::marcadores::Guardados::de(acciones.marcadores.as_deref());
+    let mut punto_encima: Option<usize> = None;
     let vista_inicial = acciones.vista_inicial.take();
     let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
     let mut anotando = false;
@@ -1341,9 +1432,18 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         let mut imprimir = false;
         let mut exportar = false;
         let mut ver_letras = false;
+        // Poner un marcador aqui, ir a uno o quitarlo.
+        let mut poner_marcador = false;
+        let mut ir_a_marcador: Option<usize> = None;
+        let mut quitar_marcador: Option<usize> = None;
+        let isla_riel = riel_cajas(w, e, botones_riel.len()).map(|(i, _)| i);
+        let n_marcadores = marcadores.c.plano.len();
+        let alto_ahora = h;
+        let punto_bajo = move |x: i32, y: i32| isla_riel.and_then(|i| crate::marcadores::punto_en(i, n_marcadores, alto_ahora, e, x, y));
         for (de, ev) in eventos {
-            // **El riel de la derecha** (lapiz y marco): sus clics no son del
-            // plano ni del motor del lienzo.
+            // **El riel de la derecha** (marcador, lapiz y marco) y los puntos
+            // de los marcadores: sus clics no son del plano ni del motor del
+            // lienzo.
             if de == De::Plano && plano.is_some() {
                 match ev {
                     Ev::Mover(x, y) => {
@@ -1352,15 +1452,34 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                             riel_encima = ahora;
                             sucio = true;
                         }
+                        let punto = punto_bajo(x, y);
+                        if punto != punto_encima {
+                            punto_encima = punto;
+                            sucio = true;
+                        }
                     }
-                    Ev::Salir if riel_encima.is_some() => {
+                    Ev::Salir if riel_encima.is_some() || punto_encima.is_some() => {
                         riel_encima = None;
+                        punto_encima = None;
                         sucio = true;
                     }
+                    Ev::Bajar(x, y, _) | Ev::Doble(x, y) if arrastre.is_none() && nuevo_marco.is_none() && punto_bajo(x, y).is_some() => {
+                        // Clic: ir alli; clic derecho: quitarlo.
+                        if matches!(ev, Ev::Bajar(_, _, 2)) {
+                            quitar_marcador = punto_bajo(x, y);
+                        } else {
+                            ir_a_marcador = punto_bajo(x, y);
+                        }
+                        // SAFETY: suelta la captura que puso el boton.
+                        let _ = unsafe { ReleaseCapture() };
+                        continue;
+                    }
+                    Ev::Subir(x, y, _) if arrastre.is_none() && nuevo_marco.is_none() && punto_bajo(x, y).is_some() => continue,
                     Ev::Bajar(x, y, _) | Ev::Doble(x, y) if arrastre.is_none() => {
                         if let Some(b) = riel_en(w, e, botones_riel.len(), x, y) {
                             if matches!(ev, Ev::Bajar(_, _, 0)) {
                                 match b.map(|i| botones_riel[i]) {
+                                    Some("marcador") => poner_marcador = true,
                                     Some("anotar") => cambiar_anotar = true,
                                     Some("marcos") => cambiar_marcos = true,
                                     _ => {}
@@ -1562,6 +1681,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                         encuadrar = true;
                     }
                 }
+                // Dos dedos en el panel tactil: mover el plano con los dedos.
+                (De::Plano, Ev::Desplazar(_, _, dx, dy)) => {
+                    for c in [&mut camara, &mut destino] {
+                        c.centro[0] -= dx * c.px;
+                        c.centro[1] += dy * c.px;
+                    }
+                    sucio = true;
+                }
                 (De::Plano, Ev::Rueda(x, y, d)) => {
                     let factor = 1.25f64.powf(-(d as f64) / 120.0);
                     destino = destino.zoom(factor, x as f64, y as f64, w, h);
@@ -1597,6 +1724,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                             break 'bucle;
                         }
                     }
+                    // Ctrl+1 a Ctrl+9: ir al marcador con ese numero.
+                    // SAFETY: lee el estado de la tecla Ctrl.
+                    0x31..=0x39 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => ir_a_marcador = Some((vk - 0x31) as usize),
                     0x0D => {
                         if acotar.puntos.len() >= 2 {
                             acotar.hechas.push(std::mem::take(&mut acotar.puntos));
@@ -1639,6 +1769,24 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         }
         if encuadrar && let Some((m, _)) = &plano {
             destino = Camara::encuadrar(m.caja_util(), w, h);
+        }
+        // Los marcadores: el de la vista de ahora (la que se ve al pararse),
+        // ir a uno (la camara va alli suave, como al encuadrar) o quitarlo.
+        if let Some((m, _)) = &plano {
+            if poner_marcador && marcador_actual(&marcadores.c.plano, &destino, m.origen, w, h).is_none() {
+                marcadores.c.plano.push(marcador_de(&destino, m.origen, w, h));
+                marcadores.guardar();
+                sucio = true;
+            }
+            if let Some(mk) = ir_a_marcador.and_then(|i| marcadores.c.plano.get(i)) {
+                destino = camara_de_marcador(mk, m.origen, w, h);
+            }
+            if let Some(i) = quitar_marcador.filter(|i| *i < marcadores.c.plano.len()) {
+                marcadores.c.plano.remove(i);
+                marcadores.guardar();
+                punto_encima = None;
+                sucio = true;
+            }
         }
         if cambiar_tema {
             claro = !claro;
@@ -1930,6 +2078,21 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             if let Some((m, p)) = &riel_m {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
+            // Los puntos de los marcadores, bajo el riel: el de la vista de
+            // ahora en azul.
+            let puntos_m = match (&plano, riel_cajas(w, e, botones_riel.len())) {
+                (Some((pm, _)), Some((isla, _))) if !marcadores.c.plano.is_empty() => {
+                    let mut c = Constructor::nuevo();
+                    let actual = marcador_actual(&marcadores.c.plano, &camara, pm.origen, w, h);
+                    crate::marcadores::pintar_puntos(&mut c, &mut textos, isla, marcadores.c.plano.len(), h, e, punto_encima, actual);
+                    let m = c.terminar();
+                    gpu.subir(&m).ok().map(|p| (m, p))
+                }
+                _ => None,
+            };
+            if let Some((m, p)) = &puntos_m {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
             let dibujado = match (anotador.as_mut(), &plano) {
                 (Some(a), Some((m, _))) => {
                     let v = vista_para_el_motor(hwnd, &camara, w, h, e, m, claro);
@@ -2184,6 +2347,27 @@ mod pruebas_letras {
         let m = riel(1.0, 1000, &["anotar", "marcos"], None, &[true, false]);
         assert!(m.vertices.iter().any(|v| v.color == rgba(0x00, 0x60, 0xDF)));
         assert!(m.vertices.iter().any(|v| v.color == rgba(255, 255, 255)));
+    }
+
+    /// **El panel tactil**: dos dedos mueven, el pellizco (Ctrl) acerca y la
+    /// muesca de un raton sigue acercando.
+    #[test]
+    fn dos_dedos_mueven_el_pellizco_acerca_y_la_rueda_del_raton_acerca() {
+        // La rueda del raton: 120 justos, sin Ctrl.
+        assert_eq!(que_rueda(120, false, false, false), Rueda::Acercar(120));
+        assert_eq!(que_rueda(-240, false, false, false), Rueda::Acercar(-240));
+        // El pellizco: Ctrl con pasos pequenos, acerca aunque venga del panel.
+        assert_eq!(que_rueda(14, false, true, true), Rueda::Acercar(14));
+        // Dos dedos hacia arriba (positiva): lo de dentro baja con los dedos.
+        let Rueda::Mover(dx, dy) = que_rueda(30, false, false, false) else { panic!("deberia mover") };
+        assert!(dx == 0.0 && dy > 0.0);
+        // A los lados (WM_MOUSEHWHEEL), aunque sean 120: mueve, al reves de la rueda.
+        let Rueda::Mover(dx, dy) = que_rueda(120, true, false, false) else { panic!("deberia mover") };
+        assert!(dx < 0.0 && dy == 0.0);
+        // Un 120 justo en medio de un arrastre del panel sigue moviendo.
+        assert!(matches!(que_rueda(120, false, false, true), Rueda::Mover(..)));
+        // Caso negativo: Ctrl con la horizontal no acerca.
+        assert!(matches!(que_rueda(20, true, true, false), Rueda::Mover(..)));
     }
 
     #[test]

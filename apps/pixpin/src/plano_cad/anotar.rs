@@ -66,6 +66,29 @@ pub fn rutas_de_la_capa(raiz: &Path, plano: &Path) -> Rutas {
     }
 }
 
+/// **Lo anotado sobre un marcador de un modelo 3D** (19-oct-2026): su capa
+/// en la carpeta de los marcadores del modelo (`<id>.excalidraw` y su
+/// `.hoja`), una por marcador.
+pub fn rutas_de_marcador(carpeta: &Path, id: &str) -> Rutas {
+    // El id lo pone el visor (`m` y cifras); por si acaso, nada que salga de la carpeta.
+    let id: String = id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+    Rutas { tinta: carpeta.join(format!("{id}.excalidraw")), hoja: carpeta.join(format!("{id}.hoja")) }
+}
+
+/// **El «plano» de la pantalla de un modelo 3D**, para el motor: lo anotado
+/// sobre un marcador va en la pantalla contada desde su centro en milesimas
+/// del alto de la ventana (`pixpin_cad::ventana3d`), asi que su unidad es 1
+/// (sin letras, la unidad es el lado mayor entre 5000) y su caja, de sobra
+/// para la pantalla.
+pub fn modelo_de_pantalla() -> Modelo {
+    Modelo { caja: [-2500.0, -2500.0, 2500.0, 2500.0], ..Default::default() }
+}
+
+/// El motor del lienzo sobre lo anotado del marcador `id`.
+pub fn motor_de_marcador(carpeta: &Path, id: &str) -> MotorDelPlano {
+    MotorDelPlano::nuevo(rutas_de_marcador(carpeta, id), &modelo_de_pantalla())
+}
+
 /// La `.hoja` escrita (aqui o en el movil), si se entiende.
 fn leer_hoja(ruta: &Path) -> Option<[f64; 4]> {
     let m = MarcoDeLaHoja::de_texto(&pixpin_proyecto::anotado::leer(ruta)?)?;

@@ -111,6 +111,56 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
     }
 }
 
+/// Los textos de los marcadores y los marcos del modelo.
+fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
+    match idioma {
+        Idioma::Ingles => pixpin_cad::ventana3d::TextosMarcos3d {
+            marcador: "Bookmark here (with the section and what is hidden)".into(),
+            marcos: "Frames to print\tI".into(),
+            imprimir: "Print the frames…\tCtrl+P".into(),
+            borrar_marcos: "Clear frames".into(),
+            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · The numbers: go to its view".into(),
+            pista_anotar: "What you annotate is only seen in this bookmark's view".into(),
+        },
+        _ => pixpin_cad::ventana3d::TextosMarcos3d::default(),
+    }
+}
+
+/// **El riel del modelo** (19-oct-2026): los marcadores con todo el estado
+/// de la vista (en `<raiz>/marcadores/<huella>/vistas.json`), lo anotado
+/// sobre cada uno con el motor del lienzo (una capa por marcador, al lado)
+/// y los marcos numerados que se imprimen en grupo: se fotografia cada uno
+/// en su vista y van juntos al dialogo (`marco_imprimir::imprimir_fotos`).
+fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> pixpin_cad::ventana3d::Barra3d {
+    use pixpin_cad::ventana3d::Foto;
+    let carpeta = crate::plano_cad::carpeta_de_marcadores(raiz, ruta);
+    let (c1, c2) = (carpeta.clone(), carpeta.clone());
+    let titulo = nombre.to_string();
+    pixpin_cad::ventana3d::Barra3d {
+        tipo: crate::plano_cad::tipo_de_archivo(ruta),
+        marcadores: Some(crate::plano_cad::fichero_de_marcadores(raiz, ruta)),
+        anotador: Some(Box::new(move |id: &str| {
+            Box::new(crate::plano_cad::anotar::motor_de_marcador(&c1, id)) as Box<dyn pixpin_cad::anotado::Anotador>
+        })),
+        quitar_tinta: Some(Box::new(move |id: &str| {
+            let r = crate::plano_cad::anotar::rutas_de_marcador(&c2, id);
+            let _ = std::fs::remove_file(&r.tinta);
+            let _ = std::fs::remove_file(&r.hoja);
+        })),
+        foto: Some(Box::new(|r: [i32; 4]| {
+            let area = pixpin_geom::Rect { x: r[0], y: r[1], ancho: r[2].max(0) as u32, alto: r[3].max(0) as u32 };
+            crate::marco_imprimir::foto_de_pantalla(area).map(|i| (i.ancho, i.alto, i.pixeles))
+        })),
+        imprimir: Some(Box::new(move |v: isize, fotos: Vec<Foto>| {
+            let fotos = fotos.into_iter().map(|(ancho, alto, pixeles)| pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).collect();
+            if let Err(e) = crate::marco_imprimir::imprimir_fotos(v, fotos, &titulo) {
+                tracing::warn!(?e, "no se pudieron imprimir los marcos del modelo");
+            }
+        })),
+        textos: textos_marcos(idioma),
+    }
+}
+
 /// Abre el modelo en su ventana, en su propio hilo.
 pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
@@ -128,13 +178,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
         };
         // En la barra, el tipo y el nombre, como en los demas pines.
         let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
-        // El riel de la derecha: el marco para imprimir de todos los visores
-        // (se congela la ventana, se arrastra un recuadro y se imprime).
-        let titulo_marco = nombre.clone();
-        let barra = pixpin_cad::ventana3d::Barra3d {
-            tipo: crate::plano_cad::tipo_de_archivo(&ruta),
-            marco: Some(Box::new(move |v| crate::marco_imprimir::de_la_ventana(Some(v), &titulo_marco, crate::ventana_editor::exportar::textos()))),
-        };
+        let barra = barra_del_modelo(idioma, &raiz, &ruta, &nombre);
         if let Err(e) = pixpin_cad::ventana3d::ver_con_barra(&nombre, barra, rx, textos(idioma), extras) {
             tracing::warn!(%e, "no se pudo abrir el visor de modelos");
             let _ = pixpin_shell::abrir(&ruta);

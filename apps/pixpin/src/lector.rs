@@ -372,23 +372,10 @@ pub fn redondel(p: &Pintor<'_>, emoji: &str, c: (f32, f32), radio: f32, alfa: f3
 
 /// **El riel**: la isla (marcar y anotar), los puntos de las marcas y, si
 /// se esta poniendo una, la tira de emoticonos. `emojis` son los de las
-/// marcas en el orden del riel; `atajo` es el texto «Ctrl+» traducido.
+/// marcas en el orden del riel; `atajo` es el texto «Ctrl+» traducido. Con
+/// `enmarcando`, el marco pulsado (se estan poniendo los marcos numerados,
+/// `marcos_doc`).
 #[allow(clippy::too_many_arguments)] // lo que se ve del riel depende de todo esto
-pub fn pintar_riel(
-    p: &Pintor<'_>,
-    riel: &Riel,
-    emojis: &[&str],
-    encima: DestinoRiel,
-    poniendo: bool,
-    anotando: bool,
-    elige: &str,
-) {
-    pintar_riel_con(p, riel, emojis, encima, poniendo, anotando, false, elige);
-}
-
-/// `pintar_riel` con el marco pulsado si se estan poniendo los marcos
-/// numerados (`marcos_doc`).
-#[allow(clippy::too_many_arguments)]
 pub fn pintar_riel_con(
     p: &Pintor<'_>,
     riel: &Riel,

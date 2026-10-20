@@ -107,6 +107,8 @@ pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
         leer_seguida: t.t("pin-v2-leer-seguida"),
         pagina: t.t("pin-v2-pagina"),
         minutos: t.t("pin-v2-minutos"),
+        imprimir_marcos: t.t("marcos-imprimir"),
+        borrar_marcos: t.t("marcos-borrar"),
     }
 }
 

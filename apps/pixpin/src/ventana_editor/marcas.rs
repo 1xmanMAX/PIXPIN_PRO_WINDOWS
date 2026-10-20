@@ -229,6 +229,9 @@ pub(super) struct Marcador {
     /// Que hay bajo el raton en el riel, para agrandarlo.
     encima: DestinoRiel,
     vuelo: Option<(Vuelo, std::time::Instant)>,
+    /// Si se estan poniendo marcos (la herramienta Marco): el boton del
+    /// marco del riel, pulsado. Lo pone el editor en cada vuelta.
+    pub enmarcando: bool,
 }
 
 impl Marcador {
@@ -243,6 +246,7 @@ impl Marcador {
             arrastre: None,
             encima: DestinoRiel::Fuera,
             vuelo: None,
+            enmarcando: false,
         }
     }
 
@@ -612,6 +616,7 @@ impl Marcador {
             &self.marcas,
             self.encima,
             self.poniendo,
+            self.enmarcando,
         );
     }
 }
@@ -656,6 +661,7 @@ pub(super) fn pintar_riel(
     lista: &[Marca],
     encima: DestinoRiel,
     poniendo: Poniendo,
+    enmarcando: bool,
 ) {
     let e = pixpin_escala(riel.escala_por_cien);
     // La isla de los dos botones, con la misma cara que la barra.
@@ -670,6 +676,8 @@ pub(super) fn pintar_riel(
             DestinoRiel::PonerMarca,
         ),
         (riel.hojita, &material::DRAW, false, DestinoRiel::Hojita),
+        // El marco: como en los visores y en el plano.
+        (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
     ] {
         let r = rf(caja);
         if activo {
@@ -845,6 +853,7 @@ mod pruebas {
             arrastre: None,
             encima: DestinoRiel::Fuera,
             vuelo: None,
+            enmarcando: false,
         }
     }
 
@@ -1177,6 +1186,7 @@ mod pruebas {
                 arrastre: None,
                 encima,
                 vuelo: None,
+                enmarcando: false,
             };
             motor
                 .dibujar(&fuera.destino, |p| {

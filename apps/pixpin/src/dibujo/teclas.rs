@@ -158,7 +158,8 @@ pub(crate) fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
         'E' => Some(Herramienta::Escalar),
         'G' => Some(Herramienta::EscalaGrafica),
         // «C» de marCo: la «F» de «frame» ya la usa el foco.
-        'C' => Some(Herramienta::Marco),
+        // La «I» tambien, como en el plano y en todos los visores (19-oct-2026).
+        'C' | 'I' => Some(Herramienta::Marco),
         // «P» de «pencil»: la «G» del grafito ya es la escala grafica.
         'P' => Some(Herramienta::Grafito),
         // «Z» de zona. El laser es la «K» en Excalidraw, pero aqui la «K»

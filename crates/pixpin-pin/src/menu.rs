@@ -65,6 +65,10 @@ pub const CMD_SIN_PEGATINA: u32 = 23;
 pub const CMD_NOTA_SEGUIDA: u32 = 24;
 /// «Exportar…»: el componente comun (PDF, HTML, .pixpin, imagen, original).
 pub const CMD_EXPORTAR: u32 = 25;
+/// Los marcos numerados de una foto (`marcos_pin`): imprimirlos en grupo y
+/// borrarlos todos. Solo salen si la foto tiene marcos.
+pub const CMD_IMPRIMIR_MARCOS: u32 = 26;
+pub const CMD_BORRAR_MARCOS: u32 = 27;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 /// «Convertir en…» una nota: 200 + el indice en `MiniApp::TODAS`. En el PC
@@ -152,6 +156,10 @@ pub struct TextosV2 {
     pub pagina: String,
     /// «min», tras los minutos de una pegatina de tiempo.
     pub minutos: String,
+    /// «Imprimir los marcos (Ctrl+P)» y «Borrar los marcos» (`marcos-imprimir`,
+    /// `marcos-borrar`).
+    pub imprimir_marcos: String,
+    pub borrar_marcos: String,
 }
 
 /// Textos del pin, YA traducidos: este crate no conoce Fluent (vive en
@@ -275,6 +283,8 @@ pub struct EstadoMenu {
     pub nota_paginas: u32,
     /// La pagina de la nota que se ve, o `None` si se lee seguida.
     pub nota_pagina: Option<u32>,
+    /// La foto lleva marcos numerados: salen imprimirlos y borrarlos.
+    pub con_marcos: bool,
 }
 
 /// Si a este contenido se le puede anotar encima: lo mismo que decide el
@@ -418,6 +428,7 @@ pub fn entradas_del_menu(
         temporizador,
         nota_paginas,
         nota_pagina,
+        con_marcos,
     } = estado;
     let mut v = Vec::new();
     let es_vivo = matches!(contenido, Contenido::Vivo { .. });
@@ -493,6 +504,11 @@ pub fn entradas_del_menu(
     v.push(accion(CMD_COPIAR, &t.copiar, Some("Ctrl+C")));
     if anotable(contenido) {
         v.push(accion(CMD_ANOTAR, &t.v2.anotar, Some("A")));
+    }
+    // Los marcos numerados de una foto, al lado de anotar: solo si tiene.
+    if con_marcos && matches!(contenido, Contenido::Imagen(_)) {
+        v.push(accion(CMD_IMPRIMIR_MARCOS, &t.v2.imprimir_marcos, None));
+        v.push(accion(CMD_BORRAR_MARCOS, &t.v2.borrar_marcos, None));
     }
     // Leer el texto: solo en lo que ES una imagen —en una nota el texto ya
     // lo tienes, y de un archivo por referencia no hay pixeles que leer— y
@@ -894,6 +910,22 @@ pub(crate) mod pruebas {
             con_ocr: true,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn una_foto_con_marcos_ofrece_imprimirlos_y_borrarlos() {
+        let con = EstadoMenu { con_marcos: true, ..Default::default() };
+        let v = ids(&entradas_del_menu(&imagen(), con, &textos()));
+        assert!(v.contains(&CMD_IMPRIMIR_MARCOS) && v.contains(&CMD_BORRAR_MARCOS));
+    }
+
+    #[test]
+    fn caso_negativo_sin_marcos_o_sin_foto_no_salen() {
+        let v = ids(&entradas_del_menu(&imagen(), EstadoMenu::default(), &textos()));
+        assert!(!v.contains(&CMD_IMPRIMIR_MARCOS) && !v.contains(&CMD_BORRAR_MARCOS));
+        let nota = Contenido::Nota { texto: "hola".into() };
+        let con = EstadoMenu { con_marcos: true, ..Default::default() };
+        assert!(!ids(&entradas_del_menu(&nota, con, &textos())).contains(&CMD_IMPRIMIR_MARCOS));
     }
 
     #[test]

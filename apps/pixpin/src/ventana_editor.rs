@@ -1600,7 +1600,20 @@ fn abrir_en_modo(
                     ventana.invalidar();
                 }
                 if r.imprimir {
-                    crate::marco_imprimir::de_la_ventana(Some(ventana.handle().0 as isize), &nombre_del_pin, &exportar::textos());
+                    // El marco, como en el plano: la herramienta Marco (arrastrar
+                    // pone uno; su numero es su orden de lectura y Ctrl+P los
+                    // imprime todos, uno por hoja). Otra vez, la de antes.
+                    if gesto.herramienta == Herramienta::Marco {
+                        let antes = if herramienta_al_editar == Herramienta::Marco { Herramienta::Mano } else { herramienta_al_editar };
+                        elegir_herramienta(&mut gesto, antes);
+                    } else {
+                        if solo_mirar {
+                            solo_mirar = false;
+                            arrastre_mirar = None;
+                        }
+                        herramienta_al_editar = gesto.herramienta;
+                        elegir_herramienta(&mut gesto, Herramienta::Marco);
+                    }
                     todo_sucio = true;
                     ventana.invalidar();
                 }
@@ -3033,6 +3046,8 @@ fn abrir_en_modo(
             // El fotograma de la lupa, antes: dentro de `pintar` el motor
             // esta prestado.
             let cristal = lupa.as_ref().and_then(|l| l.preparar(&motor));
+            // El boton del marco del riel, pulsado con la herramienta Marco.
+            marcador.enmarcando = gesto.herramienta == Herramienta::Marco;
             let pintado = pintar(
                 &mut motor,
                 &superficie,
@@ -3093,6 +3108,15 @@ fn abrir_en_modo(
                             escala_por_cien,
                             bajo_la_barra(&caja, area),
                         );
+                    }
+                    // El numero de cada marco, en su esquina (como en el plano).
+                    if presentacion.is_none() {
+                        p.desplazar(base.0, base.1);
+                        let k = escala_por_cien as f32 / 100.0;
+                        for (i, h) in pixpin_motor2d::marco::hojas_en_orden(&escena.elementos).iter().enumerate() {
+                            let q = efectiva.a_pantalla(Punto2::nuevo(h.x, h.y));
+                            crate::marcos_doc::insignia(p, q.x, q.y, i + 1, k);
+                        }
                     }
                     // F8: con la Zona en la mano, su pastilla bajo la barra.
                     if gesto.herramienta == Herramienta::Zona

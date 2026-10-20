@@ -165,19 +165,6 @@ impl Marcos {
         true
     }
 
-    /// Como `soltar` pero con la vista del visor (un modelo 3D: el marco es
-    /// de la pantalla en esa camara).
-    pub fn soltar_con_vista(&mut self, p: [f64; 2], px: f64, vista: String) -> bool {
-        if !self.soltar(p, px) {
-            return false;
-        }
-        if let Some(m) = self.lista.last_mut() {
-            m.vista = vista;
-        }
-        self.guardar();
-        true
-    }
-
     /// Supr: quita el ultimo.
     pub fn quitar_ultimo(&mut self) -> bool {
         let quitado = self.lista.pop().is_some();
@@ -221,11 +208,7 @@ impl Marcos {
             }
             let r = caja_en_pantalla(m.caja, a_pantalla);
             p.trazar(r, 2.0 * e, AZUL);
-            let n = (i + 1).to_string();
-            let tam = 12.0 * e;
-            let (w, _) = p.medir_texto(&n, tam);
-            p.rellenar(RectF { x: r.x, y: r.y, ancho: w + 12.0 * e, alto: 20.0 * e }, AZUL);
-            p.texto(&n, r.x + 6.0 * e, r.y + 3.0 * e, tam, BLANCO);
+            insignia(p, r.x, r.y, i + 1, e);
         }
         if let Some((a, b, pa)) = self.nuevo
             && pa == parte
@@ -241,6 +224,16 @@ impl Marcos {
             p.texto(pista, caja.x + 12.0 * e, caja.y + 6.0 * e, tam, BLANCO);
         }
     }
+}
+
+/// **El numero de un marco**: blanco en su cuadrito azul, con la esquina en
+/// `(x, y)` (la de arriba a la izquierda del marco), como en el plano.
+pub fn insignia(p: &Pintor, x: f32, y: f32, n: usize, e: f32) {
+    let n = n.to_string();
+    let tam = 12.0 * e;
+    let (w, _) = p.medir_texto(&n, tam);
+    p.rellenar(RectF { x, y, ancho: w + 12.0 * e, alto: 20.0 * e }, AZUL);
+    p.texto(&n, x + 6.0 * e, y + 3.0 * e, tam, BLANCO);
 }
 
 /// La caja de un marco en la ventana.

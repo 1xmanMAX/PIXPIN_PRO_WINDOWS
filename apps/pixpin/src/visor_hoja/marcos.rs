@@ -103,6 +103,10 @@ fn en_pantalla(r: RectF, limite: RectF, origen: (i32, i32)) -> Option<pixpin_geo
     })
 }
 
+/// Las entradas del menu de los marcos.
+const MENU_IMPRIMIR: u32 = 1;
+const MENU_BORRAR: u32 = 2;
+
 /// Las fotos que dejo la ultima impresion (en las pruebas no se abre el
 /// dialogo: las fotos se quedan aqui).
 #[cfg(test)]
@@ -166,6 +170,43 @@ impl Estado<'_> {
             return Some(Pedido::Alternado);
         }
         self.marcos.tecla(vk, ctrl)
+    }
+
+    /// **Las entradas del menu de los marcos** (el clic derecho en la hoja):
+    /// imprimirlos y borrarlos, solo si hay marcos (y no escribiendo en una
+    /// celda), como en el menu del PDF.
+    pub(super) fn entradas_de_marcos(&self, textos: &Catalogo) -> Vec<(u32, String)> {
+        if self.marcos.lista.is_empty() || self.escribiendo() {
+            return Vec::new();
+        }
+        vec![(MENU_IMPRIMIR, textos.t("marcos-imprimir")), (MENU_BORRAR, textos.t("marcos-borrar"))]
+    }
+
+    /// Lo elegido en ese menu: imprimir (lo hace el bucle, con su
+    /// superficie) o borrar todos ya.
+    pub(super) fn elegido_de_marcos(&mut self, id: u32) -> Option<Pedido> {
+        match id {
+            MENU_IMPRIMIR => Some(Pedido::Imprimir),
+            MENU_BORRAR => {
+                self.marcos.borrar();
+                if matches!(self.gesto, Some(Gesto::Marco)) {
+                    self.gesto = None;
+                }
+                Some(Pedido::Cambiado)
+            }
+            _ => None,
+        }
+    }
+
+    /// **El menu de los marcos** junto al raton. `None` si no sale (sin
+    /// marcos) o no se elige nada.
+    pub(super) fn menu_de_marcos(&mut self, textos: &Catalogo) -> Option<Pedido> {
+        let entradas = self.entradas_de_marcos(textos);
+        if entradas.is_empty() {
+            return None;
+        }
+        let id = pixpin_shell::menu_llano(windows::Win32::Foundation::HWND(self.hwnd as *mut _), &entradas)?;
+        self.elegido_de_marcos(id)
     }
 
     /// **Pinta los marcos** de la hoja abierta (recortados a las celdas) y,
@@ -307,6 +348,38 @@ mod pruebas {
         assert_eq!(p, (190.0, 90.0));
         let q = m.a_hoja(p);
         assert!((q[0] - 1100.0).abs() < 1e-3 && (q[1] - 520.0).abs() < 1e-3, "{q:?}");
+    }
+
+    /// El menu de los marcos sale solo con marcos, y «Borrar los marcos» los
+    /// quita todos (tambien del fichero).
+    #[test]
+    fn el_menu_de_los_marcos_imprime_y_borra() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let dir = std::env::temp_dir().join(format!("pixpin-hoja-menu-marcos-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let doc = dir.join("libro.xlsx");
+        let mut libro = pixpin_hojas::Libro::desde_bytes(
+            pixpin_proyecto::tabla_xlsx::a_xlsx(&[pixpin_proyecto::tabla_xlsx::HojaParaVer { nombre: "H", tabla: &Default::default(), valores: None }], 0).unwrap(),
+            pixpin_hojas::Regional::es_pe(),
+        )
+        .unwrap();
+        let mut est = super::super::pruebas::estado_de_prueba(&mut libro);
+        // Caso negativo: sin marcos no hay menu.
+        assert!(est.entradas_de_marcos(&textos).is_empty());
+        est.marcos = Marcos::de(Some(&doc));
+        est.marcos.alternar();
+        est.marcos.pulsar([0.0, 0.0], 0);
+        assert!(est.marcos.soltar([100.0, 80.0], 1.0));
+        let e = est.entradas_de_marcos(&textos);
+        assert_eq!(e.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(), ["Imprimir los marcos (Ctrl+P)", "Borrar los marcos"]);
+        assert_eq!(est.elegido_de_marcos(e[0].0), Some(Pedido::Imprimir));
+        assert_eq!(est.marcos.lista.len(), 1, "imprimir no quita nada");
+        assert!(marcos_doc::ruta(&doc).is_file());
+        assert_eq!(est.elegido_de_marcos(e[1].0), Some(Pedido::Cambiado));
+        assert!(est.marcos.lista.is_empty());
+        assert!(!marcos_doc::ruta(&doc).exists(), "borrados tambien del fichero");
+        assert!(est.entradas_de_marcos(&textos).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

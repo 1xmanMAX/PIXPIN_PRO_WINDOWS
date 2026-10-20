@@ -1560,10 +1560,16 @@ fn ver_en(
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
                 EventoOverlay::Despierta => {}
-                // El derecho en un punto del riel quita su marca.
+                // El derecho en un punto del riel quita su marca; en lo demas,
+                // con marcos puestos, su menu (imprimirlos o borrarlos).
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     est.raton = local(p);
-                    hay_que_pintar |= est.pulsar_derecho_riel();
+                    if est.pulsar_derecho_riel() {
+                        hay_que_pintar = true;
+                    } else if let Some(pedido) = est.menu_de_marcos(textos) {
+                        imprimir_marcos |= pedido == crate::marcos_doc::Pedido::Imprimir;
+                        hay_que_pintar = true;
+                    }
                 }
                 // Con la tira de las marcas abierta, las cifras eligen el
                 // emoticono (1-9 y 0, como en el PDF).

@@ -22,6 +22,8 @@ pub enum PedidoMarco {
     Alternar,
     /// Supr en el modo: quitar el ultimo.
     QuitarUltimo,
+    /// «Borrar los marcos» del menu: todos.
+    Borrar,
     /// Ctrl+P: imprimir todos en grupo (sin marcos, lo de siempre).
     Imprimir,
     /// Se solto un arrastre: sus dos esquinas en pixeles de la imagen y
@@ -166,22 +168,37 @@ pub(crate) fn pintar(
     }
 }
 
-/// La pista del modo, abajo a la izquierda de la tarjeta `caja`.
+/// La pista del modo, abajo a la izquierda de la tarjeta `caja`. En un pin
+/// estrecho no se corta por el borde: se parte en renglones y, si aun asi
+/// taparia mas de un tercio de la foto, se quedan solo sus primeras partes
+/// (las separa « · »: arrastrar, Ctrl+P, Supr, I) hasta que quepa.
 pub(crate) fn pintar_pista(p: &Pintor, caja: RectF, texto: &str, e: f32) {
     if texto.is_empty() {
         return;
     }
     let tam = 12.0 * e;
-    let (w, h) = p.medir_texto(texto, tam);
+    let ancho_max = (caja.ancho - 16.0 * e - 24.0 * e).max(40.0 * e);
+    let partes: Vec<&str> = texto.split(" · ").collect();
+    let tope = caja.alto / 3.0;
+    let mut n = partes.len();
+    let (mut corto, mut medida) = (texto.to_string(), p.medir_texto_ajustado(texto, tam, ancho_max));
+    while n > 1 && medida.1 + 12.0 * e > tope {
+        n -= 1;
+        corto = partes[..n].join(" · ");
+        medida = p.medir_texto_ajustado(&corto, tam, ancho_max);
+    }
+    let (w, h) = medida;
     let fondo = RectF {
         x: caja.x + 8.0 * e,
         y: caja.y + caja.alto - h - 20.0 * e,
         ancho: w + 24.0 * e,
         alto: h + 12.0 * e,
     };
+    // Una sola linea, pildora; varias, esquinas redondeadas sin mas.
+    let radio = if h <= tam * 1.6 { fondo.alto / 2.0 } else { 8.0 * e };
     p.con_recorte(caja, |p| {
-        p.rellenar_redondeado(fondo, fondo.alto / 2.0, CRISTAL);
-        p.texto(texto, fondo.x + 12.0 * e, fondo.y + 6.0 * e, tam, Color::BLANCO);
+        p.rellenar_redondeado(fondo, radio, CRISTAL);
+        p.texto_ajustado(&corto, fondo.x + 12.0 * e, fondo.y + 6.0 * e, tam, ancho_max, Color::BLANCO);
     });
 }
 

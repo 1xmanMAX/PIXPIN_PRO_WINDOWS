@@ -23,6 +23,7 @@ pub mod shx;
 pub mod teselar;
 pub mod texto;
 pub mod iconos;
+pub mod marcadores;
 mod trayecto_svg;
 pub mod ventana;
 pub mod web;
