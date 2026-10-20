@@ -65,6 +65,8 @@ pub mod reloj;
 pub mod entrada;
 #[cfg(windows)]
 pub mod salida;
+#[cfg(windows)]
+pub mod volumen;
 
 pub use picos::{MINIMO_MS, MS_ENTRE_PICOS, PICO_MAXIMO, PICOS_GUARDADOS, Picos, Reparto};
 pub use reloj::{
