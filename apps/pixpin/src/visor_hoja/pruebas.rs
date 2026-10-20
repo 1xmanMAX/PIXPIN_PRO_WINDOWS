@@ -525,6 +525,49 @@ fn para_imprimir_el_marco_llena_las_celdas() {
     assert!((centro.0 - (celdas.x + celdas.ancho / 2.0)).abs() < 0.5 && (centro.1 - (celdas.y + celdas.alto / 2.0)).abs() < 0.5);
 }
 
+/// **Ir a un marco por su ficha**: las fichas salen solo con el modo puesto
+/// (encima de las pestanas), y el marco llena el panel que se mueve,
+/// centrado en el, tambien con filas y columnas inmovilizadas.
+#[test]
+fn la_ficha_lleva_al_marco_centrado_en_el_panel_que_se_mueve() {
+    let mut libro = libro_de_tabla(300, 40);
+    let mut est = abierta_de_prueba(&mut libro, 900, 700);
+    est.marcos.lista.push(crate::marcos_doc::Marco { caja: [600.0, 900.0, 800.0, 1000.0], parte: 0, vista: String::new() });
+    est.marcos.lista.push(crate::marcos_doc::Marco { caja: [100.0, 100.0, 300.0, 300.0], parte: 0, vista: String::new() });
+    // Caso negativo: sin el modo no hay fichas.
+    let alto = est.zonas().pestanas.y;
+    est.raton = (12.0 + 14.0, alto - 34.0 + 4.0);
+    assert_eq!(est.ficha_bajo_el_raton(), None);
+    est.marcos.alternar();
+    let fichas = est.marcos.fichas(alto, est.e);
+    assert_eq!(fichas.len(), 2);
+    assert!(fichas.iter().all(|r| r.y + r.alto < alto), "encima de las pestanas");
+    est.raton = (fichas[1].x + 5.0, fichas[1].y + 5.0);
+    assert_eq!(est.ficha_bajo_el_raton(), Some(1));
+    let caja = est.zonas().hoja;
+    // (Un marco encima de lo inmovilizado no puede ir entero en el panel
+    // que se mueve: el 2 se prueba sin paneles fijos.)
+    for (fijas, m) in [(0, est.marcos.lista[0].clone()), (3, est.marcos.lista[0].clone()), (0, est.marcos.lista[1].clone())] {
+        let ab = est.abierta_mut();
+        ab.rejilla.filas_fijas = fijas;
+        ab.rejilla.columnas_fijas = fijas;
+        marcos::encuadrar_en_el_panel(ab, caja, &m);
+        let (v, celdas) = vista_de(ab, caja);
+        let mapa = marcos::Mapa::de(&ab.rejilla, &v, celdas);
+        let r = crate::marcos_doc::caja_en_pantalla(m.caja, &|q| mapa.a_pantalla(q));
+        let panel = (mapa.esquina(), (celdas.x + celdas.ancho, celdas.y + celdas.alto));
+        let centro = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
+        let medio = ((panel.0.0 + panel.1.0) / 2.0, (panel.0.1 + panel.1.1) / 2.0);
+        // El marco 2 cae cerca del principio de la hoja: no se puede pasar
+        // del borde, asi que solo se comprueba que se ve entero.
+        if m.caja[0] > 500.0 {
+            assert!((centro.0 - medio.0).abs() < 1.0 && (centro.1 - medio.1).abs() < 1.0, "fijas {fijas}: {centro:?} {medio:?}");
+            assert!(ab.zoom > 1.5, "acercado: {}", ab.zoom);
+        }
+        assert!(r.x >= panel.0.0 - 0.5 && r.y >= panel.0.1 - 0.5 && r.x + r.ancho <= panel.1.0 + 0.5 && r.y + r.alto <= panel.1.1 + 0.5, "fijas {fijas}: {r:?} {panel:?}");
+    }
+}
+
 /// **La marca vuelve con su zoom y su sitio exactos**; una de antes (sin
 /// vista) sigue llevando su celda arriba a la izquierda, al zoom de ahora.
 #[test]
@@ -665,7 +708,85 @@ fn los_marcos_en_la_ventana_de_verdad() {
     if let Some(r) = crate::marco_imprimir::foto_de_pantalla(prueba::ventana().unwrap().1) {
         std::fs::write(carpeta.join("hoja-marcos-despues.png"), pixpin_codec::imagen::codificar_png(&r).unwrap()).unwrap();
     }
+
+    // Las fichas 1, 2, 3 de abajo: pulsar la 2 lleva al marco 2, acercado
+    // hasta llenar las celdas (como en el modelo 3D y el PDF).
+    let (fichas, zoom_antes, modos) = prueba::vista();
+    assert_eq!(fichas.len(), 3, "una ficha por marco");
+    assert!(modos[2], "con el modo de los marcos puesto");
+    let (fx, fy) = fichas[1];
+    pixpin_shell::overlay::simular_raton(h, 0, fx, fy);
+    pausa();
+    pixpin_shell::overlay::simular_raton(h, 2, fx, fy);
+    esperar(&|| (prueba::vista().1 - zoom_antes).abs() > 0.2);
+    std::thread::sleep(Duration::from_millis(400));
+    let guardado = std::fs::read_to_string(crate::marcos_doc::ruta(&ruta)).unwrap();
+    assert_eq!(serde_json::from_str::<Vec<crate::marcos_doc::Marco>>(&guardado).unwrap().len(), 3, "pulsar una ficha no pone otro marco");
+    if let Some(r) = crate::marco_imprimir::foto_de_pantalla(prueba::ventana().unwrap().1) {
+        std::fs::write(carpeta.join("hoja-marcos-ficha2.png"), pixpin_codec::imagen::codificar_png(&r).unwrap()).unwrap();
+    }
+
+    // Las teclas de todos los visores: M la tira del marcador, Esc la
+    // cierra (Ctrl+M tambien la abre y M la cierra); A el lapiz, Esc sale;
+    // I entra y sale de los marcos.
+    let tecla = |vk: u32| prueba::teclear(vk, false);
+    prueba::teclear(0x4D, true);
+    esperar(&|| prueba::vista().2[0]);
+    assert!(!prueba::vista().2[2], "la tira del marcador saca de los marcos");
+    tecla(0x4D);
+    esperar(&|| !prueba::vista().2[0]);
+    tecla(0x4D);
+    esperar(&|| prueba::vista().2[0]);
+    std::thread::sleep(Duration::from_millis(300));
+    if let Some(r) = crate::marco_imprimir::foto_de_pantalla(prueba::ventana().unwrap().1) {
+        std::fs::write(carpeta.join("hoja-tecla-m.png"), pixpin_codec::imagen::codificar_png(&r).unwrap()).unwrap();
+    }
+    tecla(0x1B);
+    esperar(&|| !prueba::vista().2[0]);
+    tecla(0x41);
+    esperar(&|| prueba::vista().2[1]);
+    std::thread::sleep(Duration::from_millis(300));
+    if let Some(r) = crate::marco_imprimir::foto_de_pantalla(prueba::ventana().unwrap().1) {
+        std::fs::write(carpeta.join("hoja-tecla-a.png"), pixpin_codec::imagen::codificar_png(&r).unwrap()).unwrap();
+    }
+    tecla(0x1B);
+    esperar(&|| !prueba::vista().2[1]);
+    tecla(0x49);
+    esperar(&|| prueba::vista().2[2]);
+    tecla(0x49);
+    esperar(&|| !prueba::vista().2[2]);
     prueba::ordenar(prueba::CERRAR);
     std::thread::sleep(Duration::from_millis(600));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **El globo del riel no se corta** (nombre y tecla del boton bajo el
+/// raton, a su izquierda), con los marcos puestos y sus fichas abajo:
+/// pintado fuera de pantalla, sin raton de verdad. Deja
+/// `hoja-riel-globo-fuera.png` en `PIXPIN_MUESTRAS`.
+#[test]
+#[ignore = "necesita GPU"]
+fn el_globo_del_riel_sale_entero() {
+    use pixpin_ui::riel_marcas::DestinoRiel;
+    let _com = pixpin_shell::ComDelHilo::iniciar();
+    let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+    let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+    let textos = Catalogo::nuevo(Idioma::Espanol);
+    let mut libro = libro_de_tabla(300, 40);
+    let mut est = abierta_de_prueba(&mut libro, 900, 700);
+    est.marcos.lista.push(crate::marcos_doc::Marco { caja: [100.0, 60.0, 300.0, 200.0], parte: 0, vista: String::new() });
+    est.marcos.alternar();
+    let r = est.riel().imprimir;
+    est.raton = ((r.x + r.ancho as i32 / 2) as f32, (r.y + r.alto as i32 / 2) as f32);
+    est.mirar_riel();
+    assert_eq!(est.encima, DestinoRiel::Imprimir, "el raton, sobre el marco del riel");
+    let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 900, 700).expect("superficie");
+    preparar(&mut est, &motor);
+    motor.dibujar(&fuera.destino, |p| pintar(p, &mut est, &textos)).expect("pintar");
+    fuera.esperar_gpu().expect("gpu");
+    let (a, b, pixeles) = fuera.leer_rgba().expect("leer");
+    let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let salida = carpeta.join("hoja-riel-globo-fuera.png");
+    std::fs::write(&salida, pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: a, alto: b, pixeles }).expect("png")).expect("guardar");
+    println!("{}", salida.display());
 }

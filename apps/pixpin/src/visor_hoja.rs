@@ -97,6 +97,9 @@ const VK_F2: u32 = 0x71;
 const VK_E: u32 = 0x45;
 const VK_Y: u32 = 0x59;
 const VK_Z: u32 = 0x5A;
+/// La A del lapiz y la M del marcador (o Ctrl+M), como en el PDF.
+const VK_A: u32 = 0x41;
+const VK_M: u32 = 0x4D;
 
 /// **La ventana del pin**, que sigue siendo la misma al pasar de ver a
 /// editar y de vuelta: su superficie, la barra del pin y donde esta.
@@ -915,6 +918,11 @@ impl<'l> Estado<'l> {
         if self.pulsar_riel(motor, textos) {
             return false;
         }
+        // Con los marcos, sus fichas de abajo (1, 2, 3…) llevan a cada uno.
+        if let Some(k) = self.ficha_bajo_el_raton() {
+            self.ir_al_marco(k, motor, textos);
+            return false;
+        }
         let p = self.raton;
         let z = self.zonas();
         // Las pestanas.
@@ -1079,6 +1087,10 @@ impl<'l> Estado<'l> {
     fn cursor(&self) -> FormaCursorWin {
         if matches!(self.gesto, Some(Gesto::Mano { .. })) {
             return FormaCursorWin::Mover;
+        }
+        // Sobre una ficha de los marcos, la mano (IDC_HAND): lleva a su marco.
+        if self.gesto.is_none() && self.ficha_bajo_el_raton().is_some() {
+            return FormaCursorWin::Giro;
         }
         if self.marcos.activo && (matches!(self.gesto, Some(Gesto::Marco)) || dentro(&self.vista().1, self.raton)) {
             return FormaCursorWin::Cruz;
@@ -1474,12 +1486,21 @@ fn ver_en(
     let mut vivo = true;
     // Ctrl+P: los marcos (o lo que se ve), en grupo al dialogo de imprimir.
     let mut imprimir_marcos = false;
+    // Para que modo estan puestas las pistas de la barra (ver o editar).
+    let mut pistas_de: Option<bool> = None;
     // Pruebas: imprimir los marcos solo, a los 2 s de abrir (con
     // `PIXPIN_IMPRIMIR_A_PDF`, a un fichero), sin Ctrl+P de verdad.
     let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| Instant::now() + Duration::from_secs(2));
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
-        // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`).
+        // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`), y
+        // lo que necesitan saber de lo que se ve.
+        #[cfg(test)]
+        crate::hoja_pin::prueba::apuntar_vista((
+            est.marcos.fichas(est.zonas().pestanas.y, est.e).iter().map(|r| ((r.x + r.ancho / 2.0) as i32, (r.y + r.alto / 2.0) as i32)).collect(),
+            est.hojas.get(est.activa).and_then(Option::as_ref).map_or(1.0, |ab| ab.zoom),
+            [est.poniendo_marca, est.anotando, est.marcos.activo],
+        ));
         #[cfg(test)]
         match crate::hoja_pin::prueba::latido(ventana.handle().0 as isize, area, est.editando) {
             Some(crate::hoja_pin::prueba::EDITAR) => quiere_editar = true,
@@ -1516,7 +1537,13 @@ fn ver_en(
             est.empezar_a_editar(textos);
             hay_que_pintar = true;
         }
-        for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+        #[allow(unused_mut)]
+        let mut eventos = pixpin_shell::overlay::tomar_eventos_pendientes();
+        // Pruebas: las teclas que manda la prueba, como si se pulsaran aqui
+        // (sin el teclado de verdad).
+        #[cfg(test)]
+        eventos.extend(crate::hoja_pin::prueba::tomar_teclas().into_iter().map(|(vk, ctrl)| (ventana.handle(), EventoOverlay::Tecla { vk, shift: false, ctrl, alt: false })));
+        for (hwnd, evento) in eventos {
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
                 match accion {
@@ -1705,6 +1732,20 @@ fn ver_en(
                     }
                     hay_que_pintar = true;
                 }
+                // Las teclas del riel, las mismas en todos los visores: M (o
+                // Ctrl+M) el marcador, A el lapiz. Viendo: editando, las
+                // letras son de las celdas.
+                EventoOverlay::Tecla { vk: VK_M, alt: false, shift: false, .. } if !est.editando => {
+                    est.poniendo_marca = !est.poniendo_marca;
+                    if est.poniendo_marca && est.marcos.activo {
+                        est.alternar_marcos(motor);
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk: VK_A, ctrl: false, alt: false, shift: false } if !est.editando && !est.anotando => {
+                    est.alternar_anotar(motor);
+                    hay_que_pintar = true;
+                }
                 // Ctrl+1…9 llevan a esa marca del riel, como en el PDF.
                 EventoOverlay::Tecla { vk, ctrl: true, alt: false, shift: false }
                     if !est.editando && (0x31..=0x39).contains(&vk) && ((vk - 0x31) as usize) < est.marcas.len() =>
@@ -1784,6 +1825,12 @@ fn ver_en(
             let (_, celdas) = vista_de(ab, caja);
             acotar(ab, celdas);
             hay_que_pintar = true;
+        }
+        // El nombre y la tecla de los botones propios de la barra, para su
+        // globo: cambian al pasar de ver a editar.
+        if pistas_de != Some(est.editando) {
+            pistas_de = Some(est.editando);
+            pin.poner_pistas(if est.editando { crate::hoja_pin::pistas_de_editar(textos) } else { pistas_de_ver(textos) });
         }
         let botones = match est.editor() {
             Some(ed) if est.editando => crate::hoja_pin::botones_de_editar(ed),
@@ -1910,6 +1957,12 @@ fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
         b.push(BotonLector { id: BOTON_ABRIR_CON, icono: &material::OPEN_IN_NEW, encendido: false });
     }
     b
+}
+
+/// El nombre y la tecla de los botones de [`botones_de_ver`], para el globo
+/// que sale con el raton encima.
+fn pistas_de_ver(textos: &Catalogo) -> Vec<(u8, String)> {
+    vec![(BOTON_EDITAR, textos.t("hoja-pista-editar")), (BOTON_ABRIR_CON, textos.t("abrir-con"))]
 }
 
 /// **Exportar el libro** con el componente comun (ver

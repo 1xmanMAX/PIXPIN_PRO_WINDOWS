@@ -160,6 +160,12 @@ pub struct TextosV2 {
     /// `marcos-borrar`).
     pub imprimir_marcos: String,
     pub borrar_marcos: String,
+    /// Los globos del riel del pin (nombre y tecla): el lapiz, los marcos de
+    /// una foto y el marco de imprimir una zona (`riel-anotar`,
+    /// `riel-marcos`, `riel-imprimir-zona`).
+    pub riel_anotar: String,
+    pub riel_marcos: String,
+    pub riel_imprimir: String,
 }
 
 /// Textos del pin, YA traducidos: este crate no conoce Fluent (vive en
@@ -817,6 +823,9 @@ pub(crate) mod pruebas {
                 leer_seguida: "Leer seguida".into(),
                 pagina: "Página".into(),
                 minutos: "min".into(),
+                riel_anotar: "Anotar (A)".into(),
+                riel_marcos: "Marcos para imprimir (I)".into(),
+                riel_imprimir: "Imprimir una zona (Ctrl+P)".into(),
                 ..Default::default()
             },
         }

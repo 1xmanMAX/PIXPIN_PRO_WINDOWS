@@ -27,7 +27,7 @@ use pixpin_render::{MotorRender, Pintor, RectF, Superficie};
 use pixpin_store::Catalogo;
 
 use super::{Abierta, Estado, Gesto, Zonas, acotar, dentro, logica, vista_celdas, vista_de};
-use crate::marcos_doc::{self, Marco, Marcos, Pedido};
+use crate::marcos_doc::{self, Marco, Pedido};
 
 /// **De la hoja (px al 100 %) a la ventana y de vuelta**, por el panel que
 /// se mueve (el de abajo a la derecha, donde va casi todo): el mismo que
@@ -64,6 +64,12 @@ impl Mapa {
 
     pub(super) fn a_hoja(&self, (x, y): (f32, f32)) -> [f64; 2] {
         [self.ox + (x as f64 - self.x0) / self.z, self.oy + (y as f64 - self.y0) / self.z]
+    }
+
+    /// Donde empieza en la ventana el panel que se mueve.
+    #[cfg(test)]
+    pub(super) fn esquina(&self) -> (f32, f32) {
+        (self.x0 as f32, self.y0 as f32)
     }
 
     /// Pixeles de pantalla por pixel de hoja (lo que mide un marco).
@@ -223,11 +229,82 @@ impl Estado<'_> {
         sin_pista.activo = false;
         p.con_recorte(celdas, |p| sin_pista.pintar(p, self.activa as u32, &a_pantalla, self.e, z.pestanas.y, &pista));
         if self.marcos.activo {
-            let mut solo_pista = Marcos::default();
-            solo_pista.activo = true;
-            solo_pista.pintar(p, self.activa as u32, &a_pantalla, self.e, z.pestanas.y, &pista);
+            // Las fichas 1, 2, 3… (de todas las hojas) y la pista, sin los
+            // marcos: con una parte que no es de ninguna hoja solo se pintan
+            // ellas.
+            self.marcos.pintar(p, NINGUNA_HOJA, &a_pantalla, self.e, z.pestanas.y, &pista);
         }
     }
+
+    /// **La ficha de marco bajo el raton** (las de abajo a la izquierda, con
+    /// el modo puesto): el marco al que lleva, desde cero.
+    pub(super) fn ficha_bajo_el_raton(&self) -> Option<usize> {
+        if !self.marcos.activo {
+            return None;
+        }
+        self.marcos.ficha_en(self.raton, self.zonas().pestanas.y, self.e)
+    }
+
+    /// **Ir al marco `k`** (su ficha, como en el PDF y el modelo 3D): a su
+    /// hoja si es de otra, y la hoja se acerca hasta que el marco llena las
+    /// celdas que se mueven, centrado en ellas (lo que dejan los paneles
+    /// inmovilizados, que siguen puestos).
+    pub(super) fn ir_al_marco(&mut self, k: usize, motor: &MotorRender, textos: &Catalogo) {
+        let Some(m) = self.marcos.lista.get(k).cloned() else { return };
+        let hoja = m.parte as usize;
+        if hoja >= self.libro.hojas.len() {
+            return;
+        }
+        if hoja != self.activa {
+            self.cambiar_hoja(hoja, motor, textos);
+            if self.activa != hoja {
+                return;
+            }
+        }
+        let caja = self.zonas().hoja;
+        encuadrar_en_el_panel(self.abierta_mut(), caja, &m);
+        if self.editando {
+            self.sel_al_editor();
+        }
+    }
+}
+
+/// La parte que no es ninguna hoja: pintar los marcos con ella deja solo las
+/// fichas y la pista.
+const NINGUNA_HOJA: u32 = u32::MAX;
+
+/// **El panel que se mueve en la ventana** (el de abajo a la derecha): de
+/// donde acaban los paneles inmovilizados al final de las celdas.
+fn panel_que_se_mueve(mapa: &Mapa, celdas: RectF) -> RectF {
+    let (x0, y0) = (mapa.x0 as f32, mapa.y0 as f32);
+    RectF { x: x0, y: y0, ancho: (celdas.x + celdas.ancho - x0).max(1.0), alto: (celdas.y + celdas.alto - y0).max(1.0) }
+}
+
+/// Como [`encuadrar`], pero con los paneles inmovilizados puestos: el marco
+/// llena el panel que se mueve y va centrado en el. Los paneles fijos crecen
+/// con el zoom (y el que se mueve encoge), asi que el zoom sale de la cuenta
+/// entera, `z * (marco + fijo) <= celdas` (con el aire de `px_para_llenar`),
+/// y el desplazamiento pone el centro del marco en el del panel. Unas
+/// vueltas, porque los encabezados tambien cambian de ancho con el zoom.
+pub(super) fn encuadrar_en_el_panel(ab: &mut Abierta, caja: RectF, m: &Marco) {
+    let [cx, cy] = m.centro();
+    let aire = 0.94;
+    for _ in 0..6 {
+        let (_, celdas) = vista_de(ab, caja);
+        let fijo = (ab.rejilla.x(ab.rejilla.columnas_fijas), ab.rejilla.y(ab.rejilla.filas_fijas));
+        let zx = aire * celdas.ancho as f64 / (m.ancho().max(1e-9) + aire * fijo.0);
+        let zy = aire * celdas.alto as f64 / (m.alto().max(1e-9) + aire * fijo.1);
+        ab.zoom = logica::acotar_zoom(zx.min(zy));
+        let (v, celdas) = vista_de(ab, caja);
+        let mapa = Mapa::de(&ab.rejilla, &v, celdas);
+        let panel = panel_que_se_mueve(&mapa, celdas);
+        // El punto de la hoja en la esquina del panel, para que el centro
+        // del marco caiga en el medio del panel.
+        ab.x = cx - (panel.x + panel.ancho / 2.0 - mapa.x0 as f32) as f64 / ab.zoom;
+        ab.y = cy - (panel.y + panel.alto / 2.0 - mapa.y0 as f32) as f64 / ab.zoom;
+    }
+    let (_, celdas) = vista_de(ab, caja);
+    acotar(ab, celdas);
 }
 
 /// **Imprime los marcos en grupo** (Ctrl+P): las fotos de cada uno, como
@@ -340,6 +417,7 @@ fn esperar_lo_leido(est: &mut Estado) {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use crate::marcos_doc::Marcos;
 
     #[test]
     fn de_la_hoja_a_la_ventana_y_de_vuelta_es_lo_mismo() {

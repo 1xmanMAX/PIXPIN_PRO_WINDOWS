@@ -94,6 +94,36 @@ pub(crate) mod prueba {
     pub fn olvidar() {
         *VENTANA.lock().unwrap_or_else(|e| e.into_inner()) = None;
         ORDENES.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        *VISTA.lock().unwrap_or_else(|e| e.into_inner()) = (Vec::new(), 1.0, [false; 3]);
+    }
+
+    /// Lo que se ve, para que la prueba sepa donde pulsar: el centro de
+    /// cada ficha de los marcos (en la ventana), el zoom de la hoja y los
+    /// modos del riel puestos (la tira del marcador, el lapiz y los marcos).
+    static VISTA: Mutex<Vista> = Mutex::new((Vec::new(), 1.0, [false; 3]));
+    pub type Vista = (Vec<(i32, i32)>, f64, [bool; 3]);
+
+    pub fn apuntar_vista(v: Vista) {
+        *VISTA.lock().unwrap_or_else(|e| e.into_inner()) = v;
+    }
+
+    pub fn vista() -> Vista {
+        VISTA.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Las teclas que manda la prueba (la tecla y si va con Ctrl): el bucle
+    /// las trata como pulsadas en su ventana, sin el teclado de verdad.
+    static TECLAS: Mutex<Vec<(u32, bool)>> = Mutex::new(Vec::new());
+
+    pub fn teclear(vk: u32, ctrl: bool) {
+        TECLAS.lock().unwrap_or_else(|e| e.into_inner()).push((vk, ctrl));
+        if let Some((h, ..)) = ventana() {
+            pixpin_shell::overlay::despertar(h);
+        }
+    }
+
+    pub fn tomar_teclas() -> Vec<(u32, bool)> {
+        std::mem::take(&mut *TECLAS.lock().unwrap_or_else(|e| e.into_inner()))
     }
 }
 
@@ -654,6 +684,30 @@ const BOTON_ALINEAR: u8 = 19;
 const BOTON_NUMERO: u8 = 20;
 const BOTON_AJUSTAR: u8 = 21;
 const BOTON_BORRAR_FORMATO: u8 = 22;
+
+/// **El nombre y el atajo de cada boton al editar** (19-oct-2026, el
+/// usuario: «que al pasar por un icono me aparezca su atajo»), para el
+/// globo de la barra. Las teclas son las de [`accion_de_tecla`].
+pub(crate) fn pistas_de_editar(t: &pixpin_store::Catalogo) -> Vec<(u8, String)> {
+    [
+        (BOTON_VER, "hoja-pista-ver"),
+        (BOTON_DESHACER, "barra-pista-deshacer"),
+        (BOTON_REHACER, "barra-pista-rehacer"),
+        (BOTON_NEGRITA, "hoja-pista-negrita"),
+        (BOTON_CURSIVA, "hoja-pista-cursiva"),
+        (BOTON_SUBRAYADO, "hoja-pista-subrayado"),
+        (BOTON_TACHADO, "hoja-pista-tachado"),
+        (BOTON_RESALTAR, "hoja-pista-resaltar"),
+        (BOTON_LETRA, "hoja-pista-letra"),
+        (BOTON_ALINEAR, "hoja-pista-alinear"),
+        (BOTON_NUMERO, "hoja-pista-numero"),
+        (BOTON_AJUSTAR, "hoja-pista-ajustar"),
+        (BOTON_BORRAR_FORMATO, "hoja-pista-borrar-formato"),
+    ]
+    .into_iter()
+    .map(|(id, clave)| (id, t.t(clave)))
+    .collect()
+}
 
 /// **Los botones de la barra al editar**: volver a ver, deshacer, rehacer y
 /// el formato. Los interruptores se encienden si la celda activa los tiene,

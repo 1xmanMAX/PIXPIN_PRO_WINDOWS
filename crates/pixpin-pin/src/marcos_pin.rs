@@ -168,15 +168,107 @@ pub(crate) fn pintar(
     }
 }
 
-/// La pista del modo, abajo a la izquierda de la tarjeta `caja`. En un pin
-/// estrecho no se corta por el borde: se parte en renglones y, si aun asi
-/// taparia mas de un tercio de la foto, se quedan solo sus primeras partes
-/// (las separa « · »: arrastrar, Ctrl+P, Supr, I) hasta que quepa.
-pub(crate) fn pintar_pista(p: &Pintor, caja: RectF, texto: &str, e: f32) {
+/// Lado de una ficha de marco, en pixeles logicos (algo menos que las de
+/// los visores: los pines suelen ser pequenos).
+const LADO_FICHA: f32 = 24.0;
+const HUECO_FICHA: f32 = 6.0;
+const MARGEN_FICHA: f32 = 8.0;
+
+/// **Las fichas de los marcos** con el modo puesto (19-oct-2026, el usuario:
+/// «en modo marcos me aparecen los numeros abajo; le doy a un numero y me
+/// lleva directo a ese marco»): una por marco, en su orden, abajo a la
+/// izquierda de la tarjeta `caja`, como `marcos_doc::Marcos::fichas`. En un
+/// pin estrecho pasan a otra fila; si aun asi taparian mas de un tercio de
+/// la foto, se quedan las que caben.
+pub(crate) fn fichas(caja: RectF, n: usize, e: f32) -> Vec<RectF> {
+    let lado = LADO_FICHA * e;
+    let paso = lado + HUECO_FICHA * e;
+    let margen = MARGEN_FICHA * e;
+    let por_fila = (((caja.ancho - 2.0 * margen + HUECO_FICHA * e) / paso).floor() as usize).max(1);
+    let filas_max = (((caja.alto / 3.0) / paso).floor() as usize).max(1);
+    let n = n.min(por_fila * filas_max);
+    let filas = n.div_ceil(por_fila);
+    (0..n)
+        .map(|k| {
+            let (fila, col) = (k / por_fila, k % por_fila);
+            RectF {
+                x: caja.x + margen + col as f32 * paso,
+                // La primera fila arriba: se leen 1, 2, 3… como un texto.
+                y: caja.y + caja.alto - margen - lado - (filas - 1 - fila) as f32 * paso,
+                ancho: lado,
+                alto: lado,
+            }
+        })
+        .collect()
+}
+
+/// La ficha bajo `(x, y)` (las coordenadas de `caja`): el marco al que ir,
+/// desde cero.
+pub(crate) fn ficha_en(caja: RectF, n: usize, e: f32, x: f32, y: f32) -> Option<usize> {
+    fichas(caja, n, e)
+        .iter()
+        .position(|r| x >= r.x && x <= r.x + r.ancho && y >= r.y && y <= r.y + r.alto)
+}
+
+/// **El zoom de dentro que lleva al marco** `caja_marco` (`(x0, y0, x1, y1)`
+/// en la tarjeta, sin zoom) en una tarjeta de `ancho` x `alto`: la escala
+/// para que llene el pin con un poco de aire (como
+/// `marcos_doc::px_para_llenar`) y el desplazamiento que lo centra, lo que
+/// pinta `d + p * escala`. Quien lo usa aun lo pega a los bordes.
+pub(crate) fn vista_del_marco(caja_marco: (f64, f64, f64, f64), ancho: f32, alto: f32) -> (f32, f32, f32) {
+    let (x0, y0, x1, y1) = caja_marco;
+    let (bw, bh) = ((x1 - x0).max(1e-6) as f32, (y1 - y0).max(1e-6) as f32);
+    let escala = ((ancho * 0.94) / bw).min((alto * 0.94) / bh).clamp(1.0, 40.0);
+    let (cx, cy) = (((x0 + x1) / 2.0) as f32, ((y0 + y1) / 2.0) as f32);
+    (escala, ancho / 2.0 - cx * escala, alto / 2.0 - cy * escala)
+}
+
+/// Pinta las fichas (azules, con su numero en blanco).
+fn pintar_fichas(p: &Pintor, fichas: &[RectF], e: f32) {
+    for (k, r) in fichas.iter().enumerate() {
+        p.rellenar_redondeado(*r, 6.0 * e, AZUL);
+        let numero = (k + 1).to_string();
+        let tam = 12.0 * e;
+        let (w, h) = p.medir_texto(&numero, tam);
+        p.texto(&numero, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, Color::BLANCO);
+    }
+}
+
+/// **El modo de los marcos, abajo a la izquierda de la tarjeta `caja`**: las
+/// fichas de los `n` marcos y la pista. La pista va a la derecha de las
+/// fichas si cabe en una linea (como en los visores); si no, encima. En un
+/// pin estrecho no se corta por el borde: se parte en renglones y, si aun
+/// asi taparia mas de un tercio de la foto, se quedan solo sus primeras
+/// partes (las separa « · »: arrastrar, Ctrl+P, Supr, I) hasta que quepa.
+pub(crate) fn pintar_pista(p: &Pintor, caja: RectF, texto: &str, n: usize, e: f32) {
+    let fichas = fichas(caja, n, e);
+    p.con_recorte(caja, |p| pintar_fichas(p, &fichas, e));
     if texto.is_empty() {
         return;
     }
     let tam = 12.0 * e;
+    // A la derecha de las fichas, si son una fila y la pista entera cabe.
+    if let Some(ultima) = fichas.last()
+        && fichas.iter().all(|r| r.y == ultima.y)
+    {
+        let x0 = ultima.x + ultima.ancho + 10.0 * e;
+        let (w, h) = p.medir_texto(texto, tam);
+        if x0 + w + 24.0 * e <= caja.x + caja.ancho - 8.0 * e {
+            let fondo = RectF {
+                x: x0,
+                y: ultima.y + (ultima.alto - h - 12.0 * e) / 2.0,
+                ancho: w + 24.0 * e,
+                alto: h + 12.0 * e,
+            };
+            p.con_recorte(caja, |p| {
+                p.rellenar_redondeado(fondo, fondo.alto / 2.0, CRISTAL);
+                p.texto(texto, fondo.x + 12.0 * e, fondo.y + 6.0 * e, tam, Color::BLANCO);
+            });
+            return;
+        }
+    }
+    // Encima de las fichas (o abajo del todo, sin ellas).
+    let reservado = fichas.first().map_or(0.0, |r| caja.y + caja.alto - r.y + 4.0 * e);
     let ancho_max = (caja.ancho - 16.0 * e - 24.0 * e).max(40.0 * e);
     let partes: Vec<&str> = texto.split(" · ").collect();
     let tope = caja.alto / 3.0;
@@ -190,7 +282,7 @@ pub(crate) fn pintar_pista(p: &Pintor, caja: RectF, texto: &str, e: f32) {
     let (w, h) = medida;
     let fondo = RectF {
         x: caja.x + 8.0 * e,
-        y: caja.y + caja.alto - h - 20.0 * e,
+        y: caja.y + caja.alto - reservado - h - 20.0 * e,
         ancho: w + 24.0 * e,
         alto: h + 12.0 * e,
     };
@@ -258,6 +350,37 @@ mod pruebas {
                 assert!(cerca((x0, y0), (0.0, 0.0)) && cerca((x1, y1), e.caja));
             }
         }
+    }
+
+    #[test]
+    fn las_fichas_van_abajo_a_la_izquierda_y_pasan_de_fila_en_un_pin_estrecho() {
+        let ancho = RectF { x: 0.0, y: 0.0, ancho: 600.0, alto: 400.0 };
+        let f = fichas(ancho, 3, 1.0);
+        assert_eq!(f.len(), 3);
+        assert_eq!((f[0].x, f[0].y), (8.0, 400.0 - 8.0 - 24.0));
+        assert_eq!(f[1].x, 8.0 + 30.0);
+        assert_eq!(ficha_en(ancho, 3, 1.0, 40.0, 380.0), Some(1));
+        // Caso negativo: fuera de las fichas, ninguna (el clic pone un marco).
+        assert_eq!(ficha_en(ancho, 3, 1.0, 300.0, 200.0), None);
+        // Un pin de 110 px: 3 por fila; la 4 en la fila de abajo.
+        let estrecho = RectF { x: 0.0, y: 0.0, ancho: 110.0, alto: 300.0 };
+        let f = fichas(estrecho, 4, 1.0);
+        assert_eq!(f.len(), 4);
+        assert!(f[0].y < f[3].y, "la primera fila arriba");
+        assert_eq!(f[3].x, 8.0);
+        // Sin marcos, ninguna.
+        assert!(fichas(ancho, 0, 1.0).is_empty());
+    }
+
+    #[test]
+    fn ir_a_un_marco_lo_centra_y_lo_hace_llenar_el_pin() {
+        // Un marco de 100 x 50 en una tarjeta de 400 x 200: escala 3,76.
+        let (escala, dx, dy) = vista_del_marco((100.0, 50.0, 200.0, 100.0), 400.0, 200.0);
+        assert!((escala - 3.76).abs() < 1e-4, "{escala}");
+        // Su centro (150, 75) cae en el centro de la tarjeta.
+        assert!((dx + 150.0 * escala - 200.0).abs() < 1e-3 && (dy + 75.0 * escala - 100.0).abs() < 1e-3);
+        // Caso negativo: un marco tan grande como el pin no aleja (minimo 1).
+        assert_eq!(vista_del_marco((0.0, 0.0, 400.0, 200.0), 400.0, 200.0).0, 1.0);
     }
 
     #[test]

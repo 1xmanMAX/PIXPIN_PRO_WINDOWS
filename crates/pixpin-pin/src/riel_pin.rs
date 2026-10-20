@@ -132,7 +132,52 @@ struct Interno {
     /// Se ponen marcos en el pin dueno: el marco, encendido.
     marcando: bool,
     encima: Option<BotonRiel>,
+    /// La esquina de la isla, en pantalla (la ventana empieza `hueco.0`
+    /// antes, si el globo va a su izquierda).
     origen: (i32, i32),
+    /// El nombre y la tecla de cada boton, para su globo.
+    pistas: Vec<(BotonRiel, String)>,
+    /// Lo que crece la ventana a la izquierda y a la derecha de la isla
+    /// mientras ensena un globo (0 sin el).
+    hueco: (f32, f32),
+    trabajo: Rect,
+}
+
+/// Lo que queda entre el globo y su boton, en pixeles logicos.
+const AIRE_GLOBO: f32 = 8.0;
+const TAM_GLOBO: f32 = 12.0;
+
+/// **Donde va el globo** del boton bajo el raton (19-oct-2026, el usuario:
+/// «que al pasar por un icono me aparezca su atajo»): a la izquierda de la
+/// isla, como en el riel del lector; si ahi se sale del area de trabajo, a
+/// su derecha. Devuelve lo que la ventana crece por cada lado para `ancho`
+/// de globo (con su aire), con la isla en `x` y de `isla` de ancho.
+pub fn hueco_del_globo(x: i32, isla: f32, ancho: f32, trabajo: Rect) -> (f32, f32) {
+    if ancho <= 0.0 {
+        (0.0, 0.0)
+    } else if x as f32 - ancho >= trabajo.x as f32 {
+        (ancho, 0.0)
+    } else if x as f32 + isla + ancho <= trabajo.derecha() as f32 {
+        (0.0, ancho)
+    } else {
+        (ancho, 0.0)
+    }
+}
+
+impl Interno {
+    fn texto_globo(&self) -> Option<&str> {
+        let b = self.encima?;
+        self.pistas.iter().find(|(x, _)| *x == b).map(|(_, t)| t.as_str()).filter(|t| !t.is_empty())
+    }
+
+    /// Lo que debe crecer la ventana para el globo de ahora.
+    fn hueco_ahora(&self) -> (f32, f32) {
+        let e = self.escala;
+        let ancho = self.texto_globo().map_or(0.0, |t| {
+            self.motor.medir_texto(t, TAM_GLOBO * e, f32::MAX).0 + (16.0 + AIRE_GLOBO + 2.0) * e
+        });
+        hueco_del_globo(self.origen.0, self.disposicion.ancho, ancho.ceil(), self.trabajo)
+    }
 }
 
 static REGISTRO: Once = Once::new();
@@ -154,6 +199,23 @@ fn ventana() -> Option<HWND> {
     VENTANA.with(|v| v.get())
 }
 
+/// La ventana del riel, para las pruebas que la miran.
+#[cfg(test)]
+pub(crate) fn ventana_de_prueba() -> Option<HWND> {
+    ventana()
+}
+
+/// Como si el raton estuviera sobre `boton` (sin el raton de verdad: las
+/// pruebas no mueven el cursor del usuario).
+#[cfg(test)]
+pub(crate) fn encima_de_prueba(boton: Option<BotonRiel>) {
+    let Some(h) = ventana() else { return };
+    if let Some(i) = interno_de(h) {
+        i.encima = boton;
+        mirar_globo(h, i);
+    }
+}
+
 fn registrar_clase() {
     // SAFETY: registro unico (Once) de una clase con WndProc propio.
     unsafe {
@@ -173,6 +235,7 @@ fn tamano(d: &Disposicion) -> (u32, u32) {
 
 fn recolocar_ventana(hwnd: HWND, i: &Interno) {
     let (ancho, alto) = tamano(&i.disposicion);
+    let ancho = ancho + (i.hueco.0 + i.hueco.1).ceil() as u32;
     if let Err(e) = i.superficie.redimensionar(ancho, alto) {
         tracing::warn!(?e, "no se pudo redimensionar el riel del pin");
         return;
@@ -182,7 +245,7 @@ fn recolocar_ventana(hwnd: HWND, i: &Interno) {
         let _ = SetWindowPos(
             hwnd,
             Some(HWND_TOPMOST),
-            i.origen.0,
+            i.origen.0 - i.hueco.0.ceil() as i32,
             i.origen.1,
             ancho as i32,
             alto as i32,
@@ -204,6 +267,7 @@ pub(crate) fn mostrar(
     anotable: bool,
     anotando: bool,
     marcando: bool,
+    pistas: Vec<(BotonRiel, String)>,
 ) {
     // Mientras se anota un pin el riel es suyo: pasar el raton por otro pin
     // no se lo lleva (perderia el lapiz con el que se sale).
@@ -266,6 +330,9 @@ pub(crate) fn mostrar(
                 marcando,
                 encima: None,
                 origen: (x, y),
+                pistas: Vec::new(),
+                hueco: (0.0, 0.0),
+                trabajo,
             });
             // SAFETY: el Box se cede al USERDATA y se recupera una vez en
             // WM_NCDESTROY.
@@ -286,6 +353,9 @@ pub(crate) fn mostrar(
     i.anotando = anotando;
     i.marcando = marcando;
     i.origen = (x, y);
+    i.pistas = pistas;
+    i.trabajo = trabajo;
+    i.hueco = i.hueco_ahora();
     recolocar_ventana(hwnd, i);
 }
 
@@ -300,6 +370,8 @@ pub(crate) fn recolocar(dueno: HWND, contenido: Rect, trabajo: Rect) {
     let xy = colocar(contenido, trabajo, ancho, alto, (SEPARACION * i.escala) as i32);
     if xy != i.origen {
         i.origen = xy;
+        i.trabajo = trabajo;
+        i.hueco = i.hueco_ahora();
         recolocar_ventana(h, i);
     }
 }
@@ -340,6 +412,7 @@ pub(crate) fn esconder(dueno: HWND) {
         i.encima = None;
         i.anotando = false;
         i.marcando = false;
+        i.hueco = (0.0, 0.0);
         // SAFETY: esconder una ventana propia.
         unsafe {
             let _ = ShowWindow(h, SW_HIDE);
@@ -403,6 +476,8 @@ fn pintar_riel(p: &Pintor, i: &Interno) {
     use pixpin_render::icono::material::{CROP_FREE, EDIT};
     let e = i.escala;
     let d = &i.disposicion;
+    // Con el globo a la izquierda la isla empieza mas a la derecha.
+    p.desplazar(i.hueco.0.ceil(), 0.0);
     p.rellenar_redondeado(
         RectF {
             x: 0.0,
@@ -436,11 +511,54 @@ fn pintar_riel(p: &Pintor, i: &Interno) {
             if activo { Color::BLANCO } else { TEXTO },
         );
     }
+    // El globo del boton bajo el raton: su nombre y su tecla, como el de
+    // `lector::globo_a_la_izquierda` (a la derecha si a la izquierda no
+    // cabe en la pantalla).
+    if let (Some(texto), Some(b)) = (i.texto_globo(), i.encima)
+        && let Some((_, r)) = d.botones.iter().find(|(x, _)| *x == b)
+        && i.hueco != (0.0, 0.0)
+    {
+        let tam = TAM_GLOBO * e;
+        let (w, h) = p.medir_texto(texto, tam);
+        let (px, py) = (8.0 * e, 5.0 * e);
+        let ancho = w + 2.0 * px;
+        let x = if i.hueco.0 > 0.0 { -AIRE_GLOBO * e - ancho } else { d.ancho + AIRE_GLOBO * e };
+        let caja = RectF {
+            x,
+            y: r.y + (r.alto - h - 2.0 * py) / 2.0,
+            ancho,
+            alto: h + 2.0 * py,
+        };
+        p.rellenar_redondeado(caja, 6.0 * e, GLOBO);
+        p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
+    }
 }
 
-fn local(lparam: LPARAM) -> (f32, f32) {
+/// El fondo del globo (el de `lector::globo_a_la_izquierda`).
+const GLOBO: Color = Color {
+    r: 0.106,
+    g: 0.106,
+    b: 0.122,
+    a: 0.96,
+};
+
+/// Lo que tiene el raton encima cambio: el globo nuevo (la ventana crece o
+/// encoge para el) y se repinta.
+fn mirar_globo(hwnd: HWND, i: &mut Interno) {
+    let hueco = i.hueco_ahora();
+    if hueco != i.hueco {
+        i.hueco = hueco;
+        recolocar_ventana(hwnd, i);
+    } else {
+        pintar(i);
+    }
+}
+
+/// El punto del raton en la isla (sin lo que la ventana crecio a la
+/// izquierda para el globo).
+fn local(lparam: LPARAM, izquierda: f32) -> (f32, f32) {
     (
-        (lparam.0 & 0xFFFF) as i16 as f32,
+        (lparam.0 & 0xFFFF) as i16 as f32 - izquierda.ceil(),
         ((lparam.0 >> 16) & 0xFFFF) as i16 as f32,
     )
 }
@@ -459,11 +577,11 @@ extern "system" fn procedimiento(
             let Some(i) = interno_de(hwnd) else {
                 return LRESULT(0);
             };
-            let (x, y) = local(lparam);
+            let (x, y) = local(lparam, i.hueco.0);
             let encima = i.disposicion.boton_en(x, y);
             if encima != i.encima {
                 i.encima = encima;
-                pintar(i);
+                mirar_globo(hwnd, i);
                 let mut seguir = TRACKMOUSEEVENT {
                     cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
                     dwFlags: TME_LEAVE,
@@ -482,7 +600,7 @@ extern "system" fn procedimiento(
                 && i.encima.is_some()
             {
                 i.encima = None;
-                pintar(i);
+                mirar_globo(hwnd, i);
             }
             LRESULT(0)
         }
@@ -490,7 +608,7 @@ extern "system" fn procedimiento(
             let Some(i) = interno_de(hwnd) else {
                 return LRESULT(0);
             };
-            let (x, y) = local(lparam);
+            let (x, y) = local(lparam, i.hueco.0);
             if let Some(b) = i.disposicion.boton_en(x, y) {
                 let (dueno, anotando) = (i.dueno, i.anotando);
                 // Sin prestamos vivos: el pin puede abrir algo modal (el
@@ -555,6 +673,16 @@ mod pruebas {
         let d = disponer(1.5, false);
         assert_eq!(d.botones.len(), 1);
         assert_eq!(d.botones[0].0, BotonRiel::Marco);
+    }
+
+    #[test]
+    fn el_globo_va_a_la_izquierda_y_si_no_cabe_a_la_derecha() {
+        // La isla en x = 408 (a la derecha de un pin): el globo, a su izquierda.
+        assert_eq!(hueco_del_globo(408, 44.0, 150.0, TRABAJO), (150.0, 0.0));
+        // Pegada al borde izquierdo de la pantalla: a su derecha.
+        assert_eq!(hueco_del_globo(20, 44.0, 150.0, TRABAJO), (0.0, 150.0));
+        // Caso negativo: sin globo (ningun boton bajo el raton), no crece.
+        assert_eq!(hueco_del_globo(408, 44.0, 0.0, TRABAJO), (0.0, 0.0));
     }
 
     #[test]

@@ -109,6 +109,9 @@ pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
         minutos: t.t("pin-v2-minutos"),
         imprimir_marcos: t.t("marcos-imprimir"),
         borrar_marcos: t.t("marcos-borrar"),
+        riel_anotar: t.t("riel-anotar"),
+        riel_marcos: t.t("riel-marcos"),
+        riel_imprimir: t.t("riel-imprimir-zona"),
     }
 }
 

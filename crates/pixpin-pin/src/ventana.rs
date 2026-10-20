@@ -1748,7 +1748,20 @@ fn ensenar_riel(i: &PinInterno, anotando: bool) {
         crate::menu::anotable(&i.contenido),
         anotando,
         i.modo_marcos,
+        pistas_del_riel(i),
     );
+}
+
+/// El nombre y la tecla de cada boton del riel, para su globo: el lapiz
+/// (A) y el marco, que en una foto pone los marcos numerados (I) y en lo
+/// demas imprime una zona (Ctrl+P).
+fn pistas_del_riel(i: &PinInterno) -> Vec<(crate::riel_pin::BotonRiel, String)> {
+    use crate::riel_pin::BotonRiel;
+    let Some(t) = &i.textos else {
+        return Vec::new();
+    };
+    let marco = if admite_marcos(i) { &t.v2.riel_marcos } else { &t.v2.riel_imprimir };
+    vec![(BotonRiel::Lapiz, t.v2.riel_anotar.clone()), (BotonRiel::Marco, marco.clone())]
 }
 
 /// Repinta la barra si es de este pin (cambio el zoom, la pagina, el video).
@@ -2681,6 +2694,48 @@ fn pedir_marcos(i: &PinInterno, pedido: crate::marcos_pin::PedidoMarco) {
     (i.al_cambiar)(CambioPin::MarcoPedido(pedido));
 }
 
+/// La tarjeta del pin en sus coordenadas del contenido: donde van las
+/// fichas de los marcos (las mismas que pinta `pintar_pista` con el margen
+/// de la sombra sumado).
+fn tarjeta_de(i: &PinInterno) -> RectF {
+    let r = i.estado.rect();
+    RectF {
+        x: 0.0,
+        y: 0.0,
+        ancho: r.ancho as f32,
+        alto: r.alto as f32,
+    }
+}
+
+/// La ficha de marco bajo el punto `(x, y)` del contenido, con el modo de
+/// los marcos puesto.
+fn ficha_bajo(i: &PinInterno, x: f32, y: f32) -> Option<usize> {
+    if !i.modo_marcos || i.marcos.is_empty() {
+        return None;
+    }
+    let e = i.escala_por_cien as f32 / 100.0;
+    crate::marcos_pin::ficha_en(tarjeta_de(i), i.marcos.len(), e, x, y)
+}
+
+/// **Ir al marco `k`** (su ficha): el zoom de dentro (el de Ctrl + rueda) se
+/// acerca hasta que el marco llena el pin, centrado (pegado al borde si cae
+/// en una orilla de la foto). Un marco que ya es la foto entera vuelve a
+/// verla sin zoom.
+fn ir_al_marco(i: &mut PinInterno, k: usize) {
+    let Some(m) = i.marcos.get(k).copied() else {
+        return;
+    };
+    let caja = encaje_de(i).caja_de(m);
+    let r = i.estado.rect();
+    let (escala, dx, dy) = crate::marcos_pin::vista_del_marco(caja, r.ancho as f32, r.alto as f32);
+    i.vista_escala = escala;
+    i.vista_dx = dx;
+    i.vista_dy = dy;
+    limitar_vista(i);
+    asegurar_resolucion(i, false);
+    pintar(i);
+}
+
 /// Holgura vertical al buscar texto bajo el cursor, en pixeles nativos.
 ///
 /// Acertar el recuadro exacto de una palabra obliga a afinar el raton, y
@@ -3282,9 +3337,11 @@ fn pintar(i: &PinInterno) {
             p.soltar_recorte();
         }
 
-        // Con el modo de los marcos puesto, su pista abajo a la izquierda.
+        // Con el modo de los marcos puesto, abajo a la izquierda las fichas
+        // de los marcos (pulsar una lleva a el) y la pista. Fuera del zoom de
+        // dentro: no crecen al acercarse.
         if i.modo_marcos {
-            crate::marcos_pin::pintar_pista(p, caja, &i.pista_marcos, escala);
+            crate::marcos_pin::pintar_pista(p, caja, &i.pista_marcos, i.marcos.len(), escala);
         }
 
         // Manejando a distancia, un marco de acento: con el modo encendido
@@ -4401,6 +4458,12 @@ extern "system" fn procedimiento_pin(
                 && !i.anotando
                 && admite_marcos(i)
             {
+                // Una ficha de abajo (1, 2, 3…): a ese marco, sin poner otro.
+                let c = punto_contenido(i, lparam);
+                if let Some(k) = ficha_bajo(i, c.x as f32, c.y as f32) {
+                    ir_al_marco(i, k);
+                    return LRESULT(0);
+                }
                 let q = punto_marco(i, lparam);
                 i.marco_nuevo = Some((q, q));
                 i.arrastrando_marco = true;
@@ -5699,8 +5762,11 @@ extern "system" fn procedimiento_pin(
             let id = interno_de(hwnd)
                 .map(|i| {
                     // Poniendo marcos, la cruz: arrastrar pone uno.
+                    // Sobre una ficha, la mano: lleva a su marco.
                     if i.modo_marcos && !i.anotando {
-                        return IDC_CROSS;
+                        let (c, r) = (cursor_de_pantalla(), i.estado.rect());
+                        let (x, y) = ((c.x - r.x) as f32, (c.y - r.y) as f32);
+                        return if ficha_bajo(i, x, y).is_some() { IDC_HAND } else { IDC_CROSS };
                     }
                     if i.anotando {
                         // Anotando no se mueve ni se redimensiona: el cursor
@@ -6772,6 +6838,16 @@ mod pruebas {
         bombear(100);
     }
 
+    /// El ancho de una ventana, en pixeles.
+    fn riel_ancho(h: HWND) -> i32 {
+        let mut r = RECT::default();
+        // SAFETY: GetWindowRect sobre una ventana propia de la prueba.
+        unsafe {
+            let _ = GetWindowRect(h, &mut r);
+        }
+        r.right - r.left
+    }
+
     /// **Los marcos numerados de una foto**, por la ventana de verdad: la I
     /// entra en el modo, dos arrastres ponen los marcos 1 y 2 (el gestor lo
     /// hace aqui la prueba: apunta cada pedido y devuelve la lista), el pin
@@ -6897,6 +6973,61 @@ mod pruebas {
         guardar(
             "pixpin-marcos-pin-pequeno.png",
             Rect { x: z(170), y: z(190), ancho: z(360) as u32, alto: z(230) as u32 },
+        );
+
+        // De vuelta a su tamano, la ficha 2 (abajo a la izquierda) lleva al
+        // marco 2: el zoom de dentro lo acerca hasta llenar el pin, sin
+        // pedir un marco nuevo.
+        foto.poner_rect(rect);
+        bombear(200);
+        let (ox, oy) = origen_contenido(hwnd, foto.rect_contenido());
+        let cliente = |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
+        let ficha = crate::marcos_pin::fichas(
+            RectF { x: 0.0, y: 0.0, ancho: w as f32, alto: h as f32 },
+            lista.len(),
+            1.0,
+        )[1];
+        let (fx, fy) = ((ficha.x + ficha.ancho / 2.0) as i32, (ficha.y + ficha.alto / 2.0) as i32);
+        // SAFETY: mensajes sincronos a una ventana propia de la prueba.
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(fx, fy)));
+            SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(fx, fy)));
+        }
+        assert!(pedidos.borrow().is_empty(), "pulsar una ficha no pone un marco");
+        let zoom = interno_de(hwnd).map(|i| (i.vista_escala, i.vista_dx, i.vista_dy)).unwrap();
+        assert!((zoom.0 - 2.444).abs() < 0.01, "el marco 2 (160 x 100) llena el pin: {zoom:?}");
+        // Su centro (320, 190) en el centro del pin, o lo mas cerca sin
+        // despegar la foto del borde.
+        assert!(zoom.1 <= 0.0 && zoom.2 <= 0.0);
+        bombear(300);
+        guardar(
+            "pixpin-marcos-pin-ficha2.png",
+            Rect { x: z(170), y: z(190), ancho: z(540) as u32, alto: z(330) as u32 },
+        );
+        // La otra ficha cambia de marco: el 1, del mismo tamano y mas a la
+        // izquierda.
+        // SAFETY: mensajes sincronos a una ventana propia de la prueba.
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(20, h as i32 - 20)));
+            SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(20, h as i32 - 20)));
+        }
+        let z1 = interno_de(hwnd).map(|i| (i.vista_escala, i.vista_dx, i.vista_dy)).unwrap();
+        assert!((z1.0 - zoom.0).abs() < 0.01 && z1.1 > zoom.1, "la ficha 1 va al marco 1, mas a la izquierda: {z1:?}");
+
+        // El riel con el raton sobre el marco: su globo «Marcos para
+        // imprimir (I)» a la izquierda, la ventana del riel crece para el.
+        if let Some(i) = interno_de(hwnd) {
+            ensenar_riel(i, false);
+        }
+        bombear(150);
+        let riel = crate::riel_pin::ventana_de_prueba().expect("el riel esta");
+        let antes = riel_ancho(riel);
+        crate::riel_pin::encima_de_prueba(Some(crate::riel_pin::BotonRiel::Marco));
+        bombear(200);
+        assert!(riel_ancho(riel) > antes + 60, "el riel crece para su globo");
+        guardar(
+            "pixpin-riel-pin-globo.png",
+            Rect { x: z(400), y: z(200), ancho: z(300) as u32, alto: z(120) as u32 },
         );
         drop(foto);
         bombear(100);
