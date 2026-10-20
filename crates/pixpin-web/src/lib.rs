@@ -73,6 +73,8 @@ type AlGuardar = Rc<dyn Fn(Vec<u8>)>;
 /// Un WebView2 empotrado en una ventana de PixPin, mostrando un `.html`.
 pub struct VisorHtml {
     controlador: ICoreWebView2Controller,
+    /// Si Ctrl+P es del visor (los marcos numerados) y no de la pagina.
+    ctrl_p: Rc<std::cell::Cell<bool>>,
     /// La carpeta propia donde aterrizan las descargas interceptadas y los
     /// datos de usuario del navegador. Se borra al cerrar.
     temporal: PathBuf,
@@ -119,7 +121,8 @@ impl VisorHtml {
         medir_carga(&vista, "html", t0);
         conectar_puente(&vista, al_guardar.clone())?;
         conectar_descargas(&vista, al_guardar, temporal.clone())?;
-        conectar_teclas(&controlador, Rc::from(al_tecla))?;
+        let ctrl_p = Rc::new(std::cell::Cell::new(false));
+        conectar_teclas(&controlador, Rc::from(al_tecla), Rc::clone(&ctrl_p))?;
 
         let url = CoTaskMemPWSTR::from(ruta::url_de_fichero(ruta).as_str());
         // SAFETY: `url` mantiene viva la cadena durante toda la llamada, que
@@ -129,6 +132,7 @@ impl VisorHtml {
 
         Ok(VisorHtml {
             controlador,
+            ctrl_p,
             temporal,
         })
     }
@@ -168,6 +172,23 @@ impl VisorHtml {
             // mucho menos grave que tirar la ventana entera.
             tracing::warn!(error = %e, "no se pudo recolocar el WebView2");
         }
+    }
+
+    /// **El zoom de la pagina** (el de Ctrl+rueda, `ZoomFactor` del
+    /// controlador): 1 es el 100 %.
+    pub fn zoom(&self) -> f64 {
+        zoom_de(&self.controlador)
+    }
+
+    /// Pone el zoom de la pagina (un marcador que vuelve a su vista).
+    pub fn poner_zoom(&self, zoom: f64) {
+        poner_zoom_en(&self.controlador, zoom);
+    }
+
+    /// Si Ctrl+P dentro de la pagina es del visor (llega a `al_tecla` como
+    /// [`CTRL_P`]) en vez de la impresion de Edge: con marcos numerados.
+    pub fn tomar_ctrl_p(&self, si: bool) {
+        self.ctrl_p.set(si);
     }
 
     /// **Corre `js` en la pagina** y le da a `al_volver` lo que devuelva,
@@ -214,6 +235,37 @@ impl Drop for VisorHtml {
         // Las descargas interceptadas ya se entregaron en memoria: lo que
         // quede aqui es basura y no debe sobrevivir a la sesion.
         let _ = std::fs::remove_dir_all(&self.temporal);
+    }
+}
+
+/// Lo que le llega a `al_tecla` de [`VisorHtml::nuevo`] con Ctrl+P, si el
+/// visor lo pidio con [`VisorHtml::tomar_ctrl_p`].
+pub const CTRL_P: u32 = 0x1_0050;
+
+fn ctrl_pulsado() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
+    // SAFETY: solo lee el estado de una tecla.
+    unsafe { GetKeyState(VK_CONTROL.0 as i32) < 0 }
+}
+
+/// El `ZoomFactor` de un controlador (1 si no contesta).
+pub(crate) fn zoom_de(controlador: &ICoreWebView2Controller) -> f64 {
+    let mut z = 1.0f64;
+    // SAFETY: controlador vivo de quien llama; `z` es local.
+    match unsafe { controlador.ZoomFactor(&mut z) } {
+        Ok(()) if z.is_finite() && z > 0.0 => z,
+        _ => 1.0,
+    }
+}
+
+/// Pone el `ZoomFactor` (acotado a lo que deja Edge: del 25 % al 500 %).
+pub(crate) fn poner_zoom_en(controlador: &ICoreWebView2Controller, zoom: f64) {
+    if !zoom.is_finite() {
+        return;
+    }
+    // SAFETY: controlador vivo de quien llama.
+    if let Err(e) = unsafe { controlador.SetZoomFactor(zoom.clamp(0.25, 5.0)) } {
+        tracing::warn!(error = %e, "no se pudo poner el zoom de la pagina");
     }
 }
 
@@ -521,6 +573,7 @@ pub(crate) fn crear_controlador(
 fn conectar_teclas(
     controlador: &ICoreWebView2Controller,
     al_tecla: Rc<dyn Fn(u32)>,
+    ctrl_p: Rc<std::cell::Cell<bool>>,
 ) -> Result<(), ErrorWeb> {
     use webview2_com::AcceleratorKeyPressedEventHandler;
     use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
@@ -545,6 +598,13 @@ fn conectar_teclas(
                 args.SetHandled(true)?;
             }
             al_tecla(tecla);
+        } else if clase == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && tecla == 0x50 && ctrl_p.get() && ctrl_pulsado() {
+            // Ctrl+P con marcos: imprimirlos, no la pagina entera de Edge.
+            // SAFETY: propiedad del propio evento.
+            unsafe {
+                args.SetHandled(true)?;
+            }
+            al_tecla(CTRL_P);
         }
         Ok(())
     }));

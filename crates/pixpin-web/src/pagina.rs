@@ -261,6 +261,16 @@ impl Pagina {
         }
     }
 
+    /// **El zoom de la pagina** (`ZoomFactor`, 1 es el 100 %).
+    pub fn zoom(&self) -> f64 {
+        crate::zoom_de(&self.controlador)
+    }
+
+    /// Pone el zoom de la pagina (un marcador que vuelve a su vista).
+    pub fn poner_zoom(&self, zoom: f64) {
+        crate::poner_zoom_en(&self.controlador, zoom);
+    }
+
     /// Le da el teclado a la pagina (la ventana que la lleva lo tenia).
     pub fn enfocar(&self) {
         crate::enfocar(&self.controlador);

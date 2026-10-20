@@ -253,6 +253,12 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 EventoOverlay::Cerrar => vivo = false,
                 // Ctrl+E: el «Exportar» comun, como el boton.
                 EventoOverlay::Tecla { vk: 0x45, ctrl: true, alt: false, .. } => exportar(ruta),
+                // Ctrl+P con el teclado en la ventana: los marcos.
+                EventoOverlay::Tecla { vk: 0x50, ctrl: true, alt: false, .. } if riel.as_ref().is_some_and(|r| r.hay_marcos()) => {
+                    if let Some(r) = riel.as_mut() {
+                        r.imprimir_marcos(Some(&visor));
+                    }
+                }
                 // El teclado lo tenia la ventana (se toco su borde): la
                 // tecla cuenta y el siguiente va ya a la pagina.
                 EventoOverlay::Tecla { vk, .. } => {
@@ -266,6 +272,13 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         // Esc y F11, vengan de la ventana o de la pagina: como en los demas
         // visores (`lector_pin::tecla`).
         for vk in teclas {
+            // Ctrl+P con marcos, dentro de la pagina: imprimirlos en grupo.
+            if vk == pixpin_web::CTRL_P {
+                if let Some(r) = riel.as_mut() {
+                    r.imprimir_marcos(Some(&visor));
+                }
+                continue;
+            }
             match crate::lector_pin::tecla(vk, pin.pantalla_completa) {
                 Some(true) => vivo = false,
                 Some(false) => pin.alternar_pantalla_completa(&mut ventana),
@@ -291,6 +304,8 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         if let Some(r) = riel.as_mut() {
             r.seguir(riel::en_pantalla(pin.area, pin.area_de_la_vista()), escala, pin.fijado, pin.oscuro());
             r.tic(Some(&visor));
+            // Con marcos, Ctrl+P es suyo (y no la impresion de Edge).
+            visor.tomar_ctrl_p(r.hay_marcos());
         }
         // Lo que la pagina haya mandado guardar, al fichero del chat. Se
         // escribe aqui y no dentro del aviso del WebView2 para no tocar el
@@ -528,6 +543,10 @@ mod latencia {
         let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
         let Some(ruta) = std::env::var_os("PIXPIN_RIEL_MUESTRA").map(std::path::PathBuf::from) else { return };
         let idioma = pixpin_store::Idioma::Espanol;
+        // Con `PIXPIN_RIEL_OSCURO`, en oscuro (para ver que se imprime en claro).
+        if std::env::var_os("PIXPIN_RIEL_OSCURO").is_some() != crate::oscuro::activo() {
+            crate::oscuro::alternar();
+        }
         if super::se_abre(&pixpin_docs::nombre(&ruta)) {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let _ = super::abrir(&pixpin_store::Catalogo::nuevo(idioma), &ruta);

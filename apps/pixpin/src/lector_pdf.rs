@@ -651,6 +651,10 @@ enum Accion {
     Auto,
     /// Un boton de la barra de la pagina que sube sola.
     AutoBoton(lector::BotonAuto),
+    /// Los marcos numerados: imprimirlos todos y quitarlos todos (el menu
+    /// del plano).
+    ImprimirMarcos,
+    BorrarMarcos,
     /// PDF: «Ver como texto», en el lector de Word (`visor::como_texto`).
     ComoTexto,
 }
@@ -2290,6 +2294,10 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
     if !e.marcas.is_empty() {
         filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
     }
+    if !e.marcos.lista.is_empty() {
+        filas.push((textos.t("marcos-imprimir"), Accion::ImprimirMarcos));
+        filas.push((textos.t("marcos-borrar"), Accion::BorrarMarcos));
+    }
     filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
     // Solo si no lo es ya: como en el movil, anotar no crea ningun proyecto.
     if e.office.is_none() && !e.donde.es_de_un_proyecto() {
@@ -3078,6 +3086,10 @@ fn hacer(
         // pasar que se cambie por accidente»).
         Accion::Renombrar => {}
         // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
+        Accion::ImprimirMarcos => {
+            imprimir_marcos(e, ruta);
+        }
+        Accion::BorrarMarcos => e.marcos.borrar(),
         Accion::Oscuro => {
             crate::oscuro::alternar();
         }
