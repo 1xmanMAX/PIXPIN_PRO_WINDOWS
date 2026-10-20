@@ -281,6 +281,13 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
     }
     let (mut leyendo, mut con_comentarios) = (false, false);
     let mut propios = botones(leyendo, con_comentarios);
+    pin.poner_pistas(pistas(cx.textos));
+    // Pruebas (solo en debug): siempre encima, para fotografiar la pantalla
+    // sin que otra ventana lo tape.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("PIXPIN_PRUEBA_ENCIMA").is_some() {
+        pin.alternar_fijado(&ventana);
+    }
     if let Some(m) = &motor {
         pin.actualizar(m, &en_la_barra, &propios);
     }
@@ -313,6 +320,8 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                 documento: documento_del_riel(&raiz, &cx.actual.borrow()),
                 con_pagina: true,
                 titulo: en_la_barra.clone(),
+                // La G abre el ⋮ de la barra, como en los demas visores.
+                menu: true,
             },
             cx.textos,
         ),
@@ -397,7 +406,19 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
             match evento {
                 EventoOverlay::Cerrar => pedir_cierre(&mut cerrando, &pagina),
                 // El teclado lo tenia la ventana (se toco su borde): la
-                // tecla cuenta y la siguiente va ya a la pagina.
+                // tecla cuenta y la siguiente va ya a la pagina. Las de los
+                // visores (I, A, M, Ctrl+M, G), al riel.
+                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } if riel.is_some() => {
+                    match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, Some(&pagina))) {
+                        Some(crate::visor_html::riel::Pide::Tecla(v)) => teclas.push(v),
+                        Some(crate::visor_html::riel::Pide::Teclado) => pagina.enfocar(),
+                        Some(crate::visor_html::riel::Pide::Nada) => {}
+                        None => {
+                            teclas.push(vk);
+                            pagina.enfocar();
+                        }
+                    }
+                }
                 EventoOverlay::Tecla { vk, .. } => {
                     teclas.push(vk);
                     pagina.enfocar();
@@ -410,6 +431,15 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         // (Dentro de la pagina Esc no cierra: es un editor; F11 y Esc a
         // pantalla completa llegan como `ventana`.)
         for vk in teclas {
+            // G: el menu ⋮ de la barra (lo abre la pagina).
+            if vk == VK_G {
+                mandar_mas(&pagina);
+                continue;
+            }
+            // Esc con la tira de los marcadores abierta: solo la cierra.
+            if vk == 0x1B && riel.as_mut().is_some_and(|r| r.soltar_esc()) {
+                continue;
+            }
             match crate::lector_pin::tecla(vk, pin.pantalla_completa) {
                 Some(true) => pedir_cierre(&mut cerrando, &pagina),
                 Some(false) => alternar_pantalla(&mut pin, &mut ventana, &pagina),
@@ -444,6 +474,16 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                     }
                 }
                 Suceso::Mensaje(m) => {
+                    // Lo del riel (por donde va al desplazarse, las teclas de
+                    // los visores pulsadas en la pagina), a el.
+                    if let Some(pide) = riel.as_mut().and_then(|r| r.mensaje(&m, Some(&pagina))) {
+                        match pide {
+                            crate::visor_html::riel::Pide::Teclado => pagina.enfocar(),
+                            crate::visor_html::riel::Pide::Tecla(VK_G) => mandar_mas(&pagina),
+                            _ => {}
+                        }
+                        continue;
+                    }
                     let Ok(pedido) = serde_json::from_str::<DeLaPagina>(&m) else {
                         tracing::warn!(%m, "mensaje del lector que no se entiende");
                         continue;
@@ -687,6 +727,31 @@ pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
     v
 }
 
+/// La G de los visores: el menu ⋮.
+const VK_G: u32 = 0x47;
+
+/// Abre el menu ⋮ de la barra (lo pinta la pagina), como su boton.
+fn mandar_mas(pagina: &Pagina) {
+    if let Some(que) = orden_de(MAS) {
+        pagina.mandar(&json!({"tipo": "orden", "que": que}).to_string());
+        pagina.enfocar();
+    }
+}
+
+/// **El globo de cada boton de la barra**: su nombre y su tecla.
+pub fn pistas(textos: &Catalogo) -> Vec<(u8, String)> {
+    vec![
+        (VER, textos.t("nota-pista-ver")),
+        (EDITAR, textos.t("nota-pista-editar")),
+        (DESHACER, textos.t("barra-pista-deshacer")),
+        (REHACER, textos.t("barra-pista-rehacer")),
+        (BUSCAR, textos.t("nota-pista-buscar")),
+        (COMENTARIOS, textos.t("nota-pista-comentarios")),
+        (COMPARTIR, textos.t("nota-pista-compartir")),
+        (MAS, textos.t("lector-mas")),
+    ]
+}
+
 /// La `orden` que se le manda a la pagina por cada boton: todo lo hace
 /// ella (compartir tambien, que guarda antes lo ultimo escrito).
 pub fn orden_de(id: u8) -> Option<&'static str> {
@@ -866,6 +931,21 @@ mod pruebas {
             crate::lector_pin::disposicion("Plan", "md", &botones(true, false), true),
             ["asa", "nombre", "propio:1", "propio:4", "propio:5", "propio:6", "propio:7", "oscuro", "pantalla", "fijar", "cerrar"]
         );
+    }
+
+    #[test]
+    fn cada_boton_de_la_barra_tiene_su_globo_en_los_dos_idiomas() {
+        for idioma in [pixpin_store::Idioma::Espanol, pixpin_store::Idioma::Ingles] {
+            let t = Catalogo::nuevo(idioma);
+            let p = pistas(&t);
+            for id in [VER, EDITAR, DESHACER, REHACER, BUSCAR, COMENTARIOS, COMPARTIR, MAS] {
+                let s = p.iter().find(|(i, _)| *i == id).map(|(_, s)| s.as_str()).unwrap_or_else(|| panic!("{id} sin globo"));
+                assert!(!s.is_empty() && !s.starts_with("nota-pista") && !s.starts_with("barra-") && !s.starts_with("lector-"), "{s}");
+            }
+        }
+        // El ⋮ dice su tecla, la G, que tambien lo abre desde la pagina.
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert!(pistas(&t).iter().any(|(i, s)| *i == MAS && s.contains("(G)")));
     }
 
     #[test]

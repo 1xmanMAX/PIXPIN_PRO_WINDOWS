@@ -75,6 +75,10 @@ pub struct VisorHtml {
     controlador: ICoreWebView2Controller,
     /// Si Ctrl+P es del visor (los marcos numerados) y no de la pagina.
     ctrl_p: Rc<std::cell::Cell<bool>>,
+    /// Lo que la pagina mando por `chrome.webview.postMessage` y no es un
+    /// guardado (el riel de los visores: el desplazamiento al momento y las
+    /// teclas pulsadas dentro de la pagina). Ver [`VisorHtml::tomar_mensajes`].
+    otros: Rc<std::cell::RefCell<Vec<String>>>,
     /// La carpeta propia donde aterrizan las descargas interceptadas y los
     /// datos de usuario del navegador. Se borra al cerrar.
     temporal: PathBuf,
@@ -119,7 +123,8 @@ impl VisorHtml {
         .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
 
         medir_carga(&vista, "html", t0);
-        conectar_puente(&vista, al_guardar.clone())?;
+        let otros = Rc::new(std::cell::RefCell::new(Vec::new()));
+        conectar_puente(&vista, al_guardar.clone(), Rc::clone(&otros))?;
         conectar_descargas(&vista, al_guardar, temporal.clone())?;
         let ctrl_p = Rc::new(std::cell::Cell::new(false));
         conectar_teclas(&controlador, Rc::from(al_tecla), Rc::clone(&ctrl_p))?;
@@ -133,6 +138,7 @@ impl VisorHtml {
         Ok(VisorHtml {
             controlador,
             ctrl_p,
+            otros,
             temporal,
         })
     }
@@ -189,6 +195,14 @@ impl VisorHtml {
     /// [`CTRL_P`]) en vez de la impresion de Edge: con marcos numerados.
     pub fn tomar_ctrl_p(&self, si: bool) {
         self.ctrl_p.set(si);
+    }
+
+    /// **Lo que la pagina mando** (`chrome.webview.postMessage`) desde la
+    /// ultima vez, sin los guardados (esos van a `al_guardar`). Llega en este
+    /// mismo hilo al bombear sus mensajes; quien lo lleva lo recoge en cada
+    /// vuelta de su bucle.
+    pub fn tomar_mensajes(&self) -> Vec<String> {
+        std::mem::take(&mut *self.otros.borrow_mut())
     }
 
     /// **Corre `js` en la pagina** y le da a `al_volver` lo que devuelva,
@@ -616,7 +630,11 @@ fn conectar_teclas(
 }
 
 /// Camino 1: inyecta `window.PixPinVisor` y escucha sus mensajes.
-fn conectar_puente(vista: &ICoreWebView2, al_guardar: AlGuardar) -> Result<(), ErrorWeb> {
+fn conectar_puente(
+    vista: &ICoreWebView2,
+    al_guardar: AlGuardar,
+    otros: Rc<std::cell::RefCell<Vec<String>>>,
+) -> Result<(), ErrorWeb> {
     let script = CoTaskMemPWSTR::from(puente::SCRIPT);
     let mut token = 0i64;
 
@@ -653,7 +671,12 @@ fn conectar_puente(vista: &ICoreWebView2, al_guardar: AlGuardar) -> Result<(), E
                 // SAFETY: `args` lo da WebView2 y vive durante el evento; la
                 // cadena que escribe se libera con `take_pwstr`.
                 if unsafe { args.TryGetWebMessageAsString(&mut mensaje) }.is_ok() {
-                    atender_mensaje(&take_pwstr(mensaje), &al_guardar);
+                    let mensaje = take_pwstr(mensaje);
+                    if puente::es_peticion_de_guardado(&mensaje) {
+                        atender_mensaje(&mensaje, &al_guardar);
+                    } else if otros.borrow().len() < MENSAJES_GUARDADOS {
+                        otros.borrow_mut().push(mensaje);
+                    }
                 }
             }
             Ok(())
@@ -665,6 +688,10 @@ fn conectar_puente(vista: &ICoreWebView2, al_guardar: AlGuardar) -> Result<(), E
 
     Ok(())
 }
+
+/// Cuantos mensajes que no son guardados se guardan sin recoger: una pagina
+/// que mande sin parar y un visor que no los recoja no se comen la memoria.
+const MENSAJES_GUARDADOS: usize = 512;
 
 /// Descodifica y valida lo que llego por el puente.
 fn atender_mensaje(mensaje: &str, al_guardar: &AlGuardar) {

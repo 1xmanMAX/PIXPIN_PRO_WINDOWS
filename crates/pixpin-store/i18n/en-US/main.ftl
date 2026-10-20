@@ -2723,7 +2723,7 @@ tareas-apuntar-en-asignatura = New { $asignatura } task…
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = Drag a box over what you want to print · Enter: everything · Esc: leave
 lector-marco = Frame to print (P)
-marcos-pista = Drag to frame what is printed · Ctrl+P: print all · Del: remove the last one · I: leave
+marcos-pista = Drag to frame · a number: go to that frame · Ctrl+P: print all · Del: remove the last one · I or Esc: leave
 marcos-imprimir = Print the frames (Ctrl+P)
 marcos-borrar = Clear frames
 riel-marcador = Bookmark (Ctrl+M)

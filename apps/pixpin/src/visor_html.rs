@@ -39,6 +39,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod capa_web;
 pub mod riel;
 
 use std::cell::RefCell;
@@ -76,6 +77,11 @@ pub fn botones() -> Vec<BotonLector> {
         BotonLector { id: EXPORTAR, icono: &material::IOS_SHARE, encendido: false },
         BotonLector { id: NAVEGADOR, icono: &material::PUBLIC, encendido: false },
     ]
+}
+
+/// **El globo de cada boton propio**: su nombre y su tecla.
+pub fn pistas(textos: &Catalogo) -> Vec<(u8, String)> {
+    vec![(RECARGAR, textos.t("web-recargar")), (EXPORTAR, textos.t("web-exportar")), (NAVEGADOR, textos.t("web-navegador"))]
 }
 
 /// El fondo mientras la pagina carga: el de una pagina sin estilo (blanco)
@@ -160,6 +166,13 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         pin.crear_barra(m, &r.d3d(), &ventana);
     }
     let propios = botones();
+    pin.poner_pistas(pistas(textos));
+    // Pruebas (solo en debug): siempre encima, para fotografiar la pantalla
+    // sin que otra ventana lo tape.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("PIXPIN_PRUEBA_ENCIMA").is_some() {
+        pin.alternar_fijado(&ventana);
+    }
     if let Some(m) = &motor {
         pin.actualizar(m, &nombre, &propios);
     }
@@ -197,7 +210,7 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             &ventana,
             riel::en_pantalla(pin.area, pin.area_de_la_vista()),
             escala,
-            riel::Opciones { documento: Some(ruta.to_path_buf()), con_pagina: true, titulo: nombre.clone() },
+            riel::Opciones { documento: Some(ruta.to_path_buf()), con_pagina: true, titulo: nombre.clone(), menu: false },
             textos,
         ),
         _ => None,
@@ -209,6 +222,17 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
         let mut teclas: Vec<u32> = pulsadas.borrow_mut().drain(..).collect();
+        // Lo que mando la pagina al riel: por donde va al desplazarse y las
+        // teclas de los visores (I, M, A, Ctrl+M) pulsadas en ella.
+        for m in visor.tomar_mensajes() {
+            if let Some(r) = riel.as_mut() {
+                match r.mensaje(&m, Some(&visor)) {
+                    Some(riel::Pide::Teclado) => visor.enfocar(),
+                    Some(riel::Pide::Tecla(vk)) => teclas.push(vk),
+                    _ => {}
+                }
+            }
+        }
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if let Some(r) = riel.as_mut()
                 && r.es_suya(h)
@@ -260,7 +284,19 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                     }
                 }
                 // El teclado lo tenia la ventana (se toco su borde): la
-                // tecla cuenta y el siguiente va ya a la pagina.
+                // tecla cuenta y el siguiente va ya a la pagina. Las de los
+                // visores (I, A, M, Ctrl+M), al riel.
+                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } if riel.as_ref().is_some() => {
+                    match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, Some(&visor))) {
+                        Some(riel::Pide::Tecla(v)) => teclas.push(v),
+                        Some(riel::Pide::Teclado) => visor.enfocar(),
+                        Some(riel::Pide::Nada) => {}
+                        None => {
+                            teclas.push(vk);
+                            visor.enfocar();
+                        }
+                    }
+                }
                 EventoOverlay::Tecla { vk, .. } => {
                     teclas.push(vk);
                     visor.enfocar();
@@ -277,6 +313,10 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 if let Some(r) = riel.as_mut() {
                     r.imprimir_marcos(Some(&visor));
                 }
+                continue;
+            }
+            // Esc con la tira de los marcadores abierta: solo la cierra.
+            if vk == 0x1B && riel.as_mut().is_some_and(|r| r.soltar_esc()) {
                 continue;
             }
             match crate::lector_pin::tecla(vk, pin.pantalla_completa) {
@@ -408,6 +448,19 @@ mod pruebas {
         // (la pagina se edita y se copia dentro).
         assert!(botones().iter().all(|b| !b.encendido));
         assert!(!botones().iter().any(|b| std::ptr::eq(b.icono, &material::EDIT) || std::ptr::eq(b.icono, &material::CONTENT_COPY)));
+    }
+
+    #[test]
+    fn cada_boton_propio_tiene_su_globo_en_los_dos_idiomas() {
+        for idioma in [pixpin_store::Idioma::Espanol, pixpin_store::Idioma::Ingles] {
+            let t = Catalogo::nuevo(idioma);
+            let p = pistas(&t);
+            // Uno por boton, con su texto de verdad (no la clave sin traducir).
+            assert_eq!(p.iter().map(|(id, _)| *id).collect::<Vec<_>>(), botones().iter().map(|b| b.id).collect::<Vec<_>>());
+            assert!(p.iter().all(|(_, s)| !s.is_empty() && !s.starts_with("web-")), "{p:?}");
+        }
+        // Y el de exportar lleva su tecla.
+        assert!(pistas(&Catalogo::nuevo(pixpin_store::Idioma::Espanol))[1].1.contains("Ctrl+E"));
     }
 
     #[test]

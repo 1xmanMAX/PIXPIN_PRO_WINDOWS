@@ -2724,7 +2724,7 @@ tareas-apuntar-en-asignatura = Nueva tarea de { $asignatura }…
 # El marco para imprimir de los visores (19-oct-2026)
 marco-imprimir-pista = Arrastra un recuadro sobre lo que quieres imprimir · Enter: todo · Esc: salir
 lector-marco = Marco para imprimir (P)
-marcos-pista = Arrastra para marcar lo que se imprime · Ctrl+P: imprimir todos · Supr: quitar el último · I: salir
+marcos-pista = Arrastra para marcar · un número: ir a ese marco · Ctrl+P: imprimir todos · Supr: quitar el último · I o Esc: salir
 marcos-imprimir = Imprimir los marcos (Ctrl+P)
 marcos-borrar = Borrar los marcos
 riel-marcador = Marcador (Ctrl+M)

@@ -165,11 +165,13 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         &ventana,
         crate::visor_html::riel::en_pantalla(pin.area, dentro),
         escala,
-        crate::visor_html::riel::Opciones { documento: None, con_pagina: false, titulo: nombre.clone() },
+        crate::visor_html::riel::Opciones { documento: None, con_pagina: false, titulo: nombre.clone(), menu: false },
         textos,
     );
     let ext = vista_previa::extension_de(ruta);
     let propios = botones(&nombre_fichero);
+    // El globo de cada boton propio: su nombre (y su tecla).
+    pin.poner_pistas(vec![(ABRIR_CON, textos.t("office-pista-abrir-con")), (PRESENTAR, textos.t("office-pista-presentar"))]);
     let mut contado = false;
     let mut avisado_tarda = false;
     let mut vivo = true;
@@ -219,6 +221,13 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
             }
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
+                // Las de todos los visores (I, los marcos; A, el lapiz), al
+                // riel; lo demas (Esc, F11), al pin.
+                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } => match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, None)) {
+                    Some(crate::visor_html::riel::Pide::Tecla(v)) => teclas.push(v),
+                    Some(_) => {}
+                    None => teclas.push(vk),
+                },
                 EventoOverlay::Tecla { vk, .. } => teclas.push(vk),
                 EventoOverlay::Pintar | EventoOverlay::CambioDpi => vista_previa::pintar_fondo(ventana.handle()),
                 _ => {}
