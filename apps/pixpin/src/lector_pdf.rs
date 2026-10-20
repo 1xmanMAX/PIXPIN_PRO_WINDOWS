@@ -2799,10 +2799,46 @@ fn doc_del_raton(e: &Estado, m: Marco) -> [f64; 2] {
 /// Las fotos de los marcos para imprimirlos en grupo (`marcos_doc`): por
 /// cual va, cuando se puso a su vista y lo de antes para volver.
 pub(crate) struct FotosDeMarcos {
-    i: usize,
-    desde: u64,
-    antes: (f32, f32, f32),
+    pub(crate) i: usize,
+    pub(crate) desde: u64,
+    pub(crate) antes: (f32, f32, f32),
     fotos: Vec<ImagenRgba>,
+    titulo: String,
+}
+
+impl FotosDeMarcos {
+    /// Para empezar desde el primer marco, con la vista `antes` para volver.
+    pub(crate) fn nuevas(antes: (f32, f32, f32), titulo: &str) -> FotosDeMarcos {
+        FotosDeMarcos { i: 0, desde: 0, antes, fotos: Vec::new(), titulo: titulo.to_string() }
+    }
+
+    /// Lo pintado ya esta en la pantalla: la foto de `r` (pixeles de la
+    /// ventana `hwnd`) y al siguiente marco.
+    pub(crate) fn fotografiar(&mut self, hwnd: isize, r: RectF) {
+        pixpin_shell::overlay::esperar_composicion();
+        if let Some((_, cliente)) = pixpin_shell::overlay::area_cliente(Some(hwnd)) {
+            let area = pixpin_geom::Rect {
+                x: cliente.x + r.x.round() as i32,
+                y: cliente.y + r.y.round() as i32,
+                ancho: r.ancho.round().max(1.0) as u32,
+                alto: r.alto.round().max(1.0) as u32,
+            };
+            match area.interseccion(cliente).and_then(crate::marco_imprimir::foto_de_pantalla) {
+                Some(foto) => self.fotos.push(foto),
+                None => tracing::warn!(i = self.i, "marcos: sin foto del marco"),
+            }
+        }
+        self.i += 1;
+        self.desde = 0;
+    }
+
+    /// Todas juntas al dialogo de imprimir, una hoja por marco.
+    pub(crate) fn imprimir(self, hwnd: isize) {
+        tracing::info!(marcos = self.fotos.len(), "marcos: a imprimir en grupo");
+        if let Err(err) = crate::marco_imprimir::imprimir_fotos(hwnd, self.fotos, &self.titulo) {
+            tracing::warn!(?err, "marcos: no se pudo imprimir");
+        }
+    }
 }
 
 /// Ctrl+P con marcos: empieza a fotografiarlos (anotando, primero se deja
@@ -2815,7 +2851,7 @@ fn imprimir_marcos(e: &mut Estado, ruta: &Path) -> bool {
         alternar_anotar(e, ruta);
     }
     e.poniendo_marca = false;
-    e.fotos = Some(FotosDeMarcos { i: 0, desde: 0, antes: (e.x, e.y, e.zoom), fotos: Vec::new() });
+    e.fotos = Some(FotosDeMarcos::nuevas((e.x, e.y, e.zoom), &e.nombre));
     true
 }
 
@@ -2852,24 +2888,10 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
         e.fotos = Some(f);
         return false;
     }
-    pixpin_shell::overlay::esperar_composicion();
     let s = px(e, m);
     let (ex, ey) = (e.x, e.y);
     let r = crate::marcos_doc::caja_en_pantalla(marco.caja, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s));
-    if let Some((_, cliente)) = pixpin_shell::overlay::area_cliente(Some(e.hwnd)) {
-        let area = pixpin_geom::Rect {
-            x: cliente.x + r.x.round() as i32,
-            y: cliente.y + r.y.round() as i32,
-            ancho: r.ancho.round().max(1.0) as u32,
-            alto: r.alto.round().max(1.0) as u32,
-        };
-        match area.interseccion(cliente).and_then(crate::marco_imprimir::foto_de_pantalla) {
-            Some(foto) => f.fotos.push(foto),
-            None => tracing::warn!(i = f.i, "marcos: sin foto del marco"),
-        }
-    }
-    f.i += 1;
-    f.desde = 0;
+    f.fotografiar(e.hwnd, r);
     if f.i >= e.marcos.lista.len() {
         terminar_fotos(e, f);
     } else {
@@ -2882,10 +2904,7 @@ fn terminar_fotos(e: &mut Estado, f: FotosDeMarcos) {
     (e.x, e.y, e.zoom) = f.antes;
     e.fotografiando = false;
     e.zoom_cambiado = ahora_ms();
-    tracing::info!(marcos = f.fotos.len(), "marcos: a imprimir en grupo");
-    if let Err(err) = crate::marco_imprimir::imprimir_fotos(e.hwnd, f.fotos, &e.nombre) {
-        tracing::warn!(?err, "marcos: no se pudo imprimir");
-    }
+    f.imprimir(e.hwnd);
 }
 
 fn alternar_anotar(e: &mut Estado, ruta: &Path) {

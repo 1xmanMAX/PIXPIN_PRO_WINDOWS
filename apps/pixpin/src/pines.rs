@@ -26,6 +26,8 @@ mod extras;
 pub(crate) mod marcas_texto;
 use marcas_texto::Cambio;
 pub(crate) mod foto;
+// Los marcos numerados de los pines de imagen, como en el plano (19-oct-2026).
+mod marcos;
 
 /// El catalogo de los rotulos que pintan las herramientas. El pintor de un
 /// pin se llama desde su `WM_PAINT`, sin el catalogo a mano; como el panel
@@ -394,6 +396,9 @@ pub struct Pines {
     pizarras: HashMap<u64, (u8, u8)>,
     /// Lo hecho con la barra de marcas en cada pin, para `Ctrl+Z`.
     marcas: HashMap<u64, Vec<marcas_texto::Paso>>,
+    /// Los marcos numerados de cada pin de imagen (`marcos`), con su
+    /// fichero al lado de la imagen del almacen.
+    marcos: HashMap<u64, crate::marcos_doc::Marcos>,
     /// La pegatina y la pagina de la nota de cada pin (`extras`). Las
     /// palabras magicas ya no viven aqui: son las de los ajustes
     /// (`magia::vigentes`).
@@ -583,6 +588,7 @@ impl Pines {
             herramientas: HashMap::new(),
             pizarras: HashMap::new(),
             marcas: HashMap::new(),
+            marcos: HashMap::new(),
             extras: extras::Extras::abrir(raiz),
             panel: None,
             pedidos_panel: Rc::new(RefCell::new(Vec::new())),
@@ -741,6 +747,8 @@ impl Pines {
         self.vestir(id);
         // Y con su pegatina y la pagina por la que se leia, si las tenia.
         self.poner_extras(id);
+        // Y con sus marcos numerados, si es una foto que los tiene.
+        self.cargar_marcos(id);
         // Y el panel «Pines abiertos», si esta a la vista, lo cuenta ya.
         self.refrescar_panel();
         Ok(())
@@ -1473,6 +1481,7 @@ impl Pines {
             self.herramientas.remove(&id);
             self.pizarras.remove(&id);
             self.marcas.remove(&id);
+            self.marcos.remove(&id);
             // Soltar el pin en vivo cierra tambien su captura (Drop).
             if let Some((_, recorte)) = self.en_vivo.remove(&id) {
                 tracing::info!(
@@ -1600,6 +1609,7 @@ impl Pines {
                 self.imprimir_zona(id);
                 Ok(())
             }
+            CambioPin::MarcoPedido(pedido) => self.pedido_de_marcos(id, pedido),
             // `purgar` los lleva por `procesar_anotacion` en tandas; esto
             // queda para quien atienda un pedido suelto.
             CambioPin::PunteroPulsado(_)
@@ -1657,6 +1667,9 @@ impl Pines {
         // Salir del anterior guardando: dos pines anotandose a la vez no
         // significa nada y enredaria el foco del teclado.
         self.salir_de_anotar()?;
+        // Y del modo de los marcos de este pin: anotar y poner marcos no
+        // van a la vez.
+        self.salir_de_marcos(id);
 
         let ruta = self
             .ruta_anotacion(id)

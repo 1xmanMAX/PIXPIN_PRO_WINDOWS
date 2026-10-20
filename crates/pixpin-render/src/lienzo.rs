@@ -952,6 +952,20 @@ impl Pintor<'_> {
     /// ni se toca ni se duplica. Si el efecto no se puede crear, se pinta
     /// tal cual.
     pub fn bitmap_oscuro(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>) {
+        self.bitmap_con_matriz(b, destino, fuente, &crate::oscuro::matriz_d2d());
+    }
+
+    /// **Un bitmap en negativo** (cada canal al reves, el tono tambien): para
+    /// pintar una foto debajo de un `invertir_colores` de toda la ventana y
+    /// que, tras los dos negativos, salga con sus colores de verdad.
+    pub fn bitmap_negativo(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>) {
+        let m = [[-1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 0.0]];
+        self.bitmap_con_matriz(b, destino, fuente, &m);
+    }
+
+    /// Un bitmap pasado por una `ColorMatrix` de Direct2D (fila = canal de
+    /// entrada R, G, B, A y la de los desplazamientos).
+    fn bitmap_con_matriz(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>, matriz: &[[f32; 4]; 5]) {
         use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_SOURCE_OVER;
         use windows::Win32::Graphics::Direct2D::{
             CLSID_D2D1ColorMatrix, D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1_PROPERTY_TYPE_BOOL,
@@ -964,7 +978,7 @@ impl Pintor<'_> {
         if !(f.ancho > 0.0 && f.alto > 0.0 && destino.ancho > 0.0 && destino.alto > 0.0) {
             return;
         }
-        let datos: Vec<u8> = crate::oscuro::matriz_d2d().iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
+        let datos: Vec<u8> = matriz.iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
         // SAFETY: el efecto integrado existe en todo Direct2D 1.1; su entrada
         // es un bitmap vivo del mismo dispositivo; los datos de la matriz
         // tienen los 20 flotantes que pide su tipo.

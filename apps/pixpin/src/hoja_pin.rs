@@ -62,6 +62,11 @@ pub(crate) mod prueba {
     pub const CERRAR: u8 = 3;
     /// Escribir algo de muestra en la hoja (modo editar).
     pub const ESCRIBIR: u8 = 4;
+    /// Poner o quitar el modo de los marcos (como el boton del riel).
+    pub const MARCOS: u8 = 5;
+    /// Imprimir los marcos (Ctrl+P): las fotos quedan en
+    /// `visor_hoja::marcos::FOTOS`, sin abrir el dialogo.
+    pub const IMPRIMIR: u8 = 6;
 
     static ORDENES: Mutex<Vec<u8>> = Mutex::new(Vec::new());
     static VENTANA: Mutex<Option<(isize, pixpin_geom::Rect, bool)>> = Mutex::new(None);

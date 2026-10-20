@@ -17,7 +17,12 @@
 //!   lienzo (`lector_tinta::Tinta`, ver `capa`); pulsado mientras se anota.
 //!   El boton «Editar» de la barra del pin sigue siendo el de escribir en las
 //!   celdas.
-//! - **El marco**: imprimir un trozo de la ventana (`marco_imprimir`).
+//! - **El marco**: los marcos numerados para imprimir, como en el plano
+//!   (`marcos`): pulsado, azul, mientras se ponen.
+//!
+//! Cada marca guarda ademas su vista (el zoom y el desplazamiento exactos,
+//! `marcos_doc::Vistas`, en `<libro>.pixpin-vistas` por su id): ir a ella
+//! vuelve justo a lo que se veia. Las de antes (sin vista), a su celda.
 //!
 //! El riel va debajo de la barra de formulas y de las letras de las columnas
 //! y acaba encima de las pestanas: no tapa la barra de desplazamiento (que va
@@ -140,10 +145,7 @@ impl Estado<'_> {
         match self.destino_del_riel() {
             DestinoRiel::PonerMarca => self.poniendo_marca = !self.poniendo_marca,
             DestinoRiel::Hojita => self.alternar_anotar(motor),
-            DestinoRiel::Imprimir => {
-                self.poniendo_marca = false;
-                crate::marco_imprimir::de_la_ventana(Some(self.hwnd), &self.nombre, textos);
-            }
+            DestinoRiel::Imprimir => self.alternar_marcos(motor),
             DestinoRiel::Marca(i) => self.ir_a_la_marca(i, motor, textos),
             DestinoRiel::Emoji(i) => self.poner_marca(i),
             DestinoRiel::CerrarTira => self.poniendo_marca = false,
@@ -166,6 +168,7 @@ impl Estado<'_> {
         let Some(id) = self.marcas.get(i).map(|m| m.id) else { return false };
         self.marcas = marcas::sin(&self.marcas, id);
         self.recuerdo.guardar(&self.marcas);
+        self.vistas.quitar(&id.to_string());
         self.encima = self.destino_del_riel();
         true
     }
@@ -183,16 +186,31 @@ impl Estado<'_> {
         let (x, y) = sitio_de_marca(self.activa, celda);
         let emoji = lector::emoji_de_la_tira(i);
         let ahora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
-        self.marcas = marcas::con(&self.marcas, x, y, emoji, ahora);
+        let antes = std::mem::take(&mut self.marcas);
+        self.marcas = marcas::con(&antes, x, y, emoji, ahora);
         self.poniendo_marca = false;
         self.recuerdo.guardar(&self.marcas);
+        // Y lo que se ve: el zoom y el desplazamiento exactos.
+        let ab = self.abierta();
+        let vista = crate::marcos_doc::zoom_a_texto(ab.zoom, ab.x, ab.y);
+        if let Some(nueva) = self.marcas.iter().find(|m| !antes.iter().any(|a| a.id == m.id)) {
+            self.vistas.poner(&nueva.id.to_string(), vista);
+        }
+        // Las que se fueron (pasan de 24), sin vista.
+        let quedan: Vec<String> = self.marcas.iter().map(|m| m.id.to_string()).collect();
+        let sobran: Vec<String> = self.vistas.de.keys().filter(|k| !quedan.contains(k)).cloned().collect();
+        for k in sobran {
+            self.vistas.quitar(&k);
+        }
     }
 
-    /// **A la marca `i`**: su hoja, y su celda elegida y arriba a la
-    /// izquierda (lo que se fue a ver).
+    /// **A la marca `i`**: su hoja, su celda elegida y lo que se veia al
+    /// ponerla (el zoom y el desplazamiento); las de antes, sin vista, con
+    /// su celda arriba a la izquierda.
     pub(super) fn ir_a_la_marca(&mut self, i: usize, motor: &MotorRender, textos: &Catalogo) {
         let Some(m) = self.marcas.get(i) else { return };
         let (hoja, (f, c)) = celda_de_marca(m);
+        let vista = self.vistas.de_marca(&m.id.to_string()).and_then(crate::marcos_doc::zoom_de_texto);
         if hoja >= self.libro.hojas.len() {
             return;
         }
@@ -202,14 +220,26 @@ impl Estado<'_> {
                 return;
             }
         }
+        self.ver_la_marca((f, c), vista);
+    }
+
+    /// Lo de la marca en la hoja abierta: su celda elegida y su vista (o, sin
+    /// vista, la celda arriba a la izquierda).
+    pub(super) fn ver_la_marca(&mut self, (f, c): (u32, u32), vista: Option<(f64, f64, f64)>) {
         let caja = self.zonas().hoja;
         let ab = self.abierta_mut();
         ab.sel = Seleccion::en(f, c);
-        if f >= ab.rejilla.filas_fijas {
-            ab.y = ab.rejilla.y(f);
-        }
-        if c >= ab.rejilla.columnas_fijas {
-            ab.x = ab.rejilla.x(c);
+        if let Some((zoom, x, y)) = vista {
+            ab.zoom = logica::acotar_zoom(zoom);
+            ab.x = x;
+            ab.y = y;
+        } else {
+            if f >= ab.rejilla.filas_fijas {
+                ab.y = ab.rejilla.y(f);
+            }
+            if c >= ab.rejilla.columnas_fijas {
+                ab.x = ab.rejilla.x(c);
+            }
         }
         let (_, celdas) = vista_de(ab, caja);
         acotar(ab, celdas);
@@ -225,6 +255,10 @@ impl Estado<'_> {
             self.dejar_de_anotar();
         } else {
             self.dejar_de_editar(motor);
+            // Con los marcos no se anota (como en el plano): se dejan.
+            if self.marcos.activo {
+                self.marcos.alternar();
+            }
             self.anotando = true;
             self.poniendo_marca = false;
             self.gesto = None;
@@ -376,7 +410,7 @@ pub(super) fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     }
     let riel = est.riel();
     let emojis: Vec<&str> = est.marcas.iter().map(|m| m.emoji.as_str()).collect();
-    lector::pintar_riel(p, &riel, &emojis, est.encima, est.poniendo_marca, est.anotando, &textos.t("marca-elige"));
+    lector::pintar_riel_con(p, &riel, &emojis, est.encima, est.poniendo_marca, est.anotando, est.marcos.activo, &textos.t("marca-elige"));
     if est.anotando {
         let (area, escala) = (est.area, est.escala_por_cien());
         est.anotado.pintar_interfaz(p, area, escala);

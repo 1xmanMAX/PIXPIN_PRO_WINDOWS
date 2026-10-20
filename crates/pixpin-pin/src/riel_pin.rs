@@ -129,6 +129,8 @@ struct Interno {
     disposicion: Disposicion,
     /// Se esta anotando el pin dueno: el lapiz, encendido.
     anotando: bool,
+    /// Se ponen marcos en el pin dueno: el marco, encendido.
+    marcando: bool,
     encima: Option<BotonRiel>,
     origen: (i32, i32),
 }
@@ -201,6 +203,7 @@ pub(crate) fn mostrar(
     escala_por_cien: u32,
     anotable: bool,
     anotando: bool,
+    marcando: bool,
 ) {
     // Mientras se anota un pin el riel es suyo: pasar el raton por otro pin
     // no se lo lleva (perderia el lapiz con el que se sale).
@@ -260,6 +263,7 @@ pub(crate) fn mostrar(
                 escala,
                 disposicion: disposicion.clone(),
                 anotando,
+                marcando,
                 encima: None,
                 origen: (x, y),
             });
@@ -280,6 +284,7 @@ pub(crate) fn mostrar(
     i.escala = escala;
     i.disposicion = disposicion;
     i.anotando = anotando;
+    i.marcando = marcando;
     i.origen = (x, y);
     recolocar_ventana(hwnd, i);
 }
@@ -316,12 +321,25 @@ pub(crate) fn soltar() {
     }
 }
 
+/// Enciende o apaga el marco del riel (el modo de los marcos del pin
+/// `dueno`), si el riel es suyo.
+pub(crate) fn poner_marcando(dueno: HWND, marcando: bool) {
+    let Some(h) = ventana() else { return };
+    if let Some(i) = interno_de(h).filter(|i| i.dueno == dueno)
+        && i.marcando != marcando
+    {
+        i.marcando = marcando;
+        pintar(i);
+    }
+}
+
 /// Lo esconde, si es de `dueno`.
 pub(crate) fn esconder(dueno: HWND) {
     let Some(h) = ventana() else { return };
     if let Some(i) = interno_de(h).filter(|i| i.dueno == dueno) {
         i.encima = None;
         i.anotando = false;
+        i.marcando = false;
         // SAFETY: esconder una ventana propia.
         unsafe {
             let _ = ShowWindow(h, SW_HIDE);
@@ -396,7 +414,7 @@ fn pintar_riel(p: &Pintor, i: &Interno) {
         CRISTAL,
     );
     for (b, r) in &d.botones {
-        let activo = *b == BotonRiel::Lapiz && i.anotando;
+        let activo = (*b == BotonRiel::Lapiz && i.anotando) || (*b == BotonRiel::Marco && i.marcando);
         if activo {
             p.rellenar_redondeado(*r, 6.0 * e, ENCENDIDO);
         } else if i.encima == Some(*b) {

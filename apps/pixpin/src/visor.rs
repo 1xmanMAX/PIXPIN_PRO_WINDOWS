@@ -315,6 +315,16 @@ struct Estado {
     hallar: Hallar,
     /// El nombre de la pastilla y, si se esta cambiando, lo escrito (D5).
     nombre: crate::renombrar_doc::Pastilla,
+    /// Los marcos numerados (`marcos_doc`), como en el plano.
+    marcos: crate::marcos_doc::Marcos,
+    /// El zoom y el sitio de cada marcador (`marcos_doc::Vistas`).
+    vistas: crate::marcos_doc::Vistas,
+    /// Fotografiando los marcos para imprimirlos en grupo.
+    fotos: Option<crate::lector_pdf::FotosDeMarcos>,
+    /// Pintar solo el documento, con sus colores, para esas fotos.
+    fotografiando: bool,
+    /// La ventana del lector.
+    hwnd: isize,
     /// Con que hoja de estilo del movil se coloca (K16).
     hoja: Hoja,
     /// La tinta es de la maqueta de antes de K16 y hay que llevarla a la
@@ -446,6 +456,11 @@ pub fn abrir(
         x_meta: None,
         hallar: Hallar::default(),
         nombre: crate::renombrar_doc::Pastilla::de(ubicacion.raiz(), ruta),
+        marcos: crate::marcos_doc::Marcos::de(Some(ruta)),
+        vistas: crate::marcos_doc::Vistas::de_documento(Some(ruta)),
+        fotos: None,
+        fotografiando: false,
+        hwnd: ventana.handle().0 as isize,
         hoja: Hoja::de(ruta),
         tinta_de_antes,
         guardar_ya: false,
@@ -471,6 +486,8 @@ pub fn abrir(
     let mut ir_a = Some(e.ajustes.sitio);
 
     let mut hay_que_pintar = true;
+    // Pruebas: imprimir los marcos solo, a los 2 s (como `lector_pdf`).
+    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| ahora_ms() + 2000);
     let mut vivo = true;
     // La ruta puede cambiar al renombrar un documento suelto (D5): cada
     // vuelta trabaja con la de ahora.
@@ -576,6 +593,34 @@ pub fn abrir(
             }
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
+                // Los marcos numerados (`marcos_doc`), como en el plano.
+                EventoOverlay::BotonPulsado(p) if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) => {
+                    e.raton = local(p);
+                    e.marcos.pulsar(doc_del_raton(&e, marco), 0);
+                    ventana.capturar_raton();
+                }
+                EventoOverlay::RatonMovido(p) if e.marcos.arrastrando() => {
+                    e.raton = local(p);
+                    e.marcos.mover(doc_del_raton(&e, marco));
+                }
+                EventoOverlay::BotonSoltado(p) if e.marcos.arrastrando() => {
+                    e.raton = local(p);
+                    e.marcos.soltar(doc_del_raton(&e, marco), px(&e, marco) as f64);
+                    ventana.soltar_raton();
+                }
+                EventoOverlay::Tecla { vk, ctrl, shift: false, .. }
+                    if e.nombre.editando.is_none()
+                        && !e.anotando
+                        && ((vk == crate::marcos_doc::VK_I && !ctrl)
+                            || (vk == crate::marcos_doc::VK_SUPR && !ctrl && e.marcos.activo)
+                            || (vk == crate::marcos_doc::VK_P && ctrl && !e.marcos.lista.is_empty())) =>
+                {
+                    match e.marcos.tecla(vk, ctrl) {
+                        Some(crate::marcos_doc::Pedido::Imprimir) => empezar_fotos(&mut e, ruta),
+                        Some(crate::marcos_doc::Pedido::Alternado) if e.marcos.activo => e.poniendo_marca = false,
+                        _ => {}
+                    }
+                }
                 EventoOverlay::RatonMovido(p) => {
                     e.raton = local(p);
                     mover_raton(&mut e, marco);
@@ -767,6 +812,13 @@ pub fn abrir(
             guardar_capa(&mut e, ruta);
         }
 
+        if imprimir_al_abrir.is_some_and(|t| ahora_ms() > t) {
+            imprimir_al_abrir = None;
+            empezar_fotos(&mut e, ruta);
+        }
+        if paso_de_las_fotos(&mut e, marco) {
+            hay_que_pintar = true;
+        }
         if hay_que_pintar {
             hay_que_pintar = false;
             if let Ok(destino) = superficie.empezar(&motor) {
@@ -1152,7 +1204,12 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                     imagenes::Vista::Lista(b) => {
                         // En oscuro, la foto tambien (luz invertida, tono
                         // conservado): todo el documento en modo noche.
-                        if e.oscuro && !e.en_negativo {
+                        // Si luego se invierte toda la ventana (claro o al
+                        // fotografiar para imprimir), la foto va en negativo
+                        // debajo y sale con sus colores de verdad.
+                        if invertir_ventana(e) {
+                            p.bitmap_negativo(&b, r, None);
+                        } else if e.oscuro {
                             p.bitmap_oscuro(&b, r, None);
                         } else {
                             p.bitmap(&b, r, None, false);
@@ -1235,7 +1292,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // interfaz, que van despues, no). En pixeles de la ventana, y luego de
     // vuelta a la vista para la tinta, que se ajusta al papel invertido.
     // Luna/sol en claro: el papel claro, por el mismo camino que la N.
-    let papel = if e.en_negativo == e.oscuro {
+    let papel = if invertir_ventana(e) {
         p.desplazar(0.0, 0.0);
         p.invertir_colores(
             RectF {
@@ -1268,6 +1325,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         );
     }
 
+    // Fotografiando un marco para imprimirlo: solo el documento.
+    if e.fotografiando {
+        e.botones = Vec::new();
+        return;
+    }
+    // Los marcos numerados, pegados al documento (`marcos_doc`).
+    let (ex, ey) = (e.x, e.y);
+    e.marcos.pintar(p, 0, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s), m.e, m.alto, &crate::marcos_doc::pista(textos));
     barra_de_avance(e, p, m);
     // Los del usuario y, entre ellos, el verde de donde se dejo de escuchar.
     let lista = lista_del_riel(e);
@@ -1279,13 +1344,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         emojis.len(),
         e.poniendo_marca,
     );
-    lector::pintar_riel(
+    lector::pintar_riel_con(
         p,
         &riel,
         &emojis,
         e.encima,
         e.poniendo_marca,
         e.anotando,
+        e.marcos.activo,
         &textos.t("marca-elige"),
     );
 
@@ -1898,11 +1964,13 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
             return false;
         }
         DestinoRiel::Imprimir => {
-            let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            crate::marco_imprimir::de_la_ventana(None, &titulo, textos);
+            alternar_marcos(e, ruta, m);
             return false;
         }
         DestinoRiel::Hojita => {
+            if e.marcos.activo {
+                e.marcos.alternar();
+            }
             alternar_anotar(e, ruta, m);
             return false;
         }
@@ -2217,6 +2285,84 @@ fn cambiar_letra(
     e.pastilla_hasta = ahora_ms() + MS_DE_LA_PASTILLA;
 }
 
+/// Si se invierte toda la ventana al pintar: el papel claro (luna/sol en
+/// claro, o N) y siempre al fotografiar para imprimir (con sus colores).
+fn invertir_ventana(e: &Estado) -> bool {
+    e.fotografiando || e.en_negativo == e.oscuro
+}
+
+/// El boton del marco o la I (como en el plano: deja de anotar y de marcar).
+fn alternar_marcos(e: &mut Estado, ruta: &Path, m: Marco) {
+    e.marcos.alternar();
+    if e.marcos.activo {
+        e.poniendo_marca = false;
+        if e.anotando {
+            alternar_anotar(e, ruta, m);
+        }
+    }
+}
+
+fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
+    riel_de(e, m).contiene(lector::punto(q.0, q.1)) || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
+}
+
+fn doc_del_raton(e: &Estado, m: Marco) -> [f64; 2] {
+    let s = px(e, m);
+    [(e.x + e.raton.0 / s) as f64, (e.y + e.raton.1 / s) as f64]
+}
+
+fn empezar_fotos(e: &mut Estado, ruta: &Path) {
+    if e.marcos.lista.is_empty() {
+        return;
+    }
+    e.poniendo_marca = false;
+    let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    e.fotos = Some(crate::lector_pdf::FotosDeMarcos::nuevas((e.x, e.y, e.zoom), &titulo));
+}
+
+/// Un paso de las fotos de los marcos (como `lector_pdf`): acercarse hasta
+/// que el marco llena la ventana, pintar solo el documento con sus colores,
+/// fotografiarlo y, con el ultimo, volver e imprimir todos juntos.
+fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
+    let Some(mut f) = e.fotos.take() else { return false };
+    let Some(marco) = e.marcos.lista.get(f.i).cloned() else {
+        terminar_fotos(e, f);
+        return true;
+    };
+    if f.desde == 0 {
+        let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
+        e.zoom = (s / m.e).clamp(0.2, 8.0);
+        let s = px(e, m);
+        let c = marco.centro();
+        e.x = c[0] as f32 - m.ancho / (2.0 * s);
+        e.y = c[1] as f32 - m.alto / (2.0 * s);
+        e.fotografiando = true;
+        f.desde = ahora_ms();
+        e.fotos = Some(f);
+        return true;
+    }
+    if ahora_ms() < f.desde + 400 {
+        e.fotos = Some(f);
+        return false;
+    }
+    let s = px(e, m);
+    let (ex, ey) = (e.x, e.y);
+    let r = crate::marcos_doc::caja_en_pantalla(marco.caja, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s));
+    f.fotografiar(e.hwnd, r);
+    if f.i >= e.marcos.lista.len() {
+        terminar_fotos(e, f);
+    } else {
+        e.fotos = Some(f);
+    }
+    true
+}
+
+fn terminar_fotos(e: &mut Estado, f: crate::lector_pdf::FotosDeMarcos) {
+    (e.x, e.y, e.zoom) = f.antes;
+    e.fotografiando = false;
+    f.imprimir(e.hwnd);
+}
+
 fn alternar_anotar(e: &mut Estado, ruta: &Path, m: Marco) {
     if e.anotando {
         e.anotando = false;
@@ -2249,15 +2395,26 @@ fn poner_marcador(e: &mut Estado, i: usize, ruta: &Path) {
         return;
     }
     let emoji = EMOJIS.get(i).copied().unwrap_or(EMOJIS[0]);
+    let antes: Vec<u64> = e.ajustes.marcadores.iter().map(|m| m.id).collect();
     e.ajustes.marcadores =
         lectura::con_marcador(&e.ajustes.marcadores, fraccion(e), emoji, ahora_ms());
+    // Y la vista de ese momento: volver es volver con el mismo zoom.
+    if let Some(nuevo) = e.ajustes.marcadores.iter().find(|m| !antes.contains(&m.id)) {
+        e.vistas.poner(&nuevo.id.to_string(), crate::marcos_doc::zoom_a_texto(e.zoom as f64, e.x as f64, e.y as f64));
+    }
     e.poniendo_marca = false;
     guardar_ajustes(e, ruta);
 }
 
 fn ir_al_marcador(e: &mut Estado, i: usize) {
     if let Some(m) = lista_del_riel(e).get(i) {
-        e.y = e.alto_doc * m.fraccion;
+        if let Some((z, x, y)) = e.vistas.de_marca(&m.id.to_string()).and_then(crate::marcos_doc::zoom_de_texto) {
+            e.zoom = z as f32;
+            e.x = x as f32;
+            e.y = y as f32;
+        } else {
+            e.y = e.alto_doc * m.fraccion;
+        }
     }
 }
 
@@ -3079,6 +3236,11 @@ mod pruebas {
             x_meta: None,
             hallar: Hallar::default(),
             nombre: Default::default(),
+            marcos: Default::default(),
+            vistas: Default::default(),
+            fotos: None,
+            fotografiando: false,
+            hwnd: 0,
             hoja: Hoja::Word,
             tinta_de_antes: false,
             guardar_ya: false,

@@ -82,6 +82,14 @@ pub(super) fn camara(real: &Rejilla, v: &Vista, celdas: RectF) -> Camara {
     Camara { x: ox - caja.x / z, y: oy - caja.y / z, zoom: z }
 }
 
+/// **Cuando hay que volver a llevar la capa a la rejilla**: otra version de
+/// la hoja, otro ancho de letra o filas que cambiaron de alto (el autoajuste
+/// de las filas con texto ajustado, que se mide al irlas viendo: sin esto lo
+/// anotado debajo de ellas se quedaba donde estaba y no en su celda).
+pub(super) fn clave_de(hoja: &Hoja, real: &Rejilla) -> u64 {
+    hoja.version ^ (real.x(1).to_bits() << 1) ^ real.y(u32::MAX).to_bits().rotate_left(23)
+}
+
 /// Lleva una x (o una y) de una rejilla a otra por su celda.
 fn llevar_x(x: f32, de: &Rejilla, a: &Rejilla) -> f32 {
     let x = x as f64;
@@ -194,7 +202,7 @@ impl Anotado {
     /// filas, otro ancho de letra). Conserva los ids y la historia de la capa
     /// (lo que elige la tinta y el deshacer siguen valiendo).
     fn asegurar_vista(&mut self, libro: &Libro, hoja: &Hoja, real: &Rejilla) {
-        let clave = hoja.version ^ (real.x(1).to_bits() << 1);
+        let clave = clave_de(hoja, real);
         if self.vista.as_ref().is_some_and(|(k, _)| *k == clave) {
             return;
         }

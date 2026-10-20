@@ -36,6 +36,7 @@
 
 mod capa;
 mod logica;
+mod marcos;
 mod riel;
 
 use std::path::Path;
@@ -239,6 +240,8 @@ enum Gesto {
     /// lienzo y el lector: `desde`, donde se pulso; `x`, `y`, la vista de
     /// entonces. No elige celdas.
     Mano { desde: (f32, f32), x: f64, y: f64 },
+    /// Arrastrando un marco para imprimir (`marcos`).
+    Marco,
 }
 
 /// Una barra de desplazamiento pintada: su pista y su pulgar, en pantalla.
@@ -328,6 +331,14 @@ struct Estado<'l> {
     tinta_cambio: bool,
     /// Un trazo con el raton capturado.
     trazo: bool,
+    /// **Los marcos numerados para imprimir** (`marcos`, como los del plano)
+    /// y lo que guarda cada marca del riel ademas de su celda: el zoom y el
+    /// desplazamiento exactos (`marcos_doc::Vistas`).
+    marcos: crate::marcos_doc::Marcos,
+    vistas: crate::marcos_doc::Vistas,
+    /// Pintando para la foto de un marco: sin el riel, los marcos, lo
+    /// elegido ni las barras.
+    sin_interfaz: bool,
 }
 
 fn zonas(ancho: f32, alto: f32, e: f32) -> Zonas {
@@ -936,6 +947,10 @@ impl<'l> Estado<'l> {
             self.llevar_barra(eje, agarre);
             return true;
         }
+        // Con los marcos, arrastrar en las celdas pone uno (no elige).
+        if self.marcos.activo {
+            return self.pulsar_marco();
+        }
         // Anotando, las celdas son de la tinta (lo que no quiso, nada).
         if self.anotando {
             return false;
@@ -1046,6 +1061,10 @@ impl<'l> Estado<'l> {
     /// Al soltar: un clic corto en una celda con enlace lo abre.
     fn soltar(&mut self, textos: &Catalogo, motor: &MotorRender) {
         let gesto = self.gesto.take();
+        if let Some(Gesto::Marco) = gesto {
+            self.soltar_marco();
+            return;
+        }
         if let Some(Gesto::Elegir { pulsada, cuando, .. }) = gesto
             && !self.editando
         {
@@ -1060,6 +1079,9 @@ impl<'l> Estado<'l> {
     fn cursor(&self) -> FormaCursorWin {
         if matches!(self.gesto, Some(Gesto::Mano { .. })) {
             return FormaCursorWin::Mover;
+        }
+        if self.marcos.activo && (matches!(self.gesto, Some(Gesto::Marco)) || dentro(&self.vista().1, self.raton)) {
+            return FormaCursorWin::Cruz;
         }
         if self.gesto.is_none()
             && !self.editando
@@ -1199,8 +1221,12 @@ impl<'l> Estado<'l> {
             e.cancelar();
             e.cambiar_hoja(t);
         }
-        // Escribir en las celdas y anotar con el lapiz no van a la vez.
+        // Escribir en las celdas, anotar con el lapiz y poner marcos no van a
+        // la vez.
         self.dejar_de_anotar();
+        if self.marcos.activo {
+            self.marcos.alternar();
+        }
         self.editando = true;
         self.ultimo_clic = None;
         self.sel_al_editor();
@@ -1432,6 +1458,9 @@ fn ver_en(
         recuerdo,
         tinta_cambio: false,
         trazo: false,
+        marcos: crate::marcos_doc::Marcos::de(ruta),
+        vistas: crate::marcos_doc::Vistas::de_documento(ruta),
+        sin_interfaz: false,
     };
     let activa = est.activa;
     est.abrir_hoja(activa, motor);
@@ -1443,6 +1472,11 @@ fn ver_en(
     let mut hay_que_pintar = true;
     let mut primera = true;
     let mut vivo = true;
+    // Ctrl+P: los marcos (o lo que se ve), en grupo al dialogo de imprimir.
+    let mut imprimir_marcos = false;
+    // Pruebas: imprimir los marcos solo, a los 2 s de abrir (con
+    // `PIXPIN_IMPRIMIR_A_PDF`, a un fichero), sin Ctrl+P de verdad.
+    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| Instant::now() + Duration::from_secs(2));
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
         // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`).
@@ -1464,6 +1498,11 @@ fn ver_en(
                 }
             }
             Some(crate::hoja_pin::prueba::CERRAR) => vivo = false,
+            Some(crate::hoja_pin::prueba::MARCOS) => {
+                est.alternar_marcos(motor);
+                hay_que_pintar = true;
+            }
+            Some(crate::hoja_pin::prueba::IMPRIMIR) => imprimir_marcos = true,
             _ => {}
         }
         if std::mem::take(&mut quiere_editar) && editable && !est.editando {
@@ -1546,6 +1585,7 @@ fn ver_en(
                             est.llevar_mano();
                             hay_que_pintar = true;
                         }
+                        Some(Gesto::Marco) => hay_que_pintar |= est.mover_marco(),
                         Some(_) => {
                             let antes = est.abierta().sel;
                             est.arrastrar_seleccion();
@@ -1639,12 +1679,23 @@ fn ver_en(
                     // La letra de la `E` llega despues: no se escribe.
                     est.sin_letras_hasta = Some(Instant::now() + SIN_LETRAS);
                 }
-                // Esc primero cierra la tira de las marcas o deja de anotar.
-                EventoOverlay::Tecla { vk: logica::VK_ESCAPE, .. } if est.poniendo_marca || est.anotando => {
+                // Esc primero cierra la tira de las marcas, deja de anotar o
+                // sale de los marcos.
+                EventoOverlay::Tecla { vk: logica::VK_ESCAPE, .. } if est.poniendo_marca || est.anotando || est.marcos.activo => {
                     if est.poniendo_marca {
                         est.poniendo_marca = false;
-                    } else {
+                    } else if est.anotando {
                         est.dejar_de_anotar();
+                    } else {
+                        est.alternar_marcos(motor);
+                    }
+                    hay_que_pintar = true;
+                }
+                // Los marcos, como en el plano: I los pone o los quita, Supr
+                // (con ellos puestos) quita el ultimo y Ctrl+P imprime todos.
+                EventoOverlay::Tecla { vk, ctrl, alt: false, shift: false } if !est.escribiendo() && est.tecla_de_marcos(vk, ctrl, motor).is_some() => {
+                    if ctrl && vk == crate::marcos_doc::VK_P {
+                        imprimir_marcos = true;
                     }
                     hay_que_pintar = true;
                 }
@@ -1742,6 +1793,18 @@ fn ver_en(
             hay_que_pintar = true;
         }
 
+        if imprimir_al_abrir.is_some_and(|t| Instant::now() >= t) {
+            imprimir_al_abrir = None;
+            imprimir_marcos = true;
+        }
+        if std::mem::take(&mut imprimir_marcos) {
+            if est.gesto.is_some() {
+                est.gesto = None;
+                ventana.soltar_raton();
+            }
+            marcos::imprimir(&superficie, motor, &mut est, textos);
+            hay_que_pintar = true;
+        }
         if hay_que_pintar {
             hay_que_pintar = false;
             let t = Instant::now();
@@ -1753,7 +1816,7 @@ fn ver_en(
         }
         let tope = if est.gesto.is_some() || est.trazando() {
             16
-        } else if est.cargando() || pin.quiere_reloj() || est.aviso.is_some() {
+        } else if est.cargando() || pin.quiere_reloj() || est.aviso.is_some() || imprimir_al_abrir.is_some() {
             50
         } else {
             200
@@ -1870,6 +1933,7 @@ fn pide_editar(vk: u32, ctrl: bool, alt: bool) -> bool {
 /// (texto ajustado), como hace Excel al abrir.
 fn preparar(est: &mut Estado, motor: &MotorRender) {
     let caja = est.zonas().hoja;
+    let sin_interfaz = est.sin_interfaz;
     let Estado { libro, hojas, activa, cache, .. } = est;
     let libro: &Libro = libro;
     let Some(ab) = hojas[*activa].as_mut() else { return };
@@ -1878,8 +1942,12 @@ fn preparar(est: &mut Estado, motor: &MotorRender) {
     for p in paneles {
         hoja_office::autoajustar_filas(cache, motor, libro, &ab.hoja, &mut ab.rejilla, p.fila0, p.fila1 + 1);
     }
-    let (_, celdas) = vista_de(ab, caja);
-    acotar(ab, celdas);
+    // Para la foto de un marco la vista va justo donde se puso (centrada en
+    // el marco aunque se pase de lo usado).
+    if !sin_interfaz {
+        let (_, celdas) = vista_de(ab, caja);
+        acotar(ab, celdas);
+    }
 }
 
 fn texto_centrado_v(p: &Pintor, texto: &str, x: f32, caja: RectF, tam: f32, ancho: f32, color: Color) {
@@ -1929,8 +1997,9 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let z = est.zonas();
     let (e, ancho) = (est.e, est.ancho);
     // Modo oscuro (luna/sol): el marco con la luz invertida; la hoja, en
-    // su pintor (`OpcionesHoja::oscuro`). Editando, igual.
-    let oscuro = crate::oscuro::activo();
+    // su pintor (`OpcionesHoja::oscuro`). Editando, igual. La foto de un
+    // marco va con sus colores de verdad (el papel no es negro).
+    let oscuro = crate::oscuro::activo() && !est.sin_interfaz;
     let k = |c: Color| pixpin_render::oscuro::si(oscuro, c);
     p.limpiar(k(Color::BLANCO));
     let con_nota = if est.gesto.is_none() && !est.editando { est.comentario_bajo } else { None };
@@ -1939,6 +2008,8 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let editando = est.editando;
     let en_la_barra = est.editor().filter(|_| editando).map(|ed| (ed.en_la_barra().to_string(), ed.edicion.clone()));
     let anotando = est.anotando;
+    let sin_interfaz = est.sin_interfaz;
+    let con_nota = con_nota.filter(|_| !sin_interfaz);
     let Estado { libro, hojas, activa, cache, desde_pestana, encima_de, pestanas, bajo_raton, anotado, .. } = est;
     let libro: &Libro = libro;
     let activa = *activa;
@@ -1946,10 +2017,14 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
 
     // La hoja.
     let (v, celdas) = vista_de(ab, z.hoja);
-    let op = OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton, oscuro };
+    let op = if sin_interfaz {
+        OpcionesHoja { encabezados: true, seleccion: None, activa: None, bajo_raton: None, oscuro }
+    } else {
+        OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton, oscuro }
+    };
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
     // Lo anotado (el asistente y el lapiz), encima de las celdas.
-    anotado.pintar(p, libro, &ab.hoja, &ab.rejilla, &v, celdas, oscuro, anotando);
+    anotado.pintar(p, libro, &ab.hoja, &ab.rejilla, &v, celdas, oscuro, anotando && !sin_interfaz);
     if let Some(celda) = con_nota {
         tarjeta_de_comentario(p, ab, &v, celdas, z.hoja, celda, e);
     }
@@ -1964,7 +2039,7 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     // Las barras de desplazamiento.
     let (bv, bh) = barras(ab, celdas, e, *encima_de);
     for (eje, b) in [(Eje::Vertical, bv), (Eje::Horizontal, bh)] {
-        if let Some(b) = b {
+        if let Some(b) = b.filter(|_| !sin_interfaz) {
             let color = k(if *encima_de == Some(eje) { PULGAR_ENCIMA } else { PULGAR });
             let r = b.pulgar.ancho.min(b.pulgar.alto) / 2.0;
             p.rellenar_redondeado(b.pulgar, r, color);
@@ -2033,7 +2108,12 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
         texto_centrado_v(p, &estado, caja.x + 12.0 * e, caja, tam, ancho_estado - 16.0 * e, k(TENUE));
     }
 
-    // El riel (y anotando, la barra del lapiz), encima de la hoja.
+    if sin_interfaz {
+        return;
+    }
+    // Los marcos para imprimir, con su numero, y el riel (y anotando, la
+    // barra del lapiz), encima de la hoja.
+    est.pintar_marcos(p, &z, textos);
     riel::pintar(p, est, textos);
 
     if let Some((texto, _)) = &est.aviso {
