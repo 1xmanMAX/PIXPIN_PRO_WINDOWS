@@ -491,6 +491,8 @@ pub fn rotulo_de(nombre: &str) -> String {
         pixpin_ia::contexto::BUSCAR_HISTORIAL => "🗂️ buscando en la conversación…",
         CALCAR => "🖼️ calcando la imagen…",
         AYUDA => "📖 mirando la ayuda…",
+        pixpin_ia::nube::claude::BUSCAR_EN_LA_WEB => "🌐 buscando en la web…",
+        pixpin_ia::nube::claude::LEER_LA_WEB => "🌐 leyendo la página…",
         _ => "⚙️ trabajando…",
     }
     .to_string()

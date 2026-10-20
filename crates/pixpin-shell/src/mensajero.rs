@@ -485,6 +485,8 @@ fn abrir_la_app(exe: &std::path::Path) -> Result<(), String> {
     // reintenta sin ella.
     for banderas in [CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS, DETACHED_PROCESS] {
         let mut c = Command::new(exe);
+        // Arranca para el pedido: sin el chat delante (el pedido abre lo suyo).
+        c.arg("--sin-chat");
         c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(banderas);
         if let Some(d) = exe.parent() {
             c.current_dir(d);

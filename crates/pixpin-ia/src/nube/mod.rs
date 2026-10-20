@@ -200,6 +200,29 @@ pub struct MotorNube {
     ligero: bool,
 }
 
+/// **La web, apagada** en este proceso: la cuenta de Claude contesto que no
+/// la tiene activada (400 «Web search is not enabled for this
+/// organization»). Desde entonces las peticiones van sin ella.
+static WEB_APAGADA: AtomicBool = AtomicBool::new(false);
+
+/// Si el asistente puede usar la web (la cuenta no la rechazo).
+pub fn web_disponible() -> bool {
+    !WEB_APAGADA.load(Ordering::Relaxed)
+}
+
+/// Quita del cuerpo de Claude las herramientas de la web (y `tools` si se
+/// queda vacio, que la API no lo admite).
+fn sin_la_web(c: &mut Value) {
+    let Some(tools) = c.get_mut("tools").and_then(Value::as_array_mut) else { return };
+    tools.retain(|t| !t.get("type").and_then(Value::as_str).is_some_and(|x| x.starts_with("web_")));
+    if tools.is_empty()
+        && let Some(m) = c.as_object_mut()
+    {
+        m.remove("tools");
+        m.remove("tool_choice");
+    }
+}
+
 impl std::fmt::Debug for MotorNube {
     // A mano: la clave nunca sale por `{:?}` (ni a un registro).
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -267,7 +290,7 @@ impl MotorNube {
         let pensar = self.pensar.load(Ordering::Relaxed);
         let reserva = if self.ligero || !pensar { 0 } else { RESERVA_PENSAR };
         let max = p.max_tokens.saturating_add(reserva).min(self.proveedor.max_tokens());
-        match self.proveedor {
+        let mut c = match self.proveedor {
             Proveedor::Claude if self.ligero => {
                 let mut c = claude::cuerpo(p, &memoria, max);
                 if let Some(m) = c.as_object_mut() {
@@ -283,7 +306,11 @@ impl MotorNube {
             }
             Proveedor::Claude => claude::cuerpo(p, &memoria, max),
             Proveedor::DeepSeek => deepseek::cuerpo(p, &memoria, pensar, max),
+        };
+        if self.proveedor == Proveedor::Claude && !web_disponible() {
+            sin_la_web(&mut c);
         }
+        c
     }
 
     fn recordar(&self, id: &str, v: Value) {
@@ -442,6 +469,16 @@ impl MotorNube {
             }),
             Err(http::Fallo::Http { codigo, cuerpo, esperar }) => {
                 let bajo = cuerpo.to_lowercase();
+                if codigo == 400
+                    && self.proveedor == Proveedor::Claude
+                    && (bajo.contains("web search") || bajo.contains("web fetch"))
+                    && !WEB_APAGADA.swap(true, Ordering::Relaxed)
+                {
+                    // La cuenta no tiene la web activada (Console →
+                    // Privacidad): se sigue sin ella, sin romper el chat.
+                    tracing::warn!("asistente: la cuenta de {n} no tiene la web activada; se sigue sin la web");
+                    return Err(Intento::Cambiar(self.nube(clasificar(self.proveedor, codigo, &cuerpo).0)));
+                }
                 if codigo == 400
                     && self.proveedor == Proveedor::DeepSeek
                     && bajo.contains("reasoning")

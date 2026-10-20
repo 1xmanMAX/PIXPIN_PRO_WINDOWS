@@ -138,7 +138,7 @@ thread_local! {
 }
 
 fn estado_de(hwnd: HWND) -> Option<Rc<RefCell<Estado>>> {
-    ESTADOS.with(|e| e.borrow().get(&(hwnd.0 as isize)).cloned())
+    ESTADOS.try_with(|e| e.try_borrow().ok().and_then(|e| e.get(&(hwnd.0 as isize)).cloned())).ok().flatten()
 }
 
 /// Una ventana con su pagina. Soltarla la cierra.
@@ -433,7 +433,7 @@ impl Drop for Pagina {
                 let _ = DestroyWindow(self.hwnd);
             }
         }
-        ESTADOS.with(|e| e.borrow_mut().remove(&(self.hwnd.0 as isize)));
+        let _ = ESTADOS.try_with(|e| e.try_borrow_mut().map(|mut e| e.remove(&(self.hwnd.0 as isize))));
         crate::controlador_cerrado();
         let _ = std::fs::remove_dir_all(&self.temporal);
     }

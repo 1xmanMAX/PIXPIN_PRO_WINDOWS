@@ -899,6 +899,7 @@ fn cuadro_de_tipo(p: &pixpin_render::Pintor, ext: &str, r: RectF, e: f32) {
 impl Drop for PinLector {
     fn drop(&mut self) {
         self.esconder_barra();
+        crate::globo_pista::soltar();
     }
 }
 

@@ -210,7 +210,7 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             &ventana,
             riel::en_pantalla(pin.area, pin.area_de_la_vista()),
             escala,
-            riel::Opciones { documento: Some(ruta.to_path_buf()), con_pagina: true, titulo: nombre.clone(), menu: false },
+            riel::Opciones { documento: Some(ruta.to_path_buf()), con_pagina: true, titulo: nombre.clone(), menu: false, maqueta: false },
             textos,
         ),
         _ => None,

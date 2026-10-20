@@ -13,6 +13,8 @@ import { markdown, markdownLanguage, insertNewlineContinueMarkup, deleteMarkupBa
 import { search, searchKeymap, openSearchPanel } from '@codemirror/search'
 import { vivo, clicEnCasilla, acciones, RE_CASILLA, RE_LISTA } from './vivo.js'
 import { celdas } from './tablas.js'
+import { crearBuscador } from './buscador.js'
+import { instalarMaqueta, reaplicarMaqueta } from './maqueta.js'
 import { TEXTOS } from './textos.js'
 import { crearComentarios, resaltados } from './comentarios.js'
 
@@ -21,6 +23,9 @@ const desdeFuera = Annotation.define()
 let tx = TEXTOS.es
 let vista = null
 let nombreFichero = ''
+// La tinta a la medida con que se anoto (`maqueta.js`): al cambiar la
+// columna, CodeMirror vuelve a medir sus renglones.
+instalarMaqueta(() => vista?.requestMeasure())
 
 // ------------------------------------------------------------------ como pin
 // (17-oct-2026, el usuario: «que el visor de MD tenga una UI igual a la de
@@ -1149,7 +1154,7 @@ function crear(textoInicial) {
         soloLectura.of(modoLectura(leyendo)),
         drawSelection(),
         dropCursor(),
-        search({ top: true }),
+        search({ top: true, createPanel: crearBuscador(() => tx) }),
         EditorView.lineWrapping,
         markdown({ base: markdownLanguage, addKeymap: false }),
         vivo,
@@ -1242,6 +1247,7 @@ function crear(textoInicial) {
       ],
     }),
   })
+  reaplicarMaqueta()
 }
 
 // La cabecera: arrastrar mueve la ventana; doble clic, maximiza.

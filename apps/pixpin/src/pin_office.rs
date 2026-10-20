@@ -191,7 +191,7 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         &ventana,
         crate::visor_html::riel::en_pantalla(pin.area, dentro),
         escala,
-        crate::visor_html::riel::Opciones { documento: None, con_pagina: false, titulo: nombre.clone(), menu: false },
+        crate::visor_html::riel::Opciones { documento: None, con_pagina: false, titulo: nombre.clone(), menu: false, maqueta: false },
         textos,
     );
     let ext = vista_previa::extension_de(ruta);

@@ -675,7 +675,8 @@ fn ninguna_va_estricta_y_los_nombres_valen() {
     p.herramientas = catalogo();
     let c = claude::cuerpo(&p, &std::collections::HashMap::new(), 100);
     let tools = c["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), catalogo().len());
+    // Las de la app y las dos de la web (`claude::herramientas_web`).
+    assert_eq!(tools.len(), catalogo().len() + claude::herramientas_web().len());
     assert!(tools.iter().all(|t| t.get("strict").is_none()));
     for t in tools {
         let n = t["name"].as_str().unwrap();
@@ -794,4 +795,37 @@ fn un_turno_simple_no_piensa_en_la_nube() {
             assert_ne!(c["output_config"]["effort"], "low");
         }
     }
+}
+
+/// **La web en vivo** (20-oct-2026): con la clave guardada por la app
+/// (DPAPI; nunca se imprime) y Haiku, una pregunta que solo se contesta
+/// buscando. Dice si la API acepto las herramientas web y si busco.
+#[test]
+#[ignore = "en vivo: usa la clave de Claude guardada en este equipo"]
+fn en_vivo_claude_busca_en_la_web() {
+    let Some(clave) = claves::leer(Proveedor::Claude) else {
+        eprintln!("sin clave de Claude guardada: se salta");
+        return;
+    };
+    let m = MotorNube::nuevo(Proveedor::Claude, clave).pensando(false);
+    let mut buscadas = Vec::new();
+    let p = Peticion::nueva(vec![Mensaje::usuario(
+        "Busca en la web: ¿cual es la ultima version publicada de Rust estable? Responde en una linea con la fuente.",
+    )]);
+    let r = m
+        .completar(&p, &mut |t| {
+            if let Trozo::Llamando { nombre } = t {
+                buscadas.push(nombre.clone());
+            }
+            Seguir::Si
+        })
+        .expect("la API acepto la peticion con la web");
+    println!("herramientas de servidor usadas: {buscadas:?}");
+    println!("respuesta: {}", r.texto);
+    if web_disponible() {
+        assert!(buscadas.iter().any(|n| n == claude::BUSCAR_EN_LA_WEB), "no busco en la web");
+    } else {
+        println!("la cuenta no tiene la web activada: contesto sin ella");
+    }
+    assert!(!r.texto.trim().is_empty());
 }

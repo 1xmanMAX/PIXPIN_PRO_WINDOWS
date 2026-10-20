@@ -322,6 +322,9 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                 titulo: en_la_barra.clone(),
                 // La G abre el ⋮ de la barra, como en los demas visores.
                 menu: true,
+                // La tinta, a la medida de la columna con que se anoto
+                // (`capa_web::Maqueta`): el texto de una nota se recoloca.
+                maqueta: true,
             },
             cx.textos,
         ),
@@ -706,7 +709,8 @@ pub const MAS: u8 = 7;
 
 /// **Lo que lleva la barra de una nota**, entre el nombre y la luna/sol, como
 /// la barra del editor del movil (`MarkdownEditorActivity`): escribiendo, el
-/// ojo para verla, deshacer y rehacer; viendola, el lapiz para seguir
+/// ojo para verla (deshacer y rehacer, con Ctrl+Z y Ctrl+Y: el usuario los
+/// quito de la barra el 20-oct-2026); viendola, el lapiz para seguir
 /// escribiendo (como el visor de Excel). Y siempre buscar, los comentarios
 /// (encendido con su panel abierto), compartir y el ⋯ (titulo, guardar una
 /// copia, Word, letra y tamano). Sin «Copiar»: Ctrl+C copia.
@@ -717,8 +721,6 @@ pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
         v.push(b(EDITAR, &material::EDIT_NOTE, false));
     } else {
         v.push(b(VER, &material::VISIBILITY, false));
-        v.push(b(DESHACER, &material::UNDO, false));
-        v.push(b(REHACER, &material::REDO, false));
     }
     v.push(b(BUSCAR, &material::SEARCH, false));
     v.push(b(COMENTARIOS, &material::FORUM, comentarios));
@@ -929,7 +931,8 @@ mod pruebas {
         // Escribiendo (como abre, igual que el movil): el ojo, deshacer y
         // rehacer; viendola, el lapiz. Y siempre buscar, comentarios,
         // compartir y el ⋯.
-        assert_eq!(ids(false, false), vec![VER, DESHACER, REHACER, BUSCAR, COMENTARIOS, COMPARTIR, MAS]);
+        // Sin deshacer ni rehacer (20-oct-2026): Ctrl+Z y Ctrl+Y.
+        assert_eq!(ids(false, false), vec![VER, BUSCAR, COMENTARIOS, COMPARTIR, MAS]);
         assert_eq!(ids(true, false), vec![EDITAR, BUSCAR, COMENTARIOS, COMPARTIR, MAS]);
         // Caso negativo: viendola no se deshace (no se escribe), y el lapiz
         // no sale escribiendo.

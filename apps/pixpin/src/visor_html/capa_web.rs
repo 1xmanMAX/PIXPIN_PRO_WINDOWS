@@ -59,10 +59,12 @@ R.ir=function(modo,a,b){var d=cual(),max=maximo(d),w=d.raiz?window:d.s;
 function ir(){var q=area(d);if(modo==='ir')w.scrollTo({top:a*max,behavior:'instant'});if(modo==='bajar')w.scrollBy({top:a,behavior:'instant'});if(modo==='colocar')w.scrollTo({left:a+q.bx-q.ax,top:b+q.by-q.ay,behavior:'instant'});}
 if(modo==='mirar')return;ir();if(modo==='colocar'){requestAnimationFrame(ir);setTimeout(ir,80);}};
 R.sitio=function(){var d=cual(),s=d.s,max=maximo(d),r;if(d.raiz){r={x:scrollX,y:scrollY,arriba:scrollY,maximo:max};}else{var c=s.getBoundingClientRect();r={x:s.scrollLeft-c.left,y:s.scrollTop-c.top,arriba:s.scrollTop,maximo:max};}
+r.x-=R.desfase(s);var M=window.__pixpinMaqueta;if(M)r.maq=M.medir();
 var q=area(d);r.ax=q.ax;r.ay=q.ay;r.aw=q.aw;r.ah=q.ah;var v=window.visualViewport;r.vx=v?v.offsetLeft:0;r.vy=v?v.offsetTop:0;r.escala=v?v.scale:1;r.dpr=devicePixelRatio||1;return r;};
 function mandar(o){try{window.chrome.webview.postMessage(JSON.stringify(o));}catch(_){}}
-R.colgar=function(){var c=R.capa;if(!c)return;var e=R.donde(),padre=e||document.documentElement;if(!padre)return;if(c.parentNode!==padre)padre.appendChild(c);
-if(e){if(getComputedStyle(e).position==='static')e.style.position='relative';c.style.left=(-e.clientLeft)+'px';c.style.top=(-e.clientTop)+'px';}else{c.style.left='0px';c.style.top='0px';}};
+R.desfase=function(s){var M=window.__pixpinMaqueta;return M&&M.desfase?M.desfase(s):0;};
+R.colgar=function(){var c=R.capa;if(!c)return;var e=R.donde(),padre=e||document.documentElement;if(!padre)return;if(c.parentNode!==padre)padre.appendChild(c);var D=R.desfase(e||document.scrollingElement||document.documentElement);
+if(e){if(getComputedStyle(e).position==='static')e.style.position='relative';c.style.left=(D-e.clientLeft)+'px';c.style.top=(-e.clientTop)+'px';}else{c.style.left=D+'px';c.style.top='0px';}};
 R.poner=function(t,m,ver,ctrlp,menu){R.ctrlp=ctrlp;R.menu=menu;var c=R.capa;
 if(!c){c=R.capa=document.createElement('div');c.id='pixpin-riel-capa';c.setAttribute('aria-hidden','true');c.style.cssText='position:absolute;left:0;top:0;width:0;height:0;margin:0;padding:0;border:0;overflow:visible;pointer-events:none;user-select:none;z-index:2147483647';c.appendChild(document.createElement('div'));c.appendChild(document.createElement('div'));}
 R.colgar();var a=c.firstChild,b=c.lastChild;if(a.__t!==t){a.innerHTML=t;a.__t=t;}a.style.visibility=ver?'visible':'hidden';if(b.__t!==m){b.innerHTML=m;b.__t=m;}
@@ -72,7 +74,7 @@ addEventListener('keydown',function(ev){if(ev.isComposing||ev.altKey||ev.metaKey
 if(ev.ctrlKey){if(k==='p'&&R.ctrlp)vk=80;else if(k==='m'&&!ed&&!ev.shiftKey)vk=77;}
 else if(!ed&&!ev.shiftKey){if(k==='i')vk=73;else if(k==='m')vk=77;else if(k==='a')vk=65;else if(k==='g'&&R.menu)vk=71;}
 if(!vk)return;ev.preventDefault();ev.stopPropagation();mandar({pixpin_riel:'tecla',vk:vk,ctrl:!!ev.ctrlKey});},true);
-function aviso(){R.raf=0;var r=R.sitio();r.pixpin_riel='sitio';mandar(r);}
+function aviso(){R.raf=0;if(R.capa)R.colgar();var r=R.sitio();r.pixpin_riel='sitio';mandar(r);}
 function pronto(){if(!R.raf)R.raf=requestAnimationFrame(aviso);}
 addEventListener('scroll',pronto,{capture:true,passive:true});addEventListener('resize',pronto,{passive:true});
 if(window.visualViewport){visualViewport.addEventListener('scroll',pronto,{passive:true});visualViewport.addEventListener('resize',pronto,{passive:true});}
@@ -90,6 +92,11 @@ pub struct Deseado {
     pub ctrl_p: bool,
     /// La G abre el menu ⋮ del visor.
     pub menu: bool,
+    /// **La maqueta de la tinta** de una nota (JSON de [`Maqueta`]): la
+    /// medida de la columna con que se anoto. `None`: sin maqueta.
+    pub maqueta: Option<String>,
+    /// La columna puesta a esa medida (el marcador ✏️ o el lapiz).
+    pub fija: bool,
 }
 
 /// El guion que deja `d` en la pagina (con [`INSTALAR`] delante). Devuelve
@@ -98,13 +105,59 @@ pub struct Deseado {
 pub fn guion_poner(d: &Deseado) -> String {
     let js = |t: &str| serde_json::to_string(t).unwrap_or_else(|_| "\"\"".into());
     format!(
-        "{INSTALAR}\nwindow.__pixpinRiel.poner({},{},{},{},{})",
+        // La maqueta antes que la capa: la capa se cuelga con su desfase.
+        "{INSTALAR}\nif(window.__pixpinMaqueta)window.__pixpinMaqueta.poner({},{});\nwindow.__pixpinRiel.poner({},{},{},{},{})",
+        d.maqueta.as_deref().unwrap_or("null"),
+        d.fija,
         js(&d.tinta),
         js(&d.marcos),
         d.ver_tinta,
         d.ctrl_p,
         d.menu
     )
+}
+
+/// **La maqueta de la tinta de una nota** (20-oct-2026). El usuario: que las
+/// anotaciones con el lapiz «no se muevan al sincronizar… como se hace en el
+/// BIM: un marcador especial en el que al darle clic la disposicion del texto
+/// se corrija a cierta escala». La tinta va en pixeles CSS del documento, y
+/// el texto de una nota se recoloca con el ancho de la ventana (y del
+/// movil): con otra medida, la tinta ya no cae sobre lo que se anoto. Por
+/// eso se guarda la medida de la columna con que se anoto (`ancho`, su caja
+/// en pixeles CSS; `tam`, la letra) y donde empezaba (`ox`, su borde
+/// izquierdo dentro de la caja que se desplaza). Con la columna a esa
+/// medida el texto cae igual en cualquier equipo; si la ventana es mas
+/// ancha, la columna se centra y la tinta la sigue (el desfase de
+/// `__pixpinMaqueta.desfase`, `ox` de ahora menos el guardado).
+///
+/// La pagina la mide (`Sitio::maq`, con la misma forma); se guarda en las
+/// vistas del documento (`marcos_doc::Vistas`, clave [`CLAVE_MAQUETA`]), que
+/// viajan con la sincro.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Maqueta {
+    pub ancho: f32,
+    pub tam: f32,
+    #[serde(default)]
+    pub ox: f32,
+}
+
+/// La clave de la maqueta en las vistas del documento.
+pub const CLAVE_MAQUETA: &str = "maqueta";
+
+impl Maqueta {
+    /// Si el texto cae igual con la medida `m` de ahora (medio pixel de
+    /// holgura: la caja se mide redondeada).
+    pub fn coincide(&self, m: &Maqueta) -> bool {
+        (self.ancho - m.ancho).abs() < 1.5 && (self.tam - m.tam).abs() < 0.25
+    }
+
+    pub fn a_texto(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    pub fn de_texto(t: &str) -> Option<Maqueta> {
+        serde_json::from_str::<Maqueta>(t).ok().filter(|m| m.ancho > 50.0 && m.tam > 4.0)
+    }
 }
 
 /// **Lo que manda la pagina por su cuenta** (`chrome.webview.postMessage`).
@@ -232,7 +285,7 @@ mod pruebas {
 
     #[test]
     fn el_guion_de_la_capa_instala_una_vez_y_escapa_lo_que_mete() {
-        let d = Deseado { tinta: "<svg a=\"1\">'</svg>".into(), ver_tinta: true, marcos: String::new(), ctrl_p: false, menu: true };
+        let d = Deseado { tinta: "<svg a=\"1\">'</svg>".into(), ver_tinta: true, marcos: String::new(), ctrl_p: false, menu: true, ..Default::default() };
         let g = guion_poner(&d);
         assert!(g.starts_with(INSTALAR));
         assert!(g.ends_with(r#"poner("<svg a=\"1\">'</svg>","",true,false,true)"#), "{g}");
@@ -286,5 +339,28 @@ mod pruebas {
         assert_eq!(num(1.256), "1.26");
         assert_eq!(num(-0.001), "0");
         assert_eq!(num(f64::NAN), "0");
+    }
+
+    #[test]
+    fn la_maqueta_va_y_vuelve_y_dice_si_el_texto_cae_igual() {
+        let m = Maqueta { ancho: 768.0, tam: 16.0, ox: 212.5 };
+        assert_eq!(Maqueta::de_texto(&m.a_texto()), Some(m));
+        // Medio pixel de redondeo: cae igual; otra columna u otra letra, no.
+        assert!(m.coincide(&Maqueta { ancho: 768.6, tam: 16.0, ox: 40.0 }));
+        assert!(!m.coincide(&Maqueta { ancho: 540.0, tam: 16.0, ox: 0.0 }));
+        assert!(!m.coincide(&Maqueta { ancho: 768.0, tam: 18.0, ox: 212.5 }));
+        // Lo que no es una maqueta no se toma por una.
+        assert_eq!(Maqueta::de_texto("1.25 10 20"), None);
+        assert_eq!(Maqueta::de_texto(r#"{"ancho":0,"tam":16}"#), None);
+        // La pagina la recibe antes que la capa (la capa se cuelga con su desfase).
+        let g = guion_poner(&Deseado { maqueta: Some(m.a_texto()), fija: true, ..Default::default() });
+        let (antes, despues) = g.split_once("__pixpinMaqueta.poner(").unwrap();
+        assert!(antes.contains("__pixpinRiel") && despues.starts_with(&format!("{},true)", m.a_texto())));
+        assert!(despues.contains("window.__pixpinRiel.poner("));
+        let sin = guion_poner(&Deseado::default());
+        assert!(sin.contains("__pixpinMaqueta.poner(null,false)"));
+        // Y un sitio con la medida de la columna se lee.
+        let s: super::super::riel::Sitio = serde_json::from_str(r#"{"x":1,"y":2,"maq":{"ancho":700,"tam":15,"ox":30}}"#).unwrap();
+        assert_eq!(s.maq, Some(Maqueta { ancho: 700.0, tam: 15.0, ox: 30.0 }));
     }
 }

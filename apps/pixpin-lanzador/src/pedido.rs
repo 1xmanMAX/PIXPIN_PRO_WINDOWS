@@ -204,6 +204,9 @@ fn arrancar(exe: &Path) -> Result<(), String> {
         }
     };
     let mut c = Command::new(exe);
+    // Arranca para el pedido: sin el chat delante (el pedido abre lo suyo,
+    // y si es el chat, el chat).
+    c.arg("--sin-chat");
     preparar(&mut c);
     c.creation_flags(CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS);
     if c.spawn().is_ok() {

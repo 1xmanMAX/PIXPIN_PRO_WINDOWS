@@ -229,6 +229,10 @@ pub struct Sitio {
     /// recargo): hay que mandarle la capa de la tinta otra vez.
     #[serde(default)]
     pub nuevo: bool,
+    /// La medida de la columna de ahora, si la pagina es una nota
+    /// ([`capa_web::Maqueta`]).
+    #[serde(default)]
+    pub maq: Option<capa_web::Maqueta>,
 }
 
 fn uno() -> f32 {
@@ -384,7 +388,14 @@ pub struct Opciones {
     pub titulo: String,
     /// Si el visor tiene menu ⋮ (la G lo abre: llega como [`Pide::Tecla`]).
     pub menu: bool,
+    /// Si la tinta va a la medida de la columna con que se anoto (las notas:
+    /// [`capa_web::Maqueta`]).
+    pub maqueta: bool,
 }
+
+/// El marcador especial de la maqueta: pulsarlo pone la columna a la medida
+/// con que se anoto y la tinta aparece en su sitio.
+pub const MARCA_MAQUETA: &str = "✏️";
 
 /// Lo que el visor tiene que hacer despues de un evento del riel.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -479,6 +490,11 @@ pub struct RielDeLaVista {
     mirado: Instant,
     /// La marca que espera a saber el sitio para ponerse (el emoticono).
     marca_pendiente: Option<String>,
+    /// La medida de la columna con que se anoto esta nota
+    /// ([`capa_web::Maqueta`]; solo con [`Opciones::maqueta`]).
+    maqueta: Option<capa_web::Maqueta>,
+    /// La columna puesta a esa medida (por el lapiz o el marcador ✏️).
+    fija: bool,
     /// La tinta sobre papel oscuro (la luna/sol).
     oscuro: bool,
     /// «Elige un emoticono», bajo la tira.
@@ -571,6 +587,8 @@ impl RielDeLaVista {
             Some(d) => (crate::anotado_del_adjunto::leer(d).marcadores, Capa::leer(&crate::anotado_del_adjunto::tinta_de_la_pagina(d))),
             None => (Vec::new(), Capa::default()),
         };
+        let vistas = Vistas::de_documento(guardado);
+        let maqueta = if opciones.maqueta { vistas.de_marca(capa_web::CLAVE_MAQUETA).and_then(capa_web::Maqueta::de_texto) } else { None };
         let e = escala_por_cien as f32 / 100.0;
         let mut r = RielDeLaVista {
             motor,
@@ -580,7 +598,7 @@ impl RielDeLaVista {
             vista,
             escala_por_cien,
             marcas: ordenadas(marcas),
-            vistas: Vistas::de_documento(guardado),
+            vistas,
             marcos: Marcos::de(guardado),
             pista: marcos_doc::pista(textos),
             imprimiendo: false,
@@ -593,11 +611,13 @@ impl RielDeLaVista {
             capa,
             ultimo_trazo: Instant::now(),
             trazando: false,
-            sitio: Sitio { x: 0.0, y: 0.0, arriba: 0.0, maximo: 0.0, dpr: e, vx: 0.0, vy: 0.0, escala: 1.0, ax: 0.0, ay: 0.0, aw: 0.0, ah: 0.0, nuevo: false },
+            sitio: Sitio { x: 0.0, y: 0.0, arriba: 0.0, maximo: 0.0, dpr: e, vx: 0.0, vy: 0.0, escala: 1.0, ax: 0.0, ay: 0.0, aw: 0.0, ah: 0.0, nuevo: false, maq: None },
             buzon: Rc::new(RefCell::new(Vec::new())),
             preguntado: None,
             mirado: Instant::now(),
             marca_pendiente: None,
+            maqueta,
+            fija: false,
             oscuro: false,
             elige: textos.t("marca-elige"),
             fijado: false,
@@ -673,7 +693,18 @@ impl RielDeLaVista {
     /// Si la ventana de encima pinta la tinta (sin pagina que la lleve, o
     /// con un gesto a medias).
     fn tinta_en_la_ventana(&self) -> bool {
-        !self.en_la_pagina() || self.vivo() || self.web.con_imagenes
+        !self.tinta_escondida() && (!self.en_la_pagina() || self.vivo() || self.web.con_imagenes)
+    }
+
+    /// **La tinta, escondida**: la nota tiene maqueta y el texto cae ahora
+    /// con otra medida (otra ventana, otro zoom, otro equipo), asi que la
+    /// tinta no caeria sobre lo anotado. Sale al pulsar el marcador ✏️ o el
+    /// lapiz, que ponen la columna a su medida.
+    fn tinta_escondida(&self) -> bool {
+        match (self.maqueta, self.sitio.maq) {
+            (Some(m), Some(ahora)) => !self.fija && !m.coincide(&ahora),
+            _ => false,
+        }
     }
 
     /// Si hay que seguir preguntandole a la pagina por donde va (cada
@@ -710,10 +741,12 @@ impl RielDeLaVista {
         let marcos = if self.imprimiendo { String::new() } else { capa_web::svg_de_los_marcos(&self.marcos.lista, self.camara().zoom as f64, self.e() as f64) };
         Deseado {
             tinta: self.web.hecha.as_ref().map(|h| h.2.clone()).unwrap_or_default(),
-            ver_tinta: !vivo,
+            ver_tinta: !vivo && !self.tinta_escondida(),
             marcos,
             ctrl_p: !self.marcos.lista.is_empty() && !pagina.ctrl_p_propio(),
             menu: self.opciones.menu,
+            maqueta: self.maqueta.map(|m| m.a_texto()),
+            fija: self.fija,
         }
     }
 
@@ -1038,6 +1071,19 @@ impl RielDeLaVista {
     /// desplazamiento exactos; sin ella (una de antes o del movil), a su
     /// fraccion.
     fn ir_a_marca(&mut self, m: &Marcador, pagina: Option<&dyn Pagina>) {
+        // El marcador ✏️ de una nota: antes de ir, la columna a la medida
+        // con que se anoto (en la pagina YA: los guiones van en orden, asi
+        // que el desplazamiento de despues cae con el texto recolocado).
+        if m.emoji == MARCA_MAQUETA
+            && let Some(mq) = self.maqueta
+            && !self.fija
+        {
+            self.fija = true;
+            self.repintar_tinta = true;
+            if let Some(pg) = pagina {
+                pg.ejecutar(&format!("if(window.__pixpinMaqueta)window.__pixpinMaqueta.poner({},true)", mq.a_texto()), Box::new(|_| {}));
+            }
+        }
         let vista = self.vistas.de_marca(&m.id.to_string()).and_then(marcos_doc::zoom_de_texto);
         match (vista, pagina) {
             (Some((zoom, x, y)), Some(pg)) => {
@@ -1064,6 +1110,26 @@ impl RielDeLaVista {
         }
     }
 
+    /// **Al coger el lapiz en una nota**: la columna, a la medida de su
+    /// maqueta (se anota siempre a la misma). La primera vez que se anota
+    /// la nota no la tiene: es la medida de ahora, y se pone el marcador ✏️
+    /// en este sitio para volver a ella desde otra ventana u otro equipo.
+    fn fijar_maqueta(&mut self) {
+        if !self.opciones.maqueta {
+            return;
+        }
+        if self.maqueta.is_none() {
+            let Some(ahora) = self.sitio.maq else { return };
+            self.maqueta = Some(ahora);
+            self.vistas.poner(capa_web::CLAVE_MAQUETA, ahora.a_texto());
+            if !self.marcas.iter().any(|m| m.emoji == MARCA_MAQUETA) {
+                self.marca_pendiente = Some(MARCA_MAQUETA.to_string());
+            }
+            tracing::info!(ancho = ahora.ancho, tam = ahora.tam, "nota: maqueta de la tinta guardada");
+        }
+        self.fija = true;
+    }
+
     /// **El lapiz**: la ventana de la tinta recoge el raton (y el teclado)
     /// o los suelta a la pagina, guardando lo dibujado. Sale de los marcos.
     pub fn alternar_anotar(&mut self) -> Pide {
@@ -1075,6 +1141,7 @@ impl RielDeLaVista {
             if self.marcos.activo {
                 self.marcos.alternar();
             }
+            self.fijar_maqueta();
             self.tomar_el_raton(true);
             Pide::Nada
         } else {
@@ -1824,7 +1891,7 @@ mod pruebas {
 
     #[test]
     fn la_vista_de_una_marca_guarda_zoom_y_desplazamiento() {
-        let s = Sitio { x: 0.0, y: 1834.5, arriba: 1834.5, maximo: 5000.0, dpr: 1.25, vx: 0.0, vy: 0.0, escala: 1.0, ax: 0.0, ay: 0.0, aw: 0.0, ah: 0.0, nuevo: false };
+        let s = Sitio { x: 0.0, y: 1834.5, arriba: 1834.5, maximo: 5000.0, dpr: 1.25, vx: 0.0, vy: 0.0, escala: 1.0, ax: 0.0, ay: 0.0, aw: 0.0, ah: 0.0, nuevo: false, maq: None };
         let t = vista_de_marca(1.25, &s);
         assert_eq!(marcos_doc::zoom_de_texto(&t), Some((1.25, 0.0, 1834.5)));
         // En el lector de notas lo que se desplaza empieza bajo su barra: la

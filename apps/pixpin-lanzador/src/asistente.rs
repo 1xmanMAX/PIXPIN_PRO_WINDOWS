@@ -203,7 +203,8 @@ fn abrir_de(e: &Encargo) -> Value {
         ),
         Some((proyecto, codigo, None)) => pedido(
             "abrir",
-            json!({ "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo } }),
+            // La respuesta, en el pin del lector de notas (sin abrir el chat).
+            json!({ "que": { "tipo": "nota", "proyecto": proyecto, "codigo": codigo } }),
         ),
         None => pedido("asistente", json!({})),
     }

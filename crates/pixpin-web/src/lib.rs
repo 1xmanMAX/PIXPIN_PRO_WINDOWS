@@ -423,13 +423,17 @@ thread_local! {
 /// app entera (0xC000041D en `EmbeddedBrowserWebView.dll`) al cerrar un
 /// pin de html o de notas. `examples/cerrar_hilos.rs` lo reproduce.
 pub(crate) fn controlador_cerrado() {
-    let quedan = VIVOS.with(|v| {
+    // `try_with`: un controlador que se suelta con el hilo ya muriendo no
+    // debe tirar la app entera (un `with` ahi es un panico fatal).
+    let Ok(quedan) = VIVOS.try_with(|v| {
         let n = v.get().saturating_sub(1);
         v.set(n);
         n
-    });
+    }) else {
+        return;
+    };
     if quedan == 0 {
-        let entorno = ENTORNO.with(|e| e.borrow_mut().take());
+        let entorno = ENTORNO.try_with(|e| e.try_borrow_mut().ok().and_then(|mut e| e.take())).ok().flatten();
         drop(entorno);
         bombear_lo_pendiente();
     }

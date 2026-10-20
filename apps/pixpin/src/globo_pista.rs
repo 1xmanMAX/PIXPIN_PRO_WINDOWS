@@ -44,8 +44,10 @@ pub fn mostrar(texto: &str, boton: Rect, e: f32) {
         ancho: w,
         alto: h,
     };
-    GLOBO.with(|g| {
-        let mut g = g.borrow_mut();
+    // `try_with` y `try_borrow_mut`: al morir el hilo el globo ya puede no
+    // estar, y `with` tiraba la app entera al cerrar un visor (20-oct-2026).
+    let _ = GLOBO.try_with(|g| {
+        let Ok(mut g) = g.try_borrow_mut() else { return };
         if g.as_ref().is_some_and(|x| x.texto == texto && x.area == area) {
             return;
         }
@@ -66,14 +68,22 @@ pub fn mostrar(texto: &str, boton: Rect, e: f32) {
 
 /// Lo esconde (el raton salio del boton o de la barra).
 pub fn ocultar() {
-    GLOBO.with(|g| {
-        if let Some(globo) = g.borrow_mut().as_mut()
+    let _ = GLOBO.try_with(|g| {
+        if let Ok(mut g) = g.try_borrow_mut()
+            && let Some(globo) = g.as_mut()
             && !globo.texto.is_empty()
         {
             globo.texto.clear();
             globo.ventana.ocultar();
         }
     });
+}
+
+/// **Lo suelta ya** (al cerrarse el pin): su ventana y su grafica se van
+/// con el hilo aun vivo, no en la limpieza del final del hilo.
+pub fn soltar() {
+    let globo = GLOBO.try_with(|g| g.try_borrow_mut().ok().and_then(|mut g| g.take())).ok().flatten();
+    drop(globo);
 }
 
 fn crear(area: Rect) -> Option<Globo> {

@@ -763,7 +763,18 @@ fn arrancar(
     // Las hojas que se abren desde una nota (paginas vivas, enlaces), con
     // los mismos ajustes del lienzo.
     notas_md::paginas_vivas::poner_opciones_del_lienzo(opciones_lienzo);
-    ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
+    // Salvo si se arranco solo para abrir algo (20-oct-2026, el usuario:
+    // «que directamente se abra la ventana del documento»): un fichero
+    // («Abrir con» con PixPin cerrada) o un pedido de Flow o de un enlace
+    // (`--sin-chat`, lo ponen `pixpin-lanzador` y `mensajero`). Lo que
+    // pida el chat ya lo abre el propio pedido.
+    let sin_chat = (compartido.is_none() && !del_arranque.is_empty())
+        || std::env::args_os().skip(1).any(|a| a == "--sin-chat");
+    if sin_chat {
+        tracing::info!("arranque para abrir algo: sin el chat delante");
+    } else {
+        ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
+    }
 
     // 8e. Los recordatorios. Su hilo duerme hasta que vence el proximo y solo
     // da un toque a ESTA ventana: el pin y el globo los saca el bucle de

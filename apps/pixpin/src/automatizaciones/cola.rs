@@ -384,7 +384,7 @@ pub fn pedido_de_abrir(a: Option<&Abrir>) -> serde_json::Value {
         }),
         Some(Abrir { proyecto, codigo, .. }) => json!({
             "pixpin": 1, "accion": "abrir",
-            "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo }
+            "que": { "tipo": "nota", "proyecto": proyecto, "codigo": codigo }
         }),
         None => json!({ "pixpin": 1, "accion": "asistente" }),
     }
@@ -541,6 +541,22 @@ fn titulo_de_la_tarjeta(r: &Registro) -> String {
 /// Al acabar: la notificacion de Windows; si no sale, el aviso flotante.
 /// Si ya habia tarjeta (por una pregunta), ademas ensena alli la respuesta.
 fn avisar_al_acabar(app: &encargo::DeLaApp, r: &Registro, tarjeta: Option<crate::ventana_chat::sin_ventana::Mando>) {
+    // **Una respuesta de texto, en un pin para leerla ya** (20-oct-2026, el
+    // usuario: «que me muestre su respuesta en formato de pin… para que
+    // pueda leer rapido las respuestas», sin abrir la app): el lector de
+    // notas con la nota de la respuesta, y sin notificacion encima. Lo que
+    // dibujo, fallo o ya tiene tarjeta (pregunto permiso) avisa como antes.
+    if tarjeta.is_none()
+        && r.estado == Estado::Hecha
+        && let Some(Abrir { proyecto, codigo, lienzo: None }) = &r.abrir
+    {
+        crate::notas_md::abrir(
+            app.idioma,
+            app.entorno.ubicacion.clone(),
+            crate::notas_md::Destino::Mensaje { proyecto: proyecto.clone(), codigo: codigo.clone() },
+        );
+        return;
+    }
     let toast = notificacion(r);
     let salio = match notificacion::mostrar(&toast) {
         Ok(notificacion::Mostrado::Si) => true,
@@ -711,7 +727,7 @@ mod pruebas {
         let t = notificacion(&r);
         assert_eq!(t.titulo, "✅ Hecho: apunta comprar yeso y cemento para la obra del l…");
         assert_eq!(t.texto, "Listo");
-        assert_eq!(t.botones[0].pedido["que"], serde_json::json!({"tipo": "mensaje", "proyecto": "asis", "codigo": "IA-7"}));
+        assert_eq!(t.botones[0].pedido["que"], serde_json::json!({"tipo": "nota", "proyecto": "asis", "codigo": "IA-7"}));
         assert_eq!(t.al_pulsar.as_ref(), Some(&t.botones[0].pedido));
         let xml = notificacion::xml(&t);
         assert!(xml.contains("<action content=\"Abrir\""), "{xml}");
