@@ -611,6 +611,7 @@ mod pruebas {
             dist: 20.0,
             seccion: None,
             aislado: None,
+            aislado_clave: None,
             ocultos: Vec::new(),
             claro: false,
             aristas: true,

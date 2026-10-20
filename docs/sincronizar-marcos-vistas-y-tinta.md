@@ -121,7 +121,8 @@ formato (se distingue por el tipo del adjunto):
 ```json
 {"objetivo":[x,y,z],"rumbo":r,"altura":a,"dist":d,
  "seccion":[x0,y0,z0,x1,y1,z1] | null,"aislado":n | null,
- "ocultos":["n:<i>","n:-","t:<Tipo>"],"claro":false,"aristas":true}
+ "aislado_clave":"<clave>",
+ "ocultos":["n:=<clave del nivel>","n:-","t:<Tipo>"],"claro":false,"aristas":true}
 ```
 
   - `objetivo` en coordenadas absolutas del mundo, Z arriba; `rumbo` y
@@ -129,11 +130,26 @@ formato (se distingue por el tipo del adjunto):
     El ojo: `objetivo + dist·[cos a·cos r, cos a·sin r, sin a]`, campo
     vertical de 45°.
   - `seccion`: la caja del corte, coordenadas absolutas.
-  - `aislado` y los niveles `n:<i>` son **índices del lector del PC**: Android
-    tiene que numerar igual o ignorarlos.
+  - **Claves estables (20-oct-2026)**, iguales en todos los aparatos
+    (`Modelo3d::clave_de_elemento` / `clave_de_nivel` en `pixpin-cad`):
+    - elemento: su `GlobalId` del IFC (un Revit se pasa a IFC); sin él,
+      `~<tipo IFC>|<nombre>|<k>`, con `k` = cuántos elementos sin `GlobalId`
+      del mismo tipo y nombre van antes en el fichero;
+    - nivel: el `GlobalId` del `IfcBuildingStorey`; sin él,
+      `<nombre>@<cota en mm, redondeada>`.
+  - `aislado_clave` es lo que manda; `aislado` (el número en el modelo del
+    PC que lo guardó) es solo una pista y Android puede ignorarlo. Un
+    marcador de antes sin `aislado_clave` se resuelve por `aislado`.
+  - En `ocultos`, `n:=<clave>` es un nivel por su clave; `n:<i>` (lo de antes
+    del 20-oct) es su número y se sigue entendiendo. Al leer, una clave que
+    no está en el modelo se ignora.
+  - **Android**: al guardar, escribir `aislado_clave` y `n:=<clave>`; al
+    abrir, buscar el elemento y el nivel por esas claves con las mismas
+    reglas.
   - Una vista «coincide» con un marcador si objetivo, distancia y ángulos
     difieren menos de ~2e-3 (relativo), el corte menos de 1e-3·dist, y
-    `aislado` y `ocultos` son iguales (`claro` y `aristas` no cuentan).
+    lo aislado (por `aislado_clave` si los dos la traen; si no, por
+    `aislado`) y `ocultos` son iguales (`claro` y `aristas` no cuentan).
 
 ### 3.3 Marcos 3D — `anot-<uid>.marcos.json` (de un modelo)
 

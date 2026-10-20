@@ -130,14 +130,16 @@ impl Arbol {
         Arbol { niveles, tipos, ocultos: HashSet::new(), desplazar: 0.0 }
     }
 
-    /// **Lo oculto, como texto** (para el estado de un marcador): `n:<nivel>`,
-    /// `n:-` (sin nivel) o `t:<categoria>`, ordenado.
-    pub fn ocultos_en_texto(&self) -> Vec<String> {
+    /// **Lo oculto, como texto** (para el estado de un marcador):
+    /// `n:=<clave del nivel>` (la estable de [`Modelo3d::clave_de_nivel`],
+    /// igual en otro PC y en el movil), `n:-` (sin nivel) o
+    /// `t:<categoria>`, ordenado.
+    pub fn ocultos_en_texto(&self, m: &Modelo3d) -> Vec<String> {
         let mut v: Vec<String> = self
             .ocultos
             .iter()
             .map(|c| match c {
-                Clave::Nivel(Some(n)) => format!("n:{n}"),
+                Clave::Nivel(Some(n)) => m.clave_de_nivel(*n).map_or_else(|| format!("n:{n}"), |k| format!("n:={k}")),
                 Clave::Nivel(None) => "n:-".to_string(),
                 Clave::Tipo(t) => format!("t:{t}"),
             })
@@ -146,13 +148,17 @@ impl Arbol {
         v
     }
 
-    /// Y al reves: deja oculto justo eso. Dice si cambio algo.
-    pub fn poner_ocultos(&mut self, v: &[String]) -> bool {
+    /// Y al reves: deja oculto justo eso. Dice si cambio algo. `n:<k>` (el
+    /// numero de nivel de antes del 20-oct-2026) se sigue entendiendo.
+    pub fn poner_ocultos(&mut self, v: &[String], m: &Modelo3d) -> bool {
         let nuevos: HashSet<Clave> = v
             .iter()
             .filter_map(|t| match t.split_once(':')? {
                 ("n", "-") => Some(Clave::Nivel(None)),
-                ("n", n) => n.parse().ok().map(|n| Clave::Nivel(Some(n))),
+                ("n", n) => match n.strip_prefix('=') {
+                    Some(k) => m.nivel_de_clave(k).map(|n| Clave::Nivel(Some(n))),
+                    None => n.parse().ok().filter(|n: &u32| (*n as usize) < m.niveles.len()).map(|n| Clave::Nivel(Some(n))),
+                },
                 ("t", t) => Some(Clave::Tipo(t.to_string())),
                 _ => None,
             })
@@ -304,7 +310,7 @@ mod pruebas {
         let a = c.elemento("IfcWall", "a");
         let b = c.elemento("IfcSlab", "b");
         let d = c.elemento("IfcWallStandardCase", "c");
-        c.niveles(vec![Nivel { nombre: "1ER PISO".into(), cota: 3.4 }, Nivel { nombre: "VACIO".into(), cota: 9.0 }], &[(a, 0), (b, 0)]);
+        c.niveles(vec![Nivel { nombre: "1ER PISO".into(), cota: 3.4, ..Default::default() }, Nivel { nombre: "VACIO".into(), cota: 9.0, ..Default::default() }], &[(a, 0), (b, 0)]);
         let _ = d;
         c.terminar()
     }
@@ -349,22 +355,77 @@ mod pruebas {
         ar.ocultos.insert(Clave::Nivel(None));
         ar.ocultos.insert(Clave::Nivel(Some(0)));
         ar.ocultos.insert(Clave::Tipo("Muro".into()));
-        let t = ar.ocultos_en_texto();
-        assert_eq!(t, vec!["n:-", "n:0", "t:Muro"]);
+        let t = ar.ocultos_en_texto(&m);
+        // El nivel, por su clave estable (sin GlobalId: nombre y cota).
+        assert_eq!(t, vec!["n:-", "n:=1ER PISO@3400", "t:Muro"]);
         let mut otro = Arbol::de(&m, &ui);
-        assert!(otro.poner_ocultos(&t));
+        assert!(otro.poner_ocultos(&t, &m));
         assert_eq!(otro.ocultos, ar.ocultos);
         // Lo mismo otra vez no es un cambio; lo que no se entiende se deja.
-        assert!(!otro.poner_ocultos(&t));
-        assert!(otro.poner_ocultos(&["x:1".into(), "n:abc".into()]));
+        assert!(!otro.poner_ocultos(&t, &m));
+        assert!(otro.poner_ocultos(&["x:1".into(), "n:abc".into(), "n:=NO-ESTA".into(), "n:7".into()], &m));
         assert!(otro.ocultos.is_empty());
+        // El de antes, por numero, se sigue entendiendo.
+        assert!(otro.poner_ocultos(&["n:0".into()], &m));
+        assert!(otro.ocultos.contains(&Clave::Nivel(Some(0))));
+    }
+
+    /// Un marcador hecho con el modelo leido en un orden vuelve a lo mismo
+    /// aunque en otro PC (u otra version del lector) los niveles y los
+    /// elementos salgan en otro orden.
+    #[test]
+    fn lo_oculto_y_lo_aislado_aguantan_otro_orden() {
+        use crate::modelo3d::{Constructor3d, Nivel};
+        let leer = |al_reves: bool| {
+            let mut c = Constructor3d::nuevo();
+            let mut nombres = vec![("IfcWall", "Muro A", "GA"), ("IfcSlab", "Losa", ""), ("IfcSlab", "Losa", "")];
+            let mut niveles = vec![
+                Nivel { nombre: "1ER PISO".into(), cota: 3.4, clave: "S1".into() },
+                Nivel { nombre: "2DO PISO".into(), cota: 6.65, ..Default::default() },
+            ];
+            if al_reves {
+                nombres.reverse();
+                niveles.reverse();
+            }
+            let es: Vec<u32> = nombres
+                .iter()
+                .map(|(t, n, g)| {
+                    let e = c.elemento(t, n);
+                    if !g.is_empty() {
+                        c.poner_clave(e, g);
+                    }
+                    e
+                })
+                .collect();
+            c.niveles(niveles, &[(es[0], 0), (es[1], 1)]);
+            c.terminar()
+        };
+        let (a, b) = (leer(false), leer(true));
+        let ui = TextosUi3d::default();
+        let mut ar = Arbol::de(&a, &ui);
+        let k = a.niveles.iter().position(|n| n.nombre == "2DO PISO").unwrap() as u32;
+        ar.ocultos.insert(Clave::Nivel(Some(k)));
+        let t = ar.ocultos_en_texto(&a);
+        let mut otro = Arbol::de(&b, &ui);
+        otro.poner_ocultos(&t, &b);
+        let kb = b.niveles.iter().position(|n| n.nombre == "2DO PISO").unwrap() as u32;
+        assert_eq!(otro.ocultos, [Clave::Nivel(Some(kb))].into_iter().collect());
+        // El muro, por su GlobalId; la losa sin el, por tipo, nombre y orden.
+        let muro_a = a.elementos.iter().position(|e| e.nombre == "Muro A").unwrap() as u32;
+        let muro_b = b.elemento_de_clave(&a.clave_de_elemento(muro_a).unwrap());
+        assert_eq!(muro_b.map(|i| b.elementos[i as usize].nombre.as_str()), Some("Muro A"));
+        let losa = a.elementos.iter().position(|e| e.nombre == "Losa").unwrap() as u32;
+        assert_eq!(a.clave_de_elemento(losa).as_deref(), Some("~IfcSlab|Losa|0"));
+        assert!(b.elemento_de_clave("~IfcSlab|Losa|0").is_some());
+        // Caso negativo: una clave que no esta.
+        assert_eq!(b.elemento_de_clave("NO-ESTA"), None);
     }
 
     #[test]
     fn la_pastilla_dice_nivel_volumen_y_area() {
         let mut c = Constructor3d::nuevo();
         let a = c.elemento("IfcSlab", "Losa 1");
-        c.niveles(vec![Nivel { nombre: "2DO PISO".into(), cota: 6.65 }], &[(a, 0)]);
+        c.niveles(vec![Nivel { nombre: "2DO PISO".into(), cota: 6.65, ..Default::default() }], &[(a, 0)]);
         let p: Vec<[f64; 3]> = (0..8).map(|i| [(i & 1) as f64 * 2.0, ((i >> 1) & 1) as f64, ((i >> 2) & 1) as f64]).collect();
         let mut idx = Vec::new();
         for f in [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]] {

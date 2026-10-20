@@ -30,6 +30,12 @@ pub struct Elemento {
     pub nombre: String,
     /// En que nivel esta (indice en [`Modelo3d::niveles`]).
     pub nivel: Option<u32>,
+    /// **Su clave estable** (20-oct-2026): la que no cambia aunque el
+    /// modelo se lea en otro orden, con otra version del lector o en
+    /// Android. En un IFC (y un Revit, que se pasa a IFC), su `GlobalId`;
+    /// vacia si el formato no trae ninguna (ver
+    /// [`crate::marcadores::Claves`], que entonces usa tipo, nombre y orden).
+    pub clave: String,
     /// Lo que mide, sacado de sus triangulos (en unidades del modelo).
     pub medidas: Medidas,
 }
@@ -56,6 +62,9 @@ pub struct Nivel {
     pub nombre: String,
     /// La cota, en metros.
     pub cota: f64,
+    /// Su clave estable: el `GlobalId` del `IfcBuildingStorey`; vacia si
+    /// no la hay (entonces cuentan el nombre y la cota).
+    pub clave: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -121,6 +130,13 @@ impl Constructor3d {
     pub fn elemento(&mut self, tipo: &str, nombre: &str) -> u32 {
         self.m.elementos.push(Elemento { tipo: tipo.to_string(), nombre: nombre.to_string(), ..Default::default() });
         (self.m.elementos.len() - 1) as u32
+    }
+
+    /// La clave estable de un elemento ya creado (su `GlobalId`).
+    pub fn poner_clave(&mut self, elemento: u32, clave: &str) {
+        if let Some(el) = self.m.elementos.get_mut(elemento as usize) {
+            el.clave = clave.to_string();
+        }
     }
 
     /// Una malla: `puntos` del mundo, `normales` (pueden faltar: se calculan
@@ -416,9 +432,44 @@ pub fn aristas_vivas(puntos: &[[f32; 3]], indices: &[u32], grados: f32) -> Vec<u
     out
 }
 
-const MAGIA: &[u8; 8] = b"PX3D\0\0\0\x03";
+// La 4 (20-oct-2026) trae la clave estable de cada elemento y nivel: la
+// cache de antes no se entiende y se vuelve a leer el modelo.
+const MAGIA: &[u8; 8] = b"PX3D\0\0\0\x04";
 
 impl Modelo3d {
+    /// **La clave estable del elemento `el`** (la que guardan los
+    /// marcadores, 20-oct-2026): su `GlobalId` si lo trae; si no,
+    /// `~<tipo>|<nombre>|<k>`, con `k` el orden entre los de su mismo tipo y
+    /// nombre (lo que mas aguanta que se lea en otro orden).
+    pub fn clave_de_elemento(&self, el: u32) -> Option<String> {
+        let e = self.elementos.get(el as usize)?;
+        if !e.clave.is_empty() {
+            return Some(e.clave.clone());
+        }
+        let k = self.elementos[..el as usize].iter().filter(|o| o.clave.is_empty() && o.tipo == e.tipo && o.nombre == e.nombre).count();
+        Some(format!("~{}|{}|{k}", e.tipo, e.nombre))
+    }
+
+    /// Y al reves: el elemento de esa clave en este modelo.
+    pub fn elemento_de_clave(&self, clave: &str) -> Option<u32> {
+        if !clave.starts_with('~') {
+            return self.elementos.iter().position(|e| e.clave == clave).map(|i| i as u32);
+        }
+        (0..self.elementos.len() as u32).find(|&i| self.clave_de_elemento(i).as_deref() == Some(clave))
+    }
+
+    /// **La clave estable del nivel `k`**: su `GlobalId`; si no, el nombre y
+    /// la cota en milimetros (`<nombre>@<mm>`).
+    pub fn clave_de_nivel(&self, k: u32) -> Option<String> {
+        let n = self.niveles.get(k as usize)?;
+        Some(if n.clave.is_empty() { format!("{}@{}", n.nombre, (n.cota * 1000.0).round() as i64) } else { n.clave.clone() })
+    }
+
+    /// Y al reves: el nivel de esa clave en este modelo.
+    pub fn nivel_de_clave(&self, clave: &str) -> Option<u32> {
+        (0..self.niveles.len() as u32).find(|&k| self.clave_de_nivel(k).as_deref() == Some(clave))
+    }
+
     /// La caja de lo que importa: sin los pocos puntos sueltos muy lejos
     /// (una raya con una cota absurda en un plano) que harian ver el resto
     /// diminuto. Del 0,5 % al 99,5 % en cada eje, con un margen.
@@ -475,7 +526,7 @@ impl Modelo3d {
         }
         b.extend_from_slice(&(self.elementos.len() as u32).to_le_bytes());
         for e in &self.elementos {
-            for s in [&e.tipo, &e.nombre] {
+            for s in [&e.tipo, &e.nombre, &e.clave] {
                 b.extend_from_slice(&(s.len() as u32).to_le_bytes());
                 b.extend_from_slice(s.as_bytes());
             }
@@ -491,6 +542,8 @@ impl Modelo3d {
             b.extend_from_slice(&(nv.nombre.len() as u32).to_le_bytes());
             b.extend_from_slice(nv.nombre.as_bytes());
             b.extend_from_slice(&nv.cota.to_le_bytes());
+            b.extend_from_slice(&(nv.clave.len() as u32).to_le_bytes());
+            b.extend_from_slice(nv.clave.as_bytes());
         }
         b
     }
@@ -537,9 +590,10 @@ impl Modelo3d {
         for _ in 0..n {
             let tipo = r.texto()?;
             let nombre = r.texto()?;
+            let clave = r.texto()?;
             let nivel = Some(r.u()?).filter(|n| *n != u32::MAX);
             let medidas = Medidas { volumen: r.f()?, planta: r.f()?, alzado: r.f()?, superficie: r.f()?, cerrado: r.tomar(1)?[0] != 0 };
-            m.elementos.push(Elemento { tipo, nombre, nivel, medidas });
+            m.elementos.push(Elemento { tipo, nombre, nivel, clave, medidas });
         }
         let n = r.u()? as usize;
         if n > b.len() {
@@ -548,7 +602,8 @@ impl Modelo3d {
         for _ in 0..n {
             let nombre = r.texto()?;
             let cota = f64::from_le_bytes(r.tomar(8)?.try_into().ok()?);
-            m.niveles.push(Nivel { nombre, cota });
+            let clave = r.texto()?;
+            m.niveles.push(Nivel { nombre, cota, clave });
         }
         if m.elementos.iter().any(|e| e.nivel.is_some_and(|k| k as usize >= m.niveles.len())) {
             return None;
@@ -695,14 +750,28 @@ mod pruebas {
         let a = c.elemento("IfcWall", "");
         let b = c.elemento("IfcSlab", "");
         let _sin = c.elemento("IfcBeam", "");
-        c.niveles(vec![Nivel { nombre: "2DO PISO".into(), cota: 6.65 }, Nivel { nombre: "1ER PISO".into(), cota: 3.4 }], &[(a, 0), (b, 1)]);
+        c.niveles(
+            vec![
+                Nivel { nombre: "2DO PISO".into(), cota: 6.65, clave: "2gRXFgjRn2HPE$YoDLX3FV".into() },
+                Nivel { nombre: "1ER PISO".into(), cota: 3.4, ..Default::default() },
+            ],
+            &[(a, 0), (b, 1)],
+        );
+        c.poner_clave(a, "0K7w7JxVz4MRkRhRWvQ$a9");
         cubo(&mut c, a, [0.8, 0.8, 0.8, 1.0]);
         let m = c.terminar();
         assert_eq!(m.niveles[0].nombre, "1ER PISO");
         assert_eq!(m.elementos[0].nivel, Some(1));
         assert_eq!(m.elementos[1].nivel, Some(0));
         assert_eq!(m.elementos[2].nivel, None);
+        // Las claves estables van con lo suyo al ordenar y por los bytes.
+        assert_eq!(m.niveles[1].clave, "2gRXFgjRn2HPE$YoDLX3FV");
+        assert_eq!(m.elementos[0].clave, "0K7w7JxVz4MRkRhRWvQ$a9");
         assert_eq!(Modelo3d::de_bytes(&m.a_bytes()).as_ref(), Some(&m));
+        // Caso negativo: la cache de la version de antes no se entiende.
+        let mut vieja = m.a_bytes();
+        vieja[7] = 3;
+        assert!(Modelo3d::de_bytes(&vieja).is_none());
     }
 
     #[test]

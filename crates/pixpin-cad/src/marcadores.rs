@@ -67,10 +67,18 @@ pub struct Estado3d {
     /// La caja de seccion `[x0, y0, z0, x1, y1, z1]`, si estaba puesta.
     #[serde(default)]
     pub seccion: Option<[f64; 6]>,
-    /// El elemento aislado (su numero en el modelo).
+    /// El elemento aislado (su numero en el modelo de este PC: solo una
+    /// pista, el que manda es `aislado_clave`).
     #[serde(default)]
     pub aislado: Option<u32>,
-    /// Las plantas y categorias ocultas (ver `arbol`), ordenadas.
+    /// **La clave estable del aislado** (20-oct-2026,
+    /// `Modelo3d::clave_de_elemento`): su `GlobalId`, o
+    /// `~<tipo>|<nombre>|<orden>` sin el. Es la que vale en otro PC y en el
+    /// movil; los marcadores de antes no la traen y van por `aislado`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aislado_clave: Option<String>,
+    /// Las plantas y categorias ocultas (ver `arbol`), ordenadas: `n:=<clave
+    /// del nivel>`, `n:-` y `t:<categoria>` (`n:<numero>`, lo de antes).
     #[serde(default)]
     pub ocultos: Vec<String>,
     #[serde(default)]
@@ -102,7 +110,11 @@ pub fn coincide(a: &Estado3d, b: &Estado3d) -> bool {
         (Some(p), Some(q)) => p.iter().zip(q.iter()).all(|(x, y)| (x - y).abs() <= escala * 1e-3 + 1e-6),
         _ => false,
     };
-    camara && seccion && a.aislado == b.aislado && a.ocultos == b.ocultos
+    let aislado = match (&a.aislado_clave, &b.aislado_clave) {
+        (Some(x), Some(y)) => x == y,
+        _ => a.aislado == b.aislado,
+    };
+    camara && seccion && aislado && a.ocultos == b.ocultos
 }
 
 /// Un marcador del modelo.
@@ -575,6 +587,7 @@ mod pruebas {
             dist: 40.0,
             seccion: Some([0.0, 0.0, 0.0, 10.0, 10.0, 3.5]),
             aislado: None,
+            aislado_clave: None,
             ocultos: vec!["t:Muro".into()],
             claro: false,
             aristas: true,

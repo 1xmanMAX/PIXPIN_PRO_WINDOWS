@@ -748,7 +748,8 @@ impl Default for TextosMarcos3d {
 /// camara, el corte y lo aislado en el mundo (con el origen sumado) y lo
 /// oculto del panel.
 #[allow(clippy::too_many_arguments)]
-fn estado_de(cam: &Orbita, origen: [f64; 3], seccion: Option<[f32; 6]>, aislado: Option<u32>, arbol: Option<&Arbol>, claro: bool, aristas: bool) -> crate::marcadores::Estado3d {
+fn estado_de(cam: &Orbita, m: &Modelo3d, seccion: Option<[f32; 6]>, aislado: Option<u32>, arbol: Option<&Arbol>, claro: bool, aristas: bool) -> crate::marcadores::Estado3d {
+    let origen = m.origen;
     crate::marcadores::Estado3d {
         objetivo: [cam.objetivo[0] + origen[0], cam.objetivo[1] + origen[1], cam.objetivo[2] + origen[2]],
         rumbo: cam.rumbo,
@@ -756,7 +757,8 @@ fn estado_de(cam: &Orbita, origen: [f64; 3], seccion: Option<[f32; 6]>, aislado:
         dist: cam.dist,
         seccion: seccion.map(|c| std::array::from_fn(|k| c[k] as f64 + origen[k % 3])),
         aislado,
-        ocultos: arbol.map(|a| a.ocultos_en_texto()).unwrap_or_default(),
+        aislado_clave: aislado.and_then(|el| m.clave_de_elemento(el)),
+        ocultos: arbol.map(|a| a.ocultos_en_texto(m)).unwrap_or_default(),
         claro,
         aristas,
     }
@@ -1222,7 +1224,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                             if (b[0] - a[0]).abs() > 8.0 * e && (b[1] - a[1]).abs() > 8.0 * e {
                                 let p = crate::marcadores::a_normal(a[0].min(b[0]), a[1].min(b[1]), w, h);
                                 let q = crate::marcadores::a_normal(a[0].max(b[0]), a[1].max(b[1]), w, h);
-                                let estado = estado_de(&cam, m.origen, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
+                                let estado = estado_de(&cam, m, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
                                 guardados.c.marcos.push(crate::marcadores::Marco3d { id: crate::marcadores::nuevo_id(), caja: [p[0], p[1], q[0], q[1]], estado });
                                 guardados.guardar();
                             }
@@ -1626,7 +1628,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
             && imprimiendo.is_none()
             && let Some((m, _)) = &modelo
         {
-            let ahora = estado_de(&destino, m.origen, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
+            let ahora = estado_de(&destino, m, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
             let i = match guardados.c.modelo.iter().position(|mk| crate::marcadores::coincide(&ahora, &mk.estado)) {
                 Some(i) => i,
                 None => {
@@ -1681,7 +1683,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
             {
                 a.terminar();
             }
-            let volver = estado_de(&destino, m.origen, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
+            let volver = estado_de(&destino, m, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
             let cola = if guardados.c.marcos.is_empty() { vec![None] } else { (0..guardados.c.marcos.len()).map(Some).collect() };
             imprimiendo = Some(Impresion { cola, siguiente: 0, fotos: Vec::new(), volver, tema_tocado, paso: PasoDeImprimir::Poner });
             nuevo_marco = None;
@@ -1724,9 +1726,10 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
             seccion = est.seccion.map(|s| std::array::from_fn(|k| (s[k] - o[k % 3]) as f32));
             tirador = None;
             tirador_encima = None;
-            aislado = est.aislado.and_then(|el| Some((el, caja_de_elemento(m, el)?)));
+            let el = est.aislado_clave.as_deref().and_then(|k| m.elemento_de_clave(k)).or(est.aislado.filter(|_| est.aislado_clave.is_none()));
+            aislado = el.and_then(|el| Some((el, caja_de_elemento(m, el)?)));
             if let Some(ar) = &mut arbol_m
-                && ar.poner_ocultos(&est.ocultos)
+                && ar.poner_ocultos(&est.ocultos, m)
             {
                 refiltrar = true;
             }
@@ -1853,7 +1856,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
         // **El marcador que es la vista de ahora** (la que se ve): su punto
         // en azul y su tinta a la vista. Si se anotaba sobre otro (se giro,
         // se corto...), se deja de anotar y su capa se guarda.
-        let estado_ahora = modelo.as_ref().map(|(m, _)| estado_de(&cam, m.origen, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas));
+        let estado_ahora = modelo.as_ref().map(|(m, _)| estado_de(&cam, m, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas));
         let antes = actual;
         actual = estado_ahora.as_ref().and_then(|s| guardados.c.modelo.iter().position(|mk| crate::marcadores::coincide(s, &mk.estado)));
         if actual != antes {
