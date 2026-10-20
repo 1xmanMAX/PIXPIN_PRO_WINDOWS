@@ -208,6 +208,8 @@ pub(super) struct Respuesta {
     pub imprimir: bool,
     /// Se pidio la hojita (F6).
     pub hojita: bool,
+    /// Se pulso la ficha del marco `i`: ir a el.
+    pub ir_a_marco: Option<usize>,
 }
 
 impl Respuesta {
@@ -232,6 +234,9 @@ pub(super) struct Marcador {
     /// Si se estan poniendo marcos (la herramienta Marco): el boton del
     /// marco del riel, pulsado. Lo pone el editor en cada vuelta.
     pub enmarcando: bool,
+    /// Los marcos del dibujo en su orden (x, y, ancho, alto del mundo): las
+    /// fichas 1, 2, 3... de abajo, con la herramienta Marco.
+    pub marcos: Vec<[f32; 4]>,
 }
 
 impl Marcador {
@@ -247,6 +252,7 @@ impl Marcador {
             encima: DestinoRiel::Fuera,
             vuelo: None,
             enmarcando: false,
+            marcos: Vec::new(),
         }
     }
 
@@ -361,6 +367,14 @@ impl Marcador {
                 // mandar.
                 self.vuelo = None;
                 let q = local(p);
+                // Una ficha de los marcos (con la herramienta Marco): a ese.
+                if self.enmarcando {
+                    let e = cx.escala_por_cien as f32 / 100.0;
+                    let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), cx.area.alto as f32, e);
+                    if let Some(i) = crate::marcos_doc::ficha_bajo(&fichas, (q.x as f32, q.y as f32)) {
+                        return Respuesta { ir_a_marco: Some(i), ..Respuesta::suya(true) };
+                    }
+                }
                 match riel.destino(q) {
                     DestinoRiel::PonerMarca => {
                         self.poniendo = if self.poniendo == Poniendo::No {
@@ -618,6 +632,11 @@ impl Marcador {
             self.poniendo,
             self.enmarcando,
         );
+        if self.enmarcando {
+            let e = escala_por_cien as f32 / 100.0;
+            let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), alto as f32, e);
+            crate::marcos_doc::pintar_fichas(p, &fichas, e);
+        }
     }
 }
 
@@ -696,6 +715,16 @@ pub(super) fn pintar_riel(
             },
             if activo { ACTIVO_ICONO } else { ICONO },
         );
+    }
+
+    // El globo del boton bajo el raton: su nombre y su tecla.
+    if let Some((caja, clave)) = match encima {
+        DestinoRiel::PonerMarca => Some((riel.poner_marca, "riel-marcador")),
+        DestinoRiel::Hojita => Some((riel.hojita, "riel-hojita")),
+        DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
+        _ => None,
+    } {
+        crate::lector::globo_a_la_izquierda(p, rf(caja), &textos().t(clave), e);
     }
 
     // Los puntos. En reposo pequenos y medio transparentes, para no tapar el
@@ -854,6 +883,7 @@ mod pruebas {
             encima: DestinoRiel::Fuera,
             vuelo: None,
             enmarcando: false,
+            marcos: Vec::new(),
         }
     }
 
@@ -1187,6 +1217,7 @@ mod pruebas {
                 encima,
                 vuelo: None,
                 enmarcando: false,
+                marcos: Vec::new(),
             };
             motor
                 .dibujar(&fuera.destino, |p| {

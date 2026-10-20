@@ -1599,6 +1599,20 @@ fn abrir_en_modo(
                     interfaz_sucia = true;
                     ventana.invalidar();
                 }
+                // Una ficha de los marcos: la camara a ese, llenando la ventana.
+                if let Some(i) = r.ir_a_marco
+                    && let Some(m) = marcador.marcos.get(i).copied()
+                {
+                    let k = escala_por_cien as f32 / 100.0;
+                    let (w, h) = (area.ancho as f32 / k, area.alto as f32 / k);
+                    let zoom = ((w * 0.9) / m[2].max(1.0)).min((h * 0.8) / m[3].max(1.0)).clamp(0.05, 30.0);
+                    camara.zoom = zoom;
+                    camara.x = m[0] + m[2] / 2.0 - w / (2.0 * zoom);
+                    camara.y = m[1] + m[3] / 2.0 - h / (2.0 * zoom);
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
                 if r.imprimir {
                     // El marco, como en el plano: la herramienta Marco (arrastrar
                     // pone uno; su numero es su orden de lectura y Ctrl+P los
@@ -3048,6 +3062,7 @@ fn abrir_en_modo(
             let cristal = lupa.as_ref().and_then(|l| l.preparar(&motor));
             // El boton del marco del riel, pulsado con la herramienta Marco.
             marcador.enmarcando = gesto.herramienta == Herramienta::Marco;
+            marcador.marcos = pixpin_motor2d::marco::hojas_en_orden(&escena.elementos).iter().map(|h| [h.x, h.y, h.ancho, h.alto]).collect();
             let pintado = pintar(
                 &mut motor,
                 &superficie,

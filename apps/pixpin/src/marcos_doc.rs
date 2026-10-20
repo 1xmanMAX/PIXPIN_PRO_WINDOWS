@@ -243,10 +243,7 @@ impl Marcos {
         if !self.activo {
             return Vec::new();
         }
-        let lado = 28.0 * e;
-        (0..self.lista.len())
-            .map(|i| RectF { x: 12.0 * e + i as f32 * (lado + 6.0 * e), y: alto - 34.0 * e - lado / 2.0 + 4.0 * e, ancho: lado, alto: lado })
-            .collect()
+        fichas_de(self.lista.len(), alto, e)
     }
 
     /// La ficha bajo `q` (pixeles de la ventana): el numero de marco (desde
@@ -264,6 +261,31 @@ pub fn insignia(p: &Pintor, x: f32, y: f32, n: usize, e: f32) {
     let (w, _) = p.medir_texto(&n, tam);
     p.rellenar(RectF { x, y, ancho: w + 12.0 * e, alto: 20.0 * e }, AZUL);
     p.texto(&n, x + 6.0 * e, y + 3.0 * e, tam, BLANCO);
+}
+
+/// **Las fichas de `n` marcos** abajo a la izquierda de una ventana de
+/// `alto` (las de todos los visores, tambien el lienzo).
+pub fn fichas_de(n: usize, alto: f32, e: f32) -> Vec<RectF> {
+    let lado = 28.0 * e;
+    (0..n)
+        .map(|i| RectF { x: 12.0 * e + i as f32 * (lado + 6.0 * e), y: alto - 34.0 * e - lado / 2.0 + 4.0 * e, ancho: lado, alto: lado })
+        .collect()
+}
+
+/// Pinta las fichas (cuadritos azules con su numero).
+pub fn pintar_fichas(p: &Pintor, fichas: &[RectF], e: f32) {
+    for (i, r) in fichas.iter().enumerate() {
+        p.rellenar_redondeado(*r, 6.0 * e, AZUL);
+        let n = (i + 1).to_string();
+        let tam = 13.0 * e;
+        let (w, h) = p.medir_texto(&n, tam);
+        p.texto(&n, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, BLANCO);
+    }
+}
+
+/// La ficha bajo `q` entre `fichas`.
+pub fn ficha_bajo(fichas: &[RectF], q: (f32, f32)) -> Option<usize> {
+    fichas.iter().position(|r| q.0 >= r.x && q.0 <= r.x + r.ancho && q.1 >= r.y && q.1 <= r.y + r.alto)
 }
 
 /// La caja de un marco en la ventana.
