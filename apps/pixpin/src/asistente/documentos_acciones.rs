@@ -1133,6 +1133,7 @@ pub fn resumen_de_tabla(h: &TablaHecha, de: &str) -> String {
 
 /// El `.xlsx` de la tabla, en una carpeta temporal (el pedido `chat` lo
 /// copia al chat).
+#[cfg(test)]
 pub fn escribir_excel(nombre: &str, filas: &[Vec<String>], cabecera: bool) -> Result<PathBuf, String> {
     escribir_excel_con(nombre, filas, cabecera, None)
 }

@@ -87,6 +87,7 @@ impl Exportable {
 
     /// Los ids de los formatos que ofrecera la hoja (para las pruebas y el
     /// inventario): los de las hojas, los propios y los comunes.
+    #[cfg(test)]
     pub(crate) fn formatos(&self) -> Vec<&'static str> {
         let mut v: Vec<&'static str> = Vec::new();
         let mut poner = |id: &'static str| {
@@ -255,7 +256,7 @@ pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Res
     let mut lineas = String::new();
     let mut usados = std::collections::HashSet::new();
     let mut n = 0u32;
-    let mut poner = |m: Mensaje, lineas: &mut String| -> Result<()> {
+    let poner = |m: Mensaje, lineas: &mut String| -> Result<()> {
         lineas.push_str(&serde_json::to_string(&m).context("el mensaje no se escribe")?);
         lineas.push('\n');
         Ok(())

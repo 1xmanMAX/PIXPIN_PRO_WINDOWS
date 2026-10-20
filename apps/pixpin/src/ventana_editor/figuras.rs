@@ -297,6 +297,7 @@ pub(super) fn entradas_de_graficar(t: &Catalogo, visibles: &[bool]) -> Vec<Entra
 /// encima); luego las de fabrica —la grafica, la tabla en blanco, pegar—,
 /// las propias, las nuevas arriba (`BibliotecaStore.anadir`), y al final
 /// guardar y quitar.
+#[cfg(test)]
 pub(super) fn entradas(
     t: &Catalogo,
     figuras: &[FiguraGuardada],

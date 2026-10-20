@@ -573,7 +573,7 @@ fn juntar_texto_y_formulas(s: &mut Seccionado) {
             continue;
         }
         // Los renglones de todos, y la tinta sin letras de los que no tienen.
-        let mut renglones: Vec<super::Renglon> = miembros.iter().flat_map(|&k| s.zonas[k].renglones.iter().cloned()).collect();
+        let renglones: Vec<super::Renglon> = miembros.iter().flat_map(|&k| s.zonas[k].renglones.iter().cloned()).collect();
         let sueltas: Vec<Caja> = miembros.iter().filter(|&&k| s.zonas[k].renglones.is_empty()).map(|&k| s.zonas[k].caja).collect();
         let mut caja = s.zonas[r0].caja;
         for &k in &miembros {

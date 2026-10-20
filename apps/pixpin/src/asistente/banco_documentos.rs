@@ -169,7 +169,7 @@ fn excel_con_fondo(h: &Hecho) -> Result<(), String> {
     let colores: Vec<&str> = estilos.match_indices("rgb=\"").map(|(i, _)| &estilos[i + 5..(i + 13).min(estilos.len())]).collect();
     let azulado = colores.iter().any(|c| {
         let v = |k: usize| u8::from_str_radix(c.get(k..k + 2).unwrap_or("00"), 16).unwrap_or(0) as i32;
-        let (r, g, b) = (v(2), v(4), v(6));
+        let (r, b) = (v(2), v(6));
         b > r + 10 && b > 150 && r > 120
     });
     if azulado { Ok(()) } else { Err(format!("el Excel no lleva el fondo de la cabecera (colores {colores:?})")) }

@@ -76,7 +76,7 @@ const DIGITOS: [[u8; 5]; 10] = [
 pub fn marcar(p: &Pagina, s: &Seccionado) -> pixpin_codec::ImagenRgba {
     let (w, h) = (p.ancho as i64, p.alto as i64);
     let mut px = p.rgba.clone();
-    let mut poner = |px: &mut Vec<u8>, x: i64, y: i64, c: [u8; 3]| {
+    let poner = |px: &mut Vec<u8>, x: i64, y: i64, c: [u8; 3]| {
         if x >= 0 && y >= 0 && x < w && y < h {
             let i = ((y * w + x) * 4) as usize;
             px[i..i + 3].copy_from_slice(&c);

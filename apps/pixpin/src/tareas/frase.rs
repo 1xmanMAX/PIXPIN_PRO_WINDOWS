@@ -65,6 +65,7 @@ pub fn ahora() -> Momento {
 }
 
 /// Los milisegundos locales de un momento.
+#[cfg(test)]
 pub fn ms_de(m: Momento) -> i64 {
     (m.dia * 1440 + i64::from(m.minuto)) * 60_000
 }

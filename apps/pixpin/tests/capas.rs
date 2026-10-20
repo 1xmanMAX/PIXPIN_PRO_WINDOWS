@@ -19,7 +19,7 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-docs` (cuentas del texto), `pixpin-hojas` (las hojas de
         // calculo) y `pixpin-cad` (el visor de planos) no dependen de ningun
         // crate de PixPin: tambien son cimientos.
-        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline"
+        "pixpin-geom" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline"
         // `pixpin-frase` (18-oct) entiende frases de tareas y fechas, sin nadie.
         | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" | "pixpin-frase" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
@@ -38,7 +38,7 @@ fn capa(nombre: &str) -> Option<u8> {
         // ningun crate de PixPin ni de Windows. Cimiento puro.
         // `pixpin-office` (Word/PowerPoint/Excel sin Office) solo usa
         // `pixpin-docs`; `pixpin-bim` solo usa `pixpin-cad`.
-        "pixpin-shell" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d" | "pixpin-sincro"
+        "pixpin-shell" | "pixpin-codec" | "pixpin-motor2d" | "pixpin-sincro"
         | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web" | "pdfsqueeze-core"
         | "pixpin-office" | "pixpin-bim" => 1,
         // El plugin de Flow Launcher es un ejecutable aparte que no enlaza
@@ -55,7 +55,7 @@ fn capa(nombre: &str) -> Option<u8> {
         "pixpin-puente" => 2,
         // `pixpin-render` pinta las vistas previas de PDF, Office y hojas, asi
         // que va encima de `pixpin-pdf` (capa 2).
-        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" | "pixpin-render" => 3,
+        "pixpin-ui" | "pixpin-render" => 3,
         // `pixpin-notas` es la ventana del editor de notas Markdown (H12): usa
         // los componentes de `pixpin-ui` y `pixpin-render`, asi que va encima.
         // Los pines y la pila tambien pintan con `pixpin-render`.
@@ -95,12 +95,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_cuarenta_paquetes() {
+fn estan_los_treinta_y_seis_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        40,
-        "se esperan 35 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        36,
+        "se esperan 31 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

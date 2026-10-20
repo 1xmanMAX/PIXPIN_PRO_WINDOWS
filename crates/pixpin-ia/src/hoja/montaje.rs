@@ -1231,7 +1231,7 @@ fn caja_de_color(e: &Entrada) -> Option<Vec<Value>> {
             }
         }
         if !v.is_empty() {
-            let mut canal = |k: usize| {
+            let canal = |k: usize| {
                 let mut x: Vec<f32> = v.iter().map(|p| p[k]).collect();
                 x.sort_by(f32::total_cmp);
                 x[x.len() / 2]

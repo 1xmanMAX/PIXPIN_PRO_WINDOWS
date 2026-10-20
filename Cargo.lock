@@ -1624,19 +1624,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-flow"
-version = "0.1.0"
-
-[[package]]
 name = "pixpin-frase"
 version = "0.1.0"
 
 [[package]]
 name = "pixpin-geom"
-version = "0.1.0"
-
-[[package]]
-name = "pixpin-gpu"
 version = "0.1.0"
 
 [[package]]
@@ -1708,10 +1700,6 @@ dependencies = [
  "serde_json",
  "windows",
 ]
-
-[[package]]
-name = "pixpin-model"
-version = "0.1.0"
 
 [[package]]
 name = "pixpin-motor2d"
@@ -1802,10 +1790,6 @@ dependencies = [
  "windows-core",
  "windows-numerics",
 ]
-
-[[package]]
-name = "pixpin-plugin"
-version = "0.1.0"
 
 [[package]]
 name = "pixpin-proyecto"

@@ -711,9 +711,10 @@ pub const MAS: u8 = 7;
 /// la barra del editor del movil (`MarkdownEditorActivity`): escribiendo, el
 /// ojo para verla (deshacer y rehacer, con Ctrl+Z y Ctrl+Y: el usuario los
 /// quito de la barra el 20-oct-2026); viendola, el lapiz para seguir
-/// escribiendo (como el visor de Excel). Y siempre buscar, los comentarios
+/// escribiendo (como el visor de Excel). Y siempre los comentarios
 /// (encendido con su panel abierto), compartir y el ⋯ (titulo, guardar una
-/// copia, Word, letra y tamano). Sin «Copiar»: Ctrl+C copia.
+/// copia, Word, letra y tamano). Sin «Copiar» (Ctrl+C) ni lupa (Ctrl+F,
+/// desde el 20-oct-2026).
 pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
     let b = |id, icono, encendido| BotonLector { id, icono, encendido };
     let mut v = Vec::with_capacity(7);
@@ -722,7 +723,7 @@ pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
     } else {
         v.push(b(VER, &material::VISIBILITY, false));
     }
-    v.push(b(BUSCAR, &material::SEARCH, false));
+    // Sin lupa (20-oct-2026, el usuario): buscar es Ctrl+F.
     v.push(b(COMENTARIOS, &material::FORUM, comentarios));
     v.push(b(COMPARTIR, &material::IOS_SHARE, false));
     v.push(b(MAS, &material::MORE_VERT, false));
@@ -932,8 +933,8 @@ mod pruebas {
         // rehacer; viendola, el lapiz. Y siempre buscar, comentarios,
         // compartir y el ⋯.
         // Sin deshacer ni rehacer (20-oct-2026): Ctrl+Z y Ctrl+Y.
-        assert_eq!(ids(false, false), vec![VER, BUSCAR, COMENTARIOS, COMPARTIR, MAS]);
-        assert_eq!(ids(true, false), vec![EDITAR, BUSCAR, COMENTARIOS, COMPARTIR, MAS]);
+        assert_eq!(ids(false, false), vec![VER, COMENTARIOS, COMPARTIR, MAS]);
+        assert_eq!(ids(true, false), vec![EDITAR, COMENTARIOS, COMPARTIR, MAS]);
         // Caso negativo: viendola no se deshace (no se escribe), y el lapiz
         // no sale escribiendo.
         assert!(!ids(true, false).contains(&DESHACER) && !ids(false, false).contains(&EDITAR));
@@ -944,7 +945,7 @@ mod pruebas {
         // La disposicion entera: la barra comun de los visores, con luna/sol.
         assert_eq!(
             crate::lector_pin::disposicion("Plan", "md", &botones(true, false), true),
-            ["asa", "nombre", "propio:1", "propio:4", "propio:5", "propio:6", "propio:7", "oscuro", "pantalla", "fijar", "cerrar"]
+            ["asa", "nombre", "propio:1", "propio:5", "propio:6", "propio:7", "oscuro", "pantalla", "fijar", "cerrar"]
         );
     }
 

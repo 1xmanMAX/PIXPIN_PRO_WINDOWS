@@ -123,7 +123,6 @@ const VK_F: u32 = 0x46;
 const VK_F2: u32 = 0x71;
 const VK_F3: u32 = 0x72;
 const VK_G: u32 = 0x47;
-const VK_I: u32 = 0x49;
 const VK_L: u32 = 0x4C;
 const VK_M: u32 = 0x4D;
 const VK_N: u32 = 0x4E;

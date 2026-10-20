@@ -21,7 +21,7 @@ use std::hash::{Hash, Hasher};
 use pixpin_hojas::dibujos::{Contenido as ContenidoDibujo, Dibujo};
 use pixpin_hojas::estilos::{Borde, EstiloLinea, Fuente, Horizontal, Linea, Relleno, Rgb, Subrayado, Vertical};
 use pixpin_hojas::{Hoja, Libro, Panel, Rango, Rejilla, Valor, Vista, nombre_columna};
-use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_COLOR_F};
+use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::{
     D2D1_ANTIALIAS_MODE_ALIASED, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_CUSTOM, D2D1_DRAW_TEXT_OPTIONS_NONE,
     D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_LINE_JOIN_MITER, D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1DeviceContext,
@@ -2355,8 +2355,6 @@ fn pintar_marcas(p: &Pintor, hoja: &Hoja, rejilla: &Rejilla, paneles: &[Panel], 
     }
     p.soltar_recorte();
 }
-
-fn sin_usar(_: D2D1_COLOR_F) {}
 
 #[cfg(test)]
 mod pruebas_oscuro {

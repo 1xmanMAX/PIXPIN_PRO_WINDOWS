@@ -2642,7 +2642,7 @@ pub(super) fn marcas_por_color(img: &Img, d: &mut Diagrama, hm: f64) {
     let largas: Vec<(P, P)> = d.segmentos.iter().filter(|s| s.largo() >= 2.0 * r_max).map(|s| (s.a, s.b)).collect();
     // Los vertices: extremos y cruces de las rayas largas.
     let mut vertices: Vec<P> = Vec::new();
-    let mut anadir = |p: P, v: &mut Vec<P>| {
+    let anadir = |p: P, v: &mut Vec<P>| {
         if !v.iter().any(|q| dist(*q, p) <= 3.0) {
             v.push(p);
         }

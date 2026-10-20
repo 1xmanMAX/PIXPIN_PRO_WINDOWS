@@ -145,14 +145,6 @@ impl Pedido {
         self
     }
 
-    /// Contesta al turno (que esta esperando).
-    pub fn responder(self, r: Result<String, String>) {
-        self.responder_con(r.map(|texto| Respuesta {
-            texto,
-            ..Default::default()
-        }));
-    }
-
     pub fn responder_con(self, r: Result<Respuesta, String>) {
         let _ = self.responder.send(r);
     }
@@ -575,23 +567,6 @@ pub fn caja(els: &[Elemento]) -> Option<(f32, f32, f32, f32)> {
         .map(Elemento::caja)
         .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
         .filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite()))
-}
-
-/// **Mete lo dibujado con su centro en `centro`** (el de la vista), en un
-/// solo paso de deshacer. Devuelve cuantos elementos entraron.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn meter(escena: &mut Escena, documento: &str, centro: (f32, f32)) -> Result<usize, String> {
-    meter_ids(escena, documento, centro).map(|v| v.len())
-}
-
-/// Lo mismo, devolviendo los ids de lo que entro (para listarlo al modelo).
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn meter_ids(escena: &mut Escena, documento: &str, centro: (f32, f32)) -> Result<Vec<u64>, String> {
-    let els = elementos_de(documento)?;
-    let c = caja(&els).ok_or("las figuras no tienen medida")?;
-    let dx = centro.0 - (c.0 + c.2) / 2.0;
-    let dy = centro.1 - (c.1 + c.3) / 2.0;
-    Ok(pixpin_motor2d::portapapeles::pegar(escena, &els, dx, dy))
 }
 
 /// Hueco entre lo que habia y lo nuevo.

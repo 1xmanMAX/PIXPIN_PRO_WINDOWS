@@ -1517,6 +1517,7 @@ pub fn lector_de_letras() -> impl Fn(&[u8], u32, u32) -> Vec<PalabraHoja> + Sync
 /// (caja y renglones de todas). Una zona de texto sola tambien es bloque (su
 /// cursiva, su subrayado); una formula sola solo si tiene signos de formula
 /// (una cabecera con un logo leida como «formula» se queda como estaba).
+#[cfg(test)]
 pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::Zona)> {
     let a = s.alto_letra.max(6.0);
     let de_dibujo = |z: &hoja::Zona| s.zonas.iter().any(|o| o.id != z.id && matches!(o.tipo, Tipo::Dibujo | Tipo::Grafica | Tipo::Diagrama) && z.caja.dentro_de(&o.caja) >= 0.5);
@@ -1582,6 +1583,7 @@ pub(crate) fn bloques_de_texto(s: &Seccionado) -> Vec<(usize, Vec<usize>, hoja::
 }
 
 /// El recuadro mas pequeno donde cae una caja (`None`: en la hoja).
+#[cfg(test)]
 fn panel_de(s: &Seccionado, c: &Caja) -> Option<usize> {
     (0..s.paneles.len()).filter(|&i| s.paneles[i].contiene(c.cx(), c.cy())).min_by(|&x, &y| s.paneles[x].area().total_cmp(&s.paneles[y].area()))
 }

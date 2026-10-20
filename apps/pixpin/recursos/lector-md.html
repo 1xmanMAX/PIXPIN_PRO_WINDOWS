@@ -771,6 +771,20 @@ body.ctrl .pp-enlace {
   padding: 2px 0 16px;
   text-align: center;
 }
+.pp-tabla-caja::-webkit-scrollbar {
+  height: 10px;
+}
+.pp-tabla-caja::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pp-tabla-caja::-webkit-scrollbar-thumb {
+  background: var(--barra-desliz);
+  border-radius: 6px;
+  border: 3px solid var(--papel);
+}
+.pp-tabla-caja::-webkit-scrollbar-button {
+  display: none;
+}
 .pp-tabla {
   border-collapse: collapse;
   margin: 0 auto;

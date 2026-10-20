@@ -1623,7 +1623,6 @@ fn hacer(
         }
         Accion::PonerDia(_) | Accion::PonerMinuto(_) | Accion::MoverMinutos(_) | Accion::QuitarHoraEscrita => {
             let ahora = super::frase::ahora();
-            let frase = super::frase::leer(e.campo.texto(), ahora);
             let actual = super::frase::hora_escrita(e.campo.texto(), ahora);
             let nueva = elegir_hora(a, actual, ahora);
             let t = super::frase::con_hora_escrita(e.campo.texto(), nueva, ahora);

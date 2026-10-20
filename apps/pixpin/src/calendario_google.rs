@@ -9,7 +9,7 @@
 //! ([`eventos_entre`]) nunca espera a Google.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock};
 use std::time::Duration;
 
@@ -30,19 +30,12 @@ struct Cache {
 }
 
 static CACHE: RwLock<Cache> = RwLock::new(Cache { eventos: Vec::new(), leido_ms: 0, cargada: false });
-/// Cambia cada vez que hay eventos nuevos (el horario y los avisos lo miran).
-static VERSION: AtomicU64 = AtomicU64::new(0);
 /// «Lee ya» (al conectar), sin esperar a los 15 minutos.
 static YA: AtomicBool = AtomicBool::new(false);
 static RAIZ: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 fn fichero(raiz: &Path) -> PathBuf {
     raiz.join("calendario-google.json")
-}
-
-/// La version de lo leido: si cambia, hay eventos nuevos.
-pub fn version() -> u64 {
-    VERSION.load(Ordering::SeqCst)
 }
 
 /// Si esta conectado (hay permiso guardado).
@@ -126,7 +119,6 @@ fn leer(raiz: &Path) -> Result<usize, String> {
         c.cargada = true;
     }
     if cambiaron {
-        VERSION.fetch_add(1, Ordering::SeqCst);
         crate::recordatorios::releer(raiz);
     }
     Ok(n)
