@@ -415,36 +415,38 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
         l.fotos.into_iter().map(|(k, v)| (k, Arc::new(v))).collect();
     let fuente = |id: u64| fotos.get(&id).cloned().map(FuenteImagen::Cargada);
     anadir_lienzo(&mut p, "lienzo", "", &l.escena, papel, &fuente, t);
-    // El lienzo viaja dentro de la web y va entero como `.excalidraw`: con
-    // cualquiera de los dos se sigue editando, aqui, en el movil o en
-    // excalidraw.com.
+    // El lienzo viaja dentro de la web, para volver a editarlo. Fuera, lo
+    // editable es el `.pixpin` (el `.excalidraw` suelto ya no se ofrece,
+    // 20-oct-2026): un proyecto con el lienzo como su hoja, como lo manda el
+    // movil, para seguir en otro PixPin o en el movil.
     let json = excalidraw_de(&l.escena);
-    p.extras.push(Extra {
-        id: "excalidraw",
-        clave: "compartir-editable",
-        que: Entero::Escrito {
-            fichero: format!("{}.excalidraw", nombre_de_fichero(&p.titulo)),
-            bytes: json.clone().into_bytes(),
-        },
-    });
-    // Y como `.pixpin`: un proyecto con el lienzo dentro, para seguir en
-    // otro PixPin o en el movil.
     let (titulo, editable) = (p.titulo.clone(), json.clone());
     p.extras.push(Extra {
         id: exportable::PIXPIN,
         clave: "compartir-pixpin",
         que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
-            let lienzo = carpeta.join(format!("{}.excalidraw", nombre_de_fichero(&titulo)));
-            escribir(&lienzo, editable.as_bytes())?;
-            let (fichero, bytes) = exportable::pixpin_de(None, None, &lienzo, &[], pixpin_shell::entorno::ahora_utc_ms())?;
-            let _ = std::fs::remove_file(&lienzo);
-            let r = carpeta.join(fichero);
-            escribir(&r, &bytes)?;
+            let nombre = nombre_de_fichero(&titulo);
+            let r = carpeta.join(format!("{nombre}.pixpin"));
+            escribir(&r, &pixpin_de_un_lienzo(carpeta, &nombre, &editable)?)?;
             Ok(vec![r])
         })),
     });
     p.excalidraw = Some(json);
     p
+}
+
+/// **El `.pixpin` de un lienzo** (su `.excalidraw` en `json`): el lienzo
+/// como la hoja de un proyecto nuevo (`lienzo_suelto::empaquetar`, lo de
+/// `EnviarActivity.deLienzo` del movil), no como un fichero adjunto. El
+/// `.excalidraw` de paso se escribe en `carpeta` y se quita.
+fn pixpin_de_un_lienzo(carpeta: &Path, nombre: &str, json: &str) -> Result<Vec<u8>> {
+    let lienzo = carpeta.join(format!("{nombre}.pixpin-lienzo.excalidraw"));
+    escribir(&lienzo, json.as_bytes())?;
+    let raiz = crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf()).unwrap_or_else(|| carpeta.to_path_buf());
+    let hecho = crate::recibir::lienzo_suelto::empaquetar(&raiz, &lienzo, pixpin_shell::entorno::ahora_utc_ms());
+    let _ = std::fs::remove_file(&lienzo);
+    let (_, bytes) = hecho.map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(bytes)
 }
 
 fn excalidraw_de(escena: &Escena) -> String {
@@ -770,17 +772,10 @@ fn anadir_mensaje(
             {
                 pieza.pagina.nombre = nombre;
             }
+            // Lo editable fuera es el `.pixpin` del chat (lo pone
+            // `de_mensajes`); el lienzo solo va dentro de la pagina web.
             if puesto && solo && referencia.is_some() {
-                let json = excalidraw_de(&escena);
-                p.extras.push(Extra {
-                    id: "excalidraw",
-                    clave: "compartir-editable",
-                    que: Entero::Escrito {
-                        fichero: format!("{}.excalidraw", nombre_de_fichero(&p.titulo)),
-                        bytes: json.clone().into_bytes(),
-                    },
-                });
-                p.excalidraw = Some(json);
+                p.excalidraw = Some(excalidraw_de(&escena));
             }
             puesto
         }
