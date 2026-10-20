@@ -138,6 +138,8 @@ mod pin_vivo;
 mod modelo_bim;
 mod plano_cad;
 mod pin_office;
+/// Los Word y PowerPoint de antes, convertidos para el visor propio (20-oct).
+mod office_convertido;
 mod pines;
 mod pronunciar;
 mod punto_de_proyecto;

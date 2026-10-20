@@ -200,8 +200,28 @@ formato (se distingue por el tipo del adjunto):
   modelos. Al abrirlo como adjunto se pasa una vez a `anot-<uid>…`.
 - Los **pines del escritorio** (las imágenes flotantes): no son de ningún
   chat. Si la imagen se manda a un chat, sus marcos viajan con el mensaje.
-- El pin de la vista previa de Office (no dice su scroll) y las notas nuevas
-  sin guardar.
+- Las notas nuevas sin guardar.
+- El pin de la vista previa de Office (no dice su scroll), que ya solo queda
+  para Visio, los correos `.msg` y un Word o PowerPoint que no se deja
+  convertir. Un `.doc`/`.ppt`/RTF/OpenDocument se convierte una vez con
+  Office a `.docx`/`.pptx` (`office_convertido.rs`, copia en
+  `<raíz>/cache/office/`) y se lee en el visor propio **en nombre del
+  original** (`pixpin_proyecto::anotado::suplir`): lo anotado va a los
+  `anot-<uid>…` del adjunto original y viaja como lo de un `.docx`. Android:
+  si abre esos formatos por su cuenta, que use el mismo `uid` y las mismas
+  terminaciones que para el `.docx`.
+
+## 4 bis. El `.pixpin` exportado lleva todo
+
+- De un chat: la carpeta entera, con `lienzos/anot-…` y
+  `android/pins/draw/anot-…`. «Crear como nuevo» da un código nuevo a cada
+  mensaje que tiene algo anotado y renombra sus `anot-<uid>…` con él.
+- De un fichero suelto: un proyecto nuevo con el fichero como mensaje (con
+  `uid`), lo que cuelga de su nombre (`archivos/<nombre>.pixpin-*`, que el
+  visor pasa a `anot-<uid>…` al abrirlo) y lo de un plano o un modelo 3D ya
+  como `anot-<uid>…`.
+- Lo editable de un lienzo es el `.pixpin` (el `.excalidraw` suelto ya no se
+  ofrece al compartir); los `.excalidraw` se siguen abriendo e importando.
 
 ## 5. La interfaz igual en todos (para reproducirla en otro dispositivo)
 

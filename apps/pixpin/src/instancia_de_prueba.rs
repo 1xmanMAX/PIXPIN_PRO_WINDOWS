@@ -59,6 +59,12 @@ pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::no
             });
             continue;
         }
+        // Un Office viejo: el pin de Office (y de ahi, convertido, el visor
+        // propio), como en la app.
+        if crate::pin_office::se_abre(ruta) {
+            crate::pin_office::lanzar(lengua, ubicacion.clone(), ruta);
+            continue;
+        }
         if !crate::lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta)) {
             tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: no hay lector para esto");
         }

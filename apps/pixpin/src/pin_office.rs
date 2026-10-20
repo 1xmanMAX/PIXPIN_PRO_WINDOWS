@@ -4,6 +4,11 @@
 //! Office registra para el panel del Explorador
 //! (`pixpin_shell::vista_previa`). Se ven tal cual en Office, sin convertir.
 //!
+//! Un Word o un PowerPoint de antes (`.doc`, `.ppt`, RTF, OpenDocument) solo
+//! pasa por aqui la primera vez: detras se convierte a `.docx`/`.pptx`
+//! (`office_convertido`) y el pin se cambia al visor propio, donde se anota y
+//! viaja; desde entonces se abre ahi directamente (20-oct-2026).
+//!
 //! Los OOXML (`.docx`, `.xlsx`, `.pptx` y sus primos) NO pasan por aqui: los
 //! abrira el motor nativo de PixPin, sin Office. Y Office solo vive mientras
 //! el pin esta abierto (el usuario, 10-oct: «no es buena idea tener Office
@@ -36,7 +41,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -95,6 +100,13 @@ pub fn se_abre(ruta: &Path) -> bool {
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
     let lanzado = std::thread::Builder::new().name("pin-office".into()).spawn(move || {
+        // Un Word o un PowerPoint de antes ya convertido: al visor propio,
+        // donde se anota y viaja (`office_convertido`).
+        if let Some(c) = crate::office_convertido::lista(ubicacion.raiz(), &ruta)
+            && crate::lector::abrir_en_su_lector(idioma, &ubicacion, &c, &pixpin_docs::nombre(&c))
+        {
+            return;
+        }
         let _com = pixpin_shell::ComDelHilo::iniciar();
         let textos = Catalogo::nuevo(idioma);
         let hecho = crate::dispositivo_perdido::con_recursos("pin-office", |r| abrir(r, &textos, &ubicacion, &ruta, idioma));
@@ -155,6 +167,20 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         drop(ventana);
         anyhow::bail!("sin vista previa para {}", ruta.display());
     };
+    // Un Word o un PowerPoint de antes se convierte detras (`office_convertido`)
+    // y, cuando esta, el pin se cambia al visor propio. Lo de internet no: es
+    // lo que Windows no deja abrir sin preguntar.
+    let (dar_copia, copia_lista) = std::sync::mpsc::channel::<PathBuf>();
+    if !de_internet && crate::office_convertido::destino(&vista_previa::extension_de(ruta)).is_some() {
+        let (raiz, original) = (ubicacion.raiz().to_path_buf(), ruta.to_path_buf());
+        let _ = std::thread::Builder::new().name("office-convertir".into()).spawn(move || match crate::office_convertido::convertir(&raiz, &original) {
+            Ok(c) => {
+                let _ = dar_copia.send(c);
+            }
+            Err(e) => tracing::warn!(?e, ruta = %original.display(), "Office viejo: se queda en el pin de Office"),
+        });
+    }
+    let mut al_visor: Option<PathBuf> = None;
     vista_previa::pintar_fondo(ventana.handle());
     // **El riel de los visores** (el lapiz y el marco; sin marcas: la vista
     // de Office no dice por donde va), por encima de la vista de Office.
@@ -242,6 +268,11 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
                 None => {}
             }
         }
+        // Convertido: al visor propio, donde se anota y viaja.
+        if let Ok(c) = copia_lista.try_recv() {
+            al_visor = Some(c);
+            vivo = false;
+        }
         if !vivo {
             break;
         }
@@ -293,6 +324,11 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
     } else {
         tracing::warn!("pin de Office: la vista no se quito a tiempo; la ventana queda escondida");
         std::mem::forget(ventana);
+    }
+    if let Some(c) = al_visor
+        && !crate::lector::abrir_en_su_lector(idioma, ubicacion, &c, &pixpin_docs::nombre(&c))
+    {
+        tracing::warn!(copia = %c.display(), "Office viejo: el visor propio no lo abrio");
     }
     match despues {
         Some(PRESENTAR) => crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta),

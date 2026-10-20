@@ -118,6 +118,8 @@ impl Base {
 /// El almacen al que pertenece un fichero: la carpeta de encima de
 /// `proyectos/` que tiene su `indice.json`. `None` fuera de todo almacen.
 pub fn raiz_de(fichero: &Path) -> Option<PathBuf> {
+    let original = original_de(fichero);
+    let fichero = original.as_deref().unwrap_or(fichero);
     fichero
         .ancestors()
         .find(|x| {
@@ -125,6 +127,32 @@ pub fn raiz_de(fichero: &Path) -> Option<PathBuf> {
         })
         .and_then(Path::parent)
         .map(Path::to_path_buf)
+}
+
+/// Las copias que se leen en nombre de otro fichero: copia → original.
+fn suplentes() -> &'static Mutex<HashMap<PathBuf, PathBuf>> {
+    static S: std::sync::OnceLock<Mutex<HashMap<PathBuf, PathBuf>>> = std::sync::OnceLock::new();
+    S.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// **Leer `copia` en nombre de `original`** (20-oct-2026): un `.doc` o un
+/// `.ppt` del chat se convierte a `.docx`/`.pptx` para leerlo en el visor
+/// propio, y lo anotado sobre la copia (tinta, marcos, marcadores) tiene que
+/// ser lo del adjunto original, el que viaja. Desde aqui [`raiz_de`] y
+/// [`adjunto_de`] contestan por la copia lo del original.
+pub fn suplir(copia: &Path, original: &Path) {
+    if let Ok(mut s) = suplentes().lock() {
+        s.insert(canonica(copia), original.to_path_buf());
+    }
+}
+
+/// El original en cuyo nombre se lee `copia` ([`suplir`]), si lo hay.
+pub fn original_de(copia: &Path) -> Option<PathBuf> {
+    let s = suplentes().lock().ok()?;
+    if s.is_empty() {
+        return None;
+    }
+    s.get(&canonica(copia)).cloned()
 }
 
 /// Un adjunto del chat: de que chat es y el codigo de su mensaje.
@@ -148,7 +176,7 @@ fn conocidos() -> &'static Mutex<HashMap<PathBuf, Adjunto>> {
 /// chat de la carpeta donde esta, por la ruta que el mensaje senala. `None`
 /// si no es un adjunto del chat.
 pub fn adjunto_de(raiz: &Path, doc: &Path) -> Option<Adjunto> {
-    let doc = canonica(doc);
+    let doc = canonica(&original_de(doc).unwrap_or_else(|| doc.to_path_buf()));
     if let Some(x) = conocidos().lock().ok().and_then(|c| c.get(&doc).cloned()) {
         return Some(x);
     }
