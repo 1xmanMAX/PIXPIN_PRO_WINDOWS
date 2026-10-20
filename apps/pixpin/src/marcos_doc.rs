@@ -18,6 +18,15 @@
 //! de una pagina…): se mueven con el, no con la pantalla. Se guardan al lado
 //! del fichero, en `<fichero>.pixpin-marcos` (JSON).
 //!
+//! **Los de un adjunto del chat viajan** (20-oct-2026, el usuario: «todo lo
+//! nuevo se tiene que sincronizar»): van en `anot-<uid>.marcos.json` de su
+//! mensaje (`pins/draw/`, ver `anotado_del_adjunto::del_mensaje_o_junto`,
+//! con sus mismas bases: el PDF de un proyecto con el codigo del proyecto,
+//! un PDF leido como texto con `-texto`...), y las vistas en
+//! `anot-<uid>.vistas.json`. Lo de junto al fichero se copia alli la primera
+//! vez. Se escriben por un temporal y solo si cambian; vacios quedan `[]` y
+//! `{}`, nunca borrados: un fichero borrado volveria del otro aparato.
+//!
 //! Imprimir: cada visor se acerca a cada marco hasta que llena la ventana, se
 //! pinta sin su interfaz y se fotografia (`marco_imprimir::foto_de_pantalla`);
 //! las fotos van juntas al dialogo (`marco_imprimir::imprimir_fotos`).
@@ -86,34 +95,68 @@ pub struct Marcos {
     /// El que se esta arrastrando: sus dos esquinas en el documento.
     nuevo: Option<([f64; 2], [f64; 2], u32)>,
     /// Donde se guardan (`None`: solo esta sesion).
-    fichero: Option<PathBuf>,
+    fichero: Option<Guardado>,
+}
+
+/// **Donde se guarda algo de un documento** y si viaja: el de un adjunto del
+/// chat (`anot-<uid>…`) no se borra nunca, vacio se escribe vacio.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Guardado {
+    pub ruta: PathBuf,
+    pub viaja: bool,
+}
+
+impl Guardado {
+    /// El de `doc` con esa `terminacion` del mensaje (`.marcos.json`) o, si
+    /// no es un adjunto, `de_siempre` (junto al fichero). Con lo de antes
+    /// copiado al mensaje la primera vez.
+    fn de(doc: &Path, terminacion: &str, de_siempre: PathBuf) -> Guardado {
+        let (ruta, viaja) = crate::anotado_del_adjunto::del_mensaje_o_junto(doc, terminacion, de_siempre);
+        Guardado { ruta, viaja }
+    }
+
+    fn leer<T: serde::de::DeserializeOwned + Default>(&self) -> T {
+        std::fs::read_to_string(&self.ruta).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    }
+
+    /// Escribe `texto` (por un temporal, y solo si cambia). `vacio`: no dice
+    /// nada; junto al fichero entonces se quita (no viaja), y del mensaje se
+    /// escribe tal cual si ya estaba (o no se crea).
+    fn escribir(&self, texto: &str, vacio: bool) {
+        let f = &self.ruta;
+        if vacio && (!self.viaja || !f.exists()) {
+            if !self.viaja {
+                let _ = std::fs::remove_file(f);
+            }
+            return;
+        }
+        if let Err(e) = pixpin_proyecto::anotado::escribir(f, texto) {
+            tracing::warn!(?e, fichero = %f.display(), "marcos: no se pudieron guardar");
+        }
+    }
 }
 
 impl Marcos {
-    /// Los de `doc` (los que tenga a su lado), o ninguno.
+    /// Los de `doc` (los de su mensaje si es un adjunto del chat; si no, los
+    /// que tenga a su lado), o ninguno.
     pub fn de(doc: Option<&Path>) -> Marcos {
-        let fichero = doc.map(ruta);
-        let lista = fichero
-            .as_ref()
-            .and_then(|f| std::fs::read_to_string(f).ok())
-            .and_then(|t| serde_json::from_str::<Vec<Marco>>(&t).ok())
-            .unwrap_or_default();
+        let fichero = doc.map(|d| Guardado::de(d, pixpin_sincro::anotado::MARCOS, ruta(d)));
+        let lista = fichero.as_ref().map(Guardado::leer::<Vec<Marco>>).unwrap_or_default();
         Marcos { lista, fichero, ..Marcos::default() }
     }
 
-    /// Guarda la lista al lado del documento (sin marcos, quita el fichero).
+    /// Donde se guardan (`None`: solo esta sesion).
+    #[cfg(test)]
+    pub fn guardado(&self) -> Option<&Guardado> {
+        self.fichero.as_ref()
+    }
+
+    /// Guarda la lista: en su mensaje (sin marcos, `[]`) o al lado del
+    /// documento (sin marcos, se quita el fichero).
     pub fn guardar(&self) {
         let Some(f) = &self.fichero else { return };
-        if self.lista.is_empty() {
-            let _ = std::fs::remove_file(f);
-            return;
-        }
         match serde_json::to_string_pretty(&self.lista) {
-            Ok(t) => {
-                if let Err(e) = std::fs::write(f, t) {
-                    tracing::warn!(?e, fichero = %f.display(), "marcos: no se pudieron guardar");
-                }
-            }
+            Ok(t) => f.escribir(&t, self.lista.is_empty()),
             Err(e) => tracing::warn!(?e, "marcos: no se pudieron escribir"),
         }
     }
@@ -303,7 +346,7 @@ pub fn px_para_llenar(m: &Marco, ancho: f32, alto: f32) -> f64 {
     ((ancho as f64 * aire) / m.ancho().max(1e-9)).min((alto as f64 * aire) / m.alto().max(1e-9))
 }
 
-/// Donde se guardan los marcos de `doc`.
+/// Donde iban (y van, si no es un adjunto del chat) los marcos de `doc`.
 pub fn ruta(doc: &Path) -> PathBuf {
     let mut s = doc.as_os_str().to_owned();
     s.push(".pixpin-marcos");
@@ -323,24 +366,18 @@ pub fn pista(textos: &pixpin_store::Catalogo) -> String {
 /// o la camara y el estado de un modelo 3D). Se guardan al lado del fichero,
 /// en `<fichero>.pixpin-vistas` (JSON id → texto del visor), para no tocar el
 /// `.pixpin-lectura` que tambien leen el movil y las versiones de antes.
+/// Las de un adjunto del chat viajan en `anot-<uid>.vistas.json` (como los
+/// marcos, ver arriba).
 #[derive(Debug, Clone, Default)]
 pub struct Vistas {
     pub de: std::collections::BTreeMap<String, String>,
-    fichero: Option<PathBuf>,
+    fichero: Option<Guardado>,
 }
 
 impl Vistas {
     pub fn de_documento(doc: Option<&Path>) -> Vistas {
-        let fichero = doc.map(|d| {
-            let mut s = d.as_os_str().to_owned();
-            s.push(".pixpin-vistas");
-            PathBuf::from(s)
-        });
-        let de = fichero
-            .as_ref()
-            .and_then(|f| std::fs::read_to_string(f).ok())
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default();
+        let fichero = doc.map(|d| Guardado::de(d, pixpin_sincro::anotado::VISTAS, ruta_de_vistas(d)));
+        let de = fichero.as_ref().map(Guardado::leer).unwrap_or_default();
         Vistas { de, fichero }
     }
 
@@ -361,14 +398,17 @@ impl Vistas {
 
     fn guardar(&self) {
         let Some(f) = &self.fichero else { return };
-        if self.de.is_empty() {
-            let _ = std::fs::remove_file(f);
-            return;
-        }
         if let Ok(t) = serde_json::to_string_pretty(&self.de) {
-            let _ = std::fs::write(f, t);
+            f.escribir(&t, self.de.is_empty());
         }
     }
+}
+
+/// Donde iban (y van, si no es un adjunto del chat) las vistas de `doc`.
+pub fn ruta_de_vistas(doc: &Path) -> PathBuf {
+    let mut s = doc.as_os_str().to_owned();
+    s.push(".pixpin-vistas");
+    PathBuf::from(s)
 }
 
 /// Una vista sencilla «zoom x y» (la de casi todos los visores) a texto.
@@ -451,6 +491,89 @@ mod pruebas {
         let otra = Vistas::de_documento(Some(&doc));
         assert_eq!(otra.de_marca("a1").and_then(zoom_de_texto), Some((1.75, 120.0, 3400.5)));
         assert_eq!(zoom_de_texto("roto"), None);
+    }
+
+    /// El fichero del mensaje de `doc` con esa terminacion.
+    fn del_mensaje(doc: &Path, terminacion: &str) -> PathBuf {
+        crate::anotado_del_adjunto::base_de(doc).expect("es un adjunto del chat").fichero(terminacion)
+    }
+
+    #[test]
+    fn los_de_un_adjunto_del_chat_van_a_su_mensaje_y_vacios_quedan_vacios() {
+        use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
+        let r = raiz("marcos-adjunto");
+        let doc = con_adjunto(&r, "plano.pdf", b"%PDF-1.4");
+        let f = del_mensaje(&doc, pixpin_sincro::anotado::MARCOS);
+        assert!(f.to_string_lossy().replace('\\', "/").contains("android/pins/draw/anot-"), "{}", f.display());
+        assert!(f.file_name().unwrap().to_string_lossy().ends_with(".marcos.json"));
+        // Abrir sin marcos no crea nada (un fichero vacio mas que mandar).
+        let mut m = Marcos::de(Some(&doc));
+        assert_eq!(m.guardado().map(|g| (&g.ruta, g.viaja)), Some((&f, true)));
+        m.guardar();
+        assert!(!f.exists());
+        m.alternar();
+        m.pulsar([0.0, 0.0], 1);
+        m.soltar([100.0, 80.0], 1.0);
+        assert!(f.is_file());
+        assert!(!ruta(&doc).exists(), "ya no al lado del fichero");
+        assert_eq!(Marcos::de(Some(&doc)).lista, m.lista);
+        // Guardar lo mismo no toca el fichero (cada fecha nueva es un envio).
+        let fecha = std::fs::metadata(&f).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        m.guardar();
+        assert_eq!(std::fs::metadata(&f).unwrap().modified().unwrap(), fecha);
+        // Borrados todos: `[]`, no borrado (volveria del otro aparato).
+        m.borrar();
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "[]");
+        assert!(Marcos::de(Some(&doc)).lista.is_empty());
+        // Las vistas, igual: `{}` al quitar la ultima.
+        let fv = del_mensaje(&doc, pixpin_sincro::anotado::VISTAS);
+        let mut v = Vistas::de_documento(Some(&doc));
+        v.poner("7", zoom_a_texto(2.0, 0.0, 10.0));
+        assert!(fv.is_file());
+        assert!(!ruta_de_vistas(&doc).exists());
+        v.quitar("7");
+        assert_eq!(std::fs::read_to_string(&fv).unwrap(), "{}");
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn lo_de_junto_a_un_adjunto_pasa_una_vez_a_su_mensaje_y_no_se_borra() {
+        use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
+        let r = raiz("marcos-migrar");
+        let doc = con_adjunto(&r, "libro.xlsx", b"PK");
+        let antes = r#"[{"caja":[0.0,0.0,50.0,40.0],"parte":2}]"#;
+        std::fs::write(ruta(&doc), antes).unwrap();
+        std::fs::write(ruta_de_vistas(&doc), r#"{"9":"1.5 0 300"}"#).unwrap();
+        let m = Marcos::de(Some(&doc));
+        assert_eq!(m.lista.len(), 1);
+        assert_eq!(m.lista[0].parte, 2);
+        let f = del_mensaje(&doc, pixpin_sincro::anotado::MARCOS);
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), antes, "copiado tal cual");
+        assert!(ruta(&doc).is_file(), "lo de antes se queda");
+        let v = Vistas::de_documento(Some(&doc));
+        assert_eq!(v.de_marca("9").and_then(zoom_de_texto), Some((1.5, 0.0, 300.0)));
+        // Ya pasado, lo de junto al fichero no vuelve a pisar lo del mensaje
+        // (aqui, vaciado en el otro aparato).
+        std::fs::write(&f, "[]").unwrap();
+        assert!(Marcos::de(Some(&doc)).lista.is_empty());
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn la_nota_de_un_proyecto_cuelga_del_codigo_de_la_nota() {
+        use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
+        let r = raiz("marcos-nota");
+        let _ = con_adjunto(&r, "x.md", b"# x");
+        let ficha = pixpin_proyecto::almacen::Indice::leer(&r).proyectos[0].id.clone();
+        let destino = crate::notas_md::Destino::Mensaje { proyecto: ficha, codigo: "ABCDE23456".into() };
+        let doc = crate::notas_md::lector_web::documento_del_riel(&r, &destino).unwrap();
+        let f = del_mensaje(&doc, pixpin_sincro::anotado::MARCOS);
+        assert_eq!(f.file_name().unwrap().to_string_lossy(), "anot-ABCDE23456.marcos.json");
+        // Caso negativo: un codigo que no es de diez signos no es una nota.
+        let otro = r.join("cache").join("riel-notas").join("x-corto.md");
+        assert!(crate::anotado_del_adjunto::base_de(&otro).is_none());
+        let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]

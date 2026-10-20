@@ -21,6 +21,12 @@
 //! `vista`, con los mismos ids que la del disco) y, al acabar cada gesto, lo
 //! tocado vuelve a las unidades de la capa y se escribe en el mismo fichero
 //! (`hoja-<n>.excalidraw`); lo que no se toco vuelve tal cual del disco.
+//!
+//! **La de un libro adjunto al chat viaja** (20-oct-2026): va en
+//! `anot-<uid>-h<i>` de su mensaje (`i` desde 0; en el PC
+//! `lienzos/anot-<uid>-h<i>.excalidraw`), con la de junto al libro pasada la
+//! primera vez (`anotado_del_adjunto::tinta_de_la_hoja_del_libro`). El
+//! asistente escribe en la misma.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -148,7 +154,9 @@ impl Anotado {
             return false;
         }
         self.mirado = Some(Instant::now());
-        let r = lector_tinta::ruta_de_hoja(libro, hoja);
+        // Donde esta se busca al cambiar de hoja (de un adjunto del chat, la
+        // del mensaje, que viaja: `anot-<uid>-h<n>`); luego, la misma.
+        let r = if otra || self.ruta.as_os_str().is_empty() { crate::anotado_del_adjunto::tinta_de_la_hoja_del_libro(libro, hoja) } else { self.ruta.clone() };
         let sello = sello_de(&r);
         if !otra && sello == self.sello {
             return false;

@@ -517,7 +517,9 @@ impl Destino {
                 rutas.tinta.clone()
             }
             Destino::Libro { hoja } => {
-                let r = crate::lector_tinta::ruta_de_hoja(ruta, *hoja);
+                // La misma que lee el visor: la del mensaje si el libro es
+                // un adjunto del chat (viaja), si no la de junto al libro.
+                let r = crate::anotado_del_adjunto::tinta_de_la_hoja_del_libro(ruta, *hoja);
                 turnos::apuntar(&r, grupo);
                 let mut capa = crate::lector_tinta::Capa::leer(&r);
                 for e in nuevas {

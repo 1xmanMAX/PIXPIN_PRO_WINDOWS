@@ -799,10 +799,16 @@ fn alternar_pantalla(pin: &mut PinLector, ventana: &mut VentanaOverlay, pagina: 
 }
 /// **De que cuelgan las marcas y la tinta del riel** de una nota: un `.md`
 /// suelto, de el mismo (como un Word); una nota de un proyecto, de un
-/// nombre fijo en la cache (solo en este PC); una nota nueva, de nada (solo
-/// mientras este abierta).
+/// nombre fijo en la cache; una nota nueva, de nada (solo mientras este
+/// abierta).
+///
+/// Ese nombre fijo (`cache/riel-notas/<ficha>-<codigo>.md`) no es solo de
+/// este PC: `anotado_del_adjunto::base_de` lo entiende como la base
+/// `anot-<codigo>` de la nota (la de sus comentarios), y sus marcas, su
+/// tinta, sus marcos y sus vistas viajan con ella; lo de antes en la cache
+/// pasa la primera vez.
 pub fn documento_del_riel(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
-    let limpio = |s: &str| s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect::<String>();
+    let limpio = limpio_para_el_riel;
     match destino {
         Destino::Fichero { ruta } => Some(ruta.clone()),
         Destino::Mensaje { proyecto, codigo } => {
@@ -810,6 +816,12 @@ pub fn documento_del_riel(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
         }
         Destino::Nueva { .. } => None,
     }
+}
+
+/// Lo que queda de un nombre en el de la cache del riel: letras, cifras y
+/// `-`; lo demas, `_`.
+pub fn limpio_para_el_riel(s: &str) -> String {
+    s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect()
 }
 
 fn titulo_de_ventana(titulo: &str, t: &Catalogo) -> String {

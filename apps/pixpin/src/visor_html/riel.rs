@@ -69,6 +69,15 @@
 //! Las marcas se guardan como las del Word, en el `.pixpin-lectura` de
 //! junto al documento (`pixpin_docs::lectura`), y la tinta en su
 //! `.pixpin-anotado/capa.excalidraw` (`lector_tinta::ruta_de_capa`).
+//!
+//! **Las de un adjunto del chat (o una nota de un proyecto) viajan**
+//! (20-oct-2026): las marcas van ademas en `anot-<uid>.marcas` de su
+//! mensaje (`id:fraccion:emoji` separadas por `|`, como las del Word: se
+//! leen y escriben por `anotado_del_adjunto::leer`/`escribir`), la tinta en
+//! `anot-<uid>` (`anotado_del_adjunto::tinta_de_la_pagina`, en pixeles CSS,
+//! sin marco), los marcos en `anot-<uid>.marcos.json` y las vistas exactas
+//! (desplazamiento y zoom) en `anot-<uid>.vistas.json`. Lo de antes pasa la
+//! primera vez.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -76,7 +85,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use pixpin_codec::imagen::ImagenRgba;
-use pixpin_docs::lectura::{self, Marcador};
+use pixpin_docs::lectura::Marcador;
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::camara::Camara;
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
@@ -559,7 +568,7 @@ impl RielDeLaVista {
         riel.ventana.poner_sin_activar();
         let guardado = opciones.documento.as_deref().filter(|_| opciones.con_pagina);
         let (marcas, capa) = match guardado {
-            Some(d) => (lectura::leer(d).marcadores, Capa::leer(&lector_tinta::ruta_de_capa(d))),
+            Some(d) => (crate::anotado_del_adjunto::leer(d).marcadores, Capa::leer(&crate::anotado_del_adjunto::tinta_de_la_pagina(d))),
             None => (Vec::new(), Capa::default()),
         };
         let e = escala_por_cien as f32 / 100.0;
@@ -1351,7 +1360,7 @@ impl RielDeLaVista {
             self.capa.sucia = false;
             return;
         };
-        if let Err(e) = self.capa.guardar(&lector_tinta::ruta_de_capa(d)) {
+        if let Err(e) = self.capa.guardar(&crate::anotado_del_adjunto::tinta_de_la_pagina(d)) {
             tracing::warn!(?e, "riel: no se pudo guardar la tinta");
         }
     }
@@ -1751,9 +1760,10 @@ fn ordenadas(mut v: Vec<Marcador>) -> Vec<Marcador> {
 }
 
 /// Las marcas en el `.pixpin-lectura` del documento, sin tocar lo demas
-/// que guarde alli el lector de Word.
+/// que guarde alli el lector de Word, y en el `anot-<uid>.marcas` de su
+/// mensaje si es un adjunto del chat (vacias, vacio: no se borra).
 fn guardar_marcas_en(documento: &Path, marcas: &[Marcador]) {
-    let mut a = lectura::leer(documento);
+    let mut a = crate::anotado_del_adjunto::leer(documento);
     if a.marcadores == marcas {
         return;
     }
@@ -1761,7 +1771,7 @@ fn guardar_marcas_en(documento: &Path, marcas: &[Marcador]) {
     if let Some(c) = documento.parent() {
         let _ = std::fs::create_dir_all(c);
     }
-    if let Err(e) = lectura::escribir(documento, &a) {
+    if let Err(e) = crate::anotado_del_adjunto::escribir(documento, &a) {
         tracing::warn!(?e, "riel: no se pudieron guardar las marcas");
     }
 }
@@ -1769,6 +1779,7 @@ fn guardar_marcas_en(documento: &Path, marcas: &[Marcador]) {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use pixpin_docs::lectura;
 
     #[test]
     fn el_sitio_de_la_pagina_se_entiende_y_da_la_fraccion() {
@@ -1879,5 +1890,31 @@ mod pruebas {
         guardar_marcas_en(&doc, &v);
         assert_eq!(lectura::leer(&doc).marcadores.len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn las_marcas_y_la_tinta_de_una_pagina_del_chat_van_a_su_mensaje() {
+        use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
+        let r = raiz("riel-web-adjunto");
+        let doc = con_adjunto(&r, "informe.html", b"<p>hola</p>");
+        let b = crate::anotado_del_adjunto::base_de(&doc).expect("adjunto");
+        // Lo de antes (junto a la pagina) pasa la primera vez.
+        let vieja = lector_tinta::ruta_de_capa(&doc);
+        std::fs::create_dir_all(vieja.parent().unwrap()).unwrap();
+        std::fs::write(&vieja, r#"{"type":"excalidraw","version":2,"elements":[]}"#).unwrap();
+        let tinta = crate::anotado_del_adjunto::tinta_de_la_pagina(&doc);
+        assert_eq!(tinta, b.tinta());
+        assert!(tinta.is_file(), "copiada al mensaje");
+        assert!(tinta.to_string_lossy().replace('\\', "/").contains("/lienzos/anot-"));
+        // Las marcas: en `anot-<uid>.marcas`, como las del Word.
+        let v = vec![Marcador { id: 5, fraccion: 0.5, emoji: "⭐".into() }];
+        guardar_marcas_en(&doc, &v);
+        assert_eq!(std::fs::read_to_string(b.fichero(".marcas")).unwrap(), "5:0.5:⭐");
+        assert_eq!(crate::anotado_del_adjunto::leer(&doc).marcadores, v);
+        // Quitadas: vacio, no borrado.
+        guardar_marcas_en(&doc, &[]);
+        assert_eq!(std::fs::read_to_string(b.fichero(".marcas")).unwrap(), "");
+        assert!(crate::anotado_del_adjunto::leer(&doc).marcadores.is_empty());
+        let _ = std::fs::remove_dir_all(&r);
     }
 }
