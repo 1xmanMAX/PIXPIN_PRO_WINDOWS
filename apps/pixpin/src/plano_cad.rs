@@ -205,7 +205,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
             pista_acotar: "Click points to measure · Double-click or Enter: finish · Esc: exit".into(),
             todo: "Show whole drawing	F".into(),
             tema: "Light or dark background	B".into(),
-            acotar: "Measure	M".into(),
+            acotar: "Measure	D".into(),
             borrar_cotas: "Clear measurements	Del".into(),
             encima: "Always on top	T".into(),
             cerrar: "Close	Esc".into(),
@@ -214,7 +214,9 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
             imprimir: "Print…	Ctrl+P".into(),
             exportar: "Export (HTML, PDF, PNG, DXF…)…	Ctrl+E".into(),
             borrar_marcos: "Clear frames".into(),
-            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one".into(),
+            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · Esc: exit".into(),
+            marcador: "Bookmark here	Ctrl+M".into(),
+            botones: pixpin_cad::ventana::NombresDeBotones::ingles(),
             anotar: "Annotate	A".into(),
             sin_dibujo_civil: "{n} Civil 3D objects were saved without their graphics: save with PROXYGRAPHICS = 1 or export to LandXML".into(),
             letras: "Drawing fonts…	L".into(),
@@ -233,6 +235,21 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
         },
         _ => pixpin_cad::ventana::TextosUi::default(),
     }
+}
+
+/// **El globo de los botones de la barra** de los planos y los modelos
+/// (19-oct-2026): su barra es una ventana aparte, asi que el nombre y la
+/// tecla salen debajo en la ventanita de `globo_pista`, la de las barras de
+/// los demas pines. Texto vacio: esconderlo.
+pub fn globo_de_la_barra() -> pixpin_cad::ventana::Globo {
+    Box::new(|texto: &str, r: [i32; 4], e: f64| {
+        if texto.is_empty() {
+            crate::globo_pista::ocultar();
+        } else {
+            let boton = pixpin_geom::Rect { x: r[0], y: r[1], ancho: r[2].max(1) as u32, alto: r[3].max(1) as u32 };
+            crate::globo_pista::mostrar(texto, boton, e as f32);
+        }
+    })
 }
 
 /// Lee el plano en otro hilo; llega por el canal.
@@ -328,6 +345,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             vista_inicial: tomar_vista_al_abrir(&ruta),
             tipo: tipo_de_archivo(&ruta),
             marcadores: Some(fichero_de_marcadores(&raiz, &ruta)),
+            globo: Some(globo_de_la_barra()),
         };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
             tracing::warn!(%e, "no se pudo abrir el visor de planos");

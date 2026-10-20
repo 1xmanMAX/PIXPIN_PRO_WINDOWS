@@ -201,7 +201,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
             categorias: "KINDS".into(),
             sin_nivel: "Everything".into(),
             mostrar_todo: "Show all".into(),
-            aristas: "Edges\tA".into(),
+            aristas: "Edges\tE".into(),
             planta: "Plan view\tP".into(),
             encima: "Always on top\tT".into(),
             cerrar: "Close\tEsc".into(),

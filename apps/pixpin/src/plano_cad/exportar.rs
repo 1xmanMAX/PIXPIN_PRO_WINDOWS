@@ -298,7 +298,7 @@ fn contenido(h: &HojaPdf, grupos: &[Grupo], origen: [f64; 2], cotas: &[Vec<[f64;
             let mm = if g.grosor > 0 { g.grosor as f64 / 100.0 * 72.0 / 25.4 } else { 0.35 };
             s.push_str(&format!("{} w 1 J 1 j\n", n(mm.max(0.25) / h.s)));
             let mut por_color: HashMap<u32, String> = HashMap::new();
-            let mut tri = |v: [(f32, f32); 3], c: u32, por: &mut HashMap<u32, String>| {
+            let tri = |v: [(f32, f32); 3], c: u32, por: &mut HashMap<u32, String>| {
                 let t = por.entry(c).or_default();
                 t.push_str(&format!("{} {} m {} {} l {} {} l h\n", n(v[0].0 as f64), n(v[0].1 as f64), n(v[1].0 as f64), n(v[1].1 as f64), n(v[2].0 as f64), n(v[2].1 as f64)));
             };

@@ -100,7 +100,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
             categorias: "CATEGORIES".into(),
             sin_nivel: "No level".into(),
             mostrar_todo: "Show all".into(),
-            aristas: "Edges	A".into(),
+            aristas: "Edges	E".into(),
             planta: "Plan view	P".into(),
             encima: "Always on top	T".into(),
             cerrar: "Close	Esc".into(),
@@ -115,12 +115,14 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
 fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
     match idioma {
         Idioma::Ingles => pixpin_cad::ventana3d::TextosMarcos3d {
-            marcador: "Bookmark here (with the section and what is hidden)".into(),
+            marcador: "Bookmark here (with the section and what is hidden)\tCtrl+M".into(),
             marcos: "Frames to print\tI".into(),
             imprimir: "Print the frames…\tCtrl+P".into(),
             borrar_marcos: "Clear frames".into(),
-            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · The numbers: go to its view".into(),
+            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · The numbers: go to its view · Esc: exit".into(),
             pista_anotar: "What you annotate is only seen in this bookmark's view".into(),
+            anotar: "Annotate this view\tA".into(),
+            botones: pixpin_cad::ventana::NombresDeBotones::ingles(),
         },
         _ => pixpin_cad::ventana3d::TextosMarcos3d::default(),
     }
@@ -158,6 +160,7 @@ fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> p
             }
         })),
         textos: textos_marcos(idioma),
+        globo: Some(crate::plano_cad::globo_de_la_barra()),
     }
 }
 

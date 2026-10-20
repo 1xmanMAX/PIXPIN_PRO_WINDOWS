@@ -19,9 +19,11 @@
 //! - Niveles y categorias (boton de la barra o L): un panel para mostrar u
 //!   ocultar plantas y categorias; lo elegido dice su nivel, su volumen y su
 //!   area (sacados de su malla).
-//! - Teclas: Esc (suelta lo elegido; si no hay, cierra), B tema, C caja,
-//!   A aristas, T encima, P planta, flechas para girar; F11 pantalla
-//!   completa (y Esc, la primera vez, sale de ella).
+//! - Teclas: Esc (deja los marcos o anotar, suelta lo elegido; sin nada,
+//!   cierra), B tema, C caja, E aristas, T encima, P planta, flechas para
+//!   girar; F11 pantalla completa (y Esc, la primera vez, sale de ella). Las
+//!   de todos los visores: I los marcos, Supr el ultimo, Ctrl+P imprimirlos,
+//!   M o Ctrl+M un marcador, A anotar.
 
 mod arbol;
 
@@ -47,6 +49,7 @@ use crate::ventana::{
     colocar_barra, crear_barra, crear_ventana, poner_encima,
     raya, rect, seguir_barra, tecla_de_pantalla_completa, vista_pantalla,
 };
+use crate::ventana::{Globo, NombresDeBotones, Unificada, ficha_en, globo_de_la_barra, globo_izquierda, pintar_fichas_y_pista, tecla_unificada};
 
 const INFINITE: u32 = u32::MAX;
 /// La barra, en el orden de la del plano (y la de los demas visores).
@@ -289,7 +292,7 @@ impl Default for TextosUi3d {
             categorias: "CATEGORÍAS".into(),
             sin_nivel: "Sin nivel".into(),
             mostrar_todo: "Mostrar todo".into(),
-            aristas: "Aristas\tA".into(),
+            aristas: "Aristas\tE".into(),
             planta: "Vista en planta\tP".into(),
             encima: "Siempre encima\tT".into(),
             cerrar: "Cerrar\tEsc".into(),
@@ -313,6 +316,7 @@ const M_MARCADOR: u32 = 11;
 const M_MARCOS: u32 = 12;
 const M_IMPRIMIR: u32 = 13;
 const M_BORRAR_MARCOS: u32 = 14;
+const M_ANOTAR: u32 = 15;
 /// La primera vista guardada; las demas, seguidas.
 const M_VISTA: u32 = 100;
 
@@ -706,6 +710,8 @@ pub struct Barra3d {
     #[allow(clippy::type_complexity)]
     pub imprimir: Option<Box<dyn Fn(isize, Vec<Foto>)>>,
     pub textos: TextosMarcos3d,
+    /// El globo de los botones de la barra (ver [`Globo`]); sin el, no sale.
+    pub globo: Option<Globo>,
 }
 
 /// Los textos de los marcadores y los marcos del modelo.
@@ -717,16 +723,22 @@ pub struct TextosMarcos3d {
     pub borrar_marcos: String,
     pub pista_marcos: String,
     pub pista_anotar: String,
+    /// Anotar sobre la vista de ahora (el menu, con su tecla).
+    pub anotar: String,
+    /// Los nombres de los botones de la barra y del riel, para su globo.
+    pub botones: NombresDeBotones,
 }
 
 impl Default for TextosMarcos3d {
     fn default() -> Self {
         TextosMarcos3d {
-            marcador: "Marcador aquí (con el corte y lo oculto)".into(),
+            anotar: "Anotar sobre esta vista\tA".into(),
+            botones: NombresDeBotones::default(),
+            marcador: "Marcador aquí (con el corte y lo oculto)\tCtrl+M".into(),
             marcos: "Marcos para imprimir\tI".into(),
             imprimir: "Imprimir los marcos…\tCtrl+P".into(),
             borrar_marcos: "Borrar los marcos".into(),
-            pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último · Los números: ir a su vista".into(),
+            pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último · Los números: ir a su vista · Esc: salir".into(),
             pista_anotar: "Lo anotado solo se ve en la vista de este marcador".into(),
         }
     }
@@ -781,24 +793,6 @@ fn vista_de_tinta(hwnd: HWND, w: u32, h: u32, e: f64, claro: bool) -> crate::ano
     }
 }
 
-/// Los numeros de los marcos en el modo de marcar (abajo a la izquierda,
-/// encima de la pista): cada uno lleva a la vista de su marco.
-fn chips_de_marcos(n: usize, h: u32, e: f64) -> Vec<[f64; 4]> {
-    let lado = 26.0 * e;
-    (0..n)
-        .map(|i| {
-            let x = 12.0 * e + i as f64 * (lado + 6.0 * e);
-            let y = h as f64 - 76.0 * e;
-            [x, y, x + lado, y + lado]
-        })
-        .collect()
-}
-
-fn chip_en(n: usize, h: u32, e: f64, x: i32, y: i32) -> Option<usize> {
-    let (x, y) = (x as f64, y as f64);
-    chips_de_marcos(n, h, e).iter().position(|c| x >= c[0] && x < c[2] && y >= c[1] && y < c[3])
-}
-
 /// Lo que sale encima del modelo por los marcos: los que son de la vista de
 /// ahora (su raya azul y su numero), el que se arrastra y, marcando, los
 /// numeros de todos y la pista. Y la pista de anotar.
@@ -838,16 +832,10 @@ fn encima_de_marcos(
         caja_px(&mut c, [a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])], 1.5 * e);
     }
     if marcando {
-        for (i, k) in chips_de_marcos(marcos.len(), h, e).into_iter().enumerate() {
-            let es_esta = ahora.is_some_and(|s| crate::marcadores::coincide(s, &marcos[i].estado));
-            let fondo = if es_esta { azul } else { 0xEE1C_1C1E };
-            rect(&mut c, k[0], k[1], k[2], k[3], fondo);
-            let t = (i + 1).to_string();
-            let ancho = textos.medir_pantalla(&t, tam);
-            textos.en_pantalla(&mut c, &t, (k[0] + k[2] - ancho) / 2.0, k[1] + 17.5 * e, tam, blanco, k[2] + 20.0 * e);
-        }
-    }
-    if let Some(p) = pista {
+        // Las fichas de los marcos (cada una lleva a la vista del suyo) y, a
+        // su derecha, la pista: las mismas que en el plano y los documentos.
+        pintar_fichas_y_pista(&mut c, textos, marcos.len(), h, e, pista.unwrap_or(""));
+    } else if let Some(p) = pista {
         let t13 = 13.0 * e;
         let ancho = textos.medir_pantalla(p, t13);
         let (x, y) = (12.0 * e, h as f64 - 38.0 * e);
@@ -906,7 +894,9 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let e = dpi as f64 / 96.0;
     let mut textos = Textos::nuevo();
-    let Barra3d { tipo, marcadores: fichero_marcadores, anotador: hacer_anotador, quitar_tinta, foto, imprimir: al_imprimir, textos: tm } = barra_app;
+    let Barra3d { tipo, marcadores: fichero_marcadores, anotador: hacer_anotador, quitar_tinta, foto, imprimir: al_imprimir, textos: tm, globo: globo_barra } = barra_app;
+    // El boton de la barra cuyo globo se ensena ahora.
+    let mut globo_puesto: Option<usize> = None;
     let cabecera = Cabecera::nueva(&mut textos, titulo, tipo, e);
     // El riel de la derecha, como el de los demas visores: el marcador
     // (siempre), el lapiz (lo anotado sobre un marcador) y el marco para
@@ -1067,7 +1057,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
         let isla_riel = riel_cajas(w, e, botones_riel.len()).map(|(i, _)| i);
         let (n_marcadores, n_marcos, alto_ahora) = (guardados.c.modelo.len(), guardados.c.marcos.len(), h);
         let punto_bajo = move |x: i32, y: i32| isla_riel.and_then(|i| crate::marcadores::punto_en(i, n_marcadores, alto_ahora, e, x, y));
-        let chip_bajo = move |x: i32, y: i32| if marcando { chip_en(n_marcos, alto_ahora, e, x, y) } else { None };
+        let chip_bajo = move |x: i32, y: i32| if marcando { ficha_en(n_marcos, alto_ahora, e, x, y) } else { None };
         // Cambio lo que se ve en el panel: hay que rehacer los indices.
         let mut refiltrar = false;
         let mut cambiar_panel = false;
@@ -1380,6 +1370,9 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                     } else if b == 2 {
                         let a = if aislado.is_some() { Some(true) } else { elegido.map(|_| false) };
                         let mut de_marcos: Vec<(u32, &str, bool)> = vec![(M_MARCADOR, tm.marcador.as_str(), false)];
+                        if hacer_anotador.is_some() {
+                            de_marcos.push((M_ANOTAR, tm.anotar.as_str(), anotando.is_some()));
+                        }
                         if botones_riel.contains(&"marcos") {
                             de_marcos.push((M_MARCOS, tm.marcos.as_str(), marcando));
                             de_marcos.push((M_IMPRIMIR, tm.imprimir.as_str(), false));
@@ -1487,6 +1480,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                     M_ENCIMA => cambiar_encima = true,
                     M_CERRAR => break 'bucle,
                     M_MARCADOR => poner_marcador = true,
+                    M_ANOTAR => cambiar_anotar = true,
                     M_MARCOS => cambiar_marcos = true,
                     M_IMPRIMIR => imprimir_marcos = true,
                     M_BORRAR_MARCOS => {
@@ -1498,28 +1492,36 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                     _ => {}
                 },
                 (De::Plano, Ev::TeclaSoltada(_) | Ev::Caracter(_)) => {}
-                (De::Plano, Ev::Tecla(vk)) => match vk {
-                    // Ctrl+P: imprimir los marcos en grupo; Ctrl+1 a Ctrl+9:
-                    // ir al marcador con ese numero.
+                // **Las teclas de todos los visores** ([`Unificada`]): I los
+                // marcos (con algo elegido o aislado, la I sigue aislando: era
+                // su tecla antes), Supr el ultimo marco, Ctrl+P imprimirlos,
+                // M o Ctrl+M un marcador, A anotar.
+                // SAFETY: lee el estado de Ctrl.
+                (De::Plano, Ev::Tecla(vk))
+                    if tecla_unificada(vk, unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0, marcando)
+                        .is_some_and(|u| u != Unificada::Marcos || marcando || (elegido.is_none() && aislado.is_none())) =>
+                {
                     // SAFETY: lee el estado de Ctrl.
-                    0x50 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => imprimir_marcos = true,
+                    match tecla_unificada(vk, unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0, marcando) {
+                        Some(Unificada::Marcos) if botones_riel.contains(&"marcos") => cambiar_marcos = true,
+                        Some(Unificada::QuitarUltimoMarco) => {
+                            if guardados.c.marcos.pop().is_some() {
+                                guardados.guardar();
+                            }
+                            sucio = true;
+                        }
+                        Some(Unificada::Imprimir) => imprimir_marcos = true,
+                        Some(Unificada::Marcador) => poner_marcador = true,
+                        Some(Unificada::Anotar) => cambiar_anotar = true,
+                        _ => {}
+                    }
+                }
+                (De::Plano, Ev::Tecla(vk)) => match vk {
+                    // Ctrl+1 a Ctrl+9: ir al marcador con ese numero.
                     // SAFETY: lee el estado de Ctrl.
                     0x31..=0x39 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => ir_a_marcador = Some((vk - 0x31) as usize),
-                    // Marcando, Esc sale del modo y Supr quita el ultimo marco.
+                    // Marcando, Esc sale del modo (anotando, ya lo dejo el motor).
                     0x1B if marcando => cambiar_marcos = true,
-                    0x2E if marcando => {
-                        if guardados.c.marcos.pop().is_some() {
-                            guardados.guardar();
-                        }
-                        sucio = true;
-                    }
-                    // I: los marcos, como en el plano; con algo elegido o
-                    // aislado sigue aislando (era su tecla antes).
-                    0x49 if marcando || (elegido.is_none() && aislado.is_none()) => {
-                        if botones_riel.contains(&"marcos") {
-                            cambiar_marcos = true;
-                        }
-                    }
                     0x1B => {
                         if aislado.is_some() {
                             aislar = Some(None);
@@ -1535,7 +1537,8 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                     0x43 => cambiar_corte = true,
                     0x49 => aislar = Some(if aislado.is_some() { None } else { elegido }),
                     0x4C => cambiar_panel = true,
-                    0x41 => {
+                    // E: las aristas (la A es anotar, como en todos).
+                    0x45 => {
                         aristas = !aristas;
                         sucio = true;
                     }
@@ -1826,6 +1829,12 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
             }
             barra_sucia = false;
         }
+        // El globo del boton de la barra bajo el raton, en su ventanita.
+        let quiere_globo = boton_encima.filter(|_| barra_visible && dentro_barra);
+        if quiere_globo != globo_puesto {
+            globo_de_la_barra(globo_barra.as_ref(), hbarra, barra_visible, quiere_globo, &BOTONES, &b_barra, &tm.botones, e);
+            globo_puesto = quiere_globo;
+        }
         if aviso_ui.is_none() && !mensaje.is_empty() {
             let m = aviso(&mut textos, &mensaje, w, h, e, claro);
             aviso_ui = gpu.subir(&m).ok().map(|p| (m, p));
@@ -1914,6 +1923,18 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
             if let Some((m, p)) = &riel_m {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
+            // El globo del boton del riel bajo el raton: su nombre y su
+            // tecla, a su izquierda (como en el plano y en los lectores).
+            let globo_m = match (con_riel, riel_encima, riel_cajas(w, e, botones_riel.len())) {
+                (true, Some(i), Some((_, cajas))) => cajas.get(i).zip(tm.botones.globo(botones_riel[i])).and_then(|(k, t)| {
+                    let m = globo_izquierda(&mut textos, *k, &t, e);
+                    gpu.subir(&m).ok().map(|p| (m, p))
+                }),
+                _ => None,
+            };
+            if let Some((m, p)) = &globo_m {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
             let puntos_m = match riel_cajas(w, e, botones_riel.len()) {
                 Some((isla, _)) if con_riel && !guardados.c.modelo.is_empty() => {
                     let mut c = Constructor::nuevo();
@@ -1931,7 +1952,12 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
             // lienzo en el mismo dispositivo (y su barra, anotando).
             let vt = vista_de_tinta(hwnd, w, h, e, claro);
             let con_motor = anotando.is_some() && !sin_interfaz;
-            let r = match id_actual.as_ref().and_then(|id| anotadores.get_mut(id)) {
+            // Lo anotado es de la vista exacta del marcador (va en pixeles):
+            // solo con la camara ya parada en ella. Llegando aun se mueve un
+            // poco (lo que deja `coincide`) y lo anotado iria fuera de su
+            // sitio, detras del modelo.
+            let id_tinta = id_actual.as_ref().filter(|_| cam == destino || anotando.is_some());
+            let r = match id_tinta.and_then(|id| anotadores.get_mut(id)) {
                 Some(a) => gpu.dibujar_3d_con(fondo, modelo.as_ref().map(|(_, g)| (g, v)), aristas, &capas, Some(&mut |d, t| a.pintar(d, t, &vt, con_motor))),
                 None => gpu.dibujar_3d(fondo, modelo.as_ref().map(|(_, g)| (g, v)), aristas, &capas),
             };
@@ -1939,7 +1965,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                 tracing::warn!(error = %err, "no se pudo dibujar el modelo");
             }
             // Lo anotado iba en su foto estirada: otro fotograma, ya nitido.
-            sucio = imprimiendo.is_none() && id_actual.as_ref().and_then(|id| anotadores.get(id)).is_some_and(|a| a.falta_pintar());
+            sucio = imprimiendo.is_none() && id_tinta.and_then(|id| anotadores.get(id)).is_some_and(|a| a.falta_pintar());
             pintado = true;
         }
         // Imprimiendo: la foto del marco recien pintado, o entregar las fotos.
@@ -1991,6 +2017,9 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
     // Lo que se anotaba se queda escrito y las capas se guardan.
     for a in anotadores.values_mut() {
         a.terminar();
+    }
+    if let Some(f) = &globo_barra {
+        f("", [0; 4], e);
     }
     // SAFETY: ventanas propias.
     unsafe {
