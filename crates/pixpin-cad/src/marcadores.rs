@@ -116,8 +116,12 @@ pub struct Marcador3d {
 
 /// Un marco para imprimir del modelo: su recuadro en la pantalla
 /// (normalizado, [`a_normal`]: `[x0, y0, x1, y1]`) y el estado de la vista.
+/// Con su `id` (desde el 19-oct-2026, al viajar): la sincronizacion junta
+/// las listas elemento por elemento por el `id`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Marco3d {
+    #[serde(default)]
+    pub id: String,
     pub caja: [f64; 4],
     pub estado: Estado3d,
 }
@@ -151,7 +155,8 @@ pub fn nuevo_id() -> String {
     format!("m{:x}{:x}", t, CUENTA.fetch_add(1, Ordering::Relaxed))
 }
 
-/// Lo que se guarda de un plano o un modelo.
+/// Lo que se guarda de un plano o un modelo, en memoria (en el disco va en
+/// dos ficheros: [`FicheroDeVistas`] y [`FicheroDeMarcos`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Contenido {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -162,41 +167,334 @@ pub struct Contenido {
     pub marcos: Vec<Marco3d>,
 }
 
-/// **Los marcadores (y los marcos del modelo) con su fichero.** Sin fichero
-/// duran lo que la ventana.
+/// La version del formato de los dos ficheros. Sube solo si cambia el
+/// sentido de un campo; un campo nuevo con su valor por defecto no la sube.
+pub const VERSION: u32 = 1;
+
+fn version() -> u32 {
+    VERSION
+}
+
+/// **El fichero de los marcadores** (`anot-<uid>.vistas.json` de un
+/// adjunto del chat, que viaja; `vistas.json` en la carpeta local si no):
+///
+/// ```json
+/// { "version": 1,
+///   "plano":  [ { "id": "m…", "nombre": "", "x": 0, "y": 0, "ancho": 0, "alto": 0 } ],
+///   "modelo": [ { "id": "m…", "nombre": "", "estado": { "objetivo": [0, 0, 0], "rumbo": 0, "altura": 0, "dist": 1 } } ] }
+/// ```
+///
+/// Las dos listas van siempre, aunque esten vacias: «sin marcadores» es un
+/// `[]` escrito (la sincronizacion no lleva borrados de ficheros, y quitar
+/// la clave no se distingue de un fichero viejo). Lo que no se conoce (un
+/// campo que ponga el movil) se deja como estaba.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FicheroDeVistas {
+    #[serde(default = "version")]
+    pub version: u32,
+    #[serde(default)]
+    pub plano: Vec<Marcador2d>,
+    #[serde(default)]
+    pub modelo: Vec<Marcador3d>,
+    /// Solo al leer: el `vistas.json` del 19-oct llevaba aqui los marcos.
+    #[serde(default, skip_serializing)]
+    pub marcos: Vec<Marco3d>,
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
+}
+
+/// **El fichero de los marcos para imprimir del modelo**
+/// (`anot-<uid>.marcos.json`; `marcos.json` en la carpeta local):
+///
+/// ```json
+/// { "version": 1, "marcos": [ { "id": "m…", "caja": [-0.2, -0.1, 0.3, 0.2], "estado": { "objetivo": [0, 0, 0], "rumbo": 0, "altura": 0, "dist": 1 } } ] }
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct FicheroDeMarcos {
+    #[serde(default = "version")]
+    pub version: u32,
+    #[serde(default)]
+    pub marcos: Vec<Marco3d>,
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
+}
+
+/// **El fichero de los marcos, junto al de los marcadores**:
+/// `anot-<uid>.vistas.json` → `anot-<uid>.marcos.json`, `vistas.json` →
+/// `marcos.json`; otro nombre, `<nombre>.marcos.json` a su lado.
+pub fn marcos_junto_a(vistas: &Path) -> PathBuf {
+    let nombre = vistas.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let nuevo = match nombre.strip_suffix("vistas.json") {
+        Some(base) => format!("{base}marcos.json"),
+        None => format!("{nombre}.marcos.json"),
+    };
+    vistas.with_file_name(nuevo)
+}
+
+/// Lo que tiene un `id` para juntar listas.
+trait ConId {
+    fn id(&self) -> &str;
+}
+impl ConId for Marcador2d {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+impl ConId for Marcador3d {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+impl ConId for Marco3d {
+    fn id(&self) -> &str {
+        &self.id
+    }
+}
+
+/// **Junta dos versiones de una lista** a partir de la que tuvieron en
+/// comun (`base`), por el `id`, con las reglas de la sincronizacion
+/// (`pixpin_sincro::fusion`): lo nuevo de cualquiera entra; lo que uno
+/// quito se va si el otro no lo cambio; lo cambiado gana a lo quitado; si
+/// solo uno cambio algo, manda ese, y si los dos, el mio. El orden es el
+/// mio, con lo nuevo del otro detras.
+fn juntar_lista<T: ConId + Clone + PartialEq>(base: &[T], mio: &[T], suyo: &[T]) -> Vec<T> {
+    let en = |l: &[T], id: &str| l.iter().find(|x| x.id() == id).cloned();
+    let mut salida = Vec::with_capacity(mio.len().max(suyo.len()));
+    for m in mio {
+        let b = en(base, m.id());
+        match en(suyo, m.id()) {
+            Some(s) => salida.push(if b.as_ref() == Some(m) { s } else { m.clone() }),
+            // Lo quito el otro: se va si aqui sigue como estaba.
+            None if b.as_ref() == Some(m) => {}
+            None => salida.push(m.clone()),
+        }
+    }
+    for s in suyo.iter().filter(|s| en(mio, s.id()).is_none()) {
+        match en(base, s.id()) {
+            // Lo quite yo y el otro no lo cambio: fuera.
+            Some(b) if b == *s => {}
+            _ => salida.push(s.clone()),
+        }
+    }
+    salida
+}
+
+/// [`juntar_lista`] para todo lo guardado.
+fn juntar(base: &Contenido, mio: &Contenido, suyo: &Contenido) -> Contenido {
+    Contenido {
+        plano: juntar_lista(&base.plano, &mio.plano, &suyo.plano),
+        modelo: juntar_lista(&base.modelo, &mio.modelo, &suyo.modelo),
+        marcos: juntar_lista(&base.marcos, &mio.marcos, &suyo.marcos),
+    }
+}
+
+/// Fecha y tamano de un fichero: cambia cuando la sincronizacion trae algo.
+type Sello = Option<(std::time::SystemTime, u64)>;
+
+fn sello_de(f: &Path) -> Sello {
+    std::fs::metadata(f).ok().and_then(|m| Some((m.modified().ok()?, m.len())))
+}
+
+/// Cada cuanto se mira si el disco cambio ([`Guardados::mirar_el_disco`]).
+const MIRAR_EL_DISCO: std::time::Duration = std::time::Duration::from_millis(1000);
+
+/// Por un temporal y luego encima: la sincronizacion no lee nunca uno a
+/// medias. El temporal (`….tmp`) no es de lo que viaja.
+fn escribir_atomico(f: &Path, texto: &str) -> std::io::Result<()> {
+    if let Some(d) = f.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let tmp = f.with_extension("tmp");
+    std::fs::write(&tmp, texto)?;
+    std::fs::rename(&tmp, f)
+}
+
+/// Lo que no se conoce de un fichero, para dejarlo como estaba.
+type Resto = serde_json::Map<String, serde_json::Value>;
+
+/// **Los marcadores (y los marcos del modelo) con sus ficheros**: el de los
+/// marcadores que da quien abre la ventana y el de los marcos a su lado
+/// ([`marcos_junto_a`]). Sin fichero duran lo que la ventana.
+///
+/// Guardar **junta con lo que haya en el disco** si alguien lo cambio
+/// desde la ultima vez (la sincronizacion, u otra ventana del mismo plano:
+/// la de 2D y la de 3D comparten fichero), y no toca el fichero si ya dice
+/// lo mismo. Nunca lo borra: sin nada escribe las listas vacias.
 #[derive(Debug, Clone, Default)]
 pub struct Guardados {
     pub c: Contenido,
     fichero: Option<PathBuf>,
+    /// Lo que habia en el disco la ultima vez que se leyo o escribio.
+    base: Contenido,
+    /// El texto de cada fichero entonces (`None`: no estaba).
+    textos: [Option<String>; 2],
+    restos: [Resto; 2],
+    sellos: [Sello; 2],
+    mirado: Option<std::time::Instant>,
+}
+
+/// Lo leido de los dos ficheros.
+struct Leido {
+    c: Contenido,
+    textos: [Option<String>; 2],
+    restos: [Resto; 2],
+    /// Marcos sin `id` (los del 19-oct): hay que escribirlos con el suyo.
+    sin_id: bool,
+}
+
+fn leer_ficheros(vistas: &Path) -> Leido {
+    let marcos = marcos_junto_a(vistas);
+    let textos = [std::fs::read_to_string(vistas).ok(), std::fs::read_to_string(&marcos).ok()];
+    // Uno roto no tumba nada: como si no hubiera.
+    let v: FicheroDeVistas = textos[0].as_deref().and_then(|t| serde_json::from_str(t).ok()).unwrap_or_default();
+    let m: Option<FicheroDeMarcos> = textos[1].as_deref().and_then(|t| serde_json::from_str(t).ok());
+    let mut lista = match &m {
+        Some(m) => m.marcos.clone(),
+        // Aun sin su fichero: los que traia el de los marcadores.
+        None => v.marcos.clone(),
+    };
+    let mut sin_id = false;
+    for k in lista.iter_mut().filter(|k| k.id.is_empty()) {
+        k.id = nuevo_id();
+        sin_id = true;
+    }
+    Leido {
+        c: Contenido { plano: v.plano, modelo: v.modelo, marcos: lista },
+        textos,
+        restos: [v.resto, m.map(|m| m.resto).unwrap_or_default()],
+        sin_id,
+    }
+}
+
+/// Lo guardado en `vistas` (y en el de sus marcos, al lado), sin escribir
+/// nada: lo de antes, para pasarlo a otro sitio.
+pub fn leer(vistas: &Path) -> Contenido {
+    leer_ficheros(vistas).c
 }
 
 impl Guardados {
     pub fn de(fichero: Option<&Path>) -> Guardados {
-        let c = fichero
-            .and_then(|f| std::fs::read_to_string(f).ok())
-            .and_then(|t| serde_json::from_str::<Contenido>(&t).ok())
-            .unwrap_or_default();
-        Guardados { c, fichero: fichero.map(Path::to_path_buf) }
+        let Some(f) = fichero else { return Guardados::default() };
+        let l = leer_ficheros(f);
+        let mut g = Guardados {
+            c: l.c.clone(),
+            fichero: Some(f.to_path_buf()),
+            base: l.c,
+            textos: l.textos,
+            restos: l.restos,
+            sellos: [sello_de(f), sello_de(&marcos_junto_a(f))],
+            mirado: None,
+        };
+        // Los marcos de antes, con su id y en su fichero, una vez.
+        if l.sin_id {
+            g.guardar();
+        }
+        g
     }
 
-    /// Lo escribe (sin nada, quita el fichero).
-    pub fn guardar(&self) {
-        let Some(f) = &self.fichero else { return };
-        if self.c == Contenido::default() {
-            let _ = std::fs::remove_file(f);
-            return;
-        }
-        let hecho = serde_json::to_string_pretty(&self.c).map_err(std::io::Error::other).and_then(|t| {
-            if let Some(d) = f.parent() {
-                std::fs::create_dir_all(d)?;
+    /// El fichero de los marcadores, si lo hay.
+    pub fn fichero(&self) -> Option<&Path> {
+        self.fichero.as_deref()
+    }
+
+    /// Los dos textos que dicen lo de ahora (`None`: ese fichero no hace
+    /// falta: no esta y no hay nada que poner).
+    fn textos_de_ahora(&self) -> [Option<String>; 2] {
+        let v = FicheroDeVistas {
+            version: VERSION,
+            plano: self.c.plano.clone(),
+            modelo: self.c.modelo.clone(),
+            marcos: Vec::new(),
+            resto: self.restos[0].clone(),
+        };
+        let m = FicheroDeMarcos { version: VERSION, marcos: self.c.marcos.clone(), resto: self.restos[1].clone() };
+        let vacios = [self.c.plano.is_empty() && self.c.modelo.is_empty(), self.c.marcos.is_empty()];
+        let t = [serde_json::to_string_pretty(&v).ok(), serde_json::to_string_pretty(&m).ok()];
+        let mut salida: [Option<String>; 2] = [None, None];
+        for k in 0..2 {
+            // Vacio y sin fichero: nada que escribir (el plano en 2D no
+            // tiene marcos del modelo; un plano sin marcadores, ningun fichero).
+            if !(vacios[k] && self.textos[k].is_none()) {
+                salida[k] = t[k].clone();
             }
-            let tmp = f.with_extension("tmp");
-            std::fs::write(&tmp, t)?;
-            std::fs::rename(&tmp, f)
-        });
-        if let Err(e) = hecho {
-            tracing::warn!(?e, fichero = %f.display(), "marcadores: no se pudieron guardar");
         }
+        salida
+    }
+
+    /// Lo escribe: si el disco cambio desde la ultima vez, junta antes; y
+    /// solo el fichero que cambia. Sin nada, las listas vacias.
+    pub fn guardar(&mut self) {
+        let Some(f) = self.fichero.clone() else { return };
+        let disco = leer_ficheros(&f);
+        if disco.textos != self.textos {
+            self.c = juntar(&self.base, &self.c, &disco.c);
+            self.textos = disco.textos;
+            self.restos = disco.restos;
+        }
+        let rutas = [f.clone(), marcos_junto_a(&f)];
+        let nuevos = self.textos_de_ahora();
+        for k in 0..2 {
+            let Some(t) = &nuevos[k] else { continue };
+            if self.textos[k].as_deref() == Some(t.as_str()) {
+                continue;
+            }
+            match escribir_atomico(&rutas[k], t) {
+                Ok(()) => self.textos[k] = Some(t.clone()),
+                Err(e) => tracing::warn!(?e, fichero = %rutas[k].display(), "marcadores: no se pudieron guardar"),
+            }
+        }
+        self.base = self.c.clone();
+        self.sellos = [sello_de(&rutas[0]), sello_de(&rutas[1])];
+    }
+
+    /// **Lo que trajo la sincronizacion, a la vista**: si un fichero cambio
+    /// en el disco, se junta con lo de aqui. Dice si cambio lo que se ve.
+    pub fn al_dia(&mut self) -> bool {
+        let Some(f) = self.fichero.clone() else { return false };
+        let sellos = [sello_de(&f), sello_de(&marcos_junto_a(&f))];
+        if sellos == self.sellos {
+            return false;
+        }
+        self.sellos = sellos;
+        let disco = leer_ficheros(&f);
+        if disco.textos == self.textos {
+            return false;
+        }
+        let antes = self.c.clone();
+        self.c = juntar(&self.base, &self.c, &disco.c);
+        self.base = disco.c;
+        self.textos = disco.textos;
+        self.restos = disco.restos;
+        // Si aqui habia algo que el disco no tiene, se escribe junto.
+        if self.c != self.base || disco.sin_id {
+            self.guardar();
+        }
+        self.c != antes
+    }
+
+    /// [`Guardados::al_dia`] sin mirar el disco mas de una vez por segundo
+    /// (se llama en cada vuelta de la ventana).
+    pub fn mirar_el_disco(&mut self) -> bool {
+        if self.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
+            return false;
+        }
+        self.mirado = Some(std::time::Instant::now());
+        self.al_dia()
+    }
+
+    /// **Suma lo de `otro` que aqui no esta** (por el `id`) y dice si sumo
+    /// algo: la migracion de los marcadores de antes. No guarda.
+    pub fn sumar(&mut self, otro: &Contenido) -> bool {
+        fn sumar_lista<T: ConId + Clone>(aqui: &mut Vec<T>, de: &[T]) -> bool {
+            let nuevos: Vec<T> = de.iter().filter(|x| !aqui.iter().any(|y| y.id() == x.id())).cloned().collect();
+            let hay = !nuevos.is_empty();
+            aqui.extend(nuevos);
+            hay
+        }
+        let a = sumar_lista(&mut self.c.plano, &otro.plano);
+        let b = sumar_lista(&mut self.c.modelo, &otro.modelo);
+        let c = sumar_lista(&mut self.c.marcos, &otro.marcos);
+        a || b || c
     }
 }
 
@@ -286,24 +584,126 @@ mod pruebas {
     #[test]
     fn el_estado_se_guarda_y_vuelve_igual() {
         let d = std::env::temp_dir().join(format!("pixpin-marcadores-{}", std::process::id()));
-        let f = d.join("m.json");
+        let _ = std::fs::remove_dir_all(&d);
+        let f = d.join("anot-x.vistas.json");
+        let fm = marcos_junto_a(&f);
+        assert_eq!(fm, d.join("anot-x.marcos.json"));
         let mut g = Guardados::de(Some(&f));
         assert_eq!(g.c, Contenido::default());
         g.c.modelo.push(Marcador3d { id: nuevo_id(), nombre: "Muro norte".into(), estado: estado() });
         g.c.plano.push(Marcador2d { id: nuevo_id(), nombre: String::new(), x: 1.5, y: -2.0, ancho: 300.0, alto: 200.0 });
-        g.c.marcos.push(Marco3d { caja: [-0.2, -0.1, 0.3, 0.2], estado: estado() });
+        g.c.marcos.push(Marco3d { id: nuevo_id(), caja: [-0.2, -0.1, 0.3, 0.2], estado: estado() });
         g.guardar();
         let otra = Guardados::de(Some(&f));
         assert_eq!(otra.c, g.c);
         assert!(coincide(&otra.c.modelo[0].estado, &estado()));
-        // Sin nada, no queda fichero.
+        // Los marcos en su fichero, no en el de los marcadores; los dos con su version.
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        let m: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&fm).unwrap()).unwrap();
+        assert!(v.get("marcos").is_none() && v["version"] == 1 && m["version"] == 1);
+        assert_eq!(m["marcos"][0]["caja"][2], 0.3);
+        // Sin nada, **no se borra**: las listas vacias (la sincronizacion no lleva borrados).
         g.c = Contenido::default();
         g.guardar();
-        assert!(!f.exists());
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        let m: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&fm).unwrap()).unwrap();
+        assert_eq!(v["plano"], serde_json::json!([]));
+        assert_eq!(v["modelo"], serde_json::json!([]));
+        assert_eq!(m["marcos"], serde_json::json!([]));
+        assert_eq!(Guardados::de(Some(&f)).c, Contenido::default());
         // Caso negativo: un fichero roto no tumba nada, no hay marcadores.
         std::fs::write(&f, "{roto").unwrap();
         assert_eq!(Guardados::de(Some(&f)).c, Contenido::default());
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Un plano sin marcadores no deja ficheros; y lo que ya dice lo mismo
+    /// no se reescribe (una fecha nueva seria un envio mas).
+    #[test]
+    fn sin_cambios_no_se_escribe() {
+        let d = std::env::temp_dir().join(format!("pixpin-marcadores-igual-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let f = d.join("vistas.json");
+        let mut g = Guardados::de(Some(&f));
+        g.guardar();
+        assert!(!f.exists() && !marcos_junto_a(&f).exists());
+        g.c.plano.push(Marcador2d { id: "a".into(), nombre: String::new(), x: 0.0, y: 0.0, ancho: 1.0, alto: 1.0 });
+        g.guardar();
+        // El plano en 2D no tiene marcos del modelo: ese fichero no hace falta.
+        assert!(f.exists() && !marcos_junto_a(&f).exists());
+        let antes = std::fs::metadata(&f).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        g.guardar();
+        assert_eq!(std::fs::metadata(&f).unwrap().modified().unwrap(), antes);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **Lo que cambio en el disco se junta**: el movil (o la otra ventana)
+    /// puso uno y quito otro mientras aqui se ponia un tercero.
+    #[test]
+    fn al_guardar_se_junta_con_lo_del_disco() {
+        let d = std::env::temp_dir().join(format!("pixpin-marcadores-juntar-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let f = d.join("anot-x.vistas.json");
+        let m2 = |id: &str| Marcador2d { id: id.into(), nombre: String::new(), x: 0.0, y: 0.0, ancho: 1.0, alto: 1.0 };
+        let mut g = Guardados::de(Some(&f));
+        g.c.plano = vec![m2("a"), m2("b")];
+        g.guardar();
+        // El otro: quita «a», cambia el nombre de «b», pone «c» y un campo que aqui no se conoce.
+        let suyo = r#"{"version":1,"plano":[{"id":"b","nombre":"Muro","x":0,"y":0,"ancho":1,"alto":1},{"id":"c","x":5,"y":5,"ancho":2,"alto":2}],"modelo":[],"delMovil":7}"#;
+        std::fs::write(&f, suyo).unwrap();
+        // Aqui, sin haberlo visto: se pone «d».
+        g.c.plano.push(m2("d"));
+        g.guardar();
+        let ids: Vec<&str> = g.c.plano.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["b", "d", "c"]);
+        assert_eq!(g.c.plano[0].nombre, "Muro");
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert_eq!(v["delMovil"], 7, "lo que no se conoce se deja");
+        // Y con la ventana abierta, lo que llega se ve.
+        let suyo = std::fs::read_to_string(&f).unwrap().replace(r#""id": "d""#, r#""id": "e""#);
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        std::fs::write(&f, suyo).unwrap();
+        assert!(g.al_dia());
+        let ids: Vec<&str> = g.c.plano.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["b", "c", "e"]);
+        // Caso negativo: sin cambios en el disco, nada.
+        assert!(!g.al_dia());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// El `vistas.json` del 19-oct (los marcos dentro y sin `id`) se lee, y
+    /// los marcos pasan a su fichero con su `id`, una vez.
+    #[test]
+    fn el_fichero_de_antes_pasa_al_de_ahora() {
+        let d = std::env::temp_dir().join(format!("pixpin-marcadores-antes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("vistas.json");
+        let viejo = r#"{"modelo":[{"id":"a","estado":{"objetivo":[0,0,0],"rumbo":0,"altura":0,"dist":1}}],
+            "marcos":[{"caja":[0,0,0.1,0.1],"estado":{"objetivo":[0,0,0],"rumbo":0,"altura":0,"dist":1}}]}"#;
+        std::fs::write(&f, viejo).unwrap();
+        let g = Guardados::de(Some(&f));
+        assert_eq!(g.c.modelo.len(), 1);
+        assert_eq!(g.c.marcos.len(), 1);
+        assert!(!g.c.marcos[0].id.is_empty());
+        let m: FicheroDeMarcos = serde_json::from_str(&std::fs::read_to_string(marcos_junto_a(&f)).unwrap()).unwrap();
+        assert_eq!(m.marcos, g.c.marcos);
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+        assert!(v.get("marcos").is_none());
+        // Otra vez: los mismos ids (ya escritos).
+        assert_eq!(Guardados::de(Some(&f)).c, g.c);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn sumar_no_repite_lo_que_ya_esta() {
+        let mut g = Guardados::default();
+        let m2 = |id: &str| Marcador2d { id: id.into(), nombre: String::new(), x: 0.0, y: 0.0, ancho: 1.0, alto: 1.0 };
+        g.c.plano = vec![m2("a")];
+        assert!(g.sumar(&Contenido { plano: vec![m2("a"), m2("b")], ..Default::default() }));
+        assert_eq!(g.c.plano.len(), 2);
+        assert!(!g.sumar(&Contenido { plano: vec![m2("b")], ..Default::default() }));
     }
 
     #[test]

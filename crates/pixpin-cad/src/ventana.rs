@@ -1625,6 +1625,12 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                 DispatchMessageW(&m);
             }
         }
+        // Los marcadores que trajo la sincronizacion (o la ventana del
+        // modelo en 3D, que comparte fichero).
+        if marcadores.mirar_el_disco() {
+            punto_encima = None;
+            sucio = true;
+        }
         // El plano, cuando llega.
         if (plano.is_none() && mensaje == textos_ui.abriendo) || releyendo {
             let otra_vez = releyendo;

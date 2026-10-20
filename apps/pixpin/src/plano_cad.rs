@@ -107,12 +107,14 @@ pub fn clave(ruta: &Path) -> Option<String> {
     Some(format!("{h:016x}"))
 }
 
-/// **Donde viven los marcadores de un plano o un modelo** (19-oct-2026):
-/// `<raiz>/marcadores/<huella de su ruta>/`, con `vistas.json` (los
-/// marcadores y los marcos del modelo) y, en un modelo, la capa de lo
-/// anotado sobre cada marcador. Por la ruta y no por la fecha: lo marcado
-/// sigue alli aunque el fichero se guarde de nuevo. Fuera de la cache,
-/// que se poda.
+/// **La carpeta local de los marcadores de un plano o un modelo** que no es
+/// de ningun chat (19-oct-2026): `<raiz>/marcadores/<huella de su ruta>/`,
+/// con `vistas.json`, `marcos.json` y, en un modelo, la capa de lo anotado
+/// sobre cada marcador (`<id>.excalidraw` y `<id>.hoja`). Por la ruta y no
+/// por la fecha: lo marcado sigue alli aunque el fichero se guarde de
+/// nuevo. Fuera de la cache, que se poda. Solo en este PC: la ruta es de
+/// este aparato (hasta el 19-oct aqui iban tambien los de los adjuntos del
+/// chat; ver [`SitioDeMarcadores::abrir`]).
 pub fn carpeta_de_marcadores(raiz: &Path, ruta: &Path) -> PathBuf {
     let texto = ruta.to_string_lossy().to_lowercase().replace('/', "\\");
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -123,9 +125,105 @@ pub fn carpeta_de_marcadores(raiz: &Path, ruta: &Path) -> PathBuf {
     raiz.join("marcadores").join(format!("{h:016x}"))
 }
 
-/// El fichero de los marcadores de `ruta` (ver [`carpeta_de_marcadores`]).
-pub fn fichero_de_marcadores(raiz: &Path, ruta: &Path) -> PathBuf {
-    carpeta_de_marcadores(raiz, ruta).join("vistas.json")
+/// La marca de que lo de una carpeta local ya paso a los ficheros del
+/// mensaje (se pasa una vez; lo de antes se queda, como `copiarSiFalta`).
+const YA_PASADO: &str = "pasado-al-chat.txt";
+
+/// **Donde viven los marcadores de un plano o un modelo** (19-oct-2026).
+///
+/// - De un adjunto del chat, **en los ficheros de su mensaje, que viajan**
+///   (`pins/draw/` portatil, sin subcarpetas: `pixpin_sincro::anotado`):
+///   `anot-<uid>.vistas.json` (los marcadores, del plano y del modelo),
+///   `anot-<uid>.marcos.json` (los marcos para imprimir del modelo) y, por
+///   cada marcador del modelo con algo anotado, `anot-<uid>-m<id>.excalidraw.gz`
+///   y `anot-<uid>-m<id>.hoja` (`<id>` es el `id` del marcador tal cual,
+///   asi que en el PC sale `-mm…`).
+/// - Si no, en la carpeta local ([`carpeta_de_marcadores`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SitioDeMarcadores {
+    Adjunto(pixpin_proyecto::anotado::Base),
+    Local(PathBuf),
+}
+
+/// El id de un marcador sin nada que salga de su carpeta (lo pone el visor:
+/// `m` y cifras).
+fn id_limpio(id: &str) -> String {
+    id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect()
+}
+
+impl SitioDeMarcadores {
+    /// El sitio de `ruta`, sin tocar nada.
+    pub fn de(raiz: &Path, ruta: &Path) -> SitioDeMarcadores {
+        use pixpin_proyecto::anotado as an;
+        if let Some(r) = an::raiz_de(ruta)
+            && let Some(b) = an::base_del_documento(&r, ruta)
+        {
+            return SitioDeMarcadores::Adjunto(b);
+        }
+        SitioDeMarcadores::Local(carpeta_de_marcadores(raiz, ruta))
+    }
+
+    /// **El sitio de `ruta` al abrirlo**: si es un adjunto y en la carpeta
+    /// local quedaba algo de antes (lo del 19-oct, por la ruta), pasa a los
+    /// ficheros del mensaje una vez, sumado a lo que ya hubiera (lo que
+    /// trajo el movil se queda).
+    pub fn abrir(raiz: &Path, ruta: &Path) -> SitioDeMarcadores {
+        let s = SitioDeMarcadores::de(raiz, ruta);
+        if matches!(s, SitioDeMarcadores::Adjunto(_)) {
+            s.pasar_de(&carpeta_de_marcadores(raiz, ruta));
+        }
+        s
+    }
+
+    /// Pasa lo de la carpeta local `vieja` a este sitio, una vez. Dice si paso algo.
+    pub fn pasar_de(&self, vieja: &Path) -> bool {
+        let fichero = vieja.join("vistas.json");
+        let marca = vieja.join(YA_PASADO);
+        if self == &SitioDeMarcadores::Local(vieja.to_path_buf()) || marca.exists() || !(fichero.is_file() || vieja.join("marcos.json").is_file()) {
+            return false;
+        }
+        let antes = pixpin_cad::marcadores::leer(&fichero);
+        let mut aqui = pixpin_cad::marcadores::Guardados::de(Some(&self.vistas()));
+        let sumado = aqui.sumar(&antes);
+        if sumado {
+            aqui.guardar();
+        }
+        // Lo anotado sobre cada marcador del modelo, a su fichero del mensaje.
+        for m in &antes.modelo {
+            let viejas = anotar::rutas_de_marcador(&SitioDeMarcadores::Local(vieja.to_path_buf()), &m.id);
+            let nuevas = anotar::rutas_de_marcador(self, &m.id);
+            pixpin_proyecto::anotado::copiar_si_falta(&viejas.tinta, &nuevas.tinta);
+            pixpin_proyecto::anotado::copiar_si_falta(&viejas.hoja, &nuevas.hoja);
+        }
+        let destino = self.vistas();
+        if let Err(e) = std::fs::write(&marca, destino.to_string_lossy().as_bytes()) {
+            tracing::warn!(?e, carpeta = %vieja.display(), "marcadores: no se pudo marcar lo pasado");
+        }
+        tracing::info!(sumado, a = %destino.display(), "marcadores de antes pasados al mensaje");
+        true
+    }
+
+    /// El fichero de los marcadores (el de los marcos va a su lado:
+    /// `pixpin_cad::marcadores::marcos_junto_a`).
+    pub fn vistas(&self) -> PathBuf {
+        match self {
+            SitioDeMarcadores::Adjunto(b) => b.fichero(pixpin_sincro::anotado::VISTAS),
+            SitioDeMarcadores::Local(c) => c.join("vistas.json"),
+        }
+    }
+
+    /// El fichero de los marcos para imprimir del modelo (la ventana lo saca
+    /// sola del de los marcadores; aqui, para las pruebas).
+    #[cfg(test)]
+    pub fn marcos(&self) -> PathBuf {
+        pixpin_cad::marcadores::marcos_junto_a(&self.vistas())
+    }
+}
+
+/// La base de los ficheros de lo anotado sobre el marcador `id` del
+/// adjunto de base `b` (`anot-<uid>`): `anot-<uid>-m<id>`.
+fn base_de_marcador(b: &pixpin_proyecto::anotado::Base, id: &str) -> pixpin_proyecto::anotado::Base {
+    pixpin_proyecto::anotado::Base { base: format!("{}-m{}", b.base, id_limpio(id)), ..b.clone() }
 }
 
 /// Cambia cuando cambia lo que se guarda del plano leido: la `l1` trae las
@@ -344,7 +442,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             exportar: Some(exportar),
             vista_inicial: tomar_vista_al_abrir(&ruta),
             tipo: tipo_de_archivo(&ruta),
-            marcadores: Some(fichero_de_marcadores(&raiz, &ruta)),
+            marcadores: Some(SitioDeMarcadores::abrir(&raiz, &ruta).vistas()),
             globo: Some(globo_de_la_barra()),
         };
         if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
@@ -451,7 +549,11 @@ mod pruebas {
         let a = carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Planta.DWG"));
         assert_eq!(a, carpeta_de_marcadores(raiz, Path::new(r"d:/obra/planta.dwg")), "la misma ruta escrita de otra manera");
         assert!(a.starts_with(raiz.join("marcadores")) && !a.starts_with(raiz.join("cache")), "fuera de la cache, que se poda");
-        assert_eq!(fichero_de_marcadores(raiz, Path::new(r"D:\obra\Planta.DWG")), a.join("vistas.json"));
+        // Un plano que no es de ningun chat: en la carpeta local.
+        let s = SitioDeMarcadores::de(raiz, Path::new(r"D:\obra\Planta.DWG"));
+        assert_eq!(s, SitioDeMarcadores::Local(a.clone()));
+        assert_eq!(s.vistas(), a.join("vistas.json"));
+        assert_eq!(s.marcos(), a.join("marcos.json"));
         // Caso negativo: otro plano, otra carpeta.
         assert_ne!(a, carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Alzado.dwg")));
     }
@@ -461,11 +563,129 @@ mod pruebas {
     #[test]
     fn la_tinta_de_un_marcador_3d_tiene_su_capa_y_su_unidad() {
         let c = Path::new(r"C:\raiz\marcadores\abc");
-        let r = anotar::rutas_de_marcador(c, "m18f2a");
+        let s = SitioDeMarcadores::Local(c.to_path_buf());
+        let r = anotar::rutas_de_marcador(&s, "m18f2a");
         assert_eq!(r.tinta, c.join("m18f2a.excalidraw"));
         assert_eq!(r.hoja, c.join("m18f2a.hoja"));
-        assert!(anotar::rutas_de_marcador(c, r"..\..\x").tinta.starts_with(c));
+        assert!(anotar::rutas_de_marcador(&s, r"..\..\x").tinta.starts_with(c));
         assert!((pixpin_cad::anotado::unidad_de_la_capa(&anotar::modelo_de_pantalla()) - 1.0).abs() < 1e-12);
+    }
+
+    /// Una capa con un trazo, como la escribe el motor.
+    const CAPA_CON_UN_TRAZO: &str = r##"{"type":"excalidraw","version":2,"source":"pixpin","elements":[{"id":"t1","type":"freedraw","x":0,"y":0,"width":10,"height":10,"angle":0,"strokeColor":"#e03131","backgroundColor":"transparent","fillStyle":"solid","strokeWidth":2,"strokeStyle":"solid","roughness":0,"opacity":100,"groupIds":[],"seed":1,"version":1,"versionNonce":1,"isDeleted":false,"boundElements":null,"updated":1,"link":null,"locked":false,"points":[[0,0],[10,10]],"pressures":[],"simulatePressure":true}],"appState":{},"files":{}}"##;
+
+    /// **De un adjunto del chat, todo en los ficheros de su mensaje**: los
+    /// nombres planos `anot-<uid>…` que la sincronizacion reconoce y manda
+    /// con el mensaje; quitar no borra ningun fichero.
+    #[test]
+    fn de_un_adjunto_los_marcadores_van_en_los_ficheros_de_su_mensaje_y_viajan() {
+        use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
+        use pixpin_sincro::anotado as an;
+        let r = raiz("cad-marcadores");
+        let doc = con_adjunto(&r, "obra.dwg", b"AC1032");
+        let s = SitioDeMarcadores::abrir(&r, &doc);
+        let SitioDeMarcadores::Adjunto(b) = &s else { panic!("es un adjunto: {s:?}") };
+        let uid = b.base.strip_prefix("anot-").unwrap().to_string();
+        let nombre = |p: &Path| p.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(nombre(&s.vistas()), format!("anot-{uid}.vistas.json"));
+        assert_eq!(nombre(&s.marcos()), format!("anot-{uid}.marcos.json"));
+        assert_eq!(s.marcos().parent(), s.vistas().parent(), "en la carpeta de lo anotado del mensaje");
+        let t = anotar::rutas_de_marcador(&s, "m18f2a");
+        assert_eq!(t.tinta, b.fichero(".excalidraw.gz").with_file_name(format!("anot-{uid}-mm18f2a.excalidraw")));
+        assert_eq!(nombre(&t.hoja), format!("anot-{uid}-mm18f2a.hoja"));
+        // Los nombres portatiles son de su mensaje para la sincronizacion.
+        let portatiles = [
+            an::rel(&b.base, an::VISTAS),
+            an::rel(&b.base, an::MARCOS),
+            an::rel(&format!("{}-mm18f2a", b.base), ".excalidraw.gz"),
+            an::rel(&format!("{}-mm18f2a", b.base), an::HOJA),
+        ];
+        let por = an::por_uid(portatiles.iter().map(String::as_str));
+        assert_eq!(por.get(&uid).map(Vec::len), Some(4), "{por:?}");
+        // Un marcador del modelo, con su tinta, y un marco.
+        let mut g = pixpin_cad::marcadores::Guardados::de(Some(&s.vistas()));
+        let estado = pixpin_cad::marcadores::Estado3d {
+            objetivo: [1.0, 2.0, 3.0],
+            rumbo: 0.5,
+            altura: 0.3,
+            dist: 20.0,
+            seccion: None,
+            aislado: None,
+            ocultos: Vec::new(),
+            claro: false,
+            aristas: true,
+        };
+        g.c.modelo.push(pixpin_cad::marcadores::Marcador3d { id: "m18f2a".into(), nombre: String::new(), estado: estado.clone() });
+        g.c.marcos.push(pixpin_cad::marcadores::Marco3d { id: "m1".into(), caja: [-0.1, -0.1, 0.1, 0.1], estado });
+        g.guardar();
+        pixpin_proyecto::anotado::escribir(&t.tinta, CAPA_CON_UN_TRAZO).unwrap();
+        pixpin_proyecto::anotado::escribir(&t.hoja, "-2500,-2500,2500,2500\n1\n").unwrap();
+        // Lo manda la sincronizacion con su mensaje.
+        let chat = pixpin_proyecto::vista::chat_de_ficha(&r, &pixpin_proyecto::almacen::Indice::leer(&r).proyectos[0].id).unwrap();
+        let alcance: Vec<String> = pixpin_sincro::disco::Disco::alcance(&pixpin_proyecto::vista::DiscoPc::nuevo(&r), &chat).unwrap().into_iter().map(|(x, _)| x).collect();
+        for p in &portatiles {
+            assert!(alcance.contains(p), "{p} no viaja: {alcance:?}");
+        }
+        // **Quitar no borra**: el marcador, los marcos y su tinta quedan escritos vacios.
+        anotar::vaciar_capa(&t).unwrap();
+        g.c.modelo.clear();
+        g.c.marcos.clear();
+        g.guardar();
+        let json = |p: &Path| serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(p).unwrap()).unwrap();
+        assert_eq!(json(&s.vistas())["modelo"], serde_json::json!([]));
+        assert_eq!(json(&s.marcos())["marcos"], serde_json::json!([]));
+        let capa = json(&t.tinta);
+        let elementos = capa["elements"].as_array().unwrap();
+        assert!(!elementos.is_empty() && elementos.iter().all(|e| e["isDeleted"] == true), "{capa}");
+        assert!(t.hoja.is_file());
+        // Caso negativo: vaciar lo que no existe no crea nada.
+        let otra = anotar::rutas_de_marcador(&s, "m-no-esta");
+        anotar::vaciar_capa(&otra).unwrap();
+        assert!(!otra.tinta.exists());
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    /// **Lo de antes** (`<raiz>/marcadores/<huella>/`, el 19-oct, por la
+    /// ruta) pasa a los ficheros del mensaje una vez, sumado a lo que ya
+    /// trajera el movil.
+    #[test]
+    fn los_marcadores_de_antes_pasan_al_mensaje_una_vez() {
+        use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
+        let r = raiz("cad-marcadores-antes");
+        let doc = con_adjunto(&r, "edificio.ifc", b"ISO-10303-21;");
+        let vieja = carpeta_de_marcadores(&r, &doc);
+        std::fs::create_dir_all(&vieja).unwrap();
+        let estado = r#"{"objetivo":[0,0,0],"rumbo":0,"altura":0,"dist":1}"#;
+        std::fs::write(
+            vieja.join("vistas.json"),
+            format!(r#"{{"plano":[{{"id":"p1","x":1,"y":2,"ancho":3,"alto":4}}],"modelo":[{{"id":"m1","estado":{estado}}}],"marcos":[{{"caja":[0,0,0.1,0.1],"estado":{estado}}}]}}"#),
+        )
+        .unwrap();
+        std::fs::write(vieja.join("m1.excalidraw"), CAPA_CON_UN_TRAZO).unwrap();
+        std::fs::write(vieja.join("m1.hoja"), "-2500,-2500,2500,2500\n1\n").unwrap();
+        // Lo que ya trajo el movil se queda.
+        let s = SitioDeMarcadores::de(&r, &doc);
+        std::fs::create_dir_all(s.vistas().parent().unwrap()).unwrap();
+        std::fs::write(s.vistas(), r#"{"version":1,"plano":[],"modelo":[{"id":"movil","estado":{"objetivo":[0,0,0],"rumbo":1,"altura":0,"dist":1}}]}"#).unwrap();
+        assert_eq!(SitioDeMarcadores::abrir(&r, &doc), s);
+        let c = pixpin_cad::marcadores::leer(&s.vistas());
+        let ids: Vec<&str> = c.modelo.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["movil", "m1"]);
+        assert_eq!(c.plano.len(), 1);
+        assert_eq!(c.marcos.len(), 1);
+        assert!(!c.marcos[0].id.is_empty(), "los marcos de antes, con su id");
+        let t = anotar::rutas_de_marcador(&s, "m1");
+        assert_eq!(std::fs::read_to_string(&t.tinta).unwrap(), CAPA_CON_UN_TRAZO);
+        assert!(t.hoja.is_file());
+        // Lo de antes se queda donde estaba.
+        assert!(vieja.join("vistas.json").is_file() && vieja.join("m1.excalidraw").is_file());
+        // Una vez: quitado aqui, no vuelve al abrir otra vez.
+        let mut g = pixpin_cad::marcadores::Guardados::de(Some(&s.vistas()));
+        g.c.modelo.retain(|m| m.id != "m1");
+        g.guardar();
+        SitioDeMarcadores::abrir(&r, &doc);
+        assert_eq!(pixpin_cad::marcadores::leer(&s.vistas()).modelo.len(), 1);
+        let _ = std::fs::remove_dir_all(&r);
     }
     #[test]
     fn la_clave_cambia_si_cambia_el_fichero() {

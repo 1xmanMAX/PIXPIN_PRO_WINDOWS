@@ -129,25 +129,29 @@ fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
 }
 
 /// **El riel del modelo** (19-oct-2026): los marcadores con todo el estado
-/// de la vista (en `<raiz>/marcadores/<huella>/vistas.json`), lo anotado
-/// sobre cada uno con el motor del lienzo (una capa por marcador, al lado)
-/// y los marcos numerados que se imprimen en grupo: se fotografia cada uno
-/// en su vista y van juntos al dialogo (`marco_imprimir::imprimir_fotos`).
+/// de la vista, lo anotado sobre cada uno con el motor del lienzo (una capa
+/// por marcador) y los marcos numerados que se imprimen en grupo: se
+/// fotografia cada uno en su vista y van juntos al dialogo
+/// (`marco_imprimir::imprimir_fotos`). De un adjunto del chat, todo en los
+/// ficheros `anot-<uid>…` de su mensaje, que viajan
+/// (`plano_cad::SitioDeMarcadores`).
 fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> pixpin_cad::ventana3d::Barra3d {
     use pixpin_cad::ventana3d::Foto;
-    let carpeta = crate::plano_cad::carpeta_de_marcadores(raiz, ruta);
-    let (c1, c2) = (carpeta.clone(), carpeta.clone());
+    let sitio = crate::plano_cad::SitioDeMarcadores::abrir(raiz, ruta);
+    let (s1, s2) = (sitio.clone(), sitio.clone());
     let titulo = nombre.to_string();
     pixpin_cad::ventana3d::Barra3d {
         tipo: crate::plano_cad::tipo_de_archivo(ruta),
-        marcadores: Some(crate::plano_cad::fichero_de_marcadores(raiz, ruta)),
+        marcadores: Some(sitio.vistas()),
         anotador: Some(Box::new(move |id: &str| {
-            Box::new(crate::plano_cad::anotar::motor_de_marcador(&c1, id)) as Box<dyn pixpin_cad::anotado::Anotador>
+            Box::new(crate::plano_cad::anotar::motor_de_marcador(&s1, id)) as Box<dyn pixpin_cad::anotado::Anotador>
         })),
+        // Sin borrar los ficheros: la capa con todo borrado (ver `vaciar_capa`).
         quitar_tinta: Some(Box::new(move |id: &str| {
-            let r = crate::plano_cad::anotar::rutas_de_marcador(&c2, id);
-            let _ = std::fs::remove_file(&r.tinta);
-            let _ = std::fs::remove_file(&r.hoja);
+            let r = crate::plano_cad::anotar::rutas_de_marcador(&s2, id);
+            if let Err(e) = crate::plano_cad::anotar::vaciar_capa(&r) {
+                tracing::warn!(?e, tinta = %r.tinta.display(), "no se pudo vaciar lo anotado del marcador");
+            }
         })),
         foto: Some(Box::new(|r: [i32; 4]| {
             let area = pixpin_geom::Rect { x: r[0], y: r[1], ancho: r[2].max(0) as u32, alto: r[3].max(0) as u32 };

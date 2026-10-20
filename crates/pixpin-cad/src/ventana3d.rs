@@ -1002,6 +1002,16 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                 DispatchMessageW(&m);
             }
         }
+        // Los marcadores y los marcos que trajo la sincronizacion (o la
+        // ventana del plano en 2D, que comparte fichero).
+        if guardados.mirar_el_disco() {
+            punto_encima = None;
+            sucio = true;
+            // El marcador que se anotaba lo quito el otro aparato.
+            if anotando.as_ref().is_some_and(|id| !guardados.c.modelo.iter().any(|m| &m.id == id)) {
+                anotando = None;
+            }
+        }
         if modelo.is_none() && mensaje == ui.abriendo {
             let llegado = match cargando.try_recv() {
                 Ok(r) => Some(r),
@@ -1213,7 +1223,7 @@ pub fn ver_con_barra(titulo: &str, barra_app: Barra3d, cargando: Receiver<Result
                                 let p = crate::marcadores::a_normal(a[0].min(b[0]), a[1].min(b[1]), w, h);
                                 let q = crate::marcadores::a_normal(a[0].max(b[0]), a[1].max(b[1]), w, h);
                                 let estado = estado_de(&cam, m.origen, seccion, aislado.map(|a| a.0), arbol_m.as_ref(), claro, aristas);
-                                guardados.c.marcos.push(crate::marcadores::Marco3d { caja: [p[0], p[1], q[0], q[1]], estado });
+                                guardados.c.marcos.push(crate::marcadores::Marco3d { id: crate::marcadores::nuevo_id(), caja: [p[0], p[1], q[0], q[1]], estado });
                                 guardados.guardar();
                             }
                         }
