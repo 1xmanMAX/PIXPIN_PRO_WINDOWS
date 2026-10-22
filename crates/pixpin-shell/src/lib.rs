@@ -27,6 +27,7 @@ pub mod entrada;
 pub mod espacio_explorador;
 pub mod explorador;
 pub mod exportar;
+pub mod menu_rico;
 pub mod gestos;
 pub mod gestos_tactiles;
 pub mod guardar;

@@ -1093,6 +1093,7 @@ coordenadas-titulo = Tabla de coordenadas
 coordenadas-ayuda = X e Y con coma o punto, la Y hacia arriba · Pegar: de Excel o un CSV · sin filas, la serie se quita · Intro: aceptar · Esc: cancelar
 figuras-guardar-seleccion = Guardar lo elegido como figura…
 figuras-quitar = Quitar
+figuras-mis-figuras = Mis figuras
 figuras-nombre-titulo = Guardar como figura
 figuras-nombre = Nombre
 figuras-nombre-ayuda = Intro: guardar · Esc: cancelar

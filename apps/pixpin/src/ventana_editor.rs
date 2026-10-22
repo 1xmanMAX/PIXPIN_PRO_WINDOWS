@@ -991,10 +991,10 @@ fn abrir_en_modo(
     // G5: la presentacion en curso (F5) y el modo solo mirar (Alt+R), con
     // su arrastre de mover el dibujo.
     let mut presentacion: Option<presentar::Presentacion> = None;
-    // Abierto como pin, el lienzo empieza en solo mirar y el lapiz de su
-    // barra pasa a editar (19-oct-2026, como los demas visores).
-    // Uno nuevo (vacio) empieza ya editando: ahi solo se viene a dibujar.
-    let mut solo_mirar = pin.is_some() && escena.cuantos_visibles() > 0;
+    // El lienzo empieza siempre editando, con su barra lateral: el lapiz de
+    // la barra de arriba (19-oct) repetia el de la lateral y el usuario lo
+    // quito (21-oct-2026). Solo mirar sigue en Alt+R.
+    let mut solo_mirar = false;
     let mut herramienta_al_editar = gesto.herramienta;
     if solo_mirar {
         elegir_herramienta(&mut gesto, Herramienta::Mano);
@@ -1011,6 +1011,10 @@ fn abrir_en_modo(
             crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize)
                 .con_hoja(crate::zona_al_chat::hoja_abierta().map(|h| h.dibujo))
         });
+    // Solo para probar (`PIXPIN_MENU_FIGURAS_AL_ABRIR`): el menu de las
+    // figuras se abre solo a los 2 s, sin tocar el raton del usuario.
+    let mut figuras_al_abrir = std::env::var_os("PIXPIN_MENU_FIGURAS_AL_ABRIR")
+        .map(|_| std::time::Instant::now() + std::time::Duration::from_secs(2));
 
     'bucle: loop {
         // D129: se mide siempre (unos nanosegundos por `Instant::now`); solo
@@ -1797,7 +1801,10 @@ fn abrir_en_modo(
             };
             let imprimir_de_la_barra = de_la_barra.is_some();
             // F14: la imagen y las figuras de la barra (`figuras.rs`).
-            if let Some(pedido) = hecho.pedido.filter(|_| !imprimir_de_la_barra) {
+            let de_prueba = figuras_al_abrir
+                .take_if(|t| std::time::Instant::now() >= *t)
+                .map(|_| crate::dibujo::mano::Pedido::Figuras(pixpin_geom::Punto { x: 200, y: 160 }));
+            if let Some(pedido) = hecho.pedido.filter(|_| !imprimir_de_la_barra).or(de_prueba) {
                 let ed = figuras::Editor {
                     ventana: &ventana,
                     motor: &mut motor,
@@ -2510,7 +2517,7 @@ fn abrir_en_modo(
             pn.actualizar(
                 &motor,
                 &nombre_del_pin,
-                &[crate::lector_pin::BotonLector { id: modo_ventana::BOTON_LAPIZ, icono: &pixpin_render::icono::material::EDIT, encendido: !solo_mirar }],
+                &[],
             );
         }
         let vaciar = t_vuelta.elapsed();

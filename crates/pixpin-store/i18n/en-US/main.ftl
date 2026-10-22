@@ -1092,6 +1092,7 @@ coordenadas-titulo = Coordinate table
 coordenadas-ayuda = X and Y with comma or point, Y goes up · Paste: from Excel or a CSV · no rows removes the series · Enter: accept · Esc: cancel
 figuras-guardar-seleccion = Save selection as a shape…
 figuras-quitar = Remove
+figuras-mis-figuras = My shapes
 figuras-nombre-titulo = Save as a shape
 figuras-nombre = Name
 figuras-nombre-ayuda = Enter: save · Esc: cancel

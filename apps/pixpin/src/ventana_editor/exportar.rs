@@ -398,6 +398,69 @@ pub(crate) fn a_imagen(
     })
 }
 
+/// **Las miniaturas de unas figuras** (las del menu de figuras), de `lado`
+/// pixeles, cada una sobre su cuadrito blanco: todas en una sola textura y
+/// una sola lectura, que pintarlas de una en una tardaria lo que tarda la
+/// GPU en ir y volver tantas veces. Las que no tienen nada que pintar salen
+/// `None`.
+pub(crate) fn miniaturas(figuras: &[pixpin_motor2d::biblioteca::FiguraGuardada], lado: u32) -> Result<Vec<Option<ImagenRgba>>> {
+    const COLUMNAS: usize = 10;
+    if figuras.is_empty() {
+        return Ok(Vec::new());
+    }
+    let hojas: Vec<Option<Hoja>> = figuras
+        .iter()
+        .map(|f| {
+            // Encogida, una raya de 1 px de una hoja entera no llega a un
+            // pixel y la miniatura de un bloc saldria en blanco: cada trazo
+            // conserva lo que se ve.
+            let (x0, y0, x1, y1) = pixpin_motor2d::biblioteca::caja_de(&f.elementos)?;
+            let k = (lado as f32 / (x1 - x0).max(1.0)).min(lado as f32 / (y1 - y0).max(1.0));
+            let mut escena = Escena::nueva();
+            for e in &f.elementos {
+                let mut e = e.clone();
+                e.grosor = e.grosor.max(0.9 / k);
+                escena.anadir(e);
+            }
+            ex::hojas(&escena, Alcance::Todo, &[], None).into_iter().next()
+        })
+        .collect();
+    let filas = figuras.len().div_ceil(COLUMNAS);
+    let (w, h) = (lado * COLUMNAS as u32, lado * filas as u32);
+    let (d, motor) = motor_propio()?;
+    let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+        .context("sin textura para las miniaturas")?;
+    let sin_imagenes = Subidas::new();
+    let aire = 4.0;
+    motor
+        .dibujar(&destino.destino, |p| {
+            p.limpiar(Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+            for (i, hoja) in hojas.iter().enumerate() {
+                let Some(hoja) = hoja else { continue };
+                let (ox, oy) = (((i % COLUMNAS) as u32 * lado) as f32, ((i / COLUMNAS) as u32 * lado) as f32);
+                let util = lado as f32 - 2.0 * aire;
+                let k = (util / hoja.ancho().max(1.0)).min(util / hoja.alto().max(1.0));
+                let (dx, dy) = ((util - hoja.ancho() * k) / 2.0 + aire, (util - hoja.alto() * k) / 2.0 + aire);
+                p.poner_vista((ox + dx, oy + dy), k, (-hoja.caja.0 * k, -hoja.caja.1 * k));
+                pintar_hoja(p, hoja, &sin_imagenes);
+            }
+        })
+        .context("no se pudieron pintar las miniaturas")?;
+    let (ancho, _, pixeles) = destino.leer_rgba().context("no se pudieron leer las miniaturas")?;
+    Ok((0..figuras.len())
+        .map(|i| {
+            hojas[i].as_ref()?;
+            let (ox, oy) = ((i % COLUMNAS) as u32 * lado, (i / COLUMNAS) as u32 * lado);
+            let mut v = Vec::with_capacity((lado * lado * 4) as usize);
+            for fila in 0..lado {
+                let desde = (((oy + fila) * ancho + ox) * 4) as usize;
+                v.extend_from_slice(pixeles.get(desde..desde + (lado * 4) as usize)?);
+            }
+            Some(ImagenRgba { ancho: lado, alto: lado, pixeles: v })
+        })
+        .collect())
+}
+
 fn incrustada(lienzo: &Lienzo<'_>, id: u64) -> Option<Incrustada> {
     let img = lienzo.imagen(id)?;
     Some(Incrustada {
@@ -1021,6 +1084,40 @@ pub(crate) fn desde_el_chat(
 mod pruebas {
     use super::*;
     use pixpin_motor2d::{Elemento, Figura};
+
+    /// Las miniaturas de las figuras de serie con la GPU de verdad: cada una
+    /// sale de su tamano y con algo pintado (no el cuadro blanco). Con
+    /// `PIXPIN_MINIATURAS_PNG=<fichero>` deja la hoja entera para mirarla.
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio"]
+    fn las_miniaturas_de_las_figuras_de_serie_salen_pintadas() {
+        let figuras = pixpin_motor2d::figuras_de_serie::catalogo();
+        let lado = 120;
+        let v = miniaturas(&figuras, lado).expect("miniaturas");
+        assert_eq!(v.len(), figuras.len());
+        for (f, m) in figuras.iter().zip(&v) {
+            let m = m.as_ref().unwrap_or_else(|| panic!("sin miniatura: {}", f.nombre));
+            assert_eq!((m.ancho, m.alto), (lado, lado));
+            let pintados = m.pixeles.chunks_exact(4).filter(|p| p[0] < 235 || p[1] < 235 || p[2] < 235).count();
+            assert!(pintados > 30, "{} casi en blanco ({pintados})", f.nombre);
+        }
+        if let Some(ruta) = std::env::var_os("PIXPIN_MINIATURAS_PNG") {
+            let columnas = 10u32;
+            let filas = (v.len() as u32).div_ceil(columnas);
+            let (w, h) = (columnas * lado, filas * lado);
+            let mut todo = vec![40u8; (w * h * 4) as usize];
+            for (i, m) in v.iter().flatten().enumerate() {
+                let (ox, oy) = ((i as u32 % columnas) * lado, (i as u32 / columnas) * lado);
+                for y in 0..lado {
+                    let d = (((oy + y) * w + ox) * 4) as usize;
+                    let s = (y * lado * 4) as usize;
+                    todo[d..d + (lado * 4) as usize].copy_from_slice(&m.pixeles[s..s + (lado * 4) as usize]);
+                }
+            }
+            let png = pixpin_codec::codificar_png(&ImagenRgba { ancho: w, alto: h, pixeles: todo }).unwrap();
+            std::fs::write(ruta, png).unwrap();
+        }
+    }
 
     #[test]
     fn los_atajos_son_los_de_excalidraw_y_solo_con_sus_modificadores() {

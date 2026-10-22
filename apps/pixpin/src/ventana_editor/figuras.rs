@@ -574,8 +574,118 @@ pub(super) fn menu(
     series: &[bool],
 ) -> Option<Eleccion> {
     let v = entradas_con_series(t, figuras, hay_seleccion, tabla, series);
-    let id = pixpin_shell::exportar::menu_emergente(propietaria, x, y, &v)?;
+    let mut ricas = agrupar(v, figuras, &miniaturas_de(figuras), t);
+    // Solo para probar: `PIXPIN_MENU_FIGURAS_AL_ABRIR=<categoria>` abre ya
+    // ese submenu (ver `ventana_editor.rs`).
+    if let Some(cat) = std::env::var("PIXPIN_MENU_FIGURAS_AL_ABRIR").ok()
+        && let Some(sub) = ricas.iter().find(|e| e.texto == cat && !e.hijas.is_empty())
+    {
+        ricas = sub.hijas.clone();
+    }
+    let id = pixpin_shell::menu_rico::menu_rico(propietaria, x, y, &ricas)?;
     eleccion_de(id, figuras.len())
+}
+
+/// El lado de las miniaturas del menu, en pixeles.
+const LADO_MINIATURA: u32 = 56;
+
+thread_local! {
+    /// Las miniaturas ya pintadas, por figura (su id, su nombre y cuantas
+    /// piezas tiene: si cambia, se vuelve a pintar).
+    static MINIATURAS: std::cell::RefCell<std::collections::HashMap<(String, String, usize), pixpin_shell::menu_rico::Miniatura>> =
+        Default::default();
+}
+
+/// **Las miniaturas de las figuras**, de la cache o pintadas de una vez las
+/// que falten.
+fn miniaturas_de(figuras: &[FiguraGuardada]) -> Vec<Option<pixpin_shell::menu_rico::Miniatura>> {
+    use pixpin_shell::menu_rico::Miniatura;
+    let clave = |f: &FiguraGuardada| (f.id.clone(), f.nombre.clone(), f.elementos.len());
+    let faltan: Vec<FiguraGuardada> =
+        MINIATURAS.with_borrow(|m| figuras.iter().filter(|f| !m.contains_key(&clave(f))).cloned().collect());
+    if !faltan.is_empty() {
+        match super::exportar::miniaturas(&faltan, LADO_MINIATURA) {
+            Ok(v) => MINIATURAS.with_borrow_mut(|m| {
+                for (f, img) in faltan.iter().zip(v) {
+                    if let Some(img) = img {
+                        m.insert(clave(f), Miniatura { ancho: img.ancho, alto: img.alto, rgba: img.pixeles });
+                    }
+                }
+            }),
+            Err(e) => tracing::warn!(?e, "figuras: sin miniaturas"),
+        }
+    }
+    MINIATURAS.with_borrow(|m| figuras.iter().map(|f| m.get(&clave(f)).cloned()).collect())
+}
+
+/// **Las figuras por categoria** (`figuras_de_serie::categoria_de`: lo que
+/// va antes de « · » en el nombre): un submenu por categoria, primero las de
+/// serie en su orden y luego las del usuario; las que no llevan categoria
+/// van en «Mis figuras». Quitar va igual, en su propio submenu. Lo demas del
+/// menu queda como estaba.
+fn agrupar(
+    planas: Vec<EntradaMenu>,
+    figuras: &[FiguraGuardada],
+    miniaturas: &[Option<pixpin_shell::menu_rico::Miniatura>],
+    t: &Catalogo,
+) -> Vec<pixpin_shell::menu_rico::EntradaRica> {
+    use pixpin_motor2d::figuras_de_serie::{CATEGORIAS, categoria_de};
+    use pixpin_shell::menu_rico::EntradaRica;
+    let n = figuras.len() as u32;
+    let es_figura = |id: u32| (ID_FIGURA..ID_FIGURA + n).contains(&id);
+    let es_quitar = |id: u32| (ID_QUITAR..ID_QUITAR + n).contains(&id);
+    let mis = t.t("figuras-mis-figuras");
+    // El orden de las categorias: las de serie y luego las nuevas, por como
+    // aparecen.
+    let mut orden: Vec<String> = CATEGORIAS.iter().map(|c| c.to_string()).collect();
+    for f in figuras {
+        if let Some((c, _)) = categoria_de(&f.nombre)
+            && !orden.iter().any(|o| o == c)
+        {
+            orden.push(c.to_string());
+        }
+    }
+    orden.push(mis.clone());
+    let grupos = |base: u32, con_imagen: bool| -> Vec<EntradaRica> {
+        orden
+            .iter()
+            .filter_map(|cat| {
+                let hijas: Vec<EntradaRica> = figuras
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, f)| {
+                        let (c, nombre) = categoria_de(&f.nombre).unwrap_or((&mis, &f.nombre));
+                        (c == cat).then(|| EntradaRica {
+                            id: base + i as u32,
+                            texto: nombre.to_string(),
+                            imagen: if con_imagen { miniaturas.get(i).cloned().flatten() } else { None },
+                            hijas: Vec::new(),
+                        })
+                    })
+                    .collect();
+                (!hijas.is_empty()).then(|| EntradaRica::submenu(cat.clone(), hijas))
+            })
+            .collect()
+    };
+    let mut v = Vec::new();
+    let mut puestas = false;
+    let mut quitar_puesto = false;
+    for e in planas {
+        if es_figura(e.id) {
+            if !puestas {
+                v.extend(grupos(ID_FIGURA, true));
+                puestas = true;
+            }
+        } else if es_quitar(e.id) {
+            if !quitar_puesto {
+                v.push(EntradaRica::submenu(t.t("figuras-quitar"), grupos(ID_QUITAR, false)));
+                quitar_puesto = true;
+            }
+        } else {
+            v.push(EntradaRica::de(e.id, e.texto));
+        }
+    }
+    v
 }
 
 // ---------------------------------------------------------------------------

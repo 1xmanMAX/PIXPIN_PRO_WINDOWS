@@ -41,6 +41,7 @@ pub mod excalidraw;
 pub mod exportar;
 pub mod exportar_html;
 pub mod exportar_svg;
+pub mod figuras_de_serie;
 pub mod forma_rapida;
 pub mod formas;
 pub mod formato;
