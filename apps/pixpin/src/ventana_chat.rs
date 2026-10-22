@@ -759,7 +759,14 @@ pub fn abrir(
     ) {
         tracing::warn!(?e, "no se pudo crear «Mensajes guardados»");
     }
-    // Y el del asistente local, fijo tambien (`asistente`, 13-oct-2026).
+    // Y el del asistente local, fijo tambien (`asistente`, 13-oct-2026). Uno
+    // solo aunque hayan llegado los de otros aparatos (22-oct-2026): se
+    // juntan antes de mirar si hay que crearlo.
+    match pixpin_proyecto::vista::DiscoPc::nuevo(ubicacion.raiz()).unificar_asistentes() {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(n, "chats del asistente juntados en uno"),
+        Err(e) => tracing::warn!(?e, "no se pudieron juntar los chats del asistente"),
+    }
     if let Err(e) = pixpin_proyecto::almacen::asegurar_asistente(
         ubicacion.raiz(),
         pixpin_shell::entorno::ahora_utc_ms(),
@@ -1541,6 +1548,10 @@ pub fn abrir(
                                     textos,
                                     asistente_nube::eleccion_reciente(&a.raiz),
                                 )),
+                                Zona::NuevaConversacion => match asistente::nueva_conversacion(ubicacion, a, textos) {
+                                    Some(t) => Efecto::Aviso(t),
+                                    None => Efecto::Cambio,
+                                },
                                 // El chip filtra por su emoji; pulsado otra
                                 // vez, lo quita. Es un interruptor y no una
                                 // eleccion de uno entre varios: con solo el
@@ -7518,6 +7529,19 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         );
         zonas.push((r, Zona::ModeloIa));
         centro.ancho = (r.x - centro.x - (8.0 * e) as i32).max(0) as u32;
+        // **«Conversación nueva» a la vista** (22-oct-2026, el usuario: «que
+        // cada chat tenga un boton para poder iniciar nueva conversacion»):
+        // el «+» redondo pegado a la pastilla, lo mismo que la entrada del
+        // menu. Si le quita demasiado al titulo, no sale (sigue en el menu).
+        let lado = r.alto;
+        let x = r.x - (6.0 * e) as i32 - lado as i32;
+        if x - centro.x >= (PASTILLA_MODELO_DEJA * e) as i32 {
+            let b = Rect { x, y: r.y, ancho: lado, alto: lado };
+            pildora(p, tema, rf(b), e);
+            icono_centrado(p, &mi::ADD, b, 18.0 * e, tema.pildora_texto);
+            zonas.push((b, Zona::NuevaConversacion));
+            centro.ancho = (b.x - centro.x - (8.0 * e) as i32).max(0) as u32;
+        }
     }
 
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
@@ -13655,6 +13679,8 @@ enum Zona {
     /// La pastilla del modelo en la cabecera del chat «Asistente»: abre la
     /// lista Claude Haiku / DeepSeek / Local (17-oct-2026).
     ModeloIa,
+    /// El «+» de al lado: «Conversación nueva» (22-oct-2026).
+    NuevaConversacion,
 }
 
 /// La fila de un archivo ya medida.

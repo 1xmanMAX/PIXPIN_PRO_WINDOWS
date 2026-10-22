@@ -51,6 +51,9 @@ fn archivado_en_ficha(f: &Ficha) -> bool {
     f.resto.get(MARCA_ARCHIVADO).and_then(|v| v.as_bool()) == Some(true)
 }
 
+#[path = "vista/asistente_unico.rs"]
+mod asistente_unico;
+
 /// El `Disco` de este equipo.
 pub struct DiscoPc {
     raiz: PathBuf,
@@ -271,6 +274,11 @@ impl DiscoPc {
         }
         if let Some(a) = &f.aparato {
             kotlin::poner(&mut p, "aparato", Json::cadena(a.clone()));
+        }
+        // El chat del asistente lo dice como el movil (`Proyecto.asistente`):
+        // sin esto el otro aparato creaba el suyo (22-oct-2026).
+        if f.es_asistente() {
+            kotlin::poner(&mut p, "asistente", Json::booleano(true));
         }
         p
     }
@@ -762,6 +770,9 @@ impl Disco for DiscoPc {
     }
 
     fn sellar(&self) -> io::Result<()> {
+        // Antes de mirar que hay: si llego otro chat del asistente, se junta
+        // con el de aqui y el que sobra se va como un chat borrado.
+        self.unificar_asistentes()?;
         let aparato = crate::codigos::de_aparato(&self.identidad()?.yo.id);
         for (chat, _) in self.mapa() {
             let _cerrojo = crate::cuaderno::cerrojo();

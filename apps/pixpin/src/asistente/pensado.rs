@@ -226,7 +226,13 @@ const LARGO: usize = 1500;
 /// lista larga, la peticion entera son 23 928 (el umbral es 44 800, el 70 %
 /// de 64 000); el peor caso, 40 de 4000 letras, pasa y se reinicia como
 /// siempre (con la hoja de trabajo), que es lo que debe pasar.
-pub const ULTIMOS_NUBE: usize = 40;
+///
+/// **Sin tope de mensajes desde el 22-oct-2026** (el usuario: «que cada
+/// conversacion no se limite a 2 o 3 mensajes sino que todo lo de esa
+/// conversacion»): va todo lo de despues de la ultima «Conversación nueva»
+/// y lo unico que corta es la ventana (al 70 % se reinicia con la hoja de
+/// trabajo, que resume lo de antes).
+pub const ULTIMOS_NUBE: usize = usize::MAX;
 pub const LARGO_NUBE: usize = 4000;
 
 /// Los topes de historial para esta ventana: los de la nube con su ventana,

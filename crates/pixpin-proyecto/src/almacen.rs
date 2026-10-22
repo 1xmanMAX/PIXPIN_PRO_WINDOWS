@@ -1124,6 +1124,16 @@ impl Ficha {
     }
 }
 
+/// Le pone la marca del chat del asistente (el que queda al juntar los de
+/// varios aparatos: `vista::asistente_unico`).
+pub fn poner_marca_asistente(f: &mut Ficha) {
+    f.resto.insert(MARCA_ASISTENTE.to_string(), serde_json::Value::Bool(true));
+}
+
+pub fn quitar_marca_asistente(f: &mut Ficha) {
+    f.resto.remove(MARCA_ASISTENTE);
+}
+
 /// El chat «Asistente», creandolo si no esta. Nace sin nada dentro: la
 /// tarjeta de bajar el modelo la pinta el chat, no es un mensaje.
 pub fn asegurar_asistente(raiz: &Path, cuando: i64, aparato: &str) -> std::io::Result<Ficha> {

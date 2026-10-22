@@ -470,8 +470,8 @@ fn la_nube_recibe_mas_contexto_sin_reiniciar() {
     let tokens = pixpin_ia::contexto::estimar(&h, &catalogo);
     println!("catalogo {solo_catalogo} tokens; historial nube {} mensajes, {tokens} tokens", h.len());
     assert!(!reiniciado, "una conversacion normal no reinicia con la nube");
-    // sistema + 40 + la pregunta
-    assert_eq!(h.len(), 1 + pensado::ULTIMOS_NUBE + 1);
+    // sistema + los 50 (sin tope de mensajes, 22-oct) + la pregunta
+    assert_eq!(h.len(), 1 + notas.len() + 1);
     let lista = h.iter().map(|m| m.texto_entero()).find(|t| t.starts_with("lista larga")).unwrap();
     assert!(lista.chars().count() > 1500, "la lista larga no se corta a 1500");
     // Peor caso: 40 de 4000 letras pasa del 70 % y reinicia, como debe.
