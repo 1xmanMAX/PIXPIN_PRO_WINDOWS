@@ -18,7 +18,7 @@ use pixpin_motor2d::{estilo, organizar, portapapeles, recorte, recorte_imagen, t
 
 use super::referencia::{self, uno, varios};
 use super::{
-    Anfitrion, CORTAR, Contexto, ESTILO, EXTENDER, Edicion, GEOMETRIA, Hecho, IMAGEN, SELECCIONAR, TRANSFORMAR, TRAZAR,
+    Anfitrion, CORTAR, Contexto, EDITAR_TEXTO, ESTILO, EXTENDER, Edicion, GEOMETRIA, Hecho, IMAGEN, SELECCIONAR, TRANSFORMAR, TRAZAR,
     listar,
 };
 
@@ -32,6 +32,7 @@ pub(super) fn hacer(escena: &mut Escena, e: &Edicion, ctx: &Contexto, an: &mut d
         CORTAR => cortar(escena, e, ctx),
         EXTENDER => extender(escena, e, ctx),
         IMAGEN => imagen(escena, e, ctx, an),
+        EDITAR_TEXTO => super::textos::editar_texto(escena, e, ctx),
         otro => Err(format!("la herramienta «{otro}» no es de editar")),
     }
 }
