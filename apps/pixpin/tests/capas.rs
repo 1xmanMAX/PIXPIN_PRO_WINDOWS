@@ -99,12 +99,14 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_seis_paquetes() {
+fn estan_los_treinta_y_siete_paquetes() {
     let encontrados = manifiestos();
+    // 32 con `pixpin-sistema` (lo que la logica pregunta al sistema, con
+    // version portable: la usa la copia del nucleo de Mac).
     assert_eq!(
         encontrados.len(),
-        36,
-        "se esperan 31 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        37,
+        "se esperan 32 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
