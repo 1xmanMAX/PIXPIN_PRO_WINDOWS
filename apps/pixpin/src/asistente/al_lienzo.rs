@@ -907,7 +907,6 @@ pub fn poner_plantilla(
     intervalo: &pixpin_motor2d::figuras_de_serie::Intervalo,
     centro: Option<(f32, f32)>,
 ) -> Result<Respuesta, String> {
-    use pixpin_motor2d::biblioteca;
     use pixpin_motor2d::figuras_de_serie as serie;
     let elegidas: Vec<Elemento> = escena.visibles().filter(|e| elegidos.contains(&e.id)).cloned().collect();
     let la_elegida = serie::cual_es(&elegidas);
@@ -927,9 +926,7 @@ pub fn poner_plantilla(
         })?,
     };
     let hojas = serie::alargar(&clave, intervalo)?;
-    let tamanos: Vec<(f32, f32)> = hojas.iter().map(FiguraGuardada::tamano).collect();
-    let ancho: f32 = tamanos.iter().map(|t| t.0).sum::<f32>() + ENTRE_HOJAS * (hojas.len() - 1) as f32;
-    let alto = tamanos.iter().map(|t| t.1).fold(0.0, f32::max);
+    let (ancho, alto) = medida_de_las_hojas(&hojas);
     let reemplaza = la_elegida.as_deref() == Some(clave.as_str());
     // La esquina de la primera hoja.
     let (x0, y0) = match (reemplaza, centro) {
@@ -946,17 +943,7 @@ pub fn poner_plantilla(
             escena.borrar_apuntando(e.id);
         }
     }
-    let mut ids = Vec::new();
-    let mut x = x0;
-    for (f, (w, h)) in hojas.iter().zip(&tamanos) {
-        let primero = escena.siguiente_id.max(1);
-        let grupo = format!("g{primero}");
-        let centro = pixpin_motor2d::vector::Punto2::nuevo(x + w / 2.0, y0 + h / 2.0);
-        for e in biblioteca::estampar(f, centro, primero, &grupo) {
-            ids.push(escena.anadir(e));
-        }
-        x += w + ENTRE_HOJAS;
-    }
+    let ids = colocar_hojas(escena, &hojas, (x0, y0));
     escena.cerrar_paso();
     // Solo con el editor abierto (`centro`): cerrado, nadie lo recogeria.
     if centro.is_some()
@@ -1033,4 +1020,38 @@ mod pruebas_plantilla {
         assert!(e.contains("no lleva números"), "{e}");
         assert!(tomar_para_elegir().is_none(), "cerrado no deja nada que elegir");
     }
+}
+
+/// Lo que miden unas hojas puestas en fila.
+fn medida_de_las_hojas(hojas: &[FiguraGuardada]) -> (f32, f32) {
+    let ancho = hojas.iter().map(|f| f.tamano().0).sum::<f32>() + ENTRE_HOJAS * hojas.len().saturating_sub(1) as f32;
+    (ancho, hojas.iter().map(|f| f.tamano().1).fold(0.0, f32::max))
+}
+
+/// **Unas hojas en fila** desde `(x0, y0)`, cada una su grupo, en el paso
+/// de deshacer que este abierto. Devuelve los ids.
+fn colocar_hojas(escena: &mut Escena, hojas: &[FiguraGuardada], (x0, y0): (f32, f32)) -> Vec<u64> {
+    let mut ids = Vec::new();
+    let mut x = x0;
+    for f in hojas {
+        let (w, h) = f.tamano();
+        let primero = escena.siguiente_id.max(1);
+        let grupo = format!("g{primero}");
+        let centro = pixpin_motor2d::vector::Punto2::nuevo(x + w / 2.0, y0 + h / 2.0);
+        for e in pixpin_motor2d::biblioteca::estampar(f, centro, primero, &grupo) {
+            ids.push(escena.anadir(e));
+        }
+        x += w + ENTRE_HOJAS;
+    }
+    ids
+}
+
+/// Las hojas de una plantilla alargada en medio de `centro` (la ventana de
+/// las figuras), en un solo paso de deshacer.
+pub fn colocar_hojas_en_medio(escena: &mut Escena, hojas: &[FiguraGuardada], centro: (f32, f32)) -> Vec<u64> {
+    let (ancho, alto) = medida_de_las_hojas(hojas);
+    escena.abrir_paso();
+    let ids = colocar_hojas(escena, hojas, (centro.0 - ancho / 2.0, centro.1 - alto / 2.0));
+    escena.cerrar_paso();
+    ids
 }

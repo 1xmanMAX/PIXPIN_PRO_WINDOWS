@@ -226,3 +226,8 @@ fn con_nombre(mut f: FiguraGuardada, rotulo: &str) -> FiguraGuardada {
     debug_assert!(f.nombre.contains(SEPARADOR));
     f
 }
+
+/// El tramo de la de serie de una plantilla que se alarga («1–42»).
+pub fn tramo_de_serie(clave: &str) -> Option<(u32, u32)> {
+    AMPLIABLES.iter().find(|a| a.clave == clave).map(|a| a.defecto)
+}

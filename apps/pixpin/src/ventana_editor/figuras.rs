@@ -31,7 +31,6 @@ use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::Catalogo;
 use pixpin_ui::CajaHerramientas;
 use std::path::PathBuf;
-use windows::Win32::Foundation::HWND;
 
 /// Lo que mide una letra con DirectWrite, que es con lo que se pinta: asi
 /// las piezas de una ecuacion quedan pegadas donde toca. Si DirectWrite no
@@ -561,132 +560,8 @@ pub(super) fn editar_coordenadas(
     ed.escena.poner_tablas(tablas, origen)
 }
 
-/// El menu, bajo el boton de las figuras.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn menu(
-    propietaria: HWND,
-    x: i32,
-    y: i32,
-    t: &Catalogo,
-    figuras: &[FiguraGuardada],
-    hay_seleccion: bool,
-    tabla: TablaElegida,
-    series: &[bool],
-) -> Option<Eleccion> {
-    let v = entradas_con_series(t, figuras, hay_seleccion, tabla, series);
-    let mut ricas = agrupar(v, figuras, &miniaturas_de(figuras), t);
-    // Solo para probar: `PIXPIN_MENU_FIGURAS_AL_ABRIR=<categoria>` abre ya
-    // ese submenu (ver `ventana_editor.rs`).
-    if let Some(cat) = std::env::var("PIXPIN_MENU_FIGURAS_AL_ABRIR").ok()
-        && let Some(sub) = ricas.iter().find(|e| e.texto == cat && !e.hijas.is_empty())
-    {
-        ricas = sub.hijas.clone();
-    }
-    let id = pixpin_shell::menu_rico::menu_rico(propietaria, x, y, &ricas)?;
-    eleccion_de(id, figuras.len())
-}
-
-/// El lado de las miniaturas del menu, en pixeles.
-const LADO_MINIATURA: u32 = 56;
-
-thread_local! {
-    /// Las miniaturas ya pintadas, por figura (su id, su nombre y cuantas
-    /// piezas tiene: si cambia, se vuelve a pintar).
-    static MINIATURAS: std::cell::RefCell<std::collections::HashMap<(String, String, usize), pixpin_shell::menu_rico::Miniatura>> =
-        Default::default();
-}
-
-/// **Las miniaturas de las figuras**, de la cache o pintadas de una vez las
-/// que falten.
-fn miniaturas_de(figuras: &[FiguraGuardada]) -> Vec<Option<pixpin_shell::menu_rico::Miniatura>> {
-    use pixpin_shell::menu_rico::Miniatura;
-    let clave = |f: &FiguraGuardada| (f.id.clone(), f.nombre.clone(), f.elementos.len());
-    let faltan: Vec<FiguraGuardada> =
-        MINIATURAS.with_borrow(|m| figuras.iter().filter(|f| !m.contains_key(&clave(f))).cloned().collect());
-    if !faltan.is_empty() {
-        match super::exportar::miniaturas(&faltan, LADO_MINIATURA) {
-            Ok(v) => MINIATURAS.with_borrow_mut(|m| {
-                for (f, img) in faltan.iter().zip(v) {
-                    if let Some(img) = img {
-                        m.insert(clave(f), Miniatura { ancho: img.ancho, alto: img.alto, rgba: img.pixeles });
-                    }
-                }
-            }),
-            Err(e) => tracing::warn!(?e, "figuras: sin miniaturas"),
-        }
-    }
-    MINIATURAS.with_borrow(|m| figuras.iter().map(|f| m.get(&clave(f)).cloned()).collect())
-}
-
-/// **Las figuras por categoria** (`figuras_de_serie::categoria_de`: lo que
-/// va antes de « · » en el nombre): un submenu por categoria, primero las de
-/// serie en su orden y luego las del usuario; las que no llevan categoria
-/// van en «Mis figuras». Quitar va igual, en su propio submenu. Lo demas del
-/// menu queda como estaba.
-fn agrupar(
-    planas: Vec<EntradaMenu>,
-    figuras: &[FiguraGuardada],
-    miniaturas: &[Option<pixpin_shell::menu_rico::Miniatura>],
-    t: &Catalogo,
-) -> Vec<pixpin_shell::menu_rico::EntradaRica> {
-    use pixpin_motor2d::figuras_de_serie::{CATEGORIAS, categoria_de};
-    use pixpin_shell::menu_rico::EntradaRica;
-    let n = figuras.len() as u32;
-    let es_figura = |id: u32| (ID_FIGURA..ID_FIGURA + n).contains(&id);
-    let es_quitar = |id: u32| (ID_QUITAR..ID_QUITAR + n).contains(&id);
-    let mis = t.t("figuras-mis-figuras");
-    // El orden de las categorias: las de serie y luego las nuevas, por como
-    // aparecen.
-    let mut orden: Vec<String> = CATEGORIAS.iter().map(|c| c.to_string()).collect();
-    for f in figuras {
-        if let Some((c, _)) = categoria_de(&f.nombre)
-            && !orden.iter().any(|o| o == c)
-        {
-            orden.push(c.to_string());
-        }
-    }
-    orden.push(mis.clone());
-    let grupos = |base: u32, con_imagen: bool| -> Vec<EntradaRica> {
-        orden
-            .iter()
-            .filter_map(|cat| {
-                let hijas: Vec<EntradaRica> = figuras
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, f)| {
-                        let (c, nombre) = categoria_de(&f.nombre).unwrap_or((&mis, &f.nombre));
-                        (c == cat).then(|| EntradaRica {
-                            id: base + i as u32,
-                            texto: nombre.to_string(),
-                            imagen: if con_imagen { miniaturas.get(i).cloned().flatten() } else { None },
-                            hijas: Vec::new(),
-                        })
-                    })
-                    .collect();
-                (!hijas.is_empty()).then(|| EntradaRica::submenu(cat.clone(), hijas))
-            })
-            .collect()
-    };
-    let mut v = Vec::new();
-    let mut puestas = false;
-    let mut quitar_puesto = false;
-    for e in planas {
-        if es_figura(e.id) {
-            if !puestas {
-                v.extend(grupos(ID_FIGURA, true));
-                puestas = true;
-            }
-        } else if es_quitar(e.id) {
-            if !quitar_puesto {
-                v.push(EntradaRica::submenu(t.t("figuras-quitar"), grupos(ID_QUITAR, false)));
-                quitar_puesto = true;
-            }
-        } else {
-            v.push(EntradaRica::de(e.id, e.texto));
-        }
-    }
-    v
-}
+/// La ventana de las figuras (22-oct), en vez del menu con submenus.
+mod ventana;
 
 // ---------------------------------------------------------------------------
 // El cajetin: la grafica, la tabla y el nombre de una figura
@@ -2007,6 +1882,7 @@ pub(super) fn poner_copia_de_zona(
 /// El editor entero, prestado mientras se atiende un boton de la barra.
 pub(super) struct Editor<'a> {
     pub ventana: &'a VentanaOverlay,
+    pub dispositivo: &'a pixpin_capture::Dispositivo,
     pub motor: &'a mut MotorRender,
     pub superficie: &'a Superficie,
     pub escena: &'a mut Escena,
@@ -2056,26 +1932,45 @@ impl Editor<'_> {
     }
 }
 
-/// **El menu de las figuras y lo que se elija en el.** `true` si cambio el
-/// dibujo.
-pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Catalogo) -> bool {
+/// **La ventana de las figuras y lo que se elija en ella** (22-oct: antes un
+/// menu con submenus, ver [`ventana`]). `true` si cambio el dibujo.
+pub(super) fn atender_figuras(mut ed: Editor<'_>, _en: pixpin_geom::Punto, t: &Catalogo) -> bool {
     let ruta = ruta_biblioteca();
-    let mut biblio = cargar_biblioteca(&ruta);
     let hay_seleccion = !ed.gesto.seleccion.esta_vacia();
     let tabla = TablaElegida::de(ed.escena, ed.gesto);
-    let Some(eleccion) = menu(
-        ed.ventana.handle(),
-        en.x,
-        en.y,
+    let series: Vec<bool> = ed.escena.tablas.iter().map(|s| s.visible).collect();
+    // Lo demas del menu de siempre, para la barra de la izquierda: todo
+    // menos las figuras, quitarlas y guardar (esas van en la ventana).
+    let herramientas: Vec<(u32, String)> = entradas_con_series(t, &[], false, tabla, &series)
+        .into_iter()
+        .filter(|e| e.id != 0)
+        .map(|e| (e.id, e.texto))
+        .collect();
+    let (biblio, pedido) = ventana::elegir(
+        ed.dispositivo,
+        ed.motor,
+        ed.escala_por_cien,
         t,
-        &biblio,
+        cargar_biblioteca(&ruta),
+        herramientas,
         hay_seleccion,
-        tabla,
-        &ed.escena.tablas.iter().map(|s| s.visible).collect::<Vec<_>>(),
-    ) else {
-        return false;
-    };
+        |v| {
+            guardar_biblioteca(&ruta, v);
+        },
+    );
     let centro = ed.centro();
+    let eleccion = match pedido {
+        None => return false,
+        Some(ventana::Pedido::Herramienta(e)) => e,
+        Some(ventana::Pedido::Estampar(i)) => Eleccion::Estampar(i),
+        Some(ventana::Pedido::Hojas(hojas)) => {
+            let ids = crate::asistente::al_lienzo::colocar_hojas_en_medio(ed.escena, &hojas, (centro.x, centro.y));
+            let hubo = !ids.is_empty();
+            ed.gesto.seleccion.poner_todos(ids);
+            return hubo;
+        }
+    };
+    let mut biblio = biblio;
     match eleccion {
         // El instrumento de fabrica con el pincel de ahora, en medio de la
         // vista y elegido para llevarlo a su sitio.

@@ -79,7 +79,7 @@ fn entero(args: &Map<String, Value>, k: &str) -> Result<Option<u32>, ErrorHerram
 }
 
 /// «2026-11», «11/2026» o «noviembre 2026».
-fn mes_de(s: &str) -> Option<(i32, u32)> {
+pub fn mes_de(s: &str) -> Option<(i32, u32)> {
     const MESES: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
     let s = crate::acciones::normalizar(s.trim());
     let partes: Vec<&str> = s.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty() && *p != "de" && *p != "del").collect();

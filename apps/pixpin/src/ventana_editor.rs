@@ -1811,6 +1811,7 @@ fn abrir_en_modo(
             if let Some(pedido) = hecho.pedido.filter(|_| !imprimir_de_la_barra).or(de_prueba) {
                 let ed = figuras::Editor {
                     ventana: &ventana,
+                    dispositivo: &dispositivo,
                     motor: &mut motor,
                     superficie: &superficie,
                     escena: &mut escena,
@@ -2003,6 +2004,7 @@ fn abrir_en_modo(
             {
                 let ed = figuras::Editor {
                     ventana: &ventana,
+                    dispositivo: &dispositivo,
                     motor: &mut motor,
                     superficie: &superficie,
                     escena: &mut escena,

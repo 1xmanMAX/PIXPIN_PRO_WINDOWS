@@ -31,7 +31,7 @@ mod intervalo;
 mod plantillas;
 mod storyboard;
 
-pub use intervalo::{Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga};
+pub use intervalo::{Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga, tramo_de_serie};
 
 /// Entre la categoria y el nombre.
 pub const SEPARADOR: &str = " · ";
