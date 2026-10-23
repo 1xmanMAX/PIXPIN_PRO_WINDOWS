@@ -81,6 +81,20 @@ pub trait Ejecutor {
     /// revisar) queda en un solo paso de deshacer si nadie lo toco entre
     /// medias. Por omision, nada.
     fn cerrar_turno(&mut self) {}
+
+    /// Si hay alguien a quien preguntar (una burbuja con su tarjeta). Sin
+    /// eso el turno no ofrece [`crate::preguntar::NOMBRE`]: Flow Launcher y
+    /// las automatizaciones no tienen donde ensenar la pregunta.
+    fn puede_preguntar(&self) -> bool {
+        false
+    }
+
+    /// **Ensena la pregunta y espera** (bloquea el hilo del turno, no la
+    /// ventana) hasta que el usuario elige, escribe lo suyo o se acaba el
+    /// tiempo. Por omision nadie contesta.
+    fn preguntar(&mut self, _pregunta: &crate::preguntar::Pregunta) -> crate::preguntar::Contestada {
+        crate::preguntar::Contestada::SinRespuesta
+    }
 }
 
 /// Como acabo el turno.
@@ -458,6 +472,10 @@ fn turno_dentro(
     if local && let Some(f) = crate::hoja::solo_nube(historial, al_evento) {
         return Ok(f);
     }
+    if local {
+        // El local, con sus instrucciones de siempre (congelado).
+        a_las_del_local(historial);
+    }
     let mut lista = herramientas_base.to_vec();
     if !local {
         // Lo que la nube sabe de mas (tabla, paralelogramo, que herramienta
@@ -475,6 +493,12 @@ fn turno_dentro(
     lista.retain(|h| h.nombre != crate::ojos::NOMBRE);
     if ojos {
         lista.push(crate::ojos::herramienta());
+    }
+    // Preguntar (22-oct): con la nube y alguien que conteste. La ultima de
+    // la lista: lo de antes sigue siendo el mismo prefijo de la cache.
+    lista.retain(|h| h.nombre != crate::preguntar::NOMBRE);
+    if !local && ejecutor.puede_preguntar() {
+        lista.push(crate::preguntar::herramienta());
     }
     let mut plan = None;
     if opciones.planificar {
@@ -602,6 +626,10 @@ impl Default for Estado {
 /// son ~1000 tokens que se releen en cada vuelta).
 pub const VISTAS_POR_TURNO: usize = 3;
 
+/// Cuantas veces puede preguntar al usuario en un turno: una es lo normal
+/// (una cosa cada vez); la segunda, si la respuesta abrio otra duda.
+pub const PREGUNTAS_POR_TURNO: usize = 2;
+
 /// Cuantas rondas de revision como mucho, pida lo que pida la app.
 pub const REVISIONES_MAXIMAS: usize = 2;
 
@@ -635,7 +663,14 @@ fn vueltas(
     // Los reintentos de ESTA tanda (la revision tiene los suyos).
     let mut reintentos = 0;
     let mut hechas_aqui = 0;
-    for _ in 0..VUELTAS + REINTENTOS {
+    let pregunta_aqui = herramientas.iter().any(|h| h.nombre == crate::preguntar::NOMBRE);
+    // Preguntar no gasta vuelta (hasta [`PREGUNTAS_POR_TURNO`]): con la
+    // respuesta empieza de verdad el trabajo.
+    let mut tope_vueltas = VUELTAS + REINTENTOS;
+    let mut preguntas = 0;
+    let mut vuelta = 0;
+    while vuelta < tope_vueltas {
+        vuelta += 1;
         if opciones.ventana > 0 {
             vigilar_contexto(historial, herramientas, opciones.ventana, al_evento);
         }
@@ -728,6 +763,45 @@ fn vueltas(
                     texto: cortar(&texto, 300),
                 });
                 huecos.push((cruda.id.clone(), Some(recortar_resultado(texto))));
+                continue;
+            }
+            // `preguntar_usuario`: el turno se para aqui hasta que conteste
+            // (lo hace el ejecutor en la burbuja); lo dicho es el resultado.
+            if pregunta_aqui && cruda.nombre.trim() == crate::preguntar::NOMBRE {
+                let texto = if preguntas >= PREGUNTAS_POR_TURNO {
+                    "Ya preguntaste en este turno: sigue con lo que sabes y di en una línea lo que asumiste.".to_string()
+                } else {
+                    match crate::preguntar::leer(&cruda.argumentos) {
+                        Ok(lista) => {
+                            preguntas += 1;
+                            tope_vueltas += 1;
+                            al_evento(Evento::Llamando(crate::preguntar::NOMBRE.into()));
+                            lista
+                                .iter()
+                                .map(|p| crate::preguntar::para_el_modelo(p, &ejecutor.preguntar(p)))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        }
+                        Err(e) => {
+                            alguna_mal = true;
+                            let motivo = format!("ERROR: {e}");
+                            if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                                est.cortado = true;
+                            }
+                            motivo
+                        }
+                    }
+                };
+                let r = al_evento(Evento::Resultado {
+                    nombre: crate::preguntar::NOMBRE.to_string(),
+                    ok: !texto.starts_with("ERROR"),
+                    texto: cortar(&texto, 300),
+                });
+                // Parar mientras esperaba la respuesta: no se sigue.
+                if r == Seguir::Parar {
+                    est.cortado = true;
+                }
+                huecos.push((cruda.id.clone(), Some(texto)));
                 continue;
             }
             // `ver_lienzo` tampoco: la imagen la pinta el ejecutor y va en
@@ -1113,9 +1187,53 @@ fn mensaje_del_asistente(r: &Respuesta) -> Mensaje {
     m
 }
 
-/// Las instrucciones de sistema del asistente. Cortas: cada token cuenta en
-/// cada vuelta, y los modelos pequenos siguen mejor pocas reglas claras.
+/// **Las instrucciones de sistema del asistente** (22-oct-2026): principios,
+/// no una lista de «si pide X usa Y». El usuario: «no le digas lo que puede
+/// y no puede hacer con reglas: ensenale». Una lista de rutas es un flujo
+/// disfrazado (Anthropic, «Building effective agents»): tapa un caso y el
+/// modelo contesta «no tengo herramienta» al primero que no esta. Aqui va el
+/// entorno, el metodo (entender, mirar, planear, actuar, comprobar), el
+/// permiso de combinar herramientas con lo que el modelo ya sabe hacer
+/// (traducir, redactar, razonar), el nivel de calidad, cuando preguntar y
+/// cuatro ejemplos distintos. **Cuando usar cada herramienta lo dice su
+/// descripcion** (`herramientas::para_la_nube`), que es lo que mas pesa en
+/// como la elige. Con tildes: el modelo escribe como lee.
+///
+/// Es para la nube (Claude, DeepSeek). El modelo local sigue con
+/// [`instrucciones_local`], byte a byte (congelado por decision del
+/// usuario); el turno las cambia solo ([`turno_con`]).
 pub fn instrucciones() -> String {
+    "Eres el asistente de PixPin Max y trabajas dentro de la app del usuario. \
+Tus herramientas leen y cambian de verdad sus lienzos (figuras, textos, tablas, imágenes), notas, tareas, chats y documentos (PDF, Word, Excel, planos), \
+y cada resultado te dice qué pasó: los #id de lo creado o tocado, el estado, o un ERROR con su motivo. \
+Cuando llega el «Lienzo destino», trae lo que ya hay con sus #id, textos y cajas.\n\n\
+Traducir, redactar, resumir, corregir textos, razonar y planear lo haces tú; las herramientas solo leen y escriben en la app. \
+Combínalas: casi todo pedido sale de leer lo que hay, pensarlo tú y escribir el resultado con la herramienta que edita ese sitio. \
+No digas «no tengo herramienta para eso» si una combinación lo consigue; si de verdad algo no se puede, haz la parte que sí y di qué falta.\n\n\
+Cómo trabajas:\n\
+1. Entiende el objetivo y qué haría falta para darlo por bueno.\n\
+2. Mira lo que ya hay (el lienzo, los adjuntos, la conversación) antes de crear nada.\n\
+3. Planea los pasos; los que no dependen entre sí, pídelos en la misma respuesta.\n\
+4. Actúa con las herramientas, usando los #id que te devuelven.\n\
+5. Comprueba con los resultados (y la vista o los avisos, si los hay) que está todo y bien; corrige lo que falle.\n\
+6. Termina con una o dos frases de lo que hiciste, sin dar por hecho nada que ninguna herramienta confirmó.\n\n\
+Calidad: completo (todo lo pedido), ordenado y alineado, sin solapes ni textos que se salgan, coherente con lo que ya había, \
+y con la ortografía y las tildes correctas del idioma que toque. Contesta en el idioma del usuario, breve y claro.\n\n\
+Si falta un dato, búscalo primero en lo que ya tienes. Pregunta solo si las lecturas posibles dan resultados distintos y equivocarse cuesta \
+(un trabajo largo, sobrescribir lo que hay): una sola cosa, concreta. Si es fácil de deshacer, elige lo más razonable y dilo en una línea \
+(«Asumí X; dime si preferías Y»). Si el usuario dice «tú decide», decide.\n\n\
+Ejemplos:\n\
+- «Traduce esta figura al inglés»: lee sus textos en el lienzo, tradúcelos tú, cámbialos todos de una vez con editar_texto y comprueba que no quede ninguno sin traducir ni que se salga de su forma.\n\
+- «Saca las tareas de este PDF»: lee el documento, decide tú cuáles son tareas y apúntalas juntas en una lista con su fecha si la tienen.\n\
+- «Haz un diagrama del proceso de compra»: decide los pasos, dibújalos con la forma que corresponde a cada uno, alineados y unidos con flechas; mira el resultado y separa lo que se pise.\n\
+- «Pon los títulos en azul y más grandes»: localiza los títulos por sus #id y cambia solo esos, en una llamada.\n\n"
+        .to_string()
+        + crate::conocimiento::RESUMEN
+}
+
+/// **Las del modelo local**, las de antes del 22-oct, sin tocar: el local
+/// esta congelado y con su ventana de 8192 sigue mejor la lista corta.
+pub fn instrucciones_local() -> String {
     "Eres el asistente de PixPin, una app de capturas, notas y lienzo. \
      Contesta en el idioma del usuario, breve y claro. \
      Si pide dibujar algo, usa dibujar_en_lienzo, \
@@ -1135,6 +1253,16 @@ pub fn instrucciones() -> String {
      Despues de usar una herramienta, di en una frase lo que hiciste. "
         .to_string()
         + crate::conocimiento::RESUMEN
+}
+
+/// Cambia las instrucciones de la nube por las del local en el primer
+/// mensaje de sistema (con lo que lleve detras: la hoja, el plan).
+fn a_las_del_local(historial: &mut [Mensaje]) {
+    let Some(m) = historial.first_mut().filter(|m| m.rol == Rol::Sistema) else { return };
+    let texto = m.texto_entero();
+    if let Some(resto) = texto.strip_prefix(&instrucciones()) {
+        *m = Mensaje::sistema(format!("{}{resto}", instrucciones_local()));
+    }
 }
 
 #[cfg(test)]
@@ -2001,4 +2129,196 @@ mod pruebas_topes {
     }
 
     const DIBUJAR_: &str = crate::herramientas::DIBUJAR;
+}
+
+#[cfg(test)]
+mod pruebas_preguntar {
+    //! `preguntar_usuario` (22-oct): el turno se para en la pregunta, la
+    //! respuesta vuelve como resultado y el trabajo sigue con ella.
+    use super::*;
+    use crate::herramientas::catalogo;
+    use crate::motor::MotorGuionado;
+    use crate::preguntar::{Contestada, NOMBRE, Pregunta};
+
+    /// Un chat con burbuja: contesta lo que se le diga y apunta lo preguntado.
+    struct ConBurbuja {
+        contesta: Contestada,
+        preguntado: Vec<Pregunta>,
+        hechas: Vec<String>,
+        puede: bool,
+    }
+
+    impl ConBurbuja {
+        fn que_contesta(c: Contestada) -> ConBurbuja {
+            ConBurbuja { contesta: c, preguntado: Vec::new(), hechas: Vec::new(), puede: true }
+        }
+    }
+
+    impl Ejecutor for ConBurbuja {
+        fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
+            self.hechas.push(llamada.nombre().to_string());
+            Ok("hecho: #1 #2".into())
+        }
+        fn puede_preguntar(&self) -> bool {
+            self.puede
+        }
+        fn preguntar(&mut self, p: &Pregunta) -> Contestada {
+            self.preguntado.push(p.clone());
+            self.contesta.clone()
+        }
+    }
+
+    const PREGUNTA: &str = r#"{"preguntas":[{"pregunta":"¿Traduzco todo el lienzo o solo la figura?","opciones":[{"etiqueta":"Solo la figura","descripcion":"6 textos"},{"etiqueta":"Todo el lienzo","descripcion":"23 textos"}]}]}"#;
+    const DIBUJO: &str = r#"{"elementos":[{"tipo":"rectangulo","caja":[10,10,50,50],"color":"rojo"}]}"#;
+
+    fn correr(motor: &MotorGuionado, ej: &mut ConBurbuja) -> (Final, Vec<Mensaje>, Vec<Evento>) {
+        let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario("traduce esto al inglés")];
+        let mut eventos = Vec::new();
+        let f = turno(motor, &mut h, &catalogo(), ej, &mut |e| {
+            eventos.push(e);
+            Seguir::Si
+        })
+        .unwrap();
+        (f, h, eventos)
+    }
+
+    fn resultado_de(h: &[Mensaje], id: &str) -> String {
+        h.iter()
+            .find(|m| m.rol == Rol::Herramienta && m.id_llamada.as_deref() == Some(id))
+            .map(Mensaje::texto_entero)
+            .unwrap_or_default()
+    }
+
+    fn id() -> String {
+        format!("llamada-{NOMBRE}")
+    }
+
+    #[test]
+    fn pregunta_espera_y_sigue_con_la_respuesta() {
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_llamada(crate::herramientas::DIBUJAR, DIBUJO),
+            Respuesta::de_texto("Traducido todo el lienzo."),
+        ])
+        .como_nube();
+        let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(1));
+        let (f, h, eventos) = correr(&motor, &mut ej);
+        // Se pregunto una vez, con sus dos opciones, y el turno siguio.
+        assert_eq!(ej.preguntado.len(), 1);
+        assert_eq!(ej.preguntado[0].opciones.len(), 2);
+        assert_eq!(ej.hechas, vec![crate::herramientas::DIBUJAR.to_string()], "lo de despues se hizo");
+        assert_eq!(f.texto, "Traducido todo el lienzo.");
+        assert_eq!(f.herramientas_hechas, 1, "preguntar no cuenta como algo hecho");
+        let r = resultado_de(&h, &id());
+        assert!(r.contains("eligió «Todo el lienzo» (23 textos)"), "{r}");
+        // La vuelta siguiente llevaba la respuesta.
+        let recibido = motor.recibido.lock().unwrap();
+        assert!(recibido[1].mensajes.iter().any(|m| m.texto_entero().contains("Todo el lienzo")));
+        assert!(recibido[0].herramientas.iter().any(|t| t.nombre == NOMBRE), "la nube la tiene");
+        assert!(eventos.iter().any(|e| matches!(e, Evento::Resultado { nombre, ok: true, .. } if nombre == NOMBRE)));
+    }
+
+    #[test]
+    fn lo_escrito_y_el_silencio_tambien_vuelven() {
+        let motor = MotorGuionado::nuevo(vec![Respuesta::de_llamada(NOMBRE, PREGUNTA), Respuesta::de_texto("Vale.")]).como_nube();
+        let mut ej = ConBurbuja::que_contesta(Contestada::Texto("solo el título".into()));
+        let (_, h, _) = correr(&motor, &mut ej);
+        assert!(resultado_de(&h, &id()).contains("«solo el título»"));
+        // Sin respuesta (caduco o paro): sigue con la recomendada, sin repetir.
+        let motor = MotorGuionado::nuevo(vec![Respuesta::de_llamada(NOMBRE, PREGUNTA), Respuesta::de_texto("Vale.")]).como_nube();
+        let mut ej = ConBurbuja::que_contesta(Contestada::SinRespuesta);
+        let (_, h, _) = correr(&motor, &mut ej);
+        let r = resultado_de(&h, &id());
+        assert!(r.contains("no contestó") && r.contains("«Solo la figura»"), "{r}");
+    }
+
+    #[test]
+    fn una_pregunta_mal_hecha_se_corrige_sin_molestar() {
+        // Negativo: una sola opcion. No llega al usuario; el modelo la arregla.
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada(NOMBRE, r#"{"pregunta":"¿Sigo?","opciones":["Sí"]}"#),
+            Respuesta::de_texto("Sigo con lo más razonable."),
+        ])
+        .como_nube();
+        let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(0));
+        let (f, h, eventos) = correr(&motor, &mut ej);
+        assert!(ej.preguntado.is_empty());
+        assert!(resultado_de(&h, &id()).starts_with("ERROR"));
+        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { .. })));
+        assert_eq!(f.reintentos, 1);
+    }
+
+    #[test]
+    fn preguntar_no_gasta_las_vueltas_del_trabajo() {
+        // Dos preguntas y luego todas las vueltas de siempre trabajando: cabe.
+        let mut guion = vec![Respuesta::de_llamada(NOMBRE, PREGUNTA), Respuesta::de_llamada(NOMBRE, PREGUNTA)];
+        for _ in 0..VUELTAS + REINTENTOS - 1 {
+            guion.push(Respuesta::de_llamada(crate::herramientas::DIBUJAR, DIBUJO));
+        }
+        guion.push(Respuesta::de_texto("Listo."));
+        let motor = MotorGuionado::nuevo(guion).como_nube();
+        let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(0));
+        let (f, _, _) = correr(&motor, &mut ej);
+        assert_eq!(f.texto, "Listo.");
+        assert_eq!(ej.preguntado.len(), PREGUNTAS_POR_TURNO);
+        // Una tercera ya no llega al usuario (negativo).
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_texto("Listo."),
+        ])
+        .como_nube();
+        let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(0));
+        let (_, h, _) = correr(&motor, &mut ej);
+        assert_eq!(ej.preguntado.len(), PREGUNTAS_POR_TURNO);
+        assert!(h.iter().any(|m| m.rol == Rol::Herramienta && m.texto_entero().starts_with("Ya preguntaste")));
+    }
+
+    #[test]
+    fn sin_burbuja_o_con_el_local_no_se_ofrece() {
+        // Negativos: la nube sin nadie que conteste (Flow) y el local.
+        for (motor, puede) in [
+            (MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]).como_nube(), false),
+            (MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]), true),
+        ] {
+            let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(0));
+            ej.puede = puede;
+            correr(&motor, &mut ej);
+            assert!(!motor.recibido.lock().unwrap()[0].herramientas.iter().any(|t| t.nombre == NOMBRE));
+        }
+    }
+
+    #[test]
+    fn el_local_sigue_con_sus_instrucciones_y_la_nube_con_las_nuevas() {
+        let local = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]);
+        correr(&local, &mut ConBurbuja::que_contesta(Contestada::SinRespuesta));
+        let s = local.recibido.lock().unwrap()[0].mensajes[0].texto_entero();
+        assert_eq!(s, instrucciones_local(), "el local, byte a byte");
+        let nube = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]).como_nube();
+        correr(&nube, &mut ConBurbuja::que_contesta(Contestada::SinRespuesta));
+        assert_eq!(nube.recibido.lock().unwrap()[0].mensajes[0].texto_entero(), instrucciones());
+    }
+
+    /// Las instrucciones nuevas ensenan a trabajar; las rutas van en las
+    /// herramientas.
+    #[test]
+    fn las_instrucciones_son_principios_y_las_rutas_estan_en_su_herramienta() {
+        let s = instrucciones();
+        for parte in ["Cómo trabajas", "Combínalas", "no tengo herramienta", "tildes", "tú decide", "editar_texto", "Ejemplos"] {
+            assert!(s.contains(parte), "falta «{parte}»");
+        }
+        // Negativo: nada de «si pide X, usa Y».
+        assert!(!s.contains("usa calcar_imagen") && !s.contains("usa dibujar_en_lienzo"));
+        // Y lo de antes, en la descripcion (solo la nube: el local no se toca).
+        let mut c = catalogo();
+        crate::herramientas::para_la_nube(&mut c);
+        let d = |n: &str| c.iter().find(|h| h.nombre == n).unwrap().descripcion.clone();
+        assert!(d(crate::herramientas::CALCAR).contains("imagen del lienzo"));
+        assert!(d(crate::herramientas::FUNCION).contains("Nunca calcules"));
+        assert!(d(crate::acciones_documentos::ABRIR).contains("nunca le pidas rutas"));
+        assert!(!catalogo().iter().find(|h| h.nombre == crate::herramientas::CALCAR).unwrap().descripcion.contains("imagen del lienzo"));
+        // Cortas: el prompt se paga en cada vuelta.
+        assert!(s.chars().count() < 3600, "{} letras", s.chars().count());
+    }
 }

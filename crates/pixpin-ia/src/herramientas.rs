@@ -120,7 +120,7 @@ pub fn para_la_nube(lista: &mut [Herramienta]) {
                         json!({"type": "string", "description": "texto rico: formulas en linea entre $...$ (LaTeX), \\color{rojo}{X}, **negrita**, *cursiva*, <u>sub</u>, renglones con \\n, \\centro al inicio de un renglon"}),
                     );
                 }
-                "Tambien: tabla (con «x», «y» y «filas»:[[\"Planeta\",\"UA\"],[\"Mercurio\",\"0.39\"]], la primera fila es la cabecera; es LA forma de hacer una tabla en el lienzo, no una nota) \
+                "Tambien: tabla (con «x», «y» y «filas»:[[\"Planeta\",\"UA\"],[\"Mercurio\",\"0.39\"]], la primera fila es la cabecera; es LA forma de hacer una tabla en el lienzo, no una nota ni un Excel) \
                  y paralelogramo (con «caja»). En un diagrama de flujo: inicio/fin elipse, proceso rectangulo, decision rombo, leer/escribir paralelogramo. \
                  En geometria, fisica o planos pon «rugosidad»:0 en cada figura (la circunferencia exacta, no a mano), calcula las coordenadas de verdad \
                  (centro y radio de una inscrita), y cada punto lleva su letra UNA vez: los textos de al lado no la repiten («incentro», no «I incentro»). \
@@ -132,10 +132,28 @@ pub fn para_la_nube(lista: &mut [Herramienta]) {
             PROBLEMA => {
                 "Es LA herramienta para «pasa en limpio el problema/ejercicio» (no hoja_a_lienzo). El enunciado SIN las formulas; cada formula entera una sola vez en «ecuaciones» \
                  (LaTeX: \\frac, \\int_a^b, \\sqrt, matrices con \\begin{bmatrix}, sistemas con \\begin{cases}); incognitas en LaTeX; «figura» SOLO si la foto trae un dibujo \
-                 necesario (triangulo, circuito, plano inclinado), nunca para integrales, matrices o ecuaciones."
+                 necesario (triangulo, circuito, plano inclinado), nunca para integrales, matrices o ecuaciones. \
+                 Si la foto no tiene un problema legible, dilo y no lo inventes. Solo si piden resolverlo pon los pasos, con cada cuenta en calculo."
             }
+            // 22-oct: lo que decian las instrucciones («si pide X usa Y»)
+            // vive ahora en su herramienta (`agente::instrucciones`).
+            CALCAR => "Tambien la imagen pegada en el lienzo, que llega como «imagen del lienzo». Una lamina con texto y figuras geometricas la pasa con rectas, \
+                       circunferencias, arcos, puntos y texto exactos. No la uses si piden dibujarla con figuras, a lapiz o con grafito (eso es interpretarla con \
+                       dibujar_en_lienzo o dibujar_svg), ni para una hoja con texto (hoja_a_lienzo) ni para una tabla (tabla_de_imagen). Ejemplo: {\"detalle\":\"medio\"}.",
+            SVG => "Usala para ilustraciones con curvas o detalle (personas, animales, arboles, isometricos): formas cerradas con fill, pocas y bien puestas, viewBox ajustado; \
+                    varias vistas o posiciones, un solo SVG con grupos separados. No para diagramas, tablas ni geometria exacta: eso es dibujar_en_lienzo o geometria_precisa.",
+            FUNCION => "Nunca calcules tu los puntos: polares, parametricas, raices, extremos, tangentes, areas y asintotas tambien van con ella, y la app te devuelve los valores. \
+                        Para datos sueltos (ventas por mes) es grafica.",
+            FISICA => "Usala para un diagrama de fisica (fuerzas, plano inclinado, tiro, circuito, MRU) con el tipo y los datos del enunciado; si falta un dato, pon un valor tipico y dilo. \
+                       Los resultados (alcance, aceleracion, corriente) los calcula la app: repitelos tal cual, no los calcules tu.",
+            GRAFICA => "Usala cuando den datos con sus etiquetas (ventas por mes, una encuesta); para una formula es graficar_funcion. \
+                        Ejemplo: {\"tipo\":\"barras\",\"titulo\":\"Ventas\",\"etiquetas\":[\"Ene\",\"Feb\"],\"valores\":[120,95]}.",
+            AYUDA => "Contesta con lo que diga, sin inventar menus ni atajos. No la uses para hacer algo en la app: para eso esta su herramienta.",
+            OCR => "Despues el texto es tuyo: resumelo, traducelo o pasalo a donde pidan con su herramienta.",
+            crate::acciones_documentos::ABRIR => "Nombra el archivo con las palabras del usuario; nunca le pidas rutas ni codigos. Si te dice que hay varios, pregunta cual con esa lista corta.",
             "nota_nueva" => "Solo si piden una nota o un apunte: una tabla, un diagrama o una grafica van al lienzo.",
             crate::hoja::NOMBRE => "Tambien es la de «calca/pasa esta pagina al lienzo» con un PDF adjunto (calcar_imagen solo calca fotos). \
+                                    Usala si la foto o el PDF es una hoja con texto (apuntes, un articulo, un escaneo) que piden pasar, poner o digitalizar en el lienzo: la interpreta entera (texto, tablas, formulas, fotos). \
                                     NO para pasar en limpio o resolver un problema o ejercicio: eso es problema_en_limpio.",
             // Banco de documentos (15-oct): «convierte estas formulas a LaTeX»
             // acababa dibujado en el lienzo sin una linea de LaTeX en la respuesta.
@@ -147,7 +165,8 @@ pub fn para_la_nube(lista: &mut [Herramienta]) {
             crate::acciones_documentos::ANOTAR => "Solo PDF, Word, PowerPoint o plano, y para un texto concreto que dice el usuario. \
                                                    NUNCA para «lo importante», resumir o explicar al margen, ni varias notas a mano: eso es anotar_inteligente, en UNA llamada.",
             crate::anotacion::NOMBRE => "Es LA herramienta para «señala/marca lo importante», «resume cada seccion al margen», «explica paso a paso» o «marca los errores» \
-                                         en un documento, foto o Excel del chat: lee y coloca ella sola, en una llamada (no escribas tu las notas con anotar_documento).",
+                                         en un documento, foto o Excel del chat: lee y coloca ella sola, en una llamada (no escribas tu las notas con anotar_documento). \
+                                         Tambien numerar pasos, resumir paginas o secciones, un glosario o preguntas de repaso; pasale el pedido del usuario.",
             // «Haz esta tabla en el lienzo» acababa como tabla del chat.
             crate::acciones_documentos::TABLA => "Con «destino»:«lienzo» la dibuja en el lienzo IGUAL que en la foto (letra, anchos, colores de fondo y borde medidos): \
                                                   es LA forma de «haz/pasa/copia esta tabla en el lienzo», no la dibujes tu.",

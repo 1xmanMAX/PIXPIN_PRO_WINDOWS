@@ -175,6 +175,22 @@ pub fn pide_interpretar(q: &str) -> bool {
     .any(|c| q.contains(c))
 }
 
+/// Las herramientas de reescribir lo escrito en el lienzo, por orden: la de
+/// editar textos (la anade la tabla de editar; si aun no esta, se salta) y
+/// la de encontrar sus #id.
+pub const REESCRIBIR_TEXTOS: &[&str] = &["editar_texto", crate::edicion::SELECCIONAR];
+
+/// Si el pedido es reescribir textos que ya estan: traducirlos o corregir su
+/// ortografia. (`q` ya normalizado: sin tildes y en minusculas.)
+pub fn pide_reescribir_textos(q: &str) -> bool {
+    [
+        "traduc", "translat", "en ingles", "al ingles", "al espanol", "al chino", "al frances", "corrige las tildes",
+        "corrige tildes", "pon las tildes", "ponle tildes", "ortografia", "faltas de", "acentos", "tildes",
+    ]
+    .iter()
+    .any(|c| q.contains(c))
+}
+
 /// **Las herramientas para este pedido.** `con_imagen`: si el mensaje trae
 /// una foto (para calcarla).
 ///
@@ -248,6 +264,18 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     // Editar lo que ya hay en el lienzo (tabla de `edicion.rs`).
     for f in crate::edicion::filas() {
         puntuadas.push((puntuar(f.claves, &q, &palabras), crate::edicion::herramienta(f)));
+    }
+    // «Traduce la figura», «corrige las tildes» (22-oct): es leer lo escrito
+    // en el lienzo y reescribirlo; el idioma lo pone el modelo. Arriba del
+    // todo las de editar texto (`editar_texto`, si la tabla de editar ya la
+    // tiene) y la de buscar los #id.
+    if pide_reescribir_textos(&q) {
+        for n in REESCRIBIR_TEXTOS.iter().rev() {
+            if let Some(f) = crate::edicion::fila(n) {
+                puntuadas.retain(|(_, h)| h.nombre != *n);
+                puntuadas.insert(0, (u32::MAX, crate::edicion::herramienta(f)));
+            }
+        }
     }
     // Estable: a igual puntuacion, el orden del catalogo.
     puntuadas.sort_by(|a, b| b.0.cmp(&a.0));
@@ -560,5 +588,19 @@ mod pruebas {
         }
         // Caso negativo: una pregunta sobre la app sigue siendo de la ayuda.
         assert_eq!(nombres("¿Donde estan los ajustes de PixPin?", false), vec!["ayuda_app"]);
+    }
+
+    /// «Traduce la figura» (22-oct): antes no le daba nada que editara los
+    /// textos y el modelo decia que no tenia herramienta.
+    #[test]
+    fn traducir_o_corregir_tildes_da_las_de_reescribir_textos() {
+        for pedido in ["Traduce esta figura al inglés", "translate the diagram to Spanish", "Corrige las tildes del lienzo"] {
+            let n = nombres(pedido, false);
+            assert_eq!(n.first().map(String::as_str), Some(REESCRIBIR_TEXTOS.iter().copied().find(|t| crate::edicion::fila(t).is_some()).unwrap()), "{pedido}: {n:?}");
+            assert!(n.iter().any(|x| x == crate::edicion::SELECCIONAR), "{pedido}: {n:?}");
+        }
+        // Negativos: dibujar o preguntar por la app no son reescribir textos.
+        assert!(!nombres("dibuja una casa", false).iter().any(|x| x == crate::edicion::SELECCIONAR));
+        assert!(!pide_reescribir_textos("dibuja un circulo rojo"));
     }
 }

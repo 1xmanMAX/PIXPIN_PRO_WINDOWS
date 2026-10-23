@@ -53,6 +53,9 @@ pub struct EjecutorDelChat {
     /// Enganches de las acciones de la app (ver `acciones.rs`).
     confirmar: super::acciones::Confirmar,
     mandar: super::acciones::Mandar,
+    /// Por donde preguntar con opciones (`preguntar_usuario`): la burbuja
+    /// del chat. Sin el (Flow, automatizaciones) no se ofrece.
+    preguntar: Option<super::acciones::Preguntar>,
     /// Donde viven los chats: con ella, las tareas se piden por su nombre
     /// (`acciones::FuenteDeLaApp`).
     raiz: Option<std::path::PathBuf>,
@@ -92,6 +95,7 @@ impl EjecutorDelChat {
             destino: None,
             confirmar: super::acciones::decir_que_no(),
             mandar: super::acciones::mandar_a_pixpin(),
+            preguntar: None,
             raiz: None,
             nube: false,
             citas: Default::default(),
@@ -154,6 +158,12 @@ impl EjecutorDelChat {
     ) -> EjecutorDelChat {
         self.confirmar = confirmar;
         self.mandar = mandar;
+        self
+    }
+
+    /// Por donde hacer las preguntas con opciones (la burbuja del chat).
+    pub fn con_preguntar(mut self, preguntar: super::acciones::Preguntar) -> EjecutorDelChat {
+        self.preguntar = Some(preguntar);
         self
     }
 
@@ -668,6 +678,17 @@ impl Ejecutor for EjecutorDelChat {
         match m.zona {
             pixpin_ia::ojos::Zona::Documento => self.ver_documento(m),
             _ => self.ver_lienzo(m),
+        }
+    }
+
+    fn puede_preguntar(&self) -> bool {
+        self.preguntar.is_some()
+    }
+
+    fn preguntar(&mut self, p: &pixpin_ia::preguntar::Pregunta) -> pixpin_ia::preguntar::Contestada {
+        match &self.preguntar {
+            Some(f) => f(p),
+            None => pixpin_ia::preguntar::Contestada::SinRespuesta,
         }
     }
 
