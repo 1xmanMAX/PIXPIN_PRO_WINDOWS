@@ -343,6 +343,9 @@ pub struct MotorGuionado {
     pub recibido: Mutex<Vec<Peticion>>,
     /// Si dice que ve imagenes ([`Motor::ve_imagenes`]).
     pub vision: bool,
+    /// Si hace de motor de la nube ([`Motor::catalogo_completo`]): las
+    /// pruebas de lo que solo tiene la nube (preguntar al usuario).
+    pub nube: bool,
 }
 
 impl MotorGuionado {
@@ -351,7 +354,14 @@ impl MotorGuionado {
             guion: Mutex::new(guion.into()),
             recibido: Mutex::new(Vec::new()),
             vision: false,
+            nube: false,
         }
+    }
+
+    /// El mismo, como si fuera de la nube.
+    pub fn como_nube(mut self) -> MotorGuionado {
+        self.nube = true;
+        self
     }
 
     /// El mismo, diciendo que ve imagenes.
@@ -362,6 +372,10 @@ impl MotorGuionado {
 }
 
 impl Motor for MotorGuionado {
+    fn catalogo_completo(&self) -> bool {
+        self.nube
+    }
+
     fn ve_imagenes(&self) -> bool {
         self.vision
     }

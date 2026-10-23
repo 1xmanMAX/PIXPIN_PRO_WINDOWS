@@ -70,6 +70,42 @@ pub fn confirmar_en_la_burbuja(tx: Sender<Aviso>, parar: Arc<AtomicBool>) -> Con
     })
 }
 
+/// Hace al usuario una pregunta con opciones (`preguntar_usuario`) y espera.
+pub type Preguntar = Box<dyn Fn(&pixpin_ia::preguntar::Pregunta) -> pixpin_ia::preguntar::Contestada + Send>;
+
+/// **La pregunta con opciones va a la burbuja** (22-oct-2026), por el mismo
+/// canal que la de confirmar, y se espera lo que elija o escriba. El chat
+/// cerrado (el `Sender` murio con su sesion), «parar» o un canal sin nadie
+/// escuchando son [`Contestada::SinRespuesta`]: el turno sigue con la
+/// opcion recomendada.
+///
+/// [`Contestada::SinRespuesta`]: pixpin_ia::preguntar::Contestada::SinRespuesta
+pub fn preguntar_en_la_burbuja(tx: Sender<Aviso>, parar: Arc<AtomicBool>) -> Preguntar {
+    use pixpin_ia::preguntar::Contestada;
+    Box::new(move |pregunta| {
+        let (responder, rx) = channel();
+        if tx
+            .send(Aviso::Preguntar {
+                pregunta: pregunta.clone(),
+                responder,
+            })
+            .is_err()
+        {
+            return Contestada::SinRespuesta;
+        }
+        loop {
+            if parar.load(Ordering::Relaxed) {
+                return Contestada::SinRespuesta;
+            }
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(c) => return c,
+                Err(RecvTimeoutError::Disconnected) => return Contestada::SinRespuesta,
+                Err(RecvTimeoutError::Timeout) => {}
+            }
+        }
+    })
+}
+
 /// Lo que las pruebas mandaron a «PixPin» (nunca sale de verdad).
 #[cfg(test)]
 pub static MANDADOS_EN_PRUEBAS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
