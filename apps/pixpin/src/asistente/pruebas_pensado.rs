@@ -515,3 +515,46 @@ fn tras_conversacion_nueva_el_modelo_empieza_de_cero() {
     assert!(!chat::es_corte(&falsa));
     assert_eq!(chat::conversacion(&notas[..6]).len(), 6);
 }
+
+/// **La memoria de largo plazo en el turno** (22-oct-2026): tras
+/// «Conversación nueva» el modelo recibe solo las instrucciones, el perfil
+/// y el indice, y la pregunta; al reiniciar al 70 % sale lo que se deja de
+/// mandar, para guardarlo antes en la memoria.
+#[test]
+fn la_conversacion_nueva_empieza_con_solo_la_memoria() {
+    use super::chat;
+    let raiz = std::env::temp_dir().join(format!("pixpin-memoria-nueva-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&raiz);
+    let f = pixpin_proyecto::almacen::asegurar_asistente(&raiz, 1, "PC01").unwrap();
+    let carpeta = pixpin_proyecto::almacen::carpeta(&raiz, &f.id);
+    let m = super::memoria::en(&raiz, &f.id, &carpeta, "PC01", "Claude Haiku 5.5", "2026-10-22");
+    m.ejecutar(r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Se llama Max. Respuestas cortas."}"#);
+    m.ejecutar(r#"{"command":"create","path":"/memoria/obra.md","file_text":"# La obra de la calle Mayor va por la planta 2"}"#);
+    let bloque = super::memoria::bloque(Some(&m));
+    let mut notas: Vec<Nota> = (1..=6).map(|n| nota(n, n % 2 == 0, &format!("viejo {n}"))).collect();
+    let mut corte = nota(7, true, chat::TEXTO_NUEVA_CONVERSACION);
+    corte.resto.insert(chat::NUEVA_CONVERSACION.into(), serde_json::Value::Bool(true));
+    notas.push(corte);
+    // Lo que hace `lanzar_con`: las de antes, desde el corte (ninguna).
+    let anteriores = chat::desde_el_corte(&notas);
+    let mut hoja = HojaDeTrabajo::default();
+    let catalogo = pixpin_ia::herramientas::catalogo();
+    let p = pensado::preparar_con_memoria(&mut hoja, anteriores, "¿por donde iba la obra?", pensado::VENTANA_NUBE, &catalogo, Some(&bloque));
+    assert_eq!(p.historial.len(), 2, "sistema y pregunta, nada mas");
+    let sistema = p.historial[0].texto_entero();
+    assert!(sistema.starts_with(&pixpin_ia::agente::instrucciones()[..40]));
+    assert!(sistema.contains("Se llama Max") && sistema.contains("planta 2"), "{sistema}");
+    assert!(!sistema.contains("# Hoja de trabajo") && !sistema.contains("viejo"));
+    assert!(p.olvidado.is_empty() && !p.reiniciado);
+    // Sin memoria (el local), el sistema de siempre.
+    let mut hoja = HojaDeTrabajo::default();
+    let (h, _) = pensado::preparar_con_hoja(&mut hoja, anteriores, "x", pensado::VENTANA_NUBE, &catalogo);
+    assert!(!h[0].texto_entero().contains("Memoria del usuario"));
+    // Al pasar del 70 %, lo que se deja de mandar sale para la memoria.
+    let largas: Vec<Nota> = (1..=40).map(|n| nota(n, n % 2 == 0, &format!("larga {n} {}", "x".repeat(4000)))).collect();
+    let mut hoja = HojaDeTrabajo::default();
+    let p = pensado::preparar_con_memoria(&mut hoja, &largas, "x", pensado::VENTANA_NUBE, &catalogo, Some(&bloque));
+    assert!(p.reiniciado);
+    assert_eq!(p.olvidado.len(), 40 - pixpin_ia::contexto::QUEDAN_AL_REINICIAR);
+    assert!(p.olvidado[0].1.starts_with("larga 1 ") && p.historial[0].texto_entero().contains("Se llama Max"));
+}

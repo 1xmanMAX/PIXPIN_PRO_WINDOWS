@@ -109,6 +109,7 @@ pub mod hoja;
 pub mod hoja_trabajo;
 pub mod lienzo;
 pub mod lint;
+pub mod memoria;
 pub mod modelos;
 pub mod motor;
 pub mod nube;

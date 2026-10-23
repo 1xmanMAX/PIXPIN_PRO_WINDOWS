@@ -203,6 +203,8 @@ chat-sistema-quitar-letra = Quitar la letra
 chat-sistema-figuras-menu = Figuras guardadas del lienzo
 chat-sistema-figuras-aviso = Las figuras guardadas se usan desde el menú de figuras del lienzo
 chat-sistema-automatizaciones-menu = Automatizaciones (en Ajustes → Asistente)
+chat-sistema-memoria = Memoria
+chat-sistema-memoria-menu = Memoria del asistente (abrir su carpeta para leerla o cambiarla)
 # El chat como el de PixPin Android (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] 1 cosa

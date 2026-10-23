@@ -6907,8 +6907,15 @@ fn resumen_de_sistema(mensajes: &[pixpin_proyecto::cuaderno::Mensaje], textos: &
     if de_sistema.iter().any(|m| m.id == crate::automatizaciones::ID_MENSAJE) {
         partes.push(textos.t("chat-sistema-automatizaciones"));
     }
+    // La memoria del asistente (22-oct): un mensaje por fichero, una sola
+    // entrada en la franja.
+    let memoria = de_sistema.iter().filter(|m| m.id.starts_with(crate::asistente::memoria::PREFIJO_ID)).count();
+    if memoria > 0 {
+        partes.push(format!("{}: {memoria}", textos.t("chat-sistema-memoria")));
+    }
     let otros = de_sistema.len()
         - letras
+        - memoria
         - de_sistema
             .iter()
             .filter(|m| m.id == crate::biblioteca_figuras::ID_MENSAJE || m.id == crate::automatizaciones::ID_MENSAJE)
@@ -6924,8 +6931,16 @@ fn resumen_de_sistema(mensajes: &[pixpin_proyecto::cuaderno::Mensaje], textos: &
 /// burbuja antes), las figuras y las automatizaciones con donde se usan.
 fn menu_de_sistema(a: &Abierto, textos: &Catalogo) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
+    let mut con_memoria = false;
     for (i, m) in a.mensajes.iter().enumerate().filter(|(_, m)| pixpin_proyecto::cuaderno::es_de_sistema(m)) {
-        if m.id.starts_with("auto-letra-") {
+        if m.id.starts_with(crate::asistente::memoria::PREFIJO_ID) {
+            // Una entrada para toda la memoria: abre su carpeta, donde se lee
+            // y se cambia con cualquier editor.
+            if !con_memoria {
+                con_memoria = true;
+                v.push(entrada(None, textos.t("chat-sistema-memoria-menu"), Accion::AbrirMemoria).separada());
+            }
+        } else if m.id.starts_with("auto-letra-") {
             let mut e = entrada(
                 Some(&mi::DELETE),
                 format!("{} {}", textos.t("chat-sistema-quitar-letra"), m.nombre),
@@ -15253,6 +15268,8 @@ enum Accion {
     AdjPaginaHoja(String, String),
     /// Los ajustes de PixPin, los mismos de la bandeja.
     Ajustes,
+    /// La carpeta de la memoria del asistente, en el Explorador (22-oct).
+    AbrirMemoria,
     /// Una de las siete del movil, por su palabra de `Mensaje.miniapp`. La
     /// palabra es el dato guardado y no se renombra (`MiniApps.kt:94-99`).
     AdjMini(&'static str),
@@ -17171,6 +17188,10 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Efecto::Aviso(cx.textos.t("chat-ajustes-bandeja"))
             }
         }
+        Accion::AbrirMemoria => match crate::asistente::memoria::abrir_carpeta(raiz) {
+            Ok(()) => Efecto::Nada,
+            Err(e) => fallo(&e),
+        },
         // El editor de notas vive en su hilo, como el lector: el chat sigue
         // usable detras, y lo guardado le llega por `refrescar` (H12).
         Accion::AdjNotaMd => {
