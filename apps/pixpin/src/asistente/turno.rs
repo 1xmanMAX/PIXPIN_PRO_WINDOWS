@@ -78,6 +78,12 @@ pub struct Memoria {
     pub ampliar: bool,
     /// Las ordenes simples sin modelo (`pixpin_ia::rapido`, 14-oct).
     pub rapido: bool,
+    /// **La memoria de largo plazo** (22-oct, `asistente::memoria`): con la
+    /// nube, el perfil y el indice en el sistema y la herramienta `memoria`.
+    pub largo_plazo: Option<pixpin_ia::memoria::Memoria>,
+    /// Lo que el reinicio dejo de mandar: se guarda lo duradero en segundo
+    /// plano mientras el turno contesta.
+    pub a_guardar: Vec<(bool, String)>,
 }
 
 /// El modelo de vision de los turnos de las pruebas (en la app sale de
@@ -308,6 +314,15 @@ impl Turno {
                     }
                 }
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
+                // La memoria de largo plazo, solo con la nube (el local no
+                // se toca). Lo que el reinicio dejo atras, a la memoria sin
+                // esperar.
+                let largo_plazo = memoria.largo_plazo.clone().filter(|_| motor.catalogo_completo());
+                if let Some(m) = &largo_plazo
+                    && !memoria.a_guardar.is_empty()
+                {
+                    super::memoria::guardar_en_segundo_plano(motor.clone(), m.clone(), memoria.a_guardar.clone());
+                }
                 // Lo que la vuelta de planear puede anadir: al local, sin las de
                 // solo la nube (`acciones::SOLO_NUBE`, «la IA local, no la toques»).
                 let nube = motor.catalogo_completo();
@@ -329,6 +344,7 @@ impl Turno {
                     rapido: memoria.rapido.then(super::rapido::ahora),
                     ojos,
                     revisar: if ojos { revisiones(motor.as_ref()) } else { 0 },
+                    memoria: largo_plazo.as_ref(),
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(

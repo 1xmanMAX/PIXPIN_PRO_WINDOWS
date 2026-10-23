@@ -54,6 +54,7 @@ pub mod pensado;
 pub mod rapido;
 pub mod turno;
 pub mod en_el_chat;
+pub mod memoria;
 
 #[cfg(test)]
 mod pruebas;

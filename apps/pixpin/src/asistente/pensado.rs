@@ -255,20 +255,35 @@ pub fn preparar_turno(
 ) -> (Vec<Mensaje>, Memoria) {
     let mut hoja = hoja_del_chat(raiz, ficha, anteriores);
     let fuentes = fuentes(anteriores, &hoja);
-    let (historial, reiniciado) =
-        preparar_con_hoja(&mut hoja, anteriores, pregunta, ventana, herramientas);
+    // La memoria de largo plazo (22-oct), solo con la nube: la IA local
+    // esta congelada y su ventana no da para mas.
+    let largo_plazo = (ventana >= VENTANA_NUBE)
+        .then(|| super::memoria::de(raiz, &quien_escribe(raiz)))
+        .flatten();
+    let bloque = super::memoria::bloque(largo_plazo.as_ref());
+    let p = preparar_con_memoria(&mut hoja, anteriores, pregunta, ventana, herramientas, largo_plazo.as_ref().map(|_| bloque.as_str()));
     let memoria = Memoria {
         hoja,
         fuentes,
         pensar,
         planificar: true,
         ventana,
-        reiniciado,
+        reiniciado: p.reiniciado,
         ampliar: true,
         // El camino rapido (14-oct).
         rapido: true,
+        largo_plazo,
+        a_guardar: p.olvidado,
     };
-    (historial, memoria)
+    (p.historial, memoria)
+}
+
+/// Quien firma lo que se guarda en la memoria: el modelo elegido.
+fn quien_escribe(raiz: &Path) -> String {
+    match super::nube::eleccion_reciente(raiz) {
+        super::nube::Eleccion::Nube(p) => p.nombre().to_string(),
+        super::nube::Eleccion::Local => "modelo local".into(),
+    }
 }
 
 /// Lo de [`preparar_turno`] sin disco, para probarlo: desde el ultimo
@@ -280,6 +295,33 @@ pub fn preparar_con_hoja(
     ventana: u32,
     herramientas: &[Herramienta],
 ) -> (Vec<Mensaje>, bool) {
+    let p = preparar_con_memoria(hoja, anteriores, pregunta, ventana, herramientas, None);
+    (p.historial, p.reiniciado)
+}
+
+/// Lo que deja [`preparar_con_memoria`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Preparado {
+    pub historial: Vec<Mensaje>,
+    pub reiniciado: bool,
+    /// Si se reinicio: lo que se deja de mandar (`(es_del_usuario, texto)`),
+    /// para guardar antes lo duradero en la memoria (el 2.º escalon).
+    pub olvidado: Vec<(bool, String)>,
+}
+
+/// **Lo mismo con la memoria de largo plazo** (`bloque`: el perfil y el
+/// indice, `memoria::bloque`; `None`: sin memoria, ni su herramienta) en el
+/// sistema, detras de las instrucciones y antes de la hoja: cuenta en la
+/// ventana como lo demas. Tras «Conversación
+/// nueva» el turno empieza con solo esto: instrucciones, memoria y pregunta.
+pub fn preparar_con_memoria(
+    hoja: &mut HojaDeTrabajo,
+    anteriores: &[Nota],
+    pregunta: &str,
+    ventana: u32,
+    herramientas: &[Herramienta],
+    bloque: Option<&str>,
+) -> Preparado {
     let mut conv = super::chat::conversacion_con_ids(anteriores);
     if let Some(desde) = hoja.reinicio_desde.as_deref()
         && let Some(i) = conv.iter().position(|(id, _, _, _)| id == desde)
@@ -293,9 +335,13 @@ pub fn preparar_con_hoja(
         .iter()
         .map(|(_, _, u, t)| (*u, t.chars().take(largo).collect()))
         .collect();
-    let sistema = contexto::sistema_con_hoja(&pixpin_ia::agente::instrucciones(), hoja, None);
+    let base = pixpin_ia::memoria::con_memoria(&pixpin_ia::agente::instrucciones(), bloque.unwrap_or_default());
+    let sistema = contexto::sistema_con_hoja(&base, hoja, None);
     let mut herramientas = herramientas.to_vec();
     herramientas.push(contexto::herramienta_buscar());
+    if bloque.is_some() {
+        herramientas.push(pixpin_ia::memoria::herramienta());
+    }
     let p = contexto::preparar(
         sistema,
         &pares,
@@ -304,11 +350,17 @@ pub fn preparar_con_hoja(
         ventana,
         contexto::RESERVA_RESPUESTA,
     );
+    let mut olvidado = Vec::new();
     if p.reiniciado {
         hoja.reinicio_desde = conv.get(p.primero).map(|(id, _, _, _)| id.clone());
         hoja.reinicios += 1;
+        olvidado = pares[..p.primero.min(pares.len())].to_vec();
     }
-    (p.historial, p.reiniciado)
+    Preparado {
+        historial: p.historial,
+        reiniciado: p.reiniciado,
+        olvidado,
+    }
 }
 
 #[cfg(test)]

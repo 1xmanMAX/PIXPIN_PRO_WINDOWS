@@ -124,6 +124,10 @@ pub struct Opciones<'a> {
     /// Rondas de revision tras un turno que dibujo o anoto (0: ninguna; como
     /// mucho [`REVISIONES_MAXIMAS`]). Solo con `ojos` y un motor que ve.
     pub revisar: usize,
+    /// **La memoria de largo plazo** (22-oct, `memoria.rs`): con ella el
+    /// sistema lleva el perfil y el indice, el modelo tiene la herramienta
+    /// `memoria`, y al reiniciar dentro del turno guarda antes lo duradero.
+    pub memoria: Option<&'a crate::memoria::Memoria>,
 }
 
 /// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
@@ -412,20 +416,39 @@ fn planear(
     Ok(Some(plan))
 }
 
-/// Mide el historial y, si pasa del 70 %, poda los resultados viejos y, si
-/// no basta, reinicia. Avisa si cambio.
+/// Mide el historial en tres escalones (22-oct): desde el 50 % despeja los
+/// resultados de herramientas viejos (quedan los 3 ultimos); al 70 % poda
+/// los demas y, si no basta, guarda lo duradero en la memoria (si la hay) y
+/// reinicia. Avisa si el 70 % cambio algo.
 fn vigilar_contexto(
+    motor: &dyn Motor,
     historial: &mut Vec<Mensaje>,
     herramientas: &[Herramienta],
     ventana: u32,
+    memoria: Option<&crate::memoria::Memoria>,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) {
     let antes = contexto::estimar(historial, herramientas);
+    if contexto::pasa_de(antes, contexto::RESERVA_RESPUESTA, ventana, contexto::UMBRAL_DESPEJAR) {
+        contexto::despejar_resultados(historial, contexto::QUEDAN_RESULTADOS);
+    }
     if !contexto::pasa_del_umbral(antes, contexto::RESERVA_RESPUESTA, ventana) {
         return;
     }
     contexto::podar_en_turno(historial);
     if contexto::pasa_del_umbral(contexto::estimar(historial, herramientas), contexto::RESERVA_RESPUESTA, ventana) {
+        // Lo que se va a dejar de ver, a la memoria antes de olvidarlo.
+        if let Some(m) = memoria {
+            let u = historial.iter().rposition(|m| m.rol == Rol::Usuario).unwrap_or(0);
+            let conv: Vec<(bool, String)> = historial[..u]
+                .iter()
+                .filter(|m| matches!(m.rol, Rol::Usuario | Rol::Asistente) && m.llamadas.is_empty())
+                .map(|m| (m.rol == Rol::Usuario, m.texto_entero()))
+                .collect();
+            if let Err(e) = crate::memoria::guardar_lo_duradero(motor, m, &crate::memoria::transcripcion(&conv)) {
+                tracing::warn!(%e, "asistente: no se pudo guardar en la memoria antes de reiniciar");
+            }
+        }
         *historial = contexto::reiniciar(historial);
     }
     let despues = contexto::estimar(historial, herramientas);
@@ -470,6 +493,9 @@ fn turno_dentro(
     if opciones.buscar.is_some() && !lista.iter().any(|h| h.nombre == contexto::BUSCAR_HISTORIAL) {
         lista.push(contexto::herramienta_buscar());
     }
+    if opciones.memoria.is_some() && !lista.iter().any(|h| h.nombre == crate::memoria::NOMBRE) {
+        lista.push(crate::memoria::herramienta());
+    }
     // Los ojos (15-oct): `ver_lienzo` solo si el motor ve imagenes.
     let ojos = opciones.ojos && motor.ve_imagenes();
     lista.retain(|h| h.nombre != crate::ojos::NOMBRE);
@@ -509,11 +535,17 @@ fn turno_dentro(
         }
     }
     let herramientas = &lista[..];
-    if opciones.hoja.is_some() || plan.is_some() {
+    if opciones.hoja.is_some() || plan.is_some() || opciones.memoria.is_some() {
         let base = match historial.first() {
             Some(m) if m.rol == Rol::Sistema => m.texto_entero(),
             _ => instrucciones(),
         };
+        // Solo lo fijo: si el sistema ya traia la hoja (`preparar`), no se
+        // pone dos veces.
+        let mut base = contexto::partir_sistema(&base).0.to_string();
+        if let Some(m) = opciones.memoria {
+            base = crate::memoria::con_memoria(&base, &m.bloque_para_el_sistema(crate::memoria::PRESUPUESTO_SISTEMA));
+        }
         let hoja = opciones.hoja.cloned().unwrap_or_default();
         contexto::poner_sistema(historial, contexto::sistema_con_hoja(&base, &hoja, plan.as_ref()));
     }
@@ -637,7 +669,7 @@ fn vueltas(
     let mut hechas_aqui = 0;
     for _ in 0..VUELTAS + REINTENTOS {
         if opciones.ventana > 0 {
-            vigilar_contexto(historial, herramientas, opciones.ventana, al_evento);
+            vigilar_contexto(motor, historial, herramientas, opciones.ventana, opciones.memoria, al_evento);
         }
         let mut peticion = Peticion::nueva(historial.clone());
         let ofrecidas: Vec<Herramienta> = herramientas
@@ -711,6 +743,22 @@ fn vueltas(
         // respuesta («dibuja y mira como quedo»).
         let mut miradas: Vec<(usize, crate::ojos::Mirada)> = Vec::new();
         for cruda in &respuesta.llamadas {
+            // La memoria tampoco: es un almacen de ficheros, el mismo para
+            // todos los modelos (`memoria.rs`).
+            if let Some(m) = opciones.memoria.filter(|_| cruda.nombre.trim() == crate::memoria::NOMBRE) {
+                let texto = m.ejecutar(&cruda.argumentos);
+                let ok = !texto.starts_with("ERROR");
+                alguna_mal |= !ok;
+                est.hechas += usize::from(ok);
+                hechas_aqui += usize::from(ok);
+                al_evento(Evento::Resultado {
+                    nombre: crate::memoria::NOMBRE.to_string(),
+                    ok,
+                    texto: cortar(&texto, 300),
+                });
+                huecos.push((cruda.id.clone(), Some(recortar_resultado(texto))));
+                continue;
+            }
             // `buscar_historial` no es del chat: lo contesta el propio turno.
             if let Some(buscar) = opciones.buscar.filter(|_| cruda.nombre.trim() == contexto::BUSCAR_HISTORIAL) {
                 let texto = match contexto::consulta_de(&cruda.argumentos) {
