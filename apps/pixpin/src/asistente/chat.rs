@@ -544,6 +544,27 @@ impl EnVivo {
         self.estado = Some("✋ esperando tu respuesta…".into());
     }
 
+    /// **Una duda con opciones** (`preguntar_usuario`, 22-oct): la tarjeta la
+    /// pinta el chat; aqui solo el estado mientras espera.
+    pub fn preguntar_con_opciones(&mut self) {
+        self.estado = Some("✋ elige una opción o escribe la tuya…".into());
+    }
+
+    /// **La duda contestada queda en el historial**, en su linea:
+    /// «❓ ¿Traduzco todo o solo la figura? → ✅ Solo la figura». `respuesta`
+    /// `None`: nadie contesto y el turno sigue con la recomendada.
+    pub fn contestada_con_opciones(&mut self, pregunta: &str, respuesta: Option<&str>, recomendada: &str) {
+        if !self.texto.is_empty() && !self.texto.ends_with('\n') {
+            self.texto.push('\n');
+        }
+        let fin = match respuesta {
+            Some(r) => format!("✅ {}", r.trim()),
+            None => format!("⌛ sin respuesta: sigo con «{}»", recomendada.trim()),
+        };
+        self.texto.push_str(&format!("❓ {} → {fin}\n", pregunta.trim()));
+        self.estado = (!self.acabado).then(|| "💭 …".to_string());
+    }
+
     /// **La pregunta contestada queda en el historial**, en su linea:
     /// «❓ ¿Borrar la lista «Obra»? → ✅ Sí». `false` si no habia ninguna.
     pub fn contestar(&mut self, c: Contestacion) -> bool {

@@ -198,6 +198,9 @@ pub struct MotorNube {
     /// vuelta (el LaTeX de un recorte, `hoja::vision`), donde pensar solo
     /// anade segundos.
     ligero: bool,
+    /// Otro modelo del mismo proveedor (el critico de respaldo,
+    /// [`claude::MODELO_CRITICO`]); `None`: el de siempre.
+    modelo: Option<&'static str>,
 }
 
 /// **La web, apagada** en este proceso: la cuenta de Claude contesto que no
@@ -244,6 +247,7 @@ impl MotorNube {
             pensar: AtomicBool::new(true),
             esperas: ESPERAS.to_vec(),
             ligero: false,
+            modelo: None,
         }
     }
 
@@ -273,6 +277,13 @@ impl MotorNube {
     pub fn ligero(mut self) -> MotorNube {
         self.ligero = true;
         self.pensar = AtomicBool::new(false);
+        self
+    }
+
+    /// **Otro modelo** del mismo proveedor y con la misma clave (el critico
+    /// de respaldo de la revision: [`claude::MODELO_CRITICO`]).
+    pub fn con_modelo(mut self, modelo: &'static str) -> MotorNube {
+        self.modelo = Some(modelo);
         self
     }
 
@@ -309,6 +320,9 @@ impl MotorNube {
         };
         if self.proveedor == Proveedor::Claude && !web_disponible() {
             sin_la_web(&mut c);
+        }
+        if let Some(m) = self.modelo {
+            c["model"] = Value::String(m.into());
         }
         c
     }

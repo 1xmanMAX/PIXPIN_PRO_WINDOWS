@@ -438,6 +438,10 @@ fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(true);
                 }
+                // Como quien acepta lo recomendado.
+                Aviso::Preguntar { responder, .. } => {
+                    let _ = responder.send(pixpin_ia::preguntar::Contestada::Opcion(0));
+                }
                 Aviso::TextoLeido { texto, .. } => h.leido.push(texto),
                 Aviso::Registro(_) | Aviso::Citas(_) => {}
             }

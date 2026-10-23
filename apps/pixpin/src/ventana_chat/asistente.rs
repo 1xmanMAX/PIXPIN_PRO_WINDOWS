@@ -37,6 +37,7 @@ use super::*;
 use crate::asistente::chat::{self as ia_chat, EnVivo};
 use crate::asistente::descarga::{self as ia_descarga, AvisoDescarga, Descarga};
 use crate::asistente::turno::{Aviso, Turno};
+use pixpin_ia::preguntar::{Contestada, Pregunta};
 use pixpin_ia::modelos::GEMMA4_E2B;
 use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, pensado as ia_pensado, turno as ia_turno};
 
@@ -75,9 +76,36 @@ struct Sesion {
     /// La pregunta de confirmar que espera respuesta: por donde contestar y
     /// desde cuando espera.
     responder: Option<(std::sync::mpsc::Sender<bool>, Instant)>,
+    /// La duda con opciones que espera (`preguntar_usuario`): la pregunta,
+    /// por donde contestar, desde cuando y si se pulso «Otro…» (lo
+    /// siguiente que se escriba es la respuesta).
+    elegir: Option<Eleccion>,
+}
+
+/// Una duda con opciones en el aire.
+struct Eleccion {
+    pregunta: Pregunta,
+    responder: std::sync::mpsc::Sender<Contestada>,
+    desde: Instant,
+    otro: bool,
 }
 
 impl Sesion {
+    /// **Contesta la duda con opciones** (al turno y en la burbuja). `false`
+    /// si no habia ninguna.
+    fn elegir(&mut self, c: Contestada) -> bool {
+        let Some(e) = self.elegir.take() else { return false };
+        let recomendada = e.pregunta.opciones.first().map(|o| o.etiqueta.as_str()).unwrap_or("");
+        let respuesta = match &c {
+            Contestada::Opcion(n) => e.pregunta.opciones.get(*n).map(|o| o.etiqueta.clone()),
+            Contestada::Texto(t) => Some(t.clone()),
+            Contestada::SinRespuesta => None,
+        };
+        self.vivo.contestada_con_opciones(&e.pregunta.texto, respuesta.as_deref(), recomendada);
+        let _ = e.responder.send(c);
+        true
+    }
+
     /// Contesta la pregunta pendiente (al turno y en la burbuja).
     fn contestar(&mut self, c: ia_chat::Contestacion) -> bool {
         if let Some((tx, _)) = self.responder.take() {
@@ -92,7 +120,8 @@ impl Sesion {
 /// que el historial no se quede con una pregunta sin contestar.
 impl Drop for Sesion {
     fn drop(&mut self) {
-        if self.contestar(ia_chat::Contestacion::Caducada) {
+        let duda = self.elegir(Contestada::SinRespuesta);
+        if self.contestar(ia_chat::Contestacion::Caducada) || duda {
             let texto = self.vivo.mostrar();
             let carpeta = pixpin_proyecto::almacen::carpeta(&self.raiz, &self.proyecto);
             let _ = cuaderno::cambiar(&carpeta, &self.nota, |m| {
@@ -246,7 +275,13 @@ pub(super) fn motor_de_los_ajustes(
 /// esperando una respuesta que no iba a llegar, 13-oct).
 pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> Option<String> {
     let nueva = a.mensajes.last()?;
-    let pregunta = ia_chat::pregunta_de(nueva, a.ficha.es_asistente())?;
+    let para_el_asistente = ia_chat::pregunta_de(nueva, a.ficha.es_asistente());
+    // Si espera una duda con opciones, lo escrito es la respuesta.
+    let escrito = para_el_asistente.clone().unwrap_or_else(|| nueva.texto.clone());
+    if contestar_duda_escribiendo(a, &escrito, para_el_asistente.is_some()) {
+        return None;
+    }
+    let pregunta = para_el_asistente?;
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
@@ -403,6 +438,7 @@ fn lanzar_con(
             abrir,
             raiz,
             responder: None,
+            elegir: None,
             citas: Vec::new(),
         })
     });
@@ -541,6 +577,154 @@ pub(super) fn contestar(a: &mut Abierto, i: usize, si: bool) -> bool {
     true
 }
 
+/// **La duda con opciones** que espera en la burbuja `i`, si la hay.
+pub(super) fn eleccion_pendiente(a: &Abierto, i: usize) -> Option<(Pregunta, bool)> {
+    let m = a.mensajes.get(i)?;
+    SESIONES.with_borrow(|s| {
+        s.iter()
+            .find(|s| s.proyecto == a.ficha.id && s.nota == m.id)
+            .and_then(|s| s.elegir.as_ref().map(|e| (e.pregunta.clone(), e.otro)))
+    })
+}
+
+/// **Un boton de la tarjeta de opciones** de la burbuja `i`: `Some(n)` la
+/// opcion `n`; `None`, «Otro…» (lo siguiente que escriba es la respuesta;
+/// devuelve el aviso que se lo dice).
+pub(super) fn elegir(a: &mut Abierto, i: usize, opcion: Option<usize>, textos: &Catalogo) -> Option<String> {
+    let id = a.mensajes.get(i).map(|m| m.id.clone())?;
+    let texto = SESIONES.with_borrow_mut(|s| {
+        let s = s.iter_mut().find(|s| s.proyecto == a.ficha.id && s.nota == id)?;
+        match opcion {
+            Some(n) => s.elegir(Contestada::Opcion(n)).then(|| s.vivo.mostrar()),
+            None => {
+                if let Some(e) = s.elegir.as_mut() {
+                    e.otro = true;
+                }
+                None
+            }
+        }
+    });
+    match texto {
+        Some(texto) => {
+            if let Some(m) = a.mensajes.get_mut(i) {
+                m.texto = texto;
+            }
+            a.colocado.borrow_mut().ancho = 0;
+            None
+        }
+        None if opcion.is_none() => Some(textos.t("asistente-otro-escribe")),
+        None => None,
+    }
+}
+
+/// **Lo escrito contesta la duda** (al enviar): si este chat tiene una duda
+/// con opciones esperando y lo enviado es para el asistente (o se pulso
+/// «Otro…»), es la respuesta y no un pedido nuevo. Devuelve si la contesto.
+fn contestar_duda_escribiendo(a: &mut Abierto, texto: &str, para_el_asistente: bool) -> bool {
+    let proyecto = a.ficha.id.clone();
+    let hecho = SESIONES.with_borrow_mut(|s| {
+        let s = s.iter_mut().find(|s| {
+            s.proyecto == proyecto && s.elegir.as_ref().is_some_and(|e| e.otro || para_el_asistente)
+        })?;
+        s.elegir(Contestada::Texto(texto.trim().to_string()));
+        Some((s.nota.clone(), s.vivo.mostrar()))
+    });
+    let Some((nota, mostrar)) = hecho else { return false };
+    if let Some(m) = a.mensajes.iter_mut().find(|m| m.id == nota) {
+        m.texto = mostrar;
+    }
+    a.colocado.borrow_mut().ancho = 0;
+    true
+}
+
+/// Medidas de la tarjeta de opciones (al 100 %).
+const ELEGIR_TAM: f32 = 13.0;
+const ELEGIR_DESC_TAM: f32 = 11.5;
+const ELEGIR_AIRE: f32 = 10.0;
+const ELEGIR_HUECO: f32 = 6.0;
+const ELEGIR_RELLENO: f32 = 8.0;
+const ELEGIR_OTRO: f32 = 28.0;
+
+/// Lo que mide cada opcion (boton con su etiqueta y la descripcion debajo).
+fn alto_opcion(p: &Pintor, etiqueta: &str, descripcion: &str, ancho: f32, e: f32) -> f32 {
+    let dentro = ancho - 2.0 * (ELEGIR_AIRE + ELEGIR_RELLENO) * e;
+    let (_, h1) = p.medir_texto_ajustado(etiqueta, ELEGIR_TAM * e, dentro);
+    let h2 = if descripcion.trim().is_empty() {
+        0.0
+    } else {
+        2.0 * e + p.medir_texto_ajustado(descripcion, ELEGIR_DESC_TAM * e, dentro).1
+    };
+    2.0 * ELEGIR_RELLENO * e + h1 + h2
+}
+
+/// Lo que mide la tarjeta de opciones con ese ancho.
+pub(super) fn alto_eleccion(p: &Pintor, pregunta: &Pregunta, ancho: f32, e: f32) -> f32 {
+    let (_, alto_texto) = p.medir_texto_ajustado(&format!("❓ {}", pregunta.texto), ELEGIR_TAM * e, ancho - 2.0 * ELEGIR_AIRE * e);
+    let opciones: f32 = pregunta
+        .opciones
+        .iter()
+        .map(|o| alto_opcion(p, &o.etiqueta, &o.descripcion, ancho, e) + ELEGIR_HUECO * e)
+        .sum();
+    ELEGIR_AIRE * e + alto_texto + 8.0 * e + opciones + ELEGIR_OTRO * e + ELEGIR_AIRE * e
+}
+
+/// **Pinta la tarjeta de opciones**: la pregunta, un boton por opcion (la
+/// primera, la recomendada, rellena) y «Otro…». Apunta las zonas:
+/// `Some(n)` cada opcion, `None` «Otro…».
+pub(super) fn pintar_eleccion(
+    p: &Pintor,
+    caja: RectF,
+    pregunta: &Pregunta,
+    otro: bool,
+    tema: &Tema,
+    textos: &Catalogo,
+    e: f32,
+) -> Vec<(Rect, Option<usize>)> {
+    let azul = tema.enviar;
+    p.rellenar_redondeado(caja, 10.0 * e, con_alfa(azul, 0.08));
+    let aire = ELEGIR_AIRE * e;
+    let texto = format!("❓ {}", pregunta.texto);
+    let (_, alto_texto) = p.medir_texto_ajustado(&texto, ELEGIR_TAM * e, caja.ancho - 2.0 * aire);
+    p.texto_ajustado(&texto, caja.x + aire, caja.y + aire, ELEGIR_TAM * e, caja.ancho - 2.0 * aire, tema.texto);
+    let mut y = caja.y + aire + alto_texto + 8.0 * e;
+    let mut zonas = Vec::new();
+    let relleno = ELEGIR_RELLENO * e;
+    for (n, o) in pregunta.opciones.iter().enumerate() {
+        let alto = alto_opcion(p, &o.etiqueta, &o.descripcion, caja.ancho, e);
+        let b = RectF { x: caja.x + aire, y, ancho: caja.ancho - 2.0 * aire, alto };
+        let dentro = b.ancho - 2.0 * relleno;
+        let (color_texto, color_desc) = if n == 0 {
+            p.rellenar_redondeado(b, 8.0 * e, azul);
+            (hex(0xffffff), con_alfa(hex(0xffffff), 0.85))
+        } else {
+            p.rellenar_redondeado(b, 8.0 * e, azul);
+            let filete = (1.5 * e).max(1.0);
+            p.rellenar_redondeado(encoger(b, filete), 8.0 * e - filete, tema.burbuja_otra);
+            (azul, tema.texto)
+        };
+        let etiqueta = if n == 0 {
+            format!("{} · {}", o.etiqueta, textos.t("asistente-recomendada"))
+        } else {
+            o.etiqueta.clone()
+        };
+        let (_, h1) = p.medir_texto_ajustado(&etiqueta, ELEGIR_TAM * e, dentro);
+        p.texto_ajustado(&etiqueta, b.x + relleno, b.y + relleno, ELEGIR_TAM * e, dentro, color_texto);
+        if !o.descripcion.trim().is_empty() {
+            p.texto_ajustado(&o.descripcion, b.x + relleno, b.y + relleno + h1 + 2.0 * e, ELEGIR_DESC_TAM * e, dentro, color_desc);
+        }
+        zonas.push((a_rect(b), Some(n)));
+        y += alto + ELEGIR_HUECO * e;
+    }
+    // «Otro…»: pulsado, dice que se escriba abajo.
+    let rotulo = if otro { textos.t("asistente-otro-escribe") } else { textos.t("asistente-otro") };
+    let tam = ELEGIR_TAM * e;
+    let (w, h) = p.medir_texto(&rotulo, tam);
+    let b = RectF { x: caja.x + aire, y, ancho: (w + 24.0 * e).min(caja.ancho - 2.0 * aire), alto: ELEGIR_OTRO * e };
+    p.texto(&rotulo, b.x + 12.0 * e, b.y + (b.alto - h) / 2.0, tam, azul);
+    zonas.push((a_rect(b), None));
+    zonas
+}
+
 /// Medidas de la tarjeta (al 100 %).
 const CONFIRMAR_TAM: f32 = 13.0;
 const CONFIRMAR_AIRE: f32 = 10.0;
@@ -662,6 +846,10 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
             if caduca {
                 contestada = s.contestar(ia_chat::Contestacion::Caducada);
             }
+            // La duda sin contestar a tiempo: sigue con la recomendada.
+            if s.elegir.as_ref().is_some_and(|e| e.desde.elapsed() >= ia_chat::CADUCA_LA_PREGUNTA) {
+                contestada |= s.elegir(Contestada::SinRespuesta);
+            }
             if avisos.is_empty() && !contestada {
                 continue;
             }
@@ -674,6 +862,19 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                         s.vivo.preguntar(&pregunta);
                         s.responder = Some((responder, Instant::now()));
                         // Que se vea ya en el disco tambien.
+                        s.guardado = Instant::now() - GUARDAR_CADA;
+                    }
+                    Aviso::Preguntar { pregunta, responder } => {
+                        // Una anterior sin contestar (no deberia: el turno
+                        // espera) se da por no contestada.
+                        s.elegir(Contestada::SinRespuesta);
+                        s.vivo.preguntar_con_opciones();
+                        s.elegir = Some(Eleccion {
+                            pregunta,
+                            responder,
+                            desde: Instant::now(),
+                            otro: false,
+                        });
                         s.guardado = Instant::now() - GUARDAR_CADA;
                     }
                     Aviso::Citas(c) => s.citas = c,

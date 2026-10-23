@@ -235,7 +235,7 @@ mod pruebas {
         let m = en(&raiz, &f.id, &carpeta, "PC01", "Claude Haiku 5.5", "2026-10-22");
         let r = m.ejecutar(r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Habla espanol."}"#);
         assert!(r.contains("creado"), "{r}");
-        m.ejecutar(r#"{"command":"create","path":"/memoria/temas/obra.md","file_text":"# La obra de la calle Mayor"}"#);
+        m.ejecutar(r##"{"command":"create","path":"/memoria/temas/obra.md","file_text":"# La obra de la calle Mayor"}"##);
         m.ejecutar(r#"{"command":"str_replace","path":"/memoria/PERFIL.md","old_str":"espanol","new_str":"espanol, corto"}"#);
         let c = Cuaderno::leer_de(&carpeta).unwrap();
         let ids: Vec<&str> = c.mensajes.iter().map(|m| m.id.as_str()).filter(|i| i.starts_with(PREFIJO_ID)).collect();

@@ -1601,6 +1601,10 @@ pub fn abrir(
                                     asistente::contestar(a, i, si);
                                     Efecto::Nada
                                 }
+                                Zona::ElegirIa(i, opcion) => match asistente::elegir(a, i, opcion, textos) {
+                                    Some(t) => Efecto::Aviso(t),
+                                    None => Efecto::Nada,
+                                },
                                 Zona::CerrarRespuesta => {
                                     a.respondiendo = None;
                                     Efecto::Nada
@@ -6179,6 +6183,18 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 a.zonas.borrow_mut().push((r, Zona::ConfirmarIa(i, si)));
             }
         }
+        // La duda con opciones, en el mismo sitio (nunca hay las dos).
+        if let Some((pregunta, otro, alto_c)) = &piezas.elegir {
+            let caja = RectF {
+                x: dentro.x as f32,
+                y: y_hora - 4.0 * e - alto_c,
+                ancho: dentro.ancho as f32,
+                alto: *alto_c,
+            };
+            for (r, opcion) in asistente::pintar_eleccion(p, caja, pregunta, *otro, tema, textos, e) {
+                a.zonas.borrow_mut().push((r, Zona::ElegirIa(i, opcion)));
+            }
+        }
         let mut x = burbuja.x as f32 + h::RELLENO_X as f32 * e;
         // Lo del buzon: la franja roja a la izquierda dice «esto es temporal»
         // antes de leer nada, y el pie dice cuando llego y cuando se va, la
@@ -7114,6 +7130,7 @@ fn medir_mensaje(
             enlace: None,
             buzon: None,
             confirmar: None,
+            elegir: None,
             ia: None,
         };
         return (entrada, piezas);
@@ -7244,6 +7261,14 @@ fn medir_mensaje(
         sumar(&mut ancho, &mut alto, ancho_tarjeta, alto_c);
         (pregunta, alto_c)
     });
+    // La duda con opciones del asistente, igual de ancha que la de confirmar.
+    let elegir = asistente::eleccion_pendiente(a, indice).map(|(pregunta, otro)| {
+        let w = (asistente::CONFIRMAR_ANCHO_MIN * e).min(ancho_max);
+        let ancho_tarjeta = ancho.max(w).min(ancho_max);
+        let alto_c = asistente::alto_eleccion(p, &pregunta, ancho_tarjeta, e);
+        sumar(&mut ancho, &mut alto, ancho_tarjeta, alto_c);
+        (pregunta, otro, alto_c)
+    });
     // El renglon de abajo: la chapa, la etiqueta, la chincheta y la hora.
     let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
     let (ancho_hora, alto_hora) = p.medir_texto(&hora, HORA_TAM * e);
@@ -7305,6 +7330,7 @@ fn medir_mensaje(
         enlace,
         buzon,
         confirmar,
+        elegir,
         ia,
     };
     (entrada, piezas)
@@ -13683,6 +13709,9 @@ enum Zona {
     /// «Sí» (`true`) o «No» en la tarjeta de confirmar del asistente dentro
     /// de la burbuja de ese mensaje.
     ConfirmarIa(usize, bool),
+    /// Un boton de la duda con opciones del asistente en la burbuja `.0`:
+    /// la opcion `Some(n)` o «Otro…» (`None`).
+    ElegirIa(usize, Option<usize>),
     /// «Penso 12 s» de una respuesta del asistente: pliega y despliega lo
     /// que penso (`pensado`).
     Pensado(usize),
@@ -13774,6 +13803,9 @@ struct Piezas {
     /// La pregunta de confirmar del asistente que espera «Sí»/«No» en esta
     /// burbuja, y lo alta que es su tarjeta (`asistente::pintar_confirmacion`).
     confirmar: Option<(String, f32)>,
+    /// La duda con opciones del asistente (`preguntar_usuario`), si se
+    /// pulso «Otro…», y lo alta que es su tarjeta (`asistente::pintar_eleccion`).
+    elegir: Option<(pixpin_ia::preguntar::Pregunta, bool, f32)>,
     /// Lo que penso el asistente y su peticion mejorada, encima del texto.
     ia: Option<pensado::Pieza>,
 }

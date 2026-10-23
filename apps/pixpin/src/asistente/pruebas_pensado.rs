@@ -529,7 +529,7 @@ fn la_conversacion_nueva_empieza_con_solo_la_memoria() {
     let carpeta = pixpin_proyecto::almacen::carpeta(&raiz, &f.id);
     let m = super::memoria::en(&raiz, &f.id, &carpeta, "PC01", "Claude Haiku 5.5", "2026-10-22");
     m.ejecutar(r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Se llama Max. Respuestas cortas."}"#);
-    m.ejecutar(r#"{"command":"create","path":"/memoria/obra.md","file_text":"# La obra de la calle Mayor va por la planta 2"}"#);
+    m.ejecutar(r##"{"command":"create","path":"/memoria/obra.md","file_text":"# La obra de la calle Mayor va por la planta 2"}"##);
     let bloque = super::memoria::bloque(Some(&m));
     let mut notas: Vec<Nota> = (1..=6).map(|n| nota(n, n % 2 == 0, &format!("viejo {n}"))).collect();
     let mut corte = nota(7, true, chat::TEXTO_NUEVA_CONVERSACION);

@@ -792,7 +792,7 @@ pub fn con_memoria(instrucciones: &str, bloque: &str) -> String {
 // La herramienta
 
 /// Un ejemplo de llamada, el mismo en la descripcion y en los errores.
-pub const EJEMPLO: &str = r#"{"command":"create","path":"/memoria/estilo_lienzo.md","file_text":"# Prefiere diagramas con flechas azules y texto grande\nLo dijo al dibujar el plano de su casa."}"#;
+pub const EJEMPLO: &str = r##"{"command":"create","path":"/memoria/estilo_lienzo.md","file_text":"# Prefiere diagramas con flechas azules y texto grande\nLo dijo al dibujar el plano de su casa."}"##;
 
 /// La herramienta tal como se le describe al modelo.
 pub fn herramienta() -> Herramienta {
@@ -1128,7 +1128,7 @@ mod pruebas {
         let (dir, m) = memoria("turno");
         llamar(&m, json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Se llama Max y habla espanol."}));
         let motor = MotorGuionado::nuevo(vec![
-            Respuesta::de_llamada(NOMBRE, r#"{"command":"create","path":"/memoria/gustos.md","file_text":"# Le gusta el azul"}"#),
+            Respuesta::de_llamada(NOMBRE, r##"{"command":"create","path":"/memoria/gustos.md","file_text":"# Le gusta el azul"}"##),
             Respuesta::de_texto("Apuntado."),
         ]);
         let mut historial = vec![Mensaje::sistema(crate::agente::instrucciones()), Mensaje::usuario("recuerda que me gusta el azul")];
@@ -1163,7 +1163,7 @@ mod pruebas {
         historial.push(Mensaje::usuario("y ahora otra cosa"));
         let motor = MotorGuionado::nuevo(vec![
             // La pasada de guardar (con solo la memoria).
-            Respuesta::de_llamada(NOMBRE, r#"{"command":"create","path":"/memoria/formato.md","file_text":"# Prefiere tablas"}"#),
+            Respuesta::de_llamada(NOMBRE, r##"{"command":"create","path":"/memoria/formato.md","file_text":"# Prefiere tablas"}"##),
             Respuesta::de_texto("Guardado."),
             // El turno, ya reiniciado.
             Respuesta::de_texto("Hecho."),

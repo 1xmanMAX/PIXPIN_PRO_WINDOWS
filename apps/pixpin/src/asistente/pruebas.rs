@@ -47,6 +47,10 @@ fn hasta_el_final(turno: &mut Turno, escena: Option<&mut pixpin_motor2d::Escena>
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(false);
                 }
+                // Ni a las dudas: sigue con la recomendada.
+                Aviso::Preguntar { responder, .. } => {
+                    let _ = responder.send(pixpin_ia::preguntar::Contestada::SinRespuesta);
+                }
                 Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }
             todos.push(a);
@@ -967,6 +971,10 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
                 // Sin nadie que conteste, lo que borra o envia no se hace.
                 Aviso::Confirmar { responder, .. } => {
                     let _ = responder.send(false);
+                }
+                // Ni a las dudas: sigue con la recomendada.
+                Aviso::Preguntar { responder, .. } => {
+                    let _ = responder.send(pixpin_ia::preguntar::Contestada::SinRespuesta);
                 }
                 Aviso::TextoLeido { .. } | Aviso::Registro(_) | Aviso::Citas(_) => {}
             }

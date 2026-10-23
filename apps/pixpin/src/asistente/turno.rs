@@ -47,6 +47,14 @@ pub enum Aviso {
         pregunta: String,
         responder: std::sync::mpsc::Sender<bool>,
     },
+    /// **Una duda con opciones** (`preguntar_usuario`, 22-oct): la burbuja
+    /// ensena la tarjeta con sus botones y «Otro…», y contesta por
+    /// `responder` lo elegido o lo escrito. Si el chat se cierra, el
+    /// `Sender` muere con el y cuenta como sin respuesta.
+    Preguntar {
+        pregunta: pixpin_ia::preguntar::Pregunta,
+        responder: std::sync::mpsc::Sender<pixpin_ia::preguntar::Contestada>,
+    },
     /// Lo citado de los documentos del usuario hasta ahora en el turno
     /// (`buscar_en_mis_cosas`): la respuesta lo guarda y el chat ensena
     /// la cita como tarjeta que abre el documento.
@@ -261,7 +269,10 @@ impl Turno {
                         super::acciones::confirmar_en_la_burbuja(tx.clone(), parar_hilo.clone()),
                         super::acciones::mandar_a_pixpin(),
                     )
-                    .con_raiz(raiz);
+                    // Las dudas que cambian el resultado, con opciones en la
+                    // burbuja (`preguntar_usuario`, 22-oct).
+                    .con_preguntar(super::acciones::preguntar_en_la_burbuja(tx.clone(), parar_hilo.clone()))
+                    .con_raiz(raiz.clone());
                 // Las pruebas no tienen Ajustes: el banco dice con que modelo
                 // de vision trabajan hoja_a_lienzo y anotar_inteligente.
                 #[cfg(test)]
@@ -330,6 +341,8 @@ impl Turno {
                     .into_iter()
                     .filter(|h| nube || !pixpin_ia::acciones::es_solo_nube(&h.nombre))
                     .collect();
+                // El critico de respaldo (Sonnet), solo si hay revision.
+                let critico = raiz.as_deref().filter(|_| ojos && de_lienzo).and_then(super::nube::critico);
                 let opciones = Opciones {
                     planificar: memoria.planificar,
                     pensar: memoria.pensar,
@@ -345,6 +358,7 @@ impl Turno {
                     ojos,
                     revisar: if ojos { revisiones(motor.as_ref()) } else { 0 },
                     memoria: largo_plazo.as_ref(),
+                    critico: critico.as_deref(),
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(

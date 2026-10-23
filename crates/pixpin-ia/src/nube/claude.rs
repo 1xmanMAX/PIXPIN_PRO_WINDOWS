@@ -44,6 +44,10 @@ use super::{Proveedor, instrucciones};
 
 pub const URL: &str = "https://api.anthropic.com/v1/messages";
 pub const MODELO: &str = "claude-haiku-5-5";
+/// **El critico de respaldo** de la revision con rubrica (23-oct): mas
+/// fuerte que el del turno, solo para puntuar cuando Haiku no da una nota
+/// que se lea o ya suspendio dos veces (`agente::Opciones::critico`).
+pub const MODELO_CRITICO: &str = "claude-sonnet-5-5";
 pub const VERSION_API: &str = "2023-06-01";
 pub const ESFUERZO: &str = "medium";
 /// Tope de salida de cada vuelta. El pensamiento cuenta dentro: con 2048

@@ -99,6 +99,27 @@ pub fn motor(p: Proveedor, local: Option<Arc<dyn Motor>>, pensar: bool) -> Resul
     Ok(Arc::new(MotorConRespaldo::nuevo(nube, local, p.nombre())))
 }
 
+/// **El critico de respaldo** de la revision con rubrica (23-oct): con Claude
+/// elegido y su clave guardada, Sonnet con la misma clave, sin pensar (solo
+/// puntua una vista). Entra solo si Haiku no da una nota que se lea o ya
+/// suspendio dos veces (`pixpin_ia::agente::Opciones::critico`). Con
+/// DeepSeek o el local, ninguno: la revision se queda con su propio juez.
+pub fn critico(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
+    // Las pruebas nunca salen a la red.
+    if cfg!(test) {
+        return None;
+    }
+    if eleccion_reciente(raiz_datos) != Eleccion::Nube(Proveedor::Claude) {
+        return None;
+    }
+    let clave = claves::leer(Proveedor::Claude)?;
+    Some(Arc::new(
+        MotorNube::nuevo(Proveedor::Claude, clave)
+            .con_modelo(nube::claude::MODELO_CRITICO)
+            .pensando(false),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Ajustes → Asistente
 
