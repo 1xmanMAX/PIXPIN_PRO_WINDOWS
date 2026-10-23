@@ -332,6 +332,10 @@ impl Drop for MotorLlama {
 }
 
 impl Motor for MotorLlama {
+    fn es_local(&self) -> bool {
+        true
+    }
+
     fn precalentar(&self) {
         if let Err(e) = self.precargar() {
             tracing::warn!(%e, "asistente: no se pudo precargar el modelo");

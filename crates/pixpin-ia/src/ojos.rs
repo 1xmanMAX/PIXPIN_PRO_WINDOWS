@@ -18,10 +18,12 @@
 //!   herramientas ([`mensaje_de_vista`]): es lo unico que admiten igual
 //!   Claude, DeepSeek y llama.cpp (DeepSeek no acepta imagenes en un
 //!   resultado de herramienta).
-//! - **La revision** ([`crate::agente::Opciones::revisar`]): tras un turno
-//!   que dibujo o anoto, el agente le ensena al modelo el resultado una vez
-//!   ([`pedido_de_revision`]) y le deja corregir; si contesta [`TODO_BIEN`],
-//!   no se dice nada mas.
+//! - **La revision** ([`crate::agente::Opciones::revisar`], 22-oct): tras un
+//!   turno que dibujo o anoto, un critico aparte puntua la captura con una
+//!   rubrica de 5 ejes ([`rubrica`]); el modelo corrige solo los problemas
+//!   que nombra (con sus `#id`), y si una correccion lo deja peor se vuelve a
+//!   la mejor version. Si todo llega a 8 a la primera, no se dice nada mas.
+//!   Las imagenes de las vistas viejas salen del historial ([`podar_vistas`]).
 //! - **Mirar al empezar** ([`pide_mirar`]): «corrige», «mejora», «¿que
 //!   falta?», «alinea»… dependen de lo que se ve, asi que la app pega la
 //!   vista al pedido ademas del resumen en texto.
@@ -48,6 +50,13 @@ pub const MARCA: &str = "[Vista del lienzo]";
 /// El lado mayor de la imagen como mucho. ~1000 tokens de vision en Claude
 /// (lado×lado/750) y una lectura de pocos segundos en el local.
 pub const LADO_MAXIMO: u32 = 1024;
+
+/// El lado mayor de la captura que se puntua en la revision (22-oct). Claude
+/// no reduce hasta 1568 px de lado largo (sus docs de vision) y una de
+/// 1280x720 son ~1230 tokens: entre el ~1000 que basta para ver el orden y el
+/// tope que no se reescala, con la letra pequena aun legible para juzgar la
+/// ortografia (la lista de elementos lleva ademas los textos tal cual).
+pub const LADO_REVISION: u32 = 1280;
 
 /// Lo que mas se amplia una zona pequena (una etiqueta sola): mas, y la
 /// rejilla miente sobre el tamano real.
@@ -90,17 +99,26 @@ pub struct Mirada {
     pub zona: Zona,
     /// Rejilla numerada y etiquetas `#id` (por omision, si).
     pub marcas: bool,
+    /// El lado mayor de la imagen como mucho, en px ([`LADO_MAXIMO`] o, en
+    /// la revision, [`LADO_REVISION`]).
+    pub lado: u32,
 }
 
 impl Default for Mirada {
     fn default() -> Self {
-        Mirada { zona: Zona::Todo, marcas: true }
+        Mirada::de(Zona::Todo)
     }
 }
 
 impl Mirada {
     pub fn de(zona: Zona) -> Mirada {
-        Mirada { zona, marcas: true }
+        Mirada { zona, marcas: true, lado: LADO_MAXIMO }
+    }
+
+    /// La de la revision con rubrica: algo mas grande, para que el critico
+    /// lea las tildes de los textos pequenos.
+    pub fn para_revisar(zona: Zona) -> Mirada {
+        Mirada { lado: LADO_REVISION, ..Mirada::de(zona) }
     }
 }
 
@@ -279,6 +297,34 @@ pub fn leyenda(caja: (f32, f32, f32, f32), marco: (f32, f32), ancho: u32, alto: 
     s
 }
 
+/// **La lista de lo etiquetado** (Set-of-Mark en texto): los mismos ids que
+/// [`etiquetas`], con su tipo, color, caja en las coordenadas del modelo y su
+/// texto entero. Va en la leyenda: el modelo cruza lo que ve con numeros
+/// exactos (la localizacion de la vision es aproximada, dicen los docs de
+/// Claude) y lee las tildes del texto aunque en la imagen salga pequeno.
+pub fn lista(escena: &Escena, caja: (f32, f32, f32, f32), marco: (f32, f32)) -> String {
+    let lineas: Vec<String> = etiquetas(escena, caja)
+        .iter()
+        .filter_map(|(id, _)| escena.buscar(*id))
+        .map(|e| {
+            let mut s = crate::edicion::describir(e, marco);
+            // `describir` corta el texto a 40 letras: aqui va entero (hasta
+            // 300), que es lo que se revisa.
+            if let pixpin_motor2d::elemento::Figura::Texto { texto, .. } = &e.figura
+                && texto.chars().count() > 40
+            {
+                let entero: String = texto.chars().take(300).collect();
+                s.push_str(&format!(" texto entero: \"{}\"", entero.replace('\n', " / ")));
+            }
+            s
+        })
+        .collect();
+    if lineas.is_empty() {
+        return String::new();
+    }
+    format!("Elementos de la imagen (#id tipo color [x, y, ancho, alto]):\n{}", lineas.join("\n"))
+}
+
 /// **El mensaje que lleva la vista** al modelo.
 pub fn mensaje_de_vista(v: &Vista, extra: &str) -> Mensaje {
     let texto = if extra.is_empty() { v.texto.clone() } else { format!("{}\n{extra}", v.texto) };
@@ -290,17 +336,25 @@ pub fn es_vista(m: &Mensaje) -> bool {
     m.texto_entero().trim_start().starts_with(MARCA)
 }
 
-/// **Lo que se le pide en la revision**, con el pedido original.
-pub fn pedido_de_revision(pedido: &str, ronda: usize) -> String {
-    let pedido: String = pedido.chars().take(600).collect();
-    format!(
-        "Revision {ronda}: esta es la imagen de como quedo el lienzo tras tus cambios. Comparala con lo que pidio el usuario: «{}». \
-         Busca solo fallos que se vean: texto cortado, encima de otra cosa o fuera de su figura; flechas o lineas que no llegan a lo que senalan; \
-         cosas solapadas, fuera de sitio o desalineadas; una anotacion que no cae sobre lo senalado; algo pedido que falta. \
-         Si esta bien, contesta solo {TODO_BIEN}. Si no, corrigelo ya con las herramientas de editar (usa los #id de las etiquetas y las \
-         coordenadas de la rejilla; mueve o cambia, no lo vuelvas a dibujar entero) y luego di en una frase corta que corregiste.",
-        pedido.trim()
-    )
+/// Si un mensaje es de los ojos (una vista o el pedido de corregir lo que
+/// vio el critico), no el pedido del usuario.
+pub fn es_de_los_ojos(m: &Mensaje) -> bool {
+    es_vista(m) || m.texto_entero().trim_start().starts_with(rubrica::MARCA_CORRECCION)
+}
+
+/// **Quita las imagenes de las vistas viejas** del historial y deja su
+/// texto (la leyenda y la lista de elementos). Una imagen en base64 se
+/// reenvia en cada vuelta (~1000-1500 tokens cada vez, docs de vision de
+/// Claude): tras cada ronda de revision lo que sirve de ella ya esta dicho.
+/// Devuelve cuantas quito.
+pub fn podar_vistas(historial: &mut [Mensaje]) -> usize {
+    let mut n = 0;
+    for m in historial.iter_mut().filter(|m| es_vista(m) && m.tiene_imagen()) {
+        m.partes.retain(|p| !matches!(p, crate::motor::Parte::Imagen { .. }));
+        m.partes.push(crate::motor::Parte::Texto(" (La imagen ya se quito para ahorrar; si hace falta, vuelve a mirar.)".into()));
+        n += 1;
+    }
+    n
 }
 
 /// Si la respuesta de la revision dice que no hay nada que corregir.
@@ -413,7 +467,40 @@ mod pruebas {
         assert!(es_todo_bien("todo_bien."));
         assert!(es_todo_bien("OK"));
         assert!(!es_todo_bien("Movi la etiqueta #4 para que no tape el circulo."));
-        assert!(pedido_de_revision("dibuja una casa", 1).contains("dibuja una casa"));
+    }
+
+    #[test]
+    fn la_lista_lleva_los_mismos_ids_que_las_etiquetas_y_el_texto_entero() {
+        let mut e = escena_con(&[(100.0, 100.0, 50.0, 50.0), (900.0, 900.0, 10.0, 10.0)]);
+        let largo = "Función de transferencia del sistema realimentado, con su ganancia";
+        e.anadir(Elemento {
+            x: 120.0,
+            y: 300.0,
+            ancho: 200.0,
+            alto: 20.0,
+            figura: pixpin_motor2d::elemento::Figura::Texto { texto: largo.into(), tam: 16.0, familia: "Segoe UI".into() },
+            ..Default::default()
+        });
+        let l = lista(&e, (0.0, 0.0, 500.0, 500.0), (100.0, 100.0));
+        assert!(l.contains("#1 ") && l.contains("[0,0,50,50]"), "{l}");
+        assert!(l.contains("#3 ") && l.contains(largo), "{l}");
+        assert!(!l.contains("#2 "), "lo de fuera no sale: {l}");
+        // Caso negativo: nada en la caja, nada que decir.
+        assert!(lista(&e, (2000.0, 2000.0, 2100.0, 2100.0), (0.0, 0.0)).is_empty());
+    }
+
+    #[test]
+    fn podar_quita_las_imagenes_de_las_vistas_y_deja_su_texto() {
+        let v = Vista { png: vec![1, 2], ancho: 2, alto: 1, texto: format!("{MARCA} Zona [0, 0, 10, 10]"), ms: 1 };
+        let foto = Mensaje::usuario_con_imagen("mira mi foto", vec![9], "image/png");
+        let mut h = vec![Mensaje::usuario("dibuja"), mensaje_de_vista(&v, ""), foto.clone(), mensaje_de_vista(&v, "")];
+        assert_eq!(podar_vistas(&mut h), 2);
+        assert!(!h[1].tiene_imagen() && !h[3].tiene_imagen());
+        assert!(es_vista(&h[1]) && h[1].texto_entero().contains("Zona [0, 0, 10, 10]"));
+        assert!(h[2].tiene_imagen(), "la foto del usuario no es una vista: se queda");
+        assert_eq!(podar_vistas(&mut h), 0, "dos veces no quita nada");
+        assert!(es_de_los_ojos(&Mensaje::usuario(format!("{} Ronda 1.", rubrica::MARCA_CORRECCION))));
+        assert!(!es_de_los_ojos(&Mensaje::usuario("dibuja")));
     }
 
     #[test]
@@ -436,6 +523,8 @@ mod pruebas {
         assert!(m.texto_entero().contains("#id"));
     }
 }
+
+pub mod rubrica;
 
 #[cfg(test)]
 mod pruebas_revision;

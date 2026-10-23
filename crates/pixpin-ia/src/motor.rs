@@ -327,6 +327,14 @@ pub trait Motor: Send + Sync {
         false
     }
 
+    /// **Si es el modelo local** (llama.cpp en este PC). Esta congelado por
+    /// decision del usuario (15-oct): lo que se le anada a la nube (la
+    /// revision con rubrica, 22-oct) no se le enciende aunque un dia vea
+    /// imagenes. Por omision, no.
+    fn es_local(&self) -> bool {
+        false
+    }
+
     /// **Cuantas peticiones a la vez** aguanta (15-oct: una lamina se
     /// secciona y cada zona va a su trabajador en paralelo). Claude, 8;
     /// DeepSeek, 3 (pocos creditos y limites mas bajos); el local, 1.
