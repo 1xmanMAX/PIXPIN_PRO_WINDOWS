@@ -2156,28 +2156,7 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, en: pixpin_geom::Punto, t: &Ca
             let ids = ed.gesto.seleccion.ids().to_vec();
             pixpin_motor2d::tabla_dibujada::leer::meter_en_celdas(ed.escena, &ids)
         }
-        Eleccion::GuardarSeleccion => {
-            let mut f = Formulario::nuevo(
-                t.t("figuras-nombre-titulo"),
-                vec![Campo::nuevo(t.t("figuras-nombre"), "")],
-                t.t("figuras-nombre-ayuda"),
-                t.t("figuras-guardar"),
-                t.t("cajetin-cancelar"),
-            );
-            if !pedir(ed.lienzo(), &mut f, |_| Ok(())) {
-                return false;
-            }
-            let nombre = f.campos[0].texto.trim();
-            let nombre = if nombre.is_empty() { "Figura" } else { nombre };
-            if let Some(nueva) =
-                biblioteca::de_la_seleccion(&ed.escena.elementos, ed.gesto.seleccion.ids(), nombre)
-            {
-                // Las nuevas, arriba: lo ultimo que se guarda es lo que se usa.
-                biblio.insert(0, nueva);
-                guardar_biblioteca(&ruta, &biblio);
-            }
-            false
-        }
+        Eleccion::GuardarSeleccion => guardar_seleccion(ed, t),
         Eleccion::Estampar(i) => match biblio.get(i) {
             Some(fig) => {
                 let ids = biblioteca::estampar_en_escena(ed.escena, fig, centro);
@@ -3074,3 +3053,41 @@ mod muestras_figuras;
 
 #[cfg(test)]
 mod muestras_instrumentos;
+
+/// **Guardar lo elegido en la biblioteca de figuras** («Guardar la
+/// seleccion» del menu y «Guardar en figuras» del panel lateral): pide el
+/// nombre y la pone arriba del todo. Si lo elegido es una plantilla de serie
+/// (una alargada, 22-oct), el nombre sale ya puesto con su categoria
+/// («Planificación · Lista de tareas»), para que caiga en su submenu. No
+/// cambia el dibujo: devuelve `false`.
+pub(super) fn guardar_seleccion(mut ed: Editor<'_>, t: &Catalogo) -> bool {
+    use pixpin_motor2d::figuras_de_serie as serie;
+    if ed.gesto.seleccion.esta_vacia() {
+        return false;
+    }
+    let elegidas: Vec<Elemento> = ed.escena.visibles().filter(|e| ed.gesto.seleccion.contiene(e.id)).cloned().collect();
+    let propuesto = serie::cual_es(&elegidas)
+        .and_then(|clave| serie::catalogo().into_iter().find(|f| serie::clave_de(f) == Some(clave.as_str())))
+        .map(|f| format!("{} ", f.nombre))
+        .unwrap_or_default();
+    let mut f = Formulario::nuevo(
+        t.t("figuras-nombre-titulo"),
+        vec![Campo::nuevo(t.t("figuras-nombre"), propuesto)],
+        t.t("figuras-nombre-ayuda"),
+        t.t("figuras-guardar"),
+        t.t("cajetin-cancelar"),
+    );
+    if !pedir(ed.lienzo(), &mut f, |_| Ok(())) {
+        return false;
+    }
+    let nombre = f.campos[0].texto.trim();
+    let nombre = if nombre.is_empty() { "Figura" } else { nombre };
+    let ruta = ruta_biblioteca();
+    let mut biblio = cargar_biblioteca(&ruta);
+    if let Some(nueva) = biblioteca::de_la_seleccion(&ed.escena.elementos, ed.gesto.seleccion.ids(), nombre) {
+        // Las nuevas, arriba: lo ultimo que se guarda es lo que se usa.
+        biblio.insert(0, nueva);
+        guardar_biblioteca(&ruta, &biblio);
+    }
+    false
+}

@@ -64,6 +64,7 @@ fn claves_base(nombre: &str) -> &'static [&'static str] {
         FIGURAS => &[
             "guarda esto", "guardalo", "guardala", "como figura", "biblioteca", "figura guardada", "figuras guardadas",
             "mis figuras", "pon el", "pon la", "inserta el", "inserta la", "estampa", "guarda el", "guarda la",
+            "plantilla", "intervalo", "alarga", "del 1 al", "de 10 en 10", "de 5 en 5", "en hojas", "hojas de",
         ],
         crate::documentos::BUSCAR => &[
             "busca en mis", "buscame", "mis notas", "mis documentos", "mis archivos", "mis cosas", "mis chats",

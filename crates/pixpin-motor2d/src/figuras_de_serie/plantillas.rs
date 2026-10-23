@@ -52,6 +52,8 @@ pub(super) struct Pag {
     pub t: Tema,
     pub w: f32,
     pub h: f32,
+    /// Donde empieza cada campo de la derecha, en el orden en que se dieron.
+    campos: Vec<f32>,
 }
 
 impl Pag {
@@ -65,8 +67,13 @@ impl Pag {
         Pag::de_tamano(t, H, W, titulo, campos)
     }
 
-    fn de_tamano(t: Tema, w: f32, h: f32, titulo: &str, campos: &[&str]) -> Pag {
-        let mut p = Pag { l: Lapiz::default(), t, w, h };
+    /// Vertical y, si lo de dentro no cabe en un A4, mas larga.
+    pub fn alta(t: Tema, titulo: &str, campos: &[&str], h: f32) -> Pag {
+        Pag::de_tamano(t, W, h.max(H), titulo, campos)
+    }
+
+    pub fn de_tamano(t: Tema, w: f32, h: f32, titulo: &str, campos: &[&str]) -> Pag {
+        let mut p = Pag { l: Lapiz::default(), t, w, h, campos: vec![0.0; campos.len()] };
         p.l.rect(0.0, 0.0, w, h, Some(hex(0xdde3ec)), Some(BLANCO), 1.0, false);
         if t.titulo == CAVEAT {
             p.adornos();
@@ -78,11 +85,11 @@ impl Pag {
             p.l.texto(M, 42.0, titulo, 34.0, t.titulo, TINTA, true, Al::Izq);
         }
         let mut x = w - M;
-        for c in campos.iter().rev() {
-            let ancho = 150.0;
-            p.l.texto(x - ancho, 62.0, &c.to_uppercase(), 10.0, WORK_SANS, ROTULO, true, Al::Izq);
-            p.l.linea(x - ancho, 82.0, x, 82.0, BORDE, 1.0);
-            x -= ancho + 22.0;
+        for (i, c) in campos.iter().enumerate().rev() {
+            p.l.texto(x - CAMPO, 62.0, &c.to_uppercase(), 10.0, WORK_SANS, ROTULO, true, Al::Izq);
+            p.l.linea(x - CAMPO, 82.0, x, 82.0, BORDE, 1.0);
+            p.campos[i] = x - CAMPO;
+            x -= CAMPO + 22.0;
         }
         p.l.linea(M, 104.0, w - M, 104.0, t.acento, 2.0);
         p
@@ -118,12 +125,25 @@ impl Pag {
 
     /// `01`, `02`... con su renglon.
     pub fn numerados(&mut self, x: f32, y: f32, w: f32, n: usize, paso: f32) -> f32 {
-        for i in 1..=n {
-            let yy = y + paso * i as f32;
-            self.l.texto(x + 2.0, yy - 17.0, &format!("{i:02}"), 10.0, WORK_SANS, self.t.acento, true, Al::Izq);
-            self.l.linea(x + 26.0, yy, x + w, yy, RAYA, 1.0);
+        self.numerados_desde(x, y, w, 1, n, paso)
+    }
+
+    /// Los mismos renglones numerados, empezando en `desde`.
+    pub fn numerados_desde(&mut self, x: f32, y: f32, w: f32, desde: u32, n: usize, paso: f32) -> f32 {
+        for i in 0..n {
+            let yy = y + paso * (i + 1) as f32;
+            self.l.texto(x + 2.0, yy - 17.0, &numero(desde + i as u32), 10.0, WORK_SANS, self.t.acento, true, Al::Izq);
+            self.l.linea(x + 30.0, yy, x + w, yy, RAYA, 1.0);
         }
         y + paso * n as f32
+    }
+
+    /// Lo ya sabido de un campo de la cabecera («Mes»: noviembre), escrito
+    /// a la derecha de su raya.
+    pub fn valor(&mut self, campo: usize, s: &str) {
+        if let Some(&x) = self.campos.get(campo) {
+            self.l.texto(x + CAMPO, 60.0, s, 13.0, WORK_SANS, TINTA, false, Al::Der);
+        }
     }
 
     /// Casillas para marcar, cada una con su renglon (y su texto si lo hay).
@@ -212,32 +232,166 @@ impl Pag {
         let cat = self.t.categoria;
         self.l.figura(clave, cat, nombre)
     }
+
+    /// La hoja de un tramo: si es una de varias, con su pie («Hoja 2 de 4 ·
+    /// 11–20») abajo a la derecha, en el margen.
+    pub fn fin_de(mut self, clave: &str, nombre: &str, tr: &Tramo) -> FiguraGuardada {
+        if let Some((i, n)) = tr.hoja {
+            let s = format!("HOJA {i} DE {n}  ·  {}", tr.rotulo());
+            let (w, h) = (self.w, self.h);
+            self.l.texto(w - M, h - 32.0, &s, 9.0, WORK_SANS, ROTULO, true, Al::Der);
+        }
+        self.fin(clave, nombre)
+    }
+}
+
+/// El ancho de un campo de la cabecera.
+const CAMPO: f32 = 150.0;
+
+/// Como se escribe un numero de una serie: con dos cifras como poco, para
+/// que la columna no baile entre el 9 y el 10.
+pub(super) fn numero(i: u32) -> String {
+    format!("{i:02}")
+}
+
+/// **Que trozo de su serie lleva una hoja** (22-oct): el usuario elige una
+/// plantilla y pide «del 1 al 40» (una hoja mas larga) o «de 10 en 10»
+/// (cuatro hojas). La serie es lo que cuenta cada plantilla: filas del
+/// cronograma, horas del diario, dias de los habitos...
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Tramo {
+    pub desde: u32,
+    pub hasta: u32,
+    /// Las semanas del cronograma (su segunda serie).
+    pub semanas: (u32, u32),
+    /// `(esta, de cuantas)` si es una de varias hojas.
+    pub hoja: Option<(u32, u32)>,
+    /// `(ano, mes 1-12)`: el calendario de verdad (mensual y habitos).
+    pub mes: Option<(i32, u32)>,
+}
+
+impl Tramo {
+    pub const fn de(desde: u32, hasta: u32) -> Tramo {
+        Tramo { desde, hasta, semanas: (1, 12), hoja: None, mes: None }
+    }
+
+    pub fn n(&self) -> usize {
+        (self.hasta.saturating_sub(self.desde) + 1) as usize
+    }
+
+    pub fn numeros(&self) -> std::ops::RangeInclusive<u32> {
+        self.desde..=self.hasta
+    }
+
+    /// «11–20», o el mes.
+    pub fn rotulo(&self) -> String {
+        match self.mes {
+            Some((a, m)) => format!("{} {a}", MESES[m as usize - 1]),
+            None => format!("{}–{}", self.desde, self.hasta),
+        }
+    }
+}
+
+pub(super) const MESES: [&str; 12] =
+    ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+/// Cuantos dias tiene un mes.
+pub(super) fn dias_del_mes(a: i32, m: u32) -> u32 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ if (a % 4 == 0 && a % 100 != 0) || a % 400 == 0 => 29,
+        _ => 28,
+    }
+}
+
+/// El dia de la semana, 0 el lunes (Sakamoto).
+pub(super) fn dia_de_la_semana(a: i32, m: u32, d: u32) -> usize {
+    const T: [i32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let a = if m < 3 { a - 1 } else { a };
+    let domingo0 = (a + a / 4 - a / 100 + a / 400 + T[m as usize - 1] + d as i32).rem_euclid(7);
+    ((domingo0 + 6) % 7) as usize
+}
+
+/// **Las plantillas que se alargan**: su clave, lo que cuenta su serie y su
+/// tramo de serie (el del menu de figuras).
+pub(super) struct Ampliable {
+    pub clave: &'static str,
+    pub cuenta: &'static str,
+    pub defecto: (u32, u32),
+    pub minimo: u32,
+    pub maximo: u32,
+}
+
+pub(super) const AMPLIABLES: [Ampliable; 13] = [
+    Ampliable { clave: "cronograma", cuenta: "filas", defecto: (1, 18), minimo: 1, maximo: 999 },
+    Ampliable { clave: "planificador-diario", cuenta: "horas", defecto: (6, 22), minimo: 0, maximo: 24 },
+    Ampliable { clave: "planificador-mensual", cuenta: "meses", defecto: (1, 1), minimo: 1, maximo: 1 },
+    Ampliable { clave: "lista-de-tareas", cuenta: "tareas", defecto: (1, 42), minimo: 1, maximo: 999 },
+    Ampliable { clave: "metas", cuenta: "pasos", defecto: (1, 12), minimo: 1, maximo: 999 },
+    Ampliable { clave: "habitos", cuenta: "días", defecto: (1, 31), minimo: 1, maximo: 366 },
+    Ampliable { clave: "itinerario", cuenta: "días", defecto: (1, 3), minimo: 1, maximo: 99 },
+    Ampliable { clave: "lista-numerada", cuenta: "números", defecto: (1, 30), minimo: 0, maximo: 9999 },
+    Ampliable { clave: "semestre", cuenta: "horas", defecto: (7, 22), minimo: 0, maximo: 24 },
+    Ampliable { clave: "asistencia", cuenta: "alumnos", defecto: (1, 30), minimo: 1, maximo: 999 },
+    Ampliable { clave: "storyboard-4", cuenta: "viñetas", defecto: (1, 4), minimo: 1, maximo: 999 },
+    Ampliable { clave: "storyboard-6", cuenta: "viñetas", defecto: (1, 6), minimo: 1, maximo: 999 },
+    Ampliable { clave: "receta", cuenta: "pasos", defecto: (1, 16), minimo: 1, maximo: 999 },
+];
+
+/// **Una plantilla que se alarga, con ese tramo.** `None` si la clave no es
+/// de ninguna.
+pub(super) fn hacer(clave: &str, tr: &Tramo) -> Option<FiguraGuardada> {
+    Some(match clave {
+        "cronograma" => cronograma(tr),
+        "planificador-diario" => diario(tr),
+        "planificador-mensual" => mensual(tr),
+        "lista-de-tareas" => tareas(tr),
+        "metas" => metas(tr),
+        "habitos" => habitos(tr),
+        "itinerario" => itinerario(tr),
+        "lista-numerada" => lista_numerada(tr),
+        "semestre" => semestre(tr),
+        "asistencia" => asistencia(tr),
+        "storyboard-4" => storyboard(4, tr),
+        "storyboard-6" => storyboard(6, tr),
+        "receta" => receta(tr),
+        _ => return None,
+    })
+}
+
+/// La de serie, con su tramo de siempre.
+fn de_serie(clave: &str) -> FiguraGuardada {
+    let a = AMPLIABLES.iter().find(|a| a.clave == clave).expect("es de la tabla");
+    hacer(clave, &Tramo::de(a.defecto.0, a.defecto.1)).expect("es de la tabla")
 }
 
 // ---------------------------------------------------------------------------
 
 pub(super) fn todas(v: &mut Vec<FiguraGuardada>) {
     v.extend([
-        cronograma(),
-        diario(),
+        de_serie("cronograma"),
+        de_serie("planificador-diario"),
         semanal(),
-        mensual(),
-        tareas(),
-        metas(),
-        habitos(),
+        de_serie("planificador-mensual"),
+        de_serie("lista-de-tareas"),
+        de_serie("lista-numerada"),
+        de_serie("metas"),
+        de_serie("habitos"),
         comidas(),
         finanzas(),
-        itinerario(),
+        de_serie("itinerario"),
         viaje(),
         diario_de_viaje(),
-        semestre(),
+        de_serie("semestre"),
+        de_serie("asistencia"),
         curso(),
         estudio(),
         entrega(),
         mapa_mental(),
-        storyboard(4),
-        storyboard(6),
-        receta(),
+        de_serie("storyboard-4"),
+        de_serie("storyboard-6"),
+        de_serie("receta"),
         pentagramas(),
         diario_libre(),
         autocuidado(),
@@ -253,27 +407,44 @@ const ANCHO: f32 = W - 2.0 * M;
 
 /// **El cronograma** (el que le hizo falta al usuario para un boceto
 /// preliminar): actividades, responsable y doce semanas en tres meses.
-fn cronograma() -> FiguraGuardada {
-    let mut p = Pag::apaisada(PLANIFICACION, "Cronograma", &["Proyecto", "Inicio"]);
-    let (x, w) = (M, H - 2.0 * M);
+fn cronograma(tr: &Tramo) -> FiguraGuardada {
+    let (s0, s1) = tr.semanas;
+    let k = (s1.saturating_sub(s0) + 1) as usize;
+    // Con pocas filas (una hoja de un tramo corto) se estiran hasta llenar el papel.
+    let fh = ((W - 132.0 - 28.0 - 48.0 - M) / tr.n() as f32).clamp(28.0, 44.0);
     let y = 132.0;
+    // Con mas de doce semanas la hoja se ensancha con columnas del mismo
+    // ancho; con menos, las que hay se reparten el A4 apaisado.
+    let fijo = 7.4;
+    let unidad = (H - 2.0 * M) / (fijo + 0.9 * 12.0);
+    let ancho = (unidad * (fijo + 0.9 * k as f32) + 2.0 * M).max(H);
+    let alto = (y + fh + fh * tr.n() as f32 + 48.0 + M).max(W);
+    let mut p = Pag::de_tamano(PLANIFICACION, ancho, alto, "Cronograma", &["Proyecto", "Inicio"]);
+    let (x, w) = (M, ancho - 2.0 * M);
     let fijas = [("#", 0.6), ("Actividad", 5.2), ("Resp.", 1.6)];
-    let semanas: Vec<String> = (1..=12).map(|s| format!("S{s}")).collect();
+    let semanas: Vec<String> = (s0..=s1).map(|s| format!("S{s}")).collect();
     let mut cols: Vec<(&str, f32)> = fijas.to_vec();
     cols.extend(semanas.iter().map(|s| (s.as_str(), 0.9)));
     let total: f32 = cols.iter().map(|(_, f)| f).sum();
-    let ancho_fijo = w * 7.4 / total;
-    // Los meses encima de las semanas.
+    let ancho_fijo = w * fijo / total;
+    // Los meses encima de las semanas: cuatro semanas cada uno, contadas
+    // desde la primera del proyecto (la 13 es del mes 4).
     let ancho_semana = w * 0.9 / total;
-    for m in 0..3 {
-        let mx = x + ancho_fijo + ancho_semana * 4.0 * m as f32;
-        p.l.rect(mx, y - 26.0, ancho_semana * 4.0, 24.0, None, Some(p.t.acento), 1.0, false);
-        p.l.texto(mx + ancho_semana * 2.0, y - 22.0, &format!("MES {}", m + 1), 10.0, WORK_SANS, BLANCO, true, Al::Centro);
+    let mut j = 0;
+    while j < k {
+        let mes = (s0 + j as u32 - 1) / 4;
+        let cuantas = (j..k).take_while(|&i| (s0 + i as u32 - 1) / 4 == mes).count();
+        let mx = x + ancho_fijo + ancho_semana * j as f32;
+        let mw = ancho_semana * cuantas as f32;
+        p.l.rect(mx + 1.0, y - 26.0, mw - 2.0, 24.0, None, Some(p.t.acento), 1.0, false);
+        let rotulo = if cuantas >= 2 { format!("MES {}", mes + 1) } else { format!("M{}", mes + 1) };
+        p.l.texto(mx + mw / 2.0, y - 22.0, &rotulo, 10.0, WORK_SANS, BLANCO, true, Al::Centro);
+        j += cuantas;
     }
-    let fin = p.tabla(x, y, w, &cols, 18, 28.0);
-    for f in 0..18 {
-        let yy = y + 28.0 + 28.0 * f as f32;
-        p.l.texto(x + w * 0.3 / total, yy + 7.0, &format!("{}", f + 1), 10.0, WORK_SANS, ROTULO, false, Al::Centro);
+    let fin = p.tabla(x, y, w, &cols, tr.n(), fh);
+    for (f, i) in tr.numeros().enumerate() {
+        let yy = y + fh + fh * f as f32;
+        p.l.texto(x + w * 0.3 / total, yy + (fh - 14.0) / 2.0, &numero(i), 10.0, WORK_SANS, ROTULO, false, Al::Centro);
     }
     // La leyenda.
     let ly = fin + 18.0;
@@ -284,15 +455,16 @@ fn cronograma() -> FiguraGuardada {
     let r = x + 260.0;
     p.l.poli(&[(r + 7.0, ly - 1.0), (r + 14.0, ly + 6.0), (r + 7.0, ly + 13.0), (r, ly + 6.0), (r + 7.0, ly - 1.0)], hex(0xd9822b), 1.5, Some(hex(0xf0a04b)));
     p.l.texto(r + 22.0, ly - 2.0, "Hito", 11.0, WORK_SANS, ROTULO, false, Al::Izq);
-    p.fin("cronograma", "Cronograma")
+    p.fin_de("cronograma", "Cronograma", tr)
 }
 
-fn diario() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Planificador diario", &["Fecha"]);
+fn diario(tr: &Tramo) -> FiguraGuardada {
+    let alto = Y0 + 30.0 + 54.0 * tr.n() as f32 + M;
+    let mut p = Pag::alta(PLANIFICACION, "Planificador diario", &["Fecha"], alto);
     p.dias_en_circulos(W - M - 9.0 - 172.0, 72.0);
     let izq = 330.0;
     let y = p.seccion(M, Y0, izq, "Horario");
-    for (i, h) in (6..=22).enumerate() {
+    for (i, h) in tr.numeros().enumerate() {
         let yy = y + 10.0 + i as f32 * 54.0;
         p.l.texto(M, yy + 4.0, &format!("{h:02}"), 11.0, WORK_SANS, p.t.acento, true, Al::Izq);
         p.l.linea(M + 30.0, yy + 18.0, M + izq, yy + 18.0, RAYA, 1.0);
@@ -307,8 +479,8 @@ fn diario() -> FiguraGuardada {
     let y = p.seccion(x2, y + 26.0, w2, "Otras tareas");
     let y = p.casillas(x2, y, w2, 10, 32.0, &[]);
     let y = p.seccion(x2, y + 26.0, w2, "Notas");
-    p.caja(x2, y + 10.0, w2, H - M - y - 10.0, "");
-    p.fin("planificador-diario", "Planificador diario")
+    p.caja(x2, y + 10.0, w2, p.h - M - y - 10.0, "");
+    p.fin_de("planificador-diario", "Planificador diario", tr)
 }
 
 fn semanal() -> FiguraGuardada {
@@ -347,7 +519,9 @@ fn semanal() -> FiguraGuardada {
     p.fin("planificador-semanal", "Planificador semanal")
 }
 
-fn mensual() -> FiguraGuardada {
+/// El mensual: en blanco, o con el mes de verdad (cada dia en su dia de la
+/// semana, el mes y el ano escritos en la cabecera).
+fn mensual(tr: &Tramo) -> FiguraGuardada {
     let mut p = Pag::nueva(PLANIFICACION, "Planificador mensual", &["Mes", "Año"]);
     let y = Y0;
     let cw = ANCHO / 7.0;
@@ -355,17 +529,44 @@ fn mensual() -> FiguraGuardada {
     for (i, d) in DIAS.iter().enumerate() {
         p.l.texto(M + cw * i as f32 + cw / 2.0, y + 7.0, d, 10.0, WORK_SANS, BLANCO, true, Al::Centro);
     }
-    let fh = 96.0;
+    // Con mes: las semanas que tenga (4 a 6) se reparten el alto de seis.
+    let (primero, dias) = match tr.mes {
+        Some((a, m)) => {
+            p.valor(0, MESES[m as usize - 1]);
+            p.valor(1, &a.to_string());
+            (dia_de_la_semana(a, m, 1), dias_del_mes(a, m) as usize)
+        }
+        None => (0, 0),
+    };
+    let filas = if dias > 0 { (primero + dias).div_ceil(7) } else { 6 };
+    let fh = 96.0 * 6.0 / filas as f32;
     let y1 = y + 36.0;
-    for f in 0..6 {
+    for f in 0..filas {
         for c in 0..7 {
             let (cx, cy) = (M + cw * c as f32, y1 + fh * f as f32);
-            let fondo = if c >= 5 { Some(hex(0xf6f8fc)) } else { None };
+            let dia = (f * 7 + c + 1).checked_sub(primero).filter(|&d| d >= 1 && d <= dias);
+            let fuera = dias > 0 && dia.is_none();
+            let fondo = if fuera {
+                Some(hex(0xf3f5f9))
+            } else if c >= 5 {
+                Some(hex(0xf6f8fc))
+            } else {
+                None
+            };
             p.l.rect(cx + 2.0, cy + 2.0, cw - 4.0, fh - 4.0, Some(RAYA), fondo, 1.0, true);
-            p.l.circulo(cx + cw - 19.0, cy + 18.0, 8.0, Some(RAYA), None, 1.0);
+            if fuera {
+                continue;
+            }
+            match dia {
+                Some(d) => {
+                    p.l.circulo(cx + cw - 19.0, cy + 18.0, 10.0, None, Some(p.t.suave), 1.0);
+                    p.l.texto(cx + cw - 19.0, cy + 11.0, &d.to_string(), 10.0, WORK_SANS, p.t.acento, true, Al::Centro);
+                }
+                None => p.l.circulo(cx + cw - 19.0, cy + 18.0, 8.0, Some(RAYA), None, 1.0),
+            }
         }
     }
-    let y = y1 + fh * 6.0 + 22.0;
+    let y = y1 + 96.0 * 6.0 + 22.0;
     let mitad = ANCHO / 2.0 - 14.0;
     let ya = p.seccion(M, y, mitad, "Objetivo del mes");
     p.renglones(M, ya, mitad, 2, 30.0);
@@ -374,31 +575,67 @@ fn mensual() -> FiguraGuardada {
     let x2 = M + mitad + 28.0;
     let yc = p.seccion(x2, y, mitad, "Tareas");
     p.casillas(x2, yc, mitad, 7, 30.0, &[]);
-    p.fin("planificador-mensual", "Planificador mensual")
+    p.fin_de("planificador-mensual", "Planificador mensual", tr)
 }
 
-fn tareas() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Lista de tareas", &["Fecha"]);
+/// Las tareas van numeradas en dos columnas (la primera mitad a la
+/// izquierda), cada una con su casilla y su fecha.
+fn tareas(tr: &Tramo) -> FiguraGuardada {
+    let filas = tr.n().div_ceil(2);
+    let paso = ((H - Y0 - 20.0 - 150.0 - 20.0 - M) / filas as f32).clamp(34.0, 52.0);
+    let alto = Y0 + 20.0 + 150.0 + 20.0 + paso * filas as f32 + M;
+    let mut p = Pag::alta(PLANIFICACION, "Lista de tareas", &["Fecha"], alto);
     let y = p.seccion(M, Y0, ANCHO, "Lo más importante");
     p.caja_suave(M, y + 10.0, ANCHO, 116.0, "");
-    p.numerados(M + 14.0, y + 12.0, ANCHO - 28.0, 3, 34.0);
+    // Lo mas importante va con un punto y no con numeros: los numeros son
+    // los de la lista de abajo.
+    for i in 1..=3 {
+        let yy = y + 12.0 + 34.0 * i as f32;
+        p.l.circulo(M + 24.0, yy - 9.0, 5.0, None, Some(p.t.acento), 1.0);
+        p.l.linea(M + 40.0, yy, M + ANCHO - 14.0, yy, RAYA, 1.0);
+    }
     let y = y + 150.0;
     let mitad = ANCHO / 2.0 - 14.0;
+    let mut numeros = tr.numeros();
     for (k, x) in [M, M + mitad + 28.0].into_iter().enumerate() {
         let ys = p.seccion(x, y, mitad, if k == 0 { "Pendientes" } else { "Más tareas" });
-        for i in 1..=21 {
-            let yy = ys + 34.0 * i as f32;
-            p.l.rect(x + 2.0, yy - 17.0, 14.0, 14.0, Some(BORDE), None, 1.25, true);
-            p.l.linea(x + 26.0, yy, x + mitad - 60.0, yy, RAYA, 1.0);
+        for (f, i) in numeros.by_ref().take(filas).enumerate() {
+            let yy = ys + paso * (f + 1) as f32;
+            p.l.texto(x + 2.0, yy - 17.0, &numero(i), 10.0, WORK_SANS, p.t.acento, true, Al::Izq);
+            p.l.rect(x + 32.0, yy - 17.0, 14.0, 14.0, Some(BORDE), None, 1.25, true);
+            p.l.linea(x + 56.0, yy, x + mitad - 60.0, yy, RAYA, 1.0);
             p.l.texto(x + mitad - 26.0, yy - 17.0, "/", 11.0, WORK_SANS, RAYA, false, Al::Centro);
             p.l.linea(x + mitad - 50.0, yy, x + mitad, yy, RAYA, 1.0);
         }
     }
-    p.fin("lista-de-tareas", "Lista de tareas")
+    p.fin_de("lista-de-tareas", "Lista de tareas", tr)
 }
 
-fn metas() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Metas", &["Fecha límite"]);
+/// **La lista numerada** (22-oct): la mas sencilla, para cualquier cosa que
+/// se cuente («del 1 al 50»): el numero en su pastilla, el renglon y una
+/// casilla al final.
+fn lista_numerada(tr: &Tramo) -> FiguraGuardada {
+    let paso = ((H - Y0 - 20.0 - M) / tr.n() as f32).clamp(32.0, 80.0);
+    let alto = Y0 + 20.0 + paso * tr.n() as f32 + M;
+    let mut p = Pag::alta(PLANIFICACION, "Lista numerada", &["Tema", "Fecha"], alto);
+    let y = Y0 + 8.0;
+    for (f, i) in tr.numeros().enumerate() {
+        let yy = y + paso * f as f32;
+        if f % 2 == 1 {
+            p.l.rect(M, yy, ANCHO, paso, None, Some(hex(0xf7f9fc)), 1.0, false);
+        }
+        p.l.rect(M + 4.0, yy + paso - 26.0, 40.0, 20.0, None, Some(p.t.suave), 1.0, true);
+        p.l.texto(M + 24.0, yy + paso - 23.0, &numero(i), 10.0, WORK_SANS, p.t.acento, true, Al::Centro);
+        p.l.linea(M + 56.0, yy + paso - 8.0, M + ANCHO - 34.0, yy + paso - 8.0, RAYA, 1.0);
+        p.l.rect(M + ANCHO - 20.0, yy + paso - 23.0, 14.0, 14.0, Some(BORDE), Some(BLANCO), 1.25, true);
+    }
+    p.fin_de("lista-numerada", "Lista numerada", tr)
+}
+
+fn metas(tr: &Tramo) -> FiguraGuardada {
+    // Lo de la derecha: los pasos, los hitos (26 + 6 filas) y el progreso.
+    let alto = Y0 + 20.0 + 30.0 * tr.n() as f32 + 26.0 + 20.0 + 10.0 + 26.0 + 28.0 * 6.0 + 30.0 + 60.0 + M;
+    let mut p = Pag::alta(PLANIFICACION, "Metas", &["Fecha límite"], alto);
     let mitad = ANCHO / 2.0 - 14.0;
     let y = p.seccion(M, Y0, mitad, "Mi meta");
     p.caja_suave(M, y + 10.0, mitad, 170.0, "");
@@ -408,43 +645,61 @@ fn metas() -> FiguraGuardada {
     p.renglones(M, y, mitad, 6, 30.0);
     let x2 = M + mitad + 28.0;
     let y = p.seccion(x2, Y0, mitad, "Pasos");
-    let y = p.numerados(x2, y, mitad, 12, 30.0);
+    let y = p.numerados_desde(x2, y, mitad, tr.desde, tr.n(), 30.0);
     let y = p.seccion(x2, y + 26.0, mitad, "Hitos");
     p.tabla(x2, y + 10.0, mitad, &[("Hito", 4.0), ("Fecha", 1.6), ("✓", 0.7)], 6, 28.0);
-    let y = H - M - 60.0;
+    let y = p.h - M - 60.0;
     let y = p.seccion(M, y, ANCHO, "Progreso");
     let paso = ANCHO / 10.0;
     for i in 0..10 {
         p.l.rect(M + paso * i as f32 + 2.0, y + 12.0, paso - 4.0, 22.0, Some(BORDE), None, 1.0, true);
         p.l.texto(M + paso * (i as f32 + 0.5), y + 16.0, &format!("{}%", (i + 1) * 10), 9.0, WORK_SANS, ROTULO, false, Al::Centro);
     }
-    p.fin("metas", "Metas")
+    p.fin_de("metas", "Metas", tr)
 }
 
-fn habitos() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Hábitos del mes", &["Mes"]);
-    let y = Y0 + 8.0;
+/// Los habitos: una columna por dia del tramo. Con mes, cada numero lleva
+/// debajo la letra de su dia de la semana y el mes va en la cabecera.
+fn habitos(tr: &Tramo) -> FiguraGuardada {
     let nombre = 168.0;
-    let celda = (ANCHO - nombre) / 31.0;
+    let n = tr.n();
+    // Hasta 31 dias se reparten el A4; con mas, la hoja se ensancha.
+    let minima = (ANCHO - nombre) / 31.0;
+    let ancho = (2.0 * M + nombre + minima * n as f32).max(W);
+    let mut p = Pag::de_tamano(PLANIFICACION, ancho, H, "Hábitos del mes", &["Mes"]);
+    if let Some((a, m)) = tr.mes {
+        p.valor(0, &format!("{} {a}", MESES[m as usize - 1]));
+    }
+    let y = Y0 + 8.0;
+    let celda = (ancho - 2.0 * M - nombre) / n as f32;
+    let lado = (celda * 0.62).clamp(13.0, 20.0);
+    let cab = if tr.mes.is_some() { 40.0 } else { 28.0 };
     p.l.texto(M, y + 4.0, "HÁBITO", 10.0, WORK_SANS, p.t.acento, true, Al::Izq);
-    for d in 0..31 {
-        p.l.texto(M + nombre + celda * (d as f32 + 0.5), y + 5.0, &format!("{}", d + 1), 8.5, WORK_SANS, ROTULO, true, Al::Centro);
+    for (d, i) in tr.numeros().enumerate() {
+        let cx = M + nombre + celda * (d as f32 + 0.5);
+        p.l.texto(cx, y + 5.0, &i.to_string(), 8.5, WORK_SANS, ROTULO, true, Al::Centro);
+        if let Some((a, m)) = tr.mes {
+            let s = dia_de_la_semana(a, m, i);
+            let color = if s >= 5 { p.t.acento } else { BORDE };
+            p.l.texto(cx, y + 18.0, LETRAS[s], 7.5, WORK_SANS, color, true, Al::Centro);
+        }
     }
     let fh = 34.0;
+    let ancho_util = ancho - 2.0 * M;
     for f in 0..22 {
-        let yy = y + 28.0 + fh * f as f32;
+        let yy = y + cab + fh * f as f32;
         if f % 2 == 0 {
-            p.l.rect(M, yy, ANCHO, fh, None, Some(p.t.suave), 1.0, true);
+            p.l.rect(M, yy, ancho_util, fh, None, Some(p.t.suave), 1.0, true);
         }
-        for d in 0..31 {
+        for d in 0..n {
             let cx = M + nombre + celda * (d as f32 + 0.5);
-            p.l.rect(cx - 6.5, yy + fh / 2.0 - 6.5, 13.0, 13.0, Some(BORDE), Some(BLANCO), 1.0, true);
+            p.l.rect(cx - lado / 2.0, yy + (fh - lado) / 2.0, lado, lado, Some(BORDE), Some(BLANCO), 1.0, true);
         }
     }
-    let y = y + 28.0 + fh * 22.0 + 24.0;
-    let y = p.seccion(M, y, ANCHO, "Notas del mes");
-    p.renglones(M, y, ANCHO, 3, 30.0);
-    p.fin("habitos", "Hábitos del mes")
+    let y = y + cab + fh * 22.0 + 24.0;
+    let y = p.seccion(M, y, ancho_util, "Notas del mes");
+    p.renglones(M, y, ancho_util, if tr.mes.is_some() { 2 } else { 3 }, 30.0);
+    p.fin_de("habitos", "Hábitos del mes", tr)
 }
 
 fn comidas() -> FiguraGuardada {
@@ -501,15 +756,21 @@ fn finanzas() -> FiguraGuardada {
     p.fin("finanzas", "Finanzas del mes")
 }
 
-fn itinerario() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Itinerario", &["Destino"]);
+/// Un bloque por dia del tramo: «DIA 4», la raya para su fecha y su tabla.
+fn itinerario(tr: &Tramo) -> FiguraGuardada {
+    // Cada dia: rotulo 28, cabecera 30 y siete filas de 30, y 30 de aire.
+    let bloque = 28.0 + 30.0 + 7.0 * 30.0 + 30.0;
+    let alto = Y0 + bloque * tr.n() as f32 - 30.0 + M;
+    let mut p = Pag::alta(PLANIFICACION, "Itinerario", &["Destino"], alto);
     let mut y = Y0;
-    for _ in 0..3 {
-        p.l.texto(M, y, "DÍA", 11.0, WORK_SANS, p.t.acento, true, Al::Izq);
-        p.l.linea(M + 34.0, y + 16.0, M + 200.0, y + 16.0, BORDE, 1.0);
+    for d in tr.numeros() {
+        let s = format!("DÍA {d}");
+        p.l.texto(M, y, &s, 11.0, WORK_SANS, p.t.acento, true, Al::Izq);
+        let tras = M + crate::texto::medida(&s, 11.0, WORK_SANS, crate::texto::EstiloDeTexto { negrita: true, ..Default::default() }).0 + 12.0;
+        p.l.linea(tras, y + 16.0, tras + 170.0, y + 16.0, BORDE, 1.0);
         y = p.tabla(M, y + 28.0, ANCHO, &[("Hora", 1.0), ("Lugar", 2.4), ("Detalles", 3.2)], 7, 30.0) + 30.0;
     }
-    p.fin("itinerario", "Itinerario")
+    p.fin_de("itinerario", "Itinerario", tr)
 }
 
 fn viaje() -> FiguraGuardada {
@@ -560,16 +821,18 @@ fn diario_de_viaje() -> FiguraGuardada {
 
 // ----------------------------------------------------------------- academico
 
-fn semestre() -> FiguraGuardada {
-    let mut p = Pag::nueva(ACADEMICO, "Horario del semestre", &["Inicio", "Fin"]);
+/// El horario: una fila por hora del tramo y, debajo, los cursos.
+fn semestre(tr: &Tramo) -> FiguraGuardada {
+    let fh = 38.0;
+    let horas = tr.n();
+    let alto = Y0 + 26.0 + fh * horas as f32 + 26.0 + 20.0 + 12.0 + 62.0 * 3.0 + M;
+    let mut p = Pag::alta(ACADEMICO, "Horario del semestre", &["Inicio", "Fin"], alto);
     let mut cols = vec![("", 0.55)];
     cols.extend(DIAS.iter().map(|d| (*d, 1.0)));
-    let fh = 38.0;
-    let horas = 16;
     let fin = p.tabla(M, Y0, ANCHO, &cols, horas, fh);
-    for h in 0..horas {
-        let yy = Y0 + 26.0 + fh * h as f32;
-        p.l.texto(M + 18.0, yy + 4.0, &format!("{:02}", 7 + h), 10.0, WORK_SANS, p.t.acento, true, Al::Centro);
+    for (f, h) in tr.numeros().enumerate() {
+        let yy = Y0 + 26.0 + fh * f as f32;
+        p.l.texto(M + 18.0, yy + (fh - 14.0) / 2.0, &numero(h), 10.0, WORK_SANS, p.t.acento, true, Al::Centro);
     }
     let y = p.seccion(M, fin + 26.0, ANCHO, "Mis cursos");
     let mitad = ANCHO / 2.0 - 12.0;
@@ -581,7 +844,32 @@ fn semestre() -> FiguraGuardada {
         p.l.linea(x + 18.0, yy + 26.0, x + mitad - 12.0, yy + 26.0, RAYA, 1.0);
         p.l.texto(x + 18.0, yy + 30.0, "Aula:", 10.0, WORK_SANS, ROTULO, false, Al::Izq);
     }
-    p.fin("semestre", "Horario del semestre")
+    p.fin_de("semestre", "Horario del semestre", tr)
+}
+
+/// **La lista de asistencia** (22-oct): numero, nombre y doce columnas para
+/// las fechas, con la clave de lo que se marca debajo.
+fn asistencia(tr: &Tramo) -> FiguraGuardada {
+    let fh = ((H - Y0 - 26.0 - 50.0 - M) / tr.n() as f32).clamp(26.0, 44.0);
+    let alto = Y0 + 26.0 + fh * tr.n() as f32 + 50.0 + M;
+    let mut p = Pag::alta(ACADEMICO, "Lista de asistencia", &["Curso", "Mes"], alto);
+    let mut cols = vec![("N.º", 0.7), ("Nombre", 4.4)];
+    cols.extend(std::iter::repeat_n(("", 0.62), 12));
+    let total: f32 = cols.iter().map(|(_, f)| f).sum();
+    let fin = p.tabla(M, Y0, ANCHO, &cols, tr.n(), fh);
+    for (f, i) in tr.numeros().enumerate() {
+        let yy = Y0 + 26.0 + fh * f as f32;
+        p.l.texto(M + ANCHO * 0.35 / total, yy + (fh - 14.0) / 2.0, &numero(i), 10.0, WORK_SANS, p.t.acento, true, Al::Centro);
+    }
+    let y = fin + 18.0;
+    let mut x = M;
+    for (marca, que) in [("✓", "Presente"), ("F", "Falta"), ("T", "Tarde"), ("J", "Justificada")] {
+        p.l.rect(x, y, 20.0, 20.0, Some(BORDE), Some(p.t.suave), 1.0, true);
+        p.l.texto(x + 10.0, y + 3.0, marca, 10.0, WORK_SANS, p.t.acento, true, Al::Centro);
+        p.l.texto(x + 28.0, y + 3.0, que, 10.5, WORK_SANS, ROTULO, false, Al::Izq);
+        x += 130.0;
+    }
+    p.fin_de("asistencia", "Lista de asistencia", tr)
 }
 
 fn curso() -> FiguraGuardada {
@@ -691,19 +979,34 @@ fn mapa_mental() -> FiguraGuardada {
 
 // ------------------------------------------------------------------ creativo
 
-fn storyboard(n: usize) -> FiguraGuardada {
-    let mut p = Pag::nueva(CREATIVO, "Storyboard", &["Proyecto", "Página"]);
-    let acento = p.t.acento;
-    let numero = |p: &mut Pag, x: f32, y: f32, i: usize| {
-        p.l.circulo(x + 16.0, y + 16.0, 12.0, None, Some(acento), 1.0);
+/// El ancho de las viñetas del storyboard de 4 (por el se sabe cual de los
+/// dos es el que esta elegido: los dos se titulan igual).
+pub(super) const VINETA_DE_4: f32 = 340.0;
+
+fn storyboard(n: usize, tr: &Tramo) -> FiguraGuardada {
+    let acento = CREATIVO.acento;
+    let fw6 = (ANCHO - 28.0) / 2.0;
+    let fh6 = fw6 * 9.0 / 16.0;
+    let alto = if n == 4 {
+        Y0 + 8.0 + tr.n() as f32 * (191.0 + 34.0) - 34.0 + M
+    } else {
+        Y0 + 8.0 + tr.n().div_ceil(2) as f32 * (fh6 + 110.0) - 26.0 + M
+    };
+    let mut p = Pag::alta(CREATIVO, "Storyboard", &["Proyecto", "Página"], alto);
+    if let Some((i, _)) = tr.hoja {
+        p.valor(1, &i.to_string());
+    }
+    let numero = |p: &mut Pag, x: f32, y: f32, i: u32| {
+        let r = if i >= 100 { 15.0 } else { 12.0 };
+        p.l.circulo(x + 16.0, y + 16.0, r, None, Some(acento), 1.0);
         p.l.texto(x + 16.0, y + 8.5, &format!("{i}"), 11.0, WORK_SANS, BLANCO, true, Al::Centro);
     };
     if n == 4 {
-        let (fw, fh) = (340.0, 191.0);
-        for i in 0..4 {
+        let (fw, fh) = (VINETA_DE_4, 191.0);
+        for (i, v) in tr.numeros().enumerate() {
             let y = Y0 + 8.0 + i as f32 * (fh + 34.0);
             p.l.rect(M, y, fw, fh, Some(BORDE), Some(hex(0xfcfcfd)), 1.5, false);
-            numero(&mut p, M + 8.0, y + 8.0, i + 1);
+            numero(&mut p, M + 8.0, y + 8.0, v);
             let x2 = M + fw + 26.0;
             let w2 = W - M - x2;
             p.l.texto(x2, y, "ESCENA", 10.0, WORK_SANS, acento, true, Al::Izq);
@@ -713,20 +1016,23 @@ fn storyboard(n: usize) -> FiguraGuardada {
             p.renglones(x2, y + 18.0, w2, 6, 28.0);
         }
     } else {
-        let fw = (ANCHO - 28.0) / 2.0;
-        let fh = fw * 9.0 / 16.0;
-        for i in 0..6 {
+        let (fw, fh) = (fw6, fh6);
+        for (i, v) in tr.numeros().enumerate() {
             let (x, y) = (M + (fw + 28.0) * (i % 2) as f32, Y0 + 8.0 + (fh + 110.0) * (i / 2) as f32);
             p.l.rect(x, y, fw, fh, Some(BORDE), Some(hex(0xfcfcfd)), 1.5, false);
-            numero(&mut p, x + 8.0, y + 8.0, i + 1);
+            numero(&mut p, x + 8.0, y + 8.0, v);
             p.renglones(x, y + fh, fw, 3, 28.0);
         }
     }
-    p.fin(&format!("storyboard-{n}"), &format!("Storyboard de {n} viñetas"))
+    p.fin_de(&format!("storyboard-{n}"), &format!("Storyboard de {n} viñetas"), tr)
 }
 
-fn receta() -> FiguraGuardada {
-    let mut p = Pag::nueva(CREATIVO, "Receta", &["Categoría"]);
+/// La receta: los pasos del tramo a la derecha y, a la izquierda, tantos
+/// ingredientes como pasos (16 como poco).
+fn receta(tr: &Tramo) -> FiguraGuardada {
+    let filas = tr.n().max(16);
+    let alto = Y0 + 260.0 + 20.0 + 30.0 * filas as f32 + 26.0 + 20.0 + 10.0 + 120.0 + M;
+    let mut p = Pag::alta(CREATIVO, "Receta", &["Categoría"], alto);
     let mitad = ANCHO / 2.0 - 14.0;
     let x2 = M + mitad + 28.0;
     p.caja_suave(M, Y0, mitad, 230.0, "Foto");
@@ -741,13 +1047,13 @@ fn receta() -> FiguraGuardada {
     p.l.rect(x2, y + 8.0, mitad, fin - y - 8.0, Some(BORDE), None, 1.25, false);
     let y = Y0 + 260.0;
     let ya = p.seccion(M, y, mitad, "Ingredientes");
-    p.casillas(M, ya, mitad, 16, 30.0, &[]);
+    p.casillas(M, ya, mitad, filas, 30.0, &[]);
     let yb = p.seccion(x2, y, mitad, "Preparación");
-    p.numerados(x2, yb, mitad, 16, 30.0);
-    let y = ya + 16.0 * 30.0 + 26.0;
+    p.numerados_desde(x2, yb, mitad, tr.desde, tr.n(), 30.0);
+    let y = ya + filas as f32 * 30.0 + 26.0;
     let y = p.seccion(M, y, ANCHO, "Notas");
-    p.caja(M, y + 10.0, ANCHO, H - M - y - 10.0, "");
-    p.fin("receta", "Receta")
+    p.caja(M, y + 10.0, ANCHO, p.h - M - y - 10.0, "");
+    p.fin_de("receta", "Receta", tr)
 }
 
 fn pentagramas() -> FiguraGuardada {

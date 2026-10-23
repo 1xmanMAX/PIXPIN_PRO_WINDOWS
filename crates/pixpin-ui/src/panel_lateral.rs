@@ -214,6 +214,10 @@ pub enum AccionPanel {
     Borrar,
     Agrupar,
     Desagrupar,
+    /// **Guardar lo elegido en Figuras** (22-oct): pide el nombre y lo pone
+    /// en la biblioteca del menu de figuras. Lo atiende el editor, que es
+    /// quien puede abrir el cajetin del nombre.
+    GuardarFigura,
     /// Empieza a escribir el codigo del color en el campo del desplegable.
     /// Que color (trazo o fondo) lo dice el desplegable abierto.
     EditarHex,
@@ -1828,6 +1832,7 @@ impl PanelLateral {
             if m.desagrupar {
                 opciones.push((AccionPanel::Desagrupar, false));
             }
+            opciones.push((AccionPanel::GuardarFigura, false));
             c.fila(&opciones);
             c.separar();
         }

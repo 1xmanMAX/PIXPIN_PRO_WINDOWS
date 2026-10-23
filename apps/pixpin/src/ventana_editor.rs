@@ -1063,6 +1063,10 @@ fn abrir_en_modo(
             // con lo que se ve, lo elegido y el almacen de imagenes (pegar).
             let elegidos = gesto.seleccion.ids().to_vec();
             if crate::asistente::al_lienzo::atender_en_editor_con(&mut escena, (x0, y0, x1, y1), &elegidos, &mut imagenes) {
+                // Las hojas de una plantilla alargada quedan elegidas.
+                if let Some(ids) = crate::asistente::al_lienzo::tomar_para_elegir() {
+                    gesto.seleccion.poner_todos(ids);
+                }
                 todo_sucio = true;
                 contenido_sucio = true;
                 interfaz_sucia = true;
@@ -1829,6 +1833,7 @@ fn abrir_en_modo(
                     crate::dibujo::mano::Pedido::Figuras(p) => {
                         figuras::atender_figuras(ed, p, exportar::textos())
                     }
+                    crate::dibujo::mano::Pedido::GuardarFigura => figuras::guardar_seleccion(ed, exportar::textos()),
                     crate::dibujo::mano::Pedido::Imprimir
                     | crate::dibujo::mano::Pedido::Compartir
                     | crate::dibujo::mano::Pedido::Atravesar => false,

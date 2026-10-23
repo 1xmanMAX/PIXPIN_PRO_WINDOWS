@@ -158,6 +158,8 @@ pub enum Pedido {
     Compartir,
     /// Se pulso el clic a traves (solo en el anotador de pantalla viva).
     Atravesar,
+    /// Se pulso «Guardar en figuras» en el panel: el cajetin del nombre.
+    GuardarFigura,
 }
 
 impl Atendido {
@@ -289,7 +291,13 @@ impl Mano {
                 vista.interfaz,
                 vista.escala_por_cien,
             ) {
-                ClicPanel::Suyo { repintar } => return Atendido::suyo(Repinte::si(repintar)),
+                ClicPanel::Suyo { repintar } => {
+                    let mut a = Atendido::suyo(Repinte::si(repintar));
+                    if crate::panel_dibujo::tomar_guardar_figura() {
+                        a.pedido = Some(Pedido::GuardarFigura);
+                    }
+                    return a;
+                }
                 ClicPanel::Fuera { cerro } => {
                     if cerro {
                         sigue.repinte = Repinte::ENCIMA;

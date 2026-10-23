@@ -55,6 +55,10 @@ pub enum Trabajo {
     /// **La imagen del lienzo** para «calca esto» (15-oct): la elegida o,
     /// si no hay, la ultima pegada.
     Imagen,
+    /// **Una plantilla de serie con otro intervalo** (22-oct, «damela del 1
+    /// al 40», «de 10 en 10»): la elegida, rehecha en su sitio, o la de
+    /// `nombre`. Ver [`poner_plantilla`].
+    Plantilla { nombre: Option<String>, intervalo: pixpin_motor2d::figuras_de_serie::Intervalo },
 }
 
 /// Lo que contesta el lienzo: el texto para el modelo, los ids que toco
@@ -428,6 +432,7 @@ pub fn trabajar(
                 ..Default::default()
             })
         }
+        Trabajo::Plantilla { nombre, intervalo } => poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, None),
         Trabajo::Dibujar => Err("eso no es un trabajo de editar".into()),
     }
 }
@@ -660,6 +665,13 @@ pub fn atender_en_editor_con(
                     ..resumen_con_ids(escena, ids, p.marco)
                 })
             }
+            Trabajo::Plantilla { nombre, intervalo } => {
+                let antes = escena.pasos_cerrados();
+                let centro = ((vista.0 + vista.2) / 2.0, (vista.1 + vista.3) / 2.0);
+                let r = poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, Some(centro));
+                algo |= escena.pasos_cerrados() != antes;
+                r.map(|r| Respuesta { pasos: Some((antes, escena.pasos_cerrados())), ..r })
+            }
             t => {
                 let antes = escena.pasos_cerrados();
                 let r = trabajar(escena, t, elegidos, (vista.0.floor(), vista.1.floor()), imagenes);
@@ -862,4 +874,163 @@ pub fn meter_en_sitio(escena: &mut Escena, documento: &str, junto_a: Option<(f32
         }
     }
     Ok(pixpin_motor2d::portapapeles::pegar(escena, &els, dx, dy))
+}
+
+// ---------------------------------------------------------------------------
+// Las plantillas de serie con otro intervalo (22-oct)
+
+/// Lo que el editor abierto tiene que dejar elegido al acabar (las hojas
+/// nuevas de una plantilla): lo recoge su bucle con [`tomar_para_elegir`].
+static PARA_ELEGIR: Mutex<Option<Vec<u64>>> = Mutex::new(None);
+
+/// Lo que hay que dejar elegido en el editor, si algo.
+pub fn tomar_para_elegir() -> Option<Vec<u64>> {
+    PARA_ELEGIR.lock().ok().and_then(|mut p| p.take())
+}
+
+/// Hueco entre dos hojas de la misma plantilla.
+const ENTRE_HOJAS: f32 = 60.0;
+
+/// **«Damela del 1 al 40», «de 10 en 10»**: la plantilla de serie elegida
+/// (o la de `nombre`) rehecha con ese intervalo, con el mismo diseño
+/// (`figuras_de_serie::alargar`).
+///
+/// Si lo elegido es esa plantilla, las hojas nuevas **ocupan su sitio**: la
+/// primera donde estaba y las demas en fila a su derecha; la vieja se borra
+/// en el mismo paso, asi que Ctrl+Z la devuelve. Si no, van centradas en
+/// `centro` (lo que se ve) o, con el lienzo cerrado, a la derecha de lo que
+/// hubiera. Las hojas quedan elegidas, listas para «Guardar en figuras».
+pub fn poner_plantilla(
+    escena: &mut Escena,
+    elegidos: &[u64],
+    nombre: Option<&str>,
+    intervalo: &pixpin_motor2d::figuras_de_serie::Intervalo,
+    centro: Option<(f32, f32)>,
+) -> Result<Respuesta, String> {
+    use pixpin_motor2d::biblioteca;
+    use pixpin_motor2d::figuras_de_serie as serie;
+    let elegidas: Vec<Elemento> = escena.visibles().filter(|e| elegidos.contains(&e.id)).cloned().collect();
+    let la_elegida = serie::cual_es(&elegidas);
+    let clave = match nombre {
+        Some(n) => {
+            let catalogo = serie::catalogo();
+            let f = pixpin_ia::figuras::buscar(&catalogo, n)
+                .ok_or_else(|| format!("no hay ninguna plantilla llamada «{n}»; se alargan: {}", serie::las_que_se_alargan()))?;
+            serie::clave_de(f).unwrap_or_default().to_string()
+        }
+        None => la_elegida.clone().ok_or_else(|| {
+            if elegidas.is_empty() {
+                "no hay nada elegido: elige en el lienzo la plantilla (o di cual quieres)".to_string()
+            } else {
+                "lo elegido no es una plantilla de serie (se reconocen por su titulo)".to_string()
+            }
+        })?,
+    };
+    let hojas = serie::alargar(&clave, intervalo)?;
+    let tamanos: Vec<(f32, f32)> = hojas.iter().map(FiguraGuardada::tamano).collect();
+    let ancho: f32 = tamanos.iter().map(|t| t.0).sum::<f32>() + ENTRE_HOJAS * (hojas.len() - 1) as f32;
+    let alto = tamanos.iter().map(|t| t.1).fold(0.0, f32::max);
+    let reemplaza = la_elegida.as_deref() == Some(clave.as_str());
+    // La esquina de la primera hoja.
+    let (x0, y0) = match (reemplaza, centro) {
+        (true, _) => caja(&elegidas).map(|c| (c.0, c.1)).unwrap_or_default(),
+        (false, Some((cx, cy))) => (cx - ancho / 2.0, cy - alto / 2.0),
+        (false, None) => match caja(&escena.visibles().cloned().collect::<Vec<_>>()) {
+            Some(c) => (c.2 + HUECO_PLANTILLA, c.1),
+            None => (0.0, 0.0),
+        },
+    };
+    escena.abrir_paso();
+    if reemplaza {
+        for e in &elegidas {
+            escena.borrar_apuntando(e.id);
+        }
+    }
+    let mut ids = Vec::new();
+    let mut x = x0;
+    for (f, (w, h)) in hojas.iter().zip(&tamanos) {
+        let primero = escena.siguiente_id.max(1);
+        let grupo = format!("g{primero}");
+        let centro = pixpin_motor2d::vector::Punto2::nuevo(x + w / 2.0, y0 + h / 2.0);
+        for e in biblioteca::estampar(f, centro, primero, &grupo) {
+            ids.push(escena.anadir(e));
+        }
+        x += w + ENTRE_HOJAS;
+    }
+    escena.cerrar_paso();
+    // Solo con el editor abierto (`centro`): cerrado, nadie lo recogeria.
+    if centro.is_some()
+        && let Ok(mut p) = PARA_ELEGIR.lock()
+    {
+        *p = Some(ids.clone());
+    }
+    let que = serie::nombre_de(&clave);
+    let texto = if hojas.len() == 1 {
+        format!("listo: «{que}» rehecha en una hoja ({})", hojas[0].nombre)
+    } else {
+        format!("listo: «{que}» en {} hojas, una al lado de otra", hojas.len())
+    };
+    let texto = format!(
+        "{texto}{}. Quedan elegidas: el usuario puede guardarlas con «Guardar en figuras» del panel lateral, o pedirtelo.",
+        if reemplaza { ", en el sitio de la que estaba elegida (Ctrl+Z la devuelve)" } else { "" }
+    );
+    Ok(Respuesta { texto, ids, ..Default::default() })
+}
+
+/// Con el lienzo cerrado, a cuanto de lo que habia.
+const HUECO_PLANTILLA: f32 = 120.0;
+
+use pixpin_motor2d::biblioteca::FiguraGuardada;
+
+#[cfg(test)]
+mod pruebas_plantilla {
+    use super::*;
+    use pixpin_motor2d::biblioteca;
+    use pixpin_motor2d::figuras_de_serie::{self as serie, Intervalo};
+
+    /// Un lienzo con la lista de tareas de serie estampada y elegida.
+    fn con_la_lista() -> (Escena, Vec<u64>) {
+        let mut escena = Escena::nueva();
+        let f = serie::catalogo().into_iter().find(|f| f.id == "serie-lista-de-tareas").unwrap();
+        let ids = biblioteca::estampar_en_escena(&mut escena, &f, pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0));
+        (escena, ids)
+    }
+
+    #[test]
+    fn la_plantilla_elegida_se_rehace_en_su_sitio_en_hojas_y_se_deshace_de_una() {
+        let (mut escena, ids) = con_la_lista();
+        let caja_vieja = caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
+        let iv = Intervalo { desde: Some(1), hasta: Some(40), de_a: Some(10), ..Default::default() };
+        let r = poner_plantilla(&mut escena, &ids, None, &iv, Some((0.0, 0.0))).unwrap();
+        assert!(r.texto.contains("4 hojas"), "{}", r.texto);
+        assert!(ids.iter().all(|id| escena.buscar(*id).is_some_and(|e| e.borrado)), "la vieja se va");
+        let nuevas: Vec<Elemento> = escena.visibles().cloned().collect();
+        let grupos: std::collections::HashSet<&String> = nuevas.iter().filter_map(|e| e.grupos.last()).collect();
+        assert_eq!(grupos.len(), 4, "una hoja, un grupo");
+        let c = caja(&nuevas).unwrap();
+        assert!((c.0 - caja_vieja.0).abs() < 0.5 && (c.1 - caja_vieja.1).abs() < 0.5, "empieza donde estaba la vieja");
+        assert_eq!(tomar_para_elegir().map(|v| v.len()), Some(nuevas.len()), "quedan elegidas");
+        assert_eq!(r.ids.len(), nuevas.len());
+        // Un Ctrl+Z la devuelve tal cual.
+        escena.deshacer();
+        assert_eq!(escena.visibles().count(), ids.len());
+        assert!(ids.iter().all(|id| escena.buscar(*id).is_some_and(|e| !e.borrado)));
+    }
+
+    #[test]
+    fn por_su_nombre_va_en_medio_y_sin_nada_elegido_se_dice() {
+        let mut escena = Escena::nueva();
+        let iv = Intervalo { desde: Some(7), hasta: Some(18), ..Default::default() };
+        let r = poner_plantilla(&mut escena, &[], Some("storyboard de 6 viñetas"), &iv, Some((1000.0, 1000.0))).unwrap();
+        let c = caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
+        assert!(((c.0 + c.2) / 2.0 - 1000.0).abs() < 1.0, "{c:?}");
+        assert!(!r.texto.contains("Ctrl+Z"));
+        let _ = tomar_para_elegir();
+        let e = poner_plantilla(&mut Escena::nueva(), &[], None, &iv, None).unwrap_err();
+        assert!(e.contains("elige"), "{e}");
+        let (mut escena, ids) = con_la_lista();
+        let e = poner_plantilla(&mut escena, &ids, Some("curso"), &iv, None).unwrap_err();
+        assert!(e.contains("no lleva números"), "{e}");
+        assert!(tomar_para_elegir().is_none(), "cerrado no deja nada que elegir");
+    }
 }

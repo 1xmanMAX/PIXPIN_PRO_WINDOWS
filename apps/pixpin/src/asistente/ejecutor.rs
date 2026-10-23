@@ -445,6 +445,14 @@ impl EjecutorDelChat {
         let ruta = crate::ventana_editor::ruta_biblioteca();
         match p {
             PedidoFiguras::Lista => Ok(lista(&biblioteca::cargar(&ruta))),
+            // La rehace quien tiene el lienzo: el editor abierto (con lo
+            // elegido) o, cerrado, el chat en su lienzo.
+            PedidoFiguras::Alargar { nombre, intervalo } => {
+                let (tx, rx) = channel();
+                let trabajo = super::al_lienzo::Trabajo::Plantilla { nombre: nombre.clone(), intervalo: intervalo.clone() };
+                let pedido = super::al_lienzo::Pedido::de_trabajo(self.proyecto.clone(), self.destino.clone(), trabajo, tx);
+                self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
+            }
             PedidoFiguras::Poner { nombre } => {
                 let todas = biblioteca::cargar(&ruta);
                 let f = buscar(&todas, nombre)

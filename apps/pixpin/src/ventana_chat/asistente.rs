@@ -912,7 +912,7 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         Some(i) if del_disco_solo => (None, mensajes[i].clone(), false),
         Some(i) => (Some(i), mensajes[i].clone(), false),
         // Resumir o editar no estrenan un lienzo: si aun no hay, esta vacio.
-        None if !matches!(trabajo, al_lienzo::Trabajo::Dibujar) => {
+        None if !matches!(trabajo, al_lienzo::Trabajo::Dibujar | al_lienzo::Trabajo::Plantilla { .. }) => {
             return match trabajo {
                 al_lienzo::Trabajo::Resumir => Ok((
                     al_lienzo::Respuesta {

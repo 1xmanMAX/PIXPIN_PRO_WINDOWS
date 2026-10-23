@@ -27,15 +27,18 @@ use crate::texto::{self, AlineacionTexto, EstiloDeTexto};
 use crate::vector::Punto2;
 
 mod blocs;
+mod intervalo;
 mod plantillas;
 mod storyboard;
+
+pub use intervalo::{Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga};
 
 /// Entre la categoria y el nombre.
 pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// Las categorias, en el orden en que salen en el menu.
 pub const CATEGORIAS: [&str; 6] = ["Planificación", "Académico", "Creativo", "Diario", "Blocs", "Storyboard"];

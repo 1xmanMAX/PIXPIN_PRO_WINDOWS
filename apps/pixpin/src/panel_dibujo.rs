@@ -55,6 +55,9 @@ thread_local! {
     /// Si el ultimo boton-abajo fue del panel: su boton-arriba tambien lo es
     /// (ver `atender_clic`). Por hilo por lo mismo que `ABIERTO`.
     static PULSADO_EN_PANEL: Cell<bool> = const { Cell::new(false) };
+    /// Se pulso «Guardar en figuras»: lo recoge el editor
+    /// ([`tomar_guardar_figura`]), que es quien abre el cajetin del nombre.
+    static GUARDAR_FIGURA: Cell<bool> = const { Cell::new(false) };
     /// Lo que se va escribiendo en el campo del codigo, si se esta
     /// escribiendo. **Mientras hay algo aqui el teclado es del panel**
     /// (`tecla_del_hex`): una «r» es un digito que no vale y no la
@@ -310,6 +313,11 @@ pub enum ClicPanel {
 ///
 /// `pulsado` distingue el boton-abajo del boton-arriba: la accion va con el
 /// primero; el segundo solo se traga para que no llegue al lienzo.
+/// Si se pulso «Guardar en figuras» desde la ultima vez (y lo olvida).
+pub fn tomar_guardar_figura() -> bool {
+    GUARDAR_FIGURA.with(|g| g.replace(false))
+}
+
 pub fn atender_clic(
     p: pixpin_geom::Punto,
     pulsado: bool,
@@ -410,6 +418,11 @@ pub fn aplicar(accion: AccionPanel, gesto: &mut Gesto, escena: &mut Escena) -> b
         AccionPanel::Repartir(r) => organizar::repartir(escena, &sel, r),
         AccionPanel::Agrupar => return organizar::agrupar(escena, &sel).is_some(),
         AccionPanel::Desagrupar => organizar::desagrupar(escena, &sel),
+        // No toca la escena: lo apunta para el editor ([`tomar_guardar_figura`]).
+        AccionPanel::GuardarFigura => {
+            GUARDAR_FIGURA.with(|g| g.set(true));
+            return false;
+        }
         AccionPanel::Duplicar => {
             // Como Ctrl+D en Excalidraw: copias desplazadas 10 unidades, y
             // quedan elegidas las copias. Por `portapapeles::pegar` y no a
@@ -667,6 +680,7 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         AccionPanel::Borrar => &i::TRASH_ICON,
         AccionPanel::Agrupar => &i::GROUP_ICON,
         AccionPanel::Desagrupar => &i::UNGROUP_ICON,
+        AccionPanel::GuardarFigura => &i::LIBRARY_ICON,
         // Si o no: la marca y el aspa.
         AccionPanel::PedirMedida(true) => &i::TABLER_CHECK_ICON,
         AccionPanel::PedirMedida(false) => &i::CLOSE_ICON,
@@ -1896,6 +1910,15 @@ mod pruebas {
                     return Err("no se deshizo el grupo".into());
                 }
             }
+            // No toca la escena: deja apuntado el cajetin para el editor.
+            AccionPanel::GuardarFigura => {
+                if despues.elementos != antes.elementos {
+                    return Err("guardar en figuras cambio el dibujo".into());
+                }
+                if !tomar_guardar_figura() {
+                    return Err("no quedo pedido el cajetin del nombre".into());
+                }
+            }
             // El campo del codigo: no toca la escena, empieza a escribir con
             // el codigo que ensena, entero y elegido.
             AccionPanel::EditarHex => {
@@ -1939,7 +1962,7 @@ mod pruebas {
     fn deberia_cambiar(accion: AccionPanel, escena: &Escena, ids: &[u64]) -> bool {
         let elegidos: Vec<&Elemento> = ids.iter().map(|id| escena.buscar(*id).unwrap()).collect();
         match accion {
-            AccionPanel::Abrir(_) | AccionPanel::EditarHex => false,
+            AccionPanel::Abrir(_) | AccionPanel::EditarHex | AccionPanel::GuardarFigura => false,
             // El modo guia y el ojo no dibujan ni van al historial, como en
             // el movil: los mira su propia prueba.
             AccionPanel::ModoGuia(_) | AccionPanel::VerGuias(_) => false,
