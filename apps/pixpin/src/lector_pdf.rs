@@ -624,6 +624,7 @@ enum Accion {
     AjusteVoz(crate::leer_en_voz::AjusteVoz),
     /// Un boton de los mandos de los lados.
     Lado(lector::BotonLado),
+    #[allow(dead_code)]
     Exportar,
     /// La hoja de compartir de toda la aplicacion, con este PDF.
     Compartir,

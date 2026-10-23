@@ -461,6 +461,16 @@ pub(super) fn nueva_conversacion(ubicacion: &Ubicacion, a: &mut Abierto, textos:
         return None;
     }
     let raiz = ubicacion.raiz().to_path_buf();
+    // Lo duradero de la que se cierra, a la memoria de largo plazo (con la
+    // nube y su clave; sin ellas no se hace nada), en segundo plano.
+    let cerrada: Vec<(bool, String)> = ia_chat::desde_el_corte(&a.mensajes)
+        .iter()
+        .filter(|m| !cuaderno::es_de_sistema(m) && !m.texto.trim().is_empty())
+        .map(|m| (!ia_chat::es_del_asistente(m), m.texto.clone()))
+        .collect();
+    if !cerrada.is_empty() {
+        crate::asistente::memoria::al_cerrar(&raiz, cerrada);
+    }
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     let hecho = escribir_nota(
         &raiz,

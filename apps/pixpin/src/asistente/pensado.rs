@@ -288,6 +288,7 @@ fn quien_escribe(raiz: &Path) -> String {
 
 /// Lo de [`preparar_turno`] sin disco, para probarlo: desde el ultimo
 /// reinicio, y si pasa del 70 % se reinicia (y la hoja lo apunta).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn preparar_con_hoja(
     hoja: &mut HojaDeTrabajo,
     anteriores: &[Nota],

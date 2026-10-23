@@ -175,6 +175,7 @@ impl Turno {
 
     /// Lo mismo con el lienzo donde dibujar si no hay uno abierto (la
     /// mencion `@lienzo:` de la pregunta): su referencia en el chat.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn lanzar_hacia(
         motor: Arc<dyn Motor>,
         proyecto: String,
@@ -196,6 +197,7 @@ impl Turno {
         Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, destino, herramientas)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn lanzar_con(
         motor: Arc<dyn Motor>,
         proyecto: String,

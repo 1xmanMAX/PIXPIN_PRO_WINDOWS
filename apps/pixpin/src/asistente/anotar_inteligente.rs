@@ -562,7 +562,8 @@ pub struct Hecho {
     pub grupo: String,
     /// Los ficheros de capa tocados, con su pagina (desde 0).
     pub capas: Vec<(usize, PathBuf)>,
-    /// Las paginas leidas (desde 0).
+    /// Las paginas leidas (desde 0). Solo la mira el banco, de momento.
+    #[allow(dead_code)]
     pub paginas: Vec<usize>,
     pub ms_leer: u128,
     /// Desde que llego el primer trozo de la respuesta hasta la primera
@@ -573,6 +574,7 @@ pub struct Hecho {
     /// De eso, lo que tarda anclar, colocar y hacer las figuras (sin escribir).
     pub ms_anclar_max: u128,
     pub ms_total: u128,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub con_ocr: usize,
     /// Lo que dijo el modelo si no habia nada que anotar.
     pub nada: Option<String>,

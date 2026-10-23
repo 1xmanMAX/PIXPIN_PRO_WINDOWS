@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "ccr-**"]
   pull_request:
 
 env:
@@ -21,18 +21,37 @@ jobs:
   # logica pura: parseo de atajos, resolucion de rutas, ida y vuelta de
   # ajustes TOML, Fluent, y la creacion/destruccion de la ventana
   # solo-mensajes (que si funciona sin sesion interactiva).
-  pruebas:
+  #
+  # Formato, Clippy y pruebas van en trabajos aparte (23-oct): con todo en
+  # uno, un fallo de formato paraba antes de probar nada y no se sabia si
+  # las pruebas pasaban.
+  formato:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Formato
+        run: cargo fmt --all --check
+
+  clippy:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy, rustfmt
+          components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Formato
-        run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  pruebas:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       # --test-threads=1 no es opcional: varios tests toman recursos globales
       # del sistema (el mutex de instancia unica, la clase de ventana, el icono
       # de bandeja) y compiten entre si en paralelo. Sin esto, CI fallaria de

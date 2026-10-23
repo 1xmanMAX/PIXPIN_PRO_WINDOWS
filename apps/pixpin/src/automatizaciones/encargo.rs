@@ -278,6 +278,7 @@ pub enum Permiso {
     /// ventana del chat la ve en `asistente::permiso`. Lo de verdad.
     EnLaBurbuja,
     /// Lo que diga esta funcion, sin preguntar a nadie (las pruebas).
+    #[cfg_attr(not(test), allow(dead_code))]
     Fijo(Confirmar),
     /// En la burbuja, y antes llama a esto con la pregunta: la cola de
     /// encargos (`cola`) trabaja sin tarjeta a la vista y la saca entonces,
