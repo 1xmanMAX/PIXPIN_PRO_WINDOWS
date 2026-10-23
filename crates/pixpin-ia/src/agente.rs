@@ -1606,6 +1606,10 @@ Ejemplos:\n\
 - «Haz un diagrama del proceso de compra»: decide los pasos, dibújalos con la forma que corresponde a cada uno, alineados y unidos con flechas; mira el resultado y separa lo que se pise.\n\
 - «Pon los títulos en azul y más grandes»: localiza los títulos por sus #id y cambia solo esos, en una llamada.\n\n"
         .to_string()
+        // El mapa de la app (23-oct): los sitios y que herramientas los leen
+        // y escriben, para ver como combinarlas (`manual.rs`).
+        + &crate::manual::manual()
+        + "\n"
         + crate::conocimiento::RESUMEN
 }
 
@@ -2696,8 +2700,14 @@ mod pruebas_preguntar {
         assert!(d(crate::herramientas::FUNCION).contains("Nunca calcules"));
         assert!(d(crate::acciones_documentos::ABRIR).contains("nunca le pidas rutas"));
         assert!(!catalogo().iter().find(|h| h.nombre == crate::herramientas::CALCAR).unwrap().descripcion.contains("imagen del lienzo"));
-        // Cortas: el prompt se paga en cada vuelta.
-        assert!(s.chars().count() < 3600, "{} letras", s.chars().count());
+        // Cortas: el prompt se paga en cada vuelta (con la cache, a una
+        // decima parte). Los principios, sin el mapa de la app, siguen
+        // cortos; con el mapa (23-oct), sigue lejos de los ~13k tokens del
+        // catalogo.
+        let principios = s.split("Cómo está hecha la app").next().unwrap();
+        assert!(principios.chars().count() < 3600, "{} letras", principios.chars().count());
+        assert!(s.chars().count() < 9600, "{} letras", s.chars().count());
+        assert!(s.contains("Lienzo: encontrar y cambiar"), "lleva el mapa de la app");
     }
 }
 
