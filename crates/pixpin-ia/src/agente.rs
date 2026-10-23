@@ -21,6 +21,7 @@ use crate::contexto;
 use crate::herramientas::{ErrorHerramienta, Herramienta, Llamada, colores_del_pedido, validar};
 use crate::hoja_trabajo::HojaDeTrabajo;
 use crate::motor::{Fin, Mensaje, Motor, Peticion, Respuesta, Rol, Seguir, Trozo};
+use crate::ojos::rubrica;
 use crate::pensar::{Cronometro, Plan, Separador, cortar, instrucciones_del_plan, separar};
 
 /// Cuantas veces se deja al modelo corregir una llamada mal hecha en un
@@ -95,6 +96,30 @@ pub trait Ejecutor {
     fn preguntar(&mut self, _pregunta: &crate::preguntar::Pregunta) -> crate::preguntar::Contestada {
         crate::preguntar::Contestada::SinRespuesta
     }
+
+    /// **Guarda como esta ahora** lo que se ve (22-oct, la revision con
+    /// rubrica): antes de cada ronda de correccion, para volver a ella si la
+    /// correccion lo deja peor (CITL: quedarse con la mejor version casi
+    /// duplica la ganancia, arXiv 2604.05839). Devuelve su numero. Por
+    /// omision `None`: no sabe guardar, y la revision corrige sin red.
+    fn guardar_version(&mut self) -> Option<usize> {
+        None
+    }
+
+    /// **Vuelve a una version** de [`Ejecutor::guardar_version`], como un
+    /// cambio mas del turno (su Ctrl+Z lo deshace todo junto).
+    fn volver_a_version(&mut self, _version: usize) -> Result<(), String> {
+        Err("aqui no se guardan versiones".into())
+    }
+
+    /// **Las comprobaciones duras** de lo que se ve: lo que se mide sin
+    /// modelo (solapes, textos que se salen, flechas sueltas, ortografia), una
+    /// linea por fallo con sus `#id`. Es el enchufe del lint de `edicion`:
+    /// la revision no acepta una ronda que traiga un fallo nuevo y se las
+    /// pasa al critico como hechos. Por omision `None`: no hay lint.
+    fn comprobar(&mut self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// Como acabo el turno.
@@ -135,13 +160,21 @@ pub struct Opciones<'a> {
     /// **Los ojos** (15-oct, `ojos.rs`): ofrecer `ver_lienzo` si el motor ve
     /// imagenes.
     pub ojos: bool,
-    /// Rondas de revision tras un turno que dibujo o anoto (0: ninguna; como
-    /// mucho [`REVISIONES_MAXIMAS`]). Solo con `ojos` y un motor que ve.
+    /// Rondas de correccion de la revision tras un turno que dibujo o anoto
+    /// (0: ni se mira; como mucho [`REVISIONES_MAXIMAS`]). Solo con `ojos` y
+    /// un motor que ve. Cada ronda es una captura puntuada mas, y hay una
+    /// mas al final para saber si la ultima correccion se queda.
     pub revisar: usize,
     /// **La memoria de largo plazo** (22-oct, `memoria.rs`): con ella el
     /// sistema lleva el perfil y el indice, el modelo tiene la herramienta
     /// `memoria`, y al reiniciar dentro del turno guarda antes lo duradero.
     pub memoria: Option<&'a crate::memoria::Memoria>,
+    /// **El critico de respaldo** (22-oct; por omision ninguno): un modelo
+    /// mas fuerte (Sonnet) que puntua solo si el del turno no da una nota
+    /// que se pueda leer o ya suspendio dos veces. El informe: «Haiku hace de
+    /// juez por defecto; Sonnet entra solo si Haiku suspende dos veces».
+    /// Solo si ve imagenes.
+    pub critico: Option<&'a dyn Motor>,
 }
 
 /// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
@@ -637,6 +670,9 @@ struct Estado {
     documento: bool,
     /// Cuantas vistas pidio el modelo en este turno.
     vistas: usize,
+    /// Cuantas capturas puntuo la revision en este turno (el gasto en
+    /// vision: ~1200 tokens cada una).
+    capturas: usize,
 }
 
 impl Default for Estado {
@@ -650,6 +686,7 @@ impl Default for Estado {
             cambios: 0,
             documento: false,
             vistas: 0,
+            capturas: 0,
         }
     }
 }
@@ -662,16 +699,22 @@ pub const VISTAS_POR_TURNO: usize = 3;
 /// (una cosa cada vez); la segunda, si la respuesta abrio otra duda.
 pub const PREGUNTAS_POR_TURNO: usize = 2;
 
-/// Cuantas rondas de revision como mucho, pida lo que pida la app.
-pub const REVISIONES_MAXIMAS: usize = 2;
+/// Cuantas rondas de correccion como mucho, pida lo que pida la app (la app
+/// pide [`REVISIONES_DE_SERIE`]). CITL: del ciclo 2 al 3 la ganancia ya es
+/// minima (+5,2 % a +5,7 %) y cuesta casi el doble de tokens.
+pub const REVISIONES_MAXIMAS: usize = 3;
 
-/// **El pedido del usuario**: su ultimo mensaje que no sea una vista del
-/// lienzo ni un aviso de reintento.
+/// Las rondas que pide la app con un motor que ve (22-oct, el informe: 2).
+pub const REVISIONES_DE_SERIE: usize = 2;
+
+/// **El pedido del usuario**: su ultimo mensaje que no sea de los ojos (una
+/// vista del lienzo o la correccion que pidio la revision) ni un aviso de
+/// reintento.
 pub fn pedido_del_usuario(historial: &[Mensaje]) -> String {
     historial
         .iter()
         .rev()
-        .filter(|m| m.rol == Rol::Usuario && !crate::ojos::es_vista(m))
+        .filter(|m| m.rol == Rol::Usuario && !crate::ojos::es_de_los_ojos(m))
         .map(Mensaje::texto_entero)
         .find(|t| !t.trim_start().starts_with("ERROR"))
         .unwrap_or_default()
@@ -978,11 +1021,25 @@ fn vueltas(
     Ok(None)
 }
 
-/// **La revision** (15-oct): se le ensena al modelo como quedo lo que
-/// dibujo o anoto, una o dos veces, y corrige lo que vea mal. Devuelve lo
-/// que dijo de lo corregido (`None`: estaba bien, no se pudo mirar o no
-/// cambio nada). Mientras, su texto no va a la burbuja: un «TODO_BIEN» no
-/// le dice nada al usuario.
+/// **La revision** (15-oct; con rubrica y la mejor version, 22-oct): un
+/// critico aparte puntua la captura de lo que dibujo o anoto el turno
+/// ([`crate::ojos::rubrica`]) y el modelo corrige solo los problemas que
+/// nombra, en bucle:
+///
+/// - **Parada**: todos los ejes a [`rubrica::NOTA_BUENA`] sin fallos duros,
+///   la media sube menos de [`rubrica::MEJORA_MINIMA`], o se acaban las
+///   rondas (`opciones.revisar`, como mucho [`REVISIONES_MAXIMAS`]).
+/// - **La mejor version**: antes de cada correccion se guarda lo que hay
+///   ([`Ejecutor::guardar_version`]); si la siguiente captura puntua menos o
+///   trae un fallo duro nuevo ([`Ejecutor::comprobar`]), se vuelve a ella.
+/// - **El gasto**: cada ronda es una captura puntuada (hay una mas al final
+///   para saber si la ultima correccion se queda); la imagen va solo al
+///   critico, y las de las vistas viejas salen del historial
+///   ([`crate::ojos::podar_vistas`]).
+///
+/// Devuelve lo que dijo de lo corregido (`None`: estaba bien, no se pudo
+/// mirar o no cambio nada). Mientras, nada va a la burbuja: una nota no le
+/// dice nada al usuario, y una correccion deshecha tampoco.
 #[allow(clippy::too_many_arguments)]
 fn revisar(
     motor: &dyn Motor,
@@ -996,13 +1053,20 @@ fn revisar(
 ) -> Option<String> {
     use crate::ojos::{Mirada, Zona};
     let pedido = pedido_del_usuario(historial);
+    let rondas = opciones.revisar.min(REVISIONES_MAXIMAS);
+    let respaldo = opciones.critico.filter(|c| c.ve_imagenes());
+    // Lo dicho por cada correccion; si se deshace, se quita lo suyo.
     let mut dicho: Vec<String> = Vec::new();
-    for ronda in 1..=opciones.revisar.min(REVISIONES_MAXIMAS) {
+    let mut mejor: Option<Candidata> = None;
+    let mut suspensos = 0;
+    for ronda in 0..=rondas {
         if al_evento(Evento::Llamando(crate::ojos::NOMBRE.into())) == Seguir::Parar {
             est.cortado = true;
             break;
         }
-        let mirada = Mirada::de(if est.documento { Zona::Documento } else { Zona::Turno });
+        // Lo que ya se vio no se vuelve a pagar en cada vuelta.
+        crate::ojos::podar_vistas(historial);
+        let mirada = Mirada::para_revisar(if est.documento { Zona::Documento } else { Zona::Turno });
         let vista = match ejecutor.ver(&mirada) {
             Ok(v) => v,
             Err(e) => {
@@ -1010,8 +1074,63 @@ fn revisar(
                 break;
             }
         };
+        let duros = ejecutor.comprobar().unwrap_or_default();
+        est.capturas += 1;
+        // El de respaldo, si el del turno ya suspendio dos veces.
+        let con_respaldo = respaldo.is_some() && suspensos >= 2;
+        let juez = match respaldo {
+            Some(r) if con_respaldo => r,
+            _ => motor,
+        };
+        let mut nota = criticar(juez, &pedido, &vista, &duros);
+        if nota.is_none()
+            && !con_respaldo
+            && let Some(r) = respaldo
+        {
+            // Una nota que no se lee: la del respaldo.
+            est.capturas += 1;
+            nota = criticar(r, &pedido, &vista, &duros);
+        }
+        let Some(nota) = nota else {
+            tracing::info!("asistente: la revision no dio una nota que se lea; se queda como esta");
+            break;
+        };
+        tracing::info!(ronda, nota = %nota.resumen(), duros = duros.len(), capturas = est.capturas, "asistente: nota de la revision");
+        if let Some(m) = &mejor {
+            if nota.media() < m.nota.media() || rubrica::rompe_algo(&m.duros, &duros) {
+                // La correccion lo dejo peor: se vuelve a la mejor.
+                match m.version.map(|v| ejecutor.volver_a_version(v)) {
+                    Some(Ok(())) => {
+                        tracing::info!(antes = m.nota.media(), ahora = nota.media(), "asistente: la correccion empeoraba; vuelta a la mejor version");
+                        dicho.truncate(m.dicho);
+                        dicho.push("Revisé el resultado y dejé la versión que se veía mejor.".into());
+                    }
+                    Some(Err(e)) => tracing::warn!(%e, "asistente: no se pudo volver a la mejor version"),
+                    None => {}
+                }
+                break;
+            }
+            let mejora = nota.media() - m.nota.media();
+            mejor = Some(Candidata { nota, duros, version: None, dicho: dicho.len() });
+            if mejora < rubrica::MEJORA_MINIMA {
+                break;
+            }
+        } else {
+            mejor = Some(Candidata { nota, duros, version: None, dicho: 0 });
+        }
+        let m = mejor.as_mut().expect("se acaba de poner");
+        if m.nota.aprobada() && m.duros.is_empty() {
+            break;
+        }
+        suspensos += 1;
+        if ronda == rondas || (m.nota.problemas.is_empty() && m.duros.is_empty()) {
+            // Sin rondas, o sin nada concreto que arreglar.
+            break;
+        }
+        m.version = ejecutor.guardar_version();
+        m.dicho = dicho.len();
         let marca = historial.len();
-        historial.push(crate::ojos::mensaje_de_vista(&vista, &crate::ojos::pedido_de_revision(&pedido, ronda)));
+        historial.push(Mensaje::usuario(rubrica::pedido_de_correccion(&m.nota, &m.duros, ronda + 1)));
         let cambios_antes = est.cambios;
         let mut dice = String::new();
         let r = {
@@ -1040,8 +1159,7 @@ fn revisar(
             }
             Ok(t) => {
                 if !corrigio {
-                    // Bien a la primera (o no supo que cambiar): ni se dice
-                    // ni se queda la imagen en la conversacion.
+                    // No supo que cambiar: ni se dice ni se queda el pedido.
                     historial.truncate(marca);
                     break;
                 }
@@ -1051,7 +1169,6 @@ fn revisar(
                 } else {
                     t.trim().to_string()
                 };
-                al_evento(Evento::Texto(format!("\n\n{frase}")));
                 dicho.push(frase);
             }
         }
@@ -1059,7 +1176,51 @@ fn revisar(
             break;
         }
     }
-    (!dicho.is_empty()).then(|| dicho.join("\n\n"))
+    crate::ojos::podar_vistas(historial);
+    if dicho.is_empty() {
+        return None;
+    }
+    let texto = dicho.join("\n\n");
+    al_evento(Evento::Texto(format!("\n\n{texto}")));
+    Some(texto)
+}
+
+/// La mejor version vista en la revision: su nota, sus fallos duros, como
+/// volver a ella y cuanto de lo dicho es de antes de corregirla.
+struct Candidata {
+    nota: rubrica::Nota,
+    duros: Vec<String>,
+    version: Option<usize>,
+    dicho: usize,
+}
+
+/// **Le pide la nota al critico**: una peticion aparte, sin herramientas ni
+/// la conversacion (los modelos puntuan mas alto lo suyo si ven como lo
+/// pensaron, arXiv 2404.13076), con la imagen y la lista de elementos.
+/// `None` si falla o no contesta una nota que se lea.
+fn criticar(juez: &dyn Motor, pedido: &str, vista: &crate::ojos::Vista, duros: &[String]) -> Option<rubrica::Nota> {
+    let texto = rubrica::pedido_al_critico(pedido, &vista.texto, duros);
+    let mut p = Peticion::nueva(vec![
+        Mensaje::sistema(rubrica::instrucciones()),
+        Mensaje::usuario_con_imagen(texto, vista.png.clone(), "image/png"),
+    ]);
+    // Notas estables de una ronda a otra: si no, la mejora seria ruido.
+    p.temperatura = 0.2;
+    p.max_tokens = 1024;
+    match juez.completar(&p, &mut |_| Seguir::Si) {
+        Ok(r) => {
+            let t = if r.texto.contains(CIERRE_PENSAR) { separar(&r.texto).1 } else { r.texto };
+            let nota = rubrica::leer(&t);
+            if nota.is_none() {
+                tracing::info!(respuesta = %cortar(&t, 200), "asistente: la nota del critico no se lee");
+            }
+            nota
+        }
+        Err(e) => {
+            tracing::warn!(%e, "asistente: el critico no contesto");
+            None
+        }
+    }
 }
 
 /// Lo que se dice si el modelo acaba sin una palabra y sin hacer nada:

@@ -139,6 +139,16 @@ impl Motor for Relevado {
     fn a_la_vez(&self) -> usize {
         self.motor.a_la_vez()
     }
+
+    // Lo que es el de dentro: sin esto, un motor que ve dejaba de ver al
+    // pasar por el relevo (y la revision se apagaba sin decirlo).
+    fn ve_imagenes(&self) -> bool {
+        self.motor.ve_imagenes()
+    }
+
+    fn es_local(&self) -> bool {
+        self.motor.es_local()
+    }
 }
 
 #[cfg(test)]
