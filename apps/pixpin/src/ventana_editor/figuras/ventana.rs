@@ -920,7 +920,21 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     };
     let mut y = z.y + m;
     // La vista grande, sobre su papel.
-    let alto_vista = (z.alto * 0.42).min(ancho * 1.25);
+    // Lo que va debajo manda: el titulo, los campos del intervalo (64 cada
+    // fila), la previa, el nombre de las propias y los dos botones. La vista
+    // se queda con lo que sobre (en una pantalla al 150 % los campos
+    // acababan debajo de «Insertar»).
+    let filas_campos = e.alargable().map_or(0, |c| {
+        let cs = campos_de(&c);
+        let sueltos = cs.iter().filter(|c| matches!(c, Dato::DeA)).count();
+        sueltos + (cs.len() - sueltos).div_ceil(2)
+    }) as f32;
+    let debajo = 56.0 * s
+        + if filas_campos > 0.0 { 22.0 * s + 64.0 * s * filas_campos + 30.0 * s } else { 0.0 }
+        + if serie::es_de_serie(&f) { 0.0 } else { 22.0 * s + d::BOTON * s + d::HUECO_GRANDE * s }
+        + 2.0 * d::BOTON * s
+        + d::HUECO * s;
+    let alto_vista = (z.alto - 3.0 * m - debajo).min(z.alto * 0.42).min(ancho * 1.25).max(80.0 * s);
     let papel = RectF { x, y, ancho, alto: alto_vista };
     p.rellenar_redondeado(papel, d::RADIO_TARJETA * s, crate::caja_dibujo::hex(0xF2F2F5));
     if let Some((b, w, h)) = e.minis.get(&i) {

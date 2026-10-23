@@ -144,7 +144,8 @@ fn muestra_de_la_ventana_de_figuras() {
         true,
         "Mis figuras".into(),
     );
-    let (w, h, s) = (1440.0, 900.0, 1.0);
+    // Como en el portatil del usuario: 1440 x 810 logicos al 120 %.
+    let (w, h, s) = (1728.0, 972.0, 1.2);
     e.rehacer_lista(w - (ANCHO_LATERAL + ANCHO_PANEL) * s, s);
     let i = e.figuras.iter().position(|f| f.id == "serie-cronograma").unwrap();
     e.elegir(Some(i));
