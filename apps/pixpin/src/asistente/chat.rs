@@ -460,6 +460,8 @@ pub struct EnVivo {
     pub plan: Option<pixpin_ia::pensar::Plan>,
     /// El turno empezo con el contexto renovado.
     pub reiniciado: bool,
+    /// El plan del jefe y como va cada tarea (`pixpin_ia::orquesta`).
+    pub tareas: Vec<pixpin_ia::orquesta::TareaVisible>,
 }
 
 /// Como acabo una pregunta de confirmar.
@@ -485,6 +487,9 @@ pub fn rotulo_de(nombre: &str) -> String {
     }
     match nombre {
         "repasar" => "🔎 repasando el pedido…",
+        "jefe:planear" => "🧭 el jefe está planeando…",
+        "jefe:supervisar" => "🧐 el jefe revisa la tarea…",
+        "jefe:revisar" => "🧐 el jefe revisa el resultado…",
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",
@@ -534,7 +539,29 @@ impl EnVivo {
                 self.estado = Some("💭 …".into());
             }
             Evento::Reintento { .. } => self.estado = Some("🔁 corrigiendo…".into()),
+            Evento::Tareas(t) => self.tareas = t.clone(),
         }
+    }
+
+    /// **El plan del jefe** como lista que se va marcando, encima de la
+    /// respuesta: «📋 Plan» y una linea por tarea.
+    pub fn plan_visible(&self) -> String {
+        use pixpin_ia::orquesta::EstadoTarea as E;
+        if self.tareas.is_empty() {
+            return String::new();
+        }
+        let mut s = String::from("📋 Plan\n");
+        for (i, t) in self.tareas.iter().enumerate() {
+            let marca = match t.estado {
+                E::Pendiente => "⬜",
+                E::EnCurso => "⏳",
+                E::Corrigiendo => "🔁",
+                E::Hecha => "✅",
+                E::NoSePudo => "✖️",
+            };
+            s.push_str(&format!("{marca} {}. {}\n", i + 1, t.titulo));
+        }
+        s
     }
 
     /// Llega una pregunta: la burbuja ensena su tarjeta con «Sí» y «No».
@@ -622,7 +649,7 @@ impl EnVivo {
 
     /// El texto de la burbuja tal como se ve ahora.
     pub fn mostrar(&self) -> String {
-        let mut s = self.texto.trim_end().to_string();
+        let mut s = format!("{}{}", self.plan_visible(), self.texto.trim_end());
         if let Some(e) = &self.estado {
             if !s.is_empty() {
                 s.push('\n');
@@ -631,7 +658,9 @@ impl EnVivo {
         } else if !self.acabado {
             s.push_str(" ▍");
         }
-        if self.acabado && !self.fallos.is_empty() {
+        // Con jefe, lo que fallo por el camino ya lo corrigio o lo dice su
+        // respuesta: no se repite abajo.
+        if self.acabado && !self.fallos.is_empty() && self.tareas.is_empty() {
             s.push_str(&format!("\n⚠️ {}", self.fallos.join(" · ")));
         }
         s.trim_start().to_string()

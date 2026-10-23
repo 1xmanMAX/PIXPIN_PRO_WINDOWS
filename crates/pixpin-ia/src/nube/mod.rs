@@ -522,9 +522,10 @@ impl Motor for MotorNube {
         }
     }
 
-    /// Claude Haiku 5.5 y DeepSeek V4.1 Flash ven imagenes.
+    /// Claude Haiku 5.5, Sonnet y DeepSeek V4.1 Flash ven imagenes;
+    /// DeepSeek V4 Pro (el jefe con DeepSeek) no.
     fn ve_imagenes(&self) -> bool {
-        true
+        self.modelo != Some(deepseek::MODELO_PRO)
     }
 
     fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {

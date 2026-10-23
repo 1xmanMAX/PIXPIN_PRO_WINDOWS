@@ -55,6 +55,9 @@ pub enum Evento {
     Peticion(Plan),
     /// Se aligero el contexto al pasar del 70 % (tokens estimados).
     Reinicio { antes: u32, despues: u32 },
+    /// **El plan del jefe** y como va cada tarea (`orquesta.rs`): la burbuja
+    /// lo ensena como una lista que se va marcando.
+    Tareas(Vec<crate::orquesta::TareaVisible>),
 }
 
 /// **El punto de enganche de la UI**: hace de verdad cada herramienta.
@@ -180,6 +183,11 @@ pub struct Opciones<'a> {
     /// partes o le fallo algo, una vuelta mas para comprobarlo contra los
     /// resultados y terminar lo que falte. La app lo enciende con la nube.
     pub repasar: bool,
+    /// **El jefe** (23-oct, `orquesta.rs`): un modelo mas fuerte (Sonnet,
+    /// DeepSeek V4 Pro) que, en los pedidos complejos o de varias partes,
+    /// planea, reparte las tareas a este motor (Haiku, Flash) y supervisa
+    /// cada una y el conjunto. `None`: el turno de siempre.
+    pub jefe: Option<&'a dyn Motor>,
 }
 
 /// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
@@ -299,6 +307,14 @@ pub fn turno_con(
     opciones: &Opciones,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Result<Final, ErrorIa> {
+    // Lo complejo, con jefe: planea, reparte y supervisa. Si no da un plan
+    // que se entienda, el turno de siempre.
+    if let Some(jefe) = opciones.jefe
+        && crate::orquesta::conviene(&pedido_del_usuario(historial))
+        && let Some(r) = crate::orquesta::turno(motor, jefe, historial, herramientas, ejecutor, opciones, al_evento)
+    {
+        return r;
+    }
     let mut crono = Cronometro::default();
     let r = turno_dentro(motor, historial, herramientas, ejecutor, opciones, &mut crono, al_evento);
     // Penso y no llego a decir nada mas (cortado, o solo pensamiento).

@@ -120,6 +120,23 @@ pub fn critico(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
     ))
 }
 
+/// **El jefe** (23-oct, `pixpin_ia::orquesta`): con la nube elegida y su
+/// clave, el modelo fuerte del mismo proveedor y con la misma clave: Sonnet
+/// con Claude, DeepSeek V4 Pro con DeepSeek. Piensa (planear y supervisar es
+/// donde mas rinde). Con el local, ninguno.
+pub fn jefe(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
+    if cfg!(test) {
+        return None;
+    }
+    let Eleccion::Nube(p) = eleccion_reciente(raiz_datos) else { return None };
+    let clave = claves::leer(p)?;
+    let modelo = match p {
+        Proveedor::Claude => nube::claude::MODELO_CRITICO,
+        Proveedor::DeepSeek => nube::deepseek::MODELO_PRO,
+    };
+    Some(Arc::new(MotorNube::nuevo(p, clave).con_modelo(modelo)))
+}
+
 // ---------------------------------------------------------------------------
 // Ajustes → Asistente
 

@@ -345,6 +345,9 @@ impl Turno {
                     .collect();
                 // El critico de respaldo (Sonnet), solo si hay revision.
                 let critico = raiz.as_deref().filter(|_| ojos && de_lienzo).and_then(super::nube::critico);
+                // El jefe (23-oct): con la nube, para lo complejo o de varias
+                // partes (lo decide `orquesta::conviene` en el turno).
+                let jefe = raiz.as_deref().filter(|_| motor.catalogo_completo()).and_then(super::nube::jefe);
                 let opciones = Opciones {
                     planificar: memoria.planificar,
                     pensar: memoria.pensar,
@@ -364,8 +367,18 @@ impl Turno {
                     // Comprobar antes de contestar (rendirse, varias partes,
                     // algo que fallo): con la nube; el local no se toca.
                     repasar: nube,
+                    jefe: jefe.as_deref(),
                 };
                 let mut recogido = Recogido::default();
+                // El diario del asistente (fase 1: medir).
+                let empezo = std::time::Instant::now();
+                let mut apunte = pixpin_ia::diario::Entrada {
+                    cuando: pixpin_shell::entorno::ahora_utc_ms(),
+                    motor: raiz.as_deref().map(|r| super::nube::nombre_corto(super::nube::eleccion_reciente(r)).to_string()).unwrap_or_default(),
+                    pedido: pixpin_ia::diario::recortar(&pedido),
+                    ..Default::default()
+                };
+                let mut dicho = String::new();
                 let resultado = agente::turno_con(
                     motor.as_ref(),
                     &mut historial,
@@ -374,6 +387,7 @@ impl Turno {
                     &opciones,
                     &mut |e| {
                         recogido.ver(&e);
+                        apuntar_evento(&mut apunte, &mut dicho, &e);
                         let _ = tx.send(Aviso::Evento(e));
                         if parar_hilo.load(Ordering::Relaxed) {
                             Seguir::Parar
@@ -387,6 +401,15 @@ impl Turno {
                     tracing::warn!(error = %e, "asistente: el turno no pudo acabar");
                     agente::para_el_usuario(&e)
                 });
+                apunte.segundos = empezo.elapsed().as_secs_f32();
+                apunte.se_rindio = agente::parece_rendirse(&dicho);
+                apunte.fallo = resultado.is_err();
+                apunte.cortado = resultado.as_ref().is_ok_and(|f| f.cortado);
+                if let Some(r) = raiz.as_deref()
+                    && let Err(e) = pixpin_ia::diario::apuntar(&r.join(DIARIO), &apunte)
+                {
+                    tracing::info!(%e, "asistente: no se pudo apuntar en el diario");
+                }
                 if con_memoria {
                     let r = recogido.registro(memoria.hoja.clone(), &pedido, &resultado, memoria.reiniciado);
                     let _ = tx.send(Aviso::Registro(r));
@@ -498,6 +521,31 @@ pub fn apagar_ojos(apagar: bool) {
 /// no tocar el local.
 pub fn revisiones(motor: &dyn Motor) -> usize {
     if motor.catalogo_completo() { agente::REVISIONES_DE_SERIE } else { 0 }
+}
+
+/// **El diario del asistente** en la carpeta de datos (`pixpin_ia::diario`):
+/// solo en este equipo, para medir.
+pub const DIARIO: &str = "diario-del-asistente.jsonl";
+
+/// Lo que un evento cuenta para el diario.
+fn apuntar_evento(a: &mut pixpin_ia::diario::Entrada, dicho: &mut String, e: &agente::Evento) {
+    use agente::Evento as E;
+    use pixpin_ia::orquesta::EstadoTarea;
+    match e {
+        E::Texto(t) => dicho.push_str(t),
+        E::Resultado { ok: true, .. } => a.herramientas_ok += 1,
+        E::Resultado { ok: false, .. } => a.herramientas_error += 1,
+        E::Llamando(n) if n == "repasar" => a.repasos += 1,
+        E::Llamando(n) if n == "jefe:planear" => a.jefe = true,
+        E::Tareas(t) => {
+            a.jefe = true;
+            a.tareas = t.len();
+            a.tareas_hechas = t.iter().filter(|x| x.estado == EstadoTarea::Hecha).count();
+            // Cada vuelta a corregir avisa una vez con su tarea «corrigiendo».
+            a.correcciones += usize::from(t.iter().any(|x| x.estado == EstadoTarea::Corrigiendo));
+        }
+        _ => {}
+    }
 }
 
 /// Pega la vista del lienzo al pedido del usuario (la imagen delante, como

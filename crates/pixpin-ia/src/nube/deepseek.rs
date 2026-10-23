@@ -36,6 +36,10 @@ use super::{Proveedor, instrucciones};
 
 pub const URL: &str = "https://api.deepseek.com/chat/completions";
 pub const MODELO: &str = "deepseek-flash";
+/// **El jefe con DeepSeek** (23-oct, `orquesta.rs`): DeepSeek-V4-Pro, mas
+/// fuerte para planear y supervisar. Segun su pagina de modelos (mirada el
+/// 23-oct) llama herramientas pero **no ve imagenes**.
+pub const MODELO_PRO: &str = "deepseek-v4-pro";
 pub const ESFUERZO: &str = "high";
 /// Tope de salida de cada vuelta (el razonamiento cuenta dentro).
 pub const MAX_TOKENS: u32 = 16_000;
