@@ -57,7 +57,8 @@ jobs:
       # de bandeja) y compiten entre si en paralelo. Sin esto, CI fallaria de
       # forma intermitente, que es la peor manera de descubrirlo.
       - name: Tests
-        run: cargo test --workspace -- --test-threads=1
+        # --no-fail-fast: un crate que falla no deja sin probar a los demas.
+        run: cargo test --workspace --no-fail-fast -- --test-threads=1
 
   # El nucleo que compartira la version de Mac, iPad e iPhone: formato,
   # sincronizar, lienzo, documentos y la logica de la interfaz. Corre en Linux
