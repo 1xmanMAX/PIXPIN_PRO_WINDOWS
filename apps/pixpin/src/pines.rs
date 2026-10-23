@@ -3312,7 +3312,6 @@ mod pruebas {
             Herramienta::Rombo,
             Herramienta::Grafito,
             Herramienta::FlechaLibre,
-            Herramienta::Marco,
         ] {
             assert!(b.contains(&BotonCaja::Elegir(h)), "{h:?}");
         }

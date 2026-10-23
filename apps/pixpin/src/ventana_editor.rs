@@ -988,6 +988,8 @@ fn abrir_en_modo(
     let mut en_primer_plano = true;
     // F14: si la estela del laser seguia viva la vuelta anterior.
     let mut laser_vivo = false;
+    // La estela del laser, en la capa de la tinta (22-oct).
+    let mut laser_en_capa = false;
     // G5: la presentacion en curso (F5) y el modo solo mirar (Alt+R), con
     // su arrastre de mover el dibujo.
     let mut presentacion: Option<presentar::Presentacion> = None;
@@ -2095,7 +2097,12 @@ fn abrir_en_modo(
                 }
                 _ => false,
             };
-            if hecho.repinte.algo() && !lupa_en_zona {
+            // El laser con capas no repinta la escena: lo pinta el fotograma
+            // en la capa de la tinta (`pintar_laser_en_capa`).
+            let laser_en_su_capa = con_capas && !tinta_viva && al_vuelo(&gesto);
+            if hecho.repinte.algo() && laser_en_su_capa {
+                ventana.invalidar();
+            } else if hecho.repinte.algo() && !lupa_en_zona {
                 todo_sucio |= hecho.repinte.todo;
                 contenido_sucio |= hecho.repinte.contenido;
                 ventana.invalidar();
@@ -2698,7 +2705,26 @@ fn abrir_en_modo(
         // La referencia se cerro desde su menu, o pidio copiarse.
         la_referencia.al_dia();
         let laser_ahora = gesto.laser.vivo();
-        if laser_ahora || laser_vivo {
+        // Con capas, la estela va en la de la tinta y la escena no se toca
+        // (`pintar_laser_en_capa`); al apagarse, se vacia la capa y la escena
+        // se repinta una vez, por si se pinto mientras con la estela dentro.
+        let laser_por_capa = con_capas && !tinta_viva;
+        if laser_por_capa && al_vuelo(&gesto) {
+            if !laser_en_capa {
+                laser_en_capa = superficie.encender_tinta(&motor).is_ok();
+            }
+            if laser_en_capa {
+                pintar_laser_en_capa(&motor, &superficie, &efectiva, &gesto, &imagenes, ancho_px, alto_px);
+            }
+        } else if laser_en_capa {
+            superficie.apagar_tinta(&motor);
+            laser_en_capa = false;
+            todo_sucio = true;
+            contenido_sucio = true;
+            hay_que_pintar = true;
+            ventana.invalidar();
+        }
+        if !laser_en_capa && (laser_ahora || laser_vivo) {
             todo_sucio = true;
             contenido_sucio = true;
             hay_que_pintar = true;
@@ -3076,7 +3102,15 @@ fn abrir_en_modo(
             let cristal = lupa.as_ref().and_then(|l| l.preparar(&motor));
             // El boton del marco del riel, pulsado con la herramienta Marco.
             marcador.enmarcando = gesto.herramienta == Herramienta::Marco;
-            marcador.marcos = pixpin_motor2d::marco::hojas_en_orden(&escena.elementos).iter().map(|h| [h.x, h.y, h.ancho, h.alto]).collect();
+            let hojas = pixpin_motor2d::marco::hojas_en_orden(&escena.elementos);
+            marcador.marcos = hojas.iter().map(|h| [h.x, h.y, h.ancho, h.alto]).collect();
+            marcador.nombres = hojas
+                .iter()
+                .map(|h| match &h.figura {
+                    pixpin_motor2d::Figura::Marco { nombre } => nombre.clone(),
+                    _ => String::new(),
+                })
+                .collect();
             let pintado = pintar(
                 &mut motor,
                 &superficie,
@@ -3138,15 +3172,9 @@ fn abrir_en_modo(
                             bajo_la_barra(&caja, area),
                         );
                     }
-                    // El numero de cada marco, en su esquina (como en el plano).
-                    if presentacion.is_none() {
-                        p.desplazar(base.0, base.1);
-                        let k = escala_por_cien as f32 / 100.0;
-                        for (i, h) in pixpin_motor2d::marco::hojas_en_orden(&escena.elementos).iter().enumerate() {
-                            let q = efectiva.a_pantalla(Punto2::nuevo(h.x, h.y));
-                            crate::marcos_doc::insignia(p, q.x, q.y, i + 1, k);
-                        }
-                    }
+                    // El numero de cada marco va con la escena (22-oct,
+                    // `marcas::pintar_marcos`): aqui, en la interfaz, se
+                    // quedaba atras mientras se movia el lienzo.
                     // F8: con la Zona en la mano, su pastilla bajo la barra.
                     if gesto.herramienta == Herramienta::Zona
                         && presentacion.is_none()
@@ -4303,6 +4331,44 @@ fn pintar_seleccion_en_capa(
             }
         })
         .is_ok()
+}
+
+/// **La estela del laser en la capa de la tinta** (22-oct). El usuario: «el
+/// puntero laser es lento a mas no poder». Iba con la escena: cada aviso
+/// del raton, y cada fotograma mientras se apagaba, repintaba el lienzo
+/// entero (con unas plantillas, miles de piezas) para dibujar cuatro rayas.
+/// En la capa, como la marquesina, cuesta borrar la capa y esas rayas.
+fn pintar_laser_en_capa(
+    motor: &MotorRender,
+    superficie: &Superficie,
+    camara: &Camara,
+    gesto: &Gesto,
+    imagenes: &ImagenesLienzo,
+    ancho_px: f32,
+    alto_px: f32,
+) -> bool {
+    let ordenes = gesto.laser.ordenes(camara.zoom);
+    let vista = camara.ventana(ancho_px, alto_px);
+    superficie
+        .pintar_tinta(motor, None, |p, base| {
+            let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+            p.poner_vista((0.0, 0.0), camara.zoom, (origen.x + base.0, origen.y + base.1));
+            for o in &ordenes {
+                dibujar_orden(p, o, vista, None, imagenes, camara.zoom, None);
+            }
+            if let Some((a, b)) = gesto.zona {
+                p.marquesina(pixpin_motor2d::zona::caja(a, b), 1.0 / camara.zoom);
+            }
+        })
+        .is_ok()
+}
+
+/// **Lo que se pinta al vuelo en la capa de la tinta** y no con la escena:
+/// la estela del laser mientras vive y el recuadro de la Zona mientras se
+/// arrastra (22-oct: «la herramienta de recorte es super lenta, no se mueve
+/// con el mouse»; repintaba la escena entera en cada aviso del raton).
+fn al_vuelo(gesto: &Gesto) -> bool {
+    (gesto.herramienta == Herramienta::Laser && gesto.laser.vivo()) || (gesto.herramienta == Herramienta::Zona && gesto.zona.is_some())
 }
 
 /// La marquesina en la capa de la tinta: solo el rectangulo que cambia, y

@@ -40,7 +40,9 @@ pub enum Anfitrion {
 /// herramientas::NOMBRES`). `None` para las que no se pueden apagar.
 pub fn nombre_de(h: Herramienta) -> Option<&'static str> {
     Some(match h {
-        Herramienta::Mano | Herramienta::Emoji => return None,
+        // El marco tampoco (22-oct): ya no va en la barra, lo pone el boton
+        // del riel de la derecha.
+        Herramienta::Mano | Herramienta::Emoji | Herramienta::Marco => return None,
         Herramienta::Lazo => "lazo",
         Herramienta::Rectangulo => "rectangulo",
         Herramienta::Rombo => "rombo",
@@ -64,7 +66,6 @@ pub fn nombre_de(h: Herramienta) -> Option<&'static str> {
         Herramienta::Cota => "cota",
         Herramienta::Escalar => "escalar",
         Herramienta::EscalaGrafica => "escala-grafica",
-        Herramienta::Marco => "marco",
         Herramienta::Relleno => "relleno",
         Herramienta::Recortar => "recortar",
         Herramienta::Extender => "extender",
@@ -676,7 +677,8 @@ mod pruebas {
         let de = |g: GrupoBarra| s.iter().find(|(x, _)| *x == Some(g)).unwrap().1.clone();
         // La tabla y la grafica van sueltas desde que se quito el cronograma,
         // que era su grupo.
-        assert_eq!(s[0], (None, vec!["lapiz", "figuras", "borrador"]));
+        // La imagen, suelta desde que el marco salio de la barra (22-oct).
+        assert_eq!(s[0], (None, vec!["lapiz", "figuras", "imagen", "borrador"]));
         assert!(de(GrupoBarra::Arreglar).contains(&"nudo"));
         assert!(de(GrupoBarra::Elegir).contains(&"bolita"));
         assert_eq!(de(GrupoBarra::Sacar), vec!["compartir", "imprimir"]);

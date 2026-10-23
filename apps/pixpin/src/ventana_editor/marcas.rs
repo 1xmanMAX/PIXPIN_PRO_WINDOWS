@@ -237,6 +237,8 @@ pub(super) struct Marcador {
     /// Los marcos del dibujo en su orden (x, y, ancho, alto del mundo): las
     /// fichas 1, 2, 3... de abajo, con la herramienta Marco.
     pub marcos: Vec<[f32; 4]>,
+    /// El nombre de cada uno de `marcos` (vacio si no tiene).
+    pub nombres: Vec<String>,
 }
 
 impl Marcador {
@@ -253,6 +255,7 @@ impl Marcador {
             vuelo: None,
             enmarcando: false,
             marcos: Vec::new(),
+            nombres: Vec::new(),
         }
     }
 
@@ -589,10 +592,11 @@ impl Marcador {
         alto_px: f32,
         escala_por_cien: u32,
     ) {
+        let e = pixpin_escala(escala_por_cien);
+        pintar_marcos(p, &self.marcos, &self.nombres, efectiva, margen, ancho_px, alto_px, e);
         if self.marcas.is_empty() {
             return;
         }
-        let e = pixpin_escala(escala_por_cien);
         // La vista del mundo que dejo puesta la escena se cambia por pixeles
         // de ventana corridos el colchon: la marca mide lo mismo a cualquier
         // aumento, como el redondel del movil.
@@ -884,6 +888,7 @@ mod pruebas {
             vuelo: None,
             enmarcando: false,
             marcos: Vec::new(),
+            nombres: Vec::new(),
         }
     }
 
@@ -1218,6 +1223,7 @@ mod pruebas {
                 vuelo: None,
                 enmarcando: false,
                 marcos: Vec::new(),
+                nombres: Vec::new(),
             };
             motor
                 .dibujar(&fuera.destino, |p| {
@@ -1247,6 +1253,45 @@ mod pruebas {
             let ruta = carpeta.join(format!("riel-{nombre}.png"));
             std::fs::write(&ruta, png).expect("guardar");
             println!("{nombre}: {}", ruta.display());
+        }
+    }
+}
+
+/// **Los marcos del lienzo** (22-oct), con la escena: su raya azul a trazos
+/// y su numero en el cuadrito azul de la esquina, como los de los visores
+/// (`marcos_doc`). En pixeles de la ventana, asi la raya mide lo mismo a
+/// cualquier aumento (el usuario: «que a pesar de agrandar mantenga su
+/// grosor constante»), y con la escena y no con la interfaz, para que el
+/// numero se vaya con el lienzo mientras se mueve y no llegue tarde.
+#[allow(clippy::too_many_arguments)]
+fn pintar_marcos(
+    p: &Pintor<'_>,
+    marcos: &[[f32; 4]],
+    nombres: &[String],
+    efectiva: &Camara,
+    margen: f32,
+    ancho_px: f32,
+    alto_px: f32,
+    e: f32,
+) {
+    if marcos.is_empty() {
+        return;
+    }
+    p.desplazar(margen, margen);
+    for (i, m) in marcos.iter().enumerate() {
+        let a = efectiva.a_pantalla(Punto2::nuevo(m[0], m[1]));
+        let b = efectiva.a_pantalla(Punto2::nuevo(m[0] + m[2], m[1] + m[3]));
+        let r = RectF { x: a.x.min(b.x), y: a.y.min(b.y), ancho: (b.x - a.x).abs(), alto: (b.y - a.y).abs() };
+        let fuera = margen + 40.0 * e;
+        if r.x > ancho_px + fuera || r.y > alto_px + fuera || r.x + r.ancho < -fuera || r.y + r.alto < -fuera {
+            continue;
+        }
+        p.trazar_discontinuo(r, 1.5 * e, crate::marcos_doc::AZUL);
+        crate::marcos_doc::insignia(p, r.x, r.y, i + 1, e);
+        if let Some(n) = nombres.get(i).filter(|n| !n.is_empty()) {
+            let tam = 12.0 * e;
+            let (_, th) = p.medir_texto(n, tam);
+            p.texto(n, r.x, r.y - th - 4.0 * e, tam, crate::marcos_doc::AZUL);
         }
     }
 }

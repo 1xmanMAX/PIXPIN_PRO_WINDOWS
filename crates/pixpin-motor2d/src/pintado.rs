@@ -517,11 +517,6 @@ pub(crate) fn pasos_del_arco(r: f32) -> usize {
 }
 
 /// Las ordenes de dibujo de un elemento, en orden de pintado.
-/// El rotulo del marco: su tamano y cuanto sube por encima de la caja. Va
-/// fuera de ella a proposito, como en Excalidraw: dentro taparia contenido.
-const TAM_NOMBRE_MARCO: f32 = 12.0;
-const ALTO_NOMBRE_MARCO: f32 = 16.0;
-
 pub fn ordenes(e: &Elemento) -> Vec<Orden> {
     if e.borrado {
         return Vec::new();
@@ -1014,41 +1009,13 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             cursiva: false,
         }),
 
-        Figura::Marco { nombre } => {
-            // Liso y gris, no a mano alzada: el marco es andamiaje para
-            // ordenar laminas, no parte del dibujo. Si temblara como una
-            // figura, se leeria como una mas.
-            let gris = crate::ColorRgba::opaco(0.53, 0.55, 0.60);
-            let (x0, y0) = (e.x, e.y);
-            let (x1, y1) = (e.x + e.ancho, e.y + e.alto);
-            salida.push(Orden::Polilinea {
-                puntos: vec![
-                    Punto2::nuevo(x0, y0),
-                    Punto2::nuevo(x1, y0),
-                    Punto2::nuevo(x1, y1),
-                    Punto2::nuevo(x0, y1),
-                    Punto2::nuevo(x0, y0),
-                ],
-                color: gris,
-                grosor: 1.5,
-                estilo: EstiloTrazo::Solido,
-            });
-            // El nombre va ENCIMA del marco, fuera de su caja: dentro se
-            // confundiria con el contenido y ademas lo taparia.
-            if !nombre.is_empty() {
-                salida.push(Orden::Texto {
-                    texto: nombre.clone(),
-                    x: x0,
-                    y: y0 - ALTO_NOMBRE_MARCO,
-                    tam: TAM_NOMBRE_MARCO,
-                    familia: "Segoe UI".to_string(),
-                    color: gris,
-                    ancho_max: e.ancho.max(1.0),
-                    negrita: false,
-                    cursiva: false,
-                });
-            }
-        }
+        // **El marco no es dibujo** (22-oct): es andamiaje para ordenar e
+        // imprimir laminas, y lo impreso va sin su raya, como los marcos de
+        // los visores (`marcos_doc`). En el editor lo pinta el (raya azul a
+        // trazos de grosor fijo y su numero en la esquina, con la escena):
+        // con el mundo, la raya engordaba al acercarse y el numero, que iba
+        // en la interfaz, llegaba tarde al mover el lienzo.
+        Figura::Marco { .. } => {}
 
         Figura::Imagen { id_objeto } => salida.push(Orden::Imagen {
             id_objeto: *id_objeto,
