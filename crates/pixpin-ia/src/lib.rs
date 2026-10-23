@@ -108,6 +108,7 @@ pub mod herramientas;
 pub mod hoja;
 pub mod hoja_trabajo;
 pub mod lienzo;
+pub mod lint;
 pub mod modelos;
 pub mod motor;
 pub mod nube;

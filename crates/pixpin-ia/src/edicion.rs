@@ -49,8 +49,11 @@
 
 pub mod hacer;
 pub mod referencia;
+pub mod textos;
 #[cfg(test)]
 mod pruebas;
+#[cfg(test)]
+mod pruebas_textos;
 
 use serde_json::{Map, Value, json};
 
@@ -67,6 +70,7 @@ pub const GEOMETRIA: &str = "geometria_precisa";
 pub const CORTAR: &str = "cortar_linea";
 pub const EXTENDER: &str = "extender_linea";
 pub const IMAGEN: &str = "imagen_en_lienzo";
+pub const EDITAR_TEXTO: &str = "editar_texto";
 
 /// El tipo de un campo de la tabla.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,6 +82,13 @@ pub enum Tipo {
     Opciones(&'static [&'static str]),
     /// Lo que ya hay en el lienzo, dicho como sea ([`referencia`]).
     Referencia,
+    /// Un texto que se escribe tal cual en el lienzo (una traduccion, un
+    /// parrafo): sin el recorte a 300 letras de [`Tipo::Texto`], que corta
+    /// a medias un parrafo traducido sin avisar.
+    TextoLargo,
+    /// Una lista de cambios de texto `[{ref, texto}]`: traducir o corregir
+    /// una figura entera es UNA llamada y no una por rotulo.
+    Cambios,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -282,6 +293,23 @@ pub const FILAS: &[Fila] = &[
         ],
         claves: &["pega", "pegar", "inserta", "recorta", "recortar", "foto", "imagen", "portapapeles", "captura"],
     },
+    Fila {
+        nombre: EDITAR_TEXTO,
+        descripcion: "Cambia lo que DICEN los textos que ya estan en el lienzo (tambien los rotulos dentro de cajas) sin moverlos ni cambiar su letra, color o alineacion: traducir, corregir, renombrar. Para traducir o corregir una figura entera manda TODOS sus textos en UNA llamada con «cambios»; cada caja se vuelve a medir y lo centrado sigue centrado, y el resultado dice que #id cambiaron y cuales ya no caben. Con «ajustar» encoge la letra o parte renglones para que quepa en su caja; con accion «listar» devuelve el texto completo y el #id de cada texto (usala si el resumen no los trae todos). No la uses para crear textos nuevos (dibujar_en_lienzo) ni para el tamano o el color (cambiar_estilo). Ejemplo: {\"cambios\": [{\"ref\": \"#3\", \"texto\": \"开始\"}, {\"ref\": \"#5\", \"texto\": \"结束\"}], \"ajustar\": \"auto\"}",
+        campos: &[
+            c("cambios", Tipo::Cambios, false, "[{\"ref\": \"#3\", \"texto\": \"nuevo\"}, ...]: cada texto (o caja con rotulo) por su #id y lo que pasa a decir, completo"),
+            c("que", Tipo::Referencia, false, "un solo texto (con «texto»), o lo que se ajusta o se lista: «#3», «todo», «los textos»"),
+            c("texto", Tipo::TextoLargo, false, "con «que»: lo que pasa a decir"),
+            c("accion", Tipo::Opciones(&["cambiar", "ajustar", "listar"]), false, "omitir: cambiar si hay «cambios» o «texto», ajustar si solo hay «ajustar», listar si no"),
+            c("ajustar", Tipo::Opciones(&["no", "encoger", "partir", "auto"]), false, "si no cabe en su caja (o en «ancho_max»): encoger la letra, partir en renglones, o auto (partir y, si aun no cabe, encoger). Omitir: no se toca y se avisa"),
+            c("ancho_max", Tipo::Numero, false, "con «ajustar»: el ancho maximo en px (omitir: el de la caja donde esta)"),
+            c("desde", Tipo::Numero, false, "listar: saltarse los primeros N (para listas largas)"),
+        ],
+        claves: &[
+            "traduc", "renombr", "tilde", "ortograf", "reescrib", "cambia el texto", "cambia los textos", "corrige el texto",
+            "corrige los textos", "al ingles", "al chino", "al espanol", "no cabe", "se sale",
+        ],
+    },
 ];
 
 pub fn filas() -> &'static [Fila] {
@@ -298,7 +326,19 @@ pub fn herramienta(f: &Fila) -> Herramienta {
     let mut requeridos = Vec::new();
     for campo in f.campos {
         let mut p = match campo.tipo {
-            Tipo::Texto | Tipo::Referencia => json!({"type": "string"}),
+            Tipo::Texto | Tipo::Referencia | Tipo::TextoLargo => json!({"type": "string"}),
+            Tipo::Cambios => json!({
+                "type": "array",
+                "maxItems": MAX_CAMBIOS,
+                "items": {
+                    "type": "object",
+                    "required": ["ref", "texto"],
+                    "properties": {
+                        "ref": {"type": "string", "description": "#id del texto o de la caja que lo lleva"},
+                        "texto": {"type": "string", "description": "lo que pasa a decir"}
+                    }
+                }
+            }),
             Tipo::Numero => json!({"type": "number"}),
             Tipo::Numeros => json!({"type": "array", "items": {"type": "number"}, "maxItems": crate::herramientas::MAX_NUMEROS_PUNTOS}),
             Tipo::Opciones(o) => json!({"type": "string", "enum": o}),
@@ -367,6 +407,70 @@ impl Edicion {
     }
 }
 
+/// Cuantos cambios de texto como mucho en una llamada (una figura grande
+/// traducida entera cabe de sobra).
+pub const MAX_CAMBIOS: usize = 300;
+/// Cuantas letras como mucho en un texto nuevo.
+pub const MAX_LETRAS_TEXTO: usize = 4000;
+
+/// Un texto del modelo, recortado a [`MAX_LETRAS_TEXTO`] y sin espacios a
+/// los lados (los saltos de renglon de dentro se respetan).
+fn texto_largo(s: &str) -> String {
+    s.trim().chars().take(MAX_LETRAS_TEXTO).collect()
+}
+
+const FORMA_DE_CAMBIOS: &str = "«cambios» tiene que ser una lista [{\"ref\": \"#3\", \"texto\": \"...\"}]";
+
+/// **Los cambios de texto como los mande el modelo**, a `[{ref, texto}]`:
+/// la lista de objetos (con `ref`, `que`, `id` o `referencia`; `texto`,
+/// `text` o `nuevo`), un mapa `{"#3": "hola"}`, o todo eso metido en un
+/// texto JSON (los modelos pequenos lo hacen).
+fn cambios_de(v: &Value) -> Result<Vec<Value>, String> {
+    let como_ref = |x: &Value| match x {
+        Value::Number(n) => Some(format!("#{n}")),
+        Value::String(s) if !s.trim().is_empty() => {
+            let t = s.trim();
+            // «12» suelto es el #12.
+            Some(if t.chars().all(|c| c.is_ascii_digit()) { format!("#{t}") } else { t.to_string() })
+        }
+        _ => None,
+    };
+    let lista: Vec<(Option<String>, Option<String>)> = match v {
+        Value::String(s) => {
+            let dentro: Value = serde_json::from_str(s.trim()).map_err(|_| FORMA_DE_CAMBIOS.to_string())?;
+            if dentro.is_string() {
+                return Err(FORMA_DE_CAMBIOS.into());
+            }
+            return cambios_de(&dentro);
+        }
+        Value::Array(a) => a
+            .iter()
+            .map(|x| {
+                let r = ["ref", "que", "id", "referencia"].iter().find_map(|k| x.get(*k)).and_then(como_ref);
+                let t = ["texto", "text", "nuevo"].iter().find_map(|k| x.get(*k)).and_then(Value::as_str).map(texto_largo);
+                (r, t)
+            })
+            .collect(),
+        Value::Object(m) => m.iter().map(|(k, x)| (como_ref(&json!(k)), x.as_str().map(texto_largo))).collect(),
+        _ => return Err(FORMA_DE_CAMBIOS.into()),
+    };
+    if lista.len() > MAX_CAMBIOS {
+        return Err(format!("«cambios» trae {} y caben {MAX_CAMBIOS}: partelos en dos llamadas", lista.len()));
+    }
+    let mut salida = Vec::with_capacity(lista.len());
+    for (i, (r, t)) in lista.into_iter().enumerate() {
+        let r = r.ok_or_else(|| format!("al cambio {} le falta «ref» (el #id del texto)", i + 1))?;
+        let t = t.filter(|t| !t.is_empty()).ok_or_else(|| {
+            format!("al cambio {} ({r}) le falta «texto» o esta vacio; para borrar un texto usa transformar_elementos con accion borrar", i + 1)
+        })?;
+        salida.push(json!({"ref": r, "texto": t}));
+    }
+    if salida.is_empty() {
+        return Err("«cambios» esta vacio: pon al menos uno, o usa accion «listar» para ver los textos".into());
+    }
+    Ok(salida)
+}
+
 fn mal(m: impl Into<String>) -> ErrorHerramienta {
     ErrorHerramienta::Parametro(m.into())
 }
@@ -414,6 +518,13 @@ pub fn validar(f: &'static Fila, args: &Map<String, Value>) -> Result<Edicion, E
                 _ if campo.obligatorio => return Err(mal(format!("«{n}» tiene que ser un texto"))),
                 _ => continue,
             },
+            Tipo::TextoLargo => match v {
+                Value::String(s) if !s.trim().is_empty() => json!(texto_largo(s)),
+                Value::Number(x) => json!(x.to_string()),
+                _ if campo.obligatorio => return Err(mal(format!("«{n}» tiene que ser un texto"))),
+                _ => continue,
+            },
+            Tipo::Cambios => json!(cambios_de(v).map_err(mal)?),
             Tipo::Numero => json!(como_numero(v).ok_or_else(|| mal(format!("«{n}» tiene que ser un numero")))?),
             Tipo::Numeros => {
                 let lista: Vec<f64> = match v {
@@ -533,7 +644,28 @@ pub fn aplicar(escena: &mut Escena, e: &Edicion, ctx: &Contexto, anfitrion: &mut
         // Algo a medias (no deberia): se deshace para no dejar basura.
         escena.deshacer();
     }
+    let mut r = r;
+    // **La revision de siempre, gratis** (`lint.rs`): lo que se ve mal en
+    // lo que toco esta llamada, para que el modelo lo arregle sin tener que
+    // mirar. Buscar no toca nada y no la lleva (listar textos devuelve sin
+    // ids, por lo mismo).
+    if let Ok(h) = r.as_mut()
+        && e.herramienta != SELECCIONAR
+        && !h.ids.is_empty()
+    {
+        anadir_revision(&mut h.texto, escena, &h.ids);
+    }
     r
+}
+
+/// Pega al «hecho» lo que encuentra `lint::revisar` en lo tocado, si algo.
+fn anadir_revision(texto: &mut String, escena: &Escena, tocados: &[u64]) {
+    let avisos = crate::lint::revisar(escena, Some(tocados));
+    let r = crate::lint::para_el_modelo(&avisos);
+    if !r.is_empty() {
+        texto.push('\n');
+        texto.push_str(&r);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -623,8 +755,14 @@ pub fn describir(e: &Elemento, marco: (f32, f32)) -> String {
         s.push_str(&format!(" centro ({},{})", r((x0 + x1) / 2.0 - mx), r((y0 + y1) / 2.0 - my)));
     }
     if let Figura::Texto { texto, .. } = &e.figura {
-        let corto: String = texto.chars().take(40).collect();
-        s.push_str(&format!(" \"{}\"", corto.replace('\n', " ")));
+        // Entero hasta [`MAX_LETRAS_RESUMEN`]: con 40 letras el modelo no
+        // podia traducir ni corregir un parrafo que no veia.
+        let n = texto.chars().count();
+        let corto: String = texto.chars().take(MAX_LETRAS_RESUMEN).collect();
+        s.push_str(&format!(" \"{}\"", corto.replace('\n', "\\n")));
+        if n > MAX_LETRAS_RESUMEN {
+            s.push_str(&format!(" (+{} letras: editar_texto accion listar)", n - MAX_LETRAS_RESUMEN));
+        }
     }
     if let Some(d) = e.extras.dureza.filter(|_| e.material.es_grafito()) {
         s.push_str(&format!(" {}", d.rotulo()));
@@ -635,11 +773,33 @@ pub fn describir(e: &Elemento, marco: (f32, f32)) -> String {
     s
 }
 
+/// Cuantas letras de cada texto lleva el resumen (las de mas, con
+/// `editar_texto` accion listar).
+pub const MAX_LETRAS_RESUMEN: usize = 200;
+
+/// Cuantas letras como mucho ocupan los textos que no caben entre los
+/// [`MAX_RESUMEN`] del resumen.
+const PRESUPUESTO_TEXTOS_VIEJOS: usize = 1500;
+
+/// **La linea de un elemento con lo que solo sabe la escena**: de que caja
+/// es rotulo un texto, y que rotulo lleva una caja. Sin esto el modelo veia
+/// «#7 texto "Inicio"» y «#5 rectangulo» sueltos y no sabia que traducir
+/// la caja era cambiar el #7.
+pub fn describir_en(escena: &Escena, e: &Elemento, marco: (f32, f32)) -> String {
+    let mut s = describir(e, marco);
+    if let Some(c) = textos::caja_del_rotulo(escena, e) {
+        s.push_str(&format!(" (rotulo de #{c})"));
+    } else if let Some(t) = textos::rotulo_de(escena, e) {
+        s.push_str(&format!(" (rotulo #{t})"));
+    }
+    s
+}
+
 /// **La lista corta de unos ids**, una linea por elemento.
 pub fn listar(escena: &Escena, ids: &[u64], marco: (f32, f32)) -> String {
     ids.iter()
         .filter_map(|id| escena.buscar(*id).filter(|e| !e.borrado))
-        .map(|e| describir(e, marco))
+        .map(|e| describir_en(escena, e, marco))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -669,10 +829,33 @@ pub fn resumen(escena: &Escena, ctx: &Contexto) -> String {
     let desde = vivos.len().saturating_sub(MAX_RESUMEN);
     for e in &vivos[desde..] {
         s.push('\n');
-        s.push_str(&describir(e, ctx.marco));
+        s.push_str(&describir_en(escena, e, ctx.marco));
     }
     if desde > 0 {
         s.push_str(&format!("\n(+{desde} mas antiguos sin listar)"));
+        // **Los textos de los de abajo, aunque no quepan sus lineas**: para
+        // «traducelo todo» el modelo necesita cada texto y su #id, y las
+        // cajas y colores de lo viejo le sobran. Con mas de lo que cabe, se
+        // dice cuantos faltan y como pedirlos.
+        let viejos: Vec<&Elemento> = vivos[..desde].iter().copied().filter(|e| matches!(e.figura, Figura::Texto { .. })).collect();
+        if !viejos.is_empty() {
+            let mut linea = String::from("\nTextos de esos:");
+            let mut puestos = 0;
+            for e in &viejos {
+                let Figura::Texto { texto, .. } = &e.figura else { continue };
+                let corto: String = texto.chars().take(80).collect::<String>().replace('\n', "\\n");
+                let trozo = format!(" #{} \"{}\"{}", e.id, corto, if texto.chars().count() > 80 { "..." } else { "" });
+                if linea.len() + trozo.len() > PRESUPUESTO_TEXTOS_VIEJOS {
+                    break;
+                }
+                linea.push_str(&trozo);
+                puestos += 1;
+            }
+            s.push_str(&linea);
+            if puestos < viejos.len() {
+                s.push_str(&format!(" (+{} textos mas: editar_texto accion listar)", viejos.len() - puestos));
+            }
+        }
     }
     s
 }
@@ -726,6 +909,9 @@ pub fn resumen_de_lo_anadido(escena: &Escena, ids: &[u64], ctx: &Contexto) -> St
     }
     if ids.len() > MAX_ANADIDOS {
         s.push_str(&format!("\n(+{} mas)", ids.len() - MAX_ANADIDOS));
+    }
+    if !ids.is_empty() {
+        anadir_revision(&mut s, escena, ids);
     }
     s
 }
