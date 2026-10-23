@@ -1114,8 +1114,9 @@ mod pruebas_revision {
         assert!(r.texto.starts_with("vuelto"), "{}", r.texto);
         assert_eq!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
         assert_eq!(escena.pasos_cerrados(), pasos + 1, "volver es un paso");
-        // Otra vez no cambia nada.
-        assert!(trabajo(&mut escena, Trabajo::VolverA { copia }).texto.starts_with("ya estaba"));
+        // Otra vez: sigue igual (puede apuntar un paso, por las versiones).
+        trabajo(&mut escena, Trabajo::VolverA { copia });
+        assert_eq!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
         // Y comprobar contesta con una linea por fallo (o ninguna).
         let r = trabajo(&mut escena, Trabajo::Comprobar);
         assert!(r.texto.lines().count() <= pixpin_ia::lint::MAX_LINEAS.max(64));

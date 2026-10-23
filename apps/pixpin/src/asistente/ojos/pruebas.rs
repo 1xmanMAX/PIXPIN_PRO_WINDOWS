@@ -156,10 +156,10 @@ fn el_turno_dibuja_mira_corrige_y_se_deshace_de_una_vez() {
     assert!(t.acabado());
     assert!(texto.contains("Escribi Hola.") && texto.contains("Movi el texto"), "{texto}");
     assert_eq!(escena.cuantos_visibles(), antes + 1);
-    // La tercera peticion lleva un PNG de verdad.
+    // La revision (despues de las dos del turno) lleva un PNG de verdad:
+    // la nota del critico o la correccion, segun el orden de la rubrica.
     let pedidas = motor.0.recibido.lock().unwrap();
-    let vista = pedidas[2].mensajes.last().unwrap();
-    let png = vista.partes.iter().find_map(|p| match p {
+    let png = pedidas.iter().skip(2).flat_map(|p| p.mensajes.iter()).flat_map(|m| m.partes.iter()).find_map(|p| match p {
         pixpin_ia::motor::Parte::Imagen { bytes, .. } => Some(bytes.clone()),
         _ => None,
     });
