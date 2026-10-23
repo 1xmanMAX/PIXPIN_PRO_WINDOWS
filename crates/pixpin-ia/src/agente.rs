@@ -175,6 +175,11 @@ pub struct Opciones<'a> {
     /// juez por defecto; Sonnet entra solo si Haiku suspende dos veces».
     /// Solo si ve imagenes.
     pub critico: Option<&'a dyn Motor>,
+    /// **El repaso antes de contestar** (23-oct, [`repasar`]): si iba a
+    /// rendirse («no tengo herramienta») o el turno hizo un pedido de varias
+    /// partes o le fallo algo, una vuelta mas para comprobarlo contra los
+    /// resultados y terminar lo que falte. La app lo enciende con la nube.
+    pub repasar: bool,
 }
 
 /// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
@@ -619,6 +624,14 @@ fn turno_dentro(
     };
     let texto = match dicho {
         Some(mut texto) => {
+            // **El repaso** (23-oct): antes de rendirse o de dar por hecho
+            // un pedido de varias partes, comprobarlo y acabar lo que falte.
+            if opciones.repasar && !est.cortado
+                && let Some(extra) = repasar(motor, historial, herramientas, ejecutor, opciones, crono, &mut est, &texto, al_evento)
+            {
+                texto.push_str("\n\n");
+                texto.push_str(&extra);
+            }
             // **La revision** (15-oct): el usuario ya ve lo dibujado; ahora
             // el modelo lo mira y corrige lo que este mal.
             if ojos && opciones.revisar > 0 && est.cambios > 0 && !est.cortado
@@ -673,6 +686,8 @@ struct Estado {
     /// Cuantas capturas puntuo la revision en este turno (el gasto en
     /// vision: ~1200 tokens cada una).
     capturas: usize,
+    /// Llamadas que acabaron en ERROR (mal hechas o que fallaron al hacerse).
+    fallos: usize,
 }
 
 impl Default for Estado {
@@ -687,6 +702,7 @@ impl Default for Estado {
             documento: false,
             vistas: 0,
             capturas: 0,
+            fallos: 0,
         }
     }
 }
@@ -718,6 +734,156 @@ pub fn pedido_del_usuario(historial: &[Mensaje]) -> String {
         .map(Mensaje::texto_entero)
         .find(|t| !t.trim_start().starts_with("ERROR"))
         .unwrap_or_default()
+}
+
+/// Lo que se le dice al modelo cuando iba a rendirse.
+pub const REPASO_RENDIRSE: &str = "Antes de dar eso por imposible: repasa tus herramientas y lo que ya sabes hacer tú (leer, traducir, redactar, calcular, ordenar). \
+Casi todo sale de combinarlas: leer lo que hay, pensarlo tú y escribir el resultado con la herramienta que edita ese sitio. \
+Si una combinación lo consigue, hazlo ahora. Si de verdad no se puede, haz la parte que sí y di en una línea qué falta y por qué. \
+No repitas lo que ya dijiste.";
+
+/// Lo que se le dice al modelo para repasar un pedido hecho.
+pub const REPASO_COMPLETO: &str = "Antes de terminar, repasa el pedido del usuario punto por punto contra los resultados de las herramientas \
+(y los avisos y ERROR que trajeron). Si falta algo o algo salió mal, hazlo o corrígelo ahora con las herramientas. \
+Si está todo bien, contesta solo con la palabra LISTO.";
+
+/// La palabra con la que el repaso dice que no hay nada mas que hacer.
+pub const LISTO: &str = "LISTO";
+
+/// **Si la respuesta es rendirse**: «no puedo», «no tengo herramienta»...
+/// (corta: una respuesta larga que lo menciona de pasada no lo es).
+pub fn parece_rendirse(texto: &str) -> bool {
+    let t = texto.to_lowercase();
+    if t.chars().count() > 700 {
+        return false;
+    }
+    [
+        "no puedo",
+        "no tengo herramienta",
+        "no tengo una herramienta",
+        "no tengo ninguna herramienta",
+        "no tengo acceso",
+        "no es posible",
+        "no me es posible",
+        "no dispongo",
+        "no sé cómo",
+        "no se como",
+        "no soy capaz",
+        "no está a mi alcance",
+        "fuera de mis capacidades",
+        "i can't",
+        "i cannot",
+        "i don't have a tool",
+        "i do not have a tool",
+        "not able to",
+    ]
+    .iter()
+    .any(|f| t.contains(f))
+}
+
+/// **Si el pedido tiene varias partes**: varias frases unidas, una lista o
+/// un pedido largo. Lo de una sola cosa no se repasa (cuesta una vuelta).
+pub fn pedido_compuesto(pedido: &str) -> bool {
+    let q = pedido.to_lowercase();
+    let lista = q
+        .lines()
+        .filter(|l| {
+            let l = l.trim_start();
+            l.starts_with(['-', '*', '•']) || l.split_once(['.', ')']).is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        })
+        .count();
+    let uniones = q.matches(" y ").count() + q.matches(" and ").count() + q.matches(", ").count() + q.matches("; ").count()
+        + q.matches(" luego ").count()
+        + q.matches(" después ").count()
+        + q.matches(" despues ").count();
+    lista >= 2 || uniones >= 2 || q.chars().count() > 220
+}
+
+/// Si lo que contesto el repaso es que no habia nada mas.
+fn es_listo(texto: &str) -> bool {
+    let t = texto.trim().trim_matches(|c: char| !c.is_alphanumeric());
+    t.is_empty() || t.eq_ignore_ascii_case(LISTO) || texto.trim() == HECHO || texto.trim() == SIN_PALABRAS
+}
+
+/// **El repaso**: una vuelta mas con [`REPASO_RENDIRSE`] (si `dicho` es
+/// rendirse) o [`REPASO_COMPLETO`] (si hizo algo y el pedido era de varias
+/// partes o algo fallo). Lo que dice mientras no se ensena; si encontro algo
+/// que hacer, devuelve lo que dijo al acabar (se anade a la respuesta). Si
+/// todo estaba bien, o falla, se deja la conversacion como estaba.
+#[allow(clippy::too_many_arguments)]
+fn repasar(
+    motor: &dyn Motor,
+    historial: &mut Vec<Mensaje>,
+    herramientas: &[Herramienta],
+    ejecutor: &mut dyn Ejecutor,
+    opciones: &Opciones,
+    crono: &mut Cronometro,
+    est: &mut Estado,
+    dicho: &str,
+    al_evento: &mut dyn FnMut(Evento) -> Seguir,
+) -> Option<String> {
+    let rendirse = !herramientas.is_empty() && parece_rendirse(dicho);
+    let pedido = pedido_del_usuario(historial);
+    let completo = est.hechas > 0 && (est.fallos > 0 || pedido_compuesto(&pedido));
+    let motivo = if rendirse {
+        REPASO_RENDIRSE
+    } else if completo {
+        REPASO_COMPLETO
+    } else {
+        return None;
+    };
+    let marca = historial.len();
+    let hechas_antes = est.hechas;
+    historial.push(Mensaje::usuario(motivo));
+    if al_evento(Evento::Llamando("repasar".into())) == Seguir::Parar {
+        historial.truncate(marca);
+        est.cortado = true;
+        return None;
+    }
+    let mut dice = String::new();
+    let r = {
+        let mut filtro = |e: Evento| -> Seguir {
+            match e {
+                // Lo que dice se guarda: solo se ensena si hizo algo mas.
+                Evento::Texto(t) => {
+                    dice.push_str(&t);
+                    Seguir::Si
+                }
+                otro => al_evento(otro),
+            }
+        };
+        vueltas(motor, historial, herramientas, ejecutor, opciones, crono, est, &mut filtro)
+    };
+    let hizo_mas = est.hechas > hechas_antes;
+    match r {
+        Ok(Some(t)) if hizo_mas || (rendirse && !parece_rendirse(&t) && !es_listo(&t)) => {
+            let t = if t.trim().is_empty() { dice } else { t };
+            if es_listo(&t) {
+                // Corrigio algo pero no lo conto: que se sepa.
+                return hizo_mas.then(|| {
+                    let t = "Lo repasé y completé lo que faltaba.".to_string();
+                    al_evento(Evento::Texto(format!("\n\n{t}")));
+                    t
+                });
+            }
+            al_evento(Evento::Texto(format!("\n\n{}", t.trim())));
+            Some(t.trim().to_string())
+        }
+        Ok(_) => {
+            // Todo estaba bien: como si no se hubiera preguntado.
+            if !hizo_mas {
+                historial.truncate(marca);
+            }
+            None
+        }
+        Err(e) => {
+            tracing::warn!(%e, "asistente: el repaso no pudo acabar; se queda lo de antes");
+            if !hizo_mas {
+                historial.truncate(marca);
+            }
+            None
+        }
+    }
 }
 
 /// **Las vueltas modelo → herramientas → modelo** hasta que conteste con
@@ -940,6 +1106,7 @@ fn vueltas(
                     if matches!(e, ErrorHerramienta::JsonRoto) || respuesta.fin == Fin::Longitud {
                         motivo = pedir_mas_corto();
                     }
+                    est.fallos += 1;
                     tracing::warn!(herramienta = %cruda.nombre, %motivo, "asistente: llamada mal hecha");
                     if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
                         est.cortado = true;
@@ -958,6 +1125,7 @@ fn vueltas(
                     Err(t) => (false, format!("ERROR: {t}")),
                 };
                 est.hechas += usize::from(ok);
+                est.fallos += usize::from(!ok);
                 hechas_aqui += usize::from(ok);
                 if ok && crate::ojos::cambia_lo_que_se_ve(&v.llamada) {
                     est.cambios += 1;
@@ -1059,6 +1227,7 @@ fn revisar(
     let mut dicho: Vec<String> = Vec::new();
     let mut mejor: Option<Candidata> = None;
     let mut suspensos = 0;
+    #[allow(clippy::explicit_counter_loop)] // `suspensos` solo sube cuando suspende
     for ronda in 0..=rondas {
         if al_evento(Evento::Llamando(crate::ojos::NOMBRE.into())) == Seguir::Parar {
             est.cortado = true;
@@ -2529,5 +2698,116 @@ mod pruebas_preguntar {
         assert!(!catalogo().iter().find(|h| h.nombre == crate::herramientas::CALCAR).unwrap().descripcion.contains("imagen del lienzo"));
         // Cortas: el prompt se paga en cada vuelta.
         assert!(s.chars().count() < 3600, "{} letras", s.chars().count());
+    }
+}
+
+#[cfg(test)]
+mod pruebas_repaso {
+    use super::*;
+    use crate::herramientas::catalogo;
+    use crate::motor::{MotorGuionado, Respuesta};
+
+    struct Hace(usize);
+
+    impl Ejecutor for Hace {
+        fn ejecutar(&mut self, _: &Llamada) -> Result<String, String> {
+            self.0 += 1;
+            Ok("hecho".into())
+        }
+    }
+
+    const AYUDA: &str = r#"{"pregunta":"como se exporta"}"#;
+
+    fn correr(pedido: &str, guion: Vec<Respuesta>, repasar: bool) -> (Final, Vec<Evento>, Vec<Mensaje>, usize, usize) {
+        let motor = MotorGuionado::nuevo(guion).como_nube();
+        let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario(pedido)];
+        let mut ej = Hace(0);
+        let mut eventos = Vec::new();
+        let o = Opciones { repasar, ..Default::default() };
+        let f = turno_con(&motor, &mut h, &catalogo(), &mut ej, &o, &mut |e| {
+            eventos.push(e);
+            Seguir::Si
+        })
+        .unwrap();
+        let pedidas = motor.recibido.lock().unwrap().len();
+        (f, eventos, h, ej.0, pedidas)
+    }
+
+    /// Iba a decir «no tengo herramienta»: el repaso le hace mirar otra vez,
+    /// lo hace, y lo que dice al acabar se anade a la respuesta.
+    #[test]
+    fn antes_de_rendirse_busca_como_hacerlo() {
+        let (f, eventos, h, hechas, pedidas) = correr(
+            "exporta esto",
+            vec![
+                Respuesta::de_texto("No tengo una herramienta para exportar."),
+                Respuesta::de_llamada("ayuda_app", AYUDA),
+                Respuesta::de_texto("Lo he exportado con la ayuda de la app."),
+            ],
+            true,
+        );
+        assert_eq!(hechas, 1);
+        assert_eq!(pedidas, 3);
+        assert!(f.texto.ends_with("Lo he exportado con la ayuda de la app."), "{}", f.texto);
+        assert!(h.iter().any(|m| m.texto_entero() == REPASO_RENDIRSE));
+        assert!(eventos.iter().any(|e| matches!(e, Evento::Texto(t) if t.starts_with("\n\nLo he exportado"))));
+    }
+
+    /// Un pedido de varias partes ya hecho: el repaso dice LISTO y no queda
+    /// rastro (ni en la respuesta ni en la conversacion).
+    #[test]
+    fn un_pedido_de_varias_partes_se_repasa_y_si_esta_listo_no_cambia_nada() {
+        let (f, eventos, h, hechas, pedidas) = correr(
+            "busca como se exporta, mira los ajustes y dime los atajos",
+            vec![Respuesta::de_llamada("ayuda_app", AYUDA), Respuesta::de_texto("Hecho todo."), Respuesta::de_texto("LISTO")],
+            true,
+        );
+        assert_eq!((hechas, pedidas), (1, 3));
+        assert_eq!(f.texto, "Hecho todo.");
+        assert!(!h.iter().any(|m| m.texto_entero() == REPASO_COMPLETO), "el repaso no se queda en la conversacion");
+        assert!(!eventos.iter().any(|e| matches!(e, Evento::Texto(t) if t.contains("LISTO"))), "LISTO no se ensena");
+    }
+
+    /// Al repasar encuentra algo que faltaba, lo hace y se cuenta.
+    #[test]
+    fn si_al_repasar_falta_algo_lo_hace() {
+        let (f, _, _, hechas, _) = correr(
+            "busca como se exporta, mira los ajustes y dime los atajos",
+            vec![
+                Respuesta::de_llamada("ayuda_app", AYUDA),
+                Respuesta::de_texto("Hecho."),
+                Respuesta::de_llamada("ayuda_app", r#"{"pregunta":"atajos"}"#),
+                Respuesta::de_texto("Faltaban los atajos: ya están."),
+            ],
+            true,
+        );
+        assert_eq!(hechas, 2);
+        assert!(f.texto.ends_with("Faltaban los atajos: ya están."), "{}", f.texto);
+    }
+
+    /// Casos negativos: sin la opcion (el local, las pruebas) o con un pedido
+    /// de una sola cosa bien hecha, no hay vuelta de mas.
+    #[test]
+    fn sin_la_opcion_o_con_un_pedido_simple_no_se_repasa() {
+        let guion = || vec![Respuesta::de_llamada("ayuda_app", AYUDA), Respuesta::de_texto("Hecho.")];
+        assert_eq!(correr("busca como se exporta, mira los ajustes y dime los atajos", guion(), false).4, 2);
+        assert_eq!(correr("como se exporta", guion(), true).4, 2);
+        let (f, ..) = correr("hola", vec![Respuesta::de_texto("No puedo ver tu pantalla, pero dime.")], false);
+        assert_eq!(f.texto, "No puedo ver tu pantalla, pero dime.");
+    }
+
+    #[test]
+    fn que_es_rendirse_y_que_es_un_pedido_de_varias_partes() {
+        assert!(parece_rendirse("No tengo una herramienta para eso."));
+        assert!(parece_rendirse("Lo siento, no es posible traducir la figura."));
+        assert!(parece_rendirse("I can't do that from here."));
+        assert!(!parece_rendirse("He dibujado la casa con tres ventanas."));
+        assert!(!parece_rendirse(&format!("No puedo {}", "x ".repeat(400))), "una respuesta larga no es rendirse");
+        assert!(pedido_compuesto("traduce la figura, pon los títulos en azul y alinéalos"));
+        assert!(pedido_compuesto("- una nota\n- una tarea\n- un recordatorio"));
+        assert!(pedido_compuesto("1. lee el PDF\n2. saca las tareas"));
+        assert!(!pedido_compuesto("dibuja una casa"));
+        assert!(!pedido_compuesto("pon el título en azul y negrita"));
+        assert!(es_listo(" LISTO. ") && es_listo("listo") && !es_listo("Listo, pero faltaba algo"));
     }
 }

@@ -484,6 +484,7 @@ pub fn rotulo_de(nombre: &str) -> String {
         };
     }
     match nombre {
+        "repasar" => "🔎 repasando el pedido…",
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",

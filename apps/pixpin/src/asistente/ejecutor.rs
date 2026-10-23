@@ -42,6 +42,9 @@ pub const OCR_PARA_EL_MODELO: usize = 4000;
 
 pub struct EjecutorDelChat {
     tx: Sender<Aviso>,
+    /// Las copias del lienzo que guardo la revision con rubrica
+    /// (`guardar_version`), por su numero.
+    versiones: Vec<Vec<pixpin_motor2d::elemento::Elemento>>,
     proyecto: String,
     adjuntos: Vec<Adjunto>,
     parar: Arc<AtomicBool>,
@@ -87,6 +90,7 @@ impl EjecutorDelChat {
     pub fn nuevo(tx: Sender<Aviso>, proyecto: String, adjuntos: Vec<Adjunto>, parar: Arc<AtomicBool>) -> EjecutorDelChat {
         EjecutorDelChat {
             tx,
+            versiones: Vec::new(),
             proyecto,
             adjuntos,
             parar,
@@ -276,6 +280,14 @@ impl EjecutorDelChat {
                 Err(RecvTimeoutError::Timeout) => {}
             }
         }
+    }
+
+    /// Un trabajo sin figuras ni edicion (copia, volver, comprobar) a quien
+    /// tenga el lienzo, esperando su respuesta.
+    fn trabajo_en_el_lienzo(&mut self, trabajo: super::al_lienzo::Trabajo) -> Result<super::al_lienzo::Respuesta, String> {
+        let (tx, rx) = channel();
+        let pedido = super::al_lienzo::Pedido::de_trabajo(self.proyecto.clone(), self.destino.clone(), trabajo, tx);
+        self.esperar_al_lienzo(pedido, rx)
     }
 
     /// **Editar lo que ya hay** (`pixpin_ia::edicion`): a quien tenga el
@@ -690,6 +702,31 @@ impl Ejecutor for EjecutorDelChat {
             Some(f) => f(p),
             None => pixpin_ia::preguntar::Contestada::SinRespuesta,
         }
+    }
+
+    /// Una copia del lienzo antes de cada ronda de correccion.
+    fn guardar_version(&mut self) -> Option<usize> {
+        if !super::al_lienzo::hay_quien_conteste() {
+            return None;
+        }
+        let copia = self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::Copia).ok()?.copia?;
+        self.versiones.push(copia);
+        Some(self.versiones.len() - 1)
+    }
+
+    /// La correccion lo dejo peor: vuelve a la copia, como un paso mas.
+    fn volver_a_version(&mut self, version: usize) -> Result<(), String> {
+        let copia = self.versiones.get(version).cloned().ok_or("esa version no se guardo")?;
+        self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::VolverA { copia }).map(|_| ())
+    }
+
+    /// Lo que se mide sin modelo (`pixpin_ia::lint`) en todo el lienzo.
+    fn comprobar(&mut self) -> Option<Vec<String>> {
+        if !super::al_lienzo::hay_quien_conteste() {
+            return None;
+        }
+        let r = self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::Comprobar).ok()?;
+        Some(r.texto.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
     }
 
     /// Lo que hizo el turno en el lienzo abierto, un solo Ctrl+Z.

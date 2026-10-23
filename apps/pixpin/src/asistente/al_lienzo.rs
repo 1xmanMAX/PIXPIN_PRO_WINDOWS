@@ -59,6 +59,16 @@ pub enum Trabajo {
     /// al 40», «de 10 en 10»): la elegida, rehecha en su sitio, o la de
     /// `nombre`. Ver [`poner_plantilla`].
     Plantilla { nombre: Option<String>, intervalo: pixpin_motor2d::figuras_de_serie::Intervalo },
+    /// **Una copia de como esta** (23-oct, la revision con rubrica): antes
+    /// de cada ronda de correccion, para volver si la deja peor.
+    Copia,
+    /// **Volver a una copia** de [`Trabajo::Copia`], como un paso mas
+    /// (el `Ctrl+Z` del turno lo deshace todo junto).
+    VolverA { copia: Vec<pixpin_motor2d::elemento::Elemento> },
+    /// **Las comprobaciones duras** de todo el lienzo (`pixpin_ia::lint`):
+    /// textos encimados o que se salen, flechas sueltas, ortografia... una
+    /// linea por fallo en [`Respuesta::texto`].
+    Comprobar,
 }
 
 /// Lo que contesta el lienzo: el texto para el modelo, los ids que toco
@@ -75,6 +85,8 @@ pub struct Respuesta {
     pub pasos: Option<(u64, u64)>,
     /// Al pedir la imagen ([`Trabajo::Imagen`]): la elegida o la ultima pegada.
     pub imagen: Option<Box<ImagenDelLienzo>>,
+    /// Al pedir una copia ([`Trabajo::Copia`]): los elementos tal cual.
+    pub copia: Option<Vec<pixpin_motor2d::elemento::Elemento>>,
 }
 
 /// Un pedido al lienzo.
@@ -433,6 +445,21 @@ pub fn trabajar(
             })
         }
         Trabajo::Plantilla { nombre, intervalo } => poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, None),
+        Trabajo::Copia => Ok(Respuesta { copia: Some(escena.elementos.clone()), ..Default::default() }),
+        Trabajo::VolverA { copia } => {
+            let cambio = escena.volver_a(copia);
+            Ok(Respuesta {
+                texto: if cambio { "vuelto a la version guardada".into() } else { "ya estaba como la version guardada".into() },
+                ..Default::default()
+            })
+        }
+        Trabajo::Comprobar => {
+            let avisos = pixpin_ia::lint::revisar(escena, None);
+            Ok(Respuesta {
+                texto: avisos.iter().map(|h| h.texto.clone()).collect::<Vec<_>>().join("\n"),
+                ..Default::default()
+            })
+        }
         Trabajo::Dibujar => Err("eso no es un trabajo de editar".into()),
     }
 }
@@ -678,7 +705,7 @@ pub fn atender_en_editor_con(
                 algo |= escena.pasos_cerrados() != antes;
                 // Lo que edito, para juntarlo al acabar el turno.
                 r.map(|r| match t {
-                    Trabajo::Editar { .. } => Respuesta { pasos: Some((antes, escena.pasos_cerrados())), ..r },
+                    Trabajo::Editar { .. } | Trabajo::VolverA { .. } => Respuesta { pasos: Some((antes, escena.pasos_cerrados())), ..r },
                     _ => r,
                 })
             }
@@ -1054,4 +1081,43 @@ pub fn colocar_hojas_en_medio(escena: &mut Escena, hojas: &[FiguraGuardada], cen
     let ids = colocar_hojas(escena, hojas, (centro.0 - ancho / 2.0, centro.1 - alto / 2.0));
     escena.cerrar_paso();
     ids
+}
+
+#[cfg(test)]
+mod pruebas_revision {
+    use super::*;
+    use pixpin_motor2d::biblioteca;
+    use pixpin_motor2d::figuras_de_serie as serie;
+
+    fn trabajo(escena: &mut Escena, t: Trabajo) -> Respuesta {
+        let mut imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(1024);
+        trabajar(escena, &t, &[], (0.0, 0.0), &mut imagenes).unwrap()
+    }
+
+    /// La revision guarda una copia, la correccion la estropea y se vuelve a
+    /// la copia en un solo paso que el Ctrl+Z deshace.
+    #[test]
+    fn la_copia_vuelve_tal_cual_y_se_deshace_de_una() {
+        let mut escena = Escena::nueva();
+        let f = serie::catalogo().into_iter().find(|f| f.id == "serie-lista-de-tareas").unwrap();
+        let ids = biblioteca::estampar_en_escena(&mut escena, &f, pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0));
+        let antes: Vec<_> = escena.visibles().map(|e| (e.id, e.caja())).collect();
+        let copia = trabajo(&mut escena, Trabajo::Copia).copia.expect("la copia");
+        // La «correccion» mueve una cosa y borra otra.
+        escena.abrir_paso();
+        escena.mover(ids[0], 40.0, 0.0);
+        escena.borrar_apuntando(ids[1]);
+        escena.cerrar_paso();
+        assert_ne!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
+        let pasos = escena.pasos_cerrados();
+        let r = trabajo(&mut escena, Trabajo::VolverA { copia: copia.clone() });
+        assert!(r.texto.starts_with("vuelto"), "{}", r.texto);
+        assert_eq!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
+        assert_eq!(escena.pasos_cerrados(), pasos + 1, "volver es un paso");
+        // Otra vez no cambia nada.
+        assert!(trabajo(&mut escena, Trabajo::VolverA { copia }).texto.starts_with("ya estaba"));
+        // Y comprobar contesta con una linea por fallo (o ninguna).
+        let r = trabajo(&mut escena, Trabajo::Comprobar);
+        assert!(r.texto.lines().count() <= pixpin_ia::lint::MAX_LINEAS.max(64));
+    }
 }

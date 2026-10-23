@@ -361,6 +361,9 @@ impl Turno {
                     revisar: if ojos { revisiones(motor.as_ref()) } else { 0 },
                     memoria: largo_plazo.as_ref(),
                     critico: critico.as_deref(),
+                    // Comprobar antes de contestar (rendirse, varias partes,
+                    // algo que fallo): con la nube; el local no se toca.
+                    repasar: nube,
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(
@@ -488,11 +491,13 @@ pub fn apagar_ojos(apagar: bool) {
     SIN_OJOS.store(apagar, Ordering::Relaxed);
 }
 
-/// **Cuantas rondas de revision**: una con la nube (segundos y ~1000
-/// tokens de vision). El local ni mira ni revisa: el usuario pidio el
-/// 15-oct desarrollar primero la nube y no tocar el local.
+/// **Cuantas rondas de correccion**: con la nube, las de la revision con
+/// rubrica ([`agente::REVISIONES_DE_SERIE`], 22-oct: dos; de la segunda a
+/// la tercera la mejora ya es minima y cuesta casi el doble). El local ni
+/// mira ni revisa: el usuario pidio el 15-oct desarrollar primero la nube y
+/// no tocar el local.
 pub fn revisiones(motor: &dyn Motor) -> usize {
-    if motor.catalogo_completo() { 1 } else { 0 }
+    if motor.catalogo_completo() { agente::REVISIONES_DE_SERIE } else { 0 }
 }
 
 /// Pega la vista del lienzo al pedido del usuario (la imagen delante, como
