@@ -2585,6 +2585,7 @@ asistente-recomendada = recomendada
 asistente-receta-guardar = Guardar como receta
 asistente-modelo = Modelo
 asistente-nueva-conversacion = Conversación nueva
+asistente-nuevo-chat = Nuevo chat
 asistente-borrar-chat = Borrar chat
 asistente-borrar-chat-aviso = Se borran todos los mensajes del chat «Asistente» (los adjuntos con ellos). ¿Seguir?
 asistente-escuchar = Escuchar

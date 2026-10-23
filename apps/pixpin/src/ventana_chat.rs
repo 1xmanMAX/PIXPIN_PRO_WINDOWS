@@ -6549,7 +6549,7 @@ fn tocar_la_burbuja(
             crate::foto_anotada::asegurar_lienzo(ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, indice);
             let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
             let plana = a.mensajes.get(indice).and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m));
-            lienzo_aparte(move || {
+            lienzo_aparte(clave_de_hoja(&proyecto, &mensajes, indice), move || {
                 if !crate::foto_anotada::abrir_si_tiene_lienzo(&raiz, &proyecto, &mensajes, indice, lienzo)
                     && let Some(ruta) = plana
                 {
@@ -6562,7 +6562,7 @@ fn tocar_la_burbuja(
             // las hojas guardadas y la pagina que estreno su dibujo (apuntado
             // en `proyecto.json`) salen de ahi.
             let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
-            lienzo_aparte(move || {
+            lienzo_aparte(clave_de_hoja(&proyecto, &mensajes, indice), move || {
                 abrir_hojas(&raiz, &proyecto, &mensajes, indice, lienzo);
             });
         }
@@ -7541,47 +7541,62 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         return;
     }
 
-    // **La pastilla del modelo** (17-oct-2026, el usuario: «una forma de
-    // seleccionar modelo rapido y sencillamente en el mismo chat»): en el
-    // chat «Asistente», a la izquierda de la lupa, quien contesta con su
-    // flechita; al pulsarla, la lista (`menu_de_modelo`). Le quita su sitio
-    // al centro, y si no cabe con el titulo, no sale (queda en los tres
-    // puntos).
+    // **«Nuevo chat» y la pastilla del modelo**, en el chat «Asistente», a la
+    // izquierda de la lupa. Primero el boton de conversacion nueva (22-oct,
+    // «que cada chat tenga un boton para iniciar nueva conversacion»; 23-oct,
+    // «el asistente no tiene un boton de nuevo chat»: antes solo salia si
+    // cabia la pastilla y aun le sobraba sitio al titulo, y casi nunca se
+    // veia): siempre que quede un minimo de titulo, con su rotulo si cabe.
+    // Luego la pastilla del modelo (17-oct, «seleccionar modelo rapido en el
+    // mismo chat»), si cabe; si no, queda en los tres puntos, como el boton.
     let mut centro = pil.centro;
-    if a.ficha.es_asistente()
-        && let Some(r) = sitio_de_la_pastilla_del_modelo(p, &pil, asistente_nube::eleccion_reciente(&a.raiz), e)
-    {
-        let rotulo = asistente_nube::nombre_corto(asistente_nube::eleccion_reciente(&a.raiz));
+    if a.ficha.es_asistente() {
+        let eleccion = asistente_nube::eleccion_reciente(&a.raiz);
+        let rotulo_modelo = asistente_nube::nombre_corto(eleccion);
         let tam = PASTILLA_MODELO_TAM * e;
-        let (w, alto_t) = p.medir_texto(rotulo, tam);
-        pildora(p, tema, rf(r), e);
-        let x = r.x as f32 + 13.0 * e;
-        p.texto(rotulo, x, r.y as f32 + (r.alto as f32 - alto_t) / 2.0, tam, tema.pildora_texto);
-        let flecha = 16.0 * e;
-        p.icono(
-            &mi::KEYBOARD_ARROW_DOWN,
-            RectF {
-                x: x + w + 2.0 * e,
-                y: r.y as f32 + (r.alto as f32 - flecha) / 2.0,
-                ancho: flecha,
-                alto: flecha,
-            },
-            tema.pildora_texto,
+        let (w_modelo, alto_t) = p.medir_texto(rotulo_modelo, tam);
+        let rotulo_nuevo = textos.t("asistente-nuevo-chat");
+        let (w_nuevo, _) = p.medir_texto(&rotulo_nuevo, tam);
+        let sitio = sitio_de_los_botones_del_asistente(
+            &pil,
+            (w_modelo + 16.0 * e + 28.0 * e).ceil() as u32,
+            (w_nuevo + 18.0 * e + 30.0 * e).ceil() as u32,
+            e,
         );
-        zonas.push((r, Zona::ModeloIa));
-        centro.ancho = (r.x - centro.x - (8.0 * e) as i32).max(0) as u32;
-        // **«Conversación nueva» a la vista** (22-oct-2026, el usuario: «que
-        // cada chat tenga un boton para poder iniciar nueva conversacion»):
-        // el «+» redondo pegado a la pastilla, lo mismo que la entrada del
-        // menu. Si le quita demasiado al titulo, no sale (sigue en el menu).
-        let lado = r.alto;
-        let x = r.x - (6.0 * e) as i32 - lado as i32;
-        if x - centro.x >= (PASTILLA_MODELO_DEJA * e) as i32 {
-            let b = Rect { x, y: r.y, ancho: lado, alto: lado };
+        if let Some((b, con_rotulo)) = sitio.nuevo {
             pildora(p, tema, rf(b), e);
-            icono_centrado(p, &mi::ADD, b, 18.0 * e, tema.pildora_texto);
+            let icono = 18.0 * e;
+            if con_rotulo {
+                let x = b.x as f32 + 11.0 * e;
+                p.icono(
+                    &mi::ADD,
+                    RectF { x, y: b.y as f32 + (b.alto as f32 - icono) / 2.0, ancho: icono, alto: icono },
+                    tema.pildora_texto,
+                );
+                p.texto(&rotulo_nuevo, x + icono + 4.0 * e, b.y as f32 + (b.alto as f32 - alto_t) / 2.0, tam, tema.pildora_texto);
+            } else {
+                icono_centrado(p, &mi::ADD, b, icono, tema.pildora_texto);
+            }
             zonas.push((b, Zona::NuevaConversacion));
             centro.ancho = (b.x - centro.x - (8.0 * e) as i32).max(0) as u32;
+        }
+        if let Some(r) = sitio.modelo {
+            pildora(p, tema, rf(r), e);
+            let x = r.x as f32 + 13.0 * e;
+            p.texto(rotulo_modelo, x, r.y as f32 + (r.alto as f32 - alto_t) / 2.0, tam, tema.pildora_texto);
+            let flecha = 16.0 * e;
+            p.icono(
+                &mi::KEYBOARD_ARROW_DOWN,
+                RectF {
+                    x: x + w_modelo + 2.0 * e,
+                    y: r.y as f32 + (r.alto as f32 - flecha) / 2.0,
+                    ancho: flecha,
+                    alto: flecha,
+                },
+                tema.pildora_texto,
+            );
+            zonas.push((r, Zona::ModeloIa));
+            centro.ancho = (r.x - centro.x - (8.0 * e) as i32).max(0) as u32;
         }
     }
 
@@ -7705,28 +7720,50 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
 
 /// La letra de la pastilla del modelo.
 const PASTILLA_MODELO_TAM: f32 = 13.0;
-/// Lo que le tiene que quedar al titulo para que salga la pastilla.
+/// Lo que le tiene que quedar al titulo para que salga la pastilla (o el
+/// rotulo de «Nuevo chat»).
 const PASTILLA_MODELO_DEJA: f32 = 150.0;
+/// Lo minimo que le tiene que quedar al titulo para que salga el «+».
+const NUEVO_CHAT_DEJA: f32 = 56.0;
 
-/// Donde va la pastilla del modelo: pegada a la izquierda de la de la lupa,
-/// tan alta como ella y tan ancha como su rotulo y su flechita. `None` si
-/// no cabe dejandole al titulo [`PASTILLA_MODELO_DEJA`].
-fn sitio_de_la_pastilla_del_modelo(
-    p: &Pintor,
+/// Donde van los botones del chat «Asistente» en la cabecera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BotonesDelAsistente {
+    /// «Nuevo chat»: su sitio y si lleva rotulo (si no, solo el «+»).
+    nuevo: Option<(Rect, bool)>,
+    /// La pastilla del modelo.
+    modelo: Option<Rect>,
+}
+
+/// **El sitio de «Nuevo chat» y de la pastilla del modelo**, pegados a la
+/// izquierda de la de la lupa y tan altos como ella. Manda «Nuevo chat»: sale
+/// siempre que le queden [`NUEVO_CHAT_DEJA`] al titulo; con rotulo si aun
+/// cabe la pastilla del modelo dejandole [`PASTILLA_MODELO_DEJA`]; la
+/// pastilla, solo si cabe asi. `ancho_modelo` y `ancho_rotulo` son lo que
+/// miden las dos pastillas con su texto.
+fn sitio_de_los_botones_del_asistente(
     pil: &pixpin_ui::chat::Pildoras,
-    actual: asistente_nube::Eleccion,
+    ancho_modelo: u32,
+    ancho_rotulo: u32,
     e: f32,
-) -> Option<Rect> {
-    let (w, _) = p.medir_texto(asistente_nube::nombre_corto(actual), PASTILLA_MODELO_TAM * e);
-    let ancho = (w + 16.0 * e + 28.0 * e).ceil() as u32;
+) -> BotonesDelAsistente {
     let aire = (8.0 * e) as i32;
-    let x = pil.derecha.x - aire - ancho as i32;
-    (x - pil.centro.x >= (PASTILLA_MODELO_DEJA * e) as i32).then_some(Rect {
-        x,
-        y: pil.derecha.y,
-        ancho,
-        alto: pil.derecha.alto,
-    })
+    let lado = pil.derecha.alto;
+    let deja = (PASTILLA_MODELO_DEJA * e) as i32;
+    let fila = |x: i32, ancho: u32| Rect { x, y: pil.derecha.y, ancho, alto: lado };
+    let derecha = pil.derecha.x - aire;
+    let cabe_todo = |ancho_nuevo: u32| derecha - ancho_nuevo as i32 - aire - ancho_modelo as i32 - pil.centro.x >= deja;
+    let con_rotulo = cabe_todo(ancho_rotulo);
+    let ancho_nuevo = if con_rotulo { ancho_rotulo } else { lado };
+    let x_nuevo = derecha - ancho_nuevo as i32;
+    if x_nuevo - pil.centro.x < (NUEVO_CHAT_DEJA * e) as i32 {
+        return BotonesDelAsistente { nuevo: None, modelo: None };
+    }
+    let x_modelo = x_nuevo - aire - ancho_modelo as i32;
+    BotonesDelAsistente {
+        nuevo: Some((fila(x_nuevo, ancho_nuevo), con_rotulo)),
+        modelo: (x_modelo - pil.centro.x >= deja).then(|| fila(x_modelo, ancho_modelo)),
+    }
 }
 
 /// Una pastilla de la cabecera: opaca y con su filete, sin sombra, como la
@@ -13162,6 +13199,44 @@ fn es_pdf(ruta: &std::path::Path) -> bool {
 }
 
 #[cfg(test)]
+mod pruebas_nuevo_chat {
+    use super::{BotonesDelAsistente, Rect, sitio_de_los_botones_del_asistente};
+
+    /// La cabecera con el centro desde x=60 y la pastilla de la lupa en `x`.
+    fn pildoras(x: i32) -> pixpin_ui::chat::Pildoras {
+        let r = |x, ancho| Rect { x, y: 8, ancho, alto: 36 };
+        pixpin_ui::chat::Pildoras {
+            volver: r(10, 36),
+            centro: r(60, (x - 60) as u32),
+            derecha: r(x, 80),
+            buscar: r(x, 40),
+            menu: r(x + 40, 40),
+        }
+    }
+
+    /// 23-oct-2026, «el asistente no tiene un boton de nuevo chat»: sale
+    /// siempre que quede algo de titulo, antes que la pastilla del modelo.
+    #[test]
+    fn nuevo_chat_sale_antes_que_la_pastilla_del_modelo() {
+        // Ancho: con rotulo y con la pastilla.
+        let b = sitio_de_los_botones_del_asistente(&pildoras(800), 90, 110, 1.0);
+        let (nuevo, con_rotulo) = b.nuevo.expect("sale");
+        assert!(con_rotulo);
+        assert_eq!(nuevo.x + nuevo.ancho as i32, 800 - 8, "pegado a la lupa");
+        assert!(b.modelo.expect("cabe la pastilla").x + 90 <= nuevo.x - 8);
+        // Estrecho: el «+» solo y sin pastilla, pero sale.
+        let b = sitio_de_los_botones_del_asistente(&pildoras(300), 90, 110, 1.0);
+        assert_eq!(b.nuevo.map(|(r, rotulo)| (r.ancho, rotulo)), Some((36, false)));
+        assert_eq!(b.modelo, None);
+        // Caso negativo: sin sitio ni para el «+» (queda en los tres puntos).
+        assert_eq!(
+            sitio_de_los_botones_del_asistente(&pildoras(140), 90, 110, 1.0),
+            BotonesDelAsistente { nuevo: None, modelo: None }
+        );
+    }
+}
+
+#[cfg(test)]
 mod pruebas_pdf {
     use super::es_pdf;
     use std::path::Path;
@@ -13177,35 +13252,35 @@ mod pruebas_pdf {
     }
 }
 
-/// Si hay un lienzo abierto desde el chat (en su hilo, `lienzo_aparte`).
-static LIENZO_APARTE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 /// **Abre el lienzo en su propio hilo** (17-oct-2026), como los pedidos de
 /// fuera (`pedidos::abrir_hoja`): antes se abria en el hilo del chat y lo
 /// bloqueaba mientras durara. Valia cuando el lienzo tapaba la pantalla,
 /// pero desde que Esc lo deja en una ventana el chat se quedaba detras sin
 /// contestar («calca, y luego no puedo mandar mensajes»). Al cerrarlo, el
 /// chat relee lo abierto (`refrescar`): las burbujas ensenan lo dibujado.
-/// Uno a la vez: si ya hay uno, se trae al frente.
-fn lienzo_aparte(abrir: impl FnOnce() + Send + 'static) {
-    use std::sync::atomic::Ordering;
-    if LIENZO_APARTE.swap(true, Ordering::SeqCst) {
-        let h = crate::asistente::al_lienzo::editor();
-        if h != 0 {
-            VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(h as *mut _));
-        }
+///
+/// Varios a la vez (23-oct-2026, «no puedo abrir varios lienzos a la vez»):
+/// cada hoja en su ventana. `clave` dice que hoja es (proyecto y mensaje): si
+/// esa ya esta abierta, se trae al frente en vez de abrirla dos veces.
+fn lienzo_aparte(clave: String, abrir: impl FnOnce() + Send + 'static) {
+    if let Some(h) = crate::asistente::al_lienzo::editor_de_clave(&clave) {
+        VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(h as *mut _));
         return;
     }
     let lanzado = std::thread::Builder::new().name("lienzo-del-chat".into()).spawn(move || {
         let _com = pixpin_shell::ComDelHilo::iniciar();
+        crate::asistente::al_lienzo::abrir_como(&clave);
         abrir();
-        LIENZO_APARTE.store(false, Ordering::SeqCst);
         refrescar();
     });
     if let Err(e) = lanzado {
-        LIENZO_APARTE.store(false, Ordering::SeqCst);
         tracing::warn!(?e, "no se pudo lanzar el hilo del lienzo");
     }
+}
+
+/// La clave de la hoja de un mensaje para [`lienzo_aparte`].
+fn clave_de_hoja(proyecto: &str, mensajes: &[pixpin_proyecto::cuaderno::Mensaje], indice: usize) -> String {
+    format!("{proyecto}/{}", mensajes.get(indice).map_or("", |m| m.id.as_str()))
 }
 
 /// Lo de `abrir_dibujo` sin el proyecto abierto en el chat: el universo abre
@@ -18164,7 +18239,7 @@ fn abrir_el_origen(
         return Efecto::Aviso(textos.t("chat-sin-origen"));
     };
     let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
-    lienzo_aparte(move || {
+    lienzo_aparte(clave_de_hoja(&proyecto, &mensajes, j), move || {
         abrir_hojas(&raiz, &proyecto, &mensajes, j, lienzo);
     });
     Efecto::Cambio

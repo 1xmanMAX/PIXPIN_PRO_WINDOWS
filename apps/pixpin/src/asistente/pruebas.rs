@@ -1138,3 +1138,43 @@ fn lo_pedido_para_otro_lienzo_no_se_lo_lleva_el_editor_abierto() {
     assert_eq!(al_lienzo::tomar_si(al_lienzo::es_para_el_editor).len(), 1);
     al_lienzo::vaciar_para_pruebas();
 }
+
+/// 23-oct: con dos lienzos abiertos a la vez, cada uno hace lo de su hoja; lo
+/// que no dice hoja, el activo (el que estuvo delante el ultimo); lo de una
+/// hoja cerrada, el chat. Al cerrar el activo, lo es el de antes.
+#[test]
+fn con_dos_lienzos_abiertos_cada_uno_hace_lo_suyo() {
+    al_lienzo::vaciar_para_pruebas();
+    al_lienzo::abrir_como("obra/m-a");
+    let a = al_lienzo::EditorAbierto::nuevo(1).con_hoja(Some("dib-a".into()));
+    al_lienzo::abrir_como("obra/m-b");
+    let b = al_lienzo::EditorAbierto::nuevo(2).con_hoja(Some("dib-b".into()));
+    assert!(al_lienzo::es_el_activo(2));
+    // Abrir otra vez la misma hoja la trae al frente: se encuentra por su clave.
+    assert_eq!(al_lienzo::editor_de_clave("obra/m-a"), Some(1));
+    assert_eq!(al_lienzo::editor_de_clave("obra/m-c"), None);
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let para = |d: Option<&str>| al_lienzo::Pedido::de_trabajo("obra".into(), d.map(str::to_string), al_lienzo::Trabajo::Resumir, tx.clone());
+    let destinos = |v: Vec<al_lienzo::Pedido>| v.into_iter().map(|p| p.destino).collect::<Vec<_>>();
+    for d in [Some("dib-a"), Some("dib-b"), None, Some("dib-c")] {
+        al_lienzo::pedir(para(d));
+    }
+    // Este hilo es el del lienzo 2 (el ultimo que se apunto).
+    assert_eq!(destinos(al_lienzo::tomar_si(al_lienzo::es_para_el_editor)), vec![Some("dib-b".into()), None]);
+    assert_eq!(destinos(al_lienzo::tomar_para_el_chat()), vec![Some("dib-c".into())]);
+    // El 1 se pone delante: lo que no dice hoja es suyo, no del 2.
+    al_lienzo::activar(1);
+    assert!(al_lienzo::es_el_activo(1));
+    al_lienzo::pedir(para(None));
+    assert!(al_lienzo::tomar_si(al_lienzo::es_para_el_editor).is_empty());
+    // Se cierra el 1 con lo suyo sin hacer: lo sin hoja pasa al 2 y lo de
+    // «dib-a», que ya no esta abierta, al chat.
+    drop(a);
+    assert!(al_lienzo::es_el_activo(2));
+    assert_eq!(destinos(al_lienzo::tomar_si(al_lienzo::es_para_el_editor)), vec![None]);
+    assert_eq!(destinos(al_lienzo::tomar_para_el_chat()), vec![Some("dib-a".into())]);
+    drop(b);
+    assert!(!al_lienzo::hay_editor());
+    assert_eq!(al_lienzo::editor_de_clave("obra/m-b"), None);
+    al_lienzo::vaciar_para_pruebas();
+}

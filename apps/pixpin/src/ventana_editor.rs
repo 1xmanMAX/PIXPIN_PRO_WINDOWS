@@ -1057,6 +1057,8 @@ fn abrir_en_modo(
             let h = ventana.handle().0 as isize;
             if delante {
                 crate::al_frente::poner_lienzo(h);
+                // Con varios lienzos abiertos, el asistente dibuja en este.
+                crate::asistente::al_lienzo::activar(h);
             }
             let (x0, y0, x1, y1) = efectiva.ventana(ancho_px, alto_px);
             // «Guarda esto como figura»: lo elegido, para el asistente.

@@ -465,7 +465,8 @@ pub fn trabajar(
 }
 
 static COLA: Mutex<Vec<Pedido>> = Mutex::new(Vec::new());
-/// La ventana del editor abierto (0: ninguno).
+/// La ventana del editor **activo** (0: ninguno): el que estuvo delante el
+/// ultimo. Recibe lo que el asistente dibuja sin decir en que lienzo.
 static EDITOR: AtomicIsize = AtomicIsize::new(0);
 /// La ventana del chat, para despertarla.
 static CHAT: AtomicIsize = AtomicIsize::new(0);
@@ -475,51 +476,132 @@ pub fn avisar_al_chat(hwnd: isize) {
     CHAT.store(hwnd, Ordering::SeqCst);
 }
 
-/// **Que hoja tiene el editor abierto** (la referencia de su dibujo), si la
-/// dijo: lo que se pide para OTRO lienzo del chat (`@lienzo:`, o el que eligio
-/// el asistente con `usar_lienzo`/`crear_lienzo`, 17-oct) no le toca a el sino
-/// al chat, que lo hace en el fichero. Sin decirla, todo es suyo (lo de antes).
-static HOJA_DEL_EDITOR: Mutex<Option<String>> = Mutex::new(None);
+/// **Los lienzos abiertos** (23-oct-2026: se pueden abrir varios a la vez),
+/// cada uno con la hoja que tiene (la referencia de su dibujo), si la dijo. El
+/// ultimo es el activo ([`EDITOR`]). Lo que se pide para la hoja de uno de
+/// ellos (`@lienzo:`, o el que eligio el asistente con
+/// `usar_lienzo`/`crear_lienzo`) lo hace ese; lo que se pide para una hoja que
+/// no esta abierta, el chat en su fichero (17-oct); lo que no dice hoja, el
+/// activo.
+static EDITORES: Mutex<Vec<Abierto>> = Mutex::new(Vec::new());
 
-/// Mientras vive, hay un lienzo abierto y es el quien recibe lo dibujado.
+/// Un lienzo abierto: su ventana, su hoja y lo que lo abrio ([`abrir_como`]).
+struct Abierto {
+    hwnd: isize,
+    hoja: Option<String>,
+    clave: Option<String>,
+}
+
+thread_local! {
+    /// El editor de este hilo (cada lienzo vive en el suyo).
+    static ESTE: std::cell::Cell<isize> = const { std::cell::Cell::new(0) };
+    /// Lo que abre el lienzo de este hilo (ver [`abrir_como`]).
+    static CLAVE: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// **Lo que va a abrir este hilo** (p. ej. «proyecto/mensaje»): el editor que
+/// se abra aqui se apunta con ello y [`editor_de_clave`] lo encuentra, para
+/// traerlo al frente en vez de abrir la misma hoja dos veces.
+pub fn abrir_como(clave: &str) {
+    CLAVE.with(|c| *c.borrow_mut() = Some(clave.to_string()));
+}
+
+/// El lienzo abierto con esa clave, si sigue abierto.
+pub fn editor_de_clave(clave: &str) -> Option<isize> {
+    EDITORES.lock().ok()?.iter().find(|a| a.clave.as_deref() == Some(clave)).map(|a| a.hwnd)
+}
+
+/// Mientras vive, hay un lienzo abierto y recibe lo que se dibuje para el.
 pub struct EditorAbierto(isize);
 
 impl EditorAbierto {
+    /// Se apunta y pasa a ser el activo.
     pub fn nuevo(hwnd: isize) -> EditorAbierto {
-        EDITOR.store(hwnd, Ordering::SeqCst);
-        if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
-            *h = None;
+        if let Ok(mut v) = EDITORES.lock() {
+            v.retain(|a| a.hwnd != hwnd);
+            v.push(Abierto { hwnd, hoja: None, clave: CLAVE.with(|c| c.borrow().clone()) });
         }
+        EDITOR.store(hwnd, Ordering::SeqCst);
+        ESTE.with(|e| e.set(hwnd));
         EditorAbierto(hwnd)
     }
 
     /// Con la hoja que tiene (la referencia de su dibujo).
     pub fn con_hoja(self, referencia: Option<String>) -> EditorAbierto {
-        if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
-            *h = referencia.filter(|r| !r.is_empty());
+        if let Ok(mut v) = EDITORES.lock()
+            && let Some(e) = v.iter_mut().find(|a| a.hwnd == self.0)
+        {
+            e.hoja = referencia.filter(|r| !r.is_empty());
         }
         self
     }
 }
 
-/// Si el pedido es para el editor abierto: sin destino, o para su misma hoja,
-/// o si el editor no dijo cual tiene.
-pub fn es_para_el_editor(p: &Pedido) -> bool {
-    let hoja = HOJA_DEL_EDITOR.lock().ok().and_then(|h| h.clone());
-    match (&p.destino, hoja) {
-        (Some(d), Some(h)) => *d == h,
-        _ => true,
+/// **El lienzo que se pone delante pasa a ser el activo**: lo que el
+/// asistente dibuje sin decir donde cae en el que el usuario mira.
+pub fn activar(hwnd: isize) {
+    if hwnd == 0 || EDITOR.load(Ordering::SeqCst) == hwnd {
+        return;
     }
+    if let Ok(mut v) = EDITORES.lock()
+        && let Some(i) = v.iter().position(|a| a.hwnd == hwnd)
+    {
+        let e = v.remove(i);
+        v.push(e);
+        EDITOR.store(hwnd, Ordering::SeqCst);
+    }
+}
+
+/// El editor que hace un pedido: el que tiene su hoja; sin hoja (o si
+/// ninguno la tiene y el activo no dijo cual tiene), el activo; 0 si es del
+/// chat.
+fn editor_de(p: &Pedido) -> isize {
+    let activo = EDITOR.load(Ordering::SeqCst);
+    let Ok(v) = EDITORES.lock() else { return activo };
+    match &p.destino {
+        None => activo,
+        Some(d) => v
+            .iter()
+            .find(|a| a.hoja.as_deref() == Some(d.as_str()))
+            .map(|a| a.hwnd)
+            .or_else(|| v.iter().any(|a| a.hwnd == activo && a.hoja.is_none()).then_some(activo))
+            .unwrap_or(0),
+    }
+}
+
+/// Si el pedido es para el editor de este hilo (o el activo, fuera de un
+/// editor): sin destino si es el activo, o para su misma hoja, o si el
+/// editor no dijo cual tiene y ningun otro la tiene.
+pub fn es_para_el_editor(p: &Pedido) -> bool {
+    let este = match ESTE.with(|e| e.get()) {
+        0 => EDITOR.load(Ordering::SeqCst),
+        h => h,
+    };
+    este != 0 && editor_de(p) == este
+}
+
+/// Si el editor de esta ventana es el activo.
+pub fn es_el_activo(hwnd: isize) -> bool {
+    hwnd != 0 && EDITOR.load(Ordering::SeqCst) == hwnd
 }
 
 impl Drop for EditorAbierto {
     fn drop(&mut self) {
-        let _ = EDITOR.compare_exchange(self.0, 0, Ordering::SeqCst, Ordering::SeqCst);
-        if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
-            *h = None;
+        if let Ok(mut v) = EDITORES.lock() {
+            v.retain(|a| a.hwnd != self.0);
+            // El activo pasa al que estuvo delante antes.
+            if EDITOR.load(Ordering::SeqCst) == self.0 {
+                EDITOR.store(v.last().map_or(0, |a| a.hwnd), Ordering::SeqCst);
+            }
         }
-        // Lo que quedara en la cola es ya del chat: que se entere.
+        ESTE.with(|e| {
+            if e.get() == self.0 {
+                e.set(0);
+            }
+        });
+        // Lo que quedara en la cola es de otro: que se entere.
         if hay_pedidos() {
+            despertar(EDITOR.load(Ordering::SeqCst));
             despertar(CHAT.load(Ordering::SeqCst));
         }
     }
@@ -535,11 +617,6 @@ pub fn hay_editor() -> bool {
     EDITOR.load(Ordering::SeqCst) != 0
 }
 
-/// La ventana del editor abierto (0: ninguno), para traerlo al frente.
-pub fn editor() -> isize {
-    EDITOR.load(Ordering::SeqCst)
-}
-
 fn despertar(hwnd: isize) {
     if hwnd != 0 {
         pixpin_shell::overlay::despertar(hwnd);
@@ -548,12 +625,11 @@ fn despertar(hwnd: isize) {
 
 /// Deja el pedido en la cola y despierta a quien lo va a atender.
 pub fn pedir(p: Pedido) {
-    let del_editor = es_para_el_editor(&p);
+    let editor = editor_de(&p);
     if let Ok(mut c) = COLA.lock() {
         c.push(p);
     }
-    let editor = EDITOR.load(Ordering::SeqCst);
-    despertar(if editor != 0 && del_editor { editor } else { CHAT.load(Ordering::SeqCst) });
+    despertar(if editor != 0 { editor } else { CHAT.load(Ordering::SeqCst) });
 }
 
 /// Los pedidos que cumplen `para`; los demas se quedan en la cola.
@@ -564,11 +640,11 @@ pub fn tomar_si(para: impl Fn(&Pedido) -> bool) -> Vec<Pedido> {
     si
 }
 
-/// Lo que le toca al chat: todo si no hay editor; con editor, lo que es
-/// para otro lienzo ([`es_para_el_editor`]).
+/// Lo que le toca al chat: todo si no hay editor; con editores, lo que es
+/// para un lienzo que no esta abierto ([`es_para_el_editor`]).
 pub fn tomar_para_el_chat() -> Vec<Pedido> {
     if hay_editor() {
-        tomar_si(|p| !es_para_el_editor(p))
+        tomar_si(|p| editor_de(p) == 0)
     } else {
         tomar()
     }
@@ -740,9 +816,15 @@ pub fn pedir_lo_elegido() -> Receiver<Vec<Elemento>> {
 /// El bucle del editor contesta, si alguien pregunto, con copias de lo
 /// elegido. Casi siempre no hay pregunta y no cuesta nada.
 pub fn contestar_lo_elegido(escena: &Escena, elegidos: &[u64]) {
-    if !HAY_PREGUNTA.swap(false, Ordering::SeqCst) {
+    if !HAY_PREGUNTA.load(Ordering::SeqCst) {
         return;
     }
+    // Con varios lienzos abiertos contesta el activo.
+    let este = ESTE.with(|e| e.get());
+    if este != 0 && !es_el_activo(este) {
+        return;
+    }
+    HAY_PREGUNTA.store(false, Ordering::SeqCst);
     let Some(tx) = PREGUNTA.lock().ok().and_then(|mut p| p.take()) else { return };
     let piezas: Vec<Elemento> = escena
         .visibles()
@@ -756,9 +838,11 @@ pub fn contestar_lo_elegido(escena: &Escena, elegidos: &[u64]) {
 pub(crate) fn vaciar_para_pruebas() {
     let _ = tomar();
     EDITOR.store(0, Ordering::SeqCst);
-    if let Ok(mut h) = HOJA_DEL_EDITOR.lock() {
-        *h = None;
+    if let Ok(mut v) = EDITORES.lock() {
+        v.clear();
     }
+    ESTE.with(|e| e.set(0));
+    CLAVE.with(|c| *c.borrow_mut() = None);
 }
 
 // ---------------------------------------------------------------------------
@@ -861,19 +945,20 @@ pub fn sitio_libre(escena: &Escena, tam: (f32, f32), junto_a: Option<(f32, f32, 
     libres.first().copied().or_else(|| candidatos.iter().copied().find(|c| libre(c.0, c.1))).unwrap_or(candidatos[0])
 }
 
-/// Lo que se pide que la ventana del lienzo ensene (lo nuevo no se veia).
-static MOSTRAR: Mutex<Option<(f32, f32, f32, f32)>> = Mutex::new(None);
+// Lo que se pide que la ventana del lienzo ensene (lo nuevo no se veia).
+// Por hilo: cada lienzo abierto vive en el suyo y lo pide su propio bucle.
+thread_local! {
+    static MOSTRAR: std::cell::Cell<Option<(f32, f32, f32, f32)>> = const { std::cell::Cell::new(None) };
+}
 
-/// Pide que el lienzo abierto se desplace hasta ensenar la caja.
+/// Pide que el lienzo de este hilo se desplace hasta ensenar la caja.
 pub fn pedir_mostrar(caja: (f32, f32, f32, f32)) {
-    if let Ok(mut m) = MOSTRAR.lock() {
-        *m = Some(caja);
-    }
+    MOSTRAR.with(|m| m.set(Some(caja)));
 }
 
 /// Lo que hay que ensenar (lo toma el bucle del lienzo).
 pub fn tomar_mostrar() -> Option<(f32, f32, f32, f32)> {
-    MOSTRAR.lock().ok().and_then(|mut m| m.take())
+    MOSTRAR.with(|m| m.take())
 }
 
 /// **Cuanto mover la vista para que se vea la caja**: nada si ya se ve
@@ -906,13 +991,16 @@ pub fn meter_en_sitio(escena: &mut Escena, documento: &str, junto_a: Option<(f32
 // ---------------------------------------------------------------------------
 // Las plantillas de serie con otro intervalo (22-oct)
 
-/// Lo que el editor abierto tiene que dejar elegido al acabar (las hojas
-/// nuevas de una plantilla): lo recoge su bucle con [`tomar_para_elegir`].
-static PARA_ELEGIR: Mutex<Option<Vec<u64>>> = Mutex::new(None);
+// Lo que el editor abierto tiene que dejar elegido al acabar (las hojas
+// nuevas de una plantilla): lo recoge su bucle con `tomar_para_elegir`. Por
+// hilo, como `MOSTRAR`.
+thread_local! {
+    static PARA_ELEGIR: std::cell::RefCell<Option<Vec<u64>>> = const { std::cell::RefCell::new(None) };
+}
 
 /// Lo que hay que dejar elegido en el editor, si algo.
 pub fn tomar_para_elegir() -> Option<Vec<u64>> {
-    PARA_ELEGIR.lock().ok().and_then(|mut p| p.take())
+    PARA_ELEGIR.with(|p| p.borrow_mut().take())
 }
 
 /// Hueco entre dos hojas de la misma plantilla.
@@ -973,10 +1061,8 @@ pub fn poner_plantilla(
     let ids = colocar_hojas(escena, &hojas, (x0, y0));
     escena.cerrar_paso();
     // Solo con el editor abierto (`centro`): cerrado, nadie lo recogeria.
-    if centro.is_some()
-        && let Ok(mut p) = PARA_ELEGIR.lock()
-    {
-        *p = Some(ids.clone());
+    if centro.is_some() {
+        PARA_ELEGIR.with(|p| *p.borrow_mut() = Some(ids.clone()));
     }
     let que = serie::nombre_de(&clave);
     let texto = if hojas.len() == 1 {

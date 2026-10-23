@@ -1151,7 +1151,7 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
         let mensajes: Vec<_> = d.hojas.iter().map(|h| h.mensaje.clone()).collect();
         // En su hilo (`lienzo_aparte`): al cerrarlo, el chat relee lo abierto.
         let (raiz, proyecto, opciones) = (b.ubicacion.raiz().to_path_buf(), id.to_string(), b.lienzo);
-        super::lienzo_aparte(move || {
+        super::lienzo_aparte(super::clave_de_hoja(id, &mensajes, indice), move || {
             super::abrir_hojas(&raiz, &proyecto, &mensajes, indice, opciones);
         });
         v.olvidar(id);
@@ -1166,7 +1166,7 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
         crate::foto_anotada::asegurar_lienzo(b.ubicacion.raiz(), id, &mut mensajes, indice);
         let (raiz, proyecto, opciones) = (b.ubicacion.raiz().to_path_buf(), id.to_string(), b.lienzo);
         let plana = super::ruta_del_mensaje(&raiz, id, &m);
-        super::lienzo_aparte(move || {
+        super::lienzo_aparte(super::clave_de_hoja(id, &mensajes, indice), move || {
             if !crate::foto_anotada::abrir_si_tiene_lienzo(&raiz, &proyecto, &mensajes, indice, opciones)
                 && let Some(ruta) = plana
             {

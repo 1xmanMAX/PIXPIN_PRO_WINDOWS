@@ -2584,6 +2584,7 @@ asistente-recomendada = recommended
 asistente-receta-guardar = Save as recipe
 asistente-modelo = Model
 asistente-nueva-conversacion = New conversation
+asistente-nuevo-chat = New chat
 asistente-borrar-chat = Clear chat
 asistente-borrar-chat-aviso = Every message of the «Assistant» chat is deleted (attachments with them). Continue?
 asistente-escuchar = Listen
