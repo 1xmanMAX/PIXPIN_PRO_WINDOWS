@@ -34,6 +34,22 @@ fn alargadas() -> Vec<FiguraGuardada> {
 }
 
 fn main() {
+    // `--lienzo <fichero>`: la lista de tareas del 1 al 40 de 10 en 10, en
+    // fila, como la deja el asistente, para abrirla en la app.
+    if let Some(i) = std::env::args().position(|a| a == "--lienzo") {
+        let destino = std::env::args().nth(i + 1).expect("fichero");
+        let iv = Intervalo { desde: Some(1), hasta: Some(40), de_a: Some(10), ..Default::default() };
+        let mut escena = Escena::nueva();
+        let mut x = 0.0;
+        for f in figuras_de_serie::alargar("lista-de-tareas", &iv).unwrap() {
+            let (w, h) = f.tamano();
+            pixpin_motor2d::biblioteca::estampar_en_escena(&mut escena, &f, pixpin_motor2d::vector::Punto2::nuevo(x + w / 2.0, h / 2.0));
+            x += w + 60.0;
+        }
+        let vacio = pixpin_motor2d::excalidraw::leer(r#"{"type":"excalidraw","version":2,"elements":[]}"#).unwrap();
+        std::fs::write(destino, pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::con_escena(&vacio, &escena))).unwrap();
+        return;
+    }
     let dir = std::path::PathBuf::from(std::env::args().nth(1).expect("carpeta"));
     let figuras = if std::env::args().any(|a| a == "--alargadas") { alargadas() } else { figuras_de_serie::catalogo() };
     std::fs::create_dir_all(&dir).unwrap();
