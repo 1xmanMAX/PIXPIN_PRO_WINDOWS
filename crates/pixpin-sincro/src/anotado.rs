@@ -45,7 +45,7 @@ pub const CARPETA: &str = "pins/draw";
 pub const PREFIJO: &str = "anot-";
 
 /// Las terminaciones de lo anotado (`TERMINACIONES`): ni temporales ni otra cosa.
-pub const TERMINACIONES: [&str; 9] = [
+pub const TERMINACIONES: [&str; 11] = [
     ".excalidraw.gz",
     ".marcas",
     ".espacios",
@@ -55,7 +55,18 @@ pub const TERMINACIONES: [&str; 9] = [
     ".hoja",
     COMENTARIOS,
     ASISTENTE,
+    MARCOS,
+    VISTAS,
 ];
+
+/// Los marcos numerados de un documento (`anot-<uid>.marcos.json`, 20-oct,
+/// `marcos_doc`): la lista `[{caja, parte, vista}]` en las coordenadas del
+/// documento. Ver `docs/sincronizar-marcos-vistas-y-tinta.md`.
+pub const MARCOS: &str = ".marcos.json";
+
+/// Lo que guarda cada marcador ademas de su sitio (`anot-<uid>.vistas.json`,
+/// 20-oct): el zoom, o la camara y el estado de un plano o un modelo 3D.
+pub const VISTAS: &str = ".vistas.json";
 
 /// La terminacion del marco de la tinta ([`MarcoDeLaHoja`]).
 pub const HOJA: &str = ".hoja";

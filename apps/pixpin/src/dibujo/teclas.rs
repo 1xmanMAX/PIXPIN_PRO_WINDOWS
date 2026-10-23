@@ -158,13 +158,18 @@ pub(crate) fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
         'E' => Some(Herramienta::Escalar),
         'G' => Some(Herramienta::EscalaGrafica),
         // «C» de marCo: la «F» de «frame» ya la usa el foco.
-        'C' => Some(Herramienta::Marco),
+        // La «I» tambien, como en el plano y en todos los visores (19-oct-2026).
+        'C' | 'I' => Some(Herramienta::Marco),
         // «P» de «pencil»: la «G» del grafito ya es la escala grafica.
         'P' => Some(Herramienta::Grafito),
         // «Z» de zona. El laser es la «K» en Excalidraw, pero aqui la «K»
         // es el cuentagotas del motor: «J», la de al lado.
         'Z' => Some(Herramienta::Zona),
         'J' => Some(Herramienta::Laser),
+        // La marca de angulo con su letra griega (17-oct): la «W» se parece a
+        // la ω, y la «A» de angulo ya es la cota. Pulsada otra vez con el
+        // angulo en la mano, cambia al cuadradito de 90 (`dibujo::mano`).
+        'W' => Some(Herramienta::Angulo),
         _ => None,
     }
 }
@@ -174,7 +179,7 @@ pub(crate) fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
 /// ensenaria una tecla que no hace nada, y la prueba lo vigila.
 pub(crate) fn tecla_de(h: Herramienta) -> Option<char> {
     [
-        'M', 'L', 'R', 'T', 'F', 'Q', 'B', 'A', 'E', 'G', 'P', 'Z', 'J',
+        'M', 'L', 'R', 'T', 'F', 'Q', 'B', 'A', 'E', 'G', 'P', 'Z', 'J', 'W',
     ]
     .into_iter()
     .find(|c| tecla_a_herramienta(*c) == Some(h))

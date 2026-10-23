@@ -44,8 +44,8 @@ use webview2_com::Microsoft::Web::WebView2::Win32::{
 use webview2_com::{
     AddScriptToExecuteOnDocumentCreatedCompletedHandler, CoTaskMemPWSTR,
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
-    DownloadStartingEventHandler, StateChangedEventHandler, WebMessageReceivedEventHandler,
-    take_pwstr,
+    DownloadStartingEventHandler, ExecuteScriptCompletedHandler, StateChangedEventHandler,
+    WebMessageReceivedEventHandler, take_pwstr,
 };
 use windows::Win32::Foundation::{E_POINTER, HWND, RECT};
 use windows::core::{Interface, PCWSTR, PWSTR};
@@ -73,6 +73,12 @@ type AlGuardar = Rc<dyn Fn(Vec<u8>)>;
 /// Un WebView2 empotrado en una ventana de PixPin, mostrando un `.html`.
 pub struct VisorHtml {
     controlador: ICoreWebView2Controller,
+    /// Si Ctrl+P es del visor (los marcos numerados) y no de la pagina.
+    ctrl_p: Rc<std::cell::Cell<bool>>,
+    /// Lo que la pagina mando por `chrome.webview.postMessage` y no es un
+    /// guardado (el riel de los visores: el desplazamiento al momento y las
+    /// teclas pulsadas dentro de la pagina). Ver [`VisorHtml::tomar_mensajes`].
+    otros: Rc<std::cell::RefCell<Vec<String>>>,
     /// La carpeta propia donde aterrizan las descargas interceptadas y los
     /// datos de usuario del navegador. Se borra al cerrar.
     temporal: PathBuf,
@@ -82,16 +88,17 @@ impl VisorHtml {
     /// Crea el WebView2 dentro de `padre`, ocupando `area` (pixeles cliente),
     /// y abre `ruta`. `al_guardar` recibe los BYTES del html nuevo; lo llama
     /// desde el hilo de interfaz.
-    /// `al_cerrar` se llama cuando el usuario pulsa Escape DENTRO de la
-    /// pagina. Hace falta porque el WebView2 se queda con el teclado: sin
-    /// esto, Escape no llega a la ventana que lo contiene y el visor no se
-    /// puede cerrar mientras se escribe en la pagina.
+    /// `al_tecla` recibe Escape y F11 pulsados DENTRO de la pagina (su
+    /// codigo de tecla virtual). Hace falta porque el WebView2 se queda con
+    /// el teclado: sin esto no llegan a la ventana que lo contiene, y el
+    /// visor no se podria cerrar ni pasar a pantalla completa mientras se
+    /// escribe en la pagina.
     pub fn nuevo(
         padre: HWND,
         area: Rect,
         ruta: &Path,
         al_guardar: Box<dyn Fn(Vec<u8>) + 'static>,
-        al_cerrar: Box<dyn Fn() + 'static>,
+        al_tecla: Box<dyn Fn(u32) + 'static>,
     ) -> Result<VisorHtml, ErrorWeb> {
         if !Self::hay_runtime() {
             return Err(ErrorWeb::SinRuntime);
@@ -102,8 +109,8 @@ impl VisorHtml {
         std::fs::create_dir_all(&temporal)
             .map_err(|e| ErrorWeb::Creacion(format!("no se pudo crear {temporal:?}: {e}")))?;
 
-        let entorno = crear_entorno(&temporal)?;
-        let controlador = crear_controlador(&entorno, padre)?;
+        let t0 = std::time::Instant::now();
+        let (_entorno, controlador) = entorno_y_controlador(padre)?;
 
         // SAFETY: `controlador` acaba de llegar de WebView2 y es valido; el
         // RECT se construye aqui y vive mas que la llamada.
@@ -115,9 +122,12 @@ impl VisorHtml {
         }
         .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
 
-        conectar_puente(&vista, al_guardar.clone())?;
+        medir_carga(&vista, "html", t0);
+        let otros = Rc::new(std::cell::RefCell::new(Vec::new()));
+        conectar_puente(&vista, al_guardar.clone(), Rc::clone(&otros))?;
         conectar_descargas(&vista, al_guardar, temporal.clone())?;
-        conectar_escape(&controlador, Rc::from(al_cerrar))?;
+        let ctrl_p = Rc::new(std::cell::Cell::new(false));
+        conectar_teclas(&controlador, Rc::from(al_tecla), Rc::clone(&ctrl_p))?;
 
         let url = CoTaskMemPWSTR::from(ruta::url_de_fichero(ruta).as_str());
         // SAFETY: `url` mantiene viva la cadena durante toda la llamada, que
@@ -127,6 +137,8 @@ impl VisorHtml {
 
         Ok(VisorHtml {
             controlador,
+            ctrl_p,
+            otros,
             temporal,
         })
     }
@@ -138,19 +150,22 @@ impl VisorHtml {
     /// igual, sin invertir nada (una foto o un grafico no salen en negativo).
     /// Con un runtime de WebView2 viejo, sin `ICoreWebView2_13`, no hace nada.
     pub fn poner_oscuro(&self, oscuro: bool) {
-        let esquema = if oscuro { COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK } else { COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT };
-        // SAFETY: `self.controlador` vive mientras `self`; las interfaces que
-        // se piden salen de el y solo se usan en esta llamada.
-        let hecho = unsafe {
-            self.controlador
-                .CoreWebView2()
-                .and_then(|v| v.cast::<ICoreWebView2_13>())
-                .and_then(|v| v.Profile())
-                .and_then(|p| p.SetPreferredColorScheme(esquema))
-        };
-        if let Err(e) = hecho {
-            tracing::warn!(error = %e, "el WebView2 no deja elegir el esquema de color");
+        poner_esquema(&self.controlador, oscuro);
+    }
+
+    /// **Vuelve a cargar** la pagina desde el disco (el boton de recargar
+    /// de su barra): lo que otro programa haya cambiado en el fichero sale.
+    pub fn recargar(&self) {
+        // SAFETY: `self.controlador` vive mientras `self`; la vista sale de
+        // el y solo se usa en esta llamada.
+        if let Err(e) = unsafe { self.controlador.CoreWebView2().and_then(|v| v.Reload()) } {
+            tracing::warn!(error = %e, "no se pudo recargar la pagina");
         }
+    }
+
+    /// Le da el teclado a la pagina (la ventana que la lleva lo tenia).
+    pub fn enfocar(&self) {
+        enfocar(&self.controlador);
     }
 
     /// Recoloca el WebView2 dentro de la ventana padre.
@@ -162,6 +177,45 @@ impl VisorHtml {
             // hay a quien devolverle el error, y un visor mal colocado es
             // mucho menos grave que tirar la ventana entera.
             tracing::warn!(error = %e, "no se pudo recolocar el WebView2");
+        }
+    }
+
+    /// **El zoom de la pagina** (el de Ctrl+rueda, `ZoomFactor` del
+    /// controlador): 1 es el 100 %.
+    pub fn zoom(&self) -> f64 {
+        zoom_de(&self.controlador)
+    }
+
+    /// Pone el zoom de la pagina (un marcador que vuelve a su vista).
+    pub fn poner_zoom(&self, zoom: f64) {
+        poner_zoom_en(&self.controlador, zoom);
+    }
+
+    /// Si Ctrl+P dentro de la pagina es del visor (llega a `al_tecla` como
+    /// [`CTRL_P`]) en vez de la impresion de Edge: con marcos numerados.
+    pub fn tomar_ctrl_p(&self, si: bool) {
+        self.ctrl_p.set(si);
+    }
+
+    /// **Lo que la pagina mando** (`chrome.webview.postMessage`) desde la
+    /// ultima vez, sin los guardados (esos van a `al_guardar`). Llega en este
+    /// mismo hilo al bombear sus mensajes; quien lo lleva lo recoge en cada
+    /// vuelta de su bucle.
+    pub fn tomar_mensajes(&self) -> Vec<String> {
+        std::mem::take(&mut *self.otros.borrow_mut())
+    }
+
+    /// **Corre `js` en la pagina** y le da a `al_volver` lo que devuelva,
+    /// en JSON (`null` si no devuelve nada o fallo). Llega en este mismo
+    /// hilo, al bombear sus mensajes. Es lo que usa el riel de los visores
+    /// (19-oct-2026) para saber por donde va la pagina y llevarla a una
+    /// marca.
+    pub fn ejecutar(&self, js: &str, al_volver: Box<dyn FnOnce(String) + 'static>) {
+        // SAFETY: `self.controlador` vive mientras `self`; la vista sale de
+        // el y solo se usa en esta llamada.
+        match unsafe { self.controlador.CoreWebView2() } {
+            Ok(v) => ejecutar_en(&v, js, al_volver),
+            Err(e) => tracing::warn!(error = %e, "sin vista para correr el guion"),
         }
     }
 
@@ -191,10 +245,135 @@ impl Drop for VisorHtml {
         if let Err(e) = unsafe { self.controlador.Close() } {
             tracing::warn!(error = %e, "el WebView2 no cerro limpiamente");
         }
+        controlador_cerrado();
         // Las descargas interceptadas ya se entregaron en memoria: lo que
         // quede aqui es basura y no debe sobrevivir a la sesion.
         let _ = std::fs::remove_dir_all(&self.temporal);
     }
+}
+
+/// Lo que le llega a `al_tecla` de [`VisorHtml::nuevo`] con Ctrl+P, si el
+/// visor lo pidio con [`VisorHtml::tomar_ctrl_p`].
+pub const CTRL_P: u32 = 0x1_0050;
+
+fn ctrl_pulsado() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL};
+    // SAFETY: solo lee el estado de una tecla.
+    unsafe { GetKeyState(VK_CONTROL.0 as i32) < 0 }
+}
+
+/// El `ZoomFactor` de un controlador (1 si no contesta).
+pub(crate) fn zoom_de(controlador: &ICoreWebView2Controller) -> f64 {
+    let mut z = 1.0f64;
+    // SAFETY: controlador vivo de quien llama; `z` es local.
+    match unsafe { controlador.ZoomFactor(&mut z) } {
+        Ok(()) if z.is_finite() && z > 0.0 => z,
+        _ => 1.0,
+    }
+}
+
+/// Pone el `ZoomFactor` (acotado a lo que deja Edge: del 25 % al 500 %).
+pub(crate) fn poner_zoom_en(controlador: &ICoreWebView2Controller, zoom: f64) {
+    if !zoom.is_finite() {
+        return;
+    }
+    // SAFETY: controlador vivo de quien llama.
+    if let Err(e) = unsafe { controlador.SetZoomFactor(zoom.clamp(0.25, 5.0)) } {
+        tracing::warn!(error = %e, "no se pudo poner el zoom de la pagina");
+    }
+}
+
+/// **El esquema de color** que se le pide a la pagina, el
+/// `prefers-color-scheme` de CSS: lo usan el visor de HTML y la pagina del
+/// lector de notas para seguir la luna/sol de los visores de PixPin. Las
+/// paginas que no tienen estilo oscuro se ven igual, sin invertir nada. Con
+/// un runtime de WebView2 viejo, sin `ICoreWebView2_13`, no hace nada.
+pub(crate) fn poner_esquema(controlador: &ICoreWebView2Controller, oscuro: bool) {
+    let esquema = if oscuro { COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK } else { COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT };
+    // SAFETY: `controlador` lo da quien llama, vivo; las interfaces que se
+    // piden salen de el y solo se usan en esta llamada.
+    let hecho = unsafe {
+        controlador
+            .CoreWebView2()
+            .and_then(|v| v.cast::<ICoreWebView2_13>())
+            .and_then(|v| v.Profile())
+            .and_then(|p| p.SetPreferredColorScheme(esquema))
+    };
+    if let Err(e) = hecho {
+        tracing::warn!(error = %e, "el WebView2 no deja elegir el esquema de color");
+    }
+}
+
+/// Corre `js` en `vista` y le pasa el resultado (JSON) a `al_volver`; ver
+/// [`VisorHtml::ejecutar`].
+pub(crate) fn ejecutar_en(vista: &ICoreWebView2, js: &str, al_volver: Box<dyn FnOnce(String) + 'static>) {
+    let guion = CoTaskMemPWSTR::from(js);
+    let manejador = ExecuteScriptCompletedHandler::create(Box::new(move |hecho, resultado| {
+        al_volver(if hecho.is_ok() { resultado } else { "null".into() });
+        Ok(())
+    }));
+    // SAFETY: `guion` vive durante la llamada y WebView2 lo copia; el
+    // manejador es un objeto COM propio que WebView2 retiene hasta llamarlo.
+    if let Err(e) = unsafe { vista.ExecuteScript(*guion.as_ref().as_pcwstr(), &manejador) } {
+        tracing::warn!(error = %e, "no se pudo correr el guion en la pagina");
+    }
+}
+
+/// El teclado, a la pagina.
+pub(crate) fn enfocar(controlador: &ICoreWebView2Controller) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC;
+    // SAFETY: controlador vivo de quien llama.
+    let _ = unsafe { controlador.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC) };
+}
+
+/// **Pinta el fondo** de la zona de cliente de `hwnd` de un color liso: lo
+/// que se ve en la ventana de un visor mientras el WebView2 arranca (sin
+/// el, la ventana nueva saldria vacia o con restos de lo de debajo).
+pub fn pintar_fondo(hwnd: isize, (r, g, b): (u8, u8, u8)) {
+    use windows::Win32::Foundation::COLORREF;
+    use windows::Win32::Graphics::Gdi::{CreateSolidBrush, DCX_CACHE, DCX_CLIPCHILDREN, DeleteObject, FillRect, GetDCEx, HGDIOBJ, ReleaseDC};
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    let hwnd = HWND(hwnd as *mut _);
+    // SAFETY: GetDC/ReleaseDC emparejados sobre la ventana de quien llama;
+    // la brocha se crea y se borra aqui. Un handle muerto solo da error.
+    unsafe {
+        let mut rc = RECT::default();
+        if GetClientRect(hwnd, &mut rc).is_err() {
+            return;
+        }
+        // Sin pisar la pagina, que es una ventana hija: solo lo de alrededor
+        // (el borde de estirar) y, mientras no la hay, todo.
+        let dc = GetDCEx(Some(hwnd), None, DCX_CACHE | DCX_CLIPCHILDREN);
+        if dc.is_invalid() {
+            return;
+        }
+        let brocha = CreateSolidBrush(COLORREF(r as u32 | (g as u32) << 8 | (b as u32) << 16));
+        FillRect(dc, &rc, brocha);
+        let _ = DeleteObject(HGDIOBJ(brocha.0));
+        ReleaseDC(Some(hwnd), dc);
+    }
+}
+
+/// **Cuanto tarda una ventana en verse**, para las pruebas que miden la
+/// latencia de los visores: espera hasta `tope` a que haya una ventana
+/// visible con ese titulo exacto y dice cuanto tardo desde que se llamo.
+pub fn esperar_visible(titulo: &str, tope: std::time::Duration) -> Option<std::time::Duration> {
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, IsWindowVisible};
+    let t: Vec<u16> = titulo.encode_utf16().chain(std::iter::once(0)).collect();
+    let desde = std::time::Instant::now();
+    while desde.elapsed() < tope {
+        // SAFETY: cadena terminada en cero que vive durante la llamada; solo
+        // se consulta.
+        if let Ok(h) = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(t.as_ptr())) }
+            && !h.is_invalid()
+            // SAFETY: consulta de solo lectura sobre un handle cualquiera.
+            && unsafe { IsWindowVisible(h) }.as_bool()
+        {
+            return Some(desde.elapsed());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    None
 }
 
 /// Carpeta propia bajo el temporal del sistema, distinta por visor.
@@ -208,7 +387,7 @@ pub(crate) fn carpeta_temporal() -> PathBuf {
 ///
 /// Los dos usan media apertura, asi que la derecha y el abajo de `Rect` ya son
 /// el primer pixel de fuera, que es justo lo que espera `SetBounds`.
-fn a_rect(area: Rect) -> RECT {
+pub(crate) fn a_rect(area: Rect) -> RECT {
     RECT {
         left: area.izquierda(),
         top: area.arriba(),
@@ -217,13 +396,131 @@ fn a_rect(area: Rect) -> RECT {
     }
 }
 
+/// **La carpeta de datos de WebView2, una y para siempre** (18-oct-2026).
+/// Antes cada visor estrenaba la suya (`pixpin-web-<pid>-<n>\datos`): cada
+/// apertura era un navegador arrancando en frio, sin cache, y se notaba lento
+/// (el usuario: «se sienten lentos ambos visores»). Con una sola, los visores
+/// comparten el proceso del navegador que ya este vivo y su cache.
+/// `PIXPIN_WEB_DATOS` la cambia: las pruebas a mano con la app abierta (otro
+/// proceso no puede usar la misma carpeta, 0x8007139F).
+pub fn carpeta_de_datos() -> PathBuf {
+    if let Some(d) = std::env::var_os("PIXPIN_WEB_DATOS") {
+        return PathBuf::from(d);
+    }
+    std::env::temp_dir().join("pixpin-web-datos")
+}
+
+thread_local! {
+    /// El entorno de WebView2 de este hilo, hecho una vez.
+    static ENTORNO: std::cell::RefCell<Option<ICoreWebView2Environment>> = const { std::cell::RefCell::new(None) };
+    /// Los controladores vivos de este hilo.
+    static VIVOS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// **Un controlador de este hilo se cerro** (19-oct-2026): con el ultimo, el
+/// entorno se suelta YA. Si se quedaba en el `thread_local`, se soltaba al
+/// morir el hilo, despues de su `CoUninitialize`, y el WebView2 tiraba la
+/// app entera (0xC000041D en `EmbeddedBrowserWebView.dll`) al cerrar un
+/// pin de html o de notas. `examples/cerrar_hilos.rs` lo reproduce.
+pub(crate) fn controlador_cerrado() {
+    // `try_with`: un controlador que se suelta con el hilo ya muriendo no
+    // debe tirar la app entera (un `with` ahi es un panico fatal).
+    let Ok(quedan) = VIVOS.try_with(|v| {
+        let n = v.get().saturating_sub(1);
+        v.set(n);
+        n
+    }) else {
+        return;
+    };
+    if quedan == 0 {
+        let entorno = ENTORNO.try_with(|e| e.try_borrow_mut().ok().and_then(|mut e| e.take())).ok().flatten();
+        drop(entorno);
+        bombear_lo_pendiente();
+    }
+}
+
+/// Lo que el WebView2 dejo en la cola al cerrar (sus ultimos avisos y
+/// liberaciones), antes de que el hilo se vaya.
+fn bombear_lo_pendiente() {
+    use windows::Win32::UI::WindowsAndMessaging::{DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage};
+    let mut msg = MSG::default();
+    let t = std::time::Instant::now();
+    // SAFETY: la cola de mensajes de este hilo; solo se despacha lo que hay.
+    unsafe {
+        while t.elapsed().as_millis() < 200 && PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
+/// **El entorno y un controlador dentro de `padre`**: el entorno de este hilo
+/// si ya hay (y si el navegador murio, uno nuevo y se reintenta una vez).
+pub(crate) fn entorno_y_controlador(padre: HWND) -> Result<(ICoreWebView2Environment, ICoreWebView2Controller), ErrorWeb> {
+    let hecho = entorno_y_controlador_sin_contar(padre);
+    if hecho.is_ok() {
+        VIVOS.with(|v| v.set(v.get() + 1));
+    }
+    hecho
+}
+
+fn entorno_y_controlador_sin_contar(padre: HWND) -> Result<(ICoreWebView2Environment, ICoreWebView2Controller), ErrorWeb> {
+    let entorno = match ENTORNO.with(|e| e.borrow().clone()) {
+        Some(e) => e,
+        None => crear_entorno(&carpeta_de_datos())?,
+    };
+    match crear_controlador(&entorno, padre) {
+        Ok(c) => {
+            ENTORNO.with(|e| *e.borrow_mut() = Some(entorno.clone()));
+            Ok((entorno, c))
+        }
+        Err(_) => {
+            ENTORNO.with(|e| *e.borrow_mut() = None);
+            let entorno = crear_entorno(&carpeta_de_datos())?;
+            let c = crear_controlador(&entorno, padre)?;
+            ENTORNO.with(|e| *e.borrow_mut() = Some(entorno.clone()));
+            Ok((entorno, c))
+        }
+    }
+}
+
+/// **Precalienta el navegador** (18-oct): en un hilo suyo, un WebView2 oculto
+/// en una ventana de mensajes que se queda vivo mientras viva la app. El
+/// primer visor que se abra encuentra el proceso del navegador ya en marcha.
+/// Cuesta la memoria de ese proceso: quien llama decide (equipos con memoria).
+pub fn precalentar() {
+    let _ = std::thread::Builder::new().name("webview2-caliente".into()).spawn(|| {
+        use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE};
+        let _com = unsafe { windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED) };
+        if !VisorHtml::hay_runtime() {
+            return;
+        }
+        let t = std::time::Instant::now();
+        // SAFETY: una ventana de mensajes de la clase de sistema «Static», de
+        // este hilo; solo hace de padre del controlador oculto.
+        let hwnd = unsafe { CreateWindowExW(WINDOW_EX_STYLE(0), windows::core::w!("Static"), windows::core::w!("pixpin-webview2"), WINDOW_STYLE(0), 0, 0, 0, 0, Some(HWND_MESSAGE), None, None, None) };
+        let Ok(hwnd) = hwnd else { return };
+        let Ok((_e, controlador)) = entorno_y_controlador(hwnd) else { return };
+        tracing::info!(ms = t.elapsed().as_millis() as u64, "webview2: navegador precalentado");
+        let _vivo = controlador;
+        let mut msg = MSG::default();
+        // SAFETY: el bucle de mensajes de este hilo (WebView2 lo necesita).
+        unsafe {
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+    });
+}
+
 /// Crea el entorno de WebView2, bombeando mensajes hasta que responde.
 ///
-/// La carpeta de datos de usuario se fuerza al temporal nuestro porque la de
-/// serie va al lado del ejecutable, y PixPin puede estar instalado en
-/// `Program Files`, donde no se escribe.
-pub(crate) fn crear_entorno(temporal: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> {
-    let datos = CoTaskMemPWSTR::from(temporal.join("datos").to_string_lossy().as_ref());
+/// La carpeta de datos de usuario se fuerza a la nuestra ([`carpeta_de_datos`])
+/// porque la de serie va al lado del ejecutable, y PixPin puede estar
+/// instalado en `Program Files`, donde no se escribe.
+pub(crate) fn crear_entorno(carpeta: &Path) -> Result<ICoreWebView2Environment, ErrorWeb> {
+    let datos = CoTaskMemPWSTR::from(carpeta.to_string_lossy().as_ref());
     let (tx, rx) = std::sync::mpsc::channel();
 
     CreateCoreWebView2EnvironmentCompletedHandler::wait_for_async_operation(
@@ -284,21 +581,23 @@ pub(crate) fn crear_controlador(
         .map_err(|e| ErrorWeb::Creacion(e.to_string()))
 }
 
-/// Escape, tambien con el foco DENTRO de la pagina.
+/// Escape y F11, tambien con el foco DENTRO de la pagina.
 ///
 /// `add_AcceleratorKeyPressed` es del CONTROLADOR y no de la vista: llega
 /// antes de que la pagina vea la tecla, que es lo unico que funciona aqui.
 /// Mientras se escribe en un campo del html, el WebView2 se queda el teclado
 /// y la ventana de PixPin no recibe nada; sin esto el visor solo se cerraria
-/// con Alt+F4.
-fn conectar_escape(
+/// con Alt+F4 y no pasaria a pantalla completa.
+fn conectar_teclas(
     controlador: &ICoreWebView2Controller,
-    al_cerrar: Rc<dyn Fn()>,
+    al_tecla: Rc<dyn Fn(u32)>,
+    ctrl_p: Rc<std::cell::Cell<bool>>,
 ) -> Result<(), ErrorWeb> {
     use webview2_com::AcceleratorKeyPressedEventHandler;
     use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
 
     const VK_ESCAPE: u32 = 0x1B;
+    const VK_F11: u32 = 0x7A;
     let mut token = 0i64;
     let manejador = AcceleratorKeyPressedEventHandler::create(Box::new(move |_c, args| {
         let Some(args) = args else { return Ok(()) };
@@ -309,14 +608,21 @@ fn conectar_escape(
             args.KeyEventKind(&mut clase)?;
             args.VirtualKey(&mut tecla)?;
         }
-        if clase == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && tecla == VK_ESCAPE {
+        if clase == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && (tecla == VK_ESCAPE || tecla == VK_F11) {
             // Tragada: la pagina no tiene por que enterarse de que se cierra
             // su visor, y si la usara para otra cosa haria las dos.
             // SAFETY: propiedad del propio evento.
             unsafe {
                 args.SetHandled(true)?;
             }
-            al_cerrar();
+            al_tecla(tecla);
+        } else if clase == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && tecla == 0x50 && ctrl_p.get() && ctrl_pulsado() {
+            // Ctrl+P con marcos: imprimirlos, no la pagina entera de Edge.
+            // SAFETY: propiedad del propio evento.
+            unsafe {
+                args.SetHandled(true)?;
+            }
+            al_tecla(CTRL_P);
         }
         Ok(())
     }));
@@ -328,7 +634,11 @@ fn conectar_escape(
 }
 
 /// Camino 1: inyecta `window.PixPinVisor` y escucha sus mensajes.
-fn conectar_puente(vista: &ICoreWebView2, al_guardar: AlGuardar) -> Result<(), ErrorWeb> {
+fn conectar_puente(
+    vista: &ICoreWebView2,
+    al_guardar: AlGuardar,
+    otros: Rc<std::cell::RefCell<Vec<String>>>,
+) -> Result<(), ErrorWeb> {
     let script = CoTaskMemPWSTR::from(puente::SCRIPT);
     let mut token = 0i64;
 
@@ -365,7 +675,12 @@ fn conectar_puente(vista: &ICoreWebView2, al_guardar: AlGuardar) -> Result<(), E
                 // SAFETY: `args` lo da WebView2 y vive durante el evento; la
                 // cadena que escribe se libera con `take_pwstr`.
                 if unsafe { args.TryGetWebMessageAsString(&mut mensaje) }.is_ok() {
-                    atender_mensaje(&take_pwstr(mensaje), &al_guardar);
+                    let mensaje = take_pwstr(mensaje);
+                    if puente::es_peticion_de_guardado(&mensaje) {
+                        atender_mensaje(&mensaje, &al_guardar);
+                    } else if otros.borrow().len() < MENSAJES_GUARDADOS {
+                        otros.borrow_mut().push(mensaje);
+                    }
                 }
             }
             Ok(())
@@ -377,6 +692,10 @@ fn conectar_puente(vista: &ICoreWebView2, al_guardar: AlGuardar) -> Result<(), E
 
     Ok(())
 }
+
+/// Cuantos mensajes que no son guardados se guardan sin recoger: una pagina
+/// que mande sin parar y un visor que no los recoja no se comen la memoria.
+const MENSAJES_GUARDADOS: usize = 512;
 
 /// Descodifica y valida lo que llego por el puente.
 fn atender_mensaje(mensaje: &str, al_guardar: &AlGuardar) {
@@ -686,4 +1005,21 @@ mod pruebas {
         // prueba y comprobar que el boton de guardar de la pagina llega a
         // `al_guardar`. Sin escritorio no se puede.
     }
+}
+
+/// **Cuanto tarda en verse la pagina** (18-oct, «los visores se sienten
+/// lentos»): desde `desde` hasta que WebView2 termina de cargarla, al
+/// registro (`webview2: pagina lista`). Lo que mide la prueba de latencia.
+pub(crate) fn medir_carga(vista: &ICoreWebView2, que: &'static str, desde: std::time::Instant) {
+    use webview2_com::NavigationCompletedEventHandler;
+    let mut token = 0i64;
+    let hecho = std::cell::Cell::new(false);
+    let manejador = NavigationCompletedEventHandler::create(Box::new(move |_v, _a| {
+        if !hecho.replace(true) {
+            tracing::info!(que, ms = desde.elapsed().as_millis() as u64, "webview2: pagina lista");
+        }
+        Ok(())
+    }));
+    // SAFETY: `token` es un i64 local; el manejador lo guarda WebView2.
+    let _ = unsafe { vista.add_NavigationCompleted(&manejador, &mut token) };
 }

@@ -15,13 +15,11 @@ repository = "https://github.com/1xmanMAX/pixpin-max"
 [workspace.dependencies]
 # Internas
 pixpin-geom = { path = "crates/pixpin-geom" }
-pixpin-model = { path = "crates/pixpin-model" }
 pixpin-nivel = { path = "crates/pixpin-nivel" }
 pixpin-shell = { path = "crates/pixpin-shell" }
 pixpin-motor2d = { path = "crates/pixpin-motor2d" }
 pixpin-tinta = { path = "crates/pixpin-tinta" }
 pixpin-render = { path = "crates/pixpin-render" }
-pixpin-gpu = { path = "crates/pixpin-gpu" }
 pixpin-codec = { path = "crates/pixpin-codec" }
 # Oir y grabar notas de voz: Media Foundation para reproducir, WASAPI para
 # el microfono. Sin dependencias de PixPin: vive con los cimientos.
@@ -52,8 +50,6 @@ pixpin-store = { path = "crates/pixpin-store" }
 # como pixpin-audio: solo WebView2 y geometria, sin ver ningun otro crate.
 pixpin-web = { path = "crates/pixpin-web" }
 pixpin-ui = { path = "crates/pixpin-ui" }
-pixpin-flow = { path = "crates/pixpin-flow" }
-pixpin-plugin = { path = "crates/pixpin-plugin" }
 # El compresor de PDF del autor (github.com/1xmanMAX/Thesis), copiado: el
 # repositorio es privado y una dependencia git no compilaria sin credenciales.
 # Ver crates/pdfsqueeze-core/PROCEDENCIA.md.
@@ -119,3 +115,11 @@ opt-level = 3
 # crate sigue igual de depurable.
 [profile.dev.package.pixpin-proyecto]
 opt-level = 1
+# El puente del navegador (apps/pixpin-puente) tiene que contestar en menos
+# de 50 ms y lo mide su prueba: sin optimizar, decodificar el base64 y el JSON
+# de una captura de pagina de un mega tarda mas de 100 ms y la medida no
+# diria nada del ejecutable de verdad.
+[profile.dev.package.pixpin-puente]
+opt-level = 3
+[profile.dev.package.serde_json]
+opt-level = 3

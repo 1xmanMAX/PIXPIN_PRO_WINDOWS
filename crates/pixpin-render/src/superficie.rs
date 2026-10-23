@@ -1007,6 +1007,60 @@ impl Superficie {
         Ok(())
     }
 
+    /// **La ventana cambio de tamano** (el lienzo en ventana, estirado por
+    /// sus bordes o pasado a pantalla completa): la escena, con su colchon,
+    /// y las capas de encima (la tinta y la interfaz), a `ancho` x `alto`
+    /// de ventana, sin recrear la composicion. Lo pintado se pierde: quien
+    /// llama repinta entero, con la tinta apagada.
+    ///
+    /// Las capas de encima estrenan visual Y superficie, y se cuelgan otra
+    /// vez por el final en el mismo orden que en `crear`: ponerle una
+    /// superficie nueva a un visual que ya esta en el arbol no ensenaba nada
+    /// (ver `apagar_tinta`), y colgar con un visual de referencia tampoco
+    /// (ver `crear`). Las de debajo (el cielo del universo) no se tocan:
+    /// ninguna ventana que cambie de tamano las tiene.
+    pub fn cambiar_tamano(&self, ancho: u32, alto: u32) -> Result<(), ErrorRender> {
+        let (ancho, alto) = (ancho.max(1), alto.max(1));
+        self.redimensionar(ancho + self.margen * 2, alto + self.margen * 2)?;
+        let mismas = self.interfaz.borrow().as_ref().is_none_or(|c| c.tamano == (ancho, alto));
+        if mismas {
+            return Ok(());
+        }
+        // SAFETY: el dispositivo y la raiz son propios y siguen vivos; las
+        // superficies viejas se sueltan al sustituirlas, fuera de todo
+        // `BeginDraw` (cada pintado abre y cierra el suyo).
+        unsafe {
+            for cual in [&self.tinta, &self.interfaz] {
+                if let Some(vieja) = cual.borrow().as_ref() {
+                    self._raiz.RemoveVisual(&vieja.visual)?;
+                }
+            }
+            for (cual, encendida) in [(&self.tinta, false), (&self.interfaz, true)] {
+                let mut prestamo = cual.borrow_mut();
+                if prestamo.is_none() {
+                    continue;
+                }
+                let sup = self.dcomp.CreateSurface(
+                    ancho,
+                    alto,
+                    DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED,
+                )?;
+                let v = self.dcomp.CreateVisual()?;
+                v.SetContent(&sup)?;
+                self._raiz.AddVisual(&v, false, None)?;
+                *prestamo = Some(CapaDComp {
+                    visual: v,
+                    superficie: sup,
+                    tamano: (ancho, alto),
+                    encendida: std::cell::Cell::new(encendida),
+                });
+            }
+            self.dcomp.Commit()?;
+        }
+        Ok(())
+    }
+
     /// **Rehace la superficie sobre otro dispositivo** (el de antes se
     /// perdio), en la misma ventana y con el mismo tamano, colchon y
     /// latencia. Lo pintado se pierde: quien llama repinta despues.
@@ -1453,6 +1507,76 @@ mod pruebas {
             "donde estaba la tinta queda {:?}",
             (r, g)
         );
+
+        // **Cambiar de tamano** (el lienzo en ventana): las capas nuevas
+        // tienen que seguir en su orden, la interfaz encima de la tinta y
+        // la tinta encima de la escena. Se encoge y se vuelve al tamano de
+        // la ventana, para poder mirar los mismos pixeles. Como en el
+        // editor, sin ningun mapa de la cadena vivo al cambiarla.
+        drop(destino);
+        superficie.apagar_tinta(&motor);
+        superficie.cambiar_tamano(128, 96).expect("encoger");
+        assert_eq!(superficie.tamano_interfaz(), Some((128, 96)));
+        superficie
+            .cambiar_tamano(LADO as u32, LADO as u32)
+            .expect("crecer");
+        assert_eq!(superficie.tamano_interfaz(), Some((LADO as u32, LADO as u32)));
+        assert!(!superficie.tinta_encendida(), "la tinta vuelve apagada");
+        let azul_claro = Color {
+            r: 0.0,
+            g: 0.5,
+            b: 1.0,
+            a: 1.0,
+        };
+        let destino = superficie.empezar(&motor).unwrap();
+        motor
+            .dibujar(&destino, |p| p.limpiar(rojo))
+            .expect("la escena se pinta");
+        superficie
+            .presentar_sincronizado(None)
+            .expect("present de la escena");
+        superficie
+            .pintar_interfaz(&motor, |p, _| {
+                p.rellenar(
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: LADO as f32,
+                        alto: 32.0,
+                    },
+                    azul_claro,
+                );
+            })
+            .expect("la interfaz se pinta");
+        superficie
+            .encender_tinta(&motor)
+            .expect("la capa de tinta se enciende");
+        superficie
+            .pintar_tinta(&motor, None, |p, _| {
+                p.rellenar(
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 200.0,
+                        ancho: LADO as f32,
+                        alto: 32.0,
+                    },
+                    verde,
+                );
+            })
+            .expect("la tinta se pinta");
+        let px = capturar_cuando_componga(hwnd, LADO, |px| {
+            color_de(px, 128, 16).1 > 100 && color_de(px, 128, 216).1 > 150
+        });
+        let (r, g, b) = color_de(&px, 128, 16);
+        assert!(
+            b > 150 && g > 100 && r < 100,
+            "tras cambiar de tamano la interfaz sigue encima: {:?}",
+            (r, g, b)
+        );
+        let (r, g, _) = color_de(&px, 128, 216);
+        assert!(g > 150 && r < 100, "y la tinta tambien: {:?}", (r, g));
+        let (r, g, _) = color_de(&px, 128, 128);
+        assert!(r > 150 && g < 100, "y la escena debajo: {:?}", (r, g));
         drop(superficie);
         // SAFETY: la ventana la creo este test y nadie mas la usa.
         unsafe { DestroyWindow(hwnd).unwrap() };

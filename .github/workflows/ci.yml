@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PORTABLES: >-
-        pixpin-geom pixpin-model pixpin-nivel pixpin-lecciones pixpin-sistema
+        pixpin-geom pixpin-nivel pixpin-lecciones pixpin-sistema
         pixpin-motor2d pixpin-tinta pixpin-timeline pixpin-docs pixpin-hojas
         pixpin-office pixpin-sincro pdfsqueeze-core pixpin-ui pixpin-store
         pixpin-proyecto

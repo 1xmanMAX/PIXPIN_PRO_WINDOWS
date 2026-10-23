@@ -334,6 +334,82 @@ body.en-tabla .de-tabla {
 .cm-searchMatch {
   background: color-mix(in srgb, #f6d66a 45%, transparent) !important;
 }
+.cm-searchMatch-selected {
+  background: color-mix(in srgb, #f6a93b 70%, transparent) !important;
+}
+
+/* El buscador (Ctrl+F, `buscador.js`, 20-oct-2026): una pastilla arriba a la
+   derecha, sin la franja ni los botones del panel de CodeMirror. */
+.cm-panels.cm-panels-top {
+  background: transparent !important;
+  border: 0 !important;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 14px 0;
+  pointer-events: none;
+}
+.pp-buscador {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(360px, 100%);
+  height: 36px;
+  padding: 0 6px 0 12px;
+  box-sizing: border-box;
+  background: var(--cabecera);
+  color: var(--texto);
+  border: 1px solid var(--raya);
+  border-radius: 18px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  font: 14px/1 var(--letra-cuerpo);
+}
+.pp-buscador:focus-within {
+  border-color: var(--acento);
+}
+.pp-buscador.sin .pp-buscador-cuenta {
+  color: #d9534f;
+}
+.pp-buscador-lupa {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  background: var(--tenue);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16a6.47 6.47 0 0 0 4.23-1.57l.27.28v.79l5 4.99L20.49 19zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.pp-buscador-texto {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.pp-buscador-texto::placeholder {
+  color: var(--apagado);
+}
+.pp-buscador-cuenta {
+  flex: none;
+  color: var(--tenue);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pp-buscador-cerrar {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--tenue);
+  font-size: 13px;
+  cursor: pointer;
+}
+.pp-buscador-cerrar:hover {
+  background: var(--elegido);
+  color: var(--texto);
+}
 
 /* Titulos: Fraunces, en negrita, con aire arriba. */
 .pp-l-h1,
@@ -673,13 +749,33 @@ body.ctrl .pp-enlace {
 
 /* Tablas. */
 .pp-tabla-caja {
+  /* Las tablas no se estrechan (20-oct-2026, el usuario: «que se pueda
+     hacer scroll horizontal… que no se angosten»): su ancho natural y, si
+     no caben, se desplazan de lado dentro de su caja. */
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding: 2px 0 16px;
   text-align: center;
+}
+.pp-tabla-caja::-webkit-scrollbar {
+  height: 10px;
+}
+.pp-tabla-caja::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pp-tabla-caja::-webkit-scrollbar-thumb {
+  background: var(--barra-desliz);
+  border-radius: 6px;
+  border: 3px solid var(--papel);
+}
+.pp-tabla-caja::-webkit-scrollbar-button {
+  display: none;
 }
 .pp-tabla {
   border-collapse: collapse;
   margin: 0 auto;
+  width: max-content;
   min-width: min(100%, var(--col));
   text-align: left;
   font-size: var(--tam);
@@ -692,7 +788,9 @@ body.ctrl .pp-enlace {
   padding: 8px 10px;
   height: 34px;
   vertical-align: middle;
-  min-width: 48px;
+  min-width: 96px;
+  max-width: 420px;
+  overflow-wrap: break-word;
 }
 .pp-tabla th {
   background: var(--tabla-cabecera);
@@ -1068,4 +1166,40 @@ body.con-comentarios .papel .cm-content {
   color: #fff;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* ------------------------------------------------------------ como pin
+   (17-oct-2026) Abierta como pin, la barra de arriba es la comun de los
+   visores de PixPin, fuera de la pagina (`lector_pin.rs`): la cabecera
+   propia no se ve y la barra de herramientas sube. Al cambiar el titulo
+   asoma solo su pastilla. Al ver la nota (el ojo), sin herramientas. */
+body.en-pin .cabecera {
+  display: none;
+}
+body.en-pin.titulo-a-la-vista .cabecera {
+  display: flex;
+  background: transparent;
+  pointer-events: none;
+  z-index: 6;
+}
+body.en-pin.titulo-a-la-vista .cabecera > :not(#titulo) {
+  visibility: hidden;
+}
+body.en-pin.titulo-a-la-vista #titulo {
+  pointer-events: auto;
+}
+body.en-pin .herramientas {
+  top: 0;
+}
+body.en-pin .papel {
+  top: 38px;
+}
+body.leyendo .herramientas {
+  display: none;
+}
+body.leyendo .papel {
+  top: 44px;
+}
+body.en-pin.leyendo .papel {
+  top: 0;
 }

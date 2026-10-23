@@ -130,6 +130,17 @@ pub fn contornos_de(e: &Elemento, paso: f32) -> Vec<Contorno> {
 
         // El arco da su tramo, abierto; la guia sin repasar da el ovalo
         // entero, porque es lo que esta puesto en el papel.
+        // La marca de un angulo no es un borde: es un adorno sobre dos rayas
+        // que ya estan, y sus cruces con ellas serian enganches de ruido.
+        Figura::Arco { .. } if e.extras.marca_angulo.is_some() => Vec::new(),
+        // El sector y el segmento son cerrados: sus radios o su cuerda
+        // tambien cortan y enganchan.
+        Figura::Arco { .. } if e.extras.cierre.is_some() => {
+            match crate::geometria_exacta::contorno_cerrado(e) {
+                Some(p) => cerrado(p),
+                None => Vec::new(),
+            }
+        }
         Figura::Arco { inicio, barrido } => {
             let puntos = muestrear_arco(x0, y0, x1, y1, *inicio, *barrido, paso);
             if puntos.len() < 2 {

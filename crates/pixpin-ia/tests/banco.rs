@@ -82,9 +82,21 @@ struct Resultado {
     /// lienzo.
     t_texto: Option<f32>,
     t_dibujo: Option<f32>,
+    /// La escena al acabar (con lo dibujado y lo editado): la comprueban
+    /// los casos de editar (`casos_de_edicion`).
+    escena: pixpin_motor2d::Escena,
+    /// Lo que contesto cada herramienta de editar (ok o el motivo).
+    ediciones: Vec<(String, Result<String, String>)>,
 }
 
 impl Resultado {
+    /// Lo visible de la escena final.
+    fn vivos(&self) -> Vec<&pixpin_motor2d::Elemento> {
+        self.escena.visibles().collect()
+    }
+    fn edito_bien(&self, nombre: &str) -> bool {
+        self.ediciones.iter().any(|(n, r)| n == nombre && r.is_ok())
+    }
     fn llamo(&self, nombre: &str) -> Option<&Value> {
         self.llamadas.iter().find(|(n, _)| n == nombre).map(|(_, v)| v)
     }
@@ -232,8 +244,520 @@ fn casos() -> Vec<Caso> {
 
 fn casos_fijos() -> Vec<Caso> {
     let mut v = casos_del_lienzo();
+    v.extend(casos_de_estudiantes());
+    v.extend(casos_de_edicion());
     v.extend(casos_de_antes());
+    v.extend(casos_de_la_app_15_oct());
     v
+}
+
+/// El argumento `archivo` (o lo que se le parezca) habla de `que`.
+fn archivo_de(v: &Value, que: &str) -> bool {
+    ["archivo", "descripcion", "ruta"]
+        .iter()
+        .filter_map(|k| v.get(*k).and_then(Value::as_str))
+        .any(|a| sin_tildes(&a.to_lowercase()).contains(que))
+}
+
+/// **Las herramientas de la app del 15-oct** («que la gente pueda hacer
+/// TODO con PixPin a traves del asistente»): un caso por herramienta nueva,
+/// dicho como lo diria alguien (no con la frase exacta del camino rapido).
+/// Solo estos: `PIXPIN_IA_SOLO=app15-`.
+fn casos_de_la_app_15_oct() -> Vec<Caso> {
+    vec![
+        // El texto rico del lienzo (`pixpin_motor2d::texto_rico`): la
+        // resolucion de una lamina con sus formulas EN LINEA y sus colores,
+        // en textos del lienzo y no en ecuaciones sueltas.
+        Caso {
+            nombre: "app15-texto-rico-resolucion",
+            pedido: "Escribe en el lienzo, como texto, la resolucion de este problema de geometria, linea a linea: \
+                     «Nos piden m∢COD = X» con la X en rojo; «Se observa que AB es diametro» con la raya encima de AB; \
+                     «m∢AOB = 90°»; «mAC = 2a» con el arco encima de AC, en verde; «45° = (2a+2b)/2» con la fraccion \
+                     de verdad; y al final «∴ X = 45°» en rojo.",
+            imagen: None,
+            comprobar: |r| {
+                let ricos: Vec<&str> = r.elementos.iter().filter_map(|e| e["textoRico"].as_str()).collect();
+                si(!ricos.is_empty(), "ningun texto rico")?;
+                let todo = ricos.join("\n");
+                si(todo.contains('$'), "sin formulas en linea")?;
+                si(todo.contains("\\overline") || todo.contains("\\bar"), "sin la raya encima de AB")?;
+                si(todo.contains("frown") || todo.contains("wideparen") || todo.contains("arc"), "sin el arco de AC")?;
+                si(todo.contains("\\frac") || todo.contains("\\dfrac"), "sin la fraccion")?;
+                si(todo.contains("\\color"), "sin colores")?;
+                // Lo que vera quien no entiende el formato: legible.
+                let planos: String = r.elementos.iter().filter(|e| e.get("textoRico").is_some()).filter_map(|e| e["text"].as_str()).collect();
+                si(!planos.contains('\\') && !planos.contains('$'), "el texto plano lleva la fuente")
+            },
+        },
+        Caso {
+            nombre: "app15-grabar-pantalla",
+            pedido: "Graba en un GIF lo que hago en la pantalla para mandárselo al ingeniero.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("capturar").ok_or("no pidio capturar")?;
+                si(p["modo"] == "gif", "no es la grabacion (gif)")
+            },
+        },
+        Caso {
+            nombre: "app15-captura-texto",
+            pedido: "Hay un mensaje de error que no me deja seleccionar: cópiame el texto que sale en esa zona de la pantalla.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("capturar").ok_or("no pidio capturar")?;
+                si(p["modo"] == "texto", "no es la captura de texto")
+            },
+        },
+        Caso {
+            nombre: "app15-cerrar-pines-pide-permiso",
+            pedido: "Quítame de la pantalla todos los pines que tengo abiertos.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("cerrar_pines").ok_or("no llamo a cerrar_pines")?;
+                si(p["__confirmar"] == true, "no pregunto antes")
+            },
+        },
+        Caso {
+            nombre: "app15-ocultar-pines",
+            pedido: "Voy a compartir pantalla en una reunión: esconde un momento los pines sin cerrarlos.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("pines").ok_or("no pidio pines")?;
+                si(p["operacion"] == "ocultar_mostrar", "otra operacion")
+            },
+        },
+        Caso {
+            nombre: "app15-leer-en-voz",
+            pedido: "Estoy manejando, ¿me puedes leer en voz alta el informe de la obra?",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("leer_en_voz_alta").ok_or("no llamo a leer_en_voz_alta")?;
+                si(archivo_de(p, "informe") || p.get("texto").is_some(), "no dice que leer")
+            },
+        },
+        Caso {
+            nombre: "app15-parar-voz",
+            pedido: "Ya está bien, deja de leer.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("leer_en_voz").ok_or("no pidio leer_en_voz")?;
+                si(p["parar"] == true, "no la para")
+            },
+        },
+        Caso {
+            nombre: "app15-comprimir-pdf",
+            pedido: "El PDF de la tesis pesa demasiado para mandarlo por correo, hazlo más ligero.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("comprimir_pdf").ok_or("no llamo a comprimir_pdf")?;
+                si(archivo_de(p, "tesis") || p.get("archivo").is_none(), "otro archivo")
+            },
+        },
+        Caso {
+            nombre: "app15-transcribir",
+            pedido: "No pude oír el audio de la reunión de ayer, ¿me lo pasas a texto?",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("transcribir_audio").ok_or("no llamo a transcribir_audio")?;
+                si(p.get("archivo").is_none() || archivo_de(p, "reunion"), "otro audio")
+            },
+        },
+        Caso {
+            nombre: "app15-leer-excel",
+            pedido: "¿Cuánto suma la columna de costos del Excel del presupuesto?",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("leer_excel").ok_or("no llamo a leer_excel")?;
+                si(p.get("archivo").is_none() || archivo_de(p, "presupuesto"), "otro excel")
+            },
+        },
+        Caso {
+            nombre: "app15-timeline",
+            pedido: "Anota en el timeline: llegó el camión de cemento con 40 bolsas.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("timeline").ok_or("no pidio timeline")?;
+                si(p["texto"].as_str().is_some_and(|t| sin_tildes(&t.to_lowercase()).contains("camion")), "sin el texto")
+            },
+        },
+        Caso {
+            nombre: "app15-actividad",
+            pedido: "Dame un resumen de mi actividad de esta semana en PixPin.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.llamo("resumen_de_actividad").ok_or("no llamo a resumen_de_actividad")?;
+                si(p["periodo"] == "semana", "otro periodo")
+            },
+        },
+        Caso {
+            nombre: "app15-ajustes",
+            pedido: "Quiero cambiar la voz del lector: llévame a la configuración de PixPin.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("ventana").ok_or("no pidio ventana")?;
+                si(p["cual"] == "ajustes", "otra ventana")
+            },
+        },
+        Caso {
+            nombre: "app15-chat-por-nombre",
+            pedido: "Llévame al chat de Casa Lima.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("ventana_principal").ok_or("no pidio ventana_principal")?;
+                si(p["proyecto"] == "casa", "otro chat")
+            },
+        },
+        Caso {
+            nombre: "app15-ir-a-pagina",
+            pedido: r"Ábreme C:\docs\tesis.pdf por la página 12.",
+            imagen: None,
+            comprobar: |r| {
+                let p = r.pedido("abrir").ok_or("no pidio abrir")?;
+                si(p["que"]["pagina"] == 12, "sin la pagina 12")
+            },
+        },
+    ]
+}
+
+/// **La foto de un problema** (hecha aqui, sin ficheros): el enunciado y su
+/// ecuacion pintados a PNG por el mismo camino que el PDF del lienzo.
+fn foto_de_problema() -> Vec<u8> {
+    use pixpin_ia::herramientas::{ECUACION, catalogo, validar};
+    use pixpin_ia::motor::LlamadaCruda;
+    let enunciado = "Problema 2. Un proyectil se lanza desde el suelo con una\nvelocidad de 20 m/s y un angulo de 45 grados sobre la\nhorizontal. Calcula la altura maxima y el alcance (g = 9.8 m/s2).";
+    let mut els = vec![serde_json::json!({
+        "id": "enunciado", "type": "text", "x": 20, "y": 20, "width": 640, "height": 90,
+        "text": enunciado, "originalText": enunciado, "fontSize": 20, "fontFamily": 2, "textAlign": "left",
+        "verticalAlign": "top", "lineHeight": 1.25, "strokeColor": "#1e1e1e", "backgroundColor": "transparent",
+        "fillStyle": "solid", "strokeWidth": 1, "roughness": 0, "opacity": 100, "seed": 1, "version": 1,
+        "isDeleted": false, "groupIds": [], "angle": 0
+    })];
+    let ec = r#"{"ecuacion": "R = \\frac{v_0^2 \\sin(2 \\cdot 45)}{g}", "x": 40, "y": 140, "tam_letra": 30}"#;
+    let v = validar(&LlamadaCruda { id: "1".into(), nombre: ECUACION.into(), argumentos: ec.into() }, &catalogo()).unwrap();
+    els.extend(lienzo::elementos(&v.llamada, (0.0, 0.0), 3));
+    let ruta = std::env::temp_dir().join(format!("pixpin-banco-problema-{}.png", std::process::id()));
+    pintar::elementos_a_png(&els, &ruta);
+    let b = std::fs::read(&ruta).expect("no se pinto la foto del problema");
+    let _ = std::fs::remove_file(&ruta);
+    b
+}
+
+/// Los textos de todo lo dibujado (tambien los rotulos de los puntos).
+fn todos_los_textos(r: &Resultado) -> String {
+    r.elementos.iter().filter_map(|e| e["text"].as_str()).collect::<Vec<_>>().join(" | ")
+}
+
+/// **Los casos de estudiantes** (14-oct): la foto de un problema en limpio,
+/// graficas de clase y diagramas de fisica de su plantilla.
+fn casos_de_estudiantes() -> Vec<Caso> {
+    use pixpin_ia::herramientas::{FISICA, FUNCION, PROBLEMA};
+    vec![
+        Caso {
+            nombre: "estudiante-foto-problema",
+            pedido: "Pasa en limpio al lienzo el problema de esta foto.",
+            imagen: Some(foto_de_problema),
+            comprobar: |r| {
+                r.llamo(PROBLEMA).ok_or("no llamo a problema_en_limpio")?;
+                let t = sin_tildes(&todos_los_textos(r).to_lowercase());
+                si(t.contains("proyectil") && t.contains("20"), "el enunciado no esta copiado")?;
+                si(t.contains("solucion"), "sin recuadro de solucion")?;
+                si(r.tipos("line").len() >= 1, "sin la ecuacion compuesta")
+            },
+        },
+        Caso {
+            nombre: "estudiante-foto-sin-texto",
+            pedido: "Pasa en limpio el problema de esta foto.",
+            imagen: Some(la_casa),
+            comprobar: |r| si(r.llamo(PROBLEMA).is_none(), "invento un problema que la foto no tiene"),
+        },
+        Caso {
+            nombre: "estudiante-polar",
+            pedido: "Grafica r = 1 + cos θ",
+            imagen: None,
+            comprobar: |r| {
+                r.llamo(FUNCION).ok_or("no llamo a graficar_funcion")?;
+                si(r.con_puntos(500) >= 1, "sin la cardioide entera")
+            },
+        },
+        Caso {
+            nombre: "estudiante-parametrica-elipse",
+            pedido: "Grafica la paramétrica de una elipse de semiejes 3 y 2.",
+            imagen: None,
+            comprobar: |r| {
+                r.llamo(FUNCION).ok_or("no llamo a graficar_funcion")?;
+                si(r.con_puntos(500) >= 1, "sin la elipse como parametrica")
+            },
+        },
+        Caso {
+            nombre: "estudiante-raices",
+            pedido: "Grafica x²−4 y marca sus raíces.",
+            imagen: None,
+            comprobar: |r| {
+                r.llamo(FUNCION).ok_or("no llamo a graficar_funcion")?;
+                let t = todos_los_textos(r);
+                si(t.contains("(-2, 0)") && t.contains("(2, 0)"), "sin las raices marcadas")
+            },
+        },
+        Caso {
+            nombre: "estudiante-plano-inclinado",
+            pedido: "Haz el diagrama de cuerpo libre de un bloque en un plano inclinado de 30° con rozamiento.",
+            imagen: None,
+            comprobar: |r| {
+                let v = r.llamo(FISICA).ok_or("no llamo a diagrama_fisica")?;
+                si(v["tipo"] == "plano_inclinado", "no uso la plantilla del plano inclinado")?;
+                si(v["numeros"]["angulo"].as_f64() == Some(30.0), "el angulo no es 30")?;
+                si(v["numeros"]["mu"].as_f64().is_some_and(|m| m > 0.0), "sin rozamiento")
+            },
+        },
+        Caso {
+            nombre: "estudiante-tiro-parabolico",
+            pedido: "Dibuja el tiro parabólico de un proyectil lanzado a 20 m/s y 45°.",
+            imagen: None,
+            comprobar: |r| {
+                let v = r.llamo(FISICA).ok_or("no llamo a diagrama_fisica")?;
+                si(v["tipo"] == "tiro_parabolico", "no uso la plantilla del tiro")?;
+                si(v["resultados"].to_string().contains("alcance = 40.816 m"), "el alcance no es 40.816 m")?;
+                // Lo calculado se ve en el lienzo (que el modelo lo repita es aparte:
+                // el 2B no lo hace).
+                si(todos_los_textos(r).contains("40.816"), "el lienzo no ensena el alcance calculado")
+            },
+        },
+        Caso {
+            nombre: "estudiante-circuito-paralelo",
+            pedido: "Dibuja un circuito con dos resistencias en paralelo.",
+            imagen: None,
+            comprobar: |r| {
+                let v = r.llamo(FISICA).ok_or("no llamo a diagrama_fisica")?;
+                si(v["tipo"] == "circuito", "no uso la plantilla del circuito")?;
+                si(v["opciones"]["conexion"] == "paralelo", "no esta en paralelo")?;
+                si(v["listas"]["resistencias"].as_array().is_some_and(|l| l.len() == 2), "no son dos resistencias")
+            },
+        },
+    ]
+}
+
+/// **Editar lo que ya hay** (14-oct, `edicion.rs`): crear, elegir y editar
+/// encadenados. Cada caso empieza con su lienzo ([`escena_inicial`]) y el
+/// modelo recibe su resumen, como en la app.
+mod edicion_banco {
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, Figura};
+    use pixpin_motor2d::{Escena, Punto2};
+
+    pub fn raya(a: (f32, f32), b: (f32, f32), c: ColorRgba) -> Elemento {
+        Elemento {
+            figura: Figura::Linea { puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)] },
+            x: a.0.min(b.0),
+            y: a.1.min(b.1),
+            ancho: (a.0 - b.0).abs(),
+            alto: (a.1 - b.1).abs(),
+            trazo: c,
+            ..Default::default()
+        }
+    }
+    pub fn texto(t: &str, x: f32, y: f32, tam: f32) -> Elemento {
+        Elemento {
+            figura: Figura::Texto { texto: t.into(), tam, familia: "Segoe UI".into() },
+            x,
+            y,
+            ancho: t.chars().count() as f32 * tam * 0.55,
+            alto: tam * 1.25,
+            trazo: ColorRgba::opaco(0.12, 0.12, 0.12),
+            ..Default::default()
+        }
+    }
+    pub fn ovalo(cx: f32, cy: f32, r: f32, c: ColorRgba) -> Elemento {
+        Elemento { figura: Figura::Elipse, x: cx - r, y: cy - r, ancho: 2.0 * r, alto: 2.0 * r, trazo: c, ..Default::default() }
+    }
+    pub const ROJO: ColorRgba = ColorRgba::opaco(0.88, 0.19, 0.19);
+    pub const AZUL: ColorRgba = ColorRgba::opaco(0.10, 0.44, 0.76);
+    pub const NEGRO: ColorRgba = ColorRgba::opaco(0.12, 0.12, 0.12);
+
+    /// El lienzo con el que empieza cada caso de editar.
+    pub fn escena_inicial(caso: &str) -> Escena {
+        let mut s = Escena::nueva();
+        match caso {
+            "editar-resalta-titulo" => {
+                s.anadir(texto("Informe de obra", 40.0, 20.0, 36.0));
+                s.anadir(texto("Avance: 60 %", 40.0, 90.0, 18.0));
+                s.anadir(texto("Pendiente: encofrado", 40.0, 130.0, 18.0));
+            }
+            "editar-subraya-resultado" => {
+                s.anadir(texto("Ecuacion: 3x + 2 = 14", 40.0, 40.0, 20.0));
+                s.anadir(texto("Resultado: x = 4", 40.0, 90.0, 20.0));
+            }
+            "editar-mover-y-colorear" => {
+                s.anadir(ovalo(150.0, 150.0, 50.0, ROJO));
+                s.anadir(Elemento { x: 300.0, y: 100.0, ancho: 120.0, alto: 80.0, trazo: AZUL, ..Default::default() });
+            }
+            "editar-extender-hasta" => {
+                s.anadir(raya((50.0, 200.0), (150.0, 200.0), NEGRO));
+                s.anadir(raya((400.0, 50.0), (400.0, 350.0), AZUL));
+            }
+            "editar-perpendicular" => {
+                s.anadir(raya((100.0, 300.0), (500.0, 300.0), NEGRO));
+            }
+            "editar-rodear-grafito" => {
+                s.anadir(Elemento { x: 200.0, y: 150.0, ancho: 160.0, alto: 100.0, trazo: NEGRO, ..Default::default() });
+            }
+            "editar-ambiguo" => {
+                s.anadir(ovalo(100.0, 100.0, 30.0, ROJO));
+                s.anadir(ovalo(300.0, 100.0, 30.0, ROJO));
+            }
+            _ => {}
+        }
+        s
+    }
+}
+
+fn casos_de_edicion() -> Vec<Caso> {
+
+    use pixpin_ia::edicion::{CORTAR, IMAGEN, nombre_de_color};
+    use pixpin_motor2d::elemento::Figura;
+    fn rectas(r: &Resultado) -> Vec<(pixpin_motor2d::Punto2, pixpin_motor2d::Punto2)> {
+        r.vivos()
+            .iter()
+            .filter_map(|e| match &e.figura {
+                Figura::Linea { puntos } if puntos.len() >= 2 => Some((puntos[0], puntos[puntos.len() - 1])),
+                _ => None,
+            })
+            .collect()
+    }
+    fn caja_de_texto(r: &Resultado, que: &str) -> Option<(f32, f32, f32, f32)> {
+        r.vivos().iter().find(|e| matches!(&e.figura, Figura::Texto { texto, .. } if texto.contains(que))).map(|e| e.caja())
+    }
+    vec![
+        Caso {
+            nombre: "editar-cortar-en-el-cruce",
+            pedido: "Dibuja dos rectas que se crucen y corta la de abajo en el cruce.",
+            imagen: None,
+            comprobar: |r| {
+                si(r.edito_bien(CORTAR), "no corto con cortar_linea")?;
+                let rs = rectas(r);
+                si(rs.len() >= 2, "menos de dos rectas")?;
+                // Alguna acaba en otra: el corte quedo en el cruce.
+                let toca = rs.iter().enumerate().any(|(i, (a, b))| {
+                    rs.iter().enumerate().any(|(j, (c, d))| {
+                        i != j && [*a, *b].iter().any(|p| pixpin_motor2d::distancia_a_segmento(*p, *c, *d) < 3.0)
+                    })
+                });
+                si(toca, "ninguna recta acaba en el cruce")
+            },
+        },
+        Caso {
+            nombre: "editar-pegar-y-recortar",
+            pedido: "Pega la foto en el lienzo y recorta la mitad izquierda.",
+            imagen: Some(la_casa),
+            comprobar: |r| {
+                si(r.edito_bien(IMAGEN), "no uso imagen_en_lienzo")?;
+                let foto = r.vivos().into_iter().find(|e| matches!(e.figura, Figura::Imagen { .. })).ok_or("no pego la foto")?;
+                let c = foto.extras.recorte.ok_or("la foto no esta recortada")?;
+                si((c.ancho / c.ancho_natural - 0.5).abs() < 0.1, "no quedo la mitad del ancho")?;
+                si(c.alto / c.alto_natural > 0.9, "recorto tambien a lo alto")
+            },
+        },
+        Caso {
+            nombre: "editar-resalta-titulo",
+            pedido: "Resalta el titulo.",
+            imagen: None,
+            comprobar: |r| {
+                let (x0, y0, x1, y1) = caja_de_texto(r, "Informe").ok_or("se perdio el titulo")?;
+                let ok = r.vivos().iter().any(|e| {
+                    let (a0, b0, a1, b1) = e.caja();
+                    matches!(e.figura, Figura::Resaltador { .. })
+                        && b0 < y1 && b1 > y0 && a0 < x0 + 20.0 && a1 > x1 - 20.0 && (b0 + b1) / 2.0 < y1 + 5.0
+                });
+                si(ok, "no hay un resaltado sobre el titulo")
+            },
+        },
+        Caso {
+            nombre: "editar-subraya-resultado",
+            pedido: "Subraya el resultado en rojo.",
+            imagen: None,
+            comprobar: |r| {
+                let (x0, _, x1, y1) = caja_de_texto(r, "Resultado").ok_or("se perdio el resultado")?;
+                let ok = r.vivos().iter().any(|e| {
+                    let (a0, b0, a1, _) = e.caja();
+                    !matches!(e.figura, Figura::Texto { .. })
+                        && nombre_de_color(e.trazo) == "rojo"
+                        && b0 > y1 - 10.0 && b0 < y1 + 25.0 && a0 < x1 && a1 > x0
+                });
+                si(ok, "no hay una raya roja bajo el resultado")
+            },
+        },
+        Caso {
+            nombre: "editar-mover-y-colorear",
+            pedido: "Mueve el circulo rojo 100 px a la derecha y pintalo de verde.",
+            imagen: None,
+            comprobar: |r| {
+                let c = r.vivos().into_iter().find(|e| matches!(e.figura, Figura::Elipse)).ok_or("se perdio el circulo")?;
+                let (x0, _, x1, _) = c.caja();
+                si(((x0 + x1) / 2.0 - 250.0).abs() < 6.0, "no se movio 100 a la derecha")?;
+                si(nombre_de_color(c.trazo) == "verde", "no es verde")
+            },
+        },
+        Caso {
+            nombre: "editar-extender-hasta",
+            pedido: "Alarga la recta negra hasta que toque la azul.",
+            imagen: None,
+            comprobar: |r| {
+                let ok = rectas(r).iter().any(|(a, b)| (a.y - 200.0).abs() < 1.0 && ((b.x - 400.0).abs() < 2.0 || (a.x - 400.0).abs() < 2.0));
+                si(ok, "la negra no llega a la azul")
+            },
+        },
+        Caso {
+            nombre: "editar-perpendicular",
+            pedido: "Traza una perpendicular a la recta por su punto medio, de 200 px de largo.",
+            imagen: None,
+            comprobar: |r| {
+                let ok = rectas(r).iter().any(|(a, b)| {
+                    (a.x - b.x).abs() < 3.0 && (a.x - 300.0).abs() < 4.0 && ((a.y - b.y).abs() - 200.0).abs() < 25.0
+                });
+                si(ok, "no hay una vertical de 200 por x=300")
+            },
+        },
+        Caso {
+            nombre: "editar-circulo-tres-puntos",
+            pedido: "Dibuja un circulo que pase exactamente por los puntos (100,100), (300,100) y (200,200).",
+            imagen: None,
+            comprobar: |r| {
+                let ok = r.vivos().iter().any(|e| {
+                    let (x0, y0, x1, y1) = e.caja();
+                    matches!(e.figura, Figura::Elipse)
+                        && ((x0 + x1) / 2.0 - 200.0).abs() < 4.0
+                        && ((y0 + y1) / 2.0 - 100.0).abs() < 4.0
+                        && ((x1 - x0) / 2.0 - 100.0).abs() < 4.0
+                });
+                si(ok, "no hay un circulo de centro (200,100) y radio 100")
+            },
+        },
+        Caso {
+            nombre: "editar-rodear-grafito",
+            pedido: "Rodea el rectangulo con grafito 8B.",
+            imagen: None,
+            comprobar: |r| {
+                let ok = r.vivos().iter().any(|e| {
+                    let (a0, b0, a1, b1) = e.caja();
+                    matches!(e.figura, Figura::Lapiz { .. })
+                        && e.material.es_grafito()
+                        && e.extras.dureza.map(|d| d.rotulo()) == Some("8B")
+                        && a0 < 205.0 && b0 < 155.0 && a1 > 355.0 && b1 > 245.0
+                });
+                si(ok, "no hay un trazo de grafito 8B alrededor del rectangulo")
+            },
+        },
+        Caso {
+            nombre: "editar-ambiguo",
+            pedido: "Borra el circulo rojo.",
+            imagen: None,
+            comprobar: |r| {
+                // Hay dos rojos: lo correcto es preguntar cual, no borrar uno
+                // al azar (ni los dos).
+                let quedan = r.vivos().iter().filter(|e| matches!(e.figura, Figura::Elipse)).count();
+                si(quedan == 2, "borro sin preguntar cual")?;
+                let t = r.todo_el_texto();
+                si(t.contains('?') || t.contains("cual"), "no pregunto cual")
+            },
+        },
+    ]
 }
 
 /// **Los casos de las herramientas nuevas del lienzo** (14-oct): todas las
@@ -819,14 +1343,78 @@ struct Apunta<'a> {
     r: &'a mut Resultado,
     imagen: Option<Vec<u8>>,
     t0: Instant,
+    /// Lo que sabe el turno del lienzo (marco 0: las coordenadas del modelo
+    /// son las de la escena del banco) y lo ultimo que toco.
+    ctx: pixpin_ia::edicion::Contexto,
+    /// Los pixeles de las fotos pegadas, para pintarlas en el PNG.
+    fotos: std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+}
+
+/// Las fotos del banco: la adjunta del caso, decodificada.
+impl pixpin_ia::edicion::Anfitrion for Apunta<'_> {
+    fn imagen_nueva(&mut self, _fuente: &str) -> Result<pixpin_motor2d::Elemento, String> {
+        let bytes = self.imagen.as_deref().ok_or("no hay ninguna imagen adjunta")?;
+        let img = image::load_from_memory(bytes).map_err(|e| e.to_string())?.to_rgba8();
+        let id_objeto = self.fotos.len() as u64 + 1;
+        let (w, h) = (img.width(), img.height());
+        self.fotos.insert(id_objeto, pixpin_pdf::escribir::Pixeles { ancho: w, alto: h, rgba: img.into_raw() });
+        Ok(pixpin_motor2d::Elemento {
+            figura: pixpin_motor2d::elemento::Figura::Imagen { id_objeto },
+            ancho: w as f32,
+            alto: h as f32,
+            trazo: pixpin_motor2d::ColorRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+            ..Default::default()
+        })
+    }
+    fn tamano_de(&self, id_objeto: u64) -> Option<(u32, u32)> {
+        self.fotos.get(&id_objeto).map(|p| (p.ancho, p.alto))
+    }
 }
 
 impl Ejecutor for Apunta<'_> {
+    /// Como en la app: lo que dibuja antes que lo que edita.
+    fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
+        pixpin_ia::edicion::en_orden(llamadas, |l| self.ejecutar(l))
+    }
+
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
+        // Editar: sobre la escena del caso, como en la app.
+        if let Llamada::Editar(e) = llamada {
+            let mut escena = std::mem::take(&mut self.r.escena);
+            let ctx = self.ctx.clone();
+            let r = pixpin_ia::edicion::aplicar(&mut escena, e, &ctx, self);
+            self.r.escena = escena;
+            if self.r.t_dibujo.is_none() && r.is_ok() {
+                self.r.t_dibujo = Some(self.t0.elapsed().as_secs_f32());
+            }
+            self.r.llamadas.push((e.herramienta.to_string(), Value::Object(e.args.clone())));
+            self.r.ediciones.push((e.herramienta.to_string(), r.as_ref().map(|h| h.texto.clone()).map_err(Clone::clone)));
+            return r.map(|h| {
+                if !h.ids.is_empty() {
+                    self.ctx.ultimos = h.ids;
+                }
+                h.texto
+            });
+        }
         // Las acciones de la app, por el mismo camino que la app
         // (`tareas::hacer`) con unas listas de ejemplo: lo que se mandaria se
         // apunta; lo que pide permiso se apunta con `__confirmar` y NO se
         // manda (se contesta que no).
+        // Las que hace el ejecutor del chat (15-oct): se apuntan y contestan
+        // lo que contestaria la app con unos adjuntos de ejemplo.
+        if let Llamada::App(a) = llamada
+            && pixpin_ia::acciones::es_en_el_chat(a.herramienta)
+        {
+            self.r.llamadas.push((a.herramienta.to_string(), a.pedido.clone()));
+            return Ok(match a.herramienta {
+                "leer_en_voz_alta" => "Leyendo en voz alta «Informe de obra.pdf». «Para de leer» la calla.".into(),
+                "comprimir_pdf" => "«Tesis.pdf» aligerado: de 12,3 MB a 2,1 MB (83 % menos), en 4,2 s. La copia ligera esta en el chat; el original no se toco.".into(),
+                "transcribir_audio" => "«reunion.m4a» pasado a texto (95 s de audio):\nQuedamos en vaciar la losa el viernes y pedir 40 bolsas de cemento.".into(),
+                "leer_excel" => "«Presupuesto.xlsx» — Hoja «Costos», A1:B4:\nfila\tA\tB\n1\tPartida\tCosto\n2\tCemento\t1250\n3\tFierro\t3400\n4\tArena\t600\n".into(),
+                "resumen_de_actividad" => "Esta semana: 23 mensajes en 3 chats (Obra 15, Tesis 6, Mensajes guardados 2): 12 notas, 8 fotos, 3 archivos; 9 capturas; 4 momentos en el timeline; 5 tareas nuevas (3 ya hechas); quedan 7 pendientes, 1 vencidas.".into(),
+                otra => format!("{otra}: hecho"),
+            });
+        }
         if let Llamada::App(a) = llamada {
             let fuente = banco_ia::Viva(std::cell::RefCell::new(banco_ia::fuente()));
             let preguntado = std::cell::Cell::new(false);
@@ -867,12 +1455,21 @@ impl Ejecutor for Apunta<'_> {
         if n > 0 && self.r.t_dibujo.is_none() {
             self.r.t_dibujo = Some(self.t0.elapsed().as_secs_f32());
         }
+        // Lo dibujado tambien entra en la escena (donde lo puso el modelo),
+        // con sus #id para encadenar, como en la app.
+        let mut ids = Vec::new();
+        if n > 0
+            && let Ok(l) = pixpin_motor2d::excalidraw::leer(&lienzo::documento(elementos.clone()))
+        {
+            ids = pixpin_motor2d::portapapeles::pegar(&mut self.r.escena, &l.elementos(), 0.0, 0.0);
+            self.ctx.ultimos = ids.clone();
+        }
         self.r.elementos.extend(elementos);
         let respuesta = limpio.get("respuesta").and_then(Value::as_str).map(str::to_string);
         self.r.llamadas.push((nombre, limpio));
         Ok(match respuesta {
             Some(r) => r,
-            None if n > 0 => format!("hecho: {n} elementos en el lienzo"),
+            None if n > 0 => pixpin_ia::edicion::resumen_de_lo_anadido(&self.r.escena, &ids, &self.ctx),
             None => "hecho".into(),
         })
     }
@@ -1016,13 +1613,28 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
             },
             Fuente::Motor(m) => m.as_ref(),
         };
+        // Las herramientas de la app del 15-oct son solo para la nube: el
+        // banco del local sigue como estaba («la IA local, no la toques»).
+        if caso.nombre.starts_with("app15-") && !motor.catalogo_completo() {
+            continue;
+        }
         let imagen = caso.imagen.map(|f| f());
         let (mut historial, mut herramientas) = banco_ia::preparar(caso.pedido, imagen.clone());
         // Como en la app (`asistente::turno`): la nube recibe el catalogo entero.
         if motor.catalogo_completo() {
             herramientas = pixpin_ia::herramientas::catalogo();
         }
-        let mut r = Resultado::default();
+        let mut r = Resultado {
+            escena: edicion_banco::escena_inicial(caso.nombre),
+            ..Default::default()
+        };
+        let inicial = r.escena.clone();
+        let ctx = pixpin_ia::edicion::Contexto::default();
+        // Como en la app: con algo en el lienzo y un pedido de dibujar o
+        // editar, el modelo recibe su resumen.
+        if inicial.cuantos_visibles() > 0 && pixpin_ia::edicion::viene_a_cuento(caso.pedido) {
+            pixpin_ia::edicion::anadir_resumen(&mut historial, &pixpin_ia::edicion::resumen(&inicial, &ctx));
+        }
         let medido = crono::Medido::nuevo(motor);
         // El camino rapido (14-oct), salvo con `PIXPIN_IA_RAPIDO=0` (para medir
         // el modelo solo).
@@ -1041,6 +1653,8 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
                 r: &mut r,
                 imagen: imagen.clone(),
                 t0,
+                ctx: ctx.clone(),
+                fotos: Default::default(),
             };
             let mut t_texto = None;
             let fin = agente::turno_con(&medido, &mut historial, &herramientas, &mut ej, &opciones, &mut |e| {
@@ -1059,10 +1673,15 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
                 Seguir::Si
             });
             ej.r.t_texto = t_texto;
-            fin
+            (fin, std::mem::take(&mut ej.fotos))
         };
+        let (fin, fotos) = fin;
         let t_fin = t0.elapsed().as_secs_f32();
-        if !r.elementos.is_empty() {
+        if caso.nombre.starts_with("editar-") {
+            // Lo de editar se ve en la escena entera: la de antes y la de
+            // despues (con las fotos pegadas).
+            imagenes_de_edicion(&caso, imagen.as_deref(), &inicial, &r.escena, &fotos);
+        } else if !r.elementos.is_empty() {
             imagenes_del_caso(&caso, imagen.as_deref(), &r.elementos);
         }
         match fin {
@@ -1262,6 +1881,28 @@ fn imagenes_del_caso(caso: &Caso, imagen: Option<&[u8]>, elementos: &[Value]) {
     pintar::elementos_a_png(elementos, &dir.join(format!("{}-resultado.png", caso.nombre)));
 }
 
+/// Los de editar: la entrada es el lienzo de antes (o la foto adjunta, o el
+/// pedido si empezaba vacio) y el resultado, la escena de despues.
+fn imagenes_de_edicion(
+    caso: &Caso,
+    imagen: Option<&[u8]>,
+    antes: &pixpin_motor2d::Escena,
+    despues: &pixpin_motor2d::Escena,
+    fotos: &std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+) {
+    let dir = carpeta_de_imagenes().join(nombre_del_motor());
+    let _ = std::fs::create_dir_all(&dir);
+    let entrada = dir.join(format!("{}-entrada.png", caso.nombre));
+    match imagen {
+        Some(b) => {
+            let _ = std::fs::write(&entrada, b);
+        }
+        None if antes.cuantos_visibles() > 0 => pintar::escena_a_png_con(antes, &entrada, fotos),
+        None => pintar::pedido_a_png(caso.pedido, &entrada),
+    }
+    pintar::escena_a_png_con(despues, &dir.join(format!("{}-resultado.png", caso.nombre)), fotos);
+}
+
 /// Pintar a PNG por el camino del PDF del lienzo (exportar → PDF de
 /// vectores → pixeles de Windows): lo mismo que vera el usuario al exportar.
 mod pintar {
@@ -1271,12 +1912,24 @@ mod pintar {
     use serde_json::Value;
 
     pub fn escena_a_png(escena: &Escena, ruta: &Path) {
+        escena_a_png_con(escena, ruta, &Default::default());
+    }
+
+    /// Con los pixeles de las fotos pegadas.
+    pub fn escena_a_png_con(
+        escena: &Escena,
+        ruta: &Path,
+        fotos: &std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+    ) {
         let hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
         if hojas.is_empty() {
             return;
         }
         let blanco = pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0);
-        let Some(pdf) = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &|_| None) else { return };
+        let de = |id: u64| {
+            fotos.get(&id).map(|p| pixpin_pdf::escribir::Pixeles { ancho: p.ancho, alto: p.alto, rgba: p.rgba.clone() })
+        };
+        let Some(pdf) = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &de) else { return };
         let tmp = ruta.with_extension("pdf");
         if std::fs::write(&tmp, pdf).is_err() {
             return;
@@ -1591,10 +2244,30 @@ mod banco_ia {
     pub fn preparar(pedido: &str, imagen: Option<Vec<u8>>) -> (Vec<Mensaje>, Vec<pixpin_ia::Herramienta>) {
         let herramientas = pixpin_ia::seleccion::para_el_pedido(pedido, imagen.is_some());
         let usuario = match imagen {
+            // La foto de un problema: con el OCR pegado, como hace la app
+            // (`asistente::turno::poner_foto`).
+            Some(b) if pixpin_ia::problema::pide_problema(pedido) => {
+                let texto = format!("{pedido}{}", ocr_de(&b));
+                Mensaje::usuario_con_imagen(texto, b, "image/png")
+            }
             Some(b) => Mensaje::usuario_con_imagen(pedido, b, "image/png"),
             None => Mensaje::usuario(pedido),
         };
         (vec![Mensaje::sistema(agente::instrucciones()), usuario], herramientas)
+    }
+
+    /// Lo que el OCR de Windows lee en una imagen, dicho para el modelo.
+    pub fn ocr_de(png: &[u8]) -> String {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let Ok(img) = image::load_from_memory(png) else { return String::new() };
+        let img = img.to_rgba8();
+        if !pixpin_ocr::disponible() {
+            return String::new();
+        }
+        match pixpin_ocr::reconocer(img.width(), img.height(), img.as_raw()) {
+            Ok(l) => pixpin_ia::problema::pista_de_ocr(&l.into_iter().map(|l| l.texto).collect::<Vec<_>>()),
+            Err(_) => String::new(),
+        }
     }
 
     /// (nombre, lo pedido en JSON limpio, elementos que acaban en el lienzo).
@@ -1602,9 +2275,15 @@ mod banco_ia {
         let nombre = llamada.nombre().to_string();
         Ok(match llamada {
             Llamada::Dibujar(_) => (nombre, Value::Null, lienzo::elementos(llamada, (0.0, 0.0), 1)),
-            Llamada::Svg(_) | Llamada::Funciones(_) | Llamada::Ecuacion(_) | Llamada::Cronograma(_) => {
+            Llamada::Svg(_) | Llamada::Funciones(_) | Llamada::Ecuacion(_) | Llamada::Cronograma(_) | Llamada::Problema(_) => {
                 (nombre, Value::Null, lienzo::elementos(llamada, (0.0, 0.0), 1))
             }
+            Llamada::Fisica(d) => (
+                nombre,
+                serde_json::json!({"tipo": d.tipo, "numeros": d.valores.numeros, "listas": d.valores.listas,
+                    "opciones": d.valores.opciones, "resultados": d.resultados}),
+                lienzo::elementos(llamada, (0.0, 0.0), 1),
+            ),
             Llamada::Figuras(p) => (nombre, serde_json::json!({"figuras": format!("{p:?}")}), Vec::new()),
             Llamada::Grafica(g) => (
                 nombre,
@@ -1636,6 +2315,8 @@ mod banco_ia {
                 serde_json::json!({"consulta": b.consulta, "proyecto": b.proyecto}),
                 Vec::new(),
             ),
+            // Editar va por la escena del caso (`Apunta::ejecutar`).
+            Llamada::Editar(e) => (nombre, Value::Object(e.args.clone()), Vec::new()),
         })
     }
 }
@@ -2017,6 +2698,45 @@ fn muestras_del_lienzo() {
             {"tipo":"rectangulo","caja":[560,100,150,100],"relleno":"azul","relleno_estilo":"rayado","trazo":"discontinuo","capa":1},
             {"tipo":"elipse","caja":[600,150,120,120],"relleno":"rojo","opacidad":50,"capa":2}]}"#.into()),
     ];
+    // Estudiantes (14-oct): graficas de clase, fisica y un problema.
+    use pixpin_ia::herramientas::{FISICA, PROBLEMA};
+    let j = |v: serde_json::Value| v.to_string();
+    let mut casos = casos;
+    casos.extend([
+        ("est-polar", FUNCION, j(serde_json::json!({"funciones": ["r = 1 + cos θ"]}))),
+        ("est-elipse", FUNCION, j(serde_json::json!({"funciones": [{"x": "3cos(t)", "y": "2sin(t)"}]}))),
+        ("est-raices", FUNCION, j(serde_json::json!({"funciones": ["x^2-4"], "marcar": ["raices", "extremos"]}))),
+        ("est-area", FUNCION, j(serde_json::json!({"funciones": ["x+2", "x^2"], "x_desde": -3, "x_hasta": 3, "sombrear": {"entre": [0, 1]}, "marcar": ["intersecciones"]}))),
+        ("est-tangente-asintotas", FUNCION, j(serde_json::json!({"funciones": ["(2x+1)/(x-1)", "x^3/10"], "x_desde": -5, "x_hasta": 5, "tangente": {"curva": 1, "x": 2}}))),
+        ("est-puntos", FUNCION, j(serde_json::json!({"funciones": ["2x+0.5"], "puntos": [[0, 0.3], [1, 2.8], [2, 4.4], [3, 6.6]], "nombre_puntos": "medidas", "x_desde": -1, "x_hasta": 4}))),
+        ("fis-plano", FISICA, j(serde_json::json!({"tipo": "plano_inclinado", "parametros": {"angulo": 30, "masa": 5, "mu": 0.2}}))),
+        ("fis-tiro", FISICA, j(serde_json::json!({"tipo": "tiro_parabolico", "parametros": {"v0": 20, "angulo": 45}}))),
+        ("fis-paralelo", FISICA, j(serde_json::json!({"tipo": "circuito", "parametros": {"voltaje": 12, "resistencias": [6, 3], "conexion": "paralelo"}}))),
+        ("fis-serie", FISICA, j(serde_json::json!({"tipo": "circuito", "parametros": {"voltaje": 9, "resistencias": [2, 3, 4], "conexion": "serie"}}))),
+        ("fis-vectores", FISICA, j(serde_json::json!({"tipo": "vectores", "parametros": {"vectores": [{"nombre": "A", "modulo": 3, "angulo": 0}, {"nombre": "B", "modulo": 4, "angulo": 60}]}}))),
+        ("fis-poligono", FISICA, j(serde_json::json!({"tipo": "vectores", "parametros": {"metodo": "poligono", "vectores": [[5, 0], [3, 90], [4, 200]]}}))),
+        ("fis-cuerpo-libre", FISICA, j(serde_json::json!({"tipo": "cuerpo_libre", "parametros": {"masa": 2, "fuerzas": [["N", 19.6, 90], ["P", 19.6, 270], ["F", 10, 30], ["Fr", 4, 180]]}}))),
+        ("fis-mruv", FISICA, j(serde_json::json!({"tipo": "mruv", "titulo": "Un coche que frena", "parametros": {"v0": 20, "a": -4, "t": 6}}))),
+        ("fis-pendulo", FISICA, j(serde_json::json!({"tipo": "pendulo", "parametros": {"longitud": 1.5, "angulo": 25, "masa": 0.5}}))),
+        ("fis-atwood", FISICA, j(serde_json::json!({"tipo": "maquina_atwood", "parametros": {"m1": 3, "m2": 1}}))),
+        ("problema", PROBLEMA, j(serde_json::json!({
+            "titulo": "Problema 3",
+            "enunciado": "Un bloque de 5 kg baja por un plano inclinado de 30° sin rozamiento. Calcula su aceleracion y el tiempo que tarda en recorrer 10 m partiendo del reposo.",
+            "ecuaciones": ["a = g \\sin\\theta", "d = \\frac{1}{2} a t^2"],
+            "datos": ["m = 5\\ kg", "\\theta = 30°", "d = 10\\ m", "v_0 = 0"],
+            "incognitas": ["a", "t"],
+            "figura": [
+                {"tipo": "poligono", "puntos": [10, 250, 290, 250, 290, 90], "color": "negro"},
+                {"tipo": "rectangulo", "x": 140, "y": 150, "ancho": 50, "alto": 40, "color": "azul"},
+                {"tipo": "texto", "x": 60, "y": 225, "texto": "30°", "tam_letra": 18}
+            ],
+            "pasos": [
+                {"texto": "Aceleracion por el plano", "calculo": "9.8*sin(30°)", "unidad": "m/s²"},
+                {"texto": "Tiempo de d = a t²/2", "calculo": "sqrt(2*10/4.9)", "resultado": 2.5, "unidad": "s"}
+            ],
+            "respuesta": "a = 4.9 m/s² y t ≈ 2.02 s"
+        }))),
+    ]);
     for (nombre, herramienta, args) in casos {
         let t0 = Instant::now();
         let v = validar(&LlamadaCruda { id: "1".into(), nombre: herramienta.into(), argumentos: args }, &catalogo())
@@ -2025,5 +2745,372 @@ fn muestras_del_lienzo() {
         let t_hecho = t0.elapsed();
         pintar::elementos_a_png(&els, &dir.join(format!("{nombre}.png")));
         println!("{nombre}: {} elementos en {:?} (PNG en {:?})", els.len(), t_hecho, t0.elapsed());
+    }
+}
+
+/// **¿Contesta la nube?** (15-oct) Una peticion minima a cada proveedor con
+/// clave guardada (o en la variable): codigo HTTP y milisegundos. La clave
+/// se lee en memoria y nunca se escribe.
+#[test]
+#[ignore = "con la nube de verdad"]
+fn probar_nube_minima() {
+    use pixpin_ia::nube::{Proveedor, claves, http};
+    for p in [Proveedor::DeepSeek, Proveedor::Claude] {
+        let var = match p {
+            Proveedor::Claude => "ANTHROPIC_API_KEY",
+            Proveedor::DeepSeek => "DEEPSEEK_API_KEY",
+        };
+        let Some(clave) = std::env::var(var).ok().filter(|c| !c.trim().is_empty()).or_else(|| claves::leer(p)) else {
+            println!("{}: sin clave guardada", p.nombre());
+            continue;
+        };
+        let cuerpo = match p {
+            Proveedor::Claude => pixpin_ia::nube::claude::cuerpo_de_prueba(),
+            Proveedor::DeepSeek => pixpin_ia::nube::deepseek::cuerpo_de_prueba(),
+        };
+        let cuerpo = serde_json::to_vec(&cuerpo).unwrap();
+        let cab = match p {
+            Proveedor::Claude => pixpin_ia::nube::claude::cabeceras(clave.trim()),
+            Proveedor::DeepSeek => pixpin_ia::nube::deepseek::cabeceras(clave.trim()),
+        };
+        let t = Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let url = p.url();
+        std::thread::spawn(move || {
+            let pedido = http::Pedido { url, cabeceras: cab, cuerpo: &cuerpo };
+            let mut resp = Vec::new();
+            let r = http::enviar(&pedido, &mut |b| {
+                resp.extend_from_slice(b);
+                Seguir::Si
+            });
+            let _ = tx.send((r, String::from_utf8_lossy(&resp).chars().take(300).collect::<String>()));
+        });
+        let tapar = |s: &str| {
+            let k = clave.trim();
+            if k.len() > 6 { s.replace(k, "sk-…") } else { s.to_string() }
+        };
+        match rx.recv_timeout(std::time::Duration::from_secs(60)) {
+            Ok((Ok(_), cuerpo)) => println!("{}: 200 en {} ms · {}", p.nombre(), t.elapsed().as_millis(), tapar(&cuerpo)),
+            Ok((Err(http::Fallo::Http { codigo, cuerpo, .. }), _)) => {
+                println!("{}: HTTP {codigo} en {} ms · {}", p.nombre(), t.elapsed().as_millis(), tapar(&cuerpo))
+            }
+            Ok((Err(http::Fallo::Red(d)), _)) => println!("{}: sin red en {} ms · {}", p.nombre(), t.elapsed().as_millis(), tapar(&d)),
+            Err(_) => println!("{}: colgado, sin respuesta en 60 s", p.nombre()),
+        }
+    }
+}
+
+/// **Banco del 15-oct: hojas y estudiantes**, para calificar a ojo. Un caso
+/// por imagen: `PIXPIN_BANCO_15\<motor>\<caso>.png` con SOLO lo que quedo en
+/// el lienzo y una franja arriba con el pedido, el motor y los tiempos (1º
+/// visible / total). Las hojas de entrada las pinta antes el banco de la app
+/// (`hoja_a_lienzo::banco::banco_15_oct`) en `PIXPIN_BANCO_15\entradas`.
+///
+/// ```text
+/// PIXPIN_IA_MOTOR=deepseek[,claude]  PIXPIN_IA_SOLO=<trozo|trozo>
+/// cargo test -p pixpin-ia --test banco -- --ignored --nocapture --exact banco_15_oct
+/// ```
+mod banco15 {
+    use super::*;
+
+    pub struct Caso15 {
+        pub nombre: &'static str,
+        pub pedido: &'static str,
+        /// La imagen adjunta, relativa a la carpeta del scratchpad.
+        pub imagen: Option<&'static str>,
+    }
+
+    const fn c(nombre: &'static str, pedido: &'static str, imagen: Option<&'static str>) -> Caso15 {
+        Caso15 { nombre, pedido, imagen }
+    }
+
+    pub const LIMPIO: &str = "Pasa en limpio al lienzo el problema de esta foto.";
+
+    pub fn casos() -> Vec<Caso15> {
+        vec![
+            // Hojas con formulas -> problema_en_limpio.
+            c("hoja-integrales-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-integrales.png")),
+            c("hoja-fracciones-escaneada-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-fracciones-escaneada.png")),
+            c("hoja-matriz-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-matriz.png")),
+            c("hoja-sistema-escaneada-problema_en_limpio", LIMPIO, Some(r"banco-15-oct\entradas\hoja-sistema-escaneada.png")),
+            c("hoja-cuadratica-grafica-problema_en_limpio", LIMPIO, Some(r"banco-imagenes\hoja-2-sintetica.png")),
+            c("hoja-real-amor-a-sofia-agente", "Pasa esta hoja al lienzo.", Some(r"hoja-real\amor-a-sofia.png")),
+            // Graficas.
+            c("grafica-tangente", "Grafica f(x) = x^3 - 3x entre -3 y 3 y traza la recta tangente en x = 2.", None),
+            c("grafica-area", "Grafica y = sin x entre 0 y π y sombrea el área bajo la curva.", None),
+            c("grafica-raices-cubica", "Grafica y = x^3 - x y marca sus raíces.", None),
+            c("grafica-parametrica-lissajous", "Grafica la curva paramétrica x = cos(3t), y = sin(2t) para t entre 0 y 2π.", None),
+            c("grafica-polar-rosa", "Grafica la rosa polar r = 2 sin(3θ).", None),
+            c("grafica-barras-notas", "Haz una gráfica de barras con las notas del examen: Ana 15, Luis 12, Rosa 18, Juan 10, Marta 16.", None),
+            c("grafica-lineas-temperatura", "Haz una gráfica de líneas con la temperatura de la semana: lunes 18, martes 20, miércoles 17, jueves 22, viernes 24 °C.", None),
+            c("grafica-pastel-presupuesto", "Haz una gráfica de pastel del presupuesto de la obra: materiales 45 %, mano de obra 35 %, equipos 15 %, otros 5 %.", None),
+            // Geometria.
+            c("geometria-triangulo-alturas", "Dibuja el triángulo de vértices A(0,0), B(6,0) y C(2,4) con sus tres alturas y marca el ortocentro.", None),
+            c("geometria-circunferencia-inscrita", "Dibuja un triángulo rectángulo de catetos 3 y 4 con su circunferencia inscrita, marcando el incentro.", None),
+            c("geometria-perpendicular-paralela", "Dibuja una recta horizontal, un punto P encima de ella, la perpendicular a la recta por P y la paralela a la recta por P.", None),
+            c("geometria-rectangulo-cotas", "Dibuja un rectángulo de 8 m por 5 m con sus cotas, como en un plano.", None),
+            // Fisica.
+            c("fisica-plano-inclinado", "Haz el diagrama de cuerpo libre de un bloque de 5 kg en un plano inclinado de 37° con coeficiente de rozamiento 0,2.", None),
+            c("fisica-circuito-serie", "Dibuja un circuito con una batería de 12 V y tres resistencias en serie de 2, 4 y 6 Ω, y calcula la corriente.", None),
+            c("fisica-tiro-parabolico", "Dibuja el tiro parabólico de un proyectil lanzado a 30 m/s con 60° de elevación.", None),
+            c("fisica-poleas-atwood", "Dibuja una máquina de Atwood con masas de 3 kg y 5 kg colgando de una polea.", None),
+            // Otros.
+            c("tabla-planetas", "Haz una tabla con los planetas interiores: nombre, distancia al Sol en UA y número de lunas.", None),
+            c("diagrama-flujo-par-impar", "Dibuja un diagrama de flujo que lea un número y diga si es par o impar.", None),
+            c("croquis-casa", "Dibuja un croquis de la fachada de una casa de un piso con puerta, dos ventanas y techo a dos aguas.", None),
+            c(
+                "cronograma-tesis",
+                "Hazme un cronograma de mi tesis: revisión bibliográfica del 2 al 13 de noviembre de 2026, encuestas del 16 al 27 de noviembre después de la revisión, análisis del 30 de noviembre al 11 de diciembre después de las encuestas, redacción del 7 al 18 de diciembre, y la entrega el 21 de diciembre.",
+                None,
+            ),
+        ]
+    }
+
+    pub fn scratch() -> PathBuf {
+        carpeta_de_imagenes().parent().unwrap().to_path_buf()
+    }
+
+    pub fn salida() -> PathBuf {
+        std::env::var("PIXPIN_BANCO_15").map(PathBuf::from).unwrap_or_else(|_| scratch().join("banco-15-oct"))
+    }
+
+    pub struct Hecho15 {
+        pub r: Resultado,
+        pub fotos: std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+        pub primero: f32,
+        pub total: f32,
+        pub vueltas: String,
+        pub eventos: Vec<String>,
+    }
+
+    /// Un caso por el agente, como en la app (camino rapido incluido).
+    pub fn correr_uno(motor: &dyn Motor, pedido: &str, imagen: Option<Vec<u8>>) -> Hecho15 {
+        let (mut historial, mut herramientas) = banco_ia::preparar(pedido, imagen.clone());
+        if motor.catalogo_completo() {
+            herramientas = pixpin_ia::herramientas::catalogo();
+        }
+        let mut r = Resultado::default();
+        let ctx = pixpin_ia::edicion::Contexto::default();
+        let medido = crono::Medido::nuevo(motor);
+        let opciones = agente::Opciones { rapido: Some(banco_ia::ahora()), ..Default::default() };
+        let t0 = Instant::now();
+        let mut primero: Option<f32> = None;
+        let mut eventos = Vec::new();
+        let (fin, fotos) = {
+            let mut ej = Apunta { r: &mut r, imagen, t0, ctx, fotos: Default::default() };
+            let fin = agente::turno_con(&medido, &mut historial, &herramientas, &mut ej, &opciones, &mut |e| {
+                if primero.is_none() && crono::se_ve(&e) {
+                    primero = Some(t0.elapsed().as_secs_f32());
+                }
+                if !matches!(e, Evento::Texto(_) | Evento::Pensando(_)) {
+                    eventos.push(format!("{e:?}").chars().take(200).collect::<String>());
+                }
+                Seguir::Si
+            });
+            (fin, std::mem::take(&mut ej.fotos))
+        };
+        let total = t0.elapsed().as_secs_f32();
+        match fin {
+            Ok(f) => r.texto = f.texto,
+            Err(e) => r.texto = format!("ERROR DEL MOTOR: {e}"),
+        }
+        Hecho15 { r, fotos, primero: primero.unwrap_or(total), total, vueltas: medido.resumen(), eventos }
+    }
+
+    fn letra() -> Option<&'static pixpin_pdf::letra::Letra> {
+        static L: std::sync::OnceLock<Option<pixpin_pdf::letra::Letra>> = std::sync::OnceLock::new();
+        L.get_or_init(|| pixpin_pdf::letra::del_sistema("Segoe UI")).as_ref()
+    }
+
+    /// La escena a pixeles por el camino del PDF del lienzo: `caja` fija (en
+    /// puntos) o recortada a lo dibujado.
+    pub fn a_imagen(
+        escena: &pixpin_motor2d::Escena,
+        fotos: &std::collections::HashMap<u64, pixpin_pdf::escribir::Pixeles>,
+        caja: Option<(f32, f32, f32, f32)>,
+        ancho: u32,
+    ) -> Option<pixpin_codec::ImagenRgba> {
+        let mut hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+        if hojas.is_empty() {
+            return None;
+        }
+        hojas.truncate(1);
+        // Un margen blanco alrededor de lo dibujado.
+        let c = caja.unwrap_or({
+            let c = hojas[0].caja;
+            (c.0 - 20.0, c.1 - 20.0, c.2 + 20.0, c.3 + 20.0)
+        });
+        hojas[0].caja = c;
+        let tam = (c.2 - c.0, c.3 - c.1);
+        let de = |id: u64| fotos.get(&id).map(|p| pixpin_pdf::escribir::Pixeles { ancho: p.ancho, alto: p.alto, rgba: p.rgba.clone() });
+        let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[tam], &de, letra())?;
+        static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let ruta = std::env::temp_dir().join(format!("pixpin-banco15-ia-{}-{}.pdf", std::process::id(), N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+        std::fs::write(&ruta, pdf).ok()?;
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let img = pixpin_pdf::Documento::abrir(&ruta).and_then(|d| d.renderizar(0, ancho)).ok();
+        let _ = std::fs::remove_file(&ruta);
+        img
+    }
+
+    /// Los renglones partidos a `n` letras.
+    fn partir(t: &str, n: usize) -> Vec<String> {
+        let mut v = Vec::new();
+        let mut actual = String::new();
+        for p in t.split_whitespace() {
+            if actual.chars().count() + p.chars().count() + 1 > n && !actual.is_empty() {
+                v.push(std::mem::take(&mut actual));
+            }
+            if !actual.is_empty() {
+                actual.push(' ');
+            }
+            actual.push_str(p);
+        }
+        if !actual.is_empty() {
+            v.push(actual);
+        }
+        v
+    }
+
+    /// La franja de arriba, a `ancho` px: el pedido y el motor con tiempos.
+    pub fn franja(pedido: &str, linea_motor: &str, ancho: u32) -> pixpin_codec::ImagenRgba {
+        use pixpin_motor2d::elemento::{ColorRgba, Elemento, Figura};
+        let (w, tam) = (1000.0f32, 17.0f32);
+        let mut renglones = partir(&format!("Pedido: «{pedido}»"), 100);
+        renglones.push(linea_motor.to_string());
+        let h = 14.0 + renglones.len() as f32 * tam * 1.45 + 8.0;
+        let mut s = pixpin_motor2d::Escena::nueva();
+        s.anadir(Elemento {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: h,
+            trazo: ColorRgba::opaco(0.80, 0.82, 0.86),
+            relleno: Some(ColorRgba::opaco(0.93, 0.94, 0.97)),
+            estilo_relleno: pixpin_motor2d::EstiloRelleno::Solido,
+            grosor: 1.0,
+            rugosidad: 0.0,
+            ..Default::default()
+        });
+        let n = renglones.len();
+        for (i, r) in renglones.into_iter().enumerate() {
+            let ancho_t = pixpin_motor2d::exportar::ancho_de_texto(&r, tam);
+            s.anadir(Elemento {
+                figura: Figura::Texto { texto: r, tam, familia: "Segoe UI".into() },
+                x: 14.0,
+                y: 10.0 + i as f32 * tam * 1.45,
+                ancho: ancho_t,
+                alto: tam * 1.25,
+                trazo: if i + 1 == n { ColorRgba::opaco(0.05, 0.30, 0.60) } else { ColorRgba::opaco(0.10, 0.12, 0.18) },
+                ..Default::default()
+            });
+        }
+        a_imagen(&s, &Default::default(), Some((0.0, 0.0, w, h)), ancho).expect("no salio la franja")
+    }
+
+    pub fn apilar(arriba: &pixpin_codec::ImagenRgba, abajo: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
+        let w = arriba.ancho.max(abajo.ancho);
+        let margen = 16u32;
+        let h = arriba.alto + margen + abajo.alto;
+        let mut px = vec![255u8; (w * h * 4) as usize];
+        let mut poner = |img: &pixpin_codec::ImagenRgba, oy: u32| {
+            for y in 0..img.alto {
+                let d = ((oy + y) * w * 4) as usize;
+                let o = (y * img.ancho * 4) as usize;
+                px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+            }
+        };
+        poner(arriba, 0);
+        poner(abajo, arriba.alto + margen);
+        pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }
+    }
+}
+
+#[test]
+#[ignore = "con la nube de verdad (ver banco15)"]
+fn banco_15_oct() {
+    let solo = std::env::var("PIXPIN_IA_SOLO").ok();
+    let mut filas = Vec::new();
+    let pedidos_ = std::env::var("PIXPIN_IA_MOTOR").map(|_| pedidos()).unwrap_or_else(|_| vec!["deepseek".into(), "claude".into()]);
+    for nombre in pedidos_ {
+        let m = match motor(&nombre) {
+            Ok(m) => m,
+            Err(e) => {
+                println!("SALTADO {nombre}: {e}");
+                continue;
+            }
+        };
+        let dir = banco15::salida().join(&nombre);
+        std::fs::create_dir_all(&dir).unwrap();
+        for caso in banco15::casos() {
+            if solo.as_deref().is_some_and(|s| !s.split('|').any(|x| caso.nombre.contains(x))) {
+                continue;
+            }
+            let imagen = match caso.imagen {
+                Some(r) => match std::fs::read(banco15::scratch().join(r)) {
+                    Ok(b) => Some(b),
+                    Err(_) => {
+                        println!("{nombre} {}: falta la imagen {r}", caso.nombre);
+                        continue;
+                    }
+                },
+                None => None,
+            };
+            let h = banco15::correr_uno(m.as_ref(), caso.pedido, imagen);
+            let herramientas: Vec<&str> = h.r.llamadas.iter().map(|(n, _)| n.as_str()).collect();
+            let linea = format!(
+                "Motor: {nombre} · 1º visible {:.1} s · total {:.1} s · {} · {}",
+                h.primero,
+                h.total,
+                h.vueltas,
+                if herramientas.is_empty() { "sin herramientas".to_string() } else { herramientas.join(", ") }
+            );
+            let dibujo = banco15::a_imagen(&h.r.escena, &h.fotos, None, 1400);
+            match &dibujo {
+                Some(img) => {
+                    let fr = banco15::franja(caso.pedido, &linea, img.ancho);
+                    let todo = banco15::apilar(&fr, img);
+                    std::fs::write(dir.join(format!("{}.png", caso.nombre)), pixpin_codec::imagen::codificar_png(&todo).unwrap()).unwrap();
+                }
+                None => {
+                    let _ = std::fs::remove_file(dir.join(format!("{}.png", caso.nombre)));
+                }
+            }
+            println!(
+                "{} {:<46} {:>5.1}s {:>6.1}s  {:<14} {} el. [{}]",
+                nombre,
+                caso.nombre,
+                h.primero,
+                h.total,
+                h.vueltas,
+                h.r.escena.cuantos_visibles(),
+                herramientas.join(",")
+            );
+            println!("    texto: «{}»", h.r.texto.trim().chars().take(400).collect::<String>().replace('\n', " ⏎ "));
+            for (n, v) in &h.r.llamadas {
+                println!("    llamo {n}: {}", v.to_string().chars().take(400).collect::<String>());
+            }
+            for (n, e) in &h.r.ediciones {
+                if let Err(e) = e {
+                    println!("    edicion {n} fallo: {e}");
+                }
+            }
+            if dibujo.is_none() {
+                println!("    (lienzo vacio) eventos: {}", h.eventos.join(" / ").chars().take(600).collect::<String>());
+            }
+            filas.push(format!(
+                "| {} | {nombre} | {:.1} s | {:.1} s | {} | {} |",
+                caso.nombre,
+                h.primero,
+                h.total,
+                h.vueltas,
+                if herramientas.is_empty() { "—".to_string() } else { herramientas.join(", ") }
+            ));
+        }
+        m.soltar();
+    }
+    println!("\n| caso | motor | 1º visible | total | vueltas | herramientas |\n|---|---|---|---|---|---|");
+    for f in &filas {
+        println!("{f}");
     }
 }

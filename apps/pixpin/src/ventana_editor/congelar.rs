@@ -258,14 +258,14 @@ mod pruebas {
     }
 
     #[test]
-    fn un_nombre_de_marco_mas_largo_que_el_marco_entero_no_se_sabe_acotar() {
-        // Partido al ancho del marco, baja por debajo de su raya de abajo:
-        // quedarse corto dejaria restos, asi que la escena entera.
+    fn un_nombre_de_marco_largo_ya_no_obliga_a_la_escena_entera() {
+        // Antes el nombre, partido al ancho del marco, bajaba por debajo de su
+        // raya y obligaba a la escena entera. Desde el 22-oct el marco y su
+        // nombre los pinta el editor aparte (`marcas::pintar_marcos`): el
+        // trozo es el del marco.
         let (escena, g) = marco_estirandose(&"Lamina muy larga ".repeat(40));
-        assert_eq!(
-            zona_al_transformar(&escena, &g, &Camara::nueva(), &mut Cache::nueva()),
-            None
-        );
+        let z = zona_al_transformar(&escena, &g, &Camara::nueva(), &mut Cache::nueva()).expect("se acota");
+        assert!(z.0 <= 100 && z.2 >= 430 && z.3 >= 320, "{z:?}");
     }
 
     #[test]

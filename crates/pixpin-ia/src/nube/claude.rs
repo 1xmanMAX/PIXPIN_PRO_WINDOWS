@@ -152,6 +152,22 @@ pub fn mensajes(lista: &[Mensaje], memoria: &HashMap<String, Value>) -> Vec<Valu
         .collect()
 }
 
+/// **La web** (20-oct-2026, el usuario: «dale acceso a la web al agente de
+/// IA»): las herramientas de servidor de Anthropic. Las ejecuta la API (no
+/// la app): el modelo busca o lee una pagina y sigue en la misma vuelta.
+/// Sus bloques (`server_tool_use`, `web_search_tool_result`…) se devuelven
+/// intactos en la vuelta siguiente, como el pensamiento. Con tope de usos
+/// por pregunta para que una duda no se coma los creditos.
+pub const BUSCAR_EN_LA_WEB: &str = "web_search";
+pub const LEER_LA_WEB: &str = "web_fetch";
+
+pub fn herramientas_web() -> Vec<Value> {
+    vec![
+        json!({"type": "web_search_20250305", "name": BUSCAR_EN_LA_WEB, "max_uses": 5}),
+        json!({"type": "web_fetch_20250910", "name": LEER_LA_WEB, "max_uses": 3}),
+    ]
+}
+
 /// **El cuerpo de la peticion.**
 pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -> Value {
     let base = p
@@ -187,10 +203,11 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -
         "thinking": {"type": "adaptive", "display": "summarized"},
         "output_config": {"effort": ESFUERZO},
     });
-    if !p.herramientas.is_empty() {
-        c["tools"] = Value::Array(p.herramientas.iter().map(herramienta).collect());
-        c["tool_choice"] = json!({"type": "auto"});
-    }
+    // Las de la app y, siempre, las de la web (las ejecuta la API).
+    let mut tools: Vec<Value> = p.herramientas.iter().map(herramienta).collect();
+    tools.extend(herramientas_web());
+    c["tools"] = Value::Array(tools);
+    c["tool_choice"] = json!({"type": "auto"});
     c
 }
 
@@ -219,6 +236,9 @@ enum Bloque {
     /// `redacted_thinking` y lo que no se conozca: se devuelve tal cual.
     Tal(Value),
     Herramienta { id: String, nombre: String, json: String },
+    /// `server_tool_use` (la web): lo ejecuta la API; solo se guarda para
+    /// devolverlo intacto, con su entrada juntada de los trozos.
+    Servidor { bloque: Value, json: String },
 }
 
 /// Lo que dejo una respuesta entera.
@@ -303,6 +323,11 @@ impl Lector {
                             json: String::new(),
                         }
                     }
+                    Some("server_tool_use") => {
+                        let nombre = b.get("name").and_then(Value::as_str).unwrap_or("").to_string();
+                        trozos.push(Trozo::Llamando { nombre });
+                        Bloque::Servidor { bloque: b, json: String::new() }
+                    }
                     _ => Bloque::Tal(b),
                 };
                 let i = v.get("index").and_then(Value::as_u64).map_or(self.bloques.len(), |i| i as usize);
@@ -341,7 +366,9 @@ impl Lector {
                         }
                     }
                     (Some("signature_delta"), Bloque::Pensando { firma, .. }) => firma.push_str(&s("signature")),
-                    (Some("input_json_delta"), Bloque::Herramienta { json, .. }) => json.push_str(&s("partial_json")),
+                    (Some("input_json_delta"), Bloque::Herramienta { json, .. } | Bloque::Servidor { json, .. }) => {
+                        json.push_str(&s("partial_json"))
+                    }
                     // Citas y lo que venga nuevo: no se usa.
                     _ => {}
                 }
@@ -409,6 +436,12 @@ impl Lector {
                 }
                 Bloque::Tal(Value::Null) => {}
                 Bloque::Tal(v) => bloques.push(v),
+                Bloque::Servidor { mut bloque, json } => {
+                    if !json.trim().is_empty() {
+                        bloque["input"] = como_objeto(&json);
+                    }
+                    bloques.push(bloque);
+                }
                 Bloque::Herramienta { id, nombre, json } => {
                     let argumentos = if json.trim().is_empty() { "{}".to_string() } else { json };
                     bloques.push(json!({"type": "tool_use", "id": id, "name": nombre, "input": como_objeto(&argumentos)}));
@@ -581,5 +614,32 @@ mod pruebas {
         let c = cuerpo_de_prueba();
         assert_eq!(c["max_tokens"], 16);
         assert!(c.get("stream").is_none() && c.get("tools").is_none());
+    }
+
+    #[test]
+    fn la_web_va_siempre_y_la_busqueda_se_devuelve_intacta() {
+        let c = cuerpo(&Peticion::nueva(vec![Mensaje::usuario("hola")]), &HashMap::new(), 100);
+        let tipos: Vec<&str> = c["tools"].as_array().unwrap().iter().filter_map(|t| t["type"].as_str()).collect();
+        assert!(tipos.contains(&"web_search_20250305") && tipos.contains(&"web_fetch_20250910"), "{tipos:?}");
+        let sse = [
+            r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"server_tool_use","id":"srvtoolu_1","name":"web_search","input":{}}}"#,
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"query\": \"pixpin\"}"}}"#,
+            r#"data: {"type":"content_block_start","index":1,"content_block":{"type":"web_search_tool_result","tool_use_id":"srvtoolu_1","content":[{"type":"web_search_result","url":"https://x","title":"X","encrypted_content":"E"}]}}"#,
+            r#"data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}"#,
+            r#"data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Hallado."}}"#,
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#,
+            r#"data: {"type":"message_stop"}"#,
+        ]
+        .join("\n")
+            + "\n";
+        let mut l = Lector::nuevo();
+        let trozos = l.meter(sse.as_bytes()).unwrap();
+        assert!(trozos.iter().any(|t| matches!(t, Trozo::Llamando { nombre } if nombre == BUSCAR_EN_LA_WEB)));
+        let s = l.acabar(false);
+        assert_eq!(s.respuesta.texto, "Hallado.");
+        assert!(s.respuesta.llamadas.is_empty(), "la web no es una llamada de la app");
+        assert_eq!(s.respuesta.fin, Fin::Natural);
+        assert_eq!(s.bloques[0]["input"], json!({"query": "pixpin"}));
+        assert_eq!(s.bloques[1]["type"], "web_search_tool_result");
     }
 }

@@ -72,6 +72,9 @@ pub struct Respuesta {
     /// Lo que dijo, tal como quedo en la nota.
     pub texto: String,
     pub bien: bool,
+    /// El lienzo donde dibujo (su referencia), si dibujo: el «Abrir» de la
+    /// notificacion lleva alli (`cola`).
+    pub lienzo: Option<String>,
 }
 
 /// Cada cuanto se escribe en el disco lo que va contestando (si el chat
@@ -85,6 +88,21 @@ const GUARDAR_CADA: Duration = Duration::from_secs(2);
 pub fn hacer(
     ent: &Entorno,
     motor: Arc<dyn Motor>,
+    e: &Encargo,
+    permiso: Permiso,
+    mandar: Mandar,
+) -> Result<Respuesta, String> {
+    // El modelo con vision de los Ajustes de ESTOS datos (el de las zonas de
+    // una lamina: `calcar_imagen` con una lamina pasa como hoja).
+    let vision = crate::asistente::hoja_a_lienzo::motor_de_vision_en(ent.ubicacion.raiz());
+    hacer_con_vision(ent, motor, vision, e, permiso, mandar)
+}
+
+/// [`hacer`] con el modelo de vision dado (las pruebas ponen el suyo).
+pub fn hacer_con_vision(
+    ent: &Entorno,
+    motor: Arc<dyn Motor>,
+    vision: Option<Arc<dyn Motor>>,
     e: &Encargo,
     permiso: Permiso,
     mandar: Mandar,
@@ -182,9 +200,15 @@ pub fn hacer(
     let vivo = Arc::new(Mutex::new(vivo0));
     let confirmar = confirmar_en_la_nota(permiso, vivo.clone(), carpeta.clone(), asistente.clone(), nota.id.clone(), parar.clone());
     let mandar = envolver(mandar, contexto.as_ref().map(|(id, _)| id.clone()), e.bloquear);
+    let mut dentro = EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar)
+        .con_acciones(confirmar, mandar)
+        .con_raiz(Some(ent.ubicacion.raiz().to_path_buf()));
+    if let Some(v) = &vision {
+        dentro = dentro.con_vision(v.clone());
+    }
     let mut ejecutor = SinVentana {
-        dentro: EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar).con_acciones(confirmar, mandar)
-            .con_raiz(Some(ent.ubicacion.raiz().to_path_buf())),
+        dentro,
+        vision,
         ubicacion: ent.ubicacion.clone(),
         proyecto: asistente.clone(),
         adjuntos,
@@ -243,6 +267,7 @@ pub fn hacer(
         codigo: nota.codigo_unico(),
         texto,
         bien: resultado.is_ok() && vivo.fallos.is_empty(),
+        lienzo,
     })
 }
 
@@ -254,6 +279,10 @@ pub enum Permiso {
     EnLaBurbuja,
     /// Lo que diga esta funcion, sin preguntar a nadie (las pruebas).
     Fijo(Confirmar),
+    /// En la burbuja, y antes llama a esto con la pregunta: la cola de
+    /// encargos (`cola`) trabaja sin tarjeta a la vista y la saca entonces,
+    /// para que la pregunta se vea y se pueda contestar.
+    EnLaBurbujaAvisando(Box<dyn Fn(&str) + Send>),
 }
 
 /// **La pregunta en la nota de la respuesta**: la burbuja dice que espera
@@ -284,7 +313,10 @@ fn confirmar_en_la_nota(
         };
         let (t, ()) = guardar(&vivo, &|v| v.preguntar(pregunta));
         let c = match &permiso {
-            Permiso::EnLaBurbuja => {
+            Permiso::EnLaBurbuja | Permiso::EnLaBurbujaAvisando(_) => {
+                if let Permiso::EnLaBurbujaAvisando(avisar) = &permiso {
+                    avisar(pregunta);
+                }
                 // Primero la nota (que se vea que espera), luego la pregunta.
                 escribir(t);
                 let rx = crate::asistente::permiso::registrar(&proyecto, &nota, pregunta);
@@ -354,6 +386,9 @@ struct SinVentana {
     ubicacion: Ubicacion,
     proyecto: String,
     adjuntos: Vec<Adjunto>,
+    /// El modelo con vision (Ajustes): una lamina que se pide calcar pasa
+    /// como hoja, zona a zona en paralelo.
+    vision: Option<Arc<dyn Motor>>,
     /// El lienzo donde dibujo (su referencia), para «Abrir lienzo».
     lienzo: Option<String>,
     semilla: u64,
@@ -381,6 +416,27 @@ impl SinVentana {
     }
 }
 
+impl SinVentana {
+    /// **Una lamina, zona a zona** (un trabajador de la nube por zona, a la
+    /// vez), directa al lienzo del asistente.
+    fn lamina(&mut self, pagina: &crate::asistente::hoja_a_lienzo::Pagina) -> Result<String, String> {
+        let s = self.semilla();
+        let mut d = crate::asistente::hoja_a_lienzo::SinVentana {
+            ubicacion: self.ubicacion.clone(),
+            proyecto: self.proyecto.clone(),
+            lienzo: None,
+        };
+        let o = pixpin_ia::hoja::Opciones { ancho: (pagina.ancho as f64).clamp(200.0, 4000.0), rico: true, ..Default::default() };
+        let inf = crate::asistente::hoja_a_lienzo::pasar(pagina, self.vision.clone(), &o, false, s, &AtomicBool::new(false), &mut d, &mut |_, _| {})?;
+        if d.lienzo.is_some() {
+            self.lienzo = d.lienzo;
+            crate::ventana_chat::refrescar();
+        }
+        let r = crate::asistente::hoja_a_lienzo::contar(pagina, &inf)?;
+        Ok(format!("{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"))
+    }
+}
+
 impl Ejecutor for SinVentana {
     fn ejecutar(&mut self, llamada: &Llamada) -> Result<String, String> {
         if crate::asistente::al_lienzo::hay_editor() {
@@ -395,9 +451,38 @@ impl Ejecutor for SinVentana {
                 let ruta = crate::asistente::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
                     .ruta
                     .clone();
+                // Una lamina (texto y figuras) no se calca: como hoja, con
+                // figuras exactas (el mismo criterio que el chat:
+                // `hoja_a_lienzo::lamina_de_calcar`).
+                if let Some(pagina) = crate::asistente::hoja_a_lienzo::lamina_de_calcar(&ruta, p, self.vision.as_ref()) {
+                    return self.lamina(&pagina);
+                }
                 let s = self.semilla();
                 let els = crate::asistente::acciones::calcar_fichero(&ruta, p, s)?;
                 self.al_lienzo(els)
+            }
+            // Una hoja al lienzo (solo con la nube): zona a zona, directo.
+            Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => {
+                let s = self.semilla();
+                let mut d = crate::asistente::hoja_a_lienzo::SinVentana {
+                    ubicacion: self.ubicacion.clone(),
+                    proyecto: self.proyecto.clone(),
+                    lienzo: None,
+                };
+                let r = crate::asistente::hoja_a_lienzo::hacer(
+                    &a.pedido,
+                    &self.adjuntos,
+                    crate::asistente::hoja_a_lienzo::motor_de_vision(),
+                    s,
+                    &AtomicBool::new(false),
+                    &mut d,
+                    &mut |_, _| {},
+                );
+                if d.lienzo.is_some() {
+                    self.lienzo = d.lienzo;
+                    crate::ventana_chat::refrescar();
+                }
+                r
             }
             _ => self.dentro.ejecutar(llamada),
         }

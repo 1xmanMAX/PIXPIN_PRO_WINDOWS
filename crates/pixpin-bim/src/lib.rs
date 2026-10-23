@@ -77,12 +77,24 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
     let r = process_geometry_filtered_with_quality_and_ids(ifc, OpeningFilterMode::Default, TessellationQuality::default(), None);
     let mut c = Constructor3d::nuevo();
     let mut elementos: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+    // Los elementos sin `GlobalId` de `ifc-lite`: se busca en el texto.
+    let mut sin_global: std::collections::HashSet<u32> = std::collections::HashSet::new();
     for m in &r.meshes {
         // Solo lo colocado en el modelo: no las formas de los «tipos».
         if matches!(m.geometry_class, 1 | 2) || m.indices.is_empty() || se_esconde(&m.ifc_type) {
             continue;
         }
-        let e = *elementos.entry(m.express_id).or_insert_with(|| c.elemento(&m.ifc_type, m.name.as_deref().unwrap_or("")));
+        let e = *elementos.entry(m.express_id).or_insert_with(|| {
+            let e = c.elemento(&m.ifc_type, m.name.as_deref().unwrap_or(""));
+            // Su clave estable (la de los marcadores): el GlobalId.
+            match m.global_id.as_deref().map(str::trim).filter(|g| !g.is_empty()) {
+                Some(g) => c.poner_clave(e, g),
+                None => {
+                    sin_global.insert(m.express_id);
+                }
+            }
+            e
+        });
         let o = m.origin;
         let puntos: Vec<[f64; 3]> =
             m.positions.chunks_exact(3).map(|p| [p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]]).collect();
@@ -91,12 +103,17 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
         c.malla(e, &puntos, normales, &m.indices, m.color);
     }
     // Los niveles (plantas) y en cual esta cada elemento.
-    let esp = niveles::de_ifc(ifc);
+    let esp = niveles::de_ifc_con(ifc, &sin_global);
+    for (id, g) in &esp.globales {
+        if let Some(e) = elementos.get(id) {
+            c.poner_clave(*e, g);
+        }
+    }
     if !esp.niveles.is_empty() {
         let indice: std::collections::HashMap<u32, u32> = esp.niveles.iter().enumerate().map(|(k, n)| (n.id, k as u32)).collect();
         let de: Vec<(u32, u32)> =
             elementos.iter().filter_map(|(id, e)| Some((*e, *indice.get(esp.de.get(id)?)?))).collect();
-        c.niveles(esp.niveles.into_iter().map(|n| Nivel { nombre: n.nombre, cota: n.cota }).collect(), &de);
+        c.niveles(esp.niveles.into_iter().map(|n| Nivel { nombre: n.nombre, cota: n.cota, clave: n.global }).collect(), &de);
     }
     c.terminar()
 }

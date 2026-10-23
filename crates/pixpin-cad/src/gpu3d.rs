@@ -479,6 +479,19 @@ impl Gpu {
         aristas: bool,
         encima: &[(&PlanoGpu, Vista)],
     ) -> windows::core::Result<()> {
+        self.dibujar_3d_con(fondo, modelo, aristas, encima, None)
+    }
+
+    /// [`Gpu::dibujar_3d`], dejando a `tinta` pintar al final sobre el bufer
+    /// de la ventana (lo anotado sobre un marcador, con el motor del lienzo).
+    pub fn dibujar_3d_con(
+        &mut self,
+        fondo: [f32; 4],
+        modelo: Option<(&ModeloGpu, Vista3d)>,
+        aristas: bool,
+        encima: &[(&PlanoGpu, Vista)],
+        tinta: Option<&mut dyn FnMut(&ID3D11Device, &ID3D11Texture2D)>,
+    ) -> windows::core::Result<()> {
         self.preparar_3d()?;
         let Some((tex, rtv)) = self.destino.clone() else {
             return Ok(());
@@ -566,7 +579,7 @@ impl Gpu {
             }
         }
         self.pasadas_2d(&rtv, encima);
-        self.presentar(&tex)
+        self.presentar_con(&tex, tinta)
     }
 
     /// Que elemento (y que punto del mundo, relativo al origen del modelo)

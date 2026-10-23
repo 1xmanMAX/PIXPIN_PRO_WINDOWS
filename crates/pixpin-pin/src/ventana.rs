@@ -27,7 +27,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
     VK_SHIFT, VK_UP,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_MENU, VK_RETURN, VK_SPACE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_DELETE, VK_MENU, VK_RETURN, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
@@ -104,6 +104,16 @@ pub enum CambioPin {
     EliminarPedido,
     /// Doble clic sobre imagen o nota: entrar a anotar (D47).
     AnotarPedido,
+    /// El lapiz del riel, pulsado mientras se anota: salir de anotar
+    /// guardando, como el boton de salir de la paleta.
+    SalirDeAnotarPedido,
+    /// El marco del riel: elegir una zona del pin e imprimirla. Lo resuelve
+    /// el gestor (`marco_imprimir` vive en la app).
+    ImprimirPedido,
+    /// Los marcos numerados de un pin de imagen (`marcos_pin`): entrar o
+    /// salir del modo, quitar el ultimo, imprimirlos o el que se acaba de
+    /// arrastrar. Los guarda e imprime el gestor (`marcos_doc`).
+    MarcoPedido(crate::marcos_pin::PedidoMarco),
     /// Menu de un pin de imagen: abrirlo en el lienzo del editor (D131). Lo
     /// resuelve el gestor, que conoce el almacen y el fichero de dibujo.
     AbrirLienzoPedido,
@@ -632,6 +642,20 @@ struct PinInterno {
     /// El modo texto (tecla T): arrastrar sobre las letras las selecciona.
     /// Fuera de el, arrastrar mueve el pin aunque haya texto reconocido.
     modo_texto: bool,
+    /// **Los marcos numerados** (`marcos_pin`), en pixeles de la imagen sin
+    /// girar. La lista la manda el gestor (`poner_marcos`); el pin solo la
+    /// pinta, recoge el arrastre y pide lo demas.
+    marcos: Vec<[f64; 4]>,
+    /// El modo de ponerlos (el marco del riel o la I): arrastrar pone uno en
+    /// vez de mover el pin.
+    modo_marcos: bool,
+    /// El que se esta arrastrando (sus dos esquinas en la imagen) y si sigue
+    /// el boton pulsado. Suelto, se queda pintado hasta que el gestor
+    /// conteste con la lista nueva: asi no parpadea al soltar.
+    marco_nuevo: Option<([f64; 2], [f64; 2])>,
+    arrastrando_marco: bool,
+    /// La pista del modo, ya traducida (`marcos-pista`).
+    pista_marcos: String,
     /// Gris, invertido y brillo. No tocan el original: se aplican al
     /// rehacer el bitmap, igual que el giro se aplica al pintar.
     filtros: pixpin_codec::filtros::Filtros,
@@ -887,6 +911,11 @@ impl Pin {
             ancla_texto: None,
             color_marca: crate::barra_marcas::COLOR_INICIAL,
             modo_texto: false,
+            marcos: Vec::new(),
+            modo_marcos: false,
+            marco_nuevo: None,
+            arrastrando_marco: false,
+            pista_marcos: String::new(),
             filtros: pixpin_codec::filtros::Filtros::default(),
             pdf_paginas: None,
             pdf_pagina: 0,
@@ -1204,6 +1233,7 @@ impl Pin {
         // La barra flotante tiene su propia superficie sobre el dispositivo
         // viejo: se suelta y renace con el nuevo la proxima vez.
         crate::barra_flotante::soltar();
+        crate::riel_pin::soltar();
         i.superficie.rehacer(&i.motor, d3d)?;
         rehacer_bitmap(i);
         // El video: un reproductor nuevo sobre el dispositivo nuevo, en el
@@ -1360,6 +1390,15 @@ impl Pin {
         if let Some(i) = interno_de(self.hwnd) {
             i.anotando = anotando;
             pintar(i);
+            // Anotando, el riel se queda a la vista con el lapiz encendido:
+            // pulsarlo otra vez es salir. Al salir se va con la barra y
+            // vuelve con ella al pasar el raton.
+            if anotando {
+                ensenar_riel(i, true);
+            } else {
+                crate::riel_pin::esconder(i.hwnd);
+                i.raton_encima = false;
+            }
         }
     }
 
@@ -1442,6 +1481,73 @@ impl Pin {
     /// anotado: entonces vale la original, que quien llama ya sabe leer.
     pub fn imagen_con_anotaciones(&self) -> Option<pixpin_codec::ImagenRgba> {
         imagen_horneada(interno_de(self.hwnd)?)
+    }
+
+    /// **La foto para imprimir sus marcos**, a su tamano real: la original
+    /// con los filtros que el usuario le puso al pin (gris, invertido,
+    /// brillo: se guardan con el) y lo anotado encima, como se ve. Nada mas:
+    /// ni el negativo de la N (solo de pantalla) ni ningun modo noche, para
+    /// que los colores salgan los de verdad. `None` si no es una foto o no
+    /// tiene ni filtros ni anotaciones: entonces vale la del almacen tal cual.
+    pub fn imagen_para_imprimir(&self) -> Option<pixpin_codec::ImagenRgba> {
+        let i = interno_de(self.hwnd)?;
+        let neutros = i.filtros.son_neutros();
+        if neutros {
+            return imagen_horneada(i);
+        }
+        asegurar_resolucion(i, true);
+        let Contenido::Imagen(img) = &i.contenido else {
+            return None;
+        };
+        let filtrada = pixpin_codec::filtros::aplicar(img, i.filtros);
+        if i.anotaciones.is_empty() && i.grafitos.is_empty() {
+            return Some(filtrada);
+        }
+        hornear(&i.motor, &i.d3d, &filtrada, &i.anotaciones, &i.grafitos, i.imagen_nativa)
+    }
+
+    /// Si el pin lleva marcos numerados: solo una foto (un documento, una
+    /// nota o un video no tienen pixeles fijos a los que pegarlos).
+    pub fn admite_marcos(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| admite_marcos(i))
+    }
+
+    /// **Los marcos del pin**, tal como los lleva el gestor
+    /// (`marcos_doc::Marcos`): sus cajas en pixeles de la imagen sin girar,
+    /// si el modo esta puesto y su pista. Se pintan ya; el que se estaba
+    /// soltando deja de pintarse aparte (o ya esta en la lista, o no valia).
+    pub fn poner_marcos(&self, lista: Vec<[f64; 4]>, activo: bool, pista: &str) {
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        i.marcos = lista;
+        if !i.arrastrando_marco {
+            i.marco_nuevo = None;
+        }
+        if i.modo_marcos != activo {
+            i.modo_marcos = activo;
+            if !activo {
+                i.marco_nuevo = None;
+                i.arrastrando_marco = false;
+            }
+            if activo {
+                // El riel se queda a la vista con el marco encendido, como
+                // con el lapiz al anotar: es por donde se sale.
+                ensenar_riel(i, i.anotando);
+            } else {
+                crate::riel_pin::poner_marcando(i.hwnd, false);
+                if !i.raton_encima && !i.anotando {
+                    crate::riel_pin::esconder(i.hwnd);
+                }
+            }
+        }
+        i.pista_marcos = pista.to_string();
+        pintar(i);
+    }
+
+    /// Si se estan poniendo marcos.
+    pub fn modo_marcos(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| i.modo_marcos)
     }
 
     /// Quita el pin de la pantalla o lo devuelve, sin cerrarlo. Es lo que
@@ -1623,10 +1729,39 @@ fn ensenar_barra(i: &PinInterno) {
         t,
         i.tema_claro,
     );
+    ensenar_riel(i, false);
     // SAFETY: temporizador de la ventana propia; se mata al esconderla.
     unsafe {
         SetTimer(Some(i.hwnd), ID_TEMPORIZADOR_BARRA, RITMO_BARRA_MS, None);
     }
+}
+
+/// Ensena el riel del pin (el lapiz y el marco) a su lado.
+fn ensenar_riel(i: &PinInterno, anotando: bool) {
+    crate::riel_pin::mostrar(
+        &i.d3d,
+        &i.motor,
+        i.hwnd,
+        i.estado.rect(),
+        area_de_trabajo(i.hwnd),
+        i.escala_por_cien,
+        crate::menu::anotable(&i.contenido),
+        anotando,
+        i.modo_marcos,
+        pistas_del_riel(i),
+    );
+}
+
+/// El nombre y la tecla de cada boton del riel, para su globo: el lapiz
+/// (A) y el marco, que en una foto pone los marcos numerados (I) y en lo
+/// demas imprime una zona (Ctrl+P).
+fn pistas_del_riel(i: &PinInterno) -> Vec<(crate::riel_pin::BotonRiel, String)> {
+    use crate::riel_pin::BotonRiel;
+    let Some(t) = &i.textos else {
+        return Vec::new();
+    };
+    let marco = if admite_marcos(i) { &t.v2.riel_marcos } else { &t.v2.riel_imprimir };
+    vec![(BotonRiel::Lapiz, t.v2.riel_anotar.clone()), (BotonRiel::Marco, marco.clone())]
 }
 
 /// Repinta la barra si es de este pin (cambio el zoom, la pagina, el video).
@@ -1638,6 +1773,7 @@ fn actualizar_barra(i: &PinInterno) {
 
 /// La vuelve a poner junto al pin, que se ha movido o cambiado de tamano.
 fn recolocar_barra(i: &PinInterno) {
+    crate::riel_pin::recolocar(i.hwnd, i.estado.rect(), area_de_trabajo(i.hwnd));
     if crate::barra_flotante::es_de(i.hwnd) {
         crate::barra_flotante::recolocar(i.hwnd, i.estado.rect(), area_de_trabajo(i.hwnd));
         crate::barra_flotante::actualizar(i.hwnd, datos_barra(i));
@@ -1699,9 +1835,44 @@ fn accion_de_marcas(i: &mut PinInterno, accion: crate::barra::AccionBarra) {
 
 fn esconder_barra(hwnd: HWND) {
     crate::barra_flotante::esconder(hwnd);
+    // Anotando, el riel no se va con la barra: lleva el lapiz para salir.
+    // Poniendo marcos, igual: lleva el marco encendido.
+    if !interno_de(hwnd).is_some_and(|i| i.anotando || i.modo_marcos) {
+        crate::riel_pin::esconder(hwnd);
+    }
     // SAFETY: mata el temporizador propio (si lo habia).
     unsafe {
         let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_BARRA);
+    }
+}
+
+/// Lo que se pulso en el riel de este pin. `anotando` es lo que el riel
+/// ensenaba: el lapiz encendido sale, apagado entra.
+pub(crate) fn accion_de_riel(hwnd: HWND, boton: crate::riel_pin::BotonRiel, anotando: bool) {
+    use crate::riel_pin::BotonRiel;
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    match boton {
+        BotonRiel::Lapiz if anotando || i.anotando => {
+            (i.al_cambiar)(CambioPin::SalirDeAnotarPedido)
+        }
+        BotonRiel::Lapiz => {
+            esconder_barra(hwnd);
+            (i.al_cambiar)(CambioPin::AnotarPedido);
+        }
+        // En una foto, el marco del riel entra y sale del modo de los
+        // marcos numerados, como en el plano y los demas visores.
+        BotonRiel::Marco if admite_marcos(i) => {
+            pedir_marcos(i, crate::marcos_pin::PedidoMarco::Alternar);
+        }
+        BotonRiel::Marco => {
+            // Fuera la barra (y el riel si no se anota): el marco congela lo
+            // que se ve del pin y no deben salir en la foto.
+            i.raton_encima = false;
+            esconder_barra(hwnd);
+            (i.al_cambiar)(CambioPin::ImprimirPedido);
+        }
     }
 }
 
@@ -2486,6 +2657,85 @@ fn a_pixeles_nativos(i: &PinInterno, p: Punto) -> Punto {
     }
 }
 
+/// Si este pin lleva marcos numerados: una foto con su tamano nativo.
+fn admite_marcos(i: &PinInterno) -> bool {
+    matches!(i.contenido, Contenido::Imagen(_)) && i.imagen_nativa.0 > 0 && i.imagen_nativa.1 > 0
+}
+
+/// Como esta puesta la foto en la tarjeta, para llevar los marcos de la
+/// imagen a la pantalla y al reves. `imagen_nativa` va ya girada (se cambian
+/// los lados con cada cuarto de vuelta); los marcos, no.
+fn encaje_de(i: &PinInterno) -> crate::marcos_pin::Encaje {
+    let (nw, nh) = i.imagen_nativa;
+    let r = i.estado.rect();
+    let imagen = if i.giro % 2 == 1 { (nh, nw) } else { (nw, nh) };
+    crate::marcos_pin::Encaje {
+        imagen: (imagen.0 as f64, imagen.1 as f64),
+        caja: (r.ancho as f64, r.alto as f64),
+        giro: i.giro,
+        volteo_h: i.volteo_h,
+        volteo_v: i.volteo_v,
+    }
+}
+
+/// Cuantos pixeles de pantalla mide ahora un pixel de la foto (con el zoom
+/// de dentro): lo que necesita `Marcos::soltar` para no tomar un clic por
+/// un marco.
+fn px_de_marcos(i: &PinInterno) -> f64 {
+    let (nw, _) = i.imagen_nativa;
+    let r = i.estado.rect();
+    r.ancho as f64 / nw.max(1) as f64 * i.vista_escala.max(1.0) as f64
+}
+
+/// Pide al gestor entrar o salir del modo de los marcos. El pin no lo
+/// cambia solo: lo hace cuando el gestor le devuelve la lista
+/// (`poner_marcos`), que es quien sabe si hay que salir antes de anotar.
+fn pedir_marcos(i: &PinInterno, pedido: crate::marcos_pin::PedidoMarco) {
+    (i.al_cambiar)(CambioPin::MarcoPedido(pedido));
+}
+
+/// La tarjeta del pin en sus coordenadas del contenido: donde van las
+/// fichas de los marcos (las mismas que pinta `pintar_pista` con el margen
+/// de la sombra sumado).
+fn tarjeta_de(i: &PinInterno) -> RectF {
+    let r = i.estado.rect();
+    RectF {
+        x: 0.0,
+        y: 0.0,
+        ancho: r.ancho as f32,
+        alto: r.alto as f32,
+    }
+}
+
+/// La ficha de marco bajo el punto `(x, y)` del contenido, con el modo de
+/// los marcos puesto.
+fn ficha_bajo(i: &PinInterno, x: f32, y: f32) -> Option<usize> {
+    if !i.modo_marcos || i.marcos.is_empty() {
+        return None;
+    }
+    let e = i.escala_por_cien as f32 / 100.0;
+    crate::marcos_pin::ficha_en(tarjeta_de(i), i.marcos.len(), e, x, y)
+}
+
+/// **Ir al marco `k`** (su ficha): el zoom de dentro (el de Ctrl + rueda) se
+/// acerca hasta que el marco llena el pin, centrado (pegado al borde si cae
+/// en una orilla de la foto). Un marco que ya es la foto entera vuelve a
+/// verla sin zoom.
+fn ir_al_marco(i: &mut PinInterno, k: usize) {
+    let Some(m) = i.marcos.get(k).copied() else {
+        return;
+    };
+    let caja = encaje_de(i).caja_de(m);
+    let r = i.estado.rect();
+    let (escala, dx, dy) = crate::marcos_pin::vista_del_marco(caja, r.ancho as f32, r.alto as f32);
+    i.vista_escala = escala;
+    i.vista_dx = dx;
+    i.vista_dy = dy;
+    limitar_vista(i);
+    asegurar_resolucion(i, false);
+    pintar(i);
+}
+
 /// Holgura vertical al buscar texto bajo el cursor, en pixeles nativos.
 ///
 /// Acertar el recuadro exacto de una palabra obliga a afinar el raton, y
@@ -3070,9 +3320,28 @@ fn pintar(i: &PinInterno) {
         // margen de la sombra.
         p.con_recorte(caja, |p| pintar_anotaciones(p, i, m));
 
+        // Los marcos numerados, encima de lo anotado y dentro del zoom de
+        // dentro: van pegados a su sitio de la foto. La raya y el numero no
+        // engordan al acercarse (se deshace el zoom en su grosor).
+        let nuevo = i.marco_nuevo.map(|(a, b)| crate::marcos_pin::ordenada(a, b));
+        if admite_marcos(i) && (!i.marcos.is_empty() || nuevo.is_some()) {
+            let e = escala / i.vista_escala.max(1.0);
+            let encaje = encaje_de(i);
+            p.con_recorte(caja, |p| {
+                crate::marcos_pin::pintar(p, &encaje, &i.marcos, nuevo, m, e)
+            });
+        }
+
         if con_vista {
             p.desplazar(ox as f32 - m, oy as f32 - m);
             p.soltar_recorte();
+        }
+
+        // Con el modo de los marcos puesto, abajo a la izquierda las fichas
+        // de los marcos (pulsar una lleva a el) y la pista. Fuera del zoom de
+        // dentro: no crecen al acercarse.
+        if i.modo_marcos {
+            crate::marcos_pin::pintar_pista(p, caja, &i.pista_marcos, i.marcos.len(), escala);
         }
 
         // Manejando a distancia, un marco de acento: con el modo encendido
@@ -3946,6 +4215,7 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
             _ => 0,
         },
         nota_pagina: i.nota_pagina.map(|n| n as u32),
+        con_marcos: admite_marcos(i) && !i.marcos.is_empty(),
     };
     match crate::menu::mostrar(hwnd, &i.contenido, estado, &t, punto) {
         None => {}
@@ -4020,6 +4290,12 @@ fn abrir_menu(hwnd: HWND, punto: Option<(i32, i32)>) {
                 crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
                 crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
                 crate::menu::CMD_EXPORTAR => Some(CambioPin::ExportarPedido),
+                crate::menu::CMD_IMPRIMIR_MARCOS => Some(CambioPin::MarcoPedido(
+                    crate::marcos_pin::PedidoMarco::Imprimir,
+                )),
+                crate::menu::CMD_BORRAR_MARCOS => Some(CambioPin::MarcoPedido(
+                    crate::marcos_pin::PedidoMarco::Borrar,
+                )),
                 crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
                 crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
                 crate::menu::CMD_CONGELAR => Some(CambioPin::CongelarPedido),
@@ -4111,6 +4387,14 @@ extern "system" fn procedimiento_pin(
         }
     }
 
+    /// Donde cae el cursor en la foto, en pixeles de la imagen sin girar:
+    /// el sistema de los marcos numerados (`marcos_pin`).
+    fn punto_marco(i: &PinInterno, lparam: LPARAM) -> [f64; 2] {
+        let c = punto_contenido(i, lparam);
+        let (x, y) = sin_vista(i, c.x as f32, c.y as f32);
+        encaje_de(i).a_imagen(x as f64, y as f64)
+    }
+
     /// Como `punto_contenido`, pero en el sitio de la IMAGEN: con el zoom de
     /// dentro (Ctrl + rueda) lo que hay bajo el cursor no es el mismo punto
     /// de la tarjeta. Es lo que necesitan anotar y seleccionar texto.
@@ -4165,6 +4449,32 @@ extern "system" fn procedimiento_pin(
                 if let Err(e) = crate::arrastre::arrastrar(carga) {
                     tracing::warn!(?e, "no se pudo arrastrar el contenido del pin");
                 }
+                return LRESULT(0);
+            }
+            // Poniendo marcos, arrastrar pone uno (como en el plano) y el pin
+            // no se mueve.
+            if let Some(i) = interno_de(hwnd)
+                && i.modo_marcos
+                && !i.anotando
+                && admite_marcos(i)
+            {
+                // Una ficha de abajo (1, 2, 3…): a ese marco, sin poner otro.
+                let c = punto_contenido(i, lparam);
+                if let Some(k) = ficha_bajo(i, c.x as f32, c.y as f32) {
+                    ir_al_marco(i, k);
+                    return LRESULT(0);
+                }
+                let q = punto_marco(i, lparam);
+                i.marco_nuevo = Some((q, q));
+                i.arrastrando_marco = true;
+                esconder_barra(hwnd);
+                // SAFETY: foco y captura sobre la ventana propia: Supr y
+                // Ctrl+P llegan a este pin; la captura se suelta al soltar.
+                unsafe {
+                    let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
+                    SetCapture(hwnd);
+                }
+                pintar(i);
                 return LRESULT(0);
             }
             // Un clic sobre el video (sin moverlo) reproduce o pausa: se
@@ -4330,6 +4640,35 @@ extern "system" fn procedimiento_pin(
             }
             if let Some(i) = interno_de(hwnd) {
                 i.paneo = None;
+            }
+            LRESULT(0)
+        }
+        // Arrastrando un marco: su segunda esquina sigue al cursor.
+        WM_MOUSEMOVE if interno_de(hwnd).is_some_and(|i| i.arrastrando_marco) => {
+            if let Some(i) = interno_de(hwnd) {
+                let q = punto_marco(i, lparam);
+                if let Some((_, b)) = &mut i.marco_nuevo {
+                    *b = q;
+                }
+                pintar(i);
+            }
+            LRESULT(0)
+        }
+        // Soltar: el gestor decide si vale (`Marcos::soltar`, mas de 8 px) y
+        // contesta con la lista; hasta entonces se queda pintado.
+        WM_LBUTTONUP if interno_de(hwnd).is_some_and(|i| i.arrastrando_marco) => {
+            // SAFETY: libera la captura tomada al empezar el marco.
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            if let Some(i) = interno_de(hwnd) {
+                let q = punto_marco(i, lparam);
+                i.arrastrando_marco = false;
+                if let Some((a, _)) = i.marco_nuevo {
+                    i.marco_nuevo = Some((a, q));
+                    let px = px_de_marcos(i);
+                    pedir_marcos(i, crate::marcos_pin::PedidoMarco::Nuevo { a, b: q, px });
+                }
             }
             LRESULT(0)
         }
@@ -4835,6 +5174,9 @@ extern "system" fn procedimiento_pin(
                 && c.y < r.bottom;
             let sigue = en_pin
                 || crate::barra_flotante::contiene(c.x, c.y)
+                || crate::riel_pin::contiene(c.x, c.y)
+                || interno_de(hwnd)
+                    .is_some_and(|i| crate::riel_pin::en_el_paso(i.estado.rect(), c.x, c.y))
                 || interno_de(hwnd)
                     .is_some_and(|i| crate::barra_flotante::en_el_paso(i.estado.rect(), c.x, c.y))
                 || crate::barra_flotante::ocupada();
@@ -4897,6 +5239,54 @@ extern "system" fn procedimiento_pin(
         // tecla y solo con el pin enfocado; ninguno choca con los de antes
         // (1-3, 5-8, 0, R, H, V, T, M, C, Espacio, Esc, flechas).
         //
+        // Los marcos numerados de una foto, con las teclas del plano: I entra
+        // y sale del modo; en el modo, Supr quita el ultimo y Esc sale.
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'I' as u32
+                && !tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando && admite_marcos(i)) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                pedir_marcos(i, crate::marcos_pin::PedidoMarco::Alternar);
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN
+            if (wparam.0 as u32 == VK_DELETE.0 as u32 || wparam.0 as u32 == VK_ESCAPE.0 as u32)
+                && interno_de(hwnd).is_some_and(|i| i.modo_marcos && !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                pedir_marcos(
+                    i,
+                    if wparam.0 as u32 == VK_DELETE.0 as u32 {
+                        crate::marcos_pin::PedidoMarco::QuitarUltimo
+                    } else {
+                        crate::marcos_pin::PedidoMarco::Alternar
+                    },
+                );
+            }
+            LRESULT(0)
+        }
+        // Ctrl+P: imprimir. En una foto con marcos, todos en grupo; sin
+        // ellos (o en otro pin), lo de siempre: elegir una zona e imprimirla.
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'P' as u32
+                && tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                if admite_marcos(i) {
+                    pedir_marcos(i, crate::marcos_pin::PedidoMarco::Imprimir);
+                } else {
+                    i.raton_encima = false;
+                    esconder_barra(hwnd);
+                    if let Some(i) = interno_de(hwnd) {
+                        (i.al_cambiar)(CambioPin::ImprimirPedido);
+                    }
+                }
+            }
+            LRESULT(0)
+        }
         // A: anotar encima (lo mismo que el doble clic, en fotos y notas).
         WM_KEYDOWN
             if wparam.0 as u32 == b'A' as u32
@@ -5371,6 +5761,13 @@ extern "system" fn procedimiento_pin(
         WM_SETCURSOR => {
             let id = interno_de(hwnd)
                 .map(|i| {
+                    // Poniendo marcos, la cruz: arrastrar pone uno.
+                    // Sobre una ficha, la mano: lleva a su marco.
+                    if i.modo_marcos && !i.anotando {
+                        let (c, r) = (cursor_de_pantalla(), i.estado.rect());
+                        let (x, y) = ((c.x - r.x) as f32, (c.y - r.y) as f32);
+                        return if ficha_bajo(i, x, y).is_some() { IDC_HAND } else { IDC_CROSS };
+                    }
                     if i.anotando {
                         // Anotando no se mueve ni se redimensiona: el cursor
                         // es el de la herramienta.
@@ -5462,6 +5859,7 @@ extern "system" fn procedimiento_pin(
         WM_NCDESTROY => {
             // Un pin que se va no deja su barra ni sus guias a la vista.
             crate::barra_flotante::esconder(hwnd);
+            crate::riel_pin::esconder(hwnd);
             // SAFETY: recupera el Box cedido en Pin::nuevo exactamente una
             // vez y deja el USERDATA a cero antes de soltarlo.
             unsafe {
@@ -6334,6 +6732,303 @@ mod pruebas {
         );
         drop(panel);
         drop(nota);
+        drop(foto);
+        bombear(100);
+    }
+
+    /// **El riel del pin** (19-oct-2026): el lapiz y el marco a la derecha
+    /// de una foto, con la barra (ya sin lapiz) encima; luego anotando, con
+    /// el lapiz encendido y la barra fuera. Deja dos PNG en el temporal
+    /// (`pixpin-riel-pin.png` y `pixpin-riel-pin-anotando.png`).
+    #[test]
+    #[ignore = "necesita GPU y escritorio; --ignored y mirar el PNG"]
+    fn muestra_del_riel_del_pin() {
+        let d3d = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        let textos = crate::menu::pruebas::textos();
+        let (w, h) = (420u32, 260u32);
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                px.extend_from_slice(&[
+                    (200 + x * 50 / w) as u8,
+                    (160 + y * 60 / h) as u8,
+                    (90 + x * 40 / w) as u8,
+                    255,
+                ]);
+            }
+        }
+        let rect = Rect {
+            x: 200,
+            y: 220,
+            ancho: w,
+            alto: h,
+        };
+        let foto = Pin::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Contenido::Imagen(ImagenRgba {
+                ancho: w,
+                alto: h,
+                pixeles: px,
+            }),
+            rect,
+            100,
+            false,
+            16,
+            Box::new(|_| {}),
+        )
+        .unwrap();
+        foto.poner_textos(textos.clone());
+        bombear(300);
+
+        let i = interno_de(foto.hwnd()).unwrap();
+        ensenar_barra(i);
+        // SAFETY: temporizador de una ventana propia de la prueba.
+        unsafe {
+            let _ = KillTimer(Some(foto.hwnd()), ID_TEMPORIZADOR_BARRA);
+        }
+        let r = i.estado.rect();
+        let (rx, ry) = (r.derecha() + 20, r.y + 20);
+        assert!(crate::riel_pin::contiene(rx, ry), "el riel, a la derecha");
+        bombear(500);
+        let k = {
+            use windows::Win32::Graphics::Gdi::{
+                DESKTOPHORZRES, GetDC, GetDeviceCaps, HORZRES, ReleaseDC,
+            };
+            // SAFETY: DC de pantalla pedido y soltado aqui.
+            unsafe {
+                let dc = GetDC(None);
+                let k = GetDeviceCaps(Some(dc), DESKTOPHORZRES) as f32
+                    / GetDeviceCaps(Some(dc), HORZRES).max(1) as f32;
+                ReleaseDC(None, dc);
+                k
+            }
+        };
+        let z = |v: i32| (v as f32 * k) as i32;
+        let zona = Rect {
+            x: z(150),
+            y: z(140),
+            ancho: z(560) as u32,
+            alto: z(380) as u32,
+        };
+        let guardar = |nombre: &str| {
+            let png = pixpin_codec::codificar_png(&capturar_pantalla(zona)).unwrap();
+            let ruta = std::env::temp_dir().join(nombre);
+            std::fs::write(&ruta, png).unwrap();
+            println!("captura en {}", ruta.display());
+        };
+        guardar("pixpin-riel-pin.png");
+
+        // Anotando: la barra se va, el riel se queda con el lapiz encendido.
+        esconder_barra(foto.hwnd());
+        foto.poner_modo_anotacion(true);
+        bombear(400);
+        assert!(!crate::barra_flotante::es_de(foto.hwnd()));
+        assert!(crate::riel_pin::contiene(rx, ry), "anotando, el riel se queda");
+        guardar("pixpin-riel-pin-anotando.png");
+
+        foto.poner_modo_anotacion(false);
+        bombear(100);
+        assert!(
+            !crate::riel_pin::contiene(rx, ry),
+            "caso negativo: al salir de anotar se va"
+        );
+        drop(foto);
+        bombear(100);
+    }
+
+    /// El ancho de una ventana, en pixeles.
+    fn riel_ancho(h: HWND) -> i32 {
+        let mut r = RECT::default();
+        // SAFETY: GetWindowRect sobre una ventana propia de la prueba.
+        unsafe {
+            let _ = GetWindowRect(h, &mut r);
+        }
+        r.right - r.left
+    }
+
+    /// **Los marcos numerados de una foto**, por la ventana de verdad: la I
+    /// entra en el modo, dos arrastres ponen los marcos 1 y 2 (el gestor lo
+    /// hace aqui la prueba: apunta cada pedido y devuelve la lista), el pin
+    /// no se mueve y, agrandado, los marcos siguen en su sitio de la foto.
+    /// Deja `pixpin-marcos-pin.png` y `pixpin-marcos-pin-grande.png` en
+    /// `PIXPIN_MUESTRAS_PINES` (o la carpeta temporal).
+    #[test]
+    #[ignore = "necesita GPU y escritorio; --ignored y mirar el PNG"]
+    fn muestra_de_los_marcos_del_pin() {
+        use crate::marcos_pin::PedidoMarco;
+        let d3d = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        let (w, h) = (420u32, 260u32);
+        let mut px = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                // Cuadricula de 20 px para ver que el marco no se corre.
+                let raya = x % 20 == 0 || y % 20 == 0;
+                let v = if raya { 120 } else { 235 };
+                px.extend_from_slice(&[v, v, (v as u32 * 9 / 10) as u8, 255]);
+            }
+        }
+        let rect = Rect { x: 200, y: 220, ancho: w, alto: h };
+        let pedidos: Rc<RefCell<Vec<PedidoMarco>>> = Rc::default();
+        let apunta = Rc::clone(&pedidos);
+        let foto = Pin::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Contenido::Imagen(ImagenRgba { ancho: w, alto: h, pixeles: px }),
+            rect,
+            100,
+            false,
+            16,
+            Box::new(move |c| {
+                if let CambioPin::MarcoPedido(p) = c {
+                    apunta.borrow_mut().push(p);
+                }
+            }),
+        )
+        .unwrap();
+        foto.poner_textos(crate::menu::pruebas::textos());
+        bombear(300);
+        let hwnd = foto.hwnd();
+        assert!(foto.admite_marcos());
+
+        // La I pide entrar; el «gestor» contesta encendiendo el modo.
+        // SAFETY: mensajes sincronos a una ventana propia de la prueba.
+        unsafe {
+            SendMessageW(hwnd, WM_KEYDOWN, Some(WPARAM(b'I' as usize)), Some(LPARAM(0)));
+        }
+        assert_eq!(pedidos.borrow_mut().pop(), Some(PedidoMarco::Alternar));
+        let pista = "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir todos · Supr: quitar el último · I: salir";
+        foto.poner_marcos(Vec::new(), true, pista);
+        assert!(foto.modo_marcos());
+
+        let (ox, oy) = origen_contenido(hwnd, foto.rect_contenido());
+        let cliente = |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
+        let mut lista: Vec<[f64; 4]> = Vec::new();
+        for (a, b) in [((20, 20), (180, 120)), ((240, 140), (400, 240))] {
+            // SAFETY: mensajes sincronos a una ventana propia de la prueba.
+            unsafe {
+                SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(a.0, a.1)));
+                SendMessageW(hwnd, WM_MOUSEMOVE, Some(WPARAM(1)), Some(cliente(b.0, b.1)));
+                SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(b.0, b.1)));
+            }
+            let Some(PedidoMarco::Nuevo { a, b, px }) = pedidos.borrow_mut().pop() else {
+                panic!("soltar pide el marco nuevo");
+            };
+            assert!((px - 1.0).abs() < 1e-9, "al 100 %, un pixel de la foto es uno de pantalla");
+            lista.push(crate::marcos_pin::ordenada(a, b));
+            foto.poner_marcos(lista.clone(), true, pista);
+        }
+        assert_eq!(lista[0], [20.0, 20.0, 180.0, 120.0], "en pixeles de la foto");
+        assert_eq!(foto.rect_contenido(), rect, "poniendo marcos el pin no se mueve");
+        // Supr pide quitar el ultimo (el gestor no lo hace aqui).
+        // SAFETY: mensaje sincrono a una ventana propia de la prueba.
+        unsafe {
+            SendMessageW(hwnd, WM_KEYDOWN, Some(WPARAM(VK_DELETE.0 as usize)), Some(LPARAM(0)));
+        }
+        assert_eq!(pedidos.borrow_mut().pop(), Some(PedidoMarco::QuitarUltimo));
+        bombear(300);
+
+        let dir = std::env::var_os("PIXPIN_MUESTRAS_PINES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let k = {
+            use windows::Win32::Graphics::Gdi::{DESKTOPHORZRES, GetDC, GetDeviceCaps, HORZRES, ReleaseDC};
+            // SAFETY: DC de pantalla pedido y soltado aqui.
+            unsafe {
+                let dc = GetDC(None);
+                let k = GetDeviceCaps(Some(dc), DESKTOPHORZRES) as f32
+                    / GetDeviceCaps(Some(dc), HORZRES).max(1) as f32;
+                ReleaseDC(None, dc);
+                k
+            }
+        };
+        let z = |v: i32| (v as f32 * k) as i32;
+        let guardar = |nombre: &str, zona: Rect| {
+            let png = pixpin_codec::codificar_png(&capturar_pantalla(zona)).unwrap();
+            let ruta = dir.join(nombre);
+            std::fs::write(&ruta, png).unwrap();
+            println!("captura en {}", ruta.display());
+        };
+        guardar(
+            "pixpin-marcos-pin.png",
+            Rect { x: z(170), y: z(190), ancho: z(540) as u32, alto: z(330) as u32 },
+        );
+
+        // Fuera del modo y al doble de tamano: los marcos, en su sitio.
+        foto.poner_marcos(lista.clone(), false, pista);
+        let grande = Rect { x: 200, y: 220, ancho: w * 3 / 2, alto: h * 3 / 2 };
+        foto.poner_rect(grande);
+        bombear(300);
+        guardar(
+            "pixpin-marcos-pin-grande.png",
+            Rect { x: z(170), y: z(190), ancho: z(700) as u32, alto: z(440) as u32 },
+        );
+
+        // Pequeno y con el modo puesto: la pista no se corta por el borde.
+        foto.poner_marcos(lista.clone(), true, pista);
+        foto.poner_rect(Rect { x: 200, y: 220, ancho: 260, alto: 160 });
+        bombear(300);
+        guardar(
+            "pixpin-marcos-pin-pequeno.png",
+            Rect { x: z(170), y: z(190), ancho: z(360) as u32, alto: z(230) as u32 },
+        );
+
+        // De vuelta a su tamano, la ficha 2 (abajo a la izquierda) lleva al
+        // marco 2: el zoom de dentro lo acerca hasta llenar el pin, sin
+        // pedir un marco nuevo.
+        foto.poner_rect(rect);
+        bombear(200);
+        let (ox, oy) = origen_contenido(hwnd, foto.rect_contenido());
+        let cliente = |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
+        let ficha = crate::marcos_pin::fichas(
+            RectF { x: 0.0, y: 0.0, ancho: w as f32, alto: h as f32 },
+            lista.len(),
+            1.0,
+        )[1];
+        let (fx, fy) = ((ficha.x + ficha.ancho / 2.0) as i32, (ficha.y + ficha.alto / 2.0) as i32);
+        // SAFETY: mensajes sincronos a una ventana propia de la prueba.
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(fx, fy)));
+            SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(fx, fy)));
+        }
+        assert!(pedidos.borrow().is_empty(), "pulsar una ficha no pone un marco");
+        let zoom = interno_de(hwnd).map(|i| (i.vista_escala, i.vista_dx, i.vista_dy)).unwrap();
+        assert!((zoom.0 - 2.444).abs() < 0.01, "el marco 2 (160 x 100) llena el pin: {zoom:?}");
+        // Su centro (320, 190) en el centro del pin, o lo mas cerca sin
+        // despegar la foto del borde.
+        assert!(zoom.1 <= 0.0 && zoom.2 <= 0.0);
+        bombear(300);
+        guardar(
+            "pixpin-marcos-pin-ficha2.png",
+            Rect { x: z(170), y: z(190), ancho: z(540) as u32, alto: z(330) as u32 },
+        );
+        // La otra ficha cambia de marco: el 1, del mismo tamano y mas a la
+        // izquierda.
+        // SAFETY: mensajes sincronos a una ventana propia de la prueba.
+        unsafe {
+            SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(20, h as i32 - 20)));
+            SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(20, h as i32 - 20)));
+        }
+        let z1 = interno_de(hwnd).map(|i| (i.vista_escala, i.vista_dx, i.vista_dy)).unwrap();
+        assert!((z1.0 - zoom.0).abs() < 0.01 && z1.1 > zoom.1, "la ficha 1 va al marco 1, mas a la izquierda: {z1:?}");
+
+        // El riel con el raton sobre el marco: su globo «Marcos para
+        // imprimir (I)» a la izquierda, la ventana del riel crece para el.
+        if let Some(i) = interno_de(hwnd) {
+            ensenar_riel(i, false);
+        }
+        bombear(150);
+        let riel = crate::riel_pin::ventana_de_prueba().expect("el riel esta");
+        let antes = riel_ancho(riel);
+        crate::riel_pin::encima_de_prueba(Some(crate::riel_pin::BotonRiel::Marco));
+        bombear(200);
+        assert!(riel_ancho(riel) > antes + 60, "el riel crece para su globo");
+        guardar(
+            "pixpin-riel-pin-globo.png",
+            Rect { x: z(400), y: z(200), ancho: z(300) as u32, alto: z(120) as u32 },
+        );
         drop(foto);
         bombear(100);
     }

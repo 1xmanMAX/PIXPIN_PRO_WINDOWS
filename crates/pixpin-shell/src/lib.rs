@@ -16,7 +16,9 @@ pub mod aviso;
 pub mod bandeja;
 pub mod caja_de_texto;
 pub mod colocacion;
+pub mod compartido;
 pub mod compartir;
+pub mod consola;
 pub mod dialogo;
 pub mod elegir;
 pub mod elegir_carpeta;
@@ -26,16 +28,21 @@ pub mod entrada;
 pub mod espacio_explorador;
 pub mod explorador;
 pub mod exportar;
+pub mod menu_rico;
 pub mod gestos;
 pub mod gestos_tactiles;
 pub mod guardar;
 pub mod hechos;
+pub mod impresora;
 pub mod imprimir;
 pub mod instancia;
 pub mod jump_list;
+pub mod juntar;
 pub mod marco_zona;
 pub mod mdns;
 pub mod mensajero;
+pub mod orden;
+pub mod notificacion;
 pub mod overlay;
 pub mod pantalla_de;
 pub mod papelera;
@@ -60,7 +67,7 @@ pub use arranque::ErrorArranque;
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
 pub use atajos::{
     AtajosRegistrados, ID_ANOTAR, ID_ANOTAR_CONGELADA, ID_COPIAR, ID_CUENTAGOTAS, ID_PIN,
-    ID_PORTAPAPELES, ID_REGION, ID_SCROLL, registrar,
+    ID_REGION, ID_SCROLL, registrar,
 };
 pub use bandeja::{Bandeja, EtiquetasMenu};
 pub use dialogo::{confirmar_destructivo, mostrar_error_fatal, preguntar};

@@ -56,10 +56,38 @@ pub fn mencion(texto: &str) -> Option<String> {
     None
 }
 
+// ---------------------------------------------------------------------------
+// «Nueva conversación» (17-oct-2026)
+
+/// En `resto` de la nota que marca una **conversacion nueva**: lo de antes
+/// sigue en la vista (y se sincroniza como siempre), pero ya no se le manda
+/// al modelo. Es una nota normal del asistente (el movil la ve como una
+/// respuesta mas y conserva `resto` tal cual), no un formato nuevo.
+pub const NUEVA_CONVERSACION: &str = "nuevaConversacionIa";
+
+/// Lo que dice esa nota en la burbuja.
+pub const TEXTO_NUEVA_CONVERSACION: &str =
+    "🧹 Conversación nueva: lo de arriba ya no se le manda al asistente.";
+
+/// Si es la marca de una conversacion nueva.
+pub fn es_corte(m: &Nota) -> bool {
+    es_del_asistente(m) && m.resto.get(NUEVA_CONVERSACION).and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// **Lo que el asistente ve de la conversacion**: lo de despues de la ultima
+/// «Conversación nueva» (todo, si no hay ninguna). Asi pedir algo nuevo no
+/// arrastra el contexto del chat entero (el usuario, 17-oct-2026).
+pub fn desde_el_corte(mensajes: &[Nota]) -> &[Nota] {
+    match mensajes.iter().rposition(es_corte) {
+        Some(i) => &mensajes[i + 1..],
+        None => mensajes,
+    }
+}
+
 /// La conversacion de antes, para el modelo: `(es_del_usuario, texto)` de
 /// las notas (las fotos y ficheros van aparte).
 pub fn conversacion(anteriores: &[Nota]) -> Vec<(bool, String)> {
-    anteriores
+    desde_el_corte(anteriores)
         .iter()
         .filter(|m| es_nota(m) && !m.texto.trim().is_empty())
         .map(|m| (!es_del_asistente(m), m.texto.clone()))
@@ -70,7 +98,7 @@ pub fn conversacion(anteriores: &[Nota]) -> Vec<(bool, String)> {
 /// texto)`): la hoja de trabajo apunta desde que nota se reinicio, y
 /// `buscar_historial` dice de que mensaje sale cada trozo.
 pub fn conversacion_con_ids(anteriores: &[Nota]) -> Vec<(String, i64, bool, String)> {
-    anteriores
+    desde_el_corte(anteriores)
         .iter()
         .filter(|m| es_nota(m) && !m.texto.trim().is_empty())
         .map(|m| (m.id.clone(), m.numero, !es_del_asistente(m), m.texto.clone()))
@@ -159,6 +187,12 @@ pub fn mencion_de_lienzo(m: &Nota) -> String {
     format!("{MENCION_LIENZO}{}", nombre_de_lienzo(m).replace(char::is_whitespace, "_"))
 }
 
+/// Un nombre de lienzo para compararlo: sin tildes ni mayusculas, `_` por
+/// espacio y sin espacios a los lados.
+pub fn nombre_normal(s: &str) -> String {
+    sin_tildes(s.trim()).trim().to_string()
+}
+
 fn sin_tildes(s: &str) -> String {
     s.to_lowercase()
         .chars()
@@ -204,6 +238,23 @@ pub fn resolver_lienzo(pregunta: &str, mensajes: &[Nota]) -> (String, Option<Str
     }
     texto.push_str(resto);
     (texto, destino)
+}
+
+/// **El lienzo de la conversacion que se llama `nombre`** (sin tildes ni
+/// mayusculas, `_` por espacio, como la mencion): el ultimo que se llame
+/// justo asi o, si ninguno, el ultimo cuyo nombre lo contenga. Lo usan las
+/// herramientas de lienzos del asistente y los envios a un lienzo por su
+/// nombre (`pila_lienzo`, 17-oct).
+pub fn lienzo_por_nombre(mensajes: &[Nota], nombre: &str) -> Option<usize> {
+    let buscado = sin_tildes(nombre.trim());
+    if buscado.trim().is_empty() {
+        return None;
+    }
+    let lienzos = || mensajes.iter().enumerate().rev().filter(|(_, m)| es_lienzo(m));
+    lienzos()
+        .find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)) == buscado)
+        .or_else(|| lienzos().find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)).contains(buscado.trim())))
+        .map(|(i, _)| i)
 }
 
 /// El lienzo propio del asistente en esta conversacion: el ultimo que creo
@@ -259,7 +310,7 @@ pub fn fuentes_para_la_nota(citas: &[pixpin_ia::documentos::Cita], respuesta: &s
     if citas.is_empty() {
         return None;
     }
-    let c = pixpin_ia::documentos::Citas { lista: citas.to_vec() };
+    let c = pixpin_ia::documentos::Citas { lista: citas.to_vec(), desfase_ms: None };
     let citadas: Vec<serde_json::Value> = c
         .citadas(respuesta)
         .into_iter()
@@ -425,13 +476,23 @@ pub const CADUCA_LA_PREGUNTA: std::time::Duration = std::time::Duration::from_se
 
 /// Lo que se ensena mientras se usa cada herramienta.
 pub fn rotulo_de(nombre: &str) -> String {
+    // La hoja al lienzo cuenta sus zonas: `hoja_a_lienzo:3/9`.
+    if let Some(resto) = nombre.strip_prefix(pixpin_ia::hoja::NOMBRE) {
+        return match resto.strip_prefix(':') {
+            Some(cuenta) => format!("📄 pasando la hoja al lienzo… {cuenta} zonas"),
+            None => "📄 pasando la hoja al lienzo…".to_string(),
+        };
+    }
     match nombre {
         DIBUJAR => "✏️ dibujando en el lienzo…",
         GRAFICA => "📊 haciendo la gráfica…",
         OCR => "🔎 leyendo el documento…",
+        pixpin_ia::ojos::NOMBRE => "👀 mirando el lienzo…",
         pixpin_ia::contexto::BUSCAR_HISTORIAL => "🗂️ buscando en la conversación…",
         CALCAR => "🖼️ calcando la imagen…",
         AYUDA => "📖 mirando la ayuda…",
+        pixpin_ia::nube::claude::BUSCAR_EN_LA_WEB => "🌐 buscando en la web…",
+        pixpin_ia::nube::claude::LEER_LA_WEB => "🌐 leyendo la página…",
         _ => "⚙️ trabajando…",
     }
     .to_string()
@@ -552,5 +613,146 @@ impl EnVivo {
             s.push_str(&format!("\n⚠️ {}", self.fallos.join(" · ")));
         }
         s.trim_start().to_string()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Las listas de la respuesta, como listas (17-oct-2026)
+
+/// **El texto de una respuesta del asistente como se pinta en su burbuja**
+/// (el usuario, 17-oct-2026: «que las respuestas en lista tengan un formato
+/// mas claro: lo da todo en texto y confunde»). El modelo escribe Markdown
+/// ligero; la burbuja es texto con tramos, asi que aqui se pasa a algo que
+/// se lee:
+///
+/// - `- x`, `* x`, `+ x` → `•  x` (con sangria por nivel: `◦` en el
+///   segundo); `1. x` / `1) x` se queda numerada.
+/// - `# Titulo` … `###### Titulo` → la linea en negrita, sin almohadillas.
+/// - `**x**` y `__x__` → `x` en negrita; `` `x` `` → `x`.
+/// - Las vallas de codigo (```` ``` ````) se quitan; lo de dentro, tal cual.
+///
+/// Devuelve el texto y los tramos en negrita como `(inicio, longitud)` en
+/// unidades UTF-16 (las de DirectWrite). Lo guardado no cambia: copiar la
+/// burbuja copia lo que escribio el modelo.
+pub fn formato_de_respuesta(texto: &str) -> (String, Vec<(u32, u32)>) {
+    let mut salida = String::with_capacity(texto.len());
+    let mut negritas: Vec<(u32, u32)> = Vec::new();
+    // Lo escrito, en UTF-16.
+    let mut u16s: u32 = 0;
+    let mut en_codigo = false;
+    let mut primera = true;
+    for linea in texto.lines() {
+        let t = linea.trim_end();
+        if t.trim_start().starts_with("```") {
+            en_codigo = !en_codigo;
+            continue;
+        }
+        if !primera {
+            salida.push('\n');
+            u16s += 1;
+        }
+        primera = false;
+        let mut empujar = |s: &str, negrita: bool, salida: &mut String, u16s: &mut u32| {
+            let n = s.encode_utf16().count() as u32;
+            if negrita && n > 0 {
+                negritas.push((*u16s, n));
+            }
+            salida.push_str(s);
+            *u16s += n;
+        };
+        if en_codigo {
+            empujar(t, false, &mut salida, &mut u16s);
+            continue;
+        }
+        let sangria = t.len() - t.trim_start().len();
+        let cuerpo = t.trim_start();
+        // Titulo: toda la linea en negrita.
+        let almohadillas = cuerpo.chars().take_while(|c| *c == '#').count();
+        if (1..=6).contains(&almohadillas) && cuerpo[almohadillas..].starts_with(' ') {
+            let titulo = sin_marcas_en_linea(cuerpo[almohadillas..].trim());
+            empujar(&titulo, true, &mut salida, &mut u16s);
+            continue;
+        }
+        // Viñeta o numero.
+        let nivel = sangria / 2;
+        let (prefijo, resto) = if let Some(r) = ["- ", "* ", "+ "].iter().find_map(|m| cuerpo.strip_prefix(m)) {
+            let vineta = if nivel == 0 { "•  " } else { "◦  " };
+            (format!("{}{vineta}", "    ".repeat(nivel)), r)
+        } else if let Some((n, r)) = numero_de_lista(cuerpo) {
+            (format!("{}{n}. ", "    ".repeat(nivel)), r)
+        } else {
+            (" ".repeat(sangria), cuerpo)
+        };
+        empujar(&prefijo, false, &mut salida, &mut u16s);
+        // `**negrita**` dentro de la linea.
+        let mut resto = resto;
+        loop {
+            let marca = ["**", "__"].iter().filter_map(|m| resto.find(m).map(|i| (i, *m))).min_by_key(|(i, _)| *i);
+            let Some((i, m)) = marca else { break };
+            let tras = &resto[i + 2..];
+            let Some(j) = tras.find(m) else { break };
+            if j == 0 {
+                break;
+            }
+            empujar(&sin_comillas_de_codigo(&resto[..i]), false, &mut salida, &mut u16s);
+            empujar(&sin_comillas_de_codigo(&tras[..j]), true, &mut salida, &mut u16s);
+            resto = &tras[j + 2..];
+        }
+        empujar(&sin_comillas_de_codigo(resto), false, &mut salida, &mut u16s);
+    }
+    (salida, negritas)
+}
+
+/// `12. resto` o `12) resto`: el numero y el resto.
+fn numero_de_lista(s: &str) -> Option<(&str, &str)> {
+    let digitos = s.chars().take_while(char::is_ascii_digit).count();
+    if digitos == 0 || digitos > 3 {
+        return None;
+    }
+    let tras = &s[digitos..];
+    let r = tras.strip_prefix(". ").or_else(|| tras.strip_prefix(") "))?;
+    Some((&s[..digitos], r))
+}
+
+fn sin_comillas_de_codigo(s: &str) -> String {
+    s.replace('`', "")
+}
+
+fn sin_marcas_en_linea(s: &str) -> String {
+    sin_comillas_de_codigo(&s.replace("**", "").replace("__", ""))
+}
+
+#[cfg(test)]
+mod pruebas_formato {
+    use super::*;
+
+    fn negrita<'a>(t: &'a str, (i, n): (u32, u32)) -> String {
+        let u: Vec<u16> = t.encode_utf16().collect();
+        String::from_utf16(&u[i as usize..(i + n) as usize]).unwrap()
+    }
+
+    #[test]
+    fn las_listas_se_ven_como_listas() {
+        let (t, b) = formato_de_respuesta(
+            "### Tus archivos\nTienes **3** archivos:\n- `plano.pdf` (vie 3-oct 14:05)\n  - revisión\n* informe.docx\n1. primero\n2) segundo",
+        );
+        assert_eq!(
+            t,
+            "Tus archivos\nTienes 3 archivos:\n•  plano.pdf (vie 3-oct 14:05)\n    ◦  revisión\n•  informe.docx\n1. primero\n2. segundo"
+        );
+        let nb: Vec<String> = b.iter().map(|x| negrita(&t, *x)).collect();
+        assert_eq!(nb, vec!["Tus archivos", "3"]);
+    }
+
+    #[test]
+    fn lo_que_no_es_markdown_no_se_toca() {
+        // Casos negativos: un guion en medio, un numero sin punto, un
+        // asterisco suelto, emojis (UTF-16 de dos unidades) y el codigo.
+        let s = "a - b\n2026 fue bueno\n5 * 3 = 15\n✏️ dibujando…\n```\n- no es lista\n```";
+        let (t, b) = formato_de_respuesta(s);
+        assert_eq!(t, "a - b\n2026 fue bueno\n5 * 3 = 15\n✏️ dibujando…\n- no es lista");
+        assert!(b.is_empty());
+        let (t, b) = formato_de_respuesta("🎨 **Lienzo** listo");
+        assert_eq!(negrita(&t, b[0]), "Lienzo");
     }
 }

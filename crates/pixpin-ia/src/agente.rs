@@ -69,6 +69,18 @@ pub trait Ejecutor {
     fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
         llamadas.iter().map(|l| self.ejecutar(l)).collect()
     }
+
+    /// **Pinta el lienzo** (o la hoja anotada) para que el modelo lo vea
+    /// (`ver_lienzo` y la revision, `ojos.rs`). Por omision no hay nada que
+    /// mirar: el turno sigue sin vista.
+    fn ver(&mut self, _mirada: &crate::ojos::Mirada) -> Result<crate::ojos::Vista, String> {
+        Err("aqui no hay lienzo que mirar".into())
+    }
+
+    /// Acabo un turno que cambio el lienzo: lo que hizo (y lo que corrigio al
+    /// revisar) queda en un solo paso de deshacer si nadie lo toco entre
+    /// medias. Por omision, nada.
+    fn cerrar_turno(&mut self) {}
 }
 
 /// Como acabo el turno.
@@ -106,6 +118,12 @@ pub struct Opciones<'a> {
     /// simples («abre la galería», «apunta comprar pan mañana») se hacen sin
     /// preguntar al modelo ([`crate::rapido`]). `None`: siempre el modelo.
     pub rapido: Option<crate::fechas::Momento>,
+    /// **Los ojos** (15-oct, `ojos.rs`): ofrecer `ver_lienzo` si el motor ve
+    /// imagenes.
+    pub ojos: bool,
+    /// Rondas de revision tras un turno que dibujo o anoto (0: ninguna; como
+    /// mucho [`REVISIONES_MAXIMAS`]). Solo con `ojos` y un motor que ve.
+    pub revisar: usize,
 }
 
 /// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
@@ -129,10 +147,12 @@ fn turno_rapido(
     historial: &mut Vec<Mensaje>,
     ejecutor: &mut dyn Ejecutor,
     ahora: crate::fechas::Momento,
+    // Con la nube, tambien las ordenes de `acciones::SOLO_NUBE`.
+    nube: bool,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Option<Final> {
     let ultimo = historial.last().filter(|m| m.rol == Rol::Usuario && !m.tiene_imagen())?;
-    let orden = crate::rapido::interpretar(&ultimo.texto_entero(), ahora)?;
+    let orden = crate::rapido::interpretar_con(&ultimo.texto_entero(), ahora, nube)?;
     let cruda = crate::motor::LlamadaCruda {
         id: "rapido-1".into(),
         nombre: orden.herramienta.into(),
@@ -428,13 +448,33 @@ fn turno_dentro(
 ) -> Result<Final, ErrorIa> {
     // Antes que nada (ni plan ni modelo): la orden simple, al instante.
     if let Some(ahora) = opciones.rapido
-        && let Some(f) = turno_rapido(historial, ejecutor, ahora, al_evento)
+        && let Some(f) = turno_rapido(historial, ejecutor, ahora, motor.catalogo_completo(), al_evento)
     {
         return Ok(f);
     }
+    // La hoja al lienzo solo con la nube (decision del usuario, 14-oct): el
+    // local ni la ve, y si se le pide se contesta sin preguntarle.
+    let local = !motor.catalogo_completo();
+    if local && let Some(f) = crate::hoja::solo_nube(historial, al_evento) {
+        return Ok(f);
+    }
     let mut lista = herramientas_base.to_vec();
+    if !local {
+        // Lo que la nube sabe de mas (tabla, paralelogramo, que herramienta
+        // va con cada pedido): el local, con su catalogo de siempre.
+        crate::herramientas::para_la_nube(&mut lista);
+    }
+    if local {
+        lista.retain(|h| h.nombre != crate::hoja::NOMBRE);
+    }
     if opciones.buscar.is_some() && !lista.iter().any(|h| h.nombre == contexto::BUSCAR_HISTORIAL) {
         lista.push(contexto::herramienta_buscar());
+    }
+    // Los ojos (15-oct): `ver_lienzo` solo si el motor ve imagenes.
+    let ojos = opciones.ojos && motor.ve_imagenes();
+    lista.retain(|h| h.nombre != crate::ojos::NOMBRE);
+    if ojos {
+        lista.push(crate::ojos::herramienta());
     }
     let mut plan = None;
     if opciones.planificar {
@@ -443,7 +483,7 @@ fn turno_dentro(
         // ventanas» no dice «dibuja», pero el plan si lo entiende.
         let mut posibles = lista.clone();
         for h in opciones.ampliar.unwrap_or_default() {
-            if !posibles.iter().any(|x| x.nombre == h.nombre) {
+            if !posibles.iter().any(|x| x.nombre == h.nombre) && !(local && h.nombre == crate::hoja::NOMBRE) {
                 posibles.push(h.clone());
             }
         }
@@ -477,17 +517,124 @@ fn turno_dentro(
         let hoja = opciones.hoja.cloned().unwrap_or_default();
         contexto::poner_sistema(historial, contexto::sistema_con_hoja(&base, &hoja, plan.as_ref()));
     }
-    let mut hechas = 0;
+    let mut est = Estado::default();
+    let r = vueltas(motor, historial, herramientas, ejecutor, opciones, crono, &mut est, al_evento);
+    let dicho = match r {
+        Ok(d) => d,
+        Err(e) => {
+            if est.cambios > 0 {
+                ejecutor.cerrar_turno();
+            }
+            return Err(e);
+        }
+    };
+    let texto = match dicho {
+        Some(mut texto) => {
+            // **La revision** (15-oct): el usuario ya ve lo dibujado; ahora
+            // el modelo lo mira y corrige lo que este mal.
+            if ojos && opciones.revisar > 0 && est.cambios > 0 && !est.cortado
+                && let Some(extra) = revisar(motor, historial, herramientas, ejecutor, opciones, crono, &mut est, al_evento)
+            {
+                texto.push_str("\n\n");
+                texto.push_str(&extra);
+            }
+            texto
+        }
+        // Se acabaron las vueltas o los reintentos (o se corto): se dice
+        // claro en vez de dejar la burbuja vacia.
+        None if est.cortado => String::new(),
+        // Algo si salio (medido: el 2B dibuja bien y luego insiste en
+        // anadir mas con datos rotos): no se dice que no se hizo nada.
+        None if est.hechas > 0 => "Hecho en parte: lo demas no me salio con las herramientas.".to_string(),
+        None => "No he sabido hacerlo con las herramientas; prueba a pedirlo de otra forma o por partes.".to_string(),
+    };
+    if est.cambios > 0 {
+        // Todo lo que cambio el turno (y lo que corrigio), un solo Ctrl+Z.
+        ejecutor.cerrar_turno();
+    }
+    Ok(Final {
+        texto,
+        herramientas_hechas: est.hechas,
+        reintentos: est.reintentos,
+        cortado: est.cortado,
+    })
+}
+
+/// Lo que lleva la cuenta de un turno entre sus vueltas (y su revision).
+struct Estado {
+    hechas: usize,
+    reintentos: usize,
+    cortado: bool,
+    /// Cuantos elementos puede llevar cada lista de una llamada: empieza en
+    /// [`TOPE_LISTAS`] y baja a [`TOPE_LISTAS_REINTENTO`] si una salio
+    /// cortada. Con la gramatica de llama.cpp el modelo NO PUEDE pasarse.
+    tope: u64,
+    /// `buscar_historial` vale UNA vuelta por turno: medido con el 2B
+    /// (13-oct), con ella a mano la llamaba seis veces seguidas y no
+    /// contestaba nunca. Tras usarla se quita, y el modelo contesta con lo
+    /// que encontro.
+    ya_busco: bool,
+    /// Llamadas hechas que cambiaron lo que se ve (dibujar, editar, anotar).
+    cambios: usize,
+    /// Si lo ultimo que cambio fue un documento anotado: la revision mira
+    /// la hoja con lo anotado, no el lienzo.
+    documento: bool,
+    /// Cuantas vistas pidio el modelo en este turno.
+    vistas: usize,
+}
+
+impl Default for Estado {
+    fn default() -> Self {
+        Estado {
+            hechas: 0,
+            reintentos: 0,
+            cortado: false,
+            tope: TOPE_LISTAS,
+            ya_busco: false,
+            cambios: 0,
+            documento: false,
+            vistas: 0,
+        }
+    }
+}
+
+/// Cuantas veces puede pedir el modelo `ver_lienzo` en un turno (cada vista
+/// son ~1000 tokens que se releen en cada vuelta).
+pub const VISTAS_POR_TURNO: usize = 3;
+
+/// Cuantas rondas de revision como mucho, pida lo que pida la app.
+pub const REVISIONES_MAXIMAS: usize = 2;
+
+/// **El pedido del usuario**: su ultimo mensaje que no sea una vista del
+/// lienzo ni un aviso de reintento.
+pub fn pedido_del_usuario(historial: &[Mensaje]) -> String {
+    historial
+        .iter()
+        .rev()
+        .filter(|m| m.rol == Rol::Usuario && !crate::ojos::es_vista(m))
+        .map(Mensaje::texto_entero)
+        .find(|t| !t.trim_start().starts_with("ERROR"))
+        .unwrap_or_default()
+}
+
+/// **Las vueltas modelo → herramientas → modelo** hasta que conteste con
+/// texto (`Some`) o se acaben las vueltas o los reintentos, o se corte
+/// (`None`).
+#[allow(clippy::too_many_arguments)]
+fn vueltas(
+    motor: &dyn Motor,
+    historial: &mut Vec<Mensaje>,
+    herramientas: &[Herramienta],
+    ejecutor: &mut dyn Ejecutor,
+    opciones: &Opciones,
+    crono: &mut Cronometro,
+    est: &mut Estado,
+    al_evento: &mut dyn FnMut(Evento) -> Seguir,
+) -> Result<Option<String>, ErrorIa> {
+    let ojos = herramientas.iter().any(|h| h.nombre == crate::ojos::NOMBRE);
+    // Los reintentos de ESTA tanda (la revision tiene los suyos).
     let mut reintentos = 0;
-    let mut cortado = false;
-    // Cuantos elementos puede llevar cada lista de una llamada: empieza en
-    // [`TOPE_LISTAS`] y baja a [`TOPE_LISTAS_REINTENTO`] si una salio
-    // cortada. Con la gramatica de llama.cpp el modelo NO PUEDE pasarse.
-    let mut tope = TOPE_LISTAS;
-    // `buscar_historial` vale UNA vuelta por turno: medido con el 2B (13-oct),
-    // con ella a mano la llamaba seis veces seguidas y no contestaba nunca.
-    // Tras usarla se quita, y el modelo contesta con lo que encontro.
-    let mut ya_busco = false;
+    let mut hechas_aqui = 0;
     for _ in 0..VUELTAS + REINTENTOS {
         if opciones.ventana > 0 {
             vigilar_contexto(historial, herramientas, opciones.ventana, al_evento);
@@ -495,11 +642,15 @@ fn turno_dentro(
         let mut peticion = Peticion::nueva(historial.clone());
         let ofrecidas: Vec<Herramienta> = herramientas
             .iter()
-            .filter(|h| !(ya_busco && h.nombre == contexto::BUSCAR_HISTORIAL))
+            .filter(|h| !(est.ya_busco && h.nombre == contexto::BUSCAR_HISTORIAL))
             .cloned()
             .collect();
-        peticion.herramientas = con_topes(&ofrecidas, tope);
-        peticion.max_tokens = tope_de_tokens(&peticion);
+        peticion.herramientas = con_topes(&ofrecidas, est.tope);
+        // La nube no tiene la ventana de 8192 del local: con su catalogo
+        // entero (~13k tokens) la cuenta del local la dejaba SIEMPRE en
+        // `MIN_TOKENS` (512) y un resumen o una llamada larga salian
+        // cortados (banco de documentos, 15-oct).
+        peticion.max_tokens = if motor.catalogo_completo() { MAX_TOKENS_NUBE } else { tope_de_tokens(&peticion) };
         let mut sep = Separador::nuevo();
         let respuesta = motor.completar(&peticion, &mut |t| repartir(t, &mut sep, crono, None, al_evento));
         for t in sep.acabar() {
@@ -512,15 +663,16 @@ fn turno_dentro(
             // llamada cortada por el tope de tokens. Se le pide que la repita
             // MAS CORTA, y la gramatica se lo impone (listas mas cortas).
             Err(ErrorIa::Protocolo(m)) if llamada_rota(&m) => {
-                tracing::warn!(detalle = %m, tope, "asistente: llamada a herramienta cortada");
+                tracing::warn!(detalle = %m, tope = est.tope, "asistente: llamada a herramienta cortada");
                 reintentos += 1;
+                est.reintentos += 1;
                 if reintentos > REINTENTOS {
                     break;
                 }
-                tope = TOPE_LISTAS_REINTENTO;
+                est.tope = TOPE_LISTAS_REINTENTO;
                 let motivo = pedir_mas_corto();
                 if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
-                    cortado = true;
+                    est.cortado = true;
                     break;
                 }
                 historial.push(Mensaje::usuario(motivo));
@@ -533,43 +685,36 @@ fn turno_dentro(
         }
         historial.push(mensaje_del_asistente(&respuesta));
         if respuesta.fin == Fin::Cortado {
-            cortado = true;
+            est.cortado = true;
             break;
         }
         if respuesta.llamadas.is_empty() {
             let texto = if !respuesta.texto.trim().is_empty() {
                 respuesta.texto
-            } else if hechas > 0 {
+            } else if hechas_aqui > 0 {
                 HECHO.to_string()
             } else {
                 SIN_PALABRAS.to_string()
             };
-            return Ok(Final {
-                texto,
-                herramientas_hechas: hechas,
-                reintentos,
-                cortado: false,
-            });
+            return Ok(Some(texto));
         }
         let mut alguna_mal = false;
         let mut busco_bien = false;
         // Lo que pidio el usuario, para los colores que el modelo olvide.
-        let pedido = historial
-            .iter()
-            .rev()
-            .find(|m| m.rol == Rol::Usuario)
-            .map(Mensaje::texto_entero)
-            .unwrap_or_default();
+        let pedido = pedido_del_usuario(historial);
         // Primero se valida todo; luego se hacen juntas las buenas
         // (`Ejecutor::ejecutar_varias`: las independientes, a la vez); y los
         // resultados vuelven al modelo en el orden de sus llamadas.
         let mut huecos: Vec<(String, Option<String>)> = Vec::new();
         let mut buenas: Vec<(usize, crate::herramientas::Validada)> = Vec::new();
+        // Las vistas pedidas: se pintan DESPUES de lo demas de la misma
+        // respuesta («dibuja y mira como quedo»).
+        let mut miradas: Vec<(usize, crate::ojos::Mirada)> = Vec::new();
         for cruda in &respuesta.llamadas {
             // `buscar_historial` no es del chat: lo contesta el propio turno.
             if let Some(buscar) = opciones.buscar.filter(|_| cruda.nombre.trim() == contexto::BUSCAR_HISTORIAL) {
                 let texto = match contexto::consulta_de(&cruda.argumentos) {
-                    _ if ya_busco => "Ya buscaste en este turno: contesta ahora con lo que encontraste.".into(),
+                    _ if est.ya_busco => "Ya buscaste en este turno: contesta ahora con lo que encontraste.".into(),
                     Some(c) => buscar(&c),
                     None => "ERROR: falta «consulta». Llama a buscar_historial con {\"consulta\": \"que buscar\"}."
                         .into(),
@@ -585,11 +730,31 @@ fn turno_dentro(
                 huecos.push((cruda.id.clone(), Some(recortar_resultado(texto))));
                 continue;
             }
+            // `ver_lienzo` tampoco: la imagen la pinta el ejecutor y va en
+            // un mensaje aparte (`ojos.rs`).
+            if ojos && cruda.nombre.trim() == crate::ojos::NOMBRE {
+                match crate::ojos::leer(&cruda.argumentos) {
+                    Ok(m) => {
+                        miradas.push((huecos.len(), m));
+                        huecos.push((cruda.id.clone(), None));
+                    }
+                    Err(e) => {
+                        alguna_mal = true;
+                        let motivo = format!("ERROR: {e}");
+                        if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                            est.cortado = true;
+                        }
+                        huecos.push((cruda.id.clone(), Some(motivo)));
+                    }
+                }
+                continue;
+            }
             match validar(&sanear(cruda), herramientas) {
                 Ok(mut v) => {
                     match &mut v.llamada {
                         Llamada::Dibujar(figuras) => colores_del_pedido(figuras, &pedido),
                         Llamada::Calcar(p) => crate::calcar::ajustar_al_pedido(p, &pedido),
+                        Llamada::Editar(e) => crate::edicion::ajustar_al_pedido(e, &pedido),
                         _ => {}
                     }
                     al_evento(Evento::Herramienta {
@@ -606,13 +771,13 @@ fn turno_dentro(
                     // llamada que se quedo sin tokens: la siguiente, corta.
                     // La siguiente, corta: una llamada larga que sale mal es
                     // la que mas tarda en repetirse.
-                    tope = TOPE_LISTAS_REINTENTO;
+                    est.tope = TOPE_LISTAS_REINTENTO;
                     if matches!(e, ErrorHerramienta::JsonRoto) || respuesta.fin == Fin::Longitud {
                         motivo = pedir_mas_corto();
                     }
                     tracing::warn!(herramienta = %cruda.nombre, %motivo, "asistente: llamada mal hecha");
                     if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
-                        cortado = true;
+                        est.cortado = true;
                     }
                     huecos.push((cruda.id.clone(), Some(motivo)));
                 }
@@ -627,7 +792,12 @@ fn turno_dentro(
                     Ok(t) => (true, t),
                     Err(t) => (false, format!("ERROR: {t}")),
                 };
-                hechas += usize::from(ok);
+                est.hechas += usize::from(ok);
+                hechas_aqui += usize::from(ok);
+                if ok && crate::ojos::cambia_lo_que_se_ve(&v.llamada) {
+                    est.cambios += 1;
+                    est.documento = matches!(&v.llamada, Llamada::App(a) if a.herramienta == crate::acciones_documentos::ANOTAR);
+                }
                 al_evento(Evento::Resultado {
                     nombre: v.llamada.nombre().to_string(),
                     ok,
@@ -640,37 +810,134 @@ fn turno_dentro(
                 huecos[i].1 = Some(para_el_modelo);
             }
         }
+        let mut vistas = Vec::new();
+        for (i, m) in miradas {
+            let texto = if est.vistas >= VISTAS_POR_TURNO {
+                format!("Ya miraste {VISTAS_POR_TURNO} veces en este turno: sigue con lo que viste.")
+            } else {
+                est.vistas += 1;
+                al_evento(Evento::Llamando(crate::ojos::NOMBRE.into()));
+                match ejecutor.ver(&m) {
+                    Ok(v) => {
+                        let t = format!("hecho: la imagen va en el mensaje siguiente ({}x{} px)", v.ancho, v.alto);
+                        vistas.push(v);
+                        t
+                    }
+                    Err(e) => format!("ERROR: {e}"),
+                }
+            };
+            al_evento(Evento::Resultado {
+                nombre: crate::ojos::NOMBRE.to_string(),
+                ok: !texto.starts_with("ERROR"),
+                texto: texto.clone(),
+            });
+            huecos[i].1 = Some(texto);
+        }
         for (id, texto) in huecos {
             historial.push(Mensaje::resultado(&id, texto.unwrap_or_default()));
         }
-        ya_busco |= busco_bien;
-        if cortado {
+        // Detras de los resultados, como mensaje del usuario: lo unico que
+        // admiten igual Claude, DeepSeek y llama.cpp.
+        for v in &vistas {
+            historial.push(crate::ojos::mensaje_de_vista(v, ""));
+        }
+        est.ya_busco |= busco_bien;
+        if est.cortado {
             break;
         }
         if alguna_mal {
             reintentos += 1;
+            est.reintentos += 1;
             if reintentos > REINTENTOS {
                 break;
             }
         }
     }
-    // Se acabaron las vueltas o los reintentos (o se corto): se dice claro en
-    // vez de dejar la burbuja vacia.
-    let texto = if cortado {
-        String::new()
-    } else if hechas > 0 {
-        // Algo si salio (medido: el 2B dibuja bien y luego insiste en
-        // anadir mas con datos rotos): no se dice que no se hizo nada.
-        "Hecho en parte: lo demas no me salio con las herramientas.".to_string()
-    } else {
-        "No he sabido hacerlo con las herramientas; prueba a pedirlo de otra forma o por partes.".to_string()
-    };
-    Ok(Final {
-        texto,
-        herramientas_hechas: hechas,
-        reintentos,
-        cortado,
-    })
+    Ok(None)
+}
+
+/// **La revision** (15-oct): se le ensena al modelo como quedo lo que
+/// dibujo o anoto, una o dos veces, y corrige lo que vea mal. Devuelve lo
+/// que dijo de lo corregido (`None`: estaba bien, no se pudo mirar o no
+/// cambio nada). Mientras, su texto no va a la burbuja: un «TODO_BIEN» no
+/// le dice nada al usuario.
+#[allow(clippy::too_many_arguments)]
+fn revisar(
+    motor: &dyn Motor,
+    historial: &mut Vec<Mensaje>,
+    herramientas: &[Herramienta],
+    ejecutor: &mut dyn Ejecutor,
+    opciones: &Opciones,
+    crono: &mut Cronometro,
+    est: &mut Estado,
+    al_evento: &mut dyn FnMut(Evento) -> Seguir,
+) -> Option<String> {
+    use crate::ojos::{Mirada, Zona};
+    let pedido = pedido_del_usuario(historial);
+    let mut dicho: Vec<String> = Vec::new();
+    for ronda in 1..=opciones.revisar.min(REVISIONES_MAXIMAS) {
+        if al_evento(Evento::Llamando(crate::ojos::NOMBRE.into())) == Seguir::Parar {
+            est.cortado = true;
+            break;
+        }
+        let mirada = Mirada::de(if est.documento { Zona::Documento } else { Zona::Turno });
+        let vista = match ejecutor.ver(&mirada) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::info!(%e, "asistente: no hay vista para revisar; se queda como esta");
+                break;
+            }
+        };
+        let marca = historial.len();
+        historial.push(crate::ojos::mensaje_de_vista(&vista, &crate::ojos::pedido_de_revision(&pedido, ronda)));
+        let cambios_antes = est.cambios;
+        let mut dice = String::new();
+        let r = {
+            let mut filtro = |e: Evento| -> Seguir {
+                match e {
+                    // Lo que dice se guarda; mientras, la burbuja dice
+                    // «mirando el lienzo» (y se sigue mirando si paro).
+                    Evento::Texto(t) => {
+                        dice.push_str(&t);
+                        al_evento(Evento::Llamando(crate::ojos::NOMBRE.into()))
+                    }
+                    Evento::Pensando(_) | Evento::PensoListo { .. } | Evento::Peticion(_) => Seguir::Si,
+                    otro => al_evento(otro),
+                }
+            };
+            vueltas(motor, historial, herramientas, ejecutor, opciones, crono, est, &mut filtro)
+        };
+        let corrigio = est.cambios > cambios_antes;
+        match r {
+            Err(e) => {
+                tracing::warn!(%e, "asistente: la revision no pudo acabar; se queda lo de antes");
+                if !corrigio {
+                    historial.truncate(marca);
+                }
+                break;
+            }
+            Ok(t) => {
+                if !corrigio {
+                    // Bien a la primera (o no supo que cambiar): ni se dice
+                    // ni se queda la imagen en la conversacion.
+                    historial.truncate(marca);
+                    break;
+                }
+                let t = t.unwrap_or(dice);
+                let frase = if crate::ojos::es_todo_bien(&t) || t.trim().is_empty() {
+                    "Lo revisé y corregí.".to_string()
+                } else {
+                    t.trim().to_string()
+                };
+                al_evento(Evento::Texto(format!("\n\n{frase}")));
+                dicho.push(frase);
+            }
+        }
+        if est.cortado {
+            break;
+        }
+    }
+    (!dicho.is_empty()).then(|| dicho.join("\n\n"))
 }
 
 /// Lo que se dice si el modelo acaba sin una palabra y sin hacer nada:
@@ -684,6 +951,10 @@ pub const HECHO: &str = "Hecho.";
 /// letras por token); con el doble de margen es la gramatica, y no el tope,
 /// quien corta.
 pub const MAX_TOKENS_CON_HERRAMIENTAS: u32 = 3072;
+/// Tope de cada vuelta con la nube (Claude, DeepSeek): un resumen largo o
+/// una llamada de 16 figuras con textos ricos caben de sobra; se paga lo que
+/// sale, no el tope.
+pub const MAX_TOKENS_NUBE: u32 = 8192;
 /// Lo minimo que se le deja contestar aunque el contexto vaya lleno.
 pub const MIN_TOKENS: u32 = 512;
 /// Cuantas figuras puede llevar una llamada (las listas de objetos). Las
@@ -850,7 +1121,11 @@ pub fn instrucciones() -> String {
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
      Si pide dibujar, copiar o calcar al lienzo lo de una imagen adjunta (este perro, la foto), usa calcar_imagen. \
+     Para cambiar lo que YA esta en el lienzo (el «Lienzo destino» trae sus #id): transformar_elementos (mover, borrar, girar...), cambiar_estilo, \
+     trazar_a_mano (subrayar o resaltar algo, lapiz, grafito), geometria_precisa (rectas, circulos, arcos exactos), cortar_linea, extender_linea, \
+     imagen_en_lienzo (pegar o recortar una foto); cada una devuelve los #id para la siguiente. \
      Si da datos para graficar, usa grafica; si da una funcion, graficar_funcion; una ecuacion, escribir_ecuacion; un cronograma, cronograma; una ilustracion con curvas, dibujar_svg. \
+     Para estudiantes: un problema (de una foto o escrito) que pasar en limpio o resolver, problema_en_limpio; un diagrama de fisica (fuerzas, plano inclinado, tiro, circuito, MRU), diagrama_fisica. Las cuentas las hace la app, no tu. \
      Si quiere el texto de un documento escaneado, usa ocr. \
      Si pide hacer algo en la app (notas, tareas, ventanas, capturas, abrir ficheros), usa su herramienta. \
      Con sus documentos y planos: una tabla de una foto o un PDF, tabla_de_imagen; resaltar, anotar o encerrar algo, anotar_documento; \
@@ -900,6 +1175,35 @@ mod pruebas {
         })
         .unwrap();
         (f, eventos, h, motor)
+    }
+
+    /// Un motor «de la nube»: el guionado con el catalogo entero.
+    struct Nube(MotorGuionado);
+
+    impl Motor for Nube {
+        fn completar(&self, p: &Peticion, t: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+            self.0.completar(p, t)
+        }
+        fn catalogo_completo(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn la_nube_no_hereda_el_tope_de_la_ventana_del_local() {
+        // Con el catalogo entero, la cuenta del local daria MIN_TOKENS.
+        let nube = Nube(MotorGuionado::nuevo(vec![Respuesta::de_texto("Resumen largo")]));
+        let mut h = historial();
+        let mut ej = Apunta::default();
+        turno(&nube, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        assert_eq!(nube.0.recibido.lock().unwrap()[0].max_tokens, MAX_TOKENS_NUBE);
+        // El local sigue con su cuenta (negativo: no cambia).
+        let local = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]);
+        let mut h = historial();
+        turno(&local, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
+        let p = &local.recibido.lock().unwrap()[0];
+        assert_eq!(p.max_tokens, tope_de_tokens(p));
+        assert!(p.max_tokens < MAX_TOKENS_NUBE);
     }
 
     #[test]
@@ -1277,7 +1581,7 @@ mod pruebas {
             Respuesta::de_texto("Puerta puesta."),
         ]);
         let mut eventos = Vec::new();
-        turno_con(&motor, &mut h, &crate::herramientas::catalogo_base(), &mut Apunta::default(), &o, &mut |e| {
+        turno_con(&motor, &mut h, &crate::seleccion::para_el_pedido("dibuja la puerta en el plano", false), &mut Apunta::default(), &o, &mut |e| {
             eventos.push(e);
             Seguir::Si
         })

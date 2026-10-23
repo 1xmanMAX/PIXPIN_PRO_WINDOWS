@@ -46,13 +46,37 @@ mod caja_de_soltar;
 /// dibujado en el lienzo del asistente, dejar el texto de un OCR, elegir el
 /// motor de Ajustes) y el aviso flotante con «Abrir».
 pub(crate) mod sin_ventana {
-    pub(crate) use super::aviso_asistente::{Aviso, Chat, lanzar as avisar};
+    pub(crate) use super::aviso_asistente::{Aviso, Chat, Mando, lanzar as avisar};
     use pixpin_store::{Catalogo, Ubicacion};
 
     /// Lo dibujado, al lienzo del asistente en el chat `proyecto`: el
     /// resumen para el modelo y la referencia del lienzo.
     pub(crate) fn al_lienzo(ubicacion: &Ubicacion, proyecto: &str, documento: &str) -> Result<(String, String), String> {
         super::asistente::meter_en_el_lienzo_del_chat(ubicacion, None, proyecto, None, documento)
+    }
+
+    /// Una zona de una hoja (`hoja_a_lienzo`), con sus fotos, al lienzo del
+    /// asistente en el chat `proyecto`.
+    pub(crate) fn al_lienzo_hoja(
+        ubicacion: &Ubicacion,
+        proyecto: &str,
+        documento: &str,
+        hoja: &crate::asistente::al_lienzo::EnHoja,
+        imagenes: &[(u64, pixpin_codec::ImagenRgba)],
+    ) -> Result<(String, String), String> {
+        let (r, referencia) = super::asistente::trabajar_en_el_lienzo_del_chat(
+            ubicacion,
+            None,
+            proyecto,
+            None,
+            &crate::asistente::al_lienzo::Trabajo::Dibujar,
+            documento,
+            None,
+            Some(hoja),
+            imagenes,
+            hoja.junto_a,
+        )?;
+        Ok((r.texto, referencia.unwrap_or_default()))
     }
 
     /// El texto entero de un OCR, al chat (nota y `.txt`).
@@ -70,7 +94,9 @@ pub(crate) mod sin_ventana {
         ubicacion: &Ubicacion,
         textos: &Catalogo,
     ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
-        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false)
+        // Los encargos de las automatizaciones: sin pedido que clasificar,
+        // la nube piensa como antes.
+        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false, true)
     }
 }
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
@@ -122,6 +148,7 @@ mod quien_llama;
 /// cae bajo el raton (10-oct). Vive en `caja_texto`, comun a toda la app:
 /// las cajas de una linea (buscar, renombrar, codigos) usan el mismo.
 use crate::caja_texto as redaccion;
+use crate::asistente::nube as asistente_nube;
 mod renombrar;
 /// El reproductor flotante del pedido «reproducir»: un audio suena sin
 /// abrir el chat y la ventanita se va al acabar (3-oct).
@@ -178,6 +205,12 @@ struct Tema {
     buscador: Color,
     /// El azul del boton de enviar (`historySendIconFg`).
     enviar: Color,
+    /// El color de un enlace dentro del texto de una burbuja, sobre la
+    /// burbuja del asistente (`enlace`) y sobre la del usuario
+    /// (`enlace_mio`): de noche la del usuario es azul, y el azul de enviar
+    /// encima no se leeria.
+    enlace: Color,
+    enlace_mio: Color,
     /// El fondo sobre el que se ensena un lienzo: una hoja de papel.
     papel: Color,
     /// Lo que se escribe ENCIMA del papel. No vale `texto`: en el tema
@@ -263,6 +296,10 @@ const CLARO: Tema = Tema {
     // filterInputInactiveBg.
     buscador: hex(0xf1f1f1),
     enviar: hex(0x40a7e3),
+    // El azul de los enlaces de Windows: se lee sobre el blanco y sobre el
+    // verde claro de la burbuja (mas de 4,5:1 en los dos).
+    enlace: hex(0x0f6cbd),
+    enlace_mio: hex(0x0f6cbd),
     papel: hex(0xffffff),
     texto_papel: hex(0x111111),
     pestana_activa: hex(0xe3f1fa),
@@ -322,6 +359,10 @@ const OSCURO: Tema = Tema {
     // filterInputInactiveBg.
     buscador: hex(0x242f3d),
     enviar: hex(0x5288c1),
+    // El de los enlaces de Telegram de noche, y uno mas claro sobre la
+    // burbuja azul del usuario.
+    enlace: hex(0x6ab3f3),
+    enlace_mio: hex(0xb8dcff),
     // En oscuro tampoco se pinta negro sobre negro: el lienzo lleva su
     // hoja clara, solo un poco apagada para no deslumbrar.
     papel: hex(0xe8e8e8),
@@ -718,7 +759,14 @@ pub fn abrir(
     ) {
         tracing::warn!(?e, "no se pudo crear «Mensajes guardados»");
     }
-    // Y el del asistente local, fijo tambien (`asistente`, 13-oct-2026).
+    // Y el del asistente local, fijo tambien (`asistente`, 13-oct-2026). Uno
+    // solo aunque hayan llegado los de otros aparatos (22-oct-2026): se
+    // juntan antes de mirar si hay que crearlo.
+    match pixpin_proyecto::vista::DiscoPc::nuevo(ubicacion.raiz()).unificar_asistentes() {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(n, "chats del asistente juntados en uno"),
+        Err(e) => tracing::warn!(?e, "no se pudieron juntar los chats del asistente"),
+    }
     if let Err(e) = pixpin_proyecto::almacen::asegurar_asistente(
         ubicacion.raiz(),
         pixpin_shell::entorno::ahora_utc_ms(),
@@ -1491,9 +1539,19 @@ pub fn abrir(
                                     }
                                     Efecto::Nada
                                 }
-                                Zona::Menu => {
-                                    Efecto::Menu(menu_de_cabecera(textos, a.ficha.es_guardados()))
-                                }
+                                Zona::Menu => Efecto::Menu(menu_de_cabecera(
+                                    textos,
+                                    a.ficha.es_guardados(),
+                                    a.ficha.es_asistente().then(|| asistente_nube::eleccion_reciente(&a.raiz)),
+                                )),
+                                Zona::ModeloIa => Efecto::Menu(menu_de_modelo(
+                                    textos,
+                                    asistente_nube::eleccion_reciente(&a.raiz),
+                                )),
+                                Zona::NuevaConversacion => match asistente::nueva_conversacion(ubicacion, a, textos) {
+                                    Some(t) => Efecto::Aviso(t),
+                                    None => Efecto::Cambio,
+                                },
                                 // El chip filtra por su emoji; pulsado otra
                                 // vez, lo quita. Es un interruptor y no una
                                 // eleccion de uno entre varios: con solo el
@@ -1515,6 +1573,7 @@ pub fn abrir(
                                 Zona::VieneDe(i) => {
                                     abrir_el_origen(ubicacion, a, i, lienzo, textos)
                                 }
+                                Zona::EnlaceDelTexto(k) => abrir_enlace_del_texto(a, k, textos),
                                 Zona::Enlace(i) => match asistente::lienzo_de(a, i) {
                                     Some(j) => {
                                         abrir_lienzo = Some(j);
@@ -2273,6 +2332,10 @@ pub fn abrir(
                                     // Sobre lo escrito, la barra de texto:
                                     // ahi se puede pulsar para escribir.
                                     FormaCursorWin::Texto
+                                } else if abierto.as_ref().is_some_and(|a| enlace_bajo(a, l)) {
+                                    // Sobre un enlace del texto, la mano
+                                    // (`IDC_HAND`): se puede pulsar.
+                                    FormaCursorWin::Giro
                                 } else {
                                     FormaCursorWin::Flecha
                                 });
@@ -2939,6 +3002,17 @@ pub fn abrir(
                     // La rueda va a la columna donde esta el raton, no a la
                     // que se pincho la ultima vez: es lo que espera la mano.
                     let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
+                    // Sobre la caja de escribir con mas texto del que cabe,
+                    // la rueda recorre lo escrito y no el historial.
+                    let paso_caja = (chat::FILA * escala / 100) as i32;
+                    if abierto.as_ref().is_some_and(|a| {
+                        a.letras
+                            .borrow_mut()
+                            .rodar(aqui, giro_de_rueda(delta, paso_caja) as f32)
+                    }) {
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     if let Some(a) = abierto.as_mut().filter(|_| disposicion.chat.contiene(aqui)) {
                         let area = area_del_historial(&disposicion, a, escala);
                         let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
@@ -3400,8 +3474,9 @@ pub fn abrir(
                 }
                 EventoOverlay::Caracter(c) if abierto.is_some() => {
                     // WM_CHAR trae tambien los mandos (retroceso, enter);
-                    // esos se atienden por tecla, no como letra.
-                    if c >= ' ' || c == '\n' {
+                    // esos se atienden por tecla, no como letra (el DEL de
+                    // Ctrl+Retroceso tampoco: ver `caja_texto::se_escribe`).
+                    if redaccion::se_escribe(c) {
                         if let Some(a) = abierto.as_mut() {
                             let mut b = [0u8; 4];
                             a.cursor.escribir(&mut a.borrador, c.encode_utf8(&mut b));
@@ -3929,6 +4004,7 @@ pub fn abrir(
                         // Lo que se puede pulsar se apunta de nuevo en cada
                         // fotograma: lo que ya no se ve no se puede pulsar.
                         a.zonas.borrow_mut().clear();
+                        a.enlaces_pintados.borrow_mut().clear();
                         // Y la caja de escribir igual: si este fotograma no
                         // la pinta (grabando, una pantalla encima), sus
                         // letras no se pueden pulsar.
@@ -4338,14 +4414,45 @@ struct LetrasPintadas {
     tam: f32,
     ancho: f32,
     cajas: Vec<(usize, RectF)>,
-    /// La esquina del texto en la ventana.
+    /// La esquina del texto en la ventana (ya corrido hacia arriba).
     origen: (f32, f32),
     /// Donde se puede pulsar para poner la rayita: el campo de escribir.
     /// Vacio mientras se dicta (lo que se ve no es aun lo escrito).
     zona: Option<RectF>,
+    /// Cuanto se corre lo escrito hacia arriba: la caja crece hasta su tope
+    /// y a partir de ahi el texto se desplaza por dentro, siguiendo a la
+    /// rayita (17-oct-2026). Lo mueve tambien la rueda sobre la caja.
+    corrido: f32,
+    /// Lo que mide todo lo escrito y lo que se ve de ello, a lo alto: hasta
+    /// donde deja bajar la rueda.
+    largo: f32,
+    visible: f32,
+    /// La rayita (posicion y largo del texto) a la que se siguio por ultima
+    /// vez: solo cuando cambia se corre la caja hasta ella, y entre medias
+    /// manda la rueda.
+    seguido: Option<(usize, usize)>,
 }
 
 impl LetrasPintadas {
+    /// La rueda sobre la caja de escribir: si `l` cae en ella y lo escrito
+    /// no cabe, corre el texto `giro` hacia abajo (positivo, hacia arriba
+    /// del texto) sin pasarse. Devuelve si la rueda era suya.
+    fn rodar(&mut self, l: Punto, giro: f32) -> bool {
+        let Some(z) = self.zona else {
+            return false;
+        };
+        let (x, y) = (l.x as f32, l.y as f32);
+        let dentro = x >= z.x && y >= z.y && x < z.x + z.ancho && y < z.y + z.alto;
+        let tope = (self.largo - self.visible).max(0.0);
+        if !dentro || tope <= 0.0 {
+            return false;
+        }
+        let nuevo = (self.corrido - giro).clamp(0.0, tope);
+        self.origen.1 += self.corrido - nuevo;
+        self.corrido = nuevo;
+        true
+    }
+
     /// La letra bajo `l` (coordenadas de la ventana), si cae en la caja.
     fn indice_en(&self, l: Punto) -> Option<usize> {
         redaccion::indice_en(
@@ -4498,6 +4605,10 @@ struct Abierto {
     /// La caja de cada letra de lo escrito tal como se pinto, para saber que
     /// letra hay bajo el raton. La apunta el pintado (`pintar_redaccion`).
     letras: std::cell::RefCell<LetrasPintadas>,
+    /// Las direcciones de los enlaces pintados dentro del texto de las
+    /// burbujas en este fotograma: `Zona::EnlaceDelTexto(k)` abre la `k`.
+    /// Se vacia con las zonas, al empezar cada fotograma.
+    enlaces_pintados: std::cell::RefCell<Vec<String>>,
     /// Se esta seleccionando lo escrito con el boton pulsado.
     eligiendo_texto: bool,
     /// El ultimo clic en la caja de escribir y donde cayo: el segundo, si
@@ -5602,11 +5713,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         // del color de su lienzo si viene de uno (`colorDelDibujo`).
         // Las del asistente, del otro color (`burbuja_otra`, la blanca de
         // Telegram): con cada uno a su lado, el color dice tambien quien habla.
-        let (color, color_texto, color_hora) = if crate::asistente::chat::es_del_asistente(m) {
-            (tema.burbuja_otra, tema.texto, tema.apagado)
-        } else {
-            (tema.burbuja_mia, tema.texto_mio, tema.hora_mia)
-        };
+        let (color, color_texto, color_hora, color_enlace) =
+            if crate::asistente::chat::es_del_asistente(m) {
+                (tema.burbuja_otra, tema.texto, tema.apagado, tema.enlace)
+            } else {
+                (tema.burbuja_mia, tema.texto_mio, tema.hora_mia, tema.enlace_mio)
+            };
         let radio = RADIO_BURBUJA * e;
         let grosor = GROSOR_BORDE * e;
         let dentro_del_borde = match piezas.borde {
@@ -6004,15 +6116,49 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             // burbuja. El movil lo tine de fondo; aqui el pintor no sabe
             // pintar fondos por tramo, y la negrita es lo que ya se usa en el
             // panel de informacion: lo mismo en los dos sitios.
-            p.parrafo(
+            //
+            // Y los enlaces, subrayados y en su color, se abren con un clic
+            // (el usuario, 17-oct-2026: «los enlaces no se ven como tal y no
+            // son clicables»). Lo pulsable de cada uno son sus cajas en la
+            // MISMA disposicion que se pinta: un renglon partido da dos.
+            // (Y la negrita de las listas y titulos de la respuesta del asistente.)
+            let mut tramos = negritas(&piezas.texto, &aguja);
+            tramos.extend_from_slice(&piezas.estilo);
+            let enlaces = tarjetas::enlaces_utf16(&piezas.texto);
+            let sitios: Vec<(u32, u32)> = enlaces.iter().map(|(s, _)| *s).collect();
+            let (tx, tam, tw) = (dentro.x as f32, h::TEXTO_TAM * e, dentro.ancho as f32);
+            p.parrafo_con_enlaces(
                 &piezas.texto,
-                dentro.x as f32,
+                tx,
                 y,
-                h::TEXTO_TAM * e,
-                dentro.ancho as f32,
-                &negritas(&piezas.texto, &aguja),
+                tam,
+                tw,
+                &tramos,
                 color_texto,
+                &sitios,
+                color_enlace,
             );
+            for ((inicio, largo), url) in enlaces {
+                let k = {
+                    let mut pintados = a.enlaces_pintados.borrow_mut();
+                    pintados.push(url);
+                    pintados.len() - 1
+                };
+                let mut zonas = a.zonas.borrow_mut();
+                for c in p.cajas_de_trozo(&piezas.texto, tam, tw, &tramos, inicio, largo) {
+                    let r = Rect {
+                        x: (tx + c.x).floor() as i32,
+                        y: (y + c.y).floor() as i32,
+                        ancho: c.ancho.ceil().max(1.0) as u32,
+                        alto: c.alto.ceil().max(1.0) as u32,
+                    };
+                    // Solo lo que se ve del historial: un enlace que se
+                    // salio por arriba no se pulsa a traves de la cabecera.
+                    if let Some(r) = area.interseccion(r) {
+                        zonas.push((r, Zona::EnlaceDelTexto(k)));
+                    }
+                }
+            }
         }
 
         // Abajo a la IZQUIERDA: la chapa del codigo, la etiqueta, la
@@ -6382,50 +6528,27 @@ fn tocar_la_burbuja(
         // en el menu del boton derecho.
         Some(a) if es_foto => {
             // Una foto se abre en SU lienzo, como en el movil: el que trajo
-            // de alli o el que se estrena aqui (K11, `foto_anotada`).
-            if crate::foto_anotada::abrir_en_su_lienzo(
-                ubicacion.raiz(),
-                &a.ficha.id,
-                &mut a.mensajes,
-                indice,
-                lienzo,
-            ) {
-                if let Some(m) = a.mensajes.get(indice).cloned() {
-                    a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
+            // de alli o el que se estrena aqui (K11, `foto_anotada`). Se
+            // estrena aqui (toca el mensaje) y se abre en su hilo.
+            crate::foto_anotada::asegurar_lienzo(ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, indice);
+            let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
+            let plana = a.mensajes.get(indice).and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m));
+            lienzo_aparte(move || {
+                if !crate::foto_anotada::abrir_si_tiene_lienzo(&raiz, &proyecto, &mensajes, indice, lienzo)
+                    && let Some(ruta) = plana
+                {
+                    abrir_foto_en_lienzo(&ruta, lienzo);
                 }
-                a.colocado.borrow_mut().ancho = 0;
-            } else if let Some(ruta) = a
-                .mensajes
-                .get(indice)
-                .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-            {
-                abrir_foto_en_lienzo(&ruta, lienzo);
-                // Al volver, la burbuja tiene que ensenar lo que se dibujo.
-                if let Some(m) = a.mensajes.get(indice).cloned() {
-                    a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
-                }
-                a.colocado.borrow_mut().ancho = 0;
-            }
+            });
         }
         Some(a) if es_dibujo => {
-            let mut guardadas = abrir_dibujo(ubicacion, a, indice, lienzo);
-            // La pagina que estreno su dibujo al abrirse lo apunta tambien en
-            // su mensaje: la proxima vez se abre ese, y su vista ensena lo
-            // dibujado encima de la pagina.
-            if let Some(m) = a.mensajes.get_mut(indice)
-                && crate::pdf_en_chat::es_pagina_sin_dibujo(m)
-                && let Some(d) =
-                    crate::pdf_en_chat::dibujo_de_la_hoja(ubicacion.raiz(), &a.ficha.id, m)
-            {
-                m.referencia = Some(d);
-                guardadas.push(indice);
-            }
-            for i in guardadas {
-                if let Some(m) = a.mensajes.get(i).cloned() {
-                    a.vistas[i] = leer_vista(ubicacion, &a.ficha.id, &m);
-                }
-            }
-            a.colocado.borrow_mut().ancho = 0;
+            // Al cerrarlo, `lienzo_aparte` hace releer el chat: las vistas de
+            // las hojas guardadas y la pagina que estreno su dibujo (apuntado
+            // en `proyecto.json`) salen de ahi.
+            let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
+            lienzo_aparte(move || {
+                abrir_hojas(&raiz, &proyecto, &mensajes, indice, lienzo);
+            });
         }
         Some(a) => abrir_mensaje(ubicacion, a, indice, textos, idioma),
         None => {}
@@ -6903,6 +7026,9 @@ fn medir_mensaje(
         }
     });
     let texto = texto_de(m, vista.is_some() || fila.is_some(), textos);
+    // Una respuesta del asistente, con sus listas como listas y sus
+    // negritas en negrita (17-oct-2026, `formato_de_respuesta`).
+    let (texto, estilo) = estilo_de_la_respuesta(m, texto);
     let cita = m
         .responde_a
         .as_deref()
@@ -6966,6 +7092,7 @@ fn medir_mensaje(
             fila: None,
             viene,
             texto,
+            estilo,
             borde,
             voz: None,
             recibido: None,
@@ -7084,7 +7211,8 @@ fn medir_mensaje(
             (en, alto_tarjeta)
         });
     if !texto.is_empty() {
-        let tramos = negritas(&texto, cx.aguja);
+        let mut tramos = negritas(&texto, cx.aguja);
+        tramos.extend_from_slice(&estilo);
         let (w, alto_texto) = if tramos.is_empty() {
             p.medir_texto_ajustado(&texto, h::TEXTO_TAM * e, ancho_max)
         } else {
@@ -7155,6 +7283,7 @@ fn medir_mensaje(
         fila,
         viene,
         texto,
+        estilo,
         borde,
         voz,
         recibido,
@@ -7192,11 +7321,34 @@ fn abrir_enlace(a: &Abierto, i: usize, textos: &Catalogo) -> Efecto {
     else {
         return Efecto::Nada;
     };
-    let url = en.url.to_ascii_lowercase();
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
+    abrir_direccion(&en.url, textos)
+}
+
+/// Si lo que se pulsaria en `l` es un enlace del texto de una burbuja: la
+/// misma busqueda que el clic (la ultima zona apuntada que lo contiene).
+fn enlace_bajo(a: &Abierto, l: Punto) -> bool {
+    a.zonas
+        .borrow()
+        .iter()
+        .rev()
+        .find(|(r, _)| r.contiene(l))
+        .is_some_and(|(_, z)| matches!(z, Zona::EnlaceDelTexto(_)))
+}
+
+/// Abre fuera un enlace pulsado dentro del texto de una burbuja: el
+/// `k`-esimo que apunto el pintado en este fotograma.
+fn abrir_enlace_del_texto(a: &Abierto, k: usize, textos: &Catalogo) -> Efecto {
+    let url = a.enlaces_pintados.borrow().get(k).cloned();
+    url.map_or(Efecto::Nada, |u| abrir_direccion(&u, textos))
+}
+
+/// Abre `url` con el navegador de Windows, solo si es `http`/`https`.
+fn abrir_direccion(url: &str, textos: &Catalogo) -> Efecto {
+    let minusculas = url.to_ascii_lowercase();
+    if !(minusculas.starts_with("https://") || minusculas.starts_with("http://")) {
         return Efecto::Nada;
     }
-    match pixpin_shell::abrir::abrir(std::path::Path::new(&en.url)) {
+    match pixpin_shell::abrir::abrir(std::path::Path::new(url)) {
         Ok(()) => Efecto::Nada,
         Err(e) => {
             tracing::warn!(?e, "no se pudo abrir el enlace");
@@ -7348,6 +7500,50 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         return;
     }
 
+    // **La pastilla del modelo** (17-oct-2026, el usuario: «una forma de
+    // seleccionar modelo rapido y sencillamente en el mismo chat»): en el
+    // chat «Asistente», a la izquierda de la lupa, quien contesta con su
+    // flechita; al pulsarla, la lista (`menu_de_modelo`). Le quita su sitio
+    // al centro, y si no cabe con el titulo, no sale (queda en los tres
+    // puntos).
+    let mut centro = pil.centro;
+    if a.ficha.es_asistente()
+        && let Some(r) = sitio_de_la_pastilla_del_modelo(p, &pil, asistente_nube::eleccion_reciente(&a.raiz), e)
+    {
+        let rotulo = asistente_nube::nombre_corto(asistente_nube::eleccion_reciente(&a.raiz));
+        let tam = PASTILLA_MODELO_TAM * e;
+        let (w, alto_t) = p.medir_texto(rotulo, tam);
+        pildora(p, tema, rf(r), e);
+        let x = r.x as f32 + 13.0 * e;
+        p.texto(rotulo, x, r.y as f32 + (r.alto as f32 - alto_t) / 2.0, tam, tema.pildora_texto);
+        let flecha = 16.0 * e;
+        p.icono(
+            &mi::KEYBOARD_ARROW_DOWN,
+            RectF {
+                x: x + w + 2.0 * e,
+                y: r.y as f32 + (r.alto as f32 - flecha) / 2.0,
+                ancho: flecha,
+                alto: flecha,
+            },
+            tema.pildora_texto,
+        );
+        zonas.push((r, Zona::ModeloIa));
+        centro.ancho = (r.x - centro.x - (8.0 * e) as i32).max(0) as u32;
+        // **«Conversación nueva» a la vista** (22-oct-2026, el usuario: «que
+        // cada chat tenga un boton para poder iniciar nueva conversacion»):
+        // el «+» redondo pegado a la pastilla, lo mismo que la entrada del
+        // menu. Si le quita demasiado al titulo, no sale (sigue en el menu).
+        let lado = r.alto;
+        let x = r.x - (6.0 * e) as i32 - lado as i32;
+        if x - centro.x >= (PASTILLA_MODELO_DEJA * e) as i32 {
+            let b = Rect { x, y: r.y, ancho: lado, alto: lado };
+            pildora(p, tema, rf(b), e);
+            icono_centrado(p, &mi::ADD, b, 18.0 * e, tema.pildora_texto);
+            zonas.push((b, Zona::NuevaConversacion));
+            centro.ancho = (b.x - centro.x - (8.0 * e) as i32).max(0) as u32;
+        }
+    }
+
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
     // guardados»), el nombre con su flechita y debajo cuantas cosas guarda y
     // cuanto ocupan, que es lo que se pregunta de un cajon de documentos.
@@ -7380,7 +7576,7 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let sitio = Rect {
         y: cab.y + (2.0 * e) as i32,
         alto: cab.alto.saturating_sub((4.0 * e) as u32),
-        ..pil.centro
+        ..centro
     };
     let caja = pixpin_ui::chat::pildora_centro(sitio, contenido.ceil() as u32, escala);
     if caja.ancho == 0 {
@@ -7464,6 +7660,32 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         tema.pildora_sub,
     );
     zonas.push((caja, Zona::Titulo));
+}
+
+/// La letra de la pastilla del modelo.
+const PASTILLA_MODELO_TAM: f32 = 13.0;
+/// Lo que le tiene que quedar al titulo para que salga la pastilla.
+const PASTILLA_MODELO_DEJA: f32 = 150.0;
+
+/// Donde va la pastilla del modelo: pegada a la izquierda de la de la lupa,
+/// tan alta como ella y tan ancha como su rotulo y su flechita. `None` si
+/// no cabe dejandole al titulo [`PASTILLA_MODELO_DEJA`].
+fn sitio_de_la_pastilla_del_modelo(
+    p: &Pintor,
+    pil: &pixpin_ui::chat::Pildoras,
+    actual: asistente_nube::Eleccion,
+    e: f32,
+) -> Option<Rect> {
+    let (w, _) = p.medir_texto(asistente_nube::nombre_corto(actual), PASTILLA_MODELO_TAM * e);
+    let ancho = (w + 16.0 * e + 28.0 * e).ceil() as u32;
+    let aire = (8.0 * e) as i32;
+    let x = pil.derecha.x - aire - ancho as i32;
+    (x - pil.centro.x >= (PASTILLA_MODELO_DEJA * e) as i32).then_some(Rect {
+        x,
+        y: pil.derecha.y,
+        ancho,
+        alto: pil.derecha.alto,
+    })
 }
 
 /// Una pastilla de la cabecera: opaca y con su filete, sin sombra, como la
@@ -7890,6 +8112,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         borrador: String::new(),
         cursor: Default::default(),
         letras: Default::default(),
+        enlaces_pintados: Default::default(),
         eligiendo_texto: false,
         clic_en_caja: None,
         info: None,
@@ -9255,7 +9478,7 @@ fn abrir_mensaje(
     ubicacion: &Ubicacion,
     a: &Abierto,
     indice: usize,
-    textos: &Catalogo,
+    _textos: &Catalogo,
     idioma: pixpin_store::Idioma,
 ) {
     let Some(m) = a.mensajes.get(indice) else {
@@ -9301,18 +9524,11 @@ fn abrir_mensaje(
     // Un `.html` se abre DENTRO de PixPin, en el visor propio: su boton de
     // guardar escribe encima de este mismo fichero, mientras que en el
     // navegador descargaria una copia y el del chat se quedaria igual.
+    // Va en su propio hilo, como pin (antes corria aqui y el chat se quedaba
+    // quieto mientras estaba abierto); sin WebView2 o si falla, al navegador.
     if crate::visor_html::se_abre(&m.nombre) || crate::visor_html::se_abre(relativa) {
-        match crate::visor_html::abrir(textos, &ruta) {
-            Ok(guardado) => {
-                if guardado {
-                    tracing::info!(ruta = %ruta.display(), "html guardado desde el visor");
-                }
-                return;
-            }
-            // Sin runtime de WebView2 o si algo falla, el navegador de
-            // siempre: mejor abrirlo fuera que no abrirlo.
-            Err(e) => tracing::warn!(?e, "sin visor de HTML propio; se abre fuera"),
-        }
+        crate::visor_html::lanzar(idioma, &ruta);
+        return;
     }
     // Un Word, un libro o un PDF se leen DENTRO, como al tocar la burbuja en
     // el movil: sin esperar a otra aplicacion y con los marcadores y lo
@@ -9876,6 +10092,32 @@ mod pruebas {
     use super::*;
 
     #[test]
+    fn la_rueda_sobre_la_caja_de_escribir_recorre_lo_que_no_cabe() {
+        let mut l = LetrasPintadas {
+            zona: Some(RectF { x: 0.0, y: 500.0, ancho: 300.0, alto: 100.0 }),
+            origen: (10.0, 500.0 - 200.0),
+            corrido: 200.0,
+            largo: 300.0,
+            visible: 100.0,
+            ..Default::default()
+        };
+        let dentro = Punto { x: 50, y: 550 };
+        // Hacia arriba del texto: se corre menos y el origen baja.
+        assert!(l.rodar(dentro, 60.0));
+        assert_eq!((l.corrido, l.origen.1), (140.0, 360.0));
+        // Sin pasarse del principio ni del final.
+        assert!(l.rodar(dentro, 1000.0));
+        assert_eq!(l.corrido, 0.0);
+        assert!(l.rodar(dentro, -1000.0));
+        assert_eq!((l.corrido, l.origen.1), (200.0, 300.0));
+        // Casos negativos: fuera de la caja, o con todo a la vista, la rueda
+        // es del historial.
+        assert!(!l.rodar(Punto { x: 50, y: 450 }, 60.0));
+        l.largo = 80.0;
+        assert!(!l.rodar(dentro, 60.0));
+    }
+
+    #[test]
     fn la_lista_vacia_por_la_busqueda_dice_que_no_hay_nada_y_no_que_no_hay_proyectos() {
         assert_eq!(clave_de_lista_vacia("zzz"), "chat-buscar-nada");
         // Casos negativos: sin buscar (o solo espacios, que no filtran) si
@@ -9981,8 +10223,8 @@ fn dibujo_de_foto(foto: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// Abre el editor con la foto de fondo, centrada, y guarda lo dibujado al
-/// cerrar. Bloquea el hilo del chat mientras dura, que es lo que se quiere:
-/// el editor tapa la pantalla y el chat no tiene nada que hacer.
+/// cerrar. Bloquea el hilo que la llama mientras dura: el chat la llama en
+/// el suyo propio (`lienzo_aparte`), y no se queda sin contestar.
 fn abrir_foto_en_lienzo(foto: &std::path::Path, opciones: OpcionesLienzo) {
     let fondo = match pixpin_codec::cargar(foto) {
         Ok(i) => i,
@@ -10216,6 +10458,28 @@ pub(crate) fn grabar_flotante(
             proyecto,
             aparato,
             nombre,
+            fichero: None,
+        },
+        microfono_flotante::Rotulos::de(textos),
+    );
+}
+
+/// **Graba con el microfono flotante a un fichero** (17-oct-2026): la nota
+/// de voz de una clase del horario (`horario::grabar_para_la_proxima`). Al
+/// guardarla dice `listo`.
+pub(crate) fn grabar_a_fichero(
+    textos: &Catalogo,
+    raiz: std::path::PathBuf,
+    destino: std::path::PathBuf,
+    listo: String,
+) {
+    microfono_flotante::lanzar(
+        microfono_flotante::Pedido {
+            raiz,
+            proyecto: String::new(),
+            aparato: String::new(),
+            nombre: String::new(),
+            fichero: Some((destino, listo)),
         },
         microfono_flotante::Rotulos::de(textos),
     );
@@ -12872,18 +13136,35 @@ mod pruebas_pdf {
     }
 }
 
-/// Abre un dibujo del proyecto en el lienzo grande, para verlo entero.
-///
-/// Guarda lo que se haga al cerrar, y tambien al saltar a otra hoja por un
-/// enlace. Devuelve las hojas que se guardaron, para que quien llama rehaga
-/// sus burbujas: sin eso el chat seguiria ensenando el dibujo de antes.
-fn abrir_dibujo(
-    ubicacion: &Ubicacion,
-    a: &Abierto,
-    indice: usize,
-    opciones: OpcionesLienzo,
-) -> Vec<usize> {
-    abrir_hojas(ubicacion.raiz(), &a.ficha.id, &a.mensajes, indice, opciones)
+/// Si hay un lienzo abierto desde el chat (en su hilo, `lienzo_aparte`).
+static LIENZO_APARTE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// **Abre el lienzo en su propio hilo** (17-oct-2026), como los pedidos de
+/// fuera (`pedidos::abrir_hoja`): antes se abria en el hilo del chat y lo
+/// bloqueaba mientras durara. Valia cuando el lienzo tapaba la pantalla,
+/// pero desde que Esc lo deja en una ventana el chat se quedaba detras sin
+/// contestar («calca, y luego no puedo mandar mensajes»). Al cerrarlo, el
+/// chat relee lo abierto (`refrescar`): las burbujas ensenan lo dibujado.
+/// Uno a la vez: si ya hay uno, se trae al frente.
+fn lienzo_aparte(abrir: impl FnOnce() + Send + 'static) {
+    use std::sync::atomic::Ordering;
+    if LIENZO_APARTE.swap(true, Ordering::SeqCst) {
+        let h = crate::asistente::al_lienzo::editor();
+        if h != 0 {
+            VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(h as *mut _));
+        }
+        return;
+    }
+    let lanzado = std::thread::Builder::new().name("lienzo-del-chat".into()).spawn(move || {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        abrir();
+        LIENZO_APARTE.store(false, Ordering::SeqCst);
+        refrescar();
+    });
+    if let Err(e) = lanzado {
+        LIENZO_APARTE.store(false, Ordering::SeqCst);
+        tracing::warn!(?e, "no se pudo lanzar el hilo del lienzo");
+    }
 }
 
 /// Lo de `abrir_dibujo` sin el proyecto abierto en el chat: el universo abre
@@ -12990,6 +13271,14 @@ fn abrir_una_hoja(
     let Some(m) = mensajes.get(indice) else {
         return (false, None);
     };
+    // Lo que se mande a este lienzo por su nombre mientras esta abierto entra
+    // en vivo (`pila_lienzo`); se apunta antes de leer el fichero y se suelta
+    // despues de guardarlo.
+    let _pila = m
+        .referencia
+        .as_deref()
+        .filter(|r| !r.is_empty())
+        .map(|r| crate::pila_lienzo::abierto(raiz, proyecto, r));
     let Some(HojaPreparada {
         ruta,
         lienzo,
@@ -13060,7 +13349,7 @@ fn abrir_una_hoja(
 /// deja lo ajeno donde estaba y `escribir` devuelve tal cual lo que no se
 /// toco. Y si no se toco nada, no se escribe: abrir una hoja para mirarla no
 /// puede cambiarle la fecha al fichero, que es lo que mira la sincronizacion.
-fn guardar_hoja_dibujada(
+pub(crate) fn guardar_hoja_dibujada(
     ruta: &std::path::Path,
     lienzo: &pixpin_motor2d::excalidraw::Lienzo,
     escena: &pixpin_motor2d::Escena,
@@ -13317,6 +13606,9 @@ enum Zona {
     VieneDe(usize),
     /// La tarjeta del enlace de una nota: lo abre fuera.
     Enlace(usize),
+    /// Un enlace dentro del texto de una burbuja, por su sitio en
+    /// `Abierto::enlaces_pintados`: lo abre fuera.
+    EnlaceDelTexto(usize),
     /// Ir a un mensaje: la cita de una respuesta o la barra del fijado.
     Ir(usize),
     /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
@@ -13384,6 +13676,11 @@ enum Zona {
     /// El altavoz de una respuesta del asistente: la lee o la calla
     /// (`voz_del_asistente`).
     LeerRespuesta(usize),
+    /// La pastilla del modelo en la cabecera del chat «Asistente»: abre la
+    /// lista Claude Haiku / DeepSeek / Local (17-oct-2026).
+    ModeloIa,
+    /// El «+» de al lado: «Conversación nueva» (22-oct-2026).
+    NuevaConversacion,
 }
 
 /// La fila de un archivo ya medida.
@@ -13446,6 +13743,9 @@ struct Piezas {
     fila: Option<FilaDeArchivo>,
     viene: Option<Viene>,
     texto: String,
+    /// Los tramos propios del texto (las negritas de una respuesta del
+    /// asistente); los de lo buscado se anaden al pintar.
+    estilo: Vec<pixpin_render::Tramo>,
     borde: Option<Color>,
     /// El texto de una nota de voz bajo su onda, si hay que ensenarlo.
     voz: Option<TextoDeVoz>,
@@ -13894,6 +14194,32 @@ fn texto_de(m: &pixpin_proyecto::cuaderno::Mensaje, con_pieza: bool, textos: &Ca
             }
         }
     }
+}
+
+/// El texto de la burbuja de una respuesta del asistente pasado por
+/// `asistente::chat::formato_de_respuesta`, y sus negritas; lo demas, tal
+/// cual y sin tramos.
+fn estilo_de_la_respuesta(
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    texto: String,
+) -> (String, Vec<pixpin_render::Tramo>) {
+    use pixpin_proyecto::cuaderno::Clase;
+    if !crate::asistente::chat::es_del_asistente(m) || !matches!(m.clase, None | Some(Clase::Nota)) {
+        return (texto, Vec::new());
+    }
+    let (t, b) = crate::asistente::chat::formato_de_respuesta(&texto);
+    let tramos = b
+        .into_iter()
+        .map(|(inicio, longitud)| pixpin_render::Tramo {
+            inicio,
+            longitud,
+            estilo: pixpin_render::EstiloTexto {
+                negrita: true,
+                ..Default::default()
+            },
+        })
+        .collect();
+    (t, tramos)
 }
 
 /// De donde viene un mensaje, si lo dice (`vieneDe` del movil): el texto que
@@ -14752,7 +15078,6 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         let mut l = a.letras.borrow_mut();
         let campo = d.campo(alto_texto, escala);
         l.zona = (provisional.is_none()).then(|| rf(campo));
-        l.origen = (x, y);
         if l.texto != a.borrador || l.tam != tam || l.ancho != ancho {
             l.cajas = redaccion::cajas_de_letras(&a.borrador, |desde, largo| {
                 p.cajas_de_trozo(&a.borrador, tam, ancho, &[], desde, largo)
@@ -14763,7 +15088,29 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
             l.tam = tam;
             l.ancho = ancho;
         }
+        // La caja crece hasta su tope; lo que no cabe se corre hacia arriba
+        // para que la rayita siga a la vista, como el `TextField` del movil
+        // con su `maxLines`. Antes se escribia por debajo, donde no se veia.
+        let pos = a.cursor.pos(&a.borrador);
+        let (_, cy, alto_rayita) =
+            redaccion::sitio_del_cursor(&l.texto, &l.cajas, pos, tam * 1.3);
+        let largo = l.cajas.iter().map(|(_, b)| b.y + b.alto).fold(0.0, f32::max);
+        let visible = zona.alto as f32;
+        let llave = (pos, a.borrador.len());
+        l.corrido = if l.seguido != Some(llave) || l.visible != visible {
+            redaccion::corrido_a_la_vista(l.corrido, cy, cy + alto_rayita, largo, visible)
+        } else {
+            // La rueda lo movio: se respeta, sin pasarse de lo escrito.
+            l.corrido.min((largo.max(cy + alto_rayita) - visible).max(0.0)).max(0.0)
+        };
+        l.seguido = Some(llave);
+        l.largo = largo.max(cy + alto_rayita);
+        l.visible = visible;
+        l.origen = (x, y - l.corrido);
     }
+    // Lo escrito se pinta corrido; la invitacion de la caja vacia no (sin
+    // texto no hay nada que correr).
+    let y_texto = a.letras.borrow().origen.1;
     if borrador.is_empty() {
         let invitacion = if let Some(d) = a.dictado.as_ref() {
             textos.t(if d.oyendo {
@@ -14790,9 +15137,11 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     }
     p.empujar_recorte(rf(zona));
     if provisional.is_some() {
-        p.parrafo(borrador, x, y, tam, ancho, &[], tema.texto);
-        // Dictando, el cursor va al final de lo escrito y de lo oido.
+        // Dictando, el cursor va al final de lo escrito y de lo oido, y es
+        // ese final el que tiene que verse.
         let (_, alto_todo) = p.medir_texto_ajustado(borrador, tam, ancho);
+        let y = y - (alto_todo - zona.alto as f32).max(0.0);
+        p.parrafo(borrador, x, y, tam, ancho, &[], tema.texto);
         let ultima = borrador.rsplit('\n').next().unwrap_or("");
         let (ancho_ultima, _) = p.medir_texto(ultima, tam);
         p.rellenar(
@@ -14808,6 +15157,7 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         return;
     }
     let letras = a.letras.borrow();
+    let y = y_texto;
     // Lo seleccionado, debajo del texto: la caja de cada letra elegida.
     if let Some(r) = a.cursor.seleccion(&a.borrador) {
         for (_, b) in letras.cajas.iter().filter(|(i, _)| r.contains(i)) {
@@ -15003,6 +15353,17 @@ enum Accion {
     GuardarReceta(usize),
     /// Lo del menu de un boton de receta (por su id).
     Receta(String, asistente::recetas::QueReceta),
+    // El chat «Asistente» (17-oct-2026).
+    /// La lista de modelos (la de la pastilla), como submenu.
+    MenuModeloIa,
+    /// Que conteste ese (por su sitio en `asistente::nube::OPCIONES`).
+    ElegirModeloIa(usize),
+    /// Empezar de cero el contexto que se le manda al modelo.
+    NuevaConversacion,
+    /// Borrar todos los mensajes del chat.
+    BorrarChat,
+    /// Leer en voz alta esa respuesta del asistente (o callarla).
+    Escuchar(usize),
 }
 
 /// Una linea de menu: icono, nombre, su tecla y lo que hace. Borrar va en
@@ -15417,8 +15778,9 @@ fn pintar_flecha_sub(p: &Pintor, derecha: f32, fila: Rect, e: f32, color: Color)
 fn pintar_tres_puntos(p: &Pintor, caja: Rect, color: Color, e: f32) {
     let cy = caja.y as f32 + caja.alto as f32 / 2.0;
     let cx = caja.x as f32 + caja.ancho as f32 / 2.0;
-    for dx in [-6.5f32, 0.0, 6.5] {
-        p.circulo((cx + dx * e, cy), 1.9 * e, color);
+    // En columna «⋮», el boton clasico (19-oct-2026).
+    for dy in [-6.0f32, 0.0, 6.0] {
+        p.circulo((cx, cy + dy * e), 1.9 * e, color);
     }
 }
 
@@ -15750,8 +16112,18 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
 ///
 /// Ni las lecciones ni la galeria de capturas: estan en los botones de la
 /// lista de proyectos, como en el movil desde el 4-oct-2026.
-fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool) -> Vec<EntradaMenu> {
+fn menu_de_cabecera(
+    textos: &Catalogo,
+    en_guardados: bool,
+    asistente: Option<asistente_nube::Eleccion>,
+) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
+    // En el chat «Asistente», lo suyo arriba: el modelo (lo mismo que la
+    // pastilla), empezar de cero y borrar el chat (17-oct-2026).
+    if let Some(e) = asistente {
+        v.extend(menu_de_asistente(textos, e));
+    }
+    let propias = v.len();
     if en_guardados {
         v.push(entrada(
             Some(&mi::LIBRARY_MUSIC),
@@ -15794,6 +16166,57 @@ fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool) -> Vec<EntradaMenu> {
         Accion::GruposVentanas,
     ));
     v.push(entrada(None, textos.t("chat-ajustes"), Accion::Ajustes));
+    // Lo del asistente, apartado de lo de siempre por una raya.
+    if propias > 0
+        && let Some(x) = v.get_mut(propias)
+    {
+        x.separada = true;
+    }
+    v
+}
+
+/// **Lo del chat «Asistente»** en los tres puntos: el modelo (submenu, con
+/// el elegido en el rotulo), «Conversación nueva» y «Borrar chat» en rojo.
+/// Lo de siempre va debajo, apartado por una raya.
+fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+    let modelo = entrada(
+        None,
+        format!("{}: {}", textos.t("asistente-modelo"), asistente_nube::nombre_corto(actual)),
+        Accion::MenuModeloIa,
+    )
+    .con_tecla(menu_v2::Tecla::Sub);
+    let mut borrar = entrada(Some(&mi::DELETE), textos.t("asistente-borrar-chat"), Accion::BorrarChat);
+    borrar.peligro = true;
+    vec![
+        modelo,
+        entrada(Some(&mi::ADD), textos.t("asistente-nueva-conversacion"), Accion::NuevaConversacion),
+        borrar,
+    ]
+}
+
+/// **La lista de la pastilla del modelo** (17-oct-2026): quien contesta,
+/// con el elegido marcado como en la escala; debajo, separadas, empezar de
+/// cero y borrar el chat. Elegir cambia el MISMO ajuste que Ajustes →
+/// Asistente (`asistente::nube::elegir`).
+fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+    let mut v: Vec<EntradaMenu> = asistente_nube::OPCIONES
+        .iter()
+        .enumerate()
+        .map(|(n, e)| {
+            let icono: &'static Icono = if *e == actual { &mi::CHECK_BOX } else { &mi::CHECK_BOX_OUTLINE_BLANK };
+            let rotulo = match e {
+                asistente_nube::Eleccion::Local => textos.t("ajustes2-asistente-local"),
+                asistente_nube::Eleccion::Nube(p) => p.nombre().to_string(),
+            };
+            entrada(Some(icono), rotulo, Accion::ElegirModeloIa(n))
+        })
+        .collect();
+    v.push(
+        entrada(Some(&mi::ADD), textos.t("asistente-nueva-conversacion"), Accion::NuevaConversacion).separada(),
+    );
+    let mut borrar = entrada(Some(&mi::DELETE), textos.t("asistente-borrar-chat"), Accion::BorrarChat);
+    borrar.peligro = true;
+    v.push(borrar);
     v
 }
 
@@ -15906,8 +16329,10 @@ fn menu_de_proyectos(
 }
 
 /// El menu de un mensaje: el de mantener pulsado en el movil, ordenado como
-/// la v2 (`Menus2.dc.html`, a): lo diario arriba con su tecla, lo raro en
-/// «Más» y Borrar en rojo y apartado. Solo salen las que valen para ESTE
+/// la v2 (`Menus2.dc.html`, a) y, desde el 17-oct-2026, por lo que mas se
+/// usa: copiar, responder, escuchar (respuestas del asistente), pinear y
+/// renombrar arriba (renombrar, como en el movil); luego lo de cada clase;
+/// luego mandarlo y acordarse; lo raro en «Más» y Borrar en rojo y apartado. Solo salen las que valen para ESTE
 /// mensaje, igual que en el movil. La etiqueta no va aqui: va en la fila de
 /// emojis de encima (`MenuAbierto::con_etiquetas`).
 fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
@@ -15919,15 +16344,8 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file());
     let mut v = Vec::new();
 
-    // ── Lo diario ──
-    v.push(
-        entrada(
-            Some(&mi::REPLY),
-            textos.t("v2menus-responder"),
-            Accion::Responder(i),
-        )
-        .con_tecla(Tecla::Letra('r')),
-    );
+    // ── Lo diario, lo mas usado arriba (17-oct-2026, el usuario: «reordenar
+    // el menu del chat»): copiar, responder, escuchar, pinear, renombrar ──
     if !m.texto.trim().is_empty() && m.clase != Some(Clase::MiniApp) {
         v.push(
             entrada(
@@ -15937,6 +16355,23 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             )
             .con_tecla(Tecla::Ctrl('c')),
         );
+    }
+    v.push(
+        entrada(
+            Some(&mi::REPLY),
+            textos.t("v2menus-responder"),
+            Accion::Responder(i),
+        )
+        .con_tecla(Tecla::Letra('r')),
+    );
+    // Oir una respuesta del asistente: ya no se lee sola al acabar
+    // (17-oct-2026), asi que va arriba, junto a copiarla.
+    if voz_del_asistente::se_puede_leer(a, i) {
+        v.push(entrada(
+            Some(&mi::VOLUME_UP),
+            textos.t("asistente-escuchar"),
+            Accion::Escuchar(i),
+        ));
     }
     // Pinear: el pin se hace de un fichero, y una nota escrita no lo tiene
     // (ofrecerlo para contestar «no hay archivo» seria peor que no
@@ -15966,6 +16401,20 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             .con_tecla(Tecla::Letra('p')),
         );
     }
+    // Cambiar el nombre de cualquier archivo, audios incluidos: arriba, como
+    // en el movil («que sea notorio», 4-oct), no escondido en «Más».
+    if renombrar::se_puede(m) {
+        v.push(
+            entrada(
+                Some(&mi::EDIT),
+                textos.t("chat-renombrar"),
+                Accion::Renombrar(i),
+            )
+            .con_tecla(Tecla::F2),
+        );
+    }
+    // ── Lo de cada clase: anotar, describir, editar, pasar a texto ──
+    let desde = v.len();
     // Lo que solo tiene Windows con una foto: dibujar en la propia burbuja
     // o en el lienzo grande.
     if matches!(a.vistas.get(i), Some(Some(Ojeada::Foto { .. }))) {
@@ -16041,13 +16490,8 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         ));
     }
 
-    // Lo que se pide a menudo, como boton encima de la caja del asistente.
-    if asistente::recetas::se_puede_guardar(a, i) {
-        v.push(entrada(
-            Some(&mi::BOOKMARK_BORDER),
-            textos.t("asistente-receta-guardar"),
-            Accion::GuardarReceta(i),
-        ));
+    if let Some(primera) = v.get_mut(desde) {
+        primera.separada = true;
     }
 
     // ── Mandarlo a otro sitio y acordarse ──
@@ -16109,24 +16553,21 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         );
     }
 
+    // Lo que se pide a menudo, como boton encima de la caja del asistente.
+    if asistente::recetas::se_puede_guardar(a, i) {
+        v.push(entrada(
+            Some(&mi::BOOKMARK_BORDER),
+            textos.t("asistente-receta-guardar"),
+            Accion::GuardarReceta(i),
+        ));
+    }
+
     // ── «Más»: lo que se usa poco ──
     v.push(
         entrada(None, textos.t("v2menus-mas"), Accion::Mas)
             .con_tecla(Tecla::Sub)
             .separada(),
     );
-    // Cambiar el nombre de cualquier archivo, audios incluidos.
-    if renombrar::se_puede(m) {
-        v.push(
-            entrada(
-                Some(&mi::EDIT),
-                textos.t("chat-renombrar"),
-                Accion::Renombrar(i),
-            )
-            .con_tecla(Tecla::F2)
-            .en_mas(),
-        );
-    }
     v.push(
         entrada(
             Some(&mi::FLAG),
@@ -16279,6 +16720,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     borrar.peligro = true;
     v.push(borrar);
     v
+}
+
+/// Lo que «Borrar chat» quita: todos los mensajes menos los del sistema
+/// (`auto-*`: la biblioteca de figuras, las automatizaciones), que no son
+/// de la conversacion y la app los vuelve a poner.
+fn indices_para_borrar_el_chat(mensajes: &[pixpin_proyecto::cuaderno::Mensaje]) -> Vec<usize> {
+    (0..mensajes.len())
+        .filter(|&i| !pixpin_proyecto::cuaderno::es_de_sistema(&mensajes[i]))
+        .collect()
 }
 
 /// Lo que tiene que hacer el bucle despues de una accion.
@@ -16766,6 +17216,44 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             Efecto::Nada
         }
         Accion::GuardarReceta(i) => asistente::recetas::guardar_desde(cx.ubicacion, cx.identidad, a, i, cx.textos),
+        Accion::MenuModeloIa => Efecto::Menu(menu_de_modelo(cx.textos, asistente_nube::eleccion_reciente(raiz))),
+        Accion::ElegirModeloIa(n) => {
+            let Some(e) = asistente_nube::OPCIONES.get(n).copied() else {
+                return Efecto::Nada;
+            };
+            match asistente_nube::elegir(cx.ubicacion, e) {
+                Ok(()) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("modelo", asistente_nube::nombre_corto(e));
+                    Efecto::Aviso(cx.textos.t_args("asistente-modelo-cambiado", &args))
+                }
+                Err(e) => fallo(&e),
+            }
+        }
+        Accion::NuevaConversacion => match asistente::nueva_conversacion(cx.ubicacion, a, cx.textos) {
+            Some(t) => Efecto::Aviso(t),
+            None => Efecto::Cambio,
+        },
+        Accion::BorrarChat => {
+            if !pixpin_shell::confirmar_destructivo(
+                cx.ventana.handle(),
+                &cx.textos.t("asistente-borrar-chat"),
+                &cx.textos.t("asistente-borrar-chat-aviso"),
+            ) {
+                return Efecto::Nada;
+            }
+            if asistente::ocupado(&a.ficha.id) {
+                asistente::parar(&a.ficha.id);
+            }
+            match borrar_mensajes(cx.ubicacion, a, &indices_para_borrar_el_chat(&a.mensajes)) {
+                Ok(_) => Efecto::Cambio,
+                Err(e) => fallo(&e),
+            }
+        }
+        Accion::Escuchar(i) => match voz_del_asistente::alternar(cx.ubicacion, a, i, cx.textos) {
+            Some(t) => Efecto::Aviso(t),
+            None => Efecto::Nada,
+        },
         Accion::Receta(id, que) => asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos),
         Accion::HacerLeccion(i) => {
             // Lo que paso suele estar ya en el chat: la leccion sale con su
@@ -17622,11 +18110,10 @@ fn abrir_el_origen(
     let Some(j) = hoja else {
         return Efecto::Aviso(textos.t("chat-sin-origen"));
     };
-    for k in abrir_dibujo(ubicacion, a, j, lienzo) {
-        if let Some(m) = a.mensajes.get(k).cloned() {
-            a.vistas[k] = leer_vista(ubicacion, &a.ficha.id, &m);
-        }
-    }
+    let (raiz, proyecto, mensajes) = (ubicacion.raiz().to_path_buf(), a.ficha.id.clone(), a.mensajes.clone());
+    lienzo_aparte(move || {
+        abrir_hojas(&raiz, &proyecto, &mensajes, j, lienzo);
+    });
     Efecto::Cambio
 }
 
@@ -17973,7 +18460,10 @@ mod pruebas_menu_sin_repetir {
         let (a, raiz) = abierto_con("v2-orden", vec![mensaje(Clase::Imagen, Some("foto.png"))]);
         let m = menu_de(&a);
         let principal: Vec<&Accion> = m.entradas.iter().map(|e| &e.accion).collect();
-        assert_eq!(principal[0], &Accion::Responder(0), "Responder, lo primero");
+        // Copiar lo primero si hay texto que copiar (17-oct-2026), y
+        // Responder justo detras.
+        assert_eq!(principal[0], &Accion::Copiar(0), "Copiar, lo primero");
+        assert_eq!(principal[1], &Accion::Responder(0), "Responder, lo segundo");
         let borrar = m.entradas.last().unwrap();
         assert_eq!(borrar.accion, Accion::Borrar(vec![0]));
         assert!(
@@ -17982,10 +18472,12 @@ mod pruebas_menu_sin_repetir {
         );
         let n_mas = m.posicion_de_mas().expect("hay «Más»");
         assert_eq!(n_mas, m.entradas.len() - 2, "«Más» justo encima de Borrar");
-        // Lo raro va al submenu: renombrar, fijar, abrir con.
+        // Lo raro va al submenu: fijar, abrir con. Renombrar sube arriba
+        // (17-oct-2026), como en el movil.
         let mas: Vec<&Accion> = m.mas.iter().map(|e| &e.accion).collect();
+        assert!(principal.contains(&&Accion::Renombrar(0)), "renombrar, arriba");
+        assert!(!mas.contains(&&Accion::Renombrar(0)));
         for a in [
-            Accion::Renombrar(0),
             Accion::Fijar(0),
             Accion::AbrirCon(0),
         ] {
@@ -18001,6 +18493,62 @@ mod pruebas_menu_sin_repetir {
         );
         assert!(m.etiquetas.is_some());
         let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// El menu de una respuesta del asistente (17-oct-2026): lo mas usado
+    /// arriba (copiar, responder, escuchar), mandarlo y acordarse en su
+    /// grupo, y borrar el ultimo y apartado.
+    #[test]
+    fn el_menu_de_una_respuesta_lleva_lo_mas_usado_arriba() {
+        let mut r = mensaje(Clase::Nota, None);
+        r.texto = "Tienes 3 archivos:\n- a.pdf\n- b.pdf".into();
+        r.aparato = Some(crate::asistente::chat::APARATO.into());
+        let (a, raiz) = abierto_con("respuesta-ia", vec![r]);
+        let m = menu_de(&a);
+        let principal: Vec<&Accion> = m.entradas.iter().map(|e| &e.accion).collect();
+        assert_eq!(
+            &principal[..3],
+            &[&Accion::Copiar(0), &Accion::Responder(0), &Accion::Escuchar(0)],
+            "copiar, responder y escuchar, por ese orden"
+        );
+        let reenviar = m.entradas.iter().position(|e| e.accion == Accion::Reenviar(vec![0])).unwrap();
+        assert!(m.entradas[reenviar].separada, "mandarlo empieza grupo");
+        assert!(reenviar > 2);
+        let borrar = m.entradas.last().unwrap();
+        assert!(borrar.peligro && borrar.separada && borrar.accion == Accion::Borrar(vec![0]));
+        // Caso negativo: una nota del usuario no lleva «Escuchar».
+        let (a, raiz2) = abierto_con("nota-usuario", vec![mensaje(Clase::Nota, None)]);
+        assert!(!menu_de(&a).entradas.iter().any(|e| matches!(e.accion, Accion::Escuchar(_))));
+        let _ = std::fs::remove_dir_all(raiz);
+        let _ = std::fs::remove_dir_all(raiz2);
+    }
+
+    /// La pastilla y los tres puntos del chat «Asistente» (17-oct-2026):
+    /// los tres modelos con el elegido marcado, y empezar de cero y borrar
+    /// apartados; en otro chat, nada de eso.
+    #[test]
+    fn el_menu_del_modelo_marca_el_elegido_y_aparta_borrar() {
+        use asistente_nube::Eleccion;
+        use pixpin_ia::nube::Proveedor;
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let v = menu_de_modelo(&textos, Eleccion::Nube(Proveedor::DeepSeek));
+        let marcados: Vec<bool> = v[..3]
+            .iter()
+            .map(|e| format!("{:?}", e.icono.unwrap()) == format!("{:?}", mi::CHECK_BOX))
+            .collect();
+        assert_eq!(marcados, vec![false, false, true], "DeepSeek, el tercero, marcado");
+        assert_eq!(v[2].accion, Accion::ElegirModeloIa(2));
+        assert!(v[3].accion == Accion::NuevaConversacion && v[3].separada);
+        assert!(v[4].accion == Accion::BorrarChat && v[4].peligro);
+        let c = menu_de_cabecera(&textos, false, Some(Eleccion::Nube(Proveedor::Claude)));
+        assert!(c[0].texto.contains("Claude Haiku") && c[0].accion == Accion::MenuModeloIa);
+        assert!(!menu_de_cabecera(&textos, false, None).iter().any(|e| e.accion == Accion::BorrarChat));
+        // Borrar el chat deja lo del sistema.
+        let mut sis = mensaje(Clase::Nota, None);
+        sis.id = format!("{}figuras", pixpin_proyecto::cuaderno::PREFIJO_DE_SISTEMA);
+        let mut otro = mensaje(Clase::Nota, None);
+        otro.id = "m2".into();
+        assert_eq!(indices_para_borrar_el_chat(&[mensaje(Clase::Nota, None), sis, otro]), vec![0, 2]);
     }
 
     #[test]
@@ -18058,7 +18606,7 @@ mod pruebas_menu_sin_repetir {
         assert_eq!(m.elegido, Some(Sitio::Principal(0)));
         assert_eq!(
             m.tecla(VK_ENTRAR, false),
-            Respuesta::Hacer(Accion::Responder(0))
+            Respuesta::Hacer(Accion::Copiar(0))
         );
         // Hasta «Más» y a la derecha: se abre y se elige su primera.
         let n = m.posicion_de_mas().unwrap();
@@ -18204,7 +18752,7 @@ mod pruebas_ir_al_chat {
     fn los_tres_puntos_ya_no_llevan_lecciones_ni_galeria_ni_universo() {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         for en_guardados in [false, true] {
-            let v = menu_de_cabecera(&textos, en_guardados);
+            let v = menu_de_cabecera(&textos, en_guardados, None);
             assert!(
                 !v.iter().any(|e| matches!(e.accion, Accion::Lecciones)),
                 "estan en los botones de la lista, como en el movil"

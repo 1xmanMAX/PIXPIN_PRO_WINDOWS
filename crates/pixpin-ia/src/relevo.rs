@@ -135,6 +135,10 @@ impl Motor for Relevado {
     fn catalogo_completo(&self) -> bool {
         self.motor.catalogo_completo()
     }
+
+    fn a_la_vez(&self) -> usize {
+        self.motor.a_la_vez()
+    }
 }
 
 #[cfg(test)]

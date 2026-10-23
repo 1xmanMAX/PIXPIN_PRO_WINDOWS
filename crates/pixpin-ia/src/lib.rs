@@ -40,6 +40,9 @@
 //!   la vista, la peticion mejorada, la hoja de trabajo que el agente
 //!   reescribe cada turno y el reinicio del contexto al 70 % con
 //!   `buscar_historial` para lo viejo ([`agente::turno_con`]).
+//! - [`complejidad`] (15-oct): si un turno piensa. En automatico, solo las
+//!   tareas complejas, con unas reglas fijas sobre el pedido (sin modelo) y
+//!   el mismo criterio para el local, Claude y DeepSeek.
 //! - [`calcar`]: copiar una imagen al lienzo con un algoritmo clasico
 //!   (k-medias + marching squares, o Canny + cadenas; RDP y suavizado): el
 //!   modelo solo elige el detalle.
@@ -57,6 +60,18 @@
 //!   «mañana a las 10») y las consultas («¿que tengo pendiente?»).
 //! - [`documentos`]: `buscar_en_mis_cosas`, un indice BM25 local de los
 //!   documentos, notas y chats del usuario, con el origen de cada trozo.
+//! - [`edicion`] (14-oct): editar lo que ya hay en el lienzo (elegir por
+//!   descripcion, recortar y pegar fotos, lapiz/grafito/resaltador, rectas y
+//!   circulos exactos, cortar y extender lineas) con las operaciones del
+//!   motor del lienzo, un paso de deshacer por llamada, y el resumen del
+//!   lienzo destino para el modelo.
+//!
+//! - [`hoja`] (14-oct): una foto o una pagina de una hoja al lienzo,
+//!   interpretada zona a zona (texto, tablas, formulas, fotos, rayas), solo
+//!   con la nube.
+//! - [`conexiones`] (17-oct): Google Drive (y los que vengan, un componente
+//!   con variables) conectado por OAuth con PKCE, tokens cifrados con DPAPI;
+//!   buscar, leer, bajar y subir (preguntando) como herramientas de la nube.
 //!
 //! ## Puntos de enganche para la UI (otros agentes)
 //!
@@ -69,29 +84,45 @@
 pub mod acciones;
 pub mod acciones_documentos;
 pub mod agente;
+pub mod anotacion;
 pub mod base64;
 pub mod calcar;
+pub mod calculo;
 pub mod conocimiento;
+pub mod complejidad;
+pub mod conexiones;
 pub mod contexto;
 pub mod cronograma;
+pub mod diagrama;
 pub mod descarga;
-pub mod fechas;
+// Las fechas dichas viven en `pixpin-frase` (18-oct-2026): las comparte el
+// plugin de Flow Launcher, que no puede cargar este crate.
+pub use pixpin_frase::fechas;
 pub mod documentos;
+pub mod edicion;
 pub mod ecuacion;
 pub mod figuras;
+pub mod fisica;
 pub mod funciones;
 pub mod herramientas;
+pub mod hoja;
 pub mod hoja_trabajo;
 pub mod lienzo;
 pub mod modelos;
 pub mod motor;
 pub mod nube;
+pub mod ojos;
+pub mod pizarra;
 pub mod relevo;
 pub mod pensar;
+pub mod problema;
 pub mod rapido;
+pub mod rotulos;
 pub mod seleccion;
 pub mod servidor;
 pub mod tabla_escaneada;
+pub mod tabla_aspecto;
+pub mod revision_tabla;
 pub mod sse;
 pub mod tareas;
 pub mod svg;

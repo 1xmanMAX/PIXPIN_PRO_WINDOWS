@@ -80,6 +80,11 @@ pub struct Memoria {
     pub rapido: bool,
 }
 
+/// El modelo de vision de los turnos de las pruebas (en la app sale de
+/// Ajustes: `hoja_a_lienzo::motor_de_vision`).
+#[cfg(test)]
+pub static VISION_EN_PRUEBAS: std::sync::Mutex<Option<Arc<dyn Motor>>> = std::sync::Mutex::new(None);
+
 /// Lo que se va juntando de los eventos para el registro del turno.
 #[derive(Default)]
 struct Recogido {
@@ -213,6 +218,8 @@ impl Turno {
                 // El OCR y el PDF son WinRT: este hilo necesita su COM. Va
                 // primero para soltarse el ultimo, cuando ya no vive nada.
                 let _com = pixpin_shell::ComDelHilo::iniciar();
+                let con_foto = foto.is_some();
+                let adjuntos_con_imagen = adjuntos.iter().any(|a| super::ocr::es_imagen(&a.ruta));
                 if let Some(ruta) = foto {
                     poner_foto(&mut historial, &ruta);
                 }
@@ -222,6 +229,21 @@ impl Turno {
                     .find(|m| m.rol == Rol::Usuario)
                     .map(Mensaje::texto_entero)
                     .unwrap_or_default();
+                // Con la nube, que archivos tiene este chat (banco de
+                // documentos, 15-oct: sin esto pedia que se los pegaran).
+                // Despues de leer el pedido: lo que decide herramientas mira
+                // lo que escribio el usuario, no esta nota.
+                // Y la hora de ahora, al minuto (17-oct-2026): con ella y la
+                // de cada archivo, «lo de esta mañana» se entiende solo.
+                if motor.catalogo_completo()
+                    && let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario)
+                {
+                    let desfase = super::desfase_local_ms();
+                    if let Some(nota) = raiz.as_deref().and_then(|r| super::en_el_chat::nota_de_archivos(r, &proyecto, desfase)) {
+                        m.partes.push(pixpin_ia::motor::Parte::Texto(nota));
+                    }
+                    m.partes.push(pixpin_ia::motor::Parte::Texto(super::nota_de_ahora(pixpin_shell::entorno::ahora_utc_ms(), desfase)));
+                }
                 let con_memoria = memoria.is_some();
                 let memoria = memoria.unwrap_or_default();
                 let mut ejecutor = EjecutorDelChat::nuevo(tx.clone(), proyecto, adjuntos, parar_hilo.clone())
@@ -234,8 +256,65 @@ impl Turno {
                         super::acciones::mandar_a_pixpin(),
                     )
                     .con_raiz(raiz);
+                // Las pruebas no tienen Ajustes: el banco dice con que modelo
+                // de vision trabajan hoja_a_lienzo y anotar_inteligente.
+                #[cfg(test)]
+                if let Some(v) = VISION_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+                    ejecutor = ejecutor.con_vision(v);
+                }
+                // «Calca esto» con la imagen pegada EN EL LIENZO y nada adjunto
+                // (15-oct: contestaba «no hay imagen adjunta»): la del lienzo
+                // (la elegida o la ultima) entra como adjunto y el modelo la ve.
+                // Solo con la nube (el modelo local no se toca).
+                if motor.catalogo_completo()
+                    && !con_foto
+                    && !adjuntos_con_imagen
+                    && pide_imagen_del_lienzo(&pedido)
+                    && super::al_lienzo::hay_quien_conteste()
+                    && let Some(ruta) = ejecutor.imagen_del_lienzo()
+                {
+                    poner_foto(&mut historial, &ruta);
+                    if let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario) {
+                        m.partes.push(pixpin_ia::motor::Parte::Texto(
+                            "
+
+(La imagen adjunta es la ultima imagen pegada en el lienzo: «imagen del lienzo». Para calcarla o pasarla al lienzo usa calcar_imagen o hoja_a_lienzo con ella.)".into(),
+                        ));
+                    }
+                }
+                // El lienzo destino, resumido (tipos, #id, cajas, colores,
+                // textos) al final del pedido: solo si el pedido es de dibujar
+                // o editar y hay quien conteste (`pixpin_ia::edicion`).
+                let ojos = con_ojos() && motor.ve_imagenes();
+                let mirar = pixpin_ia::ojos::pide_mirar(&pedido);
+                let de_lienzo = pixpin_ia::edicion::viene_a_cuento(&pedido) || mirar;
+                if ojos && de_lienzo {
+                    // La GPU de los ojos, lista antes de la primera vista.
+                    super::ojos::precalentar();
+                }
+                if de_lienzo
+                    && super::al_lienzo::hay_quien_conteste()
+                    && let Some(r) = ejecutor.resumen_del_lienzo()
+                {
+                    pixpin_ia::edicion::anadir_resumen(&mut historial, &r);
+                    // «Corrige», «alinea», «¿que falta?»: depende de lo que
+                    // se ve; ademas del resumen, la vista (15-oct).
+                    if ojos && mirar {
+                        use pixpin_ia::agente::Ejecutor as _;
+                        match ejecutor.ver(&pixpin_ia::ojos::Mirada::default()) {
+                            Ok(v) => poner_vista(&mut historial, &v),
+                            Err(e) => tracing::info!(%e, "asistente: sin vista al empezar"),
+                        }
+                    }
+                }
                 let buscar = |c: &str| contexto::buscar(&memoria.fuentes, c, 3);
-                let todas = pixpin_ia::herramientas::catalogo();
+                // Lo que la vuelta de planear puede anadir: al local, sin las de
+                // solo la nube (`acciones::SOLO_NUBE`, «la IA local, no la toques»).
+                let nube = motor.catalogo_completo();
+                let todas: Vec<_> = pixpin_ia::herramientas::catalogo()
+                    .into_iter()
+                    .filter(|h| nube || !pixpin_ia::acciones::es_solo_nube(&h.nombre))
+                    .collect();
                 let opciones = Opciones {
                     planificar: memoria.planificar,
                     pensar: memoria.pensar,
@@ -248,6 +327,8 @@ impl Turno {
                     buscar: (con_memoria && (memoria.reiniciado || memoria.hoja.reinicios > 0)).then_some(&buscar as &dyn Fn(&str) -> String),
                     ampliar: memoria.ampliar.then_some(&todas[..]),
                     rapido: memoria.rapido.then(super::rapido::ahora),
+                    ojos,
+                    revisar: if ojos { revisiones(motor.as_ref()) } else { 0 },
                 };
                 let mut recogido = Recogido::default();
                 let resultado = agente::turno_con(
@@ -361,13 +442,77 @@ pub fn historial_para_el_modelo(
     h
 }
 
+/// **Los ojos encendidos** (15-oct, `ojos.rs`). Siempre, salvo el banco,
+/// que los apaga para medir sin ellos ([`apagar_ojos`]).
+static SIN_OJOS: AtomicBool = AtomicBool::new(false);
+
+pub fn con_ojos() -> bool {
+    !SIN_OJOS.load(Ordering::Relaxed)
+}
+
+/// Apaga o enciende los ojos de todos los turnos (el banco).
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn apagar_ojos(apagar: bool) {
+    SIN_OJOS.store(apagar, Ordering::Relaxed);
+}
+
+/// **Cuantas rondas de revision**: una con la nube (segundos y ~1000
+/// tokens de vision). El local ni mira ni revisa: el usuario pidio el
+/// 15-oct desarrollar primero la nube y no tocar el local.
+pub fn revisiones(motor: &dyn Motor) -> usize {
+    if motor.catalogo_completo() { 1 } else { 0 }
+}
+
+/// Pega la vista del lienzo al pedido del usuario (la imagen delante, como
+/// una foto adjunta, y su leyenda detras del texto).
+fn poner_vista(historial: &mut [Mensaje], v: &pixpin_ia::ojos::Vista) {
+    let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario) else { return };
+    m.partes.insert(0, pixpin_ia::motor::Parte::Imagen { bytes: v.png.clone(), mime: "image/png".into() });
+    m.partes.push(pixpin_ia::motor::Parte::Texto(format!(
+        "\n\n(La imagen adjunta es la vista del lienzo ahora; {})",
+        v.texto.trim_start_matches(pixpin_ia::ojos::MARCA).trim()
+    )));
+}
+
 /// Pega la foto, reducida, al ultimo mensaje (el del usuario). Si no se
 /// puede leer, la pregunta va sin ella: mejor contestar sin ver que no
 /// contestar.
 fn poner_foto(historial: &mut [Mensaje], ruta: &std::path::Path) {
     let Some(ultimo) = historial.last_mut() else { return };
+    let mut texto = ultimo.texto_entero();
+    // La foto de un problema (14-oct): el OCR de Windows, a toda resolucion,
+    // pegado al mensaje; el modelo lee las formulas de la imagen y el texto
+    // menudo del OCR (`problema::pista_de_ocr`).
+    if pixpin_ia::problema::pide_problema(&texto) {
+        texto.push_str(&ocr_de_la_foto(ruta));
+    }
     match super::foto::preparar_fichero(ruta) {
-        Ok((bytes, mime)) => *ultimo = Mensaje::usuario_con_imagen(ultimo.texto_entero(), bytes, mime),
+        Ok((bytes, mime)) => *ultimo = Mensaje::usuario_con_imagen(texto, bytes, mime),
         Err(e) => tracing::warn!(%e, "asistente: la foto no se pudo preparar"),
     }
+}
+
+/// Lo que el OCR de Windows lee en la foto, ya dicho para el modelo; vacio
+/// si no hay OCR en este Windows o la foto no se abre (el modelo la mira
+/// igual).
+fn ocr_de_la_foto(ruta: &std::path::Path) -> String {
+    if !pixpin_ocr::disponible() {
+        return String::new();
+    }
+    let Ok(img) = pixpin_codec::imagen::cargar(ruta) else { return String::new() };
+    match pixpin_ocr::reconocer(img.ancho, img.alto, &img.pixeles) {
+        Ok(lineas) => pixpin_ia::problema::pista_de_ocr(&lineas.into_iter().map(|l| l.texto).collect::<Vec<_>>()),
+        Err(e) => {
+            tracing::warn!(?e, "asistente: el OCR de la foto del problema fallo");
+            String::new()
+        }
+    }
+}
+
+/// Si el pedido es calcar, dibujar o pasar «esto» (una imagen): «calca
+/// esto», «dibújalo con las herramientas», «pásalo al lienzo».
+pub fn pide_imagen_del_lienzo(pedido: &str) -> bool {
+    let q = pixpin_ia::acciones::normalizar(pedido);
+    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
+    pixpin_ia::seleccion::pide_la_imagen(&palabras) && !pixpin_ia::seleccion::pide_pegar_o_recortar(&palabras)
 }

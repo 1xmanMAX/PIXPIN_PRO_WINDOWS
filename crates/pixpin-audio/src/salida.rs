@@ -40,7 +40,7 @@ use crate::{ErrorAudio, en};
 /// con el del pin y el de `pixpin-record` sin pisarlos.
 static ARRANQUE: Once = Once::new();
 
-fn arrancar_media_foundation() {
+pub(crate) fn arrancar_media_foundation() {
     ARRANQUE.call_once(|| {
         // SAFETY: `MFStartup` no tiene mas precondicion que recibir la
         // version de la cabecera con la que se compilo, que es lo que vale
@@ -214,7 +214,10 @@ impl Salida {
             // Media Foundation admite una ruta de Windows tal cual como
             // origen; se pasa sin convertir a `file:///` para no tener que
             // escapar los espacios ni los acentos del nombre.
-            let origen = BSTR::from(ruta.to_string_lossy().as_ref());
+            // Lo grabado bajito, mas alto (`volumen::para_oir`): la copia
+            // realzada si hace falta, el original si ya suena fuerte.
+            let oir = crate::volumen::para_oir(ruta);
+            let origen = BSTR::from(oir.to_string_lossy().as_ref());
             motor.SetSource(&origen).map_err(en("abrir el fichero"))?;
 
             Ok(Salida { motor, avisos })
@@ -235,7 +238,8 @@ impl Salida {
         self.avisos.metadatos.store(false, Ordering::Release);
         self.avisos.error.store(false, Ordering::Release);
         self.avisos.termino.store(false, Ordering::Release);
-        let origen = BSTR::from(ruta.to_string_lossy().as_ref());
+        let oir = crate::volumen::para_oir(ruta);
+        let origen = BSTR::from(oir.to_string_lossy().as_ref());
         // SAFETY: llamada sobre el motor vivo con una cadena propia.
         unsafe { self.motor.SetSource(&origen) }.map_err(en("abrir el fichero"))
     }

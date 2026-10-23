@@ -356,3 +356,122 @@ fn con_la_letra_de_la_pantalla_el_texto_va_incrustado_y_se_ve() {
     let s2 = String::from_utf8_lossy(&sin);
     assert!(!s2.contains("/FontFile2") && s2.contains("/Helvetica"));
 }
+
+/// La hoja de la prueba de simbolos: el renglon de un estudiante de ciencias
+/// y, debajo, un caracter que no tiene ninguna letra del sistema.
+fn hoja_de_simbolos(linea: &str) -> Hoja {
+    let negro = ColorRgba::opaco(0.0, 0.0, 0.0);
+    let texto = |t: &str, y: f32| Orden::Texto {
+        texto: t.into(),
+        x: 4.0,
+        y,
+        tam: 5.5,
+        familia: String::new(),
+        color: negro,
+        ancho_max: 0.0,
+        negrita: false,
+        cursiva: false,
+    };
+    hoja(vec![
+        texto(linea, 10.0),
+        texto("falta: \u{10FFFD}.", 40.0),
+    ])
+}
+
+const SIMBOLOS: &str = "θ μ Ω Σ π − √ ≤ ∞ ° x² H₂O → 😀";
+
+/// **Los simbolos salen y se pueden copiar**: lo que la letra del texto no
+/// tiene va en su letra de reserva (Segoe UI Symbol, Cambria Math, Segoe UI
+/// Emoji...), incrustada con solo sus glifos y con su `ToUnicode`, y lo que
+/// no tiene nadie sale como el cuadrito del hueco, nunca como un `?`. Con
+/// Helvetica (sin letra propia) y con Segoe UI dentro.
+#[test]
+fn los_simbolos_de_ciencias_salen_con_su_letra_y_se_copian_tal_cual() {
+    let Some(segoe) = pixpin_pdf::letra::del_sistema("Segoe UI") else {
+        return;
+    };
+    for (nombre, propia) in [("helvetica", None), ("segoe", Some(&segoe))] {
+        let bytes = pixpin_pdf::escribir::de_hojas_con_letra(
+            &[hoja_de_simbolos(SIMBOLOS)],
+            Some(ColorRgba::opaco(1.0, 1.0, 1.0)),
+            &|_| None,
+            propia,
+        )
+        .expect("una hoja");
+        let s = String::from_utf8_lossy(&bytes);
+        assert!(s.contains("/CIDFontType2") && s.contains("/ToUnicode"), "{nombre}");
+        assert!(s.contains("+SegoeUIEmoji"), "{nombre}: el emoji va en su letra");
+        assert!(
+            bytes.len() < 150_000,
+            "{nombre}: solo los glifos usados: {} bytes",
+            bytes.len()
+        );
+        // El texto que se copia del PDF es el que se escribio.
+        let paginas = pixpin_pdf::texto::de_bytes(&bytes).expect("se lee el texto");
+        let leido: String = paginas[0].texto.chars().filter(|c| !c.is_whitespace()).collect();
+        let quiero: String = SIMBOLOS.chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(leido.contains(&quiero), "{nombre}: {leido:?}");
+        // Caso negativo: lo que no tiene nadie no se calla con un `?`: se
+        // copia como el caracter de sustitucion.
+        assert!(!leido.contains('?'), "{nombre}: {leido:?}");
+        assert!(leido.contains("falta:\u{fffd}."), "{nombre}: {leido:?}");
+        // Y Windows lo abre y lo pinta.
+        let ruta = fichero(&format!("simbolos-{nombre}.pdf"), &bytes);
+        let p = pixpin_pdf::Documento::abrir(&ruta)
+            .and_then(|d| d.renderizar(0, 1400))
+            .expect("Windows lo abre");
+        let oscuros = (0..p.alto)
+            .flat_map(|y| (0..p.ancho).map(move |x| (x, y)))
+            .filter(|(x, y)| pixel(&p, *x, *y)[0] < 100)
+            .count();
+        assert!(oscuros > 500, "{nombre}: el renglon se ve: {oscuros}");
+        if let Ok(dir) = std::env::var("PIXPIN_PDF_IMAGENES") {
+            let png = pixpin_codec::imagen::codificar_png(&p).expect("png");
+            std::fs::write(std::path::Path::new(&dir).join(format!("simbolos-{nombre}.png")), png)
+                .expect("escribir png");
+        }
+    }
+}
+
+/// **Cada simbolo es un glifo de verdad**, no el hueco: pintado solo, cada
+/// uno deja una tinta distinta de la del cuadrito de «falta».
+#[test]
+fn cada_simbolo_se_pinta_con_su_glifo_y_no_con_el_hueco() {
+    if pixpin_pdf::letra::del_sistema("Segoe UI").is_none() {
+        return;
+    }
+    let pinta = |c: &str| {
+        let negro = ColorRgba::opaco(0.0, 0.0, 0.0);
+        let bytes = de_hojas(
+            &[hoja(vec![Orden::Texto {
+                texto: c.into(),
+                x: 10.0,
+                y: 10.0,
+                tam: 60.0,
+                familia: String::new(),
+                color: negro,
+                ancho_max: 0.0,
+                negrita: false,
+                cursiva: false,
+            }])],
+            Some(ColorRgba::opaco(1.0, 1.0, 1.0)),
+            &|_| None,
+        )
+        .expect("una hoja");
+        let ruta = fichero(&format!("uno-{:x}.pdf", c.chars().next().unwrap() as u32), &bytes);
+        let p = pixpin_pdf::Documento::abrir(&ruta)
+            .and_then(|d| d.renderizar(0, 300))
+            .expect("Windows lo abre");
+        (0..p.alto)
+            .flat_map(|y| (0..p.ancho).map(move |x| (x, y)))
+            .map(|(x, y)| (pixel(&p, x, y)[0] < 128) as u8)
+            .collect::<Vec<u8>>()
+    };
+    let hueco = pinta("\u{10FFFD}");
+    assert!(hueco.contains(&1), "el hueco se ve: un cuadrito");
+    for c in ["θ", "μ", "Ω", "Σ", "π", "−", "√", "≤", "∞", "°", "²", "₂", "→", "😀"] {
+        let tinta = pinta(c);
+        assert!(tinta.contains(&1), "{c} no se ve");
+        assert_ne!(tinta, hueco, "{c} sale como el hueco");
+    }
+}

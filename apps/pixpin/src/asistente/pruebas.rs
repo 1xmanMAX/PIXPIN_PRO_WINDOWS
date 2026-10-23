@@ -94,6 +94,67 @@ fn un_dibujo_llega_al_lienzo_abierto_centrado_y_en_un_paso() {
     assert!(avisos.iter().any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: true, .. }))));
 }
 
+/// Dos rectas que se cruzan: una roja horizontal y una azul diagonal.
+fn cruce() -> pixpin_motor2d::Escena {
+    use pixpin_motor2d::{ColorRgba, Elemento, Punto2, elemento::Figura};
+    let raya = |a: (f32, f32), b: (f32, f32), c: ColorRgba| Elemento {
+        figura: Figura::Linea { puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)] },
+        x: a.0.min(b.0),
+        y: a.1.min(b.1),
+        trazo: c,
+        ..Default::default()
+    };
+    let mut s = pixpin_motor2d::Escena::nueva();
+    s.anadir(raya((900.0, 1000.0), (1200.0, 1000.0), ColorRgba::opaco(0.88, 0.19, 0.19)));
+    s.anadir(raya((1000.0, 900.0), (1100.0, 1200.0), ColorRgba::opaco(0.10, 0.44, 0.76)));
+    s
+}
+
+#[test]
+fn editar_el_lienzo_abierto_con_su_resumen_y_en_un_paso() {
+    al_lienzo::vaciar_para_pruebas();
+    let _editor = al_lienzo::EditorAbierto::nuevo(1);
+    let motor = Arc::new(MotorGuionado::nuevo(vec![
+        Respuesta::de_llamada("cortar_linea", r#"{"que":"la recta azul","con":"la recta roja","quitar":"fin"}"#),
+        Respuesta::de_texto("Cortada en el cruce."),
+    ]));
+    let mut escena = cruce();
+    let pasos = escena.pasos_cerrados();
+    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("corta la recta azul en el cruce"), vec![], None);
+    let (vivo, _) = hasta_el_final(&mut t, Some(&mut escena));
+    assert!(vivo.fallos.is_empty(), "{:?}", vivo.fallos);
+    // El modelo recibio el resumen del lienzo con el pedido.
+    let pedidas = motor.recibido.lock().unwrap();
+    let primero = pedidas[0].mensajes.last().unwrap().texto_entero();
+    assert!(primero.contains("Lienzo destino: 2 elementos") && primero.contains("recta azul"), "{primero}");
+    // La azul acaba en la roja (y = 1000) y es un solo paso de deshacer.
+    let azul = escena.visibles().nth(1).unwrap().puntos().unwrap().to_vec();
+    assert!(azul.iter().all(|p| p.y <= 1000.5), "{azul:?}");
+    assert_eq!(escena.pasos_cerrados(), pasos + 1);
+    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("hecho: cortada"));
+}
+
+#[test]
+fn una_edicion_imposible_vuelve_al_modelo_y_no_toca_el_lienzo() {
+    // Casos negativos: un #id que no existe y cortar contra si misma.
+    al_lienzo::vaciar_para_pruebas();
+    let _editor = al_lienzo::EditorAbierto::nuevo(1);
+    let motor = Arc::new(MotorGuionado::nuevo(vec![
+        Respuesta::de_llamada("transformar_elementos", r##"{"que":"#99","accion":"borrar"}"##),
+        Respuesta::de_llamada("cortar_linea", r#"{"que":"la recta roja","con":"la recta roja"}"#),
+        Respuesta::de_texto("No pude."),
+    ]));
+    let mut escena = cruce();
+    let antes = escena.clone();
+    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("borra el 99 y corta la roja"), vec![], None);
+    let (_, avisos) = hasta_el_final(&mut t, Some(&mut escena));
+    assert_eq!(escena.elementos, antes.elementos);
+    let pedidas = motor.recibido.lock().unwrap();
+    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("no existe #99"));
+    assert!(pedidas[2].mensajes.last().unwrap().texto_entero().contains("misma linea"));
+    assert!(avisos.iter().any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: false, .. }))));
+}
+
 #[test]
 fn sin_nadie_que_atienda_el_lienzo_el_modelo_se_entera_del_fallo() {
     al_lienzo::vaciar_para_pruebas();
@@ -1002,4 +1063,70 @@ fn el_lienzo_abierto_da_lo_elegido_solo_si_se_lo_piden() {
     let rx = al_lienzo::pedir_lo_elegido();
     al_lienzo::contestar_lo_elegido(&escena, &[]);
     assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap().is_empty());
+}
+
+/// 17-oct: el asistente (nube) lista los lienzos del chat, crea uno con nombre
+/// y pasa a trabajar en otro por su nombre: lo siguiente va a ese lienzo.
+#[test]
+fn el_asistente_lista_crea_y_usa_lienzos_del_chat_por_su_nombre() {
+    use pixpin_ia::agente::Ejecutor;
+    use pixpin_ia::herramientas::Llamada;
+    let raiz = std::env::temp_dir().join(format!("pixpin-lienzos-ia-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&raiz);
+    std::fs::create_dir_all(&raiz).unwrap();
+    crate::ventana_chat::escribir_lienzo(&raiz, "obra", "PC", 1, Some("Fachada")).unwrap();
+    let llamar = |ej: &mut super::ejecutor::EjecutorDelChat, h: &str, args: serde_json::Value| {
+        let fila = pixpin_ia::acciones::por_nombre(h).expect("la fila");
+        let a = pixpin_ia::acciones::validar(fila, args.as_object().unwrap()).expect("valida");
+        ej.ejecutar(&Llamada::App(a))
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let parar = Arc::new(AtomicBool::new(false));
+    let mut ej = super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone())
+        .en_la_nube(true)
+        .con_raiz(Some(raiz.clone()))
+        .con_espera(Duration::from_millis(200));
+    let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
+    assert!(lista.contains("«Fachada»: 0 elementos"), "{lista}");
+    let hecho = llamar(&mut ej, "crear_lienzo", serde_json::json!({"nombre": "Planta baja"})).unwrap();
+    assert!(hecho.contains("«Planta baja»"), "{hecho}");
+    let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
+    assert!(lista.contains("«Planta baja»: 0 elementos (trabajas en este)"), "{lista}");
+    // Usar otro por su nombre (sin tildes ni mayusculas): el destino cambia.
+    let usado = llamar(&mut ej, "usar_lienzo", serde_json::json!({"nombre": "FACHADA"})).unwrap();
+    assert!(usado.contains("«Fachada»"), "{usado}");
+    let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
+    assert!(lista.contains("«Fachada»: 0 elementos (trabajas en este)"), "{lista}");
+    // Casos negativos: un nombre que no esta dice los que hay; y con el
+    // modelo local no se ofrece.
+    let e = llamar(&mut ej, "usar_lienzo", serde_json::json!({"nombre": "Corte"})).unwrap_err();
+    assert!(e.contains("Fachada") && e.contains("Planta baja"), "{e}");
+    let mut local = super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar).con_raiz(Some(raiz.clone()));
+    assert!(llamar(&mut local, "lienzos_del_chat", serde_json::json!({})).is_err());
+    al_lienzo::vaciar_para_pruebas();
+    let _ = std::fs::remove_dir_all(&raiz);
+}
+
+/// 17-oct: con un lienzo abierto, lo pedido para OTRO lienzo del chat no se
+/// lo lleva el editor: lo hace el chat en su fichero.
+#[test]
+fn lo_pedido_para_otro_lienzo_no_se_lo_lleva_el_editor_abierto() {
+    al_lienzo::vaciar_para_pruebas();
+    let editor = al_lienzo::EditorAbierto::nuevo(1).con_hoja(Some("dib-a".into()));
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let para = |d: Option<&str>| al_lienzo::Pedido::de_trabajo("obra".into(), d.map(str::to_string), al_lienzo::Trabajo::Resumir, tx.clone());
+    al_lienzo::pedir(para(Some("dib-b")));
+    al_lienzo::pedir(para(Some("dib-a")));
+    al_lienzo::pedir(para(None));
+    let del_editor = al_lienzo::tomar_si(al_lienzo::es_para_el_editor);
+    assert_eq!(del_editor.iter().map(|p| p.destino.clone()).collect::<Vec<_>>(), vec![Some("dib-a".into()), None]);
+    let del_chat = al_lienzo::tomar_para_el_chat();
+    assert_eq!(del_chat.len(), 1);
+    assert_eq!(del_chat[0].destino.as_deref(), Some("dib-b"));
+    drop(editor);
+    // Sin decir su hoja, el editor se lo lleva todo (lo de antes).
+    let _e = al_lienzo::EditorAbierto::nuevo(1);
+    al_lienzo::pedir(para(Some("dib-b")));
+    assert_eq!(al_lienzo::tomar_si(al_lienzo::es_para_el_editor).len(), 1);
+    al_lienzo::vaciar_para_pruebas();
 }

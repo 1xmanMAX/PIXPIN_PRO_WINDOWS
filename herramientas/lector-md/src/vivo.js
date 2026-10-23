@@ -12,7 +12,7 @@
 import { StateField, RangeSetBuilder, EditorState } from '@codemirror/state'
 import { EditorView, Decoration, WidgetType } from '@codemirror/view'
 import { syntaxTree, ensureSyntaxTree } from '@codemirror/language'
-import { tabla, esTablaHtml } from './tablas.js'
+import { tabla, esTablaHtml, enLinea } from './tablas.js'
 import { componer } from './formulas.mjs'
 
 export const AUDIO = ['mp3', 'ogg', 'oga', 'm4a', 'wav', 'flac', 'opus', 'aac']
@@ -291,21 +291,67 @@ class Tabla extends WidgetType {
   toDOM(view) {
     const caja = document.createElement('div')
     caja.className = 'pp-tabla-caja'
-    caja.append(tabla(this.texto))
-    // Un clic en una celda: el cursor entra en la tabla (se edita en
-    // Markdown, con su forma a la vista).
-    caja.addEventListener('mousedown', e => {
-      e.preventDefault()
-      const td = e.target.closest('td, th')
-      let pos = view.posAtDOM(caja)
-      if (td && td.dataset.desde) pos = Number(td.dataset.desde) + pos
-      view.dispatch({ selection: { anchor: Math.min(pos, view.state.doc.length) } })
-      view.focus()
-    })
+    const t = tabla(this.texto)
+    caja.append(t)
+    // (18-oct, el usuario: «cuando le doy clic a una tabla me sale su codigo;
+    // eso no tiene que ser asi».) La tabla se queda dibujada SIEMPRE. Se
+    // escribe en la celda misma: al entrar enseña su Markdown (la negrita con
+    // sus **), al salir (o Enter) la tabla entera se reescribe en la nota;
+    // Tab y Mayus+Tab van de celda en celda, Esc deshace lo escrito. Leyendo,
+    // o una tabla HTML del movil, no se toca.
+    const editable = !view.state.readOnly && !esTablaHtml(this.texto)
+    const todas = () => [...t.querySelectorAll('th, td')]
+    const sep = this.texto.split('\n')[1] || ''
+    const reescribir = () => {
+      const filas = [...t.querySelectorAll('tr')].map(
+        tr => '| ' + [...tr.querySelectorAll('th, td')].map(c => (c.dataset.md ?? c.textContent).replace(/\n/g, ' ').replace(/(?<!\\)\|/g, '\\|').trim()).join(' | ') + ' |',
+      )
+      if (!filas.length) return
+      const nuevo = [filas[0], sep, ...filas.slice(1)].join('\n')
+      if (nuevo === this.texto) return
+      const desde = view.posAtDOM(caja)
+      view.dispatch({ changes: { from: desde, to: desde + this.texto.length, insert: nuevo } })
+    }
+    for (const c of todas()) {
+      if (!editable) continue
+      c.contentEditable = 'true'
+      c.spellcheck = true
+      c.addEventListener('focus', () => {
+        c.dataset.antes = c.dataset.md ?? c.textContent
+        c.textContent = c.dataset.md ?? c.textContent
+      })
+      c.addEventListener('keydown', e => {
+        e.stopPropagation()
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          c.blur()
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          c.textContent = c.dataset.antes ?? ''
+          c.blur()
+        } else if (e.key === 'Tab') {
+          e.preventDefault()
+          const l = todas()
+          const otra = l[l.indexOf(c) + (e.shiftKey ? -1 : 1)]
+          if (otra) otra.focus()
+          else c.blur()
+        }
+      })
+      c.addEventListener('blur', () => {
+        c.dataset.md = c.textContent.trim()
+        c.innerHTML = enLinea(c.dataset.md)
+        // (Si el foco pasa a otra celda de la misma tabla, se espera a salir.)
+        setTimeout(() => {
+          if (!caja.contains(document.activeElement)) reescribir()
+        }, 0)
+      })
+    }
+    // El clic no lleva el cursor del editor dentro (eso enseñaba el codigo).
+    caja.addEventListener('mousedown', e => e.stopPropagation())
     return caja
   }
   ignoreEvent() {
-    return false
+    return true
   }
 }
 
@@ -356,8 +402,8 @@ function construir(state) {
       if (t === 'Table' || (t === 'HTMLBlock' && esTablaHtml(doc.sliceString(n.from, n.to)))) {
         const l0 = doc.lineAt(n.from).number
         const l1 = doc.lineAt(n.to).number
-        const dentro = lineaCursor >= l0 && lineaCursor <= l1
-        if (!dentro) {
+        // (Siempre dibujada: se escribe en sus celdas, ver la clase Tabla.)
+        if (true) {
           const desde = doc.line(l0).from
           const hasta = doc.line(l1).to
           pon(desde, hasta, Decoration.replace({ widget: new Tabla(doc.sliceString(desde, hasta), desde), block: true }))
@@ -547,7 +593,10 @@ function construir(state) {
 export const vivo = StateField.define({
   create: construir,
   update(v, tr) {
-    if (tr.docChanged || tr.selection || tr.reconfigured) return construir(tr.state)
+    // Y cuando el analizador acaba (o sigue) el arbol en segundo plano: al
+    // crear el editor puede no estar aun, y la nota se quedaba sin formato
+    // (las tablas con sus barras y guiones) hasta el primer clic (20-oct).
+    if (tr.docChanged || tr.selection || tr.reconfigured || syntaxTree(tr.startState) !== syntaxTree(tr.state)) return construir(tr.state)
     return v
   },
   provide: f => [EditorView.decorations.from(f, v => v.todas), EditorView.atomicRanges.of(view => view.state.field(f).atomicas)],

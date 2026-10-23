@@ -457,12 +457,13 @@ fn pintar(i: &Interno) {
     let _ = i.superficie.presentar();
 }
 
-/// Tres puntos en fila: «Mas».
+/// Tres puntos en columna «⋮»: «Mas», el boton clasico (19-oct-2026, el
+/// mismo que el de los visores).
 fn tres_puntos(p: &Pintor, r: RectF, color: Color, e: f32) {
     let cy = r.y + r.alto / 2.0;
     let cx = r.x + r.ancho / 2.0;
-    for dx in [-7.0, 0.0, 7.0] {
-        p.circulo((cx + dx * e, cy), 1.9 * e, color);
+    for dy in [-6.0, 0.0, 6.0] {
+        p.circulo((cx, cy + dy * e), 1.9 * e, color);
     }
 }
 

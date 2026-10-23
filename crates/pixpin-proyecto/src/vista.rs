@@ -51,6 +51,9 @@ fn archivado_en_ficha(f: &Ficha) -> bool {
     f.resto.get(MARCA_ARCHIVADO).and_then(|v| v.as_bool()) == Some(true)
 }
 
+#[path = "vista/asistente_unico.rs"]
+mod asistente_unico;
+
 /// El `Disco` de este equipo.
 pub struct DiscoPc {
     raiz: PathBuf,
@@ -272,6 +275,11 @@ impl DiscoPc {
         if let Some(a) = &f.aparato {
             kotlin::poner(&mut p, "aparato", Json::cadena(a.clone()));
         }
+        // El chat del asistente lo dice como el movil (`Proyecto.asistente`):
+        // sin esto el otro aparato creaba el suyo (22-oct-2026).
+        if f.es_asistente() {
+            kotlin::poner(&mut p, "asistente", Json::booleano(true));
+        }
         p
     }
 }
@@ -402,6 +410,26 @@ pub fn tabla_del_movil(raiz: &Path, ficha_id: &str, m: &crate::cuaderno::Mensaje
     let rel = format!("tablas/{}.json", limpio(referencia));
     let chat = chat_de_ficha(raiz, ficha_id).unwrap_or_else(|| ficha_id.to_string());
     Some(DiscoPc::nuevo(raiz).ruta(&chat, &rel))
+}
+
+/// **Las hojas de un Excel que el movil editaba antes del 13-oct-2026**:
+/// entonces las guardaba solo en `tablas/libro-<mensaje>-<hoja>.json`
+/// (`LibroDelChat`), y la sincronizacion las sigue trayendo a
+/// `android/tablas/`. Hoy las hojas editadas son mensajes `tabla` del chat
+/// con esa referencia (el formato unico); estos ficheros solo se LEEN, para
+/// no perder lo que se edito alli, y al guardar en el PC pasan a mensajes
+/// (`hoja_pin::Editable::guardar`). No se escriben ni se borran nunca.
+/// En orden de hoja, hasta el primero que falte (como el movil).
+pub fn tablas_viejas_del_libro(raiz: &Path, ficha_id: &str, libro_id: &str) -> Vec<PathBuf> {
+    if libro_id.trim().is_empty() {
+        return Vec::new();
+    }
+    let chat = chat_de_ficha(raiz, ficha_id).unwrap_or_else(|| ficha_id.to_string());
+    let disco = DiscoPc::nuevo(raiz);
+    (0..10_000)
+        .map(|i| disco.ruta(&chat, &format!("tablas/{}.json", limpio(&format!("libro-{libro_id}-{i}")))))
+        .take_while(|r| r.is_file())
+        .collect()
 }
 
 /// Guarda una tabla del movil en su fichero ([tabla_del_movil]), por un
@@ -742,6 +770,9 @@ impl Disco for DiscoPc {
     }
 
     fn sellar(&self) -> io::Result<()> {
+        // Antes de mirar que hay: si llego otro chat del asistente, se junta
+        // con el de aqui y el que sobra se va como un chat borrado.
+        self.unificar_asistentes()?;
         let aparato = crate::codigos::de_aparato(&self.identidad()?.yo.id);
         for (chat, _) in self.mapa() {
             let _cerrojo = crate::cuaderno::cerrojo();

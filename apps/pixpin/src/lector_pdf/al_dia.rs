@@ -53,6 +53,8 @@ fn ver(ruta: PathBuf) -> Visto {
 pub(super) struct AlDia {
     mirado: Option<Instant>,
     vistos: HashMap<usize, Visto>,
+    /// El ultimo aviso del asistente que se vio (`lector_tinta::turnos`).
+    aviso: u64,
 }
 
 impl AlDia {
@@ -78,8 +80,11 @@ pub(super) fn apuntar(e: &mut Estado, pdf: &Path) {
 }
 
 /// [`mirar_ya`], sin mirar el disco mas de una vez cada [`MIRAR_EL_DISCO`].
+/// Si el asistente acaba de escribir en alguna capa, se mira ya, sin
+/// esperar a los 0,7 s: lo primero que anota se ve al momento.
 pub(super) fn mirar(e: &mut Estado, pdf: &Path) -> bool {
-    if e.al_dia.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
+    let avisado = crate::lector_tinta::turnos::hay_aviso(&mut e.al_dia.aviso);
+    if !avisado && e.al_dia.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
         return false;
     }
     e.al_dia.mirado = Some(Instant::now());
@@ -107,6 +112,11 @@ pub(super) fn mirar_ya(e: &mut Estado, pdf: &Path) -> bool {
         tracing::info!(hoja = i, ruta = %visto.ruta.display(), "lector: la capa cambio en el disco, releida");
         e.capas.insert(i, capa);
         e.al_dia.vistos.insert(i, visto);
+        // Los pasos de antes eran de la capa de antes: deshacerlos en la
+        // releida quitaria lo leido. Lo que trae del asistente entra como
+        // su propio paso (`apuntar_turnos`).
+        e.hechos.retain(|k| *k != i);
+        e.deshechos.retain(|k| *k != i);
         releidas = true;
     }
     if releidas {
@@ -114,7 +124,25 @@ pub(super) fn mirar_ya(e: &mut Estado, pdf: &Path) -> bool {
         e.tinta.olvidar_lo_calculado();
         e.tinta.gesto.seleccion.limpiar();
     }
+    apuntar_turnos(e);
     releidas
+}
+
+/// **Lo que puso el asistente, en el orden de deshacer**: cada hoja leida
+/// con su turno marcado (`lector_tinta::turnos`) entra en `hechos`, para
+/// que Ctrl+Z lo quite (de todas sus hojas a la vez, `lector_pdf::deshacer`).
+pub(super) fn apuntar_turnos(e: &mut Estado) {
+    let mut nuevas: Vec<usize> = e
+        .capas
+        .iter_mut()
+        .filter_map(|(i, c)| {
+            let t = c.turno.as_mut().filter(|t| t.sin_apuntar)?;
+            t.sin_apuntar = false;
+            Some(*i)
+        })
+        .collect();
+    nuevas.sort_unstable();
+    e.hechos.extend(nuevas);
 }
 
 /// **Guarda las capas con cambios**. La que cambio en el disco desde que se
@@ -289,6 +317,44 @@ mod pruebas {
         assert!(!e.donde.para_leer(&pdf, 0).with_extension("excalidraw.mio").exists(), "sin restos");
         // Ya junto, nada nuevo que releer.
         assert!(!mirar_ya(&mut e, &pdf));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    /// Lo que pone el asistente en un turno (en dos hojas) se quita con UN
+    /// Ctrl+Z y vuelve con un Ctrl+Y; un trazo del usuario de antes sigue.
+    #[test]
+    fn el_turno_del_asistente_se_deshace_entero_en_todas_sus_hojas() {
+        use crate::lector_tinta::{Capa, turnos};
+        let (r, pdf) = pdf("turno");
+        let mut e = estado(2);
+        e.donde = crate::lector_pdf_proyecto::DondeVa::de(Path::new(""), &pdf, 1);
+        let grupo = "asistente-anotado:prueba-turno";
+        for i in 0..2 {
+            let mut c = Capa::default();
+            c.escena.anadir(pixpin_motor2d::Elemento { x: 10.0, y: 10.0, ancho: 40.0, alto: 20.0, grupos: vec![grupo.into()], ..Default::default() });
+            c.sucia = true;
+            let ruta = e.donde.para_escribir(&pdf, i);
+            turnos::apuntar(&e.donde.para_leer(&pdf, i), grupo);
+            std::fs::create_dir_all(ruta.parent().unwrap()).unwrap();
+            c.guardar(&ruta).unwrap();
+        }
+        for i in 0..2 {
+            let alto = alto_de(&e.hojas, i);
+            let capa = e.donde.leer_capa(&pdf, i, 0, alto);
+            e.capas.insert(i, capa);
+        }
+        apuntar_turnos(&mut e);
+        assert_eq!(e.hechos.len(), 2);
+        let visibles = |e: &Estado| e.capas.values().map(|c| c.escena.visibles().count()).sum::<usize>();
+        assert_eq!(visibles(&e), 2);
+        super::super::deshacer(&mut e);
+        assert_eq!(visibles(&e), 0, "un solo Ctrl+Z quita lo de las dos hojas");
+        assert!(e.hechos.is_empty());
+        super::super::rehacer(&mut e);
+        assert_eq!(visibles(&e), 2, "y un Ctrl+Y lo devuelve");
+        // Caso negativo: otra vez, sin turno nuevo, no se apunta de mas.
+        apuntar_turnos(&mut e);
+        assert_eq!(e.hechos.len(), 2);
         let _ = std::fs::remove_dir_all(&r);
     }
 }

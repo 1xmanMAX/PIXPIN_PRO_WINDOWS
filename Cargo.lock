@@ -1509,6 +1509,7 @@ dependencies = [
  "pixpin-capture",
  "pixpin-codec",
  "pixpin-docs",
+ "pixpin-frase",
  "pixpin-geom",
  "pixpin-hojas",
  "pixpin-ia",
@@ -1586,6 +1587,7 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
+ "thiserror",
  "tracing",
  "tracing-subscriber",
  "ttf-parser",
@@ -1622,15 +1624,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-flow"
+name = "pixpin-frase"
 version = "0.1.0"
 
 [[package]]
 name = "pixpin-geom"
-version = "0.1.0"
-
-[[package]]
-name = "pixpin-gpu"
 version = "0.1.0"
 
 [[package]]
@@ -1648,8 +1646,11 @@ version = "0.1.0"
 dependencies = [
  "image",
  "pixpin-codec",
+ "pixpin-frase",
+ "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-notas",
+ "pixpin-ocr",
  "pixpin-pdf",
  "pixpin-shell",
  "pixpin-voz",
@@ -1666,6 +1667,7 @@ dependencies = [
 name = "pixpin-lanzador"
 version = "0.1.0"
 dependencies = [
+ "pixpin-frase",
  "pixpin-lecciones",
  "serde",
  "serde_json",
@@ -1680,8 +1682,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-model"
+name = "pixpin-mcp"
 version = "0.1.0"
+dependencies = [
+ "pixpin-capture",
+ "pixpin-codec",
+ "pixpin-docs",
+ "pixpin-geom",
+ "pixpin-hojas",
+ "pixpin-ia",
+ "pixpin-ocr",
+ "pixpin-office",
+ "pixpin-pdf",
+ "pixpin-proyecto",
+ "pixpin-shell",
+ "pixpin-store",
+ "serde_json",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-motor2d"
@@ -1703,6 +1721,7 @@ version = "0.1.0"
 dependencies = [
  "pixpin-codec",
  "pixpin-docs",
+ "pixpin-motor2d",
  "pixpin-render",
  "pixpin-shell",
  "pixpin-ui",
@@ -1773,10 +1792,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-plugin"
-version = "0.1.0"
-
-[[package]]
 name = "pixpin-proyecto"
 version = "0.1.0"
 dependencies = [
@@ -1789,6 +1804,16 @@ dependencies = [
  "thiserror",
  "unicode-normalization",
  "zip",
+]
+
+[[package]]
+name = "pixpin-puente"
+version = "0.1.0"
+dependencies = [
+ "pixpin-shell",
+ "serde",
+ "serde_json",
+ "windows",
 ]
 
 [[package]]
@@ -1822,11 +1847,13 @@ dependencies = [
 name = "pixpin-shell"
 version = "0.1.0"
 dependencies = [
+ "hmac",
  "pixpin-geom",
  "pixpin-nivel",
  "pixpin-sistema",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -1869,6 +1896,7 @@ name = "pixpin-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
+ "pixpin-frase",
  "pixpin-motor2d",
  "pixpin-sistema",
  "serde",

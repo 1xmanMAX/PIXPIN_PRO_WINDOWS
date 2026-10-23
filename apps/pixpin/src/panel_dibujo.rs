@@ -55,6 +55,9 @@ thread_local! {
     /// Si el ultimo boton-abajo fue del panel: su boton-arriba tambien lo es
     /// (ver `atender_clic`). Por hilo por lo mismo que `ABIERTO`.
     static PULSADO_EN_PANEL: Cell<bool> = const { Cell::new(false) };
+    /// Se pulso «Guardar en figuras»: lo recoge el editor
+    /// ([`tomar_guardar_figura`]), que es quien abre el cajetin del nombre.
+    static GUARDAR_FIGURA: Cell<bool> = const { Cell::new(false) };
     /// Lo que se va escribiendo en el campo del codigo, si se esta
     /// escribiendo. **Mientras hay algo aqui el teclado es del panel**
     /// (`tecla_del_hex`): una «r» es un digito que no vale y no la
@@ -310,6 +313,11 @@ pub enum ClicPanel {
 ///
 /// `pulsado` distingue el boton-abajo del boton-arriba: la accion va con el
 /// primero; el segundo solo se traga para que no llegue al lienzo.
+/// Si se pulso «Guardar en figuras» desde la ultima vez (y lo olvida).
+pub fn tomar_guardar_figura() -> bool {
+    GUARDAR_FIGURA.with(|g| g.replace(false))
+}
+
 pub fn atender_clic(
     p: pixpin_geom::Punto,
     pulsado: bool,
@@ -410,6 +418,11 @@ pub fn aplicar(accion: AccionPanel, gesto: &mut Gesto, escena: &mut Escena) -> b
         AccionPanel::Repartir(r) => organizar::repartir(escena, &sel, r),
         AccionPanel::Agrupar => return organizar::agrupar(escena, &sel).is_some(),
         AccionPanel::Desagrupar => organizar::desagrupar(escena, &sel),
+        // No toca la escena: lo apunta para el editor ([`tomar_guardar_figura`]).
+        AccionPanel::GuardarFigura => {
+            GUARDAR_FIGURA.with(|g| g.set(true));
+            return false;
+        }
         AccionPanel::Duplicar => {
             // Como Ctrl+D en Excalidraw: copias desplazadas 10 unidades, y
             // quedan elegidas las copias. Por `portapapeles::pegar` y no a
@@ -505,6 +518,47 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
         // El modo guia: la palabra, que un icono de regla no dice que lo que
         // se trace sera andamio.
         AccionPanel::ModoGuia(_) => Some(textos().t("lienzo-guia-corto").to_string()),
+        // Las de las laminas de geometria, con su palabra: no hay iconos de
+        // Excalidraw para «sector» ni para «radial».
+        AccionPanel::Forma(CambioForma::Degradado(t)) => Some(
+            textos()
+                .t(match t {
+                    None => "lienzo-degradado-liso",
+                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Lineal) => "lienzo-degradado-lineal",
+                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Radial) => "lienzo-degradado-radial",
+                })
+                .to_string(),
+        ),
+        AccionPanel::Forma(CambioForma::CierreArco(c)) => Some(
+            textos()
+                .t(match c {
+                    None => "lienzo-cierre-abierto",
+                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Sector) => "lienzo-cierre-sector",
+                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Segmento) => "lienzo-cierre-segmento",
+                })
+                .to_string(),
+        ),
+        AccionPanel::Forma(CambioForma::ModoArco(m)) => Some(
+            textos()
+                .t(match m {
+                    pixpin_motor2d::geometria_exacta::ModoArco::Guia => "lienzo-arco-modo-guia",
+                    pixpin_motor2d::geometria_exacta::ModoArco::CentroYPuntos => "lienzo-arco-modo-centro",
+                    pixpin_motor2d::geometria_exacta::ModoArco::TresPuntos => "lienzo-arco-modo-tres",
+                })
+                .to_string(),
+        ),
+        AccionPanel::Forma(CambioForma::ArcosAngulo(n)) => Some(")".repeat(n as usize)),
+        AccionPanel::Forma(CambioForma::ModoAngulo(m)) => Some(
+            textos()
+                .t(match m {
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Griega => "lienzo-angulo-modo-griega",
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Simple => "lienzo-angulo-modo-simple",
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Recto => "lienzo-angulo-modo-recto",
+                })
+                .to_string(),
+        ),
+        // El raya-punto: el dibujo con letras, que Excalidraw no lo tiene.
+        AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::RayaPunto)) => Some("— · —".into()),
         _ => None,
     }
 }
@@ -626,6 +680,7 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         AccionPanel::Borrar => &i::TRASH_ICON,
         AccionPanel::Agrupar => &i::GROUP_ICON,
         AccionPanel::Desagrupar => &i::UNGROUP_ICON,
+        AccionPanel::GuardarFigura => &i::LIBRARY_ICON,
         // Si o no: la marca y el aspa.
         AccionPanel::PedirMedida(true) => &i::TABLER_CHECK_ICON,
         AccionPanel::PedirMedida(false) => &i::CLOSE_ICON,
@@ -636,6 +691,18 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         // esconde), cerrado y marcado mientras estan escondidas.
         AccionPanel::VerGuias(false) => &i::EYE_ICON,
         AccionPanel::VerGuias(true) => &i::EYE_CLOSED_ICON,
+        // Las de las laminas de geometria van con su palabra
+        // (`rotulo_de_imagen`); estos son los iconos de reserva.
+        AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::RayaPunto)) => {
+            &i::STROKE_STYLE_DASHED_ICON
+        }
+        AccionPanel::Forma(CambioForma::Degradado(None)) => &i::FILL_SOLID_ICON,
+        AccionPanel::Forma(CambioForma::Degradado(Some(_))) => &i::FILL_ZIG_ZAG_ICON,
+        AccionPanel::Forma(CambioForma::CierreArco(None)) => &i::EDGE_ROUND_ICON,
+        AccionPanel::Forma(CambioForma::CierreArco(Some(_))) => &i::ANGLE_ICON,
+        AccionPanel::Forma(CambioForma::ModoArco(_)) => &i::EDGE_ROUND_ICON,
+        AccionPanel::Forma(CambioForma::ArcosAngulo(_)) => &i::ANGLE_ICON,
+        AccionPanel::Forma(CambioForma::ModoAngulo(_)) => &i::ANGLE_ICON,
         _ => return None,
     })
 }
@@ -677,6 +744,11 @@ fn clave(s: Seccion) -> &'static str {
         Seccion::GuiaLupa => "lienzo-panel-guia",
         Seccion::Oscurecer => "lienzo-panel-oscurecer",
         Seccion::ZonaFoco => "lienzo-panel-zona-foco",
+        Seccion::Degradado => "lienzo-panel-degradado",
+        Seccion::CierreArco => "lienzo-panel-cierre-arco",
+        Seccion::ModoArco => "lienzo-panel-modo-arco",
+        Seccion::ArcosAngulo => "lienzo-panel-arcos-angulo",
+        Seccion::ModoAngulo => "lienzo-panel-modo-angulo",
     }
 }
 
@@ -1578,6 +1650,16 @@ mod pruebas {
                 let caja = pixpin_motor2d::lupa_elemento::caja_de(e);
                 (pixpin_motor2d::lupa_elemento::zona_de(cristal, caja) - z).abs() < 0.01
             }
+            (CambioForma::Degradado(t), _) => e.extras.degradado.map(|d| d.tipo) == t,
+            (CambioForma::CierreArco(c), Figura::Arco { .. }) => e.extras.cierre == c,
+            (CambioForma::ArcosAngulo(n), Figura::Arco { .. }) => {
+                e.extras.marca_angulo.as_ref().is_some_and(|m| m.arcos == n)
+            }
+            (CambioForma::ModoAngulo(m), Figura::Arco { .. }) => e
+                .extras
+                .marca_angulo
+                .as_ref()
+                .is_some_and(|x| pixpin_ui::panel_lateral::modo_de_marca(x) == m),
             _ => false,
         }
     }
@@ -1828,6 +1910,15 @@ mod pruebas {
                     return Err("no se deshizo el grupo".into());
                 }
             }
+            // No toca la escena: deja apuntado el cajetin para el editor.
+            AccionPanel::GuardarFigura => {
+                if despues.elementos != antes.elementos {
+                    return Err("guardar en figuras cambio el dibujo".into());
+                }
+                if !tomar_guardar_figura() {
+                    return Err("no quedo pedido el cajetin del nombre".into());
+                }
+            }
             // El campo del codigo: no toca la escena, empieza a escribir con
             // el codigo que ensena, entero y elegido.
             AccionPanel::EditarHex => {
@@ -1871,7 +1962,7 @@ mod pruebas {
     fn deberia_cambiar(accion: AccionPanel, escena: &Escena, ids: &[u64]) -> bool {
         let elegidos: Vec<&Elemento> = ids.iter().map(|id| escena.buscar(*id).unwrap()).collect();
         match accion {
-            AccionPanel::Abrir(_) | AccionPanel::EditarHex => false,
+            AccionPanel::Abrir(_) | AccionPanel::EditarHex | AccionPanel::GuardarFigura => false,
             // El modo guia y el ojo no dibujan ni van al historial, como en
             // el movil: los mira su propia prueba.
             AccionPanel::ModoGuia(_) | AccionPanel::VerGuias(_) => false,

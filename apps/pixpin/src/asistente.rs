@@ -34,22 +34,65 @@
 
 pub mod acciones;
 pub mod al_lienzo;
+pub mod anotar_inteligente;
 pub mod chat;
+pub mod conexiones;
 pub mod descarga;
 pub mod documentos;
 pub mod documentos_acciones;
 pub mod ejecutor;
+pub mod externa;
 pub mod foto;
+pub mod hoja_a_lienzo;
 pub mod motor;
 pub mod nube;
 pub mod ocr;
+pub mod ojos;
 pub mod permiso;
 pub mod recetas;
 pub mod pensado;
 pub mod rapido;
 pub mod turno;
+pub mod en_el_chat;
 
 #[cfg(test)]
 mod pruebas;
 #[cfg(test)]
 mod pruebas_pensado;
+#[cfg(test)]
+mod pruebas_diagramas;
+#[cfg(test)]
+mod banco_documentos;
+
+/// **Hora local menos UTC** (ms), para dar al modelo de la nube las fechas
+/// al minuto en la hora del usuario (`pixpin_ia::fechas::fecha_y_hora`).
+/// Redondeado al cuarto de hora: las dos lecturas del reloj no caen en el
+/// mismo milisegundo, y ningun huso va por debajo de 15 min.
+pub fn desfase_local_ms() -> i64 {
+    let d = pixpin_shell::entorno::ahora_local_ms() - pixpin_shell::entorno::ahora_utc_ms();
+    const CUARTO: i64 = 15 * 60_000;
+    (d as f64 / CUARTO as f64).round() as i64 * CUARTO
+}
+
+/// «Ahora: vie 17-oct-2026 14:05 (hora local).» al final del pedido, solo
+/// con la nube (17-oct-2026): con la hora de ahora y la de cada archivo, el
+/// modelo entiende «lo de esta mañana» o «el ultimo que subi» sin preguntar.
+pub fn nota_de_ahora(ahora_utc_ms: i64, desfase_ms: i64) -> String {
+    match pixpin_ia::fechas::fecha_y_hora(ahora_utc_ms, desfase_ms) {
+        Some(f) => format!("\n\n(Ahora: {f}, hora local del usuario.)"),
+        None => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod pruebas_de_la_hora {
+    #[test]
+    fn la_nube_sabe_que_hora_es_al_minuto() {
+        // 3-oct-2026 19:42 UTC en Lima (UTC-5).
+        let t = 1_790_985_600_000 + (19 * 60 + 42) * 60_000;
+        assert_eq!(super::nota_de_ahora(t, -5 * 3_600_000), "\n\n(Ahora: sáb 3-oct-2026 14:42, hora local del usuario.)");
+        assert_eq!(super::nota_de_ahora(0, 0), "", "sin reloj no se dice nada");
+        // El desfase de este PC sale en cuartos de hora.
+        assert_eq!(super::desfase_local_ms() % (15 * 60_000), 0);
+    }
+}

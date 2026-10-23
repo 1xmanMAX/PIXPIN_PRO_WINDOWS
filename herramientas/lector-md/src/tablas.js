@@ -98,6 +98,8 @@ export function tabla(texto) {
       const celda = document.createElement(i === 0 ? 'th' : 'td')
       if (aline[j]) celda.style.textAlign = aline[j]
       celda.innerHTML = enLinea(txt)
+      // Su Markdown, para escribir en la celda sin perder la negrita.
+      celda.dataset.md = txt
       const k = r.indexOf(txt, col)
       celda.dataset.desde = String(inicio + (k >= 0 ? k : col))
       col = (k >= 0 ? k + txt.length : col) + 1

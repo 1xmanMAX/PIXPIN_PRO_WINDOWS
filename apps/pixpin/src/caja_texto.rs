@@ -401,9 +401,110 @@ pub(crate) fn sitio_del_cursor(
     }
 }
 
+/// Si una letra de WM_CHAR se escribe en la caja de varios renglones: las
+/// que se ven y el salto de renglon. Los mandos (Retroceso `\x08`, el DEL
+/// `\x7f` que Windows manda tras Ctrl+Retroceso, Intro `\r`) se atienden
+/// por su tecla: escritos serian letras invisibles que se comen el
+/// siguiente Ctrl+Retroceso (17-oct-2026).
+pub(crate) fn se_escribe(c: char) -> bool {
+    c == '\n' || !c.is_control()
+}
+
+/// **Cuanto correr un texto para que la rayita quede a la vista**, en un
+/// eje: `desde..hasta` es la rayita (en x es una raya, `desde == hasta`; en
+/// y va de su techo a su suelo), `largo` lo que mide todo lo escrito y
+/// `hueco` lo que se ve. Se corre lo justo, y si lo escrito ya cabe (o se
+/// borro el final) vuelve atras para no dejar hueco vacio detras.
+///
+/// Es la misma cuenta para la caja de una linea (que se corre a lo ancho) y
+/// para las de varios renglones, que crecen hasta su tope y luego se corren
+/// hacia arriba (el usuario, 17-oct-2026: «el texto que ya no entra en la
+/// caja empieza a escribirse en una zona en la que no puedo verlo»).
+pub(crate) fn corrido_a_la_vista(antes: f32, desde: f32, hasta: f32, largo: f32, hueco: f32) -> f32 {
+    let hueco = hueco.max(1.0);
+    let mut c = antes;
+    if hasta - c > hueco {
+        c = hasta - hueco;
+    }
+    if desde < c {
+        c = desde;
+    }
+    c.min((largo.max(hasta) - hueco).max(0.0)).max(0.0)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn ctrl_retroceso_borra_una_palabra_tras_otra() {
+        // Lo que llega al pulsar Ctrl+Retroceso tres veces: la tecla (que
+        // borra) y el DEL de WM_CHAR, que no debe escribirse.
+        let mut t = String::from("uno dos tres cuatro");
+        let mut c = Cursor::default();
+        let mut quedan = Vec::new();
+        for _ in 0..3 {
+            c.borrar_atras(&mut t, true);
+            if se_escribe('\u{7f}') {
+                c.escribir(&mut t, "\u{7f}");
+            }
+            quedan.push(t.clone());
+        }
+        assert_eq!(quedan, ["uno dos tres ", "uno dos ", "uno "]);
+        // Con la rayita en medio, la palabra de antes de ella.
+        let mut t = String::from("uno dos tres");
+        c.poner(&t, 7, false);
+        c.borrar_atras(&mut t, true);
+        assert_eq!(t, "uno  tres");
+        // Ctrl+Supr, la de despues con sus blancos, una y otra vez.
+        let mut t = String::from("uno dos tres");
+        c.poner(&t, 0, false);
+        c.borrar_delante(&mut t, true);
+        c.borrar_delante(&mut t, true);
+        assert_eq!(t, "tres");
+        // Con algo elegido, solo lo elegido, aunque se pulse Ctrl.
+        let mut t = String::from("uno dos tres");
+        c.elegir(&t, 4..7);
+        c.borrar_atras(&mut t, true);
+        assert_eq!(t, "uno  tres");
+        // Caso negativo: las letras y el salto si se escriben.
+        assert!(se_escribe('a') && se_escribe('\n') && se_escribe('ñ'));
+        assert!(!se_escribe('\u{8}') && !se_escribe('\r'));
+    }
+
+    #[test]
+    fn ctrl_flechas_saltan_palabras_como_windows() {
+        let t = "hola, buen dia";
+        let mut c = Cursor::default();
+        c.poner(t, 0, false);
+        let mut paradas = Vec::new();
+        for _ in 0..5 {
+            c.derecha(t, false, true);
+            paradas.push(c.pos(t));
+        }
+        assert_eq!(paradas, [4, 6, 11, 14, 14]);
+        let mut paradas = Vec::new();
+        for _ in 0..5 {
+            c.izquierda(t, false, true);
+            paradas.push(c.pos(t));
+        }
+        assert_eq!(paradas, [11, 6, 4, 0, 0]);
+    }
+
+    #[test]
+    fn la_caja_se_corre_para_que_la_rayita_se_vea() {
+        // Cabe todo: no se corre.
+        assert_eq!(corrido_a_la_vista(0.0, 40.0, 60.0, 60.0, 100.0), 0.0);
+        // Escribiendo al final de un texto de 300 en un hueco de 100: se
+        // ve el final, con el suelo de la rayita en el borde de abajo.
+        assert_eq!(corrido_a_la_vista(0.0, 280.0, 300.0, 300.0, 100.0), 200.0);
+        // La rayita sube por encima de lo visto: su techo arriba del todo.
+        assert_eq!(corrido_a_la_vista(200.0, 20.0, 40.0, 300.0, 100.0), 20.0);
+        // Dentro de lo visto: se queda donde estaba (la rueda manda).
+        assert_eq!(corrido_a_la_vista(150.0, 180.0, 200.0, 300.0, 100.0), 150.0);
+        // Se borro el final: vuelve para no dejar hueco vacio abajo.
+        assert_eq!(corrido_a_la_vista(200.0, 100.0, 120.0, 120.0, 100.0), 20.0);
+    }
 
     /// Letras de 10 de ancho y renglones de 20, partiendo en cada salto.
     /// Asi las cajas se pueden escribir a mano, sin DirectWrite.

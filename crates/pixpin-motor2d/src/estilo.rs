@@ -132,6 +132,17 @@ pub struct EstiloDibujo {
     /// **Con que senala la proxima lupa de donde sale** (`ItemStyle.guia`, la
     /// flecha).
     pub guia: crate::lupa_elemento::GuiaDeLupa,
+    /// **Como se cierran los arcos nuevos** (abierto, sector, segmento).
+    pub cierre_arco: Option<crate::geometria_exacta::CierreArco>,
+    /// **Si el relleno nuevo va degradado**, y como (lineal o radial).
+    pub degradado: Option<crate::geometria_exacta::TipoDegradado>,
+    /// Cuantos arquitos llevan las marcas de angulo nuevas.
+    pub arcos_angulo: u8,
+    /// Como traza la herramienta Arco.
+    pub modo_arco: crate::geometria_exacta::ModoArco,
+    /// **Que pone la herramienta Angulo**: con letra griega (de fabrica), la
+    /// marca sola o el cuadradito del recto.
+    pub modo_angulo: crate::geometria_exacta::ModoAngulo,
 }
 
 impl Default for EstiloDibujo {
@@ -165,6 +176,11 @@ impl Default for EstiloDibujo {
             desenfoque: false,
             aumento: crate::lupa_elemento::AUMENTO_POR_DEFECTO,
             guia: crate::lupa_elemento::GuiaDeLupa::Flecha,
+            cierre_arco: None,
+            degradado: None,
+            arcos_angulo: 1,
+            modo_arco: crate::geometria_exacta::ModoArco::Guia,
+            modo_angulo: crate::geometria_exacta::ModoAngulo::Griega,
         }
     }
 }
@@ -232,6 +248,11 @@ impl EstiloDibujo {
                 )
             }
             CambioForma::GuiaLupa(g) => self.guia = g,
+            CambioForma::CierreArco(c) => self.cierre_arco = c,
+            CambioForma::Degradado(t) => self.degradado = t,
+            CambioForma::ArcosAngulo(n) => self.arcos_angulo = n.clamp(1, 3),
+            CambioForma::ModoArco(m) => self.modo_arco = m,
+            CambioForma::ModoAngulo(m) => self.modo_angulo = m,
             // Solo con un foco elegido: el foco nace de una figura con los de
             // fabrica del movil.
             CambioForma::Oscurecer(_) | CambioForma::ZonaFoco(_) => {}
@@ -377,6 +398,20 @@ pub enum CambioForma {
     /// **Que parte de su marco ocupa el hueco de un foco** (`Propiedad.ZONA`,
     /// `conZona`): el marco no se mueve, crece o mengua lo iluminado.
     ZonaFoco(f32),
+    /// **Como se cierra un arco**: abierto (`None`), sector o segmento
+    /// (`cierreArco`, laminas de geometria).
+    CierreArco(Option<crate::geometria_exacta::CierreArco>),
+    /// **Relleno liso (`None`) o degradado**, lineal o radial (`degradado`).
+    Degradado(Option<crate::geometria_exacta::TipoDegradado>),
+    /// Cuantos arquitos lleva una marca de angulo (1 a 3).
+    ArcosAngulo(u8),
+    /// Como traza la herramienta Arco. Solo es un «actual»: no cambia nada
+    /// de lo ya dibujado.
+    ModoArco(crate::geometria_exacta::ModoArco),
+    /// **Que pone la herramienta Angulo** (letra griega, sola, recto). En una
+    /// marca elegida, «recto» la pasa al cuadradito y «sola» le quita la
+    /// letra; la letra nueva la pone la herramienta, que ve el dibujo entero.
+    ModoAngulo(crate::geometria_exacta::ModoAngulo),
 }
 
 impl CambioForma {
@@ -419,6 +454,18 @@ impl CambioForma {
             CambioForma::Oscurecer(_) | CambioForma::ZonaFoco(_) => {
                 matches!(figura, Figura::Foco { .. })
             }
+            CambioForma::CierreArco(_) | CambioForma::ArcosAngulo(_) | CambioForma::ModoAngulo(_) => {
+                matches!(figura, Figura::Arco { barrido: Some(_), .. })
+            }
+            CambioForma::Degradado(_) => matches!(
+                figura,
+                Figura::Rectangulo
+                    | Figura::Rombo
+                    | Figura::Elipse
+                    | Figura::Arco { .. }
+                    | Figura::Region { .. }
+            ),
+            CambioForma::ModoArco(_) => false,
         }
     }
 }
@@ -498,6 +545,22 @@ fn cambiaria_forma(e: &crate::elemento::Elemento, cambio: CambioForma) -> bool {
             (crate::lupa_elemento::zona_de(cristal, crate::lupa_elemento::caja_de(e)) - z).abs()
                 > 0.005
         }
+        // La marca de angulo no se cierra: ya es un sector.
+        (CambioForma::CierreArco(c), _) => e.extras.marca_angulo.is_none() && e.extras.cierre != c,
+        (CambioForma::ArcosAngulo(n), _) => e
+            .extras
+            .marca_angulo
+            .as_ref()
+            .is_some_and(|m| !m.recto && m.arcos != n.clamp(1, 3)),
+        (CambioForma::ModoAngulo(m), _) => e.extras.marca_angulo.as_ref().is_some_and(|x| {
+            use crate::geometria_exacta::ModoAngulo as M;
+            match m {
+                M::Recto => !x.recto,
+                M::Simple => x.recto || x.valor.is_some(),
+                M::Griega => x.recto,
+            }
+        }),
+        (CambioForma::Degradado(t), _) => e.extras.degradado.map(|d| d.tipo) != t,
         _ => false,
     }
 }
@@ -508,6 +571,11 @@ fn cambiaria_forma(e: &crate::elemento::Elemento, cambio: CambioForma) -> bool {
 /// dentro de una figura lo coloca su figura.
 fn remedir_texto_suelto(e: &mut crate::elemento::Elemento) {
     if !crate::texto::hay_medidor() || e.extras.contenedor.is_some() {
+        return;
+    }
+    if let Some((ancho, alto)) = crate::texto_rico::medida_del_elemento(e) {
+        e.ancho = ancho;
+        e.alto = alto;
         return;
     }
     let estilo = crate::texto::EstiloDeTexto {
@@ -665,6 +733,28 @@ fn escribir_forma(e: &mut crate::elemento::Elemento, cambio: CambioForma) {
             let caja = crate::lupa_elemento::caja_de(e);
             if let Figura::Foco { cristal } = &mut e.figura {
                 *cristal = crate::lupa_elemento::con_zona(cristal, caja, z);
+            }
+        }
+        CambioForma::CierreArco(c) => e.extras.cierre = c,
+        CambioForma::ArcosAngulo(n) => {
+            if let Some(m) = e.extras.marca_angulo.as_mut() {
+                m.arcos = n.clamp(1, 3);
+            }
+        }
+        // Del color de su relleno (o de su tinta) a uno mucho mas claro.
+        CambioForma::Degradado(t) => {
+            e.extras.degradado = t.map(|t| {
+                crate::geometria_exacta::Degradado::desde_relleno(t, e.relleno.unwrap_or(e.trazo))
+            });
+        }
+        CambioForma::ModoArco(_) => {}
+        CambioForma::ModoAngulo(m) => {
+            use crate::geometria_exacta::ModoAngulo as M;
+            if let Some(x) = e.extras.marca_angulo.as_mut() {
+                x.recto = m == M::Recto;
+                if m != M::Griega {
+                    x.valor = None;
+                }
             }
         }
     }

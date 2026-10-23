@@ -239,6 +239,33 @@ pub fn elementos_de_tabla_con_juntas(
     medir: Medir<'_>,
     con_cabecera: bool,
 ) -> Vec<Elemento> {
+    elementos_de_tabla_con_aspecto(celdas, estilo, origen, medir, con_cabecera, &Aspecto::default())
+}
+
+/// **Lo que se midio de una tabla de una foto** (16-oct, «que quede casi
+/// identica»): el ancho de cada columna, el alto de cada fila, el fondo de
+/// cada celda, el borde y el aire a la izquierda del texto. Lo que no se
+/// midio (`None`) lo calcula la tabla como siempre.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Aspecto {
+    pub anchos: Option<Vec<f32>>,
+    pub altos: Option<Vec<f32>>,
+    pub fondos: Option<Vec<Vec<Option<ColorRgba>>>>,
+    /// Color y grosor de las rayas.
+    pub borde: Option<(ColorRgba, f32)>,
+    pub aire: Option<f32>,
+}
+
+/// **La misma tabla, con su [`Aspecto`]**: un solo motor para la tabla
+/// pegada, la del asistente y la copiada de una foto.
+pub fn elementos_de_tabla_con_aspecto(
+    celdas: &[Vec<Celda>],
+    estilo: &Estilo,
+    origen: Punto2,
+    medir: Medir<'_>,
+    con_cabecera: bool,
+    aspecto: &Aspecto,
+) -> Vec<Elemento> {
     let n_filas = celdas.len();
     let columnas = celdas.first().map_or(0, Vec::len);
     if n_filas == 0 || columnas == 0 || celdas.iter().any(|f| f.len() != columnas) {
@@ -318,6 +345,15 @@ pub fn elementos_de_tabla_con_juntas(
             altos[f + alto - 1] += h + AIRE_DE_CELDA * 2.0 - tiene;
         }
     }
+    // Lo medido en la foto manda sobre lo calculado (si cuadra en numero).
+    if let Some(a) = aspecto.anchos.as_ref().filter(|a| a.len() == columnas) {
+        anchos = a.clone();
+    }
+    if let Some(a) = aspecto.altos.as_ref().filter(|a| a.len() == n_filas) {
+        altos = a.clone();
+    }
+    let (color_borde, grosor) = aspecto.borde.unwrap_or((estilo.color, 1.0));
+    let aire = aspecto.aire.unwrap_or(AIRE_DE_CELDA);
     let ancho_total: f32 = anchos.iter().sum();
     let alto_total: f32 = altos.iter().sum();
     // Donde empieza cada columna y cada fila, acumulado una vez: calcularlo
@@ -341,17 +377,30 @@ pub fn elementos_de_tabla_con_juntas(
         y,
         ancho,
         alto,
-        trazo: estilo.color,
+        trazo: color_borde,
         opacidad: estilo.opacidad,
-        grosor: 1.0,
+        grosor,
         rugosidad: 0.0,
         redondo: false,
         relleno: None,
         ..Default::default()
     };
     let mut out = Vec::new();
-    // La cabecera la primera: queda debajo de las rayas y de su texto.
-    if con_cabecera && n_filas > 1 {
+    // Los fondos medidos, celda a celda (debajo de todo); sin ellos, el gris
+    // de la cabecera de siempre.
+    let fondos = aspecto.fondos.as_ref().filter(|f| f.len() == n_filas && f.iter().all(|x| x.len() == columnas));
+    if let Some(fondos) = fondos {
+        for &(f, c) in &visibles {
+            let Some(color) = fondos[f][c] else { continue };
+            let (alto, ancho) = tramo(f, c);
+            out.push(Elemento {
+                relleno: Some(color),
+                estilo_relleno: EstiloRelleno::Solido,
+                trazo: ColorRgba { a: 0.0, ..color },
+                ..caja(izquierdas[c], arribas[f], izquierdas[c + ancho] - izquierdas[c], arribas[f + alto] - arribas[f])
+            });
+        }
+    } else if con_cabecera && n_filas > 1 {
         out.push(Elemento {
             relleno: Some(FONDO_DE_CABECERA),
             estilo_relleno: EstiloRelleno::Solido,
@@ -363,11 +412,12 @@ pub fn elementos_de_tabla_con_juntas(
         });
     }
     out.push(caja(origen.x, origen.y, ancho_total, alto_total));
+    let estilo_borde = Estilo { color: color_borde, ..estilo.clone() };
     let raya = |a: (f32, f32), b: (f32, f32)| {
         elemento_linea(
             vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
-            1.0,
-            estilo,
+            grosor,
+            &estilo_borde,
         )
     };
     // Las rayas de dentro, a tramos: se corta donde una combinada cruza la
@@ -419,7 +469,7 @@ pub fn elementos_de_tabla_con_juntas(
         let alto_de_celda = arribas[f + alto] - arribas[f];
         let mut e = elemento_texto(
             &celda.texto,
-            izquierdas[c] + AIRE_DE_CELDA,
+            izquierdas[c] + aire,
             // Centrado en todo el alto que ocupa.
             arribas[f] + (alto_de_celda - h) / 2.0,
             (w, h),

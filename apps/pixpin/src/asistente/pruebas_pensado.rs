@@ -224,8 +224,21 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
         objetivo: "Planear la fiesta de Lucia".into(),
         ..Default::default()
     };
+    // La ventana, a partir de lo fijo (instrucciones + catalogo), que crece
+    // con cada herramienta nueva: con 8192 a pelo, desde que el catalogo y
+    // `agente::instrucciones()` pasaron de ~5 000 tokens, lo fijo solo ya
+    // rozaba el 70 % y el turno de despues volvia a reiniciar (la prueba
+    // fallaba sin que el calculo estuviera mal). Cabe lo fijo, dos notas
+    // largas, dos cortas y la respuesta; no caben las doce largas.
+    let fijo = {
+        let mut h = catalogo_base();
+        h.push(pixpin_ia::contexto::herramienta_buscar());
+        pixpin_ia::contexto::estimar(&[pixpin_ia::motor::Mensaje::sistema(&pixpin_ia::agente::instrucciones())], &h)
+    };
+    let una_larga = pixpin_ia::contexto::tokens_de_texto(&largo(1));
+    let ventana = ((fijo + 2 * una_larga + 800 + pixpin_ia::contexto::RESERVA_RESPUESTA) as f32 / pixpin_ia::contexto::UMBRAL) as u32;
     let (h, reiniciado) =
-        pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", 8192, &catalogo_base());
+        pensado::preparar_con_hoja(&mut hoja, &notas, "¿y la hora?", ventana, &catalogo_base());
     assert!(reiniciado);
     assert_eq!(h.len(), 4, "sistema + 2 + el nuevo");
     assert!(
@@ -240,7 +253,7 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
     mas.push(nota(21, false, "¿y la hora?"));
     mas.push(nota(22, true, "A las 17:00."));
     let (h, reiniciado) =
-        pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", 8192, &catalogo_base());
+        pensado::preparar_con_hoja(&mut hoja, &mas, "gracias", ventana, &catalogo_base());
     assert!(!reiniciado);
     assert_eq!(h.len(), 6, "sistema + las 4 desde el reinicio + el nuevo");
     assert!(h[0].texto_entero().contains("buscar_historial"));
@@ -274,10 +287,16 @@ fn las_fuentes_de_buscar_historial_son_las_notas_y_lo_pensado() {
     assert!(pixpin_ia::contexto::buscar(&f, "miraflores", 2).starts_with("[T1 pensado]"));
 }
 
-fn pensar_en_local_es_solo_si_se_pide() {
-    assert!(!pensado::pensar_local(None));
-    assert!(pensado::pensar_local(Some(true)));
-    assert!(!pensado::pensar_local(Some(false)));
+#[test]
+fn pensar_en_automatico_es_solo_en_lo_complejo() {
+    // Automatico: lo simple no piensa, lo complejo si.
+    assert!(!pensado::pensar(None, "dibuja un circulo rojo"));
+    assert!(!pensado::pensar(None, "abre la galería"));
+    assert!(pensado::pensar(None, "resuelve x^2 - 4 = 0"));
+    assert!(pensado::pensar(None, "planifica la obra en 12 semanas"));
+    // «Siempre» y «Nunca» mandan.
+    assert!(pensado::pensar(Some(true), "dibuja un circulo rojo"));
+    assert!(!pensado::pensar(Some(false), "resuelve x^2 - 4 = 0"));
     assert_eq!(pensado::ventana_local(), 8192);
 }
 
@@ -431,4 +450,68 @@ fn hasta_el_final_largo(t: &mut Turno) -> (EnVivo, Vec<Aviso>) {
     }
     t.parar();
     panic!("el turno no acabo en 15 min: {}", vivo.mostrar());
+}
+
+/// **La nube recibe mas contexto** (17-oct-2026): 40 mensajes de antes y
+/// hasta 4000 letras de cada uno, sin reiniciar en una conversacion normal;
+/// el local sigue con sus 12 de 1500 (congelado). Imprime lo medido.
+#[test]
+fn la_nube_recibe_mas_contexto_sin_reiniciar() {
+    let catalogo = pixpin_ia::herramientas::catalogo();
+    let solo_catalogo = pixpin_ia::contexto::estimar(&[], &catalogo);
+    // 50 mensajes normales (~600 letras), el primero con una lista larga.
+    let mut notas: Vec<Nota> = (1..=50)
+        .map(|n| nota(n, n % 2 == 0, &format!("mensaje {n} {}", "palabra ".repeat(74))))
+        .collect();
+    notas[45].texto = format!("lista larga {}", "- archivo.pdf subido el vie 3-oct 14:05\n".repeat(60));
+    let mut hoja = HojaDeTrabajo::default();
+    let (h, reiniciado) =
+        pensado::preparar_con_hoja(&mut hoja, &notas, "¿y ahora?", pensado::VENTANA_NUBE, &catalogo);
+    let tokens = pixpin_ia::contexto::estimar(&h, &catalogo);
+    println!("catalogo {solo_catalogo} tokens; historial nube {} mensajes, {tokens} tokens", h.len());
+    assert!(!reiniciado, "una conversacion normal no reinicia con la nube");
+    // sistema + los 50 (sin tope de mensajes, 22-oct) + la pregunta
+    assert_eq!(h.len(), 1 + notas.len() + 1);
+    let lista = h.iter().map(|m| m.texto_entero()).find(|t| t.starts_with("lista larga")).unwrap();
+    assert!(lista.chars().count() > 1500, "la lista larga no se corta a 1500");
+    // Peor caso: 40 de 4000 letras pasa del 70 % y reinicia, como debe.
+    let largas: Vec<Nota> = (1..=40).map(|n| nota(n, n % 2 == 0, &"x".repeat(4000))).collect();
+    let mut hoja = HojaDeTrabajo::default();
+    let (h, reiniciado) =
+        pensado::preparar_con_hoja(&mut hoja, &largas, "x", pensado::VENTANA_NUBE, &catalogo);
+    println!("peor caso: reiniciado={reiniciado}, {} tokens", pixpin_ia::contexto::estimar(&h, &catalogo));
+    // Caso negativo: con la ventana del local, 12 mensajes como siempre.
+    let mut hoja = HojaDeTrabajo::default();
+    let (h, _) = pensado::preparar_con_hoja(&mut hoja, &notas, "x", 32768, &catalogo_base());
+    assert_eq!(h.len(), 1 + 12 + 1, "el local no cambia");
+}
+
+/// **«Conversación nueva»** (17-oct-2026): lo de antes de la marca no va al
+/// modelo (ni su historial ni su busqueda en lo viejo), y sin marca todo
+/// sigue igual.
+#[test]
+fn tras_conversacion_nueva_el_modelo_empieza_de_cero() {
+    use super::chat;
+    let mut notas: Vec<Nota> = (1..=6).map(|n| nota(n, n % 2 == 0, &format!("viejo {n}"))).collect();
+    let mut corte = nota(7, true, chat::TEXTO_NUEVA_CONVERSACION);
+    corte.resto.insert(chat::NUEVA_CONVERSACION.into(), serde_json::Value::Bool(true));
+    notas.push(corte);
+    notas.push(nota(8, false, "nuevo 8"));
+    notas.push(nota(9, true, "nuevo 9"));
+    assert!(chat::es_corte(&notas[6]) && !chat::es_corte(&notas[5]));
+    assert_eq!(chat::desde_el_corte(&notas).len(), 2);
+    let conv = chat::conversacion(&notas);
+    assert_eq!(conv.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(), vec!["nuevo 8", "nuevo 9"]);
+    let mut hoja = HojaDeTrabajo::default();
+    let (h, reiniciado) = pensado::preparar_con_hoja(&mut hoja, &notas, "¿y ahora?", pensado::VENTANA_NUBE, &catalogo_base());
+    assert!(!reiniciado);
+    let todo: String = h.iter().map(|m| m.texto_entero()).collect::<Vec<_>>().join("|");
+    assert!(todo.contains("nuevo 8") && !todo.contains("viejo"), "{todo}");
+    assert!(pensado::fuentes(&notas, &hoja).iter().all(|f| !f.texto.contains("viejo")));
+    // Caso negativo: una nota del USUARIO con la marca no corta (solo las del
+    // asistente), y sin marca va todo.
+    let mut falsa = nota(10, false, "x");
+    falsa.resto.insert(chat::NUEVA_CONVERSACION.into(), serde_json::Value::Bool(true));
+    assert!(!chat::es_corte(&falsa));
+    assert_eq!(chat::conversacion(&notas[..6]).len(), 6);
 }

@@ -21,6 +21,8 @@ const EMOJIS_ES = [
 
 export const TEXTOS = {
   es: {
+    buscar: 'Buscar en la nota',
+    cerrarBuscar: 'Cerrar (Esc)',
     notaNueva: 'Nota nueva',
     pista: 'Escribe aquí… o / para ver más',
     compartir: 'Compartir',
@@ -115,6 +117,8 @@ export const TEXTOS = {
     emojis: EMOJIS_ES,
   },
   en: {
+    buscar: 'Search the note',
+    cerrarBuscar: 'Close (Esc)',
     notaNueva: 'New note',
     pista: 'Write here… or / for more',
     compartir: 'Share',

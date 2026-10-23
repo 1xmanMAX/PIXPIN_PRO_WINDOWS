@@ -117,12 +117,12 @@ const VK_DOWN: u32 = 0x28;
 const VK_0: u32 = 0x30;
 const VK_A: u32 = 0x41;
 const VK_B: u32 = 0x42;
+const VK_C: u32 = 0x43;
 const VK_D: u32 = 0x44;
 const VK_F: u32 = 0x46;
 const VK_F2: u32 = 0x71;
 const VK_F3: u32 = 0x72;
 const VK_G: u32 = 0x47;
-const VK_I: u32 = 0x49;
 const VK_L: u32 = 0x4C;
 const VK_M: u32 = 0x4D;
 const VK_N: u32 = 0x4E;
@@ -202,6 +202,12 @@ pub(crate) struct Colocado {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Accion {
+    /// «Letra y espaciado»: el panel de la letra (lo que antes abria el
+    /// engranaje, ahora en el menu ⋮).
+    Letra,
+    /// Los marcos numerados: imprimirlos todos y quitarlos todos.
+    ImprimirMarcos,
+    BorrarMarcos,
     Indice,
     Engranaje,
     QuitarMarcadores,
@@ -315,6 +321,16 @@ struct Estado {
     hallar: Hallar,
     /// El nombre de la pastilla y, si se esta cambiando, lo escrito (D5).
     nombre: crate::renombrar_doc::Pastilla,
+    /// Los marcos numerados (`marcos_doc`), como en el plano.
+    marcos: crate::marcos_doc::Marcos,
+    /// El zoom y el sitio de cada marcador (`marcos_doc::Vistas`).
+    vistas: crate::marcos_doc::Vistas,
+    /// Fotografiando los marcos para imprimirlos en grupo.
+    fotos: Option<crate::lector_pdf::FotosDeMarcos>,
+    /// Pintar solo el documento, con sus colores, para esas fotos.
+    fotografiando: bool,
+    /// La ventana del lector.
+    hwnd: isize,
     /// Con que hoja de estilo del movil se coloca (K16).
     hoja: Hoja,
     /// La tinta es de la maqueta de antes de K16 y hay que llevarla a la
@@ -404,6 +420,8 @@ pub fn abrir(
     // mas entre las demas, y su barra fuera.
     pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
+    // El nombre y el atajo de sus botones, para el globo de la barra.
+    pin.poner_pistas(vec![(0, textos.t("visor-indice-pista")), (1, textos.t("lector-escuchar")), (3, textos.t("lector-auto")), (2, textos.t("lector-mas"))]);
 
     // De un adjunto del chat, lo que viaja con su mensaje (v0.96).
     let ajustes = crate::anotado_del_adjunto::leer(ruta);
@@ -446,6 +464,11 @@ pub fn abrir(
         x_meta: None,
         hallar: Hallar::default(),
         nombre: crate::renombrar_doc::Pastilla::de(ubicacion.raiz(), ruta),
+        marcos: crate::marcos_doc::Marcos::de(Some(ruta)),
+        vistas: crate::marcos_doc::Vistas::de_documento(Some(ruta)),
+        fotos: None,
+        fotografiando: false,
+        hwnd: ventana.handle().0 as isize,
         hoja: Hoja::de(ruta),
         tinta_de_antes,
         guardar_ya: false,
@@ -471,6 +494,8 @@ pub fn abrir(
     let mut ir_a = Some(e.ajustes.sitio);
 
     let mut hay_que_pintar = true;
+    // Pruebas: imprimir los marcos solo, a los 2 s (como `lector_pdf`).
+    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| ahora_ms() + 2000);
     let mut vivo = true;
     // La ruta puede cambiar al renombrar un documento suelto (D5): cada
     // vuelta trabaja con la de ahora.
@@ -576,6 +601,42 @@ pub fn abrir(
             }
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
+                // Los marcos numerados (`marcos_doc`), como en el plano.
+                EventoOverlay::BotonPulsado(p) if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) => {
+                    e.raton = local(p);
+                    // Una ficha de abajo: a ese marco; si no, uno nuevo.
+                    if let Some(i) = e.marcos.ficha_en(e.raton, marco.alto, marco.e) {
+                        ir_al_marco(&mut e, marco, i);
+                    } else {
+                        e.marcos.pulsar(doc_del_raton(&e, marco), 0);
+                        ventana.capturar_raton();
+                    }
+                }
+                EventoOverlay::RatonMovido(p) if e.marcos.arrastrando() => {
+                    e.raton = local(p);
+                    e.marcos.mover(doc_del_raton(&e, marco));
+                }
+                EventoOverlay::BotonSoltado(p) if e.marcos.arrastrando() => {
+                    e.raton = local(p);
+                    e.marcos.soltar(doc_del_raton(&e, marco), px(&e, marco) as f64);
+                    ventana.soltar_raton();
+                }
+                EventoOverlay::Tecla { vk: VK_G, ctrl: false, shift: false, .. } if e.nombre.editando.is_none() && !e.anotando => {
+                    hacer(&mut e, Accion::Engranaje, textos, ruta, ubicacion, marco);
+                }
+                EventoOverlay::Tecla { vk, ctrl, shift: false, .. }
+                    if e.nombre.editando.is_none()
+                        && !e.anotando
+                        && ((vk == crate::marcos_doc::VK_I && !ctrl)
+                            || (vk == crate::marcos_doc::VK_SUPR && !ctrl && e.marcos.activo)
+                            || (vk == crate::marcos_doc::VK_P && ctrl && !e.marcos.lista.is_empty())) =>
+                {
+                    match e.marcos.tecla(vk, ctrl) {
+                        Some(crate::marcos_doc::Pedido::Imprimir) => empezar_fotos(&mut e, ruta),
+                        Some(crate::marcos_doc::Pedido::Alternado) if e.marcos.activo => e.poniendo_marca = false,
+                        _ => {}
+                    }
+                }
                 EventoOverlay::RatonMovido(p) => {
                     e.raton = local(p);
                     mover_raton(&mut e, marco);
@@ -767,6 +828,13 @@ pub fn abrir(
             guardar_capa(&mut e, ruta);
         }
 
+        if imprimir_al_abrir.is_some_and(|t| ahora_ms() > t) {
+            imprimir_al_abrir = None;
+            empezar_fotos(&mut e, ruta);
+        }
+        if paso_de_las_fotos(&mut e, marco) {
+            hay_que_pintar = true;
+        }
         if hay_que_pintar {
             hay_que_pintar = false;
             if let Ok(destino) = superficie.empezar(&motor) {
@@ -1150,7 +1218,18 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
                 let lado = (c.ancho.max(c.alto) * m.e * 2.0).ceil() as u32;
                 match e.imagenes.ver(n, img, lado) {
                     imagenes::Vista::Lista(b) => {
-                        p.bitmap(&b, r, None, false);
+                        // En oscuro, la foto tambien (luz invertida, tono
+                        // conservado): todo el documento en modo noche.
+                        // Si luego se invierte toda la ventana (claro o al
+                        // fotografiar para imprimir), la foto va en negativo
+                        // debajo y sale con sus colores de verdad.
+                        if invertir_ventana(e) {
+                            p.bitmap_negativo(&b, r, None);
+                        } else if e.oscuro {
+                            p.bitmap_oscuro(&b, r, None);
+                        } else {
+                            p.bitmap(&b, r, None, false);
+                        }
                         continue;
                     }
                     // Mientras llega, su sitio apenas marcado.
@@ -1229,7 +1308,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // interfaz, que van despues, no). En pixeles de la ventana, y luego de
     // vuelta a la vista para la tinta, que se ajusta al papel invertido.
     // Luna/sol en claro: el papel claro, por el mismo camino que la N.
-    let papel = if e.en_negativo == e.oscuro {
+    let papel = if invertir_ventana(e) {
         p.desplazar(0.0, 0.0);
         p.invertir_colores(
             RectF {
@@ -1262,6 +1341,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         );
     }
 
+    // Fotografiando un marco para imprimirlo: solo el documento.
+    if e.fotografiando {
+        e.botones = Vec::new();
+        return;
+    }
+    // Los marcos numerados, pegados al documento (`marcos_doc`).
+    let (ex, ey) = (e.x, e.y);
+    e.marcos.pintar(p, 0, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s), m.e, m.alto, &crate::marcos_doc::pista(textos));
     barra_de_avance(e, p, m);
     // Los del usuario y, entre ellos, el verde de donde se dejo de escuchar.
     let lista = lista_del_riel(e);
@@ -1273,13 +1360,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         emojis.len(),
         e.poniendo_marca,
     );
-    lector::pintar_riel(
+    lector::pintar_riel_con(
         p,
         &riel,
         &emojis,
         e.encima,
         e.poniendo_marca,
         e.anotando,
+        e.marcos.activo,
         &textos.t("marca-elige"),
     );
 
@@ -1398,7 +1486,7 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         )),
         // **Que suba sola** (`KeyboardDoubleArrowDown` de la pastilla del movil).
         Some((&lector::DOBLE_FLECHA_ABAJO, e.auto.is_some(), Accion::Auto)),
-        Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
+        Some((&material::MORE_VERT, false, Accion::Engranaje)),
         // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
         (!e.en_pin).then_some((if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro)),
         // De pantalla completa, de vuelta a pin.
@@ -1550,7 +1638,8 @@ fn lista_del_indice(
 /// El engranaje: una hoja desde abajo con todo a la vista y a un toque,
 /// como la del movil.
 fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<(RectF, Accion)>) {
-    let filas = filas_del_panel(e, textos);
+    // Solo la letra y el espaciado: lo demas esta en el menu ⋮ (19-oct-2026).
+    let filas: Vec<(String, Accion)> = Vec::new();
     let alto_panel = (190.0 + filas.len() as f32 * 28.0) * m.e;
     let caja = RectF {
         x: 0.0,
@@ -1703,8 +1792,7 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("lector-ver-pdf-original"), Accion::VerPdf));
     }
     filas.extend([
-        (textos.t("lector-escuchar"), Accion::Escuchar),
-        (textos.t("lector-auto"), Accion::Auto),
+        (textos.t("visor-letra"), Accion::Letra),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
@@ -1721,6 +1809,10 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
             textos.t("visor-quitar-marcadores"),
             Accion::QuitarMarcadores,
         ));
+    }
+    if !e.marcos.lista.is_empty() {
+        filas.push((textos.t("marcos-imprimir"), Accion::ImprimirMarcos));
+        filas.push((textos.t("marcos-borrar"), Accion::BorrarMarcos));
     }
     if e.ajustes.letra_fijada() || !e.capa.vacia() {
         filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
@@ -1891,7 +1983,14 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
             e.poniendo_marca = !e.poniendo_marca;
             return false;
         }
+        DestinoRiel::Imprimir => {
+            alternar_marcos(e, ruta, m);
+            return false;
+        }
         DestinoRiel::Hojita => {
+            if e.marcos.activo {
+                e.marcos.alternar();
+            }
             alternar_anotar(e, ruta, m);
             return false;
         }
@@ -2148,7 +2247,7 @@ fn tecla(
             e.panel = !e.panel;
             e.viendo_indice = false;
         }
-        (VK_I, false) if !e.indice.is_empty() => {
+        (VK_C, false) if !e.indice.is_empty() => {
             e.viendo_indice = !e.viendo_indice;
             e.panel = false;
             centrar_indice(e, m);
@@ -2206,6 +2305,96 @@ fn cambiar_letra(
     e.pastilla_hasta = ahora_ms() + MS_DE_LA_PASTILLA;
 }
 
+/// Si se invierte toda la ventana al pintar: el papel claro (luna/sol en
+/// claro, o N) y siempre al fotografiar para imprimir (con sus colores).
+fn invertir_ventana(e: &Estado) -> bool {
+    e.fotografiando || e.en_negativo == e.oscuro
+}
+
+/// El boton del marco o la I (como en el plano: deja de anotar y de marcar).
+fn alternar_marcos(e: &mut Estado, ruta: &Path, m: Marco) {
+    e.marcos.alternar();
+    if e.marcos.activo {
+        e.poniendo_marca = false;
+        if e.anotando {
+            alternar_anotar(e, ruta, m);
+        }
+    }
+}
+
+fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
+    riel_de(e, m).contiene(lector::punto(q.0, q.1)) || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
+}
+
+/// **A ese marco**: acercarse hasta que llena la ventana, centrado (lo
+/// mismo que para su foto, sin fotografiar).
+fn ir_al_marco(e: &mut Estado, m: Marco, i: usize) {
+    let Some(marco) = e.marcos.lista.get(i).cloned() else { return };
+    let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
+    e.zoom = zoom_para(e, m, s);
+    let s = px(e, m);
+    let c = marco.centro();
+    e.x = c[0] as f32 - m.ancho / (2.0 * s);
+    e.y = c[1] as f32 - m.alto / (2.0 * s);
+}
+
+fn doc_del_raton(e: &Estado, m: Marco) -> [f64; 2] {
+    let s = px(e, m);
+    [(e.x + e.raton.0 / s) as f64, (e.y + e.raton.1 / s) as f64]
+}
+
+fn empezar_fotos(e: &mut Estado, ruta: &Path) {
+    if e.marcos.lista.is_empty() {
+        return;
+    }
+    e.poniendo_marca = false;
+    let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    e.fotos = Some(crate::lector_pdf::FotosDeMarcos::nuevas((e.x, e.y, e.zoom), &titulo));
+}
+
+/// Un paso de las fotos de los marcos (como `lector_pdf`): acercarse hasta
+/// que el marco llena la ventana, pintar solo el documento con sus colores,
+/// fotografiarlo y, con el ultimo, volver e imprimir todos juntos.
+fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
+    let Some(mut f) = e.fotos.take() else { return false };
+    let Some(marco) = e.marcos.lista.get(f.i).cloned() else {
+        terminar_fotos(e, f);
+        return true;
+    };
+    if f.desde == 0 {
+        let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
+        e.zoom = (s / m.e).clamp(0.2, 8.0);
+        let s = px(e, m);
+        let c = marco.centro();
+        e.x = c[0] as f32 - m.ancho / (2.0 * s);
+        e.y = c[1] as f32 - m.alto / (2.0 * s);
+        e.fotografiando = true;
+        f.desde = ahora_ms();
+        e.fotos = Some(f);
+        return true;
+    }
+    if ahora_ms() < f.desde + 400 {
+        e.fotos = Some(f);
+        return false;
+    }
+    let s = px(e, m);
+    let (ex, ey) = (e.x, e.y);
+    let r = crate::marcos_doc::caja_en_pantalla(marco.caja, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s));
+    f.fotografiar(e.hwnd, r);
+    if f.i >= e.marcos.lista.len() {
+        terminar_fotos(e, f);
+    } else {
+        e.fotos = Some(f);
+    }
+    true
+}
+
+fn terminar_fotos(e: &mut Estado, f: crate::lector_pdf::FotosDeMarcos) {
+    (e.x, e.y, e.zoom) = f.antes;
+    e.fotografiando = false;
+    f.imprimir(e.hwnd);
+}
+
 fn alternar_anotar(e: &mut Estado, ruta: &Path, m: Marco) {
     if e.anotando {
         e.anotando = false;
@@ -2238,15 +2427,26 @@ fn poner_marcador(e: &mut Estado, i: usize, ruta: &Path) {
         return;
     }
     let emoji = EMOJIS.get(i).copied().unwrap_or(EMOJIS[0]);
+    let antes: Vec<u64> = e.ajustes.marcadores.iter().map(|m| m.id).collect();
     e.ajustes.marcadores =
         lectura::con_marcador(&e.ajustes.marcadores, fraccion(e), emoji, ahora_ms());
+    // Y la vista de ese momento: volver es volver con el mismo zoom.
+    if let Some(nuevo) = e.ajustes.marcadores.iter().find(|m| !antes.contains(&m.id)) {
+        e.vistas.poner(&nuevo.id.to_string(), crate::marcos_doc::zoom_a_texto(e.zoom as f64, e.x as f64, e.y as f64));
+    }
     e.poniendo_marca = false;
     guardar_ajustes(e, ruta);
 }
 
 fn ir_al_marcador(e: &mut Estado, i: usize) {
     if let Some(m) = lista_del_riel(e).get(i) {
-        e.y = e.alto_doc * m.fraccion;
+        if let Some((z, x, y)) = e.vistas.de_marca(&m.id.to_string()).and_then(crate::marcos_doc::zoom_de_texto) {
+            e.zoom = z as f32;
+            e.x = x as f32;
+            e.y = y as f32;
+        } else {
+            e.y = e.alto_doc * m.fraccion;
+        }
     }
 }
 
@@ -2634,7 +2834,9 @@ fn hacer(
     m: Marco,
 ) {
     match a {
-        Accion::Renombrar => e.nombre.empezar(),
+        // Pulsar el nombre ya no lo cambia (19-oct-2026, el usuario: «puede
+        // pasar que se cambie por accidente»).
+        Accion::Renombrar => {}
         Accion::PantallaCompleta => e.pedir_pantalla_completa = true,
         // Para toda la app; el lector se repinta en la vuelta (`lector_pin`).
         Accion::Oscuro => {
@@ -2669,14 +2871,22 @@ fn hacer(
                 centrar_indice(e, m);
             }
         }
+        // El ⋮: el desplegable de siempre de la app, sin lo de la barra.
         Accion::Engranaje => {
-            // Igual: dentro de la hoja no se cierra.
-            let en_la_hoja = e.panel && e.raton.1 > m.alto * 0.5;
-            if !en_la_hoja {
-                e.panel = !e.panel;
-                e.viendo_indice = false;
+            e.panel = false;
+            e.viendo_indice = false;
+            let filas = filas_del_panel(e, textos);
+            let entradas: Vec<(u32, String)> = filas.iter().enumerate().map(|(i, (t, _))| (i as u32 + 1, t.clone())).collect();
+            let hwnd = windows::Win32::Foundation::HWND(e.hwnd as *mut core::ffi::c_void);
+            if let Some(k) = pixpin_shell::menu_llano(hwnd, &entradas)
+                && let Some((_, a)) = filas.get(k as usize - 1)
+            {
+                hacer(e, *a, textos, ruta, ubicacion, m);
             }
         }
+        Accion::Letra => e.panel = true,
+        Accion::ImprimirMarcos => empezar_fotos(e, ruta),
+        Accion::BorrarMarcos => e.marcos.borrar(),
         Accion::IrA(i) => {
             if let Some(entrada) = e.indice.get(i) {
                 // Un renglon por encima: el titulo no queda pegado al borde.
@@ -3066,6 +3276,11 @@ mod pruebas {
             x_meta: None,
             hallar: Hallar::default(),
             nombre: Default::default(),
+            marcos: Default::default(),
+            vistas: Default::default(),
+            fotos: None,
+            fotografiando: false,
+            hwnd: 0,
             hoja: Hoja::Word,
             tinta_de_antes: false,
             guardar_ya: false,
@@ -4138,7 +4353,7 @@ fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
     }
     v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
     v.push(BotonLector { id: 3, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() });
-    v.push(BotonLector { id: 2, icono: &material::SETTINGS, encendido: e.panel });
+    v.push(BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false });
     v
 }
 
@@ -4159,4 +4374,9 @@ fn nombre_del_pin(e: &Estado) -> String {
     } else {
         pixpin_docs::sin_extension(&e.nombre.visto)
     }
+}
+
+/// El zoom que da `s` pixeles por unidad del documento.
+fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
+    (s / m.e).clamp(0.2, 8.0)
 }

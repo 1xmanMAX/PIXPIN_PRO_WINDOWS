@@ -134,6 +134,8 @@ pub struct AlFrente {
     pub yo: String,
     /// Quien manda: su `id` sella los mensajes que entran en un chat.
     pub de: String,
+    /// Y su nombre, para el aviso de que llego.
+    pub de_nombre: String,
     /// Donde quedan las fotos que esperan a su lienzo: el fichero recibido
     /// se borra al volver de `guardar`.
     pub carpeta_lienzo: PathBuf,
@@ -156,6 +158,24 @@ impl Recibe for AlFrente {
             .map(|n| n.to_string_lossy().to_string())
             .filter(|n| !n.trim().is_empty())
             .unwrap_or_else(|| "archivo".into());
+        let llegada = self.colocar(destino, &nombre, fichero)?;
+        // **El aviso al recibirlo** (17-oct-2026): PixPin puede estar en la
+        // bandeja sin nada a la vista, y lo que llega de otro aparato del
+        // grupo sin escanear nada tiene que notarse. El movil no lo necesita:
+        // alli solo se escucha con PixPin delante.
+        crate::sincronizar::al_movil::avisar(aviso_de_llegada(
+            &pixpin_store::Catalogo::nuevo(crate::salida::idioma_actual()),
+            &self.de_nombre,
+            &nombre,
+            &llegada,
+        ));
+        Ok(llegada)
+    }
+}
+
+impl AlFrente {
+    /// Lo deja donde toca segun `destino`.
+    fn colocar(&self, destino: Destino, nombre: &str, fichero: &Path) -> Result<Llegada, String> {
         match destino {
             Destino::Lienzo(hwnd) => {
                 std::fs::create_dir_all(&self.carpeta_lienzo).map_err(|e| e.to_string())?;
@@ -168,7 +188,7 @@ impl Recibe for AlFrente {
                 Ok(Llegada::en(Donde::Lienzo))
             }
             Destino::Chat { id, nombre: chat } => {
-                meter_en_chat(&self.raiz, &id, &nombre, fichero, &self.de)?;
+                meter_en_chat(&self.raiz, &id, nombre, fichero, &self.de)?;
                 Ok(Llegada {
                     donde: Donde::ChatAbierto,
                     chat: Some(chat),
@@ -181,11 +201,28 @@ impl Recibe for AlFrente {
                     &self.de,
                 )
                 .map_err(|e| e.to_string())?;
-                meter_en_chat(&self.raiz, &ficha.id, &nombre, fichero, &self.de)?;
+                meter_en_chat(&self.raiz, &ficha.id, nombre, fichero, &self.de)?;
                 Ok(Llegada::en(Donde::Chat))
             }
         }
     }
+}
+
+/// El globo de lo que llego: de quien, que y donde quedo.
+fn aviso_de_llegada(t: &pixpin_store::Catalogo, de: &str, nombre: &str, l: &Llegada) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    let de = if de.trim().is_empty() { "?" } else { de };
+    args.set("de", de.to_string());
+    args.set("nombre", nombre.to_string());
+    let clave = match (l.donde, &l.chat) {
+        (Donde::Lienzo, _) => "al-frente-lienzo",
+        (Donde::ChatAbierto, Some(c)) => {
+            args.set("chat", c.clone());
+            "al-frente-chat-abierto"
+        }
+        _ => "al-frente-guardados",
+    };
+    t.t_args(clave, &args)
 }
 
 /// Un adjunto nuevo en el chat `proyecto`, como si se hubiera soltado ahi.
@@ -282,6 +319,7 @@ mod pruebas {
                     raiz: r2.clone(),
                     yo: "Portatil".into(),
                     de: otro.id.clone(),
+                    de_nombre: otro.nombre.clone(),
                     carpeta_lienzo: r2.join("al-lienzo"),
                 })
             };

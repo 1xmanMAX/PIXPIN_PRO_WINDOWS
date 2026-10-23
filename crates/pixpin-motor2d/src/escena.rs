@@ -689,6 +689,35 @@ impl Escena {
         inverso
     }
 
+    /// **Junta en un solo paso de deshacer todo lo cerrado desde `desde`**
+    /// (un valor de [`Escena::pasos_cerrados`] tomado antes).
+    ///
+    /// Lo usa quien hace varias operaciones del usuario seguidas por una sola
+    /// orden —el asistente: «corta la recta en el cruce» es pulsar, recortar
+    /// y quiza volver a pulsar, pero el usuario pidio UNA cosa y la quiere
+    /// deshacer con un solo `Ctrl+Z`—. Los cambios se encadenan en su orden,
+    /// que es justo lo que `aplicar_inverso` sabe recorrer al reves.
+    ///
+    /// Si la poda tiro alguno de esos pasos (historial lleno) se juntan los
+    /// que quedan: nunca mas de los que hay.
+    pub fn juntar_pasos(&mut self, desde: u64) {
+        let nuevos = self.cerrados.saturating_sub(desde) as usize;
+        let n = nuevos.min(self.historia.len());
+        if n < 2 {
+            return;
+        }
+        let corte = self.historia.len() - n;
+        let mut junto = Paso::default();
+        let viejos: Vec<Paso> = self.historia.drain(corte..).collect();
+        for paso in viejos {
+            self.bytes_historial -= bytes_de(&paso);
+            junto.editados.extend(paso.editados);
+            junto.cambios.extend(paso.cambios);
+        }
+        self.bytes_historial += bytes_de(&junto);
+        self.historia.push(junto);
+    }
+
     /// Tira los pasos mas antiguos hasta caber en el techo (D25).
     ///
     /// El techo va en memoria y no en numero de pasos porque quinientos
@@ -709,6 +738,28 @@ impl Escena {
     /// Si hay algo que deshacer en esta sesion.
     pub fn hay_que_deshacer(&self) -> bool {
         !self.historia.is_empty()
+    }
+
+    /// Cuantos pasos hay para deshacer y para rehacer ahora mismo.
+    pub fn pasos_en_historial(&self) -> (usize, usize) {
+        (self.historia.len(), self.rehacer.len())
+    }
+
+    /// **Apunta como un solo paso nuevo que se anadieron `ids`**, que ya
+    /// estan en la escena. Es lo que llego de fuera de una vez (lo que el
+    /// asistente escribio en la capa de un documento, releida del disco):
+    /// un `Ctrl+Z` lo quita entero, como si se hubiera dibujado aqui. Los
+    /// que no esten se ignoran; sin ninguno no hay paso.
+    pub fn apuntar_anadidos(&mut self, ids: &[u64]) {
+        let ids: Vec<u64> = ids.iter().copied().filter(|id| self.buscar(*id).is_some()).collect();
+        if ids.is_empty() {
+            return;
+        }
+        self.abrir_paso();
+        for id in ids {
+            self.apuntar_anadido(id);
+        }
+        self.cerrar_paso();
     }
 
     /// Sube el elemento al frente sin cambiar el resto del orden.
@@ -1239,5 +1290,41 @@ mod pruebas {
         e.poner_fondo(ColorRgba::opaco(0.1, 0.2, 0.3));
         let vuelta: Escena = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
         assert_eq!(vuelta.fondo, e.fondo);
+    }
+
+    #[test]
+    fn varios_pasos_juntados_se_deshacen_de_una_vez() {
+        let mut e = Escena::nueva();
+        let a = e.anadir(base());
+        let desde = e.pasos_cerrados();
+        // Tres gestos: anadir, mover y borrar.
+        let b = e.anadir(base());
+        e.abrir_paso();
+        e.apuntar_edicion(a);
+        e.buscar_mut(a).unwrap().mover(10.0, 0.0);
+        e.cerrar_paso();
+        e.abrir_paso();
+        e.borrar_apuntando(b);
+        e.cerrar_paso();
+        e.juntar_pasos(desde);
+        assert!(e.deshacer());
+        assert_eq!(e.buscar(a).unwrap().x, 0.0, "el movimiento se deshizo");
+        assert!(e.buscar(b).is_none_or(|x| x.borrado), "lo anadido se quito");
+        // Lo de antes de `desde` sigue en su propio paso.
+        assert!(e.hay_que_deshacer());
+        assert!(e.rehacer());
+        assert_eq!(e.buscar(a).unwrap().x, 10.0);
+    }
+
+    #[test]
+    fn juntar_un_solo_paso_nuevo_no_toca_el_de_antes() {
+        // Caso negativo: un solo paso nuevo no se junta con el anterior.
+        let mut e = Escena::nueva();
+        e.anadir(base());
+        let desde = e.pasos_cerrados();
+        e.anadir(base());
+        e.juntar_pasos(desde);
+        assert!(e.deshacer());
+        assert_eq!(e.visibles().count(), 1);
     }
 }

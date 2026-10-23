@@ -206,3 +206,23 @@ Microsoft: solo las que el usuario puso en su carpeta.
 - Pruebas del PC: `apps/pixpin/src/letras_que_viajan/pruebas.rs` (ida y vuelta
   con el móvil simulado, borrado en los dos sentidos, chat compartido y
   fichero falso).
+
+## Un solo chat «Asistente» en todos los aparatos (PC, 22-oct-2026)
+
+Cada aparato creaba el suyo y en el PC del usuario había tres. Desde ahora:
+
+- **El PC manda la marca** `"asistente": true` en el proyecto de su chat del
+  asistente (la misma de `Proyecto.asistente`), y lee la que llega.
+- **El PC junta los repetidos** (`crates/pixpin-proyecto/src/vista/asistente_unico.rs`,
+  en cada `sellar` y al abrir el chat): el que queda es **el más antiguo por
+  `creado` (y luego por id)**; los mensajes de los otros pasan a él con sus
+  ficheros, en orden de fecha y renumerados detrás, y los otros se borran
+  como un chat cualquiera (copia, marcas por `uid` y lápida). Al móvil le
+  llegan los mensajes nuevos en el que queda y el borrado de los demás.
+- **Lo que tiene que hacer Android**: en `ChatDelAsistente.buscar`, si hay
+  varios con la marca, quedarse con **el de `creado` más pequeño** (empate:
+  id menor), igual que el PC; y **no crear uno nuevo si ya llegó uno con la
+  marca**, aunque esté vacío. Opcional: juntar como el PC para no esperar a
+  la siguiente sincronización.
+- Un chat que solo se llama «Asistente» (sin marca) también cuenta como del
+  asistente en el PC: era el de los PC de antes.

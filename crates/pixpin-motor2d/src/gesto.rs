@@ -144,6 +144,9 @@ pub enum Herramienta {
     Extender,
     /// Un punto con su letra, para un croquis de geometria (grupo C).
     Punto,
+    /// **La marca de un angulo** (laminas de geometria): un clic dentro del
+    /// angulo, cerca de donde se juntan dos rayas. Ver `gesto/geometria.rs`.
+    Angulo,
     /// Copia el estilo de una figura y lo pega en otra (grupo B). Es
     /// invencion de escritorio: en el movil no existe.
     CopiarEstilo,
@@ -182,6 +185,8 @@ impl Herramienta {
                 // que arrastrar y el numero de serie tampoco.
                 | Herramienta::Serie
                 | Herramienta::Punto
+                // La marca de angulo se pone de un clic.
+                | Herramienta::Angulo
         )
     }
 
@@ -216,6 +221,9 @@ impl Herramienta {
                 | Herramienta::Nudo
                 // Selecciona, como el lazo.
                 | Herramienta::Bolita
+                // La marca la pone el gesto entera al pulsar
+                // (`gesto/geometria.rs`): no nace arrastrando.
+                | Herramienta::Angulo
         )
     }
 }
@@ -336,6 +344,11 @@ pub struct Gesto {
     /// pinte la pista. Se apaga al soltar y al cancelar: una marca que
     /// sobrevive al gesto es una marca mintiendo.
     pub anclaje_activo: Option<crate::enganche::Anclaje>,
+    /// **Los anclajes finos del iman** (cruces, cantos, tangentes). De
+    /// fabrica apagados: cuestan reservas de memoria en cada movimiento del
+    /// raton y quien los quiere —la ventana del editor— los enciende a
+    /// sabiendas (ver `enganche::sitio`). El `desde` lo pone el gesto.
+    pub finos: crate::enganche::AjustesFinos,
     /// El `strokeWidth` de Excalidraw para el lapiz: 0,5 / 1 / 2.
     pub grosor_tinta: f32,
     /// Pluma variable o constante para los trazos nuevos.
@@ -357,6 +370,10 @@ pub struct Gesto {
     /// cursor. Mientras esto tiene algo, las teclas son del texto y no
     /// atajos de herramienta.
     pub escribiendo: Option<(u64, crate::texto::EdicionTexto)>,
+    /// Como estaba el texto antes de abrirlo para escribir, si ya existia:
+    /// al cerrarlo, si cambio, queda UN paso de deshacer con todo lo escrito
+    /// (antes escribir en un texto viejo no se podia deshacer con Ctrl+Z).
+    antes_de_escribir: Option<Elemento>,
     /// El lazo que se esta trazando ahora, si la herramienta es el lazo.
     ///
     /// Vive aqui y no en la ventana porque **quien lo dibuja y quien lo mueve
@@ -438,7 +455,18 @@ pub struct Gesto {
     /// eligen y se borran guias; fuera, solo dibujo. Se cambia con
     /// [`Gesto::poner_modo_guia`], que suelta lo elegido.
     modo_guia: bool,
+    /// Los clics que lleva la herramienta Arco en sus modos de clics.
+    clics_arco: geometria::ClicsDeArco,
+    /// Repasando una guia: el angulo del cursor la ultima vez.
+    arqueando: Option<f32>,
+    /// **La ultima marca de angulo que puso la herramienta Angulo**: la rueda
+    /// y las flechas le cambian la letra griega sin tener que elegirla
+    /// (`Gesto::cambiar_letra_de_angulo`).
+    pub ultima_marca: Option<u64>,
 }
+
+mod geometria;
+pub use geometria::ModoArco;
 
 impl Default for Gesto {
     fn default() -> Self {
@@ -446,13 +474,18 @@ impl Default for Gesto {
             estado: Estado::Reposo,
             seleccion: Seleccion::nueva(),
             herramienta: Herramienta::Lapiz,
+            clics_arco: Default::default(),
+            arqueando: None,
+            ultima_marca: None,
             trazo: Vec::with_capacity(PUNTOS_RESERVADOS),
             enganche: crate::enganche::Ajustes::default(),
             anclaje_activo: None,
+            finos: crate::enganche::AjustesFinos::NINGUNO,
             grosor_tinta: crate::tinta::GROSOR_MEDIO,
             variabilidad: crate::tinta::Variabilidad::Variable,
             estilo: crate::estilo::EstiloDibujo::default(),
             escribiendo: None,
+            antes_de_escribir: None,
             forma_elipse: None,
             forma_por_gesto: false,
             lazo: None,
@@ -500,6 +533,10 @@ impl Gesto {
             Herramienta::Grafito => self.grafito_en_la_mano = true,
             Herramienta::Lapiz | Herramienta::Resaltador => self.grafito_en_la_mano = false,
             _ => {}
+        }
+        // Una secuencia de clics del arco no sobrevive a cambiar de mano.
+        if h != self.herramienta {
+            self.clics_arco = Default::default();
         }
         self.herramienta = h;
     }
@@ -852,6 +889,7 @@ impl Gesto {
             }
             EventoGesto::Escape => {
                 escena.cancelar_paso();
+                self.cancelar_geometria(escena);
                 self.estado = Estado::Reposo;
                 self.seleccion.limpiar();
                 self.anclaje_activo = None;
@@ -988,8 +1026,27 @@ impl Gesto {
         };
         let moviendo = matches!(self.estado, Estado::Moviendo { .. });
         let excluye = |id: u64| dibujando == Some(id) || (moviendo && seleccion.contiene(id));
-        let encontrado =
-            crate::enganche::sitio_con(&escena.elementos, p, zoom, faena, &self.enganche, &excluye);
+        // La raya que se esta trazando sale de su primer punto: desde ahi se
+        // buscan las tangentes.
+        let desde = dibujando.and_then(|id| escena.buscar(id)).and_then(|e| match &e.figura {
+            Figura::Linea { puntos } | Figura::Flecha { puntos, .. } | Figura::Cota { puntos } => {
+                puntos.first().copied()
+            }
+            _ => None,
+        });
+        let finos = crate::enganche::AjustesFinos {
+            desde,
+            ..self.finos
+        };
+        let encontrado = crate::enganche::sitio_fino_con(
+            &escena.elementos,
+            p,
+            zoom,
+            faena,
+            &self.enganche,
+            &finos,
+            &excluye,
+        );
         // Los puntos de las tablas de coordenadas y su eje tambien imantan.
         let encontrado = if escena.origen_coordenadas.is_some() {
             let tecleados = crate::instrumento::tabla::anclajes(
@@ -1242,6 +1299,24 @@ impl Gesto {
                 Default::default()
             },
         };
+        // El cierre del arco y el degradado del panel (laminas de geometria).
+        if matches!(self.herramienta, Herramienta::Arco) {
+            e.extras.cierre = self.estilo.cierre_arco;
+        }
+        if let (Some(t), true) = (
+            self.estilo.degradado,
+            matches!(
+                self.herramienta,
+                Herramienta::Rectangulo
+                    | Herramienta::Elipse
+                    | Herramienta::Rombo
+                    | Herramienta::Arco
+                    | Herramienta::Relleno
+            ),
+        ) {
+            let base = e.relleno.unwrap_or(self.estilo.trazo);
+            e.extras.degradado = Some(crate::geometria_exacta::Degradado::desde_relleno(t, base));
+        }
         // Lo que se traza con el modo guia puesto es guia, sea con lo que sea.
         e.extras.referencia = self.modo_guia;
         // **El grafito nace con la dureza elegida** (`dureza =
@@ -1303,6 +1378,11 @@ impl Gesto {
         // El punto llega crudo y todas las cribas de abajo lo usan crudo.
         // La pista de un gesto anterior no puede sobrevivir a este clic.
         self.anclaje_activo = None;
+        // El arco exacto, el repasado de una guia y la marca de angulo
+        // (`gesto/geometria.rs`): si son ellos, ya esta.
+        if let Some(r) = self.pulsar_geometria(p, escena, escala) {
+            return r;
+        }
         self.arrastrado = false;
         self.seguidoras.limpiar();
         self.con_clavos = !escena.alfileres.is_empty();
@@ -1491,10 +1571,15 @@ impl Gesto {
             let elementos: Vec<Elemento> = escena.visibles().cloned().collect();
             let debajo = elemento_en(&elementos, p).and_then(|id| {
                 escena.buscar(id).and_then(|e| match &e.figura {
-                    Figura::Texto { texto, .. } => Some((id, texto.clone())),
+                    // Un texto rico se vuelve a editar como fuente: con sus
+                    // `$...$` y sus marcas, que se componen al salir.
+                    Figura::Texto { texto, .. } => {
+                        Some((id, e.extras.rico.clone().unwrap_or_else(|| texto.clone())))
+                    }
                     _ => None,
                 })
             });
+            self.antes_de_escribir = debajo.as_ref().and_then(|(id, _)| escena.buscar(*id).cloned());
             let (id, contenido) = match debajo {
                 Some(par) => par,
                 None => {
@@ -1618,6 +1703,9 @@ impl Gesto {
         escena: &mut Escena,
         escala: f32,
     ) -> Respuesta {
+        if let Some(r) = self.mover_geometria(p, escena) {
+            return r;
+        }
         match self.estado {
             Estado::Reposo => Respuesta {
                 region: Region::Nada,
@@ -2028,6 +2116,8 @@ impl Gesto {
             escena.cancelar_paso();
         }
         self.forma_por_gesto = false;
+        // Un arco repasado de nada no deja nada (`gesto/geometria.rs`).
+        self.soltar_geometria(escena);
         self.soltar_flechas(escena, escala);
         // Un paso sin cambios no entra en el historial, asi que hacer clic
         // sin arrastrar no consume un Ctrl+Z. De eso se encarga cerrar_paso.
@@ -2312,7 +2402,12 @@ impl Gesto {
     /// texto si quedo vacio. Devuelve el id del texto que se escribia.
     fn terminar_texto(&mut self, escena: &mut Escena) -> Option<u64> {
         let (id, edicion) = self.escribiendo.take()?;
+        let antes = self.antes_de_escribir.take().filter(|a| a.id == id);
         if edicion.texto().trim().is_empty() {
+            // Vacio: se borra, y deshacer lo devuelve como estaba.
+            if let Some(a) = antes {
+                Self::volver_a(escena, id, a);
+            }
             escena.abrir_paso();
             escena.apuntar_edicion(id);
             if let Some(e) = escena.buscar_mut(id) {
@@ -2320,8 +2415,136 @@ impl Gesto {
                 e.tocar();
             }
             escena.cerrar_paso();
+            return Some(id);
+        }
+        Self::componer_texto(escena, id, edicion.texto());
+        // UN paso de deshacer con todo lo escrito en un texto que ya existia.
+        if let Some(a) = antes
+            && escena.buscar(id).is_some_and(|e| e.figura != a.figura || e.extras.rico != a.extras.rico)
+        {
+            let ahora = escena.buscar(id).cloned();
+            if let (Some(ahora), Some(e)) = (ahora, escena.buscar_mut(id)) {
+                *e = a;
+                escena.abrir_paso();
+                escena.apuntar_edicion(id);
+                if let Some(e) = escena.buscar_mut(id) {
+                    *e = ahora;
+                    e.tocar();
+                }
+                escena.cerrar_paso();
+            }
         }
         Some(id)
+    }
+
+    /// Devuelve un texto a como estaba, sin paso de deshacer (es el estado
+    /// del que parte el paso que viene).
+    fn volver_a(escena: &mut Escena, id: u64, antes: Elemento) {
+        if let Some(e) = escena.buscar_mut(id) {
+            *e = antes;
+        }
+    }
+
+    /// **Al salir de la caja se compone**: si lo escrito lleva formulas o
+    /// marcas (`texto_rico::tiene_marcas`), la fuente queda en
+    /// `Extras::rico`, el texto de siempre pasa a ser su version plana y la
+    /// caja se ajusta a lo compuesto. Si no, es un texto de los de siempre.
+    fn componer_texto(escena: &mut Escena, id: u64, fuente: &str) {
+        if !crate::texto_rico::tiene_marcas(fuente) {
+            return;
+        }
+        let Some(e) = escena.buscar_mut(id) else {
+            return;
+        };
+        let estilo = crate::texto::EstiloDeTexto {
+            negrita: e.extras.negrita,
+            cursiva: e.extras.cursiva,
+            tachado: e.extras.tachado,
+        };
+        let Figura::Texto { texto, tam, familia } = &mut e.figura else {
+            return;
+        };
+        *texto = crate::texto_rico::plano(fuente);
+        let (ancho, alto) = crate::texto_rico::medida(fuente, *tam, familia, estilo);
+        e.extras.rico = Some(fuente.to_string());
+        if e.extras.contenedor.is_none() {
+            e.ancho = ancho;
+        }
+        e.alto = alto;
+        e.tocar();
+    }
+
+    /// **Un atajo de texto mientras se escribe** (`texto::atajo_de_tecla`):
+    /// Ctrl+Z/Y dentro del texto, elegir con Mayus, negrita, color del tramo
+    /// elegido, formula. Devuelve si cambio algo.
+    pub fn atajo_de_texto(&mut self, a: crate::texto::AtajoTexto, escena: &mut Escena) -> bool {
+        let Some((id, edicion)) = self.escribiendo.as_mut() else {
+            return false;
+        };
+        if !edicion.atajo(a) {
+            return false;
+        }
+        let texto = edicion.texto().to_string();
+        Self::volcar_texto(escena, *id, &texto);
+        true
+    }
+
+    /// **Lo elegido del texto que se escribe**, pintado como un fondo
+    /// translucido renglon a renglon. Vacio si no hay nada elegido.
+    pub fn seleccion_de_texto(&self, escena: &Escena) -> Vec<crate::pintado::Orden> {
+        let Some((id, edicion)) = self.escribiendo.as_ref() else {
+            return Vec::new();
+        };
+        let Some((a, b)) = edicion.seleccion() else {
+            return Vec::new();
+        };
+        let Some(e) = escena.buscar(*id) else {
+            return Vec::new();
+        };
+        let Figura::Texto { tam, familia, .. } = &e.figura else {
+            return Vec::new();
+        };
+        let estilo = crate::texto::EstiloDeTexto {
+            negrita: e.extras.negrita,
+            cursiva: e.extras.cursiva,
+            tachado: false,
+        };
+        let paso = tam * crate::texto::interlineado_de(familia).unwrap_or(crate::texto::INTERLINEADO);
+        let renglones: Vec<&str> = edicion.texto().split('\n').collect();
+        let apartados = e
+            .extras
+            .alineacion
+            .filter(|a| *a != crate::texto::AlineacionTexto::Izquierda)
+            .map(|al| crate::texto::apartados_de_renglones(edicion.texto(), *tam, familia, estilo, e.ancho, al))
+            .unwrap_or_default();
+        let (fa, fb) = (edicion.fila_de(a), edicion.fila_de(b));
+        let mut v = Vec::new();
+        let mut inicio = 0usize;
+        for (fila, r) in renglones.iter().enumerate() {
+            let largo = r.chars().count();
+            if (fa..=fb).contains(&fila) {
+                let desde = if fila == fa { a - inicio } else { 0 };
+                let hasta = if fila == fb { b - inicio } else { largo };
+                let medir = |n: usize| {
+                    let s: String = r.chars().take(n).collect();
+                    crate::texto::ancho_real(&s, *tam, familia, estilo)
+                };
+                let dx = e.x + apartados.get(fila).copied().unwrap_or(0.0);
+                let (x0, x1) = (dx + medir(desde), dx + medir(hasta).max(medir(desde) + tam * 0.25));
+                let y0 = e.y + fila as f32 * paso;
+                v.push(crate::pintado::Orden::Relleno {
+                    puntos: vec![
+                        crate::vector::Punto2::nuevo(x0, y0),
+                        crate::vector::Punto2::nuevo(x1, y0),
+                        crate::vector::Punto2::nuevo(x1, y0 + paso),
+                        crate::vector::Punto2::nuevo(x0, y0 + paso),
+                    ],
+                    color: crate::ColorRgba { r: 0.26, g: 0.52, b: 0.96, a: 0.3 },
+                });
+            }
+            inicio += largo + 1;
+        }
+        v
     }
 
     /// Si se esta escribiendo ahora mismo. La ventana lo mira para saber si
@@ -2429,7 +2652,10 @@ impl Gesto {
         else {
             return;
         };
-        let cambia_texto = dentro != texto;
+        // Mientras se escribe se ve la fuente tal cual (con sus `$...$`): se
+        // compone al salir (`terminar_texto`).
+        let cambia_texto = dentro != texto || e.extras.rico.is_some();
+        e.extras.rico = None;
         if cambia_texto {
             dentro.clear();
             dentro.push_str(texto);
@@ -2458,6 +2684,18 @@ impl Gesto {
             e.extras.contenedor.is_none() && matches!(e.figura, Figura::Texto { .. })
         });
         if !suelto {
+            return;
+        }
+        // Uno rico se mide compuesto: volcarlo como texto plano le quitaria
+        // la fuente.
+        if let Some(e) = escena.buscar_mut(id)
+            && let Some((ancho, alto)) = crate::texto_rico::medida_del_elemento(e)
+        {
+            if (e.ancho - ancho).abs() > 0.01 || (e.alto - alto).abs() > 0.01 {
+                e.ancho = ancho;
+                e.alto = alto;
+                e.tocar();
+            }
             return;
         }
         let texto = match escena.buscar(id).map(|e| &e.figura) {

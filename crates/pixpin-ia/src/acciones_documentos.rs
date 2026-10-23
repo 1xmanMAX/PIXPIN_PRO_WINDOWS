@@ -153,6 +153,60 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
         // Lo hace `documentos_acciones` de la app y su resultado es la respuesta.
         hecho: "Hecho.",
     },
+    // Anotar con cabeza (15-oct, `crate::anotacion`): lo hace el ejecutor del
+    // chat (`asistente/anotar_inteligente.rs`), que le pasa el texto con
+    // posiciones a un modelo y pinta en la capa lo que vuelve.
+    Accion {
+        herramienta: crate::anotacion::NOMBRE,
+        accion: crate::anotacion::NOMBRE,
+        descripcion: "Anota con criterio un PDF, Word, PowerPoint, Excel, foto/escaneo o plano: lee el texto de la pagina y pone en su capa \
+                      recuadros sobre lo importante con la explicacion al margen, pasos numerados, errores con su correccion, \
+                      el resumen de la pagina o de cada seccion, un glosario o preguntas de repaso. Usala para «señalame lo importante», \
+                      «explicame esta formula al costado», «marca los errores», «resume cada seccion al margen». \
+                      Para resaltar o encerrar un texto concreto que dice el usuario, anotar_documento.",
+        categoria: Categoria::Notas,
+        // Sin claves a proposito: es solo para la nube (Claude, DeepSeek), que
+        // recibe el catalogo entero y la elige por su descripcion; la
+        // seleccion por palabras del modelo local no la ofrece (el usuario,
+        // 15-oct: «la IA local, aun dejala ahi, no la toques»).
+        claves: &[],
+        fijos: "{}",
+        params: &[
+            p("pedido", Tipo::Texto, true, "lo que pidio el usuario, con sus palabras"),
+            p(
+                "modo",
+                Tipo::Opciones(&["importante", "pasos", "errores", "resumen", "glosario", "preguntas", "explicar", "mixto"]),
+                false,
+                "que anotar; omitir: lo decide el pedido",
+            ),
+            p("foco", Tipo::Texto, false, "el trozo exacto a explicar (una formula, una frase), si el usuario lo dijo"),
+            p("archivo", Tipo::Texto, false, ARCHIVO),
+            p("pagina", Tipo::Entero, false, "pagina desde 1; omitir: la que el usuario tiene abierta (o la 1)"),
+            p("hasta", Tipo::Entero, false, "ultima pagina, para anotar varias seguidas (como mucho 5)"),
+            p("celdas", Tipo::Texto, false, "en un Excel, el rango a mirar (\"A1:F40\"); omitir: lo usado de la hoja"),
+            p("hoja", Tipo::Texto, false, "en un Excel, el nombre de la hoja; omitir: la primera"),
+        ],
+        confirmar: None,
+        hecho: "Hecho.",
+    },
+    // La hoja al lienzo (14-oct): solo para la nube (`crate::hoja`); la hace
+    // el ejecutor del chat (`asistente/hoja_a_lienzo.rs`), no se manda.
+    Accion {
+        herramienta: crate::hoja::NOMBRE,
+        accion: crate::hoja::NOMBRE,
+        descripcion: "Pasa al lienzo una hoja (foto, escaneo o pagina de un PDF) interpretandola: parrafos y titulos como texto, tablas como tabla, formulas como ecuacion, fotos recortadas y rayas, en su sitio y en orden de lectura. Usala para «pasa esta hoja/foto/pagina al lienzo» o «digitaliza esto» (mejor que calcarla si tiene texto).",
+        categoria: Categoria::Notas,
+        claves: &["digitaliza", "hoja al lienzo", "pagina al lienzo", "escaneo al lienzo", "hoja en el lienzo", "pasa la hoja", "pasa esta hoja"],
+        fijos: "{}",
+        params: &[
+            p("archivo", Tipo::Texto, false, "la foto o el PDF (nombre o descripcion); omitir: la imagen o el PDF mas reciente del chat"),
+            p("pagina", Tipo::Entero, false, "pagina del PDF, desde 1; omitir: la primera"),
+            p("ancho", Tipo::Entero, false, "ancho de la hoja en el lienzo en px; omitir: 1000"),
+            d(r#""editable""#, p("modo", Tipo::Opciones(&["editable", "fiel"]), false, "editable: texto corrido y tablas; fiel: cada renglon en su sitio exacto")),
+        ],
+        confirmar: None,
+        hecho: "Hecho.",
+    },
 ];
 
 /// Si la herramienta es de esta tabla (la hace el ejecutor del chat, no se

@@ -40,7 +40,9 @@ pub enum Anfitrion {
 /// herramientas::NOMBRES`). `None` para las que no se pueden apagar.
 pub fn nombre_de(h: Herramienta) -> Option<&'static str> {
     Some(match h {
-        Herramienta::Mano | Herramienta::Emoji => return None,
+        // El marco tampoco (22-oct): ya no va en la barra, lo pone el boton
+        // del riel de la derecha.
+        Herramienta::Mano | Herramienta::Emoji | Herramienta::Marco => return None,
         Herramienta::Lazo => "lazo",
         Herramienta::Rectangulo => "rectangulo",
         Herramienta::Rombo => "rombo",
@@ -58,12 +60,12 @@ pub fn nombre_de(h: Herramienta) -> Option<&'static str> {
         Herramienta::Lupa => "lupa",
         Herramienta::Mosaico => "mosaico",
         Herramienta::Arco => "arco",
+        Herramienta::Angulo => "angulo",
         Herramienta::Serie => "serie",
         Herramienta::Punto => "punto",
         Herramienta::Cota => "cota",
         Herramienta::Escalar => "escalar",
         Herramienta::EscalaGrafica => "escala-grafica",
-        Herramienta::Marco => "marco",
         Herramienta::Relleno => "relleno",
         Herramienta::Recortar => "recortar",
         Herramienta::Extender => "extender",
@@ -122,6 +124,9 @@ pub fn rotulo_de_boton(b: BotonCaja, textos: &pixpin_store::Catalogo) -> Option<
         // El foco tambien es varita, y los pasos se ponen de un clic.
         BotonCaja::Elegir(Herramienta::Foco) => Some(textos.t("lienzo-pista-foco")),
         BotonCaja::Elegir(Herramienta::Serie) => Some(textos.t("lienzo-pista-serie")),
+        // Las dos de las laminas de geometria dicen como se usan.
+        BotonCaja::Elegir(Herramienta::Arco) => Some(textos.t("lienzo-pista-arco")),
+        BotonCaja::Elegir(Herramienta::Angulo) => Some(textos.t("lienzo-pista-angulo")),
         // Tambien lo de siempre, con su atajo: el usuario pidio globo en
         // todo, y quien no sabe `Ctrl+Z` es justo quien lo necesita.
         BotonCaja::Elegir(Herramienta::Mano) => Some(textos.t("barra-pista-mano")),
@@ -672,7 +677,8 @@ mod pruebas {
         let de = |g: GrupoBarra| s.iter().find(|(x, _)| *x == Some(g)).unwrap().1.clone();
         // La tabla y la grafica van sueltas desde que se quito el cronograma,
         // que era su grupo.
-        assert_eq!(s[0], (None, vec!["lapiz", "figuras", "borrador"]));
+        // La imagen, suelta desde que el marco salio de la barra (22-oct).
+        assert_eq!(s[0], (None, vec!["lapiz", "figuras", "imagen", "borrador"]));
         assert!(de(GrupoBarra::Arreglar).contains(&"nudo"));
         assert!(de(GrupoBarra::Elegir).contains(&"bolita"));
         assert_eq!(de(GrupoBarra::Sacar), vec!["compartir", "imprimir"]);

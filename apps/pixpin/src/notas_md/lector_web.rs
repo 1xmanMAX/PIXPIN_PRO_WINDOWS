@@ -4,8 +4,19 @@
 //! El usuario: el de antes era «lento, poco fluido, no confiable y
 //! lagueado», y pidio rehacerlo con **md-reader** como guia. Es una pagina
 //! (`herramientas/lector-md`, compilada a `recursos/lector-md.html` y metida
-//! en el ejecutable) dentro de una ventana normal de Windows con WebView2
-//! (`pixpin_web::pagina`):
+//! en el ejecutable) con WebView2 (`pixpin_web::pagina`).
+//!
+//! **Como un pin, con la barra de los demas visores** (17-oct-2026, el
+//! usuario: «modificar el visor de MD y de HTML para que tenga una UI igual a
+//! la de los demas visores en formato de pin»). La ventana es la de los
+//! lectores como pin (`lector_pin`, la del PDF, el Excel, el pin de Office):
+//! sale en seguida con el fondo de la nota y la pagina llega dentro; se
+//! estira por los bordes, la barra va fuera (asa, nombre con el recuadro
+//! `md`, luna/sol, pantalla completa, pin, cerrar) y lo propio de una nota va
+//! en sus botones ([`botones`]), que la pagina hace por `orden`. La cabecera
+//! propia de la pagina se esconde (`enPin`).
+//!
+//! Lo que tiene la pagina:
 //!
 //! - **Leer** es md-reader: su motor (markdown-it con sus complementos),
 //!   su tema, su indice lateral, codigo coloreado, formulas, avisos, notas
@@ -42,6 +53,10 @@ use serde_json::json;
 
 use pixpin_store::{Catalogo, Ubicacion};
 use pixpin_web::pagina::{OpcionesPagina, Pagina, Recurso, Suceso};
+use pixpin_render::icono::material;
+use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
+
+use crate::lector_pin::{AccionPin, BotonLector, PinLector};
 
 use super::{Destino, adjuntos, guardar};
 
@@ -56,6 +71,9 @@ const MIRAR_FUERA: Duration = Duration::from_secs(2);
 #[serde(tag = "tipo", rename_all = "snake_case")]
 pub enum DeLaPagina {
     Listo,
+    /// Lo que encienden los botones de la barra del pin: viendo la nota
+    /// (sin escribir) y el panel de los comentarios abierto.
+    Estado { leyendo: bool, comentarios: bool },
     Guardar { texto: String, version: u64 },
     /// La letra y el tamano (los de `vista-de-notas.txt`, como antes).
     Vista { cuerpo: String, titulos: String, px: u32, solo_esta: bool },
@@ -218,28 +236,101 @@ fn hwnd(h: isize) -> windows::Win32::Foundation::HWND {
 /// Abre la nota en el lector. `Err` si no se pudo (sin WebView2): quien
 /// llama abre el editor de antes.
 pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
+    if !pixpin_web::VisorHtml::hay_runtime() {
+        anyhow::bail!("este equipo no tiene el runtime de WebView2");
+    }
+    let inicio = Instant::now();
     let raiz = cx.ubicacion.raiz().to_path_buf();
     let nombre = match &*cx.actual.borrow() {
         Destino::Fichero { ruta } => pixpin_docs::nombre(ruta),
         _ => String::new(),
     };
-    let (r_servir, a_servir) = (raiz.clone(), cx.actual.clone());
+    let mut en_la_barra = nombre_en_la_barra(&cx.actual.borrow(), &pixpin_docs::md_vivo::titulo(&cx.texto), cx.textos);
     tracing::info!("abriendo el lector de notas");
-    let pagina = Pagina::nueva(OpcionesPagina {
-        titulo: titulo_de_ventana(&nombre, cx.textos),
-        area: None,
-        maximizada: false,
-        fondo: (0x13, 0x14, 0x15),
-        pagina: PAGINA,
-        servir: Box::new(move |resto| servir(&r_servir, &a_servir.borrow(), resto)),
-    })
-    .map_err(|e| anyhow::anyhow!("{e}"))?;
-    tracing::info!(hwnd = pagina.hwnd(), "lector de notas abierto");
+
+    // **La ventana es la de los visores como pin** (`lector_pin`): sale ya,
+    // con el fondo de la nota, y la pagina llega dentro en cuanto el
+    // WebView2 arranca (antes la ventana esperaba a el, ~0,5-1,3 s).
+    let e = pixpin_capture::enumerar_monitores()
+        .ok()
+        .and_then(|m| m.principal().map(|p| p.escala_por_cien as f32 / 100.0))
+        .unwrap_or(1.0);
+    let (area_pin, _) = crate::lector_pin::area_inicial();
+    let mut pin = PinLector::nuevo(area_pin, e).con_extension("md");
+    let mut ventana = VentanaOverlay::nueva_llana(pin.area, &titulo_de_ventana(&nombre, cx.textos))
+        .map_err(|e| anyhow::anyhow!("no se pudo abrir la ventana de la nota: {e:?}"))?;
+    let hwnd_pin = ventana.handle().0 as isize;
+    pin.al_nacer(&ventana);
+    ventana.mostrar();
+    // Una nota se abre para escribir: el teclado, a ella.
+    ventana.enfocar();
     // Donde estaba la ultima ventana de notas (`grupos_ventanas`).
     if let Some(c) = &cx.colocacion {
-        pixpin_shell::colocacion::poner(pagina.hwnd(), c);
+        pixpin_shell::colocacion::poner(hwnd_pin, c);
+        pin.seguir_ventana(&mut ventana);
     }
-    (cx.al_nacer)(pagina.hwnd());
+    pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()));
+    tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: a la vista");
+    (cx.al_nacer)(hwnd_pin);
+
+    // La barra: sin GPU no la hay, pero la nota se edita igual.
+    let recursos = crate::overlay::Recursos::nuevos().map_err(|e| tracing::warn!(?e, "nota sin barra")).ok();
+    let motor = recursos.as_ref().map(|r| r.motor());
+    if let (Some(r), Some(m)) = (&recursos, &motor) {
+        pin.crear_barra(m, &r.d3d(), &ventana);
+    }
+    let (mut leyendo, mut con_comentarios) = (false, false);
+    let mut propios = botones(leyendo, con_comentarios);
+    pin.poner_pistas(pistas(cx.textos));
+    // Pruebas (solo en debug): siempre encima, para fotografiar la pantalla
+    // sin que otra ventana lo tape.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("PIXPIN_PRUEBA_ENCIMA").is_some() {
+        pin.alternar_fijado(&ventana);
+    }
+    if let Some(m) = &motor {
+        pin.actualizar(m, &en_la_barra, &propios);
+    }
+
+    let (r_servir, a_servir) = (raiz.clone(), cx.actual.clone());
+    let pagina = Pagina::nueva(OpcionesPagina {
+        titulo: titulo_de_ventana(&nombre, cx.textos),
+        area: Some(pin.area_de_la_vista()),
+        maximizada: false,
+        fondo: fondo(pin.oscuro()),
+        pagina: PAGINA,
+        servir: Box::new(move |resto| servir(&r_servir, &a_servir.borrow(), resto)),
+        padre: Some(hwnd_pin),
+        oscuro: Some(pin.oscuro()),
+    })
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: pagina pedida");
+    // **El riel de los visores** (el marcador, el lapiz de tinta y el marco),
+    // en sus ventanas por encima de la pagina. El lapiz de la barra sigue
+    // siendo el de escribir el texto; el del riel es el de la tinta.
+    let escala = (e * 100.0).round() as u32;
+    let mut riel = match (&recursos, &motor) {
+        (Some(r), Some(m)) => crate::visor_html::riel::RielDeLaVista::nuevo(
+            Rc::clone(m),
+            &r.d3d(),
+            &ventana,
+            crate::visor_html::riel::en_pantalla(pin.area, pin.area_de_la_vista()),
+            escala,
+            crate::visor_html::riel::Opciones {
+                documento: documento_del_riel(&raiz, &cx.actual.borrow()),
+                con_pagina: true,
+                titulo: en_la_barra.clone(),
+                // La G abre el ⋮ de la barra, como en los demas visores.
+                menu: true,
+                // La tinta, a la medida de la columna con que se anoto
+                // (`capa_web::Maqueta`): el texto de una nota se recoloca.
+                maqueta: true,
+            },
+            cx.textos,
+        ),
+        _ => None,
+    };
+    let mut area = pin.area;
 
     let mut ultimo_conocido = cx.texto.clone();
     let mut firma = huella(&raiz, &cx.actual.borrow());
@@ -256,6 +347,8 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         "nombre": nombre,
         "vista": {"cuerpo": vista.cuerpo, "titulos": vista.titulos, "px": vista.px, "soloEsta": solo_esta},
         "capacidades": {"hojas": de_proyecto, "medios": true},
+        // La cabecera propia no: la barra es la comun de los visores.
+        "enPin": true,
     })
     .to_string();
     let mut medios: Option<super::incrustados::MediosDeLaNota> = None;
@@ -272,27 +365,142 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
     );
 
     'bucle: loop {
-        for s in pagina.esperar(250) {
-            match s {
-                Suceso::Destruida => break 'bucle,
-                Suceso::PideCerrar => {
-                    if cerrando.is_none() {
-                        cerrando = Some(Instant::now());
-                        pagina.mandar(r#"{"tipo":"cerrando"}"#);
+        // Atiende la cola del hilo: la pagina y, por `pixpin_shell`, la
+        // ventana del pin y su barra.
+        let tope = if pin.quiere_reloj() { 50 } else { 250 };
+        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
+        let sucesos = pagina.esperar(tope);
+        let mut teclas: Vec<u32> = Vec::new();
+        for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if let Some(r) = riel.as_mut()
+                && r.es_suya(h)
+            {
+                match r.evento(h, &evento, Some(&pagina), cx.textos) {
+                    crate::visor_html::riel::Pide::Teclado => pagina.enfocar(),
+                    crate::visor_html::riel::Pide::Tecla(vk) => teclas.push(vk),
+                    crate::visor_html::riel::Pide::Nada => {}
+                }
+                continue;
+            }
+            if pin.es_de_la_barra(h) {
+                let (accion, _) = pin.evento_barra(&evento, &mut ventana);
+                match accion {
+                    Some(AccionPin::Propio(id)) => {
+                        if let Some(que) = orden_de(id) {
+                            pagina.mandar(&json!({"tipo": "orden", "que": que}).to_string());
+                            pagina.enfocar();
+                        }
+                    }
+                    // El nombre: cambiar el titulo de la nota.
+                    Some(AccionPin::Nombre) => {
+                        pagina.mandar(r#"{"tipo":"orden","que":"titulo"}"#);
+                        pagina.enfocar();
+                    }
+                    Some(AccionPin::PantallaCompleta) => alternar_pantalla(&mut pin, &mut ventana, &pagina),
+                    Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
+                    Some(AccionPin::Cerrar) => pedir_cierre(&mut cerrando, &pagina),
+                    None => {}
+                }
+                continue;
+            }
+            if h.0 as isize != hwnd_pin || pin.evento_ventana(&evento, &mut ventana).consumido {
+                continue;
+            }
+            match evento {
+                EventoOverlay::Cerrar => pedir_cierre(&mut cerrando, &pagina),
+                // El teclado lo tenia la ventana (se toco su borde): la
+                // tecla cuenta y la siguiente va ya a la pagina. Las de los
+                // visores (I, A, M, Ctrl+M, G), al riel.
+                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } if riel.is_some() => {
+                    match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, Some(&pagina))) {
+                        Some(crate::visor_html::riel::Pide::Tecla(v)) => teclas.push(v),
+                        Some(crate::visor_html::riel::Pide::Teclado) => pagina.enfocar(),
+                        Some(crate::visor_html::riel::Pide::Nada) => {}
+                        None => {
+                            teclas.push(vk);
+                            pagina.enfocar();
+                        }
                     }
                 }
+                EventoOverlay::Tecla { vk, .. } => {
+                    teclas.push(vk);
+                    pagina.enfocar();
+                }
+                EventoOverlay::Pintar | EventoOverlay::CambioDpi => pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro())),
+                _ => {}
+            }
+        }
+        // Esc y F11 con el teclado en la ventana, como en los demas visores.
+        // (Dentro de la pagina Esc no cierra: es un editor; F11 y Esc a
+        // pantalla completa llegan como `ventana`.)
+        for vk in teclas {
+            // G: el menu ⋮ de la barra (lo abre la pagina).
+            if vk == VK_G {
+                mandar_mas(&pagina);
+                continue;
+            }
+            // Esc con la tira de los marcadores abierta: solo la cierra.
+            if vk == 0x1B && riel.as_mut().is_some_and(|r| r.soltar_esc()) {
+                continue;
+            }
+            match crate::lector_pin::tecla(vk, pin.pantalla_completa) {
+                Some(true) => pedir_cierre(&mut cerrando, &pagina),
+                Some(false) => alternar_pantalla(&mut pin, &mut ventana, &pagina),
+                None => {}
+            }
+        }
+        // Movida o estirada desde fuera (AltSnap, Win+flecha): el pin la sigue.
+        pin.seguir_ventana(&mut ventana);
+        if pin.area != area {
+            area = pin.area;
+            pagina.mover(pin.area_de_la_vista());
+            pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()));
+        }
+        if let Some(m) = &motor
+            && pin.actualizar(m, &en_la_barra, &propios)
+        {
+            // La luna/sol (la de esta barra o la de otro visor abierto).
+            pagina.poner_oscuro(pin.oscuro(), fondo(pin.oscuro()));
+            pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()));
+        }
+        if let Some(r) = riel.as_mut() {
+            r.seguir(crate::visor_html::riel::en_pantalla(pin.area, pin.area_de_la_vista()), escala, pin.fijado, pin.oscuro());
+            r.tic(Some(&pagina));
+        }
+        for s in sucesos {
+            match s {
+                Suceso::Destruida => break 'bucle,
+                Suceso::PideCerrar => pedir_cierre(&mut cerrando, &pagina),
                 Suceso::Navegar(url) => {
                     if es_enlace_de_fuera(&url) {
                         let _ = pixpin_shell::abrir(Path::new(&url));
                     }
                 }
                 Suceso::Mensaje(m) => {
+                    // Lo del riel (por donde va al desplazarse, las teclas de
+                    // los visores pulsadas en la pagina), a el.
+                    if let Some(pide) = riel.as_mut().and_then(|r| r.mensaje(&m, Some(&pagina))) {
+                        match pide {
+                            crate::visor_html::riel::Pide::Teclado => pagina.enfocar(),
+                            crate::visor_html::riel::Pide::Tecla(VK_G) => mandar_mas(&pagina),
+                            _ => {}
+                        }
+                        continue;
+                    }
                     let Ok(pedido) = serde_json::from_str::<DeLaPagina>(&m) else {
                         tracing::warn!(%m, "mensaje del lector que no se entiende");
                         continue;
                     };
                     match pedido {
-                        DeLaPagina::Listo => pagina.mandar(&abrir),
+                        DeLaPagina::Listo => {
+                            tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: pagina lista");
+                            pagina.mandar(&abrir);
+                        }
+                        // Lo que encienden los botones de la barra.
+                        DeLaPagina::Estado { leyendo: l, comentarios: c } => {
+                            (leyendo, con_comentarios) = (l, c);
+                            propios = botones(leyendo, con_comentarios);
+                        }
                         DeLaPagina::Guardar { texto, version } => {
                             let (ok, cambio) = guardar_texto(&raiz, &cx, &texto);
                             if let Some((antes, nuevo)) = cambio {
@@ -411,18 +619,15 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                             comentarios.resolver(&hilo, si);
                             pagina.mandar(&comentarios.json(&texto).to_string());
                         }
-                        DeLaPagina::Ventana { accion, borde } => match accion.as_str() {
-                            "arrastrar" => pagina.arrastrar(),
-                            "estirar" => pagina.estirar(&borde),
-                            "minimizar" => pagina.minimizar(),
-                            "maximizar" => pagina.alternar_maximizar(),
-                            "pantalla" => {
-                                let si = pagina.alternar_pantalla();
-                                pagina.mandar(&json!({"tipo": "pantalla", "si": si}).to_string());
-                            }
+                        // Como pin la ventana la mueve y la estira el pin; de
+                        // la pagina solo llega F11 (o Esc a pantalla completa).
+                        DeLaPagina::Ventana { accion, .. } => match accion.as_str() {
+                            "pantalla" | "maximizar" => alternar_pantalla(&mut pin, &mut ventana, &pagina),
+                            "minimizar" => ventana.minimizar(),
                             _ => {}
                         },
                         DeLaPagina::Titulo { texto } => {
+                            en_la_barra = nombre_en_la_barra(&cx.actual.borrow(), &texto, cx.textos);
                             let t = if texto.trim().is_empty() {
                                 nombre.clone()
                             } else {
@@ -450,12 +655,7 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                             let destino = cx.actual.borrow().clone();
                             super::compartir(cx.idioma, cx.ubicacion, &destino, cx.aparato);
                         }
-                        DeLaPagina::Cerrar => {
-                            if cerrando.is_none() {
-                                cerrando = Some(Instant::now());
-                                pagina.mandar(r#"{"tipo":"cerrando"}"#);
-                            }
-                        }
+                        DeLaPagina::Cerrar => pedir_cierre(&mut cerrando, &pagina),
                         DeLaPagina::CerrarListo => break 'bucle,
                         DeLaPagina::EditorAnterior => {
                             salida = Salida::EditorAnterior;
@@ -486,8 +686,145 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
             }
         }
     }
+    // Cerrar: se esconde ya (que se note al instante) y luego se suelta todo.
+    if let Some(r) = riel.take() {
+        r.cerrar();
+    }
+    drop(pin);
+    ventana.ocultar();
     drop(pagina);
+    drop(ventana);
     Ok(salida)
+}
+
+/// Los botones propios de la barra del pin.
+pub const VER: u8 = 0;
+pub const EDITAR: u8 = 1;
+pub const DESHACER: u8 = 2;
+pub const REHACER: u8 = 3;
+pub const BUSCAR: u8 = 4;
+pub const COMENTARIOS: u8 = 5;
+pub const COMPARTIR: u8 = 6;
+pub const MAS: u8 = 7;
+
+/// **Lo que lleva la barra de una nota**, entre el nombre y la luna/sol, como
+/// la barra del editor del movil (`MarkdownEditorActivity`): escribiendo, el
+/// ojo para verla (deshacer y rehacer, con Ctrl+Z y Ctrl+Y: el usuario los
+/// quito de la barra el 20-oct-2026); viendola, el lapiz para seguir
+/// escribiendo (como el visor de Excel). Y siempre los comentarios
+/// (encendido con su panel abierto), compartir y el ⋯ (titulo, guardar una
+/// copia, Word, letra y tamano). Sin «Copiar» (Ctrl+C) ni lupa (Ctrl+F,
+/// desde el 20-oct-2026).
+pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
+    let b = |id, icono, encendido| BotonLector { id, icono, encendido };
+    let mut v = Vec::with_capacity(7);
+    if leyendo {
+        v.push(b(EDITAR, &material::EDIT_NOTE, false));
+    } else {
+        v.push(b(VER, &material::VISIBILITY, false));
+    }
+    // Sin lupa (20-oct-2026, el usuario): buscar es Ctrl+F.
+    v.push(b(COMENTARIOS, &material::FORUM, comentarios));
+    v.push(b(COMPARTIR, &material::IOS_SHARE, false));
+    v.push(b(MAS, &material::MORE_VERT, false));
+    v
+}
+
+/// La G de los visores: el menu ⋮.
+const VK_G: u32 = 0x47;
+
+/// Abre el menu ⋮ de la barra (lo pinta la pagina), como su boton.
+fn mandar_mas(pagina: &Pagina) {
+    if let Some(que) = orden_de(MAS) {
+        pagina.mandar(&json!({"tipo": "orden", "que": que}).to_string());
+        pagina.enfocar();
+    }
+}
+
+/// **El globo de cada boton de la barra**: su nombre y su tecla.
+pub fn pistas(textos: &Catalogo) -> Vec<(u8, String)> {
+    vec![
+        (VER, textos.t("nota-pista-ver")),
+        (EDITAR, textos.t("nota-pista-editar")),
+        (DESHACER, textos.t("barra-pista-deshacer")),
+        (REHACER, textos.t("barra-pista-rehacer")),
+        (BUSCAR, textos.t("nota-pista-buscar")),
+        (COMENTARIOS, textos.t("nota-pista-comentarios")),
+        (COMPARTIR, textos.t("nota-pista-compartir")),
+        (MAS, textos.t("lector-mas")),
+    ]
+}
+
+/// La `orden` que se le manda a la pagina por cada boton: todo lo hace
+/// ella (compartir tambien, que guarda antes lo ultimo escrito).
+pub fn orden_de(id: u8) -> Option<&'static str> {
+    Some(match id {
+        VER => "leer",
+        EDITAR => "editar",
+        DESHACER => "deshacer",
+        REHACER => "rehacer",
+        BUSCAR => "buscar",
+        COMENTARIOS => "comentarios",
+        COMPARTIR => "compartir",
+        MAS => "mas",
+        _ => return None,
+    })
+}
+
+/// El fondo mientras la pagina carga: su papel (`--papel` de `nota.css`).
+pub fn fondo(oscuro: bool) -> (u8, u8, u8) {
+    if oscuro { (0x0b, 0x0b, 0x0b) } else { (0xfd, 0xfc, 0xf9) }
+}
+
+/// El nombre en la barra del pin: el del fichero (sin extension ni el
+/// numero de guardado del movil), como los demas visores; una nota de un
+/// proyecto, su titulo.
+fn nombre_en_la_barra(destino: &Destino, titulo: &str, t: &Catalogo) -> String {
+    match destino {
+        Destino::Fichero { ruta } => crate::lector_pin::nombre_limpio(&pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta))),
+        _ if titulo.trim().is_empty() => t.t("nota-md-nueva"),
+        _ => titulo.trim().to_string(),
+    }
+}
+
+/// Que se cierre: la pagina guarda lo ultimo y contesta `cerrar_listo`.
+fn pedir_cierre(cerrando: &mut Option<Instant>, pagina: &Pagina) {
+    if cerrando.is_none() {
+        *cerrando = Some(Instant::now());
+        pagina.mandar(r#"{"tipo":"cerrando"}"#);
+    }
+}
+
+/// Pantalla completa o de vuelta a pin, y que la pagina lo sepa (Esc vuelve).
+fn alternar_pantalla(pin: &mut PinLector, ventana: &mut VentanaOverlay, pagina: &Pagina) {
+    pin.alternar_pantalla_completa(ventana);
+    pagina.mandar(&json!({"tipo": "pantalla", "si": pin.pantalla_completa}).to_string());
+}
+/// **De que cuelgan las marcas y la tinta del riel** de una nota: un `.md`
+/// suelto, de el mismo (como un Word); una nota de un proyecto, de un
+/// nombre fijo en la cache; una nota nueva, de nada (solo mientras este
+/// abierta).
+///
+/// Ese nombre fijo (`cache/riel-notas/<ficha>-<codigo>.md`) no es solo de
+/// este PC: `anotado_del_adjunto::base_de` lo entiende como la base
+/// `anot-<codigo>` de la nota (la de sus comentarios), y sus marcas, su
+/// tinta, sus marcos y sus vistas viajan con ella; lo de antes en la cache
+/// pasa la primera vez.
+pub fn documento_del_riel(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
+    let limpio = limpio_para_el_riel;
+    match destino {
+        Destino::Fichero { ruta } => Some(ruta.clone()),
+        Destino::Mensaje { proyecto, codigo } => {
+            Some(raiz.join("cache").join("riel-notas").join(format!("{}-{}.md", limpio(proyecto), limpio(codigo))))
+        }
+        Destino::Nueva { .. } => None,
+    }
+}
+
+/// Lo que queda de un nombre en el de la cache del riel: letras, cifras y
+/// `-`; lo demas, `_`.
+pub fn limpio_para_el_riel(s: &str) -> String {
+    s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect()
 }
 
 fn titulo_de_ventana(titulo: &str, t: &Catalogo) -> String {
@@ -587,6 +924,72 @@ mod pruebas {
         );
         // Caso negativo: un tipo que no existe no se toma por otro.
         assert!(serde_json::from_str::<DeLaPagina>(r#"{"tipo":"borrar_todo"}"#).is_err());
+    }
+
+    #[test]
+    fn la_barra_de_una_nota_cambia_al_verla_y_al_escribirla() {
+        let ids = |l, c| botones(l, c).iter().map(|b| b.id).collect::<Vec<_>>();
+        // Escribiendo (como abre, igual que el movil): el ojo, deshacer y
+        // rehacer; viendola, el lapiz. Y siempre buscar, comentarios,
+        // compartir y el ⋯.
+        // Sin deshacer ni rehacer (20-oct-2026): Ctrl+Z y Ctrl+Y.
+        assert_eq!(ids(false, false), vec![VER, COMENTARIOS, COMPARTIR, MAS]);
+        assert_eq!(ids(true, false), vec![EDITAR, COMENTARIOS, COMPARTIR, MAS]);
+        // Caso negativo: viendola no se deshace (no se escribe), y el lapiz
+        // no sale escribiendo.
+        assert!(!ids(true, false).contains(&DESHACER) && !ids(false, false).contains(&EDITAR));
+        // Los comentarios se encienden con su panel abierto, y nada mas.
+        let encendidos = |l, c| botones(l, c).iter().filter(|b| b.encendido).map(|b| b.id).collect::<Vec<_>>();
+        assert_eq!(encendidos(false, true), vec![COMENTARIOS]);
+        assert!(encendidos(true, false).is_empty());
+        // La disposicion entera: la barra comun de los visores, con luna/sol.
+        assert_eq!(
+            crate::lector_pin::disposicion("Plan", "md", &botones(true, false), true),
+            ["asa", "nombre", "propio:1", "propio:5", "propio:6", "propio:7", "oscuro", "pantalla", "fijar", "cerrar"]
+        );
+    }
+
+    #[test]
+    fn cada_boton_de_la_barra_tiene_su_globo_en_los_dos_idiomas() {
+        for idioma in [pixpin_store::Idioma::Espanol, pixpin_store::Idioma::Ingles] {
+            let t = Catalogo::nuevo(idioma);
+            let p = pistas(&t);
+            for id in [VER, EDITAR, DESHACER, REHACER, BUSCAR, COMENTARIOS, COMPARTIR, MAS] {
+                let s = p.iter().find(|(i, _)| *i == id).map(|(_, s)| s.as_str()).unwrap_or_else(|| panic!("{id} sin globo"));
+                assert!(!s.is_empty() && !s.starts_with("nota-pista") && !s.starts_with("barra-") && !s.starts_with("lector-"), "{s}");
+            }
+        }
+        // El ⋮ dice su tecla, la G, que tambien lo abre desde la pagina.
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert!(pistas(&t).iter().any(|(i, s)| *i == MAS && s.contains("(G)")));
+    }
+
+    #[test]
+    fn cada_boton_es_una_orden_que_la_pagina_entiende() {
+        let pagina = std::str::from_utf8(PAGINA).unwrap();
+        for id in [VER, EDITAR, DESHACER, REHACER, BUSCAR, COMENTARIOS, COMPARTIR, MAS] {
+            let que = orden_de(id).unwrap_or_else(|| panic!("{id} sin orden"));
+            // La pagina compilada tiene el `case` de esa orden.
+            assert!(pagina.contains(&format!("case\"{que}\"")), "{que}");
+        }
+        assert!(pagina.contains("en-pin"), "la pagina sabe esconder su cabecera");
+        // Caso negativo: un boton que no existe no manda nada.
+        assert_eq!(orden_de(99), None);
+        // El estado que manda la pagina se entiende.
+        let e: DeLaPagina = serde_json::from_str(r#"{"tipo":"estado","leyendo":true,"comentarios":false}"#).unwrap();
+        assert_eq!(e, DeLaPagina::Estado { leyendo: true, comentarios: false });
+    }
+
+    #[test]
+    fn en_la_barra_va_el_fichero_o_el_titulo_de_la_nota() {
+        let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let f = Destino::Fichero { ruta: PathBuf::from(r"C:\notas\1791239986208_Plan de obra.md") };
+        assert_eq!(nombre_en_la_barra(&f, "Otra cosa", &t), "Plan de obra");
+        let m = Destino::Mensaje { proyecto: "p".into(), codigo: "U1".into() };
+        assert_eq!(nombre_en_la_barra(&m, "Visita", &t), "Visita");
+        // Caso negativo: una nota sin titulo no deja la barra sin nombre.
+        assert_eq!(nombre_en_la_barra(&m, "  ", &t), t.t("nota-md-nueva"));
+        assert_ne!(fondo(true), fondo(false));
     }
 
     #[test]

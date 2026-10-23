@@ -952,6 +952,20 @@ impl Pintor<'_> {
     /// ni se toca ni se duplica. Si el efecto no se puede crear, se pinta
     /// tal cual.
     pub fn bitmap_oscuro(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>) {
+        self.bitmap_con_matriz(b, destino, fuente, &crate::oscuro::matriz_d2d());
+    }
+
+    /// **Un bitmap en negativo** (cada canal al reves, el tono tambien): para
+    /// pintar una foto debajo de un `invertir_colores` de toda la ventana y
+    /// que, tras los dos negativos, salga con sus colores de verdad.
+    pub fn bitmap_negativo(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>) {
+        let m = [[-1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 0.0]];
+        self.bitmap_con_matriz(b, destino, fuente, &m);
+    }
+
+    /// Un bitmap pasado por una `ColorMatrix` de Direct2D (fila = canal de
+    /// entrada R, G, B, A y la de los desplazamientos).
+    fn bitmap_con_matriz(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>, matriz: &[[f32; 4]; 5]) {
         use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_SOURCE_OVER;
         use windows::Win32::Graphics::Direct2D::{
             CLSID_D2D1ColorMatrix, D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1_PROPERTY_TYPE_BOOL,
@@ -964,7 +978,7 @@ impl Pintor<'_> {
         if !(f.ancho > 0.0 && f.alto > 0.0 && destino.ancho > 0.0 && destino.alto > 0.0) {
             return;
         }
-        let datos: Vec<u8> = crate::oscuro::matriz_d2d().iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
+        let datos: Vec<u8> = matriz.iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
         // SAFETY: el efecto integrado existe en todo Direct2D 1.1; su entrada
         // es un bitmap vivo del mismo dispositivo; los datos de la matriz
         // tienen los 20 flotantes que pide su tipo.
@@ -1030,12 +1044,52 @@ impl Pintor<'_> {
         tramos: &[Tramo],
         color: Color,
     ) {
+        self.parrafo_con_enlaces(texto, x, y, tam, ancho_max, tramos, color, &[], color);
+    }
+
+    /// Un parrafo como [`Self::parrafo`] con **enlaces**: los trozos
+    /// `(inicio, largo)` (unidades UTF-16) van subrayados y en
+    /// `color_enlace`, como un enlace de cualquier pagina. Subrayar y tenir
+    /// no mueven ninguna letra: se mide y se pulsa con la misma disposicion
+    /// que sin ellos (`medir_parrafo`, `cajas_de_trozo` con los mismos
+    /// tramos).
+    #[allow(clippy::too_many_arguments)] // lo de `parrafo` y los enlaces
+    pub fn parrafo_con_enlaces(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[Tramo],
+        color: Color,
+        enlaces: &[(u32, u32)],
+        color_enlace: Color,
+    ) {
         let Some((disposicion, _, _)) =
             disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, tramos, false)
         else {
             return;
         };
         self.motor.conto(|c| c.disposiciones += 1);
+        if !enlaces.is_empty()
+            && let Some(efecto) = self
+                .pincel(color_enlace)
+                .and_then(|p| p.cast::<windows::core::IUnknown>().ok())
+        {
+            for &(inicio, longitud) in enlaces {
+                let rango = DWRITE_TEXT_RANGE {
+                    startPosition: inicio,
+                    length: longitud,
+                };
+                // SAFETY: disposicion viva y recien hecha para este texto;
+                // DirectWrite recorta los rangos que se pasen del final.
+                unsafe {
+                    let _ = disposicion.SetUnderline(true, rango);
+                    let _ = disposicion.SetDrawingEffect(&efecto, rango);
+                }
+            }
+        }
         self.dibujar_disposicion(&disposicion, x, y, color);
     }
 

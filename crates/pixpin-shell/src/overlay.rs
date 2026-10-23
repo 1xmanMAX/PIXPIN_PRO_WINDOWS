@@ -49,6 +49,54 @@ pub fn existe(hwnd: isize) -> bool {
     unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
 }
 
+/// **Lo de dentro de una ventana, en pixeles de pantalla**: `hwnd`, o la
+/// activa de este hilo si es `None`. Devuelve tambien cual era. Lo usa el
+/// marco para imprimir de los visores.
+pub fn area_cliente(hwnd: Option<isize>) -> Option<(isize, Rect)> {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::ClientToScreen;
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetActiveWindow;
+    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+    // SAFETY: consultas de solo lectura de una ventana; las estructuras son
+    // locales y un handle muerto solo hace fallar la llamada.
+    unsafe {
+        let h = match hwnd {
+            Some(h) if h != 0 => HWND(h as *mut _),
+            _ => GetActiveWindow(),
+        };
+        let mut r = RECT::default();
+        if h.is_invalid() || GetClientRect(h, &mut r).is_err() {
+            return None;
+        }
+        let mut esquina = POINT { x: 0, y: 0 };
+        let _ = ClientToScreen(h, &mut esquina);
+        Some((
+            h.0 as isize,
+            Rect { x: esquina.x, y: esquina.y, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 },
+        ))
+    }
+}
+
+/// **Un clic de mentira para las pruebas**: manda a `hwnd` (una ventana
+/// PROPIA) pulsar (0), mover con el boton pulsado (1) o soltar (2) en `x, y`
+/// de su zona cliente, como si fuera el raton. No mueve el raton de verdad.
+pub fn simular_raton(hwnd: isize, que: u8, x: i32, y: i32) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE};
+    let mensaje = match que {
+        0 => WM_LBUTTONDOWN,
+        1 => WM_MOUSEMOVE,
+        _ => WM_LBUTTONUP,
+    };
+    let lparam = ((y as u16 as isize) << 16) | (x as u16 as isize);
+    let boton = if que == 2 { 0 } else { 1 };
+    // SAFETY: solo deja un mensaje en la cola de esa ventana; un handle
+    // muerto hace fallar la llamada sin mas.
+    unsafe {
+        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), mensaje, WPARAM(boton), LPARAM(lparam));
+    }
+}
+
 /// Espera a que el compositor haya presentado lo ultimo que se dibujo.
 /// Dos vueltas: la primera cierra el fotograma en curso, la segunda
 /// garantiza que el nuestro ya esta en pantalla y, por tanto, en la
@@ -1093,9 +1141,16 @@ fn registrar_clase() {
     // SAFETY: registro unico (Once) de una clase con WndProc propio; los
     // campos no usados quedan a cero, que es lo que la API espera.
     unsafe {
+        let instancia: windows::Win32::Foundation::HINSTANCE = GetModuleHandleW(None).expect("modulo propio").into();
+        // El icono de PixPin (recurso 1 del ejecutable, `pixpinmax.rc`): sin
+        // el, el chat, los visores y los pines salian con el icono generico
+        // en la barra de tareas y en Alt+Tab (20-oct-2026, el usuario: «su
+        // icono no aparece de la app»).
+        let icono = windows::Win32::UI::WindowsAndMessaging::LoadIconW(Some(instancia), windows::core::PCWSTR(1 as _)).unwrap_or_default();
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento_overlay),
-            hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
+            hInstance: instancia,
+            hIcon: icono,
             lpszClassName: w!("PixPinOverlay"),
             ..Default::default()
         };
@@ -1377,7 +1432,7 @@ extern "system" fn procedimiento_overlay(
                     char::from_u32(unidad as u32)
                 }
             });
-            if let Some(c) = caracter {
+            if let Some(c) = caracter.filter(|c| es_letra_de_wm_char(*c)) {
                 encolar(EventoOverlay::Caracter(c));
             }
             LRESULT(0)
@@ -1536,10 +1591,35 @@ fn avisar_de_horizontal(camino: &'static str, delta: i32) {
     }
 }
 
+/// Si lo que trae WM_CHAR es una letra para escribir.
+///
+/// **Ctrl+Retroceso** manda su WM_KEYDOWN (VK_BACK con Ctrl, que es lo que
+/// borra la palabra) y DETRAS un WM_CHAR con `0x7F` (DEL), que no es ninguna
+/// letra. Las cajas que solo miraban `c >= ' '` lo escribian: un caracter
+/// invisible detras de la rayita, y el siguiente Ctrl+Retroceso se gastaba
+/// en borrarlo a el en vez de la palabra (el usuario, 17-oct-2026: «solo se
+/// borra la primera palabra y luego ya no funciona»). Se quita aqui, en el
+/// unico sitio por el que entra lo tecleado, y vale para todas las cajas.
+/// Los demas mandos (Intro `\r`, Retroceso `\x08`, Tab) siguen llegando:
+/// hay quien los atiende como letra.
+pub fn es_letra_de_wm_char(c: char) -> bool {
+    c != '\u{7f}'
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
     use pixpin_geom::Rect;
+
+    #[test]
+    fn el_del_de_ctrl_retroceso_no_es_una_letra() {
+        // Lo que manda Windows detras de Ctrl+Retroceso: fuera.
+        assert!(!es_letra_de_wm_char('\u{7f}'));
+        // Caso negativo: las letras y los mandos de siempre siguen pasando.
+        for c in ['a', 'ñ', ' ', '€', '\r', '\u{8}', '\t'] {
+            assert!(es_letra_de_wm_char(c), "{c:?}");
+        }
+    }
 
     #[test]
     fn ctrl_y_shift_de_la_rueda_salen_del_propio_mensaje() {

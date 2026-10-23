@@ -283,6 +283,16 @@ pub const GRID_VIEW: Icono = Icono {
     )],
 };
 
+/// La vista Kanban de Tareas (17-oct-2026): tres columnas de alto distinto,
+/// como las listas del tablero. Hecho a mano sobre la rejilla de 24.
+pub const VIEW_KANBAN: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 4h5v16H3V4zM9.5 4h5v10h-5V4zM16 4h5v13h-5V4z",
+        false,
+    )],
+};
+
 /// `hearing` (`src/av/hearing/materialicons/24px.svg`).
 pub const HEARING: Icono = Icono {
     vista: VISTA,
@@ -433,6 +443,27 @@ pub const MORE_VERT: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno(
         "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+        false,
+    )],
+};
+
+/// `edit_note` (`src/editor/edit_note/materialicons/24px.svg`): editar el
+/// TEXTO (las celdas de una hoja, una nota). El lapiz a secas (`EDIT`) es
+/// anotar encima, en todos los visores: no se confunden (19-oct-2026).
+pub const EDIT_NOTE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 10h11v2H3v-2zm0-2h11V6H3v2zm0 8h7v-2H3v2zm15.01-3.13.71-.71c.39-.39 1.02-.39 1.41 0l.71.71c.39.39.39 1.02 0 1.41l-.71.71-2.12-2.12zm-.71.71-5.3 5.3V21h2.12l5.3-5.3-2.12-2.12z",
+        false,
+    )],
+};
+
+/// `crop_free` (`src/image/crop_free/materialicons/24px.svg`): el marco
+/// para imprimir de los visores (las cuatro esquinas de un recuadro).
+pub const CROP_FREE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 5v4h2V5h4V3H5c-1.1 0-2 .9-2 2zm2 10H3v4c0 1.1.9 2 2 2h4v-2H5v-4zm14 4h-4v2h4c1.1 0 2-.9 2-2v-4h-2v4zm0-16h-4v2h4v4h2V5c0-1.1-.9-2-2-2z",
         false,
     )],
 };
@@ -847,6 +878,13 @@ pub const LIGHT_MODE: Icono = Icono {
 
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    EDIT_NOTE,
+    CROP_FREE,
+    MORE_VERT,
+    STRAIGHTEN,
+    LAYERS,
+    CONTENT_CUT,
+    FONT_DOWNLOAD,
     FORMAT_ITALIC,
     FORMAT_UNDERLINED,
     FORMAT_STRIKETHROUGH,
@@ -1002,6 +1040,44 @@ pub const DRAG_INDICATOR: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno(
         "M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
+        false,
+    )],
+};
+
+/// `straighten` (`src/image/straighten/materialicons/24px.svg`): la regla
+/// de acotar en el visor de planos.
+pub const STRAIGHTEN: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H3V8h2v4h2V8h2v4h2V8h2v4h2V8h2v4h2V8h2v8z",
+        false,
+    )],
+};
+
+/// `layers` (`src/maps/layers/materialicons/24px.svg`): los niveles y las
+/// categorias del visor de modelos 3D.
+pub const LAYERS: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z", false)],
+};
+
+/// `content_cut` (`src/content/content_cut/materialicons/24px.svg`): la
+/// caja de seccion del visor de modelos 3D (los `<circle>` del original son
+/// `fill="none"`, no pintan).
+pub const CONTENT_CUT: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2 2 .89 2 2-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-6 6 2 2 7-7V3z",
+        false,
+    )],
+};
+
+/// `font_download` (`src/content/font_download/materialicons/24px.svg`): el
+/// boton de las letras (fuentes) del visor de planos.
+pub const FONT_DOWNLOAD: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z",
         false,
     )],
 };

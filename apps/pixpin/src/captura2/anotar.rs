@@ -239,6 +239,21 @@ impl Anotacion {
         true
     }
 
+    /// **Los atajos del texto** mientras se escribe (la tabla comun,
+    /// `texto::atajo_de_tecla`): Ctrl+Z/Y, Mayus+flechas, negrita, color del
+    /// tramo elegido (Ctrl+Mayus+1..6), formula (Ctrl+M). Devuelve si era
+    /// uno de ellos.
+    pub fn atajo_de_texto(&mut self, vk: u32, ctrl: bool, shift: bool, alt: bool) -> bool {
+        if !self.gesto.esta_escribiendo() {
+            return false;
+        }
+        let Some(a) = pixpin_motor2d::texto::atajo_de_tecla(vk, ctrl, shift, alt) else {
+            return false;
+        };
+        self.gesto.atajo_de_texto(a, &mut self.escena);
+        true
+    }
+
     /// Termina el texto que se escribe (Esc). Devuelve si habia uno.
     pub fn cerrar_texto(&mut self) -> bool {
         self.gesto.cerrar_texto_con_teclado(&mut self.escena)

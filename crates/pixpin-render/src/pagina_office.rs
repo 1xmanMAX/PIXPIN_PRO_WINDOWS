@@ -392,9 +392,10 @@ impl PintorOffice {
 
     /// **Modo oscuro** (`crate::oscuro`), como el de Word: la hoja sin
     /// fondo propio pasa a gris muy oscuro y el texto y las rayas oscuras
-    /// que no tienen un relleno debajo se aclaran conservando su tono; los
-    /// rellenos, las imagenes y los graficos se quedan con sus colores (y lo
-    /// que va encima de ellos tambien). Un relleno casi blanco se toma por
+    /// que no tienen un relleno debajo se aclaran conservando su tono; las
+    /// imagenes se invierten igual (19-oct-2026); los rellenos y los
+    /// graficos se quedan con sus colores (y lo que va encima de ellos
+    /// tambien). Un relleno casi blanco se toma por
     /// papel y se oscurece con el. Vale para lo que se pinte despues.
     pub fn poner_oscuro(&self, si: bool) {
         self.oscuro.set(si);
@@ -616,7 +617,11 @@ impl PintorOffice {
             }
             Elemento::Imagen { id, rect, recorte, opacidad } => {
                 self.imagen(ctx, id, *rect, *recorte, *opacidad);
-                self.apuntar_relleno(c, D2D_RECT_F { left: rect.x, top: rect.y, right: rect.x + rect.ancho, bottom: rect.y + rect.alto });
+                // En oscuro la imagen tambien se invierte: lo de encima se
+                // aclara como sobre el papel.
+                if !self.oscuro.get() {
+                    self.apuntar_relleno(c, D2D_RECT_F { left: rect.x, top: rect.y, right: rect.x + rect.ancho, bottom: rect.y + rect.alto });
+                }
             }
             Elemento::Trayecto { figuras, relleno, borde } => self.trayecto(c, figuras, relleno.as_ref(), borde.as_ref()),
             Elemento::Grupo { transformada: t, recorte, elementos } => {
@@ -1003,8 +1008,61 @@ impl PintorOffice {
                 fuente = D2D_RECT_F { left: fx0, top: fy0, right: fx1, bottom: fy1 };
             }
         }
+        if self.oscuro.get() && Self::imagen_oscura(c, &b, destino, fuente) {
+            return;
+        }
         // SAFETY: dentro del fotograma; bitmap y rectangulos vivos.
         unsafe { c.DrawBitmap(&b, Some(&destino), opacidad, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, Some(&fuente), None) };
+    }
+
+    /// **La imagen en modo oscuro** (19-oct-2026, el usuario: «las imagenes
+    /// tambien se tienen que invertir para que este completamente en modo
+    /// noche»): la luz invertida y el tono conservado, la misma matriz que
+    /// las hojas de un PDF (`Pintor::bitmap_oscuro`). Si el efecto no se
+    /// puede crear, `false` y se pinta tal cual.
+    fn imagen_oscura(c: &ID2D1DeviceContext, b: &ID2D1Bitmap1, destino: D2D_RECT_F, fuente: D2D_RECT_F) -> bool {
+        use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_SOURCE_OVER;
+        use windows::Win32::Graphics::Direct2D::{
+            CLSID_D2D1ColorMatrix, D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1_PROPERTY_TYPE_BOOL,
+            D2D1_PROPERTY_TYPE_MATRIX_5X4,
+        };
+        let (fw, fh) = (fuente.right - fuente.left, fuente.bottom - fuente.top);
+        let (dw, dh) = (destino.right - destino.left, destino.bottom - destino.top);
+        if !(fw > 0.0 && fh > 0.0 && dw > 0.0 && dh > 0.0) {
+            return true;
+        }
+        let datos: Vec<u8> = crate::oscuro::matriz_d2d().iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
+        // SAFETY: el efecto integrado existe en todo Direct2D 1.1; su entrada
+        // es un bitmap vivo del mismo dispositivo; la matriz lleva los 20
+        // flotantes que pide su tipo.
+        let img = unsafe {
+            c.CreateEffect(&CLSID_D2D1ColorMatrix).ok().and_then(|e| {
+                e.SetInput(0, b, false);
+                let _ = e.SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX.0 as u32, D2D1_PROPERTY_TYPE_MATRIX_5X4, &datos);
+                let _ = e.SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT.0 as u32, D2D1_PROPERTY_TYPE_BOOL, &1u32.to_ne_bytes());
+                e.GetOutput().ok()
+            })
+        };
+        let Some(img) = img else { return false };
+        let (sx, sy) = (dw / fw, dh / fh);
+        let (dx, dy) = (destino.left - fuente.left * sx, destino.top - fuente.top * sy);
+        let mut antes = windows_numerics::Matrix3x2::default();
+        // SAFETY: dentro del fotograma; la transformada se lee y se repone.
+        unsafe {
+            c.GetTransform(&mut antes);
+            let m = windows_numerics::Matrix3x2 {
+                M11: sx * antes.M11,
+                M12: sx * antes.M12,
+                M21: sy * antes.M21,
+                M22: sy * antes.M22,
+                M31: dx * antes.M11 + dy * antes.M21 + antes.M31,
+                M32: dx * antes.M12 + dy * antes.M22 + antes.M32,
+            };
+            c.SetTransform(&m);
+            c.DrawImage(&img, None, Some(&fuente), D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+            c.SetTransform(&antes);
+        }
+        true
     }
 
     fn decodificar(&self, c: &ID2D1DeviceContext, bytes: &[u8]) -> Option<ID2D1Bitmap1> {

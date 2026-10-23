@@ -214,6 +214,10 @@ pub enum AccionPanel {
     Borrar,
     Agrupar,
     Desagrupar,
+    /// **Guardar lo elegido en Figuras** (22-oct): pide el nombre y lo pone
+    /// en la biblioteca del menu de figuras. Lo atiende el editor, que es
+    /// quien puede abrir el cajetin del nombre.
+    GuardarFigura,
     /// Empieza a escribir el codigo del color en el campo del desplegable.
     /// Que color (trazo o fondo) lo dice el desplegable abierto.
     EditarHex,
@@ -286,6 +290,17 @@ pub enum Seccion {
     Oscurecer,
     /// Que parte de su marco ilumina un foco (`Propiedad.ZONA`).
     ZonaFoco,
+    /// Relleno liso, degradado lineal o radial (laminas de geometria).
+    Degradado,
+    /// Arco abierto, sector o segmento.
+    CierreArco,
+    /// Como traza la herramienta Arco: guia, centro y dos puntos, tres puntos.
+    ModoArco,
+    /// Cuantos arquitos lleva una marca de angulo.
+    ArcosAngulo,
+    /// Que pone la herramienta Angulo: letra griega, la marca sola o el
+    /// cuadradito de 90.
+    ModoAngulo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -451,6 +466,28 @@ pub struct Mandos {
     /// y en fraccion de su marco). Como la lupa, solo con uno elegido.
     pub foco_oscurecer: Mando<u8>,
     pub foco_zona: Mando<f32>,
+    /// Liso (`None`) o degradado (laminas de geometria).
+    pub degradado: Mando<Option<pixpin_motor2d::geometria_exacta::TipoDegradado>>,
+    /// Abierto (`None`), sector o segmento.
+    pub cierre_arco: Mando<Option<pixpin_motor2d::geometria_exacta::CierreArco>>,
+    pub modo_arco: Mando<pixpin_motor2d::geometria_exacta::ModoArco>,
+    pub arcos_angulo: Mando<u8>,
+    pub modo_angulo: Mando<pixpin_motor2d::geometria_exacta::ModoAngulo>,
+}
+
+/// Que modo de la herramienta Angulo dejaria una marca asi: el cuadradito es
+/// el recto, con letra la griega, y si no la sola.
+pub fn modo_de_marca(
+    m: &pixpin_motor2d::geometria_exacta::MarcaAngulo,
+) -> pixpin_motor2d::geometria_exacta::ModoAngulo {
+    use pixpin_motor2d::geometria_exacta::ModoAngulo as M;
+    if m.recto {
+        M::Recto
+    } else if m.valor.as_deref().is_some_and(|v| !v.trim().is_empty()) {
+        M::Griega
+    } else {
+        M::Simple
+    }
 }
 
 impl Mandos {
@@ -580,6 +617,23 @@ impl Mandos {
             ),
             tamano: si(texto || h == Herramienta::Serie, estilo.tamano_letra),
             mosaico: si(h == Herramienta::Mosaico, estilo.desenfoque),
+            // Solo con algo que rellenar (como el rayado): sin fondo, un
+            // mando de degradado no cambiaria nada de lo que se dibuja.
+            degradado: si(
+                h == Herramienta::Relleno
+                    || (matches!(
+                        h,
+                        Herramienta::Rectangulo
+                            | Herramienta::Rombo
+                            | Herramienta::Elipse
+                            | Herramienta::Arco
+                    ) && (estilo.relleno.is_some() || estilo.degradado.is_some())),
+                estilo.degradado,
+            ),
+            cierre_arco: si(h == Herramienta::Arco, estilo.cierre_arco),
+            modo_arco: si(h == Herramienta::Arco, estilo.modo_arco),
+            arcos_angulo: si(h == Herramienta::Angulo, estilo.arcos_angulo),
+            modo_angulo: si(h == Herramienta::Angulo, estilo.modo_angulo),
             ..Mandos::default()
         }
     }
@@ -594,6 +648,12 @@ impl Mandos {
             }
             if let Some(v) = pixpin_motor2d::estilo::variabilidad_de(e) {
                 m.presion = m.presion.juntar(v);
+            }
+            if (CambioForma::Degradado(None)).admite(&e.figura)
+                && e.extras.marca_angulo.is_none()
+                && (e.relleno.is_some() || e.extras.degradado.is_some())
+            {
+                m.degradado = m.degradado.juntar(e.extras.degradado.map(|d| d.tipo));
             }
             if e.material.es_grafito() {
                 m.dureza = m
@@ -646,6 +706,17 @@ impl Mandos {
                     }
                 }
                 Figura::Mosaico { desenfoque } => m.mosaico = m.mosaico.juntar(*desenfoque),
+                // El arco de lamina: su cierre, o sus arquitos si es la marca
+                // de un angulo (el cuadradito no tiene arquitos que contar).
+                Figura::Arco { barrido: Some(_), .. } => match &e.extras.marca_angulo {
+                    Some(marca) => {
+                        if !marca.recto {
+                            m.arcos_angulo = m.arcos_angulo.juntar(marca.arcos);
+                        }
+                        m.modo_angulo = m.modo_angulo.juntar(modo_de_marca(marca));
+                    }
+                    None => m.cierre_arco = m.cierre_arco.juntar(e.extras.cierre),
+                },
                 Figura::Foco { cristal } => {
                     use pixpin_motor2d::lupa_elemento as l;
                     m.foco_oscurecer = m.foco_oscurecer.juntar(l::oscurecimiento_de(cristal));
@@ -1405,7 +1476,69 @@ impl PanelLateral {
                 t(EstiloTrazo::Solido),
                 t(EstiloTrazo::Discontinuo),
                 t(EstiloTrazo::Punteado),
+                t(EstiloTrazo::RayaPunto),
             ]);
+            c.separar();
+        }
+        // **Las de las laminas de geometria**: liso o degradado, como se
+        // cierra el arco, como se traza y cuantos arquitos lleva un angulo.
+        if m.degradado.sale() {
+            use pixpin_motor2d::geometria_exacta::TipoDegradado as T;
+            c.titulo(Seccion::Degradado);
+            let s = |v| {
+                (
+                    AccionPanel::Forma(CambioForma::Degradado(v)),
+                    m.degradado.valor() == Some(v),
+                )
+            };
+            c.fila(&[s(None), s(Some(T::Lineal)), s(Some(T::Radial))]);
+            c.separar();
+        }
+        if m.cierre_arco.sale() {
+            use pixpin_motor2d::geometria_exacta::CierreArco as C;
+            c.titulo(Seccion::CierreArco);
+            let s = |v| {
+                (
+                    AccionPanel::Forma(CambioForma::CierreArco(v)),
+                    m.cierre_arco.valor() == Some(v),
+                )
+            };
+            c.fila(&[s(None), s(Some(C::Sector)), s(Some(C::Segmento))]);
+            c.separar();
+        }
+        if m.modo_arco.sale() {
+            use pixpin_motor2d::geometria_exacta::ModoArco as M;
+            c.titulo(Seccion::ModoArco);
+            let s = |v| {
+                (
+                    AccionPanel::Forma(CambioForma::ModoArco(v)),
+                    m.modo_arco.valor() == Some(v),
+                )
+            };
+            c.fila(&[s(M::Guia), s(M::CentroYPuntos), s(M::TresPuntos)]);
+            c.separar();
+        }
+        if m.modo_angulo.sale() {
+            use pixpin_motor2d::geometria_exacta::ModoAngulo as M;
+            c.titulo(Seccion::ModoAngulo);
+            let s = |v| {
+                (
+                    AccionPanel::Forma(CambioForma::ModoAngulo(v)),
+                    m.modo_angulo.valor() == Some(v),
+                )
+            };
+            c.fila(&[s(M::Griega), s(M::Simple), s(M::Recto)]);
+            c.separar();
+        }
+        if m.arcos_angulo.sale() {
+            c.titulo(Seccion::ArcosAngulo);
+            let s = |n: u8| {
+                (
+                    AccionPanel::Forma(CambioForma::ArcosAngulo(n)),
+                    m.arcos_angulo.valor() == Some(n),
+                )
+            };
+            c.fila(&[s(1), s(2), s(3)]);
             c.separar();
         }
         if m.presion.sale() {
@@ -1699,6 +1832,7 @@ impl PanelLateral {
             if m.desagrupar {
                 opciones.push((AccionPanel::Desagrupar, false));
             }
+            opciones.push((AccionPanel::GuardarFigura, false));
             c.fila(&opciones);
             c.separar();
         }
@@ -2042,6 +2176,8 @@ mod pruebas {
                 Seccion::Relleno,
                 Seccion::Grosor,
                 Seccion::EstiloTrazo,
+                // La caja va rellena: puede ir degradada.
+                Seccion::Degradado,
                 Seccion::TrazoAMano,
                 Seccion::Bordes,
                 Seccion::Fuente,

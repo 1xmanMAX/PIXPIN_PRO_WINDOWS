@@ -81,6 +81,11 @@ pub(crate) struct Pedido {
     /// El codigo de este equipo, el del sello.
     pub aparato: String,
     pub nombre: String,
+    /// **Grabar a un fichero y no al chat** (17-oct-2026, la nota de voz
+    /// de una clase del horario): donde dejar el `.m4a` y lo que se dice al
+    /// guardarlo. Entonces no hay mensaje ni «Convertir en llamada»: la
+    /// llamada ya la pone el horario.
+    pub fichero: Option<(PathBuf, String)>,
 }
 
 /// Los rotulos, ya traducidos en el hilo principal (el `Catalogo` no cruza
@@ -391,7 +396,10 @@ fn marco_para(area: Rect, escala_por_cien: u32, logico: (u32, u32), antes: Optio
 
 fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()> {
     // El microfono primero: se abre mientras nace la ventana.
-    let temporal = super::temporal_de_la_voz(&pedido.raiz, &pedido.proyecto);
+    let temporal = match &pedido.fichero {
+        Some((f, _)) => f.with_extension("m4a.parcial"),
+        None => super::temporal_de_la_voz(&pedido.raiz, &pedido.proyecto),
+    };
     let mut fase = Fase::Abriendo(crate::ventanita::abrir_microfono(temporal.clone()));
 
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
@@ -537,6 +545,32 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
                 },
             },
             Fase::Parando(rx) => match rx.try_recv() {
+                // A un fichero (la nota de una clase): se deja en su sitio,
+                // en lugar de la que hubiera, y se dice.
+                Ok(Ok(grabacion)) if pedido.fichero.is_some() => {
+                    let (destino, listo) = pedido.fichero.clone().unwrap_or_default();
+                    let hecho = destino
+                        .parent()
+                        .map_or(Ok(()), std::fs::create_dir_all)
+                        .and_then(|_| {
+                            let _ = std::fs::remove_file(&destino);
+                            std::fs::rename(&grabacion.ruta, &destino)
+                        });
+                    let _ = std::fs::remove_file(&temporal);
+                    match hecho {
+                        Ok(()) => Fase::Puesta {
+                            texto: listo,
+                            desde: Instant::now(),
+                        },
+                        Err(e) => {
+                            tracing::warn!(?e, "no se pudo dejar la nota de la clase");
+                            Fase::Fallo {
+                                texto: rotulos.fallo.clone(),
+                                desde: Instant::now(),
+                            }
+                        }
+                    }
+                }
                 Ok(Ok(grabacion)) => {
                     let hecho = super::siguiente_numero_en(&pedido.raiz, &pedido.proyecto)
                         .map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {

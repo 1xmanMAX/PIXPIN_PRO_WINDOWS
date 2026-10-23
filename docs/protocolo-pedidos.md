@@ -40,6 +40,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `chat` | `texto`, `proyecto?`, `imagenes?`, `archivos?` | Un mensaje de texto nuevo en ese chat. Con `imagenes` (rutas; `[img 01]` en `texto` = `imagenes[0]`), el texto sin sus fichas va primero y cada imagen detras como una foto del chat (un BMP se guarda como PNG). Con `archivos` (ver abajo), cada fichero va detras como un adjunto
 | `nota_nueva` | `texto?`, `proyecto?`, `imagenes?` | Una nota nueva, abierta en el editor. Con `imagenes`, cada `[img NN]` del texto queda como esa imagen dentro de la nota
 | `lienzo_nuevo` | `nombre?`, `proyecto?` | Un lienzo nuevo, abierto |
+| `al_lienzo` | `lienzo`, `texto?`, `imagenes?`, `proyecto?` | **Fotos y texto a un lienzo por su nombre** (17-oct), como `chat` a un chat: se apilan en una columna libre del lienzo `lienzo` (sin tildes ni mayúsculas; del `proyecto` dicho o, sin él, el que se llame así en cualquier chat; si no hay ninguno, se crea en `proyecto` o en «Mensajes guardados»): cada cosa debajo de la anterior que llegó, sin pisar lo que haya. Las fotos primero y el texto debajo; `[img NN]` del texto se quitan. Si el lienzo está abierto, entra en vivo |
 | `grabar` | `nombre`, `proyecto?` | Saca el micrófono flotante y graba una nota de voz; un clic la guarda con ese nombre (`<nombre>.m4a`) en ese chat |
 | `lista_nueva` | `titulo`, `proyecto?` | Una lista de tareas nueva (mini-app `tareas`) |
 | `tabla_nueva` | `nombre`, `proyecto?`, `filas?`, `cabecera?`, `abrir?` | Una **tabla del chat** (mini-app `tabla`, la del pin de hoja, que viaja al móvil) ya rellena: `filas[f][c]` en texto va a la celda de la columna `c` y la fila `f` (A1 arriba a la izquierda). Los números escritos como en papel («1 250,50», «1.250») se guardan como número. `cabecera: true` pone la primera fila en negrita. `abrir: true` la saca ya como pin de hoja; si no, se avisa. Lo usa el asistente al pasar una tabla escaneada (14-oct) |
@@ -49,13 +50,13 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `corregir_tarea` | `proyecto?`, `codigo`, `indice`, `texto` | Cambia lo que se lee de la tarea numero `indice` (desde 0) de la lista `codigo` por `texto`, como «Editar» de la ventana de tareas (`tareas::corregir`, `Tareas.renombrar` del móvil): conserva su fecha de creacion y sus imagenes. Una fecha va en `texto` como su marca de recordatorio (`⏰ AAAA-MM-DD HH:MM`, hora local). Un `texto` vacio no borra la tarea (eso es `quitar_tarea`): se avisa |
 | `quitar_tarea` | `proyecto?`, `codigo`, `indice` | Quita la tarea numero `indice` (desde 0, en el orden del documento) de la lista `codigo`, como su aspa en la ventana de tareas (`Tareas.borrar` del móvil). La lista se reescribe en su mensaje y asi viaja al móvil. Si no hay esa tarea, o `codigo` no es una lista, no se toca nada y se avisa |
 | `borrar_lista` | `proyecto?`, `codigo` | Borra la lista `codigo` **entera**, con todas sus tareas: su mensaje sale del chat por el mismo camino que «Borrar» en el chat (sale de `guardados.jsonl` y deja su marca en `sincro\borrados.jsonl`, para que el móvil tambien la quite en la siguiente vuelta). No se pregunta ni se puede deshacer: quien lo manda ya pregunto. Las imagenes de sus tareas se quedan en `archivos/`. El Inbox tambien se puede borrar: se vuelve a crear con la siguiente tarea apuntada. Si `codigo` no es una lista, no se toca nada y se avisa |
-| `ventana` | `cual: "tareas" \| "galeria" \| "lecciones" \| "sincronizar"` | Abre (o trae delante) esa ventana, como su entrada de la bandeja. Otro `cual` es un pedido roto |
-| `capturar` | `modo?: "zona"` | Empieza la captura de una zona, la misma del atajo general («Capturar» de la bandeja), unos 300 ms despues para que el lanzador ya se haya escondido. Sin `modo`, `"zona"`; otro modo es un pedido roto |
+| `ventana` | `cual: "tareas" | "galeria" | "lecciones" | "sincronizar" | "ajustes" | "timeline" | "buscar" | "horario"` |\| "galeria" \| "lecciones" \| "sincronizar" \| "ajustes" \| "timeline" \| "buscar"` | Abre (o trae delante) esa ventana, como su entrada de la bandeja (ajustes y buscar, por su comando). Otro `cual` es un pedido roto |
+| `capturar` | `modo?` | Empieza una captura por el mismo camino que su comando de la bandeja, unos 300 ms despues para que el lanzador ya se haya escondido. `modo`: `"zona"` (la del atajo general, con la barra; sin `modo`, esta), `"copiar"` (directa al portapapeles), `"pin"`, `"en_vivo"`, `"anotar"`, `"texto"` (copiar el texto que se lea), `"scroll"` (larga), `"repetir"` (la ultima zona), `"retardo"` (tras la cuenta atras) o `"gif"` (grabar la zona). Otro modo es un pedido roto |
 | `pinear_ultima` | — | Saca a la pantalla como pin la captura mas reciente de la carpeta de capturas (la primera de la galeria), como `pinear` con su `ruta`. Sin capturas, se avisa |
 | `conservar_captura` | `ruta` | Como «Conservar» de la galeria: la captura entra en «Mensajes guardados» y deja de caducar. Solo vale una `ruta` que este en la carpeta de capturas (`<raiz>\capturas\`); otra se rechaza con aviso |
 | `borrar_captura` | `ruta` | Como «Borrar» de la galeria: la captura va a la papelera de PixPin (`<raiz>\papelera\capturas\`) y, si estaba conservada, se olvida. Solo una `ruta` de la carpeta de capturas |
 | `copiar_imagen` | `ruta` | Pone esa imagen (png, jpg, bmp, webp) en el portapapeles **como imagen**, no como fichero. Un GIF o algo que no es imagen se rechaza con aviso |
-| `ventana_principal` | — | Saca el chat |
+| `ventana_principal` | `proyecto?` | Saca el chat; con `proyecto` (15-oct), abierto en ese chat (si no esta, se avisa) |
 | `pinear` | `ruta` o (`proyecto?`, `codigo`) | Saca ese fichero (o el del mensaje) a la pantalla como pin, como «Sacar a la pantalla» del chat |
 | `iconos` | `extensiones: ["pdf","docx",...]` | Pinta el icono de archivo de cada extension (el del chat: hoja de su color con la extension escrita) en `<raiz>/cache/iconos-de-extension/<ext>.png` (64 px, fondo transparente) si aun no esta. No abre nada ni avisa |
 | `soltar` | `proyecto?` | Saca una caja flotante (siempre encima) del proyecto: los ficheros que se le suelten entran en su chat como si se soltaran en la ventana del chat. Una por proyecto; pedirla otra vez la trae delante. Se cierra con su aspa o Esc |
@@ -64,8 +65,14 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `lecciones` | `proyecto?`, `consulta?` | Abre la lista de lecciones (buscador, repaso de hoy, lista de comprobación). Con `proyecto`, primero las suyas y las que hablan de lo mismo; con `consulta`, ya buscando. Una sola ventana: pedirla otra vez la trae delante |
 | `enviar_al_movil` | `aparato`, `imagenes?`, `archivos?` | Manda esas imagenes (rutas absolutas) **al lienzo que el móvil `aparato` tiene abierto** (`aparato` es su `id` en el grupo, `sincro\identidad.json`), sin abrir Sincronizar en ninguno de los dos. Ver abajo. Sin nada que mandar, o con un fichero que no esta, no sale nada y se avisa |
 | `sincronizar` | `aparato` | Sincroniza con ese aparato del grupo (`id`), o con todos si `aparato` es `todos`, **sin abrir la ventana**: lo mismo que «Sincronizar con todos», sin preguntar y con lo elegido la última vez. Avisa al empezar y, al acabar, dice en el globo lo hecho o qué falló. Una sola a la vez. El plugin (`p s`) ensena si cada aparato contesta leyendo `sincroestado.json` (`{"cuando": ms, "responden": {id: bool}}`), que apunta la sonda de fondo. `enviar_al_movil` acepta también `aparato: "todos"` |
-| `asistente` | `texto?`, `proyecto?`, `imagenes?`, `automatizacion?` | **Le pide algo al asistente sin abrir el chat** (`p ia <pedido>` en Flow). Lo hace con el motor elegido en Ajustes → Asistente (local, Claude o DeepSeek), guarda la pregunta y la respuesta en el chat «Asistente» y lo dice en un **aviso flotante propio** (abajo a la derecha, sin robar el foco) con «Abrir». `proyecto`: el chat sobre el que se pide (se le dice al modelo y lo que cree sin chat —una tarea, una nota— va ahí). `imagenes` como en `chat` (`[img NN]` en `texto`): van al chat «Asistente» como fotos y el modelo las ve. Lo que borra o saca algo del PC **pregunta antes**. Sin `texto` ni `imagenes`, abre el chat «Asistente». Con `automatizacion` (su `id`), corre esa automatización ya. Ver abajo |
+| `posponer` | `mensaje`, `proyecto?`, `indice?`, `minutos` | «+10 min» de la notificación de un recordatorio (15-oct): vuelve a sonar dentro de `minutos`. `mensaje` es el id del mensaje con la hora; con `indice`, el de la lista de esa tarea (la hora va en su texto, `⏰ AAAA-MM-DD HH:MM`) |
+| `asistente` | `texto?`, `proyecto?`, `imagenes?`, `automatizacion?`, `encargo?` | **Le encarga algo al asistente sin abrir el chat** (`p asistente <pedido>` en Flow). Va a la **cola de encargos** (15-oct, uno tras otro en segundo plano, `encargo` es su id) y lo hace con el motor elegido en Ajustes → Asistente (local, Claude o DeepSeek), guarda la pregunta y la respuesta en el chat «Asistente» y al acabar lo dice en una **notificación de Windows** con «Abrir» (si no sale, el aviso flotante propio). `proyecto`: el chat sobre el que se pide (se le dice al modelo y lo que cree sin chat —una tarea, una nota— va ahí). `imagenes` como en `chat` (`[img NN]` en `texto`): van al chat «Asistente» como fotos y el modelo las ve. Lo que borra o saca algo del PC **pregunta antes**. Sin `texto` ni `imagenes`, abre el chat «Asistente». Con `automatizacion` (su `id`), corre esa automatización ya. Ver abajo |
 | `automatizacion` | `operacion: "crear" \| "activar" \| "desactivar" \| "borrar" \| "ejecutar"`, `id?`, `receta?` | Las automatizaciones del asistente (ver abajo). `crear` lleva `receta` (`nombre`, `disparador: {tipo, hora?, dias?}`, `pasos`); las demás, el `id`. Lo hecho se dice en el globo; una receta que no vale no se guarda y se avisa del motivo. `borrar` no pregunta: quien lo manda ya preguntó |
+| `pines` | `operacion: "cerrar" \| "ocultar_mostrar" \| "devolver_ultimo" \| "paso_de_clics"` | (15-oct) Los comandos de los pines de la bandeja, por el mismo camino que `capturar` (`WM_COMMAND` a la ventana del bucle): cerrarlos todos, esconderlos o devolverlos, devolver el último que se cerró o que dejen pasar el clic. `cerrar` no pregunta: quien lo manda ya preguntó |
+| `timeline` | `texto?` | (15-oct) Con `texto`, apunta un momento en el timeline con la hora de ahora (la primera frase es el título, como la caja de su ventana) y lo dice en el globo; sin `texto`, abre el timeline |
+| `leer_en_voz` | `texto?`, `ruta?`, `titulo?`, `parar?` | **Lee en voz alta** (15-oct) con la voz de la app (la de Windows o las de Microsoft, como en los lectores), **sin abrir ninguna ventana**; calla lo que sonara antes. Un `texto` suelto (la selección de una página desde la extensión del navegador): un párrafo por renglón. O un fichero (`ruta`, el asistente: PDF, Word, PowerPoint, Excel, nota o texto): su texto se saca en un hilo. Se pausa, salta y para con los mandos de reproductor de Windows y las teclas multimedia, que enseñan `titulo` (sin él, «PixPin Max» o el nombre del fichero). Con `parar: true`, calla lo que suene, sea de quien sea. Sin nada que leer, o un fichero que no está, se avisa |
+| `ocr` | `ruta`, `rutas?` | **El texto de esa imagen al portapapeles** (15-oct, «Texto (OCR)» de la extensión del navegador; con `rutas`, más imágenes detrás de `ruta`, todo en un texto con una línea en blanco entre imagen e imagen: «Copiar texto (OCR)» del menú del Explorador con varias elegidas): el OCR de Windows, en orden de lectura, como «Texto» de la captura. En su hilo; el globo dice lo copiado («Texto copiado (120 caracteres): «…»»), que no había texto o que falta el OCR de Windows. Una `ruta` que no está o no es una imagen se rechaza con aviso |
+| `herramienta` | `nombre`, `args?`, `respuesta?`, `preguntar?`, `origen?` | **Hace una herramienta del asistente con esos argumentos y devuelve lo que salió** (15-oct-2026, el servidor MCP `apps/pixpin-mcp`). `nombre` es una fila de `pixpin_ia::acciones::todas()` (`anadir_tarea`, `borrar_lista`, `anotar_documento`…; no `hoja_a_lienzo`), `args` sus argumentos tal como los describe su JSON Schema. Se hace en su hilo por el mismo camino que el asistente: las tareas por su nombre, los documentos por su nombre o ruta, y **lo que la fila manda preguntar se pregunta** (chat «Asistente» y aviso flotante, «Sí»/«No»; sin respuesta en 5 min, no). `preguntar`: otra pregunta que hacer antes (la usa MCP para lo que cambia algo que ya existe). Al acabar escribe `{"ok": bool, "texto": "…"}` en `respuesta`, que tiene que ser un `.json` **nuevo directamente dentro de `%TEMP%\pixpin-mcp\`** (si no, se hace igual pero no se escribe nada). Se escribe al lado (`.parte`) y se renombra: quien espera puede leerlo en cuanto aparece. `origen` («Claude») sale en el aviso y en la pregunta |
 
 ### El asistente desde fuera (`asistente`, 13-oct-2026)
 
@@ -79,11 +86,34 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
   lleva `@<nombre>`), hace nacer la burbuja de la respuesta y corre el turno con el mismo ejecutor
   del chat: las acciones de la app van por este mismo protocolo, y lo dibujado, sin un lienzo
   abierto, al lienzo del asistente en su chat.
-- Mientras piensa, el aviso dice «💭 …»; al acabar, la respuesta corta y **«Abrir»** (el chat en
-  esa respuesta). Se va solo a los 15 s, salvo con el ratón encima.
-- En el lanzador: `p ia <pedido>` o `p ? <pedido>` (también `asistente`, `ai`); `@proyecto` al
-  final elige el chat; Ctrl+V pega la imagen copiada (`[img 01]`), como en `p s`. `p ia` solo
-  ofrece abrir el chat «Asistente» y las automatizaciones «a mano», para correrlas.
+- **Cola de encargos** (15-oct, `automatizaciones::cola`): el pedido solo apunta el encargo; un
+  hilo los hace de uno en uno (con el modelo local solo cabe uno cargado, `pixpin_ia::relevo`).
+  Se guardan en `<raiz>\asistente-encargos.json`
+  (`{"version":1,"encargos":[{id, texto, proyecto?, imagenes, estado: "en_cola"|"haciendo"|"hecha"|"fallo", creado, empezado?, acabado?, resumen, con_fallos?, abrir?: {proyecto, codigo, lienzo?}}]}`):
+  lo que quedó en cola al cerrar PixPin se hace al volver; el que estaba a medias **no se
+  repite** (podría apuntar dos veces lo mismo): queda como fallido y se avisa. Se guardan los
+  10 últimos acabados.
+- Al acabar cada uno, **notificación de Windows** (`pixpin_shell::notificacion`): «✅ Hecho: …» /
+  «⚠️ Hecho a medias: …» / «❌ No se pudo: …», una línea con la respuesta o el motivo y
+  **«Abrir»** (el lienzo si dibujó; si no, la respuesta en el chat «Asistente»). Si Windows no
+  la deja salir, el aviso flotante de siempre. Si el turno pide permiso (algo que borra o
+  envía), sale el aviso flotante con «Sí»/«No» en ese momento.
+- En el lanzador: `p asistente <pedido>` o `p a <pedido>` (también `ia`, `?`, `ai`); `@proyecto`
+  al final elige el chat; Ctrl+V pega la imagen copiada (`[img 01]`), como en `p s`. Intro lo
+  manda y **Flow se queda en `p asistente `** con el encargo ya «en cola»: se mandan varios
+  seguidos. La lista enseña el motor que contesta y los encargos (en cola, haciendo, hecha,
+  falló). `p asistente` a secas ofrece además abrir el chat y las automatizaciones «a mano».
+
+### Notificaciones con botones (15-oct-2026)
+
+Las notificaciones de Windows de PixPin (asistente, recordatorios, capturas que caducan) llevan
+botones; cada botón es **un pedido de este protocolo**. Como PixPin no está empaquetado, Windows
+los devuelve por protocolo: `pixpin:pedido?json=<pedido en %-código>` (o `pixpinmax:` si `pixpin:`
+es de otro programa, como el PixPin original; `orden::esquema_de_la_casa`), que abre
+`pixpinmax.exe --url "<seña>"`. Es **el mismo protocolo, traductor y lista blanca** que los enlaces
+de `docs/integraciones.md` (`orden::de_enlace`, `orden::seguridad`); los botones van **firmados**
+(`orden::firma`) y se hacen sin preguntar. `--atajo url "<seña>"` (como se registraba antes) es un
+alias de `--url`.
 
 ### Automatizaciones (`automatizacion`, 13-oct-2026)
 
@@ -260,6 +290,11 @@ es `%APPDATA%\PixPinMax` (o la carpeta del exe si al lado hay un `pixpinmax.toml
   existe dentro de ella. Para cambiar algo, un pedido.
 
 ## Desde la linea de mandatos
+
+Lo normal es el propio `pixpinmax.exe` (15-oct): `pixpinmax --pedido '<json>'`,
+`pixpinmax --pedido-archivo <ruta|->`, los verbos legibles (`pixpinmax tarea "comprar yeso"`) y
+los enlaces `pixpinmax://…` / `pixpin://…`. Todo en **`docs/integraciones.md`**. Desde Rust, la
+función para reutilizar es `pixpin_shell::mensajero::enviar_pedidos_o_arrancar`.
 
 `pixpin-lanzador.exe pedido '<json>'` manda un pedido (arranca PixPin si hace falta) y
 `pixpin-lanzador.exe buscar "<texto>"` escribe los resultados, una linea JSON por resultado.

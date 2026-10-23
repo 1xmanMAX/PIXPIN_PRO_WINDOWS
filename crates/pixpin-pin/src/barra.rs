@@ -4,8 +4,12 @@
 //! **La misma barra en todos los pines.** Primero el control propio del
 //! tipo (el zoom de una foto, las paginas de un PDF, el reproductor de un
 //! video, «EN VIVO» y congelar en un pin en vivo, abrir en una ficha), luego
-//! lo comun —Copiar, Anotar, Mas— y Cerrar aparte, siempre a la derecha. El
-//! menu del clic derecho sigue el mismo orden (`menu.rs`).
+//! lo comun —Copiar, Mas— y Cerrar aparte, siempre a la derecha. El menu
+//! del clic derecho sigue el mismo orden (`menu.rs`).
+//!
+//! El lapiz ya no va aqui (19-oct-2026): esta en el riel del pin
+//! (`riel_pin.rs`), con el marco para imprimir, como en todos los visores.
+//! Un solo lapiz, en el mismo sitio en todas partes.
 //!
 //! La barra va FUERA del pin, encima (o debajo si arriba no cabe): asi no
 //! tapa lo que se esta mirando, y su ancho no depende del del pin. Por eso
@@ -122,7 +126,8 @@ pub enum Propio {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TipoBarra {
     pub propio: Propio,
-    /// Anotar encima: fotos y notas (es lo que ya hace el doble clic).
+    /// Anotar encima: fotos y notas (es lo que ya hace el doble clic). Su
+    /// lapiz va en el riel del pin, no en la barra.
     pub anotable: bool,
     /// Copiar: lo que se ve (en un pin en vivo, el fotograma de ahora).
     pub copiable: bool,
@@ -222,9 +227,7 @@ pub fn disponer(tipo: TipoBarra, escala: f32) -> Barra {
     if tipo.copiable {
         poner(&mut v, boton(AccionBarra::Copiar), lado);
     }
-    if tipo.anotable {
-        poner(&mut v, boton(AccionBarra::Anotar), lado);
-    }
+    // `tipo.anotable` ya no pone boton: el lapiz es del riel del pin.
     poner(&mut v, boton(AccionBarra::Mas), lado);
     poner(&mut v, Pieza::Separador, SEPARADOR * e);
     poner(&mut v, boton(AccionBarra::Cerrar), lado);
@@ -331,7 +334,7 @@ mod pruebas {
     }
 
     #[test]
-    fn todas_las_barras_acaban_igual_copiar_anotar_mas_y_cerrar_aparte() {
+    fn todas_las_barras_acaban_igual_copiar_mas_y_cerrar_aparte() {
         for propio in [
             Propio::Zoom,
             Propio::Paginas { con_paso: true },
@@ -344,15 +347,12 @@ mod pruebas {
             let a = acciones(&b);
             let n = a.len();
             assert_eq!(
-                &a[n - 4..],
-                &[
-                    AccionBarra::Copiar,
-                    AccionBarra::Anotar,
-                    AccionBarra::Mas,
-                    AccionBarra::Cerrar
-                ],
+                &a[n - 3..],
+                &[AccionBarra::Copiar, AccionBarra::Mas, AccionBarra::Cerrar],
                 "{propio:?}"
             );
+            // Un solo lapiz: el del riel del pin, nunca tambien aqui.
+            assert!(!a.contains(&AccionBarra::Anotar), "{propio:?}");
             // Cerrar va aparte: un separador justo delante.
             let i = b
                 .elementos

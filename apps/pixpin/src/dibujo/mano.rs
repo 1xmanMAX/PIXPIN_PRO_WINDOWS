@@ -41,6 +41,10 @@ use pixpin_ui::{BotonCaja, CajaHerramientas, DestinoClic};
 pub const PAUSA_FORMA: std::time::Duration =
     std::time::Duration::from_millis(pixpin_motor2d::forma_rapida::ESPERA_PARA_LA_FORMA_MS);
 
+/// Las flechas que cambian la letra griega de la marca de angulo.
+const VK_FLECHA_ARRIBA: u32 = 0x26;
+const VK_FLECHA_ABAJO: u32 = 0x28;
+
 /// Desde donde se mira: la camara (documento→pantalla, ya con la escala
 /// del monitor), la ventana en el escritorio virtual y su escala.
 #[derive(Clone, Copy)]
@@ -154,6 +158,8 @@ pub enum Pedido {
     Compartir,
     /// Se pulso el clic a traves (solo en el anotador de pantalla viva).
     Atravesar,
+    /// Se pulso «Guardar en figuras» en el panel: el cajetin del nombre.
+    GuardarFigura,
 }
 
 impl Atendido {
@@ -285,7 +291,13 @@ impl Mano {
                 vista.interfaz,
                 vista.escala_por_cien,
             ) {
-                ClicPanel::Suyo { repintar } => return Atendido::suyo(Repinte::si(repintar)),
+                ClicPanel::Suyo { repintar } => {
+                    let mut a = Atendido::suyo(Repinte::si(repintar));
+                    if crate::panel_dibujo::tomar_guardar_figura() {
+                        a.pedido = Some(Pedido::GuardarFigura);
+                    }
+                    return a;
+                }
                 ClicPanel::Fuera { cerro } => {
                     if cerro {
                         sigue.repinte = Repinte::ENCIMA;
@@ -430,6 +442,18 @@ impl Mano {
                         .is_some(),
                     _ => false,
                 },
+                // **Los atajos del texto** (`texto::atajo_de_tecla`, la misma
+                // tabla que el anotador): Ctrl+Z/Y dentro del texto, elegir
+                // con Mayus, negrita, color del tramo elegido, formula.
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    shift,
+                    alt,
+                } if pixpin_motor2d::texto::atajo_de_tecla(vk, ctrl, shift, alt).is_some() => {
+                    pixpin_motor2d::texto::atajo_de_tecla(vk, ctrl, shift, alt)
+                        .is_some_and(|a| gesto.atajo_de_texto(a, escena))
+                }
                 // Los mandos llegan tambien como caracter; se atienden por
                 // tecla, que es donde se distinguen bien.
                 EventoOverlay::Caracter(c) if c >= ' ' => gesto.escribir(c, escena),
@@ -525,8 +549,31 @@ impl Mano {
             let hecho = !apagada && aplicar_orden(orden, gesto, escena);
             return Atendido::suyo(Repinte::si(hecho));
         }
+        // **La letra griega de la marca recien puesta** (17-oct): con el
+        // angulo en la mano, las flechas arriba y abajo la cambian por la
+        // siguiente o la anterior libre (`Gesto::cambiar_letra_de_angulo`).
+        if gesto.herramienta == Herramienta::Angulo
+            && let EventoOverlay::Tecla {
+                vk,
+                ctrl: false,
+                alt: false,
+                ..
+            } = *ev
+            && (vk == VK_FLECHA_ARRIBA || vk == VK_FLECHA_ABAJO)
+        {
+            let paso = if vk == VK_FLECHA_ARRIBA { 1 } else { -1 };
+            let hecho = gesto.cambiar_letra_de_angulo(escena, paso);
+            return Atendido::suyo(Repinte::si(hecho));
+        }
         if let EventoOverlay::Caracter(c) = *ev {
             if let Some(h) = permitidas::herramienta_de_letra(self.anfitrion, c) {
+                // La letra del angulo con el angulo ya en la mano: la
+                // variante de 90 grados, con su cuadradito (y vuelta).
+                if h == Herramienta::Angulo && gesto.herramienta == Herramienta::Angulo {
+                    let modo = gesto.alternar_angulo_recto();
+                    tracing::info!(?modo, "herramienta angulo");
+                    return Atendido::suyo(Repinte::DIBUJO);
+                }
                 elegir_herramienta(gesto, h);
                 return Atendido::suyo(Repinte::DIBUJO);
             }
@@ -1633,5 +1680,47 @@ mod pruebas {
             .unwrap_or_else(|| std::env::temp_dir().join("pixpin-texto-pegado.png"));
         pixpin_codec::guardar(&img, &ruta, pixpin_codec::FormatoImagen::Png).expect("png");
         println!("PNG: {}", ruta.display());
+    }
+
+    /// 17-oct: la W elige el angulo y, otra vez, su variante de 90; las
+    /// flechas cambian la letra griega de la marca recien puesta.
+    #[test]
+    fn la_w_elige_el_angulo_otra_vez_el_recto_y_las_flechas_cambian_la_letra() {
+        use pixpin_motor2d::geometria_exacta as ge;
+        permitidas::fijar(Default::default());
+        let camara = Camara::nueva();
+        let mut mano = Mano::con_tinta(Anfitrion::Lienzo, Default::default());
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        let mut pulsar = |ev: EventoOverlay, gesto: &mut Gesto, escena: &mut Escena| {
+            mano.herramienta(&ev, gesto, escena, None, vista_de(&camara), 1600.0, 900.0)
+        };
+        pulsar(EventoOverlay::Caracter('w'), &mut gesto, &mut escena);
+        assert_eq!(gesto.herramienta, Herramienta::Angulo);
+        assert_eq!(gesto.estilo.modo_angulo, ge::ModoAngulo::Griega);
+        pulsar(EventoOverlay::Caracter('w'), &mut gesto, &mut escena);
+        assert_eq!(gesto.estilo.modo_angulo, ge::ModoAngulo::Recto, "otra vez: el de 90");
+        pulsar(EventoOverlay::Caracter('W'), &mut gesto, &mut escena);
+        assert_eq!(gesto.estilo.modo_angulo, ge::ModoAngulo::Griega);
+        // Una marca α recien puesta: ↑ la pasa a β, ↓ la devuelve.
+        let mut m = ge::marca_de_angulo(
+            Punto2::nuevo(0.0, 0.0),
+            Punto2::nuevo(100.0, 0.0),
+            Punto2::nuevo(50.0, -80.0),
+            22.0,
+            1,
+        );
+        m.extras.marca_angulo.as_mut().unwrap().valor = Some("α".into());
+        let id = escena.anadir(m);
+        gesto.ultima_marca = Some(id);
+        let valor = |e: &Escena| e.buscar(id).and_then(|e| e.extras.marca_angulo.as_ref()?.valor.clone());
+        pulsar(tecla(VK_FLECHA_ARRIBA), &mut gesto, &mut escena);
+        assert_eq!(valor(&escena).as_deref(), Some("β"));
+        pulsar(tecla(VK_FLECHA_ABAJO), &mut gesto, &mut escena);
+        assert_eq!(valor(&escena).as_deref(), Some("α"));
+        // Con otra herramienta, las flechas no tocan la letra (caso negativo).
+        pulsar(EventoOverlay::Caracter('l'), &mut gesto, &mut escena);
+        pulsar(tecla(VK_FLECHA_ARRIBA), &mut gesto, &mut escena);
+        assert_eq!(valor(&escena).as_deref(), Some("α"));
     }
 }

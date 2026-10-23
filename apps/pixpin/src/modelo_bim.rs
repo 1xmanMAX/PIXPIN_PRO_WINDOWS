@@ -100,7 +100,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
             categorias: "CATEGORIES".into(),
             sin_nivel: "No level".into(),
             mostrar_todo: "Show all".into(),
-            aristas: "Edges	A".into(),
+            aristas: "Edges	E".into(),
             planta: "Plan view	P".into(),
             encima: "Always on top	T".into(),
             cerrar: "Close	Esc".into(),
@@ -108,6 +108,63 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
             pista: "Drag: orbit · Right drag: pan · Wheel: zoom · Click: what is it · Click again: isolate".into(),
         },
         _ => pixpin_cad::ventana3d::TextosUi3d::default(),
+    }
+}
+
+/// Los textos de los marcadores y los marcos del modelo.
+fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
+    match idioma {
+        Idioma::Ingles => pixpin_cad::ventana3d::TextosMarcos3d {
+            marcador: "Bookmark here (with the section and what is hidden)\tCtrl+M".into(),
+            marcos: "Frames to print\tI".into(),
+            imprimir: "Print the frames…\tCtrl+P".into(),
+            borrar_marcos: "Clear frames".into(),
+            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · The numbers: go to its view · Esc: exit".into(),
+            pista_anotar: "What you annotate is only seen in this bookmark's view".into(),
+            anotar: "Annotate this view\tA".into(),
+            botones: pixpin_cad::ventana::NombresDeBotones::ingles(),
+        },
+        _ => pixpin_cad::ventana3d::TextosMarcos3d::default(),
+    }
+}
+
+/// **El riel del modelo** (19-oct-2026): los marcadores con todo el estado
+/// de la vista, lo anotado sobre cada uno con el motor del lienzo (una capa
+/// por marcador) y los marcos numerados que se imprimen en grupo: se
+/// fotografia cada uno en su vista y van juntos al dialogo
+/// (`marco_imprimir::imprimir_fotos`). De un adjunto del chat, todo en los
+/// ficheros `anot-<uid>…` de su mensaje, que viajan
+/// (`plano_cad::SitioDeMarcadores`).
+fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> pixpin_cad::ventana3d::Barra3d {
+    use pixpin_cad::ventana3d::Foto;
+    let sitio = crate::plano_cad::SitioDeMarcadores::abrir(raiz, ruta);
+    let (s1, s2) = (sitio.clone(), sitio.clone());
+    let titulo = nombre.to_string();
+    pixpin_cad::ventana3d::Barra3d {
+        tipo: crate::plano_cad::tipo_de_archivo(ruta),
+        marcadores: Some(sitio.vistas()),
+        anotador: Some(Box::new(move |id: &str| {
+            Box::new(crate::plano_cad::anotar::motor_de_marcador(&s1, id)) as Box<dyn pixpin_cad::anotado::Anotador>
+        })),
+        // Sin borrar los ficheros: la capa con todo borrado (ver `vaciar_capa`).
+        quitar_tinta: Some(Box::new(move |id: &str| {
+            let r = crate::plano_cad::anotar::rutas_de_marcador(&s2, id);
+            if let Err(e) = crate::plano_cad::anotar::vaciar_capa(&r) {
+                tracing::warn!(?e, tinta = %r.tinta.display(), "no se pudo vaciar lo anotado del marcador");
+            }
+        })),
+        foto: Some(Box::new(|r: [i32; 4]| {
+            let area = pixpin_geom::Rect { x: r[0], y: r[1], ancho: r[2].max(0) as u32, alto: r[3].max(0) as u32 };
+            crate::marco_imprimir::foto_de_pantalla(area).map(|i| (i.ancho, i.alto, i.pixeles))
+        })),
+        imprimir: Some(Box::new(move |v: isize, fotos: Vec<Foto>| {
+            let fotos = fotos.into_iter().map(|(ancho, alto, pixeles)| pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).collect();
+            if let Err(e) = crate::marco_imprimir::imprimir_fotos(v, fotos, &titulo) {
+                tracing::warn!(?e, "no se pudieron imprimir los marcos del modelo");
+            }
+        })),
+        textos: textos_marcos(idioma),
+        globo: Some(crate::plano_cad::globo_de_la_barra()),
     }
 }
 
@@ -126,7 +183,10 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             exportar: Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), Some(ruta.clone()), None)),
             ..Default::default()
         };
-        if let Err(e) = pixpin_cad::ventana3d::ver_con(&titulo, rx, textos(idioma), extras) {
+        // En la barra, el tipo y el nombre, como en los demas pines.
+        let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
+        let barra = barra_del_modelo(idioma, &raiz, &ruta, &nombre);
+        if let Err(e) = pixpin_cad::ventana3d::ver_con_barra(&nombre, barra, rx, textos(idioma), extras) {
             tracing::warn!(%e, "no se pudo abrir el visor de modelos");
             let _ = pixpin_shell::abrir(&ruta);
         }

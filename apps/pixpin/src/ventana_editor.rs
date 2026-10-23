@@ -151,6 +151,14 @@ fn ajustes_rendimiento() -> pixpin_store::Rendimiento {
 fn gesto_inicial(ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Gesto {
     let mut gesto = Gesto::nuevo();
     gesto.enganche = ajustes_iman;
+    // **El iman fino**: los cruces, el canto (puntos sobre la circunferencia)
+    // y las tangentes, para las laminas de geometria. El gesto los trae
+    // apagados porque cuestan memoria en cada movimiento del raton; el
+    // editor, que es donde se dibuja de verdad, los paga a sabiendas. Se
+    // apagan con el iman.
+    if ajustes_iman.activo {
+        gesto.finos = pixpin_motor2d::enganche::AjustesFinos::default();
+    }
     gesto
 }
 
@@ -483,9 +491,11 @@ pub fn abrir_con_pegadas(
 /// `abrir` con cualquier fondo: tambien una pagina de PDF, que se pinta en
 /// su hilo y se afina al acercarse (`fondo_lienzo`). Es lo que usa el chat
 /// al abrir una hoja-pagina de un proyecto. Devuelve tambien las imagenes
-/// nacidas en la sesion (ver [`abrir_con_pegadas`]); las de una vuelta
-/// anterior (F11) vuelven a entrar al reabrir la ventana, asi que alternar
-/// el modo tampoco las pierde.
+/// nacidas en la sesion (ver [`abrir_con_pegadas`]).
+///
+/// Abre en ventana o a pantalla completa segun se dejo el ultimo lienzo
+/// (`modo_ventana`), y F11 o el boton de la barra lo cambian sin cerrar la
+/// ventana: ni el dibujo ni la vista se pierden.
 pub fn abrir_sobre_con_pegadas(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
@@ -495,29 +505,16 @@ pub fn abrir_sobre_con_pegadas(
     fotos: &[(u64, std::path::PathBuf)],
     pegadas: &mut Vec<(u64, pixpin_codec::ImagenRgba)>,
 ) -> Result<(Escena, Option<String>)> {
-    // F11 alterna entre pantalla completa y ventana. La ventana del editor
-    // nace con su tamano y todo lo de dentro se mide contra el, asi que
-    // cambiar de modo es cerrarla y abrirla otra vez con la MISMA escena: se
-    // pierde el encuadre, no el dibujo.
-    let mut escena = escena;
-    loop {
-        let (vuelta, enlace, cambiar) = abrir_en_modo(
-            escena,
-            ajustes_iman,
-            nivel,
-            medir_fotogramas,
-            fondo.clone(),
-            fotos,
-            None,
-            pegadas,
-        )?;
-        if !cambiar {
-            return Ok((vuelta, enlace));
-        }
-        escena = vuelta;
-        let ahora = !PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst);
-        PANTALLA_COMPLETA.store(ahora, std::sync::atomic::Ordering::SeqCst);
-    }
+    abrir_en_modo(
+        escena,
+        ajustes_iman,
+        nivel,
+        medir_fotogramas,
+        fondo,
+        fotos,
+        None,
+        pegadas,
+    )
 }
 
 /// **El anotador de pantalla** (ver `pantalla.rs`): el editor encima del
@@ -532,7 +529,7 @@ pub fn abrir_pantalla(
     let fondo = pantalla.foto.take().map(crate::fondo_lienzo::Fuente::from);
     let mut escena = Escena::nueva();
     escena.fondo = pantalla::papel(pantalla.modo);
-    let (vuelta, _, _) = abrir_en_modo(
+    let (vuelta, _) = abrir_en_modo(
         escena,
         ajustes_iman,
         nivel,
@@ -550,19 +547,38 @@ pub fn abrir_pantalla(
     Ok(pantalla.resultado.take())
 }
 
-/// Si el lienzo ocupa la pantalla entera o una ventana sin marco. Se
-/// recuerda mientras viva la aplicacion: quien lo puso en ventana lo quiere
-/// en ventana tambien en el siguiente lienzo.
-static PANTALLA_COMPLETA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-
 const VK_F11: u32 = 0x7A;
 const VK_ESCAPE: u32 = 0x1B;
 
-/// Si Escape cierra el lienzo. En el anotador de pantalla no (tiene su regla,
-/// `pantalla::tecla`), ni presentando (Escape deja de presentar), ni a mitad
-/// de un arrastre (Escape lo cancela, como en Excalidraw).
-fn escape_cierra(es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool) -> bool {
-    es_lienzo && sin_presentar && gesto_en_reposo
+/// Lo que hace Escape en el lienzo cuando nada de la interfaz se lo quedo
+/// (el texto a medias y las hermanas de un grupo los cierra antes `mano`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AlEscape {
+    /// Nada del lienzo: lo atiende otro (el motor cancela el arrastre,
+    /// presentar deja de presentar, el anotador de pantalla tiene su regla).
+    Seguir,
+    /// A pantalla completa: pasa a ventana, sin cerrar ni perder nada.
+    AVentana,
+    /// En ventana: cierra el lienzo guardando, como Salir.
+    Cerrar,
+}
+
+/// **Escape, de dentro afuera** (15-oct-2026, el usuario: «un Esc que salga
+/// de pantalla completa y lo ponga en ventana, y un segundo Esc que cierre
+/// la ventana»). Lo que esta a medias manda: en el anotador de pantalla no
+/// (tiene su regla, `pantalla::tecla`), presentando tampoco (Escape deja de
+/// presentar) ni a mitad de un arrastre (lo cancela, como en Excalidraw).
+/// Sin nada que soltar, a pantalla completa vuelve a ventana y en ventana
+/// cierra: es el `BackHandler` del editor de Android, que sale primero de
+/// «solo el dibujo» (su pantalla completa) y solo despues cierra.
+fn al_escape(es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool, pantalla_completa: bool) -> AlEscape {
+    if !(es_lienzo && sin_presentar && gesto_en_reposo) {
+        AlEscape::Seguir
+    } else if pantalla_completa {
+        AlEscape::AVentana
+    } else {
+        AlEscape::Cerrar
+    }
 }
 
 /// F5: presentar (G5), como en PowerPoint.
@@ -580,10 +596,10 @@ fn abrir_en_modo(
     // El anotador de pantalla (ver `pantalla.rs`): `None` es el lienzo de
     // siempre.
     mut pantalla: Option<&mut pantalla::Pantalla<'_>>,
-    // Las imagenes nacidas en la sesion: entran las de la vuelta anterior
-    // (F11) y salen todas al cerrar, para que quien guarda las escriba.
+    // Las imagenes nacidas en la sesion: entran las que ya trajera quien
+    // llama y salen todas al cerrar, para que quien guarda las escriba.
     pegadas: &mut Vec<(u64, pixpin_codec::ImagenRgba)>,
-) -> Result<(Escena, Option<String>, bool)> {
+) -> Result<(Escena, Option<String>)> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
@@ -603,7 +619,7 @@ fn abrir_en_modo(
             Err(e) => tracing::warn!(?e, ruta = %ruta.display(), "imagen del proyecto ilegible"),
         }
     }
-    // Y las pegadas en la vuelta anterior (F11), que aun no estan en disco.
+    // Y las que ya trajera quien llama, que aun no estan en disco.
     for (id, img) in std::mem::take(pegadas) {
         imagenes.reponer_nueva(id, img);
     }
@@ -613,40 +629,75 @@ fn abrir_en_modo(
     let monitor = disposicion
         .principal()
         .context("sin monitor principal para el editor")?;
-    // Pantalla completa de verdad (tapa tambien la barra de tareas), o una
-    // ventana sin marco centrada con aire alrededor. Sin el encabezado de
-    // Windows en ninguno de los dos: el lienzo ocupa toda su ventana y se
-    // cierra con Escape.
-    let area = if let Some(p) = pantalla.as_deref() {
-        // El anotador de pantalla cubre TODOS los monitores.
-        p.escritorio
-    } else if PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst) {
-        monitor.area
-    } else {
-        let t = monitor.area_trabajo;
-        let (w, h) = (t.ancho * 4 / 5, t.alto * 4 / 5);
-        pixpin_geom::Rect {
-            x: t.x + ((t.ancho - w) / 2) as i32,
-            y: t.y + ((t.alto - h) / 2) as i32,
-            ancho: w,
-            alto: h,
+    // La herramienta y la barra dependen de quien abre: el lienzo o el
+    // anotador de pantalla.
+    let anfitrion = pantalla
+        .as_deref()
+        .map_or(crate::dibujo::permitidas::Anfitrion::Lienzo, |p| {
+            p.anfitrion()
+        });
+    // **El lienzo, en ventana o a pantalla completa, como se dejo**
+    // (`modo_ventana`). En ventana es un pin de los visores: sin marco, se
+    // estira por los bordes, se lleva por el asa y lleva fuera su barra
+    // (`lector_pin`), y nace sin fijar encima como ellos. A pantalla completa
+    // tapa tambien la barra de tareas, y la misma barra asoma dentro, arriba
+    // a la izquierda, para volver. El anotador de pantalla no es un pin.
+    let mut pin = pantalla.is_none().then(|| {
+        let recordado = modo_ventana::recordado();
+        let minimo = modo_ventana::minimo(
+            monitor.escala_por_cien,
+            crate::dibujo::permitidas::botones(anfitrion),
+        );
+        let (_, trabajo_raton) =
+            pixpin_shell::overlay::monitor_de(pixpin_shell::overlay::raton_en_pantalla());
+        let trabajos: Vec<_> = disposicion.monitores().iter().map(|m| m.area_trabajo).collect();
+        let sitio = modo_ventana::sitio_al_abrir(
+            recordado.ventana,
+            &trabajos,
+            modo_ventana::por_defecto(trabajo_raton),
+            minimo,
+        );
+        let p = crate::lector_pin::PinLector::nuevo(sitio, monitor.escala_por_cien as f32 / 100.0)
+            .con_extension("pixpin")
+            .sin_oscuro()
+            .con_minimo(minimo.0, minimo.1)
+            .con_barra_en_pantalla_completa();
+        if recordado.pantalla_completa {
+            let centro = Punto {
+                x: sitio.x + sitio.ancho as i32 / 2,
+                y: sitio.y + sitio.alto as i32 / 2,
+            };
+            p.en_pantalla_completa(pixpin_shell::overlay::monitor_de(centro).0)
+        } else {
+            p
         }
+    });
+    // El nombre en la barra: el de la hoja del chat o «Lienzo».
+    let nombre_del_pin = crate::zona_al_chat::hoja_abierta()
+        .map(|h| crate::lector_pin::nombre_limpio(&h.nombre))
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| exportar::textos().t("chat-lienzo"));
+    let mut area = match (pantalla.as_deref(), pin.as_ref()) {
+        // El anotador de pantalla cubre TODOS los monitores.
+        (Some(p), _) => p.escritorio,
+        (None, Some(pn)) => pn.area,
+        (None, None) => monitor.area,
     };
 
     // Donde van la barra y el panel. En el lienzo, la ventana; en el
     // anotador de pantalla, el monitor principal (la ventana cubre todos, y
     // una barra centrada en el escritorio virtual quedaria partida entre
     // dos pantallas).
-    let area_ui = pantalla.as_deref().map_or(area, |p| p.principal.area);
+    let mut area_ui = pantalla.as_deref().map_or(area, |p| p.principal.area);
     // Todo lo de la interfaz vive en coordenadas del escritorio (son las de
     // los clics) y se pinta en las de la ventana: lo que hay que correrlo.
-    let corrimiento_ui = (-(area.x as f32), -(area.y as f32));
+    let mut corrimiento_ui = (-(area.x as f32), -(area.y as f32));
 
     // El lienzo es una ventana de aplicacion corriente: se tapa con otros
     // programas, sale en la barra de tareas y en Alt+Tab. Siempre encima y
     // fuera de la barra dejaba al usuario sin poder ponerle nada delante.
     // El anotador de pantalla si va encima de todo: anota lo que hay debajo.
-    let ventana = if pantalla.is_some() {
+    let mut ventana = if pantalla.is_some() {
         VentanaOverlay::nueva(area)
     } else {
         VentanaOverlay::nueva_normal(area, "PixPin")
@@ -705,6 +756,11 @@ fn abrir_en_modo(
     }
     ventana.enfocar();
     ventana.pedir_entrada_fina();
+    // El lienzo como los visores: al frente sin fijar, y su barra fuera.
+    if let Some(pn) = pin.as_mut() {
+        pn.al_nacer(&ventana);
+        pn.crear_barra(&motor, dispositivo.d3d(), &ventana);
+    }
     // **El anotador de pantalla: su pastilla y Alt + doble clic central**
     // (`pastilla_pantalla.rs`). La pastilla va en su propia ventana, con el
     // motor y el dispositivo de este editor; el gesto, mientras viva
@@ -751,11 +807,6 @@ fn abrir_en_modo(
     let mut gesto = gesto_inicial(ajustes_iman);
     // La herramienta con la que abre tiene que salir en la barra: si el
     // usuario la apago en los ajustes, se abre con la mano.
-    let anfitrion = pantalla
-        .as_deref()
-        .map_or(crate::dibujo::permitidas::Anfitrion::Lienzo, |p| {
-            p.anfitrion()
-        });
     crate::dibujo::permitidas::asegurar(anfitrion, &mut gesto);
     // D135: con fondo, la imagen centrada; sin fondo, el origen como antes.
     let mut camara = match &fondo {
@@ -801,7 +852,7 @@ fn abrir_en_modo(
     let mut zoom_desde: Option<std::time::Instant> = None;
     let mut rejilla = Rejilla::nueva();
     let mut capa = CapaEstatica::nueva();
-    let (ancho_px, alto_px) = (area.ancho as f32, area.alto as f32);
+    let (mut ancho_px, mut alto_px) = (area.ancho as f32, area.alto as f32);
     // "Contenido" y area de trabajo son el mismo rectangulo, como en
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
@@ -879,8 +930,8 @@ fn abrir_en_modo(
     // Se pulso una zona vinculada cuyo lienzo no existe: se dice un momento
     // arriba, sin cerrar (`salto_por_enlace`).
     let mut aviso_enlace: Option<(String, std::time::Instant)> = None;
-    // Se pulso F11: hay que volver a abrir en el otro modo.
-    let mut cambiar_modo = false;
+    // Se pulso F11 o el boton de la barra: a pantalla completa o de vuelta.
+    let mut alternar_modo = false;
     // La zona sucia del fotograma anterior (D148): hace falta para la union
     // de dos, porque la cadena de intercambio tiene dos mapas.
     let mut zona_anterior: Option<(i32, i32, i32, i32)> = None;
@@ -911,7 +962,7 @@ fn abrir_en_modo(
     let hoja_del_chat = crate::zona_al_chat::hoja_abierta().filter(|_| pantalla.is_none());
     // Donde acaba la barra, en pixeles de la ventana: la tira de emoticonos
     // y la hojita salen justo debajo.
-    let bajo_la_barra = |caja: &CajaHerramientas| caja.marco.abajo() - area.y;
+    let bajo_la_barra = |caja: &CajaHerramientas, area: pixpin_geom::Rect| caja.marco.abajo() - area.y;
     // **Soltar el lapiz sin repintar la escena** (ver `hornear_trazo`).
     //
     // `trazo_limpio`: el trazo que se esta dibujando en la capa de la tinta
@@ -937,17 +988,35 @@ fn abrir_en_modo(
     let mut en_primer_plano = true;
     // F14: si la estela del laser seguia viva la vuelta anterior.
     let mut laser_vivo = false;
+    // La estela del laser, en la capa de la tinta (22-oct).
+    let mut laser_en_capa = false;
     // G5: la presentacion en curso (F5) y el modo solo mirar (Alt+R), con
     // su arrastre de mover el dibujo.
     let mut presentacion: Option<presentar::Presentacion> = None;
+    // El lienzo empieza siempre editando, con su barra lateral: el lapiz de
+    // la barra de arriba (19-oct) repetia el de la lateral y el usuario lo
+    // quito (21-oct-2026). Solo mirar sigue en Alt+R.
     let mut solo_mirar = false;
+    let mut herramienta_al_editar = gesto.herramienta;
+    if solo_mirar {
+        elegir_herramienta(&mut gesto, Herramienta::Mano);
+    }
     let mut arrastre_mirar: Option<presentar::Arrastre> = None;
     // Lo que dibuje el asistente mientras este lienzo esta abierto cae aqui,
     // centrado en lo que se ve (`asistente::al_lienzo`). El anotador de
     // pantalla no es un lienzo.
     let _para_el_asistente = pantalla
         .is_none()
-        .then(|| crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize));
+        .then(|| {
+            // Con la hoja que tiene: lo que el asistente pida para otro
+            // lienzo del chat lo hace el chat en su fichero (17-oct).
+            crate::asistente::al_lienzo::EditorAbierto::nuevo(ventana.handle().0 as isize)
+                .con_hoja(crate::zona_al_chat::hoja_abierta().map(|h| h.dibujo))
+        });
+    // Solo para probar (`PIXPIN_MENU_FIGURAS_AL_ABRIR`): el menu de las
+    // figuras se abre solo a los 2 s, sin tocar el raton del usuario.
+    let mut figuras_al_abrir = std::env::var_os("PIXPIN_MENU_FIGURAS_AL_ABRIR")
+        .map(|_| std::time::Instant::now() + std::time::Duration::from_secs(2));
 
     'bucle: loop {
         // D129: se mide siempre (unos nanosegundos por `Instant::now`); solo
@@ -992,11 +1061,44 @@ fn abrir_en_modo(
             let (x0, y0, x1, y1) = efectiva.ventana(ancho_px, alto_px);
             // «Guarda esto como figura»: lo elegido, para el asistente.
             crate::asistente::al_lienzo::contestar_lo_elegido(&escena, gesto.seleccion.ids());
-            if crate::asistente::al_lienzo::atender_en_editor(&mut escena, ((x0 + x1) / 2.0, (y0 + y1) / 2.0)) {
+            // Lo que dibuja, edita o resume el asistente (`pixpin_ia::edicion`):
+            // con lo que se ve, lo elegido y el almacen de imagenes (pegar).
+            let elegidos = gesto.seleccion.ids().to_vec();
+            if crate::asistente::al_lienzo::atender_en_editor_con(&mut escena, (x0, y0, x1, y1), &elegidos, &mut imagenes) {
+                // Las hojas de una plantilla alargada quedan elegidas.
+                if let Some(ids) = crate::asistente::al_lienzo::tomar_para_elegir() {
+                    gesto.seleccion.poner_todos(ids);
+                }
                 todo_sucio = true;
                 contenido_sucio = true;
                 interfaz_sucia = true;
                 ventana.invalidar();
+            }
+            // Lo mandado a este lienzo por su nombre (`pila_lienzo`, 17-oct):
+            // apilado en su columna y, si no se ve, la vista va hasta ello.
+            let apilados = crate::pila_lienzo::atender(h, &mut escena, &mut imagenes);
+            if !apilados.is_empty() {
+                if let Some(c) = crate::pila_lienzo::caja_de(&escena, &apilados)
+                    && crate::asistente::al_lienzo::desplazar_para_ver((x0, y0, x1, y1), c) != (0.0, 0.0)
+                {
+                    crate::asistente::al_lienzo::pedir_mostrar(c);
+                }
+                todo_sucio = true;
+                contenido_sucio = true;
+                interfaz_sucia = true;
+                ventana.invalidar();
+            }
+            // Lo que dibujo el asistente no se veia: la vista va hasta ello
+            // (15-oct, «traelo»).
+            if let Some(caja) = crate::asistente::al_lienzo::tomar_mostrar() {
+                let (dx, dy) = crate::asistente::al_lienzo::desplazar_para_ver((x0, y0, x1, y1), caja);
+                if (dx, dy) != (0.0, 0.0) {
+                    camara.x += dx;
+                    camara.y += dy;
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
             }
             let llegadas = crate::al_frente::tomar_para(h);
             if !llegadas.is_empty() {
@@ -1028,7 +1130,50 @@ fn abrir_en_modo(
                 }
                 continue;
             }
+            // La barra del pin (en ventana, fuera; a pantalla completa,
+            // asomando dentro): llevar la ventana por el asa y sus botones.
+            if let Some(pn) = pin.as_mut()
+                && pn.es_de_la_barra(hwnd)
+            {
+                let (accion, _) = pn.evento_barra(&ev, &mut ventana);
+                match accion.map(modo_ventana::de_la_barra) {
+                    Some(modo_ventana::DeLaBarra::Alternar) => alternar_modo = true,
+                    Some(modo_ventana::DeLaBarra::Fijar) => pn.alternar_fijado(&ventana),
+                    Some(modo_ventana::DeLaBarra::Lapiz) => {
+                        if gesto.esta_escribiendo() {
+                            gesto.cerrar_texto(&mut escena);
+                        }
+                        solo_mirar = !solo_mirar;
+                        arrastre_mirar = None;
+                        if solo_mirar {
+                            herramienta_al_editar = gesto.herramienta;
+                            elegir_herramienta(&mut gesto, Herramienta::Mano);
+                        } else {
+                            elegir_herramienta(&mut gesto, herramienta_al_editar);
+                        }
+                        todo_sucio = true;
+                        interfaz_sucia = true;
+                        ventana.invalidar();
+                    }
+                    // Como Escape o Salir: el texto a medias entra en lo
+                    // que se guarda al volver.
+                    Some(modo_ventana::DeLaBarra::Cerrar) => {
+                        if gesto.esta_escribiendo() {
+                            gesto.cerrar_texto(&mut escena);
+                        }
+                        break 'bucle;
+                    }
+                    Some(modo_ventana::DeLaBarra::Nada) | None => {}
+                }
+                continue;
+            }
             if hwnd != ventana.handle() {
+                continue;
+            }
+            // Estirar por los bordes es del pin (en ventana).
+            if let Some(pn) = pin.as_mut()
+                && pn.evento_ventana(&ev, &mut ventana).consumido
+            {
                 continue;
             }
             // Alt + doble clic central con el anotador abierto: el gancho
@@ -1054,6 +1199,9 @@ fn abrir_en_modo(
                     .and_then(|d| d.principal().copied())
                 {
                     escala_por_cien = m.escala_por_cien;
+                    if let Some(pn) = pin.as_mut() {
+                        pn.poner_escala(escala_por_cien as f32 / 100.0);
+                    }
                     // El anotador de pantalla sigue a 1:1 con cualquier escala.
                     if pantalla.is_some() {
                         camara = pantalla::camara_quieta(escala_por_cien);
@@ -1175,7 +1323,10 @@ fn abrir_en_modo(
                     solo_mirar = !solo_mirar;
                     arrastre_mirar = None;
                     if solo_mirar {
+                        herramienta_al_editar = gesto.herramienta;
                         elegir_herramienta(&mut gesto, Herramienta::Mano);
+                    } else {
+                        elegir_herramienta(&mut gesto, herramienta_al_editar);
                     }
                     repintar_todo = true;
                 } else if let Some(pr) = presentacion.as_mut() {
@@ -1322,6 +1473,21 @@ fn abrir_en_modo(
             } else {
                 navegacion::Modificadores::default()
             };
+            // **Alt+rueda con el angulo en la mano** (17-oct): cambia la letra
+            // griega de la marca recien puesta (o de la elegida), hacia
+            // arriba la siguiente; la rueda sola sigue acercando.
+            if let EventoOverlay::Rueda(delta) = ev
+                && gesto.herramienta == Herramienta::Angulo
+                && pixpin_shell::entrada::modificadores_pulsados().alt
+                && gesto.marca_para_letra(&escena).is_some()
+            {
+                if gesto.cambiar_letra_de_angulo(&mut escena, if delta > 0 { 1 } else { -1 }) {
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
+                continue;
+            }
             // Revision 1: el evento que cerraria el gesto a veces no llega
             // (Alt+Tab suelta el espacio sin `TeclaSoltada`; Windows le
             // quita la captura al raton a mitad de un arrastre sin mandar
@@ -1431,7 +1597,7 @@ fn abrir_en_modo(
                         mano: gesto.herramienta == Herramienta::Mano,
                         escribiendo: gesto.esta_escribiendo(),
                         ocupado: !gesto.en_reposo() || gesto.lazo.is_some() || mano.borrando,
-                        bajo_la_barra: bajo_la_barra(&caja),
+                        bajo_la_barra: bajo_la_barra(&caja, area),
                     },
                 );
                 if let Some(c) = r.cursor {
@@ -1441,6 +1607,38 @@ fn abrir_en_modo(
                     todo_sucio = true;
                     contenido_sucio = true;
                     interfaz_sucia = true;
+                    ventana.invalidar();
+                }
+                // Una ficha de los marcos: la camara a ese, llenando la ventana.
+                if let Some(i) = r.ir_a_marco
+                    && let Some(m) = marcador.marcos.get(i).copied()
+                {
+                    let k = escala_por_cien as f32 / 100.0;
+                    let (w, h) = (area.ancho as f32 / k, area.alto as f32 / k);
+                    let zoom = ((w * 0.9) / m[2].max(1.0)).min((h * 0.8) / m[3].max(1.0)).clamp(0.05, 30.0);
+                    camara.zoom = zoom;
+                    camara.x = m[0] + m[2] / 2.0 - w / (2.0 * zoom);
+                    camara.y = m[1] + m[3] / 2.0 - h / (2.0 * zoom);
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
+                if r.imprimir {
+                    // El marco, como en el plano: la herramienta Marco (arrastrar
+                    // pone uno; su numero es su orden de lectura y Ctrl+P los
+                    // imprime todos, uno por hoja). Otra vez, la de antes.
+                    if gesto.herramienta == Herramienta::Marco {
+                        let antes = if herramienta_al_editar == Herramienta::Marco { Herramienta::Mano } else { herramienta_al_editar };
+                        elegir_herramienta(&mut gesto, antes);
+                    } else {
+                        if solo_mirar {
+                            solo_mirar = false;
+                            arrastre_mirar = None;
+                        }
+                        herramienta_al_editar = gesto.herramienta;
+                        elegir_herramienta(&mut gesto, Herramienta::Marco);
+                    }
+                    todo_sucio = true;
                     ventana.invalidar();
                 }
                 if r.hojita {
@@ -1465,7 +1663,7 @@ fn abrir_en_modo(
                         escala_por_cien,
                         ancho_px,
                         alto_px,
-                        bajo_la_barra: bajo_la_barra(&caja),
+                        bajo_la_barra: bajo_la_barra(&caja, area),
                     });
                     if let Some(ins) = pedido {
                         hojita::insertar_en_el_lienzo(
@@ -1584,7 +1782,7 @@ fn abrir_en_modo(
                 crate::dibujo::mano::Vista {
                     camara: &efectiva,
                     area,
-                    interfaz: area_ui,
+                    interfaz: modo_ventana::area_del_panel(area_ui, caja.marco, escala_por_cien),
                     escala_por_cien,
                 },
             );
@@ -1609,9 +1807,13 @@ fn abrir_en_modo(
             };
             let imprimir_de_la_barra = de_la_barra.is_some();
             // F14: la imagen y las figuras de la barra (`figuras.rs`).
-            if let Some(pedido) = hecho.pedido.filter(|_| !imprimir_de_la_barra) {
+            let de_prueba = figuras_al_abrir
+                .take_if(|t| std::time::Instant::now() >= *t)
+                .map(|_| crate::dibujo::mano::Pedido::Figuras(pixpin_geom::Punto { x: 200, y: 160 }));
+            if let Some(pedido) = hecho.pedido.filter(|_| !imprimir_de_la_barra).or(de_prueba) {
                 let ed = figuras::Editor {
                     ventana: &ventana,
+                    dispositivo: &dispositivo,
                     motor: &mut motor,
                     superficie: &superficie,
                     escena: &mut escena,
@@ -1634,6 +1836,7 @@ fn abrir_en_modo(
                     crate::dibujo::mano::Pedido::Figuras(p) => {
                         figuras::atender_figuras(ed, p, exportar::textos())
                     }
+                    crate::dibujo::mano::Pedido::GuardarFigura => figuras::guardar_seleccion(ed, exportar::textos()),
                     crate::dibujo::mano::Pedido::Imprimir
                     | crate::dibujo::mano::Pedido::Compartir
                     | crate::dibujo::mano::Pedido::Atravesar => false,
@@ -1652,26 +1855,36 @@ fn abrir_en_modo(
             if hecho.consumido && !imprimir_de_la_barra {
                 continue;
             }
-            // Escape cierra el lienzo (guardando, como Salir), que es lo que
-            // espera el usuario de una ventana sin marco. Lo que esta a medias
-            // manda antes: el texto lo cerro ya `mano` (y se consumio) y un
-            // arrastre lo cancela el motor, abajo.
-            if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev
-                && escape_cierra(
+            // Escape (`al_escape`): a pantalla completa vuelve a ventana, y
+            // en ventana cierra el lienzo (guardando, como Salir), que es lo
+            // que espera el usuario de una ventana sin marco. Lo que esta a
+            // medias manda antes: el texto lo cerro ya `mano` (y se consumio)
+            // y un arrastre lo cancela el motor, abajo. Volver a ventana se
+            // recuerda como con F11: va por el mismo `alternar_modo`.
+            if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev {
+                match al_escape(
                     pantalla.is_none(),
                     presentacion.is_none(),
                     gesto.en_reposo(),
-                )
-            {
-                break 'bucle;
+                    pin.as_ref().is_some_and(|p| p.pantalla_completa),
+                ) {
+                    AlEscape::Cerrar => break 'bucle,
+                    AlEscape::AVentana => {
+                        alternar_modo = true;
+                        continue;
+                    }
+                    AlEscape::Seguir => {}
+                }
             }
 
             if let EventoOverlay::Tecla { vk: VK_F11, .. } = ev
                 && pantalla.is_none()
                 && presentacion.is_none()
             {
-                cambiar_modo = true;
-                break 'bucle;
+                // Sin cerrar la ventana: se hace despues de la cola
+                // (`alternar_modo`), con los demas cambios de tamano.
+                alternar_modo = true;
+                continue;
             }
             // **Exportar, copiar como imagen e imprimir** (G2, F11): atajos
             // del editor y el menu del clic derecho, que el lienzo no usaba.
@@ -1793,6 +2006,7 @@ fn abrir_en_modo(
             {
                 let ed = figuras::Editor {
                     ventana: &ventana,
+                    dispositivo: &dispositivo,
                     motor: &mut motor,
                     superficie: &superficie,
                     escena: &mut escena,
@@ -1829,7 +2043,7 @@ fn abrir_en_modo(
                 crate::dibujo::mano::Vista {
                     camara: &efectiva,
                     area,
-                    interfaz: area_ui,
+                    interfaz: modo_ventana::area_del_panel(area_ui, caja.marco, escala_por_cien),
                     escala_por_cien,
                 },
                 ancho_px,
@@ -1883,7 +2097,12 @@ fn abrir_en_modo(
                 }
                 _ => false,
             };
-            if hecho.repinte.algo() && !lupa_en_zona {
+            // El laser con capas no repinta la escena: lo pinta el fotograma
+            // en la capa de la tinta (`pintar_laser_en_capa`).
+            let laser_en_su_capa = con_capas && !tinta_viva && al_vuelo(&gesto);
+            if hecho.repinte.algo() && laser_en_su_capa {
+                ventana.invalidar();
+            } else if hecho.repinte.algo() && !lupa_en_zona {
                 todo_sucio |= hecho.repinte.todo;
                 contenido_sucio |= hecho.repinte.contenido;
                 ventana.invalidar();
@@ -2262,6 +2481,59 @@ fn abrir_en_modo(
                 break 'bucle;
             }
         }
+        // **El lienzo en ventana** (`modo_ventana`): F11 o el boton de la
+        // barra lo pasan a pantalla completa o de vuelta, y la ventana se
+        // pudo estirar, llevar o cambiar desde fuera (AltSnap, Win+flecha).
+        // Mientras la tinta o lo elegido viven en su capa no se toca nada:
+        // se hace en cuanto se suelten.
+        if let Some(pn) = pin.as_mut() {
+            if std::mem::take(&mut alternar_modo) {
+                pn.alternar_pantalla_completa(&mut ventana);
+                modo_ventana::recordar(modo_ventana::Recordado {
+                    pantalla_completa: pn.pantalla_completa,
+                    ventana: Some(pn.area_pin()),
+                });
+            }
+            pn.seguir_ventana(&mut ventana);
+            if pn.area != area && !tinta_viva && en_capa.is_none() {
+                let antes = area;
+                area = pn.area;
+                // Todo lo de la interfaz va en coordenadas del escritorio:
+                // la barra de herramientas, a su sitio nuevo.
+                area_ui = area;
+                corrimiento_ui = (-(area.x as f32), -(area.y as f32));
+                caja = CajaHerramientas::barra_superior(
+                    area_ui,
+                    escala_por_cien,
+                    crate::dibujo::permitidas::botones(anfitrion),
+                )
+                .con_desplegado(mano.desplegado);
+                // Llevada sin cambiar de tamano, lo pintado se va con la
+                // ventana: no hay nada que repintar.
+                if (antes.ancho, antes.alto) != (area.ancho, area.alto) {
+                    camara = modo_ventana::camara_al_cambiar(camara, efectiva.zoom, antes, area);
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    (ancho_px, alto_px) = (area.ancho as f32, area.alto as f32);
+                    superficie.apagar_tinta(&motor);
+                    if let Err(e) = superficie.cambiar_tamano(area.ancho, area.alto) {
+                        tracing::warn!(?e, "la superficie del lienzo no cambio de tamano");
+                    }
+                    capa.soltar();
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    trasero_distinto = None;
+                    zona_anterior = None;
+                    hay_que_pintar = true;
+                    ventana.invalidar();
+                }
+                interfaz_sucia = con_capas;
+            }
+            pn.actualizar(
+                &motor,
+                &nombre_del_pin,
+                &[],
+            );
+        }
         let vaciar = t_vuelta.elapsed();
         // **Las acciones de la pastilla del anotador** (`pastilla_pantalla`),
         // tambien Alt + doble clic central, que alterna el clic a traves.
@@ -2433,7 +2705,26 @@ fn abrir_en_modo(
         // La referencia se cerro desde su menu, o pidio copiarse.
         la_referencia.al_dia();
         let laser_ahora = gesto.laser.vivo();
-        if laser_ahora || laser_vivo {
+        // Con capas, la estela va en la de la tinta y la escena no se toca
+        // (`pintar_laser_en_capa`); al apagarse, se vacia la capa y la escena
+        // se repinta una vez, por si se pinto mientras con la estela dentro.
+        let laser_por_capa = con_capas && !tinta_viva;
+        if laser_por_capa && al_vuelo(&gesto) {
+            if !laser_en_capa {
+                laser_en_capa = superficie.encender_tinta(&motor).is_ok();
+            }
+            if laser_en_capa {
+                pintar_laser_en_capa(&motor, &superficie, &efectiva, &gesto, &imagenes, ancho_px, alto_px);
+            }
+        } else if laser_en_capa {
+            superficie.apagar_tinta(&motor);
+            laser_en_capa = false;
+            todo_sucio = true;
+            contenido_sucio = true;
+            hay_que_pintar = true;
+            ventana.invalidar();
+        }
+        if !laser_en_capa && (laser_ahora || laser_vivo) {
             todo_sucio = true;
             contenido_sucio = true;
             hay_que_pintar = true;
@@ -2616,7 +2907,7 @@ fn abrir_en_modo(
             // iman, los puntos de una flecha...) y el panel: si algo de eso
             // tiene que cambiar, hace falta la escena entera. Tras soltar un
             // trazo a mano no deberia haber nada, pero no se da por supuesto.
-            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area_ui, escala_por_cien);
+            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, modo_ventana::area_del_panel(area_ui, caja.marco, escala_por_cien), escala_por_cien);
             let apto = camara_pintada == efectiva
                 && !superficie.esta_estirada()
                 && !interfaz_sucia
@@ -2684,7 +2975,7 @@ fn abrir_en_modo(
         {
             let t_pintar = std::time::Instant::now();
             let teseladas_antes = cache_tinta.realizadas();
-            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area_ui, escala_por_cien);
+            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, modo_ventana::area_del_panel(area_ui, caja.marco, escala_por_cien), escala_por_cien);
             let apto = camara_pintada == efectiva
                 && !superficie.esta_estirada()
                 && !interfaz_sucia
@@ -2774,7 +3065,7 @@ fn abrir_en_modo(
             };
             // El panel cambia con la seleccion y la herramienta: si no es el
             // que se pinto la ultima vez, se presenta entero.
-            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area_ui, escala_por_cien);
+            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, modo_ventana::area_del_panel(area_ui, caja.marco, escala_por_cien), escala_por_cien);
             if panel != ultimo_panel {
                 // Sin `contenido_sucio`: aqui ya se esta pintando, y el
                 // propio pintado lo pone a falso. Lo que hace falta es que
@@ -2809,6 +3100,17 @@ fn abrir_en_modo(
             // El fotograma de la lupa, antes: dentro de `pintar` el motor
             // esta prestado.
             let cristal = lupa.as_ref().and_then(|l| l.preparar(&motor));
+            // El boton del marco del riel, pulsado con la herramienta Marco.
+            marcador.enmarcando = gesto.herramienta == Herramienta::Marco;
+            let hojas = pixpin_motor2d::marco::hojas_en_orden(&escena.elementos);
+            marcador.marcos = hojas.iter().map(|h| [h.x, h.y, h.ancho, h.alto]).collect();
+            marcador.nombres = hojas
+                .iter()
+                .map(|h| match &h.figura {
+                    pixpin_motor2d::Figura::Marco { nombre } => nombre.clone(),
+                    _ => String::new(),
+                })
+                .collect();
             let pintado = pintar(
                 &mut motor,
                 &superficie,
@@ -2867,9 +3169,12 @@ fn abrir_en_modo(
                             area.ancho,
                             area.alto,
                             escala_por_cien,
-                            bajo_la_barra(&caja),
+                            bajo_la_barra(&caja, area),
                         );
                     }
+                    // El numero de cada marco va con la escena (22-oct,
+                    // `marcas::pintar_marcos`): aqui, en la interfaz, se
+                    // quedaba atras mientras se movia el lienzo.
                     // F8: con la Zona en la mano, su pastilla bajo la barra.
                     if gesto.herramienta == Herramienta::Zona
                         && presentacion.is_none()
@@ -2879,7 +3184,7 @@ fn abrir_en_modo(
                             p,
                             base,
                             area.ancho as f32,
-                            bajo_la_barra(&caja) as f32,
+                            bajo_la_barra(&caja, area) as f32,
                             escala_por_cien,
                             hoja_del_chat.is_some(),
                             marcas::textos(),
@@ -3032,8 +3337,13 @@ fn abrir_en_modo(
                     // ningun evento y el ultimo tramo del trazo se quedaria
                     // sin salir.
                     espera_tinta,
-                    // Volando hacia una marca (F5): despertar cada fotograma.
-                    marcador.tope_ms(),
+                    minimo(
+                        // Volando hacia una marca (F5): despertar cada fotograma.
+                        marcador.tope_ms(),
+                        // La barra del pin se va sola un poco despues de
+                        // salir el raton: hay que despertar para verlo.
+                        pin.as_ref().filter(|p| p.quiere_reloj()).map(|_| 50),
+                    ),
                 ),
             ),
             ..decision
@@ -3170,6 +3480,14 @@ fn abrir_en_modo(
     drop(fondo);
     // Lo de dentro de las lupas son mapas de este motor: fuera con el.
     lupas::olvidar();
+    // Como queda (modo y sitio), para el siguiente lienzo; la barra se va
+    // con el pin.
+    if let Some(pn) = pin.take() {
+        modo_ventana::recordar(modo_ventana::Recordado {
+            pantalla_completa: pn.pantalla_completa,
+            ventana: Some(pn.area_pin()),
+        });
+    }
     ventana.ocultar();
     crate::dibujo::tema::fijar_papel(None);
     escena.compactar();
@@ -3178,7 +3496,7 @@ fn abrir_en_modo(
     pegadas.extend(imagenes.tomar_nuevas());
     // Y a que hoja queria ir, si pulso un recuadro con enlace: quien llama
     // es el unico que sabe donde estan las hojas.
-    Ok((escena, enlace_pedido, cambiar_modo))
+    Ok((escena, enlace_pedido))
 }
 
 /// Pinta un fotograma entero: lo que hay en pantalla, y encima el marco de
@@ -4015,6 +4333,44 @@ fn pintar_seleccion_en_capa(
         .is_ok()
 }
 
+/// **La estela del laser en la capa de la tinta** (22-oct). El usuario: «el
+/// puntero laser es lento a mas no poder». Iba con la escena: cada aviso
+/// del raton, y cada fotograma mientras se apagaba, repintaba el lienzo
+/// entero (con unas plantillas, miles de piezas) para dibujar cuatro rayas.
+/// En la capa, como la marquesina, cuesta borrar la capa y esas rayas.
+fn pintar_laser_en_capa(
+    motor: &MotorRender,
+    superficie: &Superficie,
+    camara: &Camara,
+    gesto: &Gesto,
+    imagenes: &ImagenesLienzo,
+    ancho_px: f32,
+    alto_px: f32,
+) -> bool {
+    let ordenes = gesto.laser.ordenes(camara.zoom);
+    let vista = camara.ventana(ancho_px, alto_px);
+    superficie
+        .pintar_tinta(motor, None, |p, base| {
+            let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+            p.poner_vista((0.0, 0.0), camara.zoom, (origen.x + base.0, origen.y + base.1));
+            for o in &ordenes {
+                dibujar_orden(p, o, vista, None, imagenes, camara.zoom, None);
+            }
+            if let Some((a, b)) = gesto.zona {
+                p.marquesina(pixpin_motor2d::zona::caja(a, b), 1.0 / camara.zoom);
+            }
+        })
+        .is_ok()
+}
+
+/// **Lo que se pinta al vuelo en la capa de la tinta** y no con la escena:
+/// la estela del laser mientras vive y el recuadro de la Zona mientras se
+/// arrastra (22-oct: «la herramienta de recorte es super lenta, no se mueve
+/// con el mouse»; repintaba la escena entera en cada aviso del raton).
+fn al_vuelo(gesto: &Gesto) -> bool {
+    (gesto.herramienta == Herramienta::Laser && gesto.laser.vivo()) || (gesto.herramienta == Herramienta::Zona && gesto.zona.is_some())
+}
+
 /// La marquesina en la capa de la tinta: solo el rectangulo que cambia, y
 /// la escena sin tocar. Es el «lienzo interactivo» de Excalidraw: la
 /// marquesina, el marco y lo que hay bajo el raton van en un lienzo aparte,
@@ -4443,6 +4799,9 @@ fn pintar_zona(
             }
         }
     }
+    for orden in gesto.seleccion_de_texto(escena) {
+        dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
+    }
     if let Some(cursor) = gesto.cursor_de_texto(escena, camara.zoom) {
         dibujar_orden(p, &cursor, vista, None, imagenes, camara.zoom, None);
     }
@@ -4827,6 +5186,8 @@ fn dibujar_cajetin(
 
 /// Hornear la capa congelada (lo que no se mueve), para dos gestos.
 mod congelar;
+// El lienzo en ventana (con la barra de los pines) o a pantalla completa.
+mod modo_ventana;
 /// La pasada de tapado del mosaico. Ver su cabecera: se engancha en dos
 /// sitios del fotograma y los dos estan en `pintar`.
 /// El cajetin de la cota: cuanto mide y hacia donde va (lienzo-geometria).
@@ -5281,19 +5642,57 @@ mod pruebas {
 
     #[test]
     fn escape_cierra_el_lienzo_en_reposo_y_no_a_medias_ni_fuera_del_lienzo() {
-        assert!(escape_cierra(true, true, true));
+        // En ventana, Escape cierra.
+        assert_eq!(al_escape(true, true, true, false), AlEscape::Cerrar);
         // A mitad de un arrastre, Escape lo cancela y el lienzo sigue.
-        assert!(!escape_cierra(true, true, false));
+        assert_eq!(al_escape(true, true, false, false), AlEscape::Seguir);
         // Presentando, Escape solo deja de presentar.
-        assert!(!escape_cierra(true, false, true));
+        assert_eq!(al_escape(true, false, true, false), AlEscape::Seguir);
         // El anotador de pantalla tiene su propia regla.
-        assert!(!escape_cierra(false, true, true));
-        // Recien abierto, el gesto esta en reposo: una pulsacion basta.
-        assert!(escape_cierra(
-            true,
-            true,
-            gesto_inicial(Default::default()).en_reposo()
-        ));
+        assert_eq!(al_escape(false, true, true, false), AlEscape::Seguir);
+        // Recien abierto en ventana, el gesto esta en reposo: una basta.
+        assert_eq!(
+            al_escape(true, true, gesto_inicial(Default::default()).en_reposo(), false),
+            AlEscape::Cerrar
+        );
+    }
+
+    #[test]
+    fn escape_a_pantalla_completa_pasa_a_ventana_y_el_segundo_cierra() {
+        // La secuencia del usuario: a pantalla completa, el primer Escape
+        // pasa a ventana (lo hace `alternar_modo`, que la deja en ventana)
+        // y el segundo cierra.
+        let mut pantalla_completa = true;
+        let mut pasos = Vec::new();
+        for _ in 0..2 {
+            let a = al_escape(true, true, true, pantalla_completa);
+            if a == AlEscape::AVentana {
+                pantalla_completa = false;
+            }
+            pasos.push(a);
+        }
+        assert_eq!(pasos, [AlEscape::AVentana, AlEscape::Cerrar]);
+        // Caso negativo: con la herramienta a medias (un rectangulo
+        // arrastrandose) Escape no cierra ni cambia de modo, a pantalla
+        // completa ni en ventana: lo cancela el motor.
+        let mut gesto = gesto_inicial(Default::default());
+        let mut escena = Escena::nueva();
+        crate::dibujo::teclas::elegir_herramienta(&mut gesto, Herramienta::Rectangulo);
+        let p = |x, y| pixpin_motor2d::vector::Punto2::nuevo(x, y);
+        gesto.evento(EventoGesto::Pulsar { p: p(10.0, 10.0), shift: false, alt: false, presion: None }, &mut escena, 1.0);
+        gesto.evento(EventoGesto::Mover { p: p(80.0, 60.0), shift: false, alt: false, presion: None }, &mut escena, 1.0);
+        assert!(!gesto.en_reposo(), "arrastrando un rectangulo");
+        assert_eq!(al_escape(true, true, gesto.en_reposo(), true), AlEscape::Seguir);
+        assert_eq!(al_escape(true, true, gesto.en_reposo(), false), AlEscape::Seguir);
+        // Cancelado por el motor, ya en reposo: el siguiente Escape vale.
+        gesto.evento(EventoGesto::Escape, &mut escena, 1.0);
+        assert!(gesto.en_reposo());
+        assert_eq!(al_escape(true, true, gesto.en_reposo(), true), AlEscape::AVentana);
+        // Presentando a pantalla completa, Escape deja de presentar y nada mas.
+        assert_eq!(al_escape(true, false, true, true), AlEscape::Seguir);
+        // El anotador de pantalla ocupa la pantalla, pero no es un lienzo en
+        // ventana: Escape sigue su regla.
+        assert_eq!(al_escape(false, true, true, true), AlEscape::Seguir);
     }
 
     #[test]

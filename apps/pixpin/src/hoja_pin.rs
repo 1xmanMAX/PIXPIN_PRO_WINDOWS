@@ -31,6 +31,14 @@
 //!   (`libro-<mensaje>-<hoja>`, como el movil), asi la sincronizacion con
 //!   Android sigue igual. El archivo original NO cambia, y se dice la
 //!   primera vez. Un libro que solo se mira no deja tablas en el chat.
+//! - **Un solo formato** (el usuario, 15-oct-2026: «las hojas editadas
+//!   tienen UN SOLO formato, el del PC, y Android lee el del PC»): el JSON
+//!   de `pixpin_proyecto::tabla::Tabla` (`TablaDeCalculo` en el movil),
+//!   escrito por `Tabla::escribir` en todos los caminos (este editor, el
+//!   clip, el asistente, pegar, importar). Lo viejo se lee y se migra al
+//!   guardar: estilos-palabra (`Tabla::leer`) y las hojas que el movil
+//!   guardaba solo en `tablas/libro-*.json` (`tablas_viejas_del_libro`).
+//!   Guia para Android: `docs/manual-hojas-android.md`.
 //! - Deshacer y rehacer (Ctrl+Z, Ctrl+Y) con una pila de cambios de celda
 //!   (`editor.rs`).
 
@@ -54,6 +62,11 @@ pub(crate) mod prueba {
     pub const CERRAR: u8 = 3;
     /// Escribir algo de muestra en la hoja (modo editar).
     pub const ESCRIBIR: u8 = 4;
+    /// Poner o quitar el modo de los marcos (como el boton del riel).
+    pub const MARCOS: u8 = 5;
+    /// Imprimir los marcos (Ctrl+P): las fotos quedan en
+    /// `visor_hoja::marcos::FOTOS`, sin abrir el dialogo.
+    pub const IMPRIMIR: u8 = 6;
 
     static ORDENES: Mutex<Vec<u8>> = Mutex::new(Vec::new());
     static VENTANA: Mutex<Option<(isize, pixpin_geom::Rect, bool)>> = Mutex::new(None);
@@ -81,6 +94,36 @@ pub(crate) mod prueba {
     pub fn olvidar() {
         *VENTANA.lock().unwrap_or_else(|e| e.into_inner()) = None;
         ORDENES.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        *VISTA.lock().unwrap_or_else(|e| e.into_inner()) = (Vec::new(), 1.0, [false; 3]);
+    }
+
+    /// Lo que se ve, para que la prueba sepa donde pulsar: el centro de
+    /// cada ficha de los marcos (en la ventana), el zoom de la hoja y los
+    /// modos del riel puestos (la tira del marcador, el lapiz y los marcos).
+    static VISTA: Mutex<Vista> = Mutex::new((Vec::new(), 1.0, [false; 3]));
+    pub type Vista = (Vec<(i32, i32)>, f64, [bool; 3]);
+
+    pub fn apuntar_vista(v: Vista) {
+        *VISTA.lock().unwrap_or_else(|e| e.into_inner()) = v;
+    }
+
+    pub fn vista() -> Vista {
+        VISTA.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Las teclas que manda la prueba (la tecla y si va con Ctrl): el bucle
+    /// las trata como pulsadas en su ventana, sin el teclado de verdad.
+    static TECLAS: Mutex<Vec<(u32, bool)>> = Mutex::new(Vec::new());
+
+    pub fn teclear(vk: u32, ctrl: bool) {
+        TECLAS.lock().unwrap_or_else(|e| e.into_inner()).push((vk, ctrl));
+        if let Some((h, ..)) = ventana() {
+            pixpin_shell::overlay::despertar(h);
+        }
+    }
+
+    pub fn tomar_teclas() -> Vec<(u32, bool)> {
+        std::mem::take(&mut *TECLAS.lock().unwrap_or_else(|e| e.into_inner()))
     }
 }
 
@@ -264,12 +307,15 @@ impl Editable {
 
     /// **Lo que se ve en modo ver.** Un `.xlsx` que nadie edito, el
     /// original: se abre igual de rapido que desde el Explorador. Lo demas,
-    /// sus tablas en un `.xlsx` hecho en memoria.
+    /// sus tablas en un `.xlsx` hecho en memoria. Un libro con hojas viejas
+    /// del movil (`tablas_viejas_del_libro`) y sin mensajes se ve por ellas:
+    /// lo que se edito alli no se esconde.
     pub(crate) fn libro_para_ver(&mut self, regional: Regional) -> Result<Libro, String> {
         self.regional = Some(regional.clone());
-        if let Origen::Libro { ruta, tablas, .. } = &self.origen
+        if let Origen::Libro { mensaje, ruta, tablas } = &self.origen
             && crate::visor_hoja::se_abre_fichero(ruta)
             && !tablas.iter().any(libro::editada)
+            && (!tablas.is_empty() || tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje).is_none())
         {
             match Libro::abrir(ruta, regional) {
                 Ok(l) => {
@@ -344,12 +390,20 @@ impl Editable {
                 })
                 .collect::<Result<Vec<_>, String>>()?,
             Origen::Libro { mensaje, ruta, .. } => {
-                let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                pixpin_proyecto::importar_hojas::leer(ruta, &mensaje.nombre, ahora)
-                    .map_err(|e| e.to_string())?
-                    .into_iter()
-                    .map(|h| HojaEditable::nueva(h.nombre, h.tabla, None))
-                    .collect()
+                if let Some(viejas) = tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje) {
+                    // Lo que el movil edito antes del 13-oct (solo en
+                    // fichero): se edita eso, no el libro leido de nuevo, y
+                    // al guardar pasa a mensajes como cualquier libro editado.
+                    tracing::info!(hojas = viejas.len(), "hoja del chat: se migran las hojas viejas del movil");
+                    viejas.into_iter().map(|(nombre, t)| HojaEditable::nueva(nombre, t, None)).collect()
+                } else {
+                    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                    pixpin_proyecto::importar_hojas::leer(ruta, &mensaje.nombre, ahora)
+                        .map_err(|e| e.to_string())?
+                        .into_iter()
+                        .map(|h| HojaEditable::nueva(h.nombre, h.tabla, None))
+                        .collect()
+                }
             }
         };
         tracing::info!(ms = t.elapsed().as_millis() as u64, hojas = hojas.len(), "hoja del chat: tablas listas para editar");
@@ -475,6 +529,29 @@ pub(crate) fn tabla_del_movil(raiz: &std::path::Path, proyecto: &str, m: &Mensaj
     let mut mensaje = m.clone();
     mensaje.texto = texto;
     Some((mensaje, archivo))
+}
+
+/// **Las hojas viejas del movil de un libro** (`tablas/libro-<id>-<hoja>.json`,
+/// ver `vista::tablas_viejas_del_libro`), con su nombre de pestana. Se leen
+/// hasta la primera que no se entienda (como `TablasDelChat.crearLasDelLibro`
+/// del movil); si ni la primera se entiende, `None` y se lee el libro. Los
+/// ficheros no se tocan: uno roto sigue ahi tal cual.
+pub(crate) fn tablas_viejas_del_libro(raiz: &std::path::Path, proyecto: &str, libro_m: &Mensaje) -> Option<Vec<(String, Tabla)>> {
+    let mut hojas = Vec::new();
+    for (i, archivo) in pixpin_proyecto::vista::tablas_viejas_del_libro(raiz, proyecto, &libro_m.id).into_iter().enumerate() {
+        let leida = std::fs::read_to_string(&archivo).map_err(|e| e.to_string()).and_then(|t| Tabla::leer(&t).map_err(|e| e.to_string()));
+        match leida {
+            Ok(t) => {
+                let nombre = if t.nombre.trim().is_empty() { format!("Hoja{}", i + 1) } else { t.nombre.clone() };
+                hojas.push((nombre, t));
+            }
+            Err(e) => {
+                tracing::warn!(%e, hoja = i, "hoja vieja del movil que no se entiende; se deja como esta");
+                break;
+            }
+        }
+    }
+    (!hojas.is_empty()).then_some(hojas)
 }
 
 /// El JSON con que se guarda una tabla del movil, con su `tocado` a la hora
@@ -607,6 +684,30 @@ const BOTON_ALINEAR: u8 = 19;
 const BOTON_NUMERO: u8 = 20;
 const BOTON_AJUSTAR: u8 = 21;
 const BOTON_BORRAR_FORMATO: u8 = 22;
+
+/// **El nombre y el atajo de cada boton al editar** (19-oct-2026, el
+/// usuario: «que al pasar por un icono me aparezca su atajo»), para el
+/// globo de la barra. Las teclas son las de [`accion_de_tecla`].
+pub(crate) fn pistas_de_editar(t: &pixpin_store::Catalogo) -> Vec<(u8, String)> {
+    [
+        (BOTON_VER, "hoja-pista-ver"),
+        (BOTON_DESHACER, "barra-pista-deshacer"),
+        (BOTON_REHACER, "barra-pista-rehacer"),
+        (BOTON_NEGRITA, "hoja-pista-negrita"),
+        (BOTON_CURSIVA, "hoja-pista-cursiva"),
+        (BOTON_SUBRAYADO, "hoja-pista-subrayado"),
+        (BOTON_TACHADO, "hoja-pista-tachado"),
+        (BOTON_RESALTAR, "hoja-pista-resaltar"),
+        (BOTON_LETRA, "hoja-pista-letra"),
+        (BOTON_ALINEAR, "hoja-pista-alinear"),
+        (BOTON_NUMERO, "hoja-pista-numero"),
+        (BOTON_AJUSTAR, "hoja-pista-ajustar"),
+        (BOTON_BORRAR_FORMATO, "hoja-pista-borrar-formato"),
+    ]
+    .into_iter()
+    .map(|(id, clave)| (id, t.t(clave)))
+    .collect()
+}
 
 /// **Los botones de la barra al editar**: volver a ver, deshacer, rehacer y
 /// el formato. Los interruptores se encienden si la celda activa los tiene,

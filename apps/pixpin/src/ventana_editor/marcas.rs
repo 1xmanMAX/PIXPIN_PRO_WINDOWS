@@ -204,8 +204,12 @@ pub(super) struct Respuesta {
     /// Algo de lo pintado cambio (una marca, el riel o la tira).
     pub repintar: bool,
     pub cursor: Option<FormaCursorWin>,
+    /// Se pidio el marco para imprimir (`marco_imprimir`).
+    pub imprimir: bool,
     /// Se pidio la hojita (F6).
     pub hojita: bool,
+    /// Se pulso la ficha del marco `i`: ir a el.
+    pub ir_a_marco: Option<usize>,
 }
 
 impl Respuesta {
@@ -227,6 +231,14 @@ pub(super) struct Marcador {
     /// Que hay bajo el raton en el riel, para agrandarlo.
     encima: DestinoRiel,
     vuelo: Option<(Vuelo, std::time::Instant)>,
+    /// Si se estan poniendo marcos (la herramienta Marco): el boton del
+    /// marco del riel, pulsado. Lo pone el editor en cada vuelta.
+    pub enmarcando: bool,
+    /// Los marcos del dibujo en su orden (x, y, ancho, alto del mundo): las
+    /// fichas 1, 2, 3... de abajo, con la herramienta Marco.
+    pub marcos: Vec<[f32; 4]>,
+    /// El nombre de cada uno de `marcos` (vacio si no tiene).
+    pub nombres: Vec<String>,
 }
 
 impl Marcador {
@@ -241,6 +253,9 @@ impl Marcador {
             arrastre: None,
             encima: DestinoRiel::Fuera,
             vuelo: None,
+            enmarcando: false,
+            marcos: Vec::new(),
+            nombres: Vec::new(),
         }
     }
 
@@ -355,6 +370,14 @@ impl Marcador {
                 // mandar.
                 self.vuelo = None;
                 let q = local(p);
+                // Una ficha de los marcos (con la herramienta Marco): a ese.
+                if self.enmarcando {
+                    let e = cx.escala_por_cien as f32 / 100.0;
+                    let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), cx.area.alto as f32, e);
+                    if let Some(i) = crate::marcos_doc::ficha_bajo(&fichas, (q.x as f32, q.y as f32)) {
+                        return Respuesta { ir_a_marco: Some(i), ..Respuesta::suya(true) };
+                    }
+                }
                 match riel.destino(q) {
                     DestinoRiel::PonerMarca => {
                         self.poniendo = if self.poniendo == Poniendo::No {
@@ -364,6 +387,10 @@ impl Marcador {
                         };
                         Respuesta::suya(true)
                     }
+                    DestinoRiel::Imprimir => Respuesta {
+                        imprimir: true,
+                        ..Respuesta::suya(true)
+                    },
                     DestinoRiel::Hojita => Respuesta {
                         hojita: true,
                         ..Respuesta::suya(true)
@@ -565,10 +592,11 @@ impl Marcador {
         alto_px: f32,
         escala_por_cien: u32,
     ) {
+        let e = pixpin_escala(escala_por_cien);
+        pintar_marcos(p, &self.marcos, &self.nombres, efectiva, margen, ancho_px, alto_px, e);
         if self.marcas.is_empty() {
             return;
         }
-        let e = pixpin_escala(escala_por_cien);
         // La vista del mundo que dejo puesta la escena se cambia por pixeles
         // de ventana corridos el colchon: la marca mide lo mismo a cualquier
         // aumento, como el redondel del movil.
@@ -606,7 +634,13 @@ impl Marcador {
             &self.marcas,
             self.encima,
             self.poniendo,
+            self.enmarcando,
         );
+        if self.enmarcando {
+            let e = escala_por_cien as f32 / 100.0;
+            let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), alto as f32, e);
+            crate::marcos_doc::pintar_fichas(p, &fichas, e);
+        }
     }
 }
 
@@ -650,6 +684,7 @@ pub(super) fn pintar_riel(
     lista: &[Marca],
     encima: DestinoRiel,
     poniendo: Poniendo,
+    enmarcando: bool,
 ) {
     let e = pixpin_escala(riel.escala_por_cien);
     // La isla de los dos botones, con la misma cara que la barra.
@@ -664,6 +699,8 @@ pub(super) fn pintar_riel(
             DestinoRiel::PonerMarca,
         ),
         (riel.hojita, &material::DRAW, false, DestinoRiel::Hojita),
+        // El marco: como en los visores y en el plano.
+        (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
     ] {
         let r = rf(caja);
         if activo {
@@ -682,6 +719,16 @@ pub(super) fn pintar_riel(
             },
             if activo { ACTIVO_ICONO } else { ICONO },
         );
+    }
+
+    // El globo del boton bajo el raton: su nombre y su tecla.
+    if let Some((caja, clave)) = match encima {
+        DestinoRiel::PonerMarca => Some((riel.poner_marca, "riel-marcador")),
+        DestinoRiel::Hojita => Some((riel.hojita, "riel-hojita")),
+        DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
+        _ => None,
+    } {
+        crate::lector::globo_a_la_izquierda(p, rf(caja), &textos().t(clave), e);
     }
 
     // Los puntos. En reposo pequenos y medio transparentes, para no tapar el
@@ -839,6 +886,9 @@ mod pruebas {
             arrastre: None,
             encima: DestinoRiel::Fuera,
             vuelo: None,
+            enmarcando: false,
+            marcos: Vec::new(),
+            nombres: Vec::new(),
         }
     }
 
@@ -1171,6 +1221,9 @@ mod pruebas {
                 arrastre: None,
                 encima,
                 vuelo: None,
+                enmarcando: false,
+                marcos: Vec::new(),
+                nombres: Vec::new(),
             };
             motor
                 .dibujar(&fuera.destino, |p| {
@@ -1200,6 +1253,45 @@ mod pruebas {
             let ruta = carpeta.join(format!("riel-{nombre}.png"));
             std::fs::write(&ruta, png).expect("guardar");
             println!("{nombre}: {}", ruta.display());
+        }
+    }
+}
+
+/// **Los marcos del lienzo** (22-oct), con la escena: su raya azul a trazos
+/// y su numero en el cuadrito azul de la esquina, como los de los visores
+/// (`marcos_doc`). En pixeles de la ventana, asi la raya mide lo mismo a
+/// cualquier aumento (el usuario: «que a pesar de agrandar mantenga su
+/// grosor constante»), y con la escena y no con la interfaz, para que el
+/// numero se vaya con el lienzo mientras se mueve y no llegue tarde.
+#[allow(clippy::too_many_arguments)]
+fn pintar_marcos(
+    p: &Pintor<'_>,
+    marcos: &[[f32; 4]],
+    nombres: &[String],
+    efectiva: &Camara,
+    margen: f32,
+    ancho_px: f32,
+    alto_px: f32,
+    e: f32,
+) {
+    if marcos.is_empty() {
+        return;
+    }
+    p.desplazar(margen, margen);
+    for (i, m) in marcos.iter().enumerate() {
+        let a = efectiva.a_pantalla(Punto2::nuevo(m[0], m[1]));
+        let b = efectiva.a_pantalla(Punto2::nuevo(m[0] + m[2], m[1] + m[3]));
+        let r = RectF { x: a.x.min(b.x), y: a.y.min(b.y), ancho: (b.x - a.x).abs(), alto: (b.y - a.y).abs() };
+        let fuera = margen + 40.0 * e;
+        if r.x > ancho_px + fuera || r.y > alto_px + fuera || r.x + r.ancho < -fuera || r.y + r.alto < -fuera {
+            continue;
+        }
+        p.trazar_discontinuo(r, 1.5 * e, crate::marcos_doc::AZUL);
+        crate::marcos_doc::insignia(p, r.x, r.y, i + 1, e);
+        if let Some(n) = nombres.get(i).filter(|n| !n.is_empty()) {
+            let tam = 12.0 * e;
+            let (_, th) = p.medir_texto(n, tam);
+            p.texto(n, r.x, r.y - th - 4.0 * e, tam, crate::marcos_doc::AZUL);
         }
     }
 }

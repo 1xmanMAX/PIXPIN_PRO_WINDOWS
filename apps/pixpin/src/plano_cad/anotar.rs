@@ -66,6 +66,58 @@ pub fn rutas_de_la_capa(raiz: &Path, plano: &Path) -> Rutas {
     }
 }
 
+/// **Lo anotado sobre un marcador de un modelo 3D** (19-oct-2026): una
+/// capa por marcador, con su `.hoja`. De un adjunto del chat, en los
+/// ficheros de su mensaje, que viajan (`anot-<uid>-m<id>.excalidraw.gz` y
+/// `anot-<uid>-m<id>.hoja`, ver [`super::SitioDeMarcadores`]); si no, en la
+/// carpeta local (`<id>.excalidraw` y `<id>.hoja`).
+///
+/// La capa cuenta la pantalla desde su centro, en milesimas del alto de la
+/// ventana, con la y hacia abajo ([`modelo_de_pantalla`]); su `.hoja` es
+/// la de esa caja, `-2500,-2500,2500,2500`.
+pub fn rutas_de_marcador(sitio: &super::SitioDeMarcadores, id: &str) -> Rutas {
+    match sitio {
+        super::SitioDeMarcadores::Adjunto(b) => {
+            let b = super::base_de_marcador(b, id);
+            Rutas { tinta: b.tinta(), hoja: b.marco() }
+        }
+        super::SitioDeMarcadores::Local(carpeta) => {
+            let id = super::id_limpio(id);
+            Rutas { tinta: carpeta.join(format!("{id}.excalidraw")), hoja: carpeta.join(format!("{id}.hoja")) }
+        }
+    }
+}
+
+/// **Quita lo anotado sobre un marcador** (al quitar el marcador) sin
+/// borrar sus ficheros: la sincronizacion no lleva borrados de ficheros, y
+/// uno que falta volveria del otro aparato. Cada trazo queda borrado en la
+/// capa (y asi se va tambien alli) y la `.hoja` se queda como estaba.
+pub fn vaciar_capa(r: &Rutas) -> std::io::Result<()> {
+    if !r.tinta.is_file() {
+        return Ok(());
+    }
+    let mut capa = Capa::leer(&r.tinta);
+    if capa.vacia() {
+        return Ok(());
+    }
+    capa.vaciar();
+    capa.guardar(&r.tinta)
+}
+
+/// **El «plano» de la pantalla de un modelo 3D**, para el motor: lo anotado
+/// sobre un marcador va en la pantalla contada desde su centro en milesimas
+/// del alto de la ventana (`pixpin_cad::ventana3d`), asi que su unidad es 1
+/// (sin letras, la unidad es el lado mayor entre 5000) y su caja, de sobra
+/// para la pantalla.
+pub fn modelo_de_pantalla() -> Modelo {
+    Modelo { caja: [-2500.0, -2500.0, 2500.0, 2500.0], ..Default::default() }
+}
+
+/// El motor del lienzo sobre lo anotado del marcador `id`.
+pub fn motor_de_marcador(sitio: &super::SitioDeMarcadores, id: &str) -> MotorDelPlano {
+    MotorDelPlano::nuevo(rutas_de_marcador(sitio, id), &modelo_de_pantalla())
+}
+
 /// La `.hoja` escrita (aqui o en el movil), si se entiende.
 fn leer_hoja(ruta: &Path) -> Option<[f64; 4]> {
     let m = MarcoDeLaHoja::de_texto(&pixpin_proyecto::anotado::leer(ruta)?)?;
@@ -408,6 +460,9 @@ pub struct MotorDelPlano {
     sello: Sello,
     /// Cuando se miro el disco por ultima vez (se mira sin prisa).
     mirado: Option<std::time::Instant>,
+    /// El ultimo aviso del asistente visto: con uno nuevo se mira ya
+    /// (`lector_tinta::turnos`).
+    aviso: u64,
     /// Cuantas veces se releyo la capa del disco: va en la huella de la
     /// foto (lo releido puede traer los mismos ids y versiones).
     leida: u64,
@@ -513,6 +568,7 @@ impl MotorDelPlano {
             base,
             sello,
             mirado: None,
+            aviso: 0,
             leida: 0,
         }
     }
@@ -551,7 +607,8 @@ impl MotorDelPlano {
     /// [`MotorDelPlano::al_dia`], sin mirar el disco mas de una vez cada
     /// [`MIRAR_EL_DISCO`] (se llama al pintar cada fotograma).
     fn mirar_el_disco(&mut self) {
-        if self.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
+        let avisado = lector_tinta::turnos::hay_aviso(&mut self.aviso);
+        if !avisado && self.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
             return;
         }
         self.mirado = Some(std::time::Instant::now());

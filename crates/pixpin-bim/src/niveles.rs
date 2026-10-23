@@ -6,20 +6,23 @@
 
 use std::collections::HashMap;
 
-/// Un nivel tal como viene: su id en el fichero, su nombre y su cota (en
-/// metros).
+/// Un nivel tal como viene: su id en el fichero, su `GlobalId` (la clave
+/// que no cambia de un lector a otro), su nombre y su cota (en metros).
 #[derive(Debug, Clone, PartialEq)]
 pub struct NivelIfc {
     pub id: u32,
+    pub global: String,
     pub nombre: String,
     pub cota: f64,
 }
 
-/// Los niveles y el nivel (su id) de cada elemento (por su id).
+/// Los niveles y el nivel (su id) de cada elemento (por su id); y el
+/// `GlobalId` de los elementos que se pidieron ([`de_ifc_con`]).
 #[derive(Debug, Default)]
 pub struct Espacial {
     pub niveles: Vec<NivelIfc>,
     pub de: HashMap<u32, u32>,
+    pub globales: HashMap<u32, String>,
 }
 
 /// Una entidad: `#id=TIPO(params);`, con los parametros sin partir.
@@ -172,14 +175,32 @@ fn metros_de_la_unidad(ifc: &str) -> f64 {
     1.0
 }
 
+/// El `GlobalId`: el primer parametro de toda entidad con raiz
+/// (`IfcRoot`). No lleva comas (son 22 caracteres de base 64).
+fn global_de(params: &str) -> String {
+    params.split(',').next().and_then(texto).unwrap_or_default()
+}
+
 /// Lee los niveles de un IFC.
 pub fn de_ifc(ifc: &[u8]) -> Espacial {
+    de_ifc_con(ifc, &std::collections::HashSet::new())
+}
+
+/// Lee los niveles de un IFC y, de paso, el `GlobalId` de las entidades
+/// `quien` (los elementos a los que `ifc-lite` no se lo dio).
+pub fn de_ifc_con(ifc: &[u8], quien: &std::collections::HashSet<u32>) -> Espacial {
     let t = String::from_utf8_lossy(ifc);
     let escala = metros_de_la_unidad(&t);
     let mut esp = Espacial::default();
     let mut contenido: Vec<(Vec<u32>, u32)> = Vec::new();
     let mut padre: HashMap<u32, u32> = HashMap::new();
     for e in entidades(&t) {
+        if quien.contains(&e.id) {
+            let g = global_de(e.params);
+            if !g.is_empty() {
+                esp.globales.insert(e.id, g);
+            }
+        }
         let tipo = e.tipo.to_ascii_uppercase();
         match tipo.as_str() {
             "IFCBUILDINGSTOREY" => {
@@ -188,7 +209,7 @@ pub fn de_ifc(ifc: &[u8]) -> Espacial {
                 let p = partir(e.params);
                 let nombre = p.get(2).and_then(|s| texto(s)).or_else(|| p.get(7).and_then(|s| texto(s))).unwrap_or_default();
                 let cota = p.get(9).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0) * escala;
-                esp.niveles.push(NivelIfc { id: e.id, nombre, cota });
+                esp.niveles.push(NivelIfc { id: e.id, global: global_de(e.params), nombre, cota });
             }
             "IFCRELCONTAINEDINSPATIALSTRUCTURE" => {
                 // (GlobalId, OwnerHistory, Name, Description, RelatedElements, RelatingStructure)
@@ -271,10 +292,24 @@ ENDSEC;\n";
         assert!((e.niveles[0].cota - 3.4).abs() < 1e-9, "en metros");
         // El `;` dentro del nombre no corta y la ñ se traduce.
         assert_eq!(e.niveles[1].nombre, "Planta ño; dos");
+        // Su GlobalId, la clave estable.
+        assert_eq!((e.niveles[0].global.as_str(), e.niveles[1].global.as_str()), ("3Zu", "15Z"));
         assert_eq!(e.de.get(&100), Some(&42));
         // El tramo, por su escalera.
         assert_eq!(e.de.get(&102), Some(&42));
         // Caso negativo: lo que no esta en ningun nivel, no sale.
         assert_eq!(e.de.get(&38), None);
+        assert!(e.globales.is_empty(), "sin pedirlos no se guarda ningun GlobalId");
+    }
+
+    #[test]
+    fn da_el_global_id_de_lo_que_se_pide() {
+        let quien: std::collections::HashSet<u32> = [100, 102, 999].into_iter().collect();
+        let e = de_ifc_con(IFC.as_bytes(), &quien);
+        assert_eq!(e.globales.get(&100).map(String::as_str), Some("a"));
+        assert_eq!(e.globales.get(&102).map(String::as_str), Some("c"));
+        // Caso negativo: lo que no se pidio o no existe, nada.
+        assert_eq!(e.globales.get(&101), None);
+        assert_eq!(e.globales.get(&999), None);
     }
 }

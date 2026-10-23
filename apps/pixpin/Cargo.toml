@@ -17,6 +17,9 @@ pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
 # El asistente local del chat: motor llama.cpp aparte, herramientas y bucle.
 pixpin-ia = { path = "../../crates/pixpin-ia" }
+# Lo que se reconoce al escribir una tarea: el parser que comparten la app,
+# el pedido `anadir_tarea` y el plugin de Flow Launcher.
+pixpin-frase = { path = "../../crates/pixpin-frase" }
 pixpin-docs = { version = "0.1.0", path = "../../crates/pixpin-docs" }
 # El editor de notas Markdown (H12): el RichEdit de Windows, en su crate
 # porque este ejecutable no admite `unsafe`.
@@ -79,7 +82,8 @@ pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro", featur
 # Ver el plano a PNG en el banco del asistente (`documentos_acciones`).
 pixpin-cad = { path = "../../crates/pixpin-cad", features = ["pintar-png"] }
 flate2 = "1.1"
-windows = { version = "0.62.2", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common"] }
+# (Y la ventana de mentira que recibe los pedidos en `tests/orden_de_punta_a_punta.rs`.)
+windows = { version = "0.62.2", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange", "Win32_System_LibraryLoader"] }
 
 [build-dependencies]
 embed-resource = "3.0.11"

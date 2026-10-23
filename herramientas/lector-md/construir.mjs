@@ -37,7 +37,7 @@ const LETRAS = [
 const fuentes = LETRAS.filter(([, f]) => fs.existsSync(path.join(letras, f)))
   .map(([familia, f, peso = '400']) => {
     const b64 = fs.readFileSync(path.join(letras, f)).toString('base64')
-    return `@font-face{font-family:'${familia}';src:url(data:font/woff2;base64,${b64}) format('woff2');font-weight:${peso};font-display:block}`
+    return `@font-face{font-family:'${familia}';src:url(data:font/woff2;base64,${b64}) format('woff2');font-weight:${peso};font-display:swap}`
   })
   .join('\n')
 

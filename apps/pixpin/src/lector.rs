@@ -32,12 +32,13 @@ pub const DORADO: Color = hex(0xe8c06a);
 pub const FONDO_PDF: Color = hex(0x1b1b1b);
 /// El papel del margen para anotar de un PDF (`PAPEL_DEL_MARGEN`).
 pub const PAPEL_DEL_MARGEN: Color = hex(0xf3f3f0);
-/// Un boton encendido: el azul `#CC1E88E5` de los espacios del movil.
+/// Un boton encendido: el azul `#0060DF` de lo pulsado en la barra de los
+/// pines (`lector_pin`), el mismo en todos los visores (19-oct-2026).
 pub const ENCENDIDO: Color = Color {
-    r: 0x1e as f32 / 255.0,
-    g: 0x88 as f32 / 255.0,
-    b: 0xe5 as f32 / 255.0,
-    a: 0.8,
+    r: 0x00 as f32 / 255.0,
+    g: 0x60 as f32 / 255.0,
+    b: 0xdf as f32 / 255.0,
+    a: 1.0,
 };
 /// El `#14182B` de los redondeles de las marcas.
 const OSCURO: Color = hex(0x14182b);
@@ -111,6 +112,13 @@ pub fn abrir_en_su_lector(
     ruta: &std::path::Path,
     nombre: &str,
 ) -> bool {
+    // Un Markdown, en el lector de notas, como «Abrir con» (`main::destino_con`):
+    // el visor de documentos lo ensenaba en crudo (el usuario, 20-oct-2026:
+    // «las tablas… se ven sin su formato, solo con los guiones»).
+    if crate::notas_md::es_markdown(ruta) {
+        crate::notas_md::abrir(idioma, ubicacion.clone(), crate::notas_md::Destino::Fichero { ruta: ruta.to_path_buf() });
+        return true;
+    }
     // Unos puntos o un LandXML (por su contenido) van al visor 3D antes
     // que al de documentos, que tambien abre los .txt.
     if pixpin_bim::es_de_civil(ruta) {
@@ -371,15 +379,18 @@ pub fn redondel(p: &Pintor<'_>, emoji: &str, c: (f32, f32), radio: f32, alfa: f3
 
 /// **El riel**: la isla (marcar y anotar), los puntos de las marcas y, si
 /// se esta poniendo una, la tira de emoticonos. `emojis` son los de las
-/// marcas en el orden del riel; `atajo` es el texto «Ctrl+» traducido.
+/// marcas en el orden del riel; `atajo` es el texto «Ctrl+» traducido. Con
+/// `enmarcando`, el marco pulsado (se estan poniendo los marcos numerados,
+/// `marcos_doc`).
 #[allow(clippy::too_many_arguments)] // lo que se ve del riel depende de todo esto
-pub fn pintar_riel(
+pub fn pintar_riel_con(
     p: &Pintor<'_>,
     riel: &Riel,
     emojis: &[&str],
     encima: DestinoRiel,
     poniendo: bool,
     anotando: bool,
+    enmarcando: bool,
     elige: &str,
 ) {
     let e = riel.escala_por_cien as f32 / 100.0;
@@ -393,6 +404,8 @@ pub fn pintar_riel(
             DestinoRiel::PonerMarca,
         ),
         (riel.hojita, &material::EDIT, anotando, DestinoRiel::Hojita),
+        // El marco para imprimir: igual en todos los visores.
+        (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
     ] {
         let r = rf(caja);
         if activo {
@@ -411,6 +424,17 @@ pub fn pintar_riel(
             },
             if activo { Color::BLANCO } else { TEXTO },
         );
+    }
+
+    // El globo del boton bajo el raton: su nombre y su tecla, a su
+    // izquierda (19-oct-2026, el usuario: «que me aparezca su atajo»).
+    if let Some((caja, clave)) = match encima {
+        DestinoRiel::PonerMarca => Some((riel.poner_marca, "riel-marcador")),
+        DestinoRiel::Hojita => Some((riel.hojita, "riel-anotar")),
+        DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
+        _ => None,
+    } {
+        globo_a_la_izquierda(p, rf(caja), &crate::ventana_editor::exportar::textos().t(clave), e);
     }
 
     // Los puntos: en reposo pequenos y medio transparentes para no tapar la
@@ -804,4 +828,21 @@ mod pruebas {
         assert!(!dentro(&r, 9.9, 12.0));
         assert!(!dentro(&r, 12.0, 15.1));
     }
+}
+
+/// **El globo de un boton**: su nombre y su atajo, en una pastilla oscura a
+/// la izquierda de `junto_a` (pixeles de la ventana), centrada a su altura.
+/// El mismo para todos los rieles de los visores.
+pub fn globo_a_la_izquierda(p: &Pintor<'_>, junto_a: RectF, texto: &str, e: f32) {
+    let tam = 12.0 * e;
+    let (w, h) = p.medir_texto(texto, tam);
+    let (px, py) = (8.0 * e, 5.0 * e);
+    let caja = RectF {
+        x: (junto_a.x - 8.0 * e - w - 2.0 * px).max(0.0),
+        y: junto_a.y + (junto_a.alto - h - 2.0 * py) / 2.0,
+        ancho: w + 2.0 * px,
+        alto: h + 2.0 * py,
+    };
+    p.rellenar_redondeado(caja, 6.0 * e, Color { r: 0.106, g: 0.106, b: 0.122, a: 0.96 });
+    p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
 }

@@ -667,7 +667,6 @@ fn icono_de(id: &str) -> &'static Icono {
         super::PNG | super::JPG => &mi::IMAGE,
         super::SVG => &mi::DRAW,
         "pixpin" => &mi::FOLDER,
-        "excalidraw" => &mi::EDIT,
         "texto" => &mi::LIST,
         "csv" => &mi::TABLE_CHART,
         // Una nota como Word: un documento, como el PDF.

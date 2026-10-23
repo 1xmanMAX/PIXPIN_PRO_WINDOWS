@@ -19,12 +19,14 @@ pub mod icono;
 pub mod magia;
 pub mod mandos_video;
 pub mod markdown;
+mod marcos_pin;
 pub mod menu;
 pub mod paginado;
 pub mod paleta;
 pub mod pegatina;
 pub mod panel_abiertos;
 pub mod remoto;
+mod riel_pin;
 pub mod tabla;
 pub mod ventana;
 pub mod video;
@@ -33,6 +35,7 @@ pub mod zoom;
 
 pub use arrastre::{Carga, ErrorArrastre, Resultado as ResultadoArrastre, arrastrar, carga_de};
 pub use barra_marcas::Marca;
+pub use marcos_pin::PedidoMarco;
 pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
     presentacion_de, tamano_humano, tamano_natural,

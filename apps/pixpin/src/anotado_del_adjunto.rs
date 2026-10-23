@@ -65,7 +65,16 @@ fn es_pdf(doc: &Path) -> bool {
 /// (`AnotacionesDelAdjunto.delDocumento` con el nombre del PDF) y se trata
 /// como un Word: tinta, `.marcas`, `.maqueta`, `.voz`, `.sitio` y `.hoja`.
 /// Asi viaja en los dos sentidos.
-fn base_de(doc: &Path) -> Option<Base> {
+///
+/// **La nota de un proyecto** (un mensaje `NOTA` o una hoja `nota`) no es
+/// un fichero: el riel del lector de notas cuelga lo suyo de un nombre fijo
+/// en la cache (`notas_md::lector_web::documento_del_riel`), y ese nombre se
+/// entiende aqui como la base `anot-<codigo>` de la nota, la misma de sus
+/// comentarios ([`base_de_la_nota_del_riel`]).
+pub(crate) fn base_de(doc: &Path) -> Option<Base> {
+    if let Some(b) = base_de_la_nota_del_riel(doc) {
+        return Some(b);
+    }
     if let Some(pdf) = crate::visor::como_texto::origen_de_la_pagina(doc) {
         let raiz = an::raiz_de(&pdf)?;
         return an::base_del_documento(&raiz, &pdf);
@@ -585,6 +594,102 @@ pub fn marcas_del_lienzo(lienzo: &Path, de_siempre: PathBuf) -> PathBuf {
             nueva
         }
         None => de_siempre,
+    }
+}
+
+/// **La base de una nota de un proyecto por el nombre fijo de su riel**
+/// (`<raiz>/cache/riel-notas/<ficha>-<codigo>.md`, con la ficha y el codigo
+/// limpios como los deja `documento_del_riel`): `anot-<codigo>` en el chat
+/// de esa ficha. El codigo son los diez signos del final (no llevan `-`);
+/// la ficha se busca en el indice entre las que, limpias, dan lo de delante.
+/// `None` si no es uno de esos nombres o el proyecto ya no esta.
+fn base_de_la_nota_del_riel(doc: &Path) -> Option<Base> {
+    let carpeta = doc.parent()?;
+    if carpeta.file_name()? != "riel-notas" || carpeta.parent()?.file_name()? != "cache" {
+        return None;
+    }
+    let raiz = carpeta.parent()?.parent()?;
+    let nombre = doc.file_name()?.to_str()?.strip_suffix(".md")?;
+    let (ficha, codigo) = nombre.rsplit_once('-')?;
+    if codigo.chars().count() != pixpin_sincro::codigo::LARGO {
+        return None;
+    }
+    let f = pixpin_proyecto::almacen::Indice::leer(raiz)
+        .proyectos
+        .into_iter()
+        .find(|f| crate::notas_md::lector_web::limpio_para_el_riel(&f.id) == ficha)?;
+    Some(Base {
+        raiz: raiz.to_path_buf(),
+        chat: pixpin_proyecto::vista::chat_de_ficha(raiz, &f.id)?,
+        base: format!("{}{codigo}", pixpin_sincro::anotado::PREFIJO),
+    })
+}
+
+// ------------------------------------ lo de junto al documento que ahora viaja
+
+/// **Un fichero de lo anotado que antes iba junto al documento** (`<doc>`
+/// mas algo, como `.pixpin-marcos`): si `doc` es un adjunto del chat (o el
+/// PDF de un proyecto, o una nota), el de su mensaje con esa `terminacion`
+/// (`anot-<uid>.marcos.json`...), con lo de antes copiado la primera vez si
+/// aun no esta (lo de antes se queda); si no, el de siempre. Lo segundo dice
+/// si es del mensaje: ese viaja y **no se borra nunca para decir «vacio»**
+/// (la sincronizacion no lleva borrados de ficheros: uno borrado volveria
+/// del otro aparato).
+pub fn del_mensaje_o_junto(doc: &Path, terminacion: &str, de_siempre: PathBuf) -> (PathBuf, bool) {
+    match base_de(doc) {
+        Some(b) => {
+            let nuevo = b.fichero(terminacion);
+            an::copiar_si_falta(&de_siempre, &nuevo);
+            (nuevo, true)
+        }
+        None => (de_siempre, false),
+    }
+}
+
+/// **La tinta de la hoja `i` (desde 0) de un libro de calculo.** De un
+/// adjunto del chat, `anot-<uid>-h<i>` (lo que viaja: en el PC
+/// `lienzos/anot-<uid>-h<i>.excalidraw` de su chat, en portatil
+/// `pins/draw/anot-<uid>-h<i>.excalidraw.gz`), con la de antes
+/// (`<libro>.pixpin-anotado/hoja-<i+1>.excalidraw`) pasada la primera vez, o
+/// juntada una vez si el otro aparato ya mando la suya. Si no, la de siempre.
+///
+/// Va en las unidades de la capa de la hoja (pixeles de la hoja al 100 % con
+/// la rejilla de `anotar_inteligente::rejilla_de_la_capa`, que sale del
+/// propio libro y es la misma en todos los aparatos), asi que no lleva
+/// marco (`.hoja`): se lee y se escribe tal cual.
+pub fn tinta_de_la_hoja_del_libro(libro: &Path, i: usize) -> PathBuf {
+    let vieja = lector_tinta::ruta_de_hoja(libro, i);
+    let Some(b) = base_de(libro).filter(|_| !es_pdf(libro)) else {
+        return vieja;
+    };
+    let nueva = Base { base: format!("{}-h{i}", b.base), ..b }.tinta();
+    pasar_la_de_antes(&vieja, &nueva);
+    nueva
+}
+
+/// **La tinta de una pagina web o de una nota** (el lapiz del riel de los
+/// visores web, en pixeles CSS del documento). De un adjunto del chat o de
+/// una nota, `anot-<uid>` (en el PC `lienzos/anot-<uid>.excalidraw`), con la
+/// de antes (`<doc>.pixpin-anotado/capa.excalidraw`) pasada la primera vez;
+/// si no, la de siempre. Las unidades son las de la pagina en los dos
+/// aparatos: sin marco (`.hoja`) ni corrimiento.
+pub fn tinta_de_la_pagina(doc: &Path) -> PathBuf {
+    let vieja = lector_tinta::ruta_de_capa(doc);
+    let Some(b) = base_de(doc).filter(|_| !es_pdf(doc)) else {
+        return vieja;
+    };
+    let nueva = b.tinta();
+    pasar_la_de_antes(&vieja, &nueva);
+    nueva
+}
+
+/// Lo de antes a la tinta del mensaje: copiada si aun no esta y, si el otro
+/// aparato ya mando la suya, juntada una vez (sin corrimiento).
+fn pasar_la_de_antes(vieja: &Path, nueva: &Path) {
+    if an::copiar_si_falta(vieja, nueva) {
+        an::marcar_tinta_pasada(vieja);
+    } else {
+        an::pasar_tinta_de_antes(vieja, nueva, 0.0);
     }
 }
 
@@ -1644,6 +1749,40 @@ mod pruebas_del_marco {
             an::leer(&b.fichero(HOJA)).as_deref(),
             Some("280,0,700,420\nv1\n")
         );
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn la_tinta_de_cada_hoja_de_un_libro_del_chat_va_a_su_mensaje_y_la_de_antes_pasa_una_vez() {
+        let r = raiz("hoja-libro");
+        let libro = con_adjunto(&r, "cuentas.xlsx", b"PK");
+        let b = base_de(&libro).expect("es un adjunto del chat");
+        // Lo de antes, junto al libro (la hoja 2, desde 0 la 1).
+        let vieja = lector_tinta::ruta_de_hoja(&libro, 1);
+        std::fs::create_dir_all(vieja.parent().unwrap()).unwrap();
+        let antes = r#"{"type":"excalidraw","version":2,"elements":[]}"#;
+        std::fs::write(&vieja, antes).unwrap();
+        let nueva = tinta_de_la_hoja_del_libro(&libro, 1);
+        assert_eq!(
+            nueva.file_name().unwrap().to_string_lossy(),
+            format!("{}-h1.excalidraw", b.base)
+        );
+        assert!(nueva.to_string_lossy().replace('\\', "/").contains("/lienzos/"));
+        assert_eq!(std::fs::read_to_string(&nueva).unwrap(), antes, "copiada tal cual");
+        assert!(vieja.is_file(), "la de antes se queda");
+        // Ya pasada: lo que trae el mensaje no se pisa con lo de antes.
+        std::fs::write(&nueva, "{\"type\":\"excalidraw\",\"version\":2,\"elements\":[],\"x\":1}").unwrap();
+        let otra = tinta_de_la_hoja_del_libro(&libro, 1);
+        assert!(std::fs::read_to_string(&otra).unwrap().contains("\"x\":1"));
+        // Otra hoja, otro fichero; sin nada de antes, no se crea.
+        assert!(!tinta_de_la_hoja_del_libro(&libro, 0).exists());
+        // Y su portatil es `pins/draw/anot-<uid>-h1.excalidraw.gz`, del mensaje.
+        let rel = pixpin_sincro::anotado::rel(&format!("{}-h1", b.base), ".excalidraw.gz");
+        assert!(pixpin_sincro::anotado::por_uid([rel.as_str()]).contains_key(b.base.trim_start_matches("anot-")));
+        // Caso negativo: un libro fuera del almacen sigue con la de siempre.
+        let fuera = r.join("fuera.xlsx");
+        assert_eq!(tinta_de_la_hoja_del_libro(&fuera, 0), lector_tinta::ruta_de_hoja(&fuera, 0));
+        assert_eq!(tinta_de_la_pagina(&fuera), lector_tinta::ruta_de_capa(&fuera));
         let _ = std::fs::remove_dir_all(&r);
     }
 }

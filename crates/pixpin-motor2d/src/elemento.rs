@@ -21,6 +21,11 @@ pub enum EstiloTrazo {
     Solido,
     Discontinuo,
     Punteado,
+    /// **Raya y punto**, el de los ejes de simetria y las lineas de centro de
+    /// los planos. Viaja al movil como `dashed` con `trazoRayaPunto` (ver
+    /// `geometria_exacta`), y se pinta partido en tramos lisos.
+    #[serde(rename = "rayapunto")]
+    RayaPunto,
 }
 
 /// Color RGBA, cada canal en `[0,1]`.
@@ -476,6 +481,24 @@ pub struct Extras {
     /// de fabrica no la estrena. Ver `tinta::grafito::Dureza`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dureza: Option<crate::tinta::grafito::Dureza>,
+    /// **La fuente rica de un texto** (`textoRico`, 15-oct-2026): tramos de
+    /// color, negrita, formulas en linea `$...$`... (`texto_rico`). `None`: un
+    /// texto de los de siempre. Cuando la lleva, `Figura::Texto::texto` es su
+    /// version plana (`texto_rico::plano`), la que lee quien no la entiende.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rico: Option<String>,
+    /// **Como se cierra un arco** (`cierreArco`): sector o segmento. Sin la
+    /// clave, abierto. Ver `geometria_exacta`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cierre: Option<crate::geometria_exacta::CierreArco>,
+    /// **El arco es la marca de un angulo** (`marcaAngulo`): sus arquitos,
+    /// si es recto y su valor. Ver `geometria_exacta`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub marca_angulo: Option<crate::geometria_exacta::MarcaAngulo>,
+    /// **El relleno degradado** (`degradado`), lineal o radial. Ver
+    /// `geometria_exacta`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degradado: Option<crate::geometria_exacta::Degradado>,
 }
 
 /// **El recorte de una imagen** (`crop` de Excalidraw).
@@ -556,6 +579,13 @@ impl Extras {
             tam_letra: None,
             // Ni la dureza: viaja en su propia clave (`dureza`).
             dureza: None,
+            // Ni la fuente rica: viaja en su propia clave (`textoRico`).
+            rico: None,
+            // Ni lo de las laminas de geometria: cada uno en su clave
+            // (`cierreArco`, `marcaAngulo`, `degradado`).
+            cierre: None,
+            marca_angulo: None,
+            degradado: None,
             ..self.clone()
         } == Extras::default()
     }
@@ -564,6 +594,7 @@ impl Extras {
     /// punteros. Lo usa `Elemento::bytes`.
     pub fn bytes(&self) -> usize {
         self.contenedor.as_ref().map_or(0, String::len)
+            + self.rico.as_ref().map_or(0, String::len)
             + self.id_de_fichero.as_ref().map_or(0, String::len)
             + self
                 .enganche_inicio
@@ -764,11 +795,22 @@ impl Elemento {
             // del circulo completo: encerrarla con el raton no la cogia
             // nunca, porque el recuadro tenia que contener una caja que no se
             // veia por ninguna parte.
-            Figura::Arco { inicio, barrido } => crate::arco::caja_del_arco(
-                (self.x, self.y, self.ancho, self.alto),
-                *inicio,
-                *barrido,
-            ),
+            // El sector y la marca de angulo llegan hasta el centro.
+            Figura::Arco { inicio, barrido } => {
+                let (x0, y0, x1, y1) = crate::arco::caja_del_arco(
+                    (self.x, self.y, self.ancho, self.alto),
+                    *inicio,
+                    *barrido,
+                );
+                let al_centro = self.extras.marca_angulo.is_some()
+                    || self.extras.cierre == Some(crate::geometria_exacta::CierreArco::Sector);
+                if al_centro {
+                    let (cx, cy) = (self.x + self.ancho / 2.0, self.y + self.alto / 2.0);
+                    (x0.min(cx), y0.min(cy), x1.max(cx), y1.max(cy))
+                } else {
+                    (x0, y0, x1, y1)
+                }
+            }
             // La region NO tiene caja propia en el fichero: `width` y
             // `height` del movil son los de su contorno encontrado, y si se
             // usaran aqui un anillo recortado se seleccionaria por un

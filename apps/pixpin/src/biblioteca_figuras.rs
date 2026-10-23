@@ -66,10 +66,30 @@ fn raiz_y_aparato() -> (PathBuf, String) {
 /// crear, la de antes (sin sincronizar, pero sin perder nada).
 pub fn ruta() -> PathBuf {
     let (raiz, aparato) = raiz_y_aparato();
-    ruta_en(&raiz, &aparato, pixpin_shell::entorno::ahora_utc_ms()).unwrap_or_else(|e| {
+    let ruta = ruta_en(&raiz, &aparato, pixpin_shell::entorno::ahora_utc_ms()).unwrap_or_else(|e| {
         tracing::warn!(%e, "figuras: sin chat del asistente, la biblioteca no se sincroniza");
         raiz.join("figuras.json")
-    })
+    });
+    instalar_de_serie(&raiz, &ruta);
+    ruta
+}
+
+/// **Pone las figuras de serie** (`pixpin_motor2d::figuras_de_serie`: las
+/// plantillas y los simbolos de storyboard, 21-oct-2026) una vez por version
+/// del catalogo, apuntada en `<raiz>/figuras-de-serie.version`, que no
+/// viaja: cada aparato las pone en su biblioteca y, como los ids son fijos,
+/// dos aparatos que las ponen a la vez dejan lo mismo.
+pub fn instalar_de_serie(raiz: &Path, ruta: &Path) {
+    use pixpin_motor2d::figuras_de_serie::{VERSION, instalar_en};
+    let marca = raiz.join("figuras-de-serie.version");
+    if std::fs::read_to_string(&marca).is_ok_and(|s| s.trim() == VERSION.to_string()) {
+        return;
+    }
+    let mut lista = pixpin_motor2d::biblioteca::cargar(ruta);
+    instalar_en(&mut lista);
+    if guardar(ruta, &lista) {
+        let _ = std::fs::write(&marca, VERSION.to_string());
+    }
 }
 
 /// **Tras guardar en `ruta`**: si es la del chat «Asistente», pone (una

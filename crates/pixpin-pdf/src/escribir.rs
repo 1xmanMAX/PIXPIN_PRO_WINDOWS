@@ -85,9 +85,10 @@ fn alfa(a: f32) -> u8 {
 struct Recursos {
     alfas: std::collections::BTreeSet<u8>,
     imagenes: std::collections::BTreeSet<u64>,
-    /// Los glifos de la letra incrustada que usa la pagina, con el caracter
-    /// que dibujan (para que copiar el texto del PDF de letras y no numeros).
-    glifos: BTreeMap<u16, char>,
+    /// Los glifos de cada letra incrustada que usa la pagina (por su numero
+    /// en el [`Juego`]), con el caracter que dibujan: para que copiar el
+    /// texto del PDF de letras y no numeros.
+    glifos: BTreeMap<usize, BTreeMap<u16, char>>,
     /// Las telas de grano que usa la pagina, en el orden de su nombre
     /// (`/G0`, `/G1`...), sin repetir.
     telas: Vec<Grano>,
@@ -167,40 +168,194 @@ fn camino_de_tinta(contorno: &[Punto2], c: &mut String) {
     let _ = write!(c, "{} {} l h ", n(inicio.x), n(inicio.y));
 }
 
-/// El texto en la codificacion de Helvetica (WinAnsi), escapado para ir
-/// entre parentesis. Lo que WinAnsi no tiene sale como `?`: es mejor que un
-/// hueco que no dice que ahi habia algo.
-fn texto_pdf(s: &str) -> String {
-    let mut o = String::with_capacity(s.len() + 8);
-    for ch in s.chars() {
-        let b: u8 = match ch as u32 {
-            0x20..=0x7e => ch as u8,
-            0xa0..=0xff => ch as u32 as u8,
-            0x20ac => 0x80,
-            0x2018 => 0x91,
-            0x2019 => 0x92,
-            0x201c => 0x93,
-            0x201d => 0x94,
-            0x2022 => 0x95,
-            0x2013 => 0x96,
-            0x2014 => 0x97,
-            0x2026 => 0x85,
-            _ => b'?',
-        };
-        match b {
-            b'(' | b')' | b'\\' => {
-                o.push('\\');
-                o.push(b as char);
-            }
-            0x20..=0x7e => o.push(b as char),
-            // Lo de fuera de ASCII, en octal: el contenido va como bytes y
-            // una cadena de Rust no puede llevar un byte suelto.
-            _ => {
-                let _ = write!(o, "\\{b:03o}");
-            }
+/// El byte de `ch` en la codificacion de Helvetica (WinAnsi), si lo tiene.
+fn winansi(ch: char) -> Option<u8> {
+    Some(match ch as u32 {
+        0x20..=0x7e => ch as u8,
+        0xa0..=0xff => ch as u32 as u8,
+        0x20ac => 0x80,
+        0x2018 => 0x91,
+        0x2019 => 0x92,
+        0x201c => 0x93,
+        0x201d => 0x94,
+        0x2022 => 0x95,
+        0x2013 => 0x96,
+        0x2014 => 0x97,
+        0x2026 => 0x85,
+        _ => return None,
+    })
+}
+
+/// Un byte de WinAnsi escapado para ir entre parentesis.
+fn byte_pdf(b: u8, o: &mut String) {
+    match b {
+        b'(' | b')' | b'\\' => {
+            o.push('\\');
+            o.push(b as char);
+        }
+        0x20..=0x7e => o.push(b as char),
+        // Lo de fuera de ASCII, en octal: el contenido va como bytes y una
+        // cadena de Rust no puede llevar un byte suelto.
+        _ => {
+            let _ = write!(o, "\\{b:03o}");
         }
     }
-    o
+}
+
+/// Lo que no se pinta si ninguna letra lo tiene: selectores de variante
+/// (el `U+FE0F` que va detras de muchos emoji), uniones de anchura cero y
+/// etiquetas. Un cuadrito por cada uno ensuciaria el texto sin decir nada.
+fn invisible(ch: char) -> bool {
+    matches!(ch as u32,
+        0x200b..=0x200f | 0x2060..=0x2064 | 0xfe00..=0xfe0f | 0xfeff
+        | 0xe0000..=0xe007f | 0xe0100..=0xe01ef)
+        || ch.is_control()
+}
+
+/// Con que se escribe un caracter.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Pieza {
+    /// En Helvetica sin incrustar, con su byte de WinAnsi.
+    Helvetica(u8),
+    /// En una letra incrustada, por su numero de glifo: la `0` es la del
+    /// texto y la `1 + i`, la reserva `i`. El glifo `0` es el hueco
+    /// (`.notdef`): lo que no tiene ninguna letra.
+    Glifo(usize, u16),
+    /// No se escribe ([`invisible`]).
+    Nada,
+}
+
+/// **Las letras de un documento**: la del texto (Segoe UI, o Helvetica si no
+/// se pudo leer) y las de reserva para lo que ella no tiene, como hace
+/// DirectWrite al pintar la pantalla. Cada caracter se resuelve una vez.
+struct Juego<'a> {
+    propia: Option<&'a Letra>,
+    reservas: crate::letra::Reservas,
+    elegidas: std::collections::HashMap<char, Pieza>,
+}
+
+impl<'a> Juego<'a> {
+    fn nuevo(propia: Option<&'a Letra>, reservas: crate::letra::Reservas) -> Juego<'a> {
+        Juego {
+            propia,
+            reservas,
+            elegidas: Default::default(),
+        }
+    }
+
+    /// La letra incrustada `i` (ver [`Pieza::Glifo`]).
+    fn letra(&self, i: usize) -> Option<&Letra> {
+        match i {
+            0 => self.propia,
+            _ => self.reservas.letra(i - 1),
+        }
+    }
+
+    fn pieza(&mut self, ch: char) -> Pieza {
+        if let Some(p) = self.elegidas.get(&ch) {
+            return *p;
+        }
+        let p = self.elegir(ch);
+        self.elegidas.insert(ch, p);
+        p
+    }
+
+    fn elegir(&mut self, ch: char) -> Pieza {
+        match self.propia {
+            Some(l) => {
+                if let Some(g) = l.glifo(ch) {
+                    return Pieza::Glifo(0, g);
+                }
+            }
+            None => {
+                if let Some(b) = winansi(ch) {
+                    return Pieza::Helvetica(b);
+                }
+            }
+        }
+        if let Some((i, g)) = self.reservas.para(ch) {
+            return Pieza::Glifo(i + 1, g);
+        }
+        if invisible(ch) {
+            return Pieza::Nada;
+        }
+        // Lo que no tiene nadie: el hueco de la letra, un cuadrito que dice
+        // que ahi habia algo. Helvetica no tiene uno que se vea, asi que sale
+        // el de la primera reserva; sin ninguna, el `?` es lo unico que queda.
+        if self.propia.is_some() {
+            return Pieza::Glifo(0, 0);
+        }
+        match self.reservas.primera() {
+            Some(i) => Pieza::Glifo(i + 1, 0),
+            None => Pieza::Helvetica(b'?'),
+        }
+    }
+
+    /// Lo que avanza `ch`, en milesimas de em, en la letra con que se va a
+    /// escribir. Hay que haberlo resuelto antes ([`Juego::pieza`]).
+    fn ancho(&self, ch: char) -> f32 {
+        match self.elegidas.get(&ch) {
+            Some(Pieza::Glifo(i, g)) => self.letra(*i).map_or(0.0, |l| l.avance(*g)),
+            Some(Pieza::Nada) => 0.0,
+            Some(Pieza::Helvetica(_)) | None => exportar::ancho_de_caracter(ch) as f32,
+        }
+    }
+
+    /// El texto partido en lineas como lo parte la pantalla.
+    fn partir(&mut self, texto: &str, tam: f32, ancho_max: f32) -> Vec<String> {
+        for ch in texto.chars() {
+            self.pieza(ch);
+        }
+        match self.propia {
+            Some(_) => exportar::partir_texto_con(texto, tam, ancho_max, &|ch| self.ancho(ch)),
+            None => exportar::partir_texto(texto, tam, ancho_max),
+        }
+    }
+
+    /// **Un renglon como ordenes de texto**, cambiando de letra donde hace
+    /// falta (`/F1` Helvetica, `/F2` la del texto, `/F3`... las reservas):
+    /// cada tramo de una misma letra en un solo `Tj`, que avanza lo suyo y
+    /// deja el siguiente justo detras. Apunta en `r` los glifos usados.
+    fn renglon(&mut self, linea: &str, tam: f32, r: &mut Recursos) -> String {
+        let mut c = String::new();
+        // La letra del tramo abierto y si es Helvetica (entre parentesis) o
+        // incrustada (en hexadecimal, `Identity-H`).
+        let mut abierta: Option<(usize, bool)> = None;
+        let cerrar = |c: &mut String, a: Option<(usize, bool)>| {
+            if let Some((_, helvetica)) = a {
+                c.push_str(if helvetica { ") Tj " } else { "> Tj " });
+            }
+        };
+        for ch in linea.chars() {
+            let (fuente, helvetica) = match self.pieza(ch) {
+                Pieza::Nada => continue,
+                Pieza::Helvetica(_) => (1, true),
+                Pieza::Glifo(i, g) => {
+                    r.glifos.entry(i).or_default().entry(g).or_insert(ch);
+                    (i + 2, false)
+                }
+            };
+            if abierta.map(|(f, _)| f) != Some(fuente) {
+                cerrar(&mut c, abierta);
+                let _ = write!(
+                    c,
+                    "/F{fuente} {} Tf {}",
+                    n(tam),
+                    if helvetica { '(' } else { '<' }
+                );
+                abierta = Some((fuente, helvetica));
+            }
+            match self.pieza(ch) {
+                Pieza::Helvetica(b) => byte_pdf(b, &mut c),
+                Pieza::Glifo(_, g) => {
+                    let _ = write!(c, "{g:04X}");
+                }
+                Pieza::Nada => {}
+            }
+        }
+        cerrar(&mut c, abierta);
+        c
+    }
 }
 
 /// Las ordenes de una hoja como contenido de pagina.
@@ -210,7 +365,7 @@ fn contenido(
     fondo: Option<ColorRgba>,
     hay_imagen: &mut dyn FnMut(u64) -> bool,
     r: &mut Recursos,
-    letra_propia: Option<&Letra>,
+    juego: &mut Juego,
     margen: f32,
 ) -> String {
     let mut c = String::with_capacity(hoja.ordenes.len() * 256);
@@ -339,37 +494,16 @@ fn contenido(
                 c.push_str("q ");
                 r.alfa(color.a, &mut c);
                 // Con la letra de la pantalla dentro (`/F2`) se parte y se
-                // escribe con ella; sin ella, Helvetica (`/F1`).
-                let fuente = if letra_propia.is_some() { "F2" } else { "F1" };
-                let _ = write!(c, "{} rg BT /{fuente} {} Tf ", rgb(*color), n(*tam));
-                let lineas = match letra_propia {
-                    Some(l) => {
-                        exportar::partir_texto_con(texto, *tam, *ancho_max, &|ch| l.ancho(ch))
-                    }
-                    None => exportar::partir_texto(texto, *tam, *ancho_max),
-                };
+                // escribe con ella; sin ella, Helvetica (`/F1`). Lo que no
+                // tienen, con sus reservas ([`Juego`]).
+                let _ = write!(c, "{} rg BT ", rgb(*color));
+                let lineas = juego.partir(texto, *tam, *ancho_max);
                 for (i, linea) in lineas.iter().enumerate() {
                     let base = y + tam * (linea_base + interlinea * i as f32);
                     // La matriz del texto vuelve a voltear la Y: con la de la
                     // pagina, las letras saldrian boca abajo.
                     let _ = write!(c, "1 0 0 -1 {} {} Tm ", n(*x), n(base));
-                    match letra_propia {
-                        // Cada letra por su numero de glifo, en hexadecimal de
-                        // dos bytes (`Identity-H`). Lo que la letra no tiene
-                        // va como su hueco (el glifo 0), que es lo que se ve.
-                        Some(l) => {
-                            c.push('<');
-                            for ch in linea.chars() {
-                                let g = l.glifo(ch).unwrap_or(0);
-                                r.glifos.entry(g).or_insert(ch);
-                                let _ = write!(c, "{g:04X}");
-                            }
-                            c.push_str("> Tj ");
-                        }
-                        None => {
-                            let _ = write!(c, "({}) Tj ", texto_pdf(linea));
-                        }
-                    }
+                    c.push_str(&juego.renglon(linea, *tam, r));
                 }
                 c.push_str("ET Q\n");
             }
@@ -408,22 +542,7 @@ fn contenido(
                         n(cy - cx * s - cy * co)
                     );
                 }
-                let fuente = if letra_propia.is_some() { "F2" } else { "F1" };
-                let mut renglon = String::new();
-                match letra_propia {
-                    Some(l) => {
-                        renglon.push('<');
-                        for ch in texto.chars() {
-                            let g = l.glifo(ch).unwrap_or(0);
-                            r.glifos.entry(g).or_insert(ch);
-                            let _ = write!(renglon, "{g:04X}");
-                        }
-                        renglon.push('>');
-                    }
-                    None => {
-                        let _ = write!(renglon, "({})", texto_pdf(texto));
-                    }
-                }
+                let renglon = juego.renglon(texto, *tam, r);
                 let base = y + tam * linea_base;
                 for (modo, tinta) in [
                     (
@@ -434,8 +553,7 @@ fn contenido(
                 ] {
                     let _ = write!(
                         c,
-                        "{tinta} BT /{fuente} {} Tf {modo} 1 0 0 -1 {} {} Tm {renglon} Tj ET ",
-                        n(*tam),
+                        "{tinta} BT {modo} 1 0 0 -1 {} {} Tm {renglon}ET ",
                         n(*x),
                         n(base)
                     );
@@ -633,14 +751,15 @@ fn objetos_de_letra(f: &mut Fichero, l: &Letra, caracteres: &BTreeMap<u16, char>
         )
         .into_bytes(),
     );
-    // El glifo 0 es el hueco: no es ningun caracter y no se devuelve.
+    // El glifo 0 es el hueco, lo que no tiene ninguna letra: se devuelve como
+    // el caracter de sustitucion (U+FFFD), que dice al copiar que ahi habia
+    // algo que no se pudo pintar.
     let mut mapa = String::from(
         "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
     );
     let pares: Vec<(u16, char)> = caracteres
         .iter()
-        .filter(|(g, _)| **g != 0)
-        .map(|(g, c)| (*g, *c))
+        .map(|(g, c)| (*g, if *g == 0 { '\u{fffd}' } else { *c }))
         .collect();
     // De cien en cien, que es lo mas que la norma deja en un bloque.
     for trozo in pares.chunks(100) {
@@ -980,12 +1099,17 @@ fn escribir_hojas(
             })
             .is_some()
     };
+    // La letra del texto solo si su licencia deja meterla en el fichero; si
+    // no, Helvetica. Las reservas se abren solas segun hacen falta.
+    let propia = letra_propia.filter(|l| l.se_puede_incrustar());
+    let reservas = crate::letra::Reservas::del_sistema(propia.map(|l| l.nombre.as_str()));
+    let mut juego = Juego::nuevo(propia, reservas);
     // Primero el contenido, que es lo que dice que recursos hacen falta.
     let mut paginas = Vec::with_capacity(hojas.len());
     for (i, hoja) in hojas.iter().enumerate() {
         let tam = medida(i, hoja);
         let mut r = Recursos::default();
-        let c = contenido(hoja, tam, fondo, &mut hay, &mut r, letra_propia, margen);
+        let c = contenido(hoja, tam, fondo, &mut hay, &mut r, &mut juego, margen);
         paginas.push((tam, c, r));
     }
 
@@ -1000,15 +1124,24 @@ fn escribir_hojas(
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
             .to_vec(),
     );
-    // La letra incrustada, si alguna pagina escribio con ella: un solo
-    // subconjunto con los glifos de todas, no uno por pagina.
-    let propia = letra_propia.and_then(|l| {
-        let caracteres: BTreeMap<u16, char> = paginas
-            .iter()
-            .flat_map(|(_, _, r)| r.glifos.iter().map(|(g, c)| (*g, *c)))
-            .collect();
-        (!caracteres.is_empty()).then(|| objetos_de_letra(&mut f, l, &caracteres))
-    });
+    // Cada letra incrustada que escribio alguna pagina: un solo subconjunto
+    // con los glifos de todas, no uno por pagina.
+    let mut por_letra: BTreeMap<usize, BTreeMap<u16, char>> = BTreeMap::new();
+    for (_, _, r) in &paginas {
+        for (i, glifos) in &r.glifos {
+            let todos = por_letra.entry(*i).or_default();
+            for (g, c) in glifos {
+                todos.entry(*g).or_insert(*c);
+            }
+        }
+    }
+    let incrustadas: BTreeMap<usize, usize> = por_letra
+        .iter()
+        .filter_map(|(i, caracteres)| {
+            let l = juego.letra(*i)?;
+            Some((*i, objetos_de_letra(&mut f, l, caracteres)))
+        })
+        .collect();
     // Un estado grafico por cada transparencia usada en todo el documento.
     let mut estados: BTreeMap<u8, usize> = BTreeMap::new();
     for (_, _, r) in &paginas {
@@ -1071,10 +1204,13 @@ fn escribir_hojas(
     for (tam, c, r) in paginas {
         let flujo = f.reservar();
         f.poner(flujo, Fichero::flujo("", &comprimir(c.as_bytes())));
-        let mut recursos = match propia {
-            Some(p) if !r.glifos.is_empty() => format!("/Font << /F1 {letra} 0 R /F2 {p} 0 R >>"),
-            _ => format!("/Font << /F1 {letra} 0 R >>"),
-        };
+        let mut recursos = format!("/Font << /F1 {letra} 0 R");
+        for i in r.glifos.keys() {
+            if let Some(o) = incrustadas.get(i) {
+                let _ = write!(recursos, " /F{} {o} 0 R", i + 2);
+            }
+        }
+        recursos.push_str(" >>");
         if !r.alfas.is_empty() {
             recursos.push_str(" /ExtGState <<");
             for a in &r.alfas {
@@ -1208,11 +1344,61 @@ mod pruebas {
     }
 
     #[test]
-    fn el_texto_se_escapa_y_lo_que_no_cabe_en_winansi_sale_como_interrogacion() {
-        assert_eq!(texto_pdf("a(b)c\\"), "a\\(b\\)c\\\\");
-        assert_eq!(texto_pdf("año"), "a\\361o");
-        assert_eq!(texto_pdf("€"), "\\200");
-        assert_eq!(texto_pdf("漢"), "?");
+    fn el_texto_se_escapa_y_lo_que_no_cabe_en_winansi_no_es_de_helvetica() {
+        let escapa = |s: &str| {
+            let mut o = String::new();
+            for ch in s.chars() {
+                byte_pdf(winansi(ch).expect("en WinAnsi"), &mut o);
+            }
+            o
+        };
+        assert_eq!(escapa("a(b)c\\"), "a\\(b\\)c\\\\");
+        assert_eq!(escapa("año"), "a\\361o");
+        assert_eq!(escapa("€"), "\\200");
+        // Caso negativo: ni el ideograma ni el menos de verdad estan.
+        assert_eq!(winansi('漢'), None);
+        assert_eq!(winansi('\u{2212}'), None);
+    }
+
+    fn segoe_y(familia: &str) -> Option<(Letra, Letra)> {
+        Some((
+            crate::letra::del_sistema("Segoe UI")?,
+            crate::letra::del_sistema(familia)?,
+        ))
+    }
+
+    #[test]
+    fn lo_que_no_tiene_la_letra_va_en_su_reserva_y_lo_de_nadie_en_el_hueco() {
+        let Some((segoe, simbolos)) = segoe_y("Segoe UI Symbol") else {
+            return;
+        };
+        let reservas = crate::letra::Reservas::de_letras(vec![simbolos.clone()]);
+        let mut j = Juego::nuevo(Some(&segoe), reservas);
+        assert!(matches!(j.pieza('a'), Pieza::Glifo(0, g) if g != 0));
+        // Un simbolo que Segoe UI no trae y Segoe UI Symbol si.
+        let c = '\u{2654}'; // ♔
+        assert_eq!(segoe.glifo(c), None);
+        assert_eq!(j.pieza(c), Pieza::Glifo(1, simbolos.glifo(c).unwrap()));
+        // Caso negativo: lo de nadie, el hueco de la letra, nunca un `?`.
+        assert_eq!(j.pieza('\u{10ffff}'), Pieza::Glifo(0, 0));
+        // Y el selector de variante de los emoji no deja cuadrito.
+        assert_eq!(j.pieza('\u{fe0f}'), Pieza::Nada);
+        // El renglon cambia de letra en mitad y vuelve.
+        let mut r = Recursos::default();
+        let s = j.renglon("a\u{2654}a", 12.0, &mut r);
+        assert_eq!(s.matches(" Tf ").count(), 3, "{s}");
+        assert!(s.starts_with("/F2 12 Tf <") && s.contains("/F3 12 Tf <"), "{s}");
+        assert_eq!(r.glifos.len(), 2);
+
+        // Sin letra propia, Helvetica para lo latino y la reserva para lo
+        // demas; el hueco, de la primera reserva que se deja leer.
+        let mut h = Juego::nuevo(None, crate::letra::Reservas::de_letras(vec![simbolos]));
+        assert_eq!(h.pieza('a'), Pieza::Helvetica(b'a'));
+        assert!(matches!(h.pieza(c), Pieza::Glifo(1, _)));
+        assert_eq!(h.pieza('\u{10ffff}'), Pieza::Glifo(1, 0));
+        // Sin ninguna reserva no queda otra que el `?`.
+        let mut nada = Juego::nuevo(None, crate::letra::Reservas::ninguna());
+        assert_eq!(nada.pieza('\u{10ffff}'), Pieza::Helvetica(b'?'));
     }
 
     #[test]

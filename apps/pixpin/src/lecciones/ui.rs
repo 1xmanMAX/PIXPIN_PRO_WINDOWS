@@ -36,46 +36,6 @@ pub const PUESTO: Color = hex(0xffca28);
 pub const PUESTO_FONDO: Color = hex(0x3d3520);
 pub const FICHA: Color = hex(0x2c2c34);
 
-/// `LeccionesActivity.colorDe`: las cuatro areas de inicio con su color fijo;
-/// las demas, sacado de su nombre.
-pub fn color_de(area: &str) -> Color {
-    match area {
-        "Trabajo" => hex(0x42a5f5),
-        "Construcción" => hex(0xff9800),
-        "Estudio" => hex(0xab47bc),
-        "Vida diaria" => hex(0x66bb6a),
-        "" => hex(0x9e9e9e),
-        otra => {
-            // `hashCode` de Kotlin sobre UTF-16, como el movil.
-            let mut h: i32 = 0;
-            for u in otra.encode_utf16() {
-                h = h.wrapping_mul(31).wrapping_add(u as i32);
-            }
-            hsv(((h & 0x7fff_ffff) % 360) as f32, 0.55, 0.85)
-        }
-    }
-}
-
-fn hsv(h: f32, s: f32, v: f32) -> Color {
-    let c = v * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = v - c;
-    let (r, g, b) = match (h / 60.0) as i32 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    Color {
-        r: r + m,
-        g: g + m,
-        b: b + m,
-        a: 1.0,
-    }
-}
-
 pub fn con_alfa(c: Color, a: f32) -> Color {
     Color { a, ..c }
 }
@@ -511,13 +471,6 @@ mod pruebas {
         // Caso negativo: una letra de control no se escribe.
         assert!(!d.letra('\u{8}'));
     }
-
-    #[test]
-    fn las_areas_de_inicio_tienen_su_color_y_las_demas_uno_estable() {
-        assert_eq!(color_de("Trabajo"), hex(0x42a5f5));
-        assert_eq!(color_de("Mi área"), color_de("Mi área"));
-        assert_ne!(color_de("Mi área"), color_de("Otra"));
-    }
 }
 
 // ------------------------------------------------------------------ v2
@@ -538,15 +491,6 @@ pub mod v2 {
     pub const ROJO: Color = hex(0xff453a);
     pub const AMARILLO: Color = hex(0xffd60a);
     pub const BLANCO: Color = hex(0xffffff);
-}
-
-/// El color de cada gravedad: leve verde, importante naranja, grave rojo.
-pub fn color_de_gravedad(g: i64) -> Color {
-    match g {
-        i64::MIN..=1 => v2::VERDE,
-        2 => v2::NARANJA,
-        _ => v2::ROJO,
-    }
 }
 
 fn letra_negrita() -> pixpin_render::letras::Letra<'static> {
@@ -667,88 +611,3 @@ pub fn aclarar(c: Color, d: f32) -> Color {
         a: c.a,
     }
 }
-
-/// Dias de un instante en ms (desde 1970, en UTC).
-fn dias(ms: i64) -> i64 {
-    ms.div_euclid(pixpin_lecciones::leccion::DIA)
-}
-
-/// `(anio, mes 1..=12, dia)` de un instante en ms (UTC; Howard Hinnant,
-/// `civil_from_days`).
-pub fn fecha_de(ms: i64) -> (i64, u32, u32) {
-    let z = dias(ms) + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
-    (if m <= 2 { y + 1 } else { y }, m, d)
-}
-
-/// Si dos instantes caen en el mismo mes (para «Este mes» / «Antes»).
-pub fn mismo_mes(a: i64, b: i64) -> bool {
-    let (ya, ma, _) = fecha_de(a);
-    let (yb, mb, _) = fecha_de(b);
-    (ya, ma) == (yb, mb)
-}
-
-/// Cuanto hace, en la unidad que se lee.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hace {
-    Hoy,
-    Ayer,
-    Dias(i64),
-    Semanas(i64),
-    Meses(i64),
-    Anios(i64),
-}
-
-pub fn hace(cuando: i64, ahora: i64) -> Hace {
-    let d = dias(ahora) - dias(cuando);
-    match d {
-        i64::MIN..=0 => Hace::Hoy,
-        1 => Hace::Ayer,
-        2..=13 => Hace::Dias(d),
-        14..=59 => Hace::Semanas(d / 7),
-        60..=729 => Hace::Meses(d / 30),
-        _ => Hace::Anios(d / 365),
-    }
-}
-
-#[cfg(test)]
-mod pruebas_v2 {
-    use super::*;
-    use pixpin_lecciones::leccion::DIA;
-
-    #[test]
-    fn las_fechas_se_cuentan_bien_y_hace_elige_la_unidad() {
-        // 4-oct-2026 = 20730 dias desde 1970.
-        let hoy = 20_730 * DIA + 5_000;
-        assert_eq!(fecha_de(hoy), (2026, 10, 4));
-        assert_eq!(fecha_de(0), (1970, 1, 1));
-        assert_eq!(fecha_de(20_729 * DIA - 1), (2026, 10, 2));
-        assert!(mismo_mes(hoy, 20_727 * DIA));
-        assert_eq!(hace(hoy - 3 * DIA, hoy), Hace::Dias(3));
-        assert_eq!(hace(hoy - 15 * DIA, hoy), Hace::Semanas(2));
-        assert_eq!(hace(hoy - 65 * DIA, hoy), Hace::Meses(2));
-        assert_eq!(hace(hoy - DIA, hoy), Hace::Ayer);
-        // Caso negativo: el mes de antes no es «este mes», y algo del futuro
-        // (un reloj adelantado del otro aparato) es «hoy».
-        assert!(!mismo_mes(hoy, 20_725 * DIA));
-        assert_eq!(hace(hoy + 9 * DIA, hoy), Hace::Hoy);
-    }
-
-    #[test]
-    fn cada_gravedad_tiene_su_color() {
-        assert_eq!(color_de_gravedad(1), v2::VERDE);
-        assert_eq!(color_de_gravedad(2), v2::NARANJA);
-        assert_eq!(color_de_gravedad(3), v2::ROJO);
-        // Caso negativo: un valor raro del otro aparato no rompe nada.
-        assert_eq!(color_de_gravedad(0), v2::VERDE);
-        assert_eq!(color_de_gravedad(7), v2::ROJO);
-    }
-}
-

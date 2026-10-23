@@ -39,10 +39,32 @@ pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::no
     std::fs::create_dir_all(&raiz).context("sin carpeta para la PixPin de prueba")?;
     let ubicacion = Ubicacion::Portable { raiz };
     *guardia_registro = Some(crate::iniciar_registro(&ubicacion));
+    // La luna/sol de los visores, como en la app (`estado.toml` de esta copia).
+    crate::oscuro::iniciar(&ubicacion);
     let lengua = idioma::resolver_idioma(&pixpin_shell::entorno::locale_del_sistema(), Default::default());
     let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
     tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PixPin de prueba (PIXPIN_INSTANCIA)");
     for ruta in &rutas {
+        // Un lienzo (`.excalidraw`): el editor, en su hilo, como desde el chat.
+        if ruta.extension().is_some_and(|e| e.eq_ignore_ascii_case("excalidraw")) {
+            let ruta = ruta.clone();
+            std::thread::spawn(move || {
+                let _com = pixpin_shell::ComDelHilo::iniciar();
+                let Some(lienzo) = std::fs::read_to_string(&ruta).ok().and_then(|j| pixpin_motor2d::excalidraw::leer(&j).ok()) else {
+                    tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: lienzo ilegible");
+                    return;
+                };
+                let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
+                let _ = crate::ventana_editor::abrir(escena, Default::default(), pixpin_nivel::Nivel::Completo, false, None, &[]);
+            });
+            continue;
+        }
+        // Un Office viejo: el pin de Office (y de ahi, convertido, el visor
+        // propio), como en la app.
+        if crate::pin_office::se_abre(ruta) {
+            crate::pin_office::lanzar(lengua, ubicacion.clone(), ruta);
+            continue;
+        }
         if !crate::lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta)) {
             tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: no hay lector para esto");
         }

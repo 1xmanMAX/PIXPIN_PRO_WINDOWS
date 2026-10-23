@@ -73,6 +73,10 @@ pub fn confirmar_en_la_burbuja(tx: Sender<Aviso>, parar: Arc<AtomicBool>) -> Con
 /// Lo que las pruebas mandaron a «PixPin» (nunca sale de verdad).
 #[cfg(test)]
 pub static MANDADOS_EN_PRUEBAS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// Lo que contesta esa «PixPin» de mentira (0: nada; el banco de documentos
+/// pone `1`, aceptado, para que lo mandado siga su camino como en la app).
+#[cfg(test)]
+pub static RESPUESTA_EN_PRUEBAS: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
 /// A la PixPin que corre (esta misma), como el plugin.
 pub fn mandar_a_pixpin() -> Mandar {
@@ -81,7 +85,7 @@ pub fn mandar_a_pixpin() -> Mandar {
     #[cfg(test)]
     return Box::new(|j| {
         MANDADOS_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).push(j.to_string());
-        0
+        RESPUESTA_EN_PRUEBAS.load(std::sync::atomic::Ordering::Relaxed)
     });
     #[cfg(not(test))]
     Box::new(pixpin_shell::mensajero::enviar_pedido)
@@ -107,7 +111,11 @@ fn hay_imagen(adjuntos: &[Adjunto], con_foto: bool) -> bool {
 pub fn es_para_calcar(historial: &[pixpin_ia::Mensaje], adjuntos: &[Adjunto], con_foto: bool) -> bool {
     let q = pixpin_ia::acciones::normalizar(&ultimo_pedido(historial));
     let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
-    hay_imagen(adjuntos, con_foto) && pixpin_ia::seleccion::pide_la_imagen(&palabras) && !pixpin_ia::seleccion::pide_una_tabla(&palabras)
+    hay_imagen(adjuntos, con_foto)
+        && pixpin_ia::seleccion::pide_la_imagen(&palabras)
+        && !pixpin_ia::seleccion::pide_una_tabla(&palabras)
+        // «Pega la foto y recortala»: editar el lienzo, no calcarla.
+        && !pixpin_ia::seleccion::pide_pegar_o_recortar(&palabras)
 }
 
 /// **Las herramientas de este turno**: las que vienen a cuento del ultimo
@@ -245,6 +253,14 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
         .cloned()
         .collect();
     if imagenes.is_empty() {
+        // Un PDF adjunto no es «no hay nada» (banco de documentos, 15-oct:
+        // el modelo pedia al usuario que adjuntara otra vez el boletin).
+        if let Some(pdf) = adjuntos.iter().rev().find(|a| super::ocr::es_pdf(&a.ruta)) {
+            return Err(format!(
+                "«{}» es un PDF, no una imagen: para pasar una pagina suya al lienzo usa hoja_a_lienzo (con su archivo y pagina)",
+                pdf.nombre
+            ));
+        }
         return Err("no hay ninguna imagen adjunta que calcar; pide al usuario que adjunte la foto".into());
     }
     // Un nombre que no esta (el 2B pidio «perro» con «perrito.png» adjunto,
@@ -259,9 +275,28 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
 /// **Calca** una imagen del disco: los elementos de Excalidraw, listos para
 /// el lienzo, y cuantos son.
 pub fn calcar_fichero(ruta: &Path, p: &Parametros, semilla: u64) -> Result<Vec<Value>, String> {
-    let img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    let mut img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    // El texto no se calca como forma (salian garabatos): lo que lee el OCR
+    // se tapa y va como texto editable (15-oct). Sin OCR, como antes.
+    let palabras: Vec<pixpin_ia::hoja::PalabraHoja> = if pixpin_ocr::disponible() {
+        let mut v = super::hoja_a_lienzo::ocr(&img.pixeles, img.ancho, img.alto).unwrap_or_default();
+        v.retain(|w| w.texto.chars().filter(|c| c.is_alphanumeric()).count() >= 2 && w.caja.w > 0.0 && w.caja.h > 0.0);
+        // Solo lo de la zona que se calca.
+        if let Some([zx, zy, zw, zh]) = p.zona {
+            let (fw, fh) = (img.ancho as f64, img.alto as f64);
+            v.retain(|w| (zx * fw..=(zx + zw) * fw).contains(&w.caja.cx()) && (zy * fh..=(zy + zh) * fh).contains(&w.caja.cy()));
+        }
+        for w in &mut v {
+            w.color = pixpin_ia::hoja::imagen::color_de_tinta(&img.pixeles, img.ancho, img.alto, &w.caja, 150);
+        }
+        v
+    } else {
+        Vec::new()
+    };
+    calcar::tapar_texto(&mut img.pixeles, img.ancho, img.alto, &palabras);
     let c = calcar::calcar(&img.pixeles, img.ancho, img.alto, p);
-    let els = lienzo::elementos_de_calcado(&c, (0.0, 0.0), semilla);
+    let mut els = lienzo::elementos_de_calcado(&c, (0.0, 0.0), semilla);
+    els.extend(calcar::textos_del_calco(&c, &palabras, semilla));
     if els.is_empty() {
         return Err("la imagen no tiene formas que calcar (esta en blanco o casi)".into());
     }
@@ -331,6 +366,11 @@ mod pruebas {
             let hecha = validar(a, &args).unwrap_or_else(|e| panic!("{}: {e}", a.herramienta));
             if hecha.es_consulta() {
                 assert!(pixpin_ia::tareas::consultar(&hecha.por_resolver, &fuente()).is_ok());
+                continue;
+            }
+            // Las que hace el ejecutor del chat (`en_el_chat`): sus pedidos
+            // los prueba `en_el_chat_manda_pedidos_que_la_app_entiende`.
+            if a.accion == pixpin_ia::acciones::EN_EL_CHAT {
                 continue;
             }
             assert!(

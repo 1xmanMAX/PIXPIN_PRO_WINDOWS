@@ -9,8 +9,14 @@
 //!   asa de la barra: mover la ventana.
 //! - Doble clic: el plano entero (o, acotando, terminar la medida).
 //! - Clic derecho: un menu (todo, tema, acotar, encima, cerrar).
-//! - Teclas: Esc (acotando: deja la medida; si no, cierra), F o Inicio
-//!   todo, B tema, M acotar, T encima, flechas, + y −.
+//! - Teclas: Esc (deja primero lo que se hace: la medida, acotar, los
+//!   marcos, anotar; sin nada de eso, cierra), F o Inicio todo, B tema,
+//!   D acotar, T encima, flechas, + y −; F11 pantalla completa (y Esc, la
+//!   primera vez, sale de ella). Las de todos los visores ([`Unificada`]):
+//!   I los marcos, Supr el ultimo marco, Ctrl+P imprimir, M o Ctrl+M un
+//!   marcador, A anotar.
+//! - La barra, como la de los demas visores: el tipo y el nombre del
+//!   archivo a la izquierda; pantalla completa, el pin y cerrar al final.
 //!
 //! No se dibuja nada si nada cambia: en reposo no gasta.
 
@@ -53,6 +59,8 @@ pub(crate) enum Ev {
     Subir(i32, i32, u8),
     Doble(i32, i32),
     Rueda(i32, i32, i32),
+    /// Dos dedos en el panel tactil: mover lo que se ve (pixeles, ver [`que_rueda`]).
+    Desplazar(i32, i32, f64, f64),
     Tecla(u32),
     TeclaSoltada(u32),
     Caracter(u32),
@@ -67,10 +75,52 @@ pub(crate) struct Estado {
     pub(crate) eventos: VecDeque<(De, Ev)>,
     /// La barra y su separacion del plano: el plano la arrastra consigo.
     pub(crate) barra: Option<(HWND, i32)>,
+    /// A pantalla completa no se estira por los bordes.
+    pub(crate) pantalla_completa: bool,
 }
 
 thread_local! {
     pub(crate) static ESTADO: RefCell<Estado> = RefCell::new(Estado::default());
+}
+
+/// **Que es un giro de rueda** (19-oct-2026, el usuario: «con dos dedos en
+/// el panel tactil, moverlos debe mover el plano en la direccion de los
+/// dedos, y en el modelo igual, sin acercar; acercar es el pellizco»).
+/// Windows manda el arrastre de dos dedos de un panel tactil de precision
+/// como ruedas con pasos pequenos (no multiplos de 120) y la horizontal
+/// como `WM_MOUSEHWHEEL`; el pellizco, como rueda con Ctrl. Una muesca de
+/// la rueda de un raton (120 justos, sin Ctrl) sigue acercando, como en
+/// AutoCAD.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Rueda {
+    /// Acercar o alejar hacia el cursor (el paso de la rueda, + acerca).
+    Acercar(i32),
+    /// Mover lo que se ve (pixeles de pantalla; lo de dentro sigue a los dedos).
+    Mover(f64, f64),
+}
+
+/// Pixeles de pantalla por unidad de rueda al mover con dos dedos.
+const PIXELES_POR_RUEDA: f64 = 0.8;
+/// Tras un paso del panel tactil, cuanto se siguen tomando por suyos los que
+/// lleguen (alguno puede venir de 120 justos).
+const TACTIL_MS: u64 = 350;
+
+thread_local! {
+    static TACTIL_HASTA: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// Ver [`Rueda`]. `reciente`: llego un paso del panel tactil hace nada.
+pub(crate) fn que_rueda(delta: i32, horizontal: bool, ctrl: bool, reciente: bool) -> Rueda {
+    if ctrl && !horizontal {
+        return Rueda::Acercar(delta);
+    }
+    let del_panel = horizontal || delta % 120 != 0 || reciente;
+    if !del_panel {
+        return Rueda::Acercar(delta);
+    }
+    let d = delta as f64 * PIXELES_POR_RUEDA;
+    // Rueda arriba (positiva): lo de dentro baja; a la derecha: va a la izquierda.
+    if horizontal { Rueda::Mover(-d, 0.0) } else { Rueda::Mover(0.0, d) }
 }
 
 fn apuntar(de: De, e: Ev) {
@@ -123,6 +173,7 @@ unsafe extern "system" fn procedimiento_barra(hwnd: HWND, msg: u32, wp: WPARAM, 
 unsafe fn procedimiento(de: De, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     match msg {
         WM_NCCALCSIZE if wp.0 != 0 && de == De::Plano => return LRESULT(0),
+        WM_NCHITTEST if de == De::Plano && ESTADO.with(|s| s.borrow().pantalla_completa) => return LRESULT(HTCLIENT as isize),
         WM_NCHITTEST if de == De::Plano => {
             let (sx, sy) = xy(lp);
             let mut p = POINT { x: sx, y: sy };
@@ -168,6 +219,10 @@ unsafe fn procedimiento(de: De, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
             let _ = unsafe { TrackMouseEvent(&mut t) };
             return LRESULT(0);
         }
+        // Para las pruebas (`PIXPIN_PRUEBA_RATON_QUIETO`): un raton de
+        // mentira (PostMessage) no deja el plano ni la barra al instante, asi
+        // se puede fotografiar el globo de un boton.
+        WM_MOUSELEAVE if std::env::var_os("PIXPIN_PRUEBA_RATON_QUIETO").is_some() => {}
         WM_MOUSELEAVE => apuntar(de, Ev::Salir),
         WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN => {
             let (x, y) = xy(lp);
@@ -190,12 +245,26 @@ unsafe fn procedimiento(de: De, hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
             apuntar(de, Ev::Doble(x, y));
             return LRESULT(0);
         }
-        WM_MOUSEWHEEL => {
+        WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
             let (sx, sy) = xy(lp);
             let mut p = POINT { x: sx, y: sy };
             // SAFETY: ventana propia; punto local.
             let _ = unsafe { ScreenToClient(hwnd, &mut p) };
-            apuntar(de, Ev::Rueda(p.x, p.y, ((wp.0 >> 16) & 0xffff) as i16 as i32));
+            let delta = ((wp.0 >> 16) & 0xffff) as i16 as i32;
+            // Ctrl en el estado de las teclas que trae el mensaje (el
+            // pellizco del panel tactil lo pone) o pulsada de verdad.
+            // SAFETY: lee el estado de la tecla Ctrl.
+            let ctrl = wp.0 & 0x0008 != 0 || unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+            let ahora = Instant::now();
+            let reciente = TACTIL_HASTA.with(|t| t.get().is_some_and(|h| ahora < h));
+            let ev = match que_rueda(delta, msg == WM_MOUSEHWHEEL, ctrl, reciente) {
+                Rueda::Acercar(d) => Ev::Rueda(p.x, p.y, d),
+                Rueda::Mover(dx, dy) => {
+                    TACTIL_HASTA.with(|t| t.set(Some(ahora + Duration::from_millis(TACTIL_MS))));
+                    Ev::Desplazar(p.x, p.y, dx, dy)
+                }
+            };
+            apuntar(de, ev);
             return LRESULT(0);
         }
         WM_KEYDOWN => {
@@ -477,24 +546,133 @@ pub fn medida(d: f64, unidades: u32) -> String {
 
 // ------------------------------------------------------------------ pintar
 
-const BOTONES: [&str; 8] = ["asa", "tema", "acotar", "marcos", "anotar", "tres", "letras", "fijar"];
+/// **La barra, en el orden de la de los demas visores** (la del lector como
+/// pin): el asa, el nombre con el recuadro de su tipo, los botones propios
+/// y, a la derecha, el tema, pantalla completa, el pin y cerrar. El lapiz y
+/// el marco para imprimir van en el riel de la derecha ([`riel`]), como en
+/// los lectores de PDF y Word.
+const BOTONES: [&str; 9] = ["asa", "nombre", "acotar", "tres", "letras", "tema", "pantalla", "fijar", "cerrar"];
 pub(crate) const ALTO_BARRA: f64 = 48.0;
 const BOTON: f64 = 40.0;
+/// Las medidas del asa, el nombre y el recuadro del tipo: las del lector.
+const ASA: f64 = 22.0;
+const NOMBRE_MAX: f64 = 260.0;
+const TAM_NOMBRE: f64 = 13.0;
+const CUADRO: f64 = 24.0;
+const CUADRO_AIRE: f64 = 7.0;
+/// El icono de cada boton: 20 px, como en la barra del lector.
+const ICONO: f64 = 20.0;
 
-/// Lo que mide la barra con `n` botones (el asa cuenta como uno).
-pub(crate) fn ancho_barra(e: f64, n: usize) -> f64 {
-    (4.0 + 18.0 + (2.0 + BOTON) * (n.max(1) - 1) as f64 + 4.0) * e
+/// **El tipo de archivo** para el recuadro de la barra: el rotulo (la
+/// extension), el color de su familia y si la letra va oscura. Lo pone la
+/// app, que tiene la tabla de colores del chat (asi el DWG sale como en los
+/// demas pines).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TipoDeArchivo {
+    pub rotulo: String,
+    pub fondo: [u8; 3],
+    pub tinta_oscura: bool,
 }
 
-/// Donde cae cada boton de la barra (x desde, x hasta); el primero es el asa.
-pub(crate) fn botones_barra(e: f64, n: usize) -> Vec<(f64, f64)> {
-    let x0 = 4.0 * e;
-    let mut v = vec![(x0, x0 + 18.0 * e)];
-    for _ in 1..n {
-        let a = v[v.len() - 1].1 + 2.0 * e;
-        v.push((a, a + BOTON * e));
+/// Lo que la barra escribe a la izquierda: el nombre del archivo y su tipo,
+/// con lo que ocupa (medido una vez al abrir: la barra no cambia de ancho).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Cabecera {
+    pub(crate) nombre: String,
+    pub(crate) tipo: Option<TipoDeArchivo>,
+    ancho: f64,
+}
+
+impl Cabecera {
+    pub(crate) fn nueva(textos: &mut Textos, nombre: &str, tipo: Option<TipoDeArchivo>, e: f64) -> Cabecera {
+        let tipo = tipo.filter(|t| !t.rotulo.is_empty());
+        let cuadro = if tipo.is_some() { (CUADRO + CUADRO_AIRE) * e } else { 0.0 };
+        let texto = if nombre.is_empty() { 0.0 } else { textos.medir_pantalla(nombre, TAM_NOMBRE * e).min(NOMBRE_MAX * e) };
+        let ancho = if cuadro + texto == 0.0 { 0.0 } else { cuadro + texto + 16.0 * e };
+        Cabecera { nombre: nombre.to_string(), tipo, ancho }
+    }
+}
+
+/// Lo que mide la barra con estos `botones`.
+pub(crate) fn ancho_barra(e: f64, botones: &[&str], cab: &Cabecera) -> f64 {
+    botones_barra(e, botones, cab).last().map_or(0.0, |b| b.1) + 4.0 * e
+}
+
+/// Donde cae cada boton de la barra (x desde, x hasta); el primero es el
+/// asa. El nombre mide lo que su texto (o nada si no hay), y el grupo de la
+/// derecha (desde el tema o pantalla completa) va un poco apartado.
+pub(crate) fn botones_barra(e: f64, botones: &[&str], cab: &Cabecera) -> Vec<(f64, f64)> {
+    let derecha = botones.iter().position(|b| matches!(*b, "tema" | "pantalla"));
+    let mut v = Vec::with_capacity(botones.len());
+    let mut x = 4.0 * e;
+    for (i, b) in botones.iter().enumerate() {
+        if Some(i) == derecha {
+            x += 6.0 * e;
+        }
+        let ancho = match *b {
+            "asa" => ASA * e,
+            "nombre" => cab.ancho,
+            _ => BOTON * e,
+        };
+        v.push((x, x + ancho));
+        if ancho > 0.0 {
+            x += ancho + 2.0 * e;
+        }
     }
     v
+}
+
+/// **Pantalla completa, o de vuelta a pin** (como los demas visores): en el
+/// monitor de la ventana, entero; `antes` guarda donde estaba.
+pub(crate) fn alternar_pantalla_completa(hwnd: HWND, antes: &mut Option<RECT>) {
+    // SAFETY: ventana propia; estructuras locales.
+    unsafe {
+        if let Some(r) = antes.take() {
+            ESTADO.with(|s| s.borrow_mut().pantalla_completa = false);
+            let _ = SetWindowPos(hwnd, None, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        } else {
+            let mut r = RECT::default();
+            let _ = GetWindowRect(hwnd, &mut r);
+            let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let _ = GetMonitorInfoW(mon, &mut info);
+            let m = info.rcMonitor;
+            *antes = Some(r);
+            ESTADO.with(|s| s.borrow_mut().pantalla_completa = true);
+            let _ = SetWindowPos(hwnd, None, m.left, m.top, m.right - m.left, m.bottom - m.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        // Las teclas (Esc, F11) siguen siendo del plano.
+        let _ = SetForegroundWindow(hwnd);
+    }
+}
+
+/// **Lo que pide una tecla** sobre la pantalla completa, como en los demas
+/// visores: F11 alterna y Esc sale de ella (si no lo esta, Esc sigue con lo
+/// suyo: dejar la medida, cerrar...).
+pub(crate) fn tecla_de_pantalla_completa(vk: u32, pantalla_completa: bool) -> bool {
+    vk == 0x7A || (vk == 0x1B && pantalla_completa)
+}
+
+/// Un rectangulo de esquinas redondas (radio `r`), en abanico desde el centro.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn redondeado_en(c: &mut Constructor, x0: f64, y0: f64, x1: f64, y1: f64, r: f64, color: u32, capa: f64) {
+    let r = r.min((x1 - x0) / 2.0).min((y1 - y0) / 2.0).max(0.0);
+    let mut borde = Vec::with_capacity(28);
+    for (cx, cy, a0) in [(x1 - r, y0 + r, -90.0f64), (x1 - r, y1 - r, 0.0), (x0 + r, y1 - r, 90.0), (x0 + r, y0 + r, 180.0)] {
+        for k in 0..=6 {
+            let a = (a0 + k as f64 * 15.0).to_radians();
+            borde.push([cx + r * a.cos(), cy + r * a.sin()]);
+        }
+    }
+    let centro = [(x0 + x1) / 2.0, (y0 + y1) / 2.0];
+    let mut tri = Vec::with_capacity(borde.len() * 3);
+    for k in 0..borde.len() {
+        tri.extend_from_slice(&[centro, borde[k], borde[(k + 1) % borde.len()]]);
+    }
+    c.triangulos(&tri, color, Some(capa));
 }
 
 /// Lo que va encima se dibuja despues: el modelo ordena por tamano (mayor
@@ -539,211 +717,422 @@ pub(crate) fn raya_en(c: &mut Constructor, a: [f64; 2], b: [f64; 2], g: f64, col
     );
 }
 
-/// La barra: `botones` por nombre (el primero, el asa) y cuales estan
-/// activos (en azul): acotar mientras se mide, el pin si el plano esta
-/// siempre encima de las demas ventanas.
-pub(crate) fn barra(e: f64, botones: &[&str], encima: Option<usize>, claro: bool, activos: &[bool]) -> Modelo {
-    barra_con_avisos(e, botones, encima, claro, activos, &[])
+/// Como esta la barra ahora: el boton bajo el raton, el tema, si se ve a
+/// pantalla completa, cuales estan activos (en azul: acotar mientras se
+/// mide, el pin si esta siempre encima) y cuales en ambar (el «Aa» cuando
+/// el plano pide letras que no estan, como en Android), por posicion.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Aspecto<'a> {
+    pub(crate) encima: Option<usize>,
+    pub(crate) claro: bool,
+    pub(crate) pantalla_completa: bool,
+    pub(crate) activos: &'a [bool],
+    pub(crate) avisos: &'a [bool],
 }
 
-/// Como [`barra`], y los botones de `avisos` en ambar (el «Aa» cuando el
-/// plano pide letras que no estan, como en Android).
-pub(crate) fn barra_con_avisos(e: f64, botones: &[&str], encima: Option<usize>, claro: bool, activos: &[bool], avisos: &[bool]) -> Modelo {
+/// La barra: `botones` por nombre (el primero, el asa), la cabecera (nombre
+/// y tipo) y como esta ([`Aspecto`]).
+pub(crate) fn barra(textos: &mut Textos, e: f64, botones: &[&str], cab: &Cabecera, a: Aspecto) -> Modelo {
+    let Aspecto { encima, claro, pantalla_completa, activos, avisos } = a;
     let mut c = Constructor::nuevo();
     let (fondo, tinta, hover, tenue) = if claro {
         (rgba(0xF9, 0xF9, 0xFB), rgba(0x1C, 0x1C, 0x1E), 0x14000000u32, rgba(0x6E, 0x6E, 0x73))
     } else {
-        (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x24ffffffu32, rgba(0xC7, 0xC7, 0xCC))
+        (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x1Fffffffu32, rgba(0xC7, 0xC7, 0xCC))
     };
-    let (w, h) = (ancho_barra(e, botones.len()), ALTO_BARRA * e);
+    let (w, h) = (ancho_barra(e, botones, cab), ALTO_BARRA * e);
     rect_en(&mut c, 0.0, 0.0, w, h, fondo, CAPA_FONDO);
-    let b = botones_barra(e, botones.len());
+    let b = botones_barra(e, botones, cab);
     let y0 = (h - BOTON * e) / 2.0;
     let azul = rgba(0x00, 0x60, 0xDF);
     for (i, (x0, x1)) in b.iter().enumerate() {
+        if x1 <= x0 {
+            continue;
+        }
         let activo = activos.get(i).copied().unwrap_or(false);
         if activo {
-            rect_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, azul, CAPA_RAYAS * 10.0);
-        } else if encima == Some(i) && i > 0 {
-            rect_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, hover, CAPA_RAYAS * 10.0);
+            redondeado_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, 8.0 * e, azul, CAPA_RAYAS * 10.0);
+        } else if encima == Some(i) && botones[i] != "asa" {
+            redondeado_en(&mut c, *x0, y0, *x1, y0 + BOTON * e, 8.0 * e, hover, CAPA_RAYAS * 10.0);
         }
-        let (cx, cy) = ((x0 + x1) / 2.0, h / 2.0);
-        let r = 8.0 * e;
         let col = if activo {
             rgba(255, 255, 255)
         } else if avisos.get(i).copied().unwrap_or(false) {
             rgba(0xFF, 0xB0, 0x20)
+        } else if botones[i] == "asa" {
+            tenue
         } else {
             tinta
         };
-        match botones[i] {
-            "letras" => {
-                // «Aa»: una A grande y una a pequeña, de rayas.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                raya(&mut c, p(-10.0, 7.0), p(-5.0, -7.0), 1.6 * e, col);
-                raya(&mut c, p(-5.0, -7.0), p(0.0, 7.0), 1.6 * e, col);
-                raya(&mut c, p(-8.0, 2.5), p(-2.0, 2.5), 1.4 * e, col);
-                let anillo: Vec<[f64; 2]> = (0..=24)
-                    .map(|k| {
-                        let a = k as f64 / 24.0 * std::f64::consts::TAU;
-                        p(5.5 + 3.4 * a.cos(), 3.6 + 3.4 * a.sin())
-                    })
-                    .collect();
-                for v in anillo.windows(2) {
-                    raya(&mut c, v[0], v[1], 1.4 * e, col);
+        if botones[i] == "nombre" {
+            // El recuadro del tipo (su color, la extension dentro) y el
+            // nombre, como en la barra del lector.
+            let mut x = x0 + 8.0 * e;
+            if let Some(t) = &cab.tipo {
+                let lado = CUADRO * e;
+                let (bx, by) = (x, (h - lado) / 2.0);
+                redondeado_en(&mut c, bx, by, bx + lado, by + lado, 5.0 * e, rgba(t.fondo[0], t.fondo[1], t.fondo[2]), CAPA_RAYAS);
+                let letra = if t.tinta_oscura { rgba(0x3a, 0x2b, 0x00) } else { rgba(255, 255, 255) };
+                // La letra mas grande que deja la extension dentro, con un margen.
+                let mut tam = 9.5 * e;
+                let mut ancho = textos.medir_pantalla(&t.rotulo, tam);
+                let cabe = lado - 4.0 * e;
+                if ancho > cabe && ancho > 0.0 {
+                    tam *= cabe / ancho;
+                    ancho = textos.medir_pantalla(&t.rotulo, tam);
                 }
-                raya(&mut c, p(8.9, -0.5), p(8.9, 7.0), 1.4 * e, col);
+                textos.en_pantalla(&mut c, &t.rotulo, bx + (lado - ancho) / 2.0, by + lado / 2.0 + 0.36 * tam, tam, letra, bx + lado);
+                x += (CUADRO + CUADRO_AIRE) * e;
             }
-            "asa" => {
-                // Seis puntos: de aqui se arrastra la ventana.
-                for (dx, dy) in [(-3.0, -6.0), (3.0, -6.0), (-3.0, 0.0), (3.0, 0.0), (-3.0, 6.0), (3.0, 6.0)] {
-                    let (px, py) = (cx + dx * e, cy + dy * e);
-                    rect(&mut c, px - 1.2 * e, py - 1.2 * e, px + 1.2 * e, py + 1.2 * e, tenue);
-                }
+            if !cab.nombre.is_empty() {
+                let tam = TAM_NOMBRE * e;
+                textos.en_pantalla(&mut c, &cab.nombre, x, h / 2.0 + 0.36 * tam, tam, tinta, x1 - 8.0 * e);
             }
-            "tema" => {
-                let circ: Vec<[f64; 2]> = (0..=40)
-                    .map(|k| {
-                        let a = k as f64 / 40.0 * std::f64::consts::TAU;
-                        [cx + r * a.cos(), cy + r * a.sin()]
-                    })
-                    .collect();
-                for v in circ.windows(2) {
-                    raya(&mut c, v[0], v[1], 1.6 * e, col);
-                }
-                let mut tri = Vec::new();
-                for k in 0..20 {
-                    let a0 = -std::f64::consts::FRAC_PI_2 + k as f64 / 20.0 * std::f64::consts::PI;
-                    let a1 = -std::f64::consts::FRAC_PI_2 + (k + 1) as f64 / 20.0 * std::f64::consts::PI;
-                    tri.extend_from_slice(&[[cx, cy], [cx + r * a0.cos(), cy + r * a0.sin()], [cx + r * a1.cos(), cy + r * a1.sin()]]);
-                }
-                c.triangulos(&tri, col, Some(CAPA_RAYAS));
-            }
-            "fijar" => {
-                // Una chincheta inclinada: cabeza, cuerpo, ala y aguja.
-                let (ux, uy) = (std::f64::consts::FRAC_1_SQRT_2, -std::f64::consts::FRAC_1_SQRT_2);
-                let (nx, ny) = (-uy, ux);
-                // El eje va de arriba-derecha (cabeza) a abajo-izquierda (punta).
-                let q = |t: f64, s: f64| [cx - ux * t * e + nx * s * e, cy - uy * t * e + ny * s * e];
-                // Cabeza redonda, cuerpo, ala ancha y la aguja.
-                let cab: Vec<[f64; 2]> = (0..=24)
-                    .map(|k| {
-                        let a = k as f64 / 24.0 * std::f64::consts::TAU;
-                        let m = q(-8.0, 0.0);
-                        [m[0] + 4.2 * e * a.cos(), m[1] + 4.2 * e * a.sin()]
-                    })
-                    .collect();
-                let centro_cab = q(-8.0, 0.0);
-                let mut tri = Vec::new();
-                for v in cab.windows(2) {
-                    tri.extend_from_slice(&[centro_cab, v[0], v[1]]);
-                }
-                let cuerpo = [q(-8.0, -3.0), q(-8.0, 3.0), q(-1.5, 2.2), q(-1.5, -2.2)];
-                tri.extend_from_slice(&[cuerpo[0], cuerpo[1], cuerpo[2], cuerpo[0], cuerpo[2], cuerpo[3]]);
-                let ala = [q(-1.5, -5.5), q(-1.5, 5.5), q(1.0, 5.5), q(1.0, -5.5)];
-                tri.extend_from_slice(&[ala[0], ala[1], ala[2], ala[0], ala[2], ala[3]]);
-                c.triangulos(&tri, col, Some(CAPA_RAYAS));
-                raya(&mut c, q(1.0, 0.0), q(9.5, 0.0), 1.6 * e, col);
-            }
-            "corte" => {
-                // Un cubo en perspectiva con un plano que lo corta.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                for (a, b2) in [
-                    ((-7.0, -3.0), (2.0, -3.0)),
-                    ((2.0, -3.0), (2.0, 8.0)),
-                    ((2.0, 8.0), (-7.0, 8.0)),
-                    ((-7.0, 8.0), (-7.0, -3.0)),
-                    ((-7.0, -3.0), (-2.0, -8.0)),
-                    ((2.0, -3.0), (7.0, -8.0)),
-                    ((-2.0, -8.0), (7.0, -8.0)),
-                    ((7.0, -8.0), (7.0, 3.0)),
-                    ((2.0, 8.0), (7.0, 3.0)),
-                ] {
-                    raya(&mut c, p(a.0, a.1), p(b2.0, b2.1), 1.4 * e, col);
-                }
-                let corte = [p(-10.0, 3.0), p(5.0, 3.0), p(10.0, -2.0), p(-5.0, -2.0)];
-                c.triangulos(&[corte[0], corte[1], corte[2], corte[0], corte[2], corte[3]], (col & 0x00ff_ffff) | 0x7000_0000, Some(CAPA_RAYAS));
-            }
-            "anotar" => {
-                // Un lapiz en diagonal, con su punta.
-                let (ux, uy) = (std::f64::consts::FRAC_1_SQRT_2, -std::f64::consts::FRAC_1_SQRT_2);
-                let (nx, ny) = (-uy, ux);
-                let q = |t: f64, s2: f64| [cx + ux * t * e + nx * s2 * e, cy + uy * t * e + ny * s2 * e];
-                let cuerpo = [q(-4.0, -2.6), q(-4.0, 2.6), q(9.0, 2.6), q(9.0, -2.6)];
-                for k in 0..4 {
-                    raya(&mut c, cuerpo[k], cuerpo[(k + 1) % 4], 1.5 * e, col);
-                }
-                raya(&mut c, q(-4.0, -2.6), q(-9.0, 0.0), 1.5 * e, col);
-                raya(&mut c, q(-4.0, 2.6), q(-9.0, 0.0), 1.5 * e, col);
-                raya(&mut c, q(6.0, -2.6), q(6.0, 2.6), 1.3 * e, col);
-            }
-            "marcos" => {
-                // Un recuadro a trazos con las marcas de corte en las esquinas.
-                let (x0, y0, x1, y1) = (cx - 8.0 * e, cy - 6.0 * e, cx + 8.0 * e, cy + 6.0 * e);
-                for (a, b2) in [([x0, y0], [x1, y0]), ([x1, y0], [x1, y1]), ([x1, y1], [x0, y1]), ([x0, y1], [x0, y0])] {
-                    let l = (b2[0] - a[0]).hypot(b2[1] - a[1]);
-                    let n = (l / (3.0 * e)).floor().max(1.0) as usize;
-                    for k in (0..n).step_by(2) {
-                        let t0 = k as f64 / n as f64;
-                        let t1 = ((k + 1) as f64 / n as f64).min(1.0);
-                        raya(&mut c, [a[0] + (b2[0] - a[0]) * t0, a[1] + (b2[1] - a[1]) * t0], [a[0] + (b2[0] - a[0]) * t1, a[1] + (b2[1] - a[1]) * t1], 1.5 * e, col);
-                    }
-                }
-                for (px, py, dx, dy) in [(x0, y0, -1.0, -1.0), (x1, y0, 1.0, -1.0), (x1, y1, 1.0, 1.0), (x0, y1, -1.0, 1.0)] {
-                    raya(&mut c, [px + dx * 1.5 * e, py], [px + dx * 4.0 * e, py], 1.4 * e, col);
-                    raya(&mut c, [px, py + dy * 1.5 * e], [px, py + dy * 4.0 * e], 1.4 * e, col);
-                }
-            }
-            "capas" => {
-                // Una lista: tres rayas con su casilla delante.
-                for k in -1..=1 {
-                    let y = cy + k as f64 * 5.5 * e;
-                    c.triangulos(
-                        &[[cx - 9.0 * e, y - 1.8 * e], [cx - 5.4 * e, y - 1.8 * e], [cx - 5.4 * e, y + 1.8 * e], [cx - 9.0 * e, y - 1.8 * e], [cx - 5.4 * e, y + 1.8 * e], [cx - 9.0 * e, y + 1.8 * e]],
-                        col,
-                        Some(CAPA_RAYAS),
-                    );
-                    raya(&mut c, [cx - 2.5 * e, y], [cx + 9.0 * e, y], 1.6 * e, col);
-                }
-            }
-            "aristas" | "tres" => {
-                // Un cubo de rayas.
-                let p = |x: f64, y: f64| [cx + x * e, cy + y * e];
-                for (a, b2) in [
-                    ((-7.0, -3.0), (3.0, -3.0)),
-                    ((3.0, -3.0), (3.0, 8.0)),
-                    ((3.0, 8.0), (-7.0, 8.0)),
-                    ((-7.0, 8.0), (-7.0, -3.0)),
-                    ((-7.0, -3.0), (-3.0, -8.0)),
-                    ((3.0, -3.0), (7.0, -8.0)),
-                    ((-3.0, -8.0), (7.0, -8.0)),
-                    ((7.0, -8.0), (7.0, 3.0)),
-                    ((3.0, 8.0), (7.0, 3.0)),
-                ] {
-                    raya(&mut c, p(a.0, a.1), p(b2.0, b2.1), 1.6 * e, col);
-                }
-            }
-            _ => {
-                // Una regla en diagonal con sus marcas.
-                let (a, bb) = ([cx - 9.0 * e, cy + 5.0 * e], [cx + 9.0 * e, cy - 5.0 * e]);
-                let (dx, dy) = ((bb[0] - a[0]) / 1.0, (bb[1] - a[1]) / 1.0);
-                let l = dx.hypot(dy);
-                let (ux, uy) = (dx / l, dy / l);
-                let (nx, ny) = (-uy, ux);
-                let ancho = 4.5 * e;
-                let p = |t: f64, s: f64| [a[0] + ux * t + nx * s, a[1] + uy * t + ny * s];
-                for (t0, t1, s0, s1) in [(0.0, l, -ancho, -ancho), (0.0, l, ancho, ancho), (0.0, 0.0, -ancho, ancho), (l, l, -ancho, ancho)] {
-                    raya(&mut c, p(t0, s0), p(t1, s1), 1.5 * e, col);
-                }
-                for k in 1..5 {
-                    let t = l * k as f64 / 5.0;
-                    let largo = if k % 2 == 0 { ancho * 0.9 } else { ancho * 0.4 };
-                    raya(&mut c, p(t, -ancho), p(t, -ancho + largo), 1.3 * e, col);
-                }
-            }
+        } else if let Some(icono) = crate::iconos::de_boton(botones[i], claro, pantalla_completa) {
+            // El icono de Material, de 20 px en el centro del boton, como en
+            // la barra del lector.
+            let lado = ICONO * e;
+            let (ix, iy) = ((x0 + x1 - lado) / 2.0, (h - lado) / 2.0);
+            crate::iconos::pintar(&mut c, icono, ix, iy, lado, col, CAPA_RAYAS);
         }
     }
     c.terminar()
+}
+
+// ------------------------------------------------------------------ el riel
+
+/// **El riel de la derecha, como el de los lectores de PDF y Word**
+/// (`pixpin_ui::riel_marcas`): una isla redondeada arriba a la derecha con
+/// el lapiz (anotar) y el marco para imprimir, uno debajo de otro, botones
+/// de 36 px y lo pulsado en el azul de la barra. Medidas, en pixeles
+/// logicos: las del riel de los lectores.
+const RIEL_LADO: f64 = 36.0;
+const RIEL_BORDE: f64 = 16.0;
+const RIEL_RELLENO: f64 = 4.0;
+
+/// La isla del riel y la caja de cada boton (`[x0, y0, x1, y1]`, pixeles de
+/// la ventana) en una ventana de `w` de ancho. Sin botones, no hay isla.
+pub(crate) fn riel_cajas(w: u32, e: f64, n: usize) -> Option<([f64; 4], Vec<[f64; 4]>)> {
+    if n == 0 {
+        return None;
+    }
+    let (lado, relleno) = (RIEL_LADO * e, RIEL_RELLENO * e);
+    let ancho = lado + 2.0 * relleno;
+    let (x0, y0) = (w as f64 - RIEL_BORDE * e - ancho, RIEL_BORDE * e);
+    let isla = [x0, y0, x0 + ancho, y0 + n as f64 * lado + 2.0 * relleno];
+    let botones = (0..n)
+        .map(|i| {
+            let y = y0 + relleno + i as f64 * lado;
+            [x0 + relleno, y, x0 + relleno + lado, y + lado]
+        })
+        .collect();
+    Some((isla, botones))
+}
+
+/// El boton del riel bajo (x, y), o `Some(None)` si cae en la isla fuera de
+/// todo boton (no es del plano), o `None` si cae fuera.
+pub(crate) fn riel_en(w: u32, e: f64, n: usize, x: i32, y: i32) -> Option<Option<usize>> {
+    let (isla, botones) = riel_cajas(w, e, n)?;
+    let (x, y) = (x as f64, y as f64);
+    let dentro = |c: &[f64; 4]| x >= c[0] && x < c[2] && y >= c[1] && y < c[3];
+    dentro(&isla).then(|| botones.iter().position(dentro))
+}
+
+/// Pinta el riel: `botones` por nombre ("anotar", "marcos"), el que tiene
+/// el raton encima y cuales estan pulsados. Siempre en los colores de los
+/// lectores (el cristal oscuro), sea cual sea el fondo del plano.
+pub(crate) fn riel(e: f64, w: u32, botones: &[&str], encima: Option<usize>, activos: &[bool]) -> Modelo {
+    let mut c = Constructor::nuevo();
+    let Some((isla, cajas)) = riel_cajas(w, e, botones.len()) else { return c.terminar() };
+    let cristal = (rgba(0x26, 0x26, 0x2c) & 0x00ff_ffff) | 0xEB00_0000;
+    redondeado_en(&mut c, isla[0], isla[1], isla[2], isla[3], 8.0 * e, cristal, CAPA_FONDO);
+    for (i, (b, k)) in botones.iter().zip(&cajas).enumerate() {
+        let activo = activos.get(i).copied().unwrap_or(false);
+        if activo {
+            redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, rgba(0x00, 0x60, 0xDF), CAPA_RAYAS * 10.0);
+        } else if encima == Some(i) {
+            redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, 0x1Fff_ffff, CAPA_RAYAS * 10.0);
+        }
+        if let Some(icono) = crate::iconos::de_boton(b, false, false) {
+            let lado = ICONO * e;
+            let color = if activo { rgba(255, 255, 255) } else { rgba(0xe4, 0xe2, 0xe6) };
+            crate::iconos::pintar(&mut c, icono, (k[0] + k[2] - lado) / 2.0, (k[1] + k[3] - lado) / 2.0, lado, color, CAPA_RAYAS);
+        }
+    }
+    c.terminar()
+}
+
+// ------------------------------------------------- los globos de los botones
+
+/// **La tecla de cada boton** de la barra y del riel (19-oct-2026, el
+/// usuario: «cuando pase por un icono, que me aparezca su atajo»). Las
+/// mismas en el plano y en el modelo, y las de todos los visores: la I los
+/// marcos, la A el lapiz, Ctrl+M el marcador.
+pub(crate) fn tecla_de_boton(boton: &str) -> Option<&'static str> {
+    Some(match boton {
+        "marcador" => "Ctrl+M",
+        "anotar" => "A",
+        "marcos" => "I",
+        "acotar" => "D",
+        "tres" => "3",
+        "letras" | "capas" => "L",
+        "corte" => "C",
+        "tema" => "B",
+        "pantalla" => "F11",
+        "fijar" => "T",
+        "cerrar" => "Esc",
+        _ => return None,
+    })
+}
+
+/// Los nombres de los botones, para su globo (en el idioma de la app).
+#[derive(Debug, Clone)]
+pub struct NombresDeBotones {
+    pub mover: String,
+    pub marcador: String,
+    pub anotar: String,
+    pub marcos: String,
+    pub acotar: String,
+    pub tres: String,
+    pub letras: String,
+    pub corte: String,
+    pub capas: String,
+    pub tema: String,
+    pub pantalla: String,
+    pub fijar: String,
+    pub cerrar: String,
+}
+
+impl Default for NombresDeBotones {
+    fn default() -> Self {
+        NombresDeBotones {
+            mover: "Mover (arrastrar)".into(),
+            marcador: "Marcador".into(),
+            anotar: "Anotar".into(),
+            marcos: "Marcos para imprimir".into(),
+            acotar: "Acotar plano".into(),
+            tres: "Ver en 3D".into(),
+            letras: "Letras del plano".into(),
+            corte: "Caja de sección".into(),
+            capas: "Niveles y categorías".into(),
+            tema: "Fondo claro u oscuro".into(),
+            pantalla: "Pantalla completa".into(),
+            fijar: "Siempre encima".into(),
+            cerrar: "Cerrar".into(),
+        }
+    }
+}
+
+impl NombresDeBotones {
+    pub fn ingles() -> Self {
+        NombresDeBotones {
+            mover: "Move (drag)".into(),
+            marcador: "Bookmark".into(),
+            anotar: "Annotate".into(),
+            marcos: "Frames to print".into(),
+            acotar: "Measure".into(),
+            tres: "View in 3D".into(),
+            letras: "Drawing fonts".into(),
+            corte: "Section box".into(),
+            capas: "Levels and categories".into(),
+            tema: "Light or dark background".into(),
+            pantalla: "Full screen".into(),
+            fijar: "Always on top".into(),
+            cerrar: "Close".into(),
+        }
+    }
+
+    /// **Lo que dice el globo de `boton`**: su nombre y su tecla, «Anotar
+    /// (A)», como en los lectores. Sin nombre (el del archivo), sin globo.
+    pub(crate) fn globo(&self, boton: &str) -> Option<String> {
+        let nombre = match boton {
+            "asa" => return Some(self.mover.clone()),
+            "marcador" => &self.marcador,
+            "anotar" => &self.anotar,
+            "marcos" => &self.marcos,
+            "acotar" => &self.acotar,
+            "tres" => &self.tres,
+            "letras" => &self.letras,
+            "corte" => &self.corte,
+            "capas" => &self.capas,
+            "tema" => &self.tema,
+            "pantalla" => &self.pantalla,
+            "fijar" => &self.fijar,
+            "cerrar" => &self.cerrar,
+            _ => return None,
+        };
+        Some(match tecla_de_boton(boton) {
+            Some(t) => format!("{nombre} ({t})"),
+            None => nombre.clone(),
+        })
+    }
+}
+
+/// Lo que mide de alto una linea de 12 px del globo.
+const ALTO_LINEA_GLOBO: f64 = 16.0;
+
+/// **Donde va el globo de un boton del riel**: una pastilla a la izquierda
+/// de `junto_a` (`[x0, y0, x1, y1]`, pixeles de la ventana), a 8 px y
+/// centrada a su altura, con `ancho_texto` dentro; como
+/// `lector::globo_a_la_izquierda` de los lectores.
+pub(crate) fn caja_globo_izquierda(junto_a: [f64; 4], ancho_texto: f64, e: f64) -> [f64; 4] {
+    let (px, py) = (8.0 * e, 5.0 * e);
+    let (ancho, alto) = (ancho_texto + 2.0 * px, ALTO_LINEA_GLOBO * e + 2.0 * py);
+    let x0 = (junto_a[0] - 8.0 * e - ancho).max(0.0);
+    let y0 = (junto_a[1] + junto_a[3] - alto) / 2.0;
+    [x0, y0, x0 + ancho, y0 + alto]
+}
+
+/// Pinta el globo de un boton del riel ([`caja_globo_izquierda`]): la
+/// pastilla oscura (`#1b1b1f`) de radio 6 y el texto blanco de 12 px.
+pub(crate) fn globo_izquierda(textos: &mut Textos, junto_a: [f64; 4], texto: &str, e: f64) -> Modelo {
+    let mut c = Constructor::nuevo();
+    let tam = 12.0 * e;
+    let ancho = textos.medir_pantalla(texto, tam);
+    let k = caja_globo_izquierda(junto_a, ancho, e);
+    redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, (rgba(0x1b, 0x1b, 0x1f) & 0x00ff_ffff) | 0xF500_0000, CAPA_FONDO);
+    let base = (k[1] + k[3]) / 2.0 + 0.36 * tam;
+    textos.en_pantalla(&mut c, texto, k[0] + 8.0 * e, base, tam, rgba(255, 255, 255), k[2] + 40.0 * e);
+    c.terminar()
+}
+
+/// El globo de los botones de la barra, que es su propia ventana: lo
+/// ensena la app (`globo_pista` de PixPin) con el texto y la caja del
+/// boton en pixeles de la pantalla `[x, y, ancho, alto]` y la escala; con
+/// el texto vacio, lo esconde.
+pub type Globo = Box<dyn Fn(&str, [i32; 4], f64)>;
+
+/// **El globo del boton `i` de la barra**: lo pide a la app (o lo esconde si
+/// no hay boton o la barra no se ve). `hbarra`, la ventana de la barra;
+/// `cajas`, lo de [`botones_barra`].
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn globo_de_la_barra(globo: Option<&Globo>, hbarra: HWND, visible: bool, boton: Option<usize>, botones: &[&str], cajas: &[(f64, f64)], nombres: &NombresDeBotones, e: f64) {
+    let Some(f) = globo else { return };
+    let texto = boton.filter(|_| visible).and_then(|i| Some((i, nombres.globo(botones.get(i)?)?)));
+    let Some((i, texto)) = texto else {
+        f("", [0; 4], e);
+        return;
+    };
+    let mut r = RECT::default();
+    // SAFETY: ventana propia; estructura local.
+    let _ = unsafe { GetWindowRect(hbarra, &mut r) };
+    let (x0, x1) = cajas[i];
+    f(&texto, [r.left + x0.round() as i32, r.top, (x1 - x0).round().max(1.0) as i32, r.bottom - r.top], e);
+}
+
+// ------------------------------------------------- las fichas de los marcos
+
+/// Lo que mide una ficha de los marcos y el aire entre dos.
+const FICHA: f64 = 28.0;
+const FICHA_AIRE: f64 = 6.0;
+
+/// **Las fichas de los marcos** (19-oct-2026, el usuario: «los numeritos de
+/// abajo, que al hacer clic me lleven directo a los marcos»): con el modo
+/// de los marcos puesto, una por marco abajo a la izquierda, en su orden,
+/// como en los documentos (`marcos_doc::Marcos::fichas` de PixPin): 28 px,
+/// 6 de aire, a 12 del borde izquierdo y centradas a ~30 del de abajo. Las
+/// mismas en el plano y en el modelo 3D. `[x0, y0, x1, y1]` de la ventana.
+pub(crate) fn fichas_de_marcos(n: usize, h: u32, e: f64) -> Vec<[f64; 4]> {
+    let lado = FICHA * e;
+    let y = h as f64 - 34.0 * e - lado / 2.0 + 4.0 * e;
+    (0..n)
+        .map(|i| {
+            let x = 12.0 * e + i as f64 * (lado + FICHA_AIRE * e);
+            [x, y, x + lado, y + lado]
+        })
+        .collect()
+}
+
+/// La ficha bajo (x, y): el marco (desde cero) al que ir.
+pub(crate) fn ficha_en(n: usize, h: u32, e: f64, x: i32, y: i32) -> Option<usize> {
+    let (x, y) = (x as f64, y as f64);
+    fichas_de_marcos(n, h, e).iter().position(|c| x >= c[0] && x < c[2] && y >= c[1] && y < c[3])
+}
+
+/// Pinta las fichas (azul `#0078D4`, esquinas de 6 y el numero blanco de
+/// 13 px) y, a su derecha, la pista en su pastilla oscura, como los
+/// documentos.
+pub(crate) fn pintar_fichas_y_pista(c: &mut Constructor, textos: &mut Textos, n: usize, h: u32, e: f64, pista: &str) {
+    let azul = rgba(0x00, 0x78, 0xD4);
+    let blanco = rgba(255, 255, 255);
+    let fichas = fichas_de_marcos(n, h, e);
+    let tam = 13.0 * e;
+    for (i, k) in fichas.iter().enumerate() {
+        redondeado_en(c, k[0], k[1], k[2], k[3], 6.0 * e, azul, CAPA_ARRIBA * 0.5);
+        let t = (i + 1).to_string();
+        let ancho = textos.medir_pantalla(&t, tam);
+        textos.en_pantalla(c, &t, (k[0] + k[2] - ancho) / 2.0, (k[1] + k[3]) / 2.0 + 0.36 * tam, tam, blanco, k[2] + 20.0 * e);
+    }
+    if pista.is_empty() {
+        return;
+    }
+    let x0 = fichas.last().map_or(12.0 * e, |k| k[2] + 10.0 * e);
+    let tam = 12.0 * e;
+    let ancho = textos.medir_pantalla(pista, tam);
+    let alto = ALTO_LINEA_GLOBO * e + 12.0 * e;
+    let y0 = h as f64 - 30.0 * e - alto / 2.0;
+    let cristal = (rgba(0x14, 0x14, 0x17) & 0x00ff_ffff) | 0xE600_0000;
+    redondeado_en(c, x0, y0, x0 + ancho + 24.0 * e, y0 + alto, alto / 2.0, cristal, CAPA_ARRIBA * 0.5);
+    textos.en_pantalla(c, pista, x0 + 12.0 * e, y0 + alto / 2.0 + 0.36 * tam, tam, blanco, x0 + ancho + 60.0 * e);
+}
+
+/// **La camara que llena la ventana con el marco** `m` (`[x0, y0, x1, y1]`
+/// del plano), centrada: a la que se va al pulsar su ficha.
+pub(crate) fn camara_de_marco(m: [f64; 4], w: u32, h: u32) -> Camara {
+    let (ancho, alto) = ((m[2] - m[0]).abs().max(1e-9), (m[3] - m[1]).abs().max(1e-9));
+    Camara { centro: [(m[0] + m[2]) / 2.0, (m[1] + m[3]) / 2.0], px: (ancho / w.max(1) as f64).max(alto / h.max(1) as f64) }
+}
+
+// ------------------------------------------------------ las teclas de todos
+
+/// **Las teclas que son las mismas en todos los visores** (19-oct-2026, el
+/// usuario: «la I en el PDF funciona y en los demas no; todo unificado»).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unificada {
+    /// I: entrar o salir del modo de los marcos.
+    Marcos,
+    /// Supr, en el modo: quitar el ultimo marco.
+    QuitarUltimoMarco,
+    /// Ctrl+P: imprimir los marcos.
+    Imprimir,
+    /// M o Ctrl+M: un marcador en la vista de ahora.
+    Marcador,
+    /// A: el lapiz (anotar).
+    Anotar,
+}
+
+/// Que pide la tecla `vk` de las de todos (ver [`Unificada`]).
+pub(crate) fn tecla_unificada(vk: u32, ctrl: bool, marcando: bool) -> Option<Unificada> {
+    match (vk, ctrl) {
+        (0x49, false) => Some(Unificada::Marcos),
+        (0x2E, false) if marcando => Some(Unificada::QuitarUltimoMarco),
+        (0x50, true) => Some(Unificada::Imprimir),
+        (0x4D, _) => Some(Unificada::Marcador),
+        (0x41, false) => Some(Unificada::Anotar),
+        _ => None,
+    }
+}
+
+/// Lo que hace Esc en el plano: primero deja lo que se este haciendo (la
+/// medida a medias, acotar, los marcos) y solo sin nada de eso cierra.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Esc {
+    DejarLaMedida,
+    SalirDeAcotar,
+    SalirDeLosMarcos,
+    Cerrar,
+}
+
+pub(crate) fn que_hace_esc(puntos_de_medida: bool, acotando: bool, marcando: bool) -> Esc {
+    if puntos_de_medida {
+        Esc::DejarLaMedida
+    } else if acotando {
+        Esc::SalirDeAcotar
+    } else if marcando {
+        Esc::SalirDeLosMarcos
+    } else {
+        Esc::Cerrar
+    }
 }
 
 /// Los marcos para imprimir, para pintarlos.
@@ -861,11 +1250,17 @@ fn encima_del_plano(textos: &mut Textos, a: &Acotar, marcos: &Marcos, cam: &Cama
                 textos.en_pantalla(&mut c, "90°", q[0] + s + 4.0 * e, q[1] - s - 2.0 * e, tam, verde, q[0] + 200.0 * e);
             }
         }
-        // La pista, abajo a la izquierda.
-        let ancho = textos.medir_pantalla(pista, tam);
-        let (x0, y0) = (12.0 * e, h as f64 - 34.0 * e);
-        rect(&mut c, x0, y0, x0 + ancho + 20.0 * e, y0 + 24.0 * e, pildora);
-        textos.en_pantalla(&mut c, pista, x0 + 10.0 * e, y0 + 16.5 * e, tam, letra, x0 + ancho + 40.0 * e);
+        if marcos.marcando && !a.activo {
+            // Las fichas de los marcos (pulsar una va a el) y, a su derecha,
+            // la pista: como en el modelo 3D y en los documentos.
+            pintar_fichas_y_pista(&mut c, textos, marcos.hechos.len(), h, e, pista);
+        } else {
+            // La pista, abajo a la izquierda.
+            let ancho = textos.medir_pantalla(pista, tam);
+            let (x0, y0) = (12.0 * e, h as f64 - 34.0 * e);
+            rect(&mut c, x0, y0, x0 + ancho + 20.0 * e, y0 + 24.0 * e, pildora);
+            textos.en_pantalla(&mut c, pista, x0 + 10.0 * e, y0 + 16.5 * e, tam, letra, x0 + ancho + 40.0 * e);
+        }
     }
     c.terminar()
 }
@@ -931,6 +1326,7 @@ const M_BORRAR_MARCOS: u32 = 10;
 const M_ANOTAR: u32 = 11;
 const M_LETRAS: u32 = 12;
 const M_EXPORTAR: u32 = 13;
+const M_MARCADOR: u32 = 14;
 // Las del menu del boton «Aa».
 const M_ANADIR_LETRAS: u32 = 40;
 const M_QUITAR_LETRAS: u32 = 41;
@@ -1015,6 +1411,7 @@ fn menu(hwnd: HWND, t: &TextosUi, acotando: bool, hay_cotas: bool, fijada: bool,
         poner(M_TRES, &t.tres, false, false);
         poner(M_LETRAS, &t.letras, false, false);
         let _ = AppendMenuW(m, MF_SEPARATOR, 0, PCWSTR::null());
+        poner(M_MARCADOR, &t.marcador, false, false);
         poner(M_ANOTAR, &t.anotar, false, false);
         poner(M_MARCOS, &t.marcos, marcando, false);
         poner(M_IMPRIMIR, &t.imprimir, false, false);
@@ -1054,6 +1451,40 @@ pub struct Acciones {
     /// coordenadas del dibujo (el centro y lo que cabe a lo ancho). Lo pide
     /// el asistente al llevar a un texto encontrado (`abrir` con `zona`).
     pub vista_inicial: Option<[f64; 3]>,
+    /// El tipo de archivo para el recuadro de la barra, junto al nombre.
+    pub tipo: Option<TipoDeArchivo>,
+    /// Donde se guardan los marcadores del plano ([`crate::marcadores`]);
+    /// sin fichero, el boton del marcador sigue y duran lo que la ventana.
+    pub marcadores: Option<std::path::PathBuf>,
+    /// El globo de los botones de la barra (ver [`Globo`]); sin el, no sale.
+    pub globo: Option<Globo>,
+}
+
+/// **El marcador de la vista de ahora** en el plano: el centro (absoluto) y
+/// lo que se ve de ancho y de alto.
+fn marcador_de(camara: &Camara, origen: [f64; 2], w: u32, h: u32) -> crate::marcadores::Marcador2d {
+    crate::marcadores::Marcador2d {
+        id: crate::marcadores::nuevo_id(),
+        nombre: String::new(),
+        x: camara.centro[0] + origen[0],
+        y: camara.centro[1] + origen[1],
+        ancho: w.max(1) as f64 * camara.px,
+        alto: h.max(1) as f64 * camara.px,
+    }
+}
+
+/// La camara que vuelve a un marcador en una ventana de `w` x `h`.
+fn camara_de_marcador(m: &crate::marcadores::Marcador2d, origen: [f64; 2], w: u32, h: u32) -> Camara {
+    Camara { centro: [m.x - origen[0], m.y - origen[1]], px: m.px_en(w, h) }
+}
+
+/// Cual de los marcadores es la vista de ahora (el mismo centro con medio
+/// pixel de margen y el mismo zoom): su punto va en azul.
+fn marcador_actual(lista: &[crate::marcadores::Marcador2d], camara: &Camara, origen: [f64; 2], w: u32, h: u32) -> Option<usize> {
+    lista.iter().position(|m| {
+        let c = camara_de_marcador(m, origen, w, h);
+        (c.px / camara.px - 1.0).abs() < 1e-3 && (c.centro[0] - camara.centro[0]).abs() <= camara.px * 0.5 && (c.centro[1] - camara.centro[1]).abs() <= camara.px * 0.5
+    })
 }
 
 /// La firma de las cotas y los marcos (para saber si cambiaron y guardarlos
@@ -1098,7 +1529,19 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     let abrir_3d = &acciones.abrir_3d;
     // El motor del lienzo para anotar: nace cuando llega el plano.
     let mut hacer_anotador = acciones.anotador.take();
+    // El riel de la derecha: el lapiz (si se puede anotar) y el marco para
+    // imprimir, y el que tiene el raton encima.
+    // Arriba del todo, el marcador (como en los lectores de PDF).
+    let botones_riel: Vec<&str> = if hacer_anotador.is_some() { vec!["marcador", "anotar", "marcos"] } else { vec!["marcador", "marcos"] };
+    let mut riel_encima: Option<usize> = None;
+    // **Los marcadores** (19-oct-2026): la vista (centro y zoom) con su
+    // numero; sus puntos van bajo el riel. El que tiene el raton encima.
+    let mut marcadores = crate::marcadores::Guardados::de(acciones.marcadores.as_deref());
+    let mut punto_encima: Option<usize> = None;
     let vista_inicial = acciones.vista_inicial.take();
+    // El globo de la barra y el boton del que se ensena ahora.
+    let globo_barra = acciones.globo.take();
+    let mut globo_puesto: Option<usize> = None;
     let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
     let mut anotando = false;
     let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PixPin")).map_err(|e| e.to_string())?;
@@ -1113,11 +1556,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     // SAFETY: ventana propia.
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let e = dpi as f64 / 96.0;
-    let (bw, bh) = (ancho_barra(e, BOTONES.len()).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
+    let mut textos = Textos::nuevo();
+    let cabecera = Cabecera::nueva(&mut textos, titulo, acciones.tipo.take(), e);
+    let (bw, bh) = (ancho_barra(e, &BOTONES, &cabecera).ceil() as i32, (ALTO_BARRA * e).ceil() as i32);
     let hbarra = crear_barra(hwnd, bw, bh).map_err(|e| e.to_string())?;
     let mut gpu_barra = Gpu::nueva(hbarra, bw as u32, bh as u32).map_err(|e| e.to_string())?;
     ESTADO.with(|s| s.borrow_mut().barra = Some((hbarra, (8.0 * e) as i32)));
-    let mut textos = Textos::nuevo();
+    // A pantalla completa: donde estaba la ventana antes.
+    let mut antes_de_pantalla_completa: Option<RECT> = None;
     let mut plano: Option<(Modelo, PlanoGpu)> = None;
     let mut enganches: Option<(Enganches, crate::regla::Rayas)> = None;
     let mut mensaje = textos_ui.abriendo.clone();
@@ -1178,6 +1624,12 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                 let _ = TranslateMessage(&m);
                 DispatchMessageW(&m);
             }
+        }
+        // Los marcadores que trajo la sincronizacion (o la ventana del
+        // modelo en 3D, que comparte fichero).
+        if marcadores.mirar_el_disco() {
+            punto_encima = None;
+            sucio = true;
         }
         // El plano, cuando llega.
         if (plano.is_none() && mensaje == textos_ui.abriendo) || releyendo {
@@ -1265,9 +1717,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             }
         }
         let eventos: Vec<(De, Ev)> = ESTADO.with(|s| s.borrow_mut().eventos.drain(..).collect());
-        let b_barra = botones_barra(e, BOTONES.len());
+        let b_barra = botones_barra(e, &BOTONES, &cabecera);
         let boton_en = |x: i32| -> Option<usize> { b_barra.iter().position(|(a, b)| (x as f64) >= *a && (x as f64) < *b) };
         let mut cambiar_tema = false;
+        let mut cambiar_pantalla = false;
         let mut cambiar_acotar = false;
         let mut cambiar_encima = false;
         let mut borrar_cotas = false;
@@ -1278,7 +1731,83 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         let mut imprimir = false;
         let mut exportar = false;
         let mut ver_letras = false;
+        // Poner un marcador aqui, ir a uno o quitarlo.
+        let mut poner_marcador = false;
+        let mut ir_a_marcador: Option<usize> = None;
+        let mut quitar_marcador: Option<usize> = None;
+        // Ir a un marco (su ficha, abajo a la izquierda).
+        let mut ir_a_marco: Option<usize> = None;
+        let (n_marcos, marcando_ahora) = (marcos.len(), marcando);
+        let ficha_bajo = move |x: i32, y: i32| if marcando_ahora { ficha_en(n_marcos, h, e, x, y) } else { None };
+        let isla_riel = riel_cajas(w, e, botones_riel.len()).map(|(i, _)| i);
+        let n_marcadores = marcadores.c.plano.len();
+        let alto_ahora = h;
+        let punto_bajo = move |x: i32, y: i32| isla_riel.and_then(|i| crate::marcadores::punto_en(i, n_marcadores, alto_ahora, e, x, y));
         for (de, ev) in eventos {
+            // **El riel de la derecha** (marcador, lapiz y marco) y los puntos
+            // de los marcadores: sus clics no son del plano ni del motor del
+            // lienzo.
+            if de == De::Plano && plano.is_some() {
+                match ev {
+                    Ev::Mover(x, y) => {
+                        let ahora = riel_en(w, e, botones_riel.len(), x, y).flatten();
+                        if ahora != riel_encima {
+                            riel_encima = ahora;
+                            sucio = true;
+                        }
+                        let punto = punto_bajo(x, y);
+                        if punto != punto_encima {
+                            punto_encima = punto;
+                            sucio = true;
+                        }
+                    }
+                    Ev::Salir if riel_encima.is_some() || punto_encima.is_some() => {
+                        riel_encima = None;
+                        punto_encima = None;
+                        sucio = true;
+                    }
+                    Ev::Bajar(x, y, _) | Ev::Doble(x, y) if arrastre.is_none() && nuevo_marco.is_none() && (punto_bajo(x, y).is_some() || ficha_bajo(x, y).is_some()) => {
+                        // Clic: ir alli; clic derecho: quitarlo. La ficha de
+                        // un marco: ir a el.
+                        if let Some(i) = ficha_bajo(x, y) {
+                            ir_a_marco = Some(i);
+                        } else if matches!(ev, Ev::Bajar(_, _, 2)) {
+                            quitar_marcador = punto_bajo(x, y);
+                        } else {
+                            ir_a_marcador = punto_bajo(x, y);
+                        }
+                        // SAFETY: suelta la captura que puso el boton.
+                        let _ = unsafe { ReleaseCapture() };
+                        continue;
+                    }
+                    Ev::Subir(x, y, _) if arrastre.is_none() && nuevo_marco.is_none() && (punto_bajo(x, y).is_some() || ficha_bajo(x, y).is_some()) => continue,
+                    Ev::Bajar(x, y, _) | Ev::Doble(x, y) if arrastre.is_none() => {
+                        if let Some(b) = riel_en(w, e, botones_riel.len(), x, y) {
+                            if matches!(ev, Ev::Bajar(_, _, 0)) {
+                                match b.map(|i| botones_riel[i]) {
+                                    Some("marcador") => poner_marcador = true,
+                                    Some("anotar") => cambiar_anotar = true,
+                                    Some("marcos") => cambiar_marcos = true,
+                                    _ => {}
+                                }
+                            }
+                            // SAFETY: suelta la captura que puso el boton.
+                            let _ = unsafe { ReleaseCapture() };
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // F11 y Esc a pantalla completa, como en los demas visores, antes
+            // que nada (Esc, salvo si el motor lo quiere para lo que escribe).
+            if let (De::Plano, Ev::Tecla(vk)) = (de, ev)
+                && tecla_de_pantalla_completa(vk, antes_de_pantalla_completa.is_some())
+                && !(vk == 0x1B && anotando && anotador.as_ref().is_some_and(|a| a.quiere_escape()))
+            {
+                cambiar_pantalla = true;
+                continue;
+            }
             // **Anotando, el raton y el teclado son del motor del lienzo**
             // (la rueda y el boton central siguen moviendo el plano).
             if anotando
@@ -1321,6 +1850,23 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     continue;
                 }
             }
+            // Las teclas de todos los visores (I, Supr, Ctrl+P, M, A).
+            // SAFETY: lee el estado de la tecla Ctrl.
+            if let (De::Plano, Ev::Tecla(vk)) = (de, ev)
+                && let Some(u) = tecla_unificada(vk, unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0, marcando)
+            {
+                match u {
+                    Unificada::Marcos => cambiar_marcos = true,
+                    Unificada::QuitarUltimoMarco => {
+                        marcos.pop();
+                        sucio = true;
+                    }
+                    Unificada::Imprimir => imprimir = true,
+                    Unificada::Marcador => poner_marcador = true,
+                    Unificada::Anotar => cambiar_anotar = true,
+                }
+                continue;
+            }
             match (de, ev) {
                 (_, Ev::Cerrar) => break 'bucle,
                 (De::Barra, Ev::Mover(x, _)) => {
@@ -1336,22 +1882,23 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     boton_encima = None;
                     barra_sucia = true;
                 }
-                (De::Barra, Ev::Bajar(x, _, 0)) => match boton_en(x) {
-                    Some(0) => {
-                        // El asa: Windows arrastra la ventana del plano.
+                (De::Barra, Ev::Bajar(x, _, 0)) => match boton_en(x).map(|i| BOTONES[i]) {
+                    // El asa (o el nombre): Windows arrastra la ventana del
+                    // plano; a pantalla completa no se mueve.
+                    Some("asa" | "nombre") if antes_de_pantalla_completa.is_none() => {
                         // SAFETY: ventanas propias.
                         unsafe {
                             let _ = ReleaseCapture();
                             SendMessageW(hwnd, WM_NCLBUTTONDOWN, Some(WPARAM(HTCAPTION as usize)), Some(LPARAM(0)));
                         }
                     }
-                    Some(1) => cambiar_tema = true,
-                    Some(2) => cambiar_acotar = true,
-                    Some(3) => cambiar_marcos = true,
-                    Some(4) => cambiar_anotar = true,
-                    Some(5) => ver_en_3d = true,
-                    Some(6) => ver_letras = true,
-                    Some(7) => cambiar_encima = true,
+                    Some("tema") => cambiar_tema = true,
+                    Some("acotar") => cambiar_acotar = true,
+                    Some("tres") => ver_en_3d = true,
+                    Some("letras") => ver_letras = true,
+                    Some("pantalla") => cambiar_pantalla = true,
+                    Some("fijar") => cambiar_encima = true,
+                    Some("cerrar") => break 'bucle,
                     _ => {}
                 },
                 (De::Barra, _) => {}
@@ -1457,6 +2004,14 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                         encuadrar = true;
                     }
                 }
+                // Dos dedos en el panel tactil: mover el plano con los dedos.
+                (De::Plano, Ev::Desplazar(_, _, dx, dy)) => {
+                    for c in [&mut camara, &mut destino] {
+                        c.centro[0] -= dx * c.px;
+                        c.centro[1] += dy * c.px;
+                    }
+                    sucio = true;
+                }
                 (De::Plano, Ev::Rueda(x, y, d)) => {
                     let factor = 1.25f64.powf(-(d as f64) / 120.0);
                     destino = destino.zoom(factor, x as f64, y as f64, w, h);
@@ -1470,6 +2025,7 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                     M_TRES => ver_en_3d = true,
                     M_MARCOS => cambiar_marcos = true,
                     M_ANOTAR => cambiar_anotar = true,
+                    M_MARCADOR => poner_marcador = true,
                     M_LETRAS => ver_letras = true,
                     M_IMPRIMIR => imprimir = true,
                     M_EXPORTAR => exportar = true,
@@ -1482,16 +2038,19 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                 },
                 (De::Plano, Ev::TeclaSoltada(_) | Ev::Caracter(_)) => {}
                 (De::Plano, Ev::Tecla(vk)) => match vk {
-                    0x1B => {
-                        if !acotar.puntos.is_empty() {
+                    // Esc deja primero lo que se hace; solo sin nada, cierra.
+                    0x1B => match que_hace_esc(!acotar.puntos.is_empty(), acotar.activo, marcando) {
+                        Esc::DejarLaMedida => {
                             acotar.puntos.clear();
                             sucio = true;
-                        } else if acotar.activo {
-                            cambiar_acotar = true;
-                        } else {
-                            break 'bucle;
                         }
-                    }
+                        Esc::SalirDeAcotar => cambiar_acotar = true,
+                        Esc::SalirDeLosMarcos => cambiar_marcos = true,
+                        Esc::Cerrar => break 'bucle,
+                    },
+                    // Ctrl+1 a Ctrl+9: ir al marcador con ese numero.
+                    // SAFETY: lee el estado de la tecla Ctrl.
+                    0x31..=0x39 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => ir_a_marcador = Some((vk - 0x31) as usize),
                     0x0D => {
                         if acotar.puntos.len() >= 2 {
                             acotar.hechas.push(std::mem::take(&mut acotar.puntos));
@@ -1502,24 +2061,16 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
                         acotar.puntos.pop();
                         sucio = true;
                     }
-                    // Supr: marcando, el ultimo marco; si no, las cotas.
-                    0x2E if marcando => {
-                        marcos.pop();
-                        sucio = true;
-                    }
+                    // Supr, sin marcar (marcando quita el ultimo marco): las cotas.
                     0x2E => borrar_cotas = true,
-                    // Ctrl+P imprimir, como en cualquier programa; I, los marcos.
-                    // SAFETY: lee el estado de la tecla Ctrl.
-                    0x50 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => imprimir = true,
                     // Ctrl+E: exportar.
                     // SAFETY: lee el estado de la tecla Ctrl.
                     0x45 if unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0 => exportar = true,
-                    0x49 => cambiar_marcos = true,
-                    0x41 => cambiar_anotar = true,
                     0x4C => ver_letras = true,
                     0x46 | 0x24 => encuadrar = true,
                     0x42 => cambiar_tema = true,
-                    0x4D => cambiar_acotar = true,
+                    // D de distancia: acotar (la M es el marcador, como en todos).
+                    0x44 => cambiar_acotar = true,
                     0x54 => cambiar_encima = true,
                     0x33 | 0x63 => ver_en_3d = true,
                     0xBB | 0x6B => destino = destino.zoom(1.0 / 1.4, w as f64 / 2.0, h as f64 / 2.0, w, h),
@@ -1534,6 +2085,29 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         }
         if encuadrar && let Some((m, _)) = &plano {
             destino = Camara::encuadrar(m.caja_util(), w, h);
+        }
+        // Los marcadores: el de la vista de ahora (la que se ve al pararse),
+        // ir a uno (la camara va alli suave, como al encuadrar) o quitarlo.
+        if let Some((m, _)) = &plano {
+            if poner_marcador && marcador_actual(&marcadores.c.plano, &destino, m.origen, w, h).is_none() {
+                marcadores.c.plano.push(marcador_de(&destino, m.origen, w, h));
+                marcadores.guardar();
+                sucio = true;
+            }
+            if let Some(mk) = ir_a_marcador.and_then(|i| marcadores.c.plano.get(i)) {
+                destino = camara_de_marcador(mk, m.origen, w, h);
+            }
+            // La ficha de un marco: la camara va suave hasta llenar la
+            // ventana con el.
+            if let Some(mc) = ir_a_marco.and_then(|i| marcos.get(i)) {
+                destino = camara_de_marco(*mc, w, h);
+            }
+            if let Some(i) = quitar_marcador.filter(|i| *i < marcadores.c.plano.len()) {
+                marcadores.c.plano.remove(i);
+                marcadores.guardar();
+                punto_encima = None;
+                sucio = true;
+            }
         }
         if cambiar_tema {
             claro = !claro;
@@ -1629,6 +2203,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
         if cambiar_encima {
             fijada = !fijada;
             poner_encima(hwnd, fijada);
+            barra_sucia = true;
+        }
+        if cambiar_pantalla {
+            alternar_pantalla_completa(hwnd, &mut antes_de_pantalla_completa);
             barra_sucia = true;
         }
         if ver_en_3d && plano.is_some()
@@ -1752,14 +2330,27 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let avisos = [false, false, false, false, false, false, !faltan_letras.is_empty(), false];
-            let m = barra_con_avisos(e, &BOTONES, boton_encima, claro, &[false, false, acotar.activo, marcando, anotando, false, false, fijada], &avisos);
+            let activos = BOTONES.map(|b| match b {
+                "acotar" => acotar.activo,
+                "fijar" => fijada,
+                _ => false,
+            });
+            let avisos = BOTONES.map(|b| b == "letras" && !faltan_letras.is_empty());
+            let aspecto = Aspecto { encima: boton_encima, claro, pantalla_completa: antes_de_pantalla_completa.is_some(), activos: &activos, avisos: &avisos };
+            let m = barra(&mut textos, e, &BOTONES, &cabecera, aspecto);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro { [0.976, 0.976, 0.984, 1.0] } else { [0.118, 0.118, 0.125, 1.0] };
                 let _ = gpu_barra.dibujar(fondo, &[(&p, vista_pantalla(&m, gw, gh))]);
             }
             barra_sucia = false;
+        }
+        // El globo del boton de la barra bajo el raton (la barra es su
+        // propia ventana: el globo va en otra, debajo).
+        let quiere_globo = boton_encima.filter(|_| barra_visible && dentro_barra);
+        if quiere_globo != globo_puesto {
+            globo_de_la_barra(globo_barra.as_ref(), hbarra, barra_visible, quiere_globo, &BOTONES, &b_barra, &textos_ui.botones, e);
+            globo_puesto = quiere_globo;
         }
         if aviso_ui.is_none() && !mensaje.is_empty() {
             let m = aviso(&mut textos, &mensaje, w, h, e, claro);
@@ -1806,6 +2397,42 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             if let Some((m, p)) = &civil {
                 capas.push((p, vista_pantalla(m, w, h)));
             }
+            // El riel de la derecha, encima del plano.
+            let riel_m = plano.is_some().then(|| {
+                let activos: Vec<bool> = botones_riel.iter().map(|b| (*b == "anotar" && anotando) || (*b == "marcos" && marcando)).collect();
+                let m = riel(e, w, &botones_riel, riel_encima, &activos);
+                gpu.subir(&m).ok().map(|p| (m, p))
+            }).flatten();
+            if let Some((m, p)) = &riel_m {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
+            // El globo del boton del riel bajo el raton: su nombre y su
+            // tecla, a su izquierda.
+            let globo_m = match (plano.is_some(), riel_encima, riel_cajas(w, e, botones_riel.len())) {
+                (true, Some(i), Some((_, cajas))) => cajas.get(i).zip(textos_ui.botones.globo(botones_riel[i])).and_then(|(k, t)| {
+                    let m = globo_izquierda(&mut textos, *k, &t, e);
+                    gpu.subir(&m).ok().map(|p| (m, p))
+                }),
+                _ => None,
+            };
+            if let Some((m, p)) = &globo_m {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
+            // Los puntos de los marcadores, bajo el riel: el de la vista de
+            // ahora en azul.
+            let puntos_m = match (&plano, riel_cajas(w, e, botones_riel.len())) {
+                (Some((pm, _)), Some((isla, _))) if !marcadores.c.plano.is_empty() => {
+                    let mut c = Constructor::nuevo();
+                    let actual = marcador_actual(&marcadores.c.plano, &camara, pm.origen, w, h);
+                    crate::marcadores::pintar_puntos(&mut c, &mut textos, isla, marcadores.c.plano.len(), h, e, punto_encima, actual);
+                    let m = c.terminar();
+                    gpu.subir(&m).ok().map(|p| (m, p))
+                }
+                _ => None,
+            };
+            if let Some((m, p)) = &puntos_m {
+                capas.push((p, vista_pantalla(m, w, h)));
+            }
             let dibujado = match (anotador.as_mut(), &plano) {
                 (Some(a), Some((m, _))) => {
                     let v = vista_para_el_motor(hwnd, &camara, w, h, e, m, claro);
@@ -1823,6 +2450,9 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
     }
     if anotando && let Some(a) = anotador.as_mut() {
         a.terminar();
+    }
+    if let Some(f) = &globo_barra {
+        f("", [0; 4], e);
     }
     // SAFETY: ventanas propias.
     unsafe {
@@ -1863,6 +2493,10 @@ pub struct TextosUi {
     pub exportar: String,
     pub borrar_marcos: String,
     pub pista_marcos: String,
+    /// Poner un marcador en la vista de ahora (el menu, con su tecla).
+    pub marcador: String,
+    /// Los nombres de los botones de la barra y del riel, para su globo.
+    pub botones: NombresDeBotones,
     /// Con `{n}`: cuantos objetos de Civil 3D vinieron sin su dibujo.
     pub sin_dibujo_civil: String,
     /// El boton «Aa» (como «Letras del plano» de Android).
@@ -1888,7 +2522,7 @@ impl Default for TextosUi {
             pista_acotar: "Clic en los puntos para medir · Doble clic o Intro: terminar · Esc: salir".into(),
             todo: "Ver todo el plano\tF".into(),
             tema: "Fondo claro u oscuro\tB".into(),
-            acotar: "Acotar plano\tM".into(),
+            acotar: "Acotar plano\tD".into(),
             borrar_cotas: "Borrar las cotas\tSupr".into(),
             encima: "Siempre encima\tT".into(),
             cerrar: "Cerrar\tEsc".into(),
@@ -1898,7 +2532,9 @@ impl Default for TextosUi {
             imprimir: "Imprimir…\tCtrl+P".into(),
             exportar: "Exportar (HTML, PDF, PNG, DXF…)…\tCtrl+E".into(),
             borrar_marcos: "Borrar los marcos".into(),
-            pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último".into(),
+            pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último · Esc: salir".into(),
+            marcador: "Marcador aquí\tCtrl+M".into(),
+            botones: NombresDeBotones::default(),
             sin_dibujo_civil: "{n} objetos de Civil 3D se guardaron sin su dibujo: guárdalo con PROXYGRAPHICS = 1 o exporta a LandXML".into(),
             letras: "Letras del plano…	L".into(),
             letras_faltan: "Este plano pide letras que no están; sus textos salen con otras parecidas y pueden no caber en sus recuadros:".into(),
@@ -1991,36 +2627,237 @@ mod pruebas {
 mod pruebas_letras {
     use super::*;
 
-    /// El boton «Aa» esta en la barra, antes de la chincheta, y el menu
-    /// tiene su entrada; sin letras que falten, el «Aa» no va en ambar.
+    fn cabecera_de_prueba(e: f64) -> Cabecera {
+        let tipo = TipoDeArchivo { rotulo: "dwg".into(), fondo: [0xF2, 0xC0, 0x1E], tinta_oscura: true };
+        Cabecera::nueva(&mut Textos::nuevo(), "Planta baja", Some(tipo), e)
+    }
+
+    /// El boton «Aa» es el ultimo de los propios (justo antes del grupo de
+    /// la derecha) y el menu tiene su entrada; sin letras que falten, el
+    /// «Aa» no va en ambar.
     #[test]
     fn el_boton_aa_esta_en_la_barra_y_en_el_menu() {
         let i = BOTONES.iter().position(|b| *b == "letras").unwrap();
-        assert_eq!(BOTONES[i + 1], "fijar");
+        assert_eq!(BOTONES[i + 1], "tema");
         let t = TextosUi::default();
         assert!(t.letras.contains("\tL") && t.faltan_letras.contains("{n}") && t.letras_quitar.contains("{n}"));
         // Con aviso, el «Aa» cambia de color; sin aviso, no.
-        let con = barra_con_avisos(1.0, &BOTONES, None, false, &[], &[false, false, false, false, false, false, true, false]);
-        let sin = barra(1.0, &BOTONES, None, false, &[]);
+        let cab = cabecera_de_prueba(1.0);
+        let avisos = BOTONES.map(|b| b == "letras");
+        let con = barra(&mut Textos::nuevo(), 1.0, &BOTONES, &cab, Aspecto { avisos: &avisos, ..Aspecto::default() });
+        let sin = barra(&mut Textos::nuevo(), 1.0, &BOTONES, &cab, Aspecto::default());
         let colores = |m: &Modelo| m.vertices.iter().map(|v| v.color).collect::<std::collections::BTreeSet<u32>>();
         assert!(colores(&con).contains(&rgba(0xFF, 0xB0, 0x20)));
         assert!(!colores(&sin).contains(&rgba(0xFF, 0xB0, 0x20)));
     }
 
+    /// **La barra como la de los demas visores**: asa, nombre con su tipo,
+    /// los propios y, al final, pantalla completa, el pin y cerrar.
+    #[test]
+    fn la_barra_lleva_el_tipo_el_nombre_y_pantalla_completa() {
+        assert_eq!(&BOTONES[..2], &["asa", "nombre"]);
+        assert_eq!(&BOTONES[BOTONES.len() - 3..], &["pantalla", "fijar", "cerrar"]);
+        let e = 1.5;
+        let cab = cabecera_de_prueba(e);
+        let b = botones_barra(e, &BOTONES, &cab);
+        assert_eq!(b.len(), BOTONES.len());
+        // De izquierda a derecha, sin pisarse.
+        assert!(b.windows(2).all(|v| v[0].1 <= v[1].0));
+        // El nombre hace sitio al recuadro y al texto.
+        let nombre = b[1].1 - b[1].0;
+        assert!(nombre > (CUADRO + CUADRO_AIRE) * e + 16.0 * e, "{nombre}");
+        assert!((ancho_barra(e, &BOTONES, &cab) - (b[b.len() - 1].1 + 4.0 * e)).abs() < 1e-9);
+        // El recuadro lleva el color de su tipo.
+        let m = barra(&mut Textos::nuevo(), e, &BOTONES, &cab, Aspecto::default());
+        assert!(m.vertices.iter().any(|v| v.color == rgba(0xF2, 0xC0, 0x1E)));
+        assert!(!m.letras.is_empty(), "el nombre y la extension van escritos");
+        // Caso negativo: sin nombre ni tipo, la pieza no ocupa nada.
+        let vacia = Cabecera::nueva(&mut Textos::nuevo(), "", None, e);
+        let b = botones_barra(e, &BOTONES, &vacia);
+        assert_eq!(b[1].0, b[1].1);
+        assert!(barra(&mut Textos::nuevo(), e, &BOTONES, &vacia, Aspecto::default()).letras.is_empty());
+    }
+
+    /// **El riel de la derecha** como el de los lectores: arriba a la
+    /// derecha, botones de 36 px uno debajo de otro; fuera de la isla, nada.
+    #[test]
+    fn el_riel_va_arriba_a_la_derecha_con_el_lapiz_y_el_marco() {
+        let (isla, b) = riel_cajas(1000, 1.0, 2).unwrap();
+        assert_eq!(isla, [1000.0 - 16.0 - 44.0, 16.0, 1000.0 - 16.0, 16.0 + 2.0 * 36.0 + 8.0]);
+        assert_eq!(b[0][3], b[1][1]);
+        assert_eq!(riel_en(1000, 1.0, 2, 960, 30), Some(Some(0)));
+        assert_eq!(riel_en(1000, 1.0, 2, 960, 60), Some(Some(1)));
+        // El borde de la isla no es del plano, pero tampoco es un boton.
+        assert_eq!(riel_en(1000, 1.0, 2, 941, 17), Some(None));
+        // Caso negativo: fuera de la isla, o sin botones, le toca al plano.
+        assert_eq!(riel_en(1000, 1.0, 2, 500, 30), None);
+        assert_eq!(riel_en(1000, 1.0, 0, 960, 30), None);
+        // Pulsado, el azul de la barra y el icono en blanco.
+        let m = riel(1.0, 1000, &["anotar", "marcos"], None, &[true, false]);
+        assert!(m.vertices.iter().any(|v| v.color == rgba(0x00, 0x60, 0xDF)));
+        assert!(m.vertices.iter().any(|v| v.color == rgba(255, 255, 255)));
+    }
+
+    /// **El panel tactil**: dos dedos mueven, el pellizco (Ctrl) acerca y la
+    /// muesca de un raton sigue acercando.
+    #[test]
+    fn dos_dedos_mueven_el_pellizco_acerca_y_la_rueda_del_raton_acerca() {
+        // La rueda del raton: 120 justos, sin Ctrl.
+        assert_eq!(que_rueda(120, false, false, false), Rueda::Acercar(120));
+        assert_eq!(que_rueda(-240, false, false, false), Rueda::Acercar(-240));
+        // El pellizco: Ctrl con pasos pequenos, acerca aunque venga del panel.
+        assert_eq!(que_rueda(14, false, true, true), Rueda::Acercar(14));
+        // Dos dedos hacia arriba (positiva): lo de dentro baja con los dedos.
+        let Rueda::Mover(dx, dy) = que_rueda(30, false, false, false) else { panic!("deberia mover") };
+        assert!(dx == 0.0 && dy > 0.0);
+        // A los lados (WM_MOUSEHWHEEL), aunque sean 120: mueve, al reves de la rueda.
+        let Rueda::Mover(dx, dy) = que_rueda(120, true, false, false) else { panic!("deberia mover") };
+        assert!(dx < 0.0 && dy == 0.0);
+        // Un 120 justo en medio de un arrastre del panel sigue moviendo.
+        assert!(matches!(que_rueda(120, false, false, true), Rueda::Mover(..)));
+        // Caso negativo: Ctrl con la horizontal no acerca.
+        assert!(matches!(que_rueda(20, true, true, false), Rueda::Mover(..)));
+    }
+
+    /// **Las fichas de los marcos**: como las de los documentos
+    /// (`marcos_doc`): 28 px, 6 de aire, a 12 del borde y abajo; pulsar una
+    /// lleva a su marco llenando la ventana.
+    #[test]
+    fn las_fichas_van_abajo_a_la_izquierda_y_llevan_a_su_marco() {
+        let f = fichas_de_marcos(3, 600, 1.0);
+        assert_eq!(f.len(), 3);
+        assert_eq!(f[0], [12.0, 600.0 - 44.0, 40.0, 600.0 - 16.0]);
+        assert_eq!(f[1][0], 12.0 + 34.0);
+        // Al doble de escala, todo al doble.
+        let g = fichas_de_marcos(1, 1200, 2.0);
+        assert_eq!(g[0], [24.0, 1200.0 - 88.0, 80.0, 1200.0 - 32.0]);
+        assert_eq!(ficha_en(3, 600, 1.0, 20, 570), Some(0));
+        assert_eq!(ficha_en(3, 600, 1.0, 50, 570), Some(1));
+        // Casos negativos: el aire entre dos, por encima, o sin marcos.
+        assert_eq!(ficha_en(3, 600, 1.0, 43, 570), None);
+        assert_eq!(ficha_en(3, 600, 1.0, 20, 500), None);
+        assert_eq!(ficha_en(0, 600, 1.0, 20, 570), None);
+        // El marco llena la ventana por su lado mas justo, centrado.
+        let c = camara_de_marco([0.0, 0.0, 200.0, 50.0], 1000, 500);
+        assert_eq!(c.centro, [100.0, 25.0]);
+        assert!((c.px - 0.2).abs() < 1e-12);
+        let c = camara_de_marco([0.0, 0.0, 100.0, 100.0], 1000, 500);
+        assert!((c.px - 0.2).abs() < 1e-12);
+        // Se pintan en el azul de los marcos.
+        let mut c = Constructor::nuevo();
+        let mut t = Textos::nuevo();
+        pintar_fichas_y_pista(&mut c, &mut t, 2, 600, 1.0, "pista");
+        assert!(c.terminar().vertices.iter().any(|v| v.color == rgba(0x00, 0x78, 0xD4)));
+    }
+
+    /// **Las teclas de todos los visores**: I, Supr, Ctrl+P, M/Ctrl+M y A.
+    #[test]
+    fn las_teclas_son_las_de_todos_los_visores() {
+        assert_eq!(tecla_unificada(0x49, false, false), Some(Unificada::Marcos));
+        assert_eq!(tecla_unificada(0x49, false, true), Some(Unificada::Marcos));
+        assert_eq!(tecla_unificada(0x2E, false, true), Some(Unificada::QuitarUltimoMarco));
+        assert_eq!(tecla_unificada(0x50, true, false), Some(Unificada::Imprimir));
+        assert_eq!(tecla_unificada(0x4D, true, false), Some(Unificada::Marcador));
+        assert_eq!(tecla_unificada(0x4D, false, false), Some(Unificada::Marcador));
+        assert_eq!(tecla_unificada(0x41, false, false), Some(Unificada::Anotar));
+        // Casos negativos: Supr sin marcar (borra las cotas), la P sola
+        // (la planta del 3D), Ctrl+A y Ctrl+I, y la D (acotar, del plano).
+        assert_eq!(tecla_unificada(0x2E, false, false), None);
+        assert_eq!(tecla_unificada(0x50, false, false), None);
+        assert_eq!(tecla_unificada(0x41, true, false), None);
+        assert_eq!(tecla_unificada(0x49, true, false), None);
+        assert_eq!(tecla_unificada(0x44, false, false), None);
+    }
+
+    /// **Esc deja primero lo que se hace**: con el modo de los marcos puesto
+    /// ya no cierra la ventana.
+    #[test]
+    fn esc_sale_del_modo_antes_de_cerrar() {
+        assert_eq!(que_hace_esc(true, true, false), Esc::DejarLaMedida);
+        assert_eq!(que_hace_esc(false, true, false), Esc::SalirDeAcotar);
+        assert_eq!(que_hace_esc(false, false, true), Esc::SalirDeLosMarcos);
+        assert_eq!(que_hace_esc(false, false, false), Esc::Cerrar);
+    }
+
+    /// **El globo de cada boton**: su nombre y su tecla de verdad, a la
+    /// izquierda del riel.
+    #[test]
+    fn el_globo_dice_el_nombre_y_la_tecla() {
+        let n = NombresDeBotones::default();
+        assert_eq!(n.globo("marcador").as_deref(), Some("Marcador (Ctrl+M)"));
+        assert_eq!(n.globo("anotar").as_deref(), Some("Anotar (A)"));
+        assert_eq!(n.globo("marcos").as_deref(), Some("Marcos para imprimir (I)"));
+        assert_eq!(n.globo("acotar").as_deref(), Some("Acotar plano (D)"));
+        assert_eq!(n.globo("pantalla").as_deref(), Some("Pantalla completa (F11)"));
+        assert_eq!(n.globo("cerrar").as_deref(), Some("Cerrar (Esc)"));
+        assert_eq!(NombresDeBotones::ingles().globo("corte").as_deref(), Some("Section box (C)"));
+        // Todos los botones de las dos barras y del riel tienen el suyo...
+        for b in BOTONES.iter().chain(crate::ventana3d::BOTONES.iter()).chain(["marcador", "anotar", "marcos"].iter()) {
+            assert!(*b == "nombre" || n.globo(b).is_some(), "sin globo: {b}");
+        }
+        // ...salvo el nombre del archivo (caso negativo).
+        assert!(n.globo("nombre").is_none() && n.globo("otro").is_none());
+        // A la izquierda del boton, a 8 px, y centrado a su altura.
+        let k = caja_globo_izquierda([900.0, 20.0, 936.0, 56.0], 100.0, 1.0);
+        assert_eq!(k[2], 892.0);
+        assert!(((k[1] + k[3]) / 2.0 - 38.0).abs() < 1e-9);
+        assert_eq!(k[2] - k[0], 116.0);
+        // Sin sitio a la izquierda no se sale de la ventana.
+        assert_eq!(caja_globo_izquierda([10.0, 0.0, 46.0, 36.0], 100.0, 1.0)[0], 0.0);
+    }
+
+    #[test]
+    fn f11_alterna_y_esc_sale_de_pantalla_completa() {
+        assert!(tecla_de_pantalla_completa(0x7A, false) && tecla_de_pantalla_completa(0x7A, true));
+        assert!(tecla_de_pantalla_completa(0x1B, true));
+        // Caso negativo: fuera de pantalla completa, Esc sigue con lo suyo.
+        assert!(!tecla_de_pantalla_completa(0x1B, false));
+        assert!(!tecla_de_pantalla_completa(0x41, true));
+    }
+
     /// Para mirarla: `PIXPIN_CAD_PNG=<png> cargo test -p pixpin-cad --lib barra_con_aa -- --ignored`.
+    /// Pinta la del plano y, debajo, la del modelo 3D.
     #[test]
     #[ignore = "pinta la barra del visor de planos a PNG"]
     fn barra_con_aa_a_png() {
         let ruta = std::env::var("PIXPIN_CAD_PNG").unwrap_or_else(|_| "barra-planos.png".into());
         let e = 2.0;
-        let avisos = [false, false, false, false, false, false, true, false];
-        let m = barra_con_avisos(e, &BOTONES, None, false, &[false, false, false, false, false, false, false, true], &avisos);
-        let (w, h) = (ancho_barra(e, BOTONES.len()), ALTO_BARRA * e);
+        let cab = cabecera_de_prueba(e);
+        let avisos = BOTONES.map(|b| b == "letras");
+        let activos = BOTONES.map(|b| b == "fijar");
+        let mut textos = Textos::nuevo();
+        let m = barra(&mut textos, e, &BOTONES, &cab, Aspecto { activos: &activos, avisos: &avisos, encima: Some(8), ..Aspecto::default() });
+        let (w, h) = (ancho_barra(e, &BOTONES, &cab), ALTO_BARRA * e);
         let mut l = crate::pruebas_png::Lienzo::nuevo(&m, [w / 2.0, h / 2.0], w, w.ceil() as usize, h.ceil() as usize);
         l.pintar(&m);
         // La barra va hacia abajo y el lienzo de pruebas hacia arriba.
         let filas: Vec<Vec<[u8; 4]>> = l.px.chunks(l.w).map(|f| f.to_vec()).rev().collect();
         l.px = filas.concat();
         l.guardar(&ruta);
+        // La del modelo 3D, clara y a pantalla completa.
+        let tipo = TipoDeArchivo { rotulo: "ifc".into(), fondo: [0xF2, 0xC0, 0x1E], tinta_oscura: true };
+        let cab = Cabecera::nueva(&mut textos, "Edificio de oficinas", Some(tipo), e);
+        let botones = crate::ventana3d::BOTONES;
+        let m = barra(&mut textos, e, &botones, &cab, Aspecto { claro: true, pantalla_completa: true, ..Aspecto::default() });
+        let (w, h) = (ancho_barra(e, &botones, &cab), ALTO_BARRA * e);
+        let mut l = crate::pruebas_png::Lienzo::nuevo(&m, [w / 2.0, h / 2.0], w, w.ceil() as usize, h.ceil() as usize);
+        l.pintar(&m);
+        let filas: Vec<Vec<[u8; 4]>> = l.px.chunks(l.w).map(|f| f.to_vec()).rev().collect();
+        l.px = filas.concat();
+        l.guardar(&ruta.replace(".png", "-3d.png"));
+        // El riel, sobre un fondo de plano.
+        let (w, h) = (300u32, 200.0);
+        let fondo = {
+            let mut c = Constructor::nuevo();
+            rect_en(&mut c, 0.0, 0.0, w as f64, h, rgba(0x21, 0x26, 0x30), CAPA_FONDO * 10.0);
+            c.terminar()
+        };
+        let m = riel(e, w, &["anotar", "marcos"], Some(1), &[true, false]);
+        let mut l = crate::pruebas_png::Lienzo::nuevo(&fondo, [w as f64 / 2.0, h / 2.0], w as f64, w as usize, h as usize);
+        l.pintar(&fondo);
+        l.pintar(&m);
+        let filas: Vec<Vec<[u8; 4]>> = l.px.chunks(l.w).map(|f| f.to_vec()).rev().collect();
+        l.px = filas.concat();
+        l.guardar(&ruta.replace(".png", "-riel.png"));
     }
 }

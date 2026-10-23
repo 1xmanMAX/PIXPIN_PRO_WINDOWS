@@ -54,6 +54,9 @@ mod abrir_hoja;
 mod croquis3d;
 mod al_frente;
 mod abrir_imagen;
+mod marco_imprimir;
+mod marcos_doc;
+mod globo_pista;
 mod aligerar;
 // El asistente local del chat (modelo pequeno con llama.cpp, `pixpin-ia`).
 mod asistente;
@@ -108,12 +111,19 @@ mod lector_tinta;
 mod leer_en_voz;
 mod letras_que_viajan;
 mod llamada;
+mod horario;
+/// Google Calendar, solo para ver: sus eventos en el horario y en los avisos.
+mod calendario_google;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
+/// Lo que dicen las notificaciones de Windows con botones (15-oct).
+mod notificaciones;
 mod miniaturas;
 mod navegacion;
 mod notas_md;
+// La linea de ordenes y los enlaces `pixpin://` (15-oct-2026).
+mod orden;
 mod oscuro;
 mod overlay;
 mod panel_dibujo;
@@ -123,14 +133,18 @@ mod pedidos;
 mod pegar_en_flow;
 mod vista_rapida;
 mod pila_capturas;
+mod pila_lienzo;
 mod pin_vivo;
 mod modelo_bim;
 mod plano_cad;
 mod pin_office;
+/// Los Word y PowerPoint de antes, convertidos para el visor propio (20-oct).
+mod office_convertido;
 mod pines;
 mod pronunciar;
 mod punto_de_proyecto;
 mod recibir;
+mod recibir_de_windows;
 mod recordatorios;
 mod renombrar_doc;
 mod reproductor;
@@ -211,6 +225,10 @@ const ID_TAREAS: u32 = 907;
 /// «Timeline…» (5-oct): lo que pasa en el dia, minuto a minuto, con la voz,
 /// a mano o con fotos; las ultimas 24 horas y el archivo por calendario.
 const ID_TIMELINE: u32 = 908;
+/// «Horario de clases…» y «Nota de voz para la próxima clase» (17-oct): el
+/// horario que llama por telefono antes de cada clase (`horario.rs`).
+const ID_HORARIO: u32 = 909;
+const ID_HORARIO_GRABAR: u32 = 910;
 
 const _: () = assert!(
     ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -250,6 +268,8 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     }
     // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es
     // lo minimo para abrirlo desde la bandeja y probarlo a mano.
+    v.push((ID_HORARIO, t("bandeja-horario")));
+    v.push((ID_HORARIO_GRABAR, t("bandeja-horario-grabar")));
     v.push((ID_ABRIR_DOCUMENTO, t("bandeja-abrir-documento")));
     v.push((ID_GRUPOS_VENTANAS, t("bandeja-grupos-ventanas")));
     v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
@@ -264,6 +284,12 @@ fn main() -> Result<()> {
     }
     // Lo mismo para un modelo BIM (`modelo_bim`).
     if let Some(codigo) = modelo_bim::convertir_si_toca() {
+        std::process::exit(codigo);
+    }
+    // Una orden de fuera (`pixpinmax tarea "…"`, `--pedido`, un enlace
+    // `pixpin://`): se manda a la copia que corre y se sale, sin cargar nada
+    // de lo de abajo (`orden`).
+    if let Some(codigo) = orden::ejecutar_si_toca() {
         std::process::exit(codigo);
     }
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
@@ -315,6 +341,11 @@ fn arrancar(
     // instancia no es un fallo: el usuario pulso el icono dos veces. Que
     // `CreateMutexW` falle de verdad si lo es, y confundirlos manda a quien
     // depure a buscar una segunda copia que no existe.
+    // Lo compartido con este arranque (Compartir de Windows con el paquete de
+    // identidad, o `--al-chat <rutas>`): se lee YA, antes de que esta copia
+    // se vaya, porque Windows espera respuesta y la otra app puede borrar
+    // sus temporales en cuanto la tiene.
+    let compartido = recibir_de_windows::pedido_del_arranque();
     let _instancia = match adquirir_instancia_unica() {
         Ok(i) => i,
         Err(pixpin_shell::instancia::ErrorInstanciaUnica::YaHayOtraInstancia) => {
@@ -324,8 +355,10 @@ fn arrancar(
             // esta copia se iria en silencio llevandose la ruta, y el
             // usuario veria que su fichero no se abre.
             let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
+            if let Some(pedido) = &compartido {
+                pixpin_shell::mensajero::enviar_pedido(pedido);
             // Un atajo de la Jump List del icono: a la copia que corre, como pedido.
-            if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
+            } else if let Some(pedido) = lista_del_icono::pedido_del_arranque() {
                 pixpin_shell::mensajero::enviar_pedido(&pedido);
             } else if !rutas.is_empty() {
                 pixpin_shell::mensajero::enviar_ficheros(&rutas);
@@ -410,6 +443,8 @@ fn arrancar(
     ventana_editor::fijar_ajustes_tinta(config.tinta);
     // M1: el tema Cosmos lo mira el hilo del chat al abrirse.
     tema_cosmos::fijar(config.tema_cosmos);
+    // Las palabras de cada urgencia de las tareas (Ajustes → Tareas).
+    tareas::frase::fijar(config.tareas.palabras());
     // Las herramientas de dibujo que el usuario apago en los ajustes: fuera
     // de la barra y de sus teclas en el lienzo, el lector, los pines y el
     // anotador de pantalla (`dibujo::permitidas`).
@@ -500,6 +535,15 @@ fn arrancar(
     aligerar::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
     // Whisper, con la misma regla: sin arena y de uno en uno en modo cuidadoso.
     turno_pesado::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
+    // Los visores de Markdown y HTML abren al instante con el navegador ya en
+    // marcha (18-oct): se precalienta a los 6 s, cuando el arranque ya paso, y
+    // solo con memoria de sobra (el proceso del navegador ocupa la suya).
+    if decision.nivel == Nivel::Completo && hechos.ram_fisica_bytes >= 7 * 1024 * 1024 * 1024 {
+        let _ = std::thread::Builder::new().name("precalentar-web".into()).spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(6));
+            pixpin_web::precalentar();
+        });
+    }
 
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);
@@ -679,7 +723,11 @@ fn arrancar(
     // comporte IGUAL este PixPin ya abierto o no; con dos caminos, uno de
     // los dos se queda atras en cuanto se cambie algo.
     let del_arranque = pixpin_shell::mensajero::rutas_de_los_argumentos();
-    if !del_arranque.is_empty() {
+    if let Some(pedido) = &compartido {
+        // Lo compartido va al chat; sus rutas no son ficheros que pinear.
+        pixpin_shell::mensajero::enviar_pedido(pedido);
+        pixpin_shell::despertar(ventana.handle());
+    } else if !del_arranque.is_empty() {
         tracing::info!(
             cuantos = del_arranque.len(),
             "ficheros en la linea de mandatos"
@@ -701,6 +749,8 @@ fn arrancar(
         pixpin_shell::despertar(ventana.handle());
     }
     lista_del_icono::poner_al_dia(lengua, ubicacion.clone());
+    // «Imprimir a PixPin»: solo si la impresora esta instalada.
+    recibir_de_windows::iniciar_impresora(&ubicacion);
 
     // El chat de proyectos es la interfaz principal (D141): se abre al
     // arrancar, como la ventana de cualquier aplicacion. Cerrarlo deja
@@ -713,7 +763,18 @@ fn arrancar(
     // Las hojas que se abren desde una nota (paginas vivas, enlaces), con
     // los mismos ajustes del lienzo.
     notas_md::paginas_vivas::poner_opciones_del_lienzo(opciones_lienzo);
-    ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
+    // Salvo si se arranco solo para abrir algo (20-oct-2026, el usuario:
+    // «que directamente se abra la ventana del documento»): un fichero
+    // («Abrir con» con PixPin cerrada) o un pedido de Flow o de un enlace
+    // (`--sin-chat`, lo ponen `pixpin-lanzador` y `mensajero`). Lo que
+    // pida el chat ya lo abre el propio pedido.
+    let sin_chat = (compartido.is_none() && !del_arranque.is_empty())
+        || std::env::args_os().skip(1).any(|a| a == "--sin-chat");
+    if sin_chat {
+        tracing::info!("arranque para abrir algo: sin el chat delante");
+    } else {
+        ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
+    }
 
     // 8e. Los recordatorios. Su hilo duerme hasta que vence el proximo y solo
     // da un toque a ESTA ventana: el pin y el globo los saca el bucle de
@@ -721,6 +782,9 @@ fn arrancar(
     // del chat porque lo que vencio con el programa cerrado sale de golpe, y
     // asi el primer pin nace con la ventana ya en pie.
     recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
+    // Y el horario de clases: relee la agenda si se edita o cambia el dia.
+    horario::vigilar(ubicacion.raiz());
+    calendario_google::vigilar(ubicacion.raiz());
     // Las automatizaciones del asistente: su hilo mira la hora y espera a
     // las capturas y a la sincronizacion (13-oct).
     automatizaciones::motor::arrancar(automatizaciones::motor::DeLaApp {
@@ -731,6 +795,23 @@ fn arrancar(
         idioma: lengua,
         opciones: opciones_lienzo,
     });
+    // La cola de encargos del asistente (`p asistente …` de Flow, 15-oct):
+    // lo que quedo pendiente se hace ya; cada uno avisa al acabar con una
+    // notificacion de Windows, cuya identidad y protocolo («Abrir») se dan
+    // de alta aqui, fuera del modo portable (cero rastro, como «Abrir con»).
+    automatizaciones::cola::arrancar(automatizaciones::encargo::DeLaApp {
+        entorno: automatizaciones::encargo::Entorno {
+            ubicacion: ubicacion.clone(),
+            aparato: identidad_equipo.clone(),
+        },
+        idioma: lengua,
+        opciones: opciones_lienzo,
+    });
+    if !ubicacion.es_portable() {
+        automatizaciones::cola::registrar_notificaciones(ruta_exe.clone(), ubicacion.raiz().to_path_buf());
+    }
+    // Las capturas que se van en las proximas 24 h, con «Conservar».
+    caducidad_capturas::vigilar_avisos(ubicacion.raiz().to_path_buf(), lengua);
 
     // Lo que ensenan los interruptores del panel de la bandeja (v2): lo
     // que dijeron los dos ultimos «alternar» de los pines.
@@ -759,6 +840,7 @@ fn arrancar(
             pixpin_shell::espacio_explorador::activar(config.vista_rapida);
             // M1: vale desde el siguiente chat que se abra.
             tema_cosmos::fijar(config.tema_cosmos);
+            tareas::frase::fijar(config.tareas.palabras());
             aligerar::configurar(&config.pdf);
             // Las herramientas apagadas valen desde el siguiente lienzo,
             // lector, pin o anotador que se abra.
@@ -1139,6 +1221,17 @@ fn arrancar(
             }
             Evento::Menu(id) if id == ID_TAREAS => {
                 tareas::abrir(lengua, ubicacion.clone(), &identidad_equipo);
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_HORARIO => {
+                horario::abrir(lengua, ubicacion.clone(), &identidad_equipo);
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_HORARIO_GRABAR => {
+                if let Err(motivo) = horario::grabar_para_la_proxima(&textos, ubicacion.raiz()) {
+                    let mut aviso = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd);
+                    let _ = aviso.mostrar(&textos.t("bandeja-horario"), &motivo);
+                }
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_TIMELINE => {
@@ -1638,7 +1731,11 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Atajo(id) if id == atajos::ID_PORTAPAPELES => {
+            // Por el comando, venga del atajo, del menu o del panel de la
+            // bandeja: antes se miraba un `ID_PORTAPAPELES` fijo (6) que ya no
+            // era el del comando (es el 10), y «Pinear lo copiado» caia en
+            // «comando sin accion» (17-oct).
+            _ if pide_pinear_lo_copiado(&evento) => {
                 // Pinear el portapapeles NO abre overlay: aparece un pin
                 // centrado en el monitor del cursor y sin robar el foco
                 // (4.4), asi que no interrumpe donde estabas escribiendo.
@@ -1813,7 +1910,14 @@ fn atender_recordatorios(
     // «Volver a llamar en» (B11, v0.98.6): la misma alarma a otra hora y el
     // aviso de cuando, como el `Toast` del movil.
     for v in volver {
-        match recordatorios::volver_a_poner(&v.carpeta, &v.mensaje, v.cuando_utc_ms) {
+        // Una clase del horario: el aviso pospuesto vive en el horario.
+        let puesta = if v.mensaje.starts_with(horario::PREFIJO) {
+            horario::posponer(ubicacion.raiz(), &v.mensaje, v.cuando_utc_ms);
+            Ok(true)
+        } else {
+            recordatorios::volver_a_poner(&v.carpeta, &v.mensaje, v.cuando_utc_ms)
+        };
+        match puesta {
             Ok(true) => {
                 let local = pixpin_shell::entorno::a_local(v.cuando_utc_ms);
                 let mut args = fluent_bundle::FluentArgs::new();
@@ -1858,6 +1962,12 @@ fn atender_recordatorios(
     for v in vencidos {
         let r = v.recordatorio;
         tracing::info!(id = %r.id, "vencio un recordatorio");
+        // **Una clase del horario llama por telefono** (17-oct-2026): su
+        // tarjeta de llamada, sin pin, globo ni cuaderno que tocar.
+        if r.id.starts_with(horario::PREFIJO) {
+            horario::sonar(ubicacion.raiz(), &r, rotulos_de_la_llamada(textos), hwnd.0 as isize);
+            continue;
+        }
         // **Una nota de voz con hora es una llamada secreta** (B11,
         // `RecordatorioReceiver`): suena como una llamada y el recado se
         // oye por la salida de llamadas. Lo demas, un pin como siempre.
@@ -1883,7 +1993,28 @@ fn atender_recordatorios(
             tracing::warn!("sin monitor donde sacar el pin del recordatorio");
         }
         // La secreta no dice su recado en un globo: eso es lo secreto.
-        if !es_secreta
+        // Lo demas, en una notificacion de Windows con «Hecha» (si es una
+        // tarea), «+10 min» y «Abrir» (15-oct); si no sale, el globo.
+        let proyecto = v.carpeta.as_deref().and_then(notificaciones::proyecto_de);
+        if !es_secreta && let Some(proyecto) = proyecto {
+            let tarea = v
+                .carpeta
+                .as_deref()
+                .and_then(|c| pixpin_proyecto::cuaderno::Cuaderno::leer_de(c).ok())
+                .and_then(|c| tareas::tarea_de_recordatorio(&c, &r.id));
+            let toast = notificaciones::de_recordatorio(
+                textos,
+                &proyecto,
+                &r.id,
+                tarea.as_ref().map(|(l, i)| (l.as_str(), *i)),
+                &r.texto,
+            );
+            let h = hwnd.0 as isize;
+            pixpin_shell::notificacion::mostrar_o(toast, move |t| {
+                let hwnd = windows::Win32::Foundation::HWND(h as *mut _);
+                let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd).mostrar(&t.titulo, &t.texto);
+            });
+        } else if !es_secreta
             && let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto)
         {
             tracing::warn!(?e, "no se pudo avisar del recordatorio");
@@ -2042,11 +2173,16 @@ fn abrir_ficheros(
         let d = pixpin_capture::enumerar_monitores()?;
         let m = d.principal().context("sin monitor")?.to_owned();
         let mut cuantos = 0;
-        for v in listas
-            .iter()
-            .filter_map(|r| pines::herramienta::vinculo_de_ruta(r))
-        {
-            match p.pinear_lista_del_chat(v, &m) {
+        for r in &listas {
+            // Una tarea sola (su pin pequeño, 17-oct-2026) o la lista entera.
+            let hecho = match pines::tarea::tarea_de_ruta(r) {
+                Some((v, i)) => p.pinear_tarea_del_chat(v, i, &m),
+                None => match pines::herramienta::vinculo_de_ruta(r) {
+                    Some(v) => p.pinear_lista_del_chat(v, &m),
+                    None => continue,
+                },
+            };
+            match hecho {
                 Ok(_) => cuantos += 1,
                 Err(e) => tracing::warn!(?e, "no se pudo sacar la lista a la pantalla"),
             }
@@ -2144,7 +2280,9 @@ fn destino_con(ruta: &std::path::Path, office: impl Fn(&std::path::Path) -> bool
         DestinoDeFichero::Lector
     } else if pixpin_shell::asociaciones::es_audio(ruta) {
         DestinoDeFichero::Audio
-    } else if pines::herramienta::vinculo_de_ruta(ruta).is_some() {
+    } else if pines::herramienta::vinculo_de_ruta(ruta).is_some()
+        || pines::tarea::tarea_de_ruta(ruta).is_some()
+    {
         DestinoDeFichero::ListaDelChat
     } else if ruta
         .extension()
@@ -2457,6 +2595,14 @@ pub(crate) fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
 
 /// Crea un pin por cada cosa del portapapeles, en el monitor del cursor.
 /// Devuelve cuantos nacieron: varias rutas copiadas dan varias fichas.
+/// Si el evento es «Pinear lo copiado» (`Comando::PinearPortapapeles`),
+/// llegue por su atajo, por el menu o por el panel de la bandeja: los tres
+/// traen el identificador del comando en el catalogo.
+fn pide_pinear_lo_copiado(evento: &Evento) -> bool {
+    matches!(evento, Evento::Atajo(id) | Evento::Menu(id)
+        if comandos::Comando::desde_id(*id) == Some(comandos::Comando::PinearPortapapeles))
+}
+
 fn pinear_portapapeles(
     pines: &mut Pines,
     contenido: pixpin_codec::ContenidoPortapapeles,
@@ -2627,6 +2773,18 @@ fn iniciar_registro(ubicacion: &Ubicacion) -> tracing_appender::non_blocking::Wo
 #[cfg(test)]
 mod pruebas_bandeja {
     use super::*;
+
+    #[test]
+    fn pinear_lo_copiado_se_atiende_por_su_comando() {
+        let id = comandos::Comando::PinearPortapapeles.id();
+        assert!(pide_pinear_lo_copiado(&Evento::Atajo(id)));
+        assert!(pide_pinear_lo_copiado(&Evento::Menu(id)));
+        // El 6 fijo de antes es «repetir la ultima region», no esto.
+        assert_ne!(id, 6);
+        assert!(!pide_pinear_lo_copiado(&Evento::Atajo(6)));
+        assert!(!pide_pinear_lo_copiado(&Evento::Menu(comandos::Comando::Pinear.id())));
+        assert!(!pide_pinear_lo_copiado(&Evento::Despertar));
+    }
 
     #[test]
     fn timeline_galeria_y_tareas_salen_justo_debajo_del_chat() {

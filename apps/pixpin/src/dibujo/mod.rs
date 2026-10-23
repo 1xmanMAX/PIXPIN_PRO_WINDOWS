@@ -24,6 +24,9 @@ pub(crate) mod mano;
 /// La cota del movil pintada por el camino de la pantalla, para mirarla.
 #[cfg(test)]
 mod muestra_cota;
+/// La figura central de la lamina de geometria, con las herramientas del lienzo.
+#[cfg(test)]
+mod muestra_lamina;
 pub(crate) mod permitidas;
 pub(crate) mod pintar;
 pub(crate) mod teclas;

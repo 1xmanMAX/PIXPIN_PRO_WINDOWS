@@ -96,16 +96,13 @@ pub fn validar(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result<Ec
         .trim_matches('$')
         .replace("\\begin{aligned}", "")
         .replace("\\end{aligned}", "")
+        .replace("\\begin{align*}", "")
+        .replace("\\end{align*}", "")
+        .replace("\\begin{align}", "")
+        .replace("\\end{align}", "")
         .replace("\\[", "")
-        .replace("\\]", "")
-        .replace('&', "");
-    let lineas: Vec<String> = limpio
-        .split("\\\\")
-        .flat_map(|l| l.split('\n'))
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect();
+        .replace("\\]", "");
+    let lineas = partir_lineas(&limpio);
     if lineas.is_empty() {
         return Err(mal("la ecuacion esta vacia"));
     }
@@ -148,68 +145,69 @@ pub fn validar(args: &Map<String, Value>, avisos: &mut Vec<String>) -> Result<Ec
     Ok(Ecuacion { lineas, donde, tam, color })
 }
 
-/// Los mandatos que el lector no entendio (salen con su barra).
-fn desconocidos(p: &Pieza) -> Vec<String> {
-    match p {
-        Pieza::Texto { texto, .. } if texto.starts_with('\\') && texto.len() > 1 => vec![texto.clone()],
-        Pieza::Texto { .. } => Vec::new(),
-        Pieza::Fila(l) => l.iter().flat_map(desconocidos).collect(),
-        Pieza::Fraccion(a, b) => [desconocidos(a), desconocidos(b)].concat(),
-        Pieza::ConIndices { base, arriba, abajo } => {
-            let mut v = desconocidos(base);
-            v.extend(arriba.iter().flat_map(|a| desconocidos(a)));
-            v.extend(abajo.iter().flat_map(|a| desconocidos(a)));
-            v
+/// **Los renglones de una ecuacion**: se parte por `\\` y por saltos de
+/// linea, y se quitan los `&` de alineado, pero SOLO fuera de los entornos
+/// (`\begin{bmatrix} ... \end{bmatrix}`, `cases`): dentro son las filas y
+/// celdas de la matriz, que antes salian rotas en renglones sueltos.
+pub fn partir_lineas(texto: &str) -> Vec<String> {
+    let c: Vec<char> = texto.chars().collect();
+    let mut lineas = Vec::new();
+    let mut actual = String::new();
+    let mut prof = 0usize;
+    let mut i = 0;
+    let empieza = |i: usize, s: &str| s.chars().enumerate().all(|(k, ch)| c.get(i + k) == Some(&ch));
+    while i < c.len() {
+        if empieza(i, "\\begin{") {
+            prof += 1;
+        } else if empieza(i, "\\end{") {
+            prof = prof.saturating_sub(1);
         }
-        Pieza::Raiz { dentro, indice } => {
-            let mut v = desconocidos(dentro);
-            v.extend(indice.iter().flat_map(|a| desconocidos(a)));
-            v
+        if prof == 0 {
+            if c[i] == '\\' && c.get(i + 1) == Some(&'\\') {
+                lineas.push(std::mem::take(&mut actual));
+                i += 2;
+                continue;
+            }
+            if c[i] == '\n' {
+                lineas.push(std::mem::take(&mut actual));
+                i += 1;
+                continue;
+            }
+            if c[i] == '&' && (i == 0 || c[i - 1] != '\\') {
+                i += 1;
+                continue;
+            }
+        } else if c[i] == '\n' {
+            actual.push(' ');
+            i += 1;
+            continue;
         }
-        Pieza::Agrupado { dentro, .. } => desconocidos(dentro),
+        // Un mandato con su barra, de una vez (que `\\` dentro no se lea
+        // como dos barras sueltas).
+        if c[i] == '\\'
+            && let Some(&d) = c.get(i + 1)
+        {
+            actual.push('\\');
+            actual.push(d);
+            i += 2;
+            continue;
+        }
+        actual.push(c[i]);
+        i += 1;
     }
+    lineas.push(actual);
+    lineas.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
 }
 
-/// **Del arbol de la formula a la caja compuesta**, con las cajas del motor.
+/// Los mandatos que el lector no entendio (salen con su barra).
+fn desconocidos(p: &Pieza) -> Vec<String> {
+    formulas::desconocidos(p)
+}
+
+/// **Del arbol de la formula a la caja compuesta**: el compositor del motor
+/// (`ecuacion::de_formula`), el mismo que usa el texto rico del lienzo.
 pub fn componer(p: &Pieza, t: f32, medir: caja::Medir<'_>) -> Caja {
-    match p {
-        Pieza::Texto { texto, cursiva } => {
-            if texto.is_empty() {
-                caja::hueco(0.0)
-            } else {
-                caja::letra(texto, t, *cursiva, medir)
-            }
-        }
-        Pieza::Fila(l) => caja::fila(l.iter().map(|p| componer(p, t, medir)).collect()),
-        Pieza::Fraccion(a, b) => {
-            // Una fraccion dentro de otra, mas pequena (como en un libro).
-            let menor = caja::menor(t).max(t * 0.85);
-            caja::fraccion(componer(a, menor, medir), componer(b, menor, medir), t)
-        }
-        Pieza::ConIndices { base, arriba, abajo } => {
-            let mut c = componer(base, t, medir);
-            if let Some(b) = abajo {
-                c = caja::subindice(c, componer(b, caja::menor(t), medir), t);
-            }
-            if let Some(a) = arriba {
-                c = caja::potencia(c, componer(a, caja::menor(t), medir), t);
-            }
-            c
-        }
-        Pieza::Raiz { dentro, indice } => caja::raiz(
-            componer(dentro, t, medir),
-            indice.as_ref().map(|i| componer(i, caja::menor(caja::menor(t)), medir)),
-            t,
-        ),
-        Pieza::Agrupado { dentro, abre, cierra } => {
-            let d = componer(dentro, t, medir);
-            match abre.as_str() {
-                "(" => caja::entre_parentesis(d, t, medir),
-                "|" => caja::entre_barras(d, t),
-                _ => caja::fila(vec![caja::letra(abre, t, false, medir), d, caja::letra(cierra, t, false, medir)]),
-            }
-        }
-    }
+    caja::de_formula(p, t, medir, false)
 }
 
 /// Las piezas del motor de la ecuacion, ya colocadas. Devuelve tambien lo
@@ -292,6 +290,40 @@ mod pruebas {
         let (els, _) = piezas(&e);
         let y0 = els.iter().map(|e| e.y).fold(f32::MAX, f32::min);
         assert!((y0 - 20.0).abs() < 30.0);
+    }
+
+    fn textos_de(els: &[Elemento]) -> Vec<String> {
+        els.iter()
+            .filter_map(|e| match &e.figura {
+                Figura::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Banco del 15-oct: matrices, sistemas y `\text` salian crudos.
+    #[test]
+    fn matrices_sistemas_y_texto_salen_compuestos_sin_barras() {
+        let e = validar_(json!({"ecuacion": r"A = \begin{bmatrix} 2 & -1 & 0 \\ 1 & 3 & 2 \\ 0 & 1 & 4 \end{bmatrix}"})).unwrap();
+        assert_eq!(e.lineas.len(), 1, "la matriz no se parte en renglones: {:?}", e.lineas);
+        let (els, (_, h)) = piezas(&e);
+        let t = textos_de(&els);
+        assert!(t.iter().all(|x| !x.contains('\\') && !x.contains('&')), "{t:?}");
+        assert_eq!(t.iter().filter(|x| x.trim() == "-1" || x.trim() == "−1" || x.trim() == "1").count() >= 3, true, "{t:?}");
+        assert!(h > e.tam as f32 * 2.5, "tres filas de alto: {h}");
+        // Los corchetes, dibujados.
+        assert!(els.iter().filter(|e| matches!(e.figura, Figura::Linea { .. })).count() >= 2);
+        let mut avisos = Vec::new();
+        let Value::Object(m) = json!({"ecuacion": r"\begin{cases} 2x + y = 5 \\ x - y = 1 \end{cases} \qquad \text{si } x \in \mathbb{R}, \operatorname{rang}(A) = 3, \ln x \to \infty"}) else { panic!() };
+        let e = validar(&m, &mut avisos).unwrap();
+        assert!(avisos.is_empty(), "{avisos:?}");
+        assert_eq!(e.lineas.len(), 1);
+        let t = textos_de(&piezas(&e).0);
+        assert!(t.iter().all(|x| !x.contains('\\')), "{t:?}");
+        assert!(t.iter().any(|x| x.contains("si")) && t.iter().any(|x| x.contains('ℝ')) && t.iter().any(|x| x.contains("rang")), "{t:?}");
+        // Fuera de un entorno, `\\` sigue partiendo renglones.
+        assert_eq!(partir_lineas(r"a = 1 \\ b = 2"), vec!["a = 1", "b = 2"]);
+        assert_eq!(partir_lineas("x &= 2\ny &= 3"), vec!["x = 2", "y = 3"]);
     }
 
     #[test]
