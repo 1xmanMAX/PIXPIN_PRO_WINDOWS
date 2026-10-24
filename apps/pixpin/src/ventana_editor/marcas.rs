@@ -725,7 +725,8 @@ pub(super) fn pintar_riel(
             poniendo != Poniendo::No,
             DestinoRiel::PonerMarca,
         ),
-        (riel.hojita, &material::DRAW, editando, DestinoRiel::Hojita),
+        // El mismo lapiz que en los visores (`lector.rs`).
+        (riel.hojita, &material::EDIT, editando, DestinoRiel::Hojita),
         // El marco: como en los visores y en el plano.
         (
             riel.imprimir,

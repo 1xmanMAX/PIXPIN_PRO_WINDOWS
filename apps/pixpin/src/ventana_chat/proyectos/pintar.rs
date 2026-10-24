@@ -903,7 +903,6 @@ pub(crate) fn pintar_interruptor(
     tema: &Tema,
     escala: u32,
     textos: &pixpin_store::Catalogo,
-    figuras: bool,
 ) {
     let e = escala as f32 / 100.0;
     let barra = d.barra;
@@ -924,30 +923,17 @@ pub(crate) fn pintar_interruptor(
     v.interruptor.set(Some(i));
     let radio = i.caja.alto as f32 / 2.0;
     p.rellenar_redondeado(rf(i.caja), radio, tema.boton_sobre);
-    let puesta = if figuras {
-        i.figuras
-    } else if v.activa() {
-        i.proyectos
-    } else {
-        i.chat
-    };
+    // Figuras no se queda elegida: abre su ventana y el chat sigue igual.
+    let puesta = if v.activa() { i.proyectos } else { i.chat };
     p.rellenar_redondeado(
         encoger(rf(puesta), 2.0 * e),
         radio - 2.0 * e,
         tema.fila_elegida,
     );
     for (mitad, clave, elegida) in [
-        (
-            i.chat,
-            "proyectos-interruptor-chat",
-            !figuras && !v.activa(),
-        ),
-        (
-            i.proyectos,
-            "proyectos-interruptor-proyectos",
-            !figuras && v.activa(),
-        ),
-        (i.figuras, "proyectos-interruptor-figuras", figuras),
+        (i.chat, "proyectos-interruptor-chat", !v.activa()),
+        (i.proyectos, "proyectos-interruptor-proyectos", v.activa()),
+        (i.figuras, "proyectos-interruptor-figuras", false),
     ] {
         let t = textos.t(clave);
         let tam = ui::INTERRUPTOR_TAM * e;

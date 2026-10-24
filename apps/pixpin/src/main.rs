@@ -239,6 +239,9 @@ const ID_HORARIO_GRABAR: u32 = 910;
 /// en ningun menu; la pide la barra de grabar con `pedir_ventana_principal`
 /// y abre la captura de siempre en `ModoConfirmacion::ZonaGrabacion`.
 const ID_ZONA_DE_LA_CLASE: u32 = 911;
+/// «Figuras…» (25-oct-2026): la ventana de las figuras guardadas, con su
+/// previsualizador.
+const ID_FIGURAS: u32 = 912;
 
 const _: () = assert!(
     ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -269,6 +272,7 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
             v.push((ID_TIMELINE, t("bandeja-timeline")));
             v.push((ID_LECCION_NUEVA, t("bandeja-leccion-nueva")));
             v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
+            v.push((ID_FIGURAS, t("bandeja-figuras")));
             v.push((ID_TAREAS, t("bandeja-tareas")));
             let s = Comando::Sincronizar.descriptor();
             if s.en_bandeja {
@@ -1240,6 +1244,10 @@ fn arrancar(
                     None,
                     None,
                 );
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_FIGURAS => {
+                ventana_chat::abrir_figuras(lengua);
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_GALERIA_CAPTURAS => {

@@ -1036,7 +1036,6 @@ fn abrir_en_modo(
     let mut herramienta_al_editar = gesto.herramienta;
     // Lo que hay que hacer con la ventana al pasar de mirar a editar y
     // vuelta, y el cambio que aun no se aplico (lo aplica el pin, abajo).
-    let mut al_editar = mirar_editar::AlEditar::default();
     let mut cambio_de_mirar: Option<bool> = None;
     if solo_mirar {
         elegir_herramienta(&mut gesto, Herramienta::Mano);
@@ -2619,19 +2618,15 @@ fn abrir_en_modo(
         // Mientras la tinta o lo elegido viven en su capa no se toca nada:
         // se hace en cuanto se suelten.
         if let Some(pn) = pin.as_mut() {
-            // Editar es a pantalla completa y sin la barra del pin; volver a
-            // mirar devuelve la ventana si de ella se vino (`mirar_editar`).
-            // No se recuerda: la preferencia del usuario es la de mirar.
-            if let Some(editando) = cambio_de_mirar.take()
-                && al_editar.al_cambiar(editando, pn.pantalla_completa)
-            {
-                pn.alternar_pantalla_completa(&mut ventana);
-            }
-            // Editando en ventana (si el usuario la eligio con F11) la barra
-            // vuelve: sin ella no habria por donde llevarla.
+            // Editar se hace donde se este (25-oct-2026, el usuario: «si esta
+            // en ventana, la edicion se hace en ventana; si esta en pantalla
+            // completa, en pantalla completa»): el lapiz ya no cambia el modo,
+            // para eso esta su boton. A pantalla completa editando no hay
+            // barra del pin; en ventana si, que sin ella no hay por donde
+            // llevarla.
+            let _ = cambio_de_mirar.take();
             pn.quitar_barra(!solo_mirar && pn.pantalla_completa);
             if std::mem::take(&mut alternar_modo) {
-                al_editar.a_mano();
                 pn.alternar_pantalla_completa(&mut ventana);
                 modo_ventana::recordar(modo_ventana::Recordado {
                     pantalla_completa: pn.pantalla_completa,
