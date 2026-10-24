@@ -572,6 +572,21 @@ impl Corte<'_> {
         }
         if let Some(partes) = self.en_columnas(ids) {
             if self.parece_tabla(&partes) {
+                if std::env::var_os("PIXPIN_DIAGRAMA_DEPURAR").is_some() {
+                    for (k, p) in partes.iter().enumerate() {
+                        for &i in p {
+                            let a = &self.atomos[i];
+                            let que = match a.clase {
+                                Clase::Texto(r) => format!("texto «{}»", self.renglones[r].texto),
+                                Clase::Figura(f) => format!("figura {f}"),
+                                Clase::Tabla(t) => format!("tabla {t}"),
+                                Clase::Resto(r) => format!("resto {r}"),
+                            };
+                            eprintln!("tabla sin rayas? columna {k}: {que} {:?}", a.caja);
+                        }
+                    }
+                    eprintln!("tabla sin rayas? separadores {:?}", self.separadores.iter().map(|r| r.caja()).collect::<Vec<_>>());
+                }
                 let mut todos: Vec<usize> = partes.concat();
                 todos.sort_unstable();
                 out.push(Hoja { ids: todos, tabla: true, columna: col });

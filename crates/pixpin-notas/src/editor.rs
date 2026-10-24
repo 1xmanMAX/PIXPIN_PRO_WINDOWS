@@ -3043,6 +3043,21 @@ struct Opciones {
     claro: Option<bool>,
 }
 
+/// **El corrector de Windows, cargado para siempre** (24-oct-2026). El
+/// control lo carga (`MsSpellCheckingFacility.dll`) y, al acabar el hilo de
+/// una nota, COM lo descarga mientras a el aun le queda trabajo en otro hilo:
+/// ese salta a codigo que ya no esta y el proceso cae con un acceso invalido
+/// (la pila de la CI, que abre y cierra notas en hilos seguidos). Con una
+/// referencia que nunca se suelta, la DLL no se descarga hasta el final.
+fn sujetar_el_corrector() {
+    static UNA_VEZ: std::sync::Once = std::sync::Once::new();
+    UNA_VEZ.call_once(|| {
+        // SAFETY: cargar una DLL del sistema por su nombre; la referencia se
+        // queda a proposito (no hay FreeLibrary). Si no esta (Windows 7), nada.
+        let _ = unsafe { windows::Win32::System::LibraryLoader::LoadLibraryW(w!("MsSpellCheckingFacility.dll")) };
+    });
+}
+
 /// Crea las ventanas y mete la nota. No ensena nada.
 fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
     // SAFETY: todo lo que se crea aqui es de este hilo y lo suelta
@@ -3147,6 +3162,7 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
         );
         enviar(edit, EM_SETTARGETDEVICE, 0, 0);
         // El corrector ortografico de Windows (8 en adelante) y el IME.
+        sujetar_el_corrector();
         let opciones = enviar(edit, EM_GETLANGOPTIONS, 0, 0);
         enviar(
             edit,
