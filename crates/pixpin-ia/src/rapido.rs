@@ -1645,6 +1645,45 @@ fn tamano_de_plantilla(q: &str) -> Option<Orden> {
     if !verbo {
         return None;
     }
+    // **Si pide algo mas** que el tamaño («10 semanas y abajo una zona gris
+    // para anotaciones», 24-oct-2026), lo hace el modelo: aqui se perderia.
+    let mas = [
+        "zona",
+        "anot",
+        "nota",
+        "gris",
+        "color",
+        "lateral",
+        "costado",
+        "lado",
+        "abajo",
+        "arriba",
+        "debajo",
+        "encima",
+        "agrega",
+        "anade",
+        "pon ",
+        "pone",
+        "quita",
+        "borra",
+        "mueve",
+        "sube",
+        "baja",
+        "seccion",
+        "espacio",
+        "recuadro",
+        "cuadro",
+        "titulo",
+        "escrib",
+        "llena",
+        "rellena",
+        "actividades:",
+        "leyenda",
+        "fecha",
+    ];
+    if mas.iter().any(|m| q.contains(m)) {
+        return None;
+    }
     let mut args = Map::new();
     args.insert("accion".into(), json!("alargar"));
     for (n, unidad) in numeros_con_unidad(q) {
@@ -1706,6 +1745,13 @@ mod pruebas_plantilla {
 
     fn args(q: &str) -> Option<Map<String, Value>> {
         tamano_de_plantilla(&normalizar(q)).map(|o| o.args)
+    }
+
+    #[test]
+    fn si_pide_algo_mas_que_el_tamano_lo_hace_el_modelo() {
+        assert!(args("hazlo de 10 semanas y abajo una zona gris para anotaciones").is_none());
+        assert!(args("redúcelo a 10 semanas y en el lateral pon un espacio para notas").is_none());
+        assert!(args("amplíalo a 30 actividades y agrega una leyenda").is_none());
     }
 
     #[test]
