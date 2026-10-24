@@ -10,30 +10,32 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Notas, la de las tablas sola, con su salida
-        continue-on-error: true
-        run: cargo test -p pixpin-notas --lib -- --exact editor::tablas::desplazar::pruebas::cambiar_el_tamano_de_la_ventana_recoloca_las_tablas --test-threads=1 --nocapture
-      - name: Notas, el arrastre y el asa juntas
-        continue-on-error: true
-        run: cargo test -p pixpin-notas --lib fotos::pruebas::el_a -- --test-threads=1
-      - name: Notas, todas las de fotos
-        continue-on-error: true
-        run: cargo test -p pixpin-notas --lib fotos::pruebas -- --test-threads=1
-      - name: Notas, todas menos el arrastre
-        continue-on-error: true
-        run: cargo test -p pixpin-notas --lib -- --test-threads=1 --skip el_arrastre_de_windows
-      - name: Notas, todas menos el asa
-        continue-on-error: true
-        run: cargo test -p pixpin-notas --lib -- --test-threads=1 --skip el_asa_cambia_el_ancho
       - name: Las zonas de la hoja (pixpin-ia)
         continue-on-error: true
+        timeout-minutes: 15
         run: 'cargo test -p pixpin-ia --lib hoja:: -- --test-threads=1'
+      - name: Notas, la de las tablas sola
+        continue-on-error: true
+        timeout-minutes: 5
+        run: cargo test -p pixpin-notas --lib -- --exact editor::tablas::desplazar::pruebas::cambiar_el_tamano_de_la_ventana_recoloca_las_tablas --test-threads=1
+      - name: Notas bajo el depurador (la pila del acceso invalido)
+        continue-on-error: true
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          cargo test -p pixpin-notas --lib --no-run
+          $exe = Get-ChildItem target\debug\deps\pixpin_notas-*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $cdb = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -ErrorAction SilentlyContinue
+          if (-not $cdb) { Write-Host "sin cdb"; exit 0 }
+          & $cdb.FullName -G -o -c "sxe -c `".echo ACCESO_INVALIDO; .lines -e; kn 60; .echo FIN_PILA; q`" av; g" $exe.FullName --test-threads=1
       - name: OCR del banco
         continue-on-error: true
+        timeout-minutes: 25
         env:
           PIXPIN_DIAGRAMA_DEPURAR: '1'
         run: cargo test -p pixpin --bin pixpinmax el_parrafo_y_su_formula -- --nocapture

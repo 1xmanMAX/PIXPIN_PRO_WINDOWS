@@ -292,10 +292,12 @@ fn arrastrar_la_barra_desplaza_su_tabla() {
 fn cambiar_el_tamano_de_la_ventana_recoloca_las_tablas() {
     let e = abrir(&dos_anchas());
     desplazar(&e, tablas_de(&e)[0].desde, 400);
-    // Mucho mas ancha: todas caben y dejan de llevar barra.
+    // Mucho mas ancha: todas caben y dejan de llevar barra. Sin
+    // SWP_NOSENDCHANGING, Windows la recorta a lo ancho de la pantalla, y en
+    // la de la CI (1024 de ancho) las tablas seguian sin caber.
     // SAFETY: ventana propia.
     unsafe {
-        let _ = SetWindowPos(e.marco, None, 0, 0, 3200, 900, SWP_NOMOVE | SWP_NOZORDER);
+        let _ = SetWindowPos(e.marco, None, 0, 0, 3200, 900, SWP_NOMOVE | SWP_NOZORDER | SWP_NOSENDCHANGING);
     }
     colocar_todas(&e, None);
     let (vi, vd) = visible(e.edit);
