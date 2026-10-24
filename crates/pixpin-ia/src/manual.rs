@@ -55,6 +55,10 @@ const SITIOS: &[Sitio] = &[
         que_es: "Una foto o un PDF adjunto (o la imagen pegada en el lienzo) pasado al lienzo: calcado, interpretado entero o como tabla.",
     },
     Sitio {
+        nombre: "Carpetas de páginas",
+        que_es: "Cuadernos con nombre que juntan lienzos del chat en orden («Día 1», «Día 2»…); la página nueva repite la plantilla de la última, vacía.",
+    },
+    Sitio {
         nombre: "Mirar",
         que_es: "Ver cómo quedó de verdad (una imagen del lienzo o de la hoja anotada) antes de darlo por bueno.",
     },
@@ -114,6 +118,8 @@ const POR_NOMBRE: &[(&str, &str)] = &[
     ("lienzos_del_chat", "Lienzo: elegir hoja"),
     ("usar_lienzo", "Lienzo: elegir hoja"),
     ("crear_lienzo", "Lienzo: elegir hoja"),
+    ("anadir_a_carpeta", "Carpetas de páginas"),
+    ("pagina_nueva_de_carpeta", "Carpetas de páginas"),
     ("lienzo_nuevo", "Lienzo: elegir hoja"),
     ("abrir_hoja", "Lienzo: elegir hoja"),
     ("ver_lienzo", "Mirar"),

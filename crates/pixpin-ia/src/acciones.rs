@@ -1249,6 +1249,38 @@ pub const ACCIONES: &[Accion] = &[
         confirmar: None,
         hecho: "Trabajando en «{nombre}».",
     },
+    // 26-oct: las carpetas de paginas del chat (un cuaderno con nombre: «Dia
+    // 1», «Dia 2»...). Tambien las hace el ejecutor del chat ([`LIENZOS`]).
+    Accion {
+        herramienta: ANADIR_A_CARPETA,
+        accion: EN_EL_CHAT,
+        descripcion: "Mete un lienzo de este chat en una carpeta de páginas (un cuaderno con nombre, como un PDF), al final y con el título que le toca («Día 3» tras «Día 2»). Si la carpeta no existe, la crea. Sin lienzo, el lienzo destino.",
+        categoria: Categoria::Notas,
+        claves: &[],
+        fijos: "{}",
+        params: &[
+            p("carpeta", Tipo::Texto, true, "nombre de la carpeta"),
+            p(
+                "lienzo",
+                Tipo::Texto,
+                false,
+                "nombre del lienzo; omitir para el lienzo destino",
+            ),
+        ],
+        confirmar: None,
+        hecho: "Añadido a la carpeta «{carpeta}».",
+    },
+    Accion {
+        herramienta: PAGINA_DE_CARPETA,
+        accion: EN_EL_CHAT,
+        descripcion: "Crea la página siguiente de una carpeta de páginas de este chat: un lienzo nuevo con la plantilla de la última página, vacía, y el título siguiente («Día 3» tras «Día 2»). La deja como lienzo destino, para escribir o dibujar en ella.",
+        categoria: Categoria::Notas,
+        claves: &[],
+        fijos: "{}",
+        params: &[p("carpeta", Tipo::Texto, true, "nombre de la carpeta")],
+        confirmar: None,
+        hecho: "Página nueva en «{carpeta}».",
+    },
 ];
 
 /// Las herramientas de los lienzos del chat (17-oct), que hace el ejecutor
@@ -1256,7 +1288,16 @@ pub const ACCIONES: &[Accion] = &[
 pub const LIENZOS_DEL_CHAT: &str = "lienzos_del_chat";
 pub const CREAR_LIENZO: &str = "crear_lienzo";
 pub const USAR_LIENZO: &str = "usar_lienzo";
-pub const LIENZOS: &[&str] = &[LIENZOS_DEL_CHAT, CREAR_LIENZO, USAR_LIENZO];
+/// Las carpetas de paginas del chat (26-oct).
+pub const ANADIR_A_CARPETA: &str = "anadir_a_carpeta";
+pub const PAGINA_DE_CARPETA: &str = "pagina_nueva_de_carpeta";
+pub const LIENZOS: &[&str] = &[
+    LIENZOS_DEL_CHAT,
+    CREAR_LIENZO,
+    USAR_LIENZO,
+    ANADIR_A_CARPETA,
+    PAGINA_DE_CARPETA,
+];
 
 /// Si es una de las herramientas de los lienzos del chat ([`LIENZOS`]).
 pub fn es_de_lienzos(herramienta: &str) -> bool {
@@ -1286,6 +1327,8 @@ pub const SOLO_NUBE: &[&str] = &[
     LIENZOS_DEL_CHAT,
     CREAR_LIENZO,
     USAR_LIENZO,
+    ANADIR_A_CARPETA,
+    PAGINA_DE_CARPETA,
     // Las conexiones (17-oct, `crate::conexiones`): Google Drive y los que vengan.
     crate::conexiones::acciones::BUSCAR,
     crate::conexiones::acciones::LEER,

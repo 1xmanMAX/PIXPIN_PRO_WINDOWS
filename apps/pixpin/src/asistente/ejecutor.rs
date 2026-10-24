@@ -754,6 +754,108 @@ impl EjecutorDelChat {
                     super::chat::nombre_de_lienzo(m)
                 ))
             }
+            // Las carpetas de paginas (26-oct): meter un lienzo y crear la
+            // pagina siguiente, que pasa a ser el destino del turno.
+            pixpin_ia::acciones::ANADIR_A_CARPETA => {
+                let carpeta = a
+                    .pedido
+                    .get("carpeta")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                if carpeta.is_empty() {
+                    return Err("falta el nombre de la carpeta".into());
+                }
+                let lienzo = a
+                    .pedido
+                    .get("lienzo")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                let i = if lienzo.is_empty() {
+                    self.destino.as_deref().and_then(|d| {
+                        mensajes
+                            .iter()
+                            .position(|m| m.referencia.as_deref() == Some(d))
+                    })
+                } else {
+                    super::chat::lienzo_por_nombre(&mensajes, lienzo)
+                }
+                .ok_or_else(|| {
+                    if lienzo.is_empty() {
+                        "no hay lienzo destino: di que lienzo (lienzos_del_chat los lista)".to_string()
+                    } else {
+                        format!("no hay ningun lienzo «{lienzo}» en este chat (lienzos_del_chat los lista)")
+                    }
+                })?;
+                let hecho = crate::ventana_chat::carpetas::anadir_por_nombre(
+                    &raiz,
+                    &self.proyecto,
+                    super::chat::APARATO,
+                    &carpeta,
+                    &mensajes[i].id,
+                    "Página",
+                )
+                .map_err(|e| format!("no se pudo meter en la carpeta: {e}"))?;
+                let lienzo = super::chat::nombre_de_lienzo(&mensajes[i]);
+                Ok(if hecho.ya_estaba {
+                    format!(
+                        "«{lienzo}» ya estaba en la carpeta «{}» como «{}».",
+                        hecho.carpeta, hecho.titulo
+                    )
+                } else {
+                    format!(
+                        "{}«{lienzo}» entra en la carpeta «{}» como «{}» ({} paginas).",
+                        if hecho.creada { "Carpeta creada. " } else { "" },
+                        hecho.carpeta,
+                        hecho.titulo,
+                        hecho.paginas
+                    )
+                })
+            }
+            pixpin_ia::acciones::PAGINA_DE_CARPETA => {
+                let carpeta = a
+                    .pedido
+                    .get("carpeta")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let k = crate::ventana_chat::carpetas::carpeta_por_nombre(&mensajes, &carpeta)
+                    .ok_or_else(|| {
+                        let hay: Vec<&str> =
+                            pixpin_proyecto::carpeta_de_paginas::carpetas_de(&mensajes)
+                                .into_iter()
+                                .map(|i| mensajes[i].nombre.as_str())
+                                .collect();
+                        if hay.is_empty() {
+                            format!("no hay ninguna carpeta «{carpeta}» en este chat (anadir_a_carpeta crea una)")
+                        } else {
+                            format!("no hay ninguna carpeta «{carpeta}» en este chat; las que hay: {}", hay.join(", "))
+                        }
+                    })?;
+                let n = crate::ventana_chat::carpetas::pagina_siguiente(
+                    &raiz,
+                    &self.proyecto,
+                    super::chat::APARATO,
+                    &mensajes[k].id,
+                    "Página",
+                )
+                .map_err(|e| format!("no se pudo crear la pagina: {e}"))?;
+                crate::ventana_chat::refrescar();
+                self.cambiar_de_lienzo(n.mensaje.referencia.clone());
+                Ok(format!(
+                    "Creada la pagina «{}» en la carpeta «{}» ({}). Lo que dibujes, edites o mires con ver_lienzo ahora va a ella.",
+                    n.titulo,
+                    mensajes[k].nombre,
+                    if n.con_plantilla {
+                        "con la plantilla de la ultima pagina, vacia"
+                    } else {
+                        "en blanco: la ultima pagina no tenia plantilla"
+                    }
+                ))
+            }
             otra => Err(format!("«{otra}» no es una herramienta de lienzos")),
         }
     }

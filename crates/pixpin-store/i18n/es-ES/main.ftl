@@ -2865,3 +2865,31 @@ nota-pista-comentarios = Comentarios
 nota-pista-compartir = Compartir
 office-pista-abrir-con = Abrir con…
 office-pista-presentar = Presentar
+
+## Las carpetas de páginas del chat (26-oct-2026): un cuaderno con nombre
+carpeta-nueva = Carpeta de páginas
+carpeta-nombre-de-serie = Cuaderno
+carpeta-pagina = Página
+carpeta-paginas = { $n ->
+    [one] 1 página
+   *[other] { $n } páginas
+}
+carpeta-vacia-detalle = Vacía
+carpeta-anadir-a = Añadir a carpeta…
+carpeta-nueva-con = Nueva carpeta con esta página
+carpeta-anadida = Añadida a «{ $carpeta }» como «{ $titulo }»
+carpeta-ya-estaba = Ya está en «{ $carpeta }»
+carpeta-abrir = Abrir la carpeta
+carpeta-nueva-pagina = Nueva página
+carpeta-exportar-pdf = Exportar PDF
+carpeta-exportando = Exportando el PDF…
+carpeta-exportado = PDF guardado: { $nombre }
+carpeta-no-se-exporto = No se pudo exportar: no hay ninguna página con algo dentro
+carpeta-vacia = Esta carpeta está vacía. Pulsa «Nueva página», o en el chat elige «Añadir a carpeta…» en el menú de un lienzo o de una imagen.
+carpeta-antes = Antes
+carpeta-despues = Después
+carpeta-renombrar = Renombrar
+carpeta-quitar = Quitar de la carpeta
+carpeta-no-esta = Esa carpeta ya no está en el chat
+carpeta-pista = Arrastra una página para cambiarla de sitio · F2 cambia su título · Supr la quita (el lienzo sigue en el chat)
+carpeta-escribe-titulo = Escribe el título y pulsa Intro

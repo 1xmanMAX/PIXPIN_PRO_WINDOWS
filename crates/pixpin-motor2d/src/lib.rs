@@ -53,6 +53,7 @@ pub mod formulas;
 pub mod geometria_exacta;
 pub mod gesto;
 pub mod grafica;
+pub mod hoja_de_plantilla;
 pub mod hojita;
 pub mod impacto;
 pub mod indice;
