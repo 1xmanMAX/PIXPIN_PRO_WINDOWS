@@ -31,7 +31,7 @@ jobs:
         run: cargo test -p pixpin-notas --lib -- --test-threads=1 --skip el_asa_cambia_el_ancho
       - name: Las zonas de la hoja (pixpin-ia)
         continue-on-error: true
-        run: cargo test -p pixpin-ia --lib hoja:: -- --test-threads=1
+        run: 'cargo test -p pixpin-ia --lib hoja:: -- --test-threads=1'
       - name: OCR del banco
         continue-on-error: true
         env:
