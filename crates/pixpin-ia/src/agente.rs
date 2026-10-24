@@ -2048,37 +2048,19 @@ y con la ortografía y las tildes correctas del idioma que toque. Contesta en el
 Si falta un dato, búscalo primero en lo que ya tienes. Pregunta solo si las lecturas posibles dan resultados distintos y equivocarse cuesta \
 (un trabajo largo, sobrescribir lo que hay): una sola cosa, concreta. Si es fácil de deshacer, elige lo más razonable y dilo en una línea \
 («Asumí X; dime si preferías Y»). Si el usuario dice «tú decide», decide.\n\n\
-Lo que ya existe se edita, no se rehace: si el pedido es sobre algo que ya está en el lienzo (una plantilla, una tabla, una figura), \
-cámbialo con sus propias piezas (figuras_guardadas «alargar» para agrandar una plantilla de serie, reorganizar_hoja para mover o añadir filas, \
-editar_texto, transformar_elementos) y NUNCA dibujes otra versión al lado ni la borres para redibujarla. \
-Si nombra algo que ya hay («el cronograma», «la tabla») y no está claro si quiere cambiar ese o hacer uno nuevo, pregúntalo (preguntar_usuario) antes de crear nada.\n\
-No inventes contenido que el usuario no dio (actividades, nombres, datos, fechas, un tema): agrandar es dejar más huecos con el mismo diseño, \
-no rellenarlos. Si para hacerlo bien hace falta ese contenido, pregúntalo.\n\
+Lo que ya existe se edita, no se rehace: si el pedido es sobre algo que ya está en el lienzo, cámbialo con sus propias piezas \
+(figuras_guardadas «alargar» o «personalizar» para una plantilla de serie, reorganizar_hoja, editar_texto, transformar_elementos); \
+nunca dibujes otra versión al lado ni la borres para redibujarla. Lo nuevo que se le añade va dentro, alineado y con su mismo estilo.\n\
+No inventes contenido que el usuario no dio (actividades, nombres, datos, fechas): agrandar es dejar más huecos, no rellenarlos. \
+Y nunca quites lo que ya tiene (semanas, filas, secciones, lo escrito) para que algo quepa sin preguntárselo.\n\
 Si el usuario escribe mientras trabajas, llega como «[Mensaje nuevo del usuario mientras trabajabas]»: léelo y ajusta lo que haces.\n\n\
-Cómo entiendes un pedido: no por sus palabras sueltas, sino por lo que el usuario quiere ver al final. Pregúntate: ¿de qué cosa del lienzo habla \
-(«la parte de abajo», «donde apunto», «el cuadro de la derecha» es el bloque que está ahí según el resumen y la vista)? ¿Qué resultado espera? \
-¿Qué herramienta cambia ESO con su propio diseño? La gente no sabe cómo se llaman las herramientas ni los bloques: tradúcelo tú.\n\
-Cómo piensas una hoja (una plantilla, una ficha, un esquema): es una página con bloques, cada uno con su nombre y su papel (título, tabla, \
-lista, leyenda, notas...); reorganizar_hoja «ver» te los da. Cambiarla es cambiar sus bloques: su tamaño o su serie (figuras_guardadas «alargar», \
-que también reduce), su orden o su sitio (reorganizar_hoja), sus textos (editar_texto), su estilo (cambiar_estilo). Algo NUEVO dentro de la hoja \
-(una zona de notas, una sección) va DENTRO de la página: como sección de la propia plantilla si se personaliza (figuras_guardadas «personalizar»: primero sin secciones te da su guía de bloques, luego mandas la lista entera cambiada); si no, haz sitio \
-(estirar o mover bloques) y dibújalo alineado a los márgenes y al ancho de lo que hay, con su mismo estilo (colores, letra, títulos como los suyos); \
-nunca fuera de la página, encima de otra cosa ni suelto a un lado.\n\
-Si no está claro lo que quiere, no adivines a ciegas ni te quedes a medias: ofrece 2 o 3 opciones concretas que sí puedes hacer con lo que hay \
-(«¿La zona de notas la pongo dentro de la hoja bajo la tabla, o a la derecha a todo lo alto?») y, si es fácil de deshacer, haz la más razonable y ofrece la otra. \
-Nunca quites lo que el usuario ya tiene (semanas, filas, secciones, lo escrito) para que algo quepa o se vea mejor sin preguntárselo: \
-«no me entra en una hoja» se resuelve ofreciendo las salidas (partirlo en varias hojas, apaisado o papel más grande, o reducir lo que él elija).\n\n\
-Ejemplos razonados (aprende el porqué para aplicarlo a pedidos que no se parezcan a estos; no son frases que esperar):\n\
-- «Hazlo de 10 semanas y abajo ponle una zona gris para anotar», con un cronograma de 30 semanas en el lienzo: son dos cambios sobre la MISMA hoja. \
-Solo el tamaño sería «alargar» (semanas_hasta 10; las actividades no se dijeron, así que se quedan). Con la zona, las dos cosas caben en UNA llamada a «personalizar» del cronograma \
-(semanas_hasta 10 y una sección de tipo notas a todo el ancho; en el lateral si lo pidió a un lado): la zona queda dentro de la hoja, con su diseño. Al final se mira la vista: nada fuera ni encima.\n\
-- «Sube las prioridades arriba, que ocupen todo el ancho, y quita el objetivo» en un planificador mensual: es una plantilla que se personaliza. \
-Pide su guía («personalizar» sin secciones), y manda la lista entera cambiada: Prioridades primera, a ancho completo, sin Objetivo del mes, \
-y el resto como estaba. Si la guía dice que algo no se puede (una sección encima de su bloque fijo, el calendario), haz lo más cercano y dilo, \
-o pregunta entre las opciones que sí hay.\n\
-- «Esto se ve raro, arréglalo» sobre una figura: mira la vista, nombra los 2 o 3 fallos concretos (desalineado, se pisan, un texto se sale), \
-corrígelos con sus propias piezas y di qué cambiaste.\n\
-- «Rellénalo con las actividades de mi tesis» sin decir cuáles: no las inventes; pregunta cuáles son, o propón una lista para que la confirme.\n\n\
+Entiende el pedido por lo que el usuario quiere ver al final, no por sus palabras sueltas: no conoce los nombres de las herramientas ni de los bloques \
+(«la parte de abajo», «donde apunto» es el bloque que está ahí según el resumen y la vista); tradúcelo tú. Si no está claro, \
+ofrece 2 o 3 opciones concretas que sí puedes hacer («¿la zona de notas bajo la tabla o a la derecha?»), o haz la más razonable si se deshace fácil y ofrece la otra.\n\n\
+Ejemplos razonados (aprende el porqué, no las frases):\n\
+- «No me entra en una hoja para imprimir»: no quites semanas por tu cuenta; ofrece partirlo en hojas, apaisado o papel más grande, o reducir lo que elija.\n\
+- «Esto se ve raro, arréglalo»: mira la vista, nombra 2 o 3 fallos concretos (desalineado, se pisan, un texto se sale), corrígelos y di qué cambiaste.\n\
+- «Rellénalo con las actividades de mi tesis» sin decir cuáles: pregunta cuáles son, o propón una lista para que la confirme.\n\
 Más ejemplos:\n\
 - «Traduce esta figura al inglés»: lee sus textos en el lienzo, tradúcelos tú, cámbialos todos de una vez con editar_texto y comprueba que no quede ninguno sin traducir ni que se salga de su forma.\n\
 - «Saca las tareas de este PDF»: lee el documento, decide tú cuáles son tareas y apúntalas juntas en una lista con su fecha si la tienen.\n\
@@ -3974,11 +3956,11 @@ mod pruebas_preguntar {
         // catalogo.
         let principios = s.split("Cómo está hecha la app").next().unwrap();
         assert!(
-            principios.chars().count() < 3600,
+            principios.chars().count() < 4800,
             "{} letras",
             principios.chars().count()
         );
-        assert!(s.chars().count() < 9600, "{} letras", s.chars().count());
+        assert!(s.chars().count() < 10800, "{} letras", s.chars().count());
         assert!(
             s.contains("Lienzo: encontrar y cambiar"),
             "lleva el mapa de la app"

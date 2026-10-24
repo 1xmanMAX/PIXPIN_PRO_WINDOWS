@@ -204,11 +204,20 @@ fn el_turno_dibuja_mira_corrige_y_se_deshace_de_una_vez() {
                 r#"{"elementos":[{"tipo":"texto","x":0,"y":0,"texto":"Hola"}]}"#,
             ),
             Respuesta::de_texto("Escribi Hola."),
+            // La revision: el critico mira la imagen y suspende el orden...
+            Respuesta::de_texto(format!(
+                r##"{{"notas":{{"completo":9,"texto":9,"orden":4,"coherencia":9,"legibilidad":9}},"problemas":[{{"ids":[{siguiente}],"eje":"orden","que":"#{siguiente} tapa otra figura","arreglo":"mover #{siguiente} 40 a la derecha"}}]}}"##
+            )),
+            // ...se corrige...
             Respuesta::de_llamada(
                 "transformar_elementos",
                 &format!(r##"{{"que":"#{siguiente}","accion":"mover","dx":40}}"##),
             ),
             Respuesta::de_texto("Movi el texto para que no tape nada."),
+            // ...y la segunda mirada aprueba.
+            Respuesta::de_texto(
+                r#"{"notas":{"completo":9,"texto":9,"orden":9,"coherencia":9,"legibilidad":9},"problemas":[]}"#,
+            ),
         ])
         .con_vision(),
     ));

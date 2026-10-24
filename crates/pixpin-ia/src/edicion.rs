@@ -1432,7 +1432,13 @@ pub fn resumen(escena: &Escena, ctx: &Contexto) -> String {
     if !hay.is_empty() {
         s.push_str(&format!(
             "\nPlantillas de serie que YA estan en el lienzo: {}. Para agrandarlas usa figuras_guardadas «alargar» (mismo diseño, en su sitio); \
-para moverles bloques o anadir filas, reorganizar_hoja. Si el pedido las nombra y no queda claro si es cambiar esta o hacer otra, pregunta.",
+para moverles bloques o anadir filas, reorganizar_hoja. Si el pedido las nombra y no queda claro si es cambiar esta o hacer otra, pregunta.\n\
+Cómo pensarla: es una página con bloques con nombre (título, tabla, listas, notas...). Cambiarla es cambiar sus bloques: su serie (alargar, \
+que también reduce), sus secciones (personalizar: quitar, añadir, reordenar, ancho completo, lateral, tipo notas o libre; pide antes su guía), \
+su sitio (reorganizar_hoja), sus textos (editar_texto). Algo nuevo para ella (una zona de notas, un espacio libre) es una sección suya, \
+no un dibujo suelto: así queda dentro de la página y con su diseño. Ejemplo: «hazlo de 10 semanas y abajo una zona gris para anotar» es UNA \
+llamada a personalizar del cronograma con semanas_hasta 10 y una sección de tipo notas a todo el ancho («lateral» si la quiere a un lado). \
+Si lo pedido no lo permite la plantilla, haz lo más cercano y dilo, o pregunta entre las opciones que sí hay.",
             hay.join(", ")
         ));
     }
