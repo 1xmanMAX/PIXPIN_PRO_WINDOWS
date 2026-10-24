@@ -41,6 +41,7 @@ pub fn herramienta() -> Herramienta {
         nombre: NOMBRE.into(),
         descripcion: concat!(
             "Dibuja en el lienzo un cronograma (diagrama de Gantt): escala de tiempo, una barra por tarea, hitos y flechas de dependencia. ",
+            "Es para un cronograma NUEVO con tareas y fechas: para agrandar la plantilla «Cronograma» que ya esta en el lienzo (mas semanas o actividades) usa figuras_guardadas con «alargar». ",
             "«inicio» y «fin» como fechas AAAA-MM-DD o como numeros de dia/semana; un hito lleva «hito»:true (o fin igual a inicio). ",
             "Ejemplo: {\"titulo\":\"Obra\",\"tareas\":[{\"nombre\":\"Excavacion\",\"inicio\":\"2026-11-02\",\"fin\":\"2026-11-06\"},",
             "{\"nombre\":\"Cimientos\",\"inicio\":\"2026-11-09\",\"fin\":\"2026-11-20\",\"depende_de\":[\"Excavacion\"]},",

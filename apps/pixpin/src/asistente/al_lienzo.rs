@@ -1194,12 +1194,28 @@ pub fn poner_plantilla(
     centro: Option<(f32, f32)>,
 ) -> Result<Respuesta, String> {
     use pixpin_motor2d::figuras_de_serie as serie;
-    let elegidas: Vec<Elemento> = escena
+    let mut elegidas: Vec<Elemento> = escena
         .visibles()
         .filter(|e| elegidos.contains(&e.id))
         .cloned()
         .collect();
-    let la_elegida = serie::cual_es(&elegidas);
+    let mut la_elegida = serie::cual_es(&elegidas);
+    // **Sin elegirla** (25-oct-2026, el usuario abrio el cronograma y pidio
+    // agrandarlo sin seleccionarlo): si en el lienzo hay una sola plantilla
+    // que se alarga (y es la pedida, si se nombro), es esa, y se rehace en
+    // su sitio con su mismo diseño.
+    if la_elegida.is_none() {
+        let pedida = nombre.and_then(|n| {
+            let catalogo = serie::catalogo();
+            pixpin_ia::figuras::buscar(&catalogo, n)
+                .and_then(serie::clave_de)
+                .map(str::to_string)
+        });
+        if let Some((c, v)) = plantilla_en_la_escena(escena, pedida.as_deref()) {
+            la_elegida = Some(c);
+            elegidas = v;
+        }
+    }
     let clave = match nombre {
         Some(n) => {
             let catalogo = serie::catalogo();
@@ -1268,6 +1284,34 @@ pub fn poner_plantilla(
     })
 }
 
+/// **La plantilla de serie que hay en el lienzo** (la que se alarga y, si se
+/// dice, la de `clave`), con sus piezas: las de un mismo grupo exterior, que
+/// es el que pone estampar. `None` si no hay ninguna o hay varias (entonces
+/// hay que elegirla).
+fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(String, Vec<Elemento>)> {
+    use pixpin_motor2d::figuras_de_serie as serie;
+    let mut grupos: Vec<(String, Vec<Elemento>)> = Vec::new();
+    for e in escena.visibles() {
+        let Some(g) = e.grupos.last() else {
+            continue;
+        };
+        match grupos.iter_mut().find(|(n, _)| n == g) {
+            Some((_, v)) => v.push(e.clone()),
+            None => grupos.push((g.clone(), vec![e.clone()])),
+        }
+    }
+    let mut halladas: Vec<(String, Vec<Elemento>)> = grupos
+        .into_iter()
+        .filter_map(|(_, v)| serie::cual_es(&v).map(|c| (c, v)))
+        .filter(|(c, _)| serie::se_alarga(c) && clave.is_none_or(|k| k == c))
+        .collect();
+    if halladas.len() == 1 {
+        halladas.pop()
+    } else {
+        None
+    }
+}
+
 /// Con el lienzo cerrado, a cuanto de lo que habia.
 const HUECO_PLANTILLA: f32 = 120.0;
 
@@ -1333,6 +1377,56 @@ mod pruebas_plantilla {
             ids.iter()
                 .all(|id| escena.buscar(*id).is_some_and(|e| !e.borrado))
         );
+    }
+
+    /// 25-oct-2026: el cronograma abierto, SIN elegirlo, y «que sean 30
+    /// semanas y 30 actividades»: se rehace en su sitio con su diseño.
+    #[test]
+    fn el_cronograma_sin_elegir_se_agranda_en_su_sitio() {
+        let mut escena = Escena::nueva();
+        let f = serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-cronograma")
+            .unwrap();
+        let ids = biblioteca::estampar_en_escena(
+            &mut escena,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0),
+        );
+        let caja_vieja = caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
+        let iv = Intervalo {
+            desde: Some(1),
+            hasta: Some(30),
+            semanas: Some((1, 30)),
+            ..Default::default()
+        };
+        let r = poner_plantilla(&mut escena, &[], Some("cronograma"), &iv, None).unwrap();
+        assert!(r.texto.contains("una hoja"), "{}", r.texto);
+        assert!(
+            ids.iter()
+                .all(|id| escena.buscar(*id).is_some_and(|e| e.borrado)),
+            "la vieja se va: no quedan dos cronogramas"
+        );
+        let nuevas: Vec<Elemento> = escena.visibles().cloned().collect();
+        let c = caja(&nuevas).unwrap();
+        assert!(
+            (c.0 - caja_vieja.0).abs() < 0.5 && (c.1 - caja_vieja.1).abs() < 0.5,
+            "empieza donde estaba"
+        );
+        assert!(
+            c.2 - c.0 > caja_vieja.2 - caja_vieja.0 && c.3 - c.1 > caja_vieja.3 - caja_vieja.1,
+            "mas ancha (semanas) y mas alta (actividades)"
+        );
+        // Caso negativo: con dos cronogramas en el lienzo no se adivina.
+        let mut dos = Escena::nueva();
+        for x in [0.0, 3000.0] {
+            biblioteca::estampar_en_escena(
+                &mut dos,
+                &f,
+                pixpin_motor2d::vector::Punto2::nuevo(x, 0.0),
+            );
+        }
+        assert!(plantilla_en_la_escena(&dos, Some("cronograma")).is_none());
     }
 
     #[test]

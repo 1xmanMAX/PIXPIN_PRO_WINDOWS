@@ -289,6 +289,39 @@ fn puntuar(claves: &[&str], q: &str, palabras: &[&str]) -> u32 {
         .sum()
 }
 
+/// **Si piden agrandar algo que ya esta** (una plantilla: el cronograma,
+/// una lista, un planificador): un verbo de agrandar y de que (semanas,
+/// filas, actividades, la plantilla o «esto»).
+pub fn pide_agrandar(q: &str, palabras: &[&str]) -> bool {
+    let verbo = [
+        "amplia", "ampli", "agrand", "extiend", "extend", "expand", "alarg", "aument",
+    ]
+    .iter()
+    .any(|v| palabras.iter().any(|p| p.starts_with(v)))
+        || q.contains("mas grande")
+        || q.contains("que sean ")
+        || q.contains("hasta la semana");
+    let de_que = [
+        "semana",
+        "fila",
+        "actividad",
+        "tarea",
+        "plantilla",
+        "cronograma",
+        "gantt",
+        "hora",
+        "dia",
+        "esto",
+        "esta",
+        "este",
+        "figura",
+        "hoja",
+    ]
+    .iter()
+    .any(|c| palabras.iter().any(|p| p.starts_with(c)));
+    verbo && de_que
+}
+
 /// Si el pedido es una pregunta sobre como o donde (no un encargo).
 pub fn es_pregunta_de_ayuda(q: &str) -> bool {
     let q = q.trim_start_matches(|c: char| !c.is_alphanumeric());
@@ -564,6 +597,18 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         .any(|(s, h)| *s >= 2 && crate::edicion::fila(&h.nombre).is_some());
     if edita && !habla_de_documentos(&palabras) {
         puntuadas.retain(|(_, h)| !crate::acciones_documentos::es_de_documentos(&h.nombre));
+    }
+    // **Agrandar lo que ya hay** (25-oct-2026, el usuario: «tengo una figura
+    // del cronograma … quiero que sean 30 semanas y 30 actividades … siendo
+    // el mismo diseño»): la plantilla se rehace con SU codigo
+    // (`figuras_guardadas`, «alargar»). Con la de dibujar cronogramas a mano
+    // el modelo borraba la plantilla y la redibujaba peor.
+    if pide_agrandar(&q, &palabras) {
+        puntuadas.retain(|(_, h)| h.nombre != CRONOGRAMA && h.nombre != DIBUJAR);
+        if let Some(f) = de(FIGURAS) {
+            puntuadas.retain(|(_, h)| h.nombre != FIGURAS);
+            puntuadas.insert(0, (u32::MAX, f));
+        }
     }
     let mut elegidas: Vec<(u32, Herramienta)> = puntuadas
         .into_iter()
@@ -1021,6 +1066,28 @@ mod pruebas {
             nombres("Copia esta imagen en el lienzo", true),
             vec!["calcar_imagen"]
         );
+    }
+
+    #[test]
+    fn agrandar_el_cronograma_es_alargar_la_plantilla_y_no_redibujarlo() {
+        // 25-oct-2026: con la de dibujar cronogramas, el modelo borraba la
+        // plantilla y la redibujaba peor.
+        for pedido in [
+            "Amplía el cronograma a 30 semanas y 30 actividades",
+            "extiende esto para que sean 30 semanas",
+            "hazlo mas grande, con 25 filas",
+        ] {
+            let n = nombres(pedido, false);
+            assert_eq!(
+                n.first().map(String::as_str),
+                Some(FIGURAS),
+                "«{pedido}» → {n:?}"
+            );
+            assert!(!n.contains(&CRONOGRAMA.to_string()), "«{pedido}» → {n:?}");
+        }
+        // Caso negativo: un cronograma nuevo sigue siendo el de dibujarlo.
+        let n = nombres("Hazme un cronograma de la obra con sus hitos", false);
+        assert!(n.contains(&CRONOGRAMA.to_string()), "{n:?}");
     }
 
     #[test]

@@ -24,14 +24,17 @@ pub fn herramienta() -> Herramienta {
     Herramienta {
         nombre: NOMBRE.into(),
         descripcion: format!(
-            "{}{}{}{}",
+            "{}{}{}{}{}{}",
             "La biblioteca de figuras del lienzo (las del usuario y las plantillas de serie). «accion»: guardar (lo elegido en el lienzo, o si no ",
             "lo ultimo que dibujaste, con el «nombre» que diga el usuario o uno corto que le pongas tu), poner (estampa la figura de ese «nombre») ",
-            "o lista (las que hay). «alargar»: rehace la PLANTILLA elegida en el lienzo (o la de «nombre») con otro intervalo, con el mismo diseño: ",
+            "o lista (las que hay). «alargar»: rehace la PLANTILLA que hay en el lienzo (elegida o no; o la de «nombre») con otro intervalo, con el mismo diseño y en su mismo sitio. ",
+            "Para AGRANDAR, AMPLIAR o EXTENDER una plantilla (mas semanas, mas filas o actividades, mas horas) usa SIEMPRE «alargar»: nunca la borres ni la redibujes con otras herramientas. ",
+            "«30 actividades» (o filas o tareas) es desde 1 hasta 30; «30 semanas» es semanas_desde 1 y semanas_hasta 30: ",
             format_args!(
                 "«desde»/«hasta» (del 1 al 40: una hoja mas larga), «de_a» (de 10 en 10: una hoja por cada 10), «semanas_desde»/«semanas_hasta» (cronograma), \
                  «mes» AAAA-MM y «meses» (planificador mensual y habitos con el calendario de verdad). Se alargan: {}. \
-                 Ejemplos: {{\"accion\":\"poner\",\"nombre\":\"arbol isometrico\"}}, {{\"accion\":\"alargar\",\"desde\":1,\"hasta\":40,\"de_a\":10}}",
+                 Ejemplos: {{\"accion\":\"poner\",\"nombre\":\"arbol isometrico\"}}, {{\"accion\":\"alargar\",\"desde\":1,\"hasta\":40,\"de_a\":10}}, \
+                 {{\"accion\":\"alargar\",\"nombre\":\"cronograma\",\"desde\":1,\"hasta\":30,\"semanas_desde\":1,\"semanas_hasta\":30}}",
                 pixpin_motor2d::figuras_de_serie::las_que_se_alargan()
             )
         ),
