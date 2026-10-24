@@ -19,6 +19,7 @@
 
 use std::sync::OnceLock;
 
+use super::noche::{self, SUFIJO_NOCHE};
 use super::plantillas::{self, AMPLIABLES, MESES, PERSONALIZABLES, Tramo, VINETA_DE_4};
 use super::secciones::{self, Seccion, SeccionPedida};
 use super::{PREFIJO_ID, SEPARADOR};
@@ -45,6 +46,12 @@ pub struct Intervalo {
     /// **Las secciones**, en su orden (las que se personalizan): lo que no
     /// diga cada una se toma de la de fabrica con su titulo.
     pub secciones: Option<Vec<SeccionPedida>>,
+    /// **El modo noche** (25-oct, `noche.rs`): `Some(true)` la hoja sale en
+    /// oscuro, `Some(false)` de dia, `None` como este la que se rehace (la
+    /// app lo completa con [`es_de_noche`](super::es_de_noche)) o de dia si
+    /// es nueva. Solo con el modo («ponlo en modo noche») sale la misma
+    /// hoja de serie en el otro modo.
+    pub noche: Option<bool>,
 }
 
 impl Intervalo {
@@ -73,6 +80,10 @@ fn fichas() -> &'static [Ficha] {
         super::catalogo()
             .into_iter()
             .filter_map(|f| {
+                // La gemela de noche es la misma plantilla: una ficha basta.
+                if f.id.ends_with(SUFIJO_NOCHE) {
+                    return None;
+                }
                 let titulo = titulo_de(&f.elementos)?;
                 let clave = f.id.strip_prefix(PREFIJO_ID)?.to_string();
                 let nombre =
@@ -102,7 +113,8 @@ fn titulo_de(elementos: &[Elemento]) -> Option<&str> {
 
 /// **Que plantilla de serie es** lo elegido (su clave), por el titulo de la
 /// hoja. Los dos storyboard se titulan igual: el de 4 tiene las viñetas de
-/// [`VINETA_DE_4`] de ancho.
+/// [`VINETA_DE_4`] de ancho. La de noche es la misma (su titulo es el
+/// mismo); si es de noche lo dice [`es_de_noche`](super::es_de_noche).
 pub fn cual_es(elementos: &[Elemento]) -> Option<String> {
     let titulo = titulo_de(elementos)?;
     let f = fichas().iter().find(|f| f.titulo == titulo)?;
@@ -123,9 +135,47 @@ pub fn nombre_de(clave: &str) -> String {
         .map_or_else(|| clave.to_string(), |f| f.nombre.clone())
 }
 
-/// La clave de una plantilla de serie por su id (`serie-<clave>`).
+/// La clave de una plantilla de serie por su id (`serie-<clave>`, o
+/// `serie-<clave>-noche` la de noche: la misma clave).
 pub fn clave_de(f: &FiguraGuardada) -> Option<&str> {
-    f.id.strip_prefix(PREFIJO_ID)
+    let c = f.id.strip_prefix(PREFIJO_ID)?;
+    Some(c.strip_suffix(SUFIJO_NOCHE).unwrap_or(c))
+}
+
+/// Si es la gemela de noche de una plantilla de serie (por su id).
+pub fn es_la_de_noche(f: &FiguraGuardada) -> bool {
+    f.id.starts_with(PREFIJO_ID) && f.id.ends_with(SUFIJO_NOCHE)
+}
+
+/// **El mes de una hoja que va por meses** (el mensual y los habitos con
+/// el calendario de verdad), por lo que lleva escrito: «Noviembre» y
+/// «2026» en la cabecera, o «Noviembre 2026». `None` si no dice ninguno.
+pub fn mes_de_la_hoja(elementos: &[Elemento]) -> Option<(i32, u32)> {
+    let textos: Vec<&str> = elementos
+        .iter()
+        .filter(|e| !e.borrado)
+        .filter_map(|e| match &e.figura {
+            Figura::Texto { texto, .. } => Some(texto.trim()),
+            _ => None,
+        })
+        .collect();
+    let mes = |t: &str| MESES.iter().position(|m| *m == t).map(|i| i as u32 + 1);
+    let ano = |t: &str| {
+        t.parse::<i32>()
+            .ok()
+            .filter(|a| t.len() == 4 && (1900..=2200).contains(a))
+    };
+    // «Noviembre 2026» en un solo texto (los habitos).
+    for t in &textos {
+        if let Some((m, a)) = t.split_once(' ')
+            && let (Some(m), Some(a)) = (mes(m), ano(a))
+        {
+            return Some((a, m));
+        }
+    }
+    let m = textos.iter().find_map(|t| mes(t))?;
+    let a = textos.iter().find_map(|t| ano(t))?;
+    Some((a, m))
 }
 
 /// Si esa plantilla se puede alargar.
@@ -157,8 +207,42 @@ pub fn las_que_se_alargan() -> String {
 
 /// **Las hojas pedidas**, cada una normalizada al origen y con el tramo en
 /// el nombre («Planificación · Lista de tareas (1–40)»). Error, en palabras
-/// para el usuario, si la plantilla no se alarga o lo pedido no cabe.
+/// para el usuario, si la plantilla no se alarga o lo pedido no cabe. Con
+/// `noche`, las hojas salen de noche (y «· noche» en el nombre).
 pub fn alargar(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, String> {
+    let mut hojas = match iv.noche {
+        // Solo el modo: la misma hoja de serie, de dia o de noche.
+        Some(_) if !iv.pide_numeros() && iv.secciones.is_none() => vec![de_serie(clave)?],
+        _ => de_dia(clave, iv)?,
+    };
+    if iv.noche == Some(true) {
+        for h in &mut hojas {
+            noche::pintar(&mut h.elementos);
+            h.id.push_str(SUFIJO_NOCHE);
+            h.nombre = match h.nombre.strip_suffix(')') {
+                Some(n) => format!("{n} · noche)"),
+                None => format!("{} (noche)", h.nombre),
+            };
+        }
+    }
+    Ok(hojas)
+}
+
+/// La hoja de serie de cualquier plantilla de pagina, con «(de serie)» en
+/// el nombre (la de noche la pinta [`alargar`]).
+fn de_serie(clave: &str) -> Result<FiguraGuardada, String> {
+    let f = match plantillas::hacer(clave, &plantillas::tramo_de_fabrica(clave)) {
+        Some(f) => f,
+        None => super::catalogo()
+            .into_iter()
+            .find(|f| f.id == format!("{PREFIJO_ID}{clave}") && titulo_de(&f.elementos).is_some())
+            .ok_or_else(|| format!("«{}» no es una plantilla de página", nombre_de(clave)))?,
+    };
+    Ok(con_nombre(f, "de serie"))
+}
+
+/// Las hojas pedidas, de dia.
+fn de_dia(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, String> {
     let secs = match &iv.secciones {
         Some(pedidas) => {
             if !se_personaliza(clave) {

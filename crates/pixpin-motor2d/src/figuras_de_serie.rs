@@ -43,8 +43,9 @@ mod tecnico;
 mod vegetacion;
 
 pub use intervalo::{
-    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, guia_de, las_que_se_alargan,
-    las_que_se_personalizan, nombre_de, se_alarga, se_personaliza, secciones_de, tramo_de_serie,
+    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, es_la_de_noche, guia_de, las_que_se_alargan,
+    las_que_se_personalizan, mes_de_la_hoja, nombre_de, se_alarga, se_personaliza, secciones_de,
+    tramo_de_serie,
 };
 pub use secciones::{AnchoSeccion, MAX_LINEAS, MAX_SECCIONES, Seccion, SeccionPedida, TipoSeccion};
 
@@ -53,7 +54,7 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 /// Las categorias, en el orden en que salen en el menu.
 pub const CATEGORIAS: [&str; 21] = [
@@ -406,6 +407,11 @@ impl Lapiz {
         }
     }
 }
+
+/// El modo noche de las plantillas de pagina (aparte, para no tocar el
+/// resto de la lista).
+mod noche;
+pub use noche::{SUFIJO_NOCHE, es_de_noche};
 
 #[cfg(test)]
 #[path = "figuras_de_serie/pruebas.rs"]

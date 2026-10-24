@@ -2,7 +2,7 @@
 //! carpeta que se le pase, para mirarlas sin abrir la app. Con
 //! `--alargadas`, en vez del catalogo, unas cuantas alargadas y partidas.
 //!
-//! `cargo run -p pixpin-motor2d --example figuras_de_serie_svg -- <carpeta> [--alargadas]`
+//! `cargo run -p pixpin-motor2d --example figuras_de_serie_svg -- <carpeta> [--alargadas [--noche]]`
 
 use pixpin_motor2d::biblioteca::FiguraGuardada;
 use pixpin_motor2d::elemento::ColorRgba;
@@ -18,9 +18,12 @@ fn alargadas() -> Vec<FiguraGuardada> {
         de_a: k,
         ..Default::default()
     };
+    // Con `--noche`, todas de noche.
+    let noche = std::env::args().any(|a| a == "--noche").then_some(true);
     let mut v = Vec::new();
-    let mut con =
-        |clave: &str, i: Intervalo| v.extend(figuras_de_serie::alargar(clave, &i).unwrap());
+    let mut con = |clave: &str, i: Intervalo| {
+        v.extend(figuras_de_serie::alargar(clave, &Intervalo { noche, ..i }).unwrap())
+    };
     con("lista-de-tareas", iv(1, 60, None));
     con("lista-numerada", iv(1, 40, Some(10)));
     con(
