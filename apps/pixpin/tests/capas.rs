@@ -25,7 +25,10 @@ fn capa(nombre: &str) -> Option<u8> {
         // arrastran `pixpin-shell` y compilan tambien en Mac.
         "pixpin-geom" | "pixpin-nivel" | "pixpin-lecciones" | "pixpin-timeline"
         // `pixpin-frase` (18-oct) entiende frases de tareas y fechas, sin nadie.
-        | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" | "pixpin-frase" | "pixpin-sistema" => 0,
+        // `pixpin-anki` (24-oct) hace las tarjetas de Anki y habla con
+        // AnkiConnect con `std`: tampoco depende de nadie de PixPin.
+        | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" | "pixpin-frase" | "pixpin-sistema"
+        | "pixpin-anki" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
@@ -99,14 +102,15 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_siete_paquetes() {
+fn estan_los_treinta_y_ocho_paquetes() {
     let encontrados = manifiestos();
     // 32 con `pixpin-sistema` (lo que la logica pregunta al sistema, con
-    // version portable: la usa la copia del nucleo de Mac).
+    // version portable: la usa la copia del nucleo de Mac) y 33 con
+    // `pixpin-anki`.
     assert_eq!(
         encontrados.len(),
-        37,
-        "se esperan 32 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        38,
+        "se esperan 33 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
