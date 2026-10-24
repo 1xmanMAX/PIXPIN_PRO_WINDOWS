@@ -249,6 +249,10 @@ pub(super) struct Zona<'a> {
     /// La columna lateral `(x, y, ancho)`, si la hoja la tiene: va a la
     /// derecha de lo fijo y no se mezcla con las columnas de la zona.
     pub lateral: Option<(f32, f32, f32)>,
+    /// Hasta donde baja la ultima zona de notas (o libre) del lateral: el
+    /// pie de lo fijo de al lado (la tabla del cronograma), para que no se
+    /// quede a media altura (24-oct-2026).
+    pub fondo_lateral: f32,
 }
 
 impl<'a> Zona<'a> {
@@ -265,6 +269,7 @@ impl<'a> Zona<'a> {
             serie: None,
             propios: &[],
             lateral: None,
+            fondo_lateral: 0.0,
         }
     }
 
@@ -369,6 +374,17 @@ pub(super) fn colocar(z: &Zona, secciones: &[Seccion]) -> Maqueta {
         };
         fin = fin.max(y + alto);
         sitios.push(Sitio { x, y, w, contenido });
+    }
+    // La ultima de notas o libre del lateral baja hasta el pie de lo fijo.
+    if let Some((i, _)) = secciones
+        .iter()
+        .enumerate()
+        .rfind(|(_, s)| s.ancho == AnchoSeccion::Lateral)
+        .filter(|(_, s)| matches!(s.tipo, TipoSeccion::Notas | TipoSeccion::Libre))
+    {
+        let st = &mut sitios[i];
+        st.contenido = st.contenido.max(z.fondo_lateral - st.y - TITULO);
+        fin = fin.max(st.y + TITULO + st.contenido);
     }
     // Sin secciones no ocupa nada: la hoja queda como si no hubiera zona.
     if sitios.is_empty() {

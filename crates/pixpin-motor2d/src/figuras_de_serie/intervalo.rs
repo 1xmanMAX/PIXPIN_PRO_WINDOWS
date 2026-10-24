@@ -354,6 +354,15 @@ fn con_nombre(mut f: FiguraGuardada, rotulo: &str) -> FiguraGuardada {
     f
 }
 
+/// **Que cuenta la serie de una plantilla** que se alarga («filas»,
+/// «horas», «meses»...); `None` si no se alarga.
+pub fn cuenta_de(clave: &str) -> Option<&'static str> {
+    AMPLIABLES
+        .iter()
+        .find(|a| a.clave == clave)
+        .map(|a| a.cuenta)
+}
+
 /// El tramo de la de serie de una plantilla que se alarga («1–42»).
 pub fn tramo_de_serie(clave: &str) -> Option<(u32, u32)> {
     AMPLIABLES

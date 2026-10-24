@@ -43,7 +43,7 @@ mod tecnico;
 mod vegetacion;
 
 pub use intervalo::{
-    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, guia_de, las_que_se_alargan,
+    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, cuenta_de, guia_de, las_que_se_alargan,
     las_que_se_personalizan, nombre_de, se_alarga, se_personaliza, secciones_de, tramo_de_serie,
 };
 pub use secciones::{AnchoSeccion, MAX_LINEAS, MAX_SECCIONES, Seccion, SeccionPedida, TipoSeccion};

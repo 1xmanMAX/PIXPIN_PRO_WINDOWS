@@ -330,8 +330,13 @@ fn el_cronograma_con_su_zona_gris_abajo_o_en_el_lateral() {
         ..Default::default()
     };
     let f = &alargar("cronograma", &iv).unwrap()[0];
-    let (gx, _, gw, _) = gris(f).unwrap();
+    let (gx, gy, gw, gh) = gris(f).unwrap();
     let ancho_sin = caja(sin).2;
+    // Baja hasta el pie de la tabla (la fila 18), no a media altura; y la
+    // hoja no crece por ello.
+    let (_, y20) = texto_en(f, "18").unwrap();
+    assert!(gy + gh > y20, "{} <= {y20}", gy + gh);
+    assert_eq!(caja(f).3, caja(sin).3, "el lateral no alarga la hoja");
     assert!(gx > ancho_sin - M, "{gx}");
     assert!((gw - plantillas::LATERAL_DEL_CRONOGRAMA).abs() < 0.5);
     assert!((caja(f).2 - (ancho_sin + 28.0 + plantillas::LATERAL_DEL_CRONOGRAMA)).abs() < 0.5);

@@ -1257,7 +1257,16 @@ pub fn poner_plantilla(
     let intervalo = if la_elegida.as_deref() == Some(clave.as_str()) {
         let (filas, semanas) = tramo_actual(&elegidas);
         let mut iv = intervalo.clone();
-        if iv.desde.is_none() && iv.hasta.is_none() && iv.mes.is_none() && iv.de_a.is_none() {
+        // Solo si su serie va por numeros de la hoja: el mensual va por
+        // meses y sus «01–04» son las prioridades (24-oct-2026, personalizar
+        // el mensual pedia un mes).
+        let por_numeros = serie::cuenta_de(&clave).is_some_and(|c| c != "meses");
+        if por_numeros
+            && iv.desde.is_none()
+            && iv.hasta.is_none()
+            && iv.mes.is_none()
+            && iv.de_a.is_none()
+        {
             if let Some((a, b)) = filas {
                 iv.desde = Some(a);
                 iv.hasta = Some(b);
@@ -1629,6 +1638,62 @@ mod pruebas_plantilla {
         );
         // Caso negativo: un lienzo vacio no tiene plantilla que leer.
         assert!(secciones_de_la_plantilla(&Escena::nueva(), &[]).is_err());
+    }
+
+    /// 24-oct-2026 (banco con Haiku): «lo de los habitos no lo uso, pon un
+    /// espacio en blanco grande». Sus «01–04» son las prioridades, no filas
+    /// que alargar: personalizar el semanal no debe pedir numeros.
+    #[test]
+    fn el_semanal_cambia_habitos_por_un_espacio_libre() {
+        use pixpin_motor2d::figuras_de_serie::{SeccionPedida, TipoSeccion};
+        let mut escena = Escena::nueva();
+        let f = serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-planificador-semanal")
+            .unwrap();
+        biblioteca::estampar_en_escena(
+            &mut escena,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(300.0, 400.0),
+        );
+        let titulo = |t: &str| SeccionPedida {
+            titulo: t.into(),
+            ..Default::default()
+        };
+        let iv = Intervalo {
+            secciones: Some(vec![
+                titulo("Objetivo de la semana"),
+                titulo("Prioridades"),
+                titulo("Otras tareas"),
+                SeccionPedida {
+                    titulo: "Espacio libre".into(),
+                    tipo: Some(TipoSeccion::Libre),
+                    lineas: Some(8),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+        let r = poner_plantilla(&mut escena, &[], None, &iv, None).unwrap();
+        let textos: Vec<String> = escena
+            .visibles()
+            .filter_map(|e| match &e.figura {
+                pixpin_motor2d::elemento::Figura::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            textos.iter().any(|t| t == "ESPACIO LIBRE") && !textos.iter().any(|t| t == "HÁBITOS"),
+            "{}: {textos:?}",
+            r.texto
+        );
+        // Caso negativo: con numeros de verdad (el cronograma) si se conservan.
+        assert_eq!(
+            serie::cuenta_de("cronograma"),
+            Some("filas"),
+            "el cronograma sigue contando sus filas"
+        );
+        assert_eq!(serie::cuenta_de("planificador-semanal"), None);
     }
 
     /// 25-oct-2026: el cronograma abierto, SIN elegirlo, y «que sean 30

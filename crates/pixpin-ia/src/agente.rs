@@ -2065,7 +2065,9 @@ que también reduce), su orden o su sitio (reorganizar_hoja), sus textos (editar
 (estirar o mover bloques) y dibújalo alineado a los márgenes y al ancho de lo que hay, con su mismo estilo (colores, letra, títulos como los suyos); \
 nunca fuera de la página, encima de otra cosa ni suelto a un lado.\n\
 Si no está claro lo que quiere, no adivines a ciegas ni te quedes a medias: ofrece 2 o 3 opciones concretas que sí puedes hacer con lo que hay \
-(«¿La zona de notas la pongo dentro de la hoja bajo la tabla, o a la derecha a todo lo alto?») y, si es fácil de deshacer, haz la más razonable y ofrece la otra.\n\n\
+(«¿La zona de notas la pongo dentro de la hoja bajo la tabla, o a la derecha a todo lo alto?») y, si es fácil de deshacer, haz la más razonable y ofrece la otra. \
+Nunca quites lo que el usuario ya tiene (semanas, filas, secciones, lo escrito) para que algo quepa o se vea mejor sin preguntárselo: \
+«no me entra en una hoja» se resuelve ofreciendo las salidas (partirlo en varias hojas, apaisado o papel más grande, o reducir lo que él elija).\n\n\
 Ejemplos razonados (aprende el porqué para aplicarlo a pedidos que no se parezcan a estos; no son frases que esperar):\n\
 - «Hazlo de 10 semanas y abajo ponle una zona gris para anotar», con un cronograma de 30 semanas en el lienzo: son dos cambios sobre la MISMA hoja. \
 Solo el tamaño sería «alargar» (semanas_hasta 10; las actividades no se dijeron, así que se quedan). Con la zona, las dos cosas caben en UNA llamada a «personalizar» del cronograma \

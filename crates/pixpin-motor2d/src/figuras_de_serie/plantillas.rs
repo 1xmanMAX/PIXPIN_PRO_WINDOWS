@@ -881,6 +881,7 @@ fn cronograma(tr: &Tramo, secs: Option<&[Seccion]>) -> FiguraGuardada {
     let fin_tabla = y + fh + fh * tr.n() as f32;
     let z = Zona {
         lateral: Some((x + w + 28.0, y - 26.0, LATERAL_DEL_CRONOGRAMA)),
+        fondo_lateral: fin_tabla,
         ..Zona::de_dos(x, fin_tabla + 18.0 + 12.0 + 30.0, w, 30.0, 24.0)
     };
     let m = colocar(&z, &secs);

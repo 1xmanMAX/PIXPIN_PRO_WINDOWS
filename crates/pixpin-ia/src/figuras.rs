@@ -47,7 +47,7 @@ pub fn herramienta() -> Herramienta {
                 pixpin_motor2d::figuras_de_serie::las_que_se_alargan()
             ),
             format_args!(
-                " «personalizar»: cambia las SECCIONES de una plantilla con su mismo código (quitar una, cambiar sus líneas, reordenarlas, ponerla a todo el ancho, añadir otra), \
+                " «personalizar»: cambia las SECCIONES de una plantilla con su mismo código (quitar una, cambiar sus líneas, reordenarlas, ponerla a todo el ancho, añadir otra); manda solo lo que cambia (si las semanas o las filas se quedan como están, no las pongas), \
                  rehecha en su sitio (Ctrl+Z la devuelve). Sin «secciones» te devuelve las que tiene (léelas primero); con ellas, manda la lista ENTERA en el orden nuevo: \
                  «secciones»: [{{titulo, tipo, lineas, ancho}}] (de una que ya existe basta el titulo y lo que cambie; lo que quites no lo pongas). \
                  tipo: renglones, numerados, casillas, recuadro, libre, notas (zona gris para anotar) o propia (un bloque de esa plantilla); \
