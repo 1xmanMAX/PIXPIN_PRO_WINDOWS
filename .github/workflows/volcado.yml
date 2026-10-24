@@ -1,11 +1,14 @@
 # Lo que la app manda al modelo (instrucciones y herramientas), volcado al
 # registro para evaluar el asistente con otro «cerebro» (el modo grabado del
-# banco de `pixpin-ia`). Solo a mano: no corre en cada push.
+# banco de `pixpin-ia`). Solo cuando se pide: a mano, o con un push cuyo
+# mensaje lleve «[volcado]».
 name: Volcado del asistente
 on:
   workflow_dispatch:
+  push:
 jobs:
   volcar:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[volcado]')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
