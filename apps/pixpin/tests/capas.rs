@@ -47,6 +47,8 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-docs`; `pixpin-bim` solo usa `pixpin-cad`.
         "pixpin-shell" | "pixpin-codec" | "pixpin-motor2d" | "pixpin-sincro"
         | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web" | "pdfsqueeze-core"
+        // Las tarjetas de Anki (24-oct-2026): sin crates de PixPin, solo red.
+        | "pixpin-anki"
         | "pixpin-office" | "pixpin-bim" => 1,
         // El plugin de Flow Launcher es un ejecutable aparte que no enlaza
         // ningun crate de PixPin: habla con la app por WM_COPYDATA. La app si

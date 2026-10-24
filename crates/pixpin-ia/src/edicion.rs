@@ -71,6 +71,7 @@ pub const CORTAR: &str = "cortar_linea";
 pub const EXTENDER: &str = "extender_linea";
 pub const IMAGEN: &str = "imagen_en_lienzo";
 pub const EDITAR_TEXTO: &str = "editar_texto";
+pub const REORGANIZAR: &str = "reorganizar_hoja";
 
 /// El tipo de un campo de la tabla.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -722,6 +723,84 @@ pub const FILAS: &[Fila] = &[
             "al espanol",
             "no cabe",
             "se sale",
+        ],
+    },
+    // 25-oct-2026, el usuario: «quiero poner el recuadro que esta arriba
+    // abajo y reorganizar la pagina … que utilice el mismo codigo … que no lo
+    // rehaga usando las herramientas del canvas».
+    Fila {
+        nombre: REORGANIZAR,
+        descripcion: "Reorganiza una hoja que YA esta en el lienzo (una plantilla, una figura, un esquema) moviendo SUS PROPIAS piezas por bloques (cada recuadro con lo que lleva y su titulo): mover un bloque arriba o abajo, ponerlo antes o despues de otro, intercambiar dos, duplicar, borrar, estirarlo o anadirle filas copiando la ultima. Todo conserva su diseño y la hoja queda ordenada (lo de debajo se recoloca y la pagina crece si hace falta). Usala SIEMPRE para reorganizar, ampliar o anadir filas a algo que ya existe: NUNCA lo borres para redibujarlo con dibujar_en_lienzo. Primero «ver» da la lista de bloques (B1, B2...) con su titulo; luego nombra el bloque por su B# o su titulo. Ejemplos: {\"accion\":\"ver\"}, {\"accion\":\"mover\",\"bloque\":\"Prioridades\",\"donde\":\"abajo\"}, {\"accion\":\"intercambiar\",\"bloque\":\"B1\",\"con\":\"B3\"}, {\"accion\":\"anadir_filas\",\"bloque\":\"Tareas\",\"filas\":10}",
+        campos: &[
+            c(
+                "accion",
+                Tipo::Opciones(&[
+                    "ver",
+                    "mover",
+                    "intercambiar",
+                    "duplicar",
+                    "borrar",
+                    "estirar",
+                    "anadir_filas",
+                ]),
+                true,
+                "",
+            ),
+            c(
+                "bloque",
+                Tipo::Texto,
+                false,
+                "el bloque: «B2» o (parte de) su titulo",
+            ),
+            c(
+                "con",
+                Tipo::Texto,
+                false,
+                "intercambiar, o mover con donde antes/despues: el otro bloque",
+            ),
+            c(
+                "donde",
+                Tipo::Opciones(&["arriba", "abajo", "antes", "despues"]),
+                false,
+                "mover: al principio o al final de su columna, o antes/despues (encima/debajo) de «con»",
+            ),
+            c(
+                "cuanto",
+                Tipo::Numero,
+                false,
+                "estirar: cuanto mas alto (px)",
+            ),
+            c("filas", Tipo::Numero, false, "anadir_filas: cuantas"),
+            c(
+                "que",
+                Tipo::Referencia,
+                false,
+                "la hoja, si hay varias en el lienzo: «lo elegido», «#12»... Omitir: la elegida o la unica",
+            ),
+        ],
+        claves: &[
+            "reorganiz",
+            "reordena",
+            "reacomod",
+            "intercambi",
+            "cambia de sitio",
+            "cambia de lugar",
+            "pon arriba",
+            "ponlo arriba",
+            "ponlo abajo",
+            "pon abajo",
+            "muevelo",
+            "mueve el recuadro",
+            "mueve la seccion",
+            "mueve el bloque",
+            "recuadro",
+            "seccion",
+            "bloque",
+            "anade filas",
+            "mas filas",
+            "agrega filas",
+            "duplica la seccion",
+            "duplica el recuadro",
         ],
     },
 ];

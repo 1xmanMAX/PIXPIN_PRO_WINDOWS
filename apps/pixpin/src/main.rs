@@ -272,12 +272,13 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
             v.push((ID_TIMELINE, t("bandeja-timeline")));
             v.push((ID_LECCION_NUEVA, t("bandeja-leccion-nueva")));
             v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
-            v.push((ID_FIGURAS, t("bandeja-figuras")));
             v.push((ID_TAREAS, t("bandeja-tareas")));
             let s = Comando::Sincronizar.descriptor();
             if s.en_bandeja {
                 v.push((s.comando.id(), t(s.clave_titulo)));
             }
+            // Las figuras (25-oct-2026), detras de lo de siempre.
+            v.push((ID_FIGURAS, t("bandeja-figuras")));
         }
     }
     // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es

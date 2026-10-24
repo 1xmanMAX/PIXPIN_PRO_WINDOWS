@@ -19,7 +19,7 @@ use pixpin_motor2d::{estilo, organizar, portapapeles, recorte, recorte_imagen, t
 use super::referencia::{self, uno, varios};
 use super::{
     Anfitrion, CORTAR, Contexto, EDITAR_TEXTO, ESTILO, EXTENDER, Edicion, GEOMETRIA, Hecho, IMAGEN,
-    SELECCIONAR, TRANSFORMAR, TRAZAR, listar,
+    REORGANIZAR, SELECCIONAR, TRANSFORMAR, TRAZAR, listar,
 };
 
 pub(super) fn hacer(
@@ -38,6 +38,7 @@ pub(super) fn hacer(
         EXTENDER => extender(escena, e, ctx),
         IMAGEN => imagen(escena, e, ctx, an),
         EDITAR_TEXTO => super::textos::editar_texto(escena, e, ctx),
+        REORGANIZAR => reorganizar(escena, e, ctx),
         otro => Err(format!("la herramienta «{otro}» no es de editar")),
     }
 }
@@ -1477,4 +1478,138 @@ fn imagen(
         }
         otra => Err(format!("accion desconocida «{otra}»")),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Reorganizar una hoja por bloques (`pixpin_motor2d::bloques`)
+
+/// Las piezas de la hoja: lo nombrado (o lo elegido) con todo su grupo de
+/// fuera; si no, el unico grupo grande del lienzo; si no, todo.
+fn piezas_de_la_hoja(
+    escena: &Escena,
+    e: &Edicion,
+    ctx: &Contexto,
+) -> Result<Vec<Elemento>, String> {
+    let semilla: Vec<u64> = match e.texto("que").filter(|q| !q.trim().is_empty()) {
+        Some(q) => varios(escena, q, ctx)?,
+        None => ctx.elegidos.clone(),
+    };
+    let visibles: Vec<&Elemento> = escena.visibles().collect();
+    let grupo_de = |id: u64| {
+        visibles
+            .iter()
+            .find(|x| x.id == id)
+            .and_then(|x| x.grupos.last().cloned())
+    };
+    let grupos: Vec<String> = semilla.iter().filter_map(|id| grupo_de(*id)).collect();
+    if !semilla.is_empty() {
+        return Ok(visibles
+            .iter()
+            .filter(|x| {
+                semilla.contains(&x.id) || x.grupos.last().is_some_and(|g| grupos.contains(g))
+            })
+            .map(|x| (*x).clone())
+            .collect());
+    }
+    let mut cuentas: Vec<(String, usize)> = Vec::new();
+    for x in &visibles {
+        if let Some(g) = x.grupos.last() {
+            match cuentas.iter_mut().find(|(n, _)| n == g) {
+                Some((_, k)) => *k += 1,
+                None => cuentas.push((g.clone(), 1)),
+            }
+        }
+    }
+    let grandes: Vec<&String> = cuentas
+        .iter()
+        .filter(|(_, k)| *k >= 8)
+        .map(|(g, _)| g)
+        .collect();
+    if grandes.len() == 1 {
+        let g = grandes[0];
+        return Ok(visibles
+            .iter()
+            .filter(|x| x.grupos.last() == Some(g))
+            .map(|x| (*x).clone())
+            .collect());
+    }
+    if grandes.len() > 1 {
+        return Err(format!(
+            "hay {} hojas en el lienzo: di cual con «que» (o pide al usuario que la elija)",
+            grandes.len()
+        ));
+    }
+    Ok(visibles.into_iter().cloned().collect())
+}
+
+fn reorganizar(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> Result<Hecho, String> {
+    use pixpin_motor2d::bloques::{self, Donde};
+    let piezas = piezas_de_la_hoja(escena, e, ctx)?;
+    if piezas.iter().any(|x| x.bloqueado) {
+        return Err("la hoja esta bloqueada: el usuario la dejo quieta a proposito".into());
+    }
+    let h = bloques::leer(&piezas);
+    let accion = e.texto("accion").unwrap_or("ver");
+    if accion == "ver" {
+        return Ok(Hecho {
+            texto: format!("bloques de la hoja:\n{}", bloques::describir(&h)),
+            ids: Vec::new(),
+        });
+    }
+    let bloque = |campo: &str| -> Result<usize, String> {
+        let q = e
+            .texto(campo)
+            .ok_or_else(|| format!("falta «{campo}»: el bloque (B# o su titulo)"))?;
+        bloques::buscar(&h, q).ok_or_else(|| {
+            format!(
+                "no hay ningun bloque «{q}». Los bloques son:\n{}",
+                bloques::describir(&h)
+            )
+        })
+    };
+    let a = bloque("bloque")?;
+    let plan = match accion {
+        "mover" => {
+            let donde = match e.texto("donde").unwrap_or("abajo") {
+                "arriba" => Donde::Arriba,
+                "antes" => Donde::Antes(bloque("con")?),
+                "despues" => Donde::Despues(bloque("con")?),
+                _ => Donde::Abajo,
+            };
+            bloques::mover(&h, a, donde)?
+        }
+        "intercambiar" => bloques::intercambiar(&h, a, bloque("con")?)?,
+        "duplicar" => bloques::duplicar(&h, a)?,
+        "borrar" => bloques::borrar(&h, a)?,
+        "estirar" => bloques::estirar(
+            &h,
+            &piezas,
+            a,
+            e.numero("cuanto")
+                .ok_or("para estirar hace falta «cuanto»")? as f32,
+        )?,
+        "anadir_filas" => bloques::anadir_filas(
+            &h,
+            &piezas,
+            a,
+            e.numero("filas")
+                .ok_or("hace falta «filas»: cuantas")?
+                .round() as u32,
+        )?,
+        otra => return Err(format!("«accion» = «{otra}» no existe")),
+    };
+    let ids = bloques::aplicar(escena, &plan);
+    let despues: Vec<Elemento> = piezas
+        .iter()
+        .filter_map(|x| escena.buscar(x.id).filter(|y| !y.borrado).cloned())
+        .chain(ids.iter().filter_map(|id| escena.buscar(*id).cloned()))
+        .collect();
+    let ahora = bloques::describir(&bloques::leer(&despues));
+    Ok(Hecho {
+        texto: format!(
+            "hecho: {} (con sus propias piezas; Ctrl+Z lo deshace).\nAhora:\n{ahora}",
+            plan.que
+        ),
+        ids,
+    })
 }
