@@ -539,7 +539,7 @@ fn aplicar_en_figura(d: &mut Diagrama, fig: &Figura, hechos: &[Hecho], hm: f64) 
         .filter_map(|r| letra_de(&r.texto).map(|l| (l, (r.caja.cx(), r.caja.cy()), r.caja.h.max(r.caja.w))))
         .filter(|(_, c, _)| c.0 >= fig.caja.0 - 3.0 * hm && c.0 <= fig.caja.2 + 3.0 * hm && c.1 >= fig.caja.1 - 3.0 * hm && c.1 <= fig.caja.3 + 3.0 * hm)
         .collect();
-    letras.sort_by(|a, b| a.0.cmp(&b.0));
+    letras.sort_by_key(|a| a.0);
     let mut parejas: Vec<(f64, usize, usize)> = Vec::new();
     for (li, (_, c, tam)) in letras.iter().enumerate() {
         for (n, nudo) in f.nudos.iter().enumerate() {

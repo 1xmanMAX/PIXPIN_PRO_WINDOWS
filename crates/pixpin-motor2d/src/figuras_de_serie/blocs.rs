@@ -139,7 +139,7 @@ fn recortar(p: (f32, f32), d: (f32, f32), caja: (f32, f32, f32, f32)) -> Option<
             t1 = t1.min(ta.max(tb));
         }
     }
-    (t1 > t0 + 1.0).then(|| ((p.0 + d.0 * t0, p.1 + d.1 * t0), (p.0 + d.0 * t1, p.1 + d.1 * t1)))
+    (t1 > t0 + 1.0).then_some(((p.0 + d.0 * t0, p.1 + d.1 * t0), (p.0 + d.0 * t1, p.1 + d.1 * t1)))
 }
 
 /// La isometrica: verticales y dos familias a 30°, todo recortado al papel.

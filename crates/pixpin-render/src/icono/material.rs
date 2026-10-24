@@ -977,50 +977,6 @@ pub const TODOS: &[Icono] = &[
     WIFI,
 ];
 
-#[cfg(test)]
-mod pruebas {
-    use super::*;
-    use crate::trayecto_svg::analizar;
-
-    #[test]
-    fn todos_los_trazados_de_material_se_leen_y_dibujan_algo() {
-        // Un trazado que no se entiende no pinta nada, y el boton se quedaria
-        // en blanco sin que ninguna otra cosa lo avisara.
-        for icono in TODOS {
-            assert!(!icono.trazos.is_empty());
-            for t in icono.trazos {
-                let tramos = analizar(t.d).unwrap_or_else(|e| panic!("{:?}: {e:?}", t.d));
-                assert!(tramos.len() >= 2, "{}", t.d);
-            }
-        }
-    }
-
-    #[test]
-    fn todos_caben_en_su_caja_de_veinticuatro() {
-        // Caso negativo: un trazado copiado a otra escala (el de 48 px, por
-        // ejemplo) se saldria de la caja y el icono saldria recortado.
-        use crate::trayecto_svg::Tramo;
-        for icono in TODOS {
-            for t in icono.trazos {
-                for tramo in analizar(t.d).unwrap() {
-                    let puntos = match tramo {
-                        Tramo::Mover(p) | Tramo::Linea(p) => vec![p],
-                        Tramo::Cubica { c1, c2, fin } => vec![c1, c2, fin],
-                        Tramo::Cerrar => vec![],
-                    };
-                    for (x, y) in puntos {
-                        assert!(
-                            (-0.5..=24.5).contains(&x) && (-0.5..=24.5).contains(&y),
-                            "{} sale a ({x}, {y})",
-                            t.d
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// `fullscreen` (`src/navigation/fullscreen/materialicons/24px.svg`): los
 /// lectores, de pin a pantalla completa.
 pub const FULLSCREEN: Icono = Icono {
@@ -1081,3 +1037,47 @@ pub const FONT_DOWNLOAD: Icono = Icono {
         false,
     )],
 };
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::trayecto_svg::analizar;
+
+    #[test]
+    fn todos_los_trazados_de_material_se_leen_y_dibujan_algo() {
+        // Un trazado que no se entiende no pinta nada, y el boton se quedaria
+        // en blanco sin que ninguna otra cosa lo avisara.
+        for icono in TODOS {
+            assert!(!icono.trazos.is_empty());
+            for t in icono.trazos {
+                let tramos = analizar(t.d).unwrap_or_else(|e| panic!("{:?}: {e:?}", t.d));
+                assert!(tramos.len() >= 2, "{}", t.d);
+            }
+        }
+    }
+
+    #[test]
+    fn todos_caben_en_su_caja_de_veinticuatro() {
+        // Caso negativo: un trazado copiado a otra escala (el de 48 px, por
+        // ejemplo) se saldria de la caja y el icono saldria recortado.
+        use crate::trayecto_svg::Tramo;
+        for icono in TODOS {
+            for t in icono.trazos {
+                for tramo in analizar(t.d).unwrap() {
+                    let puntos = match tramo {
+                        Tramo::Mover(p) | Tramo::Linea(p) => vec![p],
+                        Tramo::Cubica { c1, c2, fin } => vec![c1, c2, fin],
+                        Tramo::Cerrar => vec![],
+                    };
+                    for (x, y) in puntos {
+                        assert!(
+                            (-0.5..=24.5).contains(&x) && (-0.5..=24.5).contains(&y),
+                            "{} sale a ({x}, {y})",
+                            t.d
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

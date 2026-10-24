@@ -887,7 +887,9 @@ fn cruce(escena: &Escena, entre: &str, ctx: &Contexto, cerca: Option<Punto2>) ->
         if s.is_empty() { Err(format!("el #{id} no tiene lados")) } else { Ok(s) }
     };
     let (sa, sb) = (tramos(r.ids[0])?, tramos(r.ids[1])?);
-    let mut encontrado: Option<(Punto2, (Punto2, Punto2), (Punto2, Punto2))> = None;
+    // El punto de corte y los dos tramos que se cortan.
+    type Corte = (Punto2, (Punto2, Punto2), (Punto2, Punto2));
+    let mut encontrado: Option<Corte> = None;
     'fuera: for a in &sa {
         for b in &sb {
             if let Some(p) = interseccion(a.0, a.1, b.0, b.1) {

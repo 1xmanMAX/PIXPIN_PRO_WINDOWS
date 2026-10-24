@@ -742,11 +742,9 @@ fn leer_hoja(flujo: &[u8], h: &Hoja8, g: &Globales, pres: &mut Presupuesto) -> R
                     }
                 }
             }
-            0x01B8 => {
-                if e.cola.hipervinculos.len() < MAX_ENLACES {
-                    if let Some(h) = enlace(datos) {
-                        e.cola.hipervinculos.push(h);
-                    }
+            0x01B8 if e.cola.hipervinculos.len() < MAX_ENLACES => {
+                if let Some(h) = enlace(datos) {
+                    e.cola.hipervinculos.push(h);
                 }
             }
             _ => {}

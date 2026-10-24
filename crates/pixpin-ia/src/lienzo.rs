@@ -455,7 +455,7 @@ pub(crate) fn figura(f: &mut Fabrica, fig: &Figura) {
                 let letras = fig.texto.chars().count().max(1) as f64;
                 let tam = fig.tam_letra.min(ancho.abs() * 0.75 / (0.6 * letras)).max(8.0);
                 let (cx, cy) = (x + ancho / 2.0, y + alto / 2.0);
-                let color = if relleno.is_some_and(|r| es_oscuro(r)) { "#ffffff" } else { negro };
+                let color = if relleno.is_some_and(es_oscuro) { "#ffffff" } else { negro };
                 f.texto(cx, cy - tam * 1.25 / 2.0, &fig.texto, tam, color, "center");
             }
         }

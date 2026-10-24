@@ -1606,6 +1606,40 @@ pub fn es_letra_de_wm_char(c: char) -> bool {
     c != '\u{7f}'
 }
 
+/// Donde esta el raton, en coordenadas del escritorio virtual.
+pub fn raton_en_pantalla() -> Punto {
+    let mut p = windows::Win32::Foundation::POINT::default();
+    // SAFETY: escribe en la variable local.
+    let _ = unsafe { GetCursorPos(&mut p) };
+    Punto { x: p.x, y: p.y }
+}
+
+/// La ventana de primer nivel que se ve en `p` (la que recibiria un clic),
+/// o una nula. Para saber si una ventana que no esta «siempre encima» esta
+/// tapada por otra aplicacion justo donde esta el raton.
+pub fn ventana_bajo(p: Punto) -> HWND {
+    // SAFETY: consultas de solo lectura; un manejador que desaparezca entre
+    // medias da una ventana nula, que no es de nadie.
+    unsafe {
+        let h = WindowFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y });
+        if h.is_invalid() { h } else { GetAncestor(h, GA_ROOT) }
+    }
+}
+
+/// El monitor donde cae `p`: su area entera y la de trabajo (sin la barra
+/// de tareas).
+pub fn monitor_de(p: Punto) -> (Rect, Rect) {
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
+    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+    // SAFETY: estructura local con su tamano.
+    unsafe {
+        let m = MonitorFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y }, MONITOR_DEFAULTTONEAREST);
+        let _ = GetMonitorInfoW(m, &mut info);
+    }
+    let r = |r: RECT| Rect { x: r.left, y: r.top, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 };
+    (r(info.rcMonitor), r(info.rcWork))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -1821,38 +1855,4 @@ mod pruebas {
         }
         assert!(a_por_encima, "la ventana traida encima sigue debajo");
     }
-}
-
-/// Donde esta el raton, en coordenadas del escritorio virtual.
-pub fn raton_en_pantalla() -> Punto {
-    let mut p = windows::Win32::Foundation::POINT::default();
-    // SAFETY: escribe en la variable local.
-    let _ = unsafe { GetCursorPos(&mut p) };
-    Punto { x: p.x, y: p.y }
-}
-
-/// La ventana de primer nivel que se ve en `p` (la que recibiria un clic),
-/// o una nula. Para saber si una ventana que no esta «siempre encima» esta
-/// tapada por otra aplicacion justo donde esta el raton.
-pub fn ventana_bajo(p: Punto) -> HWND {
-    // SAFETY: consultas de solo lectura; un manejador que desaparezca entre
-    // medias da una ventana nula, que no es de nadie.
-    unsafe {
-        let h = WindowFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y });
-        if h.is_invalid() { h } else { GetAncestor(h, GA_ROOT) }
-    }
-}
-
-/// El monitor donde cae `p`: su area entera y la de trabajo (sin la barra
-/// de tareas).
-pub fn monitor_de(p: Punto) -> (Rect, Rect) {
-    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
-    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
-    // SAFETY: estructura local con su tamano.
-    unsafe {
-        let m = MonitorFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y }, MONITOR_DEFAULTTONEAREST);
-        let _ = GetMonitorInfoW(m, &mut info);
-    }
-    let r = |r: RECT| Rect { x: r.left, y: r.top, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 };
-    (r(info.rcMonitor), r(info.rcWork))
 }

@@ -15,7 +15,7 @@ use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::core::s;
 
-use crate::gpu::{Gpu, PlanoGpu, Vista, compilar_de, elemento};
+use crate::gpu::{Gpu, PintarEncima, PlanoGpu, Vista, compilar_de, elemento};
 use crate::modelo3d::Modelo3d;
 
 const SOMBREADORES_3D: &str = r#"
@@ -490,7 +490,7 @@ impl Gpu {
         modelo: Option<(&ModeloGpu, Vista3d)>,
         aristas: bool,
         encima: &[(&PlanoGpu, Vista)],
-        tinta: Option<&mut dyn FnMut(&ID3D11Device, &ID3D11Texture2D)>,
+        tinta: PintarEncima<'_>,
     ) -> windows::core::Result<()> {
         self.preparar_3d()?;
         let Some((tex, rtv)) = self.destino.clone() else {
@@ -509,7 +509,7 @@ impl Gpu {
         // SAFETY: todo es de este dispositivo y de este hilo.
         unsafe {
             ctx.ClearRenderTargetView(&rtv, &fondo);
-            ctx.ClearDepthStencilView(&dsv, D3D11_CLEAR_DEPTH.0 as u32, 1.0, 0);
+            ctx.ClearDepthStencilView(&dsv, D3D11_CLEAR_DEPTH.0, 1.0, 0);
             if let Some((m, v)) = modelo {
                 ctx.OMSetRenderTargets(Some(&[Some(rtv.clone())]), &dsv);
                 ctx.RSSetViewports(Some(&[self.ventana_entera()]));
@@ -613,7 +613,7 @@ impl Gpu {
         unsafe {
             ctx.ClearRenderTargetView(&d.id.1, &[0.0; 4]);
             ctx.ClearRenderTargetView(&d.mundo.1, &[0.0; 4]);
-            ctx.ClearDepthStencilView(&d.prof, D3D11_CLEAR_DEPTH.0 as u32, 1.0, 0);
+            ctx.ClearDepthStencilView(&d.prof, D3D11_CLEAR_DEPTH.0, 1.0, 0);
             ctx.OMSetRenderTargets(Some(&[Some(d.id.1.clone()), Some(d.mundo.1.clone())]), &d.prof);
             ctx.RSSetViewports(Some(&[self.ventana_entera()]));
             ctx.RSSetState(&t.raster_id);

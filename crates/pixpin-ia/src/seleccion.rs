@@ -278,7 +278,7 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
         }
     }
     // Estable: a igual puntuacion, el orden del catalogo.
-    puntuadas.sort_by(|a, b| b.0.cmp(&a.0));
+    puntuadas.sort_by_key(|p| std::cmp::Reverse(p.0));
     // «Resalta el titulo», «subraya el resultado»: sin nombrar un documento,
     // es el lienzo. Con las dos a mano el 2B anotaba un PDF que no habia
     // (medido el 14-oct con `anotar_documento`).

@@ -177,10 +177,7 @@ impl Constructor3d {
             }
         }
         for p in puntos {
-            for k in 0..3 {
-                self.min[k] = self.min[k].min(p[k]);
-                self.max[k] = self.max[k].max(p[k]);
-            }
+            self.ampliar_caja(*p);
         }
         for (p, n) in pts_locales.iter().zip(&norms) {
             self.m.vertices.push(V3 { pos: *p, normal: normal_a_u32(*n), color: col, elemento });
@@ -193,12 +190,17 @@ impl Constructor3d {
         }
     }
 
+    /// La caja del modelo, para que quepa `p`.
+    fn ampliar_caja(&mut self, p: [f64; 3]) {
+        for ((min, max), v) in self.min.iter_mut().zip(self.max.iter_mut()).zip(p) {
+            *min = min.min(v);
+            *max = max.max(v);
+        }
+    }
+
     fn local(&mut self, p: [f64; 3]) -> [f32; 3] {
         let o = *self.origen.get_or_insert(p);
-        for k in 0..3 {
-            self.min[k] = self.min[k].min(p[k]);
-            self.max[k] = self.max[k].max(p[k]);
-        }
+        self.ampliar_caja(p);
         [(p[0] - o[0]) as f32, (p[1] - o[1]) as f32, (p[2] - o[2]) as f32]
     }
 
@@ -395,7 +397,9 @@ pub fn aristas_vivas(puntos: &[[f32; 3]], indices: &[u32], grados: f32) -> Vec<u
         })
         .collect();
     // Cada arista (sus dos extremos soldados) con las normales de sus caras.
-    let mut aristas: HashMap<(u32, u32), (Option<[f32; 3]>, Option<[f32; 3]>, u8, (u32, u32))> = HashMap::new();
+    // Las normales de sus dos caras, cuantas caras y los indices originales.
+    type Caras = (Option<[f32; 3]>, Option<[f32; 3]>, u8, (u32, u32));
+    let mut aristas: HashMap<(u32, u32), Caras> = HashMap::new();
     for t in indices.chunks_exact(3) {
         let p = [puntos[t[0] as usize], puntos[t[1] as usize], puntos[t[2] as usize]];
         let n = unitario(cruz(resta(p[1], p[0]), resta(p[2], p[0])));

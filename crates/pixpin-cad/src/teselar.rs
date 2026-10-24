@@ -157,8 +157,9 @@ pub fn spline(grado: usize, nudos: &[f64], control: &[[f64; 3]], pesos: &[f64]) 
                 let i = j + k - p;
                 let den = nudos[i + p + 1 - r] - nudos[i];
                 let a = if den.abs() < 1e-300 { 0.0 } else { (u - nudos[i]) / den };
-                for e in 0..3 {
-                    d[j][e] = (1.0 - a) * d[j - 1][e] + a * d[j][e];
+                let antes = d[j - 1];
+                for (e, v) in d[j].iter_mut().enumerate() {
+                    *v = (1.0 - a) * antes[e] + a * *v;
                 }
             }
         }

@@ -4536,6 +4536,8 @@ extern "system" fn procedimiento_pin(
                             unsafe {
                                 let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
                             }
+                            // SAFETY: captura del raton para la ventana
+                            // propia mientras se arrastra la seleccion.
                             unsafe { SetCapture(hwnd) };
                             i.ancla_texto = Some(sitio);
                             i.seleccion_texto = vec![sitio];

@@ -46,8 +46,8 @@ pub fn fondo(img: &Img) -> [f32; 3] {
         let k = ((p[0] as u8) >> 4, (p[1] as u8) >> 4, (p[2] as u8) >> 4);
         let e = cuenta.entry(k).or_insert((0, [0.0; 3]));
         e.0 += 1;
-        for c in 0..3 {
-            e.1[c] += p[c] as f64;
+        for (suma, v) in e.1.iter_mut().zip(p) {
+            *suma += v as f64;
         }
     }
     let mut cuenta: Cuenta = Default::default();

@@ -309,7 +309,7 @@ mod pruebas {
         let (els, (_, h)) = piezas(&e);
         let t = textos_de(&els);
         assert!(t.iter().all(|x| !x.contains('\\') && !x.contains('&')), "{t:?}");
-        assert_eq!(t.iter().filter(|x| x.trim() == "-1" || x.trim() == "−1" || x.trim() == "1").count() >= 3, true, "{t:?}");
+        assert!(t.iter().filter(|x| x.trim() == "-1" || x.trim() == "−1" || x.trim() == "1").count() >= 3, "{t:?}");
         assert!(h > e.tam as f32 * 2.5, "tres filas de alto: {h}");
         // Los corchetes, dibujados.
         assert!(els.iter().filter(|e| matches!(e.figura, Figura::Linea { .. })).count() >= 2);

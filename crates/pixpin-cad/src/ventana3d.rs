@@ -54,7 +54,7 @@ use crate::ventana::{Globo, NombresDeBotones, Unificada, ficha_en, globo_de_la_b
 const INFINITE: u32 = u32::MAX;
 /// La barra, en el orden de la del plano (y la de los demas visores).
 pub(crate) const BOTONES: [&str; 8] = ["asa", "nombre", "corte", "capas", "tema", "pantalla", "fijar", "cerrar"];
-pub(crate) const FOV: f64 = 0.785_398; // 45 grados
+pub(crate) const FOV: f64 = std::f64::consts::FRAC_PI_4; // 45 grados
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -320,7 +320,6 @@ const M_ANOTAR: u32 = 15;
 /// La primera vista guardada; las demas, seguidas.
 const M_VISTA: u32 = 100;
 
-#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn menu(hwnd: HWND, t: &TextosUi3d, corte: bool, aislado: Option<bool>, panel: bool, aristas: bool, fijada: bool, vistas: &[String], exportar: Option<&str>, marcos: &[(u32, &str, bool)]) {
     // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.

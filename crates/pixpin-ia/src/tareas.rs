@@ -174,7 +174,7 @@ pub fn buscar_chat<'a>(chats: &'a [Chat], nombre: &str) -> Result<&'a Chat, Stri
         return Ok(c);
     }
     let mut v: Vec<(u32, &Chat)> = chats.iter().map(|c| (parecido(nombre, &c.nombre), c)).filter(|x| x.0 > 0).collect();
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|x| std::cmp::Reverse(x.0));
     match v.as_slice() {
         [] => Err(format!(
             "No hay ningun chat «{nombre}». Chats: {}. No hice nada.",
@@ -275,7 +275,7 @@ pub fn buscar_tarea<'a>(
             }
         }
     }
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|x| std::cmp::Reverse(x.0));
     match v.as_slice() {
         [] => {
             let pendientes: Vec<String> = donde

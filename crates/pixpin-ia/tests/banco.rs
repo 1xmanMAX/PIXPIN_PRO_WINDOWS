@@ -460,7 +460,7 @@ fn casos_de_estudiantes() -> Vec<Caso> {
                 let t = sin_tildes(&todos_los_textos(r).to_lowercase());
                 si(t.contains("proyectil") && t.contains("20"), "el enunciado no esta copiado")?;
                 si(t.contains("solucion"), "sin recuadro de solucion")?;
-                si(r.tipos("line").len() >= 1, "sin la ecuacion compuesta")
+                si(!r.tipos("line").is_empty(), "sin la ecuacion compuesta")
             },
         },
         Caso {
@@ -2458,7 +2458,7 @@ mod imagenes {
                     pon(x, y, [150, 100, 60], &mut px);
                 }
                 // Tejado: triangulo de (100,180) (350,180) (225,80).
-                let dentro = y <= 180 && y >= 80 && (x - 225).abs() as f32 <= (y - 80) as f32 * 1.25;
+                let dentro = (80..=180).contains(&y) && (x - 225).abs() as f32 <= (y - 80) as f32 * 1.25;
                 if dentro {
                     pon(x, y, [210, 30, 30], &mut px);
                 }

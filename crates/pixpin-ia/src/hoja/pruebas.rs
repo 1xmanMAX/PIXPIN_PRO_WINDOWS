@@ -179,6 +179,7 @@ fn tabla(p: &mut Papel, x: f64, y: f64, filas: usize, rayas: bool) -> Caja {
     let (cw, rh) = (180.0, 40.0);
     let datos = [["Partida", "Cantidad", "Precio"], ["Cemento", "12", "450"], ["Arena", "3", "120"], ["Acero", "40", "2300"], ["Ladrillo", "900", "810"]];
     for f in 0..filas {
+        #[allow(clippy::needless_range_loop)] // `c` tambien da la x
         for c in 0..3 {
             p.palabra(datos[f % datos.len()][c], x + c as f64 * cw + 12.0, y + f as f64 * rh + 10.0, 18.0, f == 0);
         }

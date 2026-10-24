@@ -341,7 +341,7 @@ fn agrupar_rayas(rayas: &[Raya], palabras: &[PalabraHoja], hm: f64) -> (Vec<ConR
     let tocan = |a: &Raya, b: &Raya| a.caja().crecer(tol).comun(&b.caja().crecer(tol)) > 0.0;
     // Union-find.
     let mut padre: Vec<usize> = (0..n).collect();
-    fn raiz(p: &mut Vec<usize>, i: usize) -> usize {
+    fn raiz(p: &mut [usize], i: usize) -> usize {
         let mut i = i;
         while p[i] != i {
             p[i] = p[p[i]];

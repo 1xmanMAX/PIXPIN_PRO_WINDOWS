@@ -547,10 +547,9 @@ fn marcar(f: &Frase) -> Option<Orden> {
         "ya termine", "termine la tarea", "termine", "ya hice", "he hecho", "completa la tarea", "completada la tarea",
     ]) {
         (r, true)
-    } else if let Some(r) = f.tras(&["desmarca la tarea", "desmarca", "marca como pendiente la tarea", "marca como pendiente"]) {
-        (r, false)
     } else {
-        return None;
+        let r = f.tras(&["desmarca la tarea", "desmarca", "marca como pendiente la tarea", "marca como pendiente"])?;
+        (r, false)
     };
     let mut resto = sin_conector(&resto, &["la tarea", "que"]);
     let q = normalizar(&resto);

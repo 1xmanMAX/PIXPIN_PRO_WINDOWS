@@ -1555,7 +1555,7 @@ pub(crate) mod pruebas {
         let s = submenu(&v, "Páginas").unwrap();
         assert_eq!(ids(s).len() as u32, PAGINAS_EN_MENU + 1);
         // Y los comandos no se pisan con los de otras listas.
-        assert!(CMD_NOTA_PAGINA_BASE + PAGINAS_EN_MENU < 800);
+        const { assert!(CMD_NOTA_PAGINA_BASE + PAGINAS_EN_MENU < 800) };
         assert!(
             CMD_PEGATINA_BASE + (crate::pegatina::elegibles(true).len() as u32)
                 < CMD_NOTA_PAGINA_BASE

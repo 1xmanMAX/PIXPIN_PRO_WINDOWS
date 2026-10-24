@@ -184,41 +184,6 @@ pub fn civil(dias: i64) -> (i64, u32, u32) {
     (era * 400 + ae + i64::from(m <= 2), m, d)
 }
 
-#[cfg(test)]
-mod pruebas {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn las_horas_de_google_pasan_a_utc() {
-        // 9:00 en Lima (UTC-5) son las 14:00 UTC.
-        let a = ms_de_rfc3339("2026-10-19T09:00:00-05:00").unwrap();
-        assert_eq!(rfc3339(a), "2026-10-19T14:00:00Z");
-        assert_eq!(ms_de_rfc3339("2026-10-19T14:00:00Z"), Some(a));
-        assert_eq!(ms_de_rfc3339("2026-10-19T15:00:00.000+01:00"), Some(a));
-        assert_eq!(civil(dias_desde_1970(2024, 2, 29)), (2024, 2, 29));
-        assert_eq!(dias_desde_1970(1970, 1, 1), 0);
-    }
-
-    #[test]
-    fn un_evento_de_la_api_y_uno_de_todo_el_dia() {
-        let e = evento_de(
-            &json!({"id": "a1", "summary": "Reunión con el asesor", "location": "Aula 12",
-                    "start": {"dateTime": "2026-10-20T16:00:00-05:00"}, "end": {"dateTime": "2026-10-20T17:30:00-05:00"}}),
-            "Personal",
-            "#0b8043",
-        )
-        .unwrap();
-        assert_eq!((e.titulo.as_str(), e.lugar.as_str(), e.todo_el_dia), ("Reunión con el asesor", "Aula 12", false));
-        assert_eq!(e.fin_ms - e.inicio_ms, 90 * 60_000);
-        let f = evento_de(&json!({"id": "b", "start": {"date": "2026-10-21"}, "end": {"date": "2026-10-22"}}), "Feriados", "#fff").unwrap();
-        assert!(f.todo_el_dia);
-        assert_eq!(f.titulo, "(sin título)");
-        assert_eq!(rfc3339(f.inicio_ms), "2026-10-21T00:00:00Z");
-        assert!(evento_de(&json!({"id": "c", "status": "cancelled", "start": {"date": "2026-10-21"}}), "x", "#fff").is_none());
-    }
-}
-
 /// Los eventos en JSON (la cache de la app).
 pub fn a_json(eventos: &[Evento]) -> Value {
     Value::Array(
@@ -252,4 +217,39 @@ pub fn de_json(v: &Value) -> Vec<Evento> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn las_horas_de_google_pasan_a_utc() {
+        // 9:00 en Lima (UTC-5) son las 14:00 UTC.
+        let a = ms_de_rfc3339("2026-10-19T09:00:00-05:00").unwrap();
+        assert_eq!(rfc3339(a), "2026-10-19T14:00:00Z");
+        assert_eq!(ms_de_rfc3339("2026-10-19T14:00:00Z"), Some(a));
+        assert_eq!(ms_de_rfc3339("2026-10-19T15:00:00.000+01:00"), Some(a));
+        assert_eq!(civil(dias_desde_1970(2024, 2, 29)), (2024, 2, 29));
+        assert_eq!(dias_desde_1970(1970, 1, 1), 0);
+    }
+
+    #[test]
+    fn un_evento_de_la_api_y_uno_de_todo_el_dia() {
+        let e = evento_de(
+            &json!({"id": "a1", "summary": "Reunión con el asesor", "location": "Aula 12",
+                    "start": {"dateTime": "2026-10-20T16:00:00-05:00"}, "end": {"dateTime": "2026-10-20T17:30:00-05:00"}}),
+            "Personal",
+            "#0b8043",
+        )
+        .unwrap();
+        assert_eq!((e.titulo.as_str(), e.lugar.as_str(), e.todo_el_dia), ("Reunión con el asesor", "Aula 12", false));
+        assert_eq!(e.fin_ms - e.inicio_ms, 90 * 60_000);
+        let f = evento_de(&json!({"id": "b", "start": {"date": "2026-10-21"}, "end": {"date": "2026-10-22"}}), "Feriados", "#fff").unwrap();
+        assert!(f.todo_el_dia);
+        assert_eq!(f.titulo, "(sin título)");
+        assert_eq!(rfc3339(f.inicio_ms), "2026-10-21T00:00:00Z");
+        assert!(evento_de(&json!({"id": "c", "status": "cancelled", "start": {"date": "2026-10-21"}}), "x", "#fff").is_none());
+    }
 }

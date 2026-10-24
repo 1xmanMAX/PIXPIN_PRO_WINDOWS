@@ -1042,6 +1042,15 @@ pub fn de_formula(p: &crate::formulas::Pieza, t: f32, medir: Medir<'_>, en_linea
     }
 }
 
+/// Lo pequeno centrado debajo de la base (el rotulo de `\underbrace`).
+pub fn debajo(base: Caja, abajo: Caja, t: f32) -> Caja {
+    let ancho = base.ancho.max(abajo.ancho);
+    let mut piezas: Vec<Pieza> = base.piezas_en((ancho - base.ancho) / 2.0, 0.0).collect();
+    let dy = base.alto + t * 0.02;
+    piezas.extend(abajo.piezas_en((ancho - abajo.ancho) / 2.0, dy));
+    Caja { ancho, alto: dy + abajo.alto, eje: base.eje, piezas }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -1160,13 +1169,4 @@ mod pruebas {
         assert!(v.iter().all(|e| e.rugosidad == 0.0));
         assert!(rayas(&v) >= 3);
     }
-}
-
-/// Lo pequeno centrado debajo de la base (el rotulo de `\underbrace`).
-pub fn debajo(base: Caja, abajo: Caja, t: f32) -> Caja {
-    let ancho = base.ancho.max(abajo.ancho);
-    let mut piezas: Vec<Pieza> = base.piezas_en((ancho - base.ancho) / 2.0, 0.0).collect();
-    let dy = base.alto + t * 0.02;
-    piezas.extend(abajo.piezas_en((ancho - abajo.ancho) / 2.0, dy));
-    Caja { ancho, alto: dy + abajo.alto, eje: base.eje, piezas }
 }

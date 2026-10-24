@@ -275,6 +275,7 @@ trailer<</Root 1 0 R>>\n%%EOF\r\n";
         let mut f = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .share_mode(1)
             .open(&puerto)
             .unwrap();
@@ -355,6 +356,7 @@ trailer<</Root 1 0 R>>\n%%EOF\r\n";
         let mut f = OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(true)
             .share_mode(1)
             .open(&puerto)
             .unwrap();

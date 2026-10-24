@@ -740,7 +740,9 @@ fn cinematica(v: &Valores, pz: Option<&mut Pizarra>) -> Result<Vec<String>, Stri
         resultados.push(format!("se detiene y da la vuelta en t = {} s, en x = {} m", numero(-v0 / a), numero(x(-v0 / a))));
     }
     let Some(pz) = pz else { return Ok(resultados) };
-    let paneles: [(&str, &str, &dyn Fn(f64) -> f64, pixpin_motor2d::ColorRgba); 3] = [
+    // Titulo, eje, la funcion y su color.
+    type Panel<'a> = (&'a str, &'a str, &'a dyn Fn(f64) -> f64, pixpin_motor2d::ColorRgba);
+    let paneles: [Panel; 3] = [
         ("x–t", "x (m)", &x, pizarra::AZUL),
         ("v–t", "v (m/s)", &vel, pizarra::ROJO),
         ("a–t", "a (m/s²)", &|_| a, pizarra::VERDE),

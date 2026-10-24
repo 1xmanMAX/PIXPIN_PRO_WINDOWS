@@ -2352,7 +2352,7 @@ mod pruebas {
         let mut larga = historial();
         larga.push(Mensaje::usuario("x".repeat(15_000)));
         let t = tope_de_tokens(&Peticion::nueva(larga.clone()));
-        assert!(t < MAX_TOKENS_CON_HERRAMIENTAS && t >= MIN_TOKENS, "{t}");
+        assert!((MIN_TOKENS..MAX_TOKENS_CON_HERRAMIENTAS).contains(&t), "{t}");
         larga.push(Mensaje::usuario("x".repeat(60_000)));
         assert_eq!(tope_de_tokens(&Peticion::nueva(larga)), MIN_TOKENS);
     }

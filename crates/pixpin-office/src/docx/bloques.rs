@@ -1098,7 +1098,9 @@ fn marcar_juntas(g: &Geometria, franjas: &mut [Franja], desde: usize, total: usi
 /// nada otra vez.
 pub fn rehacer(rh: &Arc<Rehacer>, linea: usize, unidad: usize, tramos: Option<&[(f32, f32)]>, medidor: &dyn Medidor) -> Vec<Franja> {
     let mut u = rh.unidades.clone();
-    let mut v: Vec<(renglones::Renglon, usize, Vec<(f32, f32)>)> = Vec::new();
+    // Cada renglon rehecho, la unidad donde empieza y sus tramos.
+    type Rehecho = (renglones::Renglon, usize, Vec<(f32, f32)>);
+    let mut v: Vec<Rehecho> = Vec::new();
     let resto = match tramos {
         Some(t) => {
             let (r, fin, forzado) = renglones::renglon_en_tramos(&mut u, unidad, t, &rh.estilos, rh.marca, &rh.cfg, medidor);

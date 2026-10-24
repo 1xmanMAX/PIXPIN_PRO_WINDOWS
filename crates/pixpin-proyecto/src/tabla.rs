@@ -291,7 +291,8 @@ impl Tabla {
         }
         // Un mapa de celda a algo: lo que `convertir` entiende entra; lo
         // demas se queda aparte, tal cual.
-        let mut mapa = |o: &mut Map<String, Value>, clave: &str, mut convertir: Box<dyn FnMut(String, &Value) -> bool + '_>| {
+        type Convertir<'a> = Box<dyn FnMut(String, &Value) -> bool + 'a>;
+        let mut mapa = |o: &mut Map<String, Value>, clave: &str, mut convertir: Convertir<'_>| {
             let Some(v) = o.remove(clave) else { return };
             match v {
                 Value::Object(m) => {

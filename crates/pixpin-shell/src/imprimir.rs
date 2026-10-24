@@ -196,11 +196,11 @@ fn un_intento(
         nStartPage: START_PAGE_GENERAL,
         ..Default::default()
     };
+    // Lo de PixPin que va siempre encima (pines, barras) taparia el dialogo.
+    let bajadas = bajar_las_de_encima();
     // SAFETY: la estructura esta rellena y vive durante la llamada; los
     // intervalos son un arreglo local del tamano declarado. El dialogo es
     // modal sobre la ventana propietaria, que es del llamante.
-    // Lo de PixPin que va siempre encima (pines, barras) taparia el dialogo.
-    let bajadas = bajar_las_de_encima();
     let hecho = unsafe { PrintDlgExW(&mut pd) };
     subir_las_de_encima(&bajadas);
     let resultado = pd.dwResultAction;
@@ -261,28 +261,6 @@ fn un_intento(
     Ok(salida.filter(|i| i.papel.0 > 0.0 && i.papel.1 > 0.0))
 }
 
-#[cfg(test)]
-mod pruebas {
-    use super::*;
-
-    #[test]
-    fn un_a4_a_600_ppp_son_794_por_1123_dip() {
-        // 4960 x 7016 pixeles son un A4 a 600 ppp.
-        assert!((a_dip(4960, 600) - 793.6).abs() < 0.1);
-        assert!((a_dip(7016, 600) - 1122.6).abs() < 0.1);
-        // Caso negativo: un controlador que dice cero ppp no divide por cero.
-        assert_eq!(a_dip(100, 0), 0.0);
-    }
-
-    #[test]
-    fn el_rango_de_paginas_dice_que_hoja_entra() {
-        let r = Rango::Paginas(vec![(1, 2), (5, 5)]);
-        assert!(r.incluye(1) && r.incluye(2) && r.incluye(5));
-        assert!(!r.incluye(3) && !r.incluye(6));
-        assert!(Rango::Todas.incluye(99));
-    }
-}
-
 /// **Bajar las ventanas de PixPin que van siempre encima** mientras esta el
 /// dialogo de imprimir (10-oct-2026, el usuario: «la ventana de impresion
 /// desaparece cuando le doy a imprimir porque la ventana del pin esta sobre
@@ -332,5 +310,27 @@ pub fn subir_las_de_encima(ventanas: &[isize]) {
         unsafe {
             let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn un_a4_a_600_ppp_son_794_por_1123_dip() {
+        // 4960 x 7016 pixeles son un A4 a 600 ppp.
+        assert!((a_dip(4960, 600) - 793.6).abs() < 0.1);
+        assert!((a_dip(7016, 600) - 1122.6).abs() < 0.1);
+        // Caso negativo: un controlador que dice cero ppp no divide por cero.
+        assert_eq!(a_dip(100, 0), 0.0);
+    }
+
+    #[test]
+    fn el_rango_de_paginas_dice_que_hoja_entra() {
+        let r = Rango::Paginas(vec![(1, 2), (5, 5)]);
+        assert!(r.incluye(1) && r.incluye(2) && r.incluye(5));
+        assert!(!r.incluye(3) && !r.incluye(6));
+        assert!(Rango::Todas.incluye(99));
     }
 }

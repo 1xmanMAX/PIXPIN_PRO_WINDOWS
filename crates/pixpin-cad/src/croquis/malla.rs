@@ -680,6 +680,7 @@ pub fn abre_claro(c: &Croquis) -> bool {
 /// golpe (un lado al reves pliega la banda sobre si misma).
 pub(crate) fn lados_de_la_banda(tg: &[Pt3], normales: Option<&[Pt3]>, de_pie: bool) -> Vec<Pt3> {
     let mut v: Vec<Pt3> = Vec::with_capacity(tg.len());
+    #[allow(clippy::needless_range_loop)] // `i` indexa tambien las normales
     for i in 0..tg.len() {
         let n = normales.and_then(|v| v.get(i).copied()).unwrap_or_else(|| perpendicular(tg[i]));
         let crudo = if de_pie { n } else { producto(n, tg[i]) };

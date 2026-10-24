@@ -294,7 +294,9 @@ fn borde_de(rgba: &[u8], w: u32, h: u32, caja: &Caja, g_fondo: f64, hm: f64) -> 
     };
     // (lado: desde donde y hacia donde se mira; se toma la mitad del lado)
     let (x0, y0, x1, y1) = (caja.x as i64, caja.y as i64, caja.x1() as i64, caja.y1() as i64);
-    let lados: [(Box<dyn Fn(i64, i64) -> (i64, i64)>, i64, i64); 4] = [
+    // Como se recorre el lado (a lo largo, hacia fuera) y su tramo.
+    type Lado = (Box<dyn Fn(i64, i64) -> (i64, i64)>, i64, i64);
+    let lados: [Lado; 4] = [
         (Box::new(move |t, d| (t, y0 - 1 - d)), x0 + (x1 - x0) / 4, x1 - (x1 - x0) / 4),
         (Box::new(move |t, d| (t, y1 + d)), x0 + (x1 - x0) / 4, x1 - (x1 - x0) / 4),
         (Box::new(move |t, d| (x0 - 1 - d, t)), y0 + (y1 - y0) / 4, y1 - (y1 - y0) / 4),

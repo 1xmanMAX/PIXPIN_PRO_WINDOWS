@@ -378,7 +378,7 @@ mod pruebas {
         use crate::modelo3d::{Constructor3d, Nivel};
         let leer = |al_reves: bool| {
             let mut c = Constructor3d::nuevo();
-            let mut nombres = vec![("IfcWall", "Muro A", "GA"), ("IfcSlab", "Losa", ""), ("IfcSlab", "Losa", "")];
+            let mut nombres = [("IfcWall", "Muro A", "GA"), ("IfcSlab", "Losa", ""), ("IfcSlab", "Losa", "")];
             let mut niveles = vec![
                 Nivel { nombre: "1ER PISO".into(), cota: 3.4, clave: "S1".into() },
                 Nivel { nombre: "2DO PISO".into(), cota: 6.65, ..Default::default() },

@@ -810,14 +810,14 @@ fn analizar(p: &mut Funciones, args: &Map<String, Value>, avisos: &mut Vec<Strin
 /// `y = m x + b` escrito bonito.
 fn recta(m: f64, b: f64) -> String {
     let m_txt = match m {
-        m if m == 0.0 => String::new(),
-        m if m == 1.0 => "x".into(),
-        m if m == -1.0 => "-x".into(),
+        0.0 => String::new(),
+        1.0 => "x".into(),
+        -1.0 => "-x".into(),
         m => format!("{}x", numero(m)),
     };
     match (m_txt.is_empty(), b) {
         (true, b) => numero(b),
-        (false, b) if b == 0.0 => m_txt,
+        (false, 0.0) => m_txt,
         (false, b) if b < 0.0 => format!("{m_txt} - {}", numero(-b)),
         (false, b) => format!("{m_txt} + {}", numero(b)),
     }
@@ -871,7 +871,9 @@ fn medida(els: &[Elemento]) -> (f32, f32) {
     (x1, y1)
 }
 
-/// Sobre que se dibuja la grafica.
+/// Sobre que se dibuja la grafica. (Una por grafica y de vida corta: no
+/// vale la pena encajonar el instrumento para igualar los tamanos.)
+#[allow(clippy::large_enum_variant)]
 enum Marco {
     /// El instrumento plano cartesiano (una unidad, el origen en el centro,
     /// como `Plano.kt` de Android): editable y medible en el lienzo.
@@ -1447,7 +1449,7 @@ mod pruebas {
         let p = validar(&m, &mut avisos).unwrap();
         assert!(p.y_hasta <= 40.0 + 1e-9, "{}", p.y_hasta);
         assert_eq!(avisos.len(), 1);
-        let p = validar_(json!({"funciones": ["sin(x)"], "x_desde": -6.28, "x_hasta": 6.28})).unwrap();
+        let p = validar_(json!({"funciones": ["sin(x)"], "x_desde": -std::f64::consts::TAU, "x_hasta": std::f64::consts::TAU})).unwrap();
         assert!(p.y_desde < -0.9 && p.y_hasta > 0.9 && p.y_hasta < 2.0);
         // Sin dominio, una periodica sale con dos vueltas.
         let p = validar_(json!({"funciones": ["sin(x)"]})).unwrap();

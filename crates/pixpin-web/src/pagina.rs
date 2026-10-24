@@ -79,6 +79,10 @@ pub struct Recurso {
     pub tipo: String,
 }
 
+/// Lo que sirve lo de debajo de `https://pixpin.nota/`: recibe lo que va
+/// detras; `None` es un 404.
+pub type Servir = Box<dyn Fn(&str) -> Option<Recurso>>;
+
 /// Como se abre.
 pub struct OpcionesPagina {
     pub titulo: String,
@@ -93,7 +97,7 @@ pub struct OpcionesPagina {
     pub pagina: &'static [u8],
     /// Lo demas bajo `https://pixpin.nota/`: recibe lo que va detras
     /// (`archivo?r=…`). `None` es un 404.
-    pub servir: Box<dyn Fn(&str) -> Option<Recurso>>,
+    pub servir: Servir,
     /// **Dentro de una ventana de quien llama** (17-oct-2026: el lector de
     /// notas como pin, con la barra comun de los visores). Con ella no se
     /// crea ventana: el WebView2 va dentro de esa, en [`Self::area`] (aqui
@@ -667,7 +671,7 @@ fn servir(
     vista: &ICoreWebView2,
     entorno: &ICoreWebView2Environment,
     pagina: &'static [u8],
-    servir: Box<dyn Fn(&str) -> Option<Recurso>>,
+    servir: Servir,
 ) -> Result<(), ErrorWeb> {
     let filtro = CoTaskMemPWSTR::from(format!("{ORIGEN}*").as_str());
     // SAFETY: `filtro` vive durante la llamada y WebView2 la copia.

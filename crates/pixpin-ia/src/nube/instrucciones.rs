@@ -201,10 +201,8 @@ mod pruebas {
     fn lo_que_cambia_cada_turno_va_detras_de_lo_fijo() {
         use crate::hoja_trabajo::HojaDeTrabajo;
         let base = crate::agente::instrucciones();
-        let mut h1 = HojaDeTrabajo::default();
-        h1.objetivo = "dibujar una casa".into();
-        let mut h2 = HojaDeTrabajo::default();
-        h2.objetivo = "apuntar tareas".into();
+        let h1 = HojaDeTrabajo { objetivo: "dibujar una casa".into(), ..Default::default() };
+        let h2 = HojaDeTrabajo { objetivo: "apuntar tareas".into(), ..Default::default() };
         let s1 = crate::contexto::sistema_con_hoja(&base, &h1, None);
         let s2 = crate::contexto::sistema_con_hoja(&base, &h2, None);
         for p in [Proveedor::Claude, Proveedor::DeepSeek] {

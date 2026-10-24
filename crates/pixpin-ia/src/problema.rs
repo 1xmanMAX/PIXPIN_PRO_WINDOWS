@@ -116,7 +116,7 @@ fn textos(args: &Map<String, Value>, k: &str, max: usize) -> Result<Vec<String>,
 /// La cuenta de un paso, hecha por la app: solo numeros, constantes (pi, e)
 /// y funciones; los grados de `sin(30°)` se pasan a radianes.
 pub fn calcular(c: &str) -> Result<f64, String> {
-    let limpio = grados_a_radianes(&c.replace('×', "*").replace('·', "*").replace("\\cdot", "*").replace("\\times", "*"));
+    let limpio = grados_a_radianes(&c.replace(['×', '·'], "*").replace("\\cdot", "*").replace("\\times", "*"));
     let f = formula::compilar(&limpio).ok_or_else(|| format!("la cuenta «{c}» no se entiende: escribela solo con numeros, como 5*9.8*sin(30°)"))?;
     if let Some(v) = f.variables().into_iter().next() {
         return Err(format!("la cuenta «{c}» tiene la letra «{v}»: pon los numeros de los datos, no las letras"));
@@ -443,7 +443,7 @@ pub fn sin_las_ecuaciones(enunciado: &str, ecuaciones: &[String]) -> String {
         let dentro = &resto[a + 1..b];
         t.push_str(&resto[..a]);
         let n = normal(dentro);
-        if !normales.iter().any(|e| *e == n) {
+        if !normales.contains(&n) {
             t.push_str(&resto[a..=b]);
         }
         resto = &resto[b + 1..];

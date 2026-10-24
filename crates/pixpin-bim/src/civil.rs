@@ -42,7 +42,7 @@ pub fn es_fichero_de_puntos(ruta: &Path) -> bool {
 }
 
 fn trocear(l: &str) -> Vec<&str> {
-    l.split(|c: char| c == ',' || c == ';' || c == '\t' || c == ' ').map(str::trim).filter(|s| !s.is_empty()).collect()
+    l.split([',', ';', '\t', ' ']).map(str::trim).filter(|s| !s.is_empty()).collect()
 }
 
 /// Los numeros del principio de una linea.

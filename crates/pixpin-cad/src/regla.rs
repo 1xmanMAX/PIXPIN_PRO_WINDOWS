@@ -169,7 +169,8 @@ impl Rayas {
                 continue;
             }
             let ang = (p[1] - c[1]).atan2(p[0] - c[0]);
-            if b < 6.2831 {
+            // Menos que una vuelta entera (con su margen de redondeo).
+            if b < std::f64::consts::TAU - 1e-4 {
                 let mut rel = ang - a0;
                 rel -= (rel / std::f64::consts::TAU).floor() * std::f64::consts::TAU;
                 if rel > b {

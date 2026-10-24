@@ -5,6 +5,11 @@
 //! - [`convertir`]: del plano a rayas y triangulos ([`modelo::Modelo`]).
 //! - [`modelo`]: lo que va a la tarjeta grafica, ordenado para dibujar solo
 //!   lo que se ve, y su cache en disco.
+
+// `!(x > 0.0)` es a proposito en todo el crate: un NaN (un plano roto) no
+// es mayor que cero y se rechaza en la misma comparacion.
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 pub mod convertir;
 pub mod croquis;
 pub mod convertir3d;

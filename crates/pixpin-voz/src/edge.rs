@@ -403,7 +403,7 @@ pub fn nombre_en_cache(voz: &str, texto: &str) -> String {
 /// vez que se oyeron), los que sobran pasado `tope`, empezando por los que
 /// hace mas que no se oyen (`VozDeEdge.podar`).
 pub fn sobran(mut ficheros: Vec<(String, u64, u64)>, tope: u64) -> Vec<String> {
-    ficheros.sort_by(|a, b| b.2.cmp(&a.2));
+    ficheros.sort_by_key(|f| std::cmp::Reverse(f.2));
     let mut suma = 0u64;
     let mut fuera = Vec::new();
     for (n, bytes, _) in ficheros {

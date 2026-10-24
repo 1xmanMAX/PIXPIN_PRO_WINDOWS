@@ -491,6 +491,7 @@ fn entorno_y_controlador_sin_contar(padre: HWND) -> Result<(ICoreWebView2Environ
 pub fn precalentar() {
     let _ = std::thread::Builder::new().name("webview2-caliente".into()).spawn(|| {
         use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE};
+        // SAFETY: COM en este hilo nuevo, que es suyo hasta que acaba.
         let _com = unsafe { windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED) };
         if !VisorHtml::hay_runtime() {
             return;
@@ -874,6 +875,23 @@ fn entregar(bytes: Vec<u8>, al_guardar: &AlGuardar, origen: &str) {
     al_guardar(bytes);
 }
 
+/// **Cuanto tarda en verse la pagina** (18-oct, «los visores se sienten
+/// lentos»): desde `desde` hasta que WebView2 termina de cargarla, al
+/// registro (`webview2: pagina lista`). Lo que mide la prueba de latencia.
+pub(crate) fn medir_carga(vista: &ICoreWebView2, que: &'static str, desde: std::time::Instant) {
+    use webview2_com::NavigationCompletedEventHandler;
+    let mut token = 0i64;
+    let hecho = std::cell::Cell::new(false);
+    let manejador = NavigationCompletedEventHandler::create(Box::new(move |_v, _a| {
+        if !hecho.replace(true) {
+            tracing::info!(que, ms = desde.elapsed().as_millis() as u64, "webview2: pagina lista");
+        }
+        Ok(())
+    }));
+    // SAFETY: `token` es un i64 local; el manejador lo guarda WebView2.
+    let _ = unsafe { vista.add_NavigationCompleted(&manejador, &mut token) };
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -1005,21 +1023,4 @@ mod pruebas {
         // prueba y comprobar que el boton de guardar de la pagina llega a
         // `al_guardar`. Sin escritorio no se puede.
     }
-}
-
-/// **Cuanto tarda en verse la pagina** (18-oct, «los visores se sienten
-/// lentos»): desde `desde` hasta que WebView2 termina de cargarla, al
-/// registro (`webview2: pagina lista`). Lo que mide la prueba de latencia.
-pub(crate) fn medir_carga(vista: &ICoreWebView2, que: &'static str, desde: std::time::Instant) {
-    use webview2_com::NavigationCompletedEventHandler;
-    let mut token = 0i64;
-    let hecho = std::cell::Cell::new(false);
-    let manejador = NavigationCompletedEventHandler::create(Box::new(move |_v, _a| {
-        if !hecho.replace(true) {
-            tracing::info!(que, ms = desde.elapsed().as_millis() as u64, "webview2: pagina lista");
-        }
-        Ok(())
-    }));
-    // SAFETY: `token` es un i64 local; el manejador lo guarda WebView2.
-    let _ = unsafe { vista.add_NavigationCompleted(&manejador, &mut token) };
 }

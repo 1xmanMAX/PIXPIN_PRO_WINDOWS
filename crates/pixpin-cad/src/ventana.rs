@@ -474,7 +474,8 @@ impl Enganches {
         let mut puntos: Vec<[f32; 2]> = m.vertices.iter().map(|v| [v.x, v.y]).collect();
         for a in &m.arcos {
             puntos.push(a.centro);
-            if a.barrido < 6.28 {
+            // Menos que una vuelta entera (con su margen de redondeo).
+            if a.barrido < std::f32::consts::TAU - 0.003 {
                 for ang in [a.inicio, a.inicio + a.barrido] {
                     puntos.push([a.centro[0] + a.radio * ang.cos(), a.centro[1] + a.radio * ang.sin()]);
                 }
@@ -738,7 +739,7 @@ pub(crate) fn barra(textos: &mut Textos, e: f64, botones: &[&str], cab: &Cabecer
     let (fondo, tinta, hover, tenue) = if claro {
         (rgba(0xF9, 0xF9, 0xFB), rgba(0x1C, 0x1C, 0x1E), 0x14000000u32, rgba(0x6E, 0x6E, 0x73))
     } else {
-        (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x1Fffffffu32, rgba(0xC7, 0xC7, 0xCC))
+        (rgba(0x1E, 0x1E, 0x20), rgba(0xF5, 0xF5, 0xF7), 0x1FFF_FFFFu32, rgba(0xC7, 0xC7, 0xCC))
     };
     let (w, h) = (ancho_barra(e, botones, cab), ALTO_BARRA * e);
     rect_en(&mut c, 0.0, 0.0, w, h, fondo, CAPA_FONDO);
@@ -851,7 +852,7 @@ pub(crate) fn riel(e: f64, w: u32, botones: &[&str], encima: Option<usize>, acti
         if activo {
             redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, rgba(0x00, 0x60, 0xDF), CAPA_RAYAS * 10.0);
         } else if encima == Some(i) {
-            redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, 0x1Fff_ffff, CAPA_RAYAS * 10.0);
+            redondeado_en(&mut c, k[0], k[1], k[2], k[3], 6.0 * e, 0x1FFF_FFFF, CAPA_RAYAS * 10.0);
         }
         if let Some(icono) = crate::iconos::de_boton(b, false, false) {
             let lado = ICONO * e;
@@ -2116,11 +2117,10 @@ pub fn ver(titulo: &str, cargando: Receiver<Result<Modelo, String>>, textos_ui: 
             sucio = true;
         }
         // Medir, marcar y anotar no van a la vez: el arrastre seria de todos.
-        if (cambiar_marcos && !marcando) || (cambiar_acotar && !acotar.activo) || imprimir {
-            if anotando {
+        if ((cambiar_marcos && !marcando) || (cambiar_acotar && !acotar.activo) || imprimir)
+            && anotando {
                 cambiar_anotar = true;
             }
-        }
         if cambiar_anotar && anotador.is_some() {
             anotando = !anotando;
             if anotando {
@@ -2607,7 +2607,7 @@ mod pruebas {
     #[test]
     fn el_plano_y_el_modelo_nacen_sin_fijar() {
         // Un archivo abierto es una ventana mas; el pin (o la T) lo fija.
-        assert!(!FIJADA_AL_NACER);
+        const { assert!(!FIJADA_AL_NACER) };
     }
 
     #[test]

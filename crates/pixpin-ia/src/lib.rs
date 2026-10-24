@@ -81,6 +81,10 @@
 //! - El lienzo recibe un `.excalidraw` ya hecho ([`lienzo::documento`]) y lo
 //!   lee con `pixpin_motor2d::excalidraw::leer`, como un fichero del movil.
 
+// `!(x > 0.0)` y parecidos son a proposito: un NaN no cumple la
+// comparacion y se rechaza con ella (`partial_cmp` lo esconderia).
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 pub mod acciones;
 pub mod acciones_documentos;
 pub mod agente;

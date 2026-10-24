@@ -43,7 +43,7 @@ pub(super) fn llamar(c: &mut Ctx, canon: &str, args: &[Ev]) -> Option<Resultado>
             let f = c.texto(&args[1])?;
             formato::dar_formato(&v, &f).map(Valor::Texto)
         })(),
-        "VALOR" => (|| {
+        "VALOR" => {
             let v = c.valor_de(&args[0]);
             match v {
                 Valor::Numero(_) => Ok(v),
@@ -55,7 +55,7 @@ pub(super) fn llamar(c: &mut Ctx, canon: &str, args: &[Ev]) -> Option<Resultado>
                     .ok_or(ErrorFormula::Sintaxis),
                 Valor::Error(e) => Err(e),
             }
-        })(),
+        },
         _ => return None,
     })
 }

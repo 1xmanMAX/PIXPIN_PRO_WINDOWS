@@ -321,6 +321,10 @@ pub fn resolver(
     })
 }
 
+/// Que tiene que cumplir lo encontrado: como se dice («una flecha») y la
+/// prueba.
+pub type Filtro<'a> = (&'a str, fn(&Elemento) -> bool);
+
 /// **Uno solo**: la referencia tiene que dar exactamente un elemento (que
 /// cumpla `vale`, si se da). Si da varios, el error lleva la lista corta para
 /// que el modelo elija por su `#id`.
@@ -328,7 +332,7 @@ pub fn uno(
     escena: &Escena,
     que: &str,
     ctx: &Contexto,
-    vale: Option<(&str, fn(&Elemento) -> bool)>,
+    vale: Option<Filtro<'_>>,
 ) -> Result<u64, String> {
     let mut e = resolver(escena, que, ctx, None)?;
     if let Some((_, f)) = vale {

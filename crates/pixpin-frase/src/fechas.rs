@@ -448,7 +448,7 @@ pub fn interpretar(frase: &str, ahora: Momento) -> Result<Momento, ErrorFecha> {
     let mut minuto = l.minuto.unwrap_or(HORA_POR_OMISION);
     if tarde == Some(true) && minuto < 12 * 60 {
         minuto += 12 * 60;
-    } else if tarde == Some(false) && minuto >= 12 * 60 && minuto < 13 * 60 {
+    } else if tarde == Some(false) && (12 * 60..13 * 60).contains(&minuto) {
         minuto -= 12 * 60;
     }
     let mut dia = match l.dia {

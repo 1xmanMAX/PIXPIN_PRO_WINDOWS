@@ -220,6 +220,10 @@ pub struct FamiliaPlano {
     pub trazos: Vec<f64>,
 }
 
+/// Una trama a medias: su centro (aun en f64), su caja, su angulo y sus
+/// tramos de puntos y triangulos.
+type TramaPendiente = ([f64; 2], [f64; 4], f64, u32, u32);
+
 /// Junta lo dibujado (en coordenadas del plano, `f64`) y al final lo ordena
 /// en un [`Modelo`].
 #[derive(Default)]
@@ -233,7 +237,7 @@ pub struct Constructor {
     triangulos_trama: Vec<u32>,
     piezas_tr: Vec<Pieza>,
     /// Tramas con su centro aun en f64.
-    tramas: Vec<([f64; 2], [f64; 4], f64, u32, u32)>,
+    tramas: Vec<TramaPendiente>,
     familias: Vec<Familia>,
     malla_letras: Vec<[f32; 2]>,
     glifos: Vec<[u32; 2]>,

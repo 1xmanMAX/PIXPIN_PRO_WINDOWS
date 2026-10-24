@@ -55,7 +55,7 @@ fn crear_e_invitar_deja_dentro_a_todos_y_con_firmas_buenas() {
     assert!(c.personas.iter().all(Persona::dentro));
     // Lo que llega a quien no tenia nada se cree entero.
     assert_eq!(juntar(None, &c), c);
-    assert_eq!(en_comun(&[c.clone()], "id-ana", "id-eva"), ["p1"]);
+    assert_eq!(en_comun(std::slice::from_ref(&c), "id-ana", "id-eva"), ["p1"]);
     let a = autores(&c);
     assert_eq!(a.get("MAXX").map(String::as_str), Some("Max"));
     assert_eq!(a.get("ANAA").map(String::as_str), Some("Ana"));
@@ -95,7 +95,7 @@ fn solo_el_creador_quita_a_otros_y_cada_uno_puede_irse() {
     assert!(quitar(&c, &g.ana, "id-eva", 400).is_err());
     let sin_eva = quitar(&c, &g.max, "id-eva", 400).unwrap();
     assert!(!dentro(&sin_eva, "id-eva"));
-    assert!(en_comun(&[sin_eva.clone()], "id-ana", "id-eva").is_empty());
+    assert!(en_comun(std::slice::from_ref(&sin_eva), "id-ana", "id-eva").is_empty());
     let en_ana = juntar(Some(&c), &sin_eva);
     assert!(!dentro(&en_ana, "id-eva"));
     let sin_ana = quitar(&en_ana, &g.ana, "id-ana", 500).unwrap();
@@ -235,7 +235,7 @@ fn entre_aparatos_del_grupo_el_otro_entra_en_mis_chats_compartidos() {
     let g = gente();
     let c = invitar(&crear("p1", "Tesis", &g.max, 100), &g.max, &g.ana.ficha(0), 200).unwrap();
     let tableta = yo("id-max-tab", "Max", "MTAB");
-    let en_el_telefono = juntar_del_grupo(&[c.clone()], &[], &g.max, Some(&tableta.ficha(0)), 300);
+    let en_el_telefono = juntar_del_grupo(std::slice::from_ref(&c), &[], &g.max, Some(&tableta.ficha(0)), 300);
     assert!(dentro(&en_el_telefono[0], "id-max-tab"));
     let en_la_tableta = juntar_del_grupo(&[], &en_el_telefono, &tableta, Some(&g.max.ficha(0)), 300);
     assert_eq!(dentro_ids(&en_la_tableta[0]), dentro_ids(&en_el_telefono[0]));

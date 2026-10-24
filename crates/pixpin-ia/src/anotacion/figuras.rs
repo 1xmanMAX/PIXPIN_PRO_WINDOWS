@@ -131,6 +131,7 @@ fn linea(puntos: &[(f32, f32)], b: &Elemento) -> Elemento {
     Elemento { figura: Figura::Linea { puntos: pts }, x: x0, y: y0, ancho: x1 - x0, alto: y1 - y0, ..b.clone() }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn texto(t: &str, x: f32, y: f32, tam: f32, ancho: f32, renglones: usize, b: &Elemento, negrita: bool) -> Elemento {
     let mut e = Elemento {
         figura: Figura::Texto { texto: t.to_string(), tam, familia: FAMILIA.into() },

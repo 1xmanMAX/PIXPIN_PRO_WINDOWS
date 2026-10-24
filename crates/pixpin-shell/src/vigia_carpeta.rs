@@ -20,7 +20,9 @@ use windows::core::HSTRING;
 /// Un aviso de cambios en una carpeta y sus subcarpetas.
 pub struct VigiaCarpeta(HANDLE);
 
-// El HANDLE de una notificacion se puede usar desde cualquier hilo.
+// SAFETY: el HANDLE de una notificacion de cambios se puede usar desde
+// cualquier hilo (FindNextChangeNotification y WaitForSingleObject no estan
+// atados al que lo creo), y solo lo cierra el Drop de su dueno.
 unsafe impl Send for VigiaCarpeta {}
 
 impl VigiaCarpeta {

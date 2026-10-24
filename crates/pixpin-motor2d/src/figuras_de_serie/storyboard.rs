@@ -15,8 +15,11 @@ const ROSA: ColorRgba = hex(0xfbe3e1);
 const BLANCO: ColorRgba = hex(0xffffff);
 const G: f32 = 2.0;
 
+/// Una figura de la lista: su clave, su nombre y como se dibuja.
+type DeLaLista = (&'static str, &'static str, fn(&mut Lapiz));
+
 pub(super) fn todas(v: &mut Vec<FiguraGuardada>) {
-    let lista: [(&str, &str, fn(&mut Lapiz)); 39] = [
+    let lista: [DeLaLista; 39] = [
         ("persona-frente", "Persona de frente", persona_frente),
         ("persona-lado", "Persona de lado", persona_lado),
         ("persona-arriba", "Persona vista desde arriba", persona_arriba),

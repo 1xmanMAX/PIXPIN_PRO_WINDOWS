@@ -1189,11 +1189,10 @@ fn limpiar_sueltos(d: &mut Diagrama, hm: f64) {
     let mut quedan = Vec::new();
     for s in segs {
         let l = s.largo();
-        if l >= corto || toca(s.a, s.a, s.b) || toca(s.b, s.a, s.b) || d.arcos.iter().any(|a| (dist(s.a, a.c) - a.r).abs() < 3.0 || (dist(s.b, a.c) - a.r).abs() < 3.0) {
-            if l >= 3.0 {
+        if (l >= corto || toca(s.a, s.a, s.b) || toca(s.b, s.a, s.b) || d.arcos.iter().any(|a| (dist(s.a, a.c) - a.r).abs() < 3.0 || (dist(s.b, a.c) - a.r).abs() < 3.0))
+            && l >= 3.0 {
                 quedan.push(s);
             }
-        }
     }
     d.segmentos = quedan;
     d.arcos.retain(|a| a.r * a.barrido >= 5.0);
@@ -1312,6 +1311,7 @@ fn flechas_abiertas(d: &mut Diagrama, hm: f64) {
             let (e, otro) = if fin { (s.b, s.a) } else { (s.a, s.b) };
             let dir = ((e.0 - otro.0) / s.largo(), (e.1 - otro.1) / s.largo());
             let mut alas = Vec::new();
+            #[allow(clippy::needless_range_loop)] // `j` es tambien el indice de la pieza
             for j in 0..n {
                 if j == i || quitar[j] {
                     continue;

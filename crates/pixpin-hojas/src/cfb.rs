@@ -266,7 +266,7 @@ pub(crate) fn construir(flujos: &[(&str, &[u8])]) -> Vec<u8> {
         }
     }
     let total = 4 + desplazo as usize + grandes.iter().map(|g| g.1.len().div_ceil(512)).sum::<usize>();
-    let mut b = vec![0u8; 512 * (total + 0)];
+    let mut b = vec![0u8; 512 * total];
     b.resize(512 * (total + 1), 0);
     b[..8].copy_from_slice(&FIRMA);
     b[24..26].copy_from_slice(&0x3Eu16.to_le_bytes());

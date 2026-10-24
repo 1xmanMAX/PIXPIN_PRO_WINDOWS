@@ -737,7 +737,8 @@ mod pruebas {
         casi.aristas = false;
         assert!(coincide(&casi, &a), "el tema y las aristas no cuentan");
         // Casos negativos: girar, acercar, mover el corte, aislar u ocultar es otra.
-        let cambios: Vec<Box<dyn Fn(&mut Estado3d)>> = vec![
+        type Cambio = Box<dyn Fn(&mut Estado3d)>;
+        let cambios: Vec<Cambio> = vec![
             Box::new(|e| e.rumbo += 0.05),
             Box::new(|e| e.altura -= 0.05),
             Box::new(|e| e.dist *= 1.1),

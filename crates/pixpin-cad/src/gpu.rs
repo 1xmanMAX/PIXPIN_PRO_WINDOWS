@@ -213,6 +213,10 @@ pub struct PlanoGpu {
     pub tramos_letras: Vec<Tramo>,
 }
 
+/// Lo que pinta encima del bufer de la ventana antes de ensenarlo (la tinta
+/// del lienzo, con Direct2D en el mismo dispositivo), si algo.
+pub(crate) type PintarEncima<'a> = Option<&'a mut dyn FnMut(&ID3D11Device, &ID3D11Texture2D)>;
+
 pub struct Gpu {
     pub dispositivo: ID3D11Device,
     pub(crate) contexto: ID3D11DeviceContext,
@@ -748,7 +752,7 @@ impl Gpu {
     /// Como [`Gpu::presentar`], dejando a `encima` pintar sobre el bufer de la
     /// ventana ya hecho, antes de ensenarlo (la tinta del motor del lienzo,
     /// con Direct2D en este mismo dispositivo).
-    pub(crate) fn presentar_con(&self, tex: &ID3D11Texture2D, encima: Option<&mut dyn FnMut(&ID3D11Device, &ID3D11Texture2D)>) -> windows::core::Result<()> {
+    pub(crate) fn presentar_con(&self, tex: &ID3D11Texture2D, encima: PintarEncima<'_>) -> windows::core::Result<()> {
         let ctx = &self.contexto;
         // SAFETY: recursos de este dispositivo y de este hilo.
         unsafe {

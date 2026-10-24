@@ -137,7 +137,7 @@ mod pruebas {
         assert!(cerca(invertir_luz(Color::BLANCO), PAPEL));
         assert!(cerca(invertir_luz(Color::NEGRO), TINTA));
         // Ni negro puro ni blanco puro: no deslumbra.
-        assert!(PAPEL.r > 0.05 && TINTA.r < 0.95);
+        const { assert!(PAPEL.r > 0.05 && TINTA.r < 0.95) };
         // Un gris sigue gris (los tres canales casi iguales).
         let g = invertir_luz(c(0.4, 0.4, 0.4));
         assert!((g.r - g.g).abs() < 0.02 && (g.g - g.b).abs() < 0.02, "{g:?}");

@@ -135,6 +135,7 @@ impl Lapiz {
     }
 
     /// Una linea a trazos o a puntos.
+    #[allow(clippy::too_many_arguments)]
     pub fn linea_con(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, c: ColorRgba, g: f32, estilo: EstiloTrazo) {
         self.linea(x1, y1, x2, y2, c, g);
         if let Some(e) = self.v.last_mut() {
@@ -161,6 +162,7 @@ impl Lapiz {
 
     /// Un arco de circunferencia como linea de muchos tramos (angulos en
     /// grados, 0 a la derecha y creciendo hacia abajo, como la pantalla).
+    #[allow(clippy::too_many_arguments)]
     pub fn arco(&mut self, cx: f32, cy: f32, r: f32, desde: f32, hasta: f32, c: ColorRgba, g: f32) {
         self.arco_eliptico(cx, cy, r, r, desde, hasta, c, g);
     }

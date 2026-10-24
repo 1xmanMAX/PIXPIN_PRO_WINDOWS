@@ -226,7 +226,7 @@ fn vuelta<A: Disco + Sync, B: Disco + Sync>(desde: &A, hacia: &B, reloj: &Reloj)
 fn el_movil_de_otra_persona_se_trae_el_proyecto_compartido_del_pc_y_nada_mas() {
     let d = montar("trae");
     let r = ana_entra(&d);
-    assert_eq!(r.chats, [d.tesis.id.clone()]);
+    assert_eq!(r.chats, std::slice::from_ref(&d.tesis.id));
     assert!(d.textos_ana(&d.tesis.id).contains("hola equipo"));
     assert!(d.textos_ana(&d.privado.id).is_empty());
     // El adjunto del proyecto compartido llego; el del otro, no.
@@ -319,7 +319,7 @@ fn ni_pidiendo_a_mano_ni_con_un_mensaje_trampa_sale_un_archivo_de_otro_proyecto_
         let catalogo = pedir(&mut c, &Peticion::de("catalogo"));
         assert_eq!(
             catalogo.chats.iter().map(|x| x.id.clone()).collect::<Vec<_>>(),
-            [d.tesis.id.clone()]
+            std::slice::from_ref(&d.tesis.id)
         );
         for rel in &privadas {
             for chat in [&d.tesis.id, &d.privado.id] {

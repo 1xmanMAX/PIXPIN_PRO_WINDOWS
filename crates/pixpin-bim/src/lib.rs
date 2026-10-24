@@ -11,6 +11,10 @@
 //!
 //! El resultado es un [`pixpin_cad::modelo3d::Modelo3d`].
 
+// `!(x > 0.0)` y parecidos son a proposito: un NaN no cumple la
+// comparacion y se rechaza con ella (`partial_cmp` lo esconderia).
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+
 pub mod civil;
 pub mod niveles;
 

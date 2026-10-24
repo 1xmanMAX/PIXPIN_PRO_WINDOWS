@@ -263,6 +263,7 @@ impl Pizarra {
         self.texto_con(t, x, y, tam, color, alinear, false)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn texto_con(
         &mut self,
         t: &str,
@@ -615,6 +616,7 @@ mod pruebas {
     use super::*;
 
     #[test]
+    #[allow(clippy::approx_constant)] // 1.41421 es un numero cualquiera con decimales
     fn los_numeros_se_escriben_para_personas() {
         assert_eq!(numero(2.0), "2");
         assert_eq!(numero(-0.0001), "0");
