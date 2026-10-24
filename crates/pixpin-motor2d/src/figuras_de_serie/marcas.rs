@@ -13,6 +13,7 @@ use super::tecnico::{Dibujo, poner};
 use super::{Lapiz, WORK_SANS, hex};
 use crate::biblioteca::FiguraGuardada;
 use crate::elemento::ColorRgba;
+use crate::nube_revision::{self, Base};
 use crate::texto::{self, EstiloDeTexto};
 
 pub(super) const CATEGORIA: &str = "Marcas y sellos";
@@ -131,58 +132,26 @@ fn flecha(l: &mut Lapiz) {
     l.poli(&[ala(0.45), b, ala(-0.45)], ROJO, 4.0, None);
 }
 
-/// **Una nube de revision** por los puntos de un contorno cerrado (en el
-/// sentido de las agujas del reloj en pantalla): un festón hacia fuera
-/// entre cada dos puntos.
-fn nube(l: &mut Lapiz, contorno: &[(f32, f32)]) {
-    let n = contorno.len();
-    let mut pts = Vec::new();
-    for i in 0..n {
-        let (a, b) = (contorno[i], contorno[(i + 1) % n]);
-        let m = ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
-        let r = ((b.0 - a.0).hypot(b.1 - a.1)) / 2.0;
-        let desde = (a.1 - m.1).atan2(a.0 - m.0).to_degrees();
-        let tramos = 10;
-        for k in 0..tramos {
-            let t = (desde + 180.0 * k as f32 / tramos as f32).to_radians();
-            pts.push((m.0 + r * t.cos(), m.1 + r * t.sin()));
-        }
-    }
-    pts.push(pts[0]);
+/// El radio del feston de las nubes de la galeria: un diametro de 26, el
+/// de las nubes que habia antes, para que se vean igual al estamparlas.
+const RADIO_NUBE: f32 = 13.0;
+
+/// **Una nube de revision dinamica** (`nube_revision`): su caja y el radio
+/// del feston. Al estirarla no se estiran los festones: caben mas.
+fn nube(l: &mut Lapiz, base: Base, ancho: f32, alto: f32) {
     // Parte «Nube»: el contorno en festones que rodea lo revisado.
     l.parte("Nube");
-    l.poli(&pts, ROJO, 2.5, None);
-}
-
-/// Los puntos de un lado, repartidos en tramos de unos `paso`.
-fn tramos(a: (f32, f32), b: (f32, f32), paso: f32) -> Vec<(f32, f32)> {
-    let n = ((b.0 - a.0).hypot(b.1 - a.1) / paso).round().max(1.0) as usize;
-    (0..n)
-        .map(|i| {
-            let t = i as f32 / n as f32;
-            (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t)
-        })
-        .collect()
+    let mut e = nube_revision::nube(0.0, 0.0, ancho, alto, RADIO_NUBE, ROJO, 2.5);
+    e.figura = base.figura();
+    l.v.push(e);
 }
 
 fn nube_rectangular(l: &mut Lapiz) {
-    let (w, h, paso) = (220.0, 130.0, 26.0);
-    let mut c = tramos((0.0, 0.0), (w, 0.0), paso);
-    c.extend(tramos((w, 0.0), (w, h), paso));
-    c.extend(tramos((w, h), (0.0, h), paso));
-    c.extend(tramos((0.0, h), (0.0, 0.0), paso));
-    nube(l, &c);
+    nube(l, Base::Rectangulo, 220.0, 130.0);
 }
 
 fn nube_redonda(l: &mut Lapiz) {
-    let n = 18;
-    let c: Vec<(f32, f32)> = (0..n)
-        .map(|i| {
-            let a = std::f32::consts::TAU * i as f32 / n as f32;
-            (120.0 + 110.0 * a.cos(), 75.0 + 65.0 * a.sin())
-        })
-        .collect();
-    nube(l, &c);
+    nube(l, Base::Elipse, 240.0, 150.0);
 }
 
 fn rectangulo(l: &mut Lapiz) {
@@ -269,6 +238,25 @@ mod pruebas {
     use super::*;
     use crate::biblioteca::nombre_de_parte;
     use crate::elemento::Figura;
+
+    #[test]
+    fn la_galeria_estampa_nubes_dinamicas_y_no_lineas_fijas() {
+        let mut v = Vec::new();
+        todas(&mut v);
+        for (clave, base) in [
+            ("marca-nube-1", Base::Rectangulo),
+            ("marca-nube-2", Base::Elipse),
+        ] {
+            let f = v.iter().find(|f| f.id == format!("serie-{clave}")).unwrap();
+            assert_eq!(f.elementos.len(), 1, "{clave}");
+            let e = &f.elementos[0];
+            assert_eq!(nube_revision::base_de(e), Some(base), "{clave}");
+            assert_eq!(e.extras.nube, Some(RADIO_NUBE));
+            // Caso negativo: no es la linea de festones fijos de antes.
+            assert!(!matches!(e.figura, Figura::Linea { .. }));
+            assert!(e.grupos.iter().any(|g| nombre_de_parte(g) == Some("Nube")));
+        }
+    }
 
     #[test]
     fn cada_sello_dice_lo_suyo_en_su_color_y_con_marco_y_texto() {

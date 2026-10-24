@@ -457,6 +457,24 @@ pub(crate) fn figura(f: &mut Fabrica, fig: &Figura) {
         }
         TipoFigura::Elipse => f.caja("ellipse", caja, trazo, relleno),
         TipoFigura::Rombo => f.caja("diamond", caja, trazo, relleno),
+        // La nube de revision, la dinamica del motor: sale como la escribe
+        // el lienzo (la linea de festones con su `nubeRadio`), y al leerla
+        // vuelve a ser su caja con el radio del feston.
+        TipoFigura::Nube => {
+            let color = |c: &str| pixpin_motor2d::excalidraw::color_desde(Some(&json!(c)));
+            let mut e = pixpin_motor2d::nube_revision::nube(
+                fig.x as f32,
+                fig.y as f32,
+                fig.ancho as f32,
+                fig.alto as f32,
+                pixpin_motor2d::nube_revision::RADIO_DE_FABRICA,
+                color(trazo)
+                    .unwrap_or(pixpin_motor2d::elemento::ColorRgba::opaco(0.12, 0.12, 0.12)),
+                2.0,
+            );
+            e.relleno = relleno.and_then(color);
+            f.de_motor(&[e]);
+        }
         TipoFigura::Linea => f.trazo("line", &puntos, trazo, None),
         TipoFigura::Flecha => f.trazo("arrow", &puntos, trazo, None),
         // Un texto que se quedo sin texto (ver `colores_del_pedido`) no se pinta.
@@ -940,6 +958,40 @@ mod pruebas {
 
     /// El texto rico del asistente: formulas en linea y colores, con las
     /// barras de mas de los modelos, y su texto plano de reserva.
+    #[test]
+    fn la_nube_del_asistente_llega_dinamica_al_lienzo() {
+        let l = llamada(
+            "dibujar_en_lienzo",
+            r##"{"elementos":[{"tipo":"nube","caja":[100,80,320,140],"color":"rojo","texto":"Cambio"},
+                {"tipo":"rectangulo","caja":[500,80,100,60]}]}"##,
+        );
+        let doc = documento(elementos(&l, (1000.0, 2000.0), 7));
+        let els = pixpin_motor2d::excalidraw::leer(&doc).unwrap().elementos();
+        let nube = &els[0];
+        assert_eq!(
+            pixpin_motor2d::nube_revision::base_de(nube),
+            Some(pixpin_motor2d::nube_revision::Base::Rectangulo)
+        );
+        assert_eq!(
+            nube.extras.nube,
+            Some(pixpin_motor2d::nube_revision::RADIO_DE_FABRICA)
+        );
+        assert_eq!(
+            (nube.x, nube.y, nube.ancho, nube.alto),
+            (1100.0, 2080.0, 320.0, 140.0)
+        );
+        assert_eq!(
+            nube.relleno, None,
+            "una nube de revision no se rellena sola"
+        );
+        // Su rotulo dentro, y el rectangulo de al lado sigue siendo uno normal.
+        assert!(els.iter().any(
+            |e| matches!(&e.figura, pixpin_motor2d::Figura::Texto { texto, .. } if texto == "Cambio")
+        ));
+        let otro = els.iter().find(|e| e.x == 1500.0).unwrap();
+        assert_eq!(otro.extras.nube, None);
+    }
+
     #[test]
     fn el_texto_rico_del_asistente_llega_compuesto_al_lienzo() {
         let l = llamada(

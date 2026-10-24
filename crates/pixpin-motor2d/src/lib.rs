@@ -63,6 +63,7 @@ pub mod marcas;
 pub mod marco;
 pub mod medida;
 pub mod mosaico;
+pub mod nube_revision;
 pub mod nudos;
 pub mod organizar;
 pub mod perimetros;

@@ -53,7 +53,7 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 /// Las categorias, en el orden en que salen en el menu.
 pub const CATEGORIAS: [&str; 21] = [
