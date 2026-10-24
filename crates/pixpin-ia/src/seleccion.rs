@@ -289,6 +289,49 @@ fn puntuar(claves: &[&str], q: &str, palabras: &[&str]) -> u32 {
         .sum()
 }
 
+/// **Si piden reorganizar lo que ya hay**: cambiar de sitio un recuadro o
+/// una seccion, reordenar, intercambiar, poner algo arriba o abajo.
+pub fn pide_reorganizar(q: &str, palabras: &[&str]) -> bool {
+    let verbo = [
+        "reorganiz",
+        "reorden",
+        "reacomod",
+        "intercambi",
+        "muev",
+        "mover",
+        "pon",
+        "coloca",
+        "pasa",
+    ]
+    .iter()
+    .any(|v| palabras.iter().any(|p| p.starts_with(v)));
+    let que = [
+        "recuadro",
+        "seccion",
+        "bloque",
+        "apartado",
+        "cuadro",
+        "caja",
+        "pagina",
+        "hoja",
+        "plantilla",
+    ]
+    .iter()
+    .any(|c| palabras.iter().any(|p| p.starts_with(c)));
+    let sitio = q.contains("arriba")
+        || q.contains("abajo")
+        || q.contains("debajo")
+        || q.contains("encima")
+        || q.contains("de sitio")
+        || q.contains("de lugar")
+        || q.contains("al final")
+        || q.contains("al principio");
+    let fuerte = ["reorganiz", "reorden", "reacomod", "intercambi"]
+        .iter()
+        .any(|v| palabras.iter().any(|p| p.starts_with(v)));
+    (fuerte && que) || (verbo && que && sitio)
+}
+
 /// **Si piden agrandar algo que ya esta** (una plantilla: el cronograma,
 /// una lista, un planificador): un verbo de agrandar y de que (semanas,
 /// filas, actividades, la plantilla o «esto»).
@@ -603,11 +646,26 @@ pub fn para_el_pedido(pedido: &str, con_imagen: bool) -> Vec<Herramienta> {
     // el mismo diseño»): la plantilla se rehace con SU codigo
     // (`figuras_guardadas`, «alargar»). Con la de dibujar cronogramas a mano
     // el modelo borraba la plantilla y la redibujaba peor.
-    if pide_agrandar(&q, &palabras) {
+    // Y **reorganizar lo que ya hay** (25-oct): mover un recuadro, cambiar
+    // el orden, anadir filas. Con las piezas de la hoja
+    // (`edicion::REORGANIZAR`), nunca redibujando.
+    let reorganiza = pide_reorganizar(&q, &palabras);
+    let agranda = pide_agrandar(&q, &palabras);
+    if reorganiza || agranda {
         puntuadas.retain(|(_, h)| h.nombre != CRONOGRAMA && h.nombre != DIBUJAR);
-        if let Some(f) = de(FIGURAS) {
-            puntuadas.retain(|(_, h)| h.nombre != FIGURAS);
-            puntuadas.insert(0, (u32::MAX, f));
+        let mut arriba = Vec::new();
+        if agranda && let Some(f) = de(FIGURAS) {
+            arriba.push(f);
+        }
+        if let Some(f) = crate::edicion::fila(crate::edicion::REORGANIZAR) {
+            arriba.push(crate::edicion::herramienta(f));
+        }
+        if reorganiza && !agranda {
+            arriba.reverse();
+        }
+        for h in arriba.into_iter().rev() {
+            puntuadas.retain(|(_, x)| x.nombre != h.nombre);
+            puntuadas.insert(0, (u32::MAX, h));
         }
     }
     let mut elegidas: Vec<(u32, Herramienta)> = puntuadas
@@ -1084,6 +1142,19 @@ mod pruebas {
                 "«{pedido}» → {n:?}"
             );
             assert!(!n.contains(&CRONOGRAMA.to_string()), "«{pedido}» → {n:?}");
+        }
+        // Reorganizar una hoja: con sus piezas, no redibujandola.
+        for pedido in [
+            "Reorganiza la hoja: pon el recuadro de arriba abajo",
+            "intercambia la seccion de notas con la de tareas",
+        ] {
+            let n = nombres(pedido, false);
+            assert_eq!(
+                n.first().map(String::as_str),
+                Some(crate::edicion::REORGANIZAR),
+                "«{pedido}» → {n:?}"
+            );
+            assert!(!n.contains(&DIBUJAR.to_string()), "«{pedido}» → {n:?}");
         }
         // Caso negativo: un cronograma nuevo sigue siendo el de dibujarlo.
         let n = nombres("Hazme un cronograma de la obra con sus hitos", false);

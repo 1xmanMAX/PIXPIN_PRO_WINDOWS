@@ -20,6 +20,9 @@ pub mod angulos;
 pub mod arco;
 pub mod azar;
 pub mod biblioteca;
+/// Reorganizar una hoja por bloques: mover, intercambiar, duplicar, borrar,
+/// estirar y anadir filas con las piezas que ya hay (25-oct-2026).
+pub mod bloques;
 pub mod bolita;
 pub mod borrador;
 pub mod cache;
