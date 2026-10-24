@@ -1381,9 +1381,6 @@ pub fn listar(escena: &Escena, ids: &[u64], marco: (f32, f32)) -> String {
         .join("\n")
 }
 
-/// **El resumen compacto del lienzo destino**, para el modelo: cuantos hay,
-/// lo elegido y una linea por elemento (los de encima primero, hasta
-/// [`MAX_RESUMEN`]). Las guias escondidas y lo borrado no salen.
 /// Las plantillas de serie que hay en la escena (por su grupo de fuera, el de
 /// estampar), con su nombre del menu: «Cronograma», «Lista de tareas».
 pub fn plantillas_en(escena: &Escena) -> Vec<String> {
@@ -1405,6 +1402,9 @@ pub fn plantillas_en(escena: &Escena) -> Vec<String> {
     v
 }
 
+/// **El resumen compacto del lienzo destino**, para el modelo: cuantos hay,
+/// lo elegido y una linea por elemento (los de encima primero, hasta
+/// [`MAX_RESUMEN`]). Las guias escondidas y lo borrado no salen.
 pub fn resumen(escena: &Escena, ctx: &Contexto) -> String {
     let vivos: Vec<&Elemento> = escena
         .a_la_vista()
