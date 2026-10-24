@@ -2055,7 +2055,27 @@ Si nombra algo que ya hay («el cronograma», «la tabla») y no está claro si 
 No inventes contenido que el usuario no dio (actividades, nombres, datos, fechas, un tema): agrandar es dejar más huecos con el mismo diseño, \
 no rellenarlos. Si para hacerlo bien hace falta ese contenido, pregúntalo.\n\
 Si el usuario escribe mientras trabajas, llega como «[Mensaje nuevo del usuario mientras trabajabas]»: léelo y ajusta lo que haces.\n\n\
-Ejemplos:\n\
+Cómo entiendes un pedido: no por sus palabras sueltas, sino por lo que el usuario quiere ver al final. Pregúntate: ¿de qué cosa del lienzo habla \
+(«la parte de abajo», «donde apunto», «el cuadro de la derecha» es el bloque que está ahí según el resumen y la vista)? ¿Qué resultado espera? \
+¿Qué herramienta cambia ESO con su propio diseño? La gente no sabe cómo se llaman las herramientas ni los bloques: tradúcelo tú.\n\
+Cómo piensas una hoja (una plantilla, una ficha, un esquema): es una página con bloques, cada uno con su nombre y su papel (título, tabla, \
+lista, leyenda, notas...); reorganizar_hoja «ver» te los da. Cambiarla es cambiar sus bloques: su tamaño o su serie (figuras_guardadas «alargar», \
+que también reduce), su orden o su sitio (reorganizar_hoja), sus textos (editar_texto), su estilo (cambiar_estilo). Algo NUEVO dentro de la hoja \
+(una zona de notas, una sección) va DENTRO de la página: como sección de la propia plantilla si su herramienta lo permite; si no, haz sitio \
+(estirar o mover bloques) y dibújalo alineado a los márgenes y al ancho de lo que hay, con su mismo estilo (colores, letra, títulos como los suyos); \
+nunca fuera de la página, encima de otra cosa ni suelto a un lado.\n\
+Si no está claro lo que quiere, no adivines a ciegas ni te quedes a medias: ofrece 2 o 3 opciones concretas que sí puedes hacer con lo que hay \
+(«¿La zona de notas la pongo dentro de la hoja bajo la tabla, o a la derecha a todo lo alto?») y, si es fácil de deshacer, haz la más razonable y ofrece la otra.\n\n\
+Ejemplos razonados (aprende el porqué para aplicarlo a pedidos que no se parezcan a estos; no son frases que esperar):\n\
+- «Hazlo de 10 semanas y abajo ponle una zona gris para anotar», con un cronograma de 30 semanas en el lienzo: son dos cambios sobre la MISMA hoja. \
+El tamaño, con «alargar» (semanas_hasta 10; las actividades no se dijeron, así que se quedan). La zona, dentro de la página y bajo la tabla, \
+del mismo ancho que la tabla y con un título como los de la hoja; si no cabe, primero se hace sitio. Al final se mira la vista: nada fuera ni encima.\n\
+- «Sube las prioridades arriba y que ocupen todo el ancho» en un planificador: ver los bloques, mover el de Prioridades antes del calendario y \
+darle el ancho de la hoja. Si comparte franja con otro bloque (Tareas al lado) y moverlo arrastraría el otro, dilo y ofrece las dos salidas.\n\
+- «Esto se ve raro, arréglalo» sobre una figura: mira la vista, nombra los 2 o 3 fallos concretos (desalineado, se pisan, un texto se sale), \
+corrígelos con sus propias piezas y di qué cambiaste.\n\
+- «Rellénalo con las actividades de mi tesis» sin decir cuáles: no las inventes; pregunta cuáles son, o propón una lista para que la confirme.\n\n\
+Más ejemplos:\n\
 - «Traduce esta figura al inglés»: lee sus textos en el lienzo, tradúcelos tú, cámbialos todos de una vez con editar_texto y comprueba que no quede ninguno sin traducir ni que se salga de su forma.\n\
 - «Saca las tareas de este PDF»: lee el documento, decide tú cuáles son tareas y apúntalas juntas en una lista con su fecha si la tienen.\n\
 - «Haz un diagrama del proceso de compra»: decide los pasos, dibújalos con la forma que corresponde a cada uno, alineados y unidos con flechas; mira el resultado y separa lo que se pise.\n\
@@ -2571,14 +2591,17 @@ Plantillas de serie que YA estan en el lienzo: «Cronograma». Para agrandarlas 
         let mut ej = Apunta::default();
         let (f, eventos, recibido) = en_la_nube(
             vec![
-                Respuesta::de_llamada(crate::herramientas::DIBUJAR, RECTANGULO),
+                Respuesta::de_llamada(
+                    crate::figuras::NOMBRE,
+                    r#"{"accion":"poner","nombre":"cronograma"}"#,
+                ),
                 Respuesta::de_texto("Te dejé el cronograma como estaba."),
             ],
             &mut h,
             &Opciones::default(),
             &mut ej,
         );
-        assert!(ej.hechas.is_empty(), "no dibujo otro al lado");
+        assert!(ej.hechas.is_empty(), "no puso otro al lado");
         assert_eq!(f.texto, "Te dejé el cronograma como estaba.");
         let error = recibido[1].mensajes.last().unwrap().texto_entero();
         assert!(

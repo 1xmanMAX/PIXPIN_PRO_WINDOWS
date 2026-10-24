@@ -27,7 +27,7 @@ pub fn herramienta() -> Herramienta {
             "{}{}{}{}{}{}",
             "La biblioteca de figuras del lienzo (las del usuario y las plantillas de serie). «accion»: guardar (lo elegido en el lienzo, o si no ",
             "lo ultimo que dibujaste, con el «nombre» que diga el usuario o uno corto que le pongas tu), poner (estampa la figura de ese «nombre») ",
-            "o lista (las que hay). «alargar»: rehace la PLANTILLA que hay en el lienzo (elegida o no; o la de «nombre») con otro intervalo, con el mismo diseño y en su mismo sitio. ",
+            "o lista (las que hay). «alargar»: rehace la PLANTILLA que hay en el lienzo (elegida o no; o la de «nombre») con otro intervalo, mas grande o mas pequeño (tambien para reducir: «déjalo en 10 semanas» es semanas_hasta 10), con el mismo diseño y en su mismo sitio. ",
             "Para AGRANDAR, AMPLIAR o EXTENDER una plantilla (mas semanas, mas filas o actividades, mas horas) usa SIEMPRE «alargar»: nunca la borres ni la redibujes con otras herramientas. ",
             "«30 actividades» (o filas o tareas) es desde 1 hasta 30; «30 semanas» es semanas_desde 1 y semanas_hasta 30: ",
             format_args!(

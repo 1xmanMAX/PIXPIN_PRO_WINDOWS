@@ -94,53 +94,6 @@ pub fn pide_otro(pedido: &str) -> bool {
         || q.contains("de nuevo")
 }
 
-/// Si ademas de cambiar lo que hay pide anadirle piezas («y ponle un
-/// tejado»): entonces dibujar figuras sueltas si vale (no otra plantilla).
-fn pide_anadir_piezas(pedido: &str) -> bool {
-    let q = normalizar(pedido);
-    // Una zona nueva junto a lo que hay («y abajo una zona gris para
-    // anotaciones», 24-oct-2026) tambien es anadir piezas, sin verbo.
-    let zona = [
-        "zona",
-        "espacio",
-        "recuadro",
-        "seccion",
-        "apartado",
-        "anotacion",
-        "notas",
-        "leyenda",
-        "franja",
-    ];
-    if zona.iter().any(|z| q.contains(z)) {
-        return true;
-    }
-    q.split(|c: char| !c.is_alphanumeric()).any(|p| {
-        [
-            "pon",
-            "ponle",
-            "ponles",
-            "anade",
-            "anadele",
-            "anada",
-            "ponga",
-            "agregue",
-            "incrementa",
-            "incremente",
-            "crea",
-            "cree",
-            "agrega",
-            "agregale",
-            "dibuja",
-            "dibujale",
-            "incluye",
-            "incluyele",
-            "marca",
-            "senala",
-        ]
-        .contains(&p)
-    })
-}
-
 /// **La guarda anti-duplicado.** `pedido` es el texto entero del ultimo
 /// mensaje del usuario (con el resumen del lienzo, que dice si hay algo).
 /// Devuelve el ERROR para el modelo si `llamada` haria otro al lado de lo
@@ -149,7 +102,7 @@ fn pide_anadir_piezas(pedido: &str) -> bool {
 /// Solo salta si a la vez: el pedido es agrandar o reorganizar
 /// ([`crate::seleccion::es_cambiar_lo_que_hay`]), el lienzo tiene algo, el
 /// usuario no pidio «otro» y la llamada crea desde cero (cronograma, SVG,
-/// poner una plantilla, o dibujar si no pidio anadir piezas).
+/// poner otra plantilla); dibujar piezas sueltas nunca se para.
 pub fn duplicaria(pedido: &str, llamada: &Llamada) -> Option<String> {
     let dicho = lo_que_pidio(pedido);
     if !crate::seleccion::es_cambiar_lo_que_hay(&dicho)
@@ -161,7 +114,6 @@ pub fn duplicaria(pedido: &str, llamada: &Llamada) -> Option<String> {
     let hay_plantilla = pedido.contains(MARCA_PLANTILLAS);
     let crea = match llamada {
         Llamada::Cronograma(_) | Llamada::Svg(_) => true,
-        Llamada::Dibujar(_) => !pide_anadir_piezas(&dicho),
         Llamada::Figuras(crate::figuras::PedidoFiguras::Poner { .. }) => hay_plantilla,
         _ => false,
     };
@@ -304,16 +256,17 @@ Plantillas de serie que YA estan en el lienzo: «Cronograma». Para agrandarlas 
     #[test]
     fn agrandar_lo_que_hay_no_dibuja_otro_al_lado() {
         let pedido = format!("agrándala a 30 actividades y 30 semanas{RESUMEN_CON_PLANTILLA}");
-        let error = duplicaria(&pedido, &dibujar()).expect("dibujar otro se para");
+        let poner = Llamada::Figuras(crate::figuras::PedidoFiguras::Poner {
+            nombre: "cronograma".into(),
+        });
+        let error = duplicaria(&pedido, &poner).expect("poner otro se para");
         assert!(
             error.starts_with("ERROR") && error.contains("alargar"),
             "{error}"
         );
-        // Poner otra plantilla de serie, tambien.
-        let poner = Llamada::Figuras(crate::figuras::PedidoFiguras::Poner {
-            nombre: "cronograma".into(),
-        });
-        assert!(duplicaria(&pedido, &poner).is_some());
+        // Dibujar piezas sueltas (una zona, una nota) no se para: que no sea
+        // otra version lo decide el modelo entendiendo el pedido.
+        assert!(duplicaria(&pedido, &dibujar()).is_none());
         // Lo demas de la biblioteca (alargar, la lista) si se hace.
         let alargar = Llamada::Figuras(crate::figuras::PedidoFiguras::Lista);
         assert!(duplicaria(&pedido, &alargar).is_none());

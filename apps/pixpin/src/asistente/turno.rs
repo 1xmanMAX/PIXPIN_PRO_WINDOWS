@@ -206,21 +206,11 @@ impl Turno {
         let herramientas = if motor.catalogo_completo()
             && !super::acciones::es_para_calcar(&historial, &adjuntos, foto.is_some())
         {
-            let mut todas = pixpin_ia::herramientas::catalogo();
-            // Agrandar o reorganizar lo que ya hay: sin las de dibujar desde
-            // cero, que el modelo usaba para hacer «otro» al lado (25-oct).
-            let pedido = historial
-                .iter()
-                .rev()
-                .find(|m| m.rol == Rol::Usuario)
-                .map(Mensaje::texto_entero)
-                .unwrap_or_default();
-            if pixpin_ia::seleccion::es_cambiar_lo_que_hay(&pedido) {
-                todas.retain(|h| {
-                    !pixpin_ia::seleccion::DE_DIBUJAR_DESDE_CERO.contains(&h.nombre.as_str())
-                });
-            }
-            todas
+            // El catalogo entero, sin quitar herramientas por las palabras
+            // del pedido (24-oct-2026: «…y abajo una zona gris» se quedaba
+            // sin dibujar). Lo que evita duplicar es entender el pedido
+            // (`agente::instrucciones`) y la guarda de `guardas.rs`.
+            pixpin_ia::herramientas::catalogo()
         } else {
             super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some())
         };

@@ -231,7 +231,7 @@ pub fn catalogo_base() -> Vec<Herramienta> {
         Herramienta {
             nombre: DIBUJAR.into(),
             descripcion: concat!(
-                "Dibuja figuras en el lienzo de PixPin (800x600, origen arriba a la izquierda). ",
+                "Dibuja figuras en el lienzo de PixPin (800x600 si esta vacio, origen arriba a la izquierda; si ya hay cosas, usa las MISMAS coordenadas que trae el «Lienzo destino», que pueden pasar de 800x600). ",
                 "Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». ",
                 "Tipos: rectangulo, elipse, rombo, triangulo, estrella y onda (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); ",
                 "linea, flecha, curva (suave), poligono y lapiz (a mano alzada) (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»); ",
