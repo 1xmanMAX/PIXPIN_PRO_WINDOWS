@@ -233,7 +233,7 @@ pub fn catalogo_base() -> Vec<Herramienta> {
             descripcion: concat!(
                 "Dibuja figuras en el lienzo de PixPin (800x600 si esta vacio, origen arriba a la izquierda; si ya hay cosas, usa las MISMAS coordenadas que trae el «Lienzo destino», que pueden pasar de 800x600). ",
                 "Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». ",
-                "Tipos: rectangulo, elipse, rombo, triangulo, estrella y onda (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); ",
+                "Tipos: rectangulo, elipse, rombo, triangulo, estrella, onda y nube (de revision, para rodear lo que cambio) (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); ",
                 "linea, flecha, curva (suave), poligono y lapiz (a mano alzada) (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»); ",
                 "punto (con «x», «y» y su letra en «texto»); instrumento (plano cartesiano con «ejes»:2, recta con 1, espacio con 3; «caja», «unidad» en px y «tabla»:[[x,y],...] de coordenadas). ",
                 "Opcionales: «grosor», «trazo» (solido, discontinuo, punteado), «opacidad» (0-100), «relleno_estilo» (solido, rayado, cruzado), ",
@@ -257,7 +257,7 @@ pub fn catalogo_base() -> Vec<Herramienta> {
                         "type": "object",
                         "required": ["tipo"],
                         "properties": {
-                            "tipo": {"type": "string", "enum": ["rectangulo", "elipse", "rombo", "triangulo", "estrella", "onda", "linea", "flecha", "curva", "poligono", "lapiz", "texto", "punto", "instrumento"]},
+                            "tipo": {"type": "string", "enum": ["rectangulo", "elipse", "rombo", "triangulo", "estrella", "onda", "nube", "linea", "flecha", "curva", "poligono", "lapiz", "texto", "punto", "instrumento"]},
                             "caja": {"type": "array", "items": {"type": "number"}, "description": "[x, y, ancho, alto]"},
                             "puntos": {"type": "array", "items": {"type": "number"}, "description": "[x1, y1, x2, y2, ...] de linea, flecha, curva o poligono"},
                             "centro": {"type": "array", "items": {"type": "number"}, "description": "[x, y] de un circulo"},
@@ -451,6 +451,10 @@ pub enum TipoFigura {
     /// El instrumento de graficar (`pixpin-axes` y hermanos), con sus puntos
     /// de la tabla de coordenadas.
     Instrumento,
+    /// **La nube de revision** (`pixpin_motor2d::nube_revision`): la caja con
+    /// el borde en festones, la de marcar lo que cambio en un plano. Sale
+    /// dinamica: estirada en el lienzo, caben mas festones del mismo tamano.
+    Nube,
     /// **Una tabla en el lienzo** (`tabla_dibujada`, la misma de la hoja al
     /// lienzo): sus celdas van en `texto`, con tabulador entre celdas y salto
     /// entre filas. Antes no habia y «haz una tabla» acababa en una nota.
@@ -858,6 +862,9 @@ fn validar_figura(
             TipoFigura::Elipse
         }
         "rombo" | "diamond" => TipoFigura::Rombo,
+        "nube" | "nube_de_revision" | "nube_revision" | "cloud" | "revision_cloud" => {
+            TipoFigura::Nube
+        }
         "linea" | "línea" | "line" => TipoFigura::Linea,
         "flecha" | "arrow" => TipoFigura::Flecha,
         "texto" | "text" => TipoFigura::Texto,
@@ -887,7 +894,7 @@ fn validar_figura(
         }
         otro => {
             return Err(mal(format!(
-                "{donde}: «tipo» = «{otro}» no existe; usa rectangulo, elipse, rombo, triangulo, estrella, linea, flecha, curva, poligono, lapiz, texto, punto o instrumento"
+                "{donde}: «tipo» = «{otro}» no existe; usa rectangulo, elipse, rombo, triangulo, estrella, nube, linea, flecha, curva, poligono, lapiz, texto, punto o instrumento"
             )));
         }
     };
@@ -1434,6 +1441,8 @@ pub fn colores_del_pedido(figuras: &mut [Figura], pedido: &str) {
             "cuadrado" | "cuadrados" | "rectangulo" | "rectángulo" | "caja" | "square"
             | "rectangle" => TipoFigura::Rectangulo,
             "rombo" | "diamante" | "diamond" => TipoFigura::Rombo,
+            // Una «nube roja» de revision es su raya roja, sin relleno.
+            "nube" | "cloud" => TipoFigura::Nube,
             "triangulo" | "triángulo" | "estrella" | "poligono" | "polígono" | "techo"
             | "tejado" | "triangle" | "star" => TipoFigura::Poligono,
             "curva" | "onda" | "curve" | "wave" => TipoFigura::Curva,

@@ -363,11 +363,16 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
         Figura::Rombo if e.redondo => Some(formas::rombo_redondo(e.x, e.y, e.ancho, e.alto)),
         _ => None,
     };
+    // **La nube se rellena por sus festones**, no por su caja: el color no
+    // puede asomar entre los picos.
+    let nube = crate::nube_revision::contorno_de(e);
 
     if e.estilo_relleno == EstiloRelleno::Solido || degradado.is_some() {
         // La figura LISA, no la rugosa: rellenar la temblorosa deja huecos
         // por donde se escapa el fondo.
-        let puntos = if elipse {
+        let puntos = if let Some(contorno) = &nube {
+            contorno.clone()
+        } else if elipse {
             formas::elipse(e.x, e.y, e.ancho, e.alto, 0.0, &mut azar)
                 .into_iter()
                 .next()
@@ -402,7 +407,7 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     let mut rough_rayas = rough_relleno.map(|o| crate::rough::Rough::con_azar(o, azar.clone()));
     crate::relleno::lineas_de_rayado(
         (e.x, e.y, e.ancho, e.alto),
-        elipse,
+        elipse && nube.is_none(),
         e.estilo_relleno,
         e.grosor,
         0.0,
@@ -412,10 +417,15 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     // El rayado se genera para la caja; el rombo ocupa la mitad de ella, asi
     // que cada raya se recorta a sus cuatro lados. Sin esto el sombreado se
     // saldria por las cuatro esquinas y el rombo se leeria como un cuadrado.
-    .filter_map(|(a, b)| {
+    .flat_map(|(a, b)| {
+        // La nube no es convexa: cada raya sale a trozos, uno por cada vez
+        // que entra en ella.
+        if let Some(contorno) = &nube {
+            return crate::nube_revision::recortar_a_poligono(a, b, contorno);
+        }
         // Las dos rutas redondeadas son convexas, asi que el mismo recorte
         // del rombo en pico vale para ellas.
-        if let Some(contorno) = &redondeo {
+        let recorte = if let Some(contorno) = &redondeo {
             crate::relleno::recortar_a_convexo(a, b, contorno)
         } else if rombo {
             crate::relleno::recortar_a_convexo(
@@ -425,7 +435,8 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
             )
         } else {
             Some((a, b))
-        }
+        };
+        recorte.into_iter().collect()
     })
     .flat_map(|(a, b)| match rough_rayas.as_mut() {
         Some(r) => {
@@ -788,6 +799,29 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                 formas::rombo_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar)
             };
             for pasada in pasadas {
+                salida.push(Orden::Polilinea {
+                    puntos: pasada,
+                    color,
+                    grosor: e.grosor,
+                    estilo: e.estilo,
+                });
+            }
+        }
+
+        // **La nube de revision** (`nube_revision`): el rectangulo o la elipse
+        // con el borde en festones del mismo tamano sea cual sea la caja.
+        Figura::Rectangulo | Figura::Elipse if crate::nube_revision::base_de(e).is_some() => {
+            salida.extend(ordenes_de_relleno(e, matches!(e.figura, Figura::Elipse)));
+            let festones = crate::nube_revision::festones(
+                crate::nube_revision::base_de(e).unwrap_or(crate::nube_revision::Base::Rectangulo),
+                (e.x, e.y, e.ancho, e.alto),
+                e.extras
+                    .nube
+                    .unwrap_or(crate::nube_revision::RADIO_DE_FABRICA),
+            );
+            for pasada in
+                crate::nube_revision::pasadas_a_mano(&festones, opciones_rough(e), &mut azar)
+            {
                 salida.push(Orden::Polilinea {
                     puntos: pasada,
                     color,
