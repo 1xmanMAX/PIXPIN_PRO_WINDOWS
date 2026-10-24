@@ -354,6 +354,8 @@ pub fn pide_reorganizar(q: &str, palabras: &[&str]) -> bool {
 pub fn pide_agrandar(q: &str, palabras: &[&str]) -> bool {
     let verbo = [
         "amplia", "ampli", "agrand", "extiend", "extend", "expand", "alarg", "aument",
+        // Y reducir (25-oct): es el mismo cambio de tamaño, con su diseño.
+        "reduc", "acort", "achic", "disminu",
     ]
     .iter()
     .any(|v| palabras.iter().any(|p| p.starts_with(v)))

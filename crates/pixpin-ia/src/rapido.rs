@@ -288,6 +288,15 @@ pub fn interpretar_con(texto: &str, ahora: Momento, nube: bool) -> Option<Orden>
         return None;
     }
 
+    // --- **El tamaño de una plantilla** (25-oct-2026, el usuario: «le dije
+    // redúcelo a solo 10 semanas y se demoro cinco minutos… y solo borro
+    // las columnas»): «N semanas», «N actividades», «del X al Y» se rehacen
+    // con el codigo de la plantilla, al instante. Si en el lienzo no hay
+    // plantilla que cambiar, la herramienta lo dice y contesta el modelo.
+    if !pregunta && let Some(o) = tamano_de_plantilla(q) {
+        return Some(o);
+    }
+
     // --- Consultar las tareas y lo hecho (lo unico que vale con «?»).
     if let Some(o) = consulta(q) {
         return Some(o);
@@ -1592,5 +1601,134 @@ mod pruebas {
             let v = crate::acciones::validar(fila, &o.args).unwrap_or_else(|e| panic!("{t}: {e}"));
             assert!(v.confirmar.is_none(), "{t}");
         }
+    }
+}
+
+/// Los numeros de la frase con la palabra que los sigue: «10 semanas» →
+/// `(10, "semanas")`.
+fn numeros_con_unidad(q: &str) -> Vec<(u32, String)> {
+    let palabras: Vec<&str> = q
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|p| !p.is_empty())
+        .collect();
+    palabras
+        .windows(2)
+        .filter_map(|w| Some((w[0].parse::<u32>().ok()?, w[1].to_string())))
+        .collect()
+}
+
+/// **«Redúcelo a 10 semanas», «que tenga 30 actividades», «amplíalo del 1 al
+/// 40»**: la llamada a `figuras_guardadas` «alargar» con lo pedido (lo que
+/// no se dice se queda como esta en el lienzo: lo completa `poner_plantilla`).
+fn tamano_de_plantilla(q: &str) -> Option<Orden> {
+    let verbo = [
+        "reduc",
+        "acort",
+        "achic",
+        "disminu",
+        "ampli",
+        "agrand",
+        "alarg",
+        "extiend",
+        "aument",
+        "hazlo",
+        "hazla",
+        "ponle",
+        "dejalo",
+        "dejala",
+        "cambia",
+        "que tenga",
+        "que sean",
+    ]
+    .iter()
+    .any(|v| q.contains(v));
+    if !verbo {
+        return None;
+    }
+    let mut args = Map::new();
+    args.insert("accion".into(), json!("alargar"));
+    for (n, unidad) in numeros_con_unidad(q) {
+        if !(1..=999).contains(&n) {
+            return None;
+        }
+        if unidad.starts_with("semana") {
+            args.insert("semanas_desde".into(), json!(1));
+            args.insert("semanas_hasta".into(), json!(n));
+        } else if [
+            "actividad",
+            "fila",
+            "tarea",
+            "renglon",
+            "linea",
+            "hora",
+            "dia",
+            "punto",
+            "vineta",
+            "paso",
+            "item",
+        ]
+        .iter()
+        .any(|u| unidad.starts_with(u))
+        {
+            args.insert("desde".into(), json!(1));
+            args.insert("hasta".into(), json!(n));
+        }
+    }
+    // «del 5 al 40».
+    if let Some(i) = q.find("del ") {
+        let resto: Vec<&str> = q[i + 4..].split_whitespace().collect();
+        if let (Some(a), Some("al"), Some(b)) = (
+            resto.first().and_then(|x| x.parse::<u32>().ok()),
+            resto.get(1).copied(),
+            resto.get(2).and_then(|x| {
+                x.trim_matches(|c: char| !c.is_ascii_digit())
+                    .parse::<u32>()
+                    .ok()
+            }),
+        ) {
+            args.insert("desde".into(), json!(a));
+            args.insert("hasta".into(), json!(b));
+        }
+    }
+    // «de 10 en 10» es partir en hojas: eso lo decide el modelo.
+    if q.contains(" en ") && q.contains(" de ") && numeros_con_unidad(q).is_empty() {
+        return None;
+    }
+    let algo = ["semanas_hasta", "hasta"]
+        .iter()
+        .any(|k| args.contains_key(*k));
+    algo.then(|| Orden::nueva(crate::figuras::NOMBRE, Value::Object(args)))
+}
+
+#[cfg(test)]
+mod pruebas_plantilla {
+    use super::*;
+
+    fn args(q: &str) -> Option<Map<String, Value>> {
+        tamano_de_plantilla(&normalizar(q)).map(|o| o.args)
+    }
+
+    #[test]
+    fn el_tamano_de_una_plantilla_va_directo_y_sin_modelo() {
+        let a = args("Redúcelo a solo 10 semanas").unwrap();
+        assert_eq!(a["semanas_hasta"], json!(10));
+        assert!(
+            !a.contains_key("hasta"),
+            "las actividades se quedan como estan"
+        );
+        let a = args("amplía el cronograma a 30 semanas y 20 actividades").unwrap();
+        assert_eq!(
+            (a["semanas_hasta"].clone(), a["hasta"].clone()),
+            (json!(30), json!(20))
+        );
+        let a = args("hazlo del 1 al 40").unwrap();
+        assert_eq!(
+            (a["desde"].clone(), a["hasta"].clone()),
+            (json!(1), json!(40))
+        );
+        // Caso negativo: sin verbo de tamaño, o sin cantidad, contesta el
+        // modelo («dibuja 3 arboles» no es cambiar una plantilla).
+        assert!(args("dibuja 3 arboles").is_none());
+        assert!(args("reduce el cronograma").is_none());
     }
 }

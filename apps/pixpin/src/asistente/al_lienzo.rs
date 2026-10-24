@@ -1236,6 +1236,27 @@ pub fn poner_plantilla(
             }
         })?,
     };
+    // **Lo que no se dice se queda como esta** (25-oct-2026: «redúcelo a 10
+    // semanas» volvia a las 18 actividades de fabrica): rehaciendo la que hay,
+    // las filas y las semanas que no se piden salen de las suyas.
+    let completo;
+    let intervalo = if la_elegida.as_deref() == Some(clave.as_str()) {
+        let (filas, semanas) = tramo_actual(&elegidas);
+        let mut iv = intervalo.clone();
+        if iv.desde.is_none() && iv.hasta.is_none() && iv.mes.is_none() && iv.de_a.is_none() {
+            if let Some((a, b)) = filas {
+                iv.desde = Some(a);
+                iv.hasta = Some(b);
+            }
+        }
+        if iv.semanas.is_none() && clave == "cronograma" {
+            iv.semanas = semanas;
+        }
+        completo = iv;
+        &completo
+    } else {
+        intervalo
+    };
     let hojas = serie::alargar(&clave, intervalo)?;
     let (ancho, alto) = medida_de_las_hojas(&hojas);
     let reemplaza = la_elegida.as_deref() == Some(clave.as_str());
@@ -1282,6 +1303,48 @@ pub fn poner_plantilla(
         ids,
         ..Default::default()
     })
+}
+
+/// **Lo que lleva ahora una plantilla puesta**: sus filas (la numeracion
+/// «01», «02»… seguida mas larga) y, en el cronograma, sus semanas («S1»…).
+fn tramo_actual(piezas: &[Elemento]) -> (Option<(u32, u32)>, Option<(u32, u32)>) {
+    let textos: Vec<&str> = piezas
+        .iter()
+        .filter_map(|e| match &e.figura {
+            pixpin_motor2d::Figura::Texto { texto, .. } => Some(texto.trim()),
+            _ => None,
+        })
+        .collect();
+    let mut numeros: Vec<u32> = textos
+        .iter()
+        .filter(|t| t.len() >= 2 && t.chars().all(|c| c.is_ascii_digit()))
+        .filter_map(|t| t.parse().ok())
+        .collect();
+    numeros.sort_unstable();
+    numeros.dedup();
+    // La tirada seguida mas larga: la de las filas, no un año o un dia suelto.
+    let mut mejor: Option<(u32, u32)> = None;
+    let mut i = 0;
+    while i < numeros.len() {
+        let mut j = i;
+        while j + 1 < numeros.len() && numeros[j + 1] == numeros[j] + 1 {
+            j += 1;
+        }
+        if j > i && mejor.is_none_or(|(a, b)| numeros[j] - numeros[i] > b - a) {
+            mejor = Some((numeros[i], numeros[j]));
+        }
+        i = j + 1;
+    }
+    let semanas: Vec<u32> = textos
+        .iter()
+        .filter_map(|t| t.strip_prefix('S')?.parse::<u32>().ok())
+        .collect();
+    let semanas = semanas
+        .iter()
+        .min()
+        .zip(semanas.iter().max())
+        .map(|(a, b)| (*a, *b));
+    (mejor, semanas)
 }
 
 /// **La plantilla de serie que hay en el lienzo** (la que se alarga y, si se
@@ -1467,6 +1530,37 @@ mod pruebas_plantilla {
                 pixpin_motor2d::vector::Punto2::nuevo(x, 0.0),
             );
         }
+        // «Redúcelo a 10 semanas» deja las 30 actividades que tenia.
+        let mut e2 = Escena::nueva();
+        biblioteca::estampar_en_escena(
+            &mut e2,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(0.0, 0.0),
+        );
+        let iv30 = Intervalo {
+            desde: Some(1),
+            hasta: Some(30),
+            semanas: Some((1, 30)),
+            ..Default::default()
+        };
+        poner_plantilla(&mut e2, &[], Some("cronograma"), &iv30, None).unwrap();
+        let ancho_30 = caja(&e2.visibles().cloned().collect::<Vec<_>>())
+            .map(|c| c.2 - c.0)
+            .unwrap();
+        let solo_semanas = Intervalo {
+            semanas: Some((1, 10)),
+            ..Default::default()
+        };
+        poner_plantilla(&mut e2, &[], None, &solo_semanas, None).unwrap();
+        let vivos: Vec<Elemento> = e2.visibles().cloned().collect();
+        let (filas, semanas) = tramo_actual(&vivos);
+        assert_eq!(filas, Some((1, 30)), "las actividades se quedan");
+        assert_eq!(semanas, Some((1, 10)));
+        let ancho_10 = caja(&vivos).map(|c| c.2 - c.0).unwrap();
+        assert!(
+            ancho_10 < ancho_30,
+            "la hoja se reajusta, no solo borra columnas"
+        );
         assert!(plantilla_en_la_escena(&dos, Some("cronograma")).is_none());
         // Desagrupada: se reconoce igual, por su titulo y su hoja.
         let mut suelta = Escena::nueva();
