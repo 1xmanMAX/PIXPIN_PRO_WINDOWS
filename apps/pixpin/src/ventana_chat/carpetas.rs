@@ -641,6 +641,9 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                 x: p.x - m.x,
                 y: p.y - m.y,
             };
+            let pintar_antes = pintar;
+            // Casi todo cambia lo que se ve; mover el raton, solo si pasa a
+            // otra cosa (pintar las miniaturas en cada pixel seria tirarlo).
             pintar = true;
             match ev {
                 EventoOverlay::Cerrar => vivo = false,
@@ -660,7 +663,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                     {
                         v.arrastrando = true;
                     }
+                    let otra_cosa =
+                        moviendo.is_some() || v.arrastrando || v.zona_en(l) != v.zona_en(v.raton);
                     v.raton = l;
+                    if !otra_cosa {
+                        pintar = pintar_antes;
+                    }
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     let l = local(p, marco);
@@ -751,7 +759,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                         (VK_ENTRAR, Some(k)) => v.abrir_pagina(k),
                         (VK_F2, Some(k)) => v.empezar_a_renombrar(k),
                         (VK_SUPR, Some(k)) => v.quitar(k),
-                        _ => pintar = false,
+                        _ => {}
                     }
                 }
                 EventoOverlay::Caracter(c) if !c.is_control() => {
@@ -761,7 +769,8 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                         escrito.push(c);
                     }
                 }
-                _ => pintar = false,
+                // Pintar, despertar, cambiar de pantalla: se repinta y ya.
+                _ => {}
             }
         }
         if !vivo {
