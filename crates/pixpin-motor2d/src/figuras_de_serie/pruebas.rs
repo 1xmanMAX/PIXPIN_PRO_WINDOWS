@@ -44,8 +44,11 @@ fn todo_es_finito_y_esta_puesto_en_el_origen() {
             "{} ({x0}, {y0})",
             f.nombre
         );
+        // Ni un punto: mas de 20 de largo. Un muro delgado de planta (10 de
+        // espesor a 1 px = 1 cm) es fino de verdad, asi que el lado corto
+        // solo tiene que pasar de 8.
         assert!(
-            x1.is_finite() && y1.is_finite() && x1 > 20.0 && y1 > 20.0,
+            x1.is_finite() && y1.is_finite() && x1.max(y1) > 20.0 && x1.min(y1) > 8.0,
             "{}",
             f.nombre
         );

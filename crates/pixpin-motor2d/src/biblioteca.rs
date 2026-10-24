@@ -251,6 +251,17 @@ pub fn estampar(
         // pila donde el ultimo es el mas exterior, asi que desagrupar una vez
         // deshace la estampacion y deja intactos los grupos que la figura ya
         // traia dentro.
+        //
+        // Las partes con nombre de las figuras de serie (`parte:Cabeza`)
+        // se quedan como subgrupos, pero con el grupo de la estampacion
+        // detras (`parte:Cabeza@g12`): dos personas estampadas no deben
+        // compartir «Cabeza», que un grupo es el mismo en toda la escena.
+        for g in &mut e.grupos {
+            if g.starts_with("parte:") && !g.contains('@') {
+                g.push('@');
+                g.push_str(grupo);
+            }
+        }
         e.grupos.push(grupo.to_string());
     }
     piezas

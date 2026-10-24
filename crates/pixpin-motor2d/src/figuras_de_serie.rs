@@ -33,6 +33,8 @@ mod civil;
 mod derecho;
 mod intervalo;
 mod mobiliario;
+mod personas;
+mod planta;
 mod plantillas;
 mod storyboard;
 mod tecnico;
@@ -47,11 +49,14 @@ pub use intervalo::{
 pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
+/// El principio del subgrupo de cada parte con nombre de una figura
+/// (`parte:Cabeza`, [`Lapiz::parte`]).
+pub const PREFIJO_PARTE: &str = "parte:";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 18] = [
+pub const CATEGORIAS: [&str; 25] = [
     "Planificación",
     "Académico",
     "Creativo",
@@ -62,6 +67,13 @@ pub const CATEGORIAS: [&str; 18] = [
     "Vegetación",
     "Mobiliario",
     "Escala humana",
+    "Planta: estructura",
+    "Planta: puertas y ventanas",
+    "Planta: cocina y baño",
+    "Planta: muebles",
+    "Planta: exterior",
+    "Personas",
+    "Personas en planta",
     "Ingeniería civil",
     "Derecho",
     "Física",
@@ -94,6 +106,8 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     arquitectura::todas(&mut v);
     vegetacion::todas(&mut v);
     mobiliario::todas(&mut v);
+    planta::todas(&mut v);
+    personas::todas(&mut v);
     civil::todas(&mut v);
     derecho::todas(&mut v);
     ciencias::todas(&mut v);
@@ -150,6 +164,8 @@ pub(crate) enum Al {
 #[derive(Default)]
 pub(crate) struct Lapiz {
     pub v: Vec<Elemento>,
+    /// La parte que se esta dibujando ([`Lapiz::parte`]) y desde que pieza.
+    parte_actual: Option<(String, usize)>,
 }
 
 fn base(trazo: ColorRgba, grosor: f32) -> Elemento {
@@ -363,8 +379,29 @@ impl Lapiz {
         self.v.push(e);
     }
 
+    /// **Empieza una parte con nombre** («Cabeza», «Hoja», «Colchon»...):
+    /// todo lo que se dibuje desde aqui, hasta la siguiente `parte` o el
+    /// final de la figura, va en el subgrupo `parte:<nombre>`. Asi la figura
+    /// estampada se puede abrir y mover, editar o mejorar pieza a pieza, y el
+    /// asistente sabe que es cada cosa.
+    pub(crate) fn parte(&mut self, nombre: &str) {
+        self.cerrar_parte();
+        self.parte_actual = Some((nombre.to_string(), self.v.len()));
+    }
+
+    /// Pone el subgrupo de la parte en curso a lo dibujado desde que empezo.
+    fn cerrar_parte(&mut self) {
+        if let Some((nombre, desde)) = self.parte_actual.take() {
+            let grupo = format!("{PREFIJO_PARTE}{nombre}");
+            for e in self.v.iter_mut().skip(desde) {
+                e.grupos.push(grupo.clone());
+            }
+        }
+    }
+
     /// La figura, con su categoria en el nombre y normalizada al origen.
-    pub fn figura(self, clave: &str, categoria: &str, nombre: &str) -> FiguraGuardada {
+    pub fn figura(mut self, clave: &str, categoria: &str, nombre: &str) -> FiguraGuardada {
+        self.cerrar_parte();
         FiguraGuardada {
             id: format!("{PREFIJO_ID}{clave}"),
             nombre: format!("{categoria}{SEPARADOR}{nombre}"),

@@ -145,7 +145,7 @@ fn sofa(l: &mut Lapiz) {
 
 /// Una silla vista desde arriba, con el respaldo hacia `grados` (0 = arriba)
 /// y su centro en `(cx, cy)`.
-fn silla(l: &mut Lapiz, cx: f32, cy: f32, grados: f32) {
+pub(super) fn silla(l: &mut Lapiz, cx: f32, cy: f32, grados: f32) {
     let asiento = [
         (cx - 22.0, cy - 20.0),
         (cx + 22.0, cy - 20.0),
