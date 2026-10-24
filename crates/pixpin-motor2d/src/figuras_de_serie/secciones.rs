@@ -336,11 +336,20 @@ pub(super) fn colocar(z: &Zona, secciones: &[Seccion]) -> Maqueta {
     // Donde va el siguiente rotulo del lateral.
     let mut lat = z.lateral.map_or(z.y, |l| l.1);
     let mut sitios = Vec::with_capacity(secciones.len());
+    // Una columna sin nadie en la otra dejaria medio ancho vacio (quitar el
+    // objetivo del mensual dejaba Tareas sola a la derecha, 24-oct-2026): a
+    // todo el ancho.
+    let hay = |a: AnchoSeccion| secciones.iter().any(|s| s.ancho == a);
+    let sola = !(hay(AnchoSeccion::Izquierda) && hay(AnchoSeccion::Derecha));
     for s in secciones {
         let contenido = z.contenido(s);
         let alto = TITULO + contenido;
         let abajo = cols[0].max(cols[1]);
-        let (x, y, w) = match (s.ancho, z.lateral) {
+        let ancho = match s.ancho {
+            AnchoSeccion::Izquierda | AnchoSeccion::Derecha if sola => AnchoSeccion::Completo,
+            a => a,
+        };
+        let (x, y, w) = match (ancho, z.lateral) {
             (AnchoSeccion::Lateral, Some((lx, _, lw))) => {
                 let y = lat;
                 lat = y + alto + z.hueco;
@@ -365,7 +374,7 @@ pub(super) fn colocar(z: &Zona, secciones: &[Seccion]) -> Maqueta {
             },
             (AnchoSeccion::Izquierda | AnchoSeccion::Derecha, _) => {
                 fila = None;
-                let i = usize::from(s.ancho == AnchoSeccion::Derecha);
+                let i = usize::from(ancho == AnchoSeccion::Derecha);
                 let y = cols[i];
                 cols[i] = y + alto + z.hueco;
                 let (x, w) = if i == 0 { izquierda } else { derecha };

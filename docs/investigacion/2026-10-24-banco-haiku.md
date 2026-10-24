@@ -41,3 +41,19 @@ por palabras.
 
 Las instrucciones vuelven a ser cortas; cómo pensar una hoja por bloques va
 en el resumen del lienzo solo cuando hay una plantilla.
+
+## Tercera ronda (24-oct), con el prompt definitivo
+
+7 casos, 2 nunca vistos. Todos resueltos con una o dos llamadas, sin
+inventar y sin dibujos sueltos:
+
+- Zona gris abajo / lateral: bien.
+- Mensual (quitar objetivo, prioridades a todo el ancho): bien; «Tareas» se
+  quedaba sola a medio ancho → una columna sin compañera va a todo el ancho.
+- Semanal sin hábitos → «Espacio libre» (libre): bien.
+- «No me entra para imprimir»: ya no quita nada; explica y ofrece opciones.
+- «Ponmelo oscurito…» (nuevo): modo noche en su sitio, una llamada.
+- «Sepáralas de 10 en 10» (nuevo): tres hojas 1–10, 11–20, 21–30.
+
+Arreglado también: la guía de una plantilla ya personalizada dice lo que
+tiene AHORA, para que un segundo cambio no deshaga el primero.

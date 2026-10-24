@@ -1505,6 +1505,41 @@ fn plantilla_en_la_escena(
 /// Con el lienzo cerrado, a cuanto de lo que habia.
 const HUECO_PLANTILLA: f32 = 120.0;
 
+/// **Lo que la plantilla tiene AHORA** (24-oct-2026, banco con Haiku): la
+/// guia trae las secciones de serie, y con una ya personalizada el modelo
+/// volvia a mandarlas y deshacia lo de antes. Sus bloques con nombre (las
+/// partes `parte:<nombre>`), en orden de arriba abajo.
+fn ahora_tiene(piezas: &[Elemento]) -> String {
+    let mut vistos: Vec<(String, f32, f32)> = Vec::new();
+    for e in piezas {
+        let Some(n) = e
+            .grupos
+            .iter()
+            .find_map(|g| pixpin_motor2d::biblioteca::nombre_de_parte(g))
+        else {
+            continue;
+        };
+        let c = e.caja();
+        match vistos.iter_mut().find(|(v, _, _)| v == n) {
+            Some(v) => {
+                v.1 = v.1.min(c.1);
+                v.2 = v.2.min(c.0);
+            }
+            None => vistos.push((n.to_string(), c.1, c.0)),
+        }
+    }
+    if vistos.is_empty() {
+        return String::new();
+    }
+    vistos.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)));
+    let nombres: Vec<String> = vistos.iter().map(|(n, _, _)| format!("«{n}»")).collect();
+    format!(
+        "\nLo que tiene AHORA en el lienzo (de arriba abajo): {}. Si difiere de lo de serie es que ya se personalizó: \
+parte de esto (no vuelvas a poner lo que se quitó y conserva lo que se añadió), cambiando solo lo pedido.",
+        nombres.join(", ")
+    )
+}
+
 /// Como mucho cuantas guias de plantilla van en el resumen (son largas).
 const MAX_GUIAS: usize = 2;
 
@@ -1524,20 +1559,19 @@ fn guias_del_lienzo(escena: &Escena) -> String {
             None => grupos.push((g.clone(), vec![e.clone()])),
         }
     }
-    let mut claves: Vec<String> = Vec::new();
+    let mut claves: Vec<(String, String)> = Vec::new();
     for (_, v) in &grupos {
         if let Some(c) = serie::cual_es(v)
             && serie::se_personaliza(&c)
-            && !claves.contains(&c)
+            && !claves.iter().any(|(k, _)| *k == c)
         {
-            claves.push(c);
+            claves.push((c, ahora_tiene(v)));
         }
     }
     claves
         .iter()
         .take(MAX_GUIAS)
-        .filter_map(|c| serie::guia_de(c))
-        .map(|g| format!("\n\n{g}"))
+        .filter_map(|(c, ahora)| serie::guia_de(c).map(|g| format!("\n\n{g}{ahora}")))
         .collect()
 }
 
@@ -1552,21 +1586,25 @@ fn secciones_de_la_plantilla(escena: &Escena, elegidos: &[u64]) -> Result<String
         .filter(|e| elegidos.contains(&e.id))
         .cloned()
         .collect();
-    let clave = serie::cual_es(&elegidas)
-        .or_else(|| plantilla_en_la_escena(escena, None, false).map(|(c, _)| c))
+    let (clave, piezas) = serie::cual_es(&elegidas)
+        .map(|c| (c, elegidas.clone()))
+        .or_else(|| plantilla_en_la_escena(escena, None, false))
         .ok_or_else(|| {
             format!(
                 "no encuentro la plantilla en el lienzo: elígela o di su «nombre» (se personalizan: {})",
                 serie::las_que_se_personalizan()
             )
         })?;
-    serie::guia_de(&clave).ok_or_else(|| {
-        format!(
-            "«{}» no tiene secciones que cambiar; se personalizan: {}",
-            serie::nombre_de(&clave),
-            serie::las_que_se_personalizan()
-        )
-    })
+    let ahora = ahora_tiene(&piezas);
+    serie::guia_de(&clave)
+        .map(|g| format!("{g}{ahora}"))
+        .ok_or_else(|| {
+            format!(
+                "«{}» no tiene secciones que cambiar; se personalizan: {}",
+                serie::nombre_de(&clave),
+                serie::las_que_se_personalizan()
+            )
+        })
 }
 
 use pixpin_motor2d::biblioteca::FiguraGuardada;
@@ -1685,6 +1723,13 @@ mod pruebas_plantilla {
             })
             .collect();
         assert!(!textos.contains(&"PRIORIDADES") && textos.contains(&"TAREAS"));
+        // La guia dice lo que tiene AHORA (sin Prioridades), no solo lo de serie.
+        let t = secciones_de_la_plantilla(&escena, &[]).unwrap();
+        let ahora = &t[t.find("AHORA").expect("dice lo de ahora")..];
+        assert!(
+            ahora.contains("«Tareas»") && !ahora.contains("«Prioridades»"),
+            "{ahora}"
+        );
         let c = caja(&nuevas).unwrap();
         assert!((c.0 - caja_vieja.0).abs() < 0.5 && (c.1 - caja_vieja.1).abs() < 0.5);
         escena.deshacer();
