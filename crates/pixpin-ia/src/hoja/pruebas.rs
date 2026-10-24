@@ -630,3 +630,31 @@ fn lo_que_no_se_dibuja_va_recortado_y_un_diagrama_no() {
     assert_eq!(h.tipo, Tipo::Diagrama, "{}", h.nota);
     assert!(h.imagenes.is_empty(), "un diagrama no se recorta: {}", h.nota);
 }
+
+/// 24-oct-2026, el OCR de Windows de la CI: «m = Δy/Δx = (480 − 120)/6» con
+/// el «m =» y los «=» sin leer. Quedan dos fracciones lado a lado, numerador
+/// sobre denominador con su raya en medio, que parecian una tabla sin rayas
+/// de 2 × 2 («Ay | 480- 120» sobre «Ax | 6»). Son una formula.
+#[test]
+fn dos_fracciones_lado_a_lado_no_son_una_tabla() {
+    let mut p = Papel::nuevo(1400, 900);
+    p.renglon("El grupo salio a las ocho y llego al mirador a mediodia.", 83.0, 192.0, 36.0);
+    p.renglon("La pendiente media del camino se calcula asi:", 83.0, 246.0, 36.0);
+    // «m =», sin texto del OCR: solo su tinta.
+    p.rect(130.0, 368.0, 40.0, 4.0, 20);
+    p.rect(185.0, 372.0, 22.0, 3.0, 20);
+    p.rect(185.0, 382.0, 22.0, 3.0, 20);
+    // Δy / Δx
+    p.renglon("Ay", 240.0, 332.0, 40.0);
+    p.raya_h(232.0, 300.0, 382.0, 3.0);
+    p.renglon("Ax", 240.0, 398.0, 40.0);
+    // «=», sin texto del OCR.
+    p.rect(318.0, 372.0, 24.0, 3.0, 20);
+    p.rect(318.0, 382.0, 24.0, 3.0, 20);
+    // (480 − 120) / 6
+    p.renglon("480- 120", 380.0, 332.0, 40.0);
+    p.raya_h(354.0, 558.0, 382.0, 3.0);
+    p.renglon("6", 450.0, 398.0, 40.0);
+    let s = p.seccionar();
+    assert!(!tipos(&s).contains(&Tipo::Tabla), "{:?}", s.zonas.iter().map(|z| (z.tipo, z.caja, z.texto())).collect::<Vec<_>>());
+}

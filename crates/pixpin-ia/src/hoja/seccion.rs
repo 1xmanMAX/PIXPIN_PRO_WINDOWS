@@ -634,7 +634,32 @@ impl Corte<'_> {
         let trozo_de_formula = partes.iter().any(|p| {
             p.len() == 1 && matches!(self.atomos[p[0]].clase, Clase::Texto(r) if { let t = self.renglones[r].texto.trim(); t.ends_with('=') || t.starts_with('=') })
         });
-        (partes.len() >= 2 && !trozo_de_formula).then_some(partes)
+        // Ni una fraccion (24-oct-2026, el OCR de la CI no leia el «m =» ni
+        // los «=»): dos textos uno encima del otro con su raya en medio no son
+        // una columna de una tabla sin rayas, son numerador y denominador.
+        let fraccion = partes.iter().any(|p| self.es_fraccion(p));
+        (partes.len() >= 2 && !trozo_de_formula && !fraccion).then_some(partes)
+    }
+
+    /// Dos textos, uno sobre otro, con una raya horizontal (un resto fino y
+    /// ancho) entre los dos que pasa por debajo de ambos: una fraccion.
+    fn es_fraccion(&self, ids: &[usize]) -> bool {
+        let textos: Vec<Caja> = ids.iter().filter(|&&i| matches!(self.atomos[i].clase, Clase::Texto(_))).map(|&i| self.atomos[i].caja).collect();
+        let [arriba, abajo] = match textos.as_slice() {
+            [a, b] if a.y <= b.y => [*a, *b],
+            [a, b] => [*b, *a],
+            _ => return false,
+        };
+        ids.iter().any(|&i| {
+            let c = self.atomos[i].caja;
+            matches!(self.atomos[i].clase, Clase::Resto(_))
+                && c.h <= self.hm * 0.5
+                && c.w >= c.h * 3.0
+                && c.cy() >= arriba.y1() - self.hm * 0.3
+                && c.cy() <= abajo.y + self.hm * 0.3
+                && c.solape_x(&arriba) >= arriba.w.min(c.w) * 0.6
+                && c.solape_x(&abajo) >= abajo.w.min(c.w) * 0.6
+        })
     }
 
     /// Columnas de trozos cortos y alineados en filas: una tabla sin rayas,
