@@ -65,7 +65,10 @@ impl Nota {
     /// La de «no hay nada que corregir» (un critico que contesto solo
     /// `TODO_BIEN`).
     pub fn perfecta() -> Nota {
-        Nota { ejes: [10.0; 5], problemas: Vec::new() }
+        Nota {
+            ejes: [10.0; 5],
+            problemas: Vec::new(),
+        }
     }
 
     pub fn media(&self) -> f32 {
@@ -83,13 +86,21 @@ impl Nota {
 
     /// `completo 9, texto 6, orden 7, coherencia 9, legibilidad 8 (media 7.8)`.
     pub fn resumen(&self) -> String {
-        let ejes: Vec<String> = EJES.iter().zip(self.ejes).map(|(n, v)| format!("{n} {}", redondo(v))).collect();
+        let ejes: Vec<String> = EJES
+            .iter()
+            .zip(self.ejes)
+            .map(|(n, v)| format!("{n} {}", redondo(v)))
+            .collect();
         format!("{} (media {:.1})", ejes.join(", "), self.media())
     }
 }
 
 fn redondo(v: f32) -> String {
-    if (v - v.round()).abs() < 0.05 { format!("{}", v.round() as i64) } else { format!("{v:.1}") }
+    if (v - v.round()).abs() < 0.05 {
+        format!("{}", v.round() as i64)
+    } else {
+        format!("{v:.1}")
+    }
 }
 
 /// **Las instrucciones del critico** (su mensaje de sistema).
@@ -146,9 +157,21 @@ pub fn pedido_de_correccion(nota: &Nota, duros: &[String], ronda: usize) -> Stri
     for p in &nota.problemas {
         n += 1;
         let ids: Vec<String> = p.ids.iter().map(|i| format!("#{i}")).collect();
-        let quien = if ids.is_empty() { "falta".to_string() } else { ids.join(", ") };
-        let eje = if p.eje.is_empty() { String::new() } else { format!(" ({})", p.eje) };
-        let arreglo = if p.arreglo.is_empty() { String::new() } else { format!(" → {}", p.arreglo) };
+        let quien = if ids.is_empty() {
+            "falta".to_string()
+        } else {
+            ids.join(", ")
+        };
+        let eje = if p.eje.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", p.eje)
+        };
+        let arreglo = if p.arreglo.is_empty() {
+            String::new()
+        } else {
+            format!(" → {}", p.arreglo)
+        };
         s.push_str(&format!("\n{n}. {quien}{eje}: {}{arreglo}", p.que));
     }
     s.push_str("\nLuego di en una frase corta qué corregiste.");
@@ -174,7 +197,11 @@ fn numero(v: &Value) -> Option<f32> {
     let n = match v {
         Value::Number(n) => n.as_f64()? as f32,
         Value::String(s) => s.split('/').next()?.trim().replace(',', ".").parse().ok()?,
-        Value::Object(o) => return ["nota", "puntuacion", "valor", "score"].iter().find_map(|k| o.get(*k).and_then(numero)),
+        Value::Object(o) => {
+            return ["nota", "puntuacion", "valor", "score"]
+                .iter()
+                .find_map(|k| o.get(*k).and_then(numero));
+        }
         _ => return None,
     };
     n.is_finite().then(|| n.clamp(1.0, 10.0))
@@ -226,7 +253,11 @@ pub fn leer(texto: &str) -> Option<Nota> {
     let Some(v) = crate::herramientas::reparar_json(t).filter(Value::is_object) else {
         return (!t.is_empty() && super::es_todo_bien(t)).then(Nota::perfecta);
     };
-    let notas = match v.get("notas").or_else(|| v.get("ejes")).or_else(|| v.get("puntuaciones")) {
+    let notas = match v
+        .get("notas")
+        .or_else(|| v.get("ejes"))
+        .or_else(|| v.get("puntuaciones"))
+    {
         Some(Value::Object(o)) => o.clone(),
         _ => v.as_object().cloned().unwrap_or_default(),
     };
@@ -247,18 +278,42 @@ pub fn leer(texto: &str) -> Option<Nota> {
             .iter()
             .filter_map(|p| match p {
                 Value::Object(o) => {
-                    let campo = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
-                    let que = ["que", "problema", "descripcion"].iter().map(|k| campo(k)).find(|s| !s.is_empty()).unwrap_or_default();
-                    let arreglo = ["arreglo", "accion", "solucion"].iter().map(|k| campo(k)).find(|s| !s.is_empty()).unwrap_or_default();
+                    let campo = |k: &str| {
+                        o.get(k)
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string()
+                    };
+                    let que = ["que", "problema", "descripcion"]
+                        .iter()
+                        .map(|k| campo(k))
+                        .find(|s| !s.is_empty())
+                        .unwrap_or_default();
+                    let arreglo = ["arreglo", "accion", "solucion"]
+                        .iter()
+                        .map(|k| campo(k))
+                        .find(|s| !s.is_empty())
+                        .unwrap_or_default();
                     if que.is_empty() && arreglo.is_empty() {
                         return None;
                     }
-                    let eje = eje_de(&campo("eje")).map(|i| EJES[i].to_string()).unwrap_or_default();
-                    Some(Problema { ids: ids_de(o, &format!("{que} {arreglo}")), eje, que, arreglo })
+                    let eje = eje_de(&campo("eje"))
+                        .map(|i| EJES[i].to_string())
+                        .unwrap_or_default();
+                    Some(Problema {
+                        ids: ids_de(o, &format!("{que} {arreglo}")),
+                        eje,
+                        que,
+                        arreglo,
+                    })
                 }
-                Value::String(s) if !s.trim().is_empty() => {
-                    Some(Problema { ids: ids_en(s), eje: String::new(), que: s.trim().to_string(), arreglo: String::new() })
-                }
+                Value::String(s) if !s.trim().is_empty() => Some(Problema {
+                    ids: ids_en(s),
+                    eje: String::new(),
+                    que: s.trim().to_string(),
+                    arreglo: String::new(),
+                }),
                 _ => None,
             })
             .take(MAX_PROBLEMAS)
@@ -310,13 +365,21 @@ mod pruebas {
         // Los ids escritos en el texto si no vienen en «ids».
         let n = leer(r##"{"notas":{"completo":5,"texto":5,"orden":5},"problemas":[{"que":"#7 y #9 se tocan","arreglo":"separa"}]}"##).unwrap();
         assert_eq!(n.problemas[0].ids, vec![7, 9]);
-        assert_eq!(n.ejes[3], 5.0, "un eje que falta toma la media de los dichos");
+        assert_eq!(
+            n.ejes[3], 5.0,
+            "un eje que falta toma la media de los dichos"
+        );
     }
 
     #[test]
     fn mas_de_cinco_problemas_se_recortan() {
-        let muchos: Vec<String> = (1..=9).map(|i| format!(r##"{{"ids":[{i}],"que":"mal #{i}"}}"##)).collect();
-        let t = format!(r#"{{"notas":{{"completo":5,"texto":5,"orden":5,"coherencia":5,"legibilidad":5}},"problemas":[{}]}}"#, muchos.join(","));
+        let muchos: Vec<String> = (1..=9)
+            .map(|i| format!(r##"{{"ids":[{i}],"que":"mal #{i}"}}"##))
+            .collect();
+        let t = format!(
+            r#"{{"notas":{{"completo":5,"texto":5,"orden":5,"coherencia":5,"legibilidad":5}},"problemas":[{}]}}"#,
+            muchos.join(",")
+        );
         assert_eq!(leer(&t).unwrap().problemas.len(), MAX_PROBLEMAS);
     }
 
@@ -325,7 +388,10 @@ mod pruebas {
         assert_eq!(leer("TODO_BIEN"), Some(Nota::perfecta()));
         assert!(Nota::perfecta().aprobada());
         // Casos negativos: texto libre, vacio, JSON sin ejes o con dos solos.
-        assert_eq!(leer("Se ve bastante bien, aunque mejoraria el titulo."), None);
+        assert_eq!(
+            leer("Se ve bastante bien, aunque mejoraria el titulo."),
+            None
+        );
         assert_eq!(leer(""), None);
         assert_eq!(leer(r#"{"hola":1}"#), None);
         assert_eq!(leer(r#"{"notas":{"completo":9,"texto":9}}"#), None);
@@ -339,7 +405,11 @@ mod pruebas {
         assert!(s.contains("1. (comprobación) #5 se sale"));
         assert!(s.contains("2. falta (completo): falta el titulo → anade un titulo arriba"));
         assert!(s.contains("3. #2: #2 muy pequeno → agrandalo"));
-        let c = pedido_al_critico("dibuja un ciclo", "[Vista del lienzo] ...", &["#5 se sale".into()]);
+        let c = pedido_al_critico(
+            "dibuja un ciclo",
+            "[Vista del lienzo] ...",
+            &["#5 se sale".into()],
+        );
         assert!(c.contains("«dibuja un ciclo»") && c.contains("- #5 se sale"));
         assert!(instrucciones().contains("\"legibilidad\":8"));
     }

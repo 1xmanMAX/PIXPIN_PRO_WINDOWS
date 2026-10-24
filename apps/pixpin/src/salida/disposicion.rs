@@ -47,12 +47,7 @@ pub enum Boton {
 }
 
 /// Todos, en el orden en que se colocan de izquierda a derecha.
-pub const BOTONES: [Boton; 4] = [
-    Boton::Copiar,
-    Boton::Abrir,
-    Boton::Carpeta,
-    Boton::Pinear,
-];
+pub const BOTONES: [Boton; 4] = [Boton::Copiar, Boton::Abrir, Boton::Carpeta, Boton::Pinear];
 
 /// Lo que hay bajo un punto de la ventana.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -288,7 +283,11 @@ mod pruebas {
         assert_eq!(disponer(MAX_TARJETAS, 1.0), disponer(MAX_TARJETAS + 7, 1.0));
         // Los objetivos miden al menos 40 (principio v2).
         let d = disponer(1, 1.0);
-        assert!(d.botones.iter().all(|(_, r)| r.ancho >= 40.0 && r.alto >= 40.0));
+        assert!(
+            d.botones
+                .iter()
+                .all(|(_, r)| r.ancho >= 40.0 && r.alto >= 40.0)
+        );
         assert!(d.cerrar.ancho >= 40.0);
     }
 
@@ -330,7 +329,11 @@ mod pruebas {
         let m = marco_inicial(area, 380, 200, 100);
         assert_eq!((m.x, m.y), (1920 - 380 - 20, 1040 - 200 - 20));
         let mas = con_alto(m, 300, area);
-        assert_eq!(mas.y + mas.alto as i32, m.y + m.alto as i32, "el borde de abajo se queda");
+        assert_eq!(
+            mas.y + mas.alto as i32,
+            m.y + m.alto as i32,
+            "el borde de abajo se queda"
+        );
         // Caso negativo: no sube por encima de la pantalla.
         let enorme = con_alto(m, 5000, area);
         assert_eq!(enorme.y, 0);

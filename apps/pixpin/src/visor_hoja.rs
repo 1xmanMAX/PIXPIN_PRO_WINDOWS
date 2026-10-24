@@ -45,7 +45,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use pixpin_geom::Punto;
-use pixpin_hojas::{Hoja, LectorHoja, Libro, Rango, Regional, Rejilla, Tanda, Valor, Visibilidad, Vista, nombre_columna};
+use pixpin_hojas::{
+    Hoja, LectorHoja, Libro, Rango, Regional, Rejilla, Tanda, Valor, Visibilidad, Vista,
+    nombre_columna,
+};
 use pixpin_render::hoja_office::{self, CacheHoja, OpcionesHoja, Pestana};
 use pixpin_render::icono::material;
 use pixpin_render::{Color, MotorRender, Pintor, RectF, Superficie};
@@ -71,15 +74,55 @@ const TANDA_CELDAS: usize = 150_000;
 const CLIC_DE_ENLACE: Duration = Duration::from_millis(600);
 const AVISO: Duration = Duration::from_millis(1800);
 
-const FONDO_BARRA: Color = Color { r: 0.953, g: 0.953, b: 0.953, a: 1.0 };
-const LINEA: Color = Color { r: 0.831, g: 0.831, b: 0.831, a: 1.0 };
-const TEXTO: Color = Color { r: 0.13, g: 0.13, b: 0.13, a: 1.0 };
-const TENUE: Color = Color { r: 0.42, g: 0.42, b: 0.42, a: 1.0 };
-const ENLACE: Color = Color { r: 0.02, g: 0.39, b: 0.76, a: 1.0 };
-const PULGAR: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.28 };
-const PULGAR_ENCIMA: Color = Color { r: 0.0, g: 0.0, b: 0.0, a: 0.45 };
+const FONDO_BARRA: Color = Color {
+    r: 0.953,
+    g: 0.953,
+    b: 0.953,
+    a: 1.0,
+};
+const LINEA: Color = Color {
+    r: 0.831,
+    g: 0.831,
+    b: 0.831,
+    a: 1.0,
+};
+const TEXTO: Color = Color {
+    r: 0.13,
+    g: 0.13,
+    b: 0.13,
+    a: 1.0,
+};
+const TENUE: Color = Color {
+    r: 0.42,
+    g: 0.42,
+    b: 0.42,
+    a: 1.0,
+};
+const ENLACE: Color = Color {
+    r: 0.02,
+    g: 0.39,
+    b: 0.76,
+    a: 1.0,
+};
+const PULGAR: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.28,
+};
+const PULGAR_ENCIMA: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.45,
+};
 /// El verde de Excel (lo que dice que se esta editando).
-const VERDE: Color = Color { r: 0.129, g: 0.451, b: 0.275, a: 1.0 };
+const VERDE: Color = Color {
+    r: 0.129,
+    g: 0.451,
+    b: 0.275,
+    a: 1.0,
+};
 const AVISO_LARGO: Duration = Duration::from_millis(5000);
 /// Dos clics en la misma celda antes de esto, editando: escribir en ella.
 const DOBLE_CLIC: Duration = Duration::from_millis(450);
@@ -116,7 +159,9 @@ pub(crate) struct Marco {
 /// ver y con «Editar» en su barra (`hoja_pin`). En su propio hilo.
 pub(crate) fn lanzar_editable(idioma: Idioma, editable: crate::hoja_pin::Editable) {
     let t0 = Instant::now();
-    let lanzado = std::thread::Builder::new().name("visor-hoja".into()).spawn(move || ver_editable(idioma, editable, t0));
+    let lanzado = std::thread::Builder::new()
+        .name("visor-hoja".into())
+        .spawn(move || ver_editable(idioma, editable, t0));
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del visor de hojas");
     }
@@ -136,12 +181,24 @@ fn ver_editable(idioma: Idioma, mut ed: crate::hoja_pin::Editable, t0: Instant) 
             return;
         }
     };
-    tracing::info!(ms = ms(t0), hojas = libro.hojas.len(), "visor de hojas: hoja del chat abierta");
+    tracing::info!(
+        ms = ms(t0),
+        hojas = libro.hojas.len(),
+        "visor de hojas: hoja del chat abierta"
+    );
     let textos = Catalogo::nuevo(idioma);
     let ruta = ed.ruta_original();
     let nombre = ed.nombre();
     let hecho = crate::dispositivo_perdido::con_recursos("visor-hoja", |r| {
-        abrir(r, &textos, &mut libro, ruta.as_deref(), &nombre, t0, Some(&mut ed))
+        abrir(
+            r,
+            &textos,
+            &mut libro,
+            ruta.as_deref(),
+            &nombre,
+            t0,
+            Some(&mut ed),
+        )
     });
     if let Err(e) = hecho {
         tracing::warn!(?e, "no se pudo abrir el visor de hojas");
@@ -153,7 +210,9 @@ fn ver_editable(idioma: Idioma, mut ed: crate::hoja_pin::Editable, t0: Instant) 
 pub fn lanzar(idioma: Idioma, ruta: &Path) {
     let ruta = ruta.to_path_buf();
     let t0 = Instant::now();
-    let lanzado = std::thread::Builder::new().name("visor-hoja".into()).spawn(move || ver(idioma, &ruta, t0));
+    let lanzado = std::thread::Builder::new()
+        .name("visor-hoja".into())
+        .spawn(move || ver(idioma, &ruta, t0));
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del visor de hojas");
     }
@@ -185,7 +244,9 @@ fn ver(idioma: Idioma, ruta: &Path, t0: Instant) {
     );
     let textos = Catalogo::nuevo(idioma);
     let nombre = crate::lector_pin::nombre_limpio(&pixpin_docs::nombre(ruta));
-    let hecho = crate::dispositivo_perdido::con_recursos("visor-hoja", |r| abrir(r, &textos, &mut libro, Some(ruta), &nombre, t0, None));
+    let hecho = crate::dispositivo_perdido::con_recursos("visor-hoja", |r| {
+        abrir(r, &textos, &mut libro, Some(ruta), &nombre, t0, None)
+    });
     if let Err(e) = hecho {
         tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el visor de hojas");
         let _ = pixpin_shell::abrir(ruta);
@@ -233,7 +294,11 @@ enum Eje {
 enum Gesto {
     /// Arrastrando para elegir un rango (y donde se pulso, por si era un
     /// clic en un enlace).
-    Elegir { pulsada: (u32, u32), cuando: Instant, ctrl: bool },
+    Elegir {
+        pulsada: (u32, u32),
+        cuando: Instant,
+        ctrl: bool,
+    },
     /// Eligiendo filas o columnas enteras por los encabezados.
     Encabezado(Eje),
     /// Llevando el pulgar de una barra; `agarre`: donde se cogio, desde su
@@ -276,7 +341,12 @@ struct Posicion {
 
 impl Abierta {
     fn posicion(&self) -> Posicion {
-        Posicion { x: self.x, y: self.y, zoom: self.zoom, sel: self.sel }
+        Posicion {
+            x: self.x,
+            y: self.y,
+            zoom: self.zoom,
+            sel: self.sel,
+        }
     }
 }
 
@@ -347,9 +417,24 @@ struct Estado<'l> {
 fn zonas(ancho: f32, alto: f32, e: f32) -> Zonas {
     let (af, ap) = ((ALTO_FORMULA * e).round(), (ALTO_PESTANAS * e).round());
     Zonas {
-        formula: RectF { x: 0.0, y: 0.0, ancho, alto: af },
-        hoja: RectF { x: 0.0, y: af, ancho, alto: (alto - af - ap).max(0.0) },
-        pestanas: RectF { x: 0.0, y: (alto - ap).max(af), ancho, alto: ap },
+        formula: RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho,
+            alto: af,
+        },
+        hoja: RectF {
+            x: 0.0,
+            y: af,
+            ancho,
+            alto: (alto - af - ap).max(0.0),
+        },
+        pestanas: RectF {
+            x: 0.0,
+            y: (alto - ap).max(af),
+            ancho,
+            alto: ap,
+        },
     }
 }
 
@@ -360,20 +445,33 @@ fn dentro(r: &RectF, (x, y): (f32, f32)) -> bool {
 /// La vista con que se pinta la hoja en `caja` y la zona de sus celdas
 /// (sin encabezados).
 fn vista_de(ab: &Abierta, caja: RectF) -> (Vista, RectF) {
-    let v = Vista { ancho: caja.ancho as f64, alto: caja.alto as f64, escala: ab.zoom, x: ab.x, y: ab.y };
+    let v = Vista {
+        ancho: caja.ancho as f64,
+        alto: caja.alto as f64,
+        escala: ab.zoom,
+        x: ab.x,
+        y: ab.y,
+    };
     let celdas = hoja_office::zona_de_celdas(&ab.hoja, &ab.rejilla, &v, caja, true);
     (v, celdas)
 }
 
 /// La vista de las cuentas de la rejilla: del tamano de las celdas.
 fn vista_celdas(v: &Vista, celdas: RectF) -> Vista {
-    Vista { ancho: celdas.ancho as f64, alto: celdas.alto as f64, ..*v }
+    Vista {
+        ancho: celdas.ancho as f64,
+        alto: celdas.alto as f64,
+        ..*v
+    }
 }
 
 /// La ultima fila y columna usadas (con la `dimension` mientras se lee).
 fn ultima(h: &Hoja) -> (u32, u32) {
     let d = h.cabecera.dimension;
-    (h.max_fila().max(d.map_or(0, |d| d.fila1)), h.max_col.max(d.map_or(0, |d| d.col1)))
+    (
+        h.max_fila().max(d.map_or(0, |d| d.fila1)),
+        h.max_col.max(d.map_or(0, |d| d.col1)),
+    )
 }
 
 fn lleno(h: &Hoja, f: u32, c: u32) -> bool {
@@ -385,15 +483,30 @@ fn visible(ab: &Abierta, celdas: RectF) -> (f64, f64) {
     let z = ab.zoom.max(0.01);
     let fx = ab.rejilla.x(ab.rejilla.columnas_fijas);
     let fy = ab.rejilla.y(ab.rejilla.filas_fijas);
-    ((celdas.ancho as f64 / z - fx).max(0.0), (celdas.alto as f64 / z - fy).max(0.0))
+    (
+        (celdas.ancho as f64 / z - fx).max(0.0),
+        (celdas.alto as f64 / z - fy).max(0.0),
+    )
 }
 
 /// Hasta donde se desplaza cada eje: ((min x, max x), (min y, max y)).
 fn limites_de(ab: &Abierta, celdas: RectF) -> ((f64, f64), (f64, f64)) {
     let (w, h) = ab.rejilla.tamano_usado(&ab.hoja);
     let r = &ab.rejilla;
-    let lx = logica::limites(r.x(r.columnas_fijas), w, celdas.ancho as f64, ab.zoom, 2.0 * r.ancho_defecto);
-    let ly = logica::limites(r.y(r.filas_fijas), h, celdas.alto as f64, ab.zoom, 4.0 * r.alto_defecto);
+    let lx = logica::limites(
+        r.x(r.columnas_fijas),
+        w,
+        celdas.ancho as f64,
+        ab.zoom,
+        2.0 * r.ancho_defecto,
+    );
+    let ly = logica::limites(
+        r.y(r.filas_fijas),
+        h,
+        celdas.alto as f64,
+        ab.zoom,
+        4.0 * r.alto_defecto,
+    );
     (lx, ly)
 }
 
@@ -418,12 +531,23 @@ fn asegurar_visible(ab: &mut Abierta, celdas: RectF, (f, c): (u32, u32)) {
 }
 
 /// Las barras de desplazamiento que hacen falta, en pantalla.
-fn barras(ab: &Abierta, celdas: RectF, e: f32, encima: Option<Eje>) -> (Option<Barra>, Option<Barra>) {
+fn barras(
+    ab: &Abierta,
+    celdas: RectF,
+    e: f32,
+    encima: Option<Eje>,
+) -> (Option<Barra>, Option<Barra>) {
     let ((x0, x1), (y0, y1)) = limites_de(ab, celdas);
     let (vx, vy) = visible(ab, celdas);
     let hay_v = y1 > y0;
     let hay_h = x1 > x0;
-    let grosor = |eje| if encima == Some(eje) { BARRA_ENCIMA * e } else { BARRA * e };
+    let grosor = |eje| {
+        if encima == Some(eje) {
+            BARRA_ENCIMA * e
+        } else {
+            BARRA * e
+        }
+    };
     let margen = 2.0 * e;
     let (gv, gh) = (grosor(Eje::Vertical), grosor(Eje::Horizontal));
     let v = hay_v.then(|| {
@@ -431,20 +555,40 @@ fn barras(ab: &Abierta, celdas: RectF, e: f32, encima: Option<Eje>) -> (Option<B
             x: celdas.x + celdas.ancho - gv - margen,
             y: celdas.y + margen,
             ancho: gv,
-            alto: (celdas.alto - 2.0 * margen - if hay_h { BARRA_ENCIMA * e } else { 0.0 }).max(0.0),
+            alto: (celdas.alto - 2.0 * margen - if hay_h { BARRA_ENCIMA * e } else { 0.0 })
+                .max(0.0),
         };
         let (d, l) = logica::pulgar(pista.alto, ab.y, y0, y1, vy, PULGAR_MINIMO * e);
-        Barra { pista, pulgar: RectF { y: pista.y + d, alto: l, ..pista }, min: y0, max: y1 }
+        Barra {
+            pista,
+            pulgar: RectF {
+                y: pista.y + d,
+                alto: l,
+                ..pista
+            },
+            min: y0,
+            max: y1,
+        }
     });
     let h = hay_h.then(|| {
         let pista = RectF {
             x: celdas.x + margen,
             y: celdas.y + celdas.alto - gh - margen,
-            ancho: (celdas.ancho - 2.0 * margen - if hay_v { BARRA_ENCIMA * e } else { 0.0 }).max(0.0),
+            ancho: (celdas.ancho - 2.0 * margen - if hay_v { BARRA_ENCIMA * e } else { 0.0 })
+                .max(0.0),
             alto: gh,
         };
         let (d, l) = logica::pulgar(pista.ancho, ab.x, x0, x1, vx, PULGAR_MINIMO * e);
-        Barra { pista, pulgar: RectF { x: pista.x + d, ancho: l, ..pista }, min: x0, max: x1 }
+        Barra {
+            pista,
+            pulgar: RectF {
+                x: pista.x + d,
+                ancho: l,
+                ..pista
+            },
+            min: x0,
+            max: x1,
+        }
     });
     (v, h)
 }
@@ -453,8 +597,16 @@ fn barras(ab: &Abierta, celdas: RectF, e: f32, encima: Option<Eje>) -> (Option<B
 fn zona_de_barra(b: &Barra, eje: Eje, e: f32) -> RectF {
     let extra = 6.0 * e;
     match eje {
-        Eje::Vertical => RectF { x: b.pista.x - extra, ancho: b.pista.ancho + extra + 2.0 * e, ..b.pista },
-        Eje::Horizontal => RectF { y: b.pista.y - extra, alto: b.pista.alto + extra + 2.0 * e, ..b.pista },
+        Eje::Vertical => RectF {
+            x: b.pista.x - extra,
+            ancho: b.pista.ancho + extra + 2.0 * e,
+            ..b.pista
+        },
+        Eje::Horizontal => RectF {
+            y: b.pista.y - extra,
+            alto: b.pista.alto + extra + 2.0 * e,
+            ..b.pista
+        },
     }
 }
 
@@ -462,26 +614,31 @@ fn zona_de_barra(b: &Barra, eje: Eje, e: f32) -> RectF {
 /// despierta a la ventana.
 fn leer_aparte(mut lector: LectorHoja, hwnd: isize) -> Receiver<Tanda> {
     let (tx, rx) = std::sync::mpsc::channel();
-    let lanzado = std::thread::Builder::new().name("visor-hoja-leer".into()).spawn(move || {
-        let mut vacias = 0;
-        loop {
-            let mut t = lector.leer(u32::MAX, TANDA_CELDAS);
-            let vacia = t.filas.is_empty() && t.celdas.is_empty() && t.cola.is_none() && t.cabecera.is_none();
-            vacias = if vacia { vacias + 1 } else { 0 };
-            // Un lector que ya no avanza (un ZIP cortado): se da por acabada.
-            if vacias >= 3 || lector.terminado() {
-                t.fin = true;
+    let lanzado = std::thread::Builder::new()
+        .name("visor-hoja-leer".into())
+        .spawn(move || {
+            let mut vacias = 0;
+            loop {
+                let mut t = lector.leer(u32::MAX, TANDA_CELDAS);
+                let vacia = t.filas.is_empty()
+                    && t.celdas.is_empty()
+                    && t.cola.is_none()
+                    && t.cabecera.is_none();
+                vacias = if vacia { vacias + 1 } else { 0 };
+                // Un lector que ya no avanza (un ZIP cortado): se da por acabada.
+                if vacias >= 3 || lector.terminado() {
+                    t.fin = true;
+                }
+                let fin = t.fin;
+                if tx.send(t).is_err() {
+                    break;
+                }
+                pixpin_shell::overlay::despertar(hwnd);
+                if fin {
+                    break;
+                }
             }
-            let fin = t.fin;
-            if tx.send(t).is_err() {
-                break;
-            }
-            pixpin_shell::overlay::despertar(hwnd);
-            if fin {
-                break;
-            }
-        }
-    });
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo que lee la hoja");
     }
@@ -490,11 +647,15 @@ fn leer_aparte(mut lector: LectorHoja, hwnd: isize) -> Receiver<Tanda> {
 
 impl<'l> Estado<'l> {
     fn abierta(&self) -> &Abierta {
-        self.hojas[self.activa].as_ref().expect("la hoja activa esta abierta")
+        self.hojas[self.activa]
+            .as_ref()
+            .expect("la hoja activa esta abierta")
     }
 
     fn abierta_mut(&mut self) -> &mut Abierta {
-        self.hojas[self.activa].as_mut().expect("la hoja activa esta abierta")
+        self.hojas[self.activa]
+            .as_mut()
+            .expect("la hoja activa esta abierta")
     }
 
     fn zonas(&self) -> Zonas {
@@ -513,7 +674,9 @@ impl<'l> Estado<'l> {
             return;
         }
         if self.digito.is_none() {
-            self.digito = self.cache.ancho_digito(motor, &self.libro.estilos.fuente_normal, self.ppp);
+            self.digito =
+                self.cache
+                    .ancho_digito(motor, &self.libro.estilos.fuente_normal, self.ppp);
         }
         self.abrir_hoja_con_digito(i);
     }
@@ -540,7 +703,9 @@ impl<'l> Estado<'l> {
         let alto_hoja = self.zonas().hoja.alto as f64;
         let fila_baja = 12.0 * self.ppp / 96.0;
         let caben = (alto_hoja / (fila_baja * zoom)).ceil() as u32 + 2;
-        let desde = antes.map_or(vh.primera_fila.max(vh.filas_fijas), |p| (p.y / fila_baja).ceil() as u32);
+        let desde = antes.map_or(vh.primera_fila.max(vh.filas_fijas), |p| {
+            (p.y / fila_baja).ceil() as u32
+        });
         let hasta = desde.saturating_add(caben);
         hoja.cargar_hasta_fila(hasta);
         if antes.is_some() {
@@ -560,7 +725,10 @@ impl<'l> Estado<'l> {
             None => (
                 rejilla.x(vh.primera_columna.max(vh.columnas_fijas)),
                 rejilla.y(vh.primera_fila.max(vh.filas_fijas)),
-                vh.celda_activa.map_or(Seleccion::en(vh.filas_fijas, vh.columnas_fijas), |(f, c)| Seleccion::en(f, c)),
+                vh.celda_activa.map_or(
+                    Seleccion::en(vh.filas_fijas, vh.columnas_fijas),
+                    |(f, c)| Seleccion::en(f, c),
+                ),
             ),
         };
         tracing::info!(
@@ -571,7 +739,16 @@ impl<'l> Estado<'l> {
             completa = hoja.completa,
             "visor de hojas: primera pantalla leida"
         );
-        let mut ab = Abierta { hoja, rejilla, x, y, zoom, sel, tandas, abierta_en: t };
+        let mut ab = Abierta {
+            hoja,
+            rejilla,
+            x,
+            y,
+            zoom,
+            sel,
+            tandas,
+            abierta_en: t,
+        };
         let (_, celdas) = vista_de(&ab, self.zonas().hoja);
         acotar(&mut ab, celdas);
         self.hojas[i] = Some(ab);
@@ -586,7 +763,11 @@ impl<'l> Estado<'l> {
         }
         if self.editando {
             let nombres: Vec<&str> = self.libro.hojas.iter().map(|h| h.nombre.as_str()).collect();
-            let Some(t) = self.ed.as_deref().and_then(|ed| ed.tabla_de_vista(&nombres, i)) else {
+            let Some(t) = self
+                .ed
+                .as_deref()
+                .and_then(|ed| ed.tabla_de_vista(&nombres, i))
+            else {
                 self.avisar(textos.t("hoja-no-editable"));
                 return;
             };
@@ -624,7 +805,11 @@ impl<'l> Estado<'l> {
     fn hoja_vecina(&self, adelante: bool) -> Option<usize> {
         let n = self.libro.hojas.len();
         let visible = |i: usize| self.libro.hojas[i].visibilidad == Visibilidad::Visible;
-        if adelante { (self.activa + 1..n).find(|&i| visible(i)) } else { (0..self.activa).rev().find(|&i| visible(i)) }
+        if adelante {
+            (self.activa + 1..n).find(|&i| visible(i))
+        } else {
+            (0..self.activa).rev().find(|&i| visible(i))
+        }
     }
 
     /// **Recoge las tandas que llegaron** de todas las hojas. `true` si
@@ -633,7 +818,9 @@ impl<'l> Estado<'l> {
         let mut cambio_activa = false;
         for (i, slot) in self.hojas.iter_mut().enumerate() {
             let Some(ab) = slot.as_mut() else { continue };
-            let Some(rx) = ab.tandas.as_ref() else { continue };
+            let Some(rx) = ab.tandas.as_ref() else {
+                continue;
+            };
             let mut llego = false;
             let mut cortado = false;
             loop {
@@ -686,7 +873,11 @@ impl<'l> Estado<'l> {
         let r = ab.sel.rango();
         // Una fila o columna entera elegida: solo hasta lo usado.
         let (uf, uc) = ultima(&ab.hoja);
-        let r = Rango { fila1: r.fila1.min(uf.max(r.fila0)), col1: r.col1.min(uc.max(r.col0)), ..r };
+        let r = Rango {
+            fila1: r.fila1.min(uf.max(r.fila0)),
+            col1: r.col1.min(uc.max(r.col0)),
+            ..r
+        };
         let celdas = logica::celdas_de(r);
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("celdas", celdas);
@@ -697,10 +888,20 @@ impl<'l> Estado<'l> {
         }
         let (libro, hoja) = (&*self.libro, &ab.hoja);
         let t = Instant::now();
-        let texto = logica::tsv(r, |f, c| hoja.celda(f, c).and_then(|c| libro.contenido(hoja, c)).map(|x| x.mostrado.texto).unwrap_or_default());
+        let texto = logica::tsv(r, |f, c| {
+            hoja.celda(f, c)
+                .and_then(|c| libro.contenido(hoja, c))
+                .map(|x| x.mostrado.texto)
+                .unwrap_or_default()
+        });
         match pixpin_codec::copiar_texto(&texto) {
             Ok(()) => {
-                tracing::info!(celdas, bytes = texto.len(), ms = ms(t), "visor de hojas: copiado");
+                tracing::info!(
+                    celdas,
+                    bytes = texto.len(),
+                    ms = ms(t),
+                    "visor de hojas: copiado"
+                );
                 let t = textos.t_args("hoja-copiado", &args);
                 self.avisar(t);
             }
@@ -710,7 +911,9 @@ impl<'l> Estado<'l> {
 
     /// Abre el enlace de la celda, si tiene. `true` si tenia.
     fn abrir_enlace(&mut self, (f, c): (u32, u32), textos: &Catalogo, motor: &MotorRender) -> bool {
-        let Some(hv) = self.abierta().hoja.hipervinculo_en(f, c) else { return false };
+        let Some(hv) = self.abierta().hoja.hipervinculo_en(f, c) else {
+            return false;
+        };
         let externo = hv.externo;
         match logica::enlace_de(&hv.destino, externo) {
             Some(Enlace::Web(url)) => {
@@ -722,7 +925,11 @@ impl<'l> Estado<'l> {
             }
             Some(Enlace::Sitio { hoja, celda }) => {
                 if let Some(nombre) = hoja
-                    && let Some(i) = self.libro.hojas.iter().position(|h| h.nombre.eq_ignore_ascii_case(&nombre))
+                    && let Some(i) = self
+                        .libro
+                        .hojas
+                        .iter()
+                        .position(|h| h.nombre.eq_ignore_ascii_case(&nombre))
                 {
                     self.cambiar_hoja(i, motor, textos);
                 }
@@ -747,8 +954,12 @@ impl<'l> Estado<'l> {
         let filas_por_pagina = (vy / ab.rejilla.alto_defecto.max(1.0)).floor().max(1.0) as u32;
         let hoja = &ab.hoja;
         let lleno_en = |f: u32, c: u32| lleno(hoja, f, c);
-        let marco =
-            logica::Marco { ultima: ultima(hoja), fijas: (ab.rejilla.filas_fijas, ab.rejilla.columnas_fijas), filas_por_pagina, lleno: &lleno_en };
+        let marco = logica::Marco {
+            ultima: ultima(hoja),
+            fijas: (ab.rejilla.filas_fijas, ab.rejilla.columnas_fijas),
+            filas_por_pagina,
+            lleno: &lleno_en,
+        };
         let nueva = logica::mover(ab.sel, m, extender, &marco);
         // RePag/AvPag mueven tambien la vista una pantalla, como Excel.
         if matches!(m, Mov::RePag | Mov::AvPag) {
@@ -764,7 +975,9 @@ impl<'l> Estado<'l> {
         let ab = self.abierta_mut();
         let (_, celdas) = vista_de(ab, caja);
         let z1 = logica::acotar_zoom(z);
-        let (rx, ry) = foco.map_or((0.0, 0.0), |(x, y)| ((x - celdas.x) as f64, (y - celdas.y) as f64));
+        let (rx, ry) = foco.map_or((0.0, 0.0), |(x, y)| {
+            ((x - celdas.x) as f64, (y - celdas.y) as f64)
+        });
         let r = &ab.rejilla;
         ab.x = logica::con_foco(ab.x, rx, r.x(r.columnas_fijas), ab.zoom, z1);
         ab.y = logica::con_foco(ab.y, ry, r.y(r.filas_fijas), ab.zoom, z1);
@@ -778,7 +991,11 @@ impl<'l> Estado<'l> {
         if dentro(&self.zonas().pestanas, self.raton) {
             // Sobre la tira de pestanas, se corre la tira.
             let n = self.libro.hojas.len();
-            self.desde_pestana = if m < 0.0 { (self.desde_pestana + 1).min(n.saturating_sub(1)) } else { self.desde_pestana.saturating_sub(1) };
+            self.desde_pestana = if m < 0.0 {
+                (self.desde_pestana + 1).min(n.saturating_sub(1))
+            } else {
+                self.desde_pestana.saturating_sub(1)
+            };
             return;
         }
         let mods = pixpin_shell::entrada::modificadores_pulsados();
@@ -799,7 +1016,8 @@ impl<'l> Estado<'l> {
             ab.x += signo * m as f64 * 3.0 * paso;
         } else {
             // Tres filas por muesca, como Excel.
-            ab.y += crate::lector::desplazamiento_de_rueda(delta, ab.rejilla.alto_defecto as f32) as f64;
+            ab.y += crate::lector::desplazamiento_de_rueda(delta, ab.rejilla.alto_defecto as f32)
+                as f64;
         }
         let (_, celdas) = vista_de(ab, caja);
         acotar(ab, celdas);
@@ -815,12 +1033,16 @@ impl<'l> Estado<'l> {
             px = px.clamp(0.0, (celdas.ancho as f64 - 1.0).max(0.0));
             py = py.clamp(0.0, (celdas.alto as f64 - 1.0).max(0.0));
         }
-        ab.rejilla.celda_en_hoja(&ab.hoja, &vista_celdas(&v, celdas), px, py)
+        ab.rejilla
+            .celda_en_hoja(&ab.hoja, &vista_celdas(&v, celdas), px, py)
     }
 
     /// Mientras se arrastra fuera de las celdas, la vista corre hacia alli.
     fn correr_al_arrastrar(&mut self) -> bool {
-        if !matches!(self.gesto, Some(Gesto::Elegir { .. } | Gesto::Encabezado(_))) {
+        if !matches!(
+            self.gesto,
+            Some(Gesto::Elegir { .. } | Gesto::Encabezado(_))
+        ) {
             return false;
         }
         let (_, celdas) = self.vista();
@@ -882,10 +1104,22 @@ impl<'l> Estado<'l> {
         let (bv, bh) = barras(ab, celdas, e, encima);
         match (eje, bv, bh) {
             (Eje::Vertical, Some(b), _) => {
-                ab.y = logica::pos_de_pulgar(b.pista.alto, b.pulgar.alto, raton.1 - agarre - b.pista.y, b.min, b.max);
+                ab.y = logica::pos_de_pulgar(
+                    b.pista.alto,
+                    b.pulgar.alto,
+                    raton.1 - agarre - b.pista.y,
+                    b.min,
+                    b.max,
+                );
             }
             (Eje::Horizontal, _, Some(b)) => {
-                ab.x = logica::pos_de_pulgar(b.pista.ancho, b.pulgar.ancho, raton.0 - agarre - b.pista.x, b.min, b.max);
+                ab.x = logica::pos_de_pulgar(
+                    b.pista.ancho,
+                    b.pulgar.ancho,
+                    raton.0 - agarre - b.pista.x,
+                    b.min,
+                    b.max,
+                );
             }
             _ => {}
         }
@@ -894,13 +1128,19 @@ impl<'l> Estado<'l> {
     /// **Pulsa el boton central**: empieza a mover la hoja con la mano.
     fn empezar_mano(&mut self) {
         let ab = self.abierta();
-        self.gesto = Some(Gesto::Mano { desde: self.raton, x: ab.x, y: ab.y });
+        self.gesto = Some(Gesto::Mano {
+            desde: self.raton,
+            x: ab.x,
+            y: ab.y,
+        });
     }
 
     /// Moviendo con el central: la hoja sigue al raton (lo que se movio en
     /// pantalla, al zoom que se ve), sin pasarse de sus limites.
     fn llevar_mano(&mut self) {
-        let Some(Gesto::Mano { desde, x, y }) = self.gesto else { return };
+        let Some(Gesto::Mano { desde, x, y }) = self.gesto else {
+            return;
+        };
         let (dx, dy) = (self.raton.0 - desde.0, self.raton.1 - desde.1);
         let caja = self.zonas().hoja;
         let ab = self.abierta_mut();
@@ -949,7 +1189,11 @@ impl<'l> Estado<'l> {
                 Eje::Horizontal => (p.0, b.pulgar.x, b.pulgar.ancho),
             };
             // En el pulgar se coge donde se pulso; en la pista, por el centro.
-            let agarre = if en >= desde && en < desde + largo { en - desde } else { largo / 2.0 };
+            let agarre = if en >= desde && en < desde + largo {
+                en - desde
+            } else {
+                largo / 2.0
+            };
             self.gesto = Some(Gesto::Barra { eje, agarre });
             self.encima_de = Some(eje);
             self.llevar_barra(eje, agarre);
@@ -973,27 +1217,60 @@ impl<'l> Estado<'l> {
             let ab = self.abierta_mut();
             let (eje, sel) = match (en_numeros, en_letras, celda) {
                 (true, true, _) => {
-                    ab.sel = Seleccion { ancla: (0, 0), activa: (uf, uc) };
+                    ab.sel = Seleccion {
+                        ancla: (0, 0),
+                        activa: (uf, uc),
+                    };
                     return false;
                 }
-                (true, false, Some((f, _))) => (Eje::Vertical, Seleccion { ancla: (f, 0), activa: (f, uc) }),
-                (false, true, Some((_, c))) => (Eje::Horizontal, Seleccion { ancla: (0, c), activa: (uf, c) }),
+                (true, false, Some((f, _))) => (
+                    Eje::Vertical,
+                    Seleccion {
+                        ancla: (f, 0),
+                        activa: (f, uc),
+                    },
+                ),
+                (false, true, Some((_, c))) => (
+                    Eje::Horizontal,
+                    Seleccion {
+                        ancla: (0, c),
+                        activa: (uf, c),
+                    },
+                ),
                 _ => return false,
             };
-            ab.sel = if mods.shift { Seleccion { ancla: ab.sel.ancla, activa: sel.activa } } else { sel };
+            ab.sel = if mods.shift {
+                Seleccion {
+                    ancla: ab.sel.ancla,
+                    activa: sel.activa,
+                }
+            } else {
+                sel
+            };
             self.gesto = Some(Gesto::Encabezado(eje));
             return true;
         }
-        let Some(celda) = self.celda_bajo(p, false) else { return false };
+        let Some(celda) = self.celda_bajo(p, false) else {
+            return false;
+        };
         if !self.editando && self.clic_en_flecha(p, celda) {
             self.menu_de_lista(celda);
             return false;
         }
         let ab = self.abierta_mut();
-        ab.sel = if mods.shift { Seleccion { ancla: ab.sel.ancla, activa: celda } } else { Seleccion::en(celda.0, celda.1) };
+        ab.sel = if mods.shift {
+            Seleccion {
+                ancla: ab.sel.ancla,
+                activa: celda,
+            }
+        } else {
+            Seleccion::en(celda.0, celda.1)
+        };
         if self.editando && !mods.shift {
             // Dos clics en la misma celda: escribir en ella con lo que tiene.
-            let doble = self.ultimo_clic.is_some_and(|(c, t)| c == celda && t.elapsed() < DOBLE_CLIC);
+            let doble = self
+                .ultimo_clic
+                .is_some_and(|(c, t)| c == celda && t.elapsed() < DOBLE_CLIC);
             if doble {
                 self.ultimo_clic = None;
                 self.sel_al_editor();
@@ -1004,7 +1281,11 @@ impl<'l> Estado<'l> {
             }
             self.ultimo_clic = Some((celda, Instant::now()));
         }
-        self.gesto = Some(Gesto::Elegir { pulsada: celda, cuando: Instant::now(), ctrl: mods.ctrl });
+        self.gesto = Some(Gesto::Elegir {
+            pulsada: celda,
+            cuando: Instant::now(),
+            ctrl: mods.ctrl,
+        });
         true
     }
 
@@ -1030,7 +1311,10 @@ impl<'l> Estado<'l> {
         let c = self.celda_bajo(p, false)?;
         // Una celda combinada lleva el comentario en su esquina de arriba a la izquierda.
         let ab = self.abierta();
-        let c = ab.hoja.combinada_en(c.0, c.1).map_or(c, |r| (r.fila0, r.col0));
+        let c = ab
+            .hoja
+            .combinada_en(c.0, c.1)
+            .map_or(c, |r| (r.fila0, r.col0));
         ab.hoja.comentario_en(c.0, c.1).map(|_| c)
     }
 
@@ -1039,12 +1323,19 @@ impl<'l> Estado<'l> {
         let ab = self.abierta();
         ab.hoja.lista_en(celda.0, celda.1)?;
         let (v, celdas) = self.vista();
-        let caja = hoja_office::caja_de_celda(&ab.rejilla, &vista_celdas(&v, celdas), celdas, celda.0, celda.1)?;
+        let caja = hoja_office::caja_de_celda(
+            &ab.rejilla,
+            &vista_celdas(&v, celdas),
+            celdas,
+            celda.0,
+            celda.1,
+        )?;
         hoja_office::caja_flecha(caja, (ab.zoom * ab.rejilla.ppp / 96.0) as f32)
     }
 
     fn clic_en_flecha(&self, (x, y): (f32, f32), celda: (u32, u32)) -> bool {
-        self.caja_de_flecha(celda).is_some_and(|[x0, y0, x1, y1]| x >= x0 && x < x1 && y >= y0 && y < y1)
+        self.caja_de_flecha(celda)
+            .is_some_and(|[x0, y0, x1, y1]| x >= x0 && x < x1 && y >= y0 && y < y1)
     }
 
     /// **Los valores permitidos** de la lista de `celda`, en un menu de solo
@@ -1052,18 +1343,37 @@ impl<'l> Estado<'l> {
     /// tiene la celda ahora.
     fn menu_de_lista(&mut self, celda: (u32, u32)) {
         let ab = self.abierta();
-        let Some(regla) = ab.hoja.lista_en(celda.0, celda.1).cloned() else { return };
+        let Some(regla) = ab.hoja.lista_en(celda.0, celda.1).cloned() else {
+            return;
+        };
         let valores = pixpin_hojas::validacion::valores_lista(&*self.libro, &ab.hoja, &regla);
         if valores.is_empty() {
             return;
         }
-        let actual = ab.hoja.celda(celda.0, celda.1).and_then(|c| self.libro.contenido(&ab.hoja, c)).map(|c| c.mostrado.texto).unwrap_or_default();
+        let actual = ab
+            .hoja
+            .celda(celda.0, celda.1)
+            .and_then(|c| self.libro.contenido(&ab.hoja, c))
+            .map(|c| c.mostrado.texto)
+            .unwrap_or_default();
         let entradas: Vec<(u32, String)> = valores
             .iter()
             .enumerate()
-            .map(|(i, v)| (i as u32 + 1, if *v == actual { format!("\u{2713} {v}") } else { v.clone() }))
+            .map(|(i, v)| {
+                (
+                    i as u32 + 1,
+                    if *v == actual {
+                        format!("\u{2713} {v}")
+                    } else {
+                        v.clone()
+                    },
+                )
+            })
             .collect();
-        let _ = pixpin_shell::menu_llano(windows::Win32::Foundation::HWND(self.hwnd as *mut _), &entradas);
+        let _ = pixpin_shell::menu_llano(
+            windows::Win32::Foundation::HWND(self.hwnd as *mut _),
+            &entradas,
+        );
     }
 
     /// Al soltar: un clic corto en una celda con enlace lo abre.
@@ -1073,7 +1383,9 @@ impl<'l> Estado<'l> {
             self.soltar_marco();
             return;
         }
-        if let Some(Gesto::Elegir { pulsada, cuando, .. }) = gesto
+        if let Some(Gesto::Elegir {
+            pulsada, cuando, ..
+        }) = gesto
             && !self.editando
         {
             let sel = self.abierta().sel;
@@ -1092,7 +1404,9 @@ impl<'l> Estado<'l> {
         if self.gesto.is_none() && self.ficha_bajo_el_raton().is_some() {
             return FormaCursorWin::Giro;
         }
-        if self.marcos.activo && (matches!(self.gesto, Some(Gesto::Marco)) || dentro(&self.vista().1, self.raton)) {
+        if self.marcos.activo
+            && (matches!(self.gesto, Some(Gesto::Marco)) || dentro(&self.vista().1, self.raton))
+        {
             return FormaCursorWin::Cruz;
         }
         if self.gesto.is_none()
@@ -1157,16 +1471,24 @@ impl<'l> Estado<'l> {
         }
         let s = self.abierta().sel;
         if let Some(e) = self.editor_mut() {
-            e.poner_seleccion(crate::hoja_pin::editor::Seleccion { ancla: a_ref(s.ancla), activa: a_ref(s.activa) });
+            e.poner_seleccion(crate::hoja_pin::editor::Seleccion {
+                ancla: a_ref(s.ancla),
+                activa: a_ref(s.activa),
+            });
         }
     }
 
     /// Y al reves (deshacer y pegar mueven lo elegido), dejandolo a la vista.
     fn sel_del_editor(&mut self) {
-        let Some(s) = self.editor().map(|e| e.hoja().sel) else { return };
+        let Some(s) = self.editor().map(|e| e.hoja().sel) else {
+            return;
+        };
         let caja = self.zonas().hoja;
         let ab = self.abierta_mut();
-        ab.sel = Seleccion { ancla: de_ref(s.ancla), activa: de_ref(s.activa) };
+        ab.sel = Seleccion {
+            ancla: de_ref(s.ancla),
+            activa: de_ref(s.activa),
+        };
         let (_, celdas) = vista_de(ab, caja);
         asegurar_visible(ab, celdas, de_ref(s.activa));
     }
@@ -1177,9 +1499,13 @@ impl<'l> Estado<'l> {
     /// otras hojas abiertas se recuerdan donde estaban y se abren al
     /// volver a ellas. `true` si se rehizo.
     fn al_dia(&mut self, motor: &MotorRender) -> bool {
-        let Some(ed) = self.ed.as_deref_mut() else { return false };
+        let Some(ed) = self.ed.as_deref_mut() else {
+            return false;
+        };
         let era_original = ed.vista_original();
-        let Some(nuevo) = ed.libro_al_dia() else { return false };
+        let Some(nuevo) = ed.libro_al_dia() else {
+            return false;
+        };
         let Some(e) = ed.editor() else { return false };
         let tabla = e.activa;
         let sel = e.hoja().sel;
@@ -1189,11 +1515,18 @@ impl<'l> Estado<'l> {
         let mut guardadas: std::collections::HashMap<usize, Posicion> = if era_original {
             Default::default()
         } else {
-            self.hojas.iter().enumerate().filter_map(|(i, h)| Some((i, h.as_ref()?.posicion()))).collect()
+            self.hojas
+                .iter()
+                .enumerate()
+                .filter_map(|(i, h)| Some((i, h.as_ref()?.posicion())))
+                .collect()
         };
         if let Some(ab) = self.hojas.get(self.activa).and_then(|h| h.as_ref()) {
             let mut p = ab.posicion();
-            p.sel = Seleccion { ancla: de_ref(sel.ancla), activa: de_ref(sel.activa) };
+            p.sel = Seleccion {
+                ancla: de_ref(sel.ancla),
+                activa: de_ref(sel.activa),
+            };
             guardadas.insert(tabla, p);
         }
         *self.libro = nuevo;
@@ -1217,7 +1550,9 @@ impl<'l> Estado<'l> {
         if self.editando {
             return true;
         }
-        let Some(ed) = self.ed.as_deref_mut() else { return false };
+        let Some(ed) = self.ed.as_deref_mut() else {
+            return false;
+        };
         if let Err(e) = ed.montar_editor() {
             tracing::warn!(%e, "hoja del chat: no se puede editar");
             self.avisar(textos.t("hoja-no-editable"));
@@ -1285,7 +1620,12 @@ impl<'l> Estado<'l> {
 
     /// **Lo que se hace editando** (teclas y botones). `true` si se vuelve
     /// a ver.
-    fn hacer(&mut self, a: crate::hoja_pin::AccionEd, textos: &Catalogo, motor: &MotorRender) -> bool {
+    fn hacer(
+        &mut self,
+        a: crate::hoja_pin::AccionEd,
+        textos: &Catalogo,
+        motor: &MotorRender,
+    ) -> bool {
         use crate::hoja_pin::AccionEd as A;
         if !self.escribiendo() {
             self.sel_al_editor();
@@ -1293,7 +1633,9 @@ impl<'l> Estado<'l> {
         let mueve_lo_elegido = matches!(a, A::Deshacer | A::Rehacer | A::Pegar);
         let mut aviso = None;
         {
-            let Some(e) = self.editor_mut() else { return false };
+            let Some(e) = self.editor_mut() else {
+                return false;
+            };
             let grande = e.hoja().sel.celdas() > crate::hoja_pin::editor::MAXIMO_RANGO;
             match a {
                 A::Ver => return true,
@@ -1344,7 +1686,9 @@ impl<'l> Estado<'l> {
     /// numero salen junto al raton). `true` si se vuelve a ver.
     fn boton_de_editar(&mut self, id: u8, textos: &Catalogo, motor: &MotorRender) -> bool {
         use crate::hoja_pin::{AccionEd as A, PideBoton as P};
-        let Some(pide) = crate::hoja_pin::pide_boton(id) else { return false };
+        let Some(pide) = crate::hoja_pin::pide_boton(id) else {
+            return false;
+        };
         let accion = match pide {
             P::Ver => return true,
             P::Deshacer => A::Deshacer,
@@ -1354,9 +1698,18 @@ impl<'l> Estado<'l> {
                 self.sel_al_editor();
                 let Some(e) = self.editor() else { return false };
                 let entradas = crate::hoja_pin::entradas_de_menu(m, e, textos);
-                let rotulos: Vec<(u32, String)> = entradas.iter().map(|(i, t, _)| (*i, t.clone())).collect();
-                let elegido = pixpin_shell::menu_llano(windows::Win32::Foundation::HWND(self.hwnd as *mut _), &rotulos);
-                let Some(f) = elegido.and_then(|id| entradas.into_iter().find(|(i, ..)| *i == id)).map(|(_, _, f)| f) else { return false };
+                let rotulos: Vec<(u32, String)> =
+                    entradas.iter().map(|(i, t, _)| (*i, t.clone())).collect();
+                let elegido = pixpin_shell::menu_llano(
+                    windows::Win32::Foundation::HWND(self.hwnd as *mut _),
+                    &rotulos,
+                );
+                let Some(f) = elegido
+                    .and_then(|id| entradas.into_iter().find(|(i, ..)| *i == id))
+                    .map(|(_, _, f)| f)
+                else {
+                    return false;
+                };
                 A::Formato(f)
             }
         };
@@ -1369,10 +1722,17 @@ impl<'l> Estado<'l> {
 
 /// La escala del monitor donde cae el punto (o la del principal).
 fn escala_en(p: Punto) -> u32 {
-    let Ok(d) = pixpin_capture::enumerar_monitores() else { return 100 };
+    let Ok(d) = pixpin_capture::enumerar_monitores() else {
+        return 100;
+    };
     d.monitores()
         .iter()
-        .find(|m| p.x >= m.area.x && p.y >= m.area.y && p.x < m.area.x + m.area.ancho as i32 && p.y < m.area.y + m.area.alto as i32)
+        .find(|m| {
+            p.x >= m.area.x
+                && p.y >= m.area.y
+                && p.x < m.area.x + m.area.ancho as i32
+                && p.y < m.area.y + m.area.alto as i32
+        })
         .or_else(|| d.principal())
         .map_or(100, |m| m.escala_por_cien)
 }
@@ -1391,27 +1751,53 @@ fn abrir(
     editable: Option<&mut crate::hoja_pin::Editable>,
 ) -> Result<()> {
     // Cuenta como abierta para los grupos de ventanas (H9) mientras viva.
-    let _grupo = ruta.map(|r| crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector { ruta: r.to_path_buf() }));
+    let _grupo = ruta.map(|r| {
+        crate::grupos_ventanas::apuntar(crate::grupos_ventanas::Clase::Lector {
+            ruta: r.to_path_buf(),
+        })
+    });
     if libro.hojas.is_empty() {
         anyhow::bail!("el libro no tiene hojas");
     }
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let escala = escala_en(Punto { x: area_pin.x + area_pin.ancho as i32 / 2, y: area_pin.y + area_pin.alto as i32 / 2 });
+    let escala = escala_en(Punto {
+        x: area_pin.x + area_pin.ancho as i32 / 2,
+        y: area_pin.y + area_pin.alto as i32 / 2,
+    });
     let e = escala as f32 / 100.0;
-    let ext = ruta.map(|r| pixpin_docs::extension(&pixpin_docs::nombre(r))).filter(|x| !x.is_empty()).unwrap_or_else(|| "xlsx".into());
+    let ext = ruta
+        .map(|r| pixpin_docs::extension(&pixpin_docs::nombre(r)))
+        .filter(|x| !x.is_empty())
+        .unwrap_or_else(|| "xlsx".into());
     let pin = PinLector::nuevo(area_pin, e).con_extension(&ext);
     let area = pin.area;
-    let ventana = VentanaOverlay::nueva_normal(area, nombre).context("no se pudo abrir la ventana del visor de hojas")?;
+    let ventana = VentanaOverlay::nueva_normal(area, nombre)
+        .context("no se pudo abrir la ventana del visor de hojas")?;
     let motor = recursos.motor();
-    let superficie =
-        Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), area.ancho, area.alto).context("sin superficie para el visor de hojas")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        area.ancho,
+        area.alto,
+    )
+    .context("sin superficie para el visor de hojas")?;
     ventana.mostrar();
     ventana.enfocar();
     // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
     // mas entre las demas, y su barra fuera.
     pin.al_nacer(&ventana);
-    let mut marco = Marco { ventana, superficie, pin, area, e, nombre: nombre.to_string() };
-    marco.pin.crear_barra(&motor, &recursos.d3d(), &marco.ventana);
+    let mut marco = Marco {
+        ventana,
+        superficie,
+        pin,
+        area,
+        e,
+        nombre: nombre.to_string(),
+    };
+    marco
+        .pin
+        .crear_barra(&motor, &recursos.d3d(), &marco.ventana);
     let activa = libro.hoja_activa.min(libro.hojas.len().saturating_sub(1));
     ver_en(marco, &motor, textos, libro, activa, ruta, editable, t0);
     Ok(())
@@ -1431,7 +1817,14 @@ fn ver_en(
     editable: Option<&mut crate::hoja_pin::Editable>,
     t0: Instant,
 ) {
-    let Marco { mut ventana, superficie, mut pin, mut area, e, nombre } = marco;
+    let Marco {
+        mut ventana,
+        superficie,
+        mut pin,
+        mut area,
+        e,
+        nombre,
+    } = marco;
     let al_abrir_editar = editable.as_ref().is_some_and(|e| e.al_abrir_editar);
     let n = libro.hojas.len();
     let (recuerdo, marcas) = riel::Recuerdo::de(ruta);
@@ -1490,15 +1883,23 @@ fn ver_en(
     let mut pistas_de: Option<bool> = None;
     // Pruebas: imprimir los marcos solo, a los 2 s de abrir (con
     // `PIXPIN_IMPRIMIR_A_PDF`, a un fichero), sin Ctrl+P de verdad.
-    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| Instant::now() + Duration::from_secs(2));
+    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR")
+        .map(|_| Instant::now() + Duration::from_secs(2));
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
         // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`), y
         // lo que necesitan saber de lo que se ve.
         #[cfg(test)]
         crate::hoja_pin::prueba::apuntar_vista((
-            est.marcos.fichas(est.zonas().pestanas.y, est.e).iter().map(|r| ((r.x + r.ancho / 2.0) as i32, (r.y + r.alto / 2.0) as i32)).collect(),
-            est.hojas.get(est.activa).and_then(Option::as_ref).map_or(1.0, |ab| ab.zoom),
+            est.marcos
+                .fichas(est.zonas().pestanas.y, est.e)
+                .iter()
+                .map(|r| ((r.x + r.ancho / 2.0) as i32, (r.y + r.alto / 2.0) as i32))
+                .collect(),
+            est.hojas
+                .get(est.activa)
+                .and_then(Option::as_ref)
+                .map_or(1.0, |ab| ab.zoom),
             [est.poniendo_marca, est.anotando, est.marcos.activo],
         ));
         #[cfg(test)]
@@ -1542,7 +1943,21 @@ fn ver_en(
         // Pruebas: las teclas que manda la prueba, como si se pulsaran aqui
         // (sin el teclado de verdad).
         #[cfg(test)]
-        eventos.extend(crate::hoja_pin::prueba::tomar_teclas().into_iter().map(|(vk, ctrl)| (ventana.handle(), EventoOverlay::Tecla { vk, shift: false, ctrl, alt: false })));
+        eventos.extend(
+            crate::hoja_pin::prueba::tomar_teclas()
+                .into_iter()
+                .map(|(vk, ctrl)| {
+                    (
+                        ventana.handle(),
+                        EventoOverlay::Tecla {
+                            vk,
+                            shift: false,
+                            ctrl,
+                            alt: false,
+                        },
+                    )
+                }),
+        );
         for (hwnd, evento) in eventos {
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
@@ -1556,13 +1971,16 @@ fn ver_en(
                     // abren el formato; si no sale, el motivo en el aviso.
                     Some(AccionPin::Propio(BOTON_ABRIR_CON)) => {
                         if let Some(ruta) = ruta
-                            && let Err(aviso) = crate::abrir_con::abrir_con(ventana.handle(), ruta, textos)
+                            && let Err(aviso) =
+                                crate::abrir_con::abrir_con(ventana.handle(), ruta, textos)
                         {
                             est.aviso = Some((aviso, Instant::now() + AVISO));
                         }
                     }
                     Some(AccionPin::Propio(BOTON_EDITAR)) => quiere_editar = true,
-                    Some(AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
+                    Some(AccionPin::PantallaCompleta) => {
+                        pin.alternar_pantalla_completa(&mut ventana)
+                    }
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => vivo = false,
                     _ => {}
@@ -1644,15 +2062,20 @@ fn ver_en(
                     }
                     ventana.poner_cursor(est.cursor());
                 }
-                EventoOverlay::BotonPulsado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {}
+                EventoOverlay::BotonPulsado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {
+                }
                 EventoOverlay::BotonPulsado(p) => {
                     est.raton = local(p);
                     // Escribiendo, un clic fuera de la celda deja escrito lo
                     // tecleado (uno en ella misma sigue escribiendo).
-                    if est.escribiendo() && est.celda_bajo(est.raton, false) != Some(est.abierta().sel.activa) {
+                    if est.escribiendo()
+                        && est.celda_bajo(est.raton, false) != Some(est.abierta().sel.activa)
+                    {
                         est.hacer(crate::hoja_pin::AccionEd::Confirmar, textos, motor);
                     }
-                    if !(est.escribiendo() && est.celda_bajo(est.raton, false) == Some(est.abierta().sel.activa)) {
+                    if !(est.escribiendo()
+                        && est.celda_bajo(est.raton, false) == Some(est.abierta().sel.activa))
+                    {
                         let ctrl = pixpin_shell::entrada::modificadores_pulsados().ctrl;
                         if est.pulsar(motor, textos) {
                             ventana.capturar_raton();
@@ -1687,7 +2110,8 @@ fn ver_en(
                         hay_que_pintar = true;
                     }
                 }
-                EventoOverlay::BotonSoltado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {}
+                EventoOverlay::BotonSoltado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {
+                }
                 EventoOverlay::BotonSoltado(p) => {
                     est.raton = local(p);
                     est.soltar(textos, motor);
@@ -1707,14 +2131,19 @@ fn ver_en(
                     est.teclear(c);
                     hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk, ctrl, alt, .. } if editable && !est.editando && pide_editar(vk, ctrl, alt) => {
+                EventoOverlay::Tecla { vk, ctrl, alt, .. }
+                    if editable && !est.editando && pide_editar(vk, ctrl, alt) =>
+                {
                     quiere_editar = true;
                     // La letra de la `E` llega despues: no se escribe.
                     est.sin_letras_hasta = Some(Instant::now() + SIN_LETRAS);
                 }
                 // Esc primero cierra la tira de las marcas, deja de anotar o
                 // sale de los marcos.
-                EventoOverlay::Tecla { vk: logica::VK_ESCAPE, .. } if est.poniendo_marca || est.anotando || est.marcos.activo => {
+                EventoOverlay::Tecla {
+                    vk: logica::VK_ESCAPE,
+                    ..
+                } if est.poniendo_marca || est.anotando || est.marcos.activo => {
                     if est.poniendo_marca {
                         est.poniendo_marca = false;
                     } else if est.anotando {
@@ -1726,7 +2155,12 @@ fn ver_en(
                 }
                 // Los marcos, como en el plano: I los pone o los quita, Supr
                 // (con ellos puestos) quita el ultimo y Ctrl+P imprime todos.
-                EventoOverlay::Tecla { vk, ctrl, alt: false, shift: false } if !est.escribiendo() && est.tecla_de_marcos(vk, ctrl, motor).is_some() => {
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    alt: false,
+                    shift: false,
+                } if !est.escribiendo() && est.tecla_de_marcos(vk, ctrl, motor).is_some() => {
                     if ctrl && vk == crate::marcos_doc::VK_P {
                         imprimir_marcos = true;
                     }
@@ -1735,25 +2169,46 @@ fn ver_en(
                 // Las teclas del riel, las mismas en todos los visores: M (o
                 // Ctrl+M) el marcador, A el lapiz. Viendo: editando, las
                 // letras son de las celdas.
-                EventoOverlay::Tecla { vk: VK_M, alt: false, shift: false, .. } if !est.editando => {
+                EventoOverlay::Tecla {
+                    vk: VK_M,
+                    alt: false,
+                    shift: false,
+                    ..
+                } if !est.editando => {
                     est.poniendo_marca = !est.poniendo_marca;
                     if est.poniendo_marca && est.marcos.activo {
                         est.alternar_marcos(motor);
                     }
                     hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk: VK_A, ctrl: false, alt: false, shift: false } if !est.editando && !est.anotando => {
+                EventoOverlay::Tecla {
+                    vk: VK_A,
+                    ctrl: false,
+                    alt: false,
+                    shift: false,
+                } if !est.editando && !est.anotando => {
                     est.alternar_anotar(motor);
                     hay_que_pintar = true;
                 }
                 // Ctrl+1…9 llevan a esa marca del riel, como en el PDF.
-                EventoOverlay::Tecla { vk, ctrl: true, alt: false, shift: false }
-                    if !est.editando && (0x31..=0x39).contains(&vk) && ((vk - 0x31) as usize) < est.marcas.len() =>
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl: true,
+                    alt: false,
+                    shift: false,
+                } if !est.editando
+                    && (0x31..=0x39).contains(&vk)
+                    && ((vk - 0x31) as usize) < est.marcas.len() =>
                 {
                     est.ir_a_la_marca((vk - 0x31) as usize, motor, textos);
                     hay_que_pintar = true;
                 }
-                EventoOverlay::Tecla { vk, shift, ctrl, alt } => {
+                EventoOverlay::Tecla {
+                    vk,
+                    shift,
+                    ctrl,
+                    alt,
+                } => {
                     use crate::hoja_pin::AccionEd;
                     let al_visor = if est.editando && !alt {
                         match crate::hoja_pin::accion_de_tecla(vk, shift, ctrl, est.escribiendo()) {
@@ -1778,7 +2233,11 @@ fn ver_en(
                     // Ctrl+E: el «Exportar» comun (PDF, HTML, .pixpin, imagen, CSV, original).
                     // Ctrl+Z / Ctrl+Y viendo: lo ultimo que anoto el asistente.
                     if al_visor && !est.editando && ctrl && !alt && (vk == VK_Z || vk == VK_Y) {
-                        let hecho = if vk == VK_Z && !shift { est.anotado.deshacer() } else { est.anotado.rehacer() };
+                        let hecho = if vk == VK_Z && !shift {
+                            est.anotado.deshacer()
+                        } else {
+                            est.anotado.rehacer()
+                        };
                         hay_que_pintar |= hecho;
                         if hecho {
                             continue;
@@ -1787,7 +2246,14 @@ fn ver_en(
                     if al_visor && ctrl && !alt && vk == VK_E {
                         exportar_libro(ruta);
                     } else if al_visor {
-                        vivo &= tecla_del_visor(&mut est, &mut pin, &mut ventana, (vk, shift, ctrl, alt), textos, motor);
+                        vivo &= tecla_del_visor(
+                            &mut est,
+                            &mut pin,
+                            &mut ventana,
+                            (vk, shift, ctrl, alt),
+                            textos,
+                            motor,
+                        );
                     }
                     hay_que_pintar = true;
                 }
@@ -1830,7 +2296,11 @@ fn ver_en(
         // globo: cambian al pasar de ver a editar.
         if pistas_de != Some(est.editando) {
             pistas_de = Some(est.editando);
-            pin.poner_pistas(if est.editando { crate::hoja_pin::pistas_de_editar(textos) } else { pistas_de_ver(textos) });
+            pin.poner_pistas(if est.editando {
+                crate::hoja_pin::pistas_de_editar(textos)
+            } else {
+                pistas_de_ver(textos)
+            });
         }
         let botones = match est.editor() {
             Some(ed) if est.editando => crate::hoja_pin::botones_de_editar(ed),
@@ -1841,7 +2311,11 @@ fn ver_en(
         if pin.actualizar(motor, &nombre, &botones) {
             hay_que_pintar = true;
         }
-        if est.aviso.as_ref().is_some_and(|(_, hasta)| Instant::now() >= *hasta) {
+        if est
+            .aviso
+            .as_ref()
+            .is_some_and(|(_, hasta)| Instant::now() >= *hasta)
+        {
             est.aviso = None;
             hay_que_pintar = true;
         }
@@ -1864,12 +2338,20 @@ fn ver_en(
             pintar_ya(&superficie, motor, &mut est, textos);
             if primera {
                 primera = false;
-                tracing::info!(ms = ms(t0), pintar_ms = ms(t), "visor de hojas: primera pantalla pintada");
+                tracing::info!(
+                    ms = ms(t0),
+                    pintar_ms = ms(t),
+                    "visor de hojas: primera pantalla pintada"
+                );
             }
         }
         let tope = if est.gesto.is_some() || est.trazando() {
             16
-        } else if est.cargando() || pin.quiere_reloj() || est.aviso.is_some() || imprimir_al_abrir.is_some() {
+        } else if est.cargando()
+            || pin.quiere_reloj()
+            || est.aviso.is_some()
+            || imprimir_al_abrir.is_some()
+        {
             50
         } else {
             200
@@ -1916,7 +2398,10 @@ fn tecla_del_visor(
         Some(AccionTecla::Copiar) => est.copiar(textos),
         Some(AccionTecla::SeleccionarTodo) => {
             let u = ultima(&est.abierta().hoja);
-            est.abierta_mut().sel = Seleccion { ancla: (0, 0), activa: u };
+            est.abierta_mut().sel = Seleccion {
+                ancla: (0, 0),
+                activa: u,
+            };
         }
         Some(AccionTecla::ZoomInicial) => est.poner_zoom(1.0, None),
         Some(AccionTecla::Acercar) => {
@@ -1951,10 +2436,18 @@ fn tecla_del_visor(
 fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
     let mut b = Vec::with_capacity(2);
     if editable {
-        b.push(BotonLector { id: BOTON_EDITAR, icono: &material::EDIT_NOTE, encendido: false });
+        b.push(BotonLector {
+            id: BOTON_EDITAR,
+            icono: &material::EDIT_NOTE,
+            encendido: false,
+        });
     }
     if con_archivo {
-        b.push(BotonLector { id: BOTON_ABRIR_CON, icono: &material::OPEN_IN_NEW, encendido: false });
+        b.push(BotonLector {
+            id: BOTON_ABRIR_CON,
+            icono: &material::OPEN_IN_NEW,
+            encendido: false,
+        });
     }
     b
 }
@@ -1962,19 +2455,28 @@ fn botones_de_ver(editable: bool, con_archivo: bool) -> Vec<BotonLector> {
 /// El nombre y la tecla de los botones de [`botones_de_ver`], para el globo
 /// que sale con el raton encima.
 fn pistas_de_ver(textos: &Catalogo) -> Vec<(u8, String)> {
-    vec![(BOTON_EDITAR, textos.t("hoja-pista-editar")), (BOTON_ABRIR_CON, textos.t("abrir-con"))]
+    vec![
+        (BOTON_EDITAR, textos.t("hoja-pista-editar")),
+        (BOTON_ABRIR_CON, textos.t("abrir-con")),
+    ]
 }
 
 /// **Exportar el libro** con el componente comun (ver
 /// `compartir::exportable::de_libro`). Sin fichero (una tabla del chat) no
 /// hay nada que leer aqui.
 fn exportar_libro(ruta: Option<&Path>) {
-    let (Some(r), Some(u)) = (ruta, crate::oscuro::ubicacion()) else { return };
+    let (Some(r), Some(u)) = (ruta, crate::oscuro::ubicacion()) else {
+        return;
+    };
     let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(r));
     match crate::compartir::exportable::de_libro(&titulo, r) {
         Ok(mut x) => {
             x.raiz = Some(u.raiz().to_path_buf());
-            crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+            crate::compartir::ventana::abrir(
+                crate::compartir::idioma_de(&u),
+                u,
+                crate::compartir::Cosa::Visor(x),
+            );
         }
         Err(e) => tracing::warn!(?e, "no se pudo preparar el libro para exportar"),
     }
@@ -1993,13 +2495,29 @@ fn pide_editar(vk: u32, ctrl: bool, alt: bool) -> bool {
 fn preparar(est: &mut Estado, motor: &MotorRender) {
     let caja = est.zonas().hoja;
     let sin_interfaz = est.sin_interfaz;
-    let Estado { libro, hojas, activa, cache, .. } = est;
+    let Estado {
+        libro,
+        hojas,
+        activa,
+        cache,
+        ..
+    } = est;
     let libro: &Libro = libro;
-    let Some(ab) = hojas[*activa].as_mut() else { return };
+    let Some(ab) = hojas[*activa].as_mut() else {
+        return;
+    };
     let (v, celdas) = vista_de(ab, caja);
     let paneles = ab.rejilla.paneles(&vista_celdas(&v, celdas));
     for p in paneles {
-        hoja_office::autoajustar_filas(cache, motor, libro, &ab.hoja, &mut ab.rejilla, p.fila0, p.fila1 + 1);
+        hoja_office::autoajustar_filas(
+            cache,
+            motor,
+            libro,
+            &ab.hoja,
+            &mut ab.rejilla,
+            p.fila0,
+            p.fila1 + 1,
+        );
     }
     // Para la foto de un marco la vista va justo donde se puso (centrada en
     // el marco aunque se pase de lo usado).
@@ -2009,9 +2527,24 @@ fn preparar(est: &mut Estado, motor: &MotorRender) {
     }
 }
 
-fn texto_centrado_v(p: &Pintor, texto: &str, x: f32, caja: RectF, tam: f32, ancho: f32, color: Color) {
+fn texto_centrado_v(
+    p: &Pintor,
+    texto: &str,
+    x: f32,
+    caja: RectF,
+    tam: f32,
+    ancho: f32,
+    color: Color,
+) {
     let (_, h) = p.medir_texto("Ag", tam);
-    p.texto_linea(texto, x, caja.y + (caja.alto - h) / 2.0, tam, ancho.max(0.0), color);
+    p.texto_linea(
+        texto,
+        x,
+        caja.y + (caja.alto - h) / 2.0,
+        tam,
+        ancho.max(0.0),
+        color,
+    );
 }
 
 /// El texto de la tarjeta de un comentario: el de una nota tal cual; el de un
@@ -2030,12 +2563,31 @@ fn texto_de_comentario(c: &pixpin_hojas::comentarios::Comentario) -> String {
 /// **La tarjeta de un comentario** al pasar el raton por su celda: a la
 /// derecha de la celda (a la izquierda si no cabe), amarillo palido como la
 /// nota de Excel.
-fn tarjeta_de_comentario(p: &Pintor, ab: &Abierta, v: &Vista, celdas: RectF, area: RectF, celda: (u32, u32), e: f32) {
-    let Some(c) = ab.hoja.comentario_en(celda.0, celda.1) else { return };
-    let rango = ab.hoja.combinada_en(celda.0, celda.1).unwrap_or(Rango { fila0: celda.0, col0: celda.1, fila1: celda.0, col1: celda.1 });
+fn tarjeta_de_comentario(
+    p: &Pintor,
+    ab: &Abierta,
+    v: &Vista,
+    celdas: RectF,
+    area: RectF,
+    celda: (u32, u32),
+    e: f32,
+) {
+    let Some(c) = ab.hoja.comentario_en(celda.0, celda.1) else {
+        return;
+    };
+    let rango = ab.hoja.combinada_en(celda.0, celda.1).unwrap_or(Rango {
+        fila0: celda.0,
+        col0: celda.1,
+        fila1: celda.0,
+        col1: celda.1,
+    });
     let vc = vista_celdas(v, celdas);
-    let Some(caja) = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, rango.fila0, rango.col0) else { return };
-    let derecha = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, rango.fila0, rango.col1).map_or(caja[2], |c| c[2]);
+    let Some(caja) = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, rango.fila0, rango.col0)
+    else {
+        return;
+    };
+    let derecha = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, rango.fila0, rango.col1)
+        .map_or(caja[2], |c| c[2]);
     let texto = texto_de_comentario(c);
     let tam = TAM_TEXTO * e;
     let (w, h) = p.medir_texto_ajustado(&texto, tam, 280.0 * e);
@@ -2047,8 +2599,25 @@ fn tarjeta_de_comentario(p: &Pintor, ab: &Abierta, v: &Vista, celdas: RectF, are
     let y = caja[1].min(area.y + area.alto - alto).max(area.y);
     let r = RectF { x, y, ancho, alto };
     let k = |c: Color| pixpin_render::oscuro::si(crate::oscuro::activo(), c);
-    p.rellenar(r, k(Color { r: 1.0, g: 1.0, b: 0.88, a: 1.0 }));
-    p.trazar(r, 1.0, k(Color { r: 0.45, g: 0.45, b: 0.45, a: 1.0 }));
+    p.rellenar(
+        r,
+        k(Color {
+            r: 1.0,
+            g: 1.0,
+            b: 0.88,
+            a: 1.0,
+        }),
+    );
+    p.trazar(
+        r,
+        1.0,
+        k(Color {
+            r: 0.45,
+            g: 0.45,
+            b: 0.45,
+            a: 1.0,
+        }),
+    );
     p.texto_ajustado(&texto, x + 8.0 * e, y + 6.0 * e, tam, 280.0 * e, k(TEXTO));
 }
 
@@ -2061,34 +2630,81 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let oscuro = crate::oscuro::activo() && !est.sin_interfaz;
     let k = |c: Color| pixpin_render::oscuro::si(oscuro, c);
     p.limpiar(k(Color::BLANCO));
-    let con_nota = if est.gesto.is_none() && !est.editando { est.comentario_bajo } else { None };
+    let con_nota = if est.gesto.is_none() && !est.editando {
+        est.comentario_bajo
+    } else {
+        None
+    };
     // Editando: lo que se escribe (o lo escrito tal cual, la formula) va en
     // la barra de formulas, y lo tecleado tambien encima de su celda.
     let editando = est.editando;
-    let en_la_barra = est.editor().filter(|_| editando).map(|ed| (ed.en_la_barra().to_string(), ed.edicion.clone()));
+    let en_la_barra = est
+        .editor()
+        .filter(|_| editando)
+        .map(|ed| (ed.en_la_barra().to_string(), ed.edicion.clone()));
     let anotando = est.anotando;
     let sin_interfaz = est.sin_interfaz;
     let con_nota = con_nota.filter(|_| !sin_interfaz);
-    let Estado { libro, hojas, activa, cache, desde_pestana, encima_de, pestanas, bajo_raton, anotado, .. } = est;
+    let Estado {
+        libro,
+        hojas,
+        activa,
+        cache,
+        desde_pestana,
+        encima_de,
+        pestanas,
+        bajo_raton,
+        anotado,
+        ..
+    } = est;
     let libro: &Libro = libro;
     let activa = *activa;
-    let Some(ab) = hojas[activa].as_ref() else { return };
+    let Some(ab) = hojas[activa].as_ref() else {
+        return;
+    };
 
     // La hoja.
     let (v, celdas) = vista_de(ab, z.hoja);
     let op = if sin_interfaz {
-        OpcionesHoja { encabezados: true, seleccion: None, activa: None, bajo_raton: None, oscuro }
+        OpcionesHoja {
+            encabezados: true,
+            seleccion: None,
+            activa: None,
+            bajo_raton: None,
+            oscuro,
+        }
     } else {
-        OpcionesHoja { encabezados: true, seleccion: Some(ab.sel.rango()), activa: Some(ab.sel.activa), bajo_raton: *bajo_raton, oscuro }
+        OpcionesHoja {
+            encabezados: true,
+            seleccion: Some(ab.sel.rango()),
+            activa: Some(ab.sel.activa),
+            bajo_raton: *bajo_raton,
+            oscuro,
+        }
     };
     hoja_office::pintar_hoja(p, cache, libro, &ab.hoja, &ab.rejilla, &v, z.hoja, &op);
     // Lo anotado (el asistente y el lapiz), encima de las celdas.
-    anotado.pintar(p, libro, &ab.hoja, &ab.rejilla, &v, celdas, oscuro, anotando && !sin_interfaz);
+    anotado.pintar(
+        p,
+        libro,
+        &ab.hoja,
+        &ab.rejilla,
+        &v,
+        celdas,
+        oscuro,
+        anotando && !sin_interfaz,
+    );
     if let Some(celda) = con_nota {
         tarjeta_de_comentario(p, ab, &v, celdas, z.hoja, celda, e);
     }
     if let Some((_, Some(tecleado))) = &en_la_barra
-        && let Some(caja) = hoja_office::caja_de_celda(&ab.rejilla, &vista_celdas(&v, celdas), celdas, ab.sel.activa.0, ab.sel.activa.1)
+        && let Some(caja) = hoja_office::caja_de_celda(
+            &ab.rejilla,
+            &vista_celdas(&v, celdas),
+            celdas,
+            ab.sel.activa.0,
+            ab.sel.activa.1,
+        )
     {
         // Calibri 11, la letra de las tablas, al zoom que se ve.
         let tam = (11.0 * ab.rejilla.ppp / 72.0 * ab.zoom) as f32;
@@ -2099,7 +2715,11 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     let (bv, bh) = barras(ab, celdas, e, *encima_de);
     for (eje, b) in [(Eje::Vertical, bv), (Eje::Horizontal, bh)] {
         if let Some(b) = b.filter(|_| !sin_interfaz) {
-            let color = k(if *encima_de == Some(eje) { PULGAR_ENCIMA } else { PULGAR });
+            let color = k(if *encima_de == Some(eje) {
+                PULGAR_ENCIMA
+            } else {
+                PULGAR
+            });
             let r = b.pulgar.ancho.min(b.pulgar.alto) / 2.0;
             p.rellenar_redondeado(b.pulgar, r, color);
         }
@@ -2108,18 +2728,47 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     // La barra de formulas: la celda activa y lo que tiene.
     let f = z.formula;
     p.rellenar(f, k(FONDO_BARRA));
-    p.rellenar(RectF { y: f.y + f.alto - 1.0, alto: 1.0, ..f }, k(LINEA));
+    p.rellenar(
+        RectF {
+            y: f.y + f.alto - 1.0,
+            alto: 1.0,
+            ..f
+        },
+        k(LINEA),
+    );
     let tam = TAM_TEXTO * e;
     let (fa, ca) = ab.sel.activa;
     let r = ab.sel.rango();
     let referencia = if r.fila0 == r.fila1 && r.col0 == r.col1 {
         format!("{}{}", nombre_columna(ca), fa + 1)
     } else {
-        format!("{}{}:{}{}", nombre_columna(r.col0), r.fila0 + 1, nombre_columna(r.col1), r.fila1 + 1)
+        format!(
+            "{}{}:{}{}",
+            nombre_columna(r.col0),
+            r.fila0 + 1,
+            nombre_columna(r.col1),
+            r.fila1 + 1
+        )
     };
     let ancho_ref = 150.0 * e;
-    texto_centrado_v(p, &referencia, f.x + 8.0 * e, f, tam, ancho_ref - 12.0 * e, k(TEXTO));
-    p.rellenar(RectF { x: f.x + ancho_ref, y: f.y + 5.0 * e, ancho: 1.0, alto: f.alto - 10.0 * e }, k(LINEA));
+    texto_centrado_v(
+        p,
+        &referencia,
+        f.x + 8.0 * e,
+        f,
+        tam,
+        ancho_ref - 12.0 * e,
+        k(TEXTO),
+    );
+    p.rellenar(
+        RectF {
+            x: f.x + ancho_ref,
+            y: f.y + 5.0 * e,
+            ancho: 1.0,
+            alto: f.alto - 10.0 * e,
+        },
+        k(LINEA),
+    );
     let x0 = f.x + ancho_ref + 10.0 * e;
     if let Some((contenido, tecleado)) = &en_la_barra {
         // A la derecha, que se esta editando (en el verde de Excel).
@@ -2130,18 +2779,57 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
         texto_centrado_v(p, &una_linea, x0, f, tam, cabe, k(TEXTO));
         if tecleado.is_some() {
             let cx = (x0 + p.medir_texto(&una_linea, tam).0 + 1.0).min(x0 + cabe);
-            p.rellenar(RectF { x: cx, y: f.y + 6.0 * e, ancho: e.max(1.0), alto: f.alto - 12.0 * e }, k(TEXTO));
+            p.rellenar(
+                RectF {
+                    x: cx,
+                    y: f.y + 6.0 * e,
+                    ancho: e.max(1.0),
+                    alto: f.alto - 12.0 * e,
+                },
+                k(TEXTO),
+            );
         }
-        texto_centrado_v(p, &modo, f.x + f.ancho - ancho_modo + 10.0 * e, f, tam, ancho_modo, k(VERDE));
+        texto_centrado_v(
+            p,
+            &modo,
+            f.x + f.ancho - ancho_modo + 10.0 * e,
+            f,
+            tam,
+            ancho_modo,
+            k(VERDE),
+        );
     } else {
         let celda = ab.hoja.celda(fa, ca);
-        let contenido = celda.and_then(|c| libro.contenido(&ab.hoja, c)).map(|c| c.mostrado.texto).unwrap_or_default();
+        let contenido = celda
+            .and_then(|c| libro.contenido(&ab.hoja, c))
+            .map(|c| c.mostrado.texto)
+            .unwrap_or_default();
         let enlace = ab.hoja.hipervinculo_en(fa, ca).map(|h| h.destino.clone());
-        let ancho_enlace = if enlace.is_some() { (f.ancho * 0.35).min(360.0 * e) } else { 0.0 };
+        let ancho_enlace = if enlace.is_some() {
+            (f.ancho * 0.35).min(360.0 * e)
+        } else {
+            0.0
+        };
         let una_linea = contenido.replace(['\r', '\n'], " ⏎ ");
-        texto_centrado_v(p, &una_linea, x0, f, tam, f.x + f.ancho - x0 - ancho_enlace - 10.0 * e, k(TEXTO));
+        texto_centrado_v(
+            p,
+            &una_linea,
+            x0,
+            f,
+            tam,
+            f.x + f.ancho - x0 - ancho_enlace - 10.0 * e,
+            k(TEXTO),
+        );
         if let Some(d) = enlace {
-            texto_centrado_v(p, &d, f.x + f.ancho - ancho_enlace - 6.0 * e, f, tam, ancho_enlace, k(ENLACE));
+            texto_centrado_v(
+                p,
+                &d,
+                f.x + f.ancho - ancho_enlace - 6.0 * e,
+                f,
+                tam,
+                ancho_enlace,
+                k(ENLACE),
+            );
         }
     }
 
@@ -2156,15 +2844,42 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
         estado.push(format!("{:.0} %", ab.zoom * 100.0));
     }
     let estado = estado.join("   ·   ");
-    let ancho_estado = if estado.is_empty() { 0.0 } else { p.medir_texto(&estado, tam).0 + 24.0 * e };
-    let tira = RectF { ancho: (z.pestanas.ancho - ancho_estado).max(0.0), ..z.pestanas };
+    let ancho_estado = if estado.is_empty() {
+        0.0
+    } else {
+        p.medir_texto(&estado, tam).0 + 24.0 * e
+    };
+    let tira = RectF {
+        ancho: (z.pestanas.ancho - ancho_estado).max(0.0),
+        ..z.pestanas
+    };
     hoja_office::poner_oscuro(oscuro);
     *pestanas = hoja_office::pintar_pestanas(p, cache, libro, activa, *desde_pestana, tira, e);
     if ancho_estado > 0.0 {
-        let caja = RectF { x: z.pestanas.x + z.pestanas.ancho - ancho_estado, ancho: ancho_estado, ..z.pestanas };
-        p.rellenar(caja, k(Color { r: 0.953, g: 0.953, b: 0.953, a: 1.0 }));
+        let caja = RectF {
+            x: z.pestanas.x + z.pestanas.ancho - ancho_estado,
+            ancho: ancho_estado,
+            ..z.pestanas
+        };
+        p.rellenar(
+            caja,
+            k(Color {
+                r: 0.953,
+                g: 0.953,
+                b: 0.953,
+                a: 1.0,
+            }),
+        );
         p.rellenar(RectF { alto: 1.0, ..caja }, k(LINEA));
-        texto_centrado_v(p, &estado, caja.x + 12.0 * e, caja, tam, ancho_estado - 16.0 * e, k(TENUE));
+        texto_centrado_v(
+            p,
+            &estado,
+            caja.x + 12.0 * e,
+            caja,
+            tam,
+            ancho_estado - 16.0 * e,
+            k(TENUE),
+        );
     }
 
     if sin_interfaz {

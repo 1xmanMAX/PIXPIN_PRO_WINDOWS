@@ -20,7 +20,9 @@ pub mod niveles;
 
 use std::path::Path;
 
-use ifc_lite_processing::{OpeningFilterMode, TessellationQuality, process_geometry_filtered_with_quality_and_ids};
+use ifc_lite_processing::{
+    OpeningFilterMode, TessellationQuality, process_geometry_filtered_with_quality_and_ids,
+};
 use pixpin_cad::modelo3d::{Constructor3d, Modelo3d, Nivel};
 
 /// Las extensiones que se abren aqui siempre (BIM).
@@ -31,7 +33,10 @@ pub fn se_abre(extension: &str) -> bool {
 /// Lo que se abre aqui mirando el contenido: un LandXML o un fichero de
 /// puntos (un .xml, .csv o .txt cualquiera no).
 pub fn es_de_civil(ruta: &Path) -> bool {
-    let ext = ruta.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let ext = ruta
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
     (ext == "xml" && civil::es_landxml(ruta)) || civil::es_fichero_de_puntos(ruta)
 }
 
@@ -46,7 +51,10 @@ pub fn convertir_fichero(ruta: &Path) -> Result<Modelo3d, String> {
         .stack_size(PILA)
         .name("bim-leer".into())
         .spawn(move || {
-            let ext = ruta.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            let ext = ruta
+                .extension()
+                .map(|e| e.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
             // Un plano DWG o DXF visto en 3D (el boton «3D» del visor de planos).
             if matches!(ext.as_str(), "dwg" | "dxf") {
                 return pixpin_cad::convertir3d::convertir3d_fichero(&ruta);
@@ -57,10 +65,17 @@ pub fn convertir_fichero(ruta: &Path) -> Result<Modelo3d, String> {
             }
             if !matches!(ext.as_str(), "ifc" | "rvt") {
                 let t = std::fs::read(&ruta).map_err(|e| e.to_string())?;
-                let nombre = ruta.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let nombre = ruta
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 return civil::de_puntos(&String::from_utf8_lossy(&t), &nombre);
             }
-            let ifc = if ext == "rvt" { revit_a_ifc(&ruta)? } else { std::fs::read(&ruta).map_err(|e| e.to_string())? };
+            let ifc = if ext == "rvt" {
+                revit_a_ifc(&ruta)?
+            } else {
+                std::fs::read(&ruta).map_err(|e| e.to_string())?
+            };
             Ok(de_ifc(&ifc))
         })
         .map_err(|e| e.to_string())?
@@ -72,13 +87,24 @@ pub fn convertir_fichero(ruta: &Path) -> Result<Modelo3d, String> {
 fn se_esconde(tipo: &str) -> bool {
     matches!(
         tipo.to_ascii_lowercase().as_str(),
-        "ifcspace" | "ifcopeningelement" | "ifcopeningstandardcase" | "ifcvirtualelement" | "ifcannotation" | "ifczone" | "ifcspatialzone"
+        "ifcspace"
+            | "ifcopeningelement"
+            | "ifcopeningstandardcase"
+            | "ifcvirtualelement"
+            | "ifcannotation"
+            | "ifczone"
+            | "ifcspatialzone"
     )
 }
 
 /// De los bytes de un IFC al modelo.
 pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
-    let r = process_geometry_filtered_with_quality_and_ids(ifc, OpeningFilterMode::Default, TessellationQuality::default(), None);
+    let r = process_geometry_filtered_with_quality_and_ids(
+        ifc,
+        OpeningFilterMode::Default,
+        TessellationQuality::default(),
+        None,
+    );
     let mut c = Constructor3d::nuevo();
     let mut elementos: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
     // Los elementos sin `GlobalId` de `ifc-lite`: se busca en el texto.
@@ -91,7 +117,12 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
         let e = *elementos.entry(m.express_id).or_insert_with(|| {
             let e = c.elemento(&m.ifc_type, m.name.as_deref().unwrap_or(""));
             // Su clave estable (la de los marcadores): el GlobalId.
-            match m.global_id.as_deref().map(str::trim).filter(|g| !g.is_empty()) {
+            match m
+                .global_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|g| !g.is_empty())
+            {
                 Some(g) => c.poner_clave(e, g),
                 None => {
                     sin_global.insert(m.express_id);
@@ -100,9 +131,16 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
             e
         });
         let o = m.origin;
-        let puntos: Vec<[f64; 3]> =
-            m.positions.chunks_exact(3).map(|p| [p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]]).collect();
-        let normales: Vec<[f32; 3]> = m.normals.chunks_exact(3).map(|n| [n[0], n[1], n[2]]).collect();
+        let puntos: Vec<[f64; 3]> = m
+            .positions
+            .chunks_exact(3)
+            .map(|p| [p[0] as f64 + o[0], p[1] as f64 + o[1], p[2] as f64 + o[2]])
+            .collect();
+        let normales: Vec<[f32; 3]> = m
+            .normals
+            .chunks_exact(3)
+            .map(|n| [n[0], n[1], n[2]])
+            .collect();
         let normales = (normales.len() == puntos.len()).then_some(normales.as_slice());
         c.malla(e, &puntos, normales, &m.indices, m.color);
     }
@@ -114,10 +152,27 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
         }
     }
     if !esp.niveles.is_empty() {
-        let indice: std::collections::HashMap<u32, u32> = esp.niveles.iter().enumerate().map(|(k, n)| (n.id, k as u32)).collect();
-        let de: Vec<(u32, u32)> =
-            elementos.iter().filter_map(|(id, e)| Some((*e, *indice.get(esp.de.get(id)?)?))).collect();
-        c.niveles(esp.niveles.into_iter().map(|n| Nivel { nombre: n.nombre, cota: n.cota, clave: n.global }).collect(), &de);
+        let indice: std::collections::HashMap<u32, u32> = esp
+            .niveles
+            .iter()
+            .enumerate()
+            .map(|(k, n)| (n.id, k as u32))
+            .collect();
+        let de: Vec<(u32, u32)> = elementos
+            .iter()
+            .filter_map(|(id, e)| Some((*e, *indice.get(esp.de.get(id)?)?)))
+            .collect();
+        c.niveles(
+            esp.niveles
+                .into_iter()
+                .map(|n| Nivel {
+                    nombre: n.nombre,
+                    cota: n.cota,
+                    clave: n.global,
+                })
+                .collect(),
+            &de,
+        );
     }
     c.terminar()
 }
@@ -125,9 +180,14 @@ pub fn de_ifc(ifc: &[u8]) -> Modelo3d {
 /// Un Revit, a IFC4 con su geometria (y los muebles como Revit los guardo).
 fn revit_a_ifc(ruta: &Path) -> Result<Vec<u8>, String> {
     use rvt::ifc::{ExportQualityMode, RvtDocExporter};
-    let mut rf = rvt::RevitFile::open(ruta).map_err(|e| format!("no es un Revit que se pueda leer: {e}"))?;
+    let mut rf =
+        rvt::RevitFile::open(ruta).map_err(|e| format!("no es un Revit que se pueda leer: {e}"))?;
     let r = RvtDocExporter
-        .export_with_diagnostics_mode_and_limits(&mut rf, ExportQualityMode::Scaffold, rvt::walker::WalkerLimits::default())
+        .export_with_diagnostics_mode_and_limits(
+            &mut rf,
+            ExportQualityMode::Scaffold,
+            rvt::walker::WalkerLimits::default(),
+        )
         .map_err(|e| e.to_string())?;
     let mut modelo = r.model;
     if let Err(e) = rvt::ifc::saved_meshes::attach(&mut rf, &mut modelo) {

@@ -157,7 +157,11 @@ impl Campo {
         _e: f32,
     ) {
         let (_, alto) = p.medir_texto_ajustado(
-            if self.caja.is_empty() { "Ag" } else { self.caja.texto() },
+            if self.caja.is_empty() {
+                "Ag"
+            } else {
+                self.caja.texto()
+            },
             tam,
             ancho.max(1.0),
         );
@@ -182,11 +186,8 @@ impl Campo {
         foco: bool,
         pista: &str,
     ) {
-        let (_, alto) = p.medir_texto_ajustado(
-            &format!("{}.", self.caja.texto()),
-            tam,
-            ancho.max(1.0),
-        );
+        let (_, alto) =
+            p.medir_texto_ajustado(&format!("{}.", self.caja.texto()), tam, ancho.max(1.0));
         let hueco = RectF {
             x: x0,
             y: y0,

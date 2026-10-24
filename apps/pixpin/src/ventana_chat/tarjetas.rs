@@ -99,7 +99,9 @@ pub fn enlaces(texto: &str) -> Vec<(std::ops::Range<usize>, String)> {
             let crudo = recortar_lo_pegado(&resto[..fin]);
             let protocolo = if *inicio == "www." { 0 } else { inicio.len() };
             let sin_protocolo = &crudo[protocolo.min(crudo.len())..];
-            let servidor = &sin_protocolo[..sin_protocolo.find(['/', '?', '#']).unwrap_or(sin_protocolo.len())];
+            let servidor = &sin_protocolo[..sin_protocolo
+                .find(['/', '?', '#'])
+                .unwrap_or(sin_protocolo.len())];
             if crudo.len() > inicio.len() && servidor.contains('.') && !servidor.ends_with('.') {
                 let url = if *inicio == "www." {
                     format!("https://{crudo}")

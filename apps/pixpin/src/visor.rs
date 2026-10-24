@@ -391,7 +391,9 @@ pub fn abrir(
     // A pantalla completa de verdad: el «visor limpio» del movil tapa
     // incluso la barra de estado, y aqui la ventana ocupa el monitor.
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0).con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(ruta)));
+    let mut pin =
+        crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0)
+            .con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(ruta)));
     let mut area = pin.area;
     let mut marco = Marco {
         ancho: area.ancho as f32,
@@ -421,7 +423,12 @@ pub fn abrir(
     pin.al_nacer(&ventana);
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
     // El nombre y el atajo de sus botones, para el globo de la barra.
-    pin.poner_pistas(vec![(0, textos.t("visor-indice-pista")), (1, textos.t("lector-escuchar")), (3, textos.t("lector-auto")), (2, textos.t("lector-mas"))]);
+    pin.poner_pistas(vec![
+        (0, textos.t("visor-indice-pista")),
+        (1, textos.t("lector-escuchar")),
+        (3, textos.t("lector-auto")),
+        (2, textos.t("lector-mas")),
+    ]);
 
     // De un adjunto del chat, lo que viaja con su mensaje (v0.96).
     let ajustes = crate::anotado_del_adjunto::leer(ruta);
@@ -495,7 +502,8 @@ pub fn abrir(
 
     let mut hay_que_pintar = true;
     // Pruebas: imprimir los marcos solo, a los 2 s (como `lector_pdf`).
-    let mut imprimir_al_abrir = std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| ahora_ms() + 2000);
+    let mut imprimir_al_abrir =
+        std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| ahora_ms() + 2000);
     let mut vivo = true;
     // La ruta puede cambiar al renombrar un documento suelto (D5): cada
     // vuelta trabaja con la de ahora.
@@ -514,8 +522,12 @@ pub fn abrir(
                             hacer(&mut e, a, textos, ruta, ubicacion, marco);
                         }
                     }
-                    Some(crate::lector_pin::AccionPin::Nombre) => hacer(&mut e, Accion::Renombrar, textos, ruta, ubicacion, marco),
-                    Some(crate::lector_pin::AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
+                    Some(crate::lector_pin::AccionPin::Nombre) => {
+                        hacer(&mut e, Accion::Renombrar, textos, ruta, ubicacion, marco)
+                    }
+                    Some(crate::lector_pin::AccionPin::PantallaCompleta) => {
+                        pin.alternar_pantalla_completa(&mut ventana)
+                    }
                     Some(crate::lector_pin::AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(crate::lector_pin::AccionPin::Cerrar) => vivo = false,
                     None => {}
@@ -602,7 +614,9 @@ pub fn abrir(
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
                 // Los marcos numerados (`marcos_doc`), como en el plano.
-                EventoOverlay::BotonPulsado(p) if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) => {
+                EventoOverlay::BotonPulsado(p)
+                    if e.marcos.activo && !sobre_la_interfaz(&e, marco, local(p)) =>
+                {
                     e.raton = local(p);
                     // Una ficha de abajo: a ese marco; si no, uno nuevo.
                     if let Some(i) = e.marcos.ficha_en(e.raton, marco.alto, marco.e) {
@@ -618,22 +632,36 @@ pub fn abrir(
                 }
                 EventoOverlay::BotonSoltado(p) if e.marcos.arrastrando() => {
                     e.raton = local(p);
-                    e.marcos.soltar(doc_del_raton(&e, marco), px(&e, marco) as f64);
+                    e.marcos
+                        .soltar(doc_del_raton(&e, marco), px(&e, marco) as f64);
                     ventana.soltar_raton();
                 }
-                EventoOverlay::Tecla { vk: VK_G, ctrl: false, shift: false, .. } if e.nombre.editando.is_none() && !e.anotando => {
+                EventoOverlay::Tecla {
+                    vk: VK_G,
+                    ctrl: false,
+                    shift: false,
+                    ..
+                } if e.nombre.editando.is_none() && !e.anotando => {
                     hacer(&mut e, Accion::Engranaje, textos, ruta, ubicacion, marco);
                 }
-                EventoOverlay::Tecla { vk, ctrl, shift: false, .. }
-                    if e.nombre.editando.is_none()
-                        && !e.anotando
-                        && ((vk == crate::marcos_doc::VK_I && !ctrl)
-                            || (vk == crate::marcos_doc::VK_SUPR && !ctrl && e.marcos.activo)
-                            || (vk == crate::marcos_doc::VK_P && ctrl && !e.marcos.lista.is_empty())) =>
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    shift: false,
+                    ..
+                } if e.nombre.editando.is_none()
+                    && !e.anotando
+                    && ((vk == crate::marcos_doc::VK_I && !ctrl)
+                        || (vk == crate::marcos_doc::VK_SUPR && !ctrl && e.marcos.activo)
+                        || (vk == crate::marcos_doc::VK_P
+                            && ctrl
+                            && !e.marcos.lista.is_empty())) =>
                 {
                     match e.marcos.tecla(vk, ctrl) {
                         Some(crate::marcos_doc::Pedido::Imprimir) => empezar_fotos(&mut e, ruta),
-                        Some(crate::marcos_doc::Pedido::Alternado) if e.marcos.activo => e.poniendo_marca = false,
+                        Some(crate::marcos_doc::Pedido::Alternado) if e.marcos.activo => {
+                            e.poniendo_marca = false
+                        }
                         _ => {}
                     }
                 }
@@ -727,7 +755,9 @@ pub fn abrir(
         // Un clic en una imagen: fuera, como pin.
         // «Voz de Microsoft» en el engranaje: el menu de las voces.
         if std::mem::take(&mut e.elegir_voz) {
-            if let Some(aviso) = leer_en_voz::elegir_voz(ventana.handle(), textos, e.ubicacion.raiz()) {
+            if let Some(aviso) =
+                leer_en_voz::elegir_voz(ventana.handle(), textos, e.ubicacion.raiz())
+            {
                 e.aviso = Some((aviso, ahora_ms() + 4000));
             }
             hay_que_pintar = true;
@@ -781,11 +811,20 @@ pub fn abrir(
                 let _ = superficie.redimensionar(pin.area.ancho, pin.area.alto);
             }
             area = pin.area;
-            marco = Marco { ancho: area.ancho as f32, alto: area.alto as f32, area, ..marco };
+            marco = Marco {
+                ancho: area.ancho as f32,
+                alto: area.alto as f32,
+                area,
+                ..marco
+            };
             hay_que_pintar = true;
         }
         e.en_pin = !pin.pantalla_completa;
-        if pin.actualizar(&motor, &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)), &botones_del_pin(&e)) {
+        if pin.actualizar(
+            &motor,
+            &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)),
+            &botones_del_pin(&e),
+        ) {
             hay_que_pintar = true;
         }
         e.oscuro = pin.oscuro();
@@ -859,7 +898,11 @@ pub fn abrir(
         }
         // Veinte veces por segundo en reposo (la pastilla se desvanece a su
         // hora sin gastar nada), a sesenta mientras el iman se mueve.
-        let tope = if e.x_meta.is_some() || subiendo(&e) { 16 } else { 50 };
+        let tope = if e.x_meta.is_some() || subiendo(&e) {
+            16
+        } else {
+            50
+        };
         // Con una pausa de forma rapida en marcha no llegan eventos: hay que
         // despertarse cuando se cumpla.
         let tope = e.tinta.mano.tope_forma_ms().map_or(tope, |t| t.min(tope));
@@ -1348,7 +1391,14 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     }
     // Los marcos numerados, pegados al documento (`marcos_doc`).
     let (ex, ey) = (e.x, e.y);
-    e.marcos.pintar(p, 0, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s), m.e, m.alto, &crate::marcos_doc::pista(textos));
+    e.marcos.pintar(
+        p,
+        0,
+        &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s),
+        m.e,
+        m.alto,
+        &crate::marcos_doc::pista(textos),
+    );
     barra_de_avance(e, p, m);
     // Los del usuario y, entre ellos, el verde de donde se dejo de escuchar.
     let lista = lista_del_riel(e);
@@ -1376,7 +1426,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         e.tinta
             .pintar_interfaz(p, Some(&e.capa), m.area, m.escala_por_cien);
     } else if e.nombre.editando.is_some()
-        || (!e.en_pin && !e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel || e.viendo_indice))
+        || (!e.en_pin
+            && !e.hallar.caja.abierto
+            && (e.pastilla_hasta > ahora_ms() || e.panel || e.viendo_indice))
     {
         pastilla(e, p, m, &mut botones);
     }
@@ -1389,9 +1441,17 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     } else if let Some(a) = e.auto.as_ref().filter(|_| !e.poniendo_marca && !e.anotando) {
         // La pagina que sube sola: su barra, con lo que queda a esta velocidad.
         let progreso = pixpin_docs::auto_desplazar::progreso(e.y, e.alto_doc, m.alto / px(e, m));
-        let quedan = lector::rotulo_de_lo_que_queda(textos, e.palabras, progreso, a.ppm, lector::minutos_de_hoy());
+        let quedan = lector::rotulo_de_lo_que_queda(
+            textos,
+            e.palabras,
+            progreso,
+            a.ppm,
+            lector::minutos_de_hoy(),
+        );
         let velocidad = lector::rotulo_de_ppm(textos, a.ppm);
-        for (r, b) in lector::pintar_barra_de_auto(p, m.ancho, m.alto, m.e, &velocidad, a.en_marcha, &quedan) {
+        for (r, b) in
+            lector::pintar_barra_de_auto(p, m.ancho, m.alto, m.e, &velocidad, a.en_marcha, &quedan)
+        {
             botones.push((r, Accion::AutoBoton(b)));
         }
     } else if !e.anotando
@@ -1488,7 +1548,15 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         Some((&lector::DOBLE_FLECHA_ABAJO, e.auto.is_some(), Accion::Auto)),
         Some((&material::MORE_VERT, false, Accion::Engranaje)),
         // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
-        (!e.en_pin).then_some((if e.oscuro { &material::LIGHT_MODE } else { &material::DARK_MODE }, false, Accion::Oscuro)),
+        (!e.en_pin).then_some((
+            if e.oscuro {
+                &material::LIGHT_MODE
+            } else {
+                &material::DARK_MODE
+            },
+            false,
+            Accion::Oscuro,
+        )),
         // De pantalla completa, de vuelta a pin.
         (!e.en_pin).then_some((&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta)),
     ]
@@ -2323,13 +2391,16 @@ fn alternar_marcos(e: &mut Estado, ruta: &Path, m: Marco) {
 }
 
 fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
-    riel_de(e, m).contiene(lector::punto(q.0, q.1)) || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
+    riel_de(e, m).contiene(lector::punto(q.0, q.1))
+        || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
 }
 
 /// **A ese marco**: acercarse hasta que llena la ventana, centrado (lo
 /// mismo que para su foto, sin fotografiar).
 fn ir_al_marco(e: &mut Estado, m: Marco, i: usize) {
-    let Some(marco) = e.marcos.lista.get(i).cloned() else { return };
+    let Some(marco) = e.marcos.lista.get(i).cloned() else {
+        return;
+    };
     let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
     e.zoom = zoom_para(e, m, s);
     let s = px(e, m);
@@ -2348,15 +2419,23 @@ fn empezar_fotos(e: &mut Estado, ruta: &Path) {
         return;
     }
     e.poniendo_marca = false;
-    let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    e.fotos = Some(crate::lector_pdf::FotosDeMarcos::nuevas((e.x, e.y, e.zoom), &titulo));
+    let titulo = ruta
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    e.fotos = Some(crate::lector_pdf::FotosDeMarcos::nuevas(
+        (e.x, e.y, e.zoom),
+        &titulo,
+    ));
 }
 
 /// Un paso de las fotos de los marcos (como `lector_pdf`): acercarse hasta
 /// que el marco llena la ventana, pintar solo el documento con sus colores,
 /// fotografiarlo y, con el ultimo, volver e imprimir todos juntos.
 fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
-    let Some(mut f) = e.fotos.take() else { return false };
+    let Some(mut f) = e.fotos.take() else {
+        return false;
+    };
     let Some(marco) = e.marcos.lista.get(f.i).cloned() else {
         terminar_fotos(e, f);
         return true;
@@ -2379,7 +2458,9 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
     }
     let s = px(e, m);
     let (ex, ey) = (e.x, e.y);
-    let r = crate::marcos_doc::caja_en_pantalla(marco.caja, &|q| ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s));
+    let r = crate::marcos_doc::caja_en_pantalla(marco.caja, &|q| {
+        ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s)
+    });
     f.fotografiar(e.hwnd, r);
     if f.i >= e.marcos.lista.len() {
         terminar_fotos(e, f);
@@ -2432,7 +2513,10 @@ fn poner_marcador(e: &mut Estado, i: usize, ruta: &Path) {
         lectura::con_marcador(&e.ajustes.marcadores, fraccion(e), emoji, ahora_ms());
     // Y la vista de ese momento: volver es volver con el mismo zoom.
     if let Some(nuevo) = e.ajustes.marcadores.iter().find(|m| !antes.contains(&m.id)) {
-        e.vistas.poner(&nuevo.id.to_string(), crate::marcos_doc::zoom_a_texto(e.zoom as f64, e.x as f64, e.y as f64));
+        e.vistas.poner(
+            &nuevo.id.to_string(),
+            crate::marcos_doc::zoom_a_texto(e.zoom as f64, e.x as f64, e.y as f64),
+        );
     }
     e.poniendo_marca = false;
     guardar_ajustes(e, ruta);
@@ -2440,7 +2524,11 @@ fn poner_marcador(e: &mut Estado, i: usize, ruta: &Path) {
 
 fn ir_al_marcador(e: &mut Estado, i: usize) {
     if let Some(m) = lista_del_riel(e).get(i) {
-        if let Some((z, x, y)) = e.vistas.de_marca(&m.id.to_string()).and_then(crate::marcos_doc::zoom_de_texto) {
+        if let Some((z, x, y)) = e
+            .vistas
+            .de_marca(&m.id.to_string())
+            .and_then(crate::marcos_doc::zoom_de_texto)
+        {
             e.zoom = z as f32;
             e.x = x as f32;
             e.y = y as f32;
@@ -2500,7 +2588,9 @@ fn alternar_auto(e: &mut Estado, textos: &Catalogo) {
     dejar_de_escuchar(e);
     e.panel = false;
     e.palabras = palabras;
-    e.auto = Some(pixpin_docs::auto_desplazar::Marcha::nueva(lector::ppm_guardadas(&e.ubicacion)));
+    e.auto = Some(pixpin_docs::auto_desplazar::Marcha::nueva(
+        lector::ppm_guardadas(&e.ubicacion),
+    ));
 }
 
 /// Si la pagina esta subiendo ahora (para despertar a sesenta por segundo).
@@ -2854,7 +2944,11 @@ fn hacer(
         Accion::VerPdf => {
             e.panel = false;
             if let Some(pdf) = &e.pdf_de_origen {
-                crate::lector_pdf::lanzar(crate::compartir::idioma_de(ubicacion), ubicacion.clone(), pdf);
+                crate::lector_pdf::lanzar(
+                    crate::compartir::idioma_de(ubicacion),
+                    ubicacion.clone(),
+                    pdf,
+                );
             }
         }
         Accion::Lado(b) => boton_de_lado(e, b, textos, ruta),
@@ -2876,7 +2970,11 @@ fn hacer(
             e.panel = false;
             e.viendo_indice = false;
             let filas = filas_del_panel(e, textos);
-            let entradas: Vec<(u32, String)> = filas.iter().enumerate().map(|(i, (t, _))| (i as u32 + 1, t.clone())).collect();
+            let entradas: Vec<(u32, String)> = filas
+                .iter()
+                .enumerate()
+                .map(|(i, (t, _))| (i as u32 + 1, t.clone()))
+                .collect();
             let hwnd = windows::Win32::Foundation::HWND(e.hwnd as *mut core::ffi::c_void);
             if let Some(k) = pixpin_shell::menu_llano(hwnd, &entradas)
                 && let Some((_, a)) = filas.get(k as usize - 1)
@@ -3230,11 +3328,27 @@ fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
     use crate::lector_pin::BotonLector;
     let mut v = Vec::new();
     if !e.indice.is_empty() {
-        v.push(BotonLector { id: 0, icono: &material::LIST, encendido: e.viendo_indice });
+        v.push(BotonLector {
+            id: 0,
+            icono: &material::LIST,
+            encendido: e.viendo_indice,
+        });
     }
-    v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
-    v.push(BotonLector { id: 3, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() });
-    v.push(BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false });
+    v.push(BotonLector {
+        id: 1,
+        icono: &material::RECORD_VOICE_OVER,
+        encendido: e.voz.is_some(),
+    });
+    v.push(BotonLector {
+        id: 3,
+        icono: &lector::DOBLE_FLECHA_ABAJO,
+        encendido: e.auto.is_some(),
+    });
+    v.push(BotonLector {
+        id: 2,
+        icono: &material::MORE_VERT,
+        encendido: false,
+    });
     v
 }
 
@@ -3347,7 +3461,12 @@ mod pruebas {
         Documento {
             titulo: "x".into(),
             bloques: (0..n)
-                .map(|_| Bloque::nuevo(Clase::Parrafo, vec![Trozo::llano("cinco palabras en este bloque")]))
+                .map(|_| {
+                    Bloque::nuevo(
+                        Clase::Parrafo,
+                        vec![Trozo::llano("cinco palabras en este bloque")],
+                    )
+                })
                 .collect(),
             ..Default::default()
         }
@@ -3361,7 +3480,10 @@ mod pruebas {
         let mut vacio = estado_de_prueba();
         alternar_auto(&mut vacio, &textos);
         assert!(vacio.auto.is_none());
-        assert_eq!(vacio.aviso.as_ref().map(|a| a.0.clone()), Some(textos.t("lector-sin-texto")));
+        assert_eq!(
+            vacio.aviso.as_ref().map(|a| a.0.clone()),
+            Some(textos.t("lector-sin-texto"))
+        );
 
         let mut e = estado_de_prueba();
         e.doc = con_parrafos(40);
@@ -3369,7 +3491,10 @@ mod pruebas {
         assert_eq!(e.palabras, 200);
         let a = e.auto.as_ref().expect("barra puesta");
         assert!(a.en_marcha);
-        assert!((pixpin_docs::auto_desplazar::MINIMO..=pixpin_docs::auto_desplazar::MAXIMO).contains(&a.ppm));
+        assert!(
+            (pixpin_docs::auto_desplazar::MINIMO..=pixpin_docs::auto_desplazar::MAXIMO)
+                .contains(&a.ppm)
+        );
         // Corre: 200 palabras en 10.000 unidades.
         subir_sola(&mut e, m);
         std::thread::sleep(std::time::Duration::from_millis(40));
@@ -3382,10 +3507,28 @@ mod pruebas {
         assert!(!subir_sola(&mut e, m));
         assert_eq!(e.y, y);
         // Esc la cierra antes que el lector.
-        assert!(tecla(&mut e, VK_ESCAPE, false, false, false, &textos, Path::new("x.docx"), m));
+        assert!(tecla(
+            &mut e,
+            VK_ESCAPE,
+            false,
+            false,
+            false,
+            &textos,
+            Path::new("x.docx"),
+            m
+        ));
         assert!(e.auto.is_none());
         // Y D la vuelve a abrir.
-        tecla(&mut e, VK_D, false, false, false, &textos, Path::new("x.docx"), m);
+        tecla(
+            &mut e,
+            VK_D,
+            false,
+            false,
+            false,
+            &textos,
+            Path::new("x.docx"),
+            m,
+        );
         assert!(e.auto.is_some());
     }
 
@@ -3415,9 +3558,17 @@ mod pruebas {
             colocado(Clase::Nota, "[imagen]"),
             colocado(Clase::Nota, "Page 2"),
         ];
-        assert_eq!(para_leer(&c), vec![1, 2], "las marcas fuera; otra nota se sigue leyendo");
+        assert_eq!(
+            para_leer(&c),
+            vec![1, 2],
+            "las marcas fuera; otra nota se sigue leyendo"
+        );
         let mut e = estado_de_prueba();
-        let tiene = |e: &Estado| filas_del_panel(e, &textos).iter().any(|(_, a)| *a == Accion::VerPdf);
+        let tiene = |e: &Estado| {
+            filas_del_panel(e, &textos)
+                .iter()
+                .any(|(_, a)| *a == Accion::VerPdf)
+        };
         assert!(!tiene(&e), "un Word no tiene PDF original");
         e.pdf_de_origen = Some(PathBuf::from("apuntes.pdf"));
         assert!(tiene(&e));
@@ -3441,13 +3592,23 @@ mod pruebas {
             alto: 900.0,
             e: 1.0,
             escala_por_cien: 100,
-            area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1400, alto: 900 },
+            area: pixpin_geom::Rect {
+                x: 0,
+                y: 0,
+                ancho: 1400,
+                alto: 900,
+            },
         };
         let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 1400, 900).expect("superficie");
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        let pdf = std::env::var_os("PIXPIN_PDF").map(PathBuf::from).expect("PIXPIN_PDF");
-        let html = como_texto::convertir(&std::fs::read(&pdf).unwrap(), "Artículo", "es", "Hoja").expect("texto");
+        let pdf = std::env::var_os("PIXPIN_PDF")
+            .map(PathBuf::from)
+            .expect("PIXPIN_PDF");
+        let html = como_texto::convertir(&std::fs::read(&pdf).unwrap(), "Artículo", "es", "Hoja")
+            .expect("texto");
         let mut e = estado_de_prueba();
         e.doc = pixpin_docs::html::pagina(&html, "Artículo");
         e.alto_doc = 0.0;
@@ -3462,7 +3623,12 @@ mod pruebas {
             .expect("pintar");
         fuera.esperar_gpu().expect("esperar");
         let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
-        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).expect("png");
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+            ancho,
+            alto,
+            pixeles,
+        })
+        .expect("png");
         let ruta = carpeta.join("lector-pdf-como-texto.png");
         std::fs::write(&ruta, png).expect("guardar");
         println!("{}", ruta.display());

@@ -379,9 +379,15 @@ impl Marcador {
                 // Una ficha de los marcos (con la herramienta Marco): a ese.
                 if self.enmarcando {
                     let e = cx.escala_por_cien as f32 / 100.0;
-                    let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), cx.area.alto as f32, e);
-                    if let Some(i) = crate::marcos_doc::ficha_bajo(&fichas, (q.x as f32, q.y as f32)) {
-                        return Respuesta { ir_a_marco: Some(i), ..Respuesta::suya(true) };
+                    let fichas =
+                        crate::marcos_doc::fichas_de(self.marcos.len(), cx.area.alto as f32, e);
+                    if let Some(i) =
+                        crate::marcos_doc::ficha_bajo(&fichas, (q.x as f32, q.y as f32))
+                    {
+                        return Respuesta {
+                            ir_a_marco: Some(i),
+                            ..Respuesta::suya(true)
+                        };
                     }
                 }
                 match riel.destino(q) {
@@ -603,7 +609,16 @@ impl Marcador {
         escala_por_cien: u32,
     ) {
         let e = pixpin_escala(escala_por_cien);
-        pintar_marcos(p, &self.marcos, &self.nombres, efectiva, margen, ancho_px, alto_px, e);
+        pintar_marcos(
+            p,
+            &self.marcos,
+            &self.nombres,
+            efectiva,
+            margen,
+            ancho_px,
+            alto_px,
+            e,
+        );
         if self.marcas.is_empty() {
             return;
         }
@@ -712,7 +727,12 @@ pub(super) fn pintar_riel(
         ),
         (riel.hojita, &material::DRAW, editando, DestinoRiel::Hojita),
         // El marco: como en los visores y en el plano.
-        (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
+        (
+            riel.imprimir,
+            &material::CROP_FREE,
+            enmarcando,
+            DestinoRiel::Imprimir,
+        ),
     ] {
         let r = rf(caja);
         if activo {
@@ -736,7 +756,14 @@ pub(super) fn pintar_riel(
     // El globo del boton bajo el raton: su nombre y su tecla.
     if let Some((caja, clave)) = match encima {
         DestinoRiel::PonerMarca => Some((riel.poner_marca, "riel-marcador")),
-        DestinoRiel::Hojita => Some((riel.hojita, if editando { "riel-mirar" } else { "riel-editar" })),
+        DestinoRiel::Hojita => Some((
+            riel.hojita,
+            if editando {
+                "riel-mirar"
+            } else {
+                "riel-editar"
+            },
+        )),
         DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
         _ => None,
     } {
@@ -885,9 +912,18 @@ fn pintar_marcos(
     for (i, m) in marcos.iter().enumerate() {
         let a = efectiva.a_pantalla(Punto2::nuevo(m[0], m[1]));
         let b = efectiva.a_pantalla(Punto2::nuevo(m[0] + m[2], m[1] + m[3]));
-        let r = RectF { x: a.x.min(b.x), y: a.y.min(b.y), ancho: (b.x - a.x).abs(), alto: (b.y - a.y).abs() };
+        let r = RectF {
+            x: a.x.min(b.x),
+            y: a.y.min(b.y),
+            ancho: (b.x - a.x).abs(),
+            alto: (b.y - a.y).abs(),
+        };
         let fuera = margen + 40.0 * e;
-        if r.x > ancho_px + fuera || r.y > alto_px + fuera || r.x + r.ancho < -fuera || r.y + r.alto < -fuera {
+        if r.x > ancho_px + fuera
+            || r.y > alto_px + fuera
+            || r.x + r.ancho < -fuera
+            || r.y + r.alto < -fuera
+        {
             continue;
         }
         p.trazar_discontinuo(r, 1.5 * e, crate::marcos_doc::AZUL);

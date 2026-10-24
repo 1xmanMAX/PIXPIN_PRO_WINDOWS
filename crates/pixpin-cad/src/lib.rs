@@ -10,29 +10,29 @@
 // es mayor que cero y se rechaza en la misma comparacion.
 #![allow(clippy::neg_cmp_op_on_partial_ord)]
 
+pub mod anotado;
 pub mod convertir;
-pub mod croquis;
 pub mod convertir3d;
+pub mod croquis;
 pub mod gpu;
 pub mod gpu3d;
+pub mod iconos;
 pub mod leer;
 pub mod letras;
+pub mod marcadores;
 pub mod modelo;
 pub mod modelo3d;
 pub mod proxy;
-pub mod regla;
-pub mod anotado;
-pub mod ventana3d;
-pub mod relleno;
-pub mod shx;
-pub mod teselar;
-pub mod texto;
-pub mod iconos;
-pub mod marcadores;
-mod trayecto_svg;
-pub mod ventana;
-pub mod web;
 /// Pintar un plano a PNG en la CPU: para las pruebas y, con el rasgo
 /// `pintar-png`, para las de la app (el banco del asistente).
 #[cfg(any(test, feature = "pintar-png"))]
 pub mod pruebas_png;
+pub mod regla;
+pub mod relleno;
+pub mod shx;
+pub mod teselar;
+pub mod texto;
+mod trayecto_svg;
+pub mod ventana;
+pub mod ventana3d;
+pub mod web;

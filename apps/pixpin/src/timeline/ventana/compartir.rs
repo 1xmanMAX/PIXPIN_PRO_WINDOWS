@@ -97,9 +97,17 @@ pub(super) fn contenido_del_detalle(e: &Estado, textos: &Catalogo) -> Option<Con
 /// a la Salida, para arrastrarlo o copiarlo: la forma de compartir de toda
 /// la app (8-oct-2026).
 fn compartir_html(e: &mut Estado, c: &Contenido, textos: &Catalogo) {
-    let id = if c.semilla.is_empty() { "momento".to_string() } else { c.semilla.clone() };
+    let id = if c.semilla.is_empty() {
+        "momento".to_string()
+    } else {
+        c.semilla.clone()
+    };
     let mut m = Momento::nuevo(id, c.cuando, c.titulo.clone(), c.texto.clone());
-    m.fotos = c.fotos.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    m.fotos = c
+        .fotos
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     if let Some((a, d)) = &c.audio {
         m.audio = Some(a.to_string_lossy().into_owned());
         m.duracion_ms = *d;
@@ -184,7 +192,14 @@ pub(super) fn hacer(
             let carpeta = crate::compartir::carpeta_temporal().join("timeline");
             // Con el titulo en el nombre: es lo que ve quien lo recibe.
             // La primera linea y corta: un nombre de fichero no es un texto.
-            let corto: String = c.titulo.lines().next().unwrap_or("").chars().take(60).collect();
+            let corto: String = c
+                .titulo
+                .lines()
+                .next()
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect();
             let nombre = if corto.trim().is_empty() {
                 format!("timeline-{}.png", d.iso())
             } else {

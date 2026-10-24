@@ -268,18 +268,26 @@ fn guardar(e: &mut Estado, k: usize, l: &Leccion, textos: &Catalogo) {
 
 /// La fila de arriba: chips de filtro por gravedad («Todas · 😡 2 · 😟 2 ·
 /// 😌 1») y, a la derecha, el orden («Recientes / Mas repetidas»).
-fn filtros(e: &Estado, p: &Pintor, area: RectF, y: f32, s: f32, textos: &Catalogo) -> Vec<(RectF, Accion)> {
+fn filtros(
+    e: &Estado,
+    p: &Pintor,
+    area: RectF,
+    y: f32,
+    s: f32,
+    textos: &Catalogo,
+) -> Vec<(RectF, Accion)> {
     let mut zonas = Vec::new();
     let todas: Vec<&Leccion> = e.lecciones.iter().map(|t| &t.entrada.leccion).collect();
     let n = tarjetas::cuantas_por_gravedad(&todas);
-    let chips: Vec<(String, Option<i64>)> = std::iter::once((textos.t("timeline-filtro-todas"), None))
-        .chain(
-            [(3i64, n[2]), (2, n[1]), (1, n[0])]
-                .into_iter()
-                .filter(|(_, c)| *c > 0)
-                .map(|(g, c)| (format!("{} {c}", tarjetas::gravedad(g).emoticono), Some(g))),
-        )
-        .collect();
+    let chips: Vec<(String, Option<i64>)> =
+        std::iter::once((textos.t("timeline-filtro-todas"), None))
+            .chain(
+                [(3i64, n[2]), (2, n[1]), (1, n[0])]
+                    .into_iter()
+                    .filter(|(_, c)| *c > 0)
+                    .map(|(g, c)| (format!("{} {c}", tarjetas::gravedad(g).emoticono), Some(g))),
+            )
+            .collect();
     let tam = 13.5 * s;
     let alto = 32.0 * s;
     let mut x = area.x + tarjetas::MARGEN * s;
@@ -315,8 +323,14 @@ fn filtros(e: &Estado, p: &Pintor, area: RectF, y: f32, s: f32, textos: &Catalog
     }
     // El orden, a la derecha, como un pequeno control segmentado.
     let rot = [
-        (textos.t("timeline-orden-recientes"), tarjetas::Orden::Recientes),
-        (textos.t("timeline-orden-repetidas"), tarjetas::Orden::MasRepetidas),
+        (
+            textos.t("timeline-orden-recientes"),
+            tarjetas::Orden::Recientes,
+        ),
+        (
+            textos.t("timeline-orden-repetidas"),
+            tarjetas::Orden::MasRepetidas,
+        ),
     ];
     let anchos: Vec<f32> = rot
         .iter()
@@ -343,8 +357,17 @@ fn filtros(e: &Estado, p: &Pintor, area: RectF, y: f32, s: f32, textos: &Catalog
                 p.rellenar_redondeado(r, r.alto / 2.0, hex(0x48484A));
             }
             let (tw, th) = p.medir_texto(t, tam);
-            p.texto(t, r.x + (w - tw) / 2.0, r.y + (r.alto - th) / 2.0, tam, TEXTO_V);
-            zonas.push((r, Accion::OrdenLecciones(*o == tarjetas::Orden::MasRepetidas)));
+            p.texto(
+                t,
+                r.x + (w - tw) / 2.0,
+                r.y + (r.alto - th) / 2.0,
+                tam,
+                TEXTO_V,
+            );
+            zonas.push((
+                r,
+                Accion::OrdenLecciones(*o == tarjetas::Orden::MasRepetidas),
+            ));
             ox += w;
         }
     }
@@ -394,7 +417,6 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
             let c = clave(&t.entrada.leccion.id);
             zonas.push((pt.tarjeta, Accion::AbrirLeccion(c)));
             zonas.push((pt.otra_vez, Accion::OtraVez(c)));
-
         }
     });
     for (r, a) in zonas {
@@ -454,15 +476,37 @@ fn tarjeta(
                 let borde = (caja.ancho.min(caja.alto) * 0.16).max(10.0 * s);
                 let transparente = Color { a: 0.0, ..base };
                 let lados = [
-                    (RectF { ancho: borde, ..caja }, (caja.x, caja.y), (caja.x + borde, caja.y)),
                     (
-                        RectF { x: caja.x + caja.ancho - borde, ancho: borde, ..caja },
+                        RectF {
+                            ancho: borde,
+                            ..caja
+                        },
+                        (caja.x, caja.y),
+                        (caja.x + borde, caja.y),
+                    ),
+                    (
+                        RectF {
+                            x: caja.x + caja.ancho - borde,
+                            ancho: borde,
+                            ..caja
+                        },
                         (caja.x + caja.ancho, caja.y),
                         (caja.x + caja.ancho - borde, caja.y),
                     ),
-                    (RectF { alto: borde, ..caja }, (caja.x, caja.y), (caja.x, caja.y + borde)),
                     (
-                        RectF { y: caja.y + caja.alto - borde, alto: borde, ..caja },
+                        RectF {
+                            alto: borde,
+                            ..caja
+                        },
+                        (caja.x, caja.y),
+                        (caja.x, caja.y + borde),
+                    ),
+                    (
+                        RectF {
+                            y: caja.y + caja.alto - borde,
+                            alto: borde,
+                            ..caja
+                        },
                         (caja.x, caja.y + caja.alto),
                         (caja.x, caja.y + caja.alto - borde),
                     ),
@@ -471,9 +515,21 @@ fn tarjeta(
                     p.rect_degradado(r, desde, hasta, base, transparente);
                 }
                 // Y el velo, para leer encima en blanco.
-                p.rellenar(caja, Color { a: 0.42, ..Color::NEGRO });
+                p.rellenar(
+                    caja,
+                    Color {
+                        a: 0.42,
+                        ..Color::NEGRO
+                    },
+                );
             }
-            None => p.rellenar(caja, Color { a: 0.07, ..gr.color }),
+            None => p.rellenar(
+                caja,
+                Color {
+                    a: 0.07,
+                    ..gr.color
+                },
+            ),
         }
         p.soltar_recorte_redondeado();
     }
@@ -491,7 +547,11 @@ fn tarjeta(
         let r = 12.0 * s;
         let c = (caja.x + 14.0 * s + r, caja.y + 14.0 * s + r);
         p.circulo(c, r, Color::BLANCO);
-        p.icono(&mi::CHECK_CIRCLE, crate::v2::geom::centrado(c, 2.0 * r), ACENTO);
+        p.icono(
+            &mi::CHECK_CIRCLE,
+            crate::v2::geom::centrado(c, 2.0 * r),
+            ACENTO,
+        );
     }
     // El texto, desde arriba: el titulo (dos renglones) y «la proxima vez»
     // si la hay; si no, lo que paso.
@@ -512,7 +572,16 @@ fn tarjeta(
     );
     let lh = tam_t * 1.33;
     for (n, r) in renglones.iter().enumerate() {
-        super::historia::pintar_trozos(p, r, tx.x, tx.y + n as f32 * lh, tam_t, true, TEXTO_V, false);
+        super::historia::pintar_trozos(
+            p,
+            r,
+            tx.x,
+            tx.y + n as f32 * lh,
+            tam_t,
+            true,
+            TEXTO_V,
+            false,
+        );
     }
     let th = renglones.len() as f32 * lh;
     let resto = RectF {
@@ -524,7 +593,11 @@ fn tarjeta(
     let con_foto = foto.is_some();
     let (texto, color) = if !l.proxima.trim().is_empty() {
         (
-            format!("{}: {}", textos.t("timeline-leccion-proxima"), l.proxima.trim()),
+            format!(
+                "{}: {}",
+                textos.t("timeline-leccion-proxima"),
+                l.proxima.trim()
+            ),
             ui::v2::VERDE,
         )
     } else {
@@ -560,7 +633,15 @@ fn tarjeta(
     if veces > 1 {
         let t = format!("{veces}×");
         let (tw, tht) = ui::medir_negrita(p, &t, 15.0 * s, 80.0 * s);
-        ui::negrita(p, &t, x, b.y + (b.alto - tht) / 2.0, 15.0 * s, tw + 2.0, gr.color);
+        ui::negrita(
+            p,
+            &t,
+            x,
+            b.y + (b.alto - tht) / 2.0,
+            15.0 * s,
+            tw + 2.0,
+            gr.color,
+        );
         x += tw + 12.0 * s;
     }
     if t.voz.is_some() {

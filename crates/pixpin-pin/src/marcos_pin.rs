@@ -121,7 +121,12 @@ impl Encaje {
 
 /// La caja `[x0, y0, x1, y1]` ordenada de dos esquinas.
 pub(crate) fn ordenada(a: [f64; 2], b: [f64; 2]) -> [f64; 4] {
-    [a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])]
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[0].max(b[0]),
+        a[1].max(b[1]),
+    ]
 }
 
 /// **Pinta los marcos** como `marcos_doc::Marcos::pintar`: la raya azul y el
@@ -215,10 +220,16 @@ pub(crate) fn ficha_en(caja: RectF, n: usize, e: f32, x: f32, y: f32) -> Option<
 /// para que llene el pin con un poco de aire (como
 /// `marcos_doc::px_para_llenar`) y el desplazamiento que lo centra, lo que
 /// pinta `d + p * escala`. Quien lo usa aun lo pega a los bordes.
-pub(crate) fn vista_del_marco(caja_marco: (f64, f64, f64, f64), ancho: f32, alto: f32) -> (f32, f32, f32) {
+pub(crate) fn vista_del_marco(
+    caja_marco: (f64, f64, f64, f64),
+    ancho: f32,
+    alto: f32,
+) -> (f32, f32, f32) {
     let (x0, y0, x1, y1) = caja_marco;
     let (bw, bh) = ((x1 - x0).max(1e-6) as f32, (y1 - y0).max(1e-6) as f32);
-    let escala = ((ancho * 0.94) / bw).min((alto * 0.94) / bh).clamp(1.0, 40.0);
+    let escala = ((ancho * 0.94) / bw)
+        .min((alto * 0.94) / bh)
+        .clamp(1.0, 40.0);
     let (cx, cy) = (((x0 + x1) / 2.0) as f32, ((y0 + y1) / 2.0) as f32);
     (escala, ancho / 2.0 - cx * escala, alto / 2.0 - cy * escala)
 }
@@ -230,7 +241,13 @@ fn pintar_fichas(p: &Pintor, fichas: &[RectF], e: f32) {
         let numero = (k + 1).to_string();
         let tam = 12.0 * e;
         let (w, h) = p.medir_texto(&numero, tam);
-        p.texto(&numero, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, Color::BLANCO);
+        p.texto(
+            &numero,
+            r.x + (r.ancho - w) / 2.0,
+            r.y + (r.alto - h) / 2.0,
+            tam,
+            Color::BLANCO,
+        );
     }
 }
 
@@ -262,18 +279,29 @@ pub(crate) fn pintar_pista(p: &Pintor, caja: RectF, texto: &str, n: usize, e: f3
             };
             p.con_recorte(caja, |p| {
                 p.rellenar_redondeado(fondo, fondo.alto / 2.0, CRISTAL);
-                p.texto(texto, fondo.x + 12.0 * e, fondo.y + 6.0 * e, tam, Color::BLANCO);
+                p.texto(
+                    texto,
+                    fondo.x + 12.0 * e,
+                    fondo.y + 6.0 * e,
+                    tam,
+                    Color::BLANCO,
+                );
             });
             return;
         }
     }
     // Encima de las fichas (o abajo del todo, sin ellas).
-    let reservado = fichas.first().map_or(0.0, |r| caja.y + caja.alto - r.y + 4.0 * e);
+    let reservado = fichas
+        .first()
+        .map_or(0.0, |r| caja.y + caja.alto - r.y + 4.0 * e);
     let ancho_max = (caja.ancho - 16.0 * e - 24.0 * e).max(40.0 * e);
     let partes: Vec<&str> = texto.split(" · ").collect();
     let tope = caja.alto / 3.0;
     let mut n = partes.len();
-    let (mut corto, mut medida) = (texto.to_string(), p.medir_texto_ajustado(texto, tam, ancho_max));
+    let (mut corto, mut medida) = (
+        texto.to_string(),
+        p.medir_texto_ajustado(texto, tam, ancho_max),
+    );
     while n > 1 && medida.1 + 12.0 * e > tope {
         n -= 1;
         corto = partes[..n].join(" · ");
@@ -287,10 +315,21 @@ pub(crate) fn pintar_pista(p: &Pintor, caja: RectF, texto: &str, n: usize, e: f3
         alto: h + 12.0 * e,
     };
     // Una sola linea, pildora; varias, esquinas redondeadas sin mas.
-    let radio = if h <= tam * 1.6 { fondo.alto / 2.0 } else { 8.0 * e };
+    let radio = if h <= tam * 1.6 {
+        fondo.alto / 2.0
+    } else {
+        8.0 * e
+    };
     p.con_recorte(caja, |p| {
         p.rellenar_redondeado(fondo, radio, CRISTAL);
-        p.texto_ajustado(&corto, fondo.x + 12.0 * e, fondo.y + 6.0 * e, tam, ancho_max, Color::BLANCO);
+        p.texto_ajustado(
+            &corto,
+            fondo.x + 12.0 * e,
+            fondo.y + 6.0 * e,
+            tam,
+            ancho_max,
+            Color::BLANCO,
+        );
     });
 }
 
@@ -300,7 +339,11 @@ mod pruebas {
 
     fn encaje(giro: u8, h: bool, v: bool) -> Encaje {
         // Una foto de 400 x 200 ensenada a la mitad (girada, 100 x 200).
-        let caja = if giro % 2 == 1 { (100.0, 200.0) } else { (200.0, 100.0) };
+        let caja = if giro % 2 == 1 {
+            (100.0, 200.0)
+        } else {
+            (200.0, 100.0)
+        };
         Encaje {
             imagen: (400.0, 200.0),
             caja,
@@ -320,7 +363,10 @@ mod pruebas {
         assert!(cerca(e.a_caja([100.0, 50.0]), (50.0, 25.0)));
         assert_eq!(e.a_imagen(50.0, 25.0), [100.0, 50.0]);
         // El pin al doble: el mismo pixel de la foto, el doble de lejos.
-        let doble = Encaje { caja: (400.0, 200.0), ..e };
+        let doble = Encaje {
+            caja: (400.0, 200.0),
+            ..e
+        };
         assert!(cerca(doble.a_caja([100.0, 50.0]), (100.0, 50.0)));
     }
 
@@ -329,7 +375,11 @@ mod pruebas {
         // Como `con_giro` con un cuarto a la derecha: (0, 0) de la foto cae
         // en la esquina de arriba a la derecha de la tarjeta.
         let e = encaje(1, false, false);
-        assert!(cerca(e.a_caja([0.0, 0.0]), (100.0, 0.0)), "{:?}", e.a_caja([0.0, 0.0]));
+        assert!(
+            cerca(e.a_caja([0.0, 0.0]), (100.0, 0.0)),
+            "{:?}",
+            e.a_caja([0.0, 0.0])
+        );
         assert!(cerca(e.a_caja([400.0, 200.0]), (0.0, 200.0)));
     }
 
@@ -354,7 +404,12 @@ mod pruebas {
 
     #[test]
     fn las_fichas_van_abajo_a_la_izquierda_y_pasan_de_fila_en_un_pin_estrecho() {
-        let ancho = RectF { x: 0.0, y: 0.0, ancho: 600.0, alto: 400.0 };
+        let ancho = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: 600.0,
+            alto: 400.0,
+        };
         let f = fichas(ancho, 3, 1.0);
         assert_eq!(f.len(), 3);
         assert_eq!((f[0].x, f[0].y), (8.0, 400.0 - 8.0 - 24.0));
@@ -363,7 +418,12 @@ mod pruebas {
         // Caso negativo: fuera de las fichas, ninguna (el clic pone un marco).
         assert_eq!(ficha_en(ancho, 3, 1.0, 300.0, 200.0), None);
         // Un pin de 110 px: 3 por fila; la 4 en la fila de abajo.
-        let estrecho = RectF { x: 0.0, y: 0.0, ancho: 110.0, alto: 300.0 };
+        let estrecho = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: 110.0,
+            alto: 300.0,
+        };
         let f = fichas(estrecho, 4, 1.0);
         assert_eq!(f.len(), 4);
         assert!(f[0].y < f[3].y, "la primera fila arriba");
@@ -378,9 +438,14 @@ mod pruebas {
         let (escala, dx, dy) = vista_del_marco((100.0, 50.0, 200.0, 100.0), 400.0, 200.0);
         assert!((escala - 3.76).abs() < 1e-4, "{escala}");
         // Su centro (150, 75) cae en el centro de la tarjeta.
-        assert!((dx + 150.0 * escala - 200.0).abs() < 1e-3 && (dy + 75.0 * escala - 100.0).abs() < 1e-3);
+        assert!(
+            (dx + 150.0 * escala - 200.0).abs() < 1e-3 && (dy + 75.0 * escala - 100.0).abs() < 1e-3
+        );
         // Caso negativo: un marco tan grande como el pin no aleja (minimo 1).
-        assert_eq!(vista_del_marco((0.0, 0.0, 400.0, 200.0), 400.0, 200.0).0, 1.0);
+        assert_eq!(
+            vista_del_marco((0.0, 0.0, 400.0, 200.0), 400.0, 200.0).0,
+            1.0
+        );
     }
 
     #[test]

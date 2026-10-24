@@ -101,11 +101,7 @@ fn de_funcion_rgb(entrada: &str) -> Option<Option<u32>> {
     if !(3..=4).contains(&partes.len()) {
         return None;
     }
-    let (r, g, b) = (
-        numero(partes[0])?,
-        numero(partes[1])?,
-        numero(partes[2])?,
-    );
+    let (r, g, b) = (numero(partes[0])?, numero(partes[1])?, numero(partes[2])?);
     let a = match partes.get(3).map(|a| a.trim()) {
         None => 255,
         Some(a) => alfa_de(a)?,

@@ -52,12 +52,20 @@ pub struct Encargo {
 /// (sin subcarpetas ni `..`), un `.json` que aun no existe.
 pub fn respuesta_valida(r: &Path, temp: &Path) -> bool {
     let carpeta = temp.join(CARPETA);
-    let misma = |a: &Path, b: &Path| a.to_string_lossy().trim_end_matches(['\\', '/']).eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']));
+    let misma = |a: &Path, b: &Path| {
+        a.to_string_lossy()
+            .trim_end_matches(['\\', '/'])
+            .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']))
+    };
     r.is_absolute()
         && r.parent().is_some_and(|p| misma(p, &carpeta))
-        && r.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"))
-        && r.file_name().is_some_and(|n| !n.to_string_lossy().starts_with('.'))
-        && !r.components().any(|c| matches!(c, std::path::Component::ParentDir))
+        && r.extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("json"))
+        && r.file_name()
+            .is_some_and(|n| !n.to_string_lossy().starts_with('.'))
+        && !r
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
         && !r.exists()
 }
 
@@ -81,7 +89,8 @@ pub fn hacer_con(
     confirmar: &Confirmar,
     mandar: &Mandar,
 ) -> Result<String, String> {
-    let fila = acciones::por_nombre(e.nombre.trim()).ok_or_else(|| format!("no hay ninguna herramienta «{}»", e.nombre))?;
+    let fila = acciones::por_nombre(e.nombre.trim())
+        .ok_or_else(|| format!("no hay ninguna herramienta «{}»", e.nombre))?;
     if fila.herramienta == pixpin_ia::hoja::NOMBRE {
         return Err("«hoja_a_lienzo» solo se puede pedir desde el chat del asistente".into());
     }
@@ -92,7 +101,11 @@ pub fn hacer_con(
         _ => return Err("«args» tiene que ser un objeto JSON".into()),
     };
     let a = acciones::validar(fila, &args).map_err(|e| e.to_string())?;
-    if let Some(q) = e.preguntar.as_deref().map(str::trim).filter(|q| !q.is_empty())
+    if let Some(q) = e
+        .preguntar
+        .as_deref()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
         && !confirmar(q)
     {
         return Err("el usuario dijo que no; no se hizo nada".into());
@@ -123,7 +136,12 @@ fn preguntara(e: &Encargo) -> bool {
 
 /// **Lo hace en su hilo** y escribe la respuesta. Una `respuesta` que no
 /// vale se ignora (se hace igual y queda en el registro).
-pub fn lanzar(entorno: Entorno, idioma: pixpin_store::Idioma, opciones: crate::ventana_chat::OpcionesLienzo, e: Encargo) {
+pub fn lanzar(
+    entorno: Entorno,
+    idioma: pixpin_store::Idioma,
+    opciones: crate::ventana_chat::OpcionesLienzo,
+    e: Encargo,
+) {
     let temp = std::env::temp_dir();
     let respuesta = e.respuesta.clone().filter(|r| {
         let bien = respuesta_valida(r, &temp);
@@ -192,7 +210,10 @@ mod pruebas {
         // Casos negativos: fuera, en una subcarpeta, con `..`, otra extension,
         // relativa o ya existente.
         assert!(!respuesta_valida(&temp.join("1.json"), &temp));
-        assert!(!respuesta_valida(&carpeta.join("sub").join("1.json"), &temp));
+        assert!(!respuesta_valida(
+            &carpeta.join("sub").join("1.json"),
+            &temp
+        ));
         assert!(!respuesta_valida(&carpeta.join("..").join("1.json"), &temp));
         assert!(!respuesta_valida(&carpeta.join("1.exe"), &temp));
         assert!(!respuesta_valida(Path::new(r"pixpin-mcp\1.json"), &temp));
@@ -213,7 +234,8 @@ mod pruebas {
     /// y lo que lleva `preguntar` no se hace si dice que no.
     #[test]
     fn la_herramienta_se_hace_como_en_el_asistente() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-externa-tareas-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-externa-tareas-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(&raiz).unwrap();
         crate::tareas::apuntar(&raiz, "PC01", "comprar pan").unwrap();
@@ -246,24 +268,97 @@ mod pruebas {
             preguntar: preguntar.map(str::to_string),
             ..Default::default()
         };
-        let r = hacer_con(&encargo("anadir_tarea", r#"{"texto":"revisar planos","fecha":"mañana a las 10"}"#, None), &raiz, es, &si, &mandar);
-        assert_eq!(r.as_deref(), Ok("Apuntada «revisar planos» para mañana 10:00."));
+        let r = hacer_con(
+            &encargo(
+                "anadir_tarea",
+                r#"{"texto":"revisar planos","fecha":"mañana a las 10"}"#,
+                None,
+            ),
+            &raiz,
+            es,
+            &si,
+            &mandar,
+        );
+        assert_eq!(
+            r.as_deref(),
+            Ok("Apuntada «revisar planos» para mañana 10:00.")
+        );
         // Con `preguntar` y un no: nada sale.
         let antes = mandados.lock().unwrap().len();
-        let r = hacer_con(&encargo("marcar_tarea", r#"{"tarea":"comprar pan"}"#, Some("¿Marco?")), &raiz, es, &no, &mandar);
+        let r = hacer_con(
+            &encargo(
+                "marcar_tarea",
+                r#"{"tarea":"comprar pan"}"#,
+                Some("¿Marco?"),
+            ),
+            &raiz,
+            es,
+            &no,
+            &mandar,
+        );
         assert!(r.unwrap_err().contains("dijo que no"));
         assert_eq!(mandados.lock().unwrap().len(), antes, "salio sin permiso");
-        let r = hacer_con(&encargo("marcar_tarea", r#"{"tarea":"comprar pan"}"#, Some("¿Marco?")), &raiz, es, &si, &mandar);
+        let r = hacer_con(
+            &encargo(
+                "marcar_tarea",
+                r#"{"tarea":"comprar pan"}"#,
+                Some("¿Marco?"),
+            ),
+            &raiz,
+            es,
+            &si,
+            &mandar,
+        );
         assert_eq!(r.as_deref(), Ok("«comprar pan» marcada como hecha."));
         // La consulta tambien vale (contesta sin mandar nada).
-        let r = hacer_con(&encargo("consultar_tareas", "{}", None), &raiz, es, &si, &mandar).unwrap();
+        let r = hacer_con(
+            &encargo("consultar_tareas", "{}", None),
+            &raiz,
+            es,
+            &si,
+            &mandar,
+        )
+        .unwrap();
         assert!(r.contains("revisar planos"), "{r}");
         // Negativos: una que no existe, la del lienzo, argumentos que no son
         // un objeto o que no valen.
-        assert!(hacer_con(&encargo("borrar_todo", "{}", None), &raiz, es, &si, &mandar).unwrap_err().contains("borrar_todo"));
-        assert!(hacer_con(&encargo("hoja_a_lienzo", "{}", None), &raiz, es, &si, &mandar).is_err());
-        assert!(hacer_con(&encargo("anadir_tarea", "[1]", None), &raiz, es, &si, &mandar).unwrap_err().contains("objeto"));
-        assert!(hacer_con(&encargo("anadir_tarea", "{}", None), &raiz, es, &si, &mandar).unwrap_err().contains("«texto»"));
+        assert!(
+            hacer_con(&encargo("borrar_todo", "{}", None), &raiz, es, &si, &mandar)
+                .unwrap_err()
+                .contains("borrar_todo")
+        );
+        assert!(
+            hacer_con(
+                &encargo("hoja_a_lienzo", "{}", None),
+                &raiz,
+                es,
+                &si,
+                &mandar
+            )
+            .is_err()
+        );
+        assert!(
+            hacer_con(
+                &encargo("anadir_tarea", "[1]", None),
+                &raiz,
+                es,
+                &si,
+                &mandar
+            )
+            .unwrap_err()
+            .contains("objeto")
+        );
+        assert!(
+            hacer_con(
+                &encargo("anadir_tarea", "{}", None),
+                &raiz,
+                es,
+                &si,
+                &mandar
+            )
+            .unwrap_err()
+            .contains("«texto»")
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

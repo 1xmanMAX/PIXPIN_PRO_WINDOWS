@@ -169,7 +169,11 @@ pub fn desde_json(texto: &str) -> Vec<FiguraGuardada> {
             if elementos.is_empty() {
                 return None;
             }
-            let nombre = v.get("nombre").and_then(Value::as_str).unwrap_or("Figura").trim();
+            let nombre = v
+                .get("nombre")
+                .and_then(Value::as_str)
+                .unwrap_or("Figura")
+                .trim();
             Some(FiguraGuardada {
                 id: v
                     .get("id")
@@ -416,8 +420,13 @@ mod pruebas {
         // piezas que no se entienden. Y el formato viejo del PC se lee.
         assert!(desde_json("no es json").is_empty());
         assert!(desde_json(r#"{"a":1}"#).is_empty());
-        assert!(desde_json(r#"[{"nombre":"vacia","elementos":[]}, 7, {"nombre":"sin"}]"#).is_empty());
-        assert!(desde_json(r#"[{"nombre":"rara","elementos":[{"type":"pixpin-solido-raro"}]}]"#).is_empty());
+        assert!(
+            desde_json(r#"[{"nombre":"vacia","elementos":[]}, 7, {"nombre":"sin"}]"#).is_empty()
+        );
+        assert!(
+            desde_json(r#"[{"nombre":"rara","elementos":[{"type":"pixpin-solido-raro"}]}]"#)
+                .is_empty()
+        );
         let viejo = serde_json::to_string(&vec![guardada()]).unwrap();
         let l = desde_json(&viejo);
         assert_eq!(l.len(), 1);
@@ -437,7 +446,10 @@ mod pruebas {
         assert!(anadir(&ruta, b));
         assert!(anadir(&ruta, a));
         let l = cargar(&ruta);
-        assert_eq!(l.iter().map(|f| f.nombre.as_str()).collect::<Vec<_>>(), ["arbol", "casa"]);
+        assert_eq!(
+            l.iter().map(|f| f.nombre.as_str()).collect::<Vec<_>>(),
+            ["arbol", "casa"]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

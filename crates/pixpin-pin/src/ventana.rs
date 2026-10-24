@@ -27,7 +27,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
     VK_SHIFT, VK_UP,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_DELETE, VK_MENU, VK_RETURN, VK_SPACE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    VK_BACK, VK_DELETE, VK_MENU, VK_RETURN, VK_SPACE,
+};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
@@ -1503,7 +1505,14 @@ impl Pin {
         if i.anotaciones.is_empty() && i.grafitos.is_empty() {
             return Some(filtrada);
         }
-        hornear(&i.motor, &i.d3d, &filtrada, &i.anotaciones, &i.grafitos, i.imagen_nativa)
+        hornear(
+            &i.motor,
+            &i.d3d,
+            &filtrada,
+            &i.anotaciones,
+            &i.grafitos,
+            i.imagen_nativa,
+        )
     }
 
     /// Si el pin lleva marcos numerados: solo una foto (un documento, una
@@ -1760,8 +1769,15 @@ fn pistas_del_riel(i: &PinInterno) -> Vec<(crate::riel_pin::BotonRiel, String)> 
     let Some(t) = &i.textos else {
         return Vec::new();
     };
-    let marco = if admite_marcos(i) { &t.v2.riel_marcos } else { &t.v2.riel_imprimir };
-    vec![(BotonRiel::Lapiz, t.v2.riel_anotar.clone()), (BotonRiel::Marco, marco.clone())]
+    let marco = if admite_marcos(i) {
+        &t.v2.riel_marcos
+    } else {
+        &t.v2.riel_imprimir
+    };
+    vec![
+        (BotonRiel::Lapiz, t.v2.riel_anotar.clone()),
+        (BotonRiel::Marco, marco.clone()),
+    ]
 }
 
 /// Repinta la barra si es de este pin (cambio el zoom, la pagina, el video).
@@ -3168,14 +3184,7 @@ fn pintar(i: &PinInterno) {
                     },
                 );
                 if let Some((_, n, total)) = hoja {
-                    pintar_pie_de_nota(
-                        p,
-                        pie_de_nota(caja, escala),
-                        n,
-                        total,
-                        escala,
-                        tinta,
-                    );
+                    pintar_pie_de_nota(p, pie_de_nota(caja, escala), n, total, escala, tinta);
                 }
             }
 
@@ -3323,7 +3332,9 @@ fn pintar(i: &PinInterno) {
         // Los marcos numerados, encima de lo anotado y dentro del zoom de
         // dentro: van pegados a su sitio de la foto. La raya y el numero no
         // engordan al acercarse (se deshace el zoom en su grosor).
-        let nuevo = i.marco_nuevo.map(|(a, b)| crate::marcos_pin::ordenada(a, b));
+        let nuevo = i
+            .marco_nuevo
+            .map(|(a, b)| crate::marcos_pin::ordenada(a, b));
         if admite_marcos(i) && (!i.marcos.is_empty() || nuevo.is_some()) {
             let e = escala / i.vista_escala.max(1.0);
             let encaje = encaje_de(i);
@@ -3410,7 +3421,14 @@ fn pintar(i: &PinInterno) {
         // anotado, en la esquina, sin el zoom de dentro ni recortes.
         if let Some(emoji) = &i.pegatina {
             p.desplazar(ox as f32 - m, oy as f32 - m);
-            pintar_pegatina(p, &i.motor, emoji, caja, escala, (ox as f32 - m, oy as f32 - m));
+            pintar_pegatina(
+                p,
+                &i.motor,
+                emoji,
+                caja,
+                escala,
+                (ox as f32 - m, oy as f32 - m),
+            );
         }
         if con_capa {
             // SAFETY: cierra el PushLayer de arriba, dentro del fotograma.
@@ -3486,13 +3504,31 @@ fn pintar_pie_de_nota(
         let centro = (cx + lado * hueco, cy);
         let color = if hay { vivo } else { apagado };
         p.circulo(centro, radio, Color { a: 0.08, ..tinta });
-        p.anillo(centro, radio, escala.max(1.0), Color { a: 0.5 * color.a, ..color });
+        p.anillo(
+            centro,
+            radio,
+            escala.max(1.0),
+            Color {
+                a: 0.5 * color.a,
+                ..color
+            },
+        );
         // El galon, hacia donde va.
         let b = 3.0 * escala;
         let punta = (centro.0 + lado * b * 0.7, centro.1);
         let grosor = 1.5 * escala;
-        p.linea((centro.0 - lado * b * 0.5, centro.1 - b), punta, grosor, color);
-        p.linea((centro.0 - lado * b * 0.5, centro.1 + b), punta, grosor, color);
+        p.linea(
+            (centro.0 - lado * b * 0.5, centro.1 - b),
+            punta,
+            grosor,
+            color,
+        );
+        p.linea(
+            (centro.0 - lado * b * 0.5, centro.1 + b),
+            punta,
+            grosor,
+            color,
+        );
     }
 }
 
@@ -3507,8 +3543,7 @@ fn pintar_pegatina(
     escala: f32,
     base: (f32, f32),
 ) {
-    let (x, y, lado) =
-        crate::pegatina::caja((caja.x, caja.y, caja.ancho, caja.alto), escala);
+    let (x, y, lado) = crate::pegatina::caja((caja.x, caja.y, caja.ancho, caja.alto), escala);
     let (cx, cy) = (x + lado / 2.0, y + lado / 2.0);
     let (sin, cos) = crate::pegatina::GIRO_GRADOS.to_radians().sin_cos();
     let m = windows_numerics::Matrix3x2 {
@@ -4534,7 +4569,9 @@ extern "system" fn procedimiento_pin(
                             // SAFETY: foco a la ventana propia: Esc y
                             // Ctrl+Z tienen que llegar a este pin.
                             unsafe {
-                                let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
+                                let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(
+                                    Some(hwnd),
+                                );
                             }
                             // SAFETY: captura del raton para la ventana
                             // propia mientras se arrastra la seleccion.
@@ -5768,7 +5805,11 @@ extern "system" fn procedimiento_pin(
                     if i.modo_marcos && !i.anotando {
                         let (c, r) = (cursor_de_pantalla(), i.estado.rect());
                         let (x, y) = ((c.x - r.x) as f32, (c.y - r.y) as f32);
-                        return if ficha_bajo(i, x, y).is_some() { IDC_HAND } else { IDC_CROSS };
+                        return if ficha_bajo(i, x, y).is_some() {
+                            IDC_HAND
+                        } else {
+                            IDC_CROSS
+                        };
                     }
                     if i.anotando {
                         // Anotando no se mueve ni se redimensiona: el cursor
@@ -5965,7 +6006,10 @@ mod pruebas {
         );
         // Sin zoom, ni la ida ni la base cambian nada.
         assert_eq!(sin_vista_en(1.0, (0.0, 0.0), 40.0, 7.0), (40.0, 7.0));
-        assert_eq!(base_de_vista((11, 23), 18.0, 1.0), (11.0 - 18.0, 23.0 - 18.0));
+        assert_eq!(
+            base_de_vista((11, 23), 18.0, 1.0),
+            (11.0 - 18.0, 23.0 - 18.0)
+        );
     }
 
     #[test]
@@ -6034,8 +6078,16 @@ mod pruebas {
         };
         let con = hornear(&motor, &d3d, &foto, &[rojo], &[], (40, 30)).expect("horneada");
         assert_eq!((con.ancho, con.alto), (40, 30));
-        assert_eq!(px(&con, 10, 10), [255, 0, 0, 255], "el trazo esta en su sitio");
-        assert_eq!(px(&con, 30, 25), [128, 128, 128, 255], "fuera del trazo, la foto");
+        assert_eq!(
+            px(&con, 10, 10),
+            [255, 0, 0, 255],
+            "el trazo esta en su sitio"
+        );
+        assert_eq!(
+            px(&con, 30, 25),
+            [128, 128, 128, 255],
+            "fuera del trazo, la foto"
+        );
         // Caso negativo: sin nada anotado, la foto sale tal cual.
         let sin = hornear(&motor, &d3d, &foto, &[], &[], (40, 30)).expect("horneada");
         assert_eq!(sin.pixeles, foto.pixeles);
@@ -6827,7 +6879,10 @@ mod pruebas {
         foto.poner_modo_anotacion(true);
         bombear(400);
         assert!(!crate::barra_flotante::es_de(foto.hwnd()));
-        assert!(crate::riel_pin::contiene(rx, ry), "anotando, el riel se queda");
+        assert!(
+            crate::riel_pin::contiene(rx, ry),
+            "anotando, el riel se queda"
+        );
         guardar("pixpin-riel-pin-anotando.png");
 
         foto.poner_modo_anotacion(false);
@@ -6872,13 +6927,22 @@ mod pruebas {
                 px.extend_from_slice(&[v, v, (v as u32 * 9 / 10) as u8, 255]);
             }
         }
-        let rect = Rect { x: 200, y: 220, ancho: w, alto: h };
+        let rect = Rect {
+            x: 200,
+            y: 220,
+            ancho: w,
+            alto: h,
+        };
         let pedidos: Rc<RefCell<Vec<PedidoMarco>>> = Rc::default();
         let apunta = Rc::clone(&pedidos);
         let foto = Pin::nuevo(
             &d3d,
             Rc::clone(&motor),
-            Contenido::Imagen(ImagenRgba { ancho: w, alto: h, pixeles: px }),
+            Contenido::Imagen(ImagenRgba {
+                ancho: w,
+                alto: h,
+                pixeles: px,
+            }),
             rect,
             100,
             false,
@@ -6898,7 +6962,12 @@ mod pruebas {
         // La I pide entrar; el «gestor» contesta encendiendo el modo.
         // SAFETY: mensajes sincronos a una ventana propia de la prueba.
         unsafe {
-            SendMessageW(hwnd, WM_KEYDOWN, Some(WPARAM(b'I' as usize)), Some(LPARAM(0)));
+            SendMessageW(
+                hwnd,
+                WM_KEYDOWN,
+                Some(WPARAM(b'I' as usize)),
+                Some(LPARAM(0)),
+            );
         }
         assert_eq!(pedidos.borrow_mut().pop(), Some(PedidoMarco::Alternar));
         let pista = "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir todos · Supr: quitar el último · I: salir";
@@ -6906,28 +6975,50 @@ mod pruebas {
         assert!(foto.modo_marcos());
 
         let (ox, oy) = origen_contenido(hwnd, foto.rect_contenido());
-        let cliente = |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
+        let cliente =
+            |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
         let mut lista: Vec<[f64; 4]> = Vec::new();
         for (a, b) in [((20, 20), (180, 120)), ((240, 140), (400, 240))] {
             // SAFETY: mensajes sincronos a una ventana propia de la prueba.
             unsafe {
-                SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(a.0, a.1)));
+                SendMessageW(
+                    hwnd,
+                    WM_LBUTTONDOWN,
+                    Some(WPARAM(1)),
+                    Some(cliente(a.0, a.1)),
+                );
                 SendMessageW(hwnd, WM_MOUSEMOVE, Some(WPARAM(1)), Some(cliente(b.0, b.1)));
                 SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(b.0, b.1)));
             }
             let Some(PedidoMarco::Nuevo { a, b, px }) = pedidos.borrow_mut().pop() else {
                 panic!("soltar pide el marco nuevo");
             };
-            assert!((px - 1.0).abs() < 1e-9, "al 100 %, un pixel de la foto es uno de pantalla");
+            assert!(
+                (px - 1.0).abs() < 1e-9,
+                "al 100 %, un pixel de la foto es uno de pantalla"
+            );
             lista.push(crate::marcos_pin::ordenada(a, b));
             foto.poner_marcos(lista.clone(), true, pista);
         }
-        assert_eq!(lista[0], [20.0, 20.0, 180.0, 120.0], "en pixeles de la foto");
-        assert_eq!(foto.rect_contenido(), rect, "poniendo marcos el pin no se mueve");
+        assert_eq!(
+            lista[0],
+            [20.0, 20.0, 180.0, 120.0],
+            "en pixeles de la foto"
+        );
+        assert_eq!(
+            foto.rect_contenido(),
+            rect,
+            "poniendo marcos el pin no se mueve"
+        );
         // Supr pide quitar el ultimo (el gestor no lo hace aqui).
         // SAFETY: mensaje sincrono a una ventana propia de la prueba.
         unsafe {
-            SendMessageW(hwnd, WM_KEYDOWN, Some(WPARAM(VK_DELETE.0 as usize)), Some(LPARAM(0)));
+            SendMessageW(
+                hwnd,
+                WM_KEYDOWN,
+                Some(WPARAM(VK_DELETE.0 as usize)),
+                Some(LPARAM(0)),
+            );
         }
         assert_eq!(pedidos.borrow_mut().pop(), Some(PedidoMarco::QuitarUltimo));
         bombear(300);
@@ -6936,7 +7027,9 @@ mod pruebas {
             .map(std::path::PathBuf::from)
             .unwrap_or_else(std::env::temp_dir);
         let k = {
-            use windows::Win32::Graphics::Gdi::{DESKTOPHORZRES, GetDC, GetDeviceCaps, HORZRES, ReleaseDC};
+            use windows::Win32::Graphics::Gdi::{
+                DESKTOPHORZRES, GetDC, GetDeviceCaps, HORZRES, ReleaseDC,
+            };
             // SAFETY: DC de pantalla pedido y soltado aqui.
             unsafe {
                 let dc = GetDC(None);
@@ -6955,26 +7048,51 @@ mod pruebas {
         };
         guardar(
             "pixpin-marcos-pin.png",
-            Rect { x: z(170), y: z(190), ancho: z(540) as u32, alto: z(330) as u32 },
+            Rect {
+                x: z(170),
+                y: z(190),
+                ancho: z(540) as u32,
+                alto: z(330) as u32,
+            },
         );
 
         // Fuera del modo y al doble de tamano: los marcos, en su sitio.
         foto.poner_marcos(lista.clone(), false, pista);
-        let grande = Rect { x: 200, y: 220, ancho: w * 3 / 2, alto: h * 3 / 2 };
+        let grande = Rect {
+            x: 200,
+            y: 220,
+            ancho: w * 3 / 2,
+            alto: h * 3 / 2,
+        };
         foto.poner_rect(grande);
         bombear(300);
         guardar(
             "pixpin-marcos-pin-grande.png",
-            Rect { x: z(170), y: z(190), ancho: z(700) as u32, alto: z(440) as u32 },
+            Rect {
+                x: z(170),
+                y: z(190),
+                ancho: z(700) as u32,
+                alto: z(440) as u32,
+            },
         );
 
         // Pequeno y con el modo puesto: la pista no se corta por el borde.
         foto.poner_marcos(lista.clone(), true, pista);
-        foto.poner_rect(Rect { x: 200, y: 220, ancho: 260, alto: 160 });
+        foto.poner_rect(Rect {
+            x: 200,
+            y: 220,
+            ancho: 260,
+            alto: 160,
+        });
         bombear(300);
         guardar(
             "pixpin-marcos-pin-pequeno.png",
-            Rect { x: z(170), y: z(190), ancho: z(360) as u32, alto: z(230) as u32 },
+            Rect {
+                x: z(170),
+                y: z(190),
+                ancho: z(360) as u32,
+                alto: z(230) as u32,
+            },
         );
 
         // De vuelta a su tamano, la ficha 2 (abajo a la izquierda) lleva al
@@ -6983,38 +7101,75 @@ mod pruebas {
         foto.poner_rect(rect);
         bombear(200);
         let (ox, oy) = origen_contenido(hwnd, foto.rect_contenido());
-        let cliente = |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
+        let cliente =
+            |x: i32, y: i32| LPARAM((((oy + y) as isize) << 16) | ((ox + x) as isize & 0xFFFF));
         let ficha = crate::marcos_pin::fichas(
-            RectF { x: 0.0, y: 0.0, ancho: w as f32, alto: h as f32 },
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: w as f32,
+                alto: h as f32,
+            },
             lista.len(),
             1.0,
         )[1];
-        let (fx, fy) = ((ficha.x + ficha.ancho / 2.0) as i32, (ficha.y + ficha.alto / 2.0) as i32);
+        let (fx, fy) = (
+            (ficha.x + ficha.ancho / 2.0) as i32,
+            (ficha.y + ficha.alto / 2.0) as i32,
+        );
         // SAFETY: mensajes sincronos a una ventana propia de la prueba.
         unsafe {
             SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(fx, fy)));
             SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(fx, fy)));
         }
-        assert!(pedidos.borrow().is_empty(), "pulsar una ficha no pone un marco");
-        let zoom = interno_de(hwnd).map(|i| (i.vista_escala, i.vista_dx, i.vista_dy)).unwrap();
-        assert!((zoom.0 - 2.444).abs() < 0.01, "el marco 2 (160 x 100) llena el pin: {zoom:?}");
+        assert!(
+            pedidos.borrow().is_empty(),
+            "pulsar una ficha no pone un marco"
+        );
+        let zoom = interno_de(hwnd)
+            .map(|i| (i.vista_escala, i.vista_dx, i.vista_dy))
+            .unwrap();
+        assert!(
+            (zoom.0 - 2.444).abs() < 0.01,
+            "el marco 2 (160 x 100) llena el pin: {zoom:?}"
+        );
         // Su centro (320, 190) en el centro del pin, o lo mas cerca sin
         // despegar la foto del borde.
         assert!(zoom.1 <= 0.0 && zoom.2 <= 0.0);
         bombear(300);
         guardar(
             "pixpin-marcos-pin-ficha2.png",
-            Rect { x: z(170), y: z(190), ancho: z(540) as u32, alto: z(330) as u32 },
+            Rect {
+                x: z(170),
+                y: z(190),
+                ancho: z(540) as u32,
+                alto: z(330) as u32,
+            },
         );
         // La otra ficha cambia de marco: el 1, del mismo tamano y mas a la
         // izquierda.
         // SAFETY: mensajes sincronos a una ventana propia de la prueba.
         unsafe {
-            SendMessageW(hwnd, WM_LBUTTONDOWN, Some(WPARAM(1)), Some(cliente(20, h as i32 - 20)));
-            SendMessageW(hwnd, WM_LBUTTONUP, Some(WPARAM(0)), Some(cliente(20, h as i32 - 20)));
+            SendMessageW(
+                hwnd,
+                WM_LBUTTONDOWN,
+                Some(WPARAM(1)),
+                Some(cliente(20, h as i32 - 20)),
+            );
+            SendMessageW(
+                hwnd,
+                WM_LBUTTONUP,
+                Some(WPARAM(0)),
+                Some(cliente(20, h as i32 - 20)),
+            );
         }
-        let z1 = interno_de(hwnd).map(|i| (i.vista_escala, i.vista_dx, i.vista_dy)).unwrap();
-        assert!((z1.0 - zoom.0).abs() < 0.01 && z1.1 > zoom.1, "la ficha 1 va al marco 1, mas a la izquierda: {z1:?}");
+        let z1 = interno_de(hwnd)
+            .map(|i| (i.vista_escala, i.vista_dx, i.vista_dy))
+            .unwrap();
+        assert!(
+            (z1.0 - zoom.0).abs() < 0.01 && z1.1 > zoom.1,
+            "la ficha 1 va al marco 1, mas a la izquierda: {z1:?}"
+        );
 
         // El riel con el raton sobre el marco: su globo «Marcos para
         // imprimir (I)» a la izquierda, la ventana del riel crece para el.
@@ -7029,7 +7184,12 @@ mod pruebas {
         assert!(riel_ancho(riel) > antes + 60, "el riel crece para su globo");
         guardar(
             "pixpin-riel-pin-globo.png",
-            Rect { x: z(400), y: z(200), ancho: z(300) as u32, alto: z(120) as u32 },
+            Rect {
+                x: z(400),
+                y: z(200),
+                ancho: z(300) as u32,
+                alto: z(120) as u32,
+            },
         );
         drop(foto);
         bombear(100);
@@ -7068,14 +7228,37 @@ mod pruebas {
             )
             .unwrap();
             let (lienzo, tinta) = if claro {
-                (Color::BLANCO, Color { r: 0.1, g: 0.1, b: 0.11, a: 1.0 })
+                (
+                    Color::BLANCO,
+                    Color {
+                        r: 0.1,
+                        g: 0.1,
+                        b: 0.11,
+                        a: 1.0,
+                    },
+                )
             } else {
                 (
-                    Color { r: 0.11, g: 0.11, b: 0.12, a: 1.0 },
-                    Color { r: 0.93, g: 0.93, b: 0.94, a: 1.0 },
+                    Color {
+                        r: 0.11,
+                        g: 0.11,
+                        b: 0.12,
+                        a: 1.0,
+                    },
+                    Color {
+                        r: 0.93,
+                        g: 0.93,
+                        b: 0.94,
+                        a: 1.0,
+                    },
                 )
             };
-            let caja = RectF { x: m, y: m, ancho: w, alto: h };
+            let caja = RectF {
+                x: m,
+                y: m,
+                ancho: w,
+                alto: h,
+            };
             motor
                 .dibujar(&fuera.destino, |p| {
                     p.limpiar_transparente();
@@ -7093,7 +7276,10 @@ mod pruebas {
                     );
                     let pie = pie_de_nota(caja, escala);
                     p.con_recorte(
-                        RectF { alto: h - pie.alto, ..caja },
+                        RectF {
+                            alto: h - pie.alto,
+                            ..caja
+                        },
                         |p| {
                             pintar_markdown(
                                 p,
@@ -7120,7 +7306,12 @@ mod pruebas {
             assert!(asoma, "la pegatina no sobresale");
             std::fs::write(
                 dir.join(format!("{nombre}.png")),
-                pixpin_codec::codificar_png(&ImagenRgba { ancho, alto, pixeles }).unwrap(),
+                pixpin_codec::codificar_png(&ImagenRgba {
+                    ancho,
+                    alto,
+                    pixeles,
+                })
+                .unwrap(),
             )
             .unwrap();
         }
@@ -7128,7 +7319,12 @@ mod pruebas {
 
     #[test]
     fn el_pie_de_la_nota_reparte_el_clic_por_mitades() {
-        let caja = RectF { x: 0.0, y: 0.0, ancho: 200.0, alto: 300.0 };
+        let caja = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: 200.0,
+            alto: 300.0,
+        };
         let pie = pie_de_nota(caja, 1.0);
         assert_eq!(pie.y, 300.0 - PIE_NOTA_LOGICO);
         assert_eq!(salto_en_el_pie(pie, 10.0, 290.0), Some(-1));

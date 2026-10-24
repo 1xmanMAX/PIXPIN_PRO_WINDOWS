@@ -558,7 +558,10 @@ fn elegido(escena: &Escena, seleccion: &[u64], papel: Option<(f32, f32)>) -> Opt
         return de_un_marco(escena, solo, papel);
     }
     let ids = marco::con_contenidos(&escena.elementos, seleccion);
-    let dentro: Vec<&Elemento> = escena.a_la_vista().filter(|e| ids.contains(&e.id)).collect();
+    let dentro: Vec<&Elemento> = escena
+        .a_la_vista()
+        .filter(|e| ids.contains(&e.id))
+        .collect();
     let caja = con_margen(dentro.iter().map(|e| caja_de(e)).reduce(union)?, MARGEN);
     if !es_valida(caja) {
         return None;

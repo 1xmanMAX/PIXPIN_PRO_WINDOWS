@@ -82,14 +82,26 @@ const FIGURAS: &str = r#"{"elementos":[
 /// Cada figura con una etiqueta debajo (su centro en el ancho de la figura,
 /// y arriba entre su borde de abajo y 90 mas abajo) que no pisa otra figura.
 fn nota_etiquetas(e: &Escena, originales: &[u64]) -> f32 {
-    let figuras: Vec<Caja> = e.visibles().filter(|x| originales.contains(&x.id)).map(Elemento::caja).collect();
-    let textos: Vec<Caja> = e.visibles().filter(|x| es_texto(x) && !originales.contains(&x.id)).map(Elemento::caja).collect();
+    let figuras: Vec<Caja> = e
+        .visibles()
+        .filter(|x| originales.contains(&x.id))
+        .map(Elemento::caja)
+        .collect();
+    let textos: Vec<Caja> = e
+        .visibles()
+        .filter(|x| es_texto(x) && !originales.contains(&x.id))
+        .map(Elemento::caja)
+        .collect();
     let bien = figuras
         .iter()
         .filter(|f| {
             textos.iter().any(|t| {
                 let (cx, _) = centro(*t);
-                cx >= f.0 && cx <= f.2 && t.1 >= f.3 - 15.0 && t.1 <= f.3 + 90.0 && !figuras.iter().any(|g| se_pisan(*t, *g))
+                cx >= f.0
+                    && cx <= f.2
+                    && t.1 >= f.3 - 15.0
+                    && t.1 <= f.3 + 90.0
+                    && !figuras.iter().any(|g| se_pisan(*t, *g))
             })
         })
         .count();
@@ -110,13 +122,24 @@ const SOLAPES: &str = r#"{"elementos":[
 /// Problemas que se ven: textos que se pisan y textos que se salen de la
 /// caja en la que tienen el centro.
 fn problemas_de_solapes(e: &Escena) -> usize {
-    let cajas: Vec<Caja> = e.visibles().filter(|x| matches!(x.figura, Figura::Rectangulo)).map(Elemento::caja).collect();
-    let textos: Vec<Caja> = e.visibles().filter(|x| es_texto(x)).map(caja_pintada).collect();
+    let cajas: Vec<Caja> = e
+        .visibles()
+        .filter(|x| matches!(x.figura, Figura::Rectangulo))
+        .map(Elemento::caja)
+        .collect();
+    let textos: Vec<Caja> = e
+        .visibles()
+        .filter(|x| es_texto(x))
+        .map(caja_pintada)
+        .collect();
     let mut n = 0;
     for (i, a) in textos.iter().enumerate() {
         n += textos[i + 1..].iter().filter(|b| se_pisan(*a, **b)).count();
         // Cada texto, entero dentro de alguna caja.
-        if !cajas.iter().any(|c| a.0 >= c.0 - 4.0 && a.2 <= c.2 + 4.0 && a.1 >= c.1 - 4.0 && a.3 <= c.3 + 4.0) {
+        if !cajas
+            .iter()
+            .any(|c| a.0 >= c.0 - 4.0 && a.2 <= c.2 + 4.0 && a.1 >= c.1 - 4.0 && a.3 <= c.3 + 4.0)
+        {
             n += 1;
         }
     }
@@ -142,23 +165,36 @@ const ZIGZAG: &str = r#"{"elementos":[
 
 fn caja_con_texto(e: &Escena, t: &str) -> Option<Caja> {
     let txt = e.visibles().find(|x| texto_de(x) == t)?.caja();
-    e.visibles().filter(|x| matches!(x.figura, Figura::Rectangulo)).map(Elemento::caja).find(|c| dentro(centro(txt), *c))
+    e.visibles()
+        .filter(|x| matches!(x.figura, Figura::Rectangulo))
+        .map(Elemento::caja)
+        .find(|c| dentro(centro(txt), *c))
 }
 
 /// Una flecha por par (Inicio→Proceso, Proceso→Fin) que sale del borde de
 /// la primera y llega al de la segunda (a 25 o menos).
 fn nota_flechas(e: &Escena, _: &[u64]) -> f32 {
-    let (Some(a), Some(b), Some(c)) = (caja_con_texto(e, "inicio"), caja_con_texto(e, "proceso"), caja_con_texto(e, "fin")) else {
+    let (Some(a), Some(b), Some(c)) = (
+        caja_con_texto(e, "inicio"),
+        caja_con_texto(e, "proceso"),
+        caja_con_texto(e, "fin"),
+    ) else {
         return 0.0;
     };
-    let cerca = |p: pixpin_motor2d::Punto2, k: Caja| dentro((p.x, p.y), (k.0 - 25.0, k.1 - 25.0, k.2 + 25.0, k.3 + 25.0));
+    let cerca = |p: pixpin_motor2d::Punto2, k: Caja| {
+        dentro((p.x, p.y), (k.0 - 25.0, k.1 - 25.0, k.2 + 25.0, k.3 + 25.0))
+    };
     let flechas: Vec<Vec<pixpin_motor2d::Punto2>> = e
         .visibles()
         .filter(|x| matches!(x.figura, Figura::Flecha { .. }))
         .filter_map(|x| x.puntos().map(|p| p.to_vec()))
         .filter(|p| p.len() >= 2)
         .collect();
-    let une = |de: Caja, a: Caja| flechas.iter().any(|p| cerca(p[0], de) && cerca(p[p.len() - 1], a));
+    let une = |de: Caja, a: Caja| {
+        flechas
+            .iter()
+            .any(|p| cerca(p[0], de) && cerca(p[p.len() - 1], a))
+    };
     (u8::from(une(a, b)) + u8::from(une(b, c))) as f32 / 2.0
 }
 
@@ -179,15 +215,25 @@ const ID_PLANO: u64 = 0x0001_2345_6789;
 fn plano() -> pixpin_codec::ImagenRgba {
     let mut els = Vec::new();
     for (n, (x0, y0, x1, y1)) in HABITACIONES {
-        els.push(format!(r#"{{"tipo":"rectangulo","caja":[{x0},{y0},{},{}],"color":"negro","grosor":4}}"#, x1 - x0, y1 - y0));
-        els.push(format!(r#"{{"tipo":"texto","x":{},"y":{},"texto":"{n}","tam_letra":22,"color":"gris"}}"#, x0 + 14.0, y0 + 12.0));
+        els.push(format!(
+            r#"{{"tipo":"rectangulo","caja":[{x0},{y0},{},{}],"color":"negro","grosor":4}}"#,
+            x1 - x0,
+            y1 - y0
+        ));
+        els.push(format!(
+            r#"{{"tipo":"texto","x":{},"y":{},"texto":"{n}","tam_letra":22,"color":"gris"}}"#,
+            x0 + 14.0,
+            y0 + 12.0
+        ));
     }
     // Unos muebles para que no sea solo texto.
     els.push(r#"{"tipo":"rectangulo","caja":[600,60,150,40],"color":"gris"}"#.into());
     els.push(r#"{"tipo":"elipse","caja":[640,300,60,50],"color":"gris"}"#.into());
     els.push(r#"{"tipo":"rectangulo","caja":[60,380,160,120],"color":"gris"}"#.into());
     let escena = escena_de(&format!(r#"{{"elementos":[{}]}}"#, els.join(",")));
-    let enc = super::copiar(&escena, (0.0, 0.0, 800.0, 560.0), (0.0, 0.0), false, |_| None);
+    let enc = super::copiar(&escena, (0.0, 0.0, 800.0, 560.0), (0.0, 0.0), false, |_| {
+        None
+    });
     let v = super::pintar(enc).expect("el plano se pinta");
     leer_png(&v.png)
 }
@@ -205,39 +251,91 @@ fn leer_png(png: &[u8]) -> pixpin_codec::ImagenRgba {
 fn nota_plano(e: &Escena, originales: &[u64]) -> f32 {
     let (_, cocina) = HABITACIONES[1];
     // La imagen esta en el lienzo donde quedo: se mide relativo a ella.
-    let Some(img) = e.visibles().find(|x| matches!(x.figura, Figura::Imagen { .. })).map(Elemento::caja) else { return 0.0 };
+    let Some(img) = e
+        .visibles()
+        .find(|x| matches!(x.figura, Figura::Imagen { .. }))
+        .map(Elemento::caja)
+    else {
+        return 0.0;
+    };
     let sx = (img.2 - img.0) / 800.0;
     let sy = (img.3 - img.1) / 560.0;
-    let cocina = (img.0 + cocina.0 * sx, img.1 + cocina.1 * sy, img.0 + cocina.2 * sx, img.1 + cocina.3 * sy);
-    let ok = e.visibles().filter(|x| !originales.contains(&x.id) && !es_texto(x)).any(|x| {
-        let c = x.caja();
-        let rojo = x.trazo.r > 0.6 && x.trazo.g < 0.45;
-        rojo && dentro(centro(c), cocina) && (c.2 - c.0) < 1.6 * (cocina.2 - cocina.0)
-    });
+    let cocina = (
+        img.0 + cocina.0 * sx,
+        img.1 + cocina.1 * sy,
+        img.0 + cocina.2 * sx,
+        img.1 + cocina.3 * sy,
+    );
+    let ok = e
+        .visibles()
+        .filter(|x| !originales.contains(&x.id) && !es_texto(x))
+        .any(|x| {
+            let c = x.caja();
+            let rojo = x.trazo.r > 0.6 && x.trazo.g < 0.45;
+            rojo && dentro(centro(c), cocina) && (c.2 - c.0) < 1.6 * (cocina.2 - cocina.0)
+        });
     f32::from(u8::from(ok))
 }
 
 fn casos(solo: &str) -> Vec<Caso> {
     let mut v = vec![
-        Caso { nombre: "etiquetas", pedido: "Pon una etiqueta de texto con el nombre de cada figura justo debajo de ella.", escena: escena_de(FIGURAS), fotos: vec![], nota: nota_etiquetas },
-        Caso { nombre: "solapes", pedido: "Corrige lo que se solapa en el lienzo: que ningún texto quede encima de otro ni se salga de su caja.", escena: escena_de(SOLAPES), fotos: vec![], nota: nota_solapes },
-        Caso { nombre: "flechas", pedido: "Une las cajas del lienzo con flechas en orden: Inicio, luego Proceso, luego Fin.", escena: escena_de(ZIGZAG), fotos: vec![], nota: nota_flechas },
+        Caso {
+            nombre: "etiquetas",
+            pedido: "Pon una etiqueta de texto con el nombre de cada figura justo debajo de ella.",
+            escena: escena_de(FIGURAS),
+            fotos: vec![],
+            nota: nota_etiquetas,
+        },
+        Caso {
+            nombre: "solapes",
+            pedido: "Corrige lo que se solapa en el lienzo: que ningún texto quede encima de otro ni se salga de su caja.",
+            escena: escena_de(SOLAPES),
+            fotos: vec![],
+            nota: nota_solapes,
+        },
+        Caso {
+            nombre: "flechas",
+            pedido: "Une las cajas del lienzo con flechas en orden: Inicio, luego Proceso, luego Fin.",
+            escena: escena_de(ZIGZAG),
+            fotos: vec![],
+            nota: nota_flechas,
+        },
     ];
     let mut escena = Escena::nueva();
-    escena.anadir(crate::imagenes_lienzo::elemento_imagen(ID_PLANO, 0.0, 20.0, 800.0, 560.0));
-    v.push(Caso { nombre: "plano", pedido: "En el plano del lienzo, encierra la cocina con un círculo rojo.", escena, fotos: vec![(ID_PLANO, plano())], nota: nota_plano });
+    escena.anadir(crate::imagenes_lienzo::elemento_imagen(
+        ID_PLANO, 0.0, 20.0, 800.0, 560.0,
+    ));
+    v.push(Caso {
+        nombre: "plano",
+        pedido: "En el plano del lienzo, encierra la cocina con un círculo rojo.",
+        escena,
+        fotos: vec![(ID_PLANO, plano())],
+        nota: nota_plano,
+    });
     v.retain(|c| solo.is_empty() || solo.contains(c.nombre));
     v
 }
 
 fn motores(solo: &str) -> Vec<(&'static str, Arc<dyn pixpin_ia::Motor>)> {
-    let clave = |var: &str, p: Proveedor| std::env::var(var).ok().filter(|k| !k.trim().is_empty()).or_else(|| pixpin_ia::nube::claves::leer(p));
+    let clave = |var: &str, p: Proveedor| {
+        std::env::var(var)
+            .ok()
+            .filter(|k| !k.trim().is_empty())
+            .or_else(|| pixpin_ia::nube::claves::leer(p))
+    };
     let mut v: Vec<(&'static str, Arc<dyn pixpin_ia::Motor>)> = Vec::new();
-    if (solo.is_empty() || solo.contains("claude")) && let Some(k) = clave("ANTHROPIC_API_KEY", Proveedor::Claude) {
+    if (solo.is_empty() || solo.contains("claude"))
+        && let Some(k) = clave("ANTHROPIC_API_KEY", Proveedor::Claude)
+    {
         v.push(("claude", Arc::new(MotorNube::nuevo(Proveedor::Claude, k))));
     }
-    if (solo.is_empty() || solo.contains("deepseek")) && let Some(k) = clave("DEEPSEEK_API_KEY", Proveedor::DeepSeek) {
-        v.push(("deepseek", Arc::new(MotorNube::nuevo(Proveedor::DeepSeek, k))));
+    if (solo.is_empty() || solo.contains("deepseek"))
+        && let Some(k) = clave("DEEPSEEK_API_KEY", Proveedor::DeepSeek)
+    {
+        v.push((
+            "deepseek",
+            Arc::new(MotorNube::nuevo(Proveedor::DeepSeek, k)),
+        ));
     }
     v
 }
@@ -254,7 +352,12 @@ struct Pasada {
 
 /// **Una pasada**: el lienzo del caso abierto en un «editor» de mentira (la
 /// cola de `al_lienzo` atendida aqui), el turno de verdad y la nota.
-fn pasar(motor: Arc<dyn pixpin_ia::Motor>, caso: &Caso, ojos: bool, png: &std::path::Path) -> Pasada {
+fn pasar(
+    motor: Arc<dyn pixpin_ia::Motor>,
+    caso: &Caso,
+    ojos: bool,
+    png: &std::path::Path,
+) -> Pasada {
     super::super::turno::apagar_ojos(!ojos);
     al_lienzo::vaciar_para_pruebas();
     let editor = al_lienzo::EditorAbierto::nuevo(1);
@@ -274,7 +377,9 @@ fn pasar(motor: Arc<dyn pixpin_ia::Motor>, caso: &Caso, ojos: bool, png: &std::p
     let vista = (0.0, 0.0, 800.0, 600.0);
     let hasta = t0 + Duration::from_secs(400);
     while Instant::now() < hasta && !t.acabado() {
-        if al_lienzo::atender_en_editor_con(&mut escena, vista, &[], &mut imagenes) && primero.is_none() {
+        if al_lienzo::atender_en_editor_con(&mut escena, vista, &[], &mut imagenes)
+            && primero.is_none()
+        {
             primero = Some(t0.elapsed().as_secs_f32());
         }
         for a in t.recibir() {
@@ -284,7 +389,12 @@ fn pasar(motor: Arc<dyn pixpin_ia::Motor>, caso: &Caso, ojos: bool, png: &std::p
                         if nombre == pixpin_ia::ojos::NOMBRE {
                             vistas_pedidas += 1;
                         }
-                        println!("    [{:>5.1} s] {nombre} {} {}", t0.elapsed().as_secs_f32(), if *ok { "ok" } else { "MAL" }, texto.lines().next().unwrap_or(""));
+                        println!(
+                            "    [{:>5.1} s] {nombre} {} {}",
+                            t0.elapsed().as_secs_f32(),
+                            if *ok { "ok" } else { "MAL" },
+                            texto.lines().next().unwrap_or("")
+                        );
                     }
                     vivo.aplicar(e);
                 }
@@ -301,26 +411,42 @@ fn pasar(motor: Arc<dyn pixpin_ia::Motor>, caso: &Caso, ojos: bool, png: &std::p
     al_lienzo::atender_en_editor_con(&mut escena, vista, &[], &mut imagenes);
     drop(editor);
     let segundos = t0.elapsed().as_secs_f32();
-    let fallo = (!t.acabado()).then(|| "no acabo a tiempo".to_string()).or_else(|| vivo.fallos.first().cloned());
+    let fallo = (!t.acabado())
+        .then(|| "no acabo a tiempo".to_string())
+        .or_else(|| vivo.fallos.first().cloned());
     // Todas las vistas pintadas (las pedidas, la del principio y las de
     // la revision).
     let vistas = super::PINTADAS.load(std::sync::atomic::Ordering::SeqCst) - pintadas_antes;
     let _ = vistas_pedidas;
     // El resultado, pintado sin marcas.
-    let caja = escena.caja().map(|c| (c.0 - 20.0, c.1 - 20.0, c.2 + 20.0, c.3 + 20.0)).unwrap_or((0.0, 0.0, 800.0, 600.0));
-    let enc = super::copiar(&escena, caja, (0.0, 0.0), false, |id| imagenes.rgba(id).cloned().map(super::Pixeles::Rgba));
+    let caja = escena
+        .caja()
+        .map(|c| (c.0 - 20.0, c.1 - 20.0, c.2 + 20.0, c.3 + 20.0))
+        .unwrap_or((0.0, 0.0, 800.0, 600.0));
+    let enc = super::copiar(&escena, caja, (0.0, 0.0), false, |id| {
+        imagenes.rgba(id).cloned().map(super::Pixeles::Rgba)
+    });
     if let Ok(v) = super::pintar(enc) {
         let _ = std::fs::write(png, &v.png);
     }
     super::super::turno::apagar_ojos(false);
-    Pasada { nota: (caso.nota)(&escena, &originales), segundos, primero, vistas, texto: vivo.texto.clone(), fallo }
+    Pasada {
+        nota: (caso.nota)(&escena, &originales),
+        segundos,
+        primero,
+        vistas,
+        texto: vivo.texto.clone(),
+        fallo,
+    }
 }
 
 #[test]
 #[ignore = "banco con la nube de verdad"]
 fn banco() {
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    let base = std::env::var_os("PIXPIN_OJOS_SALIDA").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("banco-ojos"));
+    let base = std::env::var_os("PIXPIN_OJOS_SALIDA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("banco-ojos"));
     let solo_motor = std::env::var("PIXPIN_OJOS_MOTOR").unwrap_or_default();
     let solo_caso = std::env::var("PIXPIN_OJOS_CASO").unwrap_or_default();
     let motores = motores(&solo_motor);
@@ -363,13 +489,34 @@ fn banco() {
     }
     let t = tabla.join("\n");
     println!("\n{t}");
-    let _ = std::fs::write(base.join(format!("tabla-{}-{}.tsv", if solo_motor.is_empty() { "todos" } else { &solo_motor }, if solo_caso.is_empty() { "todos" } else { &solo_caso })), t);
+    let _ = std::fs::write(
+        base.join(format!(
+            "tabla-{}-{}.tsv",
+            if solo_motor.is_empty() {
+                "todos"
+            } else {
+                &solo_motor
+            },
+            if solo_caso.is_empty() {
+                "todos"
+            } else {
+                &solo_caso
+            }
+        )),
+        t,
+    );
 }
 
 /// Tapa cualquier cosa con forma de clave (`sk-…`).
 fn tapar(s: &str) -> String {
     s.split(' ')
-        .map(|p| if p.contains("sk-") { "sk-…".to_string() } else { p.to_string() })
+        .map(|p| {
+            if p.contains("sk-") {
+                "sk-…".to_string()
+            } else {
+                p.to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -378,7 +525,9 @@ fn tapar(s: &str) -> String {
 /// del elemento puede quedarse corta con letras grandes): ~0,55 del tamano
 /// por letra, 1,25 por linea.
 fn caja_pintada(e: &Elemento) -> Caja {
-    let Figura::Texto { texto, tam, .. } = &e.figura else { return e.caja() };
+    let Figura::Texto { texto, tam, .. } = &e.figura else {
+        return e.caja();
+    };
     let (x0, y0, x1, y1) = e.caja();
     let lineas: Vec<&str> = texto.lines().collect();
     // Partido por su ancho (mas lineas de alto que saltos): su caja vale.

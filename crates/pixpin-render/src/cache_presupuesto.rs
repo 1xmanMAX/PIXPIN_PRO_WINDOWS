@@ -31,7 +31,13 @@ pub struct CachePresupuesto<K, V> {
 
 impl<K: Hash + Eq + Clone, V: Clone> CachePresupuesto<K, V> {
     pub fn nueva(presupuesto: usize) -> Self {
-        CachePresupuesto { mapa: HashMap::new(), presupuesto, total: 0, reloj: 0, fotograma: 1 }
+        CachePresupuesto {
+            mapa: HashMap::new(),
+            presupuesto,
+            total: 0,
+            reloj: 0,
+            fotograma: 1,
+        }
     }
 
     /// Empieza un fotograma nuevo: lo pedido antes ya se puede expulsar.
@@ -57,11 +63,24 @@ impl<K: Hash + Eq + Clone, V: Clone> CachePresupuesto<K, V> {
         if let Some(viejo) = self.mapa.remove(&k) {
             self.total -= viejo.bytes;
         }
-        self.mapa.insert(k, Entrada { valor, bytes, uso: self.reloj, fotograma: self.fotograma });
+        self.mapa.insert(
+            k,
+            Entrada {
+                valor,
+                bytes,
+                uso: self.reloj,
+                fotograma: self.fotograma,
+            },
+        );
         self.total += bytes;
         while self.total > self.presupuesto {
             let fot = self.fotograma;
-            let victima = self.mapa.iter().filter(|(_, e)| e.fotograma != fot && e.bytes > 0).min_by_key(|(_, e)| e.uso).map(|(k, _)| k.clone());
+            let victima = self
+                .mapa
+                .iter()
+                .filter(|(_, e)| e.fotograma != fot && e.bytes > 0)
+                .min_by_key(|(_, e)| e.uso)
+                .map(|(k, _)| k.clone());
             let Some(v) = victima else { break };
             if let Some(e) = self.mapa.remove(&v) {
                 self.total -= e.bytes;

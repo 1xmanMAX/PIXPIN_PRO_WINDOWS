@@ -264,7 +264,8 @@ mod pruebas {
         // nombre los pinta el editor aparte (`marcas::pintar_marcos`): el
         // trozo es el del marco.
         let (escena, g) = marco_estirandose(&"Lamina muy larga ".repeat(40));
-        let z = zona_al_transformar(&escena, &g, &Camara::nueva(), &mut Cache::nueva()).expect("se acota");
+        let z = zona_al_transformar(&escena, &g, &Camara::nueva(), &mut Cache::nueva())
+            .expect("se acota");
         assert!(z.0 <= 100 && z.2 >= 430 && z.3 >= 320, "{z:?}");
     }
 

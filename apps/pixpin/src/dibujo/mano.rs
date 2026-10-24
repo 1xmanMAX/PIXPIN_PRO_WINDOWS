@@ -1699,7 +1699,11 @@ mod pruebas {
         assert_eq!(gesto.herramienta, Herramienta::Angulo);
         assert_eq!(gesto.estilo.modo_angulo, ge::ModoAngulo::Griega);
         pulsar(EventoOverlay::Caracter('w'), &mut gesto, &mut escena);
-        assert_eq!(gesto.estilo.modo_angulo, ge::ModoAngulo::Recto, "otra vez: el de 90");
+        assert_eq!(
+            gesto.estilo.modo_angulo,
+            ge::ModoAngulo::Recto,
+            "otra vez: el de 90"
+        );
         pulsar(EventoOverlay::Caracter('W'), &mut gesto, &mut escena);
         assert_eq!(gesto.estilo.modo_angulo, ge::ModoAngulo::Griega);
         // Una marca α recien puesta: ↑ la pasa a β, ↓ la devuelve.
@@ -1713,7 +1717,10 @@ mod pruebas {
         m.extras.marca_angulo.as_mut().unwrap().valor = Some("α".into());
         let id = escena.anadir(m);
         gesto.ultima_marca = Some(id);
-        let valor = |e: &Escena| e.buscar(id).and_then(|e| e.extras.marca_angulo.as_ref()?.valor.clone());
+        let valor = |e: &Escena| {
+            e.buscar(id)
+                .and_then(|e| e.extras.marca_angulo.as_ref()?.valor.clone())
+        };
         pulsar(tecla(VK_FLECHA_ARRIBA), &mut gesto, &mut escena);
         assert_eq!(valor(&escena).as_deref(), Some("β"));
         pulsar(tecla(VK_FLECHA_ABAJO), &mut gesto, &mut escena);

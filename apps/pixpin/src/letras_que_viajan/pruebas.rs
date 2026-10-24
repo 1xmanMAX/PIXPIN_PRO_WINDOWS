@@ -32,14 +32,22 @@ impl Drop for Par {
 }
 
 fn montar(etiqueta: &str) -> Par {
-    let dir = std::env::temp_dir().join(format!("pixpin-letras-viajan-{etiqueta}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "pixpin-letras-viajan-{etiqueta}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let pc = DiscoPc::nuevo(&dir.join("PixPin Max"));
     let movil = DiscoAndroid::nuevo(dir.join("movil/files"), "movil");
     presentar(&pc, "id-pc", "Portátil");
     presentar(&movil, "id-movil", "Teléfono");
-    let p = Par { dir, pc, movil, reloj: Reloj::nuevo() };
+    let p = Par {
+        dir,
+        pc,
+        movil,
+        reloj: Reloj::nuevo(),
+    };
     crear_grupo(&p.movil, "ABCDE23456", p.reloj.ahora());
     conectado(&p.pc, &p.movil, true, Some("ABCDE23456"), &p.reloj, |_| {}).unwrap();
     p
@@ -92,10 +100,19 @@ impl Par {
     }
     /// Lo que hace el chat del movil al borrar un mensaje: fuera, su marca y su fichero.
     fn movil_quita(&self, nombre: &str) {
-        let (ido, quedan): (Vec<Json>, Vec<Json>) =
-            self.movil.leer_mensajes().into_iter().partition(|m| kotlin::cadena(m, "id") == Some(id_de(nombre).as_str()));
+        let (ido, quedan): (Vec<Json>, Vec<Json>) = self
+            .movil
+            .leer_mensajes()
+            .into_iter()
+            .partition(|m| kotlin::cadena(m, "id") == Some(id_de(nombre).as_str()));
         self.movil.escribir_mensajes(&quedan).unwrap();
-        self.movil.anotar_borrados(&pixpin_sincro::disco::marcas_de(&self.chat(), &ido, self.reloj.tic())).unwrap();
+        self.movil
+            .anotar_borrados(&pixpin_sincro::disco::marcas_de(
+                &self.chat(),
+                &ido,
+                self.reloj.tic(),
+            ))
+            .unwrap();
         let _ = std::fs::remove_file(self.en_el_movil(nombre));
     }
 }
@@ -109,7 +126,11 @@ fn elegidas(p: &Par) -> Vec<PathBuf> {
     std::fs::write(d.join("Libre.ttf"), [0u8, 1, 0, 0, 0, 4, 0, 0]).unwrap();
     // Caso negativo: un programa rebautizado.
     std::fs::write(d.join("trampa.shx"), b"MZ\x90\0esto no es una letra").unwrap();
-    vec![d.join("romans.shx"), d.join("Libre.ttf"), d.join("trampa.shx")]
+    vec![
+        d.join("romans.shx"),
+        d.join("Libre.ttf"),
+        d.join("trampa.shx"),
+    ]
 }
 
 /// **Ida y vuelta**: el PC anade (lo que no es letra no entra), llega al
@@ -120,15 +141,30 @@ fn elegidas(p: &Par) -> Vec<PathBuf> {
 fn las_letras_van_al_movil_y_vuelven_sin_re_mandar() {
     let p = montar("idavuelta");
     let raiz = p.raiz();
-    assert_eq!(anadir(&raiz, "PC01", 5, &elegidas(&p)), 2, "la trampa no entra");
+    assert_eq!(
+        anadir(&raiz, "PC01", 5, &elegidas(&p)),
+        2,
+        "la trampa no entra"
+    );
     assert!(!p.en_el_pc("trampa.shx").exists());
     let h = p.desde_pc();
     assert!(h.archivos >= 2, "{h:?}");
     assert_eq!(std::fs::read(p.en_el_movil("romans.shx")).unwrap(), ROMANS);
     assert!(p.en_el_movil("Libre.ttf").is_file());
-    assert_eq!(p.ids_en_el_movil(), vec![id_de("libre.ttf"), id_de("romans.shx")]);
-    let m = p.movil.leer_mensajes().into_iter().find(|m| kotlin::cadena(m, "id") == Some(id_de("romans.shx").as_str())).unwrap();
-    assert_eq!(kotlin::cadena(&m, "ruta").unwrap(), p.movil.absoluta("guardados/fuentes-shx/romans.shx"));
+    assert_eq!(
+        p.ids_en_el_movil(),
+        vec![id_de("libre.ttf"), id_de("romans.shx")]
+    );
+    let m = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|m| kotlin::cadena(m, "id") == Some(id_de("romans.shx").as_str()))
+        .unwrap();
+    assert_eq!(
+        kotlin::cadena(&m, "ruta").unwrap(),
+        p.movil.absoluta("guardados/fuentes-shx/romans.shx")
+    );
 
     // La del movil llega a la carpeta del usuario del PC.
     let antes = pixpin_cad::letras::huella(&carpeta_en(&raiz));
@@ -137,7 +173,11 @@ fn las_letras_van_al_movil_y_vuelven_sin_re_mandar() {
     assert_eq!(std::fs::read(p.en_el_pc("greeks.shx")).unwrap(), GREEKS);
     // La letra que llega no es «lo ultimo» de la lista de chats (es de sistema).
     assert!(!asistente(&raiz).unwrap().resumen.contains("greeks"));
-    assert_ne!(pixpin_cad::letras::huella(&carpeta_en(&raiz)), antes, "el visor abierto relee");
+    assert_ne!(
+        pixpin_cad::letras::huella(&carpeta_en(&raiz)),
+        antes,
+        "el visor abierto relee"
+    );
 
     // Otra vuelta: nada que mandar.
     let h = p.desde_pc();
@@ -171,7 +211,10 @@ fn quitar_una_letra_la_quita_en_el_otro_aparato() {
     p.movil_quita("romans.shx");
     p.desde_movil();
     assert!(!p.en_el_pc("romans.shx").exists(), "se fue con su mensaje");
-    assert!(p.en_el_pc("greeks.shx").is_file() && p.en_el_pc("Libre.ttf").is_file(), "las otras siguen");
+    assert!(
+        p.en_el_pc("greeks.shx").is_file() && p.en_el_pc("Libre.ttf").is_file(),
+        "las otras siguen"
+    );
 
     assert_eq!(quitar_todas(&raiz, p.reloj.tic()), 2);
     p.desde_pc();
@@ -196,7 +239,11 @@ fn ni_un_chat_compartido_ni_un_fichero_que_no_es_letra() {
     let mut ind = Indice::leer(&raiz);
     ind.proyectos.push(obra.clone());
     ind.guardar(&raiz).unwrap();
-    assert!(Cuaderno::leer_de(&almacen::carpeta(&raiz, &obra.id)).map(|c| c.mensajes.is_empty()).unwrap_or(true));
+    assert!(
+        Cuaderno::leer_de(&almacen::carpeta(&raiz, &obra.id))
+            .map(|c| c.mensajes.is_empty())
+            .unwrap_or(true)
+    );
     // Para una persona sin chats en comun, el fichero de la letra esta vedado.
     let acceso = pixpin_sincro::compartidos::AccesoDePersona::nuevo(&p.pc, "id-pc", "id-persona");
     assert!(acceso.prohibidos().contains(&p.en_el_pc("romans.shx")));
@@ -205,7 +252,10 @@ fn ni_un_chat_compartido_ni_un_fichero_que_no_es_letra() {
     let chat_obra = vista::chat_de_ficha(&raiz, &obra.id).unwrap();
     let ajena = p.pc.ruta(&chat_obra, "guardados/fuentes-shx/romans.shx");
     assert!(!ajena.starts_with(carpeta_en(&raiz)), "{ajena:?}");
-    assert_eq!(p.pc.ruta(&p.chat(), "guardados/fuentes-shx/romans.shx"), p.en_el_pc("romans.shx"));
+    assert_eq!(
+        p.pc.ruta(&p.chat(), "guardados/fuentes-shx/romans.shx"),
+        p.en_el_pc("romans.shx")
+    );
 
     // Del movil llega una «letra» que no lo es: se rechaza al abrir un plano
     // (fichero y mensaje), y el rechazo vuelve al movil.
@@ -218,7 +268,10 @@ fn ni_un_chat_compartido_ni_un_fichero_que_no_es_letra() {
     assert!(p.en_el_pc("romans.shx").is_file(), "las buenas siguen");
     p.desde_pc();
     assert!(!p.en_el_movil("falsa.shx").exists() && !p.en_el_movil("leeme.txt").exists());
-    assert_eq!(p.ids_en_el_movil(), vec![id_de("libre.ttf"), id_de("romans.shx")]);
+    assert_eq!(
+        p.ids_en_el_movil(),
+        vec![id_de("libre.ttf"), id_de("romans.shx")]
+    );
 }
 
 #[test]
@@ -234,7 +287,12 @@ fn los_topes_y_los_nombres_que_no_viajan_se_quedan_en_este_equipo() {
     std::fs::write(c.join("romans.shx"), ROMANS).unwrap();
     assert_eq!(senalar(&raiz, "PC01", 5).unwrap(), 1);
     let f = asistente(&raiz).unwrap();
-    let ids: Vec<String> = Cuaderno::leer_de(&almacen::carpeta(&raiz, &f.id)).unwrap().mensajes.into_iter().map(|m| m.id).collect();
+    let ids: Vec<String> = Cuaderno::leer_de(&almacen::carpeta(&raiz, &f.id))
+        .unwrap()
+        .mensajes
+        .into_iter()
+        .map(|m| m.id)
+        .collect();
     assert_eq!(ids, vec![id_de("romans.shx")]);
     // Siguen en la carpeta: aqui se usan igual.
     assert_eq!(pixpin_cad::letras::letras_en(&c).len(), 3);

@@ -27,11 +27,10 @@ pub(super) struct CacheArchivo {
 fn huella(e: &Estado) -> u64 {
     let mut h: u64 = 0xCBF2_9CE4_8422_2325;
     for m in &e.momentos {
-        for b in m
-            .id
-            .bytes()
-            .chain(m.cuando.to_le_bytes())
-            .chain([u8::from(m.en_momentos)])
+        for b in
+            m.id.bytes()
+                .chain(m.cuando.to_le_bytes())
+                .chain([u8::from(m.en_momentos)])
         {
             h ^= u64::from(b);
             h = h.wrapping_mul(0x0100_0000_01B3);
@@ -50,8 +49,12 @@ pub(super) fn disposicion(e: &Estado, w: f32, s: f32) -> Rc<CacheArchivo> {
     }
     // Solo lo que se mando a «Momentos» (8-oct-2026): «Hoy» ya lo ensena
     // todo.
-    let elegidos: Vec<pixpin_timeline::Momento> =
-        e.momentos.iter().filter(|m| m.en_momentos).cloned().collect();
+    let elegidos: Vec<pixpin_timeline::Momento> = e
+        .momentos
+        .iter()
+        .filter(|m| m.en_momentos)
+        .cloned()
+        .collect();
     let anios = arch::agrupar(&elegidos, e.desfase);
     let (piezas, alto) = dis::archivo(&anios, w, s);
     let indice: std::collections::HashMap<&str, usize> = e
@@ -206,12 +209,26 @@ fn mini(e: &Estado, p: &Pintor, mo: &Momento, r: RectF, encima: bool, s: f32) {
                 ancho: tw + 10.0 * s,
                 alto: th + 4.0 * s,
             };
-            p.rellenar_redondeado(c, c.alto / 2.0, Color { a: 0.6, ..Color::NEGRO });
+            p.rellenar_redondeado(
+                c,
+                c.alto / 2.0,
+                Color {
+                    a: 0.6,
+                    ..Color::NEGRO
+                },
+            );
             p.texto(&t, c.x + 5.0 * s, c.y + 2.0 * s, 11.5 * s, TEXTO_V);
         }
         if mo.audio.is_some() {
             let c = (r.x + r.ancho - 16.0 * s, r.y + r.alto - 16.0 * s);
-            p.circulo(c, 11.0 * s, Color { a: 0.6, ..Color::NEGRO });
+            p.circulo(
+                c,
+                11.0 * s,
+                Color {
+                    a: 0.6,
+                    ..Color::NEGRO
+                },
+            );
             p.icono(&mi::MIC, centrar_en(c, 14.0 * s), TEXTO_V);
         }
     } else {
@@ -225,7 +242,15 @@ fn mini(e: &Estado, p: &Pintor, mo: &Momento, r: RectF, encima: bool, s: f32) {
             alto: (4.0 * 19.0 * s).min(r.alto - 2.0 * pad),
         };
         p.con_recorte(caja, |p| {
-            ui::negrita(p, &mo.titulo, caja.x, caja.y, 14.0 * s, caja.ancho, hex(0x1C1C1E));
+            ui::negrita(
+                p,
+                &mo.titulo,
+                caja.x,
+                caja.y,
+                14.0 * s,
+                caja.ancho,
+                hex(0x1C1C1E),
+            );
         });
         if mo.audio.is_some() {
             p.icono(
@@ -261,7 +286,10 @@ fn gravedad_de_leccion(e: &Estado, mo: &Momento) -> Option<i64> {
 /// (😌 😟 😡), o 💡 si aun no se leyo la leccion.
 pub(super) fn emoticono_de_leccion(e: &Estado, mo: &Momento) -> Option<&'static str> {
     mo.leccion.as_ref()?;
-    Some(gravedad_de_leccion(e, mo).map_or("💡", |g| super::super::tarjetas::gravedad(g).emoticono))
+    Some(
+        gravedad_de_leccion(e, mo)
+            .map_or("💡", |g| super::super::tarjetas::gravedad(g).emoticono),
+    )
 }
 
 /// **La marca de «es una leccion»**, la misma en Hoy, Momentos y la
@@ -271,8 +299,17 @@ pub(super) fn marca_de_leccion(p: &Pintor, e: &Estado, mo: &Momento, c: (f32, f3
     let Some(emo) = emoticono_de_leccion(e, mo) else {
         return;
     };
-    let color = gravedad_de_leccion(e, mo).map_or(ui::v2::AMARILLO, |g| super::super::tarjetas::gravedad(g).color);
-    p.circulo(c, 13.0 * s, Color { a: 0.85, ..Color::NEGRO });
+    let color = gravedad_de_leccion(e, mo).map_or(ui::v2::AMARILLO, |g| {
+        super::super::tarjetas::gravedad(g).color
+    });
+    p.circulo(
+        c,
+        13.0 * s,
+        Color {
+            a: 0.85,
+            ..Color::NEGRO
+        },
+    );
     p.anillo(c, 13.0 * s, 1.5 * s, color);
     let tam = 14.0 * s;
     let (tw, th) = p.medir_texto(emo, tam);

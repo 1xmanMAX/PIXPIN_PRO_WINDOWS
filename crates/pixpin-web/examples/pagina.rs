@@ -5,7 +5,10 @@ use pixpin_web::pagina::{OpcionesPagina, Pagina, Suceso};
 fn main() {
     // SAFETY: COM de este hilo, una vez.
     unsafe {
-        let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
+        let _ = windows::Win32::System::Com::CoInitializeEx(
+            None,
+            windows::Win32::System::Com::COINIT_APARTMENTTHREADED,
+        );
     }
     eprintln!("creando");
     let html: &'static [u8] = b"<!doctype html><body style='background:#222;color:#fff'><h1>Hola</h1><script>chrome.webview.postMessage('listo')</script>";

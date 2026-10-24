@@ -52,8 +52,13 @@ pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, ErrorInstanciaUnica>
 /// **Solo para probar** (`PIXPIN_INSTANCIA`, ver `main.rs`): otra instancia
 /// unica con su propio nombre, que no choca con la PixPin del usuario.
 pub fn adquirir_instancia_de_prueba(nombre: &str) -> Result<InstanciaUnica, ErrorInstanciaUnica> {
-    let limpio: String = nombre.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(40).collect();
-    let nombre = windows::core::HSTRING::from(format!(r"Local\PixPinMax-instancia-prueba-{limpio}"));
+    let limpio: String = nombre
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .take(40)
+        .collect();
+    let nombre =
+        windows::core::HSTRING::from(format!(r"Local\PixPinMax-instancia-prueba-{limpio}"));
     adquirir(windows::core::PCWSTR(nombre.as_ptr()))
 }
 

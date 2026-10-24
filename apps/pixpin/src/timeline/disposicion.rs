@@ -145,7 +145,12 @@ fn derecha_de_la_tarjeta(ancho: f32, s: f32) -> f32 {
 /// calendario»): siete columnas de lunes a domingo con sus iniciales arriba,
 /// y cada dia en la de su dia de la semana. Antes eran diez por fila, del
 /// mas reciente al 1, como las tarjetas de estado de WeChat.
-pub fn estado(meses: &[(Mes, Vec<(Dia, bool)>)], ancho: f32, s: f32, abajo: f32) -> (Vec<TarjetaMes>, f32) {
+pub fn estado(
+    meses: &[(Mes, Vec<(Dia, bool)>)],
+    ancho: f32,
+    s: f32,
+    abajo: f32,
+) -> (Vec<TarjetaMes>, f32) {
     let libre = derecha_de_la_tarjeta(ancho, s);
     let celda_w = libre / 7.0;
     let x_de = |col: usize| MARGEN * s + PAD * s + COLUMNA_MES * s + col as f32 * celda_w;

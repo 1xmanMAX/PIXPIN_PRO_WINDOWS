@@ -46,8 +46,16 @@ pub(crate) struct Propio {
 }
 
 impl Propio {
-    pub(crate) fn nuevo(id: &'static str, clave: &'static str, hacer: impl Fn(&Path) -> Result<Vec<PathBuf>> + Send + Sync + 'static) -> Propio {
-        Propio { id, clave, hacer: Arc::new(hacer) }
+    pub(crate) fn nuevo(
+        id: &'static str,
+        clave: &'static str,
+        hacer: impl Fn(&Path) -> Result<Vec<PathBuf>> + Send + Sync + 'static,
+    ) -> Propio {
+        Propio {
+            id,
+            clave,
+            hacer: Arc::new(hacer),
+        }
     }
 }
 
@@ -82,7 +90,16 @@ pub(crate) struct Exportable {
 
 impl Exportable {
     pub(crate) fn nuevo(titulo: impl Into<String>) -> Exportable {
-        Exportable { titulo: titulo.into(), raiz: None, original: None, proyecto: None, anotado: Vec::new(), hojas: Vec::new(), tablas: HashMap::new(), propios: Vec::new() }
+        Exportable {
+            titulo: titulo.into(),
+            raiz: None,
+            original: None,
+            proyecto: None,
+            anotado: Vec::new(),
+            hojas: Vec::new(),
+            tablas: HashMap::new(),
+            propios: Vec::new(),
+        }
     }
 
     /// Los ids de los formatos que ofrecera la hoja (para las pruebas y el
@@ -118,27 +135,60 @@ pub(crate) const PIXPIN: &str = "pixpin";
 /// es un adjunto de un chat, el proyecto entero de ese chat (lo que manda el
 /// chat); si no, un proyecto nuevo con el fichero como mensaje (con codigo)
 /// y todo lo anotado ([`lo_anotado_del_suelto`]).
-pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &Path, anotado: &[PathBuf], cuando: i64) -> Result<(String, Vec<u8>)> {
-    let nombre = original.file_name().map(|n| n.to_string_lossy().into_owned()).context("el fichero no tiene nombre")?;
+pub(crate) fn pixpin_de(
+    raiz: Option<&Path>,
+    proyecto: Option<&str>,
+    original: &Path,
+    anotado: &[PathBuf],
+    cuando: i64,
+) -> Result<(String, Vec<u8>)> {
+    let nombre = original
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .context("el fichero no tiene nombre")?;
     let tronco = pixpin_docs::sin_extension(&nombre);
     if let (Some(raiz), Some(id)) = (raiz, proyecto)
         && let Ok(bytes) = pixpin_proyecto::almacen::empaquetar(raiz, id, cuando)
     {
-        let ficha = pixpin_proyecto::almacen::Indice::leer(raiz).buscar(id).map(|f| f.nombre.clone()).unwrap_or(tronco.clone());
-        return Ok((format!("{}.pixpin", super::nombre_de_fichero(&ficha)), bytes));
+        let ficha = pixpin_proyecto::almacen::Indice::leer(raiz)
+            .buscar(id)
+            .map(|f| f.nombre.clone())
+            .unwrap_or(tronco.clone());
+        return Ok((
+            format!("{}.pixpin", super::nombre_de_fichero(&ficha)),
+            bytes,
+        ));
     }
     if let Some(raiz) = raiz
-        && let Some(r) = pixpin_proyecto::anotado::raiz_de(original).or_else(|| Some(raiz.to_path_buf()))
+        && let Some(r) =
+            pixpin_proyecto::anotado::raiz_de(original).or_else(|| Some(raiz.to_path_buf()))
         && let Some(x) = pixpin_proyecto::anotado::adjunto_de(&r, original)
         && let Ok(bytes) = pixpin_proyecto::almacen::empaquetar(&r, &x.chat, cuando)
     {
-        let ficha = pixpin_proyecto::almacen::Indice::leer(&r).buscar(&x.chat).map(|f| f.nombre.clone()).unwrap_or(tronco.clone());
-        return Ok((format!("{}.pixpin", super::nombre_de_fichero(&ficha)), bytes));
+        let ficha = pixpin_proyecto::almacen::Indice::leer(&r)
+            .buscar(&x.chat)
+            .map(|f| f.nombre.clone())
+            .unwrap_or(tronco.clone());
+        return Ok((
+            format!("{}.pixpin", super::nombre_de_fichero(&ficha)),
+            bytes,
+        ));
     }
-    let bytes = std::fs::read(original).with_context(|| format!("no se pudo leer {}", original.display()))?;
+    let bytes = std::fs::read(original)
+        .with_context(|| format!("no se pudo leer {}", original.display()))?;
     let id = format!("exportado-{cuando}");
-    let proyecto = pixpin_proyecto::Proyecto { id: id.clone(), nombre: tronco.clone(), creado: cuando, tocado: cuando, ..Default::default() };
-    let manifiesto = pixpin_proyecto::Manifiesto { escrito: cuando, proyecto: tronco.clone(), ..Default::default() };
+    let proyecto = pixpin_proyecto::Proyecto {
+        id: id.clone(),
+        nombre: tronco.clone(),
+        creado: cuando,
+        tocado: cuando,
+        ..Default::default()
+    };
+    let manifiesto = pixpin_proyecto::Manifiesto {
+        escrito: cuando,
+        proyecto: tronco.clone(),
+        ..Default::default()
+    };
     let mut p = pixpin_proyecto::Paquete::nuevo(manifiesto, proyecto);
     let ruta = format!("archivos/{nombre}");
     // Con codigo propio: es lo que hace de lo anotado lo de este mensaje
@@ -161,7 +211,10 @@ pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &
     let linea = serde_json::to_string(&mensaje).context("el mensaje no se escribe")?;
     p.poner_entrada("guardados.jsonl", format!("{linea}\n").into_bytes());
     let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
-    Ok((format!("{}.pixpin", super::nombre_de_fichero(&tronco)), bytes))
+    Ok((
+        format!("{}.pixpin", super::nombre_de_fichero(&tronco)),
+        bytes,
+    ))
 }
 
 /// **Todo lo anotado de un fichero suelto**, con su sitio dentro del
@@ -174,13 +227,28 @@ pub(crate) fn pixpin_de(raiz: Option<&Path>, proyecto: Option<&str>, original: &
 ///   de un plano o un modelo 3D (`marcadores/<h>/`), que no cuelgan del
 ///   nombre, ya con los del mensaje (`anot-<uid>…`);
 /// - lo demas de `anotado`, en `archivos/<nombre>.pixpin-anotado/`.
-fn lo_anotado_del_suelto(raiz: Option<&Path>, original: &Path, anotado: &[PathBuf], uid: &str) -> Vec<(String, Vec<u8>)> {
+fn lo_anotado_del_suelto(
+    raiz: Option<&Path>,
+    original: &Path,
+    anotado: &[PathBuf],
+    uid: &str,
+) -> Vec<(String, Vec<u8>)> {
     use pixpin_sincro::anotado as an;
-    let nombre = original.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let nombre = original
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let del_chat = |terminacion: &str| -> String {
-        let b = pixpin_proyecto::anotado::Base { raiz: PathBuf::from("r"), chat: "c".into(), base: format!("{}{uid}", an::PREFIJO) };
+        let b = pixpin_proyecto::anotado::Base {
+            raiz: PathBuf::from("r"),
+            chat: "c".into(),
+            base: format!("{}{uid}", an::PREFIJO),
+        };
         let f = b.fichero(terminacion);
-        f.strip_prefix(pixpin_proyecto::almacen::carpeta(Path::new("r"), "c")).unwrap_or(&f).to_string_lossy().replace('\\', "/")
+        f.strip_prefix(pixpin_proyecto::almacen::carpeta(Path::new("r"), "c"))
+            .unwrap_or(&f)
+            .to_string_lossy()
+            .replace('\\', "/")
     };
     let mut salida: Vec<(String, Vec<u8>)> = Vec::new();
     let poner = |rel: String, f: &Path, salida: &mut Vec<(String, Vec<u8>)>| {
@@ -193,19 +261,38 @@ fn lo_anotado_del_suelto(raiz: Option<&Path>, original: &Path, anotado: &[PathBu
     if let Some(carpeta) = original.parent() {
         let prefijo = format!("{nombre}.pixpin-");
         let mut pendientes: Vec<PathBuf> = std::fs::read_dir(carpeta)
-            .map(|d| d.flatten().map(|e| e.path()).filter(|r| r.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefijo))).collect())
+            .map(|d| {
+                d.flatten()
+                    .map(|e| e.path())
+                    .filter(|r| {
+                        r.file_name()
+                            .is_some_and(|n| n.to_string_lossy().starts_with(&prefijo))
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
         while let Some(r) = pendientes.pop() {
             if r.is_dir() {
-                pendientes.extend(std::fs::read_dir(&r).map(|d| d.flatten().map(|e| e.path()).collect::<Vec<_>>()).unwrap_or_default());
+                pendientes.extend(
+                    std::fs::read_dir(&r)
+                        .map(|d| d.flatten().map(|e| e.path()).collect::<Vec<_>>())
+                        .unwrap_or_default(),
+                );
             } else if let Ok(rel) = r.strip_prefix(carpeta) {
-                poner(format!("archivos/{}", rel.to_string_lossy().replace('\\', "/")), &r, &mut salida);
+                poner(
+                    format!("archivos/{}", rel.to_string_lossy().replace('\\', "/")),
+                    &r,
+                    &mut salida,
+                );
             }
         }
     }
     if let Some(raiz) = raiz {
         let marcadores = crate::plano_cad::carpeta_de_marcadores(raiz, original);
-        for e in std::fs::read_dir(&marcadores).map(|d| d.flatten().collect::<Vec<_>>()).unwrap_or_default() {
+        for e in std::fs::read_dir(&marcadores)
+            .map(|d| d.flatten().collect::<Vec<_>>())
+            .unwrap_or_default()
+        {
             let n = e.file_name().to_string_lossy().into_owned();
             let terminacion = match n.as_str() {
                 "vistas.json" => an::VISTAS.to_string(),
@@ -220,7 +307,10 @@ fn lo_anotado_del_suelto(raiz: Option<&Path>, original: &Path, anotado: &[PathBu
         }
     }
     for a in anotado.iter().filter(|a| a.is_file()) {
-        let n = a.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let n = a
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let rel = if n.ends_with(".anot.excalidraw") {
             del_chat(".excalidraw.gz")
         } else if n.ends_with(".anot.hoja") {
@@ -246,12 +336,30 @@ pub(crate) struct Apunte {
 /// los momentos de la timeline, unas lecciones de varios chats): un proyecto
 /// llamado `titulo` con cada texto como nota y cada fichero como su mensaje
 /// (imagen, voz o archivo), en `archivos/`. Lo que falta del disco se salta.
-pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Result<(String, Vec<u8>)> {
+pub(crate) fn pixpin_nuevo(
+    titulo: &str,
+    apuntes: &[Apunte],
+    cuando: i64,
+) -> Result<(String, Vec<u8>)> {
     use pixpin_proyecto::cuaderno::{Clase, Mensaje};
     anyhow::ensure!(!apuntes.is_empty(), "no hay nada que poner en el .pixpin");
-    let nombre = if titulo.trim().is_empty() { "PixPin".to_string() } else { titulo.trim().to_string() };
-    let proyecto = pixpin_proyecto::Proyecto { id: format!("exportado-{cuando}"), nombre: nombre.clone(), creado: cuando, tocado: cuando, ..Default::default() };
-    let manifiesto = pixpin_proyecto::Manifiesto { escrito: cuando, proyecto: nombre.clone(), ..Default::default() };
+    let nombre = if titulo.trim().is_empty() {
+        "PixPin".to_string()
+    } else {
+        titulo.trim().to_string()
+    };
+    let proyecto = pixpin_proyecto::Proyecto {
+        id: format!("exportado-{cuando}"),
+        nombre: nombre.clone(),
+        creado: cuando,
+        tocado: cuando,
+        ..Default::default()
+    };
+    let manifiesto = pixpin_proyecto::Manifiesto {
+        escrito: cuando,
+        proyecto: nombre.clone(),
+        ..Default::default()
+    };
     let mut p = pixpin_proyecto::Paquete::nuevo(manifiesto, proyecto);
     let mut lineas = String::new();
     let mut usados = std::collections::HashSet::new();
@@ -264,12 +372,23 @@ pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Res
     for a in apuntes {
         if !a.texto.trim().is_empty() {
             n += 1;
-            let m = Mensaje { id: format!("m-{cuando}-{n}"), cuando: a.cuando, clase: Some(Clase::Nota), texto: a.texto.clone(), ..Default::default() };
+            let m = Mensaje {
+                id: format!("m-{cuando}-{n}"),
+                cuando: a.cuando,
+                clase: Some(Clase::Nota),
+                texto: a.texto.clone(),
+                ..Default::default()
+            };
             poner(m, &mut lineas)?;
         }
         for f in a.ficheros.iter().filter(|f| f.is_file()) {
-            let Ok(bytes) = std::fs::read(f) else { continue };
-            let base = f.file_name().map(|x| x.to_string_lossy().into_owned()).unwrap_or_else(|| "fichero".into());
+            let Ok(bytes) = std::fs::read(f) else {
+                continue;
+            };
+            let base = f
+                .file_name()
+                .map(|x| x.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "fichero".into());
             // Dos ficheros con el mismo nombre no se pisan.
             let mut fichero = base.clone();
             let mut k = 1;
@@ -277,7 +396,10 @@ pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Res
                 k += 1;
                 fichero = format!("{k}-{base}");
             }
-            let ext = f.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+            let ext = f
+                .extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
             let clase = match ext.as_str() {
                 "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" => Clase::Imagen,
                 "m4a" | "ogg" | "opus" | "wav" | "mp3" | "aac" => Clase::Voz,
@@ -285,7 +407,15 @@ pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Res
             };
             let ruta = format!("archivos/{fichero}");
             n += 1;
-            let m = Mensaje { id: format!("m-{cuando}-{n}"), cuando: a.cuando, clase: Some(clase), ruta: Some(ruta.clone()), nombre: fichero.clone(), bytes: bytes.len() as i64, ..Default::default() };
+            let m = Mensaje {
+                id: format!("m-{cuando}-{n}"),
+                cuando: a.cuando,
+                clase: Some(clase),
+                ruta: Some(ruta.clone()),
+                nombre: fichero.clone(),
+                bytes: bytes.len() as i64,
+                ..Default::default()
+            };
             p.poner_entrada(&ruta, bytes);
             poner(m, &mut lineas)?;
         }
@@ -293,15 +423,20 @@ pub(crate) fn pixpin_nuevo(titulo: &str, apuntes: &[Apunte], cuando: i64) -> Res
     anyhow::ensure!(!lineas.is_empty(), "no hay nada que poner en el .pixpin");
     p.poner_entrada("guardados.jsonl", lineas.into_bytes());
     let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
-    Ok((format!("{}.pixpin", super::nombre_de_fichero(&nombre)), bytes))
+    Ok((
+        format!("{}.pixpin", super::nombre_de_fichero(&nombre)),
+        bytes,
+    ))
 }
 
 /// El `.pixpin` de [`pixpin_nuevo`] como formato propio de un visor.
 pub(crate) fn propio_pixpin(titulo: String, apuntes: Vec<Apunte>) -> Propio {
     Propio::nuevo(PIXPIN, "compartir-pixpin", move |c| {
-        let (fichero, bytes) = pixpin_nuevo(&titulo, &apuntes, pixpin_shell::entorno::ahora_utc_ms())?;
+        let (fichero, bytes) =
+            pixpin_nuevo(&titulo, &apuntes, pixpin_shell::entorno::ahora_utc_ms())?;
         let r = c.join(fichero);
-        std::fs::write(&r, bytes).with_context(|| format!("no se pudo escribir {}", r.display()))?;
+        std::fs::write(&r, bytes)
+            .with_context(|| format!("no se pudo escribir {}", r.display()))?;
         Ok(vec![r])
     })
 }
@@ -311,16 +446,27 @@ pub(crate) fn propio_pixpin(titulo: String, apuntes: Vec<Apunte>) -> Propio {
 /// la imagen tal cual.
 pub(crate) fn de_imagen(titulo: &str, imagen: &Path, dibujo: Option<&Path>) -> Result<Exportable> {
     use pixpin_motor2d::exportar::{self as ex, Alcance, ID_PAPEL};
-    let img = pixpin_codec::cargar(imagen).with_context(|| format!("no se pudo leer {}", imagen.display()))?;
+    let img = pixpin_codec::cargar(imagen)
+        .with_context(|| format!("no se pudo leer {}", imagen.display()))?;
     let (w, h) = (img.ancho as f32, img.alto as f32);
-    let escena = dibujo.and_then(|d| pixpin_motor2d::cargar(d).ok()).unwrap_or_else(pixpin_motor2d::Escena::nueva);
-    let hoja = ex::hojas(&escena, Alcance::Todo, &[], Some((w, h))).into_iter().next().context("sin hoja")?;
+    let escena = dibujo
+        .and_then(|d| pixpin_motor2d::cargar(d).ok())
+        .unwrap_or_else(pixpin_motor2d::Escena::nueva);
+    let hoja = ex::hojas(&escena, Alcance::Todo, &[], Some((w, h)))
+        .into_iter()
+        .next()
+        .context("sin hoja")?;
     let mut x = Exportable::nuevo(titulo);
     x.original = Some(imagen.to_path_buf());
     if let Some(d) = dibujo.filter(|d| d.is_file()) {
         x.anotado.push(d.to_path_buf());
     }
-    x.hojas.push(HojaSuelta { nombre: String::new(), hoja, fondo: super::BLANCO, imagenes: HashMap::from([(ID_PAPEL, img)]) });
+    x.hojas.push(HojaSuelta {
+        nombre: String::new(),
+        hoja,
+        fondo: super::BLANCO,
+        imagenes: HashMap::from([(ID_PAPEL, img)]),
+    });
     Ok(x)
 }
 
@@ -328,25 +474,72 @@ pub(crate) fn de_imagen(titulo: &str, imagen: &Path, dibujo: Option<&Path>) -> R
 /// Word o un PowerPoint con hoja, un plano...): cada hoja pintada como en el
 /// papel, con lo anotado, a `escala` pixeles por DIP. Sirve a todo visor que
 /// ya sabe imprimir: de esas hojas salen PDF, HTML, PNG, JPG y SVG.
-pub(crate) fn hojas_impresas(doc: &mut dyn pixpin_render::imprimir_moderno::Documento, papel: (f32, f32), escala: f32, tope: usize) -> Result<Vec<HojaSuelta>> {
+pub(crate) fn hojas_impresas(
+    doc: &mut dyn pixpin_render::imprimir_moderno::Documento,
+    papel: (f32, f32),
+    escala: f32,
+    tope: usize,
+) -> Result<Vec<HojaSuelta>> {
     use pixpin_motor2d::pintado::Orden;
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para exportar")?;
     let motor = pixpin_render::MotorRender::nuevo(d.d3d()).context("sin motor para exportar")?;
     let n = doc.paginar(&motor, None).min(tope);
-    let (w, h) = ((papel.0 * escala).round().max(1.0) as u32, (papel.1 * escala).round().max(1.0) as u32);
+    let (w, h) = (
+        (papel.0 * escala).round().max(1.0) as u32,
+        (papel.1 * escala).round().max(1.0) as u32,
+    );
     let mut hojas = Vec::with_capacity(n);
     for i in 0..n {
-        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h).context("sin textura para exportar")?;
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+                .context("sin textura para exportar")?;
         motor
             .dibujar(&destino.destino, |p| {
-                p.limpiar(pixpin_render::Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
-                doc.pintar(i, pixpin_render::imprimir_moderno::Pagina { papel, escala }, p);
+                p.limpiar(pixpin_render::Color {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                });
+                doc.pintar(
+                    i,
+                    pixpin_render::imprimir_moderno::Pagina { papel, escala },
+                    p,
+                );
             })
             .context("no se pudo pintar la hoja")?;
         let (ancho, alto, pixeles) = destino.leer_rgba().context("no se pudo leer la hoja")?;
-        let orden = Orden::Imagen { id_objeto: 1, x: 0.0, y: 0.0, ancho: papel.0, alto: papel.1, opacidad: 1.0, recorte: None, angulo: 0.0 };
-        let hoja = Hoja { nombre: String::new(), caja: (0.0, 0.0, papel.0, papel.1), ordenes: vec![orden], marcos: Vec::new(), granos: Vec::new(), grafitos: Vec::new() };
-        hojas.push(HojaSuelta { nombre: String::new(), hoja, fondo: super::BLANCO, imagenes: HashMap::from([(1, ImagenRgba { ancho, alto, pixeles })]) });
+        let orden = Orden::Imagen {
+            id_objeto: 1,
+            x: 0.0,
+            y: 0.0,
+            ancho: papel.0,
+            alto: papel.1,
+            opacidad: 1.0,
+            recorte: None,
+            angulo: 0.0,
+        };
+        let hoja = Hoja {
+            nombre: String::new(),
+            caja: (0.0, 0.0, papel.0, papel.1),
+            ordenes: vec![orden],
+            marcos: Vec::new(),
+            granos: Vec::new(),
+            grafitos: Vec::new(),
+        };
+        hojas.push(HojaSuelta {
+            nombre: String::new(),
+            hoja,
+            fondo: super::BLANCO,
+            imagenes: HashMap::from([(
+                1,
+                ImagenRgba {
+                    ancho,
+                    alto,
+                    pixeles,
+                },
+            )]),
+        });
     }
     Ok(hojas)
 }
@@ -355,26 +548,58 @@ pub(crate) fn hojas_impresas(doc: &mut dyn pixpin_render::imprimir_moderno::Docu
 pub(crate) fn hoja_de_imagen(img: ImagenRgba) -> HojaSuelta {
     use pixpin_motor2d::pintado::Orden;
     let (w, h) = (img.ancho as f32, img.alto as f32);
-    let orden = Orden::Imagen { id_objeto: 1, x: 0.0, y: 0.0, ancho: w, alto: h, opacidad: 1.0, recorte: None, angulo: 0.0 };
-    let hoja = Hoja { nombre: String::new(), caja: (0.0, 0.0, w, h), ordenes: vec![orden], marcos: Vec::new(), granos: Vec::new(), grafitos: Vec::new() };
-    HojaSuelta { nombre: String::new(), hoja, fondo: super::BLANCO, imagenes: HashMap::from([(1, img)]) }
+    let orden = Orden::Imagen {
+        id_objeto: 1,
+        x: 0.0,
+        y: 0.0,
+        ancho: w,
+        alto: h,
+        opacidad: 1.0,
+        recorte: None,
+        angulo: 0.0,
+    };
+    let hoja = Hoja {
+        nombre: String::new(),
+        caja: (0.0, 0.0, w, h),
+        ordenes: vec![orden],
+        marcos: Vec::new(),
+        granos: Vec::new(),
+        grafitos: Vec::new(),
+    };
+    HojaSuelta {
+        nombre: String::new(),
+        hoja,
+        fondo: super::BLANCO,
+        imagenes: HashMap::from([(1, img)]),
+    }
 }
 
 /// **El «Exportar…» de un visor 3D** (modelo BIM, croquis): la vista que se
 /// ve como hoja (PDF, HTML, PNG, JPG, SVG) y, si hay fichero, el original y
 /// el `.pixpin` (el de su chat, `proyecto`, si se sabe: un croquis).
-pub(crate) fn al_exportar_3d(idioma: pixpin_store::Idioma, titulo: String, original: Option<PathBuf>, proyecto: Option<String>) -> pixpin_cad::ventana3d::AlExportar {
+pub(crate) fn al_exportar_3d(
+    idioma: pixpin_store::Idioma,
+    titulo: String,
+    original: Option<PathBuf>,
+    proyecto: Option<String>,
+) -> pixpin_cad::ventana3d::AlExportar {
     let texto = pixpin_store::Catalogo::nuevo(idioma).t("compartir-exportar") + "\tCtrl+E";
     pixpin_cad::ventana3d::AlExportar {
         texto,
         hacer: Arc::new(move |foto: Option<(u32, u32, Vec<u8>)>| {
-            let Some(ubicacion) = crate::oscuro::ubicacion() else { return };
+            let Some(ubicacion) = crate::oscuro::ubicacion() else {
+                return;
+            };
             let mut x = Exportable::nuevo(titulo.clone());
             x.raiz = Some(ubicacion.raiz().to_path_buf());
             x.original = original.clone().filter(|o| o.is_file());
             x.proyecto = proyecto.clone();
             if let Some((ancho, alto, pixeles)) = foto {
-                x.hojas.push(hoja_de_imagen(ImagenRgba { ancho, alto, pixeles }));
+                x.hojas.push(hoja_de_imagen(ImagenRgba {
+                    ancho,
+                    alto,
+                    pixeles,
+                }));
             }
             super::ventana::abrir(idioma, ubicacion, super::Cosa::Visor(x));
         }),
@@ -386,28 +611,44 @@ pub(crate) fn al_exportar_3d(idioma: pixpin_store::Idioma, titulo: String, origi
 /// el CSV de cada hoja; el original es el xlsx tal cual.
 pub(crate) fn de_libro(titulo: &str, ruta: &Path) -> Result<Exportable> {
     let nombre = pixpin_docs::nombre(ruta);
-    let hojas = pixpin_proyecto::importar_hojas::leer(ruta, &nombre, pixpin_shell::entorno::ahora_utc_ms()).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let hojas =
+        pixpin_proyecto::importar_hojas::leer(ruta, &nombre, pixpin_shell::entorno::ahora_utc_ms())
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
     let mut x = Exportable::nuevo(titulo);
     x.original = Some(ruta.to_path_buf());
     let mut csv = Vec::new();
     for h in hojas {
         if let Some(hoja) = super::hoja_de_tabla(&h.tabla) {
             x.tablas.insert(x.hojas.len(), h.tabla.clone());
-            x.hojas.push(HojaSuelta { nombre: h.nombre.clone(), hoja, fondo: super::BLANCO, imagenes: HashMap::new() });
+            x.hojas.push(HojaSuelta {
+                nombre: h.nombre.clone(),
+                hoja,
+                fondo: super::BLANCO,
+                imagenes: HashMap::new(),
+            });
         }
         csv.push((h.nombre, super::csv_de(&h.tabla)));
     }
-    anyhow::ensure!(!x.hojas.is_empty() || !csv.is_empty(), "el libro no tiene hojas");
+    anyhow::ensure!(
+        !x.hojas.is_empty() || !csv.is_empty(),
+        "el libro no tiene hojas"
+    );
     let base = super::nombre_de_fichero(titulo);
-    x.propios.push(Propio::nuevo("csv", "compartir-csv", move |c| {
-        let mut v = Vec::new();
-        for (n, t) in &csv {
-            let r = if csv.len() == 1 { c.join(format!("{base}.csv")) } else { c.join(format!("{base} - {}.csv", super::nombre_de_fichero(n))) };
-            std::fs::write(&r, t).with_context(|| format!("no se pudo escribir {}", r.display()))?;
-            v.push(r);
-        }
-        Ok(v)
-    }));
+    x.propios
+        .push(Propio::nuevo("csv", "compartir-csv", move |c| {
+            let mut v = Vec::new();
+            for (n, t) in &csv {
+                let r = if csv.len() == 1 {
+                    c.join(format!("{base}.csv"))
+                } else {
+                    c.join(format!("{base} - {}.csv", super::nombre_de_fichero(n)))
+                };
+                std::fs::write(&r, t)
+                    .with_context(|| format!("no se pudo escribir {}", r.display()))?;
+                v.push(r);
+            }
+            Ok(v)
+        }));
     Ok(x)
 }
 
@@ -416,7 +657,10 @@ pub(crate) fn de_libro(titulo: &str, ruta: &Path) -> Result<Exportable> {
 pub(crate) fn de_imagenes(titulo: &str, rutas: &[PathBuf]) -> Result<Exportable> {
     let mut x = Exportable::nuevo(titulo);
     for r in rutas {
-        let nombre = r.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let nombre = r
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let y = de_imagen(&nombre, r, None)?;
         for mut h in y.hojas {
             h.nombre = nombre.clone();
@@ -435,14 +679,23 @@ pub(crate) fn de_texto(titulo: &str, texto: &str, original: Option<&Path>) -> Ex
     let mut x = Exportable::nuevo(titulo);
     x.original = original.map(Path::to_path_buf);
     for hoja in super::hojas_de_texto(None, texto) {
-        x.hojas.push(HojaSuelta { nombre: String::new(), hoja, fondo: super::BLANCO, imagenes: HashMap::new() });
+        x.hojas.push(HojaSuelta {
+            nombre: String::new(),
+            hoja,
+            fondo: super::BLANCO,
+            imagenes: HashMap::new(),
+        });
     }
     let base = super::nombre_de_fichero(titulo);
-    for (id, clave, ext) in [("texto", "compartir-texto", "txt"), ("md", "compartir-md", "md")] {
+    for (id, clave, ext) in [
+        ("texto", "compartir-texto", "txt"),
+        ("md", "compartir-md", "md"),
+    ] {
         let (t, b) = (texto.to_string(), base.clone());
         x.propios.push(Propio::nuevo(id, clave, move |c| {
             let r = c.join(format!("{b}.{ext}"));
-            std::fs::write(&r, &t).with_context(|| format!("no se pudo escribir {}", r.display()))?;
+            std::fs::write(&r, &t)
+                .with_context(|| format!("no se pudo escribir {}", r.display()))?;
             Ok(vec![r])
         }));
     }
@@ -462,7 +715,13 @@ mod pruebas {
 
     /// Lo minimo del usuario: PDF, HTML, .pixpin, imagen y original.
     fn tiene_lo_minimo(f: &[&str]) {
-        for id in [super::super::PDF, super::super::WEB, PIXPIN, super::super::PNG, ORIGINAL] {
+        for id in [
+            super::super::PDF,
+            super::super::WEB,
+            PIXPIN,
+            super::super::PNG,
+            ORIGINAL,
+        ] {
             assert!(f.contains(&id), "falta {id}: {f:?}");
         }
     }
@@ -471,7 +730,16 @@ mod pruebas {
     fn una_imagen_y_una_nota_ofrecen_lo_minimo() {
         let d = temporal("minimo");
         let foto = d.join("captura.png");
-        std::fs::write(&foto, pixpin_codec::codificar_png(&ImagenRgba { ancho: 4, alto: 3, pixeles: vec![200; 48] }).unwrap()).unwrap();
+        std::fs::write(
+            &foto,
+            pixpin_codec::codificar_png(&ImagenRgba {
+                ancho: 4,
+                alto: 3,
+                pixeles: vec![200; 48],
+            })
+            .unwrap(),
+        )
+        .unwrap();
         tiene_lo_minimo(&de_imagen("captura", &foto, None).unwrap().formatos());
         let nota = d.join("nota.txt");
         std::fs::write(&nota, "hola").unwrap();
@@ -492,7 +760,8 @@ mod pruebas {
         std::fs::write(&f, "0\nEOF\n").unwrap();
         let a = d.join("plano.anot.excalidraw");
         std::fs::write(&a, "{}").unwrap();
-        let (nombre, bytes) = pixpin_de(None, None, &f, std::slice::from_ref(&a), 1_700_000_000_000).unwrap();
+        let (nombre, bytes) =
+            pixpin_de(None, None, &f, std::slice::from_ref(&a), 1_700_000_000_000).unwrap();
         assert_eq!(nombre, "plano.pixpin");
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
         assert_eq!(p.proyecto.nombre, "plano");
@@ -502,7 +771,10 @@ mod pruebas {
         // La capa del plano ya va como la de su mensaje.
         let m: pixpin_proyecto::cuaderno::Mensaje = serde_json::from_str(linea.trim()).unwrap();
         let uid = m.uid.expect("el mensaje lleva codigo");
-        assert_eq!(p.entrada(&format!("lienzos/anot-{uid}.excalidraw")), Some(&b"{}"[..]));
+        assert_eq!(
+            p.entrada(&format!("lienzos/anot-{uid}.excalidraw")),
+            Some(&b"{}"[..])
+        );
         // Caso negativo: un fichero que no esta.
         assert!(pixpin_de(None, None, &d.join("no-esta.dwg"), &[], 1).is_err());
         let _ = std::fs::remove_dir_all(&d);
@@ -517,17 +789,32 @@ mod pruebas {
         std::fs::write(d.join("informe.docx.pixpin-vistas"), "{}").unwrap();
         std::fs::write(d.join("informe.docx.pixpin-lectura"), "{\"m\":1}").unwrap();
         std::fs::create_dir_all(d.join("informe.docx.pixpin-anotado")).unwrap();
-        let capa = d.join("informe.docx.pixpin-anotado").join("capa.excalidraw");
+        let capa = d
+            .join("informe.docx.pixpin-anotado")
+            .join("capa.excalidraw");
         std::fs::write(&capa, "tinta").unwrap();
         // Lo de otro fichero no va.
         std::fs::write(d.join("otro.docx.pixpin-marcos"), "[2]").unwrap();
         let (_, bytes) = pixpin_de(None, None, &f, &[capa], 7).unwrap();
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
-        assert_eq!(p.entrada("archivos/informe.docx.pixpin-marcos"), Some(&b"[1]"[..]));
-        assert_eq!(p.entrada("archivos/informe.docx.pixpin-vistas"), Some(&b"{}"[..]));
+        assert_eq!(
+            p.entrada("archivos/informe.docx.pixpin-marcos"),
+            Some(&b"[1]"[..])
+        );
+        assert_eq!(
+            p.entrada("archivos/informe.docx.pixpin-vistas"),
+            Some(&b"{}"[..])
+        );
         assert!(p.entrada("archivos/informe.docx.pixpin-lectura").is_some());
-        assert_eq!(p.entrada("archivos/informe.docx.pixpin-anotado/capa.excalidraw"), Some(&b"tinta"[..]));
-        assert!(p.nombres().all(|n| !n.contains("otro.docx")), "{:?}", p.nombres().collect::<Vec<_>>());
+        assert_eq!(
+            p.entrada("archivos/informe.docx.pixpin-anotado/capa.excalidraw"),
+            Some(&b"tinta"[..])
+        );
+        assert!(
+            p.nombres().all(|n| !n.contains("otro.docx")),
+            "{:?}",
+            p.nombres().collect::<Vec<_>>()
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -535,20 +822,39 @@ mod pruebas {
     fn un_pixpin_nuevo_lleva_cada_apunte_y_sus_ficheros() {
         let d = temporal("nuevo");
         let foto = d.join("foto.png");
-        std::fs::write(&foto, pixpin_codec::codificar_png(&ImagenRgba { ancho: 2, alto: 2, pixeles: vec![9; 16] }).unwrap()).unwrap();
+        std::fs::write(
+            &foto,
+            pixpin_codec::codificar_png(&ImagenRgba {
+                ancho: 2,
+                alto: 2,
+                pixeles: vec![9; 16],
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let otra = d.join("sub");
         std::fs::create_dir_all(&otra).unwrap();
         std::fs::write(otra.join("foto.png"), b"no es png pero da igual").unwrap();
         let apuntes = vec![
-            Apunte { cuando: 1, texto: "Vaciado de losa".into(), ficheros: vec![foto.clone(), otra.join("foto.png")] },
+            Apunte {
+                cuando: 1,
+                texto: "Vaciado de losa".into(),
+                ficheros: vec![foto.clone(), otra.join("foto.png")],
+            },
             // Lo que falta del disco se salta.
-            Apunte { cuando: 2, texto: String::new(), ficheros: vec![d.join("no-esta.m4a")] },
+            Apunte {
+                cuando: 2,
+                texto: String::new(),
+                ficheros: vec![d.join("no-esta.m4a")],
+            },
         ];
         let (nombre, bytes) = pixpin_nuevo("Timeline: hoy", &apuntes, 7).unwrap();
         assert!(nombre.ends_with(".pixpin"), "{nombre}");
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
         assert_eq!(p.proyecto.nombre, "Timeline: hoy");
-        assert!(p.entrada("archivos/foto.png").is_some() && p.entrada("archivos/2-foto.png").is_some());
+        assert!(
+            p.entrada("archivos/foto.png").is_some() && p.entrada("archivos/2-foto.png").is_some()
+        );
         let lineas = String::from_utf8_lossy(p.entrada("guardados.jsonl").unwrap()).into_owned();
         assert_eq!(lineas.lines().count(), 3, "{lineas}");
         assert!(lineas.contains("Vaciado de losa") && lineas.contains("IMAGEN"));
@@ -562,14 +868,24 @@ mod pruebas {
     fn el_menu_comun_usa_el_formato_propio_y_genera_cada_uno() {
         let d = temporal("menu");
         let foto = d.join("captura.png");
-        std::fs::write(&foto, pixpin_codec::codificar_png(&ImagenRgba { ancho: 40, alto: 30, pixeles: vec![90; 4800] }).unwrap()).unwrap();
+        std::fs::write(
+            &foto,
+            pixpin_codec::codificar_png(&ImagenRgba {
+                ancho: 40,
+                alto: 30,
+                pixeles: vec![90; 4800],
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let mut x = de_imagen("captura", &foto, None).unwrap();
         // Un HTML propio sustituye al de las hojas.
-        x.propios.push(Propio::nuevo(super::super::WEB, "compartir-web", |c| {
-            let r = c.join("propio.html");
-            std::fs::write(&r, "<!DOCTYPE html><title>propio</title>")?;
-            Ok(vec![r])
-        }));
+        x.propios
+            .push(Propio::nuevo(super::super::WEB, "compartir-web", |c| {
+                let r = c.join("propio.html");
+                std::fs::write(&r, "<!DOCTYPE html><title>propio</title>")?;
+                Ok(vec![r])
+            }));
         let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let p = super::super::preparar(super::super::Cosa::Visor(x), &t).unwrap();
         let c = super::super::compartible(&p, &t);
@@ -578,10 +894,18 @@ mod pruebas {
         let claves: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
         let salida = d.join("salida");
         for id in ["web", "pdf", "png", "jpg", "svg", "original", "pixpin"] {
-            let s = super::super::generar(&p, id, &claves, &salida).unwrap_or_else(|e| panic!("{id}: {e:#}"));
-            assert!(s.ficheros.iter().all(|f| f.is_file()) && s.bytes > 0, "{id}");
+            let s = super::super::generar(&p, id, &claves, &salida)
+                .unwrap_or_else(|e| panic!("{id}: {e:#}"));
+            assert!(
+                s.ficheros.iter().all(|f| f.is_file()) && s.bytes > 0,
+                "{id}"
+            );
             if id == "web" {
-                assert!(std::fs::read_to_string(&s.ficheros[0]).unwrap().contains("propio"));
+                assert!(
+                    std::fs::read_to_string(&s.ficheros[0])
+                        .unwrap()
+                        .contains("propio")
+                );
             }
             if id == "pdf" {
                 assert!(std::fs::read(&s.ficheros[0]).unwrap().starts_with(b"%PDF"));

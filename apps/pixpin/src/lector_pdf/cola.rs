@@ -36,7 +36,14 @@ pub(super) enum Trabajo {
     /// Un trozo de la hoja dibujada a `ancho` pixeles (muy de cerca): las
     /// casillas de [`LADO_TROZO`] pixeles de la `x0`/`y0` a la `x1`/`y1`
     /// (sin incluir). Ver [`trozo_en_fracciones`].
-    Trozo { hoja: usize, ancho: u32, x0: u16, y0: u16, x1: u16, y1: u16 },
+    Trozo {
+        hoja: usize,
+        ancho: u32,
+        x0: u16,
+        y0: u16,
+        x1: u16,
+        y1: u16,
+    },
     /// El texto de la hoja con donde cae cada letra, y sus enlaces.
     Texto { hoja: usize },
 }
@@ -44,9 +51,9 @@ pub(super) enum Trabajo {
 impl Trabajo {
     pub(super) fn hoja(&self) -> usize {
         match *self {
-            Trabajo::Hoja { hoja, .. }
-            | Trabajo::Trozo { hoja, .. }
-            | Trabajo::Texto { hoja } => hoja,
+            Trabajo::Hoja { hoja, .. } | Trabajo::Trozo { hoja, .. } | Trabajo::Texto { hoja } => {
+                hoja
+            }
         }
     }
 }
@@ -96,7 +103,11 @@ impl Cola {
             }
             pendientes.push_back(t);
         }
-        self.cancelados += self.pendientes.iter().filter(|t| !nuevos.contains(t)).count();
+        self.cancelados += self
+            .pendientes
+            .iter()
+            .filter(|t| !nuevos.contains(t))
+            .count();
         self.pendientes = pendientes;
         self.queridos = nuevos;
     }
@@ -128,7 +139,10 @@ impl Cola {
 /// bytes, distancia a lo que se ve; 0 = se ve), se queda todo lo que se ve
 /// aunque no quepa, y lo demas de lo mas cercano a lo mas lejano mientras
 /// quepa en `tope` bytes. Lo que no sale, se suelta.
-pub(super) fn lo_que_cabe<K: Copy + Eq + std::hash::Hash>(items: &[(K, usize, usize)], tope: usize) -> HashSet<K> {
+pub(super) fn lo_que_cabe<K: Copy + Eq + std::hash::Hash>(
+    items: &[(K, usize, usize)],
+    tope: usize,
+) -> HashSet<K> {
     let mut orden: Vec<&(K, usize, usize)> = items.iter().collect();
     orden.sort_by_key(|(_, _, d)| *d);
     let mut usado = 0usize;
@@ -156,7 +170,15 @@ pub(super) fn alto_en_pixeles(ancho: u32, proporcion: f32) -> u32 {
 /// que mide en pixeles, para `renderizar_trozo` y para ponerlo en su sitio.
 /// `None` si el trozo esta vacio o fuera de la hoja.
 pub(super) fn trozo_en_fracciones(t: Trabajo, proporcion: f32) -> Option<([f32; 4], u32, u32)> {
-    let Trabajo::Trozo { ancho, x0, y0, x1, y1, .. } = t else {
+    let Trabajo::Trozo {
+        ancho,
+        x0,
+        y0,
+        x1,
+        y1,
+        ..
+    } = t
+    else {
         return None;
     };
     let alto = alto_en_pixeles(ancho, proporcion);
@@ -169,7 +191,12 @@ pub(super) fn trozo_en_fracciones(t: Trabajo, proporcion: f32) -> Option<([f32; 
     }
     let (w, h) = (px1 - px0, py1 - py0);
     Some((
-        [px0 as f32 / ancho as f32, py0 as f32 / alto as f32, w as f32 / ancho as f32, h as f32 / alto as f32],
+        [
+            px0 as f32 / ancho as f32,
+            py0 as f32 / alto as f32,
+            w as f32 / ancho as f32,
+            h as f32 / alto as f32,
+        ],
         w,
         h,
     ))
@@ -179,7 +206,12 @@ pub(super) fn trozo_en_fracciones(t: Trabajo, proporcion: f32) -> Option<([f32; 
 /// (x0, y0, x1, y1 en fracciones de la hoja) dibujada a `ancho`: las
 /// casillas que se ven y una de mas alrededor, para que desplazarse un poco
 /// no pida otro. `None` si no se ve nada de la hoja.
-pub(super) fn trozo_para(hoja: usize, ancho: u32, proporcion: f32, vista: [f32; 4]) -> Option<Trabajo> {
+pub(super) fn trozo_para(
+    hoja: usize,
+    ancho: u32,
+    proporcion: f32,
+    vista: [f32; 4],
+) -> Option<Trabajo> {
     let alto = alto_en_pixeles(ancho, proporcion);
     let [a, b, c, d] = vista.map(|v| v.clamp(0.0, 1.0));
     if c <= a || d <= b {
@@ -240,11 +272,17 @@ mod pruebas {
         // es un trozo.
         assert_eq!(trozo_para(0, 8192, p, [0.5, 0.5, 0.5, 0.6]), None);
         assert_eq!(trozo_para(0, 8192, p, [1.2, 0.0, 1.5, 0.5]), None);
-        assert_eq!(trozo_en_fracciones(Trabajo::Hoja { hoja: 0, ancho: 10 }, p), None);
+        assert_eq!(
+            trozo_en_fracciones(Trabajo::Hoja { hoja: 0, ancho: 10 }, p),
+            None
+        );
     }
 
     fn hoja(i: usize) -> Trabajo {
-        Trabajo::Hoja { hoja: i, ancho: 1024 }
+        Trabajo::Hoja {
+            hoja: i,
+            ancho: 1024,
+        }
     }
 
     #[test]
@@ -263,7 +301,13 @@ mod pruebas {
         let orden: Vec<Trabajo> = std::iter::from_fn(|| c.tomar()).collect();
         assert_eq!(
             orden,
-            vec![hoja(5), hoja(6), hoja(4), Trabajo::Texto { hoja: 9 }, Trabajo::Texto { hoja: 5 }]
+            vec![
+                hoja(5),
+                hoja(6),
+                hoja(4),
+                Trabajo::Texto { hoja: 9 },
+                Trabajo::Texto { hoja: 5 }
+            ]
         );
         assert!(c.vacia());
     }
@@ -275,7 +319,11 @@ mod pruebas {
         assert_eq!(c.tomar(), Some(hoja(0)));
         // Se salto cien hojas: lo de antes no se dibuja.
         c.pedir(
-            vec![(Prioridad::Visible, hoja(100)), (Prioridad::Visible, hoja(100)), (Prioridad::Vecina, hoja(101))],
+            vec![
+                (Prioridad::Visible, hoja(100)),
+                (Prioridad::Visible, hoja(100)),
+                (Prioridad::Vecina, hoja(101)),
+            ],
             0,
         );
         assert_eq!(c.cancelados, 4, "las cuatro pendientes de antes");
@@ -308,14 +356,35 @@ mod pruebas {
         c.pedir(vec![(Prioridad::Visible, hoja(3))], 0);
         let t = c.tomar().unwrap();
         let (n, _) = c.entregar(t);
-        c.pedir(vec![(Prioridad::Visible, Trabajo::Hoja { hoja: 3, ancho: 2048 })], n - 1);
-        assert_eq!(c.tomar(), Some(Trabajo::Hoja { hoja: 3, ancho: 2048 }));
+        c.pedir(
+            vec![(
+                Prioridad::Visible,
+                Trabajo::Hoja {
+                    hoja: 3,
+                    ancho: 2048,
+                },
+            )],
+            n - 1,
+        );
+        assert_eq!(
+            c.tomar(),
+            Some(Trabajo::Hoja {
+                hoja: 3,
+                ancho: 2048
+            })
+        );
     }
 
     #[test]
     fn una_lista_vacia_lo_cancela_todo_y_no_se_queda_con_nada() {
         let mut c = Cola::default();
-        c.pedir(vec![(Prioridad::Visible, hoja(1)), (Prioridad::Texto, Trabajo::Texto { hoja: 2 })], 0);
+        c.pedir(
+            vec![
+                (Prioridad::Visible, hoja(1)),
+                (Prioridad::Texto, Trabajo::Texto { hoja: 2 }),
+            ],
+            0,
+        );
         c.pedir(Vec::new(), 0);
         assert_eq!(c.cancelados, 2);
         assert!(c.vacia());
@@ -325,12 +394,22 @@ mod pruebas {
     #[test]
     fn el_presupuesto_guarda_lo_visible_y_lo_mas_cercano_que_quepa() {
         // (hoja, bytes, distancia)
-        let items = [(10, 50, 0), (11, 50, 0), (12, 30, 1), (9, 30, 1), (13, 30, 2), (40, 1, 30)];
+        let items = [
+            (10, 50, 0),
+            (11, 50, 0),
+            (12, 30, 1),
+            (9, 30, 1),
+            (13, 30, 2),
+            (40, 1, 30),
+        ];
         let q = lo_que_cabe(&items, 161);
         assert!(q.contains(&10) && q.contains(&11), "lo visible siempre");
         assert!(q.contains(&12) && q.contains(&9), "las vecinas caben");
         assert!(!q.contains(&13), "la de dos hojas mas alla ya no cabe");
-        assert!(q.contains(&40), "lo pequeno que aun cabe, aunque este lejos");
+        assert!(
+            q.contains(&40),
+            "lo pequeno que aun cabe, aunque este lejos"
+        );
         // Caso negativo: lo visible no se suelta aunque se pase del tope.
         let q = lo_que_cabe(&[(1, 500, 0), (2, 1, 1)], 100);
         assert!(q.contains(&1));

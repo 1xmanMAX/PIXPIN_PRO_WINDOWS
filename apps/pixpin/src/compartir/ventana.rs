@@ -280,9 +280,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                         Destino::Ninguna => hoja.e.ninguna(),
                         Destino::Interruptor => hoja.e.alternar_interruptor(&hoja.c),
                         Destino::Salida(s) => {
-                            vivo = pulsar(
-                                &mut hoja, s, &ventana, textos, idioma, &ubicacion,
-                            );
+                            vivo = pulsar(&mut hoja, s, &ventana, textos, idioma, &ubicacion);
                         }
                         Destino::Nada => {}
                     }
@@ -377,9 +375,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
             && !matches!(hoja.pie(), Pie::Preparando)
         {
             hoja.pendiente = None;
-            vivo = pulsar(
-                &mut hoja, s, &ventana, textos, idioma, &ubicacion,
-            );
+            vivo = pulsar(&mut hoja, s, &ventana, textos, idioma, &ubicacion);
             hay_que_pintar = true;
         }
         if hoja
@@ -515,8 +511,12 @@ fn pulsar(
                             }
                         }
                     }
-                    let r = r.map(|_| enlaces.join("
-"));
+                    let r = r.map(|_| {
+                        enlaces.join(
+                            "
+",
+                        )
+                    });
                     let _ = tx.send(r);
                     pixpin_shell::overlay::despertar(hwnd);
                 });

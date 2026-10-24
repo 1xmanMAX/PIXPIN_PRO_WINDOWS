@@ -22,9 +22,9 @@ use std::time::Duration;
 use windows::Win32::Networking::WinHttp::{
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
     WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPEN_REQUEST_FLAGS,
-    WINHTTP_QUERY_CUSTOM, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
-    WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders,
-    WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
+    WINHTTP_QUERY_CUSTOM, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle,
+    WinHttpConnect, WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData,
+    WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
 };
 use windows::core::{HSTRING, PCWSTR, w};
 
@@ -119,8 +119,15 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
         let mut n: u32 = 0;
         // SAFETY: el asa de la peticion vive en `a` y ya recibio la
         // respuesta; el bufer vive durante la llamada y se pasa su largo.
-        unsafe { WinHttpReadData(a.peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n) }
-            .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
+        unsafe {
+            WinHttpReadData(
+                a.peticion.0,
+                buf.as_mut_ptr().cast(),
+                buf.len() as u32,
+                &mut n,
+            )
+        }
+        .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
         if n == 0 {
             return Ok(false);
         }
@@ -158,19 +165,33 @@ pub fn pedir(
     loop {
         let mut n: u32 = 0;
         // SAFETY: como en `enviar`.
-        unsafe { WinHttpReadData(a.peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n) }
-            .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
+        unsafe {
+            WinHttpReadData(
+                a.peticion.0,
+                buf.as_mut_ptr().cast(),
+                buf.len() as u32,
+                &mut n,
+            )
+        }
+        .map_err(|e| Fallo::Red(format!("se corto la respuesta: {}", e.message())))?;
         if n == 0 {
             break;
         }
         todo.extend_from_slice(&buf[..n as usize]);
         if todo.len() > limite {
-            return Err(Fallo::Red(format!("la respuesta pasa de {} MB", (limite / (1024 * 1024)).max(1))));
+            return Err(Fallo::Red(format!(
+                "la respuesta pasa de {} MB",
+                (limite / (1024 * 1024)).max(1)
+            )));
         }
     }
     // SAFETY: el asa sigue viva en `a` y ya recibio la respuesta.
     let ubicacion = unsafe { cabecera(a.peticion.0, "Location") };
-    Ok(Respuesta { codigo: a.codigo, cuerpo: todo, ubicacion })
+    Ok(Respuesta {
+        codigo: a.codigo,
+        cuerpo: todo,
+        ubicacion,
+    })
 }
 
 /// Una peticion mandada y con la respuesta empezada (codigo 2xx). Los
@@ -185,7 +206,12 @@ struct Abierta {
 /// Abre la sesion, manda la peticion y espera la cabecera de la respuesta.
 /// Un codigo que no es 2xx se lee aqui (su JSON de error) y es
 /// [`Fallo::Http`].
-fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8]) -> Result<Abierta, Fallo> {
+fn abrir(
+    metodo: &str,
+    url: &str,
+    extra: &[(&'static str, String)],
+    cuerpo: &[u8],
+) -> Result<Abierta, Fallo> {
     let d = partir(url).ok_or_else(|| Fallo::Red(format!("direccion no valida: {url}")))?;
     let mut cabeceras = String::new();
     for (k, v) in extra {
@@ -195,7 +221,12 @@ fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8
         cabeceras.push_str("\r\n");
     }
     let cabeceras = HSTRING::from(cabeceras);
-    let error = |que: &str| Fallo::Red(format!("{que}: {}", windows::core::Error::from_thread().message()));
+    let error = |que: &str| {
+        Fallo::Red(format!(
+            "{que}: {}",
+            windows::core::Error::from_thread().message()
+        ))
+    };
     if cuerpo.len() > u32::MAX as usize {
         return Err(Fallo::Red("la peticion es demasiado grande".into()));
     }
@@ -207,7 +238,11 @@ fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8
         let local = !d.segura;
         let mut sesion = Asa(WinHttpOpen(
             w!("PixPin"),
-            if local { WINHTTP_ACCESS_TYPE_NO_PROXY } else { WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY },
+            if local {
+                WINHTTP_ACCESS_TYPE_NO_PROXY
+            } else {
+                WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
+            },
             PCWSTR::null(),
             PCWSTR::null(),
             0,
@@ -228,7 +263,12 @@ fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8
         // modelo que piensa mucho antes de escribir manda latidos, pero
         // mejor holgado).
         let _ = WinHttpSetTimeouts(sesion.0, 20_000, 20_000, 30_000, 180_000);
-        let conexion = Asa(WinHttpConnect(sesion.0, &HSTRING::from(d.servidor.as_str()), d.puerto, 0));
+        let conexion = Asa(WinHttpConnect(
+            sesion.0,
+            &HSTRING::from(d.servidor.as_str()),
+            d.puerto,
+            0,
+        ));
         if conexion.0.is_null() {
             return Err(error("no se pudo conectar"));
         }
@@ -274,7 +314,15 @@ fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8
             let mut cuerpo = Vec::new();
             loop {
                 let mut n: u32 = 0;
-                if WinHttpReadData(peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n).is_err() || n == 0 {
+                if WinHttpReadData(
+                    peticion.0,
+                    buf.as_mut_ptr().cast(),
+                    buf.len() as u32,
+                    &mut n,
+                )
+                .is_err()
+                    || n == 0
+                {
                     break;
                 }
                 cuerpo.extend_from_slice(&buf[..n as usize]);
@@ -288,7 +336,12 @@ fn abrir(metodo: &str, url: &str, extra: &[(&'static str, String)], cuerpo: &[u8
                 esperar,
             });
         }
-        Ok(Abierta { peticion, _conexion: conexion, _sesion: sesion, codigo })
+        Ok(Abierta {
+            peticion,
+            _conexion: conexion,
+            _sesion: sesion,
+            codigo,
+        })
     }
 }
 
@@ -326,7 +379,10 @@ mod pruebas {
     fn https_con_y_sin_puerto() {
         let d = partir("https://api.anthropic.com/v1/messages").unwrap();
         assert!(d.segura);
-        assert_eq!((d.servidor.as_str(), d.puerto, d.ruta.as_str()), ("api.anthropic.com", 443, "/v1/messages"));
+        assert_eq!(
+            (d.servidor.as_str(), d.puerto, d.ruta.as_str()),
+            ("api.anthropic.com", 443, "/v1/messages")
+        );
         let d = partir("https://x.y:8443").unwrap();
         assert_eq!((d.puerto, d.ruta.as_str()), (8443, "/"));
     }

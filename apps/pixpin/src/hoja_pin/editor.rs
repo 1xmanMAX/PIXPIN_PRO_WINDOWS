@@ -63,13 +63,21 @@ pub struct Seleccion {
 
 impl Seleccion {
     pub fn en(r: Ref) -> Seleccion {
-        Seleccion { ancla: r, activa: r }
+        Seleccion {
+            ancla: r,
+            activa: r,
+        }
     }
 
     /// Las esquinas: (columna0, fila0, columna1, fila1), incluidas.
     pub fn esquinas(&self) -> (u32, u32, u32, u32) {
         let (a, b) = (self.ancla, self.activa);
-        (a.columna.min(b.columna), a.fila.min(b.fila), a.columna.max(b.columna), a.fila.max(b.fila))
+        (
+            a.columna.min(b.columna),
+            a.fila.min(b.fila),
+            a.columna.max(b.columna),
+            a.fila.max(b.fila),
+        )
     }
 
     pub fn celdas(&self) -> u64 {
@@ -80,8 +88,14 @@ impl Seleccion {
     /// La misma, sin salirse de lo que cabe en una tabla (la columna `ZZ`
     /// y cien mil filas, como el movil).
     pub fn acotada(self) -> Seleccion {
-        let a = |r: Ref| Ref { columna: r.columna.min(MAX_COLS - 1), fila: r.fila.min(MAX_FILAS - 1) };
-        Seleccion { ancla: a(self.ancla), activa: a(self.activa) }
+        let a = |r: Ref| Ref {
+            columna: r.columna.min(MAX_COLS - 1),
+            fila: r.fila.min(MAX_FILAS - 1),
+        };
+        Seleccion {
+            ancla: a(self.ancla),
+            activa: a(self.activa),
+        }
     }
 }
 
@@ -115,12 +129,23 @@ pub struct HojaEditable {
 
 impl HojaEditable {
     pub fn nueva(nombre: String, tabla: Tabla, id_mensaje: Option<String>) -> HojaEditable {
-        HojaEditable { nombre, tabla, id_mensaje, tocada: false, sel: Seleccion::en(Ref { columna: 0, fila: 0 }), valores: OnceCell::new() }
+        HojaEditable {
+            nombre,
+            tabla,
+            id_mensaje,
+            tocada: false,
+            sel: Seleccion::en(Ref {
+                columna: 0,
+                fila: 0,
+            }),
+            valores: OnceCell::new(),
+        }
     }
 
     /// Lo que vale cada celda (se calcula una vez).
     pub fn valores(&self) -> &BTreeMap<String, Valor> {
-        self.valores.get_or_init(|| formula::evaluar_todo(&self.tabla))
+        self.valores
+            .get_or_init(|| formula::evaluar_todo(&self.tabla))
     }
 
     /// Lo que se ve en la celda: el resultado de su formula, con el
@@ -131,7 +156,10 @@ impl HojaEditable {
         if !self.tabla.celdas.contains_key(&clave) {
             return String::new();
         }
-        self.valores().get(&clave).map(|v| v.mostrar(decimal)).unwrap_or_default()
+        self.valores()
+            .get(&clave)
+            .map(|v| v.mostrar(decimal))
+            .unwrap_or_default()
     }
 
     /// El estilo de la celda activa (para encender los botones).
@@ -146,7 +174,9 @@ impl HojaEditable {
 
 /// Las celdas de `t` dentro de las esquinas, con su contenido y su estilo.
 fn fotografiar(t: &Tabla, (c0, f0, c1, f1): (u32, u32, u32, u32)) -> BTreeMap<String, Foto> {
-    let dentro = |k: &String| ref_de(k).is_some_and(|r| (c0..=c1).contains(&r.columna) && (f0..=f1).contains(&r.fila));
+    let dentro = |k: &String| {
+        ref_de(k).is_some_and(|r| (c0..=c1).contains(&r.columna) && (f0..=f1).contains(&r.fila))
+    };
     let mut m: BTreeMap<String, Foto> = BTreeMap::new();
     for (k, v) in t.celdas.iter().filter(|(k, _)| dentro(k)) {
         m.entry(k.clone()).or_default().0 = Some(v.clone());
@@ -288,7 +318,14 @@ impl Editor {
             return None;
         }
         let activa = activa.min(hojas.len() - 1);
-        Some(Editor { hojas, activa, edicion: None, deshacer: Vec::new(), rehacer: Vec::new(), cambios: 0 })
+        Some(Editor {
+            hojas,
+            activa,
+            edicion: None,
+            deshacer: Vec::new(),
+            rehacer: Vec::new(),
+            cambios: 0,
+        })
     }
 
     pub fn hoja(&self) -> &HojaEditable {
@@ -338,7 +375,10 @@ impl Editor {
         f(&mut h.tabla);
         let despues = fotografiar(&h.tabla, esquinas);
         let mut celdas = Vec::new();
-        for k in antes.keys().chain(despues.keys().filter(|k| !antes.contains_key(*k))) {
+        for k in antes
+            .keys()
+            .chain(despues.keys().filter(|k| !antes.contains_key(*k)))
+        {
             let a = antes.get(k).cloned().unwrap_or_default();
             let d = despues.get(k).cloned().unwrap_or_default();
             if a != d {
@@ -351,7 +391,11 @@ impl Editor {
         h.tocada = true;
         h.olvidar_valores();
         self.cambios += 1;
-        self.deshacer.push(Cambio { hoja: activa, celdas, sel });
+        self.deshacer.push(Cambio {
+            hoja: activa,
+            celdas,
+            sel,
+        });
         if self.deshacer.len() > MAXIMO_DESHACER {
             self.deshacer.remove(0);
         }
@@ -362,10 +406,14 @@ impl Editor {
     /// Deja escrito lo que se tecleaba. Escribir lo mismo que habia no
     /// cuenta como cambio (no se guarda ni se apunta).
     pub fn confirmar(&mut self) -> bool {
-        let Some(texto) = self.edicion.take() else { return false };
+        let Some(texto) = self.edicion.take() else {
+            return false;
+        };
         let texto = texto.trim().to_string();
         let r = self.hoja().sel.activa;
-        self.cambiar((r.columna, r.fila, r.columna, r.fila), |t| t.poner(r, &texto))
+        self.cambiar((r.columna, r.fila, r.columna, r.fila), |t| {
+            t.poner(r, &texto)
+        })
     }
 
     /// Escapar con algo tecleado deja la celda como estaba.
@@ -378,7 +426,11 @@ impl Editor {
     pub fn empezar(&mut self, con_lo_que_hay: bool) {
         if self.edicion.is_none() {
             let r = self.hoja().sel.activa;
-            self.edicion = Some(if con_lo_que_hay { self.hoja().tabla.celda(r).to_string() } else { String::new() });
+            self.edicion = Some(if con_lo_que_hay {
+                self.hoja().tabla.celda(r).to_string()
+            } else {
+                String::new()
+            });
         }
     }
 
@@ -408,7 +460,10 @@ impl Editor {
         let esquinas = sel.esquinas();
         self.cambiar(esquinas, |t| {
             let (c0, f0, c1, f1) = esquinas;
-            t.celdas.retain(|k, _| !ref_de(k).is_some_and(|r| (c0..=c1).contains(&r.columna) && (f0..=f1).contains(&r.fila)));
+            t.celdas.retain(|k, _| {
+                !ref_de(k)
+                    .is_some_and(|r| (c0..=c1).contains(&r.columna) && (f0..=f1).contains(&r.fila))
+            });
         })
     }
 
@@ -424,7 +479,14 @@ impl Editor {
             columna: (a.columna as i64 + dx as i64).clamp(0, MAX_COLS as i64 - 1) as u32,
             fila: (a.fila as i64 + dy as i64).clamp(0, MAX_FILAS as i64 - 1) as u32,
         };
-        h.sel = if extender { Seleccion { ancla: h.sel.ancla, activa: r } } else { Seleccion::en(r) };
+        h.sel = if extender {
+            Seleccion {
+                ancla: h.sel.ancla,
+                activa: r,
+            }
+        } else {
+            Seleccion::en(r)
+        };
     }
 
     /// Elige una celda (un clic); con `extender` (Mayus), alarga el rango.
@@ -432,7 +494,14 @@ impl Editor {
     pub fn elegir(&mut self, r: Ref, extender: bool) {
         self.confirmar();
         let h = self.hoja_mut();
-        h.sel = if extender { Seleccion { ancla: h.sel.ancla, activa: r } } else { Seleccion::en(r) };
+        h.sel = if extender {
+            Seleccion {
+                ancla: h.sel.ancla,
+                activa: r,
+            }
+        } else {
+            Seleccion::en(r)
+        };
     }
 
     /// Pone la seleccion que viene del visor (sin confirmar: quien la pone
@@ -462,20 +531,37 @@ impl Editor {
         match f {
             Formato::Alternar(i) => {
                 let t = &self.hoja().tabla;
-                let todas = (f0..=f1).all(|f| (c0..=c1).all(|c| t.estilos.get(&ref_a(Ref { columna: c, fila: f })).is_some_and(|e| i.en(e))));
+                let todas = (f0..=f1).all(|f| {
+                    (c0..=c1).all(|c| {
+                        t.estilos
+                            .get(&ref_a(Ref {
+                                columna: c,
+                                fila: f,
+                            }))
+                            .is_some_and(|e| i.en(e))
+                    })
+                });
                 self.estilo_en_rango(|e| i.poner(e, !todas))
             }
             Formato::Fondo(color) => self.estilo_en_rango(|e| e.f = color.clone()),
             Formato::Letra(color) => self.estilo_en_rango(|e| e.c = color.clone()),
             Formato::Alinear(a) => {
                 let ya = activo.a.as_deref() == Some(a.letra());
-                self.estilo_en_rango(|e| e.a = if ya { None } else { Some(a.letra().to_string()) })
+                self.estilo_en_rango(|e| {
+                    e.a = if ya {
+                        None
+                    } else {
+                        Some(a.letra().to_string())
+                    }
+                })
             }
             Formato::AlinearSiguiente => {
                 let siguiente = Alineacion::siguiente(activo.a.as_deref().and_then(Alineacion::de));
                 self.estilo_en_rango(|e| e.a = siguiente.map(|a| a.letra().to_string()))
             }
-            Formato::Numero(n) => self.estilo_en_rango(|e| e.nf = n.map(|n| n.palabra().to_string())),
+            Formato::Numero(n) => {
+                self.estilo_en_rango(|e| e.nf = n.map(|n| n.palabra().to_string()))
+            }
             Formato::Borrar => self.estilo_en_rango(EstiloDeCelda::borrar_formato),
         }
     }
@@ -507,20 +593,33 @@ impl Editor {
         if alto == 0 || ancho == 0 {
             return false;
         }
-        let esquinas = (en.columna, en.fila, (en.columna + ancho - 1).min(MAX_COLS - 1), (en.fila + alto - 1).min(MAX_FILAS - 1));
+        let esquinas = (
+            en.columna,
+            en.fila,
+            (en.columna + ancho - 1).min(MAX_COLS - 1),
+            (en.fila + alto - 1).min(MAX_FILAS - 1),
+        );
         let hecho = self.cambiar(esquinas, |t| {
             pixpin_proyecto::portapapeles_tabla::pegar(t, en, filas);
         });
         // Lo pegado queda elegido, como en Excel.
         let h = self.hoja_mut();
-        h.sel = Seleccion { ancla: en, activa: Ref { columna: esquinas.2, fila: esquinas.3 } };
+        h.sel = Seleccion {
+            ancla: en,
+            activa: Ref {
+                columna: esquinas.2,
+                fila: esquinas.3,
+            },
+        };
         hecho
     }
 
     /// **Deshace** el ultimo cambio: vuelve a su hoja y a su seleccion.
     pub fn deshacer(&mut self) -> bool {
         self.edicion = None;
-        let Some(c) = self.deshacer.pop() else { return false };
+        let Some(c) = self.deshacer.pop() else {
+            return false;
+        };
         self.aplicar(&c, false);
         self.rehacer.push(c);
         true
@@ -528,14 +627,18 @@ impl Editor {
 
     pub fn rehacer(&mut self) -> bool {
         self.edicion = None;
-        let Some(c) = self.rehacer.pop() else { return false };
+        let Some(c) = self.rehacer.pop() else {
+            return false;
+        };
         self.aplicar(&c, true);
         self.deshacer.push(c);
         true
     }
 
     fn aplicar(&mut self, c: &Cambio, adelante: bool) {
-        let Some(h) = self.hojas.get_mut(c.hoja) else { return };
+        let Some(h) = self.hojas.get_mut(c.hoja) else {
+            return;
+        };
         for (k, antes, despues) in &c.celdas {
             poner_foto(&mut h.tabla, k, if adelante { despues } else { antes });
         }
@@ -562,7 +665,10 @@ mod pruebas {
         t.poner(r("B3"), "=B2*2");
         let otra = Tabla::default();
         Editor::nuevo(
-            vec![HojaEditable::nueva("Gastos".into(), t, Some("1".into())), HojaEditable::nueva("Resumen".into(), otra, Some("2".into()))],
+            vec![
+                HojaEditable::nueva("Gastos".into(), t, Some("1".into())),
+                HojaEditable::nueva("Resumen".into(), otra, Some("2".into())),
+            ],
             0,
         )
         .unwrap()
@@ -575,17 +681,29 @@ mod pruebas {
         e.teclear('7');
         e.mover(0, 1, false);
         assert_eq!(e.hoja().tabla.celda(r("B2")), "7");
-        assert_eq!(e.hoja().mostrado(r("B3"), '.'), "14", "la formula se recalcula");
+        assert_eq!(
+            e.hoja().mostrado(r("B3"), '.'),
+            "14",
+            "la formula se recalcula"
+        );
         assert!(e.hoja().tocada);
         e.elegir(r("C1"), false);
         e.teclear('x');
         e.confirmar();
         assert!(e.deshacer());
-        assert_eq!(e.hoja().tabla.celda(r("C1")), "", "deshacer quita lo ultimo");
+        assert_eq!(
+            e.hoja().tabla.celda(r("C1")),
+            "",
+            "deshacer quita lo ultimo"
+        );
         assert!(e.deshacer());
         assert_eq!(e.hoja().tabla.celda(r("B2")), "5");
         assert_eq!(e.hoja().mostrado(r("B3"), '.'), "10");
-        assert_eq!(e.hoja().sel.activa, r("B2"), "deshacer vuelve a donde se escribio");
+        assert_eq!(
+            e.hoja().sel.activa,
+            r("B2"),
+            "deshacer vuelve a donde se escribio"
+        );
         // Caso negativo: no hay nada mas que deshacer.
         assert!(!e.deshacer());
         assert!(e.rehacer());
@@ -613,7 +731,10 @@ mod pruebas {
         assert!(e.puede_rehacer());
         e.teclear('b');
         e.confirmar();
-        assert!(!e.puede_rehacer(), "un cambio nuevo tira lo que se podia rehacer");
+        assert!(
+            !e.puede_rehacer(),
+            "un cambio nuevo tira lo que se podia rehacer"
+        );
         // Escapar no escribe nada.
         e.teclear('z');
         e.cancelar();
@@ -631,7 +752,11 @@ mod pruebas {
         assert!(e.deshacer());
         assert_eq!(e.activa, 1);
         assert_eq!(e.hojas[1].tabla.celda(r("D4")), "");
-        assert_eq!(e.hojas[0].tabla.celda(r("A1")), "Concepto", "la otra hoja no se toca");
+        assert_eq!(
+            e.hojas[0].tabla.celda(r("A1")),
+            "Concepto",
+            "la otra hoja no se toca"
+        );
     }
 
     #[test]
@@ -643,15 +768,25 @@ mod pruebas {
         assert!(e.formato(Formato::Alternar(Interruptor::Negrita)));
         assert!(e.hoja().tabla.estilos["B3"].n);
         assert_eq!(e.hoja().tabla.estilos.len(), 6);
-        assert!(e.formato(Formato::Alternar(Interruptor::Negrita)), "todo en negrita: se quita");
-        assert!(e.hoja().tabla.estilos.is_empty(), "un estilo vacio no se guarda");
+        assert!(
+            e.formato(Formato::Alternar(Interruptor::Negrita)),
+            "todo en negrita: se quita"
+        );
+        assert!(
+            e.hoja().tabla.estilos.is_empty(),
+            "un estilo vacio no se guarda"
+        );
         assert!(e.formato(Formato::Alinear(Alineacion::Centro)));
         assert_eq!(e.hoja().tabla.estilos["A1"].a.as_deref(), Some("c"));
         assert!(e.borrar_seleccion());
         assert!(e.hoja().tabla.celdas.is_empty());
         assert_eq!(e.hoja().tabla.estilos.len(), 6, "borrar deja el formato");
         assert!(e.deshacer());
-        assert_eq!(e.hoja().tabla.celdas.len(), 3, "un deshacer devuelve el rango entero");
+        assert_eq!(
+            e.hoja().tabla.celdas.len(),
+            3,
+            "un deshacer devuelve el rango entero"
+        );
         // Caso negativo: un rango gigante no se toca.
         e.elegir(r("A1"), false);
         e.elegir(r("ZZ100000"), true);
@@ -664,11 +799,27 @@ mod pruebas {
         let mut e = editor();
         e.elegir(r("A1"), false);
         e.elegir(r("B2"), true);
-        let a1 = |e: &Editor| e.hoja().tabla.estilos.get("A1").cloned().unwrap_or_default();
-        for i in [Interruptor::Negrita, Interruptor::Cursiva, Interruptor::Subrayado, Interruptor::Tachado, Interruptor::Ajustar] {
+        let a1 = |e: &Editor| {
+            e.hoja()
+                .tabla
+                .estilos
+                .get("A1")
+                .cloned()
+                .unwrap_or_default()
+        };
+        for i in [
+            Interruptor::Negrita,
+            Interruptor::Cursiva,
+            Interruptor::Subrayado,
+            Interruptor::Tachado,
+            Interruptor::Ajustar,
+        ] {
             assert!(e.formato(Formato::Alternar(i)), "{i:?}");
             assert!(i.en(&a1(&e)), "{i:?} puesto");
-            assert!(i.en(&e.hoja().tabla.estilos["B2"]), "{i:?} en todo el rango");
+            assert!(
+                i.en(&e.hoja().tabla.estilos["B2"]),
+                "{i:?} en todo el rango"
+            );
         }
         let e5 = e.cambios();
         // Si una celda del rango no lo tiene, se pone en todas (no se quita).
@@ -679,7 +830,10 @@ mod pruebas {
         assert!(e.formato(Formato::Letra(Some("#c00000".into()))));
         assert!(e.formato(Formato::Numero(Some(FormatoNumero::Porcentaje))));
         let b2 = e.hoja().tabla.estilos["B2"].clone();
-        assert_eq!((b2.f.as_deref(), b2.c.as_deref(), b2.nf.as_deref()), (Some("#fff3bf"), Some("#c00000"), Some("porcentaje")));
+        assert_eq!(
+            (b2.f.as_deref(), b2.c.as_deref(), b2.nf.as_deref()),
+            (Some("#fff3bf"), Some("#c00000"), Some("porcentaje"))
+        );
         assert!(e.cambios() > e5);
         // Alinear con el boton pasa por las tres y vuelve a ninguna.
         let mut vistas = Vec::new();
@@ -687,16 +841,26 @@ mod pruebas {
             e.formato(Formato::AlinearSiguiente);
             vistas.push(a1(&e).a);
         }
-        assert_eq!(vistas, [Some("i".into()), Some("c".into()), Some("d".into()), None]);
+        assert_eq!(
+            vistas,
+            [Some("i".into()), Some("c".into()), Some("d".into()), None]
+        );
         // Deshacer quita el ultimo formato de todo el rango de una vez.
         e.formato(Formato::Letra(None));
-        assert_eq!(e.hoja().tabla.estilos["B2"].c, None, "el automatico es sin color");
+        assert_eq!(
+            e.hoja().tabla.estilos["B2"].c,
+            None,
+            "el automatico es sin color"
+        );
         assert!(e.deshacer());
         assert_eq!(e.hoja().tabla.estilos["B2"].c.as_deref(), Some("#c00000"));
         assert!(e.rehacer());
         // Borrar formato lo quita todo, y se deshace.
         assert!(e.formato(Formato::Borrar));
-        assert!(e.hoja().tabla.estilos.is_empty(), "sin formato no queda estilo");
+        assert!(
+            e.hoja().tabla.estilos.is_empty(),
+            "sin formato no queda estilo"
+        );
         assert!(e.deshacer());
         assert!(e.hoja().tabla.estilos["B2"].n);
         // Casos negativos: borrar el formato de lo que no tiene no es un
@@ -705,7 +869,10 @@ mod pruebas {
         assert!(!e.formato(Formato::Borrar));
         e.formato(Formato::Fondo(Some("#d3f9d8".into())));
         assert!(!e.formato(Formato::Fondo(Some("#d3f9d8".into()))));
-        assert!(!e.formato(Formato::Numero(None)), "General sin formato no cambia nada");
+        assert!(
+            !e.formato(Formato::Numero(None)),
+            "General sin formato no cambia nada"
+        );
     }
 
     #[test]
@@ -719,7 +886,10 @@ mod pruebas {
         assert_eq!(v["estilos"]["B2"]["t"], true);
         assert_eq!(v["estilos"]["B2"]["nf"], "moneda");
         let vuelta = Tabla::leer(&texto).unwrap();
-        assert_eq!(vuelta.estilos["B2"].formato_numero(), Some(FormatoNumero::Moneda));
+        assert_eq!(
+            vuelta.estilos["B2"].formato_numero(),
+            Some(FormatoNumero::Moneda)
+        );
         assert!(vuelta.estilos["B2"].t);
     }
 
@@ -728,7 +898,10 @@ mod pruebas {
         use pixpin_proyecto::portapapeles_tabla::Pegada;
         let mut e = editor();
         e.elegir(r("B2"), false);
-        let p = |t: &str| Pegada { texto: t.into(), ..Default::default() };
+        let p = |t: &str| Pegada {
+            texto: t.into(),
+            ..Default::default()
+        };
         assert!(e.pegar(&[vec![p("1"), p("2")], vec![p("3")]]));
         assert_eq!(e.hoja().tabla.celda(r("C2")), "2");
         assert_eq!(e.hoja().sel.esquinas(), (1, 1, 2, 2));
@@ -741,9 +914,24 @@ mod pruebas {
     #[test]
     fn la_seleccion_del_visor_no_se_sale_de_la_tabla() {
         let mut e = editor();
-        let lejos = Seleccion { ancla: r("A1"), activa: Ref { columna: 16_000, fila: 1_000_000 } };
+        let lejos = Seleccion {
+            ancla: r("A1"),
+            activa: Ref {
+                columna: 16_000,
+                fila: 1_000_000,
+            },
+        };
         e.poner_seleccion(lejos);
-        assert_eq!(e.hoja().sel.activa, Ref { columna: MAX_COLS - 1, fila: MAX_FILAS - 1 });
-        assert!(Editor::nuevo(Vec::new(), 0).is_none(), "sin hojas no hay editor");
+        assert_eq!(
+            e.hoja().sel.activa,
+            Ref {
+                columna: MAX_COLS - 1,
+                fila: MAX_FILAS - 1
+            }
+        );
+        assert!(
+            Editor::nuevo(Vec::new(), 0).is_none(),
+            "sin hojas no hay editor"
+        );
     }
 }

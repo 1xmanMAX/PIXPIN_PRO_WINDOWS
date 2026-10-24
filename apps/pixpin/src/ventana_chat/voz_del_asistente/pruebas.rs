@@ -11,7 +11,10 @@ use pixpin_store::idioma::Idioma;
 fn chat(nombre: &str, del_asistente: bool) -> (Ubicacion, Abierto, PathBuf) {
     olvidar_para_pruebas();
     asistente::olvidar_para_pruebas();
-    let raiz = std::env::temp_dir().join(format!("pixpin-voz-asistente-{nombre}-{}", std::process::id()));
+    let raiz = std::env::temp_dir().join(format!(
+        "pixpin-voz-asistente-{nombre}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&raiz);
     std::fs::create_dir_all(&raiz).unwrap();
     let u = Ubicacion::Portable { raiz: raiz.clone() };
@@ -49,7 +52,8 @@ fn hasta_que_llegue(u: &Ubicacion, a: &mut Abierto, t: &Catalogo) -> Vuelta {
 /// Lo que hace el bucle del chat con `Vuelta::enviar`.
 fn enviar_como_el_bucle(u: &Ubicacion, a: &mut Abierto, motor: Arc<dyn pixpin_ia::motor::Motor>) {
     guardar_nota(u, a, "K7Q2").unwrap();
-    let pregunta = ia_chat::pregunta_de(a.mensajes.last().unwrap(), a.ficha.es_asistente()).unwrap();
+    let pregunta =
+        ia_chat::pregunta_de(a.mensajes.last().unwrap(), a.ficha.es_asistente()).unwrap();
     asistente::lanzar(u, a, motor, pregunta).unwrap();
     let hasta = Instant::now() + Duration::from_secs(20);
     while asistente::espera().is_some() {
@@ -77,7 +81,16 @@ fn se_lee_la_respuesta_sin_pensamiento_ni_json_ni_estados() {
         t,
         "Hecho\nTe dibujé una casa con dos ventanas.\nMira el lienzo cuando quieras.\nPieza, Cantidad\nVentanas, 2"
     );
-    for nada in ["think", "dibujar_en_lienzo", "{", "rectangulo", "https", "⚠", "**", "🏠"] {
+    for nada in [
+        "think",
+        "dibujar_en_lienzo",
+        "{",
+        "rectangulo",
+        "https",
+        "⚠",
+        "**",
+        "🏠",
+    ] {
         assert!(!t.contains(nada), "se colo «{nada}» en {t:?}");
     }
     assert_eq!(parrafos_para_leer(burbuja).len(), 5);
@@ -85,9 +98,18 @@ fn se_lee_la_respuesta_sin_pensamiento_ni_json_ni_estados() {
 
 #[test]
 fn pensamiento_sin_cerrar_o_cierre_suelto_y_parado() {
-    assert_eq!(texto_para_leer("Hola.<think>sigo pensando y no cierro"), "Hola.");
-    assert_eq!(texto_para_leer("pensado a medias</think>La respuesta."), "La respuesta.");
-    assert_eq!(texto_para_leer("Iba a decir algo ⏹ (parado)"), "Iba a decir algo");
+    assert_eq!(
+        texto_para_leer("Hola.<think>sigo pensando y no cierro"),
+        "Hola."
+    );
+    assert_eq!(
+        texto_para_leer("pensado a medias</think>La respuesta."),
+        "La respuesta."
+    );
+    assert_eq!(
+        texto_para_leer("Iba a decir algo ⏹ (parado)"),
+        "Iba a decir algo"
+    );
     assert_eq!(texto_para_leer("<thinking>x</thinking>Sí."), "Sí.");
 }
 
@@ -103,7 +125,15 @@ fn una_burbuja_solo_de_estado_o_de_aviso_no_tiene_nada_que_leer() {
 
 #[test]
 fn lo_oido_sin_los_rotulos_que_whisper_se_inventa() {
-    let t = limpiar_lo_oido(["[Música]", " dibuja  una casa ", "(risas)", "con dos ventanas"].into_iter());
+    let t = limpiar_lo_oido(
+        [
+            "[Música]",
+            " dibuja  una casa ",
+            "(risas)",
+            "con dos ventanas",
+        ]
+        .into_iter(),
+    );
     assert_eq!(t, "dibuja una casa con dos ventanas");
     assert_eq!(limpiar_lo_oido(["[Silencio]", "  "].into_iter()), "");
     assert_eq!(juntar("@asistente", "hola"), "@asistente hola");
@@ -113,12 +143,24 @@ fn lo_oido_sin_los_rotulos_que_whisper_se_inventa() {
 #[test]
 fn los_fallos_en_palabras_del_usuario() {
     let t = textos();
-    assert_eq!(clave_del_fallo(&ErrorVoz::NoSeEntiendeNada), "asistente-voz-nada");
+    assert_eq!(
+        clave_del_fallo(&ErrorVoz::NoSeEntiendeNada),
+        "asistente-voz-nada"
+    );
     assert_eq!(clave_del_fallo(&ErrorVoz::AudioVacio), "asistente-voz-nada");
-    assert_eq!(clave_del_fallo(&ErrorVoz::Cancelada), "asistente-voz-cancelado");
-    assert_eq!(clave_del_fallo(&ErrorVoz::SinMicrofono), "chat-voz-sin-microfono");
+    assert_eq!(
+        clave_del_fallo(&ErrorVoz::Cancelada),
+        "asistente-voz-cancelado"
+    );
+    assert_eq!(
+        clave_del_fallo(&ErrorVoz::SinMicrofono),
+        "chat-voz-sin-microfono"
+    );
     // Sin microfono al empezar: el mismo aviso que las notas de voz.
-    assert_eq!(rotulo_de_no_grabar(&pixpin_audio::ErrorAudio::SinMicrofono), "chat-voz-sin-microfono");
+    assert_eq!(
+        rotulo_de_no_grabar(&pixpin_audio::ErrorAudio::SinMicrofono),
+        "chat-voz-sin-microfono"
+    );
     for clave in [
         "asistente-voz-nada",
         "asistente-voz-cancelado",
@@ -144,11 +186,20 @@ fn el_boton_es_el_microfono_del_asistente_solo_donde_toca() {
     let _ = std::fs::remove_dir_all(&raiz);
 
     let (_u, mut a, raiz) = chat("boton-otro", false);
-    assert!(!microfono_del_asistente(&a), "en otro chat el microfono graba notas de voz");
+    assert!(
+        !microfono_del_asistente(&a),
+        "en otro chat el microfono graba notas de voz"
+    );
     a.borrador = "@asistente".into();
-    assert!(microfono_del_asistente(&a), "con solo la mencion, se le habla");
+    assert!(
+        microfono_del_asistente(&a),
+        "con solo la mencion, se le habla"
+    );
     let _tx = pasando_para_pruebas(&a.ficha.id, "@asistente", 0.3);
-    assert!(!microfono_del_asistente(&a), "pasando a texto, el boton cancela");
+    assert!(
+        !microfono_del_asistente(&a),
+        "pasando a texto, el boton cancela"
+    );
     assert!(!grabando_para_el_asistente(&a));
     olvidar_para_pruebas();
     let _ = std::fs::remove_dir_all(&raiz);
@@ -177,7 +228,10 @@ fn lo_dicho_llega_a_la_caja_y_se_envia_solo() {
     assert!(ia_chat::es_del_asistente(&a.mensajes[i]));
     assert!(se_puede_leer(&a, i), "la respuesta lleva altavoz");
     assert!(!se_puede_leer(&a, i - 1), "la pregunta no");
-    assert_eq!(parrafos_para_leer(&a.mensajes[i].texto), vec!["Claro: una casa con tejado rojo."]);
+    assert_eq!(
+        parrafos_para_leer(&a.mensajes[i].texto),
+        vec!["Claro: una casa con tejado rojo."]
+    );
     // Acabo: queda apuntada para «leer siempre» (apagado: no se lee).
     let v = latido(&u, Some(&mut a), &t);
     assert!(v.aviso.is_none());
@@ -198,7 +252,11 @@ fn con_revisar_lo_dicho_se_queda_en_la_caja_tras_la_mencion() {
     let v = hasta_que_llegue(&u, &mut a, &t);
     assert!(!v.enviar, "se repasa antes de enviar");
     assert_eq!(a.borrador, "@asistente qué hay en el plano");
-    assert_eq!(a.cursor.pos(&a.borrador), a.borrador.len(), "el cursor al final");
+    assert_eq!(
+        a.cursor.pos(&a.borrador),
+        a.borrador.len(),
+        "el cursor al final"
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -254,11 +312,23 @@ fn terminar_sin_grabar_no_hace_nada() {
 #[test]
 fn una_respuesta_sin_texto_avisa_en_vez_de_leer() {
     let (u, mut a, raiz) = chat("sin-texto", true);
-    let n = escribir_nota(&raiz, &a.ficha.id, ia_chat::APARATO, "⚠️ Sin red.", 1, 1, None).unwrap();
+    let n = escribir_nota(
+        &raiz,
+        &a.ficha.id,
+        ia_chat::APARATO,
+        "⚠️ Sin red.",
+        1,
+        1,
+        None,
+    )
+    .unwrap();
     a.vistas.push(None);
     a.mensajes.push(n);
     assert!(!se_puede_leer(&a, 0));
-    assert_eq!(alternar(&u, &a, 0, &textos()), Some(textos().t("asistente-voz-nada-que-leer")));
+    assert_eq!(
+        alternar(&u, &a, 0, &textos()),
+        Some(textos().t("asistente-voz-nada-que-leer"))
+    );
     assert!(LEYENDO.with_borrow(Option::is_none));
     let _ = std::fs::remove_dir_all(&raiz);
 }
@@ -340,10 +410,21 @@ fn whisper_de_verdad_wav_conocido_a_texto_y_enviado() {
     };
     let (u, mut a, raiz) = chat_con_whisper("whisper", &de);
     let wav = raiz.join("dicho.wav");
-    wav_sintetico("Dibuja una casa con dos ventanas y una puerta.", &wav).expect("voz castellana de Windows");
+    wav_sintetico("Dibuja una casa con dos ventanas y una puerta.", &wav)
+        .expect("voz castellana de Windows");
     let t = textos();
     let t0 = Instant::now();
-    assert_eq!(lanzar(&u, &a.ficha.id.clone(), String::new(), wav.clone(), Idioma::Espanol, &t), None);
+    assert_eq!(
+        lanzar(
+            &u,
+            &a.ficha.id.clone(),
+            String::new(),
+            wav.clone(),
+            Idioma::Espanol,
+            &t
+        ),
+        None
+    );
     assert!(pasando(&a.ficha.id));
     let hasta = Instant::now() + Duration::from_secs(120);
     let v = loop {
@@ -354,7 +435,11 @@ fn whisper_de_verdad_wav_conocido_a_texto_y_enviado() {
         assert!(Instant::now() < hasta, "Whisper no acabo");
         std::thread::sleep(Duration::from_millis(50));
     };
-    eprintln!("oido en {:.1} s: «{}»", t0.elapsed().as_secs_f32(), a.borrador);
+    eprintln!(
+        "oido en {:.1} s: «{}»",
+        t0.elapsed().as_secs_f32(),
+        a.borrador
+    );
     assert_eq!(v.aviso, None);
     assert!(v.enviar);
     let oido = a.borrador.to_lowercase();
@@ -377,7 +462,17 @@ fn whisper_de_verdad_el_silencio_no_se_envia() {
     let muestras: Vec<i16> = (0..48_000).map(|i| ((i * 7919) % 13) as i16 - 6).collect();
     wav_de(&muestras, &wav);
     let t = textos();
-    assert_eq!(lanzar(&u, &a.ficha.id.clone(), String::new(), wav, Idioma::Espanol, &t), None);
+    assert_eq!(
+        lanzar(
+            &u,
+            &a.ficha.id.clone(),
+            String::new(),
+            wav,
+            Idioma::Espanol,
+            &t
+        ),
+        None
+    );
     let hasta = Instant::now() + Duration::from_secs(120);
     let v = loop {
         let v = latido(&u, Some(&mut a), &t);
@@ -422,18 +517,33 @@ fn muestra_de_la_voz_del_asistente() {
     let (ancho, alto) = (900u32, 560u32);
     let destino = FueraDePantalla::nuevo(&motor_r, d3.d3d(), ancho, alto).expect("destino");
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
     let fichas = vec![a.ficha.clone()];
     let orden = vec![0usize];
     let marcados = Default::default();
-    let salida = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let salida = std::env::var_os("PIXPIN_MUESTRAS")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     std::fs::create_dir_all(&salida).unwrap();
 
-    for (nombre, pasando_ahora) in [("asistente-voz-microfono.png", false), ("asistente-voz-pasando.png", true)] {
+    for (nombre, pasando_ahora) in [
+        ("asistente-voz-microfono.png", false),
+        ("asistente-voz-pasando.png", true),
+    ] {
         let _tx = pasando_ahora.then(|| pasando_para_pruebas(&a.ficha.id, "", 0.42));
-        let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(&a));
+        let d = disponer(
+            marco,
+            escala,
+            pixpin_ui::chat::ancho_inicial(ancho, escala),
+            Some(&a),
+        );
         for _ in 0..3 {
             let lista = Lista {
                 fichas: &fichas,
@@ -449,7 +559,16 @@ fn muestra_de_la_voz_del_asistente() {
             };
             motor_r
                 .dibujar(&destino.destino, |p| {
-                    pintar(p, &d, &CLARO, papel_de(0, true), escala, &textos, None, &lista);
+                    pintar(
+                        p,
+                        &d,
+                        &CLARO,
+                        papel_de(0, true),
+                        escala,
+                        &textos,
+                        None,
+                        &lista,
+                    );
                     a.zonas.borrow_mut().clear();
                     let c = Pinta {
                         tema: &CLARO,
@@ -470,11 +589,19 @@ fn muestra_de_la_voz_del_asistente() {
         // El altavoz es pulsable y es de la respuesta.
         let i = a.mensajes.len() - 1;
         assert!(
-            a.zonas.borrow().iter().any(|(_, z)| *z == Zona::LeerRespuesta(i)),
+            a.zonas
+                .borrow()
+                .iter()
+                .any(|(_, z)| *z == Zona::LeerRespuesta(i)),
             "falta el altavoz de la respuesta"
         );
         let (w, hh, pixeles) = destino.leer_rgba().expect("leer");
-        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: hh, pixeles }).unwrap();
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+            ancho: w,
+            alto: hh,
+            pixeles,
+        })
+        .unwrap();
         let ruta = salida.join(nombre);
         std::fs::write(&ruta, png).unwrap();
         println!("{}", ruta.display());

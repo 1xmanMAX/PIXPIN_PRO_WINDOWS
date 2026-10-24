@@ -6,7 +6,10 @@
 //! Solo lee: `GetLocaleInfoEx` con la configuracion del usuario
 //! (`LOCALE_NAME_USER_DEFAULT`, que es el puntero nulo).
 
-use windows::Win32::Globalization::{GetLocaleInfoEx, LOCALE_SCURRENCY, LOCALE_SDATE, LOCALE_SDECIMAL, LOCALE_SSHORTDATE, LOCALE_STHOUSAND};
+use windows::Win32::Globalization::{
+    GetLocaleInfoEx, LOCALE_SCURRENCY, LOCALE_SDATE, LOCALE_SDECIMAL, LOCALE_SSHORTDATE,
+    LOCALE_STHOUSAND,
+};
 use windows::core::PCWSTR;
 
 /// Lo que dice Windows, en crudo (cadenas vacias si no se pudo leer).

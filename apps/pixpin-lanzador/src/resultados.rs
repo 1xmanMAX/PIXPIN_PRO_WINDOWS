@@ -453,7 +453,11 @@ impl Contexto {
         }
         match crate::fecha::local(self.ahora) {
             Some(l) => pixpin_frase::fechas::Momento {
-                dia: pixpin_frase::fechas::dias_de(i64::from(l.anio), i64::from(l.mes), i64::from(l.dia)),
+                dia: pixpin_frase::fechas::dias_de(
+                    i64::from(l.anio),
+                    i64::from(l.mes),
+                    i64::from(l.dia),
+                ),
                 minuto: u32::from(l.hora) * 60 + u32::from(l.minuto),
             },
             None => pixpin_frase::fechas::Momento::de_ms_locales(self.ahora),
@@ -1695,12 +1699,20 @@ fn verbo(
                 ));
             } else {
                 let mut r = Resultado::nuevo(
-                    if texto.is_empty() { format!("Mandar al lienzo «{nombre}»…") } else { format!("Mandar al lienzo «{nombre}»: {texto}") },
+                    if texto.is_empty() {
+                        format!("Mandar al lienzo «{nombre}»…")
+                    } else {
+                        format!("Mandar al lienzo «{nombre}»: {texto}")
+                    },
                     format!("Intro: se apila en el lienzo (si no existe, se crea {destino})"),
                     glifo::LIENZO,
-                    Accion::Pedido(pedido("al_lienzo", json!({ "lienzo": nombre, "texto": texto, "proyecto": destino_id }))),
+                    Accion::Pedido(pedido(
+                        "al_lienzo",
+                        json!({ "lienzo": nombre, "texto": texto, "proyecto": destino_id }),
+                    )),
                 );
-                r.autocompletar = Some(ctx.consulta(&format!("lienzo {nombre} {SEPARADOR} {texto}")));
+                r.autocompletar =
+                    Some(ctx.consulta(&format!("lienzo {nombre} {SEPARADOR} {texto}")));
                 crate::imagenes::con_imagenes(&mut r, texto, ctx);
                 v.push(r);
             }
@@ -1984,7 +1996,13 @@ fn verbo(
         }
         Funcion::Ultima => v.push(resultado_ultima(ctx)),
         Funcion::Sincronizar => v.extend(crate::al_movil::resultados(resto, ctx)),
-        Funcion::Asistente => v.extend(crate::asistente::resultados(proyectos, resto, destino_id.clone(), &destino, ctx)),
+        Funcion::Asistente => v.extend(crate::asistente::resultados(
+            proyectos,
+            resto,
+            destino_id.clone(),
+            &destino,
+            ctx,
+        )),
         Funcion::Galeria => {
             v.push(crate::capturas::resultado_galeria());
             v.extend(crate::capturas::lista(ctx, resto));
@@ -2249,10 +2267,16 @@ fn en_lista(proyectos: &[Proyecto], lista: &str, filtro: &str, ctx: &Contexto) -
             if exacta {
                 unir(&[
                     &entendido,
-                    &format!("Ya hay una igual · Intro: añadir otra a «{}» · {}", l.titulo, p.nombre),
+                    &format!(
+                        "Ya hay una igual · Intro: añadir otra a «{}» · {}",
+                        l.titulo, p.nombre
+                    ),
                 ])
             } else {
-                unir(&[&entendido, &format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre)])
+                unir(&[
+                    &entendido,
+                    &format!("Intro: añadirla a «{}» · {}", l.titulo, p.nombre),
+                ])
             },
             glifo::ANADIR,
             Accion::PedirYSeguir {

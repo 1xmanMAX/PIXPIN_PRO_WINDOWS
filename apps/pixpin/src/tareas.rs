@@ -38,8 +38,8 @@
 
 #![forbid(unsafe_code)]
 
-mod emoticonos;
 pub(crate) mod chapitas;
+mod emoticonos;
 pub(crate) mod frase;
 pub(crate) mod kanban;
 pub(crate) mod rejilla;
@@ -464,7 +464,11 @@ pub fn marca_de_hora(local_ms: i64) -> String {
     const DIA: i64 = 86_400_000;
     let (y, m, d) = fecha_de(local_ms.div_euclid(DIA));
     let min = local_ms.rem_euclid(DIA) / 60_000;
-    format!("{RELOJ} {y:04}-{m:02}-{d:02} {:02}:{:02}", min / 60, min % 60)
+    format!(
+        "{RELOJ} {y:04}-{m:02}-{d:02} {:02}:{:02}",
+        min / 60,
+        min % 60
+    )
 }
 
 /// La hora (local) de una tarea y donde empieza su marca, si la lleva.
@@ -472,7 +476,13 @@ fn marca_en(texto: &str) -> Option<(usize, i64)> {
     let i = texto.rfind(RELOJ)?;
     let resto = texto[i + RELOJ.len_utf8()..].trim_start();
     let num = |a: usize, b: usize| resto.get(a..b).and_then(|s| s.parse::<i64>().ok());
-    let (y, mo, d, h, mi) = (num(0, 4)?, num(5, 7)?, num(8, 10)?, num(11, 13)?, num(14, 16)?);
+    let (y, mo, d, h, mi) = (
+        num(0, 4)?,
+        num(5, 7)?,
+        num(8, 10)?,
+        num(11, 13)?,
+        num(14, 16)?,
+    );
     let sep = resto.as_bytes();
     if sep.get(4) != Some(&b'-') || sep.get(7) != Some(&b'-') || sep.get(13) != Some(&b':') {
         return None;
@@ -564,7 +574,11 @@ pub fn olvidar_hora(carpeta: &Path, id: &str) -> std::io::Result<bool> {
     };
     let mut m = m.clone();
     // Con el espacio de delante, que se puso al marcarla.
-    let desde = if m.texto[..i].ends_with(' ') { i - 1 } else { i };
+    let desde = if m.texto[..i].ends_with(' ') {
+        i - 1
+    } else {
+        i
+    };
     m.texto.replace_range(desde..i + marca.len(), "");
     let puesto = cuaderno::reemplazar(carpeta, &m)?;
     if puesto {
@@ -1054,14 +1068,20 @@ mod pruebas {
         assert_eq!(avisos.len(), 1, "solo la que tiene hora");
         assert!(avisos[0].texto.contains("yeso") && !avisos[0].texto.contains(RELOJ));
         // La lista y el numero, para «Hecha» y «+10 min» de su notificacion.
-        assert_eq!(tarea_de_recordatorio(&c, &avisos[0].id), Some((m.id.clone(), 0)));
+        assert_eq!(
+            tarea_de_recordatorio(&c, &avisos[0].id),
+            Some((m.id.clone(), 0))
+        );
         assert_eq!(tarea_de_recordatorio(&c, "m-sin-tarea"), None);
         assert!(olvidar_hora(&carpeta, &avisos[0].id).unwrap());
         let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
         assert!(avisos_del_cuaderno(&c).is_empty());
         let (listas, _) = reunir(&raiz);
         let l = listas.iter().find(|l| !l.guardados).unwrap();
-        assert_eq!(textos(&l.filas.iter().collect::<Vec<_>>()), ["yeso", "arena"]);
+        assert_eq!(
+            textos(&l.filas.iter().collect::<Vec<_>>()),
+            ["yeso", "arena"]
+        );
         // Caso negativo: un id que no es de tarea no toca nada.
         assert!(!olvidar_hora(&carpeta, "otra-cosa").unwrap());
         let _ = std::fs::remove_dir_all(&raiz);
@@ -1279,15 +1299,22 @@ mod pruebas {
         let (raiz, obra) = almacen_de_prueba("nota-pin");
         let frase = frase::leer("llamar al banco muy urgente #casa", frase::ahora());
         let m = pedidos::anadir_tarea(&raiz, &obra.id, "PC01", None, "yeso", "Obra").unwrap();
-        pedidos::anadir_tarea(&raiz, &obra.id, "PC01", Some(&m.id), &frase.texto(), "Obra").unwrap();
+        pedidos::anadir_tarea(&raiz, &obra.id, "PC01", Some(&m.id), &frase.texto(), "Obra")
+            .unwrap();
         let carpeta = almacen::carpeta(&raiz, &obra.id);
         let crudo = poner_nota(&carpeta, &m.id, "llamar al banco", "no abren")
             .unwrap()
             .expect("la encuentra por su titulo");
-        assert!(crudo.starts_with("llamar al banco ⏫ #casa 💬 no abren ➕ "), "{crudo}");
+        assert!(
+            crudo.starts_with("llamar al banco ⏫ #casa 💬 no abren ➕ "),
+            "{crudo}"
+        );
         let (listas, _) = reunir(&raiz);
         let l = listas.iter().find(|l| !l.guardados).unwrap();
-        assert_eq!(frase::marcas(&l.filas[1].crudo).nota.as_deref(), Some("no abren"));
+        assert_eq!(
+            frase::marcas(&l.filas[1].crudo).nota.as_deref(),
+            Some("no abren")
+        );
         assert_eq!(l.filas[0].texto, "yeso", "la otra no se toca");
         // Caso negativo: un titulo que no esta no toca nada.
         assert_eq!(poner_nota(&carpeta, &m.id, "otra cosa", "x").unwrap(), None);

@@ -20,8 +20,8 @@ use windows::Win32::Networking::WinHttp::{
     INTERNET_DEFAULT_HTTPS_PORT, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
     WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPEN_REQUEST_FLAGS,
     WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect,
-    WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData,
-    WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts, WinHttpWriteData,
+    WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse,
+    WinHttpSendRequest, WinHttpSetTimeouts, WinHttpWriteData,
 };
 use windows::core::{HSTRING, PCWSTR, w};
 
@@ -68,7 +68,10 @@ pub fn formulario(
             tipo
         }
     ));
-    (cabeza.into_bytes(), format!("\r\n--{frontera}--\r\n").into_bytes())
+    (
+        cabeza.into_bytes(),
+        format!("\r\n--{frontera}--\r\n").into_bytes(),
+    )
 }
 
 /// `https://servidor/ruta` en sus dos piezas. Solo HTTPS.
@@ -164,15 +167,8 @@ pub fn subir(
         if peticion.0.is_null() {
             return Err(error("no se pudo preparar la subida"));
         }
-        WinHttpSendRequest(
-            peticion.0,
-            Some(&cabeceras),
-            None,
-            0,
-            total as u32,
-            0,
-        )
-        .map_err(|e| format!("no se pudo empezar a subir: {}", e.message()))?;
+        WinHttpSendRequest(peticion.0, Some(&cabeceras), None, 0, total as u32, 0)
+            .map_err(|e| format!("no se pudo empezar a subir: {}", e.message()))?;
         let mandar = |trozo: &[u8]| -> Result<(), String> {
             let mut hecho = 0usize;
             while hecho < trozo.len() {
@@ -221,8 +217,13 @@ pub fn subir(
         let mut cuerpo = Vec::new();
         loop {
             let mut n: u32 = 0;
-            if WinHttpReadData(peticion.0, buf.as_mut_ptr().cast(), buf.len() as u32, &mut n)
-                .is_err()
+            if WinHttpReadData(
+                peticion.0,
+                buf.as_mut_ptr().cast(),
+                buf.len() as u32,
+                &mut n,
+            )
+            .is_err()
                 || n == 0
             {
                 break;
@@ -256,7 +257,9 @@ mod pruebas {
             "application/pdf",
         );
         let c = String::from_utf8(cabeza).unwrap();
-        assert!(c.starts_with("--XX\r\nContent-Disposition: form-data; name=\"reqtype\"\r\n\r\nfileupload\r\n"));
+        assert!(c.starts_with(
+            "--XX\r\nContent-Disposition: form-data; name=\"reqtype\"\r\n\r\nfileupload\r\n"
+        ));
         assert!(c.contains("name=\"time\"\r\n\r\n72h\r\n"));
         assert!(c.ends_with(
             "name=\"fileToUpload\"; filename=\"lista.pdf\"\r\nContent-Type: application/pdf\r\n\r\n"
@@ -264,7 +267,11 @@ mod pruebas {
         assert_eq!(String::from_utf8(cola).unwrap(), "\r\n--XX--\r\n");
         // Caso negativo: sin tipo, el generico.
         let (c, _) = formulario("XX", &[], "file", "x", "");
-        assert!(String::from_utf8(c).unwrap().contains("application/octet-stream"));
+        assert!(
+            String::from_utf8(c)
+                .unwrap()
+                .contains("application/octet-stream")
+        );
     }
 
     #[test]

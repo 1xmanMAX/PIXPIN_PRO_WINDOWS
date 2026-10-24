@@ -14,19 +14,20 @@ use std::path::{Path, PathBuf};
 
 use pixpin_store::{Idioma, Ubicacion};
 
-/// Imprimir los marcos del plano, con su lamina y su membrete.
-mod imprimir;
 /// Lo anotado sobre el plano (la capa anot-<uid>).
 pub(crate) mod anotar;
 /// Exportar el plano: HTML por capas, PDF, PNG y DXF (13-oct-2026).
 pub(crate) mod exportar;
+/// Imprimir los marcos del plano, con su lamina y su membrete.
+mod imprimir;
 /// Los textos del plano con su sitio, para buscar en ellos (14-oct-2026).
 pub(crate) mod textos;
 
 /// Donde mirar al abrir un plano (`[x, y, ancho]` del dibujo): el
 /// asistente llevando a un texto encontrado (`abrir` con `zona`). Como la
 /// pagina del lector de PDF, se toma al abrir.
-static VISTA_AL_ABRIR: std::sync::Mutex<Vec<(PathBuf, [f64; 3])>> = std::sync::Mutex::new(Vec::new());
+static VISTA_AL_ABRIR: std::sync::Mutex<Vec<(PathBuf, [f64; 3])>> =
+    std::sync::Mutex::new(Vec::new());
 
 /// **Que la proxima vez que se abra `plano` mire ahi.**
 pub fn abrir_en(plano: &Path, vista: [f64; 3]) {
@@ -80,23 +81,31 @@ pub fn convertir_si_toca() -> Option<i32> {
     // La carpeta de letras del usuario (el boton «Aa»), si la hay: manda
     // sobre las de Autodesk, Windows y Hershey.
     let letras = args.get(4).map(PathBuf::from);
-    Some(match pixpin_cad::letras::convertir_con_letras(&entrada, letras) {
-        Ok(modelo) => {
-            let temporal = salida.with_extension("tmp");
-            let escrito = std::fs::write(&temporal, modelo.a_bytes()).and_then(|()| std::fs::rename(&temporal, &salida));
-            if escrito.is_ok() { 0 } else { 3 }
-        }
-        Err(e) => {
-            let _ = std::fs::write(salida.with_extension("error"), e);
-            1
-        }
-    })
+    Some(
+        match pixpin_cad::letras::convertir_con_letras(&entrada, letras) {
+            Ok(modelo) => {
+                let temporal = salida.with_extension("tmp");
+                let escrito = std::fs::write(&temporal, modelo.a_bytes())
+                    .and_then(|()| std::fs::rename(&temporal, &salida));
+                if escrito.is_ok() { 0 } else { 3 }
+            }
+            Err(e) => {
+                let _ = std::fs::write(salida.with_extension("error"), e);
+                1
+            }
+        },
+    )
 }
 
 /// El nombre del plano en la cache: su ruta, su tamano y su fecha.
 pub fn clave(ruta: &Path) -> Option<String> {
     let m = std::fs::metadata(ruta).ok()?;
-    let fecha = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_millis();
+    let fecha = m
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis();
     let texto = format!("{}|{}|{}", ruta.display(), m.len(), fecha);
     // FNV-1a de 64 bits: basta para no confundir dos planos.
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -148,7 +157,9 @@ pub enum SitioDeMarcadores {
 /// El id de un marcador sin nada que salga de su carpeta (lo pone el visor:
 /// `m` y cifras).
 fn id_limpio(id: &str) -> String {
-    id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect()
+    id.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect()
 }
 
 impl SitioDeMarcadores {
@@ -179,7 +190,10 @@ impl SitioDeMarcadores {
     pub fn pasar_de(&self, vieja: &Path) -> bool {
         let fichero = vieja.join("vistas.json");
         let marca = vieja.join(YA_PASADO);
-        if self == &SitioDeMarcadores::Local(vieja.to_path_buf()) || marca.exists() || !(fichero.is_file() || vieja.join("marcos.json").is_file()) {
+        if self == &SitioDeMarcadores::Local(vieja.to_path_buf())
+            || marca.exists()
+            || !(fichero.is_file() || vieja.join("marcos.json").is_file())
+        {
             return false;
         }
         let antes = pixpin_cad::marcadores::leer(&fichero);
@@ -190,7 +204,8 @@ impl SitioDeMarcadores {
         }
         // Lo anotado sobre cada marcador del modelo, a su fichero del mensaje.
         for m in &antes.modelo {
-            let viejas = anotar::rutas_de_marcador(&SitioDeMarcadores::Local(vieja.to_path_buf()), &m.id);
+            let viejas =
+                anotar::rutas_de_marcador(&SitioDeMarcadores::Local(vieja.to_path_buf()), &m.id);
             let nuevas = anotar::rutas_de_marcador(self, &m.id);
             pixpin_proyecto::anotado::copiar_si_falta(&viejas.tinta, &nuevas.tinta);
             pixpin_proyecto::anotado::copiar_si_falta(&viejas.hoja, &nuevas.hoja);
@@ -222,8 +237,14 @@ impl SitioDeMarcadores {
 
 /// La base de los ficheros de lo anotado sobre el marcador `id` del
 /// adjunto de base `b` (`anot-<uid>`): `anot-<uid>-m<id>`.
-fn base_de_marcador(b: &pixpin_proyecto::anotado::Base, id: &str) -> pixpin_proyecto::anotado::Base {
-    pixpin_proyecto::anotado::Base { base: format!("{}-m{}", b.base, id_limpio(id)), ..b.clone() }
+fn base_de_marcador(
+    b: &pixpin_proyecto::anotado::Base,
+    id: &str,
+) -> pixpin_proyecto::anotado::Base {
+    pixpin_proyecto::anotado::Base {
+        base: format!("{}-m{}", b.base, id_limpio(id)),
+        ..b.clone()
+    }
 }
 
 /// Cambia cuando cambia lo que se guarda del plano leido: la `l1` trae las
@@ -243,7 +264,9 @@ fn nombre_en_cache(clave: &str, huella: &str) -> String {
 
 /// Deja solo los `EN_CACHE` planos mas recientes.
 fn podar(carpeta: &Path) {
-    let Ok(d) = std::fs::read_dir(carpeta) else { return };
+    let Ok(d) = std::fs::read_dir(carpeta) else {
+        return;
+    };
     let mut v: Vec<(std::time::SystemTime, PathBuf)> = d
         .flatten()
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
@@ -260,7 +283,10 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo::Modelo, String
     std::fs::create_dir_all(&carpeta).map_err(|e| e.to_string())?;
     let clave = clave(ruta).ok_or("no se puede leer el fichero")?;
     let letras = pixpin_cad::letras::carpeta_en(raiz);
-    let destino = carpeta.join(nombre_en_cache(&clave, &pixpin_cad::letras::huella(&letras)));
+    let destino = carpeta.join(nombre_en_cache(
+        &clave,
+        &pixpin_cad::letras::huella(&letras),
+    ));
     if let Ok(b) = std::fs::read(&destino)
         && let Some(m) = pixpin_cad::modelo::Modelo::de_bytes(&b)
     {
@@ -287,7 +313,11 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo::Modelo, String
     if !estado.success() {
         let motivo = std::fs::read_to_string(destino.with_extension("error")).unwrap_or_default();
         let _ = std::fs::remove_file(destino.with_extension("error"));
-        return Err(if motivo.is_empty() { "el plano no se pudo leer (puede estar dañado)".into() } else { motivo });
+        return Err(if motivo.is_empty() {
+            "el plano no se pudo leer (puede estar dañado)".into()
+        } else {
+            motivo
+        });
     }
     podar(&carpeta);
     let b = std::fs::read(&destino).map_err(|e| e.to_string())?;
@@ -344,19 +374,29 @@ pub fn globo_de_la_barra() -> pixpin_cad::ventana::Globo {
         if texto.is_empty() {
             crate::globo_pista::ocultar();
         } else {
-            let boton = pixpin_geom::Rect { x: r[0], y: r[1], ancho: r[2].max(1) as u32, alto: r[3].max(1) as u32 };
+            let boton = pixpin_geom::Rect {
+                x: r[0],
+                y: r[1],
+                ancho: r[2].max(1) as u32,
+                alto: r[3].max(1) as u32,
+            };
             crate::globo_pista::mostrar(texto, boton, e as f32);
         }
     })
 }
 
 /// Lee el plano en otro hilo; llega por el canal.
-fn leer_aparte(raiz: &Path, ruta: &Path) -> std::sync::mpsc::Receiver<Result<pixpin_cad::modelo::Modelo, String>> {
+fn leer_aparte(
+    raiz: &Path,
+    ruta: &Path,
+) -> std::sync::mpsc::Receiver<Result<pixpin_cad::modelo::Modelo, String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let (r2, raiz2) = (ruta.to_path_buf(), raiz.to_path_buf());
-    let _ = std::thread::Builder::new().name("plano-cad-leer".into()).spawn(move || {
-        let _ = tx.send(cargar(&raiz2, &r2));
-    });
+    let _ = std::thread::Builder::new()
+        .name("plano-cad-leer".into())
+        .spawn(move || {
+            let _ = tx.send(cargar(&raiz2, &r2));
+        });
     rx
 }
 
@@ -382,74 +422,106 @@ pub fn tipo_de_archivo(ruta: &Path) -> Option<pixpin_cad::ventana::TipoDeArchivo
 /// El nombre para la barra y el titulo: sin la extension ni el numero con
 /// que Android guarda los adjuntos, como en los demas pines.
 pub fn nombre_para_la_barra(ruta: &Path) -> String {
-    crate::lector_pin::nombre_limpio(&ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default())
+    crate::lector_pin::nombre_limpio(
+        &ruta
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    )
 }
 
 /// Abre el plano en su ventana, en su propio hilo.
 pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
     let raiz = ubicacion.raiz().to_path_buf();
-    let lanzado = std::thread::Builder::new().name("plano-cad".into()).spawn(move || {
-        // El dialogo «Abrir» del boton «Aa» es COM.
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        // Las letras: fuera lo que llego y no lo es, y que viajen las que el
-        // usuario ya tenia. Antes de leer, para leer con lo que queda.
-        crate::letras_que_viajan::al_abrir(&raiz);
-        let rx = leer_aparte(&raiz, &ruta);
-        let titulo = nombre_para_la_barra(&ruta);
-        // El boton «3D»: el mismo plano en el visor de modelos.
-        let (u3, r3) = (ubicacion.clone(), ruta.clone());
-        let abrir_3d: Box<dyn Fn()> = Box::new(move || crate::modelo_bim::lanzar(idioma, u3.clone(), &r3));
-        // Imprimir: el dialogo de Windows con la vista previa, cada marco una hoja.
-        let (r4, raiz4) = (ruta.clone(), raiz.clone());
-        let imprimir: Box<dyn Fn(isize, &pixpin_cad::modelo::Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])> = Box::new(move |v, m, marcos, cotas| {
-            let anotado = anotar::ParaImprimir::leer(&anotar::rutas_de_la_capa(&raiz4, &r4), m);
-            if let Err(e) = imprimir::imprimir(v, m, marcos, cotas, anotado, &r4) {
-                tracing::warn!(?e, "no se pudo imprimir el plano");
+    let lanzado = std::thread::Builder::new()
+        .name("plano-cad".into())
+        .spawn(move || {
+            // El dialogo «Abrir» del boton «Aa» es COM.
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            // Las letras: fuera lo que llego y no lo es, y que viajen las que el
+            // usuario ya tenia. Antes de leer, para leer con lo que queda.
+            crate::letras_que_viajan::al_abrir(&raiz);
+            let rx = leer_aparte(&raiz, &ruta);
+            let titulo = nombre_para_la_barra(&ruta);
+            // El boton «3D»: el mismo plano en el visor de modelos.
+            let (u3, r3) = (ubicacion.clone(), ruta.clone());
+            let abrir_3d: Box<dyn Fn()> =
+                Box::new(move || crate::modelo_bim::lanzar(idioma, u3.clone(), &r3));
+            // Imprimir: el dialogo de Windows con la vista previa, cada marco una hoja.
+            let (r4, raiz4) = (ruta.clone(), raiz.clone());
+            let imprimir: Box<
+                dyn Fn(isize, &pixpin_cad::modelo::Modelo, &[[f64; 4]], &[Vec<[f64; 2]>]),
+            > = Box::new(move |v, m, marcos, cotas| {
+                let anotado = anotar::ParaImprimir::leer(&anotar::rutas_de_la_capa(&raiz4, &r4), m);
+                if let Err(e) = imprimir::imprimir(v, m, marcos, cotas, anotado, &r4) {
+                    tracing::warn!(?e, "no se pudo imprimir el plano");
+                }
+            });
+            // Anotar: el motor del lienzo sobre la capa del plano (anot-<uid>).
+            let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
+            let anotador: Box<
+                dyn FnOnce(&pixpin_cad::modelo::Modelo) -> Box<dyn pixpin_cad::anotado::Anotador>,
+            > = Box::new(move |m| {
+                Box::new(anotar::MotorDelPlano::nuevo(capa, m))
+                    as Box<dyn pixpin_cad::anotado::Anotador>
+            });
+            // El boton «Aa»: las letras del usuario, en `<raiz>/fuentes-shx`, que
+            // viajan con sus otros aparatos (`letras_que_viajan`).
+            let carpeta = pixpin_cad::letras::carpeta_en(&raiz);
+            let (c1, c4, r5, raiz5) = (carpeta.clone(), carpeta, ruta.clone(), raiz.clone());
+            let (raiz_a, raiz_q) = (raiz.clone(), raiz.clone());
+            let letras = pixpin_cad::ventana::Letras {
+                mias: Box::new(move || pixpin_cad::letras::letras_en(&c1).len()),
+                anadir: Box::new(move |v| {
+                    let elegidas = pixpin_shell::elegir::pedir_ficheros(
+                        windows::Win32::Foundation::HWND(v as *mut _),
+                    );
+                    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                    crate::letras_que_viajan::anadir(
+                        &raiz_a,
+                        &crate::letras_que_viajan::aparato(&raiz_a),
+                        ahora,
+                        &elegidas,
+                    )
+                }),
+                quitar: Box::new(move || {
+                    crate::letras_que_viajan::quitar_todas(
+                        &raiz_q,
+                        pixpin_shell::entorno::ahora_utc_ms(),
+                    )
+                }),
+                releer: Box::new(move || leer_aparte(&raiz5, &r5)),
+                huella: Box::new(move || pixpin_cad::letras::huella(&c4)),
+            };
+            // Exportar: el componente comun con los formatos del plano.
+            let (r6, raiz6, u6) = (ruta.clone(), raiz.clone(), ubicacion.clone());
+            let exportar: Box<
+                dyn Fn(isize, &pixpin_cad::modelo::Modelo, &[[f64; 4]], &[Vec<[f64; 2]>]),
+            > = Box::new(move |_, m, marcos, cotas| {
+                let p = exportar::Plano::nuevo(&raiz6, &r6, m, cotas, marcos);
+                crate::compartir::ventana::abrir(
+                    idioma,
+                    u6.clone(),
+                    crate::compartir::Cosa::Visor(exportar::exportable(p, idioma)),
+                );
+            });
+            let acciones = pixpin_cad::ventana::Acciones {
+                abrir_3d: Some(abrir_3d),
+                imprimir: Some(imprimir),
+                anotador: Some(anotador),
+                letras: Some(letras),
+                exportar: Some(exportar),
+                vista_inicial: tomar_vista_al_abrir(&ruta),
+                tipo: tipo_de_archivo(&ruta),
+                marcadores: Some(SitioDeMarcadores::abrir(&raiz, &ruta).vistas()),
+                globo: Some(globo_de_la_barra()),
+            };
+            if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
+                tracing::warn!(%e, "no se pudo abrir el visor de planos");
+                let _ = pixpin_shell::abrir(&ruta);
             }
         });
-        // Anotar: el motor del lienzo sobre la capa del plano (anot-<uid>).
-        let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
-        let anotador: Box<dyn FnOnce(&pixpin_cad::modelo::Modelo) -> Box<dyn pixpin_cad::anotado::Anotador>> =
-            Box::new(move |m| Box::new(anotar::MotorDelPlano::nuevo(capa, m)) as Box<dyn pixpin_cad::anotado::Anotador>);
-        // El boton «Aa»: las letras del usuario, en `<raiz>/fuentes-shx`, que
-        // viajan con sus otros aparatos (`letras_que_viajan`).
-        let carpeta = pixpin_cad::letras::carpeta_en(&raiz);
-        let (c1, c4, r5, raiz5) = (carpeta.clone(), carpeta, ruta.clone(), raiz.clone());
-        let (raiz_a, raiz_q) = (raiz.clone(), raiz.clone());
-        let letras = pixpin_cad::ventana::Letras {
-            mias: Box::new(move || pixpin_cad::letras::letras_en(&c1).len()),
-            anadir: Box::new(move |v| {
-                let elegidas = pixpin_shell::elegir::pedir_ficheros(windows::Win32::Foundation::HWND(v as *mut _));
-                let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                crate::letras_que_viajan::anadir(&raiz_a, &crate::letras_que_viajan::aparato(&raiz_a), ahora, &elegidas)
-            }),
-            quitar: Box::new(move || crate::letras_que_viajan::quitar_todas(&raiz_q, pixpin_shell::entorno::ahora_utc_ms())),
-            releer: Box::new(move || leer_aparte(&raiz5, &r5)),
-            huella: Box::new(move || pixpin_cad::letras::huella(&c4)),
-        };
-        // Exportar: el componente comun con los formatos del plano.
-        let (r6, raiz6, u6) = (ruta.clone(), raiz.clone(), ubicacion.clone());
-        let exportar: Box<dyn Fn(isize, &pixpin_cad::modelo::Modelo, &[[f64; 4]], &[Vec<[f64; 2]>])> = Box::new(move |_, m, marcos, cotas| {
-            let p = exportar::Plano::nuevo(&raiz6, &r6, m, cotas, marcos);
-            crate::compartir::ventana::abrir(idioma, u6.clone(), crate::compartir::Cosa::Visor(exportar::exportable(p, idioma)));
-        });
-        let acciones = pixpin_cad::ventana::Acciones {
-            abrir_3d: Some(abrir_3d),
-            imprimir: Some(imprimir),
-            anotador: Some(anotador),
-            letras: Some(letras),
-            exportar: Some(exportar),
-            vista_inicial: tomar_vista_al_abrir(&ruta),
-            tipo: tipo_de_archivo(&ruta),
-            marcadores: Some(SitioDeMarcadores::abrir(&raiz, &ruta).vistas()),
-            globo: Some(globo_de_la_barra()),
-        };
-        if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
-            tracing::warn!(%e, "no se pudo abrir el visor de planos");
-            let _ = pixpin_shell::abrir(&ruta);
-        }
-    });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el visor de planos");
     }
@@ -496,11 +568,19 @@ mod pruebas {
         for (nombre, i) in pixpin_cad::iconos::TODOS {
             let t = de_material(nombre).trazos;
             assert_eq!(t.len(), 1, "{nombre}");
-            assert_eq!((i.d, i.par_impar), (t[0].d, t[0].par_impar), "{nombre} no es el de material");
+            assert_eq!(
+                (i.d, i.par_impar),
+                (t[0].d, t[0].par_impar),
+                "{nombre} no es el de material"
+            );
         }
         // Los de la barra comun del lector, con su mismo boton.
         let mismo = |b: &str, claro: bool, icono: &pixpin_render::icono::Icono| {
-            assert_eq!(pixpin_cad::iconos::de_boton(b, claro, false).map(|i| i.d), Some(icono.trazos[0].d), "{b}");
+            assert_eq!(
+                pixpin_cad::iconos::de_boton(b, claro, false).map(|i| i.d),
+                Some(icono.trazos[0].d),
+                "{b}"
+            );
         };
         mismo("fijar", false, &m::PUSH_PIN);
         mismo("cerrar", false, &m::CLOSE);
@@ -516,11 +596,15 @@ mod pruebas {
 
     #[test]
     fn la_barra_lleva_el_tipo_y_el_nombre_como_los_demas_pines() {
-        let t = tipo_de_archivo(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")).expect("tipo");
+        let t =
+            tipo_de_archivo(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")).expect("tipo");
         assert_eq!(t.rotulo, pixpin_ui::color_de_extension::rotulo("x.dwg"));
         let c = crate::lector_pin::color_de_tipo("dwg");
         assert_eq!(t.fondo, [c.r, c.g, c.b].map(|v| (v * 255.0).round() as u8));
-        assert_eq!(nombre_para_la_barra(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")), "Planta baja");
+        assert_eq!(
+            nombre_para_la_barra(Path::new(r"C:\planos\1791239986208_Planta baja.DWG")),
+            "Planta baja"
+        );
         // Caso negativo: sin extension no hay recuadro.
         assert!(tipo_de_archivo(Path::new(r"C:\planos\plano")).is_none());
     }
@@ -547,15 +631,25 @@ mod pruebas {
     fn los_marcadores_van_por_la_ruta_y_no_por_la_fecha() {
         let raiz = Path::new(r"C:\raiz");
         let a = carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Planta.DWG"));
-        assert_eq!(a, carpeta_de_marcadores(raiz, Path::new(r"d:/obra/planta.dwg")), "la misma ruta escrita de otra manera");
-        assert!(a.starts_with(raiz.join("marcadores")) && !a.starts_with(raiz.join("cache")), "fuera de la cache, que se poda");
+        assert_eq!(
+            a,
+            carpeta_de_marcadores(raiz, Path::new(r"d:/obra/planta.dwg")),
+            "la misma ruta escrita de otra manera"
+        );
+        assert!(
+            a.starts_with(raiz.join("marcadores")) && !a.starts_with(raiz.join("cache")),
+            "fuera de la cache, que se poda"
+        );
         // Un plano que no es de ningun chat: en la carpeta local.
         let s = SitioDeMarcadores::de(raiz, Path::new(r"D:\obra\Planta.DWG"));
         assert_eq!(s, SitioDeMarcadores::Local(a.clone()));
         assert_eq!(s.vistas(), a.join("vistas.json"));
         assert_eq!(s.marcos(), a.join("marcos.json"));
         // Caso negativo: otro plano, otra carpeta.
-        assert_ne!(a, carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Alzado.dwg")));
+        assert_ne!(
+            a,
+            carpeta_de_marcadores(raiz, Path::new(r"D:\obra\Alzado.dwg"))
+        );
     }
 
     /// Lo anotado sobre un marcador 3D: una capa por marcador, con la unidad
@@ -567,8 +661,15 @@ mod pruebas {
         let r = anotar::rutas_de_marcador(&s, "m18f2a");
         assert_eq!(r.tinta, c.join("m18f2a.excalidraw"));
         assert_eq!(r.hoja, c.join("m18f2a.hoja"));
-        assert!(anotar::rutas_de_marcador(&s, r"..\..\x").tinta.starts_with(c));
-        assert!((pixpin_cad::anotado::unidad_de_la_capa(&anotar::modelo_de_pantalla()) - 1.0).abs() < 1e-12);
+        assert!(
+            anotar::rutas_de_marcador(&s, r"..\..\x")
+                .tinta
+                .starts_with(c)
+        );
+        assert!(
+            (pixpin_cad::anotado::unidad_de_la_capa(&anotar::modelo_de_pantalla()) - 1.0).abs()
+                < 1e-12
+        );
     }
 
     /// Una capa con un trazo, como la escribe el motor.
@@ -584,14 +685,24 @@ mod pruebas {
         let r = raiz("cad-marcadores");
         let doc = con_adjunto(&r, "obra.dwg", b"AC1032");
         let s = SitioDeMarcadores::abrir(&r, &doc);
-        let SitioDeMarcadores::Adjunto(b) = &s else { panic!("es un adjunto: {s:?}") };
+        let SitioDeMarcadores::Adjunto(b) = &s else {
+            panic!("es un adjunto: {s:?}")
+        };
         let uid = b.base.strip_prefix("anot-").unwrap().to_string();
         let nombre = |p: &Path| p.file_name().unwrap().to_string_lossy().into_owned();
         assert_eq!(nombre(&s.vistas()), format!("anot-{uid}.vistas.json"));
         assert_eq!(nombre(&s.marcos()), format!("anot-{uid}.marcos.json"));
-        assert_eq!(s.marcos().parent(), s.vistas().parent(), "en la carpeta de lo anotado del mensaje");
+        assert_eq!(
+            s.marcos().parent(),
+            s.vistas().parent(),
+            "en la carpeta de lo anotado del mensaje"
+        );
         let t = anotar::rutas_de_marcador(&s, "m18f2a");
-        assert_eq!(t.tinta, b.fichero(".excalidraw.gz").with_file_name(format!("anot-{uid}-mm18f2a.excalidraw")));
+        assert_eq!(
+            t.tinta,
+            b.fichero(".excalidraw.gz")
+                .with_file_name(format!("anot-{uid}-mm18f2a.excalidraw"))
+        );
         assert_eq!(nombre(&t.hoja), format!("anot-{uid}-mm18f2a.hoja"));
         // Los nombres portatiles son de su mensaje para la sincronizacion.
         let portatiles = [
@@ -616,14 +727,33 @@ mod pruebas {
             claro: false,
             aristas: true,
         };
-        g.c.modelo.push(pixpin_cad::marcadores::Marcador3d { id: "m18f2a".into(), nombre: String::new(), estado: estado.clone() });
-        g.c.marcos.push(pixpin_cad::marcadores::Marco3d { id: "m1".into(), caja: [-0.1, -0.1, 0.1, 0.1], estado });
+        g.c.modelo.push(pixpin_cad::marcadores::Marcador3d {
+            id: "m18f2a".into(),
+            nombre: String::new(),
+            estado: estado.clone(),
+        });
+        g.c.marcos.push(pixpin_cad::marcadores::Marco3d {
+            id: "m1".into(),
+            caja: [-0.1, -0.1, 0.1, 0.1],
+            estado,
+        });
         g.guardar();
         pixpin_proyecto::anotado::escribir(&t.tinta, CAPA_CON_UN_TRAZO).unwrap();
         pixpin_proyecto::anotado::escribir(&t.hoja, "-2500,-2500,2500,2500\n1\n").unwrap();
         // Lo manda la sincronizacion con su mensaje.
-        let chat = pixpin_proyecto::vista::chat_de_ficha(&r, &pixpin_proyecto::almacen::Indice::leer(&r).proyectos[0].id).unwrap();
-        let alcance: Vec<String> = pixpin_sincro::disco::Disco::alcance(&pixpin_proyecto::vista::DiscoPc::nuevo(&r), &chat).unwrap().into_iter().map(|(x, _)| x).collect();
+        let chat = pixpin_proyecto::vista::chat_de_ficha(
+            &r,
+            &pixpin_proyecto::almacen::Indice::leer(&r).proyectos[0].id,
+        )
+        .unwrap();
+        let alcance: Vec<String> = pixpin_sincro::disco::Disco::alcance(
+            &pixpin_proyecto::vista::DiscoPc::nuevo(&r),
+            &chat,
+        )
+        .unwrap()
+        .into_iter()
+        .map(|(x, _)| x)
+        .collect();
         for p in &portatiles {
             assert!(alcance.contains(p), "{p} no viaja: {alcance:?}");
         }
@@ -632,12 +762,17 @@ mod pruebas {
         g.c.modelo.clear();
         g.c.marcos.clear();
         g.guardar();
-        let json = |p: &Path| serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(p).unwrap()).unwrap();
+        let json = |p: &Path| {
+            serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(p).unwrap()).unwrap()
+        };
         assert_eq!(json(&s.vistas())["modelo"], serde_json::json!([]));
         assert_eq!(json(&s.marcos())["marcos"], serde_json::json!([]));
         let capa = json(&t.tinta);
         let elementos = capa["elements"].as_array().unwrap();
-        assert!(!elementos.is_empty() && elementos.iter().all(|e| e["isDeleted"] == true), "{capa}");
+        assert!(
+            !elementos.is_empty() && elementos.iter().all(|e| e["isDeleted"] == true),
+            "{capa}"
+        );
         assert!(t.hoja.is_file());
         // Caso negativo: vaciar lo que no existe no crea nada.
         let otra = anotar::rutas_de_marcador(&s, "m-no-esta");
@@ -676,7 +811,10 @@ mod pruebas {
         assert_eq!(c.marcos.len(), 1);
         assert!(!c.marcos[0].id.is_empty(), "los marcos de antes, con su id");
         let t = anotar::rutas_de_marcador(&s, "m1");
-        assert_eq!(std::fs::read_to_string(&t.tinta).unwrap(), CAPA_CON_UN_TRAZO);
+        assert_eq!(
+            std::fs::read_to_string(&t.tinta).unwrap(),
+            CAPA_CON_UN_TRAZO
+        );
         assert!(t.hoja.is_file());
         // Lo de antes se queda donde estaba.
         assert!(vieja.join("vistas.json").is_file() && vieja.join("m1.excalidraw").is_file());

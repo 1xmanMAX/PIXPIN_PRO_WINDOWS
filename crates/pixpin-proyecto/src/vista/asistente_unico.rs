@@ -43,11 +43,12 @@ impl DiscoPc {
         if f.es_asistente() {
             return true;
         }
-        let marcado = std::fs::read_to_string(almacen::carpeta(&self.raiz, &f.id).join("proyecto.json"))
-            .ok()
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-            .and_then(|v| v.get("asistente")?.as_bool())
-            == Some(true);
+        let marcado =
+            std::fs::read_to_string(almacen::carpeta(&self.raiz, &f.id).join("proyecto.json"))
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .and_then(|v| v.get("asistente")?.as_bool())
+                == Some(true);
         marcado || f.nombre.trim().eq_ignore_ascii_case(NOMBRE_ASISTENTE)
     }
 
@@ -55,12 +56,20 @@ impl DiscoPc {
     /// juntaron (0 si ya habia uno solo o ninguno). El que queda lleva la
     /// marca, aunque hubiera llegado sin ella.
     pub fn unificar_asistentes(&self) -> io::Result<usize> {
-        let mut candidatos: Vec<(String, Ficha)> =
-            self.mapa().into_iter().filter(|(c, f)| self.es_chat_del_asistente(c, f)).collect();
+        let mut candidatos: Vec<(String, Ficha)> = self
+            .mapa()
+            .into_iter()
+            .filter(|(c, f)| self.es_chat_del_asistente(c, f))
+            .collect();
         if candidatos.is_empty() {
             return Ok(0);
         }
-        candidatos.sort_by(|(ca, a), (cb, b)| a.creado.max(0).cmp(&b.creado.max(0)).then_with(|| ca.cmp(cb)));
+        candidatos.sort_by(|(ca, a), (cb, b)| {
+            a.creado
+                .max(0)
+                .cmp(&b.creado.max(0))
+                .then_with(|| ca.cmp(cb))
+        });
         let (destino, ficha) = candidatos.remove(0);
         if !ficha.es_asistente() {
             let mut indice = almacen::Indice::leer(&self.raiz);
@@ -77,7 +86,12 @@ impl DiscoPc {
         let mut juntados = 0;
         for (origen, f) in candidatos {
             self.pasar_mensajes(&origen, &f, &destino)?;
-            self.borrar_chat(&origen, "unificado con el chat del asistente", ahora(), &aparato)?;
+            self.borrar_chat(
+                &origen,
+                "unificado con el chat del asistente",
+                ahora(),
+                &aparato,
+            )?;
             juntados += 1;
         }
         if juntados > 0 {
@@ -94,25 +108,39 @@ impl DiscoPc {
         if de_origen.is_empty() {
             return Ok(());
         }
-        copiar_sin_pisar(&almacen::carpeta(&self.raiz, &f.id), &self.carpeta_de(destino))?;
+        copiar_sin_pisar(
+            &almacen::carpeta(&self.raiz, &f.id),
+            &self.carpeta_de(destino),
+        )?;
         let _cerrojo = crate::cuaderno::cerrojo();
         let (mut buenas, crudas) = self.lineas(destino)?;
         let ya: HashSet<String> = buenas.iter().map(kotlin::unico).collect();
-        let mut numero = buenas.iter().filter_map(|m| kotlin::numero(m, "numero")).max().unwrap_or(0);
+        let mut numero = buenas
+            .iter()
+            .filter_map(|m| kotlin::numero(m, "numero"))
+            .max()
+            .unwrap_or(0);
         let mut nuevas: Vec<Json> = de_origen
             .into_iter()
             .filter(|m| {
                 let id = kotlin::cadena(m, "id").unwrap_or_default();
-                !ya.contains(&kotlin::unico(m)) && !(es_de_sistema_del_asistente(id) && ya.contains(id))
+                !ya.contains(&kotlin::unico(m))
+                    && !(es_de_sistema_del_asistente(id) && ya.contains(id))
             })
             .collect();
         nuevas.sort_by_key(|m| kotlin::numero(m, "cuando").unwrap_or(0));
-        let (de, a) = (format!("guardados/pc/{}/", limpio(origen)), format!("guardados/pc/{}/", limpio(destino)));
+        let (de, a) = (
+            format!("guardados/pc/{}/", limpio(origen)),
+            format!("guardados/pc/{}/", limpio(destino)),
+        );
         for m in &mut nuevas {
             numero += 1;
             kotlin::poner(m, "numero", Json::numero(numero));
             kotlin::poner(m, "proyecto", Json::cadena(destino));
-            if let Some(r) = kotlin::cadena(m, "ruta").filter(|r| r.contains(&de)).map(|r| r.replace(&de, &a)) {
+            if let Some(r) = kotlin::cadena(m, "ruta")
+                .filter(|r| r.contains(&de))
+                .map(|r| r.replace(&de, &a))
+            {
                 kotlin::poner(m, "ruta", Json::cadena(r));
             }
         }
@@ -127,7 +155,9 @@ impl DiscoPc {
 /// sin pisar nada de lo que ya hay. El cuaderno y el proyecto no.
 fn copiar_sin_pisar(de: &Path, a: &Path) -> io::Result<()> {
     fn recorrer(de: &Path, a: &Path, raiz: bool) -> io::Result<()> {
-        let Ok(l) = std::fs::read_dir(de) else { return Ok(()) };
+        let Ok(l) = std::fs::read_dir(de) else {
+            return Ok(());
+        };
         for e in l.flatten() {
             let nombre = e.file_name();
             if raiz && (nombre == "guardados.jsonl" || nombre == "proyecto.json") {

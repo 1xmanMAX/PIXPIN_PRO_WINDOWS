@@ -19,7 +19,9 @@ use pixpin_motor2d::vector::Punto2;
 
 /// Donde quedan los documentos (fuera del repo).
 pub fn carpeta() -> PathBuf {
-    std::env::var("PIXPIN_BANCO_DOCS").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(r"F:\pixpin-banco-docs"))
+    std::env::var("PIXPIN_BANCO_DOCS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(r"F:\pixpin-banco-docs"))
 }
 
 /// Un documento del corpus.
@@ -32,22 +34,70 @@ pub struct Doc {
 
 /// Todos, en orden.
 pub const DOCS: &[Doc] = &[
-    Doc { nombre: "01-comunicado-reunion.pdf", tipo: "solo texto" },
-    Doc { nombre: "02-informe-drenaje.docx", tipo: "parrafos largos, titulos y listas" },
-    Doc { nombre: "03-formulario-fisica.pdf", tipo: "formulas matematicas y fisicas" },
-    Doc { nombre: "04-pizarra-formulas.png", tipo: "formulas en imagen" },
-    Doc { nombre: "05-presupuesto-obra.xlsx", tipo: "tabla (Excel)" },
-    Doc { nombre: "06-notas-curso.pdf", tipo: "tabla en PDF" },
-    Doc { nombre: "07-stock-materiales.png", tipo: "tabla en foto" },
-    Doc { nombre: "08-articulo-con-fotos.docx", tipo: "texto con fotos" },
-    Doc { nombre: "09-boletin-dos-columnas.pdf", tipo: "mixto de dos columnas con foto" },
-    Doc { nombre: "10-grafica-produccion.png", tipo: "una grafica" },
-    Doc { nombre: "11-diagrama-flujo.png", tipo: "diagrama de flujo" },
-    Doc { nombre: "12-geometria-circunferencia.png", tipo: "geometria" },
-    Doc { nombre: "13-guia-escaneada.png", tipo: "hoja escaneada (inclinada, con ruido)" },
-    Doc { nombre: "14-charla-seguridad.pptx", tipo: "presentacion" },
-    Doc { nombre: "15-metrados-con-error.xlsx", tipo: "tabla con un error de calculo" },
-    Doc { nombre: "16-examen-mixto.pdf", tipo: "examen: formulas, figura y alternativas" },
+    Doc {
+        nombre: "01-comunicado-reunion.pdf",
+        tipo: "solo texto",
+    },
+    Doc {
+        nombre: "02-informe-drenaje.docx",
+        tipo: "parrafos largos, titulos y listas",
+    },
+    Doc {
+        nombre: "03-formulario-fisica.pdf",
+        tipo: "formulas matematicas y fisicas",
+    },
+    Doc {
+        nombre: "04-pizarra-formulas.png",
+        tipo: "formulas en imagen",
+    },
+    Doc {
+        nombre: "05-presupuesto-obra.xlsx",
+        tipo: "tabla (Excel)",
+    },
+    Doc {
+        nombre: "06-notas-curso.pdf",
+        tipo: "tabla en PDF",
+    },
+    Doc {
+        nombre: "07-stock-materiales.png",
+        tipo: "tabla en foto",
+    },
+    Doc {
+        nombre: "08-articulo-con-fotos.docx",
+        tipo: "texto con fotos",
+    },
+    Doc {
+        nombre: "09-boletin-dos-columnas.pdf",
+        tipo: "mixto de dos columnas con foto",
+    },
+    Doc {
+        nombre: "10-grafica-produccion.png",
+        tipo: "una grafica",
+    },
+    Doc {
+        nombre: "11-diagrama-flujo.png",
+        tipo: "diagrama de flujo",
+    },
+    Doc {
+        nombre: "12-geometria-circunferencia.png",
+        tipo: "geometria",
+    },
+    Doc {
+        nombre: "13-guia-escaneada.png",
+        tipo: "hoja escaneada (inclinada, con ruido)",
+    },
+    Doc {
+        nombre: "14-charla-seguridad.pptx",
+        tipo: "presentacion",
+    },
+    Doc {
+        nombre: "15-metrados-con-error.xlsx",
+        tipo: "tabla con un error de calculo",
+    },
+    Doc {
+        nombre: "16-examen-mixto.pdf",
+        tipo: "examen: formulas, figura y alternativas",
+    },
 ];
 
 pub fn ruta(nombre: &str) -> PathBuf {
@@ -71,11 +121,27 @@ pub struct Hoja {
 
 impl Hoja {
     pub fn nueva(w: f32, h: f32) -> Hoja {
-        Hoja { w, h, els: Vec::new(), fotos: HashMap::new() }
+        Hoja {
+            w,
+            h,
+            els: Vec::new(),
+            fotos: HashMap::new(),
+        }
     }
 
     fn base(figura: Figura, x: f32, y: f32, ancho: f32, alto: f32, trazo: ColorRgba) -> Elemento {
-        Elemento { figura, x, y, ancho, alto, trazo, grosor: 1.5, rugosidad: 0.0, opacidad: 1.0, ..Default::default() }
+        Elemento {
+            figura,
+            x,
+            y,
+            ancho,
+            alto,
+            trazo,
+            grosor: 1.5,
+            rugosidad: 0.0,
+            opacidad: 1.0,
+            ..Default::default()
+        }
     }
 
     /// Un renglon de texto; devuelve su alto.
@@ -83,9 +149,29 @@ impl Hoja {
         self.texto_color(t, x, y, tam, negrita, negro())
     }
 
-    pub fn texto_color(&mut self, t: &str, x: f32, y: f32, tam: f32, negrita: bool, c: ColorRgba) -> f32 {
-        let ancho = pixpin_motor2d::exportar::ancho_de_texto(t, tam) * if negrita { 1.06 } else { 1.0 };
-        let mut e = Hoja::base(Figura::Texto { texto: t.into(), tam, familia: "Segoe UI".into() }, x, y, ancho, tam * 1.25, c);
+    pub fn texto_color(
+        &mut self,
+        t: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        negrita: bool,
+        c: ColorRgba,
+    ) -> f32 {
+        let ancho =
+            pixpin_motor2d::exportar::ancho_de_texto(t, tam) * if negrita { 1.06 } else { 1.0 };
+        let mut e = Hoja::base(
+            Figura::Texto {
+                texto: t.into(),
+                tam,
+                familia: "Segoe UI".into(),
+            },
+            x,
+            y,
+            ancho,
+            tam * 1.25,
+            c,
+        );
         e.extras.negrita = negrita;
         self.els.push(e);
         tam * 1.25
@@ -99,7 +185,18 @@ impl Hoja {
 
     /// Un texto rico (formulas en linea entre `$...$`); devuelve su alto.
     pub fn rico(&mut self, fuente: &str, x: f32, y: f32, tam: f32) -> f32 {
-        let mut e = Hoja::base(Figura::Texto { texto: String::new(), tam, familia: "Segoe UI".into() }, x, y, 10.0, tam, negro());
+        let mut e = Hoja::base(
+            Figura::Texto {
+                texto: String::new(),
+                tam,
+                familia: "Segoe UI".into(),
+            },
+            x,
+            y,
+            10.0,
+            tam,
+            negro(),
+        );
         pixpin_motor2d::texto_rico::poner_fuente(&mut e, fuente);
         let alto = e.alto;
         self.els.push(e);
@@ -110,8 +207,13 @@ impl Hoja {
     pub fn parrafo(&mut self, t: &str, x: f32, mut y: f32, ancho: f32, tam: f32) -> f32 {
         let mut renglon = String::new();
         for p in t.split_whitespace() {
-            let probar = if renglon.is_empty() { p.to_string() } else { format!("{renglon} {p}") };
-            if pixpin_motor2d::exportar::ancho_de_texto(&probar, tam) > ancho && !renglon.is_empty() {
+            let probar = if renglon.is_empty() {
+                p.to_string()
+            } else {
+                format!("{renglon} {p}")
+            };
+            if pixpin_motor2d::exportar::ancho_de_texto(&probar, tam) > ancho && !renglon.is_empty()
+            {
                 y += self.texto(&renglon, x, y, tam, false) * 1.12;
                 renglon = p.to_string();
             } else {
@@ -126,11 +228,24 @@ impl Hoja {
 
     pub fn linea(&mut self, puntos: &[(f32, f32)], grosor: f32, c: ColorRgba) {
         let pts: Vec<Punto2> = puntos.iter().map(|&(x, y)| Punto2 { x, y }).collect();
-        let (x0, y0) = (pts.iter().map(|p| p.x).fold(f32::MAX, f32::min), pts.iter().map(|p| p.y).fold(f32::MAX, f32::min));
-        let (x1, y1) = (pts.iter().map(|p| p.x).fold(f32::MIN, f32::max), pts.iter().map(|p| p.y).fold(f32::MIN, f32::max));
+        let (x0, y0) = (
+            pts.iter().map(|p| p.x).fold(f32::MAX, f32::min),
+            pts.iter().map(|p| p.y).fold(f32::MAX, f32::min),
+        );
+        let (x1, y1) = (
+            pts.iter().map(|p| p.x).fold(f32::MIN, f32::max),
+            pts.iter().map(|p| p.y).fold(f32::MIN, f32::max),
+        );
         // Los puntos van en coordenadas de la escena (como `ecuacion::elemento_linea`).
         let rel = pts.clone();
-        let mut e = Hoja::base(Figura::Linea { puntos: rel }, pts[0].x, pts[0].y, (x1 - x0).max(0.1), (y1 - y0).max(0.1), c);
+        let mut e = Hoja::base(
+            Figura::Linea { puntos: rel },
+            pts[0].x,
+            pts[0].y,
+            (x1 - x0).max(0.1),
+            (y1 - y0).max(0.1),
+            c,
+        );
         e.grosor = grosor;
         self.els.push(e);
     }
@@ -138,7 +253,12 @@ impl Hoja {
     pub fn flecha(&mut self, a: (f32, f32), b: (f32, f32)) {
         let rel = vec![Punto2 { x: a.0, y: a.1 }, Punto2 { x: b.0, y: b.1 }];
         let mut e = Hoja::base(
-            Figura::Flecha { puntos: rel, punta_inicio: Default::default(), punta_fin: pixpin_motor2d::formas::TipoPunta::Flecha, codos: false },
+            Figura::Flecha {
+                puntos: rel,
+                punta_inicio: Default::default(),
+                punta_fin: pixpin_motor2d::formas::TipoPunta::Flecha,
+                codos: false,
+            },
             a.0,
             a.1,
             (b.0 - a.0).abs().max(0.1),
@@ -149,7 +269,16 @@ impl Hoja {
         self.els.push(e);
     }
 
-    pub fn caja(&mut self, figura: Figura, x: f32, y: f32, w: f32, h: f32, trazo: ColorRgba, relleno: Option<ColorRgba>) {
+    pub fn caja(
+        &mut self,
+        figura: Figura,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        trazo: ColorRgba,
+        relleno: Option<ColorRgba>,
+    ) {
         let mut e = Hoja::base(figura, x, y, w, h, trazo);
         e.relleno = relleno;
         e.estilo_relleno = pixpin_motor2d::EstiloRelleno::Solido;
@@ -159,25 +288,52 @@ impl Hoja {
 
     /// Una foto de disco, reducida, en su caja.
     pub fn foto(&mut self, ruta: &Path, x: f32, y: f32, w: f32, h: f32) {
-        let Ok(img) = pixpin_codec::imagen::cargar(ruta) else { return };
-        let img = pixpin_codec::imagen::redimensionar(img, (w * 1.6) as u32, (h * 1.6) as u32).unwrap();
+        let Ok(img) = pixpin_codec::imagen::cargar(ruta) else {
+            return;
+        };
+        let img =
+            pixpin_codec::imagen::redimensionar(img, (w * 1.6) as u32, (h * 1.6) as u32).unwrap();
         let id = 7000 + self.fotos.len() as u64;
         self.fotos.insert(id, img);
-        self.els.push(crate::imagenes_lienzo::elemento_imagen(id, x, y, w, h));
+        self.els
+            .push(crate::imagenes_lienzo::elemento_imagen(id, x, y, w, h));
     }
 
     /// Una tabla con rejilla; devuelve donde acaba.
-    pub fn tabla(&mut self, filas: &[&[&str]], x: f32, y: f32, anchos: &[f32], alto_fila: f32, tam: f32, rejilla: bool) -> f32 {
+    pub fn tabla(
+        &mut self,
+        filas: &[&[&str]],
+        x: f32,
+        y: f32,
+        anchos: &[f32],
+        alto_fila: f32,
+        tam: f32,
+        rejilla: bool,
+    ) -> f32 {
         let total: f32 = anchos.iter().sum();
         let gris = ColorRgba::opaco(0.35, 0.35, 0.38);
         for (i, f) in filas.iter().enumerate() {
             let fy = y + i as f32 * alto_fila;
             if i == 0 && rejilla {
-                self.caja(Figura::Rectangulo, x, fy, total, alto_fila, gris, Some(ColorRgba::opaco(0.88, 0.91, 0.96)));
+                self.caja(
+                    Figura::Rectangulo,
+                    x,
+                    fy,
+                    total,
+                    alto_fila,
+                    gris,
+                    Some(ColorRgba::opaco(0.88, 0.91, 0.96)),
+                );
             }
             let mut cx = x;
             for (j, c) in f.iter().enumerate() {
-                self.texto(c, cx + 6.0, fy + (alto_fila - tam * 1.25) / 2.0, tam, i == 0);
+                self.texto(
+                    c,
+                    cx + 6.0,
+                    fy + (alto_fila - tam * 1.25) / 2.0,
+                    tam,
+                    i == 0,
+                );
                 cx += anchos[j];
             }
         }
@@ -206,7 +362,12 @@ impl Hoja {
             y: 0.0,
             ancho: self.w,
             alto: self.h,
-            trazo: ColorRgba { r: 1.0, g: 1.0, b: 1.0, a: 0.0 },
+            trazo: ColorRgba {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 0.0,
+            },
             relleno: Some(ColorRgba::opaco(1.0, 1.0, 1.0)),
             estilo_relleno: pixpin_motor2d::EstiloRelleno::Solido,
             grosor: 0.0,
@@ -226,26 +387,50 @@ pub fn a_pdf(hojas: &[Hoja]) -> Vec<u8> {
     let mut medidas = Vec::new();
     let mut fotos: HashMap<u64, ImagenRgba> = HashMap::new();
     for h in hojas {
-        let mut v = pixpin_motor2d::exportar::hojas(&h.escena(), pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+        let mut v = pixpin_motor2d::exportar::hojas(
+            &h.escena(),
+            pixpin_motor2d::exportar::Alcance::Todo,
+            &[],
+            None,
+        );
         let mut hoja = v.remove(0);
         hoja.caja = (0.0, 0.0, h.w, h.h);
         todas.push(hoja);
         medidas.push((h.w, h.h));
         fotos.extend(h.fotos.iter().map(|(k, v)| (*k, v.clone())));
     }
-    let de = |id: u64| fotos.get(&id).map(|i| pixpin_pdf::escribir::Pixeles { ancho: i.ancho, alto: i.alto, rgba: i.pixeles.clone() });
-    pixpin_pdf::escribir::de_hojas_a_medida(&todas, &medidas, &de, crate::asistente::hoja_a_lienzo::letra_segoe()).expect("no salio el PDF")
+    let de = |id: u64| {
+        fotos.get(&id).map(|i| pixpin_pdf::escribir::Pixeles {
+            ancho: i.ancho,
+            alto: i.alto,
+            rgba: i.pixeles.clone(),
+        })
+    };
+    pixpin_pdf::escribir::de_hojas_a_medida(
+        &todas,
+        &medidas,
+        &de,
+        crate::asistente::hoja_a_lienzo::letra_segoe(),
+    )
+    .expect("no salio el PDF")
 }
 
 /// La hoja `i` de un PDF a pixeles.
 pub fn pdf_a_png(pdf: &Path, i: u32, ancho: u32) -> ImagenRgba {
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    pixpin_pdf::Documento::abrir(pdf).unwrap().renderizar(i, ancho).unwrap()
+    pixpin_pdf::Documento::abrir(pdf)
+        .unwrap()
+        .renderizar(i, ancho)
+        .unwrap()
 }
 
 /// Una hoja a pixeles (por su PDF).
 pub fn hoja_a_png(h: Hoja, ancho: u32) -> ImagenRgba {
-    let tmp = std::env::temp_dir().join(format!("pixpin-corpus-{}-{}.pdf", std::process::id(), h.els.len()));
+    let tmp = std::env::temp_dir().join(format!(
+        "pixpin-corpus-{}-{}.pdf",
+        std::process::id(),
+        h.els.len()
+    ));
     std::fs::write(&tmp, a_pdf(&[h])).unwrap();
     let img = pdf_a_png(&tmp, 0, ancho);
     let _ = std::fs::remove_file(&tmp);
@@ -253,7 +438,11 @@ pub fn hoja_a_png(h: Hoja, ancho: u32) -> ImagenRgba {
 }
 
 fn guardar_png(nombre: &str, img: &ImagenRgba) {
-    std::fs::write(ruta(nombre), pixpin_codec::imagen::codificar_png(img).unwrap()).unwrap();
+    std::fs::write(
+        ruta(nombre),
+        pixpin_codec::imagen::codificar_png(img).unwrap(),
+    )
+    .unwrap();
 }
 
 /// Papel gris, grano y un poco de borroso: como sale del escaner.
@@ -297,14 +486,27 @@ pub fn inclinar(img: &ImagenRgba, grados: f32) -> ImagenRgba {
             let (fx, fy) = (sx - x0 as f32, sy - y0 as f32);
             let i = ((y * w + x) * 4) as usize;
             for k in 0..3 {
-                let p = |xx: i64, yy: i64| if xx < 0 || yy < 0 || xx >= w || yy >= h { 205.0 } else { img.pixeles[((yy * w + xx) * 4) as usize + k] as f32 };
-                let v = p(x0, y0) * (1.0 - fx) * (1.0 - fy) + p(x0 + 1, y0) * fx * (1.0 - fy) + p(x0, y0 + 1) * (1.0 - fx) * fy + p(x0 + 1, y0 + 1) * fx * fy;
+                let p = |xx: i64, yy: i64| {
+                    if xx < 0 || yy < 0 || xx >= w || yy >= h {
+                        205.0
+                    } else {
+                        img.pixeles[((yy * w + xx) * 4) as usize + k] as f32
+                    }
+                };
+                let v = p(x0, y0) * (1.0 - fx) * (1.0 - fy)
+                    + p(x0 + 1, y0) * fx * (1.0 - fy)
+                    + p(x0, y0 + 1) * (1.0 - fx) * fy
+                    + p(x0 + 1, y0 + 1) * fx * fy;
                 px[i + k] = v as u8;
             }
             px[i + 3] = 255;
         }
     }
-    ImagenRgba { ancho: img.ancho, alto: img.alto, pixeles: px }
+    ImagenRgba {
+        ancho: img.ancho,
+        alto: img.alto,
+        pixeles: px,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -369,7 +571,12 @@ const T: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relations
 fn caja_pptx(id: u32, x: u64, y: u64, w: u64, h: u64, parrafos: &[(&str, u32, bool)]) -> String {
     let ps: String = parrafos
         .iter()
-        .map(|(t, sz, b)| format!(r#"<a:p><a:r><a:rPr lang="es-PE" sz="{sz}" b="{}"/><a:t>{t}</a:t></a:r></a:p>"#, if *b { 1 } else { 0 }))
+        .map(|(t, sz, b)| {
+            format!(
+                r#"<a:p><a:r><a:rPr lang="es-PE" sz="{sz}" b="{}"/><a:t>{t}</a:t></a:r></a:p>"#,
+                if *b { 1 } else { 0 }
+            )
+        })
         .collect();
     format!(
         r#"<p:sp><p:nvSpPr><p:cNvPr id="{id}" name="T{id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>{ps}</p:txBody></p:sp>"#
@@ -395,17 +602,27 @@ fn pptx(diapositivas: &[(String, Option<Vec<u8>>)]) -> Vec<u8> {
     tipos.push_str("</Types>");
     e.push(("[Content_Types].xml".into(), tipos.into_bytes()));
     e.push(("_rels/.rels".into(), format!(r#"<Relationships {RELS}><Relationship Id="r1" Type="{T}/officeDocument" Target="ppt/presentation.xml"/></Relationships>"#).into_bytes()));
-    let ids: String = (1..=n).map(|i| format!(r#"<p:sldId id="{}" r:id="rS{i}"/>"#, 255 + i)).collect();
+    let ids: String = (1..=n)
+        .map(|i| format!(r#"<p:sldId id="{}" r:id="rS{i}"/>"#, 255 + i))
+        .collect();
     e.push((
         "ppt/presentation.xml".into(),
         format!(r#"<p:presentation {NS_P}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rM"/></p:sldMasterIdLst><p:sldIdLst>{ids}</p:sldIdLst><p:sldSz cx="9144000" cy="5143500"/></p:presentation>"#).into_bytes(),
     ));
-    let rels: String = (1..=n).map(|i| format!(r#"<Relationship Id="rS{i}" Type="{T}/slide" Target="slides/slide{i}.xml"/>"#)).collect();
+    let rels: String = (1..=n)
+        .map(|i| {
+            format!(r#"<Relationship Id="rS{i}" Type="{T}/slide" Target="slides/slide{i}.xml"/>"#)
+        })
+        .collect();
     e.push((
         "ppt/_rels/presentation.xml.rels".into(),
         format!(r#"<Relationships {RELS}>{rels}<Relationship Id="rM" Type="{T}/slideMaster" Target="slideMasters/slideMaster1.xml"/></Relationships>"#).into_bytes(),
     ));
-    e.push(("ppt/slideLayouts/slideLayout1.xml".into(), format!(r#"<p:sldLayout {NS_P}><p:cSld><p:spTree></p:spTree></p:cSld></p:sldLayout>"#).into_bytes()));
+    e.push((
+        "ppt/slideLayouts/slideLayout1.xml".into(),
+        format!(r#"<p:sldLayout {NS_P}><p:cSld><p:spTree></p:spTree></p:cSld></p:sldLayout>"#)
+            .into_bytes(),
+    ));
     e.push((
         "ppt/slideLayouts/_rels/slideLayout1.xml.rels".into(),
         format!(r#"<Relationships {RELS}><Relationship Id="rM" Type="{T}/slideMaster" Target="../slideMasters/slideMaster1.xml"/></Relationships>"#).into_bytes(),
@@ -416,13 +633,24 @@ fn pptx(diapositivas: &[(String, Option<Vec<u8>>)]) -> Vec<u8> {
     ));
     for (i, (formas, foto)) in diapositivas.iter().enumerate() {
         let k = i + 1;
-        e.push((format!("ppt/slides/slide{k}.xml"), format!(r#"<p:sld {NS_P}><p:cSld><p:spTree>{formas}</p:spTree></p:cSld></p:sld>"#).into_bytes()));
-        let mut r = format!(r#"<Relationship Id="rL" Type="{T}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>"#);
+        e.push((
+            format!("ppt/slides/slide{k}.xml"),
+            format!(r#"<p:sld {NS_P}><p:cSld><p:spTree>{formas}</p:spTree></p:cSld></p:sld>"#)
+                .into_bytes(),
+        ));
+        let mut r = format!(
+            r#"<Relationship Id="rL" Type="{T}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>"#
+        );
         if let Some(b) = foto {
-            r.push_str(&format!(r#"<Relationship Id="rF" Type="{T}/image" Target="../media/foto{k}.jpeg"/>"#));
+            r.push_str(&format!(
+                r#"<Relationship Id="rF" Type="{T}/image" Target="../media/foto{k}.jpeg"/>"#
+            ));
             e.push((format!("ppt/media/foto{k}.jpeg"), b.clone()));
         }
-        e.push((format!("ppt/slides/_rels/slide{k}.xml.rels"), format!(r#"<Relationships {RELS}>{r}</Relationships>"#).into_bytes()));
+        e.push((
+            format!("ppt/slides/_rels/slide{k}.xml.rels"),
+            format!(r#"<Relationships {RELS}>{r}</Relationships>"#).into_bytes(),
+        ));
     }
     let refs: Vec<(&str, Vec<u8>)> = e.iter().map(|(n, b)| (n.as_str(), b.clone())).collect();
     zip_guardado(&refs)
@@ -432,12 +660,23 @@ fn pptx(diapositivas: &[(String, Option<Vec<u8>>)]) -> Vec<u8> {
 // Excel y Word
 
 fn xlsx(nombre_hoja: &str, filas: &[&[&str]]) -> Vec<u8> {
-    let filas: Vec<Vec<String>> = filas.iter().map(|f| f.iter().map(|c| c.to_string()).collect()).collect();
+    let filas: Vec<Vec<String>> = filas
+        .iter()
+        .map(|f| f.iter().map(|c| c.to_string()).collect())
+        .collect();
     let mut t = crate::pedidos::tabla_de_filas(nombre_hoja, &filas, true, 0);
     for (i, a) in [190u32, 70, 90, 90, 110].iter().enumerate() {
         t.anchos.insert(((b'A' + i as u8) as char).to_string(), *a);
     }
-    pixpin_proyecto::tabla_xlsx::a_xlsx(&[pixpin_proyecto::tabla_xlsx::HojaParaVer { nombre: nombre_hoja, tabla: &t, valores: None }], 0).unwrap()
+    pixpin_proyecto::tabla_xlsx::a_xlsx(
+        &[pixpin_proyecto::tabla_xlsx::HojaParaVer {
+            nombre: nombre_hoja,
+            tabla: &t,
+            valores: None,
+        }],
+        0,
+    )
+    .unwrap()
 }
 
 fn docx(markdown: &str, titulo: &str, fotos: &HashMap<String, Vec<u8>>) -> Vec<u8> {
@@ -457,7 +696,12 @@ fn docx(markdown: &str, titulo: &str, fotos: &HashMap<String, Vec<u8>>) -> Vec<u
 /// Una foto libre de Windows, en JPEG reducido.
 fn foto_libre(n: usize, ancho: u32) -> Option<(PathBuf, Vec<u8>)> {
     let dir = Path::new(r"C:\Windows\Web\Screen");
-    let mut v: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "jpg")).collect();
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "jpg"))
+        .collect();
     v.sort();
     let ruta = v.get(n % v.len().max(1))?.clone();
     let img = pixpin_codec::imagen::cargar(&ruta).ok()?;
@@ -476,7 +720,13 @@ fn d01() {
     h.texto("CONSTRUCTORA ANDES S.A.C.", 60.0, 60.0, 15.0, true);
     h.texto("Lima, 15 de octubre de 2026", 560.0, 60.0, 13.0, false);
     h.texto("COMUNICADO N.° 07-2026-CA/OBRA", 60.0, 130.0, 20.0, true);
-    h.texto("Asunto: Reunión de coordinación de la obra Av. Florida – Tawa", 60.0, 175.0, 14.0, true);
+    h.texto(
+        "Asunto: Reunión de coordinación de la obra Av. Florida – Tawa",
+        60.0,
+        175.0,
+        14.0,
+        true,
+    );
     let mut y = 220.0;
     for p in [
         "Se convoca a todos los residentes, supervisores y jefes de cuadrilla a la reunión de coordinación semanal, que se realizará el jueves 22 de octubre de 2026 a las 9:00 a. m. en la caseta de obra de la Av. Florida, cuadra 3.",
@@ -488,7 +738,13 @@ fn d01() {
     }
     h.texto("Atentamente,", 60.0, y + 20.0, 14.0, false);
     h.texto("Ing. Rosa Quispe Mamani", 60.0, y + 90.0, 14.0, true);
-    h.texto("Residente de obra – CIP 182455", 60.0, y + 110.0, 13.0, false);
+    h.texto(
+        "Residente de obra – CIP 182455",
+        60.0,
+        y + 110.0,
+        13.0,
+        false,
+    );
     std::fs::write(ruta(DOCS[0].nombre), a_pdf(&[h])).unwrap();
 }
 
@@ -525,13 +781,29 @@ El costo estimado de la obra es de S/ 184 500, incluido el IGV, y el plazo de ej
 
 La inundación no se debe a lluvias extraordinarias sino a un sistema de drenaje pequeño y mal mantenido. La ampliación de las cunetas y los nuevos sumideros resuelven el problema; el cambio de la tubería de descarga es indispensable para que lo demás funcione.
 "#;
-    std::fs::write(ruta(DOCS[1].nombre), docx(md, "Informe de drenaje", &HashMap::new())).unwrap();
+    std::fs::write(
+        ruta(DOCS[1].nombre),
+        docx(md, "Informe de drenaje", &HashMap::new()),
+    )
+    .unwrap();
 }
 
 fn d03() {
     let mut h = Hoja::nueva(A4.0, A4.1);
-    h.centrado("Formulario de Física I – Cinemática y Dinámica", 400.0, 60.0, 22.0, true);
-    h.centrado("Universidad Nacional Jorge Basadre Grohmann – Escuela de Ingeniería Civil", 400.0, 95.0, 12.0, false);
+    h.centrado(
+        "Formulario de Física I – Cinemática y Dinámica",
+        400.0,
+        60.0,
+        22.0,
+        true,
+    );
+    h.centrado(
+        "Universidad Nacional Jorge Basadre Grohmann – Escuela de Ingeniería Civil",
+        400.0,
+        95.0,
+        12.0,
+        false,
+    );
     let mut y = 150.0;
     let lineas: &[(&str, &str)] = &[
         ("1. Movimiento rectilíneo uniformemente variado", ""),
@@ -539,7 +811,10 @@ fn d03() {
         ("", r"$x = x_0 + v_0 t + \frac{1}{2} a t^2$"),
         ("", r"$v^2 = v_0^2 + 2 a \Delta x$"),
         ("2. Caída libre y tiro parabólico", ""),
-        ("", "$h_{max} = \\frac{v_0^2 \\sin^2\\theta}{2g}$     $R = \\frac{v_0^2 \\sin 2\\theta}{g}$"),
+        (
+            "",
+            "$h_{max} = \\frac{v_0^2 \\sin^2\\theta}{2g}$     $R = \\frac{v_0^2 \\sin 2\\theta}{g}$",
+        ),
         ("3. Dinámica y energía", ""),
         ("", r"$\sum \vec{F} = m \vec{a}$     $f_r = \mu N$"),
         ("", r"$E_c = \frac{1}{2} m v^2$     $E_p = m g h$"),
@@ -564,7 +839,15 @@ fn d03() {
 fn d04() {
     let mut h = Hoja::nueva(900.0, 600.0);
     // Una «pizarra» verde con tiza.
-    h.caja(Figura::Rectangulo, 0.0, 0.0, 900.0, 600.0, ColorRgba::opaco(0.35, 0.25, 0.15), Some(ColorRgba::opaco(0.12, 0.30, 0.22)));
+    h.caja(
+        Figura::Rectangulo,
+        0.0,
+        0.0,
+        900.0,
+        600.0,
+        ColorRgba::opaco(0.35, 0.25, 0.15),
+        Some(ColorRgba::opaco(0.12, 0.30, 0.22)),
+    );
     let tiza = ColorRgba::opaco(0.95, 0.95, 0.90);
     h.texto_color("Repaso para el parcial", 40.0, 30.0, 26.0, true, tiza);
     let formulas = [
@@ -585,10 +868,22 @@ fn d04() {
 }
 
 const PRESUPUESTO: &[&[&str]] = &[
-    &["Partida", "Unidad", "Metrado", "P. unit. (S/)", "Parcial (S/)"],
+    &[
+        "Partida",
+        "Unidad",
+        "Metrado",
+        "P. unit. (S/)",
+        "Parcial (S/)",
+    ],
     &["Excavación de zanjas", "m3", "120", "38.50", "4620.00"],
     &["Concreto f'c=210 kg/cm2", "m3", "45", "420.00", "18900.00"],
-    &["Acero de refuerzo fy=4200", "kg", "3200", "5.80", "18560.00"],
+    &[
+        "Acero de refuerzo fy=4200",
+        "kg",
+        "3200",
+        "5.80",
+        "18560.00",
+    ],
     &["Encofrado y desencofrado", "m2", "260", "48.00", "12480.00"],
     &["Tubería PVC 24\"", "m", "640", "95.00", "60800.00"],
     &["Sumideros con rejilla", "und", "6", "2150.00", "12900.00"],
@@ -600,7 +895,14 @@ fn d05() {
 }
 
 const NOTAS: &[&[&str]] = &[
-    &["N.°", "Alumno", "Parcial 1", "Parcial 2", "Final", "Promedio"],
+    &[
+        "N.°",
+        "Alumno",
+        "Parcial 1",
+        "Parcial 2",
+        "Final",
+        "Promedio",
+    ],
     &["1", "Apaza Choque, Luis", "14", "12", "15", "13.7"],
     &["2", "Condori Ticona, Ana", "17", "16", "18", "17.0"],
     &["3", "Flores Mamani, Jorge", "09", "11", "10", "10.0"],
@@ -613,9 +915,29 @@ const NOTAS: &[&[&str]] = &[
 
 fn d06() {
     let mut h = Hoja::nueva(A4.0, A4.1);
-    h.texto("Registro de notas – Resistencia de Materiales I (2026-II)", 60.0, 60.0, 18.0, true);
-    h.texto("Docente: Ing. Carlos Vargas · Sección A · Nota aprobatoria: 10.5", 60.0, 95.0, 13.0, false);
-    let fin = h.tabla(NOTAS, 60.0, 140.0, &[40.0, 240.0, 90.0, 90.0, 80.0, 100.0], 34.0, 13.0, true);
+    h.texto(
+        "Registro de notas – Resistencia de Materiales I (2026-II)",
+        60.0,
+        60.0,
+        18.0,
+        true,
+    );
+    h.texto(
+        "Docente: Ing. Carlos Vargas · Sección A · Nota aprobatoria: 10.5",
+        60.0,
+        95.0,
+        13.0,
+        false,
+    );
+    let fin = h.tabla(
+        NOTAS,
+        60.0,
+        140.0,
+        &[40.0, 240.0, 90.0, 90.0, 80.0, 100.0],
+        34.0,
+        13.0,
+        true,
+    );
     h.parrafo(
         "Observación: el promedio es la media de los dos parciales y el examen final. Los alumnos con promedio menor que 10.5 pueden rendir el examen sustitutorio el 30 de noviembre.",
         60.0,
@@ -629,7 +951,12 @@ fn d06() {
 const STOCK: &[&[&str]] = &[
     &["Material", "Cantidad", "Unidad", "Proveedor"],
     &["Cemento Portland tipo I", "350", "bolsas", "Yura"],
-    &["Fierro corrugado 1/2\"", "120", "varillas", "Aceros Arequipa"],
+    &[
+        "Fierro corrugado 1/2\"",
+        "120",
+        "varillas",
+        "Aceros Arequipa",
+    ],
     &["Arena gruesa", "18", "m3", "Cantera Magollo"],
     &["Piedra chancada 1/2\"", "22", "m3", "Cantera Magollo"],
     &["Alambre negro N.° 16", "45", "kg", "Ferretería El Sol"],
@@ -638,8 +965,22 @@ const STOCK: &[&[&str]] = &[
 
 fn d07() {
     let mut h = Hoja::nueva(760.0, 360.0);
-    h.texto("Almacén de obra – stock al 14/10/2026", 20.0, 16.0, 18.0, true);
-    h.tabla(STOCK, 20.0, 60.0, &[250.0, 100.0, 110.0, 260.0], 38.0, 15.0, true);
+    h.texto(
+        "Almacén de obra – stock al 14/10/2026",
+        20.0,
+        16.0,
+        18.0,
+        true,
+    );
+    h.tabla(
+        STOCK,
+        20.0,
+        60.0,
+        &[250.0, 100.0, 110.0, 260.0],
+        38.0,
+        15.0,
+        true,
+    );
     let img = hoja_a_png(h, 1300);
     guardar_png(DOCS[6].nombre, &img);
 }
@@ -659,16 +1000,46 @@ fn d08() {
     }
     md.push_str("## La costa\n\nLas playas de Boca del Río y Vila Vila son el destino de verano de los tacneños. En 2026 la Municipalidad terminó el malecón de 1,2 km y un estacionamiento para 300 vehículos, lo que duplicó las visitas de enero a marzo.\n\n");
     md.push_str("## Lo que falta\n\nLos operadores piden más señalización en las carreteras, servicios higiénicos en las playas y una oficina de información turística en el terminal terrestre, que recibe a los visitantes de Chile y de Bolivia.\n");
-    std::fs::write(ruta(DOCS[7].nombre), docx(&md, "Tacna, entre el desierto y el mar", &fotos)).unwrap();
+    std::fs::write(
+        ruta(DOCS[7].nombre),
+        docx(&md, "Tacna, entre el desierto y el mar", &fotos),
+    )
+    .unwrap();
 }
 
 fn d09() {
     let mut h = Hoja::nueva(A4.0, A4.1);
-    h.caja(Figura::Rectangulo, 0.0, 0.0, 800.0, 110.0, ColorRgba::opaco(0.10, 0.25, 0.45), Some(ColorRgba::opaco(0.10, 0.25, 0.45)));
-    h.texto_color("BOLETÍN DE OBRA", 50.0, 25.0, 34.0, true, ColorRgba::opaco(1.0, 1.0, 1.0));
-    h.texto_color("N.° 12 · Octubre de 2026 · Mejoramiento de la Av. Florida", 50.0, 75.0, 14.0, false, ColorRgba::opaco(0.85, 0.90, 1.0));
+    h.caja(
+        Figura::Rectangulo,
+        0.0,
+        0.0,
+        800.0,
+        110.0,
+        ColorRgba::opaco(0.10, 0.25, 0.45),
+        Some(ColorRgba::opaco(0.10, 0.25, 0.45)),
+    );
+    h.texto_color(
+        "BOLETÍN DE OBRA",
+        50.0,
+        25.0,
+        34.0,
+        true,
+        ColorRgba::opaco(1.0, 1.0, 1.0),
+    );
+    h.texto_color(
+        "N.° 12 · Octubre de 2026 · Mejoramiento de la Av. Florida",
+        50.0,
+        75.0,
+        14.0,
+        false,
+        ColorRgba::opaco(0.85, 0.90, 1.0),
+    );
     // Dos columnas con una raya en medio.
-    h.linea(&[(400.0, 140.0), (400.0, 1040.0)], 1.0, ColorRgba::opaco(0.6, 0.6, 0.65));
+    h.linea(
+        &[(400.0, 140.0), (400.0, 1040.0)],
+        1.0,
+        ColorRgba::opaco(0.6, 0.6, 0.65),
+    );
     let mut y = 140.0;
     y += h.texto("Avance general: 68 %", 50.0, y, 18.0, true) + 8.0;
     y = h.parrafo("Durante la primera quincena de octubre se terminó el vaciado de la losa del bloque A y se avanzó el 40 % del encofrado del bloque B. El avance físico de la obra llegó al 68 %, frente al 72 % programado.", 50.0, y, 320.0, 13.0) + 14.0;
@@ -681,11 +1052,24 @@ fn d09() {
     h.parrafo("Se cumplieron 120 días sin accidentes con tiempo perdido. En setiembre se dictaron seis charlas de cinco minutos sobre trabajos en altura y uso del arnés.", 50.0, y, 320.0, 13.0);
     let mut y = 140.0;
     y += h.texto("Próximas actividades", 430.0, y, 18.0, true) + 8.0;
-    for item in ["• Vaciado de la losa del bloque B (27 de octubre).", "• Instalación de la tubería de desagüe del Jr. Antisuyo.", "• Pruebas de compresión de las probetas a 28 días.", "• Inicio del tarrajeo de los muros del primer piso."] {
+    for item in [
+        "• Vaciado de la losa del bloque B (27 de octubre).",
+        "• Instalación de la tubería de desagüe del Jr. Antisuyo.",
+        "• Pruebas de compresión de las probetas a 28 días.",
+        "• Inicio del tarrajeo de los muros del primer piso.",
+    ] {
         y = h.parrafo(item, 430.0, y, 320.0, 13.0) + 4.0;
     }
     y += 16.0;
-    h.caja(Figura::Rectangulo, 430.0, y, 320.0, 150.0, ColorRgba::opaco(0.85, 0.55, 0.10), Some(ColorRgba::opaco(1.0, 0.95, 0.85)));
+    h.caja(
+        Figura::Rectangulo,
+        430.0,
+        y,
+        320.0,
+        150.0,
+        ColorRgba::opaco(0.85, 0.55, 0.10),
+        Some(ColorRgba::opaco(1.0, 0.95, 0.85)),
+    );
     h.texto("Dato del mes", 445.0, y + 12.0, 16.0, true);
     h.parrafo("Se usaron 410 m³ de concreto premezclado, con una resistencia media de 238 kg/cm² en las probetas a 7 días.", 445.0, y + 40.0, 290.0, 13.0);
     y += 175.0;
@@ -695,11 +1079,23 @@ fn d09() {
 }
 
 /// Producción mensual de la grafica (mes, m3).
-pub const PRODUCCION: &[(&str, f32)] = &[("Ene", 120.0), ("Feb", 95.0), ("Mar", 140.0), ("Abr", 160.0), ("May", 130.0)];
+pub const PRODUCCION: &[(&str, f32)] = &[
+    ("Ene", 120.0),
+    ("Feb", 95.0),
+    ("Mar", 140.0),
+    ("Abr", 160.0),
+    ("May", 130.0),
+];
 
 fn d10() {
     let mut h = Hoja::nueva(800.0, 560.0);
-    h.centrado("Producción mensual de concreto (m³) – 2026", 400.0, 20.0, 22.0, true);
+    h.centrado(
+        "Producción mensual de concreto (m³) – 2026",
+        400.0,
+        20.0,
+        22.0,
+        true,
+    );
     let (x0, y0, alto) = (110.0, 480.0, 380.0);
     let gris = ColorRgba::opaco(0.55, 0.55, 0.6);
     h.linea(&[(x0, y0), (x0 + 620.0, y0)], 2.0, negro());
@@ -712,8 +1108,22 @@ fn d10() {
     for (i, (mes, v)) in PRODUCCION.iter().enumerate() {
         let x = x0 + 40.0 + i as f32 * 115.0;
         let alto_b = v / 180.0 * alto;
-        h.caja(Figura::Rectangulo, x, y0 - alto_b, 70.0, alto_b, ColorRgba::opaco(0.15, 0.40, 0.75), Some(ColorRgba::opaco(0.25, 0.52, 0.86)));
-        h.centrado(&format!("{}", *v as i32), x + 35.0, y0 - alto_b - 24.0, 14.0, true);
+        h.caja(
+            Figura::Rectangulo,
+            x,
+            y0 - alto_b,
+            70.0,
+            alto_b,
+            ColorRgba::opaco(0.15, 0.40, 0.75),
+            Some(ColorRgba::opaco(0.25, 0.52, 0.86)),
+        );
+        h.centrado(
+            &format!("{}", *v as i32),
+            x + 35.0,
+            y0 - alto_b - 24.0,
+            14.0,
+            true,
+        );
         h.centrado(mes, x + 35.0, y0 + 10.0, 15.0, false);
     }
     h.texto("m³", 40.0, 80.0, 14.0, false);
@@ -731,7 +1141,17 @@ fn d11() {
     h.flecha((cx, 90.0), (cx, 140.0));
     // Leer N: paralelogramo
     let (px, py) = (cx - 105.0, 140.0);
-    h.linea(&[(px + 30.0, py), (px + 210.0, py), (px + 180.0, py + 60.0), (px, py + 60.0), (px + 30.0, py)], 2.0, azul);
+    h.linea(
+        &[
+            (px + 30.0, py),
+            (px + 210.0, py),
+            (px + 180.0, py + 60.0),
+            (px, py + 60.0),
+            (px + 30.0, py),
+        ],
+        2.0,
+        azul,
+    );
     h.centrado("Leer N", cx, 158.0, 18.0, false);
     h.flecha((cx, 200.0), (cx, 250.0));
     h.caja(Figura::Rombo, cx - 120.0, 250.0, 240.0, 130.0, azul, claro);
@@ -759,9 +1179,23 @@ fn d11() {
 
 fn d12() {
     let mut h = Hoja::nueva(760.0, 700.0);
-    h.texto("Problema 4. En la figura, AB es diámetro y m∢BAC = 35°. Halla x.", 30.0, 20.0, 18.0, true);
+    h.texto(
+        "Problema 4. En la figura, AB es diámetro y m∢BAC = 35°. Halla x.",
+        30.0,
+        20.0,
+        18.0,
+        true,
+    );
     let (cx, cy, r) = (380.0, 380.0, 230.0);
-    h.caja(Figura::Elipse, cx - r, cy - r, 2.0 * r, 2.0 * r, negro(), None);
+    h.caja(
+        Figura::Elipse,
+        cx - r,
+        cy - r,
+        2.0 * r,
+        2.0 * r,
+        negro(),
+        None,
+    );
     let a = (cx - r, cy);
     let b = (cx + r, cy);
     // C en la circunferencia, arriba a la izquierda: el angulo en A es 35°.
@@ -769,7 +1203,15 @@ fn d12() {
     let c = (cx + r * ang_c.cos(), cy - r * ang_c.sin());
     h.linea(&[a, b], 2.0, negro());
     h.linea(&[a, c, b], 2.0, negro());
-    h.caja(Figura::Elipse, cx - 4.0, cy - 4.0, 8.0, 8.0, negro(), Some(negro()));
+    h.caja(
+        Figura::Elipse,
+        cx - 4.0,
+        cy - 4.0,
+        8.0,
+        8.0,
+        negro(),
+        Some(negro()),
+    );
     h.texto("O", cx - 6.0, cy + 8.0, 18.0, true);
     h.texto("A", a.0 - 28.0, a.1 - 12.0, 20.0, true);
     h.texto("B", b.0 + 10.0, b.1 - 12.0, 20.0, true);
@@ -790,7 +1232,12 @@ fn d12() {
 }
 
 const ENSAYOS: &[&[&str]] = &[
-    &["Probeta", "Edad (días)", "Carga (kN)", "Resistencia (kg/cm²)"],
+    &[
+        "Probeta",
+        "Edad (días)",
+        "Carga (kN)",
+        "Resistencia (kg/cm²)",
+    ],
     &["P-01", "7", "312", "176"],
     &["P-02", "7", "298", "168"],
     &["P-03", "28", "421", "238"],
@@ -800,16 +1247,35 @@ const ENSAYOS: &[&[&str]] = &[
 fn d13() {
     let mut h = Hoja::nueva(A4.0, A4.1);
     h.centrado("GUÍA DE PRÁCTICA N.° 3", 400.0, 60.0, 22.0, true);
-    h.centrado("Tecnología del Concreto – Ensayo de compresión de probetas", 400.0, 95.0, 15.0, false);
+    h.centrado(
+        "Tecnología del Concreto – Ensayo de compresión de probetas",
+        400.0,
+        95.0,
+        15.0,
+        false,
+    );
     let mut y = 150.0;
     y = h.parrafo("Objetivo: determinar la resistencia a la compresión de probetas cilíndricas de concreto de 15 cm de diámetro y 30 cm de altura, según la norma NTP 339.034, y comparar el resultado con la resistencia de diseño f'c = 210 kg/cm².", 60.0, y, 680.0, 15.0) + 18.0;
     y += h.texto("Procedimiento", 60.0, y, 17.0, true) + 8.0;
-    for p in ["1. Medir el diámetro de la probeta en dos direcciones perpendiculares.", "2. Colocar la probeta centrada en la prensa y aplicar la carga a velocidad constante.", "3. Anotar la carga máxima y el tipo de falla.", "4. Calcular la resistencia con la fórmula: f = P / A."] {
+    for p in [
+        "1. Medir el diámetro de la probeta en dos direcciones perpendiculares.",
+        "2. Colocar la probeta centrada en la prensa y aplicar la carga a velocidad constante.",
+        "3. Anotar la carga máxima y el tipo de falla.",
+        "4. Calcular la resistencia con la fórmula: f = P / A.",
+    ] {
         y = h.parrafo(p, 60.0, y, 680.0, 15.0) + 4.0;
     }
     y += 20.0;
     y += h.texto("Resultados", 60.0, y, 17.0, true) + 10.0;
-    let fin = h.tabla(ENSAYOS, 60.0, y, &[120.0, 140.0, 140.0, 260.0], 36.0, 15.0, true);
+    let fin = h.tabla(
+        ENSAYOS,
+        60.0,
+        y,
+        &[120.0, 140.0, 140.0, 260.0],
+        36.0,
+        15.0,
+        true,
+    );
     h.parrafo("Conclusión: a los 28 días las probetas superan la resistencia de diseño; la media es 242 kg/cm², un 15 % más que f'c.", 60.0, fin + 26.0, 680.0, 15.0);
     let mut img = hoja_a_png(h, 1400);
     escanear(&mut img);
@@ -821,12 +1287,37 @@ fn d14() {
     let emu = |px: f32| (px * 9525.0) as u64;
     let s1 = format!(
         "{}{}",
-        caja_pptx(2, emu(60.0), emu(150.0), emu(840.0), emu(100.0), &[("Seguridad en obra: lo que no se negocia", 4000, true)]),
-        caja_pptx(3, emu(60.0), emu(280.0), emu(840.0), emu(60.0), &[("Charla de cinco minutos – Obra Av. Florida – 15 de octubre de 2026", 1800, false)])
+        caja_pptx(
+            2,
+            emu(60.0),
+            emu(150.0),
+            emu(840.0),
+            emu(100.0),
+            &[("Seguridad en obra: lo que no se negocia", 4000, true)]
+        ),
+        caja_pptx(
+            3,
+            emu(60.0),
+            emu(280.0),
+            emu(840.0),
+            emu(60.0),
+            &[(
+                "Charla de cinco minutos – Obra Av. Florida – 15 de octubre de 2026",
+                1800,
+                false
+            )]
+        )
     );
     let s2 = format!(
         "{}{}",
-        caja_pptx(2, emu(40.0), emu(30.0), emu(880.0), emu(70.0), &[("Equipo de protección personal (EPP)", 3200, true)]),
+        caja_pptx(
+            2,
+            emu(40.0),
+            emu(30.0),
+            emu(880.0),
+            emu(70.0),
+            &[("Equipo de protección personal (EPP)", 3200, true)]
+        ),
         caja_pptx(
             3,
             emu(60.0),
@@ -834,18 +1325,45 @@ fn d14() {
             emu(840.0),
             emu(380.0),
             &[
-                ("• Casco con barbiquejo en toda la obra, siempre.", 2000, false),
-                ("• Chaleco reflectivo, botas con puntera de acero y guantes.", 2000, false),
-                ("• Arnés con doble línea de vida por encima de 1,80 m.", 2000, false),
-                ("• Lentes de seguridad al cortar, esmerilar o picar concreto.", 2000, false),
-                ("• Nadie entra a una zanja de más de 1,50 m sin entibado.", 2000, false),
+                (
+                    "• Casco con barbiquejo en toda la obra, siempre.",
+                    2000,
+                    false
+                ),
+                (
+                    "• Chaleco reflectivo, botas con puntera de acero y guantes.",
+                    2000,
+                    false
+                ),
+                (
+                    "• Arnés con doble línea de vida por encima de 1,80 m.",
+                    2000,
+                    false
+                ),
+                (
+                    "• Lentes de seguridad al cortar, esmerilar o picar concreto.",
+                    2000,
+                    false
+                ),
+                (
+                    "• Nadie entra a una zanja de más de 1,50 m sin entibado.",
+                    2000,
+                    false
+                ),
             ]
         )
     );
     let foto = foto_libre(2, 700).map(|(_, b)| b);
     let mut s3 = format!(
         "{}{}",
-        caja_pptx(2, emu(40.0), emu(30.0), emu(880.0), emu(70.0), &[("Cómo vamos", 3200, true)]),
+        caja_pptx(
+            2,
+            emu(40.0),
+            emu(30.0),
+            emu(880.0),
+            emu(70.0),
+            &[("Cómo vamos", 3200, true)]
+        ),
         caja_pptx(
             3,
             emu(40.0),
@@ -853,15 +1371,30 @@ fn d14() {
             emu(440.0),
             emu(360.0),
             &[
-                ("12 incidentes en 2025; 4 en lo que va de 2026.", 2000, false),
+                (
+                    "12 incidentes en 2025; 4 en lo que va de 2026.",
+                    2000,
+                    false
+                ),
                 ("120 días sin accidentes con tiempo perdido.", 2000, false),
-                ("La causa más común: caídas al mismo nivel por desorden.", 2000, false),
+                (
+                    "La causa más común: caídas al mismo nivel por desorden.",
+                    2000,
+                    false
+                ),
                 ("Meta: cero accidentes al terminar la obra.", 2000, true),
             ]
         )
     );
     if foto.is_some() {
-        s3.push_str(&foto_pptx(4, "rF", emu(500.0), emu(130.0), emu(420.0), emu(300.0)));
+        s3.push_str(&foto_pptx(
+            4,
+            "rF",
+            emu(500.0),
+            emu(130.0),
+            emu(420.0),
+            emu(300.0),
+        ));
     }
     let b = pptx(&[(s1, None), (s2, None), (s3, foto)]);
     std::fs::write(ruta(DOCS[13].nombre), b).unwrap();
@@ -869,7 +1402,13 @@ fn d14() {
 
 /// Los metrados: la fila del tarrajeo esta mal (120 x 28.50 = 3420, no 3240).
 pub const METRADOS: &[&[&str]] = &[
-    &["Partida", "Unidad", "Metrado", "P. unit. (S/)", "Parcial (S/)"],
+    &[
+        "Partida",
+        "Unidad",
+        "Metrado",
+        "P. unit. (S/)",
+        "Parcial (S/)",
+    ],
     &["Muro de ladrillo KK", "m2", "180", "62.00", "11160.00"],
     &["Tarrajeo de muros", "m2", "120", "28.50", "3240.00"],
     &["Contrapiso e=4cm", "m2", "95", "34.00", "3230.00"],
@@ -885,24 +1424,58 @@ fn d15() {
 fn d16() {
     let mut h = Hoja::nueva(A4.0, A4.1);
     h.centrado("EXAMEN PARCIAL DE FÍSICA I", 400.0, 50.0, 22.0, true);
-    h.texto("Nombre: ______________________________     Fecha: 16/10/2026     Duración: 90 min", 60.0, 95.0, 13.0, false);
+    h.texto(
+        "Nombre: ______________________________     Fecha: 16/10/2026     Duración: 90 min",
+        60.0,
+        95.0,
+        13.0,
+        false,
+    );
     let mut y = 140.0;
     y += h.texto("Problema 1 (6 puntos)", 60.0, y, 16.0, true) + 6.0;
     y = h.parrafo("Un bloque de 5 kg está sobre un plano inclinado 37° respecto de la horizontal. El coeficiente de rozamiento cinético entre el bloque y el plano es 0,2. Calcula la aceleración con que baja el bloque (g = 10 m/s²).", 60.0, y, 400.0, 14.0) + 10.0;
     y += h.rico("$a = g(\\sin\\theta - \\mu\\cos\\theta)$", 80.0, y, 20.0) + 20.0;
     // El plano inclinado a la derecha.
     let (px, py) = (500.0, 330.0);
-    h.linea(&[(px, py), (px + 240.0, py), (px + 240.0, py - 180.0), (px, py)], 2.0, negro());
+    h.linea(
+        &[
+            (px, py),
+            (px + 240.0, py),
+            (px + 240.0, py - 180.0),
+            (px, py),
+        ],
+        2.0,
+        negro(),
+    );
     h.texto("37°", px + 45.0, py - 30.0, 15.0, false);
     let ang = (180.0f32 / 240.0).atan();
     let (bx, by) = (px + 120.0, py - 120.0 * ang.tan());
-    h.caja(Figura::Rectangulo, bx - 22.0, by - 44.0, 44.0, 40.0, ColorRgba::opaco(0.6, 0.2, 0.1), Some(ColorRgba::opaco(0.9, 0.6, 0.4)));
+    h.caja(
+        Figura::Rectangulo,
+        bx - 22.0,
+        by - 44.0,
+        44.0,
+        40.0,
+        ColorRgba::opaco(0.6, 0.2, 0.1),
+        Some(ColorRgba::opaco(0.9, 0.6, 0.4)),
+    );
     h.texto("5 kg", bx - 18.0, by - 36.0, 13.0, true);
     y = y.max(360.0);
     y += h.texto("Problema 2 (4 puntos)", 60.0, y, 16.0, true) + 6.0;
     y = h.parrafo("Un proyectil se lanza con una velocidad de 20 m/s y un ángulo de 30°. Halla su altura máxima.", 60.0, y, 680.0, 14.0) + 8.0;
-    y += h.rico("$h_{max} = \\frac{v_0^2 \\sin^2\\theta}{2g}$", 80.0, y, 20.0) + 24.0;
-    y += h.texto("Pregunta 3 (2 puntos). La unidad de la fuerza en el SI es:", 60.0, y, 16.0, true) + 10.0;
+    y += h.rico(
+        "$h_{max} = \\frac{v_0^2 \\sin^2\\theta}{2g}$",
+        80.0,
+        y,
+        20.0,
+    ) + 24.0;
+    y += h.texto(
+        "Pregunta 3 (2 puntos). La unidad de la fuerza en el SI es:",
+        60.0,
+        y,
+        16.0,
+        true,
+    ) + 10.0;
     for alt in ["a) joule", "b) newton", "c) watt", "d) pascal"] {
         y += h.texto(alt, 90.0, y, 14.0, false) + 6.0;
     }
@@ -913,7 +1486,9 @@ fn d16() {
 pub fn generar() {
     std::fs::create_dir_all(carpeta()).unwrap();
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    for f in [d01, d02, d03, d04, d05, d06, d07, d08, d09, d10, d11, d12, d13, d14, d15, d16] {
+    for f in [
+        d01, d02, d03, d04, d05, d06, d07, d08, d09, d10, d11, d12, d13, d14, d15, d16,
+    ] {
         f();
     }
 }

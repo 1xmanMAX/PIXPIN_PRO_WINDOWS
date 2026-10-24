@@ -53,7 +53,6 @@ use pixpin_store::{Catalogo, Ubicacion};
 use crate::lector_pin::{AccionPin, BotonLector, PinLector, area_de_la_vista, tecla};
 use crate::overlay::Recursos;
 
-
 /// Lo que abre el pin de Office, si el equipo tiene previsualizador para
 /// ello: los formatos que el motor nativo NO lee. Word 97-2003 y RTF; Excel
 /// 97-2003 y binario; PowerPoint 97-2003; OpenDocument; Visio; los correos
@@ -65,7 +64,7 @@ pub const EXTENSIONES: [&str; 17] = [
     "ppt", "pps", "pot", // PowerPoint
     "odt", "ods", "odp", // OpenDocument
     "vsd", "vsdx", "vsdm", "vssx", // Visio
-    "msg", // Outlook
+    "msg",  // Outlook
 ];
 
 /// Si la extension (sin punto, en minusculas) es de las del pin de Office.
@@ -99,21 +98,30 @@ pub fn se_abre(ruta: &Path) -> bool {
 /// Abre `ruta` en un pin de Office, en su propio hilo.
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
-    let lanzado = std::thread::Builder::new().name("pin-office".into()).spawn(move || {
-        // Un Word o un PowerPoint de antes ya convertido: al visor propio,
-        // donde se anota y viaja (`office_convertido`).
-        if let Some(c) = crate::office_convertido::lista(ubicacion.raiz(), &ruta)
-            && crate::lector::abrir_en_su_lector(idioma, &ubicacion, &c, &pixpin_docs::nombre(&c))
-        {
-            return;
-        }
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let textos = Catalogo::nuevo(idioma);
-        let hecho = crate::dispositivo_perdido::con_recursos("pin-office", |r| abrir(r, &textos, &ubicacion, &ruta, idioma));
-        if let Err(e) = hecho {
-            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el pin de Office");
-        }
-    });
+    let lanzado = std::thread::Builder::new()
+        .name("pin-office".into())
+        .spawn(move || {
+            // Un Word o un PowerPoint de antes ya convertido: al visor propio,
+            // donde se anota y viaja (`office_convertido`).
+            if let Some(c) = crate::office_convertido::lista(ubicacion.raiz(), &ruta)
+                && crate::lector::abrir_en_su_lector(
+                    idioma,
+                    &ubicacion,
+                    &c,
+                    &pixpin_docs::nombre(&c),
+                )
+            {
+                return;
+            }
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let textos = Catalogo::nuevo(idioma);
+            let hecho = crate::dispositivo_perdido::con_recursos("pin-office", |r| {
+                abrir(r, &textos, &ubicacion, &ruta, idioma)
+            });
+            if let Err(e) = hecho {
+                tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el pin de Office");
+            }
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del pin de Office");
     }
@@ -126,31 +134,58 @@ const PRESENTAR: u8 = 2;
 fn botones(nombre: &str) -> Vec<BotonLector> {
     let mut v = Vec::new();
     if crate::diapositivas::es_presentacion(nombre) {
-        v.push(BotonLector { id: PRESENTAR, icono: &material::PLAY_ARROW, encendido: false });
+        v.push(BotonLector {
+            id: PRESENTAR,
+            icono: &material::PLAY_ARROW,
+            encendido: false,
+        });
     }
-    v.push(BotonLector { id: ABRIR_CON, icono: &material::OPEN_IN_NEW, encendido: false });
+    v.push(BotonLector {
+        id: ABRIR_CON,
+        icono: &material::OPEN_IN_NEW,
+        encendido: false,
+    });
     v
 }
 
-fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &Path, idioma: pixpin_store::Idioma) -> Result<()> {
+fn abrir(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    ruta: &Path,
+    idioma: pixpin_store::Idioma,
+) -> Result<()> {
     let nombre_fichero = pixpin_docs::nombre(ruta);
     let nombre = crate::lector_pin::nombre_limpio(&pixpin_docs::sin_extension(&nombre_fichero));
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
-    let monitor = monitores.principal().context("sin monitor principal")?.to_owned();
+    let monitor = monitores
+        .principal()
+        .context("sin monitor principal")?
+        .to_owned();
     let e = monitor.escala_por_cien as f32 / 100.0;
     let (area_pin, _) = crate::lector_pin::area_inicial();
     // Sin luna/sol: la vista previa la pinta Office en su ventana y no se
     // puede oscurecer desde aqui.
-    let mut pin = PinLector::nuevo(area_pin, e).con_extension(&pixpin_docs::extension(&nombre_fichero)).sin_oscuro();
+    let mut pin = PinLector::nuevo(area_pin, e)
+        .con_extension(&pixpin_docs::extension(&nombre_fichero))
+        .sin_oscuro();
     let mut area = pin.area;
-    let mut ventana = VentanaOverlay::nueva_llana(area, &format!("{nombre} — {}", textos.t("office-titulo"))).context("no se pudo abrir la ventana del pin de Office")?;
+    let mut ventana =
+        VentanaOverlay::nueva_llana(area, &format!("{nombre} — {}", textos.t("office-titulo")))
+            .context("no se pudo abrir la ventana del pin de Office")?;
     // Como un pin pero sin fijar (lo fija su pin): al frente, una ventana
     // mas, y SIN quitarle el foco a nadie.
     pin.al_nacer(&ventana);
     ventana.mostrar();
     let motor = recursos.motor();
     pin.crear_barra(&motor, &recursos.d3d(), &ventana);
-    let borde = |pin: &PinLector| if pin.pantalla_completa { 0 } else { (crate::lector_pin::BORDE * e).round() as i32 };
+    let borde = |pin: &PinLector| {
+        if pin.pantalla_completa {
+            0
+        } else {
+            (crate::lector_pin::BORDE * e).round() as i32
+        }
+    };
     let dentro = area_de_la_vista(area.ancho, area.alto, borde(&pin));
 
     let de_internet = vista_previa::bloqueado_por_internet(ruta);
@@ -158,7 +193,11 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         tracing::info!(ruta = %ruta.display(), "pin de Office: viene de internet, sin vista previa");
         VistaPrevia::solo_cartel(ventana.handle(), dentro, &textos.t("office-internet"))
     } else {
-        let carteles = Carteles { abriendo: textos.t("office-abriendo"), tarda: textos.t("office-tarda"), fallo: textos.t("office-fallo") };
+        let carteles = Carteles {
+            abriendo: textos.t("office-abriendo"),
+            tarda: textos.t("office-tarda"),
+            fallo: textos.t("office-fallo"),
+        };
         VistaPrevia::abrir(ventana.handle(), ruta, dentro, carteles)
     };
     let Some(vista) = vista else {
@@ -171,7 +210,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
     // y, cuando esta, el pin se cambia al visor propio. Lo de internet no: es
     // lo que Windows no deja abrir sin preguntar.
     let (dar_copia, copia_lista) = std::sync::mpsc::channel::<PathBuf>();
-    if !de_internet && crate::office_convertido::destino(&vista_previa::extension_de(ruta)).is_some() {
+    if !de_internet
+        && crate::office_convertido::destino(&vista_previa::extension_de(ruta)).is_some()
+    {
         let (raiz, original) = (ubicacion.raiz().to_path_buf(), ruta.to_path_buf());
         let _ = std::thread::Builder::new().name("office-convertir".into()).spawn(move || match crate::office_convertido::convertir(&raiz, &original) {
             Ok(c) => {
@@ -191,13 +232,22 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         &ventana,
         crate::visor_html::riel::en_pantalla(pin.area, dentro),
         escala,
-        crate::visor_html::riel::Opciones { documento: None, con_pagina: false, titulo: nombre.clone(), menu: false, maqueta: false },
+        crate::visor_html::riel::Opciones {
+            documento: None,
+            con_pagina: false,
+            titulo: nombre.clone(),
+            menu: false,
+            maqueta: false,
+        },
         textos,
     );
     let ext = vista_previa::extension_de(ruta);
     let propios = botones(&nombre_fichero);
     // El globo de cada boton propio: su nombre (y su tecla).
-    pin.poner_pistas(vec![(ABRIR_CON, textos.t("office-pista-abrir-con")), (PRESENTAR, textos.t("office-pista-presentar"))]);
+    pin.poner_pistas(vec![
+        (ABRIR_CON, textos.t("office-pista-abrir-con")),
+        (PRESENTAR, textos.t("office-pista-presentar")),
+    ]);
     let mut contado = false;
     let mut avisado_tarda = false;
     let mut vivo = true;
@@ -210,7 +260,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
             if let Some(r) = riel.as_mut()
                 && r.es_suya(hwnd)
             {
-                if let crate::visor_html::riel::Pide::Tecla(vk) = r.evento(hwnd, &evento, None, textos) {
+                if let crate::visor_html::riel::Pide::Tecla(vk) =
+                    r.evento(hwnd, &evento, None, textos)
+                {
                     teclas.push(vk);
                 }
                 continue;
@@ -232,7 +284,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
                         vivo = false;
                     }
                     Some(AccionPin::Propio(_)) => {}
-                    Some(AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
+                    Some(AccionPin::PantallaCompleta) => {
+                        pin.alternar_pantalla_completa(&mut ventana)
+                    }
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => vivo = false,
                     None => {}
@@ -249,13 +303,20 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
                 EventoOverlay::Cerrar => vivo = false,
                 // Las de todos los visores (I, los marcos; A, el lapiz), al
                 // riel; lo demas (Esc, F11), al pin.
-                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } => match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, None)) {
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    alt: false,
+                    ..
+                } => match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, None)) {
                     Some(crate::visor_html::riel::Pide::Tecla(v)) => teclas.push(v),
                     Some(_) => {}
                     None => teclas.push(vk),
                 },
                 EventoOverlay::Tecla { vk, .. } => teclas.push(vk),
-                EventoOverlay::Pintar | EventoOverlay::CambioDpi => vista_previa::pintar_fondo(ventana.handle()),
+                EventoOverlay::Pintar | EventoOverlay::CambioDpi => {
+                    vista_previa::pintar_fondo(ventana.handle())
+                }
                 _ => {}
             }
         }
@@ -302,11 +363,19 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
         pin.actualizar(&motor, &nombre, &propios);
         if let Some(r) = riel.as_mut() {
             let dentro = area_de_la_vista(pin.area.ancho, pin.area.alto, borde(&pin));
-            r.seguir(crate::visor_html::riel::en_pantalla(pin.area, dentro), escala, pin.fijado, false);
+            r.seguir(
+                crate::visor_html::riel::en_pantalla(pin.area, dentro),
+                escala,
+                pin.fijado,
+                false,
+            );
             r.tic(None);
         }
         let tope = if pin.quiere_reloj() { 50 } else { 250 };
-        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
+        let tope = riel
+            .as_ref()
+            .and_then(|r| r.tope_ms())
+            .map_or(tope, |t| t.min(tope));
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
 
@@ -330,7 +399,9 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
     {
         tracing::warn!(copia = %c.display(), "Office viejo: el visor propio no lo abrio");
     }
-    if let Some(PRESENTAR) = despues { crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta) }
+    if let Some(PRESENTAR) = despues {
+        crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta)
+    }
     Ok(())
 }
 
@@ -340,14 +411,19 @@ mod pruebas {
 
     #[test]
     fn van_al_pin_los_formatos_viejos_con_previsualizador() {
-        for ext in ["doc", "dot", "rtf", "xls", "xlsb", "xlt", "ppt", "pps", "pot", "odt", "ods", "odp", "vsd", "vsdx", "vsdm", "vssx", "msg"] {
+        for ext in [
+            "doc", "dot", "rtf", "xls", "xlsb", "xlt", "ppt", "pps", "pot", "odt", "ods", "odp",
+            "vsd", "vsdx", "vsdm", "vssx", "msg",
+        ] {
             assert!(va_al_pin(ext, true, false), "{ext}");
         }
     }
 
     #[test]
     fn caso_negativo_los_ooxml_son_del_motor_nativo() {
-        for ext in ["docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "pptx", "pptm", "ppsx", "potx"] {
+        for ext in [
+            "docx", "docm", "dotx", "dotm", "xlsx", "xlsm", "pptx", "pptm", "ppsx", "potx",
+        ] {
             assert!(!va_al_pin(ext, true, false), "{ext}");
         }
     }

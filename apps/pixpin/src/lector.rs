@@ -116,7 +116,13 @@ pub fn abrir_en_su_lector(
     // el visor de documentos lo ensenaba en crudo (el usuario, 20-oct-2026:
     // «las tablas… se ven sin su formato, solo con los guiones»).
     if crate::notas_md::es_markdown(ruta) {
-        crate::notas_md::abrir(idioma, ubicacion.clone(), crate::notas_md::Destino::Fichero { ruta: ruta.to_path_buf() });
+        crate::notas_md::abrir(
+            idioma,
+            ubicacion.clone(),
+            crate::notas_md::Destino::Fichero {
+                ruta: ruta.to_path_buf(),
+            },
+        );
         return true;
     }
     // Unos puntos o un LandXML (por su contenido) van al visor 3D antes
@@ -405,7 +411,12 @@ pub fn pintar_riel_con(
         ),
         (riel.hojita, &material::EDIT, anotando, DestinoRiel::Hojita),
         // El marco para imprimir: igual en todos los visores.
-        (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
+        (
+            riel.imprimir,
+            &material::CROP_FREE,
+            enmarcando,
+            DestinoRiel::Imprimir,
+        ),
     ] {
         let r = rf(caja);
         if activo {
@@ -434,7 +445,12 @@ pub fn pintar_riel_con(
         DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
         _ => None,
     } {
-        globo_a_la_izquierda(p, rf(caja), &crate::ventana_editor::exportar::textos().t(clave), e);
+        globo_a_la_izquierda(
+            p,
+            rf(caja),
+            &crate::ventana_editor::exportar::textos().t(clave),
+            e,
+        );
     }
 
     // Los puntos: en reposo pequenos y medio transparentes para no tapar la
@@ -682,7 +698,13 @@ pub fn pintar_barra_de_auto(
     let y = caja.y;
     let centrado = |p: &Pintor<'_>, t: &str, r: RectF, tam: f32| {
         let (w, h) = p.medir_texto(t, tam);
-        p.texto(t, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, TEXTO);
+        p.texto(
+            t,
+            r.x + (r.ancho - w) / 2.0,
+            r.y + (r.alto - h) / 2.0,
+            tam,
+            TEXTO,
+        );
     };
     let icono = |p: &Pintor<'_>, i: &pixpin_render::icono::Icono, r: RectF, l: f32| {
         p.icono(
@@ -697,7 +719,12 @@ pub fn pintar_barra_de_auto(
         );
     };
     let boton = |x: &mut f32, ancho: f32| {
-        let r = RectF { x: *x, y, ancho, alto: lado };
+        let r = RectF {
+            x: *x,
+            y,
+            ancho,
+            alto: lado,
+        };
         *x += ancho;
         r
     };
@@ -705,12 +732,27 @@ pub fn pintar_barra_de_auto(
     centrado(p, "−", r, 18.0 * e);
     botones.push((r, BotonAuto::Menos));
     let r = boton(&mut x, ancho_vel);
-    p.texto(velocidad, r.x + (r.ancho - w_vel) / 2.0, r.y + (r.alto - h_vel) / 2.0, tam, TEXTO);
+    p.texto(
+        velocidad,
+        r.x + (r.ancho - w_vel) / 2.0,
+        r.y + (r.alto - h_vel) / 2.0,
+        tam,
+        TEXTO,
+    );
     let r = boton(&mut x, lado);
     centrado(p, "+", r, 18.0 * e);
     botones.push((r, BotonAuto::Mas));
     let r = boton(&mut x, lado);
-    icono(p, if en_marcha { &material::PAUSE } else { &material::PLAY_ARROW }, r, 28.0 * e);
+    icono(
+        p,
+        if en_marcha {
+            &material::PAUSE
+        } else {
+            &material::PLAY_ARROW
+        },
+        r,
+        28.0 * e,
+    );
     botones.push((r, BotonAuto::Alternar));
     let r = boton(&mut x, lado);
     icono(p, &material::CLOSE, r, 20.0 * e);
@@ -738,7 +780,16 @@ pub fn globo_a_la_izquierda(p: &Pintor<'_>, junto_a: RectF, texto: &str, e: f32)
         ancho: w + 2.0 * px,
         alto: h + 2.0 * py,
     };
-    p.rellenar_redondeado(caja, 6.0 * e, Color { r: 0.106, g: 0.106, b: 0.122, a: 0.96 });
+    p.rellenar_redondeado(
+        caja,
+        6.0 * e,
+        Color {
+            r: 0.106,
+            g: 0.106,
+            b: 0.122,
+            a: 0.96,
+        },
+    );
     p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
 }
 

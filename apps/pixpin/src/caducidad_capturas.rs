@@ -249,7 +249,12 @@ pub const AVISAR_ANTES_MS: i64 = DIA_MS;
 /// **Las que se van en las proximas 24 h** y no se han avisado aun
 /// (`avisadas`, por nombre), con su fecha de irse (UTC). Las ya caducadas
 /// no: se van en este barrido.
-pub fn por_avisar(r: &Registro, lista: &[Entrada], ahora: i64, avisadas: &BTreeSet<String>) -> Vec<(PathBuf, i64)> {
+pub fn por_avisar(
+    r: &Registro,
+    lista: &[Entrada],
+    ahora: i64,
+    avisadas: &BTreeSet<String>,
+) -> Vec<(PathBuf, i64)> {
     lista
         .iter()
         .filter(|e| !avisadas.contains(&nombre(&e.ruta)))
@@ -265,26 +270,34 @@ pub fn por_avisar(r: &Registro, lista: &[Entrada], ahora: i64, avisadas: &BTreeS
 /// captura se avisa una vez por sesion. Sin notificaciones no se avisa:
 /// la galeria ya ensena cuando se va cada una.
 pub fn vigilar_avisos(raiz: PathBuf, idioma: pixpin_store::Idioma) {
-    let hecho = std::thread::Builder::new().name("caducidad-avisos".into()).spawn(move || {
-        let textos = pixpin_store::Catalogo::nuevo(idioma);
-        let mut avisadas = BTreeSet::new();
-        loop {
-            if dias() > 0 {
-                let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                let lista = galeria_capturas::listar(&galeria_capturas::carpeta_en(&raiz));
-                let se_van = por_avisar(&leer(&raiz, ahora), &lista, ahora, &avisadas);
-                let locales: Vec<_> =
-                    se_van.iter().map(|(r, t)| (r.clone(), pixpin_shell::entorno::a_local(*t))).collect();
-                if let Some(t) = crate::notificaciones::de_capturas(&textos, &locales, pixpin_shell::entorno::ahora_local_ms()) {
-                    if let Err(e) = pixpin_shell::notificacion::mostrar(&t) {
-                        tracing::info!(?e, "sin notificacion de las capturas que se van");
+    let hecho = std::thread::Builder::new()
+        .name("caducidad-avisos".into())
+        .spawn(move || {
+            let textos = pixpin_store::Catalogo::nuevo(idioma);
+            let mut avisadas = BTreeSet::new();
+            loop {
+                if dias() > 0 {
+                    let ahora = pixpin_shell::entorno::ahora_utc_ms();
+                    let lista = galeria_capturas::listar(&galeria_capturas::carpeta_en(&raiz));
+                    let se_van = por_avisar(&leer(&raiz, ahora), &lista, ahora, &avisadas);
+                    let locales: Vec<_> = se_van
+                        .iter()
+                        .map(|(r, t)| (r.clone(), pixpin_shell::entorno::a_local(*t)))
+                        .collect();
+                    if let Some(t) = crate::notificaciones::de_capturas(
+                        &textos,
+                        &locales,
+                        pixpin_shell::entorno::ahora_local_ms(),
+                    ) {
+                        if let Err(e) = pixpin_shell::notificacion::mostrar(&t) {
+                            tracing::info!(?e, "sin notificacion de las capturas que se van");
+                        }
                     }
+                    avisadas.extend(se_van.iter().map(|(r, _)| nombre(r)));
                 }
-                avisadas.extend(se_van.iter().map(|(r, _)| nombre(r)));
+                std::thread::sleep(CADA);
             }
-            std::thread::sleep(CADA);
-        }
-    });
+        });
     if let Err(e) = hecho {
         tracing::warn!(?e, "no se pudo lanzar el aviso de capturas");
     }
@@ -351,7 +364,10 @@ mod pruebas {
         .unwrap();
         let r = leer(&raiz, 0);
         assert_eq!(se_va_el(&r, &e), Some(13 * DIA_MS));
-        assert_eq!(caducadas(&r, std::slice::from_ref(&e), 13 * DIA_MS).len(), 1);
+        assert_eq!(
+            caducadas(&r, std::slice::from_ref(&e), 13 * DIA_MS).len(),
+            1
+        );
         // «7 dias mas» mueve la acordada (es la que viaja), no la prorroga.
         let r = prorrogar(&raiz, &e, 12 * DIA_MS).unwrap();
         assert_eq!(r.fijadas.get("a.png"), Some(&(20 * DIA_MS)));

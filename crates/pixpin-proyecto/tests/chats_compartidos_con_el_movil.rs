@@ -55,7 +55,13 @@ fn aparato_pc() -> String {
     pixpin_proyecto::codigos::de_aparato("id-pc")
 }
 
-fn proyecto(raiz: &std::path::Path, reloj: &Reloj, nombre: &str, nota: &str, adjunto: &[u8]) -> Ficha {
+fn proyecto(
+    raiz: &std::path::Path,
+    reloj: &Reloj,
+    nombre: &str,
+    nota: &str,
+    adjunto: &[u8],
+) -> Ficha {
     let ficha = Ficha::nueva(nombre, reloj.tic(), &aparato_pc());
     let mut i = Indice::leer(raiz);
     i.proyectos.push(ficha.clone());
@@ -71,7 +77,13 @@ fn proyecto(raiz: &std::path::Path, reloj: &Reloj, nombre: &str, nota: &str, adj
     let ruta = almacen::guardar_adjunto(raiz, &ficha.id, "doc.pdf", adjunto).unwrap();
     cuaderno::anadir(
         &carpeta,
-        &Mensaje::adjunto(Clase::Archivo, "doc.pdf", &ruta, adjunto.len() as i64, &sello(2)),
+        &Mensaje::adjunto(
+            Clase::Archivo,
+            "doc.pdf",
+            &ruta,
+            adjunto.len() as i64,
+            &sello(2),
+        ),
     )
     .unwrap();
     ficha
@@ -90,10 +102,18 @@ fn montar(etiqueta: &str) -> Dos {
     let reloj = Reloj::nuevo();
     let raiz = pc.raiz();
     let tesis = proyecto(&raiz, &reloj, "Tesis", "hola equipo", b"%PDF tesis");
-    let privado = proyecto(&raiz, &reloj, "Privado", "secreto del privado", b"%PDF privado");
+    let privado = proyecto(
+        &raiz,
+        &reloj,
+        "Privado",
+        "secreto del privado",
+        b"%PDF privado",
+    );
     let c = CompartidosEnDisco::nuevo(&raiz);
     c.poner_nombre("Max").unwrap();
-    CompartidosEnDisco::nuevo(&ana.raiz()).poner_nombre("Ana").unwrap();
+    CompartidosEnDisco::nuevo(&ana.raiz())
+        .poner_nombre("Ana")
+        .unwrap();
     let yo = c.yo_de(&pc).unwrap();
     c.poner(&compartidos::crear(&tesis.id, "Tesis", &yo, reloj.tic()))
         .unwrap();
@@ -202,7 +222,11 @@ fn atender<D: Disco>(d: &D, reloj: &Reloj, flujo: TcpStream) -> Resultado<()> {
     }
 }
 
-fn con_escucha<D: Disco + Sync, T>(hacia: &D, reloj: &Reloj, uso: impl FnOnce(TcpStream) -> T) -> T {
+fn con_escucha<D: Disco + Sync, T>(
+    hacia: &D,
+    reloj: &Reloj,
+    uso: impl FnOnce(TcpStream) -> T,
+) -> T {
     let escucha = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let puerto = escucha.local_addr().unwrap().port();
     std::thread::scope(|h| {
@@ -217,8 +241,17 @@ fn con_escucha<D: Disco + Sync, T>(hacia: &D, reloj: &Reloj, uso: impl FnOnce(Tc
 
 fn vuelta<A: Disco + Sync, B: Disco + Sync>(desde: &A, hacia: &B, reloj: &Reloj) -> ConPersona {
     con_escucha(hacia, reloj, |f| {
-        invitacion::vuelta_con_persona(f, desde, None, None, &|| reloj.ahora(), 0, [3u8; 32], &mut |_| {})
-            .unwrap()
+        invitacion::vuelta_con_persona(
+            f,
+            desde,
+            None,
+            None,
+            &|| reloj.ahora(),
+            0,
+            [3u8; 32],
+            &mut |_| {},
+        )
+        .unwrap()
     })
 }
 
@@ -301,7 +334,8 @@ fn ni_pidiendo_a_mano_ni_con_un_mensaje_trampa_sale_un_archivo_de_otro_proyecto_
         let llaves = CompartidosEnDisco::nuevo(&d.ana.raiz()).llaves().unwrap();
         let (mut c, _) = Canal::entre_personas(f, &llaves, [4u8; 32], true, |_| true).unwrap();
         let pedir = |c: &mut Canal<TcpStream>, p: &Peticion| -> Respuesta {
-            c.mandar(Tipo::Json, &serde_json::to_vec(p).unwrap()).unwrap();
+            c.mandar(Tipo::Json, &serde_json::to_vec(p).unwrap())
+                .unwrap();
             serde_json::from_slice(&c.recibir().unwrap().1).unwrap()
         };
         let hola = Peticion {
@@ -318,7 +352,11 @@ fn ni_pidiendo_a_mano_ni_con_un_mensaje_trampa_sale_un_archivo_de_otro_proyecto_
         assert!(pedir(&mut c, &hola).error.is_none());
         let catalogo = pedir(&mut c, &Peticion::de("catalogo"));
         assert_eq!(
-            catalogo.chats.iter().map(|x| x.id.clone()).collect::<Vec<_>>(),
+            catalogo
+                .chats
+                .iter()
+                .map(|x| x.id.clone())
+                .collect::<Vec<_>>(),
             std::slice::from_ref(&d.tesis.id)
         );
         for rel in &privadas {

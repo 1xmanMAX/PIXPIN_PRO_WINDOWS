@@ -156,7 +156,9 @@ impl Maqueta {
     }
 
     pub fn de_texto(t: &str) -> Option<Maqueta> {
-        serde_json::from_str::<Maqueta>(t).ok().filter(|m| m.ancho > 50.0 && m.tam > 4.0)
+        serde_json::from_str::<Maqueta>(t)
+            .ok()
+            .filter(|m| m.ancho > 50.0 && m.tam > 4.0)
     }
 }
 
@@ -179,10 +181,12 @@ pub fn mensaje_de(json: &str) -> Option<DelGuion> {
     if !json.contains("pixpin_riel") {
         return None;
     }
-    serde_json::from_str::<DelGuion>(json).ok().filter(|m| match m {
-        DelGuion::Sitio(s) => super::riel::sitio_valido(s),
-        DelGuion::Tecla { .. } => true,
-    })
+    serde_json::from_str::<DelGuion>(json)
+        .ok()
+        .filter(|m| match m {
+            DelGuion::Sitio(s) => super::riel::sitio_valido(s),
+            DelGuion::Tecla { .. } => true,
+        })
 }
 
 /// **La tinta de `capa` como SVG para meter en la pagina**, sobre `papel`:
@@ -198,15 +202,30 @@ pub fn svg_de_la_tinta(capa: &Capa, papel: ColorRgba) -> String {
     let mut escena = capa.escena.clone();
     escena.fondo = papel;
     crate::dibujo::tema::grafito_como_en_el_lienzo(&mut escena);
-    let Some(mut hoja) = exportar::hojas(&escena, Alcance::Todo, &[], None).into_iter().next() else {
+    let Some(mut hoja) = exportar::hojas(&escena, Alcance::Todo, &[], None)
+        .into_iter()
+        .next()
+    else {
         return String::new();
     };
-    hoja.ordenes = crate::dibujo::tema::ordenes_como_en_el_lienzo(std::mem::take(&mut hoja.ordenes), papel);
-    let svg = pixpin_motor2d::exportar_svg::svg(&hoja, pixpin_motor2d::exportar_svg::OpcionesSvg { fondo: None, marcos: false }, &|_| None);
+    hoja.ordenes =
+        crate::dibujo::tema::ordenes_como_en_el_lienzo(std::mem::take(&mut hoja.ordenes), papel);
+    let svg = pixpin_motor2d::exportar_svg::svg(
+        &hoja,
+        pixpin_motor2d::exportar_svg::OpcionesSvg {
+            fondo: None,
+            marcos: false,
+        },
+        &|_| None,
+    );
     let svg = pixpin_motor2d::exportar_html::documento::sin_cabecera(&svg);
     let (x0, y0, _, _) = hoja.caja;
     match svg.strip_prefix("<svg ") {
-        Some(resto) => format!("<svg style=\"position:absolute;left:{}px;top:{}px;overflow:visible\" {resto}", num(x0 as f64), num(y0 as f64)),
+        Some(resto) => format!(
+            "<svg style=\"position:absolute;left:{}px;top:{}px;overflow:visible\" {resto}",
+            num(x0 as f64),
+            num(y0 as f64)
+        ),
         None => String::new(),
     }
 }
@@ -222,7 +241,9 @@ pub fn svg_de_los_marcos(lista: &[Marco], z: f64, e: f64) -> String {
     }
     let u = e / z.max(0.01);
     let azul = "#0078d4";
-    let mut s = String::from("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\" style=\"position:absolute;left:0;top:0;overflow:visible\">");
+    let mut s = String::from(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\" style=\"position:absolute;left:0;top:0;overflow:visible\">",
+    );
     for (i, m) in lista.iter().enumerate() {
         let [x0, y0, x1, y1] = m.caja;
         s.push_str(&format!(
@@ -269,26 +290,50 @@ mod pruebas {
 
     #[test]
     fn los_mensajes_del_riel_se_entienden_y_los_demas_no_son_suyos() {
-        let s = mensaje_de(r#"{"pixpin_riel":"sitio","x":0,"y":420,"arriba":420,"maximo":900,"dpr":1.25}"#);
+        let s = mensaje_de(
+            r#"{"pixpin_riel":"sitio","x":0,"y":420,"arriba":420,"maximo":900,"dpr":1.25}"#,
+        );
         match s {
             Some(DelGuion::Sitio(s)) => assert_eq!((s.y, s.dpr), (420.0, 1.25)),
             otro => panic!("{otro:?}"),
         }
-        assert_eq!(mensaje_de(r#"{"pixpin_riel":"tecla","vk":73,"ctrl":false}"#), Some(DelGuion::Tecla { vk: 73, ctrl: false }));
-        assert_eq!(mensaje_de(r#"{"pixpin_riel":"tecla","vk":77,"ctrl":true}"#), Some(DelGuion::Tecla { vk: 77, ctrl: true }));
+        assert_eq!(
+            mensaje_de(r#"{"pixpin_riel":"tecla","vk":73,"ctrl":false}"#),
+            Some(DelGuion::Tecla {
+                vk: 73,
+                ctrl: false
+            })
+        );
+        assert_eq!(
+            mensaje_de(r#"{"pixpin_riel":"tecla","vk":77,"ctrl":true}"#),
+            Some(DelGuion::Tecla { vk: 77, ctrl: true })
+        );
         // Casos negativos: lo del lector de notas no es del riel, y un sitio
         // con numeros rotos no se toma.
-        assert_eq!(mensaje_de(r#"{"tipo":"guardar","texto":"hola","version":3}"#), None);
+        assert_eq!(
+            mensaje_de(r#"{"tipo":"guardar","texto":"hola","version":3}"#),
+            None
+        );
         assert_eq!(mensaje_de(r#"{"pixpin_riel":"otra"}"#), None);
         assert_eq!(mensaje_de("no es json pixpin_riel"), None);
     }
 
     #[test]
     fn el_guion_de_la_capa_instala_una_vez_y_escapa_lo_que_mete() {
-        let d = Deseado { tinta: "<svg a=\"1\">'</svg>".into(), ver_tinta: true, marcos: String::new(), ctrl_p: false, menu: true, ..Default::default() };
+        let d = Deseado {
+            tinta: "<svg a=\"1\">'</svg>".into(),
+            ver_tinta: true,
+            marcos: String::new(),
+            ctrl_p: false,
+            menu: true,
+            ..Default::default()
+        };
         let g = guion_poner(&d);
         assert!(g.starts_with(INSTALAR));
-        assert!(g.ends_with(r#"poner("<svg a=\"1\">'</svg>","",true,false,true)"#), "{g}");
+        assert!(
+            g.ends_with(r#"poner("<svg a=\"1\">'</svg>","",true,false,true)"#),
+            "{g}"
+        );
         // Se instala una sola vez por pagina, y escucha el desplazamiento y
         // las teclas.
         assert!(INSTALAR.starts_with("(function(){\nif(window.__pixpinRiel)return;"));
@@ -302,10 +347,21 @@ mod pruebas {
 
     #[test]
     fn los_marcos_miden_en_la_pantalla_lo_mismo_que_en_la_ventana() {
-        let m = |c: [f64; 4], parte: u32| Marco { caja: c, parte, vista: String::new() };
+        let m = |c: [f64; 4], parte: u32| Marco {
+            caja: c,
+            parte,
+            vista: String::new(),
+        };
         // Pantalla al 150 % y pagina al 100 %: 1,5 pixeles por pixel CSS; la
         // raya de 2 px de pantalla (a escala 1,5: 3 px) son 2 px CSS.
-        let s = svg_de_los_marcos(&[m([10.0, 20.0, 110.0, 70.0], 0), m([0.0, 300.0, 50.0, 350.0], 0)], 1.5, 1.5);
+        let s = svg_de_los_marcos(
+            &[
+                m([10.0, 20.0, 110.0, 70.0], 0),
+                m([0.0, 300.0, 50.0, 350.0], 0),
+            ],
+            1.5,
+            1.5,
+        );
         assert!(s.contains(r##"<rect x="10" y="20" width="100" height="50" fill="none" stroke="#0078d4" stroke-width="2"/>"##), "{s}");
         assert!(s.contains(">1</text>") && s.contains(">2</text>"));
         // Con zoom de pagina al 200 %, mas finos en CSS (iguales en pantalla).
@@ -313,23 +369,54 @@ mod pruebas {
         assert!(z.contains(r#"stroke-width="1""#), "{z}");
         // Casos negativos: sin marcos (o solo de otra parte), nada.
         assert_eq!(svg_de_los_marcos(&[], 1.0, 1.0), "");
-        assert_eq!(svg_de_los_marcos(&[m([0.0, 0.0, 9.0, 9.0], 2)], 1.0, 1.0), "");
+        assert_eq!(
+            svg_de_los_marcos(&[m([0.0, 0.0, 9.0, 9.0], 2)], 1.0, 1.0),
+            ""
+        );
     }
 
     #[test]
     fn sin_tinta_no_hay_svg_y_con_tinta_va_colocada_en_el_documento() {
         let capa = Capa::default();
-        assert_eq!(svg_de_la_tinta(&capa, ColorRgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }), "");
+        assert_eq!(
+            svg_de_la_tinta(
+                &capa,
+                ColorRgba {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0
+                }
+            ),
+            ""
+        );
         let mut capa = Capa::default();
         let mut tinta = crate::lector_tinta::Tinta::nueva();
-        let puntos: Vec<pixpin_motor2d::vector::Punto2> = (0..20).map(|i| pixpin_motor2d::vector::Punto2::nuevo(100.0 + i as f32 * 5.0, 900.0 + i as f32)).collect();
+        let puntos: Vec<pixpin_motor2d::vector::Punto2> = (0..20)
+            .map(|i| {
+                pixpin_motor2d::vector::Punto2::nuevo(100.0 + i as f32 * 5.0, 900.0 + i as f32)
+            })
+            .collect();
         tinta.trazar(&mut capa, &puntos);
         assert!(!capa.vacia());
-        let s = svg_de_la_tinta(&capa, ColorRgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+        let s = svg_de_la_tinta(
+            &capa,
+            ColorRgba {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            },
+        );
         assert!(s.starts_with("<svg style=\"position:absolute;left:"), "{s}");
         assert!(!s.contains("<?xml"));
         // Va donde se dibujo: cerca de y = 900 del documento, no arriba.
-        let top: f64 = s.split("top:").nth(1).and_then(|t| t.split("px").next()).and_then(|t| t.parse().ok()).expect("top");
+        let top: f64 = s
+            .split("top:")
+            .nth(1)
+            .and_then(|t| t.split("px").next())
+            .and_then(|t| t.parse().ok())
+            .expect("top");
         assert!((850.0..900.0).contains(&top), "{top}");
     }
 
@@ -343,24 +430,55 @@ mod pruebas {
 
     #[test]
     fn la_maqueta_va_y_vuelve_y_dice_si_el_texto_cae_igual() {
-        let m = Maqueta { ancho: 768.0, tam: 16.0, ox: 212.5 };
+        let m = Maqueta {
+            ancho: 768.0,
+            tam: 16.0,
+            ox: 212.5,
+        };
         assert_eq!(Maqueta::de_texto(&m.a_texto()), Some(m));
         // Medio pixel de redondeo: cae igual; otra columna u otra letra, no.
-        assert!(m.coincide(&Maqueta { ancho: 768.6, tam: 16.0, ox: 40.0 }));
-        assert!(!m.coincide(&Maqueta { ancho: 540.0, tam: 16.0, ox: 0.0 }));
-        assert!(!m.coincide(&Maqueta { ancho: 768.0, tam: 18.0, ox: 212.5 }));
+        assert!(m.coincide(&Maqueta {
+            ancho: 768.6,
+            tam: 16.0,
+            ox: 40.0
+        }));
+        assert!(!m.coincide(&Maqueta {
+            ancho: 540.0,
+            tam: 16.0,
+            ox: 0.0
+        }));
+        assert!(!m.coincide(&Maqueta {
+            ancho: 768.0,
+            tam: 18.0,
+            ox: 212.5
+        }));
         // Lo que no es una maqueta no se toma por una.
         assert_eq!(Maqueta::de_texto("1.25 10 20"), None);
         assert_eq!(Maqueta::de_texto(r#"{"ancho":0,"tam":16}"#), None);
         // La pagina la recibe antes que la capa (la capa se cuelga con su desfase).
-        let g = guion_poner(&Deseado { maqueta: Some(m.a_texto()), fija: true, ..Default::default() });
+        let g = guion_poner(&Deseado {
+            maqueta: Some(m.a_texto()),
+            fija: true,
+            ..Default::default()
+        });
         let (antes, despues) = g.split_once("__pixpinMaqueta.poner(").unwrap();
-        assert!(antes.contains("__pixpinRiel") && despues.starts_with(&format!("{},true)", m.a_texto())));
+        assert!(
+            antes.contains("__pixpinRiel")
+                && despues.starts_with(&format!("{},true)", m.a_texto()))
+        );
         assert!(despues.contains("window.__pixpinRiel.poner("));
         let sin = guion_poner(&Deseado::default());
         assert!(sin.contains("__pixpinMaqueta.poner(null,false)"));
         // Y un sitio con la medida de la columna se lee.
-        let s: super::super::riel::Sitio = serde_json::from_str(r#"{"x":1,"y":2,"maq":{"ancho":700,"tam":15,"ox":30}}"#).unwrap();
-        assert_eq!(s.maq, Some(Maqueta { ancho: 700.0, tam: 15.0, ox: 30.0 }));
+        let s: super::super::riel::Sitio =
+            serde_json::from_str(r#"{"x":1,"y":2,"maq":{"ancho":700,"tam":15,"ox":30}}"#).unwrap();
+        assert_eq!(
+            s.maq,
+            Some(Maqueta {
+                ancho: 700.0,
+                tam: 15.0,
+                ox: 30.0
+            })
+        );
     }
 }

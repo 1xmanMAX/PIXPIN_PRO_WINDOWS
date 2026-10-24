@@ -25,7 +25,13 @@ fn abrir_mensaje(proyecto: &str, codigo: &str) -> Value {
 /// **La de un recordatorio que sono.** `proyecto`: la carpeta del chat;
 /// `id`: el de la agenda (el del mensaje, o `tarea:<lista>:<hora>`);
 /// `tarea`: la lista y el numero de la tarea, si es de una tarea.
-pub fn de_recordatorio(t: &Catalogo, proyecto: &str, id: &str, tarea: Option<(&str, usize)>, texto: &str) -> Toast {
+pub fn de_recordatorio(
+    t: &Catalogo,
+    proyecto: &str,
+    id: &str,
+    tarea: Option<(&str, usize)>,
+    texto: &str,
+) -> Toast {
     let mut botones = Vec::new();
     let abrir = match tarea {
         Some((lista, indice)) => {
@@ -71,15 +77,24 @@ pub fn de_capturas(t: &Catalogo, se_van: &[(PathBuf, i64)], ahora_local: i64) ->
         [] => None,
         [(ruta, cuando)] => {
             let mut args = fluent_bundle::FluentArgs::new();
-            args.set("cuando", crate::recordatorios::cuando_legible(*cuando, ahora_local));
+            args.set(
+                "cuando",
+                crate::recordatorios::cuando_legible(*cuando, ahora_local),
+            );
             Some(Toast {
                 titulo: t.t("notif-capturas-titulo"),
                 texto: t.t_args("notif-captura-se-va", &args),
                 imagen: Some(ruta.clone()),
                 al_pulsar: Some(galeria),
                 botones: vec![
-                    Boton::nuevo(t.t("notif-conservar"), json!({ "pixpin": 1, "accion": "conservar_captura", "ruta": ruta })),
-                    Boton::nuevo(t.t("notif-abrir"), json!({ "pixpin": 1, "accion": "pinear", "ruta": ruta })),
+                    Boton::nuevo(
+                        t.t("notif-conservar"),
+                        json!({ "pixpin": 1, "accion": "conservar_captura", "ruta": ruta }),
+                    ),
+                    Boton::nuevo(
+                        t.t("notif-abrir"),
+                        json!({ "pixpin": 1, "accion": "pinear", "ruta": ruta }),
+                    ),
                 ],
             })
         }
@@ -115,14 +130,28 @@ mod pruebas {
     fn botones_validos(toast: &Toast) {
         use pixpin_shell::orden::{Seguridad, seguridad};
         for b in &toast.botones {
-            assert!(permitido(&b.pedido) || matches!(seguridad(&b.pedido), Seguridad::Confirmar(_)), "{}", b.pedido);
-            assert!(crate::pedidos::leer(&b.pedido.to_string()).is_ok(), "{}", b.pedido);
+            assert!(
+                permitido(&b.pedido) || matches!(seguridad(&b.pedido), Seguridad::Confirmar(_)),
+                "{}",
+                b.pedido
+            );
+            assert!(
+                crate::pedidos::leer(&b.pedido.to_string()).is_ok(),
+                "{}",
+                b.pedido
+            );
         }
     }
 
     #[test]
     fn la_de_una_tarea_tiene_hecha_mas_10_y_abrir() {
-        let toast = de_recordatorio(&t(), "pr-1", "tarea:L1:123", Some(("L1", 2)), "☑ Llamar al banco");
+        let toast = de_recordatorio(
+            &t(),
+            "pr-1",
+            "tarea:L1:123",
+            Some(("L1", 2)),
+            "☑ Llamar al banco",
+        );
         let rotulos: Vec<_> = toast.botones.iter().map(|b| b.rotulo.as_str()).collect();
         assert_eq!(rotulos, ["Hecha", "+10 min", "Abrir"]);
         assert_eq!(toast.titulo, "Recordatorio");
@@ -147,8 +176,16 @@ mod pruebas {
     #[test]
     fn la_de_las_capturas() {
         let ahora = 1_000_000_000_000;
-        assert!(de_capturas(&t(), &[], ahora).is_none(), "sin capturas, nada");
-        let una = de_capturas(&t(), &[(PathBuf::from(r"C:\c\captura-0001.png"), ahora + 3_600_000)], ahora).unwrap();
+        assert!(
+            de_capturas(&t(), &[], ahora).is_none(),
+            "sin capturas, nada"
+        );
+        let una = de_capturas(
+            &t(),
+            &[(PathBuf::from(r"C:\c\captura-0001.png"), ahora + 3_600_000)],
+            ahora,
+        )
+        .unwrap();
         let rotulos: Vec<_> = una.botones.iter().map(|b| b.rotulo.as_str()).collect();
         assert_eq!(rotulos, ["Conservar", "Abrir"]);
         assert!(una.texto.starts_with("Esta captura se va"), "{}", una.texto);
@@ -156,7 +193,11 @@ mod pruebas {
         botones_validos(&una);
         let varias = de_capturas(
             &t(),
-            &[(PathBuf::from("a.png"), ahora), (PathBuf::from("b.png"), ahora), (PathBuf::from("c.png"), ahora)],
+            &[
+                (PathBuf::from("a.png"), ahora),
+                (PathBuf::from("b.png"), ahora),
+                (PathBuf::from("c.png"), ahora),
+            ],
             ahora,
         )
         .unwrap();
@@ -167,7 +208,10 @@ mod pruebas {
 
     #[test]
     fn el_proyecto_es_la_carpeta() {
-        assert_eq!(proyecto_de(Path::new(r"C:\d\proyectos\pr-1")).as_deref(), Some("pr-1"));
+        assert_eq!(
+            proyecto_de(Path::new(r"C:\d\proyectos\pr-1")).as_deref(),
+            Some("pr-1")
+        );
         assert_eq!(proyecto_de(Path::new("")), None);
     }
 }

@@ -55,7 +55,9 @@ mod pruebas {
     #[test]
     fn un_archivo_que_falta_se_dice_con_su_nombre_y_no_con_el_registro() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
-        let falta = std::env::temp_dir().join("pixpin-abrir-con-app").join("Presupuesto 2026.xlsx");
+        let falta = std::env::temp_dir()
+            .join("pixpin-abrir-con-app")
+            .join("Presupuesto 2026.xlsx");
         let aviso = abrir_con(HWND::default(), &falta, &textos).unwrap_err();
         assert!(aviso.contains("Presupuesto 2026.xlsx"), "{aviso}");
         // Caso negativo: nunca el mensaje de antes.
@@ -65,16 +67,27 @@ mod pruebas {
 
     #[test]
     fn el_rotulo_es_abrir_con_en_los_dos_idiomas() {
-        assert_eq!(Catalogo::nuevo(Idioma::Espanol).t("chat-abrir-con"), "Abrir con…");
-        assert_eq!(Catalogo::nuevo(Idioma::Ingles).t("chat-abrir-con"), "Open with…");
-        assert_eq!(Catalogo::nuevo(Idioma::Espanol).t("abrir-con"), "Abrir con…");
+        assert_eq!(
+            Catalogo::nuevo(Idioma::Espanol).t("chat-abrir-con"),
+            "Abrir con…"
+        );
+        assert_eq!(
+            Catalogo::nuevo(Idioma::Ingles).t("chat-abrir-con"),
+            "Open with…"
+        );
+        assert_eq!(
+            Catalogo::nuevo(Idioma::Espanol).t("abrir-con"),
+            "Abrir con…"
+        );
         assert_eq!(Catalogo::nuevo(Idioma::Ingles).t("abrir-con"), "Open with…");
     }
 
     #[test]
     fn el_aviso_de_windows_no_es_el_del_registro() {
         let textos = Catalogo::nuevo(Idioma::Ingles);
-        let e = ErrorAbrirCon::Windows(windows::core::Error::from(windows::Win32::Foundation::E_INVALIDARG));
+        let e = ErrorAbrirCon::Windows(windows::core::Error::from(
+            windows::Win32::Foundation::E_INVALIDARG,
+        ));
         let a = aviso(&textos, &e);
         assert!(!a.is_empty() && a != textos.t("chat-no-se-pudo"), "{a}");
     }

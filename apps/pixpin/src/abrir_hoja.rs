@@ -17,7 +17,13 @@ pub fn abrir_hoja(
     // Una hoja croquis 3D (su referencia es la del croquis): al visor 3D.
     if let Some(ruta) = crate::croquis3d::fichero(raiz, proyecto, referencia) {
         let titulo = format!("Croquis {referencia}");
-        crate::croquis3d::abrir_fichero(crate::croquis3d::idioma_del_sistema(), raiz.to_path_buf(), proyecto.to_string(), ruta, titulo);
+        crate::croquis3d::abrir_fichero(
+            crate::croquis3d::idioma_del_sistema(),
+            raiz.to_path_buf(),
+            proyecto.to_string(),
+            ruta,
+            titulo,
+        );
         return;
     }
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, proyecto);

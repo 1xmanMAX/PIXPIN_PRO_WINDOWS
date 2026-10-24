@@ -20,14 +20,22 @@ use pixpin_proyecto::importar_hojas;
 pub fn es_libro(m: &Mensaje) -> bool {
     m.clase == Some(Clase::Archivo)
         && m.ruta.as_deref().is_some_and(|r| !r.is_empty())
-        && (importar_hojas::es_libro(&m.nombre) || m.ruta.as_deref().is_some_and(importar_hojas::es_libro))
+        && (importar_hojas::es_libro(&m.nombre)
+            || m.ruta.as_deref().is_some_and(importar_hojas::es_libro))
 }
 
 /// La extension con que se reconoce el libro: la del nombre o, si no trae,
 /// la de la ruta.
 pub fn extension(m: &Mensaje) -> String {
     let e = importar_hojas::extension(&m.nombre);
-    if e.is_empty() { m.ruta.as_deref().map(importar_hojas::extension).unwrap_or_default() } else { e }
+    if e.is_empty() {
+        m.ruta
+            .as_deref()
+            .map(importar_hojas::extension)
+            .unwrap_or_default()
+    } else {
+        e
+    }
 }
 
 /// La referencia de la tabla de la hoja `hoja` del libro `m`
@@ -45,7 +53,12 @@ pub fn tablas_hechas(mensajes: &[Mensaje], libro: &Mensaje) -> Vec<usize> {
         .enumerate()
         .filter(|(_, m)| m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP))
         .filter_map(|(i, m)| {
-            let hoja = m.referencia.as_deref()?.strip_prefix(&prefijo)?.parse().ok()?;
+            let hoja = m
+                .referencia
+                .as_deref()?
+                .strip_prefix(&prefijo)?
+                .parse()
+                .ok()?;
             Some((hoja, i))
         })
         .collect();
@@ -67,8 +80,17 @@ pub fn mensajes_de_hojas(libro: &Mensaje, hojas: &[HojaLista], sello: &Sello) ->
         .map(|(i, h)| {
             // El id es la hora: con varias hojas en el mismo milisegundo se
             // pisarian, asi que cada una va un milisegundo detras.
-            let sello = Sello { cuando: sello.cuando + i as i64, numero: sello.numero + i as i64, ..sello.clone() };
-            let mut m = Mensaje::miniapp(pixpin_proyecto::tabla::MINIAPP, &h.nombre, &h.documento, &sello);
+            let sello = Sello {
+                cuando: sello.cuando + i as i64,
+                numero: sello.numero + i as i64,
+                ..sello.clone()
+            };
+            let mut m = Mensaje::miniapp(
+                pixpin_proyecto::tabla::MINIAPP,
+                &h.nombre,
+                &h.documento,
+                &sello,
+            );
             m.referencia = Some(id_de_hoja(libro, i));
             m
         })
@@ -138,34 +160,64 @@ mod pruebas {
     #[test]
     fn cada_hoja_es_una_tabla_con_la_referencia_del_libro_y_en_su_orden() {
         let l = libro();
-        let doc = |t: &str, n: &str| importar_hojas::de_csv(t, n, false, 0).tabla.escribir().unwrap();
+        let doc = |t: &str, n: &str| {
+            importar_hojas::de_csv(t, n, false, 0)
+                .tabla
+                .escribir()
+                .unwrap()
+        };
         let hojas = vec![
-            HojaLista { nombre: "Cuentas · Gastos".into(), documento: doc("a;1", "Cuentas · Gastos") },
-            HojaLista { nombre: "Cuentas · Resumen".into(), documento: doc("b;2", "Cuentas · Resumen") },
+            HojaLista {
+                nombre: "Cuentas · Gastos".into(),
+                documento: doc("a;1", "Cuentas · Gastos"),
+            },
+            HojaLista {
+                nombre: "Cuentas · Resumen".into(),
+                documento: doc("b;2", "Cuentas · Resumen"),
+            },
         ];
-        let sello = Sello { cuando: 5000, numero: 9, aparato: "K7Q2".into(), proyecto: "p".into() };
+        let sello = Sello {
+            cuando: 5000,
+            numero: 9,
+            aparato: "K7Q2".into(),
+            proyecto: "p".into(),
+        };
         let nuevos = mensajes_de_hojas(&l, &hojas, &sello);
         assert_eq!(nuevos.len(), 2);
         assert_eq!(nuevos[0].referencia.as_deref(), Some("libro-1700-0"));
         assert_eq!(nuevos[1].referencia.as_deref(), Some("libro-1700-1"));
-        assert_ne!(nuevos[0].id, nuevos[1].id, "dos hojas en el mismo milisegundo no se pisan");
+        assert_ne!(
+            nuevos[0].id, nuevos[1].id,
+            "dos hojas en el mismo milisegundo no se pisan"
+        );
         assert_eq!(nuevos[1].numero, 10);
         let t = pixpin_proyecto::tabla::Tabla::leer(&nuevos[1].texto).unwrap();
         assert_eq!(t.celda(pixpin_proyecto::tabla::ref_de("B1").unwrap()), "2");
 
         // Y la segunda vez se encuentran, en el orden de las hojas aunque
         // esten desordenadas en el chat.
-        let chat = vec![l.clone(), nuevos[1].clone(), Mensaje::default(), nuevos[0].clone()];
+        let chat = vec![
+            l.clone(),
+            nuevos[1].clone(),
+            Mensaje::default(),
+            nuevos[0].clone(),
+        ];
         assert_eq!(tablas_hechas(&chat, &l), vec![3, 1]);
         // Caso negativo: las tablas de otro libro no son de este.
         let mut otro = l.clone();
         otro.id = "17".into();
-        assert!(tablas_hechas(&chat, &otro).is_empty(), "libro-17- no es prefijo de libro-1700-");
+        assert!(
+            tablas_hechas(&chat, &otro).is_empty(),
+            "libro-17- no es prefijo de libro-1700-"
+        );
     }
 
     #[test]
     fn una_tabla_recien_leida_no_esta_editada_y_una_guardada_si() {
-        let mut m = Mensaje { cuando: 1_000_000, ..Default::default() };
+        let mut m = Mensaje {
+            cuando: 1_000_000,
+            ..Default::default()
+        };
         m.texto = r#"{"nombre":"x","celdas":{},"tocado":1000000}"#.into();
         assert!(!editada(&m));
         m.texto = r#"{"nombre":"x","celdas":{"A1":"1"},"tocado":1999999}"#.into();

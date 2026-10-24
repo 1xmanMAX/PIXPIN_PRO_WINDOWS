@@ -29,11 +29,15 @@ use super::pruebas::EnEscena;
 use super::*;
 
 fn carpeta() -> PathBuf {
-    std::env::var_os("PIXPIN_CALCAR_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"E:\pixpin-pruebas\calcar-17oct"))
+    std::env::var_os("PIXPIN_CALCAR_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"E:\pixpin-pruebas\calcar-17oct"))
 }
 
 fn salida() -> PathBuf {
-    std::env::var_os("PIXPIN_CALCAR_SALIDA").map(PathBuf::from).unwrap_or_else(|| carpeta().join("salida"))
+    std::env::var_os("PIXPIN_CALCAR_SALIDA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| carpeta().join("salida"))
 }
 
 /// Las hojas: los PNG de la carpeta (no las comparaciones ni el ideal).
@@ -45,7 +49,9 @@ pub(super) fn hojas() -> Vec<(String, PathBuf)> {
         .into_iter()
         .filter(|p: &PathBuf| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")))
         .filter_map(|p| Some((p.file_stem()?.to_string_lossy().to_string(), p)))
-        .filter(|(n, _)| !n.contains("ideal") && !n.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .filter(|(n, _)| {
+            !n.contains("ideal") && !n.chars().next().is_some_and(|c| c.is_ascii_digit())
+        })
         .filter(|(n, _)| solo.is_empty() || solo.split(',').any(|s| n.contains(s)))
         .collect();
     v.sort();
@@ -79,7 +85,12 @@ pub(super) fn con_recuadros(p: &Pagina, cajas: &[(Caja, [u8; 3])]) -> pixpin_cod
         }
     };
     for (caja, c) in cajas {
-        let (x0, y0, x1, y1) = (caja.x as i64, caja.y as i64, caja.x1() as i64, caja.y1() as i64);
+        let (x0, y0, x1, y1) = (
+            caja.x as i64,
+            caja.y as i64,
+            caja.x1() as i64,
+            caja.y1() as i64,
+        );
         for g in 0..2 {
             for x in x0..=x1 {
                 poner(x, y0 + g, *c);
@@ -91,7 +102,11 @@ pub(super) fn con_recuadros(p: &Pagina, cajas: &[(Caja, [u8; 3])]) -> pixpin_cod
             }
         }
     }
-    pixpin_codec::ImagenRgba { ancho: p.ancho, alto: p.alto, pixeles: px }
+    pixpin_codec::ImagenRgba {
+        ancho: p.ancho,
+        alto: p.alto,
+        pixeles: px,
+    }
 }
 
 #[test]
@@ -100,8 +115,22 @@ fn banco_17oct() {
     pixpin_motor2d::texto::instalar_medidor(crate::dibujo::pintar::medir_para_el_motor);
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let sin_nube = std::env::var_os("PIXPIN_CALCAR_SIN_NUBE").is_some();
-    let motor = if sin_nube { None } else { motores().into_iter().find(|(n, _)| *n == "claude").map(|(_, m)| m) };
-    println!("motor: {}", if motor.is_some() { "claude (Haiku)" } else { "ninguno" });
+    let motor = if sin_nube {
+        None
+    } else {
+        motores()
+            .into_iter()
+            .find(|(n, _)| *n == "claude")
+            .map(|(_, m)| m)
+    };
+    println!(
+        "motor: {}",
+        if motor.is_some() {
+            "claude (Haiku)"
+        } else {
+            "ninguno"
+        }
+    );
     let base = salida();
     for (nombre, ruta) in hojas() {
         let p = match leer(&ruta, None) {
@@ -114,26 +143,70 @@ fn banco_17oct() {
         let lamina = es_lamina(&p);
         if std::env::var_os("PIXPIN_PALABRAS").is_some() {
             for w in &p.palabras {
-                println!("  palabra [{:.0},{:.0} {:.0}x{:.0}] {}", w.caja.x, w.caja.y, w.caja.w, w.caja.h, w.texto);
+                println!(
+                    "  palabra [{:.0},{:.0} {:.0}x{:.0}] {}",
+                    w.caja.x, w.caja.y, w.caja.w, w.caja.h, w.texto
+                );
             }
         }
-        println!("\n== {nombre} {}x{} {} palabras, lamina={lamina}, leer {} ms", p.ancho, p.alto, p.palabras.len(), p.ms_leer);
-        let s = pixpin_ia::hoja::paneles::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone(), true);
+        println!(
+            "\n== {nombre} {}x{} {} palabras, lamina={lamina}, leer {} ms",
+            p.ancho,
+            p.alto,
+            p.palabras.len(),
+            p.ms_leer
+        );
+        let s =
+            pixpin_ia::hoja::paneles::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone(), true);
         for z in &s.zonas {
-            let t: String = z.texto().chars().take(60).collect::<String>().replace('\n', " | ");
-            println!("  zona {:>2} {:<10} {:.2} [{:.0},{:.0} {:.0}x{:.0}] {t} {:?}", z.id, z.tipo.nombre(), z.confianza, z.caja.x, z.caja.y, z.caja.w, z.caja.h, z.renglones.iter().map(|r| r.color).collect::<Vec<_>>());
+            let t: String = z
+                .texto()
+                .chars()
+                .take(60)
+                .collect::<String>()
+                .replace('\n', " | ");
+            println!(
+                "  zona {:>2} {:<10} {:.2} [{:.0},{:.0} {:.0}x{:.0}] {t} {:?}",
+                z.id,
+                z.tipo.nombre(),
+                z.confianza,
+                z.caja.x,
+                z.caja.y,
+                z.caja.w,
+                z.caja.h,
+                z.renglones.iter().map(|r| r.color).collect::<Vec<_>>()
+            );
             if std::env::var_os("PIXPIN_CALCAR_RENGLONES").is_some() {
                 for r in &z.renglones {
-                    println!("      renglon [{:.0},{:.0} {:.0}x{:.0}] {}", r.caja.x, r.caja.y, r.caja.w, r.caja.h, r.texto);
+                    println!(
+                        "      renglon [{:.0},{:.0} {:.0}x{:.0}] {}",
+                        r.caja.x, r.caja.y, r.caja.w, r.caja.h, r.texto
+                    );
                 }
             }
         }
         let cajas: Vec<(Caja, [u8; 3])> = s.zonas.iter().map(|z| (z.caja, color(z.tipo))).collect();
-        guardar(&con_recuadros(&p, &cajas), &base.join(format!("{nombre}-zonas.png")));
+        guardar(
+            &con_recuadros(&p, &cajas),
+            &base.join(format!("{nombre}-zonas.png")),
+        );
         let mut d = EnEscena::nueva();
-        let o = Opciones { ancho: p.ancho as f64, rico: true, ..Default::default() };
+        let o = Opciones {
+            ancho: p.ancho as f64,
+            rico: true,
+            ..Default::default()
+        };
         let t0 = std::time::Instant::now();
-        let inf = match pasar(&p, motor.clone(), &o, false, 17_000 + p.ancho as u64, &AtomicBool::new(false), &mut d, &mut |_, _| {}) {
+        let inf = match pasar(
+            &p,
+            motor.clone(),
+            &o,
+            false,
+            17_000 + p.ancho as u64,
+            &AtomicBool::new(false),
+            &mut d,
+            &mut |_, _| {},
+        ) {
             Ok(i) => i,
             Err(e) => {
                 println!("{nombre}: fallo: {e}");
@@ -141,7 +214,13 @@ fn banco_17oct() {
             }
         };
         for h in &inf.hechos {
-            println!("  hecho {:>2} {:<10} {:?} {}", h.zona, h.tipo.nombre(), h.via, h.nota);
+            println!(
+                "  hecho {:>2} {:<10} {:?} {}",
+                h.zona,
+                h.tipo.nombre(),
+                h.via,
+                h.nota
+            );
             if std::env::var_os("PIXPIN_TEXTOS").is_some() {
                 for el in &h.elementos {
                     if let Some(t) = el["textoRico"].as_str().or_else(|| el["text"].as_str()) {
@@ -163,9 +242,16 @@ fn banco_17oct() {
             inf.rehechas
         );
         let els: Vec<Elemento> = d.escena.visibles().cloned().collect();
-        let original = pixpin_codec::ImagenRgba { ancho: p.ancho, alto: p.alto, pixeles: p.rgba.clone() };
+        let original = pixpin_codec::ImagenRgba {
+            ancho: p.ancho,
+            alto: p.alto,
+            pixeles: p.rgba.clone(),
+        };
         match pintar_gpu(els, &d.imagenes, p.ancho.max(900)) {
-            Some(res) => guardar(&lado_a_lado(&a_ancho(&original, res.ancho), &res), &base.join(format!("{nombre}-comparar.png"))),
+            Some(res) => guardar(
+                &lado_a_lado(&a_ancho(&original, res.ancho), &res),
+                &base.join(format!("{nombre}-comparar.png")),
+            ),
             None => println!("{nombre}: no se pudo pintar el resultado"),
         }
     }
@@ -177,7 +263,10 @@ fn banco_17oct() {
 #[ignore = "lee una foto de E: con el OCR de Windows; a mano"]
 fn rejilla_de_la_tabla_kpi() {
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    let im0 = pixpin_codec::imagen::cargar(std::path::Path::new("E:/pixpin-pruebas/calcar-17oct/tabla-kpi.png")).unwrap();
+    let im0 = pixpin_codec::imagen::cargar(std::path::Path::new(
+        "E:/pixpin-pruebas/calcar-17oct/tabla-kpi.png",
+    ))
+    .unwrap();
     let c = pixpin_ia::hoja::Caja::nueva(2.0, 350.0, 964.0, 336.0);
     let (mut px, w, h) = pixpin_ia::hoja::imagen::recortar(&im0.pixeles, im0.ancho, im0.alto, &c);
     for p in px.chunks_exact_mut(4) {
@@ -185,11 +274,18 @@ fn rejilla_de_la_tabla_kpi() {
         p[1] = 255 - p[1];
         p[2] = 255 - p[2];
     }
-    let im = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+    let im = pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    };
     let ruta = std::env::temp_dir().join("pixpin-kpi-negativo.png");
     std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&im).unwrap()).unwrap();
     let (m, _) = crate::asistente::documentos_acciones::aspecto_de_tabla(&ruta, None).unwrap();
-    println!("columnas {:?}\nfilas {:?}\nborde {:?}", m.columnas, m.filas, m.borde);
+    println!(
+        "columnas {:?}\nfilas {:?}\nborde {:?}",
+        m.columnas, m.filas, m.borde
+    );
     for f in &m.celdas {
         println!("  {:?}", f);
     }

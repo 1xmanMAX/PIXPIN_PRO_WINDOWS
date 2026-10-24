@@ -1022,7 +1022,11 @@ impl Superficie {
     pub fn cambiar_tamano(&self, ancho: u32, alto: u32) -> Result<(), ErrorRender> {
         let (ancho, alto) = (ancho.max(1), alto.max(1));
         self.redimensionar(ancho + self.margen * 2, alto + self.margen * 2)?;
-        let mismas = self.interfaz.borrow().as_ref().is_none_or(|c| c.tamano == (ancho, alto));
+        let mismas = self
+            .interfaz
+            .borrow()
+            .as_ref()
+            .is_none_or(|c| c.tamano == (ancho, alto));
         if mismas {
             return Ok(());
         }
@@ -1520,7 +1524,10 @@ mod pruebas {
         superficie
             .cambiar_tamano(LADO as u32, LADO as u32)
             .expect("crecer");
-        assert_eq!(superficie.tamano_interfaz(), Some((LADO as u32, LADO as u32)));
+        assert_eq!(
+            superficie.tamano_interfaz(),
+            Some((LADO as u32, LADO as u32))
+        );
         assert!(!superficie.tinta_encendida(), "la tinta vuelve apagada");
         let azul_claro = Color {
             r: 0.0,

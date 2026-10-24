@@ -50,7 +50,13 @@ fn ancho_de(p: &Pintor, t: &str, tam: f32, negrita: bool) -> f32 {
 pub(super) fn medir_trozos(p: &Pintor, t: &str, tam: f32, negrita: bool) -> f32 {
     trozos(t)
         .into_iter()
-        .map(|(x, emo)| if emo { p.medir_texto(x, tam).0 } else { ancho_de(p, x, tam, negrita) })
+        .map(|(x, emo)| {
+            if emo {
+                p.medir_texto(x, tam).0
+            } else {
+                ancho_de(p, x, tam, negrita)
+            }
+        })
         .sum()
 }
 
@@ -109,7 +115,13 @@ fn fondo(p: &Pintor, c: &Contenido, bm: Option<(&ID2D1Bitmap1, u32, u32)>, caja:
         crate::miniaturas::pintar_recortado(p, b, caja, bw, bh);
         // El velo: oscuro arriba (la fecha), algo en el medio (el texto) y
         // mas abajo (las chapitas). Con un pincel de degradado: sin franjas.
-        p.rellenar(caja, Color { a: 0.30, ..Color::NEGRO });
+        p.rellenar(
+            caja,
+            Color {
+                a: 0.30,
+                ..Color::NEGRO
+            },
+        );
         let arriba = RectF {
             alto: caja.alto * 0.28,
             ..caja
@@ -118,8 +130,14 @@ fn fondo(p: &Pintor, c: &Contenido, bm: Option<(&ID2D1Bitmap1, u32, u32)>, caja:
             arriba,
             (caja.x, caja.y),
             (caja.x, caja.y + arriba.alto),
-            Color { a: 0.55, ..Color::NEGRO },
-            Color { a: 0.0, ..Color::NEGRO },
+            Color {
+                a: 0.55,
+                ..Color::NEGRO
+            },
+            Color {
+                a: 0.0,
+                ..Color::NEGRO
+            },
         );
         let abajo = RectF {
             y: caja.y + caja.alto * 0.55,
@@ -130,8 +148,14 @@ fn fondo(p: &Pintor, c: &Contenido, bm: Option<(&ID2D1Bitmap1, u32, u32)>, caja:
             abajo,
             (caja.x, abajo.y),
             (caja.x, abajo.y + abajo.alto),
-            Color { a: 0.0, ..Color::NEGRO },
-            Color { a: 0.7, ..Color::NEGRO },
+            Color {
+                a: 0.0,
+                ..Color::NEGRO
+            },
+            Color {
+                a: 0.7,
+                ..Color::NEGRO
+            },
         );
     } else {
         let (a, b) = estilo::degradado_de(&c.semilla);
@@ -152,8 +176,14 @@ fn fondo(p: &Pintor, c: &Contenido, bm: Option<(&ID2D1Bitmap1, u32, u32)>, caja:
             abajo,
             (caja.x, abajo.y),
             (caja.x, abajo.y + abajo.alto),
-            Color { a: 0.0, ..Color::NEGRO },
-            Color { a: 0.3, ..Color::NEGRO },
+            Color {
+                a: 0.0,
+                ..Color::NEGRO
+            },
+            Color {
+                a: 0.3,
+                ..Color::NEGRO
+            },
         );
     }
 }
@@ -173,7 +203,9 @@ fn texto_central(p: &Pintor, c: &Contenido, caja: RectF, tam_t: f32, tam_d: f32)
         Vec::new()
     } else {
         dis::cortar_renglones(
-            dis::renglones(c.texto.trim(), caja.ancho, &|t| medir_trozos(p, t, tam_d, false)),
+            dis::renglones(c.texto.trim(), caja.ancho, &|t| {
+                medir_trozos(p, t, tam_d, false)
+            }),
             max_d.min(9),
         )
     };
@@ -194,7 +226,16 @@ fn texto_central(p: &Pintor, c: &Contenido, caja: RectF, tam_t: f32, tam_d: f32)
         y += hueco;
         for l in &desc {
             let w = medir_trozos(p, l, tam_d, false);
-            pintar_trozos(p, l, cx - w / 2.0, y + (lh_d - tam_d * 1.3) / 2.0, tam_d, false, blanco(0.92), true);
+            pintar_trozos(
+                p,
+                l,
+                cx - w / 2.0,
+                y + (lh_d - tam_d * 1.3) / 2.0,
+                tam_d,
+                false,
+                blanco(0.92),
+                true,
+            );
             y += lh_d;
         }
     }
@@ -203,7 +244,16 @@ fn texto_central(p: &Pintor, c: &Contenido, caja: RectF, tam_t: f32, tam_d: f32)
 /// Una pildora translucida con texto (y emoticonos en color), centrada en
 /// `cx`. Devuelve su caja.
 #[allow(clippy::too_many_arguments)] // pintor, texto, donde, tamano, tinta, fondo y escala
-fn pildora(p: &Pintor, t: &str, x: f32, cy: f32, tam: f32, tinta: Color, fondo: Color, s: f32) -> RectF {
+fn pildora(
+    p: &Pintor,
+    t: &str,
+    x: f32,
+    cy: f32,
+    tam: f32,
+    tinta: Color,
+    fondo: Color,
+    s: f32,
+) -> RectF {
     let w = medir_trozos(p, t, tam, true);
     let alto = tam * 2.1;
     let r = RectF {
@@ -213,7 +263,16 @@ fn pildora(p: &Pintor, t: &str, x: f32, cy: f32, tam: f32, tinta: Color, fondo: 
         alto,
     };
     p.rellenar_redondeado(r, alto / 2.0, fondo);
-    pintar_trozos(p, t, r.x + 14.0 * s, cy - tam * 0.66, tam, true, tinta, false);
+    pintar_trozos(
+        p,
+        t,
+        r.x + 14.0 * s,
+        cy - tam * 0.66,
+        tam,
+        true,
+        tinta,
+        false,
+    );
     r
 }
 
@@ -222,16 +281,27 @@ fn pildora(p: &Pintor, t: &str, x: f32, cy: f32, tam: f32, tinta: Color, fondo: 
 /// cada una con su accion (si la tiene).
 fn chapas(c: &Contenido, textos: &Catalogo) -> Vec<(String, Color, Color, Option<Accion>)> {
     let mut v = Vec::new();
-    let oscuro = Color { a: 0.45, ..Color::NEGRO };
+    let oscuro = Color {
+        a: 0.45,
+        ..Color::NEGRO
+    };
     if let Some(g) = c.gravedad {
         let gr = super::super::tarjetas::gravedad(g);
         v.push((
             format!("{} {}", gr.emoticono, textos.t(gr.clave)),
             Color::BLANCO,
-            Color { a: 0.85, ..gr.color },
+            Color {
+                a: 0.85,
+                ..gr.color
+            },
             Some(Accion::GravedadDetalle),
         ));
-        v.push((textos.t("timeline-otra-vez-corto"), Color::BLANCO, oscuro, Some(Accion::OtraVezDetalle)));
+        v.push((
+            textos.t("timeline-otra-vez-corto"),
+            Color::BLANCO,
+            oscuro,
+            Some(Accion::OtraVezDetalle),
+        ));
         if c.veces > 1 {
             v.push((format!("{}×", c.veces), Color::BLANCO, oscuro, None));
         }
@@ -254,7 +324,11 @@ fn chapas(c: &Contenido, textos: &Catalogo) -> Vec<(String, Color, Color, Option
 /// La nota de voz grande: «▶ Nota de voz · 0:42».
 #[allow(clippy::too_many_arguments)] // pintor, caja, duracion, raton, sonando, escala y textos
 fn voz_grande(p: &Pintor, r: RectF, dur: i64, encima: bool, s: f32, textos: &Catalogo) {
-    p.rellenar_redondeado(r, r.alto / 2.0, if encima { blanco(0.32) } else { blanco(0.2) });
+    p.rellenar_redondeado(
+        r,
+        r.alto / 2.0,
+        if encima { blanco(0.32) } else { blanco(0.2) },
+    );
     let c = (r.x + r.alto / 2.0, r.y + r.alto / 2.0);
     p.circulo(c, r.alto / 2.0 - 6.0 * s, Color::BLANCO);
     p.icono(
@@ -275,7 +349,15 @@ fn voz_grande(p: &Pintor, r: RectF, dur: i64, encima: bool, s: f32, textos: &Cat
     }
     let tam = 16.0 * s;
     let (_, th) = ui::medir_negrita(p, &t, tam, r.ancho);
-    ui::negrita(p, &t, r.x + r.alto + 8.0 * s, r.y + (r.alto - th) / 2.0, tam, r.ancho, Color::BLANCO);
+    ui::negrita(
+        p,
+        &t,
+        r.x + r.alto + 8.0 * s,
+        r.y + (r.alto - th) / 2.0,
+        tam,
+        r.ancho,
+        Color::BLANCO,
+    );
 }
 
 /// La historia, encima de toda la ventana.
@@ -302,7 +384,10 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
     let d = dis::historia(w, h, s, c.fotos.len(), c.audio.is_some());
     let raton = e.botones.raton;
 
-    let bm = c.fotos.get(k).and_then(|r| e.grande.ya(r).or_else(|| e.minis.ya(r)));
+    let bm = c
+        .fotos
+        .get(k)
+        .and_then(|r| e.grande.ya(r).or_else(|| e.minis.ya(r)));
     fondo(p, &c, bm, todo);
     if !c.fotos.is_empty() && bm.is_none() {
         p.icono(
@@ -319,7 +404,11 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
     // Pasar: los tercios, antes que todo lo demas (que les gana).
     e.botones.zona(d.anterior, Accion::FotoAnterior);
     e.botones.zona(d.siguiente, Accion::FotoSiguiente);
-    let tam_t = if d.texto.ancho >= 520.0 * s { 32.0 * s } else { 26.0 * s };
+    let tam_t = if d.texto.ancho >= 520.0 * s {
+        32.0 * s
+    } else {
+        26.0 * s
+    };
     texto_central(p, &c, d.texto, tam_t, 17.0 * s);
 
     // Arriba: mover la ventana, las barritas, la fecha y los botones.
@@ -331,7 +420,11 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
         Accion::Mover,
     );
     for (n, r) in d.barras.iter().enumerate() {
-        p.rellenar_redondeado(*r, r.alto / 2.0, if n == k { Color::BLANCO } else { blanco(0.35) });
+        p.rellenar_redondeado(
+            *r,
+            r.alto / 2.0,
+            if n == k { Color::BLANCO } else { blanco(0.35) },
+        );
         e.botones.zona(
             RectF {
                 y: 0.0,
@@ -344,7 +437,16 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
     let fecha = estilo::fecha_larga(c.cuando, e.desfase, e.ingles);
     let (fw, fh) = p.medir_texto(&fecha, 15.0 * s);
     let fy = d.cerrar.y + (d.cerrar.alto - fh) / 2.0;
-    pintar_trozos(p, &fecha, 20.0 * s, fy, 15.0 * s, false, Color::BLANCO, true);
+    pintar_trozos(
+        p,
+        &fecha,
+        20.0 * s,
+        fy,
+        15.0 * s,
+        false,
+        Color::BLANCO,
+        true,
+    );
     if total > 1 {
         p.texto(
             &format!("{} / {}", pos + 1, total),
@@ -354,7 +456,15 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
             blanco(0.65),
         );
     }
-    boton_redondo(p, &mut e.botones, d.cerrar, Accion::CerrarDetalle, &mi::CLOSE, None, raton);
+    boton_redondo(
+        p,
+        &mut e.botones,
+        d.cerrar,
+        Accion::CerrarDetalle,
+        &mi::CLOSE,
+        None,
+        raton,
+    );
     if c.gravedad.is_none() {
         boton_redondo(
             p,
@@ -367,9 +477,25 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
         );
     }
     if let Some(r) = d.pinear {
-        boton_redondo(p, &mut e.botones, r, Accion::PinearDetalle, &mi::PUSH_PIN, None, raton);
+        boton_redondo(
+            p,
+            &mut e.botones,
+            r,
+            Accion::PinearDetalle,
+            &mi::PUSH_PIN,
+            None,
+            raton,
+        );
     }
-    boton_redondo(p, &mut e.botones, d.compartir, Accion::CompartirDetalle, &mi::IOS_SHARE, None, raton);
+    boton_redondo(
+        p,
+        &mut e.botones,
+        d.compartir,
+        Accion::CompartirDetalle,
+        &mi::IOS_SHARE,
+        None,
+        raton,
+    );
 
     // Abajo: las chapitas, centradas, y la nota de voz.
     let lista = chapas(&c, textos);
@@ -383,7 +509,17 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
         let mut x = (w - todo_w) / 2.0;
         for ((t, tinta, fondo_c, a), aw) in lista.into_iter().zip(anchos) {
             let fondo_c = match a {
-                Some(_) if dentro(RectF { x, y: d.chapas_y - tam, ancho: aw, alto: 2.0 * tam }, raton) => {
+                Some(_)
+                    if dentro(
+                        RectF {
+                            x,
+                            y: d.chapas_y - tam,
+                            ancho: aw,
+                            alto: 2.0 * tam,
+                        },
+                        raton,
+                    ) =>
+                {
                     ui::aclarar(fondo_c, 0.1)
                 }
                 _ => fondo_c,
@@ -453,7 +589,16 @@ pub(super) fn tarjeta(
     };
     fondo(p, c, bm, todo);
     let fecha = estilo::fecha_larga(c.cuando, desfase, ingles);
-    pintar_trozos(p, &fecha, 28.0 * s, 26.0 * s, 13.0 * s, false, blanco(0.9), true);
+    pintar_trozos(
+        p,
+        &fecha,
+        28.0 * s,
+        26.0 * s,
+        13.0 * s,
+        false,
+        blanco(0.9),
+        true,
+    );
     if c.fotos.len() > 1 {
         // Cuantas fotos son, como las barritas de la historia.
         let n = c.fotos.len().min(10);
@@ -494,7 +639,16 @@ pub(super) fn tarjeta(
         }
         let tam = 13.0 * s;
         let tw = medir_trozos(p, &t, tam, true) + 28.0 * s;
-        pildora(p, &t, (w - tw) / 2.0, y - 26.0 * s, tam, Color::BLANCO, blanco(0.2), s);
+        pildora(
+            p,
+            &t,
+            (w - tw) / 2.0,
+            y - 26.0 * s,
+            tam,
+            Color::BLANCO,
+            blanco(0.2),
+            s,
+        );
         y -= 46.0 * s;
     }
     if !lista.is_empty() {

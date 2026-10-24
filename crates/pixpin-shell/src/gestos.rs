@@ -809,7 +809,10 @@ mod pruebas {
     fn un_gesto_que_espero_demasiado_en_la_cola_ya_no_se_reproduce() {
         let ahora = 1_000_000;
         assert!(!gesto_caducado(ahora - 100, ahora, false), "reciente");
-        assert!(!gesto_caducado(ahora - CADUCIDAD_GESTO_MS, ahora, false), "justo en el tope");
+        assert!(
+            !gesto_caducado(ahora - CADUCIDAD_GESTO_MS, ahora, false),
+            "justo en el tope"
+        );
         // Los del registro: 2016, 3797 y 9157 ms en la cola.
         for espera in [2016, 3797, 9157] {
             assert!(gesto_caducado(ahora - espera, ahora, false), "{espera} ms");

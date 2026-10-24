@@ -70,7 +70,10 @@ pub struct Fallo {
 
 impl Fallo {
     fn no_se_entiende(motivo: impl Into<String>) -> Self {
-        Fallo { codigo: codigo::NO_SE_ENTIENDE, motivo: motivo.into() }
+        Fallo {
+            codigo: codigo::NO_SE_ENTIENDE,
+            motivo: motivo.into(),
+        }
     }
 }
 
@@ -84,7 +87,10 @@ pub enum Orden {
     Ocr { rutas: Vec<PathBuf>, copiar: bool },
     /// Preguntar al asistente por unos ficheros: falta la pregunta, que se
     /// pide en una caja antes de mandar nada (el menu del Explorador).
-    Preguntar { rutas: Vec<PathBuf>, proyecto: Option<String> },
+    Preguntar {
+        rutas: Vec<PathBuf>,
+        proyecto: Option<String>,
+    },
     /// La ayuda.
     Ayuda,
 }
@@ -144,35 +150,251 @@ pub const BANDERAS: [&str; 2] = ["copiar", "sin-arrancar"];
 
 /// **La tabla.** El orden es el de la ayuda.
 pub const VERBOS: &[Verbo] = &[
-    Verbo { nombres: &["capturar", "capture"], uso: "capturar", ayuda: "Captura una zona de la pantalla, como el atajo general.", opciones: &[], por_enlace: true, armar: |_| pedidos(vec![pedido("capturar", json!({}))]) },
-    Verbo { nombres: &["pinear", "pin"], uso: "pinear <imagen|fichero>… | --codigo <id> [--proyecto P]", ayuda: "Saca a la pantalla como pin cada fichero (o el del mensaje <id> del chat).", opciones: &["codigo", "proyecto", "ruta"], por_enlace: true, armar: armar_pinear },
-    Verbo { nombres: &["pinear-ultima", "ultima"], uso: "pinear-ultima", ayuda: "Saca como pin la captura mas reciente.", opciones: &[], por_enlace: true, armar: |_| pedidos(vec![pedido("pinear_ultima", json!({}))]) },
-    Verbo { nombres: &["archivo"], uso: "archivo <id del mensaje> [--proyecto P]", ayuda: "Saca a la pantalla el fichero de ese mensaje del chat (pixpin://atajo/archivo/<id> de Android).", opciones: &["proyecto", "id"], por_enlace: true, armar: armar_archivo },
-    Verbo { nombres: &["chat", "mensaje"], uso: "chat [texto] [fichero…] [--proyecto P]", ayuda: "Escribe en el chat (sin proyecto, en Mensajes guardados) el texto y los ficheros; sin nada, abre ese chat.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_chat },
-    Verbo { nombres: &["mensajes", "guardados"], uso: "mensajes", ayuda: "Abre Mensajes guardados.", opciones: &[], por_enlace: true, armar: |_| pedidos(vec![pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": null } }))]) },
-    Verbo { nombres: &["proyectos"], uso: "proyectos", ayuda: "Abre la ventana principal (el chat de proyectos).", opciones: &[], por_enlace: true, armar: |_| pedidos(vec![pedido("ventana_principal", json!({}))]) },
-    Verbo { nombres: &["proyecto"], uso: "proyecto <id|nombre>", ayuda: "Abre el chat de ese proyecto.", opciones: &["id", "proyecto"], por_enlace: true, armar: armar_proyecto },
-    Verbo { nombres: &["tarea", "task", "todo"], uso: "tarea \"<texto>\" [--proyecto P] [--lista <id>]", ayuda: "Apunta una tarea (sin proyecto ni lista, en el Inbox); sin texto, abre las tareas.", opciones: &["proyecto", "lista", "texto"], por_enlace: true, armar: armar_tarea },
-    Verbo { nombres: &["tareas", "tasks"], uso: "tareas", ayuda: "Abre la ventana de tareas.", opciones: &[], por_enlace: true, armar: |_| ventana("tareas") },
-    Verbo { nombres: &["capturas", "galeria"], uso: "capturas", ayuda: "Abre la galeria de capturas.", opciones: &[], por_enlace: true, armar: |_| ventana("galeria") },
-    Verbo { nombres: &["nota", "note"], uso: "nota [texto] [imagen…] [--proyecto P]", ayuda: "Abre una nota nueva en el editor, empezada con el texto.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_nota },
-    Verbo { nombres: &["lienzo", "dibujo"], uso: "lienzo [nombre] [--proyecto P]", ayuda: "Abre un lienzo nuevo.", opciones: &["proyecto", "nombre"], por_enlace: true, armar: armar_lienzo },
-    Verbo { nombres: &["al-lienzo", "a-lienzo"], uso: "al-lienzo <nombre> [texto] [imagen…] [--proyecto P]", ayuda: "Manda el texto y las imagenes al lienzo de ese nombre, apilados en una columna libre (si no existe, lo crea; si esta abierto, entra en vivo). Con espacios en el nombre: --lienzo \"Plano casa\".", opciones: &["proyecto", "lienzo", "texto"], por_enlace: true, armar: armar_al_lienzo },
-    Verbo { nombres: &["lista"], uso: "lista [titulo] [--proyecto P]", ayuda: "Crea una lista de tareas nueva.", opciones: &["proyecto", "titulo"], por_enlace: true, armar: armar_lista },
-    Verbo { nombres: &["leccion"], uso: "leccion [texto] [imagen…] [--proyecto P]", ayuda: "Abre la ficha de una leccion aprendida nueva.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_leccion },
-    Verbo { nombres: &["lecciones"], uso: "lecciones [buscar] [--proyecto P]", ayuda: "Abre la lista de lecciones (ya buscando, con texto).", opciones: &["proyecto", "consulta"], por_enlace: true, armar: armar_lecciones },
-    Verbo { nombres: &["grabar", "voz"], uso: "grabar [nombre] [--proyecto P]", ayuda: "Saca el microfono flotante y graba una nota de voz.", opciones: &["proyecto", "nombre"], por_enlace: true, armar: armar_grabar },
-    Verbo { nombres: &["soltar"], uso: "soltar [--proyecto P]", ayuda: "Saca la caja flotante a la que soltar ficheros para ese chat.", opciones: &["proyecto"], por_enlace: true, armar: armar_soltar },
-    Verbo { nombres: &["sincronizar", "sync"], uso: "sincronizar [todos|<aparato>]", ayuda: "Sin nada, abre Sincronizar; con «todos» o un aparato, sincroniza ya.", opciones: &["aparato"], por_enlace: true, armar: armar_sincronizar },
-    Verbo { nombres: &["al-movil", "movil"], uso: "al-movil <fichero>… [--aparato <id>]", ayuda: "Manda los ficheros al movil (a todos si no se dice): imagenes al lienzo, lo demas al chat.", opciones: &["aparato"], por_enlace: false, armar: armar_al_movil },
-    Verbo { nombres: &["ocr", "texto"], uso: "ocr <imagen>… [--copiar]", ayuda: "Escribe en la consola el texto de las imagenes (y lo copia con --copiar). No necesita PixPin abierta.", opciones: &[], por_enlace: false, armar: armar_ocr },
-    Verbo { nombres: &["copiar-texto"], uso: "copiar-texto <imagen>…", ayuda: "PixPin lee el texto de las imagenes, lo copia y lo dice en su aviso (el menu del Explorador).", opciones: &[], por_enlace: false, armar: armar_copiar_texto },
-    Verbo { nombres: &["leer", "leer-en-voz"], uso: "leer \"<texto>\" [--titulo T]", ayuda: "Lee el texto en voz alta con la voz de PixPin, sin abrir nada (se para con las teclas multimedia).", opciones: &["texto", "titulo"], por_enlace: true, armar: armar_leer },
-    Verbo { nombres: &["asistente", "ia", "preguntar"], uso: "asistente [\"pedido\"] [fichero…] [--proyecto P]", ayuda: "Le pide algo al asistente sin abrir el chat. Con ficheros y sin pedido, pregunta que hacer con ellos.", opciones: &["proyecto", "texto"], por_enlace: true, armar: armar_asistente },
-    Verbo { nombres: &["abrir", "open"], uso: "abrir <fichero>… [--pagina N] [--buscar T]", ayuda: "Abre cada fichero como «Abrir con PixPin» (lector, editor o pin).", opciones: &["pagina", "buscar", "ruta", "tipo", "proyecto", "codigo", "referencia"], por_enlace: true, armar: armar_abrir },
-    Verbo { nombres: &["ventana"], uso: "ventana tareas|galeria|lecciones|sincronizar", ayuda: "Abre esa ventana de la bandeja.", opciones: &["cual"], por_enlace: true, armar: armar_ventana },
-    Verbo { nombres: &["pedido"], uso: "pedido '<json>'", ayuda: "Manda un pedido del protocolo tal cual (igual que --pedido).", opciones: &["json"], por_enlace: true, armar: armar_pedido },
-    Verbo { nombres: &["ayuda", "help"], uso: "ayuda", ayuda: "Esta ayuda.", opciones: &[], por_enlace: false, armar: |_| Ok(Orden::Ayuda) },
+    Verbo {
+        nombres: &["capturar", "capture"],
+        uso: "capturar",
+        ayuda: "Captura una zona de la pantalla, como el atajo general.",
+        opciones: &[],
+        por_enlace: true,
+        armar: |_| pedidos(vec![pedido("capturar", json!({}))]),
+    },
+    Verbo {
+        nombres: &["pinear", "pin"],
+        uso: "pinear <imagen|fichero>… | --codigo <id> [--proyecto P]",
+        ayuda: "Saca a la pantalla como pin cada fichero (o el del mensaje <id> del chat).",
+        opciones: &["codigo", "proyecto", "ruta"],
+        por_enlace: true,
+        armar: armar_pinear,
+    },
+    Verbo {
+        nombres: &["pinear-ultima", "ultima"],
+        uso: "pinear-ultima",
+        ayuda: "Saca como pin la captura mas reciente.",
+        opciones: &[],
+        por_enlace: true,
+        armar: |_| pedidos(vec![pedido("pinear_ultima", json!({}))]),
+    },
+    Verbo {
+        nombres: &["archivo"],
+        uso: "archivo <id del mensaje> [--proyecto P]",
+        ayuda: "Saca a la pantalla el fichero de ese mensaje del chat (pixpin://atajo/archivo/<id> de Android).",
+        opciones: &["proyecto", "id"],
+        por_enlace: true,
+        armar: armar_archivo,
+    },
+    Verbo {
+        nombres: &["chat", "mensaje"],
+        uso: "chat [texto] [fichero…] [--proyecto P]",
+        ayuda: "Escribe en el chat (sin proyecto, en Mensajes guardados) el texto y los ficheros; sin nada, abre ese chat.",
+        opciones: &["proyecto", "texto"],
+        por_enlace: true,
+        armar: armar_chat,
+    },
+    Verbo {
+        nombres: &["mensajes", "guardados"],
+        uso: "mensajes",
+        ayuda: "Abre Mensajes guardados.",
+        opciones: &[],
+        por_enlace: true,
+        armar: |_| {
+            pedidos(vec![pedido(
+                "abrir",
+                json!({ "que": { "tipo": "proyecto", "proyecto": null } }),
+            )])
+        },
+    },
+    Verbo {
+        nombres: &["proyectos"],
+        uso: "proyectos",
+        ayuda: "Abre la ventana principal (el chat de proyectos).",
+        opciones: &[],
+        por_enlace: true,
+        armar: |_| pedidos(vec![pedido("ventana_principal", json!({}))]),
+    },
+    Verbo {
+        nombres: &["proyecto"],
+        uso: "proyecto <id|nombre>",
+        ayuda: "Abre el chat de ese proyecto.",
+        opciones: &["id", "proyecto"],
+        por_enlace: true,
+        armar: armar_proyecto,
+    },
+    Verbo {
+        nombres: &["tarea", "task", "todo"],
+        uso: "tarea \"<texto>\" [--proyecto P] [--lista <id>]",
+        ayuda: "Apunta una tarea (sin proyecto ni lista, en el Inbox); sin texto, abre las tareas.",
+        opciones: &["proyecto", "lista", "texto"],
+        por_enlace: true,
+        armar: armar_tarea,
+    },
+    Verbo {
+        nombres: &["tareas", "tasks"],
+        uso: "tareas",
+        ayuda: "Abre la ventana de tareas.",
+        opciones: &[],
+        por_enlace: true,
+        armar: |_| ventana("tareas"),
+    },
+    Verbo {
+        nombres: &["capturas", "galeria"],
+        uso: "capturas",
+        ayuda: "Abre la galeria de capturas.",
+        opciones: &[],
+        por_enlace: true,
+        armar: |_| ventana("galeria"),
+    },
+    Verbo {
+        nombres: &["nota", "note"],
+        uso: "nota [texto] [imagen…] [--proyecto P]",
+        ayuda: "Abre una nota nueva en el editor, empezada con el texto.",
+        opciones: &["proyecto", "texto"],
+        por_enlace: true,
+        armar: armar_nota,
+    },
+    Verbo {
+        nombres: &["lienzo", "dibujo"],
+        uso: "lienzo [nombre] [--proyecto P]",
+        ayuda: "Abre un lienzo nuevo.",
+        opciones: &["proyecto", "nombre"],
+        por_enlace: true,
+        armar: armar_lienzo,
+    },
+    Verbo {
+        nombres: &["al-lienzo", "a-lienzo"],
+        uso: "al-lienzo <nombre> [texto] [imagen…] [--proyecto P]",
+        ayuda: "Manda el texto y las imagenes al lienzo de ese nombre, apilados en una columna libre (si no existe, lo crea; si esta abierto, entra en vivo). Con espacios en el nombre: --lienzo \"Plano casa\".",
+        opciones: &["proyecto", "lienzo", "texto"],
+        por_enlace: true,
+        armar: armar_al_lienzo,
+    },
+    Verbo {
+        nombres: &["lista"],
+        uso: "lista [titulo] [--proyecto P]",
+        ayuda: "Crea una lista de tareas nueva.",
+        opciones: &["proyecto", "titulo"],
+        por_enlace: true,
+        armar: armar_lista,
+    },
+    Verbo {
+        nombres: &["leccion"],
+        uso: "leccion [texto] [imagen…] [--proyecto P]",
+        ayuda: "Abre la ficha de una leccion aprendida nueva.",
+        opciones: &["proyecto", "texto"],
+        por_enlace: true,
+        armar: armar_leccion,
+    },
+    Verbo {
+        nombres: &["lecciones"],
+        uso: "lecciones [buscar] [--proyecto P]",
+        ayuda: "Abre la lista de lecciones (ya buscando, con texto).",
+        opciones: &["proyecto", "consulta"],
+        por_enlace: true,
+        armar: armar_lecciones,
+    },
+    Verbo {
+        nombres: &["grabar", "voz"],
+        uso: "grabar [nombre] [--proyecto P]",
+        ayuda: "Saca el microfono flotante y graba una nota de voz.",
+        opciones: &["proyecto", "nombre"],
+        por_enlace: true,
+        armar: armar_grabar,
+    },
+    Verbo {
+        nombres: &["soltar"],
+        uso: "soltar [--proyecto P]",
+        ayuda: "Saca la caja flotante a la que soltar ficheros para ese chat.",
+        opciones: &["proyecto"],
+        por_enlace: true,
+        armar: armar_soltar,
+    },
+    Verbo {
+        nombres: &["sincronizar", "sync"],
+        uso: "sincronizar [todos|<aparato>]",
+        ayuda: "Sin nada, abre Sincronizar; con «todos» o un aparato, sincroniza ya.",
+        opciones: &["aparato"],
+        por_enlace: true,
+        armar: armar_sincronizar,
+    },
+    Verbo {
+        nombres: &["al-movil", "movil"],
+        uso: "al-movil <fichero>… [--aparato <id>]",
+        ayuda: "Manda los ficheros al movil (a todos si no se dice): imagenes al lienzo, lo demas al chat.",
+        opciones: &["aparato"],
+        por_enlace: false,
+        armar: armar_al_movil,
+    },
+    Verbo {
+        nombres: &["ocr", "texto"],
+        uso: "ocr <imagen>… [--copiar]",
+        ayuda: "Escribe en la consola el texto de las imagenes (y lo copia con --copiar). No necesita PixPin abierta.",
+        opciones: &[],
+        por_enlace: false,
+        armar: armar_ocr,
+    },
+    Verbo {
+        nombres: &["copiar-texto"],
+        uso: "copiar-texto <imagen>…",
+        ayuda: "PixPin lee el texto de las imagenes, lo copia y lo dice en su aviso (el menu del Explorador).",
+        opciones: &[],
+        por_enlace: false,
+        armar: armar_copiar_texto,
+    },
+    Verbo {
+        nombres: &["leer", "leer-en-voz"],
+        uso: "leer \"<texto>\" [--titulo T]",
+        ayuda: "Lee el texto en voz alta con la voz de PixPin, sin abrir nada (se para con las teclas multimedia).",
+        opciones: &["texto", "titulo"],
+        por_enlace: true,
+        armar: armar_leer,
+    },
+    Verbo {
+        nombres: &["asistente", "ia", "preguntar"],
+        uso: "asistente [\"pedido\"] [fichero…] [--proyecto P]",
+        ayuda: "Le pide algo al asistente sin abrir el chat. Con ficheros y sin pedido, pregunta que hacer con ellos.",
+        opciones: &["proyecto", "texto"],
+        por_enlace: true,
+        armar: armar_asistente,
+    },
+    Verbo {
+        nombres: &["abrir", "open"],
+        uso: "abrir <fichero>… [--pagina N] [--buscar T]",
+        ayuda: "Abre cada fichero como «Abrir con PixPin» (lector, editor o pin).",
+        opciones: &[
+            "pagina",
+            "buscar",
+            "ruta",
+            "tipo",
+            "proyecto",
+            "codigo",
+            "referencia",
+        ],
+        por_enlace: true,
+        armar: armar_abrir,
+    },
+    Verbo {
+        nombres: &["ventana"],
+        uso: "ventana tareas|galeria|lecciones|sincronizar",
+        ayuda: "Abre esa ventana de la bandeja.",
+        opciones: &["cual"],
+        por_enlace: true,
+        armar: armar_ventana,
+    },
+    Verbo {
+        nombres: &["pedido"],
+        uso: "pedido '<json>'",
+        ayuda: "Manda un pedido del protocolo tal cual (igual que --pedido).",
+        opciones: &["json"],
+        por_enlace: true,
+        armar: armar_pedido,
+    },
+    Verbo {
+        nombres: &["ayuda", "help"],
+        uso: "ayuda",
+        ayuda: "Esta ayuda.",
+        opciones: &[],
+        por_enlace: false,
+        armar: |_| Ok(Orden::Ayuda),
+    },
 ];
 
 /// La fila de un verbo, sin mirar mayusculas.
@@ -189,14 +411,29 @@ pub fn verbo(nombre: &str) -> Option<&'static Verbo> {
 /// orden: es el arranque de siempre, o ficheros de «Abrir con», o una orden
 /// interna (`--atajo`, `--cad-convertir`…), y entonces el `main` sigue como
 /// antes.
-pub fn de_argumentos(args: &[String], es_fichero: &dyn Fn(&Path) -> bool) -> Option<Result<Llamada, Fallo>> {
+pub fn de_argumentos(
+    args: &[String],
+    es_fichero: &dyn Fn(&Path) -> bool,
+) -> Option<Result<Llamada, Fallo>> {
     let sin_arrancar = args.iter().any(|a| a == "--sin-arrancar");
     let args: Vec<&String> = args.iter().filter(|a| *a != "--sin-arrancar").collect();
     let primero = args.first()?.as_str();
-    let llamada = |r: Result<Orden, Fallo>, origen: Origen| r.map(|orden| Llamada { orden, origen, sin_arrancar });
+    let llamada = |r: Result<Orden, Fallo>, origen: Origen| {
+        r.map(|orden| Llamada {
+            orden,
+            origen,
+            sin_arrancar,
+        })
+    };
     let resto: Vec<String> = args.iter().skip(1).map(|s| s.to_string()).collect();
     let r = match primero {
-        "--pedido" => llamada(resto.first().ok_or_else(|| Fallo::no_se_entiende("falta el JSON detras de --pedido")).and_then(|j| de_json(j)), Origen::Consola),
+        "--pedido" => llamada(
+            resto
+                .first()
+                .ok_or_else(|| Fallo::no_se_entiende("falta el JSON detras de --pedido"))
+                .and_then(|j| de_json(j)),
+            Origen::Consola,
+        ),
         "--pedido-archivo" => llamada(
             resto
                 .first()
@@ -212,11 +449,19 @@ pub fn de_argumentos(args: &[String], es_fichero: &dyn Fn(&Path) -> bool) -> Opt
         // `--atajo url "<enlace>"`: como registraban el protocolo los avisos
         // con botones (`notificacion`, 15-oct) antes de unirse aqui. Es un
         // alias de `--url`: el mismo traductor y la misma lista blanca.
-        "--atajo" if resto.first().map(String::as_str) == Some(crate::jump_list::URL) => match resto.get(1) {
-            Some(u) => de_enlace(u).map(|l| Llamada { sin_arrancar, ..l }),
-            None => Err(Fallo::no_se_entiende("falta el enlace detras de --atajo url")),
-        },
-        "--ayuda" | "--help" | "-h" | "-?" | "/?" => Ok(Llamada { orden: Orden::Ayuda, origen: Origen::Consola, sin_arrancar }),
+        "--atajo" if resto.first().map(String::as_str) == Some(crate::jump_list::URL) => {
+            match resto.get(1) {
+                Some(u) => de_enlace(u).map(|l| Llamada { sin_arrancar, ..l }),
+                None => Err(Fallo::no_se_entiende(
+                    "falta el enlace detras de --atajo url",
+                )),
+            }
+        }
+        "--ayuda" | "--help" | "-h" | "-?" | "/?" => Ok(Llamada {
+            orden: Orden::Ayuda,
+            origen: Origen::Consola,
+            sin_arrancar,
+        }),
         u if es_enlace(u) => de_enlace(u).map(|l| Llamada { sin_arrancar, ..l }),
         // Las ordenes internas de la app no son nuestras.
         o if o.starts_with("--") => return None,
@@ -238,7 +483,14 @@ pub const ESQUEMAS: [&str; 2] = ["pixpinmax:", "pixpin:"];
 
 /// El largo del esquema si un texto es un enlace nuestro.
 fn esquema(texto: &str) -> Option<usize> {
-    ESQUEMAS.iter().find(|e| texto.len() >= e.len() && texto.is_char_boundary(e.len()) && texto[..e.len()].eq_ignore_ascii_case(e)).map(|e| e.len())
+    ESQUEMAS
+        .iter()
+        .find(|e| {
+            texto.len() >= e.len()
+                && texto.is_char_boundary(e.len())
+                && texto[..e.len()].eq_ignore_ascii_case(e)
+        })
+        .map(|e| e.len())
 }
 
 /// Si un texto es un enlace `pixpin:` (o `pixpinmax:`).
@@ -246,7 +498,11 @@ pub fn es_enlace(texto: &str) -> bool {
     esquema(texto).is_some()
 }
 
-fn armar_de_consola(fila: &Verbo, resto: &[String], es_fichero: &dyn Fn(&Path) -> bool) -> Result<Orden, Fallo> {
+fn armar_de_consola(
+    fila: &Verbo,
+    resto: &[String],
+    es_fichero: &dyn Fn(&Path) -> bool,
+) -> Result<Orden, Fallo> {
     let mut sueltos = Vec::new();
     let mut campos = BTreeMap::new();
     let mut i = 0;
@@ -271,12 +527,18 @@ fn armar_de_consola(fila: &Verbo, resto: &[String], es_fichero: &dyn Fn(&Path) -
             continue;
         }
         if !fila.opciones.contains(&clave.as_str()) {
-            return Err(Fallo::no_se_entiende(format!("«{}» no tiene la opcion --{clave} (pixpinmax ayuda)", fila.nombres[0])));
+            return Err(Fallo::no_se_entiende(format!(
+                "«{}» no tiene la opcion --{clave} (pixpinmax ayuda)",
+                fila.nombres[0]
+            )));
         }
         let valor = match valor {
             Some(v) => v,
             None => {
-                let v = resto.get(i).cloned().ok_or_else(|| Fallo::no_se_entiende(format!("falta el valor de --{clave}")))?;
+                let v = resto
+                    .get(i)
+                    .cloned()
+                    .ok_or_else(|| Fallo::no_se_entiende(format!("falta el valor de --{clave}")))?;
                 i += 1;
                 v
             }
@@ -289,13 +551,20 @@ fn armar_de_consola(fila: &Verbo, resto: &[String], es_fichero: &dyn Fn(&Path) -
         .map(|s| {
             let p = Path::new(&s);
             if !p.is_absolute() && es_fichero(p) {
-                std::path::absolute(p).map(|p| p.to_string_lossy().into_owned()).unwrap_or(s)
+                std::path::absolute(p)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or(s)
             } else {
                 s
             }
         })
         .collect();
-    (fila.armar)(&Entrada { sueltos, campos, es_fichero, enlace: false })
+    (fila.armar)(&Entrada {
+        sueltos,
+        campos,
+        es_fichero,
+        enlace: false,
+    })
 }
 
 /// Lee un pedido de un fichero (`-` es la entrada estandar).
@@ -303,11 +572,22 @@ fn leer_pedido_de(ruta: &str) -> Result<String, Fallo> {
     use std::io::Read;
     let mut texto = String::new();
     let leido = if ruta == "-" {
-        std::io::stdin().take(crate::mensajero::TOPE_PEDIDO as u64 + 1).read_to_string(&mut texto).map(|_| ())
+        std::io::stdin()
+            .take(crate::mensajero::TOPE_PEDIDO as u64 + 1)
+            .read_to_string(&mut texto)
+            .map(|_| ())
     } else {
-        std::fs::File::open(ruta).and_then(|f| f.take(crate::mensajero::TOPE_PEDIDO as u64 + 1).read_to_string(&mut texto)).map(|_| ())
+        std::fs::File::open(ruta)
+            .and_then(|f| {
+                f.take(crate::mensajero::TOPE_PEDIDO as u64 + 1)
+                    .read_to_string(&mut texto)
+            })
+            .map(|_| ())
     };
-    leido.map_err(|e| Fallo { codigo: codigo::FALLO, motivo: format!("no se pudo leer {ruta}: {e}") })?;
+    leido.map_err(|e| Fallo {
+        codigo: codigo::FALLO,
+        motivo: format!("no se pudo leer {ruta}: {e}"),
+    })?;
     // El BOM que deja el «Out-File» de PowerShell 5 no es parte del JSON.
     Ok(texto.trim_start_matches('\u{feff}').trim().to_string())
 }
@@ -318,8 +598,17 @@ fn de_json(json: &str) -> Result<Orden, Fallo> {
     use crate::mensajero::{respuesta, validar_pedido};
     match validar_pedido(json) {
         respuesta::ACEPTADO => {}
-        respuesta::VERSION_NO => return Err(Fallo { codigo: codigo::VERSION, motivo: "esa version del protocolo no existe".into() }),
-        _ => return Err(Fallo::no_se_entiende("el pedido no es JSON del protocolo, o su accion no existe (docs/protocolo-pedidos.md)")),
+        respuesta::VERSION_NO => {
+            return Err(Fallo {
+                codigo: codigo::VERSION,
+                motivo: "esa version del protocolo no existe".into(),
+            });
+        }
+        _ => {
+            return Err(Fallo::no_se_entiende(
+                "el pedido no es JSON del protocolo, o su accion no existe (docs/protocolo-pedidos.md)",
+            ));
+        }
     }
     if json.len() > crate::mensajero::TOPE_PEDIDO {
         return Err(Fallo::no_se_entiende("el pedido pasa de 64 KB"));
@@ -338,14 +627,31 @@ fn de_json(json: &str) -> Result<Orden, Fallo> {
 /// anaden algunos programas tambien.
 pub fn de_enlace(url: &str) -> Result<Llamada, Fallo> {
     let partes = partir_enlace(url)?;
-    let fila = verbo(&partes.verbo).ok_or_else(|| Fallo::no_se_entiende(format!("PixPin no conoce «{}» por enlace", partes.verbo)))?;
+    let fila = verbo(&partes.verbo).ok_or_else(|| {
+        Fallo::no_se_entiende(format!("PixPin no conoce «{}» por enlace", partes.verbo))
+    })?;
     if !fila.por_enlace {
-        return Err(Fallo { codigo: codigo::RECHAZADO, motivo: format!("«{}» no se puede pedir por enlace", fila.nombres[0]) });
+        return Err(Fallo {
+            codigo: codigo::RECHAZADO,
+            motivo: format!("«{}» no se puede pedir por enlace", fila.nombres[0]),
+        });
     }
-    let firmado = partes.firma.as_deref().is_some_and(|f| firma::verificar(&partes.canonico(), f));
+    let firmado = partes
+        .firma
+        .as_deref()
+        .is_some_and(|f| firma::verificar(&partes.canonico(), f));
     let nadie = |_: &Path| false;
-    let orden = (fila.armar)(&Entrada { sueltos: partes.sueltos, campos: partes.campos, es_fichero: &nadie, enlace: true })?;
-    Ok(Llamada { orden, origen: Origen::Enlace { firmado }, sin_arrancar: false })
+    let orden = (fila.armar)(&Entrada {
+        sueltos: partes.sueltos,
+        campos: partes.campos,
+        es_fichero: &nadie,
+        enlace: true,
+    })?;
+    Ok(Llamada {
+        orden,
+        origen: Origen::Enlace { firmado },
+        sin_arrancar: false,
+    })
 }
 
 /// Un enlace en trozos, ya descodificado.
@@ -397,7 +703,10 @@ pub fn partir_enlace(url: &str) -> Result<PartesEnlace, Fallo> {
     for t in camino.split('/').filter(|t| !t.is_empty()) {
         trozos.push(descodificar(t, false)?);
     }
-    if trozos.first().is_some_and(|t| t.eq_ignore_ascii_case("atajo")) {
+    if trozos
+        .first()
+        .is_some_and(|t| t.eq_ignore_ascii_case("atajo"))
+    {
         trozos.remove(0);
     }
     if trozos.is_empty() {
@@ -418,7 +727,12 @@ pub fn partir_enlace(url: &str) -> Result<PartesEnlace, Fallo> {
         // leyo (ni lo que se firmo).
         campos.entry(k).or_insert(v);
     }
-    Ok(PartesEnlace { verbo, sueltos: trozos, campos, firma })
+    Ok(PartesEnlace {
+        verbo,
+        sueltos: trozos,
+        campos,
+        firma,
+    })
 }
 
 /// `%XX` a bytes y bytes a UTF-8; en la consulta, `+` es un espacio. Un `%`
@@ -430,7 +744,10 @@ pub fn descodificar(t: &str, consulta: bool) -> Result<String, Fallo> {
     while i < b.len() {
         match b[i] {
             b'%' => {
-                let h = b.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok()).and_then(|h| u8::from_str_radix(h, 16).ok());
+                let h = b
+                    .get(i + 1..i + 3)
+                    .and_then(|h| std::str::from_utf8(h).ok())
+                    .and_then(|h| u8::from_str_radix(h, 16).ok());
                 let Some(byte) = h else {
                     return Err(Fallo::no_se_entiende("el enlace tiene un % mal escrito"));
                 };
@@ -474,7 +791,13 @@ pub fn codificar(t: &str) -> String {
 /// ([`seguridad`]). Se mira el registro una vez por proceso.
 pub fn esquema_de_la_casa() -> &'static str {
     static ESQUEMA: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
-    ESQUEMA.get_or_init(|| if pixpin_es_nuestro_o_libre() { "pixpin" } else { "pixpinmax" })
+    ESQUEMA.get_or_init(|| {
+        if pixpin_es_nuestro_o_libre() {
+            "pixpin"
+        } else {
+            "pixpinmax"
+        }
+    })
 }
 
 /// Si `pixpin://` esta libre o lo abre un `pixpinmax.exe` (lo mismo que
@@ -494,10 +817,34 @@ pub fn orden_del_protocolo(esquema: &str) -> Option<String> {
     let mut bytes = 0u32;
     // SAFETY: primero se pregunta el tamano (sin buffer); la clave es una
     // HSTRING viva durante las llamadas.
-    unsafe { RegGetValueW(HKEY_CLASSES_ROOT, &clave, None, RRF_RT_REG_SZ, None, None, Some(&mut bytes)) }.ok().ok()?;
+    unsafe {
+        RegGetValueW(
+            HKEY_CLASSES_ROOT,
+            &clave,
+            None,
+            RRF_RT_REG_SZ,
+            None,
+            None,
+            Some(&mut bytes),
+        )
+    }
+    .ok()
+    .ok()?;
     let mut buf = vec![0u16; (bytes as usize).div_ceil(2).max(1)];
     // SAFETY: `buf` mide lo que dijo Windows y vive durante la llamada.
-    unsafe { RegGetValueW(HKEY_CLASSES_ROOT, &clave, None, RRF_RT_REG_SZ, None, Some(buf.as_mut_ptr() as *mut _), Some(&mut bytes)) }.ok().ok()?;
+    unsafe {
+        RegGetValueW(
+            HKEY_CLASSES_ROOT,
+            &clave,
+            None,
+            RRF_RT_REG_SZ,
+            None,
+            Some(buf.as_mut_ptr() as *mut _),
+            Some(&mut bytes),
+        )
+    }
+    .ok()
+    .ok()?;
     let fin = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
     Some(String::from_utf16_lossy(&buf[..fin]))
 }
@@ -580,21 +927,33 @@ pub fn seguridad(pedido: &Value) -> Seguridad {
             return Seguridad::Prohibida("ruta-no-local".into());
         }
     }
-    if accion == "automatizacion" && pedido.get("operacion").and_then(Value::as_str) == Some("crear") {
+    if accion == "automatizacion"
+        && pedido.get("operacion").and_then(Value::as_str) == Some("crear")
+    {
         return Seguridad::Prohibida("crear-automatizacion".into());
     }
     if !rutas.is_empty() && accion != "conservar_captura" {
         return Seguridad::Confirmar("ficheros".into());
     }
-    let vacio = |c: &str| pedido.get(c).is_none_or(|v| v.is_null() || v.as_str().is_some_and(|s| s.trim().is_empty()) || v.as_array().is_some_and(|a| a.is_empty()));
+    let vacio = |c: &str| {
+        pedido.get(c).is_none_or(|v| {
+            v.is_null()
+                || v.as_str().is_some_and(|s| s.trim().is_empty())
+                || v.as_array().is_some_and(|a| a.is_empty())
+        })
+    };
     match accion {
-        "asistente" if vacio("texto") && vacio("imagenes") && vacio("automatizacion") => Seguridad::Directa,
+        "asistente" if vacio("texto") && vacio("imagenes") && vacio("automatizacion") => {
+            Seguridad::Directa
+        }
         "asistente" => Seguridad::Confirmar("asistente".into()),
         a if SEGURAS.contains(&a) => Seguridad::Directa,
         "grabar" => Seguridad::Confirmar("microfono".into()),
         "sincronizar" | "enviar_al_movil" => Seguridad::Confirmar("otros-aparatos".into()),
         "automatizacion" => Seguridad::Confirmar("automatizacion".into()),
-        a if a.starts_with("borrar") || a.starts_with("quitar") => Seguridad::Confirmar("borra".into()),
+        a if a.starts_with("borrar") || a.starts_with("quitar") => {
+            Seguridad::Confirmar("borra".into())
+        }
         _ => Seguridad::Confirmar("cambia".into()),
     }
 }
@@ -605,7 +964,11 @@ pub fn rutas_del_pedido(pedido: &Value) -> Vec<String> {
     let mut v = Vec::new();
     let mut de = |x: Option<&Value>| match x {
         Some(Value::String(s)) => v.push(s.clone()),
-        Some(Value::Array(a)) => v.extend(a.iter().map(|e| e.as_str().map(str::to_string).unwrap_or_else(|| e.to_string()))),
+        Some(Value::Array(a)) => v.extend(a.iter().map(|e| {
+            e.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| e.to_string())
+        })),
         Some(Value::Null) | None => {}
         Some(otro) => v.push(otro.to_string()),
     };
@@ -621,7 +984,11 @@ pub fn rutas_del_pedido(pedido: &Value) -> Vec<String> {
 /// relativa (por enlace no hay «carpeta actual»), ni una URL.
 pub fn es_ruta_local(r: &str) -> bool {
     let b = r.as_bytes();
-    b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/') && !r.contains('\0')
+    b.len() >= 3
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b':'
+        && (b[2] == b'\\' || b[2] == b'/')
+        && !r.contains('\0')
 }
 
 /// Lo que se le ensena al usuario al confirmar: la accion y sus campos, en
@@ -701,12 +1068,17 @@ fn ventana(cual: &str) -> Result<Orden, Fallo> {
 
 /// Si una ruta es de imagen, por su extension.
 pub fn es_imagen(ruta: &Path) -> bool {
-    ruta.extension().and_then(|e| e.to_str()).is_some_and(|e| EXTENSIONES_IMAGEN.contains(&e.to_lowercase().as_str()))
+    ruta.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| EXTENSIONES_IMAGEN.contains(&e.to_lowercase().as_str()))
 }
 
 impl Entrada<'_> {
     fn campo(&self, c: &str) -> Option<String> {
-        self.campos.get(c).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+        self.campos
+            .get(c)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
     }
 
     fn bandera(&self, c: &str) -> bool {
@@ -717,7 +1089,9 @@ impl Entrada<'_> {
     /// guardados). El nombre lo cambia por su id quien manda
     /// (`apps/pixpin/src/orden.rs`), que es quien puede leer el disco.
     fn proyecto(&self) -> Value {
-        self.campo("proyecto").map(Value::String).unwrap_or(Value::Null)
+        self.campo("proyecto")
+            .map(Value::String)
+            .unwrap_or(Value::Null)
     }
 
     /// Los sueltos partidos en ficheros (los que existen) y texto (lo demas,
@@ -749,7 +1123,10 @@ impl Entrada<'_> {
         for s in &self.sueltos {
             let p = Path::new(s);
             if self.enlace || !(self.es_fichero)(p) {
-                return Err(Fallo { codigo: codigo::FALLO, motivo: format!("no existe el fichero «{s}»") });
+                return Err(Fallo {
+                    codigo: codigo::FALLO,
+                    motivo: format!("no existe el fichero «{s}»"),
+                });
             }
             v.push(p.to_path_buf());
         }
@@ -766,33 +1143,59 @@ fn ruta_json(p: &Path) -> Value {
 
 fn partir_imagenes(ficheros: &[PathBuf]) -> (Vec<Value>, Vec<Value>) {
     let (i, a): (Vec<&PathBuf>, Vec<&PathBuf>) = ficheros.iter().partition(|p| es_imagen(p));
-    (i.into_iter().map(|p| ruta_json(p)).collect(), a.into_iter().map(|p| ruta_json(p)).collect())
+    (
+        i.into_iter().map(|p| ruta_json(p)).collect(),
+        a.into_iter().map(|p| ruta_json(p)).collect(),
+    )
 }
 
 fn armar_pinear(e: &Entrada) -> Result<Orden, Fallo> {
     if let Some(c) = e.campo("codigo") {
-        return pedidos(vec![pedido("pinear", json!({ "codigo": c, "proyecto": e.proyecto() }))]);
+        return pedidos(vec![pedido(
+            "pinear",
+            json!({ "codigo": c, "proyecto": e.proyecto() }),
+        )]);
     }
     let rutas = e.solo_ficheros()?;
     if rutas.is_empty() {
-        return Err(Fallo::no_se_entiende("pinear: falta el fichero (o --codigo)"));
+        return Err(Fallo::no_se_entiende(
+            "pinear: falta el fichero (o --codigo)",
+        ));
     }
-    pedidos(rutas.iter().map(|r| pedido("pinear", json!({ "ruta": ruta_json(r) }))).collect())
+    pedidos(
+        rutas
+            .iter()
+            .map(|r| pedido("pinear", json!({ "ruta": ruta_json(r) })))
+            .collect(),
+    )
 }
 
 fn armar_archivo(e: &Entrada) -> Result<Orden, Fallo> {
-    let id = e.sueltos.first().cloned().or_else(|| e.campo("id")).ok_or_else(|| Fallo::no_se_entiende("archivo: falta el id del mensaje"))?;
-    pedidos(vec![pedido("pinear", json!({ "codigo": id, "proyecto": e.proyecto() }))])
+    let id = e
+        .sueltos
+        .first()
+        .cloned()
+        .or_else(|| e.campo("id"))
+        .ok_or_else(|| Fallo::no_se_entiende("archivo: falta el id del mensaje"))?;
+    pedidos(vec![pedido(
+        "pinear",
+        json!({ "codigo": id, "proyecto": e.proyecto() }),
+    )])
 }
 
 fn armar_chat(e: &Entrada) -> Result<Orden, Fallo> {
     let (texto, ficheros) = e.texto_y_ficheros();
     if texto.is_empty() && ficheros.is_empty() {
-        return pedidos(vec![pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": e.proyecto() } }))]);
+        return pedidos(vec![pedido(
+            "abrir",
+            json!({ "que": { "tipo": "proyecto", "proyecto": e.proyecto() } }),
+        )]);
     }
     // Lo que va como foto lo decide la misma regla que `--al-chat` y el
     // panel Compartir (`compartido::es_foto`): un GIF o un WebP van tal cual.
-    let (fotos, otros): (Vec<PathBuf>, Vec<PathBuf>) = ficheros.into_iter().partition(|p| crate::compartido::es_foto(p));
+    let (fotos, otros): (Vec<PathBuf>, Vec<PathBuf>) = ficheros
+        .into_iter()
+        .partition(|p| crate::compartido::es_foto(p));
     let imagenes: Vec<Value> = fotos.iter().map(|p| ruta_json(p)).collect();
     let archivos: Vec<Value> = otros.iter().map(|p| ruta_json(p)).collect();
     let mut campos = json!({ "texto": texto, "proyecto": e.proyecto() });
@@ -808,13 +1211,27 @@ fn armar_chat(e: &Entrada) -> Result<Orden, Fallo> {
 /// El pedido `leer_en_voz` de la extension del navegador, desde la consola.
 fn armar_leer(e: &Entrada) -> Result<Orden, Fallo> {
     let texto = texto_o(e, "texto").ok_or_else(|| Fallo::no_se_entiende("leer: falta el texto"))?;
-    pedidos(vec![pedido("leer_en_voz", json!({ "texto": texto, "titulo": e.campo("titulo") }))])
+    pedidos(vec![pedido(
+        "leer_en_voz",
+        json!({ "texto": texto, "titulo": e.campo("titulo") }),
+    )])
 }
 
 fn armar_proyecto(e: &Entrada) -> Result<Orden, Fallo> {
-    let id = e.sueltos.first().cloned().or_else(|| e.campo("id")).or_else(|| e.campo("proyecto"));
-    let id = id.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).ok_or_else(|| Fallo::no_se_entiende("proyecto: falta cual"))?;
-    pedidos(vec![pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": id } }))])
+    let id = e
+        .sueltos
+        .first()
+        .cloned()
+        .or_else(|| e.campo("id"))
+        .or_else(|| e.campo("proyecto"));
+    let id = id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| Fallo::no_se_entiende("proyecto: falta cual"))?;
+    pedidos(vec![pedido(
+        "abrir",
+        json!({ "que": { "tipo": "proyecto", "proyecto": id } }),
+    )])
 }
 
 fn armar_tarea(e: &Entrada) -> Result<Orden, Fallo> {
@@ -839,9 +1256,16 @@ fn armar_tarea(e: &Entrada) -> Result<Orden, Fallo> {
 fn texto_e_imagenes(e: &Entrada, que: &str) -> Result<(Value, Vec<Value>), Fallo> {
     let (texto, ficheros) = e.texto_y_ficheros();
     if let Some(f) = ficheros.iter().find(|f| !es_imagen(f)) {
-        return Err(Fallo::no_se_entiende(format!("{que} solo lleva imagenes, y «{}» no lo es", f.display())));
+        return Err(Fallo::no_se_entiende(format!(
+            "{que} solo lleva imagenes, y «{}» no lo es",
+            f.display()
+        )));
     }
-    let texto = if texto.is_empty() { Value::Null } else { Value::String(texto) };
+    let texto = if texto.is_empty() {
+        Value::Null
+    } else {
+        Value::String(texto)
+    };
     Ok((texto, ficheros.iter().map(|p| ruta_json(p)).collect()))
 }
 
@@ -866,11 +1290,18 @@ fn armar_leccion(e: &Entrada) -> Result<Orden, Fallo> {
 /// El texto suelto, o el campo con nombre.
 fn texto_o(e: &Entrada, campo: &str) -> Option<String> {
     let t = e.sueltos.join(" ").trim().to_string();
-    if t.is_empty() { e.campo(campo) } else { Some(t) }
+    if t.is_empty() {
+        e.campo(campo)
+    } else {
+        Some(t)
+    }
 }
 
 fn armar_lienzo(e: &Entrada) -> Result<Orden, Fallo> {
-    pedidos(vec![pedido("lienzo_nuevo", json!({ "nombre": texto_o(e, "nombre"), "proyecto": e.proyecto() }))])
+    pedidos(vec![pedido(
+        "lienzo_nuevo",
+        json!({ "nombre": texto_o(e, "nombre"), "proyecto": e.proyecto() }),
+    )])
 }
 
 /// `al-lienzo <nombre> [texto] [imagen…]`: el nombre es el primer suelto (o
@@ -880,19 +1311,35 @@ fn armar_al_lienzo(e: &Entrada) -> Result<Orden, Fallo> {
         Some(n) => (n, e.sueltos.clone()),
         None => match e.sueltos.split_first() {
             Some((n, r)) => (n.trim().to_string(), r.to_vec()),
-            None => return Err(Fallo::no_se_entiende("al-lienzo: falta el nombre del lienzo")),
+            None => {
+                return Err(Fallo::no_se_entiende(
+                    "al-lienzo: falta el nombre del lienzo",
+                ));
+            }
         },
     };
     if nombre.is_empty() {
-        return Err(Fallo::no_se_entiende("al-lienzo: falta el nombre del lienzo"));
+        return Err(Fallo::no_se_entiende(
+            "al-lienzo: falta el nombre del lienzo",
+        ));
     }
-    let sin_nombre = Entrada { sueltos: resto, campos: e.campos.clone(), es_fichero: e.es_fichero, enlace: e.enlace };
+    let sin_nombre = Entrada {
+        sueltos: resto,
+        campos: e.campos.clone(),
+        es_fichero: e.es_fichero,
+        enlace: e.enlace,
+    };
     let (texto, ficheros) = sin_nombre.texto_y_ficheros();
     if texto.is_empty() && ficheros.is_empty() {
-        return Err(Fallo::no_se_entiende("al-lienzo: falta el texto o alguna imagen"));
+        return Err(Fallo::no_se_entiende(
+            "al-lienzo: falta el texto o alguna imagen",
+        ));
     }
     if let Some(f) = ficheros.iter().find(|f| !es_imagen(f)) {
-        return Err(Fallo::no_se_entiende(format!("al-lienzo: un lienzo solo recibe imagenes y texto ({})", f.display())));
+        return Err(Fallo::no_se_entiende(format!(
+            "al-lienzo: un lienzo solo recibe imagenes y texto ({})",
+            f.display()
+        )));
     }
     let imagenes: Vec<Value> = ficheros.iter().map(|p| ruta_json(p)).collect();
     let mut campos = json!({ "lienzo": nombre, "texto": texto, "proyecto": e.proyecto() });
@@ -905,16 +1352,25 @@ fn armar_al_lienzo(e: &Entrada) -> Result<Orden, Fallo> {
 fn armar_lista(e: &Entrada) -> Result<Orden, Fallo> {
     // «Tareas», como `Atajos.LISTA` de Android cuando no dice titulo.
     let titulo = texto_o(e, "titulo").unwrap_or_else(|| "Tareas".into());
-    pedidos(vec![pedido("lista_nueva", json!({ "titulo": titulo, "proyecto": e.proyecto() }))])
+    pedidos(vec![pedido(
+        "lista_nueva",
+        json!({ "titulo": titulo, "proyecto": e.proyecto() }),
+    )])
 }
 
 fn armar_lecciones(e: &Entrada) -> Result<Orden, Fallo> {
-    pedidos(vec![pedido("lecciones", json!({ "consulta": texto_o(e, "consulta"), "proyecto": e.proyecto() }))])
+    pedidos(vec![pedido(
+        "lecciones",
+        json!({ "consulta": texto_o(e, "consulta"), "proyecto": e.proyecto() }),
+    )])
 }
 
 fn armar_grabar(e: &Entrada) -> Result<Orden, Fallo> {
     let nombre = texto_o(e, "nombre").unwrap_or_else(|| "Nota de voz".into());
-    pedidos(vec![pedido("grabar", json!({ "nombre": nombre, "proyecto": e.proyecto() }))])
+    pedidos(vec![pedido(
+        "grabar",
+        json!({ "nombre": nombre, "proyecto": e.proyecto() }),
+    )])
 }
 
 fn armar_soltar(e: &Entrada) -> Result<Orden, Fallo> {
@@ -937,7 +1393,10 @@ fn armar_al_movil(e: &Entrada) -> Result<Orden, Fallo> {
     }
     let (imagenes, archivos) = partir_imagenes(&ficheros);
     let aparato = e.campo("aparato").unwrap_or_else(|| "todos".into());
-    pedidos(vec![pedido("enviar_al_movil", json!({ "aparato": aparato, "imagenes": imagenes, "archivos": archivos }))])
+    pedidos(vec![pedido(
+        "enviar_al_movil",
+        json!({ "aparato": aparato, "imagenes": imagenes, "archivos": archivos }),
+    )])
 }
 
 fn imagenes_solo(e: &Entrada, que: &str) -> Result<Vec<PathBuf>, Fallo> {
@@ -946,13 +1405,19 @@ fn imagenes_solo(e: &Entrada, que: &str) -> Result<Vec<PathBuf>, Fallo> {
         return Err(Fallo::no_se_entiende(format!("{que}: faltan las imagenes")));
     }
     if let Some(r) = rutas.iter().find(|r| !es_imagen(r)) {
-        return Err(Fallo { codigo: codigo::FALLO, motivo: format!("«{}» no es una imagen", r.display()) });
+        return Err(Fallo {
+            codigo: codigo::FALLO,
+            motivo: format!("«{}» no es una imagen", r.display()),
+        });
     }
     Ok(rutas)
 }
 
 fn armar_ocr(e: &Entrada) -> Result<Orden, Fallo> {
-    Ok(Orden::Ocr { rutas: imagenes_solo(e, "ocr")?, copiar: e.bandera("copiar") })
+    Ok(Orden::Ocr {
+        rutas: imagenes_solo(e, "ocr")?,
+        copiar: e.bandera("copiar"),
+    })
 }
 
 fn armar_copiar_texto(e: &Entrada) -> Result<Orden, Fallo> {
@@ -969,9 +1434,16 @@ fn armar_copiar_texto(e: &Entrada) -> Result<Orden, Fallo> {
 fn armar_asistente(e: &Entrada) -> Result<Orden, Fallo> {
     let (texto, ficheros) = e.texto_y_ficheros();
     if texto.is_empty() && !ficheros.is_empty() {
-        return Ok(Orden::Preguntar { rutas: ficheros, proyecto: e.campo("proyecto") });
+        return Ok(Orden::Preguntar {
+            rutas: ficheros,
+            proyecto: e.campo("proyecto"),
+        });
     }
-    pedidos(vec![pedido_al_asistente(&texto, &ficheros, e.campo("proyecto"))])
+    pedidos(vec![pedido_al_asistente(
+        &texto,
+        &ficheros,
+        e.campo("proyecto"),
+    )])
 }
 
 /// El pedido `asistente` de un texto y unos ficheros: las imagenes las ve
@@ -1001,23 +1473,47 @@ fn armar_abrir(e: &Entrada) -> Result<Orden, Fallo> {
     let tipo = e.campo("tipo").map(|t| t.to_lowercase());
     match tipo.as_deref() {
         Some("mensaje") | Some("nota") => {
-            let codigo = e.campo("codigo").ok_or_else(|| Fallo::no_se_entiende("abrir: falta codigo"))?;
-            return pedidos(vec![pedido("abrir", json!({ "que": { "tipo": tipo, "proyecto": proyecto, "codigo": codigo } }))]);
+            let codigo = e
+                .campo("codigo")
+                .ok_or_else(|| Fallo::no_se_entiende("abrir: falta codigo"))?;
+            return pedidos(vec![pedido(
+                "abrir",
+                json!({ "que": { "tipo": tipo, "proyecto": proyecto, "codigo": codigo } }),
+            )]);
         }
         Some("hoja") => {
-            let r = e.campo("referencia").ok_or_else(|| Fallo::no_se_entiende("abrir: falta referencia"))?;
-            return pedidos(vec![pedido("abrir", json!({ "que": { "tipo": "hoja", "proyecto": proyecto, "referencia": r } }))]);
+            let r = e
+                .campo("referencia")
+                .ok_or_else(|| Fallo::no_se_entiende("abrir: falta referencia"))?;
+            return pedidos(vec![pedido(
+                "abrir",
+                json!({ "que": { "tipo": "hoja", "proyecto": proyecto, "referencia": r } }),
+            )]);
         }
-        Some("proyecto") => return pedidos(vec![pedido("abrir", json!({ "que": { "tipo": "proyecto", "proyecto": proyecto } }))]),
+        Some("proyecto") => {
+            return pedidos(vec![pedido(
+                "abrir",
+                json!({ "que": { "tipo": "proyecto", "proyecto": proyecto } }),
+            )]);
+        }
         Some("fichero") | None => {}
-        Some(otro) => return Err(Fallo::no_se_entiende(format!("abrir: no hay tipo «{otro}»"))),
+        Some(otro) => {
+            return Err(Fallo::no_se_entiende(format!(
+                "abrir: no hay tipo «{otro}»"
+            )));
+        }
     }
     let rutas = e.solo_ficheros()?;
     if rutas.is_empty() {
         return Err(Fallo::no_se_entiende("abrir: falta el fichero"));
     }
     let pagina = match e.campo("pagina") {
-        Some(p) => Some(p.parse::<u32>().ok().filter(|n| *n >= 1).ok_or_else(|| Fallo::no_se_entiende("--pagina es un numero desde 1"))?),
+        Some(p) => Some(
+            p.parse::<u32>()
+                .ok()
+                .filter(|n| *n >= 1)
+                .ok_or_else(|| Fallo::no_se_entiende("--pagina es un numero desde 1"))?,
+        ),
         None => None,
     };
     let buscar = e.campo("buscar");
@@ -1034,15 +1530,28 @@ fn sin_nulos_en_que(mut p: Value) -> Value {
 }
 
 fn armar_ventana(e: &Entrada) -> Result<Orden, Fallo> {
-    let cual = e.sueltos.first().cloned().or_else(|| e.campo("cual")).unwrap_or_default().to_lowercase();
+    let cual = e
+        .sueltos
+        .first()
+        .cloned()
+        .or_else(|| e.campo("cual"))
+        .unwrap_or_default()
+        .to_lowercase();
     match cual.as_str() {
         "tareas" | "galeria" | "lecciones" | "sincronizar" => ventana(&cual),
-        _ => Err(Fallo::no_se_entiende("ventana: tareas, galeria, lecciones o sincronizar")),
+        _ => Err(Fallo::no_se_entiende(
+            "ventana: tareas, galeria, lecciones o sincronizar",
+        )),
     }
 }
 
 fn armar_pedido(e: &Entrada) -> Result<Orden, Fallo> {
-    let json = e.sueltos.first().cloned().or_else(|| e.campo("json")).ok_or_else(|| Fallo::no_se_entiende("pedido: falta el JSON"))?;
+    let json = e
+        .sueltos
+        .first()
+        .cloned()
+        .or_else(|| e.campo("json"))
+        .ok_or_else(|| Fallo::no_se_entiende("pedido: falta el JSON"))?;
     de_json(&json)
 }
 

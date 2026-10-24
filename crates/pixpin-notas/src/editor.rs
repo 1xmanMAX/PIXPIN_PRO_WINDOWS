@@ -556,7 +556,9 @@ fn poner_formato(edit: HWND, f: &CHARFORMAT2W) {
 /// Sube, baja o esconde los trozos de la formula `[desde, hasta)` (en
 /// UTF-16 del texto `u`), ver [`crate::formulas::toques`].
 fn formula_compuesta(edit: HWND, u: &[u16], desde: usize, hasta: usize) {
-    let Some(trozo) = u.get(desde..hasta) else { return };
+    let Some(trozo) = u.get(desde..hasta) else {
+        return;
+    };
     for (a, b, toque) in crate::formulas::toques(&String::from_utf16_lossy(trozo)) {
         let mut f = formato();
         match toque {
@@ -3056,42 +3058,52 @@ fn sujetar_el_corrector() {
     static UNA_VEZ: std::sync::Once = std::sync::Once::new();
     UNA_VEZ.call_once(|| {
         let (listo, esperar) = std::sync::mpsc::channel();
-        let lanzado = std::thread::Builder::new().name("corrector-de-las-notas".into()).spawn(move || {
-            let _com = pixpin_shell::ComDelHilo::iniciar();
-            // SAFETY: DLL del sistema por su nombre, con una referencia que
-            // no se suelta; un control oculto de este hilo, que no se
-            // destruye; el bucle de mensajes es de este hilo.
-            unsafe {
-                let _ = windows::Win32::System::LibraryLoader::LoadLibraryW(w!("MsSpellCheckingFacility.dll"));
-                if windows::Win32::System::LibraryLoader::LoadLibraryW(w!("msftedit.dll")).is_ok()
-                    && let Ok(edit) = CreateWindowExW(
-                        WINDOW_EX_STYLE::default(),
-                        MSFTEDIT_CLASS,
-                        w!(""),
-                        WINDOW_STYLE((ES_MULTILINE) as u32),
-                        0,
-                        0,
-                        10,
-                        10,
-                        None,
-                        None,
-                        None,
-                        None,
-                    )
-                {
-                    let opciones = enviar(edit, EM_GETLANGOPTIONS, 0, 0);
-                    enviar(edit, EM_SETLANGOPTIONS, 0, opciones | IMF_SPELLCHECKING as isize);
-                    let ctf = SES_USECTF | SES_CTFALLOWPROOFING;
-                    enviar(edit, EM_SETEDITSTYLE, ctf as usize, ctf as isize);
+        let lanzado = std::thread::Builder::new()
+            .name("corrector-de-las-notas".into())
+            .spawn(move || {
+                let _com = pixpin_shell::ComDelHilo::iniciar();
+                // SAFETY: DLL del sistema por su nombre, con una referencia que
+                // no se suelta; un control oculto de este hilo, que no se
+                // destruye; el bucle de mensajes es de este hilo.
+                unsafe {
+                    let _ = windows::Win32::System::LibraryLoader::LoadLibraryW(w!(
+                        "MsSpellCheckingFacility.dll"
+                    ));
+                    if windows::Win32::System::LibraryLoader::LoadLibraryW(w!("msftedit.dll"))
+                        .is_ok()
+                        && let Ok(edit) = CreateWindowExW(
+                            WINDOW_EX_STYLE::default(),
+                            MSFTEDIT_CLASS,
+                            w!(""),
+                            WINDOW_STYLE((ES_MULTILINE) as u32),
+                            0,
+                            0,
+                            10,
+                            10,
+                            None,
+                            None,
+                            None,
+                            None,
+                        )
+                    {
+                        let opciones = enviar(edit, EM_GETLANGOPTIONS, 0, 0);
+                        enviar(
+                            edit,
+                            EM_SETLANGOPTIONS,
+                            0,
+                            opciones | IMF_SPELLCHECKING as isize,
+                        );
+                        let ctf = SES_USECTF | SES_CTFALLOWPROOFING;
+                        enviar(edit, EM_SETEDITSTYLE, ctf as usize, ctf as isize);
+                    }
+                    let _ = listo.send(());
+                    let mut m = MSG::default();
+                    while GetMessageW(&mut m, None, 0, 0).as_bool() {
+                        let _ = TranslateMessage(&m);
+                        DispatchMessageW(&m);
+                    }
                 }
-                let _ = listo.send(());
-                let mut m = MSG::default();
-                while GetMessageW(&mut m, None, 0, 0).as_bool() {
-                    let _ = TranslateMessage(&m);
-                    DispatchMessageW(&m);
-                }
-            }
-        });
+            });
         if lanzado.is_ok() {
             let _ = esperar.recv_timeout(std::time::Duration::from_secs(3));
         }

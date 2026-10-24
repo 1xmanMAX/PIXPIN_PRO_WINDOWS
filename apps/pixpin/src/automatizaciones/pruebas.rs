@@ -62,14 +62,19 @@ fn el_formato_va_y_vuelve_sin_perder_lo_que_no_entiende() {
     let c1 = l.buscar("c1").unwrap();
     assert_eq!(c1.disparador, Disparador::AlCapturar);
     assert_eq!(c1.resto.get("loDelMovil"), Some(&json!(42)));
-    assert!(matches!(&l.entradas[4], Entrada::Rota { motivo, .. } if motivo == "«al_llegar_correo» es de una versión más nueva"));
+    assert!(
+        matches!(&l.entradas[4], Entrada::Rota { motivo, .. } if motivo == "«al_llegar_correo» es de una versión más nueva")
+    );
     // Ida y vuelta: lo de mas y la rota siguen ahi, tal cual.
     let otra = Lista::de_json(&l.a_json()).unwrap();
     assert_eq!(otra, l);
     let v: Value = serde_json::from_str(&l.a_json()).unwrap();
     assert_eq!(v["deMas"], "se guarda");
     assert_eq!(v["version"], 1);
-    assert_eq!(v["automatizaciones"][4]["disparador"]["tipo"], "al_llegar_correo");
+    assert_eq!(
+        v["automatizaciones"][4]["disparador"]["tipo"],
+        "al_llegar_correo"
+    );
     assert_eq!(v["automatizaciones"][0]["pasos"][0]["tipo"], "accion");
     // Caso negativo: lo que no es JSON no se pisa.
     assert!(Lista::de_json("no es json").is_err());
@@ -79,8 +84,10 @@ fn el_formato_va_y_vuelve_sin_perder_lo_que_no_entiende() {
 #[test]
 fn una_receta_rota_o_con_un_paso_desconocido_no_entra() {
     let crear = |r: Value| de_receta(&r, "a".into(), "PC01", 1);
-    let bien = crear(json!({"nombre":"Resumen","disparador":{"tipo":"a_la_hora","hora":"8:00"},
-                            "pasos":"[\"Resume mis tareas pendientes\"]"}))
+    let bien = crear(
+        json!({"nombre":"Resumen","disparador":{"tipo":"a_la_hora","hora":"8:00"},
+                            "pasos":"[\"Resume mis tareas pendientes\"]"}),
+    )
     .unwrap();
     assert_eq!(bien.pasos.len(), 1);
     assert_eq!(bien.aparato.as_deref(), Some("PC01"));
@@ -88,19 +95,33 @@ fn una_receta_rota_o_con_un_paso_desconocido_no_entra() {
     let suelto = crear(json!({"nombre":"x","disparador":"a_mano","pasos":"dime la hora"})).unwrap();
     assert!(matches!(&suelto.pasos[0], Paso::Asistente { pedido, .. } if pedido == "dime la hora"));
     // Objetos con y sin `tipo`.
-    let mixto = crear(json!({"nombre":"x","disparador":{"tipo":"al_capturar"},"pasos":[
+    let mixto = crear(
+        json!({"nombre":"x","disparador":{"tipo":"al_capturar"},"pasos":[
         {"herramienta":"escribir_en_chat","args":{"texto":"{captura}"},"proyecto":"Obra"},
         {"asistente":"hazle OCR","imagenes":["{captura}"]},
-        {"tipo":"accion","herramienta":"anadir_tarea","args":{"texto":"{resultado}"}}]}))
+        {"tipo":"accion","herramienta":"anadir_tarea","args":{"texto":"{resultado}"}}]}),
+    )
     .unwrap();
     assert_eq!(mixto.pasos.len(), 3);
 
     let mal = |r: Value| crear(r).unwrap_err();
-    assert!(mal(json!({"nombre":"x","disparador":"a_mano","pasos":[{"herramienta":"volar","args":{}}]}))
-        .contains("no hay ninguna acción «volar»"));
-    assert!(mal(json!({"nombre":"x","disparador":"a_mano","pasos":[{"herramienta":"anadir_tarea"}]})).contains("texto"));
-    assert!(mal(json!({"nombre":"x","disparador":{"tipo":"a_la_hora","hora":"25:00"},"pasos":"hola"})).contains("hora"));
-    assert!(mal(json!({"nombre":"x","disparador":"cada_luna","pasos":"hola"})).contains("disparador"));
+    assert!(
+        mal(
+            json!({"nombre":"x","disparador":"a_mano","pasos":[{"herramienta":"volar","args":{}}]})
+        )
+        .contains("no hay ninguna acción «volar»")
+    );
+    assert!(
+        mal(json!({"nombre":"x","disparador":"a_mano","pasos":[{"herramienta":"anadir_tarea"}]}))
+            .contains("texto")
+    );
+    assert!(
+        mal(json!({"nombre":"x","disparador":{"tipo":"a_la_hora","hora":"25:00"},"pasos":"hola"}))
+            .contains("hora")
+    );
+    assert!(
+        mal(json!({"nombre":"x","disparador":"cada_luna","pasos":"hola"})).contains("disparador")
+    );
     assert!(mal(json!({"nombre":"x","disparador":"a_mano","pasos":[]})).contains("no tiene pasos"));
     assert!(mal(json!({"nombre":"","disparador":"a_mano","pasos":"hola"})).contains("nombre"));
     assert!(mal(json!({"nombre":"x","disparador":"a_mano","pasos":[3]})).contains("paso 1"));
@@ -127,8 +148,16 @@ fn un_bucle_de_disparadores_se_rechaza_al_crearla_y_se_bloquea_al_correr() {
             1,
         )
     };
-    assert!(crear("al_capturar", "capturar_pantalla").unwrap_err().contains("bucle"));
-    assert!(crear("al_sincronizar", "sincronizar_movil").unwrap_err().contains("bucle"));
+    assert!(
+        crear("al_capturar", "capturar_pantalla")
+            .unwrap_err()
+            .contains("bucle")
+    );
+    assert!(
+        crear("al_sincronizar", "sincronizar_movil")
+            .unwrap_err()
+            .contains("bucle")
+    );
     // Capturar a mano o sincronizar cada dia si vale.
     assert!(crear("a_mano", "capturar_pantalla").is_ok());
     assert!(crear("a_mano", "sincronizar_movil").is_ok());
@@ -150,17 +179,46 @@ fn un_bucle_de_disparadores_se_rechaza_al_crearla_y_se_bloquea_al_correr() {
         1
     });
     let mandar = encargo::envolver(dentro, Some("pr-obra".into()), Some(Tipo::AlCapturar));
-    assert_eq!(mandar(r#"{"pixpin":1,"accion":"capturar","modo":"zona"}"#), 3);
-    assert_eq!(mandar(r#"{"pixpin":1,"accion":"automatizacion","operacion":"borrar","id":"a"}"#), 3);
-    assert!(salidos.lock().unwrap().is_empty(), "salio algo que hacia bucle");
+    assert_eq!(
+        mandar(r#"{"pixpin":1,"accion":"capturar","modo":"zona"}"#),
+        3
+    );
+    assert_eq!(
+        mandar(r#"{"pixpin":1,"accion":"automatizacion","operacion":"borrar","id":"a"}"#),
+        3
+    );
+    assert!(
+        salidos.lock().unwrap().is_empty(),
+        "salio algo que hacia bucle"
+    );
     // Lo demas sale, con el chat del encargo si no dice otro.
-    assert_eq!(mandar(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#), 1);
-    assert_eq!(mandar(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan","codigo":"m1"}"#), 1);
-    assert_eq!(mandar(r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#), 1);
-    let v: Vec<Value> = salidos.lock().unwrap().iter().map(|j| serde_json::from_str(j).unwrap()).collect();
+    assert_eq!(
+        mandar(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#),
+        1
+    );
+    assert_eq!(
+        mandar(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan","codigo":"m1"}"#),
+        1
+    );
+    assert_eq!(
+        mandar(r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#),
+        1
+    );
+    let v: Vec<Value> = salidos
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|j| serde_json::from_str(j).unwrap())
+        .collect();
     assert_eq!(v[0]["proyecto"], "pr-obra");
-    assert!(v[1].get("proyecto").is_none(), "una lista concreta no se cambia");
-    assert!(v[2].get("proyecto").is_none(), "sincronizar no va a un chat");
+    assert!(
+        v[1].get("proyecto").is_none(),
+        "una lista concreta no se cambia"
+    );
+    assert!(
+        v[2].get("proyecto").is_none(),
+        "sincronizar no va a un chat"
+    );
 }
 
 /// 13-oct-2026 (un martes), a las `h:m` hora local, en ms.
@@ -171,7 +229,11 @@ fn a_las(dia: i64, h: i64, m: i64) -> i64 {
 
 #[test]
 fn a_la_hora_con_un_reloj_de_mentira() {
-    assert_eq!(dia_de_la_semana(a_las(0, 12, 0)), 2, "el 13-oct-2026 es martes");
+    assert_eq!(
+        dia_de_la_semana(a_las(0, 12, 0)),
+        2,
+        "el 13-oct-2026 es martes"
+    );
     assert_eq!(Vars::default().con_hora(a_las(0, 8, 5)).fecha, "2026-10-13");
     assert_eq!(Vars::default().con_hora(a_las(0, 8, 5)).hora, "08:05");
     let ocho = Disparador::ALaHora {
@@ -181,11 +243,19 @@ fn a_la_hora_con_un_reloj_de_mentira() {
     assert!(!toca_a_la_hora(&ocho, a_las(0, 7, 59), None));
     assert!(toca_a_la_hora(&ocho, a_las(0, 8, 0), None));
     // Ya corrio hoy: no otra vez; manana si.
-    assert!(!toca_a_la_hora(&ocho, a_las(0, 8, 30), Some(a_las(0, 8, 0))));
+    assert!(!toca_a_la_hora(
+        &ocho,
+        a_las(0, 8, 30),
+        Some(a_las(0, 8, 0))
+    ));
     assert!(toca_a_la_hora(&ocho, a_las(1, 8, 0), Some(a_las(0, 8, 0))));
     // Con el PC apagado a las 8: a las 9 se recupera; a las 15, ya no.
     assert!(toca_a_la_hora(&ocho, a_las(0, 9, 0), Some(a_las(-1, 8, 0))));
-    assert!(!toca_a_la_hora(&ocho, a_las(0, 15, 0), Some(a_las(-1, 8, 0))));
+    assert!(!toca_a_la_hora(
+        &ocho,
+        a_las(0, 15, 0),
+        Some(a_las(-1, 8, 0))
+    ));
     // Solo los lunes: el martes no.
     let lunes = Disparador::ALaHora {
         hora: "08:00".into(),
@@ -207,14 +277,23 @@ fn a_la_hora_con_un_reloj_de_mentira() {
 #[test]
 fn cada_disparo_elige_las_suyas() {
     let l = Lista::de_json(EJEMPLO).unwrap();
-    let ids = |d: &Disparo, ahora: i64, ultimas: &std::collections::BTreeMap<String, i64>| -> Vec<String> {
-        elegir(&l, d, "PC01", ahora, ultimas).into_iter().map(|(a, _)| a.id).collect()
+    let ids = |d: &Disparo,
+               ahora: i64,
+               ultimas: &std::collections::BTreeMap<String, i64>|
+     -> Vec<String> {
+        elegir(&l, d, "PC01", ahora, ultimas)
+            .into_iter()
+            .map(|(a, _)| a.id)
+            .collect()
     };
     let nada = Default::default();
     let captura = Disparo::Captura(PathBuf::from(r"C:\c\captura-1.png"));
     assert_eq!(ids(&captura, a_las(0, 12, 0), &nada), ["c1"]);
     let (_, vars) = elegir(&l, &captura, "PC01", a_las(0, 12, 0), &nada).remove(0);
-    assert_eq!(vars.captura.as_deref(), Some(Path::new(r"C:\c\captura-1.png")));
+    assert_eq!(
+        vars.captura.as_deref(),
+        Some(Path::new(r"C:\c\captura-1.png"))
+    );
     assert_eq!(vars.hora, "12:00");
     // La de la sincro esta apagada.
     assert!(ids(&Disparo::Sincro("Al día".into()), a_las(0, 12, 0), &nada).is_empty());
@@ -259,10 +338,22 @@ impl Hacedor for Espia {
         self.acciones.push(a.pedido.clone());
         Ok(format!("hecho: {}", a.herramienta))
     }
-    fn asistente(&mut self, pedido: &str, proyecto: Option<&str>, imagenes: &[PathBuf], bloquear: Tipo) -> Result<String, String> {
-        self.preguntas
-            .push((pedido.to_string(), proyecto.map(str::to_string), imagenes.to_vec(), bloquear));
-        self.respuesta.clone().unwrap_or_else(|| Ok("Texto leído: CIMIENTOS".into()))
+    fn asistente(
+        &mut self,
+        pedido: &str,
+        proyecto: Option<&str>,
+        imagenes: &[PathBuf],
+        bloquear: Tipo,
+    ) -> Result<String, String> {
+        self.preguntas.push((
+            pedido.to_string(),
+            proyecto.map(str::to_string),
+            imagenes.to_vec(),
+            bloquear,
+        ));
+        self.respuesta
+            .clone()
+            .unwrap_or_else(|| Ok("Texto leído: CIMIENTOS".into()))
     }
     fn proyecto(&self, nombre: &str) -> Option<String> {
         (acciones_normalizar(nombre) == "obra").then(|| "pr-obra".into())
@@ -314,7 +405,11 @@ fn los_pasos_se_encadenan_y_el_que_falla_para_los_demas() {
     assert!(!inf.bien());
     assert_eq!(inf.pasos.len(), 2);
     assert_eq!(h.acciones.len(), 1);
-    assert!(inf.resumen(3).contains("Paso 2 de 3: sin modelo"), "{}", inf.resumen(3));
+    assert!(
+        inf.resumen(3).contains("Paso 2 de 3: sin modelo"),
+        "{}",
+        inf.resumen(3)
+    );
     // Y un chat que no existe para en ese paso.
     let mut otra = a.clone();
     if let Paso::Accion { proyecto, .. } = &mut otra.pasos[0] {
@@ -330,16 +425,35 @@ fn los_pasos_se_encadenan_y_el_que_falla_para_los_demas() {
 #[test]
 fn guardar_crea_el_fichero_y_un_solo_mensaje_que_lo_hace_viajar() {
     let raiz = raiz_de_prueba("guardar");
-    let a = de_receta(&json!({"nombre":"Resumen","disparador":"a_mano","pasos":"hola"}), "auto-1".into(), "PC01", 5).unwrap();
+    let a = de_receta(
+        &json!({"nombre":"Resumen","disparador":"a_mano","pasos":"hola"}),
+        "auto-1".into(),
+        "PC01",
+        5,
+    )
+    .unwrap();
     cambiar(&raiz, "PC01", 5, |l| l.anadir(a.clone())).unwrap();
     // Repetir el id no entra.
-    assert!(cambiar(&raiz, "PC01", 6, |l| l.anadir(a.clone())).unwrap_err().contains("ya hay"));
-    let b = de_receta(&json!({"nombre":"Otra","disparador":"a_mano","pasos":"adios"}), "auto-2".into(), "PC01", 7).unwrap();
+    assert!(
+        cambiar(&raiz, "PC01", 6, |l| l.anadir(a.clone()))
+            .unwrap_err()
+            .contains("ya hay")
+    );
+    let b = de_receta(
+        &json!({"nombre":"Otra","disparador":"a_mano","pasos":"adios"}),
+        "auto-2".into(),
+        "PC01",
+        7,
+    )
+    .unwrap();
     cambiar(&raiz, "PC01", 7, |l| l.anadir(b)).unwrap();
     let (asistente, carpeta) = chat_del_asistente(&raiz, "PC01", 8).unwrap();
     assert!(fichero_en(&carpeta).ends_with(r"android\guardados\asistente\automatizaciones.json"));
     let l = leer(&raiz, "PC01").unwrap();
-    assert_eq!(l.buenas().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["auto-1", "auto-2"]);
+    assert_eq!(
+        l.buenas().map(|a| a.id.as_str()).collect::<Vec<_>>(),
+        ["auto-1", "auto-2"]
+    );
     let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
     let senal: Vec<_> = c.mensajes.iter().filter(|m| m.id == ID_MENSAJE).collect();
     assert_eq!(senal.len(), 1, "un solo mensaje aunque se guarde dos veces");
@@ -350,21 +464,35 @@ fn guardar_crea_el_fichero_y_un_solo_mensaje_que_lo_hace_viajar() {
     assert_eq!(real, fichero_en(&carpeta));
     // Apagar y borrar.
     cambiar(&raiz, "PC01", 9, |l| Ok(l.activar("auto-1", false, 9))).unwrap();
-    assert!(!leer(&raiz, "PC01").unwrap().buscar("auto-1").unwrap().activa);
+    assert!(
+        !leer(&raiz, "PC01")
+            .unwrap()
+            .buscar("auto-1")
+            .unwrap()
+            .activa
+    );
     assert!(cambiar(&raiz, "PC01", 10, |l| Ok(l.borrar("auto-1"))).unwrap());
     assert!(!cambiar(&raiz, "PC01", 11, |l| Ok(l.borrar("auto-1"))).unwrap());
     assert_eq!(leer(&raiz, "PC01").unwrap().buenas().count(), 1);
     // Caso negativo: un fichero roto no se pisa.
     std::fs::write(fichero_en(&carpeta), "{roto").unwrap();
     assert!(cambiar(&raiz, "PC01", 12, |l| Ok(l.borrar("auto-2"))).is_err());
-    assert_eq!(std::fs::read_to_string(fichero_en(&carpeta)).unwrap(), "{roto");
+    assert_eq!(
+        std::fs::read_to_string(fichero_en(&carpeta)).unwrap(),
+        "{roto"
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
-fn contexto_de(ubicacion: &pixpin_store::Ubicacion, textos: &pixpin_store::Catalogo) -> crate::pedidos::Contexto<'static> {
+fn contexto_de(
+    ubicacion: &pixpin_store::Ubicacion,
+    textos: &pixpin_store::Catalogo,
+) -> crate::pedidos::Contexto<'static> {
     // Las pruebas viven lo que el proceso: se sueltan a proposito.
     let u: &'static pixpin_store::Ubicacion = Box::leak(Box::new(ubicacion.clone()));
-    let t: &'static pixpin_store::Catalogo = Box::leak(Box::new(pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol)));
+    let t: &'static pixpin_store::Catalogo = Box::leak(Box::new(pixpin_store::Catalogo::nuevo(
+        pixpin_store::Idioma::Espanol,
+    )));
     let _ = textos;
     crate::pedidos::Contexto {
         idioma: pixpin_store::Idioma::Espanol,
@@ -392,9 +520,18 @@ fn el_pedido_automatizacion_crea_apaga_y_borra() {
         "pasos": "[\"Resume mis tareas pendientes\"]"}))
     .unwrap();
     let hecha = pixpin_ia::acciones::validar(fila, &args).unwrap();
-    assert!(hecha.confirmar.as_deref().unwrap().contains("«Resumen de pendientes»"));
+    assert!(
+        hecha
+            .confirmar
+            .as_deref()
+            .unwrap()
+            .contains("«Resumen de pendientes»")
+    );
     let h = crate::pedidos::atender(&hecha.pedido.to_string(), &cx);
-    assert_eq!(h.aviso.as_deref(), Some("Automatización «Resumen de pendientes» creada."));
+    assert_eq!(
+        h.aviso.as_deref(),
+        Some("Automatización «Resumen de pendientes» creada.")
+    );
     let l = leer(&raiz, "PC01").unwrap();
     let a = l.buenas().next().unwrap().clone();
     assert_eq!(
@@ -416,7 +553,10 @@ fn el_pedido_automatizacion_crea_apaga_y_borra() {
     assert!(!leer(&raiz, "PC01").unwrap().buscar(&a.id).unwrap().activa);
     assert!(pedir("activar").contains("encendida"));
     assert!(pedir("borrar").contains("borrada"));
-    assert!(pedir("borrar").contains("No hay ninguna"), "la segunda vez ya no esta");
+    assert!(
+        pedir("borrar").contains("No hay ninguna"),
+        "la segunda vez ya no esta"
+    );
     // Caso negativo: una receta rota no se guarda y se dice por que.
     let rota = json!({"pixpin":1,"accion":"automatizacion","operacion":"crear",
                       "receta":{"nombre":"x","disparador":{"tipo":"al_capturar"},"pasos":"[{\"herramienta\":\"capturar_pantalla\"}]"}});
@@ -440,21 +580,30 @@ fn el_pedido_asistente_se_lee_y_lo_que_falta_se_dice() {
             encargo: None,
         }
     );
-    assert!(leer_pedido(r#"{"pixpin":1,"accion":"asistente"}"#).is_ok(), "sin nada: abrir el chat");
+    assert!(
+        leer_pedido(r#"{"pixpin":1,"accion":"asistente"}"#).is_ok(),
+        "sin nada: abrir el chat"
+    );
     assert!(leer_pedido(r#"{"pixpin":1,"accion":"automatizacion","operacion":"volar"}"#).is_err());
     let raiz = raiz_de_prueba("pedido-asistente");
     let u = pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() };
     let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
     let cx = contexto_de(&u, &t);
     // Un chat que no existe o una imagen que no esta: no se lanza nada.
-    let h = crate::pedidos::atender(r#"{"pixpin":1,"accion":"asistente","texto":"hola","proyecto":"pr-no"}"#, &cx);
+    let h = crate::pedidos::atender(
+        r#"{"pixpin":1,"accion":"asistente","texto":"hola","proyecto":"pr-no"}"#,
+        &cx,
+    );
     assert!(h.aviso.unwrap().contains("ya no está"));
     let h = crate::pedidos::atender(
         r#"{"pixpin":1,"accion":"asistente","texto":"hola","imagenes":["C:\\no\\esta.png"]}"#,
         &cx,
     );
     assert!(h.aviso.is_some());
-    let h = crate::pedidos::atender(r#"{"pixpin":1,"accion":"asistente","automatizacion":"no-esta"}"#, &cx);
+    let h = crate::pedidos::atender(
+        r#"{"pixpin":1,"accion":"asistente","automatizacion":"no-esta"}"#,
+        &cx,
+    );
     assert!(h.aviso.unwrap().contains("No hay ninguna"));
     let _ = std::fs::remove_dir_all(&raiz);
 }
@@ -482,7 +631,13 @@ fn los_pasos_encadenados_con_el_motor_de_mentira() {
             self.acciones.push(a.pedido.clone());
             Ok("hecho".into())
         }
-        fn asistente(&mut self, pedido: &str, proyecto: Option<&str>, imagenes: &[PathBuf], bloquear: Tipo) -> Result<String, String> {
+        fn asistente(
+            &mut self,
+            pedido: &str,
+            proyecto: Option<&str>,
+            imagenes: &[PathBuf],
+            bloquear: Tipo,
+        ) -> Result<String, String> {
             let s = self.salidos.clone();
             let mandar: crate::asistente::acciones::Mandar = Box::new(move |j| {
                 s.lock().unwrap().push(j.to_string());
@@ -536,13 +691,24 @@ fn los_pasos_encadenados_con_el_motor_de_mentira() {
     assert_eq!(tarea["accion"], "anadir_tarea");
     assert_eq!(tarea["proyecto"], json!(obra));
     // Lo que contesto paso al paso siguiente.
-    assert_eq!(h.acciones[0]["texto"], "Resumen 2026-10-13: Apuntada. Tienes 2 tareas pendientes.");
+    assert_eq!(
+        h.acciones[0]["texto"],
+        "Resumen 2026-10-13: Apuntada. Tienes 2 tareas pendientes."
+    );
     assert_eq!(h.acciones[0]["proyecto"], json!(obra));
     // Y la conversacion quedo en el chat «Asistente».
     let (_, carpeta) = chat_del_asistente(&raiz, "PC01", 1).unwrap();
     let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
-    let pregunta = c.mensajes.iter().find(|m| m.texto.starts_with("⚙️ Resumen:")).expect("la pregunta");
-    assert!(pregunta.texto.ends_with("@Obra Miraflores"), "{}", pregunta.texto);
+    let pregunta = c
+        .mensajes
+        .iter()
+        .find(|m| m.texto.starts_with("⚙️ Resumen:"))
+        .expect("la pregunta");
+    assert!(
+        pregunta.texto.ends_with("@Obra Miraflores"),
+        "{}",
+        pregunta.texto
+    );
     let respuesta = c
         .mensajes
         .iter()
@@ -550,8 +716,15 @@ fn los_pasos_encadenados_con_el_motor_de_mentira() {
         .expect("la respuesta");
     assert_eq!(respuesta.texto, "Apuntada. Tienes 2 tareas pendientes.");
     // El modelo supo sobre que chat se le pedia.
-    let pedido_al_modelo = motor.recibido.lock().unwrap()[0].mensajes.last().unwrap().texto_entero();
-    assert!(pedido_al_modelo.contains("«Obra Miraflores»"), "{pedido_al_modelo}");
+    let pedido_al_modelo = motor.recibido.lock().unwrap()[0]
+        .mensajes
+        .last()
+        .unwrap()
+        .texto_entero();
+    assert!(
+        pedido_al_modelo.contains("«Obra Miraflores»"),
+        "{pedido_al_modelo}"
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -613,7 +786,9 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
         // El chat «Asistente» antes del hilo (si no, los dos lo crearian a la vez).
         let (proyecto, carpeta) = chat_del_asistente(&raiz, "PC01", 1).unwrap();
         // La lista que se pide borrar, por su nombre (14-oct).
-        let lista = crate::pedidos::nueva_lista(&raiz, &proyecto, "PC01", "m-flow").unwrap().id;
+        let lista = crate::pedidos::nueva_lista(&raiz, &proyecto, "PC01", "m-flow")
+            .unwrap()
+            .id;
         let hilo = std::thread::spawn({
             let ent = ent.clone();
             move || {
@@ -642,7 +817,10 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
             assert!(
                 std::time::Instant::now() < hasta,
                 "no pregunto: {:?}",
-                c.mensajes.iter().map(|m| (m.id.clone(), m.texto.clone())).collect::<Vec<_>>()
+                c.mensajes
+                    .iter()
+                    .map(|m| (m.id.clone(), m.texto.clone()))
+                    .collect::<Vec<_>>()
             );
             if let Some(m) = c
                 .mensajes
@@ -655,7 +833,10 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
         };
-        assert!(salidos.lock().unwrap().is_empty(), "salio antes de contestar");
+        assert!(
+            salidos.lock().unwrap().is_empty(),
+            "salio antes de contestar"
+        );
         assert!(crate::asistente::permiso::contestar(&proyecto, &nota, si));
         let r = hilo.join().unwrap().unwrap();
         let sale = salidos.lock().unwrap().iter().any(|j| j.contains(&lista));
@@ -663,7 +844,11 @@ fn el_encargo_sin_ventana_pregunta_en_su_burbuja() {
         let marca = if si { "→ ✅ Sí" } else { "→ ✖️ No" };
         assert!(r.texto.contains(marca), "{}", r.texto);
         let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
-        assert!(c.mensajes.iter().any(|m| m.id == nota && m.texto.contains(marca)));
+        assert!(
+            c.mensajes
+                .iter()
+                .any(|m| m.id == nota && m.texto.contains(marca))
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }
@@ -699,14 +884,25 @@ fn el_encargo_con_una_orden_rapida_no_toca_el_modelo() {
     let (r, t) = pedir("¿Qué tengo pendiente?", vacio.clone());
     println!("encargo rapido: {t:?}");
     assert!(r.bien && r.texto.contains("comprar pan"), "{}", r.texto);
-    assert!(vacio.recibido.lock().unwrap().is_empty(), "no se toca el modelo");
+    assert!(
+        vacio.recibido.lock().unwrap().is_empty(),
+        "no se toca el modelo"
+    );
     assert!(t < std::time::Duration::from_millis(500), "{t:?}");
     // Y sin ningun motor (sin bajar, sin clave) la orden rapida se hace igual.
-    let sin = crate::asistente::rapido::motor_o_sin(Err("falta el modelo".into()), "¿Qué tengo pendiente?");
+    let sin = crate::asistente::rapido::motor_o_sin(
+        Err("falta el modelo".into()),
+        "¿Qué tengo pendiente?",
+    );
     assert!(sin.is_ok());
-    assert!(crate::asistente::rapido::motor_o_sin(Err("falta el modelo".into()), "dibuja una casa").is_err());
+    assert!(
+        crate::asistente::rapido::motor_o_sin(Err("falta el modelo".into()), "dibuja una casa")
+            .is_err()
+    );
     // Negativo: lo que no es simple si va al modelo.
-    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("Una casa con tejado.")]));
+    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto(
+        "Una casa con tejado.",
+    )]));
     let (r, _) = pedir("Describe una casa bonita", motor.clone());
     assert_eq!(motor.recibido.lock().unwrap().len(), 1);
     assert!(r.texto.contains("Una casa"), "{}", r.texto);
@@ -741,7 +937,11 @@ fn png_de_lamina(raiz: &Path) -> PathBuf {
     let p = crate::asistente::hoja_a_lienzo::banco_diagramas::lamina_tales();
     let ruta = raiz.join("lamina-prueba.png");
     std::fs::create_dir_all(raiz).unwrap();
-    let img = pixpin_codec::ImagenRgba { ancho: p.ancho, alto: p.alto, pixeles: p.rgba };
+    let img = pixpin_codec::ImagenRgba {
+        ancho: p.ancho,
+        alto: p.alto,
+        pixeles: p.rgba,
+    };
     std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
     ruta
 }
@@ -749,8 +949,22 @@ fn png_de_lamina(raiz: &Path) -> PathBuf {
 /// El encargo de un pedido `asistente`, como lo arma la cola.
 fn encargo_del_pedido(json: &str) -> encargo::Encargo {
     use crate::pedidos::{Pedido, leer as leer_pedido};
-    let Pedido::Asistente { texto, proyecto, imagenes, .. } = leer_pedido(json).unwrap() else { panic!("no es un pedido asistente") };
-    let e = encargo::Encargo { texto, proyecto, imagenes, origen: None, bloquear: None };
+    let Pedido::Asistente {
+        texto,
+        proyecto,
+        imagenes,
+        ..
+    } = leer_pedido(json).unwrap()
+    else {
+        panic!("no es un pedido asistente")
+    };
+    let e = encargo::Encargo {
+        texto,
+        proyecto,
+        imagenes,
+        origen: None,
+        bloquear: None,
+    };
     super::cola::Registro::nuevo("prueba".into(), &e, 1).encargo()
 }
 
@@ -767,21 +981,68 @@ fn calca_esto_con_una_lamina_por_la_cola_va_como_hoja() {
         let ruta = png_de_lamina(&raiz);
         let json = json!({"pixpin":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
         let e = encargo_del_pedido(&json);
-        let ent = encargo::Entorno { ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() }, aparato: "PC01".into() };
-        let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_llamada("calcar_imagen", "{}"), Respuesta::de_texto("Listo.")]));
-        let vision: Option<Arc<dyn pixpin_ia::motor::Motor>> = if con_vision { Some(Arc::new(VisionSinRed)) } else { None };
-        let r = encargo::hacer_con_vision(&ent, motor.clone(), vision, &e, encargo::Permiso::Fijo(Box::new(|_| false)), Box::new(|_| 1)).unwrap();
+        let ent = encargo::Entorno {
+            ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() },
+            aparato: "PC01".into(),
+        };
+        let motor = Arc::new(MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada("calcar_imagen", "{}"),
+            Respuesta::de_texto("Listo."),
+        ]));
+        let vision: Option<Arc<dyn pixpin_ia::motor::Motor>> = if con_vision {
+            Some(Arc::new(VisionSinRed))
+        } else {
+            None
+        };
+        let r = encargo::hacer_con_vision(
+            &ent,
+            motor.clone(),
+            vision,
+            &e,
+            encargo::Permiso::Fijo(Box::new(|_| false)),
+            Box::new(|_| 1),
+        )
+        .unwrap();
         // Lo que le volvio al modelo de la herramienta.
         let recibido = motor.recibido.lock().unwrap();
-        let ultimo = recibido.last().unwrap().mensajes.iter().map(|m| m.texto_entero()).collect::<Vec<_>>().join("\n");
-        eprintln!("{nombre}: {}", ultimo.chars().rev().take(400).collect::<String>().chars().rev().collect::<String>());
+        let ultimo = recibido
+            .last()
+            .unwrap()
+            .mensajes
+            .iter()
+            .map(|m| m.texto_entero())
+            .collect::<Vec<_>>()
+            .join("\n");
+        eprintln!(
+            "{nombre}: {}",
+            ultimo
+                .chars()
+                .rev()
+                .take(400)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>()
+        );
         if con_vision {
-            assert!(ultimo.contains("era una lamina"), "con vision la lamina va como hoja: {ultimo}");
-            assert!(ultimo.contains("figura(s) con rectas"), "con su figura exacta: {ultimo}");
+            assert!(
+                ultimo.contains("era una lamina"),
+                "con vision la lamina va como hoja: {ultimo}"
+            );
+            assert!(
+                ultimo.contains("figura(s) con rectas"),
+                "con su figura exacta: {ultimo}"
+            );
         } else {
-            assert!(!ultimo.contains("era una lamina"), "sin vision se calca: {ultimo}");
+            assert!(
+                !ultimo.contains("era una lamina"),
+                "sin vision se calca: {ultimo}"
+            );
         }
-        assert!(r.lienzo.is_some(), "dibujo en el lienzo del asistente: {r:?}");
+        assert!(
+            r.lienzo.is_some(),
+            "dibujo en el lienzo del asistente: {r:?}"
+        );
         drop(recibido);
         let _ = std::fs::remove_dir_all(&raiz);
     }
@@ -805,14 +1066,33 @@ fn pedido_calca_esto_con_claude() {
     std::fs::copy(r"E:\pixpin-demo\lamina-prueba.png", &ruta).expect("la lamina de E:/pixpin-demo");
     let json = json!({"pixpin":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
     let e = encargo_del_pedido(&json);
-    let ent = encargo::Entorno { ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() }, aparato: "PC01".into() };
+    let ent = encargo::Entorno {
+        ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() },
+        aparato: "PC01".into(),
+    };
     let p = pixpin_ia::nube::Proveedor::Claude;
-    let motor = crate::asistente::nube::motor(p, None, false).expect("la clave de Claude en Ajustes");
+    let motor =
+        crate::asistente::nube::motor(p, None, false).expect("la clave de Claude en Ajustes");
     let clave = pixpin_ia::nube::claves::leer(p).unwrap();
-    let vision: Arc<dyn pixpin_ia::motor::Motor> = Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero());
+    let vision: Arc<dyn pixpin_ia::motor::Motor> =
+        Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero());
     let t = std::time::Instant::now();
-    let r = encargo::hacer_con_vision(&ent, motor, Some(vision), &e, encargo::Permiso::Fijo(Box::new(|_| false)), Box::new(|_| 1)).unwrap();
-    println!("{:.1} s, bien {}, lienzo {:?}\n{}", t.elapsed().as_secs_f32(), r.bien, r.lienzo, r.texto);
+    let r = encargo::hacer_con_vision(
+        &ent,
+        motor,
+        Some(vision),
+        &e,
+        encargo::Permiso::Fijo(Box::new(|_| false)),
+        Box::new(|_| 1),
+    )
+    .unwrap();
+    println!(
+        "{:.1} s, bien {}, lienzo {:?}\n{}",
+        t.elapsed().as_secs_f32(),
+        r.bien,
+        r.lienzo,
+        r.texto
+    );
     assert!(r.lienzo.is_some(), "{r:?}");
     let _ = std::fs::remove_dir_all(&raiz);
 }

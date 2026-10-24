@@ -241,8 +241,7 @@ pub fn partir_escrito(escrito: &str) -> Vec<&str> {
 
 /// Las palabras que manda el usuario, puestas por quien lee los ajustes
 /// (`fijar`). Vacio hasta entonces: mandan las de fabrica.
-static VIGENTES: std::sync::Mutex<Option<BTreeMap<String, MiniApp>>> =
-    std::sync::Mutex::new(None);
+static VIGENTES: std::sync::Mutex<Option<BTreeMap<String, MiniApp>>> = std::sync::Mutex::new(None);
 
 /// Fija las palabras guardadas (`None` = las de fabrica). Lo llama quien
 /// tiene los ajustes, al arrancar y al cerrarse la ventana de ajustes.
@@ -401,7 +400,10 @@ mod pruebas {
     fn el_color_va_despues_de_la_palabra_y_antes_de_la_tabla() {
         let p = por_defecto();
         assert_eq!(clasificar("#29B8DB", &p), Clasificado::Color(0xFF29B8DB));
-        assert_eq!(clasificar("  orange \n", &p), Clasificado::Color(0xFFFF9800));
+        assert_eq!(
+            clasificar("  orange \n", &p),
+            Clasificado::Color(0xFFFF9800)
+        );
         assert_eq!(clasificar("texto cualquiera", &p), Clasificado::Texto);
         assert_eq!(clasificar("   ", &p), Clasificado::Vacio);
         // Una palabra propia que se llama como un color abre la herramienta.
@@ -433,7 +435,9 @@ mod pruebas {
 
     #[test]
     fn lo_que_no_se_entiende_se_salta() {
-        let mias = leer(Some("reloj=TIMER\nbasura\n=TIMER\nx=NOEXISTE\ndos palabras=TIMER"));
+        let mias = leer(Some(
+            "reloj=TIMER\nbasura\n=TIMER\nx=NOEXISTE\ndos palabras=TIMER",
+        ));
         assert_eq!(mias.len(), 1);
         assert_eq!(mias.get("reloj"), Some(&MiniApp::Temporizador));
     }

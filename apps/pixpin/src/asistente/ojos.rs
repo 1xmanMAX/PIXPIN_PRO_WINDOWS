@@ -94,7 +94,14 @@ pub fn copiar(
         }
         copia.elementos.push(e.clone());
     }
-    Encargo { escena: copia, imagenes, caja, marco, fondo: None, marcas }
+    Encargo {
+        escena: copia,
+        imagenes,
+        caja,
+        marco,
+        fondo: None,
+        marcas,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,9 +120,14 @@ struct Gpu {
 
 impl Gpu {
     fn nueva() -> Result<Gpu, String> {
-        let d = pixpin_capture::Dispositivo::nuevo().map_err(|e| format!("no hay GPU para pintar la vista: {e:?}"))?;
-        let motor = MotorRender::nuevo(d.d3d()).map_err(|e| format!("no se pudo preparar el pintor: {e:?}"))?;
-        Ok(Gpu { _dispositivo: d, motor })
+        let d = pixpin_capture::Dispositivo::nuevo()
+            .map_err(|e| format!("no hay GPU para pintar la vista: {e:?}"))?;
+        let motor = MotorRender::nuevo(d.d3d())
+            .map_err(|e| format!("no se pudo preparar el pintor: {e:?}"))?;
+        Ok(Gpu {
+            _dispositivo: d,
+            motor,
+        })
     }
 }
 
@@ -127,31 +139,40 @@ fn cola() -> Option<Sender<Orden>> {
     static COLA: OnceLock<Mutex<Option<Sender<Orden>>>> = OnceLock::new();
     let m = COLA.get_or_init(|| {
         let (tx, rx) = channel::<Orden>();
-        let lanzado = std::thread::Builder::new().name("asistente-ojos".into()).spawn(move || {
-            let _com = pixpin_shell::ComDelHilo::iniciar();
-            let mut gpu: Option<Gpu> = None;
-            for orden in rx {
-                let tg = Instant::now();
-                if gpu.is_none() {
-                    gpu = Gpu::nueva().map_err(|e| tracing::warn!(%e, "asistente: ojos sin GPU")).ok();
-                }
-                tracing::debug!(ms = tg.elapsed().as_millis(), "asistente: GPU de los ojos lista");
-                let Orden::Pintar(enc, responder) = orden else { continue };
-                let r = match gpu.as_ref() {
-                    Some(g) => pintar_con(g, &enc),
-                    None => Err("no hay GPU para pintar la vista".to_string()),
-                };
-                // Un dispositivo perdido se rehace una vez.
-                let r = match r {
-                    Err(e) if e.contains("dispositivo") => {
-                        gpu = Gpu::nueva().ok();
-                        gpu.as_ref().map_or(Err(e), |g| pintar_con(g, &enc))
+        let lanzado = std::thread::Builder::new()
+            .name("asistente-ojos".into())
+            .spawn(move || {
+                let _com = pixpin_shell::ComDelHilo::iniciar();
+                let mut gpu: Option<Gpu> = None;
+                for orden in rx {
+                    let tg = Instant::now();
+                    if gpu.is_none() {
+                        gpu = Gpu::nueva()
+                            .map_err(|e| tracing::warn!(%e, "asistente: ojos sin GPU"))
+                            .ok();
                     }
-                    r => r,
-                };
-                let _ = responder.send(r);
-            }
-        });
+                    tracing::debug!(
+                        ms = tg.elapsed().as_millis(),
+                        "asistente: GPU de los ojos lista"
+                    );
+                    let Orden::Pintar(enc, responder) = orden else {
+                        continue;
+                    };
+                    let r = match gpu.as_ref() {
+                        Some(g) => pintar_con(g, &enc),
+                        None => Err("no hay GPU para pintar la vista".to_string()),
+                    };
+                    // Un dispositivo perdido se rehace una vez.
+                    let r = match r {
+                        Err(e) if e.contains("dispositivo") => {
+                            gpu = Gpu::nueva().ok();
+                            gpu.as_ref().map_or(Err(e), |g| pintar_con(g, &enc))
+                        }
+                        r => r,
+                    };
+                    let _ = responder.send(r);
+                }
+            });
         Mutex::new(lanzado.ok().map(|_| tx))
     });
     m.lock().ok().and_then(|g| g.clone())
@@ -173,8 +194,10 @@ pub fn pintar(enc: Encargo) -> Result<Vista, String> {
     PINTADAS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let tx = cola().ok_or("no se pudo arrancar el pintor de la vista")?;
     let (responder, rx) = channel();
-    tx.send(Orden::Pintar(Box::new(enc), responder)).map_err(|_| "el pintor de la vista no esta")?;
-    rx.recv_timeout(ESPERA_VISTA).map_err(|_| "la vista no llego a tiempo".to_string())?
+    tx.send(Orden::Pintar(Box::new(enc), responder))
+        .map_err(|_| "el pintor de la vista no esta")?;
+    rx.recv_timeout(ESPERA_VISTA)
+        .map_err(|_| "la vista no llego a tiempo".to_string())?
 }
 
 /// Un color de 0-1.
@@ -189,7 +212,8 @@ fn pintar_con(g: &Gpu, enc: &Encargo) -> Result<Vista, String> {
     let (x0, y0, x1, y1) = enc.caja;
     let (ancho, alto, s) = ojos::tamano(enc.caja, ojos::LADO_MAXIMO);
     let d3d = g._dispositivo.d3d();
-    let fuera = FueraDePantalla::nuevo(&g.motor, d3d, ancho, alto).map_err(|e| format!("dispositivo: {e:?}"))?;
+    let fuera = FueraDePantalla::nuevo(&g.motor, d3d, ancho, alto)
+        .map_err(|e| format!("dispositivo: {e:?}"))?;
     let mut imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(4096);
     for (id, p) in &enc.imagenes {
         let img = match p {
@@ -209,7 +233,12 @@ fn pintar_con(g: &Gpu, enc: &Encargo) -> Result<Vista, String> {
             .map(|b| (b, *r))
     });
     let papel = enc.escena.fondo;
-    let marcas = enc.marcas.then(|| (ojos::paso_de_rejilla(enc.caja), ojos::etiquetas(&enc.escena, enc.caja)));
+    let marcas = enc.marcas.then(|| {
+        (
+            ojos::paso_de_rejilla(enc.caja),
+            ojos::etiquetas(&enc.escena, enc.caja),
+        )
+    });
     g.motor
         .dibujar(&fuera.destino, |p| {
             // Un papel transparente se ve blanco, como en el editor.
@@ -219,11 +248,30 @@ fn pintar_con(g: &Gpu, enc: &Encargo) -> Result<Vista, String> {
             }
             p.poner_vista((-x0 * s, -y0 * s), s, (0.0, 0.0));
             if let Some((b, (a, bb, c, d))) = &fondo {
-                p.bitmap(b, RectF { x: *a, y: *bb, ancho: c - a, alto: d - bb }, None, false);
+                p.bitmap(
+                    b,
+                    RectF {
+                        x: *a,
+                        y: *bb,
+                        ancho: c - a,
+                        alto: d - bb,
+                    },
+                    None,
+                    false,
+                );
             }
             let mut cache = pixpin_motor2d::cache::Cache::nueva();
             let mut tinta = pixpin_render::CacheTinta::nueva();
-            crate::dibujo::pintar::pintar_escena(p, &enc.escena, &mut cache, &mut tinta, &imagenes, enc.caja, s, |_| false);
+            crate::dibujo::pintar::pintar_escena(
+                p,
+                &enc.escena,
+                &mut cache,
+                &mut tinta,
+                &imagenes,
+                enc.caja,
+                s,
+                |_| false,
+            );
             p.poner_vista((0.0, 0.0), 1.0, (0.0, 0.0));
             if let Some((paso, etiquetas)) = &marcas {
                 pintar_marcas(p, enc, s, *paso, etiquetas, (ancho as f32, alto as f32));
@@ -231,20 +279,49 @@ fn pintar_con(g: &Gpu, enc: &Encargo) -> Result<Vista, String> {
         })
         .map_err(|e| format!("dispositivo: {e:?}"))?;
     let t_dib = t0.elapsed().as_millis();
-    fuera.esperar_gpu().map_err(|e| format!("dispositivo: {e:?}"))?;
+    fuera
+        .esperar_gpu()
+        .map_err(|e| format!("dispositivo: {e:?}"))?;
     let t_gpu = t0.elapsed().as_millis();
-    let (w, h, rgba) = fuera.leer_rgba().map_err(|e| format!("dispositivo: {e:?}"))?;
-    let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: w, alto: h, pixeles: rgba }).map_err(|e| format!("{e:?}"))?;
+    let (w, h, rgba) = fuera
+        .leer_rgba()
+        .map_err(|e| format!("dispositivo: {e:?}"))?;
+    let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: rgba,
+    })
+    .map_err(|e| format!("{e:?}"))?;
     let ms = t0.elapsed().as_millis();
     tracing::debug!(t_prep, t_dib, t_gpu, ms, "asistente: tiempos de la vista");
     let texto = ojos::leyenda(enc.caja, enc.marco, w, h, s, enc.marcas);
-    tracing::info!(ms, ancho = w, alto = h, kb = png.len() / 1024, elementos = enc.escena.elementos.len(), "asistente: vista del lienzo");
+    tracing::info!(
+        ms,
+        ancho = w,
+        alto = h,
+        kb = png.len() / 1024,
+        elementos = enc.escena.elementos.len(),
+        "asistente: vista del lienzo"
+    );
     let _ = (x1, y1);
-    Ok(Vista { png, ancho: w, alto: h, texto, ms })
+    Ok(Vista {
+        png,
+        ancho: w,
+        alto: h,
+        texto,
+        ms,
+    })
 }
 
 /// La rejilla numerada (en las coordenadas del modelo) y las etiquetas.
-fn pintar_marcas(p: &pixpin_render::Pintor<'_>, enc: &Encargo, s: f32, paso: f32, etiquetas: &[(u64, (f32, f32))], (w, h): (f32, f32)) {
+fn pintar_marcas(
+    p: &pixpin_render::Pintor<'_>,
+    enc: &Encargo,
+    s: f32,
+    paso: f32,
+    etiquetas: &[(u64, (f32, f32))],
+    (w, h): (f32, f32),
+) {
     let (x0, y0, x1, y1) = enc.caja;
     let (mx, my) = enc.marco;
     let raya = color(0.45, 0.5, 0.58, 0.28);
@@ -255,7 +332,14 @@ fn pintar_marcas(p: &pixpin_render::Pintor<'_>, enc: &Encargo, s: f32, paso: f32
     while u + mx <= x1 {
         let px = (u + mx - x0) * s;
         p.linea((px, 0.0), (px, h), 1.0, raya);
-        p.texto_con_fondo(&format!("{}", u.round() as i64), px + 3.0, 3.0, tam, numero, fondo_numero);
+        p.texto_con_fondo(
+            &format!("{}", u.round() as i64),
+            px + 3.0,
+            3.0,
+            tam,
+            numero,
+            fondo_numero,
+        );
         u += paso;
     }
     let mut v = ((y0 - my) / paso).ceil() * paso;
@@ -263,7 +347,14 @@ fn pintar_marcas(p: &pixpin_render::Pintor<'_>, enc: &Encargo, s: f32, paso: f32
         let py = (v + my - y0) * s;
         p.linea((0.0, py), (w, py), 1.0, raya);
         if py > 18.0 {
-            p.texto_con_fondo(&format!("{}", v.round() as i64), 3.0, py + 2.0, tam, numero, fondo_numero);
+            p.texto_con_fondo(
+                &format!("{}", v.round() as i64),
+                3.0,
+                py + 2.0,
+                tam,
+                numero,
+                fondo_numero,
+            );
         }
         v += paso;
     }

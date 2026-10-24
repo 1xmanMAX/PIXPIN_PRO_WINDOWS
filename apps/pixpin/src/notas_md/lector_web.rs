@@ -51,10 +51,10 @@ use std::time::{Duration, Instant, SystemTime};
 use serde::Deserialize;
 use serde_json::json;
 
-use pixpin_store::{Catalogo, Ubicacion};
-use pixpin_web::pagina::{OpcionesPagina, Pagina, Recurso, Suceso};
 use pixpin_render::icono::material;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
+use pixpin_store::{Catalogo, Ubicacion};
+use pixpin_web::pagina::{OpcionesPagina, Pagina, Recurso, Suceso};
 
 use crate::lector_pin::{AccionPin, BotonLector, PinLector};
 
@@ -73,34 +73,96 @@ pub enum DeLaPagina {
     Listo,
     /// Lo que encienden los botones de la barra del pin: viendo la nota
     /// (sin escribir) y el panel de los comentarios abierto.
-    Estado { leyendo: bool, comentarios: bool },
-    Guardar { texto: String, version: u64 },
+    Estado {
+        leyendo: bool,
+        comentarios: bool,
+    },
+    Guardar {
+        texto: String,
+        version: u64,
+    },
     /// La letra y el tamano (los de `vista-de-notas.txt`, como antes).
-    Vista { cuerpo: String, titulos: String, px: u32, solo_esta: bool },
-    Titulo { texto: String },
-    AbrirEnlace { url: String },
-    AbrirPixpin { ruta: String },
-    Adjuntar { id: u64, nombre: String, datos: String },
+    Vista {
+        cuerpo: String,
+        titulos: String,
+        px: u32,
+        solo_esta: bool,
+    },
+    Titulo {
+        texto: String,
+    },
+    AbrirEnlace {
+        url: String,
+    },
+    AbrirPixpin {
+        ruta: String,
+    },
+    Adjuntar {
+        id: u64,
+        nombre: String,
+        datos: String,
+    },
     /// Elegir ficheros con el dialogo de Windows: `imagen`, `documento`
     /// o `audio`.
-    Elegir { clase: String },
+    Elegir {
+        clase: String,
+    },
     /// La lista de hojas para «Pagina de un proyecto» / «Enlace a una hoja».
-    ElegirHoja { viva: bool },
-    InsertarHoja { clave: String, viva: bool },
+    ElegirHoja {
+        viva: bool,
+    },
+    InsertarHoja {
+        clave: String,
+        viva: bool,
+    },
     /// La lista de mensajes del chat para «Del chat».
     ElegirMensaje,
-    InsertarMensaje { clave: String },
-    GuardarCopia { texto: String, titulo: String },
-    ExportarWord { texto: String, titulo: String },
-    Ventana { accion: String, #[serde(default)] borde: String },
+    InsertarMensaje {
+        clave: String,
+    },
+    GuardarCopia {
+        texto: String,
+        titulo: String,
+    },
+    ExportarWord {
+        texto: String,
+        titulo: String,
+    },
+    Ventana {
+        accion: String,
+        #[serde(default)]
+        borde: String,
+    },
     /// Los comentarios: cada pedido trae el texto de ahora (para anclar) y
     /// se contesta con la lista entera.
-    ComentariosPedir { texto: String },
-    ComentarioNuevo { texto: String, desde: usize, hasta: usize, cuerpo: String },
-    ComentarioResponder { texto: String, hilo: String, cuerpo: String },
-    ComentarioEditar { texto: String, id: String, cuerpo: String },
-    ComentarioBorrar { texto: String, id: String },
-    ComentarioResolver { texto: String, hilo: String, si: bool },
+    ComentariosPedir {
+        texto: String,
+    },
+    ComentarioNuevo {
+        texto: String,
+        desde: usize,
+        hasta: usize,
+        cuerpo: String,
+    },
+    ComentarioResponder {
+        texto: String,
+        hilo: String,
+        cuerpo: String,
+    },
+    ComentarioEditar {
+        texto: String,
+        id: String,
+        cuerpo: String,
+    },
+    ComentarioBorrar {
+        texto: String,
+        id: String,
+    },
+    ComentarioResolver {
+        texto: String,
+        hilo: String,
+        si: bool,
+    },
     Compartir,
     Cerrar,
     CerrarListo,
@@ -224,7 +286,10 @@ fn guardar_vista(raiz: &Path, clave: &str, v: &pixpin_notas::vista::Vista, solo_
 
 /// Un nombre de fichero a partir del titulo (sin `<>:"/\|?*`).
 fn nombre_de_fichero(titulo: &str, reserva: &str) -> String {
-    let n: String = titulo.chars().filter(|c| !"<>:\"/\\|?*".contains(*c) && !c.is_control()).collect();
+    let n: String = titulo
+        .chars()
+        .filter(|c| !"<>:\"/\\|?*".contains(*c) && !c.is_control())
+        .collect();
     let n = n.trim().trim_end_matches('…').trim().to_string();
     if n.is_empty() { reserva.to_string() } else { n }
 }
@@ -245,7 +310,11 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         Destino::Fichero { ruta } => pixpin_docs::nombre(ruta),
         _ => String::new(),
     };
-    let mut en_la_barra = nombre_en_la_barra(&cx.actual.borrow(), &pixpin_docs::md_vivo::titulo(&cx.texto), cx.textos);
+    let mut en_la_barra = nombre_en_la_barra(
+        &cx.actual.borrow(),
+        &pixpin_docs::md_vivo::titulo(&cx.texto),
+        cx.textos,
+    );
     tracing::info!("abriendo el lector de notas");
 
     // **La ventana es la de los visores como pin** (`lector_pin`): sale ya,
@@ -270,11 +339,16 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         pin.seguir_ventana(&mut ventana);
     }
     pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()));
-    tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: a la vista");
+    tracing::info!(
+        ms = inicio.elapsed().as_millis() as u64,
+        "lector de notas: a la vista"
+    );
     (cx.al_nacer)(hwnd_pin);
 
     // La barra: sin GPU no la hay, pero la nota se edita igual.
-    let recursos = crate::overlay::Recursos::nuevos().map_err(|e| tracing::warn!(?e, "nota sin barra")).ok();
+    let recursos = crate::overlay::Recursos::nuevos()
+        .map_err(|e| tracing::warn!(?e, "nota sin barra"))
+        .ok();
     let motor = recursos.as_ref().map(|r| r.motor());
     if let (Some(r), Some(m)) = (&recursos, &motor) {
         pin.crear_barra(m, &r.d3d(), &ventana);
@@ -304,7 +378,10 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         oscuro: Some(pin.oscuro()),
     })
     .map_err(|e| anyhow::anyhow!("{e}"))?;
-    tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: pagina pedida");
+    tracing::info!(
+        ms = inicio.elapsed().as_millis() as u64,
+        "lector de notas: pagina pedida"
+    );
     // **El riel de los visores** (el marcador, el lapiz de tinta y el marco),
     // en sus ventanas por encima de la pagina. El lapiz de la barra sigue
     // siendo el de escribir el texto; el del riel es el de la tinta.
@@ -368,7 +445,10 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         // Atiende la cola del hilo: la pagina y, por `pixpin_shell`, la
         // ventana del pin y su barra.
         let tope = if pin.quiere_reloj() { 50 } else { 250 };
-        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
+        let tope = riel
+            .as_ref()
+            .and_then(|r| r.tope_ms())
+            .map_or(tope, |t| t.min(tope));
         let sucesos = pagina.esperar(tope);
         let mut teclas: Vec<u32> = Vec::new();
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
@@ -396,7 +476,9 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                         pagina.mandar(r#"{"tipo":"orden","que":"titulo"}"#);
                         pagina.enfocar();
                     }
-                    Some(AccionPin::PantallaCompleta) => alternar_pantalla(&mut pin, &mut ventana, &pagina),
+                    Some(AccionPin::PantallaCompleta) => {
+                        alternar_pantalla(&mut pin, &mut ventana, &pagina)
+                    }
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => pedir_cierre(&mut cerrando, &pagina),
                     None => {}
@@ -411,7 +493,12 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                 // El teclado lo tenia la ventana (se toco su borde): la
                 // tecla cuenta y la siguiente va ya a la pagina. Las de los
                 // visores (I, A, M, Ctrl+M, G), al riel.
-                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } if riel.is_some() => {
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    alt: false,
+                    ..
+                } if riel.is_some() => {
                     match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, Some(&pagina))) {
                         Some(crate::visor_html::riel::Pide::Tecla(v)) => teclas.push(v),
                         Some(crate::visor_html::riel::Pide::Teclado) => pagina.enfocar(),
@@ -426,7 +513,9 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                     teclas.push(vk);
                     pagina.enfocar();
                 }
-                EventoOverlay::Pintar | EventoOverlay::CambioDpi => pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro())),
+                EventoOverlay::Pintar | EventoOverlay::CambioDpi => {
+                    pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()))
+                }
                 _ => {}
             }
         }
@@ -464,7 +553,12 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
             pixpin_web::pintar_fondo(hwnd_pin, fondo(pin.oscuro()));
         }
         if let Some(r) = riel.as_mut() {
-            r.seguir(crate::visor_html::riel::en_pantalla(pin.area, pin.area_de_la_vista()), escala, pin.fijado, pin.oscuro());
+            r.seguir(
+                crate::visor_html::riel::en_pantalla(pin.area, pin.area_de_la_vista()),
+                escala,
+                pin.fijado,
+                pin.oscuro(),
+            );
             r.tic(Some(&pagina));
         }
         for s in sucesos {
@@ -493,11 +587,17 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                     };
                     match pedido {
                         DeLaPagina::Listo => {
-                            tracing::info!(ms = inicio.elapsed().as_millis() as u64, "lector de notas: pagina lista");
+                            tracing::info!(
+                                ms = inicio.elapsed().as_millis() as u64,
+                                "lector de notas: pagina lista"
+                            );
                             pagina.mandar(&abrir);
                         }
                         // Lo que encienden los botones de la barra.
-                        DeLaPagina::Estado { leyendo: l, comentarios: c } => {
+                        DeLaPagina::Estado {
+                            leyendo: l,
+                            comentarios: c,
+                        } => {
                             (leyendo, con_comentarios) = (l, c);
                             propios = botones(leyendo, con_comentarios);
                         }
@@ -516,13 +616,26 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                                     .to_string(),
                             );
                         }
-                        DeLaPagina::Vista { cuerpo, titulos, px, solo_esta } => {
+                        DeLaPagina::Vista {
+                            cuerpo,
+                            titulos,
+                            px,
+                            solo_esta,
+                        } => {
                             let v = pixpin_notas::vista::Vista {
                                 cuerpo,
                                 titulos,
-                                px: px.clamp(pixpin_notas::vista::TAMANO_MINIMO, pixpin_notas::vista::TAMANO_MAXIMO),
+                                px: px.clamp(
+                                    pixpin_notas::vista::TAMANO_MINIMO,
+                                    pixpin_notas::vista::TAMANO_MAXIMO,
+                                ),
                             };
-                            guardar_vista(&raiz, &super::clave_de_vista(&cx.actual.borrow()), &v, solo_esta);
+                            guardar_vista(
+                                &raiz,
+                                &super::clave_de_vista(&cx.actual.borrow()),
+                                &v,
+                                solo_esta,
+                            );
                         }
                         DeLaPagina::Elegir { clase } => {
                             let h = hwnd(pagina.hwnd());
@@ -536,8 +649,12 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                             for r in rutas {
                                 let ahora = pixpin_shell::entorno::ahora_utc_ms();
                                 match adjuntos::adjuntar(&raiz, &destino, &r, ahora) {
-                                    Ok(ruta) => renglones.push(renglon_de(&pixpin_docs::nombre(&r), &ruta)),
-                                    Err(e) => tracing::warn!(?e, "no se pudo copiar junto a la nota"),
+                                    Ok(ruta) => {
+                                        renglones.push(renglon_de(&pixpin_docs::nombre(&r), &ruta))
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(?e, "no se pudo copiar junto a la nota")
+                                    }
                                 }
                             }
                             if !renglones.is_empty() {
@@ -550,44 +667,99 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                                 .iter()
                                 .map(|g| json!({"proyecto": g.proyecto, "propio": g.propio, "hojas": g.hojas.iter().map(|h| json!({"clave": h.clave, "nombre": h.nombre})).collect::<Vec<_>>()}))
                                 .collect();
-                            pagina.mandar(&json!({"tipo": "hojas", "viva": viva, "grupos": lista}).to_string());
+                            pagina.mandar(
+                                &json!({"tipo": "hojas", "viva": viva, "grupos": lista})
+                                    .to_string(),
+                            );
                         }
                         DeLaPagina::InsertarHoja { clave, viva } => {
                             let destino = cx.actual.borrow().clone();
-                            if let Some(t) = super::paginas_vivas::insertar(&raiz, &destino, &clave, !viva) {
-                                pagina.mandar(&json!({"tipo": "insertar", "bloque": true, "texto": t}).to_string());
+                            if let Some(t) =
+                                super::paginas_vivas::insertar(&raiz, &destino, &clave, !viva)
+                            {
+                                pagina.mandar(
+                                    &json!({"tipo": "insertar", "bloque": true, "texto": t})
+                                        .to_string(),
+                                );
                             }
                         }
                         DeLaPagina::ElegirMensaje => {
                             use pixpin_notas::incrustados::Medios;
-                            let m = medios.get_or_insert_with(|| super::incrustados::MediosDeLaNota::nuevo(cx.idioma, cx.ubicacion, &cx.actual));
-                            let lista: Vec<serde_json::Value> = m.mensajes().into_iter().map(|e| json!({"clave": e.clave, "rotulo": e.rotulo})).collect();
+                            let m = medios.get_or_insert_with(|| {
+                                super::incrustados::MediosDeLaNota::nuevo(
+                                    cx.idioma,
+                                    cx.ubicacion,
+                                    &cx.actual,
+                                )
+                            });
+                            let lista: Vec<serde_json::Value> = m
+                                .mensajes()
+                                .into_iter()
+                                .map(|e| json!({"clave": e.clave, "rotulo": e.rotulo}))
+                                .collect();
                             pagina.mandar(&json!({"tipo": "mensajes", "lista": lista}).to_string());
                         }
                         DeLaPagina::InsertarMensaje { clave } => {
                             use pixpin_notas::incrustados::Medios;
-                            let m = medios.get_or_insert_with(|| super::incrustados::MediosDeLaNota::nuevo(cx.idioma, cx.ubicacion, &cx.actual));
+                            let m = medios.get_or_insert_with(|| {
+                                super::incrustados::MediosDeLaNota::nuevo(
+                                    cx.idioma,
+                                    cx.ubicacion,
+                                    &cx.actual,
+                                )
+                            });
                             if let Some(t) = m.insertar_mensaje(&clave) {
-                                pagina.mandar(&json!({"tipo": "insertar", "bloque": true, "texto": t}).to_string());
+                                pagina.mandar(
+                                    &json!({"tipo": "insertar", "bloque": true, "texto": t})
+                                        .to_string(),
+                                );
                             }
                         }
                         DeLaPagina::GuardarCopia { texto, titulo } => {
-                            let nombre_f = nombre_de_fichero(&titulo, &cx.textos.t("nota-md-nueva"));
-                            if let Some(r) = pixpin_shell::guardar::pedir_ruta_para(hwnd(pagina.hwnd()), &nombre_f, &cx.textos.t("nota-md-tipo"), "md") {
+                            let nombre_f =
+                                nombre_de_fichero(&titulo, &cx.textos.t("nota-md-nueva"));
+                            if let Some(r) = pixpin_shell::guardar::pedir_ruta_para(
+                                hwnd(pagina.hwnd()),
+                                &nombre_f,
+                                &cx.textos.t("nota-md-tipo"),
+                                "md",
+                            ) {
                                 if let Err(e) = std::fs::write(&r, texto) {
                                     tracing::warn!(?e, "no se pudo guardar la copia .md");
                                 }
                             }
                         }
                         DeLaPagina::ExportarWord { texto, titulo } => {
-                            let (v, _) = leer_vista(&raiz, &super::clave_de_vista(&cx.actual.borrow()));
+                            let (v, _) =
+                                leer_vista(&raiz, &super::clave_de_vista(&cx.actual.borrow()));
                             let destino = cx.actual.borrow().clone();
                             let r2 = raiz.clone();
-                            let resolver = move |ruta: &str| adjuntos::resolver(&r2, &destino, ruta);
+                            let resolver =
+                                move |ruta: &str| adjuntos::resolver(&r2, &destino, ruta);
                             let ahora = pixpin_shell::entorno::ahora_utc_ms();
-                            if let Some((bytes, sugerido)) = pixpin_notas::word::exportar(&texto, &cx.textos.t("nota-md-nueva"), &v, None, &resolver, cx.aparato, ahora) {
-                                let nombre_f = nombre_de_fichero(if sugerido.is_empty() { &titulo } else { &sugerido }, "Nota");
-                                if let Some(r) = pixpin_shell::guardar::pedir_ruta_para(hwnd(pagina.hwnd()), &nombre_f, &cx.textos.t("nota-md-tipo-word"), "docx") {
+                            if let Some((bytes, sugerido)) = pixpin_notas::word::exportar(
+                                &texto,
+                                &cx.textos.t("nota-md-nueva"),
+                                &v,
+                                None,
+                                &resolver,
+                                cx.aparato,
+                                ahora,
+                            ) {
+                                let nombre_f = nombre_de_fichero(
+                                    if sugerido.is_empty() {
+                                        &titulo
+                                    } else {
+                                        &sugerido
+                                    },
+                                    "Nota",
+                                );
+                                if let Some(r) = pixpin_shell::guardar::pedir_ruta_para(
+                                    hwnd(pagina.hwnd()),
+                                    &nombre_f,
+                                    &cx.textos.t("nota-md-tipo-word"),
+                                    "docx",
+                                ) {
                                     if let Err(e) = std::fs::write(&r, bytes) {
                                         tracing::warn!(?e, "no se pudo guardar el Word");
                                     }
@@ -597,13 +769,22 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                         DeLaPagina::ComentariosPedir { texto } => {
                             pagina.mandar(&comentarios.json(&texto).to_string());
                         }
-                        DeLaPagina::ComentarioNuevo { texto, desde, hasta, cuerpo } => {
+                        DeLaPagina::ComentarioNuevo {
+                            texto,
+                            desde,
+                            hasta,
+                            cuerpo,
+                        } => {
                             let id = comentarios.nuevo(&texto, desde, hasta, &cuerpo);
                             let mut j = comentarios.json(&texto);
                             j["nuevo"] = json!(id);
                             pagina.mandar(&j.to_string());
                         }
-                        DeLaPagina::ComentarioResponder { texto, hilo, cuerpo } => {
+                        DeLaPagina::ComentarioResponder {
+                            texto,
+                            hilo,
+                            cuerpo,
+                        } => {
                             comentarios.responder(&hilo, &cuerpo);
                             pagina.mandar(&comentarios.json(&texto).to_string());
                         }
@@ -622,12 +803,15 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
                         // Como pin la ventana la mueve y la estira el pin; de
                         // la pagina solo llega F11 (o Esc a pantalla completa).
                         DeLaPagina::Ventana { accion, .. } => match accion.as_str() {
-                            "pantalla" | "maximizar" => alternar_pantalla(&mut pin, &mut ventana, &pagina),
+                            "pantalla" | "maximizar" => {
+                                alternar_pantalla(&mut pin, &mut ventana, &pagina)
+                            }
                             "minimizar" => ventana.minimizar(),
                             _ => {}
                         },
                         DeLaPagina::Titulo { texto } => {
-                            en_la_barra = nombre_en_la_barra(&cx.actual.borrow(), &texto, cx.textos);
+                            en_la_barra =
+                                nombre_en_la_barra(&cx.actual.borrow(), &texto, cx.textos);
                             let t = if texto.trim().is_empty() {
                                 nombre.clone()
                             } else {
@@ -716,7 +900,11 @@ pub const MAS: u8 = 7;
 /// copia, Word, letra y tamano). Sin «Copiar» (Ctrl+C) ni lupa (Ctrl+F,
 /// desde el 20-oct-2026).
 pub fn botones(leyendo: bool, comentarios: bool) -> Vec<BotonLector> {
-    let b = |id, icono, encendido| BotonLector { id, icono, encendido };
+    let b = |id, icono, encendido| BotonLector {
+        id,
+        icono,
+        encendido,
+    };
     let mut v = Vec::with_capacity(7);
     if leyendo {
         v.push(b(EDITAR, &material::EDIT_NOTE, false));
@@ -773,7 +961,11 @@ pub fn orden_de(id: u8) -> Option<&'static str> {
 
 /// El fondo mientras la pagina carga: su papel (`--papel` de `nota.css`).
 pub fn fondo(oscuro: bool) -> (u8, u8, u8) {
-    if oscuro { (0x0b, 0x0b, 0x0b) } else { (0xfd, 0xfc, 0xf9) }
+    if oscuro {
+        (0x0b, 0x0b, 0x0b)
+    } else {
+        (0xfd, 0xfc, 0xf9)
+    }
 }
 
 /// El nombre en la barra del pin: el del fichero (sin extension ni el
@@ -781,7 +973,9 @@ pub fn fondo(oscuro: bool) -> (u8, u8, u8) {
 /// proyecto, su titulo.
 fn nombre_en_la_barra(destino: &Destino, titulo: &str, t: &Catalogo) -> String {
     match destino {
-        Destino::Fichero { ruta } => crate::lector_pin::nombre_limpio(&pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta))),
+        Destino::Fichero { ruta } => crate::lector_pin::nombre_limpio(&pixpin_docs::sin_extension(
+            &pixpin_docs::nombre(ruta),
+        )),
         _ if titulo.trim().is_empty() => t.t("nota-md-nueva"),
         _ => titulo.trim().to_string(),
     }
@@ -815,7 +1009,11 @@ pub fn documento_del_riel(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
     match destino {
         Destino::Fichero { ruta } => Some(ruta.clone()),
         Destino::Mensaje { proyecto, codigo } => {
-            Some(raiz.join("cache").join("riel-notas").join(format!("{}-{}.md", limpio(proyecto), limpio(codigo))))
+            Some(raiz.join("cache").join("riel-notas").join(format!(
+                "{}-{}.md",
+                limpio(proyecto),
+                limpio(codigo)
+            )))
         }
         Destino::Nueva { .. } => None,
     }
@@ -824,7 +1022,15 @@ pub fn documento_del_riel(raiz: &Path, destino: &Destino) -> Option<PathBuf> {
 /// Lo que queda de un nombre en el de la cache del riel: letras, cifras y
 /// `-`; lo demas, `_`.
 pub fn limpio_para_el_riel(s: &str) -> String {
-    s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' }).collect()
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 fn titulo_de_ventana(titulo: &str, t: &Catalogo) -> String {
@@ -915,8 +1121,16 @@ mod pruebas {
             r#"{"tipo":"vista","cuerpo":"Nunito","titulos":"Fraunces","px":18,"solo_esta":true}"#,
         )
         .unwrap();
-        assert!(matches!(v, DeLaPagina::Vista { px: 18, solo_esta: true, .. }));
-        let w: DeLaPagina = serde_json::from_str(r#"{"tipo":"ventana","accion":"minimizar"}"#).unwrap();
+        assert!(matches!(
+            v,
+            DeLaPagina::Vista {
+                px: 18,
+                solo_esta: true,
+                ..
+            }
+        ));
+        let w: DeLaPagina =
+            serde_json::from_str(r#"{"tipo":"ventana","accion":"minimizar"}"#).unwrap();
         assert!(matches!(w, DeLaPagina::Ventana { ref borde, .. } if borde.is_empty()));
         assert_eq!(
             serde_json::from_str::<DeLaPagina>(r#"{"tipo":"cerrar_listo"}"#).unwrap(),
@@ -939,13 +1153,22 @@ mod pruebas {
         // no sale escribiendo.
         assert!(!ids(true, false).contains(&DESHACER) && !ids(false, false).contains(&EDITAR));
         // Los comentarios se encienden con su panel abierto, y nada mas.
-        let encendidos = |l, c| botones(l, c).iter().filter(|b| b.encendido).map(|b| b.id).collect::<Vec<_>>();
+        let encendidos = |l, c| {
+            botones(l, c)
+                .iter()
+                .filter(|b| b.encendido)
+                .map(|b| b.id)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(encendidos(false, true), vec![COMENTARIOS]);
         assert!(encendidos(true, false).is_empty());
         // La disposicion entera: la barra comun de los visores, con luna/sol.
         assert_eq!(
             crate::lector_pin::disposicion("Plan", "md", &botones(true, false), true),
-            ["asa", "nombre", "propio:1", "propio:5", "propio:6", "propio:7", "oscuro", "pantalla", "fijar", "cerrar"]
+            [
+                "asa", "nombre", "propio:1", "propio:5", "propio:6", "propio:7", "oscuro",
+                "pantalla", "fijar", "cerrar"
+            ]
         );
     }
 
@@ -954,38 +1177,86 @@ mod pruebas {
         for idioma in [pixpin_store::Idioma::Espanol, pixpin_store::Idioma::Ingles] {
             let t = Catalogo::nuevo(idioma);
             let p = pistas(&t);
-            for id in [VER, EDITAR, DESHACER, REHACER, BUSCAR, COMENTARIOS, COMPARTIR, MAS] {
-                let s = p.iter().find(|(i, _)| *i == id).map(|(_, s)| s.as_str()).unwrap_or_else(|| panic!("{id} sin globo"));
-                assert!(!s.is_empty() && !s.starts_with("nota-pista") && !s.starts_with("barra-") && !s.starts_with("lector-"), "{s}");
+            for id in [
+                VER,
+                EDITAR,
+                DESHACER,
+                REHACER,
+                BUSCAR,
+                COMENTARIOS,
+                COMPARTIR,
+                MAS,
+            ] {
+                let s = p
+                    .iter()
+                    .find(|(i, _)| *i == id)
+                    .map(|(_, s)| s.as_str())
+                    .unwrap_or_else(|| panic!("{id} sin globo"));
+                assert!(
+                    !s.is_empty()
+                        && !s.starts_with("nota-pista")
+                        && !s.starts_with("barra-")
+                        && !s.starts_with("lector-"),
+                    "{s}"
+                );
             }
         }
         // El ⋮ dice su tecla, la G, que tambien lo abre desde la pagina.
         let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        assert!(pistas(&t).iter().any(|(i, s)| *i == MAS && s.contains("(G)")));
+        assert!(
+            pistas(&t)
+                .iter()
+                .any(|(i, s)| *i == MAS && s.contains("(G)"))
+        );
     }
 
     #[test]
     fn cada_boton_es_una_orden_que_la_pagina_entiende() {
         let pagina = std::str::from_utf8(PAGINA).unwrap();
-        for id in [VER, EDITAR, DESHACER, REHACER, BUSCAR, COMENTARIOS, COMPARTIR, MAS] {
+        for id in [
+            VER,
+            EDITAR,
+            DESHACER,
+            REHACER,
+            BUSCAR,
+            COMENTARIOS,
+            COMPARTIR,
+            MAS,
+        ] {
             let que = orden_de(id).unwrap_or_else(|| panic!("{id} sin orden"));
             // La pagina compilada tiene el `case` de esa orden.
             assert!(pagina.contains(&format!("case\"{que}\"")), "{que}");
         }
-        assert!(pagina.contains("en-pin"), "la pagina sabe esconder su cabecera");
+        assert!(
+            pagina.contains("en-pin"),
+            "la pagina sabe esconder su cabecera"
+        );
         // Caso negativo: un boton que no existe no manda nada.
         assert_eq!(orden_de(99), None);
         // El estado que manda la pagina se entiende.
-        let e: DeLaPagina = serde_json::from_str(r#"{"tipo":"estado","leyendo":true,"comentarios":false}"#).unwrap();
-        assert_eq!(e, DeLaPagina::Estado { leyendo: true, comentarios: false });
+        let e: DeLaPagina =
+            serde_json::from_str(r#"{"tipo":"estado","leyendo":true,"comentarios":false}"#)
+                .unwrap();
+        assert_eq!(
+            e,
+            DeLaPagina::Estado {
+                leyendo: true,
+                comentarios: false
+            }
+        );
     }
 
     #[test]
     fn en_la_barra_va_el_fichero_o_el_titulo_de_la_nota() {
         let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        let f = Destino::Fichero { ruta: PathBuf::from(r"C:\notas\1791239986208_Plan de obra.md") };
+        let f = Destino::Fichero {
+            ruta: PathBuf::from(r"C:\notas\1791239986208_Plan de obra.md"),
+        };
         assert_eq!(nombre_en_la_barra(&f, "Otra cosa", &t), "Plan de obra");
-        let m = Destino::Mensaje { proyecto: "p".into(), codigo: "U1".into() };
+        let m = Destino::Mensaje {
+            proyecto: "p".into(),
+            codigo: "U1".into(),
+        };
         assert_eq!(nombre_en_la_barra(&m, "Visita", &t), "Visita");
         // Caso negativo: una nota sin titulo no deja la barra sin nombre.
         assert_eq!(nombre_en_la_barra(&m, "  ", &t), t.t("nota-md-nueva"));
@@ -1032,12 +1303,19 @@ mod a_mano {
         let md = d.join("prueba.md");
         std::fs::write(&md, "# Prueba\n\nHola **mundo**\n\n- [ ] una\n").unwrap();
         let ub = pixpin_store::Ubicacion::Portable { raiz: d.clone() };
-        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
+        let _ = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .try_init();
         let hilo = std::thread::spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
             eprintln!("correr");
-            super::super::correr(&textos, pixpin_store::Idioma::Espanol, &ub, super::Destino::Fichero { ruta: md });
+            super::super::correr(
+                &textos,
+                pixpin_store::Idioma::Espanol,
+                &ub,
+                super::Destino::Fichero { ruta: md },
+            );
             eprintln!("fin de correr");
         });
         std::thread::sleep(std::time::Duration::from_secs(8));

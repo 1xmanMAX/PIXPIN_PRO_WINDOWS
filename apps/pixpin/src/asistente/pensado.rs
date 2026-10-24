@@ -238,7 +238,11 @@ pub const LARGO_NUBE: usize = 4000;
 /// Los topes de historial para esta ventana: los de la nube con su ventana,
 /// los de siempre con la del local.
 pub fn topes(ventana: u32) -> (usize, usize) {
-    if ventana >= VENTANA_NUBE { (ULTIMOS_NUBE, LARGO_NUBE) } else { (ULTIMOS, LARGO) }
+    if ventana >= VENTANA_NUBE {
+        (ULTIMOS_NUBE, LARGO_NUBE)
+    } else {
+        (ULTIMOS, LARGO)
+    }
 }
 
 /// **El historial y la memoria de un turno nuevo.** `anteriores`: las notas
@@ -261,7 +265,14 @@ pub fn preparar_turno(
         .then(|| super::memoria::de(raiz, &quien_escribe(raiz)))
         .flatten();
     let bloque = super::memoria::bloque(largo_plazo.as_ref());
-    let p = preparar_con_memoria(&mut hoja, anteriores, pregunta, ventana, herramientas, largo_plazo.as_ref().map(|_| bloque.as_str()));
+    let p = preparar_con_memoria(
+        &mut hoja,
+        anteriores,
+        pregunta,
+        ventana,
+        herramientas,
+        largo_plazo.as_ref().map(|_| bloque.as_str()),
+    );
     let memoria = Memoria {
         hoja,
         fuentes,
@@ -336,7 +347,10 @@ pub fn preparar_con_memoria(
         .iter()
         .map(|(_, _, u, t)| (*u, t.chars().take(largo).collect()))
         .collect();
-    let base = pixpin_ia::memoria::con_memoria(&pixpin_ia::agente::instrucciones(), bloque.unwrap_or_default());
+    let base = pixpin_ia::memoria::con_memoria(
+        &pixpin_ia::agente::instrucciones(),
+        bloque.unwrap_or_default(),
+    );
     let sistema = contexto::sistema_con_hoja(&base, hoja, None);
     let mut herramientas = herramientas.to_vec();
     herramientas.push(contexto::herramienta_buscar());

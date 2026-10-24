@@ -12,12 +12,16 @@ use std::path::PathBuf;
 
 use pixpin_codec::{FormatoImagen, ImagenRgba, guardar};
 use pixpin_office::geometria;
-use pixpin_office::pagina::{Color as ColorO, Elemento, Letra, Pagina, Recursos, Relleno, Texto, Trazo};
+use pixpin_office::pagina::{
+    Color as ColorO, Elemento, Letra, Pagina, Recursos, Relleno, Texto, Trazo,
+};
 use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_render::pagina_office::PintorOffice;
 use pixpin_render::{Color, MotorRender};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
-use windows::Win32::Graphics::Direct3D11::{D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device};
+use windows::Win32::Graphics::Direct3D11::{
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
+};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 
 fn d3d() -> ID3D11Device {
@@ -25,8 +29,18 @@ fn d3d() -> ID3D11Device {
     // SAFETY: salidas locales y constantes documentadas, como en las pruebas
     // de dibujo del resto del proyecto.
     unsafe {
-        D3D11CreateDevice(None, D3D_DRIVER_TYPE_HARDWARE, Default::default(), D3D11_CREATE_DEVICE_BGRA_SUPPORT, None, D3D11_SDK_VERSION, Some(&mut d), None, None)
-            .expect("GPU real");
+        D3D11CreateDevice(
+            None,
+            D3D_DRIVER_TYPE_HARDWARE,
+            Default::default(),
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            None,
+            D3D11_SDK_VERSION,
+            Some(&mut d),
+            None,
+            None,
+        )
+        .expect("GPU real");
     }
     d.expect("el dispositivo sale cuando la llamada va bien")
 }
@@ -62,7 +76,11 @@ fn main() {
             let (c, f) = ((i % columnas) as f32, (i / columnas) as f32);
             let (x, y) = (c * celda_w + (celda_w - forma_w) / 2.0, f * celda_h + 14.0);
             let figuras = geometria::predefinida(nombre, forma_w, forma_h, &Default::default());
-            let mut e = Elemento::Trayecto { figuras, relleno: Some(relleno.clone()), borde: Some(borde) };
+            let mut e = Elemento::Trayecto {
+                figuras,
+                relleno: Some(relleno.clone()),
+                borde: Some(borde),
+            };
             e.trasladar(x, y);
             elementos.push(e);
             let texto = nombre.clone();
@@ -81,8 +99,17 @@ fn main() {
                 enlace: None,
             }));
         }
-        let pagina = Pagina { ancho, alto, fondo: None, elementos, numero: hoja_n };
-        let (w, h) = ((ancho * escala).ceil() as u32, (alto * escala).ceil() as u32);
+        let pagina = Pagina {
+            ancho,
+            alto,
+            fondo: None,
+            elementos,
+            numero: hoja_n,
+        };
+        let (w, h) = (
+            (ancho * escala).ceil() as u32,
+            (alto * escala).ceil() as u32,
+        );
         let destino = FueraDePantalla::nuevo(&motor, &dispositivo, w, h).expect("destino");
         let recursos = Recursos::nuevo();
         motor
@@ -94,7 +121,16 @@ fn main() {
         destino.esperar_gpu().expect("gpu");
         let (aw, ah, px) = destino.leer_rgba().expect("leer");
         let ruta = carpeta.join(format!("formas-{hoja_n}.png"));
-        guardar(&ImagenRgba { ancho: aw, alto: ah, pixeles: px }, &ruta, FormatoImagen::Png).expect("png");
+        guardar(
+            &ImagenRgba {
+                ancho: aw,
+                alto: ah,
+                pixeles: px,
+            },
+            &ruta,
+            FormatoImagen::Png,
+        )
+        .expect("png");
         println!("{}", ruta.display());
     }
 }

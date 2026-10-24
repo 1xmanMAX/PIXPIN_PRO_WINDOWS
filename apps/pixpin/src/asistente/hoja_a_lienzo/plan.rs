@@ -55,7 +55,18 @@ Una tabla es una REJILLA de celdas pegadas con rayas o filas; unas tarjetas suel
 Responde SOLO un JSON CORTO, solo con lo que cambia (lo que no nombres se queda como «parece»): {\"tema\":\"...\",\"grupos\":[{\"es\":\"tabla\",\"n\":[3,4,5]}],\"cambios\":[{\"n\":2,\"es\":\"titulo\"}],\"contenedores\":[7,9],\"ignorar\":[12]}.";
 
 /// Las palabras de `es` que se entienden.
-const TIPOS: &[&str] = &["texto", "titulo", "tabla", "figura", "grafica", "formula", "foto", "icono", "contenedor", "ignorar"];
+const TIPOS: &[&str] = &[
+    "texto",
+    "titulo",
+    "tabla",
+    "figura",
+    "grafica",
+    "formula",
+    "foto",
+    "icono",
+    "contenedor",
+    "ignorar",
+];
 
 /// Los numeros: una fuente de 3x5 (lo justo para leerlos en la etiqueta).
 const DIGITOS: [[u8; 5]; 10] = [
@@ -83,11 +94,23 @@ pub fn marcar(p: &Pagina, s: &Seccionado) -> pixpin_codec::ImagenRgba {
             px[i + 3] = 255;
         }
     };
-    const COLORES: [[u8; 3]; 6] = [[230, 0, 0], [0, 110, 230], [0, 160, 60], [200, 0, 200], [230, 120, 0], [0, 150, 150]];
+    const COLORES: [[u8; 3]; 6] = [
+        [230, 0, 0],
+        [0, 110, 230],
+        [0, 160, 60],
+        [200, 0, 200],
+        [230, 120, 0],
+        [0, 150, 150],
+    ];
     let k = ((p.ancho.max(p.alto) as f64 / 500.0).round() as i64).clamp(2, 6);
     for (i, z) in s.zonas.iter().enumerate() {
         let c = COLORES[i % COLORES.len()];
-        let (x0, y0, x1, y1) = (z.caja.x as i64, z.caja.y as i64, z.caja.x1() as i64, z.caja.y1() as i64);
+        let (x0, y0, x1, y1) = (
+            z.caja.x as i64,
+            z.caja.y as i64,
+            z.caja.x1() as i64,
+            z.caja.y1() as i64,
+        );
         for g in 0..(k / 2).max(1) {
             for x in x0..=x1 {
                 poner(&mut px, x, y0 + g, c);
@@ -114,7 +137,12 @@ pub fn marcar(p: &Pagina, s: &Seccionado) -> pixpin_codec::ImagenRgba {
                     if fila & (0b100 >> fx) != 0 {
                         for dy in 0..k {
                             for dx in 0..k {
-                                poner(&mut px, ex + k + (j as i64) * 4 * k + fx as i64 * k + dx, ey + k + fy as i64 * k + dy, [0, 0, 0]);
+                                poner(
+                                    &mut px,
+                                    ex + k + (j as i64) * 4 * k + fx as i64 * k + dx,
+                                    ey + k + fy as i64 * k + dy,
+                                    [0, 0, 0],
+                                );
                             }
                         }
                     }
@@ -122,7 +150,11 @@ pub fn marcar(p: &Pagina, s: &Seccionado) -> pixpin_codec::ImagenRgba {
             }
         }
     }
-    pixpin_codec::ImagenRgba { ancho: p.ancho, alto: p.alto, pixeles: px }
+    pixpin_codec::ImagenRgba {
+        ancho: p.ancho,
+        alto: p.alto,
+        pixeles: px,
+    }
 }
 
 /// La lista de zonas para el modelo: numero, lo que parece y lo que leyo el OCR.
@@ -132,7 +164,14 @@ fn lista(s: &Seccionado) -> String {
         .enumerate()
         .map(|(i, z)| {
             let t: String = z.texto().replace('\n', " / ").chars().take(70).collect();
-            format!("{i}: parece {} [{:.0},{:.0} {:.0}x{:.0}] {t}\n", z.tipo.nombre(), z.caja.x, z.caja.y, z.caja.w, z.caja.h)
+            format!(
+                "{i}: parece {} [{:.0},{:.0} {:.0}x{:.0}] {t}\n",
+                z.tipo.nombre(),
+                z.caja.x,
+                z.caja.y,
+                z.caja.w,
+                z.caja.h
+            )
         })
         .collect()
 }
@@ -140,8 +179,14 @@ fn lista(s: &Seccionado) -> String {
 /// **Pide el plan.** `Err` si el modelo no contesta o no se entiende.
 pub fn pedir(motor: &dyn Motor, p: &Pagina, s: &Seccionado) -> Result<Plan, String> {
     let marcada = marcar(p, s);
-    let (rgba, w, h) = pixpin_ia::hoja::montaje::reducir(&marcada.pixeles, marcada.ancho, marcada.alto, 1280);
-    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: rgba }).map_err(|e| format!("{e:?}"))?;
+    let (rgba, w, h) =
+        pixpin_ia::hoja::montaje::reducir(&marcada.pixeles, marcada.ancho, marcada.alto, 1280);
+    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: rgba,
+    })
+    .map_err(|e| format!("{e:?}"))?;
     let pregunta = format!("Zonas ({}):\n{}", s.zonas.len(), lista(s));
     // (Una vez mas si no contesta o contesta algo que no es un plan.)
     let mut ultimo = String::new();
@@ -150,11 +195,19 @@ pub fn pedir(motor: &dyn Motor, p: &Pagina, s: &Seccionado) -> Result<Plan, Stri
             Ok(t) => match leer(&t, s.zonas.len()) {
                 Some(p) => {
                     if std::env::var_os("PIXPIN_PLAN_DEPURAR").is_some() {
-                        eprintln!("plan: tema {:?}\n  es {:?}\n  grupos {:?}", p.tema, p.es, p.grupo);
+                        eprintln!(
+                            "plan: tema {:?}\n  es {:?}\n  grupos {:?}",
+                            p.tema, p.es, p.grupo
+                        );
                     }
                     return Ok(p);
                 }
-                None => ultimo = format!("el planificador no dio un plan: «{}»", t.chars().take(80).collect::<String>()),
+                None => {
+                    ultimo = format!(
+                        "el planificador no dio un plan: «{}»",
+                        t.chars().take(80).collect::<String>()
+                    )
+                }
             },
             Err(e) => ultimo = e,
         }
@@ -167,10 +220,17 @@ pub fn pedir(motor: &dyn Motor, p: &Pagina, s: &Seccionado) -> Result<Plan, Stri
 pub fn leer(t: &str, n: usize) -> Option<Plan> {
     let (a, b) = (t.find('{')?, t.rfind('}')?);
     let v: Value = serde_json::from_str(t.get(a..=b)?).ok()?;
-    let mut plan = Plan { tema: v["tema"].as_str().unwrap_or("").trim().to_string(), ..Default::default() };
+    let mut plan = Plan {
+        tema: v["tema"].as_str().unwrap_or("").trim().to_string(),
+        ..Default::default()
+    };
     // El corto (grupos, cambios, contenedores, ignorar)...
     let numero = |x: &Value| x.as_u64().map(|x| x as usize).filter(|&i| i < n);
-    let tipo = |x: &Value| x.as_str().map(pixpin_ia::acciones::normalizar).filter(|e| TIPOS.contains(&e.as_str()));
+    let tipo = |x: &Value| {
+        x.as_str()
+            .map(pixpin_ia::acciones::normalizar)
+            .filter(|e| TIPOS.contains(&e.as_str()))
+    };
     for (k, g) in v["grupos"].as_array().into_iter().flatten().enumerate() {
         let es = tipo(&g["es"]);
         for i in g["n"].as_array().into_iter().flatten().filter_map(numero) {
@@ -192,8 +252,14 @@ pub fn leer(t: &str, n: usize) -> Option<Plan> {
     }
     // ...y el largo, una fila por zona.
     for z in v["zonas"].as_array().into_iter().flatten() {
-        let Some(i) = z["n"].as_u64().map(|x| x as usize).filter(|&i| i < n) else { continue };
-        if let Some(es) = z["es"].as_str().map(pixpin_ia::acciones::normalizar).filter(|e| TIPOS.contains(&e.as_str())) {
+        let Some(i) = z["n"].as_u64().map(|x| x as usize).filter(|&i| i < n) else {
+            continue;
+        };
+        if let Some(es) = z["es"]
+            .as_str()
+            .map(pixpin_ia::acciones::normalizar)
+            .filter(|e| TIPOS.contains(&e.as_str()))
+        {
             plan.es.insert(i, es);
         }
         if let Some(g) = z["grupo"].as_str().map(str::trim).filter(|g| !g.is_empty()) {
@@ -232,7 +298,10 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
     // dentro y tiene letras, el plan se equivoco: se queda como era.
     let lleva_algo = |i: usize| {
         let c = s.zonas[i].caja.crecer(2.0);
-        s.zonas.iter().enumerate().any(|(k, o)| k != i && o.caja.area() < c.area() * 0.9 && o.caja.dentro_de(&c) >= 0.8)
+        s.zonas
+            .iter()
+            .enumerate()
+            .any(|(k, o)| k != i && o.caja.area() < c.area() * 0.9 && o.caja.dentro_de(&c) >= 0.8)
     };
     // **Lo escrito sobre un boton de color no es marca de agua** (19-oct,
     // ONPE: el «ver» claro de «ver Mapa» se ignoraba). La marca de agua va
@@ -243,7 +312,13 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
             && s.zonas.iter().any(|o| {
                 o.tipo == Tipo::Recuadro
                     && o.caja.contiene(z.caja.cx(), z.caja.cy())
-                    && o.panel.as_ref().and_then(|e| e.relleno).is_some_and(|r| r.iter().map(|&c| (255.0 - c as f64).powi(2)).sum::<f64>().sqrt() > 60.0)
+                    && o.panel.as_ref().and_then(|e| e.relleno).is_some_and(|r| {
+                        r.iter()
+                            .map(|&c| (255.0 - c as f64).powi(2))
+                            .sum::<f64>()
+                            .sqrt()
+                            > 60.0
+                    })
             })
     };
     for (i, z) in s.zonas.iter().enumerate() {
@@ -273,7 +348,12 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
                     });
                     c.tipo = Tipo::Recuadro;
                     c.renglones.clear();
-                    c.panel = Some(Estilo { relleno, borde: None, grosor: 0.0, redondo: true });
+                    c.panel = Some(Estilo {
+                        relleno,
+                        borde: None,
+                        grosor: 0.0,
+                        redondo: true,
+                    });
                 }
                 contenedores.push(c);
                 continue;
@@ -311,7 +391,12 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
                 z.tabla = o.tabla.clone();
             }
         }
-        z.renglones.sort_by(|a, b| a.caja.y.total_cmp(&b.caja.y).then(a.caja.x.total_cmp(&b.caja.x)));
+        z.renglones.sort_by(|a, b| {
+            a.caja
+                .y
+                .total_cmp(&b.caja.y)
+                .then(a.caja.x.total_cmp(&b.caja.x))
+        });
         if let Some(t) = es.and_then(tipo_de) {
             z.tipo = t;
             z.confianza = z.confianza.max(0.8);
@@ -332,9 +417,16 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
                     c.tipo == Tipo::Recuadro
                         && c.caja.area() < casco.area() * 0.95
                         && (casco.contiene(c.caja.cx(), c.caja.cy()) && c.caja.comun(&z.caja) > 0.0
-                            || c.caja.comun(&z.caja.crecer(4.0)) > 0.0 && c.caja.x >= casco.x && c.caja.x1() <= casco.x1())
+                            || c.caja.comun(&z.caja.crecer(4.0)) > 0.0
+                                && c.caja.x >= casco.x
+                                && c.caja.x1() <= casco.x1())
                 };
-                let celdas: Vec<usize> = zonas.iter().enumerate().filter(|(_, c)| pegada(c)).map(|(k, _)| k).collect();
+                let celdas: Vec<usize> = zonas
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| pegada(c))
+                    .map(|(k, _)| k)
+                    .collect();
                 if celdas.is_empty() {
                     break;
                 }
@@ -347,19 +439,35 @@ pub fn aplicar(plan: &Plan, s: &Seccionado, p: &Pagina) -> Seccionado {
         zonas.push(z);
     }
     // Lo suelto que cae dentro de una tabla es de la tabla (la lee entera).
-    let tablas: Vec<Caja> = zonas.iter().filter(|z| z.tipo == Tipo::Tabla).map(|z| z.caja).collect();
-    zonas.retain(|z| z.tipo == Tipo::Tabla || z.tipo == Tipo::Recuadro || !tablas.iter().any(|t| t.contiene(z.caja.cx(), z.caja.cy())));
+    let tablas: Vec<Caja> = zonas
+        .iter()
+        .filter(|z| z.tipo == Tipo::Tabla)
+        .map(|z| z.caja)
+        .collect();
+    zonas.retain(|z| {
+        z.tipo == Tipo::Tabla
+            || z.tipo == Tipo::Recuadro
+            || !tablas.iter().any(|t| t.contiene(z.caja.cx(), z.caja.cy()))
+    });
     for (i, z) in zonas.iter_mut().enumerate() {
         z.id = i;
         z.orden = i;
     }
     let _ = sueltas;
-    Seccionado { zonas, paneles: s.paneles.clone(), ..s.clone() }
+    Seccionado {
+        zonas,
+        paneles: s.paneles.clone(),
+        ..s.clone()
+    }
 }
 
 /// Lo que se le cuenta a cada especialista del tema de la hoja.
 pub fn contexto(plan: &Plan) -> String {
-    if plan.tema.is_empty() { String::new() } else { format!("La imagen trata de: {}. Esta en espanol.", plan.tema) }
+    if plan.tema.is_empty() {
+        String::new()
+    } else {
+        format!("La imagen trata de: {}. Esta en espanol.", plan.tema)
+    }
 }
 
 #[cfg(test)]
@@ -371,9 +479,28 @@ mod pruebas {
         let renglones = if texto.is_empty() {
             Vec::new()
         } else {
-            vec![Renglon { texto: texto.into(), caja: Caja::nueva(x, y, w, h), palabras: Vec::new(), negrita: false, color: None }]
+            vec![Renglon {
+                texto: texto.into(),
+                caja: Caja::nueva(x, y, w, h),
+                palabras: Vec::new(),
+                negrita: false,
+                color: None,
+            }]
         };
-        Zona { id: 0, tipo, caja: Caja::nueva(x, y, w, h), orden: 0, columna: 0, confianza: 0.5, renglones, alineacion: Alineacion::Izquierda, tabla: None, rayas: Vec::new(), dentro: Vec::new(), panel: None }
+        Zona {
+            id: 0,
+            tipo,
+            caja: Caja::nueva(x, y, w, h),
+            orden: 0,
+            columna: 0,
+            confianza: 0.5,
+            renglones,
+            alineacion: Alineacion::Izquierda,
+            tabla: None,
+            rayas: Vec::new(),
+            dentro: Vec::new(),
+            panel: None,
+        }
     }
 
     #[test]
@@ -382,7 +509,14 @@ mod pruebas {
             ancho: 400,
             alto: 300,
             zonas: vec![
-                zona(Tipo::Parrafo, 10.0, 10.0, 200.0, 20.0, "Elemento Descripcion"),
+                zona(
+                    Tipo::Parrafo,
+                    10.0,
+                    10.0,
+                    200.0,
+                    20.0,
+                    "Elemento Descripcion",
+                ),
                 zona(Tipo::Parrafo, 10.0, 40.0, 200.0, 20.0, "Variable Modelo"),
                 zona(Tipo::Foto, 220.0, 100.0, 100.0, 100.0, ""),
                 zona(Tipo::Dudosa, 0.0, 0.0, 400.0, 300.0, ""),
@@ -393,11 +527,25 @@ mod pruebas {
         let t = "```json\n{\"tema\":\"tabla de una tesis\",\"zonas\":[{\"n\":0,\"es\":\"tabla\",\"grupo\":\"t\"},{\"n\":1,\"es\":\"tabla\",\"grupo\":\"t\"},{\"n\":2,\"es\":\"ignorar\"},{\"n\":3,\"es\":\"contenedor\"},{\"n\":9,\"es\":\"texto\"}]}\n```";
         let plan = leer(t, 4).expect("se lee");
         assert_eq!(plan.tema, "tabla de una tesis");
-        assert!(!plan.es.contains_key(&9), "un numero que no existe no entra");
-        let p = Pagina { rgba: vec![200; 400 * 300 * 4], ancho: 400, alto: 300, palabras: Vec::new(), ms_leer: 0 };
+        assert!(
+            !plan.es.contains_key(&9),
+            "un numero que no existe no entra"
+        );
+        let p = Pagina {
+            rgba: vec![200; 400 * 300 * 4],
+            ancho: 400,
+            alto: 300,
+            palabras: Vec::new(),
+            ms_leer: 0,
+        };
         let r = aplicar(&plan, &s, &p);
         // El contenedor primero (capa de abajo), y la tabla como UNA zona con sus dos renglones.
-        assert_eq!(r.zonas.len(), 2, "{:?}", r.zonas.iter().map(|z| z.tipo).collect::<Vec<_>>());
+        assert_eq!(
+            r.zonas.len(),
+            2,
+            "{:?}",
+            r.zonas.iter().map(|z| z.tipo).collect::<Vec<_>>()
+        );
         assert_eq!(r.zonas[0].tipo, Tipo::Recuadro);
         assert!(r.zonas[0].panel.unwrap().relleno.is_some());
         assert_eq!(r.zonas[1].tipo, Tipo::Tabla);
@@ -410,11 +558,26 @@ mod pruebas {
 
     #[test]
     fn la_imagen_marcada_lleva_los_numeros() {
-        let s = Seccionado { ancho: 200, alto: 100, zonas: vec![zona(Tipo::Parrafo, 20.0, 40.0, 100.0, 30.0, "x")], ..Default::default() };
-        let p = Pagina { rgba: vec![255; 200 * 100 * 4], ancho: 200, alto: 100, palabras: Vec::new(), ms_leer: 0 };
+        let s = Seccionado {
+            ancho: 200,
+            alto: 100,
+            zonas: vec![zona(Tipo::Parrafo, 20.0, 40.0, 100.0, 30.0, "x")],
+            ..Default::default()
+        };
+        let p = Pagina {
+            rgba: vec![255; 200 * 100 * 4],
+            ancho: 200,
+            alto: 100,
+            palabras: Vec::new(),
+            ms_leer: 0,
+        };
         let m = marcar(&p, &s);
         // Algo negro (la cifra 0) en la etiqueta, encima de la zona.
-        let negros = m.pixeles.chunks_exact(4).filter(|c| c[0] == 0 && c[1] == 0 && c[2] == 0).count();
+        let negros = m
+            .pixeles
+            .chunks_exact(4)
+            .filter(|c| c[0] == 0 && c[1] == 0 && c[2] == 0)
+            .count();
         assert!(negros > 4);
     }
 }

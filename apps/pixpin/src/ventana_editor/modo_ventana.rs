@@ -194,7 +194,12 @@ pub(crate) fn sitio_al_abrir(
 /// cambia. Si cambio de tamano (estirada, a pantalla completa y de vuelta),
 /// lo dibujado se queda quieto en la pantalla: la camara corre lo mismo que
 /// la esquina de la ventana. Ida y vuelta deja la misma vista.
-pub(crate) fn camara_al_cambiar(camara: Camara, zoom_efectivo: f32, antes: Rect, ahora: Rect) -> Camara {
+pub(crate) fn camara_al_cambiar(
+    camara: Camara,
+    zoom_efectivo: f32,
+    antes: Rect,
+    ahora: Rect,
+) -> Camara {
     let solo_movida = (antes.ancho, antes.alto) == (ahora.ancho, ahora.alto);
     if solo_movida || zoom_efectivo <= 0.0 || !zoom_efectivo.is_finite() {
         return camara;
@@ -284,7 +289,10 @@ mod pruebas {
             ancho: 1000,
             alto: 700,
         };
-        assert_eq!(sitio_al_abrir(Some(dejada), &[MONITOR], defecto, (600, 400)), dejada);
+        assert_eq!(
+            sitio_al_abrir(Some(dejada), &[MONITOR], defecto, (600, 400)),
+            dejada
+        );
         // Caso negativo: en un monitor que ya no esta, al de por defecto.
         let fuera = Rect {
             x: -2500,
@@ -292,10 +300,16 @@ mod pruebas {
             ancho: 1000,
             alto: 700,
         };
-        assert_eq!(sitio_al_abrir(Some(fuera), &[MONITOR], defecto, (600, 400)), defecto);
+        assert_eq!(
+            sitio_al_abrir(Some(fuera), &[MONITOR], defecto, (600, 400)),
+            defecto
+        );
         // Ni asomando solo un pico por el borde.
         let pico = Rect { x: 1900, ..dejada };
-        assert_eq!(sitio_al_abrir(Some(pico), &[MONITOR], defecto, (600, 400)), defecto);
+        assert_eq!(
+            sitio_al_abrir(Some(pico), &[MONITOR], defecto, (600, 400)),
+            defecto
+        );
         // Mas pequena que el minimo (de una version de antes): crece.
         let chica = Rect {
             ancho: 300,
@@ -305,14 +319,18 @@ mod pruebas {
         let r = sitio_al_abrir(Some(chica), &[MONITOR], defecto, (600, 400));
         assert_eq!((r.x, r.y, r.ancho, r.alto), (200, 100, 600, 400));
         // La primera vez, centrada y al 80 %.
-        assert_eq!(sitio_al_abrir(None, &[MONITOR], defecto, (600, 400)), defecto);
+        assert_eq!(
+            sitio_al_abrir(None, &[MONITOR], defecto, (600, 400)),
+            defecto
+        );
         assert_eq!((defecto.ancho, defecto.alto), (1536, 832));
         assert_eq!((defecto.x, defecto.y), (192, 104));
     }
 
     #[test]
     fn el_minimo_deja_caber_la_barra_en_dos_filas() {
-        let botones = crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
+        let botones =
+            crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
         for escala in [100, 150] {
             let (w, h) = minimo(escala, botones);
             let area = Rect {
@@ -322,8 +340,14 @@ mod pruebas {
                 alto: h,
             };
             let barra = CajaHerramientas::barra_superior(area, escala, botones).marco;
-            assert!(barra.x >= 0 && barra.derecha() <= w as i32, "la barra cabe a {escala} %: {barra:?} en {w}");
-            assert!(barra.abajo() < h as i32 / 2, "y queda sitio para dibujar a {escala} %");
+            assert!(
+                barra.x >= 0 && barra.derecha() <= w as i32,
+                "la barra cabe a {escala} %: {barra:?} en {w}"
+            );
+            assert!(
+                barra.abajo() < h as i32 / 2,
+                "y queda sitio para dibujar a {escala} %"
+            );
             // Caso negativo: una pizca mas estrecha que la barra ya no cabe
             // (el minimo no es de adorno).
             let justa = Rect {
@@ -340,7 +364,8 @@ mod pruebas {
     #[test]
     fn en_una_ventana_estrecha_el_panel_no_pisa_la_barra() {
         use pixpin_motor2d::gesto::{Gesto, Herramienta};
-        let botones = crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
+        let botones =
+            crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
         let escena = pixpin_motor2d::escena::Escena::nueva();
         let mut gesto = Gesto::nuevo();
         crate::dibujo::teclas::elegir_herramienta(&mut gesto, Herramienta::Rectangulo);
@@ -353,12 +378,27 @@ mod pruebas {
         };
         let barra = CajaHerramientas::barra_superior(chica, 100, botones).marco;
         crate::panel_dibujo::con_boton_plegar(true);
-        let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area_del_panel(chica, barra, 100), 100)
-            .expect("el rectangulo tiene panel");
-        assert!(panel.marco.y >= barra.abajo(), "panel {:?} bajo la barra {barra:?}", panel.marco);
+        let panel = crate::panel_dibujo::panel_para(
+            &gesto,
+            &escena,
+            area_del_panel(chica, barra, 100),
+            100,
+        )
+        .expect("el rectangulo tiene panel");
+        assert!(
+            panel.marco.y >= barra.abajo(),
+            "panel {:?} bajo la barra {barra:?}",
+            panel.marco
+        );
         let boton = panel.plegar.expect("con su boton de quitarlo");
-        assert!(boton.y >= barra.abajo(), "el boton {boton:?} tambien bajo la barra");
-        assert!(panel.marco.abajo() <= chica.abajo(), "y dentro de la ventana");
+        assert!(
+            boton.y >= barra.abajo(),
+            "el boton {boton:?} tambien bajo la barra"
+        );
+        assert!(
+            panel.marco.abajo() <= chica.abajo(),
+            "y dentro de la ventana"
+        );
         // Caso negativo: con la barra en una fila no se mueve nada (el panel
         // sigue donde siempre en pantalla completa).
         let grande = Rect {
@@ -388,9 +428,15 @@ mod pruebas {
         // Lo que estaba en la esquina de la ventana sigue en el mismo sitio
         // de la pantalla: (300, 200) del escritorio.
         let mundo = |c: &Camara, area: Rect, px: i32, py: i32| {
-            (c.x + (px - area.x) as f32 / 1.5, c.y + (py - area.y) as f32 / 1.5)
+            (
+                c.x + (px - area.x) as f32 / 1.5,
+                c.y + (py - area.y) as f32 / 1.5,
+            )
         };
-        assert_eq!(mundo(&c, ventana, 300, 200), mundo(&a_pc, MONITOR, 300, 200));
+        assert_eq!(
+            mundo(&c, ventana, 300, 200),
+            mundo(&a_pc, MONITOR, 300, 200)
+        );
         let vuelta = camara_al_cambiar(a_pc, 1.5, MONITOR, ventana);
         assert!((vuelta.x - c.x).abs() < 1e-4 && (vuelta.y - c.y).abs() < 1e-4);
         assert_eq!(vuelta.zoom, c.zoom);
@@ -415,7 +461,10 @@ mod pruebas {
     fn cerrar_desde_la_barra_es_salir_guardando() {
         use crate::lector_pin::AccionPin;
         assert_eq!(de_la_barra(AccionPin::Cerrar), DeLaBarra::Cerrar);
-        assert_eq!(de_la_barra(AccionPin::PantallaCompleta), DeLaBarra::Alternar);
+        assert_eq!(
+            de_la_barra(AccionPin::PantallaCompleta),
+            DeLaBarra::Alternar
+        );
         assert_eq!(de_la_barra(AccionPin::Fijar), DeLaBarra::Fijar);
         // Caso negativo: el nombre y los propios no hacen nada en el lienzo.
         assert_eq!(de_la_barra(AccionPin::Nombre), DeLaBarra::Nada);
@@ -435,7 +484,15 @@ mod muestras {
     use pixpin_motor2d::{ColorRgba, Elemento, EstiloTrazo, Figura};
     use pixpin_render::{Color, MotorRender, RectF};
 
-    fn elemento(id: u64, figura: Figura, x: f32, y: f32, ancho: f32, alto: f32, trazo: ColorRgba) -> Elemento {
+    fn elemento(
+        id: u64,
+        figura: Figura,
+        x: f32,
+        y: f32,
+        ancho: f32,
+        alto: f32,
+        trazo: ColorRgba,
+    ) -> Elemento {
         Elemento {
             id,
             figura,
@@ -467,9 +524,25 @@ mod muestras {
         let mut s = Escena::nueva();
         let azul = ColorRgba::opaco(0.11, 0.38, 0.85);
         let rojo = ColorRgba::opaco(0.88, 0.19, 0.19);
-        s.anadir(elemento(1, Figura::Rectangulo, 40.0, 60.0, 260.0, 160.0, azul));
+        s.anadir(elemento(
+            1,
+            Figura::Rectangulo,
+            40.0,
+            60.0,
+            260.0,
+            160.0,
+            azul,
+        ));
         s.anadir(elemento(2, Figura::Elipse, 360.0, 90.0, 200.0, 140.0, rojo));
-        s.anadir(elemento(3, Figura::Rombo, 120.0, 280.0, 180.0, 150.0, ColorRgba::opaco(0.1, 0.55, 0.3)));
+        s.anadir(elemento(
+            3,
+            Figura::Rombo,
+            120.0,
+            280.0,
+            180.0,
+            150.0,
+            ColorRgba::opaco(0.1, 0.55, 0.3),
+        ));
         let n = 80;
         let puntos: Vec<Punto2> = (0..n)
             .map(|i| {
@@ -477,7 +550,19 @@ mod muestras {
                 Punto2::nuevo(t * 360.0, (t * 12.0).sin() * 40.0)
             })
             .collect();
-        let mut trazo = elemento(4, Figura::Lapiz { puntos, presiones: vec![0.5; n], opciones: Some(Default::default()) }, 360.0, 330.0, 360.0, 80.0, ColorRgba::opaco(0.1, 0.1, 0.12));
+        let mut trazo = elemento(
+            4,
+            Figura::Lapiz {
+                puntos,
+                presiones: vec![0.5; n],
+                opciones: Some(Default::default()),
+            },
+            360.0,
+            330.0,
+            360.0,
+            80.0,
+            ColorRgba::opaco(0.1, 0.1, 0.12),
+        );
         trazo.grosor = 3.0;
         s.anadir(trazo);
         s
@@ -486,16 +571,41 @@ mod muestras {
     /// Una ventana del lienzo en el «escritorio» `p`: el dibujo con la vista
     /// en `camara`, la barra de herramientas y el panel dentro, y la barra
     /// del pin encima, fuera, pegada a su izquierda.
-    fn pintar_ventana(p: &pixpin_render::Pintor, escritorio: Rect, ventana: Rect, camara: Camara, nombre: &str, pantalla_completa: bool) {
+    fn pintar_ventana(
+        p: &pixpin_render::Pintor,
+        escritorio: Rect,
+        ventana: Rect,
+        camara: Camara,
+        nombre: &str,
+        pantalla_completa: bool,
+    ) {
         let escena = escena();
-        let botones = crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
-        let r = RectF { x: ventana.x as f32, y: ventana.y as f32, ancho: ventana.ancho as f32, alto: ventana.alto as f32 };
+        let botones =
+            crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
+        let r = RectF {
+            x: ventana.x as f32,
+            y: ventana.y as f32,
+            ancho: ventana.ancho as f32,
+            alto: ventana.alto as f32,
+        };
         p.empujar_recorte(r);
         p.rellenar(r, a_color(escena.fondo));
-        p.poner_vista((0.0, 0.0), camara.zoom, (ventana.x as f32 - camara.x * camara.zoom, ventana.y as f32 - camara.y * camara.zoom));
+        p.poner_vista(
+            (0.0, 0.0),
+            camara.zoom,
+            (
+                ventana.x as f32 - camara.x * camara.zoom,
+                ventana.y as f32 - camara.y * camara.zoom,
+            ),
+        );
         let mut cache = Cache::nueva();
         let imagenes = ImagenesLienzo::nuevo(1);
-        let vista = (camara.x, camara.y, camara.x + ventana.ancho as f32 / camara.zoom, camara.y + ventana.alto as f32 / camara.zoom);
+        let vista = (
+            camara.x,
+            camara.y,
+            camara.x + ventana.ancho as f32 / camara.zoom,
+            camara.y + ventana.alto as f32 / camara.zoom,
+        );
         for e in escena.visibles() {
             por_cada_orden(&mut cache, e, camara.zoom, None, |o| {
                 dibujar_orden(p, o, vista, None, &imagenes, camara.zoom, None);
@@ -506,13 +616,26 @@ mod muestras {
         crate::caja_dibujo::pintar_barra(p, &caja, Herramienta::Rectangulo, 100, None, |_| None);
         let mut gesto = Gesto::nuevo();
         crate::dibujo::teclas::elegir_herramienta(&mut gesto, Herramienta::Rectangulo);
-        if let Some(panel) = crate::panel_dibujo::panel_para(&gesto, &escena, area_del_panel(ventana, caja.marco, 100), 100) {
+        if let Some(panel) = crate::panel_dibujo::panel_para(
+            &gesto,
+            &escena,
+            area_del_panel(ventana, caja.marco, 100),
+            100,
+        ) {
             crate::panel_dibujo::pintar(p, &panel, 100);
         }
         p.soltar_recorte();
         let (w, h) = crate::lector_pin::medida_de_la_barra(1.0, nombre, "pixpin", false);
         let (bx, by) = crate::lector_pin::colocar(ventana, escritorio, w, h, 8);
-        crate::lector_pin::pintar_barra_de_muestra(p, (bx as f32, by as f32), 1.0, nombre, "pixpin", false, pantalla_completa);
+        crate::lector_pin::pintar_barra_de_muestra(
+            p,
+            (bx as f32, by as f32),
+            1.0,
+            nombre,
+            "pixpin",
+            false,
+            pantalla_completa,
+        );
     }
 
     /// **El lienzo en ventana con la barra de los pines**, a PNG, en dos
@@ -524,40 +647,108 @@ mod muestras {
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_del_lienzo_en_ventana() {
         use pixpin_render::fuera_de_pantalla::FueraDePantalla;
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
-        let botones = crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
+        let botones =
+            crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Lienzo);
         let (mw, mh) = minimo(100, botones);
-        let escritorio = Rect { x: 0, y: 0, ancho: 1100 + 40 + mw + 40, alto: 120 + 720.max(mh) + 40 };
-        let fondo = Color { r: 0.24, g: 0.30, b: 0.38, a: 1.0 };
+        let escritorio = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1100 + 40 + mw + 40,
+            alto: 120 + 720.max(mh) + 40,
+        };
+        let fondo = Color {
+            r: 0.24,
+            g: 0.30,
+            b: 0.38,
+            a: 1.0,
+        };
         let guardar = |nombre: &str, fuera: &FueraDePantalla| {
             fuera.esperar_gpu().expect("esperar");
             let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
-            let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).expect("png");
+            let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            })
+            .expect("png");
             let salida = carpeta.join(nombre);
             std::fs::write(&salida, png).expect("guardar");
             println!("{}", salida.display());
         };
-        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), escritorio.ancho, escritorio.alto).expect("superficie");
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), escritorio.ancho, escritorio.alto)
+            .expect("superficie");
         motor
             .dibujar(&fuera.destino, |p| {
                 p.limpiar(fondo);
-                let grande = Rect { x: 40, y: 120, ancho: 1100, alto: 720 };
-                pintar_ventana(p, escritorio, grande, Camara { x: -40.0, y: -110.0, zoom: 1.0 }, "Plano de la casa", false);
-                let chica = Rect { x: 40 + 1100 + 40, y: 120, ancho: mw, alto: mh };
-                pintar_ventana(p, escritorio, chica, Camara { x: 0.0, y: -110.0, zoom: 0.6 }, "Minima", false);
+                let grande = Rect {
+                    x: 40,
+                    y: 120,
+                    ancho: 1100,
+                    alto: 720,
+                };
+                pintar_ventana(
+                    p,
+                    escritorio,
+                    grande,
+                    Camara {
+                        x: -40.0,
+                        y: -110.0,
+                        zoom: 1.0,
+                    },
+                    "Plano de la casa",
+                    false,
+                );
+                let chica = Rect {
+                    x: 40 + 1100 + 40,
+                    y: 120,
+                    ancho: mw,
+                    alto: mh,
+                };
+                pintar_ventana(
+                    p,
+                    escritorio,
+                    chica,
+                    Camara {
+                        x: 0.0,
+                        y: -110.0,
+                        zoom: 0.6,
+                    },
+                    "Minima",
+                    false,
+                );
             })
             .expect("pintar");
         guardar("lienzo-en-ventana.png", &fuera);
         // A pantalla completa: la ventana es el escritorio y la barra va
         // dentro, arriba a la izquierda.
-        let monitor = Rect { x: 0, y: 0, ancho: 1440, alto: 900 };
-        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), monitor.ancho, monitor.alto).expect("superficie");
+        let monitor = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1440,
+            alto: 900,
+        };
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), monitor.ancho, monitor.alto)
+            .expect("superficie");
         motor
             .dibujar(&fuera.destino, |p| {
                 p.limpiar(fondo);
-                pintar_ventana(p, monitor, monitor, Camara { x: -120.0, y: -140.0, zoom: 1.0 }, "Plano de la casa", true);
+                pintar_ventana(
+                    p,
+                    monitor,
+                    monitor,
+                    Camara {
+                        x: -120.0,
+                        y: -140.0,
+                        zoom: 1.0,
+                    },
+                    "Plano de la casa",
+                    true,
+                );
             })
             .expect("pintar");
         guardar("lienzo-a-pantalla-completa.png", &fuera);

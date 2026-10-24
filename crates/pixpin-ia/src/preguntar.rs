@@ -118,8 +118,14 @@ fn opcion(v: &Value) -> Option<Opcion> {
     let (etiqueta, descripcion) = match v {
         Value::String(s) => (s.as_str(), ""),
         Value::Object(o) => (
-            o.get("etiqueta").or_else(|| o.get("label")).and_then(Value::as_str).unwrap_or(""),
-            o.get("descripcion").or_else(|| o.get("description")).and_then(Value::as_str).unwrap_or(""),
+            o.get("etiqueta")
+                .or_else(|| o.get("label"))
+                .and_then(Value::as_str)
+                .unwrap_or(""),
+            o.get("descripcion")
+                .or_else(|| o.get("description"))
+                .and_then(Value::as_str)
+                .unwrap_or(""),
         ),
         _ => return None,
     };
@@ -145,7 +151,12 @@ fn pregunta(v: &Value) -> Result<Pregunta, String> {
         .map(|a| a.iter().filter_map(opcion).collect())
         .unwrap_or_default();
     // «Otro» lo pone la app: si el modelo lo anade, sobra.
-    opciones.retain(|o| !matches!(crate::acciones::normalizar(&o.etiqueta).trim_end_matches(['.', '…']), "otro" | "otra" | "otra cosa"));
+    opciones.retain(|o| {
+        !matches!(
+            crate::acciones::normalizar(&o.etiqueta).trim_end_matches(['.', '…']),
+            "otro" | "otra" | "otra cosa"
+        )
+    });
     let mut vistas = Vec::new();
     opciones.retain(|o| {
         let k = crate::acciones::normalizar(&o.etiqueta);
@@ -159,7 +170,10 @@ fn pregunta(v: &Value) -> Result<Pregunta, String> {
         ));
     }
     if opciones.len() > MAX_OPCIONES {
-        return Err(format!("«{texto}» tiene {} opciones: deja las {MAX_OPCIONES} que más cambian el resultado, la recomendada primero", opciones.len()));
+        return Err(format!(
+            "«{texto}» tiene {} opciones: deja las {MAX_OPCIONES} que más cambian el resultado, la recomendada primero",
+            opciones.len()
+        ));
     }
     Ok(Pregunta { texto, opciones })
 }
@@ -168,18 +182,24 @@ fn pregunta(v: &Value) -> Result<Pregunta, String> {
 /// sin la lista (`{"pregunta":…, "opciones":…}`), que es lo que escribe un
 /// modelo con prisa. El `Err` es el motivo, para que el modelo lo corrija.
 pub fn leer(argumentos: &str) -> Result<Vec<Pregunta>, String> {
-    let v = crate::herramientas::reparar_json(argumentos).ok_or("los argumentos de preguntar_usuario no son JSON")?;
+    let v = crate::herramientas::reparar_json(argumentos)
+        .ok_or("los argumentos de preguntar_usuario no son JSON")?;
     let lista: Vec<Value> = match v.get("preguntas").or_else(|| v.get("questions")) {
         Some(Value::Array(a)) => a.clone(),
         Some(otro @ Value::Object(_)) => vec![otro.clone()],
         _ if v.get("pregunta").is_some() || v.get("question").is_some() => vec![v.clone()],
-        _ => return Err("falta «preguntas»: [{\"pregunta\": \"…?\", \"opciones\": [{\"etiqueta\": \"…\"}, …]}]".into()),
+        _ => return Err(
+            "falta «preguntas»: [{\"pregunta\": \"…?\", \"opciones\": [{\"etiqueta\": \"…\"}, …]}]"
+                .into(),
+        ),
     };
     if lista.is_empty() {
         return Err("«preguntas» esta vacia: pon una pregunta".into());
     }
     if lista.len() > MAX_PREGUNTAS {
-        return Err(format!("como mucho {MAX_PREGUNTAS} preguntas por llamada; mejor una: la que más cambia el resultado"));
+        return Err(format!(
+            "como mucho {MAX_PREGUNTAS} preguntas por llamada; mejor una: la que más cambia el resultado"
+        ));
     }
     lista.iter().map(pregunta).collect()
 }
@@ -188,15 +208,28 @@ pub fn leer(argumentos: &str) -> Result<Vec<Pregunta>, String> {
 pub fn para_el_modelo(p: &Pregunta, c: &Contestada) -> String {
     match c {
         Contestada::Opcion(i) => match p.opciones.get(*i) {
-            Some(o) if o.descripcion.is_empty() => format!("«{}» → el usuario eligió «{}». Sigue con eso.", p.texto, o.etiqueta),
-            Some(o) => format!("«{}» → el usuario eligió «{}» ({}). Sigue con eso.", p.texto, o.etiqueta, o.descripcion),
+            Some(o) if o.descripcion.is_empty() => format!(
+                "«{}» → el usuario eligió «{}». Sigue con eso.",
+                p.texto, o.etiqueta
+            ),
+            Some(o) => format!(
+                "«{}» → el usuario eligió «{}» ({}). Sigue con eso.",
+                p.texto, o.etiqueta, o.descripcion
+            ),
             None => para_el_modelo(p, &Contestada::SinRespuesta),
         },
-        Contestada::Texto(t) => format!("«{}» → el usuario contestó con sus palabras: «{}». Sigue con eso.", p.texto, t.trim()),
+        Contestada::Texto(t) => format!(
+            "«{}» → el usuario contestó con sus palabras: «{}». Sigue con eso.",
+            p.texto,
+            t.trim()
+        ),
         Contestada::SinRespuesta => format!(
             "«{}» → el usuario no contestó. No vuelvas a preguntarlo: sigue con la recomendada («{}») y dilo en una línea al final.",
             p.texto,
-            p.opciones.first().map(|o| o.etiqueta.as_str()).unwrap_or("lo más razonable")
+            p.opciones
+                .first()
+                .map(|o| o.etiqueta.as_str())
+                .unwrap_or("lo más razonable")
         ),
     }
 }
@@ -212,7 +245,10 @@ pub fn linea_contestada(p: &Pregunta, c: &Contestada) -> String {
         Contestada::Texto(t) => format!("✍️ {}", t.trim()),
         Contestada::SinRespuesta => format!(
             "⌛ sin respuesta: sigo con «{}»",
-            p.opciones.first().map(|o| o.etiqueta.as_str()).unwrap_or("lo más razonable")
+            p.opciones
+                .first()
+                .map(|o| o.etiqueta.as_str())
+                .unwrap_or("lo más razonable")
         ),
     };
     format!("❓ {} → {fin}", p.texto)
@@ -227,10 +263,23 @@ mod pruebas {
         let p = leer(r#"{"preguntas":[{"pregunta":"¿Qué idioma?","opciones":[{"etiqueta":"Inglés","descripcion":"todo"},{"etiqueta":"Francés"}]}]}"#).unwrap();
         assert_eq!(p.len(), 1);
         assert_eq!(p[0].texto, "¿Qué idioma?");
-        assert_eq!(p[0].opciones[0], Opcion { etiqueta: "Inglés".into(), descripcion: "todo".into() });
+        assert_eq!(
+            p[0].opciones[0],
+            Opcion {
+                etiqueta: "Inglés".into(),
+                descripcion: "todo".into()
+            }
+        );
         // Sin la lista y con opciones en cadena (un modelo con prisa).
         let p = leer(r#"{"pregunta":"¿Cuál?","opciones":["A","B","Otro"]}"#).unwrap();
-        assert_eq!(p[0].opciones.iter().map(|o| o.etiqueta.as_str()).collect::<Vec<_>>(), ["A", "B"], "«Otro» lo pone la app");
+        assert_eq!(
+            p[0].opciones
+                .iter()
+                .map(|o| o.etiqueta.as_str())
+                .collect::<Vec<_>>(),
+            ["A", "B"],
+            "«Otro» lo pone la app"
+        );
     }
 
     #[test]
@@ -238,7 +287,11 @@ mod pruebas {
         // Negativos: una sola opcion, demasiadas, demasiadas preguntas, sin texto.
         let e = leer(r#"{"pregunta":"¿Sigo?","opciones":["Sí"]}"#).unwrap_err();
         assert!(e.contains("de 2 a 4") && e.contains("no preguntes"), "{e}");
-        assert!(leer(r#"{"pregunta":"¿?","opciones":["a","b","c","d","e"]}"#).unwrap_err().contains("deja las 4"));
+        assert!(
+            leer(r#"{"pregunta":"¿?","opciones":["a","b","c","d","e"]}"#)
+                .unwrap_err()
+                .contains("deja las 4")
+        );
         let tres = r#"{"preguntas":[{"pregunta":"1","opciones":["a","b"]},{"pregunta":"2","opciones":["a","b"]},{"pregunta":"3","opciones":["a","b"]}]}"#;
         assert!(leer(tres).unwrap_err().contains("como mucho 2"));
         assert!(leer(r#"{"opciones":["a","b"]}"#).is_err());
@@ -250,13 +303,22 @@ mod pruebas {
     #[test]
     fn lo_contestado_vuelve_al_modelo_y_a_la_burbuja() {
         let p = leer(r#"{"pregunta":"¿Qué idioma?","opciones":[{"etiqueta":"Inglés","descripcion":"todo el lienzo"},"Francés"]}"#).unwrap().remove(0);
-        assert!(para_el_modelo(&p, &Contestada::Opcion(0)).contains("eligió «Inglés» (todo el lienzo)"));
+        assert!(
+            para_el_modelo(&p, &Contestada::Opcion(0)).contains("eligió «Inglés» (todo el lienzo)")
+        );
         assert!(para_el_modelo(&p, &Contestada::Texto(" alemán ".into())).contains("«alemán»"));
         let sin = para_el_modelo(&p, &Contestada::SinRespuesta);
-        assert!(sin.contains("no contestó") && sin.contains("«Inglés»") && sin.contains("No vuelvas a preguntarlo"));
+        assert!(
+            sin.contains("no contestó")
+                && sin.contains("«Inglés»")
+                && sin.contains("No vuelvas a preguntarlo")
+        );
         // Una opcion que no existe es como no contestar.
         assert_eq!(para_el_modelo(&p, &Contestada::Opcion(9)), sin);
-        assert_eq!(linea_contestada(&p, &Contestada::Opcion(1)), "❓ ¿Qué idioma? → ✅ Francés");
+        assert_eq!(
+            linea_contestada(&p, &Contestada::Opcion(1)),
+            "❓ ¿Qué idioma? → ✅ Francés"
+        );
     }
 
     #[test]
@@ -264,7 +326,14 @@ mod pruebas {
         let h = herramienta();
         assert_eq!(h.nombre, NOMBRE);
         let ejemplo = h.descripcion.split("Ejemplo: ").nth(1).unwrap();
-        assert_eq!(leer(ejemplo).unwrap()[0].opciones.len(), 2, "el ejemplo de la descripcion vale");
-        assert_eq!(h.parametros["properties"]["preguntas"]["maxItems"], MAX_PREGUNTAS);
+        assert_eq!(
+            leer(ejemplo).unwrap()[0].opciones.len(),
+            2,
+            "el ejemplo de la descripcion vale"
+        );
+        assert_eq!(
+            h.parametros["properties"]["preguntas"]["maxItems"],
+            MAX_PREGUNTAS
+        );
     }
 }

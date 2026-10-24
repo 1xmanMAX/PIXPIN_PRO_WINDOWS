@@ -498,7 +498,10 @@ pub fn tamano_natural(h: &Herramienta, escala: u32, moneda: &gastos::Moneda) -> 
     }
     if h.es_color() {
         // La muestra cuadrada y su valor debajo (`ColorPinBody`: 96 dp).
-        return (e(LADO_COLOR + 2 * MARGEN_COLOR), e(LADO_COLOR + ROTULO_COLOR + 2 * MARGEN_COLOR));
+        return (
+            e(LADO_COLOR + 2 * MARGEN_COLOR),
+            e(LADO_COLOR + ROTULO_COLOR + 2 * MARGEN_COLOR),
+        );
     }
     if h.es_tabla() {
         let filas = pixpin_pin::tabla::leer(&h.documento);
@@ -1390,7 +1393,10 @@ mod pruebas {
             alt: false,
         };
         assert_eq!(h.tecla(esc, (w, alto), 100, &euro(), 0, 0.0), Hecho::Cerrar);
-        assert_eq!(h.caracter('x', (w, alto), 100, &euro(), 0, 0.0), Hecho::Nada);
+        assert_eq!(
+            h.caracter('x', (w, alto), 100, &euro(), 0, 0.0),
+            Hecho::Nada
+        );
         // Caso negativo: un texto que no es color no da pin de color.
         assert_eq!(documento_nuevo(COLOR, "hola", &euro()), None);
         assert_eq!(Herramienta::nueva(TABLA, "#fff".into()).color(), None);

@@ -194,7 +194,17 @@ pub fn guardar_en_el_chat(
                     &cajas,
                     (foto.ancho, foto.alto),
                 );
-                chat.guardar_nuevo(raiz, Sesion { foto, tinta, pegadas }, recorte, pa.avisos, globo);
+                chat.guardar_nuevo(
+                    raiz,
+                    Sesion {
+                        foto,
+                        tinta,
+                        pegadas,
+                    },
+                    recorte,
+                    pa.avisos,
+                    globo,
+                );
                 Paso::Nuevo
             }
             None => {

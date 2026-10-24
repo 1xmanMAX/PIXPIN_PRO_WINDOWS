@@ -77,7 +77,12 @@ pub fn caja_del_rotulo(escena: &Escena, e: &Elemento) -> Option<u64> {
     if !es_texto(e) || e.extras.contenedor.is_none() {
         return None;
     }
-    tf::contenedor_de(e, &escena.elementos, &pixpin_motor2d::enlace::id_de_texto_de).map(|c| c.id)
+    tf::contenedor_de(
+        e,
+        &escena.elementos,
+        &pixpin_motor2d::enlace::id_de_texto_de,
+    )
+    .map(|c| c.id)
 }
 
 /// **El rotulo atado de una caja**, si lo lleva.
@@ -85,7 +90,11 @@ pub fn rotulo_de(escena: &Escena, e: &Elemento) -> Option<u64> {
     if !tf::admite_texto_dentro(&e.figura) || e.extras.atados.is_empty() {
         return None;
     }
-    tf::texto_de(&pixpin_motor2d::enlace::id_de_texto_de(e), &escena.elementos).map(|t| t.id)
+    tf::texto_de(
+        &pixpin_motor2d::enlace::id_de_texto_de(e),
+        &escena.elementos,
+    )
+    .map(|t| t.id)
 }
 
 /// Si es una figura cerrada de las que llevan texto dentro.
@@ -107,11 +116,19 @@ pub fn caja_que_lo_rodea<'a>(escena: &'a Escena, t: &Elemento) -> Option<&'a Ele
         .filter(|c| {
             let (a0, b0, a1, b1) = c.caja();
             let (cw, ch) = (a1 - a0, b1 - b0);
-            cx >= a0 && cx <= a1 && cy >= b0 && cy <= b1 && ch >= h * 0.9 && cw >= w * 0.3 && cw * ch >= 0.5 * w * h
+            cx >= a0
+                && cx <= a1
+                && cy >= b0
+                && cy <= b1
+                && ch >= h * 0.9
+                && cw >= w * 0.3
+                && cw * ch >= 0.5 * w * h
         })
         .min_by(|a, b| {
             let area = |e: &Elemento| e.ancho * e.alto;
-            area(a).partial_cmp(&area(b)).unwrap_or(std::cmp::Ordering::Equal)
+            area(a)
+                .partial_cmp(&area(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
         })
 }
 
@@ -141,20 +158,35 @@ pub fn texto_para(escena: &Escena, id: u64) -> Option<u64> {
 // Medir
 
 fn estilo_de(e: &Elemento) -> EstiloDeTexto {
-    EstiloDeTexto { negrita: e.extras.negrita, cursiva: e.extras.cursiva, tachado: e.extras.tachado }
+    EstiloDeTexto {
+        negrita: e.extras.negrita,
+        cursiva: e.extras.cursiva,
+        tachado: e.extras.tachado,
+    }
 }
 
 /// Los renglones de `texto` a un tamano, partidos a `ancho` si se da.
-fn renglones(texto: &str, tam: f32, familia: &str, estilo: EstiloDeTexto, ancho: Option<f32>) -> Vec<String> {
+fn renglones(
+    texto: &str,
+    tam: f32,
+    familia: &str,
+    estilo: EstiloDeTexto,
+    ancho: Option<f32>,
+) -> Vec<String> {
     match ancho {
-        Some(w) => tf::repartir_en_lineas(texto, w, &|s: &str| tx::ancho_real(s, tam, familia, estilo)),
+        Some(w) => {
+            tf::repartir_en_lineas(texto, w, &|s: &str| tx::ancho_real(s, tam, familia, estilo))
+        }
         None => texto.split('\n').map(str::to_string).collect(),
     }
 }
 
 /// Lo que ocupa de verdad el renglon mas largo (sin la holgura del cursor).
 fn ancho_de(renglones: &[String], tam: f32, familia: &str, estilo: EstiloDeTexto) -> f32 {
-    renglones.iter().map(|r| tx::ancho_real(r.trim_end(), tam, familia, estilo)).fold(0.0, f32::max)
+    renglones
+        .iter()
+        .map(|r| tx::ancho_real(r.trim_end(), tam, familia, estilo))
+        .fold(0.0, f32::max)
 }
 
 fn alto_de(n: usize, tam: f32, familia: &str) -> f32 {
@@ -165,18 +197,40 @@ fn alto_de(n: usize, tam: f32, familia: &str) -> f32 {
 /// cabe_alto, caja))` con lo que mide y lo que hay, si NO cabe. Lo usa la
 /// revision (`lint.rs`) con las mismas cuentas que el cambio.
 pub fn no_cabe(escena: &Escena, t: &Elemento) -> Option<(f32, f32, f32, f32, u64)> {
-    let Figura::Texto { texto, tam, familia } = &t.figura else { return None };
+    let Figura::Texto {
+        texto,
+        tam,
+        familia,
+    } = &t.figura
+    else {
+        return None;
+    };
     let estilo = estilo_de(t);
-    let plano = t.extras.rico.as_deref().map(pixpin_motor2d::texto_rico::plano).unwrap_or_else(|| texto.clone());
-    if let Some(c) = tf::contenedor_de(t, &escena.elementos, &pixpin_motor2d::enlace::id_de_texto_de) {
+    let plano = t
+        .extras
+        .rico
+        .as_deref()
+        .map(pixpin_motor2d::texto_rico::plano)
+        .unwrap_or_else(|| texto.clone());
+    if let Some(c) = tf::contenedor_de(
+        t,
+        &escena.elementos,
+        &pixpin_motor2d::enlace::id_de_texto_de,
+    ) {
         let (cw, ch) = (tf::ancho_que_cabe(c), tf::alto_que_cabe(c));
         let r = renglones(&plano, *tam, familia, estilo, Some(cw.max(1.0)));
-        let (w, h) = (ancho_de(&r, *tam, familia, estilo), alto_de(r.len(), *tam, familia));
+        let (w, h) = (
+            ancho_de(&r, *tam, familia, estilo),
+            alto_de(r.len(), *tam, familia),
+        );
         return (w > cw + 1.0 || h > ch + 1.0).then_some((w, h, cw, ch, c.id));
     }
     let c = caja_que_lo_rodea(escena, t)?;
     let r = renglones(&plano, *tam, familia, estilo, None);
-    let (w, h) = (ancho_de(&r, *tam, familia, estilo), alto_de(r.len(), *tam, familia));
+    let (w, h) = (
+        ancho_de(&r, *tam, familia, estilo),
+        alto_de(r.len(), *tam, familia),
+    );
     // Suelto encima de una caja: lo que la caja tiene de ancho (con el aire
     // de los bordes), o el hueco de dentro si es un ovalo o un rombo.
     let cw = match c.figura {
@@ -205,17 +259,45 @@ struct Informe {
 
 /// **Pone `nuevo` en el texto `id`** (o lo deja como esta si es `None`) y lo
 /// ajusta. Quien llama abre el paso de deshacer; aqui se apunta la edicion.
-fn poner(escena: &mut Escena, id: u64, nuevo: Option<&str>, ajuste: Ajuste, ancho_max: Option<f32>) -> Informe {
-    let Some(antes) = escena.buscar(id).cloned() else { return Informe::default() };
-    let Figura::Texto { texto: viejo, tam: tam0, familia } = &antes.figura else { return Informe::default() };
+fn poner(
+    escena: &mut Escena,
+    id: u64,
+    nuevo: Option<&str>,
+    ajuste: Ajuste,
+    ancho_max: Option<f32>,
+) -> Informe {
+    let Some(antes) = escena.buscar(id).cloned() else {
+        return Informe::default();
+    };
+    let Figura::Texto {
+        texto: viejo,
+        tam: tam0,
+        familia,
+    } = &antes.figura
+    else {
+        return Informe::default();
+    };
     let familia = familia.clone();
     let estilo = estilo_de(&antes);
     let fuente_vieja = antes.extras.rico.clone().unwrap_or_else(|| viejo.clone());
     let base = nuevo.map(str::to_string).unwrap_or(fuente_vieja);
     let rico = pixpin_motor2d::texto_rico::tiene_marcas(&base);
-    let plano = if rico { pixpin_motor2d::texto_rico::plano(&base) } else { base.clone() };
-    let atada = tf::contenedor_de(&antes, &escena.elementos, &pixpin_motor2d::enlace::id_de_texto_de).cloned();
-    let rodea = if atada.is_none() { caja_que_lo_rodea(escena, &antes).cloned() } else { None };
+    let plano = if rico {
+        pixpin_motor2d::texto_rico::plano(&base)
+    } else {
+        base.clone()
+    };
+    let atada = tf::contenedor_de(
+        &antes,
+        &escena.elementos,
+        &pixpin_motor2d::enlace::id_de_texto_de,
+    )
+    .cloned();
+    let rodea = if atada.is_none() {
+        caja_que_lo_rodea(escena, &antes).cloned()
+    } else {
+        None
+    };
     let mut x = antes.clone();
     let mut informe = Informe::default();
     let mut tam = *tam0;
@@ -223,10 +305,16 @@ fn poner(escena: &mut Escena, id: u64, nuevo: Option<&str>, ajuste: Ajuste, anch
     if let Some(c) = &atada {
         // **Rotulo de una caja**: se parte a lo ancho del hueco (como lo
         // pinta `pintado.rs`) y se coloca con su alineacion.
-        let (cw, ch) = (tf::ancho_que_cabe(c).max(4.0), tf::alto_que_cabe(c).max(4.0));
+        let (cw, ch) = (
+            tf::ancho_que_cabe(c).max(4.0),
+            tf::alto_que_cabe(c).max(4.0),
+        );
         let medir = |t: f32| {
             let r = renglones(&plano, t, &familia, estilo, Some(cw));
-            (ancho_de(&r, t, &familia, estilo), alto_de(r.len(), t, &familia))
+            (
+                ancho_de(&r, t, &familia, estilo),
+                alto_de(r.len(), t, &familia),
+            )
         };
         let (mut w, mut h) = medir(tam);
         if ajuste.encoge() {
@@ -266,16 +354,31 @@ fn poner(escena: &mut Escena, id: u64, nuevo: Option<&str>, ajuste: Ajuste, anch
         // alineacion (o por el centro, si estaba centrado en su caja).
         let (x0, y0, x1, y1) = antes.caja();
         let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-        let limite_w = ancho_max.or(rodea.as_ref().map(tf::ancho_que_cabe)).map(|w| w.max(4.0));
-        let limite_h = if ancho_max.is_some() { None } else { rodea.as_ref().map(tf::alto_que_cabe) };
+        let limite_w = ancho_max
+            .or(rodea.as_ref().map(tf::ancho_que_cabe))
+            .map(|w| w.max(4.0));
+        let limite_h = if ancho_max.is_some() {
+            None
+        } else {
+            rodea.as_ref().map(tf::alto_que_cabe)
+        };
         let partir = ajuste.parte() && !rico && limite_w.is_some();
         let componer = |t: f32| -> (String, f32, f32) {
-            let f = if partir { renglones(&base, t, &familia, estilo, limite_w).join("\n") } else { base.clone() };
+            let f = if partir {
+                renglones(&base, t, &familia, estilo, limite_w).join("\n")
+            } else {
+                base.clone()
+            };
             let r = renglones(&plano_de(&f, rico), t, &familia, estilo, None);
-            let (w, h) = (ancho_de(&r, t, &familia, estilo), alto_de(r.len(), t, &familia));
+            let (w, h) = (
+                ancho_de(&r, t, &familia, estilo),
+                alto_de(r.len(), t, &familia),
+            );
             (f, w, h)
         };
-        let sobra = |w: f32, h: f32| limite_w.is_some_and(|l| w > l + 0.5) || limite_h.is_some_and(|l| h > l + 0.5);
+        let sobra = |w: f32, h: f32| {
+            limite_w.is_some_and(|l| w > l + 0.5) || limite_h.is_some_and(|l| h > l + 0.5)
+        };
         let (mut f, mut w, mut h) = componer(tam);
         if ajuste.encoge() {
             while sobra(w, h) && tam > TAM_MINIMO {
@@ -287,7 +390,9 @@ fn poner(escena: &mut Escena, id: u64, nuevo: Option<&str>, ajuste: Ajuste, anch
             *t = tam;
         }
         pixpin_motor2d::texto_rico::poner_fuente(&mut x, &f);
-        let centrado_en_su_caja = rodea.as_ref().is_some_and(|c| (cx - (c.x + c.ancho / 2.0)).abs() < 3.0);
+        let centrado_en_su_caja = rodea
+            .as_ref()
+            .is_some_and(|c| (cx - (c.x + c.ancho / 2.0)).abs() < 3.0);
         match antes.extras.alineacion {
             Some(AlineacionTexto::Centro) => x.x = cx - x.ancho / 2.0,
             Some(AlineacionTexto::Derecha) => x.x = x1 - x.ancho,
@@ -296,7 +401,10 @@ fn poner(escena: &mut Escena, id: u64, nuevo: Option<&str>, ajuste: Ajuste, anch
         }
         // A media altura de su caja: sigue a media altura con mas o menos
         // renglones.
-        if rodea.as_ref().is_some_and(|c| (cy - (c.y + c.alto / 2.0)).abs() < 0.15 * c.alto) {
+        if rodea
+            .as_ref()
+            .is_some_and(|c| (cy - (c.y + c.alto / 2.0)).abs() < 0.15 * c.alto)
+        {
             x.y = cy - x.alto / 2.0;
         }
         if sobra(w, h) {
@@ -336,7 +444,11 @@ fn poner(escena: &mut Escena, id: u64, nuevo: Option<&str>, ajuste: Ajuste, anch
 }
 
 fn plano_de(f: &str, rico: bool) -> String {
-    if rico { pixpin_motor2d::texto_rico::plano(f) } else { f.to_string() }
+    if rico {
+        pixpin_motor2d::texto_rico::plano(f)
+    } else {
+        f.to_string()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -355,7 +467,10 @@ fn almohadillas(q: &str) -> Vec<u64> {
 /// «listar».
 fn error_de(escena: &Escena, que: &str, m: &str) -> String {
     let textos: Vec<&Elemento> = escena.a_la_vista().filter(|e| es_texto(e)).collect();
-    let faltan: Vec<u64> = almohadillas(que).into_iter().filter(|id| escena.buscar(*id).is_none_or(|e| e.borrado)).collect();
+    let faltan: Vec<u64> = almohadillas(que)
+        .into_iter()
+        .filter(|id| escena.buscar(*id).is_none_or(|e| e.borrado))
+        .collect();
     if let Some(&id) = faltan.first() {
         let mut cerca: Vec<&Elemento> = textos.clone();
         cerca.sort_by_key(|e| e.id.abs_diff(id));
@@ -364,7 +479,11 @@ fn error_de(escena: &Escena, que: &str, m: &str) -> String {
             .take(3)
             .map(|e| {
                 let t = match &e.figura {
-                    Figura::Texto { texto, .. } => texto.chars().take(24).collect::<String>().replace('\n', " "),
+                    Figura::Texto { texto, .. } => texto
+                        .chars()
+                        .take(24)
+                        .collect::<String>()
+                        .replace('\n', " "),
                     _ => String::new(),
                 };
                 format!("#{} \"{t}\"", e.id)
@@ -373,7 +492,10 @@ fn error_de(escena: &Escena, que: &str, m: &str) -> String {
         return if sugeridos.is_empty() {
             format!("no existe #{id} y en el lienzo no hay textos")
         } else {
-            format!("no existe #{id}; textos con id parecido: {} (accion «listar» da todos)", sugeridos.join(" "))
+            format!(
+                "no existe #{id}; textos con id parecido: {} (accion «listar» da todos)",
+                sugeridos.join(" ")
+            )
         };
     }
     let primera = m.lines().next().unwrap_or(m);
@@ -383,15 +505,29 @@ fn error_de(escena: &Escena, que: &str, m: &str) -> String {
 /// **Un solo texto** por su referencia (un texto, o una caja con rotulo).
 fn uno_de(escena: &Escena, que: &str, ctx: &Contexto) -> Result<u64, String> {
     let r = referencia::resolver(escena, que, ctx, None).map_err(|m| error_de(escena, que, &m))?;
-    let mut ids: Vec<u64> = r.ids.iter().filter_map(|id| texto_para(escena, *id)).collect();
+    let mut ids: Vec<u64> = r
+        .ids
+        .iter()
+        .filter_map(|id| texto_para(escena, *id))
+        .collect();
     ids.dedup();
     match ids.len() {
         1 => Ok(ids[0]),
         0 => {
-            let n = r.ids.first().and_then(|id| escena.buscar(*id)).map(super::nombre_de).unwrap_or("figura");
-            Err(format!("{que} es un {n} sin texto: para ponerle uno nuevo usa dibujar_en_lienzo"))
+            let n = r
+                .ids
+                .first()
+                .and_then(|id| escena.buscar(*id))
+                .map(super::nombre_de)
+                .unwrap_or("figura");
+            Err(format!(
+                "{que} es un {n} sin texto: para ponerle uno nuevo usa dibujar_en_lienzo"
+            ))
         }
-        n => Err(format!("«{que}» encaja con {n} textos; di cual por su #id:\n{}", listar(escena, &ids, ctx.marco))),
+        n => Err(format!(
+            "«{que}» encaja con {n} textos; di cual por su #id:\n{}",
+            listar(escena, &ids, ctx.marco)
+        )),
     }
 }
 
@@ -414,7 +550,11 @@ fn varios_de(escena: &Escena, que: &str, ctx: &Contexto) -> Result<Vec<u64>, Str
 // ---------------------------------------------------------------------------
 // La herramienta
 
-pub(super) fn editar_texto(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> Result<Hecho, String> {
+pub(super) fn editar_texto(
+    escena: &mut Escena,
+    e: &Edicion,
+    ctx: &Contexto,
+) -> Result<Hecho, String> {
     let hay_cambios = e.args.contains_key("cambios") || e.texto("texto").is_some();
     let ajuste = Ajuste::de(e.texto("ajustar"));
     let accion = e.texto("accion").unwrap_or(if hay_cambios {
@@ -424,14 +564,28 @@ pub(super) fn editar_texto(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> 
     } else {
         "listar"
     });
-    let ancho_max = e.numero("ancho_max").map(|w| w as f32).filter(|w| *w >= 4.0);
+    let ancho_max = e
+        .numero("ancho_max")
+        .map(|w| w as f32)
+        .filter(|w| *w >= 4.0);
     match accion {
         "listar" => Ok(listar_textos(escena, e, ctx)),
         "ajustar" => {
             let ids = varios_de(escena, e.texto("que").unwrap_or("todo"), ctx)?;
-            let ajuste = if ajuste == Ajuste::No { Ajuste::Auto } else { ajuste };
+            let ajuste = if ajuste == Ajuste::No {
+                Ajuste::Auto
+            } else {
+                ajuste
+            };
             let pares: Vec<(u64, Option<String>)> = ids.into_iter().map(|id| (id, None)).collect();
-            Ok(aplicar_todos(escena, &pares, ajuste, ancho_max, Vec::new(), ctx))
+            Ok(aplicar_todos(
+                escena,
+                &pares,
+                ajuste,
+                ancho_max,
+                Vec::new(),
+                ctx,
+            ))
         }
         _ => {
             let mut lista: Vec<(String, String)> = e
@@ -440,12 +594,19 @@ pub(super) fn editar_texto(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> 
                 .and_then(Value::as_array)
                 .map(|a| {
                     a.iter()
-                        .filter_map(|c| Some((c.get("ref")?.as_str()?.to_string(), c.get("texto")?.as_str()?.to_string())))
+                        .filter_map(|c| {
+                            Some((
+                                c.get("ref")?.as_str()?.to_string(),
+                                c.get("texto")?.as_str()?.to_string(),
+                            ))
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
             if let Some(t) = e.texto("texto") {
-                let que = e.texto("que").ok_or("con «texto» hace falta «que»: el #id del texto que cambia (o usa «cambios»)")?;
+                let que = e.texto("que").ok_or(
+                    "con «texto» hace falta «que»: el #id del texto que cambia (o usa «cambios»)",
+                )?;
                 lista.push((que.to_string(), t.to_string()));
             }
             if lista.is_empty() {
@@ -456,7 +617,9 @@ pub(super) fn editar_texto(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> 
             for (r, t) in lista {
                 match uno_de(escena, &r, ctx) {
                     Ok(id) if escena.buscar(id).is_some_and(|x| x.bloqueado) => {
-                        fallos.push(format!("#{id} esta bloqueado: el usuario lo dejo quieto a proposito"));
+                        fallos.push(format!(
+                            "#{id} esta bloqueado: el usuario lo dejo quieto a proposito"
+                        ));
                     }
                     Ok(id) => {
                         // Dos cambios al mismo: vale el ultimo.
@@ -469,7 +632,9 @@ pub(super) fn editar_texto(escena: &mut Escena, e: &Edicion, ctx: &Contexto) -> 
             if pares.is_empty() {
                 return Err(format!("no se cambio nada:\n{}", fallos.join("\n")));
             }
-            Ok(aplicar_todos(escena, &pares, ajuste, ancho_max, fallos, ctx))
+            Ok(aplicar_todos(
+                escena, &pares, ajuste, ancho_max, fallos, ctx,
+            ))
         }
     }
 }
@@ -506,7 +671,11 @@ fn aplicar_todos(
         "hecho: {n} texto{} cambiado{}: {}",
         if n == 1 { "" } else { "s" },
         if n == 1 { "" } else { "s" },
-        cambiados.iter().map(|i| format!("#{i}")).collect::<Vec<_>>().join(" ")
+        cambiados
+            .iter()
+            .map(|i| format!("#{i}"))
+            .collect::<Vec<_>>()
+            .join(" ")
     );
     if !encogidos.is_empty() {
         s.push_str(&format!("\nletra encogida: {}", encogidos.join(", ")));
@@ -529,7 +698,10 @@ fn aplicar_todos(
         s.push('\n');
         s.push_str(&lista);
     }
-    Hecho { texto: s, ids: cambiados }
+    Hecho {
+        texto: s,
+        ids: cambiados,
+    }
 }
 
 /// **Todos los textos con su #id y su texto entero**, en orden de lectura
@@ -544,18 +716,25 @@ fn listar_textos(escena: &Escena, e: &Edicion, ctx: &Contexto) -> Hecho {
         .collect();
     textos.sort_by(|a, b| {
         let (ya, yb) = ((a.y / 10.0).round(), (b.y / 10.0).round());
-        ya.partial_cmp(&yb).unwrap_or(std::cmp::Ordering::Equal).then(a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
+        ya.partial_cmp(&yb)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
     });
     let total = textos.len();
     if total == 0 {
-        return Hecho { texto: "en el lienzo no hay textos".into(), ids: Vec::new() };
+        return Hecho {
+            texto: "en el lienzo no hay textos".into(),
+            ids: Vec::new(),
+        };
     }
     let desde = (e.numero("desde").unwrap_or(0.0).max(0.0) as usize).min(total);
     let r = |v: f32| v.round() as i64;
     let mut s = format!("{total} textos (de arriba abajo):");
     let mut puestos = 0;
     for t in textos.iter().skip(desde).take(MAX_LISTA) {
-        let Figura::Texto { texto, tam, .. } = &t.figura else { continue };
+        let Figura::Texto { texto, tam, .. } = &t.figura else {
+            continue;
+        };
         let (x0, y0, x1, y1) = t.caja();
         s.push_str(&format!(
             "\n#{} \"{}\" [{},{},{},{}] letra {}",
@@ -573,7 +752,14 @@ fn listar_textos(escena: &Escena, e: &Edicion, ctx: &Contexto) -> Hecho {
         puestos += 1;
     }
     if desde + puestos < total {
-        s.push_str(&format!("\n(+{} mas: repite con «desde»: {})", total - desde - puestos, desde + puestos));
+        s.push_str(&format!(
+            "\n(+{} mas: repite con «desde»: {})",
+            total - desde - puestos,
+            desde + puestos
+        ));
     }
-    Hecho { texto: s, ids: Vec::new() }
+    Hecho {
+        texto: s,
+        ids: Vec::new(),
+    }
 }

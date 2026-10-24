@@ -7,16 +7,17 @@
 //! solo se le anaden los submenus (`MF_POPUP`) y la imagen de cada entrada
 //! (`MENUITEMINFOW::hbmpItem`, un DIB de 32 bits premultiplicado).
 
+use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HBITMAP, HGDIOBJ,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDIBSection, DIB_RGB_COLORS, DeleteObject, HBITMAP,
+    HGDIOBJ,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu, GetMenuItemCount, HMENU, MENUITEMINFOW, MF_MENUBARBREAK, MF_POPUP, MF_SEPARATOR,
-    MF_STRING, MIIM_BITMAP, SetForegroundWindow, SetMenuItemInfoW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TrackPopupMenu,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, GetMenuItemCount, HMENU, MENUITEMINFOW,
+    MF_MENUBARBREAK, MF_POPUP, MF_SEPARATOR, MF_STRING, MIIM_BITMAP, SetForegroundWindow,
+    SetMenuItemInfoW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
 };
-use windows::Win32::Foundation::HWND;
 use windows::core::{HSTRING, PCWSTR};
 
 /// Una imagen chica, RGBA sin premultiplicar, de arriba abajo.
@@ -38,7 +39,11 @@ pub struct EntradaRica {
 
 impl EntradaRica {
     pub fn de(id: u32, texto: impl Into<String>) -> EntradaRica {
-        EntradaRica { id, texto: texto.into(), ..Default::default() }
+        EntradaRica {
+            id,
+            texto: texto.into(),
+            ..Default::default()
+        }
     }
 
     pub fn raya() -> EntradaRica {
@@ -46,7 +51,11 @@ impl EntradaRica {
     }
 
     pub fn submenu(texto: impl Into<String>, hijas: Vec<EntradaRica>) -> EntradaRica {
-        EntradaRica { texto: texto.into(), hijas, ..Default::default() }
+        EntradaRica {
+            texto: texto.into(),
+            hijas,
+            ..Default::default()
+        }
     }
 }
 
@@ -102,19 +111,33 @@ unsafe fn llenar(menu: HMENU, entradas: &[EntradaRica], bitmaps: &mut Vec<HBITMA
     let columnas = con_imagen.div_ceil(POR_COLUMNA).max(1);
     let alto = entradas.len().div_ceil(columnas);
     for (i, e) in entradas.iter().enumerate() {
-        let salto = if con_imagen > POR_COLUMNA && i > 0 && i % alto == 0 { MF_MENUBARBREAK } else { Default::default() };
+        let salto = if con_imagen > POR_COLUMNA && i > 0 && i % alto == 0 {
+            MF_MENUBARBREAK
+        } else {
+            Default::default()
+        };
         let texto = HSTRING::from(e.texto.as_str());
         // SAFETY: lo de la funcion.
         unsafe {
             if !e.hijas.is_empty() {
                 let Ok(sub) = CreatePopupMenu() else { continue };
                 llenar(sub, &e.hijas, bitmaps);
-                let _ = AppendMenuW(menu, MF_POPUP | MF_STRING, sub.0 as usize, PCWSTR(texto.as_ptr()));
+                let _ = AppendMenuW(
+                    menu,
+                    MF_POPUP | MF_STRING,
+                    sub.0 as usize,
+                    PCWSTR(texto.as_ptr()),
+                );
             } else if e.id == 0 {
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
                 continue;
             } else {
-                let _ = AppendMenuW(menu, MF_STRING | salto, e.id as usize, PCWSTR(texto.as_ptr()));
+                let _ = AppendMenuW(
+                    menu,
+                    MF_STRING | salto,
+                    e.id as usize,
+                    PCWSTR(texto.as_ptr()),
+                );
             }
             if let Some(b) = e.imagen.as_ref().and_then(bitmap) {
                 let pos = GetMenuItemCount(Some(menu)) - 1;
@@ -142,7 +165,15 @@ pub fn menu_rico(propietaria: HWND, x: i32, y: i32, entradas: &[EntradaRica]) ->
         let menu = CreatePopupMenu().ok()?;
         llenar(menu, entradas, &mut bitmaps);
         let _ = SetForegroundWindow(propietaria);
-        let elegido = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY, x, y, None, propietaria, None);
+        let elegido = TrackPopupMenu(
+            menu,
+            TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
+            x,
+            y,
+            None,
+            propietaria,
+            None,
+        );
         let _ = DestroyMenu(menu);
         for b in bitmaps {
             let _ = DeleteObject(HGDIOBJ(b.0));

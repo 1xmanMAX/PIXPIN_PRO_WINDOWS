@@ -253,13 +253,17 @@ const MAXIMAS_SERIES: u32 = 900;
 /// tablas de coordenadas, una entrada por serie (`visibles[i]` dice si se ve)
 /// con la de crear otra y la de esconderla o verla.
 pub(super) fn entradas_de_graficar(t: &Catalogo, visibles: &[bool]) -> Vec<EntradaMenu> {
-    let mut v: Vec<EntradaMenu> = [(2, "figuras-plano"), (1, "figuras-recta"), (3, "figuras-espacio")]
-        .into_iter()
-        .map(|(ejes, clave)| EntradaMenu {
-            id: ID_INSTRUMENTO + ejes,
-            texto: t.t(clave),
-        })
-        .collect();
+    let mut v: Vec<EntradaMenu> = [
+        (2, "figuras-plano"),
+        (1, "figuras-recta"),
+        (3, "figuras-espacio"),
+    ]
+    .into_iter()
+    .map(|(ejes, clave)| EntradaMenu {
+        id: ID_INSTRUMENTO + ejes,
+        texto: t.t(clave),
+    })
+    .collect();
     if visibles.is_empty() {
         v.push(EntradaMenu {
             id: ID_COORDENADAS_NUEVA,
@@ -1964,7 +1968,11 @@ pub(super) fn atender_figuras(mut ed: Editor<'_>, _en: pixpin_geom::Punto, t: &C
         Some(ventana::Pedido::Herramienta(e)) => e,
         Some(ventana::Pedido::Estampar(i)) => Eleccion::Estampar(i),
         Some(ventana::Pedido::Hojas(hojas)) => {
-            let ids = crate::asistente::al_lienzo::colocar_hojas_en_medio(ed.escena, &hojas, (centro.x, centro.y));
+            let ids = crate::asistente::al_lienzo::colocar_hojas_en_medio(
+                ed.escena,
+                &hojas,
+                (centro.x, centro.y),
+            );
             let hubo = !ids.is_empty();
             ed.gesto.seleccion.poner_todos(ids);
             return hubo;
@@ -2243,12 +2251,27 @@ mod pruebas {
         assert_eq!(eleccion_de(7, 0), Some(Eleccion::Instrumento(1)));
         assert_eq!(eleccion_de(8, 0), Some(Eleccion::Instrumento(2)));
         assert_eq!(eleccion_de(9, 0), Some(Eleccion::Instrumento(3)));
-        assert_eq!(eleccion_de(ID_COORDENADAS_NUEVA, 0), Some(Eleccion::Coordenadas(None)));
+        assert_eq!(
+            eleccion_de(ID_COORDENADAS_NUEVA, 0),
+            Some(Eleccion::Coordenadas(None))
+        );
         let con = entradas_de_graficar(&t, &[true, false]);
-        assert!(con.iter().any(|e| e.id == ID_SERIE + 1 && e.texto.ends_with('2')));
-        assert!(con.iter().any(|e| e.id == ID_VER_SERIE + 1 && e.texto.starts_with("Ver")));
-        assert!(con.iter().any(|e| e.id == ID_VER_SERIE && e.texto.starts_with("Esconder")));
-        assert_eq!(eleccion_de(ID_SERIE + 1, 0), Some(Eleccion::Coordenadas(Some(1))));
+        assert!(
+            con.iter()
+                .any(|e| e.id == ID_SERIE + 1 && e.texto.ends_with('2'))
+        );
+        assert!(
+            con.iter()
+                .any(|e| e.id == ID_VER_SERIE + 1 && e.texto.starts_with("Ver"))
+        );
+        assert!(
+            con.iter()
+                .any(|e| e.id == ID_VER_SERIE && e.texto.starts_with("Esconder"))
+        );
+        assert_eq!(
+            eleccion_de(ID_SERIE + 1, 0),
+            Some(Eleccion::Coordenadas(Some(1)))
+        );
         assert_eq!(eleccion_de(ID_VER_SERIE, 0), Some(Eleccion::VerSerie(0)));
         // Caso negativo: un id que no es de nada no elige nada.
         assert_eq!(eleccion_de(4999, 0), None);
@@ -2293,7 +2316,10 @@ mod pruebas {
         f.campos[3].texto.clear();
         assert_eq!(f.pegar_coordenadas("P1\t3\t4\nP2\t5\t6"), 2);
         assert_eq!(puntos_del_formulario(&f).len(), 3);
-        assert_eq!(f.celdas().last().unwrap(), &vec![String::new(), String::new()]);
+        assert_eq!(
+            f.celdas().last().unwrap(),
+            &vec![String::new(), String::new()]
+        );
         // Caso negativo: lo que no trae pares no toca nada.
         let antes = f.celdas();
         assert_eq!(f.pegar_coordenadas("hola"), 0);
@@ -2312,11 +2338,16 @@ mod pruebas {
         assert!(escena.poner_tablas(tablas, origen));
         let (tablas, origen) =
             tablas_tras_aceptar(&escena, None, p.clone(), Punto2::nuevo(900.0, 900.0));
-        assert_eq!(origen, Some(Punto2::nuevo(50.0, 60.0)), "el eje no se mueve");
+        assert_eq!(
+            origen,
+            Some(Punto2::nuevo(50.0, 60.0)),
+            "el eje no se mueve"
+        );
         assert_eq!(tablas[1].color, "#1971c2", "otro color, otra serie");
         assert!(escena.poner_tablas(tablas, origen));
         // Sin puntos la serie se quita y el eje se queda.
-        let (tablas, origen) = tablas_tras_aceptar(&escena, Some(0), Vec::new(), Punto2::nuevo(0.0, 0.0));
+        let (tablas, origen) =
+            tablas_tras_aceptar(&escena, Some(0), Vec::new(), Punto2::nuevo(0.0, 0.0));
         assert_eq!(tablas.len(), 1);
         assert_eq!(origen, Some(Punto2::nuevo(50.0, 60.0)));
         // Caso negativo: una serie nueva sin puntos no nace.
@@ -2690,7 +2721,10 @@ mod pruebas {
         assert!(guardar_biblioteca(&ruta, std::slice::from_ref(&f)));
         let leidas = cargar_biblioteca(&ruta);
         assert_eq!(leidas.len(), 1);
-        assert_eq!((leidas[0].id.as_str(), leidas[0].nombre.as_str()), ("s", "Sello"));
+        assert_eq!(
+            (leidas[0].id.as_str(), leidas[0].nombre.as_str()),
+            ("s", "Sello")
+        );
         assert_eq!(leidas[0].tamano(), f.tamano());
         std::fs::write(&ruta, b"{roto").unwrap();
         assert!(cargar_biblioteca(&ruta).is_empty());
@@ -2708,7 +2742,8 @@ mod pruebas {
             nombre: "Sello".into(),
             elementos: vec![Elemento::default()],
         };
-        let mut v = serde_json::to_value(vec![buena.clone(), buena.clone(), buena.clone()]).unwrap();
+        let mut v =
+            serde_json::to_value(vec![buena.clone(), buena.clone(), buena.clone()]).unwrap();
         let cronograma = serde_json::json!({"tipo": "cronograma", "periodos": 6,
             "tareas": [{"nombre": "Obra", "desde": 0.0, "cuanto": 2.0, "color": null}]});
         // La segunda: el sello y un cronograma. La tercera: solo el cronograma.
@@ -2720,7 +2755,11 @@ mod pruebas {
         std::fs::write(&ruta, serde_json::to_vec(&v).unwrap()).unwrap();
         let leidas = cargar_biblioteca(&ruta);
         assert_eq!(leidas.len(), 2, "sin el cronograma, lo demas");
-        assert!(leidas.iter().all(|f| f.nombre == buena.nombre && f.elementos.len() == 1));
+        assert!(
+            leidas
+                .iter()
+                .all(|f| f.nombre == buena.nombre && f.elementos.len() == 1)
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2960,9 +2999,18 @@ pub(super) fn guardar_seleccion(mut ed: Editor<'_>, t: &Catalogo) -> bool {
     if ed.gesto.seleccion.esta_vacia() {
         return false;
     }
-    let elegidas: Vec<Elemento> = ed.escena.visibles().filter(|e| ed.gesto.seleccion.contiene(e.id)).cloned().collect();
+    let elegidas: Vec<Elemento> = ed
+        .escena
+        .visibles()
+        .filter(|e| ed.gesto.seleccion.contiene(e.id))
+        .cloned()
+        .collect();
     let propuesto = serie::cual_es(&elegidas)
-        .and_then(|clave| serie::catalogo().into_iter().find(|f| serie::clave_de(f) == Some(clave.as_str())))
+        .and_then(|clave| {
+            serie::catalogo()
+                .into_iter()
+                .find(|f| serie::clave_de(f) == Some(clave.as_str()))
+        })
         .map(|f| format!("{} ", f.nombre))
         .unwrap_or_default();
     let mut f = Formulario::nuevo(
@@ -2979,7 +3027,9 @@ pub(super) fn guardar_seleccion(mut ed: Editor<'_>, t: &Catalogo) -> bool {
     let nombre = if nombre.is_empty() { "Figura" } else { nombre };
     let ruta = ruta_biblioteca();
     let mut biblio = cargar_biblioteca(&ruta);
-    if let Some(nueva) = biblioteca::de_la_seleccion(&ed.escena.elementos, ed.gesto.seleccion.ids(), nombre) {
+    if let Some(nueva) =
+        biblioteca::de_la_seleccion(&ed.escena.elementos, ed.gesto.seleccion.ids(), nombre)
+    {
         // Las nuevas, arriba: lo ultimo que se guarda es lo que se usa.
         biblio.insert(0, nueva);
         guardar_biblioteca(&ruta, &biblio);

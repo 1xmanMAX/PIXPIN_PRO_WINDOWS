@@ -179,14 +179,22 @@ pub fn disponer(tipo: TipoBarra, escala: f32) -> Barra {
     let boton = |a| Pieza::Boton(a);
     if tipo.marcando {
         for k in 0..crate::barra_marcas::COLORES.len() {
-            poner(&mut v, boton(AccionBarra::ColorMarca(k as u8)), PUNTO_COLOR * e);
+            poner(
+                &mut v,
+                boton(AccionBarra::ColorMarca(k as u8)),
+                PUNTO_COLOR * e,
+            );
         }
         for m in crate::barra_marcas::MARCAS {
             poner(&mut v, boton(AccionBarra::Marcar(m)), BOTON_MARCA * e);
         }
         poner(&mut v, boton(AccionBarra::QuitarMarca), BOTON_MARCA * e);
     }
-    match if tipo.marcando { Propio::Ninguno } else { tipo.propio } {
+    match if tipo.marcando {
+        Propio::Ninguno
+    } else {
+        tipo.propio
+    } {
         Propio::Ninguno => {}
         Propio::Zoom => {
             poner(&mut v, boton(AccionBarra::Alejar), lado);

@@ -62,7 +62,15 @@ pub const MAXIMO_DE_GALERIA: usize = 6;
 impl Adjuntos {
     pub fn nuevos(fotos: Vec<almacen::Foto>) -> Self {
         let n = fotos.len();
-        Self { viejos: Vec::new(), rutas_viejos: Vec::new(), quitados: Vec::new(), fotos, rutas_fotos: vec![None; n], audios: Vec::new(), grabar: Grabar::Nada }
+        Self {
+            viejos: Vec::new(),
+            rutas_viejos: Vec::new(),
+            quitados: Vec::new(),
+            fotos,
+            rutas_fotos: vec![None; n],
+            audios: Vec::new(),
+            grabar: Grabar::Nada,
+        }
     }
 
     /// Los de una leccion ya guardada.
@@ -70,14 +78,25 @@ impl Adjuntos {
         let viejos = almacen::adjuntos_de(raiz, e);
         let rutas_viejos = viejos
             .iter()
-            .map(|m| m.ruta.as_deref().and_then(|r| pixpin_proyecto::vista::ruta_real(raiz, &e.ficha, r)))
+            .map(|m| {
+                m.ruta
+                    .as_deref()
+                    .and_then(|r| pixpin_proyecto::vista::ruta_real(raiz, &e.ficha, r))
+            })
             .collect();
-        Self { viejos, rutas_viejos, ..Self::nuevos(Vec::new()) }
+        Self {
+            viejos,
+            rutas_viejos,
+            ..Self::nuevos(Vec::new())
+        }
     }
 
     /// La tira: lo viejo que no se quito, y lo nuevo.
     pub fn visibles(&self) -> Vec<Visible> {
-        let mut v: Vec<Visible> = (0..self.viejos.len()).filter(|i| !self.quitados.contains(&self.viejos[*i].id)).map(Visible::Viejo).collect();
+        let mut v: Vec<Visible> = (0..self.viejos.len())
+            .filter(|i| !self.quitados.contains(&self.viejos[*i].id))
+            .map(Visible::Viejo)
+            .collect();
         v.extend((0..self.fotos.len()).map(Visible::Foto));
         v.extend((0..self.audios.len()).map(Visible::Audio));
         v
@@ -112,8 +131,13 @@ impl Adjuntos {
             if !es_imagen(r) {
                 continue;
             }
-            let Ok(bytes) = std::fs::read(r) else { continue };
-            let nombre = r.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "foto.jpg".into());
+            let Ok(bytes) = std::fs::read(r) else {
+                continue;
+            };
+            let nombre = r
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "foto.jpg".into());
             self.fotos.push((nombre, bytes));
             self.rutas_fotos.push(Some(r.clone()));
             n += 1;
@@ -126,7 +150,9 @@ impl Adjuntos {
         self.visibles()
             .iter()
             .filter_map(|v| match v {
-                Visible::Viejo(k) if self.viejos[*k].clase == Some(Clase::Imagen) => self.rutas_viejos[*k].clone(),
+                Visible::Viejo(k) if self.viejos[*k].clase == Some(Clase::Imagen) => {
+                    self.rutas_viejos[*k].clone()
+                }
                 Visible::Foto(k) => self.rutas_fotos[*k].clone(),
                 _ => None,
             })
@@ -152,7 +178,10 @@ impl Adjuntos {
             Grabar::Nada => (Grabar::Nada, None),
             Grabar::Abriendo(rx) => match rx.try_recv() {
                 Ok(Ok(g)) => (Grabar::Grabando(g, Instant::now()), None),
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (Grabar::Nada, Some("No se pudo usar el micrófono".to_string())),
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (
+                    Grabar::Nada,
+                    Some("No se pudo usar el micrófono".to_string()),
+                ),
                 Err(TryRecvError::Empty) => (Grabar::Abriendo(rx), None),
             },
             g @ Grabar::Grabando(..) => (g, None),
@@ -162,15 +191,21 @@ impl Adjuntos {
                     let _ = std::fs::remove_file(&gr.ruta);
                     match leido {
                         Ok(b) if !b.is_empty() => {
-                            let nombre = format!("voz_{}.m4a", pixpin_shell::entorno::ahora_utc_ms());
+                            let nombre =
+                                format!("voz_{}.m4a", pixpin_shell::entorno::ahora_utc_ms());
                             self.audios.push((nombre, b, gr.duracion_ms));
                             (Grabar::Nada, None)
                         }
                         _ => (Grabar::Nada, Some("Muy corto: no se guardó".to_string())),
                     }
                 }
-                Ok(Err(pixpin_audio::ErrorAudio::DemasiadoCorta { .. })) => (Grabar::Nada, Some("Muy corto: no se guardó".to_string())),
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (Grabar::Nada, Some("No se pudo guardar el audio".to_string())),
+                Ok(Err(pixpin_audio::ErrorAudio::DemasiadoCorta { .. })) => {
+                    (Grabar::Nada, Some("Muy corto: no se guardó".to_string()))
+                }
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (
+                    Grabar::Nada,
+                    Some("No se pudo guardar el audio".to_string()),
+                ),
                 Err(TryRecvError::Empty) => (Grabar::Parando(rx), None),
             },
         };
@@ -181,7 +216,10 @@ impl Adjuntos {
     /// El rotulo del boton de grabar.
     pub fn rotulo_audio(&self) -> String {
         match &self.grabar {
-            Grabar::Grabando(_, desde) => format!("⏹ Parar {}", duracion_legible(desde.elapsed().as_millis() as i64)),
+            Grabar::Grabando(_, desde) => format!(
+                "⏹ Parar {}",
+                duracion_legible(desde.elapsed().as_millis() as i64)
+            ),
             Grabar::Abriendo(_) => "🎙 Abriendo…".into(),
             Grabar::Parando(_) => "🎙 Guardando…".into(),
             Grabar::Nada => "🎙 Audio".into(),
@@ -196,7 +234,10 @@ pub fn duracion_legible(ms: i64) -> String {
 }
 
 fn es_imagen(r: &Path) -> bool {
-    let e = r.extension().map(|x| x.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let e = r
+        .extension()
+        .map(|x| x.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
     matches!(e.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp")
 }
 
@@ -214,10 +255,21 @@ mod pruebas {
         a.viejos = vec![mensaje("v1", Clase::Imagen), mensaje("v2", Clase::Voz)];
         a.rutas_viejos = vec![None, None];
         a.audios.push(("voz.m4a".into(), vec![2], 3_000));
-        assert_eq!(a.visibles(), vec![Visible::Viejo(0), Visible::Viejo(1), Visible::Foto(0), Visible::Audio(0)]);
+        assert_eq!(
+            a.visibles(),
+            vec![
+                Visible::Viejo(0),
+                Visible::Viejo(1),
+                Visible::Foto(0),
+                Visible::Audio(0)
+            ]
+        );
         a.quitar(1);
         assert_eq!(a.quitados, vec!["v2".to_string()]);
-        assert_eq!(a.visibles(), vec![Visible::Viejo(0), Visible::Foto(0), Visible::Audio(0)]);
+        assert_eq!(
+            a.visibles(),
+            vec![Visible::Viejo(0), Visible::Foto(0), Visible::Audio(0)]
+        );
         // Ahora la foto nueva es la segunda de la tira.
         a.quitar(1);
         assert!(a.fotos.is_empty() && a.rutas_fotos.is_empty());
@@ -237,7 +289,11 @@ mod pruebas {
         std::fs::write(d.join("obra.JPG"), b"jpg").unwrap();
         std::fs::write(d.join("notas.txt"), b"no").unwrap();
         let mut a = Adjuntos::nuevos(Vec::new());
-        let n = a.anadir_fotos(&[d.join("obra.JPG"), d.join("notas.txt"), d.join("no-esta.png")]);
+        let n = a.anadir_fotos(&[
+            d.join("obra.JPG"),
+            d.join("notas.txt"),
+            d.join("no-esta.png"),
+        ]);
         assert_eq!(n, 1);
         assert_eq!(a.fotos[0].0, "obra.JPG");
         assert_eq!(a.rutas_con_miniatura(), vec![d.join("obra.JPG")]);

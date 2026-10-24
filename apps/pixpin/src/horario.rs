@@ -219,7 +219,11 @@ fn dias_de(p: &str, corto: bool) -> Option<Vec<u8>> {
     }
     if let Some((a, b)) = p.split_once(['-', '–']) {
         let (a, b) = (dia_de(a, corto)?, dia_de(b, corto)?);
-        return Some(if a <= b { (a..=b).collect() } else { vec![a, b] });
+        return Some(if a <= b {
+            (a..=b).collect()
+        } else {
+            vec![a, b]
+        });
     }
     let partes: Vec<&str> = p.split([',', '/', ';']).filter(|s| !s.is_empty()).collect();
     if partes.len() > 1 {
@@ -297,10 +301,16 @@ fn nombre_y_aula(palabras: &[&str]) -> (String, Option<String>) {
             }
         } else if let Some(a) = p.strip_prefix('@').filter(|a| !a.is_empty()) {
             aula = Some(a.to_string());
-        } else if matches!(normalizar(p.trim_start_matches('(')).as_str(), "aula" | "salon" | "sala" | "lab" | "laboratorio")
-            && let Some(sig) = palabras.get(i + 1)
+        } else if matches!(
+            normalizar(p.trim_start_matches('(')).as_str(),
+            "aula" | "salon" | "sala" | "lab" | "laboratorio"
+        ) && let Some(sig) = palabras.get(i + 1)
         {
-            aula = Some(format!("{} {}", p.trim_start_matches('('), sig.trim_end_matches(')')));
+            aula = Some(format!(
+                "{} {}",
+                p.trim_start_matches('('),
+                sig.trim_end_matches(')')
+            ));
             i += 1;
         } else {
             nombre.push(p);
@@ -343,7 +353,8 @@ fn clase_de_linea(linea: &str) -> Option<Clase> {
                 j += 1;
                 continue;
             }
-            if let (Some(a), Some(sep), Some(b)) = (hora_de(p), palabras.get(j + 1), palabras.get(j + 2))
+            if let (Some(a), Some(sep), Some(b)) =
+                (hora_de(p), palabras.get(j + 1), palabras.get(j + 2))
                 && matches!(normalizar(sep).as_str(), "a" | "-" | "–" | "hasta")
                 && let Some(b) = hora_de(b)
             {
@@ -360,7 +371,8 @@ fn clase_de_linea(linea: &str) -> Option<Clase> {
         // Dias detras del nombre («Geometría lunes 8-10»): solo los largos,
         // y no si ya iban delante ni detras de «de»/«del».
         let tras_de = j > 0 && matches!(normalizar(palabras[j - 1]).as_str(), "de" | "del");
-        if !dias_delante && !tras_de
+        if !dias_delante
+            && !tras_de
             && let Some(d) = dias_de(p, false)
         {
             dias.extend(d);
@@ -467,7 +479,10 @@ fn es_evaluacion(primera: &str) -> bool {
 fn celdas(linea: &str) -> Option<Vec<String>> {
     let t = linea.trim();
     let v: Vec<String> = if t.starts_with('|') {
-        t.trim_matches('|').split('|').map(|c| c.trim().to_string()).collect()
+        t.trim_matches('|')
+            .split('|')
+            .map(|c| c.trim().to_string())
+            .collect()
     } else if t.contains('\t') {
         t.split('\t').map(|c| c.trim().to_string()).collect()
     } else {
@@ -478,7 +493,8 @@ fn celdas(linea: &str) -> Option<Vec<String>> {
 
 /// Si una fila es la raya de debajo de la cabecera (`|---|:--:|`).
 fn es_raya(v: &[String]) -> bool {
-    v.iter().all(|c| c.chars().all(|ch| matches!(ch, '-' | ':' | ' ')))
+    v.iter()
+        .all(|c| c.chars().all(|ch| matches!(ch, '-' | ':' | ' ')))
 }
 
 /// **Una tabla pegada.** Si la cabecera tiene dos o mas dias, es la
@@ -546,7 +562,9 @@ fn clases_de_tabla(filas: &[Vec<String>]) -> Vec<Clase> {
         let aula = (fila.len() >= 4)
             .then(|| fila.last().cloned())
             .flatten()
-            .filter(|c| c.len() <= 10 && c.chars().any(|ch| ch.is_ascii_digit()) && tramo_de(c).is_none());
+            .filter(|c| {
+                c.len() <= 10 && c.chars().any(|ch| ch.is_ascii_digit()) && tramo_de(c).is_none()
+            });
         if aula.is_some() {
             fila.pop();
         }
@@ -642,7 +660,10 @@ pub(crate) fn leer_con_sitios(texto: &str, ahora: Momento) -> (Horario, Vec<bool
         let palabras: Vec<&str> = t.split_whitespace().collect();
         let primera = normalizar(palabras.first().copied().unwrap_or(""));
         // «avisar 15 min antes», «antelación 20», «avisar evaluaciones 5 y 2 días antes».
-        if matches!(primera.as_str(), "avisar" | "aviso" | "avisame" | "antelacion" | "anticipacion") {
+        if matches!(
+            primera.as_str(),
+            "avisar" | "aviso" | "avisame" | "antelacion" | "anticipacion"
+        ) {
             let numeros: Vec<u32> = palabras
                 .iter()
                 .filter_map(|p| p.trim_matches(|c: char| !c.is_ascii_digit()).parse().ok())
@@ -763,7 +784,9 @@ pub fn aviso_de(h: &Horario, id: &str, desde: i64) -> Option<Aviso> {
     let id = id.split_once('|').map_or(id, |(a, _)| a);
     // Se busca desde una semana antes: el aviso ya vencio (y uno pospuesto
     // puede llevar un rato).
-    avisos(h, desde - 7 * DIA, 15).into_iter().find(|a| a.id == id)
+    avisos(h, desde - 7 * DIA, 15)
+        .into_iter()
+        .find(|a| a.id == id)
 }
 
 /// Cuando empezo la sesion anterior de una clase a la que empieza en
@@ -982,7 +1005,11 @@ pub fn recordatorios(raiz: &Path) -> Vec<Recordatorio> {
         if e.todo_el_dia || cuando <= ahora_utc {
             continue;
         }
-        v.push(Recordatorio { id: format!("{PREFIJO}gcal:{}:{}", e.id, e.titulo), cuando_utc_ms: cuando, texto: e.titulo.clone() });
+        v.push(Recordatorio {
+            id: format!("{PREFIJO}gcal:{}:{}", e.id, e.titulo),
+            cuando_utc_ms: cuando,
+            texto: e.titulo.clone(),
+        });
     }
     if let Ok(p) = POSPUESTOS.lock() {
         v.extend(p.iter().cloned());
@@ -1015,15 +1042,32 @@ pub fn sonar(raiz: &Path, r: &Recordatorio, rotulos: crate::llamada::Rotulos, hw
     let ahora = pixpin_shell::entorno::ahora_local_ms();
     let h = de_disco(raiz, Momento::de_ms_locales(ahora));
     // Un evento de Google Calendar: su titulo, su hora, su lugar.
-    let de_google = r.id.strip_prefix(PREFIJO).and_then(|x| x.strip_prefix("gcal:")).and_then(|x| x.split_once(':')).map(|(id, _)| id.split('|').next().unwrap_or(id).to_string()).and_then(|id| crate::calendario_google::evento(&id));
+    let de_google =
+        r.id.strip_prefix(PREFIJO)
+            .and_then(|x| x.strip_prefix("gcal:"))
+            .and_then(|x| x.split_once(':'))
+            .map(|(id, _)| id.split('|').next().unwrap_or(id).to_string())
+            .and_then(|id| crate::calendario_google::evento(&id));
     let llamada = match (de_google, aviso_de(&h, &r.id, ahora)) {
         (Some(e), _) => Llamada {
             audio: None,
             nombre: e.titulo.clone(),
             carpeta: PathBuf::new(),
             mensaje: r.id.clone(),
-            detalle: [crate::calendario_google::tramo_legible(&e), e.lugar.clone(), e.calendario.clone()].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · "),
-            texto: Some(if e.lugar.is_empty() { e.titulo.clone() } else { format!("{} en {}", e.titulo, e.lugar) }),
+            detalle: [
+                crate::calendario_google::tramo_legible(&e),
+                e.lugar.clone(),
+                e.calendario.clone(),
+            ]
+            .into_iter()
+            .filter(|x| !x.is_empty())
+            .collect::<Vec<_>>()
+            .join(" · "),
+            texto: Some(if e.lugar.is_empty() {
+                e.titulo.clone()
+            } else {
+                format!("{} en {}", e.titulo, e.lugar)
+            }),
         },
         (None, Some(a)) => llamada_de(&h, &a, &carpeta_de_voz(raiz), guardada_en),
         (None, None) => Llamada {
@@ -1055,7 +1099,11 @@ pub fn abrir_nota(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicaci
     {
         tracing::warn!(?e, "no se pudo crear el horario");
     }
-    crate::notas_md::abrir(idioma, ubicacion, crate::notas_md::Destino::Fichero { ruta: r });
+    crate::notas_md::abrir(
+        idioma,
+        ubicacion,
+        crate::notas_md::Destino::Fichero { ruta: r },
+    );
 }
 
 /// **«Nota de voz para la próxima clase»**: el microfono flotante, que deja
@@ -1161,12 +1209,24 @@ Esto no es nada
         let h = leer(EJEMPLO, ahora());
         assert_eq!(h.clases.len(), 3, "{:#?}", h.clases);
         let g = &h.clases[0];
-        assert_eq!((g.dias.as_slice(), g.inicio, g.fin), (&[0u8, 2][..], 480, 600));
-        assert_eq!((g.nombre.as_str(), g.aula.as_deref()), ("Geometría", Some("A-12")));
+        assert_eq!(
+            (g.dias.as_slice(), g.inicio, g.fin),
+            (&[0u8, 2][..], 480, 600)
+        );
+        assert_eq!(
+            (g.nombre.as_str(), g.aula.as_deref()),
+            ("Geometría", Some("A-12"))
+        );
         assert_eq!(g.notas, ["traer el compás", "repasar el tema 3"]);
         let f = &h.clases[1];
-        assert_eq!((f.dias.as_slice(), f.inicio, f.fin), (&[1u8, 3][..], 615, 720));
-        assert_eq!((f.nombre.as_str(), f.aula.as_deref()), ("Física", Some("Aula 7")));
+        assert_eq!(
+            (f.dias.as_slice(), f.inicio, f.fin),
+            (&[1u8, 3][..], 615, 720)
+        );
+        assert_eq!(
+            (f.nombre.as_str(), f.aula.as_deref()),
+            ("Física", Some("Aula 7"))
+        );
         let i = &h.clases[2];
         assert_eq!(i.dias, [0, 1, 2, 3, 4]);
         assert_eq!((i.inicio, i.fin), (14 * 60, 16 * 60), "14-16");
@@ -1189,17 +1249,20 @@ Esto no es nada
     #[test]
     fn caso_negativo_lo_que_no_es_clase_no_llama() {
         for t in [
-            "Geometría",                  // sin dias ni horas
-            "Lun Geometría",              // sin horas
-            "8:00-10:00 Geometría",       // sin dias
-            "Lun 10:00-8:00 Geometría",   // al reves
-            "Lun 25:00-26:00 Geometría",  // horas que no existen
-            "Lun 8-10",                   // sin nombre
+            "Geometría",                 // sin dias ni horas
+            "Lun Geometría",             // sin horas
+            "8:00-10:00 Geometría",      // sin dias
+            "Lun 10:00-8:00 Geometría",  // al reves
+            "Lun 25:00-26:00 Geometría", // horas que no existen
+            "Lun 8-10",                  // sin nombre
             "Evaluación sin fecha",
             "Evaluación Física 1/1/2020", // ya paso
         ] {
             let h = leer(t, ahora());
-            assert!(h.clases.is_empty() && h.evaluaciones.is_empty(), "{t}: {h:#?}");
+            assert!(
+                h.clases.is_empty() && h.evaluaciones.is_empty(),
+                "{t}: {h:#?}"
+            );
         }
         // La plantilla no llama: el ejemplo va comentado.
         let p = leer(PLANTILLA, ahora());
@@ -1212,13 +1275,22 @@ Esto no es nada
         let filas = "| Día | Hora | Curso | Aula |\n|---|---|---|---|\n| Lunes | 8:00-10:00 | Geometría | A-12 |\n| Mie | 8:00-10:00 | Geometría | A-12 |";
         let h = leer(filas, ahora());
         assert_eq!(h.clases.len(), 2, "{:#?}", h.clases);
-        assert_eq!((h.clases[0].nombre.as_str(), h.clases[0].aula.as_deref()), ("Geometría", Some("A-12")));
+        assert_eq!(
+            (h.clases[0].nombre.as_str(), h.clases[0].aula.as_deref()),
+            ("Geometría", Some("A-12"))
+        );
         // La de los colegios, pegada de Excel (tabuladores).
         let cuadricula = "Hora\tLunes\tMartes\tMiércoles\n8:00-10:00\tGeometría\t\tGeometría\n10:15-12:00\t\tFísica @B2\t";
         let h = leer(cuadricula, ahora());
         assert_eq!(h.clases.len(), 2, "{:#?}", h.clases);
-        assert_eq!((h.clases[0].nombre.as_str(), h.clases[0].dias.as_slice()), ("Geometría", &[0u8, 2][..]));
-        assert_eq!((h.clases[1].dias.as_slice(), h.clases[1].aula.as_deref()), (&[1u8][..], Some("B2")));
+        assert_eq!(
+            (h.clases[0].nombre.as_str(), h.clases[0].dias.as_slice()),
+            ("Geometría", &[0u8, 2][..])
+        );
+        assert_eq!(
+            (h.clases[1].dias.as_slice(), h.clases[1].aula.as_deref()),
+            (&[1u8][..], Some("B2"))
+        );
     }
 
     #[test]
@@ -1259,7 +1331,10 @@ Esto no es nada
         // Y el id lleva al mismo aviso aunque ya haya vencido.
         let a = &v[0];
         assert_eq!(aviso_de(&h, &a.id, a.cuando + 60_000).as_ref(), Some(a));
-        assert_eq!(aviso_de(&h, &format!("{}|123", a.id), a.cuando).as_ref(), Some(a));
+        assert_eq!(
+            aviso_de(&h, &format!("{}|123", a.id), a.cuando).as_ref(),
+            Some(a)
+        );
         assert_eq!(aviso_de(&h, "horario:clase:1:Nada", a.cuando), None);
     }
 
@@ -1268,9 +1343,19 @@ Esto no es nada
         let h = leer(EJEMPLO, ahora());
         let g = &h.clases[0]; // lunes y miercoles a las 8
         let lunes_19 = ms(19, 8, 0);
-        assert_eq!(sesion_anterior(g, lunes_19), Some(ms(14, 8, 0)), "el miercoles de antes");
-        assert!(nota_vigente(g, lunes_19, ms(14, 9, 30)), "grabada en la clase del miercoles");
-        assert!(!nota_vigente(g, lunes_19, ms(12, 9, 0)), "la del lunes pasado ya no");
+        assert_eq!(
+            sesion_anterior(g, lunes_19),
+            Some(ms(14, 8, 0)),
+            "el miercoles de antes"
+        );
+        assert!(
+            nota_vigente(g, lunes_19, ms(14, 9, 30)),
+            "grabada en la clase del miercoles"
+        );
+        assert!(
+            !nota_vigente(g, lunes_19, ms(12, 9, 0)),
+            "la del lunes pasado ya no"
+        );
         // La llamada: con nota, nombre, hora, aula y lo que lee la voz.
         let a = avisos(&h, ms(18, 12, 0), 2)
             .into_iter()
@@ -1281,8 +1366,17 @@ Esto no es nada
         assert_eq!(l.nombre, "Geometría");
         assert_eq!(l.audio, Some(voz.join("geometria.m4a")));
         assert!(l.detalle.starts_with("08:00–10:00 · A-12"), "{}", l.detalle);
-        assert!(l.detalle.contains("📝 Evaluación Geometría"), "la del 23, en esa semana: {}", l.detalle);
-        assert!(l.texto.as_deref().unwrap().starts_with("traer el compás. repasar el tema 3"));
+        assert!(
+            l.detalle.contains("📝 Evaluación Geometría"),
+            "la del 23, en esa semana: {}",
+            l.detalle
+        );
+        assert!(
+            l.texto
+                .as_deref()
+                .unwrap()
+                .starts_with("traer el compás. repasar el tema 3")
+        );
         assert!(l.es_de_horario());
         // Sin nota vigente, solo la voz de la app.
         let l = llamada_de(&h, &a, voz, |_| Some(ms(1, 9, 0)));
@@ -1295,10 +1389,25 @@ Esto no es nada
     fn la_nota_se_graba_para_la_clase_en_marcha_o_la_ultima_o_la_proxima() {
         let h = leer(EJEMPLO, ahora());
         assert_eq!(clase_para_grabar(&h, ms(14, 9, 0)), Some(0), "en Geometría");
-        assert_eq!(clase_para_grabar(&h, ms(14, 11, 0)), Some(0), "acaba de salir");
-        assert_eq!(clase_para_grabar(&h, ms(15, 11, 0)), Some(1), "jueves, en Física");
-        assert_eq!(clase_para_grabar(&h, ms(17, 9, 0)), Some(0), "sabado: la proxima es Geometría del lunes");
+        assert_eq!(
+            clase_para_grabar(&h, ms(14, 11, 0)),
+            Some(0),
+            "acaba de salir"
+        );
+        assert_eq!(
+            clase_para_grabar(&h, ms(15, 11, 0)),
+            Some(1),
+            "jueves, en Física"
+        );
+        assert_eq!(
+            clase_para_grabar(&h, ms(17, 9, 0)),
+            Some(0),
+            "sabado: la proxima es Geometría del lunes"
+        );
         assert_eq!(clase_para_grabar(&Horario::default(), ms(14, 9, 0)), None);
-        assert_eq!(fichero_de_voz("Geometría Analítica II"), "geometria-analitica-ii.m4a");
+        assert_eq!(
+            fichero_de_voz("Geometría Analítica II"),
+            "geometria-analitica-ii.m4a"
+        );
     }
 }

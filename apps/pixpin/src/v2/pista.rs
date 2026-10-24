@@ -18,12 +18,7 @@ pub fn colocar(ancla: RectF, ancho: f32, alto: f32, limite: RectF, hueco: f32) -
     if y + alto > limite.y + limite.alto {
         y = (ancla.y - hueco - alto).max(limite.y);
     }
-    RectF {
-        x,
-        y,
-        ancho,
-        alto,
-    }
+    RectF { x, y, ancho, alto }
 }
 
 /// Pinta la pista de `texto` para `ancla`, dentro de `limite`.

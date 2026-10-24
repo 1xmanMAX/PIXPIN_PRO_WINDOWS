@@ -59,7 +59,11 @@ pub fn asegurar_ficha(raiz: &Path, aparato: &str) -> Result<almacen::Ficha, Fall
         return Ok(f.clone());
     }
     let marca = (MARCA.to_string(), serde_json::Value::Bool(true));
-    let f = match indice.proyectos.iter_mut().find(|f| f.nombre == NOMBRE_CHAT) {
+    let f = match indice
+        .proyectos
+        .iter_mut()
+        .find(|f| f.nombre == NOMBRE_CHAT)
+    {
         Some(f) => {
             f.resto.insert(marca.0, marca.1);
             f.clone()
@@ -152,7 +156,10 @@ mod pruebas {
     use super::*;
 
     fn raiz_de_prueba(nombre: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-asignaturas-{nombre}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-asignaturas-{nombre}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -179,10 +186,21 @@ mod pruebas {
         assert!(!f.filas[0].hecha);
         // Y la ventana de Tareas la ve como una lista mas, en su chat.
         let (en_tareas, _) = tareas::reunir(&raiz);
-        assert!(en_tareas.iter().any(|x| x.titulo == "Física" && x.chat == NOMBRE_CHAT));
+        assert!(
+            en_tareas
+                .iter()
+                .any(|x| x.titulo == "Física" && x.chat == NOMBRE_CHAT)
+        );
         // Un solo chat «Asignaturas», reconocido por su marca.
         let indice = almacen::Indice::leer(&raiz);
-        assert_eq!(indice.proyectos.iter().filter(|f| f.nombre == NOMBRE_CHAT).count(), 1);
+        assert_eq!(
+            indice
+                .proyectos
+                .iter()
+                .filter(|f| f.nombre == NOMBRE_CHAT)
+                .count(),
+            1
+        );
         assert!(indice.proyectos.iter().any(tiene_marca));
         let _ = std::fs::remove_dir_all(&raiz);
     }

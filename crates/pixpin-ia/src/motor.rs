@@ -43,7 +43,10 @@ pub enum Parte {
     /// Una imagen ya codificada (PNG o JPEG) y su tipo MIME. El chat la
     /// reduce antes (ver el documento: ~768 px de lado bastan y ahorran
     /// segundos de vision).
-    Imagen { bytes: Vec<u8>, mime: String },
+    Imagen {
+        bytes: Vec<u8>,
+        mime: String,
+    },
 }
 
 /// Una llamada a herramienta tal como la escribio el modelo, sin validar.
@@ -121,7 +124,9 @@ impl Mensaje {
     }
 
     pub fn tiene_imagen(&self) -> bool {
-        self.partes.iter().any(|p| matches!(p, Parte::Imagen { .. }))
+        self.partes
+            .iter()
+            .any(|p| matches!(p, Parte::Imagen { .. }))
     }
 
     /// El mensaje en la forma de la API de chat de OpenAI.
@@ -223,7 +228,9 @@ pub enum Trozo {
     /// El razonamiento, si se pidio pensar. El chat puede plegarlo.
     Pensando(String),
     /// Empezo a escribir una llamada a herramienta (para ensenar «dibujando…»).
-    Llamando { nombre: String },
+    Llamando {
+        nombre: String,
+    },
 }
 
 /// Si seguir escuchando o cortar (el usuario pulso «parar»).
@@ -439,7 +446,10 @@ mod pruebas {
         let j = m.a_json();
         assert_eq!(j["role"], "user");
         assert_eq!(j["content"][0]["type"], "image_url");
-        assert_eq!(j["content"][0]["image_url"]["url"], "data:image/png;base64,AQID");
+        assert_eq!(
+            j["content"][0]["image_url"]["url"],
+            "data:image/png;base64,AQID"
+        );
         assert_eq!(j["content"][1]["text"], "dibujala");
     }
 

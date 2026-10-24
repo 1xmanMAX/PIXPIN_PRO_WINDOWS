@@ -690,7 +690,15 @@ fn guardar_y_salir(e: &mut Estado, pedido: &Pedido) {
     // Las fotos y audios van con una nueva y con una que ya existe; lo
     // quitado sale del chat con su marca (`AdjuntosDeLaLeccion.kt`).
     let a = &e.adjuntos;
-    match almacen::guardar_con_cambios(pedido.ubicacion.raiz(), &l, &donde, &pedido.aparato, &a.fotos, &a.audios, &a.quitados) {
+    match almacen::guardar_con_cambios(
+        pedido.ubicacion.raiz(),
+        &l,
+        &donde,
+        &pedido.aparato,
+        &a.fotos,
+        &a.audios,
+        &a.quitados,
+    ) {
         Ok(_) => tracing::info!(id = %l.id, "leccion guardada"),
         Err(err) => tracing::warn!(?err, "no se pudo guardar la leccion"),
     }
@@ -798,7 +806,9 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
             }
         }
         Accion::Galeria => {
-            let rutas = pixpin_shell::elegir::pedir_imagenes(windows::Win32::Foundation::HWND(e.hwnd as *mut _));
+            let rutas = pixpin_shell::elegir::pedir_imagenes(windows::Win32::Foundation::HWND(
+                e.hwnd as *mut _,
+            ));
             if !rutas.is_empty() && e.adjuntos.anadir_fotos(&rutas) == 0 {
                 e.avisar("No se pudo leer esa foto");
             }
@@ -806,7 +816,8 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
         Accion::Audio => {
             let dir = raiz.join("cache");
             let _ = std::fs::create_dir_all(&dir);
-            e.adjuntos.pulsar_audio(dir.join(format!("leccion-audio-{}.m4a", e.hwnd)));
+            e.adjuntos
+                .pulsar_audio(dir.join(format!("leccion-audio-{}.m4a", e.hwnd)));
         }
         Accion::QuitarAdjunto(i) => e.adjuntos.quitar(i),
         Accion::AbrirAdjunto(i) => abrir_adjunto(e, i, pedido),
@@ -832,14 +843,20 @@ fn volvio_a_pasar(x: &Entrada, pedido: &Pedido) -> Fin {
 /// Abrir lo de la tira: una foto que ya esta en el chat, con su visor; un
 /// audio, en el reproductor flotante. Lo nuevo aun no esta en el chat.
 fn abrir_adjunto(e: &mut Estado, i: usize, pedido: &Pedido) {
-    let Some(Visible::Viejo(k)) = e.adjuntos.visibles().get(i).cloned() else { return };
+    let Some(Visible::Viejo(k)) = e.adjuntos.visibles().get(i).cloned() else {
+        return;
+    };
     let Some(ruta) = e.adjuntos.rutas_viejos[k].clone().filter(|r| r.is_file()) else {
         e.avisar("Ese archivo aún no está en este equipo");
         return;
     };
     if e.adjuntos.viejos[k].clase == Some(pixpin_proyecto::cuaderno::Clase::Voz) {
         let titulo = e.titulo().trim().to_string();
-        crate::ventana_chat::reproducir_flotante(&pixpin_store::Catalogo::nuevo(pedido.idioma), ruta, titulo);
+        crate::ventana_chat::reproducir_flotante(
+            &pixpin_store::Catalogo::nuevo(pedido.idioma),
+            ruta,
+            titulo,
+        );
     } else if let Err(err) = pixpin_shell::abrir(&ruta) {
         tracing::info!(?err, "no se pudo abrir la foto de la leccion");
     }
@@ -850,14 +867,48 @@ fn abrir_adjunto(e: &mut Estado, i: usize, pedido: &Pedido) {
 fn pintar_adjuntos(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, s: f32) -> f32 {
     let alto = 36.0 * s;
     let tam = 14.0 * s;
-    let galeria = RectF { x, y, ancho: 118.0 * s, alto };
-    ui::boton(p, &mut e.botones, galeria, Accion::Galeria, "🖼 Galería", hex(0x2c2c34), TEXTO, tam, s);
+    let galeria = RectF {
+        x,
+        y,
+        ancho: 118.0 * s,
+        alto,
+    };
+    ui::boton(
+        p,
+        &mut e.botones,
+        galeria,
+        Accion::Galeria,
+        "🖼 Galería",
+        hex(0x2c2c34),
+        TEXTO,
+        tam,
+        s,
+    );
     let rotulo = e.adjuntos.rotulo_audio();
     let grabando = e.adjuntos.grabando();
     let w = (p.medir_texto(&rotulo, tam).0 + 32.0 * s).max(110.0 * s);
-    let audio = RectF { x: x + galeria.ancho + 8.0 * s, y, ancho: w, alto };
-    let (fondo, tinta) = if grabando { (hex(0x4a2422), ROJO) } else { (hex(0x2c2c34), TEXTO) };
-    ui::boton(p, &mut e.botones, audio, Accion::Audio, &rotulo, fondo, tinta, tam, s);
+    let audio = RectF {
+        x: x + galeria.ancho + 8.0 * s,
+        y,
+        ancho: w,
+        alto,
+    };
+    let (fondo, tinta) = if grabando {
+        (hex(0x4a2422), ROJO)
+    } else {
+        (hex(0x2c2c34), TEXTO)
+    };
+    ui::boton(
+        p,
+        &mut e.botones,
+        audio,
+        Accion::Audio,
+        &rotulo,
+        fondo,
+        tinta,
+        tam,
+        s,
+    );
     y += alto + 10.0 * s;
     let visibles = e.adjuntos.visibles();
     if visibles.is_empty() {
@@ -870,11 +921,20 @@ fn pintar_adjuntos(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, s
             cx = x;
             y += lado + 8.0 * s;
         }
-        let caja = RectF { x: cx, y, ancho: lado, alto: lado };
+        let caja = RectF {
+            x: cx,
+            y,
+            ancho: lado,
+            alto: lado,
+        };
         let (ruta, voz) = match v {
             Visible::Viejo(k) => {
                 let m = &e.adjuntos.viejos[*k];
-                (e.adjuntos.rutas_viejos[*k].clone(), (m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz)).then_some(m.duracion_ms))
+                (
+                    e.adjuntos.rutas_viejos[*k].clone(),
+                    (m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz))
+                        .then_some(m.duracion_ms),
+                )
             }
             Visible::Foto(k) => (e.adjuntos.rutas_fotos[*k].clone(), None),
             Visible::Audio(k) => (None, Some(e.adjuntos.audios[*k].2)),
@@ -882,11 +942,22 @@ fn pintar_adjuntos(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, s
         p.rellenar_redondeado(caja, 14.0 * s, hex(0x2a2a31));
         match voz {
             Some(ms) => {
-                let icono = RectF { x: caja.x + lado / 2.0 - 13.0 * s, y: caja.y + 12.0 * s, ancho: 26.0 * s, alto: 26.0 * s };
+                let icono = RectF {
+                    x: caja.x + lado / 2.0 - 13.0 * s,
+                    y: caja.y + 12.0 * s,
+                    ancho: 26.0 * s,
+                    alto: 26.0 * s,
+                };
                 p.icono(&mi::PLAY_ARROW, icono, TEXTO);
                 let t = super::adjuntos::duracion_legible(ms);
                 let tw = p.medir_texto(&t, 13.0 * s).0;
-                p.texto_color(&t, caja.x + (lado - tw) / 2.0, caja.y + 44.0 * s, 13.0 * s, APAGADO);
+                p.texto_color(
+                    &t,
+                    caja.x + (lado - tw) / 2.0,
+                    caja.y + 44.0 * s,
+                    13.0 * s,
+                    APAGADO,
+                );
             }
             None => match ruta.as_deref().and_then(|r| e.minis.ya(r)) {
                 Some((b, bw, bh)) => crate::miniaturas::pintar_recortado(p, b, caja, bw, bh),
@@ -897,8 +968,22 @@ fn pintar_adjuntos(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, s
         // El aspa, arriba a la derecha (va despues: gana al clic).
         let r = 11.0 * s;
         let centro = (caja.x + lado - r - 3.0 * s, caja.y + r + 3.0 * s);
-        p.circulo(centro, r, pixpin_render::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.67 });
-        let aspa = RectF { x: centro.0 - r, y: centro.1 - r, ancho: 2.0 * r, alto: 2.0 * r };
+        p.circulo(
+            centro,
+            r,
+            pixpin_render::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.67,
+            },
+        );
+        let aspa = RectF {
+            x: centro.0 - r,
+            y: centro.1 - r,
+            ancho: 2.0 * r,
+            alto: 2.0 * r,
+        };
         p.icono(&mi::CLOSE, ui::encoger(aspa, 5.0 * s), TEXTO);
         e.botones.zona(aspa, Accion::QuitarAdjunto(i));
         cx += lado + 8.0 * s;
@@ -1488,7 +1573,8 @@ mod pruebas {
     fn muestra_de_la_ficha_con_adjuntos() {
         use pixpin_render::MotorRender;
         use pixpin_render::fuera_de_pantalla::FueraDePantalla;
-        let carpeta = std::env::temp_dir().join(format!("pixpin-ficha-muestra-{}", std::process::id()));
+        let carpeta =
+            std::env::temp_dir().join(format!("pixpin-ficha-muestra-{}", std::process::id()));
         std::fs::create_dir_all(&carpeta).unwrap();
         let foto = |nombre: &str, a: [u8; 3], b: [u8; 3]| {
             let (w, h) = (640u32, 480u32);
@@ -1503,7 +1589,16 @@ mod pruebas {
                 }
             }
             let ruta = carpeta.join(nombre);
-            pixpin_codec::guardar(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }, &ruta, pixpin_codec::FormatoImagen::Png).unwrap();
+            pixpin_codec::guardar(
+                &pixpin_codec::ImagenRgba {
+                    ancho: w,
+                    alto: h,
+                    pixeles: px,
+                },
+                &ruta,
+                pixpin_codec::FormatoImagen::Png,
+            )
+            .unwrap();
             ruta
         };
         let vieja = foto("vieja.png", [240, 150, 80], [90, 40, 120]);
@@ -1511,7 +1606,10 @@ mod pruebas {
         let mut e = estado();
         e.poner("Curar el concreto siete días");
         let m = |id: &str, clase: &str, ms: i64| -> pixpin_proyecto::cuaderno::Mensaje {
-            serde_json::from_value(serde_json::json!({ "id": id, "cuando": 1, "clase": clase, "duracionMs": ms })).unwrap()
+            serde_json::from_value(
+                serde_json::json!({ "id": id, "cuando": 1, "clase": clase, "duracionMs": ms }),
+            )
+            .unwrap()
         };
         e.adjuntos.viejos = vec![m("v1", "IMAGEN", 0), m("v2", "VOZ", 12_400)];
         e.adjuntos.rutas_viejos = vec![Some(vieja), None];
@@ -1520,19 +1618,33 @@ mod pruebas {
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let (w, h) = (600u32, 780u32);
-        let marco = Rect { x: 0, y: 0, ancho: w, alto: h };
+        let marco = Rect {
+            x: 0,
+            y: 0,
+            ancho: w,
+            alto: h,
+        };
         let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), w, h).expect("superficie");
         for _ in 0..20 {
             let falta = e.minis.asegurar(&e.adjuntos.rutas_con_miniatura(), &motor);
-            motor.dibujar(&fuera.destino, |p| pintar_todo(&mut e, p, marco, 1.0)).expect("pintar");
+            motor
+                .dibujar(&fuera.destino, |p| pintar_todo(&mut e, p, marco, 1.0))
+                .expect("pintar");
             if !falta {
                 break;
             }
         }
         fuera.esperar_gpu().unwrap();
         let (_, _, pixeles) = fuera.leer_rgba().unwrap();
-        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles }).unwrap();
-        let destino = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles,
+        })
+        .unwrap();
+        let destino = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         std::fs::write(destino.join("ficha-con-adjuntos.png"), png).unwrap();
         let _ = std::fs::remove_dir_all(&carpeta);
     }

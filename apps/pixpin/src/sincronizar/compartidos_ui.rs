@@ -249,7 +249,12 @@ pub(super) fn tecla(p: &mut Personas, t: Tecla, cx: &Contexto) -> bool {
             campo.caracter(c);
         }
         Tecla::Borrar => {
-            campo.tecla(0x08, false, false, &mut crate::caja_texto::PortapapelesWindows);
+            campo.tecla(
+                0x08,
+                false,
+                false,
+                &mut crate::caja_texto::PortapapelesWindows,
+            );
         }
         Tecla::Caja { vk, shift, ctrl } => {
             return campo
@@ -328,21 +333,24 @@ pub(super) fn tocar(p: &mut Personas, t: Toque, cx: &Contexto) -> bool {
         Toque::ConfirmarQuitar => {
             if let (Some(id), Some((chat, _))) = (p.quitando.take(), p.chat.clone()) {
                 let cd = CompartidosEnDisco::nuevo(&cx.raiz);
-                let hecho = cd.yo(&cx.id, &cx.nombre).map_err(|e| e.to_string()).and_then(|yo| {
-                    cd.cambiar(|l| -> Result<_, QuitarFallo> {
-                        l.into_iter()
-                            .map(|c| {
-                                if c.chat == chat {
-                                    compartidos::quitar(&c, &yo, &id, super::ahora_ms())
-                                        .map_err(QuitarFallo::Dicho)
-                                } else {
-                                    Ok(c)
-                                }
-                            })
-                            .collect()
-                    })
+                let hecho = cd
+                    .yo(&cx.id, &cx.nombre)
                     .map_err(|e| e.to_string())
-                });
+                    .and_then(|yo| {
+                        cd.cambiar(|l| -> Result<_, QuitarFallo> {
+                            l.into_iter()
+                                .map(|c| {
+                                    if c.chat == chat {
+                                        compartidos::quitar(&c, &yo, &id, super::ahora_ms())
+                                            .map_err(QuitarFallo::Dicho)
+                                    } else {
+                                        Ok(c)
+                                    }
+                                })
+                                .collect()
+                        })
+                        .map_err(|e| e.to_string())
+                    });
                 match hecho {
                     Ok(_) => {
                         if id == cx.id {
@@ -461,9 +469,13 @@ fn abrir_invitacion(
         super::ahora_ms,
         move |a| {
             let n = match a {
-                AvisoDePuerta::Entro(p) => Novedad::Aviso(Dicho::con("cc-entro", "nombre", p.nombre), false),
+                AvisoDePuerta::Entro(p) => {
+                    Novedad::Aviso(Dicho::con("cc-entro", "nombre", p.nombre), false)
+                }
                 AvisoDePuerta::Junto(_) => Novedad::Aviso(Dicho::de("cc-listo"), false),
-                AvisoDePuerta::Fallo(m) => Novedad::Aviso(Dicho::con("cc-se-corto", "motivo", m), false),
+                AvisoDePuerta::Fallo(m) => {
+                    Novedad::Aviso(Dicho::con("cc-se-corto", "motivo", m), false)
+                }
                 AvisoDePuerta::Cerrada => Novedad::PuertaCerrada,
                 AvisoDePuerta::Estado(t) => Novedad::Aviso(Dicho::Libre(t), false),
             };
@@ -560,7 +572,10 @@ fn sincronizar_ahora(cx: &Contexto, turno: u64, chat: &str, mios: &HashSet<Strin
                     dirs.push((id.clone(), v.host.to_string(), v.puerto));
                 }
             }
-            if faltan.iter().all(|p| dirs.iter().any(|(x, _, _)| *x == p.id)) {
+            if faltan
+                .iter()
+                .all(|p| dirs.iter().any(|(x, _, _)| *x == p.id))
+            {
                 break;
             }
         }
@@ -572,7 +587,14 @@ fn sincronizar_ahora(cx: &Contexto, turno: u64, chat: &str, mios: &HashSet<Strin
         let Some((_, host, puerto)) = dirs.iter().find(|(id, _, _)| *id == p.id).cloned() else {
             continue;
         };
-        avisar(cx, turno, Novedad::Aviso(Dicho::con("cc-sincronizando-con", "nombre", p.nombre.clone()), false));
+        avisar(
+            cx,
+            turno,
+            Novedad::Aviso(
+                Dicho::con("cc-sincronizando-con", "nombre", p.nombre.clone()),
+                false,
+            ),
+        );
         let Ok(flujo) = conectar(&host, puerto) else {
             continue;
         };
@@ -584,7 +606,13 @@ fn sincronizar_ahora(cx: &Contexto, turno: u64, chat: &str, mios: &HashSet<Strin
             &super::ahora_ms,
             mi_puerto,
             nonce(),
-            &mut |t| avisar(cx, turno, Novedad::Aviso(Dicho::Libre(t.to_string()), false)),
+            &mut |t| {
+                avisar(
+                    cx,
+                    turno,
+                    Novedad::Aviso(Dicho::Libre(t.to_string()), false),
+                )
+            },
         );
         match r {
             Ok(r) => {
@@ -631,7 +659,10 @@ fn buscar_invitacion(codigo: &str) -> Option<(String, u16)> {
     while empezo.elapsed() < Duration::from_secs(20) {
         match pixpin_shell::mdns::buscar(invitacion::TIPO, Duration::from_secs(3)) {
             Ok(vistos) => {
-                if let Some(v) = vistos.into_iter().find(|v| v.datos.get("g") == Some(&etiqueta)) {
+                if let Some(v) = vistos
+                    .into_iter()
+                    .find(|v| v.datos.get("g") == Some(&etiqueta))
+                {
                     return Some((v.host.to_string(), v.puerto));
                 }
             }
@@ -654,14 +685,18 @@ fn entrar(
     let corto = |e: &dyn std::fmt::Display| Dicho::con("cc-se-corto", "motivo", e.to_string());
     let d = disco(&cx.raiz);
     let flujo = conectar(&host, puerto).map_err(|e| corto(&e))?;
-    let e = invitacion::entrar(flujo, &d, codigo, super::ahora_ms(), nonce()).map_err(|e| corto(&e))?;
+    let e =
+        invitacion::entrar(flujo, &d, codigo, super::ahora_ms(), nonce()).map_err(|e| corto(&e))?;
     if e.puerto > 0 {
         super::apuntar_direccion(&cx.raiz, &e.quien.id, &host, e.puerto as u16);
     }
     avisar(
         cx,
         turno,
-        Novedad::Aviso(Dicho::con("cc-trayendo", "nombre", e.chat.nombre.clone()), false),
+        Novedad::Aviso(
+            Dicho::con("cc-trayendo", "nombre", e.chat.nombre.clone()),
+            false,
+        ),
     );
     let flujo = conectar(&host, puerto).map_err(|e| corto(&e))?;
     invitacion::vuelta_con_persona(
@@ -672,7 +707,13 @@ fn entrar(
         &super::ahora_ms,
         super::presencia::puerto().map_or(0, u32::from),
         nonce(),
-        &mut |t| avisar(cx, turno, Novedad::Aviso(Dicho::Libre(t.to_string()), false)),
+        &mut |t| {
+            avisar(
+                cx,
+                turno,
+                Novedad::Aviso(Dicho::Libre(t.to_string()), false),
+            )
+        },
     )
     .map_err(|e| corto(&e))?;
     Ok(e.chat)
@@ -685,7 +726,11 @@ fn entrar(
 /// los chats compartidos donde estoy. Lo mio no sale: es lo de siempre.
 /// Se recuerda hasta que la lista cambia (`compartidos::version`).
 pub(crate) fn autor(raiz: &Path, aparato: &str) -> Option<String> {
-    type Cache = Option<(std::path::PathBuf, u64, std::collections::HashMap<String, String>)>;
+    type Cache = Option<(
+        std::path::PathBuf,
+        u64,
+        std::collections::HashMap<String, String>,
+    )>;
     static CACHE: std::sync::Mutex<Cache> = std::sync::Mutex::new(None);
     let v = compartidos::version();
     let mut g = CACHE.lock().ok()?;
@@ -707,7 +752,6 @@ pub(crate) fn autor(raiz: &Path, aparato: &str) -> Option<String> {
     }
     g.as_ref().and_then(|(_, _, m)| m.get(aparato).cloned())
 }
-
 
 /// La carpeta de datos de esta aplicacion, para [autor_aqui]: la pone la
 /// presencia al arrancar (`presencia::instalar`).
@@ -765,7 +809,10 @@ pub(super) fn pintar_caja(
         &crate::caja_texto::Colores {
             texto: TEXTO,
             invitacion: SUAVE,
-            seleccion: pixpin_render::Color { a: 0.35, ..PRIMARIO },
+            seleccion: pixpin_render::Color {
+                a: 0.35,
+                ..PRIMARIO
+            },
             rayita: PRIMARIO,
         },
         activo,
@@ -889,8 +936,17 @@ fn pintar_personas(
         let alto = 56.0 * e;
         let lado = 36.0 * e;
         let rc = rect(x, y + (alto - lado) / 2.0, lado, lado);
-        p.rellenar_redondeado(rc, lado / 2.0, if per.dentro() { CONTENEDOR } else { VARIANTE });
-        let inicial: String = per.nombre.chars().take(1).flat_map(char::to_uppercase).collect();
+        p.rellenar_redondeado(
+            rc,
+            lado / 2.0,
+            if per.dentro() { CONTENEDOR } else { VARIANTE },
+        );
+        let inicial: String = per
+            .nombre
+            .chars()
+            .take(1)
+            .flat_map(char::to_uppercase)
+            .collect();
         let (wi, hi) = p.medir_texto(&inicial, 15.0 * e);
         p.texto(
             &inicial,
@@ -953,11 +1009,21 @@ fn pintar_personas(
         } else {
             Dicho::con("cc-quitar-titulo", "nombre", nombre).texto(textos)
         };
-        let aviso = textos.t(if yo_mismo { "cc-salir-aviso" } else { "cc-quitar-aviso" });
+        let aviso = textos.t(if yo_mismo {
+            "cc-salir-aviso"
+        } else {
+            "cc-quitar-aviso"
+        });
         let h = caja_texto(l, x, y, w, Some(&titulo), &aviso);
         y += h + 10.0 * e;
         let medio = (w - 10.0 * e) / 2.0;
-        l.boton(rect(x, y, medio, 44.0 * e), &textos.t("cc-cancelar"), None, false, t(Toque::CancelarQuitar));
+        l.boton(
+            rect(x, y, medio, 44.0 * e),
+            &textos.t("cc-cancelar"),
+            None,
+            false,
+            t(Toque::CancelarQuitar),
+        );
         l.boton(
             rect(x + medio + 10.0 * e, y, medio, 44.0 * e),
             &textos.t(if yo_mismo { "cc-salir" } else { "cc-quitar" }),
@@ -973,15 +1039,33 @@ fn pintar_personas(
     y += 16.0 * e;
     let medio = (w - 10.0 * e) / 2.0;
     if s.invitando.is_none() {
-        l.boton(rect(x, y, medio, 48.0 * e), &textos.t("cc-anadir"), Some(&material::ADD), false, t(Toque::Invitar));
+        l.boton(
+            rect(x, y, medio, 48.0 * e),
+            &textos.t("cc-anadir"),
+            Some(&material::ADD),
+            false,
+            t(Toque::Invitar),
+        );
     } else {
-        l.boton(rect(x, y, medio, 48.0 * e), &textos.t("cc-cerrar-invitacion"), Some(&material::CLOSE), false, t(Toque::CerrarInvitacion));
+        l.boton(
+            rect(x, y, medio, 48.0 * e),
+            &textos.t("cc-cerrar-invitacion"),
+            Some(&material::CLOSE),
+            false,
+            t(Toque::CerrarInvitacion),
+        );
     }
     let rs = rect(x + medio + 10.0 * e, y, medio, 48.0 * e);
     if s.ocupada() {
         boton_apagado(l, rs, &textos.t("cc-sincronizar"));
     } else {
-        l.boton(rs, &textos.t("cc-sincronizar"), None, true, t(Toque::Sincronizar));
+        l.boton(
+            rs,
+            &textos.t("cc-sincronizar"),
+            None,
+            true,
+            t(Toque::Sincronizar),
+        );
     }
     y += 48.0 * e;
     if let Some(i) = &s.invitando {
@@ -1007,13 +1091,26 @@ fn pintar_personas(
             crate::recibir::pintar_qr(p, menos(rq, 8.0 * e), qr);
         }
         yy += lado + 12.0 * e;
-        l.centrado(&invitacion::legible(&i.puerta.codigo), x, w, yy, 30.0 * e, TEXTO);
+        l.centrado(
+            &invitacion::legible(&i.puerta.codigo),
+            x,
+            w,
+            yy,
+            30.0 * e,
+            TEXTO,
+        );
         yy += 40.0 * e;
         l.parrafo_centrado(&vale, x + 16.0 * e, yy, wi, 12.0 * e, SUAVE);
         y += h;
     }
     y += 24.0 * e;
-    l.boton_texto(x, y, &textos.t("cc-salir-del-chat"), ERROR, t(Toque::Quitar(s.yo.clone())));
+    l.boton_texto(
+        x,
+        y,
+        &textos.t("cc-salir-del-chat"),
+        ERROR,
+        t(Toque::Quitar(s.yo.clone())),
+    );
     y + 40.0 * e
 }
 
@@ -1028,7 +1125,11 @@ fn pintar_entrar(
     let e = l.e;
     let t = |a: Toque| Accion::Compartidos(a);
     if let Some(c) = &s.dentro_de {
-        let con = Dicho::con("cc-con", "nombres", compartidos::nombres_dentro(c).join(", "));
+        let con = Dicho::con(
+            "cc-con",
+            "nombres",
+            compartidos::nombres_dentro(c).join(", "),
+        );
         y += caja_texto(
             l,
             x,
@@ -1039,7 +1140,13 @@ fn pintar_entrar(
         );
         y += 16.0 * e;
         let medio = (w - 10.0 * e) / 2.0;
-        l.boton(rect(x, y, medio, 48.0 * e), &textos.t("cc-cerrar"), None, false, t(Toque::Cerrar));
+        l.boton(
+            rect(x, y, medio, 48.0 * e),
+            &textos.t("cc-cerrar"),
+            None,
+            false,
+            t(Toque::Cerrar),
+        );
         l.boton(
             rect(x + medio + 10.0 * e, y, medio, 48.0 * e),
             &textos.t("cc-abrir-chat"),
@@ -1113,7 +1220,10 @@ mod pruebas {
         i.proyectos.push(ficha.clone());
         i.guardar(&dir).unwrap();
         let chat = pixpin_proyecto::vista::chat_de_ficha(&dir, &ficha.id).unwrap();
-        assert_eq!(super::super::ficha_del_chat(&dir, &chat), Some(ficha.id.clone()));
+        assert_eq!(
+            super::super::ficha_del_chat(&dir, &chat),
+            Some(ficha.id.clone())
+        );
         // Caso negativo: un chat que aqui no hay no lleva a ninguna parte, y
         // la pantalla lo dice en vez de cerrarse.
         assert_eq!(super::super::ficha_del_chat(&dir, "chat-que-no-esta"), None);
@@ -1214,7 +1324,11 @@ mod pruebas {
             |_| {},
         )
         .unwrap();
-        let qr = crate::recibir::qr_de(&invitacion::texto_del_qr("K7Q2M9XP", Some("192.168.1.5"), puerta.puerto));
+        let qr = crate::recibir::qr_de(&invitacion::texto_del_qr(
+            "K7Q2M9XP",
+            Some("192.168.1.5"),
+            puerta.puerto,
+        ));
         con_chat.invitando = Some(Invitando {
             puerta,
             _anuncio: None,
@@ -1228,7 +1342,11 @@ mod pruebas {
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        for (nombre, s, alto) in [("cc-personas", &con_chat, 1300u32), ("cc-entrar", &entrar, 760), ("cc-dentro", &dentro, 520)] {
+        for (nombre, s, alto) in [
+            ("cc-personas", &con_chat, 1300u32),
+            ("cc-entrar", &entrar, 760),
+            ("cc-dentro", &dentro, 520),
+        ] {
             let (w, h) = (480u32, alto);
             let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), w, h).expect("superficie");
             motor

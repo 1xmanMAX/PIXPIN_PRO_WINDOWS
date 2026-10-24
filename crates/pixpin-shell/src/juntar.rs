@@ -32,13 +32,19 @@ pub const TOPE: Duration = Duration::from_secs(3);
 
 /// La carpeta de una clave (el verbo y lo que no es fichero).
 pub fn carpeta(clave: &str) -> PathBuf {
-    std::env::temp_dir().join("pixpin-juntar").join(nombre_seguro(clave))
+    std::env::temp_dir()
+        .join("pixpin-juntar")
+        .join(nombre_seguro(clave))
 }
 
 /// Un nombre de carpeta y de mutex a partir de la clave: solo letras y
 /// cifras, y un resumen para que dos claves distintas no choquen.
 fn nombre_seguro(clave: &str) -> String {
-    let limpio: String = clave.chars().filter(|c| c.is_ascii_alphanumeric()).take(24).collect();
+    let limpio: String = clave
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(24)
+        .collect();
     // FNV-1a: estable entre procesos (el `DefaultHasher` no lo es).
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in clave.bytes() {
@@ -52,17 +58,30 @@ fn nombre_seguro(clave: &str) -> String {
 /// `Some(todas)` para la copia que se queda con el trabajo (en el orden en
 /// que llegaron); `None` para las que se van porque otra ya lo hara.
 pub fn juntar(clave: &str, mias: &[String]) -> Option<Vec<String>> {
-    juntar_en(&carpeta(clave), &format!("Local\\PixPinMax-juntar-{}", nombre_seguro(clave)), mias, SILENCIO)
+    juntar_en(
+        &carpeta(clave),
+        &format!("Local\\PixPinMax-juntar-{}", nombre_seguro(clave)),
+        mias,
+        SILENCIO,
+    )
 }
 
 /// [`juntar`] con su carpeta, su mutex y su silencio (las pruebas).
-pub fn juntar_en(dir: &Path, mutex: &str, mias: &[String], silencio: Duration) -> Option<Vec<String>> {
+pub fn juntar_en(
+    dir: &Path,
+    mutex: &str,
+    mias: &[String],
+    silencio: Duration,
+) -> Option<Vec<String>> {
     // Sin donde apuntar, cada copia hace lo suyo: peor que juntar, pero
     // mejor que no hacer nada.
     if std::fs::create_dir_all(dir).is_err() {
         return Some(mias.to_vec());
     }
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let mio = dir.join(format!("{nanos:020}-{}.txt", std::process::id()));
     if std::fs::write(&mio, mias.join("\n")).is_err() {
         return Some(mias.to_vec());
@@ -108,7 +127,12 @@ fn recoger(dir: &Path, silencio: Duration) -> Vec<String> {
         }
     }
     let mut ficheros: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|l| l.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "txt")).collect())
+        .map(|l| {
+            l.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "txt"))
+                .collect()
+        })
         .unwrap_or_default();
     ficheros.sort();
     let mut todas = Vec::new();
@@ -139,7 +163,12 @@ mod pruebas {
                 let (dir, mutex) = (dir.clone(), mutex.clone());
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(i * 15));
-                    juntar_en(&dir, &mutex, &[format!("C:\\f{i}.png")], Duration::from_millis(150))
+                    juntar_en(
+                        &dir,
+                        &mutex,
+                        &[format!("C:\\f{i}.png")],
+                        Duration::from_millis(150),
+                    )
                 })
             })
             .collect();
@@ -148,7 +177,10 @@ mod pruebas {
         // Todas las rutas salen una sola vez, entre todos los lotes.
         let mut todas: Vec<String> = lotes.iter().flat_map(|l| l.iter().cloned()).collect();
         todas.sort();
-        assert_eq!(todas, (0..5).map(|i| format!("C:\\f{i}.png")).collect::<Vec<_>>());
+        assert_eq!(
+            todas,
+            (0..5).map(|i| format!("C:\\f{i}.png")).collect::<Vec<_>>()
+        );
         // Y llegando casi a la vez, un solo lote.
         assert_eq!(lotes.len(), 1, "{r:?}");
         assert_eq!(contar(&dir), 0, "no queda ningun fichero huerfano");
@@ -159,6 +191,10 @@ mod pruebas {
     fn caso_negativo_claves_distintas_no_se_mezclan() {
         assert_ne!(nombre_seguro("chat"), nombre_seguro("pinear"));
         assert_ne!(carpeta("chat --proyecto A"), carpeta("chat --proyecto B"));
-        assert!(nombre_seguro("a\\b:c*?").chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
+        assert!(
+            nombre_seguro("a\\b:c*?")
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        );
     }
 }

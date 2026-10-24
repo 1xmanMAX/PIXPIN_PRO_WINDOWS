@@ -65,14 +65,14 @@ use std::time::{Duration, Instant};
 use pixpin_geom::Rect;
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, S_FALSE, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush, DEFAULT_CHARSET, DT_CALCRECT,
-    DT_CENTER, DT_NOPREFIX, DT_WORDBREAK, DeleteObject, DrawTextW, EndPaint, FF_DONTCARE, FW_NORMAL, FillRect, GetDC,
-    HGDIOBJ, InvalidateRect, OUT_DEFAULT_PRECIS, PAINTSTRUCT, ReleaseDC, SelectObject, SetBkMode, SetTextColor,
-    TRANSPARENT,
+    BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, CreateSolidBrush,
+    DEFAULT_CHARSET, DT_CALCRECT, DT_CENTER, DT_NOPREFIX, DT_WORDBREAK, DeleteObject, DrawTextW,
+    EndPaint, FF_DONTCARE, FW_NORMAL, FillRect, GetDC, HGDIOBJ, InvalidateRect, OUT_DEFAULT_PRECIS,
+    PAINTSTRUCT, ReleaseDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{
-    CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, CoFreeUnusedLibrariesEx, CoGetClassObject, CoInitializeEx, CoUninitialize, IClassFactory,
-    IStream, STGM_READ, STGM_SHARE_DENY_NONE,
+    CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED, CoFreeUnusedLibrariesEx, CoGetClassObject,
+    CoInitializeEx, CoUninitialize, IClassFactory, IStream, STGM_READ, STGM_SHARE_DENY_NONE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Ole::IObjectWithSite;
@@ -80,17 +80,19 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_F11};
 use windows::Win32::UI::Shell::PropertiesSystem::{IInitializeWithFile, IInitializeWithStream};
 use windows::Win32::UI::Shell::{
-    ASSOCF_INIT_DEFAULTTOSTAR, ASSOCF_NOTRUNCATE, ASSOCSTR_SHELLEXTENSION, AssocQueryStringW, IInitializeWithItem,
-    IPreviewHandler, IPreviewHandlerFrame, IPreviewHandlerFrame_Impl, IPreviewHandlerVisuals, IShellItem,
-    PREVIEWHANDLERFRAMEINFO, SHCreateItemFromParsingName, SHCreateStreamOnFileEx,
+    ASSOCF_INIT_DEFAULTTOSTAR, ASSOCF_NOTRUNCATE, ASSOCSTR_SHELLEXTENSION, AssocQueryStringW,
+    IInitializeWithItem, IPreviewHandler, IPreviewHandlerFrame, IPreviewHandlerFrame_Impl,
+    IPreviewHandlerVisuals, IShellItem, PREVIEWHANDLERFRAMEINFO, SHCreateItemFromParsingName,
+    SHCreateStreamOnFileEx,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    ACCEL, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FVIRTKEY,
-    GA_ROOT, GW_CHILD, GWL_STYLE, GetAncestor, GetClientRect, GetForegroundWindow, GetMessageW, GetWindow,
-    GetWindowLongPtrW, GetWindowThreadProcessId, HACCEL, HWND_MESSAGE, IDC_ARROW, IsWindow, KillTimer, LoadCursorW,
-    MSG, PostMessageW, RegisterClassW, SWP_NOACTIVATE, SWP_NOZORDER, SetForegroundWindow, SetTimer,
-    SetWindowLongPtrW, SetWindowPos, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_ERASEBKGND, WM_KEYDOWN,
-    WM_PAINT, WM_SYSKEYDOWN, WM_TIMER, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_VISIBLE,
+    ACCEL, CreateAcceleratorTableW, CreateWindowExW, DefWindowProcW, DestroyWindow,
+    DispatchMessageW, FVIRTKEY, GA_ROOT, GW_CHILD, GWL_STYLE, GetAncestor, GetClientRect,
+    GetForegroundWindow, GetMessageW, GetWindow, GetWindowLongPtrW, GetWindowThreadProcessId,
+    HACCEL, HWND_MESSAGE, IDC_ARROW, IsWindow, KillTimer, LoadCursorW, MSG, PostMessageW,
+    RegisterClassW, SWP_NOACTIVATE, SWP_NOZORDER, SetForegroundWindow, SetTimer, SetWindowLongPtrW,
+    SetWindowPos, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_ERASEBKGND, WM_KEYDOWN, WM_PAINT,
+    WM_SYSKEYDOWN, WM_TIMER, WNDCLASSW, WS_CHILD, WS_CLIPCHILDREN, WS_VISIBLE,
 };
 use windows::core::{GUID, HSTRING, PCWSTR, implement, w};
 
@@ -126,7 +128,9 @@ pub fn guid_de_texto(texto: &str) -> Option<GUID> {
 
 /// La extension de una ruta, en minusculas y sin el punto ("" si no tiene).
 pub fn extension_de(ruta: &Path) -> String {
-    ruta.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
+    ruta.extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default()
 }
 
 fn buscar_manejador(ext: &str) -> Option<GUID> {
@@ -193,7 +197,11 @@ pub fn ruta_para_windows(ruta: &Path) -> PathBuf {
 pub fn zona_del_texto(texto: &str) -> Option<u32> {
     texto.lines().find_map(|l| {
         let (k, v) = l.split_once('=')?;
-        if k.trim().eq_ignore_ascii_case("ZoneId") { v.trim().parse().ok() } else { None }
+        if k.trim().eq_ignore_ascii_case("ZoneId") {
+            v.trim().parse().ok()
+        } else {
+            None
+        }
     })
 }
 
@@ -209,7 +217,9 @@ pub fn zona_bloquea(zona: Option<u32>) -> bool {
 pub fn bloqueado_por_internet(ruta: &Path) -> bool {
     let mut flujo = ruta.as_os_str().to_owned();
     flujo.push(":Zone.Identifier");
-    let zona = std::fs::read(PathBuf::from(flujo)).ok().and_then(|b| zona_del_texto(&String::from_utf8_lossy(&b)));
+    let zona = std::fs::read(PathBuf::from(flujo))
+        .ok()
+        .and_then(|b| zona_del_texto(&String::from_utf8_lossy(&b)));
     zona_bloquea(zona)
 }
 
@@ -249,10 +259,25 @@ pub struct Carteles {
 }
 
 enum Orden {
-    Abrir { id: u64, padre: isize, ruta: PathBuf, clsid: Option<GUID>, area: Rect, carteles: Carteles, c: Arc<Compartido> },
-    Mover { id: u64, area: Rect },
-    Cerrar { id: u64 },
-    SoltarTodo { hecho: Sender<()> },
+    Abrir {
+        id: u64,
+        padre: isize,
+        ruta: PathBuf,
+        clsid: Option<GUID>,
+        area: Rect,
+        carteles: Carteles,
+        c: Arc<Compartido>,
+    },
+    Mover {
+        id: u64,
+        area: Rect,
+    },
+    Cerrar {
+        id: u64,
+    },
+    SoltarTodo {
+        hecho: Sender<()>,
+    },
 }
 
 struct Hilo {
@@ -283,7 +308,9 @@ fn hilo() -> Option<&'static Hilo> {
     HILO.get_or_init(|| {
         let (tx, rx) = channel::<Orden>();
         let (listo_tx, listo_rx) = channel::<isize>();
-        let lanzado = std::thread::Builder::new().name("office".into()).spawn(move || bucle(rx, listo_tx));
+        let lanzado = std::thread::Builder::new()
+            .name("office".into())
+            .spawn(move || bucle(rx, listo_tx));
         if let Err(e) = lanzado {
             tracing::warn!(?e, "vista previa: no se pudo lanzar el hilo");
             return None;
@@ -307,7 +334,12 @@ fn mandar(orden: Orden) -> bool {
     // SAFETY: PostMessageW a la ventana buzon del hilo; si ya no existe,
     // falla y no pasa nada (la orden se queda en el canal).
     unsafe {
-        let _ = PostMessageW(Some(HWND(h.buzon as *mut _)), MSG_ORDEN, WPARAM(0), LPARAM(0));
+        let _ = PostMessageW(
+            Some(HWND(h.buzon as *mut _)),
+            MSG_ORDEN,
+            WPARAM(0),
+            LPARAM(0),
+        );
     }
     true
 }
@@ -380,11 +412,22 @@ impl VistaPrevia {
 
     /// Solo el cartel `texto`, sin previsualizador (lo que viene de internet).
     pub fn solo_cartel(padre: HWND, area: Rect, texto: &str) -> Option<VistaPrevia> {
-        let carteles = Carteles { abriendo: texto.to_string(), tarda: texto.to_string(), fallo: texto.to_string() };
+        let carteles = Carteles {
+            abriendo: texto.to_string(),
+            tarda: texto.to_string(),
+            fallo: texto.to_string(),
+        };
         Self::empezar(padre, Path::new(""), None, area, carteles, Estado::Cartel)
     }
 
-    fn empezar(padre: HWND, ruta: &Path, clsid: Option<GUID>, area: Rect, carteles: Carteles, estado: Estado) -> Option<VistaPrevia> {
+    fn empezar(
+        padre: HWND,
+        ruta: &Path,
+        clsid: Option<GUID>,
+        area: Rect,
+        carteles: Carteles,
+        estado: Estado,
+    ) -> Option<VistaPrevia> {
         recortar_hijas(padre);
         let id = SIGUIENTE.fetch_add(1, Ordering::Relaxed);
         let c = Arc::new(Compartido {
@@ -393,11 +436,24 @@ impl VistaPrevia {
             padre: padre.0 as isize,
             cerrada: Mutex::new(false),
         });
-        let orden = Orden::Abrir { id, padre: padre.0 as isize, ruta: ruta.to_path_buf(), clsid, area, carteles, c: Arc::clone(&c) };
+        let orden = Orden::Abrir {
+            id,
+            padre: padre.0 as isize,
+            ruta: ruta.to_path_buf(),
+            clsid,
+            area,
+            carteles,
+            c: Arc::clone(&c),
+        };
         if !mandar(orden) {
             return None;
         }
-        Some(VistaPrevia { id, c, desde: Instant::now(), cerrada: false })
+        Some(VistaPrevia {
+            id,
+            c,
+            desde: Instant::now(),
+            cerrada: false,
+        })
     }
 
     /// La vista, a otro sitio o tamano dentro de la ventana.
@@ -406,7 +462,11 @@ impl VistaPrevia {
     }
 
     pub fn estado(&self) -> Estado {
-        self.c.estado.lock().map(|e| e.clone()).unwrap_or(Estado::Fallo("envenenado".into()))
+        self.c
+            .estado
+            .lock()
+            .map(|e| e.clone())
+            .unwrap_or(Estado::Fallo("envenenado".into()))
     }
 
     /// Lo que lleva abierta (o abriendose).
@@ -416,7 +476,11 @@ impl VistaPrevia {
 
     /// Las teclas que el previsualizador paso al marco (Esc y F11), en orden.
     pub fn tomar_teclas(&self) -> Vec<u32> {
-        self.c.teclas.lock().map(|mut t| std::mem::take(&mut *t)).unwrap_or_default()
+        self.c
+            .teclas
+            .lock()
+            .map(|mut t| std::mem::take(&mut *t))
+            .unwrap_or_default()
     }
 
     /// **Cierra la vista** y espera hasta `espera` a que el hilo la quite.
@@ -442,7 +506,13 @@ impl VistaPrevia {
             let mut msg = MSG::default();
             // SAFETY: consulta de la cola de este hilo con un MSG propio.
             unsafe {
-                let _ = windows::Win32::UI::WindowsAndMessaging::PeekMessageW(&mut msg, None, 0, 0, windows::Win32::UI::WindowsAndMessaging::PM_NOREMOVE);
+                let _ = windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_NOREMOVE,
+                );
             }
             std::thread::sleep(Duration::from_millis(5));
         }
@@ -472,7 +542,9 @@ const TECLAS_DEL_MARCO: [u16; 2] = [VK_ESCAPE.0, VK_F11.0];
 
 /// Si un mensaje es una de las teclas del marco (`Some(vk)`).
 pub fn tecla_del_marco(mensaje: u32, vk: usize) -> Option<u32> {
-    if (mensaje == WM_KEYDOWN || mensaje == WM_SYSKEYDOWN) && TECLAS_DEL_MARCO.contains(&(vk as u16)) {
+    if (mensaje == WM_KEYDOWN || mensaje == WM_SYSKEYDOWN)
+        && TECLAS_DEL_MARCO.contains(&(vk as u16))
+    {
         Some(vk as u32)
     } else {
         None
@@ -483,7 +555,10 @@ impl IPreviewHandlerFrame_Impl for Marco_Impl {
     fn GetWindowContext(&self) -> windows::core::Result<PREVIEWHANDLERFRAMEINFO> {
         // La tabla de aceleradores dice que teclas nos interesan: el
         // previsualizador solo pasa esas a `TranslateAccelerator`.
-        Ok(PREVIEWHANDLERFRAMEINFO { haccel: HACCEL(self.aceleradores as *mut _), cAccelEntries: TECLAS_DEL_MARCO.len() as u32 })
+        Ok(PREVIEWHANDLERFRAMEINFO {
+            haccel: HACCEL(self.aceleradores as *mut _),
+            cAccelEntries: TECLAS_DEL_MARCO.len() as u32,
+        })
     }
 
     fn TranslateAccelerator(&self, pmsg: *const MSG) -> windows::core::Result<()> {
@@ -543,7 +618,12 @@ fn poner_cartel(cartel: HWND, texto: &str, esperando: bool) {
     }
 }
 
-extern "system" fn proc_cartel(hwnd: HWND, mensaje: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+extern "system" fn proc_cartel(
+    hwnd: HWND,
+    mensaje: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     match mensaje {
         WM_ERASEBKGND => LRESULT(1),
         WM_PAINT => {
@@ -556,10 +636,15 @@ extern "system" fn proc_cartel(hwnd: HWND, mensaje: u32, wparam: WPARAM, lparam:
                 let _ = KillTimer(Some(hwnd), RELOJ_TARDA);
             }
             let tarda = CARTELES.with(|c| {
-                c.borrow().get(&(hwnd.0 as isize)).and_then(|(_, t, esperando)| esperando.then(|| t.clone()))
+                c.borrow()
+                    .get(&(hwnd.0 as isize))
+                    .and_then(|(_, t, esperando)| esperando.then(|| t.clone()))
             });
             if let Some(t) = tarda {
-                tracing::warn!("vista previa: el previsualizador tarda mas de {} s", TARDA.as_secs());
+                tracing::warn!(
+                    "vista previa: el previsualizador tarda mas de {} s",
+                    TARDA.as_secs()
+                );
                 poner_cartel(hwnd, &t, true);
             }
             LRESULT(0)
@@ -570,7 +655,9 @@ extern "system" fn proc_cartel(hwnd: HWND, mensaje: u32, wparam: WPARAM, lparam:
 }
 
 fn pintar_cartel(hwnd: HWND) {
-    let texto = CARTELES.with(|c| c.borrow().get(&(hwnd.0 as isize)).map(|x| x.0.clone())).unwrap_or_default();
+    let texto = CARTELES
+        .with(|c| c.borrow().get(&(hwnd.0 as isize)).map(|x| x.0.clone()))
+        .unwrap_or_default();
     // SAFETY: BeginPaint/EndPaint emparejados en el WM_PAINT de una ventana
     // de este hilo; la brocha y la letra se crean y se borran aqui, y la
     // letra de antes se vuelve a poner antes de borrar la nuestra.
@@ -605,14 +692,29 @@ fn pintar_cartel(hwnd: HWND) {
             SetTextColor(dc, COLORREF(LETRA));
             let mut t: Vec<u16> = texto.encode_utf16().collect();
             let margen = 32 * dpi / 96;
-            let mut caja = RECT { left: r.left + margen, top: 0, right: (r.right - margen).max(r.left + margen + 10), bottom: 0 };
-            DrawTextW(dc, &mut t, &mut caja, DT_CALCRECT | DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
+            let mut caja = RECT {
+                left: r.left + margen,
+                top: 0,
+                right: (r.right - margen).max(r.left + margen + 10),
+                bottom: 0,
+            };
+            DrawTextW(
+                dc,
+                &mut t,
+                &mut caja,
+                DT_CALCRECT | DT_CENTER | DT_WORDBREAK | DT_NOPREFIX,
+            );
             let alto = caja.bottom - caja.top;
             caja.left = r.left + margen;
             caja.right = (r.right - margen).max(r.left + margen + 10);
             caja.top = (r.bottom - alto) / 2;
             caja.bottom = caja.top + alto;
-            DrawTextW(dc, &mut t, &mut caja, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
+            DrawTextW(
+                dc,
+                &mut t,
+                &mut caja,
+                DT_CENTER | DT_WORDBREAK | DT_NOPREFIX,
+            );
             SelectObject(dc, antes);
             let _ = DeleteObject(HGDIOBJ(letra.0));
         }
@@ -631,7 +733,9 @@ fn registrar_clases() -> bool {
     // SAFETY: registro de dos clases con WndProc propio; los campos no
     // usados a cero, que es lo que la API espera.
     unsafe {
-        let Ok(modulo) = GetModuleHandleW(None) else { return false };
+        let Ok(modulo) = GetModuleHandleW(None) else {
+            return false;
+        };
         let cartel = WNDCLASSW {
             lpfnWndProc: Some(proc_cartel),
             hInstance: modulo.into(),
@@ -639,7 +743,12 @@ fn registrar_clases() -> bool {
             lpszClassName: w!("PixPinVistaPrevia"),
             ..Default::default()
         };
-        let buzon = WNDCLASSW { lpfnWndProc: Some(proc_buzon), hInstance: modulo.into(), lpszClassName: w!("PixPinVistaPreviaBuzon"), ..Default::default() };
+        let buzon = WNDCLASSW {
+            lpfnWndProc: Some(proc_buzon),
+            hInstance: modulo.into(),
+            lpszClassName: w!("PixPinVistaPreviaBuzon"),
+            ..Default::default()
+        };
         RegisterClassW(&cartel) != 0 && RegisterClassW(&buzon) != 0
     }
 }
@@ -673,13 +782,26 @@ fn bucle(rx: Receiver<Orden>, listo: Sender<isize>) {
         return;
     };
     // La tabla de aceleradores del marco (Esc y F11), una para todas.
-    let acel: Vec<ACCEL> = TECLAS_DEL_MARCO.iter().enumerate().map(|(i, vk)| ACCEL { fVirt: FVIRTKEY, key: *vk, cmd: i as u16 + 1 }).collect();
+    let acel: Vec<ACCEL> = TECLAS_DEL_MARCO
+        .iter()
+        .enumerate()
+        .map(|(i, vk)| ACCEL {
+            fVirt: FVIRTKEY,
+            key: *vk,
+            cmd: i as u16 + 1,
+        })
+        .collect();
     // SAFETY: la tabla se copia; el slice vive durante la llamada.
-    let aceleradores = unsafe { CreateAcceleratorTableW(&acel) }.map(|h| h.0 as isize).unwrap_or(0);
+    let aceleradores = unsafe { CreateAcceleratorTableW(&acel) }
+        .map(|h| h.0 as isize)
+        .unwrap_or(0);
     let _ = listo.send(buzon.0 as isize);
     tracing::info!("vista previa: hilo «office» en marcha");
 
-    let mut e = EstadoHilo { vistas: HashMap::new(), aceleradores };
+    let mut e = EstadoHilo {
+        vistas: HashMap::new(),
+        aceleradores,
+    };
     let mut msg = MSG::default();
     loop {
         // Las ordenes, antes de dormir: las que llegaron durante una llamada
@@ -725,7 +847,15 @@ fn bucle(rx: Receiver<Orden>, listo: Sender<isize>) {
 
 fn atender(e: &mut EstadoHilo, orden: Orden) {
     match orden {
-        Orden::Abrir { id, padre, ruta, clsid, area, carteles, c } => abrir_en_el_hilo(e, id, padre, &ruta, clsid, area, carteles, c),
+        Orden::Abrir {
+            id,
+            padre,
+            ruta,
+            clsid,
+            area,
+            carteles,
+            c,
+        } => abrir_en_el_hilo(e, id, padre, &ruta, clsid, area, carteles, c),
         Orden::Mover { id, area } => {
             if let Some(v) = e.vistas.get(&id) {
                 mover_en_el_hilo(v, area);
@@ -766,7 +896,15 @@ pub fn servidor_caido(hr: i32) -> bool {
     const RPC_S_SERVER_UNAVAILABLE: i32 = 0x8007_06BA_u32 as i32;
     const RPC_S_CALL_FAILED: i32 = 0x8007_06BE_u32 as i32;
     const CO_E_OBJNOTCONNECTED: i32 = 0x8004_01FD_u32 as i32;
-    matches!(hr, RPC_E_SERVERDIED | RPC_E_SERVERDIED_DNE | RPC_E_DISCONNECTED | RPC_S_SERVER_UNAVAILABLE | RPC_S_CALL_FAILED | CO_E_OBJNOTCONNECTED)
+    matches!(
+        hr,
+        RPC_E_SERVERDIED
+            | RPC_E_SERVERDIED_DNE
+            | RPC_E_DISCONNECTED
+            | RPC_S_SERVER_UNAVAILABLE
+            | RPC_S_CALL_FAILED
+            | CO_E_OBJNOTCONNECTED
+    )
 }
 
 /// La fabrica del previsualizador, pedida ahora y para esta vista sola (no
@@ -786,7 +924,12 @@ fn soltar_lo_que_sobra() {
 }
 
 fn rect_de(area: Rect) -> RECT {
-    RECT { left: 0, top: 0, right: area.ancho as i32, bottom: area.alto as i32 }
+    RECT {
+        left: 0,
+        top: 0,
+        right: area.ancho as i32,
+        bottom: area.alto as i32,
+    }
 }
 
 /// Las maneras de darle el fichero a un previsualizador, en el orden en que
@@ -814,19 +957,27 @@ fn iniciar_de(m: &IPreviewHandler, ruta: &Path, manera: Manera) -> windows::core
     let r = HSTRING::from(ruta.as_os_str());
     match manera {
         Manera::Ruta => {
-            let Ok(i) = m.cast::<IInitializeWithFile>() else { return Ok(false) };
+            let Ok(i) = m.cast::<IInitializeWithFile>() else {
+                return Ok(false);
+            };
             // SAFETY: la ruta vive como HSTRING durante la llamada.
             en_llamada(|| unsafe { i.Initialize(&r, STGM_READ.0) })?;
         }
         Manera::Flujo => {
-            let Ok(i) = m.cast::<IInitializeWithStream>() else { return Ok(false) };
+            let Ok(i) = m.cast::<IInitializeWithStream>() else {
+                return Ok(false);
+            };
             // SAFETY: idem; el flujo lo sujeta el previsualizador si lo quiere.
-            let flujo: IStream = unsafe { SHCreateStreamOnFileEx(&r, STGM_READ.0 | STGM_SHARE_DENY_NONE.0, 0, false, None) }?;
+            let flujo: IStream = unsafe {
+                SHCreateStreamOnFileEx(&r, STGM_READ.0 | STGM_SHARE_DENY_NONE.0, 0, false, None)
+            }?;
             // SAFETY: interfaz y flujo validos.
             en_llamada(|| unsafe { i.Initialize(&flujo, STGM_READ.0) })?;
         }
         Manera::Elemento => {
-            let Ok(i) = m.cast::<IInitializeWithItem>() else { return Ok(false) };
+            let Ok(i) = m.cast::<IInitializeWithItem>() else {
+                return Ok(false);
+            };
             // SAFETY: la ruta vive durante la llamada.
             let elemento: IShellItem = unsafe { SHCreateItemFromParsingName(&r, None) }?;
             // SAFETY: interfaz y elemento validos.
@@ -840,7 +991,10 @@ fn iniciar_de(m: &IPreviewHandler, ruta: &Path, manera: Manera) -> windows::core
 /// por la primera manera que acepte. Si una manera falla se prueba la
 /// siguiente con OTRO objeto (`Initialize` se llama una vez por objeto;
 /// reintentar sobre el mismo no es fiable).
-fn crear_e_iniciar(f: &IClassFactory, ruta: &Path) -> windows::core::Result<(IPreviewHandler, &'static str)> {
+fn crear_e_iniciar(
+    f: &IClassFactory,
+    ruta: &Path,
+) -> windows::core::Result<(IPreviewHandler, &'static str)> {
     let mut ultimo: Option<windows::core::Error> = None;
     for manera in [Manera::Ruta, Manera::Flujo, Manera::Elemento] {
         // SAFETY: fabrica valida; sin agregacion.
@@ -858,11 +1012,22 @@ fn crear_e_iniciar(f: &IClassFactory, ruta: &Path) -> windows::core::Result<(IPr
             }
         }
     }
-    Err(ultimo.unwrap_or_else(|| windows::core::Error::from_hresult(windows::Win32::Foundation::E_NOINTERFACE)))
+    Err(ultimo.unwrap_or_else(|| {
+        windows::core::Error::from_hresult(windows::Win32::Foundation::E_NOINTERFACE)
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
-fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsid: Option<GUID>, area: Rect, carteles: Carteles, c: Arc<Compartido>) {
+fn abrir_en_el_hilo(
+    e: &mut EstadoHilo,
+    id: u64,
+    padre: isize,
+    ruta: &Path,
+    clsid: Option<GUID>,
+    area: Rect,
+    carteles: Carteles,
+    c: Arc<Compartido>,
+) {
     let t0 = Instant::now();
     let padre = HWND(padre as *mut _);
     // SAFETY: consulta de solo lectura.
@@ -892,12 +1057,29 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
     };
     let Ok(cartel) = cartel else {
         tracing::warn!("vista previa: no se pudo crear la ventana del cartel");
-        let _ = c.estado.lock().map(|mut x| *x = Estado::Fallo("sin ventana".into()));
+        let _ = c
+            .estado
+            .lock()
+            .map(|mut x| *x = Estado::Fallo("sin ventana".into()));
         let _ = c.cerrada.lock().map(|mut x| *x = true);
         return;
     };
-    CARTELES.with(|x| x.borrow_mut().insert(cartel.0 as isize, (carteles.abriendo.clone(), carteles.tarda.clone(), clsid.is_some())));
-    let mut viva = Viva { cartel, manejador: None, fabrica: None, c: Arc::clone(&c) };
+    CARTELES.with(|x| {
+        x.borrow_mut().insert(
+            cartel.0 as isize,
+            (
+                carteles.abriendo.clone(),
+                carteles.tarda.clone(),
+                clsid.is_some(),
+            ),
+        )
+    });
+    let mut viva = Viva {
+        cartel,
+        manejador: None,
+        fabrica: None,
+        c: Arc::clone(&c),
+    };
     let Some(clsid) = clsid else {
         e.vistas.insert(id, viva);
         return;
@@ -938,7 +1120,11 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
             // Lo mismo si Office estaba ocupado y rechazo la llamada
             // (RPC_E_CALL_REJECTED, medido con un .rtf mientras otro
             // programa usaba Word).
-            Err(err) if intento == 1 && (err.code() == windows::Win32::Foundation::E_FAIL || err.code().0 == 0x8001_0001_u32 as i32) => {
+            Err(err)
+                if intento == 1
+                    && (err.code() == windows::Win32::Foundation::E_FAIL
+                        || err.code().0 == 0x8001_0001_u32 as i32) =>
+            {
                 tracing::info!(%err, "vista previa: no pudo a la primera, otra vez");
             }
             r => break r,
@@ -957,7 +1143,11 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
     };
     use windows::core::Interface;
     // El marco: las teclas Esc y F11 aunque el foco lo tenga Office.
-    let marco: IPreviewHandlerFrame = Marco { c: Arc::clone(&c), aceleradores: e.aceleradores }.into();
+    let marco: IPreviewHandlerFrame = Marco {
+        c: Arc::clone(&c),
+        aceleradores: e.aceleradores,
+    }
+    .into();
     if let Ok(sitio) = manejador.cast::<IObjectWithSite>() {
         // SAFETY: interfaces validas.
         let _ = en_llamada(|| unsafe { sitio.SetSite(&marco) });
@@ -972,7 +1162,11 @@ fn abrir_en_el_hilo(e: &mut EstadoHilo, id: u64, padre: isize, ruta: &Path, clsi
     let r = rect_de(area);
     // SAFETY: el cartel es una ventana viva de este hilo y el RECT vive
     // durante la llamada.
-    let pintado = en_llamada(|| unsafe { manejador.SetWindow(cartel, &r).and_then(|_| manejador.DoPreview()) });
+    let pintado = en_llamada(|| unsafe {
+        manejador
+            .SetWindow(cartel, &r)
+            .and_then(|_| manejador.DoPreview())
+    });
     let ms = t0.elapsed().as_millis() as u64;
     viva.manejador = Some(manejador);
     viva.fabrica = Some(fabrica_de_la_vista);
@@ -1032,7 +1226,15 @@ fn mover_en_el_hilo(v: &Viva, area: Rect) {
     let t = Instant::now();
     // SAFETY: el cartel es de este hilo; el RECT vive durante la llamada.
     unsafe {
-        let _ = SetWindowPos(v.cartel, None, area.x, area.y, area.ancho as i32, area.alto as i32, SWP_NOZORDER | SWP_NOACTIVATE);
+        let _ = SetWindowPos(
+            v.cartel,
+            None,
+            area.x,
+            area.y,
+            area.ancho as i32,
+            area.alto as i32,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
     }
     let ms_ventana = t.elapsed().as_millis() as u64;
     if let Some(m) = &v.manejador {
@@ -1087,7 +1289,10 @@ fn cerrar_en_el_hilo(v: Viva) {
     }
     soltar_lo_que_sobra();
     let _ = v.c.cerrada.lock().map(|mut x| *x = true);
-    tracing::info!(ms = t.elapsed().as_millis() as u64, "vista previa: cerrada y soltada");
+    tracing::info!(
+        ms = t.elapsed().as_millis() as u64,
+        "vista previa: cerrada y soltada"
+    );
 }
 
 #[cfg(test)]
@@ -1098,11 +1303,17 @@ mod pruebas {
     fn el_guid_se_lee_con_y_sin_llaves_y_lo_demas_no() {
         let g = guid_de_texto("{84F66100-FF7C-4fb4-B0C0-02CD7FB668FE}").expect("guid");
         assert_eq!(g, GUID::from_u128(0x84F66100_FF7C_4FB4_B0C0_02CD7FB668FE));
-        assert_eq!(guid_de_texto(" 00020827-0000-0000-C000-000000000046 "), Some(GUID::from_u128(0x00020827_0000_0000_C000_000000000046)));
+        assert_eq!(
+            guid_de_texto(" 00020827-0000-0000-C000-000000000046 "),
+            Some(GUID::from_u128(0x00020827_0000_0000_C000_000000000046))
+        );
         // Casos negativos: vacio, a medias, con basura.
         assert_eq!(guid_de_texto(""), None);
         assert_eq!(guid_de_texto("{84F66100-FF7C}"), None);
-        assert_eq!(guid_de_texto("{84F66100-FF7C-4fb4-B0C0-02CD7FB668FX}"), None);
+        assert_eq!(
+            guid_de_texto("{84F66100-FF7C-4fb4-B0C0-02CD7FB668FX}"),
+            None
+        );
     }
 
     #[test]
@@ -1138,11 +1349,23 @@ mod pruebas {
 
     #[test]
     fn solo_esc_y_f11_pulsadas_son_del_marco() {
-        assert_eq!(tecla_del_marco(WM_KEYDOWN, VK_ESCAPE.0 as usize), Some(VK_ESCAPE.0 as u32));
-        assert_eq!(tecla_del_marco(WM_SYSKEYDOWN, VK_F11.0 as usize), Some(VK_F11.0 as u32));
+        assert_eq!(
+            tecla_del_marco(WM_KEYDOWN, VK_ESCAPE.0 as usize),
+            Some(VK_ESCAPE.0 as u32)
+        );
+        assert_eq!(
+            tecla_del_marco(WM_SYSKEYDOWN, VK_F11.0 as usize),
+            Some(VK_F11.0 as u32)
+        );
         // Casos negativos: otra tecla, o la tecla al soltarla.
         assert_eq!(tecla_del_marco(WM_KEYDOWN, 0x41), None);
-        assert_eq!(tecla_del_marco(windows::Win32::UI::WindowsAndMessaging::WM_KEYUP, VK_ESCAPE.0 as usize), None);
+        assert_eq!(
+            tecla_del_marco(
+                windows::Win32::UI::WindowsAndMessaging::WM_KEYUP,
+                VK_ESCAPE.0 as usize
+            ),
+            None
+        );
     }
 
     #[test]
@@ -1157,9 +1380,15 @@ mod pruebas {
 
     #[test]
     fn la_ruta_va_con_barras_de_windows() {
-        assert_eq!(ruta_para_windows(Path::new("E:/pixpin-capturas/Guia de usuario.docx")), PathBuf::from(r"E:\pixpin-capturas\Guia de usuario.docx"));
+        assert_eq!(
+            ruta_para_windows(Path::new("E:/pixpin-capturas/Guia de usuario.docx")),
+            PathBuf::from(r"E:\pixpin-capturas\Guia de usuario.docx")
+        );
         // Caso negativo: una ruta ya buena no cambia.
-        assert_eq!(ruta_para_windows(Path::new(r"C:\a\b.xlsx")), PathBuf::from(r"C:\a\b.xlsx"));
+        assert_eq!(
+            ruta_para_windows(Path::new(r"C:\a\b.xlsx")),
+            PathBuf::from(r"C:\a\b.xlsx")
+        );
         // Una relativa queda completa.
         assert!(ruta_para_windows(Path::new("b.xlsx")).is_absolute());
     }
@@ -1176,8 +1405,14 @@ mod pruebas {
     #[test]
     #[ignore]
     fn manejadores_de_este_equipo() {
-        for ext in ["docx", "doc", "rtf", "odt", "xlsx", "xls", "xlsb", "pptx", "ppt", "vsdx", "msg", "docm", "xlsm", "csv", "zip", "png", "pdf"] {
-            println!("{ext:>5} -> {:?}", manejador_de_extension(ext).map(|g| format!("{g:?}")));
+        for ext in [
+            "docx", "doc", "rtf", "odt", "xlsx", "xls", "xlsb", "pptx", "ppt", "vsdx", "msg",
+            "docm", "xlsm", "csv", "zip", "png", "pdf",
+        ] {
+            println!(
+                "{ext:>5} -> {:?}",
+                manejador_de_extension(ext).map(|g| format!("{g:?}"))
+            );
         }
     }
 }

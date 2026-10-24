@@ -21,13 +21,14 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_CONTROL, VK_LWIN,
-    VK_MENU, VK_RWIN, VK_SHIFT, VK_SPACE,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput,
+    VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, VK_SPACE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GUITHREADINFO, GetAncestor, GetClassNameW, GetForegroundWindow, GetGUIThreadInfo, GetParent,
-    GetWindowThreadProcessId, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, SetWindowsHookExW, UnhookWindowsHookEx,
-    WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    CallNextHookEx, GUITHREADINFO, GetAncestor, GetClassNameW, GetForegroundWindow,
+    GetGUIThreadInfo, GetParent, GetWindowThreadProcessId, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT,
+    LLKHF_INJECTED, SetWindowsHookExW, UnhookWindowsHookEx, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+    WM_SYSKEYUP,
 };
 
 /// Encendido o no (el interruptor de Ajustes, en vivo).
@@ -50,14 +51,20 @@ const DELANTE: [&str; 4] = ["CabinetWClass", "ExploreWClass", "Progman", "Worker
 /// **La decision del gancho**, sin Windows (para probarla): el espacio solo,
 /// con el Explorador delante y el foco en su lista de ficheros. `foco` es la
 /// clase de la ventana con el foco y `antepasados` las de sus padres.
-pub fn es_para_la_vista_rapida(modificadores: bool, delante: &str, foco: &str, antepasados: &[String]) -> bool {
+pub fn es_para_la_vista_rapida(
+    modificadores: bool,
+    delante: &str,
+    foco: &str,
+    antepasados: &[String],
+) -> bool {
     if modificadores || !DELANTE.contains(&delante) {
         return false;
     }
     // La lista de ficheros: «DirectUIHWND» (Explorador) o «SysListView32»
     // (escritorio), siempre dentro de «SHELLDLL_DefView». Un «Edit» (cambiar
     // el nombre, la direccion) o el buscador de Windows 11 no lo son.
-    matches!(foco, "DirectUIHWND" | "SysListView32") && antepasados.iter().any(|a| a == "SHELLDLL_DefView")
+    matches!(foco, "DirectUIHWND" | "SysListView32")
+        && antepasados.iter().any(|a| a == "SHELLDLL_DefView")
 }
 
 fn pulsada(tecla: VIRTUAL_KEY) -> bool {
@@ -98,7 +105,10 @@ fn mirar() -> Option<HWND> {
             return None;
         }
         let hilo = GetWindowThreadProcessId(delante, None);
-        let mut info = GUITHREADINFO { cbSize: std::mem::size_of::<GUITHREADINFO>() as u32, ..Default::default() };
+        let mut info = GUITHREADINFO {
+            cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+            ..Default::default()
+        };
         GetGUIThreadInfo(hilo, &mut info).ok()?;
         let foco = info.hwndFocus;
         if foco.0.is_null() {
@@ -115,7 +125,11 @@ fn mirar() -> Option<HWND> {
         }
         let raiz = GetAncestor(delante, windows::Win32::UI::WindowsAndMessaging::GA_ROOT);
         let delante_clase = clase(if raiz.0.is_null() { delante } else { raiz });
-        let mods = pulsada(VK_CONTROL) || pulsada(VK_MENU) || pulsada(VK_SHIFT) || pulsada(VK_LWIN) || pulsada(VK_RWIN);
+        let mods = pulsada(VK_CONTROL)
+            || pulsada(VK_MENU)
+            || pulsada(VK_SHIFT)
+            || pulsada(VK_LWIN)
+            || pulsada(VK_RWIN);
         es_para_la_vista_rapida(mods, &delante_clase, &clase(foco), &antepasados).then_some(delante)
     }
 }
@@ -140,7 +154,11 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
                 && ACTIVO.load(Ordering::Relaxed)
                 && let Some(delante) = mirar()
             {
-                let enviado = TRABAJO.lock().ok().and_then(|t| t.as_ref().map(|t| t.send(delante.0 as isize).is_ok())).unwrap_or(false);
+                let enviado = TRABAJO
+                    .lock()
+                    .ok()
+                    .and_then(|t| t.as_ref().map(|t| t.send(delante.0 as isize).is_ok()))
+                    .unwrap_or(false);
                 if enviado {
                     TRAGANDO.store(true, Ordering::Relaxed);
                     return LRESULT(1);
@@ -160,7 +178,11 @@ fn devolver_espacio() {
             ki: KEYBDINPUT {
                 wVk: VK_SPACE,
                 wScan: 0x39,
-                dwFlags: if arriba { KEYEVENTF_KEYUP } else { Default::default() },
+                dwFlags: if arriba {
+                    KEYEVENTF_KEYUP
+                } else {
+                    Default::default()
+                },
                 time: 0,
                 dwExtraInfo: MARCA_PROPIA,
             },
@@ -168,7 +190,10 @@ fn devolver_espacio() {
     };
     // SAFETY: SendInput con un arreglo local de dos INPUT bien formados.
     unsafe {
-        SendInput(&[tecla(false), tecla(true)], std::mem::size_of::<INPUT>() as i32);
+        SendInput(
+            &[tecla(false), tecla(true)],
+            std::mem::size_of::<INPUT>() as i32,
+        );
     }
 }
 
@@ -181,12 +206,17 @@ pub struct GanchoEspacio {
 impl GanchoEspacio {
     /// `al_pulsar(delante)` corre en un hilo propio (con COM iniciado) y dice
     /// si el espacio era para la vista rapida; si no, se devuelve.
-    pub fn instalar(al_pulsar: impl Fn(isize) -> bool + Send + 'static) -> windows::core::Result<Self> {
+    pub fn instalar(
+        al_pulsar: impl Fn(isize) -> bool + Send + 'static,
+    ) -> windows::core::Result<Self> {
         use windows::Win32::System::Threading::GetCurrentThreadId;
         use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, MSG};
         let error = |e: String| windows::core::Error::new(windows::core::HRESULT(-1), e);
         let (tx, rx) = channel::<isize>();
-        std::thread::Builder::new().name("vista-rapida".into()).spawn(move || trabajar(rx, al_pulsar)).map_err(|e| error(e.to_string()))?;
+        std::thread::Builder::new()
+            .name("vista-rapida".into())
+            .spawn(move || trabajar(rx, al_pulsar))
+            .map_err(|e| error(e.to_string()))?;
         if let Ok(mut t) = TRABAJO.lock() {
             *t = Some(tx);
         }
@@ -196,7 +226,14 @@ impl GanchoEspacio {
             .spawn(move || {
                 // SAFETY: gancho global de teclado con un procedimiento
                 // `extern "system"` estatico; se quita en este mismo hilo.
-                let gancho: HHOOK = match unsafe { SetWindowsHookExW(windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL, Some(procedimiento), None, 0) } {
+                let gancho: HHOOK = match unsafe {
+                    SetWindowsHookExW(
+                        windows::Win32::UI::WindowsAndMessaging::WH_KEYBOARD_LL,
+                        Some(procedimiento),
+                        None,
+                        0,
+                    )
+                } {
                     Ok(g) => g,
                     Err(e) => {
                         let _ = listo_tx.send(Err(e));
@@ -216,7 +253,10 @@ impl GanchoEspacio {
             })
             .map_err(|e| error(e.to_string()))?;
         let id_hilo = listo_rx.recv().map_err(|e| error(e.to_string()))??;
-        Ok(Self { hilo: Some(hilo), id_hilo })
+        Ok(Self {
+            hilo: Some(hilo),
+            id_hilo,
+        })
     }
 }
 
@@ -245,7 +285,11 @@ fn trabajar(rx: Receiver<isize>, al_pulsar: impl Fn(isize) -> bool) {
         }
         let t = std::time::Instant::now();
         let era = al_pulsar(delante);
-        tracing::info!(era, ms = t.elapsed().as_millis() as u64, "vista rapida: espacio en el Explorador");
+        tracing::info!(
+            era,
+            ms = t.elapsed().as_millis() as u64,
+            "vista rapida: espacio en el Explorador"
+        );
         if !era {
             devolver_espacio();
         }
@@ -256,7 +300,9 @@ fn trabajar(rx: Receiver<isize>, al_pulsar: impl Fn(isize) -> bool) {
 /// visores; sus barras van con ellas).
 pub fn ventanas_propias() -> Vec<isize> {
     use windows::Win32::Foundation::{HWND, LPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsWindowVisible};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GW_OWNER, GetWindow, GetWindowThreadProcessId, IsWindowVisible,
+    };
     use windows::core::BOOL;
     struct Busca {
         pid: u32,
@@ -269,13 +315,19 @@ pub fn ventanas_propias() -> Vec<isize> {
             let b = &mut *(l.0 as *mut Busca);
             let mut pid = 0;
             GetWindowThreadProcessId(h, Some(&mut pid));
-            if pid == b.pid && IsWindowVisible(h).as_bool() && GetWindow(h, GW_OWNER).unwrap_or_default().0.is_null() {
+            if pid == b.pid
+                && IsWindowVisible(h).as_bool()
+                && GetWindow(h, GW_OWNER).unwrap_or_default().0.is_null()
+            {
                 b.v.push(h.0 as isize);
             }
         }
         BOOL(1)
     }
-    let mut b = Busca { pid: std::process::id(), v: Vec::new() };
+    let mut b = Busca {
+        pid: std::process::id(),
+        v: Vec::new(),
+    };
     // SAFETY: EnumWindows llama a `una` en este hilo, con el puntero a `b`.
     let _ = unsafe { EnumWindows(Some(una), LPARAM(&mut b as *mut Busca as isize)) };
     b.v
@@ -310,14 +362,44 @@ mod pruebas {
     #[test]
     fn el_espacio_es_de_la_vista_rapida_solo_en_la_lista_de_ficheros() {
         let lista = a(&["SHELLDLL_DefView", "DUIViewWndClassName", "CabinetWClass"]);
-        assert!(es_para_la_vista_rapida(false, "CabinetWClass", "DirectUIHWND", &lista));
+        assert!(es_para_la_vista_rapida(
+            false,
+            "CabinetWClass",
+            "DirectUIHWND",
+            &lista
+        ));
         // El escritorio.
-        assert!(es_para_la_vista_rapida(false, "Progman", "SysListView32", &a(&["SHELLDLL_DefView", "Progman"])));
+        assert!(es_para_la_vista_rapida(
+            false,
+            "Progman",
+            "SysListView32",
+            &a(&["SHELLDLL_DefView", "Progman"])
+        ));
         // Casos negativos: cambiando el nombre (un Edit), con Ctrl, en el
         // buscador o la barra de direcciones, o en otro programa.
-        assert!(!es_para_la_vista_rapida(false, "CabinetWClass", "Edit", &lista));
-        assert!(!es_para_la_vista_rapida(true, "CabinetWClass", "DirectUIHWND", &lista));
-        assert!(!es_para_la_vista_rapida(false, "CabinetWClass", "DirectUIHWND", &a(&["CtrlNotifySink", "CabinetWClass"])));
-        assert!(!es_para_la_vista_rapida(false, "OpusApp", "DirectUIHWND", &lista));
+        assert!(!es_para_la_vista_rapida(
+            false,
+            "CabinetWClass",
+            "Edit",
+            &lista
+        ));
+        assert!(!es_para_la_vista_rapida(
+            true,
+            "CabinetWClass",
+            "DirectUIHWND",
+            &lista
+        ));
+        assert!(!es_para_la_vista_rapida(
+            false,
+            "CabinetWClass",
+            "DirectUIHWND",
+            &a(&["CtrlNotifySink", "CabinetWClass"])
+        ));
+        assert!(!es_para_la_vista_rapida(
+            false,
+            "OpusApp",
+            "DirectUIHWND",
+            &lista
+        ));
     }
 }

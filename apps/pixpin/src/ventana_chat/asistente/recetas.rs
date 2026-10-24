@@ -82,7 +82,9 @@ fn visibles(a: &Abierto) -> Vec<Receta> {
         {
             return c.visibles.clone();
         }
-        let cambiado = std::fs::metadata(auto::fichero_en(&carpeta)).and_then(|m| m.modified()).ok();
+        let cambiado = std::fs::metadata(auto::fichero_en(&carpeta))
+            .and_then(|m| m.modified())
+            .ok();
         if let Some(viejo) = c.as_mut()
             && viejo.raiz == carpeta
             && viejo.cambiado == cambiado
@@ -109,7 +111,11 @@ fn visibles(a: &Abierto) -> Vec<Receta> {
 
 /// Cambia las recetas en el fichero de las automatizaciones (leido de
 /// nuevo, con su cerrojo: Ajustes o la sincronizacion pudieron tocarlo).
-fn escribir<T>(raiz: &std::path::Path, aparato: &str, f: impl FnOnce(&mut auto::Lista) -> Result<T, NoSePuede>) -> Result<T, NoSePuede> {
+fn escribir<T>(
+    raiz: &std::path::Path,
+    aparato: &str,
+    f: impl FnOnce(&mut auto::Lista) -> Result<T, NoSePuede>,
+) -> Result<T, NoSePuede> {
     let mut motivo = None;
     let r = auto::cambiar(raiz, aparato, ahora(), |l| {
         f(l).map_err(|e| {
@@ -185,7 +191,14 @@ pub(in crate::ventana_chat) fn pintar(p: &Pintor, barra: Rect, c: &Pinta, a: &Ab
         let rotulo = textos.t_args(clave, &args);
         let (_, h) = p.medir_texto(&rotulo, 12.0 * e);
         let x = caja.x + 40.0 * e;
-        p.texto_linea(&rotulo, x, caja.y + (caja.alto - h) / 2.0, 12.0 * e, caja.ancho - 52.0 * e, tema.texto);
+        p.texto_linea(
+            &rotulo,
+            x,
+            caja.y + (caja.alto - h) / 2.0,
+            12.0 * e,
+            caja.ancho - 52.0 * e,
+            tema.texto,
+        );
         return;
     }
     let tam = 13.0 * e;
@@ -196,7 +209,11 @@ pub(in crate::ventana_chat) fn pintar(p: &Pintor, barra: Rect, c: &Pinta, a: &Ab
     BOTONES.with_borrow_mut(|b| {
         b.clear();
         for r in visibles(a) {
-            let rotulo = if r.icono.is_empty() { r.nombre.clone() } else { format!("{} {}", r.icono, r.nombre) };
+            let rotulo = if r.icono.is_empty() {
+                r.nombre.clone()
+            } else {
+                format!("{} {}", r.icono, r.nombre)
+            };
             let (w, h) = p.medir_texto(&rotulo, tam);
             let ancho = (w + 24.0 * e).min(220.0 * e);
             if x + ancho > fin {
@@ -207,7 +224,14 @@ pub(in crate::ventana_chat) fn pintar(p: &Pintor, barra: Rect, c: &Pinta, a: &Ab
             let filete = (1.0 * e).max(1.0);
             p.rellenar_redondeado(pastilla, alto / 2.0, con_alfa(tema.enviar, 0.55));
             p.rellenar_redondeado(encoger(pastilla, filete), alto / 2.0 - filete, tema.isla);
-            p.texto_linea(&rotulo, x + 12.0 * e, y + (alto - h) / 2.0, tam, ancho - 24.0 * e, tema.texto);
+            p.texto_linea(
+                &rotulo,
+                x + 12.0 * e,
+                y + (alto - h) / 2.0,
+                tam,
+                ancho - 24.0 * e,
+                tema.texto,
+            );
             b.push((
                 Rect {
                     x: pastilla.x as i32,
@@ -223,7 +247,11 @@ pub(in crate::ventana_chat) fn pintar(p: &Pintor, barra: Rect, c: &Pinta, a: &Ab
 }
 
 fn boton_en(l: Punto) -> Option<String> {
-    BOTONES.with_borrow(|b| b.iter().find(|(r, _)| r.contiene(l)).map(|(_, id)| id.clone()))
+    BOTONES.with_borrow(|b| {
+        b.iter()
+            .find(|(r, _)| r.contiene(l))
+            .map(|(_, id)| id.clone())
+    })
 }
 
 /// **Un clic en un boton**: el pedido que hay que mandar.
@@ -232,11 +260,18 @@ pub(in crate::ventana_chat) fn pedido_en(a: &Abierto, l: Punto) -> Option<String
         return None;
     }
     let id = boton_en(l)?;
-    visibles(a).into_iter().find(|r| r.id == id).map(|r| r.pedido)
+    visibles(a)
+        .into_iter()
+        .find(|r| r.id == id)
+        .map(|r| r.pedido)
 }
 
 /// **Clic derecho en un boton**: su menu.
-pub(in crate::ventana_chat) fn menu_en(a: &Abierto, l: Punto, textos: &Catalogo) -> Option<Vec<EntradaMenu>> {
+pub(in crate::ventana_chat) fn menu_en(
+    a: &Abierto,
+    l: Punto,
+    textos: &Catalogo,
+) -> Option<Vec<EntradaMenu>> {
     if !a.ficha.es_asistente() || editando(a) {
         return None;
     }
@@ -245,18 +280,46 @@ pub(in crate::ventana_chat) fn menu_en(a: &Abierto, l: Punto, textos: &Catalogo)
     let i = fila.iter().position(|r| r.id == id)?;
     let hacer = |q: QueReceta| AccionChat::Receta(id.clone(), q);
     let mut v = vec![
-        entrada(Some(&mi::EDIT), textos.t("asistente-receta-renombrar"), hacer(QueReceta::Renombrar)),
-        entrada(Some(&mi::SUBTITLES), textos.t("asistente-receta-editar"), hacer(QueReceta::Editar)),
-        entrada(Some(&mi::PALETTE), textos.t("asistente-receta-icono"), hacer(QueReceta::Iconos)),
+        entrada(
+            Some(&mi::EDIT),
+            textos.t("asistente-receta-renombrar"),
+            hacer(QueReceta::Renombrar),
+        ),
+        entrada(
+            Some(&mi::SUBTITLES),
+            textos.t("asistente-receta-editar"),
+            hacer(QueReceta::Editar),
+        ),
+        entrada(
+            Some(&mi::PALETTE),
+            textos.t("asistente-receta-icono"),
+            hacer(QueReceta::Iconos),
+        ),
     ];
     if i > 0 {
-        v.push(entrada(Some(&mi::ARROW_BACK), textos.t("asistente-receta-izquierda"), hacer(QueReceta::Izquierda)).separada());
+        v.push(
+            entrada(
+                Some(&mi::ARROW_BACK),
+                textos.t("asistente-receta-izquierda"),
+                hacer(QueReceta::Izquierda),
+            )
+            .separada(),
+        );
     }
     if i + 1 < fila.len() {
-        let e = entrada(Some(&mi::ARROW_FORWARD), textos.t("asistente-receta-derecha"), hacer(QueReceta::Derecha));
+        let e = entrada(
+            Some(&mi::ARROW_FORWARD),
+            textos.t("asistente-receta-derecha"),
+            hacer(QueReceta::Derecha),
+        );
         v.push(if i == 0 { e.separada() } else { e });
     }
-    let mut borrar = entrada(Some(&mi::DELETE), textos.t("asistente-receta-borrar"), hacer(QueReceta::Borrar)).separada();
+    let mut borrar = entrada(
+        Some(&mi::DELETE),
+        textos.t("asistente-receta-borrar"),
+        hacer(QueReceta::Borrar),
+    )
+    .separada();
     borrar.peligro = true;
     v.push(borrar);
     Some(v)
@@ -275,14 +338,19 @@ pub(in crate::ventana_chat) fn pedido_de(a: &Abierto, i: usize) -> Option<String
             .responde_a
             .as_deref()
             .and_then(|r| a.mensajes.iter().find(|x| x.id == r));
-        colgada
-            .or_else(|| a.mensajes[..i].iter().rev().find(|x| !ia_chat::es_del_asistente(x) && es_nota(x)))?
+        colgada.or_else(|| {
+            a.mensajes[..i]
+                .iter()
+                .rev()
+                .find(|x| !ia_chat::es_del_asistente(x) && es_nota(x))
+        })?
     } else if es_nota(m) {
         m
     } else {
         return None;
     };
-    let texto = ia_chat::mencion(&pregunta.texto).unwrap_or_else(|| pregunta.texto.trim().to_string());
+    let texto =
+        ia_chat::mencion(&pregunta.texto).unwrap_or_else(|| pregunta.texto.trim().to_string());
     (!texto.trim().is_empty()).then_some(texto)
 }
 
@@ -301,8 +369,12 @@ pub(in crate::ventana_chat) fn guardar_desde(
     i: usize,
     textos: &Catalogo,
 ) -> Efecto {
-    let Some(pedido) = pedido_de(a, i) else { return Efecto::Nada };
-    match escribir(ubicacion.raiz(), aparato, |v| rc::anadir(v, "", "", &pedido, ahora())) {
+    let Some(pedido) = pedido_de(a, i) else {
+        return Efecto::Nada;
+    };
+    match escribir(ubicacion.raiz(), aparato, |v| {
+        rc::anadir(v, "", "", &pedido, ahora())
+    }) {
         Ok(r) => {
             let mut args = fluent_bundle::FluentArgs::new();
             args.set("nombre", format!("{} {}", r.icono, r.nombre));
@@ -325,7 +397,9 @@ pub(in crate::ventana_chat) fn cambiar(
     let raiz = ubicacion.raiz();
     let r = match que {
         QueReceta::Renombrar | QueReceta::Editar => {
-            let Some(rec) = visibles(a).into_iter().find(|r| r.id == id) else { return Efecto::Nada };
+            let Some(rec) = visibles(a).into_iter().find(|r| r.id == id) else {
+                return Efecto::Nada;
+            };
             let (campo, valor) = if que == QueReceta::Renombrar {
                 (Campo::Nombre, rec.nombre)
             } else {
@@ -337,11 +411,19 @@ pub(in crate::ventana_chat) fn cambiar(
         QueReceta::Iconos => {
             let v = rc::ICONOS
                 .iter()
-                .map(|ic| entrada(None, (*ic).to_string(), AccionChat::Receta(id.to_string(), QueReceta::Icono((*ic).to_string()))))
+                .map(|ic| {
+                    entrada(
+                        None,
+                        (*ic).to_string(),
+                        AccionChat::Receta(id.to_string(), QueReceta::Icono((*ic).to_string())),
+                    )
+                })
                 .collect();
             return Efecto::Menu(v);
         }
-        QueReceta::Icono(ic) => escribir(raiz, aparato, |v| rc::cambiar(v, id, ahora(), |r| r.icono = ic)),
+        QueReceta::Icono(ic) => escribir(raiz, aparato, |v| {
+            rc::cambiar(v, id, ahora(), |r| r.icono = ic)
+        }),
         QueReceta::Izquierda => escribir(raiz, aparato, |v| rc::mover(v, id, -1, ahora())),
         QueReceta::Derecha => escribir(raiz, aparato, |v| rc::mover(v, id, 1, ahora())),
         QueReceta::Borrar => escribir(raiz, aparato, |v| rc::borrar(v, id)),
@@ -370,8 +452,15 @@ fn empezar_a_editar(a: &mut Abierto, id: &str, campo: Campo, valor: String) {
 /// **Entrar o Escape mientras se edita** una receta en la caja. `true` si
 /// era suya. Entrar guarda lo escrito (vacio no vale: se queda editando);
 /// Escape no guarda. Las dos devuelven la caja como estaba.
-pub(in crate::ventana_chat) fn tecla(ubicacion: &Ubicacion, aparato: &str, a: &mut Abierto, vk: u32) -> bool {
-    let Some((id, campo)) = editando_en(a) else { return false };
+pub(in crate::ventana_chat) fn tecla(
+    ubicacion: &Ubicacion,
+    aparato: &str,
+    a: &mut Abierto,
+    vk: u32,
+) -> bool {
+    let Some((id, campo)) = editando_en(a) else {
+        return false;
+    };
     match vk {
         VK_ENTRAR => {
             let escrito = a.borrador.trim().to_string();

@@ -54,8 +54,12 @@ fn raiz_y_aparato() -> (PathBuf, String) {
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf))
         .unwrap_or_default();
-    let appdata = std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_default();
-    let raiz = pixpin_store::resolver(&dir_exe, &appdata).raiz().to_path_buf();
+    let appdata = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let raiz = pixpin_store::resolver(&dir_exe, &appdata)
+        .raiz()
+        .to_path_buf();
     let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(&raiz, "PC")
         .map(|i| i.yo.codigo())
         .unwrap_or_default();
@@ -66,10 +70,11 @@ fn raiz_y_aparato() -> (PathBuf, String) {
 /// crear, la de antes (sin sincronizar, pero sin perder nada).
 pub fn ruta() -> PathBuf {
     let (raiz, aparato) = raiz_y_aparato();
-    let ruta = ruta_en(&raiz, &aparato, pixpin_shell::entorno::ahora_utc_ms()).unwrap_or_else(|e| {
-        tracing::warn!(%e, "figuras: sin chat del asistente, la biblioteca no se sincroniza");
-        raiz.join("figuras.json")
-    });
+    let ruta =
+        ruta_en(&raiz, &aparato, pixpin_shell::entorno::ahora_utc_ms()).unwrap_or_else(|e| {
+            tracing::warn!(%e, "figuras: sin chat del asistente, la biblioteca no se sincroniza");
+            raiz.join("figuras.json")
+        });
     instalar_de_serie(&raiz, &ruta);
     ruta
 }
@@ -97,12 +102,21 @@ pub fn instalar_de_serie(raiz: &Path, ruta: &Path) {
 /// antes) no se toca.
 pub fn senalar(ruta: &Path, aparato: &str, ahora: i64) -> std::io::Result<()> {
     let partes = Path::new(RUTA_EN_EL_CHAT).components().count();
-    let Some(carpeta) = ruta.ancestors().nth(partes) else { return Ok(()) };
+    let Some(carpeta) = ruta.ancestors().nth(partes) else {
+        return Ok(());
+    };
     if carpeta.join(RUTA_EN_EL_CHAT) != ruta {
         return Ok(());
     }
-    let Some(proyecto) = carpeta.file_name().and_then(|n| n.to_str()) else { return Ok(()) };
-    if carpeta.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) != Some("proyectos") {
+    let Some(proyecto) = carpeta.file_name().and_then(|n| n.to_str()) else {
+        return Ok(());
+    };
+    if carpeta
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        != Some("proyectos")
+    {
         return Ok(());
     }
     senalar_fichero(carpeta, proyecto, aparato, ahora, &FICHERO)
@@ -141,10 +155,16 @@ mod pruebas {
     use pixpin_proyecto::{almacen, cuaderno};
 
     fn raiz_de_prueba(nombre: &str) -> PathBuf {
-        let raiz = std::env::temp_dir().join(format!("pixpin-figuras-{nombre}-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-figuras-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let obra = almacen::Ficha::nueva("Obra", 1, "PC01");
-        almacen::Indice { proyectos: vec![obra], ..Default::default() }.guardar(&raiz).unwrap();
+        almacen::Indice {
+            proyectos: vec![obra],
+            ..Default::default()
+        }
+        .guardar(&raiz)
+        .unwrap();
         raiz
     }
 
@@ -152,7 +172,12 @@ mod pruebas {
         FiguraGuardada {
             id: format!("id-{nombre}"),
             nombre: nombre.into(),
-            elementos: vec![Elemento { figura: Figura::Elipse, ancho: 40.0, alto: 20.0, ..Default::default() }],
+            elementos: vec![Elemento {
+                figura: Figura::Elipse,
+                ancho: 40.0,
+                alto: 20.0,
+                ..Default::default()
+            }],
         }
     }
 
@@ -165,7 +190,10 @@ mod pruebas {
     fn la_biblioteca_va_al_movil_y_vuelve_por_el_chat_del_asistente() {
         let raiz = raiz_de_prueba("idavuelta");
         let ruta = ruta_en(&raiz, "PC01", 5).unwrap();
-        assert!(ruta.ends_with(r"android\pins\draw\figuras.json"), "{ruta:?}");
+        assert!(
+            ruta.ends_with(r"android\pins\draw\figuras.json"),
+            "{ruta:?}"
+        );
         assert!(anadir(&ruta, figura("Arbol isometrico")));
         senalar(&ruta, "PC01", 6).unwrap();
         // Un solo mensaje ARCHIVO aunque se guarde dos veces, en el chat
@@ -178,21 +206,39 @@ mod pruebas {
         assert_eq!(senal.len(), 1);
         assert_eq!(senal[0].ruta.as_deref(), Some(RUTA_PORTATIL));
         assert_eq!(senal[0].clase, Some(cuaderno::Clase::Archivo));
-        let obra = almacen::Indice::leer(&raiz).proyectos.into_iter().find(|f| f.nombre == "Obra").unwrap();
-        let en_la_obra = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, &obra.id)).map(|c| c.mensajes.len()).unwrap_or(0);
+        let obra = almacen::Indice::leer(&raiz)
+            .proyectos
+            .into_iter()
+            .find(|f| f.nombre == "Obra")
+            .unwrap();
+        let en_la_obra = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, &obra.id))
+            .map(|c| c.mensajes.len())
+            .unwrap_or(0);
         assert_eq!(en_la_obra, 0, "nada en un chat que se puede compartir");
         // La ruta portatil es el fichero de verdad: asi lo lleva la sincro.
         let real = pixpin_proyecto::vista::ruta_real(&raiz, &asistente, RUTA_PORTATIL).unwrap();
         assert_eq!(real, ruta);
         // «El movil»: files/pins/draw/figuras.json con lo que llego.
-        let movil = raiz.join("movil").join("files").join("pins").join("draw").join("figuras.json");
+        let movil = raiz
+            .join("movil")
+            .join("files")
+            .join("pins")
+            .join("draw")
+            .join("figuras.json");
         std::fs::create_dir_all(movil.parent().unwrap()).unwrap();
         std::fs::copy(&ruta, &movil).unwrap();
-        let mut lista: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(&movil).unwrap()).unwrap();
+        let mut lista: Vec<serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&movil).unwrap()).unwrap();
         // Lo que lee `ExcalidrawJson.decodeFromString<List<FiguraGuardada>>`.
         for f in &lista {
             assert!(f["id"].is_string() && f["nombre"].is_string() && f["propia"] == true);
-            assert!(f["elementos"].as_array().unwrap().iter().all(|e| e["type"].is_string()));
+            assert!(
+                f["elementos"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|e| e["type"].is_string())
+            );
         }
         lista.insert(0, serde_json::json!({"id": "and-1", "nombre": "Sello del movil", "propia": true, "elementos": [
             {"id": "m1", "type": "rectangle", "x": 0, "y": 0, "width": 30, "height": 10, "strokeColor": "#1e1e1e",
@@ -213,13 +259,23 @@ mod pruebas {
     fn la_biblioteca_de_antes_se_pasa_una_vez_y_una_ruta_cualquiera_no_se_senala() {
         let raiz = raiz_de_prueba("migrar");
         // La de antes, con el formato interno del PC.
-        std::fs::write(raiz.join("figuras.json"), serde_json::to_string(&vec![figura("Vieja")]).unwrap()).unwrap();
+        std::fs::write(
+            raiz.join("figuras.json"),
+            serde_json::to_string(&vec![figura("Vieja")]).unwrap(),
+        )
+        .unwrap();
         let ruta = ruta_en(&raiz, "PC01", 5).unwrap();
         assert_eq!(biblioteca::cargar(&ruta)[0].nombre, "Vieja");
         // Ya en el formato del movil.
         assert!(std::fs::read_to_string(&ruta).unwrap().contains("\"type\""));
         let (_, carpeta) = chat_del_asistente(&raiz, "PC01", 6).unwrap();
-        assert!(cuaderno::Cuaderno::leer_de(&carpeta).unwrap().mensajes.iter().any(|m| m.id == ID_MENSAJE));
+        assert!(
+            cuaderno::Cuaderno::leer_de(&carpeta)
+                .unwrap()
+                .mensajes
+                .iter()
+                .any(|m| m.id == ID_MENSAJE)
+        );
         // Caso negativo: un fichero fuera de un chat no crea mensajes.
         let suelto = raiz.join("otra").join("figuras.json");
         senalar(&suelto, "PC01", 7).unwrap();

@@ -30,16 +30,22 @@ pub const PORTATIL: &str = "pixpin:files/guardados/asistente/memoria/";
 /// El principio del id del mensaje de cada fichero.
 pub const PREFIJO_ID: &str = "auto-memoria-";
 /// El texto del mensaje.
-const TEXTO: &str = "🧠 Memoria del asistente (lo que recuerda entre conversaciones; solo va a tus aparatos)";
+const TEXTO: &str =
+    "🧠 Memoria del asistente (lo que recuerda entre conversaciones; solo va a tus aparatos)";
 
 /// El id fijo del mensaje del fichero `rel` (`PERFIL.md`, `temas/x.md`).
 pub fn id_de(rel: &str) -> String {
-    format!("{PREFIJO_ID}{}", pixpin_sincro::disco::limpio(&rel.to_lowercase()))
+    format!(
+        "{PREFIJO_ID}{}",
+        pixpin_sincro::disco::limpio(&rel.to_lowercase())
+    )
 }
 
 /// La carpeta de la memoria dentro de la carpeta del chat «Asistente».
 pub fn carpeta_en(carpeta_del_chat: &Path) -> PathBuf {
-    EN_EL_CHAT.split('/').fold(carpeta_del_chat.to_path_buf(), |p, s| p.join(s))
+    EN_EL_CHAT
+        .split('/')
+        .fold(carpeta_del_chat.to_path_buf(), |p, s| p.join(s))
 }
 
 /// **El almacen que viaja**: la carpeta de siempre, y por cada fichero que
@@ -53,7 +59,12 @@ pub struct AlmacenQueViaja {
 }
 
 impl AlmacenQueViaja {
-    pub fn nuevo(raiz: &Path, proyecto: &str, carpeta_del_chat: &Path, aparato: &str) -> AlmacenQueViaja {
+    pub fn nuevo(
+        raiz: &Path,
+        proyecto: &str,
+        carpeta_del_chat: &Path,
+        aparato: &str,
+    ) -> AlmacenQueViaja {
         AlmacenQueViaja {
             carpeta: EnCarpeta::nueva(carpeta_en(carpeta_del_chat)),
             raiz: raiz.to_path_buf(),
@@ -76,7 +87,9 @@ impl AlmacenQueViaja {
             return Ok(());
         }
         let numero = c.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-        let bytes = std::fs::metadata(self.carpeta.ruta(rel)).map(|m| m.len() as i64).unwrap_or(0);
+        let bytes = std::fs::metadata(self.carpeta.ruta(rel))
+            .map(|m| m.len() as i64)
+            .unwrap_or(0);
         let nombre = rel.rsplit('/').next().unwrap_or(rel);
         let mut m = Mensaje::adjunto(
             Clase::Archivo,
@@ -105,7 +118,12 @@ impl AlmacenQueViaja {
             Err(e) => return Err(e),
         };
         if !quitados.is_empty() {
-            pixpin_proyecto::vista::anotar_borrados(&self.raiz, &self.proyecto, &quitados, pixpin_shell::entorno::ahora_utc_ms())?;
+            pixpin_proyecto::vista::anotar_borrados(
+                &self.raiz,
+                &self.proyecto,
+                &quitados,
+                pixpin_shell::entorno::ahora_utc_ms(),
+            )?;
         }
         Ok(())
     }
@@ -146,7 +164,9 @@ fn aparato_de(raiz: &Path) -> String {
 
 /// El dia de hoy en la hora del usuario: la fecha de lo que se guarda.
 pub fn hoy() -> String {
-    pixpin_ia::memoria::fecha_de_ms(pixpin_shell::entorno::ahora_utc_ms() + super::desfase_local_ms())
+    pixpin_ia::memoria::fecha_de_ms(
+        pixpin_shell::entorno::ahora_utc_ms() + super::desfase_local_ms(),
+    )
 }
 
 /// **La memoria de esta raiz** (creando el chat «Asistente» si no esta),
@@ -154,37 +174,64 @@ pub fn hoy() -> String {
 /// se puede crear: el turno sigue sin memoria.
 pub fn de(raiz: &Path, quien: &str) -> Option<Memoria> {
     let aparato = aparato_de(raiz);
-    let (proyecto, carpeta) = crate::automatizaciones::chat_del_asistente(raiz, &aparato, pixpin_shell::entorno::ahora_utc_ms())
-        .map_err(|e| tracing::warn!(%e, "memoria: sin chat del asistente"))
-        .ok()?;
+    let (proyecto, carpeta) = crate::automatizaciones::chat_del_asistente(
+        raiz,
+        &aparato,
+        pixpin_shell::entorno::ahora_utc_ms(),
+    )
+    .map_err(|e| tracing::warn!(%e, "memoria: sin chat del asistente"))
+    .ok()?;
     Some(en(raiz, &proyecto, &carpeta, &aparato, quien, &hoy()))
 }
 
 /// Lo mismo con todo dado (las pruebas).
-pub fn en(raiz: &Path, proyecto: &str, carpeta_del_chat: &Path, aparato: &str, quien: &str, hoy: &str) -> Memoria {
-    Memoria::nueva(Arc::new(AlmacenQueViaja::nuevo(raiz, proyecto, carpeta_del_chat, aparato)), quien, hoy)
+pub fn en(
+    raiz: &Path,
+    proyecto: &str,
+    carpeta_del_chat: &Path,
+    aparato: &str,
+    quien: &str,
+    hoy: &str,
+) -> Memoria {
+    Memoria::nueva(
+        Arc::new(AlmacenQueViaja::nuevo(
+            raiz,
+            proyecto,
+            carpeta_del_chat,
+            aparato,
+        )),
+        quien,
+        hoy,
+    )
 }
 
 /// **El bloque de la memoria para el sistema** (perfil e indice), vacio si
 /// no hay nada o no hay chat.
 pub fn bloque(m: Option<&Memoria>) -> String {
-    m.map(|m| m.bloque_para_el_sistema(pixpin_ia::memoria::PRESUPUESTO_SISTEMA)).unwrap_or_default()
+    m.map(|m| m.bloque_para_el_sistema(pixpin_ia::memoria::PRESUPUESTO_SISTEMA))
+        .unwrap_or_default()
 }
 
 /// **Guarda lo duradero en segundo plano** con este motor: lo de
 /// `conversacion` que se va a dejar de ver. No espera: ni el turno ni el
 /// boton «+» anaden latencia (el modo «subconsciente» de LangMem).
-pub fn guardar_en_segundo_plano(motor: Arc<dyn pixpin_ia::Motor>, memoria: Memoria, conversacion: Vec<(bool, String)>) {
+pub fn guardar_en_segundo_plano(
+    motor: Arc<dyn pixpin_ia::Motor>,
+    memoria: Memoria,
+    conversacion: Vec<(bool, String)>,
+) {
     if !conversacion.iter().any(|(u, t)| *u && !t.trim().is_empty()) {
         return;
     }
-    let lanzado = std::thread::Builder::new().name("asistente-memoria".into()).spawn(move || {
-        let t = pixpin_ia::memoria::transcripcion(&conversacion);
-        match pixpin_ia::memoria::guardar_lo_duradero(motor.as_ref(), &memoria, &t) {
-            Ok(n) => tracing::info!(escritas = n, "memoria: guardado lo duradero"),
-            Err(e) => tracing::warn!(%e, "memoria: no se pudo guardar lo duradero"),
-        }
-    });
+    let lanzado = std::thread::Builder::new()
+        .name("asistente-memoria".into())
+        .spawn(move || {
+            let t = pixpin_ia::memoria::transcripcion(&conversacion);
+            match pixpin_ia::memoria::guardar_lo_duradero(motor.as_ref(), &memoria, &t) {
+                Ok(n) => tracing::info!(escritas = n, "memoria: guardado lo duradero"),
+                Err(e) => tracing::warn!(%e, "memoria: no se pudo guardar lo duradero"),
+            }
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "memoria: no se pudo lanzar el hilo de guardar");
     }
@@ -196,11 +243,17 @@ pub fn guardar_en_segundo_plano(motor: Arc<dyn pixpin_ia::Motor>, memoria: Memor
 /// hace nada: la memoria sigue como estaba.
 pub fn al_cerrar(raiz: &Path, conversacion: Vec<(bool, String)>) {
     use pixpin_ia::nube::Proveedor;
-    if super::nube::eleccion_reciente(raiz) == super::nube::Eleccion::Local || !super::nube::hay_clave(Proveedor::Claude) {
+    if super::nube::eleccion_reciente(raiz) == super::nube::Eleccion::Local
+        || !super::nube::hay_clave(Proveedor::Claude)
+    {
         return;
     }
-    let Ok(motor) = super::nube::motor(Proveedor::Claude, None, false) else { return };
-    let Some(m) = de(raiz, Proveedor::Claude.nombre()) else { return };
+    let Ok(motor) = super::nube::motor(Proveedor::Claude, None, false) else {
+        return;
+    };
+    let Some(m) = de(raiz, Proveedor::Claude.nombre()) else {
+        return;
+    };
     guardar_en_segundo_plano(motor, m, conversacion);
 }
 
@@ -208,8 +261,12 @@ pub fn al_cerrar(raiz: &Path, conversacion: Vec<(bool, String)>) {
 /// «Asistente»): ahi el usuario la lee y la cambia con cualquier editor.
 pub fn abrir_carpeta(raiz: &Path) -> Result<(), String> {
     let aparato = aparato_de(raiz);
-    let (_, carpeta) = crate::automatizaciones::chat_del_asistente(raiz, &aparato, pixpin_shell::entorno::ahora_utc_ms())
-        .map_err(|e| e.to_string())?;
+    let (_, carpeta) = crate::automatizaciones::chat_del_asistente(
+        raiz,
+        &aparato,
+        pixpin_shell::entorno::ahora_utc_ms(),
+    )
+    .map_err(|e| e.to_string())?;
     let dir = carpeta_en(&carpeta);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     pixpin_shell::abrir(&dir).map_err(|e| e.to_string())
@@ -221,7 +278,10 @@ mod pruebas {
     use pixpin_proyecto::almacen;
 
     fn raiz_de_prueba(nombre: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!("pixpin-memoria-app-{nombre}-{}", std::process::id()));
+        let r = std::env::temp_dir().join(format!(
+            "pixpin-memoria-app-{nombre}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         r
@@ -232,26 +292,65 @@ mod pruebas {
         let raiz = raiz_de_prueba("viaja");
         let f = almacen::asegurar_asistente(&raiz, 1, "PC01").unwrap();
         let carpeta = almacen::carpeta(&raiz, &f.id);
-        let m = en(&raiz, &f.id, &carpeta, "PC01", "Claude Haiku 5.5", "2026-10-22");
-        let r = m.ejecutar(r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Habla espanol."}"#);
+        let m = en(
+            &raiz,
+            &f.id,
+            &carpeta,
+            "PC01",
+            "Claude Haiku 5.5",
+            "2026-10-22",
+        );
+        let r = m.ejecutar(
+            r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Habla espanol."}"#,
+        );
         assert!(r.contains("creado"), "{r}");
         m.ejecutar(r##"{"command":"create","path":"/memoria/temas/obra.md","file_text":"# La obra de la calle Mayor"}"##);
         m.ejecutar(r#"{"command":"str_replace","path":"/memoria/PERFIL.md","old_str":"espanol","new_str":"espanol, corto"}"#);
         let c = Cuaderno::leer_de(&carpeta).unwrap();
-        let ids: Vec<&str> = c.mensajes.iter().map(|m| m.id.as_str()).filter(|i| i.starts_with(PREFIJO_ID)).collect();
+        let ids: Vec<&str> = c
+            .mensajes
+            .iter()
+            .map(|m| m.id.as_str())
+            .filter(|i| i.starts_with(PREFIJO_ID))
+            .collect();
         // PERFIL, el tema y el indice: uno cada uno aunque se escriba dos veces.
         assert_eq!(ids.len(), 3, "{ids:?}");
-        assert!(c.mensajes.iter().all(|m| !m.id.starts_with(PREFIJO_ID) || cuaderno::es_de_sistema(m)));
+        assert!(
+            c.mensajes
+                .iter()
+                .all(|m| !m.id.starts_with(PREFIJO_ID) || cuaderno::es_de_sistema(m))
+        );
         // La ruta portatil es el fichero de verdad: asi lo lleva la sincro.
-        let perfil = c.mensajes.iter().find(|m| m.id == id_de("PERFIL.md")).unwrap();
-        assert_eq!(perfil.ruta.as_deref(), Some("pixpin:files/guardados/asistente/memoria/PERFIL.md"));
-        let real = pixpin_proyecto::vista::ruta_real(&raiz, &f.id, perfil.ruta.as_deref().unwrap()).unwrap();
+        let perfil = c
+            .mensajes
+            .iter()
+            .find(|m| m.id == id_de("PERFIL.md"))
+            .unwrap();
+        assert_eq!(
+            perfil.ruta.as_deref(),
+            Some("pixpin:files/guardados/asistente/memoria/PERFIL.md")
+        );
+        let real = pixpin_proyecto::vista::ruta_real(&raiz, &f.id, perfil.ruta.as_deref().unwrap())
+            .unwrap();
         assert_eq!(real, carpeta_en(&carpeta).join("PERFIL.md"));
         assert!(std::fs::read_to_string(&real).unwrap().contains("corto"));
-        let tema = c.mensajes.iter().find(|m| m.id == id_de("temas/obra.md")).unwrap();
-        assert!(pixpin_sincro::disco::permitida(tema.ruta.as_deref().unwrap().strip_prefix("pixpin:files/").unwrap()));
+        let tema = c
+            .mensajes
+            .iter()
+            .find(|m| m.id == id_de("temas/obra.md"))
+            .unwrap();
+        assert!(pixpin_sincro::disco::permitida(
+            tema.ruta
+                .as_deref()
+                .unwrap()
+                .strip_prefix("pixpin:files/")
+                .unwrap()
+        ));
         // Borrar el tema quita su mensaje (con marca) y el fichero.
-        assert!(m.ejecutar(r#"{"command":"delete","path":"/memoria/temas/obra.md"}"#).contains("borrado"));
+        assert!(
+            m.ejecutar(r#"{"command":"delete","path":"/memoria/temas/obra.md"}"#)
+                .contains("borrado")
+        );
         let c = Cuaderno::leer_de(&carpeta).unwrap();
         assert!(!c.mensajes.iter().any(|m| m.id == id_de("temas/obra.md")));
         assert!(!carpeta_en(&carpeta).join("temas").exists());

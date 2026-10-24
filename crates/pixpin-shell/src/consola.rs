@@ -22,8 +22,8 @@ use std::sync::OnceLock;
 
 use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, HANDLE};
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_CHAR, FILE_TYPE_UNKNOWN,
-    FILE_FLAGS_AND_ATTRIBUTES, GetFileType, OPEN_EXISTING, WriteFile,
+    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_CHAR,
+    FILE_TYPE_UNKNOWN, GetFileType, OPEN_EXISTING, WriteFile,
 };
 use windows::Win32::System::Console::{
     ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE, STD_HANDLE,

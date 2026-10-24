@@ -17,7 +17,9 @@ use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_render::pagina_office::PintorOffice;
 use pixpin_render::{Color, MotorRender};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
-use windows::Win32::Graphics::Direct3D11::{D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device};
+use windows::Win32::Graphics::Direct3D11::{
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
+};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 
 fn d3d() -> ID3D11Device {
@@ -55,24 +57,44 @@ fn lado_a_lado(a: &ImagenRgba, b: &ImagenRgba) -> ImagenRgba {
         for y in 0..img.alto {
             let o = ((y * img.ancho) * 4) as usize;
             let d = ((y * ancho + x0) * 4) as usize;
-            px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+            px[d..d + (img.ancho * 4) as usize]
+                .copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
         }
     }
-    ImagenRgba { ancho, alto, pixeles: px }
+    ImagenRgba {
+        ancho,
+        alto,
+        pixeles: px,
+    }
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 2 {
-        eprintln!("uso: office_a_png <fichero.docx|pptx> <carpeta> [ppp] [--ref ref.pdf] [--max N]");
+        eprintln!(
+            "uso: office_a_png <fichero.docx|pptx> <carpeta> [ppp] [--ref ref.pdf] [--max N]"
+        );
         std::process::exit(2);
     }
     let ruta = PathBuf::from(&args[0]);
     let salida = PathBuf::from(&args[1]);
     let ppp: f32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(96.0);
-    let referencia = args.iter().position(|a| a == "--ref").and_then(|i| args.get(i + 1)).map(PathBuf::from);
-    let volcar: Option<usize> = args.iter().position(|a| a == "--volcar").and_then(|i| args.get(i + 1)).and_then(|s| s.parse().ok());
-    let maximo: usize = args.iter().position(|a| a == "--max").and_then(|i| args.get(i + 1)).and_then(|s| s.parse().ok()).unwrap_or(usize::MAX);
+    let referencia = args
+        .iter()
+        .position(|a| a == "--ref")
+        .and_then(|i| args.get(i + 1))
+        .map(PathBuf::from);
+    let volcar: Option<usize> = args
+        .iter()
+        .position(|a| a == "--volcar")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse().ok());
+    let maximo: usize = args
+        .iter()
+        .position(|a| a == "--max")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(usize::MAX);
     std::fs::create_dir_all(&salida).expect("carpeta de salida");
     // SAFETY: iniciar COM en este hilo para WIC y Windows.Data.Pdf.
     let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
@@ -92,13 +114,35 @@ fn main() {
         // El principio de cada pagina, la nuestra y la de Office, para ver
         // donde empiezan a separarse.
         doc.maquetar_todo(&pintor.letras);
-        let ref_txt = referencia.as_deref().and_then(|r| pixpin_pdf::texto::de_fichero(r).ok()).unwrap_or_default();
-        let saltar: usize = args.iter().position(|a| a == "--saltar").and_then(|i| args.get(i + 1)).and_then(|s| s.parse().ok()).unwrap_or(0);
-        let limpiar = |s: &str| -> String { s.split_whitespace().collect::<Vec<_>>().join(" ").chars().skip(saltar).take(70).collect() };
+        let ref_txt = referencia
+            .as_deref()
+            .and_then(|r| pixpin_pdf::texto::de_fichero(r).ok())
+            .unwrap_or_default();
+        let saltar: usize = args
+            .iter()
+            .position(|a| a == "--saltar")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let limpiar = |s: &str| -> String {
+            s.split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .skip(saltar)
+                .take(70)
+                .collect()
+        };
         for i in 0..doc.paginas_listas().max(ref_txt.len()) {
             let nuestra = doc
                 .pagina(i, &pintor.letras)
-                .map(|p| p.textos().iter().map(|(t, _)| t.texto.clone()).collect::<Vec<_>>().join(" "))
+                .map(|p| {
+                    p.textos()
+                        .iter()
+                        .map(|(t, _)| t.texto.clone())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
                 .unwrap_or_default();
             let suya = ref_txt.get(i).map(|p| p.texto.clone()).unwrap_or_default();
             println!("{:3} N: {}", i + 1, limpiar(&nuestra));
@@ -111,7 +155,10 @@ fn main() {
         let t = Instant::now();
         doc.maquetar_todo(&pintor.letras);
         let todo = abrir + maquetar_primera + ms(t);
-        let oficina = referencia.as_deref().and_then(|r| pixpin_pdf::Documento::abrir(r).ok()).map(|p| p.paginas());
+        let oficina = referencia
+            .as_deref()
+            .and_then(|r| pixpin_pdf::Documento::abrir(r).ok())
+            .map(|p| p.paginas());
         println!(
             "{} | {} (Office: {}) | abrir {abrir:.1} ms | primera {:.1} ms | todo {:.1} ms",
             nombre_de(&ruta),
@@ -123,7 +170,9 @@ fn main() {
         return;
     }
 
-    let pdf = referencia.as_deref().map(|r| pixpin_pdf::Documento::abrir(r).expect("abrir el PDF de referencia"));
+    let pdf = referencia
+        .as_deref()
+        .map(|r| pixpin_pdf::Documento::abrir(r).expect("abrir el PDF de referencia"));
     let escala = ppp / 72.0;
     let mut n = 0;
     let mut tiempos_pintar = Vec::new();
@@ -151,12 +200,27 @@ fn main() {
                     let s = match e {
                         pixpin_office::Elemento::Texto(t) => format!("Texto {:?}", t.texto),
                         pixpin_office::Elemento::Rect { rect, .. } => format!("Rect {rect:?}"),
-                        pixpin_office::Elemento::Linea { desde, hasta, .. } => format!("Linea {desde:?}-{hasta:?}"),
-                        pixpin_office::Elemento::Imagen { id, rect, .. } => format!("Imagen {id} {rect:?}"),
-                        pixpin_office::Elemento::Trayecto { figuras, relleno, .. } => {
-                            format!("Trayecto {} fig, inicio {:?} relleno {}", figuras.len(), figuras.first().map(|f| f.inicio), relleno.is_some())
+                        pixpin_office::Elemento::Linea { desde, hasta, .. } => {
+                            format!("Linea {desde:?}-{hasta:?}")
                         }
-                        pixpin_office::Elemento::Grupo { transformada, elementos, .. } => {
+                        pixpin_office::Elemento::Imagen { id, rect, .. } => {
+                            format!("Imagen {id} {rect:?}")
+                        }
+                        pixpin_office::Elemento::Trayecto {
+                            figuras, relleno, ..
+                        } => {
+                            format!(
+                                "Trayecto {} fig, inicio {:?} relleno {}",
+                                figuras.len(),
+                                figuras.first().map(|f| f.inicio),
+                                relleno.is_some()
+                            )
+                        }
+                        pixpin_office::Elemento::Grupo {
+                            transformada,
+                            elementos,
+                            ..
+                        } => {
                             println!("{}Grupo {:?}", "  ".repeat(nivel), transformada);
                             bajar(elementos, nivel + 1);
                             continue;
@@ -231,8 +295,12 @@ fn main() {
                 volcar_renglon(&mut renglon, &caja);
             }
         }
-        let (w, h) = ((pagina.ancho * escala).ceil() as u32, (pagina.alto * escala).ceil() as u32);
-        let destino = FueraDePantalla::nuevo(&motor, &dispositivo, w.max(1), h.max(1)).expect("destino");
+        let (w, h) = (
+            (pagina.ancho * escala).ceil() as u32,
+            (pagina.alto * escala).ceil() as u32,
+        );
+        let destino =
+            FueraDePantalla::nuevo(&motor, &dispositivo, w.max(1), h.max(1)).expect("destino");
         let tp = Instant::now();
         let total = doc.total() as u32;
         motor
@@ -244,7 +312,11 @@ fn main() {
         destino.esperar_gpu().expect("gpu");
         tiempos_pintar.push(ms(tp));
         let (aw, ah, px) = destino.leer_rgba().expect("leer");
-        let nuestra = ImagenRgba { ancho: aw, alto: ah, pixeles: px };
+        let nuestra = ImagenRgba {
+            ancho: aw,
+            alto: ah,
+            pixeles: px,
+        };
         let nombre = salida.join(format!("pagina-{:03}.png", n + 1));
         guardar(&nuestra, &nombre, FormatoImagen::Png).expect("png");
         if let Some(pdf) = &pdf
@@ -252,7 +324,12 @@ fn main() {
             && let Ok(ref_img) = pdf.renderizar(n as u32, aw)
         {
             let lado = lado_a_lado(&nuestra, &ref_img);
-            guardar(&lado, &salida.join(format!("lado-{:03}.png", n + 1)), FormatoImagen::Png).expect("png");
+            guardar(
+                &lado,
+                &salida.join(format!("lado-{:03}.png", n + 1)),
+                FormatoImagen::Png,
+            )
+            .expect("png");
         }
         n += 1;
     }
@@ -260,9 +337,17 @@ fn main() {
     let suma_pintar: f64 = tiempos_pintar.iter().sum();
     let suma_maquetar: f64 = tiempos_maquetar.iter().sum();
     println!("fichero: {}", nombre_de(&ruta));
-    println!("paginas: {n} (Office: {})", pdf.as_ref().map(|p| p.paginas().to_string()).unwrap_or_else(|| "?".into()));
+    println!(
+        "paginas: {n} (Office: {})",
+        pdf.as_ref()
+            .map(|p| p.paginas().to_string())
+            .unwrap_or_else(|| "?".into())
+    );
     println!("abrir+leer: {abrir:.1} ms");
-    println!("maquetar la primera: {maquetar_primera:.1} ms  (primera lista: {:.1} ms)", abrir + maquetar_primera);
+    println!(
+        "maquetar la primera: {maquetar_primera:.1} ms  (primera lista: {:.1} ms)",
+        abrir + maquetar_primera
+    );
     println!("maquetar todas: {suma_maquetar:.1} ms");
     println!(
         "pintar: total {suma_pintar:.1} ms, media {:.2} ms, maxima {:.2} ms",
@@ -273,5 +358,7 @@ fn main() {
 }
 
 fn nombre_de(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+    p.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
 }

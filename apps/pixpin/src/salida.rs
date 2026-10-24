@@ -144,36 +144,34 @@ fn abrir_o_sumar(ficheros: Vec<PathBuf>, titulo: String) {
     if !nueva {
         return;
     }
-    let lanzado = std::thread::Builder::new()
-        .name("salida".into())
-        .spawn(|| {
-            let _com = pixpin_shell::ComDelHilo::iniciar();
-            let textos = Catalogo::nuevo(idioma_actual());
-            let mut estado = Estado::default();
-            loop {
-                if let Err(e) = crate::dispositivo_perdido::con_recursos("salida", |r| {
-                    flotar(r, &textos, &mut estado)
-                }) {
-                    tracing::warn!(?e, "no se pudo abrir la Salida");
-                }
-                // Lo que llego mientras se cerraba no se pierde: se vuelve a
-                // abrir con ello.
-                let seguir = con_abierta(|a| match a.as_mut() {
-                    Some(p) if !p.ficheros.is_empty() => {
-                        p.hwnd = 0;
-                        true
-                    }
-                    _ => {
-                        *a = None;
-                        false
-                    }
-                });
-                if !seguir {
-                    break;
-                }
-                estado = Estado::default();
+    let lanzado = std::thread::Builder::new().name("salida".into()).spawn(|| {
+        let _com = pixpin_shell::ComDelHilo::iniciar();
+        let textos = Catalogo::nuevo(idioma_actual());
+        let mut estado = Estado::default();
+        loop {
+            if let Err(e) = crate::dispositivo_perdido::con_recursos("salida", |r| {
+                flotar(r, &textos, &mut estado)
+            }) {
+                tracing::warn!(?e, "no se pudo abrir la Salida");
             }
-        });
+            // Lo que llego mientras se cerraba no se pierde: se vuelve a
+            // abrir con ello.
+            let seguir = con_abierta(|a| match a.as_mut() {
+                Some(p) if !p.ficheros.is_empty() => {
+                    p.hwnd = 0;
+                    true
+                }
+                _ => {
+                    *a = None;
+                    false
+                }
+            });
+            if !seguir {
+                break;
+            }
+            estado = Estado::default();
+        }
+    });
     if let Err(e) = lanzado {
         con_abierta(|a| *a = None);
         tracing::warn!(?e, "no se pudo lanzar el hilo de la Salida");
@@ -318,7 +316,9 @@ impl Estado {
     }
 
     fn elegida(&self) -> Option<&Ficha> {
-        self.fichas.get(self.elegida).or_else(|| self.fichas.first())
+        self.fichas
+            .get(self.elegida)
+            .or_else(|| self.fichas.first())
     }
 
     /// Sube a la GPU las miniaturas que falten. Fuera del dibujo.
@@ -422,8 +422,7 @@ fn flotar(recursos: &Recursos, textos: &Catalogo, e: &mut Estado) -> Result<()> 
                 EventoOverlay::RatonMovido(p) => {
                     e.raton = local(p, marco);
                     if let Some((desde, origen, zona)) = pulsado {
-                        let movido =
-                            disposicion::supera_umbral((desde.x, desde.y), (p.x, p.y), s);
+                        let movido = disposicion::supera_umbral((desde.x, desde.y), (p.x, p.y), s);
                         match zona {
                             Zona::Cabecera if movido => {
                                 marco = Rect {
@@ -512,7 +511,10 @@ fn flotar(recursos: &Recursos, textos: &Catalogo, e: &mut Estado) -> Result<()> 
             ventana.traer_encima();
             hay_que_pintar = true;
         }
-        if e.aviso.as_ref().is_some_and(|(_, _, t)| t.elapsed() > AVISO) {
+        if e.aviso
+            .as_ref()
+            .is_some_and(|(_, _, t)| t.elapsed() > AVISO)
+        {
             e.aviso = None;
             hay_que_pintar = true;
         }
@@ -684,8 +686,16 @@ fn pintar(
     // Arrastrar todos juntos.
     if let Some(r) = d.todos {
         let encima = v2::geom::dentro(r, e.raton);
-        p.rellenar_redondeado(r, v2::RADIO_BOTON * s, blanco(if encima { 0.08 } else { 0.04 }));
-        p.trazar_discontinuo(r, (1.2 * s).max(1.0), blanco(if encima { 0.4 } else { 0.22 }));
+        p.rellenar_redondeado(
+            r,
+            v2::RADIO_BOTON * s,
+            blanco(if encima { 0.08 } else { 0.04 }),
+        );
+        p.trazar_discontinuo(
+            r,
+            (1.2 * s).max(1.0),
+            blanco(if encima { 0.4 } else { 0.22 }),
+        );
         let mut a = fluent_bundle::FluentArgs::new();
         a.set("n", e.fichas.len());
         let texto = textos.t_args("salida-todos", &a);
@@ -803,7 +813,16 @@ fn pintar(
                 s,
             );
         } else {
-            v2::boton_icono(p, botones, *r, Zona::Boton(*b), icono_de(*b), false, false, s);
+            v2::boton_icono(
+                p,
+                botones,
+                *r,
+                Zona::Boton(*b),
+                icono_de(*b),
+                false,
+                false,
+                s,
+            );
             if v2::geom::dentro(*r, e.raton) {
                 pista = Some((*r, pista_de(*b, textos)));
             }
@@ -825,7 +844,10 @@ mod pruebas {
             detalle_de(Path::new(r"C:\x\informe.pdf"), 1_258_291, ','),
             "PDF · 1,2 MB"
         );
-        assert_eq!(detalle_de(Path::new(r"C:\x\foto.png"), 812, ','), "PNG · 812 B");
+        assert_eq!(
+            detalle_de(Path::new(r"C:\x\foto.png"), 812, ','),
+            "PNG · 812 B"
+        );
         // Caso negativo: sin extension no se inventa un tipo.
         assert_eq!(detalle_de(Path::new(r"C:\x\LEEME"), 812, ','), "812 B");
     }
@@ -941,7 +963,10 @@ mod pruebas {
             pdf_bytes.push_str(&format!("{} 0 obj\n{o}\nendobj\n", k + 1));
         }
         let xref = pdf_bytes.len();
-        pdf_bytes.push_str(&format!("xref\n0 {}\n0000000000 65535 f \n", objetos.len() + 1));
+        pdf_bytes.push_str(&format!(
+            "xref\n0 {}\n0000000000 65535 f \n",
+            objetos.len() + 1
+        ));
         for s in sitios {
             pdf_bytes.push_str(&format!("{s:010} 00000 n \n"));
         }
@@ -957,7 +982,12 @@ mod pruebas {
         let d3d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d3d.d3d()).expect("motor");
         for (nombre, ficheros, raton, aviso) in [
-            ("salida-dos", vec![pdf.clone(), foto.clone()], (-1.0, -1.0), None),
+            (
+                "salida-dos",
+                vec![pdf.clone(), foto.clone()],
+                (-1.0, -1.0),
+                None,
+            ),
             (
                 "salida-tres",
                 vec![web.clone(), pdf.clone(), foto.clone()],
@@ -972,8 +1002,7 @@ mod pruebas {
             vec![pdf.clone(), foto.clone()],
             (0.0, 0.0),
             Some(("Copiado al portapapeles".to_string(), true)),
-        )])
-        {
+        )]) {
             let s = 1.5;
             let mut e = Estado::default();
             e.recibir(ficheros, Some(textos.t("salida-titulo-exportado")), ',');

@@ -9,12 +9,23 @@ use pixpin_motor2d::vector::Punto2;
 use super::*;
 
 fn caja(x: f32, y: f32, w: f32, h: f32) -> Elemento {
-    Elemento { figura: Figura::Rectangulo, x, y, ancho: w, alto: h, ..Default::default() }
+    Elemento {
+        figura: Figura::Rectangulo,
+        x,
+        y,
+        ancho: w,
+        alto: h,
+        ..Default::default()
+    }
 }
 
 fn texto(t: &str, x: f32, y: f32) -> Elemento {
     let mut e = Elemento {
-        figura: Figura::Texto { texto: String::new(), tam: 20.0, familia: "Segoe UI".into() },
+        figura: Figura::Texto {
+            texto: String::new(),
+            tam: 20.0,
+            familia: "Segoe UI".into(),
+        },
         x,
         y,
         ..Default::default()
@@ -49,7 +60,10 @@ fn flecha(a: (f32, f32), b: (f32, f32)) -> Elemento {
 }
 
 fn avisos(s: &Escena) -> Vec<String> {
-    revisar_con(s, None, &OrtografiaBasica).into_iter().map(|h| h.texto).collect()
+    revisar_con(s, None, &OrtografiaBasica)
+        .into_iter()
+        .map(|h| h.texto)
+        .collect()
 }
 
 /// Dos cajas en fila con su rotulo y una flecha de una a otra.
@@ -81,10 +95,18 @@ fn textos_encimados_y_figuras_que_se_pisan() {
     let a = s.anadir(texto("Primero", 0.0, 0.0));
     let b = s.anadir(texto("Segundo", 10.0, 4.0));
     let v = avisos(&s);
-    assert!(v.iter().any(|t| t == &format!("#{a} y #{b}: textos encimados")), "{v:?}");
+    assert!(
+        v.iter()
+            .any(|t| t == &format!("#{a} y #{b}: textos encimados")),
+        "{v:?}"
+    );
     let c = s.anadir(caja(300.0, 0.0, 100.0, 100.0));
     let d = s.anadir(caja(350.0, 50.0, 100.0, 100.0));
-    assert!(avisos(&s).iter().any(|t| t.starts_with(&format!("#{c} y #{d}: figuras que se pisan"))));
+    assert!(
+        avisos(&s)
+            .iter()
+            .any(|t| t.starts_with(&format!("#{c} y #{d}: figuras que se pisan")))
+    );
     // Solo lo tocado: con #c tocado no sale lo de los textos.
     let solo = revisar_con(&s, Some(&[c]), &OrtografiaBasica);
     assert!(solo.iter().all(|h| h.ids.contains(&c)), "{solo:?}");
@@ -97,7 +119,11 @@ fn texto_que_se_sale_de_su_caja() {
     let t = s.anadir(en("Un rotulo demasiado largo", &c));
     let ic = s.anadir(c);
     let v = avisos(&s);
-    assert!(v.iter().any(|x| x.starts_with(&format!("#{t} se sale de #{ic} (sobra"))), "{v:?}");
+    assert!(
+        v.iter()
+            .any(|x| x.starts_with(&format!("#{t} se sale de #{ic} (sobra"))),
+        "{v:?}"
+    );
 }
 
 #[test]
@@ -106,15 +132,37 @@ fn flecha_que_no_llega_y_marco_y_casi_alineados() {
     // Una flecha que se queda a 20 px de la caja #b.
     let f = s.anadir(flecha((80.0, 62.0), (300.0, 100.0)));
     let v = avisos(&s);
-    assert!(v.iter().any(|x| x == &format!("#{f}: el fin de la flecha se queda a 40 px de #{b} sin tocarlo")), "{v:?}");
+    assert!(
+        v.iter().any(
+            |x| x == &format!("#{f}: el fin de la flecha se queda a 40 px de #{b} sin tocarlo")
+        ),
+        "{v:?}"
+    );
     // Algo medio fuera de un marco.
-    let m = s.anadir(Elemento { figura: Figura::Marco { nombre: "Hoja".into() }, x: 0.0, y: 300.0, ancho: 200.0, alto: 200.0, ..Default::default() });
+    let m = s.anadir(Elemento {
+        figura: Figura::Marco {
+            nombre: "Hoja".into(),
+        },
+        x: 0.0,
+        y: 300.0,
+        ancho: 200.0,
+        alto: 200.0,
+        ..Default::default()
+    });
     let fuera = s.anadir(caja(150.0, 350.0, 100.0, 50.0));
-    assert!(avisos(&s).iter().any(|x| x == &format!("#{fuera} se sale a medias del marco #{m}")));
+    assert!(
+        avisos(&s)
+            .iter()
+            .any(|x| x == &format!("#{fuera} se sale a medias del marco #{m}"))
+    );
     // Una tercera caja a 4 px de la fila de #a.
     let c = s.anadir(caja(520.0, 4.0, 160.0, 60.0));
     let v = avisos(&s);
-    assert!(v.iter().any(|x| x.contains(&format!("#{c}")) && x.contains("casi en la misma fila (4 px")), "{v:?}");
+    assert!(
+        v.iter()
+            .any(|x| x.contains(&format!("#{c}")) && x.contains("casi en la misma fila (4 px")),
+        "{v:?}"
+    );
     let _ = a;
 }
 
@@ -125,9 +173,23 @@ fn faltan_tildes_en_espanol() {
     let q = s.anadir(texto("¿Que es esto?", 0.0, 100.0));
     let e = s.anadir(texto("La tarea esta terminada", 0.0, 200.0));
     let v = avisos(&s);
-    assert!(v.iter().any(|x| x == &format!("#{t} ortografia: «numero»→«número», «pagina»→«página», «informacion»→«información»")), "{v:?}");
-    assert!(v.iter().any(|x| x == &format!("#{q} ortografia: «Que»→«Qué»")), "{v:?}");
-    assert!(v.iter().any(|x| x == &format!("#{e} ortografia: «esta»→«está»")), "{v:?}");
+    assert!(
+        v.iter().any(|x| x
+            == &format!(
+                "#{t} ortografia: «numero»→«número», «pagina»→«página», «informacion»→«información»"
+            )),
+        "{v:?}"
+    );
+    assert!(
+        v.iter()
+            .any(|x| x == &format!("#{q} ortografia: «Que»→«Qué»")),
+        "{v:?}"
+    );
+    assert!(
+        v.iter()
+            .any(|x| x == &format!("#{e} ortografia: «esta»→«está»")),
+        "{v:?}"
+    );
     // «Esta casa» y «que» sin pregunta estan bien.
     let mut s = Escena::nueva();
     s.anadir(texto("Esta casa es la que vimos", 0.0, 0.0));
@@ -152,7 +214,10 @@ fn un_corrector_de_fuera_se_enchufa_por_el_rasgo() {
     struct Siempre;
     impl Ortografia for Siempre {
         fn revisar(&self, texto: &str, _: &str) -> Vec<Falta> {
-            vec![Falta { palabra: texto.to_string(), arreglo: None }]
+            vec![Falta {
+                palabra: texto.to_string(),
+                arreglo: None,
+            }]
         }
     }
     let mut s = Escena::nueva();
@@ -163,7 +228,9 @@ fn un_corrector_de_fuera_se_enchufa_por_el_rasgo() {
 
 #[test]
 fn el_resumen_para_el_modelo_es_corto() {
-    let muchos: Vec<Hallazgo> = (0..20).map(|i| aviso(vec![i], format!("aviso {i}"))).collect();
+    let muchos: Vec<Hallazgo> = (0..20)
+        .map(|i| aviso(vec![i], format!("aviso {i}")))
+        .collect();
     let r = para_el_modelo(&muchos);
     assert_eq!(r.lines().count(), MAX_LINEAS + 1, "{r}");
     assert!(r.ends_with("(+13 avisos mas)"), "{r}");

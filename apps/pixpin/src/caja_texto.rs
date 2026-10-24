@@ -378,8 +378,7 @@ pub(crate) fn indice_en(
     x: f32,
     y: f32,
 ) -> Option<usize> {
-    let dentro =
-        x >= zona.x && y >= zona.y && x < zona.x + zona.ancho && y < zona.y + zona.alto;
+    let dentro = x >= zona.x && y >= zona.y && x < zona.x + zona.ancho && y < zona.y + zona.alto;
     dentro.then(|| indice_en_punto(t, cajas, x - origen.0, y - origen.1))
 }
 
@@ -420,7 +419,13 @@ pub(crate) fn se_escribe(c: char) -> bool {
 /// para las de varios renglones, que crecen hasta su tope y luego se corren
 /// hacia arriba (el usuario, 17-oct-2026: «el texto que ya no entra en la
 /// caja empieza a escribirse en una zona en la que no puedo verlo»).
-pub(crate) fn corrido_a_la_vista(antes: f32, desde: f32, hasta: f32, largo: f32, hueco: f32) -> f32 {
+pub(crate) fn corrido_a_la_vista(
+    antes: f32,
+    desde: f32,
+    hasta: f32,
+    largo: f32,
+    hueco: f32,
+) -> f32 {
     let hueco = hueco.max(1.0);
     let mut c = antes;
     if hasta - c > hueco {

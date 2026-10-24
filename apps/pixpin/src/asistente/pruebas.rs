@@ -30,7 +30,10 @@ fn carpeta(nombre: &str) -> PathBuf {
 
 /// Espera al final del turno atendiendo la cola del lienzo como lo haria la
 /// ventana (aqui, en una escena suelta).
-fn hasta_el_final(turno: &mut Turno, escena: Option<&mut pixpin_motor2d::Escena>) -> (EnVivo, Vec<Aviso>) {
+fn hasta_el_final(
+    turno: &mut Turno,
+    escena: Option<&mut pixpin_motor2d::Escena>,
+) -> (EnVivo, Vec<Aviso>) {
     let mut vivo = EnVivo::default();
     let mut todos = Vec::new();
     let mut escena = escena;
@@ -94,23 +97,44 @@ fn un_dibujo_llega_al_lienzo_abierto_centrado_y_en_un_paso() {
     assert_eq!(escena.cuantos_visibles(), 0);
     // El modelo recibio lo que paso de verdad.
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("2 elementos"));
-    assert!(avisos.iter().any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: true, .. }))));
+    assert!(
+        pedidas[1]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .contains("2 elementos")
+    );
+    assert!(
+        avisos
+            .iter()
+            .any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: true, .. })))
+    );
 }
 
 /// Dos rectas que se cruzan: una roja horizontal y una azul diagonal.
 fn cruce() -> pixpin_motor2d::Escena {
     use pixpin_motor2d::{ColorRgba, Elemento, Punto2, elemento::Figura};
     let raya = |a: (f32, f32), b: (f32, f32), c: ColorRgba| Elemento {
-        figura: Figura::Linea { puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)] },
+        figura: Figura::Linea {
+            puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
+        },
         x: a.0.min(b.0),
         y: a.1.min(b.1),
         trazo: c,
         ..Default::default()
     };
     let mut s = pixpin_motor2d::Escena::nueva();
-    s.anadir(raya((900.0, 1000.0), (1200.0, 1000.0), ColorRgba::opaco(0.88, 0.19, 0.19)));
-    s.anadir(raya((1000.0, 900.0), (1100.0, 1200.0), ColorRgba::opaco(0.10, 0.44, 0.76)));
+    s.anadir(raya(
+        (900.0, 1000.0),
+        (1200.0, 1000.0),
+        ColorRgba::opaco(0.88, 0.19, 0.19),
+    ));
+    s.anadir(raya(
+        (1000.0, 900.0),
+        (1100.0, 1200.0),
+        ColorRgba::opaco(0.10, 0.44, 0.76),
+    ));
     s
 }
 
@@ -119,23 +143,42 @@ fn editar_el_lienzo_abierto_con_su_resumen_y_en_un_paso() {
     al_lienzo::vaciar_para_pruebas();
     let _editor = al_lienzo::EditorAbierto::nuevo(1);
     let motor = Arc::new(MotorGuionado::nuevo(vec![
-        Respuesta::de_llamada("cortar_linea", r#"{"que":"la recta azul","con":"la recta roja","quitar":"fin"}"#),
+        Respuesta::de_llamada(
+            "cortar_linea",
+            r#"{"que":"la recta azul","con":"la recta roja","quitar":"fin"}"#,
+        ),
         Respuesta::de_texto("Cortada en el cruce."),
     ]));
     let mut escena = cruce();
     let pasos = escena.pasos_cerrados();
-    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("corta la recta azul en el cruce"), vec![], None);
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial("corta la recta azul en el cruce"),
+        vec![],
+        None,
+    );
     let (vivo, _) = hasta_el_final(&mut t, Some(&mut escena));
     assert!(vivo.fallos.is_empty(), "{:?}", vivo.fallos);
     // El modelo recibio el resumen del lienzo con el pedido.
     let pedidas = motor.recibido.lock().unwrap();
     let primero = pedidas[0].mensajes.last().unwrap().texto_entero();
-    assert!(primero.contains("Lienzo destino: 2 elementos") && primero.contains("recta azul"), "{primero}");
+    assert!(
+        primero.contains("Lienzo destino: 2 elementos") && primero.contains("recta azul"),
+        "{primero}"
+    );
     // La azul acaba en la roja (y = 1000) y es un solo paso de deshacer.
     let azul = escena.visibles().nth(1).unwrap().puntos().unwrap().to_vec();
     assert!(azul.iter().all(|p| p.y <= 1000.5), "{azul:?}");
     assert_eq!(escena.pasos_cerrados(), pasos + 1);
-    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("hecho: cortada"));
+    assert!(
+        pedidas[1]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .contains("hecho: cortada")
+    );
 }
 
 #[test]
@@ -144,19 +187,49 @@ fn una_edicion_imposible_vuelve_al_modelo_y_no_toca_el_lienzo() {
     al_lienzo::vaciar_para_pruebas();
     let _editor = al_lienzo::EditorAbierto::nuevo(1);
     let motor = Arc::new(MotorGuionado::nuevo(vec![
-        Respuesta::de_llamada("transformar_elementos", r##"{"que":"#99","accion":"borrar"}"##),
-        Respuesta::de_llamada("cortar_linea", r#"{"que":"la recta roja","con":"la recta roja"}"#),
+        Respuesta::de_llamada(
+            "transformar_elementos",
+            r##"{"que":"#99","accion":"borrar"}"##,
+        ),
+        Respuesta::de_llamada(
+            "cortar_linea",
+            r#"{"que":"la recta roja","con":"la recta roja"}"#,
+        ),
         Respuesta::de_texto("No pude."),
     ]));
     let mut escena = cruce();
     let antes = escena.clone();
-    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("borra el 99 y corta la roja"), vec![], None);
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial("borra el 99 y corta la roja"),
+        vec![],
+        None,
+    );
     let (_, avisos) = hasta_el_final(&mut t, Some(&mut escena));
     assert_eq!(escena.elementos, antes.elementos);
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("no existe #99"));
-    assert!(pedidas[2].mensajes.last().unwrap().texto_entero().contains("misma linea"));
-    assert!(avisos.iter().any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: false, .. }))));
+    assert!(
+        pedidas[1]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .contains("no existe #99")
+    );
+    assert!(
+        pedidas[2]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .contains("misma linea")
+    );
+    assert!(
+        avisos
+            .iter()
+            .any(|a| matches!(a, Aviso::Evento(Evento::Resultado { ok: false, .. })))
+    );
 }
 
 #[test]
@@ -189,12 +262,25 @@ fn el_ocr_sin_adjuntos_falla_y_la_burbuja_lo_dice() {
         Respuesta::de_llamada("ocr", "{}"),
         Respuesta::de_texto("No veo ningun documento adjunto."),
     ]));
-    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("lee el pdf"), vec![], None);
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial("lee el pdf"),
+        vec![],
+        None,
+    );
     let (vivo, _) = hasta_el_final(&mut t, None);
     assert!(vivo.mostrar().contains("No veo ningun documento"));
     assert!(vivo.mostrar().contains("⚠️"), "{}", vivo.mostrar());
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().starts_with("ERROR: no hay ningun PDF"));
+    assert!(
+        pedidas[1]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .starts_with("ERROR: no hay ningun PDF")
+    );
 }
 
 #[test]
@@ -236,7 +322,13 @@ impl pixpin_ia::Motor for Lento {
 
 #[test]
 fn parar_a_mitad_corta_y_lo_dice() {
-    let mut t = Turno::lanzar(Arc::new(Lento), "p".into(), historial("cuenta"), vec![], None);
+    let mut t = Turno::lanzar(
+        Arc::new(Lento),
+        "p".into(),
+        historial("cuenta"),
+        vec![],
+        None,
+    );
     std::thread::sleep(Duration::from_millis(60));
     t.parar();
     let (vivo, _) = hasta_el_final(&mut t, None);
@@ -255,24 +347,46 @@ fn la_foto_va_reducida_al_ultimo_mensaje() {
     };
     let ruta = c.join("foto.png");
     std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&grande).unwrap()).unwrap();
-    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("Veo un gris.")]));
-    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("que ves"), vec![], Some(ruta));
+    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto(
+        "Veo un gris.",
+    )]));
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial("que ves"),
+        vec![],
+        Some(ruta),
+    );
     hasta_el_final(&mut t, None);
     let pedidas = motor.recibido.lock().unwrap();
     let ultimo = pedidas[0].mensajes.last().unwrap();
     assert!(ultimo.tiene_imagen());
     assert_eq!(ultimo.texto_entero(), "que ves");
-    let pixpin_ia::Parte::Imagen { bytes, mime } = &ultimo.partes[0] else { panic!() };
+    let pixpin_ia::Parte::Imagen { bytes, mime } = &ultimo.partes[0] else {
+        panic!()
+    };
     assert_eq!(mime, "image/jpeg");
     let tmp = c.join("mandada.jpg");
     std::fs::write(&tmp, bytes).unwrap();
     assert_eq!(pixpin_codec::imagen::medidas(&tmp).unwrap(), (768, 384));
     // Una foto que no se puede leer no impide contestar.
     let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("Sin foto.")]));
-    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("y esta"), vec![], Some(c.join("no-esta.png")));
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial("y esta"),
+        vec![],
+        Some(c.join("no-esta.png")),
+    );
     let (vivo, _) = hasta_el_final(&mut t, None);
     assert_eq!(vivo.texto, "Sin foto.");
-    assert!(!motor.recibido.lock().unwrap()[0].mensajes.last().unwrap().tiene_imagen());
+    assert!(
+        !motor.recibido.lock().unwrap()[0]
+            .mensajes
+            .last()
+            .unwrap()
+            .tiene_imagen()
+    );
     let _ = std::fs::remove_dir_all(&c);
 }
 
@@ -286,8 +400,14 @@ fn medidas_reducidas_nunca_amplian() {
 
 #[test]
 fn la_mencion_se_reconoce_y_se_quita() {
-    assert_eq!(chat::mencion("@asistente dibuja una casa").as_deref(), Some("dibuja una casa"));
-    assert_eq!(chat::mencion("oye @Asistente, que es esto?").as_deref(), Some("oye , que es esto?"));
+    assert_eq!(
+        chat::mencion("@asistente dibuja una casa").as_deref(),
+        Some("dibuja una casa")
+    );
+    assert_eq!(
+        chat::mencion("oye @Asistente, que es esto?").as_deref(),
+        Some("oye , que es esto?")
+    );
     assert_eq!(chat::mencion("@asistente: hola").as_deref(), Some("hola"));
     assert_eq!(chat::mencion("hola a todos"), None);
     assert_eq!(chat::mencion("@asistentes hola"), None);
@@ -309,13 +429,24 @@ fn la_conversacion_separa_usuario_y_asistente_y_la_foto_es_la_reciente() {
         ruta: Some("imagenes/f.png".into()),
         ..Nota::default()
     };
-    let ms = vec![nota("hola", "K7Q2"), nota("que tal", chat::APARATO), foto.clone()];
+    let ms = vec![
+        nota("hola", "K7Q2"),
+        nota("que tal", chat::APARATO),
+        foto.clone(),
+    ];
     let c = chat::conversacion(&ms);
-    assert_eq!(c, vec![(true, "hola".to_string()), (false, "que tal".to_string())]);
+    assert_eq!(
+        c,
+        vec![(true, "hola".to_string()), (false, "que tal".to_string())]
+    );
     assert_eq!(chat::foto_reciente(&ms).map(|m| m.id.as_str()), Some("f"));
     // La foto de la que se hablo antes sigue a la vista: «dibuja eso» tras
     // la descripcion tiene que verla (13-oct).
-    let ms2 = vec![foto.clone(), nota("es un plano", chat::APARATO), nota("dibuja eso", "K7Q2")];
+    let ms2 = vec![
+        foto.clone(),
+        nota("es un plano", chat::APARATO),
+        nota("dibuja eso", "K7Q2"),
+    ];
     assert_eq!(chat::foto_reciente(&ms2).map(|m| m.id.as_str()), Some("f"));
     // Pero no una de hace mucho.
     let mut ms3 = vec![foto];
@@ -332,7 +463,11 @@ fn nota_de(texto: &str, aparato: &str) -> pixpin_proyecto::cuaderno::Mensaje {
     }
 }
 
-fn lienzo_de_prueba(nombre: &str, referencia: &str, aparato: &str) -> pixpin_proyecto::cuaderno::Mensaje {
+fn lienzo_de_prueba(
+    nombre: &str,
+    referencia: &str,
+    aparato: &str,
+) -> pixpin_proyecto::cuaderno::Mensaje {
     pixpin_proyecto::cuaderno::Mensaje {
         id: referencia.into(),
         clase: Some(pixpin_proyecto::cuaderno::Clase::Dibujo),
@@ -353,22 +488,34 @@ fn una_foto_sola_al_asistente_es_una_pregunta() {
         ..Default::default()
     };
     // En su chat, sin pie: se le pide que la describa y pregunte.
-    assert_eq!(chat::pregunta_de(&foto, true).as_deref(), Some(chat::PREGUNTA_SOLO_FOTO));
+    assert_eq!(
+        chat::pregunta_de(&foto, true).as_deref(),
+        Some(chat::PREGUNTA_SOLO_FOTO)
+    );
     // Con pie, el pie es la pregunta.
     let con_pie = pixpin_proyecto::cuaderno::Mensaje {
         texto: "¿qué es?".into(),
         ..foto.clone()
     };
-    assert_eq!(chat::pregunta_de(&con_pie, true).as_deref(), Some("¿qué es?"));
+    assert_eq!(
+        chat::pregunta_de(&con_pie, true).as_deref(),
+        Some("¿qué es?")
+    );
     // En otro chat, solo si el pie lo menciona.
     assert_eq!(chat::pregunta_de(&foto, false), None);
     let mencion = pixpin_proyecto::cuaderno::Mensaje {
         texto: "@asistente ¿qué es?".into(),
         ..foto.clone()
     };
-    assert_eq!(chat::pregunta_de(&mencion, false).as_deref(), Some("¿qué es?"));
+    assert_eq!(
+        chat::pregunta_de(&mencion, false).as_deref(),
+        Some("¿qué es?")
+    );
     // Lo suyo no se contesta a si mismo, y un PDF suelto no es pregunta.
-    assert_eq!(chat::pregunta_de(&nota_de("hola", chat::APARATO), true), None);
+    assert_eq!(
+        chat::pregunta_de(&nota_de("hola", chat::APARATO), true),
+        None
+    );
     let pdf = pixpin_proyecto::cuaderno::Mensaje {
         clase: Some(Clase::Archivo),
         ..foto
@@ -388,11 +535,23 @@ fn una_foto_sola_siempre_tiene_respuesta_aunque_el_modelo_calle() {
     std::fs::write(&ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
     // El modelo no dice nada: la burbuja no se queda vacia.
     let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("")]));
-    let mut t = Turno::lanzar(motor.clone(), "p".into(), historial(chat::PREGUNTA_SOLO_FOTO), vec![], Some(ruta));
+    let mut t = Turno::lanzar(
+        motor.clone(),
+        "p".into(),
+        historial(chat::PREGUNTA_SOLO_FOTO),
+        vec![],
+        Some(ruta),
+    );
     let (vivo, _) = hasta_el_final(&mut t, None);
     assert_eq!(vivo.mostrar(), pixpin_ia::agente::SIN_PALABRAS);
     // Y la foto le llego.
-    assert!(motor.recibido.lock().unwrap()[0].mensajes.last().unwrap().tiene_imagen());
+    assert!(
+        motor.recibido.lock().unwrap()[0]
+            .mensajes
+            .last()
+            .unwrap()
+            .tiene_imagen()
+    );
     let _ = std::fs::remove_dir_all(&c);
 }
 
@@ -411,7 +570,10 @@ fn la_mencion_de_un_lienzo_se_resuelve_por_su_nombre() {
     let (_, d) = chat::resolver_lienzo("en @LIENZO:plano_CASA", &ms);
     assert_eq!(d.as_deref(), Some("ref-plano"));
     // Un lienzo sin nombre se llama por su numero, no por su fichero.
-    assert_eq!(chat::nombre_de_lienzo(&lienzo_de_prueba("x.excalidraw", "r", "K")), "Lienzo 7");
+    assert_eq!(
+        chat::nombre_de_lienzo(&lienzo_de_prueba("x.excalidraw", "r", "K")),
+        "Lienzo 7"
+    );
     // Una mencion que no casa no cambia nada.
     let (t, d) = chat::resolver_lienzo("en @lienzo:Fachada ya", &ms);
     assert_eq!(t, "en @lienzo:Fachada ya");
@@ -437,7 +599,10 @@ fn la_lista_de_arroba() {
     ];
     // Se abre con un `@` que empieza palabra, hasta el primer espacio.
     let t = "hola @pla";
-    assert_eq!(chat::consulta_de_mencion(t, t.len()), Some((5, "pla".into())));
+    assert_eq!(
+        chat::consulta_de_mencion(t, t.len()),
+        Some((5, "pla".into()))
+    );
     assert_eq!(chat::consulta_de_mencion("correo@pla", 10), None);
     assert_eq!(chat::consulta_de_mencion("@pla casa", 9), None);
     assert_eq!(chat::consulta_de_mencion("sin nada", 8), None);
@@ -450,7 +615,11 @@ fn la_lista_de_arroba() {
     let pla = chat::opciones_de_mencion(&ms, "pla", true);
     assert_eq!(pla.len(), 1);
     assert_eq!(pla[0].mencion, "@lienzo:Plano_casa");
-    assert!(chat::opciones_de_mencion(&ms, "lienzo:fa", true)[0].mencion.ends_with("Fachada"));
+    assert!(
+        chat::opciones_de_mencion(&ms, "lienzo:fa", true)[0]
+            .mencion
+            .ends_with("Fachada")
+    );
     assert!(chat::opciones_de_mencion(&ms, "zzz", true).is_empty());
     // Elegir escribe la mencion y deja la rayita detras del espacio.
     let mut texto = "hola @pla y mas".to_string();
@@ -504,11 +673,17 @@ fn con_el_lienzo_cerrado_lo_nuevo_va_a_la_derecha_de_lo_que_habia() {
     };
     let mut escena = pixpin_motor2d::Escena::nueva();
     // Vacio: donde lo puso el modelo.
-    assert_eq!(al_lienzo::meter_al_lado(&mut escena, &doc(10.0)).unwrap(), 1);
+    assert_eq!(
+        al_lienzo::meter_al_lado(&mut escena, &doc(10.0)).unwrap(),
+        1
+    );
     let c1 = al_lienzo::caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
     assert!((c1.0 - 10.0).abs() < 3.0, "{c1:?}");
     // Con algo: a la derecha, sin taparlo, alineado arriba.
-    assert_eq!(al_lienzo::meter_al_lado(&mut escena, &doc(10.0)).unwrap(), 1);
+    assert_eq!(
+        al_lienzo::meter_al_lado(&mut escena, &doc(10.0)).unwrap(),
+        1
+    );
     let els: Vec<_> = escena.visibles().cloned().collect();
     let segundo = els[1].caja();
     assert!(segundo.0 > c1.2 + 40.0, "{segundo:?} {c1:?}");
@@ -530,8 +705,15 @@ fn elegir_el_adjunto_por_nombre_o_el_ultimo() {
     };
     let lista = vec![a("Contrato.pdf"), a("foto.jpg")];
     assert_eq!(elegir(&lista, None).unwrap().nombre, "foto.jpg");
-    assert_eq!(elegir(&lista, Some("contrato")).unwrap().nombre, "Contrato.pdf");
-    assert!(elegir(&lista, Some("factura")).unwrap_err().contains("Contrato.pdf"));
+    assert_eq!(
+        elegir(&lista, Some("contrato")).unwrap().nombre,
+        "Contrato.pdf"
+    );
+    assert!(
+        elegir(&lista, Some("factura"))
+            .unwrap_err()
+            .contains("Contrato.pdf")
+    );
     assert!(elegir(&[], None).unwrap_err().contains("no hay ningun PDF"));
 }
 
@@ -549,8 +731,16 @@ fn el_ocr_no_lee_lo_que_no_es_pdf_ni_imagen() {
     let no = AtomicBool::new(false);
     let docx = c.join("a.docx");
     std::fs::write(&docx, b"PK").unwrap();
-    assert!(super::ocr::leer(&docx, &[], &no).unwrap_err().contains("solo se puede"));
-    assert!(super::ocr::leer(&c.join("falta.pdf"), &[], &no).unwrap_err().contains("ya no esta"));
+    assert!(
+        super::ocr::leer(&docx, &[], &no)
+            .unwrap_err()
+            .contains("solo se puede")
+    );
+    assert!(
+        super::ocr::leer(&c.join("falta.pdf"), &[], &no)
+            .unwrap_err()
+            .contains("ya no esta")
+    );
     let _ = std::fs::remove_dir_all(&c);
 }
 
@@ -570,13 +760,22 @@ fn pagina_con_texto(c: &std::path::Path) -> pixpin_codec::ImagenRgba {
     .unwrap()
     .llamada;
     let doc = pixpin_ia::lienzo::documento(pixpin_ia::lienzo::elementos(&llamada, (0.0, 0.0), 1));
-    let escena = pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(&doc).unwrap());
-    let hojas = pixpin_motor2d::exportar::hojas(&escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+    let escena =
+        pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(&doc).unwrap());
+    let hojas = pixpin_motor2d::exportar::hojas(
+        &escena,
+        pixpin_motor2d::exportar::Alcance::Todo,
+        &[],
+        None,
+    );
     let blanco = pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0);
     let pdf = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &|_| None).unwrap();
     let ruta = c.join("vectorial.pdf");
     std::fs::write(&ruta, pdf).unwrap();
-    pixpin_pdf::Documento::abrir(&ruta).unwrap().renderizar(0, 1400).unwrap()
+    pixpin_pdf::Documento::abrir(&ruta)
+        .unwrap()
+        .renderizar(0, 1400)
+        .unwrap()
 }
 
 #[test]
@@ -606,9 +805,17 @@ fn el_ocr_lee_una_imagen_y_un_pdf_escaneado() {
     let texto = super::ocr::leer(&ruta, &[], &no).unwrap();
     assert!(texto.contains("--- Hoja 2 ---"), "{texto}");
     // Hojas que no existen.
-    assert!(super::ocr::leer(&ruta, &[(5, 6)], &no).unwrap_err().contains("no existen"));
+    assert!(
+        super::ocr::leer(&ruta, &[(5, 6)], &no)
+            .unwrap_err()
+            .contains("no existen")
+    );
     // Parado antes de empezar.
-    assert!(super::ocr::leer(&ruta, &[], &AtomicBool::new(true)).unwrap_err().contains("paro"));
+    assert!(
+        super::ocr::leer(&ruta, &[], &AtomicBool::new(true))
+            .unwrap_err()
+            .contains("paro")
+    );
     let _ = std::fs::remove_dir_all(&c);
 }
 
@@ -654,7 +861,14 @@ fn el_ocr_en_un_turno_manda_el_texto_entero_al_chat_y_recortado_al_modelo() {
     assert_eq!(nombre, "recibo.png");
     assert!(texto.contains("4512"));
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("4512"));
+    assert!(
+        pedidas[1]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .contains("4512")
+    );
     let _ = std::fs::remove_dir_all(&c);
 }
 
@@ -728,7 +942,10 @@ fn sin_modelo_bajado_no_hay_motor_y_se_sabe_cuanto_falta() {
     let m = pixpin_ia::modelos::QWEN35_2B;
     assert!(!super::descarga::listo(&c, &m));
     assert!(super::motor::del_proceso(&c, &m).is_err());
-    assert_eq!(super::descarga::falta(&c, &m), m.bytes() + pixpin_ia::modelos::LLAMA_CPP.zip.bytes);
+    assert_eq!(
+        super::descarga::falta(&c, &m),
+        m.bytes() + pixpin_ia::modelos::LLAMA_CPP.zip.bytes
+    );
     assert_eq!(super::descarga::tamano(1_981_062_350), "2,0 GB");
     assert_eq!(super::descarga::tamano(737_504_352), "738 MB");
     let _ = std::fs::remove_dir_all(&c);
@@ -736,9 +953,12 @@ fn sin_modelo_bajado_no_hay_motor_y_se_sabe_cuanto_falta() {
 
 #[test]
 fn el_modelo_de_los_ajustes() {
-    use pixpin_ia::modelos::{QWEN35_08B, QWEN35_2B};
+    use pixpin_ia::modelos::{QWEN35_2B, QWEN35_08B};
     assert_eq!(super::motor::modelo_elegido(None), QWEN35_2B);
-    assert_eq!(super::motor::modelo_elegido(Some("qwen3.5-0.8b")), QWEN35_08B);
+    assert_eq!(
+        super::motor::modelo_elegido(Some("qwen3.5-0.8b")),
+        QWEN35_08B
+    );
     assert_eq!(super::motor::modelo_elegido(Some("inventado")), QWEN35_2B);
 }
 
@@ -760,7 +980,10 @@ fn de_verdad() {
     use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
     let motor_dir = PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
     let modelo = PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
-    let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap_or_else(|_| std::env::temp_dir().display().to_string()));
+    let salida = PathBuf::from(
+        std::env::var("PIXPIN_IA_SALIDA")
+            .unwrap_or_else(|_| std::env::temp_dir().display().to_string()),
+    );
     let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, None);
     config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
         Ok("cpu") | Err(_) => Dispositivo::Cpu,
@@ -776,13 +999,20 @@ fn de_verdad() {
     let mut t = Turno::lanzar(
         motor.clone(),
         "p".into(),
-        historial("Dibuja un circulo rojo a la izquierda y un cuadrado azul a la derecha, con el titulo CASA arriba."),
+        historial(
+            "Dibuja un circulo rojo a la izquierda y un cuadrado azul a la derecha, con el titulo CASA arriba.",
+        ),
         vec![],
         None,
     );
     let (vivo, _) = hasta_el_final_largo(&mut t, &mut escena);
     drop(editor);
-    println!("dibujo: {:.1} s, {} elementos\n{}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
+    println!(
+        "dibujo: {:.1} s, {} elementos\n{}",
+        t0.elapsed().as_secs_f32(),
+        escena.cuantos_visibles(),
+        vivo.mostrar()
+    );
     assert!(escena.cuantos_visibles() > 0, "{}", vivo.mostrar());
     pintar_a_png(&escena, &salida.join("asistente-dibujo.png"));
 
@@ -799,7 +1029,11 @@ fn de_verdad() {
     );
     let (vivo, _) = hasta_el_final_largo(&mut t, &mut escena);
     drop(editor);
-    println!("grafica: {} elementos\n{}", escena.cuantos_visibles(), vivo.mostrar());
+    println!(
+        "grafica: {} elementos\n{}",
+        escena.cuantos_visibles(),
+        vivo.mostrar()
+    );
     pintar_a_png(&escena, &salida.join("asistente-grafica.png"));
 
     // 3. OCR de una imagen con texto, por el turno entero.
@@ -814,7 +1048,9 @@ fn de_verdad() {
         let mut t = Turno::lanzar(
             motor.clone(),
             "p".into(),
-            historial("Lee el texto de la imagen adjunta recibo.png con ocr y dime que numero de factura tiene."),
+            historial(
+                "Lee el texto de la imagen adjunta recibo.png con ocr y dime que numero de factura tiene.",
+            ),
             vec![Adjunto {
                 nombre: "recibo.png".into(),
                 ruta: png,
@@ -824,7 +1060,9 @@ fn de_verdad() {
         let mut nada = pixpin_motor2d::Escena::nueva();
         let (vivo, avisos) = hasta_el_final_largo(&mut t, &mut nada);
         println!("ocr:\n{}", vivo.mostrar());
-        let leido = avisos.iter().any(|a| matches!(a, Aviso::TextoLeido { texto, .. } if texto.contains("4512")));
+        let leido = avisos
+            .iter()
+            .any(|a| matches!(a, Aviso::TextoLeido { texto, .. } if texto.contains("4512")));
         assert!(leido, "el OCR tiene que haber leido el recibo");
     }
     motor.soltar();
@@ -852,7 +1090,10 @@ fn de_verdad_arreglos() {
     let motor_dir = PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
     let modelo = PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
     let vision = PathBuf::from(std::env::var("PIXPIN_IA_VISION").expect("PIXPIN_IA_VISION"));
-    let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap_or_else(|_| std::env::temp_dir().display().to_string()));
+    let salida = PathBuf::from(
+        std::env::var("PIXPIN_IA_SALIDA")
+            .unwrap_or_else(|_| std::env::temp_dir().display().to_string()),
+    );
     std::fs::create_dir_all(&salida).unwrap();
     let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, Some(vision));
     config.registro = Some(salida.join("servidor-arreglos.log"));
@@ -889,18 +1130,34 @@ fn de_verdad_arreglos() {
                 px[i..i + 3].copy_from_slice(&col);
             }
         }
-        let img = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+        let img = pixpin_codec::ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles: px,
+        };
         std::fs::write(&foto, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
     }
 
-    let paso = |n: &str| std::env::var("PIXPIN_IA_PASOS").map_or(true, |p| p.split(',').any(|x| x.trim() == n));
+    let paso = |n: &str| {
+        std::env::var("PIXPIN_IA_PASOS").map_or(true, |p| p.split(',').any(|x| x.trim() == n))
+    };
     // 1. La foto sola.
     if paso("1") {
         let mut nada = pixpin_motor2d::Escena::nueva();
         let t0 = Instant::now();
-        let mut t = Turno::lanzar(motor.clone(), "p".into(), historial(chat::PREGUNTA_SOLO_FOTO), vec![], Some(foto.clone()));
+        let mut t = Turno::lanzar(
+            motor.clone(),
+            "p".into(),
+            historial(chat::PREGUNTA_SOLO_FOTO),
+            vec![],
+            Some(foto.clone()),
+        );
         let (vivo, _) = hasta_el_final_largo(&mut t, &mut nada);
-        println!("1. foto sola ({:.1} s): {}", t0.elapsed().as_secs_f32(), vivo.mostrar());
+        println!(
+            "1. foto sola ({:.1} s): {}",
+            t0.elapsed().as_secs_f32(),
+            vivo.mostrar()
+        );
         assert!(!vivo.mostrar().trim().is_empty());
         assert!(!vivo.mostrar().starts_with("⚠️"), "{}", vivo.mostrar());
     }
@@ -911,10 +1168,21 @@ fn de_verdad_arreglos() {
         let editor = al_lienzo::EditorAbierto::nuevo(1);
         let mut escena = pixpin_motor2d::Escena::nueva();
         let t0 = Instant::now();
-        let mut t = Turno::lanzar(motor.clone(), "p".into(), historial("Dibuja esto en el lienzo."), vec![], Some(foto.clone()));
+        let mut t = Turno::lanzar(
+            motor.clone(),
+            "p".into(),
+            historial("Dibuja esto en el lienzo."),
+            vec![],
+            Some(foto.clone()),
+        );
         let (vivo, _) = hasta_el_final_largo(&mut t, &mut escena);
         drop(editor);
-        println!("2. dibuja esto ({:.1} s, {} elementos): {}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
+        println!(
+            "2. dibuja esto ({:.1} s, {} elementos): {}",
+            t0.elapsed().as_secs_f32(),
+            escena.cuantos_visibles(),
+            vivo.mostrar()
+        );
         pintar_a_png(&escena, &salida.join("asistente-dibuja-esto.png"));
         assert!(escena.cuantos_visibles() > 0, "{}", vivo.mostrar());
     }
@@ -936,26 +1204,45 @@ fn de_verdad_arreglos() {
         );
         let (vivo, avisos) = hasta_el_final_largo(&mut t, &mut escena);
         drop(editor);
-        println!("3. llamada enorme ({:.1} s, {} elementos): {}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
+        println!(
+            "3. llamada enorme ({:.1} s, {} elementos): {}",
+            t0.elapsed().as_secs_f32(),
+            escena.cuantos_visibles(),
+            vivo.mostrar()
+        );
         pintar_a_png(&escena, &salida.join("asistente-llamada-enorme.png"));
         let texto = vivo.mostrar();
         for tecnico in ["HTTP", "json", "JSON", "Failed", "parse", "{\""] {
-            assert!(!texto.contains(tecnico), "se ve algo tecnico ({tecnico}): {texto}");
+            assert!(
+                !texto.contains(tecnico),
+                "se ve algo tecnico ({tecnico}): {texto}"
+            );
         }
-        assert!(avisos.iter().any(|a| matches!(a, Aviso::Fin { resultado: Ok(_) })), "{texto}");
+        assert!(
+            avisos
+                .iter()
+                .any(|a| matches!(a, Aviso::Fin { resultado: Ok(_) })),
+            "{texto}"
+        );
         assert!(escena.cuantos_visibles() as u64 <= pixpin_ia::agente::TOPE_LISTAS * 4);
     }
     motor.soltar();
     let _ = std::fs::remove_dir_all(&c);
 }
 
-fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (EnVivo, Vec<Aviso>) {
+fn hasta_el_final_largo(
+    t: &mut Turno,
+    escena: &mut pixpin_motor2d::Escena,
+) -> (EnVivo, Vec<Aviso>) {
     let mut vivo = EnVivo::default();
     let mut todos = Vec::new();
     let t0 = Instant::now();
     // Solo para no colgarse: con la CPU ocupada en otra cosa, un turno
     // puede ir a 0,3 tokens/s (medido con dos compilaciones a la vez).
-    let espera = std::env::var("PIXPIN_IA_ESPERA_S").ok().and_then(|s| s.parse().ok()).unwrap_or(1800);
+    let espera = std::env::var("PIXPIN_IA_ESPERA_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1800);
     let hasta = t0 + Duration::from_secs(espera);
     while Instant::now() < hasta {
         al_lienzo::atender_en_editor(escena, (400.0, 300.0));
@@ -992,7 +1279,8 @@ fn hasta_el_final_largo(t: &mut Turno, escena: &mut pixpin_motor2d::Escena) -> (
 /// La escena pintada a PNG por el mismo camino que el PDF (exportar → PDF de
 /// vectores → pixeles), para mirarla.
 pub(super) fn pintar_a_png(escena: &pixpin_motor2d::Escena, ruta: &std::path::Path) {
-    let hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+    let hojas =
+        pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
     if hojas.is_empty() {
         return;
     }
@@ -1001,7 +1289,10 @@ pub(super) fn pintar_a_png(escena: &pixpin_motor2d::Escena, ruta: &std::path::Pa
     let tmp = ruta.with_extension("pdf");
     std::fs::write(&tmp, pdf).unwrap();
     let _com = pixpin_shell::ComDelHilo::iniciar();
-    let img = pixpin_pdf::Documento::abrir(&tmp).unwrap().renderizar(0, 1000).unwrap();
+    let img = pixpin_pdf::Documento::abrir(&tmp)
+        .unwrap()
+        .renderizar(0, 1000)
+        .unwrap();
     std::fs::write(ruta, pixpin_codec::imagen::codificar_png(&img).unwrap()).unwrap();
     println!("PNG: {}", ruta.display());
 }
@@ -1046,8 +1337,14 @@ fn demo_perrito() {
     );
     let (vivo, _) = hasta_el_final_largo(&mut t, &mut escena);
     drop(editor);
-    println!("perrito: {:.1} s, {} elementos\n{}", t0.elapsed().as_secs_f32(), escena.cuantos_visibles(), vivo.mostrar());
-    let nombre = std::env::var("PIXPIN_IA_NOMBRE").unwrap_or_else(|_| "perrito-en-el-lienzo-2.png".into());
+    println!(
+        "perrito: {:.1} s, {} elementos\n{}",
+        t0.elapsed().as_secs_f32(),
+        escena.cuantos_visibles(),
+        vivo.mostrar()
+    );
+    let nombre =
+        std::env::var("PIXPIN_IA_NOMBRE").unwrap_or_else(|_| "perrito-en-el-lienzo-2.png".into());
     pintar_a_png(&escena, &salida.join(nombre));
     motor.soltar();
     assert!(escena.cuantos_visibles() >= 4, "{}", vivo.mostrar());
@@ -1059,8 +1356,16 @@ fn demo_perrito() {
 #[test]
 fn el_lienzo_abierto_da_lo_elegido_solo_si_se_lo_piden() {
     let mut escena = pixpin_motor2d::Escena::nueva();
-    let a = escena.anadir(pixpin_motor2d::Elemento { ancho: 10.0, alto: 10.0, ..Default::default() });
-    let _b = escena.anadir(pixpin_motor2d::Elemento { ancho: 5.0, alto: 5.0, ..Default::default() });
+    let a = escena.anadir(pixpin_motor2d::Elemento {
+        ancho: 10.0,
+        alto: 10.0,
+        ..Default::default()
+    });
+    let _b = escena.anadir(pixpin_motor2d::Elemento {
+        ancho: 5.0,
+        alto: 5.0,
+        ..Default::default()
+    });
     // Sin pregunta: nada que hacer.
     al_lienzo::contestar_lo_elegido(&escena, &[a]);
     let rx = al_lienzo::pedir_lo_elegido();
@@ -1090,26 +1395,49 @@ fn el_asistente_lista_crea_y_usa_lienzos_del_chat_por_su_nombre() {
     };
     let (tx, _rx) = std::sync::mpsc::channel();
     let parar = Arc::new(AtomicBool::new(false));
-    let mut ej = super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone())
-        .en_la_nube(true)
-        .con_raiz(Some(raiz.clone()))
-        .con_espera(Duration::from_millis(200));
+    let mut ej =
+        super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone())
+            .en_la_nube(true)
+            .con_raiz(Some(raiz.clone()))
+            .con_espera(Duration::from_millis(200));
     let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
     assert!(lista.contains("«Fachada»: 0 elementos"), "{lista}");
-    let hecho = llamar(&mut ej, "crear_lienzo", serde_json::json!({"nombre": "Planta baja"})).unwrap();
+    let hecho = llamar(
+        &mut ej,
+        "crear_lienzo",
+        serde_json::json!({"nombre": "Planta baja"}),
+    )
+    .unwrap();
     assert!(hecho.contains("«Planta baja»"), "{hecho}");
     let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
-    assert!(lista.contains("«Planta baja»: 0 elementos (trabajas en este)"), "{lista}");
+    assert!(
+        lista.contains("«Planta baja»: 0 elementos (trabajas en este)"),
+        "{lista}"
+    );
     // Usar otro por su nombre (sin tildes ni mayusculas): el destino cambia.
-    let usado = llamar(&mut ej, "usar_lienzo", serde_json::json!({"nombre": "FACHADA"})).unwrap();
+    let usado = llamar(
+        &mut ej,
+        "usar_lienzo",
+        serde_json::json!({"nombre": "FACHADA"}),
+    )
+    .unwrap();
     assert!(usado.contains("«Fachada»"), "{usado}");
     let lista = llamar(&mut ej, "lienzos_del_chat", serde_json::json!({})).unwrap();
-    assert!(lista.contains("«Fachada»: 0 elementos (trabajas en este)"), "{lista}");
+    assert!(
+        lista.contains("«Fachada»: 0 elementos (trabajas en este)"),
+        "{lista}"
+    );
     // Casos negativos: un nombre que no esta dice los que hay; y con el
     // modelo local no se ofrece.
-    let e = llamar(&mut ej, "usar_lienzo", serde_json::json!({"nombre": "Corte"})).unwrap_err();
+    let e = llamar(
+        &mut ej,
+        "usar_lienzo",
+        serde_json::json!({"nombre": "Corte"}),
+    )
+    .unwrap_err();
     assert!(e.contains("Fachada") && e.contains("Planta baja"), "{e}");
-    let mut local = super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar).con_raiz(Some(raiz.clone()));
+    let mut local = super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar)
+        .con_raiz(Some(raiz.clone()));
     assert!(llamar(&mut local, "lienzos_del_chat", serde_json::json!({})).is_err());
     al_lienzo::vaciar_para_pruebas();
     let _ = std::fs::remove_dir_all(&raiz);
@@ -1122,12 +1450,25 @@ fn lo_pedido_para_otro_lienzo_no_se_lo_lleva_el_editor_abierto() {
     al_lienzo::vaciar_para_pruebas();
     let editor = al_lienzo::EditorAbierto::nuevo(1).con_hoja(Some("dib-a".into()));
     let (tx, _rx) = std::sync::mpsc::channel();
-    let para = |d: Option<&str>| al_lienzo::Pedido::de_trabajo("obra".into(), d.map(str::to_string), al_lienzo::Trabajo::Resumir, tx.clone());
+    let para = |d: Option<&str>| {
+        al_lienzo::Pedido::de_trabajo(
+            "obra".into(),
+            d.map(str::to_string),
+            al_lienzo::Trabajo::Resumir,
+            tx.clone(),
+        )
+    };
     al_lienzo::pedir(para(Some("dib-b")));
     al_lienzo::pedir(para(Some("dib-a")));
     al_lienzo::pedir(para(None));
     let del_editor = al_lienzo::tomar_si(al_lienzo::es_para_el_editor);
-    assert_eq!(del_editor.iter().map(|p| p.destino.clone()).collect::<Vec<_>>(), vec![Some("dib-a".into()), None]);
+    assert_eq!(
+        del_editor
+            .iter()
+            .map(|p| p.destino.clone())
+            .collect::<Vec<_>>(),
+        vec![Some("dib-a".into()), None]
+    );
     let del_chat = al_lienzo::tomar_para_el_chat();
     assert_eq!(del_chat.len(), 1);
     assert_eq!(del_chat[0].destino.as_deref(), Some("dib-b"));
@@ -1154,14 +1495,27 @@ fn con_dos_lienzos_abiertos_cada_uno_hace_lo_suyo() {
     assert_eq!(al_lienzo::editor_de_clave("obra/m-a"), Some(1));
     assert_eq!(al_lienzo::editor_de_clave("obra/m-c"), None);
     let (tx, _rx) = std::sync::mpsc::channel();
-    let para = |d: Option<&str>| al_lienzo::Pedido::de_trabajo("obra".into(), d.map(str::to_string), al_lienzo::Trabajo::Resumir, tx.clone());
+    let para = |d: Option<&str>| {
+        al_lienzo::Pedido::de_trabajo(
+            "obra".into(),
+            d.map(str::to_string),
+            al_lienzo::Trabajo::Resumir,
+            tx.clone(),
+        )
+    };
     let destinos = |v: Vec<al_lienzo::Pedido>| v.into_iter().map(|p| p.destino).collect::<Vec<_>>();
     for d in [Some("dib-a"), Some("dib-b"), None, Some("dib-c")] {
         al_lienzo::pedir(para(d));
     }
     // Este hilo es el del lienzo 2 (el ultimo que se apunto).
-    assert_eq!(destinos(al_lienzo::tomar_si(al_lienzo::es_para_el_editor)), vec![Some("dib-b".into()), None]);
-    assert_eq!(destinos(al_lienzo::tomar_para_el_chat()), vec![Some("dib-c".into())]);
+    assert_eq!(
+        destinos(al_lienzo::tomar_si(al_lienzo::es_para_el_editor)),
+        vec![Some("dib-b".into()), None]
+    );
+    assert_eq!(
+        destinos(al_lienzo::tomar_para_el_chat()),
+        vec![Some("dib-c".into())]
+    );
     // El 1 se pone delante: lo que no dice hoja es suyo, no del 2.
     al_lienzo::activar(1);
     assert!(al_lienzo::es_el_activo(1));
@@ -1171,8 +1525,14 @@ fn con_dos_lienzos_abiertos_cada_uno_hace_lo_suyo() {
     // «dib-a», que ya no esta abierta, al chat.
     drop(a);
     assert!(al_lienzo::es_el_activo(2));
-    assert_eq!(destinos(al_lienzo::tomar_si(al_lienzo::es_para_el_editor)), vec![None]);
-    assert_eq!(destinos(al_lienzo::tomar_para_el_chat()), vec![Some("dib-a".into())]);
+    assert_eq!(
+        destinos(al_lienzo::tomar_si(al_lienzo::es_para_el_editor)),
+        vec![None]
+    );
+    assert_eq!(
+        destinos(al_lienzo::tomar_para_el_chat()),
+        vec![Some("dib-a".into())]
+    );
     drop(b);
     assert!(!al_lienzo::hay_editor());
     assert_eq!(al_lienzo::editor_de_clave("obra/m-b"), None);

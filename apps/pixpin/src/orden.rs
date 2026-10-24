@@ -23,20 +23,34 @@ use serde_json::Value;
 /// Si la linea de ordenes es una orden, la hace y devuelve el codigo con
 /// que salir. `None`: no lo es, y el arranque sigue como siempre.
 pub fn ejecutar_si_toca() -> Option<i32> {
-    let mut args: Vec<String> = std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
+    let mut args: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
     // El menu del Explorador lanza una copia por fichero elegido: se juntan
     // en una (`pixpin_shell::juntar`) y las demas se van sin hacer nada.
     if args.first().map(String::as_str) == Some("--juntar") && args.len() >= 2 {
         args.remove(0);
         if orden::verbo(&args[0]).is_none() {
-            decir_fallo(&format!("--juntar: «{}» no es un verbo (pixpinmax ayuda)", args[0]), false);
+            decir_fallo(
+                &format!("--juntar: «{}» no es un verbo (pixpinmax ayuda)", args[0]),
+                false,
+            );
             return Some(codigo::NO_SE_ENTIENDE);
         }
-        let (ficheros, resto): (Vec<String>, Vec<String>) = args[1..].iter().cloned().partition(|a| Path::new(a).is_file());
+        let (ficheros, resto): (Vec<String>, Vec<String>) = args[1..]
+            .iter()
+            .cloned()
+            .partition(|a| Path::new(a).is_file());
         let clave = format!("{} {}", args[0], resto.join(" "));
         let todas = pixpin_shell::juntar::juntar(&clave, &ficheros);
-        let Some(todas) = todas else { return Some(codigo::ACEPTADO) };
-        args = std::iter::once(args[0].clone()).chain(resto).chain(todas).collect();
+        let Some(todas) = todas else {
+            return Some(codigo::ACEPTADO);
+        };
+        args = std::iter::once(args[0].clone())
+            .chain(resto)
+            .chain(todas)
+            .collect();
     }
     let llamada = orden::de_argumentos(&args, &|p: &Path| p.is_file())?;
     Some(match llamada {
@@ -66,7 +80,9 @@ fn avisar(titulo: &str, texto: &str) {
 
 fn confirmar(titulo: &str, texto: &str) -> bool {
     if sin_cuadros() {
-        pixpin_shell::consola::escribir_error(&format!("pixpinmax: sin cuadros, no se confirma:\n{texto}\n"));
+        pixpin_shell::consola::escribir_error(&format!(
+            "pixpinmax: sin cuadros, no se confirma:\n{texto}\n"
+        ));
         return false;
     }
     pixpin_shell::dialogo::confirmar_al_frente(titulo, texto)
@@ -75,7 +91,10 @@ fn confirmar(titulo: &str, texto: &str) -> bool {
 /// Los textos, en el idioma del sistema. Se cargan solo si hacen falta (un
 /// cuadro, un aviso): la orden que sale bien no los necesita.
 fn textos() -> Catalogo {
-    let lengua = pixpin_store::idioma::resolver_idioma(&pixpin_shell::entorno::locale_del_sistema(), Default::default());
+    let lengua = pixpin_store::idioma::resolver_idioma(
+        &pixpin_shell::entorno::locale_del_sistema(),
+        Default::default(),
+    );
     Catalogo::nuevo(lengua)
 }
 
@@ -102,7 +121,11 @@ fn ejecutar(l: Llamada) -> i32 {
         }
         Orden::Ocr { rutas, copiar } => ocr(&rutas, copiar),
         Orden::Preguntar { rutas, proyecto } => match preguntar(&rutas) {
-            Some(pregunta) => mandar(vec![orden::pedido_al_asistente(&pregunta, &rutas, proyecto)], &l.origen, l.sin_arrancar),
+            Some(pregunta) => mandar(
+                vec![orden::pedido_al_asistente(&pregunta, &rutas, proyecto)],
+                &l.origen,
+                l.sin_arrancar,
+            ),
             None => codigo::RECHAZADO,
         },
         Orden::Pedidos(pedidos) => mandar(pedidos, &l.origen, l.sin_arrancar),
@@ -113,7 +136,12 @@ fn ejecutar(l: Llamada) -> i32 {
 /// de un enlace y manda.
 fn mandar(mut pedidos: Vec<Value>, origen: &Origen, sin_arrancar: bool) -> i32 {
     let enlace = matches!(origen, Origen::Enlace { .. });
-    if pedidos.iter().any(|p| p.get("proyecto").is_some_and(Value::is_string) || p.get("que").and_then(|q| q.get("proyecto")).is_some_and(Value::is_string)) {
+    if pedidos.iter().any(|p| {
+        p.get("proyecto").is_some_and(Value::is_string)
+            || p.get("que")
+                .and_then(|q| q.get("proyecto"))
+                .is_some_and(Value::is_string)
+    }) {
         if let Some(indice) = indice_de_proyectos() {
             for p in &mut pedidos {
                 poner_ids(p, &indice);
@@ -122,12 +150,25 @@ fn mandar(mut pedidos: Vec<Value>, origen: &Origen, sin_arrancar: bool) -> i32 {
     }
     if let Origen::Enlace { firmado } = origen {
         // Lo peor de todos los pedidos del enlace manda.
-        let peor = pedidos.iter().map(|p| if *firmado { firmado_aun_asi(p) } else { orden::seguridad(p) }).max().unwrap_or(Seguridad::Directa);
+        let peor = pedidos
+            .iter()
+            .map(|p| {
+                if *firmado {
+                    firmado_aun_asi(p)
+                } else {
+                    orden::seguridad(p)
+                }
+            })
+            .max()
+            .unwrap_or(Seguridad::Directa);
         match peor {
             Seguridad::Directa => {}
             Seguridad::Prohibida(motivo) => {
                 let t = textos();
-                avisar(&t.t("orden-titulo"), &t.t(&format!("orden-prohibido-{motivo}")));
+                avisar(
+                    &t.t("orden-titulo"),
+                    &t.t(&format!("orden-prohibido-{motivo}")),
+                );
                 return codigo::RECHAZADO;
             }
             Seguridad::Confirmar(motivo) => {
@@ -149,13 +190,18 @@ fn mandar(mut pedidos: Vec<Value>, origen: &Origen, sin_arrancar: bool) -> i32 {
     let textos_json: Vec<String> = pedidos.iter().map(Value::to_string).collect();
     let exe = std::env::current_exe().ok();
     let inicio = std::time::Instant::now();
-    let envio = pixpin_shell::mensajero::enviar_pedidos_o_arrancar(&textos_json, exe.as_deref().filter(|_| !sin_arrancar));
+    let envio = pixpin_shell::mensajero::enviar_pedidos_o_arrancar(
+        &textos_json,
+        exe.as_deref().filter(|_| !sin_arrancar),
+    );
     let ms = inicio.elapsed().as_millis();
     use pixpin_shell::mensajero::Envio;
     let motivo = match &envio {
         Envio::Aceptado => None,
         Envio::VersionNo => Some(textos().t("orden-version")),
-        Envio::NoSeEntiende => Some("PixPin no entiende el pedido (¿es mas antigua que esta orden?)".to_string()),
+        Envio::NoSeEntiende => {
+            Some("PixPin no entiende el pedido (¿es mas antigua que esta orden?)".to_string())
+        }
         Envio::SinApp(m) => {
             let mut a = fluent_bundle::FluentArgs::new();
             a.set("motivo", m.clone());
@@ -199,7 +245,13 @@ fn indice_de_proyectos() -> Option<Vec<(String, String)>> {
     let appdata = pixpin_shell::entorno::appdata().ok()?;
     let ubicacion = pixpin_store::rutas::resolver(&dir_exe, &appdata);
     let indice = pixpin_proyecto::almacen::Indice::leer_si_esta(ubicacion.raiz()).ok()?;
-    Some(indice.proyectos.into_iter().map(|f| (f.id, f.nombre)).collect())
+    Some(
+        indice
+            .proyectos
+            .into_iter()
+            .map(|f| (f.id, f.nombre))
+            .collect(),
+    )
 }
 
 /// `--proyecto Obra` → el id de «Obra». Un id que ya existe se deja; un
@@ -207,7 +259,9 @@ fn indice_de_proyectos() -> Option<Vec<(String, String)>> {
 /// Si no se encuentra se deja tal cual: la app dira que no existe.
 fn poner_ids(pedido: &mut Value, proyectos: &[(String, String)]) {
     fn uno(v: &mut Value, proyectos: &[(String, String)]) {
-        let Some(t) = v.as_str().map(|s| s.trim().to_string()) else { return };
+        let Some(t) = v.as_str().map(|s| s.trim().to_string()) else {
+            return;
+        };
         let bajo = t.to_lowercase();
         if bajo == "guardados" || bajo == "mensajes guardados" {
             *v = Value::Null;
@@ -216,7 +270,10 @@ fn poner_ids(pedido: &mut Value, proyectos: &[(String, String)]) {
         if proyectos.iter().any(|(id, _)| *id == t) {
             return;
         }
-        if let Some((id, _)) = proyectos.iter().find(|(_, n)| n.trim().to_lowercase() == bajo) {
+        if let Some((id, _)) = proyectos
+            .iter()
+            .find(|(_, n)| n.trim().to_lowercase() == bajo)
+        {
             *v = Value::String(id.clone());
         }
     }
@@ -234,7 +291,9 @@ fn poner_ids(pedido: &mut Value, proyectos: &[(String, String)]) {
 fn ocr(rutas: &[PathBuf], copiar: bool) -> i32 {
     let mut todo = Vec::new();
     for r in rutas {
-        let leido = pixpin_codec::imagen::cargar(r).map_err(|e| e.to_string()).and_then(|img| crate::texto_de_imagen(&img).map_err(|e| format!("{e:#}")));
+        let leido = pixpin_codec::imagen::cargar(r)
+            .map_err(|e| e.to_string())
+            .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| format!("{e:#}")));
         match leido {
             Ok(t) => todo.push(t),
             Err(e) => {
@@ -249,7 +308,11 @@ fn ocr(rutas: &[PathBuf], copiar: bool) -> i32 {
         return codigo::FALLO;
     }
     pixpin_shell::consola::escribir(&format!("{texto}\n"));
-    if texto.trim().is_empty() { codigo::FALLO } else { codigo::ACEPTADO }
+    if texto.trim().is_empty() {
+        codigo::FALLO
+    } else {
+        codigo::ACEPTADO
+    }
 }
 
 /// «Preguntar al asistente» del Explorador: la caja de escribir de siempre
@@ -262,7 +325,14 @@ fn preguntar(rutas: &[PathBuf]) -> Option<String> {
     let t = textos();
     let mut a = fluent_bundle::FluentArgs::new();
     a.set("cuantos", rutas.len() as i64);
-    a.set("nombre", rutas.first().and_then(|r| r.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    a.set(
+        "nombre",
+        rutas
+            .first()
+            .and_then(|r| r.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    );
     let caja = pixpin_shell::caja_de_texto::abrir(pixpin_shell::caja_de_texto::Pedido {
         titulo: t.t_args("orden-preguntar-titulo", &a),
         texto: String::new(),
@@ -270,7 +340,9 @@ fn preguntar(rutas: &[PathBuf]) -> Option<String> {
         cancelar: t.t("orden-preguntar-cancelar"),
     });
     let escrito = caja.recv().ok().flatten()?;
-    let escrito = pixpin_shell::caja_de_texto::de_windows(&escrito).trim().to_string();
+    let escrito = pixpin_shell::caja_de_texto::de_windows(&escrito)
+        .trim()
+        .to_string();
     (!escrito.is_empty()).then_some(escrito)
 }
 
@@ -280,15 +352,20 @@ mod pruebas {
     use serde_json::json;
 
     fn proyectos() -> Vec<(String, String)> {
-        vec![("pr-1".into(), "Obra Antisuyo".into()), ("pr-2".into(), "Tesis".into())]
+        vec![
+            ("pr-1".into(), "Obra Antisuyo".into()),
+            ("pr-2".into(), "Tesis".into()),
+        ]
     }
 
     #[test]
     fn el_nombre_del_proyecto_se_cambia_por_su_id() {
-        let mut p = json!({"pixpin":1,"accion":"anadir_tarea","texto":"x","proyecto":"obra antisuyo"});
+        let mut p =
+            json!({"pixpin":1,"accion":"anadir_tarea","texto":"x","proyecto":"obra antisuyo"});
         poner_ids(&mut p, &proyectos());
         assert_eq!(p["proyecto"], json!("pr-1"));
-        let mut p = json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"Tesis"}});
+        let mut p =
+            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"Tesis"}});
         poner_ids(&mut p, &proyectos());
         assert_eq!(p["que"]["proyecto"], json!("pr-2"));
         let mut p = json!({"pixpin":1,"accion":"chat","texto":"x","proyecto":"Mensajes guardados"});
@@ -303,19 +380,36 @@ mod pruebas {
         assert_eq!(p["proyecto"], json!("Cocina"));
         // Un id que ya existe no se toca aunque otro proyecto se llame asi.
         let mut p = json!({"pixpin":1,"accion":"chat","texto":"x","proyecto":"pr-2"});
-        poner_ids(&mut p, &[("pr-2".into(), "x".into()), ("pr-9".into(), "pr-2".into())]);
+        poner_ids(
+            &mut p,
+            &[("pr-2".into(), "x".into()), ("pr-9".into(), "pr-2".into())],
+        );
         assert_eq!(p["proyecto"], json!("pr-2"));
     }
 
     #[test]
     fn un_enlace_firmado_no_pregunta_pero_una_ruta_de_red_sigue_sin_pasar() {
-        assert_eq!(firmado_aun_asi(&json!({"pixpin":1,"accion":"borrar_lista","codigo":"1"})), Seguridad::Directa);
-        assert!(matches!(firmado_aun_asi(&json!({"pixpin":1,"accion":"pinear","ruta":"\\\\srv\\x.png"})), Seguridad::Prohibida(_)));
+        assert_eq!(
+            firmado_aun_asi(&json!({"pixpin":1,"accion":"borrar_lista","codigo":"1"})),
+            Seguridad::Directa
+        );
+        assert!(matches!(
+            firmado_aun_asi(&json!({"pixpin":1,"accion":"pinear","ruta":"\\\\srv\\x.png"})),
+            Seguridad::Prohibida(_)
+        ));
     }
 
     #[test]
     fn cada_motivo_tiene_su_texto_en_los_dos_idiomas() {
-        let motivos = ["ficheros", "asistente", "microfono", "otros-aparatos", "automatizacion", "borra", "cambia"];
+        let motivos = [
+            "ficheros",
+            "asistente",
+            "microfono",
+            "otros-aparatos",
+            "automatizacion",
+            "borra",
+            "cambia",
+        ];
         for lengua in [pixpin_store::Idioma::Espanol, pixpin_store::Idioma::Ingles] {
             let t = Catalogo::nuevo(lengua);
             for m in motivos {

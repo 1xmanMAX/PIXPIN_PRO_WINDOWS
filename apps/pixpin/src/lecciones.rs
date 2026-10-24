@@ -19,9 +19,9 @@
 //! y `lecciones` de otros programas (`docs/protocolo-pedidos.md`).
 
 pub mod adjuntos;
-pub(crate) mod exportar;
 pub mod almacen;
 mod dictar;
+pub(crate) mod exportar;
 pub mod ficha;
 pub(crate) mod ui;
 

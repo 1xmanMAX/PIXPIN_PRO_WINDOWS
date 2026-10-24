@@ -46,22 +46,36 @@ pub fn elegir<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> Result<&'a A
         .iter()
         .rev()
         .find(|a| a.nombre.to_lowercase() == buscado)
-        .or_else(|| adjuntos.iter().rev().find(|a| a.nombre.to_lowercase().contains(&buscado)))
+        .or_else(|| {
+            adjuntos
+                .iter()
+                .rev()
+                .find(|a| a.nombre.to_lowercase().contains(&buscado))
+        })
         .ok_or_else(|| {
             let hay: Vec<&str> = adjuntos.iter().map(|a| a.nombre.as_str()).collect();
-            format!("no hay ningun adjunto llamado «{nombre}»; hay: {}", hay.join(", "))
+            format!(
+                "no hay ningun adjunto llamado «{nombre}»; hay: {}",
+                hay.join(", ")
+            )
         })
 }
 
 pub fn es_pdf(ruta: &Path) -> bool {
-    ruta.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+    ruta.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
 pub fn es_imagen(ruta: &Path) -> bool {
     ruta.extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
-        .is_some_and(|e| matches!(e.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" | "tif" | "tiff" | "heic"))
+        .is_some_and(|e| {
+            matches!(
+                e.as_str(),
+                "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" | "tif" | "tiff" | "heic"
+            )
+        })
 }
 
 /// Las hojas pedidas (desde 0), dentro de `total`. `rangos` vacio: todas.
@@ -91,7 +105,8 @@ pub fn leer(ruta: &Path, paginas: &[(u32, u32)], parar: &AtomicBool) -> Result<S
         if !pixpin_ocr::disponible() {
             return Err("este Windows no tiene ningun idioma de OCR instalado".into());
         }
-        let imagen = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+        let imagen = pixpin_codec::imagen::cargar(ruta)
+            .map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
         let texto = crate::texto_de_imagen(&imagen).map_err(|e| format!("{e:#}"))?;
         if texto.trim().is_empty() {
             return Err("no se encontro texto en la imagen".into());
@@ -141,10 +156,15 @@ fn leer_pdf(ruta: &Path, paginas: &[(u32, u32)], parar: &AtomicBool) -> Result<S
         salida.push_str("\n\n");
     }
     if recortado {
-        salida.push_str(&format!("[solo las {MAX_HOJAS} primeras hojas de las pedidas]\n"));
+        salida.push_str(&format!(
+            "[solo las {MAX_HOJAS} primeras hojas de las pedidas]\n"
+        ));
     }
     let salida = salida.trim_end().to_string();
-    if salida.lines().all(|l| l.trim().is_empty() || l.starts_with("--- Hoja")) {
+    if salida
+        .lines()
+        .all(|l| l.trim().is_empty() || l.starts_with("--- Hoja"))
+    {
         return Err("no se encontro texto en el PDF".into());
     }
     Ok(salida)

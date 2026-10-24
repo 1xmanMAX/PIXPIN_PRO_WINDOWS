@@ -504,7 +504,12 @@ fn anillo_con_huecos(contorno: &[Punto2], huecos: &[Vec<Punto2>]) -> Vec<Punto2>
 /// tramos: dos verdades sobre por donde pasa un arco significan que se pica
 /// donde no se ve, porque `impacto.rs` usa esta y el reajuste usa la otra.
 pub(crate) fn arco_muestreado(e: &Elemento, inicio: f32, barrido: Option<f32>) -> Vec<Punto2> {
-    crate::arco::puntos_del_arco((e.x, e.y, e.ancho, e.alto), inicio, barrido, pasos_del_arco(e.ancho.max(e.alto) / 2.0))
+    crate::arco::puntos_del_arco(
+        (e.x, e.y, e.ancho, e.alto),
+        inicio,
+        barrido,
+        pasos_del_arco(e.ancho.max(e.alto) / 2.0),
+    )
 }
 
 /// **Cuantos tramos por vuelta** para un arco de radio `r`: los 72 del movil
@@ -890,7 +895,13 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                 .extras
                 .alineacion
                 .map_or(0.0, |a| ((e.ancho - m.ancho) * a.fraccion()).max(0.0));
-            salida.extend(crate::texto_rico::ordenes(&m, e.x + dx, e.y, familia, color));
+            salida.extend(crate::texto_rico::ordenes(
+                &m,
+                e.x + dx,
+                e.y,
+                familia,
+                color,
+            ));
         }
 
         Figura::Texto {
@@ -1198,12 +1209,7 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         // pintado para los tres (`instrumento::ordenes`), y por tanto el
         // mismo en pantalla, PNG, SVG, PDF y la pagina web.
         Figura::Instrumento(i) => {
-            salida.extend(crate::instrumento::ordenes(
-                e,
-                i,
-                color,
-                letra_de_rotulo(e),
-            ));
+            salida.extend(crate::instrumento::ordenes(e, i, color, letra_de_rotulo(e)));
         }
     }
 

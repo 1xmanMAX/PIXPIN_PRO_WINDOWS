@@ -41,7 +41,11 @@ pub fn falta(raiz: &Path, modelo: &Modelo) -> u64 {
         .filter(|f| !descarga::fichero_listo(&c, f))
         .map(|f| f.bytes)
         .sum();
-    let motor = if descarga::runtime_listo(raiz, &LLAMA_CPP) { 0 } else { LLAMA_CPP.zip.bytes };
+    let motor = if descarga::runtime_listo(raiz, &LLAMA_CPP) {
+        0
+    } else {
+        LLAMA_CPP.zip.bytes
+    };
     pesos + motor
 }
 
@@ -81,29 +85,32 @@ impl Descarga {
         let (tx, rx) = channel();
         let cancelar = Arc::new(AtomicBool::new(false));
         let c = cancelar.clone();
-        let lanzado = std::thread::Builder::new().name("asistente-descarga".into()).spawn({
-            let tx = tx.clone();
-            move || {
-                let mut ultimo_aviso = std::time::Instant::now() - std::time::Duration::from_secs(1);
-                let r = bajar(
-                    &mut |p: Progreso| {
-                        // Diez avisos por segundo bastan para una barra; el
-                        // bajador avisa en cada bloque.
-                        if p.verificando || ultimo_aviso.elapsed().as_millis() >= 100 {
-                            ultimo_aviso = std::time::Instant::now();
-                            let _ = tx.send(AvisoDescarga::Progreso(p));
-                        }
-                    },
-                    &c,
-                );
-                let _ = tx.send(match r {
-                    Ok(()) => AvisoDescarga::Lista,
-                    Err(ErrorIa::Cancelado) => AvisoDescarga::Cancelada,
-                    Err(_) if c.load(Ordering::Relaxed) => AvisoDescarga::Cancelada,
-                    Err(e) => AvisoDescarga::Fallo(e.to_string()),
-                });
-            }
-        });
+        let lanzado = std::thread::Builder::new()
+            .name("asistente-descarga".into())
+            .spawn({
+                let tx = tx.clone();
+                move || {
+                    let mut ultimo_aviso =
+                        std::time::Instant::now() - std::time::Duration::from_secs(1);
+                    let r = bajar(
+                        &mut |p: Progreso| {
+                            // Diez avisos por segundo bastan para una barra; el
+                            // bajador avisa en cada bloque.
+                            if p.verificando || ultimo_aviso.elapsed().as_millis() >= 100 {
+                                ultimo_aviso = std::time::Instant::now();
+                                let _ = tx.send(AvisoDescarga::Progreso(p));
+                            }
+                        },
+                        &c,
+                    );
+                    let _ = tx.send(match r {
+                        Ok(()) => AvisoDescarga::Lista,
+                        Err(ErrorIa::Cancelado) => AvisoDescarga::Cancelada,
+                        Err(_) if c.load(Ordering::Relaxed) => AvisoDescarga::Cancelada,
+                        Err(e) => AvisoDescarga::Fallo(e.to_string()),
+                    });
+                }
+            });
         if let Err(e) = lanzado {
             let _ = tx.send(AvisoDescarga::Fallo(e.to_string()));
         }
@@ -136,7 +143,9 @@ impl Descarga {
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     if self.acabada.is_none() {
-                        self.acabada = Some(AvisoDescarga::Fallo("la descarga se detuvo de golpe".into()));
+                        self.acabada = Some(AvisoDescarga::Fallo(
+                            "la descarga se detuvo de golpe".into(),
+                        ));
                         cambio = true;
                     }
                     break;

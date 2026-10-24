@@ -128,7 +128,12 @@ pub fn encargos_de_json(texto: &str) -> Vec<Encargo> {
     let Ok(v) = serde_json::from_str::<Value>(texto) else {
         return Vec::new();
     };
-    let s = |e: &Value, k: &str| e.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
+    let s = |e: &Value, k: &str| {
+        e.get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     v.get("encargos")
         .and_then(Value::as_array)
         .into_iter()
@@ -153,7 +158,10 @@ pub fn encargos_de_json(texto: &str) -> Vec<Encargo> {
                 empezado: e.get("empezado").and_then(Value::as_i64),
                 acabado: e.get("acabado").and_then(Value::as_i64),
                 resumen: s(e, "resumen"),
-                con_fallos: e.get("con_fallos").and_then(Value::as_bool).unwrap_or(false),
+                con_fallos: e
+                    .get("con_fallos")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
                 abrir,
             })
         })
@@ -214,7 +222,11 @@ fn abrir_de(e: &Encargo) -> Value {
 /// `delante`: cuantos tiene antes (los en cola).
 pub fn resultado_de_encargo(e: &Encargo, delante: usize, ahora: i64) -> Resultado {
     let que = recortar(&crate::imagenes::sin_fichas(&e.texto), 70);
-    let que = if que.is_empty() { "la foto".to_string() } else { que };
+    let que = if que.is_empty() {
+        "la foto".to_string()
+    } else {
+        que
+    };
     let hace = |t: Option<i64>| crate::fecha::hace_con_horas(t.unwrap_or(e.creado), ahora);
     let (titulo, subtitulo) = match e.estado.as_str() {
         "en_cola" => (
@@ -227,18 +239,36 @@ pub fn resultado_de_encargo(e: &Encargo, delante: usize, ahora: i64) -> Resultad
         ),
         "haciendo" => (
             format!("⚙️ Haciendo: {que}"),
-            format!("Empezó {} · te aviso al acabar · Intro: abrir el chat «Asistente»", hace(e.empezado)),
+            format!(
+                "Empezó {} · te aviso al acabar · Intro: abrir el chat «Asistente»",
+                hace(e.empezado)
+            ),
         ),
         "hecha" => (
-            format!("{} {que}", if e.con_fallos { "⚠️ A medias:" } else { "✅ Hecha:" }),
-            format!("{} · {} · Intro: abrir", recortar(&e.resumen, 90), hace(e.acabado)),
+            format!(
+                "{} {que}",
+                if e.con_fallos {
+                    "⚠️ A medias:"
+                } else {
+                    "✅ Hecha:"
+                }
+            ),
+            format!(
+                "{} · {} · Intro: abrir",
+                recortar(&e.resumen, 90),
+                hace(e.acabado)
+            ),
         ),
         _ => (
             format!("❌ Falló: {que}"),
             format!("{} · {}", recortar(&e.resumen, 90), hace(e.acabado)),
         ),
     };
-    let accion = if e.pendiente() { pedido("asistente", json!({})) } else { abrir_de(e) };
+    let accion = if e.pendiente() {
+        pedido("asistente", json!({}))
+    } else {
+        abrir_de(e)
+    };
     let mut r = Resultado::nuevo(titulo, subtitulo, glifo::ASISTENTE, Accion::Pedido(accion));
     r.clave = Some(format!("encargo/{}", e.id));
     r
@@ -259,7 +289,11 @@ pub fn filas_de_encargos(lista: &[Encargo], ahora: i64) -> Vec<Resultado> {
     }
     let mut acabados: Vec<&Encargo> = lista.iter().filter(|e| !e.pendiente()).collect();
     acabados.sort_by_key(|e| std::cmp::Reverse(e.acabado.unwrap_or(e.creado)));
-    v.extend(acabados.into_iter().map(|e| resultado_de_encargo(e, 0, ahora)));
+    v.extend(
+        acabados
+            .into_iter()
+            .map(|e| resultado_de_encargo(e, 0, ahora)),
+    );
     v.truncate(ENCARGOS_A_LA_VISTA.max(delante));
     v
 }
@@ -281,7 +315,9 @@ pub fn motor_de_toml(toml: &str) -> String {
         if !en {
             continue;
         }
-        let Some((k, v)) = l.split_once('=') else { continue };
+        let Some((k, v)) = l.split_once('=') else {
+            continue;
+        };
         let v = v.trim().trim_matches('"').to_string();
         match k.trim() {
             "motor" => motor = v,
@@ -307,11 +343,20 @@ pub fn motor(raiz: &Path) -> String {
 
 /// **Las filas de `p asistente …`**. `destino_id`/`destino`: el chat de la
 /// `@arroba` (o `null` y «en Mensajes guardados»).
-pub fn resultados(proyectos: &[Proyecto], resto: &str, destino_id: Value, destino: &str, ctx: &Contexto) -> Vec<Resultado> {
+pub fn resultados(
+    proyectos: &[Proyecto],
+    resto: &str,
+    destino_id: Value,
+    destino: &str,
+    ctx: &Contexto,
+) -> Vec<Resultado> {
     let mut v = Vec::new();
     let raiz = ctx.raiz_de_datos();
     let lista = raiz.as_deref().map(encargos).unwrap_or_default();
-    let motor = raiz.as_deref().map(motor).unwrap_or_else(|| motor_de_toml(""));
+    let motor = raiz
+        .as_deref()
+        .map(motor)
+        .unwrap_or_else(|| motor_de_toml(""));
     let pendientes = lista.iter().filter(|e| e.pendiente()).count();
     let abrir_chat = Resultado::nuevo(
         "Abrir el chat «Asistente»",
@@ -336,7 +381,10 @@ pub fn resultados(proyectos: &[Proyecto], resto: &str, destino_id: Value, destin
             let estado = if a.activa { "" } else { " · apagada" };
             let mut r = Resultado::nuevo(
                 format!("▶ {}", a.nombre),
-                format!("Automatización ({}){estado} · Intro: correrla ya", cuando(&a)),
+                format!(
+                    "Automatización ({}){estado} · Intro: correrla ya",
+                    cuando(&a)
+                ),
                 glifo::AUTOMATIZACION,
                 Accion::Pedido(pedido("asistente", json!({ "automatizacion": a.id }))),
             );
@@ -358,10 +406,15 @@ pub fn resultados(proyectos: &[Proyecto], resto: &str, destino_id: Value, destin
     let id = id_de(resto, ctx.ahora);
     let mut r = Resultado::nuevo(
         format!("Pedir al asistente: {resto}"),
-        format!("Intro: a la cola ({turno}) · contesta {motor}{sobre} · te aviso con una notificación al acabar"),
+        format!(
+            "Intro: a la cola ({turno}) · contesta {motor}{sobre} · te aviso con una notificación al acabar"
+        ),
         glifo::ASISTENTE,
         Accion::PedirYSeguir {
-            pedido: pedido("asistente", json!({ "texto": resto, "proyecto": destino_id, "encargo": id })),
+            pedido: pedido(
+                "asistente",
+                json!({ "texto": resto, "proyecto": destino_id, "encargo": id }),
+            ),
             consulta: ctx.consulta(VERBO),
         },
     );

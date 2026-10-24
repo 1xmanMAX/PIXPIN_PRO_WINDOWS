@@ -13,7 +13,10 @@ struct Prueba {
 }
 
 fn carpeta(nombre: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("pixpin-exportar-cad-{nombre}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!(
+        "pixpin-exportar-cad-{nombre}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -52,7 +55,9 @@ fn prueba(nombre: &str, anotar: bool) -> Prueba {
 
 /// Donde dejar lo que se quiere mirar: `PIXPIN_SALIDA` o la temporal.
 fn salida() -> PathBuf {
-    let d = std::env::var("PIXPIN_SALIDA").map(PathBuf::from).unwrap_or_else(|_| std::env::temp_dir().join("pixpin-exportar-cad-salida"));
+    let d = std::env::var("PIXPIN_SALIDA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("pixpin-exportar-cad-salida"));
     std::fs::create_dir_all(&d).unwrap();
     d
 }
@@ -65,7 +70,10 @@ fn el_html_lleva_las_capas_los_grosores_las_cotas_y_lo_anotado() {
     assert!(h.contains("<title>planta</title>"));
     // Las dos capas, la apagada apagada; el grosor de 0,50 mm.
     assert!(h.contains(r#"{"n":"Muros","on":true"#), "sin la capa Muros");
-    assert!(h.contains(r#"{"n":"Ejes","on":false"#), "sin la capa Ejes apagada");
+    assert!(
+        h.contains(r#"{"n":"Ejes","on":false"#),
+        "sin la capa Ejes apagada"
+    );
     assert!(h.contains(r#""g":50"#), "sin el grosor");
     // La cota, el marco y lo anotado (el SVG del motor y su encaje).
     assert!(h.contains(r#""cotas":[["#) && h.contains(r#""marcos":[["#));
@@ -93,9 +101,17 @@ fn el_pdf_es_valido_se_abre_y_lleva_lo_anotado() {
     assert_eq!(doc.medidas().len(), 1);
     let img = doc.renderizar(0, 1200).unwrap();
     // Hay rojo (lo anotado o la capa Muros) sobre el blanco.
-    let rojos = img.pixeles.chunks_exact(4).filter(|p| p[0] > 150 && p[1] < 90 && p[2] < 90).count();
+    let rojos = img
+        .pixeles
+        .chunks_exact(4)
+        .filter(|p| p[0] > 150 && p[1] < 90 && p[2] < 90)
+        .count();
     assert!(rojos > 50, "{rojos}");
-    std::fs::write(salida().join("plano-de-prueba-pdf.png"), pixpin_codec::codificar_png(&img).unwrap()).unwrap();
+    std::fs::write(
+        salida().join("plano-de-prueba-pdf.png"),
+        pixpin_codec::codificar_png(&img).unwrap(),
+    )
+    .unwrap();
     let _ = std::fs::remove_dir_all(&p.carpeta);
 }
 
@@ -104,9 +120,17 @@ fn la_imagen_sale_con_el_plano_pintado() {
     let p = prueba("png", true);
     let img = imagen(&p.plano).unwrap();
     assert!(img.ancho >= 1000 && img.alto >= 100);
-    let oscuros = img.pixeles.chunks_exact(4).filter(|p| p[0] < 200 || p[1] < 200).count();
+    let oscuros = img
+        .pixeles
+        .chunks_exact(4)
+        .filter(|p| p[0] < 200 || p[1] < 200)
+        .count();
     assert!(oscuros > 100, "{oscuros}");
-    std::fs::write(salida().join("plano-de-prueba.png"), pixpin_codec::codificar_png(&img).unwrap()).unwrap();
+    std::fs::write(
+        salida().join("plano-de-prueba.png"),
+        pixpin_codec::codificar_png(&img).unwrap(),
+    )
+    .unwrap();
     let _ = std::fs::remove_dir_all(&p.carpeta);
 }
 
@@ -119,7 +143,11 @@ fn un_plano_vacio_o_roto_no_da_pdf_ni_imagen_pero_si_pagina() {
     assert!(pdf(&p).is_err());
     assert!(imagen(&p).is_err());
     // La pagina sale (sin nada que pintar), no se cae.
-    assert!(html(&p, pixpin_store::Idioma::Espanol).unwrap().contains("<canvas"));
+    assert!(
+        html(&p, pixpin_store::Idioma::Espanol)
+            .unwrap()
+            .contains("<canvas")
+    );
     // Uno roto no se lee por capas.
     std::fs::write(&ruta, b"esto no es un plano").unwrap();
     assert!(pixpin_cad::convertir::convertir_fichero_por_capas(&ruta).is_err());
@@ -134,7 +162,9 @@ fn el_dxf_de_un_plano_se_vuelve_a_leer() {
     let (m, _) = pixpin_cad::convertir::convertir_fichero(&r).unwrap();
     assert!(!m.vacio());
     // Caso negativo: un destino donde no se puede escribir.
-    assert!(pixpin_cad::leer::a_dxf(&p.plano.ruta, &p.carpeta.join("no-existe").join("x.dxf")).is_err());
+    assert!(
+        pixpin_cad::leer::a_dxf(&p.plano.ruta, &p.carpeta.join("no-existe").join("x.dxf")).is_err()
+    );
     let _ = std::fs::remove_dir_all(&p.carpeta);
 }
 

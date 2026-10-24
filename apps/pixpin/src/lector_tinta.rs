@@ -151,7 +151,10 @@ pub mod turnos {
 
     fn grupo_de(capa: &Path) -> Option<String> {
         let t = TURNOS.lock().unwrap_or_else(|e| e.into_inner());
-        t.iter().rev().find(|(r, _)| r == capa).map(|(_, g)| g.clone())
+        t.iter()
+            .rev()
+            .find(|(r, _)| r == capa)
+            .map(|(_, g)| g.clone())
     }
 
     /// Lo marcado al leer una capa: el grupo del turno y como estaba la
@@ -169,7 +172,8 @@ pub mod turnos {
         /// El paso del turno es lo ultimo hecho en la escena (Ctrl+Z lo
         /// quitaria).
         pub fn arriba(&self, escena: &Escena) -> bool {
-            escena.pasos_cerrados() == self.cerrados && escena.pasos_en_historial().0 == self.deshacer
+            escena.pasos_cerrados() == self.cerrados
+                && escena.pasos_en_historial().0 == self.deshacer
         }
 
         /// El paso del turno se acaba de deshacer (Ctrl+Y lo devolveria).
@@ -184,12 +188,21 @@ pub mod turnos {
     /// vista.
     pub fn marcar(capa: &Path, escena: &mut Escena) -> Option<Marcado> {
         let grupo = grupo_de(capa)?;
-        let ids: Vec<u64> = escena.visibles().filter(|e| e.grupos.contains(&grupo)).map(|e| e.id).collect();
+        let ids: Vec<u64> = escena
+            .visibles()
+            .filter(|e| e.grupos.contains(&grupo))
+            .map(|e| e.id)
+            .collect();
         if ids.is_empty() {
             return None;
         }
         escena.apuntar_anadidos(&ids);
-        Some(Marcado { grupo, cerrados: escena.pasos_cerrados(), deshacer: escena.pasos_en_historial().0, sin_apuntar: true })
+        Some(Marcado {
+            grupo,
+            cerrados: escena.pasos_cerrados(),
+            deshacer: escena.pasos_en_historial().0,
+            sin_apuntar: true,
+        })
     }
 }
 
@@ -429,7 +442,12 @@ impl Capa {
                 let mut escena = con_resaltadores(excalidraw::a_escena(&lienzo));
                 // Lo ultimo del asistente, en un paso de deshacer.
                 let turno = turnos::marcar(ruta, &mut escena);
-                Capa { escena, lienzo, turno, ..Capa::default() }
+                Capa {
+                    escena,
+                    lienzo,
+                    turno,
+                    ..Capa::default()
+                }
             }
             Err(e) => {
                 tracing::warn!(?e, ruta = %ruta.display(), "capa de tinta ilegible; se empieza vacia");
@@ -941,7 +959,9 @@ impl Tinta {
                         zoom,
                         |id| activa && gesto.elemento_en_curso().is_some_and(|(en, _)| en == id),
                         |caja| match parte {
-                            Parte::FueraDe((x0, y0, x1, y1)) => !(caja.0 >= x0 && caja.1 >= y0 && caja.2 <= x1 && caja.3 <= y1),
+                            Parte::FueraDe((x0, y0, x1, y1)) => {
+                                !(caja.0 >= x0 && caja.1 >= y0 && caja.2 <= x1 && caja.3 <= y1)
+                            }
                             _ => true,
                         },
                     );

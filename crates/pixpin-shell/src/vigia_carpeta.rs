@@ -11,8 +11,8 @@ use std::path::Path;
 
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Storage::FileSystem::{
-    FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE, FindCloseChangeNotification,
-    FindFirstChangeNotificationW, FindNextChangeNotification,
+    FILE_NOTIFY_CHANGE_FILE_NAME, FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
+    FindCloseChangeNotification, FindFirstChangeNotificationW, FindNextChangeNotification,
 };
 use windows::Win32::System::Threading::WaitForSingleObject;
 use windows::core::HSTRING;
@@ -36,7 +36,9 @@ impl VigiaCarpeta {
             FindFirstChangeNotificationW(
                 &HSTRING::from(carpeta.as_os_str()),
                 true,
-                FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE,
+                FILE_NOTIFY_CHANGE_FILE_NAME
+                    | FILE_NOTIFY_CHANGE_LAST_WRITE
+                    | FILE_NOTIFY_CHANGE_SIZE,
             )
         }
         .ok()?;

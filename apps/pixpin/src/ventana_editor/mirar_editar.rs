@@ -46,7 +46,12 @@ impl AlEditar {
 /// **Escape editando** vuelve a mirar si no hay nada a medias (un texto o
 /// un arrastre los suelta antes el motor) ni se presenta; en el anotador de
 /// pantalla no, que tiene su regla.
-pub(super) fn escape_vuelve_a_mirar(editando: bool, es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool) -> bool {
+pub(super) fn escape_vuelve_a_mirar(
+    editando: bool,
+    es_lienzo: bool,
+    sin_presentar: bool,
+    gesto_en_reposo: bool,
+) -> bool {
     editando && es_lienzo && sin_presentar && gesto_en_reposo
 }
 
@@ -74,9 +79,21 @@ mod pruebas {
     #[test]
     fn escape_editando_vuelve_a_mirar_solo_sin_nada_a_medias() {
         assert!(escape_vuelve_a_mirar(true, true, true, true));
-        assert!(!escape_vuelve_a_mirar(false, true, true, true), "mirando sigue lo de siempre");
-        assert!(!escape_vuelve_a_mirar(true, true, true, false), "un arrastre a medias lo cancela el motor");
-        assert!(!escape_vuelve_a_mirar(true, true, false, true), "presentando, deja de presentar");
-        assert!(!escape_vuelve_a_mirar(true, false, true, true), "el anotador de pantalla tiene su regla");
+        assert!(
+            !escape_vuelve_a_mirar(false, true, true, true),
+            "mirando sigue lo de siempre"
+        );
+        assert!(
+            !escape_vuelve_a_mirar(true, true, true, false),
+            "un arrastre a medias lo cancela el motor"
+        );
+        assert!(
+            !escape_vuelve_a_mirar(true, true, false, true),
+            "presentando, deja de presentar"
+        );
+        assert!(
+            !escape_vuelve_a_mirar(true, false, true, true),
+            "el anotador de pantalla tiene su regla"
+        );
     }
 }

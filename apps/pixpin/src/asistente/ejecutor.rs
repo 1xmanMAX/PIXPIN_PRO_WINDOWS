@@ -9,9 +9,9 @@
 //! sigue suelta.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use pixpin_ia::agente::Ejecutor;
@@ -87,7 +87,12 @@ pub struct EjecutorDelChat {
 }
 
 impl EjecutorDelChat {
-    pub fn nuevo(tx: Sender<Aviso>, proyecto: String, adjuntos: Vec<Adjunto>, parar: Arc<AtomicBool>) -> EjecutorDelChat {
+    pub fn nuevo(
+        tx: Sender<Aviso>,
+        proyecto: String,
+        adjuntos: Vec<Adjunto>,
+        parar: Arc<AtomicBool>,
+    ) -> EjecutorDelChat {
         EjecutorDelChat {
             tx,
             versiones: Vec::new(),
@@ -220,11 +225,23 @@ impl EjecutorDelChat {
             Err(_) => return None,
         };
         let img = r.imagen?;
-        let ruta = std::env::temp_dir().join(format!("pixpin-lienzo-{}-{}.png", std::process::id(), self.semilla()));
-        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: img.ancho, alto: img.alto, pixeles: img.rgba }).ok()?;
+        let ruta = std::env::temp_dir().join(format!(
+            "pixpin-lienzo-{}-{}.png",
+            std::process::id(),
+            self.semilla()
+        ));
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+            ancho: img.ancho,
+            alto: img.alto,
+            pixeles: img.rgba,
+        })
+        .ok()?;
         std::fs::write(&ruta, png).ok()?;
         self.fuente = Some(img.caja);
-        self.adjuntos.push(Adjunto { nombre: "imagen del lienzo".into(), ruta: ruta.clone() });
+        self.adjuntos.push(Adjunto {
+            nombre: "imagen del lienzo".into(),
+            ruta: ruta.clone(),
+        });
         Some(ruta)
     }
 
@@ -246,7 +263,11 @@ impl EjecutorDelChat {
 
     /// Manda un pedido al lienzo y espera su respuesta (sin colgar el turno
     /// si la ventana no contesta, y cortando si el usuario para).
-    fn esperar_al_lienzo(&mut self, pedido: super::al_lienzo::Pedido, rx: std::sync::mpsc::Receiver<Result<super::al_lienzo::Respuesta, String>>) -> Result<super::al_lienzo::Respuesta, String> {
+    fn esperar_al_lienzo(
+        &mut self,
+        pedido: super::al_lienzo::Pedido,
+        rx: std::sync::mpsc::Receiver<Result<super::al_lienzo::Respuesta, String>>,
+    ) -> Result<super::al_lienzo::Respuesta, String> {
         super::al_lienzo::pedir(pedido);
         let hasta = Instant::now() + self.espera;
         loop {
@@ -267,13 +288,19 @@ impl EjecutorDelChat {
                         }
                     }
                     // Los pasos de deshacer que cerro (lienzo abierto).
-                    if let Ok(super::al_lienzo::Respuesta { pasos: Some((a, b)), .. }) = &r {
+                    if let Ok(super::al_lienzo::Respuesta {
+                        pasos: Some((a, b)),
+                        ..
+                    }) = &r
+                    {
                         let (desde, n) = self.pasos.unwrap_or((*a, 0));
                         self.pasos = Some((desde.min(*a), n + b.saturating_sub(*a)));
                     }
                     return r;
                 }
-                Err(RecvTimeoutError::Disconnected) => return Err("la ventana del chat no contesto".into()),
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err("la ventana del chat no contesto".into());
+                }
                 Err(RecvTimeoutError::Timeout) if Instant::now() >= hasta => {
                     return Err("la ventana del chat no contesto a tiempo".into());
                 }
@@ -284,9 +311,17 @@ impl EjecutorDelChat {
 
     /// Un trabajo sin figuras ni edicion (copia, volver, comprobar) a quien
     /// tenga el lienzo, esperando su respuesta.
-    fn trabajo_en_el_lienzo(&mut self, trabajo: super::al_lienzo::Trabajo) -> Result<super::al_lienzo::Respuesta, String> {
+    fn trabajo_en_el_lienzo(
+        &mut self,
+        trabajo: super::al_lienzo::Trabajo,
+    ) -> Result<super::al_lienzo::Respuesta, String> {
         let (tx, rx) = channel();
-        let pedido = super::al_lienzo::Pedido::de_trabajo(self.proyecto.clone(), self.destino.clone(), trabajo, tx);
+        let pedido = super::al_lienzo::Pedido::de_trabajo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            trabajo,
+            tx,
+        );
         self.esperar_al_lienzo(pedido, rx)
     }
 
@@ -299,7 +334,11 @@ impl EjecutorDelChat {
             let _ = self.resumen_del_lienzo();
         }
         let (tx, rx) = channel();
-        let adjuntos = self.adjuntos.iter().map(|a| (a.nombre.clone(), a.ruta.clone())).collect();
+        let adjuntos = self
+            .adjuntos
+            .iter()
+            .map(|a| (a.nombre.clone(), a.ruta.clone()))
+            .collect();
         let pedido = super::al_lienzo::Pedido::de_trabajo(
             self.proyecto.clone(),
             self.destino.clone(),
@@ -324,10 +363,16 @@ impl EjecutorDelChat {
             "el lienzo no pudo leer las figuras".to_string()
         })?;
         if let Ok(mut u) = ULTIMO_DIBUJO.lock() {
-            u.get_or_insert_with(HashMap::new).insert(self.proyecto.clone(), documento.clone());
+            u.get_or_insert_with(HashMap::new)
+                .insert(self.proyecto.clone(), documento.clone());
         }
         let (responder, rx) = channel();
-        let mut pedido = super::al_lienzo::Pedido::nuevo(self.proyecto.clone(), self.destino.clone(), documento, responder);
+        let mut pedido = super::al_lienzo::Pedido::nuevo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            documento,
+            responder,
+        );
         pedido.marco = self.con_marco.then_some(self.ctx.marco);
         pedido.junto_a = self.fuente;
         let junto_a = self.fuente.is_some();
@@ -351,12 +396,23 @@ impl EjecutorDelChat {
         if !self.nube && self.vision.is_none() {
             return Err(pixpin_ia::hoja::SOLO_NUBE.into());
         }
-        let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
+        let vision = self
+            .vision
+            .clone()
+            .or_else(super::hoja_a_lienzo::motor_de_vision);
         let semilla = self.semilla();
-        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(self.proyecto.clone(), self.destino.clone(), self.espera).junto_a(self.fuente);
+        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            self.espera,
+        )
+        .junto_a(self.fuente);
         let tx = self.tx.clone();
         let mut progreso = |hechas: usize, total: usize| {
-            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!("{}:{hechas}/{total}", pixpin_ia::hoja::NOMBRE))));
+            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!(
+                "{}:{hechas}/{total}",
+                pixpin_ia::hoja::NOMBRE
+            ))));
         };
         // Del mismo tamano que la imagen del lienzo de la que sale.
         let mut args = args.clone();
@@ -364,32 +420,71 @@ impl EjecutorDelChat {
             && args.get("ancho").is_none()
             && let Some(m) = args.as_object_mut()
         {
-            m.insert("ancho".into(), serde_json::json!(((f.2 - f.0) as f64).clamp(200.0, 4000.0)));
+            m.insert(
+                "ancho".into(),
+                serde_json::json!(((f.2 - f.0) as f64).clamp(200.0, 4000.0)),
+            );
         }
-        super::hoja_a_lienzo::hacer(&args, &self.adjuntos, vision, semilla, &self.parar, &mut destino, &mut progreso)
+        super::hoja_a_lienzo::hacer(
+            &args,
+            &self.adjuntos,
+            vision,
+            semilla,
+            &self.parar,
+            &mut destino,
+            &mut progreso,
+        )
     }
 
     /// **Una lamina que se pidio calcar**, pasada como hoja: texto, formulas
     /// y figuras exactas (diagramas), junto a su imagen si salio del lienzo.
-    fn lamina_al_lienzo(&mut self, pagina: &super::hoja_a_lienzo::Pagina) -> Result<String, String> {
-        let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
+    fn lamina_al_lienzo(
+        &mut self,
+        pagina: &super::hoja_a_lienzo::Pagina,
+    ) -> Result<String, String> {
+        let vision = self
+            .vision
+            .clone()
+            .or_else(super::hoja_a_lienzo::motor_de_vision);
         let semilla = self.semilla();
-        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(self.proyecto.clone(), self.destino.clone(), self.espera).junto_a(self.fuente);
+        let mut destino = super::hoja_a_lienzo::PorLaCola::nuevo(
+            self.proyecto.clone(),
+            self.destino.clone(),
+            self.espera,
+        )
+        .junto_a(self.fuente);
         let tx = self.tx.clone();
         let mut progreso = |hechas: usize, total: usize| {
-            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!("{}:{hechas}/{total}", pixpin_ia::hoja::NOMBRE))));
+            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!(
+                "{}:{hechas}/{total}",
+                pixpin_ia::hoja::NOMBRE
+            ))));
         };
         // Una lamina: sus bloques de texto, en texto rico de la nube.
-        let mut o = pixpin_ia::hoja::Opciones { rico: true, ..Default::default() };
+        let mut o = pixpin_ia::hoja::Opciones {
+            rico: true,
+            ..Default::default()
+        };
         // Del tamano de la imagen (la del lienzo, o la original).
         o.ancho = match self.fuente {
             Some(f) => (f.2 - f.0) as f64,
             None => pagina.ancho as f64,
         }
         .clamp(200.0, 4000.0);
-        let inf = super::hoja_a_lienzo::pasar(pagina, vision, &o, false, semilla, &self.parar, &mut destino, &mut progreso)?;
+        let inf = super::hoja_a_lienzo::pasar(
+            pagina,
+            vision,
+            &o,
+            false,
+            semilla,
+            &self.parar,
+            &mut destino,
+            &mut progreso,
+        )?;
         let r = super::hoja_a_lienzo::contar(pagina, &inf)?;
-        Ok(format!("{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"))
+        Ok(format!(
+            "{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"
+        ))
     }
 
     /// **`anotar_inteligente`**: con el modelo de la nube (el de Ajustes, o
@@ -403,7 +498,11 @@ impl EjecutorDelChat {
             .ok_or("no se sabe donde estan los datos de PixPin")?;
         // La imagen del lienzo: a su misma escala (unidades por pixel).
         let escala = self.fuente.and_then(|c| {
-            let a = self.adjuntos.iter().rev().find(|a| a.nombre == "imagen del lienzo")?;
+            let a = self
+                .adjuntos
+                .iter()
+                .rev()
+                .find(|a| a.nombre == "imagen del lienzo")?;
             let (w, _) = pixpin_codec::imagen::medidas(&a.ruta).ok()?;
             Some((c.2 - c.0) / w.max(1) as f32)
         });
@@ -419,7 +518,10 @@ impl EjecutorDelChat {
             },
             escala,
             // La lectura de la nube corrige lo que el OCR leyo mal.
-            self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision).as_deref(),
+            self.vision
+                .clone()
+                .or_else(super::hoja_a_lienzo::motor_de_vision)
+                .as_deref(),
         )?;
         let semilla = self.semilla();
         let json: Vec<serde_json::Value> = pixpin_motor2d::excalidraw::elementos_a_json(&els)
@@ -439,7 +541,9 @@ impl EjecutorDelChat {
 
     fn anotar_inteligente(&mut self, args: &serde_json::Value) -> Result<String, String> {
         let motor = if self.nube || self.vision.is_some() {
-            self.vision.clone().or_else(super::anotar_inteligente::motor_de_la_nube)
+            self.vision
+                .clone()
+                .or_else(super::anotar_inteligente::motor_de_la_nube)
         } else {
             None
         };
@@ -447,7 +551,10 @@ impl EjecutorDelChat {
         let raiz = super::documentos::raiz()
             .or_else(|| ubicacion.as_ref().map(|u| u.raiz().to_path_buf()))
             .ok_or("no se sabe donde estan los datos de PixPin")?;
-        let idioma = ubicacion.as_ref().map(crate::compartir::idioma_de).unwrap_or(pixpin_store::Idioma::Espanol);
+        let idioma = ubicacion
+            .as_ref()
+            .map(crate::compartir::idioma_de)
+            .unwrap_or(pixpin_store::Idioma::Espanol);
         let cx = super::documentos_acciones::Contexto {
             raiz: &raiz,
             proyecto: &self.proyecto,
@@ -470,16 +577,29 @@ impl EjecutorDelChat {
             // elegido) o, cerrado, el chat en su lienzo.
             PedidoFiguras::Alargar { nombre, intervalo } => {
                 let (tx, rx) = channel();
-                let trabajo = super::al_lienzo::Trabajo::Plantilla { nombre: nombre.clone(), intervalo: intervalo.clone() };
-                let pedido = super::al_lienzo::Pedido::de_trabajo(self.proyecto.clone(), self.destino.clone(), trabajo, tx);
+                let trabajo = super::al_lienzo::Trabajo::Plantilla {
+                    nombre: nombre.clone(),
+                    intervalo: intervalo.clone(),
+                };
+                let pedido = super::al_lienzo::Pedido::de_trabajo(
+                    self.proyecto.clone(),
+                    self.destino.clone(),
+                    trabajo,
+                    tx,
+                );
                 self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
             }
             PedidoFiguras::Poner { nombre } => {
                 let todas = biblioteca::cargar(&ruta);
-                let f = buscar(&todas, nombre)
-                    .ok_or_else(|| format!("no hay ninguna figura guardada como «{nombre}» ({})", lista(&todas)))?;
+                let f = buscar(&todas, nombre).ok_or_else(|| {
+                    format!(
+                        "no hay ninguna figura guardada como «{nombre}» ({})",
+                        lista(&todas)
+                    )
+                })?;
                 let semilla = self.semilla();
-                let r = self.al_lienzo_elementos(lienzo::elementos_de_figura(f, (0.0, 0.0), semilla))?;
+                let r =
+                    self.al_lienzo_elementos(lienzo::elementos_de_figura(f, (0.0, 0.0), semilla))?;
                 Ok(format!("{r}: la figura «{}»", f.nombre))
             }
             PedidoFiguras::Guardar { nombre } => {
@@ -543,8 +663,16 @@ impl EjecutorDelChat {
         }
         let raiz = self.raiz_de_datos()?;
         let carpeta = almacen::carpeta(&raiz, &self.proyecto);
-        let mensajes = cuaderno::Cuaderno::leer_de(&carpeta).map(|c| c.mensajes).unwrap_or_default();
-        let nombre = a.pedido.get("nombre").and_then(serde_json::Value::as_str).unwrap_or("").trim().to_string();
+        let mensajes = cuaderno::Cuaderno::leer_de(&carpeta)
+            .map(|c| c.mensajes)
+            .unwrap_or_default();
+        let nombre = a
+            .pedido
+            .get("nombre")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
         match a.herramienta {
             LIENZOS_DEL_CHAT => {
                 let filas: Vec<String> = mensajes
@@ -553,12 +681,22 @@ impl EjecutorDelChat {
                     .map(|m| {
                         let r = m.referencia.clone().unwrap_or_default();
                         let n = cuantas_cosas(&almacen::lienzo(&raiz, &self.proyecto, &r));
-                        let ahora = if self.destino.as_deref() == Some(r.as_str()) { " (trabajas en este)" } else { "" };
-                        format!("- «{}»: {}{ahora}", super::chat::nombre_de_lienzo(m), n.map_or("no se pudo leer".to_string(), |n| format!("{n} elementos")))
+                        let ahora = if self.destino.as_deref() == Some(r.as_str()) {
+                            " (trabajas en este)"
+                        } else {
+                            ""
+                        };
+                        format!(
+                            "- «{}»: {}{ahora}",
+                            super::chat::nombre_de_lienzo(m),
+                            n.map_or("no se pudo leer".to_string(), |n| format!("{n} elementos"))
+                        )
                     })
                     .collect();
                 if filas.is_empty() {
-                    return Ok("Este chat no tiene ningun lienzo todavia (crear_lienzo crea uno).".into());
+                    return Ok(
+                        "Este chat no tiene ningun lienzo todavia (crear_lienzo crea uno).".into(),
+                    );
                 }
                 Ok(format!("Lienzos de este chat:\n{}", filas.join("\n")))
             }
@@ -567,8 +705,14 @@ impl EjecutorDelChat {
                     return Err("falta el nombre del lienzo".into());
                 }
                 let numero = mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-                let m = crate::ventana_chat::escribir_lienzo(&raiz, &self.proyecto, super::chat::APARATO, numero, Some(&nombre))
-                    .map_err(|e| format!("no se pudo crear el lienzo: {e}"))?;
+                let m = crate::ventana_chat::escribir_lienzo(
+                    &raiz,
+                    &self.proyecto,
+                    super::chat::APARATO,
+                    numero,
+                    Some(&nombre),
+                )
+                .map_err(|e| format!("no se pudo crear el lienzo: {e}"))?;
                 crate::ventana_chat::refrescar();
                 self.cambiar_de_lienzo(m.referencia.clone());
                 Ok(format!(
@@ -613,7 +757,10 @@ impl EjecutorDelChat {
 
     /// **Mirar el lienzo** (`ojos.rs`): quien tiene la escena copia la zona
     /// y el hilo de los ojos la pinta.
-    fn ver_lienzo(&mut self, m: &pixpin_ia::ojos::Mirada) -> Result<pixpin_ia::ojos::Vista, String> {
+    fn ver_lienzo(
+        &mut self,
+        m: &pixpin_ia::ojos::Mirada,
+    ) -> Result<pixpin_ia::ojos::Vista, String> {
         if !self.con_marco {
             // Que la rejilla mida desde donde mide el resumen.
             let _ = self.resumen_del_lienzo();
@@ -626,7 +773,10 @@ impl EjecutorDelChat {
         let pedido = super::al_lienzo::Pedido::de_trabajo(
             self.proyecto.clone(),
             self.destino.clone(),
-            super::al_lienzo::Trabajo::Ver { mirada: m.clone(), ctx },
+            super::al_lienzo::Trabajo::Ver {
+                mirada: m.clone(),
+                ctx,
+            },
             tx,
         );
         let r = self.esperar_al_lienzo(pedido, rx)?;
@@ -636,20 +786,39 @@ impl EjecutorDelChat {
 
     /// **La hoja anotada con lo anotado encima**: la pagina del PDF pintada
     /// debajo de su capa (la misma que lee el lector), con lo de alrededor.
-    fn ver_documento(&mut self, m: &pixpin_ia::ojos::Mirada) -> Result<pixpin_ia::ojos::Vista, String> {
+    fn ver_documento(
+        &mut self,
+        m: &pixpin_ia::ojos::Mirada,
+    ) -> Result<pixpin_ia::ojos::Vista, String> {
         use super::documentos_acciones::{ANCHO_DE_LA_HOJA, ultimo_anotado};
         let u = ultimo_anotado().ok_or("no has anotado ningun documento todavia")?;
-        let hoja = u.hoja.ok_or("ver un plano anotado aun no se puede: ya esta abierto en el visor")?;
+        let hoja = u
+            .hoja
+            .ok_or("ver un plano anotado aun no se puede: ya esta abierto en el visor")?;
         if !super::ocr::es_pdf(&u.ruta) {
             return Err("solo se puede ver la hoja anotada de un PDF".into());
         }
         let raiz = super::documentos::raiz()
             .or_else(|| crate::oscuro::ubicacion().map(|x| x.raiz().to_path_buf()))
             .ok_or("no se sabe donde estan los datos de PixPin")?;
-        let d = crate::lector_pdf_proyecto::DondeVa::de(&raiz, &u.ruta, pixpin_shell::entorno::ahora_utc_ms());
-        let capa = d.leer_capa(&u.ruta, hoja, crate::anotado_del_adjunto::espacios_de_ahora(&u.ruta), u.alto);
+        let d = crate::lector_pdf_proyecto::DondeVa::de(
+            &raiz,
+            &u.ruta,
+            pixpin_shell::entorno::ahora_utc_ms(),
+        );
+        let capa = d.leer_capa(
+            &u.ruta,
+            hoja,
+            crate::anotado_del_adjunto::espacios_de_ahora(&u.ruta),
+            u.alto,
+        );
         let pagina = (0.0, 0.0, ANCHO_DE_LA_HOJA, u.alto);
-        let caja = match u.cajas.iter().copied().reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))) {
+        let caja = match u
+            .cajas
+            .iter()
+            .copied()
+            .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+        {
             // Lo anotado con bastante de alrededor para ver si cae donde
             // debe; nunca fuera de la hoja.
             Some(c) => {
@@ -696,7 +865,10 @@ impl Ejecutor for EjecutorDelChat {
         self.preguntar.is_some()
     }
 
-    fn preguntar(&mut self, p: &pixpin_ia::preguntar::Pregunta) -> pixpin_ia::preguntar::Contestada {
+    fn preguntar(
+        &mut self,
+        p: &pixpin_ia::preguntar::Pregunta,
+    ) -> pixpin_ia::preguntar::Contestada {
         match &self.preguntar {
             Some(f) => f(p),
             None => pixpin_ia::preguntar::Contestada::SinRespuesta,
@@ -708,15 +880,23 @@ impl Ejecutor for EjecutorDelChat {
         if !super::al_lienzo::hay_quien_conteste() {
             return None;
         }
-        let copia = self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::Copia).ok()?.copia?;
+        let copia = self
+            .trabajo_en_el_lienzo(super::al_lienzo::Trabajo::Copia)
+            .ok()?
+            .copia?;
         self.versiones.push(copia);
         Some(self.versiones.len() - 1)
     }
 
     /// La correccion lo dejo peor: vuelve a la copia, como un paso mas.
     fn volver_a_version(&mut self, version: usize) -> Result<(), String> {
-        let copia = self.versiones.get(version).cloned().ok_or("esa version no se guardo")?;
-        self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::VolverA { copia }).map(|_| ())
+        let copia = self
+            .versiones
+            .get(version)
+            .cloned()
+            .ok_or("esa version no se guardo")?;
+        self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::VolverA { copia })
+            .map(|_| ())
     }
 
     /// Lo que se mide sin modelo (`pixpin_ia::lint`) en todo el lienzo.
@@ -724,13 +904,24 @@ impl Ejecutor for EjecutorDelChat {
         if !super::al_lienzo::hay_quien_conteste() {
             return None;
         }
-        let r = self.trabajo_en_el_lienzo(super::al_lienzo::Trabajo::Comprobar).ok()?;
-        Some(r.texto.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
+        let r = self
+            .trabajo_en_el_lienzo(super::al_lienzo::Trabajo::Comprobar)
+            .ok()?;
+        Some(
+            r.texto
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect(),
+        )
     }
 
     /// Lo que hizo el turno en el lienzo abierto, un solo Ctrl+Z.
     fn cerrar_turno(&mut self) {
-        let Some((desde, esperados)) = self.pasos.take().filter(|(_, n)| *n >= 2) else { return };
+        let Some((desde, esperados)) = self.pasos.take().filter(|(_, n)| *n >= 2) else {
+            return;
+        };
         if !super::al_lienzo::hay_editor() {
             return;
         }
@@ -767,16 +958,22 @@ impl Ejecutor for EjecutorDelChat {
                 Ok(para_el_modelo)
             }
             Llamada::Calcar(p) => {
-                let ruta = super::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
-                    .ruta
-                    .clone();
+                let ruta =
+                    super::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
+                        .ruta
+                        .clone();
                 // Con la nube, una lamina (texto y figuras) no se calca por
                 // manchas: se pasa con figuras exactas y texto (15-oct: la
                 // lamina de geometria salio en borrones). Lo decide el
                 // ejecutor con los Ajustes, no la marca `nube` del turno (la
                 // cola de encargos no la ponia).
-                let vision = self.vision.clone().or_else(super::hoja_a_lienzo::motor_de_vision);
-                if let Some(pagina) = super::hoja_a_lienzo::lamina_de_calcar(&ruta, p, vision.as_ref()) {
+                let vision = self
+                    .vision
+                    .clone()
+                    .or_else(super::hoja_a_lienzo::motor_de_vision);
+                if let Some(pagina) =
+                    super::hoja_a_lienzo::lamina_de_calcar(&ruta, p, vision.as_ref())
+                {
                     return self.lamina_al_lienzo(&pagina);
                 }
                 let semilla = self.semilla();
@@ -784,11 +981,18 @@ impl Ejecutor for EjecutorDelChat {
                 self.al_lienzo_elementos(elementos)
             }
             // Una hoja al lienzo (solo con la nube).
-            Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => self.hoja_a_lienzo(&a.pedido),
+            Llamada::App(a) if a.herramienta == pixpin_ia::hoja::NOMBRE => {
+                self.hoja_a_lienzo(&a.pedido)
+            }
             // Anotar con cabeza un documento (con el modelo de la nube).
-            Llamada::App(a) if a.herramienta == pixpin_ia::anotacion::NOMBRE => self.anotar_inteligente(&a.pedido),
+            Llamada::App(a) if a.herramienta == pixpin_ia::anotacion::NOMBRE => {
+                self.anotar_inteligente(&a.pedido)
+            }
             // La tabla de una foto al lienzo, como en la foto (16-oct, nube).
-            Llamada::App(a) if a.herramienta == pixpin_ia::acciones_documentos::TABLA && a.pedido["destino"] == "lienzo" => {
+            Llamada::App(a)
+                if a.herramienta == pixpin_ia::acciones_documentos::TABLA
+                    && a.pedido["destino"] == "lienzo" =>
+            {
                 self.tabla_al_lienzo(&a.pedido)
             }
             // Los lienzos del chat: listar, crear y usar uno (17-oct, nube).
@@ -863,7 +1067,9 @@ impl Ejecutor for EjecutorDelChat {
                     },
                 )
             }
-            Llamada::App(a) => super::acciones::hacer(a, self.raiz.as_deref(), &self.confirmar, &self.mandar),
+            Llamada::App(a) => {
+                super::acciones::hacer(a, self.raiz.as_deref(), &self.confirmar, &self.mandar)
+            }
             Llamada::Ayuda(pregunta) => Ok(pixpin_ia::conocimiento::responder(pregunta)),
             Llamada::Buscar(p) => self.buscar(p),
         }
@@ -873,31 +1079,39 @@ impl Ejecutor for EjecutorDelChat {
     /// cada uno en su hilo con su COM, y el modelo espera solo al mas lento.
     /// Lo demas (lienzo, pedidos a la app), en su orden, como siempre.
     fn ejecutar_varias(&mut self, llamadas: &[Llamada]) -> Vec<Result<String, String>> {
-        let ocr: Vec<usize> = (0..llamadas.len()).filter(|&i| matches!(llamadas[i], Llamada::Ocr(_))).collect();
+        let ocr: Vec<usize> = (0..llamadas.len())
+            .filter(|&i| matches!(llamadas[i], Llamada::Ocr(_)))
+            .collect();
         if ocr.len() < 2 {
             // Lo que dibuja antes que lo que edita (`edicion::en_orden`).
             return pixpin_ia::edicion::en_orden(llamadas, |l| self.ejecutar(l));
         }
         let adjuntos = &self.adjuntos;
         let parar = &self.parar;
-        let leidos: Vec<Result<(super::turno::Adjunto, String), String>> = std::thread::scope(|s| {
-            let hilos: Vec<_> = ocr
-                .iter()
-                .map(|&i| {
-                    let Llamada::Ocr(p) = &llamadas[i] else { unreachable!() };
-                    s.spawn(move || {
-                        let _com = pixpin_shell::ComDelHilo::iniciar();
-                        let a = super::ocr::elegir(adjuntos, p.archivo.as_deref())?.clone();
-                        let t = super::ocr::leer(&a.ruta, &p.paginas, parar)?;
-                        Ok((a, t))
+        let leidos: Vec<Result<(super::turno::Adjunto, String), String>> =
+            std::thread::scope(|s| {
+                let hilos: Vec<_> = ocr
+                    .iter()
+                    .map(|&i| {
+                        let Llamada::Ocr(p) = &llamadas[i] else {
+                            unreachable!()
+                        };
+                        s.spawn(move || {
+                            let _com = pixpin_shell::ComDelHilo::iniciar();
+                            let a = super::ocr::elegir(adjuntos, p.archivo.as_deref())?.clone();
+                            let t = super::ocr::leer(&a.ruta, &p.paginas, parar)?;
+                            Ok((a, t))
+                        })
                     })
-                })
-                .collect();
-            hilos
-                .into_iter()
-                .map(|h| h.join().unwrap_or_else(|_| Err("el OCR se detuvo de golpe".into())))
-                .collect()
-        });
+                    .collect();
+                hilos
+                    .into_iter()
+                    .map(|h| {
+                        h.join()
+                            .unwrap_or_else(|_| Err("el OCR se detuvo de golpe".into()))
+                    })
+                    .collect()
+            });
         let mut salida: Vec<Option<Result<String, String>>> = vec![None; llamadas.len()];
         for (&i, r) in ocr.iter().zip(leidos) {
             salida[i] = Some(r.map(|(de, texto)| {
@@ -911,7 +1125,10 @@ impl Ejecutor for EjecutorDelChat {
                 salida[i] = Some(self.ejecutar(l));
             }
         }
-        salida.into_iter().map(|r| r.unwrap_or_else(|| Err("no se hizo".into()))).collect()
+        salida
+            .into_iter()
+            .map(|r| r.unwrap_or_else(|| Err("no se hizo".into())))
+            .collect()
     }
 }
 

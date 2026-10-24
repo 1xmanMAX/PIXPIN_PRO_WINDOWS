@@ -202,7 +202,11 @@ pub fn es_arrastre(desde: (f32, f32), ahora: (f32, f32), escala: f32) -> bool {
 /// la de la columna de al lado mas cercana en alto. Sin foco, la primera.
 /// `None` solo al subir desde lo alto de una columna: el foco sale a la caja
 /// de apuntar (como en las otras vistas). En los bordes se queda.
-pub fn vecina(celdas: &[Celda], actual: Option<(usize, usize)>, d: Direccion) -> Option<(usize, usize)> {
+pub fn vecina(
+    celdas: &[Celda],
+    actual: Option<(usize, usize)>,
+    d: Direccion,
+) -> Option<(usize, usize)> {
     let tarjetas: Vec<(usize, usize, RectF)> = celdas
         .iter()
         .filter_map(|c| match c.pieza {
@@ -298,7 +302,10 @@ mod pruebas {
         let (celdas, columnas, alto) =
             disponer(&grupos, &|_| true, &mut |_, _, _| 100.0, &medidas(700.0));
         // Dos columnas, una al lado de otra, en el orden de las listas.
-        assert_eq!(columnas.iter().map(|c| c.lista).collect::<Vec<_>>(), vec![0, 3]);
+        assert_eq!(
+            columnas.iter().map(|c| c.lista).collect::<Vec<_>>(),
+            vec![0, 3]
+        );
         assert!(columnas[1].caja.x > columnas[0].caja.x + columnas[0].caja.ancho);
         assert_eq!(columnas[0].caja.y, columnas[1].caja.y);
         // En la primera: encabezado, las dos pendientes, el pliegue y la hecha,
@@ -314,7 +321,10 @@ mod pruebas {
         assert!(ys.windows(2).all(|w| w[0] < w[1]), "{ys:?}");
         for p in orden {
             let r = caja_de(&celdas, p);
-            assert!(r.x >= columnas[0].caja.x && r.x + r.ancho <= columnas[0].caja.x + columnas[0].caja.ancho);
+            assert!(
+                r.x >= columnas[0].caja.x
+                    && r.x + r.ancho <= columnas[0].caja.x + columnas[0].caja.ancho
+            );
         }
         // Las dos columnas, del alto de la mas larga: se suelta en cualquier sitio.
         assert_eq!(columnas[0].caja.alto, columnas[1].caja.alto);
@@ -323,7 +333,11 @@ mod pruebas {
 
     #[test]
     fn plegadas_las_hechas_no_salen_y_lo_que_no_cabe_baja_a_otra_banda() {
-        let grupos = [grupo(0, &[0], &[1]), grupo(1, &[0], &[]), grupo(2, &[0], &[])];
+        let grupos = [
+            grupo(0, &[0], &[1]),
+            grupo(1, &[0], &[]),
+            grupo(2, &[0], &[]),
+        ];
         // 480 de ancho: caben dos columnas de 220; la tercera baja.
         let (celdas, columnas, _) =
             disponer(&grupos, &|_| false, &mut |_, _, _| 100.0, &medidas(480.0));
@@ -349,9 +363,15 @@ mod pruebas {
         assert_eq!(destino_al_soltar(&columnas, 0, cx, cy), Some(5));
         // En la suya, nada.
         let suya = columnas[0].caja;
-        assert_eq!(destino_al_soltar(&columnas, 0, suya.x + 5.0, suya.y + 5.0), None);
+        assert_eq!(
+            destino_al_soltar(&columnas, 0, suya.x + 5.0, suya.y + 5.0),
+            None
+        );
         // Fuera de todas (debajo del tablero), nada.
-        assert_eq!(destino_al_soltar(&columnas, 0, cx, otra.y + otra.alto + 50.0), None);
+        assert_eq!(
+            destino_al_soltar(&columnas, 0, cx, otra.y + otra.alto + 50.0),
+            None
+        );
         // Un clic que tiembla no es un arrastre; seis pixeles (a escala 1) si.
         assert!(!es_arrastre((10.0, 10.0), (13.0, 12.0), 1.0));
         assert!(es_arrastre((10.0, 10.0), (16.0, 10.0), 1.0));
@@ -361,7 +381,8 @@ mod pruebas {
     #[test]
     fn la_vista_kanban_elegida_se_recuerda_al_volver_a_abrir() {
         use super::super::rejilla::Vista;
-        let raiz = std::env::temp_dir().join(format!("pixpin-tareas-kanban-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-tareas-kanban-{}", std::process::id()));
         std::fs::create_dir_all(&raiz).unwrap();
         Vista::Kanban.guardar(&raiz);
         assert_eq!(
@@ -382,11 +403,26 @@ mod pruebas {
         let grupos = [grupo(0, &[0, 1, 2], &[]), grupo(1, &[0, 1], &[])];
         let (celdas, _, _) = disponer(&grupos, &|_| true, &mut |_, _, _| 100.0, &medidas(700.0));
         assert_eq!(vecina(&celdas, None, Direccion::Abajo), Some((0, 0)));
-        assert_eq!(vecina(&celdas, Some((0, 0)), Direccion::Abajo), Some((0, 1)));
-        assert_eq!(vecina(&celdas, Some((0, 2)), Direccion::Abajo), Some((0, 2)));
-        assert_eq!(vecina(&celdas, Some((0, 1)), Direccion::Derecha), Some((1, 1)));
-        assert_eq!(vecina(&celdas, Some((1, 0)), Direccion::Izquierda), Some((0, 0)));
-        assert_eq!(vecina(&celdas, Some((1, 0)), Direccion::Derecha), Some((1, 0)));
+        assert_eq!(
+            vecina(&celdas, Some((0, 0)), Direccion::Abajo),
+            Some((0, 1))
+        );
+        assert_eq!(
+            vecina(&celdas, Some((0, 2)), Direccion::Abajo),
+            Some((0, 2))
+        );
+        assert_eq!(
+            vecina(&celdas, Some((0, 1)), Direccion::Derecha),
+            Some((1, 1))
+        );
+        assert_eq!(
+            vecina(&celdas, Some((1, 0)), Direccion::Izquierda),
+            Some((0, 0))
+        );
+        assert_eq!(
+            vecina(&celdas, Some((1, 0)), Direccion::Derecha),
+            Some((1, 0))
+        );
         // Subir desde lo alto de una columna devuelve el foco a la caja.
         assert_eq!(vecina(&celdas, Some((1, 0)), Direccion::Arriba), None);
     }

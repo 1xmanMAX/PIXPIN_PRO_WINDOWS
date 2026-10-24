@@ -80,7 +80,12 @@ impl FotoDeCapa {
     pub fn cubre(&self) -> (f32, f32, f32, f32) {
         let (x, y, z) = self.camara;
         let z = z.max(1e-12);
-        (x, y, x + self.tamano.0 as f32 / z, y + self.tamano.1 as f32 / z)
+        (
+            x,
+            y,
+            x + self.tamano.0 as f32 / z,
+            y + self.tamano.1 as f32 / z,
+        )
     }
 
     /// Si la foto tiene entera una caja del documento `(x0, y0, x1, y1)`: lo
@@ -222,9 +227,14 @@ mod pruebas {
         let r = destino_de(foto, ahora, (800, 600));
         let punto = (300.0f32, 200.0f32);
         let en_foto = ((punto.0 - foto.0) * foto.2, (punto.1 - foto.1) * foto.2);
-        let por_la_foto = (r.x + en_foto.0 * r.ancho / 800.0, r.y + en_foto.1 * r.alto / 600.0);
+        let por_la_foto = (
+            r.x + en_foto.0 * r.ancho / 800.0,
+            r.y + en_foto.1 * r.alto / 600.0,
+        );
         let directo = ((punto.0 - ahora.0) * ahora.2, (punto.1 - ahora.1) * ahora.2);
-        assert!((por_la_foto.0 - directo.0).abs() < 1e-3 && (por_la_foto.1 - directo.1).abs() < 1e-3);
+        assert!(
+            (por_la_foto.0 - directo.0).abs() < 1e-3 && (por_la_foto.1 - directo.1).abs() < 1e-3
+        );
         assert!((r.ancho - 1600.0).abs() < 1e-3);
     }
 

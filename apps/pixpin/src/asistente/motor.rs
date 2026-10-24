@@ -21,8 +21,8 @@ use std::sync::{Arc, OnceLock};
 use pixpin_ia::ErrorIa;
 use pixpin_ia::descarga;
 use pixpin_ia::modelos::{GEMMA4_E2B, LLAMA_CPP, MODELOS, Modelo, QWEN35_2B};
-use pixpin_ia::relevo::Relevo;
 use pixpin_ia::motor::{Motor, Peticion, Respuesta, Seguir, Trozo};
+use pixpin_ia::relevo::Relevo;
 use pixpin_ia::servidor::{Config, MotorLlama, elegir_dispositivo, listar_dispositivos};
 
 /// Donde viven los modelos. `PIXPIN_IA_RAIZ` la cambia (pruebas de extremo a
@@ -40,7 +40,8 @@ pub fn raiz() -> Option<PathBuf> {
 /// El modelo de los ajustes (`asistente_modelo`); sin ajuste, el 2B. El de
 /// mejor vista nunca es «el de siempre»: va aparte (`modelo_para_el_turno`).
 pub fn modelo_elegido(id: Option<&str>) -> Modelo {
-    id.and_then(|id| MODELOS.iter().copied().find(|m| m.id == id)).unwrap_or(QWEN35_2B)
+    id.and_then(|id| MODELOS.iter().copied().find(|m| m.id == id))
+        .unwrap_or(QWEN35_2B)
 }
 
 /// Menos de esto de memoria y se sugiere el ligero (documento §5.4).
@@ -69,8 +70,13 @@ impl MotorPerezoso {
 
     fn motor(&self) -> &MotorLlama {
         self.dentro.get_or_init(|| {
-            let mut c = Config::nueva(self.servidor.clone(), self.modelo.clone(), self.vision.clone());
-            c.dispositivo = elegir_dispositivo(&listar_dispositivos(&self.servidor), self.bytes_modelo);
+            let mut c = Config::nueva(
+                self.servidor.clone(),
+                self.modelo.clone(),
+                self.vision.clone(),
+            );
+            c.dispositivo =
+                elegir_dispositivo(&listar_dispositivos(&self.servidor), self.bytes_modelo);
             tracing::info!(dispositivo = ?c.dispositivo, "asistente: motor elegido");
             MotorLlama::nuevo(c)
         })
@@ -78,7 +84,11 @@ impl MotorPerezoso {
 }
 
 impl Motor for MotorPerezoso {
-    fn completar(&self, p: &Peticion, al_trozo: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+    fn completar(
+        &self,
+        p: &Peticion,
+        al_trozo: &mut dyn FnMut(&Trozo) -> Seguir,
+    ) -> Result<Respuesta, ErrorIa> {
         if !self.servidor.is_file() {
             return Err(ErrorIa::Falta("el motor del asistente".into()));
         }
@@ -121,14 +131,26 @@ pub fn del_proceso(raiz: &Path, m: &Modelo) -> Result<Arc<dyn Motor>, String> {
         return Err(ErrorIa::Falta(m.nombre.to_string()).to_string());
     }
     let (raiz, modelo) = (raiz.to_path_buf(), *m);
-    Ok(relevo().motor(&llave(&raiz, m), move || Arc::new(MotorPerezoso::nuevo(&raiz, &modelo))))
+    Ok(relevo().motor(&llave(&raiz, m), move || {
+        Arc::new(MotorPerezoso::nuevo(&raiz, &modelo))
+    }))
 }
 
 /// **El modelo de ESTE turno**: el de mejor vista (Gemma 4 E2B) si esta
 /// encendido en los ajustes, bajado, y lo que se pide es mirar la foto
 /// (`seleccion::pide_mejor_vista`); si no, el de siempre.
-pub fn modelo_para_el_turno(a: &pixpin_store::ajustes::Asistente, raiz: &Path, pedido: &str, con_foto: bool) -> Modelo {
-    elegir_para_el_turno(a, || super::descarga::listo(raiz, &GEMMA4_E2B), pedido, con_foto)
+pub fn modelo_para_el_turno(
+    a: &pixpin_store::ajustes::Asistente,
+    raiz: &Path,
+    pedido: &str,
+    con_foto: bool,
+) -> Modelo {
+    elegir_para_el_turno(
+        a,
+        || super::descarga::listo(raiz, &GEMMA4_E2B),
+        pedido,
+        con_foto,
+    )
 }
 
 /// La regla de [`modelo_para_el_turno`], con «¿esta bajado?» aparte (el
@@ -167,14 +189,19 @@ pub fn precargar(motor: Arc<dyn Motor>) {
     if EN_CURSO.swap(true, std::sync::atomic::Ordering::SeqCst) {
         return;
     }
-    let lanzado = std::thread::Builder::new().name("asistente-precarga".into()).spawn(move || {
-        // Arranca `llama-server` y carga el modelo (la nube no hace nada):
-        // la primera pregunta ya no espera la carga.
-        let t0 = std::time::Instant::now();
-        motor.precalentar();
-        tracing::info!(ms = t0.elapsed().as_millis() as u64, "asistente: precargado");
-        EN_CURSO.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
+    let lanzado = std::thread::Builder::new()
+        .name("asistente-precarga".into())
+        .spawn(move || {
+            // Arranca `llama-server` y carga el modelo (la nube no hace nada):
+            // la primera pregunta ya no espera la carga.
+            let t0 = std::time::Instant::now();
+            motor.precalentar();
+            tracing::info!(
+                ms = t0.elapsed().as_millis() as u64,
+                "asistente: precargado"
+            );
+            EN_CURSO.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
     if lanzado.is_err() {
         EN_CURSO.store(false, std::sync::atomic::Ordering::SeqCst);
     }

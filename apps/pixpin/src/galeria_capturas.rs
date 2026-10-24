@@ -1364,11 +1364,7 @@ fn menu_de_captura(
     ubicacion: &Ubicacion,
 ) {
     let raiz = ubicacion.raiz();
-    let sobre_elegida = e.eligiendo
-        && e
-            .lista
-            .get(i)
-            .is_some_and(|x| e.elegidas.contains(&x.ruta));
+    let sobre_elegida = e.eligiendo && e.lista.get(i).is_some_and(|x| e.elegidas.contains(&x.ruta));
     let v: Vec<usize> = if sobre_elegida {
         e.objetivos()
     } else {
@@ -1406,15 +1402,28 @@ fn menu_de_captura(
         Some(3) => guardar_como(e, &v, ventana, textos),
         // El «Exportar» comun: PDF, HTML, imagen, .pixpin y original.
         Some(9) => {
-            let rutas: Vec<PathBuf> = v.iter().filter_map(|&k| e.lista.get(k).map(|x| x.ruta.clone())).collect();
+            let rutas: Vec<PathBuf> = v
+                .iter()
+                .filter_map(|&k| e.lista.get(k).map(|x| x.ruta.clone()))
+                .collect();
             let titulo = match rutas.as_slice() {
-                [una] => una.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default(),
+                [una] => una
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
                 _ => textos.t("galeria-titulo"),
             };
-            match (crate::compartir::exportable::de_imagenes(&titulo, &rutas), crate::oscuro::ubicacion()) {
+            match (
+                crate::compartir::exportable::de_imagenes(&titulo, &rutas),
+                crate::oscuro::ubicacion(),
+            ) {
                 (Ok(mut x), Some(u)) => {
                     x.raiz = Some(u.raiz().to_path_buf());
-                    crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+                    crate::compartir::ventana::abrir(
+                        crate::compartir::idioma_de(&u),
+                        u,
+                        crate::compartir::Cosa::Visor(x),
+                    );
                 }
                 (Err(err), _) => e.avisar(fallo(textos, err.to_string())),
                 _ => {}
@@ -1485,7 +1494,8 @@ fn guardar_como(e: &mut Estado, v: &[usize], ventana: &VentanaOverlay, textos: &
             .unwrap_or("png")
             .to_ascii_lowercase();
         let tipo = ext.to_ascii_uppercase();
-        let Some(destino) = pixpin_shell::guardar::pedir_ruta_para(hwnd, &nombre, &tipo, &ext) else {
+        let Some(destino) = pixpin_shell::guardar::pedir_ruta_para(hwnd, &nombre, &tipo, &ext)
+        else {
             return;
         };
         match std::fs::copy(una, &destino) {
@@ -1501,12 +1511,20 @@ fn guardar_como(e: &mut Estado, v: &[usize], ventana: &VentanaOverlay, textos: &
         };
         let mut n = 0;
         for r in &rutas {
-            let Some(nombre) = r.file_name() else { continue };
+            let Some(nombre) = r.file_name() else {
+                continue;
+            };
             let mut destino = dir.join(nombre);
             let mut k = 2;
             while destino.exists() {
-                let base = r.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-                let ext = r.extension().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                let base = r
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let ext = r
+                    .extension()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
                 destino = dir.join(format!("{base} ({k}).{ext}"));
                 k += 1;
             }
@@ -2108,7 +2126,13 @@ fn pintar_celda(
             alto: ch + 6.0 * escala,
         };
         p.rellenar_redondeado(cc, 7.0 * escala, negro(0.75));
-        p.texto(&chip, cc.x + 8.0 * escala, cc.y + 3.0 * escala, tam, d::CUERPO);
+        p.texto(
+            &chip,
+            cc.x + 8.0 * escala,
+            cc.y + 3.0 * escala,
+            tam,
+            d::CUERPO,
+        );
     }
 
     // Abajo a la derecha, al pasar, el «⋯»: la pista de que hay menu. El
@@ -2459,7 +2483,10 @@ mod pruebas {
         assert!(c.ends_with("captura-20261009-142508.png"));
         // Un 29 de febrero y el cambio de ano, por la cuenta de fechas.
         assert_eq!(nombre_por_hora(951_782_400_000), "captura-20000229-000000");
-        assert_eq!(nombre_por_hora(1_798_761_599_000), "captura-20261231-235959");
+        assert_eq!(
+            nombre_por_hora(1_798_761_599_000),
+            "captura-20261231-235959"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2646,7 +2673,16 @@ mod pruebas {
         // copia; no sale ni el aviso.
         tecla(&mut e, 0x2E, false, z, 1.0, &textos, &ub, &mut vivo);
         tecla(&mut e, 0x0D, false, z, 1.0, &textos, &ub, &mut vivo);
-        tecla(&mut e, u32::from(b'C'), true, z, 1.0, &textos, &ub, &mut vivo);
+        tecla(
+            &mut e,
+            u32::from(b'C'),
+            true,
+            z,
+            1.0,
+            &textos,
+            &ub,
+            &mut vivo,
+        );
         assert_eq!(e.lista.len(), 4);
         assert!(e.deshacer.is_empty() && e.aviso.is_none());
         assert!(e.objetivos().is_empty());
@@ -2826,7 +2862,10 @@ mod pruebas {
         assert_eq!(rotulo_de_dias(&textos, 0), "hoy");
         assert_eq!(rotulo_de_dias(&textos, 6), "6");
         let pista = pista_de_dias(&textos, 6);
-        assert!(pista.contains("6 días") && pista.contains("clic derecho"), "{pista}");
+        assert!(
+            pista.contains("6 días") && pista.contains("clic derecho"),
+            "{pista}"
+        );
         assert!(pista_de_dias(&textos, 0).contains("hoy"));
         assert!(pista_de_dias(&textos, 1).contains("mañana"));
         // Caso negativo: un numero negativo (reloj atrasado) no sale «-1».
@@ -2956,7 +2995,11 @@ mod pruebas {
         let fondo = TONOS[k % TONOS.len()];
         let acento = ACENTOS[k % ACENTOS.len()];
         let oscuro = fondo.iter().map(|&c| u32::from(c)).sum::<u32>() < 300;
-        let tinta: [u8; 3] = if oscuro { [150, 156, 170] } else { [120, 124, 132] };
+        let tinta: [u8; 3] = if oscuro {
+            [150, 156, 170]
+        } else {
+            [120, 124, 132]
+        };
         let mut px = Vec::with_capacity((w * h * 4) as usize);
         for y in 0..h {
             for x in 0..w {
@@ -2980,7 +3023,11 @@ mod pruebas {
                     }
                 } else if y > 26 && y < 40 && x > 66 && x < 66 + 60 + (k as u32 * 23) % 110 {
                     acento
-                } else if y > 48 && (y - 48) % 12 < 5 && x > 66 && x < 240 - ((y * 7 + k as u32 * 13) % 70) {
+                } else if y > 48
+                    && (y - 48) % 12 < 5
+                    && x > 66
+                    && x < 240 - ((y * 7 + k as u32 * 13) % 70)
+                {
                     tinta
                 } else {
                     fondo

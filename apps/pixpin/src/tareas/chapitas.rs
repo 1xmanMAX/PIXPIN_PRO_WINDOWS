@@ -86,7 +86,12 @@ pub fn pintar(
             let mas = format!("+{}", chapas.len() - k);
             let (mw, mh) = p.medir_texto(&mas, tam);
             if cx + mw + 12.0 * s <= x + ancho + 0.5 {
-                let caja = RectF { x: cx, y, ancho: mw + 12.0 * s, alto };
+                let caja = RectF {
+                    x: cx,
+                    y,
+                    ancho: mw + 12.0 * s,
+                    alto,
+                };
                 let (fondo, letra) = colores(&Chapa::Etiqueta(String::new()), sobre);
                 p.rellenar_redondeado(caja, alto / 2.0, fondo);
                 p.texto(&mas, cx + 6.0 * s, y + (alto - mh) / 2.0, tam, letra);

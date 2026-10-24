@@ -522,11 +522,19 @@ impl Pines {
 
     /// Un toque, una tecla, la rueda o el latido de una herramienta.
     fn dentro(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
-        if self.herramientas.get(&id).is_some_and(Herramienta::es_tarea) {
+        if self
+            .herramientas
+            .get(&id)
+            .is_some_and(Herramienta::es_tarea)
+        {
             return self.dentro_de_tarea(id, cambio);
         }
         // El pin de color: un toque copia; el latido quita el «Copiado».
-        if self.herramientas.get(&id).is_some_and(Herramienta::es_color) {
+        if self
+            .herramientas
+            .get(&id)
+            .is_some_and(Herramienta::es_color)
+        {
             match cambio {
                 CambioPin::ClicInterior { .. } => return self.copiar_color(id),
                 CambioPin::Latido => {

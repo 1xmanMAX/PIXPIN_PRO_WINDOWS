@@ -124,8 +124,17 @@ fn plegar(s: &str) -> String {
 /// **Las que se ven**: de la categoria elegida (`None`, todas) y que
 /// contengan todas las palabras buscadas (en el nombre o la categoria), en
 /// el orden de las categorias.
-fn visibles(figuras: &[FiguraGuardada], cats: &[String], cat: Option<usize>, consulta: &str, mis: &str) -> Vec<usize> {
-    let palabras: Vec<String> = plegar(consulta).split_whitespace().map(str::to_string).collect();
+fn visibles(
+    figuras: &[FiguraGuardada],
+    cats: &[String],
+    cat: Option<usize>,
+    consulta: &str,
+    mis: &str,
+) -> Vec<usize> {
+    let palabras: Vec<String> = plegar(consulta)
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     let mut v = Vec::new();
     for (k, c) in cats.iter().enumerate() {
         if cat.is_some_and(|x| x != k) {
@@ -174,7 +183,8 @@ fn disponer(
     let celda_h = (MINI_ALTO + NOMBRE_ALTO) * s;
     let columnas = (((ancho - 2.0 * m + hueco) / (celda_w + hueco)).floor() as usize).max(1);
     // Las columnas se reparten el ancho: sin un hueco grande a la derecha.
-    let celda_w = ((ancho - 2.0 * m - hueco * (columnas - 1) as f32) / columnas as f32).max(celda_w * 0.6);
+    let celda_w =
+        ((ancho - 2.0 * m - hueco * (columnas - 1) as f32) / columnas as f32).max(celda_w * 0.6);
     let mut piezas = Vec::new();
     let mut y = m;
     let mut col = 0;
@@ -189,12 +199,28 @@ fn disponer(
             if cat_anterior.is_some() {
                 y += hueco;
             }
-            piezas.push((RectF { x: m, y, ancho: ancho - 2.0 * m, alto: TITULO_ALTO * s }, Pieza::Titulo(c.to_string())));
+            piezas.push((
+                RectF {
+                    x: m,
+                    y,
+                    ancho: ancho - 2.0 * m,
+                    alto: TITULO_ALTO * s,
+                },
+                Pieza::Titulo(c.to_string()),
+            ));
             y += TITULO_ALTO * s;
             cat_anterior = Some(c);
         }
         let x = m + (celda_w + hueco) * col as f32;
-        piezas.push((RectF { x, y, ancho: celda_w, alto: celda_h }, Pieza::Celda(i)));
+        piezas.push((
+            RectF {
+                x,
+                y,
+                ancho: celda_w,
+                alto: celda_h,
+            },
+            Pieza::Celda(i),
+        ));
         col += 1;
         if col == columnas {
             col = 0;
@@ -204,7 +230,11 @@ fn disponer(
     if col > 0 {
         y += celda_h + hueco;
     }
-    Disposicion { piezas, columnas, alto: y + m }
+    Disposicion {
+        piezas,
+        columnas,
+        alto: y + m,
+    }
 }
 
 /// Los campos que lleva el panel para esa plantilla.
@@ -224,18 +254,35 @@ fn intervalo_de(campos: &HashMap<Dato, String>) -> Result<Option<Intervalo>, Str
     let n = |c: Dato| -> Result<Option<u32>, String> {
         match campos.get(&c).map(|s| s.trim()).filter(|s| !s.is_empty()) {
             None => Ok(None),
-            Some(s) => s.parse().map(Some).map_err(|_| format!("«{s}» no es un número")),
+            Some(s) => s
+                .parse()
+                .map(Some)
+                .map_err(|_| format!("«{s}» no es un número")),
         }
     };
-    let mes = match campos.get(&Dato::Mes).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    let mes = match campos
+        .get(&Dato::Mes)
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         None => None,
-        Some(s) => Some(pixpin_ia::figuras::mes_de(s).ok_or_else(|| format!("«{s}»: escribe el mes como 2026-11"))?),
+        Some(s) => Some(
+            pixpin_ia::figuras::mes_de(s)
+                .ok_or_else(|| format!("«{s}»: escribe el mes como 2026-11"))?,
+        ),
     };
     let semanas = match (n(Dato::SemanasDesde)?, n(Dato::SemanasHasta)?) {
         (None, None) => None,
         (a, b) => Some((a.unwrap_or(1), b.or(a).unwrap_or(12))),
     };
-    let iv = Intervalo { desde: n(Dato::Desde)?, hasta: n(Dato::Hasta)?, de_a: n(Dato::DeA)?, semanas, mes, meses: n(Dato::Meses)? };
+    let iv = Intervalo {
+        desde: n(Dato::Desde)?,
+        hasta: n(Dato::Hasta)?,
+        de_a: n(Dato::DeA)?,
+        semanas,
+        mes,
+        meses: n(Dato::Meses)?,
+    };
     Ok((iv != Intervalo::default()).then_some(iv))
 }
 
@@ -271,7 +318,12 @@ struct Estado {
 }
 
 impl Estado {
-    fn nuevo(figuras: Vec<FiguraGuardada>, herramientas: Vec<(u32, String)>, hay_seleccion: bool, mis: String) -> Estado {
+    fn nuevo(
+        figuras: Vec<FiguraGuardada>,
+        herramientas: Vec<(u32, String)>,
+        hay_seleccion: bool,
+        mis: String,
+    ) -> Estado {
         Estado {
             figuras,
             cambiada: false,
@@ -303,7 +355,14 @@ impl Estado {
         let consulta = self.consulta.texto().to_string();
         self.lista = visibles(&self.figuras, &self.cats, self.cat, &consulta, &self.mis);
         let con_titulos = self.cat.is_none() && consulta.trim().is_empty();
-        self.disp = disponer(&self.figuras, &self.lista, con_titulos, ancho_rejilla, s, &self.mis);
+        self.disp = disponer(
+            &self.figuras,
+            &self.lista,
+            con_titulos,
+            ancho_rejilla,
+            s,
+            &self.mis,
+        );
         if self.elegida.is_none_or(|i| !self.lista.contains(&i)) {
             self.elegir(self.lista.first().copied());
         }
@@ -326,13 +385,18 @@ impl Estado {
     }
 
     fn texto_de(&self, c: Dato) -> String {
-        self.campos.get(&c).map(|x| x.texto().to_string()).unwrap_or_default()
+        self.campos
+            .get(&c)
+            .map(|x| x.texto().to_string())
+            .unwrap_or_default()
     }
 
     /// La clave de serie de la elegida, si se alarga.
     fn alargable(&self) -> Option<String> {
         let f = self.figuras.get(self.elegida?)?;
-        serie::clave_de(f).filter(|c| serie::se_alarga(c)).map(str::to_string)
+        serie::clave_de(f)
+            .filter(|c| serie::se_alarga(c))
+            .map(str::to_string)
     }
 
     fn rehacer_previa(&mut self, t: &Catalogo) {
@@ -340,7 +404,10 @@ impl Estado {
             self.previa = None;
             return;
         };
-        let textos: HashMap<Dato, String> = campos_de(&clave).iter().map(|c| (*c, self.texto_de(*c))).collect();
+        let textos: HashMap<Dato, String> = campos_de(&clave)
+            .iter()
+            .map(|c| (*c, self.texto_de(*c)))
+            .collect();
         self.previa = match intervalo_de(&textos) {
             Ok(None) => None,
             Ok(Some(iv)) => Some(serie::alargar(&clave, &iv).map(|h| {
@@ -360,7 +427,10 @@ impl Estado {
     fn insertar(&mut self) {
         let Some(i) = self.elegida else { return };
         if let Some(clave) = self.alargable() {
-            let textos: HashMap<Dato, String> = campos_de(&clave).iter().map(|c| (*c, self.texto_de(*c))).collect();
+            let textos: HashMap<Dato, String> = campos_de(&clave)
+                .iter()
+                .map(|c| (*c, self.texto_de(*c)))
+                .collect();
             match intervalo_de(&textos) {
                 Ok(Some(iv)) => match serie::alargar(&clave, &iv) {
                     Ok(h) => self.pedido = Some(Pedido::Hojas(h)),
@@ -405,7 +475,10 @@ impl Estado {
 
     /// Mueve la elegida por la rejilla (flechas).
     fn mover_eleccion(&mut self, paso: isize) {
-        let Some(pos) = self.elegida.and_then(|i| self.lista.iter().position(|x| *x == i)) else {
+        let Some(pos) = self
+            .elegida
+            .and_then(|i| self.lista.iter().position(|x| *x == i))
+        else {
             self.elegir(self.lista.first().copied());
             return;
         };
@@ -424,8 +497,13 @@ thread_local! {
 /// Las de todas, de la cache o pintadas de una vez las que falten.
 fn miniaturas(figuras: &[FiguraGuardada], lado: u32) -> Vec<Option<pixpin_codec::ImagenRgba>> {
     let clave = |f: &FiguraGuardada| (f.id.clone(), f.nombre.clone(), f.elementos.len(), lado);
-    let faltan: Vec<FiguraGuardada> =
-        PINTADAS.with_borrow(|m| figuras.iter().filter(|f| !m.contains_key(&clave(f))).cloned().collect());
+    let faltan: Vec<FiguraGuardada> = PINTADAS.with_borrow(|m| {
+        figuras
+            .iter()
+            .filter(|f| !m.contains_key(&clave(f)))
+            .cloned()
+            .collect()
+    });
     if !faltan.is_empty() {
         match crate::ventana_editor::exportar::miniaturas(&faltan, lado) {
             Ok(v) => PINTADAS.with_borrow_mut(|m| {
@@ -442,7 +520,9 @@ fn miniaturas(figuras: &[FiguraGuardada], lado: u32) -> Vec<Option<pixpin_codec:
 }
 
 fn subir_miniaturas(e: &mut Estado, motor: &MotorRender, lado: u32) {
-    let faltan: Vec<usize> = (0..e.figuras.len()).filter(|i| !e.minis.contains_key(i)).collect();
+    let faltan: Vec<usize> = (0..e.figuras.len())
+        .filter(|i| !e.minis.contains_key(i))
+        .collect();
     if faltan.is_empty() {
         return;
     }
@@ -475,25 +555,48 @@ pub(in crate::ventana_editor) fn elegir(
     let s = escala_por_cien as f32 / 100.0;
     let monitor = pixpin_shell::pantalla_de::monitor_de_la_ventana_activa();
     let area = monitor
-        .or_else(|| pixpin_capture::enumerar_monitores().ok().and_then(|m| m.principal().map(|p| p.area_trabajo)))
-        .unwrap_or(pixpin_geom::Rect { x: 0, y: 0, ancho: 1600, alto: 900 });
+        .or_else(|| {
+            pixpin_capture::enumerar_monitores()
+                .ok()
+                .and_then(|m| m.principal().map(|p| p.area_trabajo))
+        })
+        .unwrap_or(pixpin_geom::Rect {
+            x: 0,
+            y: 0,
+            ancho: 1600,
+            alto: 900,
+        });
     // Grande: casi toda la pantalla de trabajo, hasta 1440 x 900 logicos.
     let ancho = ((area.ancho as f32 / s * 0.9) as u32).min(1440);
     let alto = ((area.alto as f32 / s * 0.9) as u32).min(900);
     let mut marco = centrado(area, ancho, alto, escala_por_cien);
-    let mut e = Estado::nuevo(figuras, herramientas, hay_seleccion, t.t("figuras-mis-figuras"));
+    let mut e = Estado::nuevo(
+        figuras,
+        herramientas,
+        hay_seleccion,
+        t.t("figuras-mis-figuras"),
+    );
     // Solo para probar: `PIXPIN_MENU_FIGURAS_AL_ABRIR=<categoria>` abre la
     // ventana ya en esa categoria.
     let de_prueba = std::env::var("PIXPIN_MENU_FIGURAS_AL_ABRIR").ok();
     let resultado = (|| -> anyhow::Result<()> {
         let mut ventana = VentanaOverlay::nueva_normal(marco, &t.t("figuras-ventana-titulo"))?;
-        let superficie = Superficie::nueva(motor, dispositivo.d3d(), ventana.handle(), marco.ancho, marco.alto)?;
+        let superficie = Superficie::nueva(
+            motor,
+            dispositivo.d3d(),
+            ventana.handle(),
+            marco.ancho,
+            marco.alto,
+        )?;
         ventana.mostrar();
         ventana.enfocar();
         let (w, h) = (marco.ancho as f32, marco.alto as f32);
         let ancho_rejilla = w - (ANCHO_LATERAL + ANCHO_PANEL) * s;
         e.rehacer_lista(ancho_rejilla, s);
-        if let Some(c) = de_prueba.as_deref().and_then(|c| e.cats.iter().position(|x| x == c)) {
+        if let Some(c) = de_prueba
+            .as_deref()
+            .and_then(|c| e.cats.iter().position(|x| x == c))
+        {
             e.cat = Some(c);
             e.elegida = None;
             e.rehacer_lista(ancho_rejilla, s);
@@ -511,12 +614,18 @@ pub(in crate::ventana_editor) fn elegir(
                     continue;
                 }
                 pintar = true;
-                let local = |p: pixpin_geom::Punto, m: pixpin_geom::Rect| ((p.x - m.x) as f32, (p.y - m.y) as f32);
+                let local = |p: pixpin_geom::Punto, m: pixpin_geom::Rect| {
+                    ((p.x - m.x) as f32, (p.y - m.y) as f32)
+                };
                 match ev {
                     EventoOverlay::Cerrar => vivo = false,
                     EventoOverlay::RatonMovido(p) => {
                         if let Some((desde, origen)) = e.moviendo {
-                            marco = pixpin_geom::Rect { x: origen.x + (p.x - desde.x), y: origen.y + (p.y - desde.y), ..origen };
+                            marco = pixpin_geom::Rect {
+                                x: origen.x + (p.x - desde.x),
+                                y: origen.y + (p.y - desde.y),
+                                ..origen
+                            };
                             ventana.mover(marco);
                         }
                         e.botones.raton = local(p, marco);
@@ -533,11 +642,14 @@ pub(in crate::ventana_editor) fn elegir(
                     EventoOverlay::Rueda(m) => {
                         let (x, _) = e.botones.raton;
                         if x > ANCHO_LATERAL * s && x < w - ANCHO_PANEL * s {
-                            e.scroll = (e.scroll - m as f32 / 120.0 * (MINI_ALTO + NOMBRE_ALTO) * s * 0.5)
+                            e.scroll = (e.scroll
+                                - m as f32 / 120.0 * (MINI_ALTO + NOMBRE_ALTO) * s * 0.5)
                                 .clamp(0.0, (e.disp.alto - alto_rejilla).max(0.0));
                         }
                     }
-                    EventoOverlay::Tecla { vk, ctrl, shift, .. } => tecla(&mut e, vk, ctrl, shift, &mut vivo, ancho_rejilla, s, t),
+                    EventoOverlay::Tecla {
+                        vk, ctrl, shift, ..
+                    } => tecla(&mut e, vk, ctrl, shift, &mut vivo, ancho_rejilla, s, t),
                     EventoOverlay::Caracter(c) => caracter(&mut e, c, ancho_rejilla, s, t),
                     _ => {}
                 }
@@ -554,7 +666,11 @@ pub(in crate::ventana_editor) fn elegir(
                 }
                 pintar = false;
             }
-            pixpin_shell::overlay::esperar_eventos(Some(if e.foco.is_some() || e.buscando { 250 } else { 1000 }));
+            pixpin_shell::overlay::esperar_eventos(Some(if e.foco.is_some() || e.buscando {
+                250
+            } else {
+                1000
+            }));
         }
         Ok(())
     })();
@@ -583,7 +699,9 @@ fn clic(
         e.foco = None;
         return;
     };
-    let doble = e.ultimo_clic.is_some_and(|(b, cuando)| b == a && cuando.elapsed() < DOBLE_CLIC);
+    let doble = e
+        .ultimo_clic
+        .is_some_and(|(b, cuando)| b == a && cuando.elapsed() < DOBLE_CLIC);
     e.ultimo_clic = Some((a, Instant::now()));
     if !matches!(a, Accion::Buscar | Accion::LimpiarBusqueda) {
         e.buscando = false;
@@ -615,7 +733,9 @@ fn clic(
                 e.pedido = Some(Pedido::Herramienta(el));
             }
         }
-        Accion::GuardarSeleccion => e.pedido = Some(Pedido::Herramienta(Eleccion::GuardarSeleccion)),
+        Accion::GuardarSeleccion => {
+            e.pedido = Some(Pedido::Herramienta(Eleccion::GuardarSeleccion))
+        }
         Accion::Celda(i) => {
             e.elegir(Some(i));
             if doble {
@@ -645,7 +765,16 @@ const VK_ABAJO: u32 = 0x28;
 const VK_TAB: u32 = 0x09;
 
 #[allow(clippy::too_many_arguments)]
-fn tecla(e: &mut Estado, vk: u32, ctrl: bool, shift: bool, vivo: &mut bool, ancho_rejilla: f32, s: f32, t: &Catalogo) {
+fn tecla(
+    e: &mut Estado,
+    vk: u32,
+    ctrl: bool,
+    shift: bool,
+    vivo: &mut bool,
+    ancho_rejilla: f32,
+    s: f32,
+    t: &Catalogo,
+) {
     match vk {
         VK_ESCAPE if e.foco.is_some() || e.buscando => {
             e.foco = None;
@@ -704,7 +833,9 @@ fn caracter(e: &mut Estado, c: char, ancho_rejilla: f32, s: f32, t: &Catalogo) {
     }
     if let Some(f) = e.foco {
         // En los de numeros, solo numeros (y el guion del mes).
-        let vale = matches!(f, Dato::Nombre) || c.is_ascii_digit() || (f == Dato::Mes && (c == '-' || c == '/' || c.is_alphabetic() || c == ' '));
+        let vale = matches!(f, Dato::Nombre)
+            || c.is_ascii_digit()
+            || (f == Dato::Mes && (c == '-' || c == '/' || c.is_alphabetic() || c == ' '));
         if vale {
             e.campos.entry(f).or_default().letra(c);
             e.rehacer_previa(t);
@@ -724,10 +855,37 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, t: &Catalogo)
     p.limpiar(d::FONDO);
     e.botones.vaciar();
     let cab = crate::cabecera::ALTO * s;
-    let rejilla = RectF { x: ANCHO_LATERAL * s, y: cab, ancho: w - (ANCHO_LATERAL + ANCHO_PANEL) * s, alto: h - cab };
+    let rejilla = RectF {
+        x: ANCHO_LATERAL * s,
+        y: cab,
+        ancho: w - (ANCHO_LATERAL + ANCHO_PANEL) * s,
+        alto: h - cab,
+    };
     pintar_rejilla(e, p, rejilla, s, t);
-    pintar_lateral(e, p, RectF { x: 0.0, y: cab, ancho: ANCHO_LATERAL * s, alto: h - cab }, s, t);
-    pintar_panel(e, p, RectF { x: w - ANCHO_PANEL * s, y: cab, ancho: ANCHO_PANEL * s, alto: h - cab }, s, t);
+    pintar_lateral(
+        e,
+        p,
+        RectF {
+            x: 0.0,
+            y: cab,
+            ancho: ANCHO_LATERAL * s,
+            alto: h - cab,
+        },
+        s,
+        t,
+    );
+    pintar_panel(
+        e,
+        p,
+        RectF {
+            x: w - ANCHO_PANEL * s,
+            y: cab,
+            ancho: ANCHO_PANEL * s,
+            alto: h - cab,
+        },
+        s,
+        t,
+    );
     pintar_cabecera(e, p, w, s, t);
 }
 
@@ -741,7 +899,13 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32, t: &Catalogo) {
     let texto = e.consulta.texto().to_string();
     let mut botones = Vec::new();
     if e.hay_seleccion {
-        botones.push(crate::cabecera::Boton { icono: Some(&mi::LIBRARY_ADD), rotulo: &guardar, chapa: None, activo: false, accion: Accion::GuardarSeleccion });
+        botones.push(crate::cabecera::Boton {
+            icono: Some(&mi::LIBRARY_ADD),
+            rotulo: &guardar,
+            chapa: None,
+            activo: false,
+            accion: Accion::GuardarSeleccion,
+        });
     }
     let c = crate::cabecera::Cabecera {
         titulo: &titulo,
@@ -764,22 +928,52 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32, t: &Catalogo) {
 /// Una fila de la barra de la izquierda: el rotulo, su cuenta a la derecha
 /// y, elegida, el fondo de tarjeta con la raya azul.
 #[allow(clippy::too_many_arguments)]
-fn fila_lateral(e: &mut Estado, p: &Pintor, caja: RectF, rotulo: &str, cuenta: Option<usize>, elegida: bool, a: Accion, s: f32) {
+fn fila_lateral(
+    e: &mut Estado,
+    p: &Pintor,
+    caja: RectF,
+    rotulo: &str,
+    cuenta: Option<usize>,
+    elegida: bool,
+    a: Accion,
+    s: f32,
+) {
     let encima = dentro(caja, e.botones.raton);
     if elegida {
         p.rellenar_redondeado(caja, d::RADIO_BOTON * s, d::TARJETA_ENCIMA);
-        p.rellenar_redondeado(RectF { x: caja.x, y: caja.y + 9.0 * s, ancho: 3.0 * s, alto: caja.alto - 18.0 * s }, 1.5 * s, d::ACENTO);
+        p.rellenar_redondeado(
+            RectF {
+                x: caja.x,
+                y: caja.y + 9.0 * s,
+                ancho: 3.0 * s,
+                alto: caja.alto - 18.0 * s,
+            },
+            1.5 * s,
+            d::ACENTO,
+        );
     } else if encima {
         p.rellenar_redondeado(caja, d::RADIO_BOTON * s, d::TARJETA);
     }
     let tam = d::LETRA_CUERPO * s;
     let (_, th) = p.medir_texto(rotulo, tam);
-    p.texto(rotulo, caja.x + 14.0 * s, caja.y + (caja.alto - th) / 2.0, tam, if elegida { d::TEXTO } else { d::CUERPO });
+    p.texto(
+        rotulo,
+        caja.x + 14.0 * s,
+        caja.y + (caja.alto - th) / 2.0,
+        tam,
+        if elegida { d::TEXTO } else { d::CUERPO },
+    );
     if let Some(n) = cuenta {
         let n = n.to_string();
         let tc = d::LETRA_SECUNDARIO * s;
         let (nw, nh) = p.medir_texto(&n, tc);
-        p.texto(&n, caja.x + caja.ancho - 12.0 * s - nw, caja.y + (caja.alto - nh) / 2.0, tc, d::GRIS);
+        p.texto(
+            &n,
+            caja.x + caja.ancho - 12.0 * s - nw,
+            caja.y + (caja.alto - nh) / 2.0,
+            tc,
+            d::GRIS,
+        );
     }
     e.botones.zona(caja, a);
 }
@@ -791,11 +985,30 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     let x = z.x + m * 0.75;
     let ancho = z.ancho - m * 1.5;
     let mut y = z.y + m;
-    let cuenta_de = |e: &Estado, c: &str| e.figuras.iter().filter(|f| de_que_es(f, &e.mis).0 == c).count();
+    let cuenta_de = |e: &Estado, c: &str| {
+        e.figuras
+            .iter()
+            .filter(|f| de_que_es(f, &e.mis).0 == c)
+            .count()
+    };
     let todas = t.t("figuras-ventana-todas");
     let n = e.figuras.len();
     let elegida = e.cat.is_none();
-    fila_lateral(e, p, RectF { x, y, ancho, alto: fh }, &todas, Some(n), elegida, Accion::Categoria(0), s);
+    fila_lateral(
+        e,
+        p,
+        RectF {
+            x,
+            y,
+            ancho,
+            alto: fh,
+        },
+        &todas,
+        Some(n),
+        elegida,
+        Accion::Categoria(0),
+        s,
+    );
     y += fh + 2.0 * s;
     for k in 0..e.cats.len() {
         let c = e.cats[k].clone();
@@ -804,12 +1017,34 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
             continue;
         }
         let elegida = e.cat == Some(k);
-        fila_lateral(e, p, RectF { x, y, ancho, alto: fh }, &c, Some(cuantas), elegida, Accion::Categoria(k + 1), s);
+        fila_lateral(
+            e,
+            p,
+            RectF {
+                x,
+                y,
+                ancho,
+                alto: fh,
+            },
+            &c,
+            Some(cuantas),
+            elegida,
+            Accion::Categoria(k + 1),
+            s,
+        );
         y += fh + 2.0 * s;
     }
     // Lo demas que traia el menu.
     y += m;
-    p.rellenar(RectF { x, y, ancho, alto: 1.0 * s.max(1.0) }, blanco(0.07));
+    p.rellenar(
+        RectF {
+            x,
+            y,
+            ancho,
+            alto: 1.0 * s.max(1.0),
+        },
+        blanco(0.07),
+    );
     y += m * 0.75;
     let rotulo = t.t("figuras-ventana-insertar-seccion").to_uppercase();
     p.texto(&rotulo, x + 14.0 * s, y, d::LETRA_CHAPA * s, d::GRIS);
@@ -819,7 +1054,21 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
         if y + fh > z.y + z.alto - m {
             break;
         }
-        fila_lateral(e, p, RectF { x, y, ancho, alto: fh }, &texto, None, false, Accion::Herramienta(id), s);
+        fila_lateral(
+            e,
+            p,
+            RectF {
+                x,
+                y,
+                ancho,
+                alto: fh,
+            },
+            &texto,
+            None,
+            false,
+            Accion::Herramienta(id),
+            s,
+        );
         y += fh + 2.0 * s;
     }
 }
@@ -833,13 +1082,24 @@ fn hex_lateral() -> Color {
 fn pintar_rejilla(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     if e.lista.is_empty() {
         let msg = t.t("figuras-ventana-vacio");
-        crate::ventanita::centrado_en(p, &msg, z, z.y + z.alto / 2.0 - 10.0 * s, d::LETRA_CUERPO * s, d::GRIS);
+        crate::ventanita::centrado_en(
+            p,
+            &msg,
+            z,
+            z.y + z.alto / 2.0 - 10.0 * s,
+            d::LETRA_CUERPO * s,
+            d::GRIS,
+        );
         return;
     }
     let piezas = e.disp.piezas.clone();
     p.con_recorte(z, |p| {
         for (r, pieza) in &piezas {
-            let c = RectF { x: z.x + r.x, y: z.y + r.y - e.scroll, ..*r };
+            let c = RectF {
+                x: z.x + r.x,
+                y: z.y + r.y - e.scroll,
+                ..*r
+            };
             if c.y > z.y + z.alto || c.y + c.alto < z.y {
                 continue;
             }
@@ -858,19 +1118,42 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
 fn encajar(caja: RectF, w: f32, h: f32) -> RectF {
     let k = (caja.ancho / w.max(1.0)).min(caja.alto / h.max(1.0));
     let (ww, hh) = (w * k, h * k);
-    RectF { x: caja.x + (caja.ancho - ww) / 2.0, y: caja.y + (caja.alto - hh) / 2.0, ancho: ww, alto: hh }
+    RectF {
+        x: caja.x + (caja.ancho - ww) / 2.0,
+        y: caja.y + (caja.alto - hh) / 2.0,
+        ancho: ww,
+        alto: hh,
+    }
 }
 
 fn pintar_celda(e: &mut Estado, p: &Pintor, c: RectF, zona: RectF, i: usize, s: f32) {
     let encima = dentro(c, e.botones.raton) && dentro(zona, e.botones.raton);
     let elegida = e.elegida == Some(i);
     if elegida {
-        p.rellenar_redondeado(encoger(c, -3.0 * s), d::RADIO_TARJETA * s + 3.0 * s, d::ACENTO);
+        p.rellenar_redondeado(
+            encoger(c, -3.0 * s),
+            d::RADIO_TARJETA * s + 3.0 * s,
+            d::ACENTO,
+        );
         p.rellenar_redondeado(encoger(c, -s), d::RADIO_TARJETA * s + 1.0 * s, d::FONDO);
     }
-    p.rellenar_redondeado(c, d::RADIO_TARJETA * s, if encima { d::TARJETA_ENCIMA } else { d::TARJETA });
+    p.rellenar_redondeado(
+        c,
+        d::RADIO_TARJETA * s,
+        if encima {
+            d::TARJETA_ENCIMA
+        } else {
+            d::TARJETA
+        },
+    );
     // La miniatura sobre su papel claro: las plantillas son hojas blancas.
-    let papel = encoger(RectF { alto: MINI_ALTO * s, ..c }, 10.0 * s);
+    let papel = encoger(
+        RectF {
+            alto: MINI_ALTO * s,
+            ..c
+        },
+        10.0 * s,
+    );
     p.rellenar_redondeado(papel, 8.0 * s, crate::caja_dibujo::hex(0xF2F2F5));
     if let Some((b, w, h)) = e.minis.get(&i) {
         let dentro_del_papel = encajar(encoger(papel, 8.0 * s), *w as f32, *h as f32);
@@ -881,7 +1164,13 @@ fn pintar_celda(e: &mut Estado, p: &Pintor, c: RectF, zona: RectF, i: usize, s: 
     let ancho = c.ancho - 20.0 * s;
     let corto = recortar(p, &nombre, tam, ancho);
     let (_, th) = p.medir_texto(&corto, tam);
-    p.texto(&corto, c.x + 10.0 * s, c.y + MINI_ALTO * s + (NOMBRE_ALTO * s - th) / 2.0 - 4.0 * s, tam, if elegida { d::TEXTO } else { d::CUERPO });
+    p.texto(
+        &corto,
+        c.x + 10.0 * s,
+        c.y + MINI_ALTO * s + (NOMBRE_ALTO * s - th) / 2.0 - 4.0 * s,
+        tam,
+        if elegida { d::TEXTO } else { d::CUERPO },
+    );
     if let Some(zc) = cortar(c, zona) {
         e.botones.zona(zc, Accion::Celda(i));
     }
@@ -910,7 +1199,14 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     let ancho = z.ancho - 2.0 * m;
     let Some(i) = e.elegida else {
         let msg = t.t("figuras-ventana-elige");
-        crate::ventanita::centrado_en(p, &msg, z, z.y + z.alto / 2.0, d::LETRA_SECUNDARIO * s, d::GRIS);
+        crate::ventanita::centrado_en(
+            p,
+            &msg,
+            z,
+            z.y + z.alto / 2.0,
+            d::LETRA_SECUNDARIO * s,
+            d::GRIS,
+        );
         return;
     };
     let f = e.figuras[i].clone();
@@ -930,15 +1226,40 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
         sueltos + (cs.len() - sueltos).div_ceil(2)
     }) as f32;
     let debajo = 56.0 * s
-        + if filas_campos > 0.0 { 22.0 * s + 64.0 * s * filas_campos + 30.0 * s } else { 0.0 }
-        + if serie::es_de_serie(&f) { 0.0 } else { 22.0 * s + d::BOTON * s + d::HUECO_GRANDE * s }
+        + if filas_campos > 0.0 {
+            22.0 * s + 64.0 * s * filas_campos + 30.0 * s
+        } else {
+            0.0
+        }
+        + if serie::es_de_serie(&f) {
+            0.0
+        } else {
+            22.0 * s + d::BOTON * s + d::HUECO_GRANDE * s
+        }
         + 2.0 * d::BOTON * s
         + d::HUECO * s;
-    let alto_vista = (z.alto - 3.0 * m - debajo).min(z.alto * 0.42).min(ancho * 1.25).max(80.0 * s);
-    let papel = RectF { x, y, ancho, alto: alto_vista };
-    p.rellenar_redondeado(papel, d::RADIO_TARJETA * s, crate::caja_dibujo::hex(0xF2F2F5));
+    let alto_vista = (z.alto - 3.0 * m - debajo)
+        .min(z.alto * 0.42)
+        .min(ancho * 1.25)
+        .max(80.0 * s);
+    let papel = RectF {
+        x,
+        y,
+        ancho,
+        alto: alto_vista,
+    };
+    p.rellenar_redondeado(
+        papel,
+        d::RADIO_TARJETA * s,
+        crate::caja_dibujo::hex(0xF2F2F5),
+    );
     if let Some((b, w, h)) = e.minis.get(&i) {
-        p.bitmap(b, encajar(encoger(papel, 12.0 * s), *w as f32, *h as f32), None, false);
+        p.bitmap(
+            b,
+            encajar(encoger(papel, 12.0 * s), *w as f32, *h as f32),
+            None,
+            false,
+        );
     }
     y += alto_vista + m;
     let tam_t = d::LETRA_TITULO_TARJETA * s * 1.15;
@@ -947,13 +1268,25 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     let mut a = fluent_bundle::FluentArgs::new();
     a.set("n", f.elementos.len());
     let sub = format!("{cat}  ·  {}", t.t_args("figuras-ventana-piezas", &a));
-    p.texto(&recortar(p, &sub, d::LETRA_SECUNDARIO * s, ancho), x, y, d::LETRA_SECUNDARIO * s, d::GRIS);
+    p.texto(
+        &recortar(p, &sub, d::LETRA_SECUNDARIO * s, ancho),
+        x,
+        y,
+        d::LETRA_SECUNDARIO * s,
+        d::GRIS,
+    );
     y += 30.0 * s;
 
     let boton_h = d::BOTON * s;
     let fin = z.y + z.alto - m;
     if let Some(clave) = e.alargable() {
-        p.texto(&t.t("figuras-ventana-intervalo").to_uppercase(), x, y, d::LETRA_CHAPA * s, d::GRIS);
+        p.texto(
+            &t.t("figuras-ventana-intervalo").to_uppercase(),
+            x,
+            y,
+            d::LETRA_CHAPA * s,
+            d::GRIS,
+        );
         y += 22.0 * s;
         let cs = campos_de(&clave);
         // De dos en dos por fila; el que queda solo, a lo ancho.
@@ -961,13 +1294,27 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
         let medio = (ancho - hueco) / 2.0;
         let mut k = 0;
         while k < cs.len() {
-            let par = k + 1 < cs.len() && !matches!(cs[k], Dato::DeA) && !matches!(cs[k + 1], Dato::DeA);
+            let par =
+                k + 1 < cs.len() && !matches!(cs[k], Dato::DeA) && !matches!(cs[k + 1], Dato::DeA);
             let n = if par { 2 } else { 1 };
             for j in 0..n {
                 let c = cs[k + j];
                 let ancho_c = if par { medio } else { ancho };
                 let cx = x + (medio + hueco) * j as f32;
-                pintar_campo(e, p, RectF { x: cx, y, ancho: ancho_c, alto: 58.0 * s }, c, &clave, s, t);
+                pintar_campo(
+                    e,
+                    p,
+                    RectF {
+                        x: cx,
+                        y,
+                        ancho: ancho_c,
+                        alto: 58.0 * s,
+                    },
+                    c,
+                    &clave,
+                    s,
+                    t,
+                );
             }
             y += 64.0 * s;
             k += n;
@@ -985,14 +1332,44 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     }
     let propia = !serie::es_de_serie(&f);
     if propia {
-        p.texto(&t.t("figuras-nombre").to_uppercase(), x, y, d::LETRA_CHAPA * s, d::GRIS);
+        p.texto(
+            &t.t("figuras-nombre").to_uppercase(),
+            x,
+            y,
+            d::LETRA_CHAPA * s,
+            d::GRIS,
+        );
         y += 22.0 * s;
         let foco = e.foco == Some(Dato::Nombre);
-        let caja = RectF { x, y, ancho: ancho - 108.0 * s, alto: boton_h };
-        e.campos.entry(Dato::Nombre).or_insert_with(|| Campo::con(&f.nombre)).pintar(p, caja, d::LETRA_CUERPO * s, foco, "", 0.0, s);
+        let caja = RectF {
+            x,
+            y,
+            ancho: ancho - 108.0 * s,
+            alto: boton_h,
+        };
+        e.campos
+            .entry(Dato::Nombre)
+            .or_insert_with(|| Campo::con(&f.nombre))
+            .pintar(p, caja, d::LETRA_CUERPO * s, foco, "", 0.0, s);
         e.botones.zona(caja, Accion::Campo(Dato::Nombre));
-        let rb = RectF { x: x + ancho - 100.0 * s, y, ancho: 100.0 * s, alto: boton_h };
-        boton_v2(p, &mut e.botones, rb, Accion::Renombrar, None, &t.t("figuras-ventana-renombrar"), None, Some(d::CAJA), d::TEXTO, s);
+        let rb = RectF {
+            x: x + ancho - 100.0 * s,
+            y,
+            ancho: 100.0 * s,
+            alto: boton_h,
+        };
+        boton_v2(
+            p,
+            &mut e.botones,
+            rb,
+            Accion::Renombrar,
+            None,
+            &t.t("figuras-ventana-renombrar"),
+            None,
+            Some(d::CAJA),
+            d::TEXTO,
+            s,
+        );
         y += boton_h + d::HUECO_GRANDE * s;
     }
     // Abajo del todo: Insertar y, debajo, Quitar.
@@ -1002,7 +1379,12 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     boton_v2(
         p,
         &mut e.botones,
-        RectF { x, y: insertar_y, ancho, alto: boton_h },
+        RectF {
+            x,
+            y: insertar_y,
+            ancho,
+            alto: boton_h,
+        },
         Accion::Insertar,
         Some(&mi::ADD),
         &t.t("figuras-ventana-insertar"),
@@ -1011,17 +1393,34 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
         Color::BLANCO,
         s,
     );
-    let rotulo_quitar = if e.confirmar_quitar { t.t("figuras-ventana-quitar-seguro") } else { t.t("figuras-quitar") };
+    let rotulo_quitar = if e.confirmar_quitar {
+        t.t("figuras-ventana-quitar-seguro")
+    } else {
+        t.t("figuras-quitar")
+    };
     boton_v2(
         p,
         &mut e.botones,
-        RectF { x, y: quitar_y, ancho, alto: boton_h },
+        RectF {
+            x,
+            y: quitar_y,
+            ancho,
+            alto: boton_h,
+        },
         Accion::Quitar,
         Some(&mi::DELETE),
         &rotulo_quitar,
         None,
-        if e.confirmar_quitar { Some(d::ROJO) } else { None },
-        if e.confirmar_quitar { Color::BLANCO } else { d::ROJO_TEXTO },
+        if e.confirmar_quitar {
+            Some(d::ROJO)
+        } else {
+            None
+        },
+        if e.confirmar_quitar {
+            Color::BLANCO
+        } else {
+            d::ROJO_TEXTO
+        },
         s,
     );
 }
@@ -1029,7 +1428,15 @@ fn pintar_panel(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
 /// Un campo del intervalo: su rotulo encima y la caja con la pista de lo
 /// que trae la de serie.
 #[allow(clippy::too_many_arguments)]
-fn pintar_campo(e: &mut Estado, p: &Pintor, caja: RectF, c: Dato, clave: &str, s: f32, t: &Catalogo) {
+fn pintar_campo(
+    e: &mut Estado,
+    p: &Pintor,
+    caja: RectF,
+    c: Dato,
+    clave: &str,
+    s: f32,
+    t: &Catalogo,
+) {
     let rotulo = t.t(match c {
         Dato::Desde => "figuras-ventana-desde",
         Dato::Hasta => "figuras-ventana-hasta",
@@ -1040,10 +1447,20 @@ fn pintar_campo(e: &mut Estado, p: &Pintor, caja: RectF, c: Dato, clave: &str, s
         Dato::Meses => "figuras-ventana-meses",
         Dato::Nombre => "figuras-nombre",
     });
-    p.texto(&rotulo, caja.x + 2.0 * s, caja.y, d::LETRA_SECUNDARIO * s * 0.92, d::CUERPO);
+    p.texto(
+        &rotulo,
+        caja.x + 2.0 * s,
+        caja.y,
+        d::LETRA_SECUNDARIO * s * 0.92,
+        d::CUERPO,
+    );
     let pista = match c {
-        Dato::Desde => serie::tramo_de_serie(clave).map(|t| t.0.to_string()).unwrap_or_default(),
-        Dato::Hasta => serie::tramo_de_serie(clave).map(|t| t.1.to_string()).unwrap_or_default(),
+        Dato::Desde => serie::tramo_de_serie(clave)
+            .map(|t| t.0.to_string())
+            .unwrap_or_default(),
+        Dato::Hasta => serie::tramo_de_serie(clave)
+            .map(|t| t.1.to_string())
+            .unwrap_or_default(),
         Dato::DeA => t.t("figuras-ventana-de-a-pista"),
         Dato::Mes => "2026-11".into(),
         Dato::Meses => "1".into(),
@@ -1051,9 +1468,17 @@ fn pintar_campo(e: &mut Estado, p: &Pintor, caja: RectF, c: Dato, clave: &str, s
         Dato::SemanasHasta => "12".into(),
         Dato::Nombre => String::new(),
     };
-    let r = RectF { x: caja.x, y: caja.y + 20.0 * s, ancho: caja.ancho, alto: d::BOTON * s * 0.95 };
+    let r = RectF {
+        x: caja.x,
+        y: caja.y + 20.0 * s,
+        ancho: caja.ancho,
+        alto: d::BOTON * s * 0.95,
+    };
     let foco = e.foco == Some(c);
-    e.campos.entry(c).or_default().pintar(p, r, d::LETRA_CUERPO * s, foco, &pista, 0.0, s);
+    e.campos
+        .entry(c)
+        .or_default()
+        .pintar(p, r, d::LETRA_CUERPO * s, foco, &pista, 0.0, s);
     e.botones.zona(r, Accion::Campo(c));
 }
 

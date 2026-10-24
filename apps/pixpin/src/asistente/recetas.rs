@@ -32,7 +32,9 @@ pub const TOPE_PEDIDO: usize = 2000;
 pub const MAXIMO: usize = 40;
 
 /// Los iconos que se ofrecen para elegir.
-pub const ICONOS: [&str; 12] = ["⭐", "📝", "📊", "🎨", "🔎", "📄", "🖼️", "✅", "📅", "💡", "🌐", "🤖"];
+pub const ICONOS: [&str; 12] = [
+    "⭐", "📝", "📊", "🎨", "🔎", "📄", "🖼️", "✅", "📅", "💡", "🌐", "🤖",
+];
 
 /// Una receta, vista desde su automatizacion.
 #[derive(Debug, Clone, PartialEq)]
@@ -55,7 +57,10 @@ pub enum NoSePuede {
 /// Si la automatizacion es una receta (un boton): `a_mano`, encendida, con
 /// `boton: true` y un solo paso que es un pedido al asistente.
 pub fn de(a: &Automatizacion) -> Option<Receta> {
-    if a.disparador != Disparador::AMano || !a.activa || a.resto.get("boton") != Some(&Value::Bool(true)) {
+    if a.disparador != Disparador::AMano
+        || !a.activa
+        || a.resto.get("boton") != Some(&Value::Bool(true))
+    {
         return None;
     }
     let [Paso::Asistente { pedido, .. }] = a.pasos.as_slice() else {
@@ -64,15 +69,27 @@ pub fn de(a: &Automatizacion) -> Option<Receta> {
     Some(Receta {
         id: a.id.clone(),
         nombre: a.nombre.clone(),
-        icono: a.resto.get("icono").and_then(Value::as_str).unwrap_or_default().to_string(),
+        icono: a
+            .resto
+            .get("icono")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         pedido: pedido.clone(),
-        orden: a.resto.get("orden").and_then(Value::as_i64).unwrap_or(i64::MAX),
+        orden: a
+            .resto
+            .get("orden")
+            .and_then(Value::as_i64)
+            .unwrap_or(i64::MAX),
     })
 }
 
 /// Las recetas de la lista, de izquierda a derecha.
 pub fn visibles(l: &Lista) -> Vec<Receta> {
-    let mut v: Vec<(i64, Receta)> = l.buenas().filter_map(|a| de(a).map(|r| (a.creada, r))).collect();
+    let mut v: Vec<(i64, Receta)> = l
+        .buenas()
+        .filter_map(|a| de(a).map(|r| (a.creada, r)))
+        .collect();
     v.sort_by(|(ca, a), (cb, b)| a.orden.cmp(&b.orden).then(ca.cmp(cb)).then(a.id.cmp(&b.id)));
     v.into_iter().map(|(_, r)| r).collect()
 }
@@ -90,7 +107,13 @@ fn buscar_mut<'a>(l: &'a mut Lista, id: &str) -> Option<&'a mut Automatizacion> 
 
 /// **Una receta nueva**, al final de la fila. Sin nombre, el principio del
 /// pedido; sin icono, uno segun lo que pide.
-pub fn anadir(l: &mut Lista, nombre: &str, icono: &str, pedido: &str, ahora: i64) -> Result<Receta, NoSePuede> {
+pub fn anadir(
+    l: &mut Lista,
+    nombre: &str,
+    icono: &str,
+    pedido: &str,
+    ahora: i64,
+) -> Result<Receta, NoSePuede> {
     let pedido: String = pedido.trim().chars().take(TOPE_PEDIDO).collect();
     if pedido.is_empty() {
         return Err(NoSePuede::Vacio);
@@ -99,9 +122,22 @@ pub fn anadir(l: &mut Lista, nombre: &str, icono: &str, pedido: &str, ahora: i64
     if fila.len() >= MAXIMO {
         return Err(NoSePuede::Llenas);
     }
-    let orden = fila.iter().map(|r| r.orden.saturating_add(1)).filter(|o| *o != i64::MAX).max().unwrap_or(0);
-    let nombre = if nombre.trim().is_empty() { nombre_para(&pedido) } else { recortar(nombre, TOPE_NOMBRE) };
-    let icono = if icono.trim().is_empty() { icono_para(&pedido).to_string() } else { icono.trim().to_string() };
+    let orden = fila
+        .iter()
+        .map(|r| r.orden.saturating_add(1))
+        .filter(|o| *o != i64::MAX)
+        .max()
+        .unwrap_or(0);
+    let nombre = if nombre.trim().is_empty() {
+        nombre_para(&pedido)
+    } else {
+        recortar(nombre, TOPE_NOMBRE)
+    };
+    let icono = if icono.trim().is_empty() {
+        icono_para(&pedido).to_string()
+    } else {
+        icono.trim().to_string()
+    };
     let mut resto = serde_json::Map::new();
     resto.insert("boton".into(), json!(true));
     resto.insert("icono".into(), json!(icono));
@@ -127,7 +163,12 @@ pub fn anadir(l: &mut Lista, nombre: &str, icono: &str, pedido: &str, ahora: i64
 }
 
 /// Cambia una receta (nombre, icono, pedido) y la sella con `ahora`.
-pub fn cambiar(l: &mut Lista, id: &str, ahora: i64, f: impl FnOnce(&mut Receta)) -> Result<(), NoSePuede> {
+pub fn cambiar(
+    l: &mut Lista,
+    id: &str,
+    ahora: i64,
+    f: impl FnOnce(&mut Receta),
+) -> Result<(), NoSePuede> {
     let a = buscar_mut(l, id).ok_or(NoSePuede::NoEsta)?;
     let mut r = de(a).ok_or(NoSePuede::NoEsta)?;
     f(&mut r);
@@ -230,8 +271,14 @@ mod pruebas {
         // En el fichero es una automatizacion `a_mano` con sus campos de mas,
         // y vuelve a leerse igual (el formato de las automatizaciones).
         let json = l.a_json();
-        assert!(json.contains("\"tipo\": \"a_mano\"") && json.contains("\"boton\": true"), "{json}");
-        assert!(json.contains("\"icono\": \"🎨\"") && json.contains("\"orden\": 0"), "{json}");
+        assert!(
+            json.contains("\"tipo\": \"a_mano\"") && json.contains("\"boton\": true"),
+            "{json}"
+        );
+        assert!(
+            json.contains("\"icono\": \"🎨\"") && json.contains("\"orden\": 0"),
+            "{json}"
+        );
         let otra = Lista::de_json(&json).unwrap();
         assert_eq!(visibles(&otra), vec![r.clone()]);
         assert!(crate::automatizaciones::validar(otra.buscar(&r.id).unwrap()).is_ok());
@@ -258,10 +305,16 @@ mod pruebas {
         assert_eq!(visibles(&l).last().unwrap().id, b.id);
         cambiar(&mut l, &b.id, 12, |r| r.nombre = "Ventas".into()).unwrap();
         assert_eq!(l.buscar(&b.id).unwrap().tocada, 12);
-        assert_eq!(visibles(&l).iter().find(|r| r.id == b.id).unwrap().nombre, "Ventas");
+        assert_eq!(
+            visibles(&l).iter().find(|r| r.id == b.id).unwrap().nombre,
+            "Ventas"
+        );
         // Negativos: vacio, una que no esta, borrar dos veces.
         assert_eq!(anadir(&mut l, "x", "", "   ", 13), Err(NoSePuede::Vacio));
-        assert_eq!(cambiar(&mut l, &b.id, 14, |r| r.pedido.clear()), Err(NoSePuede::Vacio));
+        assert_eq!(
+            cambiar(&mut l, &b.id, 14, |r| r.pedido.clear()),
+            Err(NoSePuede::Vacio)
+        );
         assert_eq!(borrar(&mut l, "no-existe"), Err(NoSePuede::NoEsta));
         borrar(&mut l, &a.id).unwrap();
         assert_eq!(borrar(&mut l, &a.id), Err(NoSePuede::NoEsta));
@@ -271,6 +324,9 @@ mod pruebas {
         for i in 0..MAXIMO {
             anadir(&mut llenas, "", "", &format!("p{i}"), i as i64).unwrap();
         }
-        assert_eq!(anadir(&mut llenas, "", "", "una mas", 99), Err(NoSePuede::Llenas));
+        assert_eq!(
+            anadir(&mut llenas, "", "", "una mas", 99),
+            Err(NoSePuede::Llenas)
+        );
     }
 }

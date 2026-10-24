@@ -31,7 +31,10 @@ fn ruta_de(args: &Map<String, Value>) -> Result<PathBuf, String> {
     let r = args
         .get("ruta")
         .and_then(Value::as_str)
-        .map(|s| s.trim().trim_matches(|c| c == '"' || c == '\'' || c == '«' || c == '»'))
+        .map(|s| {
+            s.trim()
+                .trim_matches(|c| c == '"' || c == '\'' || c == '«' || c == '»')
+        })
         .filter(|s| !s.is_empty())
         .ok_or("falta «ruta» (ruta absoluta del fichero)")?;
     let ruta = PathBuf::from(r);
@@ -47,14 +50,22 @@ fn ruta_de(args: &Map<String, Value>) -> Result<PathBuf, String> {
 /// Las paginas pedidas («3», «1-4, 7»), desde 1. Vacio: todas.
 pub fn rangos(texto: &str) -> Result<Vec<(u32, u32)>, String> {
     let mut v = Vec::new();
-    for trozo in texto.split([',', ';']).map(str::trim).filter(|t| !t.is_empty()) {
+    for trozo in texto
+        .split([',', ';'])
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
         let (a, b) = match trozo.split_once(['-', '–']) {
             Some((a, b)) => (a.trim().parse::<u32>(), b.trim().parse::<u32>()),
             None => (trozo.parse::<u32>(), trozo.parse::<u32>()),
         };
         match (a, b) {
             (Ok(a), Ok(b)) if a >= 1 && b >= a => v.push((a, b)),
-            _ => return Err(format!("«{trozo}» no es una pagina ni un rango (p. ej. «3» o «1-4»)")),
+            _ => {
+                return Err(format!(
+                    "«{trozo}» no es una pagina ni un rango (p. ej. «3» o «1-4»)"
+                ));
+            }
         }
     }
     Ok(v)
@@ -66,30 +77,45 @@ fn entra(rangos: &[(u32, u32)], n: u32) -> bool {
 }
 
 fn es_imagen(ext: &str) -> bool {
-    matches!(ext, "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" | "tif" | "tiff" | "heic" | "jfif")
+    matches!(
+        ext,
+        "png" | "jpg" | "jpeg" | "bmp" | "gif" | "webp" | "tif" | "tiff" | "heic" | "jfif"
+    )
 }
 
 /// El OCR de una imagen ya cargada, en orden de lectura (lo mismo que
 /// `texto_de_imagen` de la app: lineas → parrafos).
 fn ocr(imagen: &pixpin_codec::ImagenRgba) -> Result<String, String> {
-    let lineas = pixpin_ocr::reconocer(imagen.ancho, imagen.alto, &imagen.pixeles).map_err(|e| format!("el OCR fallo: {e}"))?;
-    Ok(pixpin_geom::parrafos::a_texto(&pixpin_geom::parrafos::agrupar(
-        lineas
-            .into_iter()
-            .map(|l| pixpin_geom::parrafos::LineaTexto { caja: l.caja, texto: l.texto })
-            .collect(),
-    )))
+    let lineas = pixpin_ocr::reconocer(imagen.ancho, imagen.alto, &imagen.pixeles)
+        .map_err(|e| format!("el OCR fallo: {e}"))?;
+    Ok(pixpin_geom::parrafos::a_texto(
+        &pixpin_geom::parrafos::agrupar(
+            lineas
+                .into_iter()
+                .map(|l| pixpin_geom::parrafos::LineaTexto {
+                    caja: l.caja,
+                    texto: l.texto,
+                })
+                .collect(),
+        ),
+    ))
 }
 
 fn sin_ocr() -> String {
-    "este Windows no tiene ningun idioma de OCR instalado (Configuracion > Hora e idioma > Idioma)".into()
+    "este Windows no tiene ningun idioma de OCR instalado (Configuracion > Hora e idioma > Idioma)"
+        .into()
 }
 
 /// Un PDF: la capa de texto de cada hoja y, si no la tiene, OCR.
 fn leer_pdf(ruta: &Path, rangos: &[(u32, u32)], forzar_ocr: bool) -> Result<String, String> {
-    let doc = pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("el PDF no se deja abrir: {e}"))?;
+    let doc =
+        pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("el PDF no se deja abrir: {e}"))?;
     let total = doc.paginas();
-    let capa = if forzar_ocr { Vec::new() } else { pixpin_pdf::texto::de_fichero(ruta).unwrap_or_default() };
+    let capa = if forzar_ocr {
+        Vec::new()
+    } else {
+        pixpin_pdf::texto::de_fichero(ruta).unwrap_or_default()
+    };
     let hojas: Vec<u32> = (1..=total).filter(|n| entra(rangos, *n)).collect();
     if hojas.is_empty() {
         return Err(format!("el PDF tiene {total} paginas; esas no existen"));
@@ -114,7 +140,9 @@ fn leer_pdf(ruta: &Path, rangos: &[(u32, u32)], forzar_ocr: bool) -> Result<Stri
                     return Err(sin_ocr());
                 }
                 con_ocr += 1;
-                let img = doc.renderizar(n - 1, ANCHO_OCR).map_err(|e| e.to_string())?;
+                let img = doc
+                    .renderizar(n - 1, ANCHO_OCR)
+                    .map_err(|e| e.to_string())?;
                 ocr(&img)?
             }
         };
@@ -141,11 +169,16 @@ fn leer_word_y_demas(ruta: &Path) -> Result<String, String> {
     let doc = pixpin_docs::abrir(ruta).map_err(|e| e.to_string())?;
     let mut s = String::new();
     for b in &doc.bloques {
-        let t = b.texto().replace(pixpin_docs::documento::SEPARADOR_DE_CELDA, " | ");
+        let t = b
+            .texto()
+            .replace(pixpin_docs::documento::SEPARADOR_DE_CELDA, " | ");
         if t.trim().is_empty() || t.trim() == pixpin_docs::documento::MARCA_IMAGEN {
             continue;
         }
-        if matches!(b.clase, pixpin_docs::documento::Clase::Titulo(_) | pixpin_docs::documento::Clase::Capitulo) {
+        if matches!(
+            b.clase,
+            pixpin_docs::documento::Clase::Titulo(_) | pixpin_docs::documento::Clase::Capitulo
+        ) {
             s.push_str("\n## ");
         }
         s.push_str(t.trim_end());
@@ -155,7 +188,8 @@ fn leer_word_y_demas(ruta: &Path) -> Result<String, String> {
 }
 
 fn leer_powerpoint(ruta: &Path, rangos: &[(u32, u32)]) -> Result<String, String> {
-    let doc = pixpin_office::Documento::abrir(ruta).map_err(|e| format!("el PowerPoint no se deja leer: {e}"))?;
+    let doc = pixpin_office::Documento::abrir(ruta)
+        .map_err(|e| format!("el PowerPoint no se deja leer: {e}"))?;
     let pixpin_office::Documento::PowerPoint(mut p) = doc else {
         return Err("no es un PowerPoint".into());
     };
@@ -165,10 +199,20 @@ fn leer_powerpoint(ruta: &Path, rangos: &[(u32, u32)]) -> Result<String, String>
         if !entra(rangos, n as u32 + 1) {
             continue;
         }
-        let Some(pagina) = p.diapositiva(n, &medidor) else { continue };
-        let texto: Vec<String> =
-            pagina.textos().iter().map(|(t, _)| t.texto.trim().to_string()).filter(|t| !t.is_empty()).collect();
-        s.push_str(&format!("--- Diapositiva {} ---\n{}\n\n", n + 1, texto.join("\n")));
+        let Some(pagina) = p.diapositiva(n, &medidor) else {
+            continue;
+        };
+        let texto: Vec<String> = pagina
+            .textos()
+            .iter()
+            .map(|(t, _)| t.texto.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
+        s.push_str(&format!(
+            "--- Diapositiva {} ---\n{}\n\n",
+            n + 1,
+            texto.join("\n")
+        ));
     }
     Ok(s)
 }
@@ -200,7 +244,11 @@ fn leer_excel(ruta: &Path, rangos: &[(u32, u32)]) -> Result<String, String> {
         let mut celdas = 0;
         for i in filas {
             let Some(fila) = hoja.fila(i) else { continue };
-            let linea: Vec<String> = hoja.celdas_de(fila).iter().map(|c| libro.texto_crudo(&hoja, c)).collect();
+            let linea: Vec<String> = hoja
+                .celdas_de(fila)
+                .iter()
+                .map(|c| libro.texto_crudo(&hoja, c))
+                .collect();
             if linea.iter().all(|t| t.trim().is_empty()) {
                 continue;
             }
@@ -238,13 +286,17 @@ pub fn leer_documento(args: &Map<String, Value>) -> Resultado {
         "pptx" | "pptm" | "ppsx" => leer_powerpoint(&ruta, &rangos)?,
         "xlsx" | "xlsm" | "xls" | "ods" => leer_excel(&ruta, &rangos)?,
         e if es_imagen(e) => return ocr_imagen(args),
-        _ if pixpin_docs::formato_de(&pixpin_docs::nombre(&ruta)).is_some() => leer_word_y_demas(&ruta)?,
+        _ if pixpin_docs::formato_de(&pixpin_docs::nombre(&ruta)).is_some() => {
+            leer_word_y_demas(&ruta)?
+        }
         _ => return Err(format!("PixPin no sabe leer el texto de un «.{ext}»")),
     };
     if texto.trim().is_empty() {
         return Err("el documento no tiene texto".into());
     }
-    Ok(vec![Contenido::Texto(recortar(texto.trim_end().to_string()))])
+    Ok(vec![Contenido::Texto(recortar(
+        texto.trim_end().to_string(),
+    ))])
 }
 
 /// **`ocr_imagen`**: una imagen, o un PDF leido entero con OCR (aunque
@@ -254,7 +306,9 @@ pub fn ocr_imagen(args: &Map<String, Value>) -> Resultado {
     let ext = pixpin_docs::extension(&pixpin_docs::nombre(&ruta));
     if ext == "pdf" {
         let rangos = rangos(args.get("paginas").and_then(Value::as_str).unwrap_or(""))?;
-        return Ok(vec![Contenido::Texto(recortar(leer_pdf(&ruta, &rangos, true)?))]);
+        return Ok(vec![Contenido::Texto(recortar(leer_pdf(
+            &ruta, &rangos, true,
+        )?))]);
     }
     if !es_imagen(&ext) {
         return Err("solo se puede hacer OCR de una imagen o un PDF".into());
@@ -263,7 +317,8 @@ pub fn ocr_imagen(args: &Map<String, Value>) -> Resultado {
     if !pixpin_ocr::disponible() {
         return Err(sin_ocr());
     }
-    let img = pixpin_codec::imagen::cargar(&ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    let img = pixpin_codec::imagen::cargar(&ruta)
+        .map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
     let texto = ocr(&img)?;
     if texto.trim().is_empty() {
         return Err("no se encontro texto en la imagen".into());
@@ -291,8 +346,16 @@ mod pruebas {
     fn sin_ruta_buena_no_se_lee_nada() {
         let a = |s: &str| serde_json::from_str::<Map<String, Value>>(s).unwrap();
         assert!(leer_documento(&a("{}")).unwrap_err().contains("«ruta»"));
-        assert!(leer_documento(&a(r#"{"ruta":"relativa.pdf"}"#)).unwrap_err().contains("absoluta"));
-        assert!(leer_documento(&a(r#"{"ruta":"C:\\no\\existe\\nada.pdf"}"#)).unwrap_err().contains("no existe"));
+        assert!(
+            leer_documento(&a(r#"{"ruta":"relativa.pdf"}"#))
+                .unwrap_err()
+                .contains("absoluta")
+        );
+        assert!(
+            leer_documento(&a(r#"{"ruta":"C:\\no\\existe\\nada.pdf"}"#))
+                .unwrap_err()
+                .contains("no existe")
+        );
     }
 
     #[test]

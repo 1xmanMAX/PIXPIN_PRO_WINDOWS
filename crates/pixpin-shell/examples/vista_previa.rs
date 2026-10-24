@@ -46,7 +46,9 @@ $b.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png)"#,
         destino.display()
     );
     // Mientras PowerShell hace la foto, la ventana sigue atendiendo.
-    let hijo = std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &guion]).spawn();
+    let hijo = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &guion])
+        .spawn();
     if let Ok(mut h) = hijo {
         let t = Instant::now();
         while t.elapsed() < Duration::from_secs(15) {
@@ -60,16 +62,34 @@ $b.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png)"#,
 }
 
 fn una_vez(ruta: &std::path::Path, vuelta: &str) -> Option<Estado> {
-    let area = Rect { x: 120, y: 80, ancho: 900, alto: 700 };
+    let area = Rect {
+        x: 120,
+        y: 80,
+        ancho: 900,
+        alto: 700,
+    };
     let ventana = VentanaOverlay::nueva_llana(area, "PixPin - vista previa (prueba)").ok()?;
     ventana.poner_siempre_encima(true);
     ventana.mostrar();
-    let carteles = Carteles { abriendo: "Abriendo…".into(), tarda: "Tarda mas de lo normal…".into(), fallo: "No se pudo previsualizar".into() };
+    let carteles = Carteles {
+        abriendo: "Abriendo…".into(),
+        tarda: "Tarda mas de lo normal…".into(),
+        fallo: "No se pudo previsualizar".into(),
+    };
     let t = Instant::now();
-    let dentro = Rect { x: 7, y: 7, ancho: area.ancho - 14, alto: area.alto - 14 };
+    let dentro = Rect {
+        x: 7,
+        y: 7,
+        ancho: area.ancho - 14,
+        alto: area.alto - 14,
+    };
     // Como la app: lo que viene de internet no se previsualiza, sale el aviso.
     let vista = if vista_previa::bloqueado_por_internet(ruta) {
-        VistaPrevia::solo_cartel(ventana.handle(), dentro, "Viene de internet: Windows no deja previsualizarlo")
+        VistaPrevia::solo_cartel(
+            ventana.handle(),
+            dentro,
+            "Viene de internet: Windows no deja previsualizarlo",
+        )
     } else {
         VistaPrevia::abrir(ventana.handle(), ruta, dentro, carteles)
     };
@@ -85,21 +105,36 @@ fn una_vez(ruta: &std::path::Path, vuelta: &str) -> Option<Estado> {
         std::thread::sleep(Duration::from_millis(5));
         estado = vista.estado();
     }
-    println!("{vuelta}: {:?} (visto por la app a los {} ms)", estado, t.elapsed().as_millis());
+    println!(
+        "{vuelta}: {:?} (visto por la app a los {} ms)",
+        estado,
+        t.elapsed().as_millis()
+    );
     esperar(A_LA_VISTA);
     // Con `PIXPIN_VP_CAPTURAS=<carpeta>`, una foto de la ventana tal cual
     // (para ver si Office la pinto): la hace PowerShell, solo de esta ventana.
     if let Ok(carpeta) = std::env::var("PIXPIN_VP_CAPTURAS") {
-        let nombre = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let nombre = ruta
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let destino = PathBuf::from(carpeta).join(format!("{nombre}-{vuelta}.png"));
         capturar(ventana.handle().0 as isize, &destino);
     }
     // Probar el estirar: la vista sigue a la ventana.
-    vista.mover(Rect { x: 7, y: 7, ancho: 700, alto: 500 });
+    vista.mover(Rect {
+        x: 7,
+        y: 7,
+        ancho: 700,
+        alto: 500,
+    });
     esperar(Duration::from_millis(300));
     let tc = Instant::now();
     let cerrada = vista.cerrar(Duration::from_secs(15));
-    println!("{vuelta}: cerrada={cerrada} en {} ms", tc.elapsed().as_millis());
+    println!(
+        "{vuelta}: cerrada={cerrada} en {} ms",
+        tc.elapsed().as_millis()
+    );
     if !cerrada {
         ventana.ocultar();
         std::mem::forget(ventana);
@@ -108,7 +143,10 @@ fn una_vez(ruta: &std::path::Path, vuelta: &str) -> Option<Estado> {
 }
 
 fn main() {
-    tracing_subscriber::fmt().with_max_level(tracing::Level::INFO).with_target(false).init();
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .with_target(false)
+        .init();
     let rutas: Vec<PathBuf> = std::env::args().skip(1).map(PathBuf::from).collect();
     if rutas.is_empty() {
         eprintln!("uso: vista_previa <fichero> [fichero...]");

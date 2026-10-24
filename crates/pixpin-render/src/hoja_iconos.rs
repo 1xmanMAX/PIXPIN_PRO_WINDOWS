@@ -18,7 +18,12 @@ const NEGRO: [u8; 3] = [0x26, 0x26, 0x26];
 const BLANCO: [u8; 3] = [0xFF, 0xFF, 0xFF];
 
 fn c(rgb: [u8; 3]) -> Color {
-    Color { r: rgb[0] as f32 / 255.0, g: rgb[1] as f32 / 255.0, b: rgb[2] as f32 / 255.0, a: 1.0 }
+    Color {
+        r: rgb[0] as f32 / 255.0,
+        g: rgb[1] as f32 / 255.0,
+        b: rgb[2] as f32 / 255.0,
+        a: 1.0,
+    }
 }
 
 /// Un poligono en coordenadas del icono (-1..1) llevado a pantalla.
@@ -40,13 +45,23 @@ impl Caja {
 
     fn rotado(&self, v: &[(f32, f32)], grados: f32) -> Vec<(f32, f32)> {
         let (s, co) = (grados.to_radians().sin(), grados.to_radians().cos());
-        v.iter().map(|&(x, y)| (x * co - y * s, x * s + y * co)).collect()
+        v.iter()
+            .map(|&(x, y)| (x * co - y * s, x * s + y * co))
+            .collect()
     }
 }
 
 /// Una flecha que apunta hacia arriba, girada `grados` en sentido horario.
 fn flecha(p: &Pintor, b: &Caja, grados: f32, col: [u8; 3]) {
-    let base = [(0.0, -1.0), (0.9, -0.05), (0.38, -0.05), (0.38, 1.0), (-0.38, 1.0), (-0.38, -0.05), (-0.9, -0.05)];
+    let base = [
+        (0.0, -1.0),
+        (0.9, -0.05),
+        (0.38, -0.05),
+        (0.38, 1.0),
+        (-0.38, 1.0),
+        (-0.38, -0.05),
+        (-0.9, -0.05),
+    ];
     b.poli(p, &b.rotado(&base, grados), col);
 }
 
@@ -75,14 +90,26 @@ fn estrella(centro: (f32, f32), r: f32) -> Vec<(f32, f32)> {
 /// Pinta el icono `idx` (0 = el peor) de `conjunto` centrado en `(cx, cy)`
 /// dentro de un cuadrado de lado `lado`.
 pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, lado: f32) {
-    let b = Caja { cx, cy, r: lado / 2.0 };
+    let b = Caja {
+        cx,
+        cy,
+        r: lado / 2.0,
+    };
     let idx = idx as usize;
     let k = conjunto.cantidad();
     let idx = idx.min(k - 1);
     let semaforo = [ROJO, AMARILLO, VERDE];
     match conjunto {
-        Conjunto::Flechas3 | Conjunto::FlechasGris3 | Conjunto::Flechas4 | Conjunto::FlechasGris4 | Conjunto::Flechas5 | Conjunto::FlechasGris5 => {
-            let gris = matches!(conjunto, Conjunto::FlechasGris3 | Conjunto::FlechasGris4 | Conjunto::FlechasGris5);
+        Conjunto::Flechas3
+        | Conjunto::FlechasGris3
+        | Conjunto::Flechas4
+        | Conjunto::FlechasGris4
+        | Conjunto::Flechas5
+        | Conjunto::FlechasGris5 => {
+            let gris = matches!(
+                conjunto,
+                Conjunto::FlechasGris3 | Conjunto::FlechasGris4 | Conjunto::FlechasGris5
+            );
             let (grados, col): (f32, [u8; 3]) = match (k, idx) {
                 (3, 0) => (180.0, ROJO),
                 (3, 1) => (90.0, AMARILLO),
@@ -101,11 +128,20 @@ pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, l
         }
         Conjunto::Banderas3 => {
             let col = semaforo[idx];
-            p.linea(b.p(-0.7, -0.95), b.p(-0.7, 0.95), (b.r * 0.2).max(1.0), c(GRIS));
+            p.linea(
+                b.p(-0.7, -0.95),
+                b.p(-0.7, 0.95),
+                (b.r * 0.2).max(1.0),
+                c(GRIS),
+            );
             b.poli(p, &[(-0.7, -0.9), (0.9, -0.55), (-0.7, 0.1)], col);
         }
         Conjunto::Semaforo3 | Conjunto::Semaforo3Borde | Conjunto::Semaforo4 => {
-            let col = if k == 4 { [NEGRO, ROJO, AMARILLO, VERDE][idx] } else { semaforo[idx] };
+            let col = if k == 4 {
+                [NEGRO, ROJO, AMARILLO, VERDE][idx]
+            } else {
+                semaforo[idx]
+            };
             p.circulo((cx, cy), b.r * 0.9, c(col));
             if conjunto == Conjunto::Semaforo3Borde {
                 p.anillo((cx, cy), b.r * 0.86, (b.r * 0.16).max(1.0), c(NEGRO));
@@ -116,7 +152,11 @@ pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, l
             p.circulo((cx, cy), b.r * 0.9, c(col));
         }
         Conjunto::Senales3 => match idx {
-            0 => b.poli(p, &[(0.0, -1.0), (0.95, 0.0), (0.0, 1.0), (-0.95, 0.0)], ROJO),
+            0 => b.poli(
+                p,
+                &[(0.0, -1.0), (0.95, 0.0), (0.0, 1.0), (-0.95, 0.0)],
+                ROJO,
+            ),
             1 => b.poli(p, &[(0.0, -0.9), (1.0, 0.85), (-1.0, 0.85)], AMARILLO),
             _ => p.circulo((cx, cy), b.r * 0.9, c(VERDE)),
         },
@@ -137,7 +177,11 @@ pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, l
                     p.linea(b.p(0.0, -0.5), b.p(0.0, 0.15), g, c(tinta));
                     p.circulo(b.p(0.0, 0.55), g * 0.55, c(tinta));
                 }
-                _ => p.polilinea(&[b.p(-0.45, 0.0), b.p(-0.1, 0.4), b.p(0.5, -0.4)], g, c(tinta)),
+                _ => p.polilinea(
+                    &[b.p(-0.45, 0.0), b.p(-0.1, 0.4), b.p(0.5, -0.4)],
+                    g,
+                    c(tinta),
+                ),
             }
         }
         Conjunto::Valoracion4 | Conjunto::Valoracion5 => {
@@ -159,16 +203,31 @@ pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, l
             let radio = b.r * 0.88;
             p.circulo((cx, cy), radio, c(BLANCO));
             if idx > 0 {
-                let v: Vec<(f32, f32)> = sector(&b, idx as u32, 1.0).iter().map(|&(x, y)| (cx + x * radio, cy + y * radio)).collect();
+                let v: Vec<(f32, f32)> = sector(&b, idx as u32, 1.0)
+                    .iter()
+                    .map(|&(x, y)| (cx + x * radio, cy + y * radio))
+                    .collect();
                 p.poligono(&v, c(NEGRO));
             }
             p.anillo((cx, cy), radio, (b.r * 0.14).max(1.0), c(NEGRO));
         }
         Conjunto::Cajas5 => {
-            let r = RectF { x: cx - b.r * 0.85, y: cy - b.r * 0.85, ancho: b.r * 1.7, alto: b.r * 1.7 };
+            let r = RectF {
+                x: cx - b.r * 0.85,
+                y: cy - b.r * 0.85,
+                ancho: b.r * 1.7,
+                alto: b.r * 1.7,
+            };
             if idx > 0 {
                 let alto = r.alto * idx as f32 / 4.0;
-                p.rellenar(RectF { y: r.y + r.alto - alto, alto, ..r }, c(NEGRO));
+                p.rellenar(
+                    RectF {
+                        y: r.y + r.alto - alto,
+                        alto,
+                        ..r
+                    },
+                    c(NEGRO),
+                );
             }
             p.trazar(r, (b.r * 0.14).max(1.0), c(NEGRO));
         }
@@ -179,7 +238,12 @@ pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, l
                 2 => p.poligono(&est, c(dorado)),
                 1 => {
                     p.poligono(&est, c(GRIS_CLARO));
-                    p.empujar_recorte(RectF { x: cx - b.r * 1.1, y: cy - b.r * 1.1, ancho: b.r * 1.1, alto: b.r * 2.2 });
+                    p.empujar_recorte(RectF {
+                        x: cx - b.r * 1.1,
+                        y: cy - b.r * 1.1,
+                        ancho: b.r * 1.1,
+                        alto: b.r * 2.2,
+                    });
                     p.poligono(&est, c(dorado));
                     p.soltar_recorte();
                 }
@@ -188,7 +252,15 @@ pub fn pintar_icono(p: &Pintor, conjunto: Conjunto, idx: u8, cx: f32, cy: f32, l
         }
         Conjunto::Triangulos3 => match idx {
             0 => b.poli(p, &[(-0.9, -0.6), (0.9, -0.6), (0.0, 0.8)], ROJO),
-            1 => p.rellenar(RectF { x: cx - b.r * 0.9, y: cy - b.r * 0.14, ancho: b.r * 1.8, alto: b.r * 0.28 }, c(AMARILLO)),
+            1 => p.rellenar(
+                RectF {
+                    x: cx - b.r * 0.9,
+                    y: cy - b.r * 0.14,
+                    ancho: b.r * 1.8,
+                    alto: b.r * 0.28,
+                },
+                c(AMARILLO),
+            ),
             _ => b.poli(p, &[(-0.9, 0.6), (0.9, 0.6), (0.0, -0.8)], VERDE),
         },
     }

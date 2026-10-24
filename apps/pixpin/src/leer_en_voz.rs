@@ -425,7 +425,11 @@ impl LeerEnVoz {
             (a, c.leyendo)
         };
         self.visto = Some(a);
-        self.mandar(if leyendo { Que::Leer(a) } else { Que::Situar(a) });
+        self.mandar(if leyendo {
+            Que::Leer(a)
+        } else {
+            Que::Situar(a)
+        });
         a
     }
 
@@ -723,11 +727,11 @@ impl Hilo {
 
     /// **Empieza a leer en el parrafo `p`**, por su principio.
     fn leer(&mut self, p: usize) {
-        let Some(texto) = self
-            .doc
-            .as_ref()
-            .and_then(|d| d.parrafos.get(p.min(d.parrafos.len().saturating_sub(1))).cloned())
-        else {
+        let Some(texto) = self.doc.as_ref().and_then(|d| {
+            d.parrafos
+                .get(p.min(d.parrafos.len().saturating_sub(1)))
+                .cloned()
+        }) else {
             return;
         };
         let p = p.min(self.doc.as_ref().map_or(1, |d| d.parrafos.len()) - 1);
@@ -893,9 +897,8 @@ impl Hilo {
             let lanzado = std::thread::Builder::new()
                 .name("voz-de-microsoft".into())
                 .spawn(move || {
-                    let r = edge::archivo(&carpeta, &texto, &voz, |t| {
-                        voz_alta::trozos(t, edge::TOPE)
-                    });
+                    let r =
+                        edge::archivo(&carpeta, &texto, &voz, |t| voz_alta::trozos(t, edge::TOPE));
                     if let Err(e) = &r {
                         tracing::info!(%e, "Microsoft no dio la voz de un parrafo");
                     }
@@ -1034,7 +1037,11 @@ impl Hilo {
             BotonDelSistema::Tocar if !leyendo => self.seguir(),
             BotonDelSistema::Pausar if leyendo => self.pausar(),
             BotonDelSistema::Siguiente | BotonDelSistema::Anterior if n > 0 => {
-                let paso: isize = if b == BotonDelSistema::Siguiente { 1 } else { -1 };
+                let paso: isize = if b == BotonDelSistema::Siguiente {
+                    1
+                } else {
+                    -1
+                };
                 let a = (actual as isize + paso).clamp(0, n as isize - 1) as usize;
                 if leyendo {
                     self.leer(a);
@@ -1136,7 +1143,10 @@ impl Preferencias {
             return Preferencias::default();
         };
         Preferencias {
-            microsoft: v.get("microsoft").and_then(|x| x.as_bool()).unwrap_or(false),
+            microsoft: v
+                .get("microsoft")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false),
             voces: v
                 .get("voces")
                 .and_then(|x| x.as_object())
@@ -1515,7 +1525,10 @@ mod pruebas {
     #[test]
     fn el_nombre_corto_y_las_etiquetas_son_las_del_movil() {
         assert_eq!(corto_del_nombre("es-ES-ElviraNeural"), "Elvira");
-        assert_eq!(corto_del_nombre("en-US-AvaMultilingualNeural"), "Ava multilingüe");
+        assert_eq!(
+            corto_del_nombre("en-US-AvaMultilingualNeural"),
+            "Ava multilingüe"
+        );
         assert_eq!(corto_del_nombre("raro"), "raro");
         let v = Voz {
             nombre: "es-ES-ElviraNeural".into(),
@@ -1569,7 +1582,12 @@ mod pruebas {
         let r = raiz("app");
         let apuntados = Arc::new(Mutex::new(Vec::<Option<usize>>::new()));
         let a = Arc::clone(&apuntados);
-        let doc = mudo(&r, "libro.docx", 3, Box::new(move |p| a.lock().unwrap().push(p)));
+        let doc = mudo(
+            &r,
+            "libro.docx",
+            3,
+            Box::new(move |p| a.lock().unwrap().push(p)),
+        );
         let clave = doc.clave.clone();
         let mut v = LeerEnVoz::arrancar(doc).expect("con Microsoft se puede empezar");
         assert!(suena(&clave));

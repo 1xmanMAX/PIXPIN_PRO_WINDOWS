@@ -63,9 +63,9 @@ use std::sync::mpsc;
 
 use anyhow::{Context, Result};
 use pixpin_codec::imagen::ImagenRgba;
+use pixpin_office::pptx::pase::{self as pp, Capa, Efecto, Medio, Transicion};
 use pixpin_render::icono::material;
 use pixpin_render::pagina_office::PintorOffice;
-use pixpin_office::pptx::pase::{self as pp, Capa, Efecto, Medio, Transicion};
 use pixpin_render::{Color, Interpolacion, MotorRender, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::Catalogo;
@@ -250,7 +250,12 @@ impl Pase {
     /// en negro, cualquier mando de pasar primero la enciende (PowerPoint).
     pub fn aplicar(&mut self, m: Mando) -> bool {
         let ultima = self.total.saturating_sub(1);
-        if self.negro && !matches!(m, Mando::Salir | Mando::Pastilla | Mando::Notas | Mando::Transiciones) {
+        if self.negro
+            && !matches!(
+                m,
+                Mando::Salir | Mando::Pastilla | Mando::Notas | Mando::Transiciones
+            )
+        {
             self.negro = false;
             if m == Mando::Negro {
                 return true;
@@ -297,7 +302,12 @@ pub fn encajar(pagina: (f32, f32), pantalla: (f32, f32)) -> RectF {
 /// de bits de ese tamano y se copia sin reescalar (nitida).
 fn encajar_entera(pagina: (f32, f32), pantalla: (f32, f32)) -> RectF {
     let c = encajar(pagina, pantalla);
-    RectF { x: c.x.round(), y: c.y.round(), ancho: c.ancho.round().max(1.0), alto: c.alto.round().max(1.0) }
+    RectF {
+        x: c.x.round(),
+        y: c.y.round(),
+        ancho: c.ancho.round().max(1.0),
+        alto: c.alto.round().max(1.0),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -307,8 +317,13 @@ fn encajar_entera(pagina: (f32, f32), pantalla: (f32, f32)) -> RectF {
 /// una sola, la presentacion va en ella y no hay vista del orador. Con dos
 /// o mas, el orador se queda la principal (la del portatil, la que tiene
 /// delante) y la presentacion va a la otra (el proyector), como PowerPoint.
-pub fn repartir(monitores: &[pixpin_geom::Monitor]) -> Option<(pixpin_geom::Monitor, Option<pixpin_geom::Monitor>)> {
-    let principal = monitores.iter().find(|m| m.principal).or(monitores.first())?;
+pub fn repartir(
+    monitores: &[pixpin_geom::Monitor],
+) -> Option<(pixpin_geom::Monitor, Option<pixpin_geom::Monitor>)> {
+    let principal = monitores
+        .iter()
+        .find(|m| m.principal)
+        .or(monitores.first())?;
     Some(match monitores.iter().find(|m| m.id != principal.id) {
         Some(otro) => (*otro, Some(*principal)),
         None => (*principal, None),
@@ -320,7 +335,11 @@ pub fn repartir(monitores: &[pixpin_geom::Monitor]) -> Option<(pixpin_geom::Moni
 pub fn cronometro(ms: u64) -> String {
     let s = ms / 1000;
     let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m:02}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m:02}:{s:02}")
+    }
 }
 
 /// La hora del reloj (`14:05`) desde los ms locales de `ahora_local_ms`.
@@ -353,12 +372,33 @@ pub fn zonas_orador(ancho: f32, alto: f32, e: f32, pagina: (f32, f32)) -> ZonasO
     let (wl, wr) = (util * 0.6, util * 0.4);
     let x1 = 2.0 * m + wl;
     let a = encajar(pagina, (wl, h));
-    let actual = RectF { x: m + a.x, y: y0 + a.y, ancho: a.ancho, alto: a.alto };
+    let actual = RectF {
+        x: m + a.x,
+        y: y0 + a.y,
+        ancho: a.ancho,
+        alto: a.alto,
+    };
     let s = encajar(pagina, (wr, (h * 0.45 - rotulo).max(1.0)));
-    let siguiente = RectF { x: x1 + s.x, y: y0 + rotulo, ancho: s.ancho, alto: s.alto };
+    let siguiente = RectF {
+        x: x1 + s.x,
+        y: y0 + rotulo,
+        ancho: s.ancho,
+        alto: s.alto,
+    };
     let ny = siguiente.y + siguiente.alto + m + rotulo;
-    let notas = RectF { x: x1, y: ny, ancho: wr, alto: (alto - m - ny).max(0.0) };
-    ZonasOrador { actual, siguiente, notas, cabecera: m, rotulo }
+    let notas = RectF {
+        x: x1,
+        y: ny,
+        ancho: wr,
+        alto: (alto - m - ny).max(0.0),
+    };
+    ZonasOrador {
+        actual,
+        siguiente,
+        notas,
+        cabecera: m,
+        rotulo,
+    }
 }
 
 /// La ventana del orador, en la pantalla del portatil.
@@ -371,13 +411,31 @@ struct Orador {
 }
 
 impl Orador {
-    fn nuevo(recursos: &Recursos, motor: &MotorRender, monitor: &pixpin_geom::Monitor, nombre: &str) -> Result<Orador> {
+    fn nuevo(
+        recursos: &Recursos,
+        motor: &MotorRender,
+        monitor: &pixpin_geom::Monitor,
+        nombre: &str,
+    ) -> Result<Orador> {
         let area = monitor.area;
-        let ventana = VentanaOverlay::nueva_normal(area, nombre).context("sin ventana del orador")?;
-        let superficie =
-            Superficie::nueva(motor, &recursos.d3d(), ventana.handle(), area.ancho, area.alto).context("sin superficie del orador")?;
+        let ventana =
+            VentanaOverlay::nueva_normal(area, nombre).context("sin ventana del orador")?;
+        let superficie = Superficie::nueva(
+            motor,
+            &recursos.d3d(),
+            ventana.handle(),
+            area.ancho,
+            area.alto,
+        )
+        .context("sin superficie del orador")?;
         ventana.mostrar();
-        Ok(Orador { ventana, superficie, ancho: area.ancho as f32, alto: area.alto as f32, e: monitor.escala() })
+        Ok(Orador {
+            ventana,
+            superficie,
+            ancho: area.ancho as f32,
+            alto: area.alto as f32,
+            e: monitor.escala(),
+        })
     }
 }
 
@@ -398,7 +456,12 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, 
 /// **Presenta un PowerPoint maquetado por PixPin** (`pixpin-office`) desde
 /// la diapositiva `desde`: lo que pide «Presentar» en el lector de Office.
 /// Si no se deja leer, por PowerPoint como antes.
-pub fn presentar_nativa(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, ruta: &Path, desde: usize) {
+pub fn presentar_nativa(
+    idioma: pixpin_store::Idioma,
+    ubicacion: pixpin_store::Ubicacion,
+    ruta: &Path,
+    desde: usize,
+) {
     let ruta = ruta.to_path_buf();
     let lanzado = std::thread::Builder::new().name("diapositivas".into()).spawn(move || {
         let _com = pixpin_shell::ComDelHilo::iniciar();
@@ -431,7 +494,11 @@ pub fn presentar_nativa(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::U
 
 /// **Presenta por PowerPoint**: el camino de antes (convertir a PDF con el
 /// PowerPoint del equipo), para lo que PixPin no maqueta.
-pub fn lanzar_con_powerpoint(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, ruta: &Path) {
+pub fn lanzar_con_powerpoint(
+    idioma: pixpin_store::Idioma,
+    ubicacion: pixpin_store::Ubicacion,
+    ruta: &Path,
+) {
     let ruta = ruta.to_path_buf();
     let lanzado = std::thread::Builder::new()
         .name("diapositivas".into())
@@ -563,7 +630,8 @@ impl Nativas {
         if let Some(n) = self.notas.get(&i) {
             return n.clone();
         }
-        let n: Option<std::sync::Arc<str>> = self.presentacion().and_then(|p| p.notas(i)).map(Into::into);
+        let n: Option<std::sync::Arc<str>> =
+            self.presentacion().and_then(|p| p.notas(i)).map(Into::into);
         self.notas.insert(i, n.clone());
         n
     }
@@ -588,9 +656,17 @@ impl Nativas {
     /// La diapositiva `i` pintada en vectores a un mapa de bits de `caja`
     /// (a la medida de la pantalla): lo que se copia en cada fotograma y lo
     /// que mezclan las transiciones, sin volver a maquetar.
-    fn foto(&mut self, motor: &MotorRender, i: usize, caja: RectF, total: usize) -> Option<ID2D1Bitmap1> {
+    fn foto(
+        &mut self,
+        motor: &MotorRender,
+        i: usize,
+        caja: RectF,
+        total: usize,
+    ) -> Option<ID2D1Bitmap1> {
         let d = self.diapositiva(i)?;
-        let b = motor.mapa_de_dibujo(caja.ancho as u32, caja.alto as u32).ok()?;
+        let b = motor
+            .mapa_de_dibujo(caja.ancho as u32, caja.alto as u32)
+            .ok()?;
         let escala = caja.ancho / d.ancho.max(1.0);
         let (pintor, recursos) = (&self.pintor, &self.recursos);
         motor
@@ -621,7 +697,12 @@ struct EnCurso {
 /// Si al pasar de `antes` a `ahora` toca transicion: solo hacia delante y
 /// de una en una (atras o saltando, de golpe, como PowerPoint), con las
 /// transiciones encendidas y si dura algo.
-pub fn toca_transicion(antes: usize, ahora: usize, encendidas: bool, t: Option<Transicion>) -> bool {
+pub fn toca_transicion(
+    antes: usize,
+    ahora: usize,
+    encendidas: bool,
+    t: Option<Transicion>,
+) -> bool {
     encendidas && ahora == antes + 1 && t.is_some_and(|t| t.ms > 0)
 }
 
@@ -639,11 +720,20 @@ fn reproducir_medio(textos: &Catalogo, origen: &Path, n: &mut Nativas, m: &Medio
         .next()
         .unwrap_or("medio")
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     origen.hash(&mut h);
-    std::fs::metadata(origen).ok().and_then(|m| m.modified().ok()).hash(&mut h);
+    std::fs::metadata(origen)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .hash(&mut h);
     parte.hash(&mut h);
     let carpeta = std::env::temp_dir().join("pixpin-medios");
     let ruta = carpeta.join(format!("{:016x}-{nombre}", h.finish()));
@@ -723,10 +813,14 @@ fn presentar(
     // Sin PowerPoint: el documento ya leido, su pintor y cuantas hay.
     let mut nativas = match nativa {
         Some((documento, desde)) => {
-            let pintor = PintorOffice::nuevo(&motor).context("sin letras para pintar las diapositivas")?;
+            let pintor =
+                PintorOffice::nuevo(&motor).context("sin letras para pintar las diapositivas")?;
             let mut n = Nativas::nuevas(documento, pintor);
             pase.total = n.documento.total();
-            let tam = n.diapositiva(desde.min(pase.total.saturating_sub(1))).map(|p| (p.ancho, p.alto)).unwrap_or((960.0, 540.0));
+            let tam = n
+                .diapositiva(desde.min(pase.total.saturating_sub(1)))
+                .map(|p| (p.ancho, p.alto))
+                .unwrap_or((960.0, 540.0));
             medidas = vec![tam; pase.total];
             pase.actual = desde.min(pase.total.saturating_sub(1));
             drop((rx_pedidos, tx_llega));
@@ -817,7 +911,10 @@ fn presentar(
                             let caja = encajar_entera(*m, (ancho, alto));
                             let k = caja.ancho / m.0.max(1.0);
                             let (px, py) = ((raton.0 - caja.x) / k, (raton.1 - caja.y) / k);
-                            n.medios(pase.actual).iter().find(|md| md.rect.contiene(px, py)).cloned()
+                            n.medios(pase.actual)
+                                .iter()
+                                .find(|md| md.rect.contiene(px, py))
+                                .cloned()
                         }
                         _ => None,
                     };
@@ -848,7 +945,11 @@ fn presentar(
                     }
                     Mando::Transiciones => {
                         transiciones = !transiciones;
-                        let clave = if transiciones { "diapositivas-transiciones-si" } else { "diapositivas-transiciones-no" };
+                        let clave = if transiciones {
+                            "diapositivas-transiciones-si"
+                        } else {
+                            "diapositivas-transiciones-no"
+                        };
                         aviso = Some((textos.t(clave), ahora_ms() + MS_DEL_AVISO));
                         pintar_orador = true;
                         continue;
@@ -895,7 +996,12 @@ fn presentar(
                     && toca_transicion(antes, pase.actual, transiciones, t)
                     && let (Some(t), Some(vieja)) = (t, pintadas.get(&antes).cloned())
                 {
-                    en_curso = Some(EnCurso { vieja, efecto: t.efecto, ms: t.ms, empezo: ahora });
+                    en_curso = Some(EnCurso {
+                        vieja,
+                        efecto: t.efecto,
+                        ms: t.ms,
+                        empezo: ahora,
+                    });
                     visible_desde = ahora + t.ms as u64;
                 }
             }
@@ -905,7 +1011,12 @@ fn presentar(
             && pase.total > 0
             && !pintadas.contains_key(&pase.actual)
             && let Some(m) = medidas.get(pase.actual)
-            && let Some(b) = n.foto(&motor, pase.actual, encajar_entera(*m, (ancho, alto)), pase.total)
+            && let Some(b) = n.foto(
+                &motor,
+                pase.actual,
+                encajar_entera(*m, (ancho, alto)),
+                pase.total,
+            )
         {
             pintadas.insert(pase.actual, b);
             hay_que_pintar = true;
@@ -986,7 +1097,11 @@ fn presentar(
                         textos,
                     );
                 });
-                let _ = if mezcla.is_some() { superficie.presentar_sincronizado(None) } else { superficie.presentar() };
+                let _ = if mezcla.is_some() {
+                    superficie.presentar_sincronizado(None)
+                } else {
+                    superficie.presentar()
+                };
             }
             if let Some((t, _)) = capas_ahora
                 && t >= 1.0
@@ -1038,7 +1153,12 @@ fn presentar(
             && !pintadas.contains_key(&(pase.actual + 1))
             && let Some(m) = medidas.get(pase.actual + 1)
         {
-            if let Some(b) = n.foto(&motor, pase.actual + 1, encajar_entera(*m, (ancho, alto)), pase.total) {
+            if let Some(b) = n.foto(
+                &motor,
+                pase.actual + 1,
+                encajar_entera(*m, (ancho, alto)),
+                pase.total,
+            ) {
                 pintadas.insert(pase.actual + 1, b);
                 pintar_orador = true;
             }
@@ -1052,7 +1172,12 @@ fn presentar(
 
 /// La diapositiva en su caja: sola, o mezclada con la de antes durante una
 /// transicion (las dos ya pintadas: aqui solo se copian).
-fn pintar_diapositiva(p: &Pintor, caja: RectF, nueva: Option<&ID2D1Bitmap1>, mezcla: Option<(&ID2D1Bitmap1, &[Capa])>) {
+fn pintar_diapositiva(
+    p: &Pintor,
+    caja: RectF,
+    nueva: Option<&ID2D1Bitmap1>,
+    mezcla: Option<(&ID2D1Bitmap1, &[Capa])>,
+) {
     let Some((vieja, capas)) = mezcla else {
         if let Some(b) = nueva {
             p.bitmap(b, caja, None, false);
@@ -1137,26 +1262,56 @@ fn pintar(
         return botones;
     }
     if let Some(m) = medidas.get(pase.actual) {
-        pintar_diapositiva(p, encajar_entera(*m, (ancho, alto)), pintadas.get(&pase.actual), mezcla);
+        pintar_diapositiva(
+            p,
+            encajar_entera(*m, (ancho, alto)),
+            pintadas.get(&pase.actual),
+            mezcla,
+        );
     }
     // Las notas abajo (una pantalla, tecla N).
     let mut suelo = alto;
     if let Some(notas) = notas {
         let tam = 20.0 * e;
         let margen = 24.0 * e;
-        let texto = notas.map(str::to_string).unwrap_or_else(|| textos.t("diapositivas-sin-notas"));
+        let texto = notas
+            .map(str::to_string)
+            .unwrap_or_else(|| textos.t("diapositivas-sin-notas"));
         let (_, h) = p.medir_texto_ajustado(&texto, tam, ancho - 2.0 * margen);
         let franja_alto = (h + 2.0 * margen).min(alto * 0.33);
-        let franja = RectF { x: 0.0, y: alto - franja_alto, ancho, alto: franja_alto };
+        let franja = RectF {
+            x: 0.0,
+            y: alto - franja_alto,
+            ancho,
+            alto: franja_alto,
+        };
         p.rellenar(franja, con_alfa(CRISTAL, 0.92));
-        let color = if notas.is_some() { Color::BLANCO } else { APAGADO };
-        p.con_recorte(franja, |p| p.texto_ajustado(&texto, margen, franja.y + margen, tam, ancho - 2.0 * margen, color));
+        let color = if notas.is_some() {
+            Color::BLANCO
+        } else {
+            APAGADO
+        };
+        p.con_recorte(franja, |p| {
+            p.texto_ajustado(
+                &texto,
+                margen,
+                franja.y + margen,
+                tam,
+                ancho - 2.0 * margen,
+                color,
+            )
+        });
         suelo = franja.y;
     }
     if let Some(t) = aviso {
         let tam = 16.0 * e;
         let (w, h) = p.medir_texto(t, tam);
-        let caja = RectF { x: (ancho - w) / 2.0 - 16.0 * e, y: 32.0 * e, ancho: w + 32.0 * e, alto: h + 16.0 * e };
+        let caja = RectF {
+            x: (ancho - w) / 2.0 - 16.0 * e,
+            y: 32.0 * e,
+            ancho: w + 32.0 * e,
+            alto: h + 16.0 * e,
+        };
         p.rellenar_redondeado(caja, caja.alto / 2.0, con_alfa(CRISTAL, 0.9));
         p.texto(t, caja.x + 16.0 * e, caja.y + 8.0 * e, tam, Color::BLANCO);
     }
@@ -1245,8 +1400,21 @@ fn pintar_vista_orador(
     transiciones: bool,
     textos: &Catalogo,
 ) {
-    const FONDO: Color = Color { r: 0.09, g: 0.09, b: 0.106, a: 1.0 };
-    p.rellenar(RectF { x: 0.0, y: 0.0, ancho, alto }, FONDO);
+    const FONDO: Color = Color {
+        r: 0.09,
+        g: 0.09,
+        b: 0.106,
+        a: 1.0,
+    };
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho,
+            alto,
+        },
+        FONDO,
+    );
     let z = zonas_orador(ancho, alto, e, pagina);
     let m = 24.0 * e;
     // Arriba: «3 / 12», el tiempo (grande, en medio) y la hora.
@@ -1256,7 +1424,13 @@ fn pintar_vista_orador(
     let tiempo = cronometro(transcurrido_ms);
     let grande = 30.0 * e;
     let (w, _) = p.medir_texto(&tiempo, grande);
-    p.texto(&tiempo, (ancho - w) / 2.0, z.cabecera, grande, Color::BLANCO);
+    p.texto(
+        &tiempo,
+        (ancho - w) / 2.0,
+        z.cabecera,
+        grande,
+        Color::BLANCO,
+    );
     let (w, _) = p.medir_texto(reloj, tam);
     p.texto(reloj, ancho - m - w, z.cabecera + 8.0 * e, tam, APAGADO);
     if !transiciones {
@@ -1275,7 +1449,13 @@ fn pintar_vista_orador(
     }
     // La siguiente (la misma imagen que ya esta pintada, en pequeno).
     let rotulo = 15.0 * e;
-    p.texto(&textos.t("diapositivas-siguiente"), z.siguiente.x, z.siguiente.y - z.rotulo + 4.0 * e, rotulo, APAGADO);
+    p.texto(
+        &textos.t("diapositivas-siguiente"),
+        z.siguiente.x,
+        z.siguiente.y - z.rotulo + 4.0 * e,
+        rotulo,
+        APAGADO,
+    );
     if pase.actual + 1 < pase.total {
         match pintadas.get(&(pase.actual + 1)) {
             Some(b) => p.bitmap(b, z.siguiente, None, false),
@@ -1285,16 +1465,30 @@ fn pintar_vista_orador(
         p.rellenar(z.siguiente, CRISTAL);
         let t = textos.t("diapositivas-fin");
         let (w, h) = p.medir_texto(&t, rotulo);
-        p.texto(&t, z.siguiente.x + (z.siguiente.ancho - w) / 2.0, z.siguiente.y + (z.siguiente.alto - h) / 2.0, rotulo, APAGADO);
+        p.texto(
+            &t,
+            z.siguiente.x + (z.siguiente.ancho - w) / 2.0,
+            z.siguiente.y + (z.siguiente.alto - h) / 2.0,
+            rotulo,
+            APAGADO,
+        );
     }
     // Las notas.
-    p.texto(&textos.t("diapositivas-notas"), z.notas.x, z.notas.y - z.rotulo + 4.0 * e, rotulo, APAGADO);
+    p.texto(
+        &textos.t("diapositivas-notas"),
+        z.notas.x,
+        z.notas.y - z.rotulo + 4.0 * e,
+        rotulo,
+        APAGADO,
+    );
     if z.notas.alto > 0.0 {
         let (texto, color) = match notas {
             Some(n) => (n.to_string(), TEXTO),
             None => (textos.t("diapositivas-sin-notas"), APAGADO),
         };
-        p.con_recorte(z.notas, |p| p.texto_ajustado(&texto, z.notas.x, z.notas.y, 22.0 * e, z.notas.ancho, color));
+        p.con_recorte(z.notas, |p| {
+            p.texto_ajustado(&texto, z.notas.x, z.notas.y, 22.0 * e, z.notas.ancho, color)
+        });
     }
 }
 
@@ -1457,8 +1651,19 @@ mod pruebas {
     }
 
     fn monitor(id: u32, x: i32, principal: bool) -> pixpin_geom::Monitor {
-        let area = pixpin_geom::Rect { x, y: 0, ancho: 1920, alto: 1080 };
-        pixpin_geom::Monitor { id, area, area_trabajo: area, escala_por_cien: 100, principal }
+        let area = pixpin_geom::Rect {
+            x,
+            y: 0,
+            ancho: 1920,
+            alto: 1080,
+        };
+        pixpin_geom::Monitor {
+            id,
+            area,
+            area_trabajo: area,
+            escala_por_cien: 100,
+            principal,
+        }
     }
 
     #[test]
@@ -1485,16 +1690,35 @@ mod pruebas {
 
     #[test]
     fn la_vista_del_orador_cabe_y_no_se_pisa() {
-        let dentro_de = |r: RectF, w: f32, h: f32| r.x >= 0.0 && r.y >= 0.0 && r.x + r.ancho <= w + 0.01 && r.y + r.alto <= h + 0.01;
-        let se_pisan = |a: RectF, b: RectF| a.x < b.x + b.ancho && b.x < a.x + a.ancho && a.y < b.y + b.alto && b.y < a.y + a.alto;
-        for (w, h, e, pagina) in [(1366.0, 768.0, 1.0, (960.0, 540.0)), (1920.0, 1080.0, 1.5, (720.0, 540.0)), (2560.0, 1600.0, 2.0, (960.0, 540.0))] {
+        let dentro_de = |r: RectF, w: f32, h: f32| {
+            r.x >= 0.0 && r.y >= 0.0 && r.x + r.ancho <= w + 0.01 && r.y + r.alto <= h + 0.01
+        };
+        let se_pisan = |a: RectF, b: RectF| {
+            a.x < b.x + b.ancho && b.x < a.x + a.ancho && a.y < b.y + b.alto && b.y < a.y + a.alto
+        };
+        for (w, h, e, pagina) in [
+            (1366.0, 768.0, 1.0, (960.0, 540.0)),
+            (1920.0, 1080.0, 1.5, (720.0, 540.0)),
+            (2560.0, 1600.0, 2.0, (960.0, 540.0)),
+        ] {
             let z = zonas_orador(w, h, e, pagina);
             for r in [z.actual, z.siguiente, z.notas] {
                 assert!(dentro_de(r, w, h), "{w}x{h}: {r:?}");
             }
-            assert!(!se_pisan(z.actual, z.siguiente) && !se_pisan(z.actual, z.notas) && !se_pisan(z.siguiente, z.notas), "{z:?}");
-            assert!(z.actual.ancho > z.siguiente.ancho, "la de ahora es la grande");
-            assert!(((z.actual.ancho / z.actual.alto) - pagina.0 / pagina.1).abs() < 0.01, "sin deformar");
+            assert!(
+                !se_pisan(z.actual, z.siguiente)
+                    && !se_pisan(z.actual, z.notas)
+                    && !se_pisan(z.siguiente, z.notas),
+                "{z:?}"
+            );
+            assert!(
+                z.actual.ancho > z.siguiente.ancho,
+                "la de ahora es la grande"
+            );
+            assert!(
+                ((z.actual.ancho / z.actual.alto) - pagina.0 / pagina.1).abs() < 0.01,
+                "sin deformar"
+            );
             assert!(z.notas.alto > h * 0.2, "sitio para las notas: {z:?}");
         }
         // Una pantalla diminuta no da medidas negativas.
@@ -1504,19 +1728,33 @@ mod pruebas {
 
     #[test]
     fn la_transicion_solo_al_avanzar_de_una_en_una() {
-        let t = Some(Transicion { efecto: Efecto::Fundido { por_negro: false }, ms: 700, avance_ms: None, avance_clic: true });
+        let t = Some(Transicion {
+            efecto: Efecto::Fundido { por_negro: false },
+            ms: 700,
+            avance_ms: None,
+            avance_clic: true,
+        });
         assert!(toca_transicion(2, 3, true, t));
         assert!(!toca_transicion(3, 2, true, t), "hacia atras, de golpe");
         assert!(!toca_transicion(0, 5, true, t), "saltando (Fin), de golpe");
         assert!(!toca_transicion(2, 3, false, t), "apagadas con la T");
         assert!(!toca_transicion(2, 3, true, None), "sin transicion");
-        let corte = Some(Transicion { efecto: Efecto::Corte { por_negro: false }, ms: 0, avance_ms: None, avance_clic: true });
+        let corte = Some(Transicion {
+            efecto: Efecto::Corte { por_negro: false },
+            ms: 0,
+            avance_ms: None,
+            avance_clic: true,
+        });
         assert!(!toca_transicion(2, 3, true, corte), "un corte no anima");
     }
 
     #[test]
     fn las_notas_y_las_transiciones_no_mueven_el_pase_ni_encienden_el_negro() {
-        let mut p = Pase { total: 4, actual: 1, ..Default::default() };
+        let mut p = Pase {
+            total: 4,
+            actual: 1,
+            ..Default::default()
+        };
         p.aplicar(Mando::Negro);
         assert!(p.aplicar(Mando::Notas));
         assert!(p.aplicar(Mando::Transiciones));
@@ -1539,7 +1777,9 @@ mod pruebas {
             println!("sin muestra en {}", ruta.display());
             return;
         }
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let _com = pixpin_shell::ComDelHilo::iniciar();
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(d.d3d()).expect("motor");
@@ -1548,30 +1788,51 @@ mod pruebas {
         let mut n = Nativas::nuevas(documento, PintorOffice::nuevo(&motor).expect("letras"));
         let total = n.documento.total();
         for i in 0..total.min(6) {
-            println!("diapositiva {}: {:?}; notas: {:?}", i + 1, n.transicion(i), n.notas(i).map(|t| t.chars().take(40).collect::<String>()));
+            println!(
+                "diapositiva {}: {:?}; notas: {:?}",
+                i + 1,
+                n.transicion(i),
+                n.notas(i).map(|t| t.chars().take(40).collect::<String>())
+            );
         }
-        let pagina = n.diapositiva(0).map(|p| (p.ancho, p.alto)).expect("primera");
+        let pagina = n
+            .diapositiva(0)
+            .map(|p| (p.ancho, p.alto))
+            .expect("primera");
         let (ancho, alto) = (1280.0, 720.0);
         let caja = encajar_entera(pagina, (ancho, alto));
         let empezo = std::time::Instant::now();
         let vieja = n.foto(&motor, 0, caja, total).expect("foto 1");
-        println!("una diapositiva a mapa de bits: {} ms", empezo.elapsed().as_millis());
+        println!(
+            "una diapositiva a mapa de bits: {} ms",
+            empezo.elapsed().as_millis()
+        );
         let mut pintadas = HashMap::new();
         pintadas.insert(0, vieja.clone());
         pintadas.insert(1, n.foto(&motor, 1, caja, total).expect("foto 2"));
         pintadas.insert(2, n.foto(&motor, 2, caja, total).expect("foto 3"));
         pintadas.insert(3, n.foto(&motor, 3, caja, total).expect("foto 4"));
         let medidas = vec![pagina; total];
-        let pase = Pase { actual: 1, total, ..Default::default() };
+        let pase = Pase {
+            actual: 1,
+            total,
+            ..Default::default()
+        };
         let guardar = |nombre: &str, fuera: &FueraDePantalla| {
             fuera.esperar_gpu().expect("esperar");
             let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
-            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho, alto, pixeles }).expect("png");
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            })
+            .expect("png");
             let salida = carpeta.join(nombre);
             std::fs::write(&salida, png).expect("guardar");
             println!("{}", salida.display());
         };
-        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho as u32, alto as u32).expect("superficie");
+        let fuera =
+            FueraDePantalla::nuevo(&motor, d.d3d(), ancho as u32, alto as u32).expect("superficie");
         let efectos = [
             ("empuje", Efecto::Empuje(pp::Sentido::IZQUIERDA)),
             ("barrido", Efecto::Barrido(pp::Sentido::IZQUIERDA)),
@@ -1582,7 +1843,20 @@ mod pruebas {
             let capas = pp::capas(efecto, 0.5);
             motor
                 .dibujar(&fuera.destino, |p| {
-                    pintar(p, &pase, &medidas, &pintadas, Some((&vieja, &capas)), None, false, None, None, (ancho, alto), 1.0, &textos);
+                    pintar(
+                        p,
+                        &pase,
+                        &medidas,
+                        &pintadas,
+                        Some((&vieja, &capas)),
+                        None,
+                        false,
+                        None,
+                        None,
+                        (ancho, alto),
+                        1.0,
+                        &textos,
+                    );
                 })
                 .expect("pintar");
             guardar(&format!("presentar-transicion-{nombre}.png"), &fuera);
@@ -1594,7 +1868,20 @@ mod pruebas {
         let aviso = textos.t("diapositivas-transiciones-no");
         motor
             .dibujar(&fuera.destino, |p| {
-                pintar(p, &pase, &medidas, &pintadas, None, None, true, Some(notas.as_deref()), Some(&aviso), (ancho, alto), 1.0, &textos);
+                pintar(
+                    p,
+                    &pase,
+                    &medidas,
+                    &pintadas,
+                    None,
+                    None,
+                    true,
+                    Some(notas.as_deref()),
+                    Some(&aviso),
+                    (ancho, alto),
+                    1.0,
+                    &textos,
+                );
             })
             .expect("pintar");
         guardar("presentar-notas-abajo.png", &fuera);
@@ -1602,7 +1889,19 @@ mod pruebas {
         let orador = FueraDePantalla::nuevo(&motor, d.d3d(), 1366, 768).expect("superficie");
         motor
             .dibujar(&orador.destino, |p| {
-                pintar_vista_orador(p, (1366.0, 768.0), 1.0, &pase, pagina, &pintadas, notas.as_deref(), 754_000, "14:05", true, &textos);
+                pintar_vista_orador(
+                    p,
+                    (1366.0, 768.0),
+                    1.0,
+                    &pase,
+                    pagina,
+                    &pintadas,
+                    notas.as_deref(),
+                    754_000,
+                    "14:05",
+                    true,
+                    &textos,
+                );
             })
             .expect("pintar");
         guardar("presentar-vista-orador.png", &orador);

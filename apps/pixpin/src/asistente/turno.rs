@@ -97,7 +97,8 @@ pub struct Memoria {
 /// El modelo de vision de los turnos de las pruebas (en la app sale de
 /// Ajustes: `hoja_a_lienzo::motor_de_vision`).
 #[cfg(test)]
-pub static VISION_EN_PRUEBAS: std::sync::Mutex<Option<Arc<dyn Motor>>> = std::sync::Mutex::new(None);
+pub static VISION_EN_PRUEBAS: std::sync::Mutex<Option<Arc<dyn Motor>>> =
+    std::sync::Mutex::new(None);
 
 /// Lo que se va juntando de los eventos para el registro del turno.
 #[derive(Default)]
@@ -116,18 +117,28 @@ impl Recogido {
             Evento::PensoListo { segundos } => *self.segundos.get_or_insert(0.0) += segundos,
             Evento::Peticion(p) => self.plan = Some(p.clone()),
             Evento::Reinicio { .. } => self.reinicio = true,
-            Evento::Resultado { nombre, ok: true, .. } => self.herramientas.push(nombre.clone()),
+            Evento::Resultado {
+                nombre, ok: true, ..
+            } => self.herramientas.push(nombre.clone()),
             _ => {}
         }
     }
 
     /// El registro, con la hoja reescrita.
-    fn registro(self, mut hoja: HojaDeTrabajo, pedido: &str, r: &Result<Final, String>, reiniciado: bool) -> Registro {
+    fn registro(
+        self,
+        mut hoja: HojaDeTrabajo,
+        pedido: &str,
+        r: &Result<Final, String>,
+        reiniciado: bool,
+    ) -> Registro {
         let plan = self.plan.unwrap_or_else(|| Plan::por_omision(pedido));
         let (respuesta, incompleto) = match r {
             Ok(f) => (
                 f.texto.clone(),
-                f.cortado || f.texto.starts_with("No he sabido") || f.texto.starts_with("Hecho en parte"),
+                f.cortado
+                    || f.texto.starts_with("No he sabido")
+                    || f.texto.starts_with("Hecho en parte"),
             ),
             Err(e) => (format!("No pude contestar: {e}"), true),
         };
@@ -141,7 +152,9 @@ impl Recogido {
             },
         );
         Registro {
-            segundos: self.segundos.filter(|_| !self.pensamiento.trim().is_empty()),
+            segundos: self
+                .segundos
+                .filter(|_| !self.pensamiento.trim().is_empty()),
             pensamiento: self.pensamiento,
             plan: Some(plan),
             hoja,
@@ -194,7 +207,15 @@ impl Turno {
         } else {
             super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some())
         };
-        Turno::lanzar_con(motor, proyecto, historial, adjuntos, foto, destino, herramientas)
+        Turno::lanzar_con(
+            motor,
+            proyecto,
+            historial,
+            adjuntos,
+            foto,
+            destino,
+            herramientas,
+        )
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -207,7 +228,17 @@ impl Turno {
         destino: Option<String>,
         herramientas: Vec<Herramienta>,
     ) -> Turno {
-        Turno::lanzar_con_memoria(motor, proyecto, historial, adjuntos, foto, destino, herramientas, None, None)
+        Turno::lanzar_con_memoria(
+            motor,
+            proyecto,
+            historial,
+            adjuntos,
+            foto,
+            destino,
+            herramientas,
+            None,
+            None,
+        )
     }
 
     /// Lanza el turno con su [`Memoria`]: piensa, planea, reescribe la hoja
@@ -520,7 +551,11 @@ pub fn apagar_ojos(apagar: bool) {
 /// mira ni revisa: el usuario pidio el 15-oct desarrollar primero la nube y
 /// no tocar el local.
 pub fn revisiones(motor: &dyn Motor) -> usize {
-    if motor.catalogo_completo() { agente::REVISIONES_DE_SERIE } else { 0 }
+    if motor.catalogo_completo() {
+        agente::REVISIONES_DE_SERIE
+    } else {
+        0
+    }
 }
 
 /// **El diario del asistente** en la carpeta de datos (`pixpin_ia::diario`):
@@ -551,8 +586,16 @@ fn apuntar_evento(a: &mut pixpin_ia::diario::Entrada, dicho: &mut String, e: &ag
 /// Pega la vista del lienzo al pedido del usuario (la imagen delante, como
 /// una foto adjunta, y su leyenda detras del texto).
 fn poner_vista(historial: &mut [Mensaje], v: &pixpin_ia::ojos::Vista) {
-    let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario) else { return };
-    m.partes.insert(0, pixpin_ia::motor::Parte::Imagen { bytes: v.png.clone(), mime: "image/png".into() });
+    let Some(m) = historial.iter_mut().rev().find(|m| m.rol == Rol::Usuario) else {
+        return;
+    };
+    m.partes.insert(
+        0,
+        pixpin_ia::motor::Parte::Imagen {
+            bytes: v.png.clone(),
+            mime: "image/png".into(),
+        },
+    );
     m.partes.push(pixpin_ia::motor::Parte::Texto(format!(
         "\n\n(La imagen adjunta es la vista del lienzo ahora; {})",
         v.texto.trim_start_matches(pixpin_ia::ojos::MARCA).trim()
@@ -563,7 +606,9 @@ fn poner_vista(historial: &mut [Mensaje], v: &pixpin_ia::ojos::Vista) {
 /// puede leer, la pregunta va sin ella: mejor contestar sin ver que no
 /// contestar.
 fn poner_foto(historial: &mut [Mensaje], ruta: &std::path::Path) {
-    let Some(ultimo) = historial.last_mut() else { return };
+    let Some(ultimo) = historial.last_mut() else {
+        return;
+    };
     let mut texto = ultimo.texto_entero();
     // La foto de un problema (14-oct): el OCR de Windows, a toda resolucion,
     // pegado al mensaje; el modelo lee las formulas de la imagen y el texto
@@ -584,9 +629,13 @@ fn ocr_de_la_foto(ruta: &std::path::Path) -> String {
     if !pixpin_ocr::disponible() {
         return String::new();
     }
-    let Ok(img) = pixpin_codec::imagen::cargar(ruta) else { return String::new() };
+    let Ok(img) = pixpin_codec::imagen::cargar(ruta) else {
+        return String::new();
+    };
     match pixpin_ocr::reconocer(img.ancho, img.alto, &img.pixeles) {
-        Ok(lineas) => pixpin_ia::problema::pista_de_ocr(&lineas.into_iter().map(|l| l.texto).collect::<Vec<_>>()),
+        Ok(lineas) => pixpin_ia::problema::pista_de_ocr(
+            &lineas.into_iter().map(|l| l.texto).collect::<Vec<_>>(),
+        ),
         Err(e) => {
             tracing::warn!(?e, "asistente: el OCR de la foto del problema fallo");
             String::new()
@@ -598,6 +647,10 @@ fn ocr_de_la_foto(ruta: &std::path::Path) -> String {
 /// esto», «dibújalo con las herramientas», «pásalo al lienzo».
 pub fn pide_imagen_del_lienzo(pedido: &str) -> bool {
     let q = pixpin_ia::acciones::normalizar(pedido);
-    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
-    pixpin_ia::seleccion::pide_la_imagen(&palabras) && !pixpin_ia::seleccion::pide_pegar_o_recortar(&palabras)
+    let palabras: Vec<&str> = q
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|p| !p.is_empty())
+        .collect();
+    pixpin_ia::seleccion::pide_la_imagen(&palabras)
+        && !pixpin_ia::seleccion::pide_pegar_o_recortar(&palabras)
 }

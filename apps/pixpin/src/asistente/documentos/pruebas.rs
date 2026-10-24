@@ -51,42 +51,73 @@ fn datos(raiz: &Path, con_muestras: bool) {
     let obra = p.join("obra");
     std::fs::create_dir_all(obra.join("archivos")).unwrap();
     std::fs::create_dir_all(obra.join("notas")).unwrap();
-    std::fs::write(obra.join("archivos").join("roto.pdf"), b"%PDF-1.4 esto no es un pdf de verdad").unwrap();
-    std::fs::write(obra.join("archivos").join("escaneado.pdf"), b"%PDF-1.4 (una foto)").unwrap();
+    std::fs::write(
+        obra.join("archivos").join("roto.pdf"),
+        b"%PDF-1.4 esto no es un pdf de verdad",
+    )
+    .unwrap();
+    std::fs::write(
+        obra.join("archivos").join("escaneado.pdf"),
+        b"%PDF-1.4 (una foto)",
+    )
+    .unwrap();
     std::fs::write(
         obra.join("archivos").join("escaneado (texto).txt"),
         "--- Hoja 1 ---\nActa de entrega de obra.\n--- Hoja 2 ---\nEl contratista entrega las alcantarillas de concreto.\n",
     )
     .unwrap();
-    std::fs::write(obra.join("archivos").join("plano cunetas km 12.dwg"), b"AC1032").unwrap();
+    std::fs::write(
+        obra.join("archivos").join("plano cunetas km 12.dwg"),
+        b"AC1032",
+    )
+    .unwrap();
     std::fs::write(
         obra.join("notas").join("ideas.md"),
         "# Ideas de la obra\n\nRevisar el presupuesto del asfalto con el ingeniero residente.\n",
     )
     .unwrap();
     let mut jsonl = String::new();
-    jsonl += &linea(serde_json::json!({"id": "m1", "cuando": 1_790_985_600_000_i64, "clase": "NOTA",
-        "texto": "Mañana llega el camión con el cemento portland", "proyecto": "obra"}));
-    jsonl += &linea(serde_json::json!({"id": "m2", "cuando": 1_790_985_700_000_i64, "clase": "ARCHIVO",
-        "nombre": "plano cunetas km 12.dwg", "ruta": "archivos/plano cunetas km 12.dwg", "texto": "", "proyecto": "obra"}));
-    jsonl += &linea(serde_json::json!({"id": "m3", "cuando": 1, "clase": "VOZ", "texto": "",
-        "transcripcion": "llamar al topografo por los niveles", "proyecto": "obra"}));
-    jsonl += &linea(serde_json::json!({"id": "m4", "cuando": 2, "clase": "ARCHIVO", "nombre": "roto.pdf",
-        "ruta": "archivos/roto.pdf", "proyecto": "obra"}));
-    jsonl += &linea(serde_json::json!({"id": "m5", "cuando": 3, "clase": "ARCHIVO", "nombre": "escaneado.pdf",
-        "ruta": "archivos/escaneado.pdf", "proyecto": "obra"}));
-    jsonl += &linea(serde_json::json!({"id": "m6", "cuando": 4, "clase": "ARCHIVO", "nombre": "escaneado (texto).txt",
-        "ruta": "archivos/escaneado (texto).txt", "proyecto": "obra", "aparato": "IA"}));
+    jsonl += &linea(
+        serde_json::json!({"id": "m1", "cuando": 1_790_985_600_000_i64, "clase": "NOTA",
+        "texto": "Mañana llega el camión con el cemento portland", "proyecto": "obra"}),
+    );
+    jsonl += &linea(
+        serde_json::json!({"id": "m2", "cuando": 1_790_985_700_000_i64, "clase": "ARCHIVO",
+        "nombre": "plano cunetas km 12.dwg", "ruta": "archivos/plano cunetas km 12.dwg", "texto": "", "proyecto": "obra"}),
+    );
+    jsonl += &linea(
+        serde_json::json!({"id": "m3", "cuando": 1, "clase": "VOZ", "texto": "",
+        "transcripcion": "llamar al topografo por los niveles", "proyecto": "obra"}),
+    );
+    jsonl += &linea(
+        serde_json::json!({"id": "m4", "cuando": 2, "clase": "ARCHIVO", "nombre": "roto.pdf",
+        "ruta": "archivos/roto.pdf", "proyecto": "obra"}),
+    );
+    jsonl += &linea(
+        serde_json::json!({"id": "m5", "cuando": 3, "clase": "ARCHIVO", "nombre": "escaneado.pdf",
+        "ruta": "archivos/escaneado.pdf", "proyecto": "obra"}),
+    );
+    jsonl += &linea(
+        serde_json::json!({"id": "m6", "cuando": 4, "clase": "ARCHIVO", "nombre": "escaneado (texto).txt",
+        "ruta": "archivos/escaneado (texto).txt", "proyecto": "obra", "aparato": "IA"}),
+    );
     // Lo que contesto el asistente no se indexa.
-    jsonl += &linea(serde_json::json!({"id": "m7", "cuando": 5, "clase": "NOTA", "aparato": "IA",
-        "texto": "Respuesta del asistente sobre cemento portland", "proyecto": "obra"}));
+    jsonl += &linea(
+        serde_json::json!({"id": "m7", "cuando": 5, "clase": "NOTA", "aparato": "IA",
+        "texto": "Respuesta del asistente sobre cemento portland", "proyecto": "obra"}),
+    );
     // Una linea rota no tumba nada.
     jsonl += "{esto no es json\n";
     if con_muestras {
-        for (i, n) in ["Tesis.pdf", "muestra.docx", "Charla.pptx", "cf.xlsx"].iter().enumerate() {
+        for (i, n) in ["Tesis.pdf", "muestra.docx", "Charla.pptx", "cf.xlsx"]
+            .iter()
+            .enumerate()
+        {
             std::fs::copy(Path::new(MUESTRAS).join(n), obra.join("archivos").join(n)).unwrap();
-            jsonl += &linea(serde_json::json!({"id": format!("d{i}"), "cuando": 10 + i, "clase": "ARCHIVO",
-                "nombre": n, "ruta": format!("archivos/{n}"), "proyecto": "obra"}));
+            jsonl += &linea(
+                serde_json::json!({"id": format!("d{i}"), "cuando": 10 + i, "clase": "ARCHIVO",
+                "nombre": n, "ruta": format!("archivos/{n}"), "proyecto": "obra"}),
+            );
         }
     }
     std::fs::write(obra.join("guardados.jsonl"), jsonl).unwrap();
@@ -133,7 +164,9 @@ fn hay_muestras() -> bool {
 }
 
 fn ubicacion(raiz: &Path) -> Ubicacion {
-    Ubicacion::Portable { raiz: raiz.to_path_buf() }
+    Ubicacion::Portable {
+        raiz: raiz.to_path_buf(),
+    }
 }
 
 #[test]
@@ -147,18 +180,27 @@ fn las_fuentes_son_las_que_tocan() {
     assert!(claves.contains(&"Chat de Mensajes guardados"), "{claves:?}");
     assert!(claves.contains(&"Chat de Casa"), "{claves:?}");
     // El chat del asistente, no.
-    assert!(!claves.iter().any(|c| c.contains("Asistente")), "{claves:?}");
+    assert!(
+        !claves.iter().any(|c| c.contains("Asistente")),
+        "{claves:?}"
+    );
     // El plano .dwg no se lee (su nombre sale por el chat).
     assert!(!claves.iter().any(|c| c.ends_with(".dwg")), "{claves:?}");
     // El OCR cuenta como el PDF escaneado y lo abre a el.
-    let ocr = f.iter().find(|f| f.ruta.ends_with("escaneado (texto).txt")).unwrap();
+    let ocr = f
+        .iter()
+        .find(|f| f.ruta.ends_with("escaneado (texto).txt"))
+        .unwrap();
     assert_eq!(ocr.nombre, "escaneado.pdf");
     assert_eq!(ocr.tipo, Tipo::Pdf);
     assert!(matches!(&ocr.abrir, Abrir::Fichero { ruta, .. } if ruta.ends_with("escaneado.pdf")));
     // La nota Markdown, por su titulo.
     assert!(claves.contains(&"Nota «Ideas de la obra»"), "{claves:?}");
     // El chat de guardados abre con `proyecto: null`.
-    let g = f.iter().find(|f| f.nombre == "Chat de Mensajes guardados").unwrap();
+    let g = f
+        .iter()
+        .find(|f| f.nombre == "Chat de Mensajes guardados")
+        .unwrap();
     assert!(matches!(&g.abrir, Abrir::Mensaje { proyecto: None, .. }));
     // Sin datos, nada (y sin panico).
     assert!(fuentes(&raiz.join("no-esta")).is_empty());
@@ -187,7 +229,10 @@ fn se_indexa_y_se_encuentra_con_su_origen() {
         "{r:#?}"
     );
     // Lo que dijo el asistente no sale.
-    assert!(r.iter().all(|h| !h.fragmento.contains("Respuesta del asistente")));
+    assert!(
+        r.iter()
+            .all(|h| !h.fragmento.contains("Respuesta del asistente"))
+    );
     // «¿Donde mande el plano de cunetas?»: el mensaje con el adjunto.
     let r = ix.buscar("donde mande el plano de cunetas", &todo, 5);
     assert_eq!(r[0].seccion.as_deref(), Some("adjunto"), "{r:#?}");
@@ -198,7 +243,9 @@ fn se_indexa_y_se_encuentra_con_su_origen() {
     let r = ix.buscar("alcantarillas", &todo, 5);
     assert_eq!(r[0].nombre, "escaneado.pdf");
     assert_eq!(r[0].pagina, Some(2));
-    assert!(matches!(&r[0].abrir, Abrir::Fichero { ruta, pagina: Some(2) } if ruta.ends_with("escaneado.pdf")));
+    assert!(
+        matches!(&r[0].abrir, Abrir::Fichero { ruta, pagina: Some(2) } if ruta.ends_with("escaneado.pdf"))
+    );
     // La nota Markdown.
     let r = ix.buscar("busca en mis notas el presupuesto del asfalto", &todo, 5);
     assert_eq!(r[0].tipo, Tipo::Nota, "{r:#?}");
@@ -209,19 +256,38 @@ fn se_indexa_y_se_encuentra_con_su_origen() {
     if muestras {
         // Un PDF de verdad, con su pagina.
         let r = ix.buscar("tesis", &todo, 5);
-        assert!(r.iter().any(|h| h.nombre == "Tesis.pdf" && h.pagina.is_some()), "{r:#?}");
+        assert!(
+            r.iter()
+                .any(|h| h.nombre == "Tesis.pdf" && h.pagina.is_some()),
+            "{r:#?}"
+        );
         let pdf = r.iter().find(|h| h.nombre == "Tesis.pdf").unwrap();
         println!("Tesis: pagina {:?}: {}", pdf.pagina, pdf.fragmento);
         // Y los demas formatos leen algo.
         let (n, trozos) = ix.tamano();
         println!("indice: {n} fuentes, {trozos} trozos");
         for nombre in ["muestra.docx", "Charla.pptx", "cf.xlsx"] {
-            let f = fuentes(&raiz).into_iter().find(|f| f.nombre == nombre).unwrap();
-            let u = LectorDeLaApp.leer(&f).unwrap_or_else(|e| panic!("{nombre}: {e}"));
-            assert!(!u.is_empty() && u.iter().any(|u| !u.texto.trim().is_empty()), "{nombre}: vacio");
-            println!("{nombre}: {} unidades; la primera: {:.120}", u.len(), u[0].texto.replace('\n', " "));
+            let f = fuentes(&raiz)
+                .into_iter()
+                .find(|f| f.nombre == nombre)
+                .unwrap();
+            let u = LectorDeLaApp
+                .leer(&f)
+                .unwrap_or_else(|e| panic!("{nombre}: {e}"));
+            assert!(
+                !u.is_empty() && u.iter().any(|u| !u.texto.trim().is_empty()),
+                "{nombre}: vacio"
+            );
+            println!(
+                "{nombre}: {} unidades; la primera: {:.120}",
+                u.len(),
+                u[0].texto.replace('\n', " ")
+            );
             if nombre == "Charla.pptx" {
-                assert!(u.iter().all(|u| u.pagina.is_some()), "las diapositivas llevan su numero");
+                assert!(
+                    u.iter().all(|u| u.pagina.is_some()),
+                    "las diapositivas llevan su numero"
+                );
             }
         }
     }
@@ -246,15 +312,25 @@ fn desde_un_chat_compartido_solo_se_ve_ese_chat() {
     // Ni pidiendo otro proyecto por su nombre (y sin decir si existe).
     let (r, aviso) = buscar(&p("cemento", Some("Obra")), "casa").unwrap();
     assert!(r.iter().all(|h| h.proyecto == "casa"), "{r:#?}");
-    assert_eq!(aviso.as_deref(), Some("Desde este chat compartido solo se busca en este chat."));
+    assert_eq!(
+        aviso.as_deref(),
+        Some("Desde este chat compartido solo se busca en este chat.")
+    );
     // Desde «Obra» (no compartido): todo, y se puede acotar por nombre.
     let (r, _) = buscar(&p("cemento", None), "obra").unwrap();
-    assert!(r.iter().any(|h| h.proyecto == "casa") && r.iter().any(|h| h.proyecto == "obra"), "{r:#?}");
+    assert!(
+        r.iter().any(|h| h.proyecto == "casa") && r.iter().any(|h| h.proyecto == "obra"),
+        "{r:#?}"
+    );
     let (r, aviso) = buscar(&p("cemento", Some("obra")), "obra").unwrap();
     assert!(aviso.is_none());
     assert!(r.iter().all(|h| h.proyecto == "obra"), "{r:#?}");
     let (_, aviso) = buscar(&p("cemento", Some("Marte")), "obra").unwrap();
-    assert!(aviso.unwrap().contains("No hay ningun proyecto llamado «Marte»"));
+    assert!(
+        aviso
+            .unwrap()
+            .contains("No hay ningun proyecto llamado «Marte»")
+    );
     vaciar_para_pruebas();
 }
 
@@ -271,9 +347,17 @@ fn el_ejecutor_busca_cita_y_respeta_la_nube() {
         proyecto: None,
     });
     // Local: busca (la primera vez construye el indice) y numera.
-    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone());
+    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(
+        tx.clone(),
+        "obra".into(),
+        vec![],
+        parar.clone(),
+    );
     let texto = ej.ejecutar(&llamada).unwrap();
-    assert!(texto.contains("[1]") && texto.contains("cemento"), "{texto}");
+    assert!(
+        texto.contains("[1]") && texto.contains("cemento"),
+        "{texto}"
+    );
     let citas = rx
         .try_iter()
         .find_map(|a| match a {
@@ -288,7 +372,8 @@ fn el_ejecutor_busca_cita_y_respeta_la_nube() {
         aparato: Some(super::super::chat::APARATO.into()),
         ..Default::default()
     };
-    nota.resto.insert(super::super::chat::FUENTES_DE_LA_RESPUESTA.into(), fuentes);
+    nota.resto
+        .insert(super::super::chat::FUENTES_DE_LA_RESPUESTA.into(), fuentes);
     let f = super::super::chat::fuente_de_la_respuesta(&nota).unwrap();
     assert_eq!(f.pedido["que"]["tipo"], "mensaje");
     assert_eq!(f.pedido["que"]["codigo"], "m1");
@@ -298,21 +383,33 @@ fn el_ejecutor_busca_cita_y_respeta_la_nube() {
     let mut a = pixpin_store::Ajustes::default();
     a.asistente.documentos_a_la_nube = "no".into();
     pixpin_store::ajustes::guardar(&ubicacion(&raiz), &a).unwrap();
-    let mut ej =
-        super::super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone()).en_la_nube(true);
+    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(
+        tx.clone(),
+        "obra".into(),
+        vec![],
+        parar.clone(),
+    )
+    .en_la_nube(true);
     let e = ej.ejecutar(&llamada).unwrap_err();
     assert!(e.contains("no permite"), "{e}");
     // Con «preguntar»: se pregunta (en las pruebas se dice que no) y se recuerda.
     a.asistente.documentos_a_la_nube = String::new();
     pixpin_store::ajustes::guardar(&ubicacion(&raiz), &a).unwrap();
-    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(tx.clone(), "obra".into(), vec![], parar.clone()).en_la_nube(true);
+    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(
+        tx.clone(),
+        "obra".into(),
+        vec![],
+        parar.clone(),
+    )
+    .en_la_nube(true);
     assert!(ej.ejecutar(&llamada).is_err());
     let leido = pixpin_store::ajustes::cargar(&ubicacion(&raiz)).unwrap();
     assert_eq!(leido.asistente.documentos_a_la_nube, "no");
     // Con «si»: busca.
     a.asistente.documentos_a_la_nube = "si".into();
     pixpin_store::ajustes::guardar(&ubicacion(&raiz), &a).unwrap();
-    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar).en_la_nube(true);
+    let mut ej = super::super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar)
+        .en_la_nube(true);
     assert!(ej.ejecutar(&llamada).unwrap().contains("[1]"));
     vaciar_para_pruebas();
 }
@@ -356,9 +453,13 @@ fn sin_datos_ni_consulta_no_rompe() {
 fn de_verdad() {
     use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
     let _s = SERIE.lock().unwrap_or_else(|e| e.into_inner());
-    let base = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join("PixPinMax").join("modelos");
+    let base = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
+        .join("PixPinMax")
+        .join("modelos");
     let mut config = Config::nueva(
-        base.join("llama.cpp").join("b11580").join("llama-server.exe"),
+        base.join("llama.cpp")
+            .join("b11580")
+            .join("llama-server.exe"),
         base.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf"),
         None,
     );
@@ -375,7 +476,13 @@ fn de_verdad() {
     for pregunta in [pregunta.as_str(), "¿Dónde mandé el plano de cunetas?"] {
         let t0 = std::time::Instant::now();
         let historial = super::super::turno::historial_para_el_modelo(&[], pregunta, None);
-        let mut t = super::super::turno::Turno::lanzar(motor.clone(), "obra".into(), historial, vec![], None);
+        let mut t = super::super::turno::Turno::lanzar(
+            motor.clone(),
+            "obra".into(),
+            historial,
+            vec![],
+            None,
+        );
         let mut citas = Vec::new();
         let fin = loop {
             let mut fin = None;
@@ -383,7 +490,9 @@ fn de_verdad() {
                 match a {
                     super::super::turno::Aviso::Citas(c) => citas = c,
                     super::super::turno::Aviso::Fin { resultado } => fin = Some(resultado),
-                    super::super::turno::Aviso::Evento(pixpin_ia::agente::Evento::Herramienta { llamada, .. }) => {
+                    super::super::turno::Aviso::Evento(
+                        pixpin_ia::agente::Evento::Herramienta { llamada, .. },
+                    ) => {
                         println!("  herramienta: {llamada:?}")
                     }
                     _ => {}
@@ -395,7 +504,11 @@ fn de_verdad() {
             std::thread::sleep(std::time::Duration::from_millis(100));
         };
         let fin = fin.expect("el turno acaba bien");
-        println!("«{pregunta}» ({:.1} s):\n{}\n", t0.elapsed().as_secs_f32(), fin.texto);
+        println!(
+            "«{pregunta}» ({:.1} s):\n{}\n",
+            t0.elapsed().as_secs_f32(),
+            fin.texto
+        );
         for c in &citas {
             println!("  [{}] {} -> {}", c.numero, c.titulo(), c.pedido());
         }

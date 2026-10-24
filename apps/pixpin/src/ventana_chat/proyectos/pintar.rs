@@ -346,7 +346,10 @@ fn tarjeta(
             &crate::caja_texto::Colores {
                 texto: pal.texto,
                 invitacion: pal.texto_suave,
-                seleccion: Color { a: 0.30, ..pal.texto },
+                seleccion: Color {
+                    a: 0.30,
+                    ..pal.texto
+                },
                 rayita: pal.texto,
             },
             true,

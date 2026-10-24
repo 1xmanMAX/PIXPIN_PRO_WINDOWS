@@ -126,7 +126,9 @@ impl Guardia {
             return Err("acaba de correr: se salta (¿un bucle?)".into());
         }
         if v.len() >= POR_HORA {
-            return Err(format!("ya corrió {POR_HORA} veces en la última hora: se para (¿un bucle?)"));
+            return Err(format!(
+                "ya corrió {POR_HORA} veces en la última hora: se para (¿un bucle?)"
+            ));
         }
         v.push_back(ahora);
         Ok(())
@@ -226,13 +228,21 @@ fn bucle(app: DeLaApp, rx: Receiver<Disparo>) {
             None => continue,
         };
         let ahora_local = pixpin_shell::entorno::ahora_local_ms();
-        let elegidas = elegir(&lista, &disparo, &app.entorno.aparato, ahora_local, &ultimas);
+        let elegidas = elegir(
+            &lista,
+            &disparo,
+            &app.entorno.aparato,
+            ahora_local,
+            &ultimas,
+        );
         for (a, vars) in elegidas {
             if let Err(m) = guardia.puede(&a.id, pixpin_shell::entorno::ahora_utc_ms()) {
                 tracing::warn!(id = %a.id, %m, "automatizacion saltada");
                 continue;
             }
-            if matches!(a.disparador, Disparador::ALaHora { .. }) || matches!(disparo, Disparo::AMano(_)) {
+            if matches!(a.disparador, Disparador::ALaHora { .. })
+                || matches!(disparo, Disparo::AMano(_))
+            {
                 ultimas.insert(a.id.clone(), ahora_local);
                 guardar_estado(&raiz, &ultimas);
             }
@@ -281,8 +291,15 @@ fn correr(app: &DeLaApp, a: &Automatizacion, vars: Vars) {
     tracing::info!(id = %a.id, bien = informe.bien(), pasos = ?informe.pasos, "automatizacion: acabo");
     mando.poner(
         informe.resumen(a.pasos.len()),
-        h.abrir
-            .map(|(p, c)| (app.idioma, app.entorno.ubicacion.clone(), app.opciones, p, c)),
+        h.abrir.map(|(p, c)| {
+            (
+                app.idioma,
+                app.entorno.ubicacion.clone(),
+                app.opciones,
+                p,
+                c,
+            )
+        }),
     );
 }
 
@@ -304,7 +321,12 @@ impl Hacedor for DeVerdad {
                 // «Asistente» (13-oct-2026; antes, un cuadro de Windows).
                 let ent = self.app.entorno.clone();
                 let confirmar: crate::asistente::acciones::Confirmar = Box::new(move |p: &str| {
-                    crate::asistente::permiso::preguntar_en_el_chat(&ent.ubicacion, &ent.aparato, "Automatización", p)
+                    crate::asistente::permiso::preguntar_en_el_chat(
+                        &ent.ubicacion,
+                        &ent.aparato,
+                        "Automatización",
+                        p,
+                    )
                 });
                 confirmar
             },
@@ -312,7 +334,13 @@ impl Hacedor for DeVerdad {
         )
     }
 
-    fn asistente(&mut self, pedido: &str, proyecto: Option<&str>, imagenes: &[PathBuf], bloquear: Tipo) -> Result<String, String> {
+    fn asistente(
+        &mut self,
+        pedido: &str,
+        proyecto: Option<&str>,
+        imagenes: &[PathBuf],
+        bloquear: Tipo,
+    ) -> Result<String, String> {
         let textos = pixpin_store::Catalogo::nuevo(self.app.idioma);
         // Sin modelo, una orden rapida se hace igual (`asistente::rapido`).
         let motor = crate::asistente::rapido::motor_o_sin(
@@ -333,7 +361,11 @@ impl Hacedor for DeVerdad {
             crate::asistente::acciones::mandar_a_pixpin(),
         )?;
         self.abrir = Some((r.proyecto.clone(), r.codigo.clone()));
-        if r.bien { Ok(r.texto) } else { Err(encargo::resumen_de(&r.texto)) }
+        if r.bien {
+            Ok(r.texto)
+        } else {
+            Err(encargo::resumen_de(&r.texto))
+        }
     }
 
     fn proyecto(&self, nombre: &str) -> Option<String> {
@@ -362,7 +394,11 @@ pub fn proyecto_por_nombre(raiz: &Path, nombre: &str) -> Option<String> {
     if let Some(f) = indice.proyectos.iter().find(|f| nombre_de(f) == q) {
         return Some(f.id.clone());
     }
-    let parecidos: Vec<_> = indice.proyectos.iter().filter(|f| nombre_de(f).contains(&q)).collect();
+    let parecidos: Vec<_> = indice
+        .proyectos
+        .iter()
+        .filter(|f| nombre_de(f).contains(&q))
+        .collect();
     match parecidos.as_slice() {
         [uno] => Some(uno.id.clone()),
         _ => None,

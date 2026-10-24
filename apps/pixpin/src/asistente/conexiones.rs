@@ -57,7 +57,9 @@ impl Chat for DelChat<'_> {
     }
 
     fn carpeta(&self) -> PathBuf {
-        std::env::temp_dir().join("pixpin-asistente").join("conexiones")
+        std::env::temp_dir()
+            .join("pixpin-asistente")
+            .join("conexiones")
     }
 }
 
@@ -67,7 +69,11 @@ pub fn hacer(a: &AccionApp, cx: &Contexto, confirmar: &Confirmar) -> Result<Stri
     if a.herramienta == conexiones::acciones::VER_CALENDARIO {
         return Ok(ver_calendario(&a.pedido));
     }
-    let r = conexiones::acciones::hacer(a, &|s| conexiones::Conexion::abrir(s), &DelChat { cx, confirmar });
+    let r = conexiones::acciones::hacer(
+        a,
+        &|s| conexiones::Conexion::abrir(s),
+        &DelChat { cx, confirmar },
+    );
     // Un permiso retirado borra los tokens: que Ajustes lo vea.
     olvidar();
     r
@@ -100,7 +106,9 @@ pub fn novedades() -> u64 {
 }
 
 fn leer_ficha(s: &Servicio) -> Ficha {
-    let g = guardado::carpeta().map(|c| guardado::leer_de(&c, s)).unwrap_or_default();
+    let g = guardado::carpeta()
+        .map(|c| guardado::leer_de(&c, s))
+        .unwrap_or_default();
     Ficha {
         cliente: g.cliente.as_ref().map(|c| c.id.clone()),
         conectado: g.conectado(),
@@ -111,7 +119,12 @@ fn leer_ficha(s: &Servicio) -> Ficha {
 
 fn con_fichas<R>(f: impl FnOnce(&mut HashMap<&'static str, Ficha>) -> R) -> R {
     let mut g = FICHAS.lock().unwrap_or_else(|e| e.into_inner());
-    let mapa = g.get_or_insert_with(|| conexiones::SERVICIOS.iter().map(|s| (s.id, leer_ficha(s))).collect());
+    let mapa = g.get_or_insert_with(|| {
+        conexiones::SERVICIOS
+            .iter()
+            .map(|s| (s.id, leer_ficha(s)))
+            .collect()
+    });
     f(mapa)
 }
 
@@ -170,7 +183,9 @@ pub fn estado(s: &Servicio, t: &pixpin_store::Catalogo) -> String {
             t.t("ajustes2-conexion-conectando")
         } else if f.conectado {
             match &f.cuenta {
-                Some(c) if !c.is_empty() => format!("✓ {} · {c}", t.t("ajustes2-conexion-conectado")),
+                Some(c) if !c.is_empty() => {
+                    format!("✓ {} · {c}", t.t("ajustes2-conexion-conectado"))
+                }
                 _ => format!("✓ {}", t.t("ajustes2-conexion-conectado")),
             }
         } else {
@@ -187,7 +202,11 @@ pub fn estado(s: &Servicio, t: &pixpin_store::Catalogo) -> String {
 
 /// **Guarda el ID de cliente** pegado (cifrado). Lo que no lo parece, ni
 /// se guarda.
-pub fn guardar_cliente(s: &'static Servicio, escrito: &str, despertar: Arc<dyn Fn() + Send + Sync>) {
+pub fn guardar_cliente(
+    s: &'static Servicio,
+    escrito: &str,
+    despertar: Arc<dyn Fn() + Send + Sync>,
+) {
     let r = guardado::carpeta()
         .ok_or_else(|| "no se encuentra LOCALAPPDATA".to_string())
         .and_then(|c| conexiones::guardar_cliente_en(s, &c, escrito));
@@ -206,14 +225,19 @@ fn abrir_navegador(url: &str) -> Result<(), String> {
     if !url.starts_with("https://") {
         return Err("direccion de permiso no segura".into());
     }
-    pixpin_shell::abrir::abrir(Path::new(url)).map_err(|e| format!("no se pudo abrir el navegador: {}", e.message()))
+    pixpin_shell::abrir::abrir(Path::new(url))
+        .map_err(|e| format!("no se pudo abrir el navegador: {}", e.message()))
 }
 
 /// **Conecta**: el navegador y la espera van en su hilo; la ventana se
 /// despierta al acabar.
 pub fn conectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>) {
     let parar = Arc::new(AtomicBool::new(false));
-    if let Some(antes) = ESPERA.lock().unwrap_or_else(|e| e.into_inner()).replace(parar.clone()) {
+    if let Some(antes) = ESPERA
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .replace(parar.clone())
+    {
         antes.store(true, Ordering::SeqCst);
     }
     con_fichas(|m| {
@@ -223,26 +247,37 @@ pub fn conectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>) {
     });
     avisar(despertar.as_ref());
     let d = despertar.clone();
-    let lanzado = std::thread::Builder::new().name("asistente-conectar".into()).spawn(move || {
-        let r = guardado::carpeta()
-            .ok_or_else(|| "no se encuentra LOCALAPPDATA".to_string())
-            .and_then(|c| conexiones::conectar_en(s, &s.extremos(), &c, &abrir_navegador, &parar, conexiones::oauth::ESPERA));
-        if let Err(e) = &r {
-            tracing::warn!("conexiones: no se conecto {}: {e}", s.nombre);
-        }
-        olvidar();
-        // Google Calendar recien conectado: sus eventos, ya.
-        if r.is_ok() && s.id == pixpin_ia::conexiones::calendario::GOOGLE_CALENDAR.id {
-            crate::calendario_google::leer_ya();
-        }
-        con_fichas(|m| {
-            let f = m.entry(s.id).or_default();
-            f.conectando = false;
-            // Cortado a proposito: sin aviso.
-            f.aviso = r.err().filter(|e| e != "cancelado").map(Err);
+    let lanzado = std::thread::Builder::new()
+        .name("asistente-conectar".into())
+        .spawn(move || {
+            let r = guardado::carpeta()
+                .ok_or_else(|| "no se encuentra LOCALAPPDATA".to_string())
+                .and_then(|c| {
+                    conexiones::conectar_en(
+                        s,
+                        &s.extremos(),
+                        &c,
+                        &abrir_navegador,
+                        &parar,
+                        conexiones::oauth::ESPERA,
+                    )
+                });
+            if let Err(e) = &r {
+                tracing::warn!("conexiones: no se conecto {}: {e}", s.nombre);
+            }
+            olvidar();
+            // Google Calendar recien conectado: sus eventos, ya.
+            if r.is_ok() && s.id == pixpin_ia::conexiones::calendario::GOOGLE_CALENDAR.id {
+                crate::calendario_google::leer_ya();
+            }
+            con_fichas(|m| {
+                let f = m.entry(s.id).or_default();
+                f.conectando = false;
+                // Cortado a proposito: sin aviso.
+                f.aviso = r.err().filter(|e| e != "cancelado").map(Err);
+            });
+            avisar(d.as_ref());
         });
-        avisar(d.as_ref());
-    });
     if lanzado.is_err() {
         con_fichas(|m| {
             let f = m.entry(s.id).or_default();
@@ -260,7 +295,9 @@ pub fn desconectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>)
     if let Some(antes) = ESPERA.lock().unwrap_or_else(|e| e.into_inner()).take() {
         antes.store(true, Ordering::SeqCst);
     }
-    let Some(carpeta) = guardado::carpeta() else { return };
+    let Some(carpeta) = guardado::carpeta() else {
+        return;
+    };
     // Los tokens se quitan del disco aqui mismo (lo que el usuario espera al
     // pulsar); el aviso al servicio va despues, sin esperarlo.
     let tokens = {
@@ -276,12 +313,21 @@ pub fn desconectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>)
     con_fichas(|m| m.entry(s.id).or_default().conectando = false);
     avisar(despertar.as_ref());
     if let Some(t) = tokens {
-        let token = if t.refresco.is_empty() { t.acceso.clone() } else { t.refresco.clone() };
-        let _ = std::thread::Builder::new().name("asistente-desconectar".into()).spawn(move || {
-            if let Err(e) = conexiones::oauth::revocar(&s.extremos(), &token) {
-                tracing::info!("conexiones: no se pudo retirar el permiso de {} en el servicio: {e}", s.nombre);
-            }
-        });
+        let token = if t.refresco.is_empty() {
+            t.acceso.clone()
+        } else {
+            t.refresco.clone()
+        };
+        let _ = std::thread::Builder::new()
+            .name("asistente-desconectar".into())
+            .spawn(move || {
+                if let Err(e) = conexiones::oauth::revocar(&s.extremos(), &token) {
+                    tracing::info!(
+                        "conexiones: no se pudo retirar el permiso de {} en el servicio: {e}",
+                        s.nombre
+                    );
+                }
+            });
     }
 }
 
@@ -291,11 +337,23 @@ pub fn desconectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>)
 fn ver_calendario(args: &serde_json::Value) -> String {
     const DIA: i64 = 86_400_000;
     let hoy = pixpin_shell::entorno::ahora_local_ms().div_euclid(DIA);
-    let desde = args["desde"].as_str().unwrap_or("hoy").trim().to_lowercase();
+    let desde = args["desde"]
+        .as_str()
+        .unwrap_or("hoy")
+        .trim()
+        .to_lowercase();
     let mut dias = args["dias"].as_i64().unwrap_or(1).clamp(1, 31);
     // (El dia 0, el 1-1-1970, fue jueves: lunes = 0.)
     let semana_de = |d: i64| (d + 3).rem_euclid(7);
-    let nombres = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"];
+    let nombres = [
+        "lunes",
+        "martes",
+        "miercoles",
+        "jueves",
+        "viernes",
+        "sabado",
+        "domingo",
+    ];
     let sin_tildes = desde.replace('á', "a").replace('é', "e");
     let primero = match sin_tildes.as_str() {
         "" | "hoy" => hoy,
@@ -310,14 +368,23 @@ fn ver_calendario(args: &serde_json::Value) -> String {
             hoy - semana_de(hoy) + 7
         }
         otro => {
-            let sin = otro.replace("sábado", "sabado").replace("miércoles", "miercoles");
+            let sin = otro
+                .replace("sábado", "sabado")
+                .replace("miércoles", "miercoles");
             if let Some(k) = nombres.iter().position(|n| sin.contains(n)) {
                 hoy + (k as i64 - semana_de(hoy)).rem_euclid(7)
             } else {
-                let p: Vec<i64> = otro.split(['-', '/']).filter_map(|x| x.parse().ok()).collect();
+                let p: Vec<i64> = otro
+                    .split(['-', '/'])
+                    .filter_map(|x| x.parse().ok())
+                    .collect();
                 match p.as_slice() {
-                    [a, m, d] if *a > 1900 => pixpin_ia::conexiones::calendario::dias_desde_1970(*a, *m as u32, *d as u32),
-                    [d, m, a] if *a > 1900 => pixpin_ia::conexiones::calendario::dias_desde_1970(*a, *m as u32, *d as u32),
+                    [a, m, d] if *a > 1900 => {
+                        pixpin_ia::conexiones::calendario::dias_desde_1970(*a, *m as u32, *d as u32)
+                    }
+                    [d, m, a] if *a > 1900 => {
+                        pixpin_ia::conexiones::calendario::dias_desde_1970(*a, *m as u32, *d as u32)
+                    }
                     _ => hoy,
                 }
             }
@@ -336,13 +403,21 @@ mod pruebas {
         let d = despertado.clone();
         let s = &conexiones::SERVICIOS[0];
         let antes = hay_cliente(s);
-        guardar_cliente(s, "hola que tal", Arc::new(move || {
-            d.fetch_add(1, Ordering::SeqCst);
-        }));
+        guardar_cliente(
+            s,
+            "hola que tal",
+            Arc::new(move || {
+                d.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
         assert_eq!(despertado.load(Ordering::SeqCst), 1);
         assert_eq!(hay_cliente(s), antes, "no cambio lo guardado");
         let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        assert!(estado(s, &t).contains("no parece un ID de cliente"), "{}", estado(s, &t));
+        assert!(
+            estado(s, &t).contains("no parece un ID de cliente"),
+            "{}",
+            estado(s, &t)
+        );
         // La fila del ID dice donde se crea.
         if !antes {
             assert!(estado_cliente(s, &t).contains("console.cloud.google.com"));

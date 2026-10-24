@@ -26,13 +26,27 @@
 use crate::motor::Color;
 
 /// Lo blanco del documento, en oscuro: el gris de la barra de los pines.
-pub const PAPEL: Color = Color { r: 0x1F as f32 / 255.0, g: 0x1F as f32 / 255.0, b: 0x22 as f32 / 255.0, a: 1.0 };
+pub const PAPEL: Color = Color {
+    r: 0x1F as f32 / 255.0,
+    g: 0x1F as f32 / 255.0,
+    b: 0x22 as f32 / 255.0,
+    a: 1.0,
+};
 /// Lo negro del documento, en oscuro.
-pub const TINTA: Color = Color { r: 0xE6 as f32 / 255.0, g: 0xE6 as f32 / 255.0, b: 0xE8 as f32 / 255.0, a: 1.0 };
+pub const TINTA: Color = Color {
+    r: 0xE6 as f32 / 255.0,
+    g: 0xE6 as f32 / 255.0,
+    b: 0xE8 as f32 / 255.0,
+    a: 1.0,
+};
 
 /// El giro de matiz de 180 grados de Android (fila = canal de salida), que
 /// deja los grises como estan: cada fila suma 1.
-const GIRO: [[f32; 3]; 3] = [[-0.574, 1.430, 0.144], [0.426, 0.430, 0.144], [0.426, 1.430, -0.856]];
+const GIRO: [[f32; 3]; 3] = [
+    [-0.574, 1.430, 0.144],
+    [0.426, 0.430, 0.144],
+    [0.426, 1.430, -0.856],
+];
 
 /// La luz (luma) de un color, de 0 a 1: lo que decide si un texto se lee
 /// sobre el papel oscuro.
@@ -48,7 +62,12 @@ pub fn invertir_luz(c: Color) -> Color {
     let (lo, hi) = ([PAPEL.r, PAPEL.g, PAPEL.b], [TINTA.r, TINTA.g, TINTA.b]);
     // Se recorta al final, como la matriz de Android y la de Direct2D.
     let a = |k: usize| (lo[k] + (hi[k] - lo[k]) * canal(k)).clamp(0.0, 1.0);
-    Color { r: a(0), g: a(1), b: a(2), a: c.a }
+    Color {
+        r: a(0),
+        g: a(1),
+        b: a(2),
+        a: c.a,
+    }
 }
 
 /// **Un texto o una raya sobre el papel oscuro**: si es oscuro (el negro
@@ -62,7 +81,11 @@ pub fn legible_sobre_oscuro(c: Color) -> Color {
 /// propio (`con_relleno`) el texto se queda como lo puso su autor, que ya
 /// se lee sobre ese relleno; sin el, el papel es oscuro y se aclara.
 pub fn texto_en_oscuro(c: Color, con_relleno: bool) -> Color {
-    if con_relleno { c } else { legible_sobre_oscuro(c) }
+    if con_relleno {
+        c
+    } else {
+        legible_sobre_oscuro(c)
+    }
 }
 
 /// La cuenta de [`invertir_luz`] como la **matriz 5x4** del efecto
@@ -90,7 +113,12 @@ pub fn matriz_d2d() -> [[f32; 4]; 5] {
 pub fn aplicar_matriz(m: &[[f32; 4]; 5], c: Color) -> Color {
     let v = [c.r, c.g, c.b, c.a];
     let col = |j: usize| (0..4).map(|i| v[i] * m[i][j]).sum::<f32>() + m[4][j];
-    Color { r: col(0).clamp(0.0, 1.0), g: col(1).clamp(0.0, 1.0), b: col(2).clamp(0.0, 1.0), a: col(3).clamp(0.0, 1.0) }
+    Color {
+        r: col(0).clamp(0.0, 1.0),
+        g: col(1).clamp(0.0, 1.0),
+        b: col(2).clamp(0.0, 1.0),
+        a: col(3).clamp(0.0, 1.0),
+    }
 }
 
 /// Un color de la interfaz de un visor (barras, marcos, rotulos): tal cual
@@ -101,23 +129,46 @@ pub fn si(oscuro: bool, c: Color) -> Color {
 
 /// Lo mismo que [`invertir_luz`] para un color de 8 bits `(r, g, b)`.
 pub fn invertir_luz_u8(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
-    let c = invertir_luz(Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 });
+    let c = invertir_luz(Color {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a: 1.0,
+    });
     let q = |x: f32| (x * 255.0).round().clamp(0.0, 255.0) as u8;
     (q(c.r), q(c.g), q(c.b))
 }
 
 /// Lo mismo que [`legible_sobre_oscuro`] para un color de 8 bits.
 pub fn legible_u8(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
-    let c = Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 };
-    if luz(c) < 0.45 { invertir_luz_u8(r, g, b) } else { (r, g, b) }
+    let c = Color {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a: 1.0,
+    };
+    if luz(c) < 0.45 {
+        invertir_luz_u8(r, g, b)
+    } else {
+        (r, g, b)
+    }
 }
 
 /// **Una raya** (un borde, un eje, una linea de un grafico) sobre el papel
 /// oscuro: solo se aclara la casi negra (los bordes de una tabla, el eje
 /// negro); las de color, aunque sean oscuras, son del grafico y se quedan.
 pub fn raya_legible_u8(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
-    let c = Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 };
-    if luz(c) < 0.2 { invertir_luz_u8(r, g, b) } else { (r, g, b) }
+    let c = Color {
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        a: 1.0,
+    };
+    if luz(c) < 0.2 {
+        invertir_luz_u8(r, g, b)
+    } else {
+        (r, g, b)
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +191,10 @@ mod pruebas {
         const { assert!(PAPEL.r > 0.05 && TINTA.r < 0.95) };
         // Un gris sigue gris (los tres canales casi iguales).
         let g = invertir_luz(c(0.4, 0.4, 0.4));
-        assert!((g.r - g.g).abs() < 0.02 && (g.g - g.b).abs() < 0.02, "{g:?}");
+        assert!(
+            (g.r - g.g).abs() < 0.02 && (g.g - g.b).abs() < 0.02,
+            "{g:?}"
+        );
     }
 
     #[test]
@@ -179,7 +233,13 @@ mod pruebas {
     #[test]
     fn la_matriz_de_direct2d_da_lo_mismo_que_la_cuenta_por_color() {
         let m = matriz_d2d();
-        for col in [Color::BLANCO, Color::NEGRO, c(0.86, 0.12, 0.12), c(0.2, 0.6, 1.0), c(0.5, 0.5, 0.5)] {
+        for col in [
+            Color::BLANCO,
+            Color::NEGRO,
+            c(0.86, 0.12, 0.12),
+            c(0.2, 0.6, 1.0),
+            c(0.5, 0.5, 0.5),
+        ] {
             let a = aplicar_matriz(&m, col);
             let b = invertir_luz(col);
             assert!(cerca(a, b), "{col:?}: {a:?} != {b:?}");
@@ -207,14 +267,26 @@ mod muestras {
     use crate::lienzo::RectF;
     use pixpin_hojas::{Libro, Regional, Rejilla, Vista};
     use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
-    use windows::Win32::Graphics::Direct3D11::{D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device};
+    use windows::Win32::Graphics::Direct3D11::{
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
+    };
 
     fn d3d() -> ID3D11Device {
         let mut d = None;
         // SAFETY: salidas locales y constantes documentadas.
         unsafe {
-            D3D11CreateDevice(None, D3D_DRIVER_TYPE_HARDWARE, Default::default(), D3D11_CREATE_DEVICE_BGRA_SUPPORT, None, D3D11_SDK_VERSION, Some(&mut d), None, None)
-                .expect("GPU");
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_HARDWARE,
+                Default::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut d),
+                None,
+                None,
+            )
+            .expect("GPU");
         }
         d.expect("dispositivo")
     }
@@ -226,11 +298,21 @@ mod muestras {
             println!("sin PIXPIN_XLSX");
             return;
         };
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         // SAFETY: COM en este hilo, para WIC (las imagenes del libro).
-        let _ = unsafe { windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED) };
+        let _ = unsafe {
+            windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_APARTMENTTHREADED,
+            )
+        };
         let libro = Libro::abrir(&ruta, Regional::es_pe()).expect("abrir el libro");
-        let indice = std::env::var("PIXPIN_HOJA").ok().and_then(|s| s.parse().ok()).unwrap_or(libro.hoja_activa);
+        let indice = std::env::var("PIXPIN_HOJA")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(libro.hoja_activa);
         let mut hoja = libro.abrir_hoja(indice);
         hoja.cargar_todo();
         let disp = d3d();
@@ -240,7 +322,13 @@ mod muestras {
         let mut rejilla = Rejilla::nueva_en(&hoja, &libro.estilos.fuente_normal, digito, 96.0);
         let (ancho, alto) = (900u32, 560u32);
         let tira = 30.0f32;
-        let vista = Vista { ancho: ancho as f64, alto: alto as f64 - tira as f64, escala: 1.0, x: 0.0, y: 0.0 };
+        let vista = Vista {
+            ancho: ancho as f64,
+            alto: alto as f64 - tira as f64,
+            escala: 1.0,
+            x: 0.0,
+            y: 0.0,
+        };
         let ultima = rejilla.fila_en(alto as f64) + 1;
         hoja_office::autoajustar_filas(&mut cache, &motor, &libro, &hoja, &mut rejilla, 0, ultima);
         let fuera = FueraDePantalla::nuevo(&motor, &disp, ancho * 2, alto).expect("superficie");
@@ -248,12 +336,29 @@ mod muestras {
             .dibujar(&fuera.destino, |p| {
                 for (k, oscuro) in [false, true].into_iter().enumerate() {
                     let x = k as f32 * ancho as f32;
-                    let caja = RectF { x, y: 0.0, ancho: ancho as f32, alto: alto as f32 - tira };
-                    let op = OpcionesHoja { encabezados: true, activa: Some((1, 1)), oscuro, ..Default::default() };
+                    let caja = RectF {
+                        x,
+                        y: 0.0,
+                        ancho: ancho as f32,
+                        alto: alto as f32 - tira,
+                    };
+                    let op = OpcionesHoja {
+                        encabezados: true,
+                        activa: Some((1, 1)),
+                        oscuro,
+                        ..Default::default()
+                    };
                     p.empujar_recorte(caja);
-                    hoja_office::pintar_hoja(p, &mut cache, &libro, &hoja, &rejilla, &vista, caja, &op);
+                    hoja_office::pintar_hoja(
+                        p, &mut cache, &libro, &hoja, &rejilla, &vista, caja, &op,
+                    );
                     p.soltar_recorte();
-                    let abajo = RectF { x, y: alto as f32 - tira, ancho: ancho as f32, alto: tira };
+                    let abajo = RectF {
+                        x,
+                        y: alto as f32 - tira,
+                        ancho: ancho as f32,
+                        alto: tira,
+                    };
                     hoja_office::pintar_pestanas(p, &mut cache, &libro, indice, 0, abajo, 1.0);
                 }
             })
@@ -266,8 +371,17 @@ mod muestras {
             let i = ((y * w + x) * 4) as usize;
             (pixeles[i], pixeles[i + 1], pixeles[i + 2])
         };
-        println!("esquina de celdas: claro {:?} / oscuro {:?}", px(ancho - 5, alto - 40), px(2 * ancho - 5, alto - 40));
-        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho: w, alto: h, pixeles }).expect("png");
+        println!(
+            "esquina de celdas: claro {:?} / oscuro {:?}",
+            px(ancho - 5, alto - 40),
+            px(2 * ancho - 5, alto - 40)
+        );
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles,
+        })
+        .expect("png");
         let salida = carpeta.join("excel-claro-y-oscuro.png");
         std::fs::write(&salida, png).expect("guardar");
         println!("{}", salida.display());

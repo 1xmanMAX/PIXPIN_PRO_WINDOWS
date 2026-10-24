@@ -74,7 +74,10 @@ pub fn hacer(a: &AccionApp, cx: &Contexto) -> Result<String, String> {
 }
 
 fn texto_de<'a>(args: &'a Value, campo: &str) -> Option<&'a str> {
-    args.get(campo).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())
+    args.get(campo)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 fn mandar(cx: &Contexto, pedido: Value) -> Result<(), String> {
@@ -106,11 +109,19 @@ impl Clase2 {
     pub fn sirve(self, nombre: &str) -> bool {
         let e = pixpin_docs::extension(nombre);
         match self {
-            Clase2::ConTexto => matches!(e.as_str(), "pdf" | "docx" | "pptx" | "xlsx" | "xlsm" | "md" | "txt" | "csv"),
+            Clase2::ConTexto => matches!(
+                e.as_str(),
+                "pdf" | "docx" | "pptx" | "xlsx" | "xlsm" | "md" | "txt" | "csv"
+            ),
             Clase2::Pdf => e == "pdf",
-            Clase2::Audio => matches!(e.as_str(), "m4a" | "mp3" | "wav" | "ogg" | "opus" | "aac" | "flac" | "wma" | "amr"),
+            Clase2::Audio => matches!(
+                e.as_str(),
+                "m4a" | "mp3" | "wav" | "ogg" | "opus" | "aac" | "flac" | "wma" | "amr"
+            ),
             Clase2::Excel => matches!(e.as_str(), "xlsx" | "xlsm" | "xls"),
-            Clase2::Legible => Clase2::ConTexto.sirve(nombre) || super::ocr::es_imagen(Path::new(nombre)),
+            Clase2::Legible => {
+                Clase2::ConTexto.sirve(nombre) || super::ocr::es_imagen(Path::new(nombre))
+            }
             Clase2::Cualquiera => true,
         }
     }
@@ -143,7 +154,10 @@ fn del_disco(raiz: &Path, clase: Clase2) -> Vec<Elegido> {
         return candidatos(raiz)
             .into_iter()
             .filter(|c| clase.sirve(&c.nombre))
-            .map(|c| Elegido { c, transcripcion: None })
+            .map(|c| Elegido {
+                c,
+                transcripcion: None,
+            })
             .collect();
     }
     let mut v = Vec::new();
@@ -151,20 +165,46 @@ fn del_disco(raiz: &Path, clase: Clase2) -> Vec<Elegido> {
         if ficha.es_asistente() {
             continue;
         }
-        let pnombre = if ficha.es_guardados() { "Mensajes guardados".to_string() } else { ficha.nombre.clone() };
-        let Ok(c) = Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id)) else { continue };
-        for m in c.mensajes.iter().filter(|m| matches!(m.clase, Some(Clase::Voz) | Some(Clase::Archivo)) && !m.en_buzon) {
-            let Some(ruta) = m.ruta.as_deref().and_then(|r| pixpin_proyecto::vista::ruta_real(raiz, &ficha.id, r)) else {
+        let pnombre = if ficha.es_guardados() {
+            "Mensajes guardados".to_string()
+        } else {
+            ficha.nombre.clone()
+        };
+        let Ok(c) = Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id)) else {
+            continue;
+        };
+        for m in c
+            .mensajes
+            .iter()
+            .filter(|m| matches!(m.clase, Some(Clase::Voz) | Some(Clase::Archivo)) && !m.en_buzon)
+        {
+            let Some(ruta) = m
+                .ruta
+                .as_deref()
+                .and_then(|r| pixpin_proyecto::vista::ruta_real(raiz, &ficha.id, r))
+            else {
                 continue;
             };
             let ruta: PathBuf = ruta.components().collect();
-            let nombre = if m.nombre.trim().is_empty() { pixpin_docs::nombre(&ruta) } else { m.nombre.trim().to_string() };
+            let nombre = if m.nombre.trim().is_empty() {
+                pixpin_docs::nombre(&ruta)
+            } else {
+                m.nombre.trim().to_string()
+            };
             if !clase.sirve(&pixpin_docs::nombre(&ruta)) || !ruta.is_file() {
                 continue;
             }
-            let transcripcion = crate::voz::transcripcion_de(m).map(|t| t.to_string()).filter(|t| !t.trim().is_empty());
+            let transcripcion = crate::voz::transcripcion_de(m)
+                .map(|t| t.to_string())
+                .filter(|t| !t.trim().is_empty());
             v.push(Elegido {
-                c: Candidato { nombre, ruta, proyecto: ficha.id.clone(), proyecto_nombre: pnombre.clone(), cuando: m.cuando },
+                c: Candidato {
+                    nombre,
+                    ruta,
+                    proyecto: ficha.id.clone(),
+                    proyecto_nombre: pnombre.clone(),
+                    cuando: m.cuando,
+                },
                 transcripcion,
             });
         }
@@ -178,23 +218,37 @@ fn del_disco(raiz: &Path, clase: Clase2) -> Vec<Elegido> {
 fn elegir(cx: &Contexto, archivo: Option<&str>, clase: Clase2) -> Result<Elegido, String> {
     let todos = del_disco(cx.raiz(), clase);
     let Some(descripcion) = archivo.map(str::trim).filter(|a| !a.is_empty()) else {
-        if let Some(a) = cx.adjuntos.iter().rev().find(|a| clase.sirve(&a.nombre) && a.ruta.is_file()) {
-            return Ok(todos.iter().find(|e| e.c.ruta == a.ruta).cloned().unwrap_or(Elegido {
-                c: Candidato {
-                    nombre: a.nombre.clone(),
-                    ruta: a.ruta.clone(),
-                    proyecto: cx.proyecto.to_string(),
-                    proyecto_nombre: String::new(),
-                    cuando: 0,
-                },
-                transcripcion: None,
-            }));
+        if let Some(a) = cx
+            .adjuntos
+            .iter()
+            .rev()
+            .find(|a| clase.sirve(&a.nombre) && a.ruta.is_file())
+        {
+            return Ok(todos
+                .iter()
+                .find(|e| e.c.ruta == a.ruta)
+                .cloned()
+                .unwrap_or(Elegido {
+                    c: Candidato {
+                        nombre: a.nombre.clone(),
+                        ruta: a.ruta.clone(),
+                        proyecto: cx.proyecto.to_string(),
+                        proyecto_nombre: String::new(),
+                        cuando: 0,
+                    },
+                    transcripcion: None,
+                }));
         }
         return todos
             .into_iter()
             .filter(|e| e.c.proyecto == cx.proyecto)
             .max_by_key(|e| e.c.cuando)
-            .ok_or_else(|| format!("en este chat no hay {}; pregunta al usuario cual (por su nombre)", clase.que()));
+            .ok_or_else(|| {
+                format!(
+                    "en este chat no hay {}; pregunta al usuario cual (por su nombre)",
+                    clase.que()
+                )
+            });
     };
     let como_ruta = PathBuf::from(descripcion.trim_matches(['"', '\'', '«', '»']));
     if como_ruta.is_absolute() && como_ruta.is_file() {
@@ -203,7 +257,13 @@ fn elegir(cx: &Contexto, archivo: Option<&str>, clase: Clase2) -> Result<Elegido
             return Err(format!("«{nombre}» no es {}", clase.que()));
         }
         return Ok(Elegido {
-            c: Candidato { nombre, ruta: como_ruta, proyecto: String::new(), proyecto_nombre: String::new(), cuando: 0 },
+            c: Candidato {
+                nombre,
+                ruta: como_ruta,
+                proyecto: String::new(),
+                proyecto_nombre: String::new(),
+                cuando: 0,
+            },
             transcripcion: None,
         });
     }
@@ -226,7 +286,11 @@ fn elegir(cx: &Contexto, archivo: Option<&str>, clase: Clase2) -> Result<Elegido
             clase.que()
         ));
     };
-    let parecidos: Vec<&Elegido> = puntuados.iter().filter(|(p, _)| *p >= mejor - 0.3).map(|(_, e)| e).collect();
+    let parecidos: Vec<&Elegido> = puntuados
+        .iter()
+        .filter(|(p, _)| *p >= mejor - 0.3)
+        .map(|(_, e)| e)
+        .collect();
     if parecidos.len() > 1 {
         let lista: Vec<String> = parecidos
             .iter()
@@ -246,7 +310,10 @@ fn elegir(cx: &Contexto, archivo: Option<&str>, clase: Clase2) -> Result<Elegido
 /// **Un archivo de los chats** por su nombre o descripcion (sin nada, el
 /// adjunto mas reciente): (nombre, ruta). Lo usan las conexiones para subir
 /// (`conexiones.rs`), con la misma eleccion que estas herramientas.
-pub(super) fn archivo_del_chat(cx: &Contexto, archivo: Option<&str>) -> Result<(String, PathBuf), String> {
+pub(super) fn archivo_del_chat(
+    cx: &Contexto,
+    archivo: Option<&str>,
+) -> Result<(String, PathBuf), String> {
     elegir(cx, archivo, Clase2::Cualquiera).map(|e| (e.c.nombre, e.c.ruta))
 }
 
@@ -255,15 +322,24 @@ pub(super) fn archivo_del_chat(cx: &Contexto, archivo: Option<&str>) -> Result<(
 
 fn leer_en_voz_alta(args: &Value, cx: &Contexto) -> Result<String, String> {
     if let Some(t) = texto_de(args, "texto") {
-        mandar(cx, json!({"pixpin": 1, "accion": "leer_en_voz", "texto": t}))?;
-        return Ok(format!("Leyendo en voz alta ({} palabras).", t.split_whitespace().count()));
+        mandar(
+            cx,
+            json!({"pixpin": 1, "accion": "leer_en_voz", "texto": t}),
+        )?;
+        return Ok(format!(
+            "Leyendo en voz alta ({} palabras).",
+            t.split_whitespace().count()
+        ));
     }
     let e = elegir(cx, texto_de(args, "archivo"), Clase2::ConTexto)?;
     mandar(
         cx,
         json!({"pixpin": 1, "accion": "leer_en_voz", "ruta": e.c.ruta, "titulo": pixpin_docs::sin_extension(&e.c.nombre)}),
     )?;
-    Ok(format!("Leyendo en voz alta «{}». «Para de leer» la calla.", e.c.nombre))
+    Ok(format!(
+        "Leyendo en voz alta «{}». «Para de leer» la calla.",
+        e.c.nombre
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -305,13 +381,20 @@ fn comprimir_pdf(args: &Value, cx: &Contexto) -> Result<String, String> {
                 menos,
                 t.elapsed().as_secs_f32()
             );
-            let proyecto = if e.c.proyecto.is_empty() { cx.proyecto } else { &e.c.proyecto };
-            let mut pedido = json!({"pixpin": 1, "accion": "chat", "texto": frase, "archivos": [salida]});
+            let proyecto = if e.c.proyecto.is_empty() {
+                cx.proyecto
+            } else {
+                &e.c.proyecto
+            };
+            let mut pedido =
+                json!({"pixpin": 1, "accion": "chat", "texto": frase, "archivos": [salida]});
             if !proyecto.trim().is_empty() {
                 pedido["proyecto"] = json!(proyecto);
             }
             mandar(cx, pedido)?;
-            Ok(format!("{frase} La copia ligera esta en el chat; el original no se toco."))
+            Ok(format!(
+                "{frase} La copia ligera esta en el chat; el original no se toco."
+            ))
         }
     }
 }
@@ -324,16 +407,29 @@ const ESPERA_TRANSCRIBIR: Duration = Duration::from_secs(20 * 60);
 
 fn transcribir_audio(args: &Value, cx: &Contexto) -> Result<String, String> {
     let e = elegir(cx, texto_de(args, "archivo"), Clase2::Audio)?;
-    let de = Adjunto { nombre: e.c.nombre.clone(), ruta: e.c.ruta.clone() };
+    let de = Adjunto {
+        nombre: e.c.nombre.clone(),
+        ruta: e.c.ruta.clone(),
+    };
     // Ya pasada a texto en el chat: al instante.
     if let Some(t) = e.transcripcion {
         return Ok(format!(
             "«{}» (ya estaba pasada a texto):\n{}",
             e.c.nombre,
-            super::ejecutor::recortar(&crate::voz::sin_marcas(&t), super::ejecutor::OCR_PARA_EL_MODELO)
+            super::ejecutor::recortar(
+                &crate::voz::sin_marcas(&t),
+                super::ejecutor::OCR_PARA_EL_MODELO
+            )
         ));
     }
-    let mut en_marcha = crate::voz::pasar_a_texto("asistente", &e.c.ruta, cx.ubicacion, cx.idioma, Vec::new(), None);
+    let mut en_marcha = crate::voz::pasar_a_texto(
+        "asistente",
+        &e.c.ruta,
+        cx.ubicacion,
+        cx.idioma,
+        Vec::new(),
+        None,
+    );
     let hasta = std::time::Instant::now() + ESPERA_TRANSCRIBIR;
     let hecha = loop {
         if cx.parar.load(Ordering::Relaxed) {
@@ -351,10 +447,16 @@ fn transcribir_audio(args: &Value, cx: &Contexto) -> Result<String, String> {
     };
     let texto = crate::voz::sin_marcas(&hecha.texto);
     if texto.trim().is_empty() {
-        return Ok(format!("En «{}» no se entiende nada que pasar a texto.", e.c.nombre));
+        return Ok(format!(
+            "En «{}» no se entiende nada que pasar a texto.",
+            e.c.nombre
+        ));
     }
     if let Some(tx) = cx.tx {
-        let _ = tx.send(Aviso::TextoLeido { de, texto: hecha.texto.clone() });
+        let _ = tx.send(Aviso::TextoLeido {
+            de,
+            texto: hecha.texto.clone(),
+        });
     }
     Ok(format!(
         "«{}» pasado a texto ({} s de audio):\n{}",
@@ -375,9 +477,14 @@ const LETRAS_EXCEL: usize = 6000;
 /// **Las celdas de una hoja** como tabla para el modelo: la primera linea,
 /// las letras de las columnas; cada fila, su numero y sus valores separados
 /// por tabuladores.
-pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> Result<String, String> {
+pub fn celdas_de_excel(
+    ruta: &Path,
+    hoja: Option<&str>,
+    rango: Option<&str>,
+) -> Result<String, String> {
     use pixpin_hojas::{Libro, Rango, Regional, TipoHoja, nombre_columna};
-    let libro = Libro::abrir(ruta, Regional::default()).map_err(|e| format!("el Excel no se deja leer: {e}"))?;
+    let libro = Libro::abrir(ruta, Regional::default())
+        .map_err(|e| format!("el Excel no se deja leer: {e}"))?;
     let hojas: Vec<(usize, &str)> = libro
         .hojas
         .iter()
@@ -385,14 +492,22 @@ pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> 
         .filter(|(_, h)| h.tipo == TipoHoja::Hoja)
         .map(|(i, h)| (i, h.nombre.as_str()))
         .collect();
-    let nombres = hojas.iter().map(|(_, n)| format!("«{n}»")).collect::<Vec<_>>().join(", ");
+    let nombres = hojas
+        .iter()
+        .map(|(_, n)| format!("«{n}»"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let i = match hoja {
         Some(h) => {
             let q = pixpin_ia::acciones::normalizar(h.trim());
             hojas
                 .iter()
                 .find(|(_, n)| pixpin_ia::acciones::normalizar(n) == q)
-                .or_else(|| hojas.iter().find(|(_, n)| pixpin_ia::acciones::normalizar(n).contains(&q)))
+                .or_else(|| {
+                    hojas
+                        .iter()
+                        .find(|(_, n)| pixpin_ia::acciones::normalizar(n).contains(&q))
+                })
                 .map(|(i, _)| *i)
                 .ok_or_else(|| format!("no hay ninguna hoja «{h}»; las hojas son: {nombres}"))?
         }
@@ -406,7 +521,9 @@ pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> 
     let nombre_hoja = libro.hojas[i].nombre.clone();
     let mut h = libro.abrir_hoja(i);
     let pedido = match rango {
-        Some(r) => Some(Rango::leer(r).ok_or_else(|| format!("«{r}» no es un rango (como A1:D20)"))?),
+        Some(r) => {
+            Some(Rango::leer(r).ok_or_else(|| format!("«{r}» no es un rango (como A1:D20)"))?)
+        }
         None => None,
     };
     match pedido {
@@ -423,7 +540,12 @@ pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> 
             if libro.texto_crudo(&h, c).trim().is_empty() {
                 continue;
             }
-            let u = usado.get_or_insert(Rango { fila0: f.indice, col0: c.col, fila1: f.indice, col1: c.col });
+            let u = usado.get_or_insert(Rango {
+                fila0: f.indice,
+                col0: c.col,
+                fila1: f.indice,
+                col1: c.col,
+            });
             u.fila0 = u.fila0.min(f.indice);
             u.fila1 = u.fila1.max(f.indice);
             u.col0 = u.col0.min(c.col);
@@ -431,7 +553,9 @@ pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> 
         }
     }
     let Some(r) = pedido.or(usado) else {
-        return Ok(format!("La hoja «{nombre_hoja}» esta vacia (hojas: {nombres})."));
+        return Ok(format!(
+            "La hoja «{nombre_hoja}» esta vacia (hojas: {nombres})."
+        ));
     };
     let f1 = r.fila1.min(r.fila0 + FILAS_EXCEL - 1);
     let c1 = r.col1.min(r.col0 + COLUMNAS_EXCEL - 1);
@@ -449,7 +573,10 @@ pub fn celdas_de_excel(ruta: &Path, hoja: Option<&str>, rango: Option<&str>) -> 
     }
     out.push('\n');
     let mut cortado = f1 < r.fila1 || c1 < r.col1;
-    for f in filas.iter().filter(|f| f.indice >= r.fila0 && f.indice <= f1) {
+    for f in filas
+        .iter()
+        .filter(|f| f.indice >= r.fila0 && f.indice <= f1)
+    {
         let mut linea = (f.indice + 1).to_string();
         let mut algo = false;
         let celdas = h.celdas_de(f);
@@ -484,7 +611,9 @@ fn leer_excel(args: &Value, cx: &Contexto) -> Result<String, String> {
     // el usuario pidio marcar, sabe que herramienta va.
     let cuentas = match pixpin_ia::revision_tabla::para_el_modelo(&filas_de_celdas(&tabla)) {
         Some(c) if c.contains("no las rehagas") => {
-            format!("\n{c}\nSi el usuario pidio MARCAR o señalar los errores en el Excel, llama ahora a anotar_inteligente con modo «errores».")
+            format!(
+                "\n{c}\nSi el usuario pidio MARCAR o señalar los errores en el Excel, llama ahora a anotar_inteligente con modo «errores»."
+            )
         }
         Some(c) => format!("\n{c}"),
         None => String::new(),
@@ -527,7 +656,11 @@ pub fn rangos_de_paginas(t: Option<&str>) -> Vec<(u32, u32)> {
 /// OCR del asistente (la capa de texto si la hay, si no Windows.Media.Ocr);
 /// lo demas con el lector de la busqueda y la voz
 /// (`documentos::leer_fichero`): un solo lector por formato.
-pub fn texto_del_documento(ruta: &Path, paginas: &[(u32, u32)], parar: &AtomicBool) -> Result<String, String> {
+pub fn texto_del_documento(
+    ruta: &Path,
+    paginas: &[(u32, u32)],
+    parar: &AtomicBool,
+) -> Result<String, String> {
     if super::ocr::es_pdf(ruta) || super::ocr::es_imagen(ruta) {
         return super::ocr::leer(ruta, paginas, parar);
     }
@@ -555,7 +688,11 @@ pub fn texto_del_documento(ruta: &Path, paginas: &[(u32, u32)], parar: &AtomicBo
     }
     let s = s.trim_end().to_string();
     if s.is_empty() {
-        return Err(if paginas.is_empty() { "el documento no tiene texto que leer".into() } else { "esas paginas no tienen texto (o no existen)".into() });
+        return Err(if paginas.is_empty() {
+            "el documento no tiene texto que leer".into()
+        } else {
+            "esas paginas no tienen texto (o no existen)".into()
+        });
     }
     Ok(s)
 }
@@ -589,7 +726,11 @@ pub fn nota_de_archivos(raiz: &Path, proyecto: &str, desfase_ms: i64) -> Option<
         .filter(|m| matches!(m.clase, Some(Clase::Archivo) | Some(Clase::Imagen)) && !m.en_buzon)
         .filter_map(|m| {
             let nombre = m.nombre.trim();
-            let nombre = if nombre.is_empty() { m.ruta.as_deref()?.rsplit(['/', '\\']).next()?.to_string() } else { nombre.to_string() };
+            let nombre = if nombre.is_empty() {
+                m.ruta.as_deref()?.rsplit(['/', '\\']).next()?.to_string()
+            } else {
+                nombre.to_string()
+            };
             Some((m.cuando, nombre))
         })
         .collect();
@@ -600,10 +741,12 @@ pub fn nota_de_archivos(raiz: &Path, proyecto: &str, desfase_ms: i64) -> Option<
     let nombres: Vec<String> = hay
         .iter()
         .take(ARCHIVOS_EN_LA_NOTA)
-        .map(|(cuando, n)| match pixpin_ia::fechas::fecha_y_hora(*cuando, desfase_ms) {
-            Some(f) => format!("«{n}» (subido el {f})"),
-            None => format!("«{n}»"),
-        })
+        .map(
+            |(cuando, n)| match pixpin_ia::fechas::fecha_y_hora(*cuando, desfase_ms) {
+                Some(f) => format!("«{n}» (subido el {f})"),
+                None => format!("«{n}»"),
+            },
+        )
         .collect();
     Some(format!(
         "\n\n(Archivos adjuntos en este chat, el mas reciente primero: {}. «Esto», «el documento» o «esta pagina» es el primero. \
@@ -661,13 +804,21 @@ pub fn desde_el_dia(periodo: &str, hoy: i64) -> i64 {
 /// **Cuenta lo hecho** desde `desde_utc_ms`: los mensajes de cada chat (sin
 /// el del asistente), las capturas de la galeria, los momentos del timeline
 /// y las tareas (`listas`, las de la ventana de tareas).
-pub fn contar(raiz: &Path, desde_utc_ms: i64, desde_dia: i64, hoy: pixpin_ia::fechas::Momento, listas: &[pixpin_ia::tareas::VistaLista]) -> Actividad {
+pub fn contar(
+    raiz: &Path,
+    desde_utc_ms: i64,
+    desde_dia: i64,
+    hoy: pixpin_ia::fechas::Momento,
+    listas: &[pixpin_ia::tareas::VistaLista],
+) -> Actividad {
     let mut a = Actividad::default();
     for ficha in almacen::Indice::leer(raiz).proyectos {
         if ficha.es_asistente() {
             continue;
         }
-        let Ok(c) = Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id)) else { continue };
+        let Ok(c) = Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id)) else {
+            continue;
+        };
         let mut n = 0;
         for m in c.mensajes.iter().filter(|m| m.cuando >= desde_utc_ms) {
             n += 1;
@@ -681,7 +832,11 @@ pub fn contar(raiz: &Path, desde_utc_ms: i64, desde_dia: i64, hoy: pixpin_ia::fe
             }
         }
         if n > 0 {
-            let nombre = if ficha.es_guardados() { "Mensajes guardados".to_string() } else { ficha.nombre.clone() };
+            let nombre = if ficha.es_guardados() {
+                "Mensajes guardados".to_string()
+            } else {
+                ficha.nombre.clone()
+            };
             a.chats.push((nombre, n));
         }
     }
@@ -718,7 +873,8 @@ pub fn frase(periodo: &str, a: &Actividad) -> String {
         "mes" => "Este mes",
         _ => "Hoy",
     };
-    let plural = |n: usize, uno: &str, varios: &str| format!("{n} {}", if n == 1 { uno } else { varios });
+    let plural =
+        |n: usize, uno: &str, varios: &str| format!("{n} {}", if n == 1 { uno } else { varios });
     let mut partes = Vec::new();
     if a.mensajes() == 0 {
         partes.push("ningun mensaje en los chats".to_string());
@@ -736,7 +892,12 @@ pub fn frase(periodo: &str, a: &Actividad) -> String {
                 de.push(plural(n, uno, varios));
             }
         }
-        let chats: Vec<String> = a.chats.iter().take(4).map(|(c, n)| format!("{c} {n}")).collect();
+        let chats: Vec<String> = a
+            .chats
+            .iter()
+            .take(4)
+            .map(|(c, n)| format!("{c} {n}"))
+            .collect();
         partes.push(format!(
             "{} en {} ({}): {}",
             plural(a.mensajes(), "mensaje", "mensajes"),
@@ -746,14 +907,26 @@ pub fn frase(periodo: &str, a: &Actividad) -> String {
         ));
     }
     partes.push(plural(a.capturas, "captura", "capturas"));
-    partes.push(plural(a.momentos, "momento en el timeline", "momentos en el timeline"));
+    partes.push(plural(
+        a.momentos,
+        "momento en el timeline",
+        "momentos en el timeline",
+    ));
     partes.push(format!(
         "{} ({} ya {}); quedan {} pendientes{}",
         plural(a.tareas_nuevas, "tarea nueva", "tareas nuevas"),
         a.tareas_nuevas_hechas,
-        if a.tareas_nuevas_hechas == 1 { "hecha" } else { "hechas" },
+        if a.tareas_nuevas_hechas == 1 {
+            "hecha"
+        } else {
+            "hechas"
+        },
         a.pendientes,
-        if a.vencidas > 0 { format!(", {} vencidas", a.vencidas) } else { String::new() }
+        if a.vencidas > 0 {
+            format!(", {} vencidas", a.vencidas)
+        } else {
+            String::new()
+        }
     ));
     format!("{cuando}: {}.", partes.join("; "))
 }
@@ -767,7 +940,10 @@ fn resumen_de_actividad(args: &Value, cx: &Contexto) -> Result<String, String> {
     let dia = desde_el_dia(periodo, hoy.dia);
     let desde_utc = dia * 86_400_000 - desfase;
     let listas = super::acciones::FuenteDeLaApp::nueva(cx.raiz()).listas();
-    Ok(frase(periodo, &contar(cx.raiz(), desde_utc, dia, hoy, &listas)))
+    Ok(frase(
+        periodo,
+        &contar(cx.raiz(), desde_utc, dia, hoy, &listas),
+    ))
 }
 
 #[cfg(test)]
@@ -788,8 +964,15 @@ mod pruebas {
         let hoy = 20_741;
         assert_eq!(pixpin_ia::fechas::fecha_de(hoy), (2026, 10, 15));
         assert_eq!(desde_el_dia("hoy", hoy), hoy);
-        assert_eq!(pixpin_ia::fechas::fecha_de(desde_el_dia("semana", hoy)), (2026, 10, 12), "el lunes");
-        assert_eq!(pixpin_ia::fechas::fecha_de(desde_el_dia("mes", hoy)), (2026, 10, 1));
+        assert_eq!(
+            pixpin_ia::fechas::fecha_de(desde_el_dia("semana", hoy)),
+            (2026, 10, 12),
+            "el lunes"
+        );
+        assert_eq!(
+            pixpin_ia::fechas::fecha_de(desde_el_dia("mes", hoy)),
+            (2026, 10, 1)
+        );
     }
 
     #[test]
@@ -815,7 +998,9 @@ mod pruebas {
     }
 
     fn filas(v: &[&[&str]]) -> Vec<Vec<String>> {
-        v.iter().map(|f| f.iter().map(|c| c.to_string()).collect()).collect()
+        v.iter()
+            .map(|f| f.iter().map(|c| c.to_string()).collect())
+            .collect()
     }
 
     /// Un Excel de verdad (escrito por el mismo camino que la tabla
@@ -824,7 +1009,12 @@ mod pruebas {
     fn un_excel_se_lee_con_su_fila_y_su_columna() {
         let ruta = super::super::documentos_acciones::escribir_excel(
             "Costos",
-            &filas(&[&["Partida", "Costo"], &["Cemento", "1250"], &["Fierro", "3400"], &["Arena", "600"]]),
+            &filas(&[
+                &["Partida", "Costo"],
+                &["Cemento", "1250"],
+                &["Fierro", "3400"],
+                &["Arena", "600"],
+            ]),
             true,
         )
         .unwrap();
@@ -832,9 +1022,15 @@ mod pruebas {
         let todo = celdas_de_excel(&ruta, None, None).unwrap();
         println!("leer el Excel entero: {:?}\n{todo}", t.elapsed());
         assert!(todo.contains("A1:B4"), "{todo}");
-        assert!(todo.contains("fila\tA\tB\n1\tPartida\tCosto\n2\tCemento\t1250\n"), "{todo}");
+        assert!(
+            todo.contains("fila\tA\tB\n1\tPartida\tCosto\n2\tCemento\t1250\n"),
+            "{todo}"
+        );
         let parte = celdas_de_excel(&ruta, Some("costos"), Some("B2:B3")).unwrap();
-        assert!(parte.contains("2\t1250\n3\t3400\n") && !parte.contains("Arena"), "{parte}");
+        assert!(
+            parte.contains("2\t1250\n3\t3400\n") && !parte.contains("Arena"),
+            "{parte}"
+        );
         // Negativos: una hoja que no esta (dice cuales hay) y un rango roto.
         let e = celdas_de_excel(&ruta, Some("Ventas"), None).unwrap_err();
         assert!(e.contains("«Costos»"), "{e}");
@@ -844,11 +1040,17 @@ mod pruebas {
     /// Un almacen de prueba con un chat, sus mensajes de hoy y un Excel y un
     /// texto adjuntos en el turno.
     fn mundo(nombre: &str) -> (PathBuf, almacen::Ficha) {
-        let raiz = std::env::temp_dir().join(format!("pixpin-en-el-chat-{nombre}-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-en-el-chat-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(&raiz).unwrap();
         let f = almacen::Ficha::nueva("Obra", 1, "PC01");
-        almacen::Indice { proyectos: vec![f.clone()], ..Default::default() }.guardar(&raiz).unwrap();
+        almacen::Indice {
+            proyectos: vec![f.clone()],
+            ..Default::default()
+        }
+        .guardar(&raiz)
+        .unwrap();
         (raiz, f)
     }
 
@@ -857,12 +1059,23 @@ mod pruebas {
         use pixpin_ia::acciones::{por_nombre, validar};
         let (raiz, f) = mundo("voz");
         let u = Ubicacion::Portable { raiz: raiz.clone() };
-        let xlsx = super::super::documentos_acciones::escribir_excel("Presupuesto", &filas(&[&["Partida", "Costo"], &["Cemento", "1250"]]), true).unwrap();
+        let xlsx = super::super::documentos_acciones::escribir_excel(
+            "Presupuesto",
+            &filas(&[&["Partida", "Costo"], &["Cemento", "1250"]]),
+            true,
+        )
+        .unwrap();
         let nota = raiz.join("informe de obra.md");
         std::fs::write(&nota, "# Informe\n\nSe vacio la losa.\n\nFaltan 5 bolsas.").unwrap();
         let adjuntos = vec![
-            Adjunto { nombre: "Presupuesto.xlsx".into(), ruta: xlsx },
-            Adjunto { nombre: "informe de obra.md".into(), ruta: nota.clone() },
+            Adjunto {
+                nombre: "Presupuesto.xlsx".into(),
+                ruta: xlsx,
+            },
+            Adjunto {
+                nombre: "informe de obra.md".into(),
+                ruta: nota.clone(),
+            },
         ];
         let mandados = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
         let m2 = mandados.clone();
@@ -871,8 +1084,21 @@ mod pruebas {
             1
         });
         let parar = AtomicBool::new(false);
-        let cx = Contexto { ubicacion: &u, proyecto: &f.id, adjuntos: &adjuntos, mandar: &mandar, parar: &parar, idioma: pixpin_store::Idioma::Espanol, tx: None };
-        let llamar = |h: &str, args: &str| hacer(&validar(por_nombre(h).unwrap(), &serde_json::from_str(args).unwrap()).unwrap(), &cx);
+        let cx = Contexto {
+            ubicacion: &u,
+            proyecto: &f.id,
+            adjuntos: &adjuntos,
+            mandar: &mandar,
+            parar: &parar,
+            idioma: pixpin_store::Idioma::Espanol,
+            tx: None,
+        };
+        let llamar = |h: &str, args: &str| {
+            hacer(
+                &validar(por_nombre(h).unwrap(), &serde_json::from_str(args).unwrap()).unwrap(),
+                &cx,
+            )
+        };
         // Sin decir cual: el adjunto con texto mas reciente.
         let r = llamar("leer_en_voz_alta", "{}").unwrap();
         assert!(r.contains("informe de obra.md"), "{r}");
@@ -888,8 +1114,16 @@ mod pruebas {
         let r = llamar("leer_excel", r#"{"rango":"A1:B2"}"#).unwrap();
         assert!(r.contains("Cemento\t1250"), "{r}");
         // Negativos: no hay ningun PDF ni ningun audio en el chat.
-        assert!(llamar("comprimir_pdf", "{}").unwrap_err().contains("un PDF"));
-        assert!(llamar("transcribir_audio", "{}").unwrap_err().contains("un audio"));
+        assert!(
+            llamar("comprimir_pdf", "{}")
+                .unwrap_err()
+                .contains("un PDF")
+        );
+        assert!(
+            llamar("transcribir_audio", "{}")
+                .unwrap_err()
+                .contains("un audio")
+        );
         assert!(llamar("leer_excel", r#"{"archivo":"cronograma de vaciados"}"#).is_err());
         let _ = std::fs::remove_dir_all(&raiz);
     }
@@ -912,19 +1146,53 @@ mod pruebas {
         })
         .unwrap();
         let rel = almacen::guardar_adjunto(&raiz, &f.id, "informe.docx", &docx).unwrap();
-        let sello = pixpin_proyecto::cuaderno::Sello { cuando: 1_000, numero: 1, aparato: "PC01".into(), proyecto: f.id.clone() };
-        let m = pixpin_proyecto::cuaderno::Mensaje::adjunto(Clase::Archivo, "informe.docx", &rel, docx.len() as i64, &sello);
+        let sello = pixpin_proyecto::cuaderno::Sello {
+            cuando: 1_000,
+            numero: 1,
+            aparato: "PC01".into(),
+            proyecto: f.id.clone(),
+        };
+        let m = pixpin_proyecto::cuaderno::Mensaje::adjunto(
+            Clase::Archivo,
+            "informe.docx",
+            &rel,
+            docx.len() as i64,
+            &sello,
+        );
         pixpin_proyecto::cuaderno::anadir(&almacen::carpeta(&raiz, &f.id), &m).unwrap();
         let mandar: Mandar = Box::new(|_| 1);
         let parar = AtomicBool::new(false);
-        let cx = Contexto { ubicacion: &u, proyecto: &f.id, adjuntos: &[], mandar: &mandar, parar: &parar, idioma: pixpin_store::Idioma::Espanol, tx: None };
-        let llamar = |args: &str| hacer(&validar(por_nombre("leer_documento").unwrap(), &serde_json::from_str(args).unwrap()).unwrap(), &cx);
+        let cx = Contexto {
+            ubicacion: &u,
+            proyecto: &f.id,
+            adjuntos: &[],
+            mandar: &mandar,
+            parar: &parar,
+            idioma: pixpin_store::Idioma::Espanol,
+            tx: None,
+        };
+        let llamar = |args: &str| {
+            hacer(
+                &validar(
+                    por_nombre("leer_documento").unwrap(),
+                    &serde_json::from_str(args).unwrap(),
+                )
+                .unwrap(),
+                &cx,
+            )
+        };
         // Sin decir cual: el del chat, entero (los dos apartados).
         let r = llamar("{}").unwrap();
-        assert!(r.contains("informe.docx") && r.contains("0,85") && r.contains("184 500"), "{r}");
+        assert!(
+            r.contains("informe.docx") && r.contains("0,85") && r.contains("184 500"),
+            "{r}"
+        );
         // La nota para la nube nombra el adjunto.
         let nota = nota_de_archivos(&raiz, &f.id, 0).unwrap();
-        assert!(nota.contains("«informe.docx»") && nota.contains("leer_documento"), "{nota}");
+        assert!(
+            nota.contains("«informe.docx»") && nota.contains("leer_documento"),
+            "{nota}"
+        );
         assert_eq!(rangos_de_paginas(Some("2-4, 7")), vec![(2, 4), (7, 7)]);
         assert!(rangos_de_paginas(Some("cero")).is_empty());
         // Negativos: un archivo que no esta; un chat sin adjuntos no tiene nota.
@@ -940,7 +1208,14 @@ mod pruebas {
         let carpeta = almacen::carpeta(&raiz, &f.id);
         std::fs::create_dir_all(&carpeta).unwrap();
         let ahora = 1_760_000_000_000_i64;
-        for (i, (clase, cuando)) in [(Clase::Nota, ahora), (Clase::Imagen, ahora), (Clase::Nota, ahora - 3 * 86_400_000)].into_iter().enumerate() {
+        for (i, (clase, cuando)) in [
+            (Clase::Nota, ahora),
+            (Clase::Imagen, ahora),
+            (Clase::Nota, ahora - 3 * 86_400_000),
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let m = pixpin_proyecto::cuaderno::Mensaje {
                 id: format!("m{i}"),
                 clase: Some(clase),
@@ -951,7 +1226,13 @@ mod pruebas {
             pixpin_proyecto::cuaderno::anadir(&carpeta, &m).unwrap();
         }
         crate::pedidos::apuntar_en_timeline(&raiz, "Llego el camion", ahora).unwrap();
-        let a = contar(&raiz, ahora - 1000, 0, pixpin_ia::fechas::Momento { dia: 0, minuto: 0 }, &[]);
+        let a = contar(
+            &raiz,
+            ahora - 1000,
+            0,
+            pixpin_ia::fechas::Momento { dia: 0, minuto: 0 },
+            &[],
+        );
         assert_eq!((a.notas, a.fotos, a.momentos), (1, 1, 1), "{a:?}");
         assert_eq!(a.chats, vec![("Obra".to_string(), 2)]);
         let _ = std::fs::remove_dir_all(&raiz);

@@ -29,7 +29,11 @@ struct Cache {
     cargada: bool,
 }
 
-static CACHE: RwLock<Cache> = RwLock::new(Cache { eventos: Vec::new(), leido_ms: 0, cargada: false });
+static CACHE: RwLock<Cache> = RwLock::new(Cache {
+    eventos: Vec::new(),
+    leido_ms: 0,
+    cargada: false,
+});
 /// «Lee ya» (al conectar), sin esperar a los 15 minutos.
 static YA: AtomicBool = AtomicBool::new(false);
 static RAIZ: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -60,8 +64,12 @@ fn cargar_si_hace_falta() {
     if CACHE.read().map(|c| c.cargada).unwrap_or(true) {
         return;
     }
-    let Some(raiz) = RAIZ.lock().ok().and_then(|r| r.clone()) else { return };
-    let leido = std::fs::read(fichero(&raiz)).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    let Some(raiz) = RAIZ.lock().ok().and_then(|r| r.clone()) else {
+        return;
+    };
+    let leido = std::fs::read(fichero(&raiz))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
     if let Ok(mut c) = CACHE.write() {
         c.cargada = true;
         if let Some(v) = leido {
@@ -80,14 +88,26 @@ pub fn eventos_entre(desde_utc: i64, hasta_utc: i64) -> Vec<Evento> {
     cargar_si_hace_falta();
     CACHE
         .read()
-        .map(|c| c.eventos.iter().filter(|e| e.inicio_ms < hasta_utc && e.fin_ms > desde_utc).cloned().collect())
+        .map(|c| {
+            c.eventos
+                .iter()
+                .filter(|e| e.inicio_ms < hasta_utc && e.fin_ms > desde_utc)
+                .cloned()
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 /// Uno por su id (el aviso que suena).
 pub fn evento(id: &str) -> Option<Evento> {
     cargar_si_hace_falta();
-    CACHE.read().ok()?.eventos.iter().find(|e| e.id == id).cloned()
+    CACHE
+        .read()
+        .ok()?
+        .eventos
+        .iter()
+        .find(|e| e.id == id)
+        .cloned()
 }
 
 /// Cuando se leyo por ultima vez (ms UTC; 0: nunca).
@@ -131,21 +151,29 @@ pub fn vigilar(raiz: &Path) {
         *r = Some(raiz.to_path_buf());
     }
     let raiz = raiz.to_path_buf();
-    let lanzado = std::thread::Builder::new().name("google-calendar".into()).spawn(move || {
-        std::thread::sleep(Duration::from_secs(8));
-        let mut siguiente = std::time::Instant::now();
-        loop {
-            if (std::time::Instant::now() >= siguiente || YA.swap(false, Ordering::SeqCst)) && conectado() {
-                let t = std::time::Instant::now();
-                match leer(&raiz) {
-                    Ok(n) => tracing::info!(eventos = n, ms = t.elapsed().as_millis() as u64, "google calendar: leido"),
-                    Err(e) => tracing::warn!(%e, "google calendar: no se pudo leer"),
+    let lanzado = std::thread::Builder::new()
+        .name("google-calendar".into())
+        .spawn(move || {
+            std::thread::sleep(Duration::from_secs(8));
+            let mut siguiente = std::time::Instant::now();
+            loop {
+                if (std::time::Instant::now() >= siguiente || YA.swap(false, Ordering::SeqCst))
+                    && conectado()
+                {
+                    let t = std::time::Instant::now();
+                    match leer(&raiz) {
+                        Ok(n) => tracing::info!(
+                            eventos = n,
+                            ms = t.elapsed().as_millis() as u64,
+                            "google calendar: leido"
+                        ),
+                        Err(e) => tracing::warn!(%e, "google calendar: no se pudo leer"),
+                    }
+                    siguiente = std::time::Instant::now() + CADA;
                 }
-                siguiente = std::time::Instant::now() + CADA;
+                std::thread::sleep(Duration::from_secs(2));
             }
-            std::thread::sleep(Duration::from_secs(2));
-        }
-    });
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo de Google Calendar");
     }
@@ -177,17 +205,30 @@ pub fn para_el_modelo(desde_local: i64, hasta_local: i64) -> String {
     let hace = if leido == 0 {
         "aun no se ha leido (se lee en unos segundos)".to_string()
     } else {
-        format!("leido hace {} min", (pixpin_shell::entorno::ahora_utc_ms() - leido).max(0) / 60_000)
+        format!(
+            "leido hace {} min",
+            (pixpin_shell::entorno::ahora_utc_ms() - leido).max(0) / 60_000
+        )
     };
     if evs.is_empty() {
         return format!("No hay eventos en Google Calendar en ese tramo ({hace}).");
     }
     let mut out = format!("{} eventos de Google Calendar ({hace}):\n", evs.len());
     for e in &evs {
-        let dia = if e.todo_el_dia { e.inicio_ms } else { pixpin_shell::entorno::a_local(e.inicio_ms) }.div_euclid(86_400_000);
+        let dia = if e.todo_el_dia {
+            e.inicio_ms
+        } else {
+            pixpin_shell::entorno::a_local(e.inicio_ms)
+        }
+        .div_euclid(86_400_000);
         let (a, m, d) = calendario::civil(dia);
-        let semana = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][(dia + 3).rem_euclid(7) as usize];
-        out.push_str(&format!("- {semana} {d:02}/{m:02}/{a} {} «{}»", tramo_legible(e), e.titulo));
+        let semana =
+            ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][(dia + 3).rem_euclid(7) as usize];
+        out.push_str(&format!(
+            "- {semana} {d:02}/{m:02}/{a} {} «{}»",
+            tramo_legible(e),
+            e.titulo
+        ));
         if !e.lugar.is_empty() {
             out.push_str(&format!(" en {}", e.lugar));
         }
@@ -201,6 +242,9 @@ mod pruebas {
     #[test]
     fn el_dia_de_la_semana_del_1970_es_jueves() {
         // (El indice de `para_el_modelo`: el dia 0 fue jueves.)
-        assert_eq!(["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][3i64.rem_euclid(7) as usize], "jue");
+        assert_eq!(
+            ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][3i64.rem_euclid(7) as usize],
+            "jue"
+        );
     }
 }

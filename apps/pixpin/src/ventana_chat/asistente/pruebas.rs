@@ -9,7 +9,10 @@ use pixpin_store::idioma::Idioma;
 fn chat(nombre: &str, del_asistente: bool) -> (Ubicacion, Abierto, std::path::PathBuf) {
     olvidar_para_pruebas();
     crate::asistente::al_lienzo::vaciar_para_pruebas();
-    let raiz = std::env::temp_dir().join(format!("pixpin-chat-asistente-{nombre}-{}", std::process::id()));
+    let raiz = std::env::temp_dir().join(format!(
+        "pixpin-chat-asistente-{nombre}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&raiz);
     std::fs::create_dir_all(&raiz).unwrap();
     let u = Ubicacion::Portable { raiz: raiz.clone() };
@@ -49,13 +52,16 @@ fn respuesta(a: &Abierto) -> &cuaderno::Mensaje {
     a.mensajes
         .iter()
         .rev()
-        .find(|m| ia_chat::es_del_asistente(m) && matches!(m.clase, None | Some(cuaderno::Clase::Nota)))
+        .find(|m| {
+            ia_chat::es_del_asistente(m) && matches!(m.clase, None | Some(cuaderno::Clase::Nota))
+        })
         .expect("respuesta")
 }
 
 #[test]
 fn el_chat_asistente_existe_una_vez_y_va_detras_de_guardados() {
-    let raiz = std::env::temp_dir().join(format!("pixpin-chat-asistente-fijo-{}", std::process::id()));
+    let raiz =
+        std::env::temp_dir().join(format!("pixpin-chat-asistente-fijo-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&raiz);
     std::fs::create_dir_all(&raiz).unwrap();
     pixpin_proyecto::almacen::asegurar_guardados(&raiz, 0, "PC").unwrap();
@@ -64,7 +70,8 @@ fn el_chat_asistente_existe_una_vez_y_va_detras_de_guardados() {
     assert_eq!(a1.id, a2.id);
     assert!(a1.es_asistente() && !a1.es_guardados());
     let mut i = pixpin_proyecto::almacen::Indice::leer(&raiz);
-    i.proyectos.push(pixpin_proyecto::almacen::Ficha::nueva("nuevo", 99, "PC"));
+    i.proyectos
+        .push(pixpin_proyecto::almacen::Ficha::nueva("nuevo", 99, "PC"));
     let orden: Vec<String> = i.ordenadas().iter().map(|f| f.nombre.clone()).collect();
     assert_eq!(orden, vec!["Mensajes guardados", "Asistente", "nuevo"]);
     let _ = std::fs::remove_dir_all(&raiz);
@@ -102,11 +109,23 @@ fn un_dibujo_pedido_en_el_chat_acaba_en_un_lienzo_nuevo_y_luego_en_el_mismo() {
     assert_eq!(lienzos.len(), 1);
     let ruta = fichero_del_mensaje(&raiz, &a.ficha.id, &lienzos[0]).unwrap();
     let json = std::fs::read_to_string(&ruta).unwrap();
-    assert_eq!(pixpin_motor2d::excalidraw::leer(&json).unwrap().elementos().len(), 1);
+    assert_eq!(
+        pixpin_motor2d::excalidraw::leer(&json)
+            .unwrap()
+            .elementos()
+            .len(),
+        1
+    );
     assert!(json.contains("#e03131"), "{json}");
     // Lo escrito esta en el disco, no solo en pantalla.
-    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id)).unwrap();
-    assert!(disco.mensajes.iter().any(|m| m.texto.starts_with("Hecho: un circulo rojo.")));
+    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id))
+        .unwrap();
+    assert!(
+        disco
+            .mensajes
+            .iter()
+            .any(|m| m.texto.starts_with("Hecho: un circulo rojo."))
+    );
 
     // La segunda vez, al mismo lienzo (a la derecha), sin crear otro.
     escribir(&u, &mut a, "otro");
@@ -119,7 +138,13 @@ fn un_dibujo_pedido_en_el_chat_acaba_en_un_lienzo_nuevo_y_luego_en_el_mismo() {
         .count();
     assert_eq!(n, 1);
     let json = std::fs::read_to_string(&ruta).unwrap();
-    assert_eq!(pixpin_motor2d::excalidraw::leer(&json).unwrap().elementos().len(), 2);
+    assert_eq!(
+        pixpin_motor2d::excalidraw::leer(&json)
+            .unwrap()
+            .elementos()
+            .len(),
+        2
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -133,14 +158,21 @@ fn en_otro_chat_solo_contesta_con_la_mencion_y_cuelga_de_la_pregunta() {
     assert!(!ocupado(&a.ficha.id));
     escribir(&u, &mut a, "@asistente resume esto");
     let pregunta = a.mensajes.last().unwrap().id.clone();
-    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto("Dicen hola.")]));
+    let motor = Arc::new(MotorGuionado::nuevo(vec![Respuesta::de_texto(
+        "Dicen hola.",
+    )]));
     lanzar(&u, &mut a, motor.clone(), "resume esto".into()).unwrap();
     hasta_el_final(&u, &mut a);
     assert_eq!(respuesta(&a).texto, "Dicen hola.");
     assert_eq!(respuesta(&a).responde_a.as_deref(), Some(pregunta.as_str()));
     // Y el modelo vio lo de antes del chat.
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[0].mensajes.iter().any(|m| m.texto_entero() == "hola a todos"));
+    assert!(
+        pedidas[0]
+            .mensajes
+            .iter()
+            .any(|m| m.texto_entero() == "hola a todos")
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -177,12 +209,15 @@ fn parar_a_mitad_deja_lo_escrito_y_lo_dice() {
 #[test]
 fn la_descarga_cancelada_vuelve_a_la_tarjeta_con_el_aviso() {
     let (u, a, raiz) = chat("descarga", true);
-    lanzar_descarga_para_pruebas(Descarga::lanzar_con(pixpin_ia::modelos::QWEN35_08B, |_, c| {
-        while !c.load(std::sync::atomic::Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        Err(pixpin_ia::ErrorIa::Cancelado)
-    }));
+    lanzar_descarga_para_pruebas(Descarga::lanzar_con(
+        pixpin_ia::modelos::QWEN35_08B,
+        |_, c| {
+            while !c.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(pixpin_ia::ErrorIa::Cancelado)
+        },
+    ));
     assert!(espera().is_some());
     cumplir(&u, &a, Accion::Cancelar);
     let hasta = Instant::now() + Duration::from_secs(10);
@@ -190,10 +225,16 @@ fn la_descarga_cancelada_vuelve_a_la_tarjeta_con_el_aviso() {
         latido(&u, None);
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(noticia_para_pruebas().as_deref(), Some("asistente-cancelada"));
+    assert_eq!(
+        noticia_para_pruebas().as_deref(),
+        Some("asistente-cancelada")
+    );
     // Elegir el ligero se guarda en los ajustes.
     cumplir(&u, &a, Accion::Elegir { ligero: true });
-    assert_eq!(pixpin_store::cargar(&u).unwrap().asistente.modelo, "qwen3.5-0.8b");
+    assert_eq!(
+        pixpin_store::cargar(&u).unwrap().asistente.modelo,
+        "qwen3.5-0.8b"
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -232,10 +273,17 @@ fn una_foto_al_chat_del_asistente_lanza_el_turno_y_en_otro_chat_no() {
     let textos = Catalogo::nuevo(Idioma::Espanol);
     crate::asistente::motor::raiz_de_prueba(Some(raiz.join("modelos")));
     adjuntar(&u, &mut a, "K7Q2", "foto.png", &png_de_prueba(32), "").unwrap();
-    assert_eq!(al_enviar(&u, &mut a, &textos), Some(textos.t("asistente-sin-modelo")));
+    assert_eq!(
+        al_enviar(&u, &mut a, &textos),
+        Some(textos.t("asistente-sin-modelo"))
+    );
     let (u2, mut b, raiz2) = chat("foto-en-otro", false);
     adjuntar(&u2, &mut b, "K7Q2", "foto.png", &png_de_prueba(32), "").unwrap();
-    assert_eq!(al_enviar(&u2, &mut b, &textos), None, "sin mencion no es para el");
+    assert_eq!(
+        al_enviar(&u2, &mut b, &textos),
+        None,
+        "sin mencion no es para el"
+    );
     crate::asistente::motor::raiz_de_prueba(None);
     let _ = std::fs::remove_dir_all(&raiz);
     let _ = std::fs::remove_dir_all(&raiz2);
@@ -256,14 +304,27 @@ fn la_foto_se_contesta_y_luego_dibuja_eso_la_sigue_viendo() {
     let pregunta = ia_chat::pregunta_de(a.mensajes.last().unwrap(), true).unwrap();
     lanzar(&u, &mut a, motor.clone(), pregunta).unwrap();
     hasta_el_final(&u, &mut a);
-    assert!(respuesta(&a).texto.starts_with("Veo un cuadrado"), "{}", respuesta(&a).texto);
+    assert!(
+        respuesta(&a).texto.starts_with("Veo un cuadrado"),
+        "{}",
+        respuesta(&a).texto
+    );
     escribir(&u, &mut a, "dibuja eso");
     lanzar(&u, &mut a, motor.clone(), "dibuja eso".into()).unwrap();
     hasta_el_final(&u, &mut a);
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[0].mensajes.last().unwrap().tiene_imagen(), "la foto sola llega");
-    assert!(pedidas[1].mensajes.last().unwrap().tiene_imagen(), "y sigue al pedir dibujarla");
-    assert_eq!(pedidas[1].mensajes.last().unwrap().texto_entero(), "dibuja eso");
+    assert!(
+        pedidas[0].mensajes.last().unwrap().tiene_imagen(),
+        "la foto sola llega"
+    );
+    assert!(
+        pedidas[1].mensajes.last().unwrap().tiene_imagen(),
+        "y sigue al pedir dibujarla"
+    );
+    assert_eq!(
+        pedidas[1].mensajes.last().unwrap().texto_entero(),
+        "dibuja eso"
+    );
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -284,7 +345,8 @@ fn elementos_de(raiz: &std::path::Path, a: &Abierto, m: &cuaderno::Mensaje) -> u
         .len()
 }
 
-const CIRCULO: &str = r#"{"elementos":[{"tipo":"elipse","x":10,"y":10,"ancho":80,"alto":80,"color":"rojo"}]}"#;
+const CIRCULO: &str =
+    r#"{"elementos":[{"tipo":"elipse","x":10,"y":10,"ancho":80,"alto":80,"color":"rojo"}]}"#;
 
 #[test]
 fn sin_mencion_dibuja_en_su_lienzo_propio_y_la_respuesta_lo_abre() {
@@ -306,10 +368,13 @@ fn sin_mencion_dibuja_en_su_lienzo_propio_y_la_respuesta_lo_abre() {
     let id = respuesta(&a).id.clone();
     let i = a.mensajes.iter().rposition(|m| m.id == id).unwrap();
     assert_eq!(lienzo_de(&a, i), Some(j));
-    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id)).unwrap();
+    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id))
+        .unwrap();
     let r = disco.mensajes.iter().find(|m| m.id == id).unwrap();
     assert_eq!(
-        r.resto.get(ia_chat::LIENZO_DE_LA_RESPUESTA).and_then(|v| v.as_str()),
+        r.resto
+            .get(ia_chat::LIENZO_DE_LA_RESPUESTA)
+            .and_then(|v| v.as_str()),
         a.mensajes[j].referencia.as_deref()
     );
     // Sin pedirlo, no se abre solo.
@@ -332,10 +397,20 @@ fn con_mencion_dibuja_en_ese_lienzo_y_si_se_pide_lo_abre() {
     hasta_el_final(&u, &mut a);
     assert_eq!(elementos_de(&raiz, &a, &plano), 1);
     assert_eq!(elementos_de(&raiz, &a, &otro), 0);
-    assert!(ia_chat::lienzo_propio(&a.mensajes).is_none(), "no crea uno propio");
+    assert!(
+        ia_chat::lienzo_propio(&a.mensajes).is_none(),
+        "no crea uno propio"
+    );
     // Al modelo le llega el nombre, no la mencion en crudo.
     let pedidas = motor.recibido.lock().unwrap();
-    assert!(pedidas[0].mensajes.last().unwrap().texto_entero().contains("el lienzo «Plano casa»"));
+    assert!(
+        pedidas[0]
+            .mensajes
+            .last()
+            .unwrap()
+            .texto_entero()
+            .contains("el lienzo «Plano casa»")
+    );
     // «…y ábrelo»: queda para abrir, una vez.
     let j = a.mensajes.iter().position(|m| m.id == plano.id).unwrap();
     assert_eq!(lienzo_por_abrir(&a), Some(j));
@@ -376,7 +451,10 @@ fn la_lista_de_arroba_en_la_caja() {
     a.borrador = "dibuja en @pla".into();
     a.cursor.poner(&a.borrador, a.borrador.len(), false);
     assert!(menciones_abiertas(&a));
-    assert!(tecla_de_menciones(&mut a, VK_ENTRAR), "Entrar elige, no envia");
+    assert!(
+        tecla_de_menciones(&mut a, VK_ENTRAR),
+        "Entrar elige, no envia"
+    );
     assert_eq!(a.borrador, "dibuja en @lienzo:Plano_casa ");
     assert!(!menciones_abiertas(&a), "tras el espacio se cierra");
     // Las flechas mueven la marca; Escape la cierra para ese `@`.
@@ -384,7 +462,10 @@ fn la_lista_de_arroba_en_la_caja() {
     a.cursor.poner(&a.borrador, 1, false);
     assert!(tecla_de_menciones(&mut a, VK_ABAJO));
     assert!(tecla_de_menciones(&mut a, VK_TAB));
-    assert_eq!(a.borrador, "@lienzo:Plano_casa ", "la segunda: la mas vieja");
+    assert_eq!(
+        a.borrador, "@lienzo:Plano_casa ",
+        "la segunda: la mas vieja"
+    );
     a.borrador = "@".into();
     a.cursor.poner(&a.borrador, 1, false);
     assert!(tecla_de_menciones(&mut a, VK_ESCAPE));
@@ -413,7 +494,10 @@ fn cada_uno_a_su_lado_solo_con_el_asistente() {
     let (u2, mut b, raiz2) = chat("lados-otro", false);
     escribir(&u2, &mut b, "nota");
     assert!(!conversacion_con_ia(&b));
-    assert!(!a_la_derecha(conversacion_con_ia(&b), b.mensajes.last().unwrap()));
+    assert!(!a_la_derecha(
+        conversacion_con_ia(&b),
+        b.mensajes.last().unwrap()
+    ));
     let _ = std::fs::remove_dir_all(&raiz);
     let _ = std::fs::remove_dir_all(&raiz2);
 }
@@ -444,10 +528,17 @@ fn muestra_del_chat_con_el_asistente() {
             px[i..i + 3].copy_from_slice(&c);
         }
     }
-    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }).unwrap();
+    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    })
+    .unwrap();
     adjuntar(&u, &mut a, "K7Q2", "plano.png", &png, "").unwrap();
     let motor = Arc::new(MotorGuionado::nuevo(vec![
-        Respuesta::de_texto("Veo el plano de una habitación: dos muros horizontales y uno vertical. ¿Quieres que lo dibuje en un lienzo?"),
+        Respuesta::de_texto(
+            "Veo el plano de una habitación: dos muros horizontales y uno vertical. ¿Quieres que lo dibuje en un lienzo?",
+        ),
         Respuesta::de_llamada(
             "dibujar_en_lienzo",
             r#"{"elementos":[{"tipo":"rectangulo","x":20,"y":30,"ancho":340,"alto":170,"color":"negro"},
@@ -473,8 +564,18 @@ fn muestra_del_chat_con_el_asistente() {
     let (ancho, alto) = (1100u32, 980u32);
     let destino = FueraDePantalla::nuevo(&motor_r, d3.d3d(), ancho, alto).expect("destino");
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
-    let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(&a));
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
+    let d = disponer(
+        marco,
+        escala,
+        pixpin_ui::chat::ancho_inicial(ancho, escala),
+        Some(&a),
+    );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
     let fichas = vec![a.ficha.clone()];
@@ -499,7 +600,16 @@ fn muestra_del_chat_con_el_asistente() {
         };
         motor_r
             .dibujar(&destino.destino, |p| {
-                pintar(p, &d, &CLARO, papel_de(0, true), escala, &textos, None, &lista);
+                pintar(
+                    p,
+                    &d,
+                    &CLARO,
+                    papel_de(0, true),
+                    escala,
+                    &textos,
+                    None,
+                    &lista,
+                );
                 a.zonas.borrow_mut().clear();
                 let c = Pinta {
                     tema: &CLARO,
@@ -530,13 +640,26 @@ fn muestra_del_chat_con_el_asistente() {
     for (i, m) in a.mensajes.iter().enumerate() {
         if matches!(m.clase, None | Some(cuaderno::Clase::Nota)) {
             let derecha = centro(i) > mitad;
-            assert_eq!(derecha, !ia_chat::es_del_asistente(m), "{:?}: {}", m.aparato, m.texto);
+            assert_eq!(
+                derecha,
+                !ia_chat::es_del_asistente(m),
+                "{:?}: {}",
+                m.aparato,
+                m.texto
+            );
         }
     }
     drop(colocado);
     let (w, hh, pixeles) = destino.leer_rgba().expect("leer");
-    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: hh, pixeles }).unwrap();
-    let salida = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: hh,
+        pixeles,
+    })
+    .unwrap();
+    let salida = std::env::var_os("PIXPIN_MUESTRAS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     std::fs::create_dir_all(&salida).unwrap();
     let ruta = salida.join("chat-asistente-burbujas.png");
     std::fs::write(&ruta, png).unwrap();
@@ -554,7 +677,10 @@ fn hasta_la_pregunta(u: &Ubicacion, a: &mut Abierto) -> usize {
     while Instant::now() < hasta {
         let t0 = Instant::now();
         latido(u, Some(a));
-        assert!(t0.elapsed() < Duration::from_millis(500), "el latido no puede esperar al usuario");
+        assert!(
+            t0.elapsed() < Duration::from_millis(500),
+            "el latido no puede esperar al usuario"
+        );
         let id = respuesta(a).id.clone();
         let i = a.mensajes.iter().position(|m| m.id == id).unwrap();
         if pregunta_pendiente(a, i).is_some() {
@@ -577,7 +703,11 @@ fn mandados_con(trozo: &str) -> usize {
 /// Una lista «titulo» en el chat y un modelo que pide borrarla por su
 /// nombre (14-oct: las tareas se piden por su nombre). Devuelve tambien el
 /// id de la lista, que es lo que lleva el pedido.
-fn motor_que_borra(raiz: &std::path::Path, proyecto: &str, titulo: &str) -> (Arc<MotorGuionado>, String) {
+fn motor_que_borra(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    titulo: &str,
+) -> (Arc<MotorGuionado>, String) {
     let lista = crate::pedidos::nueva_lista(raiz, proyecto, "PC01", titulo).unwrap();
     let m = Arc::new(MotorGuionado::nuevo(vec![
         Respuesta::de_llamada("borrar_lista", &format!(r#"{{"lista":"{titulo}"}}"#)),
@@ -595,7 +725,11 @@ fn lo_que_borra_pregunta_en_la_burbuja_y_con_si_se_hace() {
     let i = hasta_la_pregunta(&u, &mut a);
     let pregunta = pregunta_pendiente(&a, i).unwrap();
     assert!(pregunta.contains("m-si"), "{pregunta}");
-    assert!(a.mensajes[i].texto.contains("esperando tu respuesta"), "{}", a.mensajes[i].texto);
+    assert!(
+        a.mensajes[i].texto.contains("esperando tu respuesta"),
+        "{}",
+        a.mensajes[i].texto
+    );
     // Mientras espera no sale nada y el turno sigue vivo.
     std::thread::sleep(Duration::from_millis(150));
     latido(&u, Some(&mut a));
@@ -607,7 +741,8 @@ fn lo_que_borra_pregunta_en_la_burbuja_y_con_si_se_hace() {
     // Queda en el historial, en pantalla y en el disco.
     let t = &respuesta(&a).texto;
     assert!(t.contains("❓") && t.contains("→ ✅ Sí"), "{t}");
-    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id)).unwrap();
+    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id))
+        .unwrap();
     assert!(disco.mensajes.iter().any(|m| m.texto.contains("→ ✅ Sí")));
     assert_eq!(pregunta_pendiente(&a, i), None);
     let _ = std::fs::remove_dir_all(&raiz);
@@ -625,9 +760,19 @@ fn con_no_no_se_hace_nada_y_el_modelo_lo_sabe() {
     assert!(!contestar(&mut a, i, true));
     hasta_el_final(&u, &mut a);
     assert_eq!(mandados_con(&id), 0, "con «No» no sale nada");
-    assert!(respuesta(&a).texto.contains("→ ✖️ No"), "{}", respuesta(&a).texto);
+    assert!(
+        respuesta(&a).texto.contains("→ ✖️ No"),
+        "{}",
+        respuesta(&a).texto
+    );
     let pedidas = motor.recibido.lock().unwrap();
-    let ultimo = pedidas.last().unwrap().mensajes.last().unwrap().texto_entero();
+    let ultimo = pedidas
+        .last()
+        .unwrap()
+        .mensajes
+        .last()
+        .unwrap()
+        .texto_entero();
     assert!(ultimo.contains("dijo que no"), "{ultimo}");
     let _ = std::fs::remove_dir_all(&raiz);
 }
@@ -645,7 +790,8 @@ fn si_se_cierra_el_chat_la_pregunta_caduca_y_no_se_hace() {
     olvidar_para_pruebas();
     std::thread::sleep(Duration::from_millis(400));
     assert_eq!(mandados_con(&lista), 0);
-    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id)).unwrap();
+    let disco = cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id))
+        .unwrap();
     let nota = disco.mensajes.iter().find(|m| m.id == id).unwrap();
     assert!(nota.texto.contains("⌛"), "{}", nota.texto);
     let _ = std::fs::remove_dir_all(&raiz);
@@ -655,7 +801,8 @@ fn si_se_cierra_el_chat_la_pregunta_caduca_y_no_se_hace() {
 fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     use super::recetas::{self as rcui, QueReceta};
     use crate::asistente::recetas as rc;
-    let fila_de = |raiz: &std::path::Path| rc::visibles(&crate::automatizaciones::leer(raiz, "PC").unwrap());
+    let fila_de =
+        |raiz: &std::path::Path| rc::visibles(&crate::automatizaciones::leer(raiz, "PC").unwrap());
     let (u, mut a, raiz) = chat("recetas", true);
     rcui::olvidar_para_pruebas();
     let textos = Catalogo::nuevo(Idioma::Espanol);
@@ -667,8 +814,14 @@ fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     let id = respuesta(&a).id.clone();
     let i = a.mensajes.iter().position(|m| m.id == id).unwrap();
     assert!(rcui::se_puede_guardar(&a, i));
-    assert_eq!(rcui::pedido_de(&a, i).as_deref(), Some("Resume lo último en 5 puntos"));
-    assert!(matches!(rcui::guardar_desde(&u, "PC", &a, i, &textos), Efecto::Aviso(_)));
+    assert_eq!(
+        rcui::pedido_de(&a, i).as_deref(),
+        Some("Resume lo último en 5 puntos")
+    );
+    assert!(matches!(
+        rcui::guardar_desde(&u, "PC", &a, i, &textos),
+        Efecto::Aviso(_)
+    ));
     assert!(rcui::hay_barra(&a));
     let todas = fila_de(&raiz);
     assert_eq!(todas.len(), 1);
@@ -698,8 +851,17 @@ fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     // Una tecla cualquiera no es suya (negativo).
     assert!(!rcui::tecla(&u, "PC", &mut a, 0x41));
     // Icono, otra receta y orden.
-    assert!(matches!(rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Iconos, &textos), Efecto::Menu(v) if v.len() == 12));
-    rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Icono("💡".into()), &textos);
+    assert!(
+        matches!(rcui::cambiar(&u, "PC", &mut a, &rid, QueReceta::Iconos, &textos), Efecto::Menu(v) if v.len() == 12)
+    );
+    rcui::cambiar(
+        &u,
+        "PC",
+        &mut a,
+        &rid,
+        QueReceta::Icono("💡".into()),
+        &textos,
+    );
     let otra = crate::automatizaciones::cambiar(&raiz, "PC", 5, |l| {
         rc::anadir(l, "Foto", "🖼️", "¿Qué pone en esta foto?", 5).map_err(|e| format!("{e:?}"))
     })
@@ -712,7 +874,12 @@ fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     // Borrar la quita de la fila y de las automatizaciones (es la misma).
     rcui::cambiar(&u, "PC", &mut a, &otra.id, QueReceta::Borrar, &textos);
     assert_eq!(fila_de(&raiz).len(), 1);
-    assert!(crate::automatizaciones::leer(&raiz, "PC").unwrap().buscar(&otra.id).is_none());
+    assert!(
+        crate::automatizaciones::leer(&raiz, "PC")
+            .unwrap()
+            .buscar(&otra.id)
+            .is_none()
+    );
     // En otro chat no hay fila (caso negativo).
     let (_u2, b, raiz2) = chat("recetas-otro", false);
     assert!(!rcui::hay_barra(&b));
@@ -722,24 +889,42 @@ fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
 
 #[test]
 fn la_mejor_vista_solo_si_esta_encendida_bajada_y_se_pide_mirar() {
-    use pixpin_ia::modelos::{GEMMA4_E2B, QWEN35_08B, QWEN35_2B};
+    use pixpin_ia::modelos::{GEMMA4_E2B, QWEN35_2B, QWEN35_08B};
     let mut aj = pixpin_store::ajustes::Asistente::default();
     let mirar = "¿Qué pone en el cartel?";
     // Apagada: el de siempre (y ni se mira el disco).
-    assert_eq!(ia_motor::elegir_para_el_turno(&aj, || panic!("no hace falta mirar"), mirar, true), QWEN35_2B);
+    assert_eq!(
+        ia_motor::elegir_para_el_turno(&aj, || panic!("no hace falta mirar"), mirar, true),
+        QWEN35_2B
+    );
     aj.mejor_vista = true;
     // Encendida pero sin bajar: el de siempre (negativo).
-    assert_eq!(ia_motor::elegir_para_el_turno(&aj, || false, mirar, true), QWEN35_2B);
-    assert_eq!(ia_motor::elegir_para_el_turno(&aj, || true, mirar, true), GEMMA4_E2B);
+    assert_eq!(
+        ia_motor::elegir_para_el_turno(&aj, || false, mirar, true),
+        QWEN35_2B
+    );
+    assert_eq!(
+        ia_motor::elegir_para_el_turno(&aj, || true, mirar, true),
+        GEMMA4_E2B
+    );
     // Sin foto, o para dibujar, el de siempre: el que eligio el usuario.
     aj.modelo = QWEN35_08B.id.into();
-    assert_eq!(ia_motor::elegir_para_el_turno(&aj, || true, mirar, false), QWEN35_08B);
-    assert_eq!(ia_motor::elegir_para_el_turno(&aj, || true, "dibuja eso en el lienzo", true), QWEN35_08B);
+    assert_eq!(
+        ia_motor::elegir_para_el_turno(&aj, || true, mirar, false),
+        QWEN35_08B
+    );
+    assert_eq!(
+        ia_motor::elegir_para_el_turno(&aj, || true, "dibuja eso en el lienzo", true),
+        QWEN35_08B
+    );
     // El de mejor vista nunca se elige como «el de siempre».
     assert_eq!(ia_motor::modelo_elegido(Some("gemma-4-e2b")), QWEN35_2B);
     // Y en el disco de verdad, sin nada bajado, no se elige.
     let raiz = std::env::temp_dir().join(format!("pixpin-mejor-vista-{}", std::process::id()));
-    assert_eq!(ia_motor::modelo_para_el_turno(&aj, &raiz, mirar, true), QWEN35_08B);
+    assert_eq!(
+        ia_motor::modelo_para_el_turno(&aj, &raiz, mirar, true),
+        QWEN35_08B
+    );
 }
 
 /// Pinta el chat abierto como la ventana, con la GPU de verdad, a un PNG.
@@ -752,8 +937,18 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
     let motor_r = MotorRender::nuevo(d3.d3d()).expect("motor");
     let destino = FueraDePantalla::nuevo(&motor_r, d3.d3d(), ancho, alto).expect("destino");
     let escala = 100;
-    let marco = Rect { x: 0, y: 0, ancho, alto };
-    let d = disponer(marco, escala, pixpin_ui::chat::ancho_inicial(ancho, escala), Some(a));
+    let marco = Rect {
+        x: 0,
+        y: 0,
+        ancho,
+        alto,
+    };
+    let d = disponer(
+        marco,
+        escala,
+        pixpin_ui::chat::ancho_inicial(ancho, escala),
+        Some(a),
+    );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
     let fichas = vec![a.ficha.clone()];
@@ -778,7 +973,16 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
         };
         motor_r
             .dibujar(&destino.destino, |p| {
-                pintar(p, &d, &CLARO, papel_de(0, true), escala, &textos, None, &lista);
+                pintar(
+                    p,
+                    &d,
+                    &CLARO,
+                    papel_de(0, true),
+                    escala,
+                    &textos,
+                    None,
+                    &lista,
+                );
                 a.zonas.borrow_mut().clear();
                 let c = Pinta {
                     tema: &CLARO,
@@ -797,8 +1001,15 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
         destino.esperar_gpu().expect("GPU");
     }
     let (w, hh, pixeles) = destino.leer_rgba().expect("leer");
-    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: hh, pixeles }).unwrap();
-    let salida = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: hh,
+        pixeles,
+    })
+    .unwrap();
+    let salida = std::env::var_os("PIXPIN_MUESTRAS")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     std::fs::create_dir_all(&salida).unwrap();
     let ruta = salida.join(nombre);
     std::fs::write(&ruta, png).unwrap();
@@ -817,7 +1028,13 @@ fn muestra_de_la_confirmacion_en_la_burbuja() {
     let (u, mut a, raiz) = chat("muestra-confirmar", true);
     escribir(&u, &mut a, "Borra la lista de la obra, ya no la uso");
     let (motor, _) = motor_que_borra(&raiz, &a.ficha.id.clone(), "Obra calle 9");
-    lanzar(&u, &mut a, motor, "Borra la lista de la obra, ya no la uso".into()).unwrap();
+    lanzar(
+        &u,
+        &mut a,
+        motor,
+        "Borra la lista de la obra, ya no la uso".into(),
+    )
+    .unwrap();
     let i = hasta_la_pregunta(&u, &mut a);
     let ruta = chat_a_png(&a, 900, 620, "asistente-confirmar.png");
     // Los dos botones quedaron apuntados como zonas de la burbuja.
@@ -840,11 +1057,15 @@ fn muestra_de_las_recetas() {
     super::recetas::olvidar_para_pruebas();
     crate::automatizaciones::cambiar(&raiz, "PC", 1, |l| {
         for (n, ic, p) in [
-        ("Resumir", "📝", "Resume lo último en 5 puntos"),
-        ("Leer foto", "🖼️", "¿Qué pone en esta foto?"),
-        ("Gráfica", "📊", "Hazme una gráfica de barras con estos datos"),
-        ("Tarea", "✅", "Apunta esto como tarea para mañana"),
-    ] {
+            ("Resumir", "📝", "Resume lo último en 5 puntos"),
+            ("Leer foto", "🖼️", "¿Qué pone en esta foto?"),
+            (
+                "Gráfica",
+                "📊",
+                "Hazme una gráfica de barras con estos datos",
+            ),
+            ("Tarea", "✅", "Apunta esto como tarea para mañana"),
+        ] {
             rc::anadir(l, n, ic, p, 1).map_err(|e| format!("{e:?}"))?;
         }
         Ok(())

@@ -167,7 +167,9 @@ impl Lista {
 
     /// El siguiente que toca: el primero en cola, por orden de llegada.
     pub fn siguiente(&self) -> Option<usize> {
-        self.encargos.iter().position(|r| r.estado == Estado::EnCola)
+        self.encargos
+            .iter()
+            .position(|r| r.estado == Estado::EnCola)
     }
 
     /// Quita los acabados mas viejos (se quedan [`ACABADOS`]); los que
@@ -189,7 +191,11 @@ impl Lista {
     /// como fallido (no se repite). Devuelve esos, para avisar.
     pub fn tras_un_cierre(&mut self, ahora: i64) -> Vec<Registro> {
         let mut v = Vec::new();
-        for r in self.encargos.iter_mut().filter(|r| r.estado == Estado::Haciendo) {
+        for r in self
+            .encargos
+            .iter_mut()
+            .filter(|r| r.estado == Estado::Haciendo)
+        {
             r.estado = Estado::Fallo;
             r.acabado = Some(ahora);
             r.resumen = A_MEDIAS.into();
@@ -340,11 +346,19 @@ fn limpia(l: &str) -> String {
 /// **La linea de resumen** de una respuesta: con fallos, el aviso del fallo
 /// (`⚠️ …`, al final de la respuesta); si no, su primera linea con algo.
 pub fn resumen(texto: &str, bien: bool) -> String {
-    let lineas: Vec<String> = texto.lines().map(limpia).filter(|l| !l.is_empty()).collect();
+    let lineas: Vec<String> = texto
+        .lines()
+        .map(limpia)
+        .filter(|l| !l.is_empty())
+        .collect();
     let l = if bien {
         lineas.first()
     } else {
-        lineas.iter().rev().find(|l| l.starts_with('⚠')).or(lineas.first())
+        lineas
+            .iter()
+            .rev()
+            .find(|l| l.starts_with('⚠'))
+            .or(lineas.first())
     };
     match l {
         Some(l) => recortar_linea(l),
@@ -356,7 +370,11 @@ pub fn resumen(texto: &str, bien: bool) -> String {
 /// y lo pedido, una linea y «Abrir».
 pub fn notificacion(r: &Registro) -> Toast {
     let pedido = encargo::sin_fichas(&r.texto);
-    let pedido = if pedido.is_empty() { "la foto".to_string() } else { pedido };
+    let pedido = if pedido.is_empty() {
+        "la foto".to_string()
+    } else {
+        pedido
+    };
     let que = super::recortar(&pedido, TITULO);
     let titulo = match (r.estado, r.con_fallos) {
         (Estado::Hecha, false) => format!("✅ Hecho: {que}"),
@@ -378,11 +396,17 @@ pub fn notificacion(r: &Registro) -> Toast {
 pub fn pedido_de_abrir(a: Option<&Abrir>) -> serde_json::Value {
     use serde_json::json;
     match a {
-        Some(Abrir { proyecto, lienzo: Some(l), .. }) => json!({
+        Some(Abrir {
+            proyecto,
+            lienzo: Some(l),
+            ..
+        }) => json!({
             "pixpin": 1, "accion": "abrir",
             "que": { "tipo": "hoja", "proyecto": proyecto, "referencia": l }
         }),
-        Some(Abrir { proyecto, codigo, .. }) => json!({
+        Some(Abrir {
+            proyecto, codigo, ..
+        }) => json!({
             "pixpin": 1, "accion": "abrir",
             "que": { "tipo": "nota", "proyecto": proyecto, "codigo": codigo }
         }),
@@ -409,36 +433,46 @@ static EN_MARCHA: OnceLock<EnMarcha> = OnceLock::new();
 /// el que trabaja. Lo que quedo en cola de la vez anterior se hace ya.
 pub fn arrancar(app: encargo::DeLaApp) {
     let (tx, rx) = channel::<Registro>();
-    if EN_MARCHA.set(EnMarcha { entrada: Mutex::new(tx) }).is_err() {
+    if EN_MARCHA
+        .set(EnMarcha {
+            entrada: Mutex::new(tx),
+        })
+        .is_err()
+    {
         return;
     }
     let raiz = app.entorno.ubicacion.raiz().to_path_buf();
-    let lanzado = std::thread::Builder::new().name("asistente-cola".into()).spawn(move || {
-        let (cola, cortados) = Cola::abrir(&raiz, pixpin_shell::entorno::ahora_utc_ms());
-        // El que apunta: el pedido no espera al disco.
-        let c = cola.clone();
-        let _ = std::thread::Builder::new().name("asistente-cola-entrada".into()).spawn(move || {
-            for r in rx {
-                c.anadir(r);
+    let lanzado = std::thread::Builder::new()
+        .name("asistente-cola".into())
+        .spawn(move || {
+            let (cola, cortados) = Cola::abrir(&raiz, pixpin_shell::entorno::ahora_utc_ms());
+            // El que apunta: el pedido no espera al disco.
+            let c = cola.clone();
+            let _ = std::thread::Builder::new()
+                .name("asistente-cola-entrada".into())
+                .spawn(move || {
+                    for r in rx {
+                        c.anadir(r);
+                    }
+                });
+            let app = Arc::new(app);
+            for r in &cortados {
+                avisar_al_acabar(&app, r, None);
             }
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let tarjeta: Arc<Mutex<Option<crate::ventana_chat::sin_ventana::Mando>>> =
+                Arc::new(Mutex::new(None));
+            let (a1, t1) = (app.clone(), tarjeta.clone());
+            cola.trabajar(
+                true,
+                pixpin_shell::entorno::ahora_utc_ms,
+                move |r| hacer_de_verdad(&a1, r, &t1),
+                move |r| {
+                    let mando = tarjeta.lock().unwrap_or_else(|e| e.into_inner()).take();
+                    avisar_al_acabar(&app, r, mando);
+                },
+            );
         });
-        let app = Arc::new(app);
-        for r in &cortados {
-            avisar_al_acabar(&app, r, None);
-        }
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let tarjeta: Arc<Mutex<Option<crate::ventana_chat::sin_ventana::Mando>>> = Arc::new(Mutex::new(None));
-        let (a1, t1) = (app.clone(), tarjeta.clone());
-        cola.trabajar(
-            true,
-            pixpin_shell::entorno::ahora_utc_ms,
-            move |r| hacer_de_verdad(&a1, r, &t1),
-            move |r| {
-                let mando = tarjeta.lock().unwrap_or_else(|e| e.into_inner()).take();
-                avisar_al_acabar(&app, r, mando);
-            },
-        );
-    });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar la cola del asistente");
     }
@@ -452,19 +486,21 @@ const ICONO: &[u8] = include_bytes!("../../../pixpin-lanzador/plugin/Images/pixp
 /// «Abrir»** (`pixpin_shell::notificacion`), en su hilo: el arranque no
 /// espera al registro.
 pub fn registrar_notificaciones(exe: PathBuf, raiz: PathBuf) {
-    let _ = std::thread::Builder::new().name("notificaciones-alta".into()).spawn(move || {
-        let png = raiz.join("cache").join("notificacion.png");
-        let icono = match std::fs::metadata(&png) {
-            Ok(m) if m.len() == ICONO.len() as u64 => Some(png),
-            _ => {
-                let _ = std::fs::create_dir_all(raiz.join("cache"));
-                std::fs::write(&png, ICONO).ok().map(|_| png)
+    let _ = std::thread::Builder::new()
+        .name("notificaciones-alta".into())
+        .spawn(move || {
+            let png = raiz.join("cache").join("notificacion.png");
+            let icono = match std::fs::metadata(&png) {
+                Ok(m) if m.len() == ICONO.len() as u64 => Some(png),
+                _ => {
+                    let _ = std::fs::create_dir_all(raiz.join("cache"));
+                    std::fs::write(&png, ICONO).ok().map(|_| png)
+                }
+            };
+            if let Err(e) = notificacion::registrar(&exe, icono.as_deref()) {
+                tracing::warn!(?e, "no se pudo dar de alta las notificaciones de Windows");
             }
-        };
-        if let Err(e) = notificacion::registrar(&exe, icono.as_deref()) {
-            tracing::warn!(?e, "no se pudo dar de alta las notificaciones de Windows");
-        }
-    });
+        });
 }
 
 /// **El pedido `asistente` con texto**: a la cola. Vuelve en el acto (ni
@@ -472,10 +508,16 @@ pub fn registrar_notificaciones(exe: PathBuf, raiz: PathBuf) {
 /// en su hilo con el aviso flotante.
 pub fn encolar(app: encargo::DeLaApp, e: Encargo, id: Option<String>) {
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let id = id.filter(|i| !i.trim().is_empty() && i.len() <= 64).unwrap_or_else(|| id_nuevo(ahora));
+    let id = id
+        .filter(|i| !i.trim().is_empty() && i.len() <= 64)
+        .unwrap_or_else(|| id_nuevo(ahora));
     let r = Registro::nuevo(id, &e, ahora);
     if let Some(m) = EN_MARCHA.get() {
-        let enviado = m.entrada.lock().map(|tx| tx.send(r).is_ok()).unwrap_or(false);
+        let enviado = m
+            .entrada
+            .lock()
+            .map(|tx| tx.send(r).is_ok())
+            .unwrap_or(false);
         if enviado {
             return;
         }
@@ -506,13 +548,15 @@ fn hacer_de_verdad(
     let al_preguntar = move |_: &str| {
         let mut g = t.lock().unwrap_or_else(|e| e.into_inner());
         if g.is_none() {
-            *g = Some(crate::ventana_chat::sin_ventana::avisar(crate::ventana_chat::sin_ventana::Aviso {
-                titulo: titulo.clone(),
-                texto: crate::asistente::rapido::ESTADO_INICIAL.into(),
-                abrir: None,
-                acabado: false,
-                chat: Some(chat_de(&a)),
-            }));
+            *g = Some(crate::ventana_chat::sin_ventana::avisar(
+                crate::ventana_chat::sin_ventana::Aviso {
+                    titulo: titulo.clone(),
+                    texto: crate::asistente::rapido::ESTADO_INICIAL.into(),
+                    abrir: None,
+                    acabado: false,
+                    chat: Some(chat_de(&a)),
+                },
+            ));
         }
     };
     let h = encargo::hacer(
@@ -535,12 +579,20 @@ fn hacer_de_verdad(
 
 fn titulo_de_la_tarjeta(r: &Registro) -> String {
     let t = encargo::sin_fichas(&r.texto);
-    if t.is_empty() { "🤖 Asistente".into() } else { format!("🤖 {}", super::recortar(&t, 48)) }
+    if t.is_empty() {
+        "🤖 Asistente".into()
+    } else {
+        format!("🤖 {}", super::recortar(&t, 48))
+    }
 }
 
 /// Al acabar: la notificacion de Windows; si no sale, el aviso flotante.
 /// Si ya habia tarjeta (por una pregunta), ademas ensena alli la respuesta.
-fn avisar_al_acabar(app: &encargo::DeLaApp, r: &Registro, tarjeta: Option<crate::ventana_chat::sin_ventana::Mando>) {
+fn avisar_al_acabar(
+    app: &encargo::DeLaApp,
+    r: &Registro,
+    tarjeta: Option<crate::ventana_chat::sin_ventana::Mando>,
+) {
     // **Una respuesta de texto, en un pin para leerla ya** (20-oct-2026, el
     // usuario: «que me muestre su respuesta en formato de pin… para que
     // pueda leer rapido las respuestas», sin abrir la app): el lector de
@@ -548,12 +600,19 @@ fn avisar_al_acabar(app: &encargo::DeLaApp, r: &Registro, tarjeta: Option<crate:
     // dibujo, fallo o ya tiene tarjeta (pregunto permiso) avisa como antes.
     if tarjeta.is_none()
         && r.estado == Estado::Hecha
-        && let Some(Abrir { proyecto, codigo, lienzo: None }) = &r.abrir
+        && let Some(Abrir {
+            proyecto,
+            codigo,
+            lienzo: None,
+        }) = &r.abrir
     {
         crate::notas_md::abrir(
             app.idioma,
             app.entorno.ubicacion.clone(),
-            crate::notas_md::Destino::Mensaje { proyecto: proyecto.clone(), codigo: codigo.clone() },
+            crate::notas_md::Destino::Mensaje {
+                proyecto: proyecto.clone(),
+                codigo: codigo.clone(),
+            },
         );
         return;
     }
@@ -565,25 +624,38 @@ fn avisar_al_acabar(app: &encargo::DeLaApp, r: &Registro, tarjeta: Option<crate:
             false
         }
         Err(e) => {
-            tracing::warn!(?e, "asistente: sin notificacion de Windows, va el aviso flotante");
+            tracing::warn!(
+                ?e,
+                "asistente: sin notificacion de Windows, va el aviso flotante"
+            );
             false
         }
     };
-    let abrir = r
-        .abrir
-        .as_ref()
-        .map(|a| (app.idioma, app.entorno.ubicacion.clone(), app.opciones, a.proyecto.clone(), a.codigo.clone()));
-    let texto = if r.estado == Estado::Hecha { r.resumen.clone() } else { format!("⚠️ {}", r.resumen) };
+    let abrir = r.abrir.as_ref().map(|a| {
+        (
+            app.idioma,
+            app.entorno.ubicacion.clone(),
+            app.opciones,
+            a.proyecto.clone(),
+            a.codigo.clone(),
+        )
+    });
+    let texto = if r.estado == Estado::Hecha {
+        r.resumen.clone()
+    } else {
+        format!("⚠️ {}", r.resumen)
+    };
     match tarjeta {
         Some(m) => m.poner(texto, abrir),
         None if !salio => {
-            let m = crate::ventana_chat::sin_ventana::avisar(crate::ventana_chat::sin_ventana::Aviso {
-                titulo: toast.titulo.clone(),
-                texto: String::new(),
-                abrir: None,
-                acabado: false,
-                chat: Some(chat_de(app)),
-            });
+            let m =
+                crate::ventana_chat::sin_ventana::avisar(crate::ventana_chat::sin_ventana::Aviso {
+                    titulo: toast.titulo.clone(),
+                    texto: String::new(),
+                    abrir: None,
+                    acabado: false,
+                    chat: Some(chat_de(app)),
+                });
             m.poner(texto, abrir);
         }
         None => {}
@@ -603,7 +675,10 @@ mod pruebas {
     }
 
     fn enc(texto: &str) -> Encargo {
-        Encargo { texto: texto.into(), ..Default::default() }
+        Encargo {
+            texto: texto.into(),
+            ..Default::default()
+        }
     }
 
     fn reloj() -> impl Fn() -> i64 {
@@ -618,7 +693,11 @@ mod pruebas {
         Ok(Salida {
             texto: texto.into(),
             bien: true,
-            abrir: Some(Abrir { proyecto: "asis".into(), codigo: "IA-1".into(), lienzo: None }),
+            abrir: Some(Abrir {
+                proyecto: "asis".into(),
+                codigo: "IA-1".into(),
+                lienzo: None,
+            }),
         })
     }
 
@@ -631,18 +710,33 @@ mod pruebas {
         }
         let mut hechos = Vec::new();
         let mut avisos = Vec::new();
-        c.trabajar(false, reloj(), |x| {
-            hechos.push(x.texto.clone());
-            // Mientras hace uno, el siguiente sigue en cola en el disco.
-            let l = Lista::leer(&r);
-            assert_eq!(l.encargos.iter().find(|y| y.id == x.id).unwrap().estado, Estado::Haciendo);
-            bien(&format!("Hecho {}", x.texto))
-        }, |x| avisos.push(x.clone()));
+        c.trabajar(
+            false,
+            reloj(),
+            |x| {
+                hechos.push(x.texto.clone());
+                // Mientras hace uno, el siguiente sigue en cola en el disco.
+                let l = Lista::leer(&r);
+                assert_eq!(
+                    l.encargos.iter().find(|y| y.id == x.id).unwrap().estado,
+                    Estado::Haciendo
+                );
+                bien(&format!("Hecho {}", x.texto))
+            },
+            |x| avisos.push(x.clone()),
+        );
         assert_eq!(hechos, ["uno", "dos", "tres"]);
-        assert_eq!(avisos.iter().map(|a| a.estado).collect::<Vec<_>>(), [Estado::Hecha; 3]);
+        assert_eq!(
+            avisos.iter().map(|a| a.estado).collect::<Vec<_>>(),
+            [Estado::Hecha; 3]
+        );
         assert_eq!(avisos[1].resumen, "Hecho dos");
         let l = Lista::leer(&r);
-        assert!(l.encargos.iter().all(|x| x.estado == Estado::Hecha && x.acabado.is_some()));
+        assert!(
+            l.encargos
+                .iter()
+                .all(|x| x.estado == Estado::Hecha && x.acabado.is_some())
+        );
         assert_eq!(l.version, VERSION);
     }
 
@@ -650,22 +744,38 @@ mod pruebas {
     fn uno_que_falla_o_revienta_no_para_a_los_demas() {
         let r = raiz("fallo");
         let (c, _) = Cola::abrir(&r, 0);
-        for (i, t) in ["bien", "mal", "panico", "bien otra vez"].iter().enumerate() {
+        for (i, t) in ["bien", "mal", "panico", "bien otra vez"]
+            .iter()
+            .enumerate()
+        {
             c.anadir(Registro::nuevo(format!("e{i}"), &enc(t), i as i64));
         }
         let mut avisos = Vec::new();
-        c.trabajar(false, reloj(), |x| match x.texto.as_str() {
-            "mal" => Err("sin clave de Claude".into()),
-            "panico" => panic!("prueba"),
-            t => bien(t),
-        }, |x| avisos.push((x.texto.clone(), x.estado, x.resumen.clone())));
+        c.trabajar(
+            false,
+            reloj(),
+            |x| match x.texto.as_str() {
+                "mal" => Err("sin clave de Claude".into()),
+                "panico" => panic!("prueba"),
+                t => bien(t),
+            },
+            |x| avisos.push((x.texto.clone(), x.estado, x.resumen.clone())),
+        );
         assert_eq!(
             avisos,
             [
                 ("bien".into(), Estado::Hecha, "bien".into()),
                 ("mal".into(), Estado::Fallo, "sin clave de Claude".into()),
-                ("panico".into(), Estado::Fallo, "el asistente se rompió haciéndolo".into()),
-                ("bien otra vez".into(), Estado::Hecha, "bien otra vez".into()),
+                (
+                    "panico".into(),
+                    Estado::Fallo,
+                    "el asistente se rompió haciéndolo".into()
+                ),
+                (
+                    "bien otra vez".into(),
+                    Estado::Hecha,
+                    "bien otra vez".into()
+                ),
             ]
         );
     }
@@ -677,17 +787,27 @@ mod pruebas {
         let mut a = Registro::nuevo("a".into(), &enc("a medias"), 1);
         a.estado = Estado::Haciendo;
         l.encargos.push(a);
-        l.encargos.push(Registro::nuevo("b".into(), &enc("esperando"), 2));
+        l.encargos
+            .push(Registro::nuevo("b".into(), &enc("esperando"), 2));
         l.guardar(&r).unwrap();
         let (c, cortados) = Cola::abrir(&r, 9);
         assert_eq!(cortados.len(), 1);
         assert_eq!(cortados[0].resumen, A_MEDIAS);
-        assert_eq!(Lista::leer(&r).encargos[0].estado, Estado::Fallo, "ya guardado");
+        assert_eq!(
+            Lista::leer(&r).encargos[0].estado,
+            Estado::Fallo,
+            "ya guardado"
+        );
         let mut hechos = Vec::new();
-        c.trabajar(false, reloj(), |x| {
-            hechos.push(x.id.clone());
-            bien("ok")
-        }, |_| {});
+        c.trabajar(
+            false,
+            reloj(),
+            |x| {
+                hechos.push(x.id.clone());
+                bien("ok")
+            },
+            |_| {},
+        );
         assert_eq!(hechos, ["b"], "el cortado no se repite");
     }
 
@@ -707,12 +827,25 @@ mod pruebas {
         let mut l = Lista::default();
         for i in 0..15 {
             let mut x = Registro::nuevo(format!("h{i}"), &enc("x"), i);
-            x.estado = if i % 5 == 0 { Estado::EnCola } else { Estado::Hecha };
+            x.estado = if i % 5 == 0 {
+                Estado::EnCola
+            } else {
+                Estado::Hecha
+            };
             l.encargos.push(x);
         }
         l.podar();
-        assert_eq!(l.encargos.iter().filter(|x| x.estado == Estado::EnCola).count(), 3);
-        assert_eq!(l.encargos.iter().filter(|x| x.estado.acabado()).count(), ACABADOS);
+        assert_eq!(
+            l.encargos
+                .iter()
+                .filter(|x| x.estado == Estado::EnCola)
+                .count(),
+            3
+        );
+        assert_eq!(
+            l.encargos.iter().filter(|x| x.estado.acabado()).count(),
+            ACABADOS
+        );
         // Se van los mas viejos.
         assert!(!l.encargos.iter().any(|x| x.id == "h1"));
         assert!(l.encargos.iter().any(|x| x.id == "h14"));
@@ -720,21 +853,41 @@ mod pruebas {
 
     #[test]
     fn el_texto_de_la_notificacion() {
-        let mut r = Registro::nuevo("e".into(), &enc("[img 01] apunta comprar yeso y cemento para la obra del lunes"), 1);
+        let mut r = Registro::nuevo(
+            "e".into(),
+            &enc("[img 01] apunta comprar yeso y cemento para la obra del lunes"),
+            1,
+        );
         r.estado = Estado::Hecha;
-        r.resumen = resumen("## Listo\n\n- **Apunté** «comprar yeso» en `Inbox`\nmas", true);
-        r.abrir = Some(Abrir { proyecto: "asis".into(), codigo: "IA-7".into(), lienzo: None });
+        r.resumen = resumen(
+            "## Listo\n\n- **Apunté** «comprar yeso» en `Inbox`\nmas",
+            true,
+        );
+        r.abrir = Some(Abrir {
+            proyecto: "asis".into(),
+            codigo: "IA-7".into(),
+            lienzo: None,
+        });
         let t = notificacion(&r);
-        assert_eq!(t.titulo, "✅ Hecho: apunta comprar yeso y cemento para la obra del l…");
+        assert_eq!(
+            t.titulo,
+            "✅ Hecho: apunta comprar yeso y cemento para la obra del l…"
+        );
         assert_eq!(t.texto, "Listo");
-        assert_eq!(t.botones[0].pedido["que"], serde_json::json!({"tipo": "nota", "proyecto": "asis", "codigo": "IA-7"}));
+        assert_eq!(
+            t.botones[0].pedido["que"],
+            serde_json::json!({"tipo": "nota", "proyecto": "asis", "codigo": "IA-7"})
+        );
         assert_eq!(t.al_pulsar.as_ref(), Some(&t.botones[0].pedido));
         let xml = notificacion::xml(&t);
         assert!(xml.contains("<action content=\"Abrir\""), "{xml}");
 
         // Con lienzo, «Abrir» lleva al lienzo.
         r.abrir.as_mut().unwrap().lienzo = Some("L1".into());
-        assert_eq!(notificacion(&r).botones[0].pedido["que"], serde_json::json!({"tipo": "hoja", "proyecto": "asis", "referencia": "L1"}));
+        assert_eq!(
+            notificacion(&r).botones[0].pedido["que"],
+            serde_json::json!({"tipo": "hoja", "proyecto": "asis", "referencia": "L1"})
+        );
 
         // A medias: el aviso del fallo como linea.
         r.con_fallos = true;
@@ -750,7 +903,10 @@ mod pruebas {
         let t = notificacion(&f);
         assert_eq!(t.titulo, "❌ No se pudo: dibuja un gato");
         assert_eq!(t.texto, "Falta la clave de Claude");
-        assert_eq!(t.botones[0].pedido, serde_json::json!({"pixpin": 1, "accion": "asistente"}));
+        assert_eq!(
+            t.botones[0].pedido,
+            serde_json::json!({"pixpin": 1, "accion": "asistente"})
+        );
         // Y el boton pasa el filtro del protocolo.
         assert!(notificacion::permitido(&t.botones[0].pedido));
 

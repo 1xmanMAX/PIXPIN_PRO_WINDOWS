@@ -184,7 +184,11 @@ impl Pagina for pixpin_web::pagina::Pagina {
         pixpin_web::pagina::Pagina::poner_zoom(self, zoom);
     }
     fn poner_oscuro(&self, oscuro: bool) {
-        pixpin_web::pagina::Pagina::poner_oscuro(self, oscuro, crate::notas_md::lector_web::fondo(oscuro));
+        pixpin_web::pagina::Pagina::poner_oscuro(
+            self,
+            oscuro,
+            crate::notas_md::lector_web::fondo(oscuro),
+        );
     }
 }
 
@@ -251,19 +255,32 @@ impl Sitio {
     pub fn area_en_documento(&self) -> Option<[f64; 4]> {
         (self.aw > 0.5 && self.ah > 0.5).then(|| {
             let [x, y] = self.esquina();
-            [x as f64, y as f64, (x + self.aw) as f64, (y + self.ah) as f64]
+            [
+                x as f64,
+                y as f64,
+                (x + self.aw) as f64,
+                (y + self.ah) as f64,
+            ]
         })
     }
 
     /// Lo leido, de 0 a 1 (una pagina que cabe entera esta siempre en 0).
     pub fn fraccion(&self) -> f32 {
-        if self.maximo > 0.5 { (self.arriba / self.maximo).clamp(0.0, 1.0) } else { 0.0 }
+        if self.maximo > 0.5 {
+            (self.arriba / self.maximo).clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
     }
 
     /// La camara de la tinta y de los marcos: documento (pixeles CSS) a
     /// pixeles de la vista, con el zoom de Ctrl+rueda y el de pellizco.
     pub fn camara(&self) -> Camara {
-        Camara { x: self.x + self.vx, y: self.y + self.vy, zoom: (self.dpr * self.escala.max(0.01)).max(0.1) }
+        Camara {
+            x: self.x + self.vx,
+            y: self.y + self.vy,
+            zoom: (self.dpr * self.escala.max(0.01)).max(0.1),
+        }
     }
 }
 
@@ -304,12 +321,18 @@ pub fn guion(orden: Orden) -> String {
 
 /// El resultado del guion (JSON) a [`Sitio`]; `None` si no se entiende.
 pub fn sitio_de(json: &str) -> Option<Sitio> {
-    serde_json::from_str::<Sitio>(json).ok().filter(sitio_valido)
+    serde_json::from_str::<Sitio>(json)
+        .ok()
+        .filter(sitio_valido)
 }
 
 /// Si los numeros de un sitio son numeros (un `NaN` no mueve la tinta).
 pub fn sitio_valido(s: &Sitio) -> bool {
-    [s.x, s.y, s.dpr, s.vx, s.vy, s.escala, s.ax, s.ay, s.aw, s.ah].iter().all(|v| v.is_finite())
+    [
+        s.x, s.y, s.dpr, s.vx, s.vy, s.escala, s.ax, s.ay, s.aw, s.ah,
+    ]
+    .iter()
+    .all(|v| v.is_finite())
 }
 
 /// **La vista de una marca** (lo que va al `.pixpin-vistas`): el zoom de la
@@ -345,7 +368,12 @@ pub fn trozos(caja: [f64; 4], ancho: f64, alto: f64) -> Vec<[f64; 2]> {
 
 /// La interseccion de dos cajas `[x0, y0, x1, y1]`, si tiene area.
 fn cortar(a: [f64; 4], b: [f64; 4]) -> Option<[f64; 4]> {
-    let c = [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])];
+    let c = [
+        a[0].max(b[0]),
+        a[1].max(b[1]),
+        a[2].min(b[2]),
+        a[3].min(b[3]),
+    ];
     (c[2] - c[0] >= 1.0 && c[3] - c[1] >= 1.0).then_some(c)
 }
 
@@ -373,7 +401,11 @@ fn pegar(hoja: &mut ImagenRgba, trozo: &ImagenRgba, dx: i64, dy: i64) {
 
 /// Una hoja en blanco de `ancho` × `alto`.
 fn hoja_blanca(ancho: u32, alto: u32) -> ImagenRgba {
-    ImagenRgba { ancho, alto, pixeles: vec![255; ancho as usize * alto as usize * 4] }
+    ImagenRgba {
+        ancho,
+        alto,
+        pixeles: vec![255; ancho as usize * alto as usize * 4],
+    }
 }
 
 /// Como se abre el riel.
@@ -419,13 +451,26 @@ struct Capita {
 
 impl Capita {
     fn nueva(motor: &MotorRender, d3d: &ID3D11Device, dueno: HWND, area: Rect) -> Option<Capita> {
-        let ventana = VentanaOverlay::nueva(area).map_err(|e| tracing::warn!(?e, "riel: sin ventana")).ok()?;
+        let ventana = VentanaOverlay::nueva(area)
+            .map_err(|e| tracing::warn!(?e, "riel: sin ventana"))
+            .ok()?;
         ventana.poner_dueno(dueno);
         ventana.poner_siempre_encima(false);
-        let superficie = Superficie::nueva(motor, d3d, ventana.handle(), area.ancho.max(1), area.alto.max(1))
-            .map_err(|e| tracing::warn!(?e, "riel: sin superficie"))
-            .ok()?;
-        Some(Capita { ventana, superficie, area, visible: false })
+        let superficie = Superficie::nueva(
+            motor,
+            d3d,
+            ventana.handle(),
+            area.ancho.max(1),
+            area.alto.max(1),
+        )
+        .map_err(|e| tracing::warn!(?e, "riel: sin superficie"))
+        .ok()?;
+        Some(Capita {
+            ventana,
+            superficie,
+            area,
+            visible: false,
+        })
     }
 
     /// A su sitio; `true` si cambio de tamano (hay que repintar).
@@ -437,7 +482,9 @@ impl Capita {
         self.area = area;
         self.ventana.mover(area);
         if tamano {
-            let _ = self.superficie.redimensionar(area.ancho.max(1), area.alto.max(1));
+            let _ = self
+                .superficie
+                .redimensionar(area.ancho.max(1), area.alto.max(1));
         }
         true
     }
@@ -445,7 +492,11 @@ impl Capita {
     fn mostrar(&mut self, si: bool) {
         if si != self.visible {
             self.visible = si;
-            if si { self.ventana.mostrar() } else { self.ventana.ocultar() }
+            if si {
+                self.ventana.mostrar()
+            } else {
+                self.ventana.ocultar()
+            }
         }
     }
 }
@@ -576,19 +627,39 @@ impl Web {
 impl RielDeLaVista {
     /// El riel sobre `vista` (pixeles de pantalla) del visor `dueno`.
     /// `None` sin GPU o sin ventanas: el visor sigue sin riel.
-    pub fn nuevo(motor: Rc<MotorRender>, d3d: &ID3D11Device, dueno: &VentanaOverlay, vista: Rect, escala_por_cien: u32, opciones: Opciones, textos: &Catalogo) -> Option<RielDeLaVista> {
+    pub fn nuevo(
+        motor: Rc<MotorRender>,
+        d3d: &ID3D11Device,
+        dueno: &VentanaOverlay,
+        vista: Rect,
+        escala_por_cien: u32,
+        opciones: Opciones,
+        textos: &Catalogo,
+    ) -> Option<RielDeLaVista> {
         let tinta_v = Capita::nueva(&motor, d3d, dueno.handle(), vista)?;
         tinta_v.ventana.pedir_entrada_fina();
         // El riel, poseido por la de la tinta: siempre por encima de ella.
         let riel = Capita::nueva(&motor, d3d, tinta_v.ventana.handle(), vista)?;
         riel.ventana.poner_sin_activar();
-        let guardado = opciones.documento.as_deref().filter(|_| opciones.con_pagina);
+        let guardado = opciones
+            .documento
+            .as_deref()
+            .filter(|_| opciones.con_pagina);
         let (marcas, capa) = match guardado {
-            Some(d) => (crate::anotado_del_adjunto::leer(d).marcadores, Capa::leer(&crate::anotado_del_adjunto::tinta_de_la_pagina(d))),
+            Some(d) => (
+                crate::anotado_del_adjunto::leer(d).marcadores,
+                Capa::leer(&crate::anotado_del_adjunto::tinta_de_la_pagina(d)),
+            ),
             None => (Vec::new(), Capa::default()),
         };
         let vistas = Vistas::de_documento(guardado);
-        let maqueta = if opciones.maqueta { vistas.de_marca(capa_web::CLAVE_MAQUETA).and_then(capa_web::Maqueta::de_texto) } else { None };
+        let maqueta = if opciones.maqueta {
+            vistas
+                .de_marca(capa_web::CLAVE_MAQUETA)
+                .and_then(capa_web::Maqueta::de_texto)
+        } else {
+            None
+        };
         let e = escala_por_cien as f32 / 100.0;
         let mut r = RielDeLaVista {
             motor,
@@ -611,7 +682,22 @@ impl RielDeLaVista {
             capa,
             ultimo_trazo: Instant::now(),
             trazando: false,
-            sitio: Sitio { x: 0.0, y: 0.0, arriba: 0.0, maximo: 0.0, dpr: e, vx: 0.0, vy: 0.0, escala: 1.0, ax: 0.0, ay: 0.0, aw: 0.0, ah: 0.0, nuevo: false, maq: None },
+            sitio: Sitio {
+                x: 0.0,
+                y: 0.0,
+                arriba: 0.0,
+                maximo: 0.0,
+                dpr: e,
+                vx: 0.0,
+                vy: 0.0,
+                escala: 1.0,
+                ax: 0.0,
+                ay: 0.0,
+                aw: 0.0,
+                ah: 0.0,
+                nuevo: false,
+                maq: None,
+            },
             buzon: Rc::new(RefCell::new(Vec::new())),
             preguntado: None,
             mirado: Instant::now(),
@@ -625,7 +711,13 @@ impl RielDeLaVista {
             repintar_tinta: true,
             // (Con la prueba de los marcos, despues de ponerlos: a los 4,5 s.)
             imprimir_al_abrir: std::env::var_os("PIXPIN_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| {
-                let tras = if cfg!(debug_assertions) && std::env::var_os("PIXPIN_RIEL_MARCOS_PRUEBA").is_some() { 4500 } else { 2000 };
+                let tras = if cfg!(debug_assertions)
+                    && std::env::var_os("PIXPIN_RIEL_MARCOS_PRUEBA").is_some()
+                {
+                    4500
+                } else {
+                    2000
+                };
                 Instant::now() + Duration::from_millis(tras)
             }),
             #[cfg(debug_assertions)]
@@ -687,7 +779,8 @@ impl RielDeLaVista {
     /// arrastra, el texto que se escribe): mientras, la tinta la pinta la
     /// ventana de encima, con [`Tinta`], y la de la pagina se esconde.
     fn vivo(&self) -> bool {
-        self.anotando && (self.trazando || self.tinta.trazando() || self.tinta.gesto.esta_escribiendo())
+        self.anotando
+            && (self.trazando || self.tinta.trazando() || self.tinta.gesto.esta_escribiendo())
     }
 
     /// Si la ventana de encima pinta la tinta (sin pagina que la lleve, o
@@ -724,23 +817,50 @@ impl RielDeLaVista {
     /// rehace solo si cambio la escena o el papel), escondida durante un
     /// gesto; los marcos (no al fotografiarlos) y lo que mandan las teclas.
     fn deseado(&mut self, pagina: &dyn Pagina) -> Deseado {
-        let papel = lector_tinta::papel(if self.oscuro { pixpin_render::oscuro::PAPEL } else { Color::BLANCO });
-        let clave = [(papel.r * 255.0) as u8, (papel.g * 255.0) as u8, (papel.b * 255.0) as u8];
+        let papel = lector_tinta::papel(if self.oscuro {
+            pixpin_render::oscuro::PAPEL
+        } else {
+            Color::BLANCO
+        });
+        let clave = [
+            (papel.r * 255.0) as u8,
+            (papel.g * 255.0) as u8,
+            (papel.b * 255.0) as u8,
+        ];
         let vivo = self.vivo();
         if !vivo {
             let fresca = matches!(&self.web.hecha, Some((esc, k, _)) if *k == clave && *esc == self.capa.escena);
             if !fresca {
                 let svg = capa_web::svg_de_la_tinta(&self.capa, papel);
-                self.web.con_imagenes = self.capa.escena.elementos.iter().any(|e| !e.borrado && matches!(e.figura, pixpin_motor2d::Figura::Imagen { .. }));
+                self.web.con_imagenes = self.capa.escena.elementos.iter().any(|e| {
+                    !e.borrado && matches!(e.figura, pixpin_motor2d::Figura::Imagen { .. })
+                });
                 // Una imagen pegada en la tinta no va en el SVG (su bitmap es del
                 // lector): entonces la tinta entera sigue en la ventana de encima.
-                let svg = if self.web.con_imagenes { String::new() } else { svg };
+                let svg = if self.web.con_imagenes {
+                    String::new()
+                } else {
+                    svg
+                };
                 self.web.hecha = Some((self.capa.escena.clone(), clave, svg));
             }
         }
-        let marcos = if self.imprimiendo { String::new() } else { capa_web::svg_de_los_marcos(&self.marcos.lista, self.camara().zoom as f64, self.e() as f64) };
+        let marcos = if self.imprimiendo {
+            String::new()
+        } else {
+            capa_web::svg_de_los_marcos(
+                &self.marcos.lista,
+                self.camara().zoom as f64,
+                self.e() as f64,
+            )
+        };
         Deseado {
-            tinta: self.web.hecha.as_ref().map(|h| h.2.clone()).unwrap_or_default(),
+            tinta: self
+                .web
+                .hecha
+                .as_ref()
+                .map(|h| h.2.clone())
+                .unwrap_or_default(),
             ver_tinta: !vivo && !self.tinta_escondida(),
             marcos,
             ctrl_p: !self.marcos.lista.is_empty() && !pagina.ctrl_p_propio(),
@@ -753,7 +873,9 @@ impl RielDeLaVista {
     /// **Deja en la pagina lo que tiene que haber** (si cambio) y mira si
     /// ya lo confirmo: entonces la ventana de encima suelta la tinta.
     fn sincronizar(&mut self, pagina: Option<&dyn Pagina>) {
-        let Some(pg) = pagina.filter(|_| self.opciones.con_pagina) else { return };
+        let Some(pg) = pagina.filter(|_| self.opciones.con_pagina) else {
+            return;
+        };
         let (n, ok) = self.web.puesto.get();
         if n == self.web.numero && n != self.web.visto {
             self.web.visto = n;
@@ -768,12 +890,22 @@ impl RielDeLaVista {
         if self.web.enviado.as_ref() == Some(&d) {
             return;
         }
-        if self.web.enviado.is_none() && self.web.numero > 0 && self.web.enviado_en.elapsed() < REINTENTO {
+        if self.web.enviado.is_none()
+            && self.web.numero > 0
+            && self.web.enviado_en.elapsed() < REINTENTO
+        {
             return;
         }
         self.web.numero += 1;
         let numero = self.web.numero;
-        tracing::debug!(numero, tinta = d.tinta.len(), ver = d.ver_tinta, marcos = d.marcos.len(), elementos = self.capa.escena.elementos.len(), "riel: capa a la pagina");
+        tracing::debug!(
+            numero,
+            tinta = d.tinta.len(),
+            ver = d.ver_tinta,
+            marcos = d.marcos.len(),
+            elementos = self.capa.escena.elementos.len(),
+            "riel: capa a la pagina"
+        );
         let puesto = Rc::clone(&self.web.puesto);
         pg.ejecutar(
             &capa_web::guion_poner(&d),
@@ -865,19 +997,35 @@ impl RielDeLaVista {
     /// **Pulsar la ficha de un marco**: la vista va a el, centrado (o, si no
     /// cabe, con su esquina de arriba a la izquierda arriba del todo).
     fn ir_a_marco(&mut self, i: usize, pagina: Option<&dyn Pagina>) {
-        let Some(m) = self.marcos.lista.get(i) else { return };
+        let Some(m) = self.marcos.lista.get(i) else {
+            return;
+        };
         let v = self.vista_en_documento();
         let (vw, vh) = (v[2] - v[0], v[3] - v[1]);
         let [cx, cy] = m.centro();
         let aire = 12.0;
-        let x = if m.ancho() + 2.0 * aire <= vw { cx - vw / 2.0 } else { m.caja[0] - aire };
-        let y = if m.alto() + 2.0 * aire <= vh { cy - vh / 2.0 } else { m.caja[1] - aire };
+        let x = if m.ancho() + 2.0 * aire <= vw {
+            cx - vw / 2.0
+        } else {
+            m.caja[0] - aire
+        };
+        let y = if m.alto() + 2.0 * aire <= vh {
+            cy - vh / 2.0
+        } else {
+            m.caja[1] - aire
+        };
         self.pedir(pagina, Orden::Colocar(x as f32, y as f32));
     }
 
     /// El riel colocado en la vista (coordenadas de la vista).
     fn colocado(&self) -> Riel {
-        lector::riel(self.vista.ancho as f32, self.vista.alto as f32, self.escala_por_cien, self.marcas.len(), self.poniendo)
+        lector::riel(
+            self.vista.ancho as f32,
+            self.vista.alto as f32,
+            self.escala_por_cien,
+            self.marcas.len(),
+            self.poniendo,
+        )
     }
 
     /// **Lo que ocupa la ventana del riel**, en coordenadas de la vista: la
@@ -886,7 +1034,12 @@ impl RielDeLaVista {
     /// la vista.
     fn area_del_riel(&self, riel: &Riel) -> Rect {
         if riel.tira.is_some() {
-            return Rect { x: 0, y: 0, ancho: self.vista.ancho, alto: self.vista.alto };
+            return Rect {
+                x: 0,
+                y: 0,
+                ancho: self.vista.ancho,
+                alto: self.vista.alto,
+            };
         }
         let e = self.e();
         let aire = (6.0 * e) as i32;
@@ -896,7 +1049,10 @@ impl RielDeLaVista {
         }
         // Con el raton sobre un boton, su globo (el nombre y la tecla) sale
         // a la izquierda: la ventana crece para que no se corte.
-        if matches!(self.encima, DestinoRiel::PonerMarca | DestinoRiel::Hojita | DestinoRiel::Imprimir) {
+        if matches!(
+            self.encima,
+            DestinoRiel::PonerMarca | DestinoRiel::Hojita | DestinoRiel::Imprimir
+        ) {
             x0 = x0.min(riel.isla.x - aire - (GLOBO_ANCHO * e) as i32);
         }
         let abajo = riel.isla.abajo().max(riel.columna.abajo()) + aire;
@@ -905,13 +1061,22 @@ impl RielDeLaVista {
         let x1 = (riel.isla.x + riel.isla.ancho as i32).min(self.vista.ancho as i32);
         let y0 = (riel.isla.y - aire).max(0);
         let y1 = abajo.min(self.vista.alto as i32);
-        Rect { x: x0, y: y0, ancho: (x1 - x0).max(1) as u32, alto: (y1 - y0).max(1) as u32 }
+        Rect {
+            x: x0,
+            y: y0,
+            ancho: (x1 - x0).max(1) as u32,
+            alto: (y1 - y0).max(1) as u32,
+        }
     }
 
     fn recolocar(&mut self) {
         let riel = self.colocado();
         let a = self.area_del_riel(&riel);
-        let en_pantalla = Rect { x: self.vista.x + a.x, y: self.vista.y + a.y, ..a };
+        let en_pantalla = Rect {
+            x: self.vista.x + a.x,
+            y: self.vista.y + a.y,
+            ..a
+        };
         if self.riel.colocar(en_pantalla) {
             self.repintar_riel = true;
         }
@@ -943,18 +1108,26 @@ impl RielDeLaVista {
 
     /// El punto del raton (pantalla) en coordenadas de la vista.
     fn local(&self, p: Punto) -> Punto {
-        Punto { x: p.x - self.vista.x, y: p.y - self.vista.y }
+        Punto {
+            x: p.x - self.vista.x,
+            y: p.y - self.vista.y,
+        }
     }
 
     /// El punto del raton (pantalla) en el documento.
     fn en_documento(&self, p: Punto) -> [f64; 2] {
         let c = self.camara();
         let l = self.local(p);
-        [(l.x as f32 / c.zoom + c.x) as f64, (l.y as f32 / c.zoom + c.y) as f64]
+        [
+            (l.x as f32 / c.zoom + c.x) as f64,
+            (l.y as f32 / c.zoom + c.y) as f64,
+        ]
     }
 
     fn pedir(&mut self, pagina: Option<&dyn Pagina>, orden: Orden) {
-        let Some(pg) = pagina.filter(|_| self.opciones.con_pagina) else { return };
+        let Some(pg) = pagina.filter(|_| self.opciones.con_pagina) else {
+            return;
+        };
         let buzon = Rc::clone(&self.buzon);
         self.preguntado = Some(Instant::now());
         pg.ejecutar(
@@ -968,7 +1141,13 @@ impl RielDeLaVista {
     }
 
     /// **Un evento de una de sus ventanas.**
-    pub fn evento(&mut self, h: HWND, ev: &EventoOverlay, pagina: Option<&dyn Pagina>, textos: &Catalogo) -> Pide {
+    pub fn evento(
+        &mut self,
+        h: HWND,
+        ev: &EventoOverlay,
+        pagina: Option<&dyn Pagina>,
+        textos: &Catalogo,
+    ) -> Pide {
         if h == self.riel.ventana.handle() {
             return self.evento_del_riel(ev, pagina, textos);
         }
@@ -978,7 +1157,12 @@ impl RielDeLaVista {
         self.evento_de_la_tinta(ev, pagina)
     }
 
-    fn evento_del_riel(&mut self, ev: &EventoOverlay, pagina: Option<&dyn Pagina>, textos: &Catalogo) -> Pide {
+    fn evento_del_riel(
+        &mut self,
+        ev: &EventoOverlay,
+        pagina: Option<&dyn Pagina>,
+        textos: &Catalogo,
+    ) -> Pide {
         match *ev {
             EventoOverlay::RatonMovido(p) => {
                 self.raton_en(p);
@@ -1028,9 +1212,16 @@ impl RielDeLaVista {
             self.repintar_riel = true;
         }
         let a = self.area_del_riel(&riel);
-        let dentro = local.x >= a.x && local.y >= a.y && local.x < a.x + a.ancho as i32 && local.y < a.y + a.alto as i32;
+        let dentro = local.x >= a.x
+            && local.y >= a.y
+            && local.x < a.x + a.ancho as i32
+            && local.y < a.y + a.alto as i32;
         let sobre_los_puntos = matches!(encima, DestinoRiel::Marca(_));
-        let crecido = if self.crecido { dentro } else { sobre_los_puntos };
+        let crecido = if self.crecido {
+            dentro
+        } else {
+            sobre_los_puntos
+        };
         if crecido != self.crecido {
             self.crecido = crecido;
             self.recolocar();
@@ -1038,7 +1229,12 @@ impl RielDeLaVista {
         }
     }
 
-    fn pulsar(&mut self, destino: DestinoRiel, pagina: Option<&dyn Pagina>, _textos: &Catalogo) -> Pide {
+    fn pulsar(
+        &mut self,
+        destino: DestinoRiel,
+        pagina: Option<&dyn Pagina>,
+        _textos: &Catalogo,
+    ) -> Pide {
         let mut pide = Pide::Nada;
         match destino {
             DestinoRiel::PonerMarca if self.opciones.con_pagina => {
@@ -1081,10 +1277,19 @@ impl RielDeLaVista {
             self.fija = true;
             self.repintar_tinta = true;
             if let Some(pg) = pagina {
-                pg.ejecutar(&format!("if(window.__pixpinMaqueta)window.__pixpinMaqueta.poner({},true)", mq.a_texto()), Box::new(|_| {}));
+                pg.ejecutar(
+                    &format!(
+                        "if(window.__pixpinMaqueta)window.__pixpinMaqueta.poner({},true)",
+                        mq.a_texto()
+                    ),
+                    Box::new(|_| {}),
+                );
             }
         }
-        let vista = self.vistas.de_marca(&m.id.to_string()).and_then(marcos_doc::zoom_de_texto);
+        let vista = self
+            .vistas
+            .de_marca(&m.id.to_string())
+            .and_then(marcos_doc::zoom_de_texto);
         match (vista, pagina) {
             (Some((zoom, x, y)), Some(pg)) => {
                 if (pg.zoom() - zoom).abs() > 1e-3 {
@@ -1125,7 +1330,11 @@ impl RielDeLaVista {
             if !self.marcas.iter().any(|m| m.emoji == MARCA_MAQUETA) {
                 self.marca_pendiente = Some(MARCA_MAQUETA.to_string());
             }
-            tracing::info!(ancho = ahora.ancho, tam = ahora.tam, "nota: maqueta de la tinta guardada");
+            tracing::info!(
+                ancho = ahora.ancho,
+                tam = ahora.tam,
+                "nota: maqueta de la tinta guardada"
+            );
         }
         self.fija = true;
     }
@@ -1178,11 +1387,16 @@ impl RielDeLaVista {
     fn evento_de_los_marcos(&mut self, ev: &EventoOverlay, pagina: Option<&dyn Pagina>) -> Pide {
         match *ev {
             EventoOverlay::Pintar | EventoOverlay::CambioDpi => self.repintar_tinta = true,
-            EventoOverlay::Rueda(d) => self.pedir(pagina, Orden::Bajar(-(d as f32) / 120.0 * CSS_POR_MUESCA)),
+            EventoOverlay::Rueda(d) => {
+                self.pedir(pagina, Orden::Bajar(-(d as f32) / 120.0 * CSS_POR_MUESCA))
+            }
             EventoOverlay::BotonPulsado(p) => {
                 // Las fichas 1, 2, 3… de abajo: ir a ese marco.
                 let l = self.local(p);
-                if let Some(i) = self.marcos.ficha_en((l.x as f32, l.y as f32), self.vista.alto as f32, self.e()) {
+                if let Some(i) =
+                    self.marcos
+                        .ficha_en((l.x as f32, l.y as f32), self.vista.alto as f32, self.e())
+                {
                     self.ir_a_marco(i, pagina);
                     return Pide::Nada;
                 }
@@ -1215,7 +1429,11 @@ impl RielDeLaVista {
             EventoOverlay::Tecla { vk: VK_ESCAPE, .. } if self.poniendo => self.alternar_tira(),
             EventoOverlay::Tecla { vk: VK_ESCAPE, .. } => return self.alternar_marcos(),
             // Las de todos los visores: A, el lapiz; M o Ctrl+M, la tira.
-            EventoOverlay::Tecla { vk: VK_A, ctrl: false, .. } => return self.alternar_anotar(),
+            EventoOverlay::Tecla {
+                vk: VK_A,
+                ctrl: false,
+                ..
+            } => return self.alternar_anotar(),
             EventoOverlay::Tecla { vk: VK_M, .. } => self.alternar_tira(),
             EventoOverlay::Tecla { vk, ctrl, .. } => match self.marcos.tecla(vk, ctrl) {
                 Some(marcos_doc::Pedido::Imprimir) => self.imprimir_marcos(pagina),
@@ -1252,36 +1470,67 @@ impl RielDeLaVista {
                 self.alternar_tira();
                 return Pide::Nada;
             }
-            EventoOverlay::Tecla { vk: VK_ESCAPE, .. } if !self.tinta.quiere_escape() => return self.alternar_anotar(),
+            EventoOverlay::Tecla { vk: VK_ESCAPE, .. } if !self.tinta.quiere_escape() => {
+                return self.alternar_anotar();
+            }
             // Ctrl+M, la tira de los marcadores, como en todos los visores
             // (la M sola es aqui una herramienta de la tinta).
-            EventoOverlay::Tecla { vk: VK_M, ctrl: true, .. } if !self.tinta.gesto.esta_escribiendo() => {
+            EventoOverlay::Tecla {
+                vk: VK_M,
+                ctrl: true,
+                ..
+            } if !self.tinta.gesto.esta_escribiendo() => {
                 self.alternar_tira();
                 return Pide::Nada;
             }
-            EventoOverlay::Tecla { vk: VK_Z, ctrl: true, shift, .. } if !self.tinta.gesto.esta_escribiendo() => {
-                if shift { self.capa.rehacer() } else { self.capa.deshacer() };
+            EventoOverlay::Tecla {
+                vk: VK_Z,
+                ctrl: true,
+                shift,
+                ..
+            } if !self.tinta.gesto.esta_escribiendo() => {
+                if shift {
+                    self.capa.rehacer()
+                } else {
+                    self.capa.deshacer()
+                };
                 self.ultimo_trazo = Instant::now();
                 self.repintar_tinta = true;
                 return Pide::Nada;
             }
-            EventoOverlay::Tecla { vk: VK_Y, ctrl: true, .. } if !self.tinta.gesto.esta_escribiendo() => {
+            EventoOverlay::Tecla {
+                vk: VK_Y,
+                ctrl: true,
+                ..
+            } if !self.tinta.gesto.esta_escribiendo() => {
                 self.capa.rehacer();
                 self.ultimo_trazo = Instant::now();
                 self.repintar_tinta = true;
                 return Pide::Nada;
             }
             // Ctrl+P con el lapiz: los marcos, como en el plano.
-            EventoOverlay::Tecla { vk: marcos_doc::VK_P, ctrl: true, .. } => {
+            EventoOverlay::Tecla {
+                vk: marcos_doc::VK_P,
+                ctrl: true,
+                ..
+            } => {
                 self.imprimir_marcos(pagina);
                 return Pide::Nada;
             }
             _ => {}
         }
         let camara = self.camara();
-        let h = self.tinta.evento(ev, &mut self.capa, &camara, self.vista, self.escala_por_cien);
+        let h = self.tinta.evento(
+            ev,
+            &mut self.capa,
+            &camara,
+            self.vista,
+            self.escala_por_cien,
+        );
         if let Some(c) = h.cursor {
-            self.tinta_v.ventana.poner_cursor(crate::dibujo::teclas::forma_de(c));
+            self.tinta_v
+                .ventana
+                .poner_cursor(crate::dibujo::teclas::forma_de(c));
         }
         if h.cambio {
             self.ultimo_trazo = Instant::now();
@@ -1304,7 +1553,15 @@ impl RielDeLaVista {
     /// La camara de la tinta y los marcos: con pagina, la que dice ella;
     /// sin, la vista quieta en pixeles logicos.
     fn camara(&self) -> Camara {
-        if self.opciones.con_pagina { self.sitio.camara() } else { Camara { x: 0.0, y: 0.0, zoom: self.e() } }
+        if self.opciones.con_pagina {
+            self.sitio.camara()
+        } else {
+            Camara {
+                x: 0.0,
+                y: 0.0,
+                zoom: self.e(),
+            }
+        }
     }
 
     /// **Cada vuelta del bucle del visor**: lo que conto la pagina, si el
@@ -1336,11 +1593,20 @@ impl RielDeLaVista {
         // sola al desplazarse y solo se mira de vez en cuando si sigue
         // teniendo el guion (al recargarse lo pierde).
         if self.opciones.con_pagina && self.preguntado.is_none() {
-            if self.sigue_preguntando() && self.tinta_a_la_vista() && self.mirado.elapsed() >= MIRAR_SITIO {
+            if self.sigue_preguntando()
+                && self.tinta_a_la_vista()
+                && self.mirado.elapsed() >= MIRAR_SITIO
+            {
                 self.mirado = Instant::now();
                 self.web.latido = Instant::now();
                 self.pedir(pagina, Orden::Mirar);
-            } else if self.web.latido.elapsed() >= if self.en_la_pagina() { LATIDO } else { LATIDO_SIN_CAPA } {
+            } else if self.web.latido.elapsed()
+                >= if self.en_la_pagina() {
+                    LATIDO
+                } else {
+                    LATIDO_SIN_CAPA
+                }
+            {
                 self.web.latido = Instant::now();
                 self.pedir(pagina, Orden::Mirar);
             }
@@ -1349,7 +1615,11 @@ impl RielDeLaVista {
         if (self.crecido || self.encima != DestinoRiel::Fuera) && !self.globo_de_prueba {
             let p = pixpin_shell::overlay::raton_en_pantalla();
             let r = self.riel.area;
-            if !(p.x >= r.x && p.y >= r.y && p.x < r.x + r.ancho as i32 && p.y < r.y + r.alto as i32) {
+            if !(p.x >= r.x
+                && p.y >= r.y
+                && p.x < r.x + r.ancho as i32
+                && p.y < r.y + r.alto as i32)
+            {
                 self.encima = DestinoRiel::Fuera;
                 self.crecido = false;
                 self.recolocar();
@@ -1390,7 +1660,14 @@ impl RielDeLaVista {
     pub fn tope_ms(&self) -> Option<u32> {
         if !self.quiere_reloj() {
             // Con pagina, solo el latido (si sigue teniendo el guion).
-            return self.opciones.con_pagina.then(|| if self.en_la_pagina() { LATIDO } else { LATIDO_SIN_CAPA }.as_millis() as u32);
+            return self.opciones.con_pagina.then(|| {
+                if self.en_la_pagina() {
+                    LATIDO
+                } else {
+                    LATIDO_SIN_CAPA
+                }
+                .as_millis() as u32
+            });
         }
         let t = MIRAR_SITIO.as_millis() as u32;
         Some(self.tinta.mano.tope_forma_ms().map_or(t, |f| f.min(t)))
@@ -1402,7 +1679,11 @@ impl RielDeLaVista {
         while self.marcas.iter().any(|m| m.id == id) {
             id += 1;
         }
-        self.marcas.push(Marcador { id, fraccion: s.fraccion(), emoji: emoji.to_string() });
+        self.marcas.push(Marcador {
+            id,
+            fraccion: s.fraccion(),
+            emoji: emoji.to_string(),
+        });
         self.vistas.poner(&id.to_string(), vista_de_marca(zoom, s));
         // Como en el PDF: 24 como mucho, se va la mas vieja.
         while self.marcas.len() > pixpin_motor2d::marcas::MAXIMO {
@@ -1418,16 +1699,31 @@ impl RielDeLaVista {
     }
 
     fn guardar_marcas(&self) {
-        let Some(d) = self.opciones.documento.as_deref().filter(|_| self.opciones.con_pagina) else { return };
+        let Some(d) = self
+            .opciones
+            .documento
+            .as_deref()
+            .filter(|_| self.opciones.con_pagina)
+        else {
+            return;
+        };
         guardar_marcas_en(d, &self.marcas);
     }
 
     fn guardar_tinta(&mut self) {
-        let Some(d) = self.opciones.documento.as_deref().filter(|_| self.opciones.con_pagina) else {
+        let Some(d) = self
+            .opciones
+            .documento
+            .as_deref()
+            .filter(|_| self.opciones.con_pagina)
+        else {
             self.capa.sucia = false;
             return;
         };
-        if let Err(e) = self.capa.guardar(&crate::anotado_del_adjunto::tinta_de_la_pagina(d)) {
+        if let Err(e) = self
+            .capa
+            .guardar(&crate::anotado_del_adjunto::tinta_de_la_pagina(d))
+        {
             tracing::warn!(?e, "riel: no se pudo guardar la tinta");
         }
     }
@@ -1455,9 +1751,16 @@ impl RielDeLaVista {
     }
 
     fn pintar_tinta(&mut self) {
-        let (w, h) = (self.tinta_v.area.ancho as f32, self.tinta_v.area.alto as f32);
+        let (w, h) = (
+            self.tinta_v.area.ancho as f32,
+            self.tinta_v.area.alto as f32,
+        );
         let camara = self.camara();
-        let papel = lector_tinta::papel(if self.oscuro { pixpin_render::oscuro::PAPEL } else { Color::BLANCO });
+        let papel = lector_tinta::papel(if self.oscuro {
+            pixpin_render::oscuro::PAPEL
+        } else {
+            Color::BLANCO
+        });
         let e = self.e();
         // Con la capa en la pagina, lo dibujado va alli (sin retraso al
         // desplazar): aqui solo el gesto a medias, lo de encima de la tinta
@@ -1465,8 +1768,15 @@ impl RielDeLaVista {
         // arrastra.
         let (tinta_aqui, marcos_aqui) = (self.tinta_en_la_ventana(), !self.en_la_pagina());
         let arrastre = self.arrastre;
-        let Ok(destino) = self.tinta_v.superficie.empezar(&self.motor) else { return };
-        let (tinta, capa, vista, escala) = (&mut self.tinta, &self.capa, self.vista, self.escala_por_cien);
+        let Ok(destino) = self.tinta_v.superficie.empezar(&self.motor) else {
+            return;
+        };
+        let (tinta, capa, vista, escala) = (
+            &mut self.tinta,
+            &self.capa,
+            self.vista,
+            self.escala_por_cien,
+        );
         let (marcos, pista, imprimiendo) = (&self.marcos, self.pista.as_str(), self.imprimiendo);
         let anotando = self.anotando && !imprimiendo;
         let velo = (self.anotando || self.marcos.activo) && !imprimiendo;
@@ -1475,26 +1785,62 @@ impl RielDeLaVista {
             // Con el lapiz o los marcos, un velo muy leve: se ve que la
             // pagina esta debajo y no se la puede tocar.
             if velo {
-                p.rellenar(RectF { x: 0.0, y: 0.0, ancho: w, alto: h }, Color { r: 0.0, g: 0.0, b: 0.0, a: 0.04 });
+                p.rellenar(
+                    RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: w,
+                        alto: h,
+                    },
+                    Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.04,
+                    },
+                );
             }
             let z = camara.zoom;
             p.poner_vista((0.0, 0.0), z, (-camara.x * z, -camara.y * z));
             if tinta_aqui {
                 tinta.pintar_capa(p, 0, capa, camara.ventana(w, h), z, papel, anotando);
             } else if anotando {
-                tinta.pintar_capa_parte(p, 0, capa, camara.ventana(w, h), z, papel, true, lector_tinta::Parte::Encima);
+                tinta.pintar_capa_parte(
+                    p,
+                    0,
+                    capa,
+                    camara.ventana(w, h),
+                    z,
+                    papel,
+                    true,
+                    lector_tinta::Parte::Encima,
+                );
             }
             p.desplazar(0.0, 0.0);
             if !imprimiendo {
-                let a_pantalla = |q: [f64; 2]| (((q[0] as f32) - camara.x) * z, ((q[1] as f32) - camara.y) * z);
+                let a_pantalla = |q: [f64; 2]| {
+                    (
+                        ((q[0] as f32) - camara.x) * z,
+                        ((q[1] as f32) - camara.y) * z,
+                    )
+                };
                 if marcos_aqui {
                     marcos.pintar(p, 0, &a_pantalla, e, h, pista);
                 } else {
                     // (Ninguno es de esa parte: solo las fichas y la pista.)
                     marcos.pintar(p, u32::MAX, &a_pantalla, e, h, pista);
                     if let Some((a, b)) = arrastre {
-                        let caja = [a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])];
-                        p.trazar(marcos_doc::caja_en_pantalla(caja, &a_pantalla), 1.5 * e, marcos_doc::AZUL);
+                        let caja = [
+                            a[0].min(b[0]),
+                            a[1].min(b[1]),
+                            a[0].max(b[0]),
+                            a[1].max(b[1]),
+                        ];
+                        p.trazar(
+                            marcos_doc::caja_en_pantalla(caja, &a_pantalla),
+                            1.5 * e,
+                            marcos_doc::AZUL,
+                        );
                     }
                 }
             }
@@ -1509,14 +1855,24 @@ impl RielDeLaVista {
         let riel = self.colocado();
         let a = self.area_del_riel(&riel);
         let emojis: Vec<&str> = self.marcas.iter().map(|m| m.emoji.as_str()).collect();
-        let (encima, poniendo, anotando, con_marcas, elige) = (self.encima, self.poniendo, self.anotando, self.opciones.con_pagina, self.elige.as_str());
+        let (encima, poniendo, anotando, con_marcas, elige) = (
+            self.encima,
+            self.poniendo,
+            self.anotando,
+            self.opciones.con_pagina,
+            self.elige.as_str(),
+        );
         let enmarcando = self.marcos.activo;
         let e = self.e();
-        let Ok(destino) = self.riel.superficie.empezar(&self.motor) else { return };
+        let Ok(destino) = self.riel.superficie.empezar(&self.motor) else {
+            return;
+        };
         let _ = self.motor.dibujar(&destino, |p| {
             p.limpiar_transparente();
             p.desplazar(-(a.x as f32), -(a.y as f32));
-            lector::pintar_riel_con(p, &riel, &emojis, encima, poniendo, anotando, enmarcando, elige);
+            lector::pintar_riel_con(
+                p, &riel, &emojis, encima, poniendo, anotando, enmarcando, elige,
+            );
             // Sin pagina que diga por donde va (la vista previa de Office)
             // no hay marcas: el boton, apagado.
             if !con_marcas {
@@ -1542,9 +1898,17 @@ impl RielDeLaVista {
             if !self.marcos.activo {
                 self.alternar_marcos();
             }
-            for (a, b) in [((40.0, 40.0), (300.0, 190.0)), ((60.0, 230.0), (420.0, 400.0))] {
+            for (a, b) in [
+                ((40.0, 40.0), (300.0, 190.0)),
+                ((60.0, 230.0), (420.0, 400.0)),
+            ] {
                 pixpin_shell::overlay::simular_raton(h, 0, px(a.0), px(a.1));
-                pixpin_shell::overlay::simular_raton(h, 1, px((a.0 + b.0) / 2.0), px((a.1 + b.1) / 2.0));
+                pixpin_shell::overlay::simular_raton(
+                    h,
+                    1,
+                    px((a.0 + b.0) / 2.0),
+                    px((a.1 + b.1) / 2.0),
+                );
                 pixpin_shell::overlay::simular_raton(h, 1, px(b.0), px(b.1));
                 pixpin_shell::overlay::simular_raton(h, 2, px(b.0), px(b.1));
             }
@@ -1570,10 +1934,16 @@ impl RielDeLaVista {
     /// La prueba de las teclas dentro de la pagina (ver `prueba_tecla`).
     #[cfg(debug_assertions)]
     fn paso_de_prueba_tecla(&mut self, pagina: Option<&dyn Pagina>) {
-        let Some((t, paso)) = self.prueba_tecla else { return };
+        let Some((t, paso)) = self.prueba_tecla else {
+            return;
+        };
         let Some(pg) = pagina else { return };
         let ms = t.elapsed().as_millis();
-        let tecla = |k: &str| format!("document.body.dispatchEvent(new KeyboardEvent('keydown',{{key:'{k}',bubbles:true,cancelable:true}}))");
+        let tecla = |k: &str| {
+            format!(
+                "document.body.dispatchEvent(new KeyboardEvent('keydown',{{key:'{k}',bubbles:true,cancelable:true}}))"
+            )
+        };
         let (js, siguiente) = match paso {
             0 if ms > 2000 => (tecla("i"), Some((t, 1))),
             1 if ms > 4000 => (tecla("a"), Some((t, 2))),
@@ -1596,7 +1966,9 @@ impl RielDeLaVista {
     /// el boton del marco: su globo.
     #[cfg(debug_assertions)]
     fn paso_de_prueba_tinta(&mut self, pagina: Option<&dyn Pagina>) {
-        let Some((t, paso)) = self.prueba_tinta else { return };
+        let Some((t, paso)) = self.prueba_tinta else {
+            return;
+        };
         let ms = t.elapsed().as_millis();
         let e = self.e();
         let px = |v: f32| (v * e) as i32;
@@ -1640,7 +2012,12 @@ impl RielDeLaVista {
                     // Primero se le dice que el raton esta sobre el boton
                     // (crece) y luego, ya crecida, otra vez en su sitio nuevo.
                     let h = self.riel.ventana.handle().0 as isize;
-                    pixpin_shell::overlay::simular_raton(h, 1, x - self.riel.area.x + self.vista.x, y - self.riel.area.y + self.vista.y);
+                    pixpin_shell::overlay::simular_raton(
+                        h,
+                        1,
+                        x - self.riel.area.x + self.vista.x,
+                        y - self.riel.area.y + self.vista.y,
+                    );
                     self.globo_de_prueba = true;
                 }
                 self.prueba_tinta = None;
@@ -1658,7 +2035,10 @@ impl RielDeLaVista {
     fn esperar_sitio(&mut self, pagina: &dyn Pagina, orden: Orden) -> Option<Sitio> {
         let celda: Rc<RefCell<Option<Sitio>>> = Rc::new(RefCell::new(None));
         let c = Rc::clone(&celda);
-        pagina.ejecutar(&guion(orden), Box::new(move |json| *c.borrow_mut() = sitio_de(&json)));
+        pagina.ejecutar(
+            &guion(orden),
+            Box::new(move |json| *c.borrow_mut() = sitio_de(&json)),
+        );
         let t = Instant::now();
         while t.elapsed() < ESPERA_GUION {
             pixpin_shell::overlay::bombear_pendientes();
@@ -1687,9 +2067,16 @@ impl RielDeLaVista {
     /// barra del lector de notas).
     fn vista_en_documento(&self) -> [f64; 4] {
         let c = self.camara();
-        let (w, h) = (self.vista.ancho as f64 / c.zoom as f64, self.vista.alto as f64 / c.zoom as f64);
+        let (w, h) = (
+            self.vista.ancho as f64 / c.zoom as f64,
+            self.vista.alto as f64 / c.zoom as f64,
+        );
         let toda = [c.x as f64, c.y as f64, c.x as f64 + w, c.y as f64 + h];
-        match self.sitio.area_en_documento().filter(|_| self.opciones.con_pagina) {
+        match self
+            .sitio
+            .area_en_documento()
+            .filter(|_| self.opciones.con_pagina)
+        {
             Some(a) => cortar(toda, a).unwrap_or(toda),
             None => toda,
         }
@@ -1704,13 +2091,22 @@ impl RielDeLaVista {
         let y0 = self.vista.y + ((caja[1] - c.y as f64) * z).round() as i32;
         let x1 = self.vista.x + ((caja[2] - c.x as f64) * z).round() as i32;
         let y1 = self.vista.y + ((caja[3] - c.y as f64) * z).round() as i32;
-        let r = Rect { x: x0, y: y0, ancho: (x1 - x0).max(1) as u32, alto: (y1 - y0).max(1) as u32 };
+        let r = Rect {
+            x: x0,
+            y: y0,
+            ancho: (x1 - x0).max(1) as u32,
+            alto: (y1 - y0).max(1) as u32,
+        };
         crate::marco_imprimir::foto_de_pantalla(r.interseccion(self.vista)?)
     }
 
     /// **La foto de un marco**: con pagina, la vista se lleva a cada trozo
     /// del marco y se cosen; sin (la vista previa de Office), lo que se ve.
-    fn foto_del_marco(&mut self, caja: [f64; 4], pagina: Option<&dyn Pagina>) -> Option<ImagenRgba> {
+    fn foto_del_marco(
+        &mut self,
+        caja: [f64; 4],
+        pagina: Option<&dyn Pagina>,
+    ) -> Option<ImagenRgba> {
         let Some(pg) = pagina.filter(|_| self.opciones.con_pagina) else {
             let c = cortar(caja, self.vista_en_documento())?;
             return self.foto_del_trozo(c);
@@ -1722,17 +2118,27 @@ impl RielDeLaVista {
         let v = self.vista_en_documento();
         let (vw, vh) = (v[2] - v[0], v[3] - v[1]);
         for esquina in trozos(caja, vw, vh) {
-            if let Some(s) = self.esperar_sitio(pg, Orden::Colocar(esquina[0] as f32, esquina[1] as f32)) {
+            if let Some(s) =
+                self.esperar_sitio(pg, Orden::Colocar(esquina[0] as f32, esquina[1] as f32))
+            {
                 self.sitio = s;
             }
             self.dejar_pintarse();
             // Lo que toca de este trozo y de verdad se ve (al final de la
             // pagina la vista no baja mas que el documento).
             let trozo = [esquina[0], esquina[1], esquina[0] + vw, esquina[1] + vh];
-            let Some(c) = cortar(caja, trozo).and_then(|t| cortar(t, self.vista_en_documento())) else { continue };
+            let Some(c) = cortar(caja, trozo).and_then(|t| cortar(t, self.vista_en_documento()))
+            else {
+                continue;
+            };
             if let Some(foto) = self.foto_del_trozo(c) {
                 let z = self.camara().zoom as f64;
-                pegar(&mut hoja, &foto, ((c[0] - caja[0]) * z).round() as i64, ((c[1] - caja[1]) * z).round() as i64);
+                pegar(
+                    &mut hoja,
+                    &foto,
+                    ((c[0] - caja[0]) * z).round() as i64,
+                    ((c[1] - caja[1]) * z).round() as i64,
+                );
             }
         }
         Some(hoja)
@@ -1778,7 +2184,10 @@ impl RielDeLaVista {
         for caja in cajas {
             match self.foto_del_marco(caja, pagina) {
                 Some(f) => fotos.push(f),
-                None => tracing::warn!(?caja, "riel: un marco fuera de la vista no se pudo fotografiar"),
+                None => tracing::warn!(
+                    ?caja,
+                    "riel: un marco fuera de la vista no se pudo fotografiar"
+                ),
             }
         }
         if let (Some(s), Some(pg)) = (antes, pagina) {
@@ -1800,7 +2209,9 @@ impl RielDeLaVista {
         self.sincronizar(pagina);
         self.pintar();
         tracing::info!(hojas = fotos.len(), "riel: marcos a imprimir");
-        if let Err(e) = crate::marco_imprimir::imprimir_fotos(self.visor, fotos, &self.opciones.titulo) {
+        if let Err(e) =
+            crate::marco_imprimir::imprimir_fotos(self.visor, fotos, &self.opciones.titulo)
+        {
             tracing::warn!(?e, "riel: no se pudieron imprimir los marcos");
         }
     }
@@ -1817,12 +2228,20 @@ impl RielDeLaVista {
 /// vista dentro de su zona de cliente (`vista`, la de
 /// `PinLector::area_de_la_vista`; la ventana no tiene marco).
 pub fn en_pantalla(ventana: Rect, vista: Rect) -> Rect {
-    Rect { x: ventana.x + vista.x, y: ventana.y + vista.y, ..vista }
+    Rect {
+        x: ventana.x + vista.x,
+        y: ventana.y + vista.y,
+        ..vista
+    }
 }
 
 /// Las marcas en el orden del riel: de arriba abajo.
 fn ordenadas(mut v: Vec<Marcador>) -> Vec<Marcador> {
-    v.sort_by(|a, b| a.fraccion.partial_cmp(&b.fraccion).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(|a, b| {
+        a.fraccion
+            .partial_cmp(&b.fraccion)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     v
 }
 
@@ -1868,7 +2287,10 @@ mod pruebas {
         let s = sitio_de(r#"{"x":10,"y":300,"arriba":300,"maximo":900,"dpr":1.5}"#).unwrap();
         assert_eq!(s.camara().zoom, 1.5);
         // Pellizco al doble, adelantado 40 × 25 px CSS dentro de la vista.
-        let p = sitio_de(r#"{"x":10,"y":300,"arriba":300,"maximo":900,"dpr":1.5,"vx":40,"vy":25,"escala":2}"#).unwrap();
+        let p = sitio_de(
+            r#"{"x":10,"y":300,"arriba":300,"maximo":900,"dpr":1.5,"vx":40,"vy":25,"escala":2}"#,
+        )
+        .unwrap();
         let c = p.camara();
         assert_eq!((c.x, c.y, c.zoom), (50.0, 325.0, 3.0));
         // Caso negativo: una escala rota no deja la tinta sin tamano.
@@ -1891,15 +2313,42 @@ mod pruebas {
 
     #[test]
     fn la_vista_de_una_marca_guarda_zoom_y_desplazamiento() {
-        let s = Sitio { x: 0.0, y: 1834.5, arriba: 1834.5, maximo: 5000.0, dpr: 1.25, vx: 0.0, vy: 0.0, escala: 1.0, ax: 0.0, ay: 0.0, aw: 0.0, ah: 0.0, nuevo: false, maq: None };
+        let s = Sitio {
+            x: 0.0,
+            y: 1834.5,
+            arriba: 1834.5,
+            maximo: 5000.0,
+            dpr: 1.25,
+            vx: 0.0,
+            vy: 0.0,
+            escala: 1.0,
+            ax: 0.0,
+            ay: 0.0,
+            aw: 0.0,
+            ah: 0.0,
+            nuevo: false,
+            maq: None,
+        };
         let t = vista_de_marca(1.25, &s);
         assert_eq!(marcos_doc::zoom_de_texto(&t), Some((1.25, 0.0, 1834.5)));
         // En el lector de notas lo que se desplaza empieza bajo su barra: la
         // marca guarda lo que se ve arriba del todo de esa caja.
-        let n = Sitio { x: -10.0, y: 900.0, ax: 10.0, ay: 52.0, aw: 800.0, ah: 600.0, ..s };
+        let n = Sitio {
+            x: -10.0,
+            y: 900.0,
+            ax: 10.0,
+            ay: 52.0,
+            aw: 800.0,
+            ah: 600.0,
+            ..s
+        };
         assert_eq!(n.esquina(), [0.0, 952.0]);
         assert_eq!(n.area_en_documento(), Some([0.0, 952.0, 800.0, 1552.0]));
-        assert_eq!(s.area_en_documento(), None, "sin area dicha, la vista entera");
+        assert_eq!(
+            s.area_en_documento(),
+            None,
+            "sin area dicha, la vista entera"
+        );
         // Y se guarda junto al documento con el id de la marca.
         let dir = std::env::temp_dir().join(format!("pixpin-riel-vistas-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
@@ -1907,7 +2356,10 @@ mod pruebas {
         let mut v = Vistas::de_documento(Some(&doc));
         v.poner("17", t);
         let otra = Vistas::de_documento(Some(&doc));
-        assert_eq!(otra.de_marca("17").and_then(marcos_doc::zoom_de_texto), Some((1.25, 0.0, 1834.5)));
+        assert_eq!(
+            otra.de_marca("17").and_then(marcos_doc::zoom_de_texto),
+            Some((1.25, 0.0, 1834.5))
+        );
         // Caso negativo: una marca sin vista (de antes o del movil) no tiene.
         assert!(otra.de_marca("18").is_none());
         let _ = std::fs::remove_dir_all(&dir);
@@ -1916,9 +2368,15 @@ mod pruebas {
     #[test]
     fn un_marco_que_no_cabe_se_fotografia_por_trozos() {
         // Cabe: un solo trozo, en su esquina.
-        assert_eq!(trozos([10.0, 20.0, 300.0, 200.0], 800.0, 600.0), vec![[10.0, 20.0]]);
+        assert_eq!(
+            trozos([10.0, 20.0, 300.0, 200.0], 800.0, 600.0),
+            vec![[10.0, 20.0]]
+        );
         // El doble de alto que la vista: dos trozos, uno debajo del otro.
-        assert_eq!(trozos([0.0, 0.0, 500.0, 1100.0], 800.0, 600.0), vec![[0.0, 0.0], [0.0, 600.0]]);
+        assert_eq!(
+            trozos([0.0, 0.0, 500.0, 1100.0], 800.0, 600.0),
+            vec![[0.0, 0.0], [0.0, 600.0]]
+        );
         // Mas ancho y mas alto: cuatro.
         assert_eq!(trozos([0.0, 0.0, 1000.0, 700.0], 800.0, 600.0).len(), 4);
         // Caso negativo: justo del tamano de la vista no pide un trozo vacio.
@@ -1928,24 +2386,46 @@ mod pruebas {
     #[test]
     fn los_trozos_se_cosen_en_su_sitio_sin_salirse() {
         let mut hoja = hoja_blanca(4, 4);
-        let rojo = ImagenRgba { ancho: 2, alto: 2, pixeles: [255, 0, 0, 255].repeat(4) };
+        let rojo = ImagenRgba {
+            ancho: 2,
+            alto: 2,
+            pixeles: [255, 0, 0, 255].repeat(4),
+        };
         pegar(&mut hoja, &rojo, 2, 2);
         let px = |h: &ImagenRgba, x: usize, y: usize| h.pixeles[(y * 4 + x) * 4];
         assert_eq!(px(&hoja, 3, 3), 255);
-        assert_eq!(hoja.pixeles[(3 * 4 + 3) * 4 + 1], 0, "abajo a la derecha, rojo");
-        assert_eq!(hoja.pixeles[1], 255, "arriba a la izquierda sigue en blanco");
+        assert_eq!(
+            hoja.pixeles[(3 * 4 + 3) * 4 + 1],
+            0,
+            "abajo a la derecha, rojo"
+        );
+        assert_eq!(
+            hoja.pixeles[1], 255,
+            "arriba a la izquierda sigue en blanco"
+        );
         // Caso negativo: un trozo que se sale por fuera no rompe nada.
         pegar(&mut hoja, &rojo, 3, -1);
         pegar(&mut hoja, &rojo, 10, 10);
         assert_eq!(hoja.pixeles.len(), 64);
-        assert_eq!(cortar([0.0, 0.0, 10.0, 10.0], [20.0, 0.0, 30.0, 10.0]), None);
+        assert_eq!(
+            cortar([0.0, 0.0, 10.0, 10.0], [20.0, 0.0, 30.0, 10.0]),
+            None
+        );
     }
 
     #[test]
     fn las_marcas_van_de_arriba_abajo_y_se_guardan_junto_al_documento() {
         let v = ordenadas(vec![
-            Marcador { id: 1, fraccion: 0.8, emoji: "⭐".into() },
-            Marcador { id: 2, fraccion: 0.1, emoji: "🔖".into() },
+            Marcador {
+                id: 1,
+                fraccion: 0.8,
+                emoji: "⭐".into(),
+            },
+            Marcador {
+                id: 2,
+                fraccion: 0.1,
+                emoji: "🔖".into(),
+            },
         ]);
         assert_eq!(v.iter().map(|m| m.id).collect::<Vec<_>>(), vec![2, 1]);
         let dir = std::env::temp_dir().join(format!("pixpin-riel-web-{}", std::process::id()));
@@ -1972,11 +2452,23 @@ mod pruebas {
         let tinta = crate::anotado_del_adjunto::tinta_de_la_pagina(&doc);
         assert_eq!(tinta, b.tinta());
         assert!(tinta.is_file(), "copiada al mensaje");
-        assert!(tinta.to_string_lossy().replace('\\', "/").contains("/lienzos/anot-"));
+        assert!(
+            tinta
+                .to_string_lossy()
+                .replace('\\', "/")
+                .contains("/lienzos/anot-")
+        );
         // Las marcas: en `anot-<uid>.marcas`, como las del Word.
-        let v = vec![Marcador { id: 5, fraccion: 0.5, emoji: "⭐".into() }];
+        let v = vec![Marcador {
+            id: 5,
+            fraccion: 0.5,
+            emoji: "⭐".into(),
+        }];
         guardar_marcas_en(&doc, &v);
-        assert_eq!(std::fs::read_to_string(b.fichero(".marcas")).unwrap(), "5:0.5:⭐");
+        assert_eq!(
+            std::fs::read_to_string(b.fichero(".marcas")).unwrap(),
+            "5:0.5:⭐"
+        );
         assert_eq!(crate::anotado_del_adjunto::leer(&doc).marcadores, v);
         // Quitadas: vacio, no borrado.
         guardar_marcas_en(&doc, &[]);

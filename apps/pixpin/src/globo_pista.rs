@@ -12,8 +12,18 @@ use pixpin_geom::Rect;
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::VentanaOverlay;
 
-const FONDO: Color = Color { r: 0.106, g: 0.106, b: 0.122, a: 0.96 };
-const TINTA: Color = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+const FONDO: Color = Color {
+    r: 0.106,
+    g: 0.106,
+    b: 0.122,
+    a: 0.96,
+};
+const TINTA: Color = Color {
+    r: 1.0,
+    g: 1.0,
+    b: 1.0,
+    a: 1.0,
+};
 
 struct Globo {
     ventana: VentanaOverlay,
@@ -32,7 +42,10 @@ thread_local! {
 /// (sin pintor aun); la pastilla deja aire de sobra.
 fn medida(texto: &str, e: f32) -> (u32, u32) {
     let letras = texto.chars().count() as f32;
-    (((letras * 6.9 + 18.0) * e).ceil() as u32, (24.0 * e).ceil() as u32)
+    (
+        ((letras * 6.9 + 18.0) * e).ceil() as u32,
+        (24.0 * e).ceil() as u32,
+    )
 }
 
 /// Ensena `texto` centrado bajo `boton` (pixeles de pantalla), a escala `e`.
@@ -47,8 +60,12 @@ pub fn mostrar(texto: &str, boton: Rect, e: f32) {
     // `try_with` y `try_borrow_mut`: al morir el hilo el globo ya puede no
     // estar, y `with` tiraba la app entera al cerrar un visor (20-oct-2026).
     let _ = GLOBO.try_with(|g| {
-        let Ok(mut g) = g.try_borrow_mut() else { return };
-        if g.as_ref().is_some_and(|x| x.texto == texto && x.area == area) {
+        let Ok(mut g) = g.try_borrow_mut() else {
+            return;
+        };
+        if g.as_ref()
+            .is_some_and(|x| x.texto == texto && x.area == area)
+        {
             return;
         }
         if g.is_none() {
@@ -82,7 +99,10 @@ pub fn ocultar() {
 /// **Lo suelta ya** (al cerrarse el pin): su ventana y su grafica se van
 /// con el hilo aun vivo, no en la limpieza del final del hilo.
 pub fn soltar() {
-    let globo = GLOBO.try_with(|g| g.try_borrow_mut().ok().and_then(|mut g| g.take())).ok().flatten();
+    let globo = GLOBO
+        .try_with(|g| g.try_borrow_mut().ok().and_then(|mut g| g.take()))
+        .ok()
+        .flatten();
     drop(globo);
 }
 
@@ -92,16 +112,35 @@ fn crear(area: Rect) -> Option<Globo> {
     let ventana = VentanaOverlay::nueva(area).ok()?;
     ventana.poner_pasante(true);
     ventana.poner_sin_activar();
-    let superficie = Superficie::nueva(&motor, d.d3d(), ventana.handle(), area.ancho, area.alto).ok()?;
-    Some(Globo { ventana, superficie, motor, _d: d, texto: String::new(), area })
+    let superficie =
+        Superficie::nueva(&motor, d.d3d(), ventana.handle(), area.ancho, area.alto).ok()?;
+    Some(Globo {
+        ventana,
+        superficie,
+        motor,
+        _d: d,
+        texto: String::new(),
+        area,
+    })
 }
 
 fn pintar(g: &Globo, e: f32) {
-    let Ok(destino) = g.superficie.empezar(&g.motor) else { return };
+    let Ok(destino) = g.superficie.empezar(&g.motor) else {
+        return;
+    };
     let (w, h) = (g.area.ancho as f32, g.area.alto as f32);
     let _ = g.motor.dibujar(&destino, |p| {
         p.limpiar_transparente();
-        p.rellenar_redondeado(RectF { x: 0.0, y: 0.0, ancho: w, alto: h }, 6.0 * e, FONDO);
+        p.rellenar_redondeado(
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: w,
+                alto: h,
+            },
+            6.0 * e,
+            FONDO,
+        );
         let tam = 12.0 * e;
         let (tw, th) = p.medir_texto(&g.texto, tam);
         p.texto(&g.texto, (w - tw) / 2.0, (h - th) / 2.0, tam, TINTA);

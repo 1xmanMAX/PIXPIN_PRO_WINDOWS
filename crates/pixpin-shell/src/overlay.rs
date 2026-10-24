@@ -72,7 +72,12 @@ pub fn area_cliente(hwnd: Option<isize>) -> Option<(isize, Rect)> {
         let _ = ClientToScreen(h, &mut esquina);
         Some((
             h.0 as isize,
-            Rect { x: esquina.x, y: esquina.y, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 },
+            Rect {
+                x: esquina.x,
+                y: esquina.y,
+                ancho: (r.right - r.left).max(1) as u32,
+                alto: (r.bottom - r.top).max(1) as u32,
+            },
         ))
     }
 }
@@ -82,7 +87,9 @@ pub fn area_cliente(hwnd: Option<isize>) -> Option<(isize, Rect)> {
 /// de su zona cliente, como si fuera el raton. No mueve el raton de verdad.
 pub fn simular_raton(hwnd: isize, que: u8, x: i32, y: i32) {
     use windows::Win32::Foundation::{LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        PostMessageW, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+    };
     let mensaje = match que {
         0 => WM_LBUTTONDOWN,
         1 => WM_MOUSEMOVE,
@@ -93,7 +100,12 @@ pub fn simular_raton(hwnd: isize, que: u8, x: i32, y: i32) {
     // SAFETY: solo deja un mensaje en la cola de esa ventana; un handle
     // muerto hace fallar la llamada sin mas.
     unsafe {
-        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), mensaje, WPARAM(boton), LPARAM(lparam));
+        let _ = PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            mensaje,
+            WPARAM(boton),
+            LPARAM(lparam),
+        );
     }
 }
 
@@ -1141,12 +1153,17 @@ fn registrar_clase() {
     // SAFETY: registro unico (Once) de una clase con WndProc propio; los
     // campos no usados quedan a cero, que es lo que la API espera.
     unsafe {
-        let instancia: windows::Win32::Foundation::HINSTANCE = GetModuleHandleW(None).expect("modulo propio").into();
+        let instancia: windows::Win32::Foundation::HINSTANCE =
+            GetModuleHandleW(None).expect("modulo propio").into();
         // El icono de PixPin (recurso 1 del ejecutable, `pixpinmax.rc`): sin
         // el, el chat, los visores y los pines salian con el icono generico
         // en la barra de tareas y en Alt+Tab (20-oct-2026, el usuario: «su
         // icono no aparece de la app»).
-        let icono = windows::Win32::UI::WindowsAndMessaging::LoadIconW(Some(instancia), windows::core::PCWSTR(1 as _)).unwrap_or_default();
+        let icono = windows::Win32::UI::WindowsAndMessaging::LoadIconW(
+            Some(instancia),
+            windows::core::PCWSTR(1 as _),
+        )
+        .unwrap_or_default();
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento_overlay),
             hInstance: instancia,
@@ -1622,21 +1639,38 @@ pub fn ventana_bajo(p: Punto) -> HWND {
     // medias da una ventana nula, que no es de nadie.
     unsafe {
         let h = WindowFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y });
-        if h.is_invalid() { h } else { GetAncestor(h, GA_ROOT) }
+        if h.is_invalid() {
+            h
+        } else {
+            GetAncestor(h, GA_ROOT)
+        }
     }
 }
 
 /// El monitor donde cae `p`: su area entera y la de trabajo (sin la barra
 /// de tareas).
 pub fn monitor_de(p: Punto) -> (Rect, Rect) {
-    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
-    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint,
+    };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
     // SAFETY: estructura local con su tamano.
     unsafe {
-        let m = MonitorFromPoint(windows::Win32::Foundation::POINT { x: p.x, y: p.y }, MONITOR_DEFAULTTONEAREST);
+        let m = MonitorFromPoint(
+            windows::Win32::Foundation::POINT { x: p.x, y: p.y },
+            MONITOR_DEFAULTTONEAREST,
+        );
         let _ = GetMonitorInfoW(m, &mut info);
     }
-    let r = |r: RECT| Rect { x: r.left, y: r.top, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 };
+    let r = |r: RECT| Rect {
+        x: r.left,
+        y: r.top,
+        ancho: (r.right - r.left).max(1) as u32,
+        alto: (r.bottom - r.top).max(1) as u32,
+    };
     (r(info.rcMonitor), r(info.rcWork))
 }
 

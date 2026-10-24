@@ -41,6 +41,7 @@ pub fn preparar(imagen: ImagenRgba) -> Result<(Vec<u8>, &'static str), String> {
 
 /// Lo mismo desde un fichero.
 pub fn preparar_fichero(ruta: &Path) -> Result<(Vec<u8>, &'static str), String> {
-    let imagen = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la foto: {e}"))?;
+    let imagen =
+        pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la foto: {e}"))?;
     preparar(imagen)
 }

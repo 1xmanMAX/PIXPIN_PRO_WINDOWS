@@ -167,7 +167,11 @@ pub fn hueco_del_globo(x: i32, isla: f32, ancho: f32, trabajo: Rect) -> (f32, f3
 impl Interno {
     fn texto_globo(&self) -> Option<&str> {
         let b = self.encima?;
-        self.pistas.iter().find(|(x, _)| *x == b).map(|(_, t)| t.as_str()).filter(|t| !t.is_empty())
+        self.pistas
+            .iter()
+            .find(|(x, _)| *x == b)
+            .map(|(_, t)| t.as_str())
+            .filter(|t| !t.is_empty())
     }
 
     /// Lo que debe crecer la ventana para el globo de ahora.
@@ -176,7 +180,12 @@ impl Interno {
         let ancho = self.texto_globo().map_or(0.0, |t| {
             self.motor.medir_texto(t, TAM_GLOBO * e, f32::MAX).0 + (16.0 + AIRE_GLOBO + 2.0) * e
         });
-        hueco_del_globo(self.origen.0, self.disposicion.ancho, ancho.ceil(), self.trabajo)
+        hueco_del_globo(
+            self.origen.0,
+            self.disposicion.ancho,
+            ancho.ceil(),
+            self.trabajo,
+        )
     }
 }
 
@@ -282,7 +291,13 @@ pub(crate) fn mostrar(
     let escala = escala_por_cien as f32 / 100.0;
     let disposicion = disponer(escala, anotable);
     let (ancho, alto) = tamano(&disposicion);
-    let (x, y) = colocar(contenido, trabajo, ancho, alto, (SEPARACION * escala) as i32);
+    let (x, y) = colocar(
+        contenido,
+        trabajo,
+        ancho,
+        alto,
+        (SEPARACION * escala) as i32,
+    );
     let hwnd = match ventana() {
         Some(h) => h,
         None => {
@@ -367,7 +382,13 @@ pub(crate) fn recolocar(dueno: HWND, contenido: Rect, trabajo: Rect) {
         return;
     }
     let (ancho, alto) = tamano(&i.disposicion);
-    let xy = colocar(contenido, trabajo, ancho, alto, (SEPARACION * i.escala) as i32);
+    let xy = colocar(
+        contenido,
+        trabajo,
+        ancho,
+        alto,
+        (SEPARACION * i.escala) as i32,
+    );
     if xy != i.origen {
         i.origen = xy;
         i.trabajo = trabajo;
@@ -489,7 +510,8 @@ fn pintar_riel(p: &Pintor, i: &Interno) {
         CRISTAL,
     );
     for (b, r) in &d.botones {
-        let activo = (*b == BotonRiel::Lapiz && i.anotando) || (*b == BotonRiel::Marco && i.marcando);
+        let activo =
+            (*b == BotonRiel::Lapiz && i.anotando) || (*b == BotonRiel::Marco && i.marcando);
         if activo {
             p.rellenar_redondeado(*r, 6.0 * e, ENCENDIDO);
         } else if i.encima == Some(*b) {
@@ -522,7 +544,11 @@ fn pintar_riel(p: &Pintor, i: &Interno) {
         let (w, h) = p.medir_texto(texto, tam);
         let (px, py) = (8.0 * e, 5.0 * e);
         let ancho = w + 2.0 * px;
-        let x = if i.hueco.0 > 0.0 { -AIRE_GLOBO * e - ancho } else { d.ancho + AIRE_GLOBO * e };
+        let x = if i.hueco.0 > 0.0 {
+            -AIRE_GLOBO * e - ancho
+        } else {
+            d.ancho + AIRE_GLOBO * e
+        };
         let caja = RectF {
             x,
             y: r.y + (r.alto - h - 2.0 * py) / 2.0,
@@ -687,12 +713,27 @@ mod pruebas {
 
     #[test]
     fn va_a_la_derecha_y_si_no_cabe_a_la_izquierda() {
-        let pin = Rect { x: 100, y: 200, ancho: 300, alto: 200 };
+        let pin = Rect {
+            x: 100,
+            y: 200,
+            ancho: 300,
+            alto: 200,
+        };
         assert_eq!(colocar(pin, TRABAJO, 44, 80, 8), (408, 200));
-        let al_borde = Rect { x: 1700, y: 200, ancho: 220, alto: 200 };
+        let al_borde = Rect {
+            x: 1700,
+            y: 200,
+            ancho: 220,
+            alto: 200,
+        };
         assert_eq!(colocar(al_borde, TRABAJO, 44, 80, 8), (1700 - 8 - 44, 200));
         // Un pin que llena el monitor: por dentro, contra su borde derecho.
-        let entero = Rect { x: 0, y: -10, ancho: 1920, alto: 1040 };
+        let entero = Rect {
+            x: 0,
+            y: -10,
+            ancho: 1920,
+            alto: 1040,
+        };
         let (x, y) = colocar(entero, TRABAJO, 44, 80, 8);
         assert_eq!(x, 1920 - 8 - 44);
         assert_eq!(y, 0, "nunca por encima del area de trabajo");

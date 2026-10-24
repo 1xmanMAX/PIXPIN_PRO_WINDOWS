@@ -122,9 +122,7 @@ impl Semana {
                 })
             })
             .collect();
-        bloques.sort_by(|a, b| {
-            (a.dia, a.inicio, &a.nombre).cmp(&(b.dia, b.inicio, &b.nombre))
-        });
+        bloques.sort_by(|a, b| (a.dia, a.inicio, &a.nombre).cmp(&(b.dia, b.inicio, &b.nombre)));
         Semana {
             asignaturas: h.todas_las_asignaturas(),
             bloques,
@@ -167,7 +165,9 @@ impl Semana {
 
     /// La asignatura de ese nombre (sin mirar mayusculas ni tildes).
     pub fn asignatura(&self, nombre: &str) -> Option<usize> {
-        self.asignaturas.iter().position(|a| mismo(&a.nombre, nombre))
+        self.asignaturas
+            .iter()
+            .position(|a| mismo(&a.nombre, nombre))
     }
 
     /// El color de una asignatura (`0xRRGGBB`): el suyo o el de su nombre.
@@ -214,7 +214,10 @@ impl Semana {
             return;
         };
         let ahora = self.color_de(&nombre);
-        let k = PALETA.iter().position(|&c| c == ahora).map_or(0, |k| (k + 1) % PALETA.len());
+        let k = PALETA
+            .iter()
+            .position(|&c| c == ahora)
+            .map_or(0, |k| (k + 1) % PALETA.len());
         self.asignaturas[i].color = Some(PALETA[k]);
     }
 
@@ -315,7 +318,8 @@ impl Rejilla {
     /// El dia bajo `x`, sin salirse de los que se ven (arrastrando por el
     /// borde, el bloque no se pierde).
     pub fn dia_cercano(&self, x: f32) -> u8 {
-        (((x - self.x) / self.ancho_dia).floor().max(0.0) as u32).min(u32::from(self.dias) - 1) as u8
+        (((x - self.x) / self.ancho_dia).floor().max(0.0) as u32).min(u32::from(self.dias) - 1)
+            as u8
     }
 
     /// La y de un minuto del dia.
@@ -359,8 +363,18 @@ fn aula_escrita(a: &str) -> String {
 
 /// La linea de una clase: `Lun Mie 8:00-10:00 Geometría @A-12 avisar 15`.
 pub fn linea_de_clase(c: &Clase) -> String {
-    let dias: Vec<&str> = c.dias.iter().map(|&d| DIAS[usize::from(d.min(6))]).collect();
-    let mut s = format!("{} {}-{} {}", dias.join(" "), hora(c.inicio), hora(c.fin), c.nombre.trim());
+    let dias: Vec<&str> = c
+        .dias
+        .iter()
+        .map(|&d| DIAS[usize::from(d.min(6))])
+        .collect();
+    let mut s = format!(
+        "{} {}-{} {}",
+        dias.join(" "),
+        hora(c.inicio),
+        hora(c.fin),
+        c.nombre.trim()
+    );
     if let Some(a) = c.aula.as_deref().filter(|a| !a.trim().is_empty()) {
         s.push(' ');
         s.push_str(&aula_escrita(a));
@@ -492,14 +506,24 @@ mod pruebas {
         s.anadir_asignatura("Geometría @A-12").unwrap();
         let i = s.soltar(0, dia, minuto).unwrap();
         let b = &s.bloques[i];
-        assert_eq!((b.dia, b.inicio, b.fin), (2, 7 * 60 + 60, 7 * 60 + 120), "8:00-9:00");
-        assert_eq!((b.nombre.as_str(), b.aula.as_deref()), ("Geometría", Some("A-12")));
+        assert_eq!(
+            (b.dia, b.inicio, b.fin),
+            (2, 7 * 60 + 60, 7 * 60 + 120),
+            "8:00-9:00"
+        );
+        assert_eq!(
+            (b.nombre.as_str(), b.aula.as_deref()),
+            ("Geometría", Some("A-12"))
+        );
         // La caja del bloque cae donde se solto.
         let c = r.caja(b.dia, b.inicio, b.fin);
         assert_eq!((c.x, c.y, c.alto), (260.0, 140.0, 40.0));
         // Al final del dia no se sale: a las 21:50 dura lo que queda.
         let i = s.soltar(0, 5, 21 * 60 + 50).unwrap();
-        assert_eq!((s.bloques[i].inicio, s.bloques[i].fin), (21 * 60 + 45, HASTA));
+        assert_eq!(
+            (s.bloques[i].inicio, s.bloques[i].fin),
+            (21 * 60 + 45, HASTA)
+        );
     }
 
     #[test]
@@ -507,15 +531,30 @@ mod pruebas {
         let r = rejilla();
         assert_eq!(r.en((59.0, 150.0)), None, "en la columna de las horas");
         assert_eq!(r.en((100.0, 99.0)), None, "en la cabecera de los dias");
-        assert_eq!(r.en((60.0 + 6.0 * 100.0 + 1.0, 150.0)), None, "el domingo no se ve");
-        assert_eq!(r.en((100.0, 100.0 + r.alto() + 1.0)), None, "pasadas las 22:00");
+        assert_eq!(
+            r.en((60.0 + 6.0 * 100.0 + 1.0, 150.0)),
+            None,
+            "el domingo no se ve"
+        );
+        assert_eq!(
+            r.en((100.0, 100.0 + r.alto() + 1.0)),
+            None,
+            "pasadas las 22:00"
+        );
         let con_domingo = Rejilla { dias: 7, ..r };
-        assert_eq!(con_domingo.en((60.0 + 6.5 * 100.0, 100.0)), Some((6, DESDE)));
+        assert_eq!(
+            con_domingo.en((60.0 + 6.5 * 100.0, 100.0)),
+            Some((6, DESDE))
+        );
         let mut s = Semana::default();
         assert_eq!(s.soltar(3, 0, 600), None, "no hay asignatura 3");
         assert_eq!(s.anadir_asignatura("   "), Ok(None));
         s.anadir_asignatura("Física").unwrap();
-        assert_eq!(s.anadir_asignatura("fisica"), Err(0), "repetida, sin tildes ni mayusculas");
+        assert_eq!(
+            s.anadir_asignatura("fisica"),
+            Err(0),
+            "repetida, sin tildes ni mayusculas"
+        );
     }
 
     #[test]
@@ -523,16 +562,32 @@ mod pruebas {
         let mut s = semana_de("Lun 8:00-10:00 Geometría\n");
         s.mover(0, 3, 10 * 60 + 7);
         let b = &s.bloques[0];
-        assert_eq!((b.dia, b.inicio, b.fin), (3, 10 * 60, 12 * 60), "jueves 10:00, sigue durando 2 h");
+        assert_eq!(
+            (b.dia, b.inicio, b.fin),
+            (3, 10 * 60, 12 * 60),
+            "jueves 10:00, sigue durando 2 h"
+        );
         s.mover(0, 9, 21 * 60);
         let b = &s.bloques[0];
-        assert_eq!((b.dia, b.inicio, b.fin), (6, 20 * 60, HASTA), "no pasa de las 22:00 ni del domingo");
+        assert_eq!(
+            (b.dia, b.inicio, b.fin),
+            (6, 20 * 60, HASTA),
+            "no pasa de las 22:00 ni del domingo"
+        );
         s.mover(0, 0, -30);
         assert_eq!(s.bloques[0].inicio, DESDE, "ni antes de las 7:00");
         s.alargar(0, 9 * 60 + 53);
-        assert_eq!(s.bloques[0].fin, 10 * 60, "9:53 se pega a las 10:00 (9:52 iria a las 9:45)");
+        assert_eq!(
+            s.bloques[0].fin,
+            10 * 60,
+            "9:53 se pega a las 10:00 (9:52 iria a las 9:45)"
+        );
         s.alargar(0, 6 * 60);
-        assert_eq!(s.bloques[0].fin, DESDE + PASO, "un cuarto de hora como poco");
+        assert_eq!(
+            s.bloques[0].fin,
+            DESDE + PASO,
+            "un cuarto de hora como poco"
+        );
         s.alargar(0, 23 * 60 + 59);
         assert_eq!(s.bloques[0].fin, HASTA);
         // Arrastrar fuera por la derecha deja el bloque en el ultimo dia.
@@ -585,8 +640,14 @@ Fin de la nota.
             assert!(texto.lines().any(|x| x == l), "falta «{l}»:\n{texto}");
         }
         // Legible: una linea por clase, los dias juntos.
-        assert!(texto.contains("\nLun Mié 8:00-10:00 Geometría @A-12\n> traer el compás\n"), "{texto}");
-        assert!(texto.contains("Vie 16:00-18:00 Dibujo técnico @(Lab de dibujo) avisar 30"), "{texto}");
+        assert!(
+            texto.contains("\nLun Mié 8:00-10:00 Geometría @A-12\n> traer el compás\n"),
+            "{texto}"
+        );
+        assert!(
+            texto.contains("Vie 16:00-18:00 Dibujo técnico @(Lab de dibujo) avisar 30"),
+            "{texto}"
+        );
         // Y se lee igual que lo que habia en la ventana.
         let h2 = leer(&texto, ahora());
         let s2 = Semana::de_horario(&h2);
@@ -596,11 +657,19 @@ Fin de la nota.
         assert_eq!(s2.asignaturas, s.asignaturas);
         assert_eq!(h2.antelacion, 15);
         assert_eq!(h2.evaluaciones.len(), 1);
-        assert_eq!(h2.evaluaciones[0].clase, Some(0), "la evaluacion sigue con su clase");
+        assert_eq!(
+            h2.evaluaciones[0].clase,
+            Some(0),
+            "la evaluacion sigue con su clase"
+        );
         // Guardar otra vez lo mismo no cambia nada (ni repite titulos).
         assert_eq!(reescribir(&texto, &s2), texto);
         // El aviso propio de la clase manda sobre el del horario.
-        let c = h2.clases.iter().find(|c| c.nombre == "Dibujo técnico").unwrap();
+        let c = h2
+            .clases
+            .iter()
+            .find(|c| c.nombre == "Dibujo técnico")
+            .unwrap();
         assert_eq!(c.antelacion, Some(30));
     }
 

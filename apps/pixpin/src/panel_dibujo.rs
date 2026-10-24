@@ -565,8 +565,12 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
             textos()
                 .t(match t {
                     None => "lienzo-degradado-liso",
-                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Lineal) => "lienzo-degradado-lineal",
-                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Radial) => "lienzo-degradado-radial",
+                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Lineal) => {
+                        "lienzo-degradado-lineal"
+                    }
+                    Some(pixpin_motor2d::geometria_exacta::TipoDegradado::Radial) => {
+                        "lienzo-degradado-radial"
+                    }
                 })
                 .to_string(),
         ),
@@ -574,8 +578,12 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
             textos()
                 .t(match c {
                     None => "lienzo-cierre-abierto",
-                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Sector) => "lienzo-cierre-sector",
-                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Segmento) => "lienzo-cierre-segmento",
+                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Sector) => {
+                        "lienzo-cierre-sector"
+                    }
+                    Some(pixpin_motor2d::geometria_exacta::CierreArco::Segmento) => {
+                        "lienzo-cierre-segmento"
+                    }
                 })
                 .to_string(),
         ),
@@ -583,8 +591,12 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
             textos()
                 .t(match m {
                     pixpin_motor2d::geometria_exacta::ModoArco::Guia => "lienzo-arco-modo-guia",
-                    pixpin_motor2d::geometria_exacta::ModoArco::CentroYPuntos => "lienzo-arco-modo-centro",
-                    pixpin_motor2d::geometria_exacta::ModoArco::TresPuntos => "lienzo-arco-modo-tres",
+                    pixpin_motor2d::geometria_exacta::ModoArco::CentroYPuntos => {
+                        "lienzo-arco-modo-centro"
+                    }
+                    pixpin_motor2d::geometria_exacta::ModoArco::TresPuntos => {
+                        "lienzo-arco-modo-tres"
+                    }
                 })
                 .to_string(),
         ),
@@ -592,9 +604,15 @@ fn rotulo_de_imagen(accion: AccionPanel) -> Option<String> {
         AccionPanel::Forma(CambioForma::ModoAngulo(m)) => Some(
             textos()
                 .t(match m {
-                    pixpin_motor2d::geometria_exacta::ModoAngulo::Griega => "lienzo-angulo-modo-griega",
-                    pixpin_motor2d::geometria_exacta::ModoAngulo::Simple => "lienzo-angulo-modo-simple",
-                    pixpin_motor2d::geometria_exacta::ModoAngulo::Recto => "lienzo-angulo-modo-recto",
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Griega => {
+                        "lienzo-angulo-modo-griega"
+                    }
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Simple => {
+                        "lienzo-angulo-modo-simple"
+                    }
+                    pixpin_motor2d::geometria_exacta::ModoAngulo::Recto => {
+                        "lienzo-angulo-modo-recto"
+                    }
                 })
                 .to_string(),
         ),
@@ -842,7 +860,12 @@ pub fn pintar(p: &Pintor, panel: &PanelLateral, escala_por_cien: u32) {
             } else {
                 &pixpin_render::icono::material::CHEVRON_LEFT
             },
-            RectF { x: r.x + (r.ancho - lado) / 2.0, y: r.y + (r.alto - lado) / 2.0, ancho: lado, alto: lado },
+            RectF {
+                x: r.x + (r.ancho - lado) / 2.0,
+                y: r.y + (r.alto - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
             TEXTO,
         );
     }
@@ -1421,19 +1444,39 @@ mod pruebas {
         gesto.tomar_herramienta(Herramienta::Rectangulo);
         poner_plegado(false);
         // Caso negativo: fuera del lienzo (un pin, el lector) no hay boton.
-        assert!(panel_para(&gesto, &escena, area(), 100).unwrap().plegar.is_none());
+        assert!(
+            panel_para(&gesto, &escena, area(), 100)
+                .unwrap()
+                .plegar
+                .is_none()
+        );
         con_boton_plegar(true);
         let entero = panel_para(&gesto, &escena, area(), 100).unwrap();
         let b = entero.plegar.expect("lleva el boton");
-        let centro = pixpin_geom::Punto { x: b.x + b.ancho as i32 / 2, y: b.y + b.alto as i32 / 2 };
-        let dentro = pixpin_geom::Punto { x: entero.marco.x + 20, y: entero.marco.y + 20 };
-        assert_eq!(atender_clic(centro, true, &mut gesto, &mut escena, area(), 100), ClicPanel::Suyo { repintar: true });
+        let centro = pixpin_geom::Punto {
+            x: b.x + b.ancho as i32 / 2,
+            y: b.y + b.alto as i32 / 2,
+        };
+        let dentro = pixpin_geom::Punto {
+            x: entero.marco.x + 20,
+            y: entero.marco.y + 20,
+        };
+        assert_eq!(
+            atender_clic(centro, true, &mut gesto, &mut escena, area(), 100),
+            ClicPanel::Suyo { repintar: true }
+        );
         let _ = atender_clic(centro, false, &mut gesto, &mut escena, area(), 100);
         assert!(panel_para(&gesto, &escena, area(), 100).unwrap().plegado);
         // Caso negativo: quitado, donde estaba el panel el clic es del lienzo.
-        assert!(matches!(atender_clic(dentro, true, &mut gesto, &mut escena, area(), 100), ClicPanel::Fuera { .. }));
+        assert!(matches!(
+            atender_clic(dentro, true, &mut gesto, &mut escena, area(), 100),
+            ClicPanel::Fuera { .. }
+        ));
         let _ = atender_clic(dentro, false, &mut gesto, &mut escena, area(), 100);
-        assert_eq!(atender_clic(centro, true, &mut gesto, &mut escena, area(), 100), ClicPanel::Suyo { repintar: true });
+        assert_eq!(
+            atender_clic(centro, true, &mut gesto, &mut escena, area(), 100),
+            ClicPanel::Suyo { repintar: true }
+        );
         let _ = atender_clic(centro, false, &mut gesto, &mut escena, area(), 100);
         assert!(!panel_para(&gesto, &escena, area(), 100).unwrap().plegado);
         poner_plegado(false);
@@ -1458,7 +1501,14 @@ mod pruebas {
             durezas.iter().map(|d| d.0).collect::<Vec<_>>(),
             Dureza::TODAS.to_vec()
         );
-        assert_eq!(durezas.iter().filter(|d| d.1).map(|d| d.0).collect::<Vec<_>>(), [Dureza::Hb]);
+        assert_eq!(
+            durezas
+                .iter()
+                .filter(|d| d.1)
+                .map(|d| d.0)
+                .collect::<Vec<_>>(),
+            [Dureza::Hb]
+        );
         // Cada boton dice su nombre.
         for d in Dureza::TODAS {
             assert_eq!(
@@ -1493,10 +1543,20 @@ mod pruebas {
                 .filter(|(a, _)| matches!(a, AccionPanel::ModoGuia(_) | AccionPanel::VerGuias(_)))
                 .collect()
         };
-        assert_eq!(guias(&gesto, &escena), [(AccionPanel::ModoGuia(true), false)]);
-        assert!(aplicar(AccionPanel::ModoGuia(true), &mut gesto, &mut escena));
+        assert_eq!(
+            guias(&gesto, &escena),
+            [(AccionPanel::ModoGuia(true), false)]
+        );
+        assert!(aplicar(
+            AccionPanel::ModoGuia(true),
+            &mut gesto,
+            &mut escena
+        ));
         assert!(gesto.modo_guia());
-        assert_eq!(guias(&gesto, &escena), [(AccionPanel::ModoGuia(false), true)]);
+        assert_eq!(
+            guias(&gesto, &escena),
+            [(AccionPanel::ModoGuia(false), true)]
+        );
         // Una guia en la escena: sale el ojo, y pulsarlo la esconde.
         let id = con(&mut escena, Figura::Elipse);
         escena.buscar_mut(id).unwrap().extras.referencia = true;
@@ -1507,11 +1567,23 @@ mod pruebas {
                 (AccionPanel::VerGuias(false), false)
             ]
         );
-        assert!(aplicar(AccionPanel::VerGuias(false), &mut gesto, &mut escena));
+        assert!(aplicar(
+            AccionPanel::VerGuias(false),
+            &mut gesto,
+            &mut escena
+        ));
         assert!(!escena.referencias_visibles);
         // Pulsar lo que ya esta no cambia nada.
-        assert!(!aplicar(AccionPanel::VerGuias(false), &mut gesto, &mut escena));
-        assert!(!aplicar(AccionPanel::ModoGuia(true), &mut gesto, &mut escena));
+        assert!(!aplicar(
+            AccionPanel::VerGuias(false),
+            &mut gesto,
+            &mut escena
+        ));
+        assert!(!aplicar(
+            AccionPanel::ModoGuia(true),
+            &mut gesto,
+            &mut escena
+        ));
         // Con la mano y nada elegido sale por haber guias.
         gesto.tomar_herramienta(Herramienta::Mano);
         assert!(panel_para(&gesto, &escena, area(), 100).is_some());
@@ -1690,9 +1762,7 @@ mod pruebas {
             CambioEstilo::Rugosidad(r) => (e.rugosidad - r).abs() < 1e-3,
             CambioEstilo::Opacidad(o) => (e.opacidad - o).abs() < 1e-3,
             CambioEstilo::Material(m) => e.material == m,
-            CambioEstilo::Dureza(d) => {
-                pixpin_motor2d::tinta::grafito::Dureza::de(e) == d
-            }
+            CambioEstilo::Dureza(d) => pixpin_motor2d::tinta::grafito::Dureza::de(e) == d,
         }
     }
 
@@ -1857,7 +1927,10 @@ mod pruebas {
             }
             AccionPanel::VerGuias(v) => {
                 if despues.referencias_visibles != v {
-                    return Err(format!("las guias quedaron {}", despues.referencias_visibles));
+                    return Err(format!(
+                        "las guias quedaron {}",
+                        despues.referencias_visibles
+                    ));
                 }
                 if despues.elementos != antes.elementos {
                     return Err("esconder las guias toco elementos".into());

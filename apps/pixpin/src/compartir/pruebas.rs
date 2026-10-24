@@ -185,10 +185,17 @@ fn comprobar(salida: &Salida, formato: &str, paginas: usize) {
             assert!(bytes.starts_with(b"PK"), "un .pixpin es un zip");
             // Lo editable: cada lienzo que trae, el de una hoja que se
             // vuelve a leer (el `.excalidraw` suelto ya no se ofrece).
-            let paquete = pixpin_proyecto::Paquete::desde_bytes(&bytes).expect("el .pixpin se abre");
+            let paquete =
+                pixpin_proyecto::Paquete::desde_bytes(&bytes).expect("el .pixpin se abre");
             for h in &paquete.proyecto.hojas {
                 if let Some(d) = &h.dibujo {
-                    let s = String::from_utf8(paquete.entrada(&format!("lienzos/{d}.excalidraw")).expect("su lienzo").to_vec()).unwrap();
+                    let s = String::from_utf8(
+                        paquete
+                            .entrada(&format!("lienzos/{d}.excalidraw"))
+                            .expect("su lienzo")
+                            .to_vec(),
+                    )
+                    .unwrap();
                     pixpin_motor2d::excalidraw::leer(&s).expect("se vuelve a leer");
                 }
             }
@@ -502,7 +509,10 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
         ("m-lienzo", &[WEB, PDF, PNG, JPG, SVG, "pixpin"]),
         ("m-foto", &["original", "pixpin", WEB, PDF, PNG, JPG, SVG]),
         // Una nota Markdown sola tambien sale como Word (`word`).
-        ("m-nota", &[WEB, PDF, PNG, JPG, SVG, "texto", "word", "pixpin"]),
+        (
+            "m-nota",
+            &[WEB, PDF, PNG, JPG, SVG, "texto", "word", "pixpin"],
+        ),
         ("m-tabla", &[WEB, PDF, PNG, JPG, SVG, "csv", "pixpin"]),
         ("m-tareas", &[WEB, PDF, PNG, JPG, SVG, "texto", "pixpin"]),
     ];
@@ -906,7 +916,9 @@ fn una_foto_anotada_en_el_movil_se_comparte_con_el_dibujo_de_su_lienzo() {
     assert!(tiene_rojo(&img), "el trazo del lienzo del movil");
     // Y la foto va debajo: no es un lienzo en blanco con una raya.
     assert!(
-        img.pixeles.chunks_exact(4).any(|q| q[2] > 140 && q[2] < 180 && q[1] > 100),
+        img.pixeles
+            .chunks_exact(4)
+            .any(|q| q[2] > 140 && q[2] < 180 && q[1] > 100),
         "la foto debajo del trazo"
     );
     if borrar {
@@ -939,7 +951,10 @@ fn una_nota_de_voz_va_dentro_del_html_con_o_sin_hojas() {
 
     // Con hojas: la pagina de siempre, y los adjuntos dentro.
     let mut con = Preparado::nuevo("Con texto");
-    for (k, h) in hojas_de_texto(Some("Hola"), "texto").into_iter().enumerate() {
+    for (k, h) in hojas_de_texto(Some("Hola"), "texto")
+        .into_iter()
+        .enumerate()
+    {
         con.piezas.push(Pieza {
             pagina: pixpin_ui::hoja_compartir::Pagina {
                 clave: format!("t{k}"),

@@ -43,36 +43,49 @@ fn textos(idioma: Idioma) -> Textos {
 /// «Mensajes guardados» (que ya tiene su entrada fija).
 fn recientes(raiz: &std::path::Path) -> (Vec<Reciente>, String) {
     let indice = pixpin_proyecto::almacen::Indice::leer(raiz);
-    let guardados = indice.proyectos.iter().find(|f| f.es_guardados()).map(|f| f.id.clone()).unwrap_or_default();
+    let guardados = indice
+        .proyectos
+        .iter()
+        .find(|f| f.es_guardados())
+        .map(|f| f.id.clone())
+        .unwrap_or_default();
     let v = indice
         .proyectos
         .iter()
         .filter(|f| f.resto.get("archivado").and_then(|v| v.as_bool()) != Some(true))
-        .map(|f| Reciente { id: f.id.clone(), nombre: f.nombre.clone(), tocado: f.tocado })
+        .map(|f| Reciente {
+            id: f.id.clone(),
+            nombre: f.nombre.clone(),
+            tocado: f.tocado,
+        })
         .collect();
     (v, guardados)
 }
 
 /// Pone la lista y la tiene al dia, en su hilo.
 pub fn poner_al_dia(idioma: Idioma, ubicacion: Ubicacion) {
-    let lanzado = std::thread::Builder::new().name("lista-del-icono".into()).spawn(move || {
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let Ok(exe) = std::env::current_exe() else { return };
-        let t = textos(idioma);
-        let mut puesta = String::new();
-        loop {
-            let (proyectos, guardados) = recientes(ubicacion.raiz());
-            let lista = jump_list::armar(&proyectos, &t, &guardados);
-            let firma = lista.firma();
-            if firma != puesta {
-                match jump_list::poner(&exe, &lista, &t.recientes) {
-                    Ok(()) => puesta = firma,
-                    Err(e) => tracing::info!(?e, "no se pudo poner la lista del icono"),
+    let lanzado = std::thread::Builder::new()
+        .name("lista-del-icono".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let Ok(exe) = std::env::current_exe() else {
+                return;
+            };
+            let t = textos(idioma);
+            let mut puesta = String::new();
+            loop {
+                let (proyectos, guardados) = recientes(ubicacion.raiz());
+                let lista = jump_list::armar(&proyectos, &t, &guardados);
+                let firma = lista.firma();
+                if firma != puesta {
+                    match jump_list::poner(&exe, &lista, &t.recientes) {
+                        Ok(()) => puesta = firma,
+                        Err(e) => tracing::info!(?e, "no se pudo poner la lista del icono"),
+                    }
                 }
+                std::thread::sleep(CADA);
             }
-            std::thread::sleep(CADA);
-        }
-    });
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo de la lista del icono");
     }

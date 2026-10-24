@@ -268,8 +268,8 @@ pub fn lanzar(llamada: Llamada, rotulos: Rotulos, hwnd_app: isize) {
         .spawn(move || {
             let pedida = std::time::Instant::now();
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let r = Recursos::nuevos()
-                .and_then(|r| sonar(&r, &llamada, &rotulos, hwnd_app, pedida));
+            let r =
+                Recursos::nuevos().and_then(|r| sonar(&r, &llamada, &rotulos, hwnd_app, pedida));
             if let Err(e) = r {
                 tracing::warn!(?e, "no se pudo abrir la llamada secreta");
             }
@@ -390,12 +390,31 @@ fn medir_primer_fotograma(llamada: &Llamada, rotulos: &Rotulos) -> Result<u64> {
     let marco = marco_de_la_llamada(monitor.area_trabajo, monitor.escala_por_cien, true);
     let ventana = VentanaOverlay::nueva(marco).context("sin ventana")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
-        .map_err(|e| anyhow::anyhow!("sin superficie: {e:?}"))?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        marco.ancho,
+        marco.alto,
+    )
+    .map_err(|e| anyhow::anyhow!("sin superficie: {e:?}"))?;
     let mut botones: Botones<Accion> = Botones::default();
-    let d = superficie.empezar(&motor).map_err(|e| anyhow::anyhow!("sin fotograma: {e:?}"))?;
+    let d = superficie
+        .empezar(&motor)
+        .map_err(|e| anyhow::anyhow!("sin fotograma: {e:?}"))?;
     let _ = motor.dibujar(&d, |p: &Pintor| {
-        pintar(p, marco, escala, &llamada.nombre, &llamada.detalle, rotulos, Fase::Sonando, 0, false, &mut botones)
+        pintar(
+            p,
+            marco,
+            escala,
+            &llamada.nombre,
+            &llamada.detalle,
+            rotulos,
+            Fase::Sonando,
+            0,
+            false,
+            &mut botones,
+        )
     });
     let _ = superficie.presentar();
     let ms = pedida.elapsed().as_millis() as u64;
@@ -696,7 +715,14 @@ fn pintar(
             let (rw, _) = p.medir_texto(renglon, tam);
             let ancho = w - 32.0 * escala;
             let x = (w - rw.min(ancho)) / 2.0;
-            p.texto_linea(renglon, x, (238.0 + 20.0 * k as f32) * escala, tam, ancho, blanco_suave);
+            p.texto_linea(
+                renglon,
+                x,
+                (238.0 + 20.0 * k as f32) * escala,
+                tam,
+                ancho,
+                blanco_suave,
+            );
         }
     }
 
@@ -978,7 +1004,18 @@ mod pruebas {
         let mut b = Botones::default();
         crate::ventanita::muestra("llamada-sonando", 340, 520, |p, _| {
             let detalle = "08:00–10:00 · Aula A-12\nHoy: evaluación";
-            pintar(p, marco, 1.0, "Geometría", detalle, &r, Fase::Sonando, 0, false, &mut b)
+            pintar(
+                p,
+                marco,
+                1.0,
+                "Geometría",
+                detalle,
+                &r,
+                Fase::Sonando,
+                0,
+                false,
+                &mut b,
+            )
         });
         crate::ventanita::muestra("llamada-contestada", 340, 520, |p, _| {
             pintar(

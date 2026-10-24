@@ -31,11 +31,11 @@ use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
 /// F11: imprimir con la vista previa del dialogo moderno de Windows.
 mod imprimir;
-/// F18: los mosaicos salen pixelados en todo lo exportado, como en el movil.
-pub(crate) mod tapado;
 /// La columna de una lamina rehecha con texto rico, a PNG (muestra a ojo).
 #[cfg(test)]
 mod muestra_texto_rico;
+/// F18: los mosaicos salen pixelados en todo lo exportado, como en el movil.
+pub(crate) mod tapado;
 
 /// Lo que se pide desde un atajo o un menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -403,7 +403,10 @@ pub(crate) fn a_imagen(
 /// una sola lectura, que pintarlas de una en una tardaria lo que tarda la
 /// GPU en ir y volver tantas veces. Las que no tienen nada que pintar salen
 /// `None`.
-pub(crate) fn miniaturas(figuras: &[pixpin_motor2d::biblioteca::FiguraGuardada], lado: u32) -> Result<Vec<Option<ImagenRgba>>> {
+pub(crate) fn miniaturas(
+    figuras: &[pixpin_motor2d::biblioteca::FiguraGuardada],
+    lado: u32,
+) -> Result<Vec<Option<ImagenRgba>>> {
     const COLUMNAS: usize = 10;
     if figuras.is_empty() {
         return Ok(Vec::new());
@@ -422,7 +425,9 @@ pub(crate) fn miniaturas(figuras: &[pixpin_motor2d::biblioteca::FiguraGuardada],
                 e.grosor = e.grosor.max(0.9 / k);
                 escena.anadir(e);
             }
-            ex::hojas(&escena, Alcance::Todo, &[], None).into_iter().next()
+            ex::hojas(&escena, Alcance::Todo, &[], None)
+                .into_iter()
+                .next()
         })
         .collect();
     let filas = figuras.len().div_ceil(COLUMNAS);
@@ -434,19 +439,32 @@ pub(crate) fn miniaturas(figuras: &[pixpin_motor2d::biblioteca::FiguraGuardada],
     let aire = 4.0;
     motor
         .dibujar(&destino.destino, |p| {
-            p.limpiar(Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 });
+            p.limpiar(Color {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            });
             for (i, hoja) in hojas.iter().enumerate() {
                 let Some(hoja) = hoja else { continue };
-                let (ox, oy) = (((i % COLUMNAS) as u32 * lado) as f32, ((i / COLUMNAS) as u32 * lado) as f32);
+                let (ox, oy) = (
+                    ((i % COLUMNAS) as u32 * lado) as f32,
+                    ((i / COLUMNAS) as u32 * lado) as f32,
+                );
                 let util = lado as f32 - 2.0 * aire;
                 let k = (util / hoja.ancho().max(1.0)).min(util / hoja.alto().max(1.0));
-                let (dx, dy) = ((util - hoja.ancho() * k) / 2.0 + aire, (util - hoja.alto() * k) / 2.0 + aire);
+                let (dx, dy) = (
+                    (util - hoja.ancho() * k) / 2.0 + aire,
+                    (util - hoja.alto() * k) / 2.0 + aire,
+                );
                 p.poner_vista((ox + dx, oy + dy), k, (-hoja.caja.0 * k, -hoja.caja.1 * k));
                 pintar_hoja(p, hoja, &sin_imagenes);
             }
         })
         .context("no se pudieron pintar las miniaturas")?;
-    let (ancho, _, pixeles) = destino.leer_rgba().context("no se pudieron leer las miniaturas")?;
+    let (ancho, _, pixeles) = destino
+        .leer_rgba()
+        .context("no se pudieron leer las miniaturas")?;
     Ok((0..figuras.len())
         .map(|i| {
             hojas[i].as_ref()?;
@@ -456,7 +474,11 @@ pub(crate) fn miniaturas(figuras: &[pixpin_motor2d::biblioteca::FiguraGuardada],
                 let desde = (((oy + fila) * ancho + ox) * 4) as usize;
                 v.extend_from_slice(pixeles.get(desde..desde + (lado * 4) as usize)?);
             }
-            Some(ImagenRgba { ancho: lado, alto: lado, pixeles: v })
+            Some(ImagenRgba {
+                ancho: lado,
+                alto: lado,
+                pixeles: v,
+            })
         })
         .collect())
 }
@@ -1096,9 +1118,15 @@ mod pruebas {
         let v = miniaturas(&figuras, lado).expect("miniaturas");
         assert_eq!(v.len(), figuras.len());
         for (f, m) in figuras.iter().zip(&v) {
-            let m = m.as_ref().unwrap_or_else(|| panic!("sin miniatura: {}", f.nombre));
+            let m = m
+                .as_ref()
+                .unwrap_or_else(|| panic!("sin miniatura: {}", f.nombre));
             assert_eq!((m.ancho, m.alto), (lado, lado));
-            let pintados = m.pixeles.chunks_exact(4).filter(|p| p[0] < 235 || p[1] < 235 || p[2] < 235).count();
+            let pintados = m
+                .pixeles
+                .chunks_exact(4)
+                .filter(|p| p[0] < 235 || p[1] < 235 || p[2] < 235)
+                .count();
             assert!(pintados > 30, "{} casi en blanco ({pintados})", f.nombre);
         }
         if let Some(ruta) = std::env::var_os("PIXPIN_MINIATURAS_PNG") {
@@ -1111,10 +1139,16 @@ mod pruebas {
                 for y in 0..lado {
                     let d = (((oy + y) * w + ox) * 4) as usize;
                     let s = (y * lado * 4) as usize;
-                    todo[d..d + (lado * 4) as usize].copy_from_slice(&m.pixeles[s..s + (lado * 4) as usize]);
+                    todo[d..d + (lado * 4) as usize]
+                        .copy_from_slice(&m.pixeles[s..s + (lado * 4) as usize]);
                 }
             }
-            let png = pixpin_codec::codificar_png(&ImagenRgba { ancho: w, alto: h, pixeles: todo }).unwrap();
+            let png = pixpin_codec::codificar_png(&ImagenRgba {
+                ancho: w,
+                alto: h,
+                pixeles: todo,
+            })
+            .unwrap();
             std::fs::write(ruta, png).unwrap();
         }
     }

@@ -50,12 +50,19 @@ const TEXTO: &str = "🔤 Letra de los planos (boton «Aa» del visor; solo va a
 
 /// El id fijo del mensaje de la letra `nombre` (sin mirar mayusculas).
 pub fn id_de(nombre: &str) -> String {
-    format!("{PREFIJO_ID}{}", pixpin_sincro::disco::limpio(&nombre.to_lowercase()))
+    format!(
+        "{PREFIJO_ID}{}",
+        pixpin_sincro::disco::limpio(&nombre.to_lowercase())
+    )
 }
 
 /// Donde la deja el otro aparato: `pixpin:files/guardados/fuentes-shx/<nombre>`.
 pub fn ruta_portatil(nombre: &str) -> String {
-    format!("{}{}{nombre}", pixpin_sincro::disco::PORTATIL, vista::LETRAS_PORTATIL)
+    format!(
+        "{}{}{nombre}",
+        pixpin_sincro::disco::PORTATIL,
+        vista::LETRAS_PORTATIL
+    )
 }
 
 /// Un nombre que puede viajar tal cual: el plano pide la letra por su
@@ -64,7 +71,12 @@ pub fn ruta_portatil(nombre: &str) -> String {
 fn nombre_que_viaja(nombre: &str) -> bool {
     !nombre.trim().is_empty()
         && !nombre.starts_with('.')
-        && !nombre.chars().any(|c| matches!(c, '/' | '\\' | '"' | '\'' | '(' | ')' | '<' | '>' | '\n' | '\r') || c.is_control())
+        && !nombre.chars().any(|c| {
+            matches!(
+                c,
+                '/' | '\\' | '"' | '\'' | '(' | ')' | '<' | '>' | '\n' | '\r'
+            ) || c.is_control()
+        })
         && !nombre.contains("..")
 }
 
@@ -75,7 +87,10 @@ pub fn carpeta_en(raiz: &Path) -> PathBuf {
 
 /// El chat «Asistente», si ya esta (sin crearlo).
 fn asistente(raiz: &Path) -> Option<almacen::Ficha> {
-    Indice::leer(raiz).proyectos.into_iter().find(|f| f.es_asistente())
+    Indice::leer(raiz)
+        .proyectos
+        .into_iter()
+        .find(|f| f.es_asistente())
 }
 
 /// **Pone el mensaje de cada letra de la carpeta que no lo tenga**, dentro
@@ -85,7 +100,11 @@ pub fn senalar(raiz: &Path, aparato: &str, ahora: i64) -> std::io::Result<usize>
     let letras: Vec<PathBuf> = pixpin_cad::letras::letras_en(&carpeta_en(raiz))
         .into_iter()
         .filter(|p| pixpin_cad::letras::parece_letra(p))
-        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(nombre_que_viaja))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(nombre_que_viaja)
+        })
         .collect();
     if letras.is_empty() {
         return Ok(0);
@@ -96,10 +115,23 @@ pub fn senalar(raiz: &Path, aparato: &str, ahora: i64) -> std::io::Result<usize>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Default::default(),
         Err(e) => return Err(e),
     };
-    let ya: BTreeSet<&str> = c.mensajes.iter().map(|m| m.id.as_str()).filter(|i| i.starts_with(PREFIJO_ID)).collect();
+    let ya: BTreeSet<&str> = c
+        .mensajes
+        .iter()
+        .map(|m| m.id.as_str())
+        .filter(|i| i.starts_with(PREFIJO_ID))
+        .collect();
     let peso = |p: &Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
-    let nombre = |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let mut total: u64 = letras.iter().filter(|p| ya.contains(id_de(&nombre(p)).as_str())).map(|p| peso(p)).sum();
+    let nombre = |p: &Path| {
+        p.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let mut total: u64 = letras
+        .iter()
+        .filter(|p| ya.contains(id_de(&nombre(p)).as_str()))
+        .map(|p| peso(p))
+        .sum();
     let mut numero = c.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     let mut puestos = 0;
     let mut vistos = BTreeSet::new();
@@ -119,7 +151,12 @@ pub fn senalar(raiz: &Path, aparato: &str, ahora: i64) -> std::io::Result<usize>
             &n,
             &ruta_portatil(&n),
             bytes as i64,
-            &Sello { cuando: ahora, numero, aparato: aparato.to_string(), proyecto: proyecto.clone() },
+            &Sello {
+                cuando: ahora,
+                numero,
+                aparato: aparato.to_string(),
+                proyecto: proyecto.clone(),
+            },
         );
         m.id = id;
         m.texto = TEXTO.into();
@@ -133,11 +170,24 @@ pub fn senalar(raiz: &Path, aparato: &str, ahora: i64) -> std::io::Result<usize>
 
 /// Quita los mensajes de letra cuyo nombre cumpla `cuales`, **con su marca
 /// de borrado** (asi el otro aparato los quita, y con ellos sus ficheros).
-fn quitar_mensajes(raiz: &Path, ahora: i64, cuales: impl Fn(&Mensaje) -> bool) -> std::io::Result<Vec<Mensaje>> {
-    let Some(f) = asistente(raiz) else { return Ok(Vec::new()) };
+fn quitar_mensajes(
+    raiz: &Path,
+    ahora: i64,
+    cuales: impl Fn(&Mensaje) -> bool,
+) -> std::io::Result<Vec<Mensaje>> {
+    let Some(f) = asistente(raiz) else {
+        return Ok(Vec::new());
+    };
     let carpeta = almacen::carpeta(raiz, &f.id);
-    let Ok(c) = Cuaderno::leer_de(&carpeta) else { return Ok(Vec::new()) };
-    let ids: BTreeSet<String> = c.mensajes.iter().filter(|m| m.id.starts_with(PREFIJO_ID) && cuales(m)).map(|m| m.id.clone()).collect();
+    let Ok(c) = Cuaderno::leer_de(&carpeta) else {
+        return Ok(Vec::new());
+    };
+    let ids: BTreeSet<String> = c
+        .mensajes
+        .iter()
+        .filter(|m| m.id.starts_with(PREFIJO_ID) && cuales(m))
+        .map(|m| m.id.clone())
+        .collect();
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -150,7 +200,11 @@ fn quitar_mensajes(raiz: &Path, ahora: i64, cuales: impl Fn(&Mensaje) -> bool) -
 /// hace viajar. Lo que no es una letra por dentro se salta. Devuelve
 /// cuantas se copiaron.
 pub fn anadir(raiz: &Path, aparato: &str, ahora: i64, rutas: &[PathBuf]) -> usize {
-    let buenas: Vec<PathBuf> = rutas.iter().filter(|r| pixpin_cad::letras::parece_letra(r)).cloned().collect();
+    let buenas: Vec<PathBuf> = rutas
+        .iter()
+        .filter(|r| pixpin_cad::letras::parece_letra(r))
+        .cloned()
+        .collect();
     let n = pixpin_cad::letras::anadir(&carpeta_en(raiz), &buenas);
     if n > 0
         && let Err(e) = senalar(raiz, aparato, ahora)
@@ -180,14 +234,20 @@ pub fn limpiar(raiz: &Path, ahora: i64) -> usize {
         .map(|d| {
             d.flatten()
                 .map(|e| e.path())
-                .filter(|p| p.is_file() && pixpin_cad::letras::es_letra(p) && !pixpin_cad::letras::parece_letra(p))
+                .filter(|p| {
+                    p.is_file()
+                        && pixpin_cad::letras::es_letra(p)
+                        && !pixpin_cad::letras::parece_letra(p)
+                })
                 .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
                 .collect()
         })
         .unwrap_or_default();
     let no_es_letra = |m: &Mensaje| {
         let n = m.nombre.as_str();
-        malos.contains(n) || !pixpin_cad::letras::es_letra(Path::new(n)) || m.ruta.as_deref() != Some(ruta_portatil(n).as_str())
+        malos.contains(n)
+            || !pixpin_cad::letras::es_letra(Path::new(n))
+            || m.ruta.as_deref() != Some(ruta_portatil(n).as_str())
     };
     let quitados = quitar_mensajes(raiz, ahora, no_es_letra).unwrap_or_else(|e| {
         tracing::warn!(%e, "letras: no se pudo rechazar un mensaje");
@@ -198,7 +258,10 @@ pub fn limpiar(raiz: &Path, ahora: i64) -> usize {
     for m in &quitados {
         // El fichero al que lleva su ruta, y solo un nombre suelto: nada
         // que salga de la carpeta.
-        if let Some(n) = m.ruta.as_deref().and_then(|r| r.strip_prefix(prefijo.as_str()))
+        if let Some(n) = m
+            .ruta
+            .as_deref()
+            .and_then(|r| r.strip_prefix(prefijo.as_str()))
             && !n.is_empty()
             && !n.contains(['/', '\\'])
             && !n.contains("..")
@@ -206,7 +269,10 @@ pub fn limpiar(raiz: &Path, ahora: i64) -> usize {
             fuera.insert(n.to_string());
         }
     }
-    let borrados = fuera.iter().filter(|n| std::fs::remove_file(carpeta.join(n)).is_ok()).count();
+    let borrados = fuera
+        .iter()
+        .filter(|n| std::fs::remove_file(carpeta.join(n)).is_ok())
+        .count();
     borrados.max(quitados.len())
 }
 
@@ -222,7 +288,9 @@ pub fn al_abrir(raiz: &Path) {
 
 /// El codigo de este equipo (el sello de los mensajes).
 pub fn aparato(raiz: &Path) -> String {
-    pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC").map(|i| i.yo.codigo()).unwrap_or_default()
+    pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC")
+        .map(|i| i.yo.codigo())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

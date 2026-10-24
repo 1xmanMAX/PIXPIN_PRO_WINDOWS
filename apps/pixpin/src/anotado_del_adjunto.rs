@@ -662,7 +662,11 @@ pub fn tinta_de_la_hoja_del_libro(libro: &Path, i: usize) -> PathBuf {
     let Some(b) = base_de(libro).filter(|_| !es_pdf(libro)) else {
         return vieja;
     };
-    let nueva = Base { base: format!("{}-h{i}", b.base), ..b }.tinta();
+    let nueva = Base {
+        base: format!("{}-h{i}", b.base),
+        ..b
+    }
+    .tinta();
     pasar_la_de_antes(&vieja, &nueva);
     nueva
 }
@@ -1199,7 +1203,11 @@ pub(crate) mod pruebas {
         assert_eq!(an::leer(&b.fichero(".marcas")).as_deref(), Some("7:0.5:⭐"));
         assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("3:0.25"));
         assert_eq!(an::leer(&b.fichero(".sitio")).as_deref(), Some("0.4"));
-        assert!(an::leer(&b.fichero(".maqueta")).unwrap().starts_with("640,"));
+        assert!(
+            an::leer(&b.fichero(".maqueta"))
+                .unwrap()
+                .starts_with("640,")
+        );
         // Lo del PDF en hojas no se toca: es otra cosa.
         assert!(!del_pdf.fichero(".marcas").exists());
         // Y se lee igual al volver a abrir.
@@ -1225,7 +1233,10 @@ pub(crate) mod pruebas {
         an::escribir(&base(&pdf).fichero(".marcas"), "1:0.1:0.2:X").unwrap();
         let a = leer(&pagina);
         assert_eq!(
-            a.marcadores.iter().map(|m| m.emoji.as_str()).collect::<Vec<_>>(),
+            a.marcadores
+                .iter()
+                .map(|m| m.emoji.as_str())
+                .collect::<Vec<_>>(),
             vec!["🔥", "⭐"]
         );
         assert_eq!(a.voz, Some((12, 0.6)));
@@ -1234,7 +1245,10 @@ pub(crate) mod pruebas {
         assert_eq!(a.sitio, 0.75);
         // Volver a guardarlo sin cambios no reescribe lo del movil.
         escribir(&pagina, &a).unwrap();
-        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("420,140,140,110,1,0"));
+        assert_eq!(
+            an::leer(&b.fichero(".maqueta")).as_deref(),
+            Some("420,140,140,110,1,0")
+        );
         assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("12:0.6"));
         let _ = std::fs::remove_dir_all(&r);
     }
@@ -1767,22 +1781,44 @@ mod pruebas_del_marco {
             nueva.file_name().unwrap().to_string_lossy(),
             format!("{}-h1.excalidraw", b.base)
         );
-        assert!(nueva.to_string_lossy().replace('\\', "/").contains("/lienzos/"));
-        assert_eq!(std::fs::read_to_string(&nueva).unwrap(), antes, "copiada tal cual");
+        assert!(
+            nueva
+                .to_string_lossy()
+                .replace('\\', "/")
+                .contains("/lienzos/")
+        );
+        assert_eq!(
+            std::fs::read_to_string(&nueva).unwrap(),
+            antes,
+            "copiada tal cual"
+        );
         assert!(vieja.is_file(), "la de antes se queda");
         // Ya pasada: lo que trae el mensaje no se pisa con lo de antes.
-        std::fs::write(&nueva, "{\"type\":\"excalidraw\",\"version\":2,\"elements\":[],\"x\":1}").unwrap();
+        std::fs::write(
+            &nueva,
+            "{\"type\":\"excalidraw\",\"version\":2,\"elements\":[],\"x\":1}",
+        )
+        .unwrap();
         let otra = tinta_de_la_hoja_del_libro(&libro, 1);
         assert!(std::fs::read_to_string(&otra).unwrap().contains("\"x\":1"));
         // Otra hoja, otro fichero; sin nada de antes, no se crea.
         assert!(!tinta_de_la_hoja_del_libro(&libro, 0).exists());
         // Y su portatil es `pins/draw/anot-<uid>-h1.excalidraw.gz`, del mensaje.
         let rel = pixpin_sincro::anotado::rel(&format!("{}-h1", b.base), ".excalidraw.gz");
-        assert!(pixpin_sincro::anotado::por_uid([rel.as_str()]).contains_key(b.base.trim_start_matches("anot-")));
+        assert!(
+            pixpin_sincro::anotado::por_uid([rel.as_str()])
+                .contains_key(b.base.trim_start_matches("anot-"))
+        );
         // Caso negativo: un libro fuera del almacen sigue con la de siempre.
         let fuera = r.join("fuera.xlsx");
-        assert_eq!(tinta_de_la_hoja_del_libro(&fuera, 0), lector_tinta::ruta_de_hoja(&fuera, 0));
-        assert_eq!(tinta_de_la_pagina(&fuera), lector_tinta::ruta_de_capa(&fuera));
+        assert_eq!(
+            tinta_de_la_hoja_del_libro(&fuera, 0),
+            lector_tinta::ruta_de_hoja(&fuera, 0)
+        );
+        assert_eq!(
+            tinta_de_la_pagina(&fuera),
+            lector_tinta::ruta_de_capa(&fuera)
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 }

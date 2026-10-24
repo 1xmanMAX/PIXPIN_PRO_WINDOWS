@@ -41,29 +41,29 @@ pub mod descarga;
 pub mod documentos;
 pub mod documentos_acciones;
 pub mod ejecutor;
+pub mod en_el_chat;
 pub mod externa;
 pub mod foto;
 pub mod hoja_a_lienzo;
+pub mod memoria;
 pub mod motor;
 pub mod nube;
 pub mod ocr;
 pub mod ojos;
-pub mod permiso;
-pub mod recetas;
 pub mod pensado;
+pub mod permiso;
 pub mod rapido;
+pub mod recetas;
 pub mod turno;
-pub mod en_el_chat;
-pub mod memoria;
 
+#[cfg(test)]
+mod banco_documentos;
 #[cfg(test)]
 mod pruebas;
 #[cfg(test)]
-mod pruebas_pensado;
-#[cfg(test)]
 mod pruebas_diagramas;
 #[cfg(test)]
-mod banco_documentos;
+mod pruebas_pensado;
 
 /// **Hora local menos UTC** (ms), para dar al modelo de la nube las fechas
 /// al minuto en la hora del usuario (`pixpin_ia::fechas::fecha_y_hora`).
@@ -91,7 +91,10 @@ mod pruebas_de_la_hora {
     fn la_nube_sabe_que_hora_es_al_minuto() {
         // 3-oct-2026 19:42 UTC en Lima (UTC-5).
         let t = 1_790_985_600_000 + (19 * 60 + 42) * 60_000;
-        assert_eq!(super::nota_de_ahora(t, -5 * 3_600_000), "\n\n(Ahora: sáb 3-oct-2026 14:42, hora local del usuario.)");
+        assert_eq!(
+            super::nota_de_ahora(t, -5 * 3_600_000),
+            "\n\n(Ahora: sáb 3-oct-2026 14:42, hora local del usuario.)"
+        );
         assert_eq!(super::nota_de_ahora(0, 0), "", "sin reloj no se dice nada");
         // El desfase de este PC sale en cuartos de hora.
         assert_eq!(super::desfase_local_ms() % (15 * 60_000), 0);

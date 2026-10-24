@@ -720,7 +720,9 @@ impl Mandos {
                 Figura::Mosaico { desenfoque } => m.mosaico = m.mosaico.juntar(*desenfoque),
                 // El arco de lamina: su cierre, o sus arquitos si es la marca
                 // de un angulo (el cuadradito no tiene arquitos que contar).
-                Figura::Arco { barrido: Some(_), .. } => match &e.extras.marca_angulo {
+                Figura::Arco {
+                    barrido: Some(_), ..
+                } => match &e.extras.marca_angulo {
                     Some(marca) => {
                         if !marca.recto {
                             m.arcos_angulo = m.arcos_angulo.juntar(marca.arcos);
@@ -2156,14 +2158,25 @@ mod pruebas {
     fn el_boton_de_plegar_quita_y_saca_el_panel() {
         let props =
             crate::propiedades::de_herramienta(pixpin_motor2d::gesto::Herramienta::Rectangulo);
-        let entero = PanelLateral::construir(area(), 100, ctx(props, 0)).unwrap().con_plegar(area(), 100);
+        let entero = PanelLateral::construir(area(), 100, ctx(props, 0))
+            .unwrap()
+            .con_plegar(area(), 100);
         let b = entero.plegar.expect("lleva su boton");
         assert!(b.abajo() <= entero.marco.y, "encima del panel, sin pisarlo");
-        let centro = |r: Rect| Punto { x: r.x + r.ancho as i32 / 2, y: r.y + r.alto as i32 / 2 };
-        assert_eq!(entero.destino(centro(b)), DestinoPanel::Accion(AccionPanel::Plegar));
+        let centro = |r: Rect| Punto {
+            x: r.x + r.ancho as i32 / 2,
+            y: r.y + r.alto as i32 / 2,
+        };
+        assert_eq!(
+            entero.destino(centro(b)),
+            DestinoPanel::Accion(AccionPanel::Plegar)
+        );
         assert_ne!(entero.destino(centro(entero.marco)), DestinoPanel::Fuera);
         let quitado = PanelLateral::plegado(area(), 100);
-        assert_eq!(quitado.destino(centro(b)), DestinoPanel::Accion(AccionPanel::Plegar));
+        assert_eq!(
+            quitado.destino(centro(b)),
+            DestinoPanel::Accion(AccionPanel::Plegar)
+        );
         // Caso negativo: donde estaba el panel, el clic ya es del lienzo.
         assert_eq!(quitado.destino(centro(entero.marco)), DestinoPanel::Fuera);
         assert!(quitado.controles.is_empty());
@@ -3008,7 +3021,10 @@ mod pruebas {
             .unwrap()
         };
         let alto = monta(2000);
-        assert_eq!(alto.marco.ancho, ANCHO_LOGICO, "con sitio, una sola columna");
+        assert_eq!(
+            alto.marco.ancho, ANCHO_LOGICO,
+            "con sitio, una sola columna"
+        );
         let bajo = monta(560);
         assert!(bajo.marco.ancho > ANCHO_LOGICO, "tiene que ensancharse");
         assert!(bajo.marco.abajo() <= 560 - 16);

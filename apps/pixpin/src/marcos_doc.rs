@@ -41,9 +41,24 @@ use pixpin_render::{Color, Pintor, RectF};
 use serde::{Deserialize, Serialize};
 
 /// El azul de los marcos del plano (`0x0078D4`).
-pub const AZUL: Color = Color { r: 0.0, g: 0x78 as f32 / 255.0, b: 0xD4 as f32 / 255.0, a: 1.0 };
-const BLANCO: Color = Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
-const CRISTAL: Color = Color { r: 0.08, g: 0.08, b: 0.09, a: 0.90 };
+pub const AZUL: Color = Color {
+    r: 0.0,
+    g: 0x78 as f32 / 255.0,
+    b: 0xD4 as f32 / 255.0,
+    a: 1.0,
+};
+const BLANCO: Color = Color {
+    r: 1.0,
+    g: 1.0,
+    b: 1.0,
+    a: 1.0,
+};
+const CRISTAL: Color = Color {
+    r: 0.08,
+    g: 0.08,
+    b: 0.09,
+    a: 0.90,
+};
 /// Lo minimo que tiene que medir un marco en la pantalla, de ancho y de alto.
 const MINIMO_PX: f64 = 8.0;
 
@@ -71,7 +86,10 @@ impl Marco {
         self.caja[3] - self.caja[1]
     }
     pub fn centro(&self) -> [f64; 2] {
-        [(self.caja[0] + self.caja[2]) / 2.0, (self.caja[1] + self.caja[3]) / 2.0]
+        [
+            (self.caja[0] + self.caja[2]) / 2.0,
+            (self.caja[1] + self.caja[3]) / 2.0,
+        ]
     }
 }
 
@@ -111,12 +129,16 @@ impl Guardado {
     /// no es un adjunto, `de_siempre` (junto al fichero). Con lo de antes
     /// copiado al mensaje la primera vez.
     fn de(doc: &Path, terminacion: &str, de_siempre: PathBuf) -> Guardado {
-        let (ruta, viaja) = crate::anotado_del_adjunto::del_mensaje_o_junto(doc, terminacion, de_siempre);
+        let (ruta, viaja) =
+            crate::anotado_del_adjunto::del_mensaje_o_junto(doc, terminacion, de_siempre);
         Guardado { ruta, viaja }
     }
 
     fn leer<T: serde::de::DeserializeOwned + Default>(&self) -> T {
-        std::fs::read_to_string(&self.ruta).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(&self.ruta)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
     }
 
     /// Escribe `texto` (por un temporal, y solo si cambia). `vacio`: no dice
@@ -141,8 +163,15 @@ impl Marcos {
     /// que tenga a su lado), o ninguno.
     pub fn de(doc: Option<&Path>) -> Marcos {
         let fichero = doc.map(|d| Guardado::de(d, pixpin_sincro::anotado::MARCOS, ruta(d)));
-        let lista = fichero.as_ref().map(Guardado::leer::<Vec<Marco>>).unwrap_or_default();
-        Marcos { lista, fichero, ..Marcos::default() }
+        let lista = fichero
+            .as_ref()
+            .map(Guardado::leer::<Vec<Marco>>)
+            .unwrap_or_default();
+        Marcos {
+            lista,
+            fichero,
+            ..Marcos::default()
+        }
     }
 
     /// Donde se guardan (`None`: solo esta sesion).
@@ -197,13 +226,24 @@ impl Marcos {
     /// pantalla (`px` = pixeles de pantalla por unidad del documento).
     /// Devuelve si se anadio uno (entonces se guarda).
     pub fn soltar(&mut self, p: [f64; 2], px: f64) -> bool {
-        let Some((a, _, parte)) = self.nuevo.take() else { return false };
-        let caja = [a[0].min(p[0]), a[1].min(p[1]), a[0].max(p[0]), a[1].max(p[1])];
+        let Some((a, _, parte)) = self.nuevo.take() else {
+            return false;
+        };
+        let caja = [
+            a[0].min(p[0]),
+            a[1].min(p[1]),
+            a[0].max(p[0]),
+            a[1].max(p[1]),
+        ];
         let px = px.max(1e-9);
         if (caja[2] - caja[0]) * px <= MINIMO_PX || (caja[3] - caja[1]) * px <= MINIMO_PX {
             return false;
         }
-        self.lista.push(Marco { caja, parte, vista: String::new() });
+        self.lista.push(Marco {
+            caja,
+            parte,
+            vista: String::new(),
+        });
         self.guardar();
         true
     }
@@ -244,7 +284,15 @@ impl Marcos {
     /// pixeles de la ventana): la raya azul, el numero en su cuadrito y el
     /// que se esta arrastrando. Con el modo puesto, la pista abajo a la
     /// izquierda (`alto` de la ventana).
-    pub fn pintar(&self, p: &Pintor, parte: u32, a_pantalla: &dyn Fn([f64; 2]) -> (f32, f32), e: f32, alto: f32, pista: &str) {
+    pub fn pintar(
+        &self,
+        p: &Pintor,
+        parte: u32,
+        a_pantalla: &dyn Fn([f64; 2]) -> (f32, f32),
+        e: f32,
+        alto: f32,
+        pista: &str,
+    ) {
         for (i, m) in self.lista.iter().enumerate() {
             if m.parte != parte {
                 continue;
@@ -256,7 +304,12 @@ impl Marcos {
         if let Some((a, b, pa)) = self.nuevo
             && pa == parte
         {
-            let caja = [a[0].min(b[0]), a[1].min(b[1]), a[0].max(b[0]), a[1].max(b[1])];
+            let caja = [
+                a[0].min(b[0]),
+                a[1].min(b[1]),
+                a[0].max(b[0]),
+                a[1].max(b[1]),
+            ];
             p.trazar(caja_en_pantalla(caja, a_pantalla), 1.5 * e, AZUL);
         }
         if self.activo {
@@ -268,12 +321,23 @@ impl Marcos {
                 let n = (i + 1).to_string();
                 let tam = 13.0 * e;
                 let (w, h) = p.medir_texto(&n, tam);
-                p.texto(&n, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, BLANCO);
+                p.texto(
+                    &n,
+                    r.x + (r.ancho - w) / 2.0,
+                    r.y + (r.alto - h) / 2.0,
+                    tam,
+                    BLANCO,
+                );
             }
             let x0 = fichas.last().map_or(12.0 * e, |r| r.x + r.ancho + 10.0 * e);
             let tam = 12.0 * e;
             let (w, h) = p.medir_texto(pista, tam);
-            let caja = RectF { x: x0, y: alto - 34.0 * e - h / 2.0, ancho: w + 24.0 * e, alto: h + 12.0 * e };
+            let caja = RectF {
+                x: x0,
+                y: alto - 34.0 * e - h / 2.0,
+                ancho: w + 24.0 * e,
+                alto: h + 12.0 * e,
+            };
             p.rellenar_redondeado(caja, caja.alto / 2.0, CRISTAL);
             p.texto(pista, caja.x + 12.0 * e, caja.y + 6.0 * e, tam, BLANCO);
         }
@@ -292,7 +356,9 @@ impl Marcos {
     /// La ficha bajo `q` (pixeles de la ventana): el numero de marco (desde
     /// cero) al que ir.
     pub fn ficha_en(&self, q: (f32, f32), alto: f32, e: f32) -> Option<usize> {
-        self.fichas(alto, e).iter().position(|r| q.0 >= r.x && q.0 <= r.x + r.ancho && q.1 >= r.y && q.1 <= r.y + r.alto)
+        self.fichas(alto, e)
+            .iter()
+            .position(|r| q.0 >= r.x && q.0 <= r.x + r.ancho && q.1 >= r.y && q.1 <= r.y + r.alto)
     }
 }
 
@@ -302,7 +368,15 @@ pub fn insignia(p: &Pintor, x: f32, y: f32, n: usize, e: f32) {
     let n = n.to_string();
     let tam = 12.0 * e;
     let (w, _) = p.medir_texto(&n, tam);
-    p.rellenar(RectF { x, y, ancho: w + 12.0 * e, alto: 20.0 * e }, AZUL);
+    p.rellenar(
+        RectF {
+            x,
+            y,
+            ancho: w + 12.0 * e,
+            alto: 20.0 * e,
+        },
+        AZUL,
+    );
     p.texto(&n, x + 6.0 * e, y + 3.0 * e, tam, BLANCO);
 }
 
@@ -311,7 +385,12 @@ pub fn insignia(p: &Pintor, x: f32, y: f32, n: usize, e: f32) {
 pub fn fichas_de(n: usize, alto: f32, e: f32) -> Vec<RectF> {
     let lado = 28.0 * e;
     (0..n)
-        .map(|i| RectF { x: 12.0 * e + i as f32 * (lado + 6.0 * e), y: alto - 34.0 * e - lado / 2.0 + 4.0 * e, ancho: lado, alto: lado })
+        .map(|i| RectF {
+            x: 12.0 * e + i as f32 * (lado + 6.0 * e),
+            y: alto - 34.0 * e - lado / 2.0 + 4.0 * e,
+            ancho: lado,
+            alto: lado,
+        })
         .collect()
 }
 
@@ -322,20 +401,33 @@ pub fn pintar_fichas(p: &Pintor, fichas: &[RectF], e: f32) {
         let n = (i + 1).to_string();
         let tam = 13.0 * e;
         let (w, h) = p.medir_texto(&n, tam);
-        p.texto(&n, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, BLANCO);
+        p.texto(
+            &n,
+            r.x + (r.ancho - w) / 2.0,
+            r.y + (r.alto - h) / 2.0,
+            tam,
+            BLANCO,
+        );
     }
 }
 
 /// La ficha bajo `q` entre `fichas`.
 pub fn ficha_bajo(fichas: &[RectF], q: (f32, f32)) -> Option<usize> {
-    fichas.iter().position(|r| q.0 >= r.x && q.0 <= r.x + r.ancho && q.1 >= r.y && q.1 <= r.y + r.alto)
+    fichas
+        .iter()
+        .position(|r| q.0 >= r.x && q.0 <= r.x + r.ancho && q.1 >= r.y && q.1 <= r.y + r.alto)
 }
 
 /// La caja de un marco en la ventana.
 pub fn caja_en_pantalla(caja: [f64; 4], a_pantalla: &dyn Fn([f64; 2]) -> (f32, f32)) -> RectF {
     let (x0, y0) = a_pantalla([caja[0], caja[1]]);
     let (x1, y1) = a_pantalla([caja[2], caja[3]]);
-    RectF { x: x0.min(x1), y: y0.min(y1), ancho: (x1 - x0).abs(), alto: (y1 - y0).abs() }
+    RectF {
+        x: x0.min(x1),
+        y: y0.min(y1),
+        ancho: (x1 - x0).abs(),
+        alto: (y1 - y0).abs(),
+    }
 }
 
 /// **Cuanto acercarse para que el marco llene la ventana** (con un poco de
@@ -376,7 +468,8 @@ pub struct Vistas {
 
 impl Vistas {
     pub fn de_documento(doc: Option<&Path>) -> Vistas {
-        let fichero = doc.map(|d| Guardado::de(d, pixpin_sincro::anotado::VISTAS, ruta_de_vistas(d)));
+        let fichero =
+            doc.map(|d| Guardado::de(d, pixpin_sincro::anotado::VISTAS, ruta_de_vistas(d)));
         let de = fichero.as_ref().map(Guardado::leer).unwrap_or_default();
         Vistas { de, fichero }
     }
@@ -435,7 +528,10 @@ mod pruebas {
     #[test]
     fn como_en_el_plano_se_numeran_por_orden_y_supr_quita_el_ultimo() {
         let mut m = Marcos::default();
-        assert!(!m.pulsar([0.0, 0.0], 0), "sin el modo, el clic es del visor");
+        assert!(
+            !m.pulsar([0.0, 0.0], 0),
+            "sin el modo, el clic es del visor"
+        );
         m.alternar();
         for i in 0..3 {
             let x = i as f64 * 100.0;
@@ -489,13 +585,18 @@ mod pruebas {
         let mut v = Vistas::de_documento(Some(&doc));
         v.poner("a1", zoom_a_texto(1.75, 120.0, 3400.5));
         let otra = Vistas::de_documento(Some(&doc));
-        assert_eq!(otra.de_marca("a1").and_then(zoom_de_texto), Some((1.75, 120.0, 3400.5)));
+        assert_eq!(
+            otra.de_marca("a1").and_then(zoom_de_texto),
+            Some((1.75, 120.0, 3400.5))
+        );
         assert_eq!(zoom_de_texto("roto"), None);
     }
 
     /// El fichero del mensaje de `doc` con esa terminacion.
     fn del_mensaje(doc: &Path, terminacion: &str) -> PathBuf {
-        crate::anotado_del_adjunto::base_de(doc).expect("es un adjunto del chat").fichero(terminacion)
+        crate::anotado_del_adjunto::base_de(doc)
+            .expect("es un adjunto del chat")
+            .fichero(terminacion)
     }
 
     #[test]
@@ -504,8 +605,19 @@ mod pruebas {
         let r = raiz("marcos-adjunto");
         let doc = con_adjunto(&r, "plano.pdf", b"%PDF-1.4");
         let f = del_mensaje(&doc, pixpin_sincro::anotado::MARCOS);
-        assert!(f.to_string_lossy().replace('\\', "/").contains("android/pins/draw/anot-"), "{}", f.display());
-        assert!(f.file_name().unwrap().to_string_lossy().ends_with(".marcos.json"));
+        assert!(
+            f.to_string_lossy()
+                .replace('\\', "/")
+                .contains("android/pins/draw/anot-"),
+            "{}",
+            f.display()
+        );
+        assert!(
+            f.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .ends_with(".marcos.json")
+        );
         // Abrir sin marcos no crea nada (un fichero vacio mas que mandar).
         let mut m = Marcos::de(Some(&doc));
         assert_eq!(m.guardado().map(|g| (&g.ruta, g.viaja)), Some((&f, true)));
@@ -549,10 +661,17 @@ mod pruebas {
         assert_eq!(m.lista.len(), 1);
         assert_eq!(m.lista[0].parte, 2);
         let f = del_mensaje(&doc, pixpin_sincro::anotado::MARCOS);
-        assert_eq!(std::fs::read_to_string(&f).unwrap(), antes, "copiado tal cual");
+        assert_eq!(
+            std::fs::read_to_string(&f).unwrap(),
+            antes,
+            "copiado tal cual"
+        );
         assert!(ruta(&doc).is_file(), "lo de antes se queda");
         let v = Vistas::de_documento(Some(&doc));
-        assert_eq!(v.de_marca("9").and_then(zoom_de_texto), Some((1.5, 0.0, 300.0)));
+        assert_eq!(
+            v.de_marca("9").and_then(zoom_de_texto),
+            Some((1.5, 0.0, 300.0))
+        );
         // Ya pasado, lo de junto al fichero no vuelve a pisar lo del mensaje
         // (aqui, vaciado en el otro aparato).
         std::fs::write(&f, "[]").unwrap();
@@ -565,11 +684,19 @@ mod pruebas {
         use crate::anotado_del_adjunto::pruebas::{con_adjunto, raiz};
         let r = raiz("marcos-nota");
         let _ = con_adjunto(&r, "x.md", b"# x");
-        let ficha = pixpin_proyecto::almacen::Indice::leer(&r).proyectos[0].id.clone();
-        let destino = crate::notas_md::Destino::Mensaje { proyecto: ficha, codigo: "ABCDE23456".into() };
+        let ficha = pixpin_proyecto::almacen::Indice::leer(&r).proyectos[0]
+            .id
+            .clone();
+        let destino = crate::notas_md::Destino::Mensaje {
+            proyecto: ficha,
+            codigo: "ABCDE23456".into(),
+        };
         let doc = crate::notas_md::lector_web::documento_del_riel(&r, &destino).unwrap();
         let f = del_mensaje(&doc, pixpin_sincro::anotado::MARCOS);
-        assert_eq!(f.file_name().unwrap().to_string_lossy(), "anot-ABCDE23456.marcos.json");
+        assert_eq!(
+            f.file_name().unwrap().to_string_lossy(),
+            "anot-ABCDE23456.marcos.json"
+        );
         // Caso negativo: un codigo que no es de diez signos no es una nota.
         let otro = r.join("cache").join("riel-notas").join("x-corto.md");
         assert!(crate::anotado_del_adjunto::base_de(&otro).is_none());
@@ -578,7 +705,11 @@ mod pruebas {
 
     #[test]
     fn para_llenar_la_ventana_manda_el_lado_que_mas_aprieta() {
-        let m = Marco { caja: [0.0, 0.0, 200.0, 100.0], parte: 0, vista: String::new() };
+        let m = Marco {
+            caja: [0.0, 0.0, 200.0, 100.0],
+            parte: 0,
+            vista: String::new(),
+        };
         let px = px_para_llenar(&m, 1000.0, 1000.0);
         assert!((px - 4.7).abs() < 1e-6, "{px}");
     }

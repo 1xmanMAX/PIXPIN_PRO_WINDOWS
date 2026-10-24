@@ -188,7 +188,9 @@ fn hoja_que_llega(l: &Llega) -> Option<usize> {
 /// Si todo lo que se ve esta pintado a la resolucion que toca (y, de muy
 /// cerca, con su trozo nitido).
 fn nitidas(e: &Estado, m: Marco) -> bool {
-    lista_de_trabajos(e, m, false).iter().all(|(p, _)| *p != cola::Prioridad::Visible)
+    lista_de_trabajos(e, m, false)
+        .iter()
+        .all(|(p, _)| *p != cola::Prioridad::Visible)
         && visibles(e, m).all(|i| e.pintadas.contains_key(&i))
 }
 #[test]
@@ -203,26 +205,49 @@ fn medir_el_coste_por_ancho() {
         for i in 10..30 {
             let _ = d.renderizar(i, ancho);
         }
-        println!("MEDIDA ancho={ancho} ms_por_hoja={:.1}", t.elapsed().as_secs_f64() * 1000.0 / 20.0);
+        println!(
+            "MEDIDA ancho={ancho} ms_por_hoja={:.1}",
+            t.elapsed().as_secs_f64() * 1000.0 / 20.0
+        );
     }
     let t = Instant::now();
     for i in 10..30 {
         let _ = d.renderizar_trozo(i, (0.25, 0.25, 0.25, 0.18), 512, 512);
     }
-    println!("MEDIDA trozo512 ms={:.1}", t.elapsed().as_secs_f64() * 1000.0 / 20.0);
+    println!(
+        "MEDIDA trozo512 ms={:.1}",
+        t.elapsed().as_secs_f64() * 1000.0 / 20.0
+    );
     let bytes = std::fs::read(&ruta).unwrap();
     let t = Instant::now();
     let n = pixpin_pdf::union::contar_paginas(&bytes);
-    println!("MEDIDA leer_indice_ms={:.1} {n:?}", t.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "MEDIDA leer_indice_ms={:.1} {n:?}",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 }
 
 /// Pinta el estado fuera de pantalla y lo guarda en PNG.
-fn a_png(b: &Banco, fuera: &pixpin_render::fuera_de_pantalla::FueraDePantalla, e: &mut Estado, nombre: &str) -> PathBuf {
-    b.motor.dibujar(&fuera.destino, |p| pintar(e, p, b.m, &b.textos)).expect("pintar");
+fn a_png(
+    b: &Banco,
+    fuera: &pixpin_render::fuera_de_pantalla::FueraDePantalla,
+    e: &mut Estado,
+    nombre: &str,
+) -> PathBuf {
+    b.motor
+        .dibujar(&fuera.destino, |p| pintar(e, p, b.m, &b.textos))
+        .expect("pintar");
     fuera.esperar_gpu().expect("esperar");
     let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
-    let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho, alto, pixeles }).expect("png");
-    let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+        ancho,
+        alto,
+        pixeles,
+    })
+    .expect("png");
+    let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     let salida = carpeta.join(nombre);
     std::fs::write(&salida, png).expect("guardar");
     println!("PNG {}", salida.display());
@@ -247,16 +272,25 @@ fn muestra_del_lector_de_pdf_de_cerca_y_eligiendo() {
     let n = pixpin_pdf::union::contar_paginas(&bytes).unwrap() as usize;
     let con_enlaces = (0..n.min(40))
         .find(|&i| {
-            pixpin_pdf::texto::hoja_con_enlaces(&bytes, i)
-                .is_ok_and(|(_, l)| l.iter().any(|x| matches!(x.destino, pixpin_pdf::enlaces::Destino::Hoja { .. })))
+            pixpin_pdf::texto::hoja_con_enlaces(&bytes, i).is_ok_and(|(_, l)| {
+                l.iter()
+                    .any(|x| matches!(x.destino, pixpin_pdf::enlaces::Destino::Hoja { .. }))
+            })
         })
         .unwrap_or(2);
     let (_, enlaces) = pixpin_pdf::texto::hoja_con_enlaces(&bytes, con_enlaces).unwrap();
-    println!("hoja con enlaces: {} ({} enlaces) {:?}", con_enlaces + 1, enlaces.len(), enlaces.first());
+    println!(
+        "hoja con enlaces: {} ({} enlaces) {:?}",
+        con_enlaces + 1,
+        enlaces.len(),
+        enlaces.first()
+    );
 
     let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
     let motor = pixpin_render::MotorRender::nuevo(d.d3d()).expect("motor");
-    let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), 1920, 1080).expect("superficie");
+    let fuera =
+        pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), 1920, 1080)
+            .expect("superficie");
     let (tx, rx_p) = mpsc::channel::<Pedido>();
     let (tx_l, rx) = mpsc::channel::<Llega>();
     let ruta_hilo = ruta.clone();
@@ -293,8 +327,17 @@ fn muestra_del_lector_de_pdf_de_cerca_y_eligiendo() {
     // arrastrando, unas cuantas lineas mas.
     let k = h.texto.cajas.iter().position(|c| c.is_some()).unwrap_or(0);
     let fin = (k + 400).min(h.texto.cajas.len());
-    b.e.elegir.seleccion = Some(office::Seleccion { ancla: (con_enlaces, k), punta: (con_enlaces, fin) });
-    println!("elegido: {:?}", elegir::texto_elegido(&b.e).chars().take(120).collect::<String>());
+    b.e.elegir.seleccion = Some(office::Seleccion {
+        ancla: (con_enlaces, k),
+        punta: (con_enlaces, fin),
+    });
+    println!(
+        "elegido: {:?}",
+        elegir::texto_elegido(&b.e)
+            .chars()
+            .take(120)
+            .collect::<String>()
+    );
     let mut e = std::mem::replace(&mut b.e, estado(0));
     a_png(&b, &fuera, &mut e, "lector-pdf-eligiendo.png");
     b.e = e;
@@ -307,7 +350,12 @@ fn muestra_del_lector_de_pdf_de_cerca_y_eligiendo() {
     }
     b.e.zoom_cambiado = 0;
     assert!(b.hasta_nitida(Duration::from_secs(30)));
-    println!("de cerca: zoom {} trozos {} mapas {:.1} MB", b.e.zoom, b.e.trozos.len(), bytes_mb(bytes_en_mapas(&b.e)));
+    println!(
+        "de cerca: zoom {} trozos {} mapas {:.1} MB",
+        b.e.zoom,
+        b.e.trozos.len(),
+        bytes_mb(bytes_en_mapas(&b.e))
+    );
     let mut e = std::mem::replace(&mut b.e, estado(0));
     a_png(&b, &fuera, &mut e, "lector-pdf-de-cerca.png");
     // Y sin el trozo, para comparar: solo la hoja de fondo estirada.
@@ -338,11 +386,17 @@ fn muestra_del_pdf_exportado_para_otro_lector() {
         .collect();
     e.tinta.trazar(capa, &circulo);
     crate::dibujo::teclas::elegir_herramienta(&mut e.tinta.gesto, Herramienta::Rectangulo);
-    e.tinta.trazar(capa, &[Punto2::nuevo(300.0, 1200.0), Punto2::nuevo(1100.0, 1400.0)]);
+    e.tinta.trazar(
+        capa,
+        &[Punto2::nuevo(300.0, 1200.0), Punto2::nuevo(1100.0, 1400.0)],
+    );
     let mut tinta = HashMap::new();
     tinta.insert(0, pintado::ordenes_de_escena(&e.capas[&0].escena));
-    let bytes = crate::compartir::pdf_anotado::con_tinta(&base, &tinta, (0.0, 0.0), &[]).expect("anotado");
-    let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let bytes =
+        crate::compartir::pdf_anotado::con_tinta(&base, &tinta, (0.0, 0.0), &[]).expect("anotado");
+    let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     let salida = carpeta.join("exportado-con-tinta.pdf");
     std::fs::write(&salida, bytes).expect("guardar");
     println!("PDF {}", salida.display());

@@ -243,7 +243,10 @@ fn dentro(r: RectF, x: f32, y: f32) -> bool {
 /// La pieza bajo el punto `(x, y)` del contenido. Los huecos no son de
 /// nadie.
 pub fn pieza_en(celdas: &[Celda], x: f32, y: f32) -> Option<Pieza> {
-    celdas.iter().find(|c| dentro(c.caja, x, y)).map(|c| c.pieza)
+    celdas
+        .iter()
+        .find(|c| dentro(c.caja, x, y))
+        .map(|c| c.pieza)
 }
 
 // ------------------------------------------------------------------ teclado
@@ -263,7 +266,11 @@ pub enum Direccion {
 /// encima o de debajo, a la tarjeta mas cercana en horizontal (aunque sea de
 /// otro grupo). Sin foco, la primera. `None` solo al subir desde la primera
 /// fila: el foco sale a la caja de apuntar. En los bordes se queda.
-pub fn vecina(celdas: &[Celda], actual: Option<(usize, usize)>, d: Direccion) -> Option<(usize, usize)> {
+pub fn vecina(
+    celdas: &[Celda],
+    actual: Option<(usize, usize)>,
+    d: Direccion,
+) -> Option<(usize, usize)> {
     let tarjetas: Vec<(usize, usize, RectF)> = celdas
         .iter()
         .filter_map(|c| match c.pieza {
@@ -286,7 +293,13 @@ pub fn vecina(celdas: &[Celda], actual: Option<(usize, usize)>, d: Direccion) ->
             let fila = tarjetas
                 .iter()
                 .map(|t| t.2.y)
-                .filter(|&y| if abajo { y > r0.y + 0.5 } else { y < r0.y - 0.5 })
+                .filter(|&y| {
+                    if abajo {
+                        y > r0.y + 0.5
+                    } else {
+                        y < r0.y - 0.5
+                    }
+                })
                 .fold(None::<f32>, |m, y| {
                     Some(match m {
                         None => y,
@@ -384,7 +397,6 @@ pub fn partes(c: RectF, s: f32, con_chapas: bool) -> Partes {
     }
 }
 
-
 /// Los bordes de detras de una tarea con varias fotos, del mas lejano al
 /// mas cercano: uno con dos fotos, dos con tres o mas (mas no se distingue).
 /// Cada uno es la tarjeta corrida arriba a la derecha, como una pila de
@@ -405,7 +417,11 @@ pub fn pila(c: RectF, fotos: usize, s: f32) -> Vec<RectF> {
 /// El texto recortado para que quepa en `max_alto` (lo mide `medir`, con
 /// los renglones partidos como se pintan): si no cabe, lo mas largo que
 /// quepa con «…» al final. Por letras, no por bytes.
-pub fn recortar_a_renglones(texto: &str, max_alto: f32, medir: &mut dyn FnMut(&str) -> f32) -> String {
+pub fn recortar_a_renglones(
+    texto: &str,
+    max_alto: f32,
+    medir: &mut dyn FnMut(&str) -> f32,
+) -> String {
     if texto.is_empty() || medir(texto) <= max_alto {
         return texto.to_string();
     }
@@ -462,7 +478,12 @@ mod pruebas {
     #[test]
     fn disponer_pone_cuadrados_en_filas_bajo_el_encabezado_de_su_lista() {
         let g = [grupo(0, &[5, 6, 7, 8], &[9]), grupo(1, &[0], &[])];
-        let (c, total) = disponer(&g, &|_| false, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
+        let (c, total) = disponer(
+            &g,
+            &|_| false,
+            &mut |_, _, l| if l > 300.0 { 0.0 } else { l },
+            &M,
+        );
         let (_, lado) = columnas(M.ancho, M.lado, M.hueco);
         let piezas: Vec<Pieza> = c.iter().map(|c| c.pieza).collect();
         assert_eq!(
@@ -489,24 +510,58 @@ mod pruebas {
         assert_eq!(total, c[7].caja.y + lado);
         // Abierto, las hechas van en filas de 44 a todo lo ancho, no en
         // cuadrados.
-        let (c2, total2) = disponer(&g, &|l| l == 0, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
+        let (c2, total2) = disponer(
+            &g,
+            &|l| l == 0,
+            &mut |_, _, l| if l > 300.0 { 0.0 } else { l },
+            &M,
+        );
         assert_eq!(c2[6].pieza, Pieza::Tarjeta(0, 9));
-        assert_eq!(c2[6].caja, RectF { x: 0.0, y: c2[5].caja.y + 40.0, ancho: M.ancho, alto: 44.0 });
+        assert_eq!(
+            c2[6].caja,
+            RectF {
+                x: 0.0,
+                y: c2[5].caja.y + 40.0,
+                ancho: M.ancho,
+                alto: 44.0
+            }
+        );
         assert_eq!(total2, total + 44.0);
         // Dos hechas: una debajo de otra, con medio hueco entre ellas.
         let g2 = [grupo(0, &[], &[1, 2])];
-        let (c3, _) = disponer(&g2, &|_| true, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
+        let (c3, _) = disponer(
+            &g2,
+            &|_| true,
+            &mut |_, _, l| if l > 300.0 { 0.0 } else { l },
+            &M,
+        );
         assert_eq!(c3[3].caja.y, c3[2].caja.y + 44.0 + 6.0);
-        assert_ne!(c3[3].caja.ancho, c3[3].caja.alto, "una fila, no un cuadrado");
+        assert_ne!(
+            c3[3].caja.ancho, c3[3].caja.alto,
+            "una fila, no un cuadrado"
+        );
         // Caso negativo: plegado, lo hecho no es celda; sin grupos, nada.
         assert!(!piezas.contains(&Pieza::Tarjeta(0, 9)));
-        assert_eq!(disponer(&[], &|_| true, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M), (vec![], 0.0));
+        assert_eq!(
+            disponer(
+                &[],
+                &|_| true,
+                &mut |_, _, l| if l > 300.0 { 0.0 } else { l },
+                &M
+            ),
+            (vec![], 0.0)
+        );
     }
 
     #[test]
     fn el_clic_cae_en_la_tarjeta_que_se_pinto_y_los_huecos_no_son_de_nadie() {
         let g = [grupo(0, &[1, 2, 3, 4], &[])];
-        let (c, _) = disponer(&g, &|_| false, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
+        let (c, _) = disponer(
+            &g,
+            &|_| false,
+            &mut |_, _, l| if l > 300.0 { 0.0 } else { l },
+            &M,
+        );
         let (_, lado) = columnas(M.ancho, M.lado, M.hueco);
         assert_eq!(pieza_en(&c, 10.0, 10.0), Some(Pieza::Encabezado(0)));
         assert_eq!(pieza_en(&c, 1.0, 50.0), Some(Pieza::Tarjeta(0, 1)));
@@ -532,15 +587,40 @@ mod pruebas {
         use Direccion::*;
         // Dos grupos: el primero con 4 (3 + 1), el segundo con 2.
         let g = [grupo(0, &[0, 1, 2, 3], &[]), grupo(1, &[0, 1], &[])];
-        let (c, _) = disponer(&g, &|_| false, &mut |_, _, l| if l > 300.0 { 0.0 } else { l }, &M);
-        assert_eq!(vecina(&c, None, Abajo), Some((0, 0)), "sin foco, la primera");
+        let (c, _) = disponer(
+            &g,
+            &|_| false,
+            &mut |_, _, l| if l > 300.0 { 0.0 } else { l },
+            &M,
+        );
+        assert_eq!(
+            vecina(&c, None, Abajo),
+            Some((0, 0)),
+            "sin foco, la primera"
+        );
         assert_eq!(vecina(&c, Some((0, 0)), Derecha), Some((0, 1)));
-        assert_eq!(vecina(&c, Some((0, 2)), Derecha), Some((0, 3)), "pasa de fila");
-        assert_eq!(vecina(&c, Some((0, 1)), Abajo), Some((0, 3)), "la mas cercana de abajo");
+        assert_eq!(
+            vecina(&c, Some((0, 2)), Derecha),
+            Some((0, 3)),
+            "pasa de fila"
+        );
+        assert_eq!(
+            vecina(&c, Some((0, 1)), Abajo),
+            Some((0, 3)),
+            "la mas cercana de abajo"
+        );
         assert_eq!(vecina(&c, Some((0, 2)), Abajo), Some((0, 3)));
-        assert_eq!(vecina(&c, Some((0, 3)), Abajo), Some((1, 0)), "salta de grupo");
+        assert_eq!(
+            vecina(&c, Some((0, 3)), Abajo),
+            Some((1, 0)),
+            "salta de grupo"
+        );
         assert_eq!(vecina(&c, Some((1, 1)), Arriba), Some((0, 3)));
-        assert_eq!(vecina(&c, Some((0, 3)), Arriba), Some((0, 0)), "misma columna");
+        assert_eq!(
+            vecina(&c, Some((0, 3)), Arriba),
+            Some((0, 0)),
+            "misma columna"
+        );
         assert_eq!(vecina(&c, Some((0, 1)), Izquierda), Some((0, 0)));
         // Caso negativo: por arriba de la primera fila no hay tarjeta (sale
         // a la caja); en los otros bordes se queda; sin tarjetas, nada.
@@ -561,13 +641,22 @@ mod pruebas {
         };
         let p = partes(c, 1.0, true);
         let dentro_de = |r: RectF| {
-            r.x >= c.x && r.y >= c.y && r.x + r.ancho <= c.x + c.ancho && r.y + r.alto <= c.y + c.alto
+            r.x >= c.x
+                && r.y >= c.y
+                && r.x + r.ancho <= c.x + c.ancho
+                && r.y + r.alto <= c.y + c.alto
         };
         for r in [p.casilla, p.aspa, p.mover, p.chapas, p.texto] {
             assert!(dentro_de(r), "{r:?}");
         }
-        assert!(p.casilla.y >= p.texto.y + p.texto.alto, "la casilla, debajo del texto");
-        assert!(p.texto.y >= p.chapas.y + p.chapas.alto, "el texto, debajo de las chapas");
+        assert!(
+            p.casilla.y >= p.texto.y + p.texto.alto,
+            "la casilla, debajo del texto"
+        );
+        assert!(
+            p.texto.y >= p.chapas.y + p.chapas.alto,
+            "el texto, debajo de las chapas"
+        );
         assert!(p.mover.x + p.mover.ancho <= p.aspa.x);
         assert!(p.casilla.ancho >= 40.0 && p.aspa.ancho >= 36.0);
         // Caso negativo: sin emoticonos el texto no deja su sitio vacio.
@@ -585,7 +674,10 @@ mod pruebas {
             alto: 200.0,
         };
         assert!(pila(c, 0, 1.0).is_empty());
-        assert!(pila(c, 1, 1.0).is_empty(), "caso negativo: una foto no es pila");
+        assert!(
+            pila(c, 1, 1.0).is_empty(),
+            "caso negativo: una foto no es pila"
+        );
         let dos = pila(c, 2, 1.0);
         assert_eq!(dos.len(), 1);
         assert_eq!((dos[0].x, dos[0].y), (5.0, 15.0));
@@ -616,7 +708,10 @@ mod pruebas {
     fn la_vista_se_lee_de_una_palabra_y_lo_raro_es_la_lista() {
         assert_eq!(Vista::de_texto("tarjetas\n"), Vista::Tarjetas);
         assert_eq!(Vista::de_texto(Vista::Lista.como_texto()), Vista::Lista);
-        assert_eq!(Vista::de_texto(Vista::Tarjetas.como_texto()), Vista::Tarjetas);
+        assert_eq!(
+            Vista::de_texto(Vista::Tarjetas.como_texto()),
+            Vista::Tarjetas
+        );
         let raiz = std::env::temp_dir().join(format!("pixpin-tareas-vista-{}", std::process::id()));
         std::fs::create_dir_all(&raiz).unwrap();
         Vista::Tarjetas.guardar(&raiz);

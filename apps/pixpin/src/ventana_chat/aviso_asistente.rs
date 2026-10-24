@@ -107,7 +107,13 @@ impl Mando {
     pub fn poner(
         &self,
         texto: String,
-        abrir: Option<(pixpin_store::Idioma, Ubicacion, OpcionesLienzo, String, String)>,
+        abrir: Option<(
+            pixpin_store::Idioma,
+            Ubicacion,
+            OpcionesLienzo,
+            String,
+            String,
+        )>,
     ) {
         if let Ok(mut a) = self.0.lock() {
             a.texto = texto;
@@ -136,17 +142,21 @@ static SIGUIENTE: AtomicU64 = AtomicU64::new(1);
 pub(crate) fn lanzar(aviso: Aviso) -> Mando {
     let mando = Mando(Arc::new(Mutex::new(aviso)), Arc::new(AtomicIsize::new(0)));
     let m = mando.clone();
-    let lanzado = std::thread::Builder::new().name("aviso-asistente".into()).spawn(move || {
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let puesto = ABIERTAS.fetch_add(1, Ordering::SeqCst);
-        let id = SIGUIENTE.fetch_add(1, Ordering::SeqCst);
-        if let Err(e) = crate::dispositivo_perdido::con_recursos("aviso del asistente", |r| flotar(r, &m, puesto, id)) {
-            tracing::warn!(?e, "no se pudo sacar el aviso del asistente");
-        }
-        // Lo que ensenaba sin contestar, libre para otra tarjeta o el chat.
-        permiso::soltar_la_tarjeta(id);
-        ABIERTAS.fetch_sub(1, Ordering::SeqCst);
-    });
+    let lanzado = std::thread::Builder::new()
+        .name("aviso-asistente".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let puesto = ABIERTAS.fetch_add(1, Ordering::SeqCst);
+            let id = SIGUIENTE.fetch_add(1, Ordering::SeqCst);
+            if let Err(e) = crate::dispositivo_perdido::con_recursos("aviso del asistente", |r| {
+                flotar(r, &m, puesto, id)
+            }) {
+                tracing::warn!(?e, "no se pudo sacar el aviso del asistente");
+            }
+            // Lo que ensenaba sin contestar, libre para otra tarjeta o el chat.
+            permiso::soltar_la_tarjeta(id);
+            ABIERTAS.fetch_sub(1, Ordering::SeqCst);
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del aviso del asistente");
     }
@@ -204,7 +214,9 @@ fn medidas(ancho: f32, alto_texto: f32, con_pie: bool, alto_maximo: f32, e: f32)
     let cabecera = CABECERA * e;
     let abajo = if con_pie { PIE * e } else { ABAJO * e };
     let minimo = ALTO_MINIMO as f32 * e;
-    let alto = (cabecera + alto_texto + abajo).clamp(minimo, alto_maximo.max(minimo)).ceil();
+    let alto = (cabecera + alto_texto + abajo)
+        .clamp(minimo, alto_maximo.max(minimo))
+        .ceil();
     let texto = RectF {
         x: 16.0 * e,
         y: cabecera,
@@ -235,7 +247,9 @@ enum Pie {
     Nada,
     Abrir,
     /// «Sí», «No» y, si se sabe el chat, «Abrir».
-    Permiso { abrir: bool },
+    Permiso {
+        abrir: bool,
+    },
 }
 
 /// Los colores de la tarjeta: los del chat, con un filete que se vea sobre
@@ -265,7 +279,10 @@ fn colores(claro: bool) -> Colores {
 
 /// El texto de una pregunta pendiente.
 fn texto_de_la_pregunta(p: &Pregunta) -> String {
-    format!("🔐 Necesito tu permiso: {}\n\nSi no contestas, no lo hago.", p.texto)
+    format!(
+        "🔐 Necesito tu permiso: {}\n\nSi no contestas, no lo hago.",
+        p.texto
+    )
 }
 
 fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<()> {
@@ -281,8 +298,14 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
     let alto_maximo = (ALTO_MAXIMO as f32 * escala).min(area.alto as f32 - 48.0 * escala);
     let mut ventana = VentanaOverlay::nueva(marco).context("no se pudo abrir el aviso")?;
     let motor = recursos.motor();
-    let superficie = Superficie::nueva(&motor, &recursos.d3d(), ventana.handle(), marco.ancho, marco.alto)
-        .context("sin superficie para el aviso")?;
+    let superficie = Superficie::nueva(
+        &motor,
+        &recursos.d3d(),
+        ventana.handle(),
+        marco.ancho,
+        marco.alto,
+    )
+    .context("sin superficie para el aviso")?;
     // Sin robar el foco: se esta haciendo otra cosa.
     ventana.mostrar();
     ventana.traer_encima();
@@ -337,7 +360,11 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
         let Some(aviso) = aviso else { break };
         // Una pregunta del turno que espera esta tarjeta (solo mientras
         // trabaja: acabado, ya no pregunta nada).
-        let pregunta = if aviso.acabado { None } else { permiso::para_la_tarjeta(id) };
+        let pregunta = if aviso.acabado {
+            None
+        } else {
+            permiso::para_la_tarjeta(id)
+        };
         match accion {
             Some(Accion::Cerrar) => {
                 vivo = false;
@@ -398,10 +425,19 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
 
         // Que se ensena, cuanto mide y, si cambio, el alto de la ventana.
         let (texto, pie) = match &pregunta {
-            Some(p) => (texto_de_la_pregunta(p), Pie::Permiso { abrir: aviso.chat.is_some() }),
+            Some(p) => (
+                texto_de_la_pregunta(p),
+                Pie::Permiso {
+                    abrir: aviso.chat.is_some(),
+                },
+            ),
             None => (
                 lo_que_se_ensena(&aviso.texto),
-                if aviso.abrir.is_some() { Pie::Abrir } else { Pie::Nada },
+                if aviso.abrir.is_some() {
+                    Pie::Abrir
+                } else {
+                    Pie::Nada
+                },
             ),
         };
         if medido.0 != texto {
@@ -410,7 +446,13 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
             medido = (texto, alto);
             desplazado = 0.0;
         }
-        let m = medidas(marco.ancho as f32, medido.1, pie != Pie::Nada, alto_maximo, escala);
+        let m = medidas(
+            marco.ancho as f32,
+            medido.1,
+            pie != Pie::Nada,
+            alto_maximo,
+            escala,
+        );
         desplazado = (desplazado - rueda as f32 / 120.0 * 48.0 * escala).clamp(0.0, m.sobra);
         if m.alto as u32 != marco.alto {
             marco = con_alto(marco, m.alto as u32, area);
@@ -427,7 +469,14 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
         };
         if let Ok(d) = superficie.empezar(&motor) {
             let _ = motor.dibujar(&d, |p: &Pintor| {
-                pintar(p, (marco.ancho as f32, marco.alto as f32), escala, &colores, &vista, &mut botones)
+                pintar(
+                    p,
+                    (marco.ancho as f32, marco.alto as f32),
+                    escala,
+                    &colores,
+                    &vista,
+                    &mut botones,
+                )
             });
             let _ = superficie.presentar();
         }
@@ -440,62 +489,156 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
 /// El texto que se ensena: sin lineas en blanco de mas y sin pasar de
 /// [`LETRAS`] (lo largo entero esta en el chat, tras «Abrir»).
 pub(crate) fn lo_que_se_ensena(texto: &str) -> String {
-    let lineas: Vec<&str> = texto.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let lineas: Vec<&str> = texto
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
     crate::automatizaciones::recortar(&lineas.join("\n"), LETRAS)
 }
 
-fn pintar(p: &Pintor, (w, h): (f32, f32), e: f32, c: &Colores, v: &Vista, botones: &mut Botones<Accion>) {
+fn pintar(
+    p: &Pintor,
+    (w, h): (f32, f32),
+    e: f32,
+    c: &Colores,
+    v: &Vista,
+    botones: &mut Botones<Accion>,
+) {
     let tema = c.tema;
     p.limpiar_transparente();
-    p.rellenar_redondeado(RectF { x: 0.0, y: 0.0, ancho: w, alto: h }, 16.0 * e, c.borde);
-    p.rellenar_redondeado(RectF { x: 1.0, y: 1.0, ancho: w - 2.0, alto: h - 2.0 }, 15.0 * e, tema.isla);
+    p.rellenar_redondeado(
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: h,
+        },
+        16.0 * e,
+        c.borde,
+    );
+    p.rellenar_redondeado(
+        RectF {
+            x: 1.0,
+            y: 1.0,
+            ancho: w - 2.0,
+            alto: h - 2.0,
+        },
+        15.0 * e,
+        tema.isla,
+    );
     botones.vaciar();
 
     // Arriba: el titulo y el aspa.
-    let aspa = RectF { x: w - 38.0 * e, y: 8.0 * e, ancho: 28.0 * e, alto: 28.0 * e };
-    p.texto_linea(v.titulo, 16.0 * e, 14.0 * e, 14.0 * e, (aspa.x - 22.0 * e).max(0.0), tema.pildora_texto);
+    let aspa = RectF {
+        x: w - 38.0 * e,
+        y: 8.0 * e,
+        ancho: 28.0 * e,
+        alto: 28.0 * e,
+    };
+    p.texto_linea(
+        v.titulo,
+        16.0 * e,
+        14.0 * e,
+        14.0 * e,
+        (aspa.x - 22.0 * e).max(0.0),
+        tema.pildora_texto,
+    );
     if dentro(aspa, botones.raton) {
         p.rellenar_redondeado(aspa, aspa.alto / 2.0, tema.boton_sobre);
     }
     let l = 16.0 * e;
     p.icono(
         &mi::CLOSE,
-        RectF { x: aspa.x + (aspa.ancho - l) / 2.0, y: aspa.y + (aspa.alto - l) / 2.0, ancho: l, alto: l },
+        RectF {
+            x: aspa.x + (aspa.ancho - l) / 2.0,
+            y: aspa.y + (aspa.alto - l) / 2.0,
+            ancho: l,
+            alto: l,
+        },
         tema.campo_apagado,
     );
     botones.zona(aspa, Accion::Cerrar);
 
     // El texto, recortado a su zona: nunca pasa por debajo de los botones.
     let zona = v.medidas.texto;
-    let color = if v.apagado { tema.campo_apagado } else { tema.texto };
+    let color = if v.apagado {
+        tema.campo_apagado
+    } else {
+        tema.texto
+    };
     p.con_recorte(zona, |p| {
-        p.texto_ajustado(v.texto, zona.x, zona.y - v.desplazado, TAM_TEXTO * e, zona.ancho, color);
+        p.texto_ajustado(
+            v.texto,
+            zona.x,
+            zona.y - v.desplazado,
+            TAM_TEXTO * e,
+            zona.ancho,
+            color,
+        );
     });
     if v.medidas.sobra > 0.0 {
         // La barrita de lo que queda, a la derecha de la zona.
         let total = zona.alto + v.medidas.sobra;
         let alto = (zona.alto * zona.alto / total).max(18.0 * e);
         let y = zona.y + (zona.alto - alto) * (v.desplazado / v.medidas.sobra);
-        p.rellenar_redondeado(RectF { x: w - 9.0 * e, y, ancho: 3.0 * e, alto }, 1.5 * e, tema.campo_apagado);
+        p.rellenar_redondeado(
+            RectF {
+                x: w - 9.0 * e,
+                y,
+                ancho: 3.0 * e,
+                alto,
+            },
+            1.5 * e,
+            tema.campo_apagado,
+        );
     }
 
     // Abajo: los botones, en su sitio reservado.
     let Some(y) = v.medidas.pie else { return };
-    let boton = |p: &Pintor, botones: &mut Botones<Accion>, caja: RectF, rotulo: &str, tinta: Color, que: Accion| {
-        let fondo = if dentro(caja, botones.raton) { tema.boton_sobre } else { tema.campo };
+    let boton = |p: &Pintor,
+                 botones: &mut Botones<Accion>,
+                 caja: RectF,
+                 rotulo: &str,
+                 tinta: Color,
+                 que: Accion| {
+        let fondo = if dentro(caja, botones.raton) {
+            tema.boton_sobre
+        } else {
+            tema.campo
+        };
         p.rellenar_redondeado(caja, 8.0 * e, fondo);
         let (tw, th) = p.medir_texto(rotulo, 14.0 * e);
-        p.texto(rotulo, caja.x + (caja.ancho - tw) / 2.0, caja.y + (caja.alto - th) / 2.0, 14.0 * e, tinta);
+        p.texto(
+            rotulo,
+            caja.x + (caja.ancho - tw) / 2.0,
+            caja.y + (caja.alto - th) / 2.0,
+            14.0 * e,
+            tinta,
+        );
         botones.zona(caja, que);
     };
     let (bw, bh) = (88.0 * e, 32.0 * e);
-    let abrir = RectF { x: w - 16.0 * e - bw, y, ancho: bw, alto: bh };
+    let abrir = RectF {
+        x: w - 16.0 * e - bw,
+        y,
+        ancho: bw,
+        alto: bh,
+    };
     match v.pie {
         Pie::Nada => {}
         Pie::Abrir => boton(p, botones, abrir, "Abrir", c.enlace, Accion::Abrir),
         Pie::Permiso { abrir: con_abrir } => {
-            let si = RectF { x: 16.0 * e, y, ancho: bw, alto: bh };
-            let no = RectF { x: si.x + bw + 8.0 * e, ..si };
+            let si = RectF {
+                x: 16.0 * e,
+                y,
+                ancho: bw,
+                alto: bh,
+            };
+            let no = RectF {
+                x: si.x + bw + 8.0 * e,
+                ..si
+            };
             boton(p, botones, si, "Sí", tema.texto, Accion::Si);
             boton(p, botones, no, "No", tema.texto, Accion::No);
             if con_abrir {
@@ -511,23 +654,46 @@ mod pruebas {
 
     #[test]
     fn la_nueva_va_encima_de_las_que_hay_y_no_se_sale() {
-        let area = Rect { x: 0, y: 0, ancho: 1920, alto: 1040 };
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 1040,
+        };
         let a = marco_inicial(area, 100, 0);
         let b = marco_inicial(area, 100, 1);
         assert_eq!(a.x, b.x);
         assert!(b.y < a.y);
         assert_eq!(a.y + a.alto as i32, 1040 - 24);
         // Caso negativo: muchas no se salen por arriba.
-        let z = marco_inicial(Rect { x: 0, y: 0, ancho: 800, alto: 300 }, 100, 9);
+        let z = marco_inicial(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: 800,
+                alto: 300,
+            },
+            100,
+            9,
+        );
         assert!(z.y >= 0);
     }
 
     #[test]
     fn crece_hacia_arriba_con_el_pie_donde_estaba_y_sin_salirse() {
-        let area = Rect { x: 0, y: 0, ancho: 1920, alto: 1040 };
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 1040,
+        };
         let a = marco_inicial(area, 100, 0);
         let b = con_alto(a, 400, area);
-        assert_eq!(b.y + b.alto as i32, a.y + a.alto as i32, "el pie no se mueve");
+        assert_eq!(
+            b.y + b.alto as i32,
+            a.y + a.alto as i32,
+            "el pie no se mueve"
+        );
         assert_eq!((b.x, b.ancho, b.alto), (a.x, a.ancho, 400));
         // Caso negativo: mas alto que la pantalla, se queda dentro.
         let c = con_alto(a, 5000, area);
@@ -541,7 +707,10 @@ mod pruebas {
         let m = medidas(ancho, 31.0 * 18.0, true, maximo, 1.0);
         assert_eq!(m.alto, maximo, "crece hasta el maximo y no mas");
         let pie = m.pie.expect("con botones");
-        assert!(m.texto.y + m.texto.alto <= pie - 6.0, "la zona del texto acaba antes del pie: {m:?}");
+        assert!(
+            m.texto.y + m.texto.alto <= pie - 6.0,
+            "la zona del texto acaba antes del pie: {m:?}"
+        );
         assert!(m.sobra > 0.0, "lo que no cabe se desplaza");
         assert!((m.texto.alto + m.sobra - 31.0 * 18.0).abs() < 0.01);
         // Corto: el alto minimo y nada que desplazar.
@@ -556,7 +725,10 @@ mod pruebas {
         assert_eq!(sin.pie, None);
         assert!(sin.texto.alto > m.texto.alto);
         // Ni un maximo absurdo (pantalla minuscula) baja del minimo.
-        assert_eq!(medidas(ancho, 900.0, true, 10.0, 1.0).alto, ALTO_MINIMO as f32);
+        assert_eq!(
+            medidas(ancho, 900.0, true, 10.0, 1.0).alto,
+            ALTO_MINIMO as f32
+        );
     }
 
     #[test]
@@ -565,13 +737,19 @@ mod pruebas {
         let largo = "a".repeat(10_000);
         assert_eq!(lo_que_se_ensena(&largo).chars().count(), LETRAS + 1);
         // 31 tareas caben enteras (antes se cortaba a las 220 letras).
-        let tareas: String = (1..=31).map(|i| format!("• Tarea pendiente numero {i}\n")).collect();
+        let tareas: String = (1..=31)
+            .map(|i| format!("• Tarea pendiente numero {i}\n"))
+            .collect();
         assert!(!lo_que_se_ensena(&tareas).ends_with('…'));
     }
 
     #[test]
     fn la_pregunta_dice_que_sin_respuesta_es_que_no() {
-        let p = Pregunta { proyecto: "p".into(), nota: "n".into(), texto: "¿Borro 3 tareas?".into() };
+        let p = Pregunta {
+            proyecto: "p".into(),
+            nota: "n".into(),
+            texto: "¿Borro 3 tareas?".into(),
+        };
         let t = texto_de_la_pregunta(&p);
         assert!(t.contains("Necesito tu permiso: ¿Borro 3 tareas?"));
         assert!(t.contains("no lo hago"));
@@ -594,27 +772,45 @@ mod pruebas {
         });
         for (nombre, texto, pie, apagado) in [
             ("aviso-largo", largo.as_str(), Pie::Abrir, false),
-            ("aviso-permiso", pregunta.as_str(), Pie::Permiso { abrir: true }, false),
+            (
+                "aviso-permiso",
+                pregunta.as_str(),
+                Pie::Permiso { abrir: true },
+                false,
+            ),
         ] {
             for claro in [true, false] {
                 let e = 1.0;
                 let ancho = ANCHO as f32 * e;
-                let pintar_con = |p: &Pintor, motor: &pixpin_render::MotorRender, alto: &mut f32| {
-                    let t = lo_que_se_ensena(texto);
-                    let medido = motor.medir_texto(&t, TAM_TEXTO * e, ancho - 32.0 * e).1;
-                    let m = medidas(ancho, medido, pie != Pie::Nada, ALTO_MAXIMO as f32 * e, e);
-                    *alto = m.alto;
-                    let v = Vista { titulo: "🤖 ¿Qué tengo pendiente?", texto: &t, apagado, pie, medidas: m, desplazado: 0.0 };
-                    let mut b = Botones::default();
-                    pintar(p, (ancho, m.alto), e, &colores(claro), &v, &mut b);
-                };
+                let pintar_con =
+                    |p: &Pintor, motor: &pixpin_render::MotorRender, alto: &mut f32| {
+                        let t = lo_que_se_ensena(texto);
+                        let medido = motor.medir_texto(&t, TAM_TEXTO * e, ancho - 32.0 * e).1;
+                        let m = medidas(ancho, medido, pie != Pie::Nada, ALTO_MAXIMO as f32 * e, e);
+                        *alto = m.alto;
+                        let v = Vista {
+                            titulo: "🤖 ¿Qué tengo pendiente?",
+                            texto: &t,
+                            apagado,
+                            pie,
+                            medidas: m,
+                            desplazado: 0.0,
+                        };
+                        let mut b = Botones::default();
+                        pintar(p, (ancho, m.alto), e, &colores(claro), &v, &mut b);
+                    };
                 // El alto sale de medir: primero se mide, luego se pinta a esa medida.
                 let mut alto = 0.0;
-                crate::ventanita::muestra("aviso-medir", ancho as u32, 10, |p, motor| pintar_con(p, motor, &mut alto));
-                let tema = if claro { "claro" } else { "oscuro" };
-                crate::ventanita::muestra(&format!("{nombre}-{tema}"), ancho as u32, alto as u32, |p, motor| {
+                crate::ventanita::muestra("aviso-medir", ancho as u32, 10, |p, motor| {
                     pintar_con(p, motor, &mut alto)
                 });
+                let tema = if claro { "claro" } else { "oscuro" };
+                crate::ventanita::muestra(
+                    &format!("{nombre}-{tema}"),
+                    ancho as u32,
+                    alto as u32,
+                    |p, motor| pintar_con(p, motor, &mut alto),
+                );
             }
         }
     }

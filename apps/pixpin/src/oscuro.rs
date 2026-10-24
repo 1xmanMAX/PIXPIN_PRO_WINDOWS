@@ -33,7 +33,10 @@ pub fn decidir(guardado: Option<bool>, windows_en_claro: bool) -> bool {
 /// Lee la preferencia (una vez, al arrancar la app).
 pub fn iniciar(ubicacion: &Ubicacion) {
     let guardado = pixpin_store::estado::cargar(ubicacion).lectores_oscuros;
-    ACTIVO.store(decidir(guardado, pixpin_shell::entorno::tema_claro()), Ordering::Relaxed);
+    ACTIVO.store(
+        decidir(guardado, pixpin_shell::entorno::tema_claro()),
+        Ordering::Relaxed,
+    );
     let _ = UBICACION.set(ubicacion.clone());
 }
 
@@ -79,7 +82,8 @@ mod pruebas {
     use super::*;
 
     fn temporal(etiqueta: &str) -> Ubicacion {
-        let dir = std::env::temp_dir().join(format!("pixpin-oscuro-{etiqueta}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-oscuro-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         Ubicacion::Instalado { raiz: dir }
@@ -98,14 +102,20 @@ mod pruebas {
     fn la_preferencia_se_guarda_y_no_pisa_lo_demas() {
         let u = temporal("guardar");
         // Algo que ya estaba recordado.
-        let antes = pixpin_store::estado::Estado { escala_interfaz: Some(125), ..Default::default() };
+        let antes = pixpin_store::estado::Estado {
+            escala_interfaz: Some(125),
+            ..Default::default()
+        };
         pixpin_store::estado::guardar(&u, &antes).unwrap();
         guardar(&u, true).unwrap();
         let leido = pixpin_store::estado::cargar(&u);
         assert_eq!(leido.lectores_oscuros, Some(true));
         assert_eq!(leido.escala_interfaz, Some(125), "lo demas sigue");
         guardar(&u, false).unwrap();
-        assert_eq!(pixpin_store::estado::cargar(&u).lectores_oscuros, Some(false));
+        assert_eq!(
+            pixpin_store::estado::cargar(&u).lectores_oscuros,
+            Some(false)
+        );
         let _ = std::fs::remove_dir_all(u.raiz());
     }
 

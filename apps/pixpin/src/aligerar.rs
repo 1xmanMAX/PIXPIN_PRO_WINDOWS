@@ -409,7 +409,9 @@ pub fn copia_ligera(entrada: &Path, salida: &Path, parar: &AtomicBool) -> Result
             Ok(pixpin_pdf::aligerar::Resultado::Aligerado { .. })
         ) && cabe(salida);
     }
-    let paginas_antes = pixpin_pdf::Documento::abrir(entrada).ok().map(|d| d.paginas());
+    let paginas_antes = pixpin_pdf::Documento::abrir(entrada)
+        .ok()
+        .map(|d| d.paginas());
     if !vale || !se_abre_y_se_dibuja(salida, paginas_antes) {
         let _ = std::fs::remove_file(salida);
         return match hecho {

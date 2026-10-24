@@ -27,7 +27,10 @@ static ULTIMA: Mutex<Option<(Vec<PathBuf>, Vec<isize>)>> = Mutex::new(None);
 /// Si PixPin abre este fichero con la vista rapida (por su extension y, en
 /// los de Civil 3D, por lo que tienen dentro).
 pub fn se_abre(ruta: &Path) -> bool {
-    let ext = ruta.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let ext = ruta
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
     use pixpin_shell::asociaciones::{AUDIOS, IMAGENES, VIDEOS};
     IMAGENES.contains(&ext.as_str())
         || VIDEOS.contains(&ext.as_str())
@@ -41,7 +44,11 @@ pub fn se_abre(ruta: &Path) -> bool {
 
 /// Lo de la seleccion que se abre, en su orden y sin pasar del maximo.
 pub fn que_abrir(seleccion: Vec<PathBuf>) -> Vec<PathBuf> {
-    seleccion.into_iter().filter(|r| r.is_file() && se_abre(r)).take(MAXIMO).collect()
+    seleccion
+        .into_iter()
+        .filter(|r| r.is_file() && se_abre(r))
+        .take(MAXIMO)
+        .collect()
 }
 
 /// Lo que pasa al pulsar el espacio: `true` si era para PixPin.
@@ -50,14 +57,22 @@ fn al_pulsar() -> bool {
     if rutas.is_empty() {
         return false;
     }
-    let Ok(mut ultima) = ULTIMA.lock() else { return false };
+    let Ok(mut ultima) = ULTIMA.lock() else {
+        return false;
+    };
     // Lo abierto antes con el espacio se cierra; si era lo mismo, solo eso.
     if let Some((antes, ventanas)) = ultima.take() {
-        let vivas: Vec<isize> = ventanas.into_iter().filter(|h| pixpin_shell::espacio_explorador::viva(*h)).collect();
+        let vivas: Vec<isize> = ventanas
+            .into_iter()
+            .filter(|h| pixpin_shell::espacio_explorador::viva(*h))
+            .collect();
         if !vivas.is_empty() {
             pixpin_shell::espacio_explorador::cerrar(&vivas);
             if antes == rutas {
-                tracing::info!(cuantos = rutas.len(), "vista rapida: cerrada con el espacio");
+                tracing::info!(
+                    cuantos = rutas.len(),
+                    "vista rapida: cerrada con el espacio"
+                );
                 return true;
             }
         }
@@ -71,13 +86,21 @@ fn al_pulsar() -> bool {
     let t = Instant::now();
     let mut nuevas = Vec::new();
     while t.elapsed() < Duration::from_secs(2) {
-        nuevas = pixpin_shell::espacio_explorador::ventanas_propias().into_iter().filter(|h| !antes.contains(h)).collect();
+        nuevas = pixpin_shell::espacio_explorador::ventanas_propias()
+            .into_iter()
+            .filter(|h| !antes.contains(h))
+            .collect();
         if nuevas.len() >= rutas.len() {
             break;
         }
         std::thread::sleep(Duration::from_millis(25));
     }
-    tracing::info!(cuantos = rutas.len(), ventanas = nuevas.len(), ms = t.elapsed().as_millis() as u64, "vista rapida: abierto");
+    tracing::info!(
+        cuantos = rutas.len(),
+        ventanas = nuevas.len(),
+        ms = t.elapsed().as_millis() as u64,
+        "vista rapida: abierto"
+    );
     *ultima = Some((rutas, nuevas));
     true
 }
@@ -103,7 +126,10 @@ mod pruebas {
 
     #[test]
     fn se_abren_las_fotos_documentos_planos_y_modelos_y_lo_demas_no() {
-        for n in ["a.png", "b.JPG", "c.mp4", "d.mp3", "e.pdf", "f.docx", "g.dwg", "h.ifc", "i.rvt", "j.md"] {
+        for n in [
+            "a.png", "b.JPG", "c.mp4", "d.mp3", "e.pdf", "f.docx", "g.dwg", "h.ifc", "i.rvt",
+            "j.md",
+        ] {
             assert!(se_abre(Path::new(n)), "{n}");
         }
         for n in ["a.zip", "b.exe", "c", "d.lnk"] {
@@ -113,7 +139,8 @@ mod pruebas {
 
     #[test]
     fn un_excel_se_abre_con_el_espacio_y_un_xls_no() {
-        let dir = std::env::temp_dir().join(format!("pixpin-vista-rapida-xlsx-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-vista-rapida-xlsx-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let libro = dir.join("Presupuesto.xlsx");
         std::fs::write(&libro, b"PK\x03\x04...").unwrap();

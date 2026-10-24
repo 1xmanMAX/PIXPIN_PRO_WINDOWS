@@ -42,8 +42,8 @@
 
 mod archivo;
 mod compartir;
-mod historia;
 mod estado_mes;
+mod historia;
 mod lecciones;
 #[cfg(test)]
 mod muestras;
@@ -546,7 +546,9 @@ impl Estado {
             .enumerate()
             .map(|(i, m)| (m.id.as_str(), i))
             .collect();
-        v.iter().filter_map(|m| mapa.get(m.id.as_str()).copied()).collect()
+        v.iter()
+            .filter_map(|m| mapa.get(m.id.as_str()).copied())
+            .collect()
     }
 
     /// El momento de una clave, si sigue ahi.
@@ -1059,7 +1061,8 @@ fn bucle(
         }
         // «Exportar…» de lo que se ve: con la vista pintada como imagen.
         if let Some((nombre, pagina, apuntes)) = e.exportar_pendiente.take() {
-            let foto = match vista_en_imagen(&mut e, marco, escala, &motor, &recursos.d3d(), textos) {
+            let foto = match vista_en_imagen(&mut e, marco, escala, &motor, &recursos.d3d(), textos)
+            {
                 Ok(f) => Some(f),
                 Err(err) => {
                     tracing::warn!(?err, "timeline: la vista no se pudo pintar para exportar");
@@ -1067,7 +1070,11 @@ fn bucle(
                 }
             };
             let x = exportable_de_lo_que_se_ve(nombre, pagina, apuntes, foto);
-            crate::compartir::ventana::abrir(idioma, ubicacion.clone(), crate::compartir::Cosa::Visor(x));
+            crate::compartir::ventana::abrir(
+                idioma,
+                ubicacion.clone(),
+                crate::compartir::Cosa::Visor(x),
+            );
             pintar = true;
         }
         if mirado.elapsed() >= Duration::from_secs(1) {
@@ -1290,7 +1297,10 @@ fn tecla(
             if std::mem::take(&mut e.menu) || e.menu_compartir.take().is_some() {
             } else if !e.busqueda.texto().is_empty() {
                 e.vaciar_busqueda();
-            } else if e.corrigiendo.is_some() || !e.campo.texto().is_empty() || !e.pegadas.is_empty() {
+            } else if e.corrigiendo.is_some()
+                || !e.campo.texto().is_empty()
+                || !e.pegadas.is_empty()
+            {
                 e.vaciar_caja();
             } else if e.dia.is_some() {
                 return hacer(e, Accion::VolverDelDia, textos, ubicacion, idioma);
@@ -1552,7 +1562,14 @@ fn hacer(
         Accion::MomentoSiguiente => e.mover_detalle(1),
         Accion::AbrirVentanaLecciones => {
             // «Nueva leccion»: la ventana universal para escribirlas.
-            crate::lecciones::nueva(ubicacion.clone(), idioma, &e.aparato.clone(), None, None, None);
+            crate::lecciones::nueva(
+                ubicacion.clone(),
+                idioma,
+                &e.aparato.clone(),
+                None,
+                None,
+                None,
+            );
         }
         Accion::AMomentos(c) => {
             if let Some(i) = e.momento_de(c) {
@@ -1768,7 +1785,10 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
 /// Lo que va en el `.pixpin` de lo exportado: cada momento con su titulo y
 /// su texto, y sus fotos y su audio (los de una leccion ya van con su ruta
 /// entera: `Path::join` con una ruta entera la deja como esta).
-fn apuntes_de(almacen: &Almacen, secciones: &[Seccion<'_>]) -> Vec<crate::compartir::exportable::Apunte> {
+fn apuntes_de(
+    almacen: &Almacen,
+    secciones: &[Seccion<'_>],
+) -> Vec<crate::compartir::exportable::Apunte> {
     secciones
         .iter()
         .flat_map(|s| s.momentos.iter())
@@ -1786,7 +1806,11 @@ fn apuntes_de(almacen: &Almacen, secciones: &[Seccion<'_>]) -> Vec<crate::compar
                 .chain(m.audio.iter())
                 .map(|f| almacen.ruta(f))
                 .collect();
-            crate::compartir::exportable::Apunte { cuando: m.cuando, texto, ficheros }
+            crate::compartir::exportable::Apunte {
+                cuando: m.cuando,
+                texto,
+                ficheros,
+            }
         })
         .collect()
 }
@@ -1807,17 +1831,27 @@ fn exportable_de_lo_que_se_ve(
         x.hojas.push(ex::hoja_de_imagen(f));
     }
     let (n, html) = (nombre.clone(), pagina.clone());
-    x.propios.push(Propio::nuevo(crate::compartir::WEB, "compartir-web", move |c| {
-        let r = c.join(format!("{n}.html"));
-        std::fs::write(&r, &html).with_context(|| format!("no se pudo escribir {}", r.display()))?;
-        Ok(vec![r])
-    }));
+    x.propios.push(Propio::nuevo(
+        crate::compartir::WEB,
+        "compartir-web",
+        move |c| {
+            let r = c.join(format!("{n}.html"));
+            std::fs::write(&r, &html)
+                .with_context(|| format!("no se pudo escribir {}", r.display()))?;
+            Ok(vec![r])
+        },
+    ));
     let n = nombre.clone();
-    x.propios.push(Propio::nuevo(crate::compartir::PDF, "compartir-pdf", move |c| {
-        let r = c.join(format!("{n}.pdf"));
-        exportar::a_pdf(&pagina, &r).map_err(|m| anyhow::anyhow!("no se pudo imprimir el PDF: {m}"))?;
-        Ok(vec![r])
-    }));
+    x.propios.push(Propio::nuevo(
+        crate::compartir::PDF,
+        "compartir-pdf",
+        move |c| {
+            let r = c.join(format!("{n}.pdf"));
+            exportar::a_pdf(&pagina, &r)
+                .map_err(|m| anyhow::anyhow!("no se pudo imprimir el PDF: {m}"))?;
+            Ok(vec![r])
+        },
+    ));
     if !apuntes.is_empty() {
         x.propios.push(ex::propio_pixpin(nombre, apuntes));
     }
@@ -1843,7 +1877,11 @@ fn vista_en_imagen(
         .context("no se pudo pintar")?;
     fuera.esperar_gpu().context("la GPU no acabo")?;
     let (ancho, alto, pixeles) = fuera.leer_rgba().context("no se pudo leer")?;
-    Ok(pixpin_codec::ImagenRgba { ancho, alto, pixeles })
+    Ok(pixpin_codec::ImagenRgba {
+        ancho,
+        alto,
+        pixeles,
+    })
 }
 
 /// Las opciones de la pagina exportada.
@@ -1873,7 +1911,10 @@ fn exportar_lecciones(e: &mut Estado, f: Formato, textos: &Catalogo) {
     // Las elegidas con Ctrl+clic, si hay; si no, todas las que se ven.
     let mut visibles = lecciones::visibles(e);
     if !e.lecciones_elegidas.is_empty() {
-        visibles.retain(|&k| e.lecciones_elegidas.contains(&e.lecciones[k].entrada.leccion.id));
+        visibles.retain(|&k| {
+            e.lecciones_elegidas
+                .contains(&e.lecciones[k].entrada.leccion.id)
+        });
     }
     if visibles.is_empty() {
         e.decir(textos.t("timeline-nada-que-exportar"));
@@ -1886,18 +1927,32 @@ fn exportar_lecciones(e: &mut Estado, f: Formato, textos: &Catalogo) {
             let l = &t.entrada.leccion;
             let gr = super::tarjetas::gravedad(l.gravedad);
             let mut texto = l.que_paso.trim().to_string();
-            for (clave, campo) in [("timeline-leccion-por-que", &l.por_que), ("timeline-leccion-proxima", &l.proxima)] {
+            for (clave, campo) in [
+                ("timeline-leccion-por-que", &l.por_que),
+                ("timeline-leccion-proxima", &l.proxima),
+            ] {
                 if !campo.trim().is_empty() {
                     if !texto.is_empty() {
-                        texto.push_str("
+                        texto.push_str(
+                            "
 
-");
+",
+                        );
                     }
                     texto.push_str(&format!("{}: {}", textos.t(clave), campo.trim()));
                 }
             }
-            let mut m = Momento::nuevo(l.id.clone(), l.creada, format!("{} {}", gr.emoticono, l.titulo), texto);
-            m.fotos = t.fotos.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+            let mut m = Momento::nuevo(
+                l.id.clone(),
+                l.creada,
+                format!("{} {}", gr.emoticono, l.titulo),
+                texto,
+            );
+            m.fotos = t
+                .fotos
+                .iter()
+                .map(|p| p.to_string_lossy().into_owned())
+                .collect();
             if let Some((a, d)) = &t.voz {
                 m.audio = Some(a.to_string_lossy().into_owned());
                 m.duracion_ms = *d;
@@ -2084,7 +2139,16 @@ fn alto_del_titulo(p: &Pintor, t: &str, ancho: f32, s: f32) -> f32 {
 
 fn titulo_en_color(p: &Pintor, t: &str, x: f32, y: f32, ancho: f32, s: f32) {
     for (k, l) in renglones_del_titulo(p, t, ancho, s).iter().enumerate() {
-        historia::pintar_trozos(p, l, x, y + k as f32 * 15.5 * s * 1.33, 15.5 * s, true, TEXTO_V, false);
+        historia::pintar_trozos(
+            p,
+            l,
+            x,
+            y + k as f32 * 15.5 * s * 1.33,
+            15.5 * s,
+            true,
+            TEXTO_V,
+            false,
+        );
     }
 }
 
@@ -2221,7 +2285,11 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             "timeline-sub-momentos",
             e.momentos.iter().filter(|m| m.en_momentos).count(),
         ),
-        Modo::Estado => con_n(textos, "timeline-sub-estado-dias", dias::dias_con(&e.momentos, e.desfase).len()),
+        Modo::Estado => con_n(
+            textos,
+            "timeline-sub-estado-dias",
+            dias::dias_con(&e.momentos, e.desfase).len(),
+        ),
         Modo::Lecciones => con_n(
             textos,
             "timeline-sub-lecciones",
@@ -2578,7 +2646,11 @@ fn pintar_linea(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &Catalo
                                 } else {
                                     &mi::BOOKMARK_ADD
                                 },
-                                if mo.en_momentos { ui::v2::AMARILLO } else { CUERPO },
+                                if mo.en_momentos {
+                                    ui::v2::AMARILLO
+                                } else {
+                                    CUERPO
+                                },
                                 mo.en_momentos.then_some(Color {
                                     a: 0.22,
                                     ..ui::v2::AMARILLO

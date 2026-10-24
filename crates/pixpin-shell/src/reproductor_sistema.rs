@@ -27,9 +27,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::WinRT::ISystemMediaTransportControlsInterop;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, MSG, PM_REMOVE,
-    PeekMessageW, RegisterClassExW, TranslateMessage, WINDOW_STYLE, WNDCLASSEXW,
-    WS_EX_TOOLWINDOW, WS_POPUP,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, MSG, PM_REMOVE, PeekMessageW,
+    RegisterClassExW, TranslateMessage, WINDOW_STYLE, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
 };
 use windows::core::{HSTRING, factory, w};
 
@@ -239,7 +238,10 @@ mod pruebas {
         );
         // Lo que el lector no tiene no hace nada.
         assert_eq!(boton_de(SystemMediaTransportControlsButton::Rewind), None);
-        assert_eq!(boton_de(SystemMediaTransportControlsButton::ChannelUp), None);
+        assert_eq!(
+            boton_de(SystemMediaTransportControlsButton::ChannelUp),
+            None
+        );
     }
 
     /// **Windows da los mandos a una ventana escondida** y acepta el titulo.

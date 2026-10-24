@@ -55,8 +55,13 @@ fn fichas() -> &'static [Ficha] {
             .filter_map(|f| {
                 let titulo = titulo_de(&f.elementos)?;
                 let clave = f.id.strip_prefix(PREFIJO_ID)?.to_string();
-                let nombre = super::categoria_de(&f.nombre).map_or(f.nombre.clone(), |(_, n)| n.to_string());
-                Some(Ficha { clave, titulo: titulo.to_string(), nombre })
+                let nombre =
+                    super::categoria_de(&f.nombre).map_or(f.nombre.clone(), |(_, n)| n.to_string());
+                Some(Ficha {
+                    clave,
+                    titulo: titulo.to_string(),
+                    nombre,
+                })
             })
             .collect()
     })
@@ -92,7 +97,10 @@ pub fn cual_es(elementos: &[Elemento]) -> Option<String> {
 
 /// El nombre de una plantilla en el menu («Lista de tareas»).
 pub fn nombre_de(clave: &str) -> String {
-    fichas().iter().find(|f| f.clave == clave).map_or_else(|| clave.to_string(), |f| f.nombre.clone())
+    fichas()
+        .iter()
+        .find(|f| f.clave == clave)
+        .map_or_else(|| clave.to_string(), |f| f.nombre.clone())
 }
 
 /// La clave de una plantilla de serie por su id (`serie-<clave>`).
@@ -116,7 +124,11 @@ pub fn las_que_se_alargan() -> String {
                 "habitos" => ", o un mes",
                 _ => "",
             };
-            let cuenta = if a.clave == "planificador-mensual" { "un mes y cuántos" } else { a.cuenta };
+            let cuenta = if a.clave == "planificador-mensual" {
+                "un mes y cuántos"
+            } else {
+                a.cuenta
+            };
             format!("{} ({cuenta}{extra})", nombre_de(a.clave))
         })
         .collect::<Vec<_>>()
@@ -138,7 +150,10 @@ pub fn alargar(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, Strin
         return por_meses(clave, mes, iv.meses.unwrap_or(1));
     }
     if clave == "planificador-mensual" {
-        return Err("el planificador mensual va por meses: di el mes y el año (y cuántos meses seguidos)".into());
+        return Err(
+            "el planificador mensual va por meses: di el mes y el año (y cuántos meses seguidos)"
+                .into(),
+        );
     }
     if iv.semanas.is_some() && clave != "cronograma" {
         return Err("solo el cronograma lleva semanas".into());
@@ -149,18 +164,30 @@ pub fn alargar(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, Strin
         return Err(format!("el intervalo va al revés: del {desde} al {hasta}"));
     }
     if desde < a.minimo || hasta > a.maximo {
-        return Err(format!("«{}» va del {} al {} como mucho ({})", nombre_de(clave), a.minimo, a.maximo, a.cuenta));
+        return Err(format!(
+            "«{}» va del {} al {} como mucho ({})",
+            nombre_de(clave),
+            a.minimo,
+            a.maximo,
+            a.cuenta
+        ));
     }
     let semanas = match iv.semanas {
         Some((s0, s1)) if s0 == 0 || s1 < s0 || s1 - s0 >= 260 => {
-            return Err(format!("las semanas van al revés o son demasiadas: de la {s0} a la {s1}"));
+            return Err(format!(
+                "las semanas van al revés o son demasiadas: de la {s0} a la {s1}"
+            ));
         }
         Some(s) => s,
         None => (1, 12),
     };
     // Lo que se parte: las filas, salvo que solo se hayan pedido semanas.
     let partir_semanas = iv.semanas.is_some() && iv.desde.is_none() && iv.hasta.is_none();
-    let (lo, hi) = if partir_semanas { semanas } else { (desde, hasta) };
+    let (lo, hi) = if partir_semanas {
+        semanas
+    } else {
+        (desde, hasta)
+    };
     let trozos = trozos(lo, hi, iv.de_a)?;
     let n = trozos.len() as u32;
     Ok(trozos
@@ -175,8 +202,15 @@ pub fn alargar(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, Strin
                 (tr.desde, tr.hasta) = (t0, t1);
             }
             tr.hoja = (n > 1).then_some((i as u32 + 1, n));
-            let rotulo = if partir_semanas { format!("semanas {t0}–{t1}") } else { tr.rotulo() };
-            con_nombre(plantillas::hacer(clave, &tr).expect("es de la tabla"), &rotulo)
+            let rotulo = if partir_semanas {
+                format!("semanas {t0}–{t1}")
+            } else {
+                tr.rotulo()
+            };
+            con_nombre(
+                plantillas::hacer(clave, &tr).expect("es de la tabla"),
+                &rotulo,
+            )
         })
         .collect())
 }
@@ -186,35 +220,60 @@ fn trozos(lo: u32, hi: u32, de_a: Option<u32>) -> Result<Vec<(u32, u32)>, String
     let Some(k) = de_a.filter(|&k| k > 0 && k <= hi - lo) else {
         return Ok(vec![(lo, hi)]);
     };
-    let v: Vec<(u32, u32)> = (lo..=hi).step_by(k as usize).map(|a| (a, (a + k - 1).min(hi))).collect();
+    let v: Vec<(u32, u32)> = (lo..=hi)
+        .step_by(k as usize)
+        .map(|a| (a, (a + k - 1).min(hi)))
+        .collect();
     if v.len() > MAX_HOJAS {
-        return Err(format!("serían {} hojas; como mucho {MAX_HOJAS} de una vez", v.len()));
+        return Err(format!(
+            "serían {} hojas; como mucho {MAX_HOJAS} de una vez",
+            v.len()
+        ));
     }
     Ok(v)
 }
 
 /// Una hoja por mes, desde `mes`: el mensual con sus dias en su sitio, o
 /// los habitos con tantas columnas como dias tenga el mes.
-fn por_meses(clave: &str, (ano, mes): (i32, u32), cuantos: u32) -> Result<Vec<FiguraGuardada>, String> {
+fn por_meses(
+    clave: &str,
+    (ano, mes): (i32, u32),
+    cuantos: u32,
+) -> Result<Vec<FiguraGuardada>, String> {
     if !matches!(clave, "planificador-mensual" | "habitos") {
-        return Err(format!("«{}» no va por meses; por meses van el planificador mensual y los hábitos", nombre_de(clave)));
+        return Err(format!(
+            "«{}» no va por meses; por meses van el planificador mensual y los hábitos",
+            nombre_de(clave)
+        ));
     }
     if !(1..=12).contains(&mes) || !(1900..=2200).contains(&ano) {
         return Err(format!("ese mes no existe: {mes}/{ano}"));
     }
     let cuantos = cuantos.max(1);
     if cuantos as usize > MAX_HOJAS {
-        return Err(format!("serían {cuantos} hojas; como mucho {MAX_HOJAS} de una vez"));
+        return Err(format!(
+            "serían {cuantos} hojas; como mucho {MAX_HOJAS} de una vez"
+        ));
     }
     Ok((0..cuantos)
         .map(|i| {
             let k = mes - 1 + i;
             let (a, m) = (ano + (k / 12) as i32, k % 12 + 1);
-            let mut tr = Tramo::de(1, if clave == "habitos" { plantillas::dias_del_mes(a, m) } else { 1 });
+            let mut tr = Tramo::de(
+                1,
+                if clave == "habitos" {
+                    plantillas::dias_del_mes(a, m)
+                } else {
+                    1
+                },
+            );
             tr.mes = Some((a, m));
             tr.hoja = (cuantos > 1).then_some((i + 1, cuantos));
             let rotulo = format!("{} {a}", MESES[m as usize - 1]);
-            con_nombre(plantillas::hacer(clave, &tr).expect("es de la tabla"), &rotulo)
+            con_nombre(
+                plantillas::hacer(clave, &tr).expect("es de la tabla"),
+                &rotulo,
+            )
         })
         .collect())
 }
@@ -229,5 +288,8 @@ fn con_nombre(mut f: FiguraGuardada, rotulo: &str) -> FiguraGuardada {
 
 /// El tramo de la de serie de una plantilla que se alarga («1–42»).
 pub fn tramo_de_serie(clave: &str) -> Option<(u32, u32)> {
-    AMPLIABLES.iter().find(|a| a.clave == clave).map(|a| a.defecto)
+    AMPLIABLES
+        .iter()
+        .find(|a| a.clave == clave)
+        .map(|a| a.defecto)
 }

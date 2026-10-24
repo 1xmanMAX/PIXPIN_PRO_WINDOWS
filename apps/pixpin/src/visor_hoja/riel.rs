@@ -67,12 +67,20 @@ impl Recuerdo {
     pub(super) fn de(ruta: Option<&Path>) -> (Recuerdo, Vec<Marca>) {
         let ajustes = ruta.map(pixpin_docs::lectura::leer).unwrap_or_default();
         let lista = marcas::de_texto(&ajustes.marcas);
-        (Recuerdo { ruta: ruta.map(Path::to_path_buf), ajustes }, lista)
+        (
+            Recuerdo {
+                ruta: ruta.map(Path::to_path_buf),
+                ajustes,
+            },
+            lista,
+        )
     }
 
     /// Sin fichero (una tabla del chat sin libro) las marcas son de la sesion.
     fn guardar(&mut self, lista: &[Marca]) {
-        let Some(r) = self.ruta.as_deref() else { return };
+        let Some(r) = self.ruta.as_deref() else {
+            return;
+        };
         self.ajustes.marcas = marcas::a_texto(lista);
         if let Err(e) = pixpin_docs::lectura::escribir(r, &self.ajustes) {
             tracing::info!(?e, "visor de hojas: no se pudieron guardar las marcas");
@@ -82,7 +90,13 @@ impl Recuerdo {
 
 /// Baja todo el riel `dy` pixeles.
 fn bajar(r: &mut Riel, dy: i32) {
-    for c in [&mut r.isla, &mut r.poner_marca, &mut r.hojita, &mut r.imprimir, &mut r.columna] {
+    for c in [
+        &mut r.isla,
+        &mut r.poner_marca,
+        &mut r.hojita,
+        &mut r.imprimir,
+        &mut r.columna,
+    ] {
         c.y += dy;
     }
     for p in r.puntos.iter_mut() {
@@ -114,7 +128,11 @@ impl Estado<'_> {
         // La isla, 8 px por debajo de las letras (el riel deja 16 arriba).
         let dy = (celdas.y - 8.0 * e).max(0.0).round() as i32;
         let fondo = (celdas.y + celdas.alto).max(dy as f32 + 1.0);
-        let bajo = if self.anotando { celdas.y.max(60.0 * e) } else { celdas.y };
+        let bajo = if self.anotando {
+            celdas.y.max(60.0 * e)
+        } else {
+            celdas.y
+        };
         let mut r = Riel::colocar(
             self.ancho.max(1.0) as u32,
             (fondo - dy as f32) as u32,
@@ -129,7 +147,8 @@ impl Estado<'_> {
     }
 
     pub(super) fn destino_del_riel(&self) -> DestinoRiel {
-        self.riel().destino(lector::punto(self.raton.0, self.raton.1))
+        self.riel()
+            .destino(lector::punto(self.raton.0, self.raton.1))
     }
 
     /// Lo que tiene el raton encima en el riel; `true` si cambio (repintar).
@@ -164,8 +183,12 @@ impl Estado<'_> {
 
     /// El clic derecho en un punto del riel quita su marca.
     pub(super) fn pulsar_derecho_riel(&mut self) -> bool {
-        let DestinoRiel::Marca(i) = self.destino_del_riel() else { return false };
-        let Some(id) = self.marcas.get(i).map(|m| m.id) else { return false };
+        let DestinoRiel::Marca(i) = self.destino_del_riel() else {
+            return false;
+        };
+        let Some(id) = self.marcas.get(i).map(|m| m.id) else {
+            return false;
+        };
         self.marcas = marcas::sin(&self.marcas, id);
         self.recuerdo.guardar(&self.marcas);
         self.vistas.quitar(&id.to_string());
@@ -180,12 +203,29 @@ impl Estado<'_> {
         let ab = self.abierta();
         let (v, celdas) = vista_de(ab, caja);
         let activa = ab.sel.activa;
-        let se_ve = hoja_office::caja_de_celda(&ab.rejilla, &vista_celdas(&v, celdas), celdas, activa.0, activa.1)
-            .is_some_and(|[x0, y0, x1, y1]| x1 > celdas.x && y1 > celdas.y && x0 < celdas.x + celdas.ancho && y0 < celdas.y + celdas.alto);
-        let celda = if se_ve { activa } else { (ab.rejilla.fila_en(ab.y), ab.rejilla.col_en(ab.x)) };
+        let se_ve = hoja_office::caja_de_celda(
+            &ab.rejilla,
+            &vista_celdas(&v, celdas),
+            celdas,
+            activa.0,
+            activa.1,
+        )
+        .is_some_and(|[x0, y0, x1, y1]| {
+            x1 > celdas.x
+                && y1 > celdas.y
+                && x0 < celdas.x + celdas.ancho
+                && y0 < celdas.y + celdas.alto
+        });
+        let celda = if se_ve {
+            activa
+        } else {
+            (ab.rejilla.fila_en(ab.y), ab.rejilla.col_en(ab.x))
+        };
         let (x, y) = sitio_de_marca(self.activa, celda);
         let emoji = lector::emoji_de_la_tira(i);
-        let ahora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
+        let ahora = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as i64);
         let antes = std::mem::take(&mut self.marcas);
         self.marcas = marcas::con(&antes, x, y, emoji, ahora);
         self.poniendo_marca = false;
@@ -193,12 +233,22 @@ impl Estado<'_> {
         // Y lo que se ve: el zoom y el desplazamiento exactos.
         let ab = self.abierta();
         let vista = crate::marcos_doc::zoom_a_texto(ab.zoom, ab.x, ab.y);
-        if let Some(nueva) = self.marcas.iter().find(|m| !antes.iter().any(|a| a.id == m.id)) {
+        if let Some(nueva) = self
+            .marcas
+            .iter()
+            .find(|m| !antes.iter().any(|a| a.id == m.id))
+        {
             self.vistas.poner(&nueva.id.to_string(), vista);
         }
         // Las que se fueron (pasan de 24), sin vista.
         let quedan: Vec<String> = self.marcas.iter().map(|m| m.id.to_string()).collect();
-        let sobran: Vec<String> = self.vistas.de.keys().filter(|k| !quedan.contains(k)).cloned().collect();
+        let sobran: Vec<String> = self
+            .vistas
+            .de
+            .keys()
+            .filter(|k| !quedan.contains(k))
+            .cloned()
+            .collect();
         for k in sobran {
             self.vistas.quitar(&k);
         }
@@ -210,7 +260,10 @@ impl Estado<'_> {
     pub(super) fn ir_a_la_marca(&mut self, i: usize, motor: &MotorRender, textos: &Catalogo) {
         let Some(m) = self.marcas.get(i) else { return };
         let (hoja, (f, c)) = celda_de_marca(m);
-        let vista = self.vistas.de_marca(&m.id.to_string()).and_then(crate::marcos_doc::zoom_de_texto);
+        let vista = self
+            .vistas
+            .de_marca(&m.id.to_string())
+            .and_then(crate::marcos_doc::zoom_de_texto);
         if hoja >= self.libro.hojas.len() {
             return;
         }
@@ -278,8 +331,16 @@ impl Estado<'_> {
         if !std::mem::take(&mut self.tinta_cambio) {
             return;
         }
-        let Estado { libro, hojas, activa, anotado, .. } = self;
-        let Some(ab) = hojas.get(*activa).and_then(Option::as_ref) else { return };
+        let Estado {
+            libro,
+            hojas,
+            activa,
+            anotado,
+            ..
+        } = self;
+        let Some(ab) = hojas.get(*activa).and_then(Option::as_ref) else {
+            return;
+        };
         anotado.devolver(libro, &ab.hoja, &ab.rejilla);
     }
 
@@ -296,11 +357,21 @@ impl Estado<'_> {
     /// herramientas del lienzo, salvo el clic en el riel, las barras o las
     /// pestanas, Ctrl+E y Escape cuando la tinta no tiene nada que soltar.
     /// `true` si el evento ya esta hecho (el visor no hace nada mas con el).
-    pub(super) fn tinta_primero(&mut self, ev: &EventoOverlay, ventana: &mut VentanaOverlay, area: pixpin_geom::Rect) -> bool {
+    pub(super) fn tinta_primero(
+        &mut self,
+        ev: &EventoOverlay,
+        ventana: &mut VentanaOverlay,
+        area: pixpin_geom::Rect,
+    ) -> bool {
         let local = |p: pixpin_geom::Punto| ((p.x - area.x) as f32, (p.y - area.y) as f32);
-        let escribiendo = self.anotado.tinta().is_some_and(|t| t.gesto.esta_escribiendo());
+        let escribiendo = self
+            .anotado
+            .tinta()
+            .is_some_and(|t| t.gesto.esta_escribiendo());
         let para_la_tinta = match *ev {
-            EventoOverlay::RatonMovido(_) | EventoOverlay::Muestra(_) | EventoOverlay::BotonSoltado(_) => self.gesto.is_none(),
+            EventoOverlay::RatonMovido(_)
+            | EventoOverlay::Muestra(_)
+            | EventoOverlay::BotonSoltado(_) => self.gesto.is_none(),
             EventoOverlay::Caracter(_) => true,
             EventoOverlay::BotonPulsado(p) => {
                 self.raton = local(p);
@@ -308,16 +379,33 @@ impl Estado<'_> {
             }
             // Ctrl+Z / Ctrl+Y: lo ultimo anotado (escribiendo un texto, el
             // deshacer es del texto).
-            EventoOverlay::Tecla { vk: vk @ (VK_Z | VK_Y), ctrl: true, alt: false, shift } if !escribiendo => {
+            EventoOverlay::Tecla {
+                vk: vk @ (VK_Z | VK_Y),
+                ctrl: true,
+                alt: false,
+                shift,
+            } if !escribiendo => {
                 let rehacer = vk == VK_Y || shift;
-                let Estado { libro, hojas, activa, anotado, .. } = self;
+                let Estado {
+                    libro,
+                    hojas,
+                    activa,
+                    anotado,
+                    ..
+                } = self;
                 if let Some(ab) = hojas.get(*activa).and_then(Option::as_ref) {
                     anotado.deshacer_lo_mio(libro, &ab.hoja, &ab.rejilla, rehacer);
                 }
                 return true;
             }
-            EventoOverlay::Tecla { vk: VK_E, ctrl: true, .. } => false,
-            EventoOverlay::Tecla { vk, .. } => vk != logica::VK_ESCAPE || self.anotado.tinta().is_some_and(|t| t.quiere_escape()),
+            EventoOverlay::Tecla {
+                vk: VK_E,
+                ctrl: true,
+                ..
+            } => false,
+            EventoOverlay::Tecla { vk, .. } => {
+                vk != logica::VK_ESCAPE || self.anotado.tinta().is_some_and(|t| t.quiere_escape())
+            }
             _ => false,
         };
         if !para_la_tinta {
@@ -329,11 +417,25 @@ impl Estado<'_> {
         }
         let escala = self.escala_por_cien();
         let caja = self.zonas().hoja;
-        let Estado { libro, hojas, activa, anotado, .. } = self;
-        let Some(ab) = hojas.get(*activa).and_then(Option::as_ref) else { return false };
+        let Estado {
+            libro,
+            hojas,
+            activa,
+            anotado,
+            ..
+        } = self;
+        let Some(ab) = hojas.get(*activa).and_then(Option::as_ref) else {
+            return false;
+        };
         let (v, celdas) = vista_de(ab, caja);
         let camara = super::capa::camara(&ab.rejilla, &v, celdas);
-        let h = anotado.evento(ev, (libro, &ab.hoja, *activa), &ab.rejilla, &camara, (area, escala));
+        let h = anotado.evento(
+            ev,
+            (libro, &ab.hoja, *activa),
+            &ab.rejilla,
+            &camara,
+            (area, escala),
+        );
         if let Some(c) = h.cursor {
             ventana.poner_cursor(crate::dibujo::teclas::forma_de(c));
         }
@@ -360,7 +462,11 @@ impl Estado<'_> {
             self.dejar_de_anotar();
         }
         // El raton, mientras se anota, es solo de la tinta y del riel.
-        matches!(*ev, EventoOverlay::RatonMovido(_) | EventoOverlay::Muestra(_)) || h.consumido || h.salir
+        matches!(
+            *ev,
+            EventoOverlay::RatonMovido(_) | EventoOverlay::Muestra(_)
+        ) || h.consumido
+            || h.salir
     }
 
     /// El gesto de pararse con el lapiz: el trazo quieto se vuelve figura.
@@ -399,18 +505,34 @@ pub(super) fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
             if hoja != est.activa {
                 continue;
             }
-            if let Some([x0, y0, _, y1]) = hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, f, c)
+            if let Some([x0, y0, _, y1]) =
+                hoja_office::caja_de_celda(&ab.rejilla, &vc, celdas, f, c)
                 && x0 >= celdas.x
                 && y0 >= celdas.y
             {
                 let radio = (7.0 * e).min((y1 - y0) / 2.0).max(4.0 * e);
-                lector::redondel(p, &m.emoji, (x0 + radio + 1.0, y0 + (y1 - y0) / 2.0), radio, 0.85);
+                lector::redondel(
+                    p,
+                    &m.emoji,
+                    (x0 + radio + 1.0, y0 + (y1 - y0) / 2.0),
+                    radio,
+                    0.85,
+                );
             }
         }
     }
     let riel = est.riel();
     let emojis: Vec<&str> = est.marcas.iter().map(|m| m.emoji.as_str()).collect();
-    lector::pintar_riel_con(p, &riel, &emojis, est.encima, est.poniendo_marca, est.anotando, est.marcos.activo, &textos.t("marca-elige"));
+    lector::pintar_riel_con(
+        p,
+        &riel,
+        &emojis,
+        est.encima,
+        est.poniendo_marca,
+        est.anotando,
+        est.marcos.activo,
+        &textos.t("marca-elige"),
+    );
     if est.anotando {
         let (area, escala) = (est.area, est.escala_por_cien());
         est.anotado.pintar_interfaz(p, area, escala);
@@ -435,12 +557,21 @@ mod pruebas {
     #[test]
     fn el_riel_las_ordena_por_hoja_y_fila() {
         let mut l = Vec::new();
-        for (i, (h, f, c)) in [(1, 0, 0), (0, 9, 3), (0, 9, 1), (0, 2, 7)].into_iter().enumerate() {
+        for (i, (h, f, c)) in [(1, 0, 0), (0, 9, 3), (0, 9, 1), (0, 2, 7)]
+            .into_iter()
+            .enumerate()
+        {
             let (x, y) = sitio_de_marca(h, (f, c));
             l = marcas::con(&l, x, y, "🔖", i as i64 + 1);
         }
-        let orden: Vec<_> = marcas::de_texto(&marcas::a_texto(&l)).iter().map(celda_de_marca).collect();
-        assert_eq!(orden, vec![(0, (2, 7)), (0, (9, 1)), (0, (9, 3)), (1, (0, 0))]);
+        let orden: Vec<_> = marcas::de_texto(&marcas::a_texto(&l))
+            .iter()
+            .map(celda_de_marca)
+            .collect();
+        assert_eq!(
+            orden,
+            vec![(0, (2, 7)), (0, (9, 1)), (0, (9, 3)), (1, (0, 0))]
+        );
     }
 
     /// Bajar el riel lo baja entero (la isla, los botones, los puntos y la
@@ -452,7 +583,15 @@ mod pruebas {
         bajar(&mut r, 50);
         assert_eq!(r.isla.y, r0.isla.y + 50);
         assert_eq!(r.hojita.x, r0.hojita.x);
-        assert!(r.puntos.iter().zip(&r0.puntos).all(|(a, b)| a.y == b.y + 50));
-        assert_eq!(r.tira.as_ref().map(|t| t.cerrar.y), r0.tira.as_ref().map(|t| t.cerrar.y + 50));
+        assert!(
+            r.puntos
+                .iter()
+                .zip(&r0.puntos)
+                .all(|(a, b)| a.y == b.y + 50)
+        );
+        assert_eq!(
+            r.tira.as_ref().map(|t| t.cerrar.y),
+            r0.tira.as_ref().map(|t| t.cerrar.y + 50)
+        );
     }
 }

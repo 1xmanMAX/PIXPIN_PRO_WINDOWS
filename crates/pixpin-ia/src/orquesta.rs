@@ -133,7 +133,11 @@ Repasa el pedido punto por punto: ¿falta algo o algo quedó mal (desalineado, e
 JSON: {{\"faltan\":[{{\"titulo\":\"\",\"instrucciones\":\"\",\"hecho_si\":\"\"}}],\
 \"respuesta\":\"al usuario, en su idioma, una o dos frases de lo hecho (y lo que no se pudo, si algo)\"}}. \
 Si está todo, \"faltan\":[].",
-        if con_vista { "La imagen adjunta es cómo quedó el lienzo ahora.\n\n" } else { "" }
+        if con_vista {
+            "La imagen adjunta es cómo quedó el lienzo ahora.\n\n"
+        } else {
+            ""
+        }
     )
 }
 
@@ -145,11 +149,17 @@ pub fn json_de(texto: &str) -> Option<Value> {
     let t = texto.trim();
     let ini = t.find('{')?;
     let fin = t.rfind('}')?;
-    (fin > ini).then(|| serde_json::from_str(&t[ini..=fin]).ok()).flatten()
+    (fin > ini)
+        .then(|| serde_json::from_str(&t[ini..=fin]).ok())
+        .flatten()
 }
 
 fn texto_de(v: &Value, clave: &str) -> String {
-    v.get(clave).and_then(Value::as_str).unwrap_or("").trim().to_string()
+    v.get(clave)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 fn tareas_de(v: Option<&Value>) -> Vec<Tarea> {
@@ -173,14 +183,19 @@ fn tareas_de(v: Option<&Value>) -> Vec<Tarea> {
 /// **El plan**, si se entiende y trae al menos una tarea.
 pub fn leer_plan(texto: &str) -> Option<PlanDelJefe> {
     let v = json_de(texto)?;
-    let plan = PlanDelJefe { entendido: texto_de(&v, "entendido"), tareas: tareas_de(v.get("tareas")) };
+    let plan = PlanDelJefe {
+        entendido: texto_de(&v, "entendido"),
+        tareas: tareas_de(v.get("tareas")),
+    };
     (!plan.tareas.is_empty()).then_some(plan)
 }
 
 /// **El veredicto**; lo que no se entiende cuenta como «bien» (no se
 /// atasca una tarea por una respuesta rara del jefe).
 pub fn leer_veredicto(texto: &str) -> Veredicto {
-    let Some(v) = json_de(texto) else { return Veredicto::Bien };
+    let Some(v) = json_de(texto) else {
+        return Veredicto::Bien;
+    };
     let motivo = texto_de(&v, "motivo");
     match texto_de(&v, "veredicto").to_lowercase().as_str() {
         "corregir" => {
@@ -195,7 +210,10 @@ pub fn leer_veredicto(texto: &str) -> Veredicto {
 /// **La revision final.**
 pub fn leer_cierre(texto: &str) -> Cierre {
     match json_de(texto) {
-        Some(v) => Cierre { faltan: tareas_de(v.get("faltan")), respuesta: texto_de(&v, "respuesta") },
+        Some(v) => Cierre {
+            faltan: tareas_de(v.get("faltan")),
+            respuesta: texto_de(&v, "respuesta"),
+        },
         None => Cierre::default(),
     }
 }
@@ -214,8 +232,16 @@ fn cortar(t: &str, n: usize) -> String {
 /// Lo que se le manda al jefe: sus instrucciones, las de siempre (el mapa
 /// de la app) y la conversacion sin el sistema de antes.
 fn conversacion_para_el_jefe(historial: &[Mensaje]) -> Vec<Mensaje> {
-    let mut v = vec![Mensaje::sistema(format!("{SISTEMA_JEFE}{}", agente::instrucciones()))];
-    v.extend(historial.iter().filter(|m| m.rol != Rol::Sistema && m.rol != Rol::Herramienta).cloned());
+    let mut v = vec![Mensaje::sistema(format!(
+        "{SISTEMA_JEFE}{}",
+        agente::instrucciones()
+    ))];
+    v.extend(
+        historial
+            .iter()
+            .filter(|m| m.rol != Rol::Sistema && m.rol != Rol::Herramienta)
+            .cloned(),
+    );
     v
 }
 
@@ -244,7 +270,11 @@ impl Informe {
     fn para_el_jefe(&self) -> String {
         let mut s = String::new();
         for (n, ok, t) in &self.resultados {
-            s.push_str(&format!("- {n}: {}{}\n", if *ok { "" } else { "ERROR " }, cortar(t, LARGO_RESULTADO)));
+            s.push_str(&format!(
+                "- {n}: {}{}\n",
+                if *ok { "" } else { "ERROR " },
+                cortar(t, LARGO_RESULTADO)
+            ));
         }
         if s.is_empty() {
             s.push_str("- (no usó ninguna herramienta)\n");
@@ -285,9 +315,14 @@ Termina con una o dos frases de lo que hiciste.\n\nTu tarea ({n} de {total}): {}
         encargo.push_str(&format!("\n\nLo ya hecho por otros trabajadores:\n{antes}"));
     }
     if let Some(c) = correccion {
-        encargo.push_str(&format!("\n\nEl jefe revisó tu trabajo y pide corregir: {c}"));
+        encargo.push_str(&format!(
+            "\n\nEl jefe revisó tu trabajo y pide corregir: {c}"
+        ));
     }
-    encargo.push_str(&format!("\n\n— Pedido original del usuario —\n{}", pedido.texto_entero()));
+    encargo.push_str(&format!(
+        "\n\n— Pedido original del usuario —\n{}",
+        pedido.texto_entero()
+    ));
     // Las fotos del pedido tambien (calcar, leer una tabla...).
     let mut m = Mensaje::usuario(encargo);
     for p in &pedido.partes {
@@ -322,7 +357,14 @@ Termina con una o dos frases de lo que hiciste.\n\nTu tarea ({n} de {total}): {}
                 otro => al_evento(otro),
             }
         };
-        agente::turno_con(trabajador, &mut historial, herramientas, ejecutor, &o, &mut filtro)
+        agente::turno_con(
+            trabajador,
+            &mut historial,
+            herramientas,
+            ejecutor,
+            &o,
+            &mut filtro,
+        )
     };
     if let Ok(f) = &r
         && informe.dicho.trim().is_empty()
@@ -333,7 +375,13 @@ Termina con una o dos frases de lo que hiciste.\n\nTu tarea ({n} de {total}): {}
 }
 
 fn visibles(plan: &[Tarea], estados: &[EstadoTarea]) -> Vec<TareaVisible> {
-    plan.iter().zip(estados).map(|(t, e)| TareaVisible { titulo: t.titulo.clone(), estado: *e }).collect()
+    plan.iter()
+        .zip(estados)
+        .map(|(t, e)| TareaVisible {
+            titulo: t.titulo.clone(),
+            estado: *e,
+        })
+        .collect()
 }
 
 /// **El turno con jefe.** `None` si el jefe no dio un plan que se entienda:
@@ -351,7 +399,12 @@ pub fn turno(
     let pedido = agente::pedido_del_usuario(historial);
     // 1. El plan.
     if al_evento(Evento::Llamando("jefe:planear".into())) == Seguir::Parar {
-        return Some(Ok(Final { texto: String::new(), herramientas_hechas: 0, reintentos: 0, cortado: true }));
+        return Some(Ok(Final {
+            texto: String::new(),
+            herramientas_hechas: 0,
+            reintentos: 0,
+            cortado: true,
+        }));
     }
     let mut mensajes = conversacion_para_el_jefe(historial);
     mensajes.push(Mensaje::usuario(PEDIR_PLAN));
@@ -402,11 +455,15 @@ pub fn turno(
                 }
                 let texto = informe.para_el_jefe();
                 let veredicto = if r.is_err() {
-                    Veredicto::Corregir("el trabajador no pudo acabar; inténtalo de nuevo con otra forma".into())
+                    Veredicto::Corregir(
+                        "el trabajador no pudo acabar; inténtalo de nuevo con otra forma".into(),
+                    )
                 } else {
                     al_evento(Evento::Llamando("jefe:supervisar".into()));
                     let mut m = conversacion_para_el_jefe(&[]);
-                    m.push(Mensaje::usuario(pedir_veredicto(&pedido, &tareas[i], &texto)));
+                    m.push(Mensaje::usuario(pedir_veredicto(
+                        &pedido, &tareas[i], &texto,
+                    )));
                     preguntar_al_jefe(jefe, m, 1024).map_or(Veredicto::Bien, |t| leer_veredicto(&t))
                 };
                 match veredicto {
@@ -419,12 +476,17 @@ pub fn turno(
                     }
                     Veredicto::NoSePuede(m) => {
                         estados[i] = EstadoTarea::NoSePudo;
-                        hecho_antes.push_str(&format!("- {}: no se pudo ({m})\n", tareas[i].titulo));
+                        hecho_antes
+                            .push_str(&format!("- {}: no se pudo ({m})\n", tareas[i].titulo));
                         break;
                     }
                     _ => {
                         estados[i] = EstadoTarea::Hecha;
-                        hecho_antes.push_str(&format!("- {}: {}\n", tareas[i].titulo, cortar(informe.dicho.trim(), 300)));
+                        hecho_antes.push_str(&format!(
+                            "- {}: {}\n",
+                            tareas[i].titulo,
+                            cortar(informe.dicho.trim(), 300)
+                        ));
                         break;
                     }
                 }
@@ -438,7 +500,9 @@ pub fn turno(
         // 4. La revision del conjunto (con la vista si el jefe ve).
         al_evento(Evento::Llamando("jefe:revisar".into()));
         let vista = if jefe.ve_imagenes() && opciones.ojos {
-            ejecutor.ver(&crate::ojos::Mirada::para_revisar(crate::ojos::Zona::Turno)).ok()
+            ejecutor
+                .ver(&crate::ojos::Mirada::para_revisar(crate::ojos::Zona::Turno))
+                .ok()
         } else {
             None
         };
@@ -448,7 +512,9 @@ pub fn turno(
             Some(v) => Mensaje::usuario_con_imagen(texto, v.png.clone(), "image/png"),
             None => Mensaje::usuario(texto),
         });
-        let cierre = preguntar_al_jefe(jefe, m, 2048).map(|t| leer_cierre(&t)).unwrap_or_default();
+        let cierre = preguntar_al_jefe(jefe, m, 2048)
+            .map(|t| leer_cierre(&t))
+            .unwrap_or_default();
         if !ronda_final && !cierre.faltan.is_empty() && tareas.len() < MAX_TAREAS {
             ronda_final = true;
             for t in cierre.faltan.into_iter().take(MAX_TAREAS - tareas.len()) {
@@ -468,9 +534,19 @@ pub fn turno(
         if hechas > 0 {
             ejecutor.cerrar_turno();
         }
-        return Some(Ok(Final { texto: respuesta, herramientas_hechas: hechas, reintentos, cortado: false }));
+        return Some(Ok(Final {
+            texto: respuesta,
+            herramientas_hechas: hechas,
+            reintentos,
+            cortado: false,
+        }));
     }
-    Some(Ok(Final { texto: String::new(), herramientas_hechas: hechas, reintentos, cortado: true }))
+    Some(Ok(Final {
+        texto: String::new(),
+        herramientas_hechas: hechas,
+        reintentos,
+        cortado: true,
+    }))
 }
 
 #[cfg(test)]

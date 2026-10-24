@@ -14,7 +14,9 @@ use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 use pixpin_render::pagina_office::PintorOffice;
 use pixpin_render::{Color, MotorRender};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
-use windows::Win32::Graphics::Direct3D11::{D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device};
+use windows::Win32::Graphics::Direct3D11::{
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
+};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 
 fn d3d() -> ID3D11Device {
@@ -41,7 +43,8 @@ fn d3d() -> ID3D11Device {
 #[test]
 #[ignore = "pinta a PNG para mirarlo: necesita GPU y PIXPIN_OFFICE_MUESTRAS"]
 fn pintar_muestras_con_efectos() {
-    let carpeta = PathBuf::from(std::env::var("PIXPIN_OFFICE_MUESTRAS").expect("PIXPIN_OFFICE_MUESTRAS"));
+    let carpeta =
+        PathBuf::from(std::env::var("PIXPIN_OFFICE_MUESTRAS").expect("PIXPIN_OFFICE_MUESTRAS"));
     // SAFETY: iniciar COM en este hilo para WIC.
     let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
     let dispositivo = d3d();
@@ -60,8 +63,12 @@ fn pintar_muestras_con_efectos() {
         let recursos = doc.recursos();
         let mut n = 0;
         while let Some(pagina) = doc.pagina(n, &pintor.letras) {
-            let (w, h) = ((pagina.ancho * escala).ceil() as u32, (pagina.alto * escala).ceil() as u32);
-            let destino = FueraDePantalla::nuevo(&motor, &dispositivo, w.max(1), h.max(1)).expect("destino");
+            let (w, h) = (
+                (pagina.ancho * escala).ceil() as u32,
+                (pagina.alto * escala).ceil() as u32,
+            );
+            let destino =
+                FueraDePantalla::nuevo(&motor, &dispositivo, w.max(1), h.max(1)).expect("destino");
             let total = doc.total() as u32;
             let t = std::time::Instant::now();
             motor
@@ -71,10 +78,28 @@ fn pintar_muestras_con_efectos() {
                 })
                 .expect("dibujar");
             destino.esperar_gpu().expect("gpu");
-            println!("{} pagina {}: {:.1} ms", ruta.display(), n + 1, t.elapsed().as_secs_f64() * 1000.0);
+            println!(
+                "{} pagina {}: {:.1} ms",
+                ruta.display(),
+                n + 1,
+                t.elapsed().as_secs_f64() * 1000.0
+            );
             let (aw, ah, px) = destino.leer_rgba().expect("leer");
-            let nombre = carpeta.join(format!("{}-{:02}.png", ruta.file_name().unwrap_or_default().to_string_lossy(), n + 1));
-            guardar(&ImagenRgba { ancho: aw, alto: ah, pixeles: px }, &nombre, FormatoImagen::Png).expect("png");
+            let nombre = carpeta.join(format!(
+                "{}-{:02}.png",
+                ruta.file_name().unwrap_or_default().to_string_lossy(),
+                n + 1
+            ));
+            guardar(
+                &ImagenRgba {
+                    ancho: aw,
+                    alto: ah,
+                    pixeles: px,
+                },
+                &nombre,
+                FormatoImagen::Png,
+            )
+            .expect("png");
             n += 1;
             if n > 20 {
                 break;

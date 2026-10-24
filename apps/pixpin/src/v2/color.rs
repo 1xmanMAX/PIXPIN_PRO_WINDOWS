@@ -110,7 +110,11 @@ mod pruebas {
 
     #[test]
     fn el_mismo_texto_da_siempre_el_mismo_color() {
-        let paleta = [super::super::ACENTO, super::super::VERDE, super::super::ROJO];
+        let paleta = [
+            super::super::ACENTO,
+            super::super::VERDE,
+            super::super::ROJO,
+        ];
         let a = de_clave("Trabajo", &paleta);
         assert_eq!(a, de_clave("Trabajo", &paleta));
         // Textos distintos reparten por toda la paleta.

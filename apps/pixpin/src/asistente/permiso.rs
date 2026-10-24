@@ -16,9 +16,9 @@
 //! ([`para_la_tarjeta`]) y la ensena con «Sí»/«No»; contestar alli es lo
 //! mismo que en la burbuja ([`contestar`]).
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
-use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::chat::Contestacion;
@@ -65,7 +65,11 @@ pub fn registrar(proyecto: &str, nota: &str, pregunta: &str) -> Receiver<bool> {
 
 /// La pregunta que espera en esa burbuja, si la hay.
 pub fn pregunta(proyecto: &str, nota: &str) -> Option<String> {
-    con(|v| v.iter().find(|p| p.proyecto == proyecto && p.nota == nota).map(|p| p.pregunta.clone()))
+    con(|v| {
+        v.iter()
+            .find(|p| p.proyecto == proyecto && p.nota == nota)
+            .map(|p| p.pregunta.clone())
+    })
 }
 
 /// **La pregunta de la tarjeta `tarjeta`** del aviso flotante: la que ya
@@ -99,7 +103,10 @@ pub fn soltar_la_tarjeta(tarjeta: u64) {
 /// Contesta desde la tarjeta (la del aviso o la de la burbuja). `false` si ya no esperaba nadie.
 pub fn contestar(proyecto: &str, nota: &str, si: bool) -> bool {
     con(|v| {
-        let Some(i) = v.iter().position(|p| p.proyecto == proyecto && p.nota == nota) else {
+        let Some(i) = v
+            .iter()
+            .position(|p| p.proyecto == proyecto && p.nota == nota)
+        else {
             return false;
         };
         v.remove(i).responder.send(si).is_ok()
@@ -131,18 +138,26 @@ pub fn esperar(rx: &Receiver<bool>, caduca: Duration, parar: Option<&AtomicBool>
     }
 }
 
-
 /// **Una accion de una automatizacion pide permiso** (sin turno del
 /// asistente ni burbuja suya): nace una nota del asistente en su chat con
 /// la pregunta, se espera el «Sí»/«No» de su tarjeta y la nota queda con la
 /// respuesta. `true` si dijo que si.
-pub fn preguntar_en_el_chat(ubicacion: &pixpin_store::Ubicacion, aparato: &str, de: &str, pregunta: &str) -> bool {
+pub fn preguntar_en_el_chat(
+    ubicacion: &pixpin_store::Ubicacion,
+    aparato: &str,
+    de: &str,
+    pregunta: &str,
+) -> bool {
     let raiz = ubicacion.raiz();
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let Ok((proyecto, carpeta)) = crate::automatizaciones::chat_del_asistente(raiz, aparato, ahora) else {
+    let Ok((proyecto, carpeta)) = crate::automatizaciones::chat_del_asistente(raiz, aparato, ahora)
+    else {
         return false;
     };
-    let mut vivo = super::chat::EnVivo { texto: format!("⚙️ {de}\n"), ..Default::default() };
+    let mut vivo = super::chat::EnVivo {
+        texto: format!("⚙️ {de}\n"),
+        ..Default::default()
+    };
     vivo.preguntar(pregunta);
     let Ok(numero) = crate::ventana_chat::siguiente_numero_en(raiz, &proyecto) else {
         return false;
@@ -180,7 +195,10 @@ mod pruebas {
     #[test]
     fn la_pregunta_se_ve_se_contesta_una_vez_y_caduca() {
         let rx = registrar("p-permiso", "n1", "¿Borro la lista?");
-        assert_eq!(pregunta("p-permiso", "n1").as_deref(), Some("¿Borro la lista?"));
+        assert_eq!(
+            pregunta("p-permiso", "n1").as_deref(),
+            Some("¿Borro la lista?")
+        );
         assert_eq!(pregunta("p-permiso", "otra"), None);
         assert!(contestar("p-permiso", "n1", true));
         assert_eq!(esperar(&rx, Duration::from_secs(1), None), Contestacion::Si);
@@ -189,12 +207,18 @@ mod pruebas {
         assert!(!contestar("p-permiso", "n1", false));
         // Sin respuesta, caduca: es un no.
         let rx = registrar("p-permiso", "n2", "¿Envio?");
-        assert_eq!(esperar(&rx, Duration::from_millis(50), None), Contestacion::Caducada);
+        assert_eq!(
+            esperar(&rx, Duration::from_millis(50), None),
+            Contestacion::Caducada
+        );
         quitar("p-permiso", "n2");
         assert_eq!(pregunta("p-permiso", "n2"), None);
         // Parar tambien.
         let rx = registrar("p-permiso", "n3", "¿Envio?");
-        assert_eq!(esperar(&rx, Duration::from_secs(5), Some(&AtomicBool::new(true))), Contestacion::Caducada);
+        assert_eq!(
+            esperar(&rx, Duration::from_secs(5), Some(&AtomicBool::new(true))),
+            Contestacion::Caducada
+        );
         quitar("p-permiso", "n3");
     }
 
@@ -212,14 +236,20 @@ mod pruebas {
         // Contestada desde la tarjeta con un no: el turno lo recibe y ya no
         // se ensena.
         assert!(contestar("p-tarjeta", "a", false));
-        assert_eq!(esperar(&rx1, Duration::from_secs(1), None), Contestacion::No);
+        assert_eq!(
+            esperar(&rx1, Duration::from_secs(1), None),
+            Contestacion::No
+        );
         assert_eq!(pregunta("p-tarjeta", "a"), None);
         // Caso negativo: la tarjeta que se va suelta la suya, y otra la recoge.
         soltar_la_tarjeta(t2);
         assert_eq!(para_la_tarjeta(t1).map(|p| p.nota), Some("b".into()));
         // Caducada (la quita el turno): ninguna tarjeta la ensena ya, y
         // contestar tarde no hace nada.
-        assert_eq!(esperar(&rx2, Duration::from_millis(20), None), Contestacion::Caducada);
+        assert_eq!(
+            esperar(&rx2, Duration::from_millis(20), None),
+            Contestacion::Caducada
+        );
         quitar("p-tarjeta", "b");
         assert_eq!(para_la_tarjeta(t1), None);
         assert!(!contestar("p-tarjeta", "b", true));

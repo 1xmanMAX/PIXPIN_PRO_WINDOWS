@@ -52,7 +52,10 @@ pub fn enmascarar(clave: &str) -> String {
     let fin: String = clave.chars().skip(n - 4).collect();
     let prefijo: String = clave.chars().take_while(|c| *c != '-').take(6).collect();
     if clave.starts_with("sk-") {
-        let cabeza: String = clave.chars().take(if clave.starts_with("sk-ant-") { 7 } else { 3 }).collect();
+        let cabeza: String = clave
+            .chars()
+            .take(if clave.starts_with("sk-ant-") { 7 } else { 3 })
+            .collect();
         format!("{cabeza}…{fin}")
     } else {
         format!("{prefijo}…{fin}")
@@ -141,7 +144,8 @@ pub fn guardar_en(carpeta: &Path, p: Proveedor, clave: &str) -> Result<(), Strin
         return borrar_en(carpeta, p);
     }
     let cifrado = cifrar(clave.as_bytes())?;
-    std::fs::create_dir_all(carpeta).map_err(|e| format!("no se pudo crear la carpeta de claves: {e}"))?;
+    std::fs::create_dir_all(carpeta)
+        .map_err(|e| format!("no se pudo crear la carpeta de claves: {e}"))?;
     // Primero a un fichero aparte y luego se cambia de nombre: un corte a
     // medias no deja una clave rota en lugar de la buena.
     let tmp = ruta.with_extension("clave.parte");
@@ -157,7 +161,9 @@ pub fn guardar_en(carpeta: &Path, p: Proveedor, clave: &str) -> Result<(), Strin
 pub fn leer_de(carpeta: &Path, p: Proveedor) -> Option<String> {
     let cifrado = std::fs::read(fichero(carpeta, p)).ok()?;
     let claro = descifrar(&cifrado).ok()?;
-    String::from_utf8(claro).ok().filter(|c| !c.trim().is_empty())
+    String::from_utf8(claro)
+        .ok()
+        .filter(|c| !c.trim().is_empty())
 }
 
 pub fn borrar_en(carpeta: &Path, p: Proveedor) -> Result<(), String> {
@@ -207,16 +213,27 @@ mod pruebas {
     fn la_clave_no_aparece_en_claro_en_ningun_fichero() {
         let c = carpeta_de_prueba("claro");
         guardar_en(&c, Proveedor::Claude, CLAVE).unwrap();
-        guardar_en(&c, Proveedor::DeepSeek, "clave-de-prueba-deepseek-0123456789abcdef").unwrap();
+        guardar_en(
+            &c,
+            Proveedor::DeepSeek,
+            "clave-de-prueba-deepseek-0123456789abcdef",
+        )
+        .unwrap();
         let mut ficheros = 0;
         for e in std::fs::read_dir(&c).unwrap() {
             let bytes = std::fs::read(e.unwrap().path()).unwrap();
             ficheros += 1;
             for buscada in [CLAVE.as_bytes(), b"PRUEBAxyzzy", b"0123456789abcdef"] {
-                assert!(!bytes.windows(buscada.len()).any(|w| w == buscada), "clave en claro en el disco");
+                assert!(
+                    !bytes.windows(buscada.len()).any(|w| w == buscada),
+                    "clave en claro en el disco"
+                );
             }
             // Ni en UTF-16.
-            let ancha: Vec<u8> = "PRUEBAxyzzy".encode_utf16().flat_map(u16::to_le_bytes).collect();
+            let ancha: Vec<u8> = "PRUEBAxyzzy"
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect();
             assert!(!bytes.windows(ancha.len()).any(|w| w == ancha.as_slice()));
         }
         assert_eq!(ficheros, 2, "sin ficheros temporales olvidados");
@@ -243,7 +260,15 @@ mod pruebas {
         let mut salida = CRYPT_INTEGER_BLOB::default();
         // SAFETY: igual que en `descifrar`, pero sin entropia.
         let r = unsafe {
-            CryptUnprotectData(&entrada, None, None, None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut salida)
+            CryptUnprotectData(
+                &entrada,
+                None,
+                None,
+                None,
+                None,
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut salida,
+            )
         };
         assert!(r.is_err());
         assert_eq!(descifrar(&cifrado).unwrap(), b"secreto");

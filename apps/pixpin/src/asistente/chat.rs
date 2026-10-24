@@ -40,8 +40,15 @@ pub fn mencion(texto: &str) -> Option<String> {
     while let Some(i) = bajo[desde..].find(MENCION) {
         let i = desde + i;
         let fin = i + MENCION.len();
-        let antes_ok = i == 0 || !bajo[..i].chars().next_back().is_some_and(char::is_alphanumeric);
-        let despues_ok = !bajo[fin..].chars().next().is_some_and(|c| c.is_alphanumeric() || c == '_');
+        let antes_ok = i == 0
+            || !bajo[..i]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_alphanumeric);
+        let despues_ok = !bajo[fin..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_');
         if antes_ok && despues_ok {
             let resto = format!("{}{}", &texto[..i], &texto[fin..]);
             let limpio = resto
@@ -101,7 +108,14 @@ pub fn conversacion_con_ids(anteriores: &[Nota]) -> Vec<(String, i64, bool, Stri
     desde_el_corte(anteriores)
         .iter()
         .filter(|m| es_nota(m) && !m.texto.trim().is_empty())
-        .map(|m| (m.id.clone(), m.numero, !es_del_asistente(m), m.texto.clone()))
+        .map(|m| {
+            (
+                m.id.clone(),
+                m.numero,
+                !es_del_asistente(m),
+                m.texto.clone(),
+            )
+        })
         .collect()
 }
 
@@ -164,7 +178,8 @@ pub const MENCION_LIENZO: &str = "@lienzo:";
 
 /// Si es un lienzo (o una hoja de PDF con dibujo) en el que se puede dibujar.
 pub fn es_lienzo(m: &Nota) -> bool {
-    matches!(m.clase, Some(Clase::Dibujo) | Some(Clase::Pagina)) && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
+    matches!(m.clase, Some(Clase::Dibujo) | Some(Clase::Pagina))
+        && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
 }
 
 /// Como se le llama a un lienzo en la lista y en la mencion.
@@ -184,7 +199,10 @@ pub fn nombre_de_lienzo(m: &Nota) -> String {
 /// La mencion que se escribe para un lienzo: sin espacios (el `_` los
 /// hace), para que acabe donde acaba la palabra.
 pub fn mencion_de_lienzo(m: &Nota) -> String {
-    format!("{MENCION_LIENZO}{}", nombre_de_lienzo(m).replace(char::is_whitespace, "_"))
+    format!(
+        "{MENCION_LIENZO}{}",
+        nombre_de_lienzo(m).replace(char::is_whitespace, "_")
+    )
 }
 
 /// Un nombre de lienzo para compararlo: sin tildes ni mayusculas, `_` por
@@ -250,10 +268,18 @@ pub fn lienzo_por_nombre(mensajes: &[Nota], nombre: &str) -> Option<usize> {
     if buscado.trim().is_empty() {
         return None;
     }
-    let lienzos = || mensajes.iter().enumerate().rev().filter(|(_, m)| es_lienzo(m));
+    let lienzos = || {
+        mensajes
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, m)| es_lienzo(m))
+    };
     lienzos()
         .find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)) == buscado)
-        .or_else(|| lienzos().find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)).contains(buscado.trim())))
+        .or_else(|| {
+            lienzos().find(|(_, m)| sin_tildes(&nombre_de_lienzo(m)).contains(buscado.trim()))
+        })
         .map(|(i, _)| i)
 }
 
@@ -293,7 +319,9 @@ pub fn lienzo_de_la_respuesta(m: &Nota, mensajes: &[Nota]) -> Option<usize> {
         return None;
     }
     let r = m.resto.get(LIENZO_DE_LA_RESPUESTA)?.as_str()?;
-    mensajes.iter().rposition(|x| es_lienzo(x) && x.referencia.as_deref() == Some(r))
+    mensajes
+        .iter()
+        .rposition(|x| es_lienzo(x) && x.referencia.as_deref() == Some(r))
 }
 
 // ---------------------------------------------------------------------------
@@ -306,11 +334,17 @@ pub const FUENTES_DE_LA_RESPUESTA: &str = "fuentesIa";
 
 /// Lo que se apunta en la respuesta al acabar: las citas que el modelo
 /// nombro (o la primera, si no nombro ninguna). `None` si no busco nada.
-pub fn fuentes_para_la_nota(citas: &[pixpin_ia::documentos::Cita], respuesta: &str) -> Option<serde_json::Value> {
+pub fn fuentes_para_la_nota(
+    citas: &[pixpin_ia::documentos::Cita],
+    respuesta: &str,
+) -> Option<serde_json::Value> {
     if citas.is_empty() {
         return None;
     }
-    let c = pixpin_ia::documentos::Citas { lista: citas.to_vec(), desfase_ms: None };
+    let c = pixpin_ia::documentos::Citas {
+        lista: citas.to_vec(),
+        desfase_ms: None,
+    };
     let citadas: Vec<serde_json::Value> = c
         .citadas(respuesta)
         .into_iter()
@@ -340,7 +374,11 @@ pub fn fuente_de_la_respuesta(m: &Nota) -> Option<FuenteCitada> {
     let f = lista.first()?;
     Some(FuenteCitada {
         titulo: f.get("titulo")?.as_str()?.to_string(),
-        proyecto: f.get("proyecto").and_then(|p| p.as_str()).unwrap_or_default().to_string(),
+        proyecto: f
+            .get("proyecto")
+            .and_then(|p| p.as_str())
+            .unwrap_or_default()
+            .to_string(),
         pedido: f.get("pedido")?.clone(),
         mas: lista.len() - 1,
     })
@@ -371,14 +409,21 @@ pub fn consulta_de_mencion(texto: &str, cursor: usize) -> Option<(usize, String)
     if escrito.chars().any(char::is_whitespace) {
         return None;
     }
-    let empieza = antes[..arroba].chars().next_back().is_none_or(char::is_whitespace);
+    let empieza = antes[..arroba]
+        .chars()
+        .next_back()
+        .is_none_or(char::is_whitespace);
     empieza.then(|| (arroba, escrito.to_string()))
 }
 
 /// Las opciones para lo escrito tras el `@`: el asistente (fuera de su
 /// chat) y los lienzos y hojas de la conversacion, del mas nuevo al mas
 /// viejo.
-pub fn opciones_de_mencion(mensajes: &[Nota], escrito: &str, chat_del_asistente: bool) -> Vec<Opcion> {
+pub fn opciones_de_mencion(
+    mensajes: &[Nota],
+    escrito: &str,
+    chat_del_asistente: bool,
+) -> Vec<Opcion> {
     let buscado = sin_tildes(escrito);
     let casa = |o: &Opcion| {
         buscado.is_empty()
@@ -398,7 +443,11 @@ pub fn opciones_de_mencion(mensajes: &[Nota], escrito: &str, chat_del_asistente:
         if !vistas.insert(m.referencia.clone()) {
             continue;
         }
-        let icono = if m.clase == Some(Clase::Pagina) { "📄" } else { "🎨" };
+        let icono = if m.clase == Some(Clase::Pagina) {
+            "📄"
+        } else {
+            "🎨"
+        };
         v.push(Opcion {
             rotulo: format!("{icono} {}", nombre_de_lienzo(m)),
             mencion: mencion_de_lienzo(m),
@@ -428,7 +477,9 @@ pub fn adjuntos(mensajes: &[Nota], ruta: impl Fn(&Nota) -> Option<PathBuf>) -> V
             let r = ruta(m)?;
             (super::ocr::es_pdf(&r) || super::ocr::es_imagen(&r)).then(|| Adjunto {
                 nombre: if m.nombre.is_empty() {
-                    r.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+                    r.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default()
                 } else {
                     m.nombre.clone()
                 },
@@ -534,7 +585,8 @@ impl EnVivo {
             Evento::Resultado { ok, texto, .. } => {
                 // Un «No» en la tarjeta no es un fallo: ya lo dice su linea.
                 if !ok && !texto.contains("dijo que no") {
-                    self.fallos.push(texto.trim_start_matches("ERROR: ").to_string());
+                    self.fallos
+                        .push(texto.trim_start_matches("ERROR: ").to_string());
                 }
                 self.estado = Some("💭 …".into());
             }
@@ -581,7 +633,12 @@ impl EnVivo {
     /// **La duda contestada queda en el historial**, en su linea:
     /// «❓ ¿Traduzco todo o solo la figura? → ✅ Solo la figura». `respuesta`
     /// `None`: nadie contesto y el turno sigue con la recomendada.
-    pub fn contestada_con_opciones(&mut self, pregunta: &str, respuesta: Option<&str>, recomendada: &str) {
+    pub fn contestada_con_opciones(
+        &mut self,
+        pregunta: &str,
+        respuesta: Option<&str>,
+        recomendada: &str,
+    ) {
         if !self.texto.is_empty() && !self.texto.ends_with('\n') {
             self.texto.push('\n');
         }
@@ -589,14 +646,17 @@ impl EnVivo {
             Some(r) => format!("✅ {}", r.trim()),
             None => format!("⌛ sin respuesta: sigo con «{}»", recomendada.trim()),
         };
-        self.texto.push_str(&format!("❓ {} → {fin}\n", pregunta.trim()));
+        self.texto
+            .push_str(&format!("❓ {} → {fin}\n", pregunta.trim()));
         self.estado = (!self.acabado).then(|| "💭 …".to_string());
     }
 
     /// **La pregunta contestada queda en el historial**, en su linea:
     /// «❓ ¿Borrar la lista «Obra»? → ✅ Sí». `false` si no habia ninguna.
     pub fn contestar(&mut self, c: Contestacion) -> bool {
-        let Some(p) = self.pendiente.take() else { return false };
+        let Some(p) = self.pendiente.take() else {
+            return false;
+        };
         if !self.texto.is_empty() && !self.texto.ends_with('\n') {
             self.texto.push('\n');
         }
@@ -726,7 +786,10 @@ pub fn formato_de_respuesta(texto: &str) -> (String, Vec<(u32, u32)>) {
         }
         // Viñeta o numero.
         let nivel = sangria / 2;
-        let (prefijo, resto) = if let Some(r) = ["- ", "* ", "+ "].iter().find_map(|m| cuerpo.strip_prefix(m)) {
+        let (prefijo, resto) = if let Some(r) = ["- ", "* ", "+ "]
+            .iter()
+            .find_map(|m| cuerpo.strip_prefix(m))
+        {
             let vineta = if nivel == 0 { "•  " } else { "◦  " };
             (format!("{}{vineta}", "    ".repeat(nivel)), r)
         } else if let Some((n, r)) = numero_de_lista(cuerpo) {
@@ -738,18 +801,36 @@ pub fn formato_de_respuesta(texto: &str) -> (String, Vec<(u32, u32)>) {
         // `**negrita**` dentro de la linea.
         let mut resto = resto;
         loop {
-            let marca = ["**", "__"].iter().filter_map(|m| resto.find(m).map(|i| (i, *m))).min_by_key(|(i, _)| *i);
+            let marca = ["**", "__"]
+                .iter()
+                .filter_map(|m| resto.find(m).map(|i| (i, *m)))
+                .min_by_key(|(i, _)| *i);
             let Some((i, m)) = marca else { break };
             let tras = &resto[i + 2..];
             let Some(j) = tras.find(m) else { break };
             if j == 0 {
                 break;
             }
-            empujar(&sin_comillas_de_codigo(&resto[..i]), false, &mut salida, &mut u16s);
-            empujar(&sin_comillas_de_codigo(&tras[..j]), true, &mut salida, &mut u16s);
+            empujar(
+                &sin_comillas_de_codigo(&resto[..i]),
+                false,
+                &mut salida,
+                &mut u16s,
+            );
+            empujar(
+                &sin_comillas_de_codigo(&tras[..j]),
+                true,
+                &mut salida,
+                &mut u16s,
+            );
             resto = &tras[j + 2..];
         }
-        empujar(&sin_comillas_de_codigo(resto), false, &mut salida, &mut u16s);
+        empujar(
+            &sin_comillas_de_codigo(resto),
+            false,
+            &mut salida,
+            &mut u16s,
+        );
     }
     (salida, negritas)
 }
@@ -761,7 +842,9 @@ fn numero_de_lista(s: &str) -> Option<(&str, &str)> {
         return None;
     }
     let tras = &s[digitos..];
-    let r = tras.strip_prefix(". ").or_else(|| tras.strip_prefix(") "))?;
+    let r = tras
+        .strip_prefix(". ")
+        .or_else(|| tras.strip_prefix(") "))?;
     Some((&s[..digitos], r))
 }
 
@@ -801,7 +884,10 @@ mod pruebas_formato {
         // asterisco suelto, emojis (UTF-16 de dos unidades) y el codigo.
         let s = "a - b\n2026 fue bueno\n5 * 3 = 15\n✏️ dibujando…\n```\n- no es lista\n```";
         let (t, b) = formato_de_respuesta(s);
-        assert_eq!(t, "a - b\n2026 fue bueno\n5 * 3 = 15\n✏️ dibujando…\n- no es lista");
+        assert_eq!(
+            t,
+            "a - b\n2026 fue bueno\n5 * 3 = 15\n✏️ dibujando…\n- no es lista"
+        );
         assert!(b.is_empty());
         let (t, b) = formato_de_respuesta("🎨 **Lienzo** listo");
         assert_eq!(negrita(&t, b[0]), "Lienzo");

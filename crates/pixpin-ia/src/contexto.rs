@@ -277,7 +277,9 @@ pub fn pasa_de(tokens: u32, reserva_respuesta: u32, ventana: u32, fraccion: f32)
 /// (asi el modelo sabe que paso y puede repetir la llamada). Los cortos no
 /// se tocan: no ahorran nada. Devuelve si cambio algo.
 pub fn despejar_resultados(historial: &mut [Mensaje], quedan: usize) -> bool {
-    let resultados: Vec<usize> = (0..historial.len()).filter(|&i| historial[i].rol == Rol::Herramienta).collect();
+    let resultados: Vec<usize> = (0..historial.len())
+        .filter(|&i| historial[i].rol == Rol::Herramienta)
+        .collect();
     let viejos = &resultados[..resultados.len().saturating_sub(quedan)];
     let mut cambio = false;
     for &i in viejos {
@@ -528,7 +530,10 @@ mod pruebas {
                 argumentos: "{}".into(),
             }];
             h.push(llamada);
-            h.push(Mensaje::resultado(&format!("c{k}"), format!("texto {k} {}", "z".repeat(2000))));
+            h.push(Mensaje::resultado(
+                &format!("c{k}"),
+                format!("texto {k} {}", "z".repeat(2000)),
+            ));
         }
         h.push(Mensaje::resultado("corto", "ok"));
         let antes = estimar(&h, &[]);
@@ -536,11 +541,18 @@ mod pruebas {
         assert!(estimar(&h, &[]) < antes / 2);
         // Los tres primeros, despejados con su nombre (el corto del final
         // cuenta entre los tres ultimos); los dos siguientes, enteros.
-        assert!(h[2].texto_entero().starts_with("(ocr0: resultado quitado"), "{}", h[2].texto_entero());
+        assert!(
+            h[2].texto_entero().starts_with("(ocr0: resultado quitado"),
+            "{}",
+            h[2].texto_entero()
+        );
         assert!(h[4].texto_entero().starts_with("(ocr1:"));
         assert!(h[6].texto_entero().starts_with("(ocr2:"));
         assert!(h[8].texto_entero().len() > 2000 && h[10].texto_entero().len() > 2000);
-        assert!(!despejar_resultados(&mut h, QUEDAN_RESULTADOS), "ya no hay nada que despejar");
+        assert!(
+            !despejar_resultados(&mut h, QUEDAN_RESULTADOS),
+            "ya no hay nada que despejar"
+        );
         assert!(pasa_de(5000, 0, 8192, UMBRAL_DESPEJAR) && !pasa_de(5000, 0, 8192, UMBRAL));
         assert!(!pasa_de(5000, 0, 0, UMBRAL_DESPEJAR));
     }

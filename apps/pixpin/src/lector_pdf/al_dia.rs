@@ -28,7 +28,9 @@ pub(super) const MIRAR_EL_DISCO: Duration = Duration::from_millis(700);
 type Sello = Option<(SystemTime, u64)>;
 
 fn sello_de(ruta: &Path) -> Sello {
-    std::fs::metadata(ruta).ok().and_then(|m| Some((m.modified().ok()?, m.len())))
+    std::fs::metadata(ruta)
+        .ok()
+        .and_then(|m| Some((m.modified().ok()?, m.len())))
 }
 
 /// Como estaba en el disco la capa de una hoja la ultima vez que se leyo o
@@ -68,7 +70,12 @@ impl AlDia {
 /// miraba, y olvida las que ya no estan. Se llama al pintar: barato si no
 /// hay nada nuevo.
 pub(super) fn apuntar(e: &mut Estado, pdf: &Path) {
-    let nuevas: Vec<usize> = e.capas.keys().filter(|i| !e.al_dia.vistos.contains_key(i)).copied().collect();
+    let nuevas: Vec<usize> = e
+        .capas
+        .keys()
+        .filter(|i| !e.al_dia.vistos.contains_key(i))
+        .copied()
+        .collect();
     for i in nuevas {
         let ruta = e.donde.para_leer(pdf, i);
         e.al_dia.vistos.insert(i, ver(ruta));
@@ -84,7 +91,11 @@ pub(super) fn apuntar(e: &mut Estado, pdf: &Path) {
 /// esperar a los 0,7 s: lo primero que anota se ve al momento.
 pub(super) fn mirar(e: &mut Estado, pdf: &Path) -> bool {
     let avisado = crate::lector_tinta::turnos::hay_aviso(&mut e.al_dia.aviso);
-    if !avisado && e.al_dia.mirado.is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO) {
+    if !avisado
+        && e.al_dia
+            .mirado
+            .is_some_and(|t| t.elapsed() < MIRAR_EL_DISCO)
+    {
         return false;
     }
     e.al_dia.mirado = Some(Instant::now());
@@ -95,11 +106,17 @@ pub(super) fn mirar(e: &mut Estado, pdf: &Path) -> bool {
 /// aqui. Dice si releyo alguna (hay que repintar).
 pub(super) fn mirar_ya(e: &mut Estado, pdf: &Path) -> bool {
     apuntar(e, pdf);
-    let trazando_en = if e.tinta.trazando() { e.tinta.hoja } else { None };
+    let trazando_en = if e.tinta.trazando() {
+        e.tinta.hoja
+    } else {
+        None
+    };
     let mut releidas = false;
     let hojas: Vec<usize> = e.al_dia.vistos.keys().copied().collect();
     for i in hojas {
-        let Some(v) = e.al_dia.vistos.get(&i) else { continue };
+        let Some(v) = e.al_dia.vistos.get(&i) else {
+            continue;
+        };
         if sello_de(&v.ruta) == v.sello {
             continue;
         }
@@ -108,7 +125,9 @@ pub(super) fn mirar_ya(e: &mut Estado, pdf: &Path) -> bool {
             continue;
         }
         let visto = ver(v.ruta.clone());
-        let capa = e.donde.leer_capa(pdf, i, e.ajustes.espacios, alto_de(&e.hojas, i));
+        let capa = e
+            .donde
+            .leer_capa(pdf, i, e.ajustes.espacios, alto_de(&e.hojas, i));
         tracing::info!(hoja = i, ruta = %visto.ruta.display(), "lector: la capa cambio en el disco, releida");
         e.capas.insert(i, capa);
         e.al_dia.vistos.insert(i, visto);
@@ -148,7 +167,12 @@ pub(super) fn apuntar_turnos(e: &mut Estado) {
 /// **Guarda las capas con cambios**. La que cambio en el disco desde que se
 /// leyo se junta con el ([`juntar`]); las demas, como siempre.
 pub(super) fn guardar(e: &mut Estado, pdf: &Path) {
-    let sucias: Vec<usize> = e.capas.iter().filter(|(_, c)| c.sucia).map(|(i, _)| *i).collect();
+    let sucias: Vec<usize> = e
+        .capas
+        .iter()
+        .filter(|(_, c)| c.sucia)
+        .map(|(i, _)| *i)
+        .collect();
     for i in sucias {
         let alto = alto_de(&e.hojas, i);
         let cambiada = e
@@ -181,9 +205,13 @@ pub(super) fn guardar(e: &mut Estado, pdf: &Path) {
 /// seguir anotando sobre lo junto. Si algo no se entiende (un disco danado),
 /// lo de aqui, como antes.
 fn juntar(e: &mut Estado, pdf: &Path, i: usize, alto: f32) -> std::io::Result<()> {
-    let Some(v) = e.al_dia.vistos.get(&i) else { return Ok(()) };
+    let Some(v) = e.al_dia.vistos.get(&i) else {
+        return Ok(());
+    };
     let (ruta, base) = (v.ruta.clone(), v.base.clone());
-    let Some(capa) = e.capas.get_mut(&i) else { return Ok(()) };
+    let Some(capa) = e.capas.get_mut(&i) else {
+        return Ok(());
+    };
     let suyo = std::fs::read_to_string(&ruta)?;
     let aparte = ruta.with_extension("excalidraw.mio");
     e.donde.escribir_aparte(i, capa, &aparte)?;
@@ -194,7 +222,10 @@ fn juntar(e: &mut Estado, pdf: &Path, i: usize, alto: f32) -> std::io::Result<()
         Some(junto) => {
             pixpin_sincro::disco::escribir_atomico(&ruta, junto.as_bytes())?;
             e.donde.apuntar_marco(i, alto)?;
-            tracing::info!(hoja = i, "lector: lo anotado se junto con lo que cambio en el disco");
+            tracing::info!(
+                hoja = i,
+                "lector: lo anotado se junto con lo que cambio en el disco"
+            );
         }
         None => {
             tracing::warn!(ruta = %ruta.display(), "la capa del disco no se entiende: se escribe la de aqui");
@@ -217,7 +248,8 @@ mod pruebas {
 
     /// Un PDF suelto (su tinta, junto a el) en una carpeta propia.
     fn pdf(etiqueta: &str) -> (PathBuf, PathBuf) {
-        let r = std::env::temp_dir().join(format!("pixpin-al-dia-{etiqueta}-{}", std::process::id()));
+        let r =
+            std::env::temp_dir().join(format!("pixpin-al-dia-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
         let pdf = r.join("informe.pdf");
@@ -233,11 +265,14 @@ mod pruebas {
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_else(|| serde_json::json!({"type":"excalidraw","version":2,"elements":[]}));
-        v["elements"].as_array_mut().unwrap().push(serde_json::json!({
-            "id": id, "type": "freedraw", "x": 100, "y": 100, "width": 50, "height": 0,
-            "strokeWidth": 2, "version": 1, "versionNonce": 7, "updated": 1,
-            "points": [[0.0, 0.0], [50.0, 0.0]]
-        }));
+        v["elements"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "id": id, "type": "freedraw", "x": 100, "y": 100, "width": 50, "height": 0,
+                "strokeWidth": 2, "version": 1, "versionNonce": 7, "updated": 1,
+                "points": [[0.0, 0.0], [50.0, 0.0]]
+            }));
         std::fs::create_dir_all(ruta.parent().unwrap()).unwrap();
         // Otro tamano seguro: la firma cambia aunque la fecha no lo hiciera.
         std::fs::write(&ruta, serde_json::to_string_pretty(&v).unwrap()).unwrap();
@@ -273,7 +308,8 @@ mod pruebas {
         assert!(!mirar_ya(&mut e, &pdf));
         // Y lo guardado aqui no cuenta como cambio de fuera.
         let c = e.capas.get_mut(&0).unwrap();
-        e.tinta.trazar(c, &[Punto2::nuevo(10.0, 10.0), Punto2::nuevo(60.0, 60.0)]);
+        e.tinta
+            .trazar(c, &[Punto2::nuevo(10.0, 10.0), Punto2::nuevo(60.0, 60.0)]);
         guardar(&mut e, &pdf);
         assert!(!mirar_ya(&mut e, &pdf), "lo propio no se relee");
         let _ = std::fs::remove_dir_all(&r);
@@ -301,7 +337,8 @@ mod pruebas {
         // El usuario anota (sin guardar aun) y mientras tanto el asistente
         // escribe en la misma capa.
         let c = e.capas.get_mut(&0).unwrap();
-        e.tinta.trazar(c, &[Punto2::nuevo(10.0, 10.0), Punto2::nuevo(60.0, 60.0)]);
+        e.tinta
+            .trazar(c, &[Punto2::nuevo(10.0, 10.0), Punto2::nuevo(60.0, 60.0)]);
         let mios = e.capas[&0].escena.visibles().count();
         assert!(e.capas[&0].sucia);
         escribe_otro(&e, &pdf, "mientras");
@@ -310,11 +347,21 @@ mod pruebas {
         assert_eq!(e.capas[&0].escena.visibles().count(), mios);
         // Al guardar se junta: queda lo de los dos, en el disco y aqui.
         guardar(&mut e, &pdf);
-        assert_eq!(cuantos(&e), mios + 1, "lo del asistente entra y el trazo del usuario sigue");
+        assert_eq!(
+            cuantos(&e),
+            mios + 1,
+            "lo del asistente entra y el trazo del usuario sigue"
+        );
         assert!(!e.capas[&0].sucia);
         let en_disco = std::fs::read_to_string(e.donde.para_leer(&pdf, 0)).unwrap();
         assert!(en_disco.contains("mientras") && en_disco.contains("antes"));
-        assert!(!e.donde.para_leer(&pdf, 0).with_extension("excalidraw.mio").exists(), "sin restos");
+        assert!(
+            !e.donde
+                .para_leer(&pdf, 0)
+                .with_extension("excalidraw.mio")
+                .exists(),
+            "sin restos"
+        );
         // Ya junto, nada nuevo que releer.
         assert!(!mirar_ya(&mut e, &pdf));
         let _ = std::fs::remove_dir_all(&r);
@@ -331,7 +378,14 @@ mod pruebas {
         let grupo = "asistente-anotado:prueba-turno";
         for i in 0..2 {
             let mut c = Capa::default();
-            c.escena.anadir(pixpin_motor2d::Elemento { x: 10.0, y: 10.0, ancho: 40.0, alto: 20.0, grupos: vec![grupo.into()], ..Default::default() });
+            c.escena.anadir(pixpin_motor2d::Elemento {
+                x: 10.0,
+                y: 10.0,
+                ancho: 40.0,
+                alto: 20.0,
+                grupos: vec![grupo.into()],
+                ..Default::default()
+            });
             c.sucia = true;
             let ruta = e.donde.para_escribir(&pdf, i);
             turnos::apuntar(&e.donde.para_leer(&pdf, i), grupo);
@@ -345,7 +399,12 @@ mod pruebas {
         }
         apuntar_turnos(&mut e);
         assert_eq!(e.hechos.len(), 2);
-        let visibles = |e: &Estado| e.capas.values().map(|c| c.escena.visibles().count()).sum::<usize>();
+        let visibles = |e: &Estado| {
+            e.capas
+                .values()
+                .map(|c| c.escena.visibles().count())
+                .sum::<usize>()
+        };
         assert_eq!(visibles(&e), 2);
         super::super::deshacer(&mut e);
         assert_eq!(visibles(&e), 0, "un solo Ctrl+Z quita lo de las dos hojas");

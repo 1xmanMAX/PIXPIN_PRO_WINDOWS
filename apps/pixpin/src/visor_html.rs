@@ -73,21 +73,41 @@ pub const NAVEGADOR: u8 = 2;
 /// copia dentro de la pagina.
 pub fn botones() -> Vec<BotonLector> {
     vec![
-        BotonLector { id: RECARGAR, icono: &material::REPLAY, encendido: false },
-        BotonLector { id: EXPORTAR, icono: &material::IOS_SHARE, encendido: false },
-        BotonLector { id: NAVEGADOR, icono: &material::PUBLIC, encendido: false },
+        BotonLector {
+            id: RECARGAR,
+            icono: &material::REPLAY,
+            encendido: false,
+        },
+        BotonLector {
+            id: EXPORTAR,
+            icono: &material::IOS_SHARE,
+            encendido: false,
+        },
+        BotonLector {
+            id: NAVEGADOR,
+            icono: &material::PUBLIC,
+            encendido: false,
+        },
     ]
 }
 
 /// **El globo de cada boton propio**: su nombre y su tecla.
 pub fn pistas(textos: &Catalogo) -> Vec<(u8, String)> {
-    vec![(RECARGAR, textos.t("web-recargar")), (EXPORTAR, textos.t("web-exportar")), (NAVEGADOR, textos.t("web-navegador"))]
+    vec![
+        (RECARGAR, textos.t("web-recargar")),
+        (EXPORTAR, textos.t("web-exportar")),
+        (NAVEGADOR, textos.t("web-navegador")),
+    ]
 }
 
 /// El fondo mientras la pagina carga: el de una pagina sin estilo (blanco)
 /// o, en oscuro, el de las de PixPin.
 pub fn fondo(oscuro: bool) -> (u8, u8, u8) {
-    if oscuro { (0x1e, 0x1e, 0x20) } else { (0xff, 0xff, 0xff) }
+    if oscuro {
+        (0x1e, 0x1e, 0x20)
+    } else {
+        (0xff, 0xff, 0xff)
+    }
 }
 
 /// El titulo de la ventana (la barra de tareas, Alt+Tab).
@@ -107,21 +127,23 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ruta: &Path) {
         return;
     }
     let ruta = ruta.to_path_buf();
-    let lanzado = std::thread::Builder::new().name("visor-html".into()).spawn(move || {
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let textos = Catalogo::nuevo(idioma);
-        match abrir(&textos, &ruta) {
-            Ok(true) => {
-                tracing::info!(ruta = %ruta.display(), "html guardado desde el visor");
-                crate::ventana_chat::refrescar();
+    let lanzado = std::thread::Builder::new()
+        .name("visor-html".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let textos = Catalogo::nuevo(idioma);
+            match abrir(&textos, &ruta) {
+                Ok(true) => {
+                    tracing::info!(ruta = %ruta.display(), "html guardado desde el visor");
+                    crate::ventana_chat::refrescar();
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(?e, "sin visor de HTML propio; se abre fuera");
+                    abrir_fuera(&ruta);
+                }
             }
-            Ok(false) => {}
-            Err(e) => {
-                tracing::warn!(?e, "sin visor de HTML propio; se abre fuera");
-                abrir_fuera(&ruta);
-            }
-        }
-    });
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del visor de HTML");
     }
@@ -143,10 +165,14 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
     let nombre_fichero = pixpin_docs::nombre(ruta);
     let nombre = crate::lector_pin::nombre_limpio(&pixpin_docs::sin_extension(&nombre_fichero));
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
-    let monitor = monitores.principal().context("sin monitor principal")?.to_owned();
+    let monitor = monitores
+        .principal()
+        .context("sin monitor principal")?
+        .to_owned();
     let e = monitor.escala_por_cien as f32 / 100.0;
     let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = PinLector::nuevo(area_pin, e).con_extension(&pixpin_docs::extension(&nombre_fichero));
+    let mut pin =
+        PinLector::nuevo(area_pin, e).con_extension(&pixpin_docs::extension(&nombre_fichero));
     // Llana y no «normal»: la normal lleva `WS_EX_NOREDIRECTIONBITMAP`, que
     // es lo que quiere Direct2D y lo que ESTORBA a un WebView2 metido dentro.
     // Con ella el desplazamiento de la pagina iba a tirones.
@@ -157,10 +183,15 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
     ventana.enfocar();
     let hwnd = ventana.handle().0 as isize;
     pixpin_web::pintar_fondo(hwnd, fondo(pin.oscuro()));
-    tracing::info!(ms = inicio.elapsed().as_millis() as u64, "visor de HTML: a la vista");
+    tracing::info!(
+        ms = inicio.elapsed().as_millis() as u64,
+        "visor de HTML: a la vista"
+    );
 
     // La barra: sin GPU no la hay, pero la pagina se ve igual (y Esc cierra).
-    let recursos = crate::overlay::Recursos::nuevos().map_err(|e| tracing::warn!(?e, "visor de HTML sin barra")).ok();
+    let recursos = crate::overlay::Recursos::nuevos()
+        .map_err(|e| tracing::warn!(?e, "visor de HTML sin barra"))
+        .ok();
     let motor = recursos.as_ref().map(|r| r.motor());
     if let (Some(r), Some(m)) = (&recursos, &motor) {
         pin.crear_barra(m, &r.d3d(), &ventana);
@@ -198,7 +229,10 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
     // El modo oscuro de los visores (luna/sol, `crate::oscuro`): el de la
     // barra, que tambien avisa si cambia con el abierto.
     visor.poner_oscuro(pin.oscuro());
-    tracing::info!(ms = inicio.elapsed().as_millis() as u64, "visor de HTML: pagina pedida");
+    tracing::info!(
+        ms = inicio.elapsed().as_millis() as u64,
+        "visor de HTML: pagina pedida"
+    );
 
     // **El riel de los visores** (el marcador, el lapiz y el marco), en sus
     // ventanas por encima de la pagina: las marcas y la tinta, junto al html.
@@ -210,7 +244,13 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             &ventana,
             riel::en_pantalla(pin.area, pin.area_de_la_vista()),
             escala,
-            riel::Opciones { documento: Some(ruta.to_path_buf()), con_pagina: true, titulo: nombre.clone(), menu: false, maqueta: false },
+            riel::Opciones {
+                documento: Some(ruta.to_path_buf()),
+                con_pagina: true,
+                titulo: nombre.clone(),
+                menu: false,
+                maqueta: false,
+            },
             textos,
         ),
         _ => None,
@@ -260,7 +300,9 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                             vivo = false;
                         }
                     }
-                    Some(AccionPin::PantallaCompleta) => pin.alternar_pantalla_completa(&mut ventana),
+                    Some(AccionPin::PantallaCompleta) => {
+                        pin.alternar_pantalla_completa(&mut ventana)
+                    }
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => vivo = false,
                     None => {}
@@ -276,9 +318,19 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
                 // Ctrl+E: el «Exportar» comun, como el boton.
-                EventoOverlay::Tecla { vk: 0x45, ctrl: true, alt: false, .. } => exportar(ruta),
+                EventoOverlay::Tecla {
+                    vk: 0x45,
+                    ctrl: true,
+                    alt: false,
+                    ..
+                } => exportar(ruta),
                 // Ctrl+P con el teclado en la ventana: los marcos.
-                EventoOverlay::Tecla { vk: 0x50, ctrl: true, alt: false, .. } if riel.as_ref().is_some_and(|r| r.hay_marcos()) => {
+                EventoOverlay::Tecla {
+                    vk: 0x50,
+                    ctrl: true,
+                    alt: false,
+                    ..
+                } if riel.as_ref().is_some_and(|r| r.hay_marcos()) => {
                     if let Some(r) = riel.as_mut() {
                         r.imprimir_marcos(Some(&visor));
                     }
@@ -286,7 +338,12 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 // El teclado lo tenia la ventana (se toco su borde): la
                 // tecla cuenta y el siguiente va ya a la pagina. Las de los
                 // visores (I, A, M, Ctrl+M), al riel.
-                EventoOverlay::Tecla { vk, ctrl, alt: false, .. } if riel.as_ref().is_some() => {
+                EventoOverlay::Tecla {
+                    vk,
+                    ctrl,
+                    alt: false,
+                    ..
+                } if riel.as_ref().is_some() => {
                     match riel.as_mut().and_then(|r| r.tecla(vk, ctrl, Some(&visor))) {
                         Some(riel::Pide::Tecla(v)) => teclas.push(v),
                         Some(riel::Pide::Teclado) => visor.enfocar(),
@@ -301,7 +358,9 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                     teclas.push(vk);
                     visor.enfocar();
                 }
-                EventoOverlay::Pintar | EventoOverlay::CambioDpi => pixpin_web::pintar_fondo(hwnd, fondo(pin.oscuro())),
+                EventoOverlay::Pintar | EventoOverlay::CambioDpi => {
+                    pixpin_web::pintar_fondo(hwnd, fondo(pin.oscuro()))
+                }
                 _ => {}
             }
         }
@@ -342,7 +401,12 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             pixpin_web::pintar_fondo(hwnd, fondo(pin.oscuro()));
         }
         if let Some(r) = riel.as_mut() {
-            r.seguir(riel::en_pantalla(pin.area, pin.area_de_la_vista()), escala, pin.fijado, pin.oscuro());
+            r.seguir(
+                riel::en_pantalla(pin.area, pin.area_de_la_vista()),
+                escala,
+                pin.fijado,
+                pin.oscuro(),
+            );
             r.tic(Some(&visor));
             // Con marcos, Ctrl+P es suyo (y no la impresion de Edge).
             visor.tomar_ctrl_p(r.hay_marcos());
@@ -367,7 +431,10 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         // es la red para recoger lo que la pagina mande guardar y para que
         // la barra se vaya sola.
         let tope = if pin.quiere_reloj() { 50 } else { 100 };
-        let tope = riel.as_ref().and_then(|r| r.tope_ms()).map_or(tope, |t| t.min(tope));
+        let tope = riel
+            .as_ref()
+            .and_then(|r| r.tope_ms())
+            .map_or(tope, |t| t.min(tope));
         pixpin_shell::overlay::esperar_eventos(Some(tope));
     }
     // Cerrar: se esconde ya (que se note al instante) y luego se suelta todo.
@@ -384,26 +451,41 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
 /// **Exportar la pagina**: ella misma (HTML), su PDF impreso por Edge, el
 /// original y el `.pixpin`, con el componente comun.
 fn exportar(ruta: &Path) {
-    let Some(u) = crate::oscuro::ubicacion() else { return };
+    let Some(u) = crate::oscuro::ubicacion() else {
+        return;
+    };
     let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
     let mut x = crate::compartir::exportable::Exportable::nuevo(titulo.clone());
     x.raiz = Some(u.raiz().to_path_buf());
     x.original = Some(ruta.to_path_buf());
     let base = crate::compartir::nombre_de_fichero(&titulo);
     let (r1, b1) = (ruta.to_path_buf(), base.clone());
-    x.propios.push(crate::compartir::exportable::Propio::nuevo(crate::compartir::WEB, "compartir-web", move |c| {
-        let r = c.join(format!("{b1}.html"));
-        std::fs::copy(&r1, &r)?;
-        Ok(vec![r])
-    }));
+    x.propios.push(crate::compartir::exportable::Propio::nuevo(
+        crate::compartir::WEB,
+        "compartir-web",
+        move |c| {
+            let r = c.join(format!("{b1}.html"));
+            std::fs::copy(&r1, &r)?;
+            Ok(vec![r])
+        },
+    ));
     let r2 = ruta.to_path_buf();
-    x.propios.push(crate::compartir::exportable::Propio::nuevo(crate::compartir::PDF, "compartir-pdf", move |c| {
-        let r = c.join(format!("{base}.pdf"));
-        let html = std::fs::read_to_string(&r2)?;
-        crate::timeline::exportar::a_pdf(&html, &r).map_err(|e| anyhow::anyhow!("no se pudo imprimir el PDF: {e}"))?;
-        Ok(vec![r])
-    }));
-    crate::compartir::ventana::abrir(crate::compartir::idioma_de(&u), u, crate::compartir::Cosa::Visor(x));
+    x.propios.push(crate::compartir::exportable::Propio::nuevo(
+        crate::compartir::PDF,
+        "compartir-pdf",
+        move |c| {
+            let r = c.join(format!("{base}.pdf"));
+            let html = std::fs::read_to_string(&r2)?;
+            crate::timeline::exportar::a_pdf(&html, &r)
+                .map_err(|e| anyhow::anyhow!("no se pudo imprimir el PDF: {e}"))?;
+            Ok(vec![r])
+        },
+    ));
+    crate::compartir::ventana::abrir(
+        crate::compartir::idioma_de(&u),
+        u,
+        crate::compartir::Cosa::Visor(x),
+    );
 }
 
 /// Escribe `bytes` sobre `ruta` sin dejarla a medias.
@@ -442,12 +524,20 @@ mod pruebas {
         // La disposicion entera: la de todos los visores, con luna/sol.
         assert_eq!(
             crate::lector_pin::disposicion("informe", "html", &botones(), true),
-            ["asa", "nombre", "propio:0", "propio:1", "propio:2", "oscuro", "pantalla", "fijar", "cerrar"]
+            [
+                "asa", "nombre", "propio:0", "propio:1", "propio:2", "oscuro", "pantalla", "fijar",
+                "cerrar"
+            ]
         );
         // Casos negativos: nada encendido al abrir, y ni editar ni copiar
         // (la pagina se edita y se copia dentro).
         assert!(botones().iter().all(|b| !b.encendido));
-        assert!(!botones().iter().any(|b| std::ptr::eq(b.icono, &material::EDIT) || std::ptr::eq(b.icono, &material::CONTENT_COPY)));
+        assert!(
+            !botones()
+                .iter()
+                .any(|b| std::ptr::eq(b.icono, &material::EDIT)
+                    || std::ptr::eq(b.icono, &material::CONTENT_COPY))
+        );
     }
 
     #[test]
@@ -456,11 +546,22 @@ mod pruebas {
             let t = Catalogo::nuevo(idioma);
             let p = pistas(&t);
             // Uno por boton, con su texto de verdad (no la clave sin traducir).
-            assert_eq!(p.iter().map(|(id, _)| *id).collect::<Vec<_>>(), botones().iter().map(|b| b.id).collect::<Vec<_>>());
-            assert!(p.iter().all(|(_, s)| !s.is_empty() && !s.starts_with("web-")), "{p:?}");
+            assert_eq!(
+                p.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+                botones().iter().map(|b| b.id).collect::<Vec<_>>()
+            );
+            assert!(
+                p.iter()
+                    .all(|(_, s)| !s.is_empty() && !s.starts_with("web-")),
+                "{p:?}"
+            );
         }
         // Y el de exportar lleva su tecla.
-        assert!(pistas(&Catalogo::nuevo(pixpin_store::Idioma::Espanol))[1].1.contains("Ctrl+E"));
+        assert!(
+            pistas(&Catalogo::nuevo(pixpin_store::Idioma::Espanol))[1]
+                .1
+                .contains("Ctrl+E")
+        );
     }
 
     #[test]
@@ -500,7 +601,9 @@ mod latencia {
     #[test]
     #[ignore = "abre ventanas; mide la latencia a mano"]
     fn latencia_de_los_visores_web() {
-        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
+        let _ = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .try_init();
         use std::time::Duration;
         let d = std::env::temp_dir().join(format!("pixpin-latencia-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
@@ -512,21 +615,31 @@ mod latencia {
         }
         for vuelta in 0..3 {
             let html = d.join(format!("informe{vuelta}.html"));
-            std::fs::write(&html, "<!doctype html><html><body><h1>Informe</h1><p>Hola</p></body></html>").unwrap();
+            std::fs::write(
+                &html,
+                "<!doctype html><html><body><h1>Informe</h1><p>Hola</p></body></html>",
+            )
+            .unwrap();
             let r = html.clone();
             std::thread::spawn(move || {
                 let _com = pixpin_shell::ComDelHilo::iniciar();
                 let textos = pixpin_store::Catalogo::nuevo(idioma);
                 let _ = super::abrir(&textos, &r);
             });
-            let t = pixpin_web::esperar_visible(&super::titulo_de_ventana(&format!("informe{vuelta}.html")), Duration::from_secs(5));
+            let t = pixpin_web::esperar_visible(
+                &super::titulo_de_ventana(&format!("informe{vuelta}.html")),
+                Duration::from_secs(5),
+            );
             eprintln!("vuelta {vuelta}: html visible en {t:?}");
             std::thread::sleep(Duration::from_millis(2500));
             let md = d.join(format!("prueba{vuelta}.md"));
             std::fs::write(&md, "# Prueba\n\nHola **mundo**\n\n- [ ] una\n").unwrap();
             let ub = pixpin_store::Ubicacion::Portable { raiz: d.clone() };
             crate::notas_md::abrir(idioma, ub, crate::notas_md::Destino::Fichero { ruta: md });
-            let t = pixpin_web::esperar_visible(&format!("prueba{vuelta}.md — PixPin"), Duration::from_secs(10));
+            let t = pixpin_web::esperar_visible(
+                &format!("prueba{vuelta}.md — PixPin"),
+                Duration::from_secs(10),
+            );
             eprintln!("vuelta {vuelta}: md visible en {t:?}");
             std::thread::sleep(Duration::from_millis(2500));
         }
@@ -540,13 +653,25 @@ mod latencia {
         let m = *ms.principal().expect("monitor");
         let e = m.escala_por_cien as f32 / 100.0;
         let arriba = ((60.0 * e) as i32).min(area.y - m.area.y).max(0);
-        let region = pixpin_geom::Rect { x: area.x, y: area.y - arriba, ancho: area.ancho, alto: area.alto + arriba as u32 };
+        let region = pixpin_geom::Rect {
+            x: area.x,
+            y: area.y - arriba,
+            ancho: area.ancho,
+            alto: area.alto + arriba as u32,
+        };
         let region = region.interseccion(m.area).expect("en su monitor");
         let foto = pixpin_capture::capturar_monitor(&d, m.id, m.area).expect("captura");
-        let img = pixpin_capture::a_imagen(&d, &foto.recortar(&d, region).expect("recorte")).expect("imagen");
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let img = pixpin_capture::a_imagen(&d, &foto.recortar(&d, region).expect("recorte"))
+            .expect("imagen");
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let salida = carpeta.join(format!("visor-{nombre}.png"));
-        std::fs::write(&salida, pixpin_codec::imagen::codificar_png(&img).expect("png")).expect("guardar");
+        std::fs::write(
+            &salida,
+            pixpin_codec::imagen::codificar_png(&img).expect("png"),
+        )
+        .expect("guardar");
         println!("{}", salida.display());
     }
 
@@ -557,7 +682,9 @@ mod latencia {
     #[test]
     #[ignore = "abre ventanas y fotografia la pantalla; a mano"]
     fn foto_de_los_visores_web() {
-        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
+        let _ = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .try_init();
         use std::time::Duration;
         let d = std::env::temp_dir().join(format!("pixpin-foto-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
@@ -571,7 +698,11 @@ mod latencia {
             let tema = if oscuro { "oscuro" } else { "claro" };
             let ruta = d.join(format!("Visita{k}.md"));
             std::fs::write(&ruta, md).unwrap();
-            crate::notas_md::abrir(idioma, pixpin_store::Ubicacion::Portable { raiz: d.clone() }, crate::notas_md::Destino::Fichero { ruta });
+            crate::notas_md::abrir(
+                idioma,
+                pixpin_store::Ubicacion::Portable { raiz: d.clone() },
+                crate::notas_md::Destino::Fichero { ruta },
+            );
             std::thread::sleep(Duration::from_millis(2500));
             foto(&format!("md-{tema}"));
             let r = d.join(format!("Informe{k}.html"));
@@ -593,8 +724,13 @@ mod latencia {
     #[test]
     #[ignore = "abre ventanas; para las fotos del riel, a mano"]
     fn muestra_del_riel_web() {
-        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).try_init();
-        let Some(ruta) = std::env::var_os("PIXPIN_RIEL_MUESTRA").map(std::path::PathBuf::from) else { return };
+        let _ = tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .try_init();
+        let Some(ruta) = std::env::var_os("PIXPIN_RIEL_MUESTRA").map(std::path::PathBuf::from)
+        else {
+            return;
+        };
         let idioma = pixpin_store::Idioma::Espanol;
         // Con `PIXPIN_RIEL_OSCURO`, en oscuro (para ver que se imprime en claro).
         if std::env::var_os("PIXPIN_RIEL_OSCURO").is_some() != crate::oscuro::activo() {
@@ -605,7 +741,11 @@ mod latencia {
             let _ = super::abrir(&pixpin_store::Catalogo::nuevo(idioma), &ruta);
         } else {
             let raiz = ruta.parent().expect("carpeta").to_path_buf();
-            crate::notas_md::abrir(idioma, pixpin_store::Ubicacion::Portable { raiz }, crate::notas_md::Destino::Fichero { ruta });
+            crate::notas_md::abrir(
+                idioma,
+                pixpin_store::Ubicacion::Portable { raiz },
+                crate::notas_md::Destino::Fichero { ruta },
+            );
             std::thread::sleep(std::time::Duration::from_secs(30));
         }
     }

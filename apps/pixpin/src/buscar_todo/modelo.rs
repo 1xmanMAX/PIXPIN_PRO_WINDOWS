@@ -390,9 +390,9 @@ impl Estado {
     /// el menu del plugin): aqui llega solo para cerrar el menu al reves.
     pub fn tecla(&mut self, vk: u32, shift: bool, ctrl: bool, alt: bool) -> Orden {
         if self.es_de_la_caja(vk, shift, ctrl, alt) {
-            let r = self
-                .consulta
-                .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows);
+            let r =
+                self.consulta
+                    .tecla(vk, shift, ctrl, &mut crate::caja_texto::PortapapelesWindows);
             if r.cambio() {
                 self.menu = None;
                 return Orden::Buscar;

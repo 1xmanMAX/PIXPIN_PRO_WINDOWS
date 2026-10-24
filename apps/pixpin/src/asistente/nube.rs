@@ -34,7 +34,11 @@ pub fn eleccion(a: &pixpin_store::ajustes::Asistente) -> Eleccion {
 }
 
 /// Las opciones de «Motor», en el orden de los botones de Ajustes.
-pub const OPCIONES: [Eleccion; 3] = [Eleccion::Local, Eleccion::Nube(Proveedor::Claude), Eleccion::Nube(Proveedor::DeepSeek)];
+pub const OPCIONES: [Eleccion; 3] = [
+    Eleccion::Local,
+    Eleccion::Nube(Proveedor::Claude),
+    Eleccion::Nube(Proveedor::DeepSeek),
+];
 
 pub fn id_de(e: Eleccion) -> &'static str {
     match e {
@@ -49,14 +53,18 @@ static CACHE: Mutex<Option<(Instant, std::path::PathBuf, Eleccion)>> = Mutex::ne
 /// Lo elegido, mirado como mucho cada 5 s (la tarjeta del chat pregunta en
 /// cada fotograma y el TOML no se lee tanto).
 pub fn eleccion_reciente(raiz_datos: &Path) -> Eleccion {
-    let Ok(mut g) = CACHE.lock() else { return Eleccion::Local };
+    let Ok(mut g) = CACHE.lock() else {
+        return Eleccion::Local;
+    };
     if let Some((t, r, e)) = g.as_ref()
         && r == raiz_datos
         && t.elapsed() < Duration::from_secs(5)
     {
         return *e;
     }
-    let u = Ubicacion::Instalado { raiz: raiz_datos.to_path_buf() };
+    let u = Ubicacion::Instalado {
+        raiz: raiz_datos.to_path_buf(),
+    };
     let e = eleccion(&pixpin_store::cargar(&u).unwrap_or_default().asistente);
     *g = Some((Instant::now(), raiz_datos.to_path_buf(), e));
     e
@@ -91,9 +99,17 @@ pub fn nombre_corto(e: Eleccion) -> &'static str {
 /// la nube falla (ya filtrado por el ajuste y por estar bajado). `Err`: el
 /// aviso para el usuario (falta la clave). `pensar`: si piensa este turno
 /// (`pixpin_ia::complejidad`); el respaldo local lo recibe en la peticion.
-pub fn motor(p: Proveedor, local: Option<Arc<dyn Motor>>, pensar: bool) -> Result<Arc<dyn Motor>, String> {
+pub fn motor(
+    p: Proveedor,
+    local: Option<Arc<dyn Motor>>,
+    pensar: bool,
+) -> Result<Arc<dyn Motor>, String> {
     let clave = claves::leer(p).ok_or_else(|| {
-        format!("Falta la clave de {}: pégala en Ajustes → Asistente (se saca en {}).", p.nombre(), p.pagina_de_claves())
+        format!(
+            "Falta la clave de {}: pégala en Ajustes → Asistente (se saca en {}).",
+            p.nombre(),
+            p.pagina_de_claves()
+        )
     })?;
     let nube: Arc<dyn Motor> = Arc::new(MotorNube::nuevo(p, clave).pensando(pensar));
     Ok(Arc::new(MotorConRespaldo::nuevo(nube, local, p.nombre())))
@@ -128,7 +144,9 @@ pub fn jefe(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
     if cfg!(test) {
         return None;
     }
-    let Eleccion::Nube(p) = eleccion_reciente(raiz_datos) else { return None };
+    let Eleccion::Nube(p) = eleccion_reciente(raiz_datos) else {
+        return None;
+    };
     let clave = claves::leer(p)?;
     let modelo = match p {
         Proveedor::Claude => nube::claude::MODELO_CRITICO,
@@ -164,7 +182,15 @@ fn con_fichas<R>(f: impl FnOnce(&mut HashMap<Proveedor, Ficha>) -> R) -> R {
         // La primera vez se mira el disco: enmascarar pide descifrar.
         Proveedor::TODOS
             .into_iter()
-            .map(|p| (p, Ficha { guardada: claves::leer(p).map(|c| claves::enmascarar(&c)), prueba: None }))
+            .map(|p| {
+                (
+                    p,
+                    Ficha {
+                        guardada: claves::leer(p).map(|c| claves::enmascarar(&c)),
+                        prueba: None,
+                    },
+                )
+            })
             .collect()
     });
     f(mapa)
@@ -202,7 +228,9 @@ fn avisar(despertar: &(dyn Fn() + Send + Sync)) {
 pub fn guardar_y_probar(p: Proveedor, escrito: &str, despertar: Arc<dyn Fn() + Send + Sync>) {
     let clave = escrito.trim().to_string();
     if !claves::parece_clave(&clave) {
-        con_fichas(|m| m.entry(p).or_default().prueba = Some(Some(Err("eso no parece una clave".into()))));
+        con_fichas(|m| {
+            m.entry(p).or_default().prueba = Some(Some(Err("eso no parece una clave".into())))
+        });
         avisar(despertar.as_ref());
         return;
     }
@@ -217,16 +245,23 @@ pub fn guardar_y_probar(p: Proveedor, escrito: &str, despertar: Arc<dyn Fn() + S
         f.prueba = Some(None);
     });
     avisar(despertar.as_ref());
-    let lanzado = std::thread::Builder::new().name("asistente-probar-clave".into()).spawn(move || {
-        let r = nube::probar(p, &clave);
-        if let Err(e) = &r {
-            tracing::warn!("asistente: la prueba de la clave de {} fallo: {e}", p.nombre());
-        }
-        con_fichas(|m| m.entry(p).or_default().prueba = Some(Some(r)));
-        avisar(despertar.as_ref());
-    });
+    let lanzado = std::thread::Builder::new()
+        .name("asistente-probar-clave".into())
+        .spawn(move || {
+            let r = nube::probar(p, &clave);
+            if let Err(e) = &r {
+                tracing::warn!(
+                    "asistente: la prueba de la clave de {} fallo: {e}",
+                    p.nombre()
+                );
+            }
+            con_fichas(|m| m.entry(p).or_default().prueba = Some(Some(r)));
+            avisar(despertar.as_ref());
+        });
     if lanzado.is_err() {
-        con_fichas(|m| m.entry(p).or_default().prueba = Some(Some(Err("no se pudo lanzar la prueba".into()))));
+        con_fichas(|m| {
+            m.entry(p).or_default().prueba = Some(Some(Err("no se pudo lanzar la prueba".into())))
+        });
     }
 }
 
@@ -257,7 +292,10 @@ mod pruebas {
         a.motor = "otro".into();
         assert_eq!(eleccion(&a), Eleccion::Local);
         for e in OPCIONES {
-            let a = pixpin_store::ajustes::Asistente { motor: id_de(e).into(), ..Default::default() };
+            let a = pixpin_store::ajustes::Asistente {
+                motor: id_de(e).into(),
+                ..Default::default()
+            };
             assert_eq!(eleccion(&a), e);
         }
     }
@@ -266,7 +304,8 @@ mod pruebas {
     /// sin tocar lo demas del TOML, y la eleccion recordada cambia ya.
     #[test]
     fn elegir_desde_el_chat_cambia_el_mismo_ajuste() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-elegir-modelo-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-elegir-modelo-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         let u = Ubicacion::Instalado { raiz: raiz.clone() };
         let mut a = pixpin_store::ajustes::Ajustes::default();
@@ -275,13 +314,19 @@ mod pruebas {
         assert_eq!(eleccion_reciente(&raiz), Eleccion::Local);
         elegir(&u, Eleccion::Nube(Proveedor::DeepSeek)).unwrap();
         // Al instante, sin esperar los 5 s de lo recordado.
-        assert_eq!(eleccion_reciente(&raiz), Eleccion::Nube(Proveedor::DeepSeek));
+        assert_eq!(
+            eleccion_reciente(&raiz),
+            Eleccion::Nube(Proveedor::DeepSeek)
+        );
         let leido = pixpin_store::cargar(&u).unwrap().asistente;
         assert_eq!(eleccion(&leido), Eleccion::Nube(Proveedor::DeepSeek));
         assert!(leido.revisar_lo_dicho, "lo demas de los ajustes no se toca");
         elegir(&u, Eleccion::Local).unwrap();
         assert_eq!(pixpin_store::cargar(&u).unwrap().asistente.motor, "");
-        assert_eq!(nombre_corto(Eleccion::Nube(Proveedor::Claude)), "Claude Haiku");
+        assert_eq!(
+            nombre_corto(Eleccion::Nube(Proveedor::Claude)),
+            "Claude Haiku"
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -289,9 +334,13 @@ mod pruebas {
     fn lo_que_no_parece_una_clave_ni_se_guarda() {
         let despertado = Arc::new(AtomicU64::new(0));
         let d = despertado.clone();
-        guardar_y_probar(Proveedor::DeepSeek, "hola", Arc::new(move || {
-            d.fetch_add(1, Ordering::SeqCst);
-        }));
+        guardar_y_probar(
+            Proveedor::DeepSeek,
+            "hola",
+            Arc::new(move || {
+                d.fetch_add(1, Ordering::SeqCst);
+            }),
+        );
         assert_eq!(despertado.load(Ordering::SeqCst), 1);
         let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         assert!(estado(Proveedor::DeepSeek, &t).contains("no parece una clave"));
@@ -300,7 +349,10 @@ mod pruebas {
     #[test]
     fn la_clave_no_va_al_toml() {
         let a = pixpin_store::ajustes::Ajustes {
-            asistente: pixpin_store::ajustes::Asistente { motor: "claude".into(), ..Default::default() },
+            asistente: pixpin_store::ajustes::Asistente {
+                motor: "claude".into(),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let toml = toml::to_string(&a).unwrap();

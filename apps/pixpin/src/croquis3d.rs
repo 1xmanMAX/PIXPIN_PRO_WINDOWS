@@ -24,7 +24,10 @@ pub const CLASE: &str = "CROQUIS";
 
 /// Si el mensaje es un croquis con su referencia.
 pub fn es_croquis(m: &Mensaje) -> bool {
-    m.clase == Some(Clase::Otra(CLASE.into())) && m.referencia.as_deref().is_some_and(|r| !r.trim().is_empty())
+    m.clase == Some(Clase::Otra(CLASE.into()))
+        && m.referencia
+            .as_deref()
+            .is_some_and(|r| !r.trim().is_empty())
 }
 
 /// Donde esta en este equipo el croquis de referencia `id` de un proyecto:
@@ -35,7 +38,12 @@ pub fn fichero(raiz: &Path, ficha_id: &str, id: &str) -> Option<PathBuf> {
     if id.is_empty() || id.contains(['/', '\\']) || id.contains("..") {
         return None;
     }
-    pixpin_proyecto::vista::ruta_real(raiz, ficha_id, &format!("pixpin:files/croquis3d/{id}.croquis.gz")).filter(|r| r.is_file())
+    pixpin_proyecto::vista::ruta_real(
+        raiz,
+        ficha_id,
+        &format!("pixpin:files/croquis3d/{id}.croquis.gz"),
+    )
+    .filter(|r| r.is_file())
 }
 
 /// El fichero del croquis de un mensaje del chat, si es un croquis y esta.
@@ -48,7 +56,10 @@ pub fn fichero_del_mensaje(raiz: &Path, ficha_id: &str, m: &Mensaje) -> Option<P
 
 /// El idioma de Windows, para cuando quien abre no lo trae.
 pub fn idioma_del_sistema() -> Idioma {
-    pixpin_store::resolver_idioma(&pixpin_shell::entorno::locale_del_sistema(), pixpin_store::ajustes::PreferenciaIdioma::Sistema)
+    pixpin_store::resolver_idioma(
+        &pixpin_shell::entorno::locale_del_sistema(),
+        pixpin_store::ajustes::PreferenciaIdioma::Sistema,
+    )
 }
 
 /// **Toca una burbuja del chat**: si es un croquis que esta en este equipo,
@@ -57,26 +68,54 @@ pub fn abrir_desde_chat(idioma: Idioma, raiz: &Path, ficha_id: &str, m: &Mensaje
     let Some(ruta) = fichero_del_mensaje(raiz, ficha_id, m) else {
         return false;
     };
-    let titulo = titulo_de(Some(if m.texto.trim().is_empty() { m.nombre.as_str() } else { m.texto.as_str() }), m.referencia.as_deref().unwrap_or(""));
-    abrir_fichero(idioma, raiz.to_path_buf(), ficha_id.to_string(), ruta, titulo);
+    let titulo = titulo_de(
+        Some(if m.texto.trim().is_empty() {
+            m.nombre.as_str()
+        } else {
+            m.texto.as_str()
+        }),
+        m.referencia.as_deref().unwrap_or(""),
+    );
+    abrir_fichero(
+        idioma,
+        raiz.to_path_buf(),
+        ficha_id.to_string(),
+        ruta,
+        titulo,
+    );
     true
 }
 
 fn titulo_de(texto: Option<&str>, id: &str) -> String {
-    texto.map(str::trim).filter(|t| !t.is_empty()).map(|t| t.lines().next().unwrap_or(t).to_string()).unwrap_or_else(|| format!("Croquis {id}"))
+    texto
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|t| t.lines().next().unwrap_or(t).to_string())
+        .unwrap_or_else(|| format!("Croquis {id}"))
 }
 
 /// Abre el `.croquis.gz` de un proyecto. Sus fotos (`pixpin:files/…`) se
 /// buscan como las de cualquier mensaje del proyecto.
-pub fn abrir_fichero(idioma: Idioma, raiz: PathBuf, ficha_id: String, ruta: PathBuf, titulo: String) {
+pub fn abrir_fichero(
+    idioma: Idioma,
+    raiz: PathBuf,
+    ficha_id: String,
+    ruta: PathBuf,
+    titulo: String,
+) {
     // Su fichero y su chat van al «Exportar…»: Original es el
     // `.croquis.gz` y el `.pixpin`, el proyecto donde vive.
-    let origen = Origen { ruta: ruta.clone(), proyecto: ficha_id.clone() };
+    let origen = Origen {
+        ruta: ruta.clone(),
+        proyecto: ficha_id.clone(),
+    };
     let leer = move || -> Result<(Croquis, Box<dyn Fn(&str) -> Option<Foto> + Send>), String> {
         let bytes = std::fs::read(&ruta).map_err(|e| e.to_string())?;
         let c = croquis::leer(&bytes)?;
         let (raiz, ficha) = (raiz.clone(), ficha_id.clone());
-        let fotos = move |r: &str| foto_de_disco(pixpin_proyecto::vista::ruta_real(&raiz, &ficha, r)?.as_path());
+        let fotos = move |r: &str| {
+            foto_de_disco(pixpin_proyecto::vista::ruta_real(&raiz, &ficha, r)?.as_path())
+        };
         Ok((c, Box::new(fotos)))
     };
     lanzar(idioma, titulo, Some(origen), Box::new(leer));
@@ -92,15 +131,25 @@ struct Origen {
 
 /// Abre el croquis de dentro de un `.pixpin` (`croquis/<id>.json`). Sus
 /// fotos, si van en el paquete, se sacan de el.
-pub fn abrir_de_paquete(idioma: Idioma, paquete: &pixpin_proyecto::Paquete, id: &str, titulo: &str) -> bool {
-    let Some(bytes) = paquete.entrada(&format!("croquis/{id}.json")).map(<[u8]>::to_vec) else {
+pub fn abrir_de_paquete(
+    idioma: Idioma,
+    paquete: &pixpin_proyecto::Paquete,
+    id: &str,
+    titulo: &str,
+) -> bool {
+    let Some(bytes) = paquete
+        .entrada(&format!("croquis/{id}.json"))
+        .map(<[u8]>::to_vec)
+    else {
         return false;
     };
     // Lo que podria ser una foto del croquis, copiado para el hilo.
     let entradas: Arc<Vec<(String, Vec<u8>)>> = Arc::new(
         paquete
             .nombres()
-            .filter(|n| n.contains("croquis") || n.starts_with("imagenes/") || n.starts_with("archivos/"))
+            .filter(|n| {
+                n.contains("croquis") || n.starts_with("imagenes/") || n.starts_with("archivos/")
+            })
             .filter(|n| !n.ends_with(".json"))
             .filter_map(|n| Some((n.to_string(), paquete.entrada(n)?.to_vec())))
             .collect(),
@@ -111,7 +160,9 @@ pub fn abrir_de_paquete(idioma: Idioma, paquete: &pixpin_proyecto::Paquete, id: 
         let fotos = move |r: &str| {
             let rel = r.strip_prefix("pixpin:files/").unwrap_or(r);
             let nombre = rel.rsplit('/').next().unwrap_or(rel);
-            let (_, b) = e.iter().find(|(n, _)| n == rel || n.rsplit('/').next() == Some(nombre))?;
+            let (_, b) = e
+                .iter()
+                .find(|(n, _)| n == rel || n.rsplit('/').next() == Some(nombre))?;
             foto_de_bytes(b)
         };
         Ok((c, Box::new(fotos)))
@@ -122,49 +173,72 @@ pub fn abrir_de_paquete(idioma: Idioma, paquete: &pixpin_proyecto::Paquete, id: 
 
 fn foto_de_disco(ruta: &Path) -> Option<Foto> {
     let im = pixpin_codec::wic::cargar(ruta).ok()?;
-    Some(Foto { ancho: im.ancho, alto: im.alto, rgba: im.pixeles })
+    Some(Foto {
+        ancho: im.ancho,
+        alto: im.alto,
+        rgba: im.pixeles,
+    })
 }
 
 fn foto_de_bytes(b: &[u8]) -> Option<Foto> {
     // WIC lee de un fichero: se pasa por uno temporal.
-    let t = std::env::temp_dir().join(format!("pixpin-croquis-foto-{}-{:x}", std::process::id(), b.len()));
+    let t = std::env::temp_dir().join(format!(
+        "pixpin-croquis-foto-{}-{:x}",
+        std::process::id(),
+        b.len()
+    ));
     std::fs::write(&t, b).ok()?;
     let f = foto_de_disco(&t);
     let _ = std::fs::remove_file(&t);
     f
 }
 
-type Lector = Box<dyn FnOnce() -> Result<(Croquis, Box<dyn Fn(&str) -> Option<Foto> + Send>), String> + Send>;
+type Lector =
+    Box<dyn FnOnce() -> Result<(Croquis, Box<dyn Fn(&str) -> Option<Foto> + Send>), String> + Send>;
 
 /// La ventana, en su hilo; lo pesado (leer y hacer la malla), en otro.
 fn lanzar(idioma: Idioma, titulo: String, origen: Option<Origen>, leer: Lector) {
-    let lanzado = std::thread::Builder::new().name("croquis-3d".into()).spawn(move || {
-        // Lo que la ventana necesita saber antes que la malla: se lee aqui
-        // (es un JSON, rapido) y la malla se hace aparte.
-        let (c, fotos) = match leer() {
-            Ok(x) => x,
-            Err(e) => {
-                tracing::warn!(%e, "no se pudo leer el croquis");
-                let (tx, rx) = std::sync::mpsc::channel();
-                let _ = tx.send(Err(e));
-                let _ = pixpin_cad::ventana3d::ver(&titulo, rx, textos(idioma));
-                return;
+    let lanzado = std::thread::Builder::new()
+        .name("croquis-3d".into())
+        .spawn(move || {
+            // Lo que la ventana necesita saber antes que la malla: se lee aqui
+            // (es un JSON, rapido) y la malla se hace aparte.
+            let (c, fotos) = match leer() {
+                Ok(x) => x,
+                Err(e) => {
+                    tracing::warn!(%e, "no se pudo leer el croquis");
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let _ = tx.send(Err(e));
+                    let _ = pixpin_cad::ventana3d::ver(&titulo, rx, textos(idioma));
+                    return;
+                }
+            };
+            let mut extras = extras_de(&c);
+            let (ruta, proyecto) = origen.map(|o| (o.ruta, o.proyecto)).unzip();
+            extras.exportar = Some(crate::compartir::exportable::al_exportar_3d(
+                idioma,
+                titulo.clone(),
+                ruta,
+                proyecto,
+            ));
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _ = std::thread::Builder::new()
+                .name("croquis-3d-malla".into())
+                .spawn(move || {
+                    let t = std::time::Instant::now();
+                    let m = croquis::malla::a_modelo(&c, &*fotos);
+                    tracing::info!(
+                        ms = t.elapsed().as_millis() as u64,
+                        trazos = c.trazos.len(),
+                        vertices = m.vertices.len(),
+                        "croquis 3D listo"
+                    );
+                    let _ = tx.send(Ok(m));
+                });
+            if let Err(e) = pixpin_cad::ventana3d::ver_con(&titulo, rx, textos(idioma), extras) {
+                tracing::warn!(%e, "no se pudo abrir el visor del croquis");
             }
-        };
-        let mut extras = extras_de(&c);
-        let (ruta, proyecto) = origen.map(|o| (o.ruta, o.proyecto)).unzip();
-        extras.exportar = Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), ruta, proyecto));
-        let (tx, rx) = std::sync::mpsc::channel();
-        let _ = std::thread::Builder::new().name("croquis-3d-malla".into()).spawn(move || {
-            let t = std::time::Instant::now();
-            let m = croquis::malla::a_modelo(&c, &*fotos);
-            tracing::info!(ms = t.elapsed().as_millis() as u64, trazos = c.trazos.len(), vertices = m.vertices.len(), "croquis 3D listo");
-            let _ = tx.send(Ok(m));
         });
-        if let Err(e) = pixpin_cad::ventana3d::ver_con(&titulo, rx, textos(idioma), extras) {
-            tracing::warn!(%e, "no se pudo abrir el visor del croquis");
-        }
-    });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el visor del croquis");
     }
@@ -179,7 +253,10 @@ pub fn extras_de(c: &Croquis) -> pixpin_cad::ventana3d::Extras {
         fondo: croquis::malla::fondo_propio(c),
         claro: Some(croquis::malla::abre_claro(c)),
         encuadre,
-        orientacion: Some((-fabrica.giro - std::f64::consts::FRAC_PI_2, fabrica.inclinacion)),
+        orientacion: Some((
+            -fabrica.giro - std::f64::consts::FRAC_PI_2,
+            fabrica.inclinacion,
+        )),
         vistas: c.vistas.clone(),
         exportar: None,
     }
@@ -217,7 +294,8 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
             niveles: "GRUPOS".into(),
             categorias: "TIPOS".into(),
             sin_nivel: "Todo".into(),
-            pista: "Arrastrar: girar · Derecho: mover · Rueda: acercar · 1–9: vistas guardadas".into(),
+            pista: "Arrastrar: girar · Derecho: mover · Rueda: acercar · 1–9: vistas guardadas"
+                .into(),
             ..TextosUi3d::default()
         },
     }
@@ -228,7 +306,12 @@ mod pruebas {
     use super::*;
 
     fn mensaje(clase: &str, referencia: Option<&str>) -> Mensaje {
-        Mensaje { id: "m1".into(), clase: Some(Clase::Otra(clase.into())), referencia: referencia.map(String::from), ..Default::default() }
+        Mensaje {
+            id: "m1".into(),
+            clase: Some(Clase::Otra(clase.into())),
+            referencia: referencia.map(String::from),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -238,7 +321,11 @@ mod pruebas {
         assert!(!es_croquis(&mensaje("CROQUIS", None)));
         assert!(!es_croquis(&mensaje("CROQUIS", Some("  "))));
         assert!(!es_croquis(&mensaje("TABLA", Some("cr-1"))));
-        assert!(!es_croquis(&Mensaje { clase: Some(Clase::Dibujo), referencia: Some("cr-1".into()), ..Default::default() }));
+        assert!(!es_croquis(&Mensaje {
+            clase: Some(Clase::Dibujo),
+            referencia: Some("cr-1".into()),
+            ..Default::default()
+        }));
     }
 
     #[test]
@@ -248,7 +335,12 @@ mod pruebas {
         let m = mensaje("CROQUIS", Some("cr-1"));
         // Todavia no ha llegado: no se abre.
         assert!(fichero_del_mensaje(&raiz, "p1", &m).is_none());
-        let donde = pixpin_proyecto::vista::ruta_real(&raiz, "p1", "pixpin:files/croquis3d/cr-1.croquis.gz").unwrap();
+        let donde = pixpin_proyecto::vista::ruta_real(
+            &raiz,
+            "p1",
+            "pixpin:files/croquis3d/cr-1.croquis.gz",
+        )
+        .unwrap();
         std::fs::create_dir_all(donde.parent().unwrap()).unwrap();
         std::fs::write(&donde, b"{}").unwrap();
         assert_eq!(fichero_del_mensaje(&raiz, "p1", &m), Some(donde.clone()));

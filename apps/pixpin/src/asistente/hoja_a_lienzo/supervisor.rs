@@ -56,7 +56,13 @@ pub fn leer(t: &str) -> Option<Veredicto> {
     if v["recorte"].as_bool() == Some(true) {
         return Some(Veredicto::Recorte(problema));
     }
-    let r: Vec<String> = v["renglones"].as_array()?.iter().filter_map(|x| x.as_str()).map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect();
+    let r: Vec<String> = v["renglones"]
+        .as_array()?
+        .iter()
+        .filter_map(|x| x.as_str())
+        .map(|x| x.trim().to_string())
+        .filter(|x| !x.is_empty())
+        .collect();
     (!r.is_empty()).then_some(Veredicto::Renglones(r, problema))
 }
 
@@ -87,11 +93,21 @@ pub fn lado_a_lado(original: (&[u8], u32, u32), nuestro: (&[u8], u32, u32)) -> O
         }
     }
     let (px, w, h) = montaje::reducir(&px, w, h, 1400);
-    pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }).ok()
+    pixpin_codec::imagen::codificar_png(&pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    })
+    .ok()
 }
 
 /// Pregunta por una zona (con su recorte original y el nuestro).
-pub fn mirar(motor: &dyn Motor, original: (&[u8], u32, u32), nuestro: (&[u8], u32, u32), que_es: &str) -> Option<Veredicto> {
+pub fn mirar(
+    motor: &dyn Motor,
+    original: (&[u8], u32, u32),
+    nuestro: (&[u8], u32, u32),
+    que_es: &str,
+) -> Option<Veredicto> {
     let png = lado_a_lado(original, nuestro)?;
     let pregunta = format!("Es {que_es}. ¿Lo de la derecha dice lo mismo que lo de la izquierda?");
     let t = vision::preguntar_con(motor, SISTEMA, png, &pregunta, 1500).ok()?;
@@ -105,7 +121,20 @@ pub fn candidatas(parecidos: &[(usize, f64)], tipo: impl Fn(usize) -> Option<Tip
         .iter()
         .copied()
         .filter(|(_, p)| *p < BASTA)
-        .filter(|(z, _)| matches!(tipo(*z), Some(Tipo::Parrafo | Tipo::Encabezado | Tipo::Formula | Tipo::Tabla | Tipo::Dibujo | Tipo::Diagrama | Tipo::Dudosa)))
+        .filter(|(z, _)| {
+            matches!(
+                tipo(*z),
+                Some(
+                    Tipo::Parrafo
+                        | Tipo::Encabezado
+                        | Tipo::Formula
+                        | Tipo::Tabla
+                        | Tipo::Dibujo
+                        | Tipo::Diagrama
+                        | Tipo::Dudosa
+                )
+            )
+        })
         .collect();
     v.sort_by(|a, b| a.1.total_cmp(&b.1));
     v.into_iter().take(MAXIMO).map(|(z, _)| z).collect()
@@ -122,7 +151,9 @@ pub fn mismas_letras(a: &str, b: &str) -> bool {
         d[0] = i;
         for j in 1..=b.len() {
             let t = d[j];
-            d[j] = (d[j] + 1).min(d[j - 1] + 1).min(antes + usize::from(a[i - 1] != b[j - 1]));
+            d[j] = (d[j] + 1)
+                .min(d[j - 1] + 1)
+                .min(antes + usize::from(a[i - 1] != b[j - 1]));
             antes = t;
         }
     }
@@ -208,14 +239,29 @@ mod pruebas {
 
     #[test]
     fn entiende_lo_que_dice_el_supervisor() {
-        assert_eq!(leer("```json\n{\"bien\": true}\n```"), Some(Veredicto::Bien));
         assert_eq!(
-            leer(r#"{"bien":false,"problema":"falta la formula","renglones":["$P_{(x)}=x^{4}+6$ es un polinomio", ""],"recorte":false}"#),
-            Some(Veredicto::Renglones(vec!["$P_{(x)}=x^{4}+6$ es un polinomio".into()], "falta la formula".into()))
+            leer("```json\n{\"bien\": true}\n```"),
+            Some(Veredicto::Bien)
         );
-        assert_eq!(leer(r#"{"bien":false,"problema":"es un esquema","renglones":[],"recorte":true}"#), Some(Veredicto::Recorte("es un esquema".into())));
+        assert_eq!(
+            leer(
+                r#"{"bien":false,"problema":"falta la formula","renglones":["$P_{(x)}=x^{4}+6$ es un polinomio", ""],"recorte":false}"#
+            ),
+            Some(Veredicto::Renglones(
+                vec!["$P_{(x)}=x^{4}+6$ es un polinomio".into()],
+                "falta la formula".into()
+            ))
+        );
+        assert_eq!(
+            leer(r#"{"bien":false,"problema":"es un esquema","renglones":[],"recorte":true}"#),
+            Some(Veredicto::Recorte("es un esquema".into()))
+        );
         assert_eq!(leer("no se"), None);
-        assert_eq!(leer(r#"{"bien":false,"renglones":[]}"#), None, "sin nada que hacer, nada");
+        assert_eq!(
+            leer(r#"{"bien":false,"renglones":[]}"#),
+            None,
+            "sin nada que hacer, nada"
+        );
     }
 
     #[test]
@@ -227,10 +273,25 @@ mod pruebas {
 
     #[test]
     fn sabe_si_solo_cambio_la_forma() {
-        assert!(mismas_letras("**Referencia: A DOS CUADRAS**", "Referencia: A DOS CUADRAS"));
-        assert!(mismas_letras("● **N° de Orden:** **270**", "NO de Orden: 270"));
-        assert!(!mismas_letras("**IE ADVENTISTA PUNO** IE ADVENTISTA PUNO", "IE ADVENTISTA PUNO"), "repetir no es solo forma");
-        assert!(!mismas_letras("$B_{(x; y)}=8x+\\sqrt{y}-3$", "y) -8X+vfr-3"), "arreglar lo leido no es solo forma");
+        assert!(mismas_letras(
+            "**Referencia: A DOS CUADRAS**",
+            "Referencia: A DOS CUADRAS"
+        ));
+        assert!(mismas_letras(
+            "● **N° de Orden:** **270**",
+            "NO de Orden: 270"
+        ));
+        assert!(
+            !mismas_letras(
+                "**IE ADVENTISTA PUNO** IE ADVENTISTA PUNO",
+                "IE ADVENTISTA PUNO"
+            ),
+            "repetir no es solo forma"
+        );
+        assert!(
+            !mismas_letras("$B_{(x; y)}=8x+\\sqrt{y}-3$", "y) -8X+vfr-3"),
+            "arreglar lo leido no es solo forma"
+        );
     }
 
     #[test]
@@ -243,10 +304,22 @@ mod pruebas {
     fn ve_cuando_repite_lo_que_el_papel_no_repite() {
         assert!(repite("**108** 108", "108"));
         assert!(repite("1 día(s) Responder 1 día(s)", "1 dia(s) Responder"));
-        assert!(repite("**IE ADVENTISTA PUNO** IE ADVENTISTA PUNO", "IE ADVENTISTA PUNO"));
-        assert!(!repite("2 día(s) Responder", "2 dia(s) Responder 2"), "lo que el OCR tambien tiene no cuenta");
-        assert!(!repite("Si $x=2 \\rightarrow P_{(2)}=3(2)+4=10$", "Si x=2 P(2)=3(2)+4=10"));
-        assert!(!repite("la segunda parte vino a mi", "la segunda parte vino a mi"));
+        assert!(repite(
+            "**IE ADVENTISTA PUNO** IE ADVENTISTA PUNO",
+            "IE ADVENTISTA PUNO"
+        ));
+        assert!(
+            !repite("2 día(s) Responder", "2 dia(s) Responder 2"),
+            "lo que el OCR tambien tiene no cuenta"
+        );
+        assert!(!repite(
+            "Si $x=2 \\rightarrow P_{(2)}=3(2)+4=10$",
+            "Si x=2 P(2)=3(2)+4=10"
+        ));
+        assert!(!repite(
+            "la segunda parte vino a mi",
+            "la segunda parte vino a mi"
+        ));
     }
 
     #[test]

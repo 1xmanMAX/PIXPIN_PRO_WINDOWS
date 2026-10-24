@@ -31,7 +31,10 @@ mod intervalo;
 mod plantillas;
 mod storyboard;
 
-pub use intervalo::{Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga, tramo_de_serie};
+pub use intervalo::{
+    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga,
+    tramo_de_serie,
+};
 
 /// Entre la categoria y el nombre.
 pub const SEPARADOR: &str = " · ";
@@ -41,7 +44,14 @@ pub const PREFIJO_ID: &str = "serie-";
 pub const VERSION: u32 = 2;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 6] = ["Planificación", "Académico", "Creativo", "Diario", "Blocs", "Storyboard"];
+pub const CATEGORIAS: [&str; 6] = [
+    "Planificación",
+    "Académico",
+    "Creativo",
+    "Diario",
+    "Blocs",
+    "Storyboard",
+];
 
 /// **La categoria de una figura** por su nombre («Diario · Gratitud» →
 /// «Diario»), o `None` si no lleva.
@@ -72,7 +82,11 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
 pub fn instalar_en(lista: &mut Vec<FiguraGuardada>) {
     lista.retain(|f| !es_de_serie(f));
     let propias: Vec<String> = lista.iter().map(|f| f.nombre.to_lowercase()).collect();
-    lista.extend(catalogo().into_iter().filter(|f| !propias.contains(&f.nombre.to_lowercase())));
+    lista.extend(
+        catalogo()
+            .into_iter()
+            .filter(|f| !propias.contains(&f.nombre.to_lowercase())),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +102,12 @@ pub(crate) const fn hex(c: u32) -> ColorRgba {
     )
 }
 
-const TRANSPARENTE: ColorRgba = ColorRgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+const TRANSPARENTE: ColorRgba = ColorRgba {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.0,
+};
 
 pub(crate) const FRAUNCES: &str = "Fraunces";
 pub(crate) const WORK_SANS: &str = "Work Sans";
@@ -136,7 +155,16 @@ impl Lapiz {
 
     /// Una linea a trazos o a puntos.
     #[allow(clippy::too_many_arguments)]
-    pub fn linea_con(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, c: ColorRgba, g: f32, estilo: EstiloTrazo) {
+    pub fn linea_con(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        c: ColorRgba,
+        g: f32,
+        estilo: EstiloTrazo,
+    ) {
         self.linea(x1, y1, x2, y2, c, g);
         if let Some(e) = self.v.last_mut() {
             e.estilo = estilo;
@@ -168,7 +196,17 @@ impl Lapiz {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn arco_eliptico(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, desde: f32, hasta: f32, c: ColorRgba, g: f32) {
+    pub fn arco_eliptico(
+        &mut self,
+        cx: f32,
+        cy: f32,
+        rx: f32,
+        ry: f32,
+        desde: f32,
+        hasta: f32,
+        c: ColorRgba,
+        g: f32,
+    ) {
         let tramos = (((hasta - desde).abs() / 7.5).ceil() as usize).max(2);
         let pts: Vec<(f32, f32)> = (0..=tramos)
             .map(|i| {
@@ -180,7 +218,17 @@ impl Lapiz {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32, trazo: Option<ColorRgba>, relleno: Option<ColorRgba>, g: f32, redondo: bool) {
+    pub fn rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        trazo: Option<ColorRgba>,
+        relleno: Option<ColorRgba>,
+        g: f32,
+        redondo: bool,
+    ) {
         let mut e = base(trazo.unwrap_or(TRANSPARENTE), g);
         e.figura = Figura::Rectangulo;
         e.x = x;
@@ -193,7 +241,16 @@ impl Lapiz {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn elipse(&mut self, x: f32, y: f32, w: f32, h: f32, trazo: Option<ColorRgba>, relleno: Option<ColorRgba>, g: f32) {
+    pub fn elipse(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        trazo: Option<ColorRgba>,
+        relleno: Option<ColorRgba>,
+        g: f32,
+    ) {
         let mut e = base(trazo.unwrap_or(TRANSPARENTE), g);
         e.figura = Figura::Elipse;
         e.x = x;
@@ -205,7 +262,15 @@ impl Lapiz {
     }
 
     /// Un circulo por su centro.
-    pub fn circulo(&mut self, cx: f32, cy: f32, r: f32, trazo: Option<ColorRgba>, relleno: Option<ColorRgba>, g: f32) {
+    pub fn circulo(
+        &mut self,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        trazo: Option<ColorRgba>,
+        relleno: Option<ColorRgba>,
+        g: f32,
+    ) {
         self.elipse(cx - r, cy - r, 2.0 * r, 2.0 * r, trazo, relleno, g);
     }
 
@@ -218,7 +283,11 @@ impl Lapiz {
         {
             e.figura = Figura::Flecha {
                 puntos,
-                punta_inicio: if doble { TipoPunta::Flecha } else { TipoPunta::Ninguna },
+                punta_inicio: if doble {
+                    TipoPunta::Flecha
+                } else {
+                    TipoPunta::Ninguna
+                },
                 punta_fin: TipoPunta::Flecha,
                 codos: false,
             };
@@ -229,8 +298,21 @@ impl Lapiz {
     /// izquierda con `Al::Izq`, el centro de arriba con `Al::Centro` y la
     /// esquina de arriba a la derecha con `Al::Der`.
     #[allow(clippy::too_many_arguments)]
-    pub fn texto(&mut self, x: f32, y: f32, s: &str, tam: f32, familia: &str, c: ColorRgba, negrita: bool, al: Al) {
-        let estilo = EstiloDeTexto { negrita, ..Default::default() };
+    pub fn texto(
+        &mut self,
+        x: f32,
+        y: f32,
+        s: &str,
+        tam: f32,
+        familia: &str,
+        c: ColorRgba,
+        negrita: bool,
+        al: Al,
+    ) {
+        let estilo = EstiloDeTexto {
+            negrita,
+            ..Default::default()
+        };
         let (w, h) = texto::medida(s, tam, familia, estilo);
         let x = match al {
             Al::Izq => x,
@@ -238,7 +320,11 @@ impl Lapiz {
             Al::Der => x - w,
         };
         let mut e = base(c, 1.0);
-        e.figura = Figura::Texto { texto: s.to_string(), tam, familia: familia.to_string() };
+        e.figura = Figura::Texto {
+            texto: s.to_string(),
+            tam,
+            familia: familia.to_string(),
+        };
         e.x = x;
         e.y = y;
         e.ancho = w;

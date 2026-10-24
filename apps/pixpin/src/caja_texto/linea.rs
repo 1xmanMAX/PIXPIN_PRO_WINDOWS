@@ -448,8 +448,14 @@ impl CajaLinea {
     ) -> Respuesta {
         let p = self.pos();
         let sin_eleccion = self.cursor.seleccion(&self.texto).is_none();
-        let antes = piezas.iter().find(|r| r.start < r.end && r.end == p).cloned();
-        let despues = piezas.iter().find(|r| r.start < r.end && r.start == p).cloned();
+        let antes = piezas
+            .iter()
+            .find(|r| r.start < r.end && r.end == p)
+            .cloned();
+        let despues = piezas
+            .iter()
+            .find(|r| r.start < r.end && r.start == p)
+            .cloned();
         match (vk, antes, despues) {
             (VK_RETROCESO, Some(r), _) if sin_eleccion => {
                 self.cursor.elegir(&self.texto, r);
@@ -485,7 +491,6 @@ impl CajaLinea {
             self.cursor.poner(&self.texto, r.end, false);
         }
     }
-
 
     /// La rayita vuelve a encenderse ahora: al ganar el foco o tras tocarla.
     pub(crate) fn despertar(&mut self) {
@@ -749,8 +754,16 @@ impl CajaLinea {
                 return false;
             }
             let (x, y, alto) = sitio_del_cursor(&self.texto, &p.cajas, self.pos(), p.tam * 1.3);
-            let destino = if abajo { y + alto * 1.5 } else { y - alto / 2.0 };
-            let fondo = p.cajas.iter().map(|(_, b)| b.y + b.alto).fold(0.0, f32::max);
+            let destino = if abajo {
+                y + alto * 1.5
+            } else {
+                y - alto / 2.0
+            };
+            let fondo = p
+                .cajas
+                .iter()
+                .map(|(_, b)| b.y + b.alto)
+                .fold(0.0, f32::max);
             let ultimo_vacio = self.texto.ends_with('\n');
             if destino < 0.0 || (destino >= fondo && !(ultimo_vacio && y < fondo)) {
                 return false;
@@ -869,7 +882,9 @@ impl CajaLinea {
         enfocada: bool,
         ahora: Instant,
     ) {
-        self.pintar_con_fichas(p, zona, hueco, tam, invitacion, colores, enfocada, ahora, None);
+        self.pintar_con_fichas(
+            p, zona, hueco, tam, invitacion, colores, enfocada, ahora, None,
+        );
     }
 
     /// Como [`Self::pintar`], con **fichas**: cada una como una chapa de su
@@ -915,7 +930,11 @@ impl CajaLinea {
         // En varias, lo que no cabe a lo alto se corre hacia arriba para
         // que la rayita siga a la vista (la misma cuenta que a lo ancho).
         let y = if self.varias {
-            let largo = pin.cajas.iter().map(|(_, b)| b.y + b.alto).fold(0.0, f32::max);
+            let largo = pin
+                .cajas
+                .iter()
+                .map(|(_, b)| b.y + b.alto)
+                .fold(0.0, f32::max);
             pin.corrido_y =
                 super::corrido_a_la_vista(pin.corrido_y, cy, cy + alto_rayita, largo, hueco.alto);
             hueco.y - pin.corrido_y
@@ -947,7 +966,12 @@ impl CajaLinea {
                 for r in f.rangos {
                     let mut letras = pin.cajas.iter().filter(|(i, _)| r.contains(i));
                     let Some((_, a)) = letras.next() else {
-                        chapas.push(RectF { x: -1.0e6, y: -1.0e6, ancho: 0.0, alto: 0.0 });
+                        chapas.push(RectF {
+                            x: -1.0e6,
+                            y: -1.0e6,
+                            ancho: 0.0,
+                            alto: 0.0,
+                        });
                         continue;
                     };
                     let b = letras.next_back().map_or(*a, |(_, b)| *b);
@@ -1146,7 +1170,11 @@ mod pruebas {
         assert_eq!(tecla(&mut c, VK_SUPR, false, true), Respuesta::Cambiada);
         assert_eq!(c.texto(), "dos tres");
         tecla(&mut c, VK_FIN, false, false);
-        assert_eq!(tecla(&mut c, VK_SUPR, false, true), Respuesta::Movida, "al final no hay nada delante");
+        assert_eq!(
+            tecla(&mut c, VK_SUPR, false, true),
+            Respuesta::Movida,
+            "al final no hay nada delante"
+        );
         assert_eq!(c.texto(), "dos tres");
     }
 
@@ -1175,8 +1203,16 @@ mod pruebas {
         assert_eq!(c.pos(), c.len());
         // Una flecha que no es de la caja de una linea.
         assert_eq!(tecla(&mut c, 0x26, false, false), Respuesta::NoEsMia);
-        assert_eq!(tecla(&mut c, 0x1B, false, false), Respuesta::NoEsMia, "Escape es de la ventana");
-        assert_eq!(tecla(&mut c, 0x0D, false, false), Respuesta::NoEsMia, "Entrar tambien");
+        assert_eq!(
+            tecla(&mut c, 0x1B, false, false),
+            Respuesta::NoEsMia,
+            "Escape es de la ventana"
+        );
+        assert_eq!(
+            tecla(&mut c, 0x0D, false, false),
+            Respuesta::NoEsMia,
+            "Entrar tambien"
+        );
     }
 
     #[test]
@@ -1235,7 +1271,9 @@ mod pruebas {
 
     #[test]
     fn pegar_quita_los_saltos_de_renglon() {
-        let mut pp = Pp(Some("primera linea\r\n\r\n   segunda\tcon tab\nfin\n".into()));
+        let mut pp = Pp(Some(
+            "primera linea\r\n\r\n   segunda\tcon tab\nfin\n".into(),
+        ));
         let mut c = caja("> ");
         c.tecla(VK_V, false, true, &mut pp);
         assert_eq!(c.texto(), "> primera linea segunda con tab fin");
@@ -1257,10 +1295,18 @@ mod pruebas {
         assert_eq!(c.texto(), "hola");
         assert_eq!(tecla(&mut c, VK_Z, false, true), Respuesta::Cambiada);
         assert_eq!(c.texto(), "");
-        assert_eq!(tecla(&mut c, VK_Z, false, true), Respuesta::Movida, "nada mas que deshacer");
+        assert_eq!(
+            tecla(&mut c, VK_Z, false, true),
+            Respuesta::Movida,
+            "nada mas que deshacer"
+        );
         assert_eq!(tecla(&mut c, VK_Y, false, true), Respuesta::Cambiada);
         assert_eq!(c.texto(), "hola");
-        assert_eq!(tecla(&mut c, VK_Z, true, true), Respuesta::Cambiada, "Ctrl+Mayus+Z rehace");
+        assert_eq!(
+            tecla(&mut c, VK_Z, true, true),
+            Respuesta::Cambiada,
+            "Ctrl+Mayus+Z rehace"
+        );
         assert_eq!(c.texto(), "holXa");
         assert_eq!(c.pos(), 4);
         ctrl_retroceso(&mut c);
@@ -1550,9 +1596,15 @@ mod pruebas {
         let mut pp = Pp::default();
         // Al final de la ficha: la flecha la salta de una vez.
         c.ir_a(14);
-        assert_eq!(c.tecla_con_piezas(VK_IZQUIERDA, false, false, &mut pp, piezas), Respuesta::Movida);
+        assert_eq!(
+            c.tecla_con_piezas(VK_IZQUIERDA, false, false, &mut pp, piezas),
+            Respuesta::Movida
+        );
         assert_eq!(c.pos(), 6);
-        assert_eq!(c.tecla_con_piezas(VK_DERECHA, false, false, &mut pp, piezas), Respuesta::Movida);
+        assert_eq!(
+            c.tecla_con_piezas(VK_DERECHA, false, false, &mut pp, piezas),
+            Respuesta::Movida
+        );
         assert_eq!(c.pos(), 14);
         // Con Mayusculas la elige entera.
         c.tecla_con_piezas(VK_IZQUIERDA, true, false, &mut pp, piezas);
@@ -1560,7 +1612,10 @@ mod pruebas {
         c.tecla_con_piezas(VK_DERECHA, false, false, &mut pp, piezas);
         assert_eq!(c.pos(), 14, "sin Mayusculas la flecha suelta lo elegido");
         // Retroceso (y Ctrl+Retroceso) se la llevan entera, y se deshace.
-        assert_eq!(c.tecla_con_piezas(VK_RETROCESO, false, true, &mut pp, piezas), Respuesta::Cambiada);
+        assert_eq!(
+            c.tecla_con_piezas(VK_RETROCESO, false, true, &mut pp, piezas),
+            Respuesta::Cambiada
+        );
         assert_eq!(c.texto(), "regar  hoy");
         assert_eq!(c.pos(), 6);
         assert!(c.hay_deshacer());
@@ -1568,11 +1623,17 @@ mod pruebas {
         assert_eq!(c.texto(), "regar [img 01] hoy");
         // Supr al principio de la ficha, igual.
         c.ir_a(6);
-        assert_eq!(c.tecla_con_piezas(VK_SUPR, false, false, &mut pp, piezas), Respuesta::Cambiada);
+        assert_eq!(
+            c.tecla_con_piezas(VK_SUPR, false, false, &mut pp, piezas),
+            Respuesta::Cambiada
+        );
         assert_eq!(c.texto(), "regar  hoy");
         // Caso negativo: lejos de la ficha, una letra y nada mas.
         let mut d = caja("regar [img 01] hoy");
-        assert_eq!(d.tecla_con_piezas(VK_RETROCESO, false, false, &mut pp, piezas), Respuesta::Cambiada);
+        assert_eq!(
+            d.tecla_con_piezas(VK_RETROCESO, false, false, &mut pp, piezas),
+            Respuesta::Cambiada
+        );
         assert_eq!(d.texto(), "regar [img 01] ho");
         // Y sin piezas es la tecla de siempre: Ctrl+Retroceso parte la ficha.
         let mut e = caja("regar [img 01]");
@@ -1604,13 +1665,43 @@ mod pruebas {
         let motor = MotorRender::nuevo(d3.d3d()).expect("motor");
         let (ancho, alto) = (520u32, 320u32);
         let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
-        let fondo = Color { r: 0.09, g: 0.13, b: 0.17, a: 1.0 };
-        let campo = Color { r: 0.17, g: 0.22, b: 0.28, a: 1.0 };
+        let fondo = Color {
+            r: 0.09,
+            g: 0.13,
+            b: 0.17,
+            a: 1.0,
+        };
+        let campo = Color {
+            r: 0.17,
+            g: 0.22,
+            b: 0.28,
+            a: 1.0,
+        };
         let colores = Colores {
-            texto: Color { r: 0.95, g: 0.95, b: 0.95, a: 1.0 },
-            invitacion: Color { r: 0.55, g: 0.6, b: 0.65, a: 1.0 },
-            seleccion: Color { r: 0.33, g: 0.6, b: 0.95, a: 0.35 },
-            rayita: Color { r: 0.95, g: 0.95, b: 0.95, a: 1.0 },
+            texto: Color {
+                r: 0.95,
+                g: 0.95,
+                b: 0.95,
+                a: 1.0,
+            },
+            invitacion: Color {
+                r: 0.55,
+                g: 0.6,
+                b: 0.65,
+                a: 1.0,
+            },
+            seleccion: Color {
+                r: 0.33,
+                g: 0.6,
+                b: 0.95,
+                a: 0.35,
+            },
+            rayita: Color {
+                r: 0.95,
+                g: 0.95,
+                b: 0.95,
+                a: 1.0,
+            },
         };
         // La rayita en medio de un texto mas largo que la caja.
         let mut larga = caja(
@@ -1640,7 +1731,12 @@ mod pruebas {
             motor
                 .dibujar(&destino.destino, |p| {
                     p.rellenar(
-                        RectF { x: 0.0, y: 0.0, ancho: ancho as f32, alto: alto as f32 },
+                        RectF {
+                            x: 0.0,
+                            y: 0.0,
+                            ancho: ancho as f32,
+                            alto: alto as f32,
+                        },
                         fondo,
                     );
                     for (n, (c, invitacion)) in filas.iter().enumerate() {
@@ -1651,12 +1747,26 @@ mod pruebas {
                             alto: 40.0,
                         };
                         p.rellenar_redondeado(zona, 20.0, campo);
-                        let hueco = RectF { x: zona.x + 16.0, ancho: zona.ancho - 32.0, ..zona };
+                        let hueco = RectF {
+                            x: zona.x + 16.0,
+                            ancho: zona.ancho - 32.0,
+                            ..zona
+                        };
                         c.pintar(p, zona, hueco, 15.0, invitacion, &colores, true, ahora);
                     }
-                    let zona = RectF { x: 20.0, y: 200.0, ancho: 300.0, alto: 100.0 };
+                    let zona = RectF {
+                        x: 20.0,
+                        y: 200.0,
+                        ancho: 300.0,
+                        alto: 100.0,
+                    };
                     p.rellenar_redondeado(zona, 12.0, campo);
-                    let hueco = RectF { x: 36.0, y: 210.0, ancho: 268.0, alto: 80.0 };
+                    let hueco = RectF {
+                        x: 36.0,
+                        y: 210.0,
+                        ancho: 268.0,
+                        alto: 80.0,
+                    };
                     varias.pintar(p, zona, hueco, 15.0, "", &colores, true, ahora);
                 })
                 .expect("fotograma");
@@ -1669,7 +1779,10 @@ mod pruebas {
         let (cx, _, _) = sitio_del_cursor(&larga.texto, &p.cajas, larga.pos(), 20.0);
         let x = p.origen.0 + cx;
         assert!((36.0..=304.0).contains(&x), "rayita a la vista: {x}");
-        assert!(larga.pos() > 0 && larga.pos() < larga.len(), "en medio del texto");
+        assert!(
+            larga.pos() > 0 && larga.pos() < larga.len(),
+            "en medio del texto"
+        );
         let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
             ancho: w,
             alto: h,

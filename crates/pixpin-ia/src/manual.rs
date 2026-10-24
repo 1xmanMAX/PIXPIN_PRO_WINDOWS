@@ -172,7 +172,10 @@ pub fn sitio_de(nombre: &str) -> Option<&'static str> {
     if crate::conexiones::acciones::NOMBRES.contains(&nombre) {
         return Some("Móvil y conexiones");
     }
-    if crate::acciones_documentos::ACCIONES_DOCUMENTOS.iter().any(|a| a.herramienta == nombre) {
+    if crate::acciones_documentos::ACCIONES_DOCUMENTOS
+        .iter()
+        .any(|a| a.herramienta == nombre)
+    {
         return Some("Documentos");
     }
     crate::acciones::por_nombre(nombre).map(|a| sitio_de_categoria(a.categoria))
@@ -180,7 +183,10 @@ pub fn sitio_de(nombre: &str) -> Option<&'static str> {
 
 /// Todos los nombres que el asistente de la nube puede ver, en orden.
 fn todos_los_nombres() -> Vec<String> {
-    let mut v: Vec<String> = crate::herramientas::catalogo().into_iter().map(|h| h.nombre).collect();
+    let mut v: Vec<String> = crate::herramientas::catalogo()
+        .into_iter()
+        .map(|h| h.nombre)
+        .collect();
     for n in FUERA_DEL_CATALOGO {
         if !v.iter().any(|x| x == n) {
             v.push((*n).to_string());
@@ -203,9 +209,18 @@ pub fn mapa() -> String {
         if suyas.is_empty() {
             continue;
         }
-        s.push_str(&format!("- {}: {} → {}\n", sitio.nombre, sitio.que_es, suyas.join(", ")));
+        s.push_str(&format!(
+            "- {}: {} → {}\n",
+            sitio.nombre,
+            sitio.que_es,
+            suyas.join(", ")
+        ));
     }
-    let otras: Vec<&str> = nombres.iter().filter(|n| sitio_de(n).is_none()).map(String::as_str).collect();
+    let otras: Vec<&str> = nombres
+        .iter()
+        .filter(|n| sitio_de(n).is_none())
+        .map(String::as_str)
+        .collect();
     if !otras.is_empty() {
         s.push_str(&format!("- Otras: {}\n", otras.join(", ")));
     }
@@ -227,7 +242,11 @@ Lo que se ve, míralo antes de terminar. Al acabar, repasa el pedido punto por p
 
 /// **El manual entero** para el sistema de la nube.
 pub fn manual() -> String {
-    format!("Cómo está hecha la app (sitios → herramientas):\n{}\n{}", mapa(), COMBINAR)
+    format!(
+        "Cómo está hecha la app (sitios → herramientas):\n{}\n{}",
+        mapa(),
+        COMBINAR
+    )
 }
 
 #[cfg(test)]
@@ -238,7 +257,10 @@ mod pruebas {
     /// sitio la para aqui (y no sale en «Otras»).
     #[test]
     fn cada_herramienta_tiene_su_sitio() {
-        let sin: Vec<String> = todos_los_nombres().into_iter().filter(|n| sitio_de(n).is_none()).collect();
+        let sin: Vec<String> = todos_los_nombres()
+            .into_iter()
+            .filter(|n| sitio_de(n).is_none())
+            .collect();
         assert!(sin.is_empty(), "sin sitio en el manual: {sin:?}");
         assert!(!mapa().contains("- Otras:"));
     }
@@ -255,7 +277,10 @@ mod pruebas {
             .collect();
         assert!(muertas.is_empty(), "no existen: {muertas:?}");
         for (_, s) in POR_NOMBRE {
-            assert!(SITIOS.iter().any(|x| x.nombre == *s), "sitio desconocido: {s}");
+            assert!(
+                SITIOS.iter().any(|x| x.nombre == *s),
+                "sitio desconocido: {s}"
+            );
         }
     }
 
@@ -264,7 +289,16 @@ mod pruebas {
     #[test]
     fn el_manual_ensena_sitios_herramientas_y_como_comprobar() {
         let m = manual();
-        for parte in ["Lienzo: encontrar y cambiar", "editar_texto", "Documentos", "anotar_inteligente", "Tareas", "Leer → pensar tú → escribir", "Cómo compruebas", "Antes de decir que algo no se puede"] {
+        for parte in [
+            "Lienzo: encontrar y cambiar",
+            "editar_texto",
+            "Documentos",
+            "anotar_inteligente",
+            "Tareas",
+            "Leer → pensar tú → escribir",
+            "Cómo compruebas",
+            "Antes de decir que algo no se puede",
+        ] {
             assert!(m.contains(parte), "falta «{parte}»");
         }
         assert_eq!(m, manual(), "fijo");

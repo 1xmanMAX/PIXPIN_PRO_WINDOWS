@@ -30,10 +30,16 @@ fn lo_elegido_en_el_panel_se_pone_a_la_escala_del_plano() {
     assert!((v[0].grosor - NivelGrosor::Fino.de_tinta() * k).abs() < 1e-6);
     // Un texto con la letra de 36 del panel.
     let mut t = raya(2, NivelGrosor::Fino.de_forma());
-    t.figura = pixpin_motor2d::Figura::Texto { texto: "a".into(), tam: 36.0, familia: "Segoe UI".into() };
+    t.figura = pixpin_motor2d::Figura::Texto {
+        texto: "a".into(),
+        tam: 36.0,
+        familia: "Segoe UI".into(),
+    };
     v.push(t);
     poner_a_escala(&mut v, &mut visto, k, 20.0);
-    let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else { panic!() };
+    let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else {
+        panic!()
+    };
     assert!((tam - 0.36).abs() < 1e-5, "{tam}");
     // Caso negativo: un cambio que no viene del panel (estirar el
     // texto, pegar algo ya a escala) se deja como esta.
@@ -42,7 +48,9 @@ fn lo_elegido_en_el_panel_se_pone_a_la_escala_del_plano() {
     }
     v.push(raya(3, 0.0123));
     poner_a_escala(&mut v, &mut visto, k, 20.0);
-    let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else { panic!() };
+    let pixpin_motor2d::Figura::Texto { tam, .. } = &v[1].figura else {
+        panic!()
+    };
     assert!((tam - 0.5).abs() < 1e-6);
     assert!((v[2].grosor - 0.0123).abs() < 1e-7);
 }
@@ -51,14 +59,20 @@ fn lo_elegido_en_el_panel_se_pone_a_la_escala_del_plano() {
 
 /// Una carpeta de pruebas propia y vacia.
 pub(super) fn carpeta(etiqueta: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("pixpin-plano-anotar-{etiqueta}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!(
+        "pixpin-plano-anotar-{etiqueta}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
 }
 
 pub(super) fn rutas_en(d: &Path) -> Rutas {
-    Rutas { tinta: d.join("capa.excalidraw"), hoja: d.join("capa.hoja") }
+    Rutas {
+        tinta: d.join("capa.excalidraw"),
+        hoja: d.join("capa.hoja"),
+    }
 }
 
 /// Un plano de 100 x 50 m dibujado en milimetros con letras de 2,5 mm (el
@@ -67,8 +81,20 @@ pub(super) fn plano_de_obra() -> Modelo {
     Modelo {
         caja: [-50_000.0, -25_000.0, 50_000.0, 25_000.0],
         tramos_letras: vec![
-            pixpin_cad::modelo::Tramo { desde: 0, cuantos: 4000, caja: [0.0; 4], tamano: 2.0, clase: 0 },
-            pixpin_cad::modelo::Tramo { desde: 0, cuantos: 300, caja: [0.0; 4], tamano: 64.0, clase: 0 },
+            pixpin_cad::modelo::Tramo {
+                desde: 0,
+                cuantos: 4000,
+                caja: [0.0; 4],
+                tamano: 2.0,
+                clase: 0,
+            },
+            pixpin_cad::modelo::Tramo {
+                desde: 0,
+                cuantos: 300,
+                caja: [0.0; 4],
+                tamano: 64.0,
+                clase: 0,
+            },
         ],
         ..Default::default()
     }
@@ -78,13 +104,25 @@ pub(super) fn plano_de_obra() -> Modelo {
 /// el centro del plano con `px` unidades del plano por pixel y la capa en
 /// unidades de `unidad`.
 pub(super) fn vista(px: f64, unidad: f64) -> VistaPlano {
-    VistaPlano { centro: [0.0, 0.0], px, ancho: 1200, alto: 800, origen_pantalla: (0, 0), escala_por_cien: 100, unidad, claro: true }
+    VistaPlano {
+        centro: [0.0, 0.0],
+        px,
+        ancho: 1200,
+        alto: 800,
+        origen_pantalla: (0, 0),
+        escala_por_cien: 100,
+        unidad,
+        claro: true,
+    }
 }
 
 /// **Un trazo del raton** de (300, 500) a (900, 500), muestra a muestra,
 /// con el lapiz del motor sobre el plano; devuelve el trazo que nacio.
 pub(super) fn trazar(motor: &mut MotorDelPlano, v: &VistaPlano) -> Elemento {
-    motor.tinta.gesto.tomar_herramienta(pixpin_motor2d::gesto::Herramienta::Lapiz);
+    motor
+        .tinta
+        .gesto
+        .tomar_herramienta(pixpin_motor2d::gesto::Herramienta::Lapiz);
     motor.evento(EventoPlano::Mover(300, 500), v);
     motor.evento(EventoPlano::Bajar(300, 500), v);
     for x in (303..=900).step_by(3) {
@@ -106,12 +144,28 @@ pub(super) fn trazar(motor: &mut MotorDelPlano, v: &VistaPlano) -> Elemento {
 /// Lo gordo que se ve el trazo en la pantalla, en pixeles: el alto de su
 /// contorno en el tramo del medio (lejos de las puntas).
 fn gordo_en_pantalla(e: &Elemento, v: &VistaPlano) -> f32 {
-    let Figura::Lapiz { puntos, presiones, opciones } = &e.figura else { panic!() };
-    let contorno = pixpin_motor2d::tinta::contorno_de_lapiz_firme(puntos, presiones, e.grosor, *opciones, e.extras.presion_firme);
+    let Figura::Lapiz {
+        puntos,
+        presiones,
+        opciones,
+    } = &e.figura
+    else {
+        panic!()
+    };
+    let contorno = pixpin_motor2d::tinta::contorno_de_lapiz_firme(
+        puntos,
+        presiones,
+        e.grosor,
+        *opciones,
+        e.extras.presion_firme,
+    );
     let (x, y, zoom) = v.camara();
     let (mut arriba, mut abajo) = (f32::MAX, f32::MIN);
     for q in &contorno {
-        let (px, py) = (((q.x as f64 - x) * zoom) as f32, ((q.y as f64 - y) * zoom) as f32);
+        let (px, py) = (
+            ((q.x as f64 - x) * zoom) as f32,
+            ((q.y as f64 - y) * zoom) as f32,
+        );
         if (500.0..=700.0).contains(&px) {
             arriba = arriba.min(py);
             abajo = abajo.max(py);
@@ -136,16 +190,25 @@ fn el_lapiz_sobre_el_plano_se_ve_como_en_un_lienzo_a_cualquier_zoom() {
     let mut lienzo = MotorDelPlano::nuevo(rutas_en(&d.join("lienzo")), &m);
     let v = vista(1.0, 1.0);
     let referencia = gordo_en_pantalla(&trazar(&mut lienzo, &v), &v);
-    assert!(referencia > 1.0 && referencia < 12.0, "el lapiz medio de un lienzo: {referencia}");
+    assert!(
+        referencia > 1.0 && referencia < 12.0,
+        "el lapiz medio de un lienzo: {referencia}"
+    );
 
     let letra = 2.5;
     let u = pixpin_cad::anotado::unidad_de_la_capa(&m);
-    for (i, px) in [letra / 20.0 * 8.0, letra / 20.0, letra / 20.0 / 8.0].into_iter().enumerate() {
+    for (i, px) in [letra / 20.0 * 8.0, letra / 20.0, letra / 20.0 / 8.0]
+        .into_iter()
+        .enumerate()
+    {
         let mut motor = MotorDelPlano::nuevo(rutas_en(&d.join(format!("ahora-{i}"))), &m);
         let v = vista(px, u);
         let gordo = gordo_en_pantalla(&trazar(&mut motor, &v), &v);
         println!("MEDIDA lapiz ahora px={px} gordo={gordo:.2} referencia={referencia:.2}");
-        assert!((gordo / referencia - 1.0).abs() < 0.2, "zoom {px}: {gordo} px contra {referencia} px en el lienzo");
+        assert!(
+            (gordo / referencia - 1.0).abs() < 0.2,
+            "zoom {px}: {gordo} px contra {referencia} px en el lienzo"
+        );
     }
 
     // Caso negativo, el fallo: con la unidad de antes, mirando a leer, el
@@ -155,7 +218,10 @@ fn el_lapiz_sobre_el_plano_se_ve_como_en_un_lienzo_a_cualquier_zoom() {
     let v = vista(letra / 20.0, antes);
     let gordo = gordo_en_pantalla(&trazar(&mut motor, &v), &v);
     println!("MEDIDA lapiz antes gordo={gordo:.2} referencia={referencia:.2}");
-    assert!(gordo > referencia * 2.0, "con la unidad de antes: {gordo} px contra {referencia} px");
+    assert!(
+        gordo > referencia * 2.0,
+        "con la unidad de antes: {gordo} px contra {referencia} px"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -176,10 +242,18 @@ fn lo_anotado_se_guarda_con_su_hoja_y_lo_de_antes_se_lee_con_la_unidad_de_antes(
     motor.terminar();
     let hoja = leer_hoja(&r.hoja).expect("hoja");
     let e = Encaje::de_la_hoja(hoja, m.caja).unwrap();
-    assert!((e.u - u).abs() / u < 1e-4 && e.cero_x.abs() < 1.0 && e.cero_y.abs() < 1.0, "{e:?}");
+    assert!(
+        (e.u - u).abs() / u < 1e-4 && e.cero_x.abs() < 1.0 && e.cero_y.abs() < 1.0,
+        "{e:?}"
+    );
     // Y al volver a abrir, el trazo esta donde estaba.
     let otra = MotorDelPlano::nuevo(r.clone(), &m);
-    let leido = otra.capa.escena.visibles().find(|x| matches!(x.figura, Figura::Lapiz { .. })).unwrap();
+    let leido = otra
+        .capa
+        .escena
+        .visibles()
+        .find(|x| matches!(x.figura, Figura::Lapiz { .. }))
+        .unwrap();
     assert!((leido.x - trazo.x).abs() < 1e-3 && (leido.grosor - trazo.grosor).abs() < 1e-6);
 
     // Lo anotado antes sin hoja (en milesimas del lado del plano): cae en su
@@ -187,23 +261,47 @@ fn lo_anotado_se_guarda_con_su_hoja_y_lo_de_antes_se_lee_con_la_unidad_de_antes(
     let antigua = pixpin_cad::anotado::unidad_antigua(&m);
     std::fs::remove_file(&r.hoja).unwrap();
     let mut viejo = Capa::default();
-    let mut raya = pixpin_motor2d::Elemento { x: 10.0, y: 20.0, ancho: 5.0, grosor: 0.5, figura: Figura::Linea { puntos: vec![Punto2::nuevo(10.0, 20.0), Punto2::nuevo(15.0, 20.0)] }, ..Default::default() };
+    let mut raya = pixpin_motor2d::Elemento {
+        x: 10.0,
+        y: 20.0,
+        ancho: 5.0,
+        grosor: 0.5,
+        figura: Figura::Linea {
+            puntos: vec![Punto2::nuevo(10.0, 20.0), Punto2::nuevo(15.0, 20.0)],
+        },
+        ..Default::default()
+    };
     raya.version = 1;
     viejo.escena.anadir(raya);
     viejo.sucia = true;
     std::fs::remove_file(&r.tinta).unwrap();
     viejo.guardar(&r.tinta).unwrap();
     let mut motor = MotorDelPlano::nuevo(r.clone(), &m);
-    let linea = motor.capa.escena.visibles().find(|x| matches!(x.figura, Figura::Linea { .. })).unwrap().clone();
+    let linea = motor
+        .capa
+        .escena
+        .visibles()
+        .find(|x| matches!(x.figura, Figura::Linea { .. }))
+        .unwrap()
+        .clone();
     let p = motor.memoria.a_plano([linea.x as f64, linea.y as f64]);
-    assert!((p[0] - 10.0 * antigua).abs() < 1e-2 && (p[1] + 20.0 * antigua).abs() < 1e-2, "{p:?}");
+    assert!(
+        (p[0] - 10.0 * antigua).abs() < 1e-2 && (p[1] + 20.0 * antigua).abs() < 1e-2,
+        "{p:?}"
+    );
     assert!((linea.grosor as f64 * u - 0.5 * antigua).abs() < 1e-3);
     motor.poner_cotas_y_marcos(&[vec![[0.0, 0.0], [1000.0, 0.0]]], &[]);
     let e = Encaje::de_la_hoja(leer_hoja(&r.hoja).unwrap(), m.caja).unwrap();
-    assert!((e.u - antigua).abs() / antigua < 1e-4, "la hoja dice las unidades del fichero: {e:?}");
+    assert!(
+        (e.u - antigua).abs() / antigua < 1e-4,
+        "la hoja dice las unidades del fichero: {e:?}"
+    );
     // Lo que no se toco vuelve al fichero con sus numeros exactos.
     let texto = std::fs::read_to_string(&r.tinta).unwrap();
-    assert!(texto.contains("\"x\": 10.0") || texto.contains("\"x\": 10"), "{texto}");
+    assert!(
+        texto.contains("\"x\": 10.0") || texto.contains("\"x\": 10"),
+        "{texto}"
+    );
 
     // Casos negativos: una hoja danada se ignora (regla de antes) y una capa
     // ilegible se lee vacia, sin romper nada.
@@ -228,24 +326,43 @@ fn las_cotas_y_los_marcos_van_en_la_capa_como_en_android() {
     let (cs, ms) = motor.cotas_y_marcos();
     assert_eq!(cs.len(), 1);
     for (a, b) in cs[0].iter().zip(&cota) {
-        assert!((a[0] - b[0]).abs() < 1e-2 && (a[1] - b[1]).abs() < 1e-2, "{a:?} {b:?}");
+        assert!(
+            (a[0] - b[0]).abs() < 1e-2 && (a[1] - b[1]).abs() < 1e-2,
+            "{a:?} {b:?}"
+        );
     }
-    assert!(ms[0].iter().zip(marco).all(|(a, b)| (a - b).abs() < 1e-2), "{ms:?}");
+    assert!(
+        ms[0].iter().zip(marco).all(|(a, b)| (a - b).abs() < 1e-2),
+        "{ms:?}"
+    );
     // En el fichero: una raya y un marco con su grupo y el id de su forma.
     let texto = std::fs::read_to_string(&r.tinta).unwrap();
-    let id_cota = pixpin_cad::anotado::huella(GRUPO_COTA, &[100.0, 200.0, 1100.0, 200.0, 1100.0, 900.0]);
-    assert!(texto.contains(&id_cota) && texto.contains("plano-marco") && texto.contains("\"frame\""), "{texto}");
+    let id_cota =
+        pixpin_cad::anotado::huella(GRUPO_COTA, &[100.0, 200.0, 1100.0, 200.0, 1100.0, 900.0]);
+    assert!(
+        texto.contains(&id_cota) && texto.contains("plano-marco") && texto.contains("\"frame\""),
+        "{texto}"
+    );
     // Lo mismo otra vez no cambia nada (ni escribe).
     let antes = std::fs::metadata(&r.tinta).unwrap().modified().unwrap();
     motor.poner_cotas_y_marcos(std::slice::from_ref(&cota), &[marco]);
-    assert_eq!(std::fs::metadata(&r.tinta).unwrap().modified().unwrap(), antes);
+    assert_eq!(
+        std::fs::metadata(&r.tinta).unwrap().modified().unwrap(),
+        antes
+    );
     // Quitar el marco lo deja borrado (viaja como borrado); volver a ponerlo, revive.
     motor.poner_cotas_y_marcos(std::slice::from_ref(&cota), &[]);
     let texto = std::fs::read_to_string(&r.tinta).unwrap();
     assert!(texto.contains("\"isDeleted\": true"), "{texto}");
-    assert_eq!(MotorDelPlano::nuevo(r.clone(), &m).cotas_y_marcos().1.len(), 0);
+    assert_eq!(
+        MotorDelPlano::nuevo(r.clone(), &m).cotas_y_marcos().1.len(),
+        0
+    );
     motor.poner_cotas_y_marcos(&[cota], &[marco]);
-    assert_eq!(MotorDelPlano::nuevo(r.clone(), &m).cotas_y_marcos().1.len(), 1);
+    assert_eq!(
+        MotorDelPlano::nuevo(r.clone(), &m).cotas_y_marcos().1.len(),
+        1
+    );
     // Caso negativo: lo anotado a mano no se toma por cota.
     let mut motor = MotorDelPlano::nuevo(r.clone(), &m);
     let v = vista(2.5 / 20.0, pixpin_cad::anotado::unidad_de_la_capa(&m));

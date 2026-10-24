@@ -28,34 +28,60 @@ use pixpin_store::{Ubicacion, idioma};
 
 /// El nombre de la instancia de prueba, si se pidio.
 pub fn pedida() -> Option<String> {
-    std::env::var("PIXPIN_INSTANCIA").ok().map(|n| n.trim().to_string()).filter(|n| !n.is_empty())
+    std::env::var("PIXPIN_INSTANCIA")
+        .ok()
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
 }
 
 /// Arranca la PixPin de prueba y vuelve cuando se cierran sus ventanas.
-pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::non_blocking::WorkerGuard>) -> Result<()> {
-    let _instancia = pixpin_shell::instancia::adquirir_instancia_de_prueba(nombre).context("ya corre una PixPin de prueba con ese nombre")?;
-    let limpio: String = nombre.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+pub fn arrancar(
+    nombre: &str,
+    guardia_registro: &mut Option<tracing_appender::non_blocking::WorkerGuard>,
+) -> Result<()> {
+    let _instancia = pixpin_shell::instancia::adquirir_instancia_de_prueba(nombre)
+        .context("ya corre una PixPin de prueba con ese nombre")?;
+    let limpio: String = nombre
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
     let raiz = std::env::temp_dir().join(format!("pixpin-instancia-{limpio}"));
     std::fs::create_dir_all(&raiz).context("sin carpeta para la PixPin de prueba")?;
     let ubicacion = Ubicacion::Portable { raiz };
     *guardia_registro = Some(crate::iniciar_registro(&ubicacion));
     // La luna/sol de los visores, como en la app (`estado.toml` de esta copia).
     crate::oscuro::iniciar(&ubicacion);
-    let lengua = idioma::resolver_idioma(&pixpin_shell::entorno::locale_del_sistema(), Default::default());
+    let lengua = idioma::resolver_idioma(
+        &pixpin_shell::entorno::locale_del_sistema(),
+        Default::default(),
+    );
     let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
     tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PixPin de prueba (PIXPIN_INSTANCIA)");
     for ruta in &rutas {
         // Un lienzo (`.excalidraw`): el editor, en su hilo, como desde el chat.
-        if ruta.extension().is_some_and(|e| e.eq_ignore_ascii_case("excalidraw")) {
+        if ruta
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("excalidraw"))
+        {
             let ruta = ruta.clone();
             std::thread::spawn(move || {
                 let _com = pixpin_shell::ComDelHilo::iniciar();
-                let Some(lienzo) = std::fs::read_to_string(&ruta).ok().and_then(|j| pixpin_motor2d::excalidraw::leer(&j).ok()) else {
+                let Some(lienzo) = std::fs::read_to_string(&ruta)
+                    .ok()
+                    .and_then(|j| pixpin_motor2d::excalidraw::leer(&j).ok())
+                else {
                     tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: lienzo ilegible");
                     return;
                 };
                 let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
-                let _ = crate::ventana_editor::abrir(escena, Default::default(), pixpin_nivel::Nivel::Completo, false, None, &[]);
+                let _ = crate::ventana_editor::abrir(
+                    escena,
+                    Default::default(),
+                    pixpin_nivel::Nivel::Completo,
+                    false,
+                    None,
+                    &[],
+                );
             });
             continue;
         }
@@ -65,7 +91,8 @@ pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::no
             crate::pin_office::lanzar(lengua, ubicacion.clone(), ruta);
             continue;
         }
-        if !crate::lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta)) {
+        if !crate::lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta))
+        {
             tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: no hay lector para esto");
         }
     }
@@ -81,7 +108,11 @@ pub fn arrancar(nombre: &str, guardia_registro: &mut Option<tracing_appender::no
         if vivas {
             sin_ventanas = Instant::now();
         }
-        let espera = if vista { Duration::from_secs(5) } else { Duration::from_secs(60) };
+        let espera = if vista {
+            Duration::from_secs(5)
+        } else {
+            Duration::from_secs(60)
+        };
         if sin_ventanas.elapsed() > espera {
             break;
         }

@@ -13,8 +13,8 @@
 
 /// Las pegatinas del menu (`PIN_EMOJIS`), en el orden del movil.
 pub const PEGATINAS: [&str; 24] = [
-    "⭐", "🔥", "❗", "✅", "❌", "⏳", "📌", "💡", "🔒", "💰", "📈", "🎯", "❤️", "👀", "🔔", "📅", "✏️",
-    "🧠", "🚀", "🐛", "☕", "🎵", "📷", "🗑️",
+    "⭐", "🔥", "❗", "✅", "❌", "⏳", "📌", "💡", "🔒", "💰", "📈", "🎯", "❤️", "👀", "🔔", "📅",
+    "✏️", "🧠", "🚀", "🐛", "☕", "🎵", "📷", "🗑️",
 ];
 
 /// Las de tiempo de un temporizador (`TIMER_PRESETS`): el emoji y sus

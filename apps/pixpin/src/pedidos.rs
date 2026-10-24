@@ -735,7 +735,8 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 if !ruta.is_file() {
                     return Err(Fallo::SinFichero(ruta));
                 }
-                let ir = pagina.is_some_and(|p| p >= 1) || buscar.as_deref().is_some_and(|q| !q.trim().is_empty());
+                let ir = pagina.is_some_and(|p| p >= 1)
+                    || buscar.as_deref().is_some_and(|q| !q.trim().is_empty());
                 if let Some(p) = pagina.filter(|p| *p >= 1) {
                     crate::lector_pdf::abrir_en_la_pagina(&ruta, p - 1);
                 }
@@ -830,24 +831,36 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 fotos.push(img);
             }
             let envio = crate::pila_lienzo::Envio {
-                texto: Some(sin_fichas_de_imagen(&texto, imagenes.len())).filter(|t| !t.trim().is_empty()),
+                texto: Some(sin_fichas_de_imagen(&texto, imagenes.len()))
+                    .filter(|t| !t.trim().is_empty()),
                 imagenes: fotos,
             };
             if envio.vacio() {
                 return Err(Fallo::Roto("al_lienzo sin texto ni imagenes".into()));
             }
-            let (pid, referencia, nombre_suyo) = match crate::pila_lienzo::buscar(raiz, proyecto.as_deref(), &nombre) {
-                Some(v) => v,
-                None => {
-                    let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
-                    let numero = crate::ventana_chat::siguiente_numero_en(raiz, &f.id)?;
-                    let m = crate::ventana_chat::escribir_lienzo(raiz, &f.id, cx.aparato, numero, Some(&nombre))?;
-                    crate::ventana_chat::subir_en_la_lista(raiz, &f.id, m.cuando, &m.nombre)?;
-                    let r = m.referencia.clone().ok_or_else(|| Fallo::Roto("lienzo sin referencia".into()))?;
-                    (f.id, r, nombre.clone())
-                }
-            };
-            crate::pila_lienzo::mandar(raiz, &pid, &referencia, envio, ahora).map_err(Fallo::Imagen)?;
+            let (pid, referencia, nombre_suyo) =
+                match crate::pila_lienzo::buscar(raiz, proyecto.as_deref(), &nombre) {
+                    Some(v) => v,
+                    None => {
+                        let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+                        let numero = crate::ventana_chat::siguiente_numero_en(raiz, &f.id)?;
+                        let m = crate::ventana_chat::escribir_lienzo(
+                            raiz,
+                            &f.id,
+                            cx.aparato,
+                            numero,
+                            Some(&nombre),
+                        )?;
+                        crate::ventana_chat::subir_en_la_lista(raiz, &f.id, m.cuando, &m.nombre)?;
+                        let r = m
+                            .referencia
+                            .clone()
+                            .ok_or_else(|| Fallo::Roto("lienzo sin referencia".into()))?;
+                        (f.id, r, nombre.clone())
+                    }
+                };
+            crate::pila_lienzo::mandar(raiz, &pid, &referencia, envio, ahora)
+                .map_err(Fallo::Imagen)?;
             crate::ventana_chat::refrescar();
             return Ok(aviso("pedido-al-lienzo", &[("lienzo", nombre_suyo)]));
         }
@@ -968,7 +981,13 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             let m = nueva_tabla(raiz, &f.id, cx.aparato, &nombre, &filas, cabecera, ahora)?;
             crate::ventana_chat::refrescar();
             if abrir {
-                crate::hoja_pin::abrir_desde_chat(cx.idioma, cx.ubicacion, &f.id, std::slice::from_ref(&m), 0);
+                crate::hoja_pin::abrir_desde_chat(
+                    cx.idioma,
+                    cx.ubicacion,
+                    &f.id,
+                    std::slice::from_ref(&m),
+                    0,
+                );
                 return Ok(Hecho::default());
             }
             return Ok(aviso(
@@ -1016,7 +1035,10 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 "pedido-tarea-anadida",
                 &[
                     // El titulo, sin las marcas de la urgencia ni las etiquetas.
-                    ("tarea", lo_que_se_lee(&crate::tareas::frase::marcas(&texto).titulo, imagenes.len())),
+                    (
+                        "tarea",
+                        lo_que_se_lee(&crate::tareas::frase::marcas(&texto).titulo, imagenes.len()),
+                    ),
                     ("lista", nombre_de_lista(&lista)),
                 ],
             ));
@@ -1097,14 +1119,16 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 &[("lista", nombre_de_lista(&m)), ("proyecto", f.nombre)],
             ));
         }
-        Pedido::VentanaPrincipal { proyecto } => match proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-            // En ese chat (si no esta, se avisa y no se abre otro).
-            Some(p) => {
-                let f = ficha_de(raiz, Some(p), cx.aparato, ahora)?;
-                ir_al_chat(f.id, None);
+        Pedido::VentanaPrincipal { proyecto } => {
+            match proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+                // En ese chat (si no esta, se avisa y no se abre otro).
+                Some(p) => {
+                    let f = ficha_de(raiz, Some(p), cx.aparato, ahora)?;
+                    ir_al_chat(f.id, None);
+                }
+                None => crate::ventana_chat::lanzar(cx.idioma, cx.ubicacion.clone(), cx.opciones),
             }
-            None => crate::ventana_chat::lanzar(cx.idioma, cx.ubicacion.clone(), cx.opciones),
-        },
+        }
         // Las mismas entradas que la bandeja: su ventana es la respuesta.
         Pedido::Ventana { cual } => match cual {
             Cual::Tareas => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
@@ -1115,18 +1139,28 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             Cual::Timeline => crate::timeline::abrir(cx.idioma, cx.ubicacion.clone()),
             // Los ajustes y el buscador necesitan lo que tiene el bucle
             // (los ajustes cargados, su ventana): por su comando.
-            Cual::Ajustes => comando_por_la_ventana(pixpin_store::comandos::Comando::AbrirAjustes, std::time::Duration::ZERO),
-            Cual::Buscar => comando_por_la_ventana(pixpin_store::comandos::Comando::Buscar, std::time::Duration::ZERO),
+            Cual::Ajustes => comando_por_la_ventana(
+                pixpin_store::comandos::Comando::AbrirAjustes,
+                std::time::Duration::ZERO,
+            ),
+            Cual::Buscar => comando_por_la_ventana(
+                pixpin_store::comandos::Comando::Buscar,
+                std::time::Duration::ZERO,
+            ),
         },
         Pedido::Capturar { modo } => capturar(modo.unwrap_or(ModoCaptura::Zona)),
-        Pedido::Pines { operacion } => comando_por_la_ventana(operacion.comando(), std::time::Duration::ZERO),
-        Pedido::Timeline { texto } => match texto.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-            Some(t) => {
-                let titulo = apuntar_en_timeline(raiz, t, ahora)?;
-                return Ok(aviso("pedido-timeline-apuntado", &[("titulo", titulo)]));
+        Pedido::Pines { operacion } => {
+            comando_por_la_ventana(operacion.comando(), std::time::Duration::ZERO)
+        }
+        Pedido::Timeline { texto } => {
+            match texto.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+                Some(t) => {
+                    let titulo = apuntar_en_timeline(raiz, t, ahora)?;
+                    return Ok(aviso("pedido-timeline-apuntado", &[("titulo", titulo)]));
+                }
+                None => crate::timeline::abrir(cx.idioma, cx.ubicacion.clone()),
             }
-            None => crate::timeline::abrir(cx.idioma, cx.ubicacion.clone()),
-        },
+        }
         Pedido::LeerEnVoz { parar: true, .. } => crate::leer_en_voz::callar_lo_que_suene(),
         Pedido::PinearUltima {} => {
             let ruta = ultima_captura(&crate::galeria_capturas::carpeta(cx.ubicacion))?;
@@ -1259,7 +1293,8 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 // Una tarea: su texto con la hora nueva, como «Recordármelo»
                 // en la ventana de tareas.
                 Some(indice) => {
-                    let lista = lista_pedida(raiz, proyecto.as_deref(), &mensaje, cx.aparato, ahora)?;
+                    let lista =
+                        lista_pedida(raiz, proyecto.as_deref(), &mensaje, cx.aparato, ahora)?;
                     let Some(fila) = lista.filas.iter().find(|f| f.indice == indice) else {
                         return Err(Fallo::SinTarea(indice));
                     };
@@ -1279,12 +1314,19 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 }
             }
             crate::ventana_chat::refrescar();
-            let cuando = crate::recordatorios::cuando_legible(local, pixpin_shell::entorno::ahora_local_ms());
+            let cuando = crate::recordatorios::cuando_legible(
+                local,
+                pixpin_shell::entorno::ahora_local_ms(),
+            );
             return Ok(aviso("tareas-recordare", &[("cuando", cuando)]));
         }
         // La voz es la respuesta; si no hay con que leer, lo dice el globo
         // desde su hilo.
-        Pedido::LeerEnVoz { ruta: Some(ruta), titulo, .. } => leer_fichero_en_voz(cx, ruta, titulo)?,
+        Pedido::LeerEnVoz {
+            ruta: Some(ruta),
+            titulo,
+            ..
+        } => leer_fichero_en_voz(cx, ruta, titulo)?,
         Pedido::LeerEnVoz { texto, titulo, .. } => {
             let parrafos = parrafos_sueltos(texto.as_deref().unwrap_or(""));
             if parrafos.is_empty() {
@@ -1406,7 +1448,12 @@ fn ocr_al_portapapeles(idioma: pixpin_store::Idioma, rutas: Vec<PathBuf>) {
                             .and_then(|img| crate::texto_de_imagen(&img).map_err(|e| e.to_string()))
                     })
                     .collect::<Result<Vec<String>, String>>()
-                    .map(|v| v.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n"));
+                    .map(|v| {
+                        v.into_iter()
+                            .filter(|t| !t.trim().is_empty())
+                            .collect::<Vec<_>>()
+                            .join("\n\n")
+                    });
                 aviso_del_ocr(&t, texto, |s| {
                     pixpin_codec::copiar_texto(s).map_err(|e| e.to_string())
                 })
@@ -1550,7 +1597,10 @@ fn comando_por_la_ventana(comando: pixpin_store::comandos::Comando, espera: std:
     #[cfg(test)]
     {
         let _ = espera;
-        COMANDOS_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).push(comando);
+        COMANDOS_EN_PRUEBAS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(comando);
     }
     #[cfg(not(test))]
     {
@@ -1627,18 +1677,26 @@ fn leer_fichero_en_voz(cx: &Contexto, ruta: PathBuf, titulo: Option<String>) -> 
     let raiz = cx.ubicacion.raiz().to_path_buf();
     let idioma = cx.idioma;
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let lanzado = std::thread::Builder::new().name("voz-de-un-fichero".into()).spawn(move || {
-        let _com = pixpin_shell::ComDelHilo::iniciar();
-        let titulo = titulo.filter(|t| !t.trim().is_empty()).unwrap_or_else(|| pixpin_docs::nombre(&ruta));
-        match parrafos_de_fichero(&ruta) {
-            Ok(p) if !p.is_empty() => leer_suelto(idioma, raiz, titulo, p, ahora),
-            Ok(_) => crate::sincronizar::al_movil::avisar(Catalogo::nuevo(idioma).t("pedido-nada-que-leer")),
-            Err(e) => {
-                tracing::warn!(%e, ruta = %ruta.display(), "leer en voz: no se saca el texto");
-                crate::sincronizar::al_movil::avisar(Catalogo::nuevo(idioma).t("pedido-nada-que-leer"));
+    let lanzado = std::thread::Builder::new()
+        .name("voz-de-un-fichero".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let titulo = titulo
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| pixpin_docs::nombre(&ruta));
+            match parrafos_de_fichero(&ruta) {
+                Ok(p) if !p.is_empty() => leer_suelto(idioma, raiz, titulo, p, ahora),
+                Ok(_) => crate::sincronizar::al_movil::avisar(
+                    Catalogo::nuevo(idioma).t("pedido-nada-que-leer"),
+                ),
+                Err(e) => {
+                    tracing::warn!(%e, ruta = %ruta.display(), "leer en voz: no se saca el texto");
+                    crate::sincronizar::al_movil::avisar(
+                        Catalogo::nuevo(idioma).t("pedido-nada-que-leer"),
+                    );
+                }
             }
-        }
-    });
+        });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo de leer en voz");
     }
@@ -2001,7 +2059,12 @@ pub(crate) fn nueva_tabla(
 
 /// La tabla de unas filas de texto (ver [`nueva_tabla`]); tambien la del
 /// Excel del asistente.
-pub(crate) fn tabla_de_filas(nombre: &str, filas: &[Vec<String>], cabecera: bool, ahora: i64) -> pixpin_proyecto::tabla::Tabla {
+pub(crate) fn tabla_de_filas(
+    nombre: &str,
+    filas: &[Vec<String>],
+    cabecera: bool,
+    ahora: i64,
+) -> pixpin_proyecto::tabla::Tabla {
     use pixpin_proyecto::tabla::{EstiloDeCelda, Ref, Tabla, ref_a};
     let nombre = match nombre.trim() {
         "" => "Tabla",
@@ -2040,11 +2103,21 @@ pub(crate) fn tabla_de_filas(nombre: &str, filas: &[Vec<String>], cabecera: bool
     // tabla): sin esto un nombre de calle se corta en la rejilla.
     let columnas = filas.iter().map(Vec::len).max().unwrap_or(0).min(200);
     for c in 0..columnas {
-        let letras = filas.iter().filter_map(|f| f.get(c)).map(|s| s.trim().chars().count()).max().unwrap_or(0);
+        let letras = filas
+            .iter()
+            .filter_map(|f| f.get(c))
+            .map(|s| s.trim().chars().count())
+            .max()
+            .unwrap_or(0);
         let ancho = (letras as u32 * 8 + 16).clamp(64, 320);
         if ancho > 88 {
             t.anchos.insert(
-                pixpin_proyecto::tabla::ref_a(Ref { columna: c as u32, fila: 0 }).trim_end_matches(|c: char| c.is_ascii_digit()).to_string(),
+                pixpin_proyecto::tabla::ref_a(Ref {
+                    columna: c as u32,
+                    fila: 0,
+                })
+                .trim_end_matches(|c: char| c.is_ascii_digit())
+                .to_string(),
                 ancho,
             );
         }
@@ -2337,8 +2410,14 @@ mod pruebas {
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
     const EJEMPLOS: [(&str, &str); 37] = [
-        ("pines", r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#),
-        ("timeline", r#"{"pixpin":1,"accion":"timeline","texto":"Llego el camion"}"#),
+        (
+            "pines",
+            r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,
+        ),
+        (
+            "timeline",
+            r#"{"pixpin":1,"accion":"timeline","texto":"Llego el camion"}"#,
+        ),
         (
             "leer_en_voz",
             r#"{"pixpin":1,"accion":"leer_en_voz","texto":"Hola.\nAdios.","titulo":"Wikipedia"}"#,
@@ -2579,7 +2658,10 @@ mod pruebas {
         assert!(matches!(
             leer(&p.to_string()).unwrap(),
             Pedido::Abrir {
-                que: Que::Fichero { pagina: Some(3), .. }
+                que: Que::Fichero {
+                    pagina: Some(3),
+                    ..
+                }
             }
         ));
         let p = pixpin_ia::documentos::Abrir::Mensaje {
@@ -2923,24 +3005,42 @@ mod pruebas {
         let m = nueva_tabla(&raiz, &f.id, "PC01", " Costos ", &filas, true, 5).unwrap();
         let guardado = cuaderno_de(&raiz, &f.id);
         assert_eq!(guardado.len(), 1);
-        assert_eq!(guardado[0].miniapp.as_deref(), Some(pixpin_proyecto::tabla::MINIAPP));
+        assert_eq!(
+            guardado[0].miniapp.as_deref(),
+            Some(pixpin_proyecto::tabla::MINIAPP)
+        );
         assert_eq!(m.nombre, "Costos");
         let t = pixpin_proyecto::tabla::Tabla::leer(&guardado[0].texto).unwrap();
         assert_eq!(t.celdas.get("A1").map(String::as_str), Some("Calle"));
         assert_eq!(t.celdas.get("B2").map(String::as_str), Some("1250.50"));
         assert_eq!(t.celdas.get("A3").map(String::as_str), Some("R-1"));
-        assert!(!t.celdas.contains_key("B3"), "una celda vacia no se escribe");
+        assert!(
+            !t.celdas.contains_key("B3"),
+            "una celda vacia no se escribe"
+        );
         assert!(t.estilos.get("A1").is_some_and(|e| e.n));
         assert!(!t.estilos.contains_key("A2"));
-        assert!(t.anchos.get("A").is_some_and(|a| *a > 88), "la columna ancha se ensancha");
-        assert!(!t.anchos.contains_key("B"), "la estrecha se queda como siempre");
+        assert!(
+            t.anchos.get("A").is_some_and(|a| *a > 88),
+            "la columna ancha se ensancha"
+        );
+        assert!(
+            !t.anchos.contains_key("B"),
+            "la estrecha se queda como siempre"
+        );
         // Sin cabecera, nada en negrita; sin nombre, «Tabla».
         let m = nueva_tabla(&raiz, &f.id, "PC01", "", &filas, false, 5).unwrap();
         assert_eq!(m.nombre, "Tabla");
-        assert!(pixpin_proyecto::tabla::Tabla::leer(&m.texto).unwrap().estilos.is_empty());
+        assert!(
+            pixpin_proyecto::tabla::Tabla::leer(&m.texto)
+                .unwrap()
+                .estilos
+                .is_empty()
+        );
         // El pedido que la crea se lee.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"tabla_nueva","nombre":"x","proyecto":"no-esta"}"#).map(|p| matches!(p, Pedido::TablaNueva { .. })),
+            leer(r#"{"pixpin":1,"accion":"tabla_nueva","nombre":"x","proyecto":"no-esta"}"#)
+                .map(|p| matches!(p, Pedido::TablaNueva { .. })),
             Ok(true)
         ));
         let _ = std::fs::remove_dir_all(&raiz);
@@ -3546,34 +3646,72 @@ mod pruebas {
             ("repetir", ModoCaptura::Repetir),
             ("gif", ModoCaptura::Gif),
         ] {
-            let p = leer(&format!(r#"{{"pixpin":1,"accion":"capturar","modo":"{modo}"}}"#)).unwrap();
+            let p = leer(&format!(
+                r#"{{"pixpin":1,"accion":"capturar","modo":"{modo}"}}"#
+            ))
+            .unwrap();
             assert_eq!(p, Pedido::Capturar { modo: Some(debe) }, "{modo}");
         }
-        assert_eq!(ModoCaptura::Gif.comando(), pixpin_store::comandos::Comando::GrabarGif);
-        assert_eq!(ModoCaptura::Texto.comando(), pixpin_store::comandos::Comando::CopiarTexto);
+        assert_eq!(
+            ModoCaptura::Gif.comando(),
+            pixpin_store::comandos::Comando::GrabarGif
+        );
+        assert_eq!(
+            ModoCaptura::Texto.comando(),
+            pixpin_store::comandos::Comando::CopiarTexto
+        );
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"ventana","cual":"ajustes"}"#).unwrap(),
-            Pedido::Ventana { cual: Cual::Ajustes }
+            Pedido::Ventana {
+                cual: Cual::Ajustes
+            }
         );
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"pr-1"}"#).unwrap(),
-            Pedido::VentanaPrincipal { proyecto: Some("pr-1".into()) }
+            Pedido::VentanaPrincipal {
+                proyecto: Some("pr-1".into())
+            }
         );
-        assert_eq!(leer(r#"{"pixpin":1,"accion":"ventana_principal"}"#).unwrap(), Pedido::VentanaPrincipal { proyecto: None });
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"ventana_principal"}"#).unwrap(),
+            Pedido::VentanaPrincipal { proyecto: None }
+        );
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"pines","operacion":"cerrar"}"#).unwrap(),
-            Pedido::Pines { operacion: OperacionPines::Cerrar }
+            Pedido::Pines {
+                operacion: OperacionPines::Cerrar
+            }
         );
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"leer_en_voz","parar":true}"#).unwrap(),
-            Pedido::LeerEnVoz { texto: None, ruta: None, titulo: None, parar: true }
+            Pedido::LeerEnVoz {
+                texto: None,
+                ruta: None,
+                titulo: None,
+                parar: true
+            }
         );
-        assert_eq!(leer(r#"{"pixpin":1,"accion":"timeline"}"#).unwrap(), Pedido::Timeline { texto: None });
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"timeline"}"#).unwrap(),
+            Pedido::Timeline { texto: None }
+        );
         // Casos negativos: un modo, una ventana o una operacion que no existen.
-        assert!(matches!(leer(r#"{"pixpin":1,"accion":"capturar","modo":"pantalla_entera"}"#), Err(Fallo::Roto(_))));
-        assert!(matches!(leer(r#"{"pixpin":1,"accion":"ventana","cual":"cocina"}"#), Err(Fallo::Roto(_))));
-        assert!(matches!(leer(r#"{"pixpin":1,"accion":"pines","operacion":"borrar_todo"}"#), Err(Fallo::Roto(_))));
-        assert!(matches!(leer(r#"{"pixpin":1,"accion":"pines"}"#), Err(Fallo::Roto(_))));
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"capturar","modo":"pantalla_entera"}"#),
+            Err(Fallo::Roto(_))
+        ));
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"ventana","cual":"cocina"}"#),
+            Err(Fallo::Roto(_))
+        ));
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"pines","operacion":"borrar_todo"}"#),
+            Err(Fallo::Roto(_))
+        ));
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"pines"}"#),
+            Err(Fallo::Roto(_))
+        ));
     }
 
     /// Los pedidos nuevos hechos de verdad sobre un almacen de prueba: el
@@ -3595,12 +3733,22 @@ mod pruebas {
             aparato: "PC01",
             textos: &textos,
         };
-        let h = atender(r#"{"pixpin":1,"accion":"timeline","texto":"Llegó el camión de cemento. Eran 40 bolsas."}"#, &cx);
-        assert_eq!(h.aviso.as_deref(), Some("Apuntado en el timeline: «Llegó el camión de cemento»."));
+        let h = atender(
+            r#"{"pixpin":1,"accion":"timeline","texto":"Llegó el camión de cemento. Eran 40 bolsas."}"#,
+            &cx,
+        );
+        assert_eq!(
+            h.aviso.as_deref(),
+            Some("Apuntado en el timeline: «Llegó el camión de cemento».")
+        );
         let momentos = pixpin_timeline::almacen::Almacen::en(&raiz).leer();
         assert_eq!(momentos.len(), 1);
         assert_eq!(momentos[0].titulo, "Llegó el camión de cemento");
-        assert!(momentos[0].descripcion.contains("40 bolsas"), "{:?}", momentos[0]);
+        assert!(
+            momentos[0].descripcion.contains("40 bolsas"),
+            "{:?}",
+            momentos[0]
+        );
         COMANDOS_EN_PRUEBAS.lock().unwrap().clear();
         atender(r#"{"pixpin":1,"accion":"capturar","modo":"gif"}"#, &cx);
         atender(r#"{"pixpin":1,"accion":"pines","operacion":"cerrar"}"#, &cx);
@@ -3608,14 +3756,24 @@ mod pruebas {
         {
             use pixpin_store::comandos::Comando;
             let c = COMANDOS_EN_PRUEBAS.lock().unwrap().clone();
-            for debe in [Comando::GrabarGif, Comando::CerrarTodosLosPines, Comando::AbrirAjustes] {
+            for debe in [
+                Comando::GrabarGif,
+                Comando::CerrarTodosLosPines,
+                Comando::AbrirAjustes,
+            ] {
                 assert!(c.contains(&debe), "{c:?}");
             }
         }
         // Negativos: un chat que no esta, leer un fichero que no esta.
-        let h = atender(r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"no-esta"}"#, &cx);
+        let h = atender(
+            r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"no-esta"}"#,
+            &cx,
+        );
         assert!(h.aviso.is_some());
-        let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz","ruta":"C:\no\esta.pdf"}"#, &cx);
+        let h = atender(
+            r#"{"pixpin":1,"accion":"leer_en_voz","ruta":"C:\no\esta.pdf"}"#,
+            &cx,
+        );
         assert!(h.aviso.is_some());
         let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz"}"#, &cx);
         assert!(h.aviso.is_some(), "sin texto ni ruta no hay nada que leer");
@@ -3641,22 +3799,45 @@ mod pruebas {
             aparato: "PC01",
             textos: &textos,
         };
-        let h = atender(r##"{"pixpin":1,"accion":"anadir_tarea","texto":"#casa llamar al banco muy urgente"}"##, &cx);
-        assert!(h.aviso.as_deref().is_some_and(|a| a.contains("llamar al banco") && !a.contains('#')), "{:?}", h.aviso);
+        let h = atender(
+            r##"{"pixpin":1,"accion":"anadir_tarea","texto":"#casa llamar al banco muy urgente"}"##,
+            &cx,
+        );
+        assert!(
+            h.aviso
+                .as_deref()
+                .is_some_and(|a| a.contains("llamar al banco") && !a.contains('#')),
+            "{:?}",
+            h.aviso
+        );
         let (listas, _) = crate::tareas::reunir(&raiz);
-        let textos_de: Vec<String> = listas.iter().flat_map(|l| l.filas.iter().map(|f| f.texto.clone())).collect();
+        let textos_de: Vec<String> = listas
+            .iter()
+            .flat_map(|l| l.filas.iter().map(|f| f.texto.clone()))
+            .collect();
         assert_eq!(textos_de, ["llamar al banco ⏫ #casa"]);
         // Normal: sin marca.
-        atender(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"comprar pan"}"#, &cx);
+        atender(
+            r#"{"pixpin":1,"accion":"anadir_tarea","texto":"comprar pan"}"#,
+            &cx,
+        );
         let (listas, _) = crate::tareas::reunir(&raiz);
-        assert!(listas.iter().flat_map(|l| &l.filas).any(|f| f.texto == "comprar pan"));
+        assert!(
+            listas
+                .iter()
+                .flat_map(|l| &l.filas)
+                .any(|f| f.texto == "comprar pan")
+        );
         let _ = ficha;
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]
     fn los_parrafos_de_un_texto_salen_limpios() {
-        assert_eq!(parrafos_de_texto("Uno\ndos.\n\nTres"), vec!["Uno dos.", "Tres"]);
+        assert_eq!(
+            parrafos_de_texto("Uno\ndos.\n\nTres"),
+            vec!["Uno dos.", "Tres"]
+        );
         assert_eq!(parrafos_de_texto("a\nb"), vec!["a", "b"]);
         assert!(parrafos_de_texto("  \n ").is_empty());
     }
@@ -3664,7 +3845,12 @@ mod pruebas {
     fn leer_en_voz_y_ocr_se_leen_y_lo_que_falta_es_roto() {
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"hola"}"#).unwrap(),
-            Pedido::LeerEnVoz { texto: Some("hola".into()), ruta: None, titulo: None, parar: false }
+            Pedido::LeerEnVoz {
+                texto: Some("hola".into()),
+                ruta: None,
+                titulo: None,
+                parar: false
+            }
         );
         assert_eq!(
             leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png"}"#).unwrap(),
@@ -3675,7 +3861,8 @@ mod pruebas {
         );
         // Varias (el menu del Explorador): la primera y las demas.
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png","rutas":["C:\\a\\c.png"]}"#).unwrap(),
+            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png","rutas":["C:\\a\\c.png"]}"#)
+                .unwrap(),
             Pedido::Ocr {
                 ruta: PathBuf::from(r"C:\a\b.png"),
                 rutas: vec![PathBuf::from(r"C:\a\c.png")]

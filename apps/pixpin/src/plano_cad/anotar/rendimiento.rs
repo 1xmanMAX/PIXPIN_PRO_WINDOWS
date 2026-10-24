@@ -20,7 +20,10 @@ use super::*;
 struct Azar(u64);
 impl Azar {
     fn sig(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 11) as f64 / (1u64 << 53) as f64
     }
 }
@@ -36,7 +39,16 @@ const W: u32 = 1200;
 const H: u32 = 800;
 
 fn vista_motor(c: Cam, unidad: f64) -> VistaPlano {
-    VistaPlano { centro: c.centro, px: c.px, ancho: W, alto: H, origen_pantalla: (0, 0), escala_por_cien: 100, unidad, claro: true }
+    VistaPlano {
+        centro: c.centro,
+        px: c.px,
+        ancho: W,
+        alto: H,
+        origen_pantalla: (0, 0),
+        escala_por_cien: 100,
+        unidad,
+        claro: true,
+    }
 }
 
 /// **Una capa como la de un plano de verdad**: `n` trazos del lapiz del
@@ -48,14 +60,23 @@ fn anotar_mucho(motor: &mut MotorDelPlano, m: &Modelo, n: usize) {
     let ancho = (m.caja[2] - m.caja[0]) as f64;
     let alto = (m.caja[3] - m.caja[1]) as f64;
     let mut az = Azar(7);
-    motor.tinta.gesto.tomar_herramienta(pixpin_motor2d::gesto::Herramienta::Lapiz);
+    motor
+        .tinta
+        .gesto
+        .tomar_herramienta(pixpin_motor2d::gesto::Herramienta::Lapiz);
     for i in 0..n {
         // Cada 50 trazos, otro sitio y otro aumento.
         let sitio = i / 50;
         let mut az_s = Azar(1000 + sitio as u64);
-        let centro = [m.caja[0] as f64 + ancho * (0.2 + 0.6 * az_s.sig()), m.caja[1] as f64 + alto * (0.2 + 0.6 * az_s.sig())];
+        let centro = [
+            m.caja[0] as f64 + ancho * (0.2 + 0.6 * az_s.sig()),
+            m.caja[1] as f64 + alto * (0.2 + 0.6 * az_s.sig()),
+        ];
         let k = [1.0, 4.0, 16.0][sitio % 3];
-        let cam = Cam { centro, px: ancho / W as f64 / k };
+        let cam = Cam {
+            centro,
+            px: ancho / W as f64 / k,
+        };
         let v = vista_motor(cam, unidad);
         let (mut x, mut y) = (250.0 + 700.0 * az.sig(), 250.0 + 300.0 * az.sig());
         let mut ang = az.sig() * std::f64::consts::TAU;
@@ -95,7 +116,11 @@ fn resumen(nombre: &str, f: &[Fotograma]) -> (f64, f64) {
     let gpu = f.iter().map(|x| x.gpu).sum::<f64>() / f.len() as f64;
     let real: u64 = f.iter().map(|x| x.realizaciones).sum();
     let lentos = t.iter().filter(|x| **x > 8.0).count();
-    let quietos: Vec<f64> = f.iter().filter(|x| x.realizaciones == 0).map(|x| x.capa).collect();
+    let quietos: Vec<f64> = f
+        .iter()
+        .filter(|x| x.realizaciones == 0)
+        .map(|x| x.capa)
+        .collect();
     let capa_sin_teselar = quietos.iter().sum::<f64>() / quietos.len().max(1) as f64;
     println!(
         "MEDIDA {nombre}: {} fotogramas  media {media:.2} ms  mediana {:.2}  p95 {p95:.2}  max {max:.2}  (>8 ms: {lentos})  | capa media {capa:.2} max {capa_max:.2}  presentar {pres:.2}  esperar gpu {gpu:.2}  teselados {real}  capa sin teselar {capa_sin_teselar:.2}",
@@ -104,10 +129,23 @@ fn resumen(nombre: &str, f: &[Fotograma]) -> (f64, f64) {
     );
     let cuenta = |m: Modo| f.iter().filter(|x| x.modo == Some(m)).count();
     if f.iter().any(|x| x.modo.is_some()) {
-        println!("  modos: directo {} foto {} movida {}", cuenta(Modo::Directo), cuenta(Modo::Foto), cuenta(Modo::Movida));
+        println!(
+            "  modos: directo {} foto {} movida {}",
+            cuenta(Modo::Directo),
+            cuenta(Modo::Foto),
+            cuenta(Modo::Movida)
+        );
         for m in [Modo::Foto, Modo::Movida] {
-            let mut t: Vec<f64> = f.iter().filter(|x| x.modo == Some(m)).map(|x| x.total).collect();
-            let mut c: Vec<f64> = f.iter().filter(|x| x.modo == Some(m)).map(|x| x.capa).collect();
+            let mut t: Vec<f64> = f
+                .iter()
+                .filter(|x| x.modo == Some(m))
+                .map(|x| x.total)
+                .collect();
+            let mut c: Vec<f64> = f
+                .iter()
+                .filter(|x| x.modo == Some(m))
+                .map(|x| x.capa)
+                .collect();
             if t.is_empty() {
                 continue;
             }
@@ -115,7 +153,13 @@ fn resumen(nombre: &str, f: &[Fotograma]) -> (f64, f64) {
             c.sort_by(f64::total_cmp);
             let med = |v: &[f64]| v[v.len() / 2];
             let p95 = |v: &[f64]| v[(v.len() * 95 / 100).min(v.len() - 1)];
-            println!("  {m:?}: fotograma mediana {:.2} ms p95 {:.2} | capa mediana {:.2} ms p95 {:.2}", med(&t), p95(&t), med(&c), p95(&c));
+            println!(
+                "  {m:?}: fotograma mediana {:.2} ms p95 {:.2} | capa mediana {:.2} ms p95 {:.2}",
+                med(&t),
+                p95(&t),
+                med(&c),
+                p95(&c)
+            );
         }
     }
     (p95, max)
@@ -137,16 +181,28 @@ fn recorrido(inicio: Cam, punto: [f64; 2]) -> Vec<Cam> {
         if !f.is_nan() {
             // Dejar quieto el punto bajo el cursor.
             let px = destino.px * f;
-            destino = Cam { centro: [punto[0] + (destino.centro[0] - punto[0]) * f, punto[1] + (destino.centro[1] - punto[1]) * f], px };
+            destino = Cam {
+                centro: [
+                    punto[0] + (destino.centro[0] - punto[0]) * f,
+                    punto[1] + (destino.centro[1] - punto[1]) * f,
+                ],
+                px,
+            };
         }
         for _ in 0..pasos {
             let k = 0.38;
             cam = Cam {
                 px: (cam.px.ln() + (destino.px.ln() - cam.px.ln()) * k).exp(),
-                centro: [cam.centro[0] + (destino.centro[0] - cam.centro[0]) * k, cam.centro[1] + (destino.centro[1] - cam.centro[1]) * k],
+                centro: [
+                    cam.centro[0] + (destino.centro[0] - cam.centro[0]) * k,
+                    cam.centro[1] + (destino.centro[1] - cam.centro[1]) * k,
+                ],
             };
             // Y llega, como en la ventana: casi en el destino, el destino.
-            if (cam.px - destino.px).abs() < destino.px * 1e-4 && (cam.centro[0] - destino.centro[0]).abs() < destino.px * 0.05 && (cam.centro[1] - destino.centro[1]).abs() < destino.px * 0.05 {
+            if (cam.px - destino.px).abs() < destino.px * 1e-4
+                && (cam.centro[0] - destino.centro[0]).abs() < destino.px * 0.05
+                && (cam.centro[1] - destino.centro[1]).abs() < destino.px * 0.05
+            {
                 cam = destino;
             }
             cams.push(cam);
@@ -154,14 +210,20 @@ fn recorrido(inicio: Cam, punto: [f64; 2]) -> Vec<Cam> {
     }
     // Un arrastre de lado a lado.
     for i in 0..30 {
-        cams.push(Cam { centro: [cam.centro[0] + cam.px * 20.0 * i as f64, cam.centro[1]], px: cam.px });
+        cams.push(Cam {
+            centro: [cam.centro[0] + cam.px * 20.0 * i as f64, cam.centro[1]],
+            px: cam.px,
+        });
     }
     cams
 }
 
 fn vista_gpu(c: Cam) -> Vista {
     Vista {
-        escala: [(2.0 / (W as f64 * c.px)) as f32, (2.0 / (H as f64 * c.px)) as f32],
+        escala: [
+            (2.0 / (W as f64 * c.px)) as f32,
+            (2.0 / (H as f64 * c.px)) as f32,
+        ],
         centro: [c.centro[0] as f32, c.centro[1] as f32],
         color7: [0.0, 0.0, 0.0, 1.0],
         px: c.px as f32,
@@ -171,7 +233,13 @@ fn vista_gpu(c: Cam) -> Vista {
 }
 
 /// Pasa el recorrido; con `motor`, con la capa encima (como la ventana).
-fn pasar(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, cams: &[Cam], unidad: f64, mut motor: Option<&mut MotorDelPlano>) -> Vec<Fotograma> {
+fn pasar(
+    gpu: &mut Gpu,
+    plano: &pixpin_cad::gpu::PlanoGpu,
+    cams: &[Cam],
+    unidad: f64,
+    mut motor: Option<&mut MotorDelPlano>,
+) -> Vec<Fotograma> {
     let fondo = [0.99, 0.988, 0.976, 1.0];
     let mut fs = Vec::new();
     // Despues del recorrido, como la ventana: otro fotograma mientras lo
@@ -180,7 +248,9 @@ fn pasar(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, cams: &[Cam], unidad:
     loop {
         let c = match cams.get(i) {
             Some(c) => c,
-            None if motor.as_ref().is_some_and(|m| m.falta_pintar()) && i < cams.len() + 300 => cams.last().unwrap(),
+            None if motor.as_ref().is_some_and(|m| m.falta_pintar()) && i < cams.len() + 300 => {
+                cams.last().unwrap()
+            }
             None => break,
         };
         i += 1;
@@ -206,9 +276,14 @@ fn pasar(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, cams: &[Cam], unidad:
             capa: ms(capa.0, capa.1),
             presentar: ms(capa.1, t1),
             gpu: ms(t1, t2),
-            realizaciones: motor.as_ref().map_or(0, |m| m.tinta.realizaciones()).saturating_sub(antes),
+            realizaciones: motor
+                .as_ref()
+                .map_or(0, |m| m.tinta.realizaciones())
+                .saturating_sub(antes),
             modo: motor.as_ref().map(|m| m.medida.0),
-            foto: motor.as_ref().map_or(0.0, |m| m.medida.1.as_secs_f64() * 1000.0),
+            foto: motor
+                .as_ref()
+                .map_or(0.0, |m| m.medida.1.as_secs_f64() * 1000.0),
             zoom: unidad / c.px,
         });
     }
@@ -219,7 +294,10 @@ fn pasar(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, cams: &[Cam], unidad:
 #[ignore = "necesita GPU y PIXPIN_CAD_PLANO (una copia de un dwg); mide el zoom con la capa"]
 fn medir_zoom_del_plano_anotado() {
     let ruta = std::env::var("PIXPIN_CAD_PLANO").expect("PIXPIN_CAD_PLANO");
-    let n: usize = std::env::var("PIXPIN_CAD_TRAZOS").ok().and_then(|t| t.parse().ok()).unwrap_or(400);
+    let n: usize = std::env::var("PIXPIN_CAD_TRAZOS")
+        .ok()
+        .and_then(|t| t.parse().ok())
+        .unwrap_or(400);
     let (m, _) = pixpin_cad::convertir::convertir_fichero(Path::new(&ruta)).unwrap();
     let unidad = pixpin_cad::anotado::unidad_de_la_capa(&m);
     println!("plano caja {:?} unidad {unidad}", m.caja);
@@ -227,16 +305,25 @@ fn medir_zoom_del_plano_anotado() {
     // La capa: se anota, se guarda (`anot-<uid>.excalidraw.gz` y su `.hoja`)
     // y se vuelve a abrir, como al abrir un plano ya anotado.
     let d = carpeta("rendimiento");
-    let rutas = Rutas { tinta: d.join("anot-prueba.excalidraw.gz"), hoja: d.join("anot-prueba.hoja") };
+    let rutas = Rutas {
+        tinta: d.join("anot-prueba.excalidraw.gz"),
+        hoja: d.join("anot-prueba.hoja"),
+    };
     let mut motor = MotorDelPlano::nuevo(rutas.clone(), &m);
     let t = Instant::now();
     anotar_mucho(&mut motor, &m, n);
     let hechos = motor.capa.escena.visibles().count();
     motor.terminar();
-    println!("anotados {n} trazos ({hechos} en la capa) en {:?}", t.elapsed());
+    println!(
+        "anotados {n} trazos ({hechos} en la capa) en {:?}",
+        t.elapsed()
+    );
     let mut motor = MotorDelPlano::nuevo(rutas.clone(), &m);
     let leidos = motor.capa.escena.visibles().count();
-    assert!(leidos == hechos && hechos * 10 >= n * 9, "la capa se leyo entera: {leidos} de {hechos}");
+    assert!(
+        leidos == hechos && hechos * 10 >= n * 9,
+        "la capa se leyo entera: {leidos} de {hechos}"
+    );
 
     let mut gpu = Gpu::para_medir(W, H).unwrap();
     let plano = gpu.subir(&m).unwrap();
@@ -244,10 +331,19 @@ fn medir_zoom_del_plano_anotado() {
     let ancho = (m.caja[2] - m.caja[0]) as f64;
     let alto = (m.caja[3] - m.caja[1]) as f64;
     let px0 = (ancho / (W as f64 * 0.92)).max(alto / (H as f64 * 0.92));
-    let inicio = Cam { centro: [(m.caja[0] + m.caja[2]) as f64 / 2.0, (m.caja[1] + m.caja[3]) as f64 / 2.0], px: px0 };
+    let inicio = Cam {
+        centro: [
+            (m.caja[0] + m.caja[2]) as f64 / 2.0,
+            (m.caja[1] + m.caja[3]) as f64 / 2.0,
+        ],
+        px: px0,
+    };
     // Hacia el primer sitio anotado.
     let mut az_s = Azar(1000);
-    let punto = [m.caja[0] as f64 + ancho * (0.2 + 0.6 * az_s.sig()), m.caja[1] as f64 + alto * (0.2 + 0.6 * az_s.sig())];
+    let punto = [
+        m.caja[0] as f64 + ancho * (0.2 + 0.6 * az_s.sig()),
+        m.caja[1] as f64 + alto * (0.2 + 0.6 * az_s.sig()),
+    ];
     let cams = recorrido(inicio, punto);
 
     // Lo que cuesta en la CPU el contorno de todos los trazos (lo que se
@@ -257,14 +353,26 @@ fn medir_zoom_del_plano_anotado() {
     for e in motor.capa.escena.visibles() {
         nc += pixpin_motor2d::pintado::ordenes_a_distancia(e, (unidad / px0) as f32).len();
     }
-    println!("MEDIDA contornos de toda la capa en la CPU: {:.2} ms ({nc} ordenes)", t.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "MEDIDA contornos de toda la capa en la CPU: {:.2} ms ({nc} ordenes)",
+        t.elapsed().as_secs_f64() * 1000.0
+    );
 
     // Calentar: todo realizado al encuadre, como tras abrir.
     pasar(&mut gpu, &plano, &[inicio; 20], unidad, Some(&mut motor));
     pasar(&mut gpu, &plano, &[inicio; 20], unidad, None);
 
     for k in [1.0, 4.0, 16.0] {
-        desglose(&mut gpu, &plano, &mut motor, Cam { centro: punto, px: px0 / k }, unidad);
+        desglose(
+            &mut gpu,
+            &plano,
+            &mut motor,
+            Cam {
+                centro: punto,
+                px: px0 / k,
+            },
+            unidad,
+        );
     }
     for k in [1.0f32, 4.0, 9.0] {
         estirado(&mut gpu, &plano, &mut motor, inicio, unidad, k);
@@ -300,13 +408,22 @@ fn medir_zoom_del_plano_anotado() {
     std::thread::sleep(Duration::from_millis(10));
     let _ = std::fs::remove_dir_all(&d);
     if std::env::var("PIXPIN_CAD_EXIGIR").is_ok() {
-        assert!(p95_con < 8.0 && p95_con < p95_sin + 4.0, "p95 con capa {p95_con:.2} ms (sin {p95_sin:.2}), max {max_con:.2}");
+        assert!(
+            p95_con < 8.0 && p95_con < p95_sin + 4.0,
+            "p95 con capa {p95_con:.2} ms (sin {p95_sin:.2}), max {max_con:.2}"
+        );
     }
 }
 
 /// El desglose de la capa en un fotograma sin cambios de zoom: envolver el
 /// bufer, el BeginDraw/EndDraw vacio y lo pintado.
-fn desglose(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, motor: &mut MotorDelPlano, c: Cam, unidad: f64) {
+fn desglose(
+    gpu: &mut Gpu,
+    plano: &pixpin_cad::gpu::PlanoGpu,
+    motor: &mut MotorDelPlano,
+    c: Cam,
+    unidad: f64,
+) {
     let v = vista_motor(c, unidad);
     let capas = [(plano, vista_gpu(c))];
     let (mut envolver, mut vacio, mut pintar, mut n) = (0.0, 0.0, 0.0, 0);
@@ -325,7 +442,8 @@ fn desglose(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, motor: &mut MotorD
             let t1 = Instant::now();
             r.dibujar(&b, |_| {}).unwrap();
             let t2 = Instant::now();
-            r.dibujar(&b, |p| motor.pintar_con(p, &v, false, Modo::Directo)).unwrap();
+            r.dibujar(&b, |p| motor.pintar_con(p, &v, false, Modo::Directo))
+                .unwrap();
             let t3 = Instant::now();
             contadores = r.contadores();
             motor.motor = Some((0, r));
@@ -338,17 +456,39 @@ fn desglose(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, motor: &mut MotorD
         gpu.esperar();
     }
     let n = n as f64;
-    println!("MEDIDA desglose zoom {:.3}: envolver {:.3} ms  dibujar vacio {:.3}  pintar capa {:.3}  creados {:?}", unidad / c.px, envolver / n, vacio / n, pintar / n, contadores);
+    println!(
+        "MEDIDA desglose zoom {:.3}: envolver {:.3} ms  dibujar vacio {:.3}  pintar capa {:.3}  creados {:?}",
+        unidad / c.px,
+        envolver / n,
+        vacio / n,
+        pintar / n,
+        contadores
+    );
 }
 
 /// Lo que cuesta pintar la capa al encuadre con todo teselado a otra escala
 /// (`k` veces mas cerca) frente a teselado a la suya.
-fn estirado(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, motor: &mut MotorDelPlano, c: Cam, unidad: f64, k: f32) {
+fn estirado(
+    gpu: &mut Gpu,
+    plano: &pixpin_cad::gpu::PlanoGpu,
+    motor: &mut MotorDelPlano,
+    c: Cam,
+    unidad: f64,
+    k: f32,
+) {
     let v = vista_motor(c, unidad);
     let capas = [(plano, vista_gpu(c))];
     let cam = camara_de(&v);
-    let vista = (cam.x, cam.y, cam.x + v.ancho as f32 / cam.zoom, cam.y + v.alto as f32 / cam.zoom);
-    let mut medir = |motor: &mut MotorDelPlano, zoom_teselado: f32, presupuesto: Option<Duration>| -> (f64, f64) {
+    let vista = (
+        cam.x,
+        cam.y,
+        cam.x + v.ancho as f32 / cam.zoom,
+        cam.y + v.alto as f32 / cam.zoom,
+    );
+    let mut medir = |motor: &mut MotorDelPlano,
+                     zoom_teselado: f32,
+                     presupuesto: Option<Duration>|
+     -> (f64, f64) {
         let mut t_cpu = 0.0;
         let mut t_total = 0.0;
         for _ in 0..10 {
@@ -364,7 +504,16 @@ fn estirado(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, motor: &mut MotorD
                 r.dibujar(&b, |p| {
                     p.poner_vista((0.0, 0.0), cam.zoom, (-cam.x * cam.zoom, -cam.y * cam.zoom));
                     // `zoom_teselado` fija la escala de la cache (y la octava).
-                    motor.tinta.pintar_capa_parte(p, 0, &motor.capa, vista, zoom_teselado, papel(true), false, Parte::Dibujado);
+                    motor.tinta.pintar_capa_parte(
+                        p,
+                        0,
+                        &motor.capa,
+                        vista,
+                        zoom_teselado,
+                        papel(true),
+                        false,
+                        Parte::Dibujado,
+                    );
                 })
                 .unwrap();
                 t_cpu += t1.elapsed().as_secs_f64() * 1000.0;
@@ -383,6 +532,8 @@ fn estirado(gpu: &mut Gpu, plano: &pixpin_cad::gpu::PlanoGpu, motor: &mut MotorD
     // Y a su escala.
     medir(motor, cam.zoom, None);
     let (cpu_n, tot_n) = medir(motor, cam.zoom, None);
-    println!("MEDIDA teselado {k}x mas cerca y pintado al encuadre: cpu {cpu_e:.2} ms total {tot_e:.2}  |  a su escala: cpu {cpu_n:.2} total {tot_n:.2}");
+    println!(
+        "MEDIDA teselado {k}x mas cerca y pintado al encuadre: cpu {cpu_e:.2} ms total {tot_e:.2}  |  a su escala: cpu {cpu_n:.2} total {tot_n:.2}"
+    );
     motor.tinta.presupuesto = Some(PRESUPUESTO_DE_TESELAR);
 }

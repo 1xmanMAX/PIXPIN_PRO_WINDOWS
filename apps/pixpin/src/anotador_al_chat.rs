@@ -205,8 +205,8 @@ pub fn componer(foto: &pixpin_codec::ImagenRgba, pegadas: &[Pegada]) -> pixpin_c
                 let da = out.pixeles[d + 3] as f32 / 255.0;
                 let oa = a + da * (1.0 - a);
                 for (c, &s) in src.iter().enumerate().take(3) {
-                    let v = (s as f32 * a + out.pixeles[d + c] as f32 * da * (1.0 - a))
-                        / oa.max(1e-6);
+                    let v =
+                        (s as f32 * a + out.pixeles[d + c] as f32 * da * (1.0 - a)) / oa.max(1e-6);
                     out.pixeles[d + c] = v.round().clamp(0.0, 255.0) as u8;
                 }
                 out.pixeles[d + 3] = (oa * 255.0).round() as u8;
@@ -1201,7 +1201,10 @@ mod pruebas {
     fn solo_con_una_imagen_pegada_tambien_se_guarda_y_cambiarla_pone_al_dia() {
         let chat = EnElChat::default();
         let p = pegada(0.0, 0.0, 4.0, 4.0, lisa(1, 1, [0, 0, 0, 255]));
-        assert_eq!(chat.paso(&[], std::slice::from_ref(&p.elemento)), Paso::Nuevo);
+        assert_eq!(
+            chat.paso(&[], std::slice::from_ref(&p.elemento)),
+            Paso::Nuevo
+        );
         assert_eq!(
             chat.paso(&[], &[]),
             Paso::Nada,
@@ -1212,7 +1215,10 @@ mod pruebas {
             pegadas: vec![p.elemento.clone()],
             ..Default::default()
         };
-        assert_eq!(chat.paso(&[], std::slice::from_ref(&p.elemento)), Paso::Nada);
+        assert_eq!(
+            chat.paso(&[], std::slice::from_ref(&p.elemento)),
+            Paso::Nada
+        );
         let mut movida = p.elemento.clone();
         movida.x = 9.0;
         assert_eq!(chat.paso(&[], &[movida]), Paso::AlDia);

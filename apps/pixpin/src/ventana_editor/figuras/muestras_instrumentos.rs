@@ -42,7 +42,11 @@ fn escena_de_muestra() -> Escena {
         visible: true,
     };
     escena.tablas = vec![
-        serie("a", "#e03131", &[(-3.0, -2.0), (-1.0, 1.0), (1.0, 2.0), (3.0, -1.5)]),
+        serie(
+            "a",
+            "#e03131",
+            &[(-3.0, -2.0), (-1.0, 1.0), (1.0, 2.0), (3.0, -1.5)],
+        ),
         serie("b", "#1971c2", &[(0.0, 3.0), (2.0, 0.5)]),
     ];
     // El eje comun, en el origen del plano.

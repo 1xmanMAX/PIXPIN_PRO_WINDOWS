@@ -113,13 +113,19 @@ fn listar_en(dir: &Path, prefijo: &str, salida: &mut Vec<String>, hondo: usize) 
     if hondo > 4 {
         return;
     }
-    let Ok(d) = std::fs::read_dir(dir) else { return };
+    let Ok(d) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in d.flatten() {
         let nombre = e.file_name().to_string_lossy().into_owned();
         if nombre.starts_with('.') || nombre.ends_with(".tmp") {
             continue;
         }
-        let rel = if prefijo.is_empty() { nombre.clone() } else { format!("{prefijo}/{nombre}") };
+        let rel = if prefijo.is_empty() {
+            nombre.clone()
+        } else {
+            format!("{prefijo}/{nombre}")
+        };
         match e.file_type() {
             Ok(t) if t.is_dir() => listar_en(&e.path(), &rel, salida, hondo + 1),
             Ok(t) if t.is_file() => salida.push(rel),
@@ -185,8 +191,14 @@ pub fn normalizar(ruta: &str) -> Result<String, String> {
         return Err(format!("la ruta «{r}» lleva caracteres no permitidos"));
     }
     let r = r.replace('\\', "/");
-    let mut partes: Vec<&str> = r.split('/').filter(|s| !s.is_empty() && *s != ".").collect();
-    if partes.first().is_some_and(|p| p.eq_ignore_ascii_case("memoria") || p.eq_ignore_ascii_case("memories")) {
+    let mut partes: Vec<&str> = r
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != ".")
+        .collect();
+    if partes
+        .first()
+        .is_some_and(|p| p.eq_ignore_ascii_case("memoria") || p.eq_ignore_ascii_case("memories"))
+    {
         partes.remove(0);
     }
     if partes.len() > 3 {
@@ -199,8 +211,13 @@ pub fn normalizar(ruta: &str) -> Result<String, String> {
         if p.starts_with('.') || p.chars().count() > 80 {
             return Err(format!("el nombre «{p}» no vale"));
         }
-        if !p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
-            return Err(format!("el nombre «{p}» solo puede llevar letras sin tildes, numeros, - _ y . (sin espacios): asi viaja igual al movil"));
+        if !p
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        {
+            return Err(format!(
+                "el nombre «{p}» solo puede llevar letras sin tildes, numeros, - _ y . (sin espacios): asi viaja igual al movil"
+            ));
         }
     }
     Ok(partes.join("/"))
@@ -208,7 +225,11 @@ pub fn normalizar(ruta: &str) -> Result<String, String> {
 
 /// La ruta tal como la ve el modelo.
 pub fn virtual_de(rel: &str) -> String {
-    if rel.is_empty() { RAIZ_VIRTUAL.to_string() } else { format!("{RAIZ_VIRTUAL}/{rel}") }
+    if rel.is_empty() {
+        RAIZ_VIRTUAL.to_string()
+    } else {
+        format!("{RAIZ_VIRTUAL}/{rel}")
+    }
 }
 
 fn es_fichero_valido(rel: &str) -> Result<(), String> {
@@ -229,11 +250,29 @@ fn es_fichero_valido(rel: &str) -> Result<(), String> {
 const SIEMPRE_SECRETO: &[&str] = &["password", "passwd", "contrasena", "contraseña", "pwd"];
 /// Las que solo lo son si el valor parece un codigo (lleva cifras o signos):
 /// «idea clave: usar flechas» no es un secreto.
-const QUIZA_SECRETO: &[&str] = &["clave", "token", "secret", "secreto", "api key", "api_key", "apikey", "pin"];
+const QUIZA_SECRETO: &[&str] = &[
+    "clave", "token", "secret", "secreto", "api key", "api_key", "apikey", "pin",
+];
 /// Prefijos de claves conocidas.
 const PREFIJOS_DE_CLAVE: &[&str] = &[
-    "sk-", "sk_live_", "sk_test_", "rk_live_", "pk_live_", "ghp_", "gho_", "ghu_", "ghs_", "github_pat_", "xoxb-",
-    "xoxp-", "xoxa-", "AKIA", "AIza", "glpat-", "hf_", "eyJ",
+    "sk-",
+    "sk_live_",
+    "sk_test_",
+    "rk_live_",
+    "pk_live_",
+    "ghp_",
+    "gho_",
+    "ghu_",
+    "ghs_",
+    "github_pat_",
+    "xoxb-",
+    "xoxp-",
+    "xoxa-",
+    "AKIA",
+    "AIza",
+    "glpat-",
+    "hf_",
+    "eyJ",
 ];
 
 fn es_letra_de_clave(c: char) -> bool {
@@ -279,7 +318,9 @@ pub fn quitar_secretos(texto: &str) -> (String, usize) {
         let mut i = 0;
         while i < letras.len() {
             if es_letra_de_clave(letras[i]) {
-                let j = (i..letras.len()).find(|&k| !es_letra_de_clave(letras[k])).unwrap_or(letras.len());
+                let j = (i..letras.len())
+                    .find(|&k| !es_letra_de_clave(letras[k]))
+                    .unwrap_or(letras.len());
                 let palabra: String = letras[i..j].iter().collect();
                 if parece_clave(&palabra) {
                     nueva.push_str(SECRETO_QUITADO);
@@ -320,22 +361,36 @@ fn quitar_tras_palabra(linea: &str, n: &mut usize) -> String {
                 let fin_p = inicio + p.len();
                 desde = fin_p;
                 // Palabra entera por delante.
-                if bajo[..inicio].chars().next_back().is_some_and(char::is_alphanumeric) {
+                if bajo[..inicio]
+                    .chars()
+                    .next_back()
+                    .is_some_and(char::is_alphanumeric)
+                {
                     continue;
                 }
                 let resto = &bajo[fin_p..];
                 let sin_espacio = resto.trim_start();
-                let Some(signo) = sin_espacio.chars().next().filter(|c| matches!(c, ':' | '=')) else { continue };
+                let Some(signo) = sin_espacio
+                    .chars()
+                    .next()
+                    .filter(|c| matches!(c, ':' | '='))
+                else {
+                    continue;
+                };
                 let v_inicio = fin_p + (resto.len() - sin_espacio.len()) + signo.len_utf8();
                 let tras = &linea[v_inicio..];
                 let v_rel = tras.len() - tras.trim_start().len();
                 let v0 = v_inicio + v_rel;
-                let v1 = linea[v0..].find(char::is_whitespace).map_or(linea.len(), |k| v0 + k);
+                let v1 = linea[v0..]
+                    .find(char::is_whitespace)
+                    .map_or(linea.len(), |k| v0 + k);
                 let valor = &linea[v0..v1];
                 if valor.is_empty() || valor == SECRETO_QUITADO {
                     continue;
                 }
-                let codigo = valor.chars().any(|c| c.is_ascii_digit() || !c.is_alphanumeric());
+                let codigo = valor
+                    .chars()
+                    .any(|c| c.is_ascii_digit() || !c.is_alphanumeric());
                 if siempre || (codigo && valor.chars().count() >= 4) {
                     cortes.push((v0, v1));
                 }
@@ -380,7 +435,11 @@ fn fecha_de(texto: &str) -> Option<String> {
     let i = t.rfind(FUENTE)?;
     let marca = &t[i + FUENTE.len()..];
     let marca = marca.strip_suffix("-->")?.trim();
-    marca.rsplit(", ").next().map(|f| f.trim().to_string()).filter(|f| !f.is_empty())
+    marca
+        .rsplit(", ")
+        .next()
+        .map(|f| f.trim().to_string())
+        .filter(|f| !f.is_empty())
 }
 
 fn con_fuente(texto: &str, quien: &str, hoy: &str) -> String {
@@ -418,13 +477,19 @@ pub struct Memoria {
 
 impl std::fmt::Debug for Memoria {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Memoria").field("quien", &self.quien).field("hoy", &self.hoy).finish_non_exhaustive()
+        f.debug_struct("Memoria")
+            .field("quien", &self.quien)
+            .field("hoy", &self.hoy)
+            .finish_non_exhaustive()
     }
 }
 
 /// Si un comando cambia algo.
 fn escribe(comando: &str) -> bool {
-    matches!(comando, "create" | "str_replace" | "insert" | "delete" | "rename")
+    matches!(
+        comando,
+        "create" | "str_replace" | "insert" | "delete" | "rename"
+    )
 }
 
 /// Los nombres en espanol que algun modelo usa en vez de los de Anthropic.
@@ -442,12 +507,22 @@ fn comando_de(c: &str) -> &str {
 }
 
 fn cadena<'a>(v: &'a Value, claves: &[&str]) -> Option<&'a str> {
-    claves.iter().find_map(|c| v.get(*c).and_then(Value::as_str))
+    claves
+        .iter()
+        .find_map(|c| v.get(*c).and_then(Value::as_str))
 }
 
 impl Memoria {
-    pub fn nueva(almacen: Arc<dyn Almacen>, quien: impl Into<String>, hoy: impl Into<String>) -> Memoria {
-        Memoria { almacen, quien: quien.into(), hoy: hoy.into() }
+    pub fn nueva(
+        almacen: Arc<dyn Almacen>,
+        quien: impl Into<String>,
+        hoy: impl Into<String>,
+    ) -> Memoria {
+        Memoria {
+            almacen,
+            quien: quien.into(),
+            hoy: hoy.into(),
+        }
     }
 
     fn leer(&self, rel: &str) -> Result<Option<String>, String> {
@@ -468,7 +543,9 @@ impl Memoria {
             Err(_) => return format!("ERROR: los argumentos no son JSON. Ejemplo: {}", EJEMPLO),
         };
         let Some(c) = cadena(&v, &["command", "comando"]) else {
-            return format!("ERROR: falta «command» (view, create, str_replace, insert, delete, rename o search). Ejemplo: {EJEMPLO}");
+            return format!(
+                "ERROR: falta «command» (view, create, str_replace, insert, delete, rename o search). Ejemplo: {EJEMPLO}"
+            );
         };
         let c = comando_de(c);
         let r = match c {
@@ -479,7 +556,9 @@ impl Memoria {
             "delete" => self.borrar(&v),
             "rename" => self.renombrar(&v),
             "search" => self.buscar_args(&v),
-            otro => Err(format!("el comando «{otro}» no existe: usa view, create, str_replace, insert, delete, rename o search")),
+            otro => Err(format!(
+                "el comando «{otro}» no existe: usa view, create, str_replace, insert, delete, rename o search"
+            )),
         };
         match r {
             Ok(t) => {
@@ -504,13 +583,21 @@ impl Memoria {
             Some(r) => normalizar(r)?,
             None => String::new(),
         };
-        if let Some(texto) = (!rel.is_empty()).then(|| self.leer(&rel)).transpose()?.flatten() {
+        if let Some(texto) = (!rel.is_empty())
+            .then(|| self.leer(&rel))
+            .transpose()?
+            .flatten()
+        {
             let lineas: Vec<&str> = texto.lines().collect();
             let (a, b) = match v.get("view_range").and_then(Value::as_array) {
                 Some(r) if r.len() == 2 => {
                     let a = r[0].as_i64().unwrap_or(1).max(1) as usize;
                     let b = r[1].as_i64().unwrap_or(-1);
-                    let b = if b < 0 { lineas.len() } else { (b as usize).min(lineas.len()) };
+                    let b = if b < 0 {
+                        lineas.len()
+                    } else {
+                        (b as usize).min(lineas.len())
+                    };
                     (a, b)
                 }
                 _ => (1, lineas.len()),
@@ -520,16 +607,33 @@ impl Memoria {
                 s.push_str(&format!("{:>6}\t{l}\n", i + 1));
             }
             if s.chars().count() > TOPE_TEMA {
-                s = format!("{}\n(recortado: usa view_range para ver el resto)", cortar(&s, TOPE_TEMA));
+                s = format!(
+                    "{}\n(recortado: usa view_range para ver el resto)",
+                    cortar(&s, TOPE_TEMA)
+                );
             }
-            return Ok(if s.is_empty() { format!("{} esta vacio", virtual_de(&rel)) } else { s });
+            return Ok(if s.is_empty() {
+                format!("{} esta vacio", virtual_de(&rel))
+            } else {
+                s
+            });
         }
         // Una carpeta (o la raiz).
-        let prefijo = if rel.is_empty() { String::new() } else { format!("{rel}/") };
-        let dentro: Vec<String> = self.ficheros()?.into_iter().filter(|f| f.starts_with(&prefijo)).collect();
+        let prefijo = if rel.is_empty() {
+            String::new()
+        } else {
+            format!("{rel}/")
+        };
+        let dentro: Vec<String> = self
+            .ficheros()?
+            .into_iter()
+            .filter(|f| f.starts_with(&prefijo))
+            .collect();
         if dentro.is_empty() {
             if rel.is_empty() {
-                return Ok(format!("{RAIZ_VIRTUAL} esta vacia: aun no hay nada guardado."));
+                return Ok(format!(
+                    "{RAIZ_VIRTUAL} esta vacia: aun no hay nada guardado."
+                ));
             }
             return Err(format!("{} no existe", virtual_de(&rel)));
         }
@@ -549,13 +653,22 @@ impl Memoria {
             return Err("INDICE.md se rehace solo con la primera linea de cada tema: cambia el tema, no el indice".into());
         }
         if nuevo && self.ficheros()?.len() >= TOPE_FICHEROS {
-            return Err(format!("ya hay {TOPE_FICHEROS} ficheros: junta o borra temas viejos antes de crear otro"));
+            return Err(format!(
+                "ya hay {TOPE_FICHEROS} ficheros: junta o borra temas viejos antes de crear otro"
+            ));
         }
         let (limpio, quitados) = quitar_secretos(texto);
         let cuerpo = sin_fuente(&limpio);
-        let tope = if rel.eq_ignore_ascii_case(PERFIL) { TOPE_PERFIL } else { TOPE_TEMA };
+        let tope = if rel.eq_ignore_ascii_case(PERFIL) {
+            TOPE_PERFIL
+        } else {
+            TOPE_TEMA
+        };
         if cuerpo.chars().count() > tope {
-            return Err(format!("demasiado largo ({} letras; el tope es {tope}): resume o parte en temas", cuerpo.chars().count()));
+            return Err(format!(
+                "demasiado largo ({} letras; el tope es {tope}): resume o parte en temas",
+                cuerpo.chars().count()
+            ));
         }
         if cuerpo.trim().is_empty() {
             return Err("el texto esta vacio (para quitar un tema usa delete)".into());
@@ -564,7 +677,9 @@ impl Memoria {
             .escribir(rel, &con_fuente(cuerpo, &self.quien, &self.hoy))
             .map_err(|e| e.to_string())?;
         Ok(if quitados > 0 {
-            format!(" (se quitaron {quitados} cosas que parecian claves o contrasenas: eso no se guarda nunca)")
+            format!(
+                " (se quitaron {quitados} cosas que parecian claves o contrasenas: eso no se guarda nunca)"
+            )
         } else {
             String::new()
         })
@@ -583,16 +698,25 @@ impl Memoria {
         let rel = self.ruta(v, &["path", "ruta"])?;
         let viejo = cadena(v, &["old_str", "viejo"]).ok_or("falta «old_str»")?;
         let nuevo = cadena(v, &["new_str", "nuevo"]).unwrap_or("");
-        let texto = self.leer(&rel)?.ok_or_else(|| format!("{} no existe", virtual_de(&rel)))?;
+        let texto = self
+            .leer(&rel)?
+            .ok_or_else(|| format!("{} no existe", virtual_de(&rel)))?;
         if viejo.is_empty() {
             return Err("«old_str» esta vacio".into());
         }
         let veces = texto.matches(viejo).count();
         if veces == 0 {
-            return Err(format!("«{}» no aparece en {}: miralo con view", cortar(viejo, 80), virtual_de(&rel)));
+            return Err(format!(
+                "«{}» no aparece en {}: miralo con view",
+                cortar(viejo, 80),
+                virtual_de(&rel)
+            ));
         }
         if veces > 1 {
-            return Err(format!("«{}» aparece {veces} veces: pon mas texto alrededor para que sea unico", cortar(viejo, 80)));
+            return Err(format!(
+                "«{}» aparece {veces} veces: pon mas texto alrededor para que sea unico",
+                cortar(viejo, 80)
+            ));
         }
         let aviso = self.guardar(&rel, &texto.replacen(viejo, nuevo, 1), false)?;
         Ok(format!("{} cambiado{aviso}", virtual_de(&rel)))
@@ -600,16 +724,26 @@ impl Memoria {
 
     fn insertar(&self, v: &Value) -> Result<String, String> {
         let rel = self.ruta(v, &["path", "ruta"])?;
-        let linea = v.get("insert_line").or_else(|| v.get("linea")).and_then(Value::as_i64).unwrap_or(0).max(0) as usize;
+        let linea = v
+            .get("insert_line")
+            .or_else(|| v.get("linea"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+            .max(0) as usize;
         let nuevo = cadena(v, &["insert_text", "new_str", "texto"]).ok_or("falta «insert_text»")?;
-        let texto = self.leer(&rel)?.ok_or_else(|| format!("{} no existe (crealo con create)", virtual_de(&rel)))?;
+        let texto = self
+            .leer(&rel)?
+            .ok_or_else(|| format!("{} no existe (crealo con create)", virtual_de(&rel)))?;
         let mut lineas: Vec<String> = sin_fuente(&texto).lines().map(str::to_string).collect();
         let en = linea.min(lineas.len());
         for (k, l) in nuevo.trim_end_matches('\n').lines().enumerate() {
             lineas.insert(en + k, l.to_string());
         }
         let aviso = self.guardar(&rel, &lineas.join("\n"), false)?;
-        Ok(format!("{} con texto nuevo tras la linea {en}{aviso}", virtual_de(&rel)))
+        Ok(format!(
+            "{} con texto nuevo tras la linea {en}{aviso}",
+            virtual_de(&rel)
+        ))
     }
 
     fn borrar(&self, v: &Value) -> Result<String, String> {
@@ -618,29 +752,50 @@ impl Memoria {
             return Err("eso no se borra (borra los temas uno a uno)".into());
         }
         let prefijo = format!("{rel}/");
-        let cuales: Vec<String> = self.ficheros()?.into_iter().filter(|f| *f == rel || f.starts_with(&prefijo)).collect();
+        let cuales: Vec<String> = self
+            .ficheros()?
+            .into_iter()
+            .filter(|f| *f == rel || f.starts_with(&prefijo))
+            .collect();
         if cuales.is_empty() {
             return Err(format!("{} no existe", virtual_de(&rel)));
         }
         for f in &cuales {
             self.almacen.borrar(f).map_err(|e| e.to_string())?;
         }
-        Ok(format!("{} borrado ({} fichero(s))", virtual_de(&rel), cuales.len()))
+        Ok(format!(
+            "{} borrado ({} fichero(s))",
+            virtual_de(&rel),
+            cuales.len()
+        ))
     }
 
     fn renombrar(&self, v: &Value) -> Result<String, String> {
         let de = self.ruta(v, &["old_path", "de"])?;
         let a = self.ruta(v, &["new_path", "a"])?;
-        if de.is_empty() || a.is_empty() || de.eq_ignore_ascii_case(INDICE) || a.eq_ignore_ascii_case(INDICE) {
+        if de.is_empty()
+            || a.is_empty()
+            || de.eq_ignore_ascii_case(INDICE)
+            || a.eq_ignore_ascii_case(INDICE)
+        {
             return Err("eso no se renombra".into());
         }
         let todos = self.ficheros()?;
         let prefijo = format!("{de}/");
-        let cuales: Vec<&String> = todos.iter().filter(|f| **f == de || f.starts_with(&prefijo)).collect();
+        let cuales: Vec<&String> = todos
+            .iter()
+            .filter(|f| **f == de || f.starts_with(&prefijo))
+            .collect();
         if cuales.is_empty() {
             return Err(format!("{} no existe", virtual_de(&de)));
         }
-        let destino = |f: &str| if f == de { a.clone() } else { format!("{a}/{}", &f[prefijo.len()..]) };
+        let destino = |f: &str| {
+            if f == de {
+                a.clone()
+            } else {
+                format!("{a}/{}", &f[prefijo.len()..])
+            }
+        };
         for f in &cuales {
             let d = destino(f.as_str());
             es_fichero_valido(&d)?;
@@ -650,14 +805,19 @@ impl Memoria {
         }
         for f in cuales {
             let texto = self.leer(f)?.unwrap_or_default();
-            self.almacen.escribir(&destino(f.as_str()), &texto).map_err(|e| e.to_string())?;
+            self.almacen
+                .escribir(&destino(f.as_str()), &texto)
+                .map_err(|e| e.to_string())?;
             self.almacen.borrar(f).map_err(|e| e.to_string())?;
         }
         Ok(format!("{} ahora es {}", virtual_de(&de), virtual_de(&a)))
     }
 
     fn buscar_args(&self, v: &Value) -> Result<String, String> {
-        let q = cadena(v, &["query", "consulta"]).map(str::trim).filter(|q| !q.is_empty()).ok_or("falta «query»")?;
+        let q = cadena(v, &["query", "consulta"])
+            .map(str::trim)
+            .filter(|q| !q.is_empty())
+            .ok_or("falta «query»")?;
         Ok(self.buscar(q, 5))
     }
 
@@ -670,8 +830,14 @@ impl Memoria {
                 continue;
             }
             let texto = self.leer(&f).ok().flatten().unwrap_or_default();
-            for parrafo in sin_fuente(&texto).split("\n\n").filter(|p| !p.trim().is_empty()) {
-                fuentes.push(Fuente { etiqueta: virtual_de(&f), texto: parrafo.to_string() });
+            for parrafo in sin_fuente(&texto)
+                .split("\n\n")
+                .filter(|p| !p.trim().is_empty())
+            {
+                fuentes.push(Fuente {
+                    etiqueta: virtual_de(&f),
+                    texto: parrafo.to_string(),
+                });
             }
         }
         let r = contexto::buscar(&fuentes, consulta, max);
@@ -708,8 +874,15 @@ impl Memoria {
         temas
             .into_iter()
             .map(|(fecha, f, desc)| {
-                let fecha = if fecha.is_empty() { String::new() } else { format!(" ({fecha})") };
-                cortar(&format!("- {}{fecha}: {desc}", virtual_de(&f)), LARGO_LINEA_INDICE)
+                let fecha = if fecha.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({fecha})")
+                };
+                cortar(
+                    &format!("- {}{fecha}: {desc}", virtual_de(&f)),
+                    LARGO_LINEA_INDICE,
+                )
             })
             .collect()
     }
@@ -724,14 +897,19 @@ impl Memoria {
             s.push('\n');
         }
         if n > TOPE_INDICE {
-            s.push_str(&format!("- (y {} temas mas: view {RAIZ_VIRTUAL})\n", n - TOPE_INDICE));
+            s.push_str(&format!(
+                "- (y {} temas mas: view {RAIZ_VIRTUAL})\n",
+                n - TOPE_INDICE
+            ));
         }
         let antes = self.leer(INDICE)?;
         if n == 0 && antes.is_none() {
             return Ok(());
         }
         if antes.as_deref() != Some(s.as_str()) {
-            self.almacen.escribir(INDICE, &s).map_err(|e| e.to_string())?;
+            self.almacen
+                .escribir(INDICE, &s)
+                .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -741,7 +919,12 @@ impl Memoria {
     /// presupuesto); el indice, lineas enteras hasta llenar. Vacio si no hay
     /// nada guardado: un usuario nuevo no paga ni un token.
     pub fn bloque_para_el_sistema(&self, presupuesto: usize) -> String {
-        let perfil = self.leer(PERFIL).ok().flatten().map(|t| sin_fuente(&t).trim().to_string()).unwrap_or_default();
+        let perfil = self
+            .leer(PERFIL)
+            .ok()
+            .flatten()
+            .map(|t| sin_fuente(&t).trim().to_string())
+            .unwrap_or_default();
         let lineas = self.lineas_del_indice();
         if perfil.is_empty() && lineas.is_empty() {
             return String::new();
@@ -768,7 +951,10 @@ impl Memoria {
                 puestas += 1;
             }
             if puestas < lineas.len() {
-                s.push_str(&format!("- (y {} temas mas: view {RAIZ_VIRTUAL})\n", lineas.len() - puestas));
+                s.push_str(&format!(
+                    "- (y {} temas mas: view {RAIZ_VIRTUAL})\n",
+                    lineas.len() - puestas
+                ));
             }
         }
         s.trim_end().to_string()
@@ -785,7 +971,11 @@ pub fn con_memoria(instrucciones: &str, bloque: &str) -> String {
         None => instrucciones,
     };
     let base = base.trim_end();
-    if bloque.trim().is_empty() { base.to_string() } else { format!("{base}\n\n{}", bloque.trim()) }
+    if bloque.trim().is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}\n\n{}", bloque.trim())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -860,13 +1050,20 @@ pub fn transcripcion(conversacion: &[(bool, String)]) -> String {
         if t.trim().is_empty() {
             continue;
         }
-        s.push_str(if *del_usuario { "Usuario: " } else { "Asistente: " });
+        s.push_str(if *del_usuario {
+            "Usuario: "
+        } else {
+            "Asistente: "
+        });
         s.push_str(&cortar(t.trim(), 1500));
         s.push('\n');
     }
     let n = s.chars().count();
     if n > LARGO_CONVERSACION {
-        s = format!("…{}", s.chars().skip(n - LARGO_CONVERSACION).collect::<String>());
+        s = format!(
+            "…{}",
+            s.chars().skip(n - LARGO_CONVERSACION).collect::<String>()
+        );
     }
     s
 }
@@ -875,7 +1072,11 @@ pub fn transcripcion(conversacion: &[(bool, String)]) -> String {
 /// conversacion): el modelo, con SOLO la herramienta de memoria, guarda lo
 /// duradero de `conversacion`. Unas pocas vueltas y tokens cortos: la puede
 /// hacer Haiku en segundo plano. Devuelve cuantas escrituras hizo.
-pub fn guardar_lo_duradero(motor: &dyn Motor, memoria: &Memoria, conversacion: &str) -> Result<usize, ErrorIa> {
+pub fn guardar_lo_duradero(
+    motor: &dyn Motor,
+    memoria: &Memoria,
+    conversacion: &str,
+) -> Result<usize, ErrorIa> {
     if conversacion.trim().is_empty() {
         return Ok(0);
     }
@@ -887,7 +1088,9 @@ pub fn guardar_lo_duradero(motor: &dyn Motor, memoria: &Memoria, conversacion: &
     }
     let mut historial = vec![
         Mensaje::sistema(sistema),
-        Mensaje::usuario(format!("## Conversacion que se va a cerrar\n{conversacion}")),
+        Mensaje::usuario(format!(
+            "## Conversacion que se va a cerrar\n{conversacion}"
+        )),
     ];
     let mut escritas = 0;
     for _ in 0..VUELTAS_GUARDAR {
@@ -924,7 +1127,8 @@ mod pruebas {
     use crate::motor::{MotorGuionado, Respuesta};
 
     fn temporal(nombre: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("pixpin-memoria-{nombre}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("pixpin-memoria-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -932,7 +1136,11 @@ mod pruebas {
 
     fn memoria(nombre: &str) -> (PathBuf, Memoria) {
         let d = temporal(nombre);
-        let m = Memoria::nueva(Arc::new(EnCarpeta::nueva(&d)), "Claude Haiku 5.5", "2026-10-22");
+        let m = Memoria::nueva(
+            Arc::new(EnCarpeta::nueva(&d)),
+            "Claude Haiku 5.5",
+            "2026-10-22",
+        );
         (d, m)
     }
 
@@ -948,7 +1156,10 @@ mod pruebas {
         assert_eq!(normalizar("/").unwrap(), "");
         assert_eq!(normalizar("./a.md").unwrap(), "a.md");
         assert_eq!(normalizar("a\\b.md").unwrap(), "a/b.md");
-        assert!(normalizar("año.md").is_err(), "sin tildes ni eñes: el nombre viaja al movil tal cual");
+        assert!(
+            normalizar("año.md").is_err(),
+            "sin tildes ni eñes: el nombre viaja al movil tal cual"
+        );
         for mala in [
             "../x.md",
             "/memoria/../../secreto.md",
@@ -969,23 +1180,47 @@ mod pruebas {
     fn los_comandos_crean_cambian_insertan_renombran_y_borran() {
         let (dir, m) = memoria("comandos");
         assert!(llamar(&m, json!({"command":"view","path":"/memoria"})).contains("vacia"));
-        let r = llamar(&m, json!({"command":"create","path":"/memoria/estilo.md","file_text":"# Le gustan las flechas azules\nLo dijo el 22-oct."}));
+        let r = llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/estilo.md","file_text":"# Le gustan las flechas azules\nLo dijo el 22-oct."}),
+        );
         assert!(r.contains("creado"), "{r}");
         let en_disco = std::fs::read_to_string(dir.join("estilo.md")).unwrap();
-        assert!(en_disco.ends_with("<!-- fuente: Claude Haiku 5.5, 2026-10-22 -->\n"), "{en_disco}");
+        assert!(
+            en_disco.ends_with("<!-- fuente: Claude Haiku 5.5, 2026-10-22 -->\n"),
+            "{en_disco}"
+        );
         // str_replace: unico, ausente, repetido.
         assert!(llamar(&m, json!({"command":"str_replace","path":"/memoria/estilo.md","old_str":"azules","new_str":"verdes"})).contains("cambiado"));
         assert!(llamar(&m, json!({"command":"str_replace","path":"/memoria/estilo.md","old_str":"rojas","new_str":"x"})).starts_with("ERROR"));
-        llamar(&m, json!({"command":"create","path":"/memoria/rep.md","file_text":"zz zz"}));
-        assert!(llamar(&m, json!({"command":"str_replace","path":"rep.md","old_str":"zz","new_str":"b"})).contains("2 veces"));
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/rep.md","file_text":"zz zz"}),
+        );
+        assert!(
+            llamar(
+                &m,
+                json!({"command":"str_replace","path":"rep.md","old_str":"zz","new_str":"b"})
+            )
+            .contains("2 veces")
+        );
         // insert al principio, y la marca de procedencia sigue sola al final.
         assert!(!llamar(&m, json!({"command":"insert","path":"/memoria/estilo.md","insert_line":0,"insert_text":"Tema: estilo"})).starts_with("ERROR"));
         let t = std::fs::read_to_string(dir.join("estilo.md")).unwrap();
-        assert!(t.starts_with("Tema: estilo\n# Le gustan las flechas verdes"), "{t}");
+        assert!(
+            t.starts_with("Tema: estilo\n# Le gustan las flechas verdes"),
+            "{t}"
+        );
         assert_eq!(t.matches(FUENTE).count(), 1, "{t}");
         // view con lineas numeradas y con rango.
-        let v = llamar(&m, json!({"command":"view","path":"/memoria/estilo.md","view_range":[2,2]}));
-        assert!(v.contains("     2\t# Le gustan") && !v.contains("Tema:"), "{v}");
+        let v = llamar(
+            &m,
+            json!({"command":"view","path":"/memoria/estilo.md","view_range":[2,2]}),
+        );
+        assert!(
+            v.contains("     2\t# Le gustan") && !v.contains("Tema:"),
+            "{v}"
+        );
         // rename de fichero y de carpeta; el destino no puede existir.
         assert!(llamar(&m, json!({"command":"rename","old_path":"/memoria/rep.md","new_path":"/memoria/viejo/rep.md"})).contains("ahora es"));
         assert!(dir.join("viejo").join("rep.md").is_file() && !dir.join("rep.md").exists());
@@ -993,29 +1228,60 @@ mod pruebas {
         assert!(dir.join("archivo").join("rep.md").is_file());
         assert!(llamar(&m, json!({"command":"rename","old_path":"/memoria/estilo.md","new_path":"/memoria/archivo/rep.md"})).contains("ya existe"));
         // delete (y la carpeta vacia se va).
-        assert!(llamar(&m, json!({"command":"delete","path":"/memoria/archivo"})).contains("borrado"));
+        assert!(
+            llamar(&m, json!({"command":"delete","path":"/memoria/archivo"})).contains("borrado")
+        );
         assert!(!dir.join("archivo").exists());
         assert!(llamar(&m, json!({"command":"delete","path":"/memoria"})).starts_with("ERROR"));
         // Los nombres en espanol tambien valen; lo raro, no.
         assert!(llamar(&m, json!({"comando":"ver","ruta":"/memoria"})).contains("estilo.md"));
         assert!(llamar(&m, json!({"command":"volar"})).starts_with("ERROR"));
         assert!(m.ejecutar("{roto").starts_with("ERROR"));
-        assert!(llamar(&m, json!({"command":"create","path":"/memoria/x.exe","file_text":"x"})).starts_with("ERROR"));
-        assert!(llamar(&m, json!({"command":"create","path":"/memoria/../x.md","file_text":"x"})).starts_with("ERROR"));
+        assert!(
+            llamar(
+                &m,
+                json!({"command":"create","path":"/memoria/x.exe","file_text":"x"})
+            )
+            .starts_with("ERROR")
+        );
+        assert!(
+            llamar(
+                &m,
+                json!({"command":"create","path":"/memoria/../x.md","file_text":"x"})
+            )
+            .starts_with("ERROR")
+        );
     }
 
     #[test]
     fn el_indice_se_rehace_solo_con_una_linea_por_tema_y_su_tope() {
         let (dir, m) = memoria("indice");
-        llamar(&m, json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Habla espanol. Respuestas cortas."}));
-        llamar(&m, json!({"command":"create","path":"/memoria/casa.md","file_text":"# Su casa tiene 3 plantas\nmas detalle"}));
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Habla espanol. Respuestas cortas."}),
+        );
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/casa.md","file_text":"# Su casa tiene 3 plantas\nmas detalle"}),
+        );
         let i = std::fs::read_to_string(dir.join(INDICE)).unwrap();
-        assert!(i.contains("- /memoria/casa.md (2026-10-22): Su casa tiene 3 plantas"), "{i}");
+        assert!(
+            i.contains("- /memoria/casa.md (2026-10-22): Su casa tiene 3 plantas"),
+            "{i}"
+        );
         assert!(!i.contains("PERFIL"), "el perfil no va en el indice: {i}");
-        assert!(llamar(&m, json!({"command":"create","path":"/memoria/INDICE.md","file_text":"x"})).contains("se rehace solo"));
+        assert!(
+            llamar(
+                &m,
+                json!({"command":"create","path":"/memoria/INDICE.md","file_text":"x"})
+            )
+            .contains("se rehace solo")
+        );
         // El tope: mas de 200 temas dejan 200 lineas y el aviso.
         for k in 0..(TOPE_INDICE + 5) {
-            m.almacen.escribir(&format!("t/{k:03}.md"), &format!("tema {k}")).unwrap();
+            m.almacen
+                .escribir(&format!("t/{k:03}.md"), &format!("tema {k}"))
+                .unwrap();
         }
         m.rehacer_indice().unwrap();
         let i = std::fs::read_to_string(dir.join(INDICE)).unwrap();
@@ -1026,21 +1292,36 @@ mod pruebas {
         for k in 0..TOPE_FICHEROS {
             m.almacen.escribir(&format!("u/{k:03}.md"), "x").unwrap();
         }
-        assert!(llamar(&m, json!({"command":"create","path":"/memoria/otro.md","file_text":"x"})).contains("ya hay"));
+        assert!(
+            llamar(
+                &m,
+                json!({"command":"create","path":"/memoria/otro.md","file_text":"x"})
+            )
+            .contains("ya hay")
+        );
         // Sustituir uno que ya esta si se deja.
         assert!(llamar(&m, json!({"command":"create","path":"/memoria/casa.md","file_text":"# Su casa tiene 4 plantas"})).contains("sustituido"));
     }
 
     #[test]
     fn los_secretos_no_se_guardan() {
-        let (t, n) = quitar_secretos("mi clave de Claude es sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv y ya");
-        assert!(!t.contains("sk-ant") && t.contains(SECRETO_QUITADO) && n == 1, "{t}");
+        let (t, n) =
+            quitar_secretos("mi clave de Claude es sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv y ya");
+        assert!(
+            !t.contains("sk-ant") && t.contains(SECRETO_QUITADO) && n == 1,
+            "{t}"
+        );
         let (t, n) = quitar_secretos("contraseña: perro\nPassword=Hunter2 fin\npin: 4477");
         assert_eq!(n, 3, "{t}");
-        assert!(!t.contains("perro") && !t.contains("Hunter2") && !t.contains("4477"), "{t}");
+        assert!(
+            !t.contains("perro") && !t.contains("Hunter2") && !t.contains("4477"),
+            "{t}"
+        );
         let (t, _) = quitar_secretos("token AbCdEf0123456789GhIjKl0123456789MnOp aqui");
         assert!(t.contains(SECRETO_QUITADO), "{t}");
-        let (t, n) = quitar_secretos("-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----\nsigue");
+        let (t, n) = quitar_secretos(
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----\nsigue",
+        );
         assert_eq!((t.as_str(), n), ("[secreto quitado]\nsigue", 1));
         // Casos negativos: lo normal se queda.
         for normal in [
@@ -1054,22 +1335,42 @@ mod pruebas {
         }
         // Y la herramienta lo dice.
         let (dir, m) = memoria("secretos");
-        let r = llamar(&m, json!({"command":"create","path":"/memoria/claves.md","file_text":"Su clave: sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv"}));
+        let r = llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/claves.md","file_text":"Su clave: sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv"}),
+        );
         assert!(r.contains("se quitaron 1"), "{r}");
-        assert!(!std::fs::read_to_string(dir.join("claves.md")).unwrap().contains("sk-ant"));
+        assert!(
+            !std::fs::read_to_string(dir.join("claves.md"))
+                .unwrap()
+                .contains("sk-ant")
+        );
     }
 
     #[test]
     fn el_bloque_del_sistema_cumple_su_presupuesto() {
         let (_, m) = memoria("bloque");
-        assert_eq!(m.bloque_para_el_sistema(PRESUPUESTO_SISTEMA), "", "sin memoria, nada");
-        llamar(&m, json!({"command":"create","path":"/memoria/PERFIL.md","file_text":format!("Habla espanol. {}", "x".repeat(3000))}));
+        assert_eq!(
+            m.bloque_para_el_sistema(PRESUPUESTO_SISTEMA),
+            "",
+            "sin memoria, nada"
+        );
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/PERFIL.md","file_text":format!("Habla espanol. {}", "x".repeat(3000))}),
+        );
         for k in 0..60 {
-            llamar(&m, json!({"command":"create","path":format!("/memoria/tema{k:02}.md"),"file_text":format!("# Tema numero {k} con una descripcion larga de verdad")}));
+            llamar(
+                &m,
+                json!({"command":"create","path":format!("/memoria/tema{k:02}.md"),"file_text":format!("# Tema numero {k} con una descripcion larga de verdad")}),
+            );
         }
         let b = m.bloque_para_el_sistema(2000);
         assert!(b.chars().count() <= 2000 + 120, "{}", b.chars().count());
-        assert!(b.starts_with("# Memoria del usuario") && b.contains("Habla espanol"), "{b}");
+        assert!(
+            b.starts_with("# Memoria del usuario") && b.contains("Habla espanol"),
+            "{b}"
+        );
         assert!(b.contains("temas mas"), "lo que no cabe se dice");
         let grande = m.bloque_para_el_sistema(PRESUPUESTO_SISTEMA * 4);
         assert!(grande.contains("tema00.md") && !grande.contains("temas mas"));
@@ -1084,10 +1385,19 @@ mod pruebas {
     #[test]
     fn buscar_encuentra_el_tema_y_dice_de_donde_sale() {
         let (_, m) = memoria("buscar");
-        llamar(&m, json!({"command":"create","path":"/memoria/obra.md","file_text":"# Obra de la calle Mayor\n\nEl presupuesto era de 12.000 euros."}));
-        llamar(&m, json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Prefiere euros con punto de miles."}));
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/obra.md","file_text":"# Obra de la calle Mayor\n\nEl presupuesto era de 12.000 euros."}),
+        );
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Prefiere euros con punto de miles."}),
+        );
         let r = llamar(&m, json!({"command":"search","query":"presupuesto obra"}));
-        assert!(r.contains("[/memoria/obra.md]") && r.contains("12.000"), "{r}");
+        assert!(
+            r.contains("[/memoria/obra.md]") && r.contains("12.000"),
+            "{r}"
+        );
         assert!(llamar(&m, json!({"command":"search","query":"avion"})).contains("No hay nada"));
         assert!(llamar(&m, json!({"command":"search"})).starts_with("ERROR"));
     }
@@ -1096,19 +1406,42 @@ mod pruebas {
     fn la_pasada_de_guardar_usa_solo_la_memoria_y_cuenta_lo_escrito() {
         let (dir, m) = memoria("pasada");
         let motor = MotorGuionado::nuevo(vec![
-            Respuesta::de_llamada(NOMBRE, r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Quiere las respuestas en espanol y cortas."}"#),
+            Respuesta::de_llamada(
+                NOMBRE,
+                r#"{"command":"create","path":"/memoria/PERFIL.md","file_text":"Quiere las respuestas en espanol y cortas."}"#,
+            ),
             Respuesta::de_llamada("dibujar_en_lienzo", r#"{}"#),
             Respuesta::de_texto("Guardado su idioma."),
         ]);
-        let conv = transcripcion(&[(true, "contestame siempre corto y en espanol".into()), (false, "Vale.".into())]);
+        let conv = transcripcion(&[
+            (true, "contestame siempre corto y en espanol".into()),
+            (false, "Vale.".into()),
+        ]);
         let n = guardar_lo_duradero(&motor, &m, &conv).unwrap();
         assert_eq!(n, 1);
-        assert!(std::fs::read_to_string(dir.join(PERFIL)).unwrap().contains("cortas"));
+        assert!(
+            std::fs::read_to_string(dir.join(PERFIL))
+                .unwrap()
+                .contains("cortas")
+        );
         let pedidas = motor.recibido.lock().unwrap();
-        assert!(pedidas.iter().all(|p| p.herramientas.len() == 1 && p.herramientas[0].nombre == NOMBRE));
-        assert!(pedidas[0].mensajes[1].texto_entero().contains("contestame siempre corto"));
+        assert!(
+            pedidas
+                .iter()
+                .all(|p| p.herramientas.len() == 1 && p.herramientas[0].nombre == NOMBRE)
+        );
+        assert!(
+            pedidas[0].mensajes[1]
+                .texto_entero()
+                .contains("contestame siempre corto")
+        );
         // Otra herramienta no se hace: la tercera vuelta ve el error.
-        assert!(pedidas[2].mensajes.iter().any(|x| x.texto_entero().contains("solo esta la herramienta")));
+        assert!(
+            pedidas[2]
+                .mensajes
+                .iter()
+                .any(|x| x.texto_entero().contains("solo esta la herramienta"))
+        );
         drop(pedidas);
         // Sin conversacion no se pregunta nada.
         let vacio = MotorGuionado::nuevo(vec![]);
@@ -1126,29 +1459,66 @@ mod pruebas {
     #[test]
     fn el_turno_lleva_la_memoria_en_el_sistema_y_la_herramienta() {
         let (dir, m) = memoria("turno");
-        llamar(&m, json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Se llama Max y habla espanol."}));
+        llamar(
+            &m,
+            json!({"command":"create","path":"/memoria/PERFIL.md","file_text":"Se llama Max y habla espanol."}),
+        );
         let motor = MotorGuionado::nuevo(vec![
-            Respuesta::de_llamada(NOMBRE, r##"{"command":"create","path":"/memoria/gustos.md","file_text":"# Le gusta el azul"}"##),
+            Respuesta::de_llamada(
+                NOMBRE,
+                r##"{"command":"create","path":"/memoria/gustos.md","file_text":"# Le gusta el azul"}"##,
+            ),
             Respuesta::de_texto("Apuntado."),
         ]);
-        let mut historial = vec![Mensaje::sistema(crate::agente::instrucciones()), Mensaje::usuario("recuerda que me gusta el azul")];
-        let o = crate::agente::Opciones { memoria: Some(&m), ..Default::default() };
-        let f = crate::agente::turno_con(&motor, &mut historial, &[], &mut NadaQueHacer, &o, &mut |_| Seguir::Si).unwrap();
+        let mut historial = vec![
+            Mensaje::sistema(crate::agente::instrucciones()),
+            Mensaje::usuario("recuerda que me gusta el azul"),
+        ];
+        let o = crate::agente::Opciones {
+            memoria: Some(&m),
+            ..Default::default()
+        };
+        let f = crate::agente::turno_con(
+            &motor,
+            &mut historial,
+            &[],
+            &mut NadaQueHacer,
+            &o,
+            &mut |_| Seguir::Si,
+        )
+        .unwrap();
         assert_eq!(f.texto, "Apuntado.");
         let pedidas = motor.recibido.lock().unwrap();
         let sistema = pedidas[0].mensajes[0].texto_entero();
-        assert!(sistema.contains("# Memoria del usuario") && sistema.contains("Se llama Max"), "{sistema}");
+        assert!(
+            sistema.contains("# Memoria del usuario") && sistema.contains("Se llama Max"),
+            "{sistema}"
+        );
         assert_eq!(sistema.matches("# Memoria del usuario").count(), 1);
         assert!(pedidas[0].herramientas.iter().any(|h| h.nombre == NOMBRE));
-        assert!(std::fs::read_to_string(dir.join("gustos.md")).unwrap().contains("azul"));
-        assert!(std::fs::read_to_string(dir.join(INDICE)).unwrap().contains("Le gusta el azul"));
+        assert!(
+            std::fs::read_to_string(dir.join("gustos.md"))
+                .unwrap()
+                .contains("azul")
+        );
+        assert!(
+            std::fs::read_to_string(dir.join(INDICE))
+                .unwrap()
+                .contains("Le gusta el azul")
+        );
         drop(pedidas);
         // Sin memoria, ni bloque ni herramienta (el turno de siempre).
         let motor = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola.")]);
         let mut historial = vec![Mensaje::sistema("S"), Mensaje::usuario("hola")];
-        crate::agente::turno(&motor, &mut historial, &[], &mut NadaQueHacer, &mut |_| Seguir::Si).unwrap();
+        crate::agente::turno(&motor, &mut historial, &[], &mut NadaQueHacer, &mut |_| {
+            Seguir::Si
+        })
+        .unwrap();
         let p = &motor.recibido.lock().unwrap()[0];
-        assert!(!p.mensajes[0].texto_entero().contains("Memoria") && !p.herramientas.iter().any(|h| h.nombre == NOMBRE));
+        assert!(
+            !p.mensajes[0].texto_entero().contains("Memoria")
+                && !p.herramientas.iter().any(|h| h.nombre == NOMBRE)
+        );
     }
 
     #[test]
@@ -1157,36 +1527,74 @@ mod pruebas {
         // Un historial que ya pasa del 70 % de una ventana pequena.
         let mut historial = vec![Mensaje::sistema("S")];
         for i in 0..12 {
-            historial.push(Mensaje::usuario(format!("dato {i}: prefiero tablas {}", "bla ".repeat(60))));
-            historial.push(Mensaje::texto(Rol::Asistente, format!("vale {i} {}", "bla ".repeat(60))));
+            historial.push(Mensaje::usuario(format!(
+                "dato {i}: prefiero tablas {}",
+                "bla ".repeat(60)
+            )));
+            historial.push(Mensaje::texto(
+                Rol::Asistente,
+                format!("vale {i} {}", "bla ".repeat(60)),
+            ));
         }
         historial.push(Mensaje::usuario("y ahora otra cosa"));
         let motor = MotorGuionado::nuevo(vec![
             // La pasada de guardar (con solo la memoria).
-            Respuesta::de_llamada(NOMBRE, r##"{"command":"create","path":"/memoria/formato.md","file_text":"# Prefiere tablas"}"##),
+            Respuesta::de_llamada(
+                NOMBRE,
+                r##"{"command":"create","path":"/memoria/formato.md","file_text":"# Prefiere tablas"}"##,
+            ),
             Respuesta::de_texto("Guardado."),
             // El turno, ya reiniciado.
             Respuesta::de_texto("Hecho."),
         ]);
-        let o = crate::agente::Opciones { memoria: Some(&m), ventana: 4000, ..Default::default() };
+        let o = crate::agente::Opciones {
+            memoria: Some(&m),
+            ventana: 4000,
+            ..Default::default()
+        };
         let mut eventos = Vec::new();
-        let f = crate::agente::turno_con(&motor, &mut historial, &[], &mut NadaQueHacer, &o, &mut |e| {
-            eventos.push(e);
-            Seguir::Si
-        })
+        let f = crate::agente::turno_con(
+            &motor,
+            &mut historial,
+            &[],
+            &mut NadaQueHacer,
+            &o,
+            &mut |e| {
+                eventos.push(e);
+                Seguir::Si
+            },
+        )
         .unwrap();
         assert_eq!(f.texto, "Hecho.");
         assert!(dir.join("formato.md").is_file());
-        assert!(eventos.iter().any(|e| matches!(e, crate::agente::Evento::Reinicio { .. })));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, crate::agente::Evento::Reinicio { .. }))
+        );
         let pedidas = motor.recibido.lock().unwrap();
-        assert_eq!(pedidas[0].herramientas.len(), 1, "la pasada solo tiene la memoria");
-        assert!(pedidas[0].mensajes[1].texto_entero().contains("prefiero tablas"));
-        assert!(pedidas[2].mensajes.len() < 8, "el turno siguio reiniciado: {}", pedidas[2].mensajes.len());
+        assert_eq!(
+            pedidas[0].herramientas.len(),
+            1,
+            "la pasada solo tiene la memoria"
+        );
+        assert!(
+            pedidas[0].mensajes[1]
+                .texto_entero()
+                .contains("prefiero tablas")
+        );
+        assert!(
+            pedidas[2].mensajes.len() < 8,
+            "el turno siguio reiniciado: {}",
+            pedidas[2].mensajes.len()
+        );
     }
 
     #[test]
     fn la_transcripcion_se_queda_con_lo_ultimo() {
-        let conv: Vec<(bool, String)> = (0..40).map(|i| (i % 2 == 0, format!("mensaje {i} {}", "bla ".repeat(200)))).collect();
+        let conv: Vec<(bool, String)> = (0..40)
+            .map(|i| (i % 2 == 0, format!("mensaje {i} {}", "bla ".repeat(200))))
+            .collect();
         let t = transcripcion(&conv);
         assert!(t.chars().count() <= LARGO_CONVERSACION + 1);
         assert!(t.contains("mensaje 39") && !t.contains("mensaje 0 "));

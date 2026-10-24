@@ -106,11 +106,7 @@ pub fn pintar<A: Copy + Default>(
         crate::lecciones::ui::ancho_de_boton(p, true, &a.rotulo, a.chapa, s)
     });
     let pad = super::MARGEN * s;
-    let derecha = if aviso.accion.is_some() {
-        4.0 * s
-    } else {
-        pad
-    };
+    let derecha = if aviso.accion.is_some() { 4.0 * s } else { pad };
     let hueco = if aviso.accion.is_some() {
         super::HUECO * s
     } else {

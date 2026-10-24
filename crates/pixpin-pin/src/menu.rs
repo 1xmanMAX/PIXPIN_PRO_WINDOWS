@@ -375,7 +375,10 @@ fn submenu_opacidad(t: &TextosPin, ahora: u8) -> EntradaMenu {
 /// temporizador, las de siempre y, si ya lleva una, quitarla.
 fn submenu_pegatina(t: &TextosPin, temporizador: bool, con_pegatina: bool) -> EntradaMenu {
     let mut entradas = Vec::new();
-    for (i, emoji) in crate::pegatina::elegibles(temporizador).into_iter().enumerate() {
+    for (i, emoji) in crate::pegatina::elegibles(temporizador)
+        .into_iter()
+        .enumerate()
+    {
         let etiqueta = match crate::pegatina::minutos_de(emoji) {
             Some(m) => format!("{emoji}  {m} {}", t.v2.minutos),
             None => emoji.to_string(),
@@ -398,7 +401,11 @@ fn submenu_pegatina(t: &TextosPin, temporizador: bool, con_pegatina: bool) -> En
 /// El submenu de las paginas de una nota: leerla seguida y cada pagina, con
 /// la de ahora marcada. Es la rejilla de paginas del movil hecha menu.
 fn submenu_paginas_de_nota(t: &TextosPin, cuantas: u32, ahora: Option<u32>) -> EntradaMenu {
-    let mut entradas = vec![marcada(CMD_NOTA_SEGUIDA, &t.v2.leer_seguida, ahora.is_none())];
+    let mut entradas = vec![marcada(
+        CMD_NOTA_SEGUIDA,
+        &t.v2.leer_seguida,
+        ahora.is_none(),
+    )];
     entradas.push(EntradaMenu::Separador);
     for n in 0..cuantas.min(PAGINAS_EN_MENU) {
         entradas.push(marcada(
@@ -553,7 +560,14 @@ pub fn entradas_del_menu(
     v.push(EntradaMenu::Accion {
         id: CMD_INVERTIR,
         etiqueta: t.v2.invertir_colores.clone(),
-        atajo: Some(if contenido.interactivo() { "Alt+N" } else { "N" }.to_string()),
+        atajo: Some(
+            if contenido.interactivo() {
+                "Alt+N"
+            } else {
+                "N"
+            }
+            .to_string(),
+        ),
         marcada: invertido,
     });
 
@@ -923,17 +937,29 @@ pub(crate) mod pruebas {
 
     #[test]
     fn una_foto_con_marcos_ofrece_imprimirlos_y_borrarlos() {
-        let con = EstadoMenu { con_marcos: true, ..Default::default() };
+        let con = EstadoMenu {
+            con_marcos: true,
+            ..Default::default()
+        };
         let v = ids(&entradas_del_menu(&imagen(), con, &textos()));
         assert!(v.contains(&CMD_IMPRIMIR_MARCOS) && v.contains(&CMD_BORRAR_MARCOS));
     }
 
     #[test]
     fn caso_negativo_sin_marcos_o_sin_foto_no_salen() {
-        let v = ids(&entradas_del_menu(&imagen(), EstadoMenu::default(), &textos()));
+        let v = ids(&entradas_del_menu(
+            &imagen(),
+            EstadoMenu::default(),
+            &textos(),
+        ));
         assert!(!v.contains(&CMD_IMPRIMIR_MARCOS) && !v.contains(&CMD_BORRAR_MARCOS));
-        let nota = Contenido::Nota { texto: "hola".into() };
-        let con = EstadoMenu { con_marcos: true, ..Default::default() };
+        let nota = Contenido::Nota {
+            texto: "hola".into(),
+        };
+        let con = EstadoMenu {
+            con_marcos: true,
+            ..Default::default()
+        };
         assert!(!ids(&entradas_del_menu(&nota, con, &textos())).contains(&CMD_IMPRIMIR_MARCOS));
     }
 
@@ -991,7 +1017,13 @@ pub(crate) mod pruebas {
             (video(), "N"),
             (archivo(), "N"),
             (Contenido::Nota { texto: "x".into() }, "N"),
-            (Contenido::Vivo { ancho: 10, alto: 10 }, "N"),
+            (
+                Contenido::Vivo {
+                    ancho: 10,
+                    alto: 10,
+                },
+                "N",
+            ),
             // En la herramienta la N se escribe: alli es con Alt.
             (herramienta, "Alt+N"),
         ] {
@@ -1474,7 +1506,10 @@ pub(crate) mod pruebas {
         );
         let s = submenu(&v, "Pegatina").unwrap();
         assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE), Some("5️⃣  5 min".into()));
-        assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE + 3), Some("🕐  60 min".into()));
+        assert_eq!(
+            etiqueta_de(s, CMD_PEGATINA_BASE + 3),
+            Some("🕐  60 min".into())
+        );
         assert_eq!(s[4], EntradaMenu::Separador, "una raya tras las de tiempo");
         assert_eq!(etiqueta_de(s, CMD_PEGATINA_BASE + 4), Some("⭐".into()));
     }
@@ -1492,7 +1527,10 @@ pub(crate) mod pruebas {
             },
             &textos(),
         );
-        assert!(submenu(&corta, "Páginas").is_none(), "una pagina no se pagina");
+        assert!(
+            submenu(&corta, "Páginas").is_none(),
+            "una pagina no se pagina"
+        );
         let leyendo = entradas_del_menu(
             &nota,
             EstadoMenu {
@@ -1513,7 +1551,10 @@ pub(crate) mod pruebas {
             })
             .collect();
         assert_eq!(marcadas, vec![CMD_NOTA_PAGINA_BASE + 1]);
-        assert_eq!(etiqueta_de(s, CMD_NOTA_PAGINA_BASE + 2), Some("Página 3".into()));
+        assert_eq!(
+            etiqueta_de(s, CMD_NOTA_PAGINA_BASE + 2),
+            Some("Página 3".into())
+        );
         // Seguida, lo marcado es «Leer seguida».
         let seguida = entradas_del_menu(
             &nota,
@@ -1526,7 +1567,11 @@ pub(crate) mod pruebas {
         let s = submenu(&seguida, "Páginas").unwrap();
         assert!(matches!(
             &s[0],
-            EntradaMenu::Accion { id: CMD_NOTA_SEGUIDA, marcada: true, .. }
+            EntradaMenu::Accion {
+                id: CMD_NOTA_SEGUIDA,
+                marcada: true,
+                ..
+            }
         ));
         // Caso negativo: una imagen con paginas de nota (no deberia pasar)
         // no ofrece nada.

@@ -35,7 +35,11 @@ pub(crate) const RESOLUCION: &str = concat!(
 
 fn texto_rico_en(fuente: &str, x: f32, y: f32, tam: f32, familia: &str) -> Elemento {
     let mut e = Elemento {
-        figura: Figura::Texto { texto: String::new(), tam, familia: familia.into() },
+        figura: Figura::Texto {
+            texto: String::new(),
+            tam,
+            familia: familia.into(),
+        },
         x,
         y,
         trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
@@ -53,7 +57,13 @@ pub(crate) fn escena_de_la_resolucion() -> Escena {
     let familia = "Calibri";
     escena.anadir(texto_rico_en("RESOLUCIÓN:", 6.0, 0.0, 20.0, familia));
     escena.anadir(texto_rico_en(RESOLUCION, 6.0, 56.0, 20.0, familia));
-    let mut caja = texto_rico_en("$\\color{verde}{\\boxed{\\color{negro}{\\theta=90^\\circ}}}$", 60.0, 560.0, 20.0, familia);
+    let mut caja = texto_rico_en(
+        "$\\color{verde}{\\boxed{\\color{negro}{\\theta=90^\\circ}}}$",
+        60.0,
+        560.0,
+        20.0,
+        familia,
+    );
     caja.extras.alineacion = None;
     escena.anadir(caja);
     escena
@@ -79,7 +89,11 @@ fn lado_a_lado(a: &ImagenRgba, b: &ImagenRgba) -> ImagenRgba {
             }
         }
     }
-    ImagenRgba { ancho, alto, pixeles: px }
+    ImagenRgba {
+        ancho,
+        alto,
+        pixeles: px,
+    }
 }
 
 fn recortar(img: &ImagenRgba, (x0, y0, x1, y1): (u32, u32, u32, u32)) -> ImagenRgba {
@@ -90,36 +104,80 @@ fn recortar(img: &ImagenRgba, (x0, y0, x1, y1): (u32, u32, u32, u32)) -> ImagenR
         let s = ((y * img.ancho + x0) * 4) as usize;
         px.extend_from_slice(&img.pixeles[s..s + (w * 4) as usize]);
     }
-    ImagenRgba { ancho: w, alto: h, pixeles: px }
+    ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    }
 }
 
 #[test]
 #[ignore = "necesita GPU; genera PNG para compararlos a ojo"]
 fn muestra_resolucion_con_texto_rico() {
     pixpin_motor2d::texto::instalar_medidor(crate::dibujo::pintar::medir_para_el_motor);
-    let carpeta = std::env::var_os("PIXPIN_BANCO_TEXTO").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let carpeta = std::env::var_os("PIXPIN_BANCO_TEXTO")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
     std::fs::create_dir_all(&carpeta).unwrap();
     let ahora = std::time::Instant::now();
     let escena = escena_de_la_resolucion();
-    println!("componer y medir la columna: {:.1} ms", ahora.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "componer y medir la columna: {:.1} ms",
+        ahora.elapsed().as_secs_f64() * 1000.0
+    );
     let cuerpo = escena.elementos[1].clone();
     let ahora = std::time::Instant::now();
     let n = pixpin_motor2d::pintado::ordenes(&cuerpo).len();
-    println!("ordenes de pintado del cuerpo ({n}): {:.2} ms", ahora.elapsed().as_secs_f64() * 1000.0);
-    let lienzo = Lienzo { escena: &escena, seleccion: &[], papel: None, fotos: &|_| None, nombre: "resolucion".into() };
-    let hojas = pixpin_motor2d::exportar::hojas(&escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+    println!(
+        "ordenes de pintado del cuerpo ({n}): {:.2} ms",
+        ahora.elapsed().as_secs_f64() * 1000.0
+    );
+    let lienzo = Lienzo {
+        escena: &escena,
+        seleccion: &[],
+        papel: None,
+        fotos: &|_| None,
+        nombre: "resolucion".into(),
+    };
+    let hojas = pixpin_motor2d::exportar::hojas(
+        &escena,
+        pixpin_motor2d::exportar::Alcance::Todo,
+        &[],
+        None,
+    );
     let ahora = std::time::Instant::now();
-    let escala: f32 = std::env::var("PIXPIN_ESCALA").ok().and_then(|s| s.parse().ok()).unwrap_or(1.0);
+    let escala: f32 = std::env::var("PIXPIN_ESCALA")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1.0);
     let propia = super::a_imagen(&hojas[0], escala, Some(escena.fondo), &lienzo).unwrap();
-    println!("exportar a PNG: {} ms ({}x{})", ahora.elapsed().as_millis(), propia.ancho, propia.alto);
-    std::fs::write(carpeta.join("resolucion-propia.png"), pixpin_codec::imagen::codificar_png(&propia).unwrap()).unwrap();
+    println!(
+        "exportar a PNG: {} ms ({}x{})",
+        ahora.elapsed().as_millis(),
+        propia.ancho,
+        propia.alto
+    );
+    std::fs::write(
+        carpeta.join("resolucion-propia.png"),
+        pixpin_codec::imagen::codificar_png(&propia).unwrap(),
+    )
+    .unwrap();
     // El SVG por el mismo camino que el menu.
     let svg = super::svg_de(&hojas[0], Some(escena.fondo), false, &lienzo);
     std::fs::write(carpeta.join("resolucion-propia.svg"), &svg).unwrap();
-    assert!(svg.contains(">X<") && !svg.contains("sphericalangle"), "el SVG lleva lo compuesto");
+    assert!(
+        svg.contains(">X<") && !svg.contains("sphericalangle"),
+        "el SVG lleva lo compuesto"
+    );
     // Y el PDF, por el mismo escritor que el menu (con la letra del sistema).
     let segoe = pixpin_pdf::letra::del_sistema("Segoe UI");
-    let pdf = pixpin_pdf::escribir::de_hojas_con_letra(&hojas, Some(escena.fondo), &|_| None, segoe.as_ref()).expect("el PDF sale");
+    let pdf = pixpin_pdf::escribir::de_hojas_con_letra(
+        &hojas,
+        Some(escena.fondo),
+        &|_| None,
+        segoe.as_ref(),
+    )
+    .expect("el PDF sale");
     assert!(pdf.starts_with(b"%PDF"));
     std::fs::write(carpeta.join("resolucion-propia.pdf"), &pdf).unwrap();
     if let Some(lamina) = std::env::var_os("PIXPIN_LAMINA") {
@@ -129,7 +187,14 @@ fn muestra_resolucion_con_texto_rico() {
         let r = |v: f32| (v * k) as u32;
         let columna = recortar(&original, (r(758.0), r(78.0), r(1052.0), r(545.0)));
         let comparar = lado_a_lado(&columna, &propia);
-        std::fs::write(carpeta.join("resolucion-comparar.png"), pixpin_codec::imagen::codificar_png(&comparar).unwrap()).unwrap();
-        println!("comparar: {}", carpeta.join("resolucion-comparar.png").display());
+        std::fs::write(
+            carpeta.join("resolucion-comparar.png"),
+            pixpin_codec::imagen::codificar_png(&comparar).unwrap(),
+        )
+        .unwrap();
+        println!(
+            "comparar: {}",
+            carpeta.join("resolucion-comparar.png").display()
+        );
     }
 }

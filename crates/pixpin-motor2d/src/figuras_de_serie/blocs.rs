@@ -34,10 +34,28 @@ pub(super) fn todas(v: &mut Vec<FiguraGuardada>) {
 /// El papel con su cabecera chica.
 fn hoja() -> Lapiz {
     let mut l = Lapiz::default();
-    l.rect(0.0, 0.0, W, H, Some(hex(0xdde3ec)), Some(BLANCO), 1.0, false);
+    l.rect(
+        0.0,
+        0.0,
+        W,
+        H,
+        Some(hex(0xdde3ec)),
+        Some(BLANCO),
+        1.0,
+        false,
+    );
     l.texto(M, 40.0, "TEMA", 10.0, WORK_SANS, ROTULO, true, Al::Izq);
     l.linea(M + 42.0, 56.0, W - M - 230.0, 56.0, BORDE, 1.0);
-    l.texto(W - M - 200.0, 40.0, "FECHA", 10.0, WORK_SANS, ROTULO, true, Al::Izq);
+    l.texto(
+        W - M - 200.0,
+        40.0,
+        "FECHA",
+        10.0,
+        WORK_SANS,
+        ROTULO,
+        true,
+        Al::Izq,
+    );
     l.linea(W - M - 150.0, 56.0, W - M, 56.0, BORDE, 1.0);
     l
 }
@@ -57,8 +75,26 @@ fn cornell() -> FiguraGuardada {
     let mut l = hoja();
     let x = 230.0;
     let abajo = H - 210.0;
-    l.texto(M, Y0 - 6.0, "PREGUNTAS / CLAVES", 9.5, WORK_SANS, ROTULO, true, Al::Izq);
-    l.texto(x + 20.0, Y0 - 6.0, "NOTAS", 9.5, WORK_SANS, ROTULO, true, Al::Izq);
+    l.texto(
+        M,
+        Y0 - 6.0,
+        "PREGUNTAS / CLAVES",
+        9.5,
+        WORK_SANS,
+        ROTULO,
+        true,
+        Al::Izq,
+    );
+    l.texto(
+        x + 20.0,
+        Y0 - 6.0,
+        "NOTAS",
+        9.5,
+        WORK_SANS,
+        ROTULO,
+        true,
+        Al::Izq,
+    );
     l.linea(0.0, Y0 + 14.0, W, Y0 + 14.0, GRIS_FUERTE, 1.25);
     l.linea(x, Y0 + 14.0, x, abajo, GRIS_FUERTE, 1.25);
     let mut y = Y0 + 44.0;
@@ -67,7 +103,16 @@ fn cornell() -> FiguraGuardada {
         y += 28.0;
     }
     l.linea(0.0, abajo, W, abajo, GRIS_FUERTE, 1.25);
-    l.texto(M, abajo + 12.0, "RESUMEN", 9.5, WORK_SANS, ROTULO, true, Al::Izq);
+    l.texto(
+        M,
+        abajo + 12.0,
+        "RESUMEN",
+        9.5,
+        WORK_SANS,
+        ROTULO,
+        true,
+        Al::Izq,
+    );
     l.figura("bloc-cornell", CATEGORIA, "Notas Cornell")
 }
 
@@ -84,7 +129,11 @@ fn columnas(n: usize) -> FiguraGuardada {
             y += 28.0;
         }
     }
-    let (clave, nombre) = if n == 2 { ("bloc-dos-columnas", "Dos columnas") } else { ("bloc-tres-columnas", "Tres columnas") };
+    let (clave, nombre) = if n == 2 {
+        ("bloc-dos-columnas", "Dos columnas")
+    } else {
+        ("bloc-tres-columnas", "Tres columnas")
+    };
     l.figura(clave, CATEGORIA, nombre)
 }
 
@@ -98,12 +147,20 @@ fn cuadricula() -> FiguraGuardada {
     let (x1, y1) = (x0 + paso * cols as f32, y0 + paso * filas as f32);
     for c in 0..=cols {
         let x = x0 + paso * c as f32;
-        let (color, g) = if c % 5 == 0 { (GRIS_FUERTE, 1.0) } else { (GRIS, 0.75) };
+        let (color, g) = if c % 5 == 0 {
+            (GRIS_FUERTE, 1.0)
+        } else {
+            (GRIS, 0.75)
+        };
         l.linea(x, y0, x, y1, color, g);
     }
     for f in 0..=filas {
         let y = y0 + paso * f as f32;
-        let (color, g) = if f % 5 == 0 { (GRIS_FUERTE, 1.0) } else { (GRIS, 0.75) };
+        let (color, g) = if f % 5 == 0 {
+            (GRIS_FUERTE, 1.0)
+        } else {
+            (GRIS, 0.75)
+        };
         l.linea(x0, y, x1, y, color, g);
     }
     l.figura("bloc-cuadricula", CATEGORIA, "Cuadrícula")
@@ -125,7 +182,11 @@ fn puntos() -> FiguraGuardada {
 }
 
 /// La recta por `p` con direccion `d`, recortada al rectangulo.
-fn recortar(p: (f32, f32), d: (f32, f32), caja: (f32, f32, f32, f32)) -> Option<((f32, f32), (f32, f32))> {
+fn recortar(
+    p: (f32, f32),
+    d: (f32, f32),
+    caja: (f32, f32, f32, f32),
+) -> Option<((f32, f32), (f32, f32))> {
     let (x0, y0, x1, y1) = caja;
     let (mut t0, mut t1) = (f32::MIN, f32::MAX);
     for (o, v, a, b) in [(p.0, d.0, x0, x1), (p.1, d.1, y0, y1)] {
@@ -139,7 +200,10 @@ fn recortar(p: (f32, f32), d: (f32, f32), caja: (f32, f32, f32, f32)) -> Option<
             t1 = t1.min(ta.max(tb));
         }
     }
-    (t1 > t0 + 1.0).then_some(((p.0 + d.0 * t0, p.1 + d.1 * t0), (p.0 + d.0 * t1, p.1 + d.1 * t1)))
+    (t1 > t0 + 1.0).then_some((
+        (p.0 + d.0 * t0, p.1 + d.1 * t0),
+        (p.0 + d.0 * t1, p.1 + d.1 * t1),
+    ))
 }
 
 /// La isometrica: verticales y dos familias a 30°, todo recortado al papel.
@@ -216,8 +280,24 @@ fn cuadros_de_caligrafia(diagonales: bool) -> Lapiz {
             l.linea_con(mx, y, mx, y + lado, GRIS, 0.75, EstiloTrazo::Discontinuo);
             l.linea_con(x, my, x + lado, my, GRIS, 0.75, EstiloTrazo::Discontinuo);
             if diagonales {
-                l.linea_con(x, y, x + lado, y + lado, GRIS, 0.75, EstiloTrazo::Discontinuo);
-                l.linea_con(x + lado, y, x, y + lado, GRIS, 0.75, EstiloTrazo::Discontinuo);
+                l.linea_con(
+                    x,
+                    y,
+                    x + lado,
+                    y + lado,
+                    GRIS,
+                    0.75,
+                    EstiloTrazo::Discontinuo,
+                );
+                l.linea_con(
+                    x + lado,
+                    y,
+                    x,
+                    y + lado,
+                    GRIS,
+                    0.75,
+                    EstiloTrazo::Discontinuo,
+                );
             }
         }
     }

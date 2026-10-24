@@ -974,7 +974,13 @@ fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize, imagen: &mut
         let mut celdas: Vec<(
             usize,
             usize,
-            Vec<(String, Vec<Tramo>, f32, Vec<(u32, u32)>, Option<(usize, f32, f32)>)>,
+            Vec<(
+                String,
+                Vec<Tramo>,
+                f32,
+                Vec<(u32, u32)>,
+                Option<(usize, f32, f32)>,
+            )>,
             f32,
         )> = Vec::new();
         let mut g = 0usize;

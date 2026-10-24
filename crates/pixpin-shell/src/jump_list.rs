@@ -98,7 +98,12 @@ impl Lista {
     /// Una firma de lo que va: si no cambia, no se toca el sistema
     /// (`ultimaFirma` de Android).
     pub fn firma(&self) -> String {
-        self.tareas.iter().chain(&self.recientes).map(|e| format!("{}\u{1}{}", e.titulo, e.argumentos)).collect::<Vec<_>>().join("\u{0}")
+        self.tareas
+            .iter()
+            .chain(&self.recientes)
+            .map(|e| format!("{}\u{1}{}", e.titulo, e.argumentos))
+            .collect::<Vec<_>>()
+            .join("\u{0}")
     }
 }
 
@@ -135,7 +140,11 @@ fn entrada(titulo: &str, descripcion: &str, que: &str, id: Option<&str>) -> Entr
         argumentos.push(' ');
         argumentos.push_str(&entre_comillas(id));
     }
-    Entrada { titulo: titulo.to_string(), descripcion: descripcion.to_string(), argumentos }
+    Entrada {
+        titulo: titulo.to_string(),
+        descripcion: descripcion.to_string(),
+        argumentos,
+    }
 }
 
 /// Corta a `n` letras (Android: 24 la corta, 48 la larga).
@@ -153,12 +162,26 @@ pub fn armar(proyectos: &[Reciente], t: &Textos, guardados: &str) -> Lista {
         entrada(&t.proyectos, &t.proyectos_largo, PROYECTOS, None),
         entrada(&t.sincronizar, &t.sincronizar_largo, SINCRONIZAR, None),
     ];
-    let mut v: Vec<&Reciente> = proyectos.iter().filter(|p| !p.nombre.trim().is_empty() && !p.id.trim().is_empty() && p.id != guardados).collect();
-    v.sort_by(|a, b| b.tocado.cmp(&a.tocado).then_with(|| a.nombre.cmp(&b.nombre)));
+    let mut v: Vec<&Reciente> = proyectos
+        .iter()
+        .filter(|p| !p.nombre.trim().is_empty() && !p.id.trim().is_empty() && p.id != guardados)
+        .collect();
+    v.sort_by(|a, b| {
+        b.tocado
+            .cmp(&a.tocado)
+            .then_with(|| a.nombre.cmp(&b.nombre))
+    });
     let recientes = v
         .into_iter()
         .take(CUANTOS_PROYECTOS)
-        .map(|p| entrada(&corto(&p.nombre, 24), &corto(&t.proyecto_largo.replace("{}", &p.nombre), 48), PROYECTO, Some(&p.id)))
+        .map(|p| {
+            entrada(
+                &corto(&p.nombre, 24),
+                &corto(&t.proyecto_largo.replace("{}", &p.nombre), 48),
+                PROYECTO,
+                Some(&p.id),
+            )
+        })
         .collect();
     Lista { tareas, recientes }
 }
@@ -176,11 +199,18 @@ pub fn pedido_de_atajo(args: &[String]) -> Option<String> {
     }
     let json = match que {
         CAPTURAR => serde_json::json!({ "pixpin": 1, "accion": "capturar" }),
-        MENSAJES => serde_json::json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": null } }),
+        MENSAJES => {
+            serde_json::json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": null } })
+        }
         PROYECTOS => serde_json::json!({ "pixpin": 1, "accion": "ventana_principal" }),
-        SINCRONIZAR => serde_json::json!({ "pixpin": 1, "accion": "ventana", "cual": "sincronizar" }),
+        SINCRONIZAR => {
+            serde_json::json!({ "pixpin": 1, "accion": "ventana", "cual": "sincronizar" })
+        }
         PROYECTO => {
-            let id = args.get(i + 2).map(|s| s.trim()).filter(|s| !s.is_empty())?;
+            let id = args
+                .get(i + 2)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())?;
             serde_json::json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": id } })
         }
         _ => return None,
@@ -194,13 +224,16 @@ pub fn pedido_de_atajo(args: &[String]) -> Option<String> {
 pub fn poner(exe: &Path, lista: &Lista, titulo_recientes: &str) -> windows::core::Result<()> {
     use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
     use windows::Win32::UI::Shell::Common::{IObjectArray, IObjectCollection};
-    use windows::Win32::UI::Shell::{DestinationList, EnumerableObjectCollection, ICustomDestinationList, IShellLinkW};
+    use windows::Win32::UI::Shell::{
+        DestinationList, EnumerableObjectCollection, ICustomDestinationList, IShellLinkW,
+    };
     use windows::core::{HSTRING, Interface};
 
     // SAFETY: objetos COM locales que se sueltan al salir; las cadenas son
     // HSTRING vivas durante cada llamada.
     unsafe {
-        let destinos: ICustomDestinationList = CoCreateInstance(&DestinationList, None, CLSCTX_INPROC_SERVER)?;
+        let destinos: ICustomDestinationList =
+            CoCreateInstance(&DestinationList, None, CLSCTX_INPROC_SERVER)?;
         let mut huecos = 0u32;
         let quitados: IObjectArray = destinos.BeginList(&mut huecos)?;
         let mut quitados_args: Vec<String> = Vec::new();
@@ -213,9 +246,14 @@ pub fn poner(exe: &Path, lista: &Lista, titulo_recientes: &str) -> windows::core
                 }
             }
         }
-        let recientes: Vec<&Entrada> = lista.recientes.iter().filter(|e| !quitados_args.contains(&e.argumentos)).collect();
+        let recientes: Vec<&Entrada> = lista
+            .recientes
+            .iter()
+            .filter(|e| !quitados_args.contains(&e.argumentos))
+            .collect();
         if !recientes.is_empty() {
-            let col: IObjectCollection = CoCreateInstance(&EnumerableObjectCollection, None, CLSCTX_INPROC_SERVER)?;
+            let col: IObjectCollection =
+                CoCreateInstance(&EnumerableObjectCollection, None, CLSCTX_INPROC_SERVER)?;
             for e in &recientes {
                 col.AddObject(&enlace(exe, e)?)?;
             }
@@ -223,7 +261,8 @@ pub fn poner(exe: &Path, lista: &Lista, titulo_recientes: &str) -> windows::core
             // Si falla el grupo (raro), que no se lleve las tareas.
             let _ = destinos.AppendCategory(&HSTRING::from(titulo_recientes), &arr);
         }
-        let col: IObjectCollection = CoCreateInstance(&EnumerableObjectCollection, None, CLSCTX_INPROC_SERVER)?;
+        let col: IObjectCollection =
+            CoCreateInstance(&EnumerableObjectCollection, None, CLSCTX_INPROC_SERVER)?;
         for e in &lista.tareas {
             col.AddObject(&enlace(exe, e)?)?;
         }
@@ -235,9 +274,14 @@ pub fn poner(exe: &Path, lista: &Lista, titulo_recientes: &str) -> windows::core
 
 /// Un acceso directo a `exe` con los argumentos de la entrada y su titulo
 /// (la propiedad `PKEY_Title`, que es lo que lee la Jump List).
-fn enlace(exe: &Path, e: &Entrada) -> windows::core::Result<windows::Win32::UI::Shell::IShellLinkW> {
+fn enlace(
+    exe: &Path,
+    e: &Entrada,
+) -> windows::core::Result<windows::Win32::UI::Shell::IShellLinkW> {
     use windows::Win32::Foundation::PROPERTYKEY;
-    use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
+    use windows::Win32::System::Com::StructuredStorage::{
+        PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0,
+    };
     use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
     use windows::Win32::System::Variant::VT_LPWSTR;
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
@@ -245,7 +289,10 @@ fn enlace(exe: &Path, e: &Entrada) -> windows::core::Result<windows::Win32::UI::
     use windows::core::{GUID, HSTRING, Interface, PWSTR};
 
     // PKEY_Title, sin traer todo `Storage_EnhancedStorage` por una constante.
-    const PKEY_TITLE: PROPERTYKEY = PROPERTYKEY { fmtid: GUID::from_u128(0xf29f85e0_4ff9_1068_ab91_08002b27b3d9), pid: 2 };
+    const PKEY_TITLE: PROPERTYKEY = PROPERTYKEY {
+        fmtid: GUID::from_u128(0xf29f85e0_4ff9_1068_ab91_08002b27b3d9),
+        pid: 2,
+    };
 
     // SAFETY: objetos COM locales; el texto del titulo vive en `titulo`
     // mientras dura SetValue (el almacen lo copia) y no se libera con
@@ -262,7 +309,9 @@ fn enlace(exe: &Path, e: &Entrada) -> windows::core::Result<windows::Win32::UI::
             Anonymous: PROPVARIANT_0 {
                 Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
                     vt: VT_LPWSTR,
-                    Anonymous: PROPVARIANT_0_0_0 { pwszVal: PWSTR(titulo.as_mut_ptr()) },
+                    Anonymous: PROPVARIANT_0_0_0 {
+                        pwszVal: PWSTR(titulo.as_mut_ptr()),
+                    },
                     ..Default::default()
                 }),
             },
@@ -281,7 +330,11 @@ mod pruebas {
     use super::*;
 
     fn p(id: &str, nombre: &str, tocado: i64) -> Reciente {
-        Reciente { id: id.into(), nombre: nombre.into(), tocado }
+        Reciente {
+            id: id.into(),
+            nombre: nombre.into(),
+            tocado,
+        }
     }
 
     fn args(linea: &str) -> Vec<String> {
@@ -323,7 +376,10 @@ mod pruebas {
         ];
         let l = armar(&proyectos, &Textos::default(), "guardados");
         let titulos: Vec<&str> = l.tareas.iter().map(|e| e.titulo.as_str()).collect();
-        assert_eq!(titulos, ["Capturar", "Mensajes guardados", "Proyectos", "Sincronizar"]);
+        assert_eq!(
+            titulos,
+            ["Capturar", "Mensajes guardados", "Proyectos", "Sincronizar"]
+        );
         let recientes: Vec<&str> = l.recientes.iter().map(|e| e.titulo.as_str()).collect();
         // Los mas tocados primero; sin nombre o «Mensajes guardados», no.
         assert_eq!(recientes, ["Obra Lima", "Charla", "Tesis"]);
@@ -338,21 +394,34 @@ mod pruebas {
         assert!(vacia.recientes.is_empty());
         let una = armar(&[p("x", "Uno", 1)], &Textos::default(), "guardados");
         assert_ne!(vacia.firma(), una.firma());
-        assert_eq!(una.firma(), armar(&[p("x", "Uno", 1)], &Textos::default(), "guardados").firma());
+        assert_eq!(
+            una.firma(),
+            armar(&[p("x", "Uno", 1)], &Textos::default(), "guardados").firma()
+        );
     }
 
     #[test]
     fn cada_entrada_da_su_pedido_y_el_pedido_lo_entiende_el_protocolo() {
-        let l = armar(&[p("tesis-2026", "Tesis \"final\"", 5)], &Textos::default(), "guardados");
+        let l = armar(
+            &[p("tesis-2026", "Tesis \"final\"", 5)],
+            &Textos::default(),
+            "guardados",
+        );
         let pedidos: Vec<serde_json::Value> = l
             .tareas
             .iter()
             .chain(&l.recientes)
-            .map(|e| serde_json::from_str(&pedido_de_atajo(&args(&e.argumentos)).expect(&e.argumentos)).unwrap())
+            .map(|e| {
+                serde_json::from_str(&pedido_de_atajo(&args(&e.argumentos)).expect(&e.argumentos))
+                    .unwrap()
+            })
             .collect();
         assert_eq!(pedidos[0]["accion"], "capturar");
         assert_eq!(pedidos[1]["accion"], "abrir");
-        assert!(pedidos[1]["que"]["proyecto"].is_null(), "Mensajes guardados es el proyecto nulo");
+        assert!(
+            pedidos[1]["que"]["proyecto"].is_null(),
+            "Mensajes guardados es el proyecto nulo"
+        );
         assert_eq!(pedidos[2]["accion"], "ventana_principal");
         assert_eq!(pedidos[3]["cual"], "sincronizar");
         assert_eq!(pedidos[4]["que"]["proyecto"], "tesis-2026");
@@ -371,7 +440,10 @@ mod pruebas {
         assert_eq!(pedido_de_atajo(&[ORDEN.into(), "borrar_todo".into()]), None);
         // Un proyecto sin id no se inventa.
         assert_eq!(pedido_de_atajo(&[ORDEN.into(), PROYECTO.into()]), None);
-        assert_eq!(pedido_de_atajo(&[ORDEN.into(), PROYECTO.into(), "  ".into()]), None);
+        assert_eq!(
+            pedido_de_atajo(&[ORDEN.into(), PROYECTO.into(), "  ".into()]),
+            None
+        );
     }
 
     #[test]

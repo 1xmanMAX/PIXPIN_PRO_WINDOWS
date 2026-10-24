@@ -87,7 +87,10 @@ impl Entrada {
     /// **Bien hecho**, a falta de que lo diga el usuario: acabo, sin
     /// rendirse, sin errores sin corregir y con todas las tareas hechas.
     pub fn bien(&self) -> bool {
-        !self.fallo && !self.cortado && !self.se_rindio && self.tareas_hechas >= self.tareas
+        !self.fallo
+            && !self.cortado
+            && !self.se_rindio
+            && self.tareas_hechas >= self.tareas
             && (self.herramientas_error == 0 || self.repasos > 0 || self.correcciones > 0)
     }
 }
@@ -113,7 +116,10 @@ pub fn apuntar(ruta: &Path, e: &Entrada) -> std::io::Result<()> {
         let resto = lineas[lineas.len() / 2..].join("\n");
         std::fs::write(ruta, format!("{resto}\n"))?;
     }
-    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(ruta)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ruta)?;
     writeln!(f, "{}", e.a_json())
 }
 
@@ -156,7 +162,11 @@ impl Cuentas {
 
     /// El porcentaje bien hecho (0 sin turnos).
     pub fn porcentaje_bien(&self) -> f32 {
-        if self.turnos == 0 { 0.0 } else { 100.0 * self.bien as f32 / self.turnos as f32 }
+        if self.turnos == 0 {
+            0.0
+        } else {
+            100.0 * self.bien as f32 / self.turnos as f32
+        }
     }
 }
 
@@ -178,13 +188,32 @@ mod pruebas {
         let dir = std::env::temp_dir().join(format!("pixpin-diario-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let ruta = dir.join("diario.jsonl");
-        let bien = Entrada { motor: "Claude".into(), herramientas_ok: 3, segundos: 4.0, ..Default::default() };
-        let rendido = Entrada { se_rindio: true, segundos: 2.0, ..Default::default() };
-        let con_jefe = Entrada { jefe: true, tareas: 3, tareas_hechas: 2, segundos: 30.0, ..Default::default() };
+        let bien = Entrada {
+            motor: "Claude".into(),
+            herramientas_ok: 3,
+            segundos: 4.0,
+            ..Default::default()
+        };
+        let rendido = Entrada {
+            se_rindio: true,
+            segundos: 2.0,
+            ..Default::default()
+        };
+        let con_jefe = Entrada {
+            jefe: true,
+            tareas: 3,
+            tareas_hechas: 2,
+            segundos: 30.0,
+            ..Default::default()
+        };
         for e in [&bien, &rendido, &con_jefe] {
             apuntar(&ruta, e).unwrap();
         }
-        std::fs::write(&ruta, format!("{}no es json\n", std::fs::read_to_string(&ruta).unwrap())).unwrap();
+        std::fs::write(
+            &ruta,
+            format!("{}no es json\n", std::fs::read_to_string(&ruta).unwrap()),
+        )
+        .unwrap();
         let leidas = leer(&ruta);
         assert_eq!(leidas, vec![bien, rendido, con_jefe]);
         let (todo, solo, jefe) = resumen(&leidas);
@@ -193,9 +222,25 @@ mod pruebas {
         assert!((todo.segundos_medios - 12.0).abs() < 1e-3);
         assert!((todo.porcentaje_bien() - 100.0 / 3.0).abs() < 1e-3);
         // Un error corregido por el repaso cuenta como bien; sin corregir, no.
-        assert!(Entrada { herramientas_error: 1, repasos: 1, ..Default::default() }.bien());
-        assert!(!Entrada { herramientas_error: 1, ..Default::default() }.bien());
-        assert_eq!(recortar(&"palabra ".repeat(40)).chars().count(), LARGO_PEDIDO + 1);
+        assert!(
+            Entrada {
+                herramientas_error: 1,
+                repasos: 1,
+                ..Default::default()
+            }
+            .bien()
+        );
+        assert!(
+            !Entrada {
+                herramientas_error: 1,
+                ..Default::default()
+            }
+            .bien()
+        );
+        assert_eq!(
+            recortar(&"palabra ".repeat(40)).chars().count(),
+            LARGO_PEDIDO + 1
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

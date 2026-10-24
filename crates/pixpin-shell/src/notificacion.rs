@@ -63,7 +63,10 @@ pub struct Boton {
 
 impl Boton {
     pub fn nuevo(rotulo: impl Into<String>, pedido: serde_json::Value) -> Boton {
-        Boton { rotulo: rotulo.into(), pedido }
+        Boton {
+            rotulo: rotulo.into(),
+            pedido,
+        }
     }
 }
 
@@ -117,7 +120,10 @@ fn uri_de_fichero(r: &Path) -> String {
 pub fn xml(t: &Toast) -> String {
     let mut x = String::from("<toast");
     if let Some(p) = &t.al_pulsar {
-        x.push_str(&format!(" activationType=\"protocol\" launch=\"{}\"", escapar(&sena(p))));
+        x.push_str(&format!(
+            " activationType=\"protocol\" launch=\"{}\"",
+            escapar(&sena(p))
+        ));
     }
     x.push_str("><visual><binding template=\"ToastGeneric\">");
     x.push_str(&format!("<text>{}</text>", escapar(&t.titulo)));
@@ -125,7 +131,10 @@ pub fn xml(t: &Toast) -> String {
         x.push_str(&format!("<text>{}</text>", escapar(&t.texto)));
     }
     if let Some(i) = &t.imagen {
-        x.push_str(&format!("<image placement=\"hero\" src=\"{}\"/>", escapar(&uri_de_fichero(i))));
+        x.push_str(&format!(
+            "<image placement=\"hero\" src=\"{}\"/>",
+            escapar(&uri_de_fichero(i))
+        ));
     }
     x.push_str("</binding></visual>");
     if !t.botones.is_empty() {
@@ -151,7 +160,11 @@ pub fn entradas(exe: &Path, icono: Option<&Path>) -> Vec<(String, String, String
 
 /// [`entradas`] con los esquemas que se registran. La orden es la misma de
 /// `herramientas/integraciones.ps1`: `--url "%1"`.
-pub fn entradas_con(exe: &Path, icono: Option<&Path>, esquemas: &[&str]) -> Vec<(String, String, String)> {
+pub fn entradas_con(
+    exe: &Path,
+    icono: Option<&Path>,
+    esquemas: &[&str],
+) -> Vec<(String, String, String)> {
     let exe = exe.display().to_string();
     let id = format!(r"Software\Classes\AppUserModelId\{AUMID}");
     let mut v = vec![(id.clone(), "DisplayName".to_string(), NOMBRE.to_string())];
@@ -162,8 +175,16 @@ pub fn entradas_con(exe: &Path, icono: Option<&Path>, esquemas: &[&str]) -> Vec<
         let p = format!(r"Software\Classes\{esquema}");
         v.push((p.clone(), String::new(), format!("URL:{NOMBRE}")));
         v.push((p.clone(), "URL Protocol".into(), String::new()));
-        v.push((format!(r"{p}\DefaultIcon"), String::new(), format!("\"{exe}\",0")));
-        v.push((format!(r"{p}\shell\open\command"), String::new(), format!("\"{exe}\" --url \"%1\"")));
+        v.push((
+            format!(r"{p}\DefaultIcon"),
+            String::new(),
+            format!("\"{exe}\",0"),
+        ));
+        v.push((
+            format!(r"{p}\shell\open\command"),
+            String::new(),
+            format!("\"{exe}\" --url \"%1\""),
+        ));
     }
     v
 }
@@ -175,7 +196,11 @@ pub fn entradas_con(exe: &Path, icono: Option<&Path>, esquemas: &[&str]) -> Vec<
 pub fn registrar(exe: &Path, icono: Option<&Path>) -> windows::core::Result<()> {
     use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegSetKeyValueW};
     use windows::core::HSTRING;
-    let esquemas: &[&str] = if crate::orden::pixpin_es_nuestro_o_libre() { &[ESQUEMA, "pixpin"] } else { &[ESQUEMA] };
+    let esquemas: &[&str] = if crate::orden::pixpin_es_nuestro_o_libre() {
+        &[ESQUEMA, "pixpin"]
+    } else {
+        &[ESQUEMA]
+    };
     for (clave, nombre, texto) in entradas_con(exe, icono, esquemas) {
         let v = HSTRING::from(texto.as_str());
         let bytes = (v.len() + 1) * 2;
@@ -211,7 +236,9 @@ pub enum Mostrado {
 /// milisegundos (WinRT): mejor fuera del hilo de una ventana.
 pub fn mostrar(t: &Toast) -> windows::core::Result<Mostrado> {
     use windows::Data::Xml::Dom::XmlDocument;
-    use windows::UI::Notifications::{NotificationSetting, ToastNotification, ToastNotificationManager};
+    use windows::UI::Notifications::{
+        NotificationSetting, ToastNotification, ToastNotificationManager,
+    };
     use windows::core::HSTRING;
     let _com = crate::explorador::ComDelHilo::iniciar();
     let doc = XmlDocument::new()?;
@@ -243,16 +270,16 @@ pub fn tiene_identidad() -> bool {
 
 /// [`mostrar`] en su hilo; si no sale, `si_no` (el aviso de siempre).
 pub fn mostrar_o(t: Toast, si_no: impl FnOnce(&Toast) + Send + 'static) {
-    let _ = std::thread::Builder::new().name("notificacion".into()).spawn(move || {
-        match mostrar(&t) {
+    let _ = std::thread::Builder::new()
+        .name("notificacion".into())
+        .spawn(move || match mostrar(&t) {
             Ok(Mostrado::Si) => {}
             Ok(Mostrado::Apagadas) => si_no(&t),
             Err(e) => {
                 tracing::warn!(?e, "sin notificacion de Windows: va el aviso de siempre");
                 si_no(&t);
             }
-        }
-    });
+        });
 }
 
 // --- La seña de los botones -------------------------------------------------
@@ -274,7 +301,10 @@ pub fn sena(pedido: &serde_json::Value) -> String {
 /// [`sena`] con un esquema dado (las pruebas, que no deben depender de lo
 /// que haya en el registro de este equipo).
 pub fn sena_con(esquema: &str, pedido: &serde_json::Value) -> String {
-    format!("{esquema}:pedido?json={}", crate::orden::codificar(&pedido.to_string()))
+    format!(
+        "{esquema}:pedido?json={}",
+        crate::orden::codificar(&pedido.to_string())
+    )
 }
 
 /// Si un pedido puede llegar por el protocolo sin preguntar: la lista blanca
@@ -291,10 +321,17 @@ pub fn permitido(p: &serde_json::Value) -> bool {
 /// lo que registra el protocolo.
 pub fn pedido_de(sena: &str) -> Option<String> {
     let l = crate::orden::de_enlace(sena).ok()?;
-    let crate::orden::Orden::Pedidos(v) = l.orden else { return None };
+    let crate::orden::Orden::Pedidos(v) = l.orden else {
+        return None;
+    };
     let [p] = v.as_slice() else { return None };
     let firmado = matches!(l.origen, crate::orden::Origen::Enlace { firmado: true });
-    let vale = permitido(p) || (firmado && !matches!(crate::orden::seguridad(p), crate::orden::Seguridad::Prohibida(_)));
+    let vale = permitido(p)
+        || (firmado
+            && !matches!(
+                crate::orden::seguridad(p),
+                crate::orden::Seguridad::Prohibida(_)
+            ));
     vale.then(|| p.to_string())
 }
 
@@ -320,11 +357,20 @@ mod pruebas {
         let mut t = toast();
         t.al_pulsar = Some(abrir());
         t.botones = vec![
-            Boton::nuevo("Hecha", json!({"pixpin": 1, "accion": "marcar_tarea", "codigo": "L", "indice": 2, "hecha": true})),
+            Boton::nuevo(
+                "Hecha",
+                json!({"pixpin": 1, "accion": "marcar_tarea", "codigo": "L", "indice": 2, "hecha": true}),
+            ),
             Boton::nuevo("Abrir", abrir()),
         ];
         let x = xml(&t);
-        assert!(x.starts_with(&format!("<toast activationType=\"protocol\" launch=\"{}\">", sena(&abrir()))), "{x}");
+        assert!(
+            x.starts_with(&format!(
+                "<toast activationType=\"protocol\" launch=\"{}\">",
+                sena(&abrir())
+            )),
+            "{x}"
+        );
         assert!(x.contains("<text>Hecho: apunta &lt;yeso&gt; &amp; cal</text>"));
         assert!(x.contains("<text>Apunté &quot;comprar yeso&quot; en Inbox</text>"));
         assert!(x.contains(&format!("<action content=\"Hecha\" activationType=\"protocol\" arguments=\"{}:pedido?json=%7B%22", crate::orden::esquema_de_la_casa())), "{x}");
@@ -336,17 +382,38 @@ mod pruebas {
     #[test]
     fn sin_botones_ni_imagen_no_salen() {
         let x = xml(&toast());
-        assert!(!x.contains("<actions>") && !x.contains("launch=") && !x.contains("<image"), "{x}");
-        assert!(!xml(&Toast { texto: "  ".into(), ..toast() }).contains("<text>  </text>"));
+        assert!(
+            !x.contains("<actions>") && !x.contains("launch=") && !x.contains("<image"),
+            "{x}"
+        );
+        assert!(
+            !xml(&Toast {
+                texto: "  ".into(),
+                ..toast()
+            })
+            .contains("<text>  </text>")
+        );
         // Mas de cinco botones: Windows rechazaria el toast entero.
-        let t = Toast { botones: vec![Boton::nuevo("x", abrir()); 7], ..toast() };
+        let t = Toast {
+            botones: vec![Boton::nuevo("x", abrir()); 7],
+            ..toast()
+        };
         assert_eq!(xml(&t).matches("<action ").count(), 5);
     }
 
     #[test]
     fn la_imagen_va_como_file_uri() {
-        let t = Toast { imagen: Some(PathBuf::from(r"C:\Datos\capturas\captura 0001.png")), ..toast() };
-        assert!(xml(&t).contains("<image placement=\"hero\" src=\"file:///C:/Datos/capturas/captura%200001.png\"/>"), "{}", xml(&t));
+        let t = Toast {
+            imagen: Some(PathBuf::from(r"C:\Datos\capturas\captura 0001.png")),
+            ..toast()
+        };
+        assert!(
+            xml(&t).contains(
+                "<image placement=\"hero\" src=\"file:///C:/Datos/capturas/captura%200001.png\"/>"
+            ),
+            "{}",
+            xml(&t)
+        );
     }
 
     #[test]
@@ -382,7 +449,14 @@ mod pruebas {
         ] {
             assert_eq!(pedido_de(&sena_con("pixpinmax", &p)), None, "{p}");
         }
-        for s in ["", "http:pedido?json=%7B%7D", "pixpinmax:borrar_todo", "pixpinmax:pedido?json=%ZZ", "pixpinmax:pedido?x=1", "pixpinmax:pedido"] {
+        for s in [
+            "",
+            "http:pedido?json=%7B%7D",
+            "pixpinmax:borrar_todo",
+            "pixpinmax:pedido?json=%ZZ",
+            "pixpinmax:pedido?x=1",
+            "pixpinmax:pedido",
+        ] {
             assert_eq!(pedido_de(s), None, "{s}");
         }
     }
@@ -395,23 +469,53 @@ mod pruebas {
             crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url", &s])).as_deref(),
             Some(r#"{"accion":"asistente","pixpin":1}"#)
         );
-        assert_eq!(crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url"])), None);
-        assert_eq!(crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url", "pixpinmax:borrar"])), None);
+        assert_eq!(
+            crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url"])),
+            None
+        );
+        assert_eq!(
+            crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url", "pixpinmax:borrar"])),
+            None
+        );
     }
 
     #[test]
     fn el_registro_lleva_identidad_y_protocolo() {
-        let v = entradas(Path::new(r"C:\P\pixpinmax.exe"), Some(Path::new(r"C:\P\i.png")));
-        let valor = |c: &str, n: &str| v.iter().find(|(a, b, _)| a == c && b == n).map(|x| x.2.clone());
-        assert_eq!(valor(r"Software\Classes\AppUserModelId\PixPinMax.App", "DisplayName").as_deref(), Some("PixPin Max"));
-        assert_eq!(valor(r"Software\Classes\AppUserModelId\PixPinMax.App", "IconUri").as_deref(), Some(r"C:\P\i.png"));
-        assert_eq!(valor(r"Software\Classes\pixpinmax", "URL Protocol").as_deref(), Some(""));
+        let v = entradas(
+            Path::new(r"C:\P\pixpinmax.exe"),
+            Some(Path::new(r"C:\P\i.png")),
+        );
+        let valor = |c: &str, n: &str| {
+            v.iter()
+                .find(|(a, b, _)| a == c && b == n)
+                .map(|x| x.2.clone())
+        };
+        assert_eq!(
+            valor(
+                r"Software\Classes\AppUserModelId\PixPinMax.App",
+                "DisplayName"
+            )
+            .as_deref(),
+            Some("PixPin Max")
+        );
+        assert_eq!(
+            valor(r"Software\Classes\AppUserModelId\PixPinMax.App", "IconUri").as_deref(),
+            Some(r"C:\P\i.png")
+        );
+        assert_eq!(
+            valor(r"Software\Classes\pixpinmax", "URL Protocol").as_deref(),
+            Some("")
+        );
         assert_eq!(
             valor(r"Software\Classes\pixpinmax\shell\open\command", "").as_deref(),
             Some(r#""C:\P\pixpinmax.exe" --url "%1""#)
         );
         // Sin icono, no se escribe IconUri.
-        assert!(!entradas(Path::new("x.exe"), None).iter().any(|e| e.1 == "IconUri"));
+        assert!(
+            !entradas(Path::new("x.exe"), None)
+                .iter()
+                .any(|e| e.1 == "IconUri")
+        );
     }
 
     /// Saca un toast de verdad. A mano, nunca en las pruebas automaticas:
@@ -421,12 +525,16 @@ mod pruebas {
     fn toast_de_verdad() {
         // El exe instalado, no el de la prueba: el protocolo tiene que seguir
         // abriendo la PixPin de verdad.
-        let exe = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap()).join(r"Programs\PixPinMax\pixpinmax.exe");
+        let exe = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
+            .join(r"Programs\PixPinMax\pixpinmax.exe");
         registrar(&exe, None).unwrap();
         let r = mostrar(&Toast {
             titulo: "Hecho: prueba".into(),
             texto: "Una notificacion de prueba de PixPin Max".into(),
-            botones: vec![Boton::nuevo("Abrir", json!({"pixpin": 1, "accion": "asistente"}))],
+            botones: vec![Boton::nuevo(
+                "Abrir",
+                json!({"pixpin": 1, "accion": "asistente"}),
+            )],
             ..Default::default()
         });
         println!("{r:?}");

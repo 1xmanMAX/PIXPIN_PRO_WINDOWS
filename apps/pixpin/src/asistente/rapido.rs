@@ -34,7 +34,11 @@ pub fn es_orden(pregunta: &str) -> bool {
 pub struct SinMotor(pub String);
 
 impl Motor for SinMotor {
-    fn completar(&self, _: &Peticion, _: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, pixpin_ia::ErrorIa> {
+    fn completar(
+        &self,
+        _: &Peticion,
+        _: &mut dyn FnMut(&Trozo) -> Seguir,
+    ) -> Result<Respuesta, pixpin_ia::ErrorIa> {
         Err(pixpin_ia::ErrorIa::Nube(self.0.clone()))
     }
 }
@@ -42,7 +46,10 @@ impl Motor for SinMotor {
 /// **El motor para esta pregunta**: el de los ajustes, o, si no lo hay y la
 /// orden es rapida, [`SinMotor`] (la orden se hace igual). Si no lo hay y la
 /// orden no es rapida, el aviso de por que.
-pub fn motor_o_sin(motor: Result<Arc<dyn Motor>, String>, pregunta: &str) -> Result<Arc<dyn Motor>, String> {
+pub fn motor_o_sin(
+    motor: Result<Arc<dyn Motor>, String>,
+    pregunta: &str,
+) -> Result<Arc<dyn Motor>, String> {
     match motor {
         Ok(m) => Ok(m),
         Err(aviso) if es_orden(pregunta) => Ok(Arc::new(SinMotor(aviso))),

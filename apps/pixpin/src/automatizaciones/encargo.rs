@@ -21,9 +21,9 @@
 //! modelo y lo que cree sin chat (una tarea, una nota) va alli.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use pixpin_ia::agente::{self, Ejecutor, Evento, Final};
@@ -109,7 +109,8 @@ pub fn hacer_con_vision(
 ) -> Result<Respuesta, String> {
     let raiz = ent.ubicacion.raiz().to_path_buf();
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let (asistente, carpeta) = super::chat_del_asistente(&raiz, &ent.aparato, ahora).map_err(|x| x.to_string())?;
+    let (asistente, carpeta) =
+        super::chat_del_asistente(&raiz, &ent.aparato, ahora).map_err(|x| x.to_string())?;
     // El chat sobre el que se pide, por su nombre para el modelo.
     let contexto = match e.proyecto.as_deref().filter(|p| !p.is_empty()) {
         Some(id) => {
@@ -146,17 +147,30 @@ pub fn hacer_con_vision(
         Some((_, nombre)) => format!("{visible} @{nombre}"),
         None => visible,
     };
-    crate::pedidos::chat_con_imagenes(&raiz, &asistente, &ent.aparato, &visible, &e.imagenes, &[], ahora)
-        .map_err(|x| x.detalle())?;
+    crate::pedidos::chat_con_imagenes(
+        &raiz,
+        &asistente,
+        &ent.aparato,
+        &visible,
+        &e.imagenes,
+        &[],
+        ahora,
+    )
+    .map_err(|x| x.detalle())?;
     let mut pregunta = if limpio.is_empty() {
         ia_chat::PREGUNTA_SOLO_FOTO.to_string()
     } else {
         limpio
     };
     if let Some((_, nombre)) = &contexto {
-        pregunta = format!("{pregunta}\n\n(Lo pido sobre el proyecto «{nombre}»: lo que crees va a su chat.)");
+        pregunta = format!(
+            "{pregunta}\n\n(Lo pido sobre el proyecto «{nombre}»: lo que crees va a su chat.)"
+        );
     }
-    let foto = e.imagenes.first().and_then(|r| crate::asistente::foto::preparar_fichero(r).ok());
+    let foto = e
+        .imagenes
+        .first()
+        .and_then(|r| crate::asistente::foto::preparar_fichero(r).ok());
     let historial = crate::asistente::turno::historial_para_el_modelo(
         &conversacion,
         &pregunta,
@@ -166,14 +180,21 @@ pub fn hacer_con_vision(
         .imagenes
         .iter()
         .map(|r| Adjunto {
-            nombre: r.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            nombre: r
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
             ruta: r.clone(),
         })
         .collect();
 
     // 2. La burbuja de la respuesta.
-    let numero = crate::ventana_chat::siguiente_numero_en(&raiz, &asistente).map_err(|x| x.to_string())?;
-    let vivo0 = EnVivo { estado: Some(crate::asistente::rapido::ESTADO_INICIAL.into()), ..Default::default() };
+    let numero =
+        crate::ventana_chat::siguiente_numero_en(&raiz, &asistente).map_err(|x| x.to_string())?;
+    let vivo0 = EnVivo {
+        estado: Some(crate::asistente::rapido::ESTADO_INICIAL.into()),
+        ..Default::default()
+    };
     let nota = crate::ventana_chat::escribir_nota(
         &raiz,
         &asistente,
@@ -197,8 +218,19 @@ pub fn hacer_con_vision(
     // Lo que se ve en la burbuja, compartido con la pregunta de permiso (que
     // corre dentro del ejecutor, mientras el turno espera).
     let vivo = Arc::new(Mutex::new(vivo0));
-    let confirmar = confirmar_en_la_nota(permiso, vivo.clone(), carpeta.clone(), asistente.clone(), nota.id.clone(), parar.clone());
-    let mandar = envolver(mandar, contexto.as_ref().map(|(id, _)| id.clone()), e.bloquear);
+    let confirmar = confirmar_en_la_nota(
+        permiso,
+        vivo.clone(),
+        carpeta.clone(),
+        asistente.clone(),
+        nota.id.clone(),
+        parar.clone(),
+    );
+    let mandar = envolver(
+        mandar,
+        contexto.as_ref().map(|(id, _)| id.clone()),
+        e.bloquear,
+    );
     let mut dentro = EjecutorDelChat::nuevo(tx, asistente.clone(), adjuntos.clone(), parar)
         .con_acciones(confirmar, mandar)
         .con_raiz(Some(ent.ubicacion.raiz().to_path_buf()));
@@ -224,20 +256,27 @@ pub fn hacer_con_vision(
             rapido: Some(crate::asistente::rapido::ahora()),
             ..Default::default()
         };
-        agente::turno_con(motor.as_ref(), &mut historial, &herramientas, &mut ejecutor, &opciones, &mut |ev: Evento| {
-            let mut vivo = vivo.lock().unwrap_or_else(|x| x.into_inner());
-            vivo.aplicar(&ev);
-            if guardado.elapsed() >= GUARDAR_CADA {
-                guardado = Instant::now();
-                let t = vivo.mostrar();
-                let _ = cuaderno::cambiar(&carpeta, &nota.id, |m| {
-                    m.texto = t.clone();
-                    true
-                });
-                crate::ventana_chat::refrescar();
-            }
-            Seguir::Si
-        })
+        agente::turno_con(
+            motor.as_ref(),
+            &mut historial,
+            &herramientas,
+            &mut ejecutor,
+            &opciones,
+            &mut |ev: Evento| {
+                let mut vivo = vivo.lock().unwrap_or_else(|x| x.into_inner());
+                vivo.aplicar(&ev);
+                if guardado.elapsed() >= GUARDAR_CADA {
+                    guardado = Instant::now();
+                    let t = vivo.mostrar();
+                    let _ = cuaderno::cambiar(&carpeta, &nota.id, |m| {
+                        m.texto = t.clone();
+                        true
+                    });
+                    crate::ventana_chat::refrescar();
+                }
+                Seguir::Si
+            },
+        )
         .map_err(|x| {
             tracing::warn!(error = %x, "asistente sin ventana: el turno no pudo acabar");
             agente::para_el_usuario(&x)
@@ -250,8 +289,10 @@ pub fn hacer_con_vision(
     cuaderno::cambiar(&carpeta, &nota.id, |m| {
         m.texto = texto.clone();
         if let Some(r) = &lienzo {
-            m.resto
-                .insert(ia_chat::LIENZO_DE_LA_RESPUESTA.into(), serde_json::Value::String(r.clone()));
+            m.resto.insert(
+                ia_chat::LIENZO_DE_LA_RESPUESTA.into(),
+                serde_json::Value::String(r.clone()),
+            );
         }
         true
     })
@@ -259,7 +300,12 @@ pub fn hacer_con_vision(
     // El texto entero de un OCR: al chat, como hace el chat.
     textos_leidos(&ent.ubicacion, &asistente, &rx);
     let resumen: String = texto.chars().take(120).collect();
-    let _ = crate::ventana_chat::subir_en_la_lista(&raiz, &asistente, pixpin_shell::entorno::ahora_utc_ms(), &resumen);
+    let _ = crate::ventana_chat::subir_en_la_lista(
+        &raiz,
+        &asistente,
+        pixpin_shell::entorno::ahora_utc_ms(),
+        &resumen,
+    );
     crate::ventana_chat::refrescar();
     Ok(Respuesta {
         proyecto: asistente,
@@ -269,7 +315,6 @@ pub fn hacer_con_vision(
         lienzo,
     })
 }
-
 
 /// **Como se pide permiso** para lo que borra o envia (13-oct-2026).
 pub enum Permiso {
@@ -321,7 +366,11 @@ fn confirmar_en_la_nota(
                 escribir(t);
                 let rx = crate::asistente::permiso::registrar(&proyecto, &nota, pregunta);
                 crate::ventana_chat::refrescar();
-                let c = crate::asistente::permiso::esperar(&rx, ia_chat::CADUCA_LA_PREGUNTA, Some(&parar));
+                let c = crate::asistente::permiso::esperar(
+                    &rx,
+                    ia_chat::CADUCA_LA_PREGUNTA,
+                    Some(&parar),
+                );
                 crate::asistente::permiso::quitar(&proyecto, &nota);
                 c
             }
@@ -343,7 +392,8 @@ fn confirmar_en_la_nota(
 fn textos_leidos(ubicacion: &Ubicacion, proyecto: &str, rx: &Receiver<Aviso>) {
     while let Ok(a) = rx.try_recv() {
         if let Aviso::TextoLeido { de, texto } = a
-            && let Err(e) = crate::ventana_chat::sin_ventana::texto_leido(ubicacion, proyecto, &de, &texto)
+            && let Err(e) =
+                crate::ventana_chat::sin_ventana::texto_leido(ubicacion, proyecto, &de, &texto)
         {
             tracing::warn!(?e, "asistente sin ventana: no se pudo dejar el texto leido");
         }
@@ -407,9 +457,13 @@ impl SinVentana {
             return Err("no salio ninguna figura".into());
         }
         let documento = pixpin_ia::lienzo::documento(elementos);
-        pixpin_motor2d::excalidraw::leer(&documento).map_err(|_| "el lienzo no pudo leer las figuras".to_string())?;
-        let (resumen, referencia) =
-            crate::ventana_chat::sin_ventana::al_lienzo(&self.ubicacion, &self.proyecto, &documento)?;
+        pixpin_motor2d::excalidraw::leer(&documento)
+            .map_err(|_| "el lienzo no pudo leer las figuras".to_string())?;
+        let (resumen, referencia) = crate::ventana_chat::sin_ventana::al_lienzo(
+            &self.ubicacion,
+            &self.proyecto,
+            &documento,
+        )?;
         self.lienzo = Some(referencia);
         crate::ventana_chat::refrescar();
         Ok(resumen)
@@ -419,21 +473,39 @@ impl SinVentana {
 impl SinVentana {
     /// **Una lamina, zona a zona** (un trabajador de la nube por zona, a la
     /// vez), directa al lienzo del asistente.
-    fn lamina(&mut self, pagina: &crate::asistente::hoja_a_lienzo::Pagina) -> Result<String, String> {
+    fn lamina(
+        &mut self,
+        pagina: &crate::asistente::hoja_a_lienzo::Pagina,
+    ) -> Result<String, String> {
         let s = self.semilla();
         let mut d = crate::asistente::hoja_a_lienzo::SinVentana {
             ubicacion: self.ubicacion.clone(),
             proyecto: self.proyecto.clone(),
             lienzo: None,
         };
-        let o = pixpin_ia::hoja::Opciones { ancho: (pagina.ancho as f64).clamp(200.0, 4000.0), rico: true, ..Default::default() };
-        let inf = crate::asistente::hoja_a_lienzo::pasar(pagina, self.vision.clone(), &o, false, s, &AtomicBool::new(false), &mut d, &mut |_, _| {})?;
+        let o = pixpin_ia::hoja::Opciones {
+            ancho: (pagina.ancho as f64).clamp(200.0, 4000.0),
+            rico: true,
+            ..Default::default()
+        };
+        let inf = crate::asistente::hoja_a_lienzo::pasar(
+            pagina,
+            self.vision.clone(),
+            &o,
+            false,
+            s,
+            &AtomicBool::new(false),
+            &mut d,
+            &mut |_, _| {},
+        )?;
         if d.lienzo.is_some() {
             self.lienzo = d.lienzo;
             crate::ventana_chat::refrescar();
         }
         let r = crate::asistente::hoja_a_lienzo::contar(pagina, &inf)?;
-        Ok(format!("{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"))
+        Ok(format!(
+            "{r} (era una lamina con texto y figuras: se paso con figuras exactas y texto editable, no calcada)"
+        ))
     }
 }
 
@@ -448,13 +520,20 @@ impl Ejecutor for SinVentana {
                 self.al_lienzo(pixpin_ia::lienzo::elementos(llamada, (0.0, 0.0), s))
             }
             Llamada::Calcar(p) => {
-                let ruta = crate::asistente::acciones::imagen_para_calcar(&self.adjuntos, p.imagen.as_deref())?
-                    .ruta
-                    .clone();
+                let ruta = crate::asistente::acciones::imagen_para_calcar(
+                    &self.adjuntos,
+                    p.imagen.as_deref(),
+                )?
+                .ruta
+                .clone();
                 // Una lamina (texto y figuras) no se calca: como hoja, con
                 // figuras exactas (el mismo criterio que el chat:
                 // `hoja_a_lienzo::lamina_de_calcar`).
-                if let Some(pagina) = crate::asistente::hoja_a_lienzo::lamina_de_calcar(&ruta, p, self.vision.as_ref()) {
+                if let Some(pagina) = crate::asistente::hoja_a_lienzo::lamina_de_calcar(
+                    &ruta,
+                    p,
+                    self.vision.as_ref(),
+                ) {
                     return self.lamina(&pagina);
                 }
                 let s = self.semilla();
@@ -514,26 +593,42 @@ pub fn lanzar(app: DeLaApp, e: Encargo) {
             opciones: app.opciones,
         }),
     });
-    let lanzado = std::thread::Builder::new().name("asistente-encargo".into()).spawn(move || {
-        let textos = pixpin_store::Catalogo::nuevo(app.idioma);
-        // Sin modelo, una orden rapida se hace igual (como en el chat).
-        let motor = crate::ventana_chat::sin_ventana::motor(&app.entorno.ubicacion, &textos);
-        let r = crate::asistente::rapido::motor_o_sin(motor, &e.texto).and_then(|motor| {
-            hacer(
-                &app.entorno,
-                motor,
-                &e,
-                Permiso::EnLaBurbuja,
-                crate::asistente::acciones::mandar_a_pixpin(),
-            )
+    let lanzado = std::thread::Builder::new()
+        .name("asistente-encargo".into())
+        .spawn(move || {
+            let textos = pixpin_store::Catalogo::nuevo(app.idioma);
+            // Sin modelo, una orden rapida se hace igual (como en el chat).
+            let motor = crate::ventana_chat::sin_ventana::motor(&app.entorno.ubicacion, &textos);
+            let r = crate::asistente::rapido::motor_o_sin(motor, &e.texto).and_then(|motor| {
+                hacer(
+                    &app.entorno,
+                    motor,
+                    &e,
+                    Permiso::EnLaBurbuja,
+                    crate::asistente::acciones::mandar_a_pixpin(),
+                )
+            });
+            let (texto, abrir) = match r {
+                // Entera: el aviso la recorta a lo que cabe y se desplaza dentro.
+                Ok(r) => (
+                    respuesta_para_el_aviso(&r.texto),
+                    Some((r.proyecto, r.codigo)),
+                ),
+                Err(x) => (format!("⚠️ {x}"), None),
+            };
+            aviso.poner(
+                texto,
+                abrir.map(|(p, c)| {
+                    (
+                        app.idioma,
+                        app.entorno.ubicacion.clone(),
+                        app.opciones,
+                        p,
+                        c,
+                    )
+                }),
+            );
         });
-        let (texto, abrir) = match r {
-            // Entera: el aviso la recorta a lo que cabe y se desplaza dentro.
-            Ok(r) => (respuesta_para_el_aviso(&r.texto), Some((r.proyecto, r.codigo))),
-            Err(x) => (format!("⚠️ {x}"), None),
-        };
-        aviso.poner(texto, abrir.map(|(p, c)| (app.idioma, app.entorno.ubicacion.clone(), app.opciones, p, c)));
-    });
     if let Err(x) = lanzado {
         tracing::warn!(?x, "asistente: no se pudo lanzar el hilo del encargo");
     }
@@ -553,7 +648,11 @@ fn titulo_de(e: &Encargo) -> String {
 /// cortada a 280 letras y 31 tareas no se veian).
 pub fn respuesta_para_el_aviso(texto: &str) -> String {
     let t = texto.trim();
-    if t.is_empty() { "Hecho.".into() } else { t.to_string() }
+    if t.is_empty() {
+        "Hecho.".into()
+    } else {
+        t.to_string()
+    }
 }
 
 /// La respuesta corta (el error de un paso de una automatizacion).

@@ -560,7 +560,17 @@ pub(crate) fn pintar_escena(
     zoom: f32,
     sin_cache: impl Fn(u64) -> bool,
 ) {
-    pintar_escena_si(p, escena, cache, cache_tinta, imagenes, vista, zoom, sin_cache, |_| true);
+    pintar_escena_si(
+        p,
+        escena,
+        cache,
+        cache_tinta,
+        imagenes,
+        vista,
+        zoom,
+        sin_cache,
+        |_| true,
+    );
 }
 
 /// Como [`pintar_escena`], pero solo lo que `pintar_este` diga de su caja
@@ -610,7 +620,11 @@ pub(crate) fn pintar_escena_si(
             }
             _ => zoom,
         };
-        let (t, realizadas, fallos) = (std::time::Instant::now(), cache_tinta.realizadas(), cache.fallos());
+        let (t, realizadas, fallos) = (
+            std::time::Instant::now(),
+            cache_tinta.realizadas(),
+            cache.fallos(),
+        );
         let mut indice = 0u32;
         por_cada_orden(cache, e, zoom_ordenes, escena.escala.as_ref(), |orden| {
             let tinta = cacheable.then_some((&mut *cache_tinta, (e.id, e.version, indice)));

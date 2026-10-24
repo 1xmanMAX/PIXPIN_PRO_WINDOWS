@@ -80,7 +80,10 @@ pub(crate) mod prueba {
     }
 
     pub fn ordenar(orden: u8) {
-        ORDENES.lock().unwrap_or_else(|e| e.into_inner()).push(orden);
+        ORDENES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(orden);
         if let Some((h, ..)) = ventana() {
             pixpin_shell::overlay::despertar(h);
         }
@@ -116,7 +119,10 @@ pub(crate) mod prueba {
     static TECLAS: Mutex<Vec<(u32, bool)>> = Mutex::new(Vec::new());
 
     pub fn teclear(vk: u32, ctrl: bool) {
-        TECLAS.lock().unwrap_or_else(|e| e.into_inner()).push((vk, ctrl));
+        TECLAS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push((vk, ctrl));
         if let Some((h, ..)) = ventana() {
             pixpin_shell::overlay::despertar(h);
         }
@@ -160,10 +166,16 @@ pub enum Que {
 /// **Si una burbuja se abre como pin de hoja**, y como. Un `.xls` antiguo no:
 /// no se lee, y sigue su camino de siempre (su programa).
 pub fn que_abrir(m: &Mensaje) -> Option<Que> {
-    if m.clase == Some(Clase::MiniApp) && m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP) {
+    if m.clase == Some(Clase::MiniApp)
+        && m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP)
+    {
         return Some(Que::Tabla);
     }
-    if m.clase == Some(Clase::Otra(pixpin_proyecto::vista::CLASE_TABLA.into())) && m.referencia.as_deref().is_some_and(|r| !r.trim().is_empty()) {
+    if m.clase == Some(Clase::Otra(pixpin_proyecto::vista::CLASE_TABLA.into()))
+        && m.referencia
+            .as_deref()
+            .is_some_and(|r| !r.trim().is_empty())
+    {
         return Some(Que::TablaDelMovil);
     }
     (libro::es_libro(m) && libro::extension(m) != "xls").then_some(Que::Libro)
@@ -173,7 +185,11 @@ pub fn que_abrir(m: &Mensaje) -> Option<Que> {
 pub(crate) enum Origen {
     /// Un libro adjunto: su mensaje, el fichero y las tablas que ya salieron
     /// de el (en el orden de sus hojas; vacio si nunca se edito).
-    Libro { mensaje: Mensaje, ruta: PathBuf, tablas: Vec<Mensaje> },
+    Libro {
+        mensaje: Mensaje,
+        ruta: PathBuf,
+        tablas: Vec<Mensaje>,
+    },
     /// Una tabla del chat.
     Tabla { mensaje: Mensaje },
     /// Una tabla del movil: su mensaje (con el JSON del fichero en `texto`,
@@ -217,12 +233,27 @@ pub(crate) fn abrir_desde_chat(
 
 /// Lo mismo, pero ya editando: una tabla recien creada, que nace vacia y es
 /// para escribir en ella (el movil abre la suya asi).
-pub(crate) fn abrir_editando(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, proyecto: &str, mensajes: &[Mensaje], indice: usize) -> bool {
+pub(crate) fn abrir_editando(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    proyecto: &str,
+    mensajes: &[Mensaje],
+    indice: usize,
+) -> bool {
     abrir(idioma, ubicacion, proyecto, mensajes, indice, true)
 }
 
-fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, proyecto: &str, mensajes: &[Mensaje], indice: usize, editando: bool) -> bool {
-    let Some(m) = mensajes.get(indice) else { return false };
+fn abrir(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    proyecto: &str,
+    mensajes: &[Mensaje],
+    indice: usize,
+    editando: bool,
+) -> bool {
+    let Some(m) = mensajes.get(indice) else {
+        return false;
+    };
     let origen = match que_abrir(m) {
         Some(Que::Tabla) => Origen::Tabla { mensaje: m.clone() },
         Some(Que::TablaDelMovil) => {
@@ -240,12 +271,23 @@ fn abrir(idioma: pixpin_store::Idioma, ubicacion: &Ubicacion, proyecto: &str, me
             else {
                 return false;
             };
-            let tablas = libro::tablas_hechas(mensajes, m).into_iter().map(|i| mensajes[i].clone()).collect();
-            Origen::Libro { mensaje: m.clone(), ruta, tablas }
+            let tablas = libro::tablas_hechas(mensajes, m)
+                .into_iter()
+                .map(|i| mensajes[i].clone())
+                .collect();
+            Origen::Libro {
+                mensaje: m.clone(),
+                ruta,
+                tablas,
+            }
         }
         None => return false,
     };
-    tracing::info!(libro = matches!(origen, Origen::Libro { .. }), editando, "hoja del chat: se abre como pin");
+    tracing::info!(
+        libro = matches!(origen, Origen::Libro { .. }),
+        editando,
+        "hoja del chat: se abre como pin"
+    );
     let mut ed = Editable::nuevo(ubicacion.clone(), proyecto.to_string(), origen);
     ed.al_abrir_editar = editando;
     crate::visor_hoja::lanzar_editable(idioma, ed);
@@ -286,10 +328,16 @@ impl Editable {
                     mensaje.nombre.clone()
                 }
             }
-            Origen::Tabla { mensaje } | Origen::TablaDelMovil { mensaje, .. } => mensaje.nombre.clone(),
+            Origen::Tabla { mensaje } | Origen::TablaDelMovil { mensaje, .. } => {
+                mensaje.nombre.clone()
+            }
         };
         let n = crate::lector_pin::nombre_limpio(&n);
-        if n.trim().is_empty() { "Tabla".into() } else { n }
+        if n.trim().is_empty() {
+            "Tabla".into()
+        } else {
+            n
+        }
     }
 
     /// Si lo que se ve es el `.xlsx` original (y no sus tablas).
@@ -312,10 +360,16 @@ impl Editable {
     /// lo que se edito alli no se esconde.
     pub(crate) fn libro_para_ver(&mut self, regional: Regional) -> Result<Libro, String> {
         self.regional = Some(regional.clone());
-        if let Origen::Libro { mensaje, ruta, tablas } = &self.origen
+        if let Origen::Libro {
+            mensaje,
+            ruta,
+            tablas,
+        } = &self.origen
             && crate::visor_hoja::se_abre_fichero(ruta)
             && !tablas.iter().any(libro::editada)
-            && (!tablas.is_empty() || tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje).is_none())
+            && (!tablas.is_empty()
+                || tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje)
+                    .is_none())
         {
             match Libro::abrir(ruta, regional) {
                 Ok(l) => {
@@ -333,18 +387,30 @@ impl Editable {
 
     /// Las tablas del editor pasadas a un libro para el visor.
     fn libro_de_tablas(&mut self) -> Result<Libro, String> {
-        let moneda = self.moneda.get_or_insert_with(pixpin_shell::regional::simbolo_moneda).clone();
+        let moneda = self
+            .moneda
+            .get_or_insert_with(pixpin_shell::regional::simbolo_moneda)
+            .clone();
         let ed = self.editor.as_ref().ok_or("sin tablas")?;
         let hojas: Vec<pixpin_proyecto::tabla_xlsx::HojaParaVer> = ed
             .hojas
             .iter()
-            .map(|h| pixpin_proyecto::tabla_xlsx::HojaParaVer { nombre: libro::nombre_de_pestana(&h.nombre), tabla: &h.tabla, valores: Some(h.valores()) })
+            .map(|h| pixpin_proyecto::tabla_xlsx::HojaParaVer {
+                nombre: libro::nombre_de_pestana(&h.nombre),
+                tabla: &h.tabla,
+                valores: Some(h.valores()),
+            })
             .collect();
         let t = Instant::now();
-        let bytes = pixpin_proyecto::tabla_xlsx::a_xlsx_con_moneda(&hojas, ed.activa, &moneda).map_err(|e| e.to_string())?;
+        let bytes = pixpin_proyecto::tabla_xlsx::a_xlsx_con_moneda(&hojas, ed.activa, &moneda)
+            .map_err(|e| e.to_string())?;
         let regional = self.regional.clone().unwrap_or_else(Regional::es_pe);
         let l = Libro::desde_bytes(bytes, regional).map_err(|e| e.to_string())?;
-        tracing::info!(ms = t.elapsed().as_millis() as u64, hojas = hojas.len(), "hoja del chat: tablas pasadas al visor");
+        tracing::info!(
+            ms = t.elapsed().as_millis() as u64,
+            hojas = hojas.len(),
+            "hoja del chat: tablas pasadas al visor"
+        );
         Ok(l)
     }
 
@@ -378,24 +444,42 @@ impl Editable {
         let t = Instant::now();
         let hojas = match &self.origen {
             Origen::Tabla { mensaje } | Origen::TablaDelMovil { mensaje, .. } => {
-                let tabla = Tabla::leer(&mensaje.texto).map_err(|e| format!("tabla que no se entiende: {e}"))?;
-                let nombre = if tabla.nombre.trim().is_empty() { mensaje.nombre.clone() } else { tabla.nombre.clone() };
+                let tabla = Tabla::leer(&mensaje.texto)
+                    .map_err(|e| format!("tabla que no se entiende: {e}"))?;
+                let nombre = if tabla.nombre.trim().is_empty() {
+                    mensaje.nombre.clone()
+                } else {
+                    tabla.nombre.clone()
+                };
                 vec![HojaEditable::nueva(nombre, tabla, Some(mensaje.id.clone()))]
             }
             Origen::Libro { tablas, .. } if !tablas.is_empty() => tablas
                 .iter()
                 .map(|m| {
-                    let tabla = Tabla::leer(&m.texto).map_err(|e| format!("tabla que no se entiende: {e}"))?;
-                    Ok(HojaEditable::nueva(m.nombre.clone(), tabla, Some(m.id.clone())))
+                    let tabla = Tabla::leer(&m.texto)
+                        .map_err(|e| format!("tabla que no se entiende: {e}"))?;
+                    Ok(HojaEditable::nueva(
+                        m.nombre.clone(),
+                        tabla,
+                        Some(m.id.clone()),
+                    ))
                 })
                 .collect::<Result<Vec<_>, String>>()?,
             Origen::Libro { mensaje, ruta, .. } => {
-                if let Some(viejas) = tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje) {
+                if let Some(viejas) =
+                    tablas_viejas_del_libro(self.ubicacion.raiz(), &self.proyecto, mensaje)
+                {
                     // Lo que el movil edito antes del 13-oct (solo en
                     // fichero): se edita eso, no el libro leido de nuevo, y
                     // al guardar pasa a mensajes como cualquier libro editado.
-                    tracing::info!(hojas = viejas.len(), "hoja del chat: se migran las hojas viejas del movil");
-                    viejas.into_iter().map(|(nombre, t)| HojaEditable::nueva(nombre, t, None)).collect()
+                    tracing::info!(
+                        hojas = viejas.len(),
+                        "hoja del chat: se migran las hojas viejas del movil"
+                    );
+                    viejas
+                        .into_iter()
+                        .map(|(nombre, t)| HojaEditable::nueva(nombre, t, None))
+                        .collect()
                 } else {
                     let ahora = pixpin_shell::entorno::ahora_utc_ms();
                     pixpin_proyecto::importar_hojas::leer(ruta, &mensaje.nombre, ahora)
@@ -406,7 +490,11 @@ impl Editable {
                 }
             }
         };
-        tracing::info!(ms = t.elapsed().as_millis() as u64, hojas = hojas.len(), "hoja del chat: tablas listas para editar");
+        tracing::info!(
+            ms = t.elapsed().as_millis() as u64,
+            hojas = hojas.len(),
+            "hoja del chat: tablas listas para editar"
+        );
         self.editor = Some(Editor::nuevo(hojas, 0).ok_or("el libro no tiene hojas")?);
         Ok(())
     }
@@ -433,7 +521,11 @@ impl Editable {
     /// Si editar este libro deja sus tablas nuevas en el chat (la primera
     /// vez): es cuando hay que decir que el original no cambia.
     fn primera_edicion_de_libro(&self) -> bool {
-        matches!(self.origen, Origen::Libro { .. }) && self.editor.as_ref().is_some_and(|e| e.hojas.iter().any(|h| h.id_mensaje.is_none()))
+        matches!(self.origen, Origen::Libro { .. })
+            && self
+                .editor
+                .as_ref()
+                .is_some_and(|e| e.hojas.iter().any(|h| h.id_mensaje.is_none()))
     }
 
     /// **Guarda lo cambiado en el chat**: cada tabla tocada en su mensaje
@@ -441,7 +533,9 @@ impl Editable {
     /// aun no tenia tablas, todas sus hojas como mensajes nuevos con la
     /// referencia del libro. Despues avisa al chat para que lo relea.
     pub(crate) fn guardar(&mut self) -> Result<(), String> {
-        let Some(ed) = self.editor.as_mut() else { return Ok(()) };
+        let Some(ed) = self.editor.as_mut() else {
+            return Ok(());
+        };
         ed.confirmar();
         if !ed.tocado() {
             return Ok(());
@@ -450,12 +544,23 @@ impl Editable {
         let carpeta = pixpin_proyecto::almacen::carpeta(raiz, &self.proyecto);
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
         let nuevas = ed.hojas.iter().any(|h| h.id_mensaje.is_none());
-        if nuevas && let Origen::Libro { mensaje, tablas, .. } = &mut self.origen {
+        if nuevas
+            && let Origen::Libro {
+                mensaje, tablas, ..
+            } = &mut self.origen
+        {
             let numero = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta)
                 .map(|c| c.siguiente_numero(Some(&self.proyecto)))
                 .unwrap_or(1);
-            let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC").map(|i| i.yo.codigo()).unwrap_or_default();
-            let sello = pixpin_proyecto::cuaderno::Sello { cuando: ahora, numero, aparato, proyecto: self.proyecto.clone() };
+            let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC")
+                .map(|i| i.yo.codigo())
+                .unwrap_or_default();
+            let sello = pixpin_proyecto::cuaderno::Sello {
+                cuando: ahora,
+                numero,
+                aparato,
+                proyecto: self.proyecto.clone(),
+            };
             // La hoja cambiada lleva un `tocado` posterior a la hora de su
             // mensaje (`libro::editada`); las demas, la de leerla.
             for (i, h) in ed.hojas.iter_mut().enumerate().filter(|(_, h)| h.tocada) {
@@ -464,27 +569,43 @@ impl Editable {
             let listas = ed
                 .hojas
                 .iter()
-                .map(|h| Ok(libro::HojaLista { nombre: h.nombre.clone(), documento: h.tabla.escribir().map_err(|e| e.to_string())? }))
+                .map(|h| {
+                    Ok(libro::HojaLista {
+                        nombre: h.nombre.clone(),
+                        documento: h.tabla.escribir().map_err(|e| e.to_string())?,
+                    })
+                })
                 .collect::<Result<Vec<_>, String>>()?;
             let nuevos = libro::mensajes_de_hojas(mensaje, &listas, &sello);
-            let lineas = nuevos.iter().map(pixpin_proyecto::cuaderno::linea_de).collect::<std::io::Result<Vec<_>>>().map_err(|e| e.to_string())?;
-            pixpin_proyecto::cuaderno::anadir_lineas(&carpeta, &lineas).map_err(|e| e.to_string())?;
+            let lineas = nuevos
+                .iter()
+                .map(pixpin_proyecto::cuaderno::linea_de)
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|e| e.to_string())?;
+            pixpin_proyecto::cuaderno::anadir_lineas(&carpeta, &lineas)
+                .map_err(|e| e.to_string())?;
             for (h, m) in ed.hojas.iter_mut().zip(&nuevos) {
                 h.id_mensaje = Some(m.id.clone());
                 h.tocada = false;
             }
             *tablas = nuevos;
-            tracing::info!(hojas = ed.hojas.len(), "hoja del chat: el libro editado queda como tablas del chat");
+            tracing::info!(
+                hojas = ed.hojas.len(),
+                "hoja del chat: el libro editado queda como tablas del chat"
+            );
         } else if let Origen::TablaDelMovil { archivo, .. } = &self.origen {
             // Una tabla del movil se guarda en SU fichero, el que viaja.
             for h in ed.hojas.iter_mut().filter(|h| h.tocada) {
                 let texto = tabla_del_movil_al_guardar(&mut h.tabla, ahora)?;
-                pixpin_proyecto::vista::guardar_tabla_del_movil(archivo, &texto).map_err(|e| e.to_string())?;
+                pixpin_proyecto::vista::guardar_tabla_del_movil(archivo, &texto)
+                    .map_err(|e| e.to_string())?;
                 h.tocada = false;
             }
         } else {
             for h in ed.hojas.iter_mut().filter(|h| h.tocada) {
-                let Some(id) = h.id_mensaje.clone() else { continue };
+                let Some(id) = h.id_mensaje.clone() else {
+                    continue;
+                };
                 let tabla = &mut h.tabla;
                 match pixpin_proyecto::cuaderno::cambiar(&carpeta, &id, |m| {
                     tabla.tocado = editada_a(ahora, m.cuando);
@@ -501,7 +622,9 @@ impl Editable {
                 }) {
                     Ok(Some(_)) => h.tocada = false,
                     // Se borro del chat mientras se editaba: no se resucita.
-                    Ok(None) => tracing::warn!("hoja del chat: la tabla ya no esta en el chat; no se guarda"),
+                    Ok(None) => tracing::warn!(
+                        "hoja del chat: la tabla ya no esta en el chat; no se guarda"
+                    ),
                     Err(e) => return Err(e.to_string()),
                 }
             }
@@ -522,7 +645,11 @@ fn editada_a(ahora: i64, cuando: i64) -> i64 {
 /// fichero en `texto` (asi se lee como cualquier tabla del chat) y el
 /// fichero. `None` si el fichero aun no llego o no se lee: mejor no abrir
 /// que abrir en blanco y guardar encima.
-pub(crate) fn tabla_del_movil(raiz: &std::path::Path, proyecto: &str, m: &Mensaje) -> Option<(Mensaje, PathBuf)> {
+pub(crate) fn tabla_del_movil(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    m: &Mensaje,
+) -> Option<(Mensaje, PathBuf)> {
     let archivo = pixpin_proyecto::vista::tabla_del_movil(raiz, proyecto, m)?;
     let texto = std::fs::read_to_string(&archivo).ok()?;
     Tabla::leer(&texto).ok()?;
@@ -536,13 +663,26 @@ pub(crate) fn tabla_del_movil(raiz: &std::path::Path, proyecto: &str, m: &Mensaj
 /// hasta la primera que no se entienda (como `TablasDelChat.crearLasDelLibro`
 /// del movil); si ni la primera se entiende, `None` y se lee el libro. Los
 /// ficheros no se tocan: uno roto sigue ahi tal cual.
-pub(crate) fn tablas_viejas_del_libro(raiz: &std::path::Path, proyecto: &str, libro_m: &Mensaje) -> Option<Vec<(String, Tabla)>> {
+pub(crate) fn tablas_viejas_del_libro(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    libro_m: &Mensaje,
+) -> Option<Vec<(String, Tabla)>> {
     let mut hojas = Vec::new();
-    for (i, archivo) in pixpin_proyecto::vista::tablas_viejas_del_libro(raiz, proyecto, &libro_m.id).into_iter().enumerate() {
-        let leida = std::fs::read_to_string(&archivo).map_err(|e| e.to_string()).and_then(|t| Tabla::leer(&t).map_err(|e| e.to_string()));
+    for (i, archivo) in pixpin_proyecto::vista::tablas_viejas_del_libro(raiz, proyecto, &libro_m.id)
+        .into_iter()
+        .enumerate()
+    {
+        let leida = std::fs::read_to_string(&archivo)
+            .map_err(|e| e.to_string())
+            .and_then(|t| Tabla::leer(&t).map_err(|e| e.to_string()));
         match leida {
             Ok(t) => {
-                let nombre = if t.nombre.trim().is_empty() { format!("Hoja{}", i + 1) } else { t.nombre.clone() };
+                let nombre = if t.nombre.trim().is_empty() {
+                    format!("Hoja{}", i + 1)
+                } else {
+                    t.nombre.clone()
+                };
                 hojas.push((nombre, t));
             }
             Err(e) => {
@@ -566,7 +706,12 @@ fn tabla_del_movil_al_guardar(tabla: &mut Tabla, ahora: i64) -> Result<String, S
 /// como las llama `importar_hojas` cuando hay varias) o, si el libro solo
 /// dio una tabla, esa. Una hoja de graficos o sin datos de un libro con
 /// varias tablas no tiene tabla: `None` (no se edita).
-pub fn tabla_de_vista(vista_original: bool, nombres_vista: &[&str], nombres_tablas: &[&str], vista: usize) -> Option<usize> {
+pub fn tabla_de_vista(
+    vista_original: bool,
+    nombres_vista: &[&str],
+    nombres_tablas: &[&str],
+    vista: usize,
+) -> Option<usize> {
     if !vista_original {
         return (vista < nombres_tablas.len()).then_some(vista);
     }
@@ -574,7 +719,9 @@ pub fn tabla_de_vista(vista_original: bool, nombres_vista: &[&str], nombres_tabl
     if nombres_tablas.len() == 1 {
         return Some(0);
     }
-    nombres_tablas.iter().position(|t| libro::nombre_de_pestana(t) == *nombre)
+    nombres_tablas
+        .iter()
+        .position(|t| libro::nombre_de_pestana(t) == *nombre)
 }
 
 /// Lo que escribe la orden `ESCRIBIR` de las pruebas (`prueba`).
@@ -659,7 +806,9 @@ pub fn accion_de_tecla(vk: u32, shift: bool, ctrl: bool, escribiendo: bool) -> O
     match vk {
         VK_ESCAPE if escribiendo => Some(Cancelar),
         VK_ESCAPE => Some(Ver),
-        VK_ENTRAR | VK_TAB | VK_REPAG | VK_AVPAG | VK_IZQUIERDA..=VK_ABAJO if escribiendo => Some(Confirmar),
+        VK_ENTRAR | VK_TAB | VK_REPAG | VK_AVPAG | VK_IZQUIERDA..=VK_ABAJO if escribiendo => {
+            Some(Confirmar)
+        }
         VK_F2 => Some(Empezar),
         VK_RETROCESO => Some(Retroceso),
         VK_SUPR if !escribiendo => Some(Borrar),
@@ -714,7 +863,11 @@ pub(crate) fn pistas_de_editar(t: &pixpin_store::Catalogo) -> Vec<(u8, String)> 
 /// y el de alinear ensena la alineacion que tiene (como el movil).
 pub(crate) fn botones_de_editar(ed: &Editor) -> Vec<BotonLector> {
     let e = ed.hoja().estilo_activo().cloned().unwrap_or_default();
-    let b = |id, icono, encendido| BotonLector { id, icono, encendido };
+    let b = |id, icono, encendido| BotonLector {
+        id,
+        icono,
+        encendido,
+    };
     let alinear = match e.a.as_deref().and_then(Alineacion::de) {
         Some(Alineacion::Centro) => &material::FORMAT_ALIGN_CENTER,
         Some(Alineacion::Derecha) => &material::FORMAT_ALIGN_RIGHT,
@@ -779,7 +932,11 @@ pub(crate) fn pide_boton(id: u8) -> Option<PideBoton> {
 
 /// **Las entradas de un menu** (id, rotulo), con una marca en lo que tiene
 /// la celda activa; y el formato que da cada id.
-pub(crate) fn entradas_de_menu(menu: Menu, ed: &Editor, textos: &Catalogo) -> Vec<(u32, String, Formato)> {
+pub(crate) fn entradas_de_menu(
+    menu: Menu,
+    ed: &Editor,
+    textos: &Catalogo,
+) -> Vec<(u32, String, Formato)> {
     let e = ed.hoja().estilo_activo().cloned().unwrap_or_default();
     let marca = |si: bool, t: String| if si { format!("\u{2713} {t}") } else { t };
     match menu {
@@ -788,21 +945,45 @@ pub(crate) fn entradas_de_menu(menu: Menu, ed: &Editor, textos: &Catalogo) -> Ve
                 Menu::Resaltar => (&editor::FONDOS[..], e.f.clone(), "hoja-fondo-sin"),
                 _ => (&editor::LETRAS[..], e.c.clone(), "hoja-letra-automatica"),
             };
-            let poner = |c: Option<String>| if menu == Menu::Resaltar { Formato::Fondo(c) } else { Formato::Letra(c) };
+            let poner = |c: Option<String>| {
+                if menu == Menu::Resaltar {
+                    Formato::Fondo(c)
+                } else {
+                    Formato::Letra(c)
+                }
+            };
             let mut v: Vec<(u32, String, Formato)> = lista
                 .iter()
                 .enumerate()
-                .map(|(i, (hex, clave))| (i as u32 + 1, marca(actual.as_deref() == Some(*hex), textos.t(clave)), poner(Some(hex.to_string()))))
+                .map(|(i, (hex, clave))| {
+                    (
+                        i as u32 + 1,
+                        marca(actual.as_deref() == Some(*hex), textos.t(clave)),
+                        poner(Some(hex.to_string())),
+                    )
+                })
                 .collect();
-            v.push((lista.len() as u32 + 1, marca(actual.is_none(), textos.t(ninguno)), poner(None)));
+            v.push((
+                lista.len() as u32 + 1,
+                marca(actual.is_none(), textos.t(ninguno)),
+                poner(None),
+            ));
             v
         }
         Menu::Numero => {
             let actual = e.formato_numero();
-            let mut v = vec![(1, marca(actual.is_none(), textos.t("hoja-numero-general")), Formato::Numero(None))];
+            let mut v = vec![(
+                1,
+                marca(actual.is_none(), textos.t("hoja-numero-general")),
+                Formato::Numero(None),
+            )];
             for (i, f) in FormatoNumero::TODOS.into_iter().enumerate() {
                 let clave = format!("hoja-numero-{}", f.palabra());
-                v.push((i as u32 + 2, marca(actual == Some(f), textos.t(&clave)), Formato::Numero(Some(f))));
+                v.push((
+                    i as u32 + 2,
+                    marca(actual == Some(f), textos.t(&clave)),
+                    Formato::Numero(Some(f)),
+                ));
             }
             v
         }
@@ -824,7 +1005,12 @@ pub(crate) fn copiar(editor: &Editor, textos: &Catalogo) -> Option<String> {
                 return Some(textos.t("hoja-rango-grande"));
             }
             let decimal = pixpin_shell::entorno::separador_decimal();
-            let (tsv, html) = pixpin_proyecto::portapapeles_tabla::copiar(&h.tabla, h.sel.ancla, h.sel.activa, decimal);
+            let (tsv, html) = pixpin_proyecto::portapapeles_tabla::copiar(
+                &h.tabla,
+                h.sel.ancla,
+                h.sel.activa,
+                decimal,
+            );
             pixpin_codec::portapapeles::tabla::copiar_tabla(&tsv, &html)
         }
     };
@@ -844,14 +1030,19 @@ pub(crate) fn copiar(editor: &Editor, textos: &Catalogo) -> Option<String> {
 /// Pega desde Excel, Sheets o LibreOffice (o texto). Escribiendo, el texto
 /// entra en lo que se escribe, en una linea.
 pub(crate) fn pegar(editor: &mut Editor) {
-    let Some((html, texto)) = pixpin_codec::portapapeles::tabla::leer_tabla() else { return };
+    let Some((html, texto)) = pixpin_codec::portapapeles::tabla::leer_tabla() else {
+        return;
+    };
     if let Some(edicion) = editor.edicion.as_mut() {
         if let Some(t) = texto {
             edicion.push_str(t.replace(['\r', '\n', '\t'], " ").trim_end());
         }
         return;
     }
-    let Some(filas) = pixpin_proyecto::portapapeles_tabla::leer(html.as_deref(), texto.as_deref()) else { return };
+    let Some(filas) = pixpin_proyecto::portapapeles_tabla::leer(html.as_deref(), texto.as_deref())
+    else {
+        return;
+    };
     let hecho = editor.pegar(&filas);
     tracing::info!(filas = filas.len(), hecho, "pegado en la hoja del pin");
 }
@@ -859,18 +1050,38 @@ pub(crate) fn pegar(editor: &mut Editor) {
 // ---------------------------------------------------------------------------
 // Pintar lo que se escribe
 
-const TEXTO: Color = Color { r: 0.13, g: 0.13, b: 0.13, a: 1.0 };
-const VERDE: Color = Color { r: 0.129, g: 0.451, b: 0.275, a: 1.0 };
+const TEXTO: Color = Color {
+    r: 0.13,
+    g: 0.13,
+    b: 0.13,
+    a: 1.0,
+};
+const VERDE: Color = Color {
+    r: 0.129,
+    g: 0.451,
+    b: 0.275,
+    a: 1.0,
+};
 
 /// **La celda que se escribe**, encima de la hoja: en blanco, con lo
 /// tecleado en la letra de la hoja al zoom que se ve (Calibri 11) y el
 /// cursor al final. `caja` es la de la celda en pantalla; si lo escrito no
 /// cabe, la caja crece hacia la derecha, como en Excel.
 pub(crate) fn pintar_escritura(p: &Pintor, texto: &str, caja: [f32; 4], tam: f32, recorte: RectF) {
-    let l = Letra { familia: "Calibri", negrita: false, cursiva: false, interlineado: None };
+    let l = Letra {
+        familia: "Calibri",
+        negrita: false,
+        cursiva: false,
+        interlineado: None,
+    };
     let (w, th) = p.medir_con_letra(texto, tam, pixpin_render::letras::SIN_PARTIR, &l);
     let relleno = (tam * 0.27).max(2.0);
-    let celda = RectF { x: caja[0], y: caja[1], ancho: caja[2] - caja[0], alto: caja[3] - caja[1] };
+    let celda = RectF {
+        x: caja[0],
+        y: caja[1],
+        ancho: caja[2] - caja[0],
+        alto: caja[3] - caja[1],
+    };
     let ancho = (w + 2.0 * relleno + 2.0).max(celda.ancho);
     let r = RectF { ancho, ..celda };
     p.empujar_recorte(recorte);
@@ -879,8 +1090,24 @@ pub(crate) fn pintar_escritura(p: &Pintor, texto: &str, caja: [f32; 4], tam: f32
     let k = |c: Color| pixpin_render::oscuro::si(oscuro, c);
     p.rellenar(r, k(Color::BLANCO));
     let y = r.y + (r.alto - th) / 2.0;
-    p.texto_con_letra(texto, r.x + relleno, y, tam, pixpin_render::letras::SIN_PARTIR, &l, k(TEXTO));
-    p.rellenar(RectF { x: r.x + relleno + w + 1.0, y: y + 1.0, ancho: (tam / 14.0).max(1.0), alto: (th - 2.0).max(1.0) }, k(TEXTO));
+    p.texto_con_letra(
+        texto,
+        r.x + relleno,
+        y,
+        tam,
+        pixpin_render::letras::SIN_PARTIR,
+        &l,
+        k(TEXTO),
+    );
+    p.rellenar(
+        RectF {
+            x: r.x + relleno + w + 1.0,
+            y: y + 1.0,
+            ancho: (tam / 14.0).max(1.0),
+            alto: (th - 2.0).max(1.0),
+        },
+        k(TEXTO),
+    );
     p.trazar(r, (tam / 7.0).round().max(2.0), k(VERDE));
     p.soltar_recorte();
 }

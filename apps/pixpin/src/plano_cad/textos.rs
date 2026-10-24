@@ -36,7 +36,10 @@ pub fn en_este_proceso(args: &[std::ffi::OsString]) -> i32 {
 
 /// `[[texto, x, y, alto], ...]`: corto, y se lee sin tipos con serde.
 fn a_json(t: &[TextoDelPlano]) -> String {
-    let v: Vec<serde_json::Value> = t.iter().map(|t| serde_json::json!([t.texto, t.x, t.y, t.alto])).collect();
+    let v: Vec<serde_json::Value> = t
+        .iter()
+        .map(|t| serde_json::json!([t.texto, t.x, t.y, t.alto]))
+        .collect();
     serde_json::Value::Array(v).to_string()
 }
 
@@ -62,7 +65,10 @@ pub fn del_plano(raiz: &Path, plano: &Path) -> Result<Vec<TextoDelPlano>, String
     std::fs::create_dir_all(&carpeta).map_err(|e| e.to_string())?;
     let clave = super::clave(plano).ok_or("no se puede leer el plano")?;
     let destino = carpeta.join(format!("{clave}-textos.json"));
-    if let Some(t) = std::fs::read_to_string(&destino).ok().and_then(|s| de_json(&s)) {
+    if let Some(t) = std::fs::read_to_string(&destino)
+        .ok()
+        .and_then(|s| de_json(&s))
+    {
         return Ok(t);
     }
     // En las pruebas el ejecutable no sabe la orden: aqui mismo.
@@ -125,7 +131,10 @@ pub fn buscar(textos: &[TextoDelPlano], consulta: &str, max: usize) -> Vec<Halla
         let p = plegar(&t.texto);
         if p.contains(&q) {
             enteras.push(t);
-        } else if palabras.iter().all(|w| p.split(' ').any(|x| x == *w || (w.len() >= 4 && x.starts_with(w)))) {
+        } else if palabras.iter().all(|w| {
+            p.split(' ')
+                .any(|x| x == *w || (w.len() >= 4 && x.starts_with(w)))
+        }) {
             sueltas.push(t);
         }
     }
@@ -133,7 +142,12 @@ pub fn buscar(textos: &[TextoDelPlano], consulta: &str, max: usize) -> Vec<Halla
     v.sort_by(|a, b| b.alto.total_cmp(&a.alto));
     v.into_iter()
         .take(max)
-        .map(|t| Hallado { texto: t.texto.clone(), x: t.x, y: t.y, alto: t.alto })
+        .map(|t| Hallado {
+            texto: t.texto.clone(),
+            x: t.x,
+            y: t.y,
+            alto: t.alto,
+        })
         .collect()
 }
 
@@ -150,12 +164,21 @@ mod pruebas {
     use super::*;
 
     fn t(texto: &str, x: f64, alto: f64) -> TextoDelPlano {
-        TextoDelPlano { texto: texto.into(), x, y: 10.0, alto }
+        TextoDelPlano {
+            texto: texto.into(),
+            x,
+            y: 10.0,
+            alto,
+        }
     }
 
     #[test]
     fn se_encuentra_sin_mirar_mayusculas_tildes_ni_puntos_y_el_grande_primero() {
-        let ts = vec![t("ver Jr Antisuyo en nota", 1.0, 1.0), t("JR. ANTISUYO", 50.0, 5.0), t("Av. Tahuantinsuyo", 9.0, 5.0)];
+        let ts = vec![
+            t("ver Jr Antisuyo en nota", 1.0, 1.0),
+            t("JR. ANTISUYO", 50.0, 5.0),
+            t("Av. Tahuantinsuyo", 9.0, 5.0),
+        ];
         let h = buscar(&ts, "jr antisuyo", 5);
         assert_eq!(h.len(), 2);
         assert_eq!(h[0].texto, "JR. ANTISUYO");
@@ -172,7 +195,12 @@ mod pruebas {
         let ts = vec![t("Señal «R-1»", 1.5, 2.25)];
         assert_eq!(de_json(&a_json(&ts)).unwrap(), ts);
         assert!(de_json("[[1,2]]").is_none());
-        let v = vista_de(&Hallado { texto: "JR. ANTISUYO".into(), x: 100.0, y: 50.0, alto: 2.0 });
+        let v = vista_de(&Hallado {
+            texto: "JR. ANTISUYO".into(),
+            x: 100.0,
+            y: 50.0,
+            alto: 2.0,
+        });
         assert!(v[2] >= 80.0 && v[0] > 100.0);
     }
 }

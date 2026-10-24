@@ -406,8 +406,9 @@ impl ObjetoDatos {
                 pixpin_codec::construir_hdrop(std::slice::from_ref(r))
                     .map_err(|e| fallo(ErrorArrastre::Ficheros(e)))
             }
-            (Carga::Ficheros(v), f) if f == CF_HDROP.0 => pixpin_codec::construir_hdrop(v)
-                .map_err(|e| fallo(ErrorArrastre::Ficheros(e))),
+            (Carga::Ficheros(v), f) if f == CF_HDROP.0 => {
+                pixpin_codec::construir_hdrop(v).map_err(|e| fallo(ErrorArrastre::Ficheros(e)))
+            }
             _ => Err(windows::core::Error::from(DV_E_FORMATETC)),
         }
     }
@@ -770,7 +771,10 @@ mod pruebas {
 
     #[test]
     fn varios_ficheros_viajan_juntos_y_una_lista_vacia_no_se_arrastra() {
-        let dos = vec![PathBuf::from(r"C:\tmp\a.png"), PathBuf::from(r"C:\tmp\b.pdf")];
+        let dos = vec![
+            PathBuf::from(r"C:\tmp\a.png"),
+            PathBuf::from(r"C:\tmp\b.pdf"),
+        ];
         assert!(comprobar(&Carga::Ficheros(dos.clone())).is_ok());
         let o = ObjetoDatos {
             carga: Carga::Ficheros(dos),

@@ -26,9 +26,11 @@ pub const EXTENSIONES_DE_IMAGEN: [&str; 6] = ["png", "jpg", "jpeg", "bmp", "gif"
 
 /// Si un fichero es una imagen de las que se pegan, por su extension.
 pub fn es_imagen(ruta: &Path) -> bool {
-    ruta.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| EXTENSIONES_DE_IMAGEN.iter().any(|x| x.eq_ignore_ascii_case(e)))
+    ruta.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        EXTENSIONES_DE_IMAGEN
+            .iter()
+            .any(|x| x.eq_ignore_ascii_case(e))
+    })
 }
 
 /// Una imagen pegada, esperando a que la caja la guarde de verdad.
@@ -153,7 +155,8 @@ mod pruebas {
     use super::*;
 
     fn carpeta(nombre: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("pixpin-v2-pegar-{nombre}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("pixpin-v2-pegar-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -221,7 +224,10 @@ mod pruebas {
         let (quedan, quitadas) = sin_repetidas(&primera, otra_vez);
         assert!(quedan.is_empty());
         assert_eq!(quitadas, 1);
-        assert!(!sobra.exists(), "el PNG de la repetida no se queda en el temporal");
+        assert!(
+            !sobra.exists(),
+            "el PNG de la repetida no se queda en el temporal"
+        );
         // Caso negativo: una distinta si entra.
         let distinta = pegadas_de(Some(ContenidoPortapapeles::Imagen(mapa(4))), &dir);
         let (quedan, quitadas) = sin_repetidas(&primera, distinta);

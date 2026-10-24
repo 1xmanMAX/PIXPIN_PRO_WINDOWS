@@ -106,7 +106,9 @@ impl Disparador {
     pub fn en_palabras(&self) -> String {
         match self {
             Disparador::AlCapturar => "Al capturar".into(),
-            Disparador::ALaHora { hora, dias } if dias.is_empty() => format!("Cada día a las {hora}"),
+            Disparador::ALaHora { hora, dias } if dias.is_empty() => {
+                format!("Cada día a las {hora}")
+            }
             Disparador::ALaHora { hora, dias } => {
                 const NOMBRES: [&str; 7] = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
                 let d: Vec<&str> = dias
@@ -177,7 +179,9 @@ fn si() -> bool {
 impl Automatizacion {
     /// Si corre en este aparato.
     pub fn corre_aqui(&self, aparato: &str) -> bool {
-        self.aparato.as_deref().is_none_or(|a| a.is_empty() || a == aparato)
+        self.aparato
+            .as_deref()
+            .is_none_or(|a| a.is_empty() || a == aparato)
     }
 
     /// Los pasos en una linea, para la lista.
@@ -185,7 +189,11 @@ impl Automatizacion {
         self.pasos
             .iter()
             .map(|p| match p {
-                Paso::Accion { herramienta, proyecto, .. } => match proyecto {
+                Paso::Accion {
+                    herramienta,
+                    proyecto,
+                    ..
+                } => match proyecto {
                     Some(pr) => format!("{herramienta} en «{pr}»"),
                     None => herramienta.clone(),
                 },
@@ -227,16 +235,18 @@ impl Lista {
         o.remove("version");
         let entradas = items
             .into_iter()
-            .map(|valor| match serde_json::from_value::<Automatizacion>(valor.clone()) {
-                Ok(a) => match validar(&a) {
-                    Ok(()) => Entrada::Buena(a),
-                    Err(motivo) => Entrada::Rota { valor, motivo },
+            .map(
+                |valor| match serde_json::from_value::<Automatizacion>(valor.clone()) {
+                    Ok(a) => match validar(&a) {
+                        Ok(()) => Entrada::Buena(a),
+                        Err(motivo) => Entrada::Rota { valor, motivo },
+                    },
+                    Err(e) => Entrada::Rota {
+                        valor,
+                        motivo: motivo_legible(&e.to_string()),
+                    },
                 },
-                Err(e) => Entrada::Rota {
-                    valor,
-                    motivo: motivo_legible(&e.to_string()),
-                },
-            })
+            )
             .collect();
         Ok(Lista { entradas, resto: o })
     }
@@ -339,7 +349,10 @@ fn salta_con(accion: &str) -> Option<Tipo> {
 /// disparador**: el motivo. Vale para los pasos y para lo que pida el
 /// asistente dentro de un paso.
 pub fn bloqueado(tipo: Option<Tipo>, pedido: &Value) -> Option<String> {
-    let accion = pedido.get("accion").and_then(Value::as_str).unwrap_or_default();
+    let accion = pedido
+        .get("accion")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if tipo.is_some() && accion == "automatizacion" {
         return Some("una automatización no puede crear ni tocar automatizaciones".into());
     }
@@ -382,7 +395,10 @@ pub fn validar(a: &Automatizacion) -> Result<(), String> {
         return Err("no tiene pasos".into());
     }
     if a.pasos.len() > MAX_PASOS {
-        return Err(format!("tiene {} pasos; como mucho {MAX_PASOS}", a.pasos.len()));
+        return Err(format!(
+            "tiene {} pasos; como mucho {MAX_PASOS}",
+            a.pasos.len()
+        ));
     }
     let vars = vars_de_ejemplo();
     for (i, p) in a.pasos.iter().enumerate() {
@@ -457,7 +473,11 @@ impl Vars {
         match v {
             Value::String(s) => Value::String(self.sustituir(s)),
             Value::Array(a) => Value::Array(a.iter().map(|x| self.sustituir_valor(x)).collect()),
-            Value::Object(o) => Value::Object(o.iter().map(|(k, x)| (k.clone(), self.sustituir_valor(x))).collect()),
+            Value::Object(o) => Value::Object(
+                o.iter()
+                    .map(|(k, x)| (k.clone(), self.sustituir_valor(x)))
+                    .collect(),
+            ),
             otro => otro.clone(),
         }
     }
@@ -508,16 +528,27 @@ const CON_PROYECTO: [&str; 9] = [
     "lecciones",
 ];
 /// Y las que entienden `imagenes`.
-const CON_IMAGENES: [&str; 5] = ["chat", "nota_nueva", "anadir_tarea", "leccion_nueva", "enviar_al_movil"];
+const CON_IMAGENES: [&str; 5] = [
+    "chat",
+    "nota_nueva",
+    "anadir_tarea",
+    "leccion_nueva",
+    "enviar_al_movil",
+];
 
 /// Pone `proyecto` en un pedido que lo entienda y no lo traiga (ni una lista
 /// concreta: `anadir_tarea` con `codigo` ya sabe donde va).
 pub fn con_proyecto(pedido: &mut Value, proyecto: &str) {
-    let accion = pedido.get("accion").and_then(Value::as_str).unwrap_or_default();
+    let accion = pedido
+        .get("accion")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if !CON_PROYECTO.contains(&accion) {
         return;
     }
-    if pedido.get("proyecto").is_some_and(|p| !p.is_null()) || pedido.get("codigo").is_some_and(|c| !c.is_null()) {
+    if pedido.get("proyecto").is_some_and(|p| !p.is_null())
+        || pedido.get("codigo").is_some_and(|c| !c.is_null())
+    {
         return;
     }
     pedido["proyecto"] = json!(proyecto);
@@ -540,8 +571,12 @@ pub fn armar_accion(
     else {
         return Err("no es un paso de acción".into());
     };
-    let fila = acciones::por_nombre(herramienta).ok_or_else(|| format!("no hay ninguna acción «{herramienta}»"))?;
-    let args: Map<String, Value> = args.iter().map(|(k, v)| (k.clone(), vars.sustituir_valor(v))).collect();
+    let fila = acciones::por_nombre(herramienta)
+        .ok_or_else(|| format!("no hay ninguna acción «{herramienta}»"))?;
+    let args: Map<String, Value> = args
+        .iter()
+        .map(|(k, v)| (k.clone(), vars.sustituir_valor(v)))
+        .collect();
     let mut hecha = acciones::validar(fila, &args).map_err(|e| e.to_string())?;
     if let Some(p) = proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
         if !CON_PROYECTO.contains(&fila.accion) {
@@ -555,7 +590,10 @@ pub fn armar_accion(
         if !CON_IMAGENES.contains(&fila.accion) {
             return Err(format!("«{herramienta}» no lleva imágenes"));
         }
-        let mut todas: Vec<Value> = hecha.pedido["imagenes"].as_array().cloned().unwrap_or_default();
+        let mut todas: Vec<Value> = hecha.pedido["imagenes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
         todas.extend(rutas.iter().map(|r| json!(r.display().to_string())));
         hecha.pedido["imagenes"] = Value::Array(todas);
         // Un `texto` obligatorio vacio no deja mandar solo la imagen; lo de
@@ -572,7 +610,13 @@ pub trait Hacedor {
     /// Una accion de la app ya armada; pregunta antes si lleva `confirmar`.
     fn accion(&mut self, a: &AccionApp) -> Result<String, String>;
     /// Un pedido al asistente: lo que contesto.
-    fn asistente(&mut self, pedido: &str, proyecto: Option<&str>, imagenes: &[PathBuf], bloquear: Tipo) -> Result<String, String>;
+    fn asistente(
+        &mut self,
+        pedido: &str,
+        proyecto: Option<&str>,
+        imagenes: &[PathBuf],
+        bloquear: Tipo,
+    ) -> Result<String, String>;
     /// El id de un chat por su nombre o su id.
     fn proyecto(&self, nombre: &str) -> Option<String>;
 }
@@ -590,7 +634,10 @@ impl Informe {
 
     /// Lo que contesto el ultimo paso que salio bien.
     pub fn ultimo(&self) -> Option<&str> {
-        self.pasos.iter().rev().find_map(|r| r.as_ref().ok().map(String::as_str))
+        self.pasos
+            .iter()
+            .rev()
+            .find_map(|r| r.as_ref().ok().map(String::as_str))
     }
 
     /// En una o dos lineas, para el aviso.
@@ -599,7 +646,11 @@ impl Informe {
             Some(i) => format!(
                 "⚠️ Paso {} de {total}: {}",
                 i + 1,
-                self.pasos[i].as_ref().err().map(String::as_str).unwrap_or_default()
+                self.pasos[i]
+                    .as_ref()
+                    .err()
+                    .map(String::as_str)
+                    .unwrap_or_default()
             ),
             None => match self.ultimo() {
                 Some(t) if !t.trim().is_empty() => recortar(t, 220),
@@ -637,7 +688,9 @@ pub fn ejecutar(a: &Automatizacion, mut vars: Vars, h: &mut dyn Hacedor) -> Info
                     rutas.push(c.clone());
                 }
                 let proyecto = match proyecto.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
-                    Some(p) => h.proyecto(p).ok_or_else(|| format!("no hay ningún chat «{p}»")),
+                    Some(p) => h
+                        .proyecto(p)
+                        .ok_or_else(|| format!("no hay ningún chat «{p}»")),
                     None => Ok(String::new()),
                 };
                 proyecto.and_then(|pr| {
@@ -671,7 +724,12 @@ pub fn ejecutar(a: &Automatizacion, mut vars: Vars, h: &mut dyn Hacedor) -> Info
 /// con una lista JSON; cada paso es un texto —un pedido al asistente— o un
 /// objeto `{herramienta, args?, proyecto?, imagenes?}` o
 /// `{asistente: "…", proyecto?, imagenes?}`).
-pub fn de_receta(receta: &Value, id: String, aparato: &str, ahora: i64) -> Result<Automatizacion, String> {
+pub fn de_receta(
+    receta: &Value,
+    id: String,
+    aparato: &str,
+    ahora: i64,
+) -> Result<Automatizacion, String> {
     let nombre = receta
         .get("nombre")
         .and_then(Value::as_str)
@@ -685,16 +743,28 @@ pub fn de_receta(receta: &Value, id: String, aparato: &str, ahora: i64) -> Resul
         .and_then(Value::as_str)
         .or_else(|| d.as_str())
         .unwrap_or_default();
-    let disparador = match acciones::normalizar(tipo.trim()).replace([' ', '-'], "_").as_str() {
+    let disparador = match acciones::normalizar(tipo.trim())
+        .replace([' ', '-'], "_")
+        .as_str()
+    {
         "al_capturar" => Disparador::AlCapturar,
         "al_sincronizar" => Disparador::AlSincronizar,
         "a_mano" => Disparador::AMano,
         "a_la_hora" => Disparador::ALaHora {
-            hora: d.get("hora").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
+            hora: d
+                .get("hora")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_string(),
             dias: d
                 .get("dias")
                 .and_then(Value::as_array)
-                .map(|l| l.iter().filter_map(|x| x.as_u64().map(|n| n as u8)).collect())
+                .map(|l| {
+                    l.iter()
+                        .filter_map(|x| x.as_u64().map(|n| n as u8))
+                        .collect()
+                })
                 .unwrap_or_default(),
         },
         otro => return Err(format!("disparador desconocido «{otro}»")),
@@ -747,7 +817,11 @@ fn paso_de(v: &Value) -> Result<Paso, String> {
     let imagenes: Vec<String> = v
         .get("imagenes")
         .and_then(Value::as_array)
-        .map(|l| l.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .map(|l| {
+            l.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default();
     match v {
         Value::String(s) if !s.trim().is_empty() => Ok(Paso::Asistente {
@@ -766,7 +840,9 @@ fn paso_de(v: &Value) -> Result<Paso, String> {
                     imagenes,
                 });
             }
-            let herramienta = cadena("herramienta").or_else(|| cadena("accion")).ok_or("ni «herramienta» ni «asistente»")?;
+            let herramienta = cadena("herramienta")
+                .or_else(|| cadena("accion"))
+                .ok_or("ni «herramienta» ni «asistente»")?;
             let args = match o.get("args") {
                 Some(Value::Object(a)) => a.clone(),
                 _ => Map::new(),
@@ -811,12 +887,17 @@ pub fn resumenes(lista: &Lista, aparato: &str) -> Vec<Resumen> {
                 nombre: a.nombre.clone(),
                 detalle: format!("{} · {}", a.disparador.en_palabras(), a.pasos_en_palabras()),
                 activa: a.activa,
-                otro_aparato: (!a.corre_aqui(aparato)).then(|| a.aparato.clone().unwrap_or_default()),
+                otro_aparato: (!a.corre_aqui(aparato))
+                    .then(|| a.aparato.clone().unwrap_or_default()),
                 a_mano: a.disparador == Disparador::AMano,
                 rota: None,
             },
             Entrada::Rota { valor, motivo } => Resumen {
-                id: valor.get("id").and_then(Value::as_str).unwrap_or_default().to_string(),
+                id: valor
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
                 nombre: valor
                     .get("nombre")
                     .and_then(Value::as_str)
@@ -850,7 +931,11 @@ pub fn leer_de(carpeta_del_chat: &Path) -> Result<Lista, String> {
 }
 
 /// El chat «Asistente» (creandolo si no esta): su id y su carpeta.
-pub fn chat_del_asistente(raiz: &Path, aparato: &str, ahora: i64) -> std::io::Result<(String, PathBuf)> {
+pub fn chat_del_asistente(
+    raiz: &Path,
+    aparato: &str,
+    ahora: i64,
+) -> std::io::Result<(String, PathBuf)> {
     let f = pixpin_proyecto::almacen::asegurar_asistente(raiz, ahora, aparato)?;
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, &f.id);
     Ok((f.id, carpeta))
@@ -858,7 +943,8 @@ pub fn chat_del_asistente(raiz: &Path, aparato: &str, ahora: i64) -> std::io::Re
 
 /// Lee la lista de este PC.
 pub fn leer(raiz: &Path, aparato: &str) -> Result<Lista, String> {
-    let (_, carpeta) = chat_del_asistente(raiz, aparato, pixpin_shell::entorno::ahora_utc_ms()).map_err(|e| e.to_string())?;
+    let (_, carpeta) = chat_del_asistente(raiz, aparato, pixpin_shell::entorno::ahora_utc_ms())
+        .map_err(|e| e.to_string())?;
     leer_de(&carpeta)
 }
 
@@ -875,7 +961,8 @@ pub fn cambiar<R>(
     cambio: impl FnOnce(&mut Lista) -> Result<R, String>,
 ) -> Result<R, String> {
     let _g = CERROJO.lock().unwrap_or_else(|e| e.into_inner());
-    let (proyecto, carpeta) = chat_del_asistente(raiz, aparato, ahora).map_err(|e| e.to_string())?;
+    let (proyecto, carpeta) =
+        chat_del_asistente(raiz, aparato, ahora).map_err(|e| e.to_string())?;
     let mut lista = leer_de(&carpeta)?;
     let r = cambio(&mut lista)?;
     let ruta = fichero_en(&carpeta);
@@ -924,7 +1011,13 @@ pub struct FicheroQueViaja {
 
 /// **Pone el mensaje ARCHIVO que hace viajar el fichero**, si no esta (el
 /// fichero cambia; el mensaje es el mismo y la sincro mira el fichero).
-pub fn senalar_fichero(carpeta: &Path, proyecto: &str, aparato: &str, ahora: i64, f: &FicheroQueViaja) -> std::io::Result<()> {
+pub fn senalar_fichero(
+    carpeta: &Path,
+    proyecto: &str,
+    aparato: &str,
+    ahora: i64,
+    f: &FicheroQueViaja,
+) -> std::io::Result<()> {
     use pixpin_proyecto::cuaderno;
     let c = match cuaderno::Cuaderno::leer_de(carpeta) {
         Ok(c) => c,
@@ -935,7 +1028,9 @@ pub fn senalar_fichero(carpeta: &Path, proyecto: &str, aparato: &str, ahora: i64
         return Ok(());
     }
     let numero = c.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let bytes = std::fs::metadata(carpeta.join(f.en_el_chat)).map(|m| m.len() as i64).unwrap_or(0);
+    let bytes = std::fs::metadata(carpeta.join(f.en_el_chat))
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
     let mut m = cuaderno::Mensaje::adjunto(
         cuaderno::Clase::Archivo,
         f.nombre,

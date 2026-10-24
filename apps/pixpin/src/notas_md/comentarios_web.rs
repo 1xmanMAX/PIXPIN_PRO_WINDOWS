@@ -31,7 +31,10 @@ fn utf16(t: &str) -> Vec<u16> {
 impl Comentarista {
     pub fn abrir(raiz: &Path, destino: &Destino, quien: Quien) -> Self {
         let ruta = super::comentarios::ruta(raiz, destino);
-        let (c, roto) = match ruta.as_ref().map(|r| pixpin_proyecto::comentarios_de_notas::leer(r)) {
+        let (c, roto) = match ruta
+            .as_ref()
+            .map(|r| pixpin_proyecto::comentarios_de_notas::leer(r))
+        {
             Some(Some(t)) => match mc::leer(&t) {
                 Ok(c) => (c, false),
                 Err(e) => {
@@ -90,7 +93,13 @@ impl Comentarista {
         json!({"tipo": "comentarios", "hilos": hilos, "abiertos": self.mio.abiertos(), "yo": self.quien.aparato})
     }
 
-    pub fn nuevo(&mut self, texto: &str, desde: usize, hasta: usize, cuerpo: &str) -> Option<String> {
+    pub fn nuevo(
+        &mut self,
+        texto: &str,
+        desde: usize,
+        hasta: usize,
+        cuerpo: &str,
+    ) -> Option<String> {
         let t = utf16(texto);
         let (desde, hasta) = (desde.min(t.len()), hasta.min(t.len()));
         let (desde, hasta) = if desde == hasta {
@@ -105,7 +114,11 @@ impl Comentarista {
     }
 
     pub fn responder(&mut self, hilo: &str, cuerpo: &str) {
-        if self.mio.responder(hilo, &self.quien, ahora(), cuerpo).is_some() {
+        if self
+            .mio
+            .responder(hilo, &self.quien, ahora(), cuerpo)
+            .is_some()
+        {
             self.guardar();
         }
     }
@@ -172,7 +185,10 @@ mod pruebas {
         let md = d.join("nota.md");
         std::fs::write(&md, "Hola mundo bonito").unwrap();
         let destino = Destino::Fichero { ruta: md };
-        let quien = Quien { autor: "Max".into(), aparato: "PC1".into() };
+        let quien = Quien {
+            autor: "Max".into(),
+            aparato: "PC1".into(),
+        };
         let mut c = Comentarista::abrir(&d, &destino, quien.clone());
         let id = c.nuevo("Hola mundo bonito", 5, 10, "¿seguro?").unwrap();
         // Otra vez desde el disco: esta, y con el texto movido se reencuentra.

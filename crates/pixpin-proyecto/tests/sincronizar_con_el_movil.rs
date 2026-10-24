@@ -1977,7 +1977,11 @@ fn archivado_en_pc(p: &Par, ficha_id: &str) -> bool {
         .proyectos
         .iter()
         .find(|f| f.id == ficha_id)
-        .and_then(|f| f.resto.get(vista::MARCA_ARCHIVADO).and_then(|v| v.as_bool()))
+        .and_then(|f| {
+            f.resto
+                .get(vista::MARCA_ARCHIVADO)
+                .and_then(|v| v.as_bool())
+        })
         == Some(true);
     en_json || en_ficha
 }
@@ -1988,27 +1992,42 @@ fn archivar_un_proyecto_viaja_en_los_dos_sentidos_y_dos_veces() {
     let obra = proyecto_del_pc(&p);
     let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
     p.desde_pc(&[&chat]);
-    assert_eq!(archivado_en_movil(&p, &chat), Some(false), "sin archivar, llega sin archivar");
+    assert_eq!(
+        archivado_en_movil(&p, &chat),
+        Some(false),
+        "sin archivar, llega sin archivar"
+    );
 
     // 1. Archivado en el PC (proyecto nacido aqui, sin `proyecto.json`).
     p.reloj.saltar(1_000);
     archivar_en_pc(&p, &obra.id, true);
     p.desde_pc(&[&chat]);
-    assert_eq!(archivado_en_movil(&p, &chat), Some(true), "el movil se entera");
+    assert_eq!(
+        archivado_en_movil(&p, &chat),
+        Some(true),
+        "el movil se entera"
+    );
     p.quieto(&chat);
 
     // 2. Desarchivado en el movil: el PC deja de ensenarlo archivado.
     p.reloj.saltar(1_000);
     archivar_en_movil(&p, &chat, false);
     p.desde_movil(&[&chat]);
-    assert!(!archivado_en_pc(&p, &obra.id), "ni el proyecto.json ni la ficha lo dicen");
+    assert!(
+        !archivado_en_pc(&p, &obra.id),
+        "ni el proyecto.json ni la ficha lo dicen"
+    );
     p.quieto(&chat);
 
     // 3. Y otra vez en el PC, ahora ya con `proyecto.json`.
     p.reloj.saltar(1_000);
     archivar_en_pc(&p, &obra.id, true);
     p.desde_pc(&[&chat]);
-    assert_eq!(archivado_en_movil(&p, &chat), Some(true), "la segunda vez tambien");
+    assert_eq!(
+        archivado_en_movil(&p, &chat),
+        Some(true),
+        "la segunda vez tambien"
+    );
     assert!(archivado_en_pc(&p, &obra.id));
     p.quieto(&chat);
 }
@@ -2059,7 +2078,10 @@ fn un_adjunto_borrado_en_el_movil_se_va_tambien_del_disco_del_pc() {
         .unwrap();
     p.desde_movil(&[GENERAL]);
     let g = p.pc.ficha_de(GENERAL).unwrap();
-    assert!(!p.mensajes_pc(&g.id).iter().any(|m| m.id == "lec"), "el mensaje se fue");
+    assert!(
+        !p.mensajes_pc(&g.id).iter().any(|m| m.id == "lec"),
+        "el mensaje se fue"
+    );
     assert!(!lec.exists(), "y su fichero tambien, como en el movil");
     assert!(foto.is_file(), "lo demas no se toca");
     p.quieto(GENERAL);
@@ -2132,7 +2154,8 @@ fn celda_en_pc(archivo: &Path, celda: &str, valor: &str, cursiva: bool) {
 /// (su `EstiloDeCelda` solo guarda `n`, `a`, `f` y `e`).
 fn celda_en_movil(p: &Par, rel: &str, celda: &str, valor: &str) {
     let f = p.movil.raiz().join(rel);
-    let mut v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
+    let mut v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&f).unwrap()).unwrap();
     v["celdas"][celda] = json!(valor);
     v["tocado"] = json!(p.reloj.tic());
     if let Some(e) = v["estilos"].as_object_mut() {
@@ -2154,10 +2177,19 @@ fn celdas_movil(p: &Par, rel: &str) -> serde_json::Value {
 #[test]
 fn una_tabla_del_movil_se_cambia_en_el_pc_y_vuelve_celda_a_celda() {
     let p = montar("tabla-movil");
-    tabla_movil(&p, "t", "t-1", r#"{"nombre":"Metrados","celdas":{"A1":"1","B1":"2"},"tocado":1}"#);
+    tabla_movil(
+        &p,
+        "t",
+        "t-1",
+        r#"{"nombre":"Metrados","celdas":{"A1":"1","B1":"2"},"tocado":1}"#,
+    );
     p.desde_pc(&[GENERAL]);
     let g = p.pc.ficha_de(GENERAL).unwrap();
-    let m = p.mensajes_pc(&g.id).into_iter().find(|m| m.id == "t").unwrap();
+    let m = p
+        .mensajes_pc(&g.id)
+        .into_iter()
+        .find(|m| m.id == "t")
+        .unwrap();
     let archivo = vista::tabla_del_movil(&p.raiz(), &g.id, &m).expect("es una tabla del movil");
     assert!(archivo.is_file(), "su fichero llego donde el PC la busca");
 
@@ -2174,8 +2206,12 @@ fn una_tabla_del_movil_se_cambia_en_el_pc_y_vuelve_celda_a_celda() {
     celda_en_movil(&p, "tablas/t-1.json", "D1", "movil");
     p.desde_movil(&[GENERAL]);
     let c = celdas_movil(&p, "tablas/t-1.json");
-    assert_eq!((c["A1"].as_str(), c["C1"].as_str(), c["D1"].as_str()), (Some("10"), Some("pc"), Some("movil")));
-    let en_pc: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&archivo).unwrap()).unwrap();
+    assert_eq!(
+        (c["A1"].as_str(), c["C1"].as_str(), c["D1"].as_str()),
+        (Some("10"), Some("pc"), Some("movil"))
+    );
+    let en_pc: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&archivo).unwrap()).unwrap();
     assert_eq!(en_pc["celdas"], c, "los dos quedan con la misma tabla");
     p.quieto(GENERAL);
 }
@@ -2255,9 +2291,8 @@ fn el_grafito_con_dureza_y_las_guias_del_pc_llegan_al_movil_como_las_lee() {
     assert!(v["elements"][0].get("reference").is_none_or(|r| r == false));
     assert!(v["elements"][1].get("dureza").is_none());
     // Y lo que el movil leeria vuelve a ser lo mismo en el PC.
-    let vuelta = pixpin_motor2d::excalidraw::a_escena(
-        &pixpin_motor2d::excalidraw::leer(&alli).unwrap(),
-    );
+    let vuelta =
+        pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(&alli).unwrap());
     assert_eq!(
         vuelta.elementos[0].extras.dureza,
         Some(pixpin_motor2d::tinta::grafito::Dureza::B8)
@@ -2278,7 +2313,12 @@ fn el_grafito_con_dureza_y_las_guias_del_pc_llegan_al_movil_como_las_lee() {
 #[test]
 fn en_una_leccion_vieja_anadir_y_quitar_viaja_ida_y_vuelta() {
     let p = montar("leccion-adjuntos");
-    adjunto_movil(&p, "lec-k1", "lecciones/k1.leccion", br#"{"id":"k1","titulo":"Curar el concreto"}"#);
+    adjunto_movil(
+        &p,
+        "lec-k1",
+        "lecciones/k1.leccion",
+        br#"{"id":"k1","titulo":"Curar el concreto"}"#,
+    );
     // La foto que el movil le puso: le responde.
     let rel = "guardados/leccion_1.jpg";
     let f = p.movil.raiz().join(rel);
@@ -2291,18 +2331,35 @@ fn en_una_leccion_vieja_anadir_y_quitar_viaja_ida_y_vuelta() {
         .unwrap();
     p.desde_pc(&[GENERAL]);
     let g = p.pc.ficha_de(GENERAL).unwrap();
-    assert!(p.mensajes_pc(&g.id).iter().any(|m| m.id == "foto-1" && m.responde_a.as_deref() == Some("lec-k1")), "la foto llego respondiendo");
+    assert!(
+        p.mensajes_pc(&g.id)
+            .iter()
+            .any(|m| m.id == "foto-1" && m.responde_a.as_deref() == Some("lec-k1")),
+        "la foto llego respondiendo"
+    );
 
     // En el PC: un audio nuevo que responde a la leccion...
     let carpeta = almacen::carpeta(&p.raiz(), &g.id);
     let ruta = almacen::guardar_adjunto(&p.raiz(), &g.id, "voz_1.m4a", b"M4A").unwrap();
-    let numero = Cuaderno::leer_de(&carpeta).unwrap().mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let numero = Cuaderno::leer_de(&carpeta)
+        .unwrap()
+        .mensajes
+        .iter()
+        .map(|m| m.numero)
+        .max()
+        .unwrap_or(0)
+        + 1;
     let mut audio = Mensaje::adjunto(
         Clase::Voz,
         "Audio de la lección",
         &ruta,
         3,
-        &Sello { cuando: p.reloj.tic(), numero, aparato: p.aparato_pc(), proyecto: g.id.clone() },
+        &Sello {
+            cuando: p.reloj.tic(),
+            numero,
+            aparato: p.aparato_pc(),
+            proyecto: g.id.clone(),
+        },
     );
     audio.duracion_ms = 4_200;
     audio.responde_a = Some("lec-k1".into());
@@ -2314,15 +2371,33 @@ fn en_una_leccion_vieja_anadir_y_quitar_viaja_ida_y_vuelta() {
 
     p.desde_pc(&[GENERAL]);
     let en_movil = p.movil.leer_mensajes();
-    assert!(!en_movil.iter().any(|m| kotlin::cadena(m, "id") == Some("foto-1")), "la foto quitada se va del movil");
-    let a = en_movil.iter().find(|m| kotlin::cadena(m, "clase") == Some("VOZ")).expect("el audio llega al movil");
-    assert_eq!(kotlin::cadena(a, "respondeA"), Some("lec-k1"), "le responde a la leccion");
+    assert!(
+        !en_movil
+            .iter()
+            .any(|m| kotlin::cadena(m, "id") == Some("foto-1")),
+        "la foto quitada se va del movil"
+    );
+    let a = en_movil
+        .iter()
+        .find(|m| kotlin::cadena(m, "clase") == Some("VOZ"))
+        .expect("el audio llega al movil");
+    assert_eq!(
+        kotlin::cadena(a, "respondeA"),
+        Some("lec-k1"),
+        "le responde a la leccion"
+    );
     assert_eq!(kotlin::numero(a, "duracionMs"), Some(4_200));
     assert_eq!(kotlin::cadena(a, "nombre"), Some("Audio de la lección"));
     let ruta_movil = kotlin::cadena(a, "ruta").unwrap();
     let base = p.movil.absoluta("");
-    let rel_movil = ruta_movil.strip_prefix(base.trim_end_matches('/')).unwrap().trim_start_matches('/');
-    assert!(p.movil.raiz().join(rel_movil).is_file(), "con su archivo: {ruta_movil}");
+    let rel_movil = ruta_movil
+        .strip_prefix(base.trim_end_matches('/'))
+        .unwrap()
+        .trim_start_matches('/');
+    assert!(
+        p.movil.raiz().join(rel_movil).is_file(),
+        "con su archivo: {ruta_movil}"
+    );
 
     // Ida y vuelta: dirija quien dirija, nada resucita ni se pierde.
     p.desde_movil(&[GENERAL]);
@@ -2348,8 +2423,12 @@ fn el_plano_el_espacio_y_las_coordenadas_del_pc_llegan_al_movil_como_los_lee() {
     let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
     let negro = pixpin_motor2d::ColorRgba::opaco(0.0, 0.0, 0.0);
     let mut escena = pixpin_motor2d::Escena::nueva();
-    escena.anadir(pixpin_motor2d::instrumento::elemento_de_fabrica(2, negro, 2.0, 1.0));
-    escena.anadir(pixpin_motor2d::instrumento::elemento_de_fabrica(3, negro, 2.0, 1.0));
+    escena.anadir(pixpin_motor2d::instrumento::elemento_de_fabrica(
+        2, negro, 2.0, 1.0,
+    ));
+    escena.anadir(pixpin_motor2d::instrumento::elemento_de_fabrica(
+        3, negro, 2.0, 1.0,
+    ));
     escena.tablas = vec![TablaDeCoordenadas {
         id: "t1".into(),
         nombre: String::new(),
@@ -2376,9 +2455,8 @@ fn el_plano_el_espacio_y_las_coordenadas_del_pc_llegan_al_movil_como_los_lee() {
     assert_eq!(v["origenCoordenadas"]["x"], 160.0, "{alli}");
     // Caso negativo: el plano no lleva las claves del espacio.
     assert!(v["elements"][0].get("azimut").is_none(), "{alli}");
-    let vuelta = pixpin_motor2d::excalidraw::a_escena(
-        &pixpin_motor2d::excalidraw::leer(&alli).unwrap(),
-    );
+    let vuelta =
+        pixpin_motor2d::excalidraw::a_escena(&pixpin_motor2d::excalidraw::leer(&alli).unwrap());
     assert_eq!(vuelta.tablas, escena.tablas);
     assert_eq!(vuelta.origen_coordenadas, escena.origen_coordenadas);
     assert_eq!(

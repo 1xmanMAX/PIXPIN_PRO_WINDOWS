@@ -28,7 +28,8 @@ impl Pines {
     fn imagen_del_pin(&self, id: u64) -> Option<std::path::PathBuf> {
         let a = self.almacen.borrow();
         let e = a.entradas().iter().find(|e| e.id == id)?;
-        (e.tipo == pixpin_store::TipoEntrada::Imagen && !e.objeto.is_empty()).then(|| a.ruta_objeto(e))
+        (e.tipo == pixpin_store::TipoEntrada::Imagen && !e.objeto.is_empty())
+            .then(|| a.ruta_objeto(e))
     }
 
     /// Al nacer el pin (o volver al arrancar): sus marcos, si tiene, ya
@@ -79,7 +80,8 @@ impl Pines {
             return self.imprimir_marcos(id);
         }
         // Entrar en el modo saca de anotar: no van a la vez.
-        let entrando = pedido == PedidoMarco::Alternar && self.marcos.get(&id).is_some_and(|m| !m.activo);
+        let entrando =
+            pedido == PedidoMarco::Alternar && self.marcos.get(&id).is_some_and(|m| !m.activo);
         if entrando && self.anotacion.as_ref().is_some_and(|a| a.id == id) {
             self.salir_de_anotar()?;
         }
@@ -124,7 +126,9 @@ impl Pines {
         let imagen = match pin.imagen_para_imprimir() {
             Some(horneada) => horneada,
             None => {
-                let ruta = self.imagen_del_pin(id).context("el pin no tiene imagen en el almacen")?;
+                let ruta = self
+                    .imagen_del_pin(id)
+                    .context("el pin no tiene imagen en el almacen")?;
                 cargar(&ruta).context("no se pudo leer la imagen del almacen")?
             }
         };
@@ -181,7 +185,11 @@ pub(crate) fn recortar(img: &ImagenRgba, caja: [f64; 4]) -> Option<ImagenRgba> {
         let fila = ((y * img.ancho + x0) * 4) as usize;
         pixeles.extend_from_slice(&img.pixeles[fila..fila + (ancho * 4) as usize]);
     }
-    Some(ImagenRgba { ancho, alto, pixeles })
+    Some(ImagenRgba {
+        ancho,
+        alto,
+        pixeles,
+    })
 }
 
 #[cfg(test)]
@@ -195,7 +203,11 @@ mod pruebas {
                 pixeles.extend_from_slice(&[x as u8, y as u8, 0, 255]);
             }
         }
-        ImagenRgba { ancho: w, alto: h, pixeles }
+        ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles,
+        }
     }
 
     #[test]
@@ -226,7 +238,10 @@ mod pruebas {
         let mut m = Marcos::de(Some(&imagen));
         m.alternar();
         // Lo que manda el pin al soltar: dos esquinas y los px por pixel.
-        for (a, b) in [([10.0, 10.0], [110.0, 60.0]), ([200.0, 20.0], [150.0, 90.0])] {
+        for (a, b) in [
+            ([10.0, 10.0], [110.0, 60.0]),
+            ([200.0, 20.0], [150.0, 90.0]),
+        ] {
             assert!(m.pulsar(a, 0));
             m.mover(b);
             assert!(m.soltar(b, 0.5));
@@ -236,7 +251,11 @@ mod pruebas {
         assert!(!m.soltar([10.0, 10.0], 0.5));
         let otra = Marcos::de(Some(&imagen));
         assert_eq!(otra.lista.len(), 2);
-        assert_eq!(otra.lista[1].caja, [150.0, 20.0, 200.0, 90.0], "ordenado arrastre como arrastre");
+        assert_eq!(
+            otra.lista[1].caja,
+            [150.0, 20.0, 200.0, 90.0],
+            "ordenado arrastre como arrastre"
+        );
         m.borrar();
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -249,7 +268,10 @@ mod pruebas {
     #[test]
     #[ignore = "necesita la impresora PDF; PIXPIN_IMPRIMIR_A_PDF y mirar el PDF"]
     fn marcos_de_una_foto_impresos_a_pdf_con_sus_colores() {
-        assert!(std::env::var_os("PIXPIN_IMPRIMIR_A_PDF").is_some(), "falta PIXPIN_IMPRIMIR_A_PDF");
+        assert!(
+            std::env::var_os("PIXPIN_IMPRIMIR_A_PDF").is_some(),
+            "falta PIXPIN_IMPRIMIR_A_PDF"
+        );
         let (w, h) = (600u32, 300u32);
         let mut pixeles = Vec::new();
         for _y in 0..h {
@@ -262,12 +284,20 @@ mod pruebas {
                     }
                 } else {
                     // Una noche: azul muy oscuro con un brillo amarillo.
-                    if (400..440).contains(&x) { [250, 200, 40, 255] } else { [12, 16, 40, 255] }
+                    if (400..440).contains(&x) {
+                        [250, 200, 40, 255]
+                    } else {
+                        [12, 16, 40, 255]
+                    }
                 };
                 pixeles.extend_from_slice(&p);
             }
         }
-        let img = ImagenRgba { ancho: w, alto: h, pixeles };
+        let img = ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles,
+        };
         let fotos: Vec<_> = [[0.0, 0.0, 300.0, 300.0], [300.0, 0.0, 600.0, 300.0]]
             .iter()
             .filter_map(|c| recortar(&img, *c))

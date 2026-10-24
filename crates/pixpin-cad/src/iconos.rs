@@ -11,7 +11,9 @@
 
 use lyon_tessellation::geom::point;
 use lyon_tessellation::path::Path;
-use lyon_tessellation::{BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers};
+use lyon_tessellation::{
+    BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
+};
 
 use crate::modelo::Constructor;
 use crate::trayecto_svg::{Tramo, analizar};
@@ -159,7 +161,15 @@ pub fn de_boton(boton: &str, claro: bool, pantalla_completa: bool) -> Option<Ico
 /// Pinta `icono` en el cuadrado de `lado` pixeles con la esquina en (x, y)
 /// (pantalla, y hacia abajo), relleno de `color`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn pintar(c: &mut Constructor, icono: Icono, x: f64, y: f64, lado: f64, color: u32, capa: f64) {
+pub(crate) fn pintar(
+    c: &mut Constructor,
+    icono: Icono,
+    x: f64,
+    y: f64,
+    lado: f64,
+    color: u32,
+    capa: f64,
+) {
     let tri = triangulos(icono, x, y, lado);
     if !tri.is_empty() {
         c.triangulos(&tri, color, Some(capa));
@@ -168,7 +178,9 @@ pub(crate) fn pintar(c: &mut Constructor, icono: Icono, x: f64, y: f64, lado: f6
 
 /// Los triangulos que rellenan el icono (de tres en tres), ya en pantalla.
 pub(crate) fn triangulos(icono: Icono, x: f64, y: f64, lado: f64) -> Vec<[f64; 2]> {
-    let Ok(tramos) = analizar(icono.d) else { return Vec::new() };
+    let Ok(tramos) = analizar(icono.d) else {
+        return Vec::new();
+    };
     let k = (lado / 24.0) as f32;
     // Se tesela en pixeles respecto a la esquina (lyon va en f32).
     let p = |q: (f32, f32)| point(q.0 * k, q.1 * k);
@@ -214,7 +226,11 @@ pub(crate) fn triangulos(icono: Icono, x: f64, y: f64, lado: f64) -> Vec<[f64; 2
     }
     let camino = b.build();
     let mut bufs: VertexBuffers<[f32; 2], u32> = VertexBuffers::new();
-    let regla = if icono.par_impar { FillRule::EvenOdd } else { FillRule::NonZero };
+    let regla = if icono.par_impar {
+        FillRule::EvenOdd
+    } else {
+        FillRule::NonZero
+    };
     let r = FillTessellator::new().tessellate_path(
         &camino,
         &FillOptions::tolerance(0.05).with_fill_rule(regla),
@@ -223,10 +239,13 @@ pub(crate) fn triangulos(icono: Icono, x: f64, y: f64, lado: f64) -> Vec<[f64; 2
     if r.is_err() {
         return Vec::new();
     }
-    bufs.indices.iter().map(|&i| {
-        let v = bufs.vertices[i as usize];
-        [x + v[0] as f64, y + v[1] as f64]
-    }).collect()
+    bufs.indices
+        .iter()
+        .map(|&i| {
+            let v = bufs.vertices[i as usize];
+            [x + v[0] as f64, y + v[1] as f64]
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -234,7 +253,14 @@ mod pruebas {
     use super::*;
 
     fn area(t: &[[f64; 2]]) -> f64 {
-        t.chunks_exact(3).map(|c| ((c[1][0] - c[0][0]) * (c[2][1] - c[0][1]) - (c[2][0] - c[0][0]) * (c[1][1] - c[0][1])).abs() / 2.0).sum()
+        t.chunks_exact(3)
+            .map(|c| {
+                ((c[1][0] - c[0][0]) * (c[2][1] - c[0][1])
+                    - (c[2][0] - c[0][0]) * (c[1][1] - c[0][1]))
+                    .abs()
+                    / 2.0
+            })
+            .sum()
     }
 
     #[test]
@@ -242,7 +268,11 @@ mod pruebas {
         for (nombre, i) in TODOS {
             let t = triangulos(*i, 10.0, 20.0, 24.0);
             assert!(!t.is_empty(), "{nombre} no pinta nada");
-            assert!(t.iter().all(|p| (9.4..=34.6).contains(&p[0]) && (19.4..=44.6).contains(&p[1])), "{nombre} se sale");
+            assert!(
+                t.iter()
+                    .all(|p| (9.4..=34.6).contains(&p[0]) && (19.4..=44.6).contains(&p[1])),
+                "{nombre} se sale"
+            );
         }
     }
 
@@ -255,7 +285,18 @@ mod pruebas {
         let esquinas = area(&triangulos(FULLSCREEN, 0.0, 0.0, 24.0));
         assert!(esquinas > 20.0 && esquinas < 100.0, "{esquinas}");
         // Caso negativo: un trazado que no se entiende no pinta nada.
-        assert!(triangulos(Icono { d: "Q", par_impar: false }, 0.0, 0.0, 24.0).is_empty());
+        assert!(
+            triangulos(
+                Icono {
+                    d: "Q",
+                    par_impar: false
+                },
+                0.0,
+                0.0,
+                24.0
+            )
+            .is_empty()
+        );
     }
 
     #[test]

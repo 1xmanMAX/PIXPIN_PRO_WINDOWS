@@ -178,7 +178,6 @@ pub fn entrar_en_chat_compartido(idioma: pixpin_store::Idioma, ubicacion: Ubicac
     con_pedido(idioma, ubicacion, Some(Pedido::EntrarEnChat))
 }
 
-
 /// El idioma y la ubicacion con que se abrio la ventana: los que necesita
 /// el chat para abrirse desde aqui («Abrir chat» al entrar en uno
 /// compartido).
@@ -334,7 +333,11 @@ enum Tecla {
     /// Una tecla de caja de texto (flechas, Inicio/Fin, Retroceso y Supr con
     /// o sin Ctrl, Ctrl+A/C/X/Z...): para los campos que son la caja comun
     /// de la app (`caja_texto::CajaLinea`).
-    Caja { vk: u32, shift: bool, ctrl: bool },
+    Caja {
+        vk: u32,
+        shift: bool,
+        ctrl: bool,
+    },
     Letra(char),
     Borrar,
     Intro,
@@ -519,7 +522,9 @@ impl Pantalla {
     /// dialogo si esta abierto (tapa lo de debajo), si no la de la pantalla.
     fn cajas_visibles(&mut self) -> Vec<&mut CajaLinea> {
         if let Some(c) = self.campo.as_mut() {
-            let Campo { que, texto, extra, .. } = c;
+            let Campo {
+                que, texto, extra, ..
+            } = c;
             let mut v = vec![texto];
             if *que == QueCampo::Codigo {
                 v.push(extra);
@@ -683,7 +688,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     pantalla.campo = None;
                     pantalla.saliendo = false;
                     let cx = pantalla.contexto();
-                    pantalla.entrar(|t| Sub::Compartidos(Box::new(compartidos_ui::Personas::entrar(t, &cx))));
+                    pantalla.entrar(|t| {
+                        Sub::Compartidos(Box::new(compartidos_ui::Personas::entrar(t, &cx)))
+                    });
                 }
                 Pedido::Copias => {
                     pantalla.fase = Fase::Nada;
@@ -759,9 +766,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 // Las teclas de caja de texto: todos los campos son la caja
                 // comun (el dialogo, Recibir, Enviar, los chats compartidos);
                 // si nadie la quiere, Retroceso sigue como `Borrar`.
-                EventoOverlay::Tecla { vk, shift, ctrl, .. }
-                    if CajaLinea::es_suya(vk, shift, ctrl)
-                        && pantalla.tecla_de_caja(vk, shift, ctrl) =>
+                EventoOverlay::Tecla {
+                    vk, shift, ctrl, ..
+                } if CajaLinea::es_suya(vk, shift, ctrl)
+                    && pantalla.tecla_de_caja(vk, shift, ctrl) =>
                 {
                     hay_que_pintar = true;
                 }
@@ -836,9 +844,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     }
                 }
                 EventoOverlay::BotonSoltado(_)
-                    if arrastre.take().is_some() | pantalla.soltar_caja() => {
-                        ventana.soltar_raton();
-                    }
+                    if arrastre.take().is_some() | pantalla.soltar_caja() =>
+                {
+                    ventana.soltar_raton();
+                }
                 _ => {}
             }
         }
@@ -2528,7 +2537,15 @@ fn pintar(
             y = recibir_wifi::pintar(&mut l, textos, r, 20.0 * e, ancho - 40.0 * e, y);
         }
         Sub::Enviar(en) => {
-            y = enviar_wifi::pintar(&mut l, textos, en, &s.responden, 20.0 * e, ancho - 40.0 * e, y);
+            y = enviar_wifi::pintar(
+                &mut l,
+                textos,
+                en,
+                &s.responden,
+                20.0 * e,
+                ancho - 40.0 * e,
+                y,
+            );
         }
         Sub::Elegir(el) => {
             y = elegir::pintar(&mut l, textos, el, &s.identidad.yo.nombre, ancho, y);
@@ -3019,7 +3036,10 @@ fn campo(
         &crate::caja_texto::Colores {
             texto: TEXTO,
             invitacion: SUAVE,
-            seleccion: Color { a: 0.35, ..PRIMARIO },
+            seleccion: Color {
+                a: 0.35,
+                ..PRIMARIO
+            },
             rayita: PRIMARIO,
         },
         activo,
@@ -3311,7 +3331,11 @@ mod pruebas {
         for ch in "ABCDE-23456-XYZW".chars() {
             u.activa().caracter(ch);
         }
-        assert_eq!(u.texto.texto(), "ABCDE-23456-XY", "caso negativo: tope de 14");
+        assert_eq!(
+            u.texto.texto(),
+            "ABCDE-23456-XY",
+            "caso negativo: tope de 14"
+        );
         u.en_extra = true;
         u.activa().pegar_texto("192.168.1.20:47474\r\n");
         assert_eq!(u.extra.texto(), "192.168.1.20:47474");

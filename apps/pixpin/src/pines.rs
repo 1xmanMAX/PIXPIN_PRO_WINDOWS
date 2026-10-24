@@ -1568,7 +1568,10 @@ impl Pines {
             CambioPin::CongelarPedido => Ok(()),
             // Ctrl+C en un pin de color copia el color, como el toque.
             CambioPin::CopiarPedido
-                if self.herramientas.get(&id).is_some_and(herramienta::Herramienta::es_color) =>
+                if self
+                    .herramientas
+                    .get(&id)
+                    .is_some_and(herramienta::Herramienta::es_color) =>
             {
                 self.copiar_color(id)
             }
@@ -2432,33 +2435,56 @@ impl Pines {
     fn exportar(&self, id: u64) -> Result<()> {
         let (tipo, objeto) = {
             let a = self.almacen.borrow();
-            let e = a.entradas().iter().find(|e| e.id == id).context("la entrada ya no esta en el almacen")?;
+            let e = a
+                .entradas()
+                .iter()
+                .find(|e| e.id == id)
+                .context("la entrada ya no esta en el almacen")?;
             (e.tipo, a.ruta_objeto(e))
         };
-        let titulo = objeto.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let titulo = objeto
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let nombre = pixpin_docs::nombre(&objeto);
         let cosa = match tipo {
-            TipoEntrada::Imagen => crate::compartir::Cosa::Visor(crate::compartir::exportable::de_imagen(&titulo, &objeto, self.ruta_anotacion(id).as_deref())?),
+            TipoEntrada::Imagen => {
+                crate::compartir::Cosa::Visor(crate::compartir::exportable::de_imagen(
+                    &titulo,
+                    &objeto,
+                    self.ruta_anotacion(id).as_deref(),
+                )?)
+            }
             TipoEntrada::Nota => {
                 let texto = std::fs::read_to_string(&objeto).unwrap_or_default();
-                crate::compartir::Cosa::Visor(crate::compartir::exportable::de_texto(&titulo, &texto, Some(&objeto)))
+                crate::compartir::Cosa::Visor(crate::compartir::exportable::de_texto(
+                    &titulo,
+                    &texto,
+                    Some(&objeto),
+                ))
             }
             // Un documento que se lee (PDF, Word, libro): con sus paginas y lo anotado.
-            TipoEntrada::Archivo if crate::lector_pdf::se_abre(&nombre) || crate::visor::se_abre(&nombre) => crate::compartir::Cosa::Documento(objeto),
+            TipoEntrada::Archivo
+                if crate::lector_pdf::se_abre(&nombre) || crate::visor::se_abre(&nombre) =>
+            {
+                crate::compartir::Cosa::Documento(objeto)
+            }
             TipoEntrada::Archivo if crate::plano_cad::se_abre(&nombre) => {
                 // Un plano, sin abrirlo: lo que se pueda sin su visor (original y .pixpin).
                 let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
                 x.original = Some(objeto);
                 crate::compartir::Cosa::Visor(x)
             }
-            TipoEntrada::Archivo => match crate::compartir::exportable::de_imagen(&titulo, &objeto, None) {
-                Ok(x) => crate::compartir::Cosa::Visor(x),
-                Err(_) => {
-                    let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
-                    x.original = Some(objeto);
-                    crate::compartir::Cosa::Visor(x)
+            TipoEntrada::Archivo => {
+                match crate::compartir::exportable::de_imagen(&titulo, &objeto, None) {
+                    Ok(x) => crate::compartir::Cosa::Visor(x),
+                    Err(_) => {
+                        let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
+                        x.original = Some(objeto);
+                        crate::compartir::Cosa::Visor(x)
+                    }
                 }
-            },
+            }
         };
         let ubicacion = crate::oscuro::ubicacion().context("sin la carpeta de datos")?;
         crate::compartir::ventana::abrir(crate::compartir::idioma_de(&ubicacion), ubicacion, cosa);
@@ -2655,7 +2681,12 @@ impl Pines {
         // silencio: el usuario tiene que poder ver que esa hoja existe.
         if hoja.dibujo.is_none() {
             if let Some(croquis) = &hoja.croquis {
-                if crate::croquis3d::abrir_de_paquete(crate::croquis3d::idioma_del_sistema(), paquete, croquis, &hoja.nombre) {
+                if crate::croquis3d::abrir_de_paquete(
+                    crate::croquis3d::idioma_del_sistema(),
+                    paquete,
+                    croquis,
+                    &hoja.nombre,
+                ) {
                     return Ok(true);
                 }
                 let aviso = format!(

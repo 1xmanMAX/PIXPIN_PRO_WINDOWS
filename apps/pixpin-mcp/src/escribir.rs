@@ -53,7 +53,10 @@ pub const PLAZO_CON_PREGUNTA: Duration = Duration::from_secs(5 * 60 + 30);
 const ARRANQUE: Duration = Duration::from_secs(8);
 
 fn clase() -> String {
-    std::env::var(VAR_VENTANA).ok().filter(|c| !c.trim().is_empty()).unwrap_or_else(|| CLASE.to_string())
+    std::env::var(VAR_VENTANA)
+        .ok()
+        .filter(|c| !c.trim().is_empty())
+        .unwrap_or_else(|| CLASE.to_string())
 }
 
 /// La ventana de mensajes, arriba o entre las de solo mensajes (como
@@ -79,7 +82,8 @@ fn ventana_de_pixpin() -> Result<HWND, String> {
     if let Some(h) = ventana(&clase) {
         return Ok(h);
     }
-    let cerrada = || "PixPin no esta abierta y no se pudo arrancar; pide al usuario que la abra".to_string();
+    let cerrada =
+        || "PixPin no esta abierta y no se pudo arrancar; pide al usuario que la abra".to_string();
     if clase != CLASE {
         return Err(cerrada());
     }
@@ -88,7 +92,9 @@ fn ventana_de_pixpin() -> Result<HWND, String> {
         .and_then(|e| e.parent().map(|d| d.join("pixpinmax.exe")))
         .filter(|e| e.is_file())
         .ok_or_else(cerrada)?;
-    std::process::Command::new(&exe).spawn().map_err(|_| cerrada())?;
+    std::process::Command::new(&exe)
+        .spawn()
+        .map_err(|_| cerrada())?;
     let hasta = Instant::now() + ARRANQUE;
     while Instant::now() < hasta {
         std::thread::sleep(Duration::from_millis(100));
@@ -127,7 +133,11 @@ pub fn pregunta_de(a: &Accion, args: &Map<String, Value>) -> Option<String> {
         })
         .collect();
     datos.truncate(6);
-    Some(format!("Claude pide: {} ({}). ¿Lo hago?", a.descripcion.trim_end_matches('.'), datos.join(", ")))
+    Some(format!(
+        "Claude pide: {} ({}). ¿Lo hago?",
+        a.descripcion.trim_end_matches('.'),
+        datos.join(", ")
+    ))
 }
 
 fn recortar(t: &str, n: usize) -> String {
@@ -156,12 +166,25 @@ pub fn pedido(a: &Accion, args: &Map<String, Value>, respuesta: &Path) -> Value 
 
 /// Lee una respuesta ya escrita: `Ok` con su texto o `Err` con el motivo.
 pub fn leer_respuesta(texto: &str) -> Result<String, String> {
-    let v: Value = serde_json::from_str(texto).map_err(|_| "PixPin contesto algo que no se entiende".to_string())?;
-    let t = v.get("texto").and_then(Value::as_str).unwrap_or("").to_string();
+    let v: Value = serde_json::from_str(texto)
+        .map_err(|_| "PixPin contesto algo que no se entiende".to_string())?;
+    let t = v
+        .get("texto")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     if v.get("ok").and_then(Value::as_bool) == Some(true) {
-        Ok(if t.trim().is_empty() { "Hecho.".into() } else { t })
+        Ok(if t.trim().is_empty() {
+            "Hecho.".into()
+        } else {
+            t
+        })
     } else {
-        Err(if t.trim().is_empty() { "PixPin no pudo hacerlo".into() } else { t })
+        Err(if t.trim().is_empty() {
+            "PixPin no pudo hacerlo".into()
+        } else {
+            t
+        })
     }
 }
 
@@ -177,10 +200,16 @@ pub fn hacer(a: &'static Accion, args: &Map<String, Value>) -> Result<String, St
         respuesta::NO_SE_ENTIENDE => {
             return Err("esta PixPin no entiende el pedido «herramienta»: hay que actualizarla (herramientas\\instalar.ps1)".into());
         }
-        respuesta::VERSION_NO => return Err("esta PixPin no conoce la version 1 de los pedidos".into()),
+        respuesta::VERSION_NO => {
+            return Err("esta PixPin no conoce la version 1 de los pedidos".into());
+        }
         _ => return Err("PixPin no contesto; puede que se este cerrando".into()),
     }
-    let plazo = if crate::herramientas::pregunta(a) { PLAZO_CON_PREGUNTA } else { PLAZO };
+    let plazo = if crate::herramientas::pregunta(a) {
+        PLAZO_CON_PREGUNTA
+    } else {
+        PLAZO
+    };
     esperar(&fichero, plazo)
 }
 
@@ -215,32 +244,54 @@ mod pruebas {
     #[test]
     fn el_pedido_lleva_la_fila_los_argumentos_y_la_respuesta() {
         let a = acciones::por_nombre("anadir_tarea").unwrap();
-        let p = pedido(a, &args(r#"{"texto":"pan","fecha":"mañana"}"#), Path::new(r"C:\t\r.json"));
+        let p = pedido(
+            a,
+            &args(r#"{"texto":"pan","fecha":"mañana"}"#),
+            Path::new(r"C:\t\r.json"),
+        );
         assert_eq!(p["accion"], "herramienta");
         assert_eq!(p["nombre"], "anadir_tarea");
         assert_eq!(p["args"]["fecha"], "mañana");
         assert_eq!(p["respuesta"], r"C:\t\r.json");
         assert!(p.get("preguntar").is_none(), "crear no pregunta");
         // El vistazo de la ventana de PixPin lo da por bueno.
-        assert_eq!(mensajero::validar_pedido(&p.to_string()), respuesta::ACEPTADO);
+        assert_eq!(
+            mensajero::validar_pedido(&p.to_string()),
+            respuesta::ACEPTADO
+        );
     }
 
     #[test]
     fn lo_que_cambia_algo_lleva_su_pregunta_y_lo_que_borra_la_suya() {
         let e = acciones::por_nombre("editar_tarea").unwrap();
         let q = pregunta_de(e, &args(r#"{"tarea":"pan","texto":"pan integral"}"#)).unwrap();
-        assert!(q.starts_with("Claude pide: Cambia el texto") && q.contains("«pan integral»"), "{q}");
+        assert!(
+            q.starts_with("Claude pide: Cambia el texto") && q.contains("«pan integral»"),
+            "{q}"
+        );
         assert!(q.contains("tarea: «pan»"), "{q}");
         // La de borrar ya pregunta en la app con su frase: no se duplica.
-        assert!(pregunta_de(acciones::por_nombre("borrar_lista").unwrap(), &args(r#"{"lista":"x"}"#)).is_none());
+        assert!(
+            pregunta_de(
+                acciones::por_nombre("borrar_lista").unwrap(),
+                &args(r#"{"lista":"x"}"#)
+            )
+            .is_none()
+        );
         assert!(pregunta_de(acciones::por_nombre("nota_nueva").unwrap(), &Map::new()).is_none());
     }
 
     #[test]
     fn la_respuesta_se_lee_bien_o_mal() {
-        assert_eq!(leer_respuesta(r#"{"ok":true,"texto":"Apuntada «pan»."}"#), Ok("Apuntada «pan».".into()));
+        assert_eq!(
+            leer_respuesta(r#"{"ok":true,"texto":"Apuntada «pan»."}"#),
+            Ok("Apuntada «pan».".into())
+        );
         assert_eq!(leer_respuesta(r#"{"ok":true}"#), Ok("Hecho.".into()));
-        assert_eq!(leer_respuesta(r#"{"ok":false,"texto":"No encuentro «x»"}"#), Err("No encuentro «x»".into()));
+        assert_eq!(
+            leer_respuesta(r#"{"ok":false,"texto":"No encuentro «x»"}"#),
+            Err("No encuentro «x»".into())
+        );
         assert!(leer_respuesta("basura").is_err());
     }
 
@@ -248,7 +299,11 @@ mod pruebas {
     fn sin_respuesta_se_rinde_al_plazo() {
         let f = std::env::temp_dir().join(format!("pixpin-mcp-nada-{}.json", std::process::id()));
         let t0 = Instant::now();
-        assert!(esperar(&f, Duration::from_millis(150)).unwrap_err().contains("no contesto"));
+        assert!(
+            esperar(&f, Duration::from_millis(150))
+                .unwrap_err()
+                .contains("no contesto")
+        );
         assert!(t0.elapsed() < Duration::from_secs(2));
     }
 

@@ -269,9 +269,14 @@ fn un_intento(
 /// bajaron, para volver a subirlas con [`subir_las_de_encima`] al cerrarlo.
 pub fn bajar_las_de_encima() -> Vec<isize> {
     use windows::Win32::Foundation::LPARAM;
-    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId, IsWindowVisible};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SetWindowPos, WS_EX_TOPMOST,
+    };
     use windows::core::BOOL;
-    use windows::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, GetWindowLongPtrW, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos, WS_EX_TOPMOST};
     struct Busca {
         pid: u32,
         v: Vec<isize>,
@@ -290,13 +295,24 @@ pub fn bajar_las_de_encima() -> Vec<isize> {
         }
         BOOL(1)
     }
-    let mut b = Busca { pid: std::process::id(), v: Vec::new() };
+    let mut b = Busca {
+        pid: std::process::id(),
+        v: Vec::new(),
+    };
     // SAFETY: EnumWindows llama a `una` en este hilo, con el puntero a `b`.
     let _ = unsafe { EnumWindows(Some(una), LPARAM(&mut b as *mut Busca as isize)) };
     for &h in &b.v {
         // SAFETY: solo el orden Z de una ventana de este proceso.
         unsafe {
-            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            let _ = SetWindowPos(
+                HWND(h as *mut _),
+                Some(HWND_NOTOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
         }
     }
     b.v
@@ -304,11 +320,21 @@ pub fn bajar_las_de_encima() -> Vec<isize> {
 
 /// Las vuelve a poner encima (ver [`bajar_las_de_encima`]).
 pub fn subir_las_de_encima(ventanas: &[isize]) {
-    use windows::Win32::UI::WindowsAndMessaging::{HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+    };
     for &h in ventanas {
         // SAFETY: solo el orden Z; una ventana que ya no existe falla sin mas.
         unsafe {
-            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            let _ = SetWindowPos(
+                HWND(h as *mut _),
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
         }
     }
 }

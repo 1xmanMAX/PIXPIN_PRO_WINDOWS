@@ -37,9 +37,11 @@ use super::*;
 use crate::asistente::chat::{self as ia_chat, EnVivo};
 use crate::asistente::descarga::{self as ia_descarga, AvisoDescarga, Descarga};
 use crate::asistente::turno::{Aviso, Turno};
-use pixpin_ia::preguntar::{Contestada, Pregunta};
+use crate::asistente::{
+    al_lienzo, motor as ia_motor, nube as ia_nube, pensado as ia_pensado, turno as ia_turno,
+};
 use pixpin_ia::modelos::GEMMA4_E2B;
-use crate::asistente::{al_lienzo, motor as ia_motor, nube as ia_nube, pensado as ia_pensado, turno as ia_turno};
+use pixpin_ia::preguntar::{Contestada, Pregunta};
 
 /// Cada cuanto se escribe en el disco lo que va contestando (en memoria se
 /// ve al momento). Un turno de minuto y medio no son cien escrituras.
@@ -94,14 +96,22 @@ impl Sesion {
     /// **Contesta la duda con opciones** (al turno y en la burbuja). `false`
     /// si no habia ninguna.
     fn elegir(&mut self, c: Contestada) -> bool {
-        let Some(e) = self.elegir.take() else { return false };
-        let recomendada = e.pregunta.opciones.first().map(|o| o.etiqueta.as_str()).unwrap_or("");
+        let Some(e) = self.elegir.take() else {
+            return false;
+        };
+        let recomendada = e
+            .pregunta
+            .opciones
+            .first()
+            .map(|o| o.etiqueta.as_str())
+            .unwrap_or("");
         let respuesta = match &c {
             Contestada::Opcion(n) => e.pregunta.opciones.get(*n).map(|o| o.etiqueta.clone()),
             Contestada::Texto(t) => Some(t.clone()),
             Contestada::SinRespuesta => None,
         };
-        self.vivo.contestada_con_opciones(&e.pregunta.texto, respuesta.as_deref(), recomendada);
+        self.vivo
+            .contestada_con_opciones(&e.pregunta.texto, respuesta.as_deref(), recomendada);
         let _ = e.responder.send(c);
         true
     }
@@ -156,7 +166,9 @@ struct Tarjeta {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Accion {
-    Elegir { ligero: bool },
+    Elegir {
+        ligero: bool,
+    },
     Bajar,
     Confirmar,
     Cancelar,
@@ -186,7 +198,10 @@ struct Menciones {
 
 /// Si el asistente esta contestando en este chat.
 pub(super) fn ocupado(proyecto: &str) -> bool {
-    SESIONES.with_borrow(|s| s.iter().any(|x| x.proyecto == proyecto && !x.turno.acabado()))
+    SESIONES.with_borrow(|s| {
+        s.iter()
+            .any(|x| x.proyecto == proyecto && !x.turno.acabado())
+    })
 }
 
 /// «Parar»: corta en el siguiente trozo.
@@ -202,9 +217,10 @@ pub(super) fn parar(proyecto: &str) {
 pub(super) fn espera() -> Option<u32> {
     let turnos = SESIONES.with_borrow(|s| !s.is_empty());
     let bajando = DESCARGA.with_borrow(|d| d.is_some());
-    (turnos || al_lienzo::hay_pedidos()).then_some(80).or(bajando.then_some(250))
+    (turnos || al_lienzo::hay_pedidos())
+        .then_some(80)
+        .or(bajando.then_some(250))
 }
-
 
 /// Cada cuanto, como mucho, se vuelve a precargar por escribir `@asistente`
 /// en el mismo chat (menos que el reposo de 5 min del motor: si se sigue
@@ -223,7 +239,9 @@ fn precargar_si_toca(ubicacion: &Ubicacion, a: &Abierto) {
         return;
     }
     let toca = PRECARGADO.with_borrow(|p| match p {
-        Some((proyecto, cuando)) => *proyecto != a.ficha.id || (menciona() && cuando.elapsed() >= REPRECARGAR),
+        Some((proyecto, cuando)) => {
+            *proyecto != a.ficha.id || (menciona() && cuando.elapsed() >= REPRECARGAR)
+        }
         None => true,
     });
     if !toca {
@@ -235,7 +253,8 @@ fn precargar_si_toca(ubicacion: &Ubicacion, a: &Abierto) {
     if !matches!(ia_nube::eleccion(&aj.asistente), ia_nube::Eleccion::Local) {
         return;
     }
-    let modelo = ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
+    let modelo =
+        ia_motor::modelo_elegido(Some(aj.asistente.modelo.as_str()).filter(|m| !m.is_empty()));
     if let Some(m) = ia_motor::raiz().and_then(|raiz| ia_motor::del_proceso(&raiz, &modelo).ok()) {
         ia_motor::precargar(m);
     }
@@ -261,7 +280,15 @@ pub(super) fn motor_de_los_ajustes(
         })
     };
     match ia_nube::eleccion(&aj.asistente) {
-        ia_nube::Eleccion::Nube(p) => ia_nube::motor(p, if aj.asistente.respaldo_local { local() } else { None }, pensar),
+        ia_nube::Eleccion::Nube(p) => ia_nube::motor(
+            p,
+            if aj.asistente.respaldo_local {
+                local()
+            } else {
+                None
+            },
+            pensar,
+        ),
         ia_nube::Eleccion::Local => local().ok_or_else(|| textos.t("asistente-sin-modelo")),
     }
 }
@@ -273,11 +300,17 @@ pub(super) fn motor_de_los_ajustes(
 /// Una foto tambien: en el chat «Asistente» una foto sola se contesta
 /// (antes no se llamaba a nadie al adjuntarla y el usuario se quedaba
 /// esperando una respuesta que no iba a llegar, 13-oct).
-pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> Option<String> {
+pub(super) fn al_enviar(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    textos: &Catalogo,
+) -> Option<String> {
     let nueva = a.mensajes.last()?;
     let para_el_asistente = ia_chat::pregunta_de(nueva, a.ficha.es_asistente());
     // Si espera una duda con opciones, lo escrito es la respuesta.
-    let escrito = para_el_asistente.clone().unwrap_or_else(|| nueva.texto.clone());
+    let escrito = para_el_asistente
+        .clone()
+        .unwrap_or_else(|| nueva.texto.clone());
     if contestar_duda_escribiendo(a, &escrito, para_el_asistente.is_some()) {
         return None;
     }
@@ -290,7 +323,9 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     // tarea es compleja, con el mismo criterio para el local y la nube
     // (`pixpin_ia::complejidad`). La ventana: el local segun su modelo; la
     // nube tiene de sobra, pero la hoja y el reinicio valen igual.
-    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
+    let aj = pixpin_store::cargar(ubicacion)
+        .unwrap_or_default()
+        .asistente;
     let pensar = ia_pensado::pensar(aj.pensar, &pregunta);
     let ventana = match ia_nube::eleccion(&aj) {
         ia_nube::Eleccion::Nube(_) => ia_pensado::VENTANA_NUBE,
@@ -299,7 +334,10 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     // Sin modelo (o sin clave) las ordenes simples igual se hacen: van por
     // el camino rapido (`asistente::rapido`, el mismo que Flow Launcher y las
     // automatizaciones). Lo demas dira el aviso.
-    let motor = match crate::asistente::rapido::motor_o_sin(motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto, pensar), &pregunta) {
+    let motor = match crate::asistente::rapido::motor_o_sin(
+        motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto, pensar),
+        &pregunta,
+    ) {
         Ok(m) => m,
         Err(aviso) => return Some(aviso),
     };
@@ -356,7 +394,9 @@ fn lanzar_con(
     let vivos = ia_chat::desde_el_corte(&a.mensajes);
     // La foto puede ser la misma que se acaba de mandar.
     let foto = ia_chat::foto_reciente(vivos).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
-    let adjuntos = ia_chat::adjuntos(vivos, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
+    let adjuntos = ia_chat::adjuntos(vivos, |m| {
+        ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file())
+    });
     // `@lienzo:<nombre>`: donde dibujar si no hay un lienzo abierto.
     let (para_el_modelo, destino) = ia_chat::resolver_lienzo(&pregunta, &a.mensajes);
     let abrir = ia_chat::pide_abrir(&pregunta);
@@ -387,17 +427,27 @@ fn lanzar_con(
         }
         None => {
             let conversacion = ia_chat::conversacion(anteriores);
-            (ia_turno::historial_para_el_modelo(&conversacion, &para_el_modelo, None), None)
+            (
+                ia_turno::historial_para_el_modelo(&conversacion, &para_el_modelo, None),
+                None,
+            )
         }
     };
 
     // La burbuja de la respuesta nace ya, con el cursor: el usuario ve que
     // se le esta contestando aunque el modelo tarde en cargar.
-    let vivo = EnVivo { estado: Some(ESTADO_INICIAL.into()), ..Default::default() };
+    let vivo = EnVivo {
+        estado: Some(ESTADO_INICIAL.into()),
+        ..Default::default()
+    };
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     // En otro chat la respuesta cuelga de la pregunta, para que se sepa a
     // que contesta entre los mensajes de los demas.
-    let responde_a = if a.ficha.es_asistente() { None } else { pregunta_id };
+    let responde_a = if a.ficha.es_asistente() {
+        None
+    } else {
+        pregunta_id
+    };
     let nota = escribir_nota(
         &raiz,
         &proyecto,
@@ -451,12 +501,21 @@ fn lanzar_con(
 /// siguiente turno empieza de cero: sin historial, sin la hoja de trabajo y
 /// sin las fotos ni los adjuntos de antes. Con un turno en marcha no se
 /// corta (devuelve el aviso); si ya se acaba de cortar, no se repite.
-pub(super) fn nueva_conversacion(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalogo) -> Option<String> {
+pub(super) fn nueva_conversacion(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    textos: &Catalogo,
+) -> Option<String> {
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
     // Dos cortes seguidos no dicen nada nuevo.
-    if a.mensajes.iter().rev().find(|m| !cuaderno::es_de_sistema(m)).is_some_and(ia_chat::es_corte) {
+    if a.mensajes
+        .iter()
+        .rev()
+        .find(|m| !cuaderno::es_de_sistema(m))
+        .is_some_and(ia_chat::es_corte)
+    {
         return None;
     }
     let raiz = ubicacion.raiz().to_path_buf();
@@ -481,8 +540,14 @@ pub(super) fn nueva_conversacion(ubicacion: &Ubicacion, a: &mut Abierto, textos:
         None,
     )
     .and_then(|mut nota| {
-        nota.resto.insert(ia_chat::NUEVA_CONVERSACION.into(), serde_json::Value::Bool(true));
-        cuaderno::reemplazar(&pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id), &nota)?;
+        nota.resto.insert(
+            ia_chat::NUEVA_CONVERSACION.into(),
+            serde_json::Value::Bool(true),
+        );
+        cuaderno::reemplazar(
+            &pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id),
+            &nota,
+        )?;
         Ok(nota)
     });
     match hecho {
@@ -508,9 +573,9 @@ pub(super) fn lienzo_por_abrir(a: &Abierto) -> Option<usize> {
         return None;
     }
     POR_ABRIR.with_borrow_mut(|p| *p = None);
-    a.mensajes
-        .iter()
-        .rposition(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(referencia.as_str()))
+    a.mensajes.iter().rposition(|m| {
+        ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(referencia.as_str())
+    })
 }
 
 /// El lienzo de «Abrir lienzo» de la respuesta `i`, si lo lleva.
@@ -528,12 +593,17 @@ pub(super) fn fuente_de(a: &Abierto, i: usize) -> Option<ia_chat::FuenteCitada> 
 /// principal). En su hilo: la ventana del chat no espera a nadie.
 pub(super) fn abrir_fuente(f: &ia_chat::FuenteCitada) {
     let json = f.pedido.to_string();
-    let _ = std::thread::Builder::new().name("abrir-fuente".into()).spawn(move || {
-        let r = pixpin_shell::mensajero::enviar_pedido(&json);
-        if r != 1 {
-            tracing::warn!(respuesta = r, "asistente: no se pudo abrir la fuente citada");
-        }
-    });
+    let _ = std::thread::Builder::new()
+        .name("abrir-fuente".into())
+        .spawn(move || {
+            let r = pixpin_shell::mensajero::enviar_pedido(&json);
+            if r != 1 {
+                tracing::warn!(
+                    respuesta = r,
+                    "asistente: no se pudo abrir la fuente citada"
+                );
+            }
+        });
 }
 
 /// A que lado va un mensaje: en una conversacion con el asistente (su chat,
@@ -555,23 +625,32 @@ pub(super) fn conversacion_con_ia(a: &Abierto) -> bool {
 /// La pregunta que espera respuesta en la burbuja del mensaje `i`, si la hay.
 pub(super) fn pregunta_pendiente(a: &Abierto, i: usize) -> Option<String> {
     let m = a.mensajes.get(i)?;
-    SESIONES.with_borrow(|s| {
-        s.iter()
-            .find(|s| s.proyecto == a.ficha.id && s.nota == m.id && s.responder.is_some())
-            .and_then(|s| s.vivo.pendiente.clone())
-    })
-    // O la de un turno sin ventana (Flow, una automatizacion), que escribe
-    // en este mismo chat desde su hilo.
-    .or_else(|| crate::asistente::permiso::pregunta(&a.ficha.id, &m.id))
+    SESIONES
+        .with_borrow(|s| {
+            s.iter()
+                .find(|s| s.proyecto == a.ficha.id && s.nota == m.id && s.responder.is_some())
+                .and_then(|s| s.vivo.pendiente.clone())
+        })
+        // O la de un turno sin ventana (Flow, una automatizacion), que escribe
+        // en este mismo chat desde su hilo.
+        .or_else(|| crate::asistente::permiso::pregunta(&a.ficha.id, &m.id))
 }
 
 /// **«Sí» o «No» en la tarjeta** de la burbuja `i`. La pregunta contestada
 /// queda escrita en la burbuja; el turno sigue en su hilo.
 pub(super) fn contestar(a: &mut Abierto, i: usize, si: bool) -> bool {
-    let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) else { return false };
+    let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) else {
+        return false;
+    };
     let texto = SESIONES.with_borrow_mut(|s| {
-        let s = s.iter_mut().find(|s| s.proyecto == a.ficha.id && s.nota == id)?;
-        let c = if si { ia_chat::Contestacion::Si } else { ia_chat::Contestacion::No };
+        let s = s
+            .iter_mut()
+            .find(|s| s.proyecto == a.ficha.id && s.nota == id)?;
+        let c = if si {
+            ia_chat::Contestacion::Si
+        } else {
+            ia_chat::Contestacion::No
+        };
         s.contestar(c).then(|| s.vivo.mostrar())
     });
     let Some(texto) = texto else {
@@ -599,10 +678,17 @@ pub(super) fn eleccion_pendiente(a: &Abierto, i: usize) -> Option<(Pregunta, boo
 /// **Un boton de la tarjeta de opciones** de la burbuja `i`: `Some(n)` la
 /// opcion `n`; `None`, «Otro…» (lo siguiente que escriba es la respuesta;
 /// devuelve el aviso que se lo dice).
-pub(super) fn elegir(a: &mut Abierto, i: usize, opcion: Option<usize>, textos: &Catalogo) -> Option<String> {
+pub(super) fn elegir(
+    a: &mut Abierto,
+    i: usize,
+    opcion: Option<usize>,
+    textos: &Catalogo,
+) -> Option<String> {
     let id = a.mensajes.get(i).map(|m| m.id.clone())?;
     let texto = SESIONES.with_borrow_mut(|s| {
-        let s = s.iter_mut().find(|s| s.proyecto == a.ficha.id && s.nota == id)?;
+        let s = s
+            .iter_mut()
+            .find(|s| s.proyecto == a.ficha.id && s.nota == id)?;
         match opcion {
             Some(n) => s.elegir(Contestada::Opcion(n)).then(|| s.vivo.mostrar()),
             None => {
@@ -633,12 +719,17 @@ fn contestar_duda_escribiendo(a: &mut Abierto, texto: &str, para_el_asistente: b
     let proyecto = a.ficha.id.clone();
     let hecho = SESIONES.with_borrow_mut(|s| {
         let s = s.iter_mut().find(|s| {
-            s.proyecto == proyecto && s.elegir.as_ref().is_some_and(|e| e.otro || para_el_asistente)
+            s.proyecto == proyecto
+                && s.elegir
+                    .as_ref()
+                    .is_some_and(|e| e.otro || para_el_asistente)
         })?;
         s.elegir(Contestada::Texto(texto.trim().to_string()));
         Some((s.nota.clone(), s.vivo.mostrar()))
     });
-    let Some((nota, mostrar)) = hecho else { return false };
+    let Some((nota, mostrar)) = hecho else {
+        return false;
+    };
     if let Some(m) = a.mensajes.iter_mut().find(|m| m.id == nota) {
         m.texto = mostrar;
     }
@@ -661,14 +752,20 @@ fn alto_opcion(p: &Pintor, etiqueta: &str, descripcion: &str, ancho: f32, e: f32
     let h2 = if descripcion.trim().is_empty() {
         0.0
     } else {
-        2.0 * e + p.medir_texto_ajustado(descripcion, ELEGIR_DESC_TAM * e, dentro).1
+        2.0 * e
+            + p.medir_texto_ajustado(descripcion, ELEGIR_DESC_TAM * e, dentro)
+                .1
     };
     2.0 * ELEGIR_RELLENO * e + h1 + h2
 }
 
 /// Lo que mide la tarjeta de opciones con ese ancho.
 pub(super) fn alto_eleccion(p: &Pintor, pregunta: &Pregunta, ancho: f32, e: f32) -> f32 {
-    let (_, alto_texto) = p.medir_texto_ajustado(&format!("❓ {}", pregunta.texto), ELEGIR_TAM * e, ancho - 2.0 * ELEGIR_AIRE * e);
+    let (_, alto_texto) = p.medir_texto_ajustado(
+        &format!("❓ {}", pregunta.texto),
+        ELEGIR_TAM * e,
+        ancho - 2.0 * ELEGIR_AIRE * e,
+    );
     let opciones: f32 = pregunta
         .opciones
         .iter()
@@ -694,13 +791,25 @@ pub(super) fn pintar_eleccion(
     let aire = ELEGIR_AIRE * e;
     let texto = format!("❓ {}", pregunta.texto);
     let (_, alto_texto) = p.medir_texto_ajustado(&texto, ELEGIR_TAM * e, caja.ancho - 2.0 * aire);
-    p.texto_ajustado(&texto, caja.x + aire, caja.y + aire, ELEGIR_TAM * e, caja.ancho - 2.0 * aire, tema.texto);
+    p.texto_ajustado(
+        &texto,
+        caja.x + aire,
+        caja.y + aire,
+        ELEGIR_TAM * e,
+        caja.ancho - 2.0 * aire,
+        tema.texto,
+    );
     let mut y = caja.y + aire + alto_texto + 8.0 * e;
     let mut zonas = Vec::new();
     let relleno = ELEGIR_RELLENO * e;
     for (n, o) in pregunta.opciones.iter().enumerate() {
         let alto = alto_opcion(p, &o.etiqueta, &o.descripcion, caja.ancho, e);
-        let b = RectF { x: caja.x + aire, y, ancho: caja.ancho - 2.0 * aire, alto };
+        let b = RectF {
+            x: caja.x + aire,
+            y,
+            ancho: caja.ancho - 2.0 * aire,
+            alto,
+        };
         let dentro = b.ancho - 2.0 * relleno;
         let (color_texto, color_desc) = if n == 0 {
             p.rellenar_redondeado(b, 8.0 * e, azul);
@@ -717,18 +826,41 @@ pub(super) fn pintar_eleccion(
             o.etiqueta.clone()
         };
         let (_, h1) = p.medir_texto_ajustado(&etiqueta, ELEGIR_TAM * e, dentro);
-        p.texto_ajustado(&etiqueta, b.x + relleno, b.y + relleno, ELEGIR_TAM * e, dentro, color_texto);
+        p.texto_ajustado(
+            &etiqueta,
+            b.x + relleno,
+            b.y + relleno,
+            ELEGIR_TAM * e,
+            dentro,
+            color_texto,
+        );
         if !o.descripcion.trim().is_empty() {
-            p.texto_ajustado(&o.descripcion, b.x + relleno, b.y + relleno + h1 + 2.0 * e, ELEGIR_DESC_TAM * e, dentro, color_desc);
+            p.texto_ajustado(
+                &o.descripcion,
+                b.x + relleno,
+                b.y + relleno + h1 + 2.0 * e,
+                ELEGIR_DESC_TAM * e,
+                dentro,
+                color_desc,
+            );
         }
         zonas.push((a_rect(b), Some(n)));
         y += alto + ELEGIR_HUECO * e;
     }
     // «Otro…»: pulsado, dice que se escriba abajo.
-    let rotulo = if otro { textos.t("asistente-otro-escribe") } else { textos.t("asistente-otro") };
+    let rotulo = if otro {
+        textos.t("asistente-otro-escribe")
+    } else {
+        textos.t("asistente-otro")
+    };
     let tam = ELEGIR_TAM * e;
     let (w, h) = p.medir_texto(&rotulo, tam);
-    let b = RectF { x: caja.x + aire, y, ancho: (w + 24.0 * e).min(caja.ancho - 2.0 * aire), alto: ELEGIR_OTRO * e };
+    let b = RectF {
+        x: caja.x + aire,
+        y,
+        ancho: (w + 24.0 * e).min(caja.ancho - 2.0 * aire),
+        alto: ELEGIR_OTRO * e,
+    };
     p.texto(&rotulo, b.x + 12.0 * e, b.y + (b.alto - h) / 2.0, tam, azul);
     zonas.push((a_rect(b), None));
     zonas
@@ -743,7 +875,11 @@ pub(super) const CONFIRMAR_ANCHO_MIN: f32 = 260.0;
 
 /// Lo que mide la tarjeta de confirmar con ese ancho.
 pub(super) fn alto_confirmacion(p: &Pintor, pregunta: &str, ancho: f32, e: f32) -> f32 {
-    let (_, alto_texto) = p.medir_texto_ajustado(&format!("⚠️ {pregunta}"), CONFIRMAR_TAM * e, ancho - 2.0 * CONFIRMAR_AIRE * e);
+    let (_, alto_texto) = p.medir_texto_ajustado(
+        &format!("⚠️ {pregunta}"),
+        CONFIRMAR_TAM * e,
+        ancho - 2.0 * CONFIRMAR_AIRE * e,
+    );
     CONFIRMAR_AIRE * e + alto_texto + 8.0 * e + CONFIRMAR_BOTON * e + CONFIRMAR_AIRE * e
 }
 
@@ -762,7 +898,14 @@ pub(super) fn pintar_confirmacion(
     p.rellenar_redondeado(caja, 10.0 * e, con_alfa(rojo, 0.10));
     let aire = CONFIRMAR_AIRE * e;
     let texto = format!("⚠️ {pregunta}");
-    p.texto_ajustado(&texto, caja.x + aire, caja.y + aire, CONFIRMAR_TAM * e, caja.ancho - 2.0 * aire, tema.texto);
+    p.texto_ajustado(
+        &texto,
+        caja.x + aire,
+        caja.y + aire,
+        CONFIRMAR_TAM * e,
+        caja.ancho - 2.0 * aire,
+        tema.texto,
+    );
     let tam = CONFIRMAR_TAM * e;
     let alto_b = CONFIRMAR_BOTON * e;
     let y = caja.y + caja.alto - aire - alto_b;
@@ -783,18 +926,31 @@ pub(super) fn pintar_confirmacion(
         alto: alto_b,
     };
     p.rellenar_redondeado(b_no, alto_b / 2.0, tema.enviar);
-    p.texto(&no, b_no.x + 16.0 * e, y + (alto_b - hno) / 2.0, tam, hex(0xffffff));
+    p.texto(
+        &no,
+        b_no.x + 16.0 * e,
+        y + (alto_b - hno) / 2.0,
+        tam,
+        hex(0xffffff),
+    );
     // El borde rojo redondeado: el rojo entero y, encima, el fondo un poco mas chico.
     p.rellenar_redondeado(b_si, alto_b / 2.0, rojo);
     let filete = (1.5 * e).max(1.0);
-    p.rellenar_redondeado(encoger(b_si, filete), alto_b / 2.0 - filete, tema.burbuja_otra);
+    p.rellenar_redondeado(
+        encoger(b_si, filete),
+        alto_b / 2.0 - filete,
+        tema.burbuja_otra,
+    );
     p.texto(&si, b_si.x + 16.0 * e, y + (alto_b - hno) / 2.0, tam, rojo);
     vec![(a_rect(b_si), true), (a_rect(b_no), false)]
 }
 
 /// **Una vez por vuelta del bucle.** Devuelve si hay que repintar y un
 /// aviso, si lo hay.
-pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -> (bool, Option<String>) {
+pub(super) fn latido(
+    ubicacion: &Ubicacion,
+    mut abierto: Option<&mut Abierto>,
+) -> (bool, Option<String>) {
     let mut cambio = false;
     let mut aviso = None;
 
@@ -856,7 +1012,10 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 contestada = s.contestar(ia_chat::Contestacion::Caducada);
             }
             // La duda sin contestar a tiempo: sigue con la recomendada.
-            if s.elegir.as_ref().is_some_and(|e| e.desde.elapsed() >= ia_chat::CADUCA_LA_PREGUNTA) {
+            if s.elegir
+                .as_ref()
+                .is_some_and(|e| e.desde.elapsed() >= ia_chat::CADUCA_LA_PREGUNTA)
+            {
                 contestada |= s.elegir(Contestada::SinRespuesta);
             }
             if avisos.is_empty() && !contestada {
@@ -867,13 +1026,19 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 match av {
                     Aviso::Evento(e) => s.vivo.aplicar(&e),
                     Aviso::TextoLeido { de, texto } => leidos.push((s.proyecto.clone(), de, texto)),
-                    Aviso::Confirmar { pregunta, responder } => {
+                    Aviso::Confirmar {
+                        pregunta,
+                        responder,
+                    } => {
                         s.vivo.preguntar(&pregunta);
                         s.responder = Some((responder, Instant::now()));
                         // Que se vea ya en el disco tambien.
                         s.guardado = Instant::now() - GUARDAR_CADA;
                     }
-                    Aviso::Preguntar { pregunta, responder } => {
+                    Aviso::Preguntar {
+                        pregunta,
+                        responder,
+                    } => {
                         // Una anterior sin contestar (no deberia: el turno
                         // espera) se da por no contestada.
                         s.elegir(Contestada::SinRespuesta);
@@ -913,14 +1078,21 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
             // sale su «Abrir lienzo». Y lo que cito de los documentos: su
             // «Abrir fuente».
             let lienzo = s.lienzo.clone().filter(|_| acabo);
-            let fuentes = if acabo { ia_chat::fuentes_para_la_nota(&s.citas, &texto) } else { None };
+            let fuentes = if acabo {
+                ia_chat::fuentes_para_la_nota(&s.citas, &texto)
+            } else {
+                None
+            };
             let apuntar = |m: &mut cuaderno::Mensaje| {
                 if let Some(r) = &lienzo {
-                    m.resto
-                        .insert(ia_chat::LIENZO_DE_LA_RESPUESTA.into(), serde_json::Value::String(r.clone()));
+                    m.resto.insert(
+                        ia_chat::LIENZO_DE_LA_RESPUESTA.into(),
+                        serde_json::Value::String(r.clone()),
+                    );
                 }
                 if let Some(f) = &fuentes {
-                    m.resto.insert(ia_chat::FUENTES_DE_LA_RESPUESTA.into(), f.clone());
+                    m.resto
+                        .insert(ia_chat::FUENTES_DE_LA_RESPUESTA.into(), f.clone());
                 }
             };
             if let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == s.proyecto)
@@ -932,7 +1104,10 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                 a.colocado.borrow_mut().ancho = 0;
                 cambio = true;
             }
-            if acabo && s.abrir && let Some(r) = &lienzo {
+            if acabo
+                && s.abrir
+                && let Some(r) = &lienzo
+            {
                 POR_ABRIR.with_borrow_mut(|p| *p = Some((s.proyecto.clone(), r.clone())));
             }
             if acabo || s.guardado.elapsed() >= GUARDAR_CADA {
@@ -949,7 +1124,12 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                     // Ya no se lee sola al acabar (pedido del usuario,
                     // 17-oct): queda el altavoz de la burbuja.
                     let resumen: String = texto.chars().take(120).collect();
-                    let _ = subir_en_la_lista(&raiz, &s.proyecto, pixpin_shell::entorno::ahora_utc_ms(), &resumen);
+                    let _ = subir_en_la_lista(
+                        &raiz,
+                        &s.proyecto,
+                        pixpin_shell::entorno::ahora_utc_ms(),
+                        &resumen,
+                    );
                 }
             }
         }
@@ -1061,8 +1241,18 @@ pub(super) fn meter_en_el_lienzo_del_chat(
     destino: Option<&str>,
     documento: &str,
 ) -> Result<(String, String), String> {
-    let (r, referencia) =
-        trabajar_en_el_lienzo_del_chat(ubicacion, abierto, proyecto, destino, &al_lienzo::Trabajo::Dibujar, documento, None, None, &[], None)?;
+    let (r, referencia) = trabajar_en_el_lienzo_del_chat(
+        ubicacion,
+        abierto,
+        proyecto,
+        destino,
+        &al_lienzo::Trabajo::Dibujar,
+        documento,
+        None,
+        None,
+        &[],
+        None,
+    )?;
     Ok((r.texto, referencia.unwrap_or_default()))
 }
 
@@ -1103,10 +1293,15 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
     let mut del_disco_solo = false;
     if let Some(r) = destino
         && es_el_abierto
-        && !mensajes.iter().any(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r))
+        && !mensajes
+            .iter()
+            .any(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r))
     {
         let leidos = del_disco();
-        if leidos.iter().any(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r)) {
+        if leidos
+            .iter()
+            .any(|m| ia_chat::es_lienzo(m) && m.referencia.as_deref() == Some(r))
+        {
             mensajes = leidos;
             del_disco_solo = true;
         }
@@ -1122,11 +1317,17 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         Some(i) if del_disco_solo => (None, mensajes[i].clone(), false),
         Some(i) => (Some(i), mensajes[i].clone(), false),
         // Resumir o editar no estrenan un lienzo: si aun no hay, esta vacio.
-        None if !matches!(trabajo, al_lienzo::Trabajo::Dibujar | al_lienzo::Trabajo::Plantilla { .. }) => {
+        None if !matches!(
+            trabajo,
+            al_lienzo::Trabajo::Dibujar | al_lienzo::Trabajo::Plantilla { .. }
+        ) =>
+        {
             return match trabajo {
                 al_lienzo::Trabajo::Resumir => Ok((
                     al_lienzo::Respuesta {
-                        texto: "Lienzo destino: vacio (aun no hay lienzo del asistente en este chat).".into(),
+                        texto:
+                            "Lienzo destino: vacio (aun no hay lienzo del asistente en este chat)."
+                                .into(),
                         ids: Vec::new(),
                         ctx: Some(Default::default()),
                         ..Default::default()
@@ -1139,17 +1340,28 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         }
         None => {
             let numero = mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-            let m = escribir_lienzo(raiz, proyecto, ia_chat::APARATO, numero, Some(NOMBRE_LIENZO_PROPIO))
-                .map_err(|e| {
-                    tracing::warn!(?e, "asistente: no se pudo crear su lienzo");
-                    "no se pudo crear un lienzo".to_string()
-                })?;
+            let m = escribir_lienzo(
+                raiz,
+                proyecto,
+                ia_chat::APARATO,
+                numero,
+                Some(NOMBRE_LIENZO_PROPIO),
+            )
+            .map_err(|e| {
+                tracing::warn!(?e, "asistente: no se pudo crear su lienzo");
+                "no se pudo crear un lienzo".to_string()
+            })?;
             (None, m, true)
         }
     };
     let referencia = mensaje.referencia.clone().unwrap_or_default();
-    let hoja = preparar_hoja(raiz, proyecto, &mensaje, pixpin_shell::entorno::ahora_utc_ms())
-        .ok_or("no se pudo abrir el lienzo")?;
+    let hoja = preparar_hoja(
+        raiz,
+        proyecto,
+        &mensaje,
+        pixpin_shell::entorno::ahora_utc_ms(),
+    )
+    .ok_or("no se pudo abrir el lienzo")?;
     let mut escena = hoja.escena;
     let mut lienzo = hoja.lienzo;
     // Mirarlo (`asistente::ojos`): se copia la zona, con sus fotos por su
@@ -1159,27 +1371,67 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
         al_lienzo::Trabajo::Ver { mirada, ctx } => {
             let fotos = &hoja.fotos;
             let enc = crate::asistente::ojos::encargo_de(&escena, mirada, ctx, |id| {
-                fotos.iter().find(|(i, _)| *i == id).map(|(_, r)| crate::asistente::ojos::Pixeles::Ruta(r.clone()))
+                fotos
+                    .iter()
+                    .find(|(i, _)| *i == id)
+                    .map(|(_, r)| crate::asistente::ojos::Pixeles::Ruta(r.clone()))
             })?;
-            return Ok((al_lienzo::Respuesta { vista: Some(Box::new(enc)), ..Default::default() }, Some(referencia)));
+            return Ok((
+                al_lienzo::Respuesta {
+                    vista: Some(Box::new(enc)),
+                    ..Default::default()
+                },
+                Some(referencia),
+            ));
         }
-        al_lienzo::Trabajo::Juntar { .. } => return Ok((al_lienzo::Respuesta::default(), Some(referencia))),
+        al_lienzo::Trabajo::Juntar { .. } => {
+            return Ok((al_lienzo::Respuesta::default(), Some(referencia)));
+        }
         // La imagen del lienzo (la ultima pegada) para calcarla: de su fichero.
         al_lienzo::Trabajo::Imagen => {
-            let (id, caja) = al_lienzo::imagen_de_escena(&escena, &[]).ok_or("no hay ninguna imagen en el lienzo")?;
-            let ruta = hoja.fotos.iter().find(|(i, _)| *i == id).map(|(_, r)| r.clone()).ok_or("la imagen del lienzo no esta en su carpeta")?;
-            let img = crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(&ruta)).ok_or("no se pudo leer la imagen del lienzo")?;
-            let imagen = al_lienzo::ImagenDelLienzo { rgba: img.pixeles, ancho: img.ancho, alto: img.alto, caja };
-            return Ok((al_lienzo::Respuesta { imagen: Some(Box::new(imagen)), ..Default::default() }, Some(referencia)));
+            let (id, caja) = al_lienzo::imagen_de_escena(&escena, &[])
+                .ok_or("no hay ninguna imagen en el lienzo")?;
+            let ruta = hoja
+                .fotos
+                .iter()
+                .find(|(i, _)| *i == id)
+                .map(|(_, r)| r.clone())
+                .ok_or("la imagen del lienzo no esta en su carpeta")?;
+            let img = crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(&ruta))
+                .ok_or("no se pudo leer la imagen del lienzo")?;
+            let imagen = al_lienzo::ImagenDelLienzo {
+                rgba: img.pixeles,
+                ancho: img.ancho,
+                alto: img.alto,
+                caja,
+            };
+            return Ok((
+                al_lienzo::Respuesta {
+                    imagen: Some(Box::new(imagen)),
+                    ..Default::default()
+                },
+                Some(referencia),
+            ));
         }
         _ => {}
     }
     let respuesta = match trabajo {
         al_lienzo::Trabajo::Dibujar if en_hoja.is_some() => {
-            let n = al_lienzo::meter_de_hoja(&mut escena, documento, en_hoja.expect("se acaba de mirar"), None)?;
+            let n = al_lienzo::meter_de_hoja(
+                &mut escena,
+                documento,
+                en_hoja.expect("se acaba de mirar"),
+                None,
+            )?;
             if documento.is_empty() {
                 // Solo cerraba la hoja: no hay nada que guardar.
-                return Ok((al_lienzo::Respuesta { texto: al_lienzo::resumen(0), ..Default::default() }, Some(referencia)));
+                return Ok((
+                    al_lienzo::Respuesta {
+                        texto: al_lienzo::resumen(0),
+                        ..Default::default()
+                    },
+                    Some(referencia),
+                ));
             }
             if !fotos_de_hoja.is_empty() {
                 lienzo = crate::imagenes_lienzo::guardar_pegadas_en_hoja(
@@ -1191,7 +1443,10 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
                 )
                 .map_err(|e| format!("no se pudieron guardar las fotos: {e}"))?;
             }
-            al_lienzo::Respuesta { texto: al_lienzo::resumen(n), ..Default::default() }
+            al_lienzo::Respuesta {
+                texto: al_lienzo::resumen(n),
+                ..Default::default()
+            }
         }
         al_lienzo::Trabajo::Dibujar => {
             let ids = al_lienzo::meter_en_sitio(&mut escena, documento, junto_a, None)?;
@@ -1201,9 +1456,12 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
             // Un almacen de paso para lo que se pegue; las fotos de la hoja
             // se cargan solo si hace falta su tamano (recortar).
             let mut imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(16_384);
-            if matches!(otro, al_lienzo::Trabajo::Editar { edicion, .. } if edicion.herramienta == pixpin_ia::edicion::IMAGEN) {
+            if matches!(otro, al_lienzo::Trabajo::Editar { edicion, .. } if edicion.herramienta == pixpin_ia::edicion::IMAGEN)
+            {
                 for (id, ruta) in &hoja.fotos {
-                    if let Some(img) = crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(ruta)) {
+                    if let Some(img) =
+                        crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(ruta))
+                    {
                         imagenes.guardar_con_id(*id, img);
                     }
                 }
@@ -1254,10 +1512,17 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
     let mut respuesta = respuesta;
     // «hecho: ...» -> «hecho: ... «Lienzo del asistente»», con la lista
     // de ids detras.
-    let (primera, resto) = respuesta.texto.split_once('\n').unwrap_or((respuesta.texto.as_str(), ""));
+    let (primera, resto) = respuesta
+        .texto
+        .split_once('\n')
+        .unwrap_or((respuesta.texto.as_str(), ""));
     respuesta.texto = format!(
         "{primera} «{nombre}»{}{}{resto}",
-        if nuevo { " (lienzo nuevo en este chat)" } else { "" },
+        if nuevo {
+            " (lienzo nuevo en este chat)"
+        } else {
+            ""
+        },
         if resto.is_empty() { "" } else { "\n" }
     );
     Ok((respuesta, Some(referencia)))
@@ -1280,7 +1545,9 @@ fn hace_falta_tarjeta(a: &Abierto) -> bool {
     if ia_nube::eleccion_reciente(&a.raiz) != ia_nube::Eleccion::Local {
         return false;
     }
-    let Some(raiz) = ia_motor::raiz() else { return false };
+    let Some(raiz) = ia_motor::raiz() else {
+        return false;
+    };
     TARJETA.with_borrow_mut(|t| {
         t.vista = false;
         let modelo = elegido(t, &a.raiz);
@@ -1300,8 +1567,10 @@ fn hace_falta_tarjeta(a: &Abierto) -> bool {
 
 /// Si el modelo esta bajado, mirado como mucho cada 5 s.
 fn mirar_listo(t: &mut Tarjeta, raiz: &std::path::Path, m: &pixpin_ia::modelos::Modelo) -> bool {
-    if let Some((_, _, listo)) =
-        t.listo.iter().find(|(cuando, id, _)| *id == m.id && cuando.elapsed() < Duration::from_secs(5))
+    if let Some((_, _, listo)) = t
+        .listo
+        .iter()
+        .find(|(cuando, id, _)| *id == m.id && cuando.elapsed() < Duration::from_secs(5))
     {
         return *listo;
     }
@@ -1315,12 +1584,21 @@ fn mirar_listo(t: &mut Tarjeta, raiz: &std::path::Path, m: &pixpin_ia::modelos::
 /// no, lo elegido en ella o lo de los ajustes; sin nada, el ligero si el
 /// equipo tiene poca memoria.
 fn elegido(t: &mut Tarjeta, raiz_datos: &std::path::Path) -> pixpin_ia::modelos::Modelo {
-    use pixpin_ia::modelos::{QWEN35_08B, QWEN35_2B};
-    let fresco = t.ajuste.as_ref().is_some_and(|(c, _, _)| c.elapsed() < Duration::from_secs(5));
+    use pixpin_ia::modelos::{QWEN35_2B, QWEN35_08B};
+    let fresco = t
+        .ajuste
+        .as_ref()
+        .is_some_and(|(c, _, _)| c.elapsed() < Duration::from_secs(5));
     if !fresco {
-        let u = Ubicacion::Instalado { raiz: raiz_datos.to_path_buf() };
+        let u = Ubicacion::Instalado {
+            raiz: raiz_datos.to_path_buf(),
+        };
         let aj = pixpin_store::cargar(&u).unwrap_or_default();
-        t.ajuste = Some((Instant::now(), aj.asistente.modelo, aj.asistente.mejor_vista));
+        t.ajuste = Some((
+            Instant::now(),
+            aj.asistente.modelo,
+            aj.asistente.mejor_vista,
+        ));
     }
     if t.vista {
         return GEMMA4_E2B;
@@ -1329,7 +1607,11 @@ fn elegido(t: &mut Tarjeta, raiz_datos: &std::path::Path) -> pixpin_ia::modelos:
         Some(true) => QWEN35_08B,
         Some(false) => QWEN35_2B,
         None => {
-            let id = t.ajuste.as_ref().map(|(_, m, _)| m.as_str()).unwrap_or_default();
+            let id = t
+                .ajuste
+                .as_ref()
+                .map(|(_, m, _)| m.as_str())
+                .unwrap_or_default();
             if !id.is_empty() {
                 ia_motor::modelo_elegido(Some(id))
             } else if poca_memoria() {
@@ -1361,7 +1643,10 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
     let pad = 16.0 * e;
     let dentro = ancho - 2.0 * pad;
     let raiz_m = ia_motor::raiz();
-    let bajando = DESCARGA.with_borrow(|d| d.as_ref().map(|d| (d.fraccion(), d.ultimo.clone(), d.modelo)));
+    let bajando = DESCARGA.with_borrow(|d| {
+        d.as_ref()
+            .map(|d| (d.fraccion(), d.ultimo.clone(), d.modelo))
+    });
 
     TARJETA.with_borrow_mut(|t| {
         t.botones.clear();
@@ -1369,7 +1654,10 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
         // La del modelo de mejor vista: su titulo, su explicacion y una sola
         // fila (no hay nada que elegir).
         let (titulo, explica) = if t.vista {
-            (textos.t("asistente-vista-titulo"), textos.t("asistente-vista-explica"))
+            (
+                textos.t("asistente-vista-titulo"),
+                textos.t("asistente-vista-explica"),
+            )
         } else {
             (textos.t("asistente-titulo"), textos.t("asistente-explica"))
         };
@@ -1391,21 +1679,45 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
             + 30.0 * e
             + 36.0 * e
             + pad;
-        let caja = RectF { x, y: y0, ancho, alto };
+        let caja = RectF {
+            x,
+            y: y0,
+            ancho,
+            alto,
+        };
         p.rellenar_redondeado(caja, 16.0 * e, tema.burbuja_otra);
         p.trazar(caja, (1.0 * e).max(1.0), tema.isla_borde);
 
         let mut y = y0 + pad;
-        p.texto(&format!("{} {titulo}", if t.vista { "🔭" } else { "🤖" }), x + pad, y, 16.0 * e, tema.texto);
+        p.texto(
+            &format!("{} {titulo}", if t.vista { "🔭" } else { "🤖" }),
+            x + pad,
+            y,
+            16.0 * e,
+            tema.texto,
+        );
         y += 22.0 * e;
         p.texto_ajustado(&explica, x + pad, y, 13.0 * e, dentro, tema.apagado);
         y += alto_explica + 12.0 * e;
 
         // Los modelos, para elegir (el de mejor vista va solo).
         for (ligero, m) in filas {
-            let r = RectF { x: x + pad, y, ancho: dentro, alto: fila };
+            let r = RectF {
+                x: x + pad,
+                y,
+                ancho: dentro,
+                alto: fila,
+            };
             let es = m.id == modelo.id;
-            p.rellenar_redondeado(r, 10.0 * e, if es { con_alfa(tema.enviar, 0.18) } else { tema.campo });
+            p.rellenar_redondeado(
+                r,
+                10.0 * e,
+                if es {
+                    con_alfa(tema.enviar, 0.18)
+                } else {
+                    tema.campo
+                },
+            );
             if es {
                 p.trazar(r, (1.5 * e).max(1.0), tema.enviar);
             }
@@ -1414,7 +1726,9 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
             if es {
                 p.circulo(centro, 4.0 * e, tema.enviar);
             }
-            let falta = raiz_m.as_deref().map_or(m.bytes(), |rz| ia_descarga::falta(rz, &m));
+            let falta = raiz_m
+                .as_deref()
+                .map_or(m.bytes(), |rz| ia_descarga::falta(rz, &m));
             let (clave, detalle) = match ligero {
                 Some(true) => ("asistente-modelo-ligero", "asistente-detalle-ligero"),
                 Some(false) => ("asistente-modelo-normal", "asistente-detalle-normal"),
@@ -1428,7 +1742,14 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
                 dentro - 40.0 * e,
                 tema.texto,
             );
-            p.texto_linea(&textos.t(detalle), r.x + 32.0 * e, r.y + 27.0 * e, 12.0 * e, dentro - 40.0 * e, tema.apagado);
+            p.texto_linea(
+                &textos.t(detalle),
+                r.x + 32.0 * e,
+                r.y + 27.0 * e,
+                12.0 * e,
+                dentro - 40.0 * e,
+                tema.apagado,
+            );
             if bajando.is_none()
                 && let Some(ligero) = ligero
             {
@@ -1439,10 +1760,17 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
 
         // La linea de estado: progreso, la pregunta de confirmar, o la
         // ultima noticia.
-        let falta = raiz_m.as_deref().map_or(modelo.bytes(), |rz| ia_descarga::falta(rz, &modelo));
+        let falta = raiz_m
+            .as_deref()
+            .map_or(modelo.bytes(), |rz| ia_descarga::falta(rz, &modelo));
         let estado = match &bajando {
             Some((fr, Some(pr), _)) if pr.verificando => {
-                format!("{} {} ({:.0} %)", textos.t("asistente-comprobando"), pr.fichero, fr * 100.0)
+                format!(
+                    "{} {} ({:.0} %)",
+                    textos.t("asistente-comprobando"),
+                    pr.fichero,
+                    fr * 100.0
+                )
             }
             Some((fr, pr, _)) => format!(
                 "{} {} / {} ({:.0} %)",
@@ -1455,7 +1783,10 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
                 "{} {} → {}",
                 textos.t("asistente-pregunta"),
                 ia_descarga::tamano(falta),
-                raiz_m.as_deref().map(|r| r.display().to_string()).unwrap_or_default()
+                raiz_m
+                    .as_deref()
+                    .map(|r| r.display().to_string())
+                    .unwrap_or_default()
             ),
             None => match &t.noticia {
                 Some(n) if n.starts_with("asistente-") => textos.t(n),
@@ -1467,29 +1798,51 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
         p.texto_linea(&estado, x + pad, y, 12.0 * e, dentro, tema.apagado);
         y += 18.0 * e;
         if let Some((fr, _, _)) = &bajando {
-            let barra = RectF { x: x + pad, y, ancho: dentro, alto: 6.0 * e };
+            let barra = RectF {
+                x: x + pad,
+                y,
+                ancho: dentro,
+                alto: 6.0 * e,
+            };
             p.rellenar_redondeado(barra, 3.0 * e, tema.campo);
-            p.rellenar_redondeado(RectF { ancho: dentro * fr.clamp(0.0, 1.0), ..barra }, 3.0 * e, tema.enviar);
+            p.rellenar_redondeado(
+                RectF {
+                    ancho: dentro * fr.clamp(0.0, 1.0),
+                    ..barra
+                },
+                3.0 * e,
+                tema.enviar,
+            );
         }
         y += 12.0 * e;
 
         // Los botones, a la derecha.
-        let (principal, accion_p, secundario): (String, Accion, Option<(String, Accion)>) = if bajando.is_some() {
-            (textos.t("asistente-cancelar"), Accion::Cancelar, None)
-        } else if t.confirmando {
-            (
-                format!("{} ({})", textos.t("asistente-si-bajar"), ia_descarga::tamano(falta)),
-                Accion::Confirmar,
-                Some((textos.t("asistente-cancelar"), Accion::Cancelar)),
-            )
-        } else {
-            (
-                format!("{} ({})", textos.t("asistente-bajar"), ia_descarga::tamano(falta)),
-                Accion::Bajar,
-                // La mejor vista es opcional: se puede decir que no.
-                t.vista.then(|| (textos.t("asistente-ahora-no"), Accion::AhoraNo)),
-            )
-        };
+        let (principal, accion_p, secundario): (String, Accion, Option<(String, Accion)>) =
+            if bajando.is_some() {
+                (textos.t("asistente-cancelar"), Accion::Cancelar, None)
+            } else if t.confirmando {
+                (
+                    format!(
+                        "{} ({})",
+                        textos.t("asistente-si-bajar"),
+                        ia_descarga::tamano(falta)
+                    ),
+                    Accion::Confirmar,
+                    Some((textos.t("asistente-cancelar"), Accion::Cancelar)),
+                )
+            } else {
+                (
+                    format!(
+                        "{} ({})",
+                        textos.t("asistente-bajar"),
+                        ia_descarga::tamano(falta)
+                    ),
+                    Accion::Bajar,
+                    // La mejor vista es opcional: se puede decir que no.
+                    t.vista
+                        .then(|| (textos.t("asistente-ahora-no"), Accion::AhoraNo)),
+                )
+            };
         let tam = 13.0 * e;
         let (w, _) = p.medir_texto(&principal, tam);
         let boton = RectF {
@@ -1499,7 +1852,13 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
             alto: 32.0 * e,
         };
         p.rellenar_redondeado(boton, 16.0 * e, tema.enviar);
-        p.texto(&principal, boton.x + 14.0 * e, boton.y + 8.0 * e, tam, hex(0xffffff));
+        p.texto(
+            &principal,
+            boton.x + 14.0 * e,
+            boton.y + 8.0 * e,
+            tam,
+            hex(0xffffff),
+        );
         t.botones.push((a_rect(boton), accion_p));
         if let Some((rotulo, acc)) = secundario {
             let (w2, _) = p.medir_texto(&rotulo, tam);
@@ -1509,7 +1868,13 @@ pub(super) fn pintar_tarjeta(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto
                 ..boton
             };
             p.trazar(otro, (1.0 * e).max(1.0), tema.isla_borde);
-            p.texto(&rotulo, otro.x + 14.0 * e, otro.y + 8.0 * e, tam, tema.texto);
+            p.texto(
+                &rotulo,
+                otro.x + 14.0 * e,
+                otro.y + 8.0 * e,
+                tam,
+                tema.texto,
+            );
             t.botones.push((a_rect(otro), acc));
         }
     });
@@ -1532,7 +1897,12 @@ pub(super) fn tocar(ubicacion: &Ubicacion, a: &mut Abierto, l: Punto) -> bool {
     if !a.ficha.es_asistente() {
         return false;
     }
-    let Some(accion) = TARJETA.with_borrow(|t| t.botones.iter().find(|(r, _)| r.contiene(l)).map(|(_, a)| *a)) else {
+    let Some(accion) = TARJETA.with_borrow(|t| {
+        t.botones
+            .iter()
+            .find(|(r, _)| r.contiene(l))
+            .map(|(_, a)| *a)
+    }) else {
         return false;
     };
     cumplir(ubicacion, a, accion);
@@ -1542,7 +1912,11 @@ pub(super) fn tocar(ubicacion: &Ubicacion, a: &mut Abierto, l: Punto) -> bool {
 fn cumplir(ubicacion: &Ubicacion, a: &Abierto, accion: Accion) {
     match accion {
         Accion::Elegir { ligero } => {
-            let id = if ligero { pixpin_ia::modelos::QWEN35_08B.id } else { pixpin_ia::modelos::QWEN35_2B.id };
+            let id = if ligero {
+                pixpin_ia::modelos::QWEN35_08B.id
+            } else {
+                pixpin_ia::modelos::QWEN35_2B.id
+            };
             TARJETA.with_borrow_mut(|t| {
                 t.ligero = Some(ligero);
                 t.confirmando = false;
@@ -1641,7 +2015,9 @@ fn elegir_mencion(a: &mut Abierto, cual: usize) -> bool {
     let Some((arroba, cursor, opciones)) = menciones_ahora(a) else {
         return false;
     };
-    let Some(o) = opciones.get(cual) else { return false };
+    let Some(o) = opciones.get(cual) else {
+        return false;
+    };
     let fin = ia_chat::poner_mencion(&mut a.borrador, arroba, cursor, o);
     a.cursor.poner(&a.borrador, fin, false);
     MENCIONES.with_borrow_mut(|m| m.marcada = 0);
@@ -1683,7 +2059,12 @@ pub(super) fn tocar_lista(a: &mut Abierto, l: Punto) -> bool {
     if !menciones_abiertas(a) {
         return false;
     }
-    let cual = MENCIONES.with_borrow(|m| m.botones.iter().find(|(r, _)| r.contiene(l)).map(|(_, i)| *i));
+    let cual = MENCIONES.with_borrow(|m| {
+        m.botones
+            .iter()
+            .find(|(r, _)| r.contiene(l))
+            .map(|(_, i)| *i)
+    });
     match cual {
         Some(i) => elegir_mencion(a, i),
         None => false,
@@ -1737,7 +2118,14 @@ pub(super) fn pintar_menciones(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abier
                 p.rellenar_redondeado(r, 8.0 * e, con_alfa(tema.enviar, 0.16));
             }
             let (_, h) = p.medir_texto(&o.rotulo, 14.0 * e);
-            p.texto_linea(&o.rotulo, r.x + 8.0 * e, r.y + (fila - h) / 2.0, 14.0 * e, r.ancho - 16.0 * e, tema.texto);
+            p.texto_linea(
+                &o.rotulo,
+                r.x + 8.0 * e,
+                r.y + (fila - h) / 2.0,
+                14.0 * e,
+                r.ancho - 16.0 * e,
+                tema.texto,
+            );
             m.botones.push((a_rect(r), i));
             y += fila;
         }

@@ -61,8 +61,14 @@ mod pruebas {
 
     #[test]
     fn encoger_quita_por_los_cuatro_lados_y_en_negativo_agranda() {
-        assert_eq!(encoger(r(0.0, 0.0, 100.0, 50.0), 10.0), r(10.0, 10.0, 80.0, 30.0));
-        assert_eq!(encoger(r(10.0, 10.0, 20.0, 20.0), -3.0), r(7.0, 7.0, 26.0, 26.0));
+        assert_eq!(
+            encoger(r(0.0, 0.0, 100.0, 50.0), 10.0),
+            r(10.0, 10.0, 80.0, 30.0)
+        );
+        assert_eq!(
+            encoger(r(10.0, 10.0, 20.0, 20.0), -3.0),
+            r(7.0, 7.0, 26.0, 26.0)
+        );
         // Caso negativo: encoger de mas no da un ancho negativo.
         let e = encoger(r(0.0, 0.0, 10.0, 10.0), 20.0);
         assert_eq!((e.ancho, e.alto), (0.0, 0.0));
@@ -75,7 +81,10 @@ mod pruebas {
             Some(r(50.0, 80.0, 50.0, 20.0))
         );
         // Caso negativo: dos que solo se rozan no tienen zona comun.
-        assert_eq!(cortar(r(0.0, 0.0, 10.0, 10.0), r(10.0, 0.0, 10.0, 10.0)), None);
+        assert_eq!(
+            cortar(r(0.0, 0.0, 10.0, 10.0), r(10.0, 0.0, 10.0, 10.0)),
+            None
+        );
     }
 
     #[test]

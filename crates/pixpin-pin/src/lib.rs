@@ -18,13 +18,13 @@ pub mod guias;
 pub mod icono;
 pub mod magia;
 pub mod mandos_video;
-pub mod markdown;
 mod marcos_pin;
+pub mod markdown;
 pub mod menu;
 pub mod paginado;
 pub mod paleta;
-pub mod pegatina;
 pub mod panel_abiertos;
+pub mod pegatina;
 pub mod remoto;
 mod riel_pin;
 pub mod tabla;
@@ -35,7 +35,6 @@ pub mod zoom;
 
 pub use arrastre::{Carga, ErrorArrastre, Resultado as ResultadoArrastre, arrastrar, carga_de};
 pub use barra_marcas::Marca;
-pub use marcos_pin::PedidoMarco;
 pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
     presentacion_de, tamano_humano, tamano_natural,
@@ -44,6 +43,7 @@ pub use estado::{
     EfectoPin, EstadoPin, EventoPin, MAXIMO_FISICO, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA,
 };
 pub use icono::{LADO_ICONO, icono_de, miniatura_de};
+pub use marcos_pin::PedidoMarco;
 pub use menu::{
     CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_CONGELAR, CMD_COPIAR, CMD_ELIMINAR,
     CMD_GUARDAR_COMO, CMD_OCULTAR_GRUPO, CMD_REPRODUCIR, CMD_SIN_GRUPO, CMD_SONIDO,

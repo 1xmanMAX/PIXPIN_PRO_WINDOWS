@@ -531,7 +531,11 @@ mod pruebas {
         // Ctrl+Retroceso se lleva la palabra entera.
         assert_eq!(p.tecla(0x08, false, true), Tecla::Consumida);
         assert_eq!(p.escrito(), Some(""));
-        assert_eq!(p.tecla(0x5A, false, true), Tecla::Consumida, "Ctrl+Z la devuelve");
+        assert_eq!(
+            p.tecla(0x5A, false, true),
+            Tecla::Consumida,
+            "Ctrl+Z la devuelve"
+        );
         assert_eq!(p.escrito(), Some("InformX"));
         assert_eq!(
             p.tecla(0x53, false, true),

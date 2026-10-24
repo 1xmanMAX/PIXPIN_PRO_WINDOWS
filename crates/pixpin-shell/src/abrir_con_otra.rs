@@ -34,13 +34,16 @@
 use std::path::{Path, PathBuf};
 
 use windows::Win32::Foundation::{ERROR_CANCELLED, HWND};
-use windows::Win32::UI::Shell::{OAIF_ALLOW_REGISTRATION, OAIF_EXEC, OPEN_AS_INFO_FLAGS, OPENASINFO, SHOpenWithDialog};
+use windows::Win32::UI::Shell::{
+    OAIF_ALLOW_REGISTRATION, OAIF_EXEC, OPEN_AS_INFO_FLAGS, OPENASINFO, SHOpenWithDialog,
+};
 use windows::core::{HRESULT, HSTRING, PCWSTR};
 
 /// Las banderas del cuadro: la casilla «Usar siempre esta aplicacion»
 /// disponible (la asociacion la guarda Windows, no nosotros) y, al aceptar,
 /// el propio cuadro abre el fichero con lo elegido.
-pub const BANDERAS: OPEN_AS_INFO_FLAGS = OPEN_AS_INFO_FLAGS(OAIF_ALLOW_REGISTRATION.0 | OAIF_EXEC.0);
+pub const BANDERAS: OPEN_AS_INFO_FLAGS =
+    OPEN_AS_INFO_FLAGS(OAIF_ALLOW_REGISTRATION.0 | OAIF_EXEC.0);
 
 /// Por que no salio el cuadro.
 #[derive(Debug)]
@@ -67,7 +70,11 @@ impl std::error::Error for ErrorAbrirCon {}
 pub fn ruta_para_el_dialogo(ruta: &Path) -> Result<PathBuf, ErrorAbrirCon> {
     let con_barras = PathBuf::from(ruta.as_os_str().to_string_lossy().replace('/', "\\"));
     let absoluta = std::path::absolute(&con_barras).unwrap_or(con_barras);
-    if absoluta.is_file() { Ok(absoluta) } else { Err(ErrorAbrirCon::NoExiste(absoluta)) }
+    if absoluta.is_file() {
+        Ok(absoluta)
+    } else {
+        Err(ErrorAbrirCon::NoExiste(absoluta))
+    }
 }
 
 /// Pregunta con que abrir `ruta` y lo abre con lo elegido.
@@ -77,7 +84,11 @@ pub fn ruta_para_el_dialogo(ruta: &Path) -> Result<PathBuf, ErrorAbrirCon> {
 pub fn abrir_con_otra(padre: HWND, ruta: &Path) -> Result<bool, ErrorAbrirCon> {
     let ruta = ruta_para_el_dialogo(ruta)?;
     let fichero = HSTRING::from(ruta.as_os_str());
-    let info = OPENASINFO { pcszFile: PCWSTR(fichero.as_ptr()), pcszClass: PCWSTR::null(), oaifInFlags: BANDERAS };
+    let info = OPENASINFO {
+        pcszFile: PCWSTR(fichero.as_ptr()),
+        pcszClass: PCWSTR::null(),
+        oaifInFlags: BANDERAS,
+    };
     // El cuadro es COM: en un hilo sin COM se inicia aqui (y se suelta al
     // volver); en uno que ya lo tiene no cambia nada.
     let _com = crate::ComDelHilo::iniciar();
@@ -97,7 +108,8 @@ mod pruebas {
     use super::*;
 
     fn carpeta(nombre: &str) -> PathBuf {
-        let c = std::env::temp_dir().join(format!("pixpin-abrir-con-{nombre}-{}", std::process::id()));
+        let c =
+            std::env::temp_dir().join(format!("pixpin-abrir-con-{nombre}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&c);
         std::fs::create_dir_all(c.join("proyectos")).unwrap();
         c
@@ -124,10 +136,16 @@ mod pruebas {
         let c = carpeta("falta");
         let falta = c.join("proyectos").join("no-esta.xlsx");
         let e = abrir_con_otra(HWND::default(), &falta).unwrap_err();
-        assert!(matches!(&e, ErrorAbrirCon::NoExiste(r) if r == &falta), "{e:?}");
+        assert!(
+            matches!(&e, ErrorAbrirCon::NoExiste(r) if r == &falta),
+            "{e:?}"
+        );
         assert!(e.to_string().contains("no-esta.xlsx"));
         // Una carpeta tampoco es un fichero que abrir.
-        assert!(matches!(ruta_para_el_dialogo(&c), Err(ErrorAbrirCon::NoExiste(_))));
+        assert!(matches!(
+            ruta_para_el_dialogo(&c),
+            Err(ErrorAbrirCon::NoExiste(_))
+        ));
         let _ = std::fs::remove_dir_all(&c);
     }
 
@@ -135,8 +153,14 @@ mod pruebas {
     fn las_banderas_son_las_del_explorador_sin_registrar_por_su_cuenta() {
         assert_eq!(BANDERAS.0, OAIF_ALLOW_REGISTRATION.0 | OAIF_EXEC.0);
         // Caso negativo: nada de escribir la asociacion desde aqui.
-        assert_eq!(BANDERAS.0 & windows::Win32::UI::Shell::OAIF_REGISTER_EXT.0, 0);
-        assert_eq!(BANDERAS.0 & windows::Win32::UI::Shell::OAIF_FORCE_REGISTRATION.0, 0);
+        assert_eq!(
+            BANDERAS.0 & windows::Win32::UI::Shell::OAIF_REGISTER_EXT.0,
+            0
+        );
+        assert_eq!(
+            BANDERAS.0 & windows::Win32::UI::Shell::OAIF_FORCE_REGISTRATION.0,
+            0
+        );
     }
 
     #[test]
@@ -154,11 +178,18 @@ mod pruebas {
             unsafe { SHCreateItemFromParsingName(&HSTRING::from(s), None) }
         };
         let arreglada = ruta_para_el_dialogo(Path::new(&mezclada)).unwrap();
-        assert!(analizar(&arreglada.to_string_lossy()).is_ok(), "la ruta arreglada se entiende");
+        assert!(
+            analizar(&arreglada.to_string_lossy()).is_ok(),
+            "la ruta arreglada se entiende"
+        );
         // Caso negativo, la causa del fallo reproducida: la ruta como
         // llegaba da el mismo 0x80070057 que salia en el registro.
         let antes = analizar(&mezclada).err().map(|e| e.code());
-        assert_eq!(antes, Some(windows::Win32::Foundation::E_INVALIDARG), "la mezcla de barras");
+        assert_eq!(
+            antes,
+            Some(windows::Win32::Foundation::E_INVALIDARG),
+            "la mezcla de barras"
+        );
         let _ = std::fs::remove_dir_all(&c);
     }
 }

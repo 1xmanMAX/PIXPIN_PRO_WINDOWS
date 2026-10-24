@@ -179,10 +179,17 @@ pub enum Orden {
 
 /// Las lecciones (sus indices) que se ven: las de `consulta` y de la
 /// gravedad elegida (`None` = todas), en el orden pedido.
-pub fn filtrar(lecciones: &[&Leccion], consulta: &str, gravedad: Option<i64>, orden: Orden) -> Vec<usize> {
+pub fn filtrar(
+    lecciones: &[&Leccion],
+    consulta: &str,
+    gravedad: Option<i64>,
+    orden: Orden,
+) -> Vec<usize> {
     let mut v: Vec<usize> = buscar(lecciones, consulta)
         .into_iter()
-        .filter(|&k| gravedad.is_none_or(|g| self::gravedad(lecciones[k].gravedad) == self::gravedad(g)))
+        .filter(|&k| {
+            gravedad.is_none_or(|g| self::gravedad(lecciones[k].gravedad) == self::gravedad(g))
+        })
         .collect();
     match orden {
         Orden::Recientes => v.sort_by_key(|&k| std::cmp::Reverse(lecciones[k].tocada)),

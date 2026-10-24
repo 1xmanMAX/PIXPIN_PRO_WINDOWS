@@ -396,7 +396,10 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
             Some("borrar_lista") => Some(Espera::SinLista),
             // Un encargo al asistente: que ya este en la cola de la app
             // (`asistente-encargos.json`), para verlo «en cola» al volver.
-            Some("asistente") => p.get("encargo").and_then(Value::as_str).map(|i| Espera::Encargo(i.to_string())),
+            Some("asistente") => p
+                .get("encargo")
+                .and_then(Value::as_str)
+                .map(|i| Espera::Encargo(i.to_string())),
             _ => None,
         };
         let envio = self.mandar(p);
@@ -589,7 +592,8 @@ pub fn una_vez<M: Mensajero>(plugin: &mut Plugin<M, Vec<u8>>, peticion: &Value) 
     // disco: un respiro para que la app lo haya escrito.
     // Un encargo al asistente no: `pedir_y_seguir` ya espero a verlo en el
     // disco (`asistente-encargos.json`).
-    let al_asistente = primero(&parametros).get("accion").and_then(Value::as_str) == Some("asistente");
+    let al_asistente =
+        primero(&parametros).get("accion").and_then(Value::as_str) == Some("asistente");
     if metodo == "pedir_y_seguir" && !al_asistente {
         std::thread::sleep(Duration::from_millis(350));
     }

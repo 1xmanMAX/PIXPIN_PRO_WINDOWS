@@ -407,7 +407,10 @@ pub const ESPERA_RESPUESTA_MS: u32 = 5000;
 pub const VARIABLE_CLASE_DE_PRUEBA: &str = "PIXPIN_PEDIDOS_VENTANA";
 
 fn clase_de_prueba() -> Option<String> {
-    std::env::var(VARIABLE_CLASE_DE_PRUEBA).ok().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())
+    std::env::var(VARIABLE_CLASE_DE_PRUEBA)
+        .ok()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
 }
 
 fn ventana_para_pedidos() -> Option<windows::Win32::Foundation::HWND> {
@@ -424,7 +427,9 @@ fn ventana_para_pedidos() -> Option<windows::Win32::Foundation::HWND> {
         {
             return Some(h);
         }
-        FindWindowExW(Some(HWND_MESSAGE), None, &clase, None).ok().filter(|h| !h.0.is_null())
+        FindWindowExW(Some(HWND_MESSAGE), None, &clase, None)
+            .ok()
+            .filter(|h| !h.0.is_null())
     }
 }
 
@@ -483,11 +488,17 @@ fn abrir_la_app(exe: &std::path::Path) -> Result<(), String> {
     let mut ultimo = String::new();
     // Si el Job no deja salirse, CreateProcess falla con la bandera: se
     // reintenta sin ella.
-    for banderas in [CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS, DETACHED_PROCESS] {
+    for banderas in [
+        CREATE_BREAKAWAY_FROM_JOB | DETACHED_PROCESS,
+        DETACHED_PROCESS,
+    ] {
         let mut c = Command::new(exe);
         // Arranca para el pedido: sin el chat delante (el pedido abre lo suyo).
         c.arg("--sin-chat");
-        c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(banderas);
+        c.stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(banderas);
         if let Some(d) = exe.parent() {
             c.current_dir(d);
         }

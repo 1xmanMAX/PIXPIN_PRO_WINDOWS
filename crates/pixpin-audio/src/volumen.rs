@@ -19,9 +19,10 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 use windows::Win32::Media::MediaFoundation::{
-    IMFSample, MF_MT_AUDIO_BITS_PER_SAMPLE, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE,
-    MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_AUDIO_STREAM, MF_SOURCE_READERF_ENDOFSTREAM,
-    MFAudioFormat_PCM, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Audio,
+    IMFSample, MF_MT_AUDIO_BITS_PER_SAMPLE, MF_MT_AUDIO_NUM_CHANNELS,
+    MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS,
+    MF_SOURCE_READER_FIRST_AUDIO_STREAM, MF_SOURCE_READERF_ENDOFSTREAM, MFAudioFormat_PCM,
+    MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Audio,
 };
 use windows::core::PCWSTR;
 
@@ -63,11 +64,17 @@ pub fn para_oir(ruta: &Path) -> PathBuf {
     aplicar(&mut muestras, g);
     let _ = std::fs::create_dir_all(copia.parent().unwrap_or(Path::new(".")));
     let parte = copia.with_extension("parte");
-    if std::fs::write(&parte, wav(&muestras, hercios, canales)).is_err() || std::fs::rename(&parte, &copia).is_err() {
+    if std::fs::write(&parte, wav(&muestras, hercios, canales)).is_err()
+        || std::fs::rename(&parte, &copia).is_err()
+    {
         let _ = std::fs::remove_file(&parte);
         return ruta.to_path_buf();
     }
-    tracing::info!(ganancia = g, ms = t.elapsed().as_millis() as u64, "audio bajo: se oye realzado");
+    tracing::info!(
+        ganancia = g,
+        ms = t.elapsed().as_millis() as u64,
+        "audio bajo: se oye realzado"
+    );
     copia
 }
 
@@ -79,7 +86,11 @@ fn ruta_de_la_copia(ruta: &Path) -> Option<PathBuf> {
     ruta.hash(&mut h);
     meta.len().hash(&mut h);
     meta.modified().ok()?.hash(&mut h);
-    Some(std::env::temp_dir().join("pixpin-audio-alto").join(format!("{:016x}.wav", h.finish())))
+    Some(
+        std::env::temp_dir()
+            .join("pixpin-audio-alto")
+            .join(format!("{:016x}.wav", h.finish())),
+    )
 }
 
 /// **La ganancia para que el pico de verdad quede en el objetivo**: el pico
@@ -118,7 +129,11 @@ pub fn aplicar(muestras: &mut [f32], g: f32) {
     for m in muestras.iter_mut() {
         let y = *m * g;
         let a = y.abs();
-        *m = if a <= UMBRAL { y } else { y.signum() * (UMBRAL + (1.0 - UMBRAL) * ((a - UMBRAL) / (1.0 - UMBRAL)).tanh()) };
+        *m = if a <= UMBRAL {
+            y
+        } else {
+            y.signum() * (UMBRAL + (1.0 - UMBRAL) * ((a - UMBRAL) / (1.0 - UMBRAL)).tanh())
+        };
     }
 }
 
@@ -148,7 +163,11 @@ fn wav(muestras: &[f32], hercios: u32, canales: u16) -> Vec<u8> {
 /// de siempre (solo se pide PCM de 16 bits; lo demas, el del fichero).
 fn descodificar(ruta: &Path) -> Option<(Vec<f32>, u32, u16)> {
     crate::salida::arrancar_media_foundation();
-    let ancha: Vec<u16> = ruta.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let ancha: Vec<u16> = ruta
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     // SAFETY: `ancha` es UTF-16 terminada en cero y vive durante la llamada.
     let lector = unsafe { MFCreateSourceReaderFromURL(PCWSTR(ancha.as_ptr()), None) }.ok()?;
     let todas = MF_SOURCE_READER_ALL_STREAMS.0 as u32;
@@ -164,7 +183,10 @@ fn descodificar(ruta: &Path) -> Option<(Vec<f32>, u32, u16)> {
         lector.SetStreamSelection(audio, true).ok()?;
         lector.SetCurrentMediaType(audio, None, &tipo).ok()?;
         let actual = lector.GetCurrentMediaType(audio).ok()?;
-        (actual.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND).ok()?, actual.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS).ok()? as u16)
+        (
+            actual.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND).ok()?,
+            actual.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS).ok()? as u16,
+        )
     };
     if hercios == 0 || canales == 0 {
         return None;
@@ -174,7 +196,8 @@ fn descodificar(ruta: &Path) -> Option<(Vec<f32>, u32, u16)> {
         let mut banderas: u32 = 0;
         let mut trozo: Option<IMFSample> = None;
         // SAFETY: punteros a variables locales vivas; lectura sincrona.
-        unsafe { lector.ReadSample(audio, 0, None, Some(&mut banderas), None, Some(&mut trozo)) }.ok()?;
+        unsafe { lector.ReadSample(audio, 0, None, Some(&mut banderas), None, Some(&mut trozo)) }
+            .ok()?;
         if banderas & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
             break;
         }
@@ -223,7 +246,10 @@ mod pruebas {
     fn un_chasquido_suelto_no_frena_el_realce() {
         let mut v = seno(0.05, 100_000);
         v[500] = 1.0;
-        assert!(ganancia_para(&v) > 10.0, "el golpe suelto no cuenta como pico");
+        assert!(
+            ganancia_para(&v) > 10.0,
+            "el golpe suelto no cuenta como pico"
+        );
     }
 
     #[test]
@@ -238,7 +264,10 @@ mod pruebas {
         aplicar(&mut v, 4.0);
         assert!(v[0] < 1.0 && v[0] > UMBRAL);
         assert!(v[1] > -1.0 && v[1] < -UMBRAL);
-        assert!((v[2] - 0.2).abs() < 1e-6, "lo que no llega al umbral sube tal cual");
+        assert!(
+            (v[2] - 0.2).abs() < 1e-6,
+            "lo que no llega al umbral sube tal cual"
+        );
     }
 
     #[test]
@@ -258,13 +287,24 @@ mod a_mano {
     #[test]
     #[ignore = "necesita un audio de verdad"]
     fn realzar_uno_de_verdad() {
-        let Some(f) = std::env::var_os("PIXPIN_AUDIO_PRUEBA") else { return };
+        let Some(f) = std::env::var_os("PIXPIN_AUDIO_PRUEBA") else {
+            return;
+        };
         let ruta = std::path::PathBuf::from(f);
         let t = std::time::Instant::now();
         let oir = super::para_oir(&ruta);
-        println!("{} -> {} en {:?}", ruta.display(), oir.display(), t.elapsed());
+        println!(
+            "{} -> {} en {:?}",
+            ruta.display(),
+            oir.display(),
+            t.elapsed()
+        );
         if let Some((m, h, c)) = super::descodificar(&oir) {
-            println!("ganancia que quedaria: {:.2} ({h} Hz, {c} canales, {} muestras)", super::ganancia_para(&m), m.len());
+            println!(
+                "ganancia que quedaria: {:.2} ({h} Hz, {c} canales, {} muestras)",
+                super::ganancia_para(&m),
+                m.len()
+            );
         }
     }
 }

@@ -57,7 +57,8 @@ fn es_fecha(f: &str) -> bool {
     for c in f.chars() {
         if c == '"' {
             entre_comillas = !entre_comillas;
-        } else if !entre_comillas && matches!(c.to_ascii_lowercase(), 'd' | 'm' | 'y' | 'a' | 'h' | 's')
+        } else if !entre_comillas
+            && matches!(c.to_ascii_lowercase(), 'd' | 'm' | 'y' | 'a' | 'h' | 's')
         {
             return true;
         }

@@ -50,7 +50,11 @@ pub struct Hallazgo {
 }
 
 fn aviso(ids: Vec<u64>, texto: String) -> Hallazgo {
-    Hallazgo { ids, texto, de_idioma: false }
+    Hallazgo {
+        ids,
+        texto,
+        de_idioma: false,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -86,41 +90,145 @@ pub fn instalar_ortografia(o: Box<dyn Ortografia>) {
 pub struct OrtografiaBasica;
 
 const CON_TILDE: &[(&str, &str)] = &[
-    ("tambien", "también"), ("ademas", "además"), ("despues", "después"), ("mas", "más"), ("aqui", "aquí"),
-    ("ahi", "ahí"), ("alli", "allí"), ("asi", "así"), ("segun", "según"), ("algun", "algún"), ("ningun", "ningún"),
-    ("jamas", "jamás"), ("detras", "detrás"), ("atras", "atrás"), ("traves", "través"), ("todavia", "todavía"),
-    ("quiza", "quizá"), ("dia", "día"), ("dias", "días"), ("numero", "número"), ("numeros", "números"),
-    ("pagina", "página"), ("paginas", "páginas"), ("facil", "fácil"), ("dificil", "difícil"), ("rapido", "rápido"),
-    ("rapida", "rápida"), ("ultimo", "último"), ("ultima", "última"), ("ultimos", "últimos"), ("ultimas", "últimas"),
-    ("codigo", "código"), ("codigos", "códigos"), ("metodo", "método"), ("metodos", "métodos"), ("analisis", "análisis"),
-    ("telefono", "teléfono"), ("musica", "música"), ("pais", "país"), ("paises", "países"), ("grafico", "gráfico"),
-    ("graficos", "gráficos"), ("grafica", "gráfica"), ("graficas", "gráficas"), ("matematicas", "matemáticas"),
-    ("logica", "lógica"), ("basico", "básico"), ("basica", "básica"), ("titulo", "título"), ("titulos", "títulos"),
-    ("angulo", "ángulo"), ("angulos", "ángulos"), ("triangulo", "triángulo"), ("rectangulo", "rectángulo"),
-    ("circulo", "círculo"), ("linea", "línea"), ("lineas", "líneas"), ("menu", "menú"), ("ingles", "inglés"),
-    ("frances", "francés"), ("aleman", "alemán"), ("espanol", "español"), ("ano", "año"), ("anos", "años"),
-    ("nino", "niño"), ("ninos", "niños"), ("manana", "mañana"), ("pequeno", "pequeño"), ("pequena", "pequeña"),
-    ("diseno", "diseño"), ("tamano", "tamaño"), ("compania", "compañía"), ("energia", "energía"),
-    ("economia", "economía"), ("tecnologia", "tecnología"), ("biologia", "biología"), ("geografia", "geografía"),
-    ("categoria", "categoría"), ("categorias", "categorías"), ("exito", "éxito"), ("caracteristica", "característica"),
-    ("caracteristicas", "características"), ("electrico", "eléctrico"), ("automatico", "automático"),
-    ("tecnico", "técnico"), ("unico", "único"), ("unica", "única"), ("util", "útil"), ("utiles", "útiles"),
-    ("movil", "móvil"), ("arbol", "árbol"), ("lapiz", "lápiz"), ("examenes", "exámenes"), ("imagenes", "imágenes"),
-    ("parametro", "parámetro"), ("parametros", "parámetros"), ("perimetro", "perímetro"), ("diametro", "diámetro"),
-    ("simbolo", "símbolo"), ("simbolos", "símbolos"), ("vehiculo", "vehículo"), ("articulo", "artículo"),
-    ("capitulo", "capítulo"), ("oceano", "océano"), ("raiz", "raíz"),
+    ("tambien", "también"),
+    ("ademas", "además"),
+    ("despues", "después"),
+    ("mas", "más"),
+    ("aqui", "aquí"),
+    ("ahi", "ahí"),
+    ("alli", "allí"),
+    ("asi", "así"),
+    ("segun", "según"),
+    ("algun", "algún"),
+    ("ningun", "ningún"),
+    ("jamas", "jamás"),
+    ("detras", "detrás"),
+    ("atras", "atrás"),
+    ("traves", "través"),
+    ("todavia", "todavía"),
+    ("quiza", "quizá"),
+    ("dia", "día"),
+    ("dias", "días"),
+    ("numero", "número"),
+    ("numeros", "números"),
+    ("pagina", "página"),
+    ("paginas", "páginas"),
+    ("facil", "fácil"),
+    ("dificil", "difícil"),
+    ("rapido", "rápido"),
+    ("rapida", "rápida"),
+    ("ultimo", "último"),
+    ("ultima", "última"),
+    ("ultimos", "últimos"),
+    ("ultimas", "últimas"),
+    ("codigo", "código"),
+    ("codigos", "códigos"),
+    ("metodo", "método"),
+    ("metodos", "métodos"),
+    ("analisis", "análisis"),
+    ("telefono", "teléfono"),
+    ("musica", "música"),
+    ("pais", "país"),
+    ("paises", "países"),
+    ("grafico", "gráfico"),
+    ("graficos", "gráficos"),
+    ("grafica", "gráfica"),
+    ("graficas", "gráficas"),
+    ("matematicas", "matemáticas"),
+    ("logica", "lógica"),
+    ("basico", "básico"),
+    ("basica", "básica"),
+    ("titulo", "título"),
+    ("titulos", "títulos"),
+    ("angulo", "ángulo"),
+    ("angulos", "ángulos"),
+    ("triangulo", "triángulo"),
+    ("rectangulo", "rectángulo"),
+    ("circulo", "círculo"),
+    ("linea", "línea"),
+    ("lineas", "líneas"),
+    ("menu", "menú"),
+    ("ingles", "inglés"),
+    ("frances", "francés"),
+    ("aleman", "alemán"),
+    ("espanol", "español"),
+    ("ano", "año"),
+    ("anos", "años"),
+    ("nino", "niño"),
+    ("ninos", "niños"),
+    ("manana", "mañana"),
+    ("pequeno", "pequeño"),
+    ("pequena", "pequeña"),
+    ("diseno", "diseño"),
+    ("tamano", "tamaño"),
+    ("compania", "compañía"),
+    ("energia", "energía"),
+    ("economia", "economía"),
+    ("tecnologia", "tecnología"),
+    ("biologia", "biología"),
+    ("geografia", "geografía"),
+    ("categoria", "categoría"),
+    ("categorias", "categorías"),
+    ("exito", "éxito"),
+    ("caracteristica", "característica"),
+    ("caracteristicas", "características"),
+    ("electrico", "eléctrico"),
+    ("automatico", "automático"),
+    ("tecnico", "técnico"),
+    ("unico", "único"),
+    ("unica", "única"),
+    ("util", "útil"),
+    ("utiles", "útiles"),
+    ("movil", "móvil"),
+    ("arbol", "árbol"),
+    ("lapiz", "lápiz"),
+    ("examenes", "exámenes"),
+    ("imagenes", "imágenes"),
+    ("parametro", "parámetro"),
+    ("parametros", "parámetros"),
+    ("perimetro", "perímetro"),
+    ("diametro", "diámetro"),
+    ("simbolo", "símbolo"),
+    ("simbolos", "símbolos"),
+    ("vehiculo", "vehículo"),
+    ("articulo", "artículo"),
+    ("capitulo", "capítulo"),
+    ("oceano", "océano"),
+    ("raiz", "raíz"),
     ("tipico", "típico"),
-    ("economico", "económico"), ("historico", "histórico"), ("periodico", "periódico"), ("academico", "académico"),
-    ("telefonos", "teléfonos"), ("medico", "médico"), ("maquina", "máquina"), ("maquinas", "máquinas"),
-    ("busqueda", "búsqueda"), ("decada", "década"), ("epoca", "época"), ("indice", "índice"), ("sintesis", "síntesis"),
-    ("hipotesis", "hipótesis"), ("fisica", "física"), ("quimica", "química"), ("organico", "orgánico"),
+    ("economico", "económico"),
+    ("historico", "histórico"),
+    ("periodico", "periódico"),
+    ("academico", "académico"),
+    ("telefonos", "teléfonos"),
+    ("medico", "médico"),
+    ("maquina", "máquina"),
+    ("maquinas", "máquinas"),
+    ("busqueda", "búsqueda"),
+    ("decada", "década"),
+    ("epoca", "época"),
+    ("indice", "índice"),
+    ("sintesis", "síntesis"),
+    ("hipotesis", "hipótesis"),
+    ("fisica", "física"),
+    ("quimica", "química"),
+    ("organico", "orgánico"),
 ];
 
 /// Las de pregunta: solo con tilde dentro de una pregunta, al empezarla.
 const DE_PREGUNTA: &[(&str, &str)] = &[
-    ("que", "qué"), ("como", "cómo"), ("cuando", "cuándo"), ("donde", "dónde"), ("quien", "quién"),
-    ("quienes", "quiénes"), ("cual", "cuál"), ("cuales", "cuáles"), ("cuanto", "cuánto"), ("cuanta", "cuánta"),
-    ("cuantos", "cuántos"), ("cuantas", "cuántas"),
+    ("que", "qué"),
+    ("como", "cómo"),
+    ("cuando", "cuándo"),
+    ("donde", "dónde"),
+    ("quien", "quién"),
+    ("quienes", "quiénes"),
+    ("cual", "cuál"),
+    ("cuales", "cuáles"),
+    ("cuanto", "cuánto"),
+    ("cuanta", "cuánta"),
+    ("cuantos", "cuántos"),
+    ("cuantas", "cuántas"),
 ];
 
 /// Palabras con -cion/-sion que se escriben asi (no hay ninguna comun: la
@@ -144,7 +252,10 @@ fn con_mayusculas(original: &str, arreglo: &str) -> String {
 
 /// Las palabras de un texto, con su forma original.
 fn palabras(texto: &str) -> Vec<&str> {
-    texto.split(|c: char| !c.is_alphabetic()).filter(|p| !p.is_empty()).collect()
+    texto
+        .split(|c: char| !c.is_alphabetic())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 /// La tilde que le falta a una palabra suelta (sin mirar el contexto).
@@ -156,8 +267,14 @@ fn tilde_de(palabra_min: &str) -> Option<String> {
         return Some((*b).to_string());
     }
     for (fin, con) in [("cion", "ción"), ("sion", "sión")] {
-        if palabra_min.len() > fin.len() + 1 && palabra_min.ends_with(fin) && !SIN_TILDE_CION.contains(&palabra_min) {
-            return Some(format!("{}{con}", &palabra_min[..palabra_min.len() - fin.len()]));
+        if palabra_min.len() > fin.len() + 1
+            && palabra_min.ends_with(fin)
+            && !SIN_TILDE_CION.contains(&palabra_min)
+        {
+            return Some(format!(
+                "{}{con}",
+                &palabra_min[..palabra_min.len() - fin.len()]
+            ));
         }
     }
     None
@@ -173,7 +290,10 @@ impl Ortografia for OrtografiaBasica {
         let mut faltas: Vec<Falta> = Vec::new();
         let mut poner = |p: &str, arreglo: String| {
             if !faltas.iter().any(|f| f.palabra == p) {
-                faltas.push(Falta { palabra: p.to_string(), arreglo: Some(con_mayusculas(p, &arreglo)) });
+                faltas.push(Falta {
+                    palabra: p.to_string(),
+                    arreglo: Some(con_mayusculas(p, &arreglo)),
+                });
             }
         };
         for (i, p) in ps.iter().enumerate() {
@@ -184,23 +304,42 @@ impl Ortografia for OrtografiaBasica {
             // «esta» delante de un participio, un gerundio o «bien/mal/en».
             if min[i] == "esta" || min[i] == "estan" {
                 let sig = min.get(i + 1).map(String::as_str).unwrap_or("");
-                let verbal = ["ando", "iendo", "ado", "ada", "ados", "adas", "ido", "ida", "idos", "idas"]
-                    .iter()
-                    .any(|f| sig.len() > f.len() + 1 && sig.ends_with(f))
-                    || ["bien", "mal", "en", "listo", "lista", "aqui", "alli", "claro"].contains(&sig);
+                let verbal = [
+                    "ando", "iendo", "ado", "ada", "ados", "adas", "ido", "ida", "idos", "idas",
+                ]
+                .iter()
+                .any(|f| sig.len() > f.len() + 1 && sig.ends_with(f))
+                    || [
+                        "bien", "mal", "en", "listo", "lista", "aqui", "alli", "claro",
+                    ]
+                    .contains(&sig);
                 if verbal || (sig.is_empty() && texto.trim_end().ends_with(['.', '?', '!'])) {
-                    poner(p, if min[i] == "esta" { "está".into() } else { "están".into() });
+                    poner(
+                        p,
+                        if min[i] == "esta" {
+                            "está".into()
+                        } else {
+                            "están".into()
+                        },
+                    );
                 }
             }
         }
         // Las de pregunta: la primera palabra tras «¿» (o la primera, si
         // el texto acaba en «?» sin abrirla).
-        for trozo in texto.split('¿').skip(if texto.contains('¿') { 1 } else { 0 }) {
+        for trozo in texto
+            .split('¿')
+            .skip(if texto.contains('¿') { 1 } else { 0 })
+        {
             if !texto.contains('¿') && !texto.trim_end().ends_with('?') {
                 break;
             }
             let ps = palabras(trozo);
-            let primera = if ps.first().is_some_and(|p| p.eq_ignore_ascii_case("por")) { ps.get(1) } else { ps.first() };
+            let primera = if ps.first().is_some_and(|p| p.eq_ignore_ascii_case("por")) {
+                ps.get(1)
+            } else {
+                ps.first()
+            };
             if let Some(p) = primera
                 && let Some((_, b)) = DE_PREGUNTA.iter().find(|(a, _)| a.eq_ignore_ascii_case(p))
             {
@@ -250,14 +389,55 @@ pub fn idioma_de(texto: &str) -> Option<&'static str> {
         });
     }
     const ES: &[&str] = &[
-        "el", "la", "los", "las", "de", "del", "que", "y", "en", "un", "una", "es", "por", "con", "para", "se", "no", "al",
-        "lo", "su", "sus", "como", "pero", "este", "esta", "entre", "cuando", "muy", "sin", "sobre", "hay", "donde",
-        "desde", "todo", "todos", "otro", "otra", "son", "fin", "inicio", "si", "datos", "resultado", "paso",
+        "el",
+        "la",
+        "los",
+        "las",
+        "de",
+        "del",
+        "que",
+        "y",
+        "en",
+        "un",
+        "una",
+        "es",
+        "por",
+        "con",
+        "para",
+        "se",
+        "no",
+        "al",
+        "lo",
+        "su",
+        "sus",
+        "como",
+        "pero",
+        "este",
+        "esta",
+        "entre",
+        "cuando",
+        "muy",
+        "sin",
+        "sobre",
+        "hay",
+        "donde",
+        "desde",
+        "todo",
+        "todos",
+        "otro",
+        "otra",
+        "son",
+        "fin",
+        "inicio",
+        "si",
+        "datos",
+        "resultado",
+        "paso",
     ];
     const EN: &[&str] = &[
-        "the", "of", "and", "to", "in", "is", "it", "that", "for", "on", "with", "as", "was", "are", "be", "this", "by",
-        "at", "from", "or", "an", "not", "have", "has", "which", "you", "we", "they", "can", "will", "all", "end",
-        "start", "step", "data", "result",
+        "the", "of", "and", "to", "in", "is", "it", "that", "for", "on", "with", "as", "was",
+        "are", "be", "this", "by", "at", "from", "or", "an", "not", "have", "has", "which", "you",
+        "we", "they", "can", "will", "all", "end", "start", "step", "data", "result",
     ];
     let mut es = 0i32;
     let mut en = 0i32;
@@ -333,7 +513,10 @@ fn es_texto(e: &Elemento) -> bool {
 }
 
 fn es_caja(e: &Elemento) -> bool {
-    matches!(e.figura, Figura::Rectangulo | Figura::Elipse | Figura::Rombo)
+    matches!(
+        e.figura,
+        Figura::Rectangulo | Figura::Elipse | Figura::Rombo
+    )
 }
 
 fn es_marco(e: &Elemento) -> bool {
@@ -356,16 +539,29 @@ pub fn revisar(escena: &Escena, tocados: Option<&[u64]>) -> Vec<Hallazgo> {
 
 /// [`revisar`] con un corrector dado (para las pruebas y para quien tenga
 /// el suyo a mano).
-pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortografia) -> Vec<Hallazgo> {
-    let vivos: Vec<&Elemento> = escena.a_la_vista().filter(|e| !e.extras.referencia).collect();
+pub fn revisar_con(
+    escena: &Escena,
+    tocados: Option<&[u64]>,
+    orto: &dyn Ortografia,
+) -> Vec<Hallazgo> {
+    let vivos: Vec<&Elemento> = escena
+        .a_la_vista()
+        .filter(|e| !e.extras.referencia)
+        .collect();
     let toca = |id: u64| tocados.is_none_or(|t| t.contains(&id));
     let mut avisos: Vec<Hallazgo> = Vec::new();
 
     // Lo que se compara de dos en dos: textos y cajas (los trazos a mano y
     // las fotos se pisan con todo y es a proposito).
-    let piezas: Vec<&Elemento> = vivos.iter().copied().filter(|e| es_texto(e) || es_caja(e)).collect();
+    let piezas: Vec<&Elemento> = vivos
+        .iter()
+        .copied()
+        .filter(|e| es_texto(e) || es_caja(e))
+        .collect();
     let todos_contra_todos = piezas.len() <= MAX_PARES;
-    let par_vale = |a: &Elemento, b: &Elemento| (toca(a.id) || toca(b.id)) && (todos_contra_todos || toca(a.id));
+    let par_vale = |a: &Elemento, b: &Elemento| {
+        (toca(a.id) || toca(b.id)) && (todos_contra_todos || toca(a.id))
+    };
 
     // 1. Encimados: dos textos que se pisan, o dos cajas que se pisan a
     //    medias (una dentro de otra es a proposito).
@@ -381,12 +577,18 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
             }
             let menor = area(ca).min(area(cb)).max(1.0);
             if es_texto(a) && es_texto(b) && comun > 0.2 * menor {
-                avisos.push(aviso(vec![a.id, b.id], format!("#{} y #{}: textos encimados", a.id, b.id)));
+                avisos.push(aviso(
+                    vec![a.id, b.id],
+                    format!("#{} y #{}: textos encimados", a.id, b.id),
+                ));
             } else if es_caja(a) && es_caja(b) && comun > 0.08 * menor && !dentro(ca, cb, 2.0) && !dentro(cb, ca, 2.0)
                 // Dos ovalos que se cortan suelen ser un Venn.
                 && !(matches!(a.figura, Figura::Elipse) && matches!(b.figura, Figura::Elipse))
             {
-                avisos.push(aviso(vec![a.id, b.id], format!("#{} y #{}: figuras que se pisan a medias", a.id, b.id)));
+                avisos.push(aviso(
+                    vec![a.id, b.id],
+                    format!("#{} y #{}: figuras que se pisan a medias", a.id, b.id),
+                ));
             }
         }
     }
@@ -396,7 +598,11 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
         if let Some((w, h, cw, ch, c)) = textos::no_cabe(escena, t)
             && (toca(t.id) || toca(c))
         {
-            let que = if w > cw + 1.0 { format!("sobra {} px a lo ancho", (w - cw).round()) } else { format!("sobra {} px a lo alto", (h - ch).round()) };
+            let que = if w > cw + 1.0 {
+                format!("sobra {} px a lo ancho", (w - cw).round())
+            } else {
+                format!("sobra {} px a lo alto", (h - ch).round())
+            };
             avisos.push(aviso(
                 vec![t.id, c],
                 format!("#{} se sale de #{c} ({que}; editar_texto con «ajustar»: «auto», o agranda #{c})", t.id),
@@ -405,20 +611,36 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
     }
 
     // 3. Flechas con una punta suelta cerca de algo: iba a ello y no llego.
-    for f in vivos.iter().filter(|e| matches!(e.figura, Figura::Flecha { .. })) {
-        let Some(p) = f.puntos().filter(|p| p.len() >= 2) else { continue };
-        let puntas = [("inicio", p[0], &f.extras.enganche_inicio), ("fin", p[p.len() - 1], &f.extras.enganche_fin)];
+    for f in vivos
+        .iter()
+        .filter(|e| matches!(e.figura, Figura::Flecha { .. }))
+    {
+        let Some(p) = f.puntos().filter(|p| p.len() >= 2) else {
+            continue;
+        };
+        let puntas = [
+            ("inicio", p[0], &f.extras.enganche_inicio),
+            ("fin", p[p.len() - 1], &f.extras.enganche_fin),
+        ];
         for (nombre, punta, enganche) in puntas {
             if let Some(en) = enganche {
-                let esta = vivos.iter().any(|e| pixpin_motor2d::enlace::id_de_texto_de(e) == en.elemento);
+                let esta = vivos
+                    .iter()
+                    .any(|e| pixpin_motor2d::enlace::id_de_texto_de(e) == en.elemento);
                 if !esta && toca(f.id) {
-                    avisos.push(aviso(vec![f.id], format!("#{}: el {nombre} apunta a una figura que ya no esta", f.id)));
+                    avisos.push(aviso(
+                        vec![f.id],
+                        format!("#{}: el {nombre} apunta a una figura que ya no esta", f.id),
+                    ));
                 }
                 continue;
             }
             let cerca = vivos
                 .iter()
-                .filter(|e| e.id != f.id && (es_caja(e) || es_texto(e) || matches!(e.figura, Figura::Imagen { .. })))
+                .filter(|e| {
+                    e.id != f.id
+                        && (es_caja(e) || es_texto(e) || matches!(e.figura, Figura::Imagen { .. }))
+                })
                 .map(|e| (e, distancia_a_caja((punta.x, punta.y), e.caja())))
                 .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             if let Some((e, d)) = cerca
@@ -428,7 +650,12 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
             {
                 avisos.push(aviso(
                     vec![f.id, e.id],
-                    format!("#{}: el {nombre} de la flecha se queda a {} px de #{} sin tocarlo", f.id, d.round(), e.id),
+                    format!(
+                        "#{}: el {nombre} de la flecha se queda a {} px de #{} sin tocarlo",
+                        f.id,
+                        d.round(),
+                        e.id
+                    ),
                 ));
             }
         }
@@ -440,19 +667,32 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
         for e in vivos.iter().filter(|e| e.id != m.id && !es_marco(e)) {
             let ce = e.caja();
             if area(cruce(ce, cm)) > 0.0 && !dentro(ce, cm, 2.0) && (toca(e.id) || toca(m.id)) {
-                avisos.push(aviso(vec![e.id, m.id], format!("#{} se sale a medias del marco #{}", e.id, m.id)));
+                avisos.push(aviso(
+                    vec![e.id, m.id],
+                    format!("#{} se sale a medias del marco #{}", e.id, m.id),
+                ));
             }
         }
     }
 
     // 5. Casi alineados: dos piezas de la misma talla, una al lado de la
     //    otra, que se quedan a unos px de la misma fila (o columna).
-    let sueltas: Vec<&Elemento> =
-        piezas.iter().copied().filter(|e| es_caja(e) || (e.extras.contenedor.is_none() && textos::caja_que_lo_rodea(escena, e).is_none())).collect();
+    let sueltas: Vec<&Elemento> = piezas
+        .iter()
+        .copied()
+        .filter(|e| {
+            es_caja(e)
+                || (e.extras.contenedor.is_none() && textos::caja_que_lo_rodea(escena, e).is_none())
+        })
+        .collect();
     let mut ya_alineado: Vec<u64> = Vec::new();
     for (i, a) in sueltas.iter().enumerate() {
         for b in &sueltas[i + 1..] {
-            if !par_vale(a, b) || es_caja(a) != es_caja(b) || ya_alineado.contains(&a.id) || ya_alineado.contains(&b.id) {
+            if !par_vale(a, b)
+                || es_caja(a) != es_caja(b)
+                || ya_alineado.contains(&a.id)
+                || ya_alineado.contains(&b.id)
+            {
                 continue;
             }
             let (ca, cb) = (a.caja(), b.caja());
@@ -464,16 +704,38 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
             // Alineados por un borde o por el centro, el que mas se acerque:
             // dos textos pegados a la izquierda tienen centros distintos.
             let menor = |a0: f32, a1: f32, b0: f32, b1: f32| {
-                [(a0 - b0).abs(), ((a0 + a1) - (b0 + b1)).abs() / 2.0, (a1 - b1).abs()].into_iter().fold(f32::MAX, f32::min)
+                [
+                    (a0 - b0).abs(),
+                    ((a0 + a1) - (b0 + b1)).abs() / 2.0,
+                    (a1 - b1).abs(),
+                ]
+                .into_iter()
+                .fold(f32::MAX, f32::min)
             };
             let dy = menor(ca.1, ca.3, cb.1, cb.3);
             let dx = menor(ca.0, ca.2, cb.0, cb.2);
             let casi = |d: f32| d > 1.5 && d <= 8.0;
             if parecida(ha, hb) && separadas_x && casi(dy) {
-                avisos.push(aviso(vec![a.id, b.id], format!("#{} y #{}: casi en la misma fila ({} px de diferencia en y)", a.id, b.id, dy.round())));
+                avisos.push(aviso(
+                    vec![a.id, b.id],
+                    format!(
+                        "#{} y #{}: casi en la misma fila ({} px de diferencia en y)",
+                        a.id,
+                        b.id,
+                        dy.round()
+                    ),
+                ));
                 ya_alineado.push(b.id);
             } else if parecida(wa, wb) && separadas_y && casi(dx) {
-                avisos.push(aviso(vec![a.id, b.id], format!("#{} y #{}: casi en la misma columna ({} px de diferencia en x)", a.id, b.id, dx.round())));
+                avisos.push(aviso(
+                    vec![a.id, b.id],
+                    format!(
+                        "#{} y #{}: casi en la misma columna ({} px de diferencia en x)",
+                        a.id,
+                        b.id,
+                        dx.round()
+                    ),
+                ));
                 ya_alineado.push(b.id);
             }
         }
@@ -481,7 +743,12 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
 
     // 6. Idioma: los textos en un idioma distinto del de casi todos (lo que
     //    quedo sin traducir), y las faltas de ortografia.
-    let con_idioma: Vec<(&Elemento, Option<&'static str>)> = vivos.iter().copied().filter(|e| es_texto(e)).map(|e| (e, idioma_de(texto_de(e)))).collect();
+    let con_idioma: Vec<(&Elemento, Option<&'static str>)> = vivos
+        .iter()
+        .copied()
+        .filter(|e| es_texto(e))
+        .map(|e| (e, idioma_de(texto_de(e))))
+        .collect();
     let mut cuenta: Vec<(&str, usize)> = Vec::new();
     for (_, i) in &con_idioma {
         if let Some(i) = i {
@@ -492,14 +759,27 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
         }
     }
     let sabidos: usize = cuenta.iter().map(|c| c.1).sum();
-    let dominante = cuenta.iter().max_by_key(|c| c.1).filter(|c| sabidos >= 2 && c.1 * 10 >= sabidos * 6 && c.1 < sabidos).map(|c| c.0);
-    let se_tocaron_textos = tocados.is_none_or(|t| t.iter().any(|id| escena.buscar(*id).is_some_and(es_texto)));
+    let dominante = cuenta
+        .iter()
+        .max_by_key(|c| c.1)
+        .filter(|c| sabidos >= 2 && c.1 * 10 >= sabidos * 6 && c.1 < sabidos)
+        .map(|c| c.0);
+    let se_tocaron_textos =
+        tocados.is_none_or(|t| t.iter().any(|id| escena.buscar(*id).is_some_and(es_texto)));
     if let Some(dom) = dominante
         && se_tocaron_textos
     {
-        let otros: Vec<u64> = con_idioma.iter().filter(|(_, i)| i.is_some_and(|i| i != dom)).map(|(e, _)| e.id).collect();
+        let otros: Vec<u64> = con_idioma
+            .iter()
+            .filter(|(_, i)| i.is_some_and(|i| i != dom))
+            .map(|(e, _)| e.id)
+            .collect();
         if !otros.is_empty() {
-            let primero = con_idioma.iter().find(|(e, _)| e.id == otros[0]).and_then(|x| x.1).unwrap_or("?");
+            let primero = con_idioma
+                .iter()
+                .find(|(e, _)| e.id == otros[0])
+                .and_then(|x| x.1)
+                .unwrap_or("?");
             let ids: Vec<String> = otros.iter().take(8).map(|i| format!("#{i}")).collect();
             avisos.push(Hallazgo {
                 ids: otros.clone(),
@@ -535,7 +815,10 @@ pub fn revisar_con(escena: &Escena, tocados: Option<&[u64]>, orto: &dyn Ortograf
                 None => format!("«{}»", f.palabra),
             })
             .collect();
-        avisos.push(aviso(vec![e.id], format!("#{} ortografia: {}", e.id, lista.join(", "))));
+        avisos.push(aviso(
+            vec![e.id],
+            format!("#{} ortografia: {}", e.id, lista.join(", ")),
+        ));
     }
 
     if let Some(t) = tocados {
@@ -556,7 +839,10 @@ pub fn para_el_modelo(avisos: &[Hallazgo]) -> String {
         s.push_str(&a.texto);
     }
     if avisos.len() > MAX_LINEAS - 1 {
-        s.push_str(&format!("\n(+{} avisos mas)", avisos.len() - (MAX_LINEAS - 1)));
+        s.push_str(&format!(
+            "\n(+{} avisos mas)",
+            avisos.len() - (MAX_LINEAS - 1)
+        ));
     }
     s
 }

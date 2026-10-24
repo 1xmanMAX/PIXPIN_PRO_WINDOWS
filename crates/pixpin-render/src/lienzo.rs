@@ -11,9 +11,9 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2,
     D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
     D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_ROUND,
-    D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES,
-    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1,
-    ID2D1Bitmap1, ID2D1PathGeometry1, ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
+    D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES, D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES,
+    D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1PathGeometry1,
+    ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
@@ -742,7 +742,14 @@ impl Pintor<'_> {
     /// historias y el velo que oscurece una foto para que el texto se lea.
     /// Como `circulo_degradado`, crea el pincel en cada llamada: son pocos
     /// por fotograma.
-    pub fn rect_degradado(&self, r: RectF, desde: (f32, f32), hasta: (f32, f32), a: Color, b: Color) {
+    pub fn rect_degradado(
+        &self,
+        r: RectF,
+        desde: (f32, f32),
+        hasta: (f32, f32),
+        a: Color,
+        b: Color,
+    ) {
         let paradas = [
             D2D1_GRADIENT_STOP {
                 position: 0.0,
@@ -959,34 +966,64 @@ impl Pintor<'_> {
     /// pintar una foto debajo de un `invertir_colores` de toda la ventana y
     /// que, tras los dos negativos, salga con sus colores de verdad.
     pub fn bitmap_negativo(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>) {
-        let m = [[-1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, -1.0, 0.0], [0.0, 0.0, 0.0, 1.0], [1.0, 1.0, 1.0, 0.0]];
+        let m = [
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 0.0],
+        ];
         self.bitmap_con_matriz(b, destino, fuente, &m);
     }
 
     /// Un bitmap pasado por una `ColorMatrix` de Direct2D (fila = canal de
     /// entrada R, G, B, A y la de los desplazamientos).
-    fn bitmap_con_matriz(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>, matriz: &[[f32; 4]; 5]) {
+    fn bitmap_con_matriz(
+        &self,
+        b: &ID2D1Bitmap1,
+        destino: RectF,
+        fuente: Option<RectF>,
+        matriz: &[[f32; 4]; 5],
+    ) {
         use windows::Win32::Graphics::Direct2D::Common::D2D1_COMPOSITE_MODE_SOURCE_OVER;
         use windows::Win32::Graphics::Direct2D::{
-            CLSID_D2D1ColorMatrix, D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT, D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1_PROPERTY_TYPE_BOOL,
+            CLSID_D2D1ColorMatrix, D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT,
+            D2D1_COLORMATRIX_PROP_COLOR_MATRIX, D2D1_PROPERTY_TYPE_BOOL,
             D2D1_PROPERTY_TYPE_MATRIX_5X4,
         };
         let c = self.motor.contexto();
         // SAFETY: GetSize es una consulta del bitmap vivo.
         let tam = unsafe { b.GetSize() };
-        let f = fuente.unwrap_or(RectF { x: 0.0, y: 0.0, ancho: tam.width, alto: tam.height });
+        let f = fuente.unwrap_or(RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: tam.width,
+            alto: tam.height,
+        });
         if !(f.ancho > 0.0 && f.alto > 0.0 && destino.ancho > 0.0 && destino.alto > 0.0) {
             return;
         }
-        let datos: Vec<u8> = matriz.iter().flatten().flat_map(|x| x.to_ne_bytes()).collect();
+        let datos: Vec<u8> = matriz
+            .iter()
+            .flatten()
+            .flat_map(|x| x.to_ne_bytes())
+            .collect();
         // SAFETY: el efecto integrado existe en todo Direct2D 1.1; su entrada
         // es un bitmap vivo del mismo dispositivo; los datos de la matriz
         // tienen los 20 flotantes que pide su tipo.
         let img = unsafe {
             c.CreateEffect(&CLSID_D2D1ColorMatrix).ok().and_then(|e| {
                 e.SetInput(0, b, false);
-                let _ = e.SetValue(D2D1_COLORMATRIX_PROP_COLOR_MATRIX.0 as u32, D2D1_PROPERTY_TYPE_MATRIX_5X4, &datos);
-                let _ = e.SetValue(D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT.0 as u32, D2D1_PROPERTY_TYPE_BOOL, &1u32.to_ne_bytes());
+                let _ = e.SetValue(
+                    D2D1_COLORMATRIX_PROP_COLOR_MATRIX.0 as u32,
+                    D2D1_PROPERTY_TYPE_MATRIX_5X4,
+                    &datos,
+                );
+                let _ = e.SetValue(
+                    D2D1_COLORMATRIX_PROP_CLAMP_OUTPUT.0 as u32,
+                    D2D1_PROPERTY_TYPE_BOOL,
+                    &1u32.to_ne_bytes(),
+                );
                 e.GetOutput().ok()
             })
         };
@@ -1011,7 +1048,13 @@ impl Pintor<'_> {
                 M32: dx * antes.M12 + dy * antes.M22 + antes.M32,
             };
             c.SetTransform(&m);
-            c.DrawImage(&img, None, Some(&f.a_d2d()), D2D1_INTERPOLATION_MODE_LINEAR, D2D1_COMPOSITE_MODE_SOURCE_OVER);
+            c.DrawImage(
+                &img,
+                None,
+                Some(&f.a_d2d()),
+                D2D1_INTERPOLATION_MODE_LINEAR,
+                D2D1_COMPOSITE_MODE_SOURCE_OVER,
+            );
             c.SetTransform(&antes);
         }
     }
@@ -1570,18 +1613,34 @@ impl Pintor<'_> {
                 return;
             };
             self.motor.conto(|c| c.geometrias += 1);
-            let Ok(sumidero) = geometria.Open() else { return };
+            let Ok(sumidero) = geometria.Open() else {
+                return;
+            };
             if cerradas {
                 sumidero.SetFillMode(D2D1_FILL_MODE_WINDING);
             }
             for f in figuras.iter().filter(|f| f.len() >= minimo) {
                 sumidero.BeginFigure(
-                    Vector2 { X: f[0].0, Y: f[0].1 },
-                    if cerradas { D2D1_FIGURE_BEGIN_FILLED } else { D2D1_FIGURE_BEGIN_HOLLOW },
+                    Vector2 {
+                        X: f[0].0,
+                        Y: f[0].1,
+                    },
+                    if cerradas {
+                        D2D1_FIGURE_BEGIN_FILLED
+                    } else {
+                        D2D1_FIGURE_BEGIN_HOLLOW
+                    },
                 );
-                let resto: Vec<Vector2> = f[1..].iter().map(|(x, y)| Vector2 { X: *x, Y: *y }).collect();
+                let resto: Vec<Vector2> = f[1..]
+                    .iter()
+                    .map(|(x, y)| Vector2 { X: *x, Y: *y })
+                    .collect();
                 sumidero.AddLines(&resto);
-                sumidero.EndFigure(if cerradas { D2D1_FIGURE_END_CLOSED } else { D2D1_FIGURE_END_OPEN });
+                sumidero.EndFigure(if cerradas {
+                    D2D1_FIGURE_END_CLOSED
+                } else {
+                    D2D1_FIGURE_END_OPEN
+                });
             }
             if sumidero.Close().is_err() {
                 return;
@@ -1591,7 +1650,9 @@ impl Pintor<'_> {
                 self.motor.contexto().FillGeometry(&geometria, &p, None);
             } else {
                 let estilo = self.estilo_redondo();
-                self.motor.contexto().DrawGeometry(&geometria, &p, grosor, estilo.as_ref());
+                self.motor
+                    .contexto()
+                    .DrawGeometry(&geometria, &p, grosor, estilo.as_ref());
             }
         }
     }
@@ -2514,7 +2575,10 @@ mod pruebas {
         assert_eq!(pixel(&d3d, &ctx, &destino_tex, 44, 44), [0, 0, 255, 255]);
         // Casos negativos: fuera de la zona y en la esquina que el redondeo
         // deja fuera, el color de siempre.
-        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 100, 100), [255, 153, 51, 255]);
+        assert_eq!(
+            pixel(&d3d, &ctx, &destino_tex, 100, 100),
+            [255, 153, 51, 255]
+        );
         assert_eq!(pixel(&d3d, &ctx, &destino_tex, 8, 8), [255, 153, 51, 255]);
         assert_eq!(pixel(&d3d, &ctx, &destino_tex, 17, 17), [255, 153, 51, 255]);
     }

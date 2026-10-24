@@ -34,7 +34,12 @@ use super::*;
 const MS_DOBLE_CLIC: u64 = 500;
 const PX_DOBLE_CLIC: f32 = 5.0;
 /// El color de lo elegido (el azul de elegir de Windows, como en `office`).
-const ELEGIDO: Color = Color { r: 0.0, g: 0.47, b: 0.84, a: 0.30 };
+const ELEGIDO: Color = Color {
+    r: 0.0,
+    g: 0.47,
+    b: 0.84,
+    a: 0.30,
+};
 /// Cuantas hojas alrededor de la que se ve guardan su texto.
 const HOJAS_CON_TEXTO: usize = 8;
 
@@ -103,7 +108,10 @@ pub(super) fn renglon_en(t: &PaginaDeTexto, k: usize) -> Range<usize> {
         if texto.get(i) == Some(&'\n') {
             return Some(false);
         }
-        t.cajas.get(i)?.as_ref().map(|o| centro >= o[1] && centro <= o[3])
+        t.cajas
+            .get(i)?
+            .as_ref()
+            .map(|o| centro >= o[1] && centro <= o[3])
     };
     let mut a = k;
     let mut i = k;
@@ -175,7 +183,9 @@ pub(super) fn pulsar(e: &mut Estado, m: Marco) -> bool {
         e.elegir.seleccion = None;
         return false;
     };
-    let enlace = enlace_en(&h, fx, fy).map(|l| l.destino.clone()).filter(se_sigue);
+    let enlace = enlace_en(&h, fx, fy)
+        .map(|l| l.destino.clone())
+        .filter(se_sigue);
     let sobre_letra = letra_debajo(&h.texto, fx, fy);
     if !sobre_letra && enlace.is_none() {
         e.elegir.seleccion = None;
@@ -197,15 +207,29 @@ pub(super) fn pulsar(e: &mut Estado, m: Marco) -> bool {
         // La letra de debajo, no el hueco entre dos: la de la izquierda del cursor.
         let k = debajo(&h.texto, fx, fy).unwrap_or(letra);
         let r = palabra_en(&texto, k);
-        Some(Seleccion { ancla: (i, r.start), punta: (i, r.end) })
+        Some(Seleccion {
+            ancla: (i, r.start),
+            punta: (i, r.end),
+        })
     } else if cuantos == 3 {
         let k = debajo(&h.texto, fx, fy).unwrap_or(letra);
         let r = renglon_en(&h.texto, k);
-        Some(Seleccion { ancla: (i, r.start), punta: (i, r.end) })
+        Some(Seleccion {
+            ancla: (i, r.start),
+            punta: (i, r.end),
+        })
     } else {
-        Some(Seleccion { ancla: (i, letra), punta: (i, letra) })
+        Some(Seleccion {
+            ancla: (i, letra),
+            punta: (i, letra),
+        })
     };
-    e.elegir.pulsado = Some(Pulsado { desde: e.raton, movido: false, enlace: if fijo { None } else { enlace }, fijo });
+    e.elegir.pulsado = Some(Pulsado {
+        desde: e.raton,
+        movido: false,
+        enlace: if fijo { None } else { enlace },
+        fijo,
+    });
     true
 }
 
@@ -223,14 +247,20 @@ pub(super) fn mover(e: &mut Estado, m: Marco) {
     let Some(p) = e.elegir.pulsado.as_mut() else {
         return;
     };
-    if !p.movido && (raton.0 - p.desde.0).abs().max((raton.1 - p.desde.1).abs()) > lector::UMBRAL_DE_ARRASTRE {
+    if !p.movido
+        && (raton.0 - p.desde.0).abs().max((raton.1 - p.desde.1).abs()) > lector::UMBRAL_DE_ARRASTRE
+    {
         p.movido = true;
     }
     if p.fijo || !p.movido {
         return;
     }
-    let Some((i, Some(h), fx, fy)) = bajo_el_raton(e, m) else { return };
-    let Some(letra) = letra_cercana(&h.texto, fx.clamp(0.0, 1.0), fy.clamp(0.0, 1.0)) else { return };
+    let Some((i, Some(h), fx, fy)) = bajo_el_raton(e, m) else {
+        return;
+    };
+    let Some(letra) = letra_cercana(&h.texto, fx.clamp(0.0, 1.0), fy.clamp(0.0, 1.0)) else {
+        return;
+    };
     if let Some(s) = e.elegir.seleccion.as_mut() {
         s.punta = (i, letra);
     }
@@ -239,7 +269,9 @@ pub(super) fn mover(e: &mut Estado, m: Marco) {
 /// Al soltar: un clic sin moverse en un enlace lo sigue; sin moverse en
 /// texto, se quita lo elegido (salvo doble o triple clic).
 pub(super) fn soltar(e: &mut Estado, m: Marco) {
-    let Some(p) = e.elegir.pulsado.take() else { return };
+    let Some(p) = e.elegir.pulsado.take() else {
+        return;
+    };
     if p.fijo {
         return;
     }
@@ -258,7 +290,9 @@ pub(super) fn soltar(e: &mut Estado, m: Marco) {
 pub(super) fn seguir(e: &mut Estado, d: &Destino, m: Marco) {
     match d {
         Destino::Hoja { hoja, alto } => {
-            let (Some(&arriba), Some(&alto_hoja)) = (e.hojas.arriba.get(*hoja), e.hojas.altos.get(*hoja)) else {
+            let (Some(&arriba), Some(&alto_hoja)) =
+                (e.hojas.arriba.get(*hoja), e.hojas.altos.get(*hoja))
+            else {
                 return;
             };
             let s = px(e, m);
@@ -318,10 +352,16 @@ pub(super) fn texto_elegido(e: &Estado) -> String {
     let Some(sel) = e.elegir.seleccion else {
         return String::new();
     };
-    let (a, b) = if sel.ancla <= sel.punta { (sel.ancla, sel.punta) } else { (sel.punta, sel.ancla) };
+    let (a, b) = if sel.ancla <= sel.punta {
+        (sel.ancla, sel.punta)
+    } else {
+        (sel.punta, sel.ancla)
+    };
     let mut salida = String::new();
     for i in a.0..=b.0 {
-        let Some(h) = e.elegir.hojas.get(&i) else { continue };
+        let Some(h) = e.elegir.hojas.get(&i) else {
+            continue;
+        };
         let largo = h.texto.texto.chars().count();
         if let Some(r) = sel.rango_en(i, largo) {
             if !salida.is_empty() && !salida.ends_with('\n') {
@@ -348,12 +388,18 @@ pub(super) fn copiar(e: &mut Estado, textos: &Catalogo) -> bool {
 
 /// Lo elegido en la hoja `i`, ya con la transformada de la hoja puesta.
 pub(super) fn pintar_seleccion(e: &Estado, p: &Pintor, i: usize) {
-    let Some(sel) = e.elegir.seleccion else { return };
+    let Some(sel) = e.elegir.seleccion else {
+        return;
+    };
     if sel.vacia() {
         return;
     }
-    let (Some(h), Some(&alto)) = (e.elegir.hojas.get(&i), e.hojas.altos.get(i)) else { return };
-    let Some(r) = sel.rango_en(i, h.texto.cajas.len()) else { return };
+    let (Some(h), Some(&alto)) = (e.elegir.hojas.get(&i), e.hojas.altos.get(i)) else {
+        return;
+    };
+    let Some(r) = sel.rango_en(i, h.texto.cajas.len()) else {
+        return;
+    };
     for c in h.texto.cajas_de(r.start, r.end - r.start) {
         p.rellenar(
             RectF {
@@ -371,7 +417,11 @@ pub(super) fn pintar_seleccion(e: &Estado, p: &Pintor, i: usize) {
 pub(super) fn olvidar_lejos(e: &mut Estado, vis: Range<usize>) {
     let cerca = vis.start.saturating_sub(HOJAS_CON_TEXTO)..vis.end + HOJAS_CON_TEXTO;
     let elegidas = e.elegir.seleccion.map(|s| {
-        let (a, b) = if s.ancla <= s.punta { (s.ancla.0, s.punta.0) } else { (s.punta.0, s.ancla.0) };
+        let (a, b) = if s.ancla <= s.punta {
+            (s.ancla.0, s.punta.0)
+        } else {
+            (s.punta.0, s.ancla.0)
+        };
         a..b + 1
     });
     e.elegir
@@ -416,7 +466,14 @@ mod pruebas {
         let r = renglon_en(&t, 6);
         assert_eq!(&t.texto[r.clone()], "Hola mundo, adios");
         let r = renglon_en(&t, 20);
-        assert_eq!(t.texto.chars().skip(r.start).take(r.len()).collect::<String>(), "otra linea");
+        assert_eq!(
+            t.texto
+                .chars()
+                .skip(r.start)
+                .take(r.len())
+                .collect::<String>(),
+            "otra linea"
+        );
     }
 
     /// Un estado con una hoja de texto y un enlace cargados, y el raton
@@ -431,7 +488,10 @@ mod pruebas {
         };
         h.enlaces.push(Enlace {
             caja: [0.1, 0.5, 0.3, 0.55],
-            destino: Destino::Hoja { hoja: 2, alto: Some(0.5) },
+            destino: Destino::Hoja {
+                hoja: 2,
+                alto: Some(0.5),
+            },
         });
         e.elegir.hojas.insert(0, Arc::new(h));
         (e, m)
@@ -441,7 +501,10 @@ mod pruebas {
     fn raton_en(e: &mut Estado, m: Marco, fx: f32, fy: f32) {
         let s = px(e, m);
         let alto = e.hojas.altos[0];
-        e.raton = ((fx * vista::ANCHO_HOJA - e.x) * s, (fy * alto + e.hojas.arriba[0] - e.y) * s);
+        e.raton = (
+            (fx * vista::ANCHO_HOJA - e.x) * s,
+            (fy * alto + e.hojas.arriba[0] - e.y) * s,
+        );
     }
 
     #[test]
@@ -493,12 +556,21 @@ mod pruebas {
         let (mut e, m) = con_texto();
         raton_en(&mut e, m, 0.2, 0.52);
         assert_eq!(cursor(&mut e, m), Some(FormaCursorWin::Giro));
-        assert_eq!(cursor(&mut e, m), None, "la misma forma no se vuelve a poner");
+        assert_eq!(
+            cursor(&mut e, m),
+            None,
+            "la misma forma no se vuelve a poner"
+        );
         assert!(pulsar(&mut e, m));
         soltar(&mut e, m);
         let s = px(&e, m);
         let meta = e.hojas.arriba[2] + 0.5 * e.hojas.altos[2];
-        assert!((e.y - (meta - 24.0 / s)).abs() < 1.0, "a la mitad de la hoja 3: {} {}", e.y, meta);
+        assert!(
+            (e.y - (meta - 24.0 / s)).abs() < 1.0,
+            "a la mitad de la hoja 3: {} {}",
+            e.y,
+            meta
+        );
         // Caso negativo: arrastrar desde un enlace no lo sigue.
         let (mut e, m) = con_texto();
         raton_en(&mut e, m, 0.2, 0.52);
@@ -514,7 +586,9 @@ mod pruebas {
     fn solo_se_abre_la_web_y_el_correo() {
         assert!(se_sigue(&Destino::Web("https://example.org".into())));
         assert!(se_sigue(&Destino::Web("mailto:a@b.c".into())));
-        assert!(!se_sigue(&Destino::Web("file:///C:/Windows/calc.exe".into())));
+        assert!(!se_sigue(&Destino::Web(
+            "file:///C:/Windows/calc.exe".into()
+        )));
         assert!(!se_sigue(&Destino::Web("javascript:alert(1)".into())));
     }
 }

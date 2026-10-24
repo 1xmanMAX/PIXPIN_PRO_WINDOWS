@@ -102,11 +102,18 @@ pub fn confirmar_al_frente(titulo: &str, mensaje: &str) -> bool {
 /// lo que la linea de ordenes no pudo hacer cuando no hay consola donde
 /// decirlo (un enlace, el menu del Explorador).
 pub fn avisar_al_frente(titulo: &str, mensaje: &str) {
-    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_SETFOREGROUND, MB_TOPMOST};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MB_ICONINFORMATION, MB_SETFOREGROUND, MB_TOPMOST,
+    };
     let mensaje = HSTRING::from(mensaje);
     let titulo = HSTRING::from(titulo);
     // SAFETY: HSTRING propias vivas durante la llamada; sin propietaria.
     unsafe {
-        let _ = MessageBoxW(None, &mensaje, &titulo, MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND);
+        let _ = MessageBoxW(
+            None,
+            &mensaje,
+            &titulo,
+            MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND,
+        );
     }
 }

@@ -57,29 +57,29 @@
 
 mod abrir_con;
 mod abrir_hoja;
-mod croquis3d;
-mod al_frente;
 mod abrir_imagen;
+mod al_frente;
+mod aligerar;
+mod croquis3d;
+mod globo_pista;
 mod marco_imprimir;
 mod marcos_doc;
-mod globo_pista;
-mod aligerar;
 // El asistente local del chat (modelo pequeno con llama.cpp, `pixpin-ia`).
+mod anotado_del_adjunto;
+mod anotador_al_chat;
 mod asistente;
+mod audio;
 /// Las automatizaciones del asistente y el asistente sin abrir el chat
 /// (`p ia` de Flow), 13-oct.
 mod automatizaciones;
+mod biblioteca_audio;
 /// La biblioteca de figuras del lienzo, en el chat «Asistente» para que viaje
 /// con los aparatos propios (como las automatizaciones).
 mod biblioteca_figuras;
-mod anotado_del_adjunto;
-mod anotador_al_chat;
-mod audio;
-mod biblioteca_audio;
 mod buscador;
 mod buscar_todo;
-mod caducidad_capturas;
 mod cabecera;
+mod caducidad_capturas;
 mod caja_dibujo;
 /// El componente de escribir de toda la app: el cursor de la caja del chat
 /// y la caja de una linea (buscar, renombrar, codigos) hecha con el.
@@ -105,30 +105,33 @@ mod grupos_ventanas;
 mod hoja_pin;
 mod imagenes_lienzo;
 // Solo para desarrollar: `PIXPIN_INSTANCIA` (ver el modulo).
+/// Google Calendar, solo para ver: sus eventos en el horario y en los avisos.
+mod calendario_google;
+mod horario;
 mod instancia_de_prueba;
 mod lecciones;
-mod lista_del_icono;
 mod lector;
-/// Los lectores como un pin: su ventana y su barra de fuera.
-mod lector_pin;
 mod lector_pdf;
 mod lector_pdf_proyecto;
+/// Los lectores como un pin: su ventana y su barra de fuera.
+mod lector_pin;
 mod lector_tinta;
 mod leer_en_voz;
 mod letras_que_viajan;
+mod lista_del_icono;
 mod llamada;
-mod horario;
-/// Google Calendar, solo para ver: sus eventos en el horario y en los avisos.
-mod calendario_google;
 mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
-/// Lo que dicen las notificaciones de Windows con botones (15-oct).
-mod notificaciones;
 mod miniaturas;
 mod navegacion;
 mod notas_md;
+/// Lo que dicen las notificaciones de Windows con botones (15-oct).
+mod notificaciones;
 // La linea de ordenes y los enlaces `pixpin://` (15-oct-2026).
+mod modelo_bim;
+/// Los Word y PowerPoint de antes, convertidos para el visor propio (20-oct).
+mod office_convertido;
 mod orden;
 mod oscuro;
 mod overlay;
@@ -137,16 +140,12 @@ mod pdf_del_proyecto;
 mod pdf_en_chat;
 mod pedidos;
 mod pegar_en_flow;
-mod vista_rapida;
 mod pila_capturas;
 mod pila_lienzo;
-mod pin_vivo;
-mod modelo_bim;
-mod plano_cad;
 mod pin_office;
-/// Los Word y PowerPoint de antes, convertidos para el visor propio (20-oct).
-mod office_convertido;
+mod pin_vivo;
 mod pines;
+mod plano_cad;
 mod pronunciar;
 mod punto_de_proyecto;
 mod recibir;
@@ -159,9 +158,9 @@ mod salto_por_enlace;
 mod scroll;
 mod sincronizar;
 mod tareas;
-mod timeline;
 mod teleprompter;
 mod tema_cosmos;
+mod timeline;
 mod turno_pesado;
 mod v2;
 mod ventana_ajustes;
@@ -170,6 +169,7 @@ mod ventana_editor;
 mod ventanita;
 mod visor;
 mod visor_html;
+mod vista_rapida;
 // Las hojas de Excel (.xlsx) como pin (10-oct-2026).
 mod visor_hoja;
 mod voz;
@@ -545,10 +545,12 @@ fn arrancar(
     // marcha (18-oct): se precalienta a los 6 s, cuando el arranque ya paso, y
     // solo con memoria de sobra (el proceso del navegador ocupa la suya).
     if decision.nivel == Nivel::Completo && hechos.ram_fisica_bytes >= 7 * 1024 * 1024 * 1024 {
-        let _ = std::thread::Builder::new().name("precalentar-web".into()).spawn(|| {
-            std::thread::sleep(std::time::Duration::from_secs(6));
-            pixpin_web::precalentar();
-        });
+        let _ = std::thread::Builder::new()
+            .name("precalentar-web".into())
+            .spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(6));
+                pixpin_web::precalentar();
+            });
     }
 
     // 6. Idioma, antes de crear nada con texto.
@@ -814,7 +816,10 @@ fn arrancar(
         opciones: opciones_lienzo,
     });
     if !ubicacion.es_portable() {
-        automatizaciones::cola::registrar_notificaciones(ruta_exe.clone(), ubicacion.raiz().to_path_buf());
+        automatizaciones::cola::registrar_notificaciones(
+            ruta_exe.clone(),
+            ubicacion.raiz().to_path_buf(),
+        );
     }
     // Las capturas que se van en las proximas 24 h, con «Conservar».
     caducidad_capturas::vigilar_avisos(ubicacion.raiz().to_path_buf(), lengua);
@@ -876,7 +881,10 @@ fn arrancar(
             if let Some((_, atajo)) = peticiones.iter().find(|(i, _)| *i == id) {
                 ventana_ajustes::entregar_atajo(*atajo);
             }
-            tracing::info!(id, "atajo pulsado mientras se graba en los ajustes: se entrega alli");
+            tracing::info!(
+                id,
+                "atajo pulsado mientras se graba en los ajustes: se entrega alli"
+            );
             return Continuar::Si;
         }
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
@@ -1971,7 +1979,12 @@ fn atender_recordatorios(
         // **Una clase del horario llama por telefono** (17-oct-2026): su
         // tarjeta de llamada, sin pin, globo ni cuaderno que tocar.
         if r.id.starts_with(horario::PREFIJO) {
-            horario::sonar(ubicacion.raiz(), &r, rotulos_de_la_llamada(textos), hwnd.0 as isize);
+            horario::sonar(
+                ubicacion.raiz(),
+                &r,
+                rotulos_de_la_llamada(textos),
+                hwnd.0 as isize,
+            );
             continue;
         }
         // **Una nota de voz con hora es una llamada secreta** (B11,
@@ -2018,7 +2031,8 @@ fn atender_recordatorios(
             let h = hwnd.0 as isize;
             pixpin_shell::notificacion::mostrar_o(toast, move |t| {
                 let hwnd = windows::Win32::Foundation::HWND(h as *mut _);
-                let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd).mostrar(&t.titulo, &t.texto);
+                let _ =
+                    pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd).mostrar(&t.titulo, &t.texto);
             });
         } else if !es_secreta
             && let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto)
@@ -2277,7 +2291,10 @@ fn destino_de_fichero(ruta: &std::path::Path) -> DestinoDeFichero {
 /// Solo los formatos viejos o no OOXML (`.doc`, `.xls`, `.ppt`, Visio,
 /// `.msg`, OpenDocument...) van al pin de Office. Los OOXML (`.docx`,
 /// `.xlsx`, `.pptx`) siguen como antes: los abrira el motor nativo.
-fn destino_con(ruta: &std::path::Path, office: impl Fn(&std::path::Path) -> bool) -> DestinoDeFichero {
+fn destino_con(
+    ruta: &std::path::Path,
+    office: impl Fn(&std::path::Path) -> bool,
+) -> DestinoDeFichero {
     if notas_md::es_markdown(ruta) {
         DestinoDeFichero::Nota
     } else if office(ruta) {
@@ -2331,9 +2348,26 @@ mod pruebas_abrir_ficheros {
 
     #[test]
     fn abrir_office_va_al_pin_de_office_si_hay_previsualizador() {
-        let con = |r: &str| destino_con(Path::new(r), |p| pin_office::va_al_pin(&pixpin_shell::vista_previa::extension_de(p), true, false));
+        let con = |r: &str| {
+            destino_con(Path::new(r), |p| {
+                pin_office::va_al_pin(&pixpin_shell::vista_previa::extension_de(p), true, false)
+            })
+        };
         let sin = |r: &str| destino_con(Path::new(r), |_| false);
-        for f in ["viejo.xls", "g.xlsb", "Carta.doc", "a.rtf", "b.odt", "c.ods", "d.odp", "Plano.vsdx", "e.vsd", "Correo.msg", "f.ppt", "h.pps"] {
+        for f in [
+            "viejo.xls",
+            "g.xlsb",
+            "Carta.doc",
+            "a.rtf",
+            "b.odt",
+            "c.ods",
+            "d.odp",
+            "Plano.vsdx",
+            "e.vsd",
+            "Correo.msg",
+            "f.ppt",
+            "h.pps",
+        ] {
             assert_eq!(con(f), DestinoDeFichero::Office, "{f}");
         }
         // Los OOXML, aunque haya Office, siguen su camino de antes (los
@@ -2788,7 +2822,9 @@ mod pruebas_bandeja {
         // El 6 fijo de antes es «repetir la ultima region», no esto.
         assert_ne!(id, 6);
         assert!(!pide_pinear_lo_copiado(&Evento::Atajo(6)));
-        assert!(!pide_pinear_lo_copiado(&Evento::Menu(comandos::Comando::Pinear.id())));
+        assert!(!pide_pinear_lo_copiado(&Evento::Menu(
+            comandos::Comando::Pinear.id()
+        )));
         assert!(!pide_pinear_lo_copiado(&Evento::Despertar));
     }
 
@@ -2802,7 +2838,12 @@ mod pruebas_bandeja {
         let siguen: Vec<u32> = v[chat + 1..chat + 5].iter().map(|(id, _)| *id).collect();
         assert_eq!(
             siguen,
-            [ID_TIMELINE, ID_LECCION_NUEVA, ID_GALERIA_CAPTURAS, ID_TAREAS]
+            [
+                ID_TIMELINE,
+                ID_LECCION_NUEVA,
+                ID_GALERIA_CAPTURAS,
+                ID_TAREAS
+            ]
         );
         // Lecciones y timeline abren la misma ventana: un solo boton.
         assert!(!v.iter().any(|(id, _)| *id == ID_LECCIONES));

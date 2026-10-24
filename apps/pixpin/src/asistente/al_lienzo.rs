@@ -47,7 +47,10 @@ pub enum Trabajo {
     Resumir,
     /// **Mirarlo** (15-oct, `ojos.rs`): quien tiene la escena copia la zona
     /// y sus imagenes ([`Respuesta::vista`]); se pinta en el hilo de los ojos.
-    Ver { mirada: pixpin_ia::ojos::Mirada, ctx: Contexto },
+    Ver {
+        mirada: pixpin_ia::ojos::Mirada,
+        ctx: Contexto,
+    },
     /// Lo que hizo un turno en el lienzo abierto, un solo paso de deshacer:
     /// si desde `desde` se cerraron justo `esperados` pasos (los del turno),
     /// se juntan; si el usuario hizo algo entre medias, no.
@@ -58,13 +61,18 @@ pub enum Trabajo {
     /// **Una plantilla de serie con otro intervalo** (22-oct, «damela del 1
     /// al 40», «de 10 en 10»): la elegida, rehecha en su sitio, o la de
     /// `nombre`. Ver [`poner_plantilla`].
-    Plantilla { nombre: Option<String>, intervalo: pixpin_motor2d::figuras_de_serie::Intervalo },
+    Plantilla {
+        nombre: Option<String>,
+        intervalo: pixpin_motor2d::figuras_de_serie::Intervalo,
+    },
     /// **Una copia de como esta** (23-oct, la revision con rubrica): antes
     /// de cada ronda de correccion, para volver si la deja peor.
     Copia,
     /// **Volver a una copia** de [`Trabajo::Copia`], como un paso mas
     /// (el `Ctrl+Z` del turno lo deshace todo junto).
-    VolverA { copia: Vec<pixpin_motor2d::elemento::Elemento> },
+    VolverA {
+        copia: Vec<pixpin_motor2d::elemento::Elemento>,
+    },
     /// **Las comprobaciones duras** de todo el lienzo (`pixpin_ia::lint`):
     /// textos encimados o que se salen, flechas sueltas, ortografia... una
     /// linea por fallo en [`Respuesta::texto`].
@@ -203,7 +211,12 @@ static SESIONES: Mutex<Option<std::collections::HashMap<u64, Sesion>>> = Mutex::
 /// **Mete una zona de una hoja.** `centro`: el de lo que se ve (lienzo
 /// abierto); `None`, lienzo cerrado. Un documento vacio con `ultima` solo
 /// cierra la hoja. Devuelve cuantos elementos entraron.
-pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: Option<(f32, f32)>) -> Result<usize, String> {
+pub fn meter_de_hoja(
+    escena: &mut Escena,
+    documento: &str,
+    h: &EnHoja,
+    centro: Option<(f32, f32)>,
+) -> Result<usize, String> {
     // Lo que se ve: una vista del tamano de la hoja alrededor del centro
     // (las pruebas de antes; el editor pasa la suya con `meter_de_hoja_en`).
     let vista = centro.map(|(cx, cy)| (cx - h.tam.0, cy - h.tam.1, cx + h.tam.0, cy + h.tam.1));
@@ -213,18 +226,33 @@ pub fn meter_de_hoja(escena: &mut Escena, documento: &str, h: &EnHoja, centro: O
 /// Lo mismo con lo que se ve `(x0, y0, x1, y1)` (`None`: lienzo cerrado). La
 /// hoja entera va a un sitio libre (`sitio_libre`): junto a su imagen si
 /// salio de una del lienzo, a la vista, sin tapar nada.
-pub fn meter_de_hoja_en(escena: &mut Escena, documento: &str, h: &EnHoja, vista: Option<(f32, f32, f32, f32)>) -> Result<usize, String> {
+pub fn meter_de_hoja_en(
+    escena: &mut Escena,
+    documento: &str,
+    h: &EnHoja,
+    vista: Option<(f32, f32, f32, f32)>,
+) -> Result<usize, String> {
     let mut g = SESIONES.lock().map_err(|_| "el lienzo esta ocupado")?;
     let sesiones = g.get_or_insert_with(Default::default);
     let s = sesiones.entry(h.sesion).or_insert_with(|| {
         let desplazamiento = sitio_libre(escena, h.tam, h.junto_a, vista);
         if let Some(v) = vista {
-            let caja = (desplazamiento.0, desplazamiento.1, desplazamiento.0 + h.tam.0, desplazamiento.1 + h.tam.1);
+            let caja = (
+                desplazamiento.0,
+                desplazamiento.1,
+                desplazamiento.0 + h.tam.0,
+                desplazamiento.1 + h.tam.1,
+            );
             if desplazar_para_ver(v, caja) != (0.0, 0.0) {
                 pedir_mostrar(caja);
             }
         }
-        Sesion { desplazamiento, zonas: Default::default(), pasos_al_empezar: escena.pasos_cerrados(), pasos: 0 }
+        Sesion {
+            desplazamiento,
+            zonas: Default::default(),
+            pasos_al_empezar: escena.pasos_cerrados(),
+            pasos: 0,
+        }
     });
     let mut n = 0;
     if !documento.is_empty() {
@@ -261,13 +289,19 @@ pub fn meter_de_hoja_en(escena: &mut Escena, documento: &str, h: &EnHoja, vista:
         let ids = pixpin_motor2d::portapapeles::pegar(escena, &els, dx, dy);
         n = ids.len();
         s.pasos += 1;
-        let textos = ids.iter().filter_map(|id| escena.buscar(*id)).map(pixpin_motor2d::enlace::id_de_texto_de).collect();
+        let textos = ids
+            .iter()
+            .filter_map(|id| escena.buscar(*id))
+            .map(pixpin_motor2d::enlace::id_de_texto_de)
+            .collect();
         s.zonas.insert(h.zona, textos);
     }
     if h.ultima {
         let s = sesiones.remove(&h.sesion).expect("se acaba de usar");
         // Un solo paso de deshacer, si los ultimos son justo los nuestros.
-        if s.pasos >= 2 && escena.pasos_cerrados().saturating_sub(s.pasos_al_empezar) == s.pasos as u64 {
+        if s.pasos >= 2
+            && escena.pasos_cerrados().saturating_sub(s.pasos_al_empezar) == s.pasos as u64
+        {
             escena.juntar_pasos(s.pasos_al_empezar);
         }
     }
@@ -281,10 +315,15 @@ pub fn meter_de_hoja_en(escena: &mut Escena, documento: &str, h: &EnHoja, vista:
 /// los rotulos y flechas de la misma tanda que lo nombraban le siguen.
 pub(crate) fn ids_sin_choques(escena: &Escena, els: &mut [Elemento]) {
     use std::collections::{HashMap, HashSet};
-    let mut usados: HashSet<String> = escena.visibles().map(pixpin_motor2d::enlace::id_de_texto_de).collect();
+    let mut usados: HashSet<String> = escena
+        .visibles()
+        .map(pixpin_motor2d::enlace::id_de_texto_de)
+        .collect();
     let mut cambio: HashMap<String, String> = HashMap::new();
     for e in els.iter_mut() {
-        let Some(viejo) = e.extras.id_de_fichero.clone() else { continue };
+        let Some(viejo) = e.extras.id_de_fichero.clone() else {
+            continue;
+        };
         if usados.insert(viejo.clone()) {
             continue;
         }
@@ -327,7 +366,9 @@ pub(crate) fn ids_sin_choques(escena: &Escena, els: &mut [Elemento]) {
 /// Si la hoja `sesion` sigue a medio meter (pruebas).
 #[cfg(test)]
 pub(crate) fn hay_sesion(sesion: u64) -> bool {
-    SESIONES.lock().is_ok_and(|g| g.as_ref().is_some_and(|m| m.contains_key(&sesion)))
+    SESIONES
+        .lock()
+        .is_ok_and(|g| g.as_ref().is_some_and(|m| m.contains_key(&sesion)))
 }
 
 /// **Las imagenes que el asistente pega**: las de un almacen de imagenes del
@@ -342,7 +383,10 @@ impl Anfitrion for ConImagenes<'_> {
     fn imagen_nueva(&mut self, fuente: &str) -> Result<Elemento, String> {
         let img = imagen_de(fuente, self.adjuntos)?;
         let (w, h) = (img.ancho as f32, img.alto as f32);
-        let id = self.imagenes.guardar(img).ok_or("la imagen es demasiado grande para este equipo")?;
+        let id = self
+            .imagenes
+            .guardar(img)
+            .ok_or("la imagen es demasiado grande para este equipo")?;
         Ok(crate::imagenes_lienzo::elemento_imagen(id, 0.0, 0.0, w, h))
     }
     fn tamano_de(&self, id_objeto: u64) -> Option<(u32, u32)> {
@@ -352,20 +396,31 @@ impl Anfitrion for ConImagenes<'_> {
 
 /// Los pixeles de lo que hay que pegar: «portapapeles», un adjunto por su
 /// nombre, o (sin decir) la ultima imagen adjunta.
-fn imagen_de(fuente: &str, adjuntos: &[(String, std::path::PathBuf)]) -> Result<pixpin_codec::ImagenRgba, String> {
+fn imagen_de(
+    fuente: &str,
+    adjuntos: &[(String, std::path::PathBuf)],
+) -> Result<pixpin_codec::ImagenRgba, String> {
     let f = pixpin_ia::acciones::normalizar(fuente.trim());
     if f.contains("portapapeles") || f.contains("clipboard") {
         return match pixpin_codec::portapapeles::leer() {
-            Some(pixpin_codec::ContenidoPortapapeles::Imagen(img)) if img.ancho > 0 && img.alto > 0 => Ok(img),
+            Some(pixpin_codec::ContenidoPortapapeles::Imagen(img))
+                if img.ancho > 0 && img.alto > 0 =>
+            {
+                Ok(img)
+            }
             Some(pixpin_codec::ContenidoPortapapeles::Rutas(r)) => {
-                crate::imagenes_lienzo::imagen_de_rutas(&r).ok_or_else(|| "lo copiado no es una imagen".to_string())
+                crate::imagenes_lienzo::imagen_de_rutas(&r)
+                    .ok_or_else(|| "lo copiado no es una imagen".to_string())
             }
             _ => Err("no hay ninguna imagen copiada en el portapapeles".into()),
         };
     }
     let imagenes: Vec<&(String, std::path::PathBuf)> = adjuntos
         .iter()
-        .filter(|(_, r)| crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(r)).is_some() || es_imagen(r))
+        .filter(|(_, r)| {
+            crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(r)).is_some()
+                || es_imagen(r)
+        })
         .collect();
     let elegida = if f.is_empty() {
         imagenes.last().copied()
@@ -378,13 +433,14 @@ fn imagen_de(fuente: &str, adjuntos: &[(String, std::path::PathBuf)]) -> Result<
             .or(imagenes.last().copied())
     };
     let (_, ruta) = elegida.ok_or("no hay ninguna imagen adjunta en este chat")?;
-    crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(ruta)).ok_or_else(|| "no se pudo leer la imagen".to_string())
+    crate::imagenes_lienzo::imagen_de_rutas(std::slice::from_ref(ruta))
+        .ok_or_else(|| "no se pudo leer la imagen".to_string())
 }
 
 fn es_imagen(r: &std::path::Path) -> bool {
-    r.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| ["png", "jpg", "jpeg", "bmp", "gif", "webp"].contains(&e.to_ascii_lowercase().as_str()))
+    r.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        ["png", "jpg", "jpeg", "bmp", "gif", "webp"].contains(&e.to_ascii_lowercase().as_str())
+    })
 }
 
 /// **Hace un trabajo de editar o resumir sobre una escena** (la del editor
@@ -411,7 +467,11 @@ pub fn trabajar(
                 ..Default::default()
             })
         }
-        Trabajo::Editar { edicion, ctx, adjuntos } => {
+        Trabajo::Editar {
+            edicion,
+            ctx,
+            adjuntos,
+        } => {
             let mut ctx = ctx.clone();
             // Lo elegido es lo de ahora, no lo de cuando empezo el turno.
             ctx.elegidos = elegidos.to_vec();
@@ -427,8 +487,13 @@ pub fn trabajar(
             let mut ctx = ctx.clone();
             ctx.elegidos = elegidos.to_vec();
             let imagenes = &*imagenes;
-            let enc = super::ojos::encargo_de(escena, mirada, &ctx, |id| imagenes.rgba(id).cloned().map(super::ojos::Pixeles::Rgba))?;
-            Ok(Respuesta { vista: Some(Box::new(enc)), ..Default::default() })
+            let enc = super::ojos::encargo_de(escena, mirada, &ctx, |id| {
+                imagenes.rgba(id).cloned().map(super::ojos::Pixeles::Rgba)
+            })?;
+            Ok(Respuesta {
+                vista: Some(Box::new(enc)),
+                ..Default::default()
+            })
         }
         Trabajo::Juntar { desde, esperados } => {
             if *esperados >= 2 && escena.pasos_cerrados().saturating_sub(*desde) == *esperados {
@@ -437,26 +502,47 @@ pub fn trabajar(
             Ok(Respuesta::default())
         }
         Trabajo::Imagen => {
-            let (id, caja) = imagen_de_escena(escena, elegidos).ok_or("no hay ninguna imagen en el lienzo")?;
-            let img = imagenes.rgba(id).ok_or("la imagen del lienzo no esta cargada")?;
+            let (id, caja) =
+                imagen_de_escena(escena, elegidos).ok_or("no hay ninguna imagen en el lienzo")?;
+            let img = imagenes
+                .rgba(id)
+                .ok_or("la imagen del lienzo no esta cargada")?;
             Ok(Respuesta {
-                imagen: Some(Box::new(ImagenDelLienzo { rgba: img.pixeles.clone(), ancho: img.ancho, alto: img.alto, caja })),
+                imagen: Some(Box::new(ImagenDelLienzo {
+                    rgba: img.pixeles.clone(),
+                    ancho: img.ancho,
+                    alto: img.alto,
+                    caja,
+                })),
                 ..Default::default()
             })
         }
-        Trabajo::Plantilla { nombre, intervalo } => poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, None),
-        Trabajo::Copia => Ok(Respuesta { copia: Some(escena.elementos.clone()), ..Default::default() }),
+        Trabajo::Plantilla { nombre, intervalo } => {
+            poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, None)
+        }
+        Trabajo::Copia => Ok(Respuesta {
+            copia: Some(escena.elementos.clone()),
+            ..Default::default()
+        }),
         Trabajo::VolverA { copia } => {
             let cambio = escena.volver_a(copia);
             Ok(Respuesta {
-                texto: if cambio { "vuelto a la version guardada".into() } else { "ya estaba como la version guardada".into() },
+                texto: if cambio {
+                    "vuelto a la version guardada".into()
+                } else {
+                    "ya estaba como la version guardada".into()
+                },
                 ..Default::default()
             })
         }
         Trabajo::Comprobar => {
             let avisos = pixpin_ia::lint::revisar(escena, None);
             Ok(Respuesta {
-                texto: avisos.iter().map(|h| h.texto.clone()).collect::<Vec<_>>().join("\n"),
+                texto: avisos
+                    .iter()
+                    .map(|h| h.texto.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
                 ..Default::default()
             })
         }
@@ -508,7 +594,12 @@ pub fn abrir_como(clave: &str) {
 
 /// El lienzo abierto con esa clave, si sigue abierto.
 pub fn editor_de_clave(clave: &str) -> Option<isize> {
-    EDITORES.lock().ok()?.iter().find(|a| a.clave.as_deref() == Some(clave)).map(|a| a.hwnd)
+    EDITORES
+        .lock()
+        .ok()?
+        .iter()
+        .find(|a| a.clave.as_deref() == Some(clave))
+        .map(|a| a.hwnd)
 }
 
 /// Mientras vive, hay un lienzo abierto y recibe lo que se dibuje para el.
@@ -519,7 +610,11 @@ impl EditorAbierto {
     pub fn nuevo(hwnd: isize) -> EditorAbierto {
         if let Ok(mut v) = EDITORES.lock() {
             v.retain(|a| a.hwnd != hwnd);
-            v.push(Abierto { hwnd, hoja: None, clave: CLAVE.with(|c| c.borrow().clone()) });
+            v.push(Abierto {
+                hwnd,
+                hoja: None,
+                clave: CLAVE.with(|c| c.borrow().clone()),
+            });
         }
         EDITOR.store(hwnd, Ordering::SeqCst);
         ESTE.with(|e| e.set(hwnd));
@@ -557,14 +652,20 @@ pub fn activar(hwnd: isize) {
 /// chat.
 fn editor_de(p: &Pedido) -> isize {
     let activo = EDITOR.load(Ordering::SeqCst);
-    let Ok(v) = EDITORES.lock() else { return activo };
+    let Ok(v) = EDITORES.lock() else {
+        return activo;
+    };
     match &p.destino {
         None => activo,
         Some(d) => v
             .iter()
             .find(|a| a.hoja.as_deref() == Some(d.as_str()))
             .map(|a| a.hwnd)
-            .or_else(|| v.iter().any(|a| a.hwnd == activo && a.hoja.is_none()).then_some(activo))
+            .or_else(|| {
+                v.iter()
+                    .any(|a| a.hwnd == activo && a.hoja.is_none())
+                    .then_some(activo)
+            })
             .unwrap_or(0),
     }
 }
@@ -629,13 +730,20 @@ pub fn pedir(p: Pedido) {
     if let Ok(mut c) = COLA.lock() {
         c.push(p);
     }
-    despertar(if editor != 0 { editor } else { CHAT.load(Ordering::SeqCst) });
+    despertar(if editor != 0 {
+        editor
+    } else {
+        CHAT.load(Ordering::SeqCst)
+    });
 }
 
 /// Los pedidos que cumplen `para`; los demas se quedan en la cola.
 pub fn tomar_si(para: impl Fn(&Pedido) -> bool) -> Vec<Pedido> {
-    let Ok(mut c) = COLA.lock() else { return Vec::new() };
-    let (si, no): (Vec<Pedido>, Vec<Pedido>) = std::mem::take(&mut *c).into_iter().partition(|p| para(p));
+    let Ok(mut c) = COLA.lock() else {
+        return Vec::new();
+    };
+    let (si, no): (Vec<Pedido>, Vec<Pedido>) =
+        std::mem::take(&mut *c).into_iter().partition(|p| para(p));
     *c = no;
     si
 }
@@ -656,12 +764,15 @@ pub fn hay_pedidos() -> bool {
 
 /// Los pedidos que haya, para atenderlos.
 pub fn tomar() -> Vec<Pedido> {
-    COLA.lock().map(|mut c| std::mem::take(&mut *c)).unwrap_or_default()
+    COLA.lock()
+        .map(|mut c| std::mem::take(&mut *c))
+        .unwrap_or_default()
 }
 
 /// Los elementos de un documento del asistente.
 pub fn elementos_de(documento: &str) -> Result<Vec<Elemento>, String> {
-    let lienzo = pixpin_motor2d::excalidraw::leer(documento).map_err(|e| format!("el lienzo no lo entiende: {e}"))?;
+    let lienzo = pixpin_motor2d::excalidraw::leer(documento)
+        .map_err(|e| format!("el lienzo no lo entiende: {e}"))?;
     let els = lienzo.elementos();
     if els.is_empty() {
         return Err("no hay nada que dibujar".into());
@@ -729,7 +840,12 @@ pub fn resumen_con_ids(escena: &Escena, ids: Vec<u64>, marco: Option<(f32, f32)>
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn atender_en_editor(escena: &mut Escena, centro: (f32, f32)) -> bool {
     let mut imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(16_384);
-    let vista = (centro.0 - 400.0, centro.1 - 300.0, centro.0 + 400.0, centro.1 + 300.0);
+    let vista = (
+        centro.0 - 400.0,
+        centro.1 - 300.0,
+        centro.0 + 400.0,
+        centro.1 + 300.0,
+    );
     atender_en_editor_con(escena, vista, &[], &mut imagenes)
 }
 
@@ -752,7 +868,11 @@ pub fn atender_en_editor_con(
         let r = match &p.trabajo {
             Trabajo::Dibujar if p.hoja.is_some() => {
                 let h = p.hoja.expect("se acaba de mirar");
-                let r = meter_de_hoja_en(escena, &p.documento, &h, Some(vista)).map(|n| Respuesta { texto: resumen(n), ..Default::default() });
+                let r =
+                    meter_de_hoja_en(escena, &p.documento, &h, Some(vista)).map(|n| Respuesta {
+                        texto: resumen(n),
+                        ..Default::default()
+                    });
                 if r.is_ok() {
                     // Las fotos de la hoja, al almacen (nuevas: se guardan con el lienzo).
                     for (id, img) in std::mem::take(&mut p.imagenes) {
@@ -771,17 +891,30 @@ pub fn atender_en_editor_con(
             Trabajo::Plantilla { nombre, intervalo } => {
                 let antes = escena.pasos_cerrados();
                 let centro = ((vista.0 + vista.2) / 2.0, (vista.1 + vista.3) / 2.0);
-                let r = poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, Some(centro));
+                let r =
+                    poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, Some(centro));
                 algo |= escena.pasos_cerrados() != antes;
-                r.map(|r| Respuesta { pasos: Some((antes, escena.pasos_cerrados())), ..r })
+                r.map(|r| Respuesta {
+                    pasos: Some((antes, escena.pasos_cerrados())),
+                    ..r
+                })
             }
             t => {
                 let antes = escena.pasos_cerrados();
-                let r = trabajar(escena, t, elegidos, (vista.0.floor(), vista.1.floor()), imagenes);
+                let r = trabajar(
+                    escena,
+                    t,
+                    elegidos,
+                    (vista.0.floor(), vista.1.floor()),
+                    imagenes,
+                );
                 algo |= escena.pasos_cerrados() != antes;
                 // Lo que edito, para juntarlo al acabar el turno.
                 r.map(|r| match t {
-                    Trabajo::Editar { .. } | Trabajo::VolverA { .. } => Respuesta { pasos: Some((antes, escena.pasos_cerrados())), ..r },
+                    Trabajo::Editar { .. } | Trabajo::VolverA { .. } => Respuesta {
+                        pasos: Some((antes, escena.pasos_cerrados())),
+                        ..r
+                    },
                     _ => r,
                 })
             }
@@ -825,7 +958,9 @@ pub fn contestar_lo_elegido(escena: &Escena, elegidos: &[u64]) {
         return;
     }
     HAY_PREGUNTA.store(false, Ordering::SeqCst);
-    let Some(tx) = PREGUNTA.lock().ok().and_then(|mut p| p.take()) else { return };
+    let Some(tx) = PREGUNTA.lock().ok().and_then(|mut p| p.take()) else {
+        return;
+    };
     let piezas: Vec<Elemento> = escena
         .visibles()
         .filter(|e| elegidos.contains(&e.id))
@@ -864,9 +999,15 @@ pub struct ImagenDelLienzo {
 /// su caja.
 pub fn imagen_de_escena(escena: &Escena, elegidos: &[u64]) -> Option<(u64, (f32, f32, f32, f32))> {
     let es_imagen = |e: &&Elemento| matches!(e.figura, pixpin_motor2d::Figura::Imagen { .. });
-    let elegida = escena.visibles().filter(es_imagen).filter(|e| elegidos.contains(&e.id)).last();
+    let elegida = escena
+        .visibles()
+        .filter(es_imagen)
+        .filter(|e| elegidos.contains(&e.id))
+        .last();
     let e = elegida.or_else(|| escena.visibles().filter(es_imagen).last())?;
-    let pixpin_motor2d::Figura::Imagen { id_objeto } = e.figura else { return None };
+    let pixpin_motor2d::Figura::Imagen { id_objeto } = e.figura else {
+        return None;
+    };
     Some((id_objeto, e.caja()))
 }
 
@@ -882,15 +1023,31 @@ const AIRE: f32 = 40.0;
 /// Antes, con el lienzo cerrado, lo nuevo iba «a la derecha de todo lo que
 /// habia»: en un lienzo ancho acababa en x = 15000, fuera de la vista y
 /// lejos de la imagen de la que salia (queja del 15-oct, «traelo»).
-pub fn sitio_libre(escena: &Escena, tam: (f32, f32), junto_a: Option<(f32, f32, f32, f32)>, vista: Option<(f32, f32, f32, f32)>) -> (f32, f32) {
+pub fn sitio_libre(
+    escena: &Escena,
+    tam: (f32, f32),
+    junto_a: Option<(f32, f32, f32, f32)>,
+    vista: Option<(f32, f32, f32, f32)>,
+) -> (f32, f32) {
     let (w, h) = (tam.0.max(1.0), tam.1.max(1.0));
-    let cajas: Vec<(f32, f32, f32, f32)> =
-        escena.visibles().map(Elemento::caja).filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite())).collect();
+    let cajas: Vec<(f32, f32, f32, f32)> = escena
+        .visibles()
+        .map(Elemento::caja)
+        .filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite()))
+        .collect();
     let libre = |x: f32, y: f32| {
-        let (x0, y0, x1, y1) = (x - AIRE / 2.0, y - AIRE / 2.0, x + w + AIRE / 2.0, y + h + AIRE / 2.0);
-        !cajas.iter().any(|c| c.0 < x1 && c.2 > x0 && c.1 < y1 && c.3 > y0)
+        let (x0, y0, x1, y1) = (
+            x - AIRE / 2.0,
+            y - AIRE / 2.0,
+            x + w + AIRE / 2.0,
+            y + h + AIRE / 2.0,
+        );
+        !cajas
+            .iter()
+            .any(|c| c.0 < x1 && c.2 > x0 && c.1 < y1 && c.3 > y0)
     };
-    let se_ve = |x: f32, y: f32| vista.is_none_or(|v| x >= v.0 && y >= v.1 && x + w <= v.2 && y + h <= v.3);
+    let se_ve =
+        |x: f32, y: f32| vista.is_none_or(|v| x >= v.0 && y >= v.1 && x + w <= v.2 && y + h <= v.3);
     let mut candidatos: Vec<(f32, f32)> = Vec::new();
     if let Some(s) = junto_a {
         candidatos.push((s.2 + AIRE, s.1));
@@ -909,7 +1066,10 @@ pub fn sitio_libre(escena: &Escena, tam: (f32, f32), junto_a: Option<(f32, f32, 
         return (0.0, 0.0);
     }
     // 1. Libre y a la vista; 2. libre.
-    if let Some(&c) = candidatos.iter().find(|c| libre(c.0, c.1) && se_ve(c.0, c.1)) {
+    if let Some(&c) = candidatos
+        .iter()
+        .find(|c| libre(c.0, c.1) && se_ve(c.0, c.1))
+    {
         return c;
     }
     if vista.is_none()
@@ -941,7 +1101,11 @@ pub fn sitio_libre(escena: &Escena, tam: (f32, f32), junto_a: Option<(f32, f32, 
             break;
         }
     }
-    libres.first().copied().or_else(|| candidatos.iter().copied().find(|c| libre(c.0, c.1))).unwrap_or(candidatos[0])
+    libres
+        .first()
+        .copied()
+        .or_else(|| candidatos.iter().copied().find(|c| libre(c.0, c.1)))
+        .unwrap_or(candidatos[0])
 }
 
 // Lo que se pide que la ventana del lienzo ensene (lo nuevo no se veia).
@@ -967,13 +1131,21 @@ pub fn desplazar_para_ver(vista: (f32, f32, f32, f32), caja: (f32, f32, f32, f32
     if dentro {
         return (0.0, 0.0);
     }
-    (((caja.0 + caja.2) - (vista.0 + vista.2)) / 2.0, ((caja.1 + caja.3) - (vista.1 + vista.3)) / 2.0)
+    (
+        ((caja.0 + caja.2) - (vista.0 + vista.2)) / 2.0,
+        ((caja.1 + caja.3) - (vista.1 + vista.3)) / 2.0,
+    )
 }
 
 /// **Mete lo dibujado en un sitio libre**: junto a la imagen de la que sale
 /// (si hay), a la vista si la hay (y si no se ve, pide que la vista se
 /// mueva). En un solo paso de deshacer. Devuelve los ids.
-pub fn meter_en_sitio(escena: &mut Escena, documento: &str, junto_a: Option<(f32, f32, f32, f32)>, vista: Option<(f32, f32, f32, f32)>) -> Result<Vec<u64>, String> {
+pub fn meter_en_sitio(
+    escena: &mut Escena,
+    documento: &str,
+    junto_a: Option<(f32, f32, f32, f32)>,
+    vista: Option<(f32, f32, f32, f32)>,
+) -> Result<Vec<u64>, String> {
     let els = elementos_de(documento)?;
     let c = caja(&els).ok_or("las figuras no tienen medida")?;
     let (x, y) = sitio_libre(escena, (c.2 - c.0, c.3 - c.1), junto_a, vista);
@@ -1022,18 +1194,27 @@ pub fn poner_plantilla(
     centro: Option<(f32, f32)>,
 ) -> Result<Respuesta, String> {
     use pixpin_motor2d::figuras_de_serie as serie;
-    let elegidas: Vec<Elemento> = escena.visibles().filter(|e| elegidos.contains(&e.id)).cloned().collect();
+    let elegidas: Vec<Elemento> = escena
+        .visibles()
+        .filter(|e| elegidos.contains(&e.id))
+        .cloned()
+        .collect();
     let la_elegida = serie::cual_es(&elegidas);
     let clave = match nombre {
         Some(n) => {
             let catalogo = serie::catalogo();
-            let f = pixpin_ia::figuras::buscar(&catalogo, n)
-                .ok_or_else(|| format!("no hay ninguna plantilla llamada «{n}»; se alargan: {}", serie::las_que_se_alargan()))?;
+            let f = pixpin_ia::figuras::buscar(&catalogo, n).ok_or_else(|| {
+                format!(
+                    "no hay ninguna plantilla llamada «{n}»; se alargan: {}",
+                    serie::las_que_se_alargan()
+                )
+            })?;
             serie::clave_de(f).unwrap_or_default().to_string()
         }
         None => la_elegida.clone().ok_or_else(|| {
             if elegidas.is_empty() {
-                "no hay nada elegido: elige en el lienzo la plantilla (o di cual quieres)".to_string()
+                "no hay nada elegido: elige en el lienzo la plantilla (o di cual quieres)"
+                    .to_string()
             } else {
                 "lo elegido no es una plantilla de serie (se reconocen por su titulo)".to_string()
             }
@@ -1067,13 +1248,24 @@ pub fn poner_plantilla(
     let texto = if hojas.len() == 1 {
         format!("listo: «{que}» rehecha en una hoja ({})", hojas[0].nombre)
     } else {
-        format!("listo: «{que}» en {} hojas, una al lado de otra", hojas.len())
+        format!(
+            "listo: «{que}» en {} hojas, una al lado de otra",
+            hojas.len()
+        )
     };
     let texto = format!(
         "{texto}{}. Quedan elegidas: el usuario puede guardarlas con «Guardar en figuras» del panel lateral, o pedirtelo.",
-        if reemplaza { ", en el sitio de la que estaba elegida (Ctrl+Z la devuelve)" } else { "" }
+        if reemplaza {
+            ", en el sitio de la que estaba elegida (Ctrl+Z la devuelve)"
+        } else {
+            ""
+        }
     );
-    Ok(Respuesta { texto, ids, ..Default::default() })
+    Ok(Respuesta {
+        texto,
+        ids,
+        ..Default::default()
+    })
 }
 
 /// Con el lienzo cerrado, a cuanto de lo que habia.
@@ -1090,8 +1282,15 @@ mod pruebas_plantilla {
     /// Un lienzo con la lista de tareas de serie estampada y elegida.
     fn con_la_lista() -> (Escena, Vec<u64>) {
         let mut escena = Escena::nueva();
-        let f = serie::catalogo().into_iter().find(|f| f.id == "serie-lista-de-tareas").unwrap();
-        let ids = biblioteca::estampar_en_escena(&mut escena, &f, pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0));
+        let f = serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-lista-de-tareas")
+            .unwrap();
+        let ids = biblioteca::estampar_en_escena(
+            &mut escena,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0),
+        );
         (escena, ids)
     }
 
@@ -1099,28 +1298,59 @@ mod pruebas_plantilla {
     fn la_plantilla_elegida_se_rehace_en_su_sitio_en_hojas_y_se_deshace_de_una() {
         let (mut escena, ids) = con_la_lista();
         let caja_vieja = caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
-        let iv = Intervalo { desde: Some(1), hasta: Some(40), de_a: Some(10), ..Default::default() };
+        let iv = Intervalo {
+            desde: Some(1),
+            hasta: Some(40),
+            de_a: Some(10),
+            ..Default::default()
+        };
         let r = poner_plantilla(&mut escena, &ids, None, &iv, Some((0.0, 0.0))).unwrap();
         assert!(r.texto.contains("4 hojas"), "{}", r.texto);
-        assert!(ids.iter().all(|id| escena.buscar(*id).is_some_and(|e| e.borrado)), "la vieja se va");
+        assert!(
+            ids.iter()
+                .all(|id| escena.buscar(*id).is_some_and(|e| e.borrado)),
+            "la vieja se va"
+        );
         let nuevas: Vec<Elemento> = escena.visibles().cloned().collect();
-        let grupos: std::collections::HashSet<&String> = nuevas.iter().filter_map(|e| e.grupos.last()).collect();
+        let grupos: std::collections::HashSet<&String> =
+            nuevas.iter().filter_map(|e| e.grupos.last()).collect();
         assert_eq!(grupos.len(), 4, "una hoja, un grupo");
         let c = caja(&nuevas).unwrap();
-        assert!((c.0 - caja_vieja.0).abs() < 0.5 && (c.1 - caja_vieja.1).abs() < 0.5, "empieza donde estaba la vieja");
-        assert_eq!(tomar_para_elegir().map(|v| v.len()), Some(nuevas.len()), "quedan elegidas");
+        assert!(
+            (c.0 - caja_vieja.0).abs() < 0.5 && (c.1 - caja_vieja.1).abs() < 0.5,
+            "empieza donde estaba la vieja"
+        );
+        assert_eq!(
+            tomar_para_elegir().map(|v| v.len()),
+            Some(nuevas.len()),
+            "quedan elegidas"
+        );
         assert_eq!(r.ids.len(), nuevas.len());
         // Un Ctrl+Z la devuelve tal cual.
         escena.deshacer();
         assert_eq!(escena.visibles().count(), ids.len());
-        assert!(ids.iter().all(|id| escena.buscar(*id).is_some_and(|e| !e.borrado)));
+        assert!(
+            ids.iter()
+                .all(|id| escena.buscar(*id).is_some_and(|e| !e.borrado))
+        );
     }
 
     #[test]
     fn por_su_nombre_va_en_medio_y_sin_nada_elegido_se_dice() {
         let mut escena = Escena::nueva();
-        let iv = Intervalo { desde: Some(7), hasta: Some(18), ..Default::default() };
-        let r = poner_plantilla(&mut escena, &[], Some("storyboard de 6 viñetas"), &iv, Some((1000.0, 1000.0))).unwrap();
+        let iv = Intervalo {
+            desde: Some(7),
+            hasta: Some(18),
+            ..Default::default()
+        };
+        let r = poner_plantilla(
+            &mut escena,
+            &[],
+            Some("storyboard de 6 viñetas"),
+            &iv,
+            Some((1000.0, 1000.0)),
+        )
+        .unwrap();
         let c = caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
         assert!(((c.0 + c.2) / 2.0 - 1000.0).abs() < 1.0, "{c:?}");
         assert!(!r.texto.contains("Ctrl+Z"));
@@ -1130,14 +1360,21 @@ mod pruebas_plantilla {
         let (mut escena, ids) = con_la_lista();
         let e = poner_plantilla(&mut escena, &ids, Some("curso"), &iv, None).unwrap_err();
         assert!(e.contains("no lleva números"), "{e}");
-        assert!(tomar_para_elegir().is_none(), "cerrado no deja nada que elegir");
+        assert!(
+            tomar_para_elegir().is_none(),
+            "cerrado no deja nada que elegir"
+        );
     }
 }
 
 /// Lo que miden unas hojas puestas en fila.
 fn medida_de_las_hojas(hojas: &[FiguraGuardada]) -> (f32, f32) {
-    let ancho = hojas.iter().map(|f| f.tamano().0).sum::<f32>() + ENTRE_HOJAS * hojas.len().saturating_sub(1) as f32;
-    (ancho, hojas.iter().map(|f| f.tamano().1).fold(0.0, f32::max))
+    let ancho = hojas.iter().map(|f| f.tamano().0).sum::<f32>()
+        + ENTRE_HOJAS * hojas.len().saturating_sub(1) as f32;
+    (
+        ancho,
+        hojas.iter().map(|f| f.tamano().1).fold(0.0, f32::max),
+    )
 }
 
 /// **Unas hojas en fila** desde `(x0, y0)`, cada una su grupo, en el paso
@@ -1160,10 +1397,18 @@ fn colocar_hojas(escena: &mut Escena, hojas: &[FiguraGuardada], (x0, y0): (f32, 
 
 /// Las hojas de una plantilla alargada en medio de `centro` (la ventana de
 /// las figuras), en un solo paso de deshacer.
-pub fn colocar_hojas_en_medio(escena: &mut Escena, hojas: &[FiguraGuardada], centro: (f32, f32)) -> Vec<u64> {
+pub fn colocar_hojas_en_medio(
+    escena: &mut Escena,
+    hojas: &[FiguraGuardada],
+    centro: (f32, f32),
+) -> Vec<u64> {
     let (ancho, alto) = medida_de_las_hojas(hojas);
     escena.abrir_paso();
-    let ids = colocar_hojas(escena, hojas, (centro.0 - ancho / 2.0, centro.1 - alto / 2.0));
+    let ids = colocar_hojas(
+        escena,
+        hojas,
+        (centro.0 - ancho / 2.0, centro.1 - alto / 2.0),
+    );
     escena.cerrar_paso();
     ids
 }
@@ -1184,24 +1429,56 @@ mod pruebas_revision {
     #[test]
     fn la_copia_vuelve_tal_cual_y_se_deshace_de_una() {
         let mut escena = Escena::nueva();
-        let f = serie::catalogo().into_iter().find(|f| f.id == "serie-lista-de-tareas").unwrap();
-        let ids = biblioteca::estampar_en_escena(&mut escena, &f, pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0));
+        let f = serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-lista-de-tareas")
+            .unwrap();
+        let ids = biblioteca::estampar_en_escena(
+            &mut escena,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(500.0, 600.0),
+        );
         let antes: Vec<_> = escena.visibles().map(|e| (e.id, e.caja())).collect();
-        let copia = trabajo(&mut escena, Trabajo::Copia).copia.expect("la copia");
+        let copia = trabajo(&mut escena, Trabajo::Copia)
+            .copia
+            .expect("la copia");
         // La «correccion» mueve una cosa y borra otra.
         escena.abrir_paso();
         escena.mover(ids[0], 40.0, 0.0);
         escena.borrar_apuntando(ids[1]);
         escena.cerrar_paso();
-        assert_ne!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
+        assert_ne!(
+            escena
+                .visibles()
+                .map(|e| (e.id, e.caja()))
+                .collect::<Vec<_>>(),
+            antes
+        );
         let pasos = escena.pasos_cerrados();
-        let r = trabajo(&mut escena, Trabajo::VolverA { copia: copia.clone() });
+        let r = trabajo(
+            &mut escena,
+            Trabajo::VolverA {
+                copia: copia.clone(),
+            },
+        );
         assert!(r.texto.starts_with("vuelto"), "{}", r.texto);
-        assert_eq!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
+        assert_eq!(
+            escena
+                .visibles()
+                .map(|e| (e.id, e.caja()))
+                .collect::<Vec<_>>(),
+            antes
+        );
         assert_eq!(escena.pasos_cerrados(), pasos + 1, "volver es un paso");
         // Otra vez: sigue igual (puede apuntar un paso, por las versiones).
         trabajo(&mut escena, Trabajo::VolverA { copia });
-        assert_eq!(escena.visibles().map(|e| (e.id, e.caja())).collect::<Vec<_>>(), antes);
+        assert_eq!(
+            escena
+                .visibles()
+                .map(|e| (e.id, e.caja()))
+                .collect::<Vec<_>>(),
+            antes
+        );
         // Y comprobar contesta con una linea por fallo (o ninguna).
         let r = trabajo(&mut escena, Trabajo::Comprobar);
         assert!(r.texto.lines().count() <= pixpin_ia::lint::MAX_LINEAS.max(64));

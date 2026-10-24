@@ -120,7 +120,10 @@ enum Cambio {
     Alfileres(Vec<crate::nudos::Alfiler>),
     /// Las tablas de coordenadas y su eje **antes** del cambio: tampoco son
     /// de ningun elemento.
-    Tablas(Vec<crate::instrumento::tabla::TablaDeCoordenadas>, Option<Punto2>),
+    Tablas(
+        Vec<crate::instrumento::tabla::TablaDeCoordenadas>,
+        Option<Punto2>,
+    ),
 }
 
 /// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
@@ -737,8 +740,17 @@ impl Escena {
         let abierto_aqui = self.en_curso.is_none();
         self.abrir_paso();
         // El orden: el de la copia, y detras lo que ella no tenia.
-        let mut orden: Vec<u64> = copia.iter().map(|c| c.id).filter(|id| self.buscar(*id).is_some()).collect();
-        orden.extend(self.elementos.iter().map(|e| e.id).filter(|id| !copia.iter().any(|c| c.id == *id)));
+        let mut orden: Vec<u64> = copia
+            .iter()
+            .map(|c| c.id)
+            .filter(|id| self.buscar(*id).is_some())
+            .collect();
+        orden.extend(
+            self.elementos
+                .iter()
+                .map(|e| e.id)
+                .filter(|id| !copia.iter().any(|c| c.id == *id)),
+        );
         let ahora: Vec<u64> = self.elementos.iter().map(|e| e.id).collect();
         let mut cambio = false;
         if orden != ahora {
@@ -752,11 +764,16 @@ impl Escena {
             cambio = true;
         }
         for id in orden {
-            let Some(actual) = self.buscar(id) else { continue };
+            let Some(actual) = self.buscar(id) else {
+                continue;
+            };
             let objetivo = match copia.iter().find(|c| c.id == id) {
                 Some(c) => c.clone(),
                 None if actual.borrado => continue,
-                None => Elemento { borrado: true, ..actual.clone() },
+                None => Elemento {
+                    borrado: true,
+                    ..actual.clone()
+                },
             };
             if *actual == objetivo {
                 continue;
@@ -809,7 +826,11 @@ impl Escena {
     /// un `Ctrl+Z` lo quita entero, como si se hubiera dibujado aqui. Los
     /// que no esten se ignoran; sin ninguno no hay paso.
     pub fn apuntar_anadidos(&mut self, ids: &[u64]) {
-        let ids: Vec<u64> = ids.iter().copied().filter(|id| self.buscar(*id).is_some()).collect();
+        let ids: Vec<u64> = ids
+            .iter()
+            .copied()
+            .filter(|id| self.buscar(*id).is_some())
+            .collect();
         if ids.is_empty() {
             return;
         }
@@ -1389,11 +1410,26 @@ mod pruebas {
     #[test]
     fn volver_a_una_copia_es_un_paso_nuevo_que_se_deshace_con_el_turno() {
         let mut e = Escena::nueva();
-        let a = e.anadir(Elemento { x: 10.0, ancho: 5.0, alto: 5.0, ..Default::default() });
-        let b = e.anadir(Elemento { x: 50.0, ancho: 5.0, alto: 5.0, ..Default::default() });
+        let a = e.anadir(Elemento {
+            x: 10.0,
+            ancho: 5.0,
+            alto: 5.0,
+            ..Default::default()
+        });
+        let b = e.anadir(Elemento {
+            x: 50.0,
+            ancho: 5.0,
+            alto: 5.0,
+            ..Default::default()
+        });
         let desde = e.pasos_cerrados();
         // Lo que dibujo el turno antes de la revision.
-        let d = e.anadir(Elemento { x: 120.0, ancho: 5.0, alto: 5.0, ..Default::default() });
+        let d = e.anadir(Elemento {
+            x: 120.0,
+            ancho: 5.0,
+            alto: 5.0,
+            ..Default::default()
+        });
         let copia = e.elementos.clone();
         // La «correccion»: mueve a, borra b y anade c, en pasos sueltos.
         e.abrir_paso();
@@ -1401,7 +1437,12 @@ mod pruebas {
         e.buscar_mut(a).unwrap().x = 99.0;
         e.cerrar_paso();
         e.borrar_apuntando(b);
-        let c = e.anadir(Elemento { x: 200.0, ancho: 5.0, alto: 5.0, ..Default::default() });
+        let c = e.anadir(Elemento {
+            x: 200.0,
+            ancho: 5.0,
+            alto: 5.0,
+            ..Default::default()
+        });
         assert!(e.volver_a(&copia));
         assert_eq!(e.buscar(a).unwrap().x, 10.0);
         assert!(!e.buscar(b).unwrap().borrado);

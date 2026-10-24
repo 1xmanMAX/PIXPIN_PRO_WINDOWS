@@ -388,8 +388,14 @@ mod pruebas {
             assert!(inicios.contains(&p.desde));
         }
         // El parrafo de dos lineas es UN trozo, y la vineta corta el parrafo.
-        let parrafo = t.iter().find(|x| texto[x.desde..].starts_with("Un parrafo")).unwrap();
-        assert_eq!(&texto[parrafo.desde..parrafo.hasta], "Un parrafo\nque sigue\n");
+        let parrafo = t
+            .iter()
+            .find(|x| texto[x.desde..].starts_with("Un parrafo"))
+            .unwrap();
+        assert_eq!(
+            &texto[parrafo.desde..parrafo.hasta],
+            "Un parrafo\nque sigue\n"
+        );
     }
 
     #[test]
@@ -413,7 +419,10 @@ mod pruebas {
             .iter()
             .find(|x| texto[x.desde..x.hasta].contains('|'))
             .unwrap();
-        assert!(texto[suya.desde..].starts_with('|'), "la tabla no empezo pagina");
+        assert!(
+            texto[suya.desde..].starts_with('|'),
+            "la tabla no empezo pagina"
+        );
     }
 
     #[test]

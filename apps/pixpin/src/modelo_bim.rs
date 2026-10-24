@@ -31,7 +31,8 @@ pub fn convertir_si_toca() -> Option<i32> {
     Some(match pixpin_bim::convertir_fichero(&entrada) {
         Ok(modelo) => {
             let temporal = salida.with_extension("tmp");
-            let escrito = std::fs::write(&temporal, modelo.a_bytes()).and_then(|()| std::fs::rename(&temporal, &salida));
+            let escrito = std::fs::write(&temporal, modelo.a_bytes())
+                .and_then(|()| std::fs::rename(&temporal, &salida));
             if escrito.is_ok() { 0 } else { 3 }
         }
         Err(e) => {
@@ -42,7 +43,9 @@ pub fn convertir_si_toca() -> Option<i32> {
 }
 
 fn podar(carpeta: &Path) {
-    let Ok(d) = std::fs::read_dir(carpeta) else { return };
+    let Ok(d) = std::fs::read_dir(carpeta) else {
+        return;
+    };
     let mut v: Vec<(std::time::SystemTime, PathBuf)> = d
         .flatten()
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
@@ -78,7 +81,11 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo3d::Modelo3d, St
     if !estado.success() {
         let motivo = std::fs::read_to_string(destino.with_extension("error")).unwrap_or_default();
         let _ = std::fs::remove_file(destino.with_extension("error"));
-        return Err(if motivo.is_empty() { "el modelo no se pudo leer (puede estar dañado)".into() } else { motivo });
+        return Err(if motivo.is_empty() {
+            "el modelo no se pudo leer (puede estar dañado)".into()
+        } else {
+            motivo
+        });
     }
     podar(&carpeta);
     let b = std::fs::read(&destino).map_err(|e| e.to_string())?;
@@ -135,7 +142,12 @@ fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
 /// (`marco_imprimir::imprimir_fotos`). De un adjunto del chat, todo en los
 /// ficheros `anot-<uid>…` de su mensaje, que viajan
 /// (`plano_cad::SitioDeMarcadores`).
-fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> pixpin_cad::ventana3d::Barra3d {
+fn barra_del_modelo(
+    idioma: Idioma,
+    raiz: &Path,
+    ruta: &Path,
+    nombre: &str,
+) -> pixpin_cad::ventana3d::Barra3d {
     use pixpin_cad::ventana3d::Foto;
     let sitio = crate::plano_cad::SitioDeMarcadores::abrir(raiz, ruta);
     let (s1, s2) = (sitio.clone(), sitio.clone());
@@ -144,7 +156,8 @@ fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> p
         tipo: crate::plano_cad::tipo_de_archivo(ruta),
         marcadores: Some(sitio.vistas()),
         anotador: Some(Box::new(move |id: &str| {
-            Box::new(crate::plano_cad::anotar::motor_de_marcador(&s1, id)) as Box<dyn pixpin_cad::anotado::Anotador>
+            Box::new(crate::plano_cad::anotar::motor_de_marcador(&s1, id))
+                as Box<dyn pixpin_cad::anotado::Anotador>
         })),
         // Sin borrar los ficheros: la capa con todo borrado (ver `vaciar_capa`).
         quitar_tinta: Some(Box::new(move |id: &str| {
@@ -154,11 +167,23 @@ fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> p
             }
         })),
         foto: Some(Box::new(|r: [i32; 4]| {
-            let area = pixpin_geom::Rect { x: r[0], y: r[1], ancho: r[2].max(0) as u32, alto: r[3].max(0) as u32 };
+            let area = pixpin_geom::Rect {
+                x: r[0],
+                y: r[1],
+                ancho: r[2].max(0) as u32,
+                alto: r[3].max(0) as u32,
+            };
             crate::marco_imprimir::foto_de_pantalla(area).map(|i| (i.ancho, i.alto, i.pixeles))
         })),
         imprimir: Some(Box::new(move |v: isize, fotos: Vec<Foto>| {
-            let fotos = fotos.into_iter().map(|(ancho, alto, pixeles)| pixpin_codec::imagen::ImagenRgba { ancho, alto, pixeles }).collect();
+            let fotos = fotos
+                .into_iter()
+                .map(|(ancho, alto, pixeles)| pixpin_codec::imagen::ImagenRgba {
+                    ancho,
+                    alto,
+                    pixeles,
+                })
+                .collect();
             if let Err(e) = crate::marco_imprimir::imprimir_fotos(v, fotos, &titulo) {
                 tracing::warn!(?e, "no se pudieron imprimir los marcos del modelo");
             }
@@ -172,25 +197,39 @@ fn barra_del_modelo(idioma: Idioma, raiz: &Path, ruta: &Path, nombre: &str) -> p
 pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();
     let raiz = ubicacion.raiz().to_path_buf();
-    let lanzado = std::thread::Builder::new().name("modelo-bim".into()).spawn(move || {
-        let (tx, rx) = std::sync::mpsc::channel();
-        let (r2, raiz2) = (ruta.clone(), raiz.clone());
-        let _ = std::thread::Builder::new().name("modelo-bim-leer".into()).spawn(move || {
-            let _ = tx.send(cargar(&raiz2, &r2));
+    let lanzado = std::thread::Builder::new()
+        .name("modelo-bim".into())
+        .spawn(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (r2, raiz2) = (ruta.clone(), raiz.clone());
+            let _ = std::thread::Builder::new()
+                .name("modelo-bim-leer".into())
+                .spawn(move || {
+                    let _ = tx.send(cargar(&raiz2, &r2));
+                });
+            let titulo = ruta
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let extras = pixpin_cad::ventana3d::Extras {
+                exportar: Some(crate::compartir::exportable::al_exportar_3d(
+                    idioma,
+                    titulo.clone(),
+                    Some(ruta.clone()),
+                    None,
+                )),
+                ..Default::default()
+            };
+            // En la barra, el tipo y el nombre, como en los demas pines.
+            let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
+            let barra = barra_del_modelo(idioma, &raiz, &ruta, &nombre);
+            if let Err(e) =
+                pixpin_cad::ventana3d::ver_con_barra(&nombre, barra, rx, textos(idioma), extras)
+            {
+                tracing::warn!(%e, "no se pudo abrir el visor de modelos");
+                let _ = pixpin_shell::abrir(&ruta);
+            }
         });
-        let titulo = ruta.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let extras = pixpin_cad::ventana3d::Extras {
-            exportar: Some(crate::compartir::exportable::al_exportar_3d(idioma, titulo.clone(), Some(ruta.clone()), None)),
-            ..Default::default()
-        };
-        // En la barra, el tipo y el nombre, como en los demas pines.
-        let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
-        let barra = barra_del_modelo(idioma, &raiz, &ruta, &nombre);
-        if let Err(e) = pixpin_cad::ventana3d::ver_con_barra(&nombre, barra, rx, textos(idioma), extras) {
-            tracing::warn!(%e, "no se pudo abrir el visor de modelos");
-            let _ = pixpin_shell::abrir(&ruta);
-        }
-    });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el visor de modelos");
     }

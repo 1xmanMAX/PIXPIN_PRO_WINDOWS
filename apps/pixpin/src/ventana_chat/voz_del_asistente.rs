@@ -120,12 +120,17 @@ pub(super) fn microfono_del_asistente(a: &Abierto) -> bool {
 
 /// Si lo que se graba ahora es para el asistente (y no una nota de voz).
 pub(super) fn grabando_para_el_asistente(a: &Abierto) -> bool {
-    a.grabando.as_ref().is_some_and(|g| g.para_el_asistente.is_some())
+    a.grabando
+        .as_ref()
+        .is_some_and(|g| g.para_el_asistente.is_some())
 }
 
 /// **Empieza a oir para el asistente.** Calla lo que se estuviera leyendo:
 /// el usuario habla.
-pub(super) fn empezar(ubicacion: &Ubicacion, a: &mut Abierto) -> Result<(), pixpin_audio::ErrorAudio> {
+pub(super) fn empezar(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+) -> Result<(), pixpin_audio::ErrorAudio> {
     callar();
     empezar_a_grabar(ubicacion, a)?;
     if let Some(g) = a.grabando.as_mut() {
@@ -172,7 +177,14 @@ pub(super) fn terminar(
         Some(true) => a.borrador.trim().to_string(),
         _ => String::new(),
     };
-    lanzar(ubicacion, &a.ficha.id, prefijo, grabacion.ruta, idioma, textos)
+    lanzar(
+        ubicacion,
+        &a.ficha.id,
+        prefijo,
+        grabacion.ruta,
+        idioma,
+        textos,
+    )
 }
 
 /// Lanza Whisper sobre `audio` (que se borra al acabar). Las pruebas lo
@@ -197,24 +209,38 @@ pub(super) fn lanzar(
     let cancelado = Arc::new(AtomicBool::new(false));
     let (enviar, resultado) = channel();
     let hilo = {
-        let (avance, bajando, cancelado) = (Arc::clone(&avance), Arc::clone(&bajando), Arc::clone(&cancelado));
-        std::thread::Builder::new().name("asistente-oir".into()).spawn(move || {
-            // Media Foundation decodifica el audio en este hilo.
-            let _com = pixpin_shell::ComDelHilo::iniciar();
-            let mut avisar = |f: f32| avance.store((f.clamp(0.0, 1.0) * 1000.0) as u32, Ordering::Relaxed);
-            let r = (|| {
-                if bajar {
-                    crate::voz::bajar_modelo(&raiz, &mut avisar, &cancelado)?;
-                    bajando.store(false, Ordering::Relaxed);
-                    avisar(0.0);
-                }
-                let _turno = crate::turno_pesado::tomar("transcribir");
-                let exe = pixpin_shell::entorno::directorio_del_ejecutable().ok();
-                lo_dicho(&audio, &raiz, exe.as_deref(), &idiomas, &mut avisar, &cancelado)
-            })();
-            let _ = std::fs::remove_file(&audio);
-            let _ = enviar.send(r);
-        })
+        let (avance, bajando, cancelado) = (
+            Arc::clone(&avance),
+            Arc::clone(&bajando),
+            Arc::clone(&cancelado),
+        );
+        std::thread::Builder::new()
+            .name("asistente-oir".into())
+            .spawn(move || {
+                // Media Foundation decodifica el audio en este hilo.
+                let _com = pixpin_shell::ComDelHilo::iniciar();
+                let mut avisar =
+                    |f: f32| avance.store((f.clamp(0.0, 1.0) * 1000.0) as u32, Ordering::Relaxed);
+                let r = (|| {
+                    if bajar {
+                        crate::voz::bajar_modelo(&raiz, &mut avisar, &cancelado)?;
+                        bajando.store(false, Ordering::Relaxed);
+                        avisar(0.0);
+                    }
+                    let _turno = crate::turno_pesado::tomar("transcribir");
+                    let exe = pixpin_shell::entorno::directorio_del_ejecutable().ok();
+                    lo_dicho(
+                        &audio,
+                        &raiz,
+                        exe.as_deref(),
+                        &idiomas,
+                        &mut avisar,
+                        &cancelado,
+                    )
+                })();
+                let _ = std::fs::remove_file(&audio);
+                let _ = enviar.send(r);
+            })
     };
     if let Err(e) = hilo {
         tracing::warn!(?e, "asistente: sin hilo para pasar la voz a texto");
@@ -243,7 +269,8 @@ pub(super) fn lo_dicho(
     avance: &mut dyn FnMut(f32),
     cancelado: &AtomicBool,
 ) -> Result<String, ErrorVoz> {
-    let t = pixpin_voz::whisper::transcribir_con(audio, raiz, exe, idiomas, &[], avance, cancelado)?;
+    let t =
+        pixpin_voz::whisper::transcribir_con(audio, raiz, exe, idiomas, &[], avance, cancelado)?;
     let texto = limpiar_lo_oido(t.segmentos.iter().map(|s| s.texto.as_str()));
     if texto.is_empty() {
         Err(ErrorVoz::NoSeEntiendeNada)
@@ -294,7 +321,10 @@ pub(super) fn rotulo_pasando(a: &Abierto, textos: &Catalogo) -> Option<String> {
     PASANDO.with_borrow(|p| {
         let p = p.as_ref().filter(|p| p.proyecto == a.ficha.id)?;
         let mut args = fluent_bundle::FluentArgs::new();
-        args.set("pct", (p.avance.load(Ordering::Relaxed) as f32 / 10.0).round() as i64);
+        args.set(
+            "pct",
+            (p.avance.load(Ordering::Relaxed) as f32 / 10.0).round() as i64,
+        );
         let clave = if p.bajando.load(Ordering::Relaxed) {
             "asistente-voz-bajando"
         } else {
@@ -326,7 +356,11 @@ pub(super) struct Vuelta {
 
 /// **Una vez por vuelta del bucle**: recoge lo que dio Whisper, lee las
 /// respuestas recien acabadas si se pidio y sigue a lo que suena.
-pub(super) fn latido(ubicacion: &Ubicacion, abierto: Option<&mut Abierto>, textos: &Catalogo) -> Vuelta {
+pub(super) fn latido(
+    ubicacion: &Ubicacion,
+    abierto: Option<&mut Abierto>,
+    textos: &Catalogo,
+) -> Vuelta {
     let mut v = Vuelta::default();
 
     // 1. Lo dicho.
@@ -350,7 +384,9 @@ pub(super) fn latido(ubicacion: &Ubicacion, abierto: Option<&mut Abierto>, texto
                 if let Some(a) = abierto.filter(|a| a.ficha.id == proyecto) {
                     a.borrador = juntar(&prefijo, &oido);
                     a.cursor.poner(&a.borrador, a.borrador.len(), false);
-                    let revisar = pixpin_store::cargar(ubicacion).map(|aj| aj.asistente.revisar_lo_dicho).unwrap_or(false);
+                    let revisar = pixpin_store::cargar(ubicacion)
+                        .map(|aj| aj.asistente.revisar_lo_dicho)
+                        .unwrap_or(false);
                     v.enviar = !revisar;
                 }
             }
@@ -399,7 +435,9 @@ pub(super) fn espera() -> Option<u32> {
 /// Si la burbuja `i` lleva altavoz: una respuesta del asistente, ya
 /// acabada, con algo que leer.
 pub(super) fn se_puede_leer(a: &Abierto, i: usize) -> bool {
-    let Some(m) = a.mensajes.get(i) else { return false };
+    let Some(m) = a.mensajes.get(i) else {
+        return false;
+    };
     if !ia_chat::es_del_asistente(m) || !matches!(m.clase, None | Some(cuaderno::Clase::Nota)) {
         return false;
     }
@@ -410,7 +448,10 @@ pub(super) fn se_puede_leer(a: &Abierto, i: usize) -> bool {
 
 /// Si suena la respuesta `nota` de este chat.
 pub(super) fn leyendo(proyecto: &str, nota: &str) -> bool {
-    LEYENDO.with_borrow(|l| l.as_ref().is_some_and(|l| l.proyecto == proyecto && l.nota == nota && l.lector.leyendo()))
+    LEYENDO.with_borrow(|l| {
+        l.as_ref()
+            .is_some_and(|l| l.proyecto == proyecto && l.nota == nota && l.lector.leyendo())
+    })
 }
 
 /// **Calla** lo que se este leyendo del asistente.
@@ -421,7 +462,12 @@ pub(super) fn callar() {
 }
 
 /// El altavoz de la burbuja `i`: si suena, la calla; si no, la lee.
-pub(super) fn alternar(ubicacion: &Ubicacion, a: &Abierto, i: usize, textos: &Catalogo) -> Option<String> {
+pub(super) fn alternar(
+    ubicacion: &Ubicacion,
+    a: &Abierto,
+    i: usize,
+    textos: &Catalogo,
+) -> Option<String> {
     let m = a.mensajes.get(i)?;
     if leyendo(&a.ficha.id, &m.id) {
         callar();
@@ -487,7 +533,10 @@ pub(super) fn pintar_altavoz(
     e: f32,
 ) -> Rect {
     let lado = ALTAVOZ * e;
-    let sonando = a.mensajes.get(i).is_some_and(|m| leyendo(&a.ficha.id, &m.id));
+    let sonando = a
+        .mensajes
+        .get(i)
+        .is_some_and(|m| leyendo(&a.ficha.id, &m.id));
     let caja = RectF {
         x,
         y: y + (alto_renglon - lado) / 2.0,
@@ -521,7 +570,9 @@ const PENSAR: [(&str, &str); 2] = [("<think>", "</think>"), ("<thinking>", "</th
 
 /// Los principios de las lineas de estado de la burbuja
 /// (`asistente::chat::rotulo_de` y `EnVivo::mostrar`) y de los avisos.
-const ESTADOS: [&str; 12] = ["💭", "✏️", "📊", "🔎", "🖼️", "📖", "⚙️", "🔁", "🗂️", "⏹", "⚠️", "📄"];
+const ESTADOS: [&str; 12] = [
+    "💭", "✏️", "📊", "🔎", "🖼️", "📖", "⚙️", "🔁", "🗂️", "⏹", "⚠️", "📄",
+];
 
 /// **Lo que se lee en voz alta de una burbuja del asistente**: solo la
 /// respuesta. Fuera el pensamiento, los bloques de codigo, las lineas que
@@ -531,7 +582,8 @@ const ESTADOS: [&str; 12] = ["💭", "✏️", "📊", "🔎", "🖼️", "📖"
 /// linea.
 pub(super) fn texto_para_leer(burbuja: &str) -> String {
     let sin_pensar = quitar_pensamiento(burbuja);
-    let sin_codigo = quitar_bloques_de_codigo(&sin_pensar.replace("⏹ (parado)", "").replace('▍', ""));
+    let sin_codigo =
+        quitar_bloques_de_codigo(&sin_pensar.replace("⏹ (parado)", "").replace('▍', ""));
     let mut lineas: Vec<String> = Vec::new();
     for l in sin_codigo.lines() {
         let t = l.trim();
@@ -545,13 +597,19 @@ pub(super) fn texto_para_leer(burbuja: &str) -> String {
         // Una fila de tabla se lee celda a celda: «Ventanas, 2».
         let fila;
         let t = if t.starts_with('|') {
-            fila = t.split('|').map(str::trim).filter(|c| !c.is_empty()).collect::<Vec<_>>().join(", ");
+            fila = t
+                .split('|')
+                .map(str::trim)
+                .filter(|c| !c.is_empty())
+                .collect::<Vec<_>>()
+                .join(", ");
             fila.as_str()
         } else {
             t
         };
         let limpia = sin_emojis(&sin_markdown(t));
-        let limpia = sin_blanco_antes_de_puntuacion(&pixpin_docs::voz_alta::juntar_blancos(&limpia));
+        let limpia =
+            sin_blanco_antes_de_puntuacion(&pixpin_docs::voz_alta::juntar_blancos(&limpia));
         if limpia.chars().any(char::is_alphanumeric) {
             lineas.push(limpia);
         }
@@ -561,7 +619,10 @@ pub(super) fn texto_para_leer(burbuja: &str) -> String {
 
 /// Los parrafos para el lector: uno por renglon.
 pub(super) fn parrafos_para_leer(burbuja: &str) -> Vec<String> {
-    texto_para_leer(burbuja).lines().map(str::to_string).collect()
+    texto_para_leer(burbuja)
+        .lines()
+        .map(str::to_string)
+        .collect()
 }
 
 fn quitar_pensamiento(texto: &str) -> String {
@@ -615,10 +676,15 @@ fn sin_markdown(linea: &str) -> String {
         let dentro = t[a + 1..i].to_string();
         t.replace_range(a..i + c + 1, &dentro);
     }
-    let t = t.replace("**", "").replace("__", "").replace(['`', '*'], "");
+    let t = t
+        .replace("**", "")
+        .replace("__", "")
+        .replace(['`', '*'], "");
     // Las direcciones sueltas no se leen letra a letra.
     t.split_whitespace()
-        .filter(|w| !(w.starts_with("http://") || w.starts_with("https://") || w.starts_with("www.")))
+        .filter(|w| {
+            !(w.starts_with("http://") || w.starts_with("https://") || w.starts_with("www."))
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }

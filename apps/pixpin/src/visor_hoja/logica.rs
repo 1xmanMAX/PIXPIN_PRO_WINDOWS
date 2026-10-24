@@ -15,7 +15,10 @@ use pixpin_hojas::{Rango, Regional};
 /// (`.xlsx`...) y los de Excel 97-2003 (`.xls`, `.xlt`), que se leen sin
 /// Office. El `.xlsb` es binario de otra clase: sigue yendo a su programa.
 pub fn se_abre(nombre: &str) -> bool {
-    matches!(pixpin_docs::extension(nombre).as_str(), "xlsx" | "xlsm" | "xltx" | "xltm" | "xls" | "xlt")
+    matches!(
+        pixpin_docs::extension(nombre).as_str(),
+        "xlsx" | "xlsm" | "xltx" | "xltm" | "xls" | "xlt"
+    )
 }
 
 /// Como [`se_abre`], mirando tambien dentro del fichero: un ZIP (un libro de
@@ -30,7 +33,10 @@ pub fn se_abre_fichero(ruta: &Path) -> bool {
 fn empieza_como_zip(ruta: &Path) -> bool {
     use std::io::Read;
     let mut cabeza = [0u8; 4];
-    std::fs::File::open(ruta).and_then(|mut f| f.read_exact(&mut cabeza)).is_ok() && cabeza == *b"PK\x03\x04"
+    std::fs::File::open(ruta)
+        .and_then(|mut f| f.read_exact(&mut cabeza))
+        .is_ok()
+        && cabeza == *b"PK\x03\x04"
 }
 
 /// Si el fichero es un `.xls` BIFF8 que `pixpin_hojas` abre bien. Lee y
@@ -39,11 +45,19 @@ fn empieza_como_zip(ruta: &Path) -> bool {
 /// veces seguidas no lo repite.
 fn xls_legible(ruta: &Path) -> bool {
     use std::io::Read;
-    static ULTIMO: std::sync::Mutex<Option<(std::path::PathBuf, u64, Option<std::time::SystemTime>, bool)>> = std::sync::Mutex::new(None);
-    let Ok(meta) = std::fs::metadata(ruta) else { return false };
+    static ULTIMO: std::sync::Mutex<
+        Option<(std::path::PathBuf, u64, Option<std::time::SystemTime>, bool)>,
+    > = std::sync::Mutex::new(None);
+    let Ok(meta) = std::fs::metadata(ruta) else {
+        return false;
+    };
     // Una cabecera de contenedor compuesto: si no, ni se lee.
     let mut cabeza = [0u8; 8];
-    if std::fs::File::open(ruta).and_then(|mut f| f.read_exact(&mut cabeza)).is_err() || !pixpin_hojas::cfb::es_cfb(&cabeza) {
+    if std::fs::File::open(ruta)
+        .and_then(|mut f| f.read_exact(&mut cabeza))
+        .is_err()
+        || !pixpin_hojas::cfb::es_cfb(&cabeza)
+    {
         return false;
     }
     let clave = (ruta.to_path_buf(), meta.len(), meta.modified().ok());
@@ -54,7 +68,9 @@ fn xls_legible(ruta: &Path) -> bool {
             }
         }
     }
-    let ok = std::fs::read(ruta).ok().is_some_and(|b| pixpin_hojas::xls::XlsAbierto::abrir(&b).is_ok());
+    let ok = std::fs::read(ruta)
+        .ok()
+        .is_some_and(|b| pixpin_hojas::xls::XlsAbierto::abrir(&b).is_ok());
     if let Ok(mut g) = ULTIMO.lock() {
         *g = Some((clave.0, clave.1, clave.2, ok));
     }
@@ -74,12 +90,20 @@ pub struct Seleccion {
 
 impl Seleccion {
     pub fn en(fila: u32, col: u32) -> Seleccion {
-        Seleccion { ancla: (fila, col), activa: (fila, col) }
+        Seleccion {
+            ancla: (fila, col),
+            activa: (fila, col),
+        }
     }
 
     pub fn rango(&self) -> Rango {
         let (a, b) = (self.ancla, self.activa);
-        Rango { fila0: a.0.min(b.0), col0: a.1.min(b.1), fila1: a.0.max(b.0), col1: a.1.max(b.1) }
+        Rango {
+            fila0: a.0.min(b.0),
+            col0: a.1.min(b.1),
+            fila1: a.0.max(b.0),
+            col1: a.1.max(b.1),
+        }
     }
 }
 
@@ -154,15 +178,22 @@ pub fn accion_de_tecla(vk: u32, shift: bool, ctrl: bool, alt: bool) -> Option<Ac
     if alt {
         return None;
     }
-    let mov = |normal: Mov, con_ctrl: Mov| Some(A::Mover(if ctrl { con_ctrl } else { normal }, shift));
+    let mov =
+        |normal: Mov, con_ctrl: Mov| Some(A::Mover(if ctrl { con_ctrl } else { normal }, shift));
     match vk {
         VK_ARRIBA => mov(Mov::Arriba, Mov::BordeArriba),
         VK_ABAJO => mov(Mov::Abajo, Mov::BordeAbajo),
         VK_IZQUIERDA => mov(Mov::Izquierda, Mov::BordeIzquierda),
         VK_DERECHA => mov(Mov::Derecha, Mov::BordeDerecha),
-        VK_TAB if !ctrl => Some(A::Mover(if shift { Mov::Izquierda } else { Mov::Derecha }, false)),
+        VK_TAB if !ctrl => Some(A::Mover(
+            if shift { Mov::Izquierda } else { Mov::Derecha },
+            false,
+        )),
         VK_INTRO if ctrl => Some(A::AbrirEnlace),
-        VK_INTRO => Some(A::Mover(if shift { Mov::Arriba } else { Mov::Abajo }, false)),
+        VK_INTRO => Some(A::Mover(
+            if shift { Mov::Arriba } else { Mov::Abajo },
+            false,
+        )),
         VK_REPAG if ctrl => Some(A::HojaAnterior),
         VK_AVPAG if ctrl => Some(A::HojaSiguiente),
         VK_REPAG => Some(A::Mover(Mov::RePag, shift)),
@@ -196,7 +227,13 @@ pub struct Marco<'a> {
 /// `tope`. Si la celda y la siguiente tienen algo, al final del bloque; si
 /// no, a la siguiente con algo; si no hay, al tope.
 fn salto(pos: u32, adelante: bool, tope: u32, lleno: impl Fn(u32) -> bool) -> u32 {
-    let siguiente = |p: u32| if adelante { (p < tope).then(|| p + 1) } else { p.checked_sub(1) };
+    let siguiente = |p: u32| {
+        if adelante {
+            (p < tope).then(|| p + 1)
+        } else {
+            p.checked_sub(1)
+        }
+    };
     let Some(n) = siguiente(pos) else { return pos };
     if lleno(pos) && lleno(n) {
         let mut p = n;
@@ -241,7 +278,14 @@ pub fn mover(sel: Seleccion, m: Mov, extender: bool, h: &Marco) -> Seleccion {
         Mov::BordeIzquierda => (f, salto(c, false, uc, |x| (h.lleno)(f, x))),
         Mov::BordeDerecha => (f, salto(c, true, uc, |x| (h.lleno)(f, x))),
     };
-    if extender { Seleccion { ancla: sel.ancla, activa: nueva } } else { Seleccion::en(nueva.0, nueva.1) }
+    if extender {
+        Seleccion {
+            ancla: sel.ancla,
+            activa: nueva,
+        }
+    } else {
+        Seleccion::en(nueva.0, nueva.1)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +295,11 @@ pub const ZOOM_MINIMO: f64 = 0.10;
 pub const ZOOM_MAXIMO: f64 = 4.0;
 
 pub fn acotar_zoom(z: f64) -> f64 {
-    if z.is_finite() { z.clamp(ZOOM_MINIMO, ZOOM_MAXIMO) } else { 1.0 }
+    if z.is_finite() {
+        z.clamp(ZOOM_MINIMO, ZOOM_MAXIMO)
+    } else {
+        1.0
+    }
 }
 
 /// El zoom tras girar la rueda con Ctrl: un 10 % por muesca.
@@ -261,7 +309,11 @@ pub fn zoom_con_rueda(z: f64, muescas: f32) -> f64 {
 
 /// El zoom de la hoja tal como se guardo (`zoomScale`, en %).
 pub fn zoom_guardado(porcentaje: u32) -> f64 {
-    acotar_zoom(if porcentaje == 0 { 1.0 } else { porcentaje as f64 / 100.0 })
+    acotar_zoom(if porcentaje == 0 {
+        1.0
+    } else {
+        porcentaje as f64 / 100.0
+    })
 }
 
 /// **Zoom alrededor del raton** en un eje: donde queda el desplazamiento
@@ -292,7 +344,11 @@ pub fn limites(fijo: f64, usado: f64, visible: f64, escala: f64, margen: f64) ->
 pub fn pulgar(pista: f32, pos: f64, min: f64, max: f64, visible: f64, minimo: f32) -> (f32, f32) {
     let total = (max - min).max(0.0) + visible.max(1e-6);
     let largo = ((pista as f64 * visible / total) as f32).clamp(minimo.min(pista), pista.max(0.0));
-    let desde = if max > min { ((pista - largo) as f64 * ((pos - min) / (max - min)).clamp(0.0, 1.0)) as f32 } else { 0.0 };
+    let desde = if max > min {
+        ((pista - largo) as f64 * ((pos - min) / (max - min)).clamp(0.0, 1.0)) as f32
+    } else {
+        0.0
+    };
     (desde, largo)
 }
 
@@ -323,7 +379,11 @@ pub fn para_ver(pos: f64, ve: f64, a: f64, b: f64) -> f64 {
 /// Un campo de texto con tabuladores como lo pone Excel: entre comillas si
 /// lleva tabuladores, saltos o comillas (y las comillas dobladas).
 fn campo(s: &str) -> Cow<'_, str> {
-    if s.contains(['\t', '\n', '\r', '"']) { Cow::Owned(format!("\"{}\"", s.replace('"', "\"\""))) } else { Cow::Borrowed(s) }
+    if s.contains(['\t', '\n', '\r', '"']) {
+        Cow::Owned(format!("\"{}\"", s.replace('"', "\"\"")))
+    } else {
+        Cow::Borrowed(s)
+    }
 }
 
 /// La seleccion como texto con tabuladores (lo que pega Excel o un correo):
@@ -360,7 +420,10 @@ pub enum Enlace {
     /// Una pagina web o un correo: con el programa del sistema.
     Web(String),
     /// Un sitio del libro: una hoja (por nombre) y una celda.
-    Sitio { hoja: Option<String>, celda: Option<(u32, u32)> },
+    Sitio {
+        hoja: Option<String>,
+        celda: Option<(u32, u32)>,
+    },
 }
 
 /// El destino de un hipervinculo, si es de los que se abren. Solo web y
@@ -372,13 +435,17 @@ pub fn enlace_de(destino: &str, externo: bool) -> Option<Enlace> {
     }
     if externo {
         let l = d.to_ascii_lowercase();
-        return (l.starts_with("http://") || l.starts_with("https://") || l.starts_with("mailto:")).then(|| Enlace::Web(d.to_string()));
+        return (l.starts_with("http://") || l.starts_with("https://") || l.starts_with("mailto:"))
+            .then(|| Enlace::Web(d.to_string()));
     }
     let d = d.trim_start_matches('#');
     let (hoja, celda) = match d.rsplit_once('!') {
         Some((h, c)) => {
             let h = h.trim();
-            let h = h.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')).map_or(h.to_string(), |x| x.replace("''", "'"));
+            let h = h
+                .strip_prefix('\'')
+                .and_then(|x| x.strip_suffix('\''))
+                .map_or(h.to_string(), |x| x.replace("''", "'"));
             (Some(h), c)
         }
         None => (None, d),
@@ -401,7 +468,12 @@ pub fn fecha_corta_de_windows(patron: &str, separador: &str) -> Option<String> {
     if !separador.is_empty() && separador != "/" {
         p = p.replace(separador, "/");
     }
-    if !p.chars().all(|c| matches!(c, 'd' | 'M' | 'y' | '/' | ' ' | '-' | '.' | ',')) || !p.contains('d') || !p.contains('M') {
+    if !p
+        .chars()
+        .all(|c| matches!(c, 'd' | 'M' | 'y' | '/' | ' ' | '-' | '.' | ','))
+        || !p.contains('d')
+        || !p.contains('M')
+    {
         return None;
     }
     Some(p.replace('M', "m"))
@@ -436,7 +508,14 @@ mod pruebas {
 
     #[test]
     fn se_abren_los_libros_de_excel_modernos_y_no_los_binarios() {
-        for n in ["a.xlsx", "B.XLSM", "plantilla.xltx", "macro.xltm", "viejo.xls", "Plantilla.XLT"] {
+        for n in [
+            "a.xlsx",
+            "B.XLSM",
+            "plantilla.xltx",
+            "macro.xltm",
+            "viejo.xls",
+            "Plantilla.XLT",
+        ] {
             assert!(se_abre(n), "{n}");
         }
         // Caso negativo: el .xlsb es binario de otra clase; el .csv es texto.
@@ -447,11 +526,16 @@ mod pruebas {
 
     #[test]
     fn un_xls_legible_se_abre_en_el_visor_y_uno_roto_se_queda_con_office() {
-        let bueno = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/pixpin-hojas/tests/muestras/pequeno.xls");
+        let bueno = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../crates/pixpin-hojas/tests/muestras/pequeno.xls");
         let datos = std::fs::read(&bueno).expect("la muestra de .xls");
         assert!(se_abre_fichero(&bueno));
-        assert!(se_abre_fichero(&bueno), "la segunda vez sale de la memoria del ultimo resultado");
-        let dir = std::env::temp_dir().join(format!("pixpin-visor-hoja-xls-{}", std::process::id()));
+        assert!(
+            se_abre_fichero(&bueno),
+            "la segunda vez sale de la memoria del ultimo resultado"
+        );
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-visor-hoja-xls-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         // Un .xls cortado (el contenedor no se entiende) se queda con Office.
         let cortado = dir.join("cortado.xls");
@@ -459,7 +543,11 @@ mod pruebas {
         assert!(!se_abre_fichero(&cortado));
         // Con cabecera de contenedor pero sin libro dentro.
         let falso = dir.join("falso.xls");
-        std::fs::write(&falso, [&pixpin_hojas::cfb::FIRMA[..], &[0u8; 600][..]].concat()).unwrap();
+        std::fs::write(
+            &falso,
+            [&pixpin_hojas::cfb::FIRMA[..], &[0u8; 600][..]].concat(),
+        )
+        .unwrap();
         assert!(!se_abre_fichero(&falso));
         // Un .xls que en verdad es un ZIP de ahora, y un .xlsx que en verdad es un .xls.
         let zip = dir.join("moderno.xls");
@@ -490,15 +578,39 @@ mod pruebas {
     #[test]
     fn las_teclas_de_excel() {
         use AccionTecla as A;
-        assert_eq!(accion_de_tecla(VK_ABAJO, false, false, false), Some(A::Mover(Mov::Abajo, false)));
-        assert_eq!(accion_de_tecla(VK_ABAJO, true, true, false), Some(A::Mover(Mov::BordeAbajo, true)));
-        assert_eq!(accion_de_tecla(VK_INICIO, false, true, false), Some(A::Mover(Mov::InicioHoja, false)));
-        assert_eq!(accion_de_tecla(VK_AVPAG, false, true, false), Some(A::HojaSiguiente));
-        assert_eq!(accion_de_tecla(VK_REPAG, false, false, false), Some(A::Mover(Mov::RePag, false)));
+        assert_eq!(
+            accion_de_tecla(VK_ABAJO, false, false, false),
+            Some(A::Mover(Mov::Abajo, false))
+        );
+        assert_eq!(
+            accion_de_tecla(VK_ABAJO, true, true, false),
+            Some(A::Mover(Mov::BordeAbajo, true))
+        );
+        assert_eq!(
+            accion_de_tecla(VK_INICIO, false, true, false),
+            Some(A::Mover(Mov::InicioHoja, false))
+        );
+        assert_eq!(
+            accion_de_tecla(VK_AVPAG, false, true, false),
+            Some(A::HojaSiguiente)
+        );
+        assert_eq!(
+            accion_de_tecla(VK_REPAG, false, false, false),
+            Some(A::Mover(Mov::RePag, false))
+        );
         assert_eq!(accion_de_tecla(VK_C, false, true, false), Some(A::Copiar));
-        assert_eq!(accion_de_tecla(VK_0, false, true, false), Some(A::ZoomInicial));
-        assert_eq!(accion_de_tecla(VK_F11, false, false, false), Some(A::PantallaCompleta));
-        assert_eq!(accion_de_tecla(VK_ESCAPE, false, false, false), Some(A::Escape));
+        assert_eq!(
+            accion_de_tecla(VK_0, false, true, false),
+            Some(A::ZoomInicial)
+        );
+        assert_eq!(
+            accion_de_tecla(VK_F11, false, false, false),
+            Some(A::PantallaCompleta)
+        );
+        assert_eq!(
+            accion_de_tecla(VK_ESCAPE, false, false, false),
+            Some(A::Escape)
+        );
         // Caso negativo: la C sola o con Alt no copia; el 0 solo no es zoom.
         assert_eq!(accion_de_tecla(VK_C, false, false, false), None);
         assert_eq!(accion_de_tecla(VK_C, false, true, true), None);
@@ -506,7 +618,12 @@ mod pruebas {
     }
 
     fn marco<'a>(lleno: &'a dyn Fn(u32, u32) -> bool) -> Marco<'a> {
-        Marco { ultima: (99, 9), fijas: (1, 0), filas_por_pagina: 20, lleno }
+        Marco {
+            ultima: (99, 9),
+            fijas: (1, 0),
+            filas_por_pagina: 20,
+            lleno,
+        }
     }
 
     #[test]
@@ -521,10 +638,24 @@ mod pruebas {
         assert_eq!(mover(s, Mov::FinHoja, false, &h), Seleccion::en(99, 9));
         // Con Mayus el ancla se queda.
         let x = mover(s, Mov::Derecha, true, &h);
-        assert_eq!(x.rango(), Rango { fila0: 5, col0: 3, fila1: 5, col1: 4 });
+        assert_eq!(
+            x.rango(),
+            Rango {
+                fila0: 5,
+                col0: 3,
+                fila1: 5,
+                col1: 4
+            }
+        );
         // Caso negativo: arriba del todo y a la izquierda no se pasa de cero.
-        assert_eq!(mover(Seleccion::en(0, 0), Mov::Arriba, false, &h), Seleccion::en(0, 0));
-        assert_eq!(mover(Seleccion::en(0, 0), Mov::RePag, false, &h), Seleccion::en(0, 0));
+        assert_eq!(
+            mover(Seleccion::en(0, 0), Mov::Arriba, false, &h),
+            Seleccion::en(0, 0)
+        );
+        assert_eq!(
+            mover(Seleccion::en(0, 0), Mov::RePag, false, &h),
+            Seleccion::en(0, 0)
+        );
     }
 
     #[test]
@@ -533,15 +664,33 @@ mod pruebas {
         let lleno = |f: u32, c: u32| c == 0 && ((2..=5).contains(&f) || (10..=12).contains(&f));
         let h = marco(&lleno);
         // Desde un hueco, a la primera con algo.
-        assert_eq!(mover(Seleccion::en(0, 0), Mov::BordeAbajo, false, &h).activa, (2, 0));
+        assert_eq!(
+            mover(Seleccion::en(0, 0), Mov::BordeAbajo, false, &h).activa,
+            (2, 0)
+        );
         // Dentro de un bloque, a su final.
-        assert_eq!(mover(Seleccion::en(2, 0), Mov::BordeAbajo, false, &h).activa, (5, 0));
+        assert_eq!(
+            mover(Seleccion::en(2, 0), Mov::BordeAbajo, false, &h).activa,
+            (5, 0)
+        );
         // Al final de un bloque, al siguiente.
-        assert_eq!(mover(Seleccion::en(5, 0), Mov::BordeAbajo, false, &h).activa, (10, 0));
-        assert_eq!(mover(Seleccion::en(12, 0), Mov::BordeArriba, false, &h).activa, (10, 0));
+        assert_eq!(
+            mover(Seleccion::en(5, 0), Mov::BordeAbajo, false, &h).activa,
+            (10, 0)
+        );
+        assert_eq!(
+            mover(Seleccion::en(12, 0), Mov::BordeArriba, false, &h).activa,
+            (10, 0)
+        );
         // Caso negativo: sin nada mas, al borde de lo usado (no a la fila un millon).
-        assert_eq!(mover(Seleccion::en(12, 0), Mov::BordeAbajo, false, &h).activa, (99, 0));
-        assert_eq!(mover(Seleccion::en(0, 0), Mov::BordeArriba, false, &h).activa, (0, 0));
+        assert_eq!(
+            mover(Seleccion::en(12, 0), Mov::BordeAbajo, false, &h).activa,
+            (99, 0)
+        );
+        assert_eq!(
+            mover(Seleccion::en(0, 0), Mov::BordeArriba, false, &h).activa,
+            (0, 0)
+        );
     }
 
     #[test]
@@ -594,7 +743,12 @@ mod pruebas {
 
     #[test]
     fn copiar_como_texto_con_tabuladores() {
-        let r = Rango { fila0: 0, col0: 0, fila1: 1, col1: 2 };
+        let r = Rango {
+            fila0: 0,
+            col0: 0,
+            fila1: 1,
+            col1: 2,
+        };
         let s = tsv(r, |f, c| match (f, c) {
             (0, 0) => "Nombre".into(),
             (0, 1) => "Con\ttab".into(),
@@ -603,7 +757,10 @@ mod pruebas {
             (1, 1) => String::new(),
             _ => "linea\nnueva".into(),
         });
-        assert_eq!(s, "Nombre\t\"Con\ttab\"\t\"dijo \"\"hola\"\"\"\r\n1,234.50\t\t\"linea\nnueva\"\r\n");
+        assert_eq!(
+            s,
+            "Nombre\t\"Con\ttab\"\t\"dijo \"\"hola\"\"\"\r\n1,234.50\t\t\"linea\nnueva\"\r\n"
+        );
         assert_eq!(celdas_de(r), 6);
         // Caso negativo: una sola celda vacia es solo el salto final.
         assert_eq!(tsv(Rango::default(), |_, _| String::new()), "\r\n");
@@ -611,13 +768,40 @@ mod pruebas {
 
     #[test]
     fn los_enlaces_web_y_los_del_libro() {
-        assert_eq!(enlace_de("https://x.org/a", true), Some(Enlace::Web("https://x.org/a".into())));
-        assert_eq!(enlace_de("mailto:a@b.c", true), Some(Enlace::Web("mailto:a@b.c".into())));
-        assert_eq!(enlace_de("'Hoja de O''Neil'!B3", false), Some(Enlace::Sitio { hoja: Some("Hoja de O'Neil".into()), celda: Some((2, 1)) }));
-        assert_eq!(enlace_de("#Datos!A1:C4", false), Some(Enlace::Sitio { hoja: Some("Datos".into()), celda: Some((0, 0)) }));
-        assert_eq!(enlace_de("C7", false), Some(Enlace::Sitio { hoja: None, celda: Some((6, 2)) }));
+        assert_eq!(
+            enlace_de("https://x.org/a", true),
+            Some(Enlace::Web("https://x.org/a".into()))
+        );
+        assert_eq!(
+            enlace_de("mailto:a@b.c", true),
+            Some(Enlace::Web("mailto:a@b.c".into()))
+        );
+        assert_eq!(
+            enlace_de("'Hoja de O''Neil'!B3", false),
+            Some(Enlace::Sitio {
+                hoja: Some("Hoja de O'Neil".into()),
+                celda: Some((2, 1))
+            })
+        );
+        assert_eq!(
+            enlace_de("#Datos!A1:C4", false),
+            Some(Enlace::Sitio {
+                hoja: Some("Datos".into()),
+                celda: Some((0, 0))
+            })
+        );
+        assert_eq!(
+            enlace_de("C7", false),
+            Some(Enlace::Sitio {
+                hoja: None,
+                celda: Some((6, 2))
+            })
+        );
         // Caso negativo: un fichero o un programa no se abren desde una hoja.
-        assert_eq!(enlace_de("file:///C:/Windows/system32/calc.exe", true), None);
+        assert_eq!(
+            enlace_de("file:///C:/Windows/system32/calc.exe", true),
+            None
+        );
         assert_eq!(enlace_de("..\\otro.xlsx", true), None);
         assert_eq!(enlace_de("", false), None);
     }
@@ -625,18 +809,30 @@ mod pruebas {
     #[test]
     fn la_configuracion_regional_de_windows() {
         use pixpin_shell::regional::RegionalDelSistema;
-        let s = RegionalDelSistema { decimal: ",".into(), miles: ".".into(), separador_fecha: "-".into(), fecha_corta: "dd-MM-yyyy".into() };
+        let s = RegionalDelSistema {
+            decimal: ",".into(),
+            miles: ".".into(),
+            separador_fecha: "-".into(),
+            fecha_corta: "dd-MM-yyyy".into(),
+        };
         let r = regional_de(Regional::es_pe(), &s);
         assert_eq!((r.decimal, r.miles, r.separador_fecha), (',', '.', '-'));
         assert_eq!(r.fecha_corta, "dd/mm/yyyy");
-        assert_eq!(fecha_corta_de_windows("M/d/yyyy", "/").as_deref(), Some("m/d/yyyy"));
+        assert_eq!(
+            fecha_corta_de_windows("M/d/yyyy", "/").as_deref(),
+            Some("m/d/yyyy")
+        );
         // Caso negativo: lo que Windows no dijo se queda como estaba, y un
         // patron con era o texto no se usa.
         let r = regional_de(Regional::es_pe(), &RegionalDelSistema::default());
         assert_eq!(r, Regional::es_pe());
         assert_eq!(fecha_corta_de_windows("gg yyyy/MM/dd", "/"), None);
         // Dos separadores iguales no se dejan.
-        let s = RegionalDelSistema { decimal: ",".into(), miles: ",".into(), ..Default::default() };
+        let s = RegionalDelSistema {
+            decimal: ",".into(),
+            miles: ",".into(),
+            ..Default::default()
+        };
         let r = regional_de(Regional::es_pe(), &s);
         assert_ne!(r.decimal, r.miles);
     }

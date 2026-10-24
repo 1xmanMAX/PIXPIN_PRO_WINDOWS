@@ -9,14 +9,22 @@ use pixpin_web::pagina::{OpcionesPagina, Pagina};
 fn una(k: usize) {
     // SAFETY: COM de este hilo, se cierra al final como `ComDelHilo`.
     unsafe {
-        let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_APARTMENTTHREADED);
+        let _ = windows::Win32::System::Com::CoInitializeEx(
+            None,
+            windows::Win32::System::Com::COINIT_APARTMENTTHREADED,
+        );
     }
     eprintln!("{k}: creando");
     let html: &'static [u8] = b"<!doctype html><body><h1>Hola</h1>";
     let p = Pagina::nueva(OpcionesPagina {
         titulo: format!("cerrar-hilos-{k}"),
         // Fuera de la pantalla: no estorba a nadie.
-        area: Some(pixpin_geom::Rect { x: -6000, y: -6000, ancho: 400, alto: 300 }),
+        area: Some(pixpin_geom::Rect {
+            x: -6000,
+            y: -6000,
+            ancho: 400,
+            alto: 300,
+        }),
         maximizada: false,
         fondo: (0x13, 0x14, 0x15),
         pagina: html,

@@ -21,13 +21,23 @@ const PLAN: &str = r#"Aqui va: ```json
  {"titulo":"Resumir","instrucciones":"usa ayuda_app otra vez","hecho_si":"hay resumen"}]}
 ```"#;
 
-fn correr(jefe: Vec<Respuesta>, trabajador: Vec<Respuesta>, pedido: &str) -> (Final, Vec<Evento>, usize, MotorGuionado, MotorGuionado) {
+fn correr(
+    jefe: Vec<Respuesta>,
+    trabajador: Vec<Respuesta>,
+    pedido: &str,
+) -> (Final, Vec<Evento>, usize, MotorGuionado, MotorGuionado) {
     let jefe = MotorGuionado::nuevo(jefe).como_nube();
     let trabajador = MotorGuionado::nuevo(trabajador).como_nube();
-    let mut h = vec![Mensaje::sistema(agente::instrucciones()), Mensaje::usuario(pedido)];
+    let mut h = vec![
+        Mensaje::sistema(agente::instrucciones()),
+        Mensaje::usuario(pedido),
+    ];
     let mut ej = Hace(0);
     let mut eventos = Vec::new();
-    let o = Opciones { jefe: Some(&jefe), ..Default::default() };
+    let o = Opciones {
+        jefe: Some(&jefe),
+        ..Default::default()
+    };
     let f = turno_con(&trabajador, &mut h, &catalogo(), &mut ej, &o, &mut |e| {
         eventos.push(e);
         Seguir::Si
@@ -44,9 +54,13 @@ fn el_jefe_planea_reparte_corrige_y_contesta() {
         vec![
             Respuesta::de_texto(PLAN),
             Respuesta::de_texto(r#"{"veredicto":"bien","motivo":"ok"}"#),
-            Respuesta::de_texto(r#"{"veredicto":"corregir","motivo":"falta","correccion":"añade los atajos"}"#),
+            Respuesta::de_texto(
+                r#"{"veredicto":"corregir","motivo":"falta","correccion":"añade los atajos"}"#,
+            ),
             Respuesta::de_texto(r#"{"veredicto":"bien"}"#),
-            Respuesta::de_texto(r#"{"faltan":[],"respuesta":"Busqué cómo se exporta y lo resumí."}"#),
+            Respuesta::de_texto(
+                r#"{"faltan":[],"respuesta":"Busqué cómo se exporta y lo resumí."}"#,
+            ),
         ],
         vec![
             Respuesta::de_llamada("ayuda_app", AYUDA),
@@ -64,15 +78,40 @@ fn el_jefe_planea_reparte_corrige_y_contesta() {
     assert_eq!(trabajador.recibido.lock().unwrap().len(), 6);
     // La correccion llega al trabajador con lo que pidio el jefe.
     let r = trabajador.recibido.lock().unwrap();
-    assert!(r[4].mensajes.iter().any(|m| m.texto_entero().contains("añade los atajos")));
+    assert!(
+        r[4].mensajes
+            .iter()
+            .any(|m| m.texto_entero().contains("añade los atajos"))
+    );
     // Lo que dicen los trabajadores no va a la burbuja; lo del jefe, si.
-    let textos: String = eventos.iter().filter_map(|e| if let Evento::Texto(t) = e { Some(t.as_str()) } else { None }).collect();
+    let textos: String = eventos
+        .iter()
+        .filter_map(|e| {
+            if let Evento::Texto(t) = e {
+                Some(t.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
     assert_eq!(textos, "Busqué cómo se exporta y lo resumí.");
     // El plan se ve y acaba con las dos hechas.
-    let ultimo = eventos.iter().rev().find_map(|e| if let Evento::Tareas(t) = e { Some(t.clone()) } else { None }).unwrap();
+    let ultimo = eventos
+        .iter()
+        .rev()
+        .find_map(|e| {
+            if let Evento::Tareas(t) = e {
+                Some(t.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap();
     assert_eq!(ultimo.len(), 2);
     assert!(ultimo.iter().all(|t| t.estado == EstadoTarea::Hecha));
-    assert!(eventos.iter().any(|e| matches!(e, Evento::Tareas(t) if t.iter().any(|x| x.estado == EstadoTarea::Corrigiendo))));
+    assert!(eventos.iter().any(
+        |e| matches!(e, Evento::Tareas(t) if t.iter().any(|x| x.estado == EstadoTarea::Corrigiendo))
+    ));
 }
 
 /// Lo que falta al revisar el conjunto se hace en una ronda mas.
@@ -83,7 +122,9 @@ fn lo_que_falta_al_final_se_hace_en_otra_ronda() {
         vec![
             Respuesta::de_texto(plan),
             Respuesta::de_texto(r#"{"veredicto":"bien"}"#),
-            Respuesta::de_texto(r#"{"faltan":[{"titulo":"Otra","instrucciones":"ayuda_app","hecho_si":"ok"}],"respuesta":""}"#),
+            Respuesta::de_texto(
+                r#"{"faltan":[{"titulo":"Otra","instrucciones":"ayuda_app","hecho_si":"ok"}],"respuesta":""}"#,
+            ),
             Respuesta::de_texto(r#"{"veredicto":"bien"}"#),
             Respuesta::de_texto(r#"{"faltan":[],"respuesta":"Listo, las dos."}"#),
         ],
@@ -106,14 +147,21 @@ fn lo_que_falta_al_final_se_hace_en_otra_ronda() {
 fn sin_plan_o_con_un_pedido_simple_sigue_el_turno_de_siempre() {
     let (f, _, hechas, jefe, _) = correr(
         vec![Respuesta::de_texto("no se")],
-        vec![Respuesta::de_llamada("ayuda_app", AYUDA), Respuesta::de_texto("Hecho solo.")],
+        vec![
+            Respuesta::de_llamada("ayuda_app", AYUDA),
+            Respuesta::de_texto("Hecho solo."),
+        ],
         "busca como se exporta, mira los ajustes y resume los atajos",
     );
     assert_eq!((f.texto.as_str(), hechas), ("Hecho solo.", 1));
     assert_eq!(jefe.recibido.lock().unwrap().len(), 1);
     let (f, _, _, jefe, _) = correr(vec![], vec![Respuesta::de_texto("Hola.")], "hola");
     assert_eq!(f.texto, "Hola.");
-    assert_eq!(jefe.recibido.lock().unwrap().len(), 0, "lo simple no llama al jefe");
+    assert_eq!(
+        jefe.recibido.lock().unwrap().len(),
+        0,
+        "lo simple no llama al jefe"
+    );
 }
 
 #[test]
@@ -123,13 +171,24 @@ fn se_entiende_lo_que_contesta_el_jefe() {
     assert_eq!(p.tareas[1].titulo, "Resumir");
     assert!(leer_plan(r#"{"tareas":[]}"#).is_none());
     assert!(leer_plan("sin json").is_none());
-    let muchas = format!(r#"{{"tareas":[{}]}}"#, vec![r#"{"titulo":"t","instrucciones":"i","hecho_si":"h"}"#; 20].join(","));
+    let muchas = format!(
+        r#"{{"tareas":[{}]}}"#,
+        vec![r#"{"titulo":"t","instrucciones":"i","hecho_si":"h"}"#; 20].join(",")
+    );
     assert_eq!(leer_plan(&muchas).unwrap().tareas.len(), MAX_TAREAS);
-    assert_eq!(leer_veredicto(r#"{"veredicto":"corregir","correccion":"x"}"#), Veredicto::Corregir("x".into()));
-    assert_eq!(leer_veredicto(r#"{"veredicto":"no_se_puede","motivo":"m"}"#), Veredicto::NoSePuede("m".into()));
+    assert_eq!(
+        leer_veredicto(r#"{"veredicto":"corregir","correccion":"x"}"#),
+        Veredicto::Corregir("x".into())
+    );
+    assert_eq!(
+        leer_veredicto(r#"{"veredicto":"no_se_puede","motivo":"m"}"#),
+        Veredicto::NoSePuede("m".into())
+    );
     assert_eq!(leer_veredicto("raro"), Veredicto::Bien);
     let c = leer_cierre(r#"{"faltan":[],"respuesta":"Hecho."}"#);
     assert!(c.faltan.is_empty() && c.respuesta == "Hecho.");
-    assert!(conviene("traduce la figura, pon los títulos en azul y alinéalos"));
+    assert!(conviene(
+        "traduce la figura, pon los títulos en azul y alinéalos"
+    ));
     assert!(!conviene("hola"));
 }

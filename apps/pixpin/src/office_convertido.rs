@@ -49,7 +49,12 @@ pub fn copia_de(raiz: &Path, original: &Path) -> Option<PathBuf> {
     let a = destino(&ext)?;
     let clave = crate::plano_cad::clave(original)?;
     let tronco = pixpin_docs::sin_extension(&pixpin_docs::nombre(original));
-    Some(raiz.join("cache").join("office").join(clave).join(format!("{tronco}.{a}")))
+    Some(
+        raiz.join("cache")
+            .join("office")
+            .join(clave)
+            .join(format!("{tronco}.{a}")),
+    )
 }
 
 /// La copia ya convertida, si esta: abrirla es inmediato. Queda leida en
@@ -78,13 +83,28 @@ pub fn convertir(raiz: &Path, original: &Path) -> Result<PathBuf> {
     std::fs::write(&guion, GUION)?;
     let desde = Instant::now();
     let mut orden = std::process::Command::new("powershell.exe");
-    orden.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]).arg(&guion).arg(original).arg(&medio).arg(&a);
+    orden
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
+        .arg(&guion)
+        .arg(original)
+        .arg(&medio)
+        .arg(&a);
     {
         use std::os::windows::process::CommandExt;
         // CREATE_NO_WINDOW: ni un parpadeo de consola.
         orden.creation_flags(0x0800_0000);
     }
-    let mut hijo = orden.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped()).spawn().context("no se pudo lanzar PowerShell")?;
+    let mut hijo = orden
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("no se pudo lanzar PowerShell")?;
     let fin = loop {
         if let Some(s) = hijo.try_wait()? {
             break s;
@@ -141,7 +161,10 @@ mod pruebas {
     use super::*;
 
     fn temporal(n: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("pixpin-office-convertido-{n}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!(
+            "pixpin-office-convertido-{n}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
@@ -171,16 +194,27 @@ mod pruebas {
         let c1 = copia_de(&raiz, &doc).unwrap();
         assert_eq!(c1.file_name().unwrap(), "Informe final.docx");
         assert!(c1.starts_with(raiz.join("cache").join("office")));
-        assert_eq!(copia_de(&raiz, &doc), Some(c1.clone()), "lo mismo, la misma copia");
+        assert_eq!(
+            copia_de(&raiz, &doc),
+            Some(c1.clone()),
+            "lo mismo, la misma copia"
+        );
         std::fs::write(&doc, "otro mas largo").unwrap();
-        assert_ne!(copia_de(&raiz, &doc).unwrap(), c1, "cambio el original: otra copia");
+        assert_ne!(
+            copia_de(&raiz, &doc).unwrap(),
+            c1,
+            "cambio el original: otra copia"
+        );
         // Lista solo cuando esta; y entonces se lee en nombre del original.
         let c2 = copia_de(&raiz, &doc).unwrap();
         assert_eq!(lista(&raiz, &doc), None);
         std::fs::create_dir_all(c2.parent().unwrap()).unwrap();
         std::fs::write(&c2, "docx").unwrap();
         assert_eq!(lista(&raiz, &doc), Some(c2.clone()));
-        assert_eq!(pixpin_proyecto::anotado::original_de(&c2), Some(doc.clone()));
+        assert_eq!(
+            pixpin_proyecto::anotado::original_de(&c2),
+            Some(doc.clone())
+        );
         // Caso negativo: un Excel viejo no tiene copia.
         let xls = d.join("libro.xls");
         std::fs::write(&xls, "x").unwrap();
@@ -196,7 +230,12 @@ mod pruebas {
         let doc = d.join("prueba.doc");
         let guion = d.join("crear.ps1");
         std::fs::write(&guion, "param($r) $w = New-Object -ComObject Word.Application; try { $x = $w.Documents.Add(); $x.Content.Text = 'Hola PixPin'; $x.SaveAs2($r, 0); $x.Close(0) } finally { $w.Quit() }").unwrap();
-        let ok = std::process::Command::new("powershell.exe").args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(&guion).arg(&doc).status().unwrap();
+        let ok = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(&guion)
+            .arg(&doc)
+            .status()
+            .unwrap();
         assert!(ok.success() && doc.is_file());
         let desde = Instant::now();
         let copia = convertir(&d.join("datos"), &doc).unwrap();
@@ -214,11 +253,19 @@ mod pruebas {
         let ppt = d.join("charla.ppt");
         let guion = d.join("crear.ps1");
         std::fs::write(&guion, "param($r) $a = New-Object -ComObject PowerPoint.Application; try { $p = $a.Presentations.Add(0); $s = $p.Slides.Add(1, 1); $s.Shapes.Item(1).TextFrame.TextRange.Text = 'Hola PixPin'; $p.SaveAs($r, 1); $p.Close() } finally { $a.Quit() }").unwrap();
-        let ok = std::process::Command::new("powershell.exe").args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(&guion).arg(&ppt).status().unwrap();
+        let ok = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+            .arg(&guion)
+            .arg(&ppt)
+            .status()
+            .unwrap();
         assert!(ok.success() && ppt.is_file());
         let copia = convertir(&d.join("datos"), &ppt).unwrap();
         assert_eq!(copia.extension().unwrap(), "pptx");
-        assert!(std::fs::read(&copia).unwrap().starts_with(b"PK"), "un .pptx es un zip");
+        assert!(
+            std::fs::read(&copia).unwrap().starts_with(b"PK"),
+            "un .pptx es un zip"
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 }

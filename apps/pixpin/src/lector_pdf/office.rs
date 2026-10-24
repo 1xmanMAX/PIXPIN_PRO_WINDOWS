@@ -48,7 +48,12 @@ const PRESUPUESTO_CON_PRISA: Duration = Duration::from_millis(40);
 /// conoce ninguna.
 const A4: (f32, f32) = (595.0, 842.0);
 /// El color de lo elegido con el raton (el azul de elegir de Windows).
-const ELEGIDO: Color = Color { r: 0.0, g: 0.47, b: 0.84, a: 0.30 };
+const ELEGIDO: Color = Color {
+    r: 0.0,
+    g: 0.47,
+    b: 0.84,
+    a: 0.30,
+};
 
 /// Lo que llega de fuera al abrir: el documento ya leido y desde cuando se
 /// esta abriendo (para los tiempos del registro).
@@ -69,7 +74,11 @@ pub(super) struct Seleccion {
 impl Seleccion {
     /// El principio y el final, en orden de lectura.
     fn ordenada(&self) -> ((usize, usize), (usize, usize)) {
-        if self.ancla <= self.punta { (self.ancla, self.punta) } else { (self.punta, self.ancla) }
+        if self.ancla <= self.punta {
+            (self.ancla, self.punta)
+        } else {
+            (self.punta, self.ancla)
+        }
     }
 
     /// Las letras elegidas de la hoja `i`, que tiene `largo` letras.
@@ -160,17 +169,25 @@ impl HojasOffice {
         let t = Instant::now();
         let antes = self.paginas.len();
         while !self.acabado && (self.paginas.len() == antes || t.elapsed() < presupuesto) {
-            match self.documento.pagina(self.paginas.len(), &self.pintor.letras) {
+            match self
+                .documento
+                .pagina(self.paginas.len(), &self.pintor.letras)
+            {
                 Some(p) => {
                     self.paginas.push(p);
-                    if self.tipo == Tipo::PowerPoint && self.paginas.len() >= self.documento.total() {
+                    if self.tipo == Tipo::PowerPoint && self.paginas.len() >= self.documento.total()
+                    {
                         self.acabado = true;
                     }
                 }
                 None => self.acabado = true,
             }
             if self.acabado {
-                tracing::info!(hojas = self.paginas.len(), ms = self.empezo.elapsed().as_millis() as u64, "office: maquetado entero");
+                tracing::info!(
+                    hojas = self.paginas.len(),
+                    ms = self.empezo.elapsed().as_millis() as u64,
+                    "office: maquetado entero"
+                );
             }
         }
         self.paginas.len() > antes
@@ -203,11 +220,19 @@ impl HojasOffice {
             return false;
         };
         let escala = vista::ANCHO_HOJA / pagina.ancho.max(1.0);
-        let total = if self.acabado { self.paginas.len() } else { self.documento.total().max(self.paginas.len()) };
-        self.pintor.pintar(p, pagina, &self.recursos, escala, (0.0, 0.0), total as u32);
+        let total = if self.acabado {
+            self.paginas.len()
+        } else {
+            self.documento.total().max(self.paginas.len())
+        };
+        self.pintor
+            .pintar(p, pagina, &self.recursos, escala, (0.0, 0.0), total as u32);
         if i == 0 && !self.primera_pintada {
             self.primera_pintada = true;
-            tracing::info!(ms = self.empezo.elapsed().as_millis() as u64, "office: primera hoja pintada");
+            tracing::info!(
+                ms = self.empezo.elapsed().as_millis() as u64,
+                "office: primera hoja pintada"
+            );
         }
         true
     }
@@ -225,7 +250,9 @@ impl HojasOffice {
     }
 
     fn todo_el_texto(&mut self) -> Vec<PaginaDeTexto> {
-        (0..self.paginas.len()).map(|i| self.texto(i).cloned().unwrap_or_default()).collect()
+        (0..self.paginas.len())
+            .map(|i| self.texto(i).cloned().unwrap_or_default())
+            .collect()
     }
 
     /// El hipervinculo bajo un punto de la hoja `i` (en unidades del lector).
@@ -260,7 +287,11 @@ impl HojasOffice {
 /// diga el documento (o una mas que las ya listas, mientras se maqueta),
 /// del tamano de la ultima conocida. Maquetado entero, exactamente las que
 /// hay.
-pub(super) fn medidas_estimadas(listas: &[(f32, f32)], total: usize, acabado: bool) -> Vec<(f32, f32)> {
+pub(super) fn medidas_estimadas(
+    listas: &[(f32, f32)],
+    total: usize,
+    acabado: bool,
+) -> Vec<(f32, f32)> {
     if acabado {
         return listas.to_vec();
     }
@@ -291,9 +322,14 @@ pub(crate) fn texto_de_pagina(pagina: &Pagina, medidor: &dyn Medidor) -> PaginaD
         }
         if let Some((y0, tam0, fin)) = antes {
             let tam = tam0.max(t.letra.tam);
-            let blanco = texto.ends_with(char::is_whitespace) || t.texto.starts_with(char::is_whitespace);
+            let blanco =
+                texto.ends_with(char::is_whitespace) || t.texto.starts_with(char::is_whitespace);
             if (t.y - y0).abs() > tam * 0.5 {
-                let salto = if (t.y - y0).abs() > tam * 1.9 || t.y < y0 { '\n' } else { ' ' };
+                let salto = if (t.y - y0).abs() > tam * 1.9 || t.y < y0 {
+                    '\n'
+                } else {
+                    ' '
+                };
                 if !blanco || salto == '\n' {
                     texto.push(salto);
                     cajas.push(None);
@@ -369,7 +405,10 @@ pub(super) fn letra_cercana(t: &PaginaDeTexto, x: f32, y: f32) -> Option<usize> 
 
 /// La letra que hay justo debajo de un punto (en fracciones de la hoja).
 pub(super) fn letra_debajo(t: &PaginaDeTexto, x: f32, y: f32) -> bool {
-    t.cajas.iter().flatten().any(|c| x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3])
+    t.cajas
+        .iter()
+        .flatten()
+        .any(|c| x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3])
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +422,11 @@ pub(super) fn vuelta(e: &mut Estado, ruta: &Path, m: Marco) -> bool {
         return false;
     };
     let primera = o.paginas.is_empty();
-    let prisa = if o.texto_pedido.is_some() { PRESUPUESTO_CON_PRISA } else { PRESUPUESTO };
+    let prisa = if o.texto_pedido.is_some() {
+        PRESUPUESTO_CON_PRISA
+    } else {
+        PRESUPUESTO
+    };
     let antes = o.paginas.len();
     let llegaron = !o.acabado && o.maquetar(prisa);
     let nuevas = antes..o.paginas.len();
@@ -399,7 +442,11 @@ pub(super) fn vuelta(e: &mut Estado, ruta: &Path, m: Marco) -> bool {
             cambio = true;
         }
         if primera {
-            tracing::info!(ms = o.empezo.elapsed().as_millis() as u64, estimadas = e.medidas.len(), "office: primera hoja maquetada");
+            tracing::info!(
+                ms = o.empezo.elapsed().as_millis() as u64,
+                estimadas = e.medidas.len(),
+                "office: primera hoja maquetada"
+            );
         }
     }
     let Some(o) = e.office.as_mut() else {
@@ -450,8 +497,12 @@ pub(super) fn pulsar(e: &mut Estado, m: Marco) -> bool {
     let Some((i, fx, fy)) = bajo_el_raton(e, m) else {
         return false;
     };
-    let Some((_, punto)) = en_la_hoja(e, m) else { return false };
-    let Some(o) = e.office.as_mut() else { return false };
+    let Some((_, punto)) = en_la_hoja(e, m) else {
+        return false;
+    };
+    let Some(o) = e.office.as_mut() else {
+        return false;
+    };
     let Some(t) = o.texto(i) else { return false };
     if !letra_debajo(t, fx, fy) {
         o.seleccion = None;
@@ -459,8 +510,15 @@ pub(super) fn pulsar(e: &mut Estado, m: Marco) -> bool {
     }
     let letra = letra_cercana(t, fx, fy).unwrap_or(0);
     let enlace = o.enlace_en(i, punto.x, punto.y);
-    o.seleccion = Some(Seleccion { ancla: (i, letra), punta: (i, letra) });
-    o.pulsado = Some(Pulsado { desde: e.raton, movido: false, enlace });
+    o.seleccion = Some(Seleccion {
+        ancla: (i, letra),
+        punta: (i, letra),
+    });
+    o.pulsado = Some(Pulsado {
+        desde: e.raton,
+        movido: false,
+        enlace,
+    });
     true
 }
 
@@ -471,12 +529,18 @@ pub(super) fn mover(e: &mut Estado, m: Marco) {
     let Some(p) = e.office.as_mut().and_then(|o| o.pulsado.as_mut()) else {
         return;
     };
-    if !p.movido && (raton.0 - p.desde.0).abs().max((raton.1 - p.desde.1).abs()) > lector::UMBRAL_DE_ARRASTRE {
+    if !p.movido
+        && (raton.0 - p.desde.0).abs().max((raton.1 - p.desde.1).abs()) > lector::UMBRAL_DE_ARRASTRE
+    {
         p.movido = true;
     }
-    let Some((i, fx, fy)) = bajo_el_raton(e, m) else { return };
+    let Some((i, fx, fy)) = bajo_el_raton(e, m) else {
+        return;
+    };
     let Some(o) = e.office.as_mut() else { return };
-    let Some(letra) = o.texto(i).and_then(|t| letra_cercana(t, fx, fy)) else { return };
+    let Some(letra) = o.texto(i).and_then(|t| letra_cercana(t, fx, fy)) else {
+        return;
+    };
     if let Some(s) = o.seleccion.as_mut() {
         s.punta = (i, letra);
     }
@@ -485,8 +549,12 @@ pub(super) fn mover(e: &mut Estado, m: Marco) {
 /// Al soltar: un clic sin moverse en un hipervinculo lo abre; sin moverse
 /// en texto normal, se quita lo elegido.
 pub(super) fn soltar(e: &mut Estado) -> bool {
-    let Some(o) = e.office.as_mut() else { return false };
-    let Some(p) = o.pulsado.take() else { return false };
+    let Some(o) = e.office.as_mut() else {
+        return false;
+    };
+    let Some(p) = o.pulsado.take() else {
+        return false;
+    };
     if !p.movido {
         o.seleccion = None;
         if let Some(enlace) = p.enlace {
@@ -526,7 +594,9 @@ pub(super) fn cursor(e: &mut Estado, m: Marco) -> Option<FormaCursorWin> {
         Some((i, fx, fy)) => {
             let (_, punto) = en_la_hoja(e, m)?;
             let o = e.office.as_mut()?;
-            if o.enlace_en(i, punto.x, punto.y).is_some_and(|l| enlace_que_se_abre(&l)) {
+            if o.enlace_en(i, punto.x, punto.y)
+                .is_some_and(|l| enlace_que_se_abre(&l))
+            {
                 FormaCursorWin::Giro
             } else if o.texto(i).is_some_and(|t| letra_debajo(t, fx, fy)) {
                 FormaCursorWin::Texto
@@ -546,7 +616,9 @@ pub(super) fn cursor(e: &mut Estado, m: Marco) -> Option<FormaCursorWin> {
 
 /// Ctrl+C: lo elegido al portapapeles. `false` si no habia nada elegido.
 pub(super) fn copiar(e: &mut Estado, textos: Option<&Catalogo>) -> bool {
-    let Some(o) = e.office.as_mut() else { return false };
+    let Some(o) = e.office.as_mut() else {
+        return false;
+    };
     let texto = o.texto_elegido();
     if texto.is_empty() {
         return false;
@@ -564,17 +636,26 @@ pub(super) fn copiar(e: &mut Estado, textos: Option<&Catalogo>) -> bool {
 
 /// Lo elegido en la hoja `i`, ya con la transformada de la hoja puesta.
 pub(super) fn pintar_seleccion(e: &mut Estado, p: &Pintor, i: usize) {
-    let Some(alto) = e.hojas.altos.get(i).copied() else { return };
+    let Some(alto) = e.hojas.altos.get(i).copied() else {
+        return;
+    };
     let Some(o) = e.office.as_mut() else { return };
     let Some(sel) = o.seleccion else { return };
     if sel.vacia() {
         return;
     }
     let Some(t) = o.texto(i) else { return };
-    let Some(r) = sel.rango_en(i, t.cajas.len()) else { return };
+    let Some(r) = sel.rango_en(i, t.cajas.len()) else {
+        return;
+    };
     for c in t.cajas_de(r.start, r.end - r.start) {
         p.rellenar(
-            RectF { x: c[0] * vista::ANCHO_HOJA, y: c[1] * alto, ancho: (c[2] - c[0]) * vista::ANCHO_HOJA, alto: (c[3] - c[1]) * alto },
+            RectF {
+                x: c[0] * vista::ANCHO_HOJA,
+                y: c[1] * alto,
+                ancho: (c[2] - c[0]) * vista::ANCHO_HOJA,
+                alto: (c[3] - c[1]) * alto,
+            },
             ELEGIDO,
         );
     }
@@ -599,14 +680,27 @@ pub(super) fn ir_a(e: &mut Estado, i: usize, m: Marco) {
     };
     let s = px(e, m);
     let visto = m.alto / s;
-    e.y = if alto <= visto { arriba - (visto - alto) / 2.0 } else { arriba };
+    e.y = if alto <= visto {
+        arriba - (visto - alto) / 2.0
+    } else {
+        arriba
+    };
 }
 
 /// Las teclas de pasar diapositivas en un PowerPoint (las de la
 /// presentacion: AvPag/RePag, flechas, Espacio, Inicio/Fin). `true` si era
 /// una de ellas.
-pub(super) fn tecla_de_diapositivas(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, m: Marco) -> bool {
-    if ctrl || e.office.as_ref().is_none_or(|o| o.tipo != Tipo::PowerPoint) || e.hojas.cuantas() == 0 {
+pub(super) fn tecla_de_diapositivas(
+    e: &mut Estado,
+    vk: u32,
+    shift: bool,
+    ctrl: bool,
+    m: Marco,
+) -> bool {
+    if ctrl
+        || e.office.as_ref().is_none_or(|o| o.tipo != Tipo::PowerPoint)
+        || e.hojas.cuantas() == 0
+    {
         return false;
     }
     let ahora = la_de_ahora(e, m);
@@ -667,19 +761,34 @@ impl pixpin_render::imprimir_moderno::Documento for OfficeImpreso {
         let unidades = k * pagina.ancho / vista::ANCHO_HOJA * hoja.escala;
         p.poner_vista((x * hoja.escala, y * hoja.escala), unidades, (0.0, 0.0));
         let alto = vista::ANCHO_HOJA * pagina.alto / pagina.ancho.max(1.0);
-        pintor.pintar(p, pagina, &self.recursos, vista::ANCHO_HOJA / pagina.ancho.max(1.0), (0.0, 0.0), self.paginas.len() as u32);
+        pintor.pintar(
+            p,
+            pagina,
+            &self.recursos,
+            vista::ANCHO_HOJA / pagina.ancho.max(1.0),
+            (0.0, 0.0),
+            self.paginas.len() as u32,
+        );
         if let Some(Some(capa)) = self.capas.get(i) {
-            p.con_recorte(RectF { x: 0.0, y: 0.0, ancho: vista::ANCHO_HOJA, alto }, |p| {
-                self.tinta.borrow_mut().pintar_capa(
-                    p,
-                    i,
-                    capa,
-                    (0.0, 0.0, vista::ANCHO_HOJA, alto),
-                    unidades,
-                    lector_tinta::papel(Color::BLANCO),
-                    false,
-                );
-            });
+            p.con_recorte(
+                RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: vista::ANCHO_HOJA,
+                    alto,
+                },
+                |p| {
+                    self.tinta.borrow_mut().pintar_capa(
+                        p,
+                        i,
+                        capa,
+                        (0.0, 0.0, vista::ANCHO_HOJA, alto),
+                        unidades,
+                        lector_tinta::papel(Color::BLANCO),
+                        false,
+                    );
+                },
+            );
         }
     }
 }
@@ -692,19 +801,37 @@ pub(super) fn encajar_en_el_papel(pagina: (f32, f32), papel: (f32, f32)) -> (f32
     let (w, h) = (pagina.0.max(1.0) * dip, pagina.1.max(1.0) * dip);
     let cabe = (papel.0 / w).min(papel.1 / h).min(1.0);
     let k = dip * cabe;
-    ((papel.0 - pagina.0 * k) / 2.0, (papel.1 - pagina.1 * k) / 2.0, k)
+    (
+        (papel.0 - pagina.0 * k) / 2.0,
+        (papel.1 - pagina.1 * k) / 2.0,
+        k,
+    )
 }
 
 /// Ctrl+P: el dialogo de imprimir de Windows con todas las hojas y lo
 /// anotado (lo pendiente se guarda antes).
 pub(super) fn imprimir(e: &mut Estado, ventana: isize, ruta: &Path, textos: &Catalogo) {
-    let Some((doc, titulo, apaisada)) = impreso(e, ruta) else { return };
+    let Some((doc, titulo, apaisada)) = impreso(e, ruta) else {
+        return;
+    };
     let hecho = (|| -> Result<()> {
         let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
-        let motor = pixpin_render::MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
-        let pedido = pixpin_render::imprimir_moderno::Pedido { titulo, apaisada, opcion: None, ppp_previa: 144.0 };
-        pixpin_render::imprimir_moderno::mostrar(windows::Win32::Foundation::HWND(ventana as *mut _), pedido, d.d3d().clone(), motor, Box::new(doc))
-            .context("el dialogo de imprimir no se abrio")
+        let motor =
+            pixpin_render::MotorRender::nuevo(d.d3d()).context("sin motor para imprimir")?;
+        let pedido = pixpin_render::imprimir_moderno::Pedido {
+            titulo,
+            apaisada,
+            opcion: None,
+            ppp_previa: 144.0,
+        };
+        pixpin_render::imprimir_moderno::mostrar(
+            windows::Win32::Foundation::HWND(ventana as *mut _),
+            pedido,
+            d.d3d().clone(),
+            motor,
+            Box::new(doc),
+        )
+        .context("el dialogo de imprimir no se abrio")
     })();
     if let Err(err) = hecho {
         tracing::warn!(?err, "office: no se pudo imprimir");
@@ -714,11 +841,23 @@ pub(super) fn imprimir(e: &mut Estado, ventana: isize, ruta: &Path, textos: &Cat
 
 /// **Lo que exporta un Word o un PowerPoint con hoja** (el «Exportar»
 /// comun): sus hojas como se imprimen, con lo anotado, y el original.
-pub(super) fn exportable(e: &mut Estado, ruta: &Path) -> Option<crate::compartir::exportable::Exportable> {
+pub(super) fn exportable(
+    e: &mut Estado,
+    ruta: &Path,
+) -> Option<crate::compartir::exportable::Exportable> {
     let (mut doc, titulo, apaisada) = impreso(e, ruta)?;
-    let papel = if apaisada { (1123.0, 794.0) } else { (794.0, 1123.0) };
+    let papel = if apaisada {
+        (1123.0, 794.0)
+    } else {
+        (794.0, 1123.0)
+    };
     let hojas = crate::compartir::exportable::hojas_impresas(&mut doc, papel, 2.0, 400)
-        .inspect_err(|err| tracing::warn!(?err, "office: no se pudieron pintar las hojas para exportar"))
+        .inspect_err(|err| {
+            tracing::warn!(
+                ?err,
+                "office: no se pudieron pintar las hojas para exportar"
+            )
+        })
         .ok()?;
     let mut x = crate::compartir::exportable::Exportable::nuevo(titulo);
     x.raiz = Some(e.ubicacion.raiz().to_path_buf());
@@ -738,12 +877,20 @@ fn impreso(e: &mut Estado, ruta: &Path) -> Option<(OfficeImpreso, String, bool)>
         .map(|i| {
             let alto = vista::ANCHO_HOJA * paginas[i].alto / paginas[i].ancho.max(1.0);
             let r = e.donde.para_leer(ruta, i);
-            r.is_file().then(|| e.donde.leer_capa(ruta, i, e.ajustes.espacios, alto)).filter(|c| !c.vacia())
+            r.is_file()
+                .then(|| e.donde.leer_capa(ruta, i, e.ajustes.espacios, alto))
+                .filter(|c| !c.vacia())
         })
         .collect();
     let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
     let apaisada = paginas.first().is_some_and(|p| p.ancho > p.alto);
-    let doc = OfficeImpreso { paginas, recursos, capas, tinta: std::cell::RefCell::new(Tinta::nueva()), pintor: None };
+    let doc = OfficeImpreso {
+        paginas,
+        recursos,
+        capas,
+        tinta: std::cell::RefCell::new(Tinta::nueva()),
+        pintor: None,
+    };
     Some((doc, titulo, apaisada))
 }
 
@@ -771,7 +918,12 @@ mod pruebas {
     }
 
     fn hoja(elementos: Vec<Elemento>) -> Pagina {
-        Pagina { ancho: 200.0, alto: 100.0, elementos, ..Default::default() }
+        Pagina {
+            ancho: 200.0,
+            alto: 100.0,
+            elementos,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -790,7 +942,11 @@ mod pruebas {
 
     #[test]
     fn el_texto_de_la_hoja_va_letra_a_letra_con_su_caja() {
-        let p = hoja(vec![trozo(10.0, 20.0, "Hola", None), trozo(40.0, 20.0, "mundo", None), trozo(10.0, 32.0, "dos", None)]);
+        let p = hoja(vec![
+            trozo(10.0, 20.0, "Hola", None),
+            trozo(40.0, 20.0, "mundo", None),
+            trozo(10.0, 32.0, "dos", None),
+        ]);
         let t = texto_de_pagina(&p, &MedidorFijo::default());
         // Separados en el mismo renglon: un espacio; renglon siguiente
         // pegado: otro espacio (el parrafo sigue).
@@ -798,23 +954,41 @@ mod pruebas {
         assert_eq!(t.cajas.len(), t.texto.chars().count());
         // La «H» empieza en x = 10 de 200 y mide 5 puntos (la mitad de 10).
         let h = t.cajas[0].unwrap();
-        assert!((h[0] - 0.05).abs() < 1e-5 && (h[2] - 0.075).abs() < 1e-5, "{h:?}");
+        assert!(
+            (h[0] - 0.05).abs() < 1e-5 && (h[2] - 0.075).abs() < 1e-5,
+            "{h:?}"
+        );
         // El espacio puesto no tiene caja.
         assert!(t.cajas[4].is_none());
     }
 
     #[test]
     fn un_parrafo_lejos_va_tras_un_salto_de_renglon() {
-        let p = hoja(vec![trozo(10.0, 20.0, "Uno", None), trozo(10.0, 60.0, "Dos", None)]);
-        assert_eq!(texto_de_pagina(&p, &MedidorFijo::default()).texto, "Uno\nDos");
+        let p = hoja(vec![
+            trozo(10.0, 20.0, "Uno", None),
+            trozo(10.0, 60.0, "Dos", None),
+        ]);
+        assert_eq!(
+            texto_de_pagina(&p, &MedidorFijo::default()).texto,
+            "Uno\nDos"
+        );
         // Caso negativo: trozos pegados en el mismo renglon no llevan espacio.
-        let p = hoja(vec![trozo(10.0, 20.0, "Pal", None), trozo(25.0, 20.0, "abra", None)]);
-        assert_eq!(texto_de_pagina(&p, &MedidorFijo::default()).texto, "Palabra");
+        let p = hoja(vec![
+            trozo(10.0, 20.0, "Pal", None),
+            trozo(25.0, 20.0, "abra", None),
+        ]);
+        assert_eq!(
+            texto_de_pagina(&p, &MedidorFijo::default()).texto,
+            "Palabra"
+        );
     }
 
     #[test]
     fn el_cursor_de_elegir_cae_en_la_letra_mas_cercana_de_su_renglon() {
-        let p = hoja(vec![trozo(10.0, 20.0, "abcd", None), trozo(10.0, 60.0, "efgh", None)]);
+        let p = hoja(vec![
+            trozo(10.0, 20.0, "abcd", None),
+            trozo(10.0, 60.0, "efgh", None),
+        ]);
         let t = texto_de_pagina(&p, &MedidorFijo::default());
         // En la segunda mitad de la «b» (x 15..20 de 200): detras de ella.
         assert_eq!(letra_cercana(&t, 19.0 / 200.0, 17.0 / 100.0), Some(2));
@@ -828,13 +1002,23 @@ mod pruebas {
 
     #[test]
     fn lo_elegido_va_de_la_ancla_a_la_punta_en_cualquier_sentido_y_entre_hojas() {
-        let s = Seleccion { ancla: (2, 5), punta: (0, 3) };
+        let s = Seleccion {
+            ancla: (2, 5),
+            punta: (0, 3),
+        };
         assert_eq!(s.rango_en(0, 10), Some(3..10));
         assert_eq!(s.rango_en(1, 7), Some(0..7));
         assert_eq!(s.rango_en(2, 10), Some(0..5));
         // Caso negativo: fuera de las hojas elegidas, o vacia, nada.
         assert_eq!(s.rango_en(3, 10), None);
-        assert_eq!(Seleccion { ancla: (1, 4), punta: (1, 4) }.rango_en(1, 10), None);
+        assert_eq!(
+            Seleccion {
+                ancla: (1, 4),
+                punta: (1, 4)
+            }
+            .rango_en(1, 10),
+            None
+        );
     }
 
     #[test]
@@ -867,7 +1051,9 @@ mod pruebas {
             println!("sin muestra en {}", ruta.display());
             return;
         }
-        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
         let _com = pixpin_shell::ComDelHilo::iniciar();
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = pixpin_render::MotorRender::nuevo(d.d3d()).expect("motor");
@@ -876,39 +1062,70 @@ mod pruebas {
         let empezo = Instant::now();
         let documento = Documento::abrir(&ruta).expect("abre");
         let mut e = super::super::pruebas::estado(0);
-        e.office = HojasOffice::nuevo(DeOffice { documento, idioma: pixpin_store::Idioma::Espanol, empezo }, &motor);
+        e.office = HojasOffice::nuevo(
+            DeOffice {
+                documento,
+                idioma: pixpin_store::Idioma::Espanol,
+                empezo,
+            },
+            &motor,
+        );
         assert!(e.office.is_some(), "pintor de Office");
         while e.office.as_ref().is_some_and(|o| o.maquetando()) {
             vuelta(&mut e, &ruta, m);
         }
-        println!("maquetado en {} ms, {} hojas", empezo.elapsed().as_millis(), e.hojas.cuantas());
+        println!(
+            "maquetado en {} ms, {} hojas",
+            empezo.elapsed().as_millis(),
+            e.hojas.cuantas()
+        );
         acotar(&mut e, m);
         // Lo que se elegiria arrastrando por el principio de la primera hoja.
-        let largo = e.office.as_mut().and_then(|o| o.texto(0)).map(|t| t.texto.chars().count()).unwrap_or(0);
+        let largo = e
+            .office
+            .as_mut()
+            .and_then(|o| o.texto(0))
+            .map(|t| t.texto.chars().count())
+            .unwrap_or(0);
         assert!(largo > 0, "la primera hoja tiene texto");
-        e.office.as_mut().unwrap().seleccion = Some(Seleccion { ancla: (0, 0), punta: (0, largo.min(120)) });
+        e.office.as_mut().unwrap().seleccion = Some(Seleccion {
+            ancla: (0, 0),
+            punta: (0, largo.min(120)),
+        });
         let copiado = e.office.as_mut().unwrap().texto_elegido();
         println!("Ctrl+C copiaria: {copiado:?}");
         assert!(!copiado.trim().is_empty());
-        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), m.ancho as u32, m.alto as u32).expect("superficie");
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), m.ancho as u32, m.alto as u32)
+            .expect("superficie");
         let guardar = |nombre: &str, fuera: &FueraDePantalla| {
             fuera.esperar_gpu().expect("esperar");
             let (ancho, alto, pixeles) = fuera.leer_rgba().expect("leer");
-            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho, alto, pixeles }).expect("png");
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            })
+            .expect("png");
             let salida = carpeta.join(nombre);
             std::fs::write(&salida, png).expect("guardar");
             println!("{}", salida.display());
         };
-        motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+        motor
+            .dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos))
+            .expect("pintar");
         guardar("lector-office-elegido.png", &fuera);
         e.en_negativo = true;
-        motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+        motor
+            .dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos))
+            .expect("pintar");
         guardar("lector-office-negativo.png", &fuera);
         // En oscuro (luna/sol): el papel oscuro y el texto claro; las
         // imagenes y los rellenos con sus colores.
         e.en_negativo = false;
         e.oscuro = true;
-        motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+        motor
+            .dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos))
+            .expect("pintar");
         guardar("lector-office-oscuro.png", &fuera);
         e.oscuro = false;
 
@@ -923,11 +1140,16 @@ mod pruebas {
         };
         assert_eq!(impreso.paginar(&motor, None), o.paginas.len());
         let papel = pixpin_render::imprimir_moderno::A4;
-        let hoja = FueraDePantalla::nuevo(&motor, d.d3d(), papel.0 as u32, papel.1 as u32).expect("papel");
+        let hoja =
+            FueraDePantalla::nuevo(&motor, d.d3d(), papel.0 as u32, papel.1 as u32).expect("papel");
         motor
             .dibujar(&hoja.destino, |p| {
                 p.limpiar(Color::BLANCO);
-                impreso.pintar(0, pixpin_render::imprimir_moderno::Pagina { papel, escala: 1.0 }, p);
+                impreso.pintar(
+                    0,
+                    pixpin_render::imprimir_moderno::Pagina { papel, escala: 1.0 },
+                    p,
+                );
             })
             .expect("imprimir");
         guardar("lector-office-impreso.png", &hoja);
@@ -937,7 +1159,10 @@ mod pruebas {
     fn la_hoja_va_a_su_tamano_en_el_papel_y_si_no_cabe_se_reduce() {
         // Un A4 en un A4: a su tamano (96/72 DIP por punto), sin margen.
         let (x, y, k) = encajar_en_el_papel((595.0, 842.0), (793.7, 1122.5));
-        assert!((k - 96.0 / 72.0).abs() < 1e-3 && x.abs() < 1.0 && y.abs() < 1.0, "{x} {y} {k}");
+        assert!(
+            (k - 96.0 / 72.0).abs() < 1e-3 && x.abs() < 1.0 && y.abs() < 1.0,
+            "{x} {y} {k}"
+        );
         // Una hoja apaisada en papel vertical: reducida y centrada en alto.
         let (x, y, k) = encajar_en_el_papel((842.0, 595.0), (793.7, 1122.5));
         assert!(k < 96.0 / 72.0 && x.abs() < 1.0 && y > 100.0, "{x} {y} {k}");

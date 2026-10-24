@@ -93,7 +93,10 @@ pub fn motivo_de(cuerpo: &str) -> String {
             _ => {}
         }
     }
-    let texto = sin_etiquetas.split_whitespace().collect::<Vec<_>>().join(" ");
+    let texto = sin_etiquetas
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     if texto.is_empty() {
         "el servicio no contestó nada".into()
     } else {
@@ -106,7 +109,10 @@ pub fn sano(nombre: &str) -> String {
     let mut s = String::new();
     let mut guion = false;
     for c in nombre.chars() {
-        if matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\r' | '\n') {
+        if matches!(
+            c,
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\r' | '\n'
+        ) {
             if !guion {
                 s.push('-');
             }
@@ -205,7 +211,10 @@ mod pruebas {
 
     #[test]
     fn el_motivo_es_el_texto_sin_etiquetas_y_corto() {
-        assert_eq!(motivo_de("<h1>413</h1> <p>Too   large</p>"), "413 Too large");
+        assert_eq!(
+            motivo_de("<h1>413</h1> <p>Too   large</p>"),
+            "413 Too large"
+        );
         assert_eq!(motivo_de("   "), "el servicio no contestó nada");
         assert!(motivo_de(&"x".repeat(500)).chars().count() <= 120);
     }

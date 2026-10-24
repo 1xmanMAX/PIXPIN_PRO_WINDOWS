@@ -325,7 +325,11 @@ impl Estado {
     }
 
     fn decir_con_deshacer(&mut self, t: String, textos: &Catalogo) {
-        self.aviso = Some(Aviso::con_deshacer(t, textos.t("horario-deshacer"), Accion::Deshacer));
+        self.aviso = Some(Aviso::con_deshacer(
+            t,
+            textos.t("horario-deshacer"),
+            Accion::Deshacer,
+        ));
     }
 
     fn campo_mut(&mut self, c: CampoId) -> &mut ui::Campo {
@@ -380,7 +384,11 @@ impl Estado {
                 let Some(a) = self.semana.asignaturas.get(i) else {
                     return;
                 };
-                (a.aula.clone().unwrap_or_default(), String::new(), String::new())
+                (
+                    a.aula.clone().unwrap_or_default(),
+                    String::new(),
+                    String::new(),
+                )
             }
         };
         self.aula.poner(&aula);
@@ -538,7 +546,11 @@ fn bucle(
                         | Some(Agarre::Bloque {
                             desde, arrastrando, ..
                         }) if !*arrastrando
-                            && crate::tareas::kanban::es_arrastre(*desde, e.botones.raton, escala) =>
+                            && crate::tareas::kanban::es_arrastre(
+                                *desde,
+                                e.botones.raton,
+                                escala,
+                            ) =>
                         {
                             *arrastrando = true;
                         }
@@ -574,7 +586,9 @@ fn bucle(
                         }
                         Accion::Bloque(i) => {
                             let off = match (e.rejilla, e.semana.bloques.get(i)) {
-                                (Some(r), Some(b)) => r.minuto_en(e.botones.raton.1) - i64::from(b.inicio),
+                                (Some(r), Some(b)) => {
+                                    r.minuto_en(e.botones.raton.1) - i64::from(b.inicio)
+                                }
                                 _ => 0,
                             };
                             e.bloque = Some(i);
@@ -641,7 +655,8 @@ fn bucle(
                 e.cargar(&raiz);
                 pintar = true;
             }
-            if tareas_leidas && super::asignaturas::firma(&raiz, e.chat.as_deref()) != e.firma_chat {
+            if tareas_leidas && super::asignaturas::firma(&raiz, e.chat.as_deref()) != e.firma_chat
+            {
                 e.cargar_tareas(&raiz);
                 pintar = true;
             }
@@ -656,7 +671,9 @@ fn bucle(
 
         if pintar {
             if let Ok(dc) = superficie.empezar(&motor) {
-                let _ = motor.dibujar(&dc, |p: &Pintor| pintar_todo(&mut e, p, marco, escala, textos));
+                let _ = motor.dibujar(&dc, |p: &Pintor| {
+                    pintar_todo(&mut e, p, marco, escala, textos)
+                });
                 let _ = superficie.presentar();
             }
             pintar = false;
@@ -880,7 +897,8 @@ fn hacer(
                 .elegida
                 .and_then(|i| e.semana.asignaturas.get(i))
                 .map(|a| a.nombre.clone());
-            let clave = nombre.and_then(|n| super::asignaturas::de(&e.listas, &n).map(Lista::clave));
+            let clave =
+                nombre.and_then(|n| super::asignaturas::de(&e.listas, &n).map(Lista::clave));
             match clave {
                 Some(k) => crate::tareas::abrir_en(idioma, ubicacion.clone(), aparato, k),
                 None => crate::tareas::abrir(idioma, ubicacion.clone(), aparato),
@@ -1005,8 +1023,18 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             ancho: tw + 24.0 * s,
             alto: th + 12.0 * s,
         };
-        p.rellenar_redondeado(caja, d::RADIO_BOTON * s, color(e.semana.color_de(&a.nombre)));
-        p.texto(&a.nombre, caja.x + 12.0 * s, caja.y + 6.0 * s, tam, Color::BLANCO);
+        p.rellenar_redondeado(
+            caja,
+            d::RADIO_BOTON * s,
+            color(e.semana.color_de(&a.nombre)),
+        );
+        p.texto(
+            &a.nombre,
+            caja.x + 12.0 * s,
+            caja.y + 6.0 * s,
+            tam,
+            Color::BLANCO,
+        );
     }
 
     if e.edicion.is_some() {
@@ -1031,7 +1059,12 @@ fn subtitulo_de_asignatura(s: &Semana, a: &super::Asignatura) -> String {
     } else if minutos % 60 == 0 {
         Some(format!("{} h/sem", minutos / 60))
     } else {
-        Some(format!("{:.2} h/sem", minutos as f32 / 60.0).replace(".50", ",5").replace(".25", ",25").replace(".75", ",75"))
+        Some(
+            format!("{:.2} h/sem", minutos as f32 / 60.0)
+                .replace(".50", ",5")
+                .replace(".25", ",25")
+                .replace(".75", ",75"),
+        )
     };
     match (a.aula.as_deref(), horas) {
         (Some(aula), Some(h)) => format!("{aula} · {h}"),
@@ -1072,14 +1105,30 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
         ancho: lado,
         alto: lado,
     };
-    crate::v2::boton_icono(p, &mut e.botones, mas, Accion::Anadir, &mi::ADD, false, false, s);
+    crate::v2::boton_icono(
+        p,
+        &mut e.botones,
+        mas,
+        Accion::Anadir,
+        &mi::ADD,
+        false,
+        false,
+        s,
+    );
     y += alto_caja + d::HUECO * s;
 
     // Las asignaturas.
     let tam = d::LETRA_CUERPO * s;
     let tam2 = 12.0 * s;
     if e.semana.asignaturas.is_empty() {
-        p.texto_ajustado(&textos.t("horario-vacio"), x + 4.0 * s, y + 8.0 * s, d::LETRA_SECUNDARIO * s, ancho - 8.0 * s, GRIS);
+        p.texto_ajustado(
+            &textos.t("horario-vacio"),
+            x + 4.0 * s,
+            y + 8.0 * s,
+            d::LETRA_SECUNDARIO * s,
+            ancho - 8.0 * s,
+            GRIS,
+        );
         y += 60.0 * s;
     }
     let arrastrada = match e.agarre {
@@ -1094,7 +1143,14 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
     e.primera = e.primera.min(cuantas.saturating_sub(1));
     if e.primera > 0 {
         // Las de arriba que no se ven.
-        p.texto_linea(&format!("↑ {}", e.primera), x + 36.0 * s, y, 12.0 * s, 80.0 * s, GRIS);
+        p.texto_linea(
+            &format!("↑ {}", e.primera),
+            x + 36.0 * s,
+            y,
+            12.0 * s,
+            80.0 * s,
+            GRIS,
+        );
         y += 20.0 * s;
     }
     for i in e.primera..cuantas {
@@ -1126,7 +1182,14 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
         let (_, th) = p.medir_texto("Ag", tam);
         let sub = subtitulo_de_asignatura(&e.semana, &a);
         if sub.is_empty() {
-            p.texto_linea(&a.nombre, tx, y + (fila.alto - th) / 2.0, tam, ancho - (tx - x) - derecha, TEXTO);
+            p.texto_linea(
+                &a.nombre,
+                tx,
+                y + (fila.alto - th) / 2.0,
+                tam,
+                ancho - (tx - x) - derecha,
+                TEXTO,
+            );
         } else {
             let (_, th2) = p.medir_texto("Ag", tam2);
             let y0 = y + (fila.alto - th - th2) / 2.0;
@@ -1140,12 +1203,28 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
                 ancho: 40.0 * s,
                 alto: 40.0 * s,
             };
-            crate::v2::boton_icono(p, &mut e.botones, b, Accion::BorrarAsignatura(i), &mi::DELETE, false, false, s);
+            crate::v2::boton_icono(
+                p,
+                &mut e.botones,
+                b,
+                Accion::BorrarAsignatura(i),
+                &mi::DELETE,
+                false,
+                false,
+                s,
+            );
         }
         y += FILA * s;
         if y > h - 200.0 * s && i + 1 < cuantas {
             // Lo que no cabe: cuantas quedan (la rueda las trae).
-            p.texto_linea(&format!("↓ {}", cuantas - i - 1), tx, y, 12.0 * s, 80.0 * s, GRIS);
+            p.texto_linea(
+                &format!("↓ {}", cuantas - i - 1),
+                tx,
+                y,
+                12.0 * s,
+                80.0 * s,
+                GRIS,
+            );
             y += 24.0 * s;
             break;
         }
@@ -1169,11 +1248,29 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
     y += d::HUECO_GRANDE * s;
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("asignatura", a.nombre.clone());
-    let titulo = format!("{} ({})", textos.t_args("horario-tareas-de", &args), e.pendientes.len());
-    p.texto_linea(&titulo, x + 4.0 * s, y, d::LETRA_SECUNDARIO * s, ancho, GRIS);
+    let titulo = format!(
+        "{} ({})",
+        textos.t_args("horario-tareas-de", &args),
+        e.pendientes.len()
+    );
+    p.texto_linea(
+        &titulo,
+        x + 4.0 * s,
+        y,
+        d::LETRA_SECUNDARIO * s,
+        ancho,
+        GRIS,
+    );
     y += 24.0 * s;
     if e.pendientes.is_empty() {
-        p.texto_ajustado(&textos.t("horario-sin-tareas"), x + 4.0 * s, y, d::LETRA_SECUNDARIO * s, ancho - 8.0 * s, GRIS);
+        p.texto_ajustado(
+            &textos.t("horario-sin-tareas"),
+            x + 4.0 * s,
+            y,
+            d::LETRA_SECUNDARIO * s,
+            ancho - 8.0 * s,
+            GRIS,
+        );
         y += 48.0 * s;
     }
     let pendientes = e.pendientes.clone();
@@ -1190,13 +1287,24 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
         };
         let sobre = dentro(casilla, e.botones.raton);
         p.icono(
-            if sobre { &mi::CHECK_BOX } else { &mi::CHECK_BOX_OUTLINE_BLANK },
+            if sobre {
+                &mi::CHECK_BOX
+            } else {
+                &mi::CHECK_BOX_OUTLINE_BLANK
+            },
             encoger(casilla, 7.0 * s),
             if sobre { ACENTO } else { GRIS },
         );
         e.botones.zona(casilla, Accion::Tarea(k));
         let (_, th) = p.medir_texto("Ag", tam);
-        p.texto_linea(&f.texto, x + 36.0 * s, y + (fila - th) / 2.0, tam, ancho - 40.0 * s, d::CUERPO);
+        p.texto_linea(
+            &f.texto,
+            x + 36.0 * s,
+            y + (fila - th) / 2.0,
+            tam,
+            ancho - 40.0 * s,
+            d::CUERPO,
+        );
         y += fila;
     }
     y += d::HUECO * s;
@@ -1208,7 +1316,18 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
         ancho: bw.min(ancho),
         alto: d::BOTON * s,
     };
-    ui::boton_v2(p, &mut e.botones, b, Accion::AbrirTareas, Some(&mi::CHECKLIST), &rotulo, None, Some(d::CAJA), TEXTO, s);
+    ui::boton_v2(
+        p,
+        &mut e.botones,
+        b,
+        Accion::AbrirTareas,
+        Some(&mi::CHECKLIST),
+        &rotulo,
+        None,
+        Some(d::CAJA),
+        TEXTO,
+        s,
+    );
 }
 
 /// La semana: los dias arriba, las horas a la izquierda, las clases y la
@@ -1218,7 +1337,11 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
     let semana_hoy = fechas::dia_de_la_semana(dia_hoy) as u8;
     // (En domingo, sin la columna del domingo, la semana que empieza mañana:
     // la pasada ya no sirve para nada, 18-oct.)
-    let lunes = if semana_hoy >= r.dias { dia_hoy + 7 - i64::from(semana_hoy) } else { dia_hoy - i64::from(semana_hoy) };
+    let lunes = if semana_hoy >= r.dias {
+        dia_hoy + 7 - i64::from(semana_hoy)
+    } else {
+        dia_hoy - i64::from(semana_hoy)
+    };
     let ancho = r.ancho_dia * f32::from(r.dias);
     let zona = RectF {
         x: r.x,
@@ -1226,11 +1349,18 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
         ancho,
         alto: r.alto(),
     };
-    p.rellenar_redondeado(encoger(zona, -2.0 * s), d::RADIO_BOTON * s, con_alfa(d::TARJETA, 0.6));
+    p.rellenar_redondeado(
+        encoger(zona, -2.0 * s),
+        d::RADIO_BOTON * s,
+        con_alfa(d::TARJETA, 0.6),
+    );
     e.botones.zona(zona, Accion::Rejilla);
     // Hoy, un poco mas claro.
     if semana_hoy < r.dias {
-        p.rellenar(r.caja(semana_hoy, semana::DESDE, semana::HASTA), blanco(0.03));
+        p.rellenar(
+            r.caja(semana_hoy, semana::DESDE, semana::HASTA),
+            blanco(0.03),
+        );
     }
     // Las horas: raya entera en punto, tenue a la media.
     let tam_hora = 11.5 * s;
@@ -1238,7 +1368,12 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
     while m <= semana::HASTA {
         let y = r.y_de(m);
         let en_punto = m % 60 == 0;
-        p.linea((r.x, y), (r.x + ancho, y), 1.0, blanco(if en_punto { 0.08 } else { 0.035 }));
+        p.linea(
+            (r.x, y),
+            (r.x + ancho, y),
+            1.0,
+            blanco(if en_punto { 0.08 } else { 0.035 }),
+        );
         if en_punto {
             let t = format!("{}:00", m / 60);
             let (tw, th) = p.medir_texto(&t, tam_hora);
@@ -1278,41 +1413,84 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
     let desfase = pixpin_shell::entorno::ahora_local_ms() - pixpin_shell::entorno::ahora_utc_ms();
     let lunes_ms = lunes * 86_400_000;
     let fin_semana_ms = lunes_ms + i64::from(r.dias) * 86_400_000;
-    e.google = crate::calendario_google::eventos_entre(lunes_ms - desfase - 86_400_000, fin_semana_ms - desfase + 86_400_000);
+    e.google = crate::calendario_google::eventos_entre(
+        lunes_ms - desfase - 86_400_000,
+        fin_semana_ms - desfase + 86_400_000,
+    );
     for (k, ev) in e.google.clone().iter().enumerate() {
         // En hora local (uno de todo el dia ya es una fecha).
-        let (ini, fin) = if ev.todo_el_dia { (ev.inicio_ms, ev.fin_ms) } else { (ev.inicio_ms + desfase, ev.fin_ms + desfase) };
+        let (ini, fin) = if ev.todo_el_dia {
+            (ev.inicio_ms, ev.fin_ms)
+        } else {
+            (ev.inicio_ms + desfase, ev.fin_ms + desfase)
+        };
         let dia = ini.div_euclid(86_400_000) - lunes;
         if dia < 0 || dia >= i64::from(r.dias) {
             continue;
         }
-        let tinte = u32::from_str_radix(ev.color.trim_start_matches('#'), 16).map(crate::caja_dibujo::hex).unwrap_or(ACENTO);
+        let tinte = u32::from_str_radix(ev.color.trim_start_matches('#'), 16)
+            .map(crate::caja_dibujo::hex)
+            .unwrap_or(ACENTO);
         let caja = if ev.todo_el_dia {
             // Arriba del todo de su dia, una tira.
             let c = r.caja(dia as u8, semana::DESDE, semana::HASTA);
-            RectF { x: c.x + 2.0 * s, y: c.y + 2.0 * s, ancho: c.ancho - 4.0 * s, alto: 18.0 * s }
+            RectF {
+                x: c.x + 2.0 * s,
+                y: c.y + 2.0 * s,
+                ancho: c.ancho - 4.0 * s,
+                alto: 18.0 * s,
+            }
         } else {
             let m0 = (ini.rem_euclid(86_400_000) / 60_000) as u32;
-            let m1 = if fin.div_euclid(86_400_000) > ini.div_euclid(86_400_000) { semana::HASTA } else { (fin.rem_euclid(86_400_000) / 60_000) as u32 };
+            let m1 = if fin.div_euclid(86_400_000) > ini.div_euclid(86_400_000) {
+                semana::HASTA
+            } else {
+                (fin.rem_euclid(86_400_000) / 60_000) as u32
+            };
             if m1 <= semana::DESDE || m0 >= semana::HASTA {
                 continue;
             }
             encoger(r.caja(dia as u8, m0, m1.max(m0 + 15)), 1.5 * s)
         };
         p.rellenar_redondeado(caja, 6.0 * s, con_alfa(tinte, 0.30));
-        p.rellenar(RectF { ancho: 3.0 * s, ..caja }, tinte);
+        p.rellenar(
+            RectF {
+                ancho: 3.0 * s,
+                ..caja
+            },
+            tinte,
+        );
         p.con_recorte(caja, |p| {
             let tam = 12.0 * s;
             let (_, th) = p.medir_texto("Ag", tam);
             let tx = caja.x + 8.0 * s;
-            p.texto_linea(&ev.titulo, tx, caja.y + (if ev.todo_el_dia { (caja.alto - th) / 2.0 } else { 3.0 * s }), tam, caja.ancho - 12.0 * s, TEXTO);
+            p.texto_linea(
+                &ev.titulo,
+                tx,
+                caja.y
+                    + (if ev.todo_el_dia {
+                        (caja.alto - th) / 2.0
+                    } else {
+                        3.0 * s
+                    }),
+                tam,
+                caja.ancho - 12.0 * s,
+                TEXTO,
+            );
             if !ev.todo_el_dia && caja.alto > th * 2.2 {
                 let mut d = crate::calendario_google::tramo_legible(ev);
                 if !ev.lugar.is_empty() {
                     d.push_str(" · ");
                     d.push_str(&ev.lugar);
                 }
-                p.texto_linea(&d, tx, caja.y + 3.0 * s + th, 11.0 * s, caja.ancho - 12.0 * s, GRIS);
+                p.texto_linea(
+                    &d,
+                    tx,
+                    caja.y + 3.0 * s + th,
+                    11.0 * s,
+                    caja.ancho - 12.0 * s,
+                    GRIS,
+                );
             }
         });
         e.botones.zona(caja, Accion::EventoGoogle(k));
@@ -1366,7 +1544,14 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
                 ty += th * 0.9;
             }
             if !b.notas.is_empty() && ty + th * 0.8 < caja.y + caja.alto {
-                p.texto_linea(&format!("🔊 {}", b.notas[0]), tx, ty, tam2, anch, con_alfa(Color::BLANCO, 0.75));
+                p.texto_linea(
+                    &format!("🔊 {}", b.notas[0]),
+                    tx,
+                    ty,
+                    tam2,
+                    anch,
+                    con_alfa(Color::BLANCO, 0.75),
+                );
             }
         });
         if i < e.semana.bloques.len() {
@@ -1441,13 +1626,24 @@ fn pintar_ficha(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cat
         ancho,
         alto,
     };
-    p.rellenar_redondeado(encoger(caja, -s), (d::RADIO_FLOTANTE + 1.0) * s, blanco(0.10));
+    p.rellenar_redondeado(
+        encoger(caja, -s),
+        (d::RADIO_FLOTANTE + 1.0) * s,
+        blanco(0.10),
+    );
     p.rellenar_redondeado(caja, d::RADIO_FLOTANTE * s, d::TARJETA);
     e.botones.zona(caja, Accion::Fondo);
     let x = caja.x + 20.0 * s;
     let dentro_ancho = ancho - 40.0 * s;
     let mut y = caja.y + 18.0 * s;
-    p.texto_linea(&titulo, x, y, d::LETRA_TITULO_TARJETA * s + 2.0 * s, dentro_ancho, TEXTO);
+    p.texto_linea(
+        &titulo,
+        x,
+        y,
+        d::LETRA_TITULO_TARJETA * s + 2.0 * s,
+        dentro_ancho,
+        TEXTO,
+    );
     y += 26.0 * s;
     if !sub.is_empty() {
         p.texto_linea(&sub, x, y, d::LETRA_SECUNDARIO * s, dentro_ancho, GRIS);
@@ -1504,22 +1700,51 @@ fn pintar_ficha(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cat
         ancho: gw,
         alto: d::BOTON * s,
     };
-    ui::boton_v2(p, &mut e.botones, g, Accion::Guardar, None, &guardar, Some("Intro"), Some(d::AZUL_LLENO), Color::BLANCO, s);
+    ui::boton_v2(
+        p,
+        &mut e.botones,
+        g,
+        Accion::Guardar,
+        None,
+        &guardar,
+        Some("Intro"),
+        Some(d::AZUL_LLENO),
+        Color::BLANCO,
+        s,
+    );
     let c = RectF {
         x: g.x - 8.0 * s - cw,
         ancho: cw,
         ..g
     };
-    ui::boton_v2(p, &mut e.botones, c, Accion::Cancelar, None, &cancelar, Some("Esc"), Some(d::CAJA), TEXTO, s);
+    ui::boton_v2(
+        p,
+        &mut e.botones,
+        c,
+        Accion::Cancelar,
+        None,
+        &cancelar,
+        Some("Esc"),
+        Some(d::CAJA),
+        TEXTO,
+        s,
+    );
     if !solo_aula {
         let borrar = textos.t("horario-borrar");
         let bw = ui::ancho_de_boton(p, true, &borrar, None, s);
-        let b = RectF {
-            x,
-            ancho: bw,
-            ..g
-        };
-        ui::boton_v2(p, &mut e.botones, b, Accion::BorrarBloque, Some(&mi::DELETE), &borrar, None, None, d::ROJO_TEXTO, s);
+        let b = RectF { x, ancho: bw, ..g };
+        ui::boton_v2(
+            p,
+            &mut e.botones,
+            b,
+            Accion::BorrarBloque,
+            Some(&mi::DELETE),
+            &borrar,
+            None,
+            None,
+            d::ROJO_TEXTO,
+            s,
+        );
     }
 }
 
@@ -1582,7 +1807,10 @@ avisar 10 min antes
         });
         let s = e.previa().unwrap();
         let b = s.bloques.last().unwrap();
-        assert_eq!((b.dia, b.inicio, b.fin, b.nombre.as_str()), (5, 9 * 60, 10 * 60, "Física"));
+        assert_eq!(
+            (b.dia, b.inicio, b.fin, b.nombre.as_str()),
+            (5, 9 * 60, 10 * 60, "Física")
+        );
         // La clase del lunes, cogida por su mitad y llevada al martes: la
         // mitad sigue bajo el raton.
         let lunes = e.semana.bloques.iter().position(|b| b.dia == 0).unwrap();
@@ -1598,7 +1826,11 @@ avisar 10 min antes
         });
         let s = e.previa().unwrap();
         let b = &s.bloques[lunes];
-        assert_eq!((b.dia, b.inicio, b.fin), (1, 13 * 60, 15 * 60), "14:00 era su mitad");
+        assert_eq!(
+            (b.dia, b.inicio, b.fin),
+            (1, 13 * 60, 15 * 60),
+            "14:00 era su mitad"
+        );
         // El borde de abajo, hasta las 11:30.
         let borde = r.caja(0, 11 * 60 + 30, 11 * 60 + 30);
         e.botones.raton = (borde.x + 10.0, borde.y + 1.0);
@@ -1643,13 +1875,15 @@ avisar 10 min antes
         // cuenta.
         use pixpin_render::MotorRender;
         use pixpin_render::fuera_de_pantalla::FueraDePantalla;
-        let raiz = std::env::temp_dir().join(format!("pixpin-horario-medir-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-horario-medir-{}", std::process::id()));
         std::fs::create_dir_all(&raiz).unwrap();
         std::fs::write(super::super::ruta(&raiz), HORARIO).unwrap();
         let t0 = Instant::now();
         let disp = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
         let motor = MotorRender::nuevo(disp.d3d()).expect("motor");
-        let fuera = FueraDePantalla::nuevo(&motor, disp.d3d(), ANCHO_VENTANA, ALTO_VENTANA).expect("superficie");
+        let fuera = FueraDePantalla::nuevo(&motor, disp.d3d(), ANCHO_VENTANA, ALTO_VENTANA)
+            .expect("superficie");
         let t_disp = t0.elapsed();
         let t1 = Instant::now();
         let mut e = Estado::nuevo();
@@ -1658,7 +1892,9 @@ avisar 10 min antes
         let t_leer = t1.elapsed();
         let t2 = Instant::now();
         motor
-            .dibujar(&fuera.destino, |p| pintar_todo(&mut e, p, marco, 1.0, &textos))
+            .dibujar(&fuera.destino, |p| {
+                pintar_todo(&mut e, p, marco, 1.0, &textos)
+            })
             .expect("pintar");
         fuera.esperar_gpu().expect("esperar");
         let t_pintar = t2.elapsed();
@@ -1681,26 +1917,54 @@ avisar 10 min antes
         // Con Google Calendar (18-oct): un evento el martes de 16:00 a 17:30
         // y uno de todo el dia el jueves, de la semana que se ve.
         {
-            let desfase = pixpin_shell::entorno::ahora_local_ms() - pixpin_shell::entorno::ahora_utc_ms();
+            let desfase =
+                pixpin_shell::entorno::ahora_local_ms() - pixpin_shell::entorno::ahora_utc_ms();
             let hoy = e.ahora_ms.div_euclid(86_400_000);
             let sem = fechas::dia_de_la_semana(hoy) as i64;
             let lunes = if sem >= 6 { hoy + 7 - sem } else { hoy - sem };
-            let ev = |id: &str, t: &str, dia: i64, h0: i64, h1: i64, todo: bool| pixpin_ia::conexiones::calendario::Evento {
-                id: id.into(),
-                calendario: "Personal".into(),
-                titulo: t.into(),
-                inicio_ms: if todo { (lunes + dia) * 86_400_000 } else { (lunes + dia) * 86_400_000 + h0 * 60_000 - desfase },
-                fin_ms: if todo { (lunes + dia + 1) * 86_400_000 } else { (lunes + dia) * 86_400_000 + h1 * 60_000 - desfase },
-                todo_el_dia: todo,
-                lugar: if todo { String::new() } else { "Aula 12".into() },
-                color: if todo { "#d50000".into() } else { "#0b8043".into() },
-                enlace: String::new(),
+            let ev = |id: &str, t: &str, dia: i64, h0: i64, h1: i64, todo: bool| {
+                pixpin_ia::conexiones::calendario::Evento {
+                    id: id.into(),
+                    calendario: "Personal".into(),
+                    titulo: t.into(),
+                    inicio_ms: if todo {
+                        (lunes + dia) * 86_400_000
+                    } else {
+                        (lunes + dia) * 86_400_000 + h0 * 60_000 - desfase
+                    },
+                    fin_ms: if todo {
+                        (lunes + dia + 1) * 86_400_000
+                    } else {
+                        (lunes + dia) * 86_400_000 + h1 * 60_000 - desfase
+                    },
+                    todo_el_dia: todo,
+                    lugar: if todo {
+                        String::new()
+                    } else {
+                        "Aula 12".into()
+                    },
+                    color: if todo {
+                        "#d50000".into()
+                    } else {
+                        "#0b8043".into()
+                    },
+                    enlace: String::new(),
+                }
             };
             crate::calendario_google::poner_para_pruebas(vec![
-                ev("a", "Reunión con el asesor", 1, 16 * 60, 17 * 60 + 30, false),
+                ev(
+                    "a",
+                    "Reunión con el asesor",
+                    1,
+                    16 * 60,
+                    17 * 60 + 30,
+                    false,
+                ),
                 ev("b", "Feriado", 3, 0, 0, true),
             ]);
-            crate::ventanita::muestra("horario-google", ANCHO_VENTANA, ALTO_VENTANA, |p, _| pintar_todo(&mut e, p, marco, 1.0, &textos));
+            crate::ventanita::muestra("horario-google", ANCHO_VENTANA, ALTO_VENTANA, |p, _| {
+                pintar_todo(&mut e, p, marco, 1.0, &textos)
+            });
             assert_eq!(e.google.len(), 2, "los dos eventos de la semana, pintados");
         }
         // La ficha de una clase y un arrastre a medias, para mirarlos.

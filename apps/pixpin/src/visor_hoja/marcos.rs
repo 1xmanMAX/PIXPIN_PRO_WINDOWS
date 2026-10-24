@@ -47,8 +47,20 @@ impl Mapa {
     pub(super) fn de(rejilla: &Rejilla, v: &Vista, celdas: RectF) -> Mapa {
         let z = v.escala.max(0.01);
         match rejilla.paneles(&vista_celdas(v, celdas)).last() {
-            Some(p) => Mapa { x0: celdas.x as f64 + p.pantalla[0], y0: celdas.y as f64 + p.pantalla[1], ox: p.origen.0, oy: p.origen.1, z },
-            None => Mapa { x0: celdas.x as f64, y0: celdas.y as f64, ox: v.x, oy: v.y, z },
+            Some(p) => Mapa {
+                x0: celdas.x as f64 + p.pantalla[0],
+                y0: celdas.y as f64 + p.pantalla[1],
+                ox: p.origen.0,
+                oy: p.origen.1,
+                z,
+            },
+            None => Mapa {
+                x0: celdas.x as f64,
+                y0: celdas.y as f64,
+                ox: v.x,
+                oy: v.y,
+                z,
+            },
         }
     }
 
@@ -59,11 +71,17 @@ impl Mapa {
     }
 
     pub(super) fn a_pantalla(&self, [x, y]: [f64; 2]) -> (f32, f32) {
-        ((self.x0 + (x - self.ox) * self.z) as f32, (self.y0 + (y - self.oy) * self.z) as f32)
+        (
+            (self.x0 + (x - self.ox) * self.z) as f32,
+            (self.y0 + (y - self.oy) * self.z) as f32,
+        )
     }
 
     pub(super) fn a_hoja(&self, (x, y): (f32, f32)) -> [f64; 2] {
-        [self.ox + (x as f64 - self.x0) / self.z, self.oy + (y as f64 - self.y0) / self.z]
+        [
+            self.ox + (x as f64 - self.x0) / self.z,
+            self.oy + (y as f64 - self.y0) / self.z,
+        ]
     }
 
     /// Donde empieza en la ventana el panel que se mueve.
@@ -166,7 +184,12 @@ impl Estado<'_> {
 
     /// Las teclas de los marcos (viendo; escribiendo en las celdas las letras
     /// y Supr son de la celda). `None`: no es suya.
-    pub(super) fn tecla_de_marcos(&mut self, vk: u32, ctrl: bool, motor: &MotorRender) -> Option<Pedido> {
+    pub(super) fn tecla_de_marcos(
+        &mut self,
+        vk: u32,
+        ctrl: bool,
+        motor: &MotorRender,
+    ) -> Option<Pedido> {
         if self.editando && vk != marcos_doc::VK_P {
             return None;
         }
@@ -185,7 +208,10 @@ impl Estado<'_> {
         if self.marcos.lista.is_empty() || self.escribiendo() {
             return Vec::new();
         }
-        vec![(MENU_IMPRIMIR, textos.t("marcos-imprimir")), (MENU_BORRAR, textos.t("marcos-borrar"))]
+        vec![
+            (MENU_IMPRIMIR, textos.t("marcos-imprimir")),
+            (MENU_BORRAR, textos.t("marcos-borrar")),
+        ]
     }
 
     /// Lo elegido en ese menu: imprimir (lo hace el bucle, con su
@@ -211,14 +237,19 @@ impl Estado<'_> {
         if entradas.is_empty() {
             return None;
         }
-        let id = pixpin_shell::menu_llano(windows::Win32::Foundation::HWND(self.hwnd as *mut _), &entradas)?;
+        let id = pixpin_shell::menu_llano(
+            windows::Win32::Foundation::HWND(self.hwnd as *mut _),
+            &entradas,
+        )?;
         self.elegido_de_marcos(id)
     }
 
     /// **Pinta los marcos** de la hoja abierta (recortados a las celdas) y,
     /// con el modo puesto, la pista encima de las pestanas.
     pub(super) fn pintar_marcos(&self, p: &Pintor, z: &Zonas, textos: &Catalogo) {
-        let Some(ab) = self.hojas.get(self.activa).and_then(Option::as_ref) else { return };
+        let Some(ab) = self.hojas.get(self.activa).and_then(Option::as_ref) else {
+            return;
+        };
         let (v, celdas) = vista_de(ab, z.hoja);
         let mapa = Mapa::de(&ab.rejilla, &v, celdas);
         let a_pantalla = |q: [f64; 2]| mapa.a_pantalla(q);
@@ -227,12 +258,22 @@ impl Estado<'_> {
         // pista aparte (va sobre los numeros de las filas).
         let mut sin_pista = self.marcos.clone();
         sin_pista.activo = false;
-        p.con_recorte(celdas, |p| sin_pista.pintar(p, self.activa as u32, &a_pantalla, self.e, z.pestanas.y, &pista));
+        p.con_recorte(celdas, |p| {
+            sin_pista.pintar(
+                p,
+                self.activa as u32,
+                &a_pantalla,
+                self.e,
+                z.pestanas.y,
+                &pista,
+            )
+        });
         if self.marcos.activo {
             // Las fichas 1, 2, 3… (de todas las hojas) y la pista, sin los
             // marcos: con una parte que no es de ninguna hoja solo se pintan
             // ellas.
-            self.marcos.pintar(p, NINGUNA_HOJA, &a_pantalla, self.e, z.pestanas.y, &pista);
+            self.marcos
+                .pintar(p, NINGUNA_HOJA, &a_pantalla, self.e, z.pestanas.y, &pista);
         }
     }
 
@@ -242,7 +283,8 @@ impl Estado<'_> {
         if !self.marcos.activo {
             return None;
         }
-        self.marcos.ficha_en(self.raton, self.zonas().pestanas.y, self.e)
+        self.marcos
+            .ficha_en(self.raton, self.zonas().pestanas.y, self.e)
     }
 
     /// **Ir al marco `k`** (su ficha, como en el PDF y el modelo 3D): a su
@@ -250,7 +292,9 @@ impl Estado<'_> {
     /// celdas que se mueven, centrado en ellas (lo que dejan los paneles
     /// inmovilizados, que siguen puestos).
     pub(super) fn ir_al_marco(&mut self, k: usize, motor: &MotorRender, textos: &Catalogo) {
-        let Some(m) = self.marcos.lista.get(k).cloned() else { return };
+        let Some(m) = self.marcos.lista.get(k).cloned() else {
+            return;
+        };
         let hoja = m.parte as usize;
         if hoja >= self.libro.hojas.len() {
             return;
@@ -277,7 +321,12 @@ const NINGUNA_HOJA: u32 = u32::MAX;
 /// donde acaban los paneles inmovilizados al final de las celdas.
 fn panel_que_se_mueve(mapa: &Mapa, celdas: RectF) -> RectF {
     let (x0, y0) = (mapa.x0 as f32, mapa.y0 as f32);
-    RectF { x: x0, y: y0, ancho: (celdas.x + celdas.ancho - x0).max(1.0), alto: (celdas.y + celdas.alto - y0).max(1.0) }
+    RectF {
+        x: x0,
+        y: y0,
+        ancho: (celdas.x + celdas.ancho - x0).max(1.0),
+        alto: (celdas.y + celdas.alto - y0).max(1.0),
+    }
 }
 
 /// Como [`encuadrar`], pero con los paneles inmovilizados puestos: el marco
@@ -291,7 +340,10 @@ pub(super) fn encuadrar_en_el_panel(ab: &mut Abierta, caja: RectF, m: &Marco) {
     let aire = 0.94;
     for _ in 0..6 {
         let (_, celdas) = vista_de(ab, caja);
-        let fijo = (ab.rejilla.x(ab.rejilla.columnas_fijas), ab.rejilla.y(ab.rejilla.filas_fijas));
+        let fijo = (
+            ab.rejilla.x(ab.rejilla.columnas_fijas),
+            ab.rejilla.y(ab.rejilla.filas_fijas),
+        );
         let zx = aire * celdas.ancho as f64 / (m.ancho().max(1e-9) + aire * fijo.0);
         let zy = aire * celdas.alto as f64 / (m.alto().max(1e-9) + aire * fijo.1);
         ab.zoom = logica::acotar_zoom(zx.min(zy));
@@ -309,11 +361,23 @@ pub(super) fn encuadrar_en_el_panel(ab: &mut Abierta, caja: RectF, m: &Marco) {
 
 /// **Imprime los marcos en grupo** (Ctrl+P): las fotos de cada uno, como
 /// dice el modulo, al dialogo de imprimir. Sin marcos, lo que se ve.
-pub(super) fn imprimir(superficie: &Superficie, motor: &MotorRender, est: &mut Estado, textos: &Catalogo) {
-    let Some((hwnd, cliente)) = pixpin_shell::overlay::area_cliente(Some(est.hwnd)) else { return };
+pub(super) fn imprimir(
+    superficie: &Superficie,
+    motor: &MotorRender,
+    est: &mut Estado,
+    textos: &Catalogo,
+) {
+    let Some((hwnd, cliente)) = pixpin_shell::overlay::area_cliente(Some(est.hwnd)) else {
+        return;
+    };
     let t = Instant::now();
     let fotos = fotos(superficie, motor, est, textos, (cliente.x, cliente.y));
-    tracing::info!(fotos = fotos.len(), marcos = est.marcos.lista.len(), ms = t.elapsed().as_millis() as u64, "visor de hojas: marcos fotografiados");
+    tracing::info!(
+        fotos = fotos.len(),
+        marcos = est.marcos.lista.len(),
+        ms = t.elapsed().as_millis() as u64,
+        "visor de hojas: marcos fotografiados"
+    );
     if fotos.is_empty() {
         return;
     }
@@ -330,14 +394,27 @@ pub(super) fn imprimir(superficie: &Superficie, motor: &MotorRender, est: &mut E
 
 /// Pinta ya sin interfaz, espera a que se vea y fotografia `caja` (en la
 /// ventana) dentro de `limite`.
-fn foto(superficie: &Superficie, motor: &MotorRender, est: &mut Estado, textos: &Catalogo, origen: (i32, i32), que: impl Fn(&Estado) -> Option<(RectF, RectF)>) -> Option<ImagenRgba> {
+fn foto(
+    superficie: &Superficie,
+    motor: &MotorRender,
+    est: &mut Estado,
+    textos: &Catalogo,
+    origen: (i32, i32),
+    que: impl Fn(&Estado) -> Option<(RectF, RectF)>,
+) -> Option<ImagenRgba> {
     super::pintar_ya(superficie, motor, est, textos);
     pixpin_shell::overlay::esperar_composicion();
     let (r, limite) = que(est)?;
     crate::marco_imprimir::foto_de_pantalla(en_pantalla(r, limite, origen)?)
 }
 
-fn fotos(superficie: &Superficie, motor: &MotorRender, est: &mut Estado, textos: &Catalogo, origen: (i32, i32)) -> Vec<ImagenRgba> {
+fn fotos(
+    superficie: &Superficie,
+    motor: &MotorRender,
+    est: &mut Estado,
+    textos: &Catalogo,
+    origen: (i32, i32),
+) -> Vec<ImagenRgba> {
     let caja = est.zonas().hoja;
     est.sin_interfaz = true;
     let mut fotos = Vec::new();
@@ -371,7 +448,14 @@ fn fotos(superficie: &Superficie, motor: &MotorRender, est: &mut Estado, textos:
         }
         let ab = est.abierta_mut();
         if !antes.iter().any(|a| a.0 == i) {
-            antes.push((i, ab.x, ab.y, ab.zoom, ab.rejilla.filas_fijas, ab.rejilla.columnas_fijas));
+            antes.push((
+                i,
+                ab.x,
+                ab.y,
+                ab.zoom,
+                ab.rejilla.filas_fijas,
+                ab.rejilla.columnas_fijas,
+            ));
         }
         // Sin paneles inmovilizados: el marco entero en el panel que se mueve.
         ab.rejilla.filas_fijas = 0;
@@ -382,7 +466,10 @@ fn fotos(superficie: &Superficie, motor: &MotorRender, est: &mut Estado, textos:
             let ab = est.abierta();
             let (v, celdas) = vista_de(ab, caja);
             let mapa = Mapa::de(&ab.rejilla, &v, celdas);
-            Some((marcos_doc::caja_en_pantalla(caja_m, &|q| mapa.a_pantalla(q)), celdas))
+            Some((
+                marcos_doc::caja_en_pantalla(caja_m, &|q| mapa.a_pantalla(q)),
+                celdas,
+            ))
         }) {
             fotos.push(f);
         }
@@ -421,11 +508,20 @@ mod pruebas {
 
     #[test]
     fn de_la_hoja_a_la_ventana_y_de_vuelta_es_lo_mismo() {
-        let m = Mapa { x0: 40.0, y0: 60.0, ox: 1000.0, oy: 500.0, z: 1.5 };
+        let m = Mapa {
+            x0: 40.0,
+            y0: 60.0,
+            ox: 1000.0,
+            oy: 500.0,
+            z: 1.5,
+        };
         let p = m.a_pantalla([1100.0, 520.0]);
         assert_eq!(p, (190.0, 90.0));
         let q = m.a_hoja(p);
-        assert!((q[0] - 1100.0).abs() < 1e-3 && (q[1] - 520.0).abs() < 1e-3, "{q:?}");
+        assert!(
+            (q[0] - 1100.0).abs() < 1e-3 && (q[1] - 520.0).abs() < 1e-3,
+            "{q:?}"
+        );
     }
 
     /// El menu de los marcos sale solo con marcos, y «Borrar los marcos» los
@@ -433,11 +529,20 @@ mod pruebas {
     #[test]
     fn el_menu_de_los_marcos_imprime_y_borra() {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        let dir = std::env::temp_dir().join(format!("pixpin-hoja-menu-marcos-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pixpin-hoja-menu-marcos-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let doc = dir.join("libro.xlsx");
         let mut libro = pixpin_hojas::Libro::desde_bytes(
-            pixpin_proyecto::tabla_xlsx::a_xlsx(&[pixpin_proyecto::tabla_xlsx::HojaParaVer { nombre: "H", tabla: &Default::default(), valores: None }], 0).unwrap(),
+            pixpin_proyecto::tabla_xlsx::a_xlsx(
+                &[pixpin_proyecto::tabla_xlsx::HojaParaVer {
+                    nombre: "H",
+                    tabla: &Default::default(),
+                    valores: None,
+                }],
+                0,
+            )
+            .unwrap(),
             pixpin_hojas::Regional::es_pe(),
         )
         .unwrap();
@@ -449,23 +554,65 @@ mod pruebas {
         est.marcos.pulsar([0.0, 0.0], 0);
         assert!(est.marcos.soltar([100.0, 80.0], 1.0));
         let e = est.entradas_de_marcos(&textos);
-        assert_eq!(e.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(), ["Imprimir los marcos (Ctrl+P)", "Borrar los marcos"]);
+        assert_eq!(
+            e.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>(),
+            ["Imprimir los marcos (Ctrl+P)", "Borrar los marcos"]
+        );
         assert_eq!(est.elegido_de_marcos(e[0].0), Some(Pedido::Imprimir));
         assert_eq!(est.marcos.lista.len(), 1, "imprimir no quita nada");
         assert!(marcos_doc::ruta(&doc).is_file());
         assert_eq!(est.elegido_de_marcos(e[1].0), Some(Pedido::Cambiado));
         assert!(est.marcos.lista.is_empty());
-        assert!(!marcos_doc::ruta(&doc).exists(), "borrados tambien del fichero");
+        assert!(
+            !marcos_doc::ruta(&doc).exists(),
+            "borrados tambien del fichero"
+        );
         assert!(est.entradas_de_marcos(&textos).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn lo_que_no_se_ve_no_se_fotografia() {
-        let limite = RectF { x: 50.0, y: 30.0, ancho: 500.0, alto: 400.0 };
-        let r = en_pantalla(RectF { x: 0.0, y: 0.0, ancho: 100.0, alto: 100.0 }, limite, (1000, 200)).unwrap();
-        assert_eq!(r, pixpin_geom::Rect { x: 1050, y: 230, ancho: 50, alto: 70 }, "recortado a las celdas");
+        let limite = RectF {
+            x: 50.0,
+            y: 30.0,
+            ancho: 500.0,
+            alto: 400.0,
+        };
+        let r = en_pantalla(
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: 100.0,
+                alto: 100.0,
+            },
+            limite,
+            (1000, 200),
+        )
+        .unwrap();
+        assert_eq!(
+            r,
+            pixpin_geom::Rect {
+                x: 1050,
+                y: 230,
+                ancho: 50,
+                alto: 70
+            },
+            "recortado a las celdas"
+        );
         // Caso negativo: del todo fuera.
-        assert!(en_pantalla(RectF { x: 600.0, y: 0.0, ancho: 10.0, alto: 10.0 }, limite, (0, 0)).is_none());
+        assert!(
+            en_pantalla(
+                RectF {
+                    x: 600.0,
+                    y: 0.0,
+                    ancho: 10.0,
+                    alto: 10.0
+                },
+                limite,
+                (0, 0)
+            )
+            .is_none()
+        );
     }
 }

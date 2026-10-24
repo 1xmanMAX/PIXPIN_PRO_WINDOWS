@@ -227,9 +227,13 @@ mod pruebas {
 
     #[test]
     fn la_tarjeta_ensena_el_titulo_limpio_y_las_chapitas_aparte() {
-        let crudo = "llamar al banco ⏫ #casa #obra 💬 cierran a las 3 ⏰ 2026-10-14 17:00 ➕ 2026-10-14";
+        let crudo =
+            "llamar al banco ⏫ #casa #obra 💬 cierran a las 3 ⏰ 2026-10-14 17:00 ➕ 2026-10-14";
         let v = a_la_vista(crudo, Some(ahora()));
-        assert_eq!(v.texto, "llamar al banco · ⏰ hoy 17:00 · 💬 cierran a las 3");
+        assert_eq!(
+            v.texto,
+            "llamar al banco · ⏰ hoy 17:00 · 💬 cierran a las 3"
+        );
         assert_eq!(
             v.chapas,
             [
@@ -238,12 +242,18 @@ mod pruebas {
                 Chapa::Etiqueta("obra".into())
             ]
         );
-        assert!(v.emos.is_empty(), "la urgencia ya no es un emoticono suelto");
+        assert!(
+            v.emos.is_empty(),
+            "la urgencia ya no es un emoticono suelto"
+        );
         assert_eq!(v.chapas[1].busqueda(), "#casa");
         assert_eq!(v.chapas[0].busqueda(), "⏫");
         // Una tarea de antes, sin marcas: igual que con `emoticonos_de`.
         let v = a_la_vista("pan 🍞", None);
-        assert_eq!((v.texto.as_str(), v.emos.as_slice()), ("pan", &["🍞".to_string()][..]));
+        assert_eq!(
+            (v.texto.as_str(), v.emos.as_slice()),
+            ("pan", &["🍞".to_string()][..])
+        );
         assert!(v.chapas.is_empty(), "normal: sin chapita");
         // La «baja» de antes ya no se ensena.
         assert!(a_la_vista("pan 🔽", None).chapas.is_empty());
@@ -264,17 +274,32 @@ mod pruebas {
     #[test]
     fn el_selector_cambia_la_hora_de_lo_escrito() {
         assert_eq!(hora_escrita("pan mañana a las 10", ahora()), a(15, 10, 0));
-        assert_eq!(hora_escrita("pan ⏰ 2026-10-20 08:00", ahora()), a(20, 8, 0));
+        assert_eq!(
+            hora_escrita("pan ⏰ 2026-10-20 08:00", ahora()),
+            a(20, 8, 0)
+        );
         assert_eq!(hora_escrita("pan", ahora()), None);
         let con = |t: &str, h| con_hora_escrita(t, h, ahora());
-        assert_eq!(con("pan #casa", a(20, 8, 0)), "pan #casa ⏰ 2026-10-20 08:00");
-        assert_eq!(con("pan ⏰ 2026-10-20 08:00", a(21, 9, 30)), "pan ⏰ 2026-10-21 09:30");
+        assert_eq!(
+            con("pan #casa", a(20, 8, 0)),
+            "pan #casa ⏰ 2026-10-20 08:00"
+        );
+        assert_eq!(
+            con("pan ⏰ 2026-10-20 08:00", a(21, 9, 30)),
+            "pan ⏰ 2026-10-21 09:30"
+        );
         assert_eq!(con("pan ⏰ 2026-10-20 08:00", None), "pan");
         assert_eq!(con("", a(20, 8, 0)), "⏰ 2026-10-20 08:00");
         // Una fecha dicha con palabras la sustituye la elegida.
-        assert_eq!(con("pan mañana a las 10 urgente", a(20, 8, 0)), "pan urgente ⏰ 2026-10-20 08:00");
+        assert_eq!(
+            con("pan mañana a las 10 urgente", a(20, 8, 0)),
+            "pan urgente ⏰ 2026-10-20 08:00"
+        );
         // Y al guardar queda la elegida.
-        assert_eq!(a_guardar(&con("pan", a(20, 8, 0)), false, ahora()), "pan ⏰ 2026-10-20 08:00");
+        assert_eq!(
+            a_guardar(&con("pan", a(20, 8, 0)), false, ahora()),
+            "pan ⏰ 2026-10-20 08:00"
+        );
     }
 
     #[test]
@@ -286,7 +311,11 @@ mod pruebas {
             "yeso ⏫ 💬 falta el camión ![img 01](pixpin:files/a.png) ⏰ 2026-10-14 17:00 ➕ 2026-10-10"
         );
         assert_eq!(super::super::hora_de_tarea(&con), a(14, 17, 0).map(ms_de));
-        assert_eq!(mini::partir(&con).1, mini::partir(crudo).1, "la fecha sigue");
+        assert_eq!(
+            mini::partir(&con).1,
+            mini::partir(crudo).1,
+            "la fecha sigue"
+        );
         assert_eq!(mini::imagenes_de(mini::partir(&con).0).1.len(), 1);
         // Otra nota cambia la de antes; vacia la quita.
         let otra = con_nota(&con, "mañana");

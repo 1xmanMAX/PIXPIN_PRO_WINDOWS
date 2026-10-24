@@ -307,11 +307,22 @@ fn lo_que_se_ve_se_exporta_por_el_componente_comun() {
     let apuntes = apuntes_de(&e.almacen, &secciones);
     assert_eq!(apuntes.len(), e.momentos.len());
     assert!(
-        apuntes.iter().any(|a| a.ficheros.iter().any(|f| f.is_file())),
+        apuntes
+            .iter()
+            .any(|a| a.ficheros.iter().any(|f| f.is_file())),
         "las fotos van por su ruta en el almacen"
     );
-    let foto = pixpin_codec::ImagenRgba { ancho: 8, alto: 6, pixeles: vec![120; 8 * 6 * 4] };
-    let x = exportable_de_lo_que_se_ve("timeline-hoy".into(), "<html></html>".into(), apuntes, Some(foto));
+    let foto = pixpin_codec::ImagenRgba {
+        ancho: 8,
+        alto: 6,
+        pixeles: vec![120; 8 * 6 * 4],
+    };
+    let x = exportable_de_lo_que_se_ve(
+        "timeline-hoy".into(),
+        "<html></html>".into(),
+        apuntes,
+        Some(foto),
+    );
     let f = x.formatos();
     for id in ["web", "pdf", "png", "jpg", "svg", "pixpin"] {
         assert!(f.contains(&id), "falta {id}: {f:?}");

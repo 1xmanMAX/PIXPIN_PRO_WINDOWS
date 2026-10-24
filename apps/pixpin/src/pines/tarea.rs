@@ -166,7 +166,14 @@ fn color_de(u: Urgencia, tema: &Tema) -> Color {
 /// Pinta el pin: la franja de la urgencia, el titulo, la linea de la hora
 /// con las chapitas de la urgencia y las etiquetas, la nota y el boton (o
 /// la caja donde se escribe).
-pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema: &Tema, textos: &Catalogo) {
+pub(super) fn pintar(
+    p: &Pintor,
+    caja: RectF,
+    h: &Herramienta,
+    escala: u32,
+    tema: &Tema,
+    textos: &Catalogo,
+) {
     let e = escala as f32 / 100.0;
     let m = frase::marcas(&h.documento);
     let margen = MARGEN * e;
@@ -215,7 +222,14 @@ pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema
         if let Some(t) = m.hora {
             let hora = format!("⏰ {}", t.legible(frase::ahora()));
             let (hw, hh) = p.medir_texto(&hora, chico);
-            p.texto_linea(&hora, x, y + (alto_linea - hh) / 2.0, chico, ancho, tema.apagado);
+            p.texto_linea(
+                &hora,
+                x,
+                y + (alto_linea - hh) / 2.0,
+                chico,
+                ancho,
+                tema.apagado,
+            );
             cx += hw + 8.0 * e;
         }
         let alto_c = crate::tareas::chapitas::ALTO * e;
@@ -240,7 +254,14 @@ pub(super) fn pintar(p: &Pintor, caja: RectF, h: &Herramienta, escala: u32, tema
         && let Some(n) = &m.nota
         && y + chico * 1.3 <= boton.y
     {
-        p.texto_linea(&format!("{} {n}", frase::NOTA), x, y, chico, ancho, tema.apagado);
+        p.texto_linea(
+            &format!("{} {n}", frase::NOTA),
+            x,
+            y,
+            chico,
+            ancho,
+            tema.apagado,
+        );
     }
     // Abajo, el boton de la nota; escribiendo, la caja con lo escrito.
     match &h.nota {
@@ -299,7 +320,10 @@ mod pruebas {
             alto: h as f32,
         };
         let crudo = "llamar al banco por la tarjeta ⏫ #casa 💬 no abren hasta las 4 ⏰ 2026-10-17 17:00 ➕ 2026-10-17";
-        for (nombre, escribiendo, claro) in [("pin-tarea", None, false), ("pin-tarea-nota", Some("sin saldo"), true)] {
+        for (nombre, escribiendo, claro) in [
+            ("pin-tarea", None, false),
+            ("pin-tarea-nota", Some("sin saldo"), true),
+        ] {
             let mut t = tarea(crudo);
             t.nota = escribiendo.map(str::to_string);
             let cuadro = super::super::herramienta::Cuadro {
@@ -329,23 +353,37 @@ mod pruebas {
         let mut h = tarea("llamar al banco ⏫ 💬 cerrado ➕ 2026-10-14");
         let tam = tamano_natural(100);
         // Un toque fuera del boton no hace nada.
-        assert_eq!(clic(&mut h, Punto { x: 20, y: 10 }, tam, 100), Respuesta::Nada);
+        assert_eq!(
+            clic(&mut h, Punto { x: 20, y: 10 }, tam, 100),
+            Respuesta::Nada
+        );
         let b = boton(tam, 100);
         let dentro = Punto {
             x: b.x + 5,
             y: b.y + 5,
         };
         assert_eq!(clic(&mut h, dentro, tam, 100), Respuesta::Repintar);
-        assert_eq!(h.nota.as_deref(), Some("cerrado"), "empieza con la que tenia");
+        assert_eq!(
+            h.nota.as_deref(),
+            Some("cerrado"),
+            "empieza con la que tenia"
+        );
         for _ in 0.."cerrado".len() {
             tecla(&mut h, 0x08);
         }
         for c in "sin saldo".chars() {
             caracter(&mut h, c);
         }
-        assert_eq!(caracter(&mut h, '\u{7}'), Respuesta::Nada, "un control no se escribe");
+        assert_eq!(
+            caracter(&mut h, '\u{7}'),
+            Respuesta::Nada,
+            "un control no se escribe"
+        );
         assert_eq!(tecla(&mut h, 0x0D), Respuesta::Guardar("sin saldo".into()));
-        assert_eq!(clic(&mut h, dentro, tam, 100), Respuesta::Guardar("sin saldo".into()));
+        assert_eq!(
+            clic(&mut h, dentro, tam, 100),
+            Respuesta::Guardar("sin saldo".into())
+        );
         // Esc deja de escribir; otro Esc cierra el pin.
         assert_eq!(tecla(&mut h, 0x1B), Respuesta::Repintar);
         assert!(h.nota.is_none());

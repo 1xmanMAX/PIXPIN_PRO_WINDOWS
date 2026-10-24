@@ -205,8 +205,20 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&raiz);
         let almacen = Almacen::en(&raiz);
         std::fs::create_dir_all(almacen.medios()).unwrap();
-        foto_de_muestra(&almacen.ruta("f.png"), 1200, 800, [240, 150, 80], [90, 40, 120]);
-        foto_de_muestra(&almacen.ruta("g.png"), 900, 1200, [60, 160, 200], [20, 60, 90]);
+        foto_de_muestra(
+            &almacen.ruta("f.png"),
+            1200,
+            800,
+            [240, 150, 80],
+            [90, 40, 120],
+        );
+        foto_de_muestra(
+            &almacen.ruta("g.png"),
+            900,
+            1200,
+            [60, 160, 200],
+            [20, 60, 90],
+        );
         audio_de_muestra(&almacen.ruta("c.wav"));
         let dia = pixpin_timeline::dias::Dia {
             anio: 2026,
@@ -258,10 +270,27 @@ mod pruebas {
         let ruta = dir.join("timeline-exportado.html");
         std::fs::write(&ruta, &html).unwrap();
         captura(&ruta, &dir.join("timeline-exportado.png"), "", 900, 1100);
-        captura(&ruta, &dir.join("timeline-exportado-historia.png"), "#m=b", 900, 1100);
-        captura(&ruta, &dir.join("timeline-exportado-voz.png"), "#m=c", 420, 820);
+        captura(
+            &ruta,
+            &dir.join("timeline-exportado-historia.png"),
+            "#m=b",
+            900,
+            1100,
+        );
+        captura(
+            &ruta,
+            &dir.join("timeline-exportado-voz.png"),
+            "#m=c",
+            420,
+            820,
+        );
         a_pdf(&html, &dir.join("timeline-exportado.pdf")).unwrap();
-        assert!(std::fs::metadata(dir.join("timeline-exportado.pdf")).unwrap().len() > 1000);
+        assert!(
+            std::fs::metadata(dir.join("timeline-exportado.pdf"))
+                .unwrap()
+                .len()
+                > 1000
+        );
         let _ = std::fs::remove_dir_all(raiz);
     }
 

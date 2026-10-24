@@ -26,7 +26,12 @@ pub(crate) fn exportable(raiz: &Path, e: &Entrada) -> Exportable {
     let titulo = if l.titulo.trim().is_empty() {
         l.id.clone()
     } else {
-        l.titulo.lines().next().unwrap_or(&l.titulo).trim().to_string()
+        l.titulo
+            .lines()
+            .next()
+            .unwrap_or(&l.titulo)
+            .trim()
+            .to_string()
     };
     let mut x = exportable::de_texto(&titulo, &l.resumen(), Some(&e.archivo));
     x.raiz = Some(raiz.to_path_buf());
@@ -60,7 +65,10 @@ pub(crate) fn exportable(raiz: &Path, e: &Entrada) -> Exportable {
 /// Devuelve si la encontro.
 pub(crate) fn abrir(ubicacion: &Ubicacion, idioma: Idioma, id: &str) -> bool {
     let raiz = ubicacion.raiz();
-    let Some(e) = almacen::listar(raiz).into_iter().find(|e| e.leccion.id == id) else {
+    let Some(e) = almacen::listar(raiz)
+        .into_iter()
+        .find(|e| e.leccion.id == id)
+    else {
         tracing::warn!(%id, "exportar: esa leccion no esta");
         return false;
     };
@@ -76,21 +84,37 @@ mod pruebas {
 
     #[test]
     fn una_leccion_ofrece_pdf_html_pixpin_imagen_y_su_leccion() {
-        let d = std::env::temp_dir().join(format!("pixpin-leccion-exportar-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("pixpin-leccion-exportar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         let archivo = d.join("k1.leccion");
-        let mut l = Leccion::nueva("k1", 1_700_000_000_000, "Revisar el encofrado antes de vaciar");
+        let mut l = Leccion::nueva(
+            "k1",
+            1_700_000_000_000,
+            "Revisar el encofrado antes de vaciar",
+        );
         l.que_paso = "Se abrio una junta en la losa".into();
         l.proxima = "Si hay vaciado, entonces revisar puntales".into();
         std::fs::write(&archivo, l.escribir()).unwrap();
-        let e = Entrada { leccion: l, mensaje: Default::default(), ficha: "p1".into(), archivo: archivo.clone() };
+        let e = Entrada {
+            leccion: l,
+            mensaje: Default::default(),
+            ficha: "p1".into(),
+            archivo: archivo.clone(),
+        };
         let x = exportable(&d, &e);
         let f = x.formatos();
-        for id in ["pdf", "web", "png", "jpg", "svg", "original", "pixpin", "texto", "md"] {
+        for id in [
+            "pdf", "web", "png", "jpg", "svg", "original", "pixpin", "texto", "md",
+        ] {
             assert!(f.contains(&id), "falta {id}: {f:?}");
         }
-        assert_eq!(x.original.as_deref(), Some(archivo.as_path()), "el original es su .leccion");
+        assert_eq!(
+            x.original.as_deref(),
+            Some(archivo.as_path()),
+            "el original es su .leccion"
+        );
         assert_eq!(x.proyecto.as_deref(), Some("p1"), "el .pixpin es su chat");
         assert_eq!(x.titulo, "Revisar el encofrado antes de vaciar");
         // Y se generan de verdad (el .pixpin sin chat en el disco cae en uno
@@ -100,8 +124,12 @@ mod pruebas {
         let claves: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
         let salida = d.join("salida");
         for id in ["pdf", "web", "png", "original", "pixpin"] {
-            let s = crate::compartir::generar(&p, id, &claves, &salida).unwrap_or_else(|e| panic!("{id}: {e:#}"));
-            assert!(s.bytes > 0 && s.ficheros.iter().all(|f| f.is_file()), "{id}");
+            let s = crate::compartir::generar(&p, id, &claves, &salida)
+                .unwrap_or_else(|e| panic!("{id}: {e:#}"));
+            assert!(
+                s.bytes > 0 && s.ficheros.iter().all(|f| f.is_file()),
+                "{id}"
+            );
         }
         // Caso negativo: una leccion que no esta no abre nada.
         let u = Ubicacion::Portable { raiz: d.clone() };

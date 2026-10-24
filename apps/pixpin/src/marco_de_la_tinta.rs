@@ -134,7 +134,9 @@ pub fn marco_de_antes(
         // el visor al guardar (`plano_cad::anotar`); sin ella, el visor la
         // lee con la regla de antes. Aqui no hay columna que valga.
         QueTinta::Documento
-            if doc.file_name().is_some_and(|n| crate::plano_cad::se_abre(&n.to_string_lossy())) =>
+            if doc
+                .file_name()
+                .is_some_and(|n| crate::plano_cad::se_abre(&n.to_string_lossy())) =>
         {
             None
         }

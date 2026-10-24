@@ -126,7 +126,14 @@ fn oscurecer(c: Color, k: f32) -> Color {
 
 /// La izquierda de una tarjeta: el numero del mes, su nombre corto (y el
 /// ano si no es este) y lo que mas hubo, en una chapa «🍕 ×6».
-fn columna_del_mes(p: &Pintor, e: &Estado, pd: &BTreeMap<Dia, Vec<usize>>, mes: Mes, caja: RectF, s: f32) {
+fn columna_del_mes(
+    p: &Pintor,
+    e: &Estado,
+    pd: &BTreeMap<Dia, Vec<usize>>,
+    mes: Mes,
+    caja: RectF,
+    s: f32,
+) {
     let x = caja.x + 18.0 * s;
     let mut y = caja.y + 12.0 * s;
     let num = mes.mes.to_string();
@@ -178,7 +185,15 @@ fn columna_del_mes(p: &Pintor, e: &Estado, pd: &BTreeMap<Dia, Vec<usize>>, mes: 
 /// Los circulos de un dia con algo, centrados en `centro`.
 /// La pila no se sale de su celda (`ancho`): con varios emoticonos, los
 /// circulos encogen lo justo.
-fn circulos_del_dia(p: &Pintor, e: &Estado, idx: &[usize], centro: (f32, f32), r: f32, ancho_celda: f32, s: f32) {
+fn circulos_del_dia(
+    p: &Pintor,
+    e: &Estado,
+    idx: &[usize],
+    centro: (f32, f32),
+    r: f32,
+    ancho_celda: f32,
+    s: f32,
+) {
     let d = 2.0 * r;
     match circulo(e, idx) {
         Circulo::Emoticonos(emos) => {
@@ -321,7 +336,13 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
                     };
                     p.rellenar_redondeado(r, r.alto / 2.0, ACENTO);
                 }
-                p.texto(&num, celda.x + (celda.ancho - nw) / 2.0, ny, 14.0 * s, TEXTO_V);
+                p.texto(
+                    &num,
+                    celda.x + (celda.ancho - nw) / 2.0,
+                    ny,
+                    14.0 * s,
+                    TEXTO_V,
+                );
                 circulos_del_dia(p, e, idx, centro, c.radio, celda.ancho, s);
                 let r = c.radio;
                 if e.elegidos.contains(&c.dia) {

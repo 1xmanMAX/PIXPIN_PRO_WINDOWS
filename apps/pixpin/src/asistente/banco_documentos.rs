@@ -52,7 +52,10 @@ use super::turno::{Adjunto, Aviso, Turno};
 const SCRATCHPAD: &str = r"C:\Users\MaxBook\AppData\Local\Temp\claude\F--THE-FORGE-PIXPIN-PC-VERSION-MAX\afe461c5-d9fa-4287-b8b5-3ab7961f6cb3\scratchpad";
 
 fn base() -> PathBuf {
-    std::env::var("PIXPIN_IA_SCRATCH").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from(SCRATCHPAD)).join("banco-documentos")
+    std::env::var("PIXPIN_IA_SCRATCH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(SCRATCHPAD))
+        .join("banco-documentos")
 }
 
 /// Como llega el documento.
@@ -98,7 +101,10 @@ impl Hecho {
     fn dice(&self, cosas: &[&str]) -> Result<(), String> {
         let t = self.n().replace(['.', ','], "");
         for c in cosas {
-            let alternativas: Vec<String> = c.split('|').map(|x| pixpin_ia::acciones::normalizar(x).replace(['.', ','], "")).collect();
+            let alternativas: Vec<String> = c
+                .split('|')
+                .map(|x| pixpin_ia::acciones::normalizar(x).replace(['.', ','], ""))
+                .collect();
             if !alternativas.iter().any(|a| t.contains(a.as_str())) {
                 return Err(format!("la respuesta no dice «{c}»"));
             }
@@ -122,11 +128,17 @@ impl Hecho {
     }
     fn lienzo(&self, minimo: usize, textos: &[&str]) -> Result<(), String> {
         if self.nuevos < minimo {
-            return Err(format!("en el lienzo hay {} elementos nuevos (minimo {minimo})", self.nuevos));
+            return Err(format!(
+                "en el lienzo hay {} elementos nuevos (minimo {minimo})",
+                self.nuevos
+            ));
         }
         let t = pixpin_ia::acciones::normalizar(&self.textos_lienzo);
         for x in textos {
-            if !x.split('|').any(|a| t.contains(&pixpin_ia::acciones::normalizar(a))) {
+            if !x
+                .split('|')
+                .any(|a| t.contains(&pixpin_ia::acciones::normalizar(a)))
+            {
                 return Err(format!("en el lienzo no esta el texto «{x}»"));
             }
         }
@@ -148,16 +160,51 @@ struct Caso {
     de_geometria: bool,
 }
 
-const fn c(nombre: &'static str, doc: &'static str, entrada: Entrada, tarea: &'static str, pedido: &'static str, comprobar: Comprobar) -> Caso {
-    Caso { nombre, doc, entrada, tarea, pedido, comprobar, de_geometria: false }
+const fn c(
+    nombre: &'static str,
+    doc: &'static str,
+    entrada: Entrada,
+    tarea: &'static str,
+    pedido: &'static str,
+    comprobar: Comprobar,
+) -> Caso {
+    Caso {
+        nombre,
+        doc,
+        entrada,
+        tarea,
+        pedido,
+        comprobar,
+        de_geometria: false,
+    }
 }
 
-const fn g(nombre: &'static str, doc: &'static str, entrada: Entrada, tarea: &'static str, pedido: &'static str, comprobar: Comprobar) -> Caso {
-    Caso { nombre, doc, entrada, tarea, pedido, comprobar, de_geometria: true }
+const fn g(
+    nombre: &'static str,
+    doc: &'static str,
+    entrada: Entrada,
+    tarea: &'static str,
+    pedido: &'static str,
+    comprobar: Comprobar,
+) -> Caso {
+    Caso {
+        nombre,
+        doc,
+        entrada,
+        tarea,
+        pedido,
+        comprobar,
+        de_geometria: true,
+    }
 }
 
 fn filas_del_excel(x: &Path) -> Vec<String> {
-    super::en_el_chat::celdas_de_excel(x, None, None).unwrap_or_default().lines().skip(2).map(str::to_string).collect()
+    super::en_el_chat::celdas_de_excel(x, None, None)
+        .unwrap_or_default()
+        .lines()
+        .skip(2)
+        .map(str::to_string)
+        .collect()
 }
 
 /// El Excel lleva el fondo azul claro de la cabecera de la foto (un relleno
@@ -166,20 +213,33 @@ fn excel_con_fondo(h: &Hecho) -> Result<(), String> {
     let x = h.excel().ok_or("no dejo ningun .xlsx en el chat")?;
     let mut p = pixpin_docs::Paquete::abrir(&x).map_err(|e| e.to_string())?;
     let estilos = p.texto("xl/styles.xml", 1 << 20).unwrap_or_default();
-    let colores: Vec<&str> = estilos.match_indices("rgb=\"").map(|(i, _)| &estilos[i + 5..(i + 13).min(estilos.len())]).collect();
+    let colores: Vec<&str> = estilos
+        .match_indices("rgb=\"")
+        .map(|(i, _)| &estilos[i + 5..(i + 13).min(estilos.len())])
+        .collect();
     let azulado = colores.iter().any(|c| {
-        let v = |k: usize| u8::from_str_radix(c.get(k..k + 2).unwrap_or("00"), 16).unwrap_or(0) as i32;
+        let v =
+            |k: usize| u8::from_str_radix(c.get(k..k + 2).unwrap_or("00"), 16).unwrap_or(0) as i32;
         let (r, b) = (v(2), v(6));
         b > r + 10 && b > 150 && r > 120
     });
-    if azulado { Ok(()) } else { Err(format!("el Excel no lleva el fondo de la cabecera (colores {colores:?})")) }
+    if azulado {
+        Ok(())
+    } else {
+        Err(format!(
+            "el Excel no lleva el fondo de la cabecera (colores {colores:?})"
+        ))
+    }
 }
 
 fn excel_con(h: &Hecho, minimo: usize, contiene: &[&str]) -> Result<(), String> {
     let x = h.excel().ok_or("no dejo ningun .xlsx en el chat")?;
     let filas = filas_del_excel(&x);
     if filas.len() < minimo {
-        return Err(format!("el Excel tiene {} filas (minimo {minimo})", filas.len()));
+        return Err(format!(
+            "el Excel tiene {} filas (minimo {minimo})",
+            filas.len()
+        ));
     }
     let todo = pixpin_ia::acciones::normalizar(&filas.join("\n"));
     for c in contiene {
@@ -195,127 +255,439 @@ use Entrada::{Adjunto as A, EnLienzo as L, Foto as F};
 fn casos() -> Vec<Caso> {
     vec![
         // 01: solo texto (PDF)
-        c("01-resumir", "01-comunicado-reunion.pdf", A, "resumir", "Resúmeme este comunicado en tres puntos.", |h| h.dice(&["22", "losa|acero", "antisuyo|desague|desagüe"])),
-        c("01-pregunta", "01-comunicado-reunion.pdf", A, "pregunta", "¿Qué día, a qué hora y dónde es la reunión del comunicado?", |h| h.dice(&["22", "9", "florida"])),
+        c(
+            "01-resumir",
+            "01-comunicado-reunion.pdf",
+            A,
+            "resumir",
+            "Resúmeme este comunicado en tres puntos.",
+            |h| h.dice(&["22", "losa|acero", "antisuyo|desague|desagüe"]),
+        ),
+        c(
+            "01-pregunta",
+            "01-comunicado-reunion.pdf",
+            A,
+            "pregunta",
+            "¿Qué día, a qué hora y dónde es la reunión del comunicado?",
+            |h| h.dice(&["22", "9", "florida"]),
+        ),
         // 02: parrafos con titulos y listas (Word)
-        c("02-resumir", "02-informe-drenaje.docx", A, "resumir", "Hazme un resumen del informe de drenaje que te mandé.", |h| h.dice(&["cuneta", "sumidero", "184"])),
-        c("02-pregunta", "02-informe-drenaje.docx", A, "pregunta", "Según el informe de drenaje, ¿cuánto cuesta la obra y en cuántos días se hace?", |h| h.dice(&["184", "45"])),
-        c("02-anotar", "02-informe-drenaje.docx", A, "anotar", "En el informe de drenaje, señálame lo importante.", |h| h.anoto()),
+        c(
+            "02-resumir",
+            "02-informe-drenaje.docx",
+            A,
+            "resumir",
+            "Hazme un resumen del informe de drenaje que te mandé.",
+            |h| h.dice(&["cuneta", "sumidero", "184"]),
+        ),
+        c(
+            "02-pregunta",
+            "02-informe-drenaje.docx",
+            A,
+            "pregunta",
+            "Según el informe de drenaje, ¿cuánto cuesta la obra y en cuántos días se hace?",
+            |h| h.dice(&["184", "45"]),
+        ),
+        c(
+            "02-anotar",
+            "02-informe-drenaje.docx",
+            A,
+            "anotar",
+            "En el informe de drenaje, señálame lo importante.",
+            |h| h.anoto(),
+        ),
         // 03: formulas (PDF)
-        c("03-latex", "03-formulario-fisica.pdf", A, "formulas", "Pásame en LaTeX todas las fórmulas de este formulario.", |h| {
-            h.dice(&["\\frac", "\\sqrt", "\\int"])?;
-            h.dice(&["\\pi", "\\theta|\\sin"])
-        }),
-        g("03-calcar", "03-formulario-fisica.pdf", A, "calcar", "Pasa esta página del formulario al lienzo.", |h| h.lienzo(8, &["cinematica"])),
-        c("03-ocr", "03-formulario-fisica.pdf", A, "ocr", "Lee el texto de este PDF.", |h| {
-            if h.leido.is_empty() && !h.n().contains("cinematica") {
-                return Err("ni OCR ni el texto en la respuesta".into());
-            }
-            Ok(())
-        }),
+        c(
+            "03-latex",
+            "03-formulario-fisica.pdf",
+            A,
+            "formulas",
+            "Pásame en LaTeX todas las fórmulas de este formulario.",
+            |h| {
+                h.dice(&["\\frac", "\\sqrt", "\\int"])?;
+                h.dice(&["\\pi", "\\theta|\\sin"])
+            },
+        ),
+        g(
+            "03-calcar",
+            "03-formulario-fisica.pdf",
+            A,
+            "calcar",
+            "Pasa esta página del formulario al lienzo.",
+            |h| h.lienzo(8, &["cinematica"]),
+        ),
+        c(
+            "03-ocr",
+            "03-formulario-fisica.pdf",
+            A,
+            "ocr",
+            "Lee el texto de este PDF.",
+            |h| {
+                if h.leido.is_empty() && !h.n().contains("cinematica") {
+                    return Err("ni OCR ni el texto en la respuesta".into());
+                }
+                Ok(())
+            },
+        ),
         // 04: formulas en imagen
-        c("04-ecuaciones", "04-pizarra-formulas.png", F, "formulas", "Escribe en el lienzo las fórmulas de esta foto como ecuaciones.", |h| {
-            if h.nuevos < 4 {
-                return Err(format!("solo {} elementos en el lienzo", h.nuevos));
-            }
-            Ok(())
-        }),
-        c("04-ocr", "04-pizarra-formulas.png", F, "ocr", "¿Qué dice esta pizarra? Cópiame el texto.", |h| h.dice(&["ohm", "bernoulli", "pitagoras"])),
-        c("04-latex", "04-pizarra-formulas.png", F, "formulas", "Convierte las fórmulas de esta foto a LaTeX.", |h| h.dice(&["\\frac", "\\rho", "\\sqrt", "\\sigma"])),
+        c(
+            "04-ecuaciones",
+            "04-pizarra-formulas.png",
+            F,
+            "formulas",
+            "Escribe en el lienzo las fórmulas de esta foto como ecuaciones.",
+            |h| {
+                if h.nuevos < 4 {
+                    return Err(format!("solo {} elementos en el lienzo", h.nuevos));
+                }
+                Ok(())
+            },
+        ),
+        c(
+            "04-ocr",
+            "04-pizarra-formulas.png",
+            F,
+            "ocr",
+            "¿Qué dice esta pizarra? Cópiame el texto.",
+            |h| h.dice(&["ohm", "bernoulli", "pitagoras"]),
+        ),
+        c(
+            "04-latex",
+            "04-pizarra-formulas.png",
+            F,
+            "formulas",
+            "Convierte las fórmulas de esta foto a LaTeX.",
+            |h| h.dice(&["\\frac", "\\rho", "\\sqrt", "\\sigma"]),
+        ),
         // 05: tabla en Excel
-        c("05-pregunta", "05-presupuesto-obra.xlsx", A, "pregunta", "¿Cuál es la partida más cara del presupuesto de obra y cuánto cuesta?", |h| h.dice(&["tuberia|pvc", "60800|60 800"])),
-        c("05-grafica", "05-presupuesto-obra.xlsx", A, "grafica", "Haz en el lienzo una gráfica de barras con los parciales del presupuesto de obra.", |h| {
-            if !h.llamo("grafica") {
-                return Err("no llamo a grafica".into());
-            }
-            h.lienzo(6, &[])
-        }),
+        c(
+            "05-pregunta",
+            "05-presupuesto-obra.xlsx",
+            A,
+            "pregunta",
+            "¿Cuál es la partida más cara del presupuesto de obra y cuánto cuesta?",
+            |h| h.dice(&["tuberia|pvc", "60800|60 800"]),
+        ),
+        c(
+            "05-grafica",
+            "05-presupuesto-obra.xlsx",
+            A,
+            "grafica",
+            "Haz en el lienzo una gráfica de barras con los parciales del presupuesto de obra.",
+            |h| {
+                if !h.llamo("grafica") {
+                    return Err("no llamo a grafica".into());
+                }
+                h.lienzo(6, &[])
+            },
+        ),
         // 06: tabla en PDF
-        c("06-excel", "06-notas-curso.pdf", A, "tabla", "Pasa la tabla de notas de este PDF a un Excel.", |h| {
-            excel_con(h, 9, &["Mendoza", "Ticona"])?;
-            excel_con_fondo(h)?;
-            let n = filas_del_excel(&h.excel().unwrap()).len();
-            if n > 10 { return Err(format!("el Excel lleva {n} filas: se colo el texto de la pagina")); }
-            Ok(())
-        }),
-        c("06-pregunta", "06-notas-curso.pdf", A, "pregunta", "En el registro de notas, ¿quién tiene el promedio más alto y quiénes desaprobaron?", |h| h.dice(&["mendoza|elena", "flores|jorge", "laura|pedro"])),
+        c(
+            "06-excel",
+            "06-notas-curso.pdf",
+            A,
+            "tabla",
+            "Pasa la tabla de notas de este PDF a un Excel.",
+            |h| {
+                excel_con(h, 9, &["Mendoza", "Ticona"])?;
+                excel_con_fondo(h)?;
+                let n = filas_del_excel(&h.excel().unwrap()).len();
+                if n > 10 {
+                    return Err(format!(
+                        "el Excel lleva {n} filas: se colo el texto de la pagina"
+                    ));
+                }
+                Ok(())
+            },
+        ),
+        c(
+            "06-pregunta",
+            "06-notas-curso.pdf",
+            A,
+            "pregunta",
+            "En el registro de notas, ¿quién tiene el promedio más alto y quiénes desaprobaron?",
+            |h| h.dice(&["mendoza|elena", "flores|jorge", "laura|pedro"]),
+        ),
         // 07: tabla en foto
-        c("07-excel", "07-stock-materiales.png", F, "tabla", "Extrae la tabla de esta foto a un Excel.", |h| excel_con(h, 7, &["Yura", "Magollo"]).and_then(|_| excel_con_fondo(h))),
-        c("07-tabla-lienzo", "07-stock-materiales.png", F, "calcar", "Haz esta tabla en el lienzo.", |h| {
-            h.lienzo(6, &["yura", "cemento"])?;
-            if !h.resultados.iter().any(|(n, ok, t)| n == "tabla_de_imagen" && *ok && t.contains("como en la foto")) {
-                return Err("no la paso con su aspecto medido (tabla_de_imagen al lienzo)".into());
-            }
-            Ok(())
-        }),
+        c(
+            "07-excel",
+            "07-stock-materiales.png",
+            F,
+            "tabla",
+            "Extrae la tabla de esta foto a un Excel.",
+            |h| excel_con(h, 7, &["Yura", "Magollo"]).and_then(|_| excel_con_fondo(h)),
+        ),
+        c(
+            "07-tabla-lienzo",
+            "07-stock-materiales.png",
+            F,
+            "calcar",
+            "Haz esta tabla en el lienzo.",
+            |h| {
+                h.lienzo(6, &["yura", "cemento"])?;
+                if !h.resultados.iter().any(|(n, ok, t)| {
+                    n == "tabla_de_imagen" && *ok && t.contains("como en la foto")
+                }) {
+                    return Err(
+                        "no la paso con su aspecto medido (tabla_de_imagen al lienzo)".into(),
+                    );
+                }
+                Ok(())
+            },
+        ),
         // 08: texto con fotos (Word)
-        c("08-resumir", "08-articulo-con-fotos.docx", A, "resumir", "Resume el artículo de Tacna.", |h| h.dice(&["olivo|aceituna", "malecon|playa"])),
-        c("08-anotar", "08-articulo-con-fotos.docx", A, "anotar", "En el artículo de Tacna, resume cada sección al margen.", |h| h.anoto()),
+        c(
+            "08-resumir",
+            "08-articulo-con-fotos.docx",
+            A,
+            "resumir",
+            "Resume el artículo de Tacna.",
+            |h| h.dice(&["olivo|aceituna", "malecon|playa"]),
+        ),
+        c(
+            "08-anotar",
+            "08-articulo-con-fotos.docx",
+            A,
+            "anotar",
+            "En el artículo de Tacna, resume cada sección al margen.",
+            |h| h.anoto(),
+        ),
         // 09: dos columnas con foto (PDF)
-        c("09-resumir", "09-boletin-dos-columnas.pdf", A, "resumir", "¿Qué dice el boletín de obra? Resúmelo.", |h| h.dice(&["68", "120"])),
-        g("09-calcar", "09-boletin-dos-columnas.pdf", A, "calcar", "Calca esta página del boletín en el lienzo.", |h| h.lienzo(10, &["boletin", "seguridad"])),
+        c(
+            "09-resumir",
+            "09-boletin-dos-columnas.pdf",
+            A,
+            "resumir",
+            "¿Qué dice el boletín de obra? Resúmelo.",
+            |h| h.dice(&["68", "120"]),
+        ),
+        g(
+            "09-calcar",
+            "09-boletin-dos-columnas.pdf",
+            A,
+            "calcar",
+            "Calca esta página del boletín en el lienzo.",
+            |h| h.lienzo(10, &["boletin", "seguridad"]),
+        ),
         // 10: una grafica
-        c("10-pregunta", "10-grafica-produccion.png", F, "pregunta", "¿En qué mes hubo más producción y cuánto fue?", |h| h.dice(&["abril|abr", "160"])),
-        c("10-rehacer", "10-grafica-produccion.png", F, "calcar", "Rehaz esta gráfica en el lienzo con los mismos datos.", |h| {
-            if !h.llamo("grafica") {
-                return Err("no la rehizo con grafica".into());
-            }
-            let args: String = h.llamadas.iter().filter(|(n, _)| n == "grafica").map(|(_, a)| a.as_str()).collect();
-            for v in ["120", "95", "140", "160", "130"] {
-                if !args.contains(v) {
-                    return Err(format!("a la grafica le falta el dato {v}"));
+        c(
+            "10-pregunta",
+            "10-grafica-produccion.png",
+            F,
+            "pregunta",
+            "¿En qué mes hubo más producción y cuánto fue?",
+            |h| h.dice(&["abril|abr", "160"]),
+        ),
+        c(
+            "10-rehacer",
+            "10-grafica-produccion.png",
+            F,
+            "calcar",
+            "Rehaz esta gráfica en el lienzo con los mismos datos.",
+            |h| {
+                if !h.llamo("grafica") {
+                    return Err("no la rehizo con grafica".into());
                 }
-            }
-            Ok(())
-        }),
-        g("10-calca-esto", "10-grafica-produccion.png", L, "calcar", "Calca esto en el lienzo.", |h| h.lienzo(5, &["160|abr"])),
+                let args: String = h
+                    .llamadas
+                    .iter()
+                    .filter(|(n, _)| n == "grafica")
+                    .map(|(_, a)| a.as_str())
+                    .collect();
+                for v in ["120", "95", "140", "160", "130"] {
+                    if !args.contains(v) {
+                        return Err(format!("a la grafica le falta el dato {v}"));
+                    }
+                }
+                Ok(())
+            },
+        ),
+        g(
+            "10-calca-esto",
+            "10-grafica-produccion.png",
+            L,
+            "calcar",
+            "Calca esto en el lienzo.",
+            |h| h.lienzo(5, &["160|abr"]),
+        ),
         // 11: diagrama de flujo
-        g("11-calcar", "11-diagrama-flujo.png", F, "calcar", "Calca este diagrama de flujo en el lienzo.", |h| {
-            h.lienzo(8, &["inicio", "fin", "impar", "leer"])?;
-            if !h.figuras.iter().any(|f| f == "rombo") {
-                return Err("sin el rombo de la decision".into());
-            }
-            Ok(())
-        }),
-        g("11-calca-esto", "11-diagrama-flujo.png", L, "calcar", "Pasa esto al lienzo con figuras.", |h| h.lienzo(8, &["inicio", "impar"])),
-        c("11-explicar", "11-diagrama-flujo.png", F, "pregunta", "Explícame qué hace este diagrama.", |h| h.dice(&["par", "impar", "2|dos|residuo|resto|mod"])),
-        // 12: geometria
-        g("12-calcar", "12-geometria-circunferencia.png", F, "calcar", "Calca esta figura de geometría en el lienzo.", |h| h.lienzo(6, &["a", "b", "c", "o", "35"])),
-        c("12-resolver", "12-geometria-circunferencia.png", F, "pregunta", "Resuelve el problema de la figura.", |h| h.dice(&["55"])),
-        c("12-anotar", "12-geometria-circunferencia.png", A, "anotar", "Anota en la imagen de geometría los pasos para hallar x.", |h| h.anoto()),
-        // 13: hoja escaneada
-        c("13-ocr", "13-guia-escaneada.png", F, "ocr", "Lee el texto de esta hoja escaneada.", |h| {
-            let todo = pixpin_ia::acciones::normalizar(&format!("{} {}", h.texto, h.leido.join(" ")));
-            for x in ["compresion", "probeta", "210"] {
-                if !todo.contains(x) {
-                    return Err(format!("no leyo «{x}»"));
+        g(
+            "11-calcar",
+            "11-diagrama-flujo.png",
+            F,
+            "calcar",
+            "Calca este diagrama de flujo en el lienzo.",
+            |h| {
+                h.lienzo(8, &["inicio", "fin", "impar", "leer"])?;
+                if !h.figuras.iter().any(|f| f == "rombo") {
+                    return Err("sin el rombo de la decision".into());
                 }
-            }
-            Ok(())
-        }),
-        c("13-excel", "13-guia-escaneada.png", F, "tabla", "Pasa la tabla de resultados de esta hoja escaneada a un Excel.", |h| {
-            excel_con(h, 5, &["P-03", "246"])?;
-            excel_con_fondo(h)?;
-            let n = filas_del_excel(&h.excel().unwrap()).len();
-            if n > 6 { return Err(format!("el Excel lleva {n} filas: se colo el texto de la hoja")); }
-            Ok(())
-        }),
-        c("13-pregunta", "13-guia-escaneada.png", F, "pregunta", "Según esta guía escaneada, ¿qué resistencia media dieron las probetas a 28 días?", |h| h.dice(&["242"])),
-        c("13-resumir", "13-guia-escaneada.png", F, "resumir", "Resume esta hoja escaneada.", |h| h.dice(&["compresion", "28"])),
+                Ok(())
+            },
+        ),
+        g(
+            "11-calca-esto",
+            "11-diagrama-flujo.png",
+            L,
+            "calcar",
+            "Pasa esto al lienzo con figuras.",
+            |h| h.lienzo(8, &["inicio", "impar"]),
+        ),
+        c(
+            "11-explicar",
+            "11-diagrama-flujo.png",
+            F,
+            "pregunta",
+            "Explícame qué hace este diagrama.",
+            |h| h.dice(&["par", "impar", "2|dos|residuo|resto|mod"]),
+        ),
+        // 12: geometria
+        g(
+            "12-calcar",
+            "12-geometria-circunferencia.png",
+            F,
+            "calcar",
+            "Calca esta figura de geometría en el lienzo.",
+            |h| h.lienzo(6, &["a", "b", "c", "o", "35"]),
+        ),
+        c(
+            "12-resolver",
+            "12-geometria-circunferencia.png",
+            F,
+            "pregunta",
+            "Resuelve el problema de la figura.",
+            |h| h.dice(&["55"]),
+        ),
+        c(
+            "12-anotar",
+            "12-geometria-circunferencia.png",
+            A,
+            "anotar",
+            "Anota en la imagen de geometría los pasos para hallar x.",
+            |h| h.anoto(),
+        ),
+        // 13: hoja escaneada
+        c(
+            "13-ocr",
+            "13-guia-escaneada.png",
+            F,
+            "ocr",
+            "Lee el texto de esta hoja escaneada.",
+            |h| {
+                let todo =
+                    pixpin_ia::acciones::normalizar(&format!("{} {}", h.texto, h.leido.join(" ")));
+                for x in ["compresion", "probeta", "210"] {
+                    if !todo.contains(x) {
+                        return Err(format!("no leyo «{x}»"));
+                    }
+                }
+                Ok(())
+            },
+        ),
+        c(
+            "13-excel",
+            "13-guia-escaneada.png",
+            F,
+            "tabla",
+            "Pasa la tabla de resultados de esta hoja escaneada a un Excel.",
+            |h| {
+                excel_con(h, 5, &["P-03", "246"])?;
+                excel_con_fondo(h)?;
+                let n = filas_del_excel(&h.excel().unwrap()).len();
+                if n > 6 {
+                    return Err(format!(
+                        "el Excel lleva {n} filas: se colo el texto de la hoja"
+                    ));
+                }
+                Ok(())
+            },
+        ),
+        c(
+            "13-pregunta",
+            "13-guia-escaneada.png",
+            F,
+            "pregunta",
+            "Según esta guía escaneada, ¿qué resistencia media dieron las probetas a 28 días?",
+            |h| h.dice(&["242"]),
+        ),
+        c(
+            "13-resumir",
+            "13-guia-escaneada.png",
+            F,
+            "resumir",
+            "Resume esta hoja escaneada.",
+            |h| h.dice(&["compresion", "28"]),
+        ),
         // 14: PowerPoint
-        c("14-resumir", "14-charla-seguridad.pptx", A, "resumir", "Resume la presentación de seguridad en obra.", |h| h.dice(&["casco", "arnes", "12"])),
-        c("14-anotar", "14-charla-seguridad.pptx", A, "anotar", "En la presentación de seguridad, señala lo importante de la diapositiva 2.", |h| h.anoto()),
+        c(
+            "14-resumir",
+            "14-charla-seguridad.pptx",
+            A,
+            "resumir",
+            "Resume la presentación de seguridad en obra.",
+            |h| h.dice(&["casco", "arnes", "12"]),
+        ),
+        c(
+            "14-anotar",
+            "14-charla-seguridad.pptx",
+            A,
+            "anotar",
+            "En la presentación de seguridad, señala lo importante de la diapositiva 2.",
+            |h| h.anoto(),
+        ),
         // 15: Excel con un error
-        c("15-errores", "15-metrados-con-error.xlsx", A, "anotar", "Revisa el Excel de metrados y marca los errores de cálculo.", |h| {
-            h.anoto()?;
-            h.dice(&["tarrajeo|3420|3 420"])
-        }),
-        c("15-pregunta", "15-metrados-con-error.xlsx", A, "pregunta", "¿Cuánto debería sumar el total del Excel de metrados si se corrigen los errores?", |h| h.dice(&["24600|24 600"])),
+        c(
+            "15-errores",
+            "15-metrados-con-error.xlsx",
+            A,
+            "anotar",
+            "Revisa el Excel de metrados y marca los errores de cálculo.",
+            |h| {
+                h.anoto()?;
+                h.dice(&["tarrajeo|3420|3 420"])
+            },
+        ),
+        c(
+            "15-pregunta",
+            "15-metrados-con-error.xlsx",
+            A,
+            "pregunta",
+            "¿Cuánto debería sumar el total del Excel de metrados si se corrigen los errores?",
+            |h| h.dice(&["24600|24 600"]),
+        ),
         // 16: examen mixto (PDF)
-        c("16-pasos", "16-examen-mixto.pdf", A, "anotar", "En el examen, explícame paso a paso el problema 1 al margen.", |h| h.anoto()),
-        c("16-limpio", "16-examen-mixto.pdf", A, "calcar", "Pasa en limpio al lienzo el problema 1 del examen.", |h| h.lienzo(3, &[])),
-        c("16-resolver", "16-examen-mixto.pdf", A, "pregunta", "Resuelve el problema 1 del examen.", |h| h.dice(&["44|4,4|4.4"])),
-        c("16-latex", "16-examen-mixto.pdf", A, "formulas", "Pásame las fórmulas del examen en LaTeX.", |h| h.dice(&["\\frac", "\\sin", "\\mu"])),
+        c(
+            "16-pasos",
+            "16-examen-mixto.pdf",
+            A,
+            "anotar",
+            "En el examen, explícame paso a paso el problema 1 al margen.",
+            |h| h.anoto(),
+        ),
+        c(
+            "16-limpio",
+            "16-examen-mixto.pdf",
+            A,
+            "calcar",
+            "Pasa en limpio al lienzo el problema 1 del examen.",
+            |h| h.lienzo(3, &[]),
+        ),
+        c(
+            "16-resolver",
+            "16-examen-mixto.pdf",
+            A,
+            "pregunta",
+            "Resuelve el problema 1 del examen.",
+            |h| h.dice(&["44|4,4|4.4"]),
+        ),
+        c(
+            "16-latex",
+            "16-examen-mixto.pdf",
+            A,
+            "formulas",
+            "Pásame las fórmulas del examen en LaTeX.",
+            |h| h.dice(&["\\frac", "\\sin", "\\mu"]),
+        ),
     ]
 }
 
@@ -333,7 +705,8 @@ fn se_ve(e: &Evento) -> bool {
 
 fn motor_de(p: Proveedor) -> Result<(Arc<dyn Motor>, Arc<dyn Motor>), String> {
     // La clave de Ajustes, en memoria (nunca se imprime).
-    let clave = pixpin_ia::nube::claves::leer(p).ok_or_else(|| format!("sin clave de {}", p.nombre()))?;
+    let clave =
+        pixpin_ia::nube::claves::leer(p).ok_or_else(|| format!("sin clave de {}", p.nombre()))?;
     let vision: Arc<dyn Motor> = Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero());
     let pensar = false;
     let motor = super::nube::motor(p, None, pensar)?;
@@ -346,7 +719,19 @@ fn proveedor() -> Proveedor {
 }
 
 /// **Un caso**, de punta a punta, en este proceso.
-fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::Escena, crate::imagenes_lienzo::ImagenesLienzo, usize), String> {
+fn correr(
+    caso: &Caso,
+    p: Proveedor,
+) -> Result<
+    (
+        Hecho,
+        PathBuf,
+        pixpin_motor2d::Escena,
+        crate::imagenes_lienzo::ImagenesLienzo,
+        usize,
+    ),
+    String,
+> {
     use pixpin_proyecto::{almacen, cuaderno};
     let (motor, vision) = motor_de(p)?;
     let dir = base().join("mundos").join(p.id()).join(caso.nombre);
@@ -355,19 +740,40 @@ fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::
     let raiz = dir.join("PixPin Max");
     std::fs::create_dir_all(&raiz).unwrap();
     let doc = corpus::ruta(caso.doc);
-    let bytes = std::fs::read(&doc).map_err(|e| format!("falta {} (genera el corpus): {e}", caso.doc))?;
+    let bytes =
+        std::fs::read(&doc).map_err(|e| format!("falta {} (genera el corpus): {e}", caso.doc))?;
     let adjuntar = caso.entrada != Entrada::EnLienzo;
-    let ids = super::documentos_acciones::pruebas::almacen_con(&raiz, &[("Documentos", if adjuntar { vec![(caso.doc, bytes)] } else { vec![] })]);
+    let ids = super::documentos_acciones::pruebas::almacen_con(
+        &raiz,
+        &[(
+            "Documentos",
+            if adjuntar {
+                vec![(caso.doc, bytes)]
+            } else {
+                vec![]
+            },
+        )],
+    );
     let proyecto = ids[0].clone();
     super::documentos::poner_ubicacion(pixpin_store::Ubicacion::Portable { raiz: raiz.clone() });
-    let en_el_chat = super::documentos_acciones::candidatos(&raiz).into_iter().find(|c| c.nombre == caso.doc).map(|c| c.ruta);
+    let en_el_chat = super::documentos_acciones::candidatos(&raiz)
+        .into_iter()
+        .find(|c| c.nombre == caso.doc)
+        .map(|c| c.ruta);
     // Como `chat::adjuntos`: solo lo que el OCR lee (fotos y PDF).
     let adjuntos: Vec<Adjunto> = en_el_chat
         .iter()
         .filter(|r| super::ocr::es_pdf(r) || super::ocr::es_imagen(r))
-        .map(|r| Adjunto { nombre: caso.doc.to_string(), ruta: r.clone() })
+        .map(|r| Adjunto {
+            nombre: caso.doc.to_string(),
+            ruta: r.clone(),
+        })
         .collect();
-    let foto = if caso.entrada == Entrada::Foto { en_el_chat.clone() } else { None };
+    let foto = if caso.entrada == Entrada::Foto {
+        en_el_chat.clone()
+    } else {
+        None
+    };
     // El lienzo abierto, con la imagen pegada si el caso es «calca esto».
     al_lienzo::vaciar_para_pruebas();
     let editor = al_lienzo::EditorAbierto::nuevo(1);
@@ -378,25 +784,57 @@ fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::
         let (w, h) = (img.ancho as f32, img.alto as f32);
         let id = imagenes.guardar(img).ok_or("no se guardo la imagen")?;
         let k = 640.0 / w;
-        escena.anadir(crate::imagenes_lienzo::elemento_imagen(id, -300.0, -260.0, w * k, h * k));
+        escena.anadir(crate::imagenes_lienzo::elemento_imagen(
+            id,
+            -300.0,
+            -260.0,
+            w * k,
+            h * k,
+        ));
     }
     let antes = escena.cuantos_visibles();
-    super::acciones::RESPUESTA_EN_PRUEBAS.store(pixpin_shell::mensajero::respuesta::ACEPTADO, std::sync::atomic::Ordering::Relaxed);
+    super::acciones::RESPUESTA_EN_PRUEBAS.store(
+        pixpin_shell::mensajero::respuesta::ACEPTADO,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     super::acciones::MANDADOS_EN_PRUEBAS.lock().unwrap().clear();
     *super::turno::VISION_EN_PRUEBAS.lock().unwrap() = Some(vision);
     *super::anotar_inteligente::ULTIMO_EN_PRUEBAS.lock().unwrap() = None;
     // La pregunta, en el chat (como al pulsar Enviar) y el turno por
     // `pensado::preparar_turno`.
     let carpeta = almacen::carpeta(&raiz, &proyecto);
-    let sello = cuaderno::Sello { cuando: 5_000, numero: 50, aparato: "PC01".into(), proyecto: proyecto.clone() };
+    let sello = cuaderno::Sello {
+        cuando: 5_000,
+        numero: 50,
+        aparato: "PC01".into(),
+        proyecto: proyecto.clone(),
+    };
     cuaderno::anadir(&carpeta, &cuaderno::Mensaje::nota(caso.pedido, &sello)).unwrap();
     let mensajes = cuaderno::Cuaderno::leer_de(&carpeta).unwrap().mensajes;
     let anteriores = &mensajes[..mensajes.len() - 1];
     let herramientas = pixpin_ia::herramientas::catalogo();
     let pensar = super::pensado::pensar(None, caso.pedido);
-    let (historial, memoria) = super::pensado::preparar_turno(&raiz, &proyecto, anteriores, caso.pedido, pensar, super::pensado::VENTANA_NUBE, &herramientas);
+    let (historial, memoria) = super::pensado::preparar_turno(
+        &raiz,
+        &proyecto,
+        anteriores,
+        caso.pedido,
+        pensar,
+        super::pensado::VENTANA_NUBE,
+        &herramientas,
+    );
     let t0 = Instant::now();
-    let mut t = Turno::lanzar_con_memoria(motor.clone(), proyecto.clone(), historial, adjuntos, foto, None, herramientas, Some(memoria), Some(raiz.clone()));
+    let mut t = Turno::lanzar_con_memoria(
+        motor.clone(),
+        proyecto.clone(),
+        historial,
+        adjuntos,
+        foto,
+        None,
+        herramientas,
+        Some(memoria),
+        Some(raiz.clone()),
+    );
     let mut h = Hecho::default();
     let mut primero = None;
     let vista = (-400.0, -300.0, 400.0, 300.0);
@@ -414,13 +852,20 @@ fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::
                         Evento::Herramienta { llamada, .. } => {
                             let detalle = match llamada {
                                 pixpin_ia::herramientas::Llamada::App(a) => a.pedido.to_string(),
-                                pixpin_ia::herramientas::Llamada::Editar(x) => Value::Object(x.args.clone()).to_string(),
+                                pixpin_ia::herramientas::Llamada::Editar(x) => {
+                                    Value::Object(x.args.clone()).to_string()
+                                }
                                 otra => format!("{otra:?}"),
                             };
                             h.llamadas.push((llamada.nombre().to_string(), detalle));
                         }
-                        Evento::Resultado { nombre, ok, texto } => h.resultados.push((nombre.clone(), *ok, texto.clone())),
-                        Evento::Reintento { motivo } => h.resultados.push(("(reintento)".into(), false, motivo.clone())),
+                        Evento::Resultado { nombre, ok, texto } => {
+                            h.resultados.push((nombre.clone(), *ok, texto.clone()))
+                        }
+                        Evento::Reintento { motivo } => {
+                            h.resultados
+                                .push(("(reintento)".into(), false, motivo.clone()))
+                        }
                         _ => {}
                     }
                     vivo.aplicar(&e);
@@ -462,8 +907,16 @@ fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::
     drop(editor);
     h.t_total = t0.elapsed().as_secs_f32();
     h.t_primero = primero.unwrap_or(h.t_total);
-    h.pedidos = super::acciones::MANDADOS_EN_PRUEBAS.lock().unwrap().iter().filter_map(|j| serde_json::from_str(j).ok()).collect();
-    h.anotado = super::anotar_inteligente::ULTIMO_EN_PRUEBAS.lock().unwrap().take();
+    h.pedidos = super::acciones::MANDADOS_EN_PRUEBAS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter_map(|j| serde_json::from_str(j).ok())
+        .collect();
+    h.anotado = super::anotar_inteligente::ULTIMO_EN_PRUEBAS
+        .lock()
+        .unwrap()
+        .take();
     let vivos: Vec<&pixpin_motor2d::Elemento> = escena.visibles().collect();
     h.nuevos = vivos.len().saturating_sub(antes);
     h.textos_lienzo = vivos
@@ -494,15 +947,23 @@ fn correr(caso: &Caso, p: Proveedor) -> Result<(Hecho, PathBuf, pixpin_motor2d::
 // A PNG: original | resultado
 
 fn escalar(img: pixpin_codec::ImagenRgba, max_w: u32, max_h: u32) -> pixpin_codec::ImagenRgba {
-    let k = (max_w as f32 / img.ancho as f32).min(max_h as f32 / img.alto as f32).min(1.0);
+    let k = (max_w as f32 / img.ancho as f32)
+        .min(max_h as f32 / img.alto as f32)
+        .min(1.0);
     if k >= 0.999 {
         return img;
     }
-    let (w, h) = (((img.ancho as f32 * k) as u32).max(1), ((img.alto as f32 * k) as u32).max(1));
+    let (w, h) = (
+        ((img.ancho as f32 * k) as u32).max(1),
+        ((img.alto as f32 * k) as u32).max(1),
+    );
     pixpin_codec::imagen::redimensionar(img, w, h).unwrap()
 }
 
-fn lado_a_lado(a: &pixpin_codec::ImagenRgba, b: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
+fn lado_a_lado(
+    a: &pixpin_codec::ImagenRgba,
+    b: &pixpin_codec::ImagenRgba,
+) -> pixpin_codec::ImagenRgba {
     let sep = 24u32;
     let w = a.ancho + sep + b.ancho;
     let h = a.alto.max(b.alto);
@@ -511,12 +972,17 @@ fn lado_a_lado(a: &pixpin_codec::ImagenRgba, b: &pixpin_codec::ImagenRgba) -> pi
         for y in 0..img.alto {
             let d = ((y * w + ox) * 4) as usize;
             let o = (y * img.ancho * 4) as usize;
-            px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+            px[d..d + (img.ancho * 4) as usize]
+                .copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
         }
     };
     poner(a, 0);
     poner(b, a.ancho + sep);
-    pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }
+    pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    }
 }
 
 fn encima(a: &pixpin_codec::ImagenRgba, b: &pixpin_codec::ImagenRgba) -> pixpin_codec::ImagenRgba {
@@ -527,12 +993,17 @@ fn encima(a: &pixpin_codec::ImagenRgba, b: &pixpin_codec::ImagenRgba) -> pixpin_
         for y in 0..img.alto {
             let d = ((oy + y) * w * 4) as usize;
             let o = (y * img.ancho * 4) as usize;
-            px[d..d + (img.ancho * 4) as usize].copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
+            px[d..d + (img.ancho * 4) as usize]
+                .copy_from_slice(&img.pixeles[o..o + (img.ancho * 4) as usize]);
         }
     };
     poner(a, 0);
     poner(b, a.alto + 12);
-    pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px }
+    pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    }
 }
 
 /// Un texto largo en una tarjeta blanca (la respuesta del chat).
@@ -551,8 +1022,13 @@ fn tarjeta(titulo: &str, texto: &str, ancho: f32) -> pixpin_codec::ImagenRgba {
     corpus::hoja_a_png(hoja, (ancho * 1.25) as u32)
 }
 
-fn escena_a_png(escena: &pixpin_motor2d::Escena, imagenes: &crate::imagenes_lienzo::ImagenesLienzo, ancho: u32) -> Option<pixpin_codec::ImagenRgba> {
-    let mut hojas = pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
+fn escena_a_png(
+    escena: &pixpin_motor2d::Escena,
+    imagenes: &crate::imagenes_lienzo::ImagenesLienzo,
+    ancho: u32,
+) -> Option<pixpin_codec::ImagenRgba> {
+    let mut hojas =
+        pixpin_motor2d::exportar::hojas(escena, pixpin_motor2d::exportar::Alcance::Todo, &[], None);
     if hojas.is_empty() {
         return None;
     }
@@ -560,11 +1036,24 @@ fn escena_a_png(escena: &pixpin_motor2d::Escena, imagenes: &crate::imagenes_lien
     let c = hojas[0].caja;
     let c = (c.0 - 20.0, c.1 - 20.0, c.2 + 20.0, c.3 + 20.0);
     hojas[0].caja = c;
-    let de = |id: u64| imagenes.rgba(id).map(|i| pixpin_pdf::escribir::Pixeles { ancho: i.ancho, alto: i.alto, rgba: i.pixeles.clone() });
-    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(&hojas, &[(c.2 - c.0, c.3 - c.1)], &de, super::hoja_a_lienzo::letra_segoe())?;
+    let de = |id: u64| {
+        imagenes.rgba(id).map(|i| pixpin_pdf::escribir::Pixeles {
+            ancho: i.ancho,
+            alto: i.alto,
+            rgba: i.pixeles.clone(),
+        })
+    };
+    let pdf = pixpin_pdf::escribir::de_hojas_a_medida(
+        &hojas,
+        &[(c.2 - c.0, c.3 - c.1)],
+        &de,
+        super::hoja_a_lienzo::letra_segoe(),
+    )?;
     let tmp = std::env::temp_dir().join(format!("pixpin-banco-docs-{}.pdf", std::process::id()));
     std::fs::write(&tmp, pdf).ok()?;
-    let img = pixpin_pdf::Documento::abrir(&tmp).and_then(|d| d.renderizar(0, ancho)).ok();
+    let img = pixpin_pdf::Documento::abrir(&tmp)
+        .and_then(|d| d.renderizar(0, ancho))
+        .ok();
     let _ = std::fs::remove_file(&tmp);
     img
 }
@@ -578,17 +1067,38 @@ fn original(raiz: &Path, doc: &Path, dir: &Path) -> Option<pixpin_codec::ImagenR
     }
     let tmp = dir.join("exportado");
     let _ = std::fs::remove_dir_all(&tmp);
-    let hechos = super::documentos_acciones::exportar_a(raiz, doc, "png", &tmp, pixpin_store::Idioma::Espanol).ok()?;
+    let hechos = super::documentos_acciones::exportar_a(
+        raiz,
+        doc,
+        "png",
+        &tmp,
+        pixpin_store::Idioma::Espanol,
+    )
+    .ok()?;
     pixpin_codec::imagen::cargar(hechos.first()?).ok()
 }
 
 /// **El PNG del caso**: franja con pedido y tiempos; original | resultado.
-fn pintar_caso(caso: &Caso, motor: &str, h: &Hecho, veredicto: &Result<(), String>, raiz: &Path, escena: &pixpin_motor2d::Escena, imagenes: &crate::imagenes_lienzo::ImagenesLienzo) -> PathBuf {
+fn pintar_caso(
+    caso: &Caso,
+    motor: &str,
+    h: &Hecho,
+    veredicto: &Result<(), String>,
+    raiz: &Path,
+    escena: &pixpin_motor2d::Escena,
+    imagenes: &crate::imagenes_lienzo::ImagenesLienzo,
+) -> PathBuf {
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let dir = base().join(motor);
     std::fs::create_dir_all(&dir).unwrap();
-    let doc = super::documentos_acciones::candidatos(raiz).into_iter().find(|c| c.nombre == caso.doc).map(|c| c.ruta).unwrap_or_else(|| corpus::ruta(caso.doc));
-    let izq = original(raiz, &doc, &dir).map(|i| escalar(i, 1000, 1300)).unwrap_or_else(|| tarjeta("(sin vista previa)", caso.doc, 500.0));
+    let doc = super::documentos_acciones::candidatos(raiz)
+        .into_iter()
+        .find(|c| c.nombre == caso.doc)
+        .map(|c| c.ruta)
+        .unwrap_or_else(|| corpus::ruta(caso.doc));
+    let izq = original(raiz, &doc, &dir)
+        .map(|i| escalar(i, 1000, 1300))
+        .unwrap_or_else(|| tarjeta("(sin vista previa)", caso.doc, 500.0));
     // El resultado: lo anotado, el Excel, el lienzo o la respuesta.
     let mut der = None;
     if let Some((ruta, grupo, capas)) = &h.anotado
@@ -596,22 +1106,41 @@ fn pintar_caso(caso: &Caso, motor: &str, h: &Hecho, veredicto: &Result<(), Strin
     {
         let tmp = dir.join("anotado");
         let _ = std::fs::create_dir_all(&tmp);
-        let pngs = super::anotar_inteligente::banco::pintar_lo_anotado(raiz, ruta, grupo, capas, &tmp, caso.nombre);
-        der = pngs.first().and_then(|p| pixpin_codec::imagen::cargar(p).ok());
+        let pngs = super::anotar_inteligente::banco::pintar_lo_anotado(
+            raiz,
+            ruta,
+            grupo,
+            capas,
+            &tmp,
+            caso.nombre,
+        );
+        der = pngs
+            .first()
+            .and_then(|p| pixpin_codec::imagen::cargar(p).ok());
     }
     if der.is_none()
         && let Some(x) = h.excel()
     {
         let tmp = dir.join("excel");
         let _ = std::fs::remove_dir_all(&tmp);
-        der = super::documentos_acciones::exportar_a(raiz, &x, "png", &tmp, pixpin_store::Idioma::Espanol)
-            .ok()
-            .and_then(|v| v.first().and_then(|p| pixpin_codec::imagen::cargar(p).ok()));
+        der = super::documentos_acciones::exportar_a(
+            raiz,
+            &x,
+            "png",
+            &tmp,
+            pixpin_store::Idioma::Espanol,
+        )
+        .ok()
+        .and_then(|v| v.first().and_then(|p| pixpin_codec::imagen::cargar(p).ok()));
     }
     if der.is_none() && h.nuevos > 0 {
         der = escena_a_png(escena, imagenes, 1100);
     }
-    let der = escalar(der.unwrap_or_else(|| tarjeta("Respuesta del asistente", &h.texto, 760.0)), 1100, 1300);
+    let der = escalar(
+        der.unwrap_or_else(|| tarjeta("Respuesta del asistente", &h.texto, 760.0)),
+        1100,
+        1300,
+    );
     let cuerpo = lado_a_lado(&izq, &der);
     let herramientas: Vec<&str> = h.llamadas.iter().map(|(n, _)| n.as_str()).collect();
     let mut cab = format!(
@@ -624,7 +1153,11 @@ fn pintar_caso(caso: &Caso, motor: &str, h: &Hecho, veredicto: &Result<(), Strin
         },
         h.t_primero,
         h.t_total,
-        if herramientas.is_empty() { "sin herramientas".to_string() } else { herramientas.join(", ") },
+        if herramientas.is_empty() {
+            "sin herramientas".to_string()
+        } else {
+            herramientas.join(", ")
+        },
         caso.pedido,
         caso.doc
     );
@@ -646,7 +1179,12 @@ fn generar_corpus() {
     corpus::generar();
     for d in corpus::DOCS {
         let r = corpus::ruta(d.nombre);
-        println!("{:<34} {:>8} bytes  {}", d.nombre, std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0), d.tipo);
+        println!(
+            "{:<34} {:>8} bytes  {}",
+            d.nombre,
+            std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0),
+            d.tipo
+        );
     }
 }
 
@@ -662,7 +1200,12 @@ fn leer_corpus() {
         let r = super::en_el_chat::texto_del_documento(&corpus::ruta(d.nombre), &[], &parar);
         let ms = t.elapsed().as_millis();
         match r {
-            Ok(s) => println!("{:<34} {ms:>5} ms {:>6} letras  {}", d.nombre, s.chars().count(), s.chars().take(160).collect::<String>().replace('\n', " ⏎ ")),
+            Ok(s) => println!(
+                "{:<34} {ms:>5} ms {:>6} letras  {}",
+                d.nombre,
+                s.chars().count(),
+                s.chars().take(160).collect::<String>().replace('\n', " ⏎ ")
+            ),
             Err(e) => println!("{:<34} {ms:>5} ms ERROR {e}", d.nombre),
         }
     }
@@ -676,7 +1219,11 @@ fn medir_tablas() {
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let dir = base().join("referencia");
     std::fs::create_dir_all(&dir).unwrap();
-    for doc in ["07-stock-materiales.png", "06-notas-curso.pdf", "13-guia-escaneada.png"] {
+    for doc in [
+        "07-stock-materiales.png",
+        "06-notas-curso.pdf",
+        "13-guia-escaneada.png",
+    ] {
         let ruta = corpus::ruta(doc);
         let t = Instant::now();
         let Some((m, ancho)) = super::documentos_acciones::aspecto_de_tabla(&ruta, None) else {
@@ -705,9 +1252,20 @@ fn medir_tablas() {
         std::fs::create_dir_all(&raiz).unwrap();
         let mandar: super::acciones::Mandar = Box::new(|_| 1);
         let parar = std::sync::atomic::AtomicBool::new(false);
-        let adj = vec![Adjunto { nombre: doc.into(), ruta: ruta.clone() }];
-        let cx = super::documentos_acciones::Contexto { raiz: &raiz, proyecto: "p", adjuntos: &adj, mandar: &mandar, parar: &parar, idioma: pixpin_store::Idioma::Espanol };
-        let (els, dicho) = super::documentos_acciones::tabla_para_el_lienzo(&json!({}), &cx, None, None).unwrap();
+        let adj = vec![Adjunto {
+            nombre: doc.into(),
+            ruta: ruta.clone(),
+        }];
+        let cx = super::documentos_acciones::Contexto {
+            raiz: &raiz,
+            proyecto: "p",
+            adjuntos: &adj,
+            mandar: &mandar,
+            parar: &parar,
+            idioma: pixpin_store::Idioma::Espanol,
+        };
+        let (els, dicho) =
+            super::documentos_acciones::tabla_para_el_lienzo(&json!({}), &cx, None, None).unwrap();
         println!("  {dicho}");
         let mut escena = pixpin_motor2d::Escena::nueva();
         for e in els {
@@ -717,7 +1275,15 @@ fn medir_tablas() {
         let res = escena_a_png(&escena, &imagenes, 1200).unwrap();
         let ori = corpus::vista_previa(doc, 1200).unwrap();
         let png = dir.join(format!("tabla-{doc}.png"));
-        std::fs::write(&png, pixpin_codec::imagen::codificar_png(&lado_a_lado(&escalar(ori, 1100, 1300), &escalar(res, 1100, 1300))).unwrap()).unwrap();
+        std::fs::write(
+            &png,
+            pixpin_codec::imagen::codificar_png(&lado_a_lado(
+                &escalar(ori, 1100, 1300),
+                &escalar(res, 1100, 1300),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         println!("  PNG {}", png.display());
     }
 }
@@ -738,25 +1304,41 @@ fn informe(caso: &Caso, motor: &str, h: &Hecho, v: &Result<(), String>, png: &Pa
 #[test]
 #[ignore = "habla con la nube (lo lanza `banco`)"]
 fn un_caso() {
-    let Ok(nombre) = std::env::var("PIXPIN_BANCO_CASO") else { return };
+    let Ok(nombre) = std::env::var("PIXPIN_BANCO_CASO") else {
+        return;
+    };
     let _com = pixpin_shell::ComDelHilo::iniciar();
     super::turno::apagar_ojos(std::env::var("PIXPIN_BANCO_OJOS").as_deref() == Ok("0"));
     let p = proveedor();
-    let caso = casos().into_iter().find(|c| c.nombre == nombre).expect("caso desconocido");
+    let caso = casos()
+        .into_iter()
+        .find(|c| c.nombre == nombre)
+        .expect("caso desconocido");
     let (h, raiz, escena, imagenes, _) = match correr(&caso, p) {
         Ok(x) => x,
         Err(e) => {
             let inf = json!({"caso": caso.nombre, "motor": p.id(), "bien": false, "fallo": e, "primero": 0, "total": 0});
             let _ = std::fs::create_dir_all(base().join(p.id()));
-            let _ = std::fs::write(base().join(p.id()).join(format!("{}.json", caso.nombre)), inf.to_string());
+            let _ = std::fs::write(
+                base().join(p.id()).join(format!("{}.json", caso.nombre)),
+                inf.to_string(),
+            );
             println!("BANCO-JSON {inf}");
             return;
         }
     };
-    let v = if h.fallo_motor { Err(h.texto.chars().take(200).collect()) } else { (caso.comprobar)(&h) };
+    let v = if h.fallo_motor {
+        Err(h.texto.chars().take(200).collect())
+    } else {
+        (caso.comprobar)(&h)
+    };
     let png = pintar_caso(&caso, p.id(), &h, &v, &raiz, &escena, &imagenes);
     let inf = informe(&caso, p.id(), &h, &v, &png);
-    std::fs::write(base().join(p.id()).join(format!("{}.json", caso.nombre)), serde_json::to_string_pretty(&inf).unwrap()).unwrap();
+    std::fs::write(
+        base().join(p.id()).join(format!("{}.json", caso.nombre)),
+        serde_json::to_string_pretty(&inf).unwrap(),
+    )
+    .unwrap();
     println!("BANCO-JSON {inf}");
     // Sin esperar a soltar la GPU y el COM de los hilos: alguno se quedaba
     // colgado al salir (16-oct) y con el, el banco entero.
@@ -770,8 +1352,17 @@ fn un_caso() {
 fn banco() {
     let p = proveedor();
     let solo = std::env::var("PIXPIN_IA_SOLO").ok();
-    let a_la_vez: usize = std::env::var("PIXPIN_BANCO_A_LA_VEZ").ok().and_then(|n| n.parse().ok()).unwrap_or(7);
-    let lista: Vec<Caso> = casos().into_iter().filter(|c| solo.as_deref().is_none_or(|s| s.split('|').any(|x| c.nombre.contains(x)))).collect();
+    let a_la_vez: usize = std::env::var("PIXPIN_BANCO_A_LA_VEZ")
+        .ok()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(7);
+    let lista: Vec<Caso> = casos()
+        .into_iter()
+        .filter(|c| {
+            solo.as_deref()
+                .is_none_or(|s| s.split('|').any(|x| c.nombre.contains(x)))
+        })
+        .collect();
     let exe = std::env::current_exe().unwrap();
     let t0 = Instant::now();
     let mut vivos: Vec<(String, std::process::Child, Instant)> = Vec::new();
@@ -794,8 +1385,18 @@ fn banco() {
             nombre,
             v["primero"].as_f64().unwrap_or(0.0),
             v["total"].as_f64().unwrap_or(0.0),
-            v["herramientas"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(",")).unwrap_or_default(),
-            v["fallo"].as_str().map(|f| format!("<- {f}")).unwrap_or_default()
+            v["herramientas"]
+                .as_array()
+                .map(|a| a
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(","))
+                .unwrap_or_default(),
+            v["fallo"]
+                .as_str()
+                .map(|f| format!("<- {f}"))
+                .unwrap_or_default()
         );
         filas.push(v);
     };
@@ -804,9 +1405,16 @@ fn banco() {
             && let Some(c) = pendientes.pop_front()
         {
             let _ = std::fs::remove_file(json_de(c.nombre));
-            let salida = std::fs::File::create(registros.join(format!("{}.txt", c.nombre))).unwrap();
+            let salida =
+                std::fs::File::create(registros.join(format!("{}.txt", c.nombre))).unwrap();
             let hijo = std::process::Command::new(&exe)
-                .args(["--ignored", "--nocapture", "--exact", "asistente::banco_documentos::un_caso", "--test-threads=1"])
+                .args([
+                    "--ignored",
+                    "--nocapture",
+                    "--exact",
+                    "asistente::banco_documentos::un_caso",
+                    "--test-threads=1",
+                ])
                 .env("PIXPIN_BANCO_CASO", c.nombre)
                 .env("PIXPIN_IA_MOTOR", p.id())
                 .stdout(salida.try_clone().unwrap())
@@ -819,7 +1427,9 @@ fn banco() {
         while i < vivos.len() {
             let acabo = vivos[i].1.try_wait().ok().flatten().is_some();
             // Con su informe escrito hace rato, o 12 minutos sin acabar: fuera.
-            let informado = std::fs::metadata(json_de(&vivos[i].0)).and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(30));
+            let informado = std::fs::metadata(json_de(&vivos[i].0))
+                .and_then(|m| m.modified())
+                .is_ok_and(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(30));
             let colgado = vivos[i].2.elapsed() > Duration::from_secs(720);
             if acabo || informado || colgado {
                 let (n, mut hijo, _) = vivos.swap_remove(i);
@@ -834,7 +1444,9 @@ fn banco() {
         std::thread::sleep(Duration::from_millis(200));
     }
     let bien = filas.iter().filter(|v| v["bien"] == true).count();
-    println!("\n| caso | motor | bien | 1º visible | total | herramientas | fallo |\n|---|---|---|---|---|---|---|");
+    println!(
+        "\n| caso | motor | bien | 1º visible | total | herramientas | fallo |\n|---|---|---|---|---|---|---|"
+    );
     filas.sort_by(|a, b| a["caso"].as_str().cmp(&b["caso"].as_str()));
     for v in &filas {
         println!(
@@ -844,7 +1456,14 @@ fn banco() {
             if v["bien"] == true { "✓" } else { "✗" },
             v["primero"].as_f64().unwrap_or(0.0),
             v["total"].as_f64().unwrap_or(0.0),
-            v["herramientas"].as_array().map(|a| a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", ")).unwrap_or_default(),
+            v["herramientas"]
+                .as_array()
+                .map(|a| a
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", "))
+                .unwrap_or_default(),
             v["fallo"].as_str().unwrap_or("").replace('|', "/")
         );
     }
@@ -860,5 +1479,9 @@ fn banco() {
         media(&primeros),
         media(&totales)
     );
-    std::fs::write(base().join(format!("tabla-{}.json", p.id())), serde_json::to_string_pretty(&filas).unwrap()).unwrap();
+    std::fs::write(
+        base().join(format!("tabla-{}.json", p.id())),
+        serde_json::to_string_pretty(&filas).unwrap(),
+    )
+    .unwrap();
 }

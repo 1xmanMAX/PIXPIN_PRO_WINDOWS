@@ -94,7 +94,13 @@ pub struct Cabecera<'a, A> {
 /// Pinta la barra en lo alto de una ventana de ancho `w` y apunta sus zonas.
 /// Devuelve su alto. Llamar DESPUES de pintar el contenido, para que tape lo
 /// que se desplaza debajo y sus zonas ganen a las de el.
-pub fn pintar<A: Copy>(p: &Pintor, botones: &mut Botones<A>, w: f32, s: f32, c: &Cabecera<'_, A>) -> f32 {
+pub fn pintar<A: Copy>(
+    p: &Pintor,
+    botones: &mut Botones<A>,
+    w: f32,
+    s: f32,
+    c: &Cabecera<'_, A>,
+) -> f32 {
     pintar_con_segmentos(p, botones, w, s, c, &[])
 }
 
@@ -181,7 +187,8 @@ fn pintar_todo<A: Copy>(
     botones.zona(cerrar, c.cerrar);
     let mut x = cerrar.x;
     for b in c.botones.iter().rev() {
-        let ancho = crate::lecciones::ui::ancho_de_boton(p, b.icono.is_some(), b.rotulo, b.chapa, s);
+        let ancho =
+            crate::lecciones::ui::ancho_de_boton(p, b.icono.is_some(), b.rotulo, b.chapa, s);
         // Un boton solo de icono es cuadrado.
         let ancho = if b.rotulo.is_empty() { lado } else { ancho };
         x -= 10.0 * s + ancho;
@@ -200,7 +207,11 @@ fn pintar_todo<A: Copy>(
             };
             p.rellenar_redondeado(r, 10.0 * s, fondo);
             if let Some(i) = b.icono {
-                p.icono(i, encoger(r, 10.0 * s), if b.activo { Color::BLANCO } else { TEXTO });
+                p.icono(
+                    i,
+                    encoger(r, 10.0 * s),
+                    if b.activo { Color::BLANCO } else { TEXTO },
+                );
             }
             botones.zona(r, b.accion);
         } else {
@@ -247,7 +258,14 @@ fn pintar_todo<A: Copy>(
             if g.activo {
                 p.rellenar_redondeado(r, r.alto / 2.0, AZUL);
             } else if dentro(r, botones.raton) {
-                p.rellenar_redondeado(r, r.alto / 2.0, Color { a: 0.08, ..Color::BLANCO });
+                p.rellenar_redondeado(
+                    r,
+                    r.alto / 2.0,
+                    Color {
+                        a: 0.08,
+                        ..Color::BLANCO
+                    },
+                );
             }
             let (tw, th) = p.medir_texto(g.rotulo, tam);
             p.texto(
@@ -287,10 +305,21 @@ fn pintar_todo<A: Copy>(
             if g.activo {
                 p.rellenar_redondeado(r, r.alto / 2.0, hex(0x3A3A3C));
             } else if encima {
-                p.rellenar_redondeado(r, r.alto / 2.0, Color { a: 0.06, ..Color::BLANCO });
+                p.rellenar_redondeado(
+                    r,
+                    r.alto / 2.0,
+                    Color {
+                        a: 0.06,
+                        ..Color::BLANCO
+                    },
+                );
             }
             let li = 20.0 * s;
-            let tinta = if g.activo || encima { Color::BLANCO } else { GRIS };
+            let tinta = if g.activo || encima {
+                Color::BLANCO
+            } else {
+                GRIS
+            };
             p.icono(
                 g.icono,
                 RectF {

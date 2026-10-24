@@ -22,10 +22,10 @@ use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
 use std::time::Duration;
 
 use pixpin_ia::acciones::AccionApp;
-use pixpin_ia::fechas::Momento;
-use pixpin_ia::tareas::{Chat, Fijas, FuenteTareas, VistaLista, VistaTarea};
 use pixpin_ia::calcar::{self, Parametros};
+use pixpin_ia::fechas::Momento;
 use pixpin_ia::lienzo;
+use pixpin_ia::tareas::{Chat, Fijas, FuenteTareas, VistaLista, VistaTarea};
 use serde_json::Value;
 
 use super::turno::{Adjunto, Aviso};
@@ -71,7 +71,8 @@ pub fn confirmar_en_la_burbuja(tx: Sender<Aviso>, parar: Arc<AtomicBool>) -> Con
 }
 
 /// Hace al usuario una pregunta con opciones (`preguntar_usuario`) y espera.
-pub type Preguntar = Box<dyn Fn(&pixpin_ia::preguntar::Pregunta) -> pixpin_ia::preguntar::Contestada + Send>;
+pub type Preguntar =
+    Box<dyn Fn(&pixpin_ia::preguntar::Pregunta) -> pixpin_ia::preguntar::Contestada + Send>;
 
 /// **La pregunta con opciones va a la burbuja** (22-oct-2026), por el mismo
 /// canal que la de confirmar, y se espera lo que elija o escriba. El chat
@@ -112,7 +113,8 @@ pub static MANDADOS_EN_PRUEBAS: std::sync::Mutex<Vec<String>> = std::sync::Mutex
 /// Lo que contesta esa «PixPin» de mentira (0: nada; el banco de documentos
 /// pone `1`, aceptado, para que lo mandado siga su camino como en la app).
 #[cfg(test)]
-pub static RESPUESTA_EN_PRUEBAS: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+pub static RESPUESTA_EN_PRUEBAS: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(0);
 
 /// A la PixPin que corre (esta misma), como el plugin.
 pub fn mandar_a_pixpin() -> Mandar {
@@ -120,7 +122,10 @@ pub fn mandar_a_pixpin() -> Mandar {
     // un pedido le haria cosas de verdad. Se apunta para comprobarlo.
     #[cfg(test)]
     return Box::new(|j| {
-        MANDADOS_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()).push(j.to_string());
+        MANDADOS_EN_PRUEBAS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(j.to_string());
         RESPUESTA_EN_PRUEBAS.load(std::sync::atomic::Ordering::Relaxed)
     });
     #[cfg(not(test))]
@@ -144,9 +149,16 @@ fn hay_imagen(adjuntos: &[Adjunto], con_foto: bool) -> bool {
 /// se ofrece `calcar_imagen`, al modelo local y a los de la nube (medido
 /// 14-oct: con mas herramientas a mano, el 2B dibujaba el perrito adjunto
 /// con 4 triangulos).
-pub fn es_para_calcar(historial: &[pixpin_ia::Mensaje], adjuntos: &[Adjunto], con_foto: bool) -> bool {
+pub fn es_para_calcar(
+    historial: &[pixpin_ia::Mensaje],
+    adjuntos: &[Adjunto],
+    con_foto: bool,
+) -> bool {
     let q = pixpin_ia::acciones::normalizar(&ultimo_pedido(historial));
-    let palabras: Vec<&str> = q.split(|c: char| !c.is_alphanumeric()).filter(|p| !p.is_empty()).collect();
+    let palabras: Vec<&str> = q
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|p| !p.is_empty())
+        .collect();
     hay_imagen(adjuntos, con_foto)
         && pixpin_ia::seleccion::pide_la_imagen(&palabras)
         && !pixpin_ia::seleccion::pide_una_tabla(&palabras)
@@ -187,7 +199,9 @@ pub struct FuenteDeLaApp {
 
 impl FuenteDeLaApp {
     pub fn nueva(raiz: &Path) -> FuenteDeLaApp {
-        FuenteDeLaApp { raiz: raiz.to_path_buf() }
+        FuenteDeLaApp {
+            raiz: raiz.to_path_buf(),
+        }
     }
 }
 
@@ -216,7 +230,11 @@ pub fn vista_de(l: &crate::tareas::Lista) -> VistaLista {
 
 impl FuenteTareas for FuenteDeLaApp {
     fn listas(&self) -> Vec<VistaLista> {
-        crate::tareas::reunir(&self.raiz).0.iter().map(vista_de).collect()
+        crate::tareas::reunir(&self.raiz)
+            .0
+            .iter()
+            .map(vista_de)
+            .collect()
     }
 
     fn chats(&self) -> Vec<Chat> {
@@ -240,7 +258,12 @@ impl FuenteTareas for FuenteDeLaApp {
 /// resuelven con las listas de verdad (`pixpin_ia::tareas::hacer`); pregunta
 /// antes si hace falta (con los nombres de verdad) y manda los pedidos en
 /// orden. `Ok`: la frase corta de «hecho» (o la lista, si era una consulta).
-pub fn hacer(a: &AccionApp, raiz: Option<&Path>, confirmar: &Confirmar, mandar: &Mandar) -> Result<String, String> {
+pub fn hacer(
+    a: &AccionApp,
+    raiz: Option<&Path>,
+    confirmar: &Confirmar,
+    mandar: &Mandar,
+) -> Result<String, String> {
     let sin_raiz = Fijas::default();
     let app = raiz.map(FuenteDeLaApp::nueva);
     let fuente: &dyn FuenteTareas = match &app {
@@ -266,23 +289,36 @@ pub fn hacer_con(
     crate::automatizaciones::revisar_pedido(&a.pedido)?;
     let mut con_hora = false;
     let r = pixpin_ia::tareas::hacer(a, fuente, &|q| confirmar(q), &mut |p| {
-        con_hora |= p.get("texto").and_then(Value::as_str).is_some_and(|t| t.contains('⏰'));
+        con_hora |= p
+            .get("texto")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.contains('⏰'));
         match mandar(&p.to_string()) {
             pixpin_shell::mensajero::respuesta::ACEPTADO => Ok(()),
-            pixpin_shell::mensajero::respuesta::NO_SE_ENTIENDE => Err("PixPin no entendio el pedido".into()),
-            pixpin_shell::mensajero::respuesta::VERSION_NO => Err("PixPin no conoce esta version del pedido".into()),
+            pixpin_shell::mensajero::respuesta::NO_SE_ENTIENDE => {
+                Err("PixPin no entendio el pedido".into())
+            }
+            pixpin_shell::mensajero::respuesta::VERSION_NO => {
+                Err("PixPin no conoce esta version del pedido".into())
+            }
             _ => Err("PixPin no contesto".into()),
         }
     });
     // Una tarea con fecha: que el vigia de recordatorios la tenga ya.
-    if con_hora && r.is_ok() && let Some(raiz) = raiz {
+    if con_hora
+        && r.is_ok()
+        && let Some(raiz) = raiz
+    {
         crate::recordatorios::releer(raiz);
     }
     r
 }
 
 /// La imagen que se calca: la nombrada, o la ultima imagen adjunta.
-pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> Result<&'a Adjunto, String> {
+pub fn imagen_para_calcar<'a>(
+    adjuntos: &'a [Adjunto],
+    nombre: Option<&str>,
+) -> Result<&'a Adjunto, String> {
     let imagenes: Vec<Adjunto> = adjuntos
         .iter()
         .filter(|a| super::ocr::es_imagen(&a.ruta))
@@ -297,11 +333,14 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
                 pdf.nombre
             ));
         }
-        return Err("no hay ninguna imagen adjunta que calcar; pide al usuario que adjunte la foto".into());
+        return Err(
+            "no hay ninguna imagen adjunta que calcar; pide al usuario que adjunte la foto".into(),
+        );
     }
     // Un nombre que no esta (el 2B pidio «perro» con «perrito.png» adjunto,
     // 14-oct) no es motivo para no calcar: la ultima imagen.
-    let elegido = super::ocr::elegir(&imagenes, nombre).or_else(|_| super::ocr::elegir(&imagenes, None))?;
+    let elegido =
+        super::ocr::elegir(&imagenes, nombre).or_else(|_| super::ocr::elegir(&imagenes, None))?;
     adjuntos
         .iter()
         .find(|a| a.ruta == elegido.ruta)
@@ -311,19 +350,34 @@ pub fn imagen_para_calcar<'a>(adjuntos: &'a [Adjunto], nombre: Option<&str>) -> 
 /// **Calca** una imagen del disco: los elementos de Excalidraw, listos para
 /// el lienzo, y cuantos son.
 pub fn calcar_fichero(ruta: &Path, p: &Parametros, semilla: u64) -> Result<Vec<Value>, String> {
-    let mut img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    let mut img = pixpin_codec::imagen::cargar(ruta)
+        .map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
     // El texto no se calca como forma (salian garabatos): lo que lee el OCR
     // se tapa y va como texto editable (15-oct). Sin OCR, como antes.
     let palabras: Vec<pixpin_ia::hoja::PalabraHoja> = if pixpin_ocr::disponible() {
-        let mut v = super::hoja_a_lienzo::ocr(&img.pixeles, img.ancho, img.alto).unwrap_or_default();
-        v.retain(|w| w.texto.chars().filter(|c| c.is_alphanumeric()).count() >= 2 && w.caja.w > 0.0 && w.caja.h > 0.0);
+        let mut v =
+            super::hoja_a_lienzo::ocr(&img.pixeles, img.ancho, img.alto).unwrap_or_default();
+        v.retain(|w| {
+            w.texto.chars().filter(|c| c.is_alphanumeric()).count() >= 2
+                && w.caja.w > 0.0
+                && w.caja.h > 0.0
+        });
         // Solo lo de la zona que se calca.
         if let Some([zx, zy, zw, zh]) = p.zona {
             let (fw, fh) = (img.ancho as f64, img.alto as f64);
-            v.retain(|w| (zx * fw..=(zx + zw) * fw).contains(&w.caja.cx()) && (zy * fh..=(zy + zh) * fh).contains(&w.caja.cy()));
+            v.retain(|w| {
+                (zx * fw..=(zx + zw) * fw).contains(&w.caja.cx())
+                    && (zy * fh..=(zy + zh) * fh).contains(&w.caja.cy())
+            });
         }
         for w in &mut v {
-            w.color = pixpin_ia::hoja::imagen::color_de_tinta(&img.pixeles, img.ancho, img.alto, &w.caja, 150);
+            w.color = pixpin_ia::hoja::imagen::color_de_tinta(
+                &img.pixeles,
+                img.ancho,
+                img.alto,
+                &w.caja,
+                150,
+            );
         }
         v
     } else {
@@ -379,12 +433,25 @@ mod pruebas {
             codigo: codigo.into(),
             titulo: titulo.into(),
             cuando: 0,
-            tareas: vec![VistaTarea { indice: 0, texto: "algo".into(), hecha: false, creada: None, vence: None }],
+            tareas: vec![VistaTarea {
+                indice: 0,
+                texto: "algo".into(),
+                hecha: false,
+                creada: None,
+                vence: None,
+            }],
         };
         Fijas {
             listas: vec![lista("1", "algo"), lista("2", "destino")],
-            chats: vec![Chat { id: "p".into(), nombre: "algo".into(), guardados: false }],
-            ahora: Some(Momento { dia: 20_000, minuto: 600 }),
+            chats: vec![Chat {
+                id: "p".into(),
+                nombre: "algo".into(),
+                guardados: false,
+            }],
+            ahora: Some(Momento {
+                dia: 20_000,
+                minuto: 600,
+            }),
         }
     }
 
@@ -415,7 +482,8 @@ mod pruebas {
                 a.herramienta,
                 a.accion
             );
-            let pasos = pixpin_ia::tareas::resolver(&hecha, &fuente()).unwrap_or_else(|e| panic!("{}: {e}", a.herramienta));
+            let pasos = pixpin_ia::tareas::resolver(&hecha, &fuente())
+                .unwrap_or_else(|e| panic!("{}: {e}", a.herramienta));
             for mut p in pasos.pedidos {
                 if let Some(o) = p.as_object_mut()
                     && o.remove("__en_lista_nueva").is_some()
@@ -423,7 +491,8 @@ mod pruebas {
                     o.insert("codigo".into(), json!("3"));
                 }
                 let json = p.to_string();
-                crate::pedidos::leer(&json).unwrap_or_else(|e| panic!("{}: {json}: {e:?}", a.herramienta));
+                crate::pedidos::leer(&json)
+                    .unwrap_or_else(|e| panic!("{}: {json}: {e:?}", a.herramienta));
             }
         }
     }
@@ -439,8 +508,16 @@ mod pruebas {
         let no: Confirmar = Box::new(|_| false);
         let si: Confirmar = Box::new(|_| true);
         let f = fuente();
-        let borrar = validar(por_nombre("borrar_lista").unwrap(), &ejemplo(por_nombre("borrar_lista").unwrap())).unwrap();
-        assert!(hacer_con(&borrar, &f, None, &no, &mandar).unwrap_err().contains("dijo que no"));
+        let borrar = validar(
+            por_nombre("borrar_lista").unwrap(),
+            &ejemplo(por_nombre("borrar_lista").unwrap()),
+        )
+        .unwrap();
+        assert!(
+            hacer_con(&borrar, &f, None, &no, &mandar)
+                .unwrap_err()
+                .contains("dijo que no")
+        );
         assert!(mandados.lock().unwrap().is_empty(), "salio sin permiso");
         assert!(hacer_con(&borrar, &f, None, &si, &mandar).is_ok());
         assert_eq!(mandados.lock().unwrap().len(), 1);
@@ -451,15 +528,27 @@ mod pruebas {
             *p.lock().unwrap() = true;
             false
         });
-        let tarea = validar(por_nombre("anadir_tarea").unwrap(), &ejemplo(por_nombre("anadir_tarea").unwrap())).unwrap();
+        let tarea = validar(
+            por_nombre("anadir_tarea").unwrap(),
+            &ejemplo(por_nombre("anadir_tarea").unwrap()),
+        )
+        .unwrap();
         let r = hacer_con(&tarea, &f, None, &espia, &mandar).unwrap();
         assert!(r.starts_with("Apuntada «algo»"), "{r}");
         assert!(!*preguntado.lock().unwrap());
         // Si PixPin no contesta, se dice.
         let sordo: Mandar = Box::new(|_| 0);
-        assert!(hacer_con(&tarea, &f, None, &si, &sordo).unwrap_err().contains("no contesto"));
+        assert!(
+            hacer_con(&tarea, &f, None, &si, &sordo)
+                .unwrap_err()
+                .contains("no contesto")
+        );
         // Sin donde leer las tareas, lo que las nombra no se hace a ciegas.
-        assert!(hacer(&tarea, None, &si, &mandar).unwrap_err().contains("no puedo leer"));
+        assert!(
+            hacer(&tarea, None, &si, &mandar)
+                .unwrap_err()
+                .contains("no puedo leer")
+        );
     }
 
     /// **De punta a punta con las tareas de verdad**: un almacen de prueba,
@@ -467,7 +556,8 @@ mod pruebas {
     /// por `pedidos::atender` como los del plugin, y lo que queda en disco.
     #[test]
     fn las_tareas_desde_el_asistente_de_punta_a_punta() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-asistente-tareas-{}", std::process::id()));
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-asistente-tareas-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
         std::fs::create_dir_all(&raiz).unwrap();
         crate::tareas::apuntar(&raiz, "PC01", "comprar pan").unwrap();
@@ -494,55 +584,126 @@ mod pruebas {
         let f = FuenteDeLaApp::nueva(&raiz);
         let ahora = f.ahora();
         let orden = |t: &str| {
-            let o = pixpin_ia::rapido::interpretar(t, ahora).unwrap_or_else(|| panic!("«{t}» no va por el camino rapido"));
+            let o = pixpin_ia::rapido::interpretar(t, ahora)
+                .unwrap_or_else(|| panic!("«{t}» no va por el camino rapido"));
             let cruda = pixpin_ia::motor::LlamadaCruda {
                 id: "x".into(),
                 nombre: o.herramienta.into(),
                 argumentos: Value::Object(o.args).to_string(),
             };
-            match pixpin_ia::herramientas::validar(&cruda, &pixpin_ia::herramientas::catalogo()).unwrap().llamada {
+            match pixpin_ia::herramientas::validar(&cruda, &pixpin_ia::herramientas::catalogo())
+                .unwrap()
+                .llamada
+            {
                 pixpin_ia::Llamada::App(a) => a,
                 otra => panic!("{otra:?}"),
             }
         };
         let t0 = std::time::Instant::now();
-        let r = hacer_con(&orden("apunta revisar planos mañana a las 10"), &f, Some(&raiz), &si, &mandar).unwrap();
+        let r = hacer_con(
+            &orden("apunta revisar planos mañana a las 10"),
+            &f,
+            Some(&raiz),
+            &si,
+            &mandar,
+        )
+        .unwrap();
         println!("anadir por el camino rapido: {:?}", t0.elapsed());
         assert_eq!(r, "Apuntada «revisar planos» para mañana 10:00.");
-        let r = hacer_con(&orden("marca como hecha la tarea comprar pan"), &f, Some(&raiz), &si, &mandar).unwrap();
+        let r = hacer_con(
+            &orden("marca como hecha la tarea comprar pan"),
+            &f,
+            Some(&raiz),
+            &si,
+            &mandar,
+        )
+        .unwrap();
         assert_eq!(r, "«comprar pan» marcada como hecha.");
         let editar = validar(
             por_nombre("editar_tarea").unwrap(),
-            &serde_json::from_str(r#"{"tarea":"revisar planos","texto":"revisar planos y cotas"}"#).unwrap(),
+            &serde_json::from_str(r#"{"tarea":"revisar planos","texto":"revisar planos y cotas"}"#)
+                .unwrap(),
         )
         .unwrap();
         hacer_con(&editar, &f, Some(&raiz), &si, &mandar).unwrap();
         let inbox = f.listas().into_iter().find(|l| l.es_inbox()).unwrap();
         assert_eq!(inbox.tareas.len(), 2);
-        assert!(inbox.tareas[0].hecha && inbox.tareas[0].texto == "comprar pan", "{inbox:?}");
+        assert!(
+            inbox.tareas[0].hecha && inbox.tareas[0].texto == "comprar pan",
+            "{inbox:?}"
+        );
         assert_eq!(inbox.tareas[1].texto, "revisar planos y cotas");
-        assert_eq!(inbox.tareas[1].vence.map(|v| v.dia), Some(ahora.dia + 1), "la fecha sigue tras editar");
+        assert_eq!(
+            inbox.tareas[1].vence.map(|v| v.dia),
+            Some(ahora.dia + 1),
+            "la fecha sigue tras editar"
+        );
         let t0 = std::time::Instant::now();
-        let lista = hacer_con(&orden("¿qué tengo pendiente?"), &f, Some(&raiz), &si, &mandar).unwrap();
+        let lista = hacer_con(
+            &orden("¿qué tengo pendiente?"),
+            &f,
+            Some(&raiz),
+            &si,
+            &mandar,
+        )
+        .unwrap();
         println!("consulta por el camino rapido: {:?}", t0.elapsed());
-        assert_eq!(lista, "Tareas pendientes (1):\nInbox:\n  ☐ revisar planos y cotas — mañana 10:00");
+        assert_eq!(
+            lista,
+            "Tareas pendientes (1):\nInbox:\n  ☐ revisar planos y cotas — mañana 10:00"
+        );
         // Negativo: una tarea que no esta no toca nada.
-        let e = hacer_con(&orden("tacha pintar la luna"), &f, Some(&raiz), &si, &mandar).unwrap_err();
+        let e = hacer_con(
+            &orden("tacha pintar la luna"),
+            &f,
+            Some(&raiz),
+            &si,
+            &mandar,
+        )
+        .unwrap_err();
         assert!(e.contains("No encuentro"), "{e}");
         // Mover a una lista nueva y quitar (con su pregunta).
-        hacer_con(&orden("crea una lista llamada Obra"), &f, Some(&raiz), &si, &mandar).unwrap();
+        hacer_con(
+            &orden("crea una lista llamada Obra"),
+            &f,
+            Some(&raiz),
+            &si,
+            &mandar,
+        )
+        .unwrap();
         let mover = validar(
             por_nombre("mover_tarea").unwrap(),
             &serde_json::from_str(r#"{"tarea":"revisar planos","a_lista":"Obra"}"#).unwrap(),
         )
         .unwrap();
-        assert_eq!(hacer_con(&mover, &f, Some(&raiz), &si, &mandar).unwrap(), "«revisar planos y cotas» movida a «Obra».");
-        let quitar =
-            validar(por_nombre("quitar_tarea").unwrap(), &serde_json::from_str(r#"{"tarea":"comprar pan"}"#).unwrap()).unwrap();
+        assert_eq!(
+            hacer_con(&mover, &f, Some(&raiz), &si, &mandar).unwrap(),
+            "«revisar planos y cotas» movida a «Obra»."
+        );
+        let quitar = validar(
+            por_nombre("quitar_tarea").unwrap(),
+            &serde_json::from_str(r#"{"tarea":"comprar pan"}"#).unwrap(),
+        )
+        .unwrap();
         hacer_con(&quitar, &f, Some(&raiz), &si, &mandar).unwrap();
         let listas = f.listas();
-        assert!(listas.iter().find(|l| l.es_inbox()).unwrap().tareas.is_empty());
-        assert_eq!(listas.iter().find(|l| l.titulo == "Obra").unwrap().tareas.len(), 1);
+        assert!(
+            listas
+                .iter()
+                .find(|l| l.es_inbox())
+                .unwrap()
+                .tareas
+                .is_empty()
+        );
+        assert_eq!(
+            listas
+                .iter()
+                .find(|l| l.titulo == "Obra")
+                .unwrap()
+                .tareas
+                .len(),
+            1
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -555,15 +716,25 @@ mod pruebas {
         let h = |t: &str| vec![pixpin_ia::Mensaje::usuario(t)];
         let pedido = h("Dibuja este perrito de la imagen adjunta dentro del lienzo.");
         assert!(es_para_calcar(&pedido, &perrito, false));
-        let n: Vec<String> = herramientas_para(&pedido, &perrito, false).into_iter().map(|x| x.nombre).collect();
+        let n: Vec<String> = herramientas_para(&pedido, &perrito, false)
+            .into_iter()
+            .map(|x| x.nombre)
+            .collect();
         assert_eq!(n, vec!["calcar_imagen"]);
         // Con la foto pegada al mensaje, igual.
         assert!(es_para_calcar(&pedido, &[], true));
         // Negativo: dibujar otra cosa con la imagen ahi no calca.
         let circulo = h("Dibuja un círculo");
         assert!(!es_para_calcar(&circulo, &perrito, false));
-        let n: Vec<String> = herramientas_para(&circulo, &perrito, false).into_iter().map(|x| x.nombre).collect();
-        assert!(n.contains(&"dibujar_en_lienzo".to_string()) && !n.contains(&"calcar_imagen".to_string()), "{n:?}");
+        let n: Vec<String> = herramientas_para(&circulo, &perrito, false)
+            .into_iter()
+            .map(|x| x.nombre)
+            .collect();
+        assert!(
+            n.contains(&"dibujar_en_lienzo".to_string())
+                && !n.contains(&"calcar_imagen".to_string()),
+            "{n:?}"
+        );
         // Y sin imagen no hay calcado aunque lo pida.
         assert!(!es_para_calcar(&pedido, &[], false));
     }
@@ -577,7 +748,10 @@ mod pruebas {
         let lista = vec![adj("foto.png"), adj("tesis.pdf")];
         assert_eq!(imagen_para_calcar(&lista, None).unwrap().nombre, "foto.png");
         assert!(imagen_para_calcar(&[adj("tesis.pdf")], None).is_err());
-        assert_eq!(imagen_para_calcar(&lista, Some("perro")).unwrap().nombre, "foto.png");
+        assert_eq!(
+            imagen_para_calcar(&lista, Some("perro")).unwrap().nombre,
+            "foto.png"
+        );
     }
 
     /// **Un calcado de verdad, pintado a PNG** por el camino del PDF
@@ -586,15 +760,33 @@ mod pruebas {
     #[test]
     #[ignore = "pinta PNG para mirarlos"]
     fn calcado_a_png() {
-        let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap_or_else(|_| std::env::temp_dir().display().to_string()));
+        let salida = PathBuf::from(
+            std::env::var("PIXPIN_IA_SALIDA")
+                .unwrap_or_else(|_| std::env::temp_dir().display().to_string()),
+        );
         // `PIXPIN_IA_ENTRADA`: otra imagen (p. ej. un emoji con degradados).
-        let entrada = std::env::var("PIXPIN_IA_ENTRADA").map(PathBuf::from).unwrap_or_else(|_| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/pixpin-ia/medir/prueba.png")
-        });
+        let entrada = std::env::var("PIXPIN_IA_ENTRADA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../crates/pixpin-ia/medir/prueba.png")
+            });
         for (nombre, p) in [
             ("calcado-colores", Parametros::default()),
-            ("calcado-contornos", Parametros { solo_contornos: true, ..Default::default() }),
-            ("calcado-alto", Parametros { detalle: calcar::Detalle::Alto, ..Default::default() }),
+            (
+                "calcado-contornos",
+                Parametros {
+                    solo_contornos: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "calcado-alto",
+                Parametros {
+                    detalle: calcar::Detalle::Alto,
+                    ..Default::default()
+                },
+            ),
         ] {
             let t0 = std::time::Instant::now();
             let els = calcar_fichero(&entrada, &p, 3).unwrap();

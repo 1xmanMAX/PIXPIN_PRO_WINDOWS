@@ -113,7 +113,12 @@ pub fn fuentes(raiz: &Path) -> Vec<Fuente> {
         let carpeta = almacen::carpeta(raiz, &ficha.id);
         let pedido = proyecto_de_pedido(&ficha);
         let pnombre = nombre_de(&ficha);
-        let base = |clave: String, nombre: String, tipo: Tipo, ruta: PathBuf, firma: Firma, abrir: Abrir| Fuente {
+        let base = |clave: String,
+                    nombre: String,
+                    tipo: Tipo,
+                    ruta: PathBuf,
+                    firma: Firma,
+                    abrir: Abrir| Fuente {
             clave,
             proyecto: ficha.id.clone(),
             proyecto_nombre: pnombre.clone(),
@@ -125,7 +130,9 @@ pub fn fuentes(raiz: &Path) -> Vec<Fuente> {
         };
         // 1. El chat entero.
         let jsonl = carpeta.join("guardados.jsonl");
-        let Some(firma) = Firma::de(&jsonl) else { continue };
+        let Some(firma) = Firma::de(&jsonl) else {
+            continue;
+        };
         v.push(base(
             format!("chat:{}", ficha.id),
             format!("Chat de {pnombre}"),
@@ -158,10 +165,13 @@ pub fn fuentes(raiz: &Path) -> Vec<Fuente> {
             .collect();
         let mut vistas = std::collections::HashSet::new();
         for (nombre, ruta) in &adjuntos {
-            let Some(mut tipo) = tipo_de(nombre).or_else(|| tipo_de(&pixpin_docs::nombre(ruta))) else {
+            let Some(mut tipo) = tipo_de(nombre).or_else(|| tipo_de(&pixpin_docs::nombre(ruta)))
+            else {
                 continue;
             };
-            let Some(firma) = Firma::de(ruta) else { continue };
+            let Some(firma) = Firma::de(ruta) else {
+                continue;
+            };
             if firma.bytes > MAX_BYTES || !vistas.insert(ruta.clone()) {
                 continue;
             }
@@ -183,16 +193,27 @@ pub fn fuentes(raiz: &Path) -> Vec<Fuente> {
                     pagina: None,
                 };
             }
-            v.push(base(format!("f:{}", ruta.display()), mostrado, tipo, ruta.clone(), firma, abrir));
+            v.push(base(
+                format!("f:{}", ruta.display()),
+                mostrado,
+                tipo,
+                ruta.clone(),
+                firma,
+                abrir,
+            ));
         }
         // 3. Sus notas Markdown.
         if let Ok(dir) = std::fs::read_dir(carpeta.join("notas")) {
             for e in dir.flatten() {
                 let ruta = e.path();
-                if tipo_de(&pixpin_docs::nombre(&ruta)) != Some(Tipo::Nota) || !vistas.insert(ruta.clone()) {
+                if tipo_de(&pixpin_docs::nombre(&ruta)) != Some(Tipo::Nota)
+                    || !vistas.insert(ruta.clone())
+                {
                     continue;
                 }
-                let Some(firma) = Firma::de(&ruta) else { continue };
+                let Some(firma) = Firma::de(&ruta) else {
+                    continue;
+                };
                 let titulo = std::fs::read_to_string(&ruta)
                     .ok()
                     .and_then(|t| {
@@ -254,7 +275,8 @@ pub fn leer_fichero(ruta: &Path) -> Result<Vec<Unidad>, String> {
 /// Las notas, la voz pasada a texto, las listas y los adjuntos de un chat:
 /// cada mensaje, su unidad, que abre el chat en el.
 fn leer_chat(f: &Fuente) -> Result<Vec<Unidad>, String> {
-    let texto = std::fs::read_to_string(&f.ruta).map_err(|e| format!("no se pudo leer el chat: {e}"))?;
+    let texto =
+        std::fs::read_to_string(&f.ruta).map_err(|e| format!("no se pudo leer el chat: {e}"))?;
     let proyecto = match &f.abrir {
         Abrir::Mensaje { proyecto, .. } => proyecto.clone(),
         _ => Some(f.proyecto.clone()),
@@ -267,7 +289,10 @@ fn leer_chat(f: &Fuente) -> Result<Vec<Unidad>, String> {
         let (texto, seccion) = match &m.clase {
             None | Some(Clase::Nota) => (m.texto.clone(), None),
             Some(Clase::Voz) => (
-                m.transcripcion.clone().filter(|t| !t.trim().is_empty()).unwrap_or_default(),
+                m.transcripcion
+                    .clone()
+                    .filter(|t| !t.trim().is_empty())
+                    .unwrap_or_default(),
                 Some("nota de voz".to_string()),
             ),
             Some(Clase::MiniApp) => (m.texto.clone(), Some("lista".to_string())),
@@ -277,13 +302,19 @@ fn leer_chat(f: &Fuente) -> Result<Vec<Unidad>, String> {
                     continue;
                 }
                 let nombre = if m.nombre.trim().is_empty() {
-                    m.ruta.as_deref().map(|r| r.rsplit(['/', '\\']).next().unwrap_or(r).to_string()).unwrap_or_default()
+                    m.ruta
+                        .as_deref()
+                        .map(|r| r.rsplit(['/', '\\']).next().unwrap_or(r).to_string())
+                        .unwrap_or_default()
                 } else {
                     m.nombre.clone()
                 };
                 (format!("{nombre} {}", m.texto), Some("adjunto".to_string()))
             }
-            Some(Clase::Dibujo) | Some(Clase::Pagina) => (format!("{} {}", m.nombre, m.texto), Some("lienzo".to_string())),
+            Some(Clase::Dibujo) | Some(Clase::Pagina) => (
+                format!("{} {}", m.nombre, m.texto),
+                Some("lienzo".to_string()),
+            ),
             _ => (m.resumen(), None),
         };
         if texto.trim().is_empty() {
@@ -306,7 +337,8 @@ fn leer_chat(f: &Fuente) -> Result<Vec<Unidad>, String> {
 /// Un PDF, pagina a pagina. Sin texto (escaneado) no da nada: lo que se
 /// sepa de el vendra del `.txt` de su OCR, si se hizo.
 fn leer_pdf(ruta: &Path) -> Result<Vec<Unidad>, String> {
-    let paginas = pixpin_pdf::texto::de_fichero(ruta).map_err(|e| format!("el PDF no se deja leer: {e:?}"))?;
+    let paginas = pixpin_pdf::texto::de_fichero(ruta)
+        .map_err(|e| format!("el PDF no se deja leer: {e:?}"))?;
     Ok(paginas
         .into_iter()
         .enumerate()
@@ -330,7 +362,10 @@ fn leer_word(ruta: &Path) -> Result<Vec<Unidad>, String> {
         if t.trim().is_empty() || t.trim() == pixpin_docs::documento::MARCA_IMAGEN {
             continue;
         }
-        if matches!(b.clase, pixpin_docs::documento::Clase::Titulo(_) | pixpin_docs::documento::Clase::Capitulo) {
+        if matches!(
+            b.clase,
+            pixpin_docs::documento::Clase::Titulo(_) | pixpin_docs::documento::Clase::Capitulo
+        ) {
             if !actual.texto.trim().is_empty() {
                 v.push(std::mem::take(&mut actual));
             }
@@ -348,14 +383,17 @@ fn leer_word(ruta: &Path) -> Result<Vec<Unidad>, String> {
 /// Un PowerPoint, por diapositiva (maquetada con medidas fijas: solo se
 /// quiere el texto, no donde cae).
 fn leer_powerpoint(ruta: &Path) -> Result<Vec<Unidad>, String> {
-    let doc = pixpin_office::Documento::abrir(ruta).map_err(|e| format!("el PowerPoint no se deja leer: {e}"))?;
+    let doc = pixpin_office::Documento::abrir(ruta)
+        .map_err(|e| format!("el PowerPoint no se deja leer: {e}"))?;
     let pixpin_office::Documento::PowerPoint(mut p) = doc else {
         return Err("no es un PowerPoint".into());
     };
     let medidor = pixpin_office::MedidorFijo::default();
     let mut v = Vec::new();
     for n in 0..p.cuantas() {
-        let Some(pagina) = p.diapositiva(n, &medidor) else { continue };
+        let Some(pagina) = p.diapositiva(n, &medidor) else {
+            continue;
+        };
         let texto = pagina
             .textos()
             .iter()
@@ -506,7 +544,10 @@ pub fn poner_ubicacion(u: Ubicacion) {
 }
 
 pub(crate) fn raiz() -> Option<PathBuf> {
-    servicio().ubicacion.as_ref().map(|u| u.raiz().to_path_buf())
+    servicio()
+        .ubicacion
+        .as_ref()
+        .map(|u| u.raiz().to_path_buf())
 }
 
 /// **Pone el indice al dia** con los datos de ahora. Lee los documentos sin
@@ -565,7 +606,8 @@ pub fn poner_al_dia() -> Option<pixpin_ia::documentos::Informe> {
 /// **El alcance desde un chat**: si es un chat compartido con otra persona,
 /// solo ese chat; si no, todo lo del usuario.
 pub fn alcance_desde(raiz: &Path, proyecto: &str) -> Alcance {
-    let chat = pixpin_proyecto::vista::chat_de_ficha(raiz, proyecto).unwrap_or_else(|| proyecto.to_string());
+    let chat = pixpin_proyecto::vista::chat_de_ficha(raiz, proyecto)
+        .unwrap_or_else(|| proyecto.to_string());
     let compartidos = pixpin_sincro::compartidos::CompartidosEnDisco::nuevo(raiz);
     if compartidos.de(&chat).is_some() || compartidos.de(proyecto).is_some() {
         Alcance::solo(proyecto)
@@ -592,7 +634,10 @@ fn proyectos_llamados(raiz: &Path, nombre: &str) -> Vec<String> {
 /// **Busca** lo que pide el modelo desde el chat `proyecto`. Devuelve lo
 /// encontrado y un aviso para el modelo, si lo hay (el proyecto que nombro
 /// no existe o no se ve desde aqui).
-pub fn buscar(p: &PeticionBusqueda, proyecto: &str) -> Result<(Vec<Hallazgo>, Option<String>), String> {
+pub fn buscar(
+    p: &PeticionBusqueda,
+    proyecto: &str,
+) -> Result<(Vec<Hallazgo>, Option<String>), String> {
     let raiz = raiz().ok_or("el indice de documentos no esta listo")?;
     let base = alcance_desde(&raiz, proyecto);
     let compartido = base != Alcance::Todo;
@@ -639,13 +684,23 @@ pub fn buscar(p: &PeticionBusqueda, proyecto: &str) -> Result<(Vec<Hallazgo>, Op
         .indice
         .get_or_insert_with(|| (Indice::cargar(&carpeta_cache(&raiz)), Instant::now()));
     *usado = Instant::now();
-    Ok((ix.buscar(&p.consulta, &alcance, pixpin_ia::documentos::herramienta::RESULTADOS), aviso))
+    Ok((
+        ix.buscar(
+            &p.consulta,
+            &alcance,
+            pixpin_ia::documentos::herramienta::RESULTADOS,
+        ),
+        aviso,
+    ))
 }
 
 /// Suelta el indice si lleva [`REPOSO`] sin usarse.
 fn soltar_si_reposa() {
     let mut s = servicio();
-    if s.indice.as_ref().is_some_and(|(_, u)| u.elapsed() >= REPOSO) {
+    if s.indice
+        .as_ref()
+        .is_some_and(|(_, u)| u.elapsed() >= REPOSO)
+    {
         s.indice = None;
         tracing::debug!("documentos: indice fuera de la memoria");
     }
@@ -659,7 +714,9 @@ fn asistente_en_uso(u: &Ubicacion) -> bool {
     }
     super::motor::raiz().is_some_and(|r| {
         let m = super::motor::modelo_elegido(Some(&ajustes.asistente.modelo));
-        pixpin_ia::descarga::carpeta_modelo(&r, &m).join(m.pesos.nombre).is_file()
+        pixpin_ia::descarga::carpeta_modelo(&r, &m)
+            .join(m.pesos.nombre)
+            .is_file()
     })
 }
 
@@ -686,12 +743,17 @@ pub fn arrancar(ubicacion: Ubicacion) {
                 // cada minuto (para soltar la memoria).
                 let pedido = rx.recv_timeout(Duration::from_secs(60)).is_ok();
                 if pedido {
-                    proxima = Some(proxima.map_or(Instant::now() + CALMA, |p| p.min(Instant::now() + CALMA)));
+                    proxima = Some(
+                        proxima.map_or(Instant::now() + CALMA, |p| p.min(Instant::now() + CALMA)),
+                    );
                 }
                 if vigia.is_none() {
                     vigia = pixpin_shell::vigia_carpeta::VigiaCarpeta::nueva(&proyectos);
                 }
-                if vigia.as_ref().is_some_and(pixpin_shell::vigia_carpeta::VigiaCarpeta::cambio) {
+                if vigia
+                    .as_ref()
+                    .is_some_and(pixpin_shell::vigia_carpeta::VigiaCarpeta::cambio)
+                {
                     proxima = Some(Instant::now() + CALMA);
                 }
                 if proxima.is_some_and(|p| Instant::now() >= p) {
@@ -750,10 +812,12 @@ documentos le mandaría trozos de ellos (lo que encuentre en tus PDF, notas y ch
 /// pruebas) no se guarda nada.
 pub fn permiso_nube(confirmar: &super::acciones::Confirmar) -> bool {
     let u = servicio().ubicacion.clone();
-    let ajustes = u.as_ref().and_then(|u| pixpin_store::ajustes::cargar(u).ok());
-    let actual = ajustes
+    let ajustes = u
         .as_ref()
-        .map_or(PermisoNube::Preguntar, |a| PermisoNube::de(&a.asistente.documentos_a_la_nube));
+        .and_then(|u| pixpin_store::ajustes::cargar(u).ok());
+    let actual = ajustes.as_ref().map_or(PermisoNube::Preguntar, |a| {
+        PermisoNube::de(&a.asistente.documentos_a_la_nube)
+    });
     match actual {
         PermisoNube::Si => true,
         PermisoNube::No => false,
@@ -761,7 +825,9 @@ pub fn permiso_nube(confirmar: &super::acciones::Confirmar) -> bool {
             let si = confirmar(PREGUNTA_NUBE);
             if let (Some(u), Some(mut a)) = (u, ajustes) {
                 a.asistente.documentos_a_la_nube =
-                    if si { PermisoNube::Si } else { PermisoNube::No }.clave().to_string();
+                    if si { PermisoNube::Si } else { PermisoNube::No }
+                        .clave()
+                        .to_string();
                 if let Err(e) = pixpin_store::ajustes::guardar_conservando(&u, &a) {
                     tracing::warn!(?e, "documentos: no se pudo guardar el permiso de la nube");
                 }

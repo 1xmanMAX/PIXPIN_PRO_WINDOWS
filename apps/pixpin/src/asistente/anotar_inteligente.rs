@@ -98,7 +98,10 @@ pub enum Destino {
     /// El dibujo de la foto (`<foto>.pixpin2d`, la foto en 0,0 a sus pixeles).
     Foto { dibujo: PathBuf },
     /// La capa del plano (ya en sus unidades).
-    Plano { rutas: crate::plano_cad::anotar::Rutas, modelo: Box<pixpin_cad::modelo::Modelo> },
+    Plano {
+        rutas: crate::plano_cad::anotar::Rutas,
+        modelo: Box<pixpin_cad::modelo::Modelo>,
+    },
     /// La capa de la hoja `hoja` del libro (junto a el).
     Libro { hoja: usize },
 }
@@ -115,11 +118,16 @@ pub struct Leido {
 }
 
 fn texto_de<'a>(args: &'a Value, campo: &str) -> Option<&'a str> {
-    args.get(campo).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())
+    args.get(campo)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 fn entero(args: &Value, campo: &str) -> Option<usize> {
-    args.get(campo).and_then(|v| v.as_u64().or_else(|| v.as_str()?.trim().parse().ok())).map(|n| n as usize)
+    args.get(campo)
+        .and_then(|v| v.as_u64().or_else(|| v.as_str()?.trim().parse().ok()))
+        .map(|n| n as usize)
 }
 
 /// Las paginas pedidas (desde 0): `pagina`..=`hasta` (como mucho
@@ -128,9 +136,20 @@ fn paginas_pedidas(args: &Value, ruta: &Path, total: usize) -> Vec<usize> {
     if total == 0 {
         return Vec::new();
     }
-    let abierta = crate::anotado_del_adjunto::leer(ruta).pagina.max(0.0).floor() as usize;
-    let desde = entero(args, "pagina").filter(|p| *p >= 1).map(|p| p - 1).unwrap_or(abierta).min(total - 1);
-    let hasta = entero(args, "hasta").filter(|h| *h >= 1).map(|h| h - 1).unwrap_or(desde).clamp(desde, total - 1);
+    let abierta = crate::anotado_del_adjunto::leer(ruta)
+        .pagina
+        .max(0.0)
+        .floor() as usize;
+    let desde = entero(args, "pagina")
+        .filter(|p| *p >= 1)
+        .map(|p| p - 1)
+        .unwrap_or(abierta)
+        .min(total - 1);
+    let hasta = entero(args, "hasta")
+        .filter(|h| *h >= 1)
+        .map(|h| h - 1)
+        .unwrap_or(desde)
+        .clamp(desde, total - 1);
     (desde..=hasta.min(desde + MAX_PAGINAS - 1)).collect()
 }
 
@@ -150,7 +169,10 @@ pub fn renglones_de(t: &PaginaDeTexto, ancho: f32, alto: f32) -> Vec<Renglon> {
         if let Some(c) = caja.take()
             && !palabra.trim().is_empty()
         {
-            actual.palabras.push(Palabra { texto: std::mem::take(palabra), caja: c });
+            actual.palabras.push(Palabra {
+                texto: std::mem::take(palabra),
+                caja: c,
+            });
         }
         palabra.clear();
     }
@@ -178,7 +200,8 @@ pub fn renglones_de(t: &PaginaDeTexto, ancho: f32, alto: f32) -> Vec<Renglon> {
         let antes = caja.or_else(|| actual.palabras.last().map(|p| p.caja));
         if let Some(u) = antes {
             let h = (u[3] - u[1]).max(c[3] - c[1]).max(1e-3);
-            let salta = ((c[1] + c[3]) / 2.0 - (u[1] + u[3]) / 2.0).abs() > h * 0.6 || c[0] < u[0] - h * 2.0;
+            let salta = ((c[1] + c[3]) / 2.0 - (u[1] + u[3]) / 2.0).abs() > h * 0.6
+                || c[0] < u[0] - h * 2.0;
             if salta {
                 cerrar_palabra(&mut actual, &mut palabra, &mut caja);
                 cerrar_renglon(&mut renglones, &mut actual);
@@ -187,7 +210,12 @@ pub fn renglones_de(t: &PaginaDeTexto, ancho: f32, alto: f32) -> Vec<Renglon> {
         palabra.push(ch);
         caja = Some(match caja {
             None => c,
-            Some(u) => [u[0].min(c[0]), u[1].min(c[1]), u[2].max(c[2]), u[3].max(c[3])],
+            Some(u) => [
+                u[0].min(c[0]),
+                u[1].min(c[1]),
+                u[2].max(c[2]),
+                u[3].max(c[3]),
+            ],
         });
     }
     cerrar_palabra(&mut actual, &mut palabra, &mut caja);
@@ -197,7 +225,11 @@ pub fn renglones_de(t: &PaginaDeTexto, ancho: f32, alto: f32) -> Vec<Renglon> {
 
 /// La mediana del alto de las palabras (0 sin palabras).
 fn alto_tipico(renglones: &[Renglon]) -> f32 {
-    let mut h: Vec<f32> = renglones.iter().flat_map(|r| r.palabras.iter().map(|p| p.caja[3] - p.caja[1])).filter(|h| *h > 0.0).collect();
+    let mut h: Vec<f32> = renglones
+        .iter()
+        .flat_map(|r| r.palabras.iter().map(|p| p.caja[3] - p.caja[1]))
+        .filter(|h| *h > 0.0)
+        .collect();
     if h.is_empty() {
         return 0.0;
     }
@@ -207,11 +239,17 @@ fn alto_tipico(renglones: &[Renglon]) -> f32 {
 
 /// El OCR de una imagen como renglones (sus lineas) en pixeles de la imagen
 /// por `escala` (para volver a los de la original si se redujo).
-fn renglones_de_ocr(rgba: &[u8], ancho: u32, alto: u32, escala: f32) -> Result<Vec<Renglon>, String> {
+fn renglones_de_ocr(
+    rgba: &[u8],
+    ancho: u32,
+    alto: u32,
+    escala: f32,
+) -> Result<Vec<Renglon>, String> {
     if !pixpin_ocr::disponible() {
         return Err("el OCR de Windows no esta disponible (falta el idioma en Windows)".into());
     }
-    let lineas = pixpin_ocr::reconocer(ancho, alto, rgba).map_err(|e| format!("el OCR fallo: {e}"))?;
+    let lineas =
+        pixpin_ocr::reconocer(ancho, alto, rgba).map_err(|e| format!("el OCR fallo: {e}"))?;
     Ok(lineas
         .iter()
         .map(|l| Renglon {
@@ -219,8 +257,16 @@ fn renglones_de_ocr(rgba: &[u8], ancho: u32, alto: u32, escala: f32) -> Result<V
                 .palabras
                 .iter()
                 .map(|p| {
-                    let (x, y, w, h) = (p.caja.x as f32, p.caja.y as f32, p.caja.ancho as f32, p.caja.alto as f32);
-                    Palabra { texto: p.texto.clone(), caja: [x * escala, y * escala, (x + w) * escala, (y + h) * escala] }
+                    let (x, y, w, h) = (
+                        p.caja.x as f32,
+                        p.caja.y as f32,
+                        p.caja.ancho as f32,
+                        p.caja.alto as f32,
+                    );
+                    Palabra {
+                        texto: p.texto.clone(),
+                        caja: [x * escala, y * escala, (x + w) * escala, (y + h) * escala],
+                    }
                 })
                 .collect(),
             etiqueta: None,
@@ -234,7 +280,11 @@ fn renglones_de_ocr(rgba: &[u8], ancho: u32, alto: u32, escala: f32) -> Result<V
 /// entera en pantalla.
 fn letra_de_hoja(renglones: &[Renglon]) -> f32 {
     let t = alto_tipico(renglones);
-    if t <= 0.0 { 20.0 } else { (t * 0.72).clamp(17.0, 24.0) }
+    if t <= 0.0 {
+        20.0
+    } else {
+        (t * 0.72).clamp(17.0, 24.0)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +294,8 @@ fn letra_de_hoja(renglones: &[Renglon]) -> f32 {
 /// unidades de su capa.
 pub fn leer(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> Result<Leido, String> {
     let t = Instant::now();
-    let formato = formato_de(ruta).ok_or("ese archivo no se puede anotar (PDF, Word, PowerPoint, Excel, foto o plano)")?;
+    let formato = formato_de(ruta)
+        .ok_or("ese archivo no se puede anotar (PDF, Word, PowerPoint, Excel, foto o plano)")?;
     let (paginas, destino, con_ocr) = match formato {
         Formato::Pdf => leer_pdf(ruta, args, parar)?,
         Formato::Office => leer_office(ruta, args)?,
@@ -252,7 +303,13 @@ pub fn leer(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> Resul
         Formato::Plano => leer_plano(raiz, ruta)?,
         Formato::Libro => leer_libro(ruta, args)?,
     };
-    Ok(Leido { formato, paginas, destino, ms_leer: t.elapsed().as_millis(), con_ocr })
+    Ok(Leido {
+        formato,
+        paginas,
+        destino,
+        ms_leer: t.elapsed().as_millis(),
+        con_ocr,
+    })
 }
 
 type Lectura = (Vec<Pagina>, Destino, usize);
@@ -271,8 +328,13 @@ fn pagina_de_hoja(numero: usize, alto: f32, renglones: Vec<Renglon>) -> Pagina {
 }
 
 fn leer_pdf(ruta: &Path, args: &Value, parar: &AtomicBool) -> Result<Lectura, String> {
-    let doc = pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir el PDF: {e}"))?;
-    let altos: Vec<f32> = doc.medidas().iter().map(|(w, h)| ANCHO_HOJA * h / w.max(1.0)).collect();
+    let doc =
+        pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir el PDF: {e}"))?;
+    let altos: Vec<f32> = doc
+        .medidas()
+        .iter()
+        .map(|(w, h)| ANCHO_HOJA * h / w.max(1.0))
+        .collect();
     let pedidas = paginas_pedidas(args, ruta, altos.len());
     let textos = pixpin_pdf::texto::de_fichero(ruta).unwrap_or_default();
     let mut paginas = Vec::new();
@@ -288,8 +350,15 @@ fn leer_pdf(ruta: &Path, args: &Value, parar: &AtomicBool) -> Result<Lectura, St
                 return Err("el usuario lo paro".into());
             }
             con_ocr += 1;
-            let img = doc.renderizar(i as u32, ANCHO_OCR).map_err(|e| e.to_string())?;
-            renglones_de_ocr(&img.pixeles, img.ancho, img.alto, ANCHO_HOJA / img.ancho.max(1) as f32)?
+            let img = doc
+                .renderizar(i as u32, ANCHO_OCR)
+                .map_err(|e| e.to_string())?;
+            renglones_de_ocr(
+                &img.pixeles,
+                img.ancho,
+                img.alto,
+                ANCHO_HOJA / img.ancho.max(1) as f32,
+            )?
         } else {
             Vec::new()
         };
@@ -300,15 +369,30 @@ fn leer_pdf(ruta: &Path, args: &Value, parar: &AtomicBool) -> Result<Lectura, St
 }
 
 fn leer_office(ruta: &Path, args: &Value) -> Result<Lectura, String> {
-    let mut doc = pixpin_office::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir: {e:?}"))?;
-    let letras = pixpin_render::pagina_office::LetrasOffice::sin_motor().ok_or("sin DirectWrite")?;
+    let mut doc =
+        pixpin_office::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir: {e:?}"))?;
+    let letras =
+        pixpin_render::pagina_office::LetrasOffice::sin_motor().ok_or("sin DirectWrite")?;
     // Cuantas hojas hay no se sabe sin maquetar: hasta la pedida.
-    let quiere = entero(args, "hasta").or(entero(args, "pagina")).unwrap_or(1).max(1);
-    let abierta = crate::anotado_del_adjunto::leer(ruta).pagina.max(0.0).floor() as usize + 1;
-    let hasta = quiere.max(if entero(args, "pagina").is_none() { abierta } else { 1 });
+    let quiere = entero(args, "hasta")
+        .or(entero(args, "pagina"))
+        .unwrap_or(1)
+        .max(1);
+    let abierta = crate::anotado_del_adjunto::leer(ruta)
+        .pagina
+        .max(0.0)
+        .floor() as usize
+        + 1;
+    let hasta = quiere.max(if entero(args, "pagina").is_none() {
+        abierta
+    } else {
+        1
+    });
     let mut hojas = Vec::new();
     for i in 0..hasta.min(400) {
-        let Some(p) = doc.pagina(i, &letras) else { break };
+        let Some(p) = doc.pagina(i, &letras) else {
+            break;
+        };
         hojas.push(p);
     }
     let pedidas = paginas_pedidas(args, ruta, hojas.len());
@@ -329,13 +413,21 @@ fn leer_office(ruta: &Path, args: &Value) -> Result<Lectura, String> {
 }
 
 fn leer_foto(ruta: &Path) -> Result<Lectura, String> {
-    let img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+    let img = pixpin_codec::imagen::cargar(ruta)
+        .map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
     let (w, h) = (img.ancho, img.alto);
     let mayor = w.max(h);
     let (img, escala) = if mayor > LADO_OCR {
         let k = LADO_OCR as f32 / mayor as f32;
-        let (a, b) = (((w as f32 * k) as u32).max(1), ((h as f32 * k) as u32).max(1));
-        (pixpin_codec::redimensionar(img, a, b).map_err(|e| format!("no se pudo reducir la imagen: {e:?}"))?, 1.0 / k)
+        let (a, b) = (
+            ((w as f32 * k) as u32).max(1),
+            ((h as f32 * k) as u32).max(1),
+        );
+        (
+            pixpin_codec::redimensionar(img, a, b)
+                .map_err(|e| format!("no se pudo reducir la imagen: {e:?}"))?,
+            1.0 / k,
+        )
     } else {
         (img, 1.0)
     };
@@ -345,10 +437,23 @@ fn leer_foto(ruta: &Path) -> Result<Lectura, String> {
     // La letra del texto de la foto, sin bajar de lo que se lee con la foto
     // entera en pantalla (unos 900 px de ancho: 12 px).
     let letra = (t * 0.8).max(wf / 75.0).max(10.0);
-    let pagina = Pagina { numero: 0, caja: [0.0, 0.0, wf, hf], renglones, letra, fuera: (wf * 0.6).max(letra * 20.0), solo_derecha: false };
+    let pagina = Pagina {
+        numero: 0,
+        caja: [0.0, 0.0, wf, hf],
+        renglones,
+        letra,
+        fuera: (wf * 0.6).max(letra * 20.0),
+        solo_derecha: false,
+    };
     let mut dibujo = ruta.as_os_str().to_owned();
     dibujo.push(".pixpin2d");
-    Ok((vec![pagina], Destino::Foto { dibujo: PathBuf::from(dibujo) }, 1))
+    Ok((
+        vec![pagina],
+        Destino::Foto {
+            dibujo: PathBuf::from(dibujo),
+        },
+        1,
+    ))
 }
 
 fn leer_plano(raiz: &Path, ruta: &Path) -> Result<Lectura, String> {
@@ -398,10 +503,16 @@ fn leer_plano(raiz: &Path, ruta: &Path) -> Result<Lectura, String> {
             desde = i + w.len();
             let (x0, y0) = a_capa(x + largo * ini / letras, y + t.alto);
             let (x1, y1) = a_capa(x + largo * fin / letras, y);
-            palabras.push(Palabra { texto: w.to_string(), caja: [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)] });
+            palabras.push(Palabra {
+                texto: w.to_string(),
+                caja: [x0.min(x1), y0.min(y1), x0.max(x1), y0.max(y1)],
+            });
         }
         if !palabras.is_empty() {
-            renglones.push(Renglon { palabras, etiqueta: None });
+            renglones.push(Renglon {
+                palabras,
+                etiqueta: None,
+            });
         }
     }
     let c = m.caja_util();
@@ -411,25 +522,45 @@ fn leer_plano(raiz: &Path, ruta: &Path) -> Result<Lectura, String> {
     let (ancho, alto) = (caja[2] - caja[0], caja[3] - caja[1]);
     let t = alto_tipico(&renglones);
     let letra = (t * 2.0).max(alto.max(ancho) / 90.0).max(1e-3);
-    let pagina = Pagina { numero: 0, caja, renglones, letra, fuera: (ancho * 0.5).max(letra * 20.0), solo_derecha: false };
-    Ok((vec![pagina], Destino::Plano { rutas, modelo: Box::new(m) }, 0))
+    let pagina = Pagina {
+        numero: 0,
+        caja,
+        renglones,
+        letra,
+        fuera: (ancho * 0.5).max(letra * 20.0),
+        solo_derecha: false,
+    };
+    Ok((
+        vec![pagina],
+        Destino::Plano {
+            rutas,
+            modelo: Box::new(m),
+        },
+        0,
+    ))
 }
 
 /// La rejilla de la capa de una hoja de calculo: pixeles al 100 % a 96 ppp
 /// con el ancho de digito de la tabla (sin DirectWrite). El visor la
 /// rehace igual y lleva cada punto a su celda (`visor_hoja::capa`).
-pub fn rejilla_de_la_capa(libro: &pixpin_hojas::Libro, hoja: &pixpin_hojas::Hoja) -> pixpin_hojas::Rejilla {
+pub fn rejilla_de_la_capa(
+    libro: &pixpin_hojas::Libro,
+    hoja: &pixpin_hojas::Hoja,
+) -> pixpin_hojas::Rejilla {
     pixpin_hojas::Rejilla::nueva(hoja, &libro.estilos.fuente_normal)
 }
 
 fn leer_libro(ruta: &Path, args: &Value) -> Result<Lectura, String> {
     use pixpin_hojas::{Libro, Regional, nombre_columna};
-    let libro = Libro::abrir(ruta, Regional::es_pe()).map_err(|e| format!("no se pudo abrir el libro: {e:?}"))?;
+    let libro = Libro::abrir(ruta, Regional::es_pe())
+        .map_err(|e| format!("no se pudo abrir el libro: {e:?}"))?;
     let i = match texto_de(args, "hoja") {
         Some(n) => libro
             .hojas
             .iter()
-            .position(|h| pixpin_ia::acciones::normalizar(&h.nombre) == pixpin_ia::acciones::normalizar(n))
+            .position(|h| {
+                pixpin_ia::acciones::normalizar(&h.nombre) == pixpin_ia::acciones::normalizar(n)
+            })
             .ok_or_else(|| format!("el libro no tiene una hoja «{n}»"))?,
         None => 0,
     };
@@ -450,8 +581,21 @@ fn leer_libro(ruta: &Path, args: &Value) -> Result<Lectura, String> {
             {
                 continue;
             }
-            let Some(texto) = libro.contenido(&hoja, c).map(|x| x.mostrado.texto).filter(|t| !t.trim().is_empty()) else { continue };
-            let r = hoja.combinada_en(f.indice, c.col).unwrap_or(pixpin_hojas::Rango { fila0: f.indice, col0: c.col, fila1: f.indice, col1: c.col });
+            let Some(texto) = libro
+                .contenido(&hoja, c)
+                .map(|x| x.mostrado.texto)
+                .filter(|t| !t.trim().is_empty())
+            else {
+                continue;
+            };
+            let r = hoja
+                .combinada_en(f.indice, c.col)
+                .unwrap_or(pixpin_hojas::Rango {
+                    fila0: f.indice,
+                    col0: c.col,
+                    fila1: f.indice,
+                    col1: c.col,
+                });
             let (x0, y0) = (rejilla.x(r.col0) as f32, rejilla.y(r.fila0) as f32);
             let (x1, y1) = (rejilla.x(r.col1 + 1) as f32, rejilla.y(r.fila1 + 1) as f32);
             // Las palabras repartidas en la celda (un ancla de texto cae en
@@ -461,11 +605,20 @@ fn leer_libro(ruta: &Path, args: &Value) -> Result<Lectura, String> {
             let mut pos = 0.0f32;
             for w in texto.split_whitespace() {
                 let n = w.chars().count() as f32;
-                let (a, b) = (x0 + (x1 - x0) * pos / total, x0 + (x1 - x0) * ((pos + n) / total).min(1.0));
-                palabras.push(Palabra { texto: w.to_string(), caja: [a, y0, b.max(a + 1.0), y1] });
+                let (a, b) = (
+                    x0 + (x1 - x0) * pos / total,
+                    x0 + (x1 - x0) * ((pos + n) / total).min(1.0),
+                );
+                palabras.push(Palabra {
+                    texto: w.to_string(),
+                    caja: [a, y0, b.max(a + 1.0), y1],
+                });
                 pos += n + 1.0;
             }
-            renglones.push(Renglon { palabras, etiqueta: Some(format!("{}{}", nombre_columna(c.col), f.indice + 1)) });
+            renglones.push(Renglon {
+                palabras,
+                etiqueta: Some(format!("{}{}", nombre_columna(c.col), f.indice + 1)),
+            });
             max_f = max_f.max(r.fila1);
             max_c = max_c.max(r.col1);
             if renglones.len() >= MAX_CELDAS {
@@ -479,7 +632,14 @@ fn leer_libro(ruta: &Path, args: &Value) -> Result<Lectura, String> {
     let caja = [0.0, 0.0, usado as f32, rejilla.y(max_f + 1) as f32];
     let letra = 12.0;
     // Las notas, a la derecha de lo usado (a la izquierda no hay hoja).
-    let pagina = Pagina { numero: 0, caja, renglones, letra, fuera: letra * 22.0, solo_derecha: true };
+    let pagina = Pagina {
+        numero: 0,
+        caja,
+        renglones,
+        letra,
+        fuera: letra * 22.0,
+        solo_derecha: true,
+    };
     Ok((vec![pagina], Destino::Libro { hoja: i }, 0))
 }
 
@@ -489,12 +649,23 @@ fn leer_libro(ruta: &Path, args: &Value) -> Result<Lectura, String> {
 impl Destino {
     /// **Anade `nuevas` a la capa de la pagina `numero`** y avisa a los
     /// visores. Devuelve el fichero de la capa.
-    pub fn anadir(&self, raiz: &Path, ruta: &Path, numero: usize, grupo: &str, nuevas: Vec<Elemento>) -> Result<PathBuf, String> {
+    pub fn anadir(
+        &self,
+        raiz: &Path,
+        ruta: &Path,
+        numero: usize,
+        grupo: &str,
+        nuevas: Vec<Elemento>,
+    ) -> Result<PathBuf, String> {
         use crate::lector_tinta::turnos;
         let capa = match self {
             Destino::Hojas { altos } => {
                 let alto = altos.get(&numero).copied().unwrap_or(ANCHO_HOJA * 1.414);
-                let d = crate::lector_pdf_proyecto::DondeVa::de(raiz, ruta, pixpin_shell::entorno::ahora_utc_ms());
+                let d = crate::lector_pdf_proyecto::DondeVa::de(
+                    raiz,
+                    ruta,
+                    pixpin_shell::entorno::ahora_utc_ms(),
+                );
                 // Antes de escribir: el visor que relea ya sabe que es del turno.
                 let (leer, escribir) = (d.para_leer(ruta, numero), d.para_escribir(ruta, numero));
                 turnos::apuntar(&leer, grupo);
@@ -504,16 +675,19 @@ impl Destino {
             }
             Destino::Foto { dibujo } => {
                 turnos::apuntar(dibujo, grupo);
-                let mut escena = pixpin_motor2d::cargar(dibujo).map_err(|e| format!("el dibujo de la foto no se entiende: {e}"))?;
+                let mut escena = pixpin_motor2d::cargar(dibujo)
+                    .map_err(|e| format!("el dibujo de la foto no se entiende: {e}"))?;
                 for e in nuevas {
                     escena.anadir(e);
                 }
-                pixpin_motor2d::guardar(dibujo, &escena).map_err(|e| format!("no se pudo guardar lo anotado: {e}"))?;
+                pixpin_motor2d::guardar(dibujo, &escena)
+                    .map_err(|e| format!("no se pudo guardar lo anotado: {e}"))?;
                 dibujo.clone()
             }
             Destino::Plano { rutas, modelo } => {
                 turnos::apuntar(&rutas.tinta, grupo);
-                crate::plano_cad::anotar::anadir_figuras(rutas, modelo, |_| nuevas).map_err(|e| format!("no se pudo guardar lo anotado en el plano: {e}"))?;
+                crate::plano_cad::anotar::anadir_figuras(rutas, modelo, |_| nuevas)
+                    .map_err(|e| format!("no se pudo guardar lo anotado en el plano: {e}"))?;
                 rutas.tinta.clone()
             }
             Destino::Libro { hoja } => {
@@ -526,7 +700,8 @@ impl Destino {
                     capa.escena.anadir(e);
                 }
                 capa.sucia = true;
-                capa.guardar(&r).map_err(|e| format!("no se pudo guardar lo anotado: {e}"))?;
+                capa.guardar(&r)
+                    .map_err(|e| format!("no se pudo guardar lo anotado: {e}"))?;
                 r
             }
         };
@@ -541,7 +716,8 @@ fn abrir_espacio(raiz: &Path, ruta: &Path, lado: u8, altos: &[f32]) {
     let mut a = crate::anotado_del_adjunto::leer(ruta);
     if a.espacios & lado == 0 {
         // La tinta de antes del marco no se corre (`alternar_espacio`).
-        crate::lector_pdf_proyecto::DondeVa::de(raiz, ruta, pixpin_shell::entorno::ahora_utc_ms()).fijar_lo_viejo(ruta, a.espacios, altos);
+        crate::lector_pdf_proyecto::DondeVa::de(raiz, ruta, pixpin_shell::entorno::ahora_utc_ms())
+            .fijar_lo_viejo(ruta, a.espacios, altos);
         a.espacios |= lado;
         if let Err(e) = crate::anotado_del_adjunto::escribir(ruta, &a) {
             tracing::info!(?e, "anotar: no se pudo abrir el espacio para anotar");
@@ -582,7 +758,9 @@ pub struct Hecho {
 
 /// El pedido para el modelo: lo que dijo el usuario, el modo y el foco.
 fn pedido_de(args: &Value) -> String {
-    let mut s = texto_de(args, "pedido").unwrap_or("señala lo importante").to_string();
+    let mut s = texto_de(args, "pedido")
+        .unwrap_or("señala lo importante")
+        .to_string();
     if let Some(m) = texto_de(args, "modo").filter(|m| *m != "mixto") {
         s.push_str(&format!(" (modo: {m})"));
     }
@@ -608,7 +786,9 @@ pub fn anotar_en(
     let leido = leer(raiz, ruta, args, parar)?;
     if leido.paginas.iter().all(Pagina::vacia) {
         return Err(match leido.formato {
-            Formato::Foto | Formato::Pdf if leido.con_ocr > 0 => "en esa pagina no se lee texto (ni con el OCR): no hay nada que anotar".into(),
+            Formato::Foto | Formato::Pdf if leido.con_ocr > 0 => {
+                "en esa pagina no se lee texto (ni con el OCR): no hay nada que anotar".into()
+            }
             _ => "esa pagina no tiene texto que anotar".into(),
         });
     }
@@ -625,8 +805,13 @@ pub fn anotar_en(
     // Un Excel: las cuentas comprobadas en Rust (16-oct: el anotador ligero
     // marco como error una fila que estaba bien y no vio la que no).
     if leido.formato == Formato::Libro
-        && let Ok(celdas) = super::en_el_chat::celdas_de_excel(ruta, texto_de(args, "hoja"), texto_de(args, "celdas"))
-        && let Some(c) = pixpin_ia::revision_tabla::para_el_modelo(&super::en_el_chat::filas_de_celdas(&celdas))
+        && let Ok(celdas) = super::en_el_chat::celdas_de_excel(
+            ruta,
+            texto_de(args, "hoja"),
+            texto_de(args, "celdas"),
+        )
+        && let Some(c) =
+            pixpin_ia::revision_tabla::para_el_modelo(&super::en_el_chat::filas_de_celdas(&celdas))
     {
         texto.push_str(&format!(
             "\n\n{c} Si piden errores de calculo, marca EXACTAMENTE estos (anclados en la celda con el valor que esta mal, \
@@ -652,7 +837,10 @@ pub fn anotar_en(
         None => Mensaje::usuario(texto),
     };
     let peticion = Peticion {
-        mensajes: vec![Mensaje::sistema(anotacion::instrucciones(leido.formato == Formato::Libro)), usuario],
+        mensajes: vec![
+            Mensaje::sistema(anotacion::instrucciones(leido.formato == Formato::Libro)),
+            usuario,
+        ],
         herramientas: Vec::new(),
         max_tokens: 3000,
         temperatura: 0.3,
@@ -686,7 +874,10 @@ pub fn anotar_en(
         let ms_anclar = t.elapsed().as_millis();
         hecho.ms_anclar_max = hecho.ms_anclar_max.max(ms_anclar);
         let numero = anotador.paginas[puesta.en].numero;
-        match leido.destino.anadir(raiz, ruta, numero, &hecho.grupo, puesta.elementos) {
+        match leido
+            .destino
+            .anadir(raiz, ruta, numero, &hecho.grupo, puesta.elementos)
+        {
             Ok(capa) => {
                 if !hecho.capas.iter().any(|(n, c)| *n == numero && *c == capa) {
                     hecho.capas.push((numero, capa));
@@ -726,7 +917,11 @@ pub fn anotar_en(
                     poner(v, &mut hecho, primer_trozo);
                 }
             }
-            if parar.load(Ordering::Relaxed) { Seguir::Parar } else { Seguir::Si }
+            if parar.load(Ordering::Relaxed) {
+                Seguir::Parar
+            } else {
+                Seguir::Si
+            }
         })
         .map_err(|e| format!("el modelo no contesto: {e}"))?;
     // Un motor que no da la respuesta a trozos: de una vez al final.
@@ -765,7 +960,8 @@ pub fn motor_de_la_nube() -> Option<Arc<dyn Motor>> {
 /// Lo ultimo que anoto la herramienta en las pruebas (el documento, el grupo
 /// del turno y las capas tocadas), para pintarlo en el banco de documentos.
 #[cfg(test)]
-pub static ULTIMO_EN_PRUEBAS: std::sync::Mutex<Option<(PathBuf, String, Vec<(usize, PathBuf)>)>> = std::sync::Mutex::new(None);
+pub static ULTIMO_EN_PRUEBAS: std::sync::Mutex<Option<(PathBuf, String, Vec<(usize, PathBuf)>)>> =
+    std::sync::Mutex::new(None);
 
 /// Lo que dice la herramienta cuando solo hay modelo local.
 pub const SOLO_NUBE: &str = "anotar con criterio necesita el modelo de la nube (Claude o DeepSeek en Ajustes → Asistente); \
@@ -774,7 +970,9 @@ pub const SOLO_NUBE: &str = "anotar con criterio necesita el modelo de la nube (
 /// **La herramienta desde el ejecutor del chat**: elige el archivo, anota y
 /// abre el visor en la pagina con la primera anotacion.
 pub fn hacer(args: &Value, cx: &Contexto, motor: Option<Arc<dyn Motor>>) -> Result<String, String> {
-    let Some(motor) = motor else { return Err(SOLO_NUBE.into()) };
+    let Some(motor) = motor else {
+        return Err(SOLO_NUBE.into());
+    };
     let c = elegir(cx, texto_de(args, "archivo"), Sirve::Anotable)?;
     let formato = formato_de(&c.ruta);
     let mut abierto = false;
@@ -794,22 +992,39 @@ pub fn hacer(args: &Value, cx: &Contexto, motor: Option<Arc<dyn Motor>>) -> Resu
             crate::ventana_chat::refrescar();
         }
     };
-    let h = anotar_en(cx.raiz, &c.ruta, args, motor.as_ref(), cx.parar, &mut al_poner)?;
+    let h = anotar_en(
+        cx.raiz,
+        &c.ruta,
+        args,
+        motor.as_ref(),
+        cx.parar,
+        &mut al_poner,
+    )?;
     #[cfg(test)]
     {
-        *ULTIMO_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()) = Some((c.ruta.clone(), h.grupo.clone(), h.capas.clone()));
+        *ULTIMO_EN_PRUEBAS.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some((c.ruta.clone(), h.grupo.clone(), h.capas.clone()));
     }
     if h.puestas == 0 {
         return Ok(match h.nada {
             Some(m) => format!("no anote nada en «{}»: {m}", c.nombre),
-            None => format!("no pude anclar ninguna anotacion en «{}» ({})", c.nombre, h.resumen),
+            None => format!(
+                "no pude anclar ninguna anotacion en «{}» ({})",
+                c.nombre, h.resumen
+            ),
         });
     }
     let paginas = if matches!(formato, Some(Formato::Pdf | Formato::Office)) {
         let mut ps: Vec<usize> = h.capas.iter().map(|(p, _)| p + 1).collect();
         ps.sort_unstable();
         ps.dedup();
-        format!(", pagina(s) {}", ps.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", "))
+        format!(
+            ", pagina(s) {}",
+            ps.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
     } else {
         String::new()
     };

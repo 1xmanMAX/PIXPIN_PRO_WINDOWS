@@ -2080,15 +2080,31 @@ mod pruebas {
         let tarde = Some(ESPERA_SOLTADA_MS + 1);
         assert_eq!(soltada_perdida(true, false, false, tarde, Some(q)), Some(q));
         // Casos negativos: cualquiera de estos deja esperar a la de verdad.
-        assert_eq!(soltada_perdida(false, false, false, tarde, Some(q)), None, "no traza");
-        assert_eq!(soltada_perdida(true, true, false, tarde, Some(q)), None, "gesto en curso");
-        assert_eq!(soltada_perdida(true, false, true, tarde, Some(q)), None, "boton abajo");
+        assert_eq!(
+            soltada_perdida(false, false, false, tarde, Some(q)),
+            None,
+            "no traza"
+        );
+        assert_eq!(
+            soltada_perdida(true, true, false, tarde, Some(q)),
+            None,
+            "gesto en curso"
+        );
+        assert_eq!(
+            soltada_perdida(true, false, true, tarde, Some(q)),
+            None,
+            "boton abajo"
+        );
         assert_eq!(
             soltada_perdida(true, false, false, Some(ESPERA_SOLTADA_MS), Some(q)),
             None,
             "todavia puede llegar"
         );
-        assert_eq!(soltada_perdida(true, false, false, None, None), None, "el gancho no la vio");
+        assert_eq!(
+            soltada_perdida(true, false, false, None, None),
+            None,
+            "el gancho no la vio"
+        );
     }
 
     #[test]

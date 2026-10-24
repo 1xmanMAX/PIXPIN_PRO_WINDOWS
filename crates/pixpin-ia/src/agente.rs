@@ -41,9 +41,16 @@ pub enum Evento {
     /// El modelo empezo a pedir una herramienta.
     Llamando(String),
     /// Una llamada validada que se va a ejecutar, con sus avisos cosmeticos.
-    Herramienta { llamada: Llamada, avisos: Vec<String> },
+    Herramienta {
+        llamada: Llamada,
+        avisos: Vec<String>,
+    },
     /// Lo que devolvio el ejecutor.
-    Resultado { nombre: String, ok: bool, texto: String },
+    Resultado {
+        nombre: String,
+        ok: bool,
+        texto: String,
+    },
     /// La llamada estaba mal; se le pide al modelo que la corrija.
     Reintento { motivo: String },
     /// Un trozo de lo que esta pensando el modelo (se pinta en vivo en la
@@ -96,7 +103,10 @@ pub trait Ejecutor {
     /// **Ensena la pregunta y espera** (bloquea el hilo del turno, no la
     /// ventana) hasta que el usuario elige, escribe lo suyo o se acaba el
     /// tiempo. Por omision nadie contesta.
-    fn preguntar(&mut self, _pregunta: &crate::preguntar::Pregunta) -> crate::preguntar::Contestada {
+    fn preguntar(
+        &mut self,
+        _pregunta: &crate::preguntar::Pregunta,
+    ) -> crate::preguntar::Contestada {
         crate::preguntar::Contestada::SinRespuesta
     }
 
@@ -215,7 +225,9 @@ fn turno_rapido(
     nube: bool,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Option<Final> {
-    let ultimo = historial.last().filter(|m| m.rol == Rol::Usuario && !m.tiene_imagen())?;
+    let ultimo = historial
+        .last()
+        .filter(|m| m.rol == Rol::Usuario && !m.tiene_imagen())?;
     let orden = crate::rapido::interpretar_con(&ultimo.texto_entero(), ahora, nube)?;
     let cruda = crate::motor::LlamadaCruda {
         id: "rapido-1".into(),
@@ -259,7 +271,11 @@ fn turno_rapido(
         ok: true,
         texto: texto.clone(),
     });
-    let respuesta = if texto.trim().is_empty() || texto.starts_with("hecho") { HECHO.to_string() } else { texto };
+    let respuesta = if texto.trim().is_empty() || texto.starts_with("hecho") {
+        HECHO.to_string()
+    } else {
+        texto
+    };
     al_evento(Evento::Texto(respuesta.clone()));
     // La conversacion queda como si el modelo lo hubiera hecho.
     let mut m = Mensaje::texto(Rol::Asistente, "");
@@ -295,7 +311,14 @@ pub fn turno(
     ejecutor: &mut dyn Ejecutor,
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Result<Final, ErrorIa> {
-    turno_con(motor, historial, herramientas, ejecutor, &Opciones::default(), al_evento)
+    turno_con(
+        motor,
+        historial,
+        herramientas,
+        ejecutor,
+        &Opciones::default(),
+        al_evento,
+    )
 }
 
 /// **Un turno con pensar, plan, hoja y contexto medido** ([`Opciones`]).
@@ -311,12 +334,28 @@ pub fn turno_con(
     // que se entienda, el turno de siempre.
     if let Some(jefe) = opciones.jefe
         && crate::orquesta::conviene(&pedido_del_usuario(historial))
-        && let Some(r) = crate::orquesta::turno(motor, jefe, historial, herramientas, ejecutor, opciones, al_evento)
+        && let Some(r) = crate::orquesta::turno(
+            motor,
+            jefe,
+            historial,
+            herramientas,
+            ejecutor,
+            opciones,
+            al_evento,
+        )
     {
         return r;
     }
     let mut crono = Cronometro::default();
-    let r = turno_dentro(motor, historial, herramientas, ejecutor, opciones, &mut crono, al_evento);
+    let r = turno_dentro(
+        motor,
+        historial,
+        herramientas,
+        ejecutor,
+        opciones,
+        &mut crono,
+        al_evento,
+    );
     // Penso y no llego a decir nada mas (cortado, o solo pensamiento).
     if let Some(segundos) = crono.otra_cosa() {
         al_evento(Evento::PensoListo { segundos });
@@ -388,12 +427,18 @@ fn planear(
     }
     let antes: Vec<&Mensaje> = historial[..u.unwrap_or(0)]
         .iter()
-        .filter(|m| matches!(m.rol, Rol::Usuario | Rol::Asistente) && !m.texto_entero().trim().is_empty())
+        .filter(|m| {
+            matches!(m.rol, Rol::Usuario | Rol::Asistente) && !m.texto_entero().trim().is_empty()
+        })
         .collect();
     if !antes.is_empty() {
         texto.push_str("## Conversacion reciente\n");
         for m in &antes[antes.len().saturating_sub(2)..] {
-            let quien = if m.rol == Rol::Usuario { "Usuario" } else { "Asistente" };
+            let quien = if m.rol == Rol::Usuario {
+                "Usuario"
+            } else {
+                "Asistente"
+            };
             texto.push_str(&format!("{quien}: {}\n", cortar(&m.texto_entero(), 400)));
         }
         texto.push('\n');
@@ -403,15 +448,30 @@ fn planear(
     if u.is_some_and(|u| historial[u].tiene_imagen()) {
         texto.push_str("\n(adjunta una foto)");
     }
-    let mut p = Peticion::nueva(vec![Mensaje::sistema(instrucciones_del_plan(herramientas)), Mensaje::usuario(texto)]);
+    let mut p = Peticion::nueva(vec![
+        Mensaje::sistema(instrucciones_del_plan(herramientas)),
+        Mensaje::usuario(texto),
+    ]);
     p.pensar = opciones.pensar;
-    p.max_tokens = if opciones.pensar { TOKENS_PLAN_PENSANDO } else { TOKENS_PLAN };
+    p.max_tokens = if opciones.pensar {
+        TOKENS_PLAN_PENSANDO
+    } else {
+        TOKENS_PLAN
+    };
     p.temperatura = 0.6;
     let mut sep = Separador::nuevo();
     let mut plan_texto = String::new();
-    let r = motor.completar(&p, &mut |t| repartir(t, &mut sep, crono, Some(&mut plan_texto), al_evento));
+    let r = motor.completar(&p, &mut |t| {
+        repartir(t, &mut sep, crono, Some(&mut plan_texto), al_evento)
+    });
     for t in sep.acabar() {
-        repartir(&t, &mut Separador::nuevo(), crono, Some(&mut plan_texto), al_evento);
+        repartir(
+            &t,
+            &mut Separador::nuevo(),
+            crono,
+            Some(&mut plan_texto),
+            al_evento,
+        );
     }
     let r = match r {
         Ok(r) => r,
@@ -497,23 +557,37 @@ fn vigilar_contexto(
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) {
     let antes = contexto::estimar(historial, herramientas);
-    if contexto::pasa_de(antes, contexto::RESERVA_RESPUESTA, ventana, contexto::UMBRAL_DESPEJAR) {
+    if contexto::pasa_de(
+        antes,
+        contexto::RESERVA_RESPUESTA,
+        ventana,
+        contexto::UMBRAL_DESPEJAR,
+    ) {
         contexto::despejar_resultados(historial, contexto::QUEDAN_RESULTADOS);
     }
     if !contexto::pasa_del_umbral(antes, contexto::RESERVA_RESPUESTA, ventana) {
         return;
     }
     contexto::podar_en_turno(historial);
-    if contexto::pasa_del_umbral(contexto::estimar(historial, herramientas), contexto::RESERVA_RESPUESTA, ventana) {
+    if contexto::pasa_del_umbral(
+        contexto::estimar(historial, herramientas),
+        contexto::RESERVA_RESPUESTA,
+        ventana,
+    ) {
         // Lo que se va a dejar de ver, a la memoria antes de olvidarlo.
         if let Some(m) = memoria {
-            let u = historial.iter().rposition(|m| m.rol == Rol::Usuario).unwrap_or(0);
+            let u = historial
+                .iter()
+                .rposition(|m| m.rol == Rol::Usuario)
+                .unwrap_or(0);
             let conv: Vec<(bool, String)> = historial[..u]
                 .iter()
                 .filter(|m| matches!(m.rol, Rol::Usuario | Rol::Asistente) && m.llamadas.is_empty())
                 .map(|m| (m.rol == Rol::Usuario, m.texto_entero()))
                 .collect();
-            if let Err(e) = crate::memoria::guardar_lo_duradero(motor, m, &crate::memoria::transcripcion(&conv)) {
+            if let Err(e) =
+                crate::memoria::guardar_lo_duradero(motor, m, &crate::memoria::transcripcion(&conv))
+            {
                 tracing::warn!(%e, "asistente: no se pudo guardar en la memoria antes de reiniciar");
             }
         }
@@ -539,7 +613,13 @@ fn turno_dentro(
 ) -> Result<Final, ErrorIa> {
     // Antes que nada (ni plan ni modelo): la orden simple, al instante.
     if let Some(ahora) = opciones.rapido
-        && let Some(f) = turno_rapido(historial, ejecutor, ahora, motor.catalogo_completo(), al_evento)
+        && let Some(f) = turno_rapido(
+            historial,
+            ejecutor,
+            ahora,
+            motor.catalogo_completo(),
+            al_evento,
+        )
     {
         return Ok(f);
     }
@@ -587,7 +667,9 @@ fn turno_dentro(
         // ventanas» no dice «dibuja», pero el plan si lo entiende.
         let mut posibles = lista.clone();
         for h in opciones.ampliar.unwrap_or_default() {
-            if !posibles.iter().any(|x| x.nombre == h.nombre) && !(local && h.nombre == crate::hoja::NOMBRE) {
+            if !posibles.iter().any(|x| x.nombre == h.nombre)
+                && !(local && h.nombre == crate::hoja::NOMBRE)
+            {
                 posibles.push(h.clone());
             }
         }
@@ -622,13 +704,28 @@ fn turno_dentro(
         // pone dos veces.
         let mut base = contexto::partir_sistema(&base).0.to_string();
         if let Some(m) = opciones.memoria {
-            base = crate::memoria::con_memoria(&base, &m.bloque_para_el_sistema(crate::memoria::PRESUPUESTO_SISTEMA));
+            base = crate::memoria::con_memoria(
+                &base,
+                &m.bloque_para_el_sistema(crate::memoria::PRESUPUESTO_SISTEMA),
+            );
         }
         let hoja = opciones.hoja.cloned().unwrap_or_default();
-        contexto::poner_sistema(historial, contexto::sistema_con_hoja(&base, &hoja, plan.as_ref()));
+        contexto::poner_sistema(
+            historial,
+            contexto::sistema_con_hoja(&base, &hoja, plan.as_ref()),
+        );
     }
     let mut est = Estado::default();
-    let r = vueltas(motor, historial, herramientas, ejecutor, opciones, crono, &mut est, al_evento);
+    let r = vueltas(
+        motor,
+        historial,
+        herramientas,
+        ejecutor,
+        opciones,
+        crono,
+        &mut est,
+        al_evento,
+    );
     let dicho = match r {
         Ok(d) => d,
         Err(e) => {
@@ -805,10 +902,15 @@ pub fn pedido_compuesto(pedido: &str) -> bool {
         .lines()
         .filter(|l| {
             let l = l.trim_start();
-            l.starts_with(['-', '*', '•']) || l.split_once(['.', ')']).is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+            l.starts_with(['-', '*', '•'])
+                || l.split_once(['.', ')'])
+                    .is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
         })
         .count();
-    let uniones = q.matches(" y ").count() + q.matches(" and ").count() + q.matches(", ").count() + q.matches("; ").count()
+    let uniones = q.matches(" y ").count()
+        + q.matches(" and ").count()
+        + q.matches(", ").count()
+        + q.matches("; ").count()
         + q.matches(" luego ").count()
         + q.matches(" después ").count()
         + q.matches(" despues ").count();
@@ -818,7 +920,10 @@ pub fn pedido_compuesto(pedido: &str) -> bool {
 /// Si lo que contesto el repaso es que no habia nada mas.
 fn es_listo(texto: &str) -> bool {
     let t = texto.trim().trim_matches(|c: char| !c.is_alphanumeric());
-    t.is_empty() || t.eq_ignore_ascii_case(LISTO) || texto.trim() == HECHO || texto.trim() == SIN_PALABRAS
+    t.is_empty()
+        || t.eq_ignore_ascii_case(LISTO)
+        || texto.trim() == HECHO
+        || texto.trim() == SIN_PALABRAS
 }
 
 /// **El repaso**: una vuelta mas con [`REPASO_RENDIRSE`] (si `dicho` es
@@ -868,7 +973,16 @@ fn repasar(
                 otro => al_evento(otro),
             }
         };
-        vueltas(motor, historial, herramientas, ejecutor, opciones, crono, est, &mut filtro)
+        vueltas(
+            motor,
+            historial,
+            herramientas,
+            ejecutor,
+            opciones,
+            crono,
+            est,
+            &mut filtro,
+        )
     };
     let hizo_mas = est.hechas > hechas_antes;
     match r {
@@ -920,7 +1034,9 @@ fn vueltas(
     // Los reintentos de ESTA tanda (la revision tiene los suyos).
     let mut reintentos = 0;
     let mut hechas_aqui = 0;
-    let pregunta_aqui = herramientas.iter().any(|h| h.nombre == crate::preguntar::NOMBRE);
+    let pregunta_aqui = herramientas
+        .iter()
+        .any(|h| h.nombre == crate::preguntar::NOMBRE);
     // Preguntar no gasta vuelta (hasta [`PREGUNTAS_POR_TURNO`]): con la
     // respuesta empieza de verdad el trabajo.
     let mut tope_vueltas = VUELTAS + REINTENTOS;
@@ -929,7 +1045,14 @@ fn vueltas(
     while vuelta < tope_vueltas {
         vuelta += 1;
         if opciones.ventana > 0 {
-            vigilar_contexto(motor, historial, herramientas, opciones.ventana, opciones.memoria, al_evento);
+            vigilar_contexto(
+                motor,
+                historial,
+                herramientas,
+                opciones.ventana,
+                opciones.memoria,
+                al_evento,
+            );
         }
         let mut peticion = Peticion::nueva(historial.clone());
         let ofrecidas: Vec<Herramienta> = herramientas
@@ -942,9 +1065,15 @@ fn vueltas(
         // entero (~13k tokens) la cuenta del local la dejaba SIEMPRE en
         // `MIN_TOKENS` (512) y un resumen o una llamada larga salian
         // cortados (banco de documentos, 15-oct).
-        peticion.max_tokens = if motor.catalogo_completo() { MAX_TOKENS_NUBE } else { tope_de_tokens(&peticion) };
+        peticion.max_tokens = if motor.catalogo_completo() {
+            MAX_TOKENS_NUBE
+        } else {
+            tope_de_tokens(&peticion)
+        };
         let mut sep = Separador::nuevo();
-        let respuesta = motor.completar(&peticion, &mut |t| repartir(t, &mut sep, crono, None, al_evento));
+        let respuesta = motor.completar(&peticion, &mut |t| {
+            repartir(t, &mut sep, crono, None, al_evento)
+        });
         for t in sep.acabar() {
             repartir(&t, &mut Separador::nuevo(), crono, None, al_evento);
         }
@@ -963,7 +1092,10 @@ fn vueltas(
                 }
                 est.tope = TOPE_LISTAS_REINTENTO;
                 let motivo = pedir_mas_corto();
-                if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                if al_evento(Evento::Reintento {
+                    motivo: motivo.clone(),
+                }) == Seguir::Parar
+                {
                     est.cortado = true;
                     break;
                 }
@@ -1005,7 +1137,10 @@ fn vueltas(
         for cruda in &respuesta.llamadas {
             // La memoria tampoco: es un almacen de ficheros, el mismo para
             // todos los modelos (`memoria.rs`).
-            if let Some(m) = opciones.memoria.filter(|_| cruda.nombre.trim() == crate::memoria::NOMBRE) {
+            if let Some(m) = opciones
+                .memoria
+                .filter(|_| cruda.nombre.trim() == crate::memoria::NOMBRE)
+            {
                 let texto = m.ejecutar(&cruda.argumentos);
                 let ok = !texto.starts_with("ERROR");
                 alguna_mal |= !ok;
@@ -1020,7 +1155,10 @@ fn vueltas(
                 continue;
             }
             // `buscar_historial` no es del chat: lo contesta el propio turno.
-            if let Some(buscar) = opciones.buscar.filter(|_| cruda.nombre.trim() == contexto::BUSCAR_HISTORIAL) {
+            if let Some(buscar) = opciones
+                .buscar
+                .filter(|_| cruda.nombre.trim() == contexto::BUSCAR_HISTORIAL)
+            {
                 let texto = match contexto::consulta_de(&cruda.argumentos) {
                     _ if est.ya_busco => "Ya buscaste en este turno: contesta ahora con lo que encontraste.".into(),
                     Some(c) => buscar(&c),
@@ -1051,14 +1189,19 @@ fn vueltas(
                             al_evento(Evento::Llamando(crate::preguntar::NOMBRE.into()));
                             lista
                                 .iter()
-                                .map(|p| crate::preguntar::para_el_modelo(p, &ejecutor.preguntar(p)))
+                                .map(|p| {
+                                    crate::preguntar::para_el_modelo(p, &ejecutor.preguntar(p))
+                                })
                                 .collect::<Vec<_>>()
                                 .join("\n")
                         }
                         Err(e) => {
                             alguna_mal = true;
                             let motivo = format!("ERROR: {e}");
-                            if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                            if al_evento(Evento::Reintento {
+                                motivo: motivo.clone(),
+                            }) == Seguir::Parar
+                            {
                                 est.cortado = true;
                             }
                             motivo
@@ -1088,7 +1231,10 @@ fn vueltas(
                     Err(e) => {
                         alguna_mal = true;
                         let motivo = format!("ERROR: {e}");
-                        if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                        if al_evento(Evento::Reintento {
+                            motivo: motivo.clone(),
+                        }) == Seguir::Parar
+                        {
                             est.cortado = true;
                         }
                         huecos.push((cruda.id.clone(), Some(motivo)));
@@ -1124,7 +1270,10 @@ fn vueltas(
                     }
                     est.fallos += 1;
                     tracing::warn!(herramienta = %cruda.nombre, %motivo, "asistente: llamada mal hecha");
-                    if al_evento(Evento::Reintento { motivo: motivo.clone() }) == Seguir::Parar {
+                    if al_evento(Evento::Reintento {
+                        motivo: motivo.clone(),
+                    }) == Seguir::Parar
+                    {
                         est.cortado = true;
                     }
                     huecos.push((cruda.id.clone(), Some(motivo)));
@@ -1162,13 +1311,18 @@ fn vueltas(
         let mut vistas = Vec::new();
         for (i, m) in miradas {
             let texto = if est.vistas >= VISTAS_POR_TURNO {
-                format!("Ya miraste {VISTAS_POR_TURNO} veces en este turno: sigue con lo que viste.")
+                format!(
+                    "Ya miraste {VISTAS_POR_TURNO} veces en este turno: sigue con lo que viste."
+                )
             } else {
                 est.vistas += 1;
                 al_evento(Evento::Llamando(crate::ojos::NOMBRE.into()));
                 match ejecutor.ver(&m) {
                     Ok(v) => {
-                        let t = format!("hecho: la imagen va en el mensaje siguiente ({}x{} px)", v.ancho, v.alto);
+                        let t = format!(
+                            "hecho: la imagen va en el mensaje siguiente ({}x{} px)",
+                            v.ancho, v.alto
+                        );
                         vistas.push(v);
                         t
                     }
@@ -1251,7 +1405,11 @@ fn revisar(
         }
         // Lo que ya se vio no se vuelve a pagar en cada vuelta.
         crate::ojos::podar_vistas(historial);
-        let mirada = Mirada::para_revisar(if est.documento { Zona::Documento } else { Zona::Turno });
+        let mirada = Mirada::para_revisar(if est.documento {
+            Zona::Documento
+        } else {
+            Zona::Turno
+        });
         let vista = match ejecutor.ver(&mirada) {
             Ok(v) => v,
             Err(e) => {
@@ -1286,22 +1444,40 @@ fn revisar(
                 // La correccion lo dejo peor: se vuelve a la mejor.
                 match m.version.map(|v| ejecutor.volver_a_version(v)) {
                     Some(Ok(())) => {
-                        tracing::info!(antes = m.nota.media(), ahora = nota.media(), "asistente: la correccion empeoraba; vuelta a la mejor version");
+                        tracing::info!(
+                            antes = m.nota.media(),
+                            ahora = nota.media(),
+                            "asistente: la correccion empeoraba; vuelta a la mejor version"
+                        );
                         dicho.truncate(m.dicho);
-                        dicho.push("Revisé el resultado y dejé la versión que se veía mejor.".into());
+                        dicho.push(
+                            "Revisé el resultado y dejé la versión que se veía mejor.".into(),
+                        );
                     }
-                    Some(Err(e)) => tracing::warn!(%e, "asistente: no se pudo volver a la mejor version"),
+                    Some(Err(e)) => {
+                        tracing::warn!(%e, "asistente: no se pudo volver a la mejor version")
+                    }
                     None => {}
                 }
                 break;
             }
             let mejora = nota.media() - m.nota.media();
-            mejor = Some(Candidata { nota, duros, version: None, dicho: dicho.len() });
+            mejor = Some(Candidata {
+                nota,
+                duros,
+                version: None,
+                dicho: dicho.len(),
+            });
             if mejora < rubrica::MEJORA_MINIMA {
                 break;
             }
         } else {
-            mejor = Some(Candidata { nota, duros, version: None, dicho: 0 });
+            mejor = Some(Candidata {
+                nota,
+                duros,
+                version: None,
+                dicho: 0,
+            });
         }
         let m = mejor.as_mut().expect("se acaba de poner");
         if m.nota.aprobada() && m.duros.is_empty() {
@@ -1315,7 +1491,11 @@ fn revisar(
         m.version = ejecutor.guardar_version();
         m.dicho = dicho.len();
         let marca = historial.len();
-        historial.push(Mensaje::usuario(rubrica::pedido_de_correccion(&m.nota, &m.duros, ronda + 1)));
+        historial.push(Mensaje::usuario(rubrica::pedido_de_correccion(
+            &m.nota,
+            &m.duros,
+            ronda + 1,
+        )));
         let cambios_antes = est.cambios;
         let mut dice = String::new();
         let r = {
@@ -1327,11 +1507,22 @@ fn revisar(
                         dice.push_str(&t);
                         al_evento(Evento::Llamando(crate::ojos::NOMBRE.into()))
                     }
-                    Evento::Pensando(_) | Evento::PensoListo { .. } | Evento::Peticion(_) => Seguir::Si,
+                    Evento::Pensando(_) | Evento::PensoListo { .. } | Evento::Peticion(_) => {
+                        Seguir::Si
+                    }
                     otro => al_evento(otro),
                 }
             };
-            vueltas(motor, historial, herramientas, ejecutor, opciones, crono, est, &mut filtro)
+            vueltas(
+                motor,
+                historial,
+                herramientas,
+                ejecutor,
+                opciones,
+                crono,
+                est,
+                &mut filtro,
+            )
         };
         let corrigio = est.cambios > cambios_antes;
         match r {
@@ -1383,7 +1574,12 @@ struct Candidata {
 /// la conversacion (los modelos puntuan mas alto lo suyo si ven como lo
 /// pensaron, arXiv 2404.13076), con la imagen y la lista de elementos.
 /// `None` si falla o no contesta una nota que se lea.
-fn criticar(juez: &dyn Motor, pedido: &str, vista: &crate::ojos::Vista, duros: &[String]) -> Option<rubrica::Nota> {
+fn criticar(
+    juez: &dyn Motor,
+    pedido: &str,
+    vista: &crate::ojos::Vista,
+    duros: &[String],
+) -> Option<rubrica::Nota> {
     let texto = rubrica::pedido_al_critico(pedido, &vista.texto, duros);
     let mut p = Peticion::nueva(vec![
         Mensaje::sistema(rubrica::instrucciones()),
@@ -1394,7 +1590,11 @@ fn criticar(juez: &dyn Motor, pedido: &str, vista: &crate::ojos::Vista, duros: &
     p.max_tokens = 1024;
     match juez.completar(&p, &mut |_| Seguir::Si) {
         Ok(r) => {
-            let t = if r.texto.contains(CIERRE_PENSAR) { separar(&r.texto).1 } else { r.texto };
+            let t = if r.texto.contains(CIERRE_PENSAR) {
+                separar(&r.texto).1
+            } else {
+                r.texto
+            };
             let nota = rubrica::leer(&t);
             if nota.is_none() {
                 tracing::info!(respuesta = %cortar(&t, 200), "asistente: la nota del critico no se lee");
@@ -1442,9 +1642,15 @@ pub fn tope_de_tokens(p: &Peticion) -> u32 {
     let letras: usize = p
         .mensajes
         .iter()
-        .map(|m| m.texto_entero().chars().count() + m.llamadas.iter().map(|l| l.argumentos.len()).sum::<usize>())
+        .map(|m| {
+            m.texto_entero().chars().count()
+                + m.llamadas.iter().map(|l| l.argumentos.len()).sum::<usize>()
+        })
         .sum::<usize>()
-        + p.herramientas.iter().map(|h| h.a_json().to_string().len()).sum::<usize>();
+        + p.herramientas
+            .iter()
+            .map(|h| h.a_json().to_string().len())
+            .sum::<usize>();
     let fotos = p.mensajes.iter().filter(|m| m.tiene_imagen()).count() as u32;
     let entrada = (letras / 3) as u32 + 1000 * fotos + 200;
     crate::servidor::CONTEXTO
@@ -1465,9 +1671,16 @@ pub fn con_topes(herramientas: &[Herramienta], tope: u64) -> Vec<Herramienta> {
         let Some(o) = v.as_object_mut() else { return };
         match o.get("type").and_then(|t| t.as_str()) {
             Some("array") => {
-                let de_objetos = o.get("items").and_then(|i| i.get("type")).and_then(|t| t.as_str()) == Some("object");
+                let de_objetos = o
+                    .get("items")
+                    .and_then(|i| i.get("type"))
+                    .and_then(|t| t.as_str())
+                    == Some("object");
                 let tope = if de_objetos { tope } else { 2 * tope };
-                let max = o.get("maxItems").and_then(|m| m.as_u64()).map_or(tope, |m| m.min(tope));
+                let max = o
+                    .get("maxItems")
+                    .and_then(|m| m.as_u64())
+                    .map_or(tope, |m| m.min(tope));
                 o.insert("maxItems".into(), max.into());
             }
             // Un texto sin tope propio es una etiqueta o un titulo: [`TOPE_TEXTO`].
@@ -1562,10 +1775,16 @@ fn llamada_rota(m: &str) -> bool {
 /// del servidor) va al registro, nunca a la burbuja.
 pub fn para_el_usuario(e: &ErrorIa) -> String {
     match e {
-        ErrorIa::Falta(_) => "Falta bajar el asistente: abre el chat «Asistente» para bajarlo.".into(),
-        ErrorIa::Arranque(_) => "No pude arrancar el asistente. Prueba otra vez en un momento.".into(),
+        ErrorIa::Falta(_) => {
+            "Falta bajar el asistente: abre el chat «Asistente» para bajarlo.".into()
+        }
+        ErrorIa::Arranque(_) => {
+            "No pude arrancar el asistente. Prueba otra vez en un momento.".into()
+        }
         ErrorIa::Conexion(_) => "El asistente dejó de responder. Prueba otra vez.".into(),
-        ErrorIa::Protocolo(_) => "Esta vez no me salió la respuesta. Prueba otra vez o pídelo más corto.".into(),
+        ErrorIa::Protocolo(_) => {
+            "Esta vez no me salió la respuesta. Prueba otra vez o pídelo más corto.".into()
+        }
         ErrorIa::Cancelado => "Cancelado.".into(),
         // La nube ya lo dice en palabras del usuario (sin codigos ni JSON:
         // ver `nube::clasificar`).
@@ -1656,7 +1875,9 @@ pub fn instrucciones_local() -> String {
 /// Cambia las instrucciones de la nube por las del local en el primer
 /// mensaje de sistema (con lo que lleve detras: la hoja, el plan).
 fn a_las_del_local(historial: &mut [Mensaje]) {
-    let Some(m) = historial.first_mut().filter(|m| m.rol == Rol::Sistema) else { return };
+    let Some(m) = historial.first_mut().filter(|m| m.rol == Rol::Sistema) else {
+        return;
+    };
     let texto = m.texto_entero();
     if let Some(resto) = texto.strip_prefix(&instrucciones()) {
         *m = Mensaje::sistema(format!("{}{resto}", instrucciones_local()));
@@ -1688,10 +1909,16 @@ mod pruebas {
     }
 
     fn historial() -> Vec<Mensaje> {
-        vec![Mensaje::sistema(instrucciones()), Mensaje::usuario("dibuja una casa")]
+        vec![
+            Mensaje::sistema(instrucciones()),
+            Mensaje::usuario("dibuja una casa"),
+        ]
     }
 
-    fn correr(guion: Vec<Respuesta>, ejecutor: &mut Apunta) -> (Final, Vec<Evento>, Vec<Mensaje>, MotorGuionado) {
+    fn correr(
+        guion: Vec<Respuesta>,
+        ejecutor: &mut Apunta,
+    ) -> (Final, Vec<Evento>, Vec<Mensaje>, MotorGuionado) {
         let motor = MotorGuionado::nuevo(guion);
         let mut h = historial();
         let mut eventos = Vec::new();
@@ -1707,7 +1934,11 @@ mod pruebas {
     struct Nube(MotorGuionado);
 
     impl Motor for Nube {
-        fn completar(&self, p: &Peticion, t: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+        fn completar(
+            &self,
+            p: &Peticion,
+            t: &mut dyn FnMut(&Trozo) -> Seguir,
+        ) -> Result<Respuesta, ErrorIa> {
             self.0.completar(p, t)
         }
         fn catalogo_completo(&self) -> bool {
@@ -1718,11 +1949,16 @@ mod pruebas {
     #[test]
     fn la_nube_no_hereda_el_tope_de_la_ventana_del_local() {
         // Con el catalogo entero, la cuenta del local daria MIN_TOKENS.
-        let nube = Nube(MotorGuionado::nuevo(vec![Respuesta::de_texto("Resumen largo")]));
+        let nube = Nube(MotorGuionado::nuevo(vec![Respuesta::de_texto(
+            "Resumen largo",
+        )]));
         let mut h = historial();
         let mut ej = Apunta::default();
         turno(&nube, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
-        assert_eq!(nube.0.recibido.lock().unwrap()[0].max_tokens, MAX_TOKENS_NUBE);
+        assert_eq!(
+            nube.0.recibido.lock().unwrap()[0].max_tokens,
+            MAX_TOKENS_NUBE
+        );
         // El local sigue con su cuenta (negativo: no cambia).
         let local = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]);
         let mut h = historial();
@@ -1747,7 +1983,10 @@ mod pruebas {
         let mut ej = Apunta::default();
         let (f, eventos, h, motor) = correr(
             vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"rectangulo","x":10,"y":10}]}"#),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"rectangulo","x":10,"y":10}]}"#,
+                ),
                 Respuesta::de_texto("Listo, dibuje un rectangulo."),
             ],
             &mut ej,
@@ -1755,7 +1994,11 @@ mod pruebas {
         assert_eq!(f.herramientas_hechas, 1);
         assert_eq!(f.texto, "Listo, dibuje un rectangulo.");
         assert_eq!(ej.hechas.len(), 1);
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Resultado { ok: true, .. })));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Resultado { ok: true, .. }))
+        );
         // La segunda peticion lleva la llamada y su resultado.
         let pedidas = motor.recibido.lock().unwrap();
         let segunda = &pedidas[1].mensajes;
@@ -1771,8 +2014,14 @@ mod pruebas {
         let mut ej = Apunta::default();
         let (f, eventos, _, motor) = correr(
             vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"dragon","x":1,"y":1}]}"#),
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"texto","x":1,"y":1,"texto":"CASA"}]}"#),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"dragon","x":1,"y":1}]}"#,
+                ),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"texto","x":1,"y":1,"texto":"CASA"}]}"#,
+                ),
                 Respuesta::de_texto("Hecho."),
             ],
             &mut ej,
@@ -1780,16 +2029,30 @@ mod pruebas {
         assert_eq!(f.reintentos, 1);
         assert_eq!(f.herramientas_hechas, 1);
         assert_eq!(ej.hechas.len(), 1, "la mala no se ejecuta");
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { motivo } if motivo.contains("dragon"))));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Reintento { motivo } if motivo.contains("dragon")))
+        );
         let pedidas = motor.recibido.lock().unwrap();
-        assert!(pedidas[1].mensajes.last().unwrap().texto_entero().starts_with("ERROR:"));
+        assert!(
+            pedidas[1]
+                .mensajes
+                .last()
+                .unwrap()
+                .texto_entero()
+                .starts_with("ERROR:")
+        );
     }
 
     #[test]
     fn herramienta_inventada_tambien_se_reintenta() {
         let mut ej = Apunta::default();
         let (f, _, _, _) = correr(
-            vec![Respuesta::de_llamada("pintar_cielo", "{}"), Respuesta::de_texto("No puedo hacer eso.")],
+            vec![
+                Respuesta::de_llamada("pintar_cielo", "{}"),
+                Respuesta::de_texto("No puedo hacer eso."),
+            ],
             &mut ej,
         );
         assert_eq!(f.reintentos, 1);
@@ -1800,7 +2063,9 @@ mod pruebas {
     #[test]
     fn si_se_equivoca_siempre_se_rinde_con_un_mensaje() {
         let mut ej = Apunta::default();
-        let malas = (0..10).map(|_| Respuesta::de_llamada("grafica", "{roto")).collect();
+        let malas = (0..10)
+            .map(|_| Respuesta::de_llamada("grafica", "{roto"))
+            .collect();
         let (f, _, _, motor) = correr(malas, &mut ej);
         assert_eq!(f.reintentos, REINTENTOS + 1);
         assert!(f.texto.contains("No he sabido"));
@@ -1821,9 +2086,20 @@ mod pruebas {
             &mut ej,
         );
         assert_eq!(f.herramientas_hechas, 0);
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Resultado { ok: false, .. })));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Resultado { ok: false, .. }))
+        );
         let pedidas = motor.recibido.lock().unwrap();
-        assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("lienzo esta cerrado"));
+        assert!(
+            pedidas[1]
+                .mensajes
+                .last()
+                .unwrap()
+                .texto_entero()
+                .contains("lienzo esta cerrado")
+        );
     }
 
     #[test]
@@ -1864,7 +2140,10 @@ mod pruebas {
         let motor = CortaUnaVez(
             Default::default(),
             MotorGuionado::nuevo(vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"rombo","x":1,"y":1}]}"#),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"rombo","x":1,"y":1}]}"#,
+                ),
                 Respuesta::de_texto("Listo."),
             ]),
         );
@@ -1883,7 +2162,12 @@ mod pruebas {
         assert!(h.iter().any(|m| m.texto_entero().contains("salio cortada")));
         // Otro error del motor no se reintenta.
         let vacio = MotorGuionado::nuevo(vec![]);
-        assert!(turno(&vacio, &mut historial(), &fijo, &mut ej, &mut |_| Seguir::Si).is_err());
+        assert!(
+            turno(&vacio, &mut historial(), &fijo, &mut ej, &mut |_| {
+                Seguir::Si
+            })
+            .is_err()
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1905,10 +2189,17 @@ mod pruebas {
     ) -> (Final, Vec<Evento>, MotorGuionado) {
         let motor = MotorGuionado::nuevo(guion);
         let mut eventos = Vec::new();
-        let f = turno_con(&motor, h, &catalogo(), &mut Apunta::default(), o, &mut |e| {
-            eventos.push(e);
-            Seguir::Si
-        })
+        let f = turno_con(
+            &motor,
+            h,
+            &catalogo(),
+            &mut Apunta::default(),
+            o,
+            &mut |e| {
+                eventos.push(e);
+                Seguir::Si
+            },
+        )
         .unwrap();
         (f, eventos, motor)
     }
@@ -1924,7 +2215,10 @@ mod pruebas {
         let (f, eventos, motor) = con_opciones(
             vec![
                 plan_del_modelo("El usuario quiere una casa. La hare roja.", PLAN_CASA),
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"rectangulo","x":1,"y":1}]}"#),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"rectangulo","x":1,"y":1}]}"#,
+                ),
                 Respuesta::de_texto("Listo, una casa roja."),
             ],
             &mut h,
@@ -1933,10 +2227,19 @@ mod pruebas {
         assert_eq!(f.texto, "Listo, una casa roja.");
         let pensados: Vec<&str> = eventos
             .iter()
-            .filter_map(|e| if let Evento::Pensando(s) = e { Some(s.as_str()) } else { None })
+            .filter_map(|e| {
+                if let Evento::Pensando(s) = e {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .collect();
         assert!(pensados.len() > 3, "a trozos: {pensados:?}");
-        assert_eq!(pensados.concat(), "El usuario quiere una casa. La hare roja.");
+        assert_eq!(
+            pensados.concat(),
+            "El usuario quiere una casa. La hare roja."
+        );
         // Se pliega una vez, despues de pensar y antes del plan.
         let i_listo: Vec<usize> = eventos
             .iter()
@@ -1945,21 +2248,42 @@ mod pruebas {
             .map(|(i, _)| i)
             .collect();
         assert_eq!(i_listo.len(), 1);
-        let i_plan = eventos.iter().position(|e| matches!(e, Evento::Peticion(_))).unwrap();
-        let i_ultimo_pensado = eventos.iter().rposition(|e| matches!(e, Evento::Pensando(_))).unwrap();
-        let i_texto = eventos.iter().position(|e| matches!(e, Evento::Texto(_))).unwrap();
+        let i_plan = eventos
+            .iter()
+            .position(|e| matches!(e, Evento::Peticion(_)))
+            .unwrap();
+        let i_ultimo_pensado = eventos
+            .iter()
+            .rposition(|e| matches!(e, Evento::Pensando(_)))
+            .unwrap();
+        let i_texto = eventos
+            .iter()
+            .position(|e| matches!(e, Evento::Texto(_)))
+            .unwrap();
         assert!(i_ultimo_pensado < i_listo[0] && i_listo[0] < i_plan && i_plan < i_texto);
-        let Evento::Peticion(plan) = &eventos[i_plan] else { unreachable!() };
+        let Evento::Peticion(plan) = &eventos[i_plan] else {
+            unreachable!()
+        };
         assert_eq!(plan.entiendo, "Dibujar una casa roja en el lienzo.");
         assert!(plan.del_modelo);
         // El texto del plan no sale como respuesta.
-        assert!(!eventos.iter().any(|e| matches!(e, Evento::Texto(t) if t.contains("ENTIENDO"))));
+        assert!(
+            !eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Texto(t) if t.contains("ENTIENDO")))
+        );
         let pedidas = motor.recibido.lock().unwrap();
-        assert!(pedidas[0].pensar && pedidas[0].herramientas.is_empty(), "planear piensa y no usa herramientas");
+        assert!(
+            pedidas[0].pensar && pedidas[0].herramientas.is_empty(),
+            "planear piensa y no usa herramientas"
+        );
         assert_eq!(pedidas[0].max_tokens, TOKENS_PLAN_PENSANDO);
         assert!(!pedidas[1].pensar);
         let sistema = pedidas[1].mensajes[0].texto_entero();
-        assert!(sistema.contains("Peticion mejorada") && sistema.contains("casa roja"), "{sistema}");
+        assert!(
+            sistema.contains("Peticion mejorada") && sistema.contains("casa roja"),
+            "{sistema}"
+        );
     }
 
     #[test]
@@ -1975,7 +2299,11 @@ mod pruebas {
             &mut h,
             &o,
         );
-        assert!(!eventos.iter().any(|e| matches!(e, Evento::Pensando(_) | Evento::PensoListo { .. })));
+        assert!(
+            !eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Pensando(_) | Evento::PensoListo { .. }))
+        );
         assert!(eventos.iter().any(|e| matches!(e, Evento::Peticion(_))));
     }
 
@@ -1988,11 +2316,18 @@ mod pruebas {
             ..Default::default()
         };
         let (_, eventos, _) = con_opciones(
-            vec![plan_del_modelo("   \n  ", PLAN_CASA), Respuesta::de_texto("Vale.")],
+            vec![
+                plan_del_modelo("   \n  ", PLAN_CASA),
+                Respuesta::de_texto("Vale."),
+            ],
             &mut h,
             &o,
         );
-        assert!(!eventos.iter().any(|e| matches!(e, Evento::Pensando(_) | Evento::PensoListo { .. })));
+        assert!(
+            !eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Pensando(_) | Evento::PensoListo { .. }))
+        );
     }
 
     #[test]
@@ -2003,14 +2338,23 @@ mod pruebas {
             ..Default::default()
         };
         let (f, eventos, motor) = con_opciones(
-            vec![Respuesta::de_texto("¡Claro! Aqui tienes tu casa."), Respuesta::de_texto("Hecho.")],
+            vec![
+                Respuesta::de_texto("¡Claro! Aqui tienes tu casa."),
+                Respuesta::de_texto("Hecho."),
+            ],
             &mut h,
             &o,
         );
         assert_eq!(f.texto, "Hecho.");
         let plan = eventos
             .iter()
-            .find_map(|e| if let Evento::Peticion(p) = e { Some(p.clone()) } else { None })
+            .find_map(|e| {
+                if let Evento::Peticion(p) = e {
+                    Some(p.clone())
+                } else {
+                    None
+                }
+            })
             .unwrap();
         assert_eq!(plan.entiendo, "dibuja una casa");
         assert!(!plan.del_modelo);
@@ -2021,26 +2365,48 @@ mod pruebas {
     fn el_pensamiento_entre_etiquetas_no_sale_en_la_respuesta() {
         let mut h = historial();
         let (f, eventos, _) = con_opciones(
-            vec![Respuesta::de_texto("<think>Es un saludo. </think>Hola, que tal")],
+            vec![Respuesta::de_texto(
+                "<think>Es un saludo. </think>Hola, que tal",
+            )],
             &mut h,
             &Opciones::default(),
         );
         assert_eq!(f.texto, "Hola, que tal");
         let texto: String = eventos
             .iter()
-            .filter_map(|e| if let Evento::Texto(s) = e { Some(s.as_str()) } else { None })
+            .filter_map(|e| {
+                if let Evento::Texto(s) = e {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
             .collect();
         assert_eq!(texto, "Hola, que tal");
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Pensando(s) if s.contains("saludo"))));
-        assert!(eventos.iter().any(|e| matches!(e, Evento::PensoListo { .. })));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Pensando(s) if s.contains("saludo")))
+        );
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::PensoListo { .. }))
+        );
         assert_eq!(h.last().unwrap().texto_entero(), "Hola, que tal");
     }
 
     #[test]
     fn buscar_historial_contesta_desde_el_turno() {
         let fuentes = vec![
-            contexto::Fuente { etiqueta: "#3 usuario".into(), texto: "Las ventas de enero fueron 120.".into() },
-            contexto::Fuente { etiqueta: "#4 asistente".into(), texto: "Apuntado.".into() },
+            contexto::Fuente {
+                etiqueta: "#3 usuario".into(),
+                texto: "Las ventas de enero fueron 120.".into(),
+            },
+            contexto::Fuente {
+                etiqueta: "#4 asistente".into(),
+                texto: "Apuntado.".into(),
+            },
         ];
         let buscar = |c: &str| contexto::buscar(&fuentes, c, 3);
         let o = Opciones {
@@ -2051,7 +2417,10 @@ mod pruebas {
         let (f, eventos, motor) = con_opciones(
             vec![
                 Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{}"#),
-                Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"ventas de enero"}"#),
+                Respuesta::de_llamada(
+                    contexto::BUSCAR_HISTORIAL,
+                    r#"{"consulta":"ventas de enero"}"#,
+                ),
                 Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"otra vez"}"#),
                 Respuesta::de_texto("Fueron 120."),
             ],
@@ -2060,24 +2429,66 @@ mod pruebas {
         );
         assert_eq!(f.texto, "Fueron 120.");
         assert_eq!(f.herramientas_hechas, 0, "no es una herramienta del chat");
-        assert_eq!(f.reintentos, 1, "la llamada sin consulta cuenta como mal hecha");
+        assert_eq!(
+            f.reintentos, 1,
+            "la llamada sin consulta cuenta como mal hecha"
+        );
         let pedidas = motor.recibido.lock().unwrap();
-        assert!(pedidas[0].herramientas.iter().any(|x| x.nombre == contexto::BUSCAR_HISTORIAL));
-        assert!(pedidas[1].mensajes.last().unwrap().texto_entero().starts_with("ERROR"));
-        assert!(pedidas[2].mensajes.last().unwrap().texto_entero().contains("[#3 usuario] Las ventas de enero fueron 120."));
+        assert!(
+            pedidas[0]
+                .herramientas
+                .iter()
+                .any(|x| x.nombre == contexto::BUSCAR_HISTORIAL)
+        );
+        assert!(
+            pedidas[1]
+                .mensajes
+                .last()
+                .unwrap()
+                .texto_entero()
+                .starts_with("ERROR")
+        );
+        assert!(
+            pedidas[2]
+                .mensajes
+                .last()
+                .unwrap()
+                .texto_entero()
+                .contains("[#3 usuario] Las ventas de enero fueron 120.")
+        );
         // Tras una busqueda buena ya no se ofrece, y si insiste se le dice que conteste.
-        assert!(!pedidas[2].herramientas.iter().any(|x| x.nombre == contexto::BUSCAR_HISTORIAL));
-        assert!(pedidas[3].mensajes.last().unwrap().texto_entero().starts_with("Ya buscaste"));
+        assert!(
+            !pedidas[2]
+                .herramientas
+                .iter()
+                .any(|x| x.nombre == contexto::BUSCAR_HISTORIAL)
+        );
+        assert!(
+            pedidas[3]
+                .mensajes
+                .last()
+                .unwrap()
+                .texto_entero()
+                .starts_with("Ya buscaste")
+        );
         assert!(eventos.iter().any(|e| matches!(e, Evento::Resultado { ok: true, nombre, .. } if nombre == contexto::BUSCAR_HISTORIAL)));
         // Sin `buscar`, la herramienta no se ofrece y es una inventada.
         let mut h = historial();
         let (f, _, motor) = con_opciones(
-            vec![Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"x"}"#), Respuesta::de_texto("No.")],
+            vec![
+                Respuesta::de_llamada(contexto::BUSCAR_HISTORIAL, r#"{"consulta":"x"}"#),
+                Respuesta::de_texto("No."),
+            ],
             &mut h,
             &Opciones::default(),
         );
         assert_eq!(f.reintentos, 1);
-        assert!(!motor.recibido.lock().unwrap()[0].herramientas.iter().any(|x| x.nombre == contexto::BUSCAR_HISTORIAL));
+        assert!(
+            !motor.recibido.lock().unwrap()[0]
+                .herramientas
+                .iter()
+                .any(|x| x.nombre == contexto::BUSCAR_HISTORIAL)
+        );
     }
 
     #[test]
@@ -2089,8 +2500,14 @@ mod pruebas {
         };
         let mut h = vec![Mensaje::sistema(instrucciones())];
         for i in 0..30 {
-            h.push(Mensaje::usuario(format!("mensaje viejo {i} {}", "bla ".repeat(60))));
-            h.push(Mensaje::texto(Rol::Asistente, format!("respuesta vieja {i} {}", "ble ".repeat(60))));
+            h.push(Mensaje::usuario(format!(
+                "mensaje viejo {i} {}",
+                "bla ".repeat(60)
+            )));
+            h.push(Mensaje::texto(
+                Rol::Asistente,
+                format!("respuesta vieja {i} {}", "ble ".repeat(60)),
+            ));
         }
         h.push(Mensaje::usuario("y ahora la puerta"));
         let antes = h.len();
@@ -2103,14 +2520,23 @@ mod pruebas {
         // Con las herramientas de un turno (la seleccion), no el catalogo
         // entero: ese solo ya no cabe en una ventana pequena.
         let motor = MotorGuionado::nuevo(vec![
-            Respuesta::de_texto("ENTIENDO: Anadir la puerta al plano de la casa de Ana.\nHARE: dibujarla."),
+            Respuesta::de_texto(
+                "ENTIENDO: Anadir la puerta al plano de la casa de Ana.\nHARE: dibujarla.",
+            ),
             Respuesta::de_texto("Puerta puesta."),
         ]);
         let mut eventos = Vec::new();
-        turno_con(&motor, &mut h, &crate::seleccion::para_el_pedido("dibuja la puerta en el plano", false), &mut Apunta::default(), &o, &mut |e| {
-            eventos.push(e);
-            Seguir::Si
-        })
+        turno_con(
+            &motor,
+            &mut h,
+            &crate::seleccion::para_el_pedido("dibuja la puerta en el plano", false),
+            &mut Apunta::default(),
+            &o,
+            &mut |e| {
+                eventos.push(e);
+                Seguir::Si
+            },
+        )
         .unwrap();
         let reinicio = eventos.iter().find_map(|e| match e {
             Evento::Reinicio { antes, despues } => Some((*antes, *despues)),
@@ -2118,15 +2544,30 @@ mod pruebas {
         });
         let (t_antes, t_despues) = reinicio.expect("tenia que reiniciar");
         assert!(t_despues < t_antes);
-        assert!(!contexto::pasa_del_umbral(t_despues, contexto::RESERVA_RESPUESTA, 8192));
+        assert!(!contexto::pasa_del_umbral(
+            t_despues,
+            contexto::RESERVA_RESPUESTA,
+            8192
+        ));
         let pedidas = motor.recibido.lock().unwrap();
         // La vuelta de planear ve la hoja; la de actuar, solo lo justo.
-        assert!(pedidas[0].mensajes[1].texto_entero().contains("casa de Ana"));
+        assert!(
+            pedidas[0].mensajes[1]
+                .texto_entero()
+                .contains("casa de Ana")
+        );
         let actuar = &pedidas[1].mensajes;
-        assert!(actuar.len() <= 4, "sistema + 2 + el nuevo: {}", actuar.len());
+        assert!(
+            actuar.len() <= 4,
+            "sistema + 2 + el nuevo: {}",
+            actuar.len()
+        );
         assert!(actuar.len() < antes);
         let sistema = actuar[0].texto_entero();
-        assert!(sistema.contains("Objetivo: Hacer el plano de la casa de Ana"), "{sistema}");
+        assert!(
+            sistema.contains("Objetivo: Hacer el plano de la casa de Ana"),
+            "{sistema}"
+        );
         assert!(sistema.contains("Anadir la puerta"), "{sistema}");
         assert_eq!(actuar.last().unwrap().texto_entero(), "y ahora la puerta");
     }
@@ -2150,7 +2591,13 @@ mod pruebas {
         );
         let plan = eventos
             .iter()
-            .find_map(|e| if let Evento::Peticion(p) = e { Some(p.clone()) } else { None })
+            .find_map(|e| {
+                if let Evento::Peticion(p) = e {
+                    Some(p.clone())
+                } else {
+                    None
+                }
+            })
             .unwrap();
         assert!(plan.del_modelo, "el plan salio de la segunda vuelta");
         assert_eq!(plan.entiendo, "Dibujar una casa roja en el lienzo.");
@@ -2163,25 +2610,51 @@ mod pruebas {
     #[test]
     fn el_plan_anade_las_herramientas_que_la_seleccion_no_dio() {
         let todas = catalogo();
-        let solo_ocr: Vec<Herramienta> = todas.iter().filter(|h| h.nombre == "ocr").cloned().collect();
+        let solo_ocr: Vec<Herramienta> = todas
+            .iter()
+            .filter(|h| h.nombre == "ocr")
+            .cloned()
+            .collect();
         let o = Opciones {
             planificar: true,
             ampliar: Some(&todas),
             ..Default::default()
         };
-        let motor = MotorGuionado::nuevo(vec![Respuesta::de_texto(PLAN_CASA), Respuesta::de_texto("Vale.")]);
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_texto(PLAN_CASA),
+            Respuesta::de_texto("Vale."),
+        ]);
         let mut h = historial();
-        turno_con(&motor, &mut h, &solo_ocr, &mut Apunta::default(), &o, &mut |_| Seguir::Si).unwrap();
+        turno_con(
+            &motor,
+            &mut h,
+            &solo_ocr,
+            &mut Apunta::default(),
+            &o,
+            &mut |_| Seguir::Si,
+        )
+        .unwrap();
         let pedidas = motor.recibido.lock().unwrap();
         // Planear ve todos los nombres; actuar, la seleccion mas lo del plan.
-        assert!(pedidas[0].mensajes[0].texto_entero().contains("dibujar_en_lienzo"));
-        let nombres: Vec<&str> = pedidas[1].herramientas.iter().map(|x| x.nombre.as_str()).collect();
+        assert!(
+            pedidas[0].mensajes[0]
+                .texto_entero()
+                .contains("dibujar_en_lienzo")
+        );
+        let nombres: Vec<&str> = pedidas[1]
+            .herramientas
+            .iter()
+            .map(|x| x.nombre.as_str())
+            .collect();
         assert_eq!(nombres, vec!["ocr", "dibujar_en_lienzo"]);
     }
 
     #[test]
     fn parar_mientras_piensa_corta_sin_actuar() {
-        let motor = MotorGuionado::nuevo(vec![plan_del_modelo("uno dos tres cuatro cinco", PLAN_CASA)]);
+        let motor = MotorGuionado::nuevo(vec![plan_del_modelo(
+            "uno dos tres cuatro cinco",
+            PLAN_CASA,
+        )]);
         let mut h = historial();
         let mut n = 0;
         let o = Opciones {
@@ -2190,15 +2663,25 @@ mod pruebas {
             ..Default::default()
         };
         let mut eventos = Vec::new();
-        let f = turno_con(&motor, &mut h, &catalogo(), &mut Apunta::default(), &o, &mut |e| {
-            eventos.push(e);
-            n += 1;
-            if n >= 2 { Seguir::Parar } else { Seguir::Si }
-        })
+        let f = turno_con(
+            &motor,
+            &mut h,
+            &catalogo(),
+            &mut Apunta::default(),
+            &o,
+            &mut |e| {
+                eventos.push(e);
+                n += 1;
+                if n >= 2 { Seguir::Parar } else { Seguir::Si }
+            },
+        )
         .unwrap();
         assert!(f.cortado);
         assert_eq!(motor.recibido.lock().unwrap().len(), 1, "no llego a actuar");
-        assert!(matches!(eventos.last(), Some(Evento::PensoListo { .. })), "se pliega al parar");
+        assert!(
+            matches!(eventos.last(), Some(Evento::PensoListo { .. })),
+            "se pliega al parar"
+        );
     }
 
     #[test]
@@ -2206,10 +2689,16 @@ mod pruebas {
         let motor = MotorGuionado::nuevo(vec![Respuesta::de_texto("uno dos tres cuatro")]);
         let mut h = historial();
         let mut n = 0;
-        let f = turno(&motor, &mut h, &catalogo(), &mut Apunta::default(), &mut |_| {
-            n += 1;
-            if n >= 2 { Seguir::Parar } else { Seguir::Si }
-        })
+        let f = turno(
+            &motor,
+            &mut h,
+            &catalogo(),
+            &mut Apunta::default(),
+            &mut |_| {
+                n += 1;
+                if n >= 2 { Seguir::Parar } else { Seguir::Si }
+            },
+        )
         .unwrap();
         assert!(f.cortado);
     }
@@ -2222,7 +2711,10 @@ mod pruebas {
         // Y si hizo algo y luego no dijo nada, se dice que esta hecho.
         let (f, _, _, _) = correr(
             vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"rectangulo","x":1,"y":1}]}"#),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"rectangulo","x":1,"y":1}]}"#,
+                ),
                 Respuesta::de_texto(""),
             ],
             &mut Apunta::default(),
@@ -2232,8 +2724,13 @@ mod pruebas {
     }
 
     fn max_items_de_elementos(h: &[Herramienta]) -> u64 {
-        let d = h.iter().find(|h| h.nombre == crate::herramientas::DIBUJAR).unwrap();
-        d.parametros["properties"]["elementos"]["maxItems"].as_u64().unwrap()
+        let d = h
+            .iter()
+            .find(|h| h.nombre == crate::herramientas::DIBUJAR)
+            .unwrap();
+        d.parametros["properties"]["elementos"]["maxItems"]
+            .as_u64()
+            .unwrap()
     }
 
     #[test]
@@ -2241,23 +2738,45 @@ mod pruebas {
         let mut ej = Apunta::default();
         let (_, _, _, motor) = correr(
             vec![
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"linea","x":1,"y":1},{"tipo":"li"#),
-                Respuesta::de_llamada("dibujar_en_lienzo", r#"{"elementos":[{"tipo":"linea","x":1,"y":1,"x2":5,"y2":5}]}"#),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"linea","x":1,"y":1},{"tipo":"li"#,
+                ),
+                Respuesta::de_llamada(
+                    "dibujar_en_lienzo",
+                    r#"{"elementos":[{"tipo":"linea","x":1,"y":1,"x2":5,"y2":5}]}"#,
+                ),
                 Respuesta::de_texto("Listo."),
             ],
             &mut ej,
         );
         let pedidas = motor.recibido.lock().unwrap();
-        assert_eq!(max_items_de_elementos(&pedidas[0].herramientas), TOPE_LISTAS);
-        assert_eq!(max_items_de_elementos(&pedidas[1].herramientas), TOPE_LISTAS_REINTENTO);
+        assert_eq!(
+            max_items_de_elementos(&pedidas[0].herramientas),
+            TOPE_LISTAS
+        );
+        assert_eq!(
+            max_items_de_elementos(&pedidas[1].herramientas),
+            TOPE_LISTAS_REINTENTO
+        );
         // Los textos sueltos tambien llevan tope; los de una lista cerrada no.
         let props = &pedidas[0].herramientas[0].parametros["properties"]["elementos"]["items"]["properties"];
         assert_eq!(props["texto"]["maxLength"].as_u64(), Some(TOPE_TEXTO));
         assert!(props["tipo"].get("maxLength").is_none());
         // Al modelo se le pide mas corto y en varias llamadas.
-        assert!(pedidas[1].mensajes.last().unwrap().texto_entero().contains("varias llamadas"));
+        assert!(
+            pedidas[1]
+                .mensajes
+                .last()
+                .unwrap()
+                .texto_entero()
+                .contains("varias llamadas")
+        );
         // El catalogo de verdad (el que valida) no cambia.
-        assert_eq!(max_items_de_elementos(&catalogo()), crate::herramientas::MAX_ELEMENTOS as u64);
+        assert_eq!(
+            max_items_de_elementos(&catalogo()),
+            crate::herramientas::MAX_ELEMENTOS as u64
+        );
         assert_eq!(ej.hechas.len(), 1);
     }
 
@@ -2292,11 +2811,27 @@ mod pruebas {
         );
         assert_eq!(f.reintentos, 0);
         assert_eq!(ej.hechas.len(), 1);
-        assert!(!eventos.iter().any(|e| matches!(e, Evento::Reintento { .. })));
-        let Llamada::Dibujar(figs) = &ej.hechas[0] else { panic!() };
-        assert_eq!((figs[0].x2, figs[0].y2), (crate::herramientas::COORDENADA_MAXIMA, crate::herramientas::COORDENADA_MINIMA));
+        assert!(
+            !eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Reintento { .. }))
+        );
+        let Llamada::Dibujar(figs) = &ej.hechas[0] else {
+            panic!()
+        };
+        assert_eq!(
+            (figs[0].x2, figs[0].y2),
+            (
+                crate::herramientas::COORDENADA_MAXIMA,
+                crate::herramientas::COORDENADA_MINIMA
+            )
+        );
         // Lo que no es JSON se deja tal cual (lo dice la validacion).
-        let rota = crate::motor::LlamadaCruda { id: "1".into(), nombre: "x".into(), argumentos: "{roto".into() };
+        let rota = crate::motor::LlamadaCruda {
+            id: "1".into(),
+            nombre: "x".into(),
+            argumentos: "{roto".into(),
+        };
         assert_eq!(sanear(&rota), rota);
     }
 
@@ -2304,7 +2839,11 @@ mod pruebas {
     struct SiempreCortada(std::sync::atomic::AtomicUsize);
 
     impl Motor for SiempreCortada {
-        fn completar(&self, _: &Peticion, _: &mut dyn FnMut(&Trozo) -> Seguir) -> Result<Respuesta, ErrorIa> {
+        fn completar(
+            &self,
+            _: &Peticion,
+            _: &mut dyn FnMut(&Trozo) -> Seguir,
+        ) -> Result<Respuesta, ErrorIa> {
             self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Err(ErrorIa::Protocolo(
                 "HTTP 500: {\"error\":{\"code\":500,\"message\":\"Failed to parse tool call arguments as JSON: \
@@ -2318,15 +2857,30 @@ mod pruebas {
     fn una_llamada_siempre_cortada_acaba_en_palabras_y_no_en_error() {
         let motor = SiempreCortada(Default::default());
         let mut eventos = Vec::new();
-        let f = turno(&motor, &mut historial(), &catalogo(), &mut Apunta::default(), &mut |e| {
-            eventos.push(e);
-            Seguir::Si
-        })
+        let f = turno(
+            &motor,
+            &mut historial(),
+            &catalogo(),
+            &mut Apunta::default(),
+            &mut |e| {
+                eventos.push(e);
+                Seguir::Si
+            },
+        )
         .expect("no es un error para el usuario");
         assert!(f.texto.contains("No he sabido"), "{}", f.texto);
         assert!(!f.texto.contains("HTTP") && !f.texto.contains('{'));
-        assert_eq!(motor.0.load(std::sync::atomic::Ordering::SeqCst), REINTENTOS + 1);
-        assert_eq!(eventos.iter().filter(|e| matches!(e, Evento::Reintento { .. })).count(), REINTENTOS);
+        assert_eq!(
+            motor.0.load(std::sync::atomic::Ordering::SeqCst),
+            REINTENTOS + 1
+        );
+        assert_eq!(
+            eventos
+                .iter()
+                .filter(|e| matches!(e, Evento::Reintento { .. }))
+                .count(),
+            REINTENTOS
+        );
     }
 
     #[test]
@@ -2338,7 +2892,10 @@ mod pruebas {
             ErrorIa::Falta("C:\\x\\llama-server.exe".into()),
         ] {
             let t = para_el_usuario(&e);
-            assert!(!t.contains("HTTP") && !t.contains('{') && !t.contains("0x") && !t.contains("C:\\"), "{t}");
+            assert!(
+                !t.contains("HTTP") && !t.contains('{') && !t.contains("0x") && !t.contains("C:\\"),
+                "{t}"
+            );
             assert!(!t.is_empty());
         }
     }
@@ -2352,7 +2909,10 @@ mod pruebas {
         let mut larga = historial();
         larga.push(Mensaje::usuario("x".repeat(15_000)));
         let t = tope_de_tokens(&Peticion::nueva(larga.clone()));
-        assert!((MIN_TOKENS..MAX_TOKENS_CON_HERRAMIENTAS).contains(&t), "{t}");
+        assert!(
+            (MIN_TOKENS..MAX_TOKENS_CON_HERRAMIENTAS).contains(&t),
+            "{t}"
+        );
         larga.push(Mensaje::usuario("x".repeat(60_000)));
         assert_eq!(tope_de_tokens(&Peticion::nueva(larga)), MIN_TOKENS);
     }
@@ -2377,7 +2937,11 @@ mod pruebas_rapidez {
         }
     }
 
-    fn con_rapido(pedido: &str, ej: &mut Apunta, guion: Vec<Respuesta>) -> (Final, Vec<Evento>, usize) {
+    fn con_rapido(
+        pedido: &str,
+        ej: &mut Apunta,
+        guion: Vec<Respuesta>,
+    ) -> (Final, Vec<Evento>, usize) {
         let motor = MotorGuionado::nuevo(guion);
         let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario(pedido)];
         let o = Opciones {
@@ -2400,7 +2964,11 @@ mod pruebas_rapidez {
         let mut ej = Apunta(Vec::new(), None);
         let t0 = std::time::Instant::now();
         let (f, eventos, pedidas) = con_rapido("apunta comprar pan", &mut ej, vec![]);
-        assert!(t0.elapsed() < std::time::Duration::from_millis(100), "{:?}", t0.elapsed());
+        assert!(
+            t0.elapsed() < std::time::Duration::from_millis(100),
+            "{:?}",
+            t0.elapsed()
+        );
         assert_eq!(pedidas, 0, "ni plan ni modelo");
         assert_eq!(ej.0, vec!["anadir_tarea"]);
         assert_eq!(f.texto, "Apuntada «comprar pan».");
@@ -2415,22 +2983,40 @@ mod pruebas_rapidez {
         let (f, eventos, pedidas) = con_rapido(
             "tacha pintar la luna",
             &mut ej,
-            vec![Respuesta::de_texto("ENTIENDO: x\nHARE: y\nHERRAMIENTAS: ninguna\nDATOS: -\nDECIDIDO: -"), Respuesta::de_texto("No la encuentro.")],
+            vec![
+                Respuesta::de_texto(
+                    "ENTIENDO: x\nHARE: y\nHERRAMIENTAS: ninguna\nDATOS: -\nDECIDIDO: -",
+                ),
+                Respuesta::de_texto("No la encuentro."),
+            ],
         );
         assert_eq!(pedidas, 2);
         assert_eq!(f.texto, "No la encuentro.");
-        assert!(!eventos.iter().any(|e| matches!(e, Evento::Herramienta { .. })));
+        assert!(
+            !eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Herramienta { .. }))
+        );
         // Y lo que no es simple va directo al modelo.
         // La tarea no esta: el motivo es la respuesta, sin modelo.
-        let mut ej = Apunta(Vec::new(), Some("No encuentro ninguna tarea «pintar la luna». No hice nada.".into()));
+        let mut ej = Apunta(
+            Vec::new(),
+            Some("No encuentro ninguna tarea «pintar la luna». No hice nada.".into()),
+        );
         let (f, _, pedidas) = con_rapido("tacha pintar la luna", &mut ej, vec![]);
         assert_eq!(pedidas, 0);
         assert!(f.texto.starts_with("No encuentro") && f.herramientas_hechas == 0);
         let mut ej = Apunta(Vec::new(), None);
-        let (_, _, pedidas) = con_rapido("Apunta comprar yeso y dibuja un círculo", &mut ej, vec![
-            Respuesta::de_texto("ENTIENDO: x\nHARE: y\nHERRAMIENTAS: ninguna\nDATOS: -\nDECIDIDO: -"),
-            Respuesta::de_texto("Vale."),
-        ]);
+        let (_, _, pedidas) = con_rapido(
+            "Apunta comprar yeso y dibuja un círculo",
+            &mut ej,
+            vec![
+                Respuesta::de_texto(
+                    "ENTIENDO: x\nHARE: y\nHERRAMIENTAS: ninguna\nDATOS: -\nDECIDIDO: -",
+                ),
+                Respuesta::de_texto("Vale."),
+            ],
+        );
         assert_eq!(pedidas, 2);
         assert!(ej.0.is_empty());
     }
@@ -2444,7 +3030,15 @@ mod pruebas_rapidez {
         }
         fn ejecutar_varias(&mut self, l: &[Llamada]) -> Vec<Result<String, String>> {
             self.0.push(l.len());
-            (0..l.len()).map(|i| if i == 1 { Err("roto".into()) } else { Ok(format!("r{i}")) }).collect()
+            (0..l.len())
+                .map(|i| {
+                    if i == 1 {
+                        Err("roto".into())
+                    } else {
+                        Ok(format!("r{i}"))
+                    }
+                })
+                .collect()
         }
     }
 
@@ -2453,16 +3047,35 @@ mod pruebas_rapidez {
         let motor = MotorGuionado::nuevo(vec![
             Respuesta {
                 llamadas: vec![
-                    crate::motor::LlamadaCruda { id: "a".into(), nombre: "ocr".into(), argumentos: "{}".into() },
-                    crate::motor::LlamadaCruda { id: "b".into(), nombre: "ocr".into(), argumentos: "{}".into() },
-                    crate::motor::LlamadaCruda { id: "c".into(), nombre: "inventada".into(), argumentos: "{}".into() },
-                    crate::motor::LlamadaCruda { id: "d".into(), nombre: "ayuda_app".into(), argumentos: r#"{"pregunta":"x"}"#.into() },
+                    crate::motor::LlamadaCruda {
+                        id: "a".into(),
+                        nombre: "ocr".into(),
+                        argumentos: "{}".into(),
+                    },
+                    crate::motor::LlamadaCruda {
+                        id: "b".into(),
+                        nombre: "ocr".into(),
+                        argumentos: "{}".into(),
+                    },
+                    crate::motor::LlamadaCruda {
+                        id: "c".into(),
+                        nombre: "inventada".into(),
+                        argumentos: "{}".into(),
+                    },
+                    crate::motor::LlamadaCruda {
+                        id: "d".into(),
+                        nombre: "ayuda_app".into(),
+                        argumentos: r#"{"pregunta":"x"}"#.into(),
+                    },
                 ],
                 ..Respuesta::de_llamada("ocr", "{}")
             },
             Respuesta::de_texto("Listo."),
         ]);
-        let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario("lee los dos")];
+        let mut h = vec![
+            Mensaje::sistema(instrucciones()),
+            Mensaje::usuario("lee los dos"),
+        ];
         let mut ej = Juntas(Vec::new());
         turno(&motor, &mut h, &catalogo(), &mut ej, &mut |_| Seguir::Si).unwrap();
         assert_eq!(ej.0, vec![3], "las tres buenas, de una vez");
@@ -2494,7 +3107,10 @@ mod pruebas_topes {
     use crate::herramientas::catalogo;
 
     fn esquema<'a>(hs: &'a [Herramienta], nombre: &str) -> &'a serde_json::Value {
-        &hs.iter().find(|h| h.nombre == nombre).unwrap_or_else(|| panic!("falta {nombre}")).parametros["properties"]
+        &hs.iter()
+            .find(|h| h.nombre == nombre)
+            .unwrap_or_else(|| panic!("falta {nombre}"))
+            .parametros["properties"]
     }
 
     /// **El tope de 120 es para etiquetas**; lo largo por naturaleza lleva
@@ -2504,26 +3120,52 @@ mod pruebas_topes {
     fn los_textos_largos_llevan_su_tope_y_las_etiquetas_el_corto() {
         let hs = con_topes(&catalogo(), TOPE_LISTAS);
         let largo = |h: &str, campo: &str| esquema(&hs, h)[campo]["maxLength"].as_u64().unwrap();
-        assert_eq!(largo(crate::svg::NOMBRE, "svg"), crate::svg::MAX_BYTES as u64);
-        assert_eq!(largo("nota_nueva", "texto"), crate::acciones::LARGO_LARGO as u64);
-        assert_eq!(largo("escribir_en_chat", "texto"), crate::acciones::LARGO_LARGO as u64);
-        assert_eq!(largo("crear_automatizacion", "pasos"), crate::acciones::LARGO_LARGO as u64);
-        assert_eq!(largo(crate::ecuacion::NOMBRE, "ecuacion"), crate::ecuacion::MAX_LARGO as u64);
+        assert_eq!(
+            largo(crate::svg::NOMBRE, "svg"),
+            crate::svg::MAX_BYTES as u64
+        );
+        assert_eq!(
+            largo("nota_nueva", "texto"),
+            crate::acciones::LARGO_LARGO as u64
+        );
+        assert_eq!(
+            largo("escribir_en_chat", "texto"),
+            crate::acciones::LARGO_LARGO as u64
+        );
+        assert_eq!(
+            largo("crear_automatizacion", "pasos"),
+            crate::acciones::LARGO_LARGO as u64
+        );
+        assert_eq!(
+            largo(crate::ecuacion::NOMBRE, "ecuacion"),
+            crate::ecuacion::MAX_LARGO as u64
+        );
         // Las etiquetas de las figuras, cortas.
         let fig = &esquema(&hs, DIBUJAR_)["elementos"]["items"]["properties"];
         assert_eq!(fig["texto"]["maxLength"].as_u64(), Some(TOPE_TEXTO));
         // Un SVG de 5 KB cabe entero; una etiqueta de 500 no.
-        let svg = format!("<svg>{}</svg>", "<rect width=\"1\" height=\"1\"/>".repeat(180));
+        let svg = format!(
+            "<svg>{}</svg>",
+            "<rect width=\"1\" height=\"1\"/>".repeat(180)
+        );
         assert!(svg.len() > 5000 && (svg.len() as u64) < largo(crate::svg::NOMBRE, "svg"));
         assert!(500 > fig["texto"]["maxLength"].as_u64().unwrap());
         // Y la validacion de la tabla deja pasar una nota de 5000 letras y
         // corta una de 9000 a su tope.
         let a = crate::acciones::por_nombre("nota_nueva").unwrap();
-        let args = |n: usize| serde_json::json!({"texto": "x".repeat(n)}).as_object().unwrap().clone();
+        let args = |n: usize| {
+            serde_json::json!({"texto": "x".repeat(n)})
+                .as_object()
+                .unwrap()
+                .clone()
+        };
         let v = crate::acciones::validar(a, &args(5000)).unwrap();
         assert_eq!(v.pedido["texto"].as_str().unwrap().len(), 5000);
         let v = crate::acciones::validar(a, &args(9000)).unwrap();
-        assert_eq!(v.pedido["texto"].as_str().unwrap().len(), crate::acciones::LARGO_LARGO);
+        assert_eq!(
+            v.pedido["texto"].as_str().unwrap().len(),
+            crate::acciones::LARGO_LARGO
+        );
     }
 
     const DIBUJAR_: &str = crate::herramientas::DIBUJAR;
@@ -2548,7 +3190,12 @@ mod pruebas_preguntar {
 
     impl ConBurbuja {
         fn que_contesta(c: Contestada) -> ConBurbuja {
-            ConBurbuja { contesta: c, preguntado: Vec::new(), hechas: Vec::new(), puede: true }
+            ConBurbuja {
+                contesta: c,
+                preguntado: Vec::new(),
+                hechas: Vec::new(),
+                puede: true,
+            }
         }
     }
 
@@ -2567,10 +3214,14 @@ mod pruebas_preguntar {
     }
 
     const PREGUNTA: &str = r#"{"preguntas":[{"pregunta":"¿Traduzco todo el lienzo o solo la figura?","opciones":[{"etiqueta":"Solo la figura","descripcion":"6 textos"},{"etiqueta":"Todo el lienzo","descripcion":"23 textos"}]}]}"#;
-    const DIBUJO: &str = r#"{"elementos":[{"tipo":"rectangulo","caja":[10,10,50,50],"color":"rojo"}]}"#;
+    const DIBUJO: &str =
+        r#"{"elementos":[{"tipo":"rectangulo","caja":[10,10,50,50],"color":"rojo"}]}"#;
 
     fn correr(motor: &MotorGuionado, ej: &mut ConBurbuja) -> (Final, Vec<Mensaje>, Vec<Evento>) {
-        let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario("traduce esto al inglés")];
+        let mut h = vec![
+            Mensaje::sistema(instrucciones()),
+            Mensaje::usuario("traduce esto al inglés"),
+        ];
         let mut eventos = Vec::new();
         let f = turno(motor, &mut h, &catalogo(), ej, &mut |e| {
             eventos.push(e);
@@ -2604,30 +3255,60 @@ mod pruebas_preguntar {
         // Se pregunto una vez, con sus dos opciones, y el turno siguio.
         assert_eq!(ej.preguntado.len(), 1);
         assert_eq!(ej.preguntado[0].opciones.len(), 2);
-        assert_eq!(ej.hechas, vec![crate::herramientas::DIBUJAR.to_string()], "lo de despues se hizo");
+        assert_eq!(
+            ej.hechas,
+            vec![crate::herramientas::DIBUJAR.to_string()],
+            "lo de despues se hizo"
+        );
         assert_eq!(f.texto, "Traducido todo el lienzo.");
-        assert_eq!(f.herramientas_hechas, 1, "preguntar no cuenta como algo hecho");
+        assert_eq!(
+            f.herramientas_hechas, 1,
+            "preguntar no cuenta como algo hecho"
+        );
         let r = resultado_de(&h, &id());
         assert!(r.contains("eligió «Todo el lienzo» (23 textos)"), "{r}");
         // La vuelta siguiente llevaba la respuesta.
         let recibido = motor.recibido.lock().unwrap();
-        assert!(recibido[1].mensajes.iter().any(|m| m.texto_entero().contains("Todo el lienzo")));
-        assert!(recibido[0].herramientas.iter().any(|t| t.nombre == NOMBRE), "la nube la tiene");
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Resultado { nombre, ok: true, .. } if nombre == NOMBRE)));
+        assert!(
+            recibido[1]
+                .mensajes
+                .iter()
+                .any(|m| m.texto_entero().contains("Todo el lienzo"))
+        );
+        assert!(
+            recibido[0].herramientas.iter().any(|t| t.nombre == NOMBRE),
+            "la nube la tiene"
+        );
+        assert!(
+            eventos.iter().any(
+                |e| matches!(e, Evento::Resultado { nombre, ok: true, .. } if nombre == NOMBRE)
+            )
+        );
     }
 
     #[test]
     fn lo_escrito_y_el_silencio_tambien_vuelven() {
-        let motor = MotorGuionado::nuevo(vec![Respuesta::de_llamada(NOMBRE, PREGUNTA), Respuesta::de_texto("Vale.")]).como_nube();
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_texto("Vale."),
+        ])
+        .como_nube();
         let mut ej = ConBurbuja::que_contesta(Contestada::Texto("solo el título".into()));
         let (_, h, _) = correr(&motor, &mut ej);
         assert!(resultado_de(&h, &id()).contains("«solo el título»"));
         // Sin respuesta (caduco o paro): sigue con la recomendada, sin repetir.
-        let motor = MotorGuionado::nuevo(vec![Respuesta::de_llamada(NOMBRE, PREGUNTA), Respuesta::de_texto("Vale.")]).como_nube();
+        let motor = MotorGuionado::nuevo(vec![
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_texto("Vale."),
+        ])
+        .como_nube();
         let mut ej = ConBurbuja::que_contesta(Contestada::SinRespuesta);
         let (_, h, _) = correr(&motor, &mut ej);
         let r = resultado_de(&h, &id());
-        assert!(r.contains("no contestó") && r.contains("«Solo la figura»"), "{r}");
+        assert!(
+            r.contains("no contestó") && r.contains("«Solo la figura»"),
+            "{r}"
+        );
     }
 
     #[test]
@@ -2642,14 +3323,21 @@ mod pruebas_preguntar {
         let (f, h, eventos) = correr(&motor, &mut ej);
         assert!(ej.preguntado.is_empty());
         assert!(resultado_de(&h, &id()).starts_with("ERROR"));
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Reintento { .. })));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Reintento { .. }))
+        );
         assert_eq!(f.reintentos, 1);
     }
 
     #[test]
     fn preguntar_no_gasta_las_vueltas_del_trabajo() {
         // Dos preguntas y luego todas las vueltas de siempre trabajando: cabe.
-        let mut guion = vec![Respuesta::de_llamada(NOMBRE, PREGUNTA), Respuesta::de_llamada(NOMBRE, PREGUNTA)];
+        let mut guion = vec![
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+            Respuesta::de_llamada(NOMBRE, PREGUNTA),
+        ];
         for _ in 0..VUELTAS + REINTENTOS - 1 {
             guion.push(Respuesta::de_llamada(crate::herramientas::DIBUJAR, DIBUJO));
         }
@@ -2670,32 +3358,56 @@ mod pruebas_preguntar {
         let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(0));
         let (_, h, _) = correr(&motor, &mut ej);
         assert_eq!(ej.preguntado.len(), PREGUNTAS_POR_TURNO);
-        assert!(h.iter().any(|m| m.rol == Rol::Herramienta && m.texto_entero().starts_with("Ya preguntaste")));
+        assert!(
+            h.iter().any(
+                |m| m.rol == Rol::Herramienta && m.texto_entero().starts_with("Ya preguntaste")
+            )
+        );
     }
 
     #[test]
     fn sin_burbuja_o_con_el_local_no_se_ofrece() {
         // Negativos: la nube sin nadie que conteste (Flow) y el local.
         for (motor, puede) in [
-            (MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]).como_nube(), false),
-            (MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]), true),
+            (
+                MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]).como_nube(),
+                false,
+            ),
+            (
+                MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]),
+                true,
+            ),
         ] {
             let mut ej = ConBurbuja::que_contesta(Contestada::Opcion(0));
             ej.puede = puede;
             correr(&motor, &mut ej);
-            assert!(!motor.recibido.lock().unwrap()[0].herramientas.iter().any(|t| t.nombre == NOMBRE));
+            assert!(
+                !motor.recibido.lock().unwrap()[0]
+                    .herramientas
+                    .iter()
+                    .any(|t| t.nombre == NOMBRE)
+            );
         }
     }
 
     #[test]
     fn el_local_sigue_con_sus_instrucciones_y_la_nube_con_las_nuevas() {
         let local = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]);
-        correr(&local, &mut ConBurbuja::que_contesta(Contestada::SinRespuesta));
+        correr(
+            &local,
+            &mut ConBurbuja::que_contesta(Contestada::SinRespuesta),
+        );
         let s = local.recibido.lock().unwrap()[0].mensajes[0].texto_entero();
         assert_eq!(s, instrucciones_local(), "el local, byte a byte");
         let nube = MotorGuionado::nuevo(vec![Respuesta::de_texto("Hola")]).como_nube();
-        correr(&nube, &mut ConBurbuja::que_contesta(Contestada::SinRespuesta));
-        assert_eq!(nube.recibido.lock().unwrap()[0].mensajes[0].texto_entero(), instrucciones());
+        correr(
+            &nube,
+            &mut ConBurbuja::que_contesta(Contestada::SinRespuesta),
+        );
+        assert_eq!(
+            nube.recibido.lock().unwrap()[0].mensajes[0].texto_entero(),
+            instrucciones()
+        );
     }
 
     /// Las instrucciones nuevas ensenan a trabajar; las rutas van en las
@@ -2703,7 +3415,15 @@ mod pruebas_preguntar {
     #[test]
     fn las_instrucciones_son_principios_y_las_rutas_estan_en_su_herramienta() {
         let s = instrucciones();
-        for parte in ["Cómo trabajas", "Combínalas", "no tengo herramienta", "tildes", "tú decide", "editar_texto", "Ejemplos"] {
+        for parte in [
+            "Cómo trabajas",
+            "Combínalas",
+            "no tengo herramienta",
+            "tildes",
+            "tú decide",
+            "editar_texto",
+            "Ejemplos",
+        ] {
             assert!(s.contains(parte), "falta «{parte}»");
         }
         // Negativo: nada de «si pide X, usa Y».
@@ -2711,19 +3431,39 @@ mod pruebas_preguntar {
         // Y lo de antes, en la descripcion (solo la nube: el local no se toca).
         let mut c = catalogo();
         crate::herramientas::para_la_nube(&mut c);
-        let d = |n: &str| c.iter().find(|h| h.nombre == n).unwrap().descripcion.clone();
+        let d = |n: &str| {
+            c.iter()
+                .find(|h| h.nombre == n)
+                .unwrap()
+                .descripcion
+                .clone()
+        };
         assert!(d(crate::herramientas::CALCAR).contains("imagen del lienzo"));
         assert!(d(crate::herramientas::FUNCION).contains("Nunca calcules"));
         assert!(d(crate::acciones_documentos::ABRIR).contains("nunca le pidas rutas"));
-        assert!(!catalogo().iter().find(|h| h.nombre == crate::herramientas::CALCAR).unwrap().descripcion.contains("imagen del lienzo"));
+        assert!(
+            !catalogo()
+                .iter()
+                .find(|h| h.nombre == crate::herramientas::CALCAR)
+                .unwrap()
+                .descripcion
+                .contains("imagen del lienzo")
+        );
         // Cortas: el prompt se paga en cada vuelta (con la cache, a una
         // decima parte). Los principios, sin el mapa de la app, siguen
         // cortos; con el mapa (23-oct), sigue lejos de los ~13k tokens del
         // catalogo.
         let principios = s.split("Cómo está hecha la app").next().unwrap();
-        assert!(principios.chars().count() < 3600, "{} letras", principios.chars().count());
+        assert!(
+            principios.chars().count() < 3600,
+            "{} letras",
+            principios.chars().count()
+        );
         assert!(s.chars().count() < 9600, "{} letras", s.chars().count());
-        assert!(s.contains("Lienzo: encontrar y cambiar"), "lleva el mapa de la app");
+        assert!(
+            s.contains("Lienzo: encontrar y cambiar"),
+            "lleva el mapa de la app"
+        );
     }
 }
 
@@ -2744,12 +3484,19 @@ mod pruebas_repaso {
 
     const AYUDA: &str = r#"{"pregunta":"como se exporta"}"#;
 
-    fn correr(pedido: &str, guion: Vec<Respuesta>, repasar: bool) -> (Final, Vec<Evento>, Vec<Mensaje>, usize, usize) {
+    fn correr(
+        pedido: &str,
+        guion: Vec<Respuesta>,
+        repasar: bool,
+    ) -> (Final, Vec<Evento>, Vec<Mensaje>, usize, usize) {
         let motor = MotorGuionado::nuevo(guion).como_nube();
         let mut h = vec![Mensaje::sistema(instrucciones()), Mensaje::usuario(pedido)];
         let mut ej = Hace(0);
         let mut eventos = Vec::new();
-        let o = Opciones { repasar, ..Default::default() };
+        let o = Opciones {
+            repasar,
+            ..Default::default()
+        };
         let f = turno_con(&motor, &mut h, &catalogo(), &mut ej, &o, &mut |e| {
             eventos.push(e);
             Seguir::Si
@@ -2774,9 +3521,17 @@ mod pruebas_repaso {
         );
         assert_eq!(hechas, 1);
         assert_eq!(pedidas, 3);
-        assert!(f.texto.ends_with("Lo he exportado con la ayuda de la app."), "{}", f.texto);
+        assert!(
+            f.texto.ends_with("Lo he exportado con la ayuda de la app."),
+            "{}",
+            f.texto
+        );
         assert!(h.iter().any(|m| m.texto_entero() == REPASO_RENDIRSE));
-        assert!(eventos.iter().any(|e| matches!(e, Evento::Texto(t) if t.starts_with("\n\nLo he exportado"))));
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Texto(t) if t.starts_with("\n\nLo he exportado")))
+        );
     }
 
     /// Un pedido de varias partes ya hecho: el repaso dice LISTO y no queda
@@ -2785,13 +3540,25 @@ mod pruebas_repaso {
     fn un_pedido_de_varias_partes_se_repasa_y_si_esta_listo_no_cambia_nada() {
         let (f, eventos, h, hechas, pedidas) = correr(
             "busca como se exporta, mira los ajustes y dime los atajos",
-            vec![Respuesta::de_llamada("ayuda_app", AYUDA), Respuesta::de_texto("Hecho todo."), Respuesta::de_texto("LISTO")],
+            vec![
+                Respuesta::de_llamada("ayuda_app", AYUDA),
+                Respuesta::de_texto("Hecho todo."),
+                Respuesta::de_texto("LISTO"),
+            ],
             true,
         );
         assert_eq!((hechas, pedidas), (1, 3));
         assert_eq!(f.texto, "Hecho todo.");
-        assert!(!h.iter().any(|m| m.texto_entero() == REPASO_COMPLETO), "el repaso no se queda en la conversacion");
-        assert!(!eventos.iter().any(|e| matches!(e, Evento::Texto(t) if t.contains("LISTO"))), "LISTO no se ensena");
+        assert!(
+            !h.iter().any(|m| m.texto_entero() == REPASO_COMPLETO),
+            "el repaso no se queda en la conversacion"
+        );
+        assert!(
+            !eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Texto(t) if t.contains("LISTO"))),
+            "LISTO no se ensena"
+        );
     }
 
     /// Al repasar encuentra algo que faltaba, lo hace y se cuenta.
@@ -2808,29 +3575,59 @@ mod pruebas_repaso {
             true,
         );
         assert_eq!(hechas, 2);
-        assert!(f.texto.ends_with("Faltaban los atajos: ya están."), "{}", f.texto);
+        assert!(
+            f.texto.ends_with("Faltaban los atajos: ya están."),
+            "{}",
+            f.texto
+        );
     }
 
     /// Casos negativos: sin la opcion (el local, las pruebas) o con un pedido
     /// de una sola cosa bien hecha, no hay vuelta de mas.
     #[test]
     fn sin_la_opcion_o_con_un_pedido_simple_no_se_repasa() {
-        let guion = || vec![Respuesta::de_llamada("ayuda_app", AYUDA), Respuesta::de_texto("Hecho.")];
-        assert_eq!(correr("busca como se exporta, mira los ajustes y dime los atajos", guion(), false).4, 2);
+        let guion = || {
+            vec![
+                Respuesta::de_llamada("ayuda_app", AYUDA),
+                Respuesta::de_texto("Hecho."),
+            ]
+        };
+        assert_eq!(
+            correr(
+                "busca como se exporta, mira los ajustes y dime los atajos",
+                guion(),
+                false
+            )
+            .4,
+            2
+        );
         assert_eq!(correr("como se exporta", guion(), true).4, 2);
-        let (f, ..) = correr("hola", vec![Respuesta::de_texto("No puedo ver tu pantalla, pero dime.")], false);
+        let (f, ..) = correr(
+            "hola",
+            vec![Respuesta::de_texto("No puedo ver tu pantalla, pero dime.")],
+            false,
+        );
         assert_eq!(f.texto, "No puedo ver tu pantalla, pero dime.");
     }
 
     #[test]
     fn que_es_rendirse_y_que_es_un_pedido_de_varias_partes() {
         assert!(parece_rendirse("No tengo una herramienta para eso."));
-        assert!(parece_rendirse("Lo siento, no es posible traducir la figura."));
+        assert!(parece_rendirse(
+            "Lo siento, no es posible traducir la figura."
+        ));
         assert!(parece_rendirse("I can't do that from here."));
         assert!(!parece_rendirse("He dibujado la casa con tres ventanas."));
-        assert!(!parece_rendirse(&format!("No puedo {}", "x ".repeat(400))), "una respuesta larga no es rendirse");
-        assert!(pedido_compuesto("traduce la figura, pon los títulos en azul y alinéalos"));
-        assert!(pedido_compuesto("- una nota\n- una tarea\n- un recordatorio"));
+        assert!(
+            !parece_rendirse(&format!("No puedo {}", "x ".repeat(400))),
+            "una respuesta larga no es rendirse"
+        );
+        assert!(pedido_compuesto(
+            "traduce la figura, pon los títulos en azul y alinéalos"
+        ));
+        assert!(pedido_compuesto(
+            "- una nota\n- una tarea\n- un recordatorio"
+        ));
         assert!(pedido_compuesto("1. lee el PDF\n2. saca las tareas"));
         assert!(!pedido_compuesto("dibuja una casa"));
         assert!(!pedido_compuesto("pon el título en azul y negrita"));

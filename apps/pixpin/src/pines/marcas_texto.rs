@@ -26,7 +26,12 @@ const OPACIDAD_RESALTADO: f32 = 0.40;
 
 /// Los elementos de una marca sobre `cajas` (una por renglon), del color
 /// `rgb`, todos en el grupo `grupo`.
-pub fn elementos(marca: Marca, (r, g, b): (u8, u8, u8), cajas: &[Rect], grupo: &str) -> Vec<Elemento> {
+pub fn elementos(
+    marca: Marca,
+    (r, g, b): (u8, u8, u8),
+    cajas: &[Rect],
+    grupo: &str,
+) -> Vec<Elemento> {
     let color = ColorRgba::opaco(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
     let base = Elemento {
         trazo: color,
@@ -223,7 +228,12 @@ mod pruebas {
 
     #[test]
     fn quitar_solo_toca_las_marcas_que_caen_en_la_seleccion() {
-        let v = elementos(Marca::Resaltar, (0, 0, 0), &[renglon(10), renglon(100)], "g");
+        let v = elementos(
+            Marca::Resaltar,
+            (0, 0, 0),
+            &[renglon(10), renglon(100)],
+            "g",
+        );
         assert!(toca(&v[0], &[renglon(12)]));
         assert!(!toca(&v[1], &[renglon(12)]));
         // Un rectangulo dibujado a mano no es una marca.
@@ -234,7 +244,12 @@ mod pruebas {
     #[test]
     fn la_lupa_vuelve_a_tapar_lo_tapado_pero_no_lo_resaltado() {
         let mut v = elementos(Marca::Tapar, (0, 0, 0), &[renglon(10)], "marca-texto-1");
-        v.extend(elementos(Marca::Resaltar, (0, 0, 0), &[renglon(100)], "marca-texto-1"));
+        v.extend(elementos(
+            Marca::Resaltar,
+            (0, 0, 0),
+            &[renglon(100)],
+            "marca-texto-1",
+        ));
         // Caso negativo: un tapado a mano (sin grupo de marca) no es asunto
         // de este modulo.
         assert!(tapadas(&elementos(Marca::Tapar, (0, 0, 0), &[renglon(10)], "otro")).is_empty());

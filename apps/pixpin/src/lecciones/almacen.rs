@@ -345,7 +345,11 @@ fn guardar_con_todo(
     let todos = fotos
         .iter()
         .map(|(n, b)| (n, b, Clase::Imagen, NOMBRE_FOTO, 0))
-        .chain(voces.iter().map(|((n, b, d), rotulo)| (n, b, Clase::Voz, *rotulo, *d)));
+        .chain(
+            voces
+                .iter()
+                .map(|((n, b, d), rotulo)| (n, b, Clase::Voz, *rotulo, *d)),
+        );
     for (i, (nombre, bytes, clase, rotulo, duracion)) in todos.enumerate() {
         let ruta = almacen::guardar_adjunto(raiz, &ficha, nombre, bytes)?;
         // Un milisegundo cada una: el id del mensaje sale de la hora, y dos
@@ -396,7 +400,12 @@ pub fn guardar_con_cambios(
     quitados: &[String],
 ) -> std::io::Result<Leccion> {
     let sin: Leccion = Leccion {
-        adjuntos: l.adjuntos.iter().filter(|a| !quitados.contains(a)).cloned().collect(),
+        adjuntos: l
+            .adjuntos
+            .iter()
+            .filter(|a| !quitados.contains(a))
+            .cloned()
+            .collect(),
         ..l.clone()
     };
     let voces: Vec<(&Voz, &str)> = audios.iter().map(|v| (v, NOMBRE_AUDIO)).collect();
@@ -424,7 +433,10 @@ pub fn adjuntos_de(raiz: &Path, e: &Entrada) -> Vec<Mensaje> {
         .filter_map(|id| c.mensajes.iter().find(|m| m.id == *id).cloned())
         .collect();
     for m in &c.mensajes {
-        if m.responde_a.as_deref() == Some(e.mensaje.id.as_str()) && es_adjunto(m) && !v.iter().any(|x| x.id == m.id) {
+        if m.responde_a.as_deref() == Some(e.mensaje.id.as_str())
+            && es_adjunto(m)
+            && !v.iter().any(|x| x.id == m.id)
+        {
             v.push(m.clone());
         }
     }
@@ -441,9 +453,17 @@ fn es_adjunto(m: &Mensaje) -> bool {
 pub fn quitar_adjuntos(raiz: &Path, ficha: &str, ids: &[String]) -> std::io::Result<()> {
     let ids: std::collections::BTreeSet<String> = ids.iter().cloned().collect();
     let quitados = cuaderno::quitar(&almacen::carpeta(raiz, ficha), &ids)?;
-    vista::anotar_borrados(raiz, ficha, &quitados, pixpin_shell::entorno::ahora_utc_ms())?;
+    vista::anotar_borrados(
+        raiz,
+        ficha,
+        &quitados,
+        pixpin_shell::entorno::ahora_utc_ms(),
+    )?;
     for m in &quitados {
-        if let Some(r) = m.ruta.as_deref().and_then(|r| vista::ruta_real(raiz, ficha, r))
+        if let Some(r) = m
+            .ruta
+            .as_deref()
+            .and_then(|r| vista::ruta_real(raiz, ficha, r))
             && r.is_file()
         {
             let _ = std::fs::remove_file(r);
@@ -720,7 +740,16 @@ mod pruebas {
         indice.guardar(&r).unwrap();
         let l = Leccion::nueva("c1", 1000, "Curar el concreto");
         let fotos = vec![("vieja.jpg".to_string(), b"vieja".to_vec())];
-        guardar_con_fotos(&r, &l, &Donde::Nueva { ficha: ficha.id.clone() }, "K7Q2", &fotos).unwrap();
+        guardar_con_fotos(
+            &r,
+            &l,
+            &Donde::Nueva {
+                ficha: ficha.id.clone(),
+            },
+            "K7Q2",
+            &fotos,
+        )
+        .unwrap();
         let e = listar(&r).remove(0);
         let viejos = adjuntos_de(&r, &e);
         assert_eq!(viejos.len(), 1);
@@ -732,21 +761,40 @@ mod pruebas {
         // En la ficha: una foto y un audio nuevos, y la vieja fuera.
         let nuevas = vec![("nueva.png".to_string(), b"nueva".to_vec())];
         let audios = vec![("voz_1.m4a".to_string(), b"m4a".to_vec(), 4_200)];
-        let g = guardar_con_cambios(&r, &e.leccion, &Donde::de(&e), "K7Q2", &nuevas, &audios, std::slice::from_ref(&vieja.id)).unwrap();
+        let g = guardar_con_cambios(
+            &r,
+            &e.leccion,
+            &Donde::de(&e),
+            "K7Q2",
+            &nuevas,
+            &audios,
+            std::slice::from_ref(&vieja.id),
+        )
+        .unwrap();
         assert_eq!(g.adjuntos.len(), 2);
         assert!(!g.adjuntos.contains(&vieja.id));
         let e = listar(&r).remove(0);
         assert_eq!(e.leccion.adjuntos, g.adjuntos, "lo guardado en el archivo");
         let ahora = adjuntos_de(&r, &e);
-        assert_eq!(ahora.iter().map(|m| m.clase.clone()).collect::<Vec<_>>(), vec![Some(Clase::Imagen), Some(Clase::Voz)]);
+        assert_eq!(
+            ahora.iter().map(|m| m.clase.clone()).collect::<Vec<_>>(),
+            vec![Some(Clase::Imagen), Some(Clase::Voz)]
+        );
         for m in &ahora {
-            assert_eq!(m.responde_a.as_deref(), Some("lec-c1"), "le responde, como en el movil");
+            assert_eq!(
+                m.responde_a.as_deref(),
+                Some("lec-c1"),
+                "le responde, como en el movil"
+            );
             assert!(carpeta.join(m.ruta.as_deref().unwrap()).is_file());
         }
         assert_eq!(ahora[1].duracion_ms, 4_200);
         assert_eq!(ahora[1].nombre, NOMBRE_AUDIO);
         let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
-        assert!(!c.mensajes.iter().any(|m| m.id == vieja.id), "la quitada sale del chat");
+        assert!(
+            !c.mensajes.iter().any(|m| m.id == vieja.id),
+            "la quitada sale del chat"
+        );
         assert!(!fichero_viejo.exists(), "y su archivo del disco");
         assert_eq!(c.mensajes.len(), 3, "la leccion y sus dos adjuntos");
 
@@ -755,8 +803,23 @@ mod pruebas {
         let e = listar(&r).remove(0);
         assert_eq!(adjuntos_de(&r, &e).len(), 2);
         // Un id que no esta no se lleva nada por delante.
-        guardar_con_cambios(&r, &e.leccion, &Donde::de(&e), "K7Q2", &[], &[], &["no-esta".to_string()]).unwrap();
-        assert_eq!(cuaderno::Cuaderno::leer_de(&carpeta).unwrap().mensajes.len(), 3);
+        guardar_con_cambios(
+            &r,
+            &e.leccion,
+            &Donde::de(&e),
+            "K7Q2",
+            &[],
+            &[],
+            &["no-esta".to_string()],
+        )
+        .unwrap();
+        assert_eq!(
+            cuaderno::Cuaderno::leer_de(&carpeta)
+                .unwrap()
+                .mensajes
+                .len(),
+            3
+        );
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -769,11 +832,34 @@ mod pruebas {
         let ficha = almacen::Ficha::nueva("Obra", 1, "K7Q2");
         indice.proyectos.push(ficha.clone());
         indice.guardar(&r).unwrap();
-        guardar(&r, &Leccion::nueva("d1", 1000, "Uno"), &Donde::Nueva { ficha: ficha.id.clone() }, "K7Q2").unwrap();
+        guardar(
+            &r,
+            &Leccion::nueva("d1", 1000, "Uno"),
+            &Donde::Nueva {
+                ficha: ficha.id.clone(),
+            },
+            "K7Q2",
+        )
+        .unwrap();
         let carpeta = almacen::carpeta(&r, &ficha.id);
-        let de_otro = Mensaje { id: "otro-1".into(), clase: Some(Clase::Imagen), responde_a: Some("lec-d1".into()), ..Default::default() };
-        let suelta = Mensaje { id: "suelta".into(), clase: Some(Clase::Imagen), ..Default::default() };
-        let en_buzon = Mensaje { id: "buzon".into(), clase: Some(Clase::Imagen), responde_a: Some("lec-d1".into()), en_buzon: true, ..Default::default() };
+        let de_otro = Mensaje {
+            id: "otro-1".into(),
+            clase: Some(Clase::Imagen),
+            responde_a: Some("lec-d1".into()),
+            ..Default::default()
+        };
+        let suelta = Mensaje {
+            id: "suelta".into(),
+            clase: Some(Clase::Imagen),
+            ..Default::default()
+        };
+        let en_buzon = Mensaje {
+            id: "buzon".into(),
+            clase: Some(Clase::Imagen),
+            responde_a: Some("lec-d1".into()),
+            en_buzon: true,
+            ..Default::default()
+        };
         for m in [&de_otro, &suelta, &en_buzon] {
             cuaderno::anadir(&carpeta, m).unwrap();
         }

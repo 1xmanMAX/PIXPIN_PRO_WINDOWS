@@ -16,8 +16,8 @@ use serde_json::{Value, json};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG, RegisterClassW, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_COPYDATA, WNDCLASSW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG,
+    RegisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COPYDATA, WNDCLASSW,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -116,11 +116,20 @@ fn datos_de_prueba(raiz: &Path) -> PathBuf {
     };
     cuaderno::anadir(
         &carpeta,
-        &Mensaje::miniapp(mini::TAREAS, "Inbox", "# Inbox\n- [ ] comprar pan\n- [x] pagar la luz\n- [ ] llamar al ingeniero\n", &sello),
+        &Mensaje::miniapp(
+            mini::TAREAS,
+            "Inbox",
+            "# Inbox\n- [ ] comprar pan\n- [x] pagar la luz\n- [ ] llamar al ingeniero\n",
+            &sello,
+        ),
     )
     .unwrap();
     let md = raiz.join("acta.md");
-    std::fs::write(&md, "# Acta de obra\n\nSe acordo revisar las cotas del puente.\n").unwrap();
+    std::fs::write(
+        &md,
+        "# Acta de obra\n\nSe acordo revisar las cotas del puente.\n",
+    )
+    .unwrap();
     let pdf = raiz.join("Informe de cunetas.pdf");
     let mut ix = Indice::nuevo(Some(raiz.join("cache").join("documentos")));
     ix.aplicar(
@@ -234,21 +243,44 @@ fn una_conversacion_de_ida_y_vuelta() {
     let n = pixpin_mcp::herramientas::lista().len();
     assert_eq!(tools.len(), n);
     assert!(n >= 40, "{n} herramientas");
-    for nombre in ["anadir_tarea", "borrar_lista", "consultar_tareas", "buscar_en_mis_cosas", "ver_pantalla", "tabla_de_imagen"] {
+    for nombre in [
+        "anadir_tarea",
+        "borrar_lista",
+        "consultar_tareas",
+        "buscar_en_mis_cosas",
+        "ver_pantalla",
+        "tabla_de_imagen",
+    ] {
         assert!(tools.iter().any(|t| t["name"] == nombre), "falta {nombre}");
     }
-    println!("arranque hasta initialize: {arranque:?}; tools/list ({n} herramientas, {} KB): {lista:?}", r.to_string().len() / 1024);
+    println!(
+        "arranque hasta initialize: {arranque:?}; tools/list ({n} herramientas, {} KB): {lista:?}",
+        r.to_string().len() / 1024
+    );
 
     // Leer, sin PixPin: las tareas, buscar, un documento.
     let r = s.llamar("consultar_tareas", json!({}));
     assert_eq!(r["result"]["isError"], false, "{r}");
     let t = texto(&r);
-    assert!(t.contains("comprar pan") && t.contains("llamar al ingeniero") && !t.contains("pagar la luz"), "{t}");
+    assert!(
+        t.contains("comprar pan")
+            && t.contains("llamar al ingeniero")
+            && !t.contains("pagar la luz"),
+        "{t}"
+    );
     let r = s.llamar("consultar_tareas", json!({"estado": "hechas"}));
     assert!(texto(&r).contains("pagar la luz"), "{r}");
-    let r = s.llamar("buscar_en_mis_cosas", json!({"consulta": "pendiente cunetas"}));
+    let r = s.llamar(
+        "buscar_en_mis_cosas",
+        json!({"consulta": "pendiente cunetas"}),
+    );
     let t = texto(&r);
-    assert!(t.contains("Informe de cunetas.pdf") && t.contains("dos por ciento") && t.contains("abrir_fichero"), "{t}");
+    assert!(
+        t.contains("Informe de cunetas.pdf")
+            && t.contains("dos por ciento")
+            && t.contains("abrir_fichero"),
+        "{t}"
+    );
     let r = s.llamar("leer_documento", json!({"ruta": md.display().to_string()}));
     assert!(texto(&r).contains("cotas del puente"), "{r}");
     let r = s.llamar("listar_chats", json!({}));
@@ -260,14 +292,22 @@ fn una_conversacion_de_ida_y_vuelta() {
     // Herramienta desconocida: error JSON-RPC bien formado.
     let r = s.llamar("borrar_el_disco", json!({}));
     assert_eq!(r["error"]["code"], -32602, "{r}");
-    assert!(r["error"]["message"].as_str().unwrap().contains("borrar_el_disco"));
+    assert!(
+        r["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("borrar_el_disco")
+    );
     assert!(r.get("result").is_none());
     // Metodo desconocido.
     assert_eq!(s.pedir("cosas/raras", json!({}))["error"]["code"], -32601);
 
     // Escribir: a la ventana de mentira, con su respuesta de vuelta.
     let t0 = Instant::now();
-    let r = s.llamar("anadir_tarea", json!({"texto": "comprar yeso", "fecha": "mañana"}));
+    let r = s.llamar(
+        "anadir_tarea",
+        json!({"texto": "comprar yeso", "fecha": "mañana"}),
+    );
     println!("anadir_tarea de ida y vuelta: {:?}", t0.elapsed());
     assert_eq!(r["result"]["isError"], false, "{r}");
     assert!(texto(&r).starts_with("hecho anadir_tarea"), "{r}");
@@ -276,22 +316,41 @@ fn una_conversacion_de_ida_y_vuelta() {
     let r = s.llamar("anadir_tarea", json!({}));
     assert_eq!(r["result"]["isError"], true);
     assert!(texto(&r).contains("«texto»"), "{r}");
-    assert_eq!(RECIBIDOS.lock().unwrap().len(), antes, "lo mal puesto no sale");
+    assert_eq!(
+        RECIBIDOS.lock().unwrap().len(),
+        antes,
+        "lo mal puesto no sale"
+    );
     // Lo que cambia algo lleva su pregunta; lo que borra, la de la tabla
     // (y si el usuario dice que no, isError con el motivo).
-    let r = s.llamar("editar_tarea", json!({"tarea": "comprar pan", "texto": "comprar pan integral"}));
+    let r = s.llamar(
+        "editar_tarea",
+        json!({"tarea": "comprar pan", "texto": "comprar pan integral"}),
+    );
     assert_eq!(r["result"]["isError"], false, "{r}");
     let r = s.llamar("quitar_tarea", json!({"tarea": "comprar pan"}));
     assert_eq!(r["result"]["isError"], true);
     assert!(texto(&r).contains("dijo que no"));
     {
         let rec = RECIBIDOS.lock().unwrap();
-        let de = |n: &str| rec.iter().find(|p| p["nombre"] == n).unwrap_or_else(|| panic!("no llego {n}"));
+        let de = |n: &str| {
+            rec.iter()
+                .find(|p| p["nombre"] == n)
+                .unwrap_or_else(|| panic!("no llego {n}"))
+        };
         assert_eq!(de("anadir_tarea")["accion"], "herramienta");
         assert_eq!(de("anadir_tarea")["args"]["fecha"], "mañana");
         assert!(de("anadir_tarea").get("preguntar").is_none());
-        assert!(de("editar_tarea")["preguntar"].as_str().unwrap().contains("comprar pan integral"));
-        assert!(de("quitar_tarea").get("preguntar").is_none(), "la pregunta de borrar la pone la tabla en PixPin");
+        assert!(
+            de("editar_tarea")["preguntar"]
+                .as_str()
+                .unwrap()
+                .contains("comprar pan integral")
+        );
+        assert!(
+            de("quitar_tarea").get("preguntar").is_none(),
+            "la pregunta de borrar la pone la tabla en PixPin"
+        );
         // Ninguna respuesta se queda en %TEMP%.
         for p in rec.iter() {
             assert!(!Path::new(p["respuesta"].as_str().unwrap()).exists());
@@ -306,7 +365,10 @@ fn una_conversacion_de_ida_y_vuelta() {
             assert!(st.success());
             break;
         }
-        assert!(t0.elapsed() < Duration::from_secs(5), "no se fue al cerrar stdin");
+        assert!(
+            t0.elapsed() < Duration::from_secs(5),
+            "no se fue al cerrar stdin"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
     let _ = std::fs::remove_dir_all(&raiz);
@@ -338,7 +400,9 @@ fn arranque_y_lista_medidos() {
     };
     let (amin, amed) = mediana(&mut arranques);
     let (lmin, lmed) = mediana(&mut listas);
-    println!("arranque: minimo {amin:?}, mediana {amed:?}; tools/list: minimo {lmin:?}, mediana {lmed:?}");
+    println!(
+        "arranque: minimo {amin:?}, mediana {amed:?}; tools/list: minimo {lmin:?}, mediana {lmed:?}"
+    );
     // Holgado: es la compilacion de depuracion y el equipo compila a la vez.
     assert!(amin < Duration::from_secs(2), "{amin:?}");
     let _ = std::fs::remove_dir_all(&raiz);

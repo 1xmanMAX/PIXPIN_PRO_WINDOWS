@@ -34,8 +34,8 @@ use pixpin_ia::acciones_documentos::{ABRIR, ANOTAR, BUSCAR_EN, EXPORTAR, TABLA};
 use pixpin_ia::tabla_escaneada::{self, Palabra, TablaLeida};
 use pixpin_motor2d::{ColorRgba, Elemento, Figura, Punto2};
 use pixpin_pdf::texto::PaginaDeTexto;
-use pixpin_proyecto::cuaderno::{Clase, Cuaderno};
 use pixpin_proyecto::almacen;
+use pixpin_proyecto::cuaderno::{Clase, Cuaderno};
 use serde_json::{Value, json};
 
 use super::acciones::Mandar;
@@ -67,7 +67,10 @@ pub fn hacer(a: &AccionApp, cx: &Contexto) -> Result<String, String> {
 }
 
 fn texto_de<'a>(args: &'a Value, campo: &str) -> Option<&'a str> {
-    args.get(campo).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())
+    args.get(campo)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 fn numeros_de(args: &Value, campo: &str) -> Vec<f64> {
@@ -80,7 +83,11 @@ fn numeros_de(args: &Value, campo: &str) -> Vec<f64> {
 /// El `proyecto` de los pedidos: el chat de ahora (sin el, «Mensajes
 /// guardados»).
 fn proyecto_del_pedido(cx: &Contexto) -> Value {
-    if cx.proyecto.trim().is_empty() { Value::Null } else { json!(cx.proyecto) }
+    if cx.proyecto.trim().is_empty() {
+        Value::Null
+    } else {
+        json!(cx.proyecto)
+    }
 }
 
 fn mandar(cx: &Contexto, pedido: Value) -> Result<(), String> {
@@ -126,7 +133,10 @@ pub fn es_plano(nombre: &str) -> bool {
 }
 
 fn es_office_de_paginas(nombre: &str) -> bool {
-    matches!(extension(nombre).as_str(), "docx" | "docm" | "dotx" | "dotm" | "pptx" | "pptm" | "ppsx" | "ppsm" | "potx" | "potm")
+    matches!(
+        extension(nombre).as_str(),
+        "docx" | "docm" | "dotx" | "dotm" | "pptx" | "pptm" | "ppsx" | "ppsm" | "potx" | "potm"
+    )
 }
 
 fn sirve(nombre: &str, s: Sirve) -> bool {
@@ -151,25 +161,45 @@ fn no_sirve(cx: &Contexto, s: Sirve) -> String {
         Sirve::Cualquiera => "ningun archivo",
         Sirve::Anotable => "un PDF, Word, PowerPoint, Excel, foto o plano",
     };
-    let mut hay: Vec<Candidato> = candidatos(cx.raiz).into_iter().filter(|c| c.proyecto == cx.proyecto).collect();
+    let mut hay: Vec<Candidato> = candidatos(cx.raiz)
+        .into_iter()
+        .filter(|c| c.proyecto == cx.proyecto)
+        .collect();
     let de_turno: Vec<Candidato> = cx
         .adjuntos
         .iter()
         .filter(|a| !hay.iter().any(|c| c.ruta == a.ruta))
-        .map(|a| Candidato { nombre: a.nombre.clone(), ruta: a.ruta.clone(), proyecto: cx.proyecto.to_string(), proyecto_nombre: String::new(), cuando: 0 })
+        .map(|a| Candidato {
+            nombre: a.nombre.clone(),
+            ruta: a.ruta.clone(),
+            proyecto: cx.proyecto.to_string(),
+            proyecto_nombre: String::new(),
+            cuando: 0,
+        })
         .collect();
     hay.extend(de_turno);
     if hay.is_empty() {
         return format!("en este chat no hay {que}; pregunta al usuario cual (por su nombre)");
     }
     hay.sort_by_key(|c| std::cmp::Reverse(c.cuando));
-    let nombres: Vec<String> = hay.iter().take(6).map(|c| format!("«{}»", c.nombre)).collect();
+    let nombres: Vec<String> = hay
+        .iter()
+        .take(6)
+        .map(|c| format!("«{}»", c.nombre))
+        .collect();
     let consejo = match s {
-        Sirve::Documento => "; para marcar o explicar algo en un Excel o una foto usa anotar_inteligente, y para leer un Excel leer_excel",
-        Sirve::Escaneado => "; un Excel ya es una tabla (leer_excel), y un Word o PowerPoint se lee con leer_documento",
+        Sirve::Documento => {
+            "; para marcar o explicar algo en un Excel o una foto usa anotar_inteligente, y para leer un Excel leer_excel"
+        }
+        Sirve::Escaneado => {
+            "; un Excel ya es una tabla (leer_excel), y un Word o PowerPoint se lee con leer_documento"
+        }
         _ => "",
     };
-    format!("esta herramienta necesita {que} y en este chat solo hay {}{consejo}", nombres.join(", "))
+    format!(
+        "esta herramienta necesita {que} y en este chat solo hay {}{consejo}",
+        nombres.join(", ")
+    )
 }
 
 /// **Los archivos de todos los chats** (los adjuntos que estan en este PC),
@@ -180,18 +210,42 @@ pub fn candidatos(raiz: &Path) -> Vec<Candidato> {
         if ficha.es_asistente() {
             continue;
         }
-        let pnombre = if ficha.es_guardados() { "Mensajes guardados".to_string() } else { ficha.nombre.clone() };
-        let Ok(c) = Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id)) else { continue };
-        for m in c.mensajes.iter().filter(|m| m.clase == Some(Clase::Archivo) && !m.en_buzon) {
-            let Some(ruta) = m.ruta.as_deref().and_then(|r| pixpin_proyecto::vista::ruta_real(raiz, &ficha.id, r)) else {
+        let pnombre = if ficha.es_guardados() {
+            "Mensajes guardados".to_string()
+        } else {
+            ficha.nombre.clone()
+        };
+        let Ok(c) = Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id)) else {
+            continue;
+        };
+        for m in c
+            .mensajes
+            .iter()
+            .filter(|m| m.clase == Some(Clase::Archivo) && !m.en_buzon)
+        {
+            let Some(ruta) = m
+                .ruta
+                .as_deref()
+                .and_then(|r| pixpin_proyecto::vista::ruta_real(raiz, &ficha.id, r))
+            else {
                 continue;
             };
             let ruta: PathBuf = ruta.components().collect();
             if !ruta.is_file() {
                 continue;
             }
-            let nombre = if m.nombre.trim().is_empty() { pixpin_docs::nombre(&ruta) } else { m.nombre.trim().to_string() };
-            v.push(Candidato { nombre, ruta, proyecto: ficha.id.clone(), proyecto_nombre: pnombre.clone(), cuando: m.cuando });
+            let nombre = if m.nombre.trim().is_empty() {
+                pixpin_docs::nombre(&ruta)
+            } else {
+                m.nombre.trim().to_string()
+            };
+            v.push(Candidato {
+                nombre,
+                ruta,
+                proyecto: ficha.id.clone(),
+                proyecto_nombre: pnombre.clone(),
+                cuando: m.cuando,
+            });
         }
     }
     v
@@ -199,8 +253,37 @@ pub fn candidatos(raiz: &Path) -> Vec<Candidato> {
 
 /// Palabras que no dicen que archivo es.
 const VACIAS: &[&str] = &[
-    "de", "del", "la", "el", "los", "las", "en", "y", "mi", "mis", "que", "con", "por", "para", "un", "una", "abre",
-    "abrir", "abreme", "archivo", "fichero", "documento", "muestrame", "ensename", "ese", "esa", "este", "esta", "al", "a", "lo",
+    "de",
+    "del",
+    "la",
+    "el",
+    "los",
+    "las",
+    "en",
+    "y",
+    "mi",
+    "mis",
+    "que",
+    "con",
+    "por",
+    "para",
+    "un",
+    "una",
+    "abre",
+    "abrir",
+    "abreme",
+    "archivo",
+    "fichero",
+    "documento",
+    "muestrame",
+    "ensename",
+    "ese",
+    "esa",
+    "este",
+    "esta",
+    "al",
+    "a",
+    "lo",
 ];
 
 fn palabras(s: &str) -> Vec<String> {
@@ -235,10 +318,14 @@ pub fn puntuar(c: &Candidato, descripcion: &str) -> f64 {
         let tipo = match q.as_str() {
             "plano" | "planos" | "dwg" | "dxf" | "cad" => Some(es_plano(&c.nombre)),
             "pdf" => Some(ext == "pdf"),
-            "excel" | "xlsx" | "libro" => Some(matches!(ext.as_str(), "xlsx" | "xls" | "xlsm" | "csv")),
+            "excel" | "xlsx" | "libro" => {
+                Some(matches!(ext.as_str(), "xlsx" | "xls" | "xlsm" | "csv"))
+            }
             "word" | "docx" => Some(matches!(ext.as_str(), "docx" | "doc")),
             "foto" | "imagen" | "captura" => Some(super::ocr::es_imagen(&c.ruta)),
-            "presentacion" | "diapositivas" | "pptx" => Some(matches!(ext.as_str(), "pptx" | "ppt")),
+            "presentacion" | "diapositivas" | "pptx" => {
+                Some(matches!(ext.as_str(), "pptx" | "ppt"))
+            }
             _ => None,
         };
         if let Some(es) = tipo {
@@ -259,17 +346,29 @@ pub fn puntuar(c: &Candidato, descripcion: &str) -> f64 {
 /// reciente que sirva (del turno, luego del chat). Si hay varios que encajan
 /// casi igual, el `Err` los lista para que el modelo pregunte cual.
 pub fn elegir(cx: &Contexto, archivo: Option<&str>, s: Sirve) -> Result<Candidato, String> {
-    let todos: Vec<Candidato> = candidatos(cx.raiz).into_iter().filter(|c| sirve(&c.nombre, s)).collect();
+    let todos: Vec<Candidato> = candidatos(cx.raiz)
+        .into_iter()
+        .filter(|c| sirve(&c.nombre, s))
+        .collect();
     let Some(descripcion) = archivo.map(str::trim).filter(|a| !a.is_empty()) else {
         // Lo adjunto en este turno, el ultimo.
-        if let Some(a) = cx.adjuntos.iter().rev().find(|a| sirve(&a.nombre, s) && a.ruta.is_file()) {
-            return Ok(todos.iter().find(|c| c.ruta == a.ruta).cloned().unwrap_or(Candidato {
-                nombre: a.nombre.clone(),
-                ruta: a.ruta.clone(),
-                proyecto: cx.proyecto.to_string(),
-                proyecto_nombre: String::new(),
-                cuando: 0,
-            }));
+        if let Some(a) = cx
+            .adjuntos
+            .iter()
+            .rev()
+            .find(|a| sirve(&a.nombre, s) && a.ruta.is_file())
+        {
+            return Ok(todos
+                .iter()
+                .find(|c| c.ruta == a.ruta)
+                .cloned()
+                .unwrap_or(Candidato {
+                    nombre: a.nombre.clone(),
+                    ruta: a.ruta.clone(),
+                    proyecto: cx.proyecto.to_string(),
+                    proyecto_nombre: String::new(),
+                    cuando: 0,
+                }));
         }
         return todos
             .iter()
@@ -309,7 +408,11 @@ pub fn elegir(cx: &Contexto, archivo: Option<&str>, s: Sirve) -> Result<Candidat
             "no hay ningun archivo en los chats que se llame o trate de «{descripcion}»; pregunta al usuario el nombre"
         ));
     };
-    let parecidos: Vec<&Candidato> = puntuados.iter().filter(|(p, _)| *p >= mejor - 0.3).map(|(_, c)| c).collect();
+    let parecidos: Vec<&Candidato> = puntuados
+        .iter()
+        .filter(|(p, _)| *p >= mejor - 0.3)
+        .map(|(_, c)| c)
+        .collect();
     if parecidos.len() > 1 {
         let lista: Vec<String> = parecidos
             .iter()
@@ -352,10 +455,18 @@ pub fn paginas(ruta: &Path, parar: &AtomicBool) -> Result<Paginas, String> {
     if es_office_de_paginas(&nombre) {
         return paginas_de_office(ruta);
     }
-    let doc = pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir el PDF: {e}"))?;
-    let altos: Vec<f32> = doc.medidas().iter().map(|(w, h)| ANCHO_HOJA * h / w.max(1.0)).collect();
+    let doc =
+        pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir el PDF: {e}"))?;
+    let altos: Vec<f32> = doc
+        .medidas()
+        .iter()
+        .map(|(w, h)| ANCHO_HOJA * h / w.max(1.0))
+        .collect();
     let mut textos = pixpin_pdf::texto::de_fichero(ruta).unwrap_or_default();
-    textos.resize_with(altos.len(), || PaginaDeTexto { texto: String::new(), cajas: Vec::new() });
+    textos.resize_with(altos.len(), || PaginaDeTexto {
+        texto: String::new(),
+        cajas: Vec::new(),
+    });
     let mut leidas = 0;
     for (i, t) in textos.iter_mut().enumerate() {
         if t.texto.trim().chars().count() >= 20 || leidas >= MAX_OCR {
@@ -365,7 +476,9 @@ pub fn paginas(ruta: &Path, parar: &AtomicBool) -> Result<Paginas, String> {
             return Err("el usuario lo paro".into());
         }
         leidas += 1;
-        let img = doc.renderizar(i as u32, ANCHO_OCR).map_err(|e| e.to_string())?;
+        let img = doc
+            .renderizar(i as u32, ANCHO_OCR)
+            .map_err(|e| e.to_string())?;
         *t = pagina_de_ocr(&img.pixeles, img.ancho, img.alto);
     }
     Ok(Paginas { textos, altos })
@@ -376,7 +489,10 @@ pub fn paginas(ruta: &Path, parar: &AtomicBool) -> Result<Paginas, String> {
 fn pagina_de_ocr(rgba: &[u8], ancho: u32, alto: u32) -> PaginaDeTexto {
     let lineas = pixpin_ocr::reconocer(ancho, alto, rgba).unwrap_or_default();
     let (w, h) = (ancho.max(1) as f32, alto.max(1) as f32);
-    let mut t = PaginaDeTexto { texto: String::new(), cajas: Vec::new() };
+    let mut t = PaginaDeTexto {
+        texto: String::new(),
+        cajas: Vec::new(),
+    };
     for l in lineas {
         for p in &l.palabras {
             let n = p.texto.chars().count().max(1) as f32;
@@ -384,7 +500,12 @@ fn pagina_de_ocr(rgba: &[u8], ancho: u32, alto: u32) -> PaginaDeTexto {
             for (k, c) in p.texto.chars().enumerate() {
                 let x0 = p.caja.x as f32 + paso * k as f32;
                 t.texto.push(c);
-                t.cajas.push(Some([x0 / w, p.caja.y as f32 / h, (x0 + paso) / w, (p.caja.y as f32 + p.caja.alto as f32) / h]));
+                t.cajas.push(Some([
+                    x0 / w,
+                    p.caja.y as f32 / h,
+                    (x0 + paso) / w,
+                    (p.caja.y as f32 + p.caja.alto as f32) / h,
+                ]));
             }
             t.texto.push(' ');
             t.cajas.push(None);
@@ -398,12 +519,16 @@ fn pagina_de_ocr(rgba: &[u8], ancho: u32, alto: u32) -> PaginaDeTexto {
 /// Un Word o un PowerPoint maquetado como en el lector (mismas letras de
 /// DirectWrite, mismas hojas).
 fn paginas_de_office(ruta: &Path) -> Result<Paginas, String> {
-    let mut doc = pixpin_office::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir: {e:?}"))?;
-    let letras = pixpin_render::pagina_office::LetrasOffice::sin_motor().ok_or("sin DirectWrite")?;
+    let mut doc =
+        pixpin_office::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir: {e:?}"))?;
+    let letras =
+        pixpin_render::pagina_office::LetrasOffice::sin_motor().ok_or("sin DirectWrite")?;
     let mut textos = Vec::new();
     let mut altos = Vec::new();
     for i in 0..400 {
-        let Some(p) = doc.pagina(i, &letras) else { break };
+        let Some(p) = doc.pagina(i, &letras) else {
+            break;
+        };
         altos.push(ANCHO_HOJA * p.alto / p.ancho.max(1.0));
         textos.push(crate::lector_pdf::office::texto_de_pagina(&p, &letras));
     }
@@ -425,7 +550,12 @@ pub struct Sitio {
 
 /// **Busca `consulta` en las paginas** (sin mirar mayusculas ni tildes,
 /// como Ctrl+F). `pagina`: solo esa (desde 0).
-pub fn buscar_en_paginas(p: &Paginas, consulta: &str, pagina: Option<usize>, max: usize) -> Vec<Sitio> {
+pub fn buscar_en_paginas(
+    p: &Paginas,
+    consulta: &str,
+    pagina: Option<usize>,
+    max: usize,
+) -> Vec<Sitio> {
     let mut v = Vec::new();
     for k in pixpin_docs::buscar::buscar(p.textos.iter().map(|t| t.texto.as_str()), consulta) {
         if pagina.is_some_and(|q| q != k.texto) {
@@ -436,7 +566,14 @@ pub fn buscar_en_paginas(p: &Paginas, consulta: &str, pagina: Option<usize>, max
         let cajas: Vec<[f32; 4]> = t
             .cajas_de(k.inicio, k.largo)
             .into_iter()
-            .map(|c| [c[0] * ANCHO_HOJA, c[1] * alto, c[2] * ANCHO_HOJA, c[3] * alto])
+            .map(|c| {
+                [
+                    c[0] * ANCHO_HOJA,
+                    c[1] * alto,
+                    c[2] * ANCHO_HOJA,
+                    c[3] * alto,
+                ]
+            })
             .collect();
         if cajas.is_empty() {
             continue;
@@ -444,8 +581,17 @@ pub fn buscar_en_paginas(p: &Paginas, consulta: &str, pagina: Option<usize>, max
         let letras: Vec<char> = t.texto.chars().collect();
         let desde = k.inicio.saturating_sub(40);
         let hasta = (k.inicio + k.largo + 40).min(letras.len());
-        let contexto: String = letras[desde..hasta].iter().collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
-        v.push(Sitio { pagina: k.texto, cajas, contexto });
+        let contexto: String = letras[desde..hasta]
+            .iter()
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        v.push(Sitio {
+            pagina: k.texto,
+            cajas,
+            contexto,
+        });
         if v.len() >= max {
             break;
         }
@@ -484,7 +630,10 @@ impl ComoAnotar {
     fn color_de_siempre(self) -> (u8, u8, u8) {
         match self {
             ComoAnotar::Resaltar => (0xff, 0xd4, 0x3b),
-            ComoAnotar::Subrayar | ComoAnotar::Tachar | ComoAnotar::Encerrar | ComoAnotar::Dibujar => (0xe0, 0x31, 0x31),
+            ComoAnotar::Subrayar
+            | ComoAnotar::Tachar
+            | ComoAnotar::Encerrar
+            | ComoAnotar::Dibujar => (0xe0, 0x31, 0x31),
             ComoAnotar::Marco => (0x3d, 0x8b, 0xff),
             ComoAnotar::Nota => (0x34, 0x3a, 0x40),
         }
@@ -511,14 +660,30 @@ fn color_motor((r, g, b): (u8, u8, u8)) -> ColorRgba {
 
 /// La caja que abarca todas.
 fn union(cajas: &[[f32; 4]]) -> [f32; 4] {
-    cajas.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |u, c| [u[0].min(c[0]), u[1].min(c[1]), u[2].max(c[2]), u[3].max(c[3])])
+    cajas
+        .iter()
+        .fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |u, c| {
+            [
+                u[0].min(c[0]),
+                u[1].min(c[1]),
+                u[2].max(c[2]),
+                u[3].max(c[3]),
+            ]
+        })
 }
 
 /// **Las figuras de una anotacion** sobre `cajas` (`[x0, y0, x1, y1]` en
 /// las unidades de la capa, y hacia abajo): las mismas del lienzo y de las
 /// marcas de texto de los pines. `letra`: el alto de letra de referencia
 /// (el del texto marcado, o uno comodo para la hoja).
-pub fn figuras(como: ComoAnotar, cajas: &[[f32; 4]], color: (u8, u8, u8), nota: Option<&str>, puntos: &[(f32, f32)], letra: f32) -> Vec<Elemento> {
+pub fn figuras(
+    como: ComoAnotar,
+    cajas: &[[f32; 4]],
+    color: (u8, u8, u8),
+    nota: Option<&str>,
+    puntos: &[(f32, f32)],
+    letra: f32,
+) -> Vec<Elemento> {
     use pixpin_pin::Marca;
     let grupo = vec![GRUPO.to_string()];
     let c = color_motor(color);
@@ -546,7 +711,11 @@ pub fn figuras(como: ComoAnotar, cajas: &[[f32; 4]], color: (u8, u8, u8), nota: 
             let u = union(cajas);
             let aire = letra * 0.6;
             vec![Elemento {
-                figura: if como == ComoAnotar::Encerrar { Figura::Elipse } else { Figura::Rectangulo },
+                figura: if como == ComoAnotar::Encerrar {
+                    Figura::Elipse
+                } else {
+                    Figura::Rectangulo
+                },
                 x: u[0] - aire * 1.5,
                 y: u[1] - aire,
                 ancho: (u[2] - u[0]) + aire * 3.0,
@@ -564,10 +733,16 @@ pub fn figuras(como: ComoAnotar, cajas: &[[f32; 4]], color: (u8, u8, u8), nota: 
                 return Vec::new();
             }
             // A la derecha de lo marcado, o donde diga la zona.
-            let u = if cajas.is_empty() { [0.0, 0.0, 0.0, letra] } else { union(cajas) };
+            let u = if cajas.is_empty() {
+                [0.0, 0.0, 0.0, letra]
+            } else {
+                union(cajas)
+            };
             let tam = letra.max(1.0);
             let lineas = partir(texto, 28);
-            let ancho = lineas.iter().map(|l| l.chars().count()).max().unwrap_or(1) as f32 * tam * 0.55 + tam;
+            let ancho =
+                lineas.iter().map(|l| l.chars().count()).max().unwrap_or(1) as f32 * tam * 0.55
+                    + tam;
             let alto = lineas.len() as f32 * tam * 1.3 + tam * 0.6;
             let (x, y) = (u[2] + tam * 0.8, u[1] - tam * 0.3);
             let papel = Elemento {
@@ -576,7 +751,10 @@ pub fn figuras(como: ComoAnotar, cajas: &[[f32; 4]], color: (u8, u8, u8), nota: 
                 y,
                 ancho,
                 alto,
-                trazo: ColorRgba { a: 0.0, ..color_motor((0xe8, 0xc5, 0x47)) },
+                trazo: ColorRgba {
+                    a: 0.0,
+                    ..color_motor((0xe8, 0xc5, 0x47))
+                },
                 relleno: Some(color_motor((0xff, 0xf3, 0xa3))),
                 estilo_relleno: pixpin_motor2d::relleno::EstiloRelleno::Solido,
                 grosor: 1.0,
@@ -585,7 +763,11 @@ pub fn figuras(como: ComoAnotar, cajas: &[[f32; 4]], color: (u8, u8, u8), nota: 
                 ..Default::default()
             };
             let letras = Elemento {
-                figura: Figura::Texto { texto: lineas.join("\n"), tam, familia: "sans".into() },
+                figura: Figura::Texto {
+                    texto: lineas.join("\n"),
+                    tam,
+                    familia: "sans".into(),
+                },
                 x: x + tam * 0.5,
                 y: y + tam * 0.3,
                 ancho: ancho - tam,
@@ -603,7 +785,11 @@ pub fn figuras(como: ComoAnotar, cajas: &[[f32; 4]], color: (u8, u8, u8), nota: 
                 return Vec::new();
             }
             let pts: Vec<Punto2> = puntos.iter().map(|(x, y)| Punto2::nuevo(*x, *y)).collect();
-            let (x0, y0, x1, y1) = pts.iter().fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |a, p| (a.0.min(p.x), a.1.min(p.y), a.2.max(p.x), a.3.max(p.y)));
+            let (x0, y0, x1, y1) = pts
+                .iter()
+                .fold((f32::MAX, f32::MAX, f32::MIN, f32::MIN), |a, p| {
+                    (a.0.min(p.x), a.1.min(p.y), a.2.max(p.x), a.3.max(p.y))
+                });
             vec![Elemento {
                 figura: Figura::Linea { puntos: pts },
                 x: x0,
@@ -659,7 +845,12 @@ fn puntos_en(puntos: &[f64], marco: [f32; 4]) -> Vec<(f32, f32)> {
     let (mw, mh) = (marco[2] - marco[0], marco[3] - marco[1]);
     puntos
         .chunks_exact(2)
-        .map(|p| (marco[0] + p[0].clamp(0.0, 1.0) as f32 * mw, marco[1] + p[1].clamp(0.0, 1.0) as f32 * mh))
+        .map(|p| {
+            (
+                marco[0] + p[0].clamp(0.0, 1.0) as f32 * mw,
+                marco[1] + p[1].clamp(0.0, 1.0) as f32 * mh,
+            )
+        })
         .collect()
 }
 
@@ -670,7 +861,8 @@ fn puntos_en(puntos: &[f64], marco: [f32; 4]) -> Vec<(f32, f32)> {
 /// primera con texto) de un PDF: la capa de texto si la tiene, si no OCR.
 pub fn palabras_de(ruta: &Path, pagina: Option<usize>) -> Result<(Vec<Palabra>, usize), String> {
     if super::ocr::es_imagen(ruta) {
-        let img = pixpin_codec::imagen::cargar(ruta).map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
+        let img = pixpin_codec::imagen::cargar(ruta)
+            .map_err(|e| format!("no se pudo abrir la imagen: {e}"))?;
         return Ok((palabras_de_ocr(&img.pixeles, img.ancho, img.alto)?, 0));
     }
     // La capa de texto del PDF (exacta y al instante).
@@ -685,18 +877,29 @@ pub fn palabras_de(ruta: &Path, pagina: Option<usize>) -> Result<(Vec<Palabra>, 
         {
             let ps = t
                 .iter()
-                .map(|t| Palabra::nueva(&t.texto, t.x as f64, (t.y - t.alto * 0.8) as f64, (t.fin - t.x).max(0.0) as f64, t.alto as f64))
+                .map(|t| {
+                    Palabra::nueva(
+                        &t.texto,
+                        t.x as f64,
+                        (t.y - t.alto * 0.8) as f64,
+                        (t.fin - t.x).max(0.0) as f64,
+                        t.alto as f64,
+                    )
+                })
                 .collect();
             return Ok((ps, p));
         }
     }
     // Escaneado: la hoja pintada, por el OCR.
-    let doc = pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir el PDF: {e}"))?;
+    let doc =
+        pixpin_pdf::Documento::abrir(ruta).map_err(|e| format!("no se pudo abrir el PDF: {e}"))?;
     let p = pagina.unwrap_or(0);
     if p as u32 >= doc.paginas() {
         return Err(format!("el PDF tiene {} paginas", doc.paginas()));
     }
-    let img = doc.renderizar(p as u32, ANCHO_OCR).map_err(|e| e.to_string())?;
+    let img = doc
+        .renderizar(p as u32, ANCHO_OCR)
+        .map_err(|e| e.to_string())?;
     Ok((palabras_de_ocr(&img.pixeles, img.ancho, img.alto)?, p))
 }
 
@@ -704,11 +907,20 @@ fn palabras_de_ocr(rgba: &[u8], ancho: u32, alto: u32) -> Result<Vec<Palabra>, S
     if !pixpin_ocr::disponible() {
         return Err("el OCR de Windows no esta disponible (falta el idioma)".into());
     }
-    let lineas = pixpin_ocr::reconocer(ancho, alto, rgba).map_err(|e| format!("el OCR fallo: {e:?}"))?;
+    let lineas =
+        pixpin_ocr::reconocer(ancho, alto, rgba).map_err(|e| format!("el OCR fallo: {e:?}"))?;
     Ok(lineas
         .iter()
         .flat_map(|l| l.palabras.iter())
-        .map(|p| Palabra::nueva(&p.texto, p.caja.x as f64, p.caja.y as f64, p.caja.ancho as f64, p.caja.alto as f64))
+        .map(|p| {
+            Palabra::nueva(
+                &p.texto,
+                p.caja.x as f64,
+                p.caja.y as f64,
+                p.caja.ancho as f64,
+                p.caja.alto as f64,
+            )
+        })
         .collect())
 }
 
@@ -738,10 +950,19 @@ pub fn leer_tabla(ruta: &Path, pagina: Option<usize>) -> Result<TablaLeida, Stri
 
 fn tabla(args: &Value, cx: &Contexto) -> Result<String, String> {
     let c = elegir(cx, texto_de(args, "archivo"), Sirve::Escaneado)?;
-    let pagina = args.get("pagina").and_then(Value::as_u64).filter(|p| *p >= 1).map(|p| p as usize - 1);
+    let pagina = args
+        .get("pagina")
+        .and_then(Value::as_u64)
+        .filter(|p| *p >= 1)
+        .map(|p| p as usize - 1);
     let leida = leer_tabla(&c.ruta, pagina)?;
-    let cabecera = args.get("cabecera").and_then(Value::as_bool).unwrap_or_else(|| leida.parece_cabecera());
-    let nombre = texto_de(args, "nombre").map(str::to_string).unwrap_or_else(|| pixpin_docs::sin_extension(&c.nombre));
+    let cabecera = args
+        .get("cabecera")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| leida.parece_cabecera());
+    let nombre = texto_de(args, "nombre")
+        .map(str::to_string)
+        .unwrap_or_else(|| pixpin_docs::sin_extension(&c.nombre));
     let excel = texto_de(args, "destino") == Some("excel");
     let hecha = if excel {
         let aspecto = aspecto_de_tabla(&c.ruta, pagina);
@@ -752,20 +973,35 @@ fn tabla(args: &Value, cx: &Contexto) -> Result<String, String> {
             }
             None => leida,
         };
-        let ruta = escribir_excel_con(&nombre, &leida.filas, cabecera, aspecto.as_ref().map(|a| &a.0))?;
+        let ruta = escribir_excel_con(
+            &nombre,
+            &leida.filas,
+            cabecera,
+            aspecto.as_ref().map(|a| &a.0),
+        )?;
         mandar(
             cx,
             json!({"pixpin": 1, "accion": "chat", "proyecto": proyecto_del_pedido(cx),
                    "texto": format!("[archivo 01] {nombre}.xlsx"), "archivos": [ruta]}),
         )?;
-        TablaHecha { leida, nombre, cabecera, excel: Some(ruta) }
+        TablaHecha {
+            leida,
+            nombre,
+            cabecera,
+            excel: Some(ruta),
+        }
     } else {
         mandar(
             cx,
             json!({"pixpin": 1, "accion": "tabla_nueva", "proyecto": proyecto_del_pedido(cx), "nombre": nombre,
                    "filas": leida.filas, "cabecera": cabecera, "abrir": true}),
         )?;
-        TablaHecha { leida, nombre, cabecera, excel: None }
+        TablaHecha {
+            leida,
+            nombre,
+            cabecera,
+            excel: None,
+        }
     };
     Ok(resumen_de_tabla(&hecha, &c.nombre))
 }
@@ -776,7 +1012,11 @@ fn tabla(args: &Value, cx: &Contexto) -> Result<String, String> {
 /// El fondo a blanco y lo que se aparta de el, oscurecido de mas
 /// (`(v/fondo)^4`): la raya casi del color del fondo queda gris y se mide.
 pub(crate) fn rayas_marcadas(px: &mut [u8]) {
-    let mut g: Vec<u8> = px.chunks_exact(4).step_by(5).map(|p| ((p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000) as u8).collect();
+    let mut g: Vec<u8> = px
+        .chunks_exact(4)
+        .step_by(5)
+        .map(|p| ((p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000) as u8)
+        .collect();
     g.sort_unstable();
     let fondo = g.get(g.len() / 2).copied().unwrap_or(255).max(1) as f32;
     for p in px.chunks_exact_mut(4) {
@@ -786,7 +1026,10 @@ pub(crate) fn rayas_marcadas(px: &mut [u8]) {
     }
 }
 
-pub fn aspecto_de_tabla(ruta: &Path, pagina: Option<usize>) -> Option<(pixpin_ia::tabla_aspecto::Medida, u32)> {
+pub fn aspecto_de_tabla(
+    ruta: &Path,
+    pagina: Option<usize>,
+) -> Option<(pixpin_ia::tabla_aspecto::Medida, u32)> {
     let img = if super::ocr::es_imagen(ruta) {
         pixpin_codec::imagen::cargar(ruta).ok()?
     } else {
@@ -817,7 +1060,8 @@ pub fn aspecto_de_tabla(ruta: &Path, pagina: Option<usize>) -> Option<(pixpin_ia
     // «p-OI» era «P-01») y la medida con esas palabras.
     if m.inclinacion != 0.0
         && !m.columnas.is_empty()
-        && let derecha = pixpin_ia::tabla_aspecto::enderezar(&img.pixeles, img.ancho, img.alto, m.inclinacion)
+        && let derecha =
+            pixpin_ia::tabla_aspecto::enderezar(&img.pixeles, img.ancho, img.alto, m.inclinacion)
         && let Ok(ps2) = palabras_de_ocr(&derecha, img.ancho, img.alto)
         && let Some(mut m2) = pixpin_ia::tabla_aspecto::medir(&derecha, img.ancho, img.alto, &ps2)
     {
@@ -831,16 +1075,32 @@ pub fn aspecto_de_tabla(ruta: &Path, pagina: Option<usize>) -> Option<(pixpin_ia
 /// texto de la pagina, enderezada si estaba torcida) o, si no hay rejilla o
 /// es un PDF que ya cuadra con ella, las de [`leer_tabla`] (en un PDF, su
 /// capa de texto, exacta).
-pub fn filas_de(leida: &TablaLeida, m: &pixpin_ia::tabla_aspecto::Medida, ruta: &Path) -> Vec<Vec<String>> {
+pub fn filas_de(
+    leida: &TablaLeida,
+    m: &pixpin_ia::tabla_aspecto::Medida,
+    ruta: &Path,
+) -> Vec<Vec<String>> {
     let rejilla = !m.celdas.is_empty() && m.celdas.iter().flatten().any(|c| !c.is_empty());
-    let pdf_que_cuadra = !super::ocr::es_imagen(ruta) && m.cuadra(leida.filas.len(), leida.columnas());
-    if rejilla && !pdf_que_cuadra { m.celdas.clone() } else { leida.filas.clone() }
+    let pdf_que_cuadra =
+        !super::ocr::es_imagen(ruta) && m.cuadra(leida.filas.len(), leida.columnas());
+    if rejilla && !pdf_que_cuadra {
+        m.celdas.clone()
+    } else {
+        leida.filas.clone()
+    }
 }
 
 /// La tabla con otras celdas: si cambian, sus combinadas (de la lectura de
 /// antes) ya no valen.
 fn con_filas(leida: TablaLeida, filas: Vec<Vec<String>>) -> TablaLeida {
-    if filas == leida.filas { leida } else { TablaLeida { filas, combinadas: Vec::new() } }
+    if filas == leida.filas {
+        leida
+    } else {
+        TablaLeida {
+            filas,
+            combinadas: Vec::new(),
+        }
+    }
 }
 
 /// **La tabla de una foto, dibujada en el lienzo como en la foto** (16-oct):
@@ -857,9 +1117,14 @@ pub fn tabla_para_el_lienzo(
     corregir: Option<&dyn pixpin_ia::Motor>,
 ) -> Result<(Vec<Elemento>, String), String> {
     let c = elegir(cx, texto_de(args, "archivo"), Sirve::Escaneado)?;
-    let pagina = args.get("pagina").and_then(Value::as_u64).filter(|p| *p >= 1).map(|p| p as usize - 1);
+    let pagina = args
+        .get("pagina")
+        .and_then(Value::as_u64)
+        .filter(|p| *p >= 1)
+        .map(|p| p as usize - 1);
     let cabecera = args.get("cabecera").and_then(Value::as_bool);
-    tabla_de_fichero(&c.ruta, &c.nombre, pagina, cabecera, escala, corregir).map(|(els, texto, _)| (els, texto))
+    tabla_de_fichero(&c.ruta, &c.nombre, pagina, cabecera, escala, corregir)
+        .map(|(els, texto, _)| (els, texto))
 }
 
 /// **La tabla de un fichero (foto o pagina de PDF) para el lienzo**: lo de
@@ -887,7 +1152,8 @@ pub fn tabla_de_fichero(
     let c = C { ruta, nombre };
     let leida = leer_tabla(c.ruta, pagina)?;
     let cabecera = cabecera.unwrap_or_else(|| leida.parece_cabecera());
-    let (mut m, ancho_img) = aspecto_de_tabla(c.ruta, pagina).ok_or("no se pudo medir la tabla en la imagen")?;
+    let (mut m, ancho_img) =
+        aspecto_de_tabla(c.ruta, pagina).ok_or("no se pudo medir la tabla en la imagen")?;
     // Lo que el OCR leyo mal (tildes, «°»): con la vista de la nube, si la hay.
     let mut corregidas = 0;
     if let Some(motor) = corregir
@@ -897,24 +1163,49 @@ pub fn tabla_de_fichero(
     }
     let filas = filas_de(&leida, &m, c.ruta);
     let leida = con_filas(leida, filas);
-    let k = escala.unwrap_or(if super::ocr::es_imagen(c.ruta) { 1.0 } else { 1400.0 / ancho_img as f32 });
-    let col = |c: [u8; 3]| ColorRgba::opaco(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0);
+    let k = escala.unwrap_or(if super::ocr::es_imagen(c.ruta) {
+        1.0
+    } else {
+        1400.0 / ancho_img as f32
+    });
+    let col = |c: [u8; 3]| {
+        ColorRgba::opaco(
+            c[0] as f32 / 255.0,
+            c[1] as f32 / 255.0,
+            c[2] as f32 / 255.0,
+        )
+    };
     let (filas, columnas) = (leida.filas.len(), leida.columnas());
     let cuadra = m.cuadra(filas, columnas);
     let aspecto = Aspecto {
         anchos: cuadra.then(|| m.anchos().iter().map(|a| *a as f32 * k).collect()),
         altos: cuadra.then(|| m.altos().iter().map(|a| *a as f32 * k).collect()),
-        fondos: cuadra.then(|| m.fondos.iter().map(|f| f.iter().map(|x| x.map(col)).collect()).collect()),
+        fondos: cuadra.then(|| {
+            m.fondos
+                .iter()
+                .map(|f| f.iter().map(|x| x.map(col)).collect())
+                .collect()
+        }),
         borde: m.borde.map(|(c, g)| (col(c), (g as f32 * k).max(0.75))),
         // (El aire medido, como mucho una letra: en la de tema oscuro salia
         // de cuatro y el texto quedaba en mitad de la celda.)
-        aire: m.aire.filter(|_| cuadra).map(|a| a.min(m.tam_letra) as f32 * k),
+        aire: m
+            .aire
+            .filter(|_| cuadra)
+            .map(|a| a.min(m.tam_letra) as f32 * k),
     };
     let celdas: Vec<Vec<Celda>> = leida
         .filas
         .iter()
         .enumerate()
-        .map(|(f, fila)| fila.iter().map(|t| Celda { negrita: cabecera && f == 0, ..Celda::de(t.clone()) }).collect())
+        .map(|(f, fila)| {
+            fila.iter()
+                .map(|t| Celda {
+                    negrita: cabecera && f == 0,
+                    ..Celda::de(t.clone())
+                })
+                .collect()
+        })
         .collect();
     let tam = (m.tam_letra as f32 * k).clamp(6.0, 120.0);
     // (Una tabla de tema oscuro: si la letra medida casi no se distingue del
@@ -924,12 +1215,17 @@ pub fn tabla_de_fichero(
         let gris = |c: [u8; 3]| c[0] as f32 * 0.299 + c[1] as f32 * 0.587 + c[2] as f32 * 0.114;
         match fs.get(fs.len() / 2) {
             Some(&f) if (gris(f) - gris(m.texto)).abs() < 70.0 => {
-                if gris(f) < 128.0 { [235, 235, 235] } else { [25, 25, 25] }
+                if gris(f) < 128.0 {
+                    [235, 235, 235]
+                } else {
+                    [25, 25, 25]
+                }
             }
             _ => m.texto,
         }
     };
-    let medir = |s: &str, t: f32| pixpin_motor2d::texto::medida(s, t, LETRA_DE_TABLA, Default::default());
+    let medir =
+        |s: &str, t: f32| pixpin_motor2d::texto::medida(s, t, LETRA_DE_TABLA, Default::default());
     // (Que cada renglon quepa en su columna medida: la letra del lienzo es
     // mas ancha que la de la foto y se salia de la celda.)
     let tam = match &aspecto.anchos {
@@ -938,7 +1234,9 @@ pub fn tabla_de_fichero(
             let mut k_fit = 1.0f32;
             for fila in &leida.filas {
                 for (c, t) in fila.iter().enumerate() {
-                    let Some(&ancho) = anchos.get(c) else { continue };
+                    let Some(&ancho) = anchos.get(c) else {
+                        continue;
+                    };
                     let peso = if cabecera { 1.06 } else { 1.0 };
                     for l in t.lines() {
                         let (w, _) = medir(l, tam);
@@ -952,8 +1250,20 @@ pub fn tabla_de_fichero(
         }
         None => tam,
     };
-    let estilo = pixpin_motor2d::ecuacion::Estilo { color: col(texto), tam, opacidad: 1.0, familia: LETRA_DE_TABLA.into() };
-    let mut els = elementos_de_tabla_con_aspecto(&celdas, &estilo, pixpin_motor2d::vector::Punto2::nuevo(0.0, 0.0), &medir, cabecera, &aspecto);
+    let estilo = pixpin_motor2d::ecuacion::Estilo {
+        color: col(texto),
+        tam,
+        opacidad: 1.0,
+        familia: LETRA_DE_TABLA.into(),
+    };
+    let mut els = elementos_de_tabla_con_aspecto(
+        &celdas,
+        &estilo,
+        pixpin_motor2d::vector::Punto2::nuevo(0.0, 0.0),
+        &medir,
+        cabecera,
+        &aspecto,
+    );
     if els.is_empty() {
         return Err("no salio ninguna celda que dibujar".into());
     }
@@ -966,7 +1276,12 @@ pub fn tabla_de_fichero(
             let t = texto.clone();
             if t.matches("**").count() % 2 == 1 {
                 *texto = t.replace("**", "");
-            } else if let Some(dentro) = t.trim().strip_prefix("**").and_then(|x| x.strip_suffix("**")).filter(|x| !x.contains("**")) {
+            } else if let Some(dentro) = t
+                .trim()
+                .strip_prefix("**")
+                .and_then(|x| x.strip_suffix("**"))
+                .filter(|x| !x.contains("**"))
+            {
                 *texto = dentro.to_string();
                 e.extras.negrita = true;
             } else {
@@ -981,7 +1296,15 @@ pub fn tabla_de_fichero(
         for r in &m.fuera {
             let t = (r.tam as f32 * k).clamp(6.0, 160.0);
             let (w, h) = medir(&r.texto, t);
-            els.push(pixpin_motor2d::ecuacion::elemento_texto(&r.texto, ((r.x - x0) as f32) * k, ((r.y - y0) as f32) * k, (w, h), t, false, &estilo));
+            els.push(pixpin_motor2d::ecuacion::elemento_texto(
+                &r.texto,
+                ((r.x - x0) as f32) * k,
+                ((r.y - y0) as f32) * k,
+                (w, h),
+                t,
+                false,
+                &estilo,
+            ));
         }
     }
     let grupo = format!("tabla-foto-{}", pixpin_shell::entorno::ahora_utc_ms());
@@ -990,16 +1313,36 @@ pub fn tabla_de_fichero(
     }
     let fondos = m.fondos.iter().flatten().filter(|f| f.is_some()).count();
     let fuera = if cuadra { m.fuera.len() } else { 0 };
-    let origen = if cuadra { (m.columnas[0], m.filas[0]) } else { (0.0, 0.0) };
+    let origen = if cuadra {
+        (m.columnas[0], m.filas[0])
+    } else {
+        (0.0, 0.0)
+    };
     Ok((
         els,
         format!(
             "hecho: la tabla de «{}» ya esta en el lienzo, a la vista y como en la foto ({filas} filas x {columnas} columnas{}{}{}{}). No la dibujes otra vez ni la muevas",
             c.nombre,
-            if cuadra { ", con su letra, anchos y altos" } else { "" },
-            if fondos > 0 { ", con los colores de fondo" } else { "" },
-            if fuera > 0 { format!(", y {fuera} renglon(es) de texto de alrededor") } else { String::new() },
-            if corregidas > 0 { format!(", {corregidas} lectura(s) del OCR corregidas mirando la foto") } else { String::new() }
+            if cuadra {
+                ", con su letra, anchos y altos"
+            } else {
+                ""
+            },
+            if fondos > 0 {
+                ", con los colores de fondo"
+            } else {
+                ""
+            },
+            if fuera > 0 {
+                format!(", y {fuera} renglon(es) de texto de alrededor")
+            } else {
+                String::new()
+            },
+            if corregidas > 0 {
+                format!(", {corregidas} lectura(s) del OCR corregidas mirando la foto")
+            } else {
+                String::new()
+            }
         ),
         origen,
     ))
@@ -1008,7 +1351,12 @@ pub fn tabla_de_fichero(
 /// Lo que se parecen dos lecturas sin tildes ni signos: la correccion de la
 /// nube solo puede arreglar letras, no inventar celdas.
 fn se_parece(a: &str, b: &str) -> bool {
-    let plano = |s: &str| -> Vec<char> { normalizar(s).chars().filter(|c| c.is_alphanumeric()).collect() };
+    let plano = |s: &str| -> Vec<char> {
+        normalizar(s)
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect()
+    };
     let (a, b) = (plano(a), plano(b));
     let mut d: Vec<usize> = (0..=b.len()).collect();
     for i in 1..=a.len() {
@@ -1016,7 +1364,9 @@ fn se_parece(a: &str, b: &str) -> bool {
         d[0] = i;
         for j in 1..=b.len() {
             let t = d[j];
-            d[j] = (d[j] + 1).min(d[j - 1] + 1).min(antes + usize::from(a[i - 1] != b[j - 1]));
+            d[j] = (d[j] + 1)
+                .min(d[j - 1] + 1)
+                .min(antes + usize::from(a[i - 1] != b[j - 1]));
             antes = t;
         }
     }
@@ -1027,24 +1377,48 @@ fn se_parece(a: &str, b: &str) -> bool {
 /// texto, enderezada si hacia falta) y lo leido en JSON; vuelve lo mismo con
 /// las letras corregidas. Solo se acepta lo que se parece a lo leido.
 /// Devuelve cuantas lecturas cambio.
-fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Option<usize>, m: &mut pixpin_ia::tabla_aspecto::Medida) -> usize {
+fn corregir_con_la_nube(
+    motor: &dyn pixpin_ia::Motor,
+    ruta: &Path,
+    pagina: Option<usize>,
+    m: &mut pixpin_ia::tabla_aspecto::Medida,
+) -> usize {
     use pixpin_ia::motor::{Mensaje, Peticion, Seguir};
     let img = if super::ocr::es_imagen(ruta) {
         pixpin_codec::imagen::cargar(ruta).ok()
     } else {
-        pixpin_pdf::Documento::abrir(ruta).ok().and_then(|d| d.renderizar(pagina.unwrap_or(0) as u32, ANCHO_OCR).ok())
+        pixpin_pdf::Documento::abrir(ruta)
+            .ok()
+            .and_then(|d| d.renderizar(pagina.unwrap_or(0) as u32, ANCHO_OCR).ok())
     };
     let Some(mut img) = img else { return 0 };
     if m.inclinacion != 0.0 {
-        img.pixeles = pixpin_ia::tabla_aspecto::enderezar(&img.pixeles, img.ancho, img.alto, m.inclinacion);
+        img.pixeles =
+            pixpin_ia::tabla_aspecto::enderezar(&img.pixeles, img.ancho, img.alto, m.inclinacion);
     }
     // Recortada a la tabla y a lo que la rodea, con aire.
-    let mut caja = [m.columnas[0], m.filas[0], *m.columnas.last().unwrap_or(&0.0), *m.filas.last().unwrap_or(&0.0)];
+    let mut caja = [
+        m.columnas[0],
+        m.filas[0],
+        *m.columnas.last().unwrap_or(&0.0),
+        *m.filas.last().unwrap_or(&0.0),
+    ];
     for r in &m.fuera {
-        caja = [caja[0].min(r.x), caja[1].min(r.y), caja[2].max(r.x + r.tam * r.texto.chars().count() as f64 * 0.6), caja[3].max(r.y + r.tam * 1.3)];
+        caja = [
+            caja[0].min(r.x),
+            caja[1].min(r.y),
+            caja[2].max(r.x + r.tam * r.texto.chars().count() as f64 * 0.6),
+            caja[3].max(r.y + r.tam * 1.3),
+        ];
     }
-    let (x0, y0) = ((caja[0] - 10.0).max(0.0) as u32, (caja[1] - 10.0).max(0.0) as u32);
-    let (x1, y1) = (((caja[2] + 10.0) as u32).min(img.ancho), ((caja[3] + 10.0) as u32).min(img.alto));
+    let (x0, y0) = (
+        (caja[0] - 10.0).max(0.0) as u32,
+        (caja[1] - 10.0).max(0.0) as u32,
+    );
+    let (x1, y1) = (
+        ((caja[2] + 10.0) as u32).min(img.ancho),
+        ((caja[3] + 10.0) as u32).min(img.alto),
+    );
     if x1 <= x0 + 8 || y1 <= y0 + 8 {
         return 0;
     }
@@ -1054,14 +1428,20 @@ fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Optio
         let i = ((y * img.ancho + x0) * 4) as usize;
         px.extend_from_slice(&img.pixeles[i..i + (w * 4) as usize]);
     }
-    let mut recorte = pixpin_codec::ImagenRgba { ancho: w, alto: h, pixeles: px };
+    let mut recorte = pixpin_codec::ImagenRgba {
+        ancho: w,
+        alto: h,
+        pixeles: px,
+    };
     if w > 1500 {
         match pixpin_codec::imagen::redimensionar(recorte, 1500, (h * 1500 / w).max(1)) {
             Ok(r) => recorte = r,
             Err(_) => return 0,
         }
     }
-    let Ok(jpg) = pixpin_codec::imagen::codificar_jpg(&recorte, 88) else { return 0 };
+    let Ok(jpg) = pixpin_codec::imagen::codificar_jpg(&recorte, 88) else {
+        return 0;
+    };
     let leido = json!({"celdas": m.celdas, "fuera": m.fuera.iter().map(|r| r.texto.clone()).collect::<Vec<_>>()});
     let pedido = format!(
         "Esta es la foto de una tabla y, en JSON, lo que leyo el OCR. Corrige SOLO las letras mal leidas mirando la foto \
@@ -1073,21 +1453,30 @@ fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Optio
     let mut p = Peticion::nueva(vec![Mensaje::usuario_con_imagen(pedido, jpg, "image/jpeg")]);
     p.max_tokens = 3000;
     p.temperatura = 0.0;
-    let Ok(r) = motor.completar(&p, &mut |_| Seguir::Si) else { return 0 };
-    let (Some(a), Some(b)) = (r.texto.find('{'), r.texto.rfind('}')) else { return 0 };
-    let Ok(v) = serde_json::from_str::<Value>(&r.texto[a..=b]) else { return 0 };
+    let Ok(r) = motor.completar(&p, &mut |_| Seguir::Si) else {
+        return 0;
+    };
+    let (Some(a), Some(b)) = (r.texto.find('{'), r.texto.rfind('}')) else {
+        return 0;
+    };
+    let Ok(v) = serde_json::from_str::<Value>(&r.texto[a..=b]) else {
+        return 0;
+    };
     let mut cambios = 0;
     if let Some(filas) = v["celdas"].as_array()
         && filas.len() == m.celdas.len()
     {
         for (f, fila) in filas.iter().enumerate() {
-            let Some(fila) = fila.as_array().filter(|x| x.len() == m.celdas[f].len()) else { continue };
+            let Some(fila) = fila.as_array().filter(|x| x.len() == m.celdas[f].len()) else {
+                continue;
+            };
             for (c, nuevo) in fila.iter().enumerate() {
                 // (Las marcas de negrita no cuentan al compararlo; una celda
                 // que el OCR dejo vacia se acepta como venga.)
                 if let Some(n) = nuevo.as_str().map(str::trim)
                     && n != m.celdas[f][c]
-                    && (m.celdas[f][c].trim().is_empty() && n.chars().count() <= 80 || se_parece(&n.replace("**", ""), &m.celdas[f][c]))
+                    && (m.celdas[f][c].trim().is_empty() && n.chars().count() <= 80
+                        || se_parece(&n.replace("**", ""), &m.celdas[f][c]))
                 {
                     m.celdas[f][c] = n.to_string();
                     cambios += 1;
@@ -1113,10 +1502,20 @@ fn corregir_con_la_nube(motor: &dyn pixpin_ia::Motor, ruta: &Path, pagina: Optio
 
 /// Lo que se le cuenta al modelo: el tamano y las primeras filas.
 pub fn resumen_de_tabla(h: &TablaHecha, de: &str) -> String {
-    let filas: Vec<String> = h.leida.filas.iter().take(4).map(|f| f.join(" | ")).collect();
+    let filas: Vec<String> = h
+        .leida
+        .filas
+        .iter()
+        .take(4)
+        .map(|f| f.join(" | "))
+        .collect();
     format!(
         "hecho: {} «{}» de «{}», {} filas x {} columnas{}{}. Primeras filas: {}",
-        if h.excel.is_some() { "Excel" } else { "tabla del chat" },
+        if h.excel.is_some() {
+            "Excel"
+        } else {
+            "tabla del chat"
+        },
         h.nombre,
         de,
         h.leida.filas.len(),
@@ -1125,7 +1524,10 @@ pub fn resumen_de_tabla(h: &TablaHecha, de: &str) -> String {
         if h.leida.combinadas.is_empty() {
             String::new()
         } else {
-            format!(", {} celdas combinadas (aproximadas)", h.leida.combinadas.len())
+            format!(
+                ", {} celdas combinadas (aproximadas)",
+                h.leida.combinadas.len()
+            )
         },
         filas.join(" / ")
     )
@@ -1134,21 +1536,38 @@ pub fn resumen_de_tabla(h: &TablaHecha, de: &str) -> String {
 /// El `.xlsx` de la tabla, en una carpeta temporal (el pedido `chat` lo
 /// copia al chat).
 #[cfg(test)]
-pub fn escribir_excel(nombre: &str, filas: &[Vec<String>], cabecera: bool) -> Result<PathBuf, String> {
+pub fn escribir_excel(
+    nombre: &str,
+    filas: &[Vec<String>],
+    cabecera: bool,
+) -> Result<PathBuf, String> {
     escribir_excel_con(nombre, filas, cabecera, None)
 }
 
 /// Lo mismo con el aspecto medido en la foto (16-oct): el fondo de cada
 /// celda y el ancho de cada columna, si la rejilla cuadra con la tabla.
-pub fn escribir_excel_con(nombre: &str, filas: &[Vec<String>], cabecera: bool, aspecto: Option<&pixpin_ia::tabla_aspecto::Medida>) -> Result<PathBuf, String> {
-    let mut t = crate::pedidos::tabla_de_filas(nombre, filas, cabecera, pixpin_shell::entorno::ahora_utc_ms());
+pub fn escribir_excel_con(
+    nombre: &str,
+    filas: &[Vec<String>],
+    cabecera: bool,
+    aspecto: Option<&pixpin_ia::tabla_aspecto::Medida>,
+) -> Result<PathBuf, String> {
+    let mut t = crate::pedidos::tabla_de_filas(
+        nombre,
+        filas,
+        cabecera,
+        pixpin_shell::entorno::ahora_utc_ms(),
+    );
     let columnas = filas.first().map_or(0, Vec::len);
     if let Some(m) = aspecto.filter(|m| m.cuadra(filas.len(), columnas)) {
         use pixpin_proyecto::tabla::{Ref, ref_a};
         for (f, fila) in m.fondos.iter().enumerate() {
             for (c, fondo) in fila.iter().enumerate() {
                 if let Some(color) = fondo {
-                    let r = ref_a(Ref { columna: c as u32, fila: f as u32 });
+                    let r = ref_a(Ref {
+                        columna: c as u32,
+                        fila: f as u32,
+                    });
                     t.estilos.entry(r).or_default().f = Some(pixpin_ia::tabla_aspecto::hex(*color));
                 }
             }
@@ -1156,15 +1575,33 @@ pub fn escribir_excel_con(nombre: &str, filas: &[Vec<String>], cabecera: bool, a
         // A la letra de la hoja (unos 15 px): la misma proporcion que en la foto.
         let k = 15.0 / m.tam_letra.max(1.0);
         for (c, a) in m.anchos().iter().enumerate() {
-            let letra = ref_a(Ref { columna: c as u32, fila: 0 }).trim_end_matches('1').to_string();
-            t.anchos.insert(letra, ((a * k).round() as u32).clamp(30, 600));
+            let letra = ref_a(Ref {
+                columna: c as u32,
+                fila: 0,
+            })
+            .trim_end_matches('1')
+            .to_string();
+            t.anchos
+                .insert(letra, ((a * k).round() as u32).clamp(30, 600));
         }
     }
-    let bytes = pixpin_proyecto::tabla_xlsx::a_xlsx(&[pixpin_proyecto::tabla_xlsx::HojaParaVer { nombre, tabla: &t, valores: None }], 0)
-        .map_err(|e| e.to_string())?;
-    let carpeta = std::env::temp_dir().join("pixpin-asistente").join(format!("{}", pixpin_shell::entorno::ahora_utc_ms()));
+    let bytes = pixpin_proyecto::tabla_xlsx::a_xlsx(
+        &[pixpin_proyecto::tabla_xlsx::HojaParaVer {
+            nombre,
+            tabla: &t,
+            valores: None,
+        }],
+        0,
+    )
+    .map_err(|e| e.to_string())?;
+    let carpeta = std::env::temp_dir()
+        .join("pixpin-asistente")
+        .join(format!("{}", pixpin_shell::entorno::ahora_utc_ms()));
     std::fs::create_dir_all(&carpeta).map_err(|e| e.to_string())?;
-    let ruta = carpeta.join(format!("{}.xlsx", crate::compartir::nombre_de_fichero(nombre)));
+    let ruta = carpeta.join(format!(
+        "{}.xlsx",
+        crate::compartir::nombre_de_fichero(nombre)
+    ));
     std::fs::write(&ruta, bytes).map_err(|e| e.to_string())?;
     Ok(ruta)
 }
@@ -1215,21 +1652,45 @@ pub fn ultimo_anotado() -> Option<UltimoAnotado> {
 pub const ANCHO_DE_LA_HOJA: f32 = ANCHO_HOJA;
 
 /// **Anota sin mandar nada** (el banco lo llama asi).
-pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> Result<Anotado, String> {
-    let como = texto_de(args, "tipo").and_then(ComoAnotar::de).ok_or("falta «tipo»")?;
+pub fn anotar_en(
+    raiz: &Path,
+    ruta: &Path,
+    args: &Value,
+    parar: &AtomicBool,
+) -> Result<Anotado, String> {
+    let como = texto_de(args, "tipo")
+        .and_then(ComoAnotar::de)
+        .ok_or("falta «tipo»")?;
     let texto = texto_de(args, "texto");
     let zona = numeros_de(args, "zona");
     let puntos = numeros_de(args, "puntos");
     let color = rgb(texto_de(args, "color"), como);
-    let nota = texto_de(args, "nota").or(if como == ComoAnotar::Nota { texto } else { None });
-    let pagina = args.get("pagina").and_then(Value::as_u64).filter(|p| *p >= 1).map(|p| p as usize - 1);
-    if texto.is_none() && zona.len() < 4 && !(como == ComoAnotar::Dibujar && puntos.len() >= 4) && como != ComoAnotar::Nota {
+    let nota = texto_de(args, "nota").or(if como == ComoAnotar::Nota {
+        texto
+    } else {
+        None
+    });
+    let pagina = args
+        .get("pagina")
+        .and_then(Value::as_u64)
+        .filter(|p| *p >= 1)
+        .map(|p| p as usize - 1);
+    if texto.is_none()
+        && zona.len() < 4
+        && !(como == ComoAnotar::Dibujar && puntos.len() >= 4)
+        && como != ComoAnotar::Nota
+    {
         return Err("di sobre que texto del documento va («texto») o una «zona»".into());
     }
     if es_plano(&pixpin_docs::nombre(ruta)) {
         let r = anotar_plano(raiz, ruta, como, texto, &zona, &puntos, color, nota);
         if r.is_ok() {
-            apuntar_anotado(Some(UltimoAnotado { ruta: ruta.to_path_buf(), hoja: None, alto: 0.0, cajas: Vec::new() }));
+            apuntar_anotado(Some(UltimoAnotado {
+                ruta: ruta.to_path_buf(),
+                hoja: None,
+                alto: 0.0,
+                cajas: Vec::new(),
+            }));
         }
         return r;
     }
@@ -1240,27 +1701,47 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
         Some(t) if como != ComoAnotar::Nota || zona.len() < 4 => {
             let s = buscar_en_paginas(&p, t, pagina, 40);
             let Some(primera) = s.first() else {
-                return Err(format!("«{t}» no aparece en «{}»", pixpin_docs::nombre(ruta)));
+                return Err(format!(
+                    "«{t}» no aparece en «{}»",
+                    pixpin_docs::nombre(ruta)
+                ));
             };
             let hoja = primera.pagina;
             let de_la_hoja: Vec<&Sitio> = s.iter().filter(|x| x.pagina == hoja).take(20).collect();
             // Encerrar o una nota van a lo primero; marcar el texto, a todo.
             let cajas: Vec<[f32; 4]> = match como {
-                ComoAnotar::Resaltar | ComoAnotar::Subrayar | ComoAnotar::Tachar => de_la_hoja.iter().flat_map(|x| x.cajas.clone()).collect(),
+                ComoAnotar::Resaltar | ComoAnotar::Subrayar | ComoAnotar::Tachar => {
+                    de_la_hoja.iter().flat_map(|x| x.cajas.clone()).collect()
+                }
                 _ => primera.cajas.clone(),
             };
-            let marcados = if matches!(como, ComoAnotar::Resaltar | ComoAnotar::Subrayar | ComoAnotar::Tachar) { de_la_hoja.len() } else { 1 };
+            let marcados = if matches!(
+                como,
+                ComoAnotar::Resaltar | ComoAnotar::Subrayar | ComoAnotar::Tachar
+            ) {
+                de_la_hoja.len()
+            } else {
+                1
+            };
             (hoja, cajas, marcados, s.len())
         }
         _ => {
             let hoja = pagina.unwrap_or(0).min(p.altos.len().saturating_sub(1));
-            let marco = [0.0, 0.0, ANCHO_HOJA, p.altos.get(hoja).copied().unwrap_or(ANCHO_HOJA * 1.414)];
-            let caja = zona_en(&zona, marco).unwrap_or([ANCHO_HOJA * 0.6, 60.0, ANCHO_HOJA * 0.62, 90.0]);
+            let marco = [
+                0.0,
+                0.0,
+                ANCHO_HOJA,
+                p.altos.get(hoja).copied().unwrap_or(ANCHO_HOJA * 1.414),
+            ];
+            let caja =
+                zona_en(&zona, marco).unwrap_or([ANCHO_HOJA * 0.6, 60.0, ANCHO_HOJA * 0.62, 90.0]);
             (hoja, vec![caja], 1, 0)
         }
     };
     let alto = p.altos.get(hoja).copied().unwrap_or(ANCHO_HOJA * 1.414);
-    let letra = cajas.first().map_or(18.0, |c| (c[3] - c[1]).clamp(10.0, 40.0));
+    let letra = cajas
+        .first()
+        .map_or(18.0, |c| (c[3] - c[1]).clamp(10.0, 40.0));
     let pts = puntos_en(&puntos, [0.0, 0.0, ANCHO_HOJA, alto]);
     let nuevas = figuras(como, &cajas, color, nota, &pts, letra);
     if nuevas.is_empty() {
@@ -1269,22 +1750,41 @@ pub fn anotar_en(raiz: &Path, ruta: &Path, args: &Value, parar: &AtomicBool) -> 
     let n = nuevas.len();
     let cajas_nuevas: Vec<(f32, f32, f32, f32)> = nuevas.iter().map(Elemento::caja).collect();
     escribir_en_la_hoja(raiz, ruta, hoja, alto, nuevas)?;
-    apuntar_anotado(Some(UltimoAnotado { ruta: ruta.to_path_buf(), hoja: Some(hoja), alto, cajas: cajas_nuevas }));
-    Ok(Anotado { pagina: Some(hoja), figuras: n, sitios, hallados, vista: None })
+    apuntar_anotado(Some(UltimoAnotado {
+        ruta: ruta.to_path_buf(),
+        hoja: Some(hoja),
+        alto,
+        cajas: cajas_nuevas,
+    }));
+    Ok(Anotado {
+        pagina: Some(hoja),
+        figuras: n,
+        sitios,
+        hallados,
+        vista: None,
+    })
 }
 
 /// Escribe en la capa de la hoja `i` de un PDF o un Word: la MISMA que lee
 /// y guarda el lector (`DondeVa`: la hoja de un PDF de proyecto, la
 /// `anot-<uid>-p<i>` con su `.hoja` de un adjunto, o la de al lado).
-pub fn escribir_en_la_hoja(raiz: &Path, ruta: &Path, i: usize, alto: f32, nuevas: Vec<Elemento>) -> Result<(), String> {
-    let d = crate::lector_pdf_proyecto::DondeVa::de(raiz, ruta, pixpin_shell::entorno::ahora_utc_ms());
+pub fn escribir_en_la_hoja(
+    raiz: &Path,
+    ruta: &Path,
+    i: usize,
+    alto: f32,
+    nuevas: Vec<Elemento>,
+) -> Result<(), String> {
+    let d =
+        crate::lector_pdf_proyecto::DondeVa::de(raiz, ruta, pixpin_shell::entorno::ahora_utc_ms());
     let espacios = crate::anotado_del_adjunto::espacios_de_ahora(ruta);
     let mut capa = d.leer_capa(ruta, i, espacios, alto);
     for e in nuevas {
         capa.escena.anadir(e);
     }
     capa.sucia = true;
-    d.guardar_capa(ruta, i, &mut capa, alto).map_err(|e| format!("no se pudo guardar lo anotado: {e}"))
+    d.guardar_capa(ruta, i, &mut capa, alto)
+        .map_err(|e| format!("no se pudo guardar lo anotado: {e}"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1306,9 +1806,15 @@ fn anotar_plano(
             let ts = crate::plano_cad::textos::del_plano(raiz, ruta)?;
             let h = crate::plano_cad::textos::buscar(&ts, t, 10);
             if h.is_empty() {
-                return Err(format!("«{t}» no aparece en el plano «{}»", pixpin_docs::nombre(ruta)));
+                return Err(format!(
+                    "«{t}» no aparece en el plano «{}»",
+                    pixpin_docs::nombre(ruta)
+                ));
             }
-            let uno = matches!(como, ComoAnotar::Encerrar | ComoAnotar::Marco | ComoAnotar::Nota);
+            let uno = matches!(
+                como,
+                ComoAnotar::Encerrar | ComoAnotar::Marco | ComoAnotar::Nota
+            );
             let cajas = h
                 .iter()
                 .take(if uno { 1 } else { 10 })
@@ -1326,9 +1832,19 @@ fn anotar_plano(
             let caja = match zona.get(..4) {
                 Some(&[x, y, w, h]) if w > 0.0 && h > 0.0 => {
                     let (ax, ay) = (x1 - x0, y1 - y0);
-                    [x0 + x * ax, y1 - (y + h) * ay, x0 + (x + w) * ax, y1 - y * ay]
+                    [
+                        x0 + x * ax,
+                        y1 - (y + h) * ay,
+                        x0 + (x + w) * ax,
+                        y1 - y * ay,
+                    ]
                 }
-                _ => [x1 - (x1 - x0) * 0.2, y1 - (y1 - y0) * 0.1, x1 - (x1 - x0) * 0.05, y1 - (y1 - y0) * 0.05],
+                _ => [
+                    x1 - (x1 - x0) * 0.2,
+                    y1 - (y1 - y0) * 0.1,
+                    x1 - (x1 - x0) * 0.05,
+                    y1 - (y1 - y0) * 0.05,
+                ],
             };
             let letra = ((caja[3] - caja[1]) * 0.2).max((y1 - y0) * 0.01);
             (vec![caja], 0, letra)
@@ -1339,9 +1855,21 @@ fn anotar_plano(
     let n = crate::plano_cad::anotar::anadir_figuras(&rutas, &m, |encaje| {
         if como == ComoAnotar::Marco {
             // El marco para imprimir de verdad, el del visor.
-            let u = cajas_plano.iter().fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |u, c| [u[0].min(c[0]), u[1].min(c[1]), u[2].max(c[2]), u[3].max(c[3])]);
+            let u = cajas_plano
+                .iter()
+                .fold([f64::MAX, f64::MAX, f64::MIN, f64::MIN], |u, c| {
+                    [
+                        u[0].min(c[0]),
+                        u[1].min(c[1]),
+                        u[2].max(c[2]),
+                        u[3].max(c[3]),
+                    ]
+                });
             let aire = letra_plano * 2.0;
-            return vec![crate::plano_cad::anotar::marco_del_plano(&[u[0] - aire, u[1] - aire, u[2] + aire, u[3] + aire], encaje)];
+            return vec![crate::plano_cad::anotar::marco_del_plano(
+                &[u[0] - aire, u[1] - aire, u[2] + aire, u[3] + aire],
+                encaje,
+            )];
         }
         // Del plano (y arriba) a la capa (y abajo): la esquina de arriba.
         let a_capa = |c: &[f64; 4]| {
@@ -1351,7 +1879,12 @@ fn anotar_plano(
         };
         let cajas: Vec<[f32; 4]> = cajas_plano.iter().map(a_capa).collect();
         let letra = (letra_plano / encaje.u) as f32;
-        let todo = a_capa(&[caja_m[0] as f64, caja_m[1] as f64, caja_m[2] as f64, caja_m[3] as f64]);
+        let todo = a_capa(&[
+            caja_m[0] as f64,
+            caja_m[1] as f64,
+            caja_m[2] as f64,
+            caja_m[3] as f64,
+        ]);
         let pts = puntos_en(puntos, todo);
         figuras(como, &cajas, color, nota, &pts, letra.max(1.0))
     })
@@ -1361,8 +1894,18 @@ fn anotar_plano(
     }
     let c = cajas_plano[0];
     let ancho = ((c[2] - c[0]) * 6.0).max(letra_plano * 40.0);
-    let vista = [(c[0] + c[2]) / 2.0 + origen[0], (c[1] + c[3]) / 2.0 + origen[1], ancho];
-    Ok(Anotado { pagina: None, figuras: n, sitios: cajas_plano.len(), hallados, vista: Some(vista) })
+    let vista = [
+        (c[0] + c[2]) / 2.0 + origen[0],
+        (c[1] + c[3]) / 2.0 + origen[1],
+        ancho,
+    ];
+    Ok(Anotado {
+        pagina: None,
+        figuras: n,
+        sitios: cajas_plano.len(),
+        hallados,
+        vista: Some(vista),
+    })
 }
 
 fn anotar(args: &Value, cx: &Contexto) -> Result<String, String> {
@@ -1381,9 +1924,19 @@ fn anotar(args: &Value, cx: &Contexto) -> Result<String, String> {
         "hecho: {} en «{}»{}: marcado en {} sitio(s){} ({} figuras); ya esta abierto ahi y viaja al movil al sincronizar",
         texto_de(args, "tipo").unwrap_or("anotado"),
         c.nombre,
-        hecho.pagina.map(|p| format!(", pagina {}", p + 1)).unwrap_or_default(),
+        hecho
+            .pagina
+            .map(|p| format!(", pagina {}", p + 1))
+            .unwrap_or_default(),
         hecho.sitios,
-        if hecho.hallados > hecho.sitios { format!(" (aparece {} veces en todo el documento; se marco lo de esta pagina o, al encerrar, lo primero)", hecho.hallados) } else { String::new() },
+        if hecho.hallados > hecho.sitios {
+            format!(
+                " (aparece {} veces en todo el documento; se marco lo de esta pagina o, al encerrar, lo primero)",
+                hecho.hallados
+            )
+        } else {
+            String::new()
+        },
         hecho.figuras
     ))
 }
@@ -1400,16 +1953,27 @@ pub struct Encontrado {
 }
 
 /// **Busca sin mandar nada**: lo que se diria y el pedido `abrir`.
-pub fn buscar_dentro(raiz: &Path, ruta: &Path, consulta: &str, parar: &AtomicBool) -> Result<Encontrado, String> {
+pub fn buscar_dentro(
+    raiz: &Path,
+    ruta: &Path,
+    consulta: &str,
+    parar: &AtomicBool,
+) -> Result<Encontrado, String> {
     let nombre = pixpin_docs::nombre(ruta);
     if es_plano(&nombre) {
         let ts = crate::plano_cad::textos::del_plano(raiz, ruta)?;
         let h = crate::plano_cad::textos::buscar(&ts, consulta, 5);
         let Some(primero) = h.first() else {
-            return Err(format!("«{consulta}» no aparece en el plano «{nombre}» ({} textos mirados)", ts.len()));
+            return Err(format!(
+                "«{consulta}» no aparece en el plano «{nombre}» ({} textos mirados)",
+                ts.len()
+            ));
         };
         let vista = crate::plano_cad::textos::vista_de(primero);
-        let lista: Vec<String> = h.iter().map(|h| format!("«{}» en ({:.1}, {:.1})", h.texto, h.x, h.y)).collect();
+        let lista: Vec<String> = h
+            .iter()
+            .map(|h| format!("«{}» en ({:.1}, {:.1})", h.texto, h.x, h.y))
+            .collect();
         return Ok(Encontrado {
             texto: format!("en «{nombre}»: {}", lista.join("; ")),
             pedido: json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": ruta, "zona": vista}}),
@@ -1421,7 +1985,10 @@ pub fn buscar_dentro(raiz: &Path, ruta: &Path, consulta: &str, parar: &AtomicBoo
     let Some(primero) = s.first() else {
         return Err(format!("«{consulta}» no aparece en «{nombre}»"));
     };
-    let lista: Vec<String> = s.iter().map(|x| format!("pagina {}: «…{}…»", x.pagina + 1, x.contexto)).collect();
+    let lista: Vec<String> = s
+        .iter()
+        .map(|x| format!("pagina {}: «…{}…»", x.pagina + 1, x.contexto))
+        .collect();
     Ok(Encontrado {
         texto: format!("en «{nombre}»: {}", lista.join("; ")),
         pedido: json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": ruta, "pagina": primero.pagina + 1, "buscar": consulta}}),
@@ -1437,7 +2004,12 @@ fn buscar_en(args: &Value, cx: &Contexto) -> Result<String, String> {
     if abrir {
         mandar(cx, e.pedido.clone())?;
     }
-    Ok(format!("{} sitio(s) {}{}", e.cuantos, e.texto, if abrir { "; abierto en el primero" } else { "" }))
+    Ok(format!(
+        "{} sitio(s) {}{}",
+        e.cuantos,
+        e.texto,
+        if abrir { "; abierto en el primero" } else { "" }
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1446,22 +2018,35 @@ fn buscar_en(args: &Value, cx: &Contexto) -> Result<String, String> {
 fn abrir(args: &Value, cx: &Contexto) -> Result<String, String> {
     let d = texto_de(args, "descripcion").ok_or("falta «descripcion»")?;
     let c = elegir(cx, Some(d), Sirve::Cualquiera)?;
-    mandar(cx, json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": c.ruta}}))?;
-    Ok(format!("abierto «{}» (del chat {})", c.nombre, c.proyecto_nombre))
+    mandar(
+        cx,
+        json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": c.ruta}}),
+    )?;
+    Ok(format!(
+        "abierto «{}» (del chat {})",
+        c.nombre, c.proyecto_nombre
+    ))
 }
 
 // ---------------------------------------------------------------------------
 // 5. Exportar
 
 /// Lo exportable de un fichero, por el componente comun.
-fn cosa_de(raiz: &Path, ruta: &Path, idioma: pixpin_store::Idioma) -> Result<crate::compartir::Cosa, String> {
+fn cosa_de(
+    raiz: &Path,
+    ruta: &Path,
+    idioma: pixpin_store::Idioma,
+) -> Result<crate::compartir::Cosa, String> {
     use crate::compartir::{Cosa, exportable};
     let nombre = pixpin_docs::nombre(ruta);
     let titulo = pixpin_docs::sin_extension(&nombre);
     let e = extension(&nombre);
     Ok(if es_plano(&nombre) {
         let m = crate::plano_cad::modelo(raiz, ruta)?;
-        let (cotas, marcos) = crate::plano_cad::anotar::cotas_y_marcos_de(&crate::plano_cad::anotar::rutas_de_la_capa(raiz, ruta), &m);
+        let (cotas, marcos) = crate::plano_cad::anotar::cotas_y_marcos_de(
+            &crate::plano_cad::anotar::rutas_de_la_capa(raiz, ruta),
+            &m,
+        );
         let p = crate::plano_cad::exportar::Plano::nuevo(raiz, ruta, &m, &cotas, &marcos);
         Cosa::Visor(crate::plano_cad::exportar::exportable(p, idioma))
     } else if matches!(e.as_str(), "xlsx" | "xls" | "xlsm" | "csv" | "ods") {
@@ -1474,11 +2059,19 @@ fn cosa_de(raiz: &Path, ruta: &Path, idioma: pixpin_store::Idioma) -> Result<cra
 }
 
 /// **Exporta sin mandar nada**: los ficheros hechos en `carpeta`.
-pub fn exportar_a(raiz: &Path, ruta: &Path, formato: &str, carpeta: &Path, idioma: pixpin_store::Idioma) -> Result<Vec<PathBuf>, String> {
+pub fn exportar_a(
+    raiz: &Path,
+    ruta: &Path,
+    formato: &str,
+    carpeta: &Path,
+    idioma: pixpin_store::Idioma,
+) -> Result<Vec<PathBuf>, String> {
     let t = pixpin_store::Catalogo::nuevo(idioma);
-    let p = crate::compartir::preparar(cosa_de(raiz, ruta, idioma)?, &t).map_err(|e| format!("no se pudo preparar: {e}"))?;
+    let p = crate::compartir::preparar(cosa_de(raiz, ruta, idioma)?, &t)
+        .map_err(|e| format!("no se pudo preparar: {e}"))?;
     let claves: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
-    let salida = crate::compartir::generar(&p, formato, &claves, carpeta).map_err(|e| format!("no se pudo exportar a {formato}: {e}"))?;
+    let salida = crate::compartir::generar(&p, formato, &claves, carpeta)
+        .map_err(|e| format!("no se pudo exportar a {formato}: {e}"))?;
     if salida.ficheros.is_empty() {
         return Err(format!("exportar a {formato} no dejo ningun fichero"));
     }
@@ -1488,16 +2081,26 @@ pub fn exportar_a(raiz: &Path, ruta: &Path, formato: &str, carpeta: &Path, idiom
 fn exportar(args: &Value, cx: &Contexto) -> Result<String, String> {
     let formato = texto_de(args, "formato").ok_or("falta «formato»")?;
     let c = elegir(cx, texto_de(args, "archivo"), Sirve::Cualquiera)?;
-    let carpeta = std::env::temp_dir().join("pixpin-asistente").join(format!("exportar-{}", pixpin_shell::entorno::ahora_utc_ms()));
+    let carpeta = std::env::temp_dir().join("pixpin-asistente").join(format!(
+        "exportar-{}",
+        pixpin_shell::entorno::ahora_utc_ms()
+    ));
     let hechos = exportar_a(cx.raiz, &c.ruta, formato, &carpeta, cx.idioma)?;
-    let fichas: String = (1..=hechos.len()).map(|i| format!("[archivo {i:02}]")).collect::<Vec<_>>().join(" ");
+    let fichas: String = (1..=hechos.len())
+        .map(|i| format!("[archivo {i:02}]"))
+        .collect::<Vec<_>>()
+        .join(" ");
     mandar(
         cx,
         json!({"pixpin": 1, "accion": "chat", "proyecto": proyecto_del_pedido(cx),
                "texto": format!("{fichas} «{}» en {formato}", c.nombre), "archivos": hechos}),
     )?;
     let nombres: Vec<String> = hechos.iter().map(|r| pixpin_docs::nombre(r)).collect();
-    Ok(format!("hecho: «{}» exportado a {formato} ({}), ya esta en el chat", c.nombre, nombres.join(", ")))
+    Ok(format!(
+        "hecho: «{}» exportado a {formato} ({}), ya esta en el chat",
+        c.nombre,
+        nombres.join(", ")
+    ))
 }
 
 #[cfg(test)]

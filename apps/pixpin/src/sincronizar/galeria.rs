@@ -120,8 +120,12 @@ impl CapturasDelAparato for CapturasDelPc {
         for n in nombres {
             let ruta = self.carpeta().join(n);
             match galeria_capturas::borrar(&self.raiz, &ruta) {
-                Ok(_) => tracing::info!(ruta = %ruta.display(), "captura quitada en otro aparato: a la papelera"),
-                Err(e) => tracing::warn!(?e, ruta = %ruta.display(), "no se pudo quitar la captura"),
+                Ok(_) => {
+                    tracing::info!(ruta = %ruta.display(), "captura quitada en otro aparato: a la papelera")
+                }
+                Err(e) => {
+                    tracing::warn!(?e, ruta = %ruta.display(), "no se pudo quitar la captura")
+                }
             }
         }
     }
@@ -186,7 +190,10 @@ mod pruebas {
         assert_eq!(l[0].mime, "image/png");
         assert!(c.abrir("PixPin_20261005_101500.png").is_some());
         let lista = galeria_capturas::listar(&galeria_capturas::carpeta_en(&raiz));
-        assert_eq!(caducidad_capturas::ms_de(lista[0].cuando), 1_791_000_000_000);
+        assert_eq!(
+            caducidad_capturas::ms_de(lista[0].cuando),
+            1_791_000_000_000
+        );
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -209,7 +216,10 @@ mod pruebas {
         let l = c.listar().unwrap();
         assert_eq!(l[0].texto, "Factura 123");
         let lista = galeria_capturas::listar(&galeria_capturas::carpeta_en(&raiz));
-        assert_eq!(galeria_capturas::texto_leido(&raiz, &lista[0]), "Factura 123");
+        assert_eq!(
+            galeria_capturas::texto_leido(&raiz, &lista[0]),
+            "Factura 123"
+        );
         // Lo leido aqui no se pisa con lo que llegue despues.
         c.apuntar_texto("PixPin_20261005_101500.png", "otro");
         assert_eq!(c.listar().unwrap()[0].texto, "Factura 123");
@@ -237,9 +247,9 @@ mod pruebas {
         assert_eq!(std::fs::read_dir(&carpeta).unwrap().count(), 0);
         // Y si falla la red a medias, igual.
         assert!(
-            c.guardar(&e, &mut |_| Err(pixpin_sincro::protocolo::ErrorSincro::Protocolo(
-                "cortado".into()
-            )))
+            c.guardar(&e, &mut |_| Err(
+                pixpin_sincro::protocolo::ErrorSincro::Protocolo("cortado".into())
+            ))
             .is_err()
         );
         assert_eq!(std::fs::read_dir(&carpeta).unwrap().count(), 0);
@@ -255,7 +265,12 @@ mod pruebas {
         std::fs::write(carpeta.join("a.png"), b"x").unwrap();
         c.tirar(&["a.png".to_string()]);
         assert!(!carpeta.join("a.png").exists());
-        assert!(raiz.join("papelera").join("capturas").join("a.png").exists());
+        assert!(
+            raiz.join("papelera")
+                .join("capturas")
+                .join("a.png")
+                .exists()
+        );
         c.cambiar_caducidad(7, &mut |r| {
             r.fijadas.insert("b.png".into(), 99);
         })

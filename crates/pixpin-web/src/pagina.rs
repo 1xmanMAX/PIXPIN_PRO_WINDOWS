@@ -43,27 +43,29 @@ use webview2_com::{
     WebMessageReceivedEventHandler, WebResourceRequestedEventHandler, take_pwstr,
 };
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
-use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute};
-use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
+use windows::Win32::Graphics::Dwm::{
+    DWMWA_USE_IMMERSIVE_DARK_MODE, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
+};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::SHCreateMemStream;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW,
-    DestroyWindow, DispatchMessageW, GetClientRect,
-    GetWindowPlacement, HICON, IDC_ARROW, LoadCursorW, LoadIconW, MINMAXINFO, MSG,
-    MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, PM_REMOVE, PeekMessageW, QS_ALLINPUT,
-    RegisterClassExW, SET_WINDOW_POS_FLAGS, SPI_GETWORKAREA, SW_SHOWMAXIMIZED, SW_SHOWNORMAL,
-    SWP_NOACTIVATE, SWP_NOZORDER, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetForegroundWindow,
-    SetWindowPos, SetWindowTextW, ShowWindow, SystemParametersInfoW,
-    TranslateMessage, WINDOWPLACEMENT, WM_CLOSE, WM_DPICHANGED, WM_GETMINMAXINFO, WM_MOVE,
-    WM_SETFOCUS, WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW,
-    GWL_STYLE, GetSystemMetrics, GetWindowLongPtrW, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT,
-    HTCAPTION, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_TOP, IsZoomed,
-    NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER, SM_CXSIZEFRAME, SM_CYSIZEFRAME, SW_MAXIMIZE,
-    SW_MINIMIZE, SW_RESTORE, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SendMessageW,
-    SetWindowPlacement, WM_NCCALCSIZE, WM_NCLBUTTONDOWN, WS_MAXIMIZEBOX,
+    CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+    GWL_STYLE, GetClientRect, GetSystemMetrics, GetWindowLongPtrW, GetWindowPlacement, HICON,
+    HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
+    HTTOPRIGHT, HWND_TOP, IDC_ARROW, IsZoomed, LoadCursorW, LoadIconW, MINMAXINFO, MSG,
+    MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, NCCALCSIZE_PARAMS, PM_REMOVE, PeekMessageW,
+    QS_ALLINPUT, RegisterClassExW, SET_WINDOW_POS_FLAGS, SM_CXPADDEDBORDER, SM_CXSIZEFRAME,
+    SM_CYSIZEFRAME, SPI_GETWORKAREA, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMAXIMIZED,
+    SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetForegroundWindow, SetWindowPlacement,
+    SetWindowPos, SetWindowTextW, ShowWindow, SystemParametersInfoW, TranslateMessage,
+    WINDOWPLACEMENT, WM_CLOSE, WM_DPICHANGED, WM_GETMINMAXINFO, WM_MOVE, WM_NCCALCSIZE,
+    WM_NCLBUTTONDOWN, WM_SETFOCUS, WM_SIZE, WNDCLASSEXW, WS_EX_APPWINDOW, WS_MAXIMIZEBOX,
     WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
 };
 use windows::core::{Interface, PCWSTR, PWSTR, w};
@@ -133,7 +135,8 @@ struct Estado {
 }
 
 /// El estilo de la ventana: sin titulo, con bordes que se estiran.
-const ESTILO: u32 = WS_POPUP.0 | WS_THICKFRAME.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0 | WS_SYSMENU.0;
+const ESTILO: u32 =
+    WS_POPUP.0 | WS_THICKFRAME.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0 | WS_SYSMENU.0;
 
 thread_local! {
     /// El estado de cada ventana de este hilo, por su `HWND`: el
@@ -142,7 +145,14 @@ thread_local! {
 }
 
 fn estado_de(hwnd: HWND) -> Option<Rc<RefCell<Estado>>> {
-    ESTADOS.try_with(|e| e.try_borrow().ok().and_then(|e| e.get(&(hwnd.0 as isize)).cloned())).ok().flatten()
+    ESTADOS
+        .try_with(|e| {
+            e.try_borrow()
+                .ok()
+                .and_then(|e| e.get(&(hwnd.0 as isize)).cloned())
+        })
+        .ok()
+        .flatten()
 }
 
 /// Una ventana con su pagina. Soltarla la cierra.
@@ -180,8 +190,8 @@ impl Pagina {
         let t0 = std::time::Instant::now();
         let (entorno, controlador) = crate::entorno_y_controlador(hwnd)?;
         // SAFETY: `controlador` acaba de llegar de WebView2 y es valido.
-        let vista = unsafe { controlador.CoreWebView2() }
-            .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
+        let vista =
+            unsafe { controlador.CoreWebView2() }.map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
         crate::medir_carga(&vista, "pagina", t0);
         estado.borrow_mut().controlador = Some(controlador.clone());
         if let Some(oscuro) = o.oscuro {
@@ -215,7 +225,14 @@ impl Pagina {
                 let _ = controlador.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
             }
             navegar(&vista)?;
-            return Ok(Pagina { hwnd, controlador, vista, estado, temporal, dentro_de_otra });
+            return Ok(Pagina {
+                hwnd,
+                controlador,
+                vista,
+                estado,
+                temporal,
+                dentro_de_otra,
+            });
         }
 
         recolocar(hwnd, &controlador);
@@ -287,7 +304,14 @@ impl Pagina {
         if let Ok(c2) = self.controlador.cast::<ICoreWebView2Controller2>() {
             let (r, g, b) = fondo;
             // SAFETY: interfaz recien consultada del controlador vivo.
-            let _ = unsafe { c2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR { A: 255, R: r, G: g, B: b }) };
+            let _ = unsafe {
+                c2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
+                    A: 255,
+                    R: r,
+                    G: g,
+                    B: b,
+                })
+            };
         }
     }
 
@@ -335,7 +359,12 @@ impl Pagina {
         // para que Windows lo lleve.
         unsafe {
             let _ = ReleaseCapture();
-            SendMessageW(self.hwnd, WM_NCLBUTTONDOWN, Some(WPARAM(HTCAPTION as usize)), Some(LPARAM(0)));
+            SendMessageW(
+                self.hwnd,
+                WM_NCLBUTTONDOWN,
+                Some(WPARAM(HTCAPTION as usize)),
+                Some(LPARAM(0)),
+            );
         }
     }
 
@@ -355,7 +384,12 @@ impl Pagina {
         // SAFETY: como en `arrastrar`.
         unsafe {
             let _ = ReleaseCapture();
-            SendMessageW(self.hwnd, WM_NCLBUTTONDOWN, Some(WPARAM(ht as usize)), Some(LPARAM(0)));
+            SendMessageW(
+                self.hwnd,
+                WM_NCLBUTTONDOWN,
+                Some(WPARAM(ht as usize)),
+                Some(LPARAM(0)),
+            );
         }
     }
 
@@ -381,7 +415,15 @@ impl Pagina {
         unsafe {
             if let Some(p) = antes {
                 let _ = SetWindowPlacement(self.hwnd, &p);
-                let _ = SetWindowPos(self.hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+                );
                 return false;
             }
             let mut p = WINDOWPLACEMENT {
@@ -400,7 +442,15 @@ impl Pagina {
             if IsZoomed(self.hwnd).as_bool() {
                 let _ = ShowWindow(self.hwnd, SW_RESTORE);
             }
-            let _ = SetWindowPos(self.hwnd, Some(HWND_TOP), r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_FRAMECHANGED);
+            let _ = SetWindowPos(
+                self.hwnd,
+                Some(HWND_TOP),
+                r.left,
+                r.top,
+                r.right - r.left,
+                r.bottom - r.top,
+                SWP_FRAMECHANGED,
+            );
             true
         }
     }
@@ -437,7 +487,10 @@ impl Drop for Pagina {
                 let _ = DestroyWindow(self.hwnd);
             }
         }
-        let _ = ESTADOS.try_with(|e| e.try_borrow_mut().map(|mut e| e.remove(&(self.hwnd.0 as isize))));
+        let _ = ESTADOS.try_with(|e| {
+            e.try_borrow_mut()
+                .map(|mut e| e.remove(&(self.hwnd.0 as isize)))
+        });
         crate::controlador_cerrado();
         let _ = std::fs::remove_dir_all(&self.temporal);
     }
@@ -493,8 +546,24 @@ fn crear_ventana(titulo: &str, area: Option<Rect>) -> Result<HWND, ErrorWeb> {
             std::mem::size_of::<i32>() as u32,
         );
         // Un pixel de marco de DWM: la sombra y las esquinas de Windows 11.
-        let _ = DwmExtendFrameIntoClientArea(hwnd, &MARGINS { cxLeftWidth: 0, cxRightWidth: 0, cyTopHeight: 1, cyBottomHeight: 0 });
-        let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        let _ = DwmExtendFrameIntoClientArea(
+            hwnd,
+            &MARGINS {
+                cxLeftWidth: 0,
+                cxRightWidth: 0,
+                cyTopHeight: 1,
+                cyBottomHeight: 0,
+            },
+        );
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        );
         Ok(hwnd)
     }
 }
@@ -534,7 +603,8 @@ fn area_por_defecto() -> Rect {
 fn navegar(vista: &ICoreWebView2) -> Result<(), ErrorWeb> {
     let url = CoTaskMemPWSTR::from(format!("{ORIGEN}index.html").as_str());
     // SAFETY: `url` vive durante la llamada y WebView2 la copia.
-    unsafe { vista.Navigate(*url.as_ref().as_pcwstr()) }.map_err(|e| ErrorWeb::Navegacion(e.to_string()))
+    unsafe { vista.Navigate(*url.as_ref().as_pcwstr()) }
+        .map_err(|e| ErrorWeb::Navegacion(e.to_string()))
 }
 
 /// La zona de cliente entera de `hwnd`.
@@ -542,7 +612,12 @@ fn cliente(hwnd: HWND) -> Rect {
     let mut r = RECT::default();
     // SAFETY: `r` es local; un handle muerto solo da error (y un rect vacio).
     let _ = unsafe { GetClientRect(hwnd, &mut r) };
-    Rect { x: 0, y: 0, ancho: (r.right - r.left).max(1) as u32, alto: (r.bottom - r.top).max(1) as u32 }
+    Rect {
+        x: 0,
+        y: 0,
+        ancho: (r.right - r.left).max(1) as u32,
+        alto: (r.bottom - r.top).max(1) as u32,
+    }
 }
 
 fn recolocar(hwnd: HWND, controlador: &ICoreWebView2Controller) {
@@ -744,7 +819,9 @@ fn escuchar(vista: &ICoreWebView2, estado: Rc<RefCell<Estado>>) -> Result<(), Er
             // SAFETY: `args` vive durante el evento; la cadena se libera con
             // `take_pwstr`.
             if unsafe { args.TryGetWebMessageAsString(&mut m) }.is_ok() {
-                e1.borrow_mut().sucesos.push_back(Suceso::Mensaje(take_pwstr(m)));
+                e1.borrow_mut()
+                    .sucesos
+                    .push_back(Suceso::Mensaje(take_pwstr(m)));
             }
         }
         Ok(())
@@ -772,16 +849,24 @@ fn escuchar(vista: &ICoreWebView2, estado: Rc<RefCell<Estado>>) -> Result<(), Er
             args.Uri(&mut uri)?;
             args.SetHandled(true)?;
         }
-        e3.borrow_mut().sucesos.push_back(Suceso::Navegar(take_pwstr(uri)));
+        e3.borrow_mut()
+            .sucesos
+            .push_back(Suceso::Navegar(take_pwstr(uri)));
         Ok(())
     }));
     let mut token = 0i64;
     // SAFETY: `token` es local; los manejadores quedan referenciados por
     // WebView2.
     unsafe {
-        vista.add_WebMessageReceived(&mensajes, &mut token).map_err(error)?;
-        vista.add_NavigationStarting(&navegar, &mut token).map_err(error)?;
-        vista.add_NewWindowRequested(&ventana_nueva, &mut token).map_err(error)?;
+        vista
+            .add_WebMessageReceived(&mensajes, &mut token)
+            .map_err(error)?;
+        vista
+            .add_NavigationStarting(&navegar, &mut token)
+            .map_err(error)?;
+        vista
+            .add_NewWindowRequested(&ventana_nueva, &mut token)
+            .map_err(error)?;
     }
     Ok(())
 }

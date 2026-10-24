@@ -1119,7 +1119,8 @@ mod pruebas {
         assert!(es_de_sistema(&c.mensajes[0]) && es_de_sistema(&c.mensajes[1]));
         // Caso negativo: por el id, nunca por lo que dice o como se llama.
         assert!(!es_de_sistema(&c.mensajes[2]) && !es_de_sistema(&c.mensajes[3]));
-        let ids = |s: Seccion| -> Vec<&str> { c.de_seccion(s).iter().map(|m| m.id.as_str()).collect() };
+        let ids =
+            |s: Seccion| -> Vec<&str> { c.de_seccion(s).iter().map(|m| m.id.as_str()).collect() };
         assert_eq!(ids(Seccion::Todo), ["n1", "a1"]);
         assert_eq!(ids(Seccion::Archivos), ["a1"]);
         assert!(ids(Seccion::Fijados).is_empty());
