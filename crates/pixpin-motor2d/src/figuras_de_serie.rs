@@ -31,7 +31,10 @@ mod blocs;
 mod ciencias;
 mod civil;
 mod derecho;
+mod electronica;
+mod flujo;
 mod intervalo;
+mod marcas;
 mod mobiliario;
 mod plantillas;
 mod storyboard;
@@ -48,10 +51,10 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 18] = [
+pub const CATEGORIAS: [&str; 21] = [
     "Planificación",
     "Académico",
     "Creativo",
@@ -64,6 +67,9 @@ pub const CATEGORIAS: [&str; 18] = [
     "Escala humana",
     "Ingeniería civil",
     "Derecho",
+    "Electrónica",
+    "Diagrama de flujo",
+    "Marcas y sellos",
     "Física",
     "Química",
     "Matemáticas",
@@ -97,6 +103,9 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     civil::todas(&mut v);
     derecho::todas(&mut v);
     ciencias::todas(&mut v);
+    electronica::todas(&mut v);
+    flujo::todas(&mut v);
+    marcas::todas(&mut v);
     v
 }
 
@@ -150,6 +159,9 @@ pub(crate) enum Al {
 #[derive(Default)]
 pub(crate) struct Lapiz {
     pub v: Vec<Elemento>,
+    /// Donde empieza cada parte con nombre ([`Lapiz::parte`]): la pieza
+    /// desde la que cuenta y su nombre.
+    partes: Vec<(usize, String)>,
 }
 
 fn base(trazo: ColorRgba, grosor: f32) -> Elemento {
@@ -363,8 +375,25 @@ impl Lapiz {
         self.v.push(e);
     }
 
+    /// **Empieza una parte con nombre** («Cuerpo», «Salida»...): lo que se
+    /// dibuje desde aqui hasta la siguiente parte va en el subgrupo
+    /// `parte:<nombre>` ([`biblioteca::PREFIJO_PARTE`]). Al estamparla, la
+    /// figura entera es un grupo y cada parte un grupo dentro: se mueve,
+    /// se edita o se cambia una parte sin romper las demas, y el asistente
+    /// sabe que es cada cosa por su nombre.
+    pub fn parte(&mut self, nombre: &str) {
+        self.partes.push((self.v.len(), nombre.to_string()));
+    }
+
     /// La figura, con su categoria en el nombre y normalizada al origen.
-    pub fn figura(self, clave: &str, categoria: &str, nombre: &str) -> FiguraGuardada {
+    pub fn figura(mut self, clave: &str, categoria: &str, nombre: &str) -> FiguraGuardada {
+        for (i, (desde, parte)) in self.partes.iter().enumerate() {
+            let hasta = self.partes.get(i + 1).map_or(self.v.len(), |p| p.0);
+            for e in &mut self.v[*desde..hasta] {
+                e.grupos
+                    .push(format!("{}{parte}", biblioteca::PREFIJO_PARTE));
+            }
+        }
         FiguraGuardada {
             id: format!("{PREFIJO_ID}{clave}"),
             nombre: format!("{categoria}{SEPARADOR}{nombre}"),
