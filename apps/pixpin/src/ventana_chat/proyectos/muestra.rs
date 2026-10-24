@@ -474,7 +474,7 @@ impl Banco {
                         }
                         (None, None) => {}
                     }
-                    super::pintar_interruptor(p, v, &d, tema, escala, &textos);
+                    super::pintar_interruptor(p, v, &d, tema, escala, &textos, false);
                 })
                 .expect("fotograma");
             if vuelta == 4 {

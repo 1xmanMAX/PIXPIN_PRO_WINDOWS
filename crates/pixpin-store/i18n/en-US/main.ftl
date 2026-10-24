@@ -1376,6 +1376,13 @@ lienzo-pista-serie = Numbered steps: each click places the next number
 ## Projects screen in the chat and the Chat / Projects switch (ui/Proyectos.kt on the phone)
 proyectos-interruptor-chat = Chat
 proyectos-interruptor-proyectos = Projects
+proyectos-interruptor-figuras = Shapes
+figuras-mias = My shapes
+figuras-todas = All
+figuras-vacia = No shapes yet. On a canvas, select something and “Save as a shape”.
+figuras-cerrar = Close
+figuras-borrar = Delete the shape
+figuras-borrar-seguro = Press again to delete
 proyectos-hojas = { $total } sheets
 proyectos-hojas-de = { $anotadas } of { $total } sheets annotated
 proyectos-chat = Chat

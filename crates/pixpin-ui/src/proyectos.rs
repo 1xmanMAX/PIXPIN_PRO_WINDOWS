@@ -511,16 +511,18 @@ impl Mosaico {
     }
 }
 
-/// El interruptor Chat ↔ Proyectos de la barra de titulo.
+/// El interruptor Chat ↔ Proyectos ↔ Figuras de la barra de titulo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Interruptor {
     pub caja: Rect,
     pub chat: Rect,
     pub proyectos: Rect,
+    /// La galeria de las figuras guardadas (24-oct-2026).
+    pub figuras: Rect,
 }
 
-/// Lo que mide cada mitad del interruptor.
-pub const INTERRUPTOR_MITAD: u32 = 80;
+/// Lo que mide cada parte del interruptor.
+pub const INTERRUPTOR_MITAD: u32 = 76;
 /// Lo que se le quita al alto de la barra, repartido arriba y abajo.
 pub const INTERRUPTOR_AIRE_Y: u32 = 3;
 /// La letra de sus dos palabras.
@@ -531,9 +533,12 @@ pub const INTERRUPTOR_TAM: f32 = 11.0;
 /// empiezan los botones de minimizar, maximizar y cerrar; `desde`, donde acaba
 /// el nombre del programa.
 pub fn interruptor(barra: Rect, desde: i32, hasta: i32, escala: u32) -> Interruptor {
-    let mitad = e(INTERRUPTOR_MITAD, escala);
     let aire = e(INTERRUPTOR_AIRE_Y, escala);
-    let ancho = 2 * mitad;
+    // En una ventana estrecha las tres partes se encogen para caber entre el
+    // nombre del programa y los botones de la ventana.
+    let sitio = (hasta - desde - aire as i32).max(0) as u32 / 3;
+    let mitad = e(INTERRUPTOR_MITAD, escala).min(sitio.max(1));
+    let ancho = 3 * mitad;
     let alto = barra.alto.saturating_sub(2 * aire).max(1);
     let centrado = barra.x + (barra.ancho as i32 - ancho as i32) / 2;
     let x = centrado.min(hasta - ancho as i32 - aire as i32).max(desde);
@@ -551,6 +556,11 @@ pub fn interruptor(barra: Rect, desde: i32, hasta: i32, escala: u32) -> Interrup
         },
         proyectos: Rect {
             x: caja.x + mitad as i32,
+            ancho: mitad,
+            ..caja
+        },
+        figuras: Rect {
+            x: caja.x + 2 * mitad as i32,
             ancho: mitad,
             ..caja
         },
@@ -754,8 +764,10 @@ mod pruebas {
     fn el_interruptor_va_centrado_y_no_pisa_los_botones_de_la_ventana() {
         let barra = r(0, 0, 1024, 24);
         let i = interruptor(barra, 80, 1024 - 108, 100);
-        assert_eq!(i.caja.x, (1024 - 160) / 2);
+        assert_eq!(i.caja.x, (1024 - 3 * 76) / 2);
         assert_eq!(i.chat.derecha(), i.proyectos.x);
+        assert_eq!(i.proyectos.derecha(), i.figuras.x);
+        assert_eq!(i.figuras.derecha(), i.caja.derecha());
         assert!(i.caja.alto < 24);
         // Estrecha: se corre a la izquierda de los botones, pero nunca encima
         // del nombre del programa.

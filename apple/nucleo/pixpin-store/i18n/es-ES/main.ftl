@@ -1344,6 +1344,13 @@ lienzo-pista-serie = Pasos numerados: cada clic pone el siguiente número
 ## Pantalla de Proyectos del chat e interruptor Chat / Proyectos (ui/Proyectos.kt del movil)
 proyectos-interruptor-chat = Chat
 proyectos-interruptor-proyectos = Proyectos
+proyectos-interruptor-figuras = Figuras
+figuras-mias = Mis figuras
+figuras-todas = Todas
+figuras-vacia = Todavía no hay figuras. En un lienzo, elige algo y «Guardar como figura».
+figuras-cerrar = Cerrar
+figuras-borrar = Borrar la figura
+figuras-borrar-seguro = Pulsa otra vez para borrar
 proyectos-hojas = { $total } hojas
 proyectos-hojas-de = { $anotadas } de { $total } hojas anotadas
 proyectos-chat = Chat

@@ -109,6 +109,9 @@ mod descripcion;
 mod donde_vive;
 /// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
 mod envio;
+/// La galeria de las figuras guardadas, tercera parte del interruptor de
+/// arriba (24-oct-2026).
+mod figuras;
 /// «Grabar clase»: el microfono y el sonido del equipo, con capturas de una
 /// zona en su minuto, y despues el texto (24-oct-2026).
 mod grabar_clase;
@@ -846,6 +849,7 @@ pub fn abrir(
     // La pantalla de Proyectos del movil y el interruptor de la barra
     // (`proyectos.rs`): se abre en la que se eligio la ultima vez.
     let mut vista_proyectos = proyectos::VistaProyectos::nueva(ubicacion);
+    let mut vista_figuras = figuras::VistaFiguras::default();
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -1047,6 +1051,47 @@ pub fn abrir(
             // de la tarjeta; lo de la lista sigue su camino. El teclado es de
             // la tarjeta salvo mientras se escribe en el buscador o el nombre
             // de un proyecto recien creado con el «+».
+            // La galeria de figuras ocupa todo lo de debajo de la barra: lo
+            // que cae ahi es suyo (la barra y los bordes, no).
+            if vista_figuras.activa() && pendientes.is_none() && menu.is_none() {
+                let area = area_de_figuras(&disposicion);
+                let suyo = |l: Punto| {
+                    area.contiene(l) && chat::borde_en(l, marco.ancho, marco.alto, escala).is_none()
+                };
+                match evento {
+                    EventoOverlay::Rueda(delta) => {
+                        hay_que_pintar |= vista_figuras.rueda(delta, escala);
+                        continue;
+                    }
+                    EventoOverlay::RatonMovido(p) if arrastre.is_none() && suyo(local(p)) => {
+                        hay_que_pintar |= vista_figuras.mover(local(p));
+                        ventana.poner_cursor(FormaCursorWin::Flecha);
+                        continue;
+                    }
+                    EventoOverlay::BotonPulsado(p) if suyo(local(p)) => {
+                        match vista_figuras.pulsar(local(p)) {
+                            figuras::Pedido::Nada => {}
+                            figuras::Pedido::Repintar => hay_que_pintar = true,
+                            figuras::Pedido::Salir => {
+                                vista_figuras.poner(false);
+                                hay_que_pintar = true;
+                            }
+                        }
+                        continue;
+                    }
+                    EventoOverlay::BotonSoltado(p) if arrastre.is_none() && suyo(local(p)) => {
+                        continue;
+                    }
+                    EventoOverlay::Tecla { vk: VK_ESCAPE, .. } if antes_de_maximizar.is_none() => {
+                        if vista_figuras.escape() == figuras::Pedido::Salir {
+                            vista_figuras.poner(false);
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
             if vista_proyectos.activa() && pendientes.is_none() && menu.is_none() {
                 let hay_tarjeta = abierto.is_some() && disposicion.chat.ancho > 0;
                 let escribiendo = buscando || abierto.as_ref().is_some_and(|a| a.renombrando);
@@ -1370,11 +1415,24 @@ pub fn abrir(
                     } else if let Some(b) = chat::borde_en(l, marco.ancho, marco.alto, escala) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Borde(b));
-                    } else if let Some(a_proyectos) = vista_proyectos.interruptor_en(l) {
-                        // El interruptor Chat / Proyectos (`proyectos.rs`).
-                        if a_proyectos != vista_proyectos.activa() {
-                            vista_proyectos.poner(ubicacion, a_proyectos);
-                            menu = None;
+                    } else if let Some(parte) = vista_proyectos.interruptor_en(l) {
+                        // El interruptor Chat / Proyectos / Figuras
+                        // (`proyectos.rs`, `figuras.rs`).
+                        match parte {
+                            proyectos::Parte::Figuras => {
+                                if !vista_figuras.activa() {
+                                    vista_figuras.poner(true);
+                                    menu = None;
+                                }
+                            }
+                            otra => {
+                                vista_figuras.poner(false);
+                                let a_proyectos = otra == proyectos::Parte::Proyectos;
+                                if a_proyectos != vista_proyectos.activa() {
+                                    vista_proyectos.poner(ubicacion, a_proyectos);
+                                    menu = None;
+                                }
+                            }
                         }
                         hay_que_pintar = true;
                     } else if let Some(boton) = disposicion.boton_barra_en(l, escala) {
@@ -4062,6 +4120,7 @@ pub fn abrir(
                         tema,
                         escala,
                         textos,
+                        vista_figuras.activa(),
                     );
                     let mut alto_caja = 0;
                     if let Some(a) = abierto_ref {
@@ -4145,6 +4204,17 @@ pub fn abrir(
                         if a.hora_a_mano.is_some() {
                             pintar_hora_a_mano(p, &c, a, marco);
                         }
+                    }
+                    // La galeria de figuras tapa el chat y la lista.
+                    if vista_figuras.activa() {
+                        figuras::pintar(
+                            p,
+                            &vista_figuras,
+                            area_de_figuras(&disposicion),
+                            tema,
+                            escala,
+                            textos,
+                        );
                     }
                     // El menu, el ultimo: se despliega encima de todo.
                     if let Some(m) = menu_ref {
@@ -11816,6 +11886,17 @@ fn pintar_capturas_de_la_letra(p: &Pintor, caja: Rect, c: &Pinta, a: &Abierto, i
             alto: ficha.alto as u32,
         };
         a.zonas.borrow_mut().push((zona, Zona::Trozo(i, *ms)));
+    }
+}
+
+/// Lo que ocupa la galeria de figuras: todo lo de debajo de la barra.
+fn area_de_figuras(d: &Disposicion) -> Rect {
+    let abajo = d.lista.abajo().max(d.chat.abajo());
+    Rect {
+        x: d.barra.x,
+        y: d.barra.abajo(),
+        ancho: d.barra.ancho,
+        alto: (abajo - d.barra.abajo()).max(0) as u32,
     }
 }
 
