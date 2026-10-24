@@ -12,10 +12,15 @@
 //! Lo que cuenta cada plantilla (filas, horas, dias, viñetas...) lo dice
 //! `plantillas::AMPLIABLES`; aqui se comprueba lo pedido, se parte en hojas
 //! y se reconoce que plantilla es la elegida (por su titulo).
+//!
+//! **Y personalizarla** (25-oct): con `secciones`, la misma hoja sale con
+//! otra lista de secciones (quitar, reordenar, cambiar lineas, a todo el
+//! ancho; ver `secciones.rs`), sola o junto con el intervalo.
 
 use std::sync::OnceLock;
 
-use super::plantillas::{self, AMPLIABLES, MESES, Tramo, VINETA_DE_4};
+use super::plantillas::{self, AMPLIABLES, MESES, PERSONALIZABLES, Tramo, VINETA_DE_4};
+use super::secciones::{self, Seccion, SeccionPedida};
 use super::{PREFIJO_ID, SEPARADOR};
 use crate::biblioteca::FiguraGuardada;
 use crate::elemento::{Elemento, Figura};
@@ -37,6 +42,21 @@ pub struct Intervalo {
     pub mes: Option<(i32, u32)>,
     /// Cuantos meses seguidos desde `mes`, una hoja cada uno.
     pub meses: Option<u32>,
+    /// **Las secciones**, en su orden (las que se personalizan): lo que no
+    /// diga cada una se toma de la de fabrica con su titulo.
+    pub secciones: Option<Vec<SeccionPedida>>,
+}
+
+impl Intervalo {
+    /// Si pide numeros (y no solo secciones).
+    fn pide_numeros(&self) -> bool {
+        self.desde.is_some()
+            || self.hasta.is_some()
+            || self.de_a.is_some()
+            || self.semanas.is_some()
+            || self.mes.is_some()
+            || self.meses.is_some()
+    }
 }
 
 /// Lo que se sabe de cada plantilla de pagina: su clave, su titulo (lo que
@@ -139,15 +159,46 @@ pub fn las_que_se_alargan() -> String {
 /// el nombre («Planificación · Lista de tareas (1–40)»). Error, en palabras
 /// para el usuario, si la plantilla no se alarga o lo pedido no cabe.
 pub fn alargar(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, String> {
+    let secs = match &iv.secciones {
+        Some(pedidas) => {
+            if !se_personaliza(clave) {
+                return Err(format!(
+                    "«{}» no tiene secciones que cambiar. Se personalizan: {}",
+                    nombre_de(clave),
+                    las_que_se_personalizan()
+                ));
+            }
+            Some(plantillas::secciones_pedidas(
+                clave,
+                &nombre_de(clave),
+                pedidas,
+            )?)
+        }
+        None => None,
+    };
+    let secs = secs.as_deref();
+    // Solo secciones: una hoja como la de serie, con esas secciones.
+    if secs.is_some() && !iv.pide_numeros() {
+        let tr = plantillas::tramo_de_fabrica(clave);
+        return Ok(vec![con_nombre(
+            plantillas::hacer_con(clave, &tr, secs).expect("es de la tabla"),
+            "a medida",
+        )]);
+    }
     let Some(a) = AMPLIABLES.iter().find(|a| a.clave == clave) else {
+        let extra = if se_personaliza(clave) {
+            " (de esta solo se cambian las secciones: manda solo «secciones»)"
+        } else {
+            ""
+        };
         return Err(format!(
-            "«{}» no lleva números que alargar. Se alargan: {}",
+            "«{}» no lleva números que alargar{extra}. Se alargan: {}",
             nombre_de(clave),
             las_que_se_alargan()
         ));
     };
     if let Some(mes) = iv.mes {
-        return por_meses(clave, mes, iv.meses.unwrap_or(1));
+        return por_meses(clave, mes, iv.meses.unwrap_or(1), secs);
     }
     if clave == "planificador-mensual" {
         return Err(
@@ -207,9 +258,17 @@ pub fn alargar(clave: &str, iv: &Intervalo) -> Result<Vec<FiguraGuardada>, Strin
             } else {
                 tr.rotulo()
             };
+            // Con secciones y filas pedidas, la de la serie lleva las del tramo.
+            let propias = secs.map(|s| {
+                if iv.desde.is_some() || iv.hasta.is_some() || iv.de_a.is_some() {
+                    plantillas::con_la_serie(clave, s, &tr)
+                } else {
+                    s.to_vec()
+                }
+            });
             con_nombre(
-                plantillas::hacer(clave, &tr).expect("es de la tabla"),
-                &rotulo,
+                plantillas::hacer_con(clave, &tr, propias.as_deref()).expect("es de la tabla"),
+                &a_medida(&rotulo, secs),
             )
         })
         .collect())
@@ -239,6 +298,7 @@ fn por_meses(
     clave: &str,
     (ano, mes): (i32, u32),
     cuantos: u32,
+    secs: Option<&[Seccion]>,
 ) -> Result<Vec<FiguraGuardada>, String> {
     if !matches!(clave, "planificador-mensual" | "habitos") {
         return Err(format!(
@@ -271,11 +331,19 @@ fn por_meses(
             tr.hoja = (cuantos > 1).then_some((i + 1, cuantos));
             let rotulo = format!("{} {a}", MESES[m as usize - 1]);
             con_nombre(
-                plantillas::hacer(clave, &tr).expect("es de la tabla"),
-                &rotulo,
+                plantillas::hacer_con(clave, &tr, secs).expect("es de la tabla"),
+                &a_medida(&rotulo, secs),
             )
         })
         .collect())
+}
+
+/// «1–40 · a medida» si lleva secciones pedidas.
+fn a_medida(rotulo: &str, secs: Option<&[Seccion]>) -> String {
+    match secs {
+        Some(_) => format!("{rotulo} · a medida"),
+        None => rotulo.to_string(),
+    }
 }
 
 /// El tramo en el nombre: la hoja guardada en figuras se distingue de la de
@@ -292,4 +360,106 @@ pub fn tramo_de_serie(clave: &str) -> Option<(u32, u32)> {
         .iter()
         .find(|a| a.clave == clave)
         .map(|a| a.defecto)
+}
+
+// ---------------------------------------------------------------------------
+// Las secciones, para el modelo
+// ---------------------------------------------------------------------------
+
+/// Si esa plantilla se personaliza por secciones.
+pub fn se_personaliza(clave: &str) -> bool {
+    plantillas::personalizable(clave).is_some()
+}
+
+/// Las que se personalizan, por su nombre: «Planificador mensual,
+/// Planificador semanal...».
+pub fn las_que_se_personalizan() -> String {
+    PERSONALIZABLES
+        .iter()
+        .map(|p| nombre_de(p.clave))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// **Las secciones de fabrica de una plantilla**, en su orden (lo que dibuja
+/// la de serie). `None` si no se personaliza.
+pub fn secciones_de(clave: &str) -> Option<Vec<Seccion>> {
+    let p = plantillas::personalizable(clave)?;
+    Some((p.fabrica)(&plantillas::tramo_de_fabrica(clave)))
+}
+
+/// **La guia de una plantilla, por bloques**, para el modelo: que bloques
+/// tiene (los fijos y la zona de secciones), que es cada seccion con su
+/// tipo, lineas y ancho, sus bloques propios, como se colocan y que se le
+/// puede cambiar, y sus secciones en JSON para devolverlas cambiadas con
+/// `figuras_guardadas` «personalizar». En el lienzo, cada bloque lleva el
+/// subgrupo `parte:<nombre>`. `None` si no se personaliza.
+pub fn guia_de(clave: &str) -> Option<String> {
+    let p = plantillas::personalizable(clave)?;
+    let secs = secciones_de(clave)?;
+    let tipo_en_palabras = |s: &Seccion| -> String {
+        use secciones::TipoSeccion as T;
+        match s.tipo {
+            T::Renglones => "renglones para escribir".into(),
+            T::Numerados => "renglones numerados 01, 02…".into(),
+            T::Casillas => "casillas para marcar".into(),
+            T::Recuadro => "recuadro de fondo suave para destacar".into(),
+            T::Libre => "recuadro en blanco (baja hasta el pie si no tiene nada debajo)".into(),
+            T::Notas => "zona gris para anotar".into(),
+            T::Propia => p
+                .propios
+                .iter()
+                .find(|b| secciones::normalizar(b.titulo) == secciones::normalizar(&s.titulo))
+                .map_or("bloque propio".into(), |b| {
+                    format!("bloque propio: {}", b.que_es)
+                }),
+        }
+    };
+    let lista = if secs.is_empty() {
+        "  (ninguna de serie)".to_string()
+    } else {
+        secs.iter()
+            .map(|s| {
+                format!(
+                    "  - «{}»: {} · tipo {}, {} líneas, ancho {}",
+                    s.titulo,
+                    tipo_en_palabras(s),
+                    s.tipo.nombre(),
+                    s.lineas,
+                    s.ancho.nombre()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let propios = if p.propios.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nBloques propios (tipo «propia», solo con su título; sus líneas son sus filas): {}.",
+            p.propios
+                .iter()
+                .map(|b| format!("«{}» ({})", b.titulo, b.que_es))
+                .collect::<Vec<_>>()
+                .join("; ")
+        )
+    };
+    let lateral = if p.lateral {
+        "\nTiene columna lateral: «ancho»:\"lateral\" pone la sección a la derecha de lo fijo (la hoja se ensancha lo justo)."
+    } else {
+        ""
+    };
+    Some(format!(
+        "Plantilla «{}». Bloques: {}.\nSecciones de serie, en su orden:\n{lista}{propios}{lateral}\n\
+         Se puede: quitar una (no la pongas), cambiar sus líneas, reordenarlas, cambiar su ancho o su tipo, o añadir otras. \
+         Tipos: renglones, numerados, casillas, recuadro (fondo suave), libre (recuadro en blanco), notas (zona gris para anotar), propia. \
+         Ancho: completo (fila entera debajo de todo), mitad (de dos en dos alineadas arriba), izquierda / derecha (apiladas en esa columna). \
+         Líneas de 1 a {}, como mucho {} secciones; si no caben, la hoja crece.\n\
+         Para cambiarla, figuras_guardadas «personalizar» con la lista ENTERA en el orden nuevo (de una que ya existe basta el «titulo» y lo que cambie): {}",
+        nombre_de(p.clave),
+        p.bloques,
+        secciones::MAX_LINEAS,
+        secciones::MAX_SECCIONES,
+        secciones::en_json(&secs),
+    ))
 }

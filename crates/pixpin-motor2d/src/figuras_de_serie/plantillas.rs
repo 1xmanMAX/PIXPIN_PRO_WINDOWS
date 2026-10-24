@@ -5,7 +5,20 @@
 //! Todas salen de las mismas piezas ([`Pag`]: seccion, renglones, tabla,
 //! casillas, caja...) con el color de su categoria ([`Tema`]): cambiar el
 //! aire de todas es tocar aqui una vez.
+//!
+//! **Las que se personalizan** ([`PERSONALIZABLES`], 25-oct-2026): su hoja
+//! va por bloques (cabecera, lo fijo y la zona de secciones) y lo de la
+//! zona sale de una lista de [`Seccion`] (ver `secciones.rs`). Cada una
+//! dice en su comentario que bloques tiene y que se puede cambiar; su
+//! lista de fabrica (`secciones_<plantilla>`) dibuja lo de siempre.
 
+use super::secciones::{
+    AnchoSeccion::Lateral,
+    AnchoSeccion::{Completo, Derecha, Izquierda, Mitad},
+    Hueco, Propio, Seccion, SeccionPedida,
+    TipoSeccion::{Casillas, Libre, Numerados, Propia, Recuadro, Renglones},
+    Zona, colocar, normalizar,
+};
 use super::{Al, CAVEAT, FRAUNCES, Lapiz, WORK_SANS, hex};
 use crate::biblioteca::FiguraGuardada;
 use crate::elemento::{ColorRgba, EstiloTrazo};
@@ -173,12 +186,7 @@ impl Pag {
         y + paso * n as f32
     }
 
-    /// `01`, `02`... con su renglon.
-    pub fn numerados(&mut self, x: f32, y: f32, w: f32, n: usize, paso: f32) -> f32 {
-        self.numerados_desde(x, y, w, 1, n, paso)
-    }
-
-    /// Los mismos renglones numerados, empezando en `desde`.
+    /// `01`, `02`... con su renglon, empezando en `desde`.
     pub fn numerados_desde(
         &mut self,
         x: f32,
@@ -592,12 +600,24 @@ pub(super) const AMPLIABLES: [Ampliable; 13] = [
 /// **Una plantilla que se alarga, con ese tramo.** `None` si la clave no es
 /// de ninguna.
 pub(super) fn hacer(clave: &str, tr: &Tramo) -> Option<FiguraGuardada> {
+    hacer_con(clave, tr, None)
+}
+
+/// **Una plantilla con ese tramo y, si se dan, esas secciones** (las que se
+/// personalizan; a las demas no les cambia nada). Tambien las que no se
+/// alargan pero se personalizan (el semanal, el curso...): a esas el tramo
+/// no les toca. `None` si la clave no es de ninguna de las dos tablas.
+pub(super) fn hacer_con(
+    clave: &str,
+    tr: &Tramo,
+    secs: Option<&[Seccion]>,
+) -> Option<FiguraGuardada> {
     Some(match clave {
-        "cronograma" => cronograma(tr),
-        "planificador-diario" => diario(tr),
-        "planificador-mensual" => mensual(tr),
+        "cronograma" => cronograma(tr, secs),
+        "planificador-diario" => diario(tr, secs),
+        "planificador-mensual" => mensual(tr, secs),
         "lista-de-tareas" => tareas(tr),
-        "metas" => metas(tr),
+        "metas" => metas(tr, secs),
         "habitos" => habitos(tr),
         "itinerario" => itinerario(tr),
         "lista-numerada" => lista_numerada(tr),
@@ -605,7 +625,13 @@ pub(super) fn hacer(clave: &str, tr: &Tramo) -> Option<FiguraGuardada> {
         "asistencia" => asistencia(tr),
         "storyboard-4" => storyboard(4, tr),
         "storyboard-6" => storyboard(6, tr),
-        "receta" => receta(tr),
+        "receta" => receta(tr, secs),
+        "planificador-semanal" => semanal(secs),
+        "sesion-de-estudio" => estudio(secs),
+        "curso" => curso(secs),
+        "planificador-de-tareas" => entrega(secs),
+        "viaje" => viaje(secs),
+        "finanzas" => finanzas(secs),
         _ => return None,
     })
 }
@@ -619,28 +645,182 @@ fn de_serie(clave: &str) -> FiguraGuardada {
     hacer(clave, &Tramo::de(a.defecto.0, a.defecto.1)).expect("es de la tabla")
 }
 
+/// **Las plantillas que se personalizan por secciones**: su clave, sus
+/// bloques en palabras (para el modelo), su lista de fabrica, sus bloques
+/// propios y, si una seccion cuenta la serie del tramo, cual.
+pub(super) struct Personalizable {
+    pub clave: &'static str,
+    pub bloques: &'static str,
+    pub fabrica: fn(&Tramo) -> Vec<Seccion>,
+    pub propios: &'static [Propio],
+    /// La seccion que lleva los numeros del tramo («Pasos» en las metas):
+    /// si se pide un intervalo, sus lineas son las del tramo.
+    pub serie: Option<&'static str>,
+    /// Si tiene columna lateral (`ancho: lateral`).
+    pub lateral: bool,
+}
+
+pub(super) const PERSONALIZABLES: [Personalizable; 11] = [
+    Personalizable {
+        clave: "planificador-mensual",
+        bloques: "cabecera (título, Mes y Año) · calendario fijo de 7 columnas (va por meses con «mes») · debajo, la zona de secciones a dos columnas",
+        fabrica: secciones_mensual,
+        propios: &[],
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "planificador-semanal",
+        bloques: "cabecera (Semana, Mes) · horario fijo de los 7 días a la izquierda · a la derecha, la zona de secciones (una columna de 310 de ancho)",
+        fabrica: secciones_semanal,
+        propios: &PROPIOS_SEMANAL,
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "planificador-diario",
+        bloques: "cabecera (Fecha y los días L–D) · horario fijo a la izquierda (una franja por hora; las horas van con desde/hasta) · a la derecha, la zona de secciones (una columna)",
+        fabrica: secciones_diario,
+        propios: &[],
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "metas",
+        bloques: "cabecera (Fecha límite) · zona de secciones a dos columnas · pie fijo «Progreso» (10 casillas del 10 al 100 %). Los «Pasos» llevan los números del intervalo",
+        fabrica: secciones_metas,
+        propios: &PROPIOS_METAS,
+        serie: Some("Pasos"),
+        lateral: false,
+    },
+    Personalizable {
+        clave: "sesion-de-estudio",
+        bloques: "cabecera (Fecha) · zona de secciones a dos columnas, toda la hoja",
+        fabrica: secciones_estudio,
+        propios: &PROPIOS_ESTUDIO,
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "curso",
+        bloques: "cabecera (Ciclo) · zona de secciones a dos columnas, toda la hoja",
+        fabrica: secciones_curso,
+        propios: &PROPIOS_CURSO,
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "planificador-de-tareas",
+        bloques: "cabecera (Curso) · zona de secciones con la columna izquierda estrecha (300) y la derecha ancha (370)",
+        fabrica: secciones_entrega,
+        propios: &PROPIOS_ENTREGA,
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "viaje",
+        bloques: "cabecera (Destino, Fechas) · zona de secciones a dos columnas, toda la hoja",
+        fabrica: secciones_viaje,
+        propios: &PROPIOS_VIAJE,
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "finanzas",
+        bloques: "cabecera (Mes) · zona de secciones a dos columnas: tablas con su fila de TOTAL",
+        fabrica: secciones_finanzas,
+        propios: &PROPIOS_FINANZAS,
+        serie: None,
+        lateral: false,
+    },
+    Personalizable {
+        clave: "receta",
+        bloques: "cabecera (Categoría) · arriba, fijo: la foto a la izquierda y el nombre y los detalles a la derecha · debajo, la zona de secciones a dos columnas. La «Preparación» lleva los números del intervalo",
+        fabrica: secciones_receta,
+        propios: &[],
+        serie: Some("Preparación"),
+        lateral: false,
+    },
+    Personalizable {
+        clave: "cronograma",
+        bloques: "cabecera (Proyecto, Inicio) · tabla fija de actividades × semanas (filas con desde/hasta, semanas con semanas_desde/semanas_hasta) con su leyenda · de serie sin secciones: se pueden poner debajo de la tabla (completo/mitad) o en el lateral a su derecha (ancho «lateral»)",
+        fabrica: secciones_cronograma,
+        propios: &[],
+        serie: None,
+        lateral: true,
+    },
+];
+
+/// La ficha de una que se personaliza.
+pub(super) fn personalizable(clave: &str) -> Option<&'static Personalizable> {
+    PERSONALIZABLES.iter().find(|p| p.clave == clave)
+}
+
+/// **La lista pedida, completa y comprobada** para esa plantilla.
+pub(super) fn secciones_pedidas(
+    clave: &str,
+    nombre: &str,
+    pedidas: &[SeccionPedida],
+) -> Result<Vec<Seccion>, String> {
+    let p = personalizable(clave)
+        .ok_or_else(|| format!("«{nombre}» no tiene secciones que cambiar"))?;
+    let fabrica = (p.fabrica)(&tramo_de_fabrica(clave));
+    super::secciones::completar(nombre, &fabrica, p.propios, p.lateral, pedidas)
+}
+
+/// Con un intervalo pedido, la seccion de la serie lleva sus numeros.
+pub(super) fn con_la_serie(clave: &str, secs: &[Seccion], tr: &Tramo) -> Vec<Seccion> {
+    let serie = personalizable(clave).and_then(|p| p.serie);
+    secs.iter()
+        .cloned()
+        .map(|mut s| {
+            if serie.is_some_and(|t| normalizar(t) == normalizar(&s.titulo)) {
+                s.lineas = tr.n() as u32;
+            }
+            s
+        })
+        .collect()
+}
+
+/// El tramo de la de serie (a las que no se alargan les da igual).
+pub(super) fn tramo_de_fabrica(clave: &str) -> Tramo {
+    AMPLIABLES
+        .iter()
+        .find(|a| a.clave == clave)
+        .map_or(Tramo::de(1, 1), |a| Tramo::de(a.defecto.0, a.defecto.1))
+}
+
+/// La lista que se usa: la pedida o la de fabrica.
+fn las_secciones(
+    secs: Option<&[Seccion]>,
+    fabrica: fn(&Tramo) -> Vec<Seccion>,
+    tr: &Tramo,
+) -> Vec<Seccion> {
+    secs.map_or_else(|| fabrica(tr), <[Seccion]>::to_vec)
+}
+
 // ---------------------------------------------------------------------------
 
 pub(super) fn todas(v: &mut Vec<FiguraGuardada>) {
     v.extend([
         de_serie("cronograma"),
         de_serie("planificador-diario"),
-        semanal(),
+        semanal(None),
         de_serie("planificador-mensual"),
         de_serie("lista-de-tareas"),
         de_serie("lista-numerada"),
         de_serie("metas"),
         de_serie("habitos"),
         comidas(),
-        finanzas(),
+        finanzas(None),
         de_serie("itinerario"),
-        viaje(),
+        viaje(None),
         diario_de_viaje(),
         de_serie("semestre"),
         de_serie("asistencia"),
-        curso(),
-        estudio(),
-        entrega(),
+        curso(None),
+        estudio(None),
+        entrega(None),
         mapa_mental(),
         de_serie("storyboard-4"),
         de_serie("storyboard-6"),
@@ -659,8 +839,26 @@ const ANCHO: f32 = W - 2.0 * M;
 // ------------------------------------------------------------- planificacion
 
 /// **El cronograma** (el que le hizo falta al usuario para un boceto
-/// preliminar): actividades, responsable y doce semanas en tres meses.
-fn cronograma(tr: &Tramo) -> FiguraGuardada {
+/// preliminar): actividades, responsable y doce semanas en tres meses. Sus
+/// bloques:
+/// 1. Cabecera: «Proyecto» e «Inicio».
+/// 2. Tabla (fija): una fila por actividad del tramo (`desde`/`hasta`) y
+///    una columna por semana (`semanas`), con los meses encima y la leyenda
+///    debajo.
+/// 3. Zona de secciones (de serie, vacia): debajo de la leyenda, a lo
+///    ancho de la tabla, y/o en el **lateral**, una columna de
+///    [`LATERAL_DEL_CRONOGRAMA`] a la derecha de la tabla (la hoja se
+///    ensancha lo justo). «Abajo una zona gris donde anotar» es una seccion
+///    de tipo `Notas` a todo el ancho.
+fn secciones_cronograma(_: &Tramo) -> Vec<Seccion> {
+    Vec::new()
+}
+
+/// El ancho de la columna lateral del cronograma.
+pub(super) const LATERAL_DEL_CRONOGRAMA: f32 = 300.0;
+
+fn cronograma(tr: &Tramo, secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_cronograma, tr);
     let (s0, s1) = tr.semanas;
     let k = (s1.saturating_sub(s0) + 1) as usize;
     // Con pocas filas (una hoja de un tramo corto) se estiran hasta llenar el papel.
@@ -671,7 +869,22 @@ fn cronograma(tr: &Tramo) -> FiguraGuardada {
     let fijo = 7.4;
     let unidad = (H - 2.0 * M) / (fijo + 0.9 * 12.0);
     let ancho = (unidad * (fijo + 0.9 * k as f32) + 2.0 * M).max(H);
-    let alto = (y + fh + fh * tr.n() as f32 + 48.0 + M).max(W);
+    let (x, w) = (M, ancho - 2.0 * M);
+    // Con lateral, la hoja se ensancha lo justo y la tabla no cambia.
+    let hay_lateral = secs.iter().any(|s| s.ancho == Lateral);
+    let ancho = if hay_lateral {
+        ancho + 28.0 + LATERAL_DEL_CRONOGRAMA
+    } else {
+        ancho
+    };
+    // Las secciones de abajo empiezan bajo la leyenda (18 + 12) y su aire.
+    let fin_tabla = y + fh + fh * tr.n() as f32;
+    let z = Zona {
+        lateral: Some((x + w + 28.0, y - 26.0, LATERAL_DEL_CRONOGRAMA)),
+        ..Zona::de_dos(x, fin_tabla + 18.0 + 12.0 + 30.0, w, 30.0, 24.0)
+    };
+    let m = colocar(&z, &secs);
+    let alto = (fin_tabla + 48.0 + M).max(W).max(m.fin + M);
     let mut p = Pag::de_tamano(
         PLANIFICACION,
         ancho,
@@ -679,7 +892,8 @@ fn cronograma(tr: &Tramo) -> FiguraGuardada {
         "Cronograma",
         &["Proyecto", "Inicio"],
     );
-    let (x, w) = (M, ancho - 2.0 * M);
+    // La tabla con sus meses y su leyenda: el bloque fijo.
+    p.l.parte("Tabla");
     let fijas = [("#", 0.6), ("Actividad", 5.2), ("Resp.", 1.6)];
     let semanas: Vec<String> = (s0..=s1).map(|s| format!("S{s}")).collect();
     let mut cols: Vec<(&str, f32)> = fijas.to_vec();
@@ -785,14 +999,42 @@ fn cronograma(tr: &Tramo) -> FiguraGuardada {
         false,
         Al::Izq,
     );
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin_de("cronograma", "Cronograma", tr)
 }
 
-fn diario(tr: &Tramo) -> FiguraGuardada {
-    let alto = Y0 + 30.0 + 54.0 * tr.n() as f32 + M;
+/// **El planificador diario.** Sus bloques, de arriba abajo y de izquierda
+/// a derecha:
+/// 1. Cabecera: «Fecha» y los circulitos L–D para marcar el dia.
+/// 2. Horario (fijo, a la izquierda, 330 de ancho): una franja de 54 por
+///    hora del tramo (`desde`/`hasta`; de 6 a 22 de serie).
+/// 3. Zona de secciones (a la derecha, una sola columna): de fabrica la
+///    meta del dia (recuadro), las prioridades, otras tareas y las notas
+///    (libre: baja hasta el pie). Se pueden quitar, reordenar, cambiar de
+///    lineas o anadir otras; «mitad» parte esa columna en dos.
+///
+/// Si lo de la derecha no cabe junto al horario, la hoja crece.
+fn secciones_diario(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Meta del día", Recuadro, 2, Completo),
+        Seccion::nueva("Prioridades", Numerados, 3, Completo),
+        Seccion::nueva("Otras tareas", Casillas, 10, Completo),
+        Seccion::nueva("Notas", Libre, 4, Completo),
+    ]
+}
+
+fn diario(tr: &Tramo, secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_diario, tr);
+    let izq = 330.0;
+    let x2 = M + izq + 30.0;
+    let z = Zona::de_dos(x2, Y0, W - M - x2, 32.0, 26.0);
+    let m = colocar(&z, &secs);
+    let alto = (Y0 + 30.0 + 54.0 * tr.n() as f32 + M).max(m.fin + M);
     let mut p = Pag::alta(PLANIFICACION, "Planificador diario", &["Fecha"], alto);
     p.dias_en_circulos(W - M - 9.0 - 172.0, 72.0);
-    let izq = 330.0;
+    // El horario: el bloque fijo de la izquierda.
+    p.l.parte("Horario");
     let y = p.seccion(M, Y0, izq, "Horario");
     for (i, h) in tr.numeros().enumerate() {
         let yy = y + 10.0 + i as f32 * 54.0;
@@ -817,24 +1059,85 @@ fn diario(tr: &Tramo) -> FiguraGuardada {
             EstiloTrazo::Punteado,
         );
     }
-    let x2 = M + izq + 30.0;
-    let w2 = W - M - x2;
-    let y = p.seccion(x2, Y0, w2, "Meta del día");
-    p.caja_suave(x2, y + 10.0, w2, 70.0, "");
-    let y = p.seccion(x2, y + 100.0, w2, "Prioridades");
-    let y = p.numerados(x2, y, w2, 3, 34.0);
-    let y = p.seccion(x2, y + 26.0, w2, "Otras tareas");
-    let y = p.casillas(x2, y, w2, 10, 32.0, &[]);
-    let y = p.seccion(x2, y + 26.0, w2, "Notas");
-    p.caja(x2, y + 10.0, w2, p.h - M - y - 10.0, "");
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin_de("planificador-diario", "Planificador diario", tr)
 }
 
-fn semanal() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Planificador semanal", &["Semana", "Mes"]);
+/// **El planificador semanal.** Sus bloques:
+/// 1. Cabecera: «Semana» y «Mes».
+/// 2. Horario (fijo, a la izquierda, 360 de ancho): los siete dias, cada uno
+///    con su pastilla y tres renglones, repartidos en todo el alto.
+/// 3. Zona de secciones (a la derecha, una columna de 310): de fabrica el
+///    objetivo de la semana (recuadro), las prioridades, otras tareas y la
+///    rejilla de habitos (bloque propio: un renglon por habito y un circulo
+///    por dia). Todo se quita, se reordena o cambia de lineas.
+fn secciones_semanal(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Objetivo de la semana", Recuadro, 3, Completo),
+        Seccion::nueva("Prioridades", Numerados, 4, Completo),
+        Seccion::nueva("Otras tareas", Casillas, 9, Completo),
+        Seccion::nueva("Hábitos", Propia, 6, Completo),
+    ]
+}
+
+const PROPIOS_SEMANAL: [Propio; 1] = [Propio {
+    titulo: "Hábitos",
+    que_es: "rejilla de hábitos: un renglón por hábito y un círculo por día (L a D); líneas = hábitos",
+    alto: |n| 26.0 + 28.0 * n as f32,
+    dibujar: habitos_de_la_semana,
+    estira: false,
+}];
+
+/// La rejilla de habitos del semanal: las letras de los dias arriba a la
+/// derecha y, por habito, su renglon y siete circulos.
+fn habitos_de_la_semana(p: &mut Pag, h: Hueco, n: u32) {
+    let celda = 22.0;
+    let x0 = h.x + h.w - 7.0 * celda;
+    for (i, d) in LETRAS.iter().enumerate() {
+        p.l.texto(
+            x0 + celda * i as f32 + celda / 2.0,
+            h.y + 6.0,
+            d,
+            9.0,
+            WORK_SANS,
+            ROTULO,
+            true,
+            Al::Centro,
+        );
+    }
+    for f in 0..n {
+        let yy = h.y + 26.0 + f as f32 * 28.0;
+        p.l.linea(h.x, yy + 20.0, x0 - 8.0, yy + 20.0, RAYA, 1.0);
+        for i in 0..7 {
+            p.l.circulo(
+                x0 + celda * i as f32 + celda / 2.0,
+                yy + 11.0,
+                7.5,
+                Some(BORDE),
+                None,
+                1.0,
+            );
+        }
+    }
+}
+
+fn semanal(secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_semanal, &Tramo::de(1, 1));
     let izq = 360.0;
+    let x2 = M + izq + 28.0;
+    let z = Zona::de_dos(x2, Y0, W - M - x2, 30.0, 24.0).con_propios(&PROPIOS_SEMANAL);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(
+        PLANIFICACION,
+        "Planificador semanal",
+        &["Semana", "Mes"],
+        m.fin + M,
+    );
+    // El horario: el bloque fijo de la izquierda, en todo el alto.
+    p.l.parte("Horario");
     let y = p.seccion(M, Y0, izq, "Horario");
-    let alto = (H - M - y - 12.0) / 7.0;
+    let alto = (p.h - M - y - 12.0) / 7.0;
     for (i, d) in DIAS.iter().enumerate() {
         let yy = y + 12.0 + alto * i as f32;
         p.l.rect(M, yy, 38.0, alto - 8.0, None, Some(p.t.suave), 1.0, true);
@@ -851,51 +1154,48 @@ fn semanal() -> FiguraGuardada {
         p.l.rect(M, yy, izq, alto - 8.0, Some(BORDE), None, 1.25, true);
         p.renglones(M + 50.0, yy + 2.0, izq - 62.0, 3, (alto - 14.0) / 3.4);
     }
-    let x2 = M + izq + 28.0;
-    let w2 = W - M - x2;
-    let y = p.seccion(x2, Y0, w2, "Objetivo de la semana");
-    p.caja_suave(x2, y + 10.0, w2, 80.0, "");
-    let y = p.seccion(x2, y + 110.0, w2, "Prioridades");
-    let y = p.numerados(x2, y, w2, 4, 32.0);
-    let y = p.seccion(x2, y + 24.0, w2, "Otras tareas");
-    let y = p.casillas(x2, y, w2, 9, 30.0, &[]);
-    let y = p.seccion(x2, y + 24.0, w2, "Hábitos");
-    let celda = 22.0;
-    let x0 = x2 + w2 - 7.0 * celda;
-    for (i, d) in LETRAS.iter().enumerate() {
-        p.l.texto(
-            x0 + celda * i as f32 + celda / 2.0,
-            y + 6.0,
-            d,
-            9.0,
-            WORK_SANS,
-            ROTULO,
-            true,
-            Al::Centro,
-        );
-    }
-    for f in 0..6 {
-        let yy = y + 26.0 + f as f32 * 28.0;
-        p.l.linea(x2, yy + 20.0, x0 - 8.0, yy + 20.0, RAYA, 1.0);
-        for i in 0..7 {
-            p.l.circulo(
-                x0 + celda * i as f32 + celda / 2.0,
-                yy + 11.0,
-                7.5,
-                Some(BORDE),
-                None,
-                1.0,
-            );
-        }
-    }
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin("planificador-semanal", "Planificador semanal")
 }
 
-/// El mensual: en blanco, o con el mes de verdad (cada dia en su dia de la
-/// semana, el mes y el ano escritos en la cabecera).
-fn mensual(tr: &Tramo) -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Planificador mensual", &["Mes", "Año"]);
+/// **El planificador mensual**: en blanco, o con el mes de verdad (cada dia
+/// en su dia de la semana, el mes y el ano escritos en la cabecera). Sus
+/// bloques, de arriba abajo:
+/// 1. Cabecera: «Mes» y «Año» (con mes, ya escritos).
+/// 2. Calendario (fijo): la fila de los dias y seis semanas de casillas
+///    (con mes, las que tenga, de 4 a 6, en el mismo alto). Va por meses
+///    con `tr.mes`.
+/// 3. Zona de secciones (debajo, a todo el ancho y a dos columnas): de
+///    fabrica el objetivo del mes y las prioridades a la izquierda y las
+///    tareas a la derecha. Se quitan, se reordenan, cambian de lineas, se
+///    ponen a todo el ancho o se anaden otras («Objetivos del mes» a 6
+///    lineas y a todo el ancho, «Tareas» a 4, sin «Prioridades»...).
+///
+/// Si las secciones no caben debajo del calendario, la hoja crece.
+fn secciones_mensual(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Objetivo del mes", Renglones, 2, Izquierda),
+        Seccion::nueva("Prioridades", Numerados, 4, Izquierda),
+        Seccion::nueva("Tareas", Casillas, 7, Derecha),
+    ]
+}
+
+fn mensual(tr: &Tramo, secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_mensual, tr);
     let y = Y0;
+    // El calendario: 28 de la fila de los dias, 8 de aire y seis filas de 96.
+    let y1 = y + 36.0;
+    let z = Zona::de_dos(M, y1 + 96.0 * 6.0 + 22.0, ANCHO, 30.0, 20.0);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(
+        PLANIFICACION,
+        "Planificador mensual",
+        &["Mes", "Año"],
+        m.fin + M,
+    );
+    // El calendario: un bloque fijo con nombre.
+    p.l.parte("Calendario");
     let cw = ANCHO / 7.0;
     p.l.rect(M, y, ANCHO, 28.0, None, Some(p.t.acento), 1.0, true);
     for (i, d) in DIAS.iter().enumerate() {
@@ -913,8 +1213,11 @@ fn mensual(tr: &Tramo) -> FiguraGuardada {
     // Con mes: las semanas que tenga (4 a 6) se reparten el alto de seis.
     let (primero, dias) = match tr.mes {
         Some((a, m)) => {
+            // Lo de la cabecera no es del calendario.
+            p.l.parte("");
             p.valor(0, MESES[m as usize - 1]);
             p.valor(1, &a.to_string());
+            p.l.parte("Calendario");
             (dia_de_la_semana(a, m, 1), dias_del_mes(a, m) as usize)
         }
         None => (0, 0),
@@ -925,7 +1228,6 @@ fn mensual(tr: &Tramo) -> FiguraGuardada {
         6
     };
     let fh = 96.0 * 6.0 / filas as f32;
-    let y1 = y + 36.0;
     for f in 0..filas {
         for c in 0..7 {
             let (cx, cy) = (M + cw * c as f32, y1 + fh * f as f32);
@@ -973,15 +1275,8 @@ fn mensual(tr: &Tramo) -> FiguraGuardada {
             }
         }
     }
-    let y = y1 + 96.0 * 6.0 + 22.0;
-    let mitad = ANCHO / 2.0 - 14.0;
-    let ya = p.seccion(M, y, mitad, "Objetivo del mes");
-    p.renglones(M, ya, mitad, 2, 30.0);
-    let yb = p.seccion(M, ya + 80.0, mitad, "Prioridades");
-    p.numerados(M, yb, mitad, 4, 30.0);
-    let x2 = M + mitad + 28.0;
-    let yc = p.seccion(x2, y, mitad, "Tareas");
-    p.casillas(x2, yc, mitad, 7, 30.0, &[]);
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin_de("planificador-mensual", "Planificador mensual", tr)
 }
 
@@ -1105,30 +1400,61 @@ fn lista_numerada(tr: &Tramo) -> FiguraGuardada {
     p.fin_de("lista-numerada", "Lista numerada", tr)
 }
 
-fn metas(tr: &Tramo) -> FiguraGuardada {
-    // Lo de la derecha: los pasos, los hitos (26 + 6 filas) y el progreso.
-    let alto =
-        Y0 + 20.0 + 30.0 * tr.n() as f32 + 26.0 + 20.0 + 10.0 + 26.0 + 28.0 * 6.0 + 30.0 + 60.0 + M;
-    let mut p = Pag::alta(PLANIFICACION, "Metas", &["Fecha límite"], alto);
-    let mitad = ANCHO / 2.0 - 14.0;
-    let y = p.seccion(M, Y0, mitad, "Mi meta");
-    p.caja_suave(M, y + 10.0, mitad, 170.0, "");
-    let y = p.seccion(M, y + 206.0, mitad, "¿Por qué?");
-    let y = p.renglones(M, y, mitad, 6, 30.0);
-    let y = p.seccion(M, y + 26.0, mitad, "Motivación");
-    p.renglones(M, y, mitad, 6, 30.0);
-    let x2 = M + mitad + 28.0;
-    let y = p.seccion(x2, Y0, mitad, "Pasos");
-    let y = p.numerados_desde(x2, y, mitad, tr.desde, tr.n(), 30.0);
-    let y = p.seccion(x2, y + 26.0, mitad, "Hitos");
-    p.tabla(
-        x2,
-        y + 10.0,
-        mitad,
-        &[("Hito", 4.0), ("Fecha", 1.6), ("✓", 0.7)],
-        6,
-        28.0,
+/// **Las metas.** Sus bloques:
+/// 1. Cabecera: «Fecha límite».
+/// 2. Zona de secciones a dos columnas: de fabrica, a la izquierda la meta
+///    (recuadro), el porque y la motivacion; a la derecha los pasos (con los
+///    numeros del tramo: «del 1 al 30» da 30 pasos) y la tabla de hitos
+///    (bloque propio: hito, fecha y ✓).
+/// 3. Pie (fijo): «Progreso», diez casillas del 10 al 100 %, siempre abajo.
+///
+/// Si la zona no cabe, la hoja crece y el progreso baja con ella.
+fn secciones_metas(tr: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Mi meta", Recuadro, 6, Izquierda),
+        Seccion::nueva("¿Por qué?", Renglones, 6, Izquierda),
+        Seccion::nueva("Motivación", Renglones, 6, Izquierda),
+        Seccion::nueva("Pasos", Numerados, tr.n() as u32, Derecha),
+        Seccion::nueva("Hitos", Propia, 6, Derecha),
+    ]
+}
+
+const PROPIOS_METAS: [Propio; 1] = [Propio {
+    titulo: "Hitos",
+    que_es: "tabla de hitos (hito, fecha y ✓); líneas = filas",
+    alto: |n| 10.0 + 28.0 + 28.0 * n as f32,
+    dibujar: |p, h, n| {
+        p.tabla(
+            h.x,
+            h.y + 10.0,
+            h.w,
+            &[("Hito", 4.0), ("Fecha", 1.6), ("✓", 0.7)],
+            n as usize,
+            28.0,
+        );
+    },
+    estira: false,
+}];
+
+/// Lo que ocupa el pie del progreso, con su aire.
+const PIE_DE_METAS: f32 = 30.0 + 60.0;
+
+fn metas(tr: &Tramo, secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_metas, tr);
+    let z = Zona::de_dos(M, Y0, ANCHO, 30.0, 26.0)
+        .con_propios(&PROPIOS_METAS)
+        .con_serie("Pasos", tr.desde);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(
+        PLANIFICACION,
+        "Metas",
+        &["Fecha límite"],
+        m.fin + PIE_DE_METAS + M,
     );
+    let fondo = p.h - M - PIE_DE_METAS;
+    p.poner_secciones(&z, &secs, m, fondo);
+    // El pie: el progreso, siempre abajo.
+    p.l.parte("Progreso");
     let y = p.h - M - 60.0;
     let y = p.seccion(M, y, ANCHO, "Progreso");
     let paso = ANCHO / 10.0;
@@ -1283,45 +1609,85 @@ fn comidas() -> FiguraGuardada {
     p.fin("comidas", "Comidas de la semana")
 }
 
-fn finanzas() -> FiguraGuardada {
-    let mut p = Pag::nueva(PLANIFICACION, "Finanzas del mes", &["Mes"]);
-    let mitad = ANCHO / 2.0 - 14.0;
-    let x2 = M + mitad + 28.0;
-    let cols = [("Fecha", 1.0), ("Concepto", 2.6), ("Monto", 1.3)];
-    let total = |p: &mut Pag, x: f32, y: f32| {
-        p.l.rect(x, y, mitad, 28.0, None, Some(p.t.suave), 1.0, false);
-        p.l.texto(
-            x + 12.0,
-            y + 7.0,
-            "TOTAL",
-            10.0,
-            WORK_SANS,
-            p.t.acento,
-            true,
-            Al::Izq,
-        );
-        y + 28.0
-    };
-    let y = p.seccion(M, Y0, mitad, "Gastos fijos");
-    let y = p.tabla(M, y + 10.0, mitad, &cols, 10, 27.0);
-    let y = total(&mut p, M, y);
-    let y = p.seccion(M, y + 24.0, mitad, "Gastos variables");
-    let y = p.tabla(M, y + 10.0, mitad, &cols, 16, 27.0);
-    total(&mut p, M, y);
-    let y = p.seccion(x2, Y0, mitad, "Ingresos");
-    let y = p.tabla(x2, y + 10.0, mitad, &cols, 6, 27.0);
-    let y = total(&mut p, x2, y);
-    let y = p.seccion(x2, y + 24.0, mitad, "Ahorro");
-    let y = p.tabla(
-        x2,
-        y + 10.0,
-        mitad,
-        &[("Para", 2.6), ("Monto", 1.3)],
-        4,
-        27.0,
+/// **Las finanzas del mes.** Sus bloques:
+/// 1. Cabecera: «Mes».
+/// 2. Zona de secciones a dos columnas, todas bloques propios: los gastos
+///    fijos y los variables a la izquierda; los ingresos, el ahorro y el
+///    resumen a la derecha. Cada tabla lleva su fila de TOTAL; sus
+///    `lineas` son sus filas. Se quitan, se reordenan, cambian de filas o
+///    se ponen a todo el ancho, y se pueden anadir renglones o casillas.
+fn secciones_finanzas(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Gastos fijos", Propia, 10, Izquierda),
+        Seccion::nueva("Gastos variables", Propia, 16, Izquierda),
+        Seccion::nueva("Ingresos", Propia, 6, Derecha),
+        Seccion::nueva("Ahorro", Propia, 4, Derecha),
+        Seccion::nueva("Resumen", Propia, 5, Derecha),
+    ]
+}
+
+/// Las columnas de los movimientos.
+const MOVIMIENTOS: [(&str, f32); 3] = [("Fecha", 1.0), ("Concepto", 2.6), ("Monto", 1.3)];
+/// Lo que mide una tabla de 27 con su cabecera y su total.
+const fn alto_con_total(n: u32) -> f32 {
+    10.0 + 27.0 + 27.0 * n as f32 + 28.0
+}
+
+const PROPIOS_FINANZAS: [Propio; 5] = [
+    Propio {
+        titulo: "Gastos fijos",
+        que_es: "tabla fecha, concepto y monto con su TOTAL; líneas = filas",
+        alto: alto_con_total,
+        dibujar: |p, h, n| movimientos(p, h, &MOVIMIENTOS, n),
+        estira: false,
+    },
+    Propio {
+        titulo: "Gastos variables",
+        que_es: "tabla fecha, concepto y monto con su TOTAL; líneas = filas",
+        alto: alto_con_total,
+        dibujar: |p, h, n| movimientos(p, h, &MOVIMIENTOS, n),
+        estira: false,
+    },
+    Propio {
+        titulo: "Ingresos",
+        que_es: "tabla fecha, concepto y monto con su TOTAL; líneas = filas",
+        alto: alto_con_total,
+        dibujar: |p, h, n| movimientos(p, h, &MOVIMIENTOS, n),
+        estira: false,
+    },
+    Propio {
+        titulo: "Ahorro",
+        que_es: "tabla para qué y monto con su TOTAL; líneas = filas",
+        alto: alto_con_total,
+        dibujar: |p, h, n| movimientos(p, h, &[("Para", 2.6), ("Monto", 1.3)], n),
+        estira: false,
+    },
+    Propio {
+        titulo: "Resumen",
+        que_es: "tabla de ingresos, gastos fijos, gastos variables, ahorro y saldo; líneas = filas",
+        alto: |n| 10.0 + 30.0 + 30.0 * n as f32,
+        dibujar: resumen_de_finanzas,
+        estira: false,
+    },
+];
+
+/// Una tabla de movimientos y, debajo, su fila de TOTAL.
+fn movimientos(p: &mut Pag, h: Hueco, cols: &[(&str, f32)], n: u32) {
+    let y = p.tabla(h.x, h.y + 10.0, h.w, cols, n as usize, 27.0);
+    p.l.rect(h.x, y, h.w, 28.0, None, Some(p.t.suave), 1.0, false);
+    p.l.texto(
+        h.x + 12.0,
+        y + 7.0,
+        "TOTAL",
+        10.0,
+        WORK_SANS,
+        p.t.acento,
+        true,
+        Al::Izq,
     );
-    let y = total(&mut p, x2, y);
-    let y = p.seccion(x2, y + 24.0, mitad, "Resumen");
+}
+
+fn resumen_de_finanzas(p: &mut Pag, h: Hueco, n: u32) {
     let filas = [
         "Ingresos",
         "Gastos fijos",
@@ -1330,17 +1696,17 @@ fn finanzas() -> FiguraGuardada {
         "Saldo",
     ];
     let fin = p.tabla(
-        x2,
-        y + 10.0,
-        mitad,
+        h.x,
+        h.y + 10.0,
+        h.w,
         &[("", 2.6), ("Monto", 1.3)],
-        filas.len(),
+        n as usize,
         30.0,
     );
-    for (i, s) in filas.iter().enumerate() {
-        let yy = fin - 30.0 * (filas.len() - i) as f32;
+    for (i, s) in filas.iter().take(n as usize).enumerate() {
+        let yy = fin - 30.0 * (n as usize - i) as f32;
         p.l.texto(
-            x2 + 12.0,
+            h.x + 12.0,
             yy + 8.0,
             s,
             11.0,
@@ -1350,6 +1716,15 @@ fn finanzas() -> FiguraGuardada {
             Al::Izq,
         );
     }
+}
+
+fn finanzas(secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_finanzas, &Tramo::de(1, 1));
+    let z = Zona::de_dos(M, Y0, ANCHO, 30.0, 24.0).con_propios(&PROPIOS_FINANZAS);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(PLANIFICACION, "Finanzas del mes", &["Mes"], m.fin + M);
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin("finanzas", "Finanzas del mes")
 }
 
@@ -1387,28 +1762,77 @@ fn itinerario(tr: &Tramo) -> FiguraGuardada {
     p.fin_de("itinerario", "Itinerario", tr)
 }
 
-fn viaje() -> FiguraGuardada {
-    let mut p = Pag::nueva(
-        PLANIFICACION,
-        "Planificador de viaje",
-        &["Destino", "Fechas"],
-    );
-    let mitad = ANCHO / 2.0 - 14.0;
-    let x2 = M + mitad + 28.0;
-    let ficha = |p: &mut Pag, x: f32, y: f32, filas: &[&str]| {
-        let fin = p.tabla(x, y, mitad, &[("", 1.4), ("", 2.2)], filas.len(), 30.0);
-        for (i, s) in filas.iter().enumerate() {
-            let yy = y + 30.0 * i as f32;
-            p.l.rect(
-                x,
-                yy,
-                mitad * 1.4 / 3.6,
-                30.0,
-                None,
-                Some(p.t.suave),
-                1.0,
-                false,
-            );
+/// **El planificador de viaje.** Sus bloques:
+/// 1. Cabecera: «Destino» y «Fechas».
+/// 2. Zona de secciones a dos columnas: de fabrica la ficha del vuelo a la
+///    izquierda y las del alojamiento y el transporte a la derecha (bloques
+///    propios: etiqueta y hueco por fila); debajo, en una fila, el equipaje
+///    y lo de antes de salir (casillas, de dos en dos).
+fn secciones_viaje(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Vuelo", Propia, 8, Izquierda),
+        Seccion::nueva("Alojamiento", Propia, 4, Derecha),
+        Seccion::nueva("Transporte", Propia, 3, Derecha),
+        Seccion::nueva("Equipaje", Casillas, 16, Mitad),
+        Seccion::nueva("Antes de salir", Casillas, 16, Mitad),
+    ]
+}
+
+const VUELO: [&str; 8] = [
+    "Aerolínea",
+    "Reserva",
+    "N.º de vuelo",
+    "Salida",
+    "Llegada",
+    "N.º de vuelo",
+    "Salida",
+    "Llegada",
+];
+const ALOJAMIENTO: [&str; 4] = ["Nombre", "Dirección", "Fechas", "Entrada / salida"];
+const TRANSPORTE: [&str; 3] = ["Empresa", "Reserva", "Recoger / devolver"];
+
+const PROPIOS_VIAJE: [Propio; 3] = [
+    Propio {
+        titulo: "Vuelo",
+        que_es: "ficha del vuelo (aerolínea, reserva, vuelos de ida y vuelta); líneas = filas",
+        alto: |n| 10.0 + 30.0 * n as f32,
+        dibujar: |p, h, n| ficha(p, h, &VUELO, n),
+        estira: false,
+    },
+    Propio {
+        titulo: "Alojamiento",
+        que_es: "ficha del alojamiento (nombre, dirección, fechas, entrada y salida); líneas = filas",
+        alto: |n| 10.0 + 30.0 * n as f32,
+        dibujar: |p, h, n| ficha(p, h, &ALOJAMIENTO, n),
+        estira: false,
+    },
+    Propio {
+        titulo: "Transporte",
+        que_es: "ficha del transporte (empresa, reserva, recoger y devolver); líneas = filas",
+        alto: |n| 10.0 + 30.0 * n as f32,
+        dibujar: |p, h, n| ficha(p, h, &TRANSPORTE, n),
+        estira: false,
+    },
+];
+
+/// Una ficha: por fila, su etiqueta sobre fondo suave y el hueco para
+/// escribir. Con mas filas que etiquetas, las de mas van en blanco.
+fn ficha(p: &mut Pag, h: Hueco, etiquetas: &[&str], n: u32) {
+    let (x, y, w) = (h.x, h.y + 10.0, h.w);
+    let fin = p.tabla(x, y, w, &[("", 1.4), ("", 2.2)], n as usize, 30.0);
+    for i in 0..n as usize {
+        let yy = y + 30.0 * i as f32;
+        p.l.rect(
+            x,
+            yy,
+            w * 1.4 / 3.6,
+            30.0,
+            None,
+            Some(p.t.suave),
+            1.0,
+            false,
+        );
+        if let Some(s) = etiquetas.get(i) {
             p.l.texto(
                 x + 10.0,
                 yy + 9.0,
@@ -1420,44 +1844,22 @@ fn viaje() -> FiguraGuardada {
                 Al::Izq,
             );
         }
-        p.l.rect(x, y, mitad, fin - y, Some(BORDE), None, 1.25, false);
-        fin
-    };
-    let y = p.seccion(M, Y0, mitad, "Vuelo");
-    let fin_izq = ficha(
-        &mut p,
-        M,
-        y + 10.0,
-        &[
-            "Aerolínea",
-            "Reserva",
-            "N.º de vuelo",
-            "Salida",
-            "Llegada",
-            "N.º de vuelo",
-            "Salida",
-            "Llegada",
-        ],
+    }
+    p.l.rect(x, y, w, fin - y, Some(BORDE), None, 1.25, false);
+}
+
+fn viaje(secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_viaje, &Tramo::de(1, 1));
+    let z = Zona::de_dos(M, Y0, ANCHO, 30.0, 24.0).con_propios(&PROPIOS_VIAJE);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(
+        PLANIFICACION,
+        "Planificador de viaje",
+        &["Destino", "Fechas"],
+        m.fin + M,
     );
-    let y = p.seccion(x2, Y0, mitad, "Alojamiento");
-    let y = ficha(
-        &mut p,
-        x2,
-        y + 10.0,
-        &["Nombre", "Dirección", "Fechas", "Entrada / salida"],
-    );
-    let y = p.seccion(x2, y + 22.0, mitad, "Transporte");
-    let fin_der = ficha(
-        &mut p,
-        x2,
-        y + 10.0,
-        &["Empresa", "Reserva", "Recoger / devolver"],
-    );
-    let y = fin_izq.max(fin_der) + 30.0;
-    let ya = p.seccion(M, y, mitad, "Equipaje");
-    p.casillas(M, ya, mitad, 16, 30.0, &[]);
-    let yb = p.seccion(x2, y, mitad, "Antes de salir");
-    p.casillas(x2, yb, mitad, 16, 30.0, &[]);
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin("viaje", "Planificador de viaje")
 }
 
@@ -1594,76 +1996,184 @@ fn asistencia(tr: &Tramo) -> FiguraGuardada {
     p.fin_de("asistencia", "Lista de asistencia", tr)
 }
 
-fn curso() -> FiguraGuardada {
-    let mut p = Pag::nueva(ACADEMICO, "Curso", &["Ciclo"]);
-    let mitad = ANCHO / 2.0 - 14.0;
-    let x2 = M + mitad + 28.0;
-    let y = p.seccion(M, Y0, mitad, "Datos");
-    let y = p.datos(
-        M,
-        y,
-        mitad,
-        &[
-            "Curso:",
-            "Docente:",
-            "Horario:",
-            "Aula:",
-            "Atención:",
-            "Contacto:",
-        ],
-        32.0,
-    );
-    let y = p.seccion(M, y + 24.0, mitad, "Libros y materiales");
-    let y = p.tabla(M, y + 6.0, mitad, &[("", 5.0), ("", 1.0)], 7, 30.0);
-    let y = p.seccion(M, y + 24.0, mitad, "Fechas importantes");
-    p.tabla(M, y + 6.0, mitad, &[("Fecha", 1.0), ("Qué", 3.0)], 8, 30.0);
-    let y = p.seccion(x2, Y0, mitad, "Entregas");
-    let y = p.tabla(
-        x2,
-        y + 6.0,
-        mitad,
-        &[("Fecha", 1.0), ("Trabajo", 3.2), ("✓", 0.6)],
-        18,
-        30.0,
-    );
-    let y = p.seccion(x2, y + 24.0, mitad, "Notas");
-    p.caja(x2, y + 10.0, mitad, H - M - y - 10.0, "");
+/// **La ficha de un curso.** Sus bloques:
+/// 1. Cabecera: «Ciclo».
+/// 2. Zona de secciones a dos columnas: de fabrica, a la izquierda los
+///    datos (curso, docente, horario...), los libros y las fechas
+///    importantes; a la derecha la tabla de entregas y las notas (libre:
+///    baja hasta el pie). Las tablas y los datos son bloques propios (sus
+///    `lineas` son sus filas).
+fn secciones_curso(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Datos", Propia, 6, Izquierda),
+        Seccion::nueva("Libros y materiales", Propia, 7, Izquierda),
+        Seccion::nueva("Fechas importantes", Propia, 8, Izquierda),
+        Seccion::nueva("Entregas", Propia, 18, Derecha),
+        Seccion::nueva("Notas", Libre, 4, Derecha),
+    ]
+}
+
+const DATOS_DEL_CURSO: [&str; 6] = [
+    "Curso:",
+    "Docente:",
+    "Horario:",
+    "Aula:",
+    "Atención:",
+    "Contacto:",
+];
+
+const PROPIOS_CURSO: [Propio; 4] = [
+    Propio {
+        titulo: "Datos",
+        que_es: "curso, docente, horario, aula, atención y contacto, cada uno con su renglón; líneas = filas",
+        alto: |n| 32.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.datos(h.x, h.y, h.w, &rotulos(&DATOS_DEL_CURSO, n), 32.0);
+        },
+        estira: false,
+    },
+    Propio {
+        titulo: "Libros y materiales",
+        que_es: "tabla de dos columnas sin cabecera (qué y ✓); líneas = filas",
+        alto: |n| 6.0 + 30.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.tabla(
+                h.x,
+                h.y + 6.0,
+                h.w,
+                &[("", 5.0), ("", 1.0)],
+                n as usize,
+                30.0,
+            );
+        },
+        estira: false,
+    },
+    Propio {
+        titulo: "Fechas importantes",
+        que_es: "tabla fecha y qué; líneas = filas",
+        alto: |n| 6.0 + 30.0 + 30.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.tabla(
+                h.x,
+                h.y + 6.0,
+                h.w,
+                &[("Fecha", 1.0), ("Qué", 3.0)],
+                n as usize,
+                30.0,
+            );
+        },
+        estira: false,
+    },
+    Propio {
+        titulo: "Entregas",
+        que_es: "tabla fecha, trabajo y ✓; líneas = filas",
+        alto: |n| 6.0 + 30.0 + 30.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.tabla(
+                h.x,
+                h.y + 6.0,
+                h.w,
+                &[("Fecha", 1.0), ("Trabajo", 3.2), ("✓", 0.6)],
+                n as usize,
+                30.0,
+            );
+        },
+        estira: false,
+    },
+];
+
+/// Las `n` primeras etiquetas y, si se piden mas, en blanco.
+fn rotulos<'a>(lista: &[&'a str], n: u32) -> Vec<&'a str> {
+    (0..n as usize)
+        .map(|i| lista.get(i).copied().unwrap_or(""))
+        .collect()
+}
+
+fn curso(secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_curso, &Tramo::de(1, 1));
+    let z = Zona::de_dos(M, Y0, ANCHO, 30.0, 24.0).con_propios(&PROPIOS_CURSO);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(ACADEMICO, "Curso", &["Ciclo"], m.fin + M);
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin("curso", "Curso")
 }
 
-fn estudio() -> FiguraGuardada {
-    let mut p = Pag::nueva(ACADEMICO, "Sesión de estudio", &["Fecha"]);
-    let mitad = ANCHO / 2.0 - 14.0;
-    let x2 = M + mitad + 28.0;
-    let y = p.seccion(M, Y0, mitad, "Tiempo");
-    let y = p.datos(M, y, mitad, &["Inicio:", "Fin:", "Total:"], 30.0);
-    let y = p.seccion(M, y + 24.0, mitad, "Objetivos");
-    let y = p.numerados(M, y, mitad, 4, 30.0);
-    let y = p.seccion(M, y + 24.0, mitad, "Temas / capítulos");
-    let y = p.renglones(M, y, mitad, 10, 30.0);
-    let y = p.seccion(M, y + 24.0, mitad, "Pausas");
-    p.renglones(M, y, mitad, 4, 30.0);
-    let y = p.seccion(x2, Y0, mitad, "Antes de empezar");
-    let y = p.casillas(
-        x2,
-        y,
-        mitad,
-        6,
-        28.0,
-        &[
-            "Materiales listos",
-            "Lugar tranquilo",
-            "Sin distracciones",
-            "Música de fondo",
-            "Agua y algo de comer",
-            "Meta clara",
-        ],
-    );
-    let y = p.seccion(x2, y + 24.0, mitad, "Bloques de tiempo");
-    let fin = p.tabla(
-        x2,
-        y + 8.0,
-        mitad,
+/// **La sesion de estudio.** Sus bloques:
+/// 1. Cabecera: «Fecha».
+/// 2. Zona de secciones a dos columnas: de fabrica, a la izquierda el
+///    tiempo (inicio, fin, total), los objetivos, los temas y las pausas; a
+///    la derecha lo de antes de empezar (casillas ya escritas), los bloques
+///    de tiempo (tabla de 15 en 15 minutos) y las notas con «Mi premio»
+///    (baja hasta el pie). Los tres de la derecha y el tiempo son bloques
+///    propios; sus `lineas` son sus filas.
+fn secciones_estudio(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Tiempo", Propia, 3, Izquierda),
+        Seccion::nueva("Objetivos", Numerados, 4, Izquierda),
+        Seccion::nueva("Temas / capítulos", Renglones, 10, Izquierda),
+        Seccion::nueva("Pausas", Renglones, 4, Izquierda),
+        Seccion::nueva("Antes de empezar", Propia, 6, Derecha),
+        Seccion::nueva("Bloques de tiempo", Propia, 8, Derecha),
+        Seccion::nueva("Notas", Propia, 4, Derecha),
+    ]
+}
+
+const ANTES_DE_EMPEZAR: [&str; 6] = [
+    "Materiales listos",
+    "Lugar tranquilo",
+    "Sin distracciones",
+    "Música de fondo",
+    "Agua y algo de comer",
+    "Meta clara",
+];
+
+const PROPIOS_ESTUDIO: [Propio; 4] = [
+    Propio {
+        titulo: "Tiempo",
+        que_es: "inicio, fin y total, cada uno con su renglón; líneas = filas",
+        alto: |n| 30.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.datos(
+                h.x,
+                h.y,
+                h.w,
+                &rotulos(&["Inicio:", "Fin:", "Total:"], n),
+                30.0,
+            );
+        },
+        estira: false,
+    },
+    Propio {
+        titulo: "Antes de empezar",
+        que_es: "casillas ya escritas (materiales listos, lugar tranquilo...); líneas = casillas",
+        alto: |n| 28.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.casillas(h.x, h.y, h.w, n as usize, 28.0, &ANTES_DE_EMPEZAR);
+        },
+        estira: false,
+    },
+    Propio {
+        titulo: "Bloques de tiempo",
+        que_es: "tabla de horas en bloques de 15, 30, 45 y 60 minutos; líneas = horas",
+        alto: |n| 8.0 + 28.0 + 28.0 * n as f32,
+        dibujar: bloques_de_tiempo,
+        estira: false,
+    },
+    Propio {
+        titulo: "Notas",
+        que_es: "recuadro de notas con el círculo «Mi premio» abajo; baja hasta el pie si no tiene nada debajo",
+        alto: |n| 30.0 * n as f32,
+        dibujar: notas_con_premio,
+        estira: true,
+    },
+];
+
+fn bloques_de_tiempo(p: &mut Pag, h: Hueco, n: u32) {
+    p.tabla(
+        h.x,
+        h.y + 8.0,
+        h.w,
         &[
             ("", 1.3),
             ("15", 1.0),
@@ -1671,13 +2181,13 @@ fn estudio() -> FiguraGuardada {
             ("45", 1.0),
             ("60", 1.0),
         ],
-        8,
+        n as usize,
         28.0,
     );
-    for i in 0..8 {
+    for i in 0..n {
         p.l.texto(
-            x2 + 10.0,
-            y + 8.0 + 26.0 + 28.0 * i as f32 + 7.0,
+            h.x + 10.0,
+            h.y + 8.0 + 26.0 + 28.0 * i as f32 + 7.0,
             &format!("Hora {}", i + 1),
             10.0,
             WORK_SANS,
@@ -1686,10 +2196,12 @@ fn estudio() -> FiguraGuardada {
             Al::Izq,
         );
     }
-    let y = p.seccion(x2, fin + 24.0, mitad, "Notas");
-    let alto = H - M - y - 10.0;
-    p.caja(x2, y + 10.0, mitad, alto, "");
-    let (cx, cy) = (x2 + mitad - 56.0, y + 10.0 + alto - 56.0);
+}
+
+fn notas_con_premio(p: &mut Pag, h: Hueco, _: u32) {
+    let alto = h.alto - 10.0;
+    p.caja(h.x, h.y + 10.0, h.w, alto, "");
+    let (cx, cy) = (h.x + h.w - 56.0, h.y + 10.0 + alto - 56.0);
     p.l.circulo(cx, cy, 44.0, Some(p.t.acento), Some(p.t.suave), 1.5);
     p.l.texto(
         cx,
@@ -1701,25 +2213,68 @@ fn estudio() -> FiguraGuardada {
         true,
         Al::Centro,
     );
+}
+
+fn estudio(secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_estudio, &Tramo::de(1, 1));
+    let z = Zona::de_dos(M, Y0, ANCHO, 30.0, 24.0).con_propios(&PROPIOS_ESTUDIO);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(ACADEMICO, "Sesión de estudio", &["Fecha"], m.fin + M);
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin("sesion-de-estudio", "Sesión de estudio")
 }
 
-fn entrega() -> FiguraGuardada {
-    let mut p = Pag::nueva(ACADEMICO, "Planificador de tareas", &["Curso"]);
-    let izq = 300.0;
-    let y = p.seccion(M, Y0, izq, "Detalles");
-    let y = p.datos(M, y, izq, &["Tarea:", "Inicio:", "Entrega:"], 32.0);
-    let y = p.seccion(M, y + 24.0, izq, "Recursos");
-    let y = p.renglones(M, y, izq, 5, 30.0);
-    let y = p.seccion(M, y + 24.0, izq, "Pasos");
-    p.casillas(M, y, izq, 15, 30.0, &[]);
-    let x2 = M + izq + 28.0;
-    let w2 = W - M - x2;
-    let y = p.seccion(x2, Y0, w2, "Espacio libre (bocetos, notas, ideas)");
-    let alto = H - M - y - 10.0;
+/// **El planificador de tareas** (de una entrega). Sus bloques:
+/// 1. Cabecera: «Curso».
+/// 2. Zona de secciones con la columna izquierda estrecha (300) y la
+///    derecha ancha (370): de fabrica, a la izquierda los detalles (tarea,
+///    inicio, entrega), los recursos y los pasos; a la derecha el espacio
+///    libre punteado (bloque propio: baja hasta el pie).
+fn secciones_entrega(_: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Detalles", Propia, 3, Izquierda),
+        Seccion::nueva("Recursos", Renglones, 5, Izquierda),
+        Seccion::nueva("Pasos", Casillas, 15, Izquierda),
+        Seccion::nueva("Espacio libre (bocetos, notas, ideas)", Propia, 10, Derecha),
+    ]
+}
+
+const PROPIOS_ENTREGA: [Propio; 2] = [
+    Propio {
+        titulo: "Detalles",
+        que_es: "tarea, inicio y entrega, cada uno con su renglón; líneas = filas",
+        alto: |n| 32.0 * n as f32,
+        dibujar: |p, h, n| {
+            p.datos(
+                h.x,
+                h.y,
+                h.w,
+                &rotulos(&["Tarea:", "Inicio:", "Entrega:"], n),
+                32.0,
+            );
+        },
+        estira: false,
+    },
+    Propio {
+        titulo: "Espacio libre (bocetos, notas, ideas)",
+        que_es: "recuadro punteado para bocetos; baja hasta el pie si no tiene nada debajo",
+        alto: |n| 30.0 * n as f32,
+        dibujar: espacio_punteado,
+        estira: true,
+    },
+];
+
+/// Un recuadro con una trama de puntos centrada.
+fn espacio_punteado(p: &mut Pag, h: Hueco, _: u32) {
+    let (x2, w2, alto) = (h.x, h.w, h.alto - 10.0);
+    let y = h.y;
     p.l.rect(x2, y + 10.0, w2, alto, Some(BORDE), None, 1.25, true);
     let paso = 24.0;
     let (nc, nf) = ((w2 / paso) as usize, (alto / paso) as usize);
+    if nc == 0 || nf == 0 {
+        return;
+    }
     let (ox, oy) = (
         x2 + (w2 - paso * (nc - 1) as f32) / 2.0,
         y + 10.0 + (alto - paso * (nf - 1) as f32) / 2.0,
@@ -1736,6 +2291,19 @@ fn entrega() -> FiguraGuardada {
             );
         }
     }
+}
+
+fn entrega(secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_entrega, &Tramo::de(1, 1));
+    let z = Zona {
+        izquierda: 300.0,
+        ..Zona::de_dos(M, Y0, ANCHO, 30.0, 24.0)
+    }
+    .con_propios(&PROPIOS_ENTREGA);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(ACADEMICO, "Planificador de tareas", &["Curso"], m.fin + M);
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin("planificador-de-tareas", "Planificador de tareas")
 }
 
@@ -1907,14 +2475,31 @@ fn storyboard(n: usize, tr: &Tramo) -> FiguraGuardada {
     )
 }
 
-/// La receta: los pasos del tramo a la derecha y, a la izquierda, tantos
-/// ingredientes como pasos (16 como poco).
-fn receta(tr: &Tramo) -> FiguraGuardada {
-    let filas = tr.n().max(16);
-    let alto = Y0 + 260.0 + 20.0 + 30.0 * filas as f32 + 26.0 + 20.0 + 10.0 + 120.0 + M;
-    let mut p = Pag::alta(CREATIVO, "Receta", &["Categoría"], alto);
+/// **La receta.** Sus bloques:
+/// 1. Cabecera: «Categoría».
+/// 2. Arriba (fijo): la foto a la izquierda; el nombre y los detalles
+///    (preparacion, coccion, porciones) a la derecha.
+/// 3. Zona de secciones a dos columnas: de fabrica los ingredientes a la
+///    izquierda (tantos como pasos, 16 como poco), la preparacion a la
+///    derecha (con los numeros del tramo) y las notas a todo el ancho
+///    (libre: baja hasta el pie).
+fn secciones_receta(tr: &Tramo) -> Vec<Seccion> {
+    vec![
+        Seccion::nueva("Ingredientes", Casillas, tr.n().max(16) as u32, Izquierda),
+        Seccion::nueva("Preparación", Numerados, tr.n() as u32, Derecha),
+        Seccion::nueva("Notas", Libre, 4, Completo),
+    ]
+}
+
+fn receta(tr: &Tramo, secs: Option<&[Seccion]>) -> FiguraGuardada {
+    let secs = las_secciones(secs, secciones_receta, tr);
+    let z = Zona::de_dos(M, Y0 + 260.0, ANCHO, 30.0, 26.0).con_serie("Preparación", tr.desde);
+    let m = colocar(&z, &secs);
+    let mut p = Pag::alta(CREATIVO, "Receta", &["Categoría"], m.fin + M);
     let mitad = ANCHO / 2.0 - 14.0;
     let x2 = M + mitad + 28.0;
+    // Lo de arriba, fijo: la foto, el nombre y los detalles.
+    p.l.parte("Foto y detalles");
     p.caja_suave(M, Y0, mitad, 230.0, "Foto");
     let y = p.datos(x2, Y0 - 6.0, mitad, &["Nombre:"], 34.0);
     let y = p.seccion(x2, y + 22.0, mitad, "Detalles");
@@ -1952,14 +2537,8 @@ fn receta(tr: &Tramo) -> FiguraGuardada {
         1.25,
         false,
     );
-    let y = Y0 + 260.0;
-    let ya = p.seccion(M, y, mitad, "Ingredientes");
-    p.casillas(M, ya, mitad, filas, 30.0, &[]);
-    let yb = p.seccion(x2, y, mitad, "Preparación");
-    p.numerados_desde(x2, yb, mitad, tr.desde, tr.n(), 30.0);
-    let y = ya + filas as f32 * 30.0 + 26.0;
-    let y = p.seccion(M, y, ANCHO, "Notas");
-    p.caja(M, y + 10.0, ANCHO, p.h - M - y - 10.0, "");
+    let fondo = p.h - M;
+    p.poner_secciones(&z, &secs, m, fondo);
     p.fin_de("receta", "Receta", tr)
 }
 

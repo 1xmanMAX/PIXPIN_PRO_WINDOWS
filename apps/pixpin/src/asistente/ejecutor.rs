@@ -589,6 +589,21 @@ impl EjecutorDelChat {
                 );
                 self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
             }
+            // Las secciones de la plantilla, para leerlas antes de cambiarlas:
+            // por su nombre sin mirar el lienzo; si no, la que hay en el.
+            PedidoFiguras::Secciones { nombre: Some(n) } => {
+                pixpin_ia::figuras::secciones_de_nombre(n)
+            }
+            PedidoFiguras::Secciones { nombre: None } => {
+                let (tx, rx) = channel();
+                let pedido = super::al_lienzo::Pedido::de_trabajo(
+                    self.proyecto.clone(),
+                    self.destino.clone(),
+                    super::al_lienzo::Trabajo::Secciones,
+                    tx,
+                );
+                self.esperar_al_lienzo(pedido, rx).map(|r| r.texto)
+            }
             PedidoFiguras::Poner { nombre } => {
                 let todas = biblioteca::cargar(&ruta);
                 let f = buscar(&todas, nombre).ok_or_else(|| {

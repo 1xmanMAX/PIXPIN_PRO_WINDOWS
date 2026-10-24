@@ -282,6 +282,7 @@ fn intervalo_de(campos: &HashMap<Dato, String>) -> Result<Option<Intervalo>, Str
         semanas,
         mes,
         meses: n(Dato::Meses)?,
+        ..Default::default()
     };
     Ok((iv != Intervalo::default()).then_some(iv))
 }
