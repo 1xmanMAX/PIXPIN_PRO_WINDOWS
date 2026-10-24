@@ -33,6 +33,13 @@ pub const REINTENTOS: usize = 2;
 /// modelo pequeno puede quedarse llamando en bucle).
 pub const VUELTAS: usize = 4;
 
+/// **Las vueltas con la nube** (25-oct-2026): las 4 del local eran por el
+/// 2B, que se queda llamando en bucle; Claude y DeepSeek no, y un pedido de
+/// verdad (agrandar una plantilla, numerarla, revisarla) no cabia: acababa
+/// en «Hecho en parte» o anunciando lo que faltaba. Como en Claude Code, el
+/// tope es de seguridad, no el que decide cuando se acaba.
+pub const VUELTAS_NUBE: usize = 12;
+
 /// Lo que pasa durante un turno, para pintarlo en vivo.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Evento {
@@ -390,7 +397,7 @@ pub fn turno_con(
     // Lo complejo, con jefe: planea, reparte y supervisa. Si no da un plan
     // que se entienda, el turno de siempre.
     if let Some(jefe) = opciones.jefe
-        && crate::orquesta::conviene(&pedido_del_usuario(historial))
+        && crate::orquesta::conviene(&pedido_limpio(historial))
         && let Some(r) = crate::orquesta::turno(
             motor,
             jefe,
@@ -711,6 +718,13 @@ fn turno_dentro(
     if ojos {
         lista.push(crate::ojos::herramienta());
     }
+    // La lista de pasos (25-oct): con la nube y el repaso, que es quien
+    // comprueba que no quede ninguno abierto (los trabajadores del jefe no:
+    // su lista es la del jefe).
+    lista.retain(|h| h.nombre != crate::pasos::NOMBRE);
+    if !local && opciones.repasar {
+        lista.push(crate::pasos::herramienta());
+    }
     // Preguntar (22-oct): con la nube y alguien que conteste. La ultima de
     // la lista: lo de antes sigue siendo el mismo prefijo de la cache.
     lista.retain(|h| h.nombre != crate::preguntar::NOMBRE);
@@ -858,6 +872,15 @@ struct Estado {
     capturas: usize,
     /// Llamadas que acabaron en ERROR (mal hechas o que fallaron al hacerse).
     fallos: usize,
+    /// Cuantas veces se le devolvio la respuesta por anunciar en vez de
+    /// hacer o por dejar pasos abiertos (como mucho
+    /// [`crate::guardas::EMPUJONES`], contando el repaso y la revision).
+    empujones: usize,
+    /// La lista de pasos del pedido que lleva el modelo ([`crate::pasos`]).
+    pasos: Vec<crate::pasos::Paso>,
+    /// Cuantas veces mando la lista sin hacer nada mas en esa respuesta: no
+    /// gastan vuelta hasta [`ACTUALIZAR_PASOS`].
+    solo_pasos: usize,
 }
 
 impl Default for Estado {
@@ -873,9 +896,16 @@ impl Default for Estado {
             vistas: 0,
             capturas: 0,
             fallos: 0,
+            empujones: 0,
+            pasos: Vec::new(),
+            solo_pasos: 0,
         }
     }
 }
+
+/// Cuantas respuestas que solo actualizan la lista de pasos no gastan
+/// vuelta: marcar lo hecho es apuntar, no trabajar; pasado esto, si.
+pub const ACTUALIZAR_PASOS: usize = crate::pasos::MAX_PASOS + 2;
 
 /// Cuantas veces puede pedir el modelo `ver_lienzo` en un turno (cada vista
 /// son ~1000 tokens que se releen en cada vuelta).
@@ -902,8 +932,27 @@ pub fn pedido_del_usuario(historial: &[Mensaje]) -> String {
         .rev()
         .filter(|m| m.rol == Rol::Usuario && !crate::ojos::es_de_los_ojos(m))
         .map(Mensaje::texto_entero)
-        .find(|t| !t.trim_start().starts_with("ERROR"))
+        .find(|t| !t.trim_start().starts_with("ERROR") && !es_del_turno(t))
         .unwrap_or_default()
+}
+
+/// Lo que el propio turno le dice al modelo como si fuera el usuario (el
+/// repaso, los empujones): no es el pedido. Sin esto, tras un empujon la
+/// guarda anti-duplicado y los colores leian el empujon como el pedido.
+fn es_del_turno(texto: &str) -> bool {
+    let t = texto.trim_start();
+    t.starts_with(MARCA_DEL_TURNO) || t == REPASO_RENDIRSE || t == REPASO_COMPLETO
+}
+
+/// Como empiezan los avisos del turno al modelo ([`crate::guardas`],
+/// [`crate::pasos`]).
+pub const MARCA_DEL_TURNO: &str = "[Aviso del turno]";
+
+/// **El pedido tal como lo escribio el usuario**, sin el resumen del lienzo
+/// ni las notas que le pega la app ([`crate::guardas::sin_anexos`]): lo que
+/// decide si entra el jefe, si se repasa y de que colores es.
+pub fn pedido_limpio(historial: &[Mensaje]) -> String {
+    crate::guardas::sin_anexos(&pedido_del_usuario(historial))
 }
 
 /// Lo que se le dice al modelo cuando iba a rendirse.
@@ -1001,7 +1050,7 @@ fn repasar(
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Option<String> {
     let rendirse = !herramientas.is_empty() && parece_rendirse(dicho);
-    let pedido = pedido_del_usuario(historial);
+    let pedido = pedido_limpio(historial);
     let completo = est.hechas > 0 && (est.fallos > 0 || pedido_compuesto(&pedido));
     let motivo = if rendirse {
         REPASO_RENDIRSE
@@ -1096,7 +1145,14 @@ fn vueltas(
         .any(|h| h.nombre == crate::preguntar::NOMBRE);
     // Preguntar no gasta vuelta (hasta [`PREGUNTAS_POR_TURNO`]): con la
     // respuesta empieza de verdad el trabajo.
-    let mut tope_vueltas = VUELTAS + REINTENTOS;
+    let mut tope_vueltas = if motor.catalogo_completo() {
+        VUELTAS_NUBE
+    } else {
+        VUELTAS
+    } + REINTENTOS;
+    let con_pasos = herramientas
+        .iter()
+        .any(|h| h.nombre == crate::pasos::NOMBRE);
     let mut preguntas = 0;
     let mut vuelta = 0;
     while vuelta < tope_vueltas {
@@ -1190,6 +1246,33 @@ fn vueltas(
                 }
                 None => {}
             }
+            // **No acabar anunciando** (25-oct-2026): «ahora voy a limpiar el
+            // resto…» o pasos abiertos en la lista no cierran el turno; se le
+            // devuelve y sigue (no gasta vuelta, hasta EMPUJONES). Solo con la
+            // nube: el local no se toca.
+            if motor.catalogo_completo()
+                && !herramientas.is_empty()
+                && est.empujones < crate::guardas::EMPUJONES
+                && let Some(aviso) = con_pasos
+                    .then(|| crate::pasos::empujon(&est.pasos))
+                    .flatten()
+                    .or_else(|| {
+                        crate::guardas::anuncia_pendiente(&respuesta.texto)
+                            .then(|| crate::guardas::EMPUJON_ANUNCIO.to_string())
+                    })
+            {
+                est.empujones += 1;
+                tope_vueltas += 1;
+                tracing::info!(
+                    empujon = est.empujones,
+                    "asistente: contesto sin acabar; se le devuelve"
+                );
+                if !respuesta.texto.trim().is_empty() {
+                    al_evento(Evento::Texto("\n\n".into()));
+                }
+                historial.push(Mensaje::usuario(aviso));
+                continue;
+            }
             let texto = if !respuesta.texto.trim().is_empty() {
                 respuesta.texto
             } else if hechas_aqui > 0 {
@@ -1201,8 +1284,12 @@ fn vueltas(
         }
         let mut alguna_mal = false;
         let mut busco_bien = false;
-        // Lo que pidio el usuario, para los colores que el modelo olvide.
-        let pedido = pedido_del_usuario(historial);
+        // Lo que pidio el usuario, para los colores que el modelo olvide (sin
+        // el resumen del lienzo, que trae los colores de lo que ya hay) y,
+        // entero, para la guarda anti-duplicado (que mira ese resumen).
+        let pedido_entero = pedido_del_usuario(historial);
+        let pedido = crate::guardas::sin_anexos(&pedido_entero);
+        let mut solo_pasos_aqui = !respuesta.llamadas.is_empty();
         // Primero se valida todo; luego se hacen juntas las buenas
         // (`Ejecutor::ejecutar_varias`: las independientes, a la vez); y los
         // resultados vuelven al modelo en el orden de sus llamadas.
@@ -1212,6 +1299,27 @@ fn vueltas(
         // respuesta («dibuja y mira como quedo»).
         let mut miradas: Vec<(usize, crate::ojos::Mirada)> = Vec::new();
         for cruda in &respuesta.llamadas {
+            // La lista de pasos la lleva el propio turno (`pasos.rs`).
+            if con_pasos && cruda.nombre.trim() == crate::pasos::NOMBRE {
+                let texto = match crate::pasos::leer_texto(&cruda.argumentos) {
+                    Ok(p) => {
+                        est.pasos = p;
+                        al_evento(Evento::Tareas(crate::pasos::visibles(&est.pasos)));
+                        crate::pasos::resultado(&est.pasos)
+                    }
+                    Err(e) => format!("ERROR: {e}"),
+                };
+                let ok = !texto.starts_with("ERROR");
+                alguna_mal |= !ok;
+                al_evento(Evento::Resultado {
+                    nombre: crate::pasos::NOMBRE.to_string(),
+                    ok,
+                    texto: cortar(&texto, 300),
+                });
+                huecos.push((cruda.id.clone(), Some(texto)));
+                continue;
+            }
+            solo_pasos_aqui = false;
             // La memoria tampoco: es un almacen de ficheros, el mismo para
             // todos los modelos (`memoria.rs`).
             if let Some(m) = opciones
@@ -1319,7 +1427,27 @@ fn vueltas(
                 }
                 continue;
             }
-            match validar(&sanear(cruda), herramientas) {
+            let validada = validar(&sanear(cruda), herramientas);
+            // **La guarda anti-duplicado** (25-oct-2026): cambiar lo que hay
+            // no es dibujar otro al lado (el cronograma de serie agrandado, y
+            // dos mas torcidos junto a el). Con la nube; el local, como estaba.
+            if motor.catalogo_completo()
+                && let Ok(v) = &validada
+                && let Some(motivo) = crate::guardas::duplicaria(&pedido_entero, &v.llamada)
+            {
+                alguna_mal = true;
+                est.fallos += 1;
+                tracing::info!(herramienta = %cruda.nombre, "asistente: iba a dibujar otro al lado de lo que habia que cambiar");
+                if al_evento(Evento::Reintento {
+                    motivo: motivo.clone(),
+                }) == Seguir::Parar
+                {
+                    est.cortado = true;
+                }
+                huecos.push((cruda.id.clone(), Some(motivo)));
+                continue;
+            }
+            match validada {
                 Ok(mut v) => {
                     match &mut v.llamada {
                         Llamada::Dibujar(figuras) => colores_del_pedido(figuras, &pedido),
@@ -1425,6 +1553,11 @@ fn vueltas(
         if est.cortado {
             break;
         }
+        // Solo apunto los pasos: no gasta vuelta (hasta ACTUALIZAR_PASOS).
+        if solo_pasos_aqui && !alguna_mal && est.solo_pasos < ACTUALIZAR_PASOS {
+            est.solo_pasos += 1;
+            tope_vueltas += 1;
+        }
         if alguna_mal {
             reintentos += 1;
             est.reintentos += 1;
@@ -1467,7 +1600,7 @@ fn revisar(
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> Option<String> {
     use crate::ojos::{Mirada, Zona};
-    let pedido = pedido_del_usuario(historial);
+    let pedido = pedido_limpio(historial);
     let rondas = opciones.revisar.min(REVISIONES_MAXIMAS);
     let respaldo = opciones.critico.filter(|c| c.ve_imagenes());
     // Lo dicho por cada correccion; si se deshace, se quita lo suyo.
@@ -1903,10 +2036,13 @@ No digas «no tengo herramienta para eso» si una combinación lo consigue; si d
 Cómo trabajas:\n\
 1. Entiende el objetivo y qué haría falta para darlo por bueno.\n\
 2. Mira lo que ya hay (el lienzo, los adjuntos, la conversación) antes de crear nada.\n\
-3. Planea los pasos; los que no dependen entre sí, pídelos en la misma respuesta.\n\
+3. Planea los pasos; los que no dependen entre sí, pídelos en la misma respuesta. \
+Si el pedido tiene 3 o más pasos y tienes pasos_del_pedido, escríbelos ahí al empezar (solo lo pedido) y márcalos según los acabes.\n\
 4. Actúa con las herramientas, usando los #id que te devuelven.\n\
 5. Comprueba con los resultados (y la vista o los avisos, si los hay) que está todo y bien; corrige lo que falle.\n\
-6. Termina con una o dos frases de lo que hiciste, sin dar por hecho nada que ninguna herramienta confirmó.\n\n\
+6. Termina con una o dos frases de lo que hiciste, sin dar por hecho nada que ninguna herramienta confirmó. \
+Contestar sin herramientas ACABA el turno: no anuncies lo que vas a hacer («ahora voy a…»), hazlo; y si algo quedó a medias, \
+termínalo antes de contestar o di exactamente qué falta y por qué.\n\n\
 Calidad: completo (todo lo pedido), ordenado y alineado, sin solapes ni textos que se salgan, coherente con lo que ya había, \
 y con la ortografía y las tildes correctas del idioma que toque. Contesta en el idioma del usuario, breve y claro.\n\n\
 Si falta un dato, búscalo primero en lo que ya tienes. Pregunta solo si las lecturas posibles dan resultados distintos y equivocarse cuesta \
@@ -2329,6 +2465,235 @@ mod pruebas {
         let (f, _, _) = con_opciones(vec![Respuesta::de_texto("Empiezo…")], &mut h, &o);
         assert!(f.cortado);
         assert!(es_parar("detente") && es_parar(" STOP ") && !es_parar("para el lunes"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Las guardas del turno (25-oct-2026, `guardas.rs` y `pasos.rs`)
+
+    const RECTANGULO: &str = r#"{"elementos":[{"tipo":"rectangulo","x":10,"y":10}]}"#;
+
+    /// Un turno con la nube y el historial dado; devuelve tambien lo que
+    /// recibio el motor.
+    fn en_la_nube(
+        guion: Vec<Respuesta>,
+        h: &mut Vec<Mensaje>,
+        o: &Opciones,
+        ej: &mut Apunta,
+    ) -> (Final, Vec<Evento>, Vec<Peticion>) {
+        let motor = MotorGuionado::nuevo(guion).como_nube();
+        let mut eventos = Vec::new();
+        let f = turno_con(&motor, h, &catalogo(), ej, o, &mut |e| {
+            eventos.push(e);
+            Seguir::Si
+        })
+        .unwrap();
+        let recibido = motor.recibido.lock().unwrap().clone();
+        (f, eventos, recibido)
+    }
+
+    /// Lo que la app pega al pedido con el cronograma de serie en el lienzo.
+    const CON_CRONOGRAMA: &str = "\n\n[Lienzo destino: 120 elementos (coordenadas como en dibujar_en_lienzo; usa sus #id para editarlos).\n\
+Plantillas de serie que YA estan en el lienzo: «Cronograma». Para agrandarlas usa figuras_guardadas «alargar».\n#1 rectangulo]";
+
+    #[test]
+    fn anunciar_no_acaba_el_turno_se_empuja_y_se_hace() {
+        let mut h = historial();
+        let mut ej = Apunta::default();
+        let (f, _, recibido) = en_la_nube(
+            vec![
+                Respuesta::de_texto("Ahora voy a dibujar la casa."),
+                Respuesta::de_llamada(crate::herramientas::DIBUJAR, RECTANGULO),
+                Respuesta::de_texto("Listo, la casa."),
+            ],
+            &mut h,
+            &Opciones::default(),
+            &mut ej,
+        );
+        assert_eq!(f.texto, "Listo, la casa.");
+        assert_eq!(ej.hechas.len(), 1, "lo anunciado se hizo");
+        assert!(
+            recibido[1]
+                .mensajes
+                .iter()
+                .any(|m| m.texto_entero() == crate::guardas::EMPUJON_ANUNCIO)
+        );
+        // El empujon no es el pedido.
+        assert_eq!(pedido_del_usuario(&h), "dibuja una casa");
+        // Negativo: una respuesta final normal no se empuja.
+        let mut h = historial();
+        let (f, _, recibido) = en_la_nube(
+            vec![Respuesta::de_texto("Listo, una casa.")],
+            &mut h,
+            &Opciones::default(),
+            &mut Apunta::default(),
+        );
+        assert_eq!((f.texto.as_str(), recibido.len()), ("Listo, una casa.", 1));
+        // Negativo: el local no se toca.
+        let local = MotorGuionado::nuevo(vec![Respuesta::de_texto("Ahora voy a dibujarla.")]);
+        let f = turno(
+            &local,
+            &mut historial(),
+            &catalogo(),
+            &mut Apunta::default(),
+            &mut |_| Seguir::Si,
+        )
+        .unwrap();
+        assert_eq!(f.texto, "Ahora voy a dibujarla.");
+    }
+
+    #[test]
+    fn los_empujones_tienen_tope() {
+        let guion = (0..crate::guardas::EMPUJONES + 1)
+            .map(|i| Respuesta::de_texto(format!("Voy a hacerlo ({i}).")))
+            .collect();
+        let (f, _, recibido) = en_la_nube(
+            guion,
+            &mut historial(),
+            &Opciones::default(),
+            &mut Apunta::default(),
+        );
+        assert_eq!(recibido.len(), crate::guardas::EMPUJONES + 1);
+        assert!(
+            f.texto.contains(&crate::guardas::EMPUJONES.to_string()),
+            "{}",
+            f.texto
+        );
+    }
+
+    #[test]
+    fn agrandar_la_plantilla_no_dibuja_otra_al_lado() {
+        let mut h = vec![
+            Mensaje::sistema(instrucciones()),
+            Mensaje::usuario(format!(
+                "agrándala a 30 actividades y 30 semanas{CON_CRONOGRAMA}"
+            )),
+        ];
+        let mut ej = Apunta::default();
+        let (f, eventos, recibido) = en_la_nube(
+            vec![
+                Respuesta::de_llamada(crate::herramientas::DIBUJAR, RECTANGULO),
+                Respuesta::de_texto("Te dejé el cronograma como estaba."),
+            ],
+            &mut h,
+            &Opciones::default(),
+            &mut ej,
+        );
+        assert!(ej.hechas.is_empty(), "no dibujo otro al lado");
+        assert_eq!(f.texto, "Te dejé el cronograma como estaba.");
+        let error = recibido[1].mensajes.last().unwrap().texto_entero();
+        assert!(
+            error.starts_with("ERROR") && error.contains("alargar"),
+            "{error}"
+        );
+        assert!(
+            eventos
+                .iter()
+                .any(|e| matches!(e, Evento::Reintento { .. }))
+        );
+        // Negativo: con el mismo lienzo, un pedido de dibujar algo nuevo si
+        // se dibuja.
+        let mut h = vec![
+            Mensaje::sistema(instrucciones()),
+            Mensaje::usuario(format!("dibuja una casa{CON_CRONOGRAMA}")),
+        ];
+        let mut ej = Apunta::default();
+        en_la_nube(
+            vec![
+                Respuesta::de_llamada(crate::herramientas::DIBUJAR, RECTANGULO),
+                Respuesta::de_texto("Listo."),
+            ],
+            &mut h,
+            &Opciones::default(),
+            &mut ej,
+        );
+        assert_eq!(ej.hechas.len(), 1);
+    }
+
+    #[test]
+    fn el_resumen_del_lienzo_no_hace_compuesto_el_pedido() {
+        let h = vec![
+            Mensaje::sistema(instrucciones()),
+            Mensaje::usuario(format!(
+                "agrándala a 30 actividades y 30 semanas{CON_CRONOGRAMA}"
+            )),
+        ];
+        assert_eq!(pedido_limpio(&h), "agrándala a 30 actividades y 30 semanas");
+        assert!(!crate::orquesta::conviene(&pedido_limpio(&h)), "sin jefe");
+        // Negativo: lo que de verdad tiene varias partes sigue siendolo.
+        assert!(pedido_compuesto(
+            "traduce la figura, pon los títulos en azul y alinéalos"
+        ));
+    }
+
+    #[test]
+    fn los_pasos_se_marcan_y_no_se_acaba_con_alguno_abierto() {
+        let pasos = |e1: &str, e2: &str| {
+            format!(
+                r#"{{"pasos":[{{"paso":"Dibujar la casa","estado":"{e1}"}},{{"paso":"Ponerle tejado","estado":"{e2}"}}]}}"#
+            )
+        };
+        let o = Opciones {
+            repasar: true,
+            ..Default::default()
+        };
+        let mut ej = Apunta::default();
+        let (f, eventos, recibido) = en_la_nube(
+            vec![
+                Respuesta::de_llamada(crate::pasos::NOMBRE, &pasos("en_curso", "pendiente")),
+                Respuesta::de_llamada(crate::herramientas::DIBUJAR, RECTANGULO),
+                // Acaba sin cerrar los pasos: se le devuelve.
+                Respuesta::de_texto("Listo."),
+                Respuesta::de_llamada(crate::pasos::NOMBRE, &pasos("hecho", "hecho")),
+                Respuesta::de_texto("Listo, casa con tejado."),
+            ],
+            &mut historial(),
+            &o,
+            &mut ej,
+        );
+        assert_eq!(f.texto, "Listo, casa con tejado.");
+        assert_eq!(
+            f.herramientas_hechas, 1,
+            "apuntar pasos no cuenta como hecho"
+        );
+        assert!(
+            recibido[3]
+                .mensajes
+                .iter()
+                .any(|m| m.texto_entero().contains("pasos sin cerrar")
+                    && m.texto_entero().contains("«Ponerle tejado»"))
+        );
+        let ultima = eventos
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                Evento::Tareas(t) => Some(t.clone()),
+                _ => None,
+            })
+            .expect("la lista se ve en la burbuja");
+        assert!(
+            ultima
+                .iter()
+                .all(|t| t.estado == crate::orquesta::EstadoTarea::Hecha)
+        );
+        assert!(
+            recibido[0]
+                .herramientas
+                .iter()
+                .any(|t| t.nombre == crate::pasos::NOMBRE)
+        );
+        // Negativo: sin el repaso (los trabajadores del jefe) no se ofrece.
+        let (_, _, recibido) = en_la_nube(
+            vec![Respuesta::de_texto("Hola.")],
+            &mut historial(),
+            &Opciones::default(),
+            &mut Apunta::default(),
+        );
+        assert!(
+            !recibido[0]
+                .herramientas
+                .iter()
+                .any(|t| t.nombre == crate::pasos::NOMBRE)
+        );
     }
 
     #[test]

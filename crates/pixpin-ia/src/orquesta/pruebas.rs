@@ -192,3 +192,66 @@ fn se_entiende_lo_que_contesta_el_jefe() {
     ));
     assert!(!conviene("hola"));
 }
+
+/// 25-oct-2026 (el caso del usuario): la revision final escribia «todavia
+/// no esta listo… ahora voy a limpiar el resto» y AHI acababa el turno. Lo
+/// anunciado se hace en otra ronda.
+#[test]
+fn la_revision_que_anuncia_trabajo_lo_hace_en_otra_ronda() {
+    let plan = r#"{"entendido":"x","tareas":[{"titulo":"Una","instrucciones":"ayuda_app","hecho_si":"ok"}]}"#;
+    let (f, _, hechas, jefe, trabajador) = correr(
+        vec![
+            Respuesta::de_texto(plan),
+            Respuesta::de_texto(r#"{"veredicto":"bien"}"#),
+            Respuesta::de_texto(
+                r#"{"faltan":[],"respuesta":"Todavía no está listo: quedó a medias y desordenado… ahora voy a limpiar el resto y hacerlo por completo."}"#,
+            ),
+            Respuesta::de_texto(r#"{"veredicto":"bien"}"#),
+            Respuesta::de_texto(r#"{"faltan":[],"respuesta":"Listo: completo y alineado."}"#),
+        ],
+        vec![
+            Respuesta::de_llamada("ayuda_app", AYUDA),
+            Respuesta::de_texto("Una."),
+            Respuesta::de_llamada("ayuda_app", AYUDA),
+            Respuesta::de_texto("Limpio."),
+        ],
+        "busca como se exporta, mira los ajustes y resume los atajos",
+    );
+    assert_eq!(hechas, 2, "lo anunciado se hizo");
+    assert_eq!(f.texto, "Listo: completo y alineado.");
+    assert_eq!(jefe.recibido.lock().unwrap().len(), 5);
+    // El trabajador de la ronda nueva recibio lo que se anuncio.
+    let r = trabajador.recibido.lock().unwrap();
+    assert!(
+        r[2].mensajes
+            .iter()
+            .any(|m| m.texto_entero().contains("ahora voy a limpiar el resto"))
+    );
+}
+
+/// Sin rondas que gastar, la respuesta no promete: dice que no quedo
+/// terminado. Negativo: lo acabado queda como esta y no pide otra ronda.
+#[test]
+fn sin_rondas_la_respuesta_no_promete() {
+    let anuncia = Cierre {
+        faltan: vec![],
+        respuesta: "Ahora voy a limpiar el resto.".into(),
+    };
+    assert!(sin_promesas(&anuncia).starts_with("No llegué a terminarlo"));
+    assert_eq!(faltan_del_cierre(&anuncia).len(), 1);
+    let con_faltan = Cierre {
+        faltan: vec![Tarea {
+            titulo: "Numerar las semanas".into(),
+            instrucciones: String::new(),
+            hecho_si: String::new(),
+        }],
+        respuesta: "Agrandado.".into(),
+    };
+    assert!(sin_promesas(&con_faltan).contains("No llegué a terminar: Numerar las semanas"));
+    let listo = Cierre {
+        faltan: vec![],
+        respuesta: "Listo, las dos.".into(),
+    };
+    assert_eq!(sin_promesas(&listo), "Listo, las dos.");
+    assert!(faltan_del_cierre(&listo).is_empty());
+}

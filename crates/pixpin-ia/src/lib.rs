@@ -80,6 +80,9 @@
 //!   [`agente::Evento`] para pintar la respuesta en vivo.
 //! - El lienzo recibe un `.excalidraw` ya hecho ([`lienzo::documento`]) y lo
 //!   lee con `pixpin_motor2d::excalidraw::leer`, como un fichero del movil.
+//! - [`guardas`] y [`pasos`] (25-oct): lo que el bucle comprueba sin modelo
+//!   (no dibujar otro al lado de lo que se pidio cambiar, no acabar
+//!   anunciando trabajo) y la lista de pasos del pedido que el modelo marca.
 
 // `!(x > 0.0)` y parecidos son a proposito: un NaN no cumple la
 // comparacion y se rechaza con ella (`partial_cmp` lo esconderia).
@@ -109,6 +112,7 @@ pub mod edicion;
 pub mod figuras;
 pub mod fisica;
 pub mod funciones;
+pub mod guardas;
 pub mod herramientas;
 pub mod hoja;
 pub mod hoja_trabajo;
@@ -121,6 +125,7 @@ pub mod motor;
 pub mod nube;
 pub mod ojos;
 pub mod orquesta;
+pub mod pasos;
 pub mod pensar;
 pub mod pizarra;
 pub mod preguntar;

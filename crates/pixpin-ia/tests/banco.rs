@@ -738,6 +738,20 @@ mod edicion_banco {
                 s.anadir(ovalo(100.0, 100.0, 30.0, ROJO));
                 s.anadir(ovalo(300.0, 100.0, 30.0, ROJO));
             }
+            // El caso del usuario (25-oct-2026): el cronograma de serie
+            // puesto, tal cual sale del menu.
+            "editar-agrandar-plantilla-sin-duplicar" | "editar-agrandar-sin-inventar" => {
+                if let Some(f) = pixpin_motor2d::figuras_de_serie::catalogo()
+                    .into_iter()
+                    .find(|f| f.id == "serie-cronograma")
+                {
+                    pixpin_motor2d::biblioteca::estampar_en_escena(
+                        &mut s,
+                        &f,
+                        Punto2::nuevo(600.0, 400.0),
+                    );
+                }
+            }
             _ => {}
         }
         s
@@ -932,6 +946,37 @@ fn casos_de_edicion() -> Vec<Caso> {
                 si(quedan == 2, "borro sin preguntar cual")?;
                 let t = r.todo_el_texto();
                 si(t.contains('?') || t.contains("cual"), "no pregunto cual")
+            },
+        },
+        // 25-oct-2026, el caso del usuario: agrandar la plantilla que hay es
+        // alargarla en su sitio, no dibujar otros cronogramas al lado.
+        Caso {
+            nombre: "editar-agrandar-plantilla-sin-duplicar",
+            pedido: "Agrándalo a 30 actividades y 30 semanas.",
+            imagen: None,
+            comprobar: |r| {
+                use pixpin_ia::herramientas::{CRONOGRAMA, DIBUJAR, FIGURAS, SVG};
+                si(
+                    !r.llamo_alguna(&[DIBUJAR, CRONOGRAMA, SVG]),
+                    "dibujo otro al lado en vez de agrandar el que hay",
+                )?;
+                let f = r.llamo(FIGURAS).ok_or("no uso figuras_guardadas")?;
+                let pedido = f["figuras"].as_str().unwrap_or_default();
+                si(pedido.contains("Alargar"), "no lo alargo")?;
+                si(pedido.contains("30"), "no pidio hasta 30")
+            },
+        },
+        // Y agrandar no es rellenar: nada de actividades que nadie dio.
+        Caso {
+            nombre: "editar-agrandar-sin-inventar",
+            pedido: "Agranda el cronograma a 30 actividades.",
+            imagen: None,
+            comprobar: |r| {
+                si(r.elementos.is_empty(), "anadio contenido nuevo al lienzo")?;
+                si(
+                    !r.edito_bien(pixpin_ia::edicion::EDITAR_TEXTO),
+                    "escribio actividades que nadie dio",
+                )
             },
         },
     ]

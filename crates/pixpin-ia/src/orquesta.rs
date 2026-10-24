@@ -40,6 +40,10 @@ use crate::motor::{Mensaje, Motor, Parte, Peticion, Rol, Seguir};
 
 /// Tareas como mucho en un plan (y en total con las de la revision final).
 pub const MAX_TAREAS: usize = 8;
+/// Rondas de tareas que puede anadir la revision final (25-oct-2026: era
+/// una, y la segunda revision que aun veia cosas a medias acababa el turno
+/// diciendo «ahora voy a limpiar el resto…» sin hacerlo).
+pub const RONDAS_FINALES: usize = 2;
 /// Veces que el jefe puede devolver una tarea para corregirla.
 pub const CORRECCIONES: usize = 2;
 /// Lo mas largo de cada resultado de herramienta en el informe al jefe.
@@ -320,7 +324,8 @@ Termina con una o dos frases de lo que hiciste.\n\nTu tarea ({n} de {total}): {}
         ));
     }
     encargo.push_str(&format!(
-        "\n\n— Pedido original del usuario —\n{}",
+        "\n\n{}\n{}",
+        crate::guardas::MARCA_PEDIDO_ORIGINAL,
         pedido.texto_entero()
     ));
     // Las fotos del pedido tambien (calcar, leer una tabla...).
@@ -374,6 +379,48 @@ Termina con una o dos frases de lo que hiciste.\n\nTu tarea ({n} de {total}): {}
     (informe, r)
 }
 
+/// **Lo que falta segun la revision final**: sus tareas, o, si no trae
+/// ninguna pero su respuesta anuncia trabajo o dice que quedo a medias
+/// ([`crate::guardas::anuncia_pendiente`]), una tarea con eso: lo anunciado
+/// se hace, no se promete.
+pub fn faltan_del_cierre(cierre: &Cierre) -> Vec<Tarea> {
+    if !cierre.faltan.is_empty() {
+        return cierre.faltan.clone();
+    }
+    if !crate::guardas::anuncia_pendiente(&cierre.respuesta) {
+        return Vec::new();
+    }
+    vec![Tarea {
+        titulo: "Terminar lo que quedó pendiente".into(),
+        instrucciones: format!(
+            "La revisión final dijo: «{}». Hazlo ahora con las herramientas, editando lo que ya hay (sin dibujar otra versión al lado \
+ni inventar contenido que el usuario no dio).",
+            cortar(cierre.respuesta.trim(), 600)
+        ),
+        hecho_si: "lo que la revisión dijo que faltaba queda hecho y se ve en los resultados"
+            .into(),
+    }]
+}
+
+/// **La respuesta final sin promesas**: si ya no quedan rondas y aun asi
+/// anuncia trabajo, se dice claro que no quedo terminado (el turno acaba
+/// aqui: prometer «ahora lo hago» seria mentir).
+pub fn sin_promesas(cierre: &Cierre) -> String {
+    let r = cierre.respuesta.trim();
+    if cierre.faltan.is_empty() && !crate::guardas::anuncia_pendiente(r) {
+        return r.to_string();
+    }
+    let falta: Vec<&str> = cierre.faltan.iter().map(|t| t.titulo.as_str()).collect();
+    if falta.is_empty() {
+        format!("No llegué a terminarlo del todo. Lo último que vi: {r} Dime si sigo.")
+    } else {
+        format!(
+            "{r}\n\nNo llegué a terminar: {}. Dime si sigo.",
+            falta.join("; ")
+        )
+    }
+}
+
 fn visibles(plan: &[Tarea], estados: &[EstadoTarea]) -> Vec<TareaVisible> {
     plan.iter()
         .zip(estados)
@@ -417,7 +464,7 @@ pub fn turno(
     let mut hecho_antes = String::new();
     let mut cortado = false;
     let mut i = 0;
-    let mut ronda_final = false;
+    let mut rondas_finales = 0;
     loop {
         // 2-3. Cada tarea, con su supervision.
         while i < tareas.len() && !cortado {
@@ -515,9 +562,10 @@ pub fn turno(
         let cierre = preguntar_al_jefe(jefe, m, 2048)
             .map(|t| leer_cierre(&t))
             .unwrap_or_default();
-        if !ronda_final && !cierre.faltan.is_empty() && tareas.len() < MAX_TAREAS {
-            ronda_final = true;
-            for t in cierre.faltan.into_iter().take(MAX_TAREAS - tareas.len()) {
+        let faltan = faltan_del_cierre(&cierre);
+        if rondas_finales < RONDAS_FINALES && !faltan.is_empty() && tareas.len() < MAX_TAREAS {
+            rondas_finales += 1;
+            for t in faltan.into_iter().take(MAX_TAREAS - tareas.len()) {
                 tareas.push(t);
                 estados.push(EstadoTarea::Pendiente);
             }
@@ -527,7 +575,7 @@ pub fn turno(
             let hechas_n = estados.iter().filter(|e| **e == EstadoTarea::Hecha).count();
             format!("Hecho: {hechas_n} de {} tareas.", estados.len())
         } else {
-            cierre.respuesta
+            sin_promesas(&cierre)
         };
         al_evento(Evento::Texto(respuesta.clone()));
         historial.push(Mensaje::texto(Rol::Asistente, respuesta.clone()));

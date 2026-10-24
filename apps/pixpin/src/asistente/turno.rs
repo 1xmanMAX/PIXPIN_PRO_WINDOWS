@@ -608,8 +608,9 @@ fn apuntar_evento(a: &mut pixpin_ia::diario::Entrada, dicho: &mut String, e: &ag
         E::Resultado { ok: false, .. } => a.herramientas_error += 1,
         E::Llamando(n) if n == "repasar" => a.repasos += 1,
         E::Llamando(n) if n == "jefe:planear" => a.jefe = true,
+        // La lista del jefe o la de pasos del turno (25-oct, `pasos.rs`): que
+        // hubo jefe lo dice «jefe:planear», no la lista.
         E::Tareas(t) => {
-            a.jefe = true;
             a.tareas = t.len();
             a.tareas_hechas = t.iter().filter(|x| x.estado == EstadoTarea::Hecha).count();
             // Cada vuelta a corregir avisa una vez con su tarea «corrigiendo».

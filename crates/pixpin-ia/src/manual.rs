@@ -92,7 +92,7 @@ const SITIOS: &[Sitio] = &[
     },
     Sitio {
         nombre: "Hablar con el usuario",
-        que_es: "Una pregunta con opciones cuando la duda cambia el resultado.",
+        que_es: "Una pregunta con opciones cuando la duda cambia el resultado, y la lista de pasos del pedido que ve marcarse.",
     },
 ];
 
@@ -133,6 +133,8 @@ const POR_NOMBRE: &[(&str, &str)] = &[
     ("web_search", "Saber y recordar"),
     ("web_fetch", "Saber y recordar"),
     ("preguntar_usuario", "Hablar con el usuario"),
+    // La lista de pasos que el usuario ve marcarse (`pasos.rs`).
+    (crate::pasos::NOMBRE, "Hablar con el usuario"),
 ];
 
 /// Las que no estan en `herramientas::catalogo` pero el turno de la nube
@@ -140,6 +142,7 @@ const POR_NOMBRE: &[(&str, &str)] = &[
 /// documentos del usuario, las conexiones) o ejecuta la propia API (la web).
 pub const FUERA_DEL_CATALOGO: &[&str] = &[
     "preguntar_usuario",
+    crate::pasos::NOMBRE,
     "ver_lienzo",
     "memoria",
     "buscar_historial",
