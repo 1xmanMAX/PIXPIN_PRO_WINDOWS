@@ -24,6 +24,8 @@
 //! formatos se ven y donde cae cada mando, en `pixpin_ui::hoja_compartir`.
 
 pub(crate) mod adjuntos;
+/// Una carpeta de paginas del chat como PDF (26-oct-2026).
+pub(crate) mod carpeta;
 pub(crate) mod documento_web;
 pub(crate) mod enlace;
 /// El «Exportar» comun de todos los visores (13-oct-2026).

@@ -183,6 +183,12 @@ impl Hoja {
                 "proyecto entero project",
                 Accion::AdjProyectos,
             ),
+            // Las carpetas de paginas (26-oct-2026): un cuaderno con nombre.
+            chip(
+                "carpeta-nueva",
+                "carpeta cuaderno diario libreta folder notebook",
+                Accion::AdjCarpeta,
+            ),
             chip(
                 "chat-adj-telepronter",
                 "teleprompter leer",
@@ -832,6 +838,7 @@ mod pruebas {
             Accion::Telepronter,
             Accion::Pronunciar,
             Accion::AdjDelMovil,
+            Accion::AdjCarpeta,
         ] {
             assert!(acciones.contains(&&a), "falta {a:?}");
         }

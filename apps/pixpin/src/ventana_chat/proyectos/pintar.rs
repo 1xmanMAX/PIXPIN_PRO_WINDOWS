@@ -596,7 +596,8 @@ fn contenido(
         }
         // Una pagina que aun se esta pintando: el hueco, y llega sola.
         None if h.por_pedir || m.pagina.is_some() => {}
-        None => pintar_tarjeta_galeria(p, c, m, caja),
+        // Una carpeta de paginas no es una hoja: su tarjeta de siempre.
+        None | Some(Ojeada::Carpeta(_)) => pintar_tarjeta_galeria(p, c, m, caja),
     }
 }
 

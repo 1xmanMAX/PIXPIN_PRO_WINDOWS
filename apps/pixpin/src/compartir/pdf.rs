@@ -128,6 +128,32 @@ fn de_hojas(piezas: &[&Pieza], lector: &Lector) -> Result<Vec<u8>> {
     .context("sin paginas")
 }
 
+/// Lo mismo que [`de_hojas`], con **un indice de marcadores** (los titulos
+/// de las paginas de una carpeta, `carpeta`): siempre por el escritor, que
+/// es el que sabe poner el indice.
+pub(super) fn de_piezas_con_indice(
+    piezas: &[&Pieza],
+    lector: &Lector,
+    indice: &[pixpin_pdf::escribir::Marcador],
+) -> Result<Vec<u8>> {
+    let segoe = pixpin_pdf::letra::del_sistema("Segoe UI");
+    let hojas: Vec<Hoja> = piezas.iter().map(|x| con_su_papel(x)).collect();
+    pixpin_pdf::escribir::de_hojas_con_indice(
+        &hojas,
+        Some(BLANCO),
+        &|id| {
+            lector.leer(id).map(|i| pixpin_pdf::escribir::Pixeles {
+                ancho: i.ancho,
+                alto: i.alto,
+                rgba: i.pixeles.clone(),
+            })
+        },
+        segoe.as_ref(),
+        indice,
+    )
+    .context("sin paginas")
+}
+
 /// El papel de cada pagina, debajo de todo: el escritor pone uno solo para
 /// todas y un Word va en oscuro.
 fn con_su_papel(x: &Pieza) -> Hoja {

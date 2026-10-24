@@ -120,6 +120,9 @@ pub(crate) mod sin_ventana {
 }
 /// «Enviar a Anki» del menu de un mensaje (24-oct-2026).
 mod anki;
+/// Las carpetas de paginas: un cuaderno con nombre dentro del chat, su
+/// ventana con las paginas en orden y su PDF (26-oct-2026).
+mod carpetas;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).
@@ -5981,6 +5984,9 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                     p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
                     pintar_ojeada_tabla(p, tema, escala, t, hoja);
                 }
+                Ojeada::Carpeta(ids) => {
+                    pintar_ojeada_carpeta(p, a, ids, hoja, previas, tema, e);
+                }
                 Ojeada::Foto { .. } => {
                     let recortada = p.empujar_recorte_redondeado(hoja, 4.0 * e);
                     pintar_foto(p, a, i, hoja, previas, tema, e);
@@ -6564,6 +6570,21 @@ fn tocar_la_burbuja(
     idioma: pixpin_store::Idioma,
     identidad: &str,
 ) {
+    // Una carpeta de paginas se abre en su ventana, con sus paginas en orden.
+    if let Some(a) = abierto.as_ref()
+        && let Some(m) = a.mensajes.get(indice)
+        && pixpin_proyecto::carpeta_de_paginas::es_carpeta(m)
+    {
+        carpetas::abrir(carpetas::Abrir {
+            idioma,
+            ubicacion: ubicacion.clone(),
+            proyecto: a.ficha.id.clone(),
+            id: m.id.clone(),
+            identidad: identidad.to_string(),
+            lienzo,
+        });
+        return;
+    }
     // Una lista de tareas se abre en la ventana de Tareas, en esa lista: la
     // misma que el boton de Tareas (el usuario, 8-oct-2026: «que la interfaz
     // sea unificada»). Antes se abria un panel propio dentro del chat.
@@ -8941,17 +8962,28 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         .scroll
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
+    let foto_de = |i: usize| match a.vistas.get(i) {
+        Some(Some(Ojeada::Foto { .. })) => {
+            ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
+        }
+        // Una hoja de un plano tambien tiene foto: su pagina del PDF o
+        // la imagen que trae dentro. Sin pedirla aqui, la burbuja se
+        // quedaria con los trazos flotando sobre el blanco.
+        Some(Some(Ojeada::Lienzo(l))) => l.fondo.as_ref().map(|(r, _)| r.clone()),
+        _ => None,
+    };
     (primero..primero + cuantos)
         .filter_map(|cual| c.mensaje(cual))
-        .filter_map(|i| match a.vistas.get(i) {
-            Some(Some(Ojeada::Foto { .. })) => {
-                ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
-            }
-            // Una hoja de un plano tambien tiene foto: su pagina del PDF o
-            // la imagen que trae dentro. Sin pedirla aqui, la burbuja se
-            // quedaria con los trazos flotando sobre el blanco.
-            Some(Some(Ojeada::Lienzo(l))) => l.fondo.as_ref().map(|(r, _)| r.clone()),
-            _ => None,
+        .flat_map(|i| match a.vistas.get(i) {
+            // Una carpeta ensena las fotos de sus primeras paginas, que
+            // pueden estar lejos de ella en el historial.
+            Some(Some(Ojeada::Carpeta(ids))) => ids
+                .iter()
+                .filter_map(|id| a.mensajes.iter().position(|m| &m.id == id))
+                .take(PAGINAS_EN_LA_TARJETA)
+                .filter_map(foto_de)
+                .collect::<Vec<_>>(),
+            _ => foto_de(i).into_iter().collect(),
         })
         .collect()
 }
@@ -9467,6 +9499,10 @@ fn leer_vista(
             trazos,
         });
     }
+    // Una carpeta de paginas ensena las suyas, en orden (`carpetas`).
+    if let Some(ids) = carpetas::ids_de_la_tarjeta(m) {
+        return Some(Ojeada::Carpeta(ids));
+    }
     // Una tabla no tiene fichero: su documento es el propio texto del
     // mensaje, asi que se lee sin tocar el disco.
     if m.clase == Some(Clase::MiniApp)
@@ -9648,6 +9684,10 @@ enum Ojeada {
         /// el encuadre de «ver el dibujo entero» (`encuadre_de_foto`).
         trazos: Option<(f32, f32, f32, f32)>,
     },
+    /// Una carpeta de paginas (`carpetas`): los `id` de sus paginas, en
+    /// orden. Sus miniaturas son las de esas paginas, que ya estan leidas en
+    /// su sitio del chat: aqui no se copia ninguna.
+    Carpeta(Vec<String>),
 }
 
 /// Una ojeada a una tabla dentro de su burbuja: las primeras celdas y ya.
@@ -9701,6 +9741,136 @@ fn pintar_ojeada_tabla(
         }
     }
     p.soltar_recorte();
+}
+
+/// Cuantas paginas se ven en la tarjeta de una carpeta, una al lado de otra.
+const PAGINAS_EN_LA_TARJETA: usize = 3;
+
+/// **La tarjeta de una carpeta de paginas**: sus primeras paginas en fila,
+/// como hojas de un cuaderno, con su vista de siempre (la que cada pagina
+/// tiene en su sitio del chat), y cuantas mas lleva. Vacia, el cuaderno.
+fn pintar_ojeada_carpeta(
+    p: &Pintor,
+    a: &Abierto,
+    ids: &[String],
+    hoja: RectF,
+    previas: &crate::miniaturas::Miniaturas,
+    tema: &Tema,
+    e: f32,
+) {
+    p.rellenar_redondeado(hoja, 6.0 * e, con_alfa(tema.papel, 0.55));
+    // Solo las que siguen en el chat, en el orden de la carpeta.
+    let vivas: Vec<usize> = ids
+        .iter()
+        .filter_map(|id| a.mensajes.iter().position(|m| &m.id == id))
+        .collect();
+    if vivas.is_empty() {
+        let lado = 44.0 * e;
+        p.icono(
+            &mi::MENU_BOOK,
+            RectF {
+                x: hoja.x + (hoja.ancho - lado) / 2.0,
+                y: hoja.y + (hoja.alto - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            tema.texto_papel,
+        );
+        return;
+    }
+    let aire = 8.0 * e;
+    let n = vivas.len().min(PAGINAS_EN_LA_TARJETA);
+    let ancho = (hoja.ancho - aire * (n as f32 + 1.0)) / PAGINAS_EN_LA_TARJETA as f32;
+    let alto = hoja.alto - 2.0 * aire;
+    // Centradas: con una o dos paginas no se quedan a la izquierda.
+    let x0 = hoja.x + (hoja.ancho - (ancho * n as f32 + aire * (n as f32 - 1.0))) / 2.0;
+    for (k, &j) in vivas.iter().take(n).enumerate() {
+        let caja = RectF {
+            x: x0 + k as f32 * (ancho + aire),
+            y: hoja.y + aire,
+            ancho,
+            alto,
+        };
+        match a.vistas.get(j) {
+            Some(Some(Ojeada::Lienzo(l))) => {
+                p.rellenar_redondeado(caja, 4.0 * e, papel_de_vista(l, tema.papel));
+                pintar_lienzo(
+                    p,
+                    l,
+                    RectF {
+                        x: caja.x + 3.0 * e,
+                        y: caja.y + 3.0 * e,
+                        ancho: caja.ancho - 6.0 * e,
+                        alto: caja.alto - 6.0 * e,
+                    },
+                    Some(previas),
+                );
+            }
+            Some(Some(Ojeada::Foto { .. })) => {
+                p.rellenar_redondeado(caja, 4.0 * e, tema.papel);
+                let recortada = p.empujar_recorte_redondeado(caja, 4.0 * e);
+                pintar_foto(p, a, j, caja, previas, tema, e);
+                if recortada {
+                    p.soltar_recorte_redondeado();
+                }
+            }
+            _ => {
+                p.rellenar_redondeado(caja, 4.0 * e, tema.papel);
+                let lado = 28.0 * e;
+                let icono = match a.mensajes.get(j).and_then(|m| m.clase.as_ref()) {
+                    Some(pixpin_proyecto::cuaderno::Clase::Dibujo) => &mi::DRAW,
+                    Some(pixpin_proyecto::cuaderno::Clase::Imagen) => &mi::IMAGE,
+                    _ => &mi::DESCRIPTION,
+                };
+                p.icono(
+                    icono,
+                    RectF {
+                        x: caja.x + (caja.ancho - lado) / 2.0,
+                        y: caja.y + (caja.alto - lado) / 2.0,
+                        ancho: lado,
+                        alto: lado,
+                    },
+                    tema.texto_papel,
+                );
+            }
+        }
+        // El numero de la pagina, en su esquina, como en la carpeta abierta.
+        let numero = (k + 1).to_string();
+        let (w, h) = p.medir_texto(&numero, HORA_TAM * e);
+        let chapa = RectF {
+            x: caja.x + 4.0 * e,
+            y: caja.y + 4.0 * e,
+            ancho: (w + 10.0 * e).max(18.0 * e),
+            alto: h + 4.0 * e,
+        };
+        p.rellenar_redondeado(chapa, chapa.alto / 2.0, con_alfa(hex(0x000000), 0.6));
+        p.texto(
+            &numero,
+            chapa.x + (chapa.ancho - w) / 2.0,
+            chapa.y + 2.0 * e,
+            HORA_TAM * e,
+            hex(0xffffff),
+        );
+    }
+    // Y cuantas mas hay detras.
+    if vivas.len() > n {
+        let resto = format!("+{}", vivas.len() - n);
+        let (w, h) = p.medir_texto(&resto, 13.0 * e);
+        let chapa = RectF {
+            x: hoja.x + hoja.ancho - w - 22.0 * e,
+            y: hoja.y + hoja.alto - h - 18.0 * e,
+            ancho: w + 14.0 * e,
+            alto: h + 6.0 * e,
+        };
+        p.rellenar_redondeado(chapa, chapa.alto / 2.0, con_alfa(hex(0x000000), 0.65));
+        p.texto(
+            &resto,
+            chapa.x + 7.0 * e,
+            chapa.y + 3.0 * e,
+            13.0 * e,
+            hex(0xffffff),
+        );
+    }
 }
 
 /// Pinta un lienzo dentro de `destino`, entero y sin deformarlo.
@@ -10395,6 +10565,21 @@ fn pintar_info(
                         match vista {
                             Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro, Some(c.previas)),
                             Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, dentro),
+                            // En el panel de informacion, el icono del
+                            // cuaderno: sus paginas ya salen cada una.
+                            Ojeada::Carpeta(_) => {
+                                let lado = (dentro.ancho.min(dentro.alto) * 0.5).max(1.0);
+                                p.icono(
+                                    &mi::MENU_BOOK,
+                                    RectF {
+                                        x: dentro.x + (dentro.ancho - lado) / 2.0,
+                                        y: dentro.y + (dentro.alto - lado) / 2.0,
+                                        ancho: lado,
+                                        alto: lado,
+                                    },
+                                    tema.texto_papel,
+                                );
+                            }
                             Ojeada::Foto { .. } => {}
                         }
                         p.soltar_recorte();
@@ -14774,6 +14959,17 @@ fn fila_de(
         // La mini-app ensena su RESUMEN —«3 de 7», «60,50 €», la hora de la
         // alarma—, que es lo que el movil pone en la burbuja
         // (`MiniApps.kt:79-89`). Sin el, la burbuja solo repetia su nombre.
+        // Una carpeta de paginas, cuantas lleva.
+        Clase::MiniApp if pixpin_proyecto::carpeta_de_paginas::es_carpeta(m) => {
+            match carpetas::cuantas(m) {
+                0 => textos.t("carpeta-vacia-detalle"),
+                n => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("n", n as i64);
+                    textos.t_args("carpeta-paginas", &args)
+                }
+            }
+        }
         Clase::MiniApp => pixpin_proyecto::mini::resumen(
             m.miniapp.as_deref().unwrap_or_default(),
             &m.texto,
@@ -15970,6 +16166,17 @@ enum Accion {
     PedirFigura,
     /// «Guardar en mis figuras» de un lienzo del chat.
     GuardarEnFiguras(usize),
+    /// Las carpetas de paginas (26-oct-2026): una nueva y vacia, desde el
+    /// «+»; ya creada, se le escribe el nombre.
+    AdjCarpeta,
+    /// «Añadir a carpeta…» de un mensaje: la lista de las del chat.
+    AnadirACarpeta(usize),
+    /// Meter el mensaje en esa carpeta (el `id` del mensaje de la carpeta).
+    AnadirACarpetaDe(usize, String),
+    /// Una carpeta nueva con ese mensaje como primera pagina.
+    NuevaCarpetaCon(usize),
+    /// Abrir la ventana de esa carpeta.
+    AbrirCarpeta(usize),
     AdjProyectos,
     AdjProyecto(String),
     /// «Una pagina de un proyecto»: primero el proyecto, luego su hoja
@@ -16816,6 +17023,7 @@ fn clave_del_nombre(cual: &str) -> Option<&'static str> {
         mini::RULETA => "mini-ruleta",
         mini::ALARMA => "mini-alarma",
         _ if cual == pixpin_proyecto::tabla::MINIAPP => "chat-tabla",
+        _ if cual == pixpin_proyecto::carpeta_de_paginas::MINIAPP => "carpeta-nombre-de-serie",
         _ => return None,
     })
 }
@@ -16831,6 +17039,8 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
         mini::GASTOS => &mi::LIST,
         mini::CRONOMETRO | mini::TEMPORIZADOR | mini::ALARMA => &mi::ALARM,
         _ if cual == pixpin_proyecto::tabla::MINIAPP => &mi::TABLE_CHART,
+        // Una carpeta de paginas: el cuaderno.
+        _ if cual == pixpin_proyecto::carpeta_de_paginas::MINIAPP => &mi::MENU_BOOK,
         // Tareas, contador y ruleta: la lista con casillas, que es el icono
         // con el que el movil rotula la hoja de mini-apps entera.
         _ => &mi::CHECKLIST,
@@ -17316,6 +17526,30 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             textos.t("chat-guardar-en-figuras"),
             Accion::GuardarEnFiguras(i),
         ));
+    }
+    // **Las carpetas de paginas** (26-oct-2026): un lienzo, una pagina o una
+    // foto, a la vista; lo demas que puede ser pagina, en «Más». Y una
+    // carpeta, abrirla.
+    if pixpin_proyecto::carpeta_de_paginas::es_carpeta(m) {
+        v.push(entrada(
+            Some(&mi::MENU_BOOK),
+            textos.t("carpeta-abrir"),
+            Accion::AbrirCarpeta(i),
+        ));
+    } else if carpetas::se_ofrece(m) {
+        let anadir = entrada(
+            Some(&mi::MENU_BOOK),
+            textos.t("carpeta-anadir-a"),
+            Accion::AnadirACarpeta(i),
+        )
+        .con_tecla(Tecla::Sub);
+        v.push(
+            if matches!(m.clase, Some(Clase::Dibujo | Clase::Pagina | Clase::Imagen)) {
+                anadir
+            } else {
+                anadir.en_mas()
+            },
+        );
     }
     // Tarjetas de estudio: de una clase grabada, una foto o una nota.
     if anki::se_puede(a, m) {
@@ -18120,6 +18354,28 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             Efecto::Cambio
         }
         Accion::GuardarEnFiguras(i) => guardar_en_figuras(cx, a, i),
+        // Las carpetas de paginas (`carpetas`).
+        Accion::AdjCarpeta => carpetas::crear(cx.ubicacion, a, cx.identidad, cx.textos, None),
+        Accion::NuevaCarpetaCon(i) => {
+            carpetas::crear(cx.ubicacion, a, cx.identidad, cx.textos, Some(i))
+        }
+        Accion::AnadirACarpeta(i) => Efecto::Menu(carpetas::menu_de_anadir(a, i, cx.textos)),
+        Accion::AnadirACarpetaDe(i, carpeta) => {
+            carpetas::anadir(cx.ubicacion, a, i, &carpeta, cx.textos)
+        }
+        Accion::AbrirCarpeta(i) => {
+            if let Some(m) = a.mensajes.get(i) {
+                carpetas::abrir(carpetas::Abrir {
+                    idioma: cx.idioma,
+                    ubicacion: cx.ubicacion.clone(),
+                    proyecto: a.ficha.id.clone(),
+                    id: m.id.clone(),
+                    identidad: cx.identidad.to_string(),
+                    lienzo: cx.lienzo,
+                });
+            }
+            Efecto::Nada
+        }
         Accion::Pronunciar => abrir_pronunciar(cx.ubicacion, a, cx.textos, cx.idioma),
         Accion::Conversacion => abrir_conversacion(cx.ubicacion, a, cx.textos, cx.idioma),
         Accion::TelepronterBorrador => {
@@ -18890,7 +19146,10 @@ fn guardar_nombre_de_mensaje(ubicacion: &Ubicacion, a: &mut Abierto, i: usize, n
     };
     // Un lienzo, como siempre; cualquier otro archivo conserva su extension
     // y su fichero en disco (`renombrar`).
-    let nuevo = if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo) {
+    // Una carpeta de paginas, como un lienzo: su nombre no lleva extension.
+    let nuevo = if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
+        || pixpin_proyecto::carpeta_de_paginas::es_carpeta(&m)
+    {
         nombre.chars().take(80).collect()
     } else {
         renombrar::con_su_extension(&m.nombre, nombre)
@@ -19057,6 +19316,76 @@ mod pruebas_menu_sin_repetir {
             .into_iter()
             .map(|e| e.accion)
             .collect()
+    }
+
+    /// Las carpetas de paginas (26-oct-2026): «Añadir a carpeta…» a la vista
+    /// en un lienzo, «Nueva carpeta con esta pagina» la crea con el lienzo
+    /// dentro y con el nombre a medio escribir, y la carpeta se abre desde
+    /// su menu.
+    #[test]
+    fn un_lienzo_entra_en_una_carpeta_nueva_y_la_carpeta_se_abre_desde_su_menu() {
+        use pixpin_proyecto::carpeta_de_paginas::Carpeta;
+        let mut lienzo = mensaje(Clase::Dibujo, None);
+        lienzo.referencia = Some("d1".into());
+        let (mut a, raiz) = abierto_con("carpeta", vec![lienzo]);
+        let dir = pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id);
+        pixpin_proyecto::cuaderno::anadir(&dir, &a.mensajes[0]).unwrap();
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let m = menu_de(&a);
+        assert!(
+            m.entradas
+                .iter()
+                .any(|e| e.accion == Accion::AnadirACarpeta(0)),
+            "a la vista, no en «Más»"
+        );
+        // El submenu: ninguna carpeta todavia, solo «Nueva carpeta…».
+        let sub = carpetas::menu_de_anadir(&a, 0, &textos);
+        assert_eq!(sub.len(), 1);
+        assert_eq!(sub[0].accion, Accion::NuevaCarpetaCon(0));
+
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        assert!(matches!(
+            carpetas::crear(&u, &mut a, "PC", &textos, Some(0)),
+            Efecto::Cambio
+        ));
+        assert_eq!(a.mensajes.len(), 2);
+        assert_eq!(a.vistas.len(), 2);
+        let c = Carpeta::de_mensaje(&a.mensajes[1]).expect("es una carpeta");
+        assert_eq!(c.paginas[0].id, "m1");
+        // Un lienzo sin nombre entra como «Pagina 1», no como «Lienzo».
+        assert_eq!(c.paginas[0].titulo, "Página 1");
+        assert_eq!(a.mensajes[1].nombre, "Cuaderno");
+        assert_eq!(
+            a.renombrando_mensaje.as_ref().map(|(i, _)| *i),
+            Some(1),
+            "con el nombre listo para escribirlo"
+        );
+        assert!(
+            matches!(a.vistas[1], Some(Ojeada::Carpeta(ref ids)) if ids == &["m1".to_string()])
+        );
+        // En el disco, tambien.
+        let leida = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&dir).unwrap();
+        assert!(
+            leida
+                .mensajes
+                .iter()
+                .any(pixpin_proyecto::carpeta_de_paginas::es_carpeta)
+        );
+
+        // Otra vez a la misma: ya esta.
+        let id = a.mensajes[1].id.clone();
+        match carpetas::anadir(&u, &mut a, 0, &id, &textos) {
+            Efecto::Aviso(t) => assert!(t.contains("Ya está"), "{t}"),
+            _ => panic!("tenia que avisar"),
+        }
+        // El menu de la carpeta la abre; y una carpeta no entra en otra.
+        let principal: Vec<Accion> = menu_de_mensaje(&a, 1, &textos)
+            .into_iter()
+            .map(|e| e.accion)
+            .collect();
+        assert!(principal.contains(&Accion::AbrirCarpeta(1)));
+        assert!(!principal.contains(&Accion::AnadirACarpeta(1)));
+        let _ = std::fs::remove_dir_all(raiz);
     }
 
     #[test]

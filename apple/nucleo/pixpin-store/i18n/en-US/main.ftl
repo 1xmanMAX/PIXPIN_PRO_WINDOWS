@@ -2637,3 +2637,31 @@ asistente-voz-cancelado = Cancelled: nothing was sent.
 asistente-voz-nada-que-leer = This answer has no text to read.
 asistente-voz-leer = Read aloud
 asistente-voz-callar = Stop reading
+
+## Page folders in the chat (26-oct-2026): a named notebook
+carpeta-nueva = Page folder
+carpeta-nombre-de-serie = Notebook
+carpeta-pagina = Page
+carpeta-paginas = { $n ->
+    [one] 1 page
+   *[other] { $n } pages
+}
+carpeta-vacia-detalle = Empty
+carpeta-anadir-a = Add to folder…
+carpeta-nueva-con = New folder with this page
+carpeta-anadida = Added to “{ $carpeta }” as “{ $titulo }”
+carpeta-ya-estaba = Already in “{ $carpeta }”
+carpeta-abrir = Open folder
+carpeta-nueva-pagina = New page
+carpeta-exportar-pdf = Export PDF
+carpeta-exportando = Exporting the PDF…
+carpeta-exportado = PDF saved: { $nombre }
+carpeta-no-se-exporto = Could not export: no page has anything on it
+carpeta-vacia = This folder is empty. Press “New page”, or in the chat choose “Add to folder…” in the menu of a canvas or an image.
+carpeta-antes = Earlier
+carpeta-despues = Later
+carpeta-renombrar = Rename
+carpeta-quitar = Remove from folder
+carpeta-no-esta = That folder is no longer in the chat
+carpeta-pista = Drag a page to move it · F2 changes its title · Del removes it (the canvas stays in the chat)
+carpeta-escribe-titulo = Type the title and press Enter

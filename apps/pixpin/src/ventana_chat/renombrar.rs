@@ -15,6 +15,11 @@ const TOPE: usize = 120;
 /// Si a `m` se le puede poner nombre: un archivo con fichero o con hoja, que
 /// no sea una leccion ni algo del buzon.
 pub(crate) fn se_puede(m: &Mensaje) -> bool {
+    // Una carpeta de paginas no tiene fichero, pero su nombre es lo que la
+    // distingue de las demas (26-oct-2026).
+    if pixpin_proyecto::carpeta_de_paginas::es_carpeta(m) {
+        return !m.en_buzon;
+    }
     matches!(
         m.clase,
         Some(Clase::Imagen | Clase::Archivo | Clase::Voz | Clase::Dibujo | Clase::Pagina)
@@ -131,5 +136,16 @@ mod pruebas {
         );
         leccion.id = "lec-a".into();
         assert!(!se_puede(&leccion));
+        // Una carpeta de paginas, si: sin fichero, pero con nombre.
+        let carpeta = pixpin_proyecto::carpeta_de_paginas::mensaje_nuevo(
+            "Diario",
+            &pixpin_proyecto::cuaderno::Sello {
+                cuando: 1,
+                numero: 1,
+                aparato: "PC".into(),
+                proyecto: "p".into(),
+            },
+        );
+        assert!(se_puede(&carpeta));
     }
 }

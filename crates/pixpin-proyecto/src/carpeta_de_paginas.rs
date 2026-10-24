@@ -14,9 +14,12 @@
 //! tabla de calculo del PC (`tabla.rs`). Es el hueco que dejo PixPin Android
 //! para lo que no conoce: ante una palabra de `miniapp` que no reconoce
 //! ensena el texto tal cual, sin romperse. Una clase nueva (`"CARPETA"`)
-//! habria sido mas limpia aqui, pero no hay garantia de que el lector del
-//! movil se salte una clase que no conoce; la palabra de `miniapp` si la
-//! hay, y la tabla viaja asi desde hace semanas.
+//! habria sido mas limpia aqui, pero **el movil no la sabe leer**: su
+//! `enum class Clase` tiene diez palabras (`pixpin_sincro::kotlin::CLASES`)
+//! y kotlinx tumba el mensaje que trae otra (el cable de sincronizar la
+//! cambiaria por la de por omision, y la carpeta llegaria vacia de sentido).
+//! La palabra de `miniapp` en cambio es texto libre, y la tabla viaja asi
+//! desde hace semanas.
 //!
 //! Las paginas **siguen siendo mensajes normales** del chat: la carpeta solo
 //! guarda la lista ordenada de sus `id` y el titulo de cada pagina. Asi un
