@@ -802,6 +802,7 @@ fn las_secciones(
 // ---------------------------------------------------------------------------
 
 pub(super) fn todas(v: &mut Vec<FiguraGuardada>) {
+    let desde = v.len();
     v.extend([
         de_serie("cronograma"),
         de_serie("planificador-diario"),
@@ -832,6 +833,13 @@ pub(super) fn todas(v: &mut Vec<FiguraGuardada>) {
         metas_del_dia(),
         sueno(),
     ]);
+    // Y cada una, de noche (`noche.rs`): misma hoja, otros colores.
+    let noches: Vec<FiguraGuardada> = v[desde..]
+        .iter()
+        .cloned()
+        .map(super::noche::gemela)
+        .collect();
+    v.extend(noches);
 }
 
 const ANCHO: f32 = W - 2.0 * M;

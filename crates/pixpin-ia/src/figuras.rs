@@ -13,6 +13,10 @@
 //! «personalizar» manda la lista de secciones en su orden nuevo y la app
 //! rehace la plantilla con su mismo codigo (`figuras_de_serie`), en su
 //! sitio. Sin lista, devuelve las secciones que tiene para leerlas primero.
+//!
+//! **El modo noche** (25-oct): «noche»: true/false en alargar o
+//! personalizar rehace la plantilla en oscuro (o de dia) en su sitio; sin
+//! decirlo, la que se rehace se queda en el modo que tenga.
 
 use serde_json::{Map, Value, json};
 
@@ -33,7 +37,7 @@ pub fn herramienta() -> Herramienta {
     Herramienta {
         nombre: NOMBRE.into(),
         descripcion: format!(
-            "{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}",
             "La biblioteca de figuras del lienzo (las del usuario y las plantillas de serie). «accion»: guardar (lo elegido en el lienzo, o si no ",
             "lo ultimo que dibujaste, con el «nombre» que diga el usuario o uno corto que le pongas tu), poner (estampa la figura de ese «nombre») ",
             "o lista (las que hay). «alargar»: rehace la PLANTILLA que hay en el lienzo (elegida o no; o la de «nombre») con otro intervalo, mas grande o mas pequeño (tambien para reducir: «déjalo en 10 semanas» es semanas_hasta 10), con el mismo diseño y en su mismo sitio. ",
@@ -58,7 +62,8 @@ pub fn herramienta() -> Herramienta {
                  cronograma de 10 semanas con una zona gris abajo para anotar: \
                  {{\"accion\":\"personalizar\",\"nombre\":\"cronograma\",\"semanas_desde\":1,\"semanas_hasta\":10,\"secciones\":[{{\"titulo\":\"Notas\",\"tipo\":\"notas\",\"lineas\":6,\"ancho\":\"completo\"}}]}} (o \"ancho\":\"lateral\" para tenerla al lado)",
                 serie::las_que_se_personalizan()
-            )
+            ),
+            " MODO NOCHE: «noche»:true en alargar o personalizar rehace la plantilla en oscuro en su sitio, con el mismo diseño (\"ponlo en modo noche\":              {\"accion\":\"alargar\",\"noche\":true}, sin más), y «noche»:false la vuelve de día; sin «noche», la que se rehace se queda como está.              Las de serie también vienen de noche: «Cronograma (noche)»."
         ),
         parametros: json!({
             "type": "object",
@@ -73,6 +78,7 @@ pub fn herramienta() -> Herramienta {
                 "semanas_hasta": {"type": "integer"},
                 "mes": {"type": "string"},
                 "meses": {"type": "integer"},
+                "noche": {"type": "boolean"},
                 "secciones": {
                     "type": "array",
                     "items": {
@@ -190,7 +196,25 @@ fn intervalo(
         mes,
         meses: entero(args, "meses")?,
         secciones: secciones(args)?,
+        noche: noche(args)?,
     })
+}
+
+/// **El modo pedido** («noche»: true/false). El modelo a veces lo manda
+/// como texto («noche», «día», «oscuro»...).
+fn noche(args: &Map<String, Value>) -> Result<Option<bool>, ErrorHerramienta> {
+    match args.get("noche").or_else(|| args.get("modo")) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
+        Some(Value::String(s)) => match crate::acciones::normalizar(s.trim()).as_str() {
+            "true" | "si" | "noche" | "oscuro" | "oscura" | "dark" => Ok(Some(true)),
+            "false" | "no" | "dia" | "claro" | "clara" | "light" => Ok(Some(false)),
+            otro => Err(mal(format!(
+                "«noche» = «{otro}»: tiene que ser true o false"
+            ))),
+        },
+        Some(_) => Err(mal("«noche» tiene que ser true o false")),
+    }
 }
 
 /// **Las secciones pedidas**, comprobadas por su forma (lo que depende de
@@ -330,11 +354,14 @@ pub fn validar(args: &Map<String, Value>) -> Result<PedidoFiguras, ErrorHerramie
             | "reordenar" | "cambiar secciones" | "cambiar_secciones",
         ) => {
             let intervalo = intervalo(args)?;
-            Ok(if intervalo.secciones.is_some() {
-                PedidoFiguras::Alargar { nombre, intervalo }
-            } else {
-                PedidoFiguras::Secciones { nombre }
-            })
+            // Con el modo («ponlo en modo noche») tambien se rehace.
+            Ok(
+                if intervalo.secciones.is_some() || intervalo.noche.is_some() {
+                    PedidoFiguras::Alargar { nombre, intervalo }
+                } else {
+                    PedidoFiguras::Secciones { nombre }
+                },
+            )
         }
         None if nombre.is_none() => Ok(PedidoFiguras::Lista),
         Some(otra) => Err(mal(format!(
@@ -380,10 +407,12 @@ pub fn buscar<'a>(figuras: &'a [FiguraGuardada], pedido: &str) -> Option<&'a Fig
     if let Some(f) = figuras.iter().find(|f| comun(f) == pq.len()) {
         return Some(f);
     }
+    // A igual parecido, la de nombre mas corto y la primera: «cronograma
+    // semanas» es el de dia y no su gemela «(noche)».
     figuras
         .iter()
         .filter(|f| comun(f) > 0)
-        .max_by_key(|f| comun(f))
+        .min_by_key(|f| (std::cmp::Reverse(comun(f)), palabras(&f.nombre).len()))
 }
 
 /// La lista para el modelo (y el usuario).
@@ -503,6 +532,54 @@ mod pruebas {
         assert!(v(json!({"accion": "alargar", "mes": "pronto"})).is_err());
         assert!(v(json!({"accion": "alargar", "desde": -3})).is_err());
         assert!(herramienta().descripcion.contains("Cronograma"));
+    }
+
+    #[test]
+    fn se_entiende_el_modo_noche() {
+        let v = |j: Value| validar(j.as_object().unwrap());
+        // «Ponlo en modo noche»: solo el modo, en alargar o en personalizar.
+        for accion in ["alargar", "personalizar"] {
+            let PedidoFiguras::Alargar { intervalo, .. } =
+                v(json!({"accion": accion, "noche": true})).unwrap()
+            else {
+                panic!("{accion}")
+            };
+            assert_eq!(intervalo.noche, Some(true));
+            assert!(intervalo.desde.is_none() && intervalo.secciones.is_none());
+        }
+        let PedidoFiguras::Alargar { intervalo, .. } =
+            v(json!({"accion": "alargar", "desde": 1, "hasta": 30, "noche": "día"})).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(intervalo.noche, Some(false));
+        // Sin decirlo, como este.
+        let PedidoFiguras::Alargar { intervalo, .. } =
+            v(json!({"accion": "alargar", "hasta": 30})).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(intervalo.noche, None);
+        // Personalizar sin secciones ni modo sigue siendo ver las secciones.
+        assert!(matches!(
+            v(json!({"accion": "personalizar"})).unwrap(),
+            PedidoFiguras::Secciones { .. }
+        ));
+        // Caso negativo.
+        assert!(v(json!({"accion": "alargar", "noche": "a ratos"})).is_err());
+        assert!(v(json!({"accion": "alargar", "noche": 3})).is_err());
+        assert!(herramienta().descripcion.contains("MODO NOCHE"));
+        // «cronograma» es el de dia; «cronograma noche», su gemela.
+        let c = serie::catalogo();
+        assert_eq!(buscar(&c, "cronograma").unwrap().id, "serie-cronograma");
+        assert_eq!(
+            buscar(&c, "el cronograma de las semanas").unwrap().id,
+            "serie-cronograma"
+        );
+        assert_eq!(
+            buscar(&c, "cronograma noche").unwrap().id,
+            "serie-cronograma-noche"
+        );
     }
 
     #[test]

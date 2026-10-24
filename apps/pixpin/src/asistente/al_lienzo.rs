@@ -1193,7 +1193,9 @@ const ENTRE_HOJAS: f32 = 60.0;
 /// (o la de `nombre`) rehecha con ese intervalo, con el mismo diseño
 /// (`figuras_de_serie::alargar`). Con `intervalo.secciones`, tambien
 /// **personalizada** (25-oct: quitar, reordenar, ensanchar secciones), con
-/// el mismo codigo que la dibuja.
+/// el mismo codigo que la dibuja. Con `intervalo.noche`, **de noche** (o de
+/// dia): sin decirlo, la que se rehace se queda en su modo, y la de
+/// «nombre» sale como se llame («Cronograma (noche)» de noche).
 ///
 /// Si lo elegido es esa plantilla, las hojas nuevas **ocupan su sitio**: la
 /// primera donde estaba y las demas en fila a su derecha; la vieja se borra
@@ -1214,6 +1216,16 @@ pub fn poner_plantilla(
         .cloned()
         .collect();
     let mut la_elegida = serie::cual_es(&elegidas);
+    // Solo el modo («ponlo en modo noche»): vale cualquier plantilla de
+    // pagina, tambien las que no se alargan ni se personalizan.
+    let solo_modo = intervalo.noche.is_some()
+        && intervalo.secciones.is_none()
+        && intervalo.desde.is_none()
+        && intervalo.hasta.is_none()
+        && intervalo.de_a.is_none()
+        && intervalo.semanas.is_none()
+        && intervalo.mes.is_none()
+        && intervalo.meses.is_none();
     // **Sin elegirla** (25-oct-2026, el usuario abrio el cronograma y pidio
     // agrandarlo sin seleccionarlo): si en el lienzo hay una sola plantilla
     // que se alarga (y es la pedida, si se nombro), es esa, y se rehace en
@@ -1225,11 +1237,13 @@ pub fn poner_plantilla(
                 .and_then(serie::clave_de)
                 .map(str::to_string)
         });
-        if let Some((c, v)) = plantilla_en_la_escena(escena, pedida.as_deref()) {
+        if let Some((c, v)) = plantilla_en_la_escena(escena, pedida.as_deref(), solo_modo) {
             la_elegida = Some(c);
             elegidas = v;
         }
     }
+    // Pedida por su nombre de noche («cronograma (noche)»): de noche.
+    let mut nombrada_de_noche = false;
     let clave = match nombre {
         Some(n) => {
             let catalogo = serie::catalogo();
@@ -1239,6 +1253,7 @@ pub fn poner_plantilla(
                     serie::las_que_se_alargan()
                 )
             })?;
+            nombrada_de_noche = serie::es_la_de_noche(f);
             serie::clave_de(f).unwrap_or_default().to_string()
         }
         None => la_elegida.clone().ok_or_else(|| {
@@ -1253,29 +1268,36 @@ pub fn poner_plantilla(
     // **Lo que no se dice se queda como esta** (25-oct-2026: «redúcelo a 10
     // semanas» volvia a las 18 actividades de fabrica): rehaciendo la que hay,
     // las filas y las semanas que no se piden salen de las suyas.
+    // Lo mismo con el modo (25-oct): la de noche se rehace de noche salvo
+    // que se pida el de dia, y el mes de un mensual o unos habitos se queda.
     let completo;
     let intervalo = if la_elegida.as_deref() == Some(clave.as_str()) {
-        let (filas, semanas) = tramo_actual(&elegidas);
+        let actual = tramo_actual(&elegidas);
         let mut iv = intervalo.clone();
-        // Solo si su serie va por numeros de la hoja: el mensual va por
-        // meses y sus «01–04» son las prioridades (24-oct-2026, personalizar
-        // el mensual pedia un mes).
-        let por_numeros = serie::cuenta_de(&clave).is_some_and(|c| c != "meses");
-        if por_numeros
-            && iv.desde.is_none()
-            && iv.hasta.is_none()
-            && iv.mes.is_none()
-            && iv.de_a.is_none()
-        {
-            if let Some((a, b)) = filas {
+        let sin_numeros =
+            iv.desde.is_none() && iv.hasta.is_none() && iv.mes.is_none() && iv.de_a.is_none();
+        let por_meses = matches!(clave.as_str(), "planificador-mensual" | "habitos");
+        if sin_numeros && por_meses && actual.mes.is_some() {
+            iv.mes = actual.mes;
+        } else if sin_numeros && serie::se_alarga(&clave) && clave != "planificador-mensual" {
+            if let Some((a, b)) = actual.filas {
                 iv.desde = Some(a);
                 iv.hasta = Some(b);
             }
         }
         if iv.semanas.is_none() && clave == "cronograma" {
-            iv.semanas = semanas;
+            iv.semanas = actual.semanas;
+        }
+        if iv.noche.is_none() && (actual.noche || nombrada_de_noche) {
+            iv.noche = Some(true);
         }
         completo = iv;
+        &completo
+    } else if intervalo.noche.is_none() && nombrada_de_noche {
+        completo = pixpin_motor2d::figuras_de_serie::Intervalo {
+            noche: Some(true),
+            ..intervalo.clone()
+        };
         &completo
     } else {
         intervalo
@@ -1305,7 +1327,17 @@ pub fn poner_plantilla(
         PARA_ELEGIR.with(|p| *p.borrow_mut() = Some(ids.clone()));
     }
     let que = serie::nombre_de(&clave);
-    let texto = if intervalo.secciones.is_some() && hojas.len() == 1 {
+    let texto = if solo_modo {
+        format!(
+            "listo: «{que}» rehecha {} con el mismo diseño ({})",
+            if intervalo.noche == Some(true) {
+                "en modo noche"
+            } else {
+                "de día"
+            },
+            hojas[0].nombre
+        )
+    } else if intervalo.secciones.is_some() && hojas.len() == 1 {
         format!(
             "listo: «{que}» rehecha con las secciones pedidas ({})",
             hojas[0].nombre
@@ -1333,9 +1365,22 @@ pub fn poner_plantilla(
     })
 }
 
-/// **Lo que lleva ahora una plantilla puesta**: sus filas (la numeracion
-/// «01», «02»… seguida mas larga) y, en el cronograma, sus semanas («S1»…).
-fn tramo_actual(piezas: &[Elemento]) -> (Option<(u32, u32)>, Option<(u32, u32)>) {
+/// Lo que lleva ahora una plantilla puesta (ver [`tramo_actual`]).
+#[derive(Debug, Default, PartialEq)]
+struct Actual {
+    /// Sus filas: la numeracion «01», «02»… seguida mas larga.
+    filas: Option<(u32, u32)>,
+    /// En el cronograma, sus semanas («S1»…).
+    semanas: Option<(u32, u32)>,
+    /// El mes de un mensual o unos habitos con el calendario de verdad.
+    mes: Option<(i32, u32)>,
+    /// Si es de noche (su papel es oscuro).
+    noche: bool,
+}
+
+/// **Lo que lleva ahora una plantilla puesta**: sus filas, sus semanas, su
+/// mes y su modo, para rehacerla sin perder nada de eso.
+fn tramo_actual(piezas: &[Elemento]) -> Actual {
     let textos: Vec<&str> = piezas
         .iter()
         .filter_map(|e| match &e.figura {
@@ -1372,14 +1417,24 @@ fn tramo_actual(piezas: &[Elemento]) -> (Option<(u32, u32)>, Option<(u32, u32)>)
         .min()
         .zip(semanas.iter().max())
         .map(|(a, b)| (*a, *b));
-    (mejor, semanas)
+    Actual {
+        filas: mejor,
+        semanas,
+        mes: pixpin_motor2d::figuras_de_serie::mes_de_la_hoja(piezas),
+        noche: pixpin_motor2d::figuras_de_serie::es_de_noche(piezas),
+    }
 }
 
 /// **La plantilla de serie que hay en el lienzo** (la que se alarga y, si se
 /// dice, la de `clave`), con sus piezas: las de un mismo grupo exterior, que
 /// es el que pone estampar. `None` si no hay ninguna o hay varias (entonces
-/// hay que elegirla).
-fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(String, Vec<Elemento>)> {
+/// hay que elegirla). Con `cualquiera`, tambien las que no se alargan ni se
+/// personalizan (para cambiarles solo el modo, de dia o de noche).
+fn plantilla_en_la_escena(
+    escena: &Escena,
+    clave: Option<&str>,
+    cualquiera: bool,
+) -> Option<(String, Vec<Elemento>)> {
     use pixpin_motor2d::figuras_de_serie as serie;
     let mut grupos: Vec<(String, Vec<Elemento>)> = Vec::new();
     for e in escena.visibles() {
@@ -1395,7 +1450,8 @@ fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(Strin
         .into_iter()
         .filter_map(|(_, v)| serie::cual_es(&v).map(|c| (c, v)))
         .filter(|(c, _)| {
-            (serie::se_alarga(c) || serie::se_personaliza(c)) && clave.is_none_or(|k| k == c)
+            (cualquiera || serie::se_alarga(c) || serie::se_personaliza(c))
+                && clave.is_none_or(|k| k == c)
         })
         .collect();
     if halladas.len() == 1 {
@@ -1407,8 +1463,8 @@ fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(Strin
     // **Sin grupo** (desagrupada, o venida de otro sitio): por su titulo, y
     // sus piezas son lo que cae dentro de la hoja que lo encierra.
     let vivos: Vec<Elemento> = escena.visibles().cloned().collect();
-    let c =
-        serie::cual_es(&vivos).filter(|c| serie::se_alarga(c) && clave.is_none_or(|k| k == c))?;
+    let c = serie::cual_es(&vivos)
+        .filter(|c| (cualquiera || serie::se_alarga(c)) && clave.is_none_or(|k| k == c))?;
     let hojas: Vec<&Elemento> = vivos
         .iter()
         .filter(|e| matches!(e.figura, pixpin_motor2d::Figura::Rectangulo))
@@ -1497,7 +1553,7 @@ fn secciones_de_la_plantilla(escena: &Escena, elegidos: &[u64]) -> Result<String
         .cloned()
         .collect();
     let clave = serie::cual_es(&elegidas)
-        .or_else(|| plantilla_en_la_escena(escena, None).map(|(c, _)| c))
+        .or_else(|| plantilla_en_la_escena(escena, None, false).map(|(c, _)| c))
         .ok_or_else(|| {
             format!(
                 "no encuentro la plantilla en el lienzo: elígela o di su «nombre» (se personalizan: {})",
@@ -1766,15 +1822,16 @@ mod pruebas_plantilla {
         };
         poner_plantilla(&mut e2, &[], None, &solo_semanas, None).unwrap();
         let vivos: Vec<Elemento> = e2.visibles().cloned().collect();
-        let (filas, semanas) = tramo_actual(&vivos);
-        assert_eq!(filas, Some((1, 30)), "las actividades se quedan");
-        assert_eq!(semanas, Some((1, 10)));
+        let actual = tramo_actual(&vivos);
+        assert_eq!(actual.filas, Some((1, 30)), "las actividades se quedan");
+        assert_eq!(actual.semanas, Some((1, 10)));
+        assert!(!actual.noche);
         let ancho_10 = caja(&vivos).map(|c| c.2 - c.0).unwrap();
         assert!(
             ancho_10 < ancho_30,
             "la hoja se reajusta, no solo borra columnas"
         );
-        assert!(plantilla_en_la_escena(&dos, Some("cronograma")).is_none());
+        assert!(plantilla_en_la_escena(&dos, Some("cronograma"), false).is_none());
         // Desagrupada: se reconoce igual, por su titulo y su hoja.
         let mut suelta = Escena::nueva();
         let ids = biblioteca::estampar_en_escena(
@@ -1787,7 +1844,7 @@ mod pruebas_plantilla {
                 x.grupos.clear();
             }
         }
-        let (c, piezas) = plantilla_en_la_escena(&suelta, None).expect("sin grupo tambien");
+        let (c, piezas) = plantilla_en_la_escena(&suelta, None, false).expect("sin grupo tambien");
         assert_eq!(c, "cronograma");
         assert_eq!(piezas.len(), ids.len(), "todas sus piezas y nada mas");
     }
@@ -1821,6 +1878,81 @@ mod pruebas_plantilla {
             tomar_para_elegir().is_none(),
             "cerrado no deja nada que elegir"
         );
+    }
+
+    /// 25-oct-2026: «ponlo en modo noche» la rehace en su sitio en oscuro;
+    /// alargarla despues sigue de noche, el mes no se pierde y «de día» la
+    /// devuelve.
+    #[test]
+    fn el_modo_noche_se_pide_y_se_queda() {
+        let vivos = |e: &Escena| e.visibles().cloned().collect::<Vec<_>>();
+        let solo = |noche| Intervalo {
+            noche: Some(noche),
+            ..Default::default()
+        };
+        // El cronograma de 30 actividades, en el lienzo sin elegir.
+        let mut escena = Escena::nueva();
+        let iv30 = Intervalo {
+            desde: Some(1),
+            hasta: Some(30),
+            ..Default::default()
+        };
+        poner_plantilla(&mut escena, &[], Some("cronograma"), &iv30, None).unwrap();
+        let antes = caja(&vivos(&escena)).unwrap();
+        let r = poner_plantilla(&mut escena, &[], None, &solo(true), None).unwrap();
+        assert!(r.texto.contains("modo noche"), "{}", r.texto);
+        let ahora = tramo_actual(&vivos(&escena));
+        assert!(ahora.noche);
+        assert_eq!(ahora.filas, Some((1, 30)), "no pierde filas");
+        let despues = caja(&vivos(&escena)).unwrap();
+        assert!(
+            [
+                despues.0 - antes.0,
+                despues.1 - antes.1,
+                despues.2 - antes.2,
+                despues.3 - antes.3
+            ]
+            .iter()
+            .all(|d| d.abs() < 0.5),
+            "en su sitio, igual de grande: {antes:?} {despues:?}"
+        );
+        // Alargarla sin decir el modo: sigue de noche.
+        let iv40 = Intervalo {
+            hasta: Some(40),
+            ..Default::default()
+        };
+        poner_plantilla(&mut escena, &[], None, &iv40, None).unwrap();
+        let ahora = tramo_actual(&vivos(&escena));
+        assert!(ahora.noche && ahora.filas == Some((1, 40)), "{ahora:?}");
+        // De dia otra vez.
+        poner_plantilla(&mut escena, &[], None, &solo(false), None).unwrap();
+        assert!(!tramo_actual(&vivos(&escena)).noche);
+        // El mensual de noviembre: de noche sigue siendo noviembre.
+        let mut m = Escena::nueva();
+        let nov = Intervalo {
+            mes: Some((2026, 11)),
+            ..Default::default()
+        };
+        poner_plantilla(&mut m, &[], Some("planificador mensual"), &nov, None).unwrap();
+        poner_plantilla(&mut m, &[], None, &solo(true), None).unwrap();
+        let ahora = tramo_actual(&vivos(&m));
+        assert!(ahora.noche);
+        assert_eq!(ahora.mes, Some((2026, 11)));
+        // Una que no se alarga ni se personaliza (la gratitud) tambien.
+        let mut g = Escena::nueva();
+        poner_plantilla(&mut g, &[], Some("gratitud"), &solo(false), None).unwrap();
+        poner_plantilla(&mut g, &[], None, &solo(true), None).unwrap();
+        let v = vivos(&g);
+        assert!(serie::es_de_noche(&v));
+        assert_eq!(serie::cual_es(&v).as_deref(), Some("gratitud"));
+        // Pedida por su nombre de noche, sale de noche.
+        let mut n = Escena::nueva();
+        poner_plantilla(&mut n, &[], Some("cronograma (noche)"), &iv30, None).unwrap();
+        assert!(tramo_actual(&vivos(&n)).noche);
+        // Caso negativo: sin plantilla en el lienzo, el modo solo no adivina.
+        let e = poner_plantilla(&mut Escena::nueva(), &[], None, &solo(true), None).unwrap_err();
+        assert!(e.contains("elige"), "{e}");
+        let _ = tomar_para_elegir();
     }
 }
 
