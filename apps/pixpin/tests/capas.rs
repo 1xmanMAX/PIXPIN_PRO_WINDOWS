@@ -44,6 +44,8 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-docs`; `pixpin-bim` solo usa `pixpin-cad`.
         "pixpin-shell" | "pixpin-codec" | "pixpin-motor2d" | "pixpin-sincro"
         | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web" | "pdfsqueeze-core"
+        // Las tarjetas de Anki (24-oct-2026): sin crates de PixPin, solo red.
+        | "pixpin-anki"
         | "pixpin-office" | "pixpin-bim" => 1,
         // El plugin de Flow Launcher es un ejecutable aparte que no enlaza
         // ningun crate de PixPin: habla con la app por WM_COPYDATA. La app si
@@ -99,14 +101,14 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_siete_paquetes() {
+fn estan_los_treinta_y_ocho_paquetes() {
     let encontrados = manifiestos();
     // 32 con `pixpin-sistema` (lo que la logica pregunta al sistema, con
     // version portable: la usa la copia del nucleo de Mac).
     assert_eq!(
         encontrados.len(),
-        37,
-        "se esperan 32 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        38,
+        "se esperan 33 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
