@@ -34,14 +34,16 @@ mod derecho;
 mod intervalo;
 mod mobiliario;
 mod plantillas;
+mod secciones;
 mod storyboard;
 mod tecnico;
 mod vegetacion;
 
 pub use intervalo::{
-    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga,
-    tramo_de_serie,
+    Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, guia_de, las_que_se_alargan,
+    las_que_se_personalizan, nombre_de, se_alarga, se_personaliza, secciones_de, tramo_de_serie,
 };
+pub use secciones::{AnchoSeccion, MAX_LINEAS, MAX_SECCIONES, Seccion, SeccionPedida, TipoSeccion};
 
 /// Entre la categoria y el nombre.
 pub const SEPARADOR: &str = " · ";
@@ -150,7 +152,12 @@ pub(crate) enum Al {
 #[derive(Default)]
 pub(crate) struct Lapiz {
     pub v: Vec<Elemento>,
+    /// La parte abierta (su nombre y desde que pieza), ver [`Lapiz::parte`].
+    abierta: Option<(String, usize)>,
 }
+
+/// El principio del subgrupo de una parte con nombre («parte:Tareas»).
+pub const PREFIJO_PARTE: &str = "parte:";
 
 fn base(trazo: ColorRgba, grosor: f32) -> Elemento {
     Elemento {
@@ -174,6 +181,23 @@ fn caja_de_puntos(p: &[Punto2]) -> (f32, f32, f32, f32) {
 }
 
 impl Lapiz {
+    /// **Lo que se dibuje a continuacion es la parte `nombre`** (una
+    /// seccion de la hoja, su calendario...): sus piezas llevan el
+    /// subgrupo `parte:<nombre>` dentro del grupo de la figura, para que
+    /// `bloques::leer` la tome como un bloque exacto y el asistente sepa
+    /// que es cada cosa. Cierra la anterior; con `""` no abre otra.
+    pub(crate) fn parte(&mut self, nombre: &str) {
+        if let Some((n, desde)) = self.abierta.take() {
+            let g = format!("{PREFIJO_PARTE}{n}");
+            for e in &mut self.v[desde..] {
+                e.grupos.push(g.clone());
+            }
+        }
+        if !nombre.trim().is_empty() {
+            self.abierta = Some((nombre.trim().to_string(), self.v.len()));
+        }
+    }
+
     pub fn linea(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, c: ColorRgba, g: f32) {
         self.poli(&[(x1, y1), (x2, y2)], c, g, None);
     }
@@ -364,7 +388,8 @@ impl Lapiz {
     }
 
     /// La figura, con su categoria en el nombre y normalizada al origen.
-    pub fn figura(self, clave: &str, categoria: &str, nombre: &str) -> FiguraGuardada {
+    pub fn figura(mut self, clave: &str, categoria: &str, nombre: &str) -> FiguraGuardada {
+        self.parte("");
         FiguraGuardada {
             id: format!("{PREFIJO_ID}{clave}"),
             nombre: format!("{categoria}{SEPARADOR}{nombre}"),
@@ -376,3 +401,7 @@ impl Lapiz {
 #[cfg(test)]
 #[path = "figuras_de_serie/pruebas.rs"]
 mod pruebas;
+
+#[cfg(test)]
+#[path = "figuras_de_serie/pruebas_secciones.rs"]
+mod pruebas_secciones;

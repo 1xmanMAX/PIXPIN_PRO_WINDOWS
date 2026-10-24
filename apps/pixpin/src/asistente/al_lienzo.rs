@@ -65,6 +65,10 @@ pub enum Trabajo {
         nombre: Option<String>,
         intervalo: pixpin_motor2d::figuras_de_serie::Intervalo,
     },
+    /// **Las secciones de la plantilla del lienzo** (25-oct): la elegida o
+    /// la unica que hay, para que el modelo las lea antes de personalizarla
+    /// (`intervalo.secciones` en [`Trabajo::Plantilla`]). No cambia nada.
+    Secciones,
     /// **Una copia de como esta** (23-oct, la revision con rubrica): antes
     /// de cada ronda de correccion, para volver si la deja peor.
     Copia,
@@ -461,7 +465,11 @@ pub fn trabajar(
                 ultimos: Vec::new(),
             };
             Ok(Respuesta {
-                texto: pixpin_ia::edicion::resumen(escena, &ctx),
+                texto: format!(
+                    "{}{}",
+                    pixpin_ia::edicion::resumen(escena, &ctx),
+                    guias_del_lienzo(escena)
+                ),
                 ids: Vec::new(),
                 ctx: Some(ctx),
                 ..Default::default()
@@ -520,6 +528,10 @@ pub fn trabajar(
         Trabajo::Plantilla { nombre, intervalo } => {
             poner_plantilla(escena, elegidos, nombre.as_deref(), intervalo, None)
         }
+        Trabajo::Secciones => secciones_de_la_plantilla(escena, elegidos).map(|texto| Respuesta {
+            texto,
+            ..Default::default()
+        }),
         Trabajo::Copia => Ok(Respuesta {
             copia: Some(escena.elementos.clone()),
             ..Default::default()
@@ -1179,7 +1191,9 @@ const ENTRE_HOJAS: f32 = 60.0;
 
 /// **«Damela del 1 al 40», «de 10 en 10»**: la plantilla de serie elegida
 /// (o la de `nombre`) rehecha con ese intervalo, con el mismo diseño
-/// (`figuras_de_serie::alargar`).
+/// (`figuras_de_serie::alargar`). Con `intervalo.secciones`, tambien
+/// **personalizada** (25-oct: quitar, reordenar, ensanchar secciones), con
+/// el mismo codigo que la dibuja.
 ///
 /// Si lo elegido es esa plantilla, las hojas nuevas **ocupan su sitio**: la
 /// primera donde estaba y las demas en fila a su derecha; la vieja se borra
@@ -1261,7 +1275,12 @@ pub fn poner_plantilla(
         PARA_ELEGIR.with(|p| *p.borrow_mut() = Some(ids.clone()));
     }
     let que = serie::nombre_de(&clave);
-    let texto = if hojas.len() == 1 {
+    let texto = if intervalo.secciones.is_some() && hojas.len() == 1 {
+        format!(
+            "listo: «{que}» rehecha con las secciones pedidas ({})",
+            hojas[0].nombre
+        )
+    } else if hojas.len() == 1 {
         format!("listo: «{que}» rehecha en una hoja ({})", hojas[0].nombre)
     } else {
         format!(
@@ -1303,7 +1322,9 @@ fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(Strin
     let mut halladas: Vec<(String, Vec<Elemento>)> = grupos
         .into_iter()
         .filter_map(|(_, v)| serie::cual_es(&v).map(|c| (c, v)))
-        .filter(|(c, _)| serie::se_alarga(c) && clave.is_none_or(|k| k == c))
+        .filter(|(c, _)| {
+            (serie::se_alarga(c) || serie::se_personaliza(c)) && clave.is_none_or(|k| k == c)
+        })
         .collect();
     if halladas.len() == 1 {
         halladas.pop()
@@ -1314,6 +1335,70 @@ fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(Strin
 
 /// Con el lienzo cerrado, a cuanto de lo que habia.
 const HUECO_PLANTILLA: f32 = 120.0;
+
+/// Como mucho cuantas guias de plantilla van en el resumen (son largas).
+const MAX_GUIAS: usize = 2;
+
+/// **La guia de las plantillas que hay en el lienzo** (25-oct): por cada
+/// plantilla de serie que se personaliza, sus bloques y lo que se le puede
+/// cambiar (`figuras_de_serie::guia_de`), para que el modelo la entienda
+/// sin tener que pedirla. Vacio si no hay ninguna.
+fn guias_del_lienzo(escena: &Escena) -> String {
+    use pixpin_motor2d::figuras_de_serie as serie;
+    let mut grupos: Vec<(String, Vec<Elemento>)> = Vec::new();
+    for e in escena.visibles() {
+        let Some(g) = e.grupos.last() else {
+            continue;
+        };
+        match grupos.iter_mut().find(|(n, _)| n == g) {
+            Some((_, v)) => v.push(e.clone()),
+            None => grupos.push((g.clone(), vec![e.clone()])),
+        }
+    }
+    let mut claves: Vec<String> = Vec::new();
+    for (_, v) in &grupos {
+        if let Some(c) = serie::cual_es(v)
+            && serie::se_personaliza(&c)
+            && !claves.contains(&c)
+        {
+            claves.push(c);
+        }
+    }
+    claves
+        .iter()
+        .take(MAX_GUIAS)
+        .filter_map(|c| serie::guia_de(c))
+        .map(|g| format!("\n\n{g}"))
+        .collect()
+}
+
+/// **Las secciones de la plantilla del lienzo**, en palabras para el
+/// modelo (`figuras_de_serie::guia_de`): la elegida o, sin
+/// elegir, la unica plantilla que hay. Error en palabras si no hay ninguna
+/// o no se personaliza.
+fn secciones_de_la_plantilla(escena: &Escena, elegidos: &[u64]) -> Result<String, String> {
+    use pixpin_motor2d::figuras_de_serie as serie;
+    let elegidas: Vec<Elemento> = escena
+        .visibles()
+        .filter(|e| elegidos.contains(&e.id))
+        .cloned()
+        .collect();
+    let clave = serie::cual_es(&elegidas)
+        .or_else(|| plantilla_en_la_escena(escena, None).map(|(c, _)| c))
+        .ok_or_else(|| {
+            format!(
+                "no encuentro la plantilla en el lienzo: elígela o di su «nombre» (se personalizan: {})",
+                serie::las_que_se_personalizan()
+            )
+        })?;
+    serie::guia_de(&clave).ok_or_else(|| {
+        format!(
+            "«{}» no tiene secciones que cambiar; se personalizan: {}",
+            serie::nombre_de(&clave),
+            serie::las_que_se_personalizan()
+        )
+    })
+}
 
 use pixpin_motor2d::biblioteca::FiguraGuardada;
 
@@ -1377,6 +1462,69 @@ mod pruebas_plantilla {
             ids.iter()
                 .all(|id| escena.buscar(*id).is_some_and(|e| !e.borrado))
         );
+    }
+
+    /// 25-oct-2026: el mensual en el lienzo, sin elegir, y «quita
+    /// prioridades, objetivos a 6 lineas y a todo el ancho, tareas a 4»: se
+    /// rehace en su sitio con sus secciones, y Ctrl+Z lo devuelve.
+    #[test]
+    fn el_mensual_se_personaliza_en_su_sitio() {
+        use pixpin_motor2d::figuras_de_serie::{AnchoSeccion, SeccionPedida};
+        let mut escena = Escena::nueva();
+        let f = serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-planificador-mensual")
+            .unwrap();
+        let ids = biblioteca::estampar_en_escena(
+            &mut escena,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(200.0, 100.0),
+        );
+        let caja_vieja = caja(&escena.visibles().cloned().collect::<Vec<_>>()).unwrap();
+        // Primero se leen sus secciones; el resumen ya trae su guia.
+        let t = secciones_de_la_plantilla(&escena, &[]).unwrap();
+        assert!(t.contains("Prioridades"), "{t}");
+        assert!(
+            guias_del_lienzo(&escena).contains("Calendario")
+                || guias_del_lienzo(&escena).contains("calendario")
+        );
+        assert!(guias_del_lienzo(&Escena::nueva()).is_empty());
+        let iv = Intervalo {
+            secciones: Some(vec![
+                SeccionPedida {
+                    titulo: "Objetivo del mes".into(),
+                    lineas: Some(6),
+                    ancho: Some(AnchoSeccion::Completo),
+                    ..Default::default()
+                },
+                SeccionPedida {
+                    titulo: "Tareas".into(),
+                    lineas: Some(4),
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        };
+        let r = poner_plantilla(&mut escena, &[], None, &iv, None).unwrap();
+        assert!(r.texto.contains("secciones pedidas"), "{}", r.texto);
+        let nuevas: Vec<Elemento> = escena.visibles().cloned().collect();
+        let textos: Vec<&str> = nuevas
+            .iter()
+            .filter_map(|e| match &e.figura {
+                pixpin_motor2d::elemento::Figura::Texto { texto, .. } => Some(texto.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(!textos.contains(&"PRIORIDADES") && textos.contains(&"TAREAS"));
+        let c = caja(&nuevas).unwrap();
+        assert!((c.0 - caja_vieja.0).abs() < 0.5 && (c.1 - caja_vieja.1).abs() < 0.5);
+        escena.deshacer();
+        assert!(
+            ids.iter()
+                .all(|id| escena.buscar(*id).is_some_and(|e| !e.borrado))
+        );
+        // Caso negativo: un lienzo vacio no tiene plantilla que leer.
+        assert!(secciones_de_la_plantilla(&Escena::nueva(), &[]).is_err());
     }
 
     /// 25-oct-2026: el cronograma abierto, SIN elegirlo, y «que sean 30

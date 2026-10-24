@@ -7,10 +7,19 @@
 //! movil): lo que guarda el asistente sale en el menu del lienzo y al
 //! reves. Esta herramienta solo dice que se pide; la ejecuta la app, que
 //! sabe donde vive el fichero y que hay elegido en el lienzo abierto.
+//!
+//! **Personalizar una plantilla** (25-oct-2026, «quita prioridades, amplia
+//! los objetivos a 6 lineas, prioridades a todo el ancho»): la accion
+//! «personalizar» manda la lista de secciones en su orden nuevo y la app
+//! rehace la plantilla con su mismo codigo (`figuras_de_serie`), en su
+//! sitio. Sin lista, devuelve las secciones que tiene para leerlas primero.
 
 use serde_json::{Map, Value, json};
 
 use pixpin_motor2d::biblioteca::FiguraGuardada;
+use pixpin_motor2d::figuras_de_serie::{
+    self as serie, AnchoSeccion, MAX_LINEAS, MAX_SECCIONES, SeccionPedida, TipoSeccion,
+};
 
 use crate::herramientas::{ErrorHerramienta, Herramienta};
 
@@ -24,7 +33,7 @@ pub fn herramienta() -> Herramienta {
     Herramienta {
         nombre: NOMBRE.into(),
         descripcion: format!(
-            "{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}",
             "La biblioteca de figuras del lienzo (las del usuario y las plantillas de serie). «accion»: guardar (lo elegido en el lienzo, o si no ",
             "lo ultimo que dibujaste, con el «nombre» que diga el usuario o uno corto que le pongas tu), poner (estampa la figura de ese «nombre») ",
             "o lista (las que hay). «alargar»: rehace la PLANTILLA que hay en el lienzo (elegida o no; o la de «nombre») con otro intervalo, con el mismo diseño y en su mismo sitio. ",
@@ -36,13 +45,26 @@ pub fn herramienta() -> Herramienta {
                  Ejemplos: {{\"accion\":\"poner\",\"nombre\":\"arbol isometrico\"}}, {{\"accion\":\"alargar\",\"desde\":1,\"hasta\":40,\"de_a\":10}}, \
                  {{\"accion\":\"alargar\",\"nombre\":\"cronograma\",\"desde\":1,\"hasta\":30,\"semanas_desde\":1,\"semanas_hasta\":30}}",
                 pixpin_motor2d::figuras_de_serie::las_que_se_alargan()
+            ),
+            format_args!(
+                " «personalizar»: cambia las SECCIONES de una plantilla con su mismo código (quitar una, cambiar sus líneas, reordenarlas, ponerla a todo el ancho, añadir otra), \
+                 rehecha en su sitio (Ctrl+Z la devuelve). Sin «secciones» te devuelve las que tiene (léelas primero); con ellas, manda la lista ENTERA en el orden nuevo: \
+                 «secciones»: [{{titulo, tipo, lineas, ancho}}] (de una que ya existe basta el titulo y lo que cambie; lo que quites no lo pongas). \
+                 tipo: renglones, numerados, casillas, recuadro, libre, notas (zona gris para anotar) o propia (un bloque de esa plantilla); \
+                 ancho: completo (fila entera debajo de todo), mitad (de dos en dos, alineadas arriba), izquierda o derecha (apiladas en esa columna), lateral (solo el cronograma: a la derecha de la tabla). \
+                 Líneas de 1 a {MAX_LINEAS}, hasta {MAX_SECCIONES} secciones; se puede juntar con desde/hasta/semanas/mes. Se personalizan: {}. \
+                 Ejemplo (mensual: quita Prioridades, Objetivo del mes a 6 líneas a todo el ancho arriba, Tareas a 4): \
+                 {{\"accion\":\"personalizar\",\"nombre\":\"planificador mensual\",\"secciones\":[{{\"titulo\":\"Objetivo del mes\",\"lineas\":6,\"ancho\":\"completo\"}},{{\"titulo\":\"Tareas\",\"lineas\":4}}]}}; \
+                 cronograma de 10 semanas con una zona gris abajo para anotar: \
+                 {{\"accion\":\"personalizar\",\"nombre\":\"cronograma\",\"semanas_desde\":1,\"semanas_hasta\":10,\"secciones\":[{{\"titulo\":\"Notas\",\"tipo\":\"notas\",\"lineas\":6,\"ancho\":\"completo\"}}]}} (o \"ancho\":\"lateral\" para tenerla al lado)",
+                serie::las_que_se_personalizan()
             )
         ),
         parametros: json!({
             "type": "object",
             "required": ["accion"],
             "properties": {
-                "accion": {"type": "string", "enum": ["guardar", "poner", "lista", "alargar"]},
+                "accion": {"type": "string", "enum": ["guardar", "poner", "lista", "alargar", "personalizar"]},
                 "nombre": {"type": "string"},
                 "desde": {"type": "integer"},
                 "hasta": {"type": "integer"},
@@ -50,7 +72,20 @@ pub fn herramienta() -> Herramienta {
                 "semanas_desde": {"type": "integer"},
                 "semanas_hasta": {"type": "integer"},
                 "mes": {"type": "string"},
-                "meses": {"type": "integer"}
+                "meses": {"type": "integer"},
+                "secciones": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "required": ["titulo"],
+                        "properties": {
+                            "titulo": {"type": "string"},
+                            "tipo": {"type": "string", "enum": ["renglones", "numerados", "casillas", "recuadro", "libre", "notas", "propia"]},
+                            "lineas": {"type": "integer"},
+                            "ancho": {"type": "string", "enum": ["completo", "mitad", "izquierda", "derecha", "lateral"]}
+                        }
+                    }
+                }
             }
         }),
     }
@@ -71,6 +106,11 @@ pub enum PedidoFiguras {
     Alargar {
         nombre: Option<String>,
         intervalo: pixpin_motor2d::figuras_de_serie::Intervalo,
+    },
+    /// **Las secciones que tiene una plantilla** (25-oct), para leerlas
+    /// antes de personalizarla: la elegida en el lienzo, o la de `nombre`.
+    Secciones {
+        nombre: Option<String>,
     },
 }
 
@@ -149,6 +189,103 @@ fn intervalo(
         semanas,
         mes,
         meses: entero(args, "meses")?,
+        secciones: secciones(args)?,
+    })
+}
+
+/// **Las secciones pedidas**, comprobadas por su forma (lo que depende de
+/// la plantilla, como sus bloques propios, lo mira el motor al rehacerla).
+fn secciones(args: &Map<String, Value>) -> Result<Option<Vec<SeccionPedida>>, ErrorHerramienta> {
+    let v = match args.get("secciones") {
+        None | Some(Value::Null) => return Ok(None),
+        // A veces llega como texto con el JSON dentro.
+        Some(Value::String(s)) => serde_json::from_str::<Value>(s).map_err(|_| {
+            mal("«secciones» tiene que ser una lista de {titulo, tipo, lineas, ancho}")
+        })?,
+        Some(v) => v.clone(),
+    };
+    let lista = v.as_array().ok_or_else(|| {
+        mal("«secciones» tiene que ser una lista de {titulo, tipo, lineas, ancho}")
+    })?;
+    if lista.is_empty() {
+        return Err(mal(
+            "«secciones» está vacía: hace falta al menos una sección",
+        ));
+    }
+    if lista.len() > MAX_SECCIONES {
+        return Err(mal(format!(
+            "son {} secciones; como mucho {MAX_SECCIONES} en una hoja",
+            lista.len()
+        )));
+    }
+    lista
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let o = s.as_object().ok_or_else(|| {
+                mal(format!("la sección {} tiene que ser un objeto {{titulo, tipo, lineas, ancho}}", i + 1))
+            })?;
+            let titulo = ["titulo", "nombre", "title"]
+                .iter()
+                .find_map(|k| o.get(*k).and_then(Value::as_str))
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .ok_or_else(|| mal(format!("la sección {} no tiene «titulo»", i + 1)))?;
+            let palabra = |k: &str| o.get(k).and_then(Value::as_str).filter(|p| !p.trim().is_empty());
+            let tipo = match palabra("tipo") {
+                Some(p) => Some(TipoSeccion::de_palabra(p).ok_or_else(|| {
+                    mal(format!(
+                        "«{titulo}»: el tipo «{p}» no existe; usa renglones, numerados, casillas, recuadro, libre, notas o propia"
+                    ))
+                })?),
+                None => None,
+            };
+            let ancho = match palabra("ancho") {
+                Some(p) => Some(AnchoSeccion::de_palabra(p).ok_or_else(|| {
+                    mal(format!(
+                        "«{titulo}»: el ancho «{p}» no existe; usa completo, mitad, izquierda, derecha o lateral"
+                    ))
+                })?),
+                None => None,
+            };
+            let lineas = match entero(o, "lineas")? {
+                Some(n) => Some(n),
+                None => entero(o, "filas")?,
+            };
+            if let Some(n) = lineas.filter(|n| *n == 0 || *n > MAX_LINEAS) {
+                return Err(mal(format!(
+                    "«{titulo}»: las líneas van de 1 a {MAX_LINEAS} (pediste {n})"
+                )));
+            }
+            Ok(SeccionPedida {
+                titulo: titulo.chars().take(80).collect(),
+                tipo,
+                lineas,
+                ancho,
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
+}
+
+/// **Las secciones de la plantilla que se llama asi**, en palabras para el
+/// modelo. Error si no hay ninguna con ese nombre o no se personaliza.
+pub fn secciones_de_nombre(nombre: &str) -> Result<String, String> {
+    let catalogo = serie::catalogo();
+    let clave = buscar(&catalogo, nombre)
+        .and_then(serie::clave_de)
+        .ok_or_else(|| {
+            format!(
+                "no hay ninguna plantilla llamada «{nombre}»; se personalizan: {}",
+                serie::las_que_se_personalizan()
+            )
+        })?;
+    serie::guia_de(clave).ok_or_else(|| {
+        format!(
+            "«{}» no tiene secciones que cambiar; se personalizan: {}",
+            serie::nombre_de(clave),
+            serie::las_que_se_personalizan()
+        )
     })
 }
 
@@ -187,11 +324,25 @@ pub fn validar(args: &Map<String, Value>) -> Result<PedidoFiguras, ErrorHerramie
             nombre,
             intervalo: intervalo(args)?,
         }),
+        // Con la lista, se rehace; sin ella, se devuelven las que tiene.
+        Some(
+            "personalizar" | "personaliza" | "secciones" | "ver secciones" | "ver_secciones"
+            | "reordenar" | "cambiar secciones" | "cambiar_secciones",
+        ) => {
+            let intervalo = intervalo(args)?;
+            Ok(if intervalo.secciones.is_some() {
+                PedidoFiguras::Alargar { nombre, intervalo }
+            } else {
+                PedidoFiguras::Secciones { nombre }
+            })
+        }
         None if nombre.is_none() => Ok(PedidoFiguras::Lista),
         Some(otra) => Err(mal(format!(
-            "«accion» = «{otra}» no existe; usa guardar, poner, lista o alargar"
+            "«accion» = «{otra}» no existe; usa guardar, poner, lista, alargar o personalizar"
         ))),
-        None => Err(mal("falta «accion»: guardar, poner, lista o alargar")),
+        None => Err(mal(
+            "falta «accion»: guardar, poner, lista, alargar o personalizar",
+        )),
     }
 }
 
@@ -352,5 +503,79 @@ mod pruebas {
         assert!(v(json!({"accion": "alargar", "mes": "pronto"})).is_err());
         assert!(v(json!({"accion": "alargar", "desde": -3})).is_err());
         assert!(herramienta().descripcion.contains("Cronograma"));
+    }
+
+    #[test]
+    fn se_entiende_personalizar_y_ver_las_secciones() {
+        let v = |j: Value| validar(j.as_object().unwrap());
+        // El caso del usuario en el mensual.
+        let PedidoFiguras::Alargar { nombre, intervalo } = v(json!({
+            "accion": "personalizar",
+            "nombre": "planificador mensual",
+            "secciones": [
+                {"titulo": "Objetivo del mes", "lineas": 6, "ancho": "completo"},
+                {"titulo": "Tareas", "lineas": "4"}
+            ]
+        }))
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(nombre.as_deref(), Some("planificador mensual"));
+        let s = intervalo.secciones.unwrap();
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].ancho, Some(AnchoSeccion::Completo));
+        assert_eq!(s[1].lineas, Some(4));
+        assert_eq!(s[1].tipo, None);
+        // El cronograma con su zona gris, como texto con el JSON dentro.
+        let PedidoFiguras::Alargar { intervalo, .. } = v(json!({
+            "accion": "personalizar",
+            "semanas_desde": 1, "semanas_hasta": 10,
+            "secciones": "[{\"titulo\":\"Notas\",\"tipo\":\"notas\",\"lineas\":6,\"ancho\":\"lateral\"}]"
+        }))
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(intervalo.semanas, Some((1, 10)));
+        let s = intervalo.secciones.unwrap();
+        assert_eq!(s[0].tipo, Some(TipoSeccion::Notas));
+        assert_eq!(s[0].ancho, Some(AnchoSeccion::Lateral));
+        // Sin lista: ver las que tiene.
+        assert_eq!(
+            v(json!({"accion": "personalizar", "nombre": "metas"})).unwrap(),
+            PedidoFiguras::Secciones {
+                nombre: Some("metas".into())
+            }
+        );
+        let t = secciones_de_nombre("planificador mensual").unwrap();
+        assert!(t.contains("Prioridades") && t.contains("calendario"), "{t}");
+        // Casos negativos, en palabras.
+        let e = |j: Value| match v(j).unwrap_err() {
+            ErrorHerramienta::Parametro(m) => m,
+            otro => panic!("{otro:?}"),
+        };
+        assert!(e(json!({"accion": "personalizar", "secciones": []})).contains("vacía"));
+        assert!(
+            e(json!({"accion": "personalizar", "secciones": [{"lineas": 3}]})).contains("titulo")
+        );
+        assert!(
+            e(json!({"accion": "personalizar", "secciones": [{"titulo": "A", "lineas": 0}]}))
+                .contains("de 1 a")
+        );
+        assert!(
+            e(json!({"accion": "personalizar", "secciones": [{"titulo": "A", "lineas": 99}]}))
+                .contains("de 1 a")
+        );
+        assert!(
+            e(json!({"accion": "personalizar", "secciones": [{"titulo": "A", "tipo": "tarta"}]}))
+                .contains("no existe")
+        );
+        assert!(e(json!({"accion": "personalizar", "secciones": [{"titulo": "A", "ancho": "diagonal"}]})).contains("no existe"));
+        let trece: Vec<Value> = (0..13)
+            .map(|i| json!({"titulo": format!("S{i}")}))
+            .collect();
+        assert!(e(json!({"accion": "personalizar", "secciones": trece})).contains("como mucho"));
+        assert!(e(json!({"accion": "personalizar", "secciones": "no es json"})).contains("lista"));
+        assert!(secciones_de_nombre("lista de tareas").is_err());
+        assert!(herramienta().descripcion.contains("personalizar"));
     }
 }

@@ -13,6 +13,11 @@
 //! hoja queda ordenada (los bloques de una columna se recolocan uno debajo
 //! de otro con los huecos de antes, y la pagina crece si hace falta).
 //!
+//! **Si la hoja trae sus partes con nombre** (los subgrupos `parte:<nombre>`
+//! que ponen las plantillas de serie en cada seccion, 25-oct), esos son los
+//! bloques, exactos y con su nombre: dos secciones en columnas ya no se
+//! juntan en una franja.
+//!
 //! [`leer`] y las operaciones son puras (devuelven un [`Plan`]);
 //! [`aplicar`] lo lleva a la escena en un solo paso de deshacer.
 
@@ -129,6 +134,9 @@ pub fn leer(elementos: &[Elemento]) -> Hoja {
         .copied()
         .filter(|e| Some(e.id) != pagina.map(|p| p.0))
         .collect();
+    if let Some(bloques) = por_partes(&resto) {
+        return Hoja { pagina, bloques };
+    }
     let area_pagina = pagina
         .map(|p| area(p.1))
         .or_else(|| union(resto.iter().map(|e| e.caja())).map(area))
@@ -163,6 +171,57 @@ pub fn leer(elementos: &[Elemento]) -> Hoja {
         por_franjas(&resto)
     };
     Hoja { pagina, bloques }
+}
+
+/// **Los bloques por sus partes con nombre** (`parte:<nombre>` en sus
+/// grupos, el de mas dentro): uno por parte, con ese nombre de titulo y, si
+/// la parte acaba en un recuadro que la cierra por abajo, ese recuadro.
+/// `None` si no hay al menos dos partes (entonces se adivina).
+fn por_partes(resto: &[&Elemento]) -> Option<Vec<Bloque>> {
+    let prefijo = crate::figuras_de_serie::PREFIJO_PARTE;
+    let mut v: Vec<Bloque> = Vec::new();
+    for e in resto {
+        let Some(n) = e.grupos.iter().find_map(|g| g.strip_prefix(prefijo)) else {
+            continue;
+        };
+        let c = e.caja();
+        match v.iter_mut().find(|b| b.titulo == n) {
+            Some(b) => {
+                b.ids.push(e.id);
+                b.caja = (
+                    b.caja.0.min(c.0),
+                    b.caja.1.min(c.1),
+                    b.caja.2.max(c.2),
+                    b.caja.3.max(c.3),
+                );
+            }
+            None => v.push(Bloque {
+                titulo: n.to_string(),
+                caja: c,
+                ids: vec![e.id],
+                recuadro: None,
+            }),
+        }
+    }
+    if v.len() < 2 {
+        return None;
+    }
+    for b in &mut v {
+        b.recuadro = resto
+            .iter()
+            .filter(|e| b.ids.contains(&e.id) && matches!(e.figura, Figura::Rectangulo))
+            .filter(|e| (e.caja().3 - b.caja.3).abs() < 0.5)
+            .max_by(|a, c| area(a.caja()).total_cmp(&area(c.caja())))
+            .filter(|r| area(r.caja()) >= area(b.caja) * 0.3)
+            .map(|r| r.id);
+    }
+    v.sort_by(|a, b| {
+        a.caja
+            .1
+            .total_cmp(&b.caja.1)
+            .then(a.caja.0.total_cmp(&b.caja.0))
+    });
+    Some(v)
 }
 
 fn por_recuadros(resto: &[&Elemento], recuadros: &[&Elemento]) -> Vec<Bloque> {
@@ -835,6 +894,32 @@ mod pruebas {
 
     fn vivos(e: &Escena) -> Vec<Elemento> {
         e.visibles().cloned().collect()
+    }
+
+    /// El mensual de serie trae sus partes: «Prioridades» y «Tareas», que
+    /// van en columnas, son dos bloques y no una franja.
+    #[test]
+    fn las_partes_con_nombre_son_los_bloques_exactos() {
+        let f = crate::figuras_de_serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-planificador-mensual")
+            .unwrap();
+        let mut e = Escena::nueva();
+        crate::biblioteca::estampar_en_escena(&mut e, &f, crate::vector::Punto2::nuevo(0.0, 0.0));
+        let h = leer(&vivos(&e));
+        let t: Vec<&str> = h.bloques.iter().map(|b| b.titulo.as_str()).collect();
+        assert_eq!(
+            t,
+            ["Calendario", "Objetivo del mes", "Tareas", "Prioridades"]
+        );
+        let pri = &h.bloques[buscar(&h, "prioridades").unwrap()];
+        let tar = &h.bloques[buscar(&h, "tareas").unwrap()];
+        assert!(pri.caja.2 < tar.caja.0, "cada una en su columna");
+        assert!(pri.ids.iter().all(|i| !tar.ids.contains(i)));
+        // Caso negativo: sin partes (la hoja de prueba) se adivina como antes.
+        let h = leer(&vivos(&hoja()));
+        assert_eq!(h.bloques.len(), 3);
+        assert_eq!(h.bloques[0].titulo, "Prioridades");
     }
 
     #[test]
