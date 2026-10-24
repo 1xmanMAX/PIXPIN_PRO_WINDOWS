@@ -27,6 +27,7 @@ use crate::texto::{self, AlineacionTexto, EstiloDeTexto};
 use crate::vector::Punto2;
 
 mod blocs;
+mod ciencias;
 mod intervalo;
 mod plantillas;
 mod storyboard;
@@ -38,10 +39,23 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 6] = ["Planificación", "Académico", "Creativo", "Diario", "Blocs", "Storyboard"];
+pub const CATEGORIAS: [&str; 12] = [
+    "Planificación",
+    "Académico",
+    "Creativo",
+    "Diario",
+    "Blocs",
+    "Storyboard",
+    "Física",
+    "Química",
+    "Matemáticas",
+    "Biología",
+    "Medicina",
+    "Mecánica",
+];
 
 /// **La categoria de una figura** por su nombre («Diario · Gratitud» →
 /// «Diario»), o `None` si no lleva.
@@ -62,6 +76,7 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     plantillas::todas(&mut v);
     blocs::todas(&mut v);
     storyboard::todas(&mut v);
+    ciencias::todas(&mut v);
     v
 }
 
