@@ -25,6 +25,10 @@
 //!
 //! Todo vive en el hilo de la ventana (`thread_local`): el bucle del chat es
 //! uno y no hay que compartir nada con otros hilos salvo por los canales.
+//! **Salvo al cerrarla** (24-oct-2026): los turnos que sigan en marcha se
+//! van a un hilo de fondo que hace lo mismo sin ventana, y vuelven al
+//! reabrirla; y cada turno queda apuntado en el disco por si PixPin se
+//! cierra a medias ([`de_fondo`]).
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -80,6 +84,11 @@ struct Sesion {
     /// por donde contestar, desde cuando y si se pulso «Otro…» (lo
     /// siguiente que se escriba es la respuesta).
     elegir: Option<Eleccion>,
+    /// Alguna herramienta ya hizo algo (lo apunta tambien el disco): si
+    /// PixPin se cierra a medias, no se repite solo ([`de_fondo`]).
+    actuo: bool,
+    /// La tarjeta flotante que lo cuenta mientras sigue con el chat cerrado.
+    fuera: Option<de_fondo::Fuera>,
 }
 
 /// Una duda con opciones en el aire.
@@ -285,21 +294,7 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
     if ocupado(&a.ficha.id) {
         return Some(textos.t("asistente-ocupado"));
     }
-    let con_foto = ia_chat::foto_reciente(ia_chat::desde_el_corte(&a.mensajes)).is_some();
-    // Pensar (15-oct): «Siempre», «Nunca» o, en automatico, solo si la
-    // tarea es compleja, con el mismo criterio para el local y la nube
-    // (`pixpin_ia::complejidad`). La ventana: el local segun su modelo; la
-    // nube tiene de sobra, pero la hoja y el reinicio valen igual.
-    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
-    let pensar = ia_pensado::pensar(aj.pensar, &pregunta);
-    let ventana = match ia_nube::eleccion(&aj) {
-        ia_nube::Eleccion::Nube(_) => ia_pensado::VENTANA_NUBE,
-        ia_nube::Eleccion::Local => ia_pensado::ventana_local(),
-    };
-    // Sin modelo (o sin clave) las ordenes simples igual se hacen: van por
-    // el camino rapido (`asistente::rapido`, el mismo que Flow Launcher y las
-    // automatizaciones). Lo demas dira el aviso.
-    let motor = match crate::asistente::rapido::motor_o_sin(motor_de_los_ajustes(ubicacion, textos, &pregunta, con_foto, pensar), &pregunta) {
+    let (motor, pensar, ventana) = match motor_para(ubicacion, textos, &a.mensajes, &pregunta) {
         Ok(m) => m,
         Err(aviso) => return Some(aviso),
     };
@@ -310,6 +305,36 @@ pub(super) fn al_enviar(ubicacion: &Ubicacion, a: &mut Abierto, textos: &Catalog
             Some(textos.t("asistente-fallo"))
         }
     }
+}
+
+/// **El motor de un pedido y como pensarlo**: el de los ajustes, si piensa
+/// y la ventana del modelo. Lo comparten el chat abierto y lo que se retoma
+/// al arrancar ([`de_fondo`]); `Err` es el aviso para el usuario.
+fn motor_para(
+    ubicacion: &Ubicacion,
+    textos: &Catalogo,
+    mensajes: &[cuaderno::Mensaje],
+    pregunta: &str,
+) -> Result<(Arc<dyn Motor>, bool, u32), String> {
+    let con_foto = ia_chat::foto_reciente(ia_chat::desde_el_corte(mensajes)).is_some();
+    // Pensar (15-oct): «Siempre», «Nunca» o, en automatico, solo si la
+    // tarea es compleja, con el mismo criterio para el local y la nube
+    // (`pixpin_ia::complejidad`). La ventana: el local segun su modelo; la
+    // nube tiene de sobra, pero la hoja y el reinicio valen igual.
+    let aj = pixpin_store::cargar(ubicacion).unwrap_or_default().asistente;
+    let pensar = ia_pensado::pensar(aj.pensar, pregunta);
+    let ventana = match ia_nube::eleccion(&aj) {
+        ia_nube::Eleccion::Nube(_) => ia_pensado::VENTANA_NUBE,
+        ia_nube::Eleccion::Local => ia_pensado::ventana_local(),
+    };
+    // Sin modelo (o sin clave) las ordenes simples igual se hacen: van por
+    // el camino rapido (`asistente::rapido`, el mismo que Flow Launcher y las
+    // automatizaciones). Lo demas dira el aviso.
+    let motor = crate::asistente::rapido::motor_o_sin(
+        motor_de_los_ajustes(ubicacion, textos, pregunta, con_foto, pensar),
+        pregunta,
+    )?;
+    Ok((motor, pensar, ventana))
 }
 
 /// Lanza el turno con este motor (las pruebas le pasan uno de mentira), sin
@@ -345,20 +370,57 @@ fn lanzar_con(
     pregunta: String,
     pensando: Option<(bool, u32)>,
 ) -> std::io::Result<()> {
-    let raiz = ubicacion.raiz().to_path_buf();
-    let proyecto = a.ficha.id.clone();
-    let n = a.mensajes.len();
-    let (anteriores, nueva) = a.mensajes.split_at(n.saturating_sub(1));
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let (nota, sesion) = lanzar_en(
+        ubicacion.raiz(),
+        &a.ficha.id,
+        a.ficha.es_asistente(),
+        &a.mensajes,
+        numero,
+        motor,
+        pregunta,
+        pensando,
+        0,
+    )?;
+    a.vistas.push(None);
+    a.mensajes.push(nota);
+    a.colocado.borrow_mut().ancho = 0;
+    SESIONES.with_borrow_mut(|s| s.push(sesion));
+    Ok(())
+}
+
+/// **El turno sin la ventana**: lo de [`lanzar_con`] que no toca la
+/// conversacion abierta. `mensajes` acaba en la pregunta; `numero` es el de
+/// la nota de la respuesta. Escribe la nota, apunta el turno en el disco
+/// ([`de_fondo::apuntar`]) y lo lanza; quien llama guarda la `Sesion` (el
+/// chat en su hilo, o el hilo de fondo al retomar lo cortado al arrancar).
+/// `intentos`: las veces que ya se retomo este pedido.
+#[allow(clippy::too_many_arguments)]
+fn lanzar_en(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    es_asistente: bool,
+    mensajes: &[cuaderno::Mensaje],
+    numero: i64,
+    motor: Arc<dyn Motor>,
+    pregunta: String,
+    pensando: Option<(bool, u32)>,
+    intentos: u32,
+) -> std::io::Result<(cuaderno::Mensaje, Sesion)> {
+    let raiz = raiz.to_path_buf();
+    let proyecto = proyecto.to_string();
+    let n = mensajes.len();
+    let (anteriores, nueva) = mensajes.split_at(n.saturating_sub(1));
     let pregunta_id = nueva.first().map(|m| m.id.clone());
     // Tras «Conversación nueva», lo de antes no se le manda (ni sus fotos,
     // ni sus adjuntos, ni su hoja de trabajo).
     let anteriores = ia_chat::desde_el_corte(anteriores);
-    let vivos = ia_chat::desde_el_corte(&a.mensajes);
+    let vivos = ia_chat::desde_el_corte(mensajes);
     // La foto puede ser la misma que se acaba de mandar.
     let foto = ia_chat::foto_reciente(vivos).and_then(|m| ruta_del_mensaje(&raiz, &proyecto, m));
     let adjuntos = ia_chat::adjuntos(vivos, |m| ruta_del_mensaje(&raiz, &proyecto, m).filter(|r| r.is_file()));
     // `@lienzo:<nombre>`: donde dibujar si no hay un lienzo abierto.
-    let (para_el_modelo, destino) = ia_chat::resolver_lienzo(&pregunta, &a.mensajes);
+    let (para_el_modelo, destino) = ia_chat::resolver_lienzo(&pregunta, mensajes);
     let abrir = ia_chat::pide_abrir(&pregunta);
     // Las herramientas de este turno (`acciones::herramientas_para`): con la
     // memoria, la vuelta de planear puede anadir las que nombre.
@@ -393,12 +455,10 @@ fn lanzar_con(
 
     // La burbuja de la respuesta nace ya, con el cursor: el usuario ve que
     // se le esta contestando aunque el modelo tarde en cargar.
-    let mut vivo = EnVivo::default();
-    vivo.estado = Some(ESTADO_INICIAL.into());
-    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let vivo = EnVivo { estado: Some(ESTADO_INICIAL.into()), ..Default::default() };
     // En otro chat la respuesta cuelga de la pregunta, para que se sepa a
     // que contesta entre los mensajes de los demas.
-    let responde_a = if a.ficha.es_asistente() { None } else { pregunta_id };
+    let responde_a = if es_asistente { None } else { pregunta_id.clone() };
     let nota = escribir_nota(
         &raiz,
         &proyecto,
@@ -410,9 +470,20 @@ fn lanzar_con(
     )?;
     let id = nota.id.clone();
     let codigo = nota.codigo_unico();
-    a.vistas.push(None);
-    a.mensajes.push(nota);
-    a.colocado.borrow_mut().ancho = 0;
+    // Apuntado ANTES de lanzarlo: si PixPin se cierra en mitad del turno,
+    // al volver a abrirla se sabe que quedo a medias.
+    de_fondo::apuntar(
+        &raiz,
+        de_fondo::EnMarcha {
+            proyecto: proyecto.clone(),
+            nota: id.clone(),
+            pregunta: pregunta_id.unwrap_or_default(),
+            asistente: es_asistente,
+            desde: pixpin_shell::entorno::ahora_utc_ms(),
+            actuo: false,
+            intentos,
+        },
+    );
 
     let turno = Turno::lanzar_con_memoria(
         motor,
@@ -425,24 +496,24 @@ fn lanzar_con(
         memoria,
         Some(raiz.clone()),
     );
-    SESIONES.with_borrow_mut(|s| {
-        s.push(Sesion {
-            proyecto,
-            nota: id,
-            codigo,
-            turno,
-            vivo,
-            guardado: Instant::now(),
-            registro: None,
-            lienzo: None,
-            abrir,
-            raiz,
-            responder: None,
-            elegir: None,
-            citas: Vec::new(),
-        })
-    });
-    Ok(())
+    let sesion = Sesion {
+        proyecto,
+        nota: id,
+        codigo,
+        turno,
+        vivo,
+        guardado: Instant::now(),
+        registro: None,
+        lienzo: None,
+        abrir,
+        raiz,
+        responder: None,
+        elegir: None,
+        citas: Vec::new(),
+        actuo: false,
+        fuera: None,
+    };
+    Ok((nota, sesion))
 }
 
 /// **«Conversación nueva»** (17-oct-2026, el usuario: «que pueda borrar el
@@ -866,10 +937,20 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
             let mut acabo = false;
             for av in avisos.drain(..) {
                 match av {
-                    Aviso::Evento(e) => s.vivo.aplicar(&e),
+                    Aviso::Evento(e) => {
+                        // La primera herramienta que hace algo: ya no se
+                        // repite solo si PixPin se cierra a medias.
+                        let actua = matches!(e, pixpin_ia::agente::Evento::Resultado { ok: true, .. });
+                        if actua && !s.actuo {
+                            s.actuo = true;
+                            de_fondo::marcar_que_actuo(&s.raiz, &s.nota);
+                        }
+                        s.vivo.aplicar(&e)
+                    }
                     Aviso::TextoLeido { de, texto } => leidos.push((s.proyecto.clone(), de, texto)),
                     Aviso::Confirmar { pregunta, responder } => {
                         s.vivo.preguntar(&pregunta);
+                        de_fondo::al_preguntar(s, &pregunta);
                         s.responder = Some((responder, Instant::now()));
                         // Que se vea ya en el disco tambien.
                         s.guardado = Instant::now() - GUARDAR_CADA;
@@ -879,6 +960,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                         // espera) se da por no contestada.
                         s.elegir(Contestada::SinRespuesta);
                         s.vivo.preguntar_con_opciones();
+                        de_fondo::al_preguntar(s, &pregunta.texto);
                         s.elegir = Some(Eleccion {
                             pregunta,
                             responder,
@@ -951,6 +1033,9 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
                     // 17-oct): queda el altavoz de la burbuja.
                     let resumen: String = texto.chars().take(120).collect();
                     let _ = subir_en_la_lista(&raiz, &s.proyecto, pixpin_shell::entorno::ahora_utc_ms(), &resumen);
+                    // Ya no esta a medias; y si seguia con el chat cerrado,
+                    // su tarjeta lo cuenta con «Abrir».
+                    de_fondo::al_acabar(s, &texto);
                 }
             }
         }
@@ -1764,6 +1849,10 @@ pub(super) fn noticia_para_pruebas() -> Option<String> {
 }
 
 pub(super) mod recetas;
+
+/// Los turnos que siguen con el chat cerrado y lo que quedo a medias al
+/// cerrarse PixPin (24-oct-2026).
+pub(super) mod de_fondo;
 
 #[cfg(test)]
 mod pruebas;

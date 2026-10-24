@@ -125,6 +125,19 @@ impl Mando {
             pixpin_shell::overlay::despertar(h);
         }
     }
+
+    /// Cambia lo que dice **sin darla por acabada** (sigue trabajando y no
+    /// cuenta para irse): un turno que sigue con el chat cerrado y pregunta
+    /// algo (`ventana_chat::asistente::de_fondo`).
+    pub fn cambiar_texto(&self, texto: String) {
+        if let Ok(mut a) = self.0.lock() {
+            a.texto = texto;
+        }
+        let h = self.1.load(Ordering::SeqCst);
+        if h != 0 {
+            pixpin_shell::overlay::despertar(h);
+        }
+    }
 }
 
 /// Cuantas hay abiertas (la nueva va encima de las otras).

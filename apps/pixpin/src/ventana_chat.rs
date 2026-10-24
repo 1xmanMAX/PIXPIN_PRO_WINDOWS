@@ -46,8 +46,23 @@ mod caja_de_soltar;
 /// dibujado en el lienzo del asistente, dejar el texto de un OCR, elegir el
 /// motor de Ajustes) y el aviso flotante con «Abrir».
 pub(crate) mod sin_ventana {
-    pub(crate) use super::aviso_asistente::{Aviso, Chat, Mando, lanzar as avisar};
+    pub(crate) use super::aviso_asistente::{Abrir, Aviso, Chat, Mando, lanzar as avisar};
     use pixpin_store::{Catalogo, Ubicacion};
+
+    /// **Al arrancar**: lo que el asistente dejo a medias al cerrarse PixPin
+    /// (Salir o un cierre de golpe) se retoma o se avisa en su burbuja
+    /// (`asistente::de_fondo`).
+    pub(crate) fn retomar_lo_cortado(
+        idioma: pixpin_store::Idioma,
+        ubicacion: Ubicacion,
+        opciones: super::OpcionesLienzo,
+    ) {
+        super::asistente::de_fondo::retomar_al_arrancar(Chat {
+            idioma,
+            ubicacion,
+            opciones,
+        });
+    }
 
     /// Lo dibujado, al lienzo del asistente en el chat `proyecto`: el
     /// resumen para el modelo y la referencia del lienzo.
@@ -510,6 +525,16 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, lienzo: Opcion
                 tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
             }
             ABIERTA.store(0, Ordering::SeqCst);
+            // Lo que el asistente tenga en marcha no muere con este hilo:
+            // sigue en el de fondo y escribe en el cuaderno (24-oct-2026, el
+            // usuario: «a pesar de que cierre la ventana, debería seguir
+            // trabajando»). Despues de bajar `ABIERTA`, para que el hilo de
+            // fondo no crea que el chat sigue abierto y se lo devuelva.
+            asistente::de_fondo::al_cerrar_el_chat(sin_ventana::Chat {
+                idioma,
+                ubicacion: ubicacion.clone(),
+                opciones: lienzo,
+            });
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del chat");
@@ -4184,6 +4209,9 @@ pub fn abrir(
             .map(|_| 100u32);
         // El asistente: lo que va escribiendo, lo que pide meter en un
         // lienzo y la descarga del modelo (`ventana_chat/asistente.rs`).
+        // Antes, lo que siguio de fondo con el chat cerrado (o se retomo al
+        // arrancar) vuelve aqui para verse en vivo.
+        asistente::de_fondo::recoger();
         let (cambio_ia, aviso_ia) = asistente::latido(ubicacion, abierto.as_mut());
         if cambio_ia {
             hay_que_pintar = true;
