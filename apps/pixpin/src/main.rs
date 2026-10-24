@@ -791,6 +791,10 @@ fn arrancar(
     } else {
         ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
     }
+    // Lo que el asistente dejo a medias al cerrarse PixPin (Salir o un
+    // cierre de golpe): se retoma o su burbuja dice que paso. Despues de
+    // lanzar el chat, que asi ya consta como naciendo y se lo queda el.
+    ventana_chat::sin_ventana::retomar_lo_cortado(lengua, ubicacion.clone(), opciones_lienzo);
 
     // 8e. Los recordatorios. Su hilo duerme hasta que vence el proximo y solo
     // da un toque a ESTA ventana: el pin y el globo los saca el bucle de
