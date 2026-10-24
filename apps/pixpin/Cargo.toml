@@ -50,6 +50,8 @@ pixpin-cad = { path = "../../crates/pixpin-cad" }
 pixpin-bim = { path = "../../crates/pixpin-bim" }
 pixpin-web = { version = "0.1.0", path = "../../crates/pixpin-web" }
 pixpin-voz = { version = "0.1.0", path = "../../crates/pixpin-voz" }
+# Tarjetas de Anki de una clase, una foto o una nota (24-oct-2026).
+pixpin-anki = { version = "0.1.0", path = "../../crates/pixpin-anki" }
 # El borrador de las imagenes pegadas en Flow (`[img 01]` -> fichero): el
 # mismo modulo que lee el plugin, asi el formato es uno solo. Solo serde y
 # `windows`, que ya estan; el plugin no depende de nada de PixPin.

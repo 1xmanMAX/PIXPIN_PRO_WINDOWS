@@ -103,6 +103,8 @@ pub(crate) mod sin_ventana {
         super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false, true)
     }
 }
+/// «Enviar a Anki» del menu de un mensaje (24-oct-2026).
+mod anki;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).
@@ -16012,6 +16014,8 @@ enum Accion {
     Lecciones,
     /// «Hacer leccion» de ese mensaje: la ficha empieza con su texto.
     HacerLeccion(usize),
+    /// «Enviar a Anki»: sus tarjetas, al mazo del proyecto (`anki.rs`).
+    Anki(usize),
     /// «Guardar como receta» ese mensaje del asistente (o su pregunta).
     GuardarReceta(usize),
     /// Lo del menu de un boton de receta (por su id).
@@ -17241,6 +17245,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         );
     }
 
+    // Tarjetas de estudio: de una clase grabada, una foto o una nota.
+    if anki::se_puede(a, m) {
+        v.push(entrada(
+            Some(&mi::MENU_BOOK),
+            textos.t("anki-enviar"),
+            Accion::Anki(i),
+        ));
+    }
+
     // Lo que se pide a menudo, como boton encima de la caja del asistente.
     if asistente::recetas::se_puede_guardar(a, i) {
         v.push(entrada(
@@ -17947,6 +17960,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             None => Efecto::Nada,
         },
         Accion::Receta(id, que) => asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos),
+        Accion::Anki(i) => anki::enviar(a, i, cx.textos),
         Accion::HacerLeccion(i) => {
             // Lo que paso suele estar ya en el chat: la leccion sale con su
             // texto (o lo que se dijo, o su nombre) y enlazada a el.

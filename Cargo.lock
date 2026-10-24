@@ -1503,6 +1503,7 @@ dependencies = [
  "lopdf",
  "pdfsqueeze-core",
  "pixpin-aligerar",
+ "pixpin-anki",
  "pixpin-audio",
  "pixpin-bim",
  "pixpin-cad",
@@ -1553,6 +1554,14 @@ dependencies = [
  "pdfsqueeze-core",
  "pixpin-shell",
  "rayon",
+]
+
+[[package]]
+name = "pixpin-anki"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde_json",
 ]
 
 [[package]]
