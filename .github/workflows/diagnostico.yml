@@ -15,10 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Las zonas de la hoja (pixpin-ia)
+      - name: Notas juntas, como en la CI
         continue-on-error: true
-        timeout-minutes: 15
-        run: 'cargo test -p pixpin-ia --lib hoja:: -- --test-threads=1'
+        timeout-minutes: 10
+        run: cargo test -p pixpin-notas --lib -- --test-threads=1
       - name: Notas bajo el depurador (la pila del acceso invalido)
         continue-on-error: true
         timeout-minutes: 15
@@ -28,9 +28,3 @@ jobs:
           $exe = Get-ChildItem target\debug\deps\pixpin_notas-*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           $cdb = "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe"
           & $cdb -G -o -c "sxe -c `".echo ACCESO_INVALIDO; lm; kn 60; .echo FIN_PILA; q`" av; g" $exe.FullName --test-threads=1 | Select-String -NotMatch "^ModLoad"
-      - name: OCR del banco
-        continue-on-error: true
-        timeout-minutes: 25
-        env:
-          PIXPIN_DIAGRAMA_DEPURAR: '1'
-        run: cargo test -p pixpin --bin pixpinmax el_parrafo_y_su_formula -- --nocapture

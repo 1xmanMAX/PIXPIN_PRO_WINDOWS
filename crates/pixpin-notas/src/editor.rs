@@ -3043,18 +3043,58 @@ struct Opciones {
     claro: Option<bool>,
 }
 
-/// **El corrector de Windows, cargado para siempre** (24-oct-2026). El
-/// control lo carga (`MsSpellCheckingFacility.dll`) y, al acabar el hilo de
-/// una nota, COM lo descarga mientras a el aun le queda trabajo en otro hilo:
-/// ese salta a codigo que ya no esta y el proceso cae con un acceso invalido
-/// (la pila de la CI, que abre y cierra notas en hilos seguidos). Con una
-/// referencia que nunca se suelta, la DLL no se descarga hasta el final.
+/// **El corrector de Windows, en un hilo que no acaba** (24-oct-2026).
+/// El control de las notas guarda el estado del corrector para todo el
+/// proceso (`CSpellerGlobalState` de msftedit) y lo prepara en segundo plano
+/// con objetos del COM del hilo que lo encendio primero. Si ese hilo acaba
+/// antes (una nota que se cierra pronto, cada prueba en su hilo), al soltar
+/// esos objetos el proceso cae con un acceso invalido (la pila de la CI, en
+/// `CSpellerGlobalState::~CSpellerGlobalState`). Asi lo enciende primero un
+/// hilo propio que vive lo que el proceso, con su control oculto, y la DLL
+/// del corrector no se descarga nunca.
 fn sujetar_el_corrector() {
     static UNA_VEZ: std::sync::Once = std::sync::Once::new();
     UNA_VEZ.call_once(|| {
-        // SAFETY: cargar una DLL del sistema por su nombre; la referencia se
-        // queda a proposito (no hay FreeLibrary). Si no esta (Windows 7), nada.
-        let _ = unsafe { windows::Win32::System::LibraryLoader::LoadLibraryW(w!("MsSpellCheckingFacility.dll")) };
+        let (listo, esperar) = std::sync::mpsc::channel();
+        let lanzado = std::thread::Builder::new().name("corrector-de-las-notas".into()).spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            // SAFETY: DLL del sistema por su nombre, con una referencia que
+            // no se suelta; un control oculto de este hilo, que no se
+            // destruye; el bucle de mensajes es de este hilo.
+            unsafe {
+                let _ = windows::Win32::System::LibraryLoader::LoadLibraryW(w!("MsSpellCheckingFacility.dll"));
+                if windows::Win32::System::LibraryLoader::LoadLibraryW(w!("msftedit.dll")).is_ok()
+                    && let Ok(edit) = CreateWindowExW(
+                        WINDOW_EX_STYLE::default(),
+                        MSFTEDIT_CLASS,
+                        w!(""),
+                        WINDOW_STYLE((ES_MULTILINE) as u32),
+                        0,
+                        0,
+                        10,
+                        10,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                {
+                    let opciones = enviar(edit, EM_GETLANGOPTIONS, 0, 0);
+                    enviar(edit, EM_SETLANGOPTIONS, 0, opciones | IMF_SPELLCHECKING as isize);
+                    let ctf = SES_USECTF | SES_CTFALLOWPROOFING;
+                    enviar(edit, EM_SETEDITSTYLE, ctf as usize, ctf as isize);
+                }
+                let _ = listo.send(());
+                let mut m = MSG::default();
+                while GetMessageW(&mut m, None, 0, 0).as_bool() {
+                    let _ = TranslateMessage(&m);
+                    DispatchMessageW(&m);
+                }
+            }
+        });
+        if lanzado.is_ok() {
+            let _ = esperar.recv_timeout(std::time::Duration::from_secs(3));
+        }
     });
 }
 
