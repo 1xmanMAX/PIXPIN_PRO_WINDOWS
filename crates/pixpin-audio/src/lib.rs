@@ -57,6 +57,7 @@
 //!   `unsafe` acotado y comentado.
 
 pub mod mezcla;
+pub mod mezclador;
 pub mod picos;
 pub mod realce;
 pub mod reloj;
@@ -75,7 +76,7 @@ pub use reloj::{
 };
 
 #[cfg(windows)]
-pub use entrada::{Grabacion, Grabadora};
+pub use entrada::{Fuentes, Grabacion, Grabadora};
 #[cfg(windows)]
 pub use salida::{Rol, Salida};
 
@@ -89,6 +90,8 @@ pub use salida::{Rol, Salida};
 pub enum ErrorAudio {
     #[error("no hay ningun microfono disponible (ni conectado, ni con permiso)")]
     SinMicrofono,
+    #[error("no se puede oir lo que suena en el equipo (no hay altavoces ni cascos activos)")]
+    SinSonidoDelEquipo,
     #[error(
         "este Windows no trae el codificador AAC (suele ser una edicion N sin el \
          paquete de caracteristicas multimedia)"

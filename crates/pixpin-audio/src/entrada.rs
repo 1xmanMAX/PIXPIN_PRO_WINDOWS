@@ -30,10 +30,11 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::mpsc::{SyncSender, sync_channel};
 use std::thread::JoinHandle;
 
-use windows::Win32::Foundation::{CloseHandle, HANDLE, RPC_E_CHANGED_MODE, WAIT_OBJECT_0};
+use windows::Win32::Foundation::{CloseHandle, HANDLE, RPC_E_CHANGED_MODE};
 use windows::Win32::Media::Audio::{
-    AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, IAudioCaptureClient, IAudioClient,
-    IMMDeviceEnumerator, MMDeviceEnumerator, WAVEFORMATEX, eCapture, eConsole,
+    AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK,
+    EDataFlow, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator,
+    WAVEFORMATEX, eCapture, eConsole, eRender,
 };
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFSample, IMFSinkWriter, MF_E_INVALIDMEDIATYPE, MF_E_TOPO_CODEC_NOT_FOUND,
@@ -48,10 +49,11 @@ use windows::Win32::System::Com::{
     CLSCTX_ALL, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
     CoTaskMemFree, CoUninitialize,
 };
-use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+use windows::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
 use windows::core::PCWSTR;
 
 use crate::mezcla::{self, Remuestreador};
+use crate::mezclador::Mezclador;
 use crate::picos::{MINIMO_MS, Reparto};
 use crate::realce::Realce;
 use crate::{ErrorAudio, en};
@@ -71,6 +73,29 @@ const ANILLO_100NS: i64 = 2_000_000;
 /// (`Voz.kt:141`) —aunque sigue siendo tres veces mas— porque una nota de
 /// voz no necesita mas y el fichero viaja por WiFi en cada sincronizacion.
 const BYTES_POR_SEGUNDO_AAC: u32 = 12_000;
+
+/// **De donde se graba** (24-oct-2026, grabar clases y reuniones).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Fuentes {
+    /// El microfono por defecto de Windows.
+    pub microfono: bool,
+    /// Lo que suena en el equipo (los altavoces o cascos por defecto): la
+    /// otra parte de una reunion de Meet o Zoom, el video de una clase.
+    pub equipo: bool,
+}
+
+impl Fuentes {
+    /// Una nota de voz: solo el microfono.
+    pub const MICROFONO: Fuentes = Fuentes {
+        microfono: true,
+        equipo: false,
+    };
+    /// Una reunion: lo que se dice y lo que se oye.
+    pub const LAS_DOS: Fuentes = Fuentes {
+        microfono: true,
+        equipo: true,
+    };
+}
 
 /// Lo que queda de una grabacion: justo lo que hay que escribir en el
 /// mensaje de voz del cuaderno.
@@ -105,6 +130,7 @@ pub struct Grabadora {
     /// Donde se esta escribiendo de verdad: `<destino>.parte`.
     parcial: PathBuf,
     parar: Arc<AtomicBool>,
+    pausa: Arc<AtomicBool>,
     nivel: Arc<AtomicI32>,
     muestras: Arc<AtomicU64>,
     muestreo: u32,
@@ -120,6 +146,15 @@ impl Grabadora {
     /// llama tiene que poder decirselo al usuario en el acto en vez de
     /// ensenar un boton rojo que no graba nada.
     pub fn empezar(destino: &Path) -> Result<Grabadora, ErrorAudio> {
+        Grabadora::empezar_con(destino, Fuentes::MICROFONO)
+    }
+
+    /// Lo mismo, de las `fuentes` dadas: el microfono, lo que suena en el
+    /// equipo o las dos juntas en una sola nota.
+    pub fn empezar_con(destino: &Path, fuentes: Fuentes) -> Result<Grabadora, ErrorAudio> {
+        if !fuentes.microfono && !fuentes.equipo {
+            return Err(ErrorAudio::SinMicrofono);
+        }
         if let Some(padre) = destino.parent()
             && !padre.as_os_str().is_empty()
         {
@@ -129,6 +164,7 @@ impl Grabadora {
         }
 
         let parar = Arc::new(AtomicBool::new(false));
+        let pausa = Arc::new(AtomicBool::new(false));
         let nivel = Arc::new(AtomicI32::new(0));
         let muestras = Arc::new(AtomicU64::new(0));
         let (avisar, arranque) = sync_channel::<Result<u32, ErrorAudio>>(1);
@@ -137,11 +173,16 @@ impl Grabadora {
         let hilo = {
             let parcial = parcial.clone();
             let parar = Arc::clone(&parar);
+            let pausa = Arc::clone(&pausa);
             let nivel = Arc::clone(&nivel);
             let muestras = Arc::clone(&muestras);
             std::thread::Builder::new()
                 .name("pixpin-grabar".into())
-                .spawn(move || grabar(&parcial, &parar, &nivel, &muestras, &avisar))
+                .spawn(move || {
+                    grabar(
+                        &parcial, fuentes, &parar, &pausa, &nivel, &muestras, &avisar,
+                    )
+                })
                 .map_err(|_| ErrorAudio::HiloCaido)?
         };
 
@@ -150,6 +191,7 @@ impl Grabadora {
                 destino: destino.to_path_buf(),
                 parcial,
                 parar,
+                pausa,
                 nivel,
                 muestras,
                 muestreo,
@@ -169,6 +211,17 @@ impl Grabadora {
             // antes de avisar.
             Err(_) => Err(ErrorAudio::HiloCaido),
         }
+    }
+
+    /// **Pausa** (`true`) o sigue (`false`). En pausa lo que suena se tira y
+    /// el reloj de la nota no corre: al seguir, la nota sigue donde iba.
+    pub fn pausar(&self, si: bool) {
+        self.pausa.store(si, Ordering::Release);
+    }
+
+    /// Si esta en pausa.
+    pub fn en_pausa(&self) -> bool {
+        self.pausa.load(Ordering::Acquire)
     }
 
     /// El ultimo pico visto, de 0 a 32767: para pintar la onda en vivo
@@ -330,7 +383,9 @@ impl Drop for FormatoDeLaMesa {
 /// El cuerpo del hilo que graba.
 fn grabar(
     destino: &Path,
+    fuentes: Fuentes,
     parar: &AtomicBool,
+    pausa: &AtomicBool,
     nivel: &AtomicI32,
     muestras_vistas: &AtomicU64,
     avisar: &SyncSender<Result<u32, ErrorAudio>>,
@@ -338,7 +393,7 @@ fn grabar(
     let _com = ComDelHilo::nuevo();
     arrancar_media_foundation();
 
-    let preparado = preparar(destino);
+    let preparado = preparar(destino, fuentes);
     let mut equipo = match preparado {
         Ok(e) => {
             let _ = avisar.send(Ok(e.muestreo));
@@ -352,12 +407,14 @@ fn grabar(
         }
     };
 
-    let resultado = bucle(&mut equipo, parar, nivel, muestras_vistas);
+    let resultado = bucle(&mut equipo, parar, pausa, nivel, muestras_vistas);
     let total = equipo.escritas;
 
-    // SAFETY: el cliente esta vivo y arrancado; parar dos veces es legal.
-    unsafe {
-        let _ = equipo.cliente.Stop();
+    for f in &equipo.fuentes {
+        // SAFETY: el cliente esta vivo y arrancado; parar dos veces es legal.
+        unsafe {
+            let _ = f.cliente.Stop();
+        }
     }
     // SAFETY: el escritor esta vivo y en escritura; `Finalize` es lo que
     // cierra el indice del MPEG-4. Sin el, el `.m4a` queda ilegible.
@@ -372,20 +429,30 @@ fn grabar(
     })
 }
 
-/// Lo que el hilo monta una vez y usa en cada vuelta.
-struct Equipo {
+/// Una tarjeta de la que se lee: el microfono, o lo que suena en el equipo
+/// (los altavoces por defecto, en modo «loopback»).
+struct Fuente {
     cliente: IAudioClient,
     captura: IAudioCaptureClient,
     _evento: Evento,
     espera: HANDLE,
-    escritor: IMFSinkWriter,
-    flujo: u32,
     /// Canales y bits con los que entrega la mesa de Windows.
     canales: u16,
     bits: u16,
     remuestreador: Remuestreador,
-    /// El realce de la voz (`crate::realce`): toda grabacion pasa por el
-    /// antes de los picos y del `.m4a`, para que la nota no salga baja.
+    /// El realce de la voz va solo al microfono: el sonido del equipo ya
+    /// sale a su volumen y realzarlo saturaria la musica.
+    microfono: bool,
+}
+
+/// Lo que el hilo monta una vez y usa en cada vuelta.
+struct Equipo {
+    fuentes: Vec<Fuente>,
+    mezclador: Mezclador,
+    escritor: IMFSinkWriter,
+    flujo: u32,
+    /// El realce de la voz (`crate::realce`): todo lo del microfono pasa
+    /// por el antes de los picos y del `.m4a`, para que la nota no salga baja.
     realce: Realce,
     reparto: Reparto,
     muestreo: u32,
@@ -393,25 +460,34 @@ struct Equipo {
     escritas: u64,
 }
 
-fn preparar(destino: &Path) -> Result<Equipo, ErrorAudio> {
-    // SAFETY: todo el bloque son llamadas COM sobre objetos que se acaban
-    // de crear y cuyo dueno es este hilo. El unico puntero crudo es el
-    // `WAVEFORMATEX*` de `GetMixFormat`, que queda bajo `FormatoDeLaMesa` y
-    // se lee solo mientras ese guardia vive.
+/// Abre una tarjeta de sonido de Windows para leer de ella. `loopback`: la
+/// de salida, para oir lo que suena en el equipo.
+///
+/// # Safety
+///
+/// COM iniciado en el hilo; `enumerador` vivo.
+unsafe fn abrir_fuente(
+    enumerador: &IMMDeviceEnumerator,
+    flujo: EDataFlow,
+    loopback: bool,
+) -> Result<(Fuente, u32), ErrorAudio> {
+    let falta = || {
+        if loopback {
+            ErrorAudio::SinSonidoDelEquipo
+        } else {
+            ErrorAudio::SinMicrofono
+        }
+    };
+    // SAFETY: llamadas COM sobre objetos recien creados por este hilo; el
+    // unico puntero crudo es el `WAVEFORMATEX*`, bajo `FormatoDeLaMesa`.
     unsafe {
-        let enumerador: IMMDeviceEnumerator =
-            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER)
-                .map_err(en("abrir la lista de aparatos de sonido"))?;
         let aparato = enumerador
-            .GetDefaultAudioEndpoint(eCapture, eConsole)
-            .map_err(|_| ErrorAudio::SinMicrofono)?;
-        let cliente: IAudioClient = aparato
-            .Activate(CLSCTX_ALL, None)
-            .map_err(|_| ErrorAudio::SinMicrofono)?;
-
+            .GetDefaultAudioEndpoint(flujo, eConsole)
+            .map_err(|_| falta())?;
+        let cliente: IAudioClient = aparato.Activate(CLSCTX_ALL, None).map_err(|_| falta())?;
         let formato = FormatoDeLaMesa(cliente.GetMixFormat().map_err(en("preguntar el formato"))?);
         if formato.0.is_null() {
-            return Err(ErrorAudio::SinMicrofono);
+            return Err(falta());
         }
         let canales = (*formato.0).nChannels.max(1);
         let bits = (*formato.0).wBitsPerSample;
@@ -422,41 +498,84 @@ fn preparar(destino: &Path) -> Result<Equipo, ErrorAudio> {
         if bits != 32 && bits != 16 {
             return Err(ErrorAudio::FormatoDesconocido { bits });
         }
-
-        let muestreo = mezcla::muestreo_de_grabacion(de_la_tarjeta);
-
         let evento = Evento::nuevo()?;
+        let banderas = if loopback {
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_LOOPBACK
+        } else {
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+        };
         cliente
             .Initialize(
                 AUDCLNT_SHAREMODE_SHARED,
-                AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                banderas,
                 ANILLO_100NS,
                 0,
                 formato.0,
                 None,
             )
-            .map_err(en("abrir el microfono"))?;
+            .map_err(en(if loopback {
+                "abrir el sonido del equipo"
+            } else {
+                "abrir el microfono"
+            }))?;
         cliente
             .SetEventHandle(evento.0)
-            .map_err(en("enganchar el aviso del microfono"))?;
+            .map_err(en("enganchar el aviso de la tarjeta"))?;
         let captura: IAudioCaptureClient = cliente
             .GetService()
-            .map_err(en("pedir el lector del microfono"))?;
+            .map_err(en("pedir el lector de la tarjeta"))?;
+        let espera = evento.0;
+        Ok((
+            Fuente {
+                cliente,
+                captura,
+                _evento: evento,
+                espera,
+                canales,
+                bits,
+                remuestreador: Remuestreador::nuevo(de_la_tarjeta, de_la_tarjeta),
+                microfono: !loopback,
+            },
+            de_la_tarjeta,
+        ))
+    }
+}
+
+fn preparar(destino: &Path, fuentes: Fuentes) -> Result<Equipo, ErrorAudio> {
+    // SAFETY: llamadas COM sobre objetos que se acaban de crear y cuyo
+    // dueno es este hilo (ver `abrir_fuente`).
+    unsafe {
+        let enumerador: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER)
+                .map_err(en("abrir la lista de aparatos de sonido"))?;
+        let mut abiertas: Vec<(Fuente, u32)> = Vec::new();
+        if fuentes.microfono {
+            abiertas.push(abrir_fuente(&enumerador, eCapture, false)?);
+        }
+        if fuentes.equipo {
+            abiertas.push(abrir_fuente(&enumerador, eRender, true)?);
+        }
+        // El de la primera manda; la otra se remuestrea a el.
+        let muestreo = mezcla::muestreo_de_grabacion(abiertas[0].1);
+        let fuentes: Vec<Fuente> = abiertas
+            .into_iter()
+            .map(|(mut f, de)| {
+                f.remuestreador = Remuestreador::nuevo(de, muestreo);
+                f
+            })
+            .collect();
 
         let (escritor, flujo) = abrir_escritor(destino, muestreo)?;
-        cliente.Start().map_err(en("arrancar el microfono"))?;
-
-        let espera = evento.0;
+        for f in &fuentes {
+            f.cliente
+                .Start()
+                .map_err(en("arrancar la tarjeta de sonido"))?;
+        }
         Ok(Equipo {
-            cliente,
-            captura,
-            _evento: evento,
-            espera,
+            mezclador: Mezclador::nuevo(fuentes.len(), muestreo),
+            fuentes,
             escritor,
             flujo,
-            canales,
-            bits,
-            remuestreador: Remuestreador::nuevo(de_la_tarjeta, muestreo),
             realce: Realce::nuevo(muestreo),
             reparto: Reparto::nuevo(muestreo),
             muestreo,
@@ -468,42 +587,95 @@ fn preparar(destino: &Path) -> Result<Equipo, ErrorAudio> {
 fn bucle(
     equipo: &mut Equipo,
     parar: &AtomicBool,
+    pausa: &AtomicBool,
     nivel: &AtomicI32,
     muestras_vistas: &AtomicU64,
 ) -> Result<(), ErrorAudio> {
+    let esperas: Vec<HANDLE> = equipo.fuentes.iter().map(|f| f.espera).collect();
+    // El reloj de la nota: lo que lleva grabado sin contar las pausas.
+    let mut activo = std::time::Duration::ZERO;
+    let mut ultimo = std::time::Instant::now();
     while !parar.load(Ordering::Acquire) {
-        // SAFETY: el evento vive dentro de `equipo` y el cliente lo tiene
-        // enganchado; la espera es la forma documentada de sincronizarse
-        // con un `IAudioClient` en modo evento. El tope de 200 ms evita
-        // quedarse colgado si el aparato desaparece a mitad (un USB que se
-        // desenchufa no vuelve a senalar nunca).
-        let que_paso = unsafe { WaitForSingleObject(equipo.espera, 200) };
-        if que_paso != WAIT_OBJECT_0 {
+        // SAFETY: los eventos viven dentro de `equipo` y cada cliente tiene
+        // el suyo enganchado; esperar a cualquiera es la forma documentada
+        // de sincronizarse con un `IAudioClient` en modo evento. El tope de
+        // 50 ms hace correr el reloj aunque ninguna tarjeta avise (lo que
+        // suena en el equipo calla del todo mientras no suena nada), y
+        // evita quedarse colgado si un aparato desaparece a mitad.
+        let _ = unsafe { WaitForMultipleObjects(&esperas, false, 50) };
+        let ahora = std::time::Instant::now();
+        let en_pausa = pausa.load(Ordering::Acquire);
+        leer_todas(equipo, !en_pausa)?;
+        if en_pausa {
+            equipo.mezclador.vaciar();
+            ultimo = ahora;
             continue;
         }
-        vaciar(equipo, nivel, muestras_vistas)?;
+        activo += ahora - ultimo;
+        ultimo = ahora;
+        let esperadas = activo.as_micros() as u64 * u64::from(equipo.muestreo) / 1_000_000;
+        equipo.mezclador.alinear(equipo.escritas, esperadas);
+        let salida = equipo.mezclador.sacar();
+        emitir(equipo, &salida, nivel, muestras_vistas)?;
     }
     // Una ultima pasada: lo que entro entre el ultimo aviso y el boton de
     // parar es medio segundo de nota que si no se perderia.
-    vaciar(equipo, nivel, muestras_vistas)
+    if !pausa.load(Ordering::Acquire) {
+        leer_todas(equipo, true)?;
+        let salida = equipo.mezclador.resto();
+        emitir(equipo, &salida, nivel, muestras_vistas)?;
+    }
+    Ok(())
 }
 
-/// Saca de la tarjeta todo lo que haya en el anillo.
-fn vaciar(
+/// Lee lo que haya en cada tarjeta y, si `guardar`, lo deja en el mezclador.
+fn leer_todas(equipo: &mut Equipo, guardar: bool) -> Result<(), ErrorAudio> {
+    for i in 0..equipo.fuentes.len() {
+        let mut muestras = vaciar(&mut equipo.fuentes[i]);
+        if !guardar || muestras.is_empty() {
+            continue;
+        }
+        if equipo.fuentes[i].microfono {
+            // En su sitio y ya al muestreo de salida: no cambia ni el
+            // formato ni cuantas muestras hay, solo lo alto que suenan.
+            equipo.realce.procesar(&mut muestras);
+        }
+        equipo.mezclador.empuja(i, &muestras);
+    }
+    Ok(())
+}
+
+/// Lo ya mezclado: a los picos, al nivel y al `.m4a`.
+fn emitir(
     equipo: &mut Equipo,
+    muestras: &[i16],
     nivel: &AtomicI32,
     muestras_vistas: &AtomicU64,
 ) -> Result<(), ErrorAudio> {
+    if muestras.is_empty() {
+        return Ok(());
+    }
+    nivel.store(crate::picos::pico_de_bloque(muestras), Ordering::Relaxed);
+    equipo.reparto.empuja(muestras);
+    escribir(equipo, muestras)?;
+    muestras_vistas.store(equipo.escritas, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Saca de una tarjeta todo lo que haya en su anillo, en mono y al muestreo
+/// de la grabacion.
+fn vaciar(fuente: &mut Fuente) -> Vec<i16> {
+    let mut salida = Vec::new();
     loop {
         // SAFETY: consulta sobre el lector vivo.
-        let cuantos = match unsafe { equipo.captura.GetNextPacketSize() } {
+        let cuantos = match unsafe { fuente.captura.GetNextPacketSize() } {
             Ok(n) => n,
             // El aparato se fue (se desenchufo el microfono). Se deja de
-            // vaciar y la nota se cierra con lo que haya.
-            Err(_) => return Ok(()),
+            // vaciar y la nota sigue con lo que haya.
+            Err(_) => return salida,
         };
         if cuantos == 0 {
-            return Ok(());
+            return salida;
         }
 
         let mut datos: *mut u8 = std::ptr::null_mut();
@@ -514,52 +686,41 @@ fn vaciar(
         // bits/8` bytes validos hasta el `ReleaseBuffer` de mas abajo, que
         // se hace siempre antes de la siguiente vuelta.
         if unsafe {
-            equipo
+            fuente
                 .captura
                 .GetBuffer(&mut datos, &mut marcos, &mut banderas, None, None)
         }
         .is_err()
         {
-            return Ok(());
+            return salida;
         }
 
-        let canales = equipo.canales as usize;
+        let canales = fuente.canales as usize;
         let total = marcos as usize * canales;
         // Bandera de silencio: la tarjeta dice «aqui no hubo nada» y el
         // buffer puede traer basura. Se escriben ceros, que es lo que sono.
         let mono = if banderas & 2 != 0 || datos.is_null() {
             vec![0i16; marcos as usize]
-        } else if equipo.bits == 32 {
+        } else if fuente.bits == 32 {
             // SAFETY: `GetBuffer` garantiza `marcos * canales` muestras de
             // 32 bits alineadas en el puntero entregado; el corte se hace
             // con ese mismo tamano y no se guarda mas alla del
             // `ReleaseBuffer`.
             let crudo = unsafe { std::slice::from_raw_parts(datos as *const f32, total) };
-            mezcla::a_mono_desde_f32(crudo, equipo.canales)
+            mezcla::a_mono_desde_f32(crudo, fuente.canales)
         } else {
             // SAFETY: igual que arriba, con muestras de 16 bits.
             let crudo = unsafe { std::slice::from_raw_parts(datos as *const i16, total) };
-            mezcla::a_mono_desde_i16(crudo, equipo.canales)
+            mezcla::a_mono_desde_i16(crudo, fuente.canales)
         };
 
         // SAFETY: devuelve el mismo numero de marcos que entrego
         // `GetBuffer`, que es lo que pide el contrato de WASAPI. A partir
         // de aqui `datos` ya no vale, y no se vuelve a usar.
         unsafe {
-            let _ = equipo.captura.ReleaseBuffer(marcos);
+            let _ = fuente.captura.ReleaseBuffer(marcos);
         }
-
-        let mut muestras = equipo.remuestreador.empuja(&mono);
-        if muestras.is_empty() {
-            continue;
-        }
-        // En su sitio y ya al muestreo de salida: no cambia ni el formato ni
-        // cuantas muestras hay, solo lo alto que suenan.
-        equipo.realce.procesar(&mut muestras);
-        nivel.store(crate::picos::pico_de_bloque(&muestras), Ordering::Relaxed);
-        equipo.reparto.empuja(&muestras);
-        escribir(equipo, &muestras)?;
-        muestras_vistas.store(equipo.escritas, Ordering::Relaxed);
+        salida.extend(fuente.remuestreador.empuja(&mono));
     }
 }
 
@@ -738,6 +899,7 @@ fn falta_codificador(e: &windows::core::Error) -> bool {
 fn clonar_error(e: &ErrorAudio) -> ErrorAudio {
     match e {
         ErrorAudio::SinMicrofono => ErrorAudio::SinMicrofono,
+        ErrorAudio::SinSonidoDelEquipo => ErrorAudio::SinSonidoDelEquipo,
         ErrorAudio::SinCodificadorAac => ErrorAudio::SinCodificadorAac,
         ErrorAudio::FormatoDesconocido { bits } => ErrorAudio::FormatoDesconocido { bits: *bits },
         ErrorAudio::NoEsAudio { ruta } => ErrorAudio::NoEsAudio { ruta: ruta.clone() },
