@@ -178,10 +178,14 @@ pub fn leer(elementos: &[Elemento]) -> Hoja {
 /// la parte acaba en un recuadro que la cierra por abajo, ese recuadro.
 /// `None` si no hay al menos dos partes (entonces se adivina).
 fn por_partes(resto: &[&Elemento]) -> Option<Vec<Bloque>> {
-    let prefijo = crate::figuras_de_serie::PREFIJO_PARTE;
     let mut v: Vec<Bloque> = Vec::new();
     for e in resto {
-        let Some(n) = e.grupos.iter().find_map(|g| g.strip_prefix(prefijo)) else {
+        // «parte:Calendario@g12» ya estampada: el nombre es «Calendario».
+        let Some(n) = e
+            .grupos
+            .iter()
+            .find_map(|g| crate::biblioteca::nombre_de_parte(g))
+        else {
             continue;
         };
         let c = e.caja();

@@ -31,7 +31,10 @@ mod blocs;
 mod ciencias;
 mod civil;
 mod derecho;
+mod electronica;
+mod flujo;
 mod intervalo;
+mod marcas;
 mod mobiliario;
 mod plantillas;
 mod secciones;
@@ -50,10 +53,10 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 18] = [
+pub const CATEGORIAS: [&str; 21] = [
     "Planificación",
     "Académico",
     "Creativo",
@@ -66,6 +69,9 @@ pub const CATEGORIAS: [&str; 18] = [
     "Escala humana",
     "Ingeniería civil",
     "Derecho",
+    "Electrónica",
+    "Diagrama de flujo",
+    "Marcas y sellos",
     "Física",
     "Química",
     "Matemáticas",
@@ -99,6 +105,9 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     civil::todas(&mut v);
     derecho::todas(&mut v);
     ciencias::todas(&mut v);
+    electronica::todas(&mut v);
+    flujo::todas(&mut v);
+    marcas::todas(&mut v);
     v
 }
 
@@ -157,7 +166,7 @@ pub(crate) struct Lapiz {
 }
 
 /// El principio del subgrupo de una parte con nombre («parte:Tareas»).
-pub const PREFIJO_PARTE: &str = "parte:";
+pub use crate::biblioteca::PREFIJO_PARTE;
 
 fn base(trazo: ColorRgba, grosor: f32) -> Elemento {
     Elemento {
