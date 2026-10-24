@@ -874,7 +874,7 @@ fn de_verdad_arreglos() {
             for x in 0..w {
                 let i = ((y * w + x) * 4) as usize;
                 let (xf, yf) = (x as i32, y as i32);
-                let tejado = yf >= 60 && yf < 170 && (xf - 200).abs() <= (yf - 60) * 140 / 110;
+                let tejado = (60..170).contains(&yf) && (xf - 200).abs() <= (yf - 60) * 140 / 110;
                 let muro = (100..340).contains(&x) && (170..360).contains(&y);
                 let puerta = (180..230).contains(&x) && (270..360).contains(&y);
                 let col = if puerta {

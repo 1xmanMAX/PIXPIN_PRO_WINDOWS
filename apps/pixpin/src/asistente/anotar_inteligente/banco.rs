@@ -413,7 +413,7 @@ pub(crate) fn pintar_lo_anotado(raiz: &Path, ruta: &Path, grupo: &str, capas: &[
                         e
                     })
                     .collect();
-                todo.extend(els.drain(..));
+                todo.append(&mut els);
                 els = todo;
                 Fondo { img: pixpin_codec::ImagenRgba { ancho: 1, alto: 1, pixeles: vec![255; 4] }, caja: p.caja }
             }

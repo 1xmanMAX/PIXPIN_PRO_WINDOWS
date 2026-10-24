@@ -252,6 +252,7 @@ impl Seccion {
 /// accion hace. Anadir un ajuste es anadir una variante aqui, su fila en
 /// `filas_de_seccion` y sus brazos en `aplicar_*` y `restablecer`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)] // ClaveNube y BorrarClave dicen lo que son
 enum Clave {
     Grupo,
     Comando(Comando),

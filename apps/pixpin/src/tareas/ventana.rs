@@ -2004,7 +2004,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
 
     // Lo que sale y donde: agrupar, medir cada tarjeta y colocarlas. Los
     // grupos son los mismos en las dos vistas; solo cambia como se colocan.
-    let palabras = tarjetas::palabras(&e.buscar.texto());
+    let palabras = tarjetas::palabras(e.buscar.texto());
     let buscando = !palabras.is_empty();
     let grupos = {
         let recien = &e.recien;
@@ -2317,7 +2317,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         titulo: &titulo,
         subtitulo: &resumen,
         buscador: Some(crate::cabecera::Buscador {
-            texto: &e.buscar.texto(),
+            texto: e.buscar.texto(),
             pista: &pista,
             foco: e.foco == Foco::Buscar,
             cursor: Some(e.buscar.pos()),
@@ -2469,7 +2469,7 @@ fn pintar_selector(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f3
         alto,
     };
     let radio = crate::v2::RADIO_FLOTANTE * s;
-    p.rellenar_redondeado(encoger(caja, -1.0 * s), radio + 1.0 * s, blanco(0.12));
+    p.rellenar_redondeado(encoger(caja, -s), radio + 1.0 * s, blanco(0.12));
     p.rellenar_redondeado(caja, radio, crate::v2::CAJA);
     // La tarjeta se traga sus clics: fuera de un boton no cierra.
     e.botones.zona(caja, Accion::EnfocarApuntar);
@@ -2840,7 +2840,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
     };
     // Lo flotante del v2: radio 14 y un canto de blanco al 10 %.
     let radio = crate::v2::RADIO_FLOTANTE * s;
-    p.rellenar_redondeado(encoger(caja, -1.0 * s), radio + 1.0 * s, blanco(0.1));
+    p.rellenar_redondeado(encoger(caja, -s), radio + 1.0 * s, blanco(0.1));
     p.rellenar_redondeado(caja, radio, crate::v2::CAJA);
     // La tarjeta se traga sus clics: fuera de un renglon no cierra.
     e.botones.zona(caja, Accion::Fondo);
@@ -4542,7 +4542,7 @@ mod pruebas {
     /// Las piezas colocadas como lo haria un fotograma, con tarjetas de alto
     /// fijo: para probar el teclado sin pintar.
     fn colocar(e: &mut Estado) {
-        let palabras = tarjetas::palabras(&e.buscar.texto());
+        let palabras = tarjetas::palabras(e.buscar.texto());
         let g = tarjetas::agrupar(&e.listas, &palabras, e.hoy, &|_, _| false);
         e.colocadas = tarjetas::disponer(
             &g,
@@ -5196,7 +5196,7 @@ mod pruebas {
         assert_eq!((e.buscar.texto(), e.foco), ("🔥", Foco::Buscar));
         let g = tarjetas::agrupar(
             &e.listas,
-            &tarjetas::palabras(&e.buscar.texto()),
+            &tarjetas::palabras(e.buscar.texto()),
             e.hoy,
             &|_, _| false,
         );

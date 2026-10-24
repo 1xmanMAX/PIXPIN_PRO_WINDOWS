@@ -509,17 +509,18 @@ fn hoja_matriz() -> Vec<Elemento> {
 
 /// Un sistema de ecuaciones con su llave (va escaneado e inclinado).
 fn hoja_sistema() -> Vec<Elemento> {
-    let mut v = Vec::new();
-    v.push(texto_de("Resuelve los sistemas por sustitucion", 60.0, 50.0, 22.0, true, "Segoe UI"));
-    v.push(texto_de("a)", 70.0, 140.0, 15.0, false, "Segoe UI"));
-    v.push(texto_de("{", 105.0, 112.0, 64.0, false, "Cambria Math"));
-    v.push(texto_de("2x + 3y = 7", 140.0, 122.0, 22.0, false, "Cambria Math"));
-    v.push(texto_de("x - y = 1", 140.0, 160.0, 22.0, false, "Cambria Math"));
-    v.push(texto_de("b)", 70.0, 290.0, 15.0, false, "Segoe UI"));
-    v.push(texto_de("{", 105.0, 248.0, 92.0, false, "Cambria Math"));
-    v.push(texto_de("x + y + z = 6", 150.0, 250.0, 22.0, false, "Cambria Math"));
-    v.push(texto_de("2x - y + z = 3", 150.0, 288.0, 22.0, false, "Cambria Math"));
-    v.push(texto_de("x + 2y - z = 2", 150.0, 326.0, 22.0, false, "Cambria Math"));
+    let mut v = vec![
+        texto_de("Resuelve los sistemas por sustitucion", 60.0, 50.0, 22.0, true, "Segoe UI"),
+        texto_de("a)", 70.0, 140.0, 15.0, false, "Segoe UI"),
+        texto_de("{", 105.0, 112.0, 64.0, false, "Cambria Math"),
+        texto_de("2x + 3y = 7", 140.0, 122.0, 22.0, false, "Cambria Math"),
+        texto_de("x - y = 1", 140.0, 160.0, 22.0, false, "Cambria Math"),
+        texto_de("b)", 70.0, 290.0, 15.0, false, "Segoe UI"),
+        texto_de("{", 105.0, 248.0, 92.0, false, "Cambria Math"),
+        texto_de("x + y + z = 6", 150.0, 250.0, 22.0, false, "Cambria Math"),
+        texto_de("2x - y + z = 3", 150.0, 288.0, 22.0, false, "Cambria Math"),
+        texto_de("x + 2y - z = 2", 150.0, 326.0, 22.0, false, "Cambria Math"),
+    ];
     parrafo(&mut v, "Comprueba cada solucion sustituyendo en todas las ecuaciones.", 60.0, 400.0, 720.0, 13.0);
     v
 }

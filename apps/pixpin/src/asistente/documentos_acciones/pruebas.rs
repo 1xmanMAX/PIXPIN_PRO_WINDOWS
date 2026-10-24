@@ -139,7 +139,7 @@ fn las_figuras_son_las_del_motor_comun() {
     for e in r.iter().chain(&e).chain(&n) {
         assert!(e.grupos.iter().any(|g| g == GRUPO || g == crate::pines::marcas_texto::GRUPO));
     }
-    assert_eq!(rgb(Some("verde"), ComoAnotar::Resaltar).1 > 100, true);
+    assert!(rgb(Some("verde"), ComoAnotar::Resaltar).1 > 100);
     assert_eq!(rgb(Some("no-es-color"), ComoAnotar::Marco), (0x3d, 0x8b, 0xff));
 }
 

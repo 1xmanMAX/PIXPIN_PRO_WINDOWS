@@ -950,7 +950,7 @@ impl CajaLinea {
                         chapas.push(RectF { x: -1.0e6, y: -1.0e6, ancho: 0.0, alto: 0.0 });
                         continue;
                     };
-                    let b = letras.last().map_or(*a, |(_, b)| *b);
+                    let b = letras.next_back().map_or(*a, |(_, b)| *b);
                     let chapa = RectF {
                         x: ox + a.x - mx,
                         y: y + a.y - my,
@@ -1586,11 +1586,11 @@ mod pruebas {
         assert!(c.pulsar(en(100 + 7 * 10 + 2), false, Instant::now()));
         assert_eq!(c.pos(), 7, "el clic cae dentro de la ficha");
         c.soltar_raton();
-        c.fuera_de_piezas(&[4..12]);
+        c.fuera_de_piezas(std::slice::from_ref(&(4..12)));
         assert_eq!(c.pos(), 12);
         // Caso negativo: fuera de la ficha no se mueve.
         c.ir_a(2);
-        c.fuera_de_piezas(&[4..12]);
+        c.fuera_de_piezas(std::slice::from_ref(&(4..12)));
         assert_eq!(c.pos(), 2);
     }
 

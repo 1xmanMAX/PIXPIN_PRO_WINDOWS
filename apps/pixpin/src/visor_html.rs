@@ -537,7 +537,7 @@ mod latencia {
         let (area, _) = crate::lector_pin::area_inicial();
         let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
         let ms = pixpin_capture::enumerar_monitores().expect("monitores");
-        let m = ms.principal().expect("monitor").clone();
+        let m = *ms.principal().expect("monitor");
         let e = m.escala_por_cien as f32 / 100.0;
         let arriba = ((60.0 * e) as i32).min(area.y - m.area.y).max(0);
         let region = pixpin_geom::Rect { x: area.x, y: area.y - arriba, ancho: area.ancho, alto: area.alto + arriba as u32 };

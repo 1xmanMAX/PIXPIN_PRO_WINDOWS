@@ -3586,6 +3586,46 @@ fn saltar_a_la_actual(e: &mut Estado, m: Marco) {
     }
 }
 
+/// Los botones propios del lector de PDF en la barra de su pin: lo que iba
+/// en la pastilla de arriba (escuchar y los ajustes).
+fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
+    use crate::lector_pin::BotonLector;
+    let mut v = vec![
+        BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() },
+        BotonLector { id: 4, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() },
+        BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false },
+    ];
+    // Un PowerPoint: presentar, a mano en la barra.
+    if e.office.as_ref().is_some_and(|o| o.tipo == pixpin_office::Tipo::PowerPoint) {
+        v.insert(0, BotonLector { id: 3, icono: &material::PLAY_ARROW, encendido: false });
+    }
+    v
+}
+
+fn accion_del_pin(id: u8) -> Option<Accion> {
+    Some(match id {
+        1 => Accion::Escuchar,
+        2 => Accion::Engranaje,
+        3 => Accion::Presentar,
+        4 => Accion::Auto,
+        _ => return None,
+    })
+}
+
+/// El nombre que lleva la barra del pin, con la hoja que se ve: «Tema 3 · 4/20».
+fn nombre_del_pin(e: &Estado) -> String {
+    if e.hojas.cuantas() > 0 {
+        format!("{} · {}/{}", e.nombre, e.hojas.en(e.y.max(0.0)) + 1, e.hojas.cuantas())
+    } else {
+        e.nombre.clone()
+    }
+}
+
+/// El zoom que da `s` pixeles por unidad del lector.
+fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
+    (s / (ancho_base(m) / vista::ANCHO_HOJA)).clamp(0.05, vista::ZOOM_MAXIMO_PDF)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -4858,44 +4898,4 @@ mod pruebas {
             );
         }
     }
-}
-
-/// Los botones propios del lector de PDF en la barra de su pin: lo que iba
-/// en la pastilla de arriba (escuchar y los ajustes).
-fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
-    use crate::lector_pin::BotonLector;
-    let mut v = vec![
-        BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() },
-        BotonLector { id: 4, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() },
-        BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false },
-    ];
-    // Un PowerPoint: presentar, a mano en la barra.
-    if e.office.as_ref().is_some_and(|o| o.tipo == pixpin_office::Tipo::PowerPoint) {
-        v.insert(0, BotonLector { id: 3, icono: &material::PLAY_ARROW, encendido: false });
-    }
-    v
-}
-
-fn accion_del_pin(id: u8) -> Option<Accion> {
-    Some(match id {
-        1 => Accion::Escuchar,
-        2 => Accion::Engranaje,
-        3 => Accion::Presentar,
-        4 => Accion::Auto,
-        _ => return None,
-    })
-}
-
-/// El nombre que lleva la barra del pin, con la hoja que se ve: «Tema 3 · 4/20».
-fn nombre_del_pin(e: &Estado) -> String {
-    if e.hojas.cuantas() > 0 {
-        format!("{} · {}/{}", e.nombre, e.hojas.en(e.y.max(0.0)) + 1, e.hojas.cuantas())
-    } else {
-        e.nombre.clone()
-    }
-}
-
-/// El zoom que da `s` pixeles por unidad del lector.
-fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
-    (s / (ancho_base(m) / vista::ANCHO_HOJA)).clamp(0.05, vista::ZOOM_MAXIMO_PDF)
 }

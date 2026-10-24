@@ -224,7 +224,7 @@ fn las_cotas_y_los_marcos_van_en_la_capa_como_en_android() {
     let mut motor = MotorDelPlano::nuevo(r.clone(), &m);
     let cota = vec![[100.0, 200.0], [1100.0, 200.0], [1100.0, 900.0]];
     let marco = [-2000.0, -1000.0, 3000.0, 1500.0];
-    motor.poner_cotas_y_marcos(&[cota.clone()], &[marco]);
+    motor.poner_cotas_y_marcos(std::slice::from_ref(&cota), &[marco]);
     let (cs, ms) = motor.cotas_y_marcos();
     assert_eq!(cs.len(), 1);
     for (a, b) in cs[0].iter().zip(&cota) {
@@ -237,10 +237,10 @@ fn las_cotas_y_los_marcos_van_en_la_capa_como_en_android() {
     assert!(texto.contains(&id_cota) && texto.contains("plano-marco") && texto.contains("\"frame\""), "{texto}");
     // Lo mismo otra vez no cambia nada (ni escribe).
     let antes = std::fs::metadata(&r.tinta).unwrap().modified().unwrap();
-    motor.poner_cotas_y_marcos(&[cota.clone()], &[marco]);
+    motor.poner_cotas_y_marcos(std::slice::from_ref(&cota), &[marco]);
     assert_eq!(std::fs::metadata(&r.tinta).unwrap().modified().unwrap(), antes);
     // Quitar el marco lo deja borrado (viaja como borrado); volver a ponerlo, revive.
-    motor.poner_cotas_y_marcos(&[cota.clone()], &[]);
+    motor.poner_cotas_y_marcos(std::slice::from_ref(&cota), &[]);
     let texto = std::fs::read_to_string(&r.tinta).unwrap();
     assert!(texto.contains("\"isDeleted\": true"), "{texto}");
     assert_eq!(MotorDelPlano::nuevo(r.clone(), &m).cotas_y_marcos().1.len(), 0);

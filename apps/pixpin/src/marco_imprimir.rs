@@ -49,13 +49,12 @@ pub fn elegir(area: Rect, textos: &Catalogo) -> Result<Option<ImagenRgba>> {
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo")?;
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let centro = Punto { x: area.x + area.ancho as i32 / 2, y: area.y + area.alto as i32 / 2 };
-    let m = monitores
+    let m = *monitores
         .monitores()
         .iter()
         .find(|m| m.area.contiene(centro))
         .or_else(|| monitores.monitores().first())
-        .context("sin monitor")?
-        .clone();
+        .context("sin monitor")?;
     let area = area.interseccion(m.area).context("el visor no esta en ningun monitor")?;
     let foto = pixpin_capture::capturar_monitor(&d, m.id, m.area).context("sin captura")?;
     let recorte = foto.recortar(&d, area).context("sin recorte")?;
@@ -324,7 +323,7 @@ pub fn foto_de_pantalla(area: Rect) -> Option<ImagenRgba> {
     let d = pixpin_capture::Dispositivo::nuevo().ok()?;
     let monitores = pixpin_capture::enumerar_monitores().ok()?;
     let centro = Punto { x: area.x + area.ancho as i32 / 2, y: area.y + area.alto as i32 / 2 };
-    let m = monitores.monitores().iter().find(|m| m.area.contiene(centro)).or_else(|| monitores.monitores().first())?.clone();
+    let m = *monitores.monitores().iter().find(|m| m.area.contiene(centro)).or_else(|| monitores.monitores().first())?;
     let area = area.interseccion(m.area)?;
     let foto = pixpin_capture::capturar_monitor(&d, m.id, m.area).ok()?;
     let recorte = foto.recortar(&d, area).ok()?;

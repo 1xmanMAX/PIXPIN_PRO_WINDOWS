@@ -193,7 +193,7 @@ pub fn leer(t: &str, n: usize) -> Option<Plan> {
     // ...y el largo, una fila por zona.
     for z in v["zonas"].as_array().into_iter().flatten() {
         let Some(i) = z["n"].as_u64().map(|x| x as usize).filter(|&i| i < n) else { continue };
-        if let Some(es) = z["es"].as_str().map(|e| pixpin_ia::acciones::normalizar(e)).filter(|e| TIPOS.contains(&e.as_str())) {
+        if let Some(es) = z["es"].as_str().map(pixpin_ia::acciones::normalizar).filter(|e| TIPOS.contains(&e.as_str())) {
             plan.es.insert(i, es);
         }
         if let Some(g) = z["grupo"].as_str().map(str::trim).filter(|g| !g.is_empty()) {

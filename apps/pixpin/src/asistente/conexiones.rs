@@ -285,30 +285,6 @@ pub fn desconectar(s: &'static Servicio, despertar: Arc<dyn Fn() + Send + Sync>)
     }
 }
 
-#[cfg(test)]
-mod pruebas {
-    use super::*;
-
-    #[test]
-    fn lo_que_no_parece_un_id_de_cliente_ni_se_guarda_y_se_dice() {
-        let despertado = Arc::new(AtomicU64::new(0));
-        let d = despertado.clone();
-        let s = &conexiones::SERVICIOS[0];
-        let antes = hay_cliente(s);
-        guardar_cliente(s, "hola que tal", Arc::new(move || {
-            d.fetch_add(1, Ordering::SeqCst);
-        }));
-        assert_eq!(despertado.load(Ordering::SeqCst), 1);
-        assert_eq!(hay_cliente(s), antes, "no cambio lo guardado");
-        let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        assert!(estado(s, &t).contains("no parece un ID de cliente"), "{}", estado(s, &t));
-        // La fila del ID dice donde se crea.
-        if !antes {
-            assert!(estado_cliente(s, &t).contains("console.cloud.google.com"));
-        }
-    }
-}
-
 /// **«¿Que tengo hoy?»**: los eventos de Google Calendar de los dias
 /// pedidos (`desde`: hoy, mañana, un dia de la semana, «semana» o
 /// AAAA-MM-DD; `dias`: cuantos), de lo que la app ya leyo.
@@ -348,4 +324,28 @@ fn ver_calendario(args: &serde_json::Value) -> String {
         }
     };
     crate::calendario_google::para_el_modelo(primero * DIA, (primero + dias) * DIA)
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn lo_que_no_parece_un_id_de_cliente_ni_se_guarda_y_se_dice() {
+        let despertado = Arc::new(AtomicU64::new(0));
+        let d = despertado.clone();
+        let s = &conexiones::SERVICIOS[0];
+        let antes = hay_cliente(s);
+        guardar_cliente(s, "hola que tal", Arc::new(move || {
+            d.fetch_add(1, Ordering::SeqCst);
+        }));
+        assert_eq!(despertado.load(Ordering::SeqCst), 1);
+        assert_eq!(hay_cliente(s), antes, "no cambio lo guardado");
+        let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert!(estado(s, &t).contains("no parece un ID de cliente"), "{}", estado(s, &t));
+        // La fila del ID dice donde se crea.
+        if !antes {
+            assert!(estado_cliente(s, &t).contains("console.cloud.google.com"));
+        }
+    }
 }

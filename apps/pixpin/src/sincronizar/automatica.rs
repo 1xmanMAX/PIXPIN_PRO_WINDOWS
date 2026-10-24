@@ -973,6 +973,6 @@ mod pruebas {
         assert_eq!(r.toca(0), Some(Motivo::Aparecio));
         r.empezo(0);
         assert_eq!(r.toca(1_000), None);
-        assert!(SONDEO_PERSONAS >= 60_000, "las personas se miran sin prisa");
+        const { assert!(SONDEO_PERSONAS >= 60_000, "las personas se miran sin prisa") };
     }
 }

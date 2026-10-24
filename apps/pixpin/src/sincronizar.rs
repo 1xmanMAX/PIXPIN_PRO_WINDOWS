@@ -835,11 +835,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         ventana.mover(marco);
                     }
                 }
-                EventoOverlay::BotonSoltado(_) => {
-                    if arrastre.take().is_some() | pantalla.soltar_caja() {
+                EventoOverlay::BotonSoltado(_)
+                    if arrastre.take().is_some() | pantalla.soltar_caja() => {
                         ventana.soltar_raton();
                     }
-                }
                 _ => {}
             }
         }

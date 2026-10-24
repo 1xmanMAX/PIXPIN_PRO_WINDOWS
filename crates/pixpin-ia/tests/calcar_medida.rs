@@ -334,7 +334,7 @@ fn pintar(els: &[Value], ruta: &Path, lupa: Option<(f64, f64, f64)>) -> Option<p
     let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
     let hojas = pixpin_motor2d::exportar::hojas(&escena, pixpin_motor2d::exportar::Alcance::Todo, &[], Some((800.0, 600.0)));
     let blanco = pixpin_motor2d::ColorRgba::opaco(1.0, 1.0, 1.0);
-    let Some(pdf) = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &|_| None) else { return None };
+    let pdf = pixpin_pdf::escribir::de_hojas(&hojas, Some(blanco), &|_| None)?;
     let tmp = ruta.with_extension("pdf");
     if std::fs::write(&tmp, pdf).is_err() {
         return None;

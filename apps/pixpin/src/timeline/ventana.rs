@@ -531,7 +531,7 @@ impl Estado {
         let elegidos: Vec<&Momento> = match self.modo() {
             Modo::Hoy => dias::ultimas_24h(&self.momentos, Self::ahora()),
             Modo::Dia(d) => dias::del_dia(&self.momentos, d, self.desfase),
-            Modo::Buscar => pixpin_timeline::buscar::buscar(&self.momentos, &self.busqueda.texto()),
+            Modo::Buscar => pixpin_timeline::buscar::buscar(&self.momentos, self.busqueda.texto()),
             Modo::Momentos | Modo::Estado | Modo::Lecciones => Vec::new(),
         };
         self.indices(&elegidos)
@@ -1290,9 +1290,7 @@ fn tecla(
             if std::mem::take(&mut e.menu) || e.menu_compartir.take().is_some() {
             } else if !e.busqueda.texto().is_empty() {
                 e.vaciar_busqueda();
-            } else if e.corrigiendo.is_some() {
-                e.vaciar_caja();
-            } else if !e.campo.texto().is_empty() || !e.pegadas.is_empty() {
+            } else if e.corrigiendo.is_some() || !e.campo.texto().is_empty() || !e.pegadas.is_empty() {
                 e.vaciar_caja();
             } else if e.dia.is_some() {
                 return hacer(e, Accion::VolverDelDia, textos, ubicacion, idioma);
@@ -1734,7 +1732,7 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
     };
     let secciones: Vec<Seccion<'_>> = if dias_sueltos.is_empty() {
         let mut v = if e.modo() == Modo::Buscar {
-            pixpin_timeline::buscar::buscar(&e.momentos, &e.busqueda.texto())
+            pixpin_timeline::buscar::buscar(&e.momentos, e.busqueda.texto())
         } else {
             dias::ultimas_24h(&e.momentos, Estado::ahora())
         };
@@ -1837,7 +1835,7 @@ fn vista_en_imagen(
     d3d: &windows::Win32::Graphics::Direct3D11::ID3D11Device,
     textos: &Catalogo,
 ) -> Result<pixpin_codec::ImagenRgba> {
-    let (w, h) = (marco.ancho.max(1) as u32, marco.alto.max(1) as u32);
+    let (w, h) = (marco.ancho.max(1), marco.alto.max(1));
     let fuera = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, w, h)
         .context("sin superficie")?;
     motor
@@ -2279,7 +2277,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             titulo: &titulo,
             subtitulo: &subtitulo,
             buscador: Some(crate::cabecera::Buscador {
-                texto: &e.busqueda.texto(),
+                texto: e.busqueda.texto(),
                 pista: &pista,
                 foco: e.buscando,
                 cursor: Some(e.busqueda.pos()),

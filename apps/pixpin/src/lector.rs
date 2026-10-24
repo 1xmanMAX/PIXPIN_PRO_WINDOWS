@@ -725,6 +725,23 @@ pub fn pintar_barra_de_auto(
     botones
 }
 
+/// **El globo de un boton**: su nombre y su atajo, en una pastilla oscura a
+/// la izquierda de `junto_a` (pixeles de la ventana), centrada a su altura.
+/// El mismo para todos los rieles de los visores.
+pub fn globo_a_la_izquierda(p: &Pintor<'_>, junto_a: RectF, texto: &str, e: f32) {
+    let tam = 12.0 * e;
+    let (w, h) = p.medir_texto(texto, tam);
+    let (px, py) = (8.0 * e, 5.0 * e);
+    let caja = RectF {
+        x: (junto_a.x - 8.0 * e - w - 2.0 * px).max(0.0),
+        y: junto_a.y + (junto_a.alto - h - 2.0 * py) / 2.0,
+        ancho: w + 2.0 * px,
+        alto: h + 2.0 * py,
+    };
+    p.rellenar_redondeado(caja, 6.0 * e, Color { r: 0.106, g: 0.106, b: 0.122, a: 0.96 });
+    p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -828,21 +845,4 @@ mod pruebas {
         assert!(!dentro(&r, 9.9, 12.0));
         assert!(!dentro(&r, 12.0, 15.1));
     }
-}
-
-/// **El globo de un boton**: su nombre y su atajo, en una pastilla oscura a
-/// la izquierda de `junto_a` (pixeles de la ventana), centrada a su altura.
-/// El mismo para todos los rieles de los visores.
-pub fn globo_a_la_izquierda(p: &Pintor<'_>, junto_a: RectF, texto: &str, e: f32) {
-    let tam = 12.0 * e;
-    let (w, h) = p.medir_texto(texto, tam);
-    let (px, py) = (8.0 * e, 5.0 * e);
-    let caja = RectF {
-        x: (junto_a.x - 8.0 * e - w - 2.0 * px).max(0.0),
-        y: junto_a.y + (junto_a.alto - h - 2.0 * py) / 2.0,
-        ancho: w + 2.0 * px,
-        alto: h + 2.0 * py,
-    };
-    p.rellenar_redondeado(caja, 6.0 * e, Color { r: 0.106, g: 0.106, b: 0.122, a: 0.96 });
-    p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
 }

@@ -736,7 +736,6 @@ pub fn anotar_en(
             poner(v, &mut hecho, primer_trozo);
         }
     }
-    drop(poner);
     if let Some(m) = fallo
         && anotador.cuantas() == 0
     {

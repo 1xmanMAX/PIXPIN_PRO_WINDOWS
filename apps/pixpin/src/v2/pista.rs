@@ -36,7 +36,7 @@ pub fn pintar(p: &Pintor, ancla: RectF, texto: &str, limite: RectF, s: f32) {
     // Con aire contra el borde de la ventana: pegada al canto parece cortada.
     let caja = colocar(ancla, ancho, alto, encoger(limite, 8.0 * s), 6.0 * s);
     let radio = 8.0 * s;
-    p.rellenar_redondeado(encoger(caja, -1.0 * s), radio + 1.0 * s, blanco(0.12));
+    p.rellenar_redondeado(encoger(caja, -s), radio + 1.0 * s, blanco(0.12));
     p.rellenar_redondeado(caja, radio, negro(0.92));
     p.texto_linea(
         texto,

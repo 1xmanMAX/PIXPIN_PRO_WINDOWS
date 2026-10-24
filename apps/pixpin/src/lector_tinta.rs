@@ -184,7 +184,7 @@ pub mod turnos {
     /// vista.
     pub fn marcar(capa: &Path, escena: &mut Escena) -> Option<Marcado> {
         let grupo = grupo_de(capa)?;
-        let ids: Vec<u64> = escena.visibles().filter(|e| e.grupos.iter().any(|g| *g == grupo)).map(|e| e.id).collect();
+        let ids: Vec<u64> = escena.visibles().filter(|e| e.grupos.contains(&grupo)).map(|e| e.id).collect();
         if ids.is_empty() {
             return None;
         }

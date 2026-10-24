@@ -393,8 +393,7 @@ fn lanzar_con(
 
     // La burbuja de la respuesta nace ya, con el cursor: el usuario ve que
     // se le esta contestando aunque el modelo tarde en cargar.
-    let mut vivo = EnVivo::default();
-    vivo.estado = Some(ESTADO_INICIAL.into());
+    let vivo = EnVivo { estado: Some(ESTADO_INICIAL.into()), ..Default::default() };
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     // En otro chat la respuesta cuelga de la pregunta, para que se sepa a
     // que contesta entre los mensajes de los demas.
@@ -1009,7 +1008,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>) -
 /// que hay en el repo (ver `asistente::ocr`).
 pub(super) fn dejar_texto_leido(
     raiz: &std::path::Path,
-    mut abierto: Option<&mut Abierto>,
+    abierto: Option<&mut Abierto>,
     proyecto: &str,
     de: &ia_turno::Adjunto,
     texto: &str,
@@ -1038,7 +1037,7 @@ pub(super) fn dejar_texto_leido(
         "",
         None,
     )?;
-    if let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == proyecto) {
+    if let Some(a) = abierto.filter(|a| a.ficha.id == proyecto) {
         for m in [nota, fichero] {
             a.vistas.push(None);
             a.mensajes.push(m);
@@ -1073,7 +1072,7 @@ pub(super) fn meter_en_el_lienzo_del_chat(
 /// aun no existe. Devuelve la respuesta y la referencia del lienzo (si hay).
 pub(super) fn trabajar_en_el_lienzo_del_chat(
     ubicacion: &Ubicacion,
-    mut abierto: Option<&mut Abierto>,
+    abierto: Option<&mut Abierto>,
     proyecto: &str,
     destino: Option<&str>,
     trabajo: &al_lienzo::Trabajo,
@@ -1233,7 +1232,7 @@ pub(super) fn trabajar_en_el_lienzo_del_chat(
     if !guardar_hoja_dibujada(&hoja.ruta, &lienzo, &escena) {
         return Err("no se pudo guardar el lienzo".into());
     }
-    if let Some(a) = abierto.as_deref_mut().filter(|_| es_el_abierto) {
+    if let Some(a) = abierto.filter(|_| es_el_abierto) {
         let vista = leer_vista(ubicacion, proyecto, &mensaje);
         // Si ya entro por otro camino (la ventana releyo el cuaderno), se
         // cambia en su sitio en vez de salir dos veces.

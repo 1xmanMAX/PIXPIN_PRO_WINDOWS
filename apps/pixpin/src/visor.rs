@@ -3224,6 +3224,44 @@ fn saltar_a_la_actual(e: &mut Estado, p: &Pintor, m: Marco) {
     }
 }
 
+/// Los botones propios del lector en la barra de su pin: lo que iba en la
+/// pastilla de arriba (indice, escuchar, ajustes).
+fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
+    use crate::lector_pin::BotonLector;
+    let mut v = Vec::new();
+    if !e.indice.is_empty() {
+        v.push(BotonLector { id: 0, icono: &material::LIST, encendido: e.viendo_indice });
+    }
+    v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
+    v.push(BotonLector { id: 3, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() });
+    v.push(BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false });
+    v
+}
+
+fn accion_del_pin(id: u8) -> Option<Accion> {
+    Some(match id {
+        0 => Accion::Indice,
+        1 => Accion::Escuchar,
+        2 => Accion::Engranaje,
+        3 => Accion::Auto,
+        _ => return None,
+    })
+}
+
+/// El nombre que lleva la barra del pin: el del mensaje del chat, o el del fichero.
+fn nombre_del_pin(e: &Estado) -> String {
+    if e.nombre.visto.is_empty() {
+        pixpin_docs::sin_extension(&e.doc.titulo)
+    } else {
+        pixpin_docs::sin_extension(&e.nombre.visto)
+    }
+}
+
+/// El zoom que da `s` pixeles por unidad del documento.
+fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
+    (s / m.e).clamp(0.2, 8.0)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -4341,42 +4379,4 @@ mod pruebas {
             "el p95 ({p95:.2} ms) no cabe en un fotograma de 60 Hz"
         );
     }
-}
-
-/// Los botones propios del lector en la barra de su pin: lo que iba en la
-/// pastilla de arriba (indice, escuchar, ajustes).
-fn botones_del_pin(e: &Estado) -> Vec<crate::lector_pin::BotonLector> {
-    use crate::lector_pin::BotonLector;
-    let mut v = Vec::new();
-    if !e.indice.is_empty() {
-        v.push(BotonLector { id: 0, icono: &material::LIST, encendido: e.viendo_indice });
-    }
-    v.push(BotonLector { id: 1, icono: &material::RECORD_VOICE_OVER, encendido: e.voz.is_some() });
-    v.push(BotonLector { id: 3, icono: &lector::DOBLE_FLECHA_ABAJO, encendido: e.auto.is_some() });
-    v.push(BotonLector { id: 2, icono: &material::MORE_VERT, encendido: false });
-    v
-}
-
-fn accion_del_pin(id: u8) -> Option<Accion> {
-    Some(match id {
-        0 => Accion::Indice,
-        1 => Accion::Escuchar,
-        2 => Accion::Engranaje,
-        3 => Accion::Auto,
-        _ => return None,
-    })
-}
-
-/// El nombre que lleva la barra del pin: el del mensaje del chat, o el del fichero.
-fn nombre_del_pin(e: &Estado) -> String {
-    if e.nombre.visto.is_empty() {
-        pixpin_docs::sin_extension(&e.doc.titulo)
-    } else {
-        pixpin_docs::sin_extension(&e.nombre.visto)
-    }
-}
-
-/// El zoom que da `s` pixeles por unidad del documento.
-fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
-    (s / m.e).clamp(0.2, 8.0)
 }

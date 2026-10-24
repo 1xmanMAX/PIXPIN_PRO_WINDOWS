@@ -233,7 +233,7 @@ fn preparar_el_turno_reinicia_al_70_y_apunta_desde_donde() {
     let fijo = {
         let mut h = catalogo_base();
         h.push(pixpin_ia::contexto::herramienta_buscar());
-        pixpin_ia::contexto::estimar(&[pixpin_ia::motor::Mensaje::sistema(&pixpin_ia::agente::instrucciones())], &h)
+        pixpin_ia::contexto::estimar(&[pixpin_ia::motor::Mensaje::sistema(pixpin_ia::agente::instrucciones())], &h)
     };
     let una_larga = pixpin_ia::contexto::tokens_de_texto(&largo(1));
     let ventana = ((fijo + 2 * una_larga + 800 + pixpin_ia::contexto::RESERVA_RESPUESTA) as f32 / pixpin_ia::contexto::UMBRAL) as u32;

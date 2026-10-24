@@ -197,7 +197,7 @@ impl Estado {
     }
 
     fn titulo(&self) -> &str {
-        &self.campo(CampoId::Titulo).texto()
+        self.campo(CampoId::Titulo).texto()
     }
 
     /// Rellena con lo que habia (editar).

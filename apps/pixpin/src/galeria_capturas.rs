@@ -1816,7 +1816,7 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, escala: f32, textos: &Cat
         titulo: &titulo,
         subtitulo: &subtitulo,
         buscador: Some(crate::cabecera::Buscador {
-            texto: &e.consulta.texto(),
+            texto: e.consulta.texto(),
             pista: &pista,
             foco: e.escribiendo,
             cursor: Some(e.consulta.pos()),
@@ -2008,9 +2008,9 @@ fn pintar_celda(
     // como dos estados distintos.
     if enfocada || elegida {
         p.rellenar(encoger(c, -3.0 * escala), d::ACENTO);
-        p.rellenar(encoger(c, -1.0 * escala), d::FONDO);
+        p.rellenar(encoger(c, -escala), d::FONDO);
     } else if encima {
-        p.rellenar(encoger(c, -1.0 * escala), blanco(0.35));
+        p.rellenar(encoger(c, -escala), blanco(0.35));
     }
     p.rellenar(c, d::TARJETA);
     match e.minis.get(&entrada.ruta) {
@@ -2197,7 +2197,7 @@ fn pintar_barra_elegidas(
     };
     p.rellenar_redondeado(encoger(barra, -8.0 * s), 20.0 * s, negro(0.35));
     p.rellenar_redondeado(
-        encoger(barra, -1.0 * s),
+        encoger(barra, -s),
         (d::RADIO_FLOTANTE + 1.0) * s,
         blanco(0.12),
     );

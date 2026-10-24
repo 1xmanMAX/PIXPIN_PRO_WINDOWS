@@ -1734,9 +1734,12 @@ fn correr(fuente: &Fuente) -> Vec<(&'static str, Nota)> {
     notas
 }
 
+/// Lo de cada motor: su nombre y su nota en cada caso (o por que no corrio).
+type DeUnMotor = (String, Result<Vec<(&'static str, Nota)>, String>);
+
 /// **La tabla comparativa** (Markdown): una fila por caso, una columna por
 /// motor («✓ 3,2 s» / «✗ 3,2 s»), y abajo el acierto y el tiempo total.
-fn tabla(motores: &[(String, Result<Vec<(&'static str, Nota)>, String>)]) -> String {
+fn tabla(motores: &[DeUnMotor]) -> String {
     let mut casos: Vec<&'static str> = Vec::new();
     for (_, r) in motores {
         if let Ok(v) = r {
@@ -2639,8 +2642,7 @@ fn cache_entre_preguntas() {
         .into_iter()
         .enumerate()
     {
-        let mut hoja = HojaDeTrabajo::default();
-        hoja.objetivo = objetivo.into();
+        let hoja = HojaDeTrabajo { objetivo: objetivo.into(), ..Default::default() };
         let mut sistema = pixpin_ia::contexto::sistema_con_hoja(&base, &hoja, None);
         // `PIXPIN_IA_SIN_PARTIR=1`: como antes del 14-oct (la hoja dentro del
         // mismo bloque que lo fijo), para comparar.

@@ -305,13 +305,12 @@ fn fotografiar(nombre: &str) -> PathBuf {
     let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
     let ms = pixpin_capture::enumerar_monitores().expect("monitores");
     let centro = (area.x + area.ancho as i32 / 2, area.y + area.alto as i32 / 2);
-    let m = ms
+    let m = *ms
         .monitores()
         .iter()
         .find(|m| centro.0 >= m.area.x && centro.1 >= m.area.y && centro.0 < m.area.x + m.area.ancho as i32 && centro.1 < m.area.y + m.area.alto as i32)
         .or_else(|| ms.principal())
-        .expect("un monitor")
-        .clone();
+        .expect("un monitor");
     let e = m.escala_por_cien as f32 / 100.0;
     // Con la barra del pin, que va encima.
     let arriba = ((56.0 * e) as i32).min(area.y - m.area.y).max(0);

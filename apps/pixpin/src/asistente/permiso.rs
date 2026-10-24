@@ -142,8 +142,7 @@ pub fn preguntar_en_el_chat(ubicacion: &pixpin_store::Ubicacion, aparato: &str, 
     let Ok((proyecto, carpeta)) = crate::automatizaciones::chat_del_asistente(raiz, aparato, ahora) else {
         return false;
     };
-    let mut vivo = super::chat::EnVivo::default();
-    vivo.texto = format!("⚙️ {de}\n");
+    let mut vivo = super::chat::EnVivo { texto: format!("⚙️ {de}\n"), ..Default::default() };
     vivo.preguntar(pregunta);
     let Ok(numero) = crate::ventana_chat::siguiente_numero_en(raiz, &proyecto) else {
         return false;

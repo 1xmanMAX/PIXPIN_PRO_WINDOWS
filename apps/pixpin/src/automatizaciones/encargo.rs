@@ -173,8 +173,7 @@ pub fn hacer_con_vision(
 
     // 2. La burbuja de la respuesta.
     let numero = crate::ventana_chat::siguiente_numero_en(&raiz, &asistente).map_err(|x| x.to_string())?;
-    let mut vivo0 = EnVivo::default();
-    vivo0.estado = Some(crate::asistente::rapido::ESTADO_INICIAL.into());
+    let vivo0 = EnVivo { estado: Some(crate::asistente::rapido::ESTADO_INICIAL.into()), ..Default::default() };
     let nota = crate::ventana_chat::escribir_nota(
         &raiz,
         &asistente,

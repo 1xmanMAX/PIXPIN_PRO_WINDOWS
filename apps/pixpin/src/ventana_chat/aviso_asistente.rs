@@ -214,7 +214,7 @@ fn medidas(ancho: f32, alto_texto: f32, con_pie: bool, alto_maximo: f32, e: f32)
     Medidas {
         alto,
         texto,
-        pie: con_pie.then(|| alto - 46.0 * e),
+        pie: con_pie.then_some(alto - 46.0 * e),
         sobra: (alto_texto - texto.alto).max(0.0),
     }
 }

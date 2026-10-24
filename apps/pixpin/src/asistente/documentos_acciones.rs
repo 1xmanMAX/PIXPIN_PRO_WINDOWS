@@ -893,11 +893,11 @@ pub fn tabla_de_fichero(
     if let Some(motor) = corregir
         && !m.celdas.is_empty()
     {
-        corregidas = corregir_con_la_nube(motor, &c.ruta, pagina, &mut m);
+        corregidas = corregir_con_la_nube(motor, c.ruta, pagina, &mut m);
     }
-    let filas = filas_de(&leida, &m, &c.ruta);
+    let filas = filas_de(&leida, &m, c.ruta);
     let leida = con_filas(leida, filas);
-    let k = escala.unwrap_or(if super::ocr::es_imagen(&c.ruta) { 1.0 } else { 1400.0 / ancho_img as f32 });
+    let k = escala.unwrap_or(if super::ocr::es_imagen(c.ruta) { 1.0 } else { 1400.0 / ancho_img as f32 });
     let col = |c: [u8; 3]| ColorRgba::opaco(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0);
     let (filas, columnas) = (leida.filas.len(), leida.columnas());
     let cuadra = m.cuadra(filas, columnas);

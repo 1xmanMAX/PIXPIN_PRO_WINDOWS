@@ -866,7 +866,7 @@ fn pintar_celda(e: &mut Estado, p: &Pintor, c: RectF, zona: RectF, i: usize, s: 
     let elegida = e.elegida == Some(i);
     if elegida {
         p.rellenar_redondeado(encoger(c, -3.0 * s), d::RADIO_TARJETA * s + 3.0 * s, d::ACENTO);
-        p.rellenar_redondeado(encoger(c, -1.0 * s), d::RADIO_TARJETA * s + 1.0 * s, d::FONDO);
+        p.rellenar_redondeado(encoger(c, -s), d::RADIO_TARJETA * s + 1.0 * s, d::FONDO);
     }
     p.rellenar_redondeado(c, d::RADIO_TARJETA * s, if encima { d::TARJETA_ENCIMA } else { d::TARJETA });
     // La miniatura sobre su papel claro: las plantillas son hojas blancas.

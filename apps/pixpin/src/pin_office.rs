@@ -330,10 +330,7 @@ fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &P
     {
         tracing::warn!(copia = %c.display(), "Office viejo: el visor propio no lo abrio");
     }
-    match despues {
-        Some(PRESENTAR) => crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta),
-        _ => {}
-    }
+    if let Some(PRESENTAR) = despues { crate::diapositivas::lanzar(idioma, ubicacion.clone(), ruta) }
     Ok(())
 }
 

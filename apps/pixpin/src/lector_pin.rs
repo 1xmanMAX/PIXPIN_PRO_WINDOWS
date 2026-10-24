@@ -968,7 +968,7 @@ mod pruebas {
     #[test]
     fn un_visor_de_archivos_nace_sin_fijar() {
         let a = Rect { x: 0, y: 0, ancho: 800, alto: 600 };
-        assert!(!FIJADO_AL_NACER);
+        const { assert!(!FIJADO_AL_NACER) };
         let p = PinLector::nuevo(a, 1.0);
         assert!(!p.fijado, "nace como una ventana mas");
         // Tambien el de Office (sin luna/sol) y con extension.

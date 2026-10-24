@@ -5313,6 +5313,12 @@ pub(crate) mod medir;
 #[cfg(test)]
 mod medir_arrastre;
 
+/// **Una linea de referencia escondida** (`referenciasVisibles` a falso): no
+/// se pinta, como en el movil. Ver `Escena::a_la_vista`.
+fn guia_escondida(escena: &Escena, e: &pixpin_motor2d::Elemento) -> bool {
+    !escena.referencias_visibles && e.extras.referencia
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -6535,10 +6541,4 @@ mod pruebas {
             "los ajustes de prueba tienen que diferir de los de fabrica o esto no mide nada"
         );
     }
-}
-
-/// **Una linea de referencia escondida** (`referenciasVisibles` a falso): no
-/// se pinta, como en el movil. Ver `Escena::a_la_vista`.
-fn guia_escondida(escena: &Escena, e: &pixpin_motor2d::Elemento) -> bool {
-    !escena.referencias_visibles && e.extras.referencia
 }

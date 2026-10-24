@@ -777,7 +777,7 @@ fn sin_marcas_en_linea(s: &str) -> String {
 mod pruebas_formato {
     use super::*;
 
-    fn negrita<'a>(t: &'a str, (i, n): (u32, u32)) -> String {
+    fn negrita(t: &str, (i, n): (u32, u32)) -> String {
         let u: Vec<u16> = t.encode_utf16().collect();
         String::from_utf16(&u[i as usize..(i + n) as usize]).unwrap()
     }

@@ -248,7 +248,7 @@ fn podar(carpeta: &Path) {
         .flatten()
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|x| std::cmp::Reverse(x.0));
     for (_, p) in v.into_iter().skip(EN_CACHE * 2) {
         let _ = std::fs::remove_file(p);
     }

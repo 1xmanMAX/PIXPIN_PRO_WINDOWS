@@ -1339,7 +1339,7 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
         let alfa = if movida == Some(i) { 0.75 } else { 0.92 };
         p.rellenar_redondeado(caja, 6.0 * s, con_alfa(base, alfa));
         if e.bloque == Some(i) || movida == Some(i) {
-            p.trazar(encoger(caja, -1.0 * s), 2.0 * s, TEXTO);
+            p.trazar(encoger(caja, -s), 2.0 * s, TEXTO);
         }
         p.con_recorte(caja, |p| {
             let tam = 13.0 * s;
@@ -1441,7 +1441,7 @@ fn pintar_ficha(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cat
         ancho,
         alto,
     };
-    p.rellenar_redondeado(encoger(caja, -1.0 * s), (d::RADIO_FLOTANTE + 1.0) * s, blanco(0.10));
+    p.rellenar_redondeado(encoger(caja, -s), (d::RADIO_FLOTANTE + 1.0) * s, blanco(0.10));
     p.rellenar_redondeado(caja, d::RADIO_FLOTANTE * s, d::TARJETA);
     e.botones.zona(caja, Accion::Fondo);
     let x = caja.x + 20.0 * s;

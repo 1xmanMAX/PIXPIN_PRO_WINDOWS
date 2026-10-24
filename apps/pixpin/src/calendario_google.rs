@@ -201,6 +201,6 @@ mod pruebas {
     #[test]
     fn el_dia_de_la_semana_del_1970_es_jueves() {
         // (El indice de `para_el_modelo`: el dia 0 fue jueves.)
-        assert_eq!(["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][(0i64 + 3).rem_euclid(7) as usize], "jue");
+        assert_eq!(["lun", "mar", "mié", "jue", "vie", "sáb", "dom"][3i64.rem_euclid(7) as usize], "jue");
     }
 }

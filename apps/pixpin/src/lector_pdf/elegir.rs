@@ -103,11 +103,7 @@ pub(super) fn renglon_en(t: &PaginaDeTexto, k: usize) -> Range<usize> {
         if texto.get(i) == Some(&'\n') {
             return Some(false);
         }
-        match t.cajas.get(i)? {
-            Some(o) => Some(centro >= o[1] && centro <= o[3]),
-            // Un blanco: depende de lo que siga.
-            None => None,
-        }
+        t.cajas.get(i)?.as_ref().map(|o| centro >= o[1] && centro <= o[3])
     };
     let mut a = k;
     let mut i = k;

@@ -326,7 +326,7 @@ pub(super) struct Vuelta {
 
 /// **Una vez por vuelta del bucle**: recoge lo que dio Whisper, lee las
 /// respuestas recien acabadas si se pidio y sigue a lo que suena.
-pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>, textos: &Catalogo) -> Vuelta {
+pub(super) fn latido(ubicacion: &Ubicacion, abierto: Option<&mut Abierto>, textos: &Catalogo) -> Vuelta {
     let mut v = Vuelta::default();
 
     // 1. Lo dicho.
@@ -347,7 +347,7 @@ pub(super) fn latido(ubicacion: &Ubicacion, mut abierto: Option<&mut Abierto>, t
         v.cambio = true;
         match r {
             Ok(oido) => {
-                if let Some(a) = abierto.as_deref_mut().filter(|a| a.ficha.id == proyecto) {
+                if let Some(a) = abierto.filter(|a| a.ficha.id == proyecto) {
                     a.borrador = juntar(&prefijo, &oido);
                     a.cursor.poner(&a.borrador, a.borrador.len(), false);
                     let revisar = pixpin_store::cargar(ubicacion).map(|aj| aj.asistente.revisar_lo_dicho).unwrap_or(false);

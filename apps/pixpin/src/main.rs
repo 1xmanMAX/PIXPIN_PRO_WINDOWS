@@ -48,6 +48,12 @@
 // lo detectaria porque esas pruebas ignoran los crates externos. Este
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
+// La fontaneria de ventanas de la app pasa muchas piezas y cierres con tipos
+// largos de una sola vez (pintar, imprimir, exportar...): nombrar cada uno no
+// lo aclara. En las librerias si se nombran.
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+// `!(x > 0.0)` rechaza tambien los NaN, a proposito.
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 
 mod abrir_con;
 mod abrir_hoja;

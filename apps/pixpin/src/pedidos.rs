@@ -3521,7 +3521,7 @@ mod pruebas {
         std::fs::write(&foto, b"x").unwrap();
         assert_eq!(
             ficheros_al_movil(vec![foto.clone()], Vec::new()).unwrap(),
-            [foto.clone()]
+            std::slice::from_ref(&foto)
         );
         assert!(matches!(
             ficheros_al_movil(Vec::new(), Vec::new()),

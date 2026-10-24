@@ -127,7 +127,7 @@ pub fn pintar<A: Copy + Default>(
     // Un borde de blanco al 10 % (el recuadro un poco mayor por debajo): el
     // aviso casi negro sobre el fondo oscuro de la ventana no tendria canto.
     p.rellenar_redondeado(
-        super::geom::encoger(caja, -1.0 * s),
+        super::geom::encoger(caja, -s),
         (super::RADIO_FLOTANTE + 1.0) * s,
         blanco(0.10),
     );

@@ -521,7 +521,7 @@ pub fn pasar(
     let mut previas: Vec<(usize, Caja)> = Vec::new();
     let mut previas_texto: Vec<usize> = Vec::new();
     let mut ms_primera_previa: Option<u128> = None;
-    let planificar = matches!(&vision, Some(_) if o.rico && std::env::var_os("PIXPIN_SIN_PLAN").is_none());
+    let planificar = vision.is_some() && (o.rico && std::env::var_os("PIXPIN_SIN_PLAN").is_none());
     if planificar {
         let mapa0 = Mapa::para(&s, o);
         let (w0, h0) = mapa0.hoja(&s);
@@ -740,8 +740,7 @@ pub fn pasar(
             let lanzado = std::thread::Builder::new().name("hoja-al-lienzo-nube".into()).spawn(move || {
                 // (El especialista de tablas lee con el OCR de Windows: su COM.)
                 let _com = pixpin_shell::ComDelHilo::iniciar();
-                loop {
-                    let Some((id, q, png, pista)) = cola.lock().ok().and_then(|mut c| c.pop_front()) else { break };
+                while let Some((id, q, png, pista)) = cola.lock().ok().and_then(|mut c| c.pop_front()) {
                     let ahora = en_vuelo.fetch_add(1, Ordering::SeqCst) + 1;
                     max_en_vuelo.fetch_max(ahora, Ordering::SeqCst);
                     let r = png.and_then(|png| match preguntar(motor.as_ref(), png.clone(), q, &pista) {
@@ -905,14 +904,11 @@ pub fn pasar(
                 } else if diagramas.contains(&id) {
                     // Los rotulos de un diagrama que ya esta en el lienzo: se
                     // rehace con ellos (la geometria es la misma).
-                    match leido {
-                        Some(l) => {
-                            let h = montaje::hacer(&entrada(id), Some(&l), Via::Editable);
-                            if h.tipo == Tipo::Diagrama && destino.entregar(Some(&h), en(id, true, false)).is_ok() {
-                                rehechos_diagrama.push(h);
-                            }
+                    if let Some(l) = leido {
+                        let h = montaje::hacer(&entrada(id), Some(&l), Via::Editable);
+                        if h.tipo == Tipo::Diagrama && destino.entregar(Some(&h), en(id, true, false)).is_ok() {
+                            rehechos_diagrama.push(h);
                         }
-                        None => {}
                     }
                 } else if corregir.contains(&id) {
                     // Sus renglones corregidos, en el sitio de los del OCR.

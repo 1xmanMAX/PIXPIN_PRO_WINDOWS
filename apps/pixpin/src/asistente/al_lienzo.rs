@@ -922,8 +922,7 @@ pub fn sitio_libre(escena: &Escena, tam: (f32, f32), junto_a: Option<(f32, f32, 
     let (bx, by) = candidatos[0];
     let paso = (w.max(h) / 2.0).max(40.0);
     let mut libres = Vec::new();
-    for anillo in 1..=10 {
-        let n = anillo as i32;
+    for n in 1..=10i32 {
         for i in -n..=n {
             for j in -n..=n {
                 if i.abs() != n && j.abs() != n {
