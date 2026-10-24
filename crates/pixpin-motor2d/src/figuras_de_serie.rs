@@ -26,10 +26,16 @@ use crate::relleno::EstiloRelleno;
 use crate::texto::{self, AlineacionTexto, EstiloDeTexto};
 use crate::vector::Punto2;
 
+mod arquitectura;
 mod blocs;
+mod civil;
+mod derecho;
 mod intervalo;
+mod mobiliario;
 mod plantillas;
 mod storyboard;
+mod tecnico;
+mod vegetacion;
 
 pub use intervalo::{
     Intervalo, MAX_HOJAS, alargar, clave_de, cual_es, las_que_se_alargan, nombre_de, se_alarga,
@@ -41,16 +47,22 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 6] = [
+pub const CATEGORIAS: [&str; 12] = [
     "Planificación",
     "Académico",
     "Creativo",
     "Diario",
     "Blocs",
     "Storyboard",
+    "Arquitectura",
+    "Vegetación",
+    "Mobiliario",
+    "Escala humana",
+    "Ingeniería civil",
+    "Derecho",
 ];
 
 /// **La categoria de una figura** por su nombre («Diario · Gratitud» →
@@ -72,6 +84,11 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     plantillas::todas(&mut v);
     blocs::todas(&mut v);
     storyboard::todas(&mut v);
+    arquitectura::todas(&mut v);
+    vegetacion::todas(&mut v);
+    mobiliario::todas(&mut v);
+    civil::todas(&mut v);
+    derecho::todas(&mut v);
     v
 }
 
