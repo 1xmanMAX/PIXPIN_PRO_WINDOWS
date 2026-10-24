@@ -28,3 +28,16 @@ Cambios: secciones configurables («personalizar», zona «notas», «lateral»)
 partes con nombre en plantillas y figuras, instrucciones que enseñan a
 entender el pedido y a pensar la hoja por bloques, sin quitar herramientas
 por palabras.
+
+## Segunda ronda (24-oct)
+
+- Zona gris abajo: bien (personalizar, «Notas» a todo el ancho, dentro de la hoja).
+- 10 semanas y zona lateral: bien (personalizar con «lateral»); la zona ahora
+  baja hasta el pie de la tabla.
+- Planificador mensual y semanal: fallaban por la app (leía las prioridades
+  01–04 como filas y pedía un mes). Arreglado.
+- «No me entra en una hoja»: quitó semanas sin preguntar. Nueva regla: no
+  quitar contenido; ofrecer partir en hojas, apaisado o papel más grande.
+
+Las instrucciones vuelven a ser cortas; cómo pensar una hoja por bloques va
+en el resumen del lienzo solo cuando hay una plantilla.
