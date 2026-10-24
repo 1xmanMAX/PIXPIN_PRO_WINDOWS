@@ -1,0 +1,28 @@
+# Lo que la app manda al modelo (instrucciones y herramientas), volcado al
+# registro para evaluar el asistente con otro «cerebro» (el modo grabado del
+# banco de `pixpin-ia`). Solo a mano: no corre en cada push.
+name: Volcado del asistente
+on:
+  workflow_dispatch:
+jobs:
+  volcar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Volcar
+        shell: bash
+        env:
+          PIXPIN_IA_VOLCADO: volcado
+        run: cargo test -p pixpin-ia --test banco -- --ignored --nocapture --exact volcar_para_haiku
+      - name: Al registro
+        shell: bash
+        run: |
+          echo "=====SISTEMA====="
+          cat volcado/sistema.txt
+          echo
+          echo "=====HERRAMIENTAS====="
+          cat volcado/herramientas.json
+          echo
+          echo "=====FIN====="
