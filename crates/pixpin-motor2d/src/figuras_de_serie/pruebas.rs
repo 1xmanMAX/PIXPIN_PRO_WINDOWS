@@ -5,7 +5,7 @@ use std::collections::HashSet;
 #[test]
 fn el_catalogo_tiene_ids_fijos_unicos_y_cada_figura_su_categoria() {
     let c = catalogo();
-    assert!(c.len() >= 70, "{}", c.len());
+    assert!(c.len() >= 470, "{}", c.len());
     let mut ids = HashSet::new();
     let mut nombres = HashSet::new();
     for f in &c {
@@ -32,6 +32,30 @@ fn el_catalogo_tiene_ids_fijos_unicos_y_cada_figura_su_categoria() {
                 .any(|f| categoria_de(&f.nombre).is_some_and(|(k, _)| k == cat)),
             "{cat} vacia"
         );
+    }
+}
+
+#[test]
+fn las_familias_de_diagramas_estan_con_sus_figuras_antes_de_las_ciencias() {
+    let familias = [
+        ("UML", 26),
+        ("BPMN", 21),
+        ("Entidad-relación", 15),
+        ("Redes y TI", 16),
+        ("Mapas mentales y organigramas", 8),
+        ("Estrategia y negocio", 14),
+        ("Formas y llamadas", 23),
+    ];
+    let c = catalogo();
+    let fisica = CATEGORIAS.iter().position(|k| *k == "Física").unwrap();
+    for (cat, n) in familias {
+        let i = CATEGORIAS.iter().position(|k| *k == cat).expect(cat);
+        assert!(i < fisica, "{cat} va antes de las ciencias");
+        let suyas = c
+            .iter()
+            .filter(|f| categoria_de(&f.nombre).is_some_and(|(k, _)| k == cat))
+            .count();
+        assert_eq!(suyas, n, "{cat}");
     }
 }
 

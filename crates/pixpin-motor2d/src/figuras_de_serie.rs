@@ -27,21 +27,29 @@ use crate::texto::{self, AlineacionTexto, EstiloDeTexto};
 use crate::vector::Punto2;
 
 mod arquitectura;
+mod basicas;
 mod blocs;
+mod bpmn;
 mod ciencias;
 mod civil;
 mod derecho;
+mod diagramas;
 mod electronica;
+mod er;
 mod flujo;
 mod intervalo;
+mod mapas;
 mod marcas;
 mod mobiliario;
+mod negocio;
 mod personas;
 mod planta;
 mod plantillas;
+mod redes;
 mod secciones;
 mod storyboard;
 mod tecnico;
+mod uml;
 mod vegetacion;
 
 pub use intervalo::{
@@ -56,10 +64,10 @@ pub const SEPARADOR: &str = " · ";
 /// El principio del id de las figuras de serie.
 pub const PREFIJO_ID: &str = "serie-";
 /// Sube cuando cambia el catalogo: la app lo vuelve a instalar.
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 28] = [
+pub const CATEGORIAS: [&str; 35] = [
     "Planificación",
     "Académico",
     "Creativo",
@@ -82,6 +90,13 @@ pub const CATEGORIAS: [&str; 28] = [
     "Electrónica",
     "Diagrama de flujo",
     "Marcas y sellos",
+    "UML",
+    "BPMN",
+    "Entidad-relación",
+    "Redes y TI",
+    "Mapas mentales y organigramas",
+    "Estrategia y negocio",
+    "Formas y llamadas",
     "Física",
     "Química",
     "Matemáticas",
@@ -120,6 +135,13 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     electronica::todas(&mut v);
     flujo::todas(&mut v);
     marcas::todas(&mut v);
+    uml::todas(&mut v);
+    bpmn::todas(&mut v);
+    er::todas(&mut v);
+    redes::todas(&mut v);
+    mapas::todas(&mut v);
+    negocio::todas(&mut v);
+    basicas::todas(&mut v);
     v
 }
 
