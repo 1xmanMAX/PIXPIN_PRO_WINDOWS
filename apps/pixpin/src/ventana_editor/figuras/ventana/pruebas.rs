@@ -44,16 +44,22 @@ fn se_busca_sin_tildes_y_se_filtra_por_categoria() {
     let mut e = estado();
     e.consulta.poner("habitos");
     e.rehacer_lista(900.0, 1.0);
+    // La de dia y su gemela de noche (24-oct-2026).
     assert_eq!(
         e.lista.len(),
-        1,
+        2,
         "{:?}",
         e.lista
             .iter()
             .map(|i| &e.figuras[*i].nombre)
             .collect::<Vec<_>>()
     );
-    assert!(e.figuras[e.lista[0]].nombre.contains("Hábitos"));
+    assert!(
+        e.lista
+            .iter()
+            .all(|i| e.figuras[*i].nombre.contains("Hábitos"))
+    );
+    assert!(e.figuras[e.lista[1]].nombre.ends_with("(noche)"));
     e.consulta.poner("");
     let storyboard = e.cats.iter().position(|c| c == "Storyboard").unwrap();
     e.cat = Some(storyboard);
