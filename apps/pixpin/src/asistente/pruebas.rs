@@ -1443,6 +1443,69 @@ fn el_asistente_lista_crea_y_usa_lienzos_del_chat_por_su_nombre() {
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
+/// 26-oct: el asistente (nube) mete un lienzo en una carpeta de paginas por
+/// su nombre (creandola) y crea la pagina siguiente, que pasa a ser el
+/// lienzo destino.
+#[test]
+fn el_asistente_mete_lienzos_en_una_carpeta_y_crea_la_pagina_siguiente() {
+    use pixpin_ia::agente::Ejecutor;
+    use pixpin_ia::herramientas::Llamada;
+    use pixpin_proyecto::carpeta_de_paginas::Carpeta;
+    let raiz = std::env::temp_dir().join(format!("pixpin-carpetas-ia-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&raiz);
+    std::fs::create_dir_all(&raiz).unwrap();
+    crate::ventana_chat::escribir_lienzo(&raiz, "obra", "PC", 1, Some("Día 1")).unwrap();
+    let llamar = |ej: &mut super::ejecutor::EjecutorDelChat, h: &str, args: serde_json::Value| {
+        let fila = pixpin_ia::acciones::por_nombre(h).expect("la fila");
+        let a = pixpin_ia::acciones::validar(fila, args.as_object().unwrap()).expect("valida");
+        ej.ejecutar(&Llamada::App(a))
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let parar = Arc::new(AtomicBool::new(false));
+    let mut ej = super::ejecutor::EjecutorDelChat::nuevo(tx, "obra".into(), vec![], parar)
+        .en_la_nube(true)
+        .con_raiz(Some(raiz.clone()))
+        .con_espera(Duration::from_millis(200));
+    let hecho = llamar(
+        &mut ej,
+        "anadir_a_carpeta",
+        serde_json::json!({"carpeta": "Diario", "lienzo": "dia 1"}),
+    )
+    .unwrap();
+    assert!(
+        hecho.contains("Carpeta creada") && hecho.contains("«Día 1»"),
+        "{hecho}"
+    );
+    std::thread::sleep(Duration::from_millis(3));
+    let hecho = llamar(
+        &mut ej,
+        "pagina_nueva_de_carpeta",
+        serde_json::json!({"carpeta": "DIARIO"}),
+    )
+    .unwrap();
+    assert!(hecho.contains("«Día 2»"), "{hecho}");
+    let dir = pixpin_proyecto::almacen::carpeta(&raiz, "obra");
+    let mensajes = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&dir)
+        .unwrap()
+        .mensajes;
+    let c = mensajes
+        .iter()
+        .find_map(Carpeta::de_mensaje)
+        .expect("la carpeta");
+    let titulos: Vec<&str> = c.paginas.iter().map(|p| p.titulo.as_str()).collect();
+    assert_eq!(titulos, ["Día 1", "Día 2"]);
+    // Casos negativos: una carpeta que no esta dice las que hay.
+    let e = llamar(
+        &mut ej,
+        "pagina_nueva_de_carpeta",
+        serde_json::json!({"carpeta": "Obra"}),
+    )
+    .unwrap_err();
+    assert!(e.contains("Diario"), "{e}");
+    al_lienzo::vaciar_para_pruebas();
+    let _ = std::fs::remove_dir_all(&raiz);
+}
+
 /// 17-oct: con un lienzo abierto, lo pedido para OTRO lienzo del chat no se
 /// lo lleva el editor: lo hace el chat en su fichero.
 #[test]

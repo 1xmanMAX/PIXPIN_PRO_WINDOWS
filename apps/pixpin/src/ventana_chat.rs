@@ -122,7 +122,7 @@ pub(crate) mod sin_ventana {
 mod anki;
 /// Las carpetas de paginas: un cuaderno con nombre dentro del chat, su
 /// ventana con las paginas en orden y su PDF (26-oct-2026).
-mod carpetas;
+pub(crate) mod carpetas;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).

@@ -216,10 +216,13 @@ struct Vista {
     /// Lo que se miro del disco la ultima vez: si cambia, se relee.
     huella: Vec<Option<std::time::SystemTime>>,
     textos_pagina: String,
+    /// Los textos, para el nombre de lo que no lleva titulo.
+    catalogo: Catalogo,
 }
 
 impl Vista {
     fn nueva(que: Abrir, textos: &Catalogo) -> Vista {
+        let que_idioma = que.idioma;
         let raiz = que.ubicacion.raiz().to_path_buf();
         let dir = pixpin_proyecto::almacen::carpeta(&raiz, &que.proyecto);
         Vista {
@@ -244,6 +247,7 @@ impl Vista {
             columnas: Cell::new(1),
             huella: Vec::new(),
             textos_pagina: textos.t("carpeta-pagina"),
+            catalogo: Catalogo::nuevo(que_idioma),
         }
     }
 
@@ -287,7 +291,7 @@ impl Vista {
             return;
         };
         self.perdida = false;
-        self.nombre = super::nombre_de_la_fila(m, &Catalogo::nuevo(self.que.idioma));
+        self.nombre = super::nombre_de_la_fila(m, &self.catalogo);
         let Some(carpeta) = Carpeta::de_mensaje(m) else {
             tracing::warn!(id = %self.que.id, "carpeta que no se entiende; no se toca");
             self.paginas.clear();
@@ -312,7 +316,7 @@ impl Vista {
             .map(|(i, p)| {
                 let m = mensajes[i].clone();
                 let titulo = if p.titulo.trim().is_empty() {
-                    super::nombre_de_la_fila(&m, &Catalogo::nuevo(self.que.idioma))
+                    super::nombre_de_la_fila(&m, &self.catalogo)
                 } else {
                     p.titulo.clone()
                 };
@@ -437,60 +441,29 @@ impl Vista {
     /// ultima pagina, vacia, y el titulo siguiente; sin plantilla, en blanco.
     /// Se abre enseguida, que es lo que se quiere: llenarla.
     fn nueva_pagina(&mut self, textos: &Catalogo) {
-        let plantilla = self
-            .paginas
-            .iter()
-            .rev()
-            .find(|p| p.mensaje.clase == Some(Clase::Dibujo))
-            .and_then(|p| p.mensaje.referencia.clone())
-            .and_then(|r| {
-                let ruta = pixpin_proyecto::almacen::lienzo(&self.raiz, &self.que.proyecto, &r);
-                let texto = std::fs::read_to_string(ruta).ok()?;
-                let lienzo = pixpin_motor2d::excalidraw::leer(&texto).ok()?;
-                pixpin_motor2d::hoja_de_plantilla::lienzo_siguiente(
-                    &pixpin_motor2d::excalidraw::a_escena(&lienzo),
-                )
-            });
-        let titulo = self.carpeta.titulo_siguiente(&self.textos_pagina);
-        let hecho = super::siguiente_numero_en(&self.raiz, &self.que.proyecto).and_then(|n| {
-            let m = super::escribir_lienzo(
-                &self.raiz,
-                &self.que.proyecto,
-                &self.que.identidad,
-                n,
-                Some(&titulo),
-            )?;
-            if let (Some(escena), Some(r)) = (&plantilla, m.referencia.as_deref()) {
-                let ruta = pixpin_proyecto::almacen::lienzo(&self.raiz, &self.que.proyecto, r);
-                let lienzo = pixpin_motor2d::excalidraw::con_escena(
-                    &pixpin_motor2d::excalidraw::Lienzo::vacio(),
-                    escena,
-                );
-                std::fs::write(&ruta, pixpin_motor2d::excalidraw::escribir(&lienzo))?;
-            }
-            Ok(m)
-        });
-        let m = match hecho {
-            Ok(m) => m,
+        let hecha = pagina_siguiente(
+            &self.raiz,
+            &self.que.proyecto,
+            &self.que.identidad,
+            &self.que.id,
+            &self.textos_pagina,
+        );
+        let id = match hecha {
+            Ok(n) => n.mensaje.id,
             Err(e) => {
                 tracing::warn!(?e, "no se pudo crear la pagina nueva");
                 self.avisar(textos.t("chat-no-se-pudo"));
                 return;
             }
         };
-        let _ = super::subir_en_la_lista(&self.raiz, &self.que.proyecto, m.cuando, &titulo);
-        let id = m.id.clone();
-        self.cambiar(|c| c.anadir(&id, &titulo));
+        self.recargar();
+        super::refrescar();
         if let Some(k) = self.paginas.iter().position(|p| p.mensaje.id == id) {
             self.elegida = Some(k);
             // A la vista: la nueva es la ultima.
             self.scroll = self.alto_total.get().max(0) + 10_000;
             self.abrir_pagina(k);
         }
-        tracing::info!(
-            con_plantilla = plantilla.is_some(),
-            "pagina nueva en la carpeta"
-        );
     }
 
     /// **«Exportar PDF»**: pregunta donde con el dialogo de guardar y lo
@@ -693,7 +666,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                     let l = local(p, marco);
                     v.raton = l;
                     let zona = v.zona_en(l);
-                    if !matches!(zona, Some(Zona::Pagina(_))) {
+                    // Pulsar fuera del titulo que se escribe lo guarda.
+                    let en_la_misma = matches!(
+                        (zona, &v.renombrando),
+                        (Some(Zona::Pagina(k)), Some((r, _))) if k == *r
+                    );
+                    if !en_la_misma {
                         v.terminar_de_renombrar(true);
                     }
                     match zona {
@@ -1347,6 +1325,172 @@ pub(super) fn nombre_libre(base: &str, mensajes: &[Mensaje]) -> String {
         .unwrap_or_else(|| base.to_string())
 }
 
+/// Lo que deja [`pagina_siguiente`].
+pub(crate) struct PaginaNueva {
+    /// El mensaje del lienzo nuevo, ya en el chat y en la carpeta.
+    pub mensaje: Mensaje,
+    pub titulo: String,
+    /// Si lleva la plantilla de la ultima pagina (si no, en blanco).
+    pub con_plantilla: bool,
+}
+
+/// **La pagina siguiente de una carpeta**, sin ventana (la usan la ventana
+/// y el asistente): un lienzo nuevo en el chat con la plantilla de la ultima
+/// pagina que sea un lienzo, vacia (`hoja_de_plantilla::lienzo_siguiente`),
+/// o en blanco si no tiene; con el titulo siguiente («Dia 3» tras «Dia 2»;
+/// sin serie, `por_defecto` y su puesto), y metido al final de la carpeta.
+pub(crate) fn pagina_siguiente(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    carpeta: &str,
+    por_defecto: &str,
+) -> std::io::Result<PaginaNueva> {
+    let dir = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
+    let mensajes = cuaderno::Cuaderno::leer_de(&dir)?.mensajes;
+    let mut c = mensajes
+        .iter()
+        .find(|m| m.id == carpeta)
+        .and_then(Carpeta::de_mensaje)
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "no hay esa carpeta"))?;
+    c.podar(|id| mensajes.iter().any(|m| m.id == id));
+    let plantilla = c
+        .vivas(&mensajes)
+        .into_iter()
+        .rev()
+        .map(|(i, _)| &mensajes[i])
+        .find(|m| m.clase == Some(Clase::Dibujo))
+        .and_then(|m| m.referencia.clone())
+        .and_then(|r| {
+            let texto =
+                std::fs::read_to_string(pixpin_proyecto::almacen::lienzo(raiz, proyecto, &r))
+                    .ok()?;
+            let lienzo = pixpin_motor2d::excalidraw::leer(&texto).ok()?;
+            pixpin_motor2d::hoja_de_plantilla::lienzo_siguiente(
+                &pixpin_motor2d::excalidraw::a_escena(&lienzo),
+            )
+        });
+    let titulo = c.titulo_siguiente(por_defecto);
+    let numero = super::siguiente_numero_en(raiz, proyecto)?;
+    let m = super::escribir_lienzo(raiz, proyecto, aparato, numero, Some(&titulo))?;
+    if let (Some(escena), Some(r)) = (&plantilla, m.referencia.as_deref()) {
+        let lienzo = pixpin_motor2d::excalidraw::con_escena(
+            &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+            escena,
+        );
+        std::fs::write(
+            pixpin_proyecto::almacen::lienzo(raiz, proyecto, r),
+            pixpin_motor2d::excalidraw::escribir(&lienzo),
+        )?;
+    }
+    let _ = super::subir_en_la_lista(raiz, proyecto, m.cuando, &titulo);
+    carpetas::cambiar_en_disco(&dir, carpeta, |c| c.anadir(&m.id, &titulo))?;
+    tracing::info!(con_plantilla = plantilla.is_some(), titulo = %titulo, "pagina nueva en la carpeta");
+    Ok(PaginaNueva {
+        mensaje: m,
+        titulo,
+        con_plantilla: plantilla.is_some(),
+    })
+}
+
+// --- Lo del asistente: las carpetas por su nombre ---------------------------------
+
+/// **La carpeta del chat que se llama `nombre`**: igual sin tildes ni
+/// mayusculas, o si no la que lo lleva dentro. La mas reciente si hay dos.
+pub(crate) fn carpeta_por_nombre(mensajes: &[Mensaje], nombre: &str) -> Option<usize> {
+    let buscado = super::figuras::plegar(nombre.trim());
+    if buscado.is_empty() {
+        return None;
+    }
+    let todas = carpetas::carpetas_de(mensajes);
+    let nombre_de = |i: &usize| super::figuras::plegar(mensajes[*i].nombre.trim());
+    todas
+        .iter()
+        .rev()
+        .find(|i| nombre_de(i) == buscado)
+        .or_else(|| todas.iter().rev().find(|i| nombre_de(i).contains(&buscado)))
+        .copied()
+}
+
+/// Lo que deja [`anadir_por_nombre`].
+pub(crate) struct Anadida {
+    pub carpeta: String,
+    pub titulo: String,
+    pub paginas: usize,
+    /// Si la carpeta no existia y se creo.
+    pub creada: bool,
+    /// Si la pagina ya estaba (entonces no se toco nada).
+    pub ya_estaba: bool,
+}
+
+/// **Para el asistente**: mete el mensaje `pagina` (su `id`) en la carpeta
+/// `nombre` de este chat, al final y con el titulo que le toca; si no hay
+/// ninguna carpeta con ese nombre, la crea. Sin ventana: escribe el cuaderno
+/// y avisa al chat.
+pub(crate) fn anadir_por_nombre(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    nombre: &str,
+    pagina: &str,
+    por_defecto: &str,
+) -> std::io::Result<Anadida> {
+    let dir = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
+    let mensajes = cuaderno::Cuaderno::leer_de(&dir)?.mensajes;
+    let Some(m) = mensajes.iter().find(|m| m.id == pagina) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "esa pagina no esta en el chat",
+        ));
+    };
+    let (id, creada) = match carpeta_por_nombre(&mensajes, nombre) {
+        Some(i) => (mensajes[i].id.clone(), false),
+        None => {
+            let numero = super::siguiente_numero_en(raiz, proyecto)?;
+            let nueva = carpetas::mensaje_nuevo(
+                nombre,
+                &cuaderno::Sello {
+                    cuando: pixpin_shell::entorno::ahora_utc_ms(),
+                    numero,
+                    aparato: aparato.to_string(),
+                    proyecto: proyecto.to_string(),
+                },
+            );
+            cuaderno::anadir(&dir, &nueva)?;
+            (nueva.id, true)
+        }
+    };
+    let nombre_de_la_pagina = if m.nombre.ends_with(".excalidraw") {
+        String::new()
+    } else {
+        pixpin_docs::sin_extension(m.nombre.trim())
+    };
+    let (mut titulo, mut ya_estaba) = (String::new(), false);
+    let c = carpetas::cambiar_en_disco(&dir, &id, |c| {
+        if let Some(i) = c.posicion(pagina) {
+            ya_estaba = true;
+            titulo = c.paginas[i].titulo.clone();
+            return false;
+        }
+        titulo = c.titulo_al_anadir(&nombre_de_la_pagina, por_defecto);
+        c.anadir(pagina, &titulo)
+    })?
+    .ok_or_else(|| std::io::Error::other("la carpeta no se entiende"))?;
+    super::refrescar();
+    let carpeta = cuaderno::Cuaderno::leer_de(&dir)?
+        .mensajes
+        .into_iter()
+        .find(|m| m.id == id)
+        .map_or_else(|| nombre.trim().to_string(), |m| m.nombre);
+    Ok(Anadida {
+        carpeta,
+        titulo,
+        paginas: c.len(),
+        creada,
+        ya_estaba,
+    })
+}
+
 // --- Lo del chat: crear una carpeta y anadirle paginas ----------------------------
 
 /// Si el mensaje se ofrece para «Añadir a carpeta…»: lo que es una pagina
@@ -1532,6 +1676,94 @@ mod pruebas {
         assert_eq!(nombre_libre("Cuaderno", &mensajes), "Cuaderno 3");
         // Caso negativo: sin carpetas con ese nombre, el de siempre.
         assert_eq!(nombre_libre("Diario", &mensajes), "Diario");
+    }
+
+    /// «Nueva pagina»: el Dia 2 nace con la plantilla del Dia 1, vacia, y
+    /// entra al final de la carpeta; sin plantilla, en blanco.
+    #[test]
+    fn la_pagina_siguiente_repite_la_plantilla_vacia_con_el_titulo_siguiente() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-carpeta-sig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let dir = pixpin_proyecto::almacen::carpeta(&raiz, "p");
+        std::fs::create_dir_all(&dir).unwrap();
+        // El Dia 1: un lienzo con el diario de serie y algo escrito encima.
+        let dia1 = super::super::escribir_lienzo(&raiz, "p", "PC", 1, Some("Día 1")).unwrap();
+        let f = pixpin_motor2d::figuras_de_serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-diario")
+            .unwrap();
+        let mut escena = pixpin_motor2d::Escena::nueva();
+        let (w, h) = f.tamano();
+        pixpin_motor2d::biblioteca::estampar_en_escena(
+            &mut escena,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(w / 2.0, h / 2.0),
+        );
+        escena.anadir(pixpin_motor2d::Elemento {
+            x: 100.0,
+            y: 300.0,
+            ancho: 50.0,
+            alto: 20.0,
+            figura: pixpin_motor2d::Figura::Rectangulo,
+            ..Default::default()
+        });
+        let ruta =
+            pixpin_proyecto::almacen::lienzo(&raiz, "p", dia1.referencia.as_deref().unwrap());
+        let l = pixpin_motor2d::excalidraw::con_escena(
+            &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+            &escena,
+        );
+        std::fs::write(&ruta, pixpin_motor2d::excalidraw::escribir(&l)).unwrap();
+        let mut carpeta = carpetas::mensaje_nuevo("Diario", &sello(2));
+        carpeta.id = "carpeta".into();
+        let mut c = Carpeta::default();
+        c.anadir(&dia1.id, "Día 1");
+        carpeta.texto = c.escribir();
+        cuaderno::anadir(&dir, &carpeta).unwrap();
+        // El id de un lienzo es su hora: que el nuevo no nazca en el mismo
+        // milisegundo que el Dia 1.
+        std::thread::sleep(std::time::Duration::from_millis(3));
+
+        let n = pagina_siguiente(&raiz, "p", "PC", "carpeta", "Página").unwrap();
+        assert_eq!(n.titulo, "Día 2");
+        assert!(n.con_plantilla);
+        assert_eq!(
+            n.mensaje.nombre, "Día 2",
+            "el lienzo se llama como su pagina"
+        );
+        // El lienzo nuevo: solo la plantilla, sin lo escrito.
+        let texto = std::fs::read_to_string(pixpin_proyecto::almacen::lienzo(
+            &raiz,
+            "p",
+            n.mensaje.referencia.as_deref().unwrap(),
+        ))
+        .unwrap();
+        let nueva = pixpin_motor2d::excalidraw::a_escena(
+            &pixpin_motor2d::excalidraw::leer(&texto).unwrap(),
+        );
+        assert_eq!(
+            nueva.cuantos_visibles(),
+            f.elementos.iter().filter(|e| !e.borrado).count()
+        );
+        // Y la carpeta, con las dos en orden.
+        let leida = cuaderno::Cuaderno::leer_de(&dir).unwrap();
+        let c = leida
+            .mensajes
+            .iter()
+            .find(|m| m.id == "carpeta")
+            .and_then(Carpeta::de_mensaje)
+            .unwrap();
+        let titulos: Vec<&str> = c.paginas.iter().map(|p| p.titulo.as_str()).collect();
+        assert_eq!(titulos, ["Día 1", "Día 2"]);
+
+        // Caso negativo: una carpeta que no esta es un error, y no crea nada.
+        let antes = cuaderno::Cuaderno::leer_de(&dir).unwrap().mensajes.len();
+        assert!(pagina_siguiente(&raiz, "p", "PC", "no-esta", "Página").is_err());
+        assert_eq!(
+            cuaderno::Cuaderno::leer_de(&dir).unwrap().mensajes.len(),
+            antes
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]
