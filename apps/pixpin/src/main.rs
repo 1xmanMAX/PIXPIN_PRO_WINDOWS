@@ -2876,14 +2876,13 @@ mod pruebas_bandeja {
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        let siguen: Vec<u32> = v[chat + 1..chat + 6].iter().map(|(id, _)| *id).collect();
+        let siguen: Vec<u32> = v[chat + 1..chat + 5].iter().map(|(id, _)| *id).collect();
         assert_eq!(
             siguen,
             [
                 ID_TIMELINE,
                 ID_LECCION_NUEVA,
                 ID_GALERIA_CAPTURAS,
-                ID_FIGURAS,
                 ID_TAREAS
             ]
         );
@@ -2898,10 +2897,9 @@ mod pruebas_bandeja {
             .iter()
             .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
             .expect("el chat esta en la bandeja");
-        // Chat, timeline, nueva leccion, galeria, figuras y tareas, y en
-        // seguida Sincronizar.
+        // Chat, timeline, nueva leccion, galeria y tareas, y en seguida Sincronizar.
         assert_eq!(
-            v.get(chat + 6),
+            v.get(chat + 5),
             Some(&(
                 comandos::Comando::Sincronizar.id(),
                 "comando-sincronizar".to_string()
