@@ -145,6 +145,10 @@ pub(crate) fn pdf(
 
 /// El nombre del fichero que se sugiere al guardar: el de la carpeta.
 pub(crate) fn nombre_de_fichero(titulo: &str) -> String {
+    // Sin titulo, el de serie (el de compartir pondria «dibujo»).
+    if titulo.trim().is_empty() {
+        return "Carpeta.pdf".into();
+    }
     let base = super::nombre_de_fichero(titulo);
     if base.trim().is_empty() {
         "Carpeta.pdf".into()

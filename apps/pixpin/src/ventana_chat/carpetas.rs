@@ -1456,10 +1456,16 @@ pub(crate) fn anadir_por_nombre(
         Some(i) => (mensajes[i].id.clone(), false),
         None => {
             let numero = super::siguiente_numero_en(raiz, proyecto)?;
+            // El id es el milisegundo: el lienzo recien hecho puede ser del
+            // mismo (lo vio la CI) y entonces la carpeta seria el lienzo.
+            let mut cuando = pixpin_shell::entorno::ahora_utc_ms();
+            while mensajes.iter().any(|m| m.id == cuando.to_string()) {
+                cuando += 1;
+            }
             let nueva = carpetas::mensaje_nuevo(
                 nombre,
                 &cuaderno::Sello {
-                    cuando: pixpin_shell::entorno::ahora_utc_ms(),
+                    cuando,
                     numero,
                     aparato: aparato.to_string(),
                     proyecto: proyecto.to_string(),
@@ -1521,10 +1527,15 @@ pub(super) fn crear(
 ) -> super::Efecto {
     let nombre = nombre_libre(&textos.t("carpeta-nombre-de-serie"), &a.mensajes);
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    // El id es el milisegundo: que no sea el de otro mensaje.
+    let mut cuando = pixpin_shell::entorno::ahora_utc_ms();
+    while a.mensajes.iter().any(|m| m.id == cuando.to_string()) {
+        cuando += 1;
+    }
     let mut m = carpetas::mensaje_nuevo(
         &nombre,
         &cuaderno::Sello {
-            cuando: pixpin_shell::entorno::ahora_utc_ms(),
+            cuando,
             numero,
             aparato: identidad.to_string(),
             proyecto: a.ficha.id.clone(),
@@ -1798,8 +1809,16 @@ mod pruebas {
             clase: Some(c),
             ..Default::default()
         };
-        assert!(std::ptr::eq(icono_de(&m(Clase::Dibujo)), &mi::DRAW));
-        assert!(std::ptr::eq(icono_de(&m(Clase::Imagen)), &mi::IMAGE));
-        assert!(std::ptr::eq(icono_de(&m(Clase::Archivo)), &mi::DESCRIPTION));
+        // Los iconos son `const`: se comparan por lo que dibujan, no por su
+        // direccion (en Windows cada uso puede ser una copia).
+        let igual = |a: &Icono, b: &Icono| {
+            a.vista == b.vista
+                && a.trazos.len() == b.trazos.len()
+                && format!("{:?}", a.trazos) == format!("{:?}", b.trazos)
+        };
+        assert!(igual(icono_de(&m(Clase::Dibujo)), &mi::DRAW));
+        assert!(igual(icono_de(&m(Clase::Imagen)), &mi::IMAGE));
+        assert!(igual(icono_de(&m(Clase::Archivo)), &mi::DESCRIPTION));
+        assert!(!igual(icono_de(&m(Clase::Dibujo)), &mi::IMAGE));
     }
 }
