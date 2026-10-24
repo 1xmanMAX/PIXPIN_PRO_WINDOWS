@@ -999,9 +999,100 @@ fn pintar_celda(
     );
 }
 
+// --- Adjuntar figuras al asistente (25-oct-2026) --------------------------------
+//
+// El usuario: «en la opcion de adjuntar del asistente … puedo adjuntar una
+// figura para que la mejore, o decirle hazme una figura, y lo puedo anadir
+// facilmente a la lista de figuras».
+
+/// Las figuras de la biblioteca, en el orden de `biblioteca::cargar` (los
+/// indices del menu de adjuntar apuntan aqui).
+pub(super) fn todas() -> Vec<FiguraGuardada> {
+    biblioteca::cargar(&crate::biblioteca_figuras::ruta())
+}
+
+/// Los grupos para el menu de adjuntar: `(grupo, [(indice, nombre)])`, lo del
+/// usuario primero y las categorias en su orden.
+pub(super) fn por_grupos(figuras: &[FiguraGuardada]) -> Vec<(String, Vec<(usize, String)>)> {
+    let mut v: Vec<(String, Vec<(usize, String)>)> = Vec::new();
+    for (i, f) in figuras.iter().enumerate() {
+        let (g, n) = match categoria_de(&f.nombre) {
+            Some((c, n)) => (c.to_string(), n.to_string()),
+            None => (MIS_FIGURAS.to_string(), f.nombre.clone()),
+        };
+        match v.iter_mut().find(|(x, _)| *x == g) {
+            Some((_, l)) => l.push((i, n)),
+            None => v.push((g, vec![(i, n)])),
+        }
+    }
+    v.sort_by_key(|(g, _)| orden_del_grupo(g));
+    v
+}
+
+/// El nombre de un grupo en el menu.
+pub(super) fn grupo_legible(g: &str, textos: &Catalogo) -> String {
+    rotulo_del_grupo(g, textos)
+}
+
+/// **La escena de un lienzo con la figura dentro**, para adjuntarla al chat.
+pub(super) fn escena_con(f: &FiguraGuardada) -> pixpin_motor2d::Escena {
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    let (w, h) = f.tamano();
+    biblioteca::estampar_en_escena(
+        &mut escena,
+        f,
+        pixpin_motor2d::vector::Punto2::nuevo(w / 2.0, h / 2.0),
+    );
+    escena
+}
+
+/// **Guarda un lienzo del chat como figura** con `nombre` (la del mismo
+/// nombre se sustituye). Lo que se guarda es lo que se ve en el lienzo, con
+/// sus piezas tal cual.
+pub(super) fn guardar_lienzo(escena: &pixpin_motor2d::Escena, nombre: &str) -> Result<(), String> {
+    let piezas: Vec<pixpin_motor2d::Elemento> = escena.visibles().cloned().collect();
+    if piezas.is_empty() {
+        return Err("vacio".into());
+    }
+    let figura = FiguraGuardada {
+        id: biblioteca::id_nuevo(),
+        nombre: nombre.trim().chars().take(80).collect(),
+        elementos: biblioteca::normalizar(&piezas),
+    };
+    if crate::biblioteca_figuras::anadir(&crate::biblioteca_figuras::ruta(), figura) {
+        Ok(())
+    } else {
+        Err("no se pudo escribir".into())
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_menu_de_adjuntar_agrupa_y_la_figura_entra_entera_en_su_lienzo() {
+        let catalogo = pixpin_motor2d::figuras_de_serie::catalogo();
+        let mut todas = vec![FiguraGuardada {
+            id: "mia".into(),
+            nombre: "Mi árbol".into(),
+            elementos: catalogo[0].elementos.clone(),
+        }];
+        todas.extend(catalogo.iter().cloned());
+        let g = por_grupos(&todas);
+        assert_eq!(g[0].0, MIS_FIGURAS, "lo del usuario primero");
+        assert_eq!(g[0].1, vec![(0, "Mi árbol".to_string())]);
+        let total: usize = g.iter().map(|(_, l)| l.len()).sum();
+        assert_eq!(total, todas.len(), "cada figura sale una vez");
+        // La figura estampada es la misma, pieza a pieza.
+        let e = escena_con(&catalogo[0]);
+        assert_eq!(
+            e.visibles().count(),
+            catalogo[0].elementos.iter().filter(|x| !x.borrado).count()
+        );
+        let c = e.caja().unwrap();
+        assert!(c.0 >= -0.5 && c.1 >= -0.5, "desde el origen: {c:?}");
+    }
 
     #[test]
     fn lo_del_usuario_va_primero_y_las_categorias_en_su_orden() {

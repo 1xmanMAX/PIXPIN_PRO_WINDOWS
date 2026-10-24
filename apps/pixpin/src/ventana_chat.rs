@@ -2112,7 +2112,11 @@ pub fn abrir(
                                 x: clip.derecha(),
                                 y: clip.y,
                             },
-                            hoja_adjuntar::Hoja::nueva(textos),
+                            if abierto.as_ref().is_some_and(|a| a.ficha.es_asistente()) {
+                                hoja_adjuntar::Hoja::para_el_asistente(textos)
+                            } else {
+                                hoja_adjuntar::Hoja::nueva(textos)
+                            },
                         ));
                         buscando = false;
                         hay_que_pintar = true;
@@ -9190,6 +9194,91 @@ fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     )
 }
 
+/// **Adjunta una figura de la biblioteca** al chat: un lienzo nuevo con la
+/// figura dentro, con su nombre, listo para que el asistente la mejore (y la
+/// caja empezada con «Mejora la figura …» si no habia nada escrito).
+fn adjuntar_figura(cx: &Contexto, a: &mut Abierto, i: usize) -> Efecto {
+    let todas = figuras::todas();
+    let Some(f) = todas.get(i) else {
+        return Efecto::Nada;
+    };
+    let nombre = pixpin_motor2d::figuras_de_serie::categoria_de(&f.nombre)
+        .map_or(f.nombre.clone(), |(_, n)| n.to_string());
+    let raiz = cx.ubicacion.raiz();
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let hecho =
+        escribir_lienzo(raiz, &a.ficha.id, cx.identidad, numero, Some(&nombre)).and_then(|m| {
+            let id = m.referencia.clone().unwrap_or_default();
+            let ruta = pixpin_proyecto::almacen::lienzo(raiz, &a.ficha.id, &id);
+            let escena = figuras::escena_con(f);
+            let lienzo = pixpin_motor2d::excalidraw::con_escena(
+                &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+                &escena,
+            );
+            std::fs::write(&ruta, pixpin_motor2d::excalidraw::escribir(&lienzo))?;
+            Ok(m)
+        });
+    match hecho {
+        Ok(m) => {
+            a.vistas.push(leer_vista(cx.ubicacion, &a.ficha.id, &m));
+            a.ficha.tocado = m.cuando;
+            a.ficha.resumen = m.nombre.clone();
+            a.mensajes.push(m);
+            let _ = subir_en_la_lista(raiz, &a.ficha.id, a.ficha.tocado, &a.ficha.resumen);
+            if a.borrador.trim().is_empty() {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("figura", nombre);
+                a.borrador = format!(
+                    "{} ",
+                    cx.textos
+                        .t_args("asistente-mejora-figura", &args)
+                        .trim_end()
+                );
+                let n = a.borrador.len();
+                a.cursor.poner(&a.borrador, n, false);
+            }
+            a.scroll = None;
+            Efecto::Cambio
+        }
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo adjuntar la figura");
+            Efecto::Aviso(cx.textos.t("chat-no-se-pudo"))
+        }
+    }
+}
+
+/// **«Guardar en mis figuras»** de un lienzo del chat: lo que se ve en el,
+/// con el nombre del mensaje.
+fn guardar_en_figuras(cx: &Contexto, a: &mut Abierto, i: usize) -> Efecto {
+    let Some(m) = a.mensajes.get(i) else {
+        return Efecto::Nada;
+    };
+    let Some(id) = m.referencia.as_deref() else {
+        return Efecto::Nada;
+    };
+    let ruta = pixpin_proyecto::almacen::lienzo(cx.ubicacion.raiz(), &a.ficha.id, id);
+    let escena = std::fs::read_to_string(&ruta)
+        .ok()
+        .and_then(|j| pixpin_motor2d::excalidraw::leer(&j).ok())
+        .map(|l| pixpin_motor2d::excalidraw::a_escena(&l));
+    // Sin nombre puesto, la fila se llama como su fichero (`<id>.excalidraw`):
+    // entonces, «Figura de <chat>».
+    let nombre = if m.nombre.trim().is_empty() || m.nombre.ends_with(".excalidraw") {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("chat", a.ficha.nombre.clone());
+        cx.textos.t_args("chat-figura-sin-nombre", &args)
+    } else {
+        m.nombre.trim().to_string()
+    };
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("nombre", nombre.clone());
+    match escena.map(|e| figuras::guardar_lienzo(&e, &nombre)) {
+        Some(Ok(())) => Efecto::Aviso(cx.textos.t_args("chat-figura-guardada", &args)),
+        Some(Err(e)) if e == "vacio" => Efecto::Aviso(cx.textos.t("chat-figura-vacia")),
+        _ => Efecto::Aviso(cx.textos.t("chat-no-se-pudo")),
+    }
+}
+
 /// Lo de [`crear_lienzo`] que toca el disco, sin la conversacion abierta: el
 /// `.excalidraw` vacio y su mensaje `DIBUJO` en el cuaderno.
 ///
@@ -15871,6 +15960,16 @@ enum Accion {
     AdjLienzo,
     AdjTabla,
     AdjDelMovil,
+    /// La hoja del asistente (25-oct-2026): una figura de la biblioteca a un
+    /// lienzo del chat, para mejorarla. Primero el grupo, luego la figura
+    /// (su indice en `figuras::todas`).
+    AdjFigura,
+    AdjFiguraGrupo(usize),
+    AdjFiguraDe(usize),
+    /// «Pedir una figura nueva»: deja empezada la peticion en la caja.
+    PedirFigura,
+    /// «Guardar en mis figuras» de un lienzo del chat.
+    GuardarEnFiguras(usize),
     AdjProyectos,
     AdjProyecto(String),
     /// «Una pagina de un proyecto»: primero el proyecto, luego su hoja
@@ -17209,6 +17308,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         );
     }
 
+    // Un lienzo (lo que hizo el asistente, o uno propio), a la biblioteca de
+    // figuras de un clic (25-oct-2026).
+    if m.clase == Some(Clase::Dibujo) && m.referencia.is_some() {
+        v.push(entrada(
+            Some(&mi::LIBRARY_ADD),
+            textos.t("chat-guardar-en-figuras"),
+            Accion::GuardarEnFiguras(i),
+        ));
+    }
     // Tarjetas de estudio: de una clase grabada, una foto o una nota.
     if anki::se_puede(a, m) {
         v.push(entrada(
@@ -17970,6 +18078,48 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Transcribir(i) => empezar_a_transcribir(cx.ubicacion, a, i, cx.textos, cx.idioma),
         Accion::Letra(i) => abrir_la_letra(a, i),
         Accion::Telepronter => Efecto::Menu(menu_del_telepronter(a, cx.textos)),
+        Accion::AdjFigura => {
+            let grupos = figuras::por_grupos(&figuras::todas());
+            if grupos.is_empty() {
+                return Efecto::Aviso(cx.textos.t("figuras-vacia"));
+            }
+            Efecto::Menu(
+                grupos
+                    .iter()
+                    .enumerate()
+                    .map(|(k, (g, l))| {
+                        entrada(
+                            Some(&mi::FOLDER),
+                            format!("{} ({})", figuras::grupo_legible(g, cx.textos), l.len()),
+                            Accion::AdjFiguraGrupo(k),
+                        )
+                        .con_tecla(menu_v2::Tecla::Sub)
+                    })
+                    .collect(),
+            )
+        }
+        Accion::AdjFiguraGrupo(k) => {
+            let grupos = figuras::por_grupos(&figuras::todas());
+            match grupos.into_iter().nth(k) {
+                Some((_, l)) => Efecto::Menu(
+                    l.into_iter()
+                        .map(|(i, n)| entrada(Some(&mi::PALETTE), n, Accion::AdjFiguraDe(i)))
+                        .collect(),
+                ),
+                None => Efecto::Nada,
+            }
+        }
+        Accion::AdjFiguraDe(i) => adjuntar_figura(cx, a, i),
+        Accion::PedirFigura => {
+            if a.borrador.trim().is_empty() {
+                // Con su espacio: Fluent quita el del final del texto.
+                a.borrador = format!("{} ", cx.textos.t("asistente-pide-figura").trim_end());
+                let n = a.borrador.len();
+                a.cursor.poner(&a.borrador, n, false);
+            }
+            Efecto::Cambio
+        }
+        Accion::GuardarEnFiguras(i) => guardar_en_figuras(cx, a, i),
         Accion::Pronunciar => abrir_pronunciar(cx.ubicacion, a, cx.textos, cx.idioma),
         Accion::Conversacion => abrir_conversacion(cx.ubicacion, a, cx.textos, cx.idioma),
         Accion::TelepronterBorrador => {
