@@ -35,6 +35,13 @@ icono!(
     CAPTURAR,
     "M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"
 );
+// El microfono de «Grabar» (clase o reunion), con su pie.
+icono!(
+    MICROFONO,
+    "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3",
+    "M19 10v2a7 7 0 0 1-14 0v-2",
+    "M12 19v3"
+);
 icono!(
     ZONA,
     "M4 5h3M10 5h4M17 5h3v3M20 11v2M20 16v3h-3M14 19h-4M7 19H4v-3M4 13v-2M4 8V5"

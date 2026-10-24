@@ -815,6 +815,7 @@ fn al_pulsar(panel: &mut Panel, zona: Zona) -> Hacer {
         Zona::Ajustes => Hacer::Pedir(Accion::Comando(Comando::AbrirAjustes)),
         Zona::Buscador => Hacer::Nada,
         Zona::Capturar => Hacer::Pedir(Accion::Comando(Comando::CapturarRegion)),
+        Zona::Grabar => Hacer::Pedir(Accion::Comando(Comando::GrabarClase)),
         Zona::Modo(i) => Hacer::Pedir(Accion::Comando(MODOS[i].0)),
         Zona::EditarFavoritos | Zona::Anadir => {
             panel.editando = true;
@@ -1578,6 +1579,37 @@ fn pintar_normal(
         12.0 * e,
         derecha - x,
         alfa(Color::BLANCO, 0.9),
+    );
+    // --- Grabar (clase o reunion), al lado.
+    let g = d.grabar;
+    p.rellenar_redondeado(
+        g,
+        12.0 * e,
+        if encima == Some(Zona::Grabar) {
+            alfa(pal.rojo, 0.26)
+        } else {
+            alfa(pal.rojo, 0.16)
+        },
+    );
+    let gy = g.y + g.alto / 2.0;
+    icono_en(
+        p,
+        &iconos::MICROFONO,
+        g.x + g.ancho / 2.0,
+        gy - 8.0 * e,
+        20.0 * e,
+        pal.rojo,
+    );
+    let rotulo = textos.t("bandeja2-grabar");
+    let tam = 12.5 * e;
+    let (rw, _) = p.medir_texto(&rotulo, tam);
+    p.texto_linea(
+        &rotulo,
+        g.x + (g.ancho - rw.min(g.ancho - 8.0 * e)) / 2.0,
+        gy + 6.0 * e,
+        tam,
+        g.ancho - 8.0 * e,
+        pal.texto,
     );
     for (i, m) in d.modos.iter().enumerate() {
         let (comando, clave) = MODOS[i];

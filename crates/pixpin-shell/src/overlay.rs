@@ -558,6 +558,19 @@ impl VentanaOverlay {
         }
     }
 
+    /// **Que no salga en ninguna captura** (`WDA_EXCLUDEFROMCAPTURE`): la
+    /// barra de grabar una clase esta encima de lo que se fotografia y no
+    /// tiene que salir en la foto. Antes de Windows 10 2004 falla sin mas y
+    /// la ventana sigue igual.
+    pub fn excluir_de_capturas(&self) {
+        // SAFETY: afinidad de una ventana propia y viva.
+        unsafe {
+            if let Err(e) = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE) {
+                tracing::warn!(?e, "la ventana no se pudo excluir de las capturas");
+            }
+        }
+    }
+
     /// **La hace propiedad de `dueno`**: Windows mantiene SIEMPRE una ventana
     /// poseida por encima de su dueno, aunque el dueno se active, se reordene
     /// o se vuelva pasante. Es lo que necesita la pastilla del anotador de

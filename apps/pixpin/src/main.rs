@@ -235,6 +235,10 @@ const ID_TIMELINE: u32 = 908;
 /// horario que llama por telefono antes de cada clase (`horario.rs`).
 const ID_HORARIO: u32 = 909;
 const ID_HORARIO_GRABAR: u32 = 910;
+/// La zona de las capturas de una clase que se graba (24-oct-2026): no sale
+/// en ningun menu; la pide la barra de grabar con `pedir_ventana_principal`
+/// y abre la captura de siempre en `ModoConfirmacion::ZonaGrabacion`.
+const ID_ZONA_DE_LA_CLASE: u32 = 911;
 
 const _: () = assert!(
     ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -958,6 +962,9 @@ fn arrancar(
                 boton: BotonGesto::Central,
                 punto,
             } => Some((ModoConfirmacion::PinEnVivo, Some(punto))),
+            Evento::Menu(id) if id == ID_ZONA_DE_LA_CLASE => {
+                Some((ModoConfirmacion::ZonaGrabacion, None))
+            }
             _ => match comando {
                 Some(comandos::Comando::CapturarRegion) => Some((ModoConfirmacion::ConBarra, None)),
                 // El retardo abre la MISMA captura; lo unico distinto es
@@ -1124,6 +1131,12 @@ fn arrancar(
                     ubicacion.clone(),
                     buscar_todo::Opciones::de(&config, hwnd.0 as isize),
                 );
+                Continuar::Si
+            }
+            _ if comando == Some(comandos::Comando::GrabarClase) => {
+                // Su propio hilo, como el microfono flotante; si ya hay una
+                // clase grabandose no abre otra.
+                ventana_chat::grabar_clase(&textos, &ubicacion, lengua, &identidad_equipo);
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::Sincronizar) => {
@@ -1623,8 +1636,22 @@ fn arrancar(
                         pila.entrar(imagen, region, r, &ubicacion, &textos)?;
                         Ok(None)
                     }
-                    otra => ejecutar_accion(otra, &ubicacion, hwnd),
+                    // La zona de las capturas de la clase: a su barra, con
+                    // la foto de cuando se pulso.
+                    AccionFinal::ZonaGrabacion { imagen, region } => {
+                        ventana_chat::zona_de_la_clase(Some((region, imagen)));
+                        Ok(None)
+                    }
+                    otra => {
+                        if modo == ModoConfirmacion::ZonaGrabacion {
+                            ventana_chat::zona_de_la_clase(None);
+                        }
+                        ejecutar_accion(otra, &ubicacion, hwnd)
+                    }
                 });
+                if modo == ModoConfirmacion::ZonaGrabacion && resultado.is_err() {
+                    ventana_chat::zona_de_la_clase(None);
+                }
                 match resultado {
                     Ok(Some(ruta)) => {
                         let mut args = fluent_bundle::FluentArgs::new();
@@ -2753,6 +2780,7 @@ fn ejecutar_accion(
         | AccionFinal::Scroll { .. }
         | AccionFinal::Gif { .. }
         | AccionFinal::PinEnVivo { .. }
+        | AccionFinal::ZonaGrabacion { .. }
         | AccionFinal::AlChat { .. } => {
             // El bucle los intercepta antes de llamar aqui, porque necesitan
             // el gestor o los recursos de captura; llegar seria un error de

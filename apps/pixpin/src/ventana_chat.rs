@@ -109,6 +109,9 @@ mod descripcion;
 mod donde_vive;
 /// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
 mod envio;
+/// «Grabar clase»: el microfono y el sonido del equipo, con capturas de una
+/// zona en su minuto, y despues el texto (24-oct-2026).
+mod grabar_clase;
 /// v2-menus: la hoja del «+» de la caja, cuadricula con buscador.
 mod hoja_adjuntar;
 /// Los archivos con el icono de su tipo, un color por extension (v0.98.4).
@@ -3976,6 +3979,12 @@ pub fn abrir(
                     faltan_fondos |= previas.asegurar(&rutas, &motor);
                 }
             }
+            // Y la captura del momento de una clase, junto a su letra.
+            if let Some(a) = abierto.as_ref()
+                && let Some((_, ruta)) = captura_de_la_letra(a)
+            {
+                faltan_fondos |= previas.asegurar(&[ruta], &motor);
+            }
             // Y las de la pantalla de Proyectos: sus miniaturas y la portada.
             if vista_proyectos.activa() {
                 faltan_fondos |= vista_proyectos.preparar(&mut previas, &motor);
@@ -4825,6 +4834,9 @@ struct LetraAbierta {
     /// se mueve la vista cuando CAMBIA: si no, el usuario no podria subir
     /// con la rueda mientras suena.
     seguido: Option<usize>,
+    /// La captura de la clase que se ensena (la del minuto que suena): se
+    /// repinta cuando cambia, aunque el parrafo siga siendo el mismo.
+    captura: Option<usize>,
 }
 
 #[derive(Default)]
@@ -10720,6 +10732,49 @@ pub(crate) fn grabar_flotante(
     );
 }
 
+/// **Graba una clase o una reunion** (24-oct-2026): la ventanita de
+/// [`grabar_clase`], que guarda en el proyecto elegido la nota con sus
+/// capturas y la pasa a texto. Sin proyectos, en «Guardados».
+pub(crate) fn grabar_clase(
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    idioma: pixpin_store::Idioma,
+    aparato: &str,
+) {
+    let raiz = ubicacion.raiz();
+    let mut proyectos = crate::captura2::al_chat::proyectos(raiz);
+    if proyectos.is_empty() {
+        match pixpin_proyecto::almacen::asegurar_guardados(
+            raiz,
+            pixpin_shell::entorno::ahora_utc_ms(),
+            aparato,
+        ) {
+            Ok(f) => proyectos.push((f.id, f.nombre)),
+            Err(e) => {
+                tracing::warn!(?e, "sin proyecto donde guardar la clase");
+                return;
+            }
+        }
+    }
+    grabar_clase::lanzar(
+        grabar_clase::Pedido {
+            ubicacion: ubicacion.clone(),
+            idioma,
+            aparato: aparato.to_string(),
+            proyectos,
+        },
+        grabar_clase::Rotulos::de(textos),
+    );
+}
+
+/// La zona de las capturas de la clase, elegida en la captura de siempre
+/// (`None` si se cancelo). Ver [`grabar_clase`].
+pub(crate) fn zona_de_la_clase(
+    zona: Option<(pixpin_geom::Rect, pixpin_codec::imagen::ImagenRgba)>,
+) {
+    grabar_clase::zona_elegida(zona);
+}
+
 /// **Graba con el microfono flotante a un fichero** (17-oct-2026): la nota
 /// de voz de una clase del horario (`horario::grabar_para_la_proxima`). Al
 /// guardarla dice `listo`.
@@ -11433,6 +11488,7 @@ fn abrir_la_letra(a: &mut Abierto, i: usize) -> Efecto {
         scroll: 0,
         altos: std::cell::RefCell::new(Vec::new()),
         seguido: None,
+        captura: None,
     });
     Efecto::Cambio
 }
@@ -11532,6 +11588,19 @@ fn latido_de_la_letra(a: &mut Abierto, escala: u32, d: &Disposicion) -> bool {
     };
     let suena = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
         .is_some_and(|r| crate::audio::cargado().as_deref() == Some(r.as_path()));
+    let captura = captura_de_la_letra(a).map(|(n, _)| n);
+    if l.captura != captura {
+        if let Some(l) = a.letra.as_mut() {
+            l.captura = captura;
+        }
+        cambio = true;
+    }
+    let Some(l) = a.letra.as_ref() else {
+        return cambio;
+    };
+    let Some(m) = a.mensajes.iter().find(|m| m.id == l.id) else {
+        return cambio;
+    };
     if !suena {
         return cambio;
     }
@@ -11580,12 +11649,174 @@ fn copiar_la_letra(a: &Abierto, textos: &Catalogo) -> Efecto {
 /// al audio: si cada uno midiera a su manera, el texto de uno quedaria
 /// debajo de la fila del otro.
 fn caja_de_la_letra(a: &Abierto, d: &Disposicion, escala: u32) -> pixpin_ui::chat::Letra {
+    let mut t = caja_de_la_letra_entera(a, d, escala);
+    if let Some((texto, _)) = reparto_de_la_clase(a, t.texto, escala) {
+        t.texto = texto;
+    }
+    t
+}
+
+/// [`caja_de_la_letra`] sin apartar el sitio de las capturas de una clase.
+fn caja_de_la_letra_entera(a: &Abierto, d: &Disposicion, escala: u32) -> pixpin_ui::chat::Letra {
     let con_marcas = a
         .letra
         .as_ref()
         .and_then(|l| a.mensajes.iter().find(|m| m.id == l.id))
         .is_some_and(|m| !crate::voz::marcas_de(m).is_empty());
     pixpin_ui::chat::letra_con(hueco_hoja(d), crate::audio::hay_algo(), con_marcas, escala)
+}
+
+/// **La letra de una clase con capturas** (24-oct-2026): el texto a la
+/// izquierda y, a la derecha, la imagen del minuto que suena. `None` si la
+/// nota no tiene capturas o si no cabe (entonces la letra va entera, como
+/// siempre).
+fn reparto_de_la_clase(a: &Abierto, texto: Rect, escala: u32) -> Option<(Rect, Rect)> {
+    let e = |v: u32| v * escala / 100;
+    if texto.ancho < e(560) || capturas_de_la_letra(a).is_empty() {
+        return None;
+    }
+    let ancho_texto = texto.ancho * 52 / 100;
+    let hueco = e(12);
+    Some((
+        Rect {
+            ancho: ancho_texto,
+            ..texto
+        },
+        Rect {
+            x: texto.x + (ancho_texto + hueco) as i32,
+            y: texto.y + e(12) as i32,
+            ancho: texto.ancho - ancho_texto - hueco - e(16),
+            alto: texto.alto.saturating_sub(e(24)),
+        },
+    ))
+}
+
+/// Las capturas de la nota cuya letra esta abierta, `(ms, ruta)`, en orden.
+/// Las que ya no estan en el chat o en el disco se saltan.
+fn capturas_de_la_letra(a: &Abierto) -> Vec<(i64, std::path::PathBuf)> {
+    let Some(m) = a
+        .letra
+        .as_ref()
+        .and_then(|l| a.mensajes.iter().find(|m| m.id == l.id))
+    else {
+        return Vec::new();
+    };
+    grabar_clase::capturas_de(m)
+        .into_iter()
+        .filter_map(|(ms, id)| {
+            let c = a.mensajes.iter().find(|c| c.id == id)?;
+            Some((ms, ruta_del_mensaje(&a.raiz, &a.ficha.id, c)?))
+        })
+        .collect()
+}
+
+/// La captura que toca ahora, `(cual, ruta)`: la del minuto que suena, o la
+/// primera si la nota no esta sonando.
+fn captura_de_la_letra(a: &Abierto) -> Option<(usize, std::path::PathBuf)> {
+    let capturas = capturas_de_la_letra(a);
+    let m = a
+        .letra
+        .as_ref()
+        .and_then(|l| a.mensajes.iter().find(|m| m.id == l.id))?;
+    let suena = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
+        .is_some_and(|r| crate::audio::cargado().as_deref() == Some(r.as_path()));
+    let posicion = if suena {
+        crate::audio::estado().posicion_ms
+    } else {
+        0
+    };
+    let tiempos: Vec<(i64, String)> = capturas
+        .iter()
+        .map(|(ms, _)| (*ms, String::new()))
+        .collect();
+    let n = grabar_clase::captura_en(&tiempos, posicion)?;
+    Some((n, capturas[n].1.clone()))
+}
+
+/// Pinta la imagen del minuto que suena y, debajo, una ficha por captura
+/// con su minuto: un clic lleva el audio (y la letra) ahi.
+fn pintar_capturas_de_la_letra(p: &Pintor, caja: Rect, c: &Pinta, a: &Abierto, i: usize) {
+    let (tema, e) = (c.tema, c.escala as f32 / 100.0);
+    let capturas = capturas_de_la_letra(a);
+    let actual = captura_de_la_letra(a).map(|(n, _)| n);
+    // Las fichas de abajo, en tantas filas como hagan falta (pocas).
+    let tam = 12.5 * e;
+    let alto_ficha = 26.0 * e;
+    let hueco = 6.0 * e;
+    let mut fichas = Vec::new();
+    let (mut x, mut y) = (0.0f32, 0.0f32);
+    for (ms, _) in &capturas {
+        let rotulo = format!("⏱ {}", pixpin_voz::marca_de_tiempo(*ms));
+        let w = p.medir_texto(&rotulo, tam).0 + 20.0 * e;
+        if x > 0.0 && x + w > caja.ancho as f32 {
+            x = 0.0;
+            y += alto_ficha + hueco;
+        }
+        fichas.push((x, y, w, rotulo, *ms));
+        x += w + hueco;
+    }
+    let alto_fichas = if fichas.is_empty() {
+        0.0
+    } else {
+        y + alto_ficha
+    };
+    let alto_imagen = (caja.alto as f32 - alto_fichas - 2.0 * hueco).max(0.0);
+    let marco = RectF {
+        x: caja.x as f32,
+        y: caja.y as f32,
+        ancho: caja.ancho as f32,
+        alto: alto_imagen,
+    };
+    p.rellenar_redondeado(marco, 10.0 * e, con_alfa(tema.texto_papel, 0.06));
+    if let Some((_, ruta)) = actual.and_then(|n| capturas.get(n))
+        && let Some((b, w, h)) = c.previas.ya(ruta)
+        && w > 0
+        && h > 0
+    {
+        let k = (marco.ancho / w as f32).min(marco.alto / h as f32);
+        let (dw, dh) = (w as f32 * k, h as f32 * k);
+        p.bitmap(
+            b,
+            RectF {
+                x: marco.x + (marco.ancho - dw) / 2.0,
+                y: marco.y + (marco.alto - dh) / 2.0,
+                ancho: dw,
+                alto: dh,
+            },
+            None,
+            false,
+        );
+    }
+    let arriba = marco.y + alto_imagen + 2.0 * hueco;
+    for (n, (fx, fy, w, rotulo, ms)) in fichas.iter().enumerate() {
+        let ficha = RectF {
+            x: caja.x as f32 + fx,
+            y: arriba + fy,
+            ancho: *w,
+            alto: alto_ficha,
+        };
+        let es = actual == Some(n);
+        p.rellenar_redondeado(
+            ficha,
+            alto_ficha / 2.0,
+            con_alfa(tema.enviar, if es { 0.85 } else { 0.18 }),
+        );
+        let (tw, th) = p.medir_texto(rotulo, tam);
+        p.texto(
+            rotulo,
+            ficha.x + (ficha.ancho - tw) / 2.0,
+            ficha.y + (ficha.alto - th) / 2.0,
+            tam,
+            if es { Color::BLANCO } else { tema.texto_papel },
+        );
+        let zona = Rect {
+            x: ficha.x as i32,
+            y: ficha.y as i32,
+            ancho: ficha.ancho as u32,
+            alto: ficha.alto as u32,
+        };
+        a.zonas.borrow_mut().push((zona, Zona::Trozo(i, *ms)));
+    }
 }
 
 /// La posicion en `a.mensajes` de la nota cuya letra esta abierta.
@@ -11993,6 +12224,14 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             p.texto_ajustado(&tr.texto, x, y, tam, ancho + 1.0, tema.texto_papel);
         }
         p.soltar_recorte();
+    }
+
+    // La imagen del minuto que suena, si la nota es de una clase.
+    if let Some((i, _)) = m
+        && let Some((_, imagen)) =
+            reparto_de_la_clase(a, caja_de_la_letra_entera(a, d, escala).texto, escala)
+    {
+        pintar_capturas_de_la_letra(p, imagen, c, a, i);
     }
 
     // La barra del reproductor, abajo, como en el movil.

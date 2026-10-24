@@ -73,6 +73,9 @@ pub enum ModoConfirmacion {
     /// Confirmar deja la zona flotando como pin EN VIVO: se ve en directo
     /// lo que pase en ella.
     PinEnVivo,
+    /// La zona de las capturas de una clase que se esta grabando
+    /// (`grabar_clase`): confirmar la devuelve con la foto de ese momento.
+    ZonaGrabacion,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
@@ -114,6 +117,11 @@ pub enum AccionFinal {
         region: Rect,
         proyecto: String,
         comentario: String,
+    },
+    /// La zona elegida para las capturas de la clase y su primera foto.
+    ZonaGrabacion {
+        imagen: ImagenRgba,
+        region: Rect,
     },
     Nada,
 }
@@ -602,6 +610,7 @@ pub fn ejecutar_overlay(
                 QueAccion::Scroll => AccionFinal::Scroll { region },
                 QueAccion::Gif => AccionFinal::Gif { region },
                 QueAccion::PinEnVivo => AccionFinal::PinEnVivo { region },
+                QueAccion::ZonaGrabacion => AccionFinal::ZonaGrabacion { imagen, region },
             })
         }
         None => Ok(AccionFinal::Nada),
@@ -623,6 +632,8 @@ enum QueAccion {
     Scroll,
     /// Al chat del proyecto elegido en el selector (`Sesion::al_chat`).
     AlChat,
+    /// La zona de las capturas de la clase que se graba.
+    ZonaGrabacion,
 }
 
 thread_local! {
@@ -1635,6 +1646,10 @@ fn aplicar_efecto(
             }
             ModoConfirmacion::PinEnVivo => {
                 PENDIENTE.poner(QueAccion::PinEnVivo, region);
+                Continuar::No
+            }
+            ModoConfirmacion::ZonaGrabacion => {
+                PENDIENTE.poner(QueAccion::ZonaGrabacion, region);
                 Continuar::No
             }
             // El cuentagotas no confirma regiones: su clic se resuelve al

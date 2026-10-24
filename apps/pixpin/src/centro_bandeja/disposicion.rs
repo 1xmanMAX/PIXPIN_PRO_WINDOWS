@@ -14,6 +14,8 @@ pub const CABECERA: f32 = 40.0;
 pub const FILA: f32 = 44.0;
 const CAPTURAR: f32 = 54.0;
 const MODO: f32 = 48.0;
+/// El ancho del boton «Grabar», al lado de «Capturar».
+const GRABAR: f32 = 96.0;
 const FAVORITO: f32 = 62.0;
 const MINIATURA: f32 = 56.0;
 /// Cuantos modos de captura hay en la fila.
@@ -30,6 +32,8 @@ pub enum Zona {
     Ajustes,
     Buscador,
     Capturar,
+    /// «Grabar»: una clase o una reunion, al lado de «Capturar».
+    Grabar,
     Modo(usize),
     EditarFavoritos,
     Favorito(usize),
@@ -101,6 +105,7 @@ pub struct Disposicion {
     /// Normal: la tarjeta de capturar y lo que lleva.
     pub tarjeta_captura: RectF,
     pub capturar: RectF,
+    pub grabar: RectF,
     pub modos: Vec<RectF>,
     pub etiqueta_favoritos: RectF,
     pub editar: RectF,
@@ -179,6 +184,7 @@ pub fn disponer(v: &Vista) -> Disposicion {
         buscador,
         tarjeta_captura: NADA,
         capturar: NADA,
+        grabar: NADA,
         modos: Vec::new(),
         etiqueta_favoritos: NADA,
         editar: NADA,
@@ -233,8 +239,23 @@ pub fn disponer(v: &Vista) -> Disposicion {
             let pad = 8.0 * e;
             let alto_t = pad + CAPTURAR * e + pad + MODO * e + pad;
             d.tarjeta_captura = r(m, y, util, alto_t);
-            d.capturar = r(m + pad, y + pad, util - 2.0 * pad, CAPTURAR * e);
+            // «Grabar» a la derecha de «Capturar», en la misma fila: a la
+            // vista nada mas abrir el panel.
+            let ancho_grabar = GRABAR * e;
+            d.capturar = r(
+                m + pad,
+                y + pad,
+                util - 2.0 * pad - ancho_grabar - 6.0 * e,
+                CAPTURAR * e,
+            );
+            d.grabar = r(
+                d.capturar.x + d.capturar.ancho + 6.0 * e,
+                y + pad,
+                ancho_grabar,
+                CAPTURAR * e,
+            );
             zonas.push((d.capturar, Zona::Capturar));
+            zonas.push((d.grabar, Zona::Grabar));
             d.modos = columnas(
                 m + pad,
                 y + pad + CAPTURAR * e + pad,
@@ -443,6 +464,7 @@ mod pruebas {
     fn cada_cosa_esta_donde_se_pinta() {
         let d = disponer(&vista(Modo::Normal));
         assert_eq!(d.zona_en(centro(d.capturar), None), Some(Zona::Capturar));
+        assert_eq!(d.zona_en(centro(d.grabar), None), Some(Zona::Grabar));
         assert_eq!(d.zona_en(centro(d.modos[5]), None), Some(Zona::Modo(5)));
         assert_eq!(
             d.zona_en(centro(d.favoritos[2]), None),
@@ -493,6 +515,7 @@ mod pruebas {
         let d = disponer(&vista(Modo::Normal));
         let mut todos = vec![
             d.capturar,
+            d.grabar,
             d.sincronizar,
             d.ajustes,
             d.editar,

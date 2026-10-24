@@ -145,6 +145,7 @@ impl Accion {
                 Comando::CapturarConScroll => &ic::SCROLL,
                 Comando::CapturarYAnotar | Comando::Anotar | Comando::AnotarCongelada => &ic::LAPIZ,
                 Comando::GrabarGif => &ic::GRABAR,
+                Comando::GrabarClase => &ic::MICROFONO,
                 Comando::Cuentagotas => &ic::CUENTAGOTAS,
                 Comando::Pinear | Comando::PinearEnVivo | Comando::PinearSeleccion => &ic::PIN,
                 Comando::PinearPortapapeles => &ic::PORTAPAPELES,
@@ -190,6 +191,7 @@ impl Accion {
                     hex(0xB86E00)
                 }
                 Comando::GrabarGif | Comando::CopiarTexto | Comando::Cuentagotas => hex(0x8E44B8),
+                Comando::GrabarClase => hex(0xC9302C),
                 Comando::CapturarRegion
                 | Comando::CapturarYCopiar
                 | Comando::CapturarConScroll

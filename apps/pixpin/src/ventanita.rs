@@ -142,12 +142,21 @@ pub fn cerrar_microfono(
 pub fn abrir_microfono(
     fichero: std::path::PathBuf,
 ) -> std::sync::mpsc::Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>> {
+    abrir_audio(fichero, pixpin_audio::Fuentes::MICROFONO)
+}
+
+/// [`abrir_microfono`] con las fuentes elegidas: el microfono, el sonido del
+/// equipo o los dos (grabar una clase o una reunion).
+pub fn abrir_audio(
+    fichero: std::path::PathBuf,
+    fuentes: pixpin_audio::Fuentes,
+) -> std::sync::mpsc::Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let lanzado = std::thread::Builder::new()
         .name("abrir-microfono".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let _ = tx.send(pixpin_audio::Grabadora::empezar(&fichero));
+            let _ = tx.send(pixpin_audio::Grabadora::empezar_con(&fichero, fuentes));
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del microfono");
