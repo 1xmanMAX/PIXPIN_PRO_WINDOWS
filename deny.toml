@@ -46,3 +46,10 @@ ignore = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# Los dos lectores que aun no estan en crates.io, cada uno fijado a un commit
+# (`rev`) en su Cargo.toml: los planos DWG (pixpin-cad, MPL-2.0) y los
+# modelos de Revit (pixpin-bim, Apache-2.0). Solo esos dos repositorios.
+allow-git = [
+    "https://github.com/HakanSeven12/opencadcodec.git",
+    "https://github.com/DrunkOnJava/rvt-rs",
+]
