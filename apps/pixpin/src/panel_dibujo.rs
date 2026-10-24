@@ -54,6 +54,12 @@ pub fn plegado() -> bool {
     PLEGADO.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// **El panel de este hilo lleva el boton de quitarlo** (o deja de
+/// llevarlo). Lo pide el lienzo al abrir.
+pub fn con_boton_plegar(si: bool) {
+    CON_PLEGAR.with(|c| c.set(si));
+}
+
 /// Quita o saca el panel (y cierra su desplegable).
 pub fn poner_plegado(si: bool) {
     PLEGADO.store(si, std::sync::atomic::Ordering::Relaxed);
@@ -63,6 +69,10 @@ pub fn poner_plegado(si: bool) {
 }
 
 thread_local! {
+    /// Si el panel de este hilo lleva el boton de quitarlo: solo el del
+    /// lienzo ([`con_boton_plegar`]); el de un pin, el lector o la hojita
+    /// van en su sitio de siempre, sin el.
+    static CON_PLEGAR: Cell<bool> = const { Cell::new(false) };
     /// El desplegable abierto (la paleta o las puntas).
     ///
     /// Es el unico estado del panel y vive aqui, por hilo, porque cada
@@ -311,7 +321,9 @@ pub fn panel_para(
         },
     )?;
     // Quitado, solo su boton; el papel pedido desde el menu sale siempre.
-    Some(if plegado() && !papel {
+    Some(if !CON_PLEGAR.with(Cell::get) {
+        panel
+    } else if plegado() && !papel {
         PanelLateral::plegado(area, escala_por_cien)
     } else {
         panel.con_plegar(area, escala_por_cien)
@@ -1408,6 +1420,9 @@ mod pruebas {
         let mut gesto = Gesto::default();
         gesto.tomar_herramienta(Herramienta::Rectangulo);
         poner_plegado(false);
+        // Caso negativo: fuera del lienzo (un pin, el lector) no hay boton.
+        assert!(panel_para(&gesto, &escena, area(), 100).unwrap().plegar.is_none());
+        con_boton_plegar(true);
         let entero = panel_para(&gesto, &escena, area(), 100).unwrap();
         let b = entero.plegar.expect("lleva el boton");
         let centro = pixpin_geom::Punto { x: b.x + b.ancho as i32 / 2, y: b.y + b.alto as i32 / 2 };
@@ -1422,6 +1437,7 @@ mod pruebas {
         let _ = atender_clic(centro, false, &mut gesto, &mut escena, area(), 100);
         assert!(!panel_para(&gesto, &escena, area(), 100).unwrap().plegado);
         poner_plegado(false);
+        con_boton_plegar(false);
     }
 
     #[test]
@@ -1987,7 +2003,9 @@ mod pruebas {
                 if despues.elementos != antes.elementos {
                     return Err("quitar el panel cambio el dibujo".into());
                 }
+                con_boton_plegar(true);
                 let quitado = panel_para(gesto, despues, area(), 100).is_some_and(|p| p.plegado);
+                con_boton_plegar(false);
                 poner_plegado(false);
                 if !quitado {
                     return Err("el panel no se quito".into());

@@ -352,6 +352,7 @@ mod pruebas {
             alto: h,
         };
         let barra = CajaHerramientas::barra_superior(chica, 100, botones).marco;
+        crate::panel_dibujo::con_boton_plegar(true);
         let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area_del_panel(chica, barra, 100), 100)
             .expect("el rectangulo tiene panel");
         assert!(panel.marco.y >= barra.abajo(), "panel {:?} bajo la barra {barra:?}", panel.marco);

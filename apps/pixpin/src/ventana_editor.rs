@@ -1035,6 +1035,8 @@ fn abrir_en_modo(
     // Lo que dibuje el asistente mientras este lienzo esta abierto cae aqui,
     // centrado en lo que se ve (`asistente::al_lienzo`). El anotador de
     // pantalla no es un lienzo.
+    // El panel de propiedades del lienzo lleva su boton de quitarlo (24-oct).
+    crate::panel_dibujo::con_boton_plegar(pantalla.is_none());
     let _para_el_asistente = pantalla
         .is_none()
         .then(|| {
@@ -1688,6 +1690,8 @@ fn abrir_en_modo(
                 }
                 if r.hojita {
                     rejilla.sincronizar(&escena);
+                    // La hojita lleva su panel en su sitio, sin el boton.
+                    crate::panel_dibujo::con_boton_plegar(false);
                     let pedido = hojita::abrir(hojita::Editor {
                         ventana: &ventana,
                         dispositivo: &dispositivo,
@@ -1710,6 +1714,7 @@ fn abrir_en_modo(
                         alto_px,
                         bajo_la_barra: bajo_la_barra(&caja, area),
                     });
+                    crate::panel_dibujo::con_boton_plegar(true);
                     if let Some(ins) = pedido {
                         hojita::insertar_en_el_lienzo(
                             &mut escena,
