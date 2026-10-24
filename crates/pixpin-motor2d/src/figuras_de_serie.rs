@@ -28,6 +28,7 @@ use crate::vector::Punto2;
 
 mod arquitectura;
 mod blocs;
+mod ciencias;
 mod civil;
 mod derecho;
 mod intervalo;
@@ -50,7 +51,7 @@ pub const PREFIJO_ID: &str = "serie-";
 pub const VERSION: u32 = 3;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 12] = [
+pub const CATEGORIAS: [&str; 18] = [
     "Planificación",
     "Académico",
     "Creativo",
@@ -63,6 +64,12 @@ pub const CATEGORIAS: [&str; 12] = [
     "Escala humana",
     "Ingeniería civil",
     "Derecho",
+    "Física",
+    "Química",
+    "Matemáticas",
+    "Biología",
+    "Medicina",
+    "Mecánica",
 ];
 
 /// **La categoria de una figura** por su nombre («Diario · Gratitud» →
@@ -89,6 +96,7 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     mobiliario::todas(&mut v);
     civil::todas(&mut v);
     derecho::todas(&mut v);
+    ciencias::todas(&mut v);
     v
 }
 

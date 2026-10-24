@@ -643,13 +643,16 @@ fn pintar_todo(
             .iter()
             .map(|(gr, n)| (Some(gr.clone()), rotulo_del_grupo(gr, textos), *n)),
     );
+    // Las filas se encogen para que entren todos los grupos (hay 18 de serie).
+    let paso_fila = (lista.alto.saturating_sub(ei(20)) / filas.len().max(1) as u32)
+        .clamp(ei(22), ei(FILA_GRUPO));
     let mut y = lista.y + ei(10) as i32;
     for (gr, rotulo, n) in filas {
         let fila = Rect {
             x: ei(8) as i32,
             y,
             ancho: lista.ancho - ei(16),
-            alto: ei(FILA_GRUPO) - ei(4),
+            alto: paso_fila - ei(4),
         };
         if fila.abajo() > lista.abajo() {
             break;
@@ -689,7 +692,7 @@ fn pintar_todo(
             if elegida { tinta } else { tema.apagado },
         );
         zonas.push((fila, Zona::Grupo(gr)));
-        y += ei(FILA_GRUPO) as i32;
+        y += paso_fila as i32;
     }
 
     // La rejilla, por grupos.

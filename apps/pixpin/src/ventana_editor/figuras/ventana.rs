@@ -981,7 +981,19 @@ fn fila_lateral(
 fn pintar_lateral(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     p.rellenar(z, hex_lateral());
     let m = d::MARGEN * s;
-    let fh = FILA_LATERAL * s;
+    // **Que quepa todo** (25-oct-2026: de 6 categorias de serie se paso a 18):
+    // las filas se encogen lo justo para que las categorias y lo de insertar
+    // entren enteras, sin bajar de un minimo que aun se pulse bien.
+    let filas = 1
+        + (0..e.cats.len())
+            .filter(|k| {
+                let c = &e.cats[*k];
+                c == &e.mis || e.figuras.iter().any(|f| de_que_es(f, &e.mis).0 == *c)
+            })
+            .count()
+        + e.herramientas.len();
+    let fijo = m + m + m * 0.75 + 26.0 * s + m;
+    let fh = ((z.alto - fijo) / filas.max(1) as f32 - 2.0 * s).clamp(24.0 * s, FILA_LATERAL * s);
     let x = z.x + m * 0.75;
     let ancho = z.ancho - m * 1.5;
     let mut y = z.y + m;
