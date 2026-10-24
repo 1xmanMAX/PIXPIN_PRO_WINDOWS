@@ -17,7 +17,7 @@ jobs:
       - name: Volcar
         shell: bash
         env:
-          PIXPIN_IA_VOLCADO: volcado
+          PIXPIN_IA_VOLCADO: ${{ github.workspace }}/volcado
         run: cargo test -p pixpin-ia --test banco -- --ignored --nocapture --exact volcar_para_haiku
       - name: Al registro
         shell: bash
