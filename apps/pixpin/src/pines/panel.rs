@@ -14,19 +14,20 @@
 use pixpin_geom::Rect;
 use pixpin_ui::panel_lateral::PanelLateral;
 
-/// Lo que ocupa el panel de ancho y cuanto se separa del pin, logicos.
-const ANCHO_PANEL: u32 = 200;
+/// Lo que ocupa el panel de ancho (el de `panel_lateral`, 168 desde el
+/// 24-oct) y cuanto se separa del pin, logicos.
+const ANCHO_PANEL: u32 = pixpin_ui::panel_lateral::ANCHO_LOGICO;
 const HUECO: u32 = 8;
 /// Donde empieza el panel dentro de su `area` (`panel_lateral`: 16 a la
-/// izquierda y 76 por arriba, lo que deja sitio a la barra).
+/// izquierda y 60 por arriba, lo que deja sitio a su boton de quitarlo).
 const X_EN_AREA: u32 = 16;
-const Y_EN_AREA: u32 = 76;
+const Y_EN_AREA: u32 = pixpin_ui::panel_lateral::Y_LOGICA;
 /// Lo que se sale la sombra de la isla por los lados y por abajo.
 const SOMBRA: u32 = 14;
 
 /// **El `area` que se le da al panel** para que quede junto al pin: a su
 /// izquierda si cabe, y si no a su derecha. `panel_lateral` coloca el panel
-/// a 16 del borde izquierdo y 76 del de arriba de su area, asi que el area
+/// a 16 del borde izquierdo y 60 del de arriba de su area, asi que el area
 /// se corre para que ese sitio caiga donde se quiere.
 ///
 /// Alineado con lo alto del pin, pero nunca por encima de donde lo pondria
@@ -131,7 +132,10 @@ mod pruebas {
             alto: 300,
         };
         let panel = panel_de(area_para(pin, TRABAJO, 100));
-        assert_eq!(panel.marco.y, 76, "donde lo pondria el lienzo");
+        assert_eq!(
+            panel.marco.y, Y_EN_AREA as i32,
+            "donde lo pondria el lienzo"
+        );
     }
 
     #[test]
