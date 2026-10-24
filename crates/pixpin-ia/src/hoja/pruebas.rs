@@ -658,3 +658,24 @@ fn dos_fracciones_lado_a_lado_no_son_una_tabla() {
     let s = p.seccionar();
     assert!(!tipos(&s).contains(&Tipo::Tabla), "{:?}", s.zonas.iter().map(|z| (z.tipo, z.caja, z.texto())).collect::<Vec<_>>());
 }
+
+/// La misma, como la vio el OCR de la CI: la raya de la primera fraccion
+/// fundida con el «m =» y el «=» en una sola mancha ancha y baja.
+#[test]
+fn la_raya_fundida_con_los_iguales_tambien_es_una_fraccion() {
+    let mut p = Papel::nuevo(1400, 900);
+    p.renglon("El grupo salio a las ocho y llego al mirador a mediodia.", 83.0, 192.0, 36.0);
+    p.renglon("La pendiente media del camino se calcula asi:", 83.0, 246.0, 36.0);
+    p.renglon("Ay", 240.0, 332.0, 40.0);
+    // «m =», la raya y el «=», todo junto: 196 x 26.
+    p.rect(124.0, 374.0, 196.0, 4.0, 20);
+    p.rect(124.0, 374.0, 6.0, 26.0, 20);
+    p.rect(150.0, 384.0, 170.0, 4.0, 20);
+    p.rect(150.0, 394.0, 170.0, 4.0, 20);
+    p.renglon("Ax", 240.0, 406.0, 32.0);
+    p.renglon("480- 120", 363.0, 332.0, 32.0);
+    p.raya_h(354.0, 558.0, 382.0, 4.0);
+    p.renglon("6", 445.0, 406.0, 32.0);
+    let s = p.seccionar();
+    assert!(!tipos(&s).contains(&Tipo::Tabla), "{:?}", s.zonas.iter().map(|z| (z.tipo, z.caja, z.texto())).collect::<Vec<_>>());
+}

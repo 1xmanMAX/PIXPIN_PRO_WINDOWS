@@ -667,9 +667,13 @@ impl Corte<'_> {
         };
         ids.iter().any(|&i| {
             let c = self.atomos[i].caja;
+            // (La raya puede venir fundida con la tinta que el OCR no leyo,
+            // el «m =» de delante y el «=» de detras: una mancha ancha y
+            // baja, no siempre fina.)
             matches!(self.atomos[i].clase, Clase::Resto(_))
-                && c.h <= self.hm * 0.5
+                && c.h <= self.hm * 1.2
                 && c.w >= c.h * 3.0
+                && c.w >= arriba.w.max(abajo.w) * 0.8
                 && c.cy() >= arriba.y1() - self.hm * 0.3
                 && c.cy() <= abajo.y + self.hm * 0.3
                 && c.solape_x(&arriba) >= arriba.w.min(c.w) * 0.6
