@@ -606,6 +606,11 @@ fn el_parrafo_y_su_formula_son_un_bloque_y_el_titulo_no() {
     let _com = pixpin_shell::ComDelHilo::iniciar();
     let p = pagina_mixta();
     let s = pixpin_ia::hoja::seccion::seccionar(&p.rgba, p.ancho, p.alto, p.palabras.clone());
+    // Lo que vio el OCR de este equipo, para saber por que falla si falla.
+    println!("alto de letra {:.1}", s.alto_letra);
+    for z in &s.zonas {
+        println!("zona {} {:?} {:?}: {:?}", z.id, z.tipo, z.caja, z.renglones.iter().map(|r| r.texto.clone()).collect::<Vec<_>>());
+    }
     let bloques = super::bloques_de_texto(&s);
     for b in &bloques {
         println!("bloque {} {:?}: {:?}", b.0, b.1, b.2.renglones.iter().map(|r| r.texto.clone()).collect::<Vec<_>>());

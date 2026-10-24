@@ -1,0 +1,41 @@
+# TEMPORAL (24-oct-2026): las pruebas que solo fallan en el Windows de la CI
+# (el OCR, la voz y el cierre de pixpin-notas), con toda su salida, para
+# saber por que. Se quita en cuanto esten arregladas.
+name: Diagnostico
+
+on:
+  push:
+    branches: ['ccr-**']
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Voz
+        continue-on-error: true
+        run: cargo test -p pixpin-voz --lib sapi -- --test-threads=1 --nocapture
+      - name: Notas, una por una
+        continue-on-error: true
+        shell: bash
+        run: |
+          cargo test -p pixpin-notas --lib --no-run
+          cargo test -q -p pixpin-notas --lib -- --list 2>/dev/null | grep ': test$' | sed 's/: test$//' > lista.txt
+          echo "$(wc -l < lista.txt) pruebas"
+          while read -r t; do
+            if ! cargo test -q -p pixpin-notas --lib -- --exact "$t" --test-threads=1 > salida.txt 2>&1; then
+              echo "::warning::FALLA SOLA: $t"
+              tail -n 8 salida.txt
+            fi
+          done < lista.txt
+      - name: Notas juntas (normal)
+        continue-on-error: true
+        shell: bash
+        run: cargo test -p pixpin-notas --lib -- --test-threads=1 2>&1 | tail -n 40
+      - name: OCR del banco
+        continue-on-error: true
+        env:
+          PIXPIN_DIAGRAMA_DEPURAR: '1'
+        run: cargo test -p pixpin --bin pixpinmax el_parrafo_y_su_formula -- --nocapture

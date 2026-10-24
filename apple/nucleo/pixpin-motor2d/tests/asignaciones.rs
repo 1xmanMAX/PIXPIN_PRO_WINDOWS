@@ -15,7 +15,20 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static VECES: AtomicUsize = AtomicUsize::new(0);
-static CONTANDO: AtomicUsize = AtomicUsize::new(0);
+
+thread_local! {
+    /// **Solo cuenta el hilo que mide** (24-oct-2026): con un contador para
+    /// todo el proceso, lo que pedia a la vez otro hilo —otra prueba en
+    /// paralelo, o el propio arnes de pruebas escribiendo su salida— caia en
+    /// la cuenta y la prueba fallaba a veces sin que el camino caliente
+    /// asignara nada. Constante y sin destructor: leerlo no asigna.
+    static CONTANDO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Si este hilo esta midiendo. Fuera de un hilo vivo (al morir) no cuenta.
+fn contando_aqui() -> bool {
+    CONTANDO.try_with(std::cell::Cell::get).unwrap_or(false)
+}
 
 struct Contador;
 
@@ -24,7 +37,7 @@ struct Contador;
 // memoria devuelta ni cambia el puntero.
 unsafe impl GlobalAlloc for Contador {
     unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        if CONTANDO.load(Ordering::Relaxed) == 1 {
+        if contando_aqui() {
             VECES.fetch_add(1, Ordering::Relaxed);
         }
         // SAFETY: mismo `Layout` que nos han dado.
@@ -39,7 +52,7 @@ unsafe impl GlobalAlloc for Contador {
     unsafe fn realloc(&self, p: *mut u8, l: Layout, nuevo: usize) -> *mut u8 {
         // Reasignar tambien cuenta: es lo que hace un `Vec` al crecer, y es
         // justo lo que esta prueba viene a cazar.
-        if CONTANDO.load(Ordering::Relaxed) == 1 {
+        if contando_aqui() {
             VECES.fetch_add(1, Ordering::Relaxed);
         }
         // SAFETY: el puntero y el layout vienen de nuestro `alloc`.
@@ -50,18 +63,19 @@ unsafe impl GlobalAlloc for Contador {
 #[global_allocator]
 static ASIGNADOR: Contador = Contador;
 
-/// Cuenta las asignaciones que hace `f`.
-///
-/// Un solo hilo: las pruebas de este proyecto corren con `--test-threads=1`
-/// justamente porque varias toman recursos globales, y el contador es uno
-/// mas.
+/// Cuenta las asignaciones que hace `f` en este hilo. Una medida a la vez
+/// (`VECES` es una), asi que las pruebas que miden van en fila: [`EN_FILA`].
 fn contando<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    let _fila = EN_FILA.lock().unwrap_or_else(|e| e.into_inner());
     VECES.store(0, Ordering::Relaxed);
-    CONTANDO.store(1, Ordering::Relaxed);
+    CONTANDO.with(|c| c.set(true));
     let r = f();
-    CONTANDO.store(0, Ordering::Relaxed);
+    CONTANDO.with(|c| c.set(false));
     (r, VECES.load(Ordering::Relaxed))
 }
+
+/// Las medidas, de una en una aunque las pruebas corran en paralelo.
+static EN_FILA: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
