@@ -36,6 +36,8 @@ mod flujo;
 mod intervalo;
 mod marcas;
 mod mobiliario;
+mod personas;
+mod planta;
 mod plantillas;
 mod secciones;
 mod storyboard;
@@ -56,7 +58,7 @@ pub const PREFIJO_ID: &str = "serie-";
 pub const VERSION: u32 = 4;
 
 /// Las categorias, en el orden en que salen en el menu.
-pub const CATEGORIAS: [&str; 21] = [
+pub const CATEGORIAS: [&str; 28] = [
     "Planificación",
     "Académico",
     "Creativo",
@@ -67,6 +69,13 @@ pub const CATEGORIAS: [&str; 21] = [
     "Vegetación",
     "Mobiliario",
     "Escala humana",
+    "Planta: estructura",
+    "Planta: puertas y ventanas",
+    "Planta: cocina y baño",
+    "Planta: muebles",
+    "Planta: exterior",
+    "Personas",
+    "Personas en planta",
     "Ingeniería civil",
     "Derecho",
     "Electrónica",
@@ -102,6 +111,8 @@ pub fn catalogo() -> Vec<FiguraGuardada> {
     arquitectura::todas(&mut v);
     vegetacion::todas(&mut v);
     mobiliario::todas(&mut v);
+    planta::todas(&mut v);
+    personas::todas(&mut v);
     civil::todas(&mut v);
     derecho::todas(&mut v);
     ciencias::todas(&mut v);

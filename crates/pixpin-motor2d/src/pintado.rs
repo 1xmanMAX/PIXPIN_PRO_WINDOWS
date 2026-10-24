@@ -539,6 +539,23 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
     let color = con_opacidad(e.trazo, e.opacidad * e.material.cuerpo());
     let mut salida = Vec::new();
 
+    // **La linea cerrada con relleno se rellena**, como en Excalidraw (un
+    // poligono: el ultimo punto vuelve al primero y lleva color de fondo).
+    // Las figuras de serie dibujan asi siluetas, copas y muebles; sin esto
+    // salian huecas y lo de detras asomaba por dentro.
+    if let Figura::Linea { puntos } = &e.figura
+        && puntos.len() >= 4
+        && puntos[0].distancia(puntos[puntos.len() - 1]) < 0.5
+        && e.relleno.is_some_and(|c| c.a > 0.0)
+        && e.estilo_relleno == EstiloRelleno::Solido
+        && let Some(r) = e.relleno
+    {
+        salida.push(Orden::Relleno {
+            puntos: puntos.clone(),
+            color: con_opacidad(r, e.opacidad),
+        });
+    }
+
     match &e.figura {
         Figura::Lapiz {
             puntos,
