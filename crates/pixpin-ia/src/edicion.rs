@@ -1384,6 +1384,27 @@ pub fn listar(escena: &Escena, ids: &[u64], marco: (f32, f32)) -> String {
 /// **El resumen compacto del lienzo destino**, para el modelo: cuantos hay,
 /// lo elegido y una linea por elemento (los de encima primero, hasta
 /// [`MAX_RESUMEN`]). Las guias escondidas y lo borrado no salen.
+/// Las plantillas de serie que hay en la escena (por su grupo de fuera, el de
+/// estampar), con su nombre del menu: «Cronograma», «Lista de tareas».
+pub fn plantillas_en(escena: &Escena) -> Vec<String> {
+    let mut grupos: Vec<(String, Vec<Elemento>)> = Vec::new();
+    for e in escena.visibles() {
+        if let Some(g) = e.grupos.last() {
+            match grupos.iter_mut().find(|(n, _)| n == g) {
+                Some((_, v)) => v.push(e.clone()),
+                None => grupos.push((g.clone(), vec![e.clone()])),
+            }
+        }
+    }
+    let mut v: Vec<String> = grupos
+        .iter()
+        .filter_map(|(_, piezas)| pixpin_motor2d::figuras_de_serie::cual_es(piezas))
+        .map(|c| format!("«{}»", pixpin_motor2d::figuras_de_serie::nombre_de(&c)))
+        .collect();
+    v.dedup();
+    v
+}
+
 pub fn resumen(escena: &Escena, ctx: &Contexto) -> String {
     let vivos: Vec<&Elemento> = escena
         .a_la_vista()
@@ -1404,6 +1425,16 @@ pub fn resumen(escena: &Escena, ctx: &Contexto) -> String {
         .collect();
     if !elegidos.is_empty() {
         s.push_str(&format!(" Elegido por el usuario: {}.", elegidos.join(" ")));
+    }
+    // **Las plantillas de serie que ya hay** (25-oct-2026): pedir «el
+    // cronograma» con uno puesto es casi siempre cambiar ese, no hacer otro.
+    let hay = plantillas_en(escena);
+    if !hay.is_empty() {
+        s.push_str(&format!(
+            "\nPlantillas de serie que YA estan en el lienzo: {}. Para agrandarlas usa figuras_guardadas «alargar» (mismo diseño, en su sitio); \
+para moverles bloques o anadir filas, reorganizar_hoja. Si el pedido las nombra y no queda claro si es cambiar esta o hacer otra, pregunta.",
+            hay.join(", ")
+        ));
     }
     // Los de encima (los ultimos) son los que mas se nombran.
     let desde = vivos.len().saturating_sub(MAX_RESUMEN);

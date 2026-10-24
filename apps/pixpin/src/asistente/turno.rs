@@ -168,6 +168,9 @@ pub struct Turno {
     parar: Arc<AtomicBool>,
     rx: Receiver<Aviso>,
     acabado: bool,
+    /// Lo que el usuario escribe mientras trabaja (25-oct-2026): lo recoge
+    /// el turno antes de cada vuelta (`agente::Opciones::entrantes`).
+    entrantes: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl Turno {
@@ -203,7 +206,21 @@ impl Turno {
         let herramientas = if motor.catalogo_completo()
             && !super::acciones::es_para_calcar(&historial, &adjuntos, foto.is_some())
         {
-            pixpin_ia::herramientas::catalogo()
+            let mut todas = pixpin_ia::herramientas::catalogo();
+            // Agrandar o reorganizar lo que ya hay: sin las de dibujar desde
+            // cero, que el modelo usaba para hacer «otro» al lado (25-oct).
+            let pedido = historial
+                .iter()
+                .rev()
+                .find(|m| m.rol == Rol::Usuario)
+                .map(Mensaje::texto_entero)
+                .unwrap_or_default();
+            if pixpin_ia::seleccion::es_cambiar_lo_que_hay(&pedido) {
+                todas.retain(|h| {
+                    !pixpin_ia::seleccion::DE_DIBUJAR_DESDE_CERO.contains(&h.nombre.as_str())
+                });
+            }
+            todas
         } else {
             super::acciones::herramientas_para(&historial, &adjuntos, foto.is_some())
         };
@@ -259,6 +276,8 @@ impl Turno {
         let (tx, rx) = channel();
         let parar = Arc::new(AtomicBool::new(false));
         let parar_hilo = parar.clone();
+        let entrantes: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let entrantes_hilo = entrantes.clone();
         let lanzado = std::thread::Builder::new().name("asistente-turno".into()).spawn({
             let tx = tx.clone();
             move || {
@@ -399,6 +418,12 @@ impl Turno {
                     // algo que fallo): con la nube; el local no se toca.
                     repasar: nube,
                     jefe: jefe.as_deref(),
+                    entrantes: None,
+                };
+                let recoger = || std::mem::take(&mut *entrantes_hilo.lock().unwrap_or_else(|e| e.into_inner()));
+                let opciones = Opciones {
+                    entrantes: Some(&recoger),
+                    ..opciones
                 };
                 let mut recogido = Recogido::default();
                 // El diario del asistente (fase 1: medir).
@@ -458,7 +483,18 @@ impl Turno {
             parar,
             rx,
             acabado: false,
+            entrantes,
         }
+    }
+
+    /// **Le pasa al turno en marcha lo que el usuario acaba de escribir**:
+    /// lo lee antes de su siguiente paso (o de acabar) y lo tiene en cuenta;
+    /// «para» a secas lo detiene.
+    pub fn anadir(&self, texto: String) {
+        self.entrantes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(texto);
     }
 
     /// Pide que pare. Llega en el siguiente trozo del modelo.

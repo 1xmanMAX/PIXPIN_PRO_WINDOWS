@@ -289,6 +289,22 @@ fn puntuar(claves: &[&str], q: &str, palabras: &[&str]) -> u32 {
         .sum()
 }
 
+/// **Si el pedido es cambiar lo que ya existe** (agrandarlo o reorganizarlo):
+/// entonces las herramientas de dibujar desde cero sobran, tambien con la
+/// nube, que recibe el catalogo entero (25-oct-2026: con ellas a mano dibujo
+/// otros dos cronogramas al lado del que habia que agrandar).
+pub fn es_cambiar_lo_que_hay(pedido: &str) -> bool {
+    let q = normalizar(pedido);
+    let palabras: Vec<&str> = q
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|p| !p.is_empty())
+        .collect();
+    pide_agrandar(&q, &palabras) || pide_reorganizar(&q, &palabras)
+}
+
+/// Las que dibujan desde cero, que sobran al cambiar lo que ya hay.
+pub const DE_DIBUJAR_DESDE_CERO: [&str; 3] = [DIBUJAR, CRONOGRAMA, SVG];
+
 /// **Si piden reorganizar lo que ya hay**: cambiar de sitio un recuadro o
 /// una seccion, reordenar, intercambiar, poner algo arriba o abajo.
 pub fn pide_reorganizar(q: &str, palabras: &[&str]) -> bool {

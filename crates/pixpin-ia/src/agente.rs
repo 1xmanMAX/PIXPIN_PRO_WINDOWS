@@ -198,6 +198,63 @@ pub struct Opciones<'a> {
     /// planea, reparte las tareas a este motor (Haiku, Flash) y supervisa
     /// cada una y el conjunto. `None`: el turno de siempre.
     pub jefe: Option<&'a dyn Motor>,
+    /// **Lo que el usuario escribe mientras se trabaja** (25-oct-2026, el
+    /// usuario: «como en Claude Code, pueda enviarle un mensaje mientras esta
+    /// procesando y pueda leerlo y detenerse si es necesario, o continuar y
+    /// aumentar lo que le digo»): se mira antes de cada vuelta y antes de
+    /// dar la respuesta por acabada; lo que llega entra al historial como un
+    /// mensaje del usuario y el modelo lo tiene en cuenta. «Para» a secas
+    /// corta el turno. `None`: nadie escribe.
+    pub entrantes: Option<&'a dyn Fn() -> Vec<String>>,
+}
+
+/// Si lo escrito a media tarea es solo pedir que pare.
+pub fn es_parar(texto: &str) -> bool {
+    let t = crate::acciones::normalizar(texto.trim());
+    let t = t.trim_matches(|c: char| !c.is_alphanumeric());
+    [
+        "para",
+        "parate",
+        "detente",
+        "stop",
+        "basta",
+        "alto",
+        "cancela",
+        "cancelalo",
+        "no sigas",
+        "deja",
+        "dejalo",
+        "para ya",
+        "detenlo",
+    ]
+    .contains(&t)
+}
+
+/// Lo que escribio el usuario a media tarea, como lo lee el modelo.
+pub fn mensaje_entrante(textos: &[String]) -> Mensaje {
+    Mensaje::usuario(format!(
+        "[Mensaje nuevo del usuario mientras trabajabas]\n{}\n\n(Tenlo en cuenta ya: si corrige o anade algo, ajusta lo que haces y lo que queda; si contesta a algo que preguntaste, sigue con eso; si pide parar, para y di donde lo dejas.)",
+        textos.join("\n")
+    ))
+}
+
+/// **Mira si el usuario escribio algo** mientras se trabajaba: `Some(true)`
+/// si pidio parar, `Some(false)` si lo escrito ya esta en el historial,
+/// `None` si no escribio nada.
+fn recoger_entrantes(historial: &mut Vec<Mensaje>, opciones: &Opciones) -> Option<bool> {
+    let nuevos = opciones.entrantes.map(|f| f()).unwrap_or_default();
+    let nuevos: Vec<String> = nuevos
+        .into_iter()
+        .filter(|t| !t.trim().is_empty())
+        .collect();
+    if nuevos.is_empty() {
+        return None;
+    }
+    if nuevos.len() == 1 && es_parar(&nuevos[0]) {
+        return Some(true);
+    }
+    historial.push(mensaje_entrante(&nuevos));
+    Some(false)
 }
 
 /// Lo mas largo que se devuelve al modelo de un resultado de herramienta: lo
@@ -1044,6 +1101,10 @@ fn vueltas(
     let mut vuelta = 0;
     while vuelta < tope_vueltas {
         vuelta += 1;
+        if recoger_entrantes(historial, opciones) == Some(true) {
+            est.cortado = true;
+            break;
+        }
         if opciones.ventana > 0 {
             vigilar_contexto(
                 motor,
@@ -1113,6 +1174,22 @@ fn vueltas(
             break;
         }
         if respuesta.llamadas.is_empty() {
+            // Escribio algo mientras contestaba: antes de acabar, se lee y se
+            // sigue (no gasta vuelta: es una peticion nueva del usuario).
+            match recoger_entrantes(historial, opciones) {
+                Some(true) => {
+                    est.cortado = true;
+                    break;
+                }
+                Some(false) => {
+                    tope_vueltas += 1;
+                    if !respuesta.texto.trim().is_empty() {
+                        al_evento(Evento::Texto("\n\n".into()));
+                    }
+                    continue;
+                }
+                None => {}
+            }
             let texto = if !respuesta.texto.trim().is_empty() {
                 respuesta.texto
             } else if hechas_aqui > 0 {
@@ -1835,6 +1912,13 @@ y con la ortografía y las tildes correctas del idioma que toque. Contesta en el
 Si falta un dato, búscalo primero en lo que ya tienes. Pregunta solo si las lecturas posibles dan resultados distintos y equivocarse cuesta \
 (un trabajo largo, sobrescribir lo que hay): una sola cosa, concreta. Si es fácil de deshacer, elige lo más razonable y dilo en una línea \
 («Asumí X; dime si preferías Y»). Si el usuario dice «tú decide», decide.\n\n\
+Lo que ya existe se edita, no se rehace: si el pedido es sobre algo que ya está en el lienzo (una plantilla, una tabla, una figura), \
+cámbialo con sus propias piezas (figuras_guardadas «alargar» para agrandar una plantilla de serie, reorganizar_hoja para mover o añadir filas, \
+editar_texto, transformar_elementos) y NUNCA dibujes otra versión al lado ni la borres para redibujarla. \
+Si nombra algo que ya hay («el cronograma», «la tabla») y no está claro si quiere cambiar ese o hacer uno nuevo, pregúntalo (preguntar_usuario) antes de crear nada.\n\
+No inventes contenido que el usuario no dio (actividades, nombres, datos, fechas, un tema): agrandar es dejar más huecos con el mismo diseño, \
+no rellenarlos. Si para hacerlo bien hace falta ese contenido, pregúntalo.\n\
+Si el usuario escribe mientras trabajas, llega como «[Mensaje nuevo del usuario mientras trabajabas]»: léelo y ajusta lo que haces.\n\n\
 Ejemplos:\n\
 - «Traduce esta figura al inglés»: lee sus textos en el lienzo, tradúcelos tú, cámbialos todos de una vez con editar_texto y comprueba que no quede ninguno sin traducir ni que se salga de su forma.\n\
 - «Saca las tareas de este PDF»: lee el documento, decide tú cuáles son tareas y apúntalas juntas en una lista con su fecha si la tienen.\n\
@@ -2202,6 +2286,49 @@ mod pruebas {
         )
         .unwrap();
         (f, eventos, motor)
+    }
+
+    /// 25-oct-2026: lo que el usuario escribe a media tarea se lee antes de
+    /// acabar y el turno sigue con ello; «para» a secas lo corta.
+    #[test]
+    fn lo_escrito_a_media_tarea_se_lee_y_para_lo_detiene() {
+        let mut h = historial();
+        // Se sacan del final: la primera vez (antes de empezar) nada; la
+        // segunda (al ir a acabar), lo escrito.
+        let pendientes = std::cell::RefCell::new(vec![
+            vec!["y ponle un tejado verde".to_string()],
+            Vec::new(),
+        ]);
+        let recoger = || pendientes.borrow_mut().pop().unwrap_or_default();
+        let o = Opciones {
+            entrantes: Some(&recoger),
+            ..Default::default()
+        };
+        let (f, _, _) = con_opciones(
+            vec![
+                Respuesta::de_texto("Listo, una casa."),
+                Respuesta::de_texto("Y con el tejado verde."),
+            ],
+            &mut h,
+            &o,
+        );
+        assert_eq!(f.texto, "Y con el tejado verde.", "siguio con lo nuevo");
+        assert!(
+            h.iter()
+                .any(|m| m.texto_entero().contains("y ponle un tejado verde")),
+            "lo escrito entro al historial"
+        );
+        // «Para» a secas corta sin otra vuelta.
+        let mut h = historial();
+        let parar = std::cell::RefCell::new(vec![vec!["Para.".to_string()]]);
+        let recoger = || parar.borrow_mut().pop().unwrap_or_default();
+        let o = Opciones {
+            entrantes: Some(&recoger),
+            ..Default::default()
+        };
+        let (f, _, _) = con_opciones(vec![Respuesta::de_texto("Empiezo…")], &mut h, &o);
+        assert!(f.cortado);
+        assert!(es_parar("detente") && es_parar(" STOP ") && !es_parar("para el lunes"));
     }
 
     #[test]

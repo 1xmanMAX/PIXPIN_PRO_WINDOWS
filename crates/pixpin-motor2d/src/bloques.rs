@@ -564,7 +564,10 @@ fn estirar_en(b: &Bloque, elementos: &[Elemento], cuanto: f32, plan: &mut Plan) 
         let al_fondo = (c.3 - b.caja.3).abs() < 4.0 + e.grosor;
         let es_recuadro = Some(e.id) == b.recuadro;
         let vertical = matches!(e.figura, Figura::Linea { .. }) && (c.2 - c.0) < 3.0 + e.grosor;
-        let rect_alto = matches!(e.figura, Figura::Rectangulo) && al_fondo;
+        // Solo lo alto (un fondo de columna): el sombreado de la ultima fila
+        // toca el fondo pero no se estira, o crece con las filas nuevas.
+        let alto = (c.3 - c.1) > (b.caja.3 - b.caja.1) * 0.5;
+        let rect_alto = matches!(e.figura, Figura::Rectangulo) && al_fondo && alto;
         if es_recuadro || (vertical && al_fondo) || rect_alto {
             plan.estirar.push((e.id, cuanto));
         }
@@ -579,6 +582,7 @@ pub fn anadir_filas(h: &Hoja, elementos: &[Elemento], a: usize, n: u32) -> Resul
         return Err("«filas» tiene que ir de 1 a 200".into());
     }
     let ancho = b.caja.2 - b.caja.0;
+    let alto_bloque = b.caja.3 - b.caja.1;
     let mut rayas: Vec<(f32, u64)> = elementos
         .iter()
         .filter(|e| b.ids.contains(&e.id) && matches!(e.figura, Figura::Linea { .. }))
@@ -596,49 +600,89 @@ pub fn anadir_filas(h: &Hoja, elementos: &[Elemento], a: usize, n: u32) -> Resul
             nombre(h, a)
         ));
     }
-    let pasos: Vec<f32> = rayas.windows(2).map(|p| p[1].0 - p[0].0).collect();
     let paso = {
-        let mut p = pasos.clone();
+        let mut p: Vec<f32> = rayas.windows(2).map(|p| p[1].0 - p[0].0).collect();
         p.sort_by(f32::total_cmp);
         p[p.len() / 2]
     };
-    let (mut y_pen, mut y_ult) = (rayas[rayas.len() - 2].0, rayas[rayas.len() - 1].0);
-    // La ultima fila suele ir entre la ultima raya y el borde de abajo del
-    // recuadro: ese borde cuenta como una raya mas (la copia de la ultima
-    // raya cae justo en el, y el recuadro crece por debajo).
-    let fondo = b.caja.3;
-    if b.recuadro.is_some() && ((fondo - y_ult) - paso).abs() <= paso * 0.3 {
-        // Desde un poco antes de la ultima raya: tambien se copia ella.
-        y_pen = y_ult - 1.0;
-        y_ult = fondo - 1.0;
-    }
-    // La fila: lo que cae entre las dos ultimas rayas, y la ultima raya.
-    let fila: Vec<u64> = elementos
-        .iter()
-        .filter(|e| b.ids.contains(&e.id) && Some(e.id) != b.recuadro)
-        .filter(|e| {
-            let (_, cy) = centro(e.caja());
-            let c = e.caja();
-            let alto_bloque = (c.3 - c.1) > (b.caja.3 - b.caja.1) * 0.5;
-            !alto_bloque && cy > y_pen + 0.5 && cy <= y_ult + 0.5
+    // Lo que cuenta como contenido de una fila: ni el recuadro, ni lo alto
+    // (fondos de columna, lineas verticales), ni las rayas.
+    let es_raya = |id: u64| rayas.iter().any(|r| r.1 == id);
+    let de_fila = |e: &&Elemento| {
+        let c = e.caja();
+        b.ids.contains(&e.id)
+            && Some(e.id) != b.recuadro
+            && !es_raya(e.id)
+            && (c.3 - c.1) <= alto_bloque * 0.5
+    };
+    let dentro = |y0: f32, y1: f32| -> Vec<u64> {
+        elementos
+            .iter()
+            .filter(de_fila)
+            .filter(|e| {
+                let cy = centro(e.caja()).1;
+                cy > y0 + 0.5 && cy <= y1 + 0.5
+            })
+            .map(|e| e.id)
+            .collect()
+    };
+    // Las filas: entre rayas (cada una con su raya de abajo) y, si la hay, la
+    // ultima entre la ultima raya y el fondo (con la de arriba: al copiarla
+    // un paso mas abajo cae justo entre las dos).
+    let mut filas: Vec<(f32, f32, Vec<u64>)> = rayas
+        .windows(2)
+        .map(|p| {
+            let mut ids = dentro(p[0].0, p[1].0);
+            ids.push(p[1].1);
+            (p[0].0, p[1].0, ids)
         })
-        .map(|e| e.id)
         .collect();
-    let mut plan = Plan::default();
-    // Lo que va debajo de la ultima raya dentro del bloque (un pie) baja.
-    for e in elementos.iter().filter(|e| b.ids.contains(&e.id)) {
-        if Some(e.id) != b.recuadro && centro(e.caja()).1 > y_ult + 0.5 && !fila.contains(&e.id) {
-            let c = e.caja();
-            if (c.3 - c.1) <= (b.caja.3 - b.caja.1) * 0.5 {
-                plan.mover.push((e.id, 0.0, paso * n as f32));
-            }
-        }
+    let y_ult = rayas[rayas.len() - 1].0;
+    let mut cola = dentro(y_ult, y_ult + paso * 1.2);
+    let fondo_es_fila = b.recuadro.is_some() && ((b.caja.3 - y_ult) - paso).abs() <= paso * 0.3;
+    if !cola.is_empty() || fondo_es_fila {
+        cola.push(rayas[rayas.len() - 1].1);
+        filas.push((y_ult, y_ult + paso, cola));
     }
-    for k in 1..=n {
-        plan.copiar
-            .push((fila.clone(), 0.0, paso * k as f32, i64::from(k)));
+    let ultima = filas.len() - 1;
+    let fin_de_las_filas = filas[ultima].1;
+    // **El patron**: con filas alternas (una sombreada, otra no) se copia de
+    // dos en dos; si no, la ultima.
+    let firma = |ids: &[u64]| {
+        elementos
+            .iter()
+            .filter(|e| ids.contains(&e.id))
+            .filter(|e| {
+                matches!(e.figura, Figura::Rectangulo | Figura::Region { .. })
+                    || e.relleno.is_some()
+            })
+            .filter(|e| (e.caja().2 - e.caja().0) > ancho * 0.3)
+            .count()
+    };
+    let periodo = if ultima >= 1 && firma(&filas[ultima].2) != firma(&filas[ultima - 1].2) {
+        2
+    } else {
+        1
+    };
+    let mut plan = Plan::default();
+    for k in 1..=n as usize {
+        let origen = (ultima + 1).saturating_sub(periodo) + (k - 1) % periodo;
+        let filas_de_salto = ultima + k - origen;
+        plan.copiar.push((
+            filas[origen].2.clone(),
+            0.0,
+            paso * filas_de_salto as f32,
+            filas_de_salto as i64,
+        ));
     }
     let cuanto = paso * n as f32;
+    // Lo que va debajo de las filas dentro del bloque (un pie) baja.
+    for e in elementos.iter().filter(de_fila) {
+        if centro(e.caja()).1 > fin_de_las_filas + 0.5 && !filas.iter().any(|f| f.2.contains(&e.id))
+        {
+            plan.mover.push((e.id, 0.0, cuanto));
+        }
+    }
     estirar_en(b, elementos, cuanto, &mut plan);
     empujar_debajo(h, &columna(h, a), a, cuanto, &mut plan);
     plan.que = format!("{n} filas mas en {}", nombre(h, a));
@@ -724,7 +768,9 @@ pub fn aplicar(escena: &mut Escena, plan: &Plan) -> Vec<u64> {
                     && let Figura::Texto { texto, .. } = &mut e.figura
                     && let Ok(n) = texto.trim().parse::<i64>()
                 {
-                    *texto = (n + sumar).to_string();
+                    // Con los mismos digitos: «09» sigue con «10», «010» con «011».
+                    let ancho = texto.trim().len();
+                    *texto = format!("{:0ancho$}", n + sumar);
                     e.tocar();
                 }
             }
@@ -930,6 +976,77 @@ mod pruebas {
         let todos = vivos(&e);
         let h = leer(&todos);
         assert!(anadir_filas(&h, &todos, 0, 2).is_err());
+    }
+
+    /// 25-oct-2026, la foto del usuario: el cronograma de serie a 30
+    /// actividades acababa «…17, 18, 19 … 29, 18» y con el sombreado de la
+    /// ultima fila estirado.
+    #[test]
+    fn el_cronograma_de_serie_sigue_su_numeracion_y_su_sombreado() {
+        let f = crate::figuras_de_serie::catalogo()
+            .into_iter()
+            .find(|f| f.id == "serie-cronograma")
+            .unwrap();
+        let mut e = Escena::nueva();
+        crate::biblioteca::estampar_en_escena(
+            &mut e,
+            &f,
+            crate::vector::Punto2::nuevo(400.0, 500.0),
+        );
+        let numeros = |e: &Escena| -> Vec<(f32, i64)> {
+            let mut v: Vec<(f32, i64)> = e
+                .visibles()
+                .filter_map(|x| {
+                    let t = texto_de(x)?;
+                    let n = t.parse::<i64>().ok()?;
+                    Some((x.caja().1, n))
+                })
+                .collect();
+            v.sort_by(|a, b| a.0.total_cmp(&b.0));
+            v
+        };
+        let altos = |e: &Escena| -> std::collections::BTreeSet<i64> {
+            e.visibles()
+                .filter(|x| matches!(x.figura, Figura::Rectangulo) && x.relleno.is_some())
+                .map(|x| (x.caja().3 - x.caja().1).round() as i64)
+                .filter(|h| *h < 100)
+                .collect()
+        };
+        let altos_antes = altos(&e);
+        let antes: Vec<i64> = numeros(&e).iter().map(|x| x.1).collect();
+        let tope = *antes.iter().max().unwrap();
+        let todos = vivos(&e);
+        let h = leer(&todos);
+        // El bloque de las filas: el que mas numeros lleva.
+        let a = (0..h.bloques.len())
+            .max_by_key(|i| {
+                todos
+                    .iter()
+                    .filter(|x| {
+                        h.bloques[*i].ids.contains(&x.id)
+                            && texto_de(x).is_some_and(|t| t.parse::<i64>().is_ok())
+                    })
+                    .count()
+            })
+            .unwrap();
+        let plan = anadir_filas(&h, &todos, a, 12).unwrap();
+        aplicar(&mut e, &plan);
+        let despues: Vec<i64> = numeros(&e).iter().map(|x| x.1).collect();
+        let esperado: Vec<i64> = (1..=tope + 12).collect();
+        let filas: Vec<i64> = despues
+            .iter()
+            .copied()
+            .filter(|n| *n >= 1 && *n <= tope + 12)
+            .collect();
+        assert_eq!(
+            filas,
+            esperado,
+            "1, 2 … {} de arriba abajo, sin repetir",
+            tope + 12
+        );
+        // Caso negativo: ningun relleno cambio de alto (el de la ultima fila
+        // no se estiro); los nuevos son copias de los que habia.
+        assert_eq!(altos(&e), altos_antes, "rellenos de altos nuevos");
     }
 
     #[test]

@@ -1306,10 +1306,51 @@ fn plantilla_en_la_escena(escena: &Escena, clave: Option<&str>) -> Option<(Strin
         .filter(|(c, _)| serie::se_alarga(c) && clave.is_none_or(|k| k == c))
         .collect();
     if halladas.len() == 1 {
-        halladas.pop()
-    } else {
-        None
+        return halladas.pop();
     }
+    if !halladas.is_empty() {
+        return None;
+    }
+    // **Sin grupo** (desagrupada, o venida de otro sitio): por su titulo, y
+    // sus piezas son lo que cae dentro de la hoja que lo encierra.
+    let vivos: Vec<Elemento> = escena.visibles().cloned().collect();
+    let c =
+        serie::cual_es(&vivos).filter(|c| serie::se_alarga(c) && clave.is_none_or(|k| k == c))?;
+    let hojas: Vec<&Elemento> = vivos
+        .iter()
+        .filter(|e| matches!(e.figura, pixpin_motor2d::Figura::Rectangulo))
+        .filter(|r| {
+            let caja = r.caja();
+            let dentro: Vec<Elemento> = vivos
+                .iter()
+                .filter(|o| {
+                    let oc = o.caja();
+                    let (cx, cy) = ((oc.0 + oc.2) / 2.0, (oc.1 + oc.3) / 2.0);
+                    cx >= caja.0 && cx <= caja.2 && cy >= caja.1 && cy <= caja.3
+                })
+                .cloned()
+                .collect();
+            dentro.len() >= 8 && serie::cual_es(&dentro).as_deref() == Some(c.as_str())
+        })
+        .collect();
+    // La hoja: el rectangulo mas grande que la contiene, una sola vez.
+    let hoja = hojas.iter().max_by(|a, b| {
+        let area = |e: &Elemento| {
+            let c = e.caja();
+            (c.2 - c.0) * (c.3 - c.1)
+        };
+        area(a).total_cmp(&area(b))
+    })?;
+    let caja = hoja.caja();
+    let piezas: Vec<Elemento> = vivos
+        .into_iter()
+        .filter(|o| {
+            let oc = o.caja();
+            let (cx, cy) = ((oc.0 + oc.2) / 2.0, (oc.1 + oc.3) / 2.0);
+            cx >= caja.0 - 0.5 && cx <= caja.2 + 0.5 && cy >= caja.1 - 0.5 && cy <= caja.3 + 0.5
+        })
+        .collect();
+    Some((c, piezas))
 }
 
 /// Con el lienzo cerrado, a cuanto de lo que habia.
@@ -1427,6 +1468,21 @@ mod pruebas_plantilla {
             );
         }
         assert!(plantilla_en_la_escena(&dos, Some("cronograma")).is_none());
+        // Desagrupada: se reconoce igual, por su titulo y su hoja.
+        let mut suelta = Escena::nueva();
+        let ids = biblioteca::estampar_en_escena(
+            &mut suelta,
+            &f,
+            pixpin_motor2d::vector::Punto2::nuevo(0.0, 0.0),
+        );
+        for id in &ids {
+            if let Some(x) = suelta.buscar_mut(*id) {
+                x.grupos.clear();
+            }
+        }
+        let (c, piezas) = plantilla_en_la_escena(&suelta, None).expect("sin grupo tambien");
+        assert_eq!(c, "cronograma");
+        assert_eq!(piezas.len(), ids.len(), "todas sus piezas y nada mas");
     }
 
     #[test]

@@ -324,8 +324,17 @@ pub(super) fn al_enviar(
         return None;
     }
     let pregunta = para_el_asistente?;
+    // **Escribirle mientras trabaja** (25-oct-2026, «como en Claude Code»):
+    // lo escrito va al turno en marcha, que lo lee antes de su siguiente paso
+    // y corrige, anade o para. El mensaje ya esta en el chat.
     if ocupado(&a.ficha.id) {
-        return Some(textos.t("asistente-ocupado"));
+        let llego = SESIONES.with_borrow(|s| {
+            s.iter()
+                .find(|x| x.proyecto == a.ficha.id && !x.turno.acabado())
+                .map(|x| x.turno.anadir(pregunta.clone()))
+                .is_some()
+        });
+        return (!llego).then(|| textos.t("asistente-ocupado"));
     }
     let (motor, pensar, ventana) = match motor_para(ubicacion, textos, &a.mensajes, &pregunta) {
         Ok(m) => m,
