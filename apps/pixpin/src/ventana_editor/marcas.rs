@@ -208,6 +208,8 @@ pub(super) struct Respuesta {
     pub imprimir: bool,
     /// Se pidio la hojita (F6).
     pub hojita: bool,
+    /// Se pulso el lapiz del riel: de mirar a editar y vuelta (24-oct).
+    pub editar: bool,
     /// Se pulso la ficha del marco `i`: ir a el.
     pub ir_a_marco: Option<usize>,
 }
@@ -234,6 +236,9 @@ pub(super) struct Marcador {
     /// Si se estan poniendo marcos (la herramienta Marco): el boton del
     /// marco del riel, pulsado. Lo pone el editor en cada vuelta.
     pub enmarcando: bool,
+    /// Si se esta editando: el lapiz del riel, pulsado. Tambien lo pone el
+    /// editor en cada vuelta.
+    pub editando: bool,
     /// Los marcos del dibujo en su orden (x, y, ancho, alto del mundo): las
     /// fichas 1, 2, 3... de abajo, con la herramienta Marco.
     pub marcos: Vec<[f32; 4]>,
@@ -254,6 +259,7 @@ impl Marcador {
             encima: DestinoRiel::Fuera,
             vuelo: None,
             enmarcando: false,
+            editando: false,
             marcos: Vec::new(),
             nombres: Vec::new(),
         }
@@ -391,8 +397,12 @@ impl Marcador {
                         imprimir: true,
                         ..Respuesta::suya(true)
                     },
+                    // El lapiz del riel edita (24-oct-2026, «con el lapiz de
+                    // la barra lateral pueda activar el modo edicion»), como
+                    // el «Anotar» del mismo sitio en los visores. La hojita
+                    // sigue en Ctrl+Mayus+N.
                     DestinoRiel::Hojita => Respuesta {
-                        hojita: true,
+                        editar: true,
                         ..Respuesta::suya(true)
                     },
                     DestinoRiel::Marca(i) => {
@@ -635,6 +645,7 @@ impl Marcador {
             self.encima,
             self.poniendo,
             self.enmarcando,
+            self.editando,
         );
         if self.enmarcando {
             let e = escala_por_cien as f32 / 100.0;
@@ -685,6 +696,7 @@ pub(super) fn pintar_riel(
     encima: DestinoRiel,
     poniendo: Poniendo,
     enmarcando: bool,
+    editando: bool,
 ) {
     let e = pixpin_escala(riel.escala_por_cien);
     // La isla de los dos botones, con la misma cara que la barra.
@@ -698,7 +710,7 @@ pub(super) fn pintar_riel(
             poniendo != Poniendo::No,
             DestinoRiel::PonerMarca,
         ),
-        (riel.hojita, &material::DRAW, false, DestinoRiel::Hojita),
+        (riel.hojita, &material::DRAW, editando, DestinoRiel::Hojita),
         // El marco: como en los visores y en el plano.
         (riel.imprimir, &material::CROP_FREE, enmarcando, DestinoRiel::Imprimir),
     ] {
@@ -724,7 +736,7 @@ pub(super) fn pintar_riel(
     // El globo del boton bajo el raton: su nombre y su tecla.
     if let Some((caja, clave)) = match encima {
         DestinoRiel::PonerMarca => Some((riel.poner_marca, "riel-marcador")),
-        DestinoRiel::Hojita => Some((riel.hojita, "riel-hojita")),
+        DestinoRiel::Hojita => Some((riel.hojita, if editando { "riel-mirar" } else { "riel-editar" })),
         DestinoRiel::Imprimir => Some((riel.imprimir, "riel-marcos")),
         _ => None,
     } {
@@ -887,6 +899,7 @@ mod pruebas {
             encima: DestinoRiel::Fuera,
             vuelo: None,
             enmarcando: false,
+            editando: false,
             marcos: Vec::new(),
             nombres: Vec::new(),
         }
@@ -1143,8 +1156,10 @@ mod pruebas {
         assert!(m.marcas.is_empty());
     }
 
+    /// 24-oct-2026: el lapiz del riel pasa a editar (y vuelve); la hojita
+    /// queda en su atajo.
     #[test]
-    fn el_boton_de_la_hojita_y_su_atajo_la_piden() {
+    fn el_lapiz_del_riel_edita_y_el_atajo_saca_la_hojita() {
         let c = Camara::nueva();
         let cx = contexto(&c, false);
         let mut m = marcador(Vec::new());
@@ -1153,7 +1168,8 @@ mod pruebas {
             x: riel.hojita.x + 5,
             y: riel.hojita.y + 5,
         };
-        assert!(m.evento(&EventoOverlay::BotonPulsado(centro), &cx).hojita);
+        let r = m.evento(&EventoOverlay::BotonPulsado(centro), &cx);
+        assert!(r.editar && r.consumido && !r.hojita);
         assert!(m.evento(&tecla(VK_N, true, true), &cx).hojita);
         assert!(
             !m.evento(&tecla(VK_N, true, false), &cx).hojita,
@@ -1222,6 +1238,7 @@ mod pruebas {
                 encima,
                 vuelo: None,
                 enmarcando: false,
+                editando: false,
                 marcos: Vec::new(),
                 nombres: Vec::new(),
             };

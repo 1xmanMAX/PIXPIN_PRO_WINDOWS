@@ -1136,7 +1136,7 @@ grafica-sin-formula = Escribe una fórmula
 grafica-formula-mal = No se entiende:
 grafica-solo-x = Solo puede usar la x:
 presentar-ayuda = ← → Av Pág: pasar · B: negro · J: láser · L: lápiz · Esc: salir
-vista-mirando = Solo mirar · Alt+R: editar · F5: presentar
+vista-mirando = Solo mirar · el lápiz de la derecha edita · F5: presentar
 
 ## --- Voz: dos idiomas, letra, telepronter, pronunciar, conversacion, llamada (B6-B11) ---
 
@@ -2769,6 +2769,8 @@ visor-letra = Letra y espaciado (T / B)
 lector-mas = Más opciones (G)
 visor-indice-pista = Índice (C)
 riel-hojita = Hojita (Ctrl+Mayús+N)
+riel-editar = Editar (Alt+R)
+riel-mirar = Volver a mirar (Alt+R o Esc)
 
 # Riel del pin: el marco de un pin que no es una foto (19-oct-2026).
 riel-imprimir-zona = Imprimir una zona (Ctrl+P)

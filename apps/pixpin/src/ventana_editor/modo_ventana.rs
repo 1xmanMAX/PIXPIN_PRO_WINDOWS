@@ -117,18 +117,18 @@ pub(crate) fn minimo(escala_por_cien: u32, botones: &'static [BotonCaja]) -> (u3
     (ancho, alto)
 }
 
-/// **Donde va el panel de la izquierda**: el `area` de la interfaz, salvo
-/// que la barra de herramientas, partida en dos filas en una ventana
-/// estrecha, baje mas de donde el panel empieza (debajo de una sola fila) y
-/// le caiga encima: entonces el panel empieza debajo de ella. El panel ya se
-/// reparte en columnas con el alto que le quede.
+/// **Donde va el panel de la izquierda** (y su boton de mostrar y quitar,
+/// encima): el `area` de la interfaz, salvo que la barra de herramientas
+/// les caiga encima (en una ventana estrecha, donde se parte en dos filas o
+/// llega hasta la izquierda): entonces empiezan debajo de ella. El panel ya
+/// se reparte en columnas con el alto que le quede.
 pub(crate) fn area_del_panel(area: Rect, barra: Rect, escala_por_cien: u32) -> Rect {
     let e = |v: u32| (v * escala_por_cien / 100) as i32;
-    // Lo que el panel deja arriba (`panel_lateral`: 16 + 36 + 24) y lo que
-    // ocupa a lo ancho (16 de margen y 200 de panel).
-    let (arriba, ancho) = (e(76), e(16 + 200));
+    // Donde empieza el boton de quitar el panel (16, `panel_lateral::
+    // boton_plegar`) y lo que ocupa a lo ancho (16 de margen y el panel).
+    let (arriba, ancho) = (e(16), e(16 + pixpin_ui::panel_lateral::ANCHO_LOGICO));
     let pisa = barra.x < area.x + ancho && barra.derecha() > area.x;
-    let falta = barra.abajo() + e(12) - (area.y + arriba);
+    let falta = barra.abajo() + e(8) - (area.y + arriba);
     if !pisa || falta <= 0 {
         return area;
     }
@@ -355,6 +355,8 @@ mod pruebas {
         let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area_del_panel(chica, barra, 100), 100)
             .expect("el rectangulo tiene panel");
         assert!(panel.marco.y >= barra.abajo(), "panel {:?} bajo la barra {barra:?}", panel.marco);
+        let boton = panel.plegar.expect("con su boton de quitarlo");
+        assert!(boton.y >= barra.abajo(), "el boton {boton:?} tambien bajo la barra");
         assert!(panel.marco.abajo() <= chica.abajo(), "y dentro de la ventana");
         // Caso negativo: con la barra en una fila no se mueve nada (el panel
         // sigue donde siempre en pantalla completa).

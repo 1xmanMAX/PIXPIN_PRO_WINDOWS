@@ -162,6 +162,8 @@ pub struct PinLector {
     /// Si a pantalla completa la barra sigue (dentro, arriba a la
     /// izquierda, al acercar el raton) en vez de esconderse.
     barra_en_pantalla_completa: bool,
+    /// Sin barra ninguna, ni asomando (el lienzo mientras se edita, 24-oct).
+    sin_barra: bool,
     piezas: Vec<(f32, f32, Pieza)>,
     /// Al abrir, la barra se ve un rato aunque el raton no este encima: asi
     /// se sabe que esta (como la pastilla de antes).
@@ -288,6 +290,7 @@ impl PinLector {
             oscuro_visto: crate::oscuro::version(),
             minimo: MINIMO,
             barra_en_pantalla_completa: false,
+            sin_barra: false,
         }
     }
 
@@ -310,6 +313,13 @@ impl PinLector {
     pub fn con_barra_en_pantalla_completa(mut self) -> PinLector {
         self.barra_en_pantalla_completa = true;
         self
+    }
+
+    /// **Sin barra mientras dure** (`true`): ni sale con el raton ni asoma
+    /// en su rincon. El lienzo la quita al editar: a pantalla completa, sin
+    /// mas botones que los de dibujar (24-oct-2026).
+    pub fn quitar_barra(&mut self, si: bool) {
+        self.sin_barra = si;
     }
 
     /// **Nace a pantalla completa** en `monitor`, recordando su sitio de pin
@@ -651,7 +661,7 @@ impl PinLector {
     }
 
     fn actualizar_barra(&mut self, motor: &MotorRender, nombre: &str, propios: &[BotonLector]) {
-        if (self.pantalla_completa && !self.barra_en_pantalla_completa) || self.barra.is_none() {
+        if self.sin_barra || (self.pantalla_completa && !self.barra_en_pantalla_completa) || self.barra.is_none() {
             self.esconder_barra();
             return;
         }

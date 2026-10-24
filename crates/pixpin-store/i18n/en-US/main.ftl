@@ -1135,7 +1135,7 @@ grafica-sin-formula = Type a formula
 grafica-formula-mal = Can't understand:
 grafica-solo-x = It can only use x:
 presentar-ayuda = ← → PgDn: next · B: black · J: laser · L: pen · Esc: exit
-vista-mirando = View only · Alt+R: edit · F5: present
+vista-mirando = View only · the pencil on the right edits · F5: present
 
 ## --- Voice: two languages, lyrics, teleprompter, pronounce, conversation, call (B6-B11) ---
 
@@ -2768,6 +2768,8 @@ visor-letra = Font and spacing (T / B)
 lector-mas = More options (G)
 visor-indice-pista = Contents (C)
 riel-hojita = Notepad (Ctrl+Shift+N)
+riel-editar = Edit (Alt+R)
+riel-mirar = Back to viewing (Alt+R or Esc)
 
 # Pin rail: the frame button of a pin that is not a photo (19-oct-2026).
 riel-imprimir-zona = Print an area (Ctrl+P)

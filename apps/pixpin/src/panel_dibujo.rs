@@ -44,6 +44,24 @@ const CONTORNO_ACTIVO: Color = hex(0x4a47b1);
 const PISTA_RECORRIDA: Color = hex(0xccccff);
 const PULGAR: Color = hex(0x3d3d3d);
 
+/// **El panel quitado** (24-oct-2026, «pon un boton para mostrarla y
+/// quitarla»): lo dice el boton de arriba a la izquierda y vale para todos
+/// los lienzos de la sesion, no solo el de esta ventana.
+static PLEGADO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Si el panel esta quitado.
+pub fn plegado() -> bool {
+    PLEGADO.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Quita o saca el panel (y cierra su desplegable).
+pub fn poner_plegado(si: bool) {
+    PLEGADO.store(si, std::sync::atomic::Ordering::Relaxed);
+    if si {
+        cerrar_desplegable();
+    }
+}
+
 thread_local! {
     /// El desplegable abierto (la paleta o las puntas).
     ///
@@ -279,7 +297,8 @@ pub fn panel_para(
             )
         }
     };
-    PanelLateral::construir(
+    let papel = PAPEL.with(Cell::get);
+    let panel = PanelLateral::construir(
         area,
         escala_por_cien,
         ContextoPanel {
@@ -288,9 +307,15 @@ pub fn panel_para(
             seleccionados: elegidos.len(),
             mandos,
             abierto: ABIERTO.with(Cell::get),
-            lienzo: PAPEL.with(Cell::get).then_some(escena.fondo),
+            lienzo: papel.then_some(escena.fondo),
         },
-    )
+    )?;
+    // Quitado, solo su boton; el papel pedido desde el menu sale siempre.
+    Some(if plegado() && !papel {
+        PanelLateral::plegado(area, escala_por_cien)
+    } else {
+        panel.con_plegar(area, escala_por_cien)
+    })
 }
 
 /// Lo que fue de un clic del raton frente al panel.
@@ -372,6 +397,10 @@ fn solo_quien_admite(accion: &AccionPanel, gesto: &Gesto, escena: &Escena) -> Se
 pub fn aplicar(accion: AccionPanel, gesto: &mut Gesto, escena: &mut Escena) -> bool {
     let sel = gesto.seleccion.clone();
     match accion {
+        AccionPanel::Plegar => {
+            poner_plegado(!plegado());
+            return true;
+        }
         AccionPanel::Abrir(d) => {
             // El mismo disparador abre y cierra, como en Excalidraw.
             ABIERTO.with(|a| a.set(if a.get() == Some(d) { None } else { Some(d) }));
@@ -789,6 +818,25 @@ fn pintar_isla(p: &Pintor, marco: Rect, e: f32) {
 
 pub fn pintar(p: &Pintor, panel: &PanelLateral, escala_por_cien: u32) {
     let e = escala_por_cien as f32 / 100.0;
+    // El boton de mostrar y quitar: una isla como la del panel, con la
+    // paleta para sacarlo y la flecha para quitarlo.
+    if let Some(b) = panel.plegar {
+        pintar_isla(p, b, e);
+        let lado = 20.0 * e;
+        let r = rf(b);
+        p.icono(
+            if panel.plegado {
+                &pixpin_render::icono::material::PALETTE
+            } else {
+                &pixpin_render::icono::material::CHEVRON_LEFT
+            },
+            RectF { x: r.x + (r.ancho - lado) / 2.0, y: r.y + (r.alto - lado) / 2.0, ancho: lado, alto: lado },
+            TEXTO,
+        );
+    }
+    if panel.plegado {
+        return;
+    }
     pintar_isla(p, panel.marco, e);
     pintar_controles(p, &panel.controles, e);
     // El desplegable, encima de todo lo demas.
@@ -1352,6 +1400,30 @@ mod pruebas {
             .collect()
     }
 
+    /// 24-oct-2026: el boton de arriba a la izquierda quita el panel y lo
+    /// vuelve a sacar, por el mismo camino del clic que el usuario.
+    #[test]
+    fn el_boton_quita_el_panel_y_lo_vuelve_a_sacar() {
+        let mut escena = Escena::nueva();
+        let mut gesto = Gesto::default();
+        gesto.tomar_herramienta(Herramienta::Rectangulo);
+        poner_plegado(false);
+        let entero = panel_para(&gesto, &escena, area(), 100).unwrap();
+        let b = entero.plegar.expect("lleva el boton");
+        let centro = pixpin_geom::Punto { x: b.x + b.ancho as i32 / 2, y: b.y + b.alto as i32 / 2 };
+        let dentro = pixpin_geom::Punto { x: entero.marco.x + 20, y: entero.marco.y + 20 };
+        assert_eq!(atender_clic(centro, true, &mut gesto, &mut escena, area(), 100), ClicPanel::Suyo { repintar: true });
+        let _ = atender_clic(centro, false, &mut gesto, &mut escena, area(), 100);
+        assert!(panel_para(&gesto, &escena, area(), 100).unwrap().plegado);
+        // Caso negativo: quitado, donde estaba el panel el clic es del lienzo.
+        assert!(matches!(atender_clic(dentro, true, &mut gesto, &mut escena, area(), 100), ClicPanel::Fuera { .. }));
+        let _ = atender_clic(dentro, false, &mut gesto, &mut escena, area(), 100);
+        assert_eq!(atender_clic(centro, true, &mut gesto, &mut escena, area(), 100), ClicPanel::Suyo { repintar: true });
+        let _ = atender_clic(centro, false, &mut gesto, &mut escena, area(), 100);
+        assert!(!panel_para(&gesto, &escena, area(), 100).unwrap().plegado);
+        poner_plegado(false);
+    }
+
     #[test]
     fn con_el_grafito_salen_las_siete_durezas_y_elegir_una_queda_para_el_proximo() {
         use pixpin_motor2d::tinta::grafito::Dureza;
@@ -1908,6 +1980,17 @@ mod pruebas {
                     .any(|id| d(*id).grupos.len() + 1 != a(*id).grupos.len())
                 {
                     return Err("no se deshizo el grupo".into());
+                }
+            }
+            // Quita el panel: no toca la escena; queda solo su boton.
+            AccionPanel::Plegar => {
+                if despues.elementos != antes.elementos {
+                    return Err("quitar el panel cambio el dibujo".into());
+                }
+                let quitado = panel_para(gesto, despues, area(), 100).is_some_and(|p| p.plegado);
+                poner_plegado(false);
+                if !quitado {
+                    return Err("el panel no se quito".into());
                 }
             }
             // No toca la escena: deja apuntado el cajetin para el editor.

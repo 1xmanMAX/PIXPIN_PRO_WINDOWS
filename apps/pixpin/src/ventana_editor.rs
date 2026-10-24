@@ -581,6 +581,32 @@ fn al_escape(es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool, pantal
     }
 }
 
+/// **De mirar a editar** (`mirar = false`) **o al reves** (`mirar_editar`):
+/// el texto a medias entra, y la herramienta se guarda al mirar (se mira con
+/// la mano) y vuelve al editar. `true` si cambio algo.
+fn poner_solo_mirar(
+    mirar: bool,
+    solo_mirar: &mut bool,
+    gesto: &mut Gesto,
+    escena: &mut Escena,
+    herramienta_al_editar: &mut Herramienta,
+) -> bool {
+    if *solo_mirar == mirar {
+        return false;
+    }
+    if gesto.esta_escribiendo() {
+        gesto.cerrar_texto(escena);
+    }
+    *solo_mirar = mirar;
+    if mirar {
+        *herramienta_al_editar = gesto.herramienta;
+        elegir_herramienta(gesto, Herramienta::Mano);
+    } else {
+        elegir_herramienta(gesto, *herramienta_al_editar);
+    }
+    true
+}
+
 /// F5: presentar (G5), como en PowerPoint.
 const VK_F5: u32 = 0x74;
 
@@ -993,11 +1019,15 @@ fn abrir_en_modo(
     // G5: la presentacion en curso (F5) y el modo solo mirar (Alt+R), con
     // su arrastre de mover el dibujo.
     let mut presentacion: Option<presentar::Presentacion> = None;
-    // El lienzo empieza siempre editando, con su barra lateral: el lapiz de
-    // la barra de arriba (19-oct) repetia el de la lateral y el usuario lo
-    // quito (21-oct-2026). Solo mirar sigue en Alt+R.
-    let mut solo_mirar = false;
+    // **Abre siempre mirando** (24-oct-2026, `mirar_editar`): el lapiz del
+    // riel (o Alt+R) pasa a editar, a pantalla completa y sin la barra del
+    // pin. El anotador de pantalla no: alli se viene a pintar.
+    let mut solo_mirar = pantalla.is_none();
     let mut herramienta_al_editar = gesto.herramienta;
+    // Lo que hay que hacer con la ventana al pasar de mirar a editar y
+    // vuelta, y el cambio que aun no se aplico (lo aplica el pin, abajo).
+    let mut al_editar = mirar_editar::AlEditar::default();
+    let mut cambio_de_mirar: Option<bool> = None;
     if solo_mirar {
         elegir_herramienta(&mut gesto, Herramienta::Mano);
     }
@@ -1142,17 +1172,10 @@ fn abrir_en_modo(
                     Some(modo_ventana::DeLaBarra::Alternar) => alternar_modo = true,
                     Some(modo_ventana::DeLaBarra::Fijar) => pn.alternar_fijado(&ventana),
                     Some(modo_ventana::DeLaBarra::Lapiz) => {
-                        if gesto.esta_escribiendo() {
-                            gesto.cerrar_texto(&mut escena);
+                        if poner_solo_mirar(!solo_mirar, &mut solo_mirar, &mut gesto, &mut escena, &mut herramienta_al_editar) {
+                            cambio_de_mirar = Some(!solo_mirar);
                         }
-                        solo_mirar = !solo_mirar;
                         arrastre_mirar = None;
-                        if solo_mirar {
-                            herramienta_al_editar = gesto.herramienta;
-                            elegir_herramienta(&mut gesto, Herramienta::Mano);
-                        } else {
-                            elegir_herramienta(&mut gesto, herramienta_al_editar);
-                        }
                         todo_sucio = true;
                         interfaz_sucia = true;
                         ventana.invalidar();
@@ -1314,7 +1337,8 @@ fn abrir_en_modo(
                         efectiva = vista_efectiva(&camara, escala_por_cien);
                         tracing::info!(diapositivas = pr.hojas.len(), "presentar");
                         presentacion = Some(pr);
-                        solo_mirar = false;
+                        // Al acabar vuelve a como estaba, mirando o editando
+                        // (24-oct): editar es otra ventana (`mirar_editar`).
                         repintar_todo = true;
                     }
                 } else if presentacion.is_none()
@@ -1322,14 +1346,10 @@ fn abrir_en_modo(
                     && matches!(ev, EventoOverlay::Tecla { vk, alt: true, ctrl: false, .. } if vk == b'R' as u32)
                 {
                     consumido = true;
-                    solo_mirar = !solo_mirar;
-                    arrastre_mirar = None;
-                    if solo_mirar {
-                        herramienta_al_editar = gesto.herramienta;
-                        elegir_herramienta(&mut gesto, Herramienta::Mano);
-                    } else {
-                        elegir_herramienta(&mut gesto, herramienta_al_editar);
+                    if poner_solo_mirar(!solo_mirar, &mut solo_mirar, &mut gesto, &mut escena, &mut herramienta_al_editar) {
+                        cambio_de_mirar = Some(!solo_mirar);
                     }
+                    arrastre_mirar = None;
                     repintar_todo = true;
                 } else if let Some(pr) = presentacion.as_mut() {
                     let (ancho_v, alto_v) = (ancho_px, alto_px);
@@ -1416,7 +1436,16 @@ fn abrir_en_modo(
                 } else if solo_mirar {
                     // Solo mirar: arrastrar mueve el dibujo, como la mano de
                     // Excalidraw en su «view mode»; nada se elige ni se edita.
+                    // El riel sigue a la vista mirando (24-oct): un clic en
+                    // el es suyo (el lapiz pasa a editar), no un arrastre.
+                    let en_el_riel = |p: Punto| {
+                        con_marcas
+                            && marcador
+                                .riel(area.ancho, area.alto, escala_por_cien, bajo_la_barra(&caja, area))
+                                .contiene(Punto { x: p.x - area.x, y: p.y - area.y })
+                    };
                     match ev {
+                        EventoOverlay::BotonPulsado(p) if en_el_riel(p) => {}
                         EventoOverlay::BotonPulsado(p) => {
                             consumido = true;
                             arrastre_mirar = Some(presentar::Arrastre {
@@ -1588,7 +1617,9 @@ fn abrir_en_modo(
             // antes que la barra y el gesto por lo mismo que el enlace: un
             // clic en una marca o en el riel es un boton, no un trazo. Todo lo
             // de dentro esta en `marcas.rs`; aqui solo se aplica lo que pide.
-            if con_marcas && presentacion.is_none() && !solo_mirar {
+            // Tambien mirando: el riel esta a la vista, con su lapiz para
+            // editar (lo demas del lienzo ya se lo quedo «solo mirar»).
+            if con_marcas && presentacion.is_none() {
                 let r = marcador.evento(
                     &ev,
                     &marcas::Contexto {
@@ -1633,14 +1664,26 @@ fn abrir_en_modo(
                         let antes = if herramienta_al_editar == Herramienta::Marco { Herramienta::Mano } else { herramienta_al_editar };
                         elegir_herramienta(&mut gesto, antes);
                     } else {
-                        if solo_mirar {
-                            solo_mirar = false;
+                        // Mirando, el marco es editar: a pantalla completa.
+                        if poner_solo_mirar(false, &mut solo_mirar, &mut gesto, &mut escena, &mut herramienta_al_editar) {
+                            cambio_de_mirar = Some(true);
                             arrastre_mirar = None;
                         }
                         herramienta_al_editar = gesto.herramienta;
                         elegir_herramienta(&mut gesto, Herramienta::Marco);
                     }
                     todo_sucio = true;
+                    ventana.invalidar();
+                }
+                // El lapiz del riel: de mirar a editar y vuelta (24-oct).
+                if r.editar {
+                    if poner_solo_mirar(!solo_mirar, &mut solo_mirar, &mut gesto, &mut escena, &mut herramienta_al_editar) {
+                        cambio_de_mirar = Some(!solo_mirar);
+                    }
+                    arrastre_mirar = None;
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    interfaz_sucia = true;
                     ventana.invalidar();
                 }
                 if r.hojita {
@@ -1863,6 +1906,20 @@ fn abrir_en_modo(
             // medias manda antes: el texto lo cerro ya `mano` (y se consumio)
             // y un arrastre lo cancela el motor, abajo. Volver a ventana se
             // recuerda como con F11: va por el mismo `alternar_modo`.
+            // Editando, Escape vuelve a mirar (y a la ventana si de alli vino).
+            if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev
+                && mirar_editar::escape_vuelve_a_mirar(!solo_mirar, pantalla.is_none(), presentacion.is_none(), gesto.en_reposo())
+            {
+                if poner_solo_mirar(true, &mut solo_mirar, &mut gesto, &mut escena, &mut herramienta_al_editar) {
+                    cambio_de_mirar = Some(false);
+                }
+                arrastre_mirar = None;
+                todo_sucio = true;
+                contenido_sucio = true;
+                interfaz_sucia = true;
+                ventana.invalidar();
+                continue;
+            }
             if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = ev {
                 match al_escape(
                     pantalla.is_none(),
@@ -2489,7 +2546,19 @@ fn abrir_en_modo(
         // Mientras la tinta o lo elegido viven en su capa no se toca nada:
         // se hace en cuanto se suelten.
         if let Some(pn) = pin.as_mut() {
+            // Editar es a pantalla completa y sin la barra del pin; volver a
+            // mirar devuelve la ventana si de ella se vino (`mirar_editar`).
+            // No se recuerda: la preferencia del usuario es la de mirar.
+            if let Some(editando) = cambio_de_mirar.take()
+                && al_editar.al_cambiar(editando, pn.pantalla_completa)
+            {
+                pn.alternar_pantalla_completa(&mut ventana);
+            }
+            // Editando en ventana (si el usuario la eligio con F11) la barra
+            // vuelve: sin ella no habria por donde llevarla.
+            pn.quitar_barra(!solo_mirar && pn.pantalla_completa);
             if std::mem::take(&mut alternar_modo) {
+                al_editar.a_mano();
                 pn.alternar_pantalla_completa(&mut ventana);
                 modo_ventana::recordar(modo_ventana::Recordado {
                     pantalla_completa: pn.pantalla_completa,
@@ -3003,7 +3072,7 @@ fn abrir_en_modo(
                     &mut cache_tinta,
                     &imagenes,
                     fondo.as_ref(),
-                    (con_marcas && presentacion.is_none() && !solo_mirar).then_some(&marcador),
+                    (con_marcas && presentacion.is_none()).then_some(&marcador),
                     escala_por_cien,
                     ancho_px,
                     alto_px,
@@ -3104,6 +3173,7 @@ fn abrir_en_modo(
             let cristal = lupa.as_ref().and_then(|l| l.preparar(&motor));
             // El boton del marco del riel, pulsado con la herramienta Marco.
             marcador.enmarcando = gesto.herramienta == Herramienta::Marco;
+            marcador.editando = !solo_mirar;
             let hojas = pixpin_motor2d::marco::hojas_en_orden(&escena.elementos);
             marcador.marcos = hojas.iter().map(|h| [h.x, h.y, h.ancho, h.alto]).collect();
             marcador.nombres = hojas
@@ -3145,7 +3215,7 @@ fn abrir_en_modo(
                     seleccion: matches!(en_capa, Some(EnCapa::Arrastre { .. })),
                     marquesina: matches!(en_capa, Some(EnCapa::Marquesina { .. })),
                 },
-                (con_marcas && presentacion.is_none() && !solo_mirar).then_some(&marcador),
+                (con_marcas && presentacion.is_none()).then_some(&marcador),
                 |p, base| {
                     if let Some(pr) = presentacion.as_ref() {
                         presentar::pintar(
@@ -3165,6 +3235,16 @@ fn abrir_en_modo(
                             escala_por_cien,
                             &exportar::textos().t("vista-mirando"),
                         );
+                        // Y el riel, con el lapiz para editar (24-oct).
+                        if con_marcas {
+                            marcador.pintar_interfaz(
+                                p,
+                                area.ancho,
+                                area.alto,
+                                escala_por_cien,
+                                bajo_la_barra(&caja, area),
+                            );
+                        }
                     } else if con_marcas {
                         marcador.pintar_interfaz(
                             p,
@@ -5190,6 +5270,8 @@ fn dibujar_cajetin(
 mod congelar;
 // El lienzo en ventana (con la barra de los pines) o a pantalla completa.
 mod modo_ventana;
+// Abrir mirando y el lapiz del riel para editar (24-oct).
+mod mirar_editar;
 /// La pasada de tapado del mosaico. Ver su cabecera: se engancha en dos
 /// sitios del fotograma y los dos estan en `pintar`.
 /// El cajetin de la cota: cuanto mide y hacia donde va (lienzo-geometria).
