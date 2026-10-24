@@ -98,6 +98,22 @@ pub fn pide_otro(pedido: &str) -> bool {
 /// tejado»): entonces dibujar figuras sueltas si vale (no otra plantilla).
 fn pide_anadir_piezas(pedido: &str) -> bool {
     let q = normalizar(pedido);
+    // Una zona nueva junto a lo que hay («y abajo una zona gris para
+    // anotaciones», 24-oct-2026) tambien es anadir piezas, sin verbo.
+    let zona = [
+        "zona",
+        "espacio",
+        "recuadro",
+        "seccion",
+        "apartado",
+        "anotacion",
+        "notas",
+        "leyenda",
+        "franja",
+    ];
+    if zona.iter().any(|z| q.contains(z)) {
+        return true;
+    }
     q.split(|c: char| !c.is_alphanumeric()).any(|p| {
         [
             "pon",
@@ -105,6 +121,13 @@ fn pide_anadir_piezas(pedido: &str) -> bool {
             "ponles",
             "anade",
             "anadele",
+            "anada",
+            "ponga",
+            "agregue",
+            "incrementa",
+            "incremente",
+            "crea",
+            "cree",
             "agrega",
             "agregale",
             "dibuja",
@@ -317,6 +340,11 @@ Plantillas de serie que YA estan en el lienzo: «Cronograma». Para agrandarlas 
         // Agrandar y anadirle piezas: dibujar sueltas si vale.
         let tejado = format!("agranda esta figura y ponle un tejado{RESUMEN_CON_PLANTILLA}");
         assert!(duplicaria(&tejado, &dibujar()).is_none());
+        // Una zona nueva junto a lo que hay, sin verbo de anadir.
+        let zona = format!(
+            "hazlo de 10 semanas y abajo una zona gris para anotaciones{RESUMEN_CON_PLANTILLA}"
+        );
+        assert!(duplicaria(&zona, &dibujar()).is_none());
     }
 
     /// Las marcas son las que pone de verdad la app: si el resumen o
