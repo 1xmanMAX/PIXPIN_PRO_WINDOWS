@@ -19,6 +19,8 @@ pub mod conversacion;
 /// Acercar y mover una imagen en su caja, como en un lienzo.
 pub mod encuadre;
 pub mod evento_anotador;
+/// La foto del chat: los fondos, los emojis y el recorte de una imagen.
+pub mod foto_del_chat;
 pub mod historial;
 pub mod hoja_compartir;
 pub mod hojita;
