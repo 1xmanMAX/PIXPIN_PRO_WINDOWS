@@ -195,6 +195,15 @@ pub enum Pedido {
     Ventana {
         cual: Cual,
     },
+    /// 26-oct (Flow, `p carpeta`): las carpetas de paginas sin abrir el
+    /// chat. `carpeta` es el `id` de su mensaje; si no se da (o ya no esta),
+    /// se busca por `nombre`.
+    CarpetaPaginas {
+        hacer: HacerCarpeta,
+        proyecto: Option<String>,
+        carpeta: Option<String>,
+        nombre: Option<String>,
+    },
     /// Capturar como el atajo general. Sin `modo`, una zona.
     Capturar {
         modo: Option<ModoCaptura>,
@@ -364,6 +373,21 @@ pub enum Cual {
     Buscar,
     /// 18-oct: el horario semanal (bandeja → «Horario de clases…»).
     Horario,
+    /// 26-oct (Flow, `p clase`): «Grabar clase o reunión…», como la bandeja.
+    Clase,
+}
+
+/// Que hace `carpeta_paginas`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HacerCarpeta {
+    /// Abrir su ventana, con sus paginas en orden.
+    Abrir,
+    /// Crearla con `nombre` (o «Cuaderno») y abrirla.
+    Nueva,
+    /// Su pagina siguiente (la plantilla de la ultima, vacia), abierta en
+    /// el lienzo.
+    Pagina,
 }
 
 /// Que captura hace `capturar`: cada una es un comando de la bandeja
@@ -630,6 +654,7 @@ pub fn atender(json: &str, cx: &Contexto) -> Hecho {
                 | Pedido::Pinear { .. }
                 | Pedido::PinearUltima { .. }
                 | Pedido::Ventana { .. }
+                | Pedido::CarpetaPaginas { .. }
                 | Pedido::LeccionNueva { .. }
                 | Pedido::Lecciones { .. }
         )
@@ -1133,6 +1158,10 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Ventana { cual } => match cual {
             Cual::Tareas => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
             Cual::Horario => crate::horario::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
+            Cual::Clase => comando_por_la_ventana(
+                pixpin_store::comandos::Comando::GrabarClase,
+                std::time::Duration::ZERO,
+            ),
             Cual::Galeria => crate::galeria_capturas::abrir(cx.idioma, cx.ubicacion.clone()),
             Cual::Lecciones => crate::timeline::abrir_lecciones(cx.idioma, cx.ubicacion.clone()),
             Cual::Sincronizar => crate::sincronizar::lanzar(cx.idioma, cx.ubicacion.clone()),
@@ -1148,6 +1177,63 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 std::time::Duration::ZERO,
             ),
         },
+        Pedido::CarpetaPaginas {
+            hacer,
+            proyecto,
+            carpeta,
+            nombre,
+        } => {
+            use crate::ventana_chat::carpetas;
+            let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+            let nombre = nombre.unwrap_or_default();
+            let id = if hacer == HacerCarpeta::Nueva {
+                carpetas::crear_por_nombre(
+                    raiz,
+                    &f.id,
+                    cx.aparato,
+                    &nombre,
+                    &t.t("carpeta-nombre-de-serie"),
+                )?
+                .0
+            } else {
+                let mensajes = cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, &f.id))?.mensajes;
+                let por_id = carpeta.as_deref().filter(|c| {
+                    mensajes
+                        .iter()
+                        .any(|m| m.id == *c && pixpin_proyecto::carpeta_de_paginas::es_carpeta(m))
+                });
+                match por_id {
+                    Some(c) => c.to_string(),
+                    None => carpetas::carpeta_por_nombre(&mensajes, &nombre)
+                        .map(|i| mensajes[i].id.clone())
+                        .ok_or_else(|| {
+                            Fallo::SinMensaje(carpeta.clone().unwrap_or_else(|| nombre.clone()))
+                        })?,
+                }
+            };
+            if hacer == HacerCarpeta::Pagina {
+                let n = carpetas::pagina_siguiente(
+                    raiz,
+                    &f.id,
+                    cx.aparato,
+                    &id,
+                    &t.t("carpeta-pagina"),
+                )?;
+                crate::ventana_chat::refrescar();
+                if let Some(referencia) = n.mensaje.referencia.clone() {
+                    abrir_hoja(cx, f.id, referencia);
+                }
+                return Ok(Hecho::default());
+            }
+            carpetas::abrir(carpetas::Abrir {
+                idioma: cx.idioma,
+                ubicacion: cx.ubicacion.clone(),
+                proyecto: f.id,
+                id,
+                identidad: cx.aparato.to_string(),
+                lienzo: cx.opciones,
+            });
+        }
         Pedido::Capturar { modo } => capturar(modo.unwrap_or(ModoCaptura::Zona)),
         Pedido::Pines { operacion } => {
             comando_por_la_ventana(operacion.comando(), std::time::Duration::ZERO)
@@ -2534,6 +2620,10 @@ mod pruebas {
             "al_lienzo",
             r#"{"pixpin":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta"}"#,
         ),
+        (
+            "carpeta_paginas",
+            r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"Diario"}"#,
+        ),
     ];
 
     #[test]
@@ -3778,6 +3868,88 @@ mod pruebas {
         let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz"}"#, &cx);
         assert!(h.aviso.is_some(), "sin texto ni ruta no hay nada que leer");
         let _ = ficha;
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// Lo de Flow del 26-oct: `p clase` va por el comando de la bandeja y
+    /// `p carpeta` crea carpetas sin repetir nombre, les mete la pagina
+    /// siguiente y avisa si la carpeta no esta. Lo que abre ventanas (abrir
+    /// la carpeta, el lienzo) no se hace aqui: se prueban sus piezas.
+    #[test]
+    fn clase_y_carpetas_de_paginas_desde_flow() {
+        use crate::ventana_chat::carpetas;
+        let (raiz, ficha) = almacen_de_prueba("flow-carpetas");
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let cx = Contexto {
+            idioma: pixpin_store::Idioma::Espanol,
+            ubicacion: &u,
+            opciones: crate::ventana_chat::OpcionesLienzo {
+                enganche: Default::default(),
+                nivel: pixpin_nivel::Nivel::Ligero,
+                medir_fotogramas: false,
+            },
+            aparato: "PC01",
+            textos: &textos,
+        };
+        COMANDOS_EN_PRUEBAS.lock().unwrap().clear();
+        atender(r#"{"pixpin":1,"accion":"ventana","cual":"clase"}"#, &cx);
+        assert!(
+            COMANDOS_EN_PRUEBAS
+                .lock()
+                .unwrap()
+                .contains(&pixpin_store::comandos::Comando::GrabarClase)
+        );
+
+        assert_eq!(
+            leer(r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"abrir","carpeta":"7"}"#)
+                .unwrap(),
+            Pedido::CarpetaPaginas {
+                hacer: HacerCarpeta::Abrir,
+                proyecto: None,
+                carpeta: Some("7".into()),
+                nombre: None,
+            }
+        );
+        assert!(matches!(
+            leer(r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"borrar"}"#),
+            Err(Fallo::Roto(_))
+        ));
+
+        let (id, nombre) =
+            carpetas::crear_por_nombre(&raiz, &ficha.id, "PC01", "", "Cuaderno").unwrap();
+        assert_eq!(nombre, "Cuaderno");
+        let (_, otro) =
+            carpetas::crear_por_nombre(&raiz, &ficha.id, "PC01", "  ", "Cuaderno").unwrap();
+        assert_eq!(otro, "Cuaderno 2", "no repite el nombre");
+        let n = carpetas::pagina_siguiente(&raiz, &ficha.id, "PC01", &id, "Página").unwrap();
+        assert_eq!(n.titulo, "Página 1");
+        let mensajes = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, &ficha.id))
+            .unwrap()
+            .mensajes;
+        let c = mensajes
+            .iter()
+            .find(|m| m.id == id)
+            .and_then(pixpin_proyecto::carpeta_de_paginas::Carpeta::de_mensaje)
+            .unwrap();
+        assert_eq!(c.len(), 1);
+        assert!(c.contiene(&n.mensaje.id));
+
+        // Negativo: una carpeta que no esta se avisa y no se crea ninguna.
+        let h = atender(
+            r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"No existe"}"#,
+            &cx,
+        );
+        assert!(h.aviso.is_some());
+        let cuantas = |raiz: &Path| {
+            pixpin_proyecto::carpeta_de_paginas::carpetas_de(
+                &cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, &ficha.id))
+                    .unwrap()
+                    .mensajes,
+            )
+            .len()
+        };
+        assert_eq!(cuantas(&raiz), 2);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

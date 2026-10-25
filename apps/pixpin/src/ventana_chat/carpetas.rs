@@ -71,7 +71,7 @@ static ABIERTAS: Mutex<Vec<(String, isize)>> = Mutex::new(Vec::new());
 
 /// Lo que hace falta para abrir una carpeta desde el chat.
 #[derive(Clone)]
-pub(super) struct Abrir {
+pub(crate) struct Abrir {
     pub idioma: Idioma,
     pub ubicacion: Ubicacion,
     pub proyecto: String,
@@ -83,7 +83,7 @@ pub(super) struct Abrir {
 }
 
 /// **Abre la ventana de una carpeta**, o trae delante la que ya estaba.
-pub(super) fn abrir(que: Abrir) {
+pub(crate) fn abrir(que: Abrir) {
     let clave = format!("{}/{}", que.proyecto, que.id);
     {
         let Ok(mut v) = ABIERTAS.lock() else { return };
@@ -1454,26 +1454,7 @@ pub(crate) fn anadir_por_nombre(
     };
     let (id, creada) = match carpeta_por_nombre(&mensajes, nombre) {
         Some(i) => (mensajes[i].id.clone(), false),
-        None => {
-            let numero = super::siguiente_numero_en(raiz, proyecto)?;
-            // El id es el milisegundo: el lienzo recien hecho puede ser del
-            // mismo (lo vio la CI) y entonces la carpeta seria el lienzo.
-            let mut cuando = pixpin_shell::entorno::ahora_utc_ms();
-            while mensajes.iter().any(|m| m.id == cuando.to_string()) {
-                cuando += 1;
-            }
-            let nueva = carpetas::mensaje_nuevo(
-                nombre,
-                &cuaderno::Sello {
-                    cuando,
-                    numero,
-                    aparato: aparato.to_string(),
-                    proyecto: proyecto.to_string(),
-                },
-            );
-            cuaderno::anadir(&dir, &nueva)?;
-            (nueva.id, true)
-        }
+        None => (crear_en_disco(raiz, proyecto, aparato, nombre, &mensajes)?, true),
     };
     let nombre_de_la_pagina = if m.nombre.ends_with(".excalidraw") {
         String::new()
@@ -1504,6 +1485,63 @@ pub(crate) fn anadir_por_nombre(
         creada,
         ya_estaba,
     })
+}
+
+/// **Una carpeta vacia al final del chat**, sin ventana: escribe su mensaje
+/// en el cuaderno y devuelve su `id`. `mensajes` son los del chat, para que
+/// el `id` no repita el de otro.
+fn crear_en_disco(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    nombre: &str,
+    mensajes: &[Mensaje],
+) -> std::io::Result<String> {
+    let numero = super::siguiente_numero_en(raiz, proyecto)?;
+    // El id es el milisegundo: el lienzo recien hecho puede ser del mismo
+    // (lo vio la CI) y entonces la carpeta seria el lienzo.
+    let mut cuando = pixpin_shell::entorno::ahora_utc_ms();
+    while mensajes.iter().any(|m| m.id == cuando.to_string()) {
+        cuando += 1;
+    }
+    let nueva = carpetas::mensaje_nuevo(
+        nombre,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: proyecto.to_string(),
+        },
+    );
+    cuaderno::anadir(&pixpin_proyecto::almacen::carpeta(raiz, proyecto), &nueva)?;
+    let _ = super::subir_en_la_lista(raiz, proyecto, nueva.cuando, &nueva.nombre);
+    Ok(nueva.id)
+}
+
+/// **Para Flow** (`p carpeta`): una carpeta nueva llamada `nombre` (o
+/// `de_serie`, «Cuaderno 2» si ya hay un «Cuaderno»), sin abrir el chat.
+/// Devuelve su `id` y el nombre que se le puso.
+pub(crate) fn crear_por_nombre(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    nombre: &str,
+    de_serie: &str,
+) -> std::io::Result<(String, String)> {
+    let dir = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
+    let mensajes = match cuaderno::Cuaderno::leer_de(&dir) {
+        Ok(c) => c.mensajes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let base = match nombre.trim() {
+        "" => de_serie,
+        n => n,
+    };
+    let nombre = nombre_libre(base, &mensajes);
+    let id = crear_en_disco(raiz, proyecto, aparato, &nombre, &mensajes)?;
+    super::refrescar();
+    Ok((id, nombre))
 }
 
 // --- Lo del chat: crear una carpeta y anadirle paginas ----------------------------

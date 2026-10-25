@@ -165,7 +165,7 @@ pub mod respuesta {
 /// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
 /// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
 /// no alli, falla.
-pub const ACCIONES: [&str; 37] = [
+pub const ACCIONES: [&str; 38] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -214,6 +214,9 @@ pub const ACCIONES: [&str; 37] = [
     "herramienta",
     // 17-oct: fotos y texto a un lienzo por su nombre, apilados.
     "al_lienzo",
+    // 26-oct: las carpetas de paginas desde Flow (`p carpeta`): abrir una,
+    // crear una o su pagina siguiente.
+    "carpeta_paginas",
 ];
 
 /// Mira un pedido por encima: lo justo para contestar en el acto.
