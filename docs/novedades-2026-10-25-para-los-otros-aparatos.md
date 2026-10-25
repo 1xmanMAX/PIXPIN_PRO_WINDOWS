@@ -43,6 +43,26 @@ Al terminar una grabacion entran en el chat, con numeros seguidos:
   quiere, ensenar la clase como en el PC: el texto a un lado y la imagen del
   minuto que suena al otro.
 
+### 3.1 Dos modos al grabar y la ventana «Estudiar la clase»
+
+- Al preparar se elige el modo: **Pantalla y sonido** (video de la pantalla
+  con el sonido del equipo y/o el microfono) o **Audio y capturas** (solo
+  audio; «Captura» guarda la pantalla entera donde esta la barra, al
+  instante). Lo que se guarda es lo mismo de la tabla de arriba: no hay
+  campos nuevos por el modo.
+- **Marcadores con nota**, campo nuevo en la nota de voz:
+
+  | Mensaje | `resto` |
+  |---|---|
+  | La nota de voz (`VOZ`) | `marcadores: [{ms, texto}]` en orden de `ms`; uno por milisegundo (poner otro en el mismo cambia la nota); `texto` de 200 caracteres como mucho, sin saltos de linea, puede ir vacio. **Sin marcadores la clave se quita** (no `[]`), como `marcas`. |
+
+  Son distintos de las banderitas (`marcas: [ms]`), que siguen igual; la
+  ventana del PC ensena las dos cosas juntas y quita cada una de su campo.
+  Las cuentas (y su formato) estan en `crates/pixpin-proyecto/src/clase.rs`.
+- **Android / apple**: conservar `marcadores` (viaja en `resto`) y, si se
+  quiere, ensenarlos en la letra de la nota como fichas con su minuto que
+  llevan el audio ahi.
+
 ## 4. La ficha del chat (la isla al pulsar el nombre)
 
 - Pestanas nuevas en `Seccion` (`crates/pixpin-proyecto/src/cuaderno.rs`):

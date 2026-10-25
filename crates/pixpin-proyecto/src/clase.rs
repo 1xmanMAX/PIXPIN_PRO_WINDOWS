@@ -331,7 +331,11 @@ pub fn pegar_a_senal(
 
 /// Salta `delta` desde `ms` sin salirse de la nota.
 pub fn saltar(ms: i64, delta: i64, duracion_ms: i64) -> i64 {
-    let fin = if duracion_ms > 0 { duracion_ms } else { i64::MAX };
+    let fin = if duracion_ms > 0 {
+        duracion_ms
+    } else {
+        i64::MAX
+    };
     ms.saturating_add(delta).clamp(0, fin)
 }
 

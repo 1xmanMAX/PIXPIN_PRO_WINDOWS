@@ -140,6 +140,9 @@ mod figuras;
 pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
     figuras::abrir(idioma);
 }
+/// La ventana de estudiar una clase grabada: el video o la captura del
+/// minuto, el texto y las capturas, que se siguen (25-oct-2026).
+mod estudiar_clase;
 /// «Grabar clase»: el microfono y el sonido del equipo, con capturas de una
 /// zona en su minuto, y despues el texto (24-oct-2026).
 mod grabar_clase;
@@ -1674,6 +1677,7 @@ pub fn abrir(
                                     Some((_, false)) => ejecutar(Accion::Transcribir(i), a, &cx),
                                     None => Efecto::Nada,
                                 },
+                                Zona::Estudiar(i) => ejecutar(Accion::Estudiar(i), a, &cx),
                                 Zona::Pensado(i) | Zona::Peticion(i) => {
                                     if let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) {
                                         pensado::alternar(
@@ -6141,9 +6145,16 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                     }
                     None => f.detalle.clone(),
                 };
-                pintar_onda(
-                    p, &f.onda, fila.texto, tema, &detalle, color_hora, e, avance,
-                );
+                // Una clase lleva al lado de la pastilla de texto la de
+                // estudiarla, y la onda se aparta para dejarle sitio.
+                let sitio = match pastilla_de_estudiar(m, fila.abrir, e) {
+                    Some(c) => Rect {
+                        ancho: (c.x - fila.texto.x - (6.0 * e) as i32).max(0) as u32,
+                        ..fila.texto
+                    },
+                    None => fila.texto,
+                };
+                pintar_onda(p, &f.onda, sitio, tema, &detalle, color_hora, e, avance);
             } else {
                 let nombre = match &a.renombrando_mensaje {
                     Some((n, escrito)) if *n == i && !a.describiendo => escrito.texto().to_owned(),
@@ -6245,6 +6256,18 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                         a.zonas.borrow_mut().push((fila.abrir, Zona::Texto(i)));
                     }
                 }
+            }
+            // La pastilla de estudiar la clase, del mismo tamano y familia.
+            if !f.onda.is_empty()
+                && let Some(c) = pastilla_de_estudiar(m, fila.abrir, e)
+            {
+                p.rellenar_redondeado(
+                    rf(c),
+                    chat::FILA_ABRIR_RADIO as f32 * e,
+                    con_alfa(color_hora, 0.156),
+                );
+                icono_centrado(p, &mi::MENU_BOOK, c, 16.0 * e, color_hora);
+                a.zonas.borrow_mut().push((c, Zona::Estudiar(i)));
             }
             y += chat::FILA_CIRCULO as f32 * e + hueco;
         }
@@ -14203,6 +14226,9 @@ enum Zona {
     /// (`BotonDeTexto`): sin texto lo pide; con texto lo despliega y lo
     /// pliega.
     Texto(usize),
+    /// La pastilla de estudiar de una nota de voz grabada como clase: abre
+    /// la ventana de estudiarla (`estudiar_clase`).
+    Estudiar(usize),
     /// Un trozo de la transcripcion de esa nota: lleva el audio a ese
     /// milisegundo y lo deja sonando. Lo usan la burbuja desplegada y la
     /// pantalla de la letra.
@@ -14277,6 +14303,21 @@ fn picos_de_voz(m: &pixpin_proyecto::cuaderno::Mensaje) -> Vec<i64> {
         .and_then(|v| v.as_array())
         .map(|v| v.iter().filter_map(|n| n.as_i64()).collect())
         .unwrap_or_default()
+}
+
+/// **La pastilla de estudiar** de una nota de voz grabada como clase: a la
+/// izquierda de la de texto, del mismo tamano. `None` si no es de una clase.
+fn pastilla_de_estudiar(
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    abrir: Rect,
+    e: f32,
+) -> Option<Rect> {
+    (m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz)
+        && estudiar_clase::de_una_clase(m).is_some())
+    .then(|| Rect {
+        x: abrir.x - abrir.ancho as i32 - (6.0 * e) as i32,
+        ..abrir
+    })
 }
 
 /// Si la burbuja ya lleva su boton de sacar a la pantalla: la esquina de la
@@ -15941,6 +15982,9 @@ enum Accion {
     /// «Letra o texto»: el texto de esa nota en grande, en el sitio del
     /// historial, con sus minutos pulsables (`LetraActivity`).
     Letra(usize),
+    /// «Estudiar la clase»: la nota de una clase (o una captura o el video
+    /// de una) en su ventana, con el texto y las capturas al lado.
+    Estudiar(usize),
     /// Pronunciar (B9): hablar, oirse y repetir con una guia delante.
     Pronunciar,
     /// La conversacion por turnos (B10).
@@ -17123,6 +17167,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         textos.t("chat-compartir"),
         Accion::Compartir(i),
     ));
+    // Una clase grabada (su nota, sus capturas o su video): estudiarla en su
+    // ventana, con el texto y las capturas al lado.
+    if estudiar_clase::de_una_clase(m).is_some() {
+        v.push(entrada(
+            Some(&mi::MENU_BOOK),
+            textos.t("chat-estudiar-clase"),
+            Accion::Estudiar(i),
+        ));
+    }
     // La hora a la que avisar. Con una puesta, la entrada pasa a quitarla en
     // vez de volver a preguntar, como en el movil (`guardados_recordar_quitar`).
     // En una nota de voz, recordar es **llamarse** (B11).
@@ -17971,6 +18024,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::Transcribir(i) => empezar_a_transcribir(cx.ubicacion, a, i, cx.textos, cx.idioma),
         Accion::Letra(i) => abrir_la_letra(a, i),
+        Accion::Estudiar(i) => {
+            if let Some((id, ms)) = a.mensajes.get(i).and_then(estudiar_clase::de_una_clase) {
+                estudiar_clase::abrir(cx.idioma, cx.ubicacion.clone(), a.ficha.id.clone(), id, ms);
+            }
+            Efecto::Nada
+        }
         Accion::Telepronter => Efecto::Menu(menu_del_telepronter(a, cx.textos)),
         // Las figuras se eligen viendolas, en su ventana (el usuario: «me
         // sale una lista y tengo que buscar»), no en menus en cascada.

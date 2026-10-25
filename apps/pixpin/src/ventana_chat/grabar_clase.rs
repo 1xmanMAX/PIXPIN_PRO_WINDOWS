@@ -36,6 +36,22 @@
 //! lleva `video` (`{id}`) y el video `enGrabacion`), y la transcripcion sale
 //! de la nota, como siempre.
 //!
+//! **Dos modos** (25-oct-2026, «que tenga diferentes modos: grabar la
+//! pantalla con su audio … o el audio y capturas»), elegidos arriba del
+//! todo en Preparar y recordados para la proxima vez ([`Modo`]):
+//!
+//! - **Pantalla y sonido**: el video de la pantalla donde esta la ventana,
+//!   con los sonidos que se elijan (el del equipo, el microfono o los dos) y
+//!   su calidad. «Captura» sigue siendo la de una zona, que se repite.
+//! - **Audio y capturas**: solo el sonido, y «Captura» fotografia **la
+//!   pantalla entera donde esta la barra**, al instante y sin preguntar (la
+//!   barra no sale). El boton de la zona sigue para cuando se quiere solo
+//!   un trozo.
+//!
+//! Al acabar, «Abrir para estudiar» abre la clase en su ventana
+//! ([`super::estudiar_clase`]): el video o la captura del minuto, el texto
+//! y las capturas, que se siguen.
+//!
 //! Las fotos se hacen en su propio hilo ([`fotografo`]): la barra no se
 //! congela mientras se captura una zona grande.
 
@@ -78,6 +94,9 @@ const LISTA_DURA: Duration = Duration::from_secs(12);
 const FALLO_DURA: Duration = Duration::from_secs(6);
 const VK_ESCAPE: u32 = 0x1B;
 const VK_ENTRAR: u32 = 0x0D;
+const VK_TABULADOR: u32 = 0x09;
+const VK_IZQUIERDA: u32 = 0x25;
+const VK_DERECHA: u32 = 0x27;
 
 /// Lo que «Grabar clase» necesita del hilo principal.
 #[derive(Debug, Clone)]
@@ -94,7 +113,18 @@ pub(crate) struct Pedido {
 #[derive(Debug, Clone)]
 pub(crate) struct Rotulos {
     titulo: String,
-    sub: String,
+    /// Los dos modos del selector de arriba y lo que dice cada uno debajo
+    /// del titulo.
+    modo_pantalla: String,
+    modo_capturas: String,
+    sub_pantalla: String,
+    sub_capturas: String,
+    /// La fila que explica «Captura» en el modo de capturas.
+    captura_entera: String,
+    pista_entera: String,
+    /// «Capturas: N · pantalla entera», con [`HUECO`] en el numero.
+    capturas_entera: String,
+    estudiar: String,
     microfono: String,
     equipo: String,
     video: String,
@@ -152,7 +182,14 @@ impl Rotulos {
         };
         Rotulos {
             titulo: t.t("clase-titulo"),
-            sub: t.t("clase-sub"),
+            modo_pantalla: t.t("clase-modo-pantalla"),
+            modo_capturas: t.t("clase-modo-capturas"),
+            sub_pantalla: t.t("clase-modo-pantalla-sub"),
+            sub_capturas: t.t("clase-modo-capturas-sub"),
+            captura_entera: t.t("clase-captura-entera"),
+            pista_entera: t.t("clase-pista-entera"),
+            capturas_entera: con("clase-capturas-entera", "n"),
+            estudiar: t.t("clase-abrir-para-estudiar"),
             microfono: t.t("clase-microfono"),
             equipo: t.t("clase-equipo"),
             video: t.t("clase-video"),
@@ -245,6 +282,63 @@ impl Rotulos {
 /// Cambia [`HUECO`] por `que`.
 fn con(plantilla: &str, que: &str) -> String {
     plantilla.replace(HUECO, que)
+}
+
+/// **Que se graba**: el selector de arriba de Preparar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Modo {
+    /// El video de la pantalla con su sonido.
+    Pantalla,
+    /// Solo el sonido, con capturas de la pantalla entera.
+    Capturas,
+}
+
+impl Modo {
+    /// La palabra con que se recuerda.
+    pub(super) fn palabra(self) -> &'static str {
+        match self {
+            Modo::Pantalla => "pantalla",
+            Modo::Capturas => "capturas",
+        }
+    }
+
+    /// Lo recordado. Lo que no se entiende (o nada) es el modo de capturas:
+    /// el que menos ocupa, que era el de siempre.
+    pub(super) fn de(palabra: &str) -> Modo {
+        match palabra.trim() {
+            "pantalla" => Modo::Pantalla,
+            _ => Modo::Capturas,
+        }
+    }
+
+    fn otro(self) -> Modo {
+        match self {
+            Modo::Pantalla => Modo::Capturas,
+            Modo::Capturas => Modo::Pantalla,
+        }
+    }
+}
+
+/// Donde se recuerda el ultimo modo: al lado de las notas de voz, en este
+/// equipo (no viaja: es como se graba aqui).
+fn fichero_del_modo(u: &Ubicacion) -> PathBuf {
+    crate::voz::carpeta_de_audios(u).join("modo-de-grabar.txt")
+}
+
+fn modo_recordado(u: &Ubicacion) -> Modo {
+    std::fs::read_to_string(fichero_del_modo(u))
+        .map(|t| Modo::de(&t))
+        .unwrap_or(Modo::Capturas)
+}
+
+fn recordar_modo(u: &Ubicacion, m: Modo) {
+    let f = fichero_del_modo(u);
+    if let Some(d) = f.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    if let Err(e) = std::fs::write(&f, m.palabra()) {
+        tracing::debug!(?e, "no se pudo recordar el modo de grabar");
+    }
 }
 
 /// Una sola a la vez: dos grabaciones se pelearian por el microfono, y las
@@ -356,24 +450,18 @@ pub(crate) fn capturas_de(m: &cuaderno::Mensaje) -> Vec<(i64, String)> {
 /// La captura que toca en `posicion_ms`: la ultima hecha antes (o en ese
 /// mismo momento). Antes de la primera, la primera: algo hay que ensenar.
 pub(crate) fn captura_en(capturas: &[(i64, String)], posicion_ms: i64) -> Option<usize> {
-    if capturas.is_empty() {
-        return None;
-    }
-    Some(
-        capturas
-            .iter()
-            .rposition(|(ms, _)| *ms <= posicion_ms)
-            .unwrap_or(0),
-    )
+    let tiempos: Vec<i64> = capturas.iter().map(|(ms, _)| *ms).collect();
+    pixpin_proyecto::clase::ultimo_antes(&tiempos, posicion_ms)
 }
 
 // --- El estado ------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Accion {
+    /// Uno de los dos modos del selector de arriba.
+    Modo(Modo),
     Microfono,
     Equipo,
-    Video,
     /// El perfil del video («Ligero», «Normal», «Nitido»): un clic pasa al
     /// siguiente.
     Calidad,
@@ -388,6 +476,8 @@ enum Accion {
     /// Cerrar mientras se pasa a texto: el texto sigue de fondo.
     DeFondo,
     Listo,
+    /// «Abrir para estudiar» del final: la clase en su ventana.
+    Estudiar,
 }
 
 type Abriendo = Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>>;
@@ -425,8 +515,8 @@ struct Estado {
     fase: Fase,
     microfono: bool,
     equipo: bool,
-    /// Grabar tambien el video de la pantalla.
-    video: bool,
+    /// Que se graba: el video de la pantalla o el audio con capturas.
+    modo: Modo,
     /// Con que perfil (ver `pixpin_motor_video::Perfil`).
     perfil_video: Perfil,
     /// Ya se dijo con que codificador va el video (se dice una vez).
@@ -461,6 +551,8 @@ struct Estado {
     guardadas: usize,
     /// El nombre de la nota (`Clase {fecha}`), con [`HUECO`] en la fecha.
     plantilla: String,
+    /// La nota guardada, `(proyecto, id)`, para «Abrir para estudiar».
+    para_estudiar: Option<(String, String)>,
 }
 
 impl Estado {
@@ -469,7 +561,7 @@ impl Estado {
             fase: Fase::Preparar,
             microfono: true,
             equipo: true,
-            video: false,
+            modo: modo_recordado(&pedido.ubicacion),
             perfil_video: Perfil::Normal,
             codificador_avisado: false,
             sonido_para_video: None,
@@ -488,6 +580,7 @@ impl Estado {
             destello: None,
             guardadas: 0,
             plantilla,
+            para_estudiar: None,
         }
         .con_temporal(pedido)
     }
@@ -497,6 +590,11 @@ impl Estado {
             self.temporal = super::temporal_de_la_voz(pedido.ubicacion.raiz(), id);
         }
         self
+    }
+
+    /// Si se graba el video de la pantalla.
+    fn video(&self) -> bool {
+        self.modo == Modo::Pantalla
     }
 
     fn avisar(&mut self, texto: String) {
@@ -946,7 +1044,7 @@ fn pedir_zona(estado: &mut Estado, ms: i64, r: &Rotulos) {
 
 fn tamano(fase: &Fase) -> (u32, u32) {
     match fase {
-        Fase::Preparar => (340, 370),
+        Fase::Preparar => (340, 412),
         // Lo que piden los botones de la barra (ver `pintar_barra`): 146 de
         // tiempo y nivel, 392 de botones y el margen.
         Fase::Abriendo(_) | Fase::Grabando(_) => (556, 92),
@@ -1093,6 +1191,13 @@ fn flotar(
                 EventoOverlay::Tecla { vk, .. } => match (vk, &estado.fase) {
                     (VK_ESCAPE, Fase::Preparar) => accion = Some(Accion::Cerrar),
                     (VK_ENTRAR, Fase::Preparar) => accion = Some(Accion::Empezar),
+                    // Las flechas o el tabulador cambian de modo.
+                    (VK_IZQUIERDA | VK_DERECHA | VK_TABULADOR, Fase::Preparar) => {
+                        accion = Some(Accion::Modo(estado.modo.otro()))
+                    }
+                    (VK_ENTRAR, Fase::Lista { .. }) if estado.para_estudiar.is_some() => {
+                        accion = Some(Accion::Estudiar)
+                    }
                     (VK_ESCAPE, Fase::Texto { .. }) => accion = Some(Accion::DeFondo),
                     (VK_ESCAPE | VK_ENTRAR, Fase::Lista { .. } | Fase::Fallo { .. }) => {
                         accion = Some(Accion::Listo)
@@ -1275,7 +1380,7 @@ fn flotar(
 
         // Lo pulsado.
         if let Some(a) = accion {
-            pulsar(a, pedido, r, estado, monitor.id, &mut vivo);
+            pulsar(a, pedido, r, estado, (monitor.id, monitor.area), &mut vivo);
         }
         if !vivo {
             break;
@@ -1354,6 +1459,9 @@ fn tras_parar(pedido: &Pedido, r: &Rotulos, estado: &mut Estado, parado: Parado)
             desde: Instant::now(),
         };
     }
+    if let Some(voz) = &g.voz {
+        estado.para_estudiar = Some((proyecto.clone(), voz.id.clone()));
+    }
     match (g.voz, g.fallo_audio) {
         (Some(voz), _) => match empezar_el_texto(pedido, &proyecto, &voz) {
             Some(f) => f,
@@ -1404,7 +1512,7 @@ fn pulsar(
     pedido: &Pedido,
     r: &Rotulos,
     estado: &mut Estado,
-    monitor: u32,
+    (monitor, pantalla): (u32, Rect),
     vivo: &mut bool,
 ) {
     if a != Accion::Tirar {
@@ -1413,7 +1521,12 @@ fn pulsar(
     match (a, &estado.fase) {
         (Accion::Microfono, Fase::Preparar) => estado.microfono = !estado.microfono,
         (Accion::Equipo, Fase::Preparar) => estado.equipo = !estado.equipo,
-        (Accion::Video, Fase::Preparar) => estado.video = !estado.video,
+        (Accion::Modo(m), Fase::Preparar) => {
+            if estado.modo != m {
+                estado.modo = m;
+                recordar_modo(&pedido.ubicacion, m);
+            }
+        }
         (Accion::Calidad, Fase::Preparar) => estado.perfil_video = estado.perfil_video.siguiente(),
         (Accion::Proyecto, Fase::Preparar) => {
             if !pedido.proyectos.is_empty() {
@@ -1435,7 +1548,7 @@ fn pulsar(
             };
             // Con video, la grabadora le manda una copia de lo que oye; el
             // video empieza cuando la grabadora ya esta abierta.
-            let copia = if estado.video {
+            let copia = if estado.video() {
                 let (tx, rx) = channel();
                 estado.sonido_para_video = Some(rx);
                 estado.monitor_video = monitor;
@@ -1450,8 +1563,28 @@ fn pulsar(
             ));
         }
         (Accion::Cerrar, Fase::Preparar) | (Accion::Listo, _) => *vivo = false,
+        (Accion::Estudiar, Fase::Lista { .. }) => {
+            if let Some((proyecto, id)) = estado.para_estudiar.clone() {
+                super::estudiar_clase::abrir(
+                    pedido.idioma,
+                    pedido.ubicacion.clone(),
+                    proyecto,
+                    id,
+                    0,
+                );
+            }
+            *vivo = false;
+        }
         // Cerrar mientras se pasa a texto: `Estado::cerrar` lo deja de fondo.
         (Accion::DeFondo, Fase::Texto { .. }) => *vivo = false,
+        // En el modo de capturas, la pantalla entera donde esta la barra, al
+        // instante: la barra no sale (`excluir_de_capturas`) y la foto se
+        // hace en su hilo.
+        (Accion::Captura, Fase::Grabando(g)) if estado.modo == Modo::Capturas => {
+            if !estado.fotografo.zona(g.llevado_ms(), pantalla) {
+                estado.avisar(r.sin_zona.clone());
+            }
+        }
         (Accion::Captura, Fase::Grabando(g)) => {
             let ms = g.llevado_ms();
             match estado.zona {
@@ -1731,11 +1864,21 @@ fn pintar(
             texto,
             Some(sub),
             r,
+            estado.para_estudiar.is_some(),
             botones,
         ),
-        Fase::Fallo { texto, .. } => {
-            pintar_final(p, w, e, &mi::MIC, ROJO_GRABAR, texto, None, r, botones)
-        }
+        Fase::Fallo { texto, .. } => pintar_final(
+            p,
+            w,
+            e,
+            &mi::MIC,
+            ROJO_GRABAR,
+            texto,
+            None,
+            r,
+            false,
+            botones,
+        ),
     }
 }
 
@@ -1749,6 +1892,7 @@ fn pintar_final(
     texto: &str,
     sub: Option<&str>,
     r: &Rotulos,
+    estudiar: bool,
     botones: &mut Botones<Accion>,
 ) {
     let tema = &OSCURO;
@@ -1784,13 +1928,53 @@ fn pintar_final(
             tema.campo_apagado,
         );
     }
+    // Con la nota guardada, «Abrir para estudiar» delante de «Listo»: es lo
+    // siguiente que se suele querer hacer con una clase.
+    let y = 122.0 * e;
+    let alto = 34.0 * e;
+    if estudiar {
+        let ancho_listo = 96.0 * e;
+        let hueco = 8.0 * e;
+        let ancho_estudiar = (w - 36.0 * e - ancho_listo - hueco).min(200.0 * e);
+        let x0 = (w - ancho_estudiar - hueco - ancho_listo) / 2.0;
+        boton(
+            p,
+            botones,
+            RectF {
+                x: x0,
+                y,
+                ancho: ancho_estudiar,
+                alto,
+            },
+            Accion::Estudiar,
+            &mi::MENU_BOOK,
+            &r.estudiar,
+            OSCURO.enviar,
+            Color::BLANCO,
+            e,
+        );
+        botones.boton(
+            p,
+            RectF {
+                x: x0 + ancho_estudiar + hueco,
+                y,
+                ancho: ancho_listo,
+                alto,
+            },
+            Accion::Listo,
+            &r.listo,
+            None,
+            e,
+        );
+        return;
+    }
     botones.boton(
         p,
         RectF {
             x: (w - 120.0 * e) / 2.0,
-            y: 122.0 * e,
+            y,
             ancho: 120.0 * e,
-            alto: 34.0 * e,
+            alto,
         },
         Accion::Listo,
         &r.listo,
@@ -1810,19 +1994,42 @@ fn filas_de_preparar(w: f32, e: f32, y: f32) -> RectF {
     }
 }
 
-/// **La ficha de la calidad del video**, dentro de su fila y a la izquierda
-/// de la pildora: tan ancha como su rotulo.
+/// **La ficha de la calidad del video**, a la derecha de su fila (que en el
+/// modo de pantalla no lleva pildora: el video va con el modo): tan ancha
+/// como su rotulo.
 fn ficha_de_calidad(p: &Pintor, fila: RectF, rotulo: &str, e: f32) -> RectF {
     let (tw, _) = p.medir_texto(rotulo, 12.0 * e);
     let ancho = tw + 16.0 * e;
     let alto = 24.0 * e;
-    // La pildora mide 38 y va a 12 del borde (ver `interruptor`).
     RectF {
-        x: fila.x + fila.ancho - 50.0 * e - 8.0 * e - ancho,
+        x: fila.x + fila.ancho - 12.0 * e - ancho,
         y: fila.y + (fila.alto - alto) / 2.0,
         ancho,
         alto,
     }
+}
+
+/// Las filas de Preparar, en logicos desde arriba: el selector de modo, los
+/// dos sonidos, lo que se graba ademas, donde se guarda y el boton grande.
+const Y_MODO: f32 = 68.0;
+const Y_MICROFONO: f32 = 118.0;
+const Y_EQUIPO: f32 = 170.0;
+const Y_TERCERA: f32 = 222.0;
+const Y_PROYECTO: f32 = 274.0;
+const Y_EMPEZAR: f32 = 334.0;
+const Y_AVISO: f32 = 392.0;
+
+/// Las dos mitades del selector de modo.
+fn mitades_del_modo(w: f32, e: f32) -> [(RectF, Modo); 2] {
+    let m = 18.0 * e;
+    let ancho = (w - 2.0 * m) / 2.0;
+    let caja = |x: f32| RectF {
+        x,
+        y: Y_MODO * e,
+        ancho,
+        alto: 38.0 * e,
+    };
+    [(caja(m), Modo::Pantalla), (caja(m + ancho), Modo::Capturas)]
 }
 
 /// Un interruptor de la fase de preparar: icono, rotulo y la pildora.
@@ -1896,6 +2103,120 @@ fn interruptor(
     botones.zona(caja, que);
 }
 
+/// Una fila de Preparar sin pildora: icono y rotulo y, si se puede pulsar,
+/// su zona. `reservado`: lo que el rotulo deja libre a la derecha.
+#[allow(clippy::too_many_arguments)]
+fn fila_sin_pildora(
+    p: &Pintor,
+    botones: &mut Botones<Accion>,
+    caja: RectF,
+    que: Option<Accion>,
+    icono: &pixpin_render::icono::Icono,
+    rotulo: &str,
+    reservado: f32,
+    e: f32,
+) {
+    let tema = &OSCURO;
+    let fondo = if que.is_some() && dentro(caja, botones.raton) {
+        mas_claro(tema.campo)
+    } else {
+        tema.campo
+    };
+    p.rellenar_redondeado(caja, 10.0 * e, fondo);
+    let lado = 20.0 * e;
+    p.icono(
+        icono,
+        RectF {
+            x: caja.x + 12.0 * e,
+            y: caja.y + (caja.alto - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
+        tema.texto,
+    );
+    let tam = 14.0 * e;
+    let (_, th) = p.medir_texto(rotulo, tam);
+    p.texto_linea(
+        rotulo,
+        caja.x + 42.0 * e,
+        caja.y + (caja.alto - th) / 2.0,
+        tam,
+        caja.ancho - 54.0 * e - reservado,
+        tema.texto,
+    );
+    if let Some(a) = que {
+        botones.zona(caja, a);
+    }
+}
+
+/// **El selector de modo**: dos mitades, la elegida en azul.
+fn pintar_selector_de_modo(
+    p: &Pintor,
+    w: f32,
+    e: f32,
+    estado: &Estado,
+    r: &Rotulos,
+    botones: &mut Botones<Accion>,
+) {
+    let tema = &OSCURO;
+    let [(a, _), (b, _)] = mitades_del_modo(w, e);
+    let fondo = RectF {
+        x: a.x,
+        y: a.y,
+        ancho: a.ancho + b.ancho,
+        alto: a.alto,
+    };
+    p.rellenar_redondeado(fondo, 12.0 * e, tema.campo);
+    for (caja, modo) in mitades_del_modo(w, e) {
+        let elegido = estado.modo == modo;
+        let dentro_caja = RectF {
+            x: caja.x + 3.0 * e,
+            y: caja.y + 3.0 * e,
+            ancho: caja.ancho - 6.0 * e,
+            alto: caja.alto - 6.0 * e,
+        };
+        if elegido {
+            p.rellenar_redondeado(dentro_caja, 9.0 * e, tema.enviar);
+        } else if dentro(caja, botones.raton) {
+            p.rellenar_redondeado(dentro_caja, 9.0 * e, mas_claro(tema.campo));
+        }
+        let (icono, rotulo) = match modo {
+            Modo::Pantalla => (&mi::VIDEOCAM, &r.modo_pantalla),
+            Modo::Capturas => (&mi::IMAGE, &r.modo_capturas),
+        };
+        let tinta = if elegido {
+            Color::BLANCO
+        } else {
+            tema.campo_apagado
+        };
+        let tam = 13.0 * e;
+        let lado = 16.0 * e;
+        let hueco = 6.0 * e;
+        let (tw, th) = p.medir_texto(rotulo, tam);
+        let tw = tw.min(dentro_caja.ancho - lado - hueco - 8.0 * e);
+        let x = dentro_caja.x + (dentro_caja.ancho - lado - hueco - tw) / 2.0;
+        p.icono(
+            icono,
+            RectF {
+                x,
+                y: caja.y + (caja.alto - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            tinta,
+        );
+        p.texto_linea(
+            rotulo,
+            x + lado + hueco,
+            caja.y + (caja.alto - th) / 2.0,
+            tam,
+            tw + 1.0,
+            tinta,
+        );
+        botones.zona(caja, Accion::Modo(modo));
+    }
+}
+
 fn pintar_preparar(
     p: &Pintor,
     w: f32,
@@ -1915,23 +2236,23 @@ fn pintar_preparar(
         w - 2.0 * m - 30.0 * e,
         tema.texto,
     );
+    let fila = |y: f32| filas_de_preparar(w, e, y);
     // Con el raton sobre la ficha de la calidad, la linea de abajo del
-    // titulo dice que es cada una (lo que pesa una hora): es su pista.
-    let sobre_la_calidad = estado.video
-        && dentro(
-            ficha_de_calidad(
-                p,
-                filas_de_preparar(w, e, 176.0),
-                r.calidad(estado.perfil_video).0,
-                e,
-            ),
-            botones.raton,
-        );
+    // titulo dice que es cada una (lo que pesa una hora): es su pista. Si
+    // no, lo que hace el modo elegido.
+    let (calidad, pista_calidad) = r.calidad(estado.perfil_video);
+    let ficha = estado
+        .video()
+        .then(|| ficha_de_calidad(p, fila(Y_TERCERA), calidad, e));
+    let sobre_la_calidad = ficha.is_some_and(|f| dentro(f, botones.raton));
     p.texto_linea(
         if sobre_la_calidad {
-            r.calidad(estado.perfil_video).1
+            pista_calidad
         } else {
-            &r.sub
+            match estado.modo {
+                Modo::Pantalla => &r.sub_pantalla,
+                Modo::Capturas => &r.sub_capturas,
+            }
         },
         m,
         42.0 * e,
@@ -1961,11 +2282,13 @@ fn pintar_preparar(
     );
     botones.zona(x, Accion::Cerrar);
 
-    let fila = |y: f32| filas_de_preparar(w, e, y);
+    pintar_selector_de_modo(p, w, e, estado, r, botones);
+
+    // Los sonidos, en los dos modos: se elige cuales.
     interruptor(
         p,
         botones,
-        fila(72.0),
+        fila(Y_MICROFONO),
         Accion::Microfono,
         &mi::MIC,
         &r.microfono,
@@ -1976,7 +2299,7 @@ fn pintar_preparar(
     interruptor(
         p,
         botones,
-        fila(124.0),
+        fila(Y_EQUIPO),
         Accion::Equipo,
         &mi::VOLUME_UP,
         &r.equipo,
@@ -1984,50 +2307,52 @@ fn pintar_preparar(
         0.0,
         e,
     );
-    // Apagado de salida: el video ocupa mucho y casi siempre basta la nota
-    // con sus capturas. Encendido, lleva a la derecha su calidad, que se
-    // cambia con un clic (ver `ficha_de_calidad`).
-    let caja_video = fila(176.0);
-    let (calidad, _) = r.calidad(estado.perfil_video);
-    let ficha = estado
-        .video
-        .then(|| ficha_de_calidad(p, caja_video, calidad, e));
-    interruptor(
-        p,
-        botones,
-        caja_video,
-        Accion::Video,
-        &mi::VIDEOCAM,
-        &r.video,
-        estado.video,
-        ficha.map_or(0.0, |f| f.ancho + 8.0 * e),
-        e,
-    );
-    if let Some(f) = ficha {
-        // Dos tonos por encima de la fila (que ya se aclara uno con el
-        // raton encima), y uno mas sobre la propia ficha.
-        let fondo = mas_claro(mas_claro(tema.campo));
-        let encima = dentro(f, botones.raton);
-        p.rellenar_redondeado(
-            f,
-            f.alto / 2.0,
-            if encima { mas_claro(fondo) } else { fondo },
-        );
-        let tam = 12.0 * e;
-        let (tw, th) = p.medir_texto(calidad, tam);
-        p.texto(
-            calidad,
-            f.x + (f.ancho - tw) / 2.0,
-            f.y + (f.alto - th) / 2.0,
-            tam,
-            tema.texto,
-        );
-        // Encima del rotulo del video: la zona de la ficha va despues y
-        // gana (`Botones::bajo_el_raton`).
-        botones.zona(f, Accion::Calidad);
+    // Lo que se graba ademas: el video con su calidad (un clic en la fila
+    // pasa a la siguiente), o que «Captura» es la pantalla entera.
+    match ficha {
+        Some(f) => {
+            fila_sin_pildora(
+                p,
+                botones,
+                fila(Y_TERCERA),
+                Some(Accion::Calidad),
+                &mi::VIDEOCAM,
+                &r.video,
+                f.ancho + 8.0 * e,
+                e,
+            );
+            // Dos tonos por encima de la fila (que ya se aclara uno con el
+            // raton encima), y uno mas sobre la propia ficha.
+            let fondo = mas_claro(mas_claro(tema.campo));
+            let encima = dentro(f, botones.raton);
+            p.rellenar_redondeado(
+                f,
+                f.alto / 2.0,
+                if encima { mas_claro(fondo) } else { fondo },
+            );
+            let tam = 12.0 * e;
+            let (tw, th) = p.medir_texto(calidad, tam);
+            p.texto(
+                calidad,
+                f.x + (f.ancho - tw) / 2.0,
+                f.y + (f.alto - th) / 2.0,
+                tam,
+                tema.texto,
+            );
+        }
+        None => fila_sin_pildora(
+            p,
+            botones,
+            fila(Y_TERCERA),
+            None,
+            &mi::FULLSCREEN,
+            &r.captura_entera,
+            0.0,
+            e,
+        ),
     }
     // Donde se guarda: un clic pasa al siguiente proyecto.
-    let caja = fila(228.0);
+    let caja = fila(Y_PROYECTO);
     let fondo = if dentro(caja, botones.raton) {
         mas_claro(tema.campo)
     } else {
@@ -2078,7 +2403,7 @@ fn pintar_preparar(
     // El boton grande.
     let caja = RectF {
         x: m,
-        y: 288.0 * e,
+        y: Y_EMPEZAR * e,
         ancho: w - 2.0 * m,
         alto: 50.0 * e,
     };
@@ -2115,7 +2440,7 @@ fn pintar_preparar(
                 ancho: w,
                 alto: 1.0,
             },
-            346.0 * e,
+            Y_AVISO * e,
             12.0 * e,
             ROJO_GRABAR,
         );
@@ -2290,9 +2615,21 @@ fn pintar_barra(
     } else if pausa {
         (r.en_pausa.clone(), tema.campo_apagado)
     } else if hechas == 0 {
-        (r.pista.clone(), tema.campo_apagado)
+        (
+            if estado.modo == Modo::Capturas {
+                r.pista_entera.clone()
+            } else {
+                r.pista.clone()
+            },
+            tema.campo_apagado,
+        )
     } else {
-        (con(&r.capturas, &hechas.to_string()), tema.campo_apagado)
+        let plantilla = if estado.modo == Modo::Capturas {
+            &r.capturas_entera
+        } else {
+            &r.capturas
+        };
+        (con(plantilla, &hechas.to_string()), tema.campo_apagado)
     };
     // Con video, a la derecha de la linea de abajo: que se esta grabando
     // la pantalla tiene que verse siempre.
@@ -2374,6 +2711,41 @@ mod pruebas {
     }
 
     #[test]
+    fn el_modo_se_recuerda_por_su_palabra() {
+        for m in [Modo::Pantalla, Modo::Capturas] {
+            assert_eq!(Modo::de(m.palabra()), m);
+            assert_eq!(m.otro().otro(), m);
+            assert_ne!(m.otro(), m);
+        }
+        assert_eq!(
+            Modo::de("pantalla\n"),
+            Modo::Pantalla,
+            "con su salto de linea"
+        );
+        // Caso negativo: lo que no se entiende es el modo que menos ocupa.
+        assert_eq!(Modo::de(""), Modo::Capturas);
+        assert_eq!(Modo::de("video"), Modo::Capturas);
+    }
+
+    #[test]
+    fn las_filas_de_preparar_caben_en_su_ventana() {
+        let (_, alto) = tamano(&Fase::Preparar);
+        // El boton grande y el aviso de debajo.
+        const { assert!(Y_EMPEZAR + 50.0 <= Y_AVISO) };
+        assert!(Y_AVISO + 16.0 <= alto as f32, "{alto}");
+        // Las filas no se pisan (44 cada una).
+        for (a, b) in [
+            (Y_MODO + 38.0, Y_MICROFONO),
+            (Y_MICROFONO + 44.0, Y_EQUIPO),
+            (Y_EQUIPO + 44.0, Y_TERCERA),
+            (Y_TERCERA + 44.0, Y_PROYECTO),
+            (Y_PROYECTO + 44.0, Y_EMPEZAR),
+        ] {
+            assert!(a <= b, "{a} > {b}");
+        }
+    }
+
+    #[test]
     fn la_barra_es_tan_ancha_como_sus_botones() {
         // El fallo: la barra medía 520 y sus botones pedían 538; el ✕ de
         // tirar salía cortado. 146 de tiempo y nivel, 392 de botones (ver
@@ -2397,10 +2769,10 @@ mod pruebas {
             x: 3100,
             y: 500,
             ancho: 340,
-            alto: 370,
+            alto: 412,
         };
         let m = reencajar(area, 150, &Fase::Preparar, antes);
-        assert_eq!((m.ancho, m.alto), (510, 555), "la escala de la nueva");
+        assert_eq!((m.ancho, m.alto), (510, 618), "la escala de la nueva");
         assert!(m.x >= area.x && m.x + m.ancho as i32 <= area.x + area.ancho as i32);
         assert!(m.y >= area.y && m.y + m.alto as i32 <= area.y + area.alto as i32);
         // Caso negativo: dentro y a la misma escala no se mueve.
@@ -2408,7 +2780,7 @@ mod pruebas {
             x: 2200,
             y: 100,
             ancho: 340,
-            alto: 370,
+            alto: 412,
         };
         assert_eq!(reencajar(area, 100, &Fase::Preparar, quieta), quieta);
     }
