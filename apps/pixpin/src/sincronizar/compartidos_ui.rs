@@ -846,8 +846,18 @@ fn por_ficha(raiz: &Path) -> (u64, Arc<PorFicha>) {
     {
         return (r.generacion, r.por_ficha.clone());
     }
-    let (yo, mios) = mis_aparatos(raiz);
-    let lista = CompartidosEnDisco::nuevo(raiz).leer();
+    // Sin carpeta (las muestras y pruebas de la ventana) o sin ningun chat
+    // compartido, nada: ni se lee la identidad, que leerla la crea.
+    let lista = if raiz.as_os_str().is_empty() {
+        Vec::new()
+    } else {
+        CompartidosEnDisco::nuevo(raiz).leer()
+    };
+    let (yo, mios) = if lista.is_empty() {
+        (String::new(), HashSet::new())
+    } else {
+        mis_aparatos(raiz)
+    };
     let mut nuevo = PorFicha::new();
     let mut faltan = false;
     if lista.iter().any(|c| compartidos::dentro(c, &yo)) {

@@ -145,6 +145,7 @@ fn muestra_del_chat_con_la_zona() {
             busqueda: &crate::caja_texto::CajaLinea::nueva(),
             buscando: false,
             marcados: &marcados,
+            raiz: std::path::Path::new(""),
         };
         motor
             .dibujar(&destino.destino, |p| {

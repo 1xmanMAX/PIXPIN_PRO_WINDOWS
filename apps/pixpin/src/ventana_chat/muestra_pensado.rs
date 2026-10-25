@@ -79,6 +79,7 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
             busqueda: &crate::caja_texto::CajaLinea::nueva(),
             buscando: false,
             marcados: &marcados,
+            raiz: std::path::Path::new(""),
         };
         motor
             .dibujar(&destino.destino, |p| {

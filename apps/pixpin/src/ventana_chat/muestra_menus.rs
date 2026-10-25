@@ -188,6 +188,7 @@ fn muestras_de_los_menus_v2() {
                 busqueda: &crate::caja_texto::CajaLinea::nueva(),
                 buscando: false,
                 marcados: &marcados,
+                raiz: std::path::Path::new(""),
             };
             motor
                 .dibujar(&destino.destino, |p| {

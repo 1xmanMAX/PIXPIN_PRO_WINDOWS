@@ -556,6 +556,7 @@ fn muestra_de_la_voz_del_asistente() {
                 busqueda: &crate::caja_texto::CajaLinea::nueva(),
                 buscando: false,
                 marcados: &marcados,
+                raiz: std::path::Path::new(""),
             };
             motor_r
                 .dibujar(&destino.destino, |p| {

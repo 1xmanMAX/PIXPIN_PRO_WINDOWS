@@ -597,6 +597,7 @@ fn muestra_del_chat_con_el_asistente() {
             busqueda: &crate::caja_texto::CajaLinea::nueva(),
             buscando: false,
             marcados: &marcados,
+            raiz: std::path::Path::new(""),
         };
         motor_r
             .dibujar(&destino.destino, |p| {
@@ -970,6 +971,7 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
             busqueda: &crate::caja_texto::CajaLinea::nueva(),
             buscando: false,
             marcados: &marcados,
+            raiz: std::path::Path::new(""),
         };
         motor_r
             .dibujar(&destino.destino, |p| {
