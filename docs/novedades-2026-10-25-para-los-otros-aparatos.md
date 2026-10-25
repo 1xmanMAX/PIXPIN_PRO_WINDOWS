@@ -69,6 +69,23 @@ Al terminar una grabacion entran en el chat, con numeros seguidos:
   quiere, ensenarlos en la letra de la nota como fichas con su minuto que
   llevan el audio ahi.
 
+### 3.2 La grabacion entra en su carpeta
+
+- Al terminar, ademas de los mensajes de la tabla de arriba (que no
+  cambian), entra **una carpeta** (`MINIAPP` «carpeta») con el nombre de
+  la grabacion y, en su documento, `tipo: "grabacion"`, `voz`, `video`,
+  `duracionMs` y cada pieza con su `ms`. Lo que se adjunta luego a la
+  clase lleva `adjunto: true` en su pagina y no es de lo grabado.
+- En el PC la grabacion se ve como **una sola tarjeta** (no la nota, el
+  video y las capturas sueltos) y, en general, **lo que esta en una
+  carpeta ya no sale suelto en el chat** (tambien las paginas de un
+  cuaderno): se ve dentro de su carpeta, en la galeria y con la lupa.
+- Formato, ejemplo y tareas:
+  [manual-sincronizar-lo-nuevo.md §5.1](manual-sincronizar-lo-nuevo.md).
+- **Android / apple**: conservar el `texto` de la carpeta tal cual (ya se
+  hace con las mini-apps). Opcional: la tarjeta de la grabacion y no
+  ensenar sueltos los mensajes de una carpeta.
+
 ## 4. La ficha del chat (la isla al pulsar el nombre)
 
 - Pestanas nuevas en `Seccion` (`crates/pixpin-proyecto/src/cuaderno.rs`):
