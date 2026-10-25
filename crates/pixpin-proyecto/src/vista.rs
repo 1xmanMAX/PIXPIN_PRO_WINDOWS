@@ -1104,6 +1104,55 @@ mod pruebas {
     }
 
     #[test]
+    fn las_fotos_de_una_nota_rica_viajan_con_ella() {
+        // La nota rica del chat (25-oct-2026): una NOTA cuyo Markdown nombra
+        // sus fotos de `notas/`. Si no viajaran, en el movil la burbuja
+        // saldria con los recuadros vacios.
+        let raiz = std::env::temp_dir().join(format!("pixpin-vista-nota-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let ficha = Ficha::nueva("Obra", 5, "PC01");
+        let mut indice = Indice::default();
+        indice.proyectos.push(ficha.clone());
+        indice.guardar(&raiz).unwrap();
+        let carpeta = almacen::carpeta(&raiz, &ficha.id);
+        std::fs::create_dir_all(carpeta.join("notas")).unwrap();
+        std::fs::write(carpeta.join("notas/1-a.png"), b"png").unwrap();
+        std::fs::write(carpeta.join("notas/2-b.png"), b"png").unwrap();
+        let notas = portatil_de_ruta(&raiz, &carpeta.join("notas")).unwrap();
+        let chat = chat_de_ficha(&raiz, &ficha.id).unwrap();
+        assert_eq!(
+            notas,
+            format!("{PORTATIL}guardados/pc/{}/notas", limpio(&chat))
+        );
+        let texto =
+            format!("hola\n![]({notas}/1-a.png)\n![b]({notas}/2-b.png)\n![](notas/no-esta.png)");
+        let m = crate::cuaderno::Mensaje::nota(
+            &texto,
+            &crate::cuaderno::Sello {
+                cuando: 1_760_000_000_000,
+                numero: 1,
+                aparato: "PC01".into(),
+                proyecto: ficha.id.clone(),
+            },
+        );
+        crate::cuaderno::anadir(&carpeta, &m).unwrap();
+        let d = DiscoPc::nuevo(&raiz);
+        let alcance = d.alcance(&chat).unwrap();
+        for f in ["notas/1-a.png", "notas/2-b.png"] {
+            let rel = format!("guardados/pc/{}/{f}", limpio(&chat));
+            assert!(
+                alcance.iter().any(|(r, _)| *r == rel),
+                "{rel} no viaja: {alcance:?}"
+            );
+            // Y lo que llega del otro aparato cae en el mismo sitio.
+            assert_eq!(d.ruta(&chat, &rel), carpeta.join(f));
+        }
+        // Caso negativo: lo que no se nombra con `pixpin:files/` no viaja.
+        assert!(!alcance.iter().any(|(r, _)| r.ends_with("no-esta.png")));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
     fn un_proyecto_sin_documento_no_se_inventa_uno() {
         // Caso negativo: sin `pdfOrigen` ni `documento.pdf` no hay documento,
         // y una ruta absoluta de otro aparato tampoco cuenta.
