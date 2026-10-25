@@ -5,6 +5,12 @@ necesitan PixPin Android y la version de Mac, iPad e iPhone (`apple/`) para
 leerlo y escribirlo igual. Todo viaja por la sincronizacion de siempre: no hay
 mensajes nuevos en el protocolo, solo ficheros y campos de `resto`.
 
+**Manual paso a paso** (ficheros, formatos, choques y lista de tareas por
+aparato): [manual-sincronizar-lo-nuevo.md](manual-sincronizar-lo-nuevo.md).
+Al sincronizar, ahora se juntan sin perder nada los marcadores de una clase,
+las paginas de una carpeta y la biblioteca de figuras cambiados en los dos
+aparatos (§7 del manual).
+
 ## 1. Vista de cada marcador del lienzo (como las vistas de AutoCAD)
 
 - Al poner un marcador se guarda lo que se veia (centro y cuanto mundo cabia);
