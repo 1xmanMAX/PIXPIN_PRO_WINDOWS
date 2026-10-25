@@ -2764,5 +2764,17 @@ carpeta-despues = Later
 carpeta-renombrar = Rename
 carpeta-quitar = Remove from folder
 carpeta-no-esta = That folder is no longer in the chat
-carpeta-pista = Drag a page to move it · F2 changes its title · Del removes it (the canvas stays in the chat)
+carpeta-pista = Drag a page to move it · F2 changes its title · Del removes it (it shows in the chat again)
 carpeta-escribe-titulo = Type the title and press Enter
+carpeta-grabacion = Recording
+carpeta-grabacion-detalle = { $duracion } · { $capturas ->
+    [one] 1 capture
+   *[other] { $capturas } captures
+}
+carpeta-estudiar = Study
+carpeta-de-la-grabacion = From the recording
+carpeta-adjuntos = Attached to the class
+carpeta-adjunto-insignia = Attachment · not part of the recording
+carpeta-adjuntar = Attach to the class
+carpeta-adjuntado = Attached to the class: { $nombre }
+carpeta-grabacion-pista = Click an item to study it at its minute · “Attach to the class” adds a file, photo or note without mixing it with what was recorded
