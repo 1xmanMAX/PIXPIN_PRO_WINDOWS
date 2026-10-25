@@ -34,7 +34,7 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::Atajo;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::ajustes::{
-    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, NivelPdf, PreferenciaIdioma,
+    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorOcr, NivelPdf, PreferenciaIdioma,
     PreferenciaNivel, Suavizado,
 };
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
@@ -284,6 +284,17 @@ enum Clave {
     AnadirIgnorado,
     /// Una de `regiones`, por su posicion: su atajo se graba aqui.
     Region(usize),
+    // Reconocer texto (25-oct-2026, `[ocr]`)
+    /// El motor: Windows o Indra. Elegir Indra sin bajar empieza la descarga.
+    OcrMotor,
+    /// Corregir con el diccionario espanol.
+    OcrCorregir,
+    /// «Mi vocabulario».
+    OcrVocabulario,
+    /// Abrir la licencia de los pesos de Indra.
+    OcrLicencia,
+    /// Borrar el lector bajado.
+    OcrBorrar,
     // Pinear (Tanda 6)
     /// Las palabras magicas de una herramienta, por su indice en
     /// `MiniApp::TODAS` (`PalabrasMagicasCard` del movil: una fila por
@@ -387,6 +398,17 @@ impl Clave {
                 | Clave::Automatizacion(_)
                 | Clave::CorrerAutomatizacion(_)
                 | Clave::SinAutomatizaciones
+                | Clave::OcrLicencia
+                | Clave::OcrBorrar
+        )
+    }
+
+    /// Las cajas de escribir que guardan con «Cambiar» o Intro (las
+    /// palabras de una herramienta, de una urgencia y «Mi vocabulario»).
+    fn es_de_palabras(self) -> bool {
+        matches!(
+            self,
+            Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_) | Clave::OcrVocabulario
         )
     }
 }
@@ -632,6 +654,72 @@ fn opcion(opciones: Vec<String>, elegida: usize) -> Control {
     Control::Opcion { opciones, elegida }
 }
 
+/// Licencia de los pesos de Indra (OpenRAIL-M modificada de Datalab).
+const LICENCIA_INDRA: &str = "https://huggingface.co/datalab-to/indra-ocr/blob/main/LICENSE";
+
+/// «Reconocer texto»: el motor de toda la app (`docs/ocr.md`). Indra se baja
+/// solo al elegirlo, con la licencia de sus pesos dicha antes.
+fn filas_de_ocr(a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
+    let t = cx.t;
+    let tt = |k: &str| t.t(k);
+    let raiz = crate::ocr_motor::raiz().unwrap_or_default();
+    let bajado = crate::ocr_motor::indra_listo(&raiz);
+    let mut v = vec![
+        grupo(t, "ajustes2-g-ocr"),
+        op(
+            a,
+            Clave::OcrMotor,
+            tt("ajustes2-ocr-motor"),
+            crate::ocr_motor::estado(t, &raiz, a.ocr.motor),
+            opcion(
+                vec![tt("ajustes2-ocr-windows"), tt("ajustes2-ocr-indra")],
+                usize::from(a.ocr.motor == MotorOcr::Indra),
+            ),
+        ),
+        op(
+            a,
+            Clave::OcrLicencia,
+            tt("ajustes2-ocr-licencia"),
+            tt("ajustes2-ayuda-ocr-licencia"),
+            Control::Boton(tt("ajustes2-abrir")),
+        ),
+    ];
+    if a.ocr.motor == MotorOcr::Indra || bajado {
+        v.push(op(
+            a,
+            Clave::OcrCorregir,
+            tt("ajustes2-ocr-corregir"),
+            tt("ajustes2-ayuda-ocr-corregir"),
+            Control::Interruptor(a.ocr.corregir),
+        ));
+        let terminos = pixpin_indra::lexico::Vocabulario::de_texto(&a.ocr.vocabulario).terminos;
+        v.push(op(
+            a,
+            Clave::OcrVocabulario,
+            tt("ajustes2-ocr-vocabulario"),
+            if terminos.is_empty() {
+                tt("ajustes2-ocr-vocabulario-ninguno")
+            } else {
+                terminos.join(", ")
+            },
+            Control::Entrada {
+                marcador: tt("ajustes2-ocr-vocabulario-marcador"),
+                boton: tt("ajustes2-palabras-cambiar"),
+            },
+        ));
+    }
+    if bajado {
+        v.push(op(
+            a,
+            Clave::OcrBorrar,
+            tt("ajustes2-ocr-borrar"),
+            tt("ajustes2-ayuda-ocr-borrar"),
+            Control::Boton(tt("ajustes2-ocr-borrar-boton")),
+        ));
+    }
+    v
+}
+
 /// Las filas de una seccion, con la clave de lo que hay detras de cada una.
 fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
     let t = cx.t;
@@ -843,8 +931,9 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                         },
                     ),
                 ),
-                grupo(t, "ajustes2-g-ignorados"),
             ];
+            v.extend(filas_de_ocr(a, cx));
+            v.push(grupo(t, "ajustes2-g-ignorados"));
             for (i, programa) in a.ignorar_programas.iter().enumerate() {
                 v.push(op(
                     a,
@@ -1506,6 +1595,9 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::Idioma => a.idioma = d.idioma,
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = d.pdf.aligerar_al_entrar,
         Clave::PdfNivel => a.pdf.nivel = d.pdf.nivel,
+        Clave::OcrMotor => a.ocr.motor = d.ocr.motor,
+        Clave::OcrCorregir => a.ocr.corregir = d.ocr.corregir,
+        Clave::OcrVocabulario => a.ocr.vocabulario = d.ocr.vocabulario.clone(),
         Clave::RetardoCaptura => a.retardo_captura_s = d.retardo_captura_s,
         Clave::Color => a.formato_color = d.formato_color,
         Clave::LimiteScroll => a.limite_scroll_px = d.limite_scroll_px,
@@ -1574,7 +1666,9 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::Conexion(_)
         | Clave::Automatizacion(_)
         | Clave::CorrerAutomatizacion(_)
-        | Clave::SinAutomatizaciones => {}
+        | Clave::SinAutomatizaciones
+        | Clave::OcrLicencia
+        | Clave::OcrBorrar => {}
     }
 }
 
@@ -1619,6 +1713,12 @@ fn poner_palabras_escritas(a: &mut Ajustes, clave: Clave, escrito: &str) {
     {
         poner_palabras(a, app, &pixpin_pin::magia::partir_escrito(escrito));
     }
+    // «Mi vocabulario»: los terminos, sin repetir, uno por linea.
+    if clave == Clave::OcrVocabulario {
+        a.ocr.vocabulario = pixpin_indra::lexico::Vocabulario::de_texto(escrito)
+            .terminos
+            .join("\n");
+    }
     // Las de una urgencia: partidas igual, sin repetir y sin vacias.
     if let Clave::PalabrasUrgencia(i) = clave {
         let mut nuevas: Vec<String> = Vec::new();
@@ -1648,6 +1748,9 @@ fn palabras_para_editar(a: &Ajustes, clave: Clave) -> String {
             .unwrap_or_default(),
         Clave::PalabrasUrgencia(0) => a.tareas.urgente.join(", "),
         Clave::PalabrasUrgencia(_) => a.tareas.muy_urgente.join(", "),
+        Clave::OcrVocabulario => pixpin_indra::lexico::Vocabulario::de_texto(&a.ocr.vocabulario)
+            .terminos
+            .join(", "),
         _ => String::new(),
     }
 }
@@ -1738,12 +1841,32 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::MedirFotogramas => a.rendimiento.medir_fotogramas = !a.rendimiento.medir_fotogramas,
         Clave::Ritmo => a.rendimiento.ritmo = !a.rendimiento.ritmo,
         Clave::Paneo => a.rendimiento.paneo_por_composicion = !a.rendimiento.paneo_por_composicion,
+        Clave::OcrCorregir => a.ocr.corregir = !a.ocr.corregir,
         _ => {}
     }
 }
 
 fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
     match clave {
+        Clave::OcrMotor => {
+            a.ocr.motor = if cual == 1 {
+                MotorOcr::Indra
+            } else {
+                MotorOcr::Windows
+            };
+            // Elegir Indra es pedirlo: si no esta, se baja ya (la fila dice
+            // antes cuanto pesa y de quien es la licencia). Volver a Windows
+            // corta una descarga a medias.
+            match (a.ocr.motor, crate::ocr_motor::raiz()) {
+                (MotorOcr::Indra, Some(r)) if !crate::ocr_motor::indra_listo(&r) => {
+                    crate::ocr_motor::empezar_descarga(r)
+                }
+                (MotorOcr::Windows, _) if crate::ocr_motor::bajando() => {
+                    crate::ocr_motor::cancelar_descarga()
+                }
+                _ => {}
+            }
+        }
         Clave::SitioHerramientas => SITIO_HERRAMIENTAS.with(|c| c.set(cual.min(SITIOS.len()))),
         Clave::Idioma => {
             a.idioma = match cual {
@@ -2052,6 +2175,11 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
             pixpin_shell::asociaciones::abrir_configuracion();
             Ok(())
         }
+        Clave::OcrLicencia => pixpin_shell::abrir::abrir(std::path::Path::new(LICENCIA_INDRA)),
+        Clave::OcrBorrar => {
+            crate::ocr_motor::borrar(ubicacion.raiz());
+            Ok(())
+        }
         _ => Ok(()),
     };
     if let Err(e) = resultado {
@@ -2259,10 +2387,14 @@ fn abrir(
     let hwnd_ventana = ventana.handle().0 as isize;
     let despertar_ventana: std::sync::Arc<dyn Fn() + Send + Sync> =
         std::sync::Arc::new(move || pixpin_shell::overlay::despertar(hwnd_ventana));
+    // La descarga de Indra avisa a esta ventana para pintar su avance.
+    crate::ocr_motor::al_cambiar(despertar_ventana.clone());
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
-        let n = crate::asistente::nube::novedades() + crate::asistente::conexiones::novedades();
+        let n = crate::asistente::nube::novedades()
+            + crate::asistente::conexiones::novedades()
+            + crate::ocr_motor::novedades();
         if n != novedades_claves {
             novedades_claves = n;
             version += 1;
@@ -2303,12 +2435,8 @@ fn abrir(
                     // y decide a donde va lo que se escriba.
                     estado.capturando = None;
                     let foco_antes = estado.foco;
-                    let es_palabras = |i: usize| {
-                        matches!(
-                            filas.get(i),
-                            Some((Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_), _))
-                        )
-                    };
+                    let es_palabras =
+                        |i: usize| filas.get(i).is_some_and(|(c, _)| c.es_de_palabras());
                     // «Cambiar» en las palabras de una herramienta: la primera
                     // vez abre su caja con lo de ahora; con la caja abierta,
                     // guarda lo escrito (el Aceptar del dialogo del movil).
@@ -2365,10 +2493,8 @@ fn abrir(
                             estado.entrada.clear();
                         }
                         if let Foco::Entrada(i) = estado.foco
-                            && let Some((
-                                clave @ (Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_)),
-                                _,
-                            )) = filas.get(i)
+                            && let Some((clave, _)) = filas.get(i)
+                            && clave.es_de_palabras()
                         {
                             estado.entrada = palabras_para_editar(&copia.a, *clave);
                         }
@@ -2471,6 +2597,7 @@ fn abrir(
                                             clave,
                                             Clave::PalabrasDe(_)
                                                 | Clave::PalabrasUrgencia(_)
+                                                | Clave::OcrVocabulario
                                                 | Clave::ClaveNube(_)
                                                 | Clave::ClienteConexion(_)
                                         ) => {}
@@ -2586,13 +2713,8 @@ fn abrir(
                                 } else {
                                     // Escape en las palabras es Cancelar.
                                     if let Foco::Entrada(i) = estado.foco
-                                        && (matches!(
-                                            filas.get(i),
-                                            Some((
-                                                Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_),
-                                                _
-                                            ))
-                                        ) || es_clave(&filas, i))
+                                        && (filas.get(i).is_some_and(|(c, _)| c.es_de_palabras())
+                                            || es_clave(&filas, i))
                                     {
                                         estado.entrada.clear();
                                     }
@@ -2618,13 +2740,7 @@ fn abrir(
                                 }
                                 // Intro guarda las palabras y cierra la caja.
                                 Foco::Entrada(i)
-                                    if matches!(
-                                        filas.get(i),
-                                        Some((
-                                            Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_),
-                                            _
-                                        ))
-                                    ) =>
+                                    if filas.get(i).is_some_and(|(c, _)| c.es_de_palabras()) =>
                                 {
                                     let texto = std::mem::take(&mut estado.entrada);
                                     if let Some((clave, _)) = filas.get(i).cloned() {

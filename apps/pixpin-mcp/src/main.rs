@@ -22,6 +22,7 @@ fn escribir(salida: &Mutex<std::io::Stdout>, v: &serde_json::Value) {
 }
 
 fn main() {
+    pixpin_mcp::leer::configurar_ocr();
     let salida = Arc::new(Mutex::new(std::io::stdout()));
     let entrada = std::io::stdin();
     let mut hilos = Vec::new();

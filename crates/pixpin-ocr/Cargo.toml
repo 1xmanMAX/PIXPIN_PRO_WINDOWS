@@ -7,6 +7,15 @@ license.workspace = true
 
 [dependencies]
 pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
+# El lector Indra sin runtime (Rust puro) y el ONNX Runtime de Windows con
+# su descarga por WinHTTP (el mismo enlace que Whisper).
+pixpin-indra = { path = "../pixpin-indra" }
+pixpin-voz = { path = "../pixpin-voz" }
+# El sha256 de cada fichero bajado, y la DLL de ONNX Runtime, que viene
+# comprimida dentro del ZIP oficial. Los dos ya en el arbol.
+sha2 = "0.10"
+flate2 = "1.1"
 thiserror = "2.0"
+tracing = "0.1.44"
 windows-future = "0.3"
 windows = { version = "0.62.2", features = ["Media_Ocr", "Globalization", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Foundation_Collections"] }

@@ -28,7 +28,10 @@ fn capa(nombre: &str) -> Option<u8> {
         | "pixpin-docs" | "pixpin-hojas" | "pixpin-cad" | "pixpin-frase" | "pixpin-sistema"
         // El motor de audio (25-oct-2026): WASAPI, la mezcla y el .m4a, sin
         // ningun crate de PixPin; `pixpin-audio` lo usa por debajo.
-        | "pixpin-motor-audio" => 0,
+        | "pixpin-motor-audio"
+        // El lector Indra sin runtime (25-oct-2026): imagen, LM, orden y
+        // correccion en Rust puro; los modelos los corre `pixpin-ocr`.
+        | "pixpin-indra" => 0,
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
@@ -110,11 +113,11 @@ fn estan_los_cuarenta_paquetes() {
     let encontrados = manifiestos();
     // 32 con `pixpin-sistema` (lo que la logica pregunta al sistema, con
     // version portable: la usa la copia del nucleo de Mac); 40 con los
-    // motores de video y de audio.
+    // motores de video y de audio; 41 con el lector Indra.
     assert_eq!(
         encontrados.len(),
-        40,
-        "se esperan 35 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        41,
+        "se esperan 36 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
