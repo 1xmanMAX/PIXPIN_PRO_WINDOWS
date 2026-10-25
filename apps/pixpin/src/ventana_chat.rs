@@ -255,9 +255,7 @@ struct Tema {
     /// Lo que se escribe ENCIMA del papel. No vale `texto`: en el tema
     /// oscuro ese es casi blanco, y sobre una hoja clara no se veria.
     texto_papel: Color,
-    /// La pildora de la pestana activa del panel de informacion, y su texto
-    /// (`lightButtonBgOver` y `lightButtonFg` de Telegram).
-    pestana_activa: Color,
+    /// El texto de lo elegido en un selector (`lightButtonFg` de Telegram).
     texto_pestana_activa: Color,
     /// El velo de detras de una capa (`layerBg`): negro a la mitad.
     velo: Color,
@@ -341,7 +339,6 @@ const CLARO: Tema = Tema {
     enlace_mio: hex(0x0f6cbd),
     papel: hex(0xffffff),
     texto_papel: hex(0x111111),
-    pestana_activa: hex(0xe3f1fa),
     texto_pestana_activa: hex(0x168acd),
     velo: Color {
         r: 0.0,
@@ -406,7 +403,6 @@ const OSCURO: Tema = Tema {
     // hoja clara, solo un poco apagada para no deslumbrar.
     papel: hex(0xe8e8e8),
     texto_papel: hex(0x111111),
-    pestana_activa: hex(0x1d2a39),
     texto_pestana_activa: hex(0x6ab2f2),
     velo: Color {
         r: 0.0,
@@ -1517,6 +1513,7 @@ pub fn abrir(
                                     a.info = Some(ficha_del_chat::primera(a));
                                     a.info_abierta = None;
                                     a.scroll_info = 0;
+                                    a.nav_info.foco.set(None);
                                     Efecto::Nada
                                 }
                                 // La lupa busca DENTRO de la conversacion y
@@ -1836,6 +1833,7 @@ pub fn abrir(
                                 ZonaInfo::Pestana(s) => {
                                     a.info = Some(s);
                                     a.scroll_info = 0;
+                                    a.nav_info.foco.set(None);
                                 }
                                 // Un enlace se abre en el navegador y la isla
                                 // se queda; lo demas, en su previa.
@@ -1844,7 +1842,15 @@ pub fn abrir(
                                         aviso = Some((t, std::time::Instant::now()));
                                     }
                                 }
-                                ZonaInfo::Cosa(n) => a.info_abierta = Some(n),
+                                // Una nota de voz suena sin salir de la isla.
+                                ZonaInfo::Cosa(n) if ficha_del_chat::es_voz(a, n) => {
+                                    a.nav_info.foco.set(Some(n));
+                                    abrir_cosa = Some(n.mensaje);
+                                }
+                                ZonaInfo::Cosa(n) => {
+                                    a.nav_info.foco.set(Some(n));
+                                    a.info_abierta = Some(n);
+                                }
                                 ZonaInfo::Volver => a.info_abierta = None,
                                 ZonaInfo::Anterior => {
                                     a.info_abierta =
@@ -3073,14 +3079,14 @@ pub fn abrir(
                 EventoOverlay::Rueda(delta)
                     if abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
                 {
-                    // En la previa de una cosa no hay nada que desplazar.
-                    if let Some(a) = abierto.as_mut().filter(|a| a.info_abierta.is_none()) {
+                    // En la previa de una cosa no hay nada que desplazar; sobre
+                    // las pestanas que no caben, la tira se desplaza de lado.
+                    if let Some(a) = abierto.as_mut() {
                         let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
                         // `alto_info` lo deja puesto el pintado de la vuelta
                         // anterior: es lo que mide todo el contenido, y con
                         // el se sabe hasta donde se puede bajar.
-                        let tope = ficha_del_chat::tope(a, &disposicion, escala);
-                        a.scroll_info = (a.scroll_info - giro_de_rueda(delta, paso)).clamp(0, tope);
+                        ficha_del_chat::rueda(a, &disposicion, escala, giro_de_rueda(delta, paso));
                     }
                     hay_que_pintar = true;
                 }
@@ -3460,28 +3466,79 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
-                // En la previa de la ficha, Escape vuelve a la rejilla; en la
-                // rejilla, la cierra.
+                // El teclado en la ficha (`ficha_del_chat::tecla`): ← y →
+                // cambian de pestana o recorren la previa, ↓ y las flechas
+                // mueven el foco, Intro abre y Escape vuelve un paso.
                 EventoOverlay::Tecla { vk, .. }
-                    if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
+                    if matches!(
+                        vk,
+                        VK_ESCAPE | VK_ENTRAR | VK_IZQUIERDA | VK_DERECHA | VK_ARRIBA | VK_ABAJO
+                    ) && abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
                 {
-                    if let Some(a) = abierto.as_mut()
-                        && a.info_abierta.take().is_none()
-                    {
-                        a.info = None;
-                    }
-                    hay_que_pintar = true;
-                }
-                // ← y → recorren la previa de la ficha, como en Telegram.
-                EventoOverlay::Tecla { vk, .. }
-                    if (vk == VK_IZQUIERDA || vk == VK_DERECHA)
-                        && abierto
-                            .as_ref()
-                            .is_some_and(|a| a.info.is_some() && a.info_abierta.is_some()) =>
-                {
+                    use ficha_del_chat::Tecla;
+                    let hecho = match abierto.as_mut() {
+                        Some(a) => ficha_del_chat::tecla(a, vk, &disposicion, escala),
+                        None => Tecla::NoEsMia,
+                    };
+                    // Lo que se abre con Intro, como al pulsarlo.
+                    let mut tocar = None;
                     if let Some(a) = abierto.as_mut() {
-                        let paso = if vk == VK_IZQUIERDA { -1 } else { 1 };
-                        a.info_abierta = ficha_del_chat::vecina(a, paso).or(a.info_abierta);
+                        match hecho {
+                            Tecla::Cerrar => {
+                                a.info = None;
+                                a.info_abierta = None;
+                                a.buscando_info = false;
+                                a.busqueda_info.vaciar();
+                            }
+                            Tecla::Pulsar(c) if ficha_del_chat::es_enlace(a, c) => {
+                                if let Efecto::Aviso(t) = abrir_enlace(a, c.mensaje, textos) {
+                                    aviso = Some((t, std::time::Instant::now()));
+                                }
+                            }
+                            Tecla::Pulsar(c) if ficha_del_chat::es_voz(a, c) => {
+                                tocar = Some(c.mensaje)
+                            }
+                            Tecla::Pulsar(c) => a.info_abierta = Some(c),
+                            Tecla::Abrir => match a.info_abierta {
+                                Some(c) if ficha_del_chat::es_enlace(a, c) => {
+                                    if let Efecto::Aviso(t) = abrir_enlace(a, c.mensaje, textos) {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
+                                }
+                                Some(pixpin_ui::info::Cosa {
+                                    mensaje,
+                                    foto: Some(k),
+                                }) => {
+                                    if let Efecto::Aviso(t) =
+                                        nota_rica::abrir_foto(a, mensaje, k, textos)
+                                    {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
+                                }
+                                otra => tocar = otra.map(|c| c.mensaje),
+                            },
+                            Tecla::Hecho | Tecla::NoEsMia => {}
+                        }
+                    }
+                    if let Some(indice) = tocar {
+                        tocar_la_burbuja(
+                            indice,
+                            ubicacion,
+                            &mut abierto,
+                            &fichas,
+                            &mut elegida,
+                            &mut borradores,
+                            textos,
+                            lienzo,
+                            idioma,
+                            &identidad,
+                        );
+                        if let Some(a) = abierto.as_mut()
+                            && (a.mini.is_some() || a.letra.is_some())
+                        {
+                            a.info = None;
+                            a.info_abierta = None;
+                        }
                     }
                     hay_que_pintar = true;
                 }
@@ -4807,6 +4864,8 @@ struct Abierto {
     /// La cosa de la ficha que se ve en grande, dentro de la isla (un
     /// mensaje, o una foto de una nota rica); `None`, la rejilla.
     info_abierta: Option<pixpin_ui::info::Cosa>,
+    /// La tira de pestanas desplazada y el foco del teclado de la ficha.
+    nav_info: ficha_del_chat::Navegacion,
     /// Donde esta el raton sobre la ficha, para resaltar lo que hay debajo.
     raton_info: Punto,
     /// A que mensaje se esta contestando (su id). Aparte de `marcados`:
@@ -8508,6 +8567,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         alto_info: std::cell::Cell::new(0),
         hojas_uid: pixpin_proyecto::almacen::uids_de_hojas(ubicacion.raiz(), &ficha.id),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
+        nav_info: Default::default(),
         info_abierta: None,
         raton_info: Punto { x: -1, y: -1 },
         respondiendo: None,
