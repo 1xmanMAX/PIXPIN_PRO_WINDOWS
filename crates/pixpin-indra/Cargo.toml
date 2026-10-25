@@ -1,0 +1,21 @@
+[package]
+name = "pixpin-indra"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# El lector de texto Indra (Datalab) sin ONNX Runtime: todo lo que rodea a
+# los modelos —preparar la pagina, cortar los renglones, leer la salida CTC
+# con el modelo de lenguaje, el orden de lectura, las lineas dudosas y la
+# correccion con el diccionario— en Rust puro, probado en cualquier sistema.
+# Quien corre los modelos (el ONNX Runtime de Windows) esta en `pixpin-ocr`,
+# detras del rasgo `Modelos`. Puerto del de Kotlin del escaner
+# (`ocr/indra/` de Escaner Pro Max), que a su vez lo es de `indra_ocr` en
+# Python: mismos ficheros, mismos numeros.
+
+[dependencies]
+# `meta.json` del modelo (el vocabulario va dentro como cadena JSON).
+serde_json = "1.0"
+# `lm.npz` es un ZIP de `.npy` comprimidos con deflate. Ya en el arbol.
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
