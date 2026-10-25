@@ -103,7 +103,7 @@ button { font: inherit; color: inherit; }
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem;
 }
 @media (min-width: 960px) {
-  .cuerpo { grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+  .cuerpo.con-lado { grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
   .lado { order: 2; position: sticky; top: var(--alto-barra, 120px); max-height: calc(100vh - var(--alto-barra, 120px) - 1rem); overflow: auto; }
 }
 .bloque, .texto, .adjuntos {

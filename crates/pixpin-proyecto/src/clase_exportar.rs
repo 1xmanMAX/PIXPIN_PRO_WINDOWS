@@ -588,10 +588,15 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
             }
         ));
     }
-    h.push_str("</section>\n<main class=\"cuerpo\">\n");
-
-    // Al lado: los marcadores y el indice de las capturas.
-    if !c.marcadores.is_empty() || n_capturas > 0 {
+    // Al lado: los marcadores y el indice de las capturas. Sin ellos, el
+    // texto a lo ancho (una nota de voz sin mas).
+    let con_lado = !c.marcadores.is_empty() || n_capturas > 0;
+    h.push_str(if con_lado {
+        "</section>\n<main class=\"cuerpo con-lado\">\n"
+    } else {
+        "</section>\n<main class=\"cuerpo\">\n"
+    });
+    if con_lado {
         h.push_str("<aside class=\"lado\">\n");
         if !c.marcadores.is_empty() {
             h.push_str(&format!(
