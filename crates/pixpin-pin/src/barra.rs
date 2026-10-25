@@ -34,6 +34,8 @@ const ROTULO_ZOOM: f32 = 56.0;
 const ROTULO_PAGINA: f32 = 64.0;
 const ROTULO_TIEMPO: f32 = 48.0;
 const ROTULO_EN_VIVO: f32 = 84.0;
+/// «Leyendo…», junto al boton T mientras se reconoce el texto.
+const ROTULO_LEYENDO: f32 = 76.0;
 const RECORRIDO: f32 = 132.0;
 /// Los colores de marcar van en pequeno: son cinco y se eligen de un vistazo.
 const PUNTO_COLOR: f32 = 22.0;
@@ -89,6 +91,9 @@ pub enum Rotulo {
     Duracion,
     /// La chapa roja de un pin en vivo.
     EnVivo,
+    /// «Leyendo…»: el texto de la imagen se esta reconociendo en otro hilo
+    /// y todavia no se puede seleccionar.
+    Leyendo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -137,6 +142,9 @@ pub struct TipoBarra {
     /// colores y las marcas (8-oct-2026, en vez de una barra aparte encima
     /// del texto).
     pub marcando: bool,
+    /// En modo texto y con el reconocimiento aun en marcha: «Leyendo…»
+    /// delante del boton T, para que no parezca que arrastrar no funciona.
+    pub leyendo: bool,
 }
 
 /// La barra ya dispuesta.
@@ -230,6 +238,9 @@ pub fn disponer(tipo: TipoBarra, escala: f32) -> Barra {
         poner(&mut v, Pieza::Separador, SEPARADOR * e);
     }
     if tipo.texto {
+        if tipo.leyendo {
+            poner(&mut v, Pieza::Rotulo(Rotulo::Leyendo), ROTULO_LEYENDO * e);
+        }
         poner(&mut v, boton(AccionBarra::ModoTexto), lado);
     }
     if tipo.copiable {
@@ -328,6 +339,7 @@ mod pruebas {
             copiable: true,
             texto: false,
             marcando: false,
+            leyendo: false,
         }
     }
 
@@ -398,6 +410,7 @@ mod pruebas {
                 copiable: false,
                 texto: false,
                 marcando: false,
+                leyendo: false,
             },
             1.0,
         );
@@ -447,6 +460,53 @@ mod pruebas {
         let a = acciones(&disponer(sin, 1.0));
         assert_eq!(a[0], AccionBarra::Alejar);
         assert!(!a.iter().any(|x| matches!(x, AccionBarra::Marcar(_))));
+    }
+
+    #[test]
+    fn mientras_se_lee_el_texto_sale_leyendo_junto_al_boton_t() {
+        let leyendo = TipoBarra {
+            texto: true,
+            leyendo: true,
+            ..tipo(Propio::Zoom)
+        };
+        let b = disponer(leyendo, 1.0);
+        let i = b
+            .elementos
+            .iter()
+            .position(|e| e.pieza == Pieza::Rotulo(Rotulo::Leyendo))
+            .expect("el rotulo esta");
+        assert_eq!(
+            b.elementos[i + 1].pieza,
+            Pieza::Boton(AccionBarra::ModoTexto)
+        );
+        // Un rotulo no se pulsa: encima no hay accion.
+        let r = b.elementos[i].rect;
+        assert_eq!(b.accion_en(r.x + 1.0, r.y + 1.0), None);
+        // Caso negativo: ya leido (o sin modo texto), la barra de siempre.
+        let leido = disponer(
+            TipoBarra {
+                texto: true,
+                ..tipo(Propio::Zoom)
+            },
+            1.0,
+        );
+        assert!(
+            !leido
+                .elementos
+                .iter()
+                .any(|e| e.pieza == Pieza::Rotulo(Rotulo::Leyendo))
+        );
+        assert!(b.ancho > leido.ancho);
+        // Sin modo texto ofrecido, tampoco aunque se este leyendo (copiar
+        // texto desde el menu).
+        let sin_t = disponer(
+            TipoBarra {
+                leyendo: true,
+                ..tipo(Propio::Zoom)
+            },
+            1.0,
+        );
+        assert_eq!(sin_t.ancho, disponer(tipo(Propio::Zoom), 1.0).ancho);
     }
 
     #[test]

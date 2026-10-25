@@ -26,6 +26,8 @@ mod extras;
 pub(crate) mod marcas_texto;
 use marcas_texto::Cambio;
 pub(crate) mod foto;
+// El texto de un pin, leido en otro hilo para no congelar el bucle.
+mod leer_texto;
 // Los marcos numerados de los pines de imagen, como en el plano (19-oct-2026).
 mod marcos;
 
@@ -97,6 +99,7 @@ pub(crate) fn textos_v2(t: &pixpin_store::Catalogo) -> pixpin_pin::TextosV2 {
         ],
         quitar_marca: t.t("pin-v2-marca-quitar"),
         modo_texto: t.t("pin-v2-modo-texto"),
+        leyendo: t.t("pin-v2-leyendo"),
         invertir_colores: t.t("pin-v2-invertir-colores"),
         tipo_archivo: t.t("pin-v2-tipo-archivo"),
         tipo_vivo: t.t("pin-v2-tipo-vivo"),
@@ -393,6 +396,9 @@ pub struct Pines {
     /// Las fotos grandes que nacieron con su vista previa y se leen bien en
     /// otro hilo (`pines::foto`).
     fotos_leidas: foto::Lecturas,
+    /// Los textos de los pines que se estan reconociendo en otro hilo
+    /// (`pines::leer_texto`).
+    textos_leidos: leer_texto::Lecturas,
     /// Las herramientas pineadas (mini-apps y tablas), con su documento y lo
     /// de su interfaz. El documento tambien esta en el almacen; esto es lo
     /// que se pinta y se toca.
@@ -590,6 +596,7 @@ impl Pines {
             ritmo_video,
             tope_en_vivo: std::time::Duration::ZERO,
             fotos_leidas: foto::Lecturas::nuevas(),
+            textos_leidos: leer_texto::Lecturas::nuevas(),
             herramientas: HashMap::new(),
             pizarras: HashMap::new(),
             marcas: HashMap::new(),
@@ -1476,6 +1483,8 @@ impl Pines {
     pub fn purgar(&mut self) {
         // Las fotos grandes que acabaron de leerse en otro hilo.
         self.atender_fotos_leidas();
+        // Y los textos de los pines que acabaron de reconocerse.
+        self.atender_textos_leidos();
         let cerrados: Vec<u64> = self.cerrados.borrow_mut().drain(..).collect();
         // El panel «Pines abiertos» se repinta si algo cambio la lista: un
         // pin cerrado o un pedido que no sea de la tinta.
@@ -1487,6 +1496,7 @@ impl Pines {
             self.pizarras.remove(&id);
             self.marcas.remove(&id);
             self.marcos.remove(&id);
+            self.olvidar_texto_de(id);
             // Soltar el pin en vivo cierra tambien su captura (Drop).
             if let Some((_, recorte)) = self.en_vivo.remove(&id) {
                 tracing::info!(
@@ -1579,8 +1589,10 @@ impl Pines {
             CambioPin::MarcarTexto { marca, color } => self.marcar_texto(id, marca, color),
             CambioPin::QuitarMarcasTexto => self.quitar_marcas_texto(id),
             CambioPin::DeshacerMarca => self.deshacer_marca(id),
-            CambioPin::TextoPedido => self.copiar_texto(id),
-            CambioPin::ReconocerPedido => self.reconocer_texto(id).map(|_| ()),
+            // Los dos en otro hilo (`pines::leer_texto`): reconocer en el
+            // bucle congelaba los pines y la bandeja hasta 1,5 s.
+            CambioPin::TextoPedido => self.leer_texto_aparte(id, true),
+            CambioPin::ReconocerPedido => self.leer_texto_aparte(id, false),
             CambioPin::PaginaPedida(salto) => self.cambiar_pagina(id, salto),
             CambioPin::ExtraerPaginaPedida => self.extraer_pagina(id),
             CambioPin::ExtraerTodasPedida => self.extraer_todas(id),
@@ -2529,75 +2541,6 @@ impl Pines {
         Ok(())
     }
 
-    /// `Ctrl+C` sobre un pin: imagen como mapa de bits, nota como texto,
-    /// archivo como su ruta (spec 4.2). Se lee del ALMACEN, no de la
-    /// ventana: el almacen es la verdad (D21).
-    /// Lee el texto de la imagen del pin y se lo entrega para que se pueda
-    /// seleccionar con el raton (P4.4).
-    ///
-    /// Se guarda SIEMPRE, aunque no haya salido texto: una lista vacia
-    /// significa «se miro y no hay», y sin distinguirlo de «no se ha
-    /// mirado» una imagen sin letras se reconoceria otra vez en cada
-    /// pasada del raton.
-    fn reconocer_texto(&self, id: u64) -> Result<Vec<pixpin_ocr::Linea>> {
-        let Some(pin) = self.vivos.get(&id) else {
-            return Ok(Vec::new());
-        };
-        let objeto = {
-            let a = self.almacen.borrow();
-            let Some(e) = a.entradas().iter().find(|e| e.id == id) else {
-                return Ok(Vec::new());
-            };
-            if e.tipo != TipoEntrada::Imagen {
-                return Ok(Vec::new());
-            }
-            a.ruta_objeto(e)
-        };
-        // Un fallo aqui no puede tumbar nada: el pin sigue siendo un pin
-        // aunque no se le pueda leer el texto. Se anota y se guarda una
-        // lista vacia para no volver a intentarlo en cada movimiento.
-        let lineas = match cargar(&objeto) {
-            Err(e) => {
-                tracing::warn!(?e, id, "no se pudo leer la imagen para reconocer");
-                Vec::new()
-            }
-            Ok(img) => {
-                let empezado = std::time::Instant::now();
-                match pixpin_ocr::reconocer(img.ancho, img.alto, &img.pixeles) {
-                    Err(e) => {
-                        tracing::warn!(?e, id, "no se pudo reconocer el texto del pin");
-                        Vec::new()
-                    }
-                    Ok(lineas) => {
-                        tracing::info!(
-                            id,
-                            renglones = lineas.len(),
-                            ms = empezado.elapsed().as_millis() as u64,
-                            "texto del pin reconocido"
-                        );
-                        lineas
-                    }
-                }
-            }
-        };
-        let renglones: Vec<_> = lineas
-            .iter()
-            .map(|l| pixpin_geom::seleccion_texto::Renglon {
-                palabras: l
-                    .palabras
-                    .iter()
-                    .map(|p| pixpin_geom::seleccion_texto::Palabra {
-                        caja: p.caja,
-                        texto: p.texto.clone(),
-                    })
-                    .collect(),
-            })
-            .filter(|r| !r.palabras.is_empty())
-            .collect();
-        pin.poner_texto_reconocido(renglones);
-        Ok(lineas)
-    }
-
     /// Abre un `.pixpin` del movil: una hoja, un pin.
     ///
     /// Se eligio esto y no una ventana de proyecto con su lista de hojas
@@ -2848,27 +2791,6 @@ El proyecto no lo trae dentro.",
         self.pinear_imagen_centrada(&imagen, monitor).map(|_| ())
     }
 
-    /// Lee el texto de la imagen del pin y lo copia (P4.2).
-    ///
-    /// Se lee del ALMACEN y no de lo que se ve en pantalla: el pin puede
-    /// estar reducido, girado o con algo dibujado encima, y reconocer eso
-    /// daria peor texto que reconocer el original, que es lo que se
-    /// guardo tal cual se capturo.
-    fn copiar_texto(&self, id: u64) -> Result<()> {
-        // Se reconoce UNA vez y se usa dos: se copia el texto y ademas se
-        // le deja al pin para que se pueda marcar con el raton sin volver
-        // a esperar. Reconocer dos veces la misma imagen seria pagar el
-        // tiron dos veces por lo mismo.
-        let texto = crate::texto_de_lineas(self.reconocer_texto(id)?);
-        if texto.trim().is_empty() {
-            tracing::info!(id, "no se leyo texto en el pin");
-            return Ok(());
-        }
-        pixpin_codec::copiar_texto(&texto).context("no se pudo copiar el texto")?;
-        tracing::info!(id, largo = texto.len(), "texto del pin copiado");
-        Ok(())
-    }
-
     /// Cambia el dibujo del pin `id` con `cambiar`, lo guarda y lo vuelve a
     /// pintar en el pin. Para las marcas de texto: van al MISMO `.pixpin2d`
     /// que lo anotado a mano, asi que se ven en el lienzo y viajan al copiar.
@@ -2987,6 +2909,9 @@ El proyecto no lo trae dentro.",
         })
     }
 
+    /// `Ctrl+C` sobre un pin: imagen como mapa de bits, nota como texto,
+    /// archivo como su ruta (spec 4.2). Se lee del ALMACEN, no de la
+    /// ventana: el almacen es la verdad (D21).
     fn copiar(&self, id: u64) -> Result<()> {
         let (tipo, objeto, ruta) = {
             let a = self.almacen.borrow();

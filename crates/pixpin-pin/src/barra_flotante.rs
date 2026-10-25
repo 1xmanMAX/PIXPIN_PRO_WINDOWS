@@ -568,6 +568,7 @@ fn pintar_barra(p: &Pintor, i: &Interno) {
                     let t = d.map_or("—".to_string(), crate::mandos_video::formato_tiempo);
                     texto_centrado(&t, r, tenue)
                 }
+                Rotulo::Leyendo => texto_centrado(&i.textos.v2.leyendo, r, tenue),
                 Rotulo::EnVivo => {
                     let chapa = RectF {
                         x: r.x + 2.0 * e,

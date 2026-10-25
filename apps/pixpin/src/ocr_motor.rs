@@ -239,7 +239,10 @@ pub fn calentar() {
             pixpin_shell::prioridad::hilo_por_debajo_de_lo_normal();
             let t = std::time::Instant::now();
             if pixpin_ocr::precargar() {
-                tracing::info!(ms = t.elapsed().as_millis() as u64, "lector Indra precargado");
+                tracing::info!(
+                    ms = t.elapsed().as_millis() as u64,
+                    "lector Indra precargado"
+                );
             }
             CALENTANDO.store(false, Ordering::SeqCst);
         });

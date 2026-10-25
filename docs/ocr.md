@@ -183,6 +183,29 @@ pixpin-mcp                lee [ocr] al arrancar y usa el mismo motor
   `reconocer` no las devuelve, igual que el escáner las deja fuera del texto
   plano.
 
+- **Nunca en el hilo de la interfaz.** Cada sitio que lee texto lo hace en
+  un hilo propio y avisa a su ventana al acabar (`PostMessage`):
+
+  | Quien lee | Donde |
+  |---|---|
+  | Modo texto y «Copiar texto» del pin | `pines::leer_texto` (hilo `pin-texto`); la barra dice «Leyendo…» mientras tanto |
+  | Captura de texto | `copiar_texto_aparte` en `main.rs` (hilo `captura-texto`) |
+  | OCR del menú del Explorador | `pedidos::ocr_al_portapapeles` (hilo `pedido-ocr`) |
+  | Búsqueda de la galería | `galeria_capturas` (hilo `galeria-texto`) |
+  | Herramientas del asistente, automatizaciones | el hilo del turno o del encargo |
+  | `pixpinmax ocr`, `pixpin-mcp` | procesos sin ventana |
+
+  Lo que llega tarde se tira: cada pedido del pin lleva su boleto y la
+  vuelta de lo que se veía (otra página, pin cerrado → no vale), y de dos
+  capturas de texto seguidas solo copia la última.
+- **Calentar**: con Indra elegido y bajado, abrir una captura o pinear una
+  foto carga los modelos en un hilo por debajo de lo normal
+  (`ocr_motor::calentar` → `pixpin_ocr::precargar`), para que la primera
+  lectura no pague el ~0,5-1 s de la carga. No al arrancar (cargar un lector
+  que nadie usa para soltarlo a los tres minutos es gastar memoria), y no
+  le alarga la vida: si ya está cargado no toca su reloj. Con el de Windows
+  no hace nada.
+
 Probar con los pesos de verdad en Windows:
 `PIXPIN_INDRA_PRUEBA=<datos> cargo test -p pixpin-ocr -- --ignored`.
 

@@ -145,6 +145,8 @@ pub struct TextosV2 {
     pub quitar_marca: String,
     /// El boton T de la barra: entrar o salir del modo texto.
     pub modo_texto: String,
+    /// «Leyendo…», junto al boton T mientras se reconoce el texto.
+    pub leyendo: String,
     /// «Invertir colores» (N): el pin en negativo.
     pub invertir_colores: String,
     /// «Pegatina» y «Sin pegatina» (`cd_emoji`, `emoji_none`).

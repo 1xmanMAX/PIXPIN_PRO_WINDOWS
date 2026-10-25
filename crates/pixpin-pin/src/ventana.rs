@@ -633,6 +633,10 @@ struct PinInterno {
     texto_ocr: Option<Vec<pixpin_geom::seleccion_texto::Renglon>>,
     /// Ya se pidio el reconocimiento y se espera respuesta.
     ocr_pedido: bool,
+    /// Sube cada vez que lo que se ve deja de ser lo que se pidio leer (otra
+    /// pagina): el reconocimiento va en otro hilo, y lo que llegue con una
+    /// vuelta vieja es de una imagen que ya no esta y se tira.
+    ocr_vuelta: u64,
     /// Las palabras marcadas ahora mismo.
     seleccion_texto: Vec<pixpin_geom::seleccion_texto::Sitio>,
     /// Donde empezo el arrastre de seleccion, mientras dura.
@@ -909,6 +913,7 @@ impl Pin {
             con_ocr: false,
             texto_ocr: None,
             ocr_pedido: false,
+            ocr_vuelta: 0,
             seleccion_texto: Vec::new(),
             ancla_texto: None,
             color_marca: crate::barra_marcas::COLOR_INICIAL,
@@ -1165,6 +1170,7 @@ impl Pin {
             // seria ofrecer seleccionar palabras que ya no estan ahi.
             i.texto_ocr = None;
             i.ocr_pedido = false;
+            i.ocr_vuelta += 1;
             i.seleccion_texto.clear();
             rehacer_bitmap(i);
             pintar(i);
@@ -1672,7 +1678,13 @@ fn tipo_barra(i: &PinInterno) -> crate::barra::TipoBarra {
         copiable: true,
         texto: i.con_ocr && matches!(i.contenido, Contenido::Imagen(_)),
         marcando: i.modo_texto && !i.seleccion_texto.is_empty(),
+        leyendo: leyendo_texto(i.modo_texto, i.ocr_pedido, i.texto_ocr.is_some()),
     }
+}
+
+/// Si la barra dice «Leyendo…»: en modo texto, pedido y aun sin respuesta.
+fn leyendo_texto(modo_texto: bool, pedido: bool, leido: bool) -> bool {
+    modo_texto && pedido && !leido
 }
 
 /// Lo que la barra ensena ahora de este pin.
@@ -2287,10 +2299,30 @@ impl Pin {
     /// «se miro y no hay texto», que no es lo mismo que «no se ha mirado».
     /// Sin distinguirlo, una imagen sin letras se reconoceria una y otra
     /// vez en cada pasada del raton.
-    pub fn poner_texto_reconocido(&self, renglones: Vec<pixpin_geom::seleccion_texto::Renglon>) {
-        if let Some(i) = interno_de(self.hwnd) {
-            i.texto_ocr = Some(renglones);
+    ///
+    /// `vuelta` es la que dio [`Pin::vuelta_ocr`] al pedirlo: si desde
+    /// entonces cambio lo que se ve, lo leido es de otra imagen y se tira
+    /// (devuelve `false`).
+    pub fn poner_texto_reconocido(
+        &self,
+        vuelta: u64,
+        renglones: Vec<pixpin_geom::seleccion_texto::Renglon>,
+    ) -> bool {
+        let Some(i) = interno_de(self.hwnd) else {
+            return false;
+        };
+        if i.ocr_vuelta != vuelta {
+            return false;
         }
+        i.texto_ocr = Some(renglones);
+        // Fuera el «Leyendo…» de la barra.
+        actualizar_barra(i);
+        true
+    }
+
+    /// La vuelta de lo que se ve, para [`Pin::poner_texto_reconocido`].
+    pub fn vuelta_ocr(&self) -> u64 {
+        interno_de(self.hwnd).map_or(0, |i| i.ocr_vuelta)
     }
 
     /// Pone los filtros al restaurar del almacen y rehace la imagen.
@@ -5918,6 +5950,19 @@ extern "system" fn procedimiento_pin(
             // SAFETY: delegacion estandar.
             unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas_leyendo {
+    use super::leyendo_texto;
+
+    #[test]
+    fn leyendo_solo_en_modo_texto_mientras_se_espera() {
+        assert!(leyendo_texto(true, true, false));
+        assert!(!leyendo_texto(true, true, true), "ya leido");
+        assert!(!leyendo_texto(false, true, false), "fuera del modo texto");
+        assert!(!leyendo_texto(true, false, false), "sin pedir aun");
     }
 }
 

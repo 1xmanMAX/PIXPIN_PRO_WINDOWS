@@ -2226,6 +2226,7 @@ pin-v2-marca-tachar = Strikethrough
 pin-v2-marca-tapar = Cover
 pin-v2-marca-quitar = Remove mark
 pin-v2-modo-texto = Select text
+pin-v2-leyendo = Reading…
 pin-v2-invertir-colores = Invert colors
 ## v2-captura
 captura2-zona = Area
