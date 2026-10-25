@@ -13,16 +13,34 @@
 //! - Si la pantalla cambia de tamano (otra resolucion, una ventana que se
 //!   estira) el pool se recrea (`Recreate`) al tamano nuevo; el video no
 //!   cambia de tamano, el procesador de video pone bandas.
-//! - Si la ventana grabada se cierra, se apunta y el video sigue con su
-//!   ultima imagen: el sonido de la reunion no se corta por eso.
+//! - **Lo que se aprendio de OBS, Cap y los ejemplos de Microsoft** (ver
+//!   `docs/investigacion/2026-10-25-motores-de-grabacion.md`):
+//!   - el borde amarillo se pide quitar con
+//!     `GraphicsCaptureAccess::RequestAccessAsync(Borderless)` antes de
+//!     `IsBorderRequired = false` (`libobs-winrt/winrt-capture.cpp`,
+//!     `Win32CaptureSample/App.cpp`); sin la peticion Windows 11 lo ignora;
+//!   - con Windows 11 24H2 se piden las regiones cambiadas
+//!     (`DirtyRegionMode::ReportOnly`) y un fotograma sin ninguna no
+//!     despierta al motor: el cursor que parpadea en una diapositiva
+//!     quieta ya no cuesta fotogramas;
+//!   - una ventana minimizada (`IsIconic`) no da imagen buena: sus
+//!     fotogramas se sueltan sin mirarlos y el video sigue con la ultima
+//!     (`window-capture.c` de OBS hace lo mismo);
+//!   - al cerrar se espera a que acabe el manejador que estuviera corriendo
+//!     antes de cerrar el pool (Cap, `scap-direct3d`, `CallbackActivity`).
+//! - Si la ventana grabada se cierra, o el monitor se desconecta, se apunta
+//!   ([`Captura::cerrada`]); el motor decide (`crate::reapertura`).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use windows::Foundation::TypedEventHandler;
 use windows::Graphics::Capture::{
-    Direct3D11CaptureFrame, Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession,
+    Direct3D11CaptureFrame, Direct3D11CaptureFramePool, GraphicsCaptureAccess,
+    GraphicsCaptureAccessKind, GraphicsCaptureDirtyRegionMode, GraphicsCaptureItem,
+    GraphicsCaptureSession,
 };
 use windows::Graphics::DirectX::DirectXPixelFormat;
 use windows::Graphics::SizeInt32;
@@ -31,15 +49,20 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Graphics::Gdi::HMONITOR;
 use windows::Win32::System::WinRT::Direct3D11::IDirect3DDxgiInterfaceAccess;
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
+use windows::Win32::UI::WindowsAndMessaging::IsIconic;
 use windows::core::{AgileReference, HSTRING, IInspectable, Interface};
 
 use super::com;
 use super::motor::Mensaje;
+use crate::ritmo::{Region, trae_cambios};
 use crate::{ErrorMotor, Fuente};
 
 /// Superficies del pool. Dos bastan (ver la cabecera) y cada una es una
 /// pantalla entera en BGRA: 8 MB a 1080p.
 const SUPERFICIES: i32 = 2;
+
+/// Lo que se espera, al cerrar, a que acabe un manejador en marcha.
+const ESPERA_AL_CERRAR: Duration = Duration::from_millis(500);
 
 /// Un fotograma de la pantalla aun sin soltar.
 pub(crate) struct Retenido {
@@ -66,12 +89,22 @@ impl Retenido {
         unsafe { acceso.GetInterface::<ID3D11Texture2D>() }
             .map_err(com::en("sacar la textura del fotograma"))
     }
+}
+
+impl crate::plataforma::Retenido for Retenido {
+    fn hora(&self) -> i64 {
+        self.hora
+    }
 
     /// Lo suelta al pool. Se llama cuando la GPU ya tiene en su cola todo
     /// lo que lo lee.
-    pub fn soltar(self) {
+    fn soltar(self) {
         let _ = self.fotograma.Close();
     }
+}
+
+fn soltar(r: Retenido) {
+    crate::plataforma::Retenido::soltar(r);
 }
 
 /// Lo que comparten el manejador y el motor.
@@ -80,10 +113,35 @@ struct Compartido {
     retenido: Mutex<Option<Retenido>>,
     tamano: Mutex<(i32, i32)>,
     cerrada: AtomicBool,
+    /// Ya no se quiere nada: el manejador suelta y se va.
+    parado: AtomicBool,
+    /// Manejadores corriendo ahora mismo.
+    en_marcha: AtomicUsize,
+    /// Si se pidieron las regiones cambiadas (y entonces se miran).
+    con_regiones: AtomicBool,
+    /// El siguiente fotograma pasa aunque no diga que cambio nada (el
+    /// primero, o el primero tras recrear el pool).
+    pasa_el_siguiente: AtomicBool,
 }
 
 fn cerrojo<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Cuenta un manejador en marcha mientras vive.
+struct EnMarcha<'a>(&'a AtomicUsize);
+
+impl<'a> EnMarcha<'a> {
+    fn entrar(c: &'a AtomicUsize) -> EnMarcha<'a> {
+        c.fetch_add(1, Ordering::AcqRel);
+        EnMarcha(c)
+    }
+}
+
+impl Drop for EnMarcha<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 pub(crate) struct Captura {
@@ -94,6 +152,7 @@ pub(crate) struct Captura {
     token_cierre: Option<i64>,
     compartido: Arc<Compartido>,
     tamano: (u32, u32),
+    fuente: Fuente,
 }
 
 impl Captura {
@@ -139,12 +198,19 @@ impl Captura {
 
         let compartido = Arc::new(Compartido::default());
         *cerrojo(&compartido.tamano) = (size.Width, size.Height);
+        compartido.pasa_el_siguiente.store(true, Ordering::Release);
         let del_manejador = Arc::clone(&compartido);
+        let ventana = match fuente {
+            Fuente::Ventana(h) => Some(h),
+            Fuente::Monitor(_) => None,
+        };
         // El dispositivo WinRT no es `Send`; el manejador corre en otro hilo
         // y lo necesita para recrear el pool. Una referencia agil sirve.
         let para_recrear = AgileReference::new(winrt).map_err(fuera)?;
         let manejador =
             TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(move |pool, _| {
+                let c = &del_manejador;
+                let _en_marcha = EnMarcha::entrar(&c.en_marcha);
                 let Some(pool) = pool.as_ref() else {
                     return Ok(());
                 };
@@ -152,6 +218,20 @@ impl Captura {
                 let Ok(fotograma) = pool.TryGetNextFrame() else {
                     return Ok(());
                 };
+                if c.parado.load(Ordering::Acquire) {
+                    let _ = fotograma.Close();
+                    return Ok(());
+                }
+                // Una ventana minimizada no tiene imagen buena: el video
+                // sigue con la ultima.
+                if let Some(h) = ventana
+                    // SAFETY: consulta de solo lectura; con un manejador
+                    // que ya no existe devuelve falso.
+                    && unsafe { IsIconic(HWND(h as *mut _)) }.as_bool()
+                {
+                    let _ = fotograma.Close();
+                    return Ok(());
+                }
                 let hora = fotograma
                     .SystemRelativeTime()
                     .map(|t| t.Duration)
@@ -165,7 +245,7 @@ impl Captura {
                     return Ok(());
                 }
                 let cambio = {
-                    let mut t = cerrojo(&del_manejador.tamano);
+                    let mut t = cerrojo(&c.tamano);
                     let nuevo = (contenido.Width, contenido.Height);
                     let cambio = *t != nuevo;
                     *t = nuevo;
@@ -176,9 +256,10 @@ impl Captura {
                     // viejo. Se sueltan, se recrea y el siguiente ya llega
                     // entero; mientras, el motor repite el ultimo.
                     let _ = fotograma.Close();
-                    if let Some(previo) = cerrojo(&del_manejador.retenido).take() {
-                        previo.soltar();
+                    if let Some(previo) = cerrojo(&c.retenido).take() {
+                        soltar(previo);
                     }
+                    c.pasa_el_siguiente.store(true, Ordering::Release);
                     let Ok(winrt) = para_recrear.resolve() else {
                         return Ok(());
                     };
@@ -190,15 +271,25 @@ impl Captura {
                     );
                     return Ok(());
                 }
+                let contenido = (contenido.Width as u32, contenido.Height as u32);
+                // Con las regiones cambiadas pedidas, uno sin ninguna es la
+                // misma imagen: se suelta y no se despierta a nadie.
+                if c.con_regiones.load(Ordering::Acquire)
+                    && !c.pasa_el_siguiente.swap(false, Ordering::AcqRel)
+                    && !trae_cambios(&regiones(&fotograma), contenido)
+                {
+                    let _ = fotograma.Close();
+                    return Ok(());
+                }
                 let nuevo = Retenido {
                     fotograma,
                     hora,
-                    contenido: (contenido.Width as u32, contenido.Height as u32),
+                    contenido,
                 };
-                let previo = cerrojo(&del_manejador.retenido).replace(nuevo);
+                let previo = cerrojo(&c.retenido).replace(nuevo);
                 // Fuera del cerrojo: soltar no tiene por que esperar al motor.
                 if let Some(previo) = previo {
-                    previo.soltar();
+                    soltar(previo);
                 }
                 let _ = despertar.try_send(Mensaje::Fotograma);
                 Ok(())
@@ -224,17 +315,6 @@ impl Captura {
                 return Err(fuera(e));
             }
         };
-        // Por capacidad, no por version: el borde amarillo solo se puede
-        // quitar en Windows 11; el tope de ritmo, desde Windows 11 24H2.
-        if hay_propiedad("IsBorderRequired") {
-            let _ = sesion.SetIsBorderRequired(false);
-        }
-        if hay_propiedad("MinUpdateInterval") {
-            let _ = sesion.SetMinUpdateInterval(windows::Foundation::TimeSpan {
-                Duration: minimo_entre,
-            });
-        }
-        let _ = sesion.SetIsCursorCaptureEnabled(con_cursor);
         let captura = Captura {
             item,
             pool,
@@ -243,55 +323,127 @@ impl Captura {
             token_cierre,
             compartido,
             tamano: (size.Width as u32, size.Height as u32),
+            fuente,
         };
+        captura.opciones(con_cursor, minimo_entre);
         captura.sesion.StartCapture().map_err(fuera)?;
         Ok(captura)
+    }
+
+    /// Las opciones de la sesion, **por capacidad y no por version**: cada
+    /// una solo si este Windows la tiene. Ninguna es imprescindible.
+    fn opciones(&self, con_cursor: bool, minimo_entre: i64) {
+        let s = &self.sesion;
+        // Sin borde amarillo (Windows 11). Primero se pide permiso: sin la
+        // peticion la propiedad se ignora. Si se niega, ponerla es seguro y
+        // vale en cuanto la politica cambie (lo dice Win32CaptureSample).
+        if hay_propiedad("IsBorderRequired") {
+            if hay_metodo(
+                "Windows.Graphics.Capture.GraphicsCaptureAccess",
+                "RequestAccessAsync",
+            ) && let Ok(op) =
+                GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless)
+            {
+                let _ = op.join();
+            }
+            let _ = s.SetIsBorderRequired(false);
+        }
+        if hay_propiedad("IsCursorCaptureEnabled") {
+            let _ = s.SetIsCursorCaptureEnabled(con_cursor);
+        }
+        // El tope de ritmo (Windows 11 24H2): la captura no despierta mas
+        // deprisa de lo que se va a codificar.
+        if hay_propiedad("MinUpdateInterval") {
+            let _ = s.SetMinUpdateInterval(windows::Foundation::TimeSpan {
+                Duration: minimo_entre,
+            });
+        }
+        // Los menus y dialogos de la ventana grabada salen con ella.
+        if matches!(self.fuente, Fuente::Ventana(_)) && hay_propiedad("IncludeSecondaryWindows") {
+            let _ = s.SetIncludeSecondaryWindows(true);
+        }
+        if hay_propiedad("DirtyRegionMode")
+            && s.SetDirtyRegionMode(GraphicsCaptureDirtyRegionMode::ReportOnly)
+                .is_ok()
+        {
+            self.compartido.con_regiones.store(true, Ordering::Release);
+        }
     }
 
     /// El tamano de la fuente al empezar, en pixeles de verdad.
     pub fn tamano(&self) -> (u32, u32) {
         self.tamano
     }
+}
 
-    /// La hora del fotograma retenido, si lo hay (sin tomarlo).
-    pub fn hora_retenida(&self) -> Option<i64> {
+impl crate::plataforma::Captura for Captura {
+    type Retenido = Retenido;
+
+    fn hora_retenida(&self) -> Option<i64> {
         cerrojo(&self.compartido.retenido).as_ref().map(|r| r.hora)
     }
 
-    /// Toma el fotograma retenido. Quien lo toma lo suelta
-    /// ([`Retenido::soltar`]).
-    pub fn tomar(&self) -> Option<Retenido> {
+    fn tomar(&self) -> Option<Retenido> {
         cerrojo(&self.compartido.retenido).take()
     }
 
-    /// Si la ventana (o el monitor) se fue.
-    pub fn cerrada(&self) -> bool {
+    fn cerrada(&self) -> bool {
         self.compartido.cerrada.load(Ordering::Acquire)
     }
 }
 
 impl Drop for Captura {
     fn drop(&mut self) {
-        // Primero que no llegue nada mas; luego lo retenido; luego la
-        // sesion y el pool. Un manejador que ya estuviera corriendo termina
-        // contra un canal o un cerrojo vivos (los tiene el `Arc`).
+        // Primero que no llegue nada mas y que el manejador que ya corre
+        // acabe; luego lo retenido; luego la sesion y el pool. Un manejador
+        // tardio termina contra un canal o un cerrojo vivos (los tiene el
+        // `Arc`) y suelta lo que saque.
+        self.compartido.parado.store(true, Ordering::Release);
         if let Some(t) = self.token.take() {
             let _ = self.pool.RemoveFrameArrived(t);
         }
         if let Some(t) = self.token_cierre.take() {
             let _ = self.item.RemoveClosed(t);
         }
-        if let Some(r) = self.tomar() {
-            r.soltar();
+        let desde = Instant::now();
+        while self.compartido.en_marcha.load(Ordering::Acquire) > 0
+            && desde.elapsed() < ESPERA_AL_CERRAR
+        {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if let Some(r) = cerrojo(&self.compartido.retenido).take() {
+            soltar(r);
         }
         let _ = self.sesion.Close();
         let _ = self.pool.Close();
     }
 }
 
+/// Las regiones cambiadas de un fotograma (vacio si no las da).
+fn regiones(f: &Direct3D11CaptureFrame) -> Vec<Region> {
+    let Ok(v) = f.DirtyRegions() else {
+        // Sin poder preguntar, se da por cambiado: mejor un fotograma de
+        // mas que uno de menos.
+        return vec![(0, 0, 1, 1)];
+    };
+    let n = v.Size().unwrap_or(0);
+    (0..n)
+        .filter_map(|i| v.GetAt(i).ok())
+        .map(|r| (r.X, r.Y, r.Width, r.Height))
+        .collect()
+}
+
 fn hay_propiedad(nombre: &str) -> bool {
     windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
         &HSTRING::from("Windows.Graphics.Capture.GraphicsCaptureSession"),
+        &HSTRING::from(nombre),
+    )
+    .unwrap_or(false)
+}
+
+fn hay_metodo(tipo: &str, nombre: &str) -> bool {
+    windows::Foundation::Metadata::ApiInformation::IsMethodPresent(
+        &HSTRING::from(tipo),
         &HSTRING::from(nombre),
     )
     .unwrap_or(false)

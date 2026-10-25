@@ -48,7 +48,8 @@ Paso a paso:
 
 1. **Captura** (`win/captura.rs`). Windows.Graphics.Capture sobre un
    dispositivo D3D11 creado con `VIDEO_SUPPORT` (el de `pixpin-capture`, en
-   la grafica de la pantalla principal) y protegido para varios hilos
+   la grafica que tiene el monitor que se graba: ver
+   [Cuando algo sale mal](#cuando-algo-sale-mal)) y protegido para varios hilos
    (`ID3D11Multithread::SetMultithreadProtected`, el equivalente D3D11 de
    `ID3D10Multithread`). Un monitor (`CreateForMonitor`) o una ventana
    (`CreateForWindow`). El manejador de `FrameArrived` **no toca la GPU**:
@@ -62,7 +63,11 @@ Paso a paso:
 2. **Conversion** (`win/conversor.rs`). `ID3D11VideoProcessor`: BGRA de
    rango completo a NV12 BT.709 de rango de estudio (16-235), encogido al
    tamano del perfil y encajado con bandas negras, en una pasada y sin salir
-   de la GPU. Vistas de entrada y salida guardadas por textura. Si el
+   de la GPU. El color se dice dos veces: con los bits de siempre y, con
+   D3D11.1, con los espacios de DXGI (`RGB_FULL_G22_NONE_P709` ─▶
+   `YCBCR_STUDIO_G22_LEFT_P709`), que los controladores respetan mejor. Cada
+   tanda de trabajo va con el cerrojo del dispositivo (`com::EnLaGpu`), como
+   `SimpleRecorder`. Vistas de entrada y salida guardadas por textura. Si el
    controlador no deja usar la superficie del pool como entrada, se copia
    antes a una textura propia (en la GPU).
 3. **Codificacion** (`win/escritor.rs`, `win/tubo.rs`). La textura NV12 del
@@ -87,7 +92,11 @@ Paso a paso:
    s a un segundo. Cada uno se da al codificador cuando llega el siguiente,
    ya con su duracion de verdad; el ultimo se da al terminar hasta donde
    acaba el sonido. Asi el MP4 dura lo mismo que el sonido en cualquier
-   reproductor, mire las marcas de tiempo o las duraciones.
+   reproductor, mire las marcas de tiempo o las duraciones. Y si lo que
+   esperaba era un repetido (el latido) y la pantalla cambia justo detras, el
+   repetido se tira y el de verdad va en su instante
+   (`ritmo::ocupa_el_sitio_del_repetido`): sin eso saldrian fotogramas de un
+   milisegundo, lo que Cap midio en el suyo.
 5. **El MP4** (`archivo.rs`). Se escribe en `<destino>.parte`; al terminar,
    `Finalize` y se renombra (si no se deja, se copia; si ni eso, el `.parte`
    se queda con su contenido). Soltar el motor sin terminar borra el
@@ -155,20 +164,91 @@ pide ademas a la captura que no entregue mas deprisa que el tope
 `cadena.rs`, elegida al empezar y dicha en `Estadisticas::codificador` (y en
 la linea de abajo de la barra de «Grabar clase»: «Video con la grafica»):
 
-1. **Grafica** (`Codificador::Hardware`): necesita el procesador de video y un
-   MFT H.264 de hardware registrado (`hay_h264_por_hardware`). HEVC solo si se
-   pide y la grafica lo tiene (`hay_hevc_por_hardware`); de salida H.264, que
-   reproduce cualquier movil Android.
-2. **Software** (`Codificador::Software`): el H.264 de Microsoft; la
+Son cuatro caminos (`cadena::Camino`); los dos primeros se ensenan como
+`Codificador::Hardware`:
+
+1. **Grafica** (`Camino::Grafica`): necesita el procesador de video y un MFT
+   H.264 de hardware **del fabricante de la grafica del dispositivo**
+   (`MFT_ENUM_HARDWARE_VENDOR_ID_Attribute`). HEVC solo si se pide y la
+   grafica lo tiene (`hay_hevc_por_hardware`); de salida H.264, que reproduce
+   cualquier movil Android. En Sandy Bridge e Ivy Bridge (la del equipo de
+   referencia) nunca se le pide mas de 1920x1200 (`cadena::peculiaridades`,
+   de OBS); si no arranca a mas de 1080p se reintenta a 1080p y a 720p
+   (`cadena::reintento_mas_pequeno`, de `screenrecord` de Android).
+2. **La grafica desde memoria** (`Camino::GraficaEnMemoria`): el codificador
+   de hardware esta en otra grafica, o no acepta nuestras texturas. El NV12
+   baja a memoria como en el de software y el escritor carga el MFT de
+   hardware que haya (como el «Fallback» de NVENC en OBS). La CPU sigue sin
+   codificar.
+3. **Software** (`Codificador::Software`): el H.264 de Microsoft; la
    conversion y el encogido siguen en la GPU y solo baja el NV12 (una textura
    de escenificacion pequena).
-3. **CPU** (`Codificador::Cpu`): lo de antes, `pixpin-record::Codificador`
+4. **CPU** (`Codificador::Cpu`): lo de antes, `pixpin-record::Codificador`
    (BGRA baja, se encoge en la CPU con `lienzo.rs`, RGB32 por software),
    siempre a lo de «Ligero». Para cuando la grafica no tiene procesador de
    video (una maquina virtual, un controlador roto).
 
 Cada intento que falla borra su `.parte` y deja su motivo en el registro; si
-fallan todos, `ErrorMotor::SinCodificador` con los tres motivos.
+fallan todos, `ErrorMotor::SinCodificador` con todos los motivos. El registro
+dice el camino que quedo (`camino = grafica | grafica-en-memoria | software |
+cpu`) y los codificadores de hardware que hay, con su nombre.
+
+## Cuando algo sale mal
+
+Lo aprendido de OBS, Cap, windows-capture y los ejemplos de Microsoft esta en
+[investigacion/2026-10-25-motores-de-grabacion.md](investigacion/2026-10-25-motores-de-grabacion.md).
+En corto:
+
+- **En que grafica se graba** (`adaptador.rs`, `win/grafica.rs`): en la que
+  tiene conectado el monitor que se graba (el de la ventana, si es una
+  ventana), nunca en una virtual (Parsec, DisplayLink...) ni en la de
+  software. En un portatil con Intel + NVIDIA la pantalla la pinta la Intel:
+  con el dispositivo ahi no hay copias entre graficas y no se pierde cuando
+  la NVIDIA se apaga.
+- **La grafica que se pierde** (TDR, el controlador que Windows Update
+  actualiza a mitad de clase; `recuperacion.rs`, `Hilo::recuperar`): se ve
+  por el `HRESULT` de un fallo o mirando `GetDeviceRemovedReason` una vez por
+  segundo. Se crea otro dispositivo, se rehace lo que vive en la GPU (el
+  procesador de video, el repartidor de texturas con `ResetDevice` en el
+  mismo gestor de Media Foundation, la captura) y **el MP4 sigue abierto**:
+  el sonido no se corta y el video pone un fotograma negro donde estaba el
+  que se perdio. En el camino de la grafica solo vale si la grafica nueva es
+  la misma (su codificador es el de antes); si no, se cierra el MP4 con lo
+  que haya. Tres vueltas cada diez minutos como mucho; `Estadisticas::vueltas`
+  y `Resumen::vueltas` dicen cuantas hubo.
+- **El monitor que se desconecta** (`reapertura.rs`): el video sigue con la
+  ultima imagen; cada tres segundos se busca el monitor por su nombre
+  (`\\.\DISPLAY2`, el `HMONITOR` cambia) y, si ya no esta, el principal.
+- **La ventana**: minimizada, sus fotogramas se sueltan sin mirarlos
+  (`IsIconic`); cerrada, el video sigue con su ultima imagen hasta que se
+  termine. En Windows 11 sus menus y dialogos salen con ella
+  (`IncludeSecondaryWindows`).
+- **La pantalla quieta**: con Windows 11 24H2 se piden las regiones
+  cambiadas y un fotograma sin ninguna no despierta al motor.
+- **El borde amarillo** se quita pidiendo antes el permiso
+  (`GraphicsCaptureAccess::RequestAccessAsync(Borderless)`).
+- **El cierre que falla**: un MP4 fragmentado con algo dentro se conserva;
+  uno normal sin indice se borra (`archivo::tras_fallo_al_cerrar`).
+- **El sonido que vuelve atras** (un bloque repetido): se recorta lo que pisa
+  lo ya escrito (`audio::Pista`).
+- **La pausa** no cuenta para el atasco del codificador (el error que Cap
+  tuvo que arreglar).
+
+## El nucleo y la plataforma
+
+Lo que decide no sabe de Windows (`nucleo.rs`, `plataforma.rs`): el ritmo
+variable, el reloj, la pausa, el sonido, el atasco, el cierre y los
+contadores viven en `Nucleo`, que habla con dos rasgos:
+
+- `plataforma::Captura` (+ `Retenido`): retiene el ultimo fotograma sin
+  copiarlo, lo da al tomarlo y dice si la fuente se fue;
+- `plataforma::Tuberia`: codificador y contenedor juntos (un fotograma
+  fechado, repetir, sonido, vaciar hasta el final).
+
+El hilo de Windows (`win/motor.rs`) es un backend: la captura de
+Windows.Graphics.Capture y `tubo::EnLaGrafica` (el tubo con su dispositivo)
+cumplen los rasgos. Todo lo de fuera de `win/` compila en cualquier sistema y
+se prueba con una captura y una tuberia de mentira (`nucleo::pruebas`).
 
 ## Colas y memoria
 
@@ -219,7 +299,7 @@ let motor = MotorVideo::empezar(
 )?;
 motor.poner_audio(&bloque, posicion)?; // tantas veces como bloques
 motor.pausar(); motor.seguir();
-let e = motor.estado(); // fps, fotogramas, caidos, bytes, codificador
+let e = motor.estado(); // fps, fotogramas, caidos, bytes, codificador, vueltas
 let r = motor.terminar()?; // Resumen { ruta, duracion_ms, ... }
 ```
 
@@ -229,7 +309,8 @@ proceso). Soltarlo sin `terminar` tira la grabacion.
 
 ## Como probarlo en Windows
 
-Las cuentas se prueban en cualquier maquina:
+Las cuentas y el nucleo (con una captura y una tuberia de mentira) se
+prueban en cualquier maquina:
 
 ```text
 cargo test -p pixpin-motor-video
@@ -269,5 +350,207 @@ abierta.
   a menos parametros (la media del tipo de salida sigue mandando).
 - En Windows 10 la captura lleva el borde amarillo (quitarlo solo se puede
   desde Windows 11).
-- Con dos graficas (Intel + NVIDIA), el dispositivo va en la de la pantalla
-  principal; si su codificador no esta, se cae a software.
+- La vuelta tras perder la grafica (`Tubo::recrear`) no se ha visto nunca
+  funcionar: depende de que el MFT de la grafica acepte el dispositivo nuevo
+  por `ResetDevice` (asi lo pide Media Foundation, pero hay controladores que
+  no). Si no lo acepta, el siguiente fotograma falla, ya no es una perdida y
+  el MP4 se cierra con lo que habia; si ni el cierre va, un MP4 normal se
+  pierde. Encender `Opciones::fragmentado` lo evitaria (ver arriba por que no
+  va de salida). Probarlo con `dxcap -forcetdr` en el equipo de referencia.
+- Con HDR encendido se pide BGRA de 8 bits y Windows lo pasa a SDR: los
+  colores pueden salir algo apagados (OBS captura en `R16G16B16A16_FLOAT`).
+- No se prueba si el controlador hace bien el NV12 (OBS pinta una textura de
+  prueba, `HasBadNV12Output`); si sale mal, el camino de la CPU sigue ahi.
+
+## Android
+
+El motor de Android **no existe todavia**; esto es el diseno, para que el
+nucleo que ya hay se reutilice y el comportamiento sea el mismo que en
+Windows. Sale de leer AOSP `screenrecord`, yrom/ScreenRecorder y HBRecorder
+(ver la investigacion).
+
+### Que se comparte y que no
+
+Todo lo de fuera de `win/` compila para Android sin cambios (no hay nada de
+Windows fuera de `cfg(windows)`; en esta maquina solo se pudo comprobar con
+`cargo check -p pixpin-motor-video` en Linux, el objetivo
+`aarch64-linux-android` no esta instalado). Lo que se comparte, por JNI desde
+un crate `cdylib` pequeno que se anadira con la app de Android (no esta en el
+espacio de trabajo):
+
+| Pieza | Por JNI (Rust) | En Kotlin |
+|---|---|---|
+| Perfiles, bits, grupo de imagenes (`perfil.rs`) | si | — |
+| Tamano del video y bandas (`geometria::medida_de_salida`, `encaje`) | si | dibujar el rectangulo |
+| Ritmo variable (`ritmo::decidir`, `espera`, `ocupa_el_sitio_del_repetido`) | si | el bucle |
+| Reloj anclado al sonido (`reloj::Reloj`, un manejador opaco) | si | darle las horas |
+| Sonido sin pisarse (`audio::Pista`) | si | — |
+| Atasco, vueltas, reintentos (`cola::Atasco`, `recuperacion::Presupuesto`, `cadena::reintento_mas_pequeno`) | si | reaccionar |
+| Politica del fichero (`archivo::a_medias`, `tras_fallo_al_cerrar`) | si | renombrar |
+| MediaProjection, VirtualDisplay, EGL, MediaCodec, MediaMuxer, AudioRecord, el servicio en primer plano | — | si |
+
+`nucleo::Nucleo` se podria llevar entero con una `Captura` y una `Tuberia`
+de JNI, pero en Android el trabajo va por llamadas del sistema
+(`onFrameAvailable`, `MediaCodec.Callback`) en sus propios hilos: es mas
+natural que Kotlin lleve el bucle y pregunte a Rust lo que decide.
+
+### La tuberia
+
+```text
+MediaProjection ─▶ VirtualDisplay (tamano de la pantalla)
+                     └▶ SurfaceTexture (GL_TEXTURE_EXTERNAL_OES): retiene el ULTIMO
+                          │ onFrameAvailable ─▶ ritmo::decidir (JNI)
+                          ▼ Nuevo / Repetir
+                   EGL: dibuja el rectangulo de geometria::encaje, con bandas
+                        eglPresentationTimeANDROID(reloj.fotograma(hora))
+                          ▼
+                   superficie de entrada de MediaCodec (H.264, hardware)
+                          ▼
+AudioRecord (AudioPlaybackCapture + microfono, mezclados por el motor de
+audio) ─▶ PCM con su posicion ─▶ MediaCodec AAC ─▶ MediaMuxer (MP4 .parte)
+```
+
+- **Por que con EGL en medio** y no la `VirtualDisplay` directa sobre la
+  superficie del codificador: asi cada fotograma lleva la marca que dice el
+  reloj del sonido (la misma cuenta que en Windows), las bandas al girar el
+  movil salen de `geometria::encaje` (AOSP lo hace con
+  `setDisplayProjection`, que una app no tiene) y el ritmo variable es el
+  nuestro. `SurfaceTexture` se queda solo con el ultimo fotograma
+  (`updateTexImage`), igual que la captura de Windows.
+- **Ritmo**: `KEY_REPEAT_PREVIOUS_FRAME_AFTER` hace el latido si no se dibuja
+  nada en un segundo, y `KEY_MAX_FPS_TO_ENCODER` es el tope (como
+  `MinUpdateInterval`). Con el dibujo propio ya los decide `ritmo`, pero se
+  ponen igual por si el bucle se para.
+- **Reloj**: las horas, todas de `System.nanoTime()` (el reloj monotono, el
+  mismo con el que SurfaceFlinger fecha los fotogramas:
+  `SurfaceTexture.getTimestamp()`). Para el sonido,
+  `AudioRecord.getTimestamp(t, AudioTimestamp.TIMEBASE_MONOTONIC)` da
+  exactamente el ancla del reloj (una posicion en muestras y su hora). **Un
+  solo reloj para las dos pistas**: yrom resta a cada pista su primera marca
+  por separado y se le separan.
+- **Pausa**: no se dibuja ni se da sonido; el reloj la descuenta (sin sonido)
+  o espera al primer bloque nuevo (con sonido), como en Windows.
+- **El sonido de la reunion**: `AudioPlaybackCapture` (Android 10+) solo
+  captura los usos `USAGE_MEDIA`, `USAGE_GAME` y `USAGE_UNKNOWN` de apps que
+  lo permiten. **Las llamadas (`USAGE_VOICE_COMMUNICATION`, Meet, Zoom) no se
+  pueden capturar**: en Android una reunion se graba con el microfono. Hay que
+  decirlo en la interfaz.
+- **Cuando algo sale mal**: `MediaCodec.CodecException.isTransient` se
+  reintenta; `isRecoverable` es el equivalente de la grafica perdida (un
+  codificador nuevo con los mismos parametros, `recuperacion::Presupuesto`),
+  pero el `MediaMuxer` no admite otra configuracion en la misma pista: si los
+  datos de configuracion cambian, se cierra limpio. `MediaProjection.Callback
+  .onStop` (el usuario o el sistema quitan el permiso) cierra limpio; desde
+  Android 14, `onCapturedContentVisibilityChanged(false)` es la «ventana
+  minimizada» (repetir la ultima imagen) y `onCapturedContentResize` el
+  cambio de tamano (otro `encaje`).
+- **Giro**: `DisplayManager.DisplayListener.onDisplayChanged` ─▶
+  `virtualDisplay.resize(...)` al tamano nuevo y otro `encaje`; el video no
+  cambia de tamano (igual que en Windows). No se crea otra `VirtualDisplay`:
+  desde Android 14 el permiso vale para una sola.
+- **Que codificador**: `MediaCodecList(REGULAR_CODECS)`, los de hardware
+  primero (`MediaCodecInfo.isHardwareAccelerated`, Android 10+), y
+  `VideoCapabilities.areSizeAndRateSupported(w, h, fps)` antes de configurar;
+  si `configure` falla, `cadena::reintento_mas_pequeno` (como AOSP, que
+  reintenta a 720p).
+- **El fichero**: se escribe en `.parte` y se renombra al cerrar bien;
+  `MediaMuxer` no hace MP4 fragmentado, asi que si la app muere el `.parte` no
+  vale (se barre la vez siguiente, como en Windows).
+
+### Kotlin (esbozo)
+
+```kotlin
+// Todo en un servicio en primer plano con foregroundServiceType="mediaProjection".
+class MotorVideoAndroid(ctx: Context, datos: Intent, codigo: Int, val perfil: String) {
+    val nucleo = Nucleo.nuevo(perfil, muestreo = 48_000, canales = 2) // JNI
+    val proyeccion = ctx.getSystemService(MediaProjectionManager::class.java)
+        .getMediaProjection(codigo, datos)
+
+    fun empezar(w: Int, h: Int, dpi: Int, destino: File) {
+        // Antes de crear la VirtualDisplay (obligatorio desde Android 14).
+        proyeccion.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() = terminar()
+            override fun onCapturedContentVisibilityChanged(visible: Boolean) {
+                nucleo.fuenteVisible(visible)
+            }
+        }, manejador)
+
+        val (vw, vh) = nucleo.medidas(w, h)           // geometria::medida_de_salida
+        val (media, pico) = nucleo.bits(vw, vh)        // perfil::bits_por_segundo
+        val fps = nucleo.porSegundo()
+        val video = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, vw, vh).apply {
+            setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_BIT_RATE, media)
+            setInteger(MediaFormat.KEY_BITRATE_MODE,
+                MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+            setInteger(MediaFormat.KEY_FRAME_RATE, fps)
+            setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, fps.toFloat())
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)                  // segundos
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 1_000_000L) // µs: el latido
+            setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
+            setInteger(MediaFormat.KEY_PROFILE,
+                MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)             // si lo admite
+            setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+            setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+        }
+        val codificador = elegirCodificador(video) // hardware primero; si configure falla,
+                                                   // nucleo.reintentoMasPequeno(vw, vh)
+        codificador.setCallback(callbackDeVideo, manejador)
+        codificador.configure(video, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val entrada = codificador.createInputSurface()
+        egl = Egl(entrada)                          // EGL14 + EGL_RECORDABLE_ANDROID
+        textura = SurfaceTexture(egl.texturaExterna()).apply {
+            setDefaultBufferSize(w, h)
+            setOnFrameAvailableListener({ hayNuevo = true; despertar() }, manejador)
+        }
+        pantalla = proyeccion.createVirtualDisplay("pixpin", w, h, dpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, Surface(textura), null, manejador)
+
+        val aac = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, 48_000, 2).apply {
+            setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+            setInteger(MediaFormat.KEY_BIT_RATE, 96_000)
+            setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
+        }
+        // El motor de audio da PCM intercalado con su posicion (el mismo contrato que en
+        // Windows): AudioPlaybackCaptureConfiguration(USAGE_MEDIA, USAGE_GAME,
+        // USAGE_UNKNOWN) + microfono, mezclados.
+        muxer = MediaMuxer(nucleo.aMedias(destino.path), MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        codificador.start(); codificadorAac.start()
+    }
+
+    // Una vuelta del bucle (en el hilo del manejador, a la hora que diga nucleo.espera).
+    fun vuelta() {
+        val ahora = System.nanoTime() / 100                      // 100 ns, como el reloj
+        when (nucleo.decidir(ahora, hayNuevo)) {                 // ritmo::decidir
+            Decision.NUEVO -> { textura.updateTexImage(); hayNuevo = false
+                                dibujar(nucleo.fotograma(textura.timestamp / 100)) }
+            Decision.REPETIR -> dibujar(nucleo.fotograma(ahora))
+            Decision.ESPERAR -> {}
+        }
+    }
+
+    fun dibujar(t: Long?) {                                      // null: pausa o sin sonido aun
+        t ?: return
+        egl.dibujar(nucleo.encaje(textura.ancho, textura.alto))  // geometria::encaje
+        egl.presentationTime(t * 100)                            // eglPresentationTimeANDROID, ns
+        egl.swapBuffers()
+    }
+
+    fun sonido(pcm: ShortArray, posicion: Long, ancla: AudioTimestamp) {
+        val (salto, desde) = nucleo.admitirSonido(posicion, pcm.size / 2) ?: return // audio::Pista
+        nucleo.anclar(desde + pcm.size / 2 - salto, ancla.nanoTime / 100)          // Reloj::sonido
+        darAlAac(pcm, salto, ptsUs = nucleo.tiempoDeMuestras(desde) / 10)
+    }
+
+    // En las salidas: addTrack con onOutputFormatChanged de las dos pistas, muxer.start(),
+    // lo de antes en una cola con tope (dos segundos); sin BUFFER_FLAG_CODEC_CONFIG.
+    fun terminar() {
+        codificador.signalEndOfInputStream()      // y fin de flujo al AAC; vaciar
+        val bien = runCatching { muxer.stop() }.isSuccess
+        nucleo.ponerEnSuSitio(bien)               // archivo: renombrar o borrar el .parte
+        pantalla.release(); proyeccion.stop()
+    }
+}
+```

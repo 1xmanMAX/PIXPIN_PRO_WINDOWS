@@ -1,15 +1,20 @@
-//! **Los tres caminos** de la cadena de caidas (`crate::cadena`), con la
-//! misma cara para el motor: un fotograma nuevo, uno repetido, un bloque de
-//! sonido y cerrar.
+//! **Los caminos** de la cadena de caidas (`crate::cadena`), con la misma
+//! cara para el motor: un fotograma nuevo, uno repetido, un bloque de
+//! sonido, cerrar y —si la grafica se pierde— volver a montarse en otro
+//! dispositivo sin cerrar el MP4 ([`Tubo::recrear`]).
 //!
 //! - [`Grafica`]: el procesador de video escribe en una textura NV12 del
 //!   repartidor de muestras de Media Foundation y esa misma textura va al
 //!   codificador de la grafica. Nada pasa por la CPU.
 //! - [`Software`]: el procesador de video escribe en una textura NV12
 //!   propia, que baja por una de escenificacion (1,5 bytes por pixel, no 4)
-//!   al codificador de Microsoft.
+//!   al codificador de Microsoft o, en el camino
+//!   `cadena::Camino::GraficaEnMemoria`, al de la grafica que haya.
 //! - [`Cpu`]: lo de antes (`pixpin-record`): la pantalla baja en BGRA, se
 //!   encoge en la CPU y se codifica por software.
+//!
+//! El backend de Windows de [`crate::plataforma::Tuberia`] es
+//! [`EnLaGrafica`]: un tubo con el dispositivo en el que vive.
 
 use std::path::{Path, PathBuf};
 
@@ -17,7 +22,7 @@ use pixpin_capture::Dispositivo;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_BIND_RENDER_TARGET, D3D11_BIND_VIDEO_ENCODER, D3D11_CPU_ACCESS_READ, D3D11_MAP_READ,
     D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_STAGING,
-    ID3D11DeviceContext, ID3D11Texture2D,
+    ID3D11DeviceContext, ID3D11Multithread, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_SAMPLE_DESC};
 use windows::Win32::Media::MediaFoundation::{
@@ -29,24 +34,20 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows::core::Interface;
 
-use super::com::en;
+use super::captura::Retenido;
+use super::com::{EnLaGpu, en, multihilo};
 use super::conversor::Conversor;
 use super::escritor::{Escritor, Plan, buffer_de, cerrar_buffer, muestra_de};
+use crate::archivo::{self, TrasFalloAlCerrar};
 use crate::audio::{FormatoAudio, a_mono};
 use crate::cola::{MUESTRAS_GPU, MUESTRAS_GPU_INICIALES, admitir_en_software};
 use crate::lienzo::Lienzo;
 use crate::perfil::{Ajustes, bits_por_segundo};
-use crate::{Codificador, ErrorMotor, Formato, archivo};
+pub(crate) use crate::plataforma::Escrito;
+use crate::ritmo::ocupa_el_sitio_del_repetido;
+use crate::{Camino, Codificador, ErrorMotor, Formato};
 
-/// Como le fue a un fotograma.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Escrito {
-    Hecho,
-    /// El codificador va atrasado: se salto.
-    Caido,
-}
-
-/// Lo que comparten los tres caminos para abrirse.
+/// Lo que comparten los caminos para abrirse.
 pub(crate) struct Pedido<'a> {
     pub destino: &'a Path,
     pub formato: Formato,
@@ -54,6 +55,16 @@ pub(crate) struct Pedido<'a> {
     pub ajustes: Ajustes,
     pub audio: Option<FormatoAudio>,
     pub fragmentado: bool,
+    /// Lo minimo entre dos fotogramas (`ritmo::minimo_entre`).
+    pub minimo: i64,
+}
+
+/// Como quedo el MP4 al cerrarlo.
+pub(crate) struct Cerrado {
+    pub ruta: PathBuf,
+    pub fragmentado: bool,
+    /// El cierre fallo pero el fichero se pudo conservar (fragmentado).
+    pub fallo: Option<String>,
 }
 
 /// El `.parte` mientras no se cierre bien: soltarlo lo borra.
@@ -83,6 +94,37 @@ impl Parte {
         self.vivo = false;
         archivo::poner_en_su_sitio(&self.parcial, &self.destino)
     }
+
+    /// **Tras un `Finalize`**: si fue bien, a su nombre; si fallo, lo que
+    /// diga `archivo::tras_fallo_al_cerrar` (un fragmentado se conserva, un
+    /// MP4 normal sin indice se borra al soltarse).
+    fn cerrar(
+        self,
+        hecho: Result<(), ErrorMotor>,
+        fragmentado: bool,
+    ) -> Result<Cerrado, ErrorMotor> {
+        match hecho {
+            Ok(()) => self.poner().map(|ruta| Cerrado {
+                ruta,
+                fragmentado,
+                fallo: None,
+            }),
+            Err(e) => {
+                let bytes = archivo::bytes(&self.parcial);
+                match archivo::tras_fallo_al_cerrar(fragmentado, bytes) {
+                    TrasFalloAlCerrar::Conservar => {
+                        tracing::warn!(?e, bytes, "el cierre fallo; el MP4 fragmentado se queda");
+                        self.poner().map(|ruta| Cerrado {
+                            ruta,
+                            fragmentado,
+                            fallo: Some(e.to_string()),
+                        })
+                    }
+                    TrasFalloAlCerrar::Borrar => Err(e),
+                }
+            }
+        }
+    }
 }
 
 impl Drop for Parte {
@@ -100,12 +142,17 @@ pub(crate) enum Tubo {
 }
 
 impl Tubo {
-    pub fn codificador(&self) -> Codificador {
+    pub fn camino(&self) -> Camino {
         match self {
-            Tubo::Grafica(_) => Codificador::Hardware,
-            Tubo::Software(_) => Codificador::Software,
-            Tubo::Cpu(_) => Codificador::Cpu,
+            Tubo::Grafica(_) => Camino::Grafica,
+            Tubo::Software(s) if s.con_grafica => Camino::GraficaEnMemoria,
+            Tubo::Software(_) => Camino::Software,
+            Tubo::Cpu(_) => Camino::Cpu,
         }
+    }
+
+    pub fn codificador(&self) -> Codificador {
+        self.camino().codificador()
     }
 
     pub fn formato(&self) -> Formato {
@@ -185,14 +232,81 @@ impl Tubo {
         }
     }
 
-    /// **Cierra el MP4** y lo pone en su nombre. Devuelve la ruta y si
-    /// salio fragmentado.
-    pub fn terminar(self) -> Result<(PathBuf, bool), ErrorMotor> {
+    /// **Vuelve a montar lo que vive en la grafica** sobre `disp`, un
+    /// dispositivo nuevo tras perderse el anterior, **sin cerrar el MP4**:
+    /// el escritor (y con el lo ya escrito) sigue. Lo que se pierde es el
+    /// fotograma que esperaba en la GPU, que se cambia por uno negro en su
+    /// mismo instante para que no quede un hueco.
+    pub fn recrear(&mut self, disp: &Dispositivo) -> Result<(), ErrorMotor> {
+        match self {
+            Tubo::Grafica(g) => g.recrear(disp),
+            Tubo::Software(s) => s.recrear(disp),
+            Tubo::Cpu(c) => {
+                // La bajada guarda texturas del dispositivo viejo.
+                c.bajada = pixpin_capture::Bajada::default();
+                Ok(())
+            }
+        }
+    }
+
+    /// **Cierra el MP4** y lo pone en su nombre.
+    pub fn terminar(self) -> Result<Cerrado, ErrorMotor> {
         match self {
             Tubo::Grafica(g) => g.terminar(),
             Tubo::Software(s) => s.terminar(),
-            Tubo::Cpu(c) => c.terminar().map(|r| (r, false)),
+            Tubo::Cpu(c) => c.terminar().map(|ruta| Cerrado {
+                ruta,
+                fragmentado: false,
+                fallo: None,
+            }),
         }
+    }
+}
+
+/// **El tubo visto como [`crate::plataforma::Tuberia`]**: con el
+/// dispositivo en el que vive, que el camino de la CPU necesita para bajar
+/// la pantalla.
+pub(crate) struct EnLaGrafica<'a> {
+    pub tubo: &'a mut Tubo,
+    pub disp: &'a Dispositivo,
+}
+
+impl crate::plataforma::Tuberia for EnLaGrafica<'_> {
+    type Retenido = Retenido;
+
+    fn fotograma(
+        &mut self,
+        r: &Retenido,
+        inicio: i64,
+        duracion: i64,
+    ) -> Result<Escrito, ErrorMotor> {
+        match r.textura() {
+            Ok(tex) => self
+                .tubo
+                .fotograma(self.disp, &tex, r.contenido, inicio, duracion),
+            // Un fotograma sin textura (raro: la superficie de un pool
+            // recien recreado) se salta, no corta el video.
+            Err(e) => {
+                tracing::debug!(?e, "un fotograma sin textura");
+                Ok(Escrito::Caido)
+            }
+        }
+    }
+
+    fn repetir(&mut self, inicio: i64, duracion: i64) -> Result<Escrito, ErrorMotor> {
+        self.tubo.repetir(inicio, duracion)
+    }
+
+    fn audio(&mut self, muestras: &[i16], posicion: u64) -> Result<(), ErrorMotor> {
+        self.tubo.audio(muestras, posicion)
+    }
+
+    fn vaciar(&mut self, fin: i64, duracion: i64) -> Result<(), ErrorMotor> {
+        self.tubo.vaciar(fin, duracion)
+    }
+
+    fn escritos(&self) -> u64 {
+        self.tubo.escritos()
     }
 }
 
@@ -322,22 +436,33 @@ impl Drop for Lote {
     }
 }
 
+/// El fotograma que espera su duracion (el retraso de un fotograma).
+struct Pendiente<T> {
+    dato: T,
+    inicio: i64,
+    /// Si es el latido (un repetido) y no una imagen nueva.
+    repetido: bool,
+}
+
 pub(crate) struct Grafica {
     // En este orden se sueltan: el escritor (y con el el codificador, que
     // devuelve sus muestras), la muestra pendiente, el repartidor, el gestor
     // y el procesador. El `.parte` al final, con el fichero ya cerrado.
     escritor: Escritor,
-    /// El ultimo fotograma convertido, **aun sin dar**, con su inicio: se da
-    /// cuando llega el siguiente y ya se sabe cuanto dura (ver
-    /// [`Grafica::escribir`]). Mientras se tiene, el repartidor no la
-    /// recicla, y es de donde sale el fotograma repetido.
-    pendiente: Option<(Ranura, i64)>,
+    /// El ultimo fotograma convertido, **aun sin dar**: se da cuando llega
+    /// el siguiente y ya se sabe cuanto dura (ver [`Grafica::escribir`]).
+    /// Mientras se tiene, el repartidor no la recicla, y es de donde sale
+    /// el fotograma repetido.
+    pendiente: Option<Pendiente<Ranura>>,
     lote: Lote,
     gestor: IMFDXGIDeviceManager,
+    /// El testigo del gestor, para darle otro dispositivo si se pierde.
+    testigo: u32,
     conv: Conversor,
     parte: Parte,
     formato: Formato,
     medidas: (u32, u32),
+    minimo: i64,
     escritos: u64,
 }
 
@@ -351,15 +476,17 @@ impl Grafica {
     ) -> Result<Grafica, Box<(Conversor, ErrorMotor)>> {
         let parte = Parte::de(p.destino);
         match montar_grafica(disp, &parte.parcial, p) {
-            Ok((gestor, lote, escritor)) => Ok(Grafica {
+            Ok((gestor, testigo, lote, escritor)) => Ok(Grafica {
                 escritor,
                 pendiente: None,
                 lote,
                 gestor,
+                testigo,
                 conv,
                 parte,
                 formato: p.formato,
                 medidas: p.medidas,
+                minimo: p.minimo,
                 escritos: 0,
             }),
             Err(e) => Err(Box::new((conv, e))),
@@ -376,7 +503,7 @@ impl Grafica {
             return Ok(Escrito::Caido);
         };
         self.conv.convertir(origen, contenido, &r.textura, r.sub)?;
-        self.escribir(r, inicio)
+        self.escribir(r, inicio, false)
     }
 
     fn repetir(&mut self, inicio: i64) -> Result<Escrito, ErrorMotor> {
@@ -386,10 +513,12 @@ impl Grafica {
         // Una muestra no se puede dar dos veces (el repartidor la recicla
         // cuando el codificador la suelta): se copia en la GPU a otra.
         match &self.pendiente {
-            Some((u, _)) => self.conv.copiar_nv12(&u.textura, u.sub, &r.textura, r.sub),
+            Some(p) => self
+                .conv
+                .copiar_nv12(&p.dato.textura, p.dato.sub, &r.textura, r.sub),
             None => self.conv.negro(&r.textura, r.sub)?,
         }
-        self.escribir(r, inicio)
+        self.escribir(r, inicio, true)
     }
 
     /// **Con un fotograma de retraso**: el que esperaba se da ahora, con la
@@ -397,11 +526,27 @@ impl Grafica {
     /// variable un fotograma puede durar de 1/30 s a un segundo, y el MP4
     /// guarda la duracion de cada muestra: darla bien es lo que hace que el
     /// video no se adelante al sonido en ningun reproductor.
-    fn escribir(&mut self, r: Ranura, inicio: i64) -> Result<Escrito, ErrorMotor> {
-        if let Some((p, t0)) = self.pendiente.take() {
-            self.dar(&p, t0, inicio - t0)?;
+    ///
+    /// Si lo que esperaba era un repetido y este llega pegado, este ocupa
+    /// su sitio (`ritmo::ocupa_el_sitio_del_repetido`).
+    fn escribir(&mut self, r: Ranura, inicio: i64, repetido: bool) -> Result<Escrito, ErrorMotor> {
+        if let Some(p) = self.pendiente.take() {
+            if !repetido && ocupa_el_sitio_del_repetido(p.repetido, p.inicio, inicio, self.minimo) {
+                // El repetido vuelve al repartidor sin darse.
+                self.pendiente = Some(Pendiente {
+                    dato: r,
+                    inicio: p.inicio,
+                    repetido: false,
+                });
+                return Ok(Escrito::Hecho);
+            }
+            self.dar(&p.dato, p.inicio, inicio - p.inicio)?;
         }
-        self.pendiente = Some((r, inicio));
+        self.pendiente = Some(Pendiente {
+            dato: r,
+            inicio,
+            repetido,
+        });
         self.escritos += 1;
         Ok(Escrito::Hecho)
     }
@@ -420,12 +565,39 @@ impl Grafica {
     /// Da el que esperaba, hasta `fin`.
     fn vaciar(&mut self, fin: i64, minima: i64) -> Result<(), ErrorMotor> {
         match self.pendiente.take() {
-            Some((p, t0)) => self.dar(&p, t0, (fin - t0).max(minima)),
+            Some(p) => self.dar(&p.dato, p.inicio, (fin - p.inicio).max(minima)),
             None => Ok(()),
         }
     }
 
-    fn terminar(self) -> Result<(PathBuf, bool), ErrorMotor> {
+    /// Lo que vive en la grafica, otra vez, sobre `disp`. El gestor es el
+    /// mismo (el escritor y su codificador lo tienen): se le da el
+    /// dispositivo nuevo con `ResetDevice`, que es como Media Foundation
+    /// espera que se le cambie (el codificador ve
+    /// `MF_E_DXGI_NEW_VIDEO_DEVICE` y vuelve a abrirlo).
+    fn recrear(&mut self, disp: &Dispositivo) -> Result<(), ErrorMotor> {
+        let perdido = self.pendiente.take().map(|p| p.inicio);
+        let conv = self.conv.rehacer(disp.d3d(), disp.contexto())?;
+        // SAFETY: dispositivo nuevo y vivo, con soporte de video; el
+        // testigo es el que dio la creacion del gestor.
+        unsafe { self.gestor.ResetDevice(disp.d3d(), self.testigo) }
+            .map_err(en("darle el dispositivo nuevo al gestor"))?;
+        self.lote = Lote::nuevo(&self.gestor, self.medidas)?;
+        self.conv = conv;
+        if let Some(t) = perdido
+            && let Some(r) = self.lote.pedir()?
+        {
+            self.conv.negro(&r.textura, r.sub)?;
+            self.pendiente = Some(Pendiente {
+                dato: r,
+                inicio: t,
+                repetido: true,
+            });
+        }
+        Ok(())
+    }
+
+    fn terminar(self) -> Result<Cerrado, ErrorMotor> {
         let Grafica {
             escritor,
             pendiente,
@@ -441,8 +613,7 @@ impl Grafica {
         drop(lote);
         drop(gestor);
         drop(conv);
-        hecho?;
-        parte.poner().map(|r| (r, fragmentado))
+        parte.cerrar(hecho, fragmentado)
     }
 }
 
@@ -450,25 +621,26 @@ fn montar_grafica(
     disp: &Dispositivo,
     parcial: &Path,
     p: &Pedido,
-) -> Result<(IMFDXGIDeviceManager, Lote, Escritor), ErrorMotor> {
-    let mut token = 0u32;
+) -> Result<(IMFDXGIDeviceManager, u32, Lote, Escritor), ErrorMotor> {
+    let mut testigo = 0u32;
     let mut gestor = None;
     // SAFETY: salidas locales; el gestor se queda con su referencia.
-    unsafe { MFCreateDXGIDeviceManager(&mut token, &mut gestor) }
+    unsafe { MFCreateDXGIDeviceManager(&mut testigo, &mut gestor) }
         .map_err(en("crear el gestor del dispositivo"))?;
     let gestor = gestor.ok_or(ErrorMotor::Sistema {
         paso: "crear el gestor del dispositivo",
         detalle: "sin gestor".into(),
+        codigo: 0,
     })?;
     // SAFETY: dispositivo vivo, creado con soporte de video y protegido
     // para varios hilos (`motor`); el testigo es el que dio la creacion.
-    unsafe { gestor.ResetDevice(disp.d3d(), token) }
+    unsafe { gestor.ResetDevice(disp.d3d(), testigo) }
         .map_err(en("darle el dispositivo al gestor"))?;
     let lote = Lote::nuevo(&gestor, p.medidas)?;
     let escritor = Escritor::abrir(
         parcial,
         &Plan {
-            codificador: Codificador::Hardware,
+            hardware: true,
             formato: p.formato,
             gestor: Some(&gestor),
             medidas: p.medidas,
@@ -477,24 +649,30 @@ fn montar_grafica(
             fragmentado: p.fragmentado,
         },
     )?;
-    Ok((gestor, lote, escritor))
+    Ok((gestor, testigo, lote, escritor))
 }
 
-// --- Software -------------------------------------------------------------
+// --- Software (y la grafica desde memoria) -------------------------------
 
 pub(crate) struct Software {
     escritor: Escritor,
-    /// El ultimo NV12 bajado, aun sin dar, con su inicio (el mismo retraso
-    /// de un fotograma que en [`Grafica::escribir`]). Repetirlo es otra
-    /// muestra con el mismo buffer: el codificador solo lo lee.
-    pendiente: Option<(IMFMediaBuffer, i64)>,
+    /// El ultimo NV12 bajado, aun sin dar (el mismo retraso de un fotograma
+    /// que en [`Grafica::escribir`]). Repetirlo es otra muestra con el mismo
+    /// buffer: el codificador solo lo lee. Esta en memoria: sobrevive a que
+    /// se pierda la grafica.
+    pendiente: Option<Pendiente<IMFMediaBuffer>>,
     conv: Conversor,
     destino_gpu: ID3D11Texture2D,
     escenario: ID3D11Texture2D,
     contexto: ID3D11DeviceContext,
+    multi: Option<ID3D11Multithread>,
     parte: Parte,
     medidas: (u32, u32),
+    minimo: i64,
     escritos: u64,
+    /// El NV12 en memoria va al codificador de la grafica, no al de
+    /// Microsoft (`Camino::GraficaEnMemoria`).
+    con_grafica: bool,
 }
 
 impl Software {
@@ -502,6 +680,7 @@ impl Software {
         disp: &Dispositivo,
         conv: Conversor,
         p: &Pedido,
+        con_grafica: bool,
     ) -> Result<Software, Box<(Conversor, ErrorMotor)>> {
         let parte = Parte::de(p.destino);
         let montado = (|| {
@@ -510,7 +689,7 @@ impl Software {
             let escritor = Escritor::abrir(
                 &parte.parcial,
                 &Plan {
-                    codificador: Codificador::Software,
+                    hardware: con_grafica,
                     formato: Formato::H264,
                     gestor: None,
                     medidas: p.medidas,
@@ -529,9 +708,12 @@ impl Software {
                 destino_gpu,
                 escenario,
                 contexto: disp.contexto().clone(),
+                multi: multihilo(disp.d3d()),
                 parte,
                 medidas: p.medidas,
+                minimo: p.minimo,
                 escritos: 0,
+                con_grafica,
             }),
             Err(e) => Err(Box::new((conv, e))),
         }
@@ -549,7 +731,7 @@ impl Software {
         let destino = self.destino_gpu.clone();
         self.conv.convertir(origen, contenido, &destino, 0)?;
         let b = self.bajar()?;
-        self.escribir(b, inicio)
+        self.escribir(b, inicio, false)
     }
 
     fn repetir(&mut self, inicio: i64) -> Result<Escrito, ErrorMotor> {
@@ -557,22 +739,39 @@ impl Software {
             return Ok(Escrito::Caido);
         }
         let b = match &self.pendiente {
-            Some((b, _)) => b.clone(),
+            Some(p) => p.dato.clone(),
             None => {
                 let destino = self.destino_gpu.clone();
                 self.conv.negro(&destino, 0)?;
                 self.bajar()?
             }
         };
-        self.escribir(b, inicio)
+        self.escribir(b, inicio, true)
     }
 
-    fn escribir(&mut self, b: IMFMediaBuffer, inicio: i64) -> Result<Escrito, ErrorMotor> {
-        if let Some((p, t0)) = self.pendiente.take() {
-            let m = muestra_de(&p, t0, (inicio - t0).max(1))?;
+    fn escribir(
+        &mut self,
+        b: IMFMediaBuffer,
+        inicio: i64,
+        repetido: bool,
+    ) -> Result<Escrito, ErrorMotor> {
+        if let Some(p) = self.pendiente.take() {
+            if !repetido && ocupa_el_sitio_del_repetido(p.repetido, p.inicio, inicio, self.minimo) {
+                self.pendiente = Some(Pendiente {
+                    dato: b,
+                    inicio: p.inicio,
+                    repetido: false,
+                });
+                return Ok(Escrito::Hecho);
+            }
+            let m = muestra_de(&p.dato, p.inicio, (inicio - p.inicio).max(1))?;
             self.escritor.video(&m)?;
         }
-        self.pendiente = Some((b, inicio));
+        self.pendiente = Some(Pendiente {
+            dato: b,
+            inicio,
+            repetido,
+        });
         self.escritos += 1;
         Ok(Escrito::Hecho)
     }
@@ -580,12 +779,23 @@ impl Software {
     /// Da el que esperaba, hasta `fin`.
     fn vaciar(&mut self, fin: i64, minima: i64) -> Result<(), ErrorMotor> {
         match self.pendiente.take() {
-            Some((p, t0)) => {
-                let m = muestra_de(&p, t0, (fin - t0).max(minima))?;
+            Some(p) => {
+                let m = muestra_de(&p.dato, p.inicio, (fin - p.inicio).max(minima))?;
                 self.escritor.video(&m)
             }
             None => Ok(()),
         }
+    }
+
+    /// Lo que vive en la grafica, otra vez, sobre `disp`. El escritor y el
+    /// fotograma que espera estan en memoria y siguen.
+    fn recrear(&mut self, disp: &Dispositivo) -> Result<(), ErrorMotor> {
+        self.conv = self.conv.rehacer(disp.d3d(), disp.contexto())?;
+        self.destino_gpu = textura_nv12(disp, self.medidas, false)?;
+        self.escenario = textura_nv12(disp, self.medidas, true)?;
+        self.contexto = disp.contexto().clone();
+        self.multi = multihilo(disp.d3d());
+        Ok(())
     }
 
     /// Baja el NV12 de la GPU a un buffer de Media Foundation, de arriba
@@ -597,6 +807,7 @@ impl Software {
         // El buffer antes que el mapeo: entre `Map` y `Unmap` no puede haber
         // ningun `?`.
         let (buffer, destino) = buffer_de(bytes)?;
+        let _gpu = EnLaGpu::entrar(self.multi.as_ref());
         let mut mapa = D3D11_MAPPED_SUBRESOURCE::default();
         // SAFETY: las dos texturas son NV12 del mismo tamano (`abrir`); la
         // de escenificacion tiene lectura de CPU.
@@ -631,7 +842,7 @@ impl Software {
         Ok(buffer)
     }
 
-    fn terminar(self) -> Result<(PathBuf, bool), ErrorMotor> {
+    fn terminar(self) -> Result<Cerrado, ErrorMotor> {
         let Software {
             escritor,
             pendiente,
@@ -643,8 +854,7 @@ impl Software {
         let hecho = escritor.terminar();
         drop(pendiente);
         drop(conv);
-        hecho?;
-        parte.poner().map(|r| (r, fragmentado))
+        parte.cerrar(hecho, fragmentado)
     }
 }
 
@@ -689,6 +899,7 @@ fn textura_nv12(
     t.ok_or(ErrorMotor::Sistema {
         paso: "crear una textura NV12",
         detalle: "sin textura".into(),
+        codigo: 0,
     })
 }
 

@@ -37,6 +37,29 @@ pub fn poner_en_su_sitio(parcial: &Path, destino: &Path) -> Result<PathBuf, Erro
     Ok(destino.to_path_buf())
 }
 
+/// Que hacer con el `.parte` cuando el cierre (`Finalize`) falla.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrasFalloAlCerrar {
+    /// Se pone en su nombre: aunque el cierre fallara, se puede abrir (un
+    /// MP4 fragmentado lleva su indice por trozos).
+    Conservar,
+    /// Se borra: un MP4 normal sin su indice no lo abre nadie, y dejarlo con
+    /// el nombre bueno haria creer que hay video.
+    Borrar,
+}
+
+/// **La politica del cierre fallido**: solo se queda lo que se puede abrir,
+/// y solo si tiene algo dentro.
+pub fn tras_fallo_al_cerrar(fragmentado: bool, bytes: u64) -> TrasFalloAlCerrar {
+    // Una cabecera de MP4 fragmentado sin ningun fragmento ocupa menos de un
+    // kilobyte; por debajo no hay video.
+    if fragmentado && bytes > 1024 {
+        TrasFalloAlCerrar::Conservar
+    } else {
+        TrasFalloAlCerrar::Borrar
+    }
+}
+
 /// Lo que ocupa ya `ruta` (cero si no se puede saber).
 pub fn bytes(ruta: &Path) -> u64 {
     std::fs::metadata(ruta).map(|m| m.len()).unwrap_or(0)
@@ -59,6 +82,20 @@ mod pruebas {
             a_medias(Path::new("C:/p/clase.mp4")),
             Path::new("C:/p/clase.mp4.parte")
         );
+    }
+
+    #[test]
+    fn un_cierre_fallido_solo_conserva_lo_que_se_puede_abrir() {
+        assert_eq!(
+            tras_fallo_al_cerrar(true, 5_000_000),
+            TrasFalloAlCerrar::Conservar
+        );
+        // Caso negativo: un MP4 normal sin indice, o uno fragmentado vacio.
+        assert_eq!(
+            tras_fallo_al_cerrar(false, 5_000_000),
+            TrasFalloAlCerrar::Borrar
+        );
+        assert_eq!(tras_fallo_al_cerrar(true, 600), TrasFalloAlCerrar::Borrar);
     }
 
     #[test]

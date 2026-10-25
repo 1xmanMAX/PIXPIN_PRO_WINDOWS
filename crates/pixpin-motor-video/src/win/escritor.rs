@@ -10,6 +10,13 @@
 //!   ([`es_de_hardware`]); si no, se dice y se pasa al siguiente de la
 //!   cadena, en vez de mandar texturas a un codificador de software que las
 //!   bajaria por su cuenta sin que nadie lo sepa.
+//! - **La grafica desde memoria** (`cadena::Camino::GraficaEnMemoria`): el
+//!   mismo permiso de hardware pero sin gestor del dispositivo. El escritor
+//!   carga el MFT de hardware que haya (aunque este en otra grafica) y le da
+//!   el NV12 en memoria; tambien se comprueba que es de hardware. Los MFT de
+//!   hardware son asincronos: el escritor los desbloquea
+//!   (`MF_TRANSFORM_ASYNC_UNLOCK`) y lleva su bucle de eventos, que es lo que
+//!   Cap tuvo que escribir a mano por usar el MFT sin escritor.
 //! - **Sin latencia baja** (`MF_LOW_LATENCY` no se pone): lo que se quiere es
 //!   el fichero mas pequeno, no el fotograma cuanto antes.
 //! - **Calidad por bits con techo** (`PeakConstrainedVBR`): una media que
@@ -55,11 +62,13 @@ use super::com::en;
 use crate::audio::{BYTES_POR_SEGUNDO_AAC, FormatoAudio};
 use crate::perfil::{Ajustes, bits_por_segundo, grupo_de_imagenes};
 use crate::reloj::tiempo_de_muestras;
-use crate::{Codificador, ErrorMotor, Formato};
+use crate::{ErrorMotor, Formato};
 
 /// Que se le pide al escritor.
 pub(crate) struct Plan<'a> {
-    pub codificador: Codificador,
+    /// Con el codificador de la grafica (con texturas si hay `gestor`, o
+    /// leyendo el NV12 de memoria si no).
+    pub hardware: bool,
     pub formato: Formato,
     /// El gestor del dispositivo, solo con la grafica.
     pub gestor: Option<&'a IMFDXGIDeviceManager>,
@@ -111,7 +120,8 @@ impl Escritor {
                 match abrir_uno(parcial, plan, contenedor, parametros) {
                     Ok((escritor, video, audio)) => {
                         tracing::info!(
-                            codificador = plan.codificador.clave(),
+                            hardware = plan.hardware,
+                            texturas = plan.gestor.is_some(),
                             ?parametros,
                             fragmentado,
                             "escritor del video abierto"
@@ -206,7 +216,7 @@ fn abrir_uno(
     contenedor: GUID,
     parametros: Parametros,
 ) -> Result<Abierto, ErrorMotor> {
-    let grafica = plan.codificador == Codificador::Hardware;
+    let grafica = plan.hardware;
     let atributos = atributos(5)?;
     // SAFETY: objeto propio; claves y valores son constantes de Media
     // Foundation, y el gestor (si lo hay) esta vivo y ya tiene su
@@ -234,6 +244,7 @@ fn abrir_uno(
         .map_err(|e| ErrorMotor::Sistema {
             paso: "crear el fichero del video",
             detalle: format!("{}: {e}", parcial.display()),
+            codigo: e.code().0,
         })?;
 
     let (ancho, alto) = plan.medidas;
@@ -266,8 +277,9 @@ fn abrir_uno(
         entrada
             .SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12)
             .map_err(en("describir el NV12"))?;
-        if !grafica {
-            // Por software llega en memoria, de arriba abajo y sin relleno.
+        if plan.gestor.is_none() {
+            // Sin texturas (software, o la grafica leyendo de memoria) llega
+            // en memoria, de arriba abajo y sin relleno.
             entrada
                 .SetUINT32(&MF_MT_DEFAULT_STRIDE, ancho)
                 .map_err(en("describir el paso del NV12"))?;
@@ -447,6 +459,7 @@ fn atributos(cuantos: u32) -> Result<IMFAttributes, ErrorMotor> {
     a.ok_or(ErrorMotor::Sistema {
         paso: "crear unos atributos",
         detalle: "sin objeto".into(),
+        codigo: 0,
     })
 }
 

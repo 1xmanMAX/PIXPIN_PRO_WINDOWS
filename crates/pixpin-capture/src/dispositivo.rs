@@ -111,6 +111,14 @@ impl Dispositivo {
     /// capturar. `BGRA_SUPPORT` es obligatorio: sin el, Direct2D no puede
     /// dibujar sobre estas texturas en S1-B2.
     pub fn nuevo() -> Result<Self, ErrorCaptura> {
+        Self::sobre_adaptador(None)
+    }
+
+    /// Como [`Dispositivo::nuevo`], pero probando primero en `preferido`:
+    /// el motor de video lo crea en la grafica que tiene conectado el
+    /// monitor que graba (que no siempre es la de la pantalla principal).
+    /// Si en esa no se puede, sigue con los intentos de siempre.
+    pub fn sobre_adaptador(preferido: Option<IDXGIAdapter>) -> Result<Self, ErrorCaptura> {
         // Primero con soporte de video (D66); si el driver lo rechaza, sin
         // el: capturar es mas importante que reproducir, y un driver raro
         // no puede dejar la aplicacion sin capturas.
@@ -123,6 +131,8 @@ impl Dispositivo {
         // el adaptador de la pantalla principal, que nunca se apaga.
         let principal = adaptador_de_la_pantalla_principal();
         let intentos = [
+            (preferido.clone(), D3D_DRIVER_TYPE_UNKNOWN, true),
+            (preferido, D3D_DRIVER_TYPE_UNKNOWN, false),
             (principal.clone(), D3D_DRIVER_TYPE_UNKNOWN, true),
             (principal, D3D_DRIVER_TYPE_UNKNOWN, false),
             (None, D3D_DRIVER_TYPE_HARDWARE, true),
