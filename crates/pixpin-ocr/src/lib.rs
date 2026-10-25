@@ -197,6 +197,28 @@ pub fn reconocer(ancho: u32, alto: u32, pixeles_rgba: &[u8]) -> Result<Vec<Linea
     windows_ocr::reconocer(ancho, alto, pixeles_rgba)
 }
 
+/// **Deja el motor listo para leer**, sin leer nada: con Indra elegido y
+/// bajado, carga sus modelos si no lo estaban ([`indra::precargar`]); con el
+/// de Windows no hace nada (no tiene nada caro que cargar). Devuelve si
+/// cargo algo. Bloquea lo que tarde la carga: se llama desde un hilo.
+pub fn precargar() -> bool {
+    let Some(c) = config() else {
+        return false;
+    };
+    if c.motor != Motor::Indra || !c.raiz.as_deref().is_some_and(indra::listo) {
+        return false;
+    }
+    match indra::precargar(&c) {
+        Ok(cargo) => cargo,
+        Err(e) => {
+            // No pasa nada: la primera lectura lo volvera a intentar y, si
+            // falla otra vez, leera el de Windows.
+            tracing::warn!(error = %e, "no se pudo precargar Indra");
+            false
+        }
+    }
+}
+
 /// Si el buffer cuadra con las medidas (y las medidas no desbordan).
 pub(crate) fn medidas_validas(ancho: u32, alto: u32, pixeles_rgba: &[u8]) -> bool {
     let necesarios = (ancho as usize)
@@ -256,8 +278,9 @@ mod pruebas {
             raiz: Some(dir.clone()),
             ..Config::default()
         });
-        // Elegido pero sin bajar: el de Windows.
+        // Elegido pero sin bajar: el de Windows, y no hay nada que precargar.
         assert_eq!(motor_en_uso(), Motor::Windows);
+        assert!(!precargar());
         // Una imagen incoherente se rechaza antes de tocar ningun motor.
         assert!(matches!(
             reconocer(10, 10, &[0u8; 8]),

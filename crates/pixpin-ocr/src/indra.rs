@@ -378,6 +378,44 @@ pub fn soltar() {
     }
 }
 
+/// Si el lector esta cargado ahora mismo (sin esperar a quien lee: si el
+/// cerrojo esta cogido, alguien lo esta usando y por tanto esta cargado).
+pub fn cargado() -> bool {
+    match CARGADO.try_lock() {
+        Ok(g) => g.is_some(),
+        Err(std::sync::TryLockError::WouldBlock) => true,
+        Err(std::sync::TryLockError::Poisoned(_)) => false,
+    }
+}
+
+/// **Carga el lector por adelantado**, para que la primera lectura no pague
+/// el ~0,5-1 s de abrir los modelos. Devuelve si lo cargo ahora.
+///
+/// No le pelea al vigilante de los tres minutos: si ya estaba cargado no
+/// toca su `ultima` (precargar no es leer y no alarga su vida), y lo recien
+/// cargado cuenta desde ahora, asi que si nadie lee se suelta igual. Si el
+/// cerrojo esta cogido es que alguien esta leyendo (y cargando): no se le
+/// espera.
+pub fn precargar(c: &Config) -> Result<bool, ErrorOcr> {
+    let raiz = c
+        .raiz
+        .as_deref()
+        .ok_or_else(|| ErrorOcr::IndraNoListo("sin carpeta de datos".into()))?;
+    let mut guarda = match CARGADO.try_lock() {
+        Ok(g) => g,
+        Err(std::sync::TryLockError::WouldBlock) => return Ok(false),
+        Err(std::sync::TryLockError::Poisoned(_)) => {
+            return Err(ErrorOcr::Indra("cerrojo envenenado".into()));
+        }
+    };
+    if guarda.is_some() {
+        return Ok(false);
+    }
+    *guarda = Some(cargar(c, raiz)?);
+    vigilar();
+    Ok(true)
+}
+
 fn cargar(c: &Config, raiz: &Path) -> Result<Cargado, ErrorOcr> {
     let t = Instant::now();
     let dir = carpeta(raiz);
