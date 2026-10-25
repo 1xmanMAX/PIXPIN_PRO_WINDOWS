@@ -62,8 +62,8 @@ pub struct Segmento<'a, A> {
     pub accion: A,
 }
 
-/// Una mitad de un **conmutador de iconos** (la vista Lista / Tarjetas de
-/// tareas): una sola pastilla gris con la mitad elegida mas clara.
+/// Una parte de un **conmutador de iconos** (la vista Tarjetas / Kanban /
+/// Horario de tareas): una sola pastilla gris con la elegida mas clara.
 ///
 /// POR QUE no son botones propios: dos botones sueltos, con el elegido en
 /// azul lleno, parecian dos acciones distintas y el azul gritaba mas que la

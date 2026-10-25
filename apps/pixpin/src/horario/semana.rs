@@ -1,5 +1,5 @@
-//! **La semana de la ventana del horario**: lo puro de [`super::ventana`]
-//! (18-oct-2026). Sin pintar nada, para poder probarlo sin ventana.
+//! **La semana del horario**: lo puro de [`super::panel`] (18-oct-2026),
+//! el calendario de la vista Horario de Tareas. Sin pintar nada, para poder probarlo sin ventana.
 //!
 //! - [`Semana`]: las asignaturas de la lista lateral y los **bloques** de la
 //!   rejilla, uno por clase y dia. En el texto una clase puede ser de varios
