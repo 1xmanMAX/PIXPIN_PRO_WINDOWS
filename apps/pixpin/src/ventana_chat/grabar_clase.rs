@@ -53,6 +53,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use pixpin_codec::imagen::ImagenRgba;
 use pixpin_geom::{Punto, Rect};
+use pixpin_motor_video::{Codificador, Perfil};
 use pixpin_proyecto::{almacen, cuaderno};
 use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
@@ -100,6 +101,13 @@ pub(crate) struct Rotulos {
     video_corto: String,
     video_roto: String,
     video_guardado: String,
+    /// Los perfiles del video, en el orden de `Perfil::TODOS`, con su pista.
+    calidades: [String; 3],
+    pistas_calidad: [String; 3],
+    /// «Video con …», con [`HUECO`] donde va el codificador.
+    video_con: String,
+    /// La grafica, el procesador y el procesador en modo sencillo.
+    codificadores: [String; 3],
     zona_perdida: String,
     salvado: String,
     de_fondo: String,
@@ -151,6 +159,22 @@ impl Rotulos {
             video_corto: t.t("clase-video-corto"),
             video_roto: t.t("clase-video-roto"),
             video_guardado: t.t("clase-video-guardado"),
+            calidades: [
+                t.t("clase-calidad-ligero"),
+                t.t("clase-calidad-normal"),
+                t.t("clase-calidad-nitido"),
+            ],
+            pistas_calidad: [
+                t.t("clase-calidad-ligero-pista"),
+                t.t("clase-calidad-normal-pista"),
+                t.t("clase-calidad-nitido-pista"),
+            ],
+            video_con: con("clase-video-con", "codificador"),
+            codificadores: [
+                t.t("clase-codificador-grafica"),
+                t.t("clase-codificador-software"),
+                t.t("clase-codificador-cpu"),
+            ],
             zona_perdida: t.t("clase-zona-perdida"),
             salvado: con("clase-salvado", "n"),
             de_fondo: t.t("clase-texto-de-fondo"),
@@ -183,6 +207,26 @@ impl Rotulos {
             fallo: t.t("chat-voz-fallo"),
             muy_corta: t.t("chat-voz-muy-corta"),
         }
+    }
+
+    /// El nombre de un perfil del video y su pista.
+    fn calidad(&self, p: Perfil) -> (&str, &str) {
+        let i = match p {
+            Perfil::Ligero => 0,
+            Perfil::Normal => 1,
+            Perfil::Nitido => 2,
+        };
+        (&self.calidades[i], &self.pistas_calidad[i])
+    }
+
+    /// «Video con la grafica», «… con el procesador».
+    fn video_con(&self, c: Codificador) -> String {
+        let i = match c {
+            Codificador::Hardware => 0,
+            Codificador::Software => 1,
+            Codificador::Cpu => 2,
+        };
+        con(&self.video_con, &self.codificadores[i])
     }
 
     fn de_un_fallo(&self, e: &pixpin_audio::ErrorAudio) -> String {
@@ -330,6 +374,9 @@ enum Accion {
     Microfono,
     Equipo,
     Video,
+    /// El perfil del video («Ligero», «Normal», «Nitido»): un clic pasa al
+    /// siguiente.
+    Calidad,
     Proyecto,
     Empezar,
     Cerrar,
@@ -380,6 +427,10 @@ struct Estado {
     equipo: bool,
     /// Grabar tambien el video de la pantalla.
     video: bool,
+    /// Con que perfil (ver `pixpin_motor_video::Perfil`).
+    perfil_video: Perfil,
+    /// Ya se dijo con que codificador va el video (se dice una vez).
+    codificador_avisado: bool,
     /// El sonido para el video, mientras se abre el audio: el video empieza
     /// cuando la grabadora ya esta en marcha (sabe a que muestreo va).
     sonido_para_video: Option<Receiver<Vec<i16>>>,
@@ -419,6 +470,8 @@ impl Estado {
             microfono: true,
             equipo: true,
             video: false,
+            perfil_video: Perfil::Normal,
+            codificador_avisado: false,
             sonido_para_video: None,
             monitor_video: 0,
             grabando_video: None,
@@ -1123,6 +1176,19 @@ fn flotar(
             estado.video_avisado = true;
             estado.avisar(r.video_roto.clone());
         }
+        // Y con que se codifica, una vez, en cuanto el motor arranca: la
+        // grafica, el procesador o el modo sencillo.
+        if !estado.codificador_avisado
+            && let Some(c) = estado
+                .grabando_video
+                .as_ref()
+                .and_then(video::Video::codificador)
+        {
+            estado.codificador_avisado = true;
+            if !estado.video_avisado {
+                estado.avisar(r.video_con(c));
+            }
+        }
 
         // Lo que llega de los hilos del audio y del texto.
         estado.fase = match std::mem::replace(&mut estado.fase, Fase::Preparar) {
@@ -1136,6 +1202,7 @@ fn flotar(
                             video::temporal_del_video(&estado.temporal),
                             estado.monitor_video,
                             g.muestreo(),
+                            estado.perfil_video,
                             sonido,
                         ));
                     }
@@ -1347,6 +1414,7 @@ fn pulsar(
         (Accion::Microfono, Fase::Preparar) => estado.microfono = !estado.microfono,
         (Accion::Equipo, Fase::Preparar) => estado.equipo = !estado.equipo,
         (Accion::Video, Fase::Preparar) => estado.video = !estado.video,
+        (Accion::Calidad, Fase::Preparar) => estado.perfil_video = estado.perfil_video.siguiente(),
         (Accion::Proyecto, Fase::Preparar) => {
             if !pedido.proyectos.is_empty() {
                 estado.proyecto = (estado.proyecto + 1) % pedido.proyectos.len();
@@ -1401,7 +1469,13 @@ fn pulsar(
             let ms = g.llevado_ms();
             pedir_zona(estado, ms, r);
         }
-        (Accion::Pausa, Fase::Grabando(g)) => g.pausar(!g.en_pausa()),
+        (Accion::Pausa, Fase::Grabando(g)) => {
+            let pausa = !g.en_pausa();
+            g.pausar(pausa);
+            if let Some(v) = &estado.grabando_video {
+                v.pausar(pausa);
+            }
+        }
         (Accion::Terminar, Fase::Grabando(_)) => {
             if let Fase::Grabando(g) = std::mem::replace(&mut estado.fase, Fase::Preparar) {
                 estado.fase = Fase::Parando {
@@ -1725,7 +1799,35 @@ fn pintar_final(
     );
 }
 
+/// Una fila de la fase de preparar, a `y` (logico) desde arriba.
+fn filas_de_preparar(w: f32, e: f32, y: f32) -> RectF {
+    let m = 18.0 * e;
+    RectF {
+        x: m,
+        y: y * e,
+        ancho: w - 2.0 * m,
+        alto: 44.0 * e,
+    }
+}
+
+/// **La ficha de la calidad del video**, dentro de su fila y a la izquierda
+/// de la pildora: tan ancha como su rotulo.
+fn ficha_de_calidad(p: &Pintor, fila: RectF, rotulo: &str, e: f32) -> RectF {
+    let (tw, _) = p.medir_texto(rotulo, 12.0 * e);
+    let ancho = tw + 16.0 * e;
+    let alto = 24.0 * e;
+    // La pildora mide 38 y va a 12 del borde (ver `interruptor`).
+    RectF {
+        x: fila.x + fila.ancho - 50.0 * e - 8.0 * e - ancho,
+        y: fila.y + (fila.alto - alto) / 2.0,
+        ancho,
+        alto,
+    }
+}
+
 /// Un interruptor de la fase de preparar: icono, rotulo y la pildora.
+/// `reservado`: lo que el rotulo deja libre a la derecha, antes de la
+/// pildora (la ficha de la calidad del video).
 #[allow(clippy::too_many_arguments)]
 fn interruptor(
     p: &Pintor,
@@ -1735,6 +1837,7 @@ fn interruptor(
     icono: &pixpin_render::icono::Icono,
     rotulo: &str,
     encendido: bool,
+    reservado: f32,
     e: f32,
 ) {
     let tema = &OSCURO;
@@ -1766,7 +1869,7 @@ fn interruptor(
         caja.x + 42.0 * e,
         caja.y + (caja.alto - th) / 2.0,
         tam,
-        caja.ancho - 100.0 * e,
+        caja.ancho - 100.0 * e - reservado,
         tema.texto,
     );
     // La pildora: verde y a la derecha si esta encendido.
@@ -1812,8 +1915,24 @@ fn pintar_preparar(
         w - 2.0 * m - 30.0 * e,
         tema.texto,
     );
+    // Con el raton sobre la ficha de la calidad, la linea de abajo del
+    // titulo dice que es cada una (lo que pesa una hora): es su pista.
+    let sobre_la_calidad = estado.video
+        && dentro(
+            ficha_de_calidad(
+                p,
+                filas_de_preparar(w, e, 176.0),
+                r.calidad(estado.perfil_video).0,
+                e,
+            ),
+            botones.raton,
+        );
     p.texto_linea(
-        &r.sub,
+        if sobre_la_calidad {
+            r.calidad(estado.perfil_video).1
+        } else {
+            &r.sub
+        },
         m,
         42.0 * e,
         12.0 * e,
@@ -1842,12 +1961,7 @@ fn pintar_preparar(
     );
     botones.zona(x, Accion::Cerrar);
 
-    let fila = |y: f32| RectF {
-        x: m,
-        y: y * e,
-        ancho: w - 2.0 * m,
-        alto: 44.0 * e,
-    };
+    let fila = |y: f32| filas_de_preparar(w, e, y);
     interruptor(
         p,
         botones,
@@ -1856,6 +1970,7 @@ fn pintar_preparar(
         &mi::MIC,
         &r.microfono,
         estado.microfono,
+        0.0,
         e,
     );
     interruptor(
@@ -1866,20 +1981,51 @@ fn pintar_preparar(
         &mi::VOLUME_UP,
         &r.equipo,
         estado.equipo,
+        0.0,
         e,
     );
     // Apagado de salida: el video ocupa mucho y casi siempre basta la nota
-    // con sus capturas.
+    // con sus capturas. Encendido, lleva a la derecha su calidad, que se
+    // cambia con un clic (ver `ficha_de_calidad`).
+    let caja_video = fila(176.0);
+    let (calidad, _) = r.calidad(estado.perfil_video);
+    let ficha = estado
+        .video
+        .then(|| ficha_de_calidad(p, caja_video, calidad, e));
     interruptor(
         p,
         botones,
-        fila(176.0),
+        caja_video,
         Accion::Video,
         &mi::VIDEOCAM,
         &r.video,
         estado.video,
+        ficha.map_or(0.0, |f| f.ancho + 8.0 * e),
         e,
     );
+    if let Some(f) = ficha {
+        // Dos tonos por encima de la fila (que ya se aclara uno con el
+        // raton encima), y uno mas sobre la propia ficha.
+        let fondo = mas_claro(mas_claro(tema.campo));
+        let encima = dentro(f, botones.raton);
+        p.rellenar_redondeado(
+            f,
+            f.alto / 2.0,
+            if encima { mas_claro(fondo) } else { fondo },
+        );
+        let tam = 12.0 * e;
+        let (tw, th) = p.medir_texto(calidad, tam);
+        p.texto(
+            calidad,
+            f.x + (f.ancho - tw) / 2.0,
+            f.y + (f.alto - th) / 2.0,
+            tam,
+            tema.texto,
+        );
+        // Encima del rotulo del video: la zona de la ficha va despues y
+        // gana (`Botones::bajo_el_raton`).
+        botones.zona(f, Accion::Calidad);
+    }
     // Donde se guarda: un clic pasa al siguiente proyecto.
     let caja = fila(228.0);
     let fondo = if dentro(caja, botones.raton) {
