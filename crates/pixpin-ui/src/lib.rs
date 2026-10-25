@@ -22,6 +22,8 @@ pub mod info;
 pub mod lupa;
 pub mod menu;
 pub mod mini;
+/// La nota del chat como un Markdown pequeno: bloques y album de fotos.
+pub mod nota_rica;
 pub mod overlay;
 pub mod panel;
 pub mod panel_lateral;

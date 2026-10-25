@@ -168,6 +168,9 @@ mod muestra_sistema;
 /// F8: muestra en PNG del chat con una zona recien mandada.
 #[cfg(test)]
 mod muestra_zona;
+/// La burbuja de una nota como un Markdown pequeno: texto con formato y
+/// sus fotos en album (25-oct-2026).
+mod nota_rica;
 /// Clip → «Una pagina de un proyecto».
 mod paginas;
 /// La vista previa de un lienzo, con el papel y la tinta del lienzo.
@@ -1641,6 +1644,7 @@ pub fn abrir(
                                     abrir_el_origen(ubicacion, a, i, lienzo, textos)
                                 }
                                 Zona::EnlaceDelTexto(k) => abrir_enlace_del_texto(a, k, textos),
+                                Zona::ImagenDeNota(i, k) => nota_rica::abrir_foto(a, i, k, textos),
                                 Zona::Enlace(i) => match asistente::lienzo_de(a, i) {
                                     Some(j) => {
                                         abrir_lienzo = Some(j);
@@ -3608,7 +3612,15 @@ pub fn abrir(
                 EventoOverlay::Tecla { vk, ctrl, .. } if vk == VK_V && ctrl => {
                     if let Some(a) = abierto.as_mut() {
                         match pegar(ubicacion, a, &identidad) {
-                            Ok(cuantos) if cuantos > 0 => {
+                            // Lo dice, que si no la foto parece no haber
+                            // entrado: en la caja solo se ve su renglon.
+                            Ok(Pegado::EnLaNota(n)) if n > 0 => {
+                                aviso = Some((
+                                    textos.t("chat-foto-en-la-nota"),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                            Ok(Pegado::Mensajes(cuantos)) if cuantos > 0 => {
                                 a.scroll = None;
                                 // Una foto al asistente tambien se contesta.
                                 if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
@@ -6260,7 +6272,26 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             y += alto + hueco;
         }
 
-        if !piezas.texto.is_empty() {
+        if let Some(pz) = &piezas.rica {
+            nota_rica::pintar(
+                p,
+                a,
+                i,
+                pz,
+                dentro.x as f32,
+                y,
+                dentro.ancho as f32,
+                area,
+                previas,
+                &nota_rica::Colores {
+                    texto: color_texto,
+                    apagado: color_hora,
+                    enlace: color_enlace,
+                    acento: tema.enviar,
+                },
+                e,
+            );
+        } else if !piezas.texto.is_empty() {
             // Buscando, lo encontrado va en negrita dentro de la propia
             // burbuja. El movil lo tine de fondo; aqui el pintor no sabe
             // pintar fondos por tramo, y la negrita es lo que ya se usa en el
@@ -7287,6 +7318,9 @@ fn medir_mensaje(
     // Una respuesta del asistente, con sus listas como listas y sus
     // negritas en negrita (17-oct-2026, `formato_de_respuesta`).
     let (texto, estilo) = estilo_de_la_respuesta(m, texto);
+    // Una nota con formato o fotos se ensena entera, como un Markdown
+    // pequeno (`nota_rica`); una llana sigue por el texto de siempre.
+    let rica = nota_rica::medir(p, a, m, &texto, ancho_max, cx.aguja, e);
     let cita = m
         .responde_a
         .as_deref()
@@ -7359,6 +7393,7 @@ fn medir_mensaje(
             confirmar: None,
             elegir: None,
             ia: None,
+            rica: None,
         };
         return (entrada, piezas);
     }
@@ -7471,7 +7506,9 @@ fn medir_mensaje(
             sumar(&mut ancho, &mut alto, w, alto_tarjeta);
             (en, alto_tarjeta)
         });
-    if !texto.is_empty() {
+    if let Some(pz) = &rica {
+        sumar(&mut ancho, &mut alto, pz.ancho, pz.alto);
+    } else if !texto.is_empty() {
         let mut tramos = negritas(&texto, cx.aguja);
         tramos.extend_from_slice(&estilo);
         let (w, alto_texto) = if tramos.is_empty() {
@@ -7561,6 +7598,7 @@ fn medir_mensaje(
         confirmar,
         elegir,
         ia,
+        rica,
     };
     (entrada, piezas)
 }
@@ -8495,7 +8533,8 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
 /// reves, un fallo de escritura dejaria en pantalla un mensaje que no
 /// existe, y el usuario creeria que lo tiene guardado.
 fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<()> {
-    let texto = a.borrador.trim().to_string();
+    // Las fotos pegadas en lo escrito salen con su ruta portatil.
+    let texto = nota_rica::para_guardar(ubicacion.raiz(), &a.ficha.id, a.borrador.trim());
     // Sin repetir milisegundo: el id de la nota es su hora (ver
     // `descripcion::siguiente_hora`).
     let cuando = descripcion::hora_sin_repetir();
@@ -8521,7 +8560,7 @@ fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     a.cursor.soltar();
     // La ficha de la lista sube al momento: es la misma conversacion.
     a.ficha.tocado = cuando;
-    a.ficha.resumen = texto;
+    a.ficha.resumen = pixpin_proyecto::cuaderno::sin_rutas_de_fotos(&texto);
     subir_en_la_lista(
         ubicacion.raiz(),
         &a.ficha.id,
@@ -8587,16 +8626,28 @@ pub(crate) fn siguiente_numero_en(raiz: &std::path::Path, proyecto: &str) -> std
     }
 }
 
-/// Mete en el proyecto lo que haya en el portapapeles. Devuelve cuantos
+/// Lo que dejo pegar: mensajes nuevos, o fotos metidas en lo escrito.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pegado {
+    Mensajes(usize),
+    EnLaNota(usize),
+}
+
+/// Mete en el proyecto lo que haya en el portapapeles. Dice cuantos
 /// mensajes salieron de ahi (cero si solo era texto, que va al borrador).
+///
+/// **Con algo ya escrito, las fotos van dentro de lo escrito** y no a un
+/// mensaje aparte (`nota_rica::fotos_al_borrador`): al enviar sale una sola
+/// nota con el texto y sus fotos, como en Telegram. Con la caja vacia, una
+/// foto pegada sigue siendo su mensaje de foto (la galeria la ensena).
 ///
 /// Los ficheros se COPIAN dentro del proyecto. Apuntar al original seria mas
 /// barato y estaria mal: el original se mueve, se renombra o se borra, y un
 /// proyecto que viaja al movil no puede llevar rutas del escritorio de nadie.
-fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<usize> {
+fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<Pegado> {
     use pixpin_codec::ContenidoPortapapeles as Que;
     let Some(que) = pixpin_codec::portapapeles::leer() else {
-        return Ok(0);
+        return Ok(Pegado::Mensajes(0));
     };
     let ficheros: Vec<(String, Vec<u8>)> = match que {
         Que::Texto(t) => {
@@ -8605,7 +8656,7 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
             // Donde este la rayita, y con los saltos de Windows
             // (`\r\n`) hechos uno: la rayita no puede caer entre los dos.
             a.cursor.escribir(&mut a.borrador, &t.replace("\r\n", "\n"));
-            return Ok(0);
+            return Ok(Pegado::Mensajes(0));
         }
         Que::Imagen(imagen) => {
             let bytes = pixpin_codec::codificar_png(&imagen).map_err(std::io::Error::other)?;
@@ -8616,6 +8667,15 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
         }
         Que::Rutas(rutas) => leer_ficheros(&rutas),
     };
+    // Fotos y solo fotos, con texto escrito: dentro de la nota.
+    if !a.borrador.trim().is_empty()
+        && !ficheros.is_empty()
+        && ficheros
+            .iter()
+            .all(|(nombre, _)| pixpin_ui::nota_rica::es_foto(nombre))
+    {
+        return nota_rica::fotos_al_borrador(ubicacion.raiz(), a, &ficheros).map(Pegado::EnLaNota);
+    }
 
     // **Lo escrito en la caja va con la foto, como su descripcion**: antes
     // la foto se iba sola y el texto se quedaba atras, y el usuario lo
@@ -8633,7 +8693,7 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
         hechos += 1;
     }
     descripcion::pie_de_vuelta(&mut a.borrador, pie);
-    Ok(hechos)
+    Ok(Pegado::Mensajes(hechos))
 }
 
 /// Copia un fichero al proyecto y lo deja como mensaje del cuaderno, con
@@ -8972,6 +9032,11 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         Some(Some(Ojeada::Lienzo(l))) => l.fondo.as_ref().map(|(r, _)| r.clone()),
         _ => None,
     };
+    // Las fotos de las notas ricas que se ven, de lo ya medido.
+    let de_notas: Vec<std::path::PathBuf> = (primero..primero + cuantos)
+        .filter_map(|cual| c.piezas.get(cual)?.rica.as_ref())
+        .flat_map(nota_rica::rutas)
+        .collect();
     (primero..primero + cuantos)
         .filter_map(|cual| c.mensaje(cual))
         .flat_map(|i| match a.vistas.get(i) {
@@ -8985,6 +9050,7 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
                 .collect::<Vec<_>>(),
             _ => foto_de(i).into_iter().collect(),
         })
+        .chain(de_notas)
         .collect()
 }
 
@@ -14483,6 +14549,8 @@ enum Zona {
     /// Un enlace dentro del texto de una burbuja, por su sitio en
     /// `Abierto::enlaces_pintados`: lo abre fuera.
     EnlaceDelTexto(usize),
+    /// La foto `k` (en su orden) de la nota `i`: la abre en un pin.
+    ImagenDeNota(usize, usize),
     /// Ir a un mensaje: la cita de una respuesta o la barra del fijado.
     Ir(usize),
     /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
@@ -14641,6 +14709,8 @@ struct Piezas {
     elegir: Option<(pixpin_ia::preguntar::Pregunta, bool, f32)>,
     /// Lo que penso el asistente y su peticion mejorada, encima del texto.
     ia: Option<pensado::Pieza>,
+    /// La nota con formato y fotos, ya medida: va en lugar de `texto`.
+    rica: Option<nota_rica::Pieza>,
 }
 
 /// La letra de «Recibido de …» y de la tarjeta del enlace: 11 y 13, las del

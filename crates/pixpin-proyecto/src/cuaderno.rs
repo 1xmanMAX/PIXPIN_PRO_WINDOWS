@@ -209,13 +209,46 @@ impl Mensaje {
             return t.clone();
         }
         if !self.texto.trim().is_empty() {
-            return self.texto.clone();
+            return sin_rutas_de_fotos(&self.texto);
         }
         if !self.nombre.trim().is_empty() {
             return self.nombre.clone();
         }
         String::new()
     }
+}
+
+/// El texto de una nota con sus fotos (`![alt](pixpin:files/…)`, la nota
+/// rica del chat) dichas como «🖼 alt»: en una linea la ruta no le dice
+/// nada a nadie y se comeria todo el sitio. Lo demas, tal cual.
+pub fn sin_rutas_de_fotos(texto: &str) -> String {
+    if !texto.contains("![") {
+        return texto.to_string();
+    }
+    let mut salida = String::with_capacity(texto.len());
+    let mut resto = texto;
+    while let Some(i) = resto.find("![") {
+        salida.push_str(&resto[..i]);
+        let tras = &resto[i + 2..];
+        let cierre = tras
+            .find("](")
+            .filter(|&c| !tras[..c].contains('\n'))
+            .and_then(|c| Some((c, tras[c + 2..].find(')')?)));
+        match cierre {
+            Some((c, f)) => {
+                let alt = tras[..c].split('|').next().unwrap_or_default().trim();
+                salida.push_str(if alt.is_empty() { "🖼" } else { "🖼 " });
+                salida.push_str(alt);
+                resto = &tras[c + 2 + f + 1..];
+            }
+            None => {
+                salida.push_str("![");
+                resto = tras;
+            }
+        }
+    }
+    salida.push_str(resto);
+    salida
 }
 
 /// Quien escribe, cuando y en que conversacion: lo que sella un mensaje
@@ -862,6 +895,17 @@ mod pruebas {
         // Un mensaje sin nada no inventa texto.
         let vacio = Cuaderno::leer(r#"{"id":"z"}"#);
         assert_eq!(vacio.mensajes[0].resumen(), "");
+    }
+
+    #[test]
+    fn de_una_nota_con_fotos_no_se_ensena_la_ruta() {
+        let m = Mensaje {
+            texto: "hola\n![](pixpin:files/guardados/pc/c/notas/1-a.png)\n![planta|300](notas/2.png) fin".into(),
+            ..Default::default()
+        };
+        assert_eq!(m.resumen(), "hola\n🖼\n🖼 planta fin");
+        // Caso negativo: un `![` sin cerrar se queda como se escribio.
+        assert_eq!(sin_rutas_de_fotos("mira ![esto"), "mira ![esto");
     }
 
     #[test]
