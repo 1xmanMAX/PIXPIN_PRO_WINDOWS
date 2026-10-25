@@ -37,6 +37,40 @@
 //! {"formato":1,"paginas":[{"id":"1761400000000","titulo":"Día 1"},
 //!                          {"id":"1761486400000","titulo":"Día 2"}]}
 //! ```
+//!
+//! ## La carpeta de una grabacion
+//!
+//! **Una clase o reunion grabada entra en el chat dentro de su carpeta**
+//! (25-oct-2026, el usuario: «una grabacion completa siempre deberia ir
+//! dentro de una carpeta, para que en el chat no salgan varias imagenes y un
+//! audio, que ocupa mucho espacio»). Es una carpeta como las otras, con tres
+//! campos mas que solo se escriben en ella (los demas aparatos, y un PC de
+//! antes, los guardan tal cual en `resto` y la siguen leyendo como una
+//! carpeta normal):
+//!
+//! - `tipo: "grabacion"` ([`TIPO_GRABACION`]): lo que dice que es una
+//!   grabacion. Sin `tipo` (o vacio), una carpeta de paginas de siempre.
+//! - `voz`: el `id` de su nota de voz (vacio si la nota no se pudo cerrar y
+//!   solo entraron el video y las capturas).
+//! - `duracionMs`: lo que duro, para la tarjeta sin leer la nota.
+//!
+//! Y cada pagina puede llevar `ms`, el minuto de la grabacion en que se
+//! hizo (una captura; la voz y el video, `0`). Las paginas van en el orden
+//! de la grabacion: la voz, el video y las capturas por su minuto.
+//!
+//! Lo que cambia en el PC: **lo que esta dentro de una grabacion no sale
+//! suelto en el chat** ([`dentro_de_grabaciones`]); la tarjeta de la
+//! carpeta lo representa. En la galeria (Fotos, Videos, Audios) y en el
+//! buscador se sigue viendo. Los enlaces de siempre entre la voz y lo suyo
+//! (`capturas`, `video`, `enGrabacion` en `resto`) no cambian: «Estudiar la
+//! clase» sigue yendo por ellos.
+//!
+//! ```json
+//! {"formato":1,"tipo":"grabacion","voz":"1761400000001","duracionMs":5400000,
+//!  "paginas":[{"id":"1761400000001","titulo":"","ms":0},
+//!             {"id":"1761400000002","titulo":"","ms":0},
+//!             {"id":"1761400000003","titulo":"⏱ 01:05","ms":65000}]}
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -52,6 +86,10 @@ pub const FORMATO: u32 = 1;
 /// Lo mas largo de un titulo de pagina, como el nombre de un lienzo.
 pub const TOPE_TITULO: usize = 80;
 
+/// El `tipo` de la carpeta de una clase o reunion grabada. Es un dato
+/// guardado.
+pub const TIPO_GRABACION: &str = "grabacion";
+
 /// Una pagina de la carpeta: que mensaje es y como se llama dentro de ella.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -61,6 +99,9 @@ pub struct Pagina {
     pub id: String,
     /// «Dia 2». Vacio: se ensena el nombre del mensaje.
     pub titulo: String,
+    /// En una grabacion, el minuto (ms desde que empezo) en que se hizo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ms: Option<i64>,
     #[serde(flatten)]
     pub resto: serde_json::Map<String, serde_json::Value>,
 }
@@ -70,6 +111,15 @@ pub struct Pagina {
 #[serde(default)]
 pub struct Carpeta {
     pub formato: u32,
+    /// Vacio: una carpeta de paginas. [`TIPO_GRABACION`]: una grabacion.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub tipo: String,
+    /// En una grabacion, el `id` de su nota de voz (vacio si no entro).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub voz: String,
+    /// En una grabacion, lo que duro.
+    #[serde(rename = "duracionMs", skip_serializing_if = "es_cero")]
+    pub duracion_ms: i64,
     pub paginas: Vec<Pagina>,
     /// Lo que no se entiende, tal cual.
     #[serde(flatten)]
@@ -80,10 +130,17 @@ impl Default for Carpeta {
     fn default() -> Self {
         Carpeta {
             formato: FORMATO,
+            tipo: String::new(),
+            voz: String::new(),
+            duracion_ms: 0,
             paginas: Vec::new(),
             resto: serde_json::Map::new(),
         }
     }
+}
+
+fn es_cero(n: &i64) -> bool {
+    *n == 0
 }
 
 /// Si el mensaje es una carpeta.
@@ -105,6 +162,30 @@ pub fn carpetas_de(mensajes: &[Mensaje]) -> Vec<usize> {
 pub fn mensaje_nuevo(nombre: &str, sello: &Sello) -> Mensaje {
     let nombre: String = nombre.trim().chars().take(TOPE_TITULO).collect();
     Mensaje::miniapp(MINIAPP, &nombre, &Carpeta::default().escribir(), sello)
+}
+
+/// **La carpeta de una grabacion**, con su nombre («Clase 25-10 10h58») y
+/// lo que lleva dentro ya puesto (ver [`Carpeta::grabacion`]).
+pub fn mensaje_de_grabacion(nombre: &str, carpeta: &Carpeta, sello: &Sello) -> Mensaje {
+    let nombre: String = limpio(nombre);
+    Mensaje::miniapp(MINIAPP, &nombre, &carpeta.escribir(), sello)
+}
+
+/// Si el mensaje es la carpeta de una grabacion.
+pub fn es_grabacion(m: &Mensaje) -> bool {
+    Carpeta::de_mensaje(m).is_some_and(|c| c.es_grabacion())
+}
+
+/// **Los `id` de lo que esta dentro de alguna grabacion** de la
+/// conversacion: lo que el chat no ensena suelto (lo representa la tarjeta
+/// de su carpeta). Las carpetas de paginas de siempre no esconden nada.
+pub fn dentro_de_grabaciones(mensajes: &[Mensaje]) -> std::collections::HashSet<String> {
+    mensajes
+        .iter()
+        .filter_map(Carpeta::de_mensaje)
+        .filter(Carpeta::es_grabacion)
+        .flat_map(|c| c.paginas.into_iter().map(|p| p.id))
+        .collect()
 }
 
 /// Que la pagina de un mensaje puede ir en una carpeta: lo que se ve como
@@ -132,6 +213,35 @@ impl Carpeta {
         es_carpeta(m)
             .then(|| Carpeta::leer(&m.texto).ok())
             .flatten()
+    }
+
+    /// **Una carpeta de grabacion vacia**: de la nota `voz` (vacia si no
+    /// entro) y que duro `duracion_ms`. Lo de dentro, con
+    /// [`Carpeta::anadir_al_minuto`].
+    pub fn grabacion(voz: &str, duracion_ms: i64) -> Carpeta {
+        Carpeta {
+            tipo: TIPO_GRABACION.into(),
+            voz: voz.to_string(),
+            duracion_ms: duracion_ms.max(0),
+            ..Carpeta::default()
+        }
+    }
+
+    /// Si es la carpeta de una grabacion.
+    pub fn es_grabacion(&self) -> bool {
+        self.tipo == TIPO_GRABACION
+    }
+
+    /// Anade al final una pieza de la grabacion, con su minuto. Como
+    /// [`Carpeta::anadir`]: `false` si ya estaba.
+    pub fn anadir_al_minuto(&mut self, id: &str, titulo: &str, ms: i64) -> bool {
+        if !self.anadir(id, titulo) {
+            return false;
+        }
+        if let Some(p) = self.paginas.last_mut() {
+            p.ms = Some(ms.max(0));
+        }
+        true
     }
 
     /// El documento, para ir en `Mensaje::texto`.
@@ -551,5 +661,71 @@ mod pruebas {
         ];
         assert_eq!(carpetas_de(&mensajes), [1, 3]);
         assert!(carpetas_de(&mensajes[..1]).is_empty());
+    }
+
+    #[test]
+    fn la_carpeta_de_una_grabacion_lleva_su_voz_su_duracion_y_sus_minutos() {
+        let mut c = Carpeta::grabacion("v", 5_400_000);
+        assert!(c.es_grabacion());
+        assert!(c.anadir_al_minuto("v", "", 0));
+        assert!(c.anadir_al_minuto("video", "", 0));
+        assert!(c.anadir_al_minuto("f1", "⏱ 01:05", 65_000));
+        assert!(
+            !c.anadir_al_minuto("f1", "otra vez", 9),
+            "no entra dos veces"
+        );
+        let m = mensaje_de_grabacion("  Clase 25-10 10h58 ", &c, &sello(1));
+        assert!(es_carpeta(&m) && es_grabacion(&m));
+        assert_eq!(m.nombre, "Clase 25-10 10h58");
+        // Lo que se escribe: el tipo, la voz, la duracion y los minutos.
+        let texto = &m.texto;
+        assert!(texto.contains("\"tipo\":\"grabacion\""), "{texto}");
+        assert!(texto.contains("\"voz\":\"v\""), "{texto}");
+        assert!(texto.contains("\"duracionMs\":5400000"), "{texto}");
+        assert!(texto.contains("\"ms\":65000"), "{texto}");
+        let leida = Carpeta::de_mensaje(&m).unwrap();
+        assert_eq!(leida, c);
+        assert_eq!(leida.paginas[2].ms, Some(65_000));
+        // Caso negativo: una carpeta de paginas no escribe nada de eso.
+        let normal = mensaje_nuevo("Diario", &sello(2));
+        assert!(!es_grabacion(&normal));
+        assert_eq!(normal.texto, r#"{"formato":1,"paginas":[]}"#);
+    }
+
+    #[test]
+    fn un_pc_de_antes_conserva_lo_de_la_grabacion_y_la_lee_como_carpeta() {
+        // Lo que escribe un PC de antes de las grabaciones: sin los campos.
+        let viejo = r#"{"formato":1,"paginas":[{"id":"a","titulo":"Día 1"}]}"#;
+        let c = Carpeta::leer(viejo).unwrap();
+        assert!(!c.es_grabacion());
+        assert_eq!(c.paginas[0].ms, None);
+        assert!(!c.escribir().contains("\"ms\""), "sin minuto no se escribe");
+        // Y lo que lee de una grabacion lo trata como una carpeta mas.
+        let nuevo = r#"{"formato":1,"tipo":"grabacion","voz":"v","duracionMs":9,"paginas":[{"id":"v","titulo":"","ms":0}]}"#;
+        let c = Carpeta::leer(nuevo).unwrap();
+        assert!(c.es_grabacion());
+        assert_eq!((c.voz.as_str(), c.duracion_ms), ("v", 9));
+        assert_eq!(Carpeta::leer(&c.escribir()).unwrap(), c);
+    }
+
+    #[test]
+    fn lo_de_dentro_de_una_grabacion_no_sale_suelto_y_lo_de_una_carpeta_si() {
+        let mut g = Carpeta::grabacion("v", 1000);
+        g.anadir_al_minuto("v", "", 0);
+        g.anadir_al_minuto("f1", "", 500);
+        let mut diario = Carpeta::default();
+        diario.anadir("a", "Día 1");
+        let mensajes = vec![
+            lienzo("a"),
+            Mensaje::nota("v", &sello(1)),
+            mensaje_de_grabacion("Clase", &g, &sello(2)),
+            Mensaje::miniapp(MINIAPP, "Diario", &diario.escribir(), &sello(3)),
+        ];
+        let dentro = dentro_de_grabaciones(&mensajes);
+        assert!(dentro.contains("v") && dentro.contains("f1"));
+        assert_eq!(dentro.len(), 2);
+        // Caso negativo: la pagina de una carpeta normal sigue en el chat.
+        assert!(!dentro.contains("a"));
+        assert!(dentro_de_grabaciones(&mensajes[..2]).is_empty());
     }
 }
