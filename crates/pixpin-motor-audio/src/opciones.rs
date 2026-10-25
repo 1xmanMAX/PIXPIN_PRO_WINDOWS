@@ -76,7 +76,7 @@ pub struct Opciones {
     /// sonido del equipo y colada por el microfono). Se le pide al sistema:
     /// en Windows, el microfono se abre como de comunicaciones
     /// (`AudioCategory_Communications`), que activa el cancelador de eco del
-    /// controlador o el de Windows 11 (Voice Clarity), y en Windows 11 22H2+
+    /// controlador (o el de Windows 11 24H2, Voice Clarity), y en Windows 11 22H2+
     /// se le dice que la referencia son los altavoces por defecto
     /// (`IAcousticEchoCancellationControl`); sin que Windows baje el volumen
     /// de lo demas (`SetDuckingPreference`). Cambia el sonido del microfono

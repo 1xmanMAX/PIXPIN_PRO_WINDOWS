@@ -6,16 +6,23 @@
 //! de la reunion, que se suscribe a su PCM. La arquitectura entera esta en
 //! `docs/motor-de-audio.md`; aqui, el reparto:
 //!
-//! - **Aritmetica pura, probada en Linux**: [`formato`] (leer el
-//!   `WAVEFORMATEX` y bajar a mono o estereo), [`anillo`] (la cola sin
-//!   cerrojos entre captura y mezcla), [`reloj`] (rellenar los huecos de
-//!   silencio por el reloj del sistema), [`deriva`] (seguir el reloj de cada
-//!   tarjeta), [`remuestreo`] (seno enventanado polifasico), [`dsp`] (paso
-//!   alto, puerta, realce, limitador), [`nucleo`] (la mezcla), [`pcm`] (el
-//!   reparto a los suscriptores) y [`medidas`].
-//! - **Windows** (`cfg(windows)`): la captura WASAPI de cada fuente en su
-//!   hilo, los avisos de cambio de aparato, la captura por proceso, el
-//!   `.m4a` y [`MotorAudio`], que lo junta todo.
+//! - **Todo lo que no es del sistema, probado en Linux** (y que compila
+//!   para Android sin tocar nada): [`formato`] (leer el `WAVEFORMATEX` y
+//!   bajar a mono o estereo), [`anillo`] (la cola sin cerrojos entre captura
+//!   y mezcla), [`reloj`] (rellenar los huecos de silencio por el reloj del
+//!   sistema, y no rellenar las suspensiones), [`toma`] (colocar cada
+//!   paquete por su fecha), [`deriva`] (seguir el reloj de cada tarjeta),
+//!   [`remuestreo`] (seno enventanado polifasico), [`dsp`] (paso alto,
+//!   puerta, realce, limitador), [`nucleo`] (la mezcla), [`pcm`] (el reparto
+//!   a los suscriptores), [`medidas`], [`plataforma`] (lo que se le pide a
+//!   cada sistema, el bucle de captura con sus reaperturas y el hueco del
+//!   AAC), [`empuje`] (un aparato al que le empujan el sonido, para Android)
+//!   y [`MotorAudio`], que lo junta todo con el [`plataforma::Sistema`] que
+//!   se le de.
+//! - **Windows** (`cfg(windows)`): el sistema de Windows — la captura WASAPI
+//!   de cada fuente, los avisos de cambio de aparato, la captura por proceso
+//!   y el `.m4a` con Media Foundation —, que es el de
+//!   `MotorAudio::empezar`.
 
 pub mod anillo;
 pub mod deriva;

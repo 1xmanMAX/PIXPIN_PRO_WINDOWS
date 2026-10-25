@@ -309,7 +309,7 @@ impl Conversor {
     /// `salida`. Devuelve cuantos marcos escribio: los que quepan en los dos.
     ///
     /// El tipo de muestra se decide **una vez** por llamada y no en cada
-    /// muestra: cada tipo tiene su bucle propio ([`Conversor::con`] se
+    /// muestra: cada tipo tiene su bucle propio (`Conversor::con` se
     /// instancia para cada lector), sin un `match` por muestra dentro.
     pub fn convertir(&self, datos: &[u8], salida: &mut [f32]) -> usize {
         match self.formato.muestra {
