@@ -474,7 +474,7 @@ impl Banco {
                         }
                         (None, None) => {}
                     }
-                    super::pintar_interruptor(p, v, &d, tema, escala, &textos);
+                    super::pintar_interruptor(p, v, &d, tema, escala, &textos, false);
                 })
                 .expect("fotograma");
             if vuelta == 4 {
@@ -491,6 +491,124 @@ impl Banco {
         crate::tema_cosmos::fijar(false);
         destino.leer_rgba().expect("leer")
     }
+
+    /// La ventana con la pestaña Figuras delante, como la pinta el bucle:
+    /// el chat debajo, la pestaña encima y el interruptor en «Figuras».
+    fn foto_figuras(
+        &self,
+        v: &VistaProyectos,
+        f: &super::super::figuras::VistaFiguras,
+        fichas: &[Ficha],
+        (ancho, alto): (u32, u32),
+        claro: bool,
+    ) -> (u32, u32, Vec<u8>) {
+        let destino = FueraDePantalla::nuevo(&self.motor, &self.d3d, ancho, alto).expect("destino");
+        let tema: &Tema = if claro { &CLARO } else { &OSCURO };
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let escala = 100;
+        let d = pixpin_ui::chat::Disposicion::calcular(
+            ancho,
+            alto,
+            escala,
+            pixpin_ui::chat::ancho_inicial(ancho, escala),
+            f.vista(),
+        );
+        let (cw, ch) = crate::tema_cosmos::tamano_de(&d);
+        crate::tema_cosmos::preparar(&self.motor, cw, ch);
+        let marcados = Default::default();
+        let orden = filtrar(fichas, "");
+        let busqueda = crate::caja_texto::CajaLinea::nueva();
+        for _ in 0..2 {
+            let lista = Lista {
+                fichas,
+                orden: &orden,
+                scroll: 0,
+                sobre: None,
+                elegida: None,
+                ahora: 0,
+                textos: &textos,
+                busqueda: &busqueda,
+                buscando: false,
+                marcados: &marcados,
+            };
+            self.motor
+                .dibujar(&destino.destino, |p| {
+                    pintar_chat(
+                        p,
+                        &d,
+                        tema,
+                        papel_de(0, claro),
+                        escala,
+                        &textos,
+                        None,
+                        &lista,
+                    );
+                    f.pintar(p, &d, tema, claro, escala, &textos);
+                    super::pintar_interruptor(p, v, &d, tema, escala, &textos, true);
+                })
+                .expect("fotograma");
+        }
+        destino.esperar_gpu().expect("GPU");
+        crate::tema_cosmos::soltar();
+        destino.leer_rgba().expect("leer")
+    }
+}
+
+/// **La pestaña Figuras**, con la misma cara que Proyectos (26-oct-2026):
+/// ancha de dia y de noche, un grupo elegido, la rejilla, buscando y
+/// estrecha con la lista y con la tarjeta.
+///
+/// ```text
+/// cargo test -p pixpin --bin pixpinmax muestra_de_figuras -- --ignored --nocapture --test-threads=1
+/// ```
+#[test]
+#[ignore = "necesita GPU y sesion de escritorio"]
+fn muestra_de_figuras() {
+    let (u, _) = almacen_de_ejemplo();
+    let fichas: Vec<Ficha> = Indice::leer(u.raiz())
+        .ordenadas()
+        .into_iter()
+        .cloned()
+        .collect();
+    let b = Banco::nuevo();
+    let v = VistaProyectos::nueva(&u);
+    let mut serie = pixpin_motor2d::figuras_de_serie::catalogo();
+    // Una del usuario, para ver «Mis figuras» y su papelera.
+    serie.insert(
+        0,
+        pixpin_motor2d::biblioteca::FiguraGuardada {
+            id: "mia".into(),
+            nombre: "Mi diario".into(),
+            elementos: serie[40].elementos.clone(),
+        },
+    );
+    let mut f = super::super::figuras::VistaFiguras::con(serie);
+    let ancha = (1100, 720);
+    f.como(None, false, "", false);
+    guardar("figuras-todas-claro", b.foto_figuras(&v, &f, &fichas, ancha, true));
+    guardar("figuras-todas-oscuro", b.foto_figuras(&v, &f, &fichas, ancha, false));
+    f.como(Some("UML"), false, "", true);
+    guardar("figuras-uml-claro", b.foto_figuras(&v, &f, &fichas, ancha, true));
+    f.como(Some("UML"), true, "", true);
+    guardar("figuras-uml-rejilla-claro", b.foto_figuras(&v, &f, &fichas, ancha, true));
+    f.como(Some(""), false, "", true);
+    guardar("figuras-mias-claro", b.foto_figuras(&v, &f, &fichas, ancha, true));
+    f.como(None, false, "puerta", false);
+    guardar("figuras-buscando-claro", b.foto_figuras(&v, &f, &fichas, ancha, true));
+    f.como(None, false, "", false);
+    guardar(
+        "figuras-estrecha-lista-claro",
+        b.foto_figuras(&v, &f, &fichas, (480, 820), true),
+    );
+    f.como(Some("Electrónica"), false, "", true);
+    guardar(
+        "figuras-estrecha-tarjeta-oscuro",
+        b.foto_figuras(&v, &f, &fichas, (480, 820), false),
+    );
+    guardar(
+        "figuras-apaisada-claro",
+        b.foto_figuras(&v, &f, &fichas, (1400, 560), true),
+    );
 }
 
 /// Lee las hojas de los proyectos en este hilo (en la ventana van en el

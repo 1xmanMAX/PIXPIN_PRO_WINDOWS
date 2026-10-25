@@ -1371,6 +1371,10 @@ figuras-formas = { $n } shapes
 figuras-de-texto = { $n } texts
 figuras-trazos = { $n } hand strokes
 figuras-otras = { $n } others
+figuras-cuantas = { $n ->
+    [one] 1 shape
+   *[other] { $n } shapes
+}
 bandeja-figuras = Shapes…
 proyectos-hojas = { $total } sheets
 proyectos-hojas-de = { $anotadas } of { $total } sheets annotated

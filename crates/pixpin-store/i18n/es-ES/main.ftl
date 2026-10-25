@@ -1405,6 +1405,10 @@ figuras-formas = { $n } formas
 figuras-de-texto = { $n } textos
 figuras-trazos = { $n } trazos a mano
 figuras-otras = { $n } otras
+figuras-cuantas = { $n ->
+    [one] 1 figura
+   *[other] { $n } figuras
+}
 bandeja-figuras = Figuras…
 proyectos-hojas = { $total } hojas
 proyectos-hojas-de = { $anotadas } de { $total } hojas anotadas

@@ -1,95 +1,80 @@
-//! **La ventana de las figuras** (24-oct-2026, el usuario: «la
-//! visualizacion de las figuras … que sea como una galeria donde yo pueda
+//! **La pestaña Figuras de la ventana del chat** (24-oct-2026, el usuario:
+//! «la visualizacion de las figuras … que sea como una galeria donde yo pueda
 //! ver las figuras asi realizadas agrupadas, de forma que sea todo intuitivo
-//! y muy rapido de ver»; 25-oct: «las figuras deberian aparecer como una
-//! ventana separada, y deberia haber como un previsualizador de las figuras
-//! y de todo lo que tiene»).
+//! y muy rapido de ver»; 26-oct: «la pestaña de figuras tiene que tener la
+//! misma ui que las demas pestañas»).
 //!
-//! Se abre con la tercera parte del interruptor de la barra del chat
-//! (Chat · Proyectos · **Figuras**) y desde el menu de la bandeja. Una sola a
-//! la vez, en su hilo, como la galeria de capturas:
+//! Es la tercera parte del interruptor de la barra (Chat · Proyectos ·
+//! **Figuras**) y se queda en la misma ventana, con la misma cara que
+//! Proyectos (`proyectos.rs`):
 //!
-//! - **A la izquierda, los grupos** con su cuenta: «Todas», «Mis figuras» y
-//!   las categorias (la categoria va en el nombre, «Diario · Gratitud», ver
-//!   `figuras_de_serie::categoria_de`).
-//! - **En el centro, cada grupo con su titulo** y sus figuras en rejilla,
-//!   dibujadas de verdad (las mismas ordenes que la vista previa de un lienzo
-//!   en el chat), con su nombre. Arriba, un buscador: se escribe y filtra.
-//! - **A la derecha, el previsualizador** de la elegida: en grande, con su
-//!   grupo, lo que mide, de que piezas esta hecha y los textos que lleva. Las
-//!   del usuario se pueden borrar (dos clics).
+//! - **A la izquierda, la lista de grupos** en el sitio de la de proyectos,
+//!   con sus filas: el circulo de color con las iniciales, el nombre y
+//!   cuantas figuras tiene. «Todas» arriba, luego «Mis figuras» y las
+//!   categorias (la categoria va en el nombre, «Diario · Gratitud», ver
+//!   `figuras_de_serie::categoria_de`). El buscador de arriba filtra por
+//!   nombre, grupo y textos.
+//! - **A la derecha, la tarjeta del grupo** como la de un proyecto: su
+//!   nombre grande, cuantas tiene, la elegida en grande (la portada, con lo
+//!   que mide y de que esta hecha) y la tira con todas debajo; el boton de
+//!   rejilla las ensena todas a la vez. Las del usuario se pueden borrar
+//!   (la papelera, dos clics).
 //!
-//! Teclado: escribir busca, las flechas recorren, Escape borra lo buscado y,
-//! sin nada buscado, cierra.
+//! Estrecha, un solo panel: la lista, o la tarjeta con el circulo de volver.
+//! Teclado: escribir busca, ←/→ recorren las figuras, ↑/↓ los grupos y
+//! Escape borra lo buscado.
 
 use std::cell::{Cell, RefCell};
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::time::{Duration, Instant, SystemTime};
 
-use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::biblioteca::{self, FiguraGuardada};
 use pixpin_motor2d::figuras_de_serie::{CATEGORIAS, categoria_de, es_de_serie};
-use pixpin_render::{Color, Pintor, RectF, Superficie};
-use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
-use pixpin_store::{Catalogo, Idioma};
+use pixpin_render::icono::{Icono, Pintura, TrazoIcono};
+use pixpin_render::letras::Letra;
+use pixpin_render::{Color, Pintor, RectF};
+use pixpin_store::Catalogo;
+use pixpin_ui::chat::{self, Disposicion};
+use pixpin_ui::proyectos as ui;
 
-use super::{CLARO, LienzoVisto, OSCURO, Tema, con_alfa, mi, pintar_lienzo, rf};
-use crate::overlay::Recursos;
+use super::proyectos::{CLARA, OSCURA, Paleta};
+use super::{
+    LienzoVisto, Tema, color_avatar, colores_de_caja, con_alfa, encoger, giro_de_rueda, iniciales,
+    mi, pildora, pintar_lienzo, redaccion, rf,
+};
+use crate::caja_dibujo::hex;
 
-/// Lo que mide una ficha de la rejilla (logicos): el dibujo y su nombre.
-const CELDA_ANCHO: u32 = 156;
-const CELDA_DIBUJO: u32 = 112;
-const CELDA_NOMBRE: u32 = 30;
-const HUECO: u32 = 12;
-const MARGEN: u32 = 18;
-const BARRA: u32 = 48;
-const GRUPOS: u32 = 210;
-const FILA_GRUPO: u32 = 36;
-const PREVIA: u32 = 380;
-const ALTO_TITULO: u32 = 32;
 /// El grupo de lo que no lleva categoria: lo del usuario.
 pub(super) const MIS_FIGURAS: &str = "";
 
 const VK_ESCAPE: u32 = 0x1B;
-const VK_RETROCESO: u32 = 0x08;
 const VK_IZQUIERDA: u32 = 0x25;
 const VK_ARRIBA: u32 = 0x26;
 const VK_DERECHA: u32 = 0x27;
 const VK_ABAJO: u32 = 0x28;
 
-/// La ventana abierta (su HWND), -1 mientras nace, 0 sin ventana.
-static ABIERTA: AtomicIsize = AtomicIsize::new(0);
+/// El papel de las figuras: blanco, el del lienzo de fabrica.
+const PAPEL: Color = hex(0xffffff);
+/// El rojo de borrar.
+const ROJO: Color = hex(0xd9534f);
 
-/// **Abre la ventana de las figuras**, o la trae delante si ya estaba.
-pub(crate) fn abrir(idioma: Idioma) {
-    let ya = ABIERTA.load(Ordering::SeqCst);
-    if ya > 0 {
-        VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
-        return;
-    }
-    if ya < 0 {
-        return;
-    }
-    ABIERTA.store(-1, Ordering::SeqCst);
-    let lanzado = std::thread::Builder::new()
-        .name("figuras".into())
-        .spawn(move || {
-            let _com = pixpin_shell::ComDelHilo::iniciar();
-            let textos = Catalogo::nuevo(idioma);
-            let mut g = Galeria::default();
-            g.leer();
-            let hecho =
-                crate::dispositivo_perdido::con_recursos("figuras", |r| bucle(r, &textos, &mut g));
-            if let Err(e) = hecho {
-                tracing::warn!(?e, "no se pudo abrir la ventana de las figuras");
-            }
-            ABIERTA.store(0, Ordering::SeqCst);
-        });
-    if let Err(e) = lanzado {
-        tracing::warn!(?e, "no se pudo lanzar el hilo de las figuras");
-        ABIERTA.store(0, Ordering::SeqCst);
-    }
-}
+/// `view_carousel` (`src/action/view_carousel`), el mismo que el de la
+/// tarjeta de Proyectos: vuelve de la rejilla a la portada.
+const VIEW_CAROUSEL: Icono = Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[TrazoIcono {
+        d: "M7 19h10V4H7v15zm-5-2h4V6H2v11zM18 6v11h4V6h-4z",
+        relleno: Pintura::Actual,
+        trazo: Pintura::Nada,
+        grosor: 0.0,
+        extremo_redondo: false,
+        union_redonda: false,
+        opacidad: 1.0,
+        par_impar: false,
+        matriz: None,
+        mascara: None,
+    }],
+};
 
 // --- Lo de cada figura -------------------------------------------------------
 
@@ -237,86 +222,641 @@ pub(super) fn plegar(s: &str) -> String {
         .collect()
 }
 
-// --- El estado ---------------------------------------------------------------
 
+// --- La pestaña ------------------------------------------------------------------
+
+/// Lo que se puede pulsar, apuntado al pintar: lo que no se ve no se pulsa.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Zona {
-    Grupo(Option<String>),
-    Figura(usize),
+    /// Una fila de la lista: su grupo (`None`, todas).
+    Fila(Option<String>),
+    /// El circulo de volver a la lista, con la ventana estrecha.
+    Volver,
+    Rejilla,
     Borrar,
-    Cerrar,
-    Barra,
+    Portada,
+    /// El hueco de la tira o de la rejilla: ahi la rueda la corre de lado.
+    Tira,
+    /// Una miniatura: la figura, por su puesto en `figuras`.
+    Figura(usize),
 }
 
-struct Galeria {
+/// Una fila de la lista: el grupo (`None`, todas), su nombre y cuantas.
+struct Fila {
+    grupo: Option<String>,
+    nombre: String,
+    cuantas: usize,
+}
+
+/// La pestaña Figuras: lo leido de la biblioteca y lo que se esta mirando.
+pub(super) struct VistaFiguras {
     figuras: Vec<Vista>,
-    /// El grupo elegido a la izquierda; `None`, todas.
-    filtro: Option<String>,
-    consulta: String,
+    /// El grupo de la tarjeta; `None`, todas.
+    grupo: Option<String>,
+    /// El buscador de la lista, la caja de una linea comun.
+    pub(super) busqueda: redaccion::CajaLinea,
+    pub(super) buscando: bool,
+    /// La figura de la portada, por su puesto en `figuras`.
+    en_foco: Option<usize>,
+    rejilla: bool,
+    /// Lo corrida que esta la tira, y si tiene que ensenar la del foco.
+    corrida: Cell<i32>,
+    ver: Cell<bool>,
+    /// Lo bajada que esta la lista.
     scroll: i32,
-    elegida: Option<usize>,
+    /// La fila bajo el raton, por su grupo.
+    sobre: Option<Option<String>>,
     borrar_pedido: bool,
-    raton: Punto,
+    /// Con la ventana estrecha: la tarjeta en vez de la lista.
+    en_tarjeta: bool,
     zonas: RefCell<Vec<(Rect, Zona)>>,
-    alto_total: Cell<i32>,
-    /// Las que se ven, en el orden en que se pintan (para las flechas).
-    visibles: RefCell<Vec<usize>>,
-    columnas: Cell<usize>,
+    /// Donde quedo la tira en el ultimo fotograma, para la rueda.
+    tira: Cell<Option<(Rect, ui::Mosaico)>>,
+    /// Cuando se leyo la biblioteca, para releerla si cambia por fuera (una
+    /// figura guardada en un lienzo, llegada del movil).
+    leida: Option<SystemTime>,
+    mirado: Instant,
 }
 
-impl Default for Galeria {
-    fn default() -> Self {
-        Galeria {
-            figuras: Vec::new(),
-            filtro: None,
-            consulta: String::new(),
-            scroll: 0,
-            elegida: None,
-            borrar_pedido: false,
-            raton: Punto { x: -1, y: -1 },
-            zonas: RefCell::new(Vec::new()),
-            alto_total: Cell::new(0),
-            visibles: RefCell::new(Vec::new()),
-            columnas: Cell::new(1),
-        }
+fn modificada() -> Option<SystemTime> {
+    std::fs::metadata(crate::biblioteca_figuras::ruta())
+        .and_then(|m| m.modified())
+        .ok()
+}
+
+impl VistaFiguras {
+    /// La pestaña con la biblioteca de las figuras guardadas.
+    pub(super) fn nueva() -> VistaFiguras {
+        let mut v = VistaFiguras::con(todas());
+        v.leida = modificada();
+        v
     }
-}
 
-impl Galeria {
-    fn leer(&mut self) {
-        let elegida = self
-            .elegida
+    /// La pestaña con estas figuras (las pruebas no miran el disco).
+    pub(super) fn con(figuras: Vec<FiguraGuardada>) -> VistaFiguras {
+        let mut v = VistaFiguras {
+            figuras: Vec::new(),
+            grupo: None,
+            busqueda: redaccion::CajaLinea::nueva(),
+            buscando: false,
+            en_foco: None,
+            rejilla: false,
+            corrida: Cell::new(0),
+            ver: Cell::new(false),
+            scroll: 0,
+            sobre: None,
+            borrar_pedido: false,
+            en_tarjeta: false,
+            zonas: RefCell::new(Vec::new()),
+            tira: Cell::new(None),
+            leida: None,
+            mirado: Instant::now(),
+        };
+        v.poner(figuras);
+        v
+    }
+
+    fn poner(&mut self, figuras: Vec<FiguraGuardada>) {
+        let antes = self
+            .en_foco
             .and_then(|i| self.figuras.get(i))
             .map(|f| f.id.clone());
-        let figuras = biblioteca::cargar(&crate::biblioteca_figuras::ruta());
         self.figuras = figuras.iter().map(vista_de).collect();
         // Las del usuario primero y despues las categorias en su orden.
         self.figuras.sort_by_key(|f| orden_del_grupo(&f.grupo));
-        if let Some(g) = &self.filtro
+        if let Some(g) = &self.grupo
             && !self.figuras.iter().any(|f| &f.grupo == g)
         {
-            self.filtro = None;
+            self.grupo = None;
         }
-        self.elegida = elegida
-            .and_then(|id| self.figuras.iter().position(|f| f.id == id))
-            .or(if self.figuras.is_empty() {
-                None
-            } else {
-                Some(0)
-            });
+        self.en_foco = antes.and_then(|id| self.figuras.iter().position(|f| f.id == id));
     }
 
-    /// Los grupos que hay, en orden, con cuantas figuras tiene cada uno.
-    fn grupos(&self) -> Vec<(String, usize)> {
-        let mut v: Vec<(String, usize)> = Vec::new();
-        for f in &self.figuras {
-            match v.iter_mut().find(|(g, _)| *g == f.grupo) {
+    /// Si la biblioteca cambio por fuera, se relee (mirandolo cada dos
+    /// segundos como mucho). Devuelve si hay que repintar.
+    pub(super) fn latido(&mut self) -> bool {
+        if self.mirado.elapsed() < Duration::from_secs(2) {
+            return false;
+        }
+        self.mirado = Instant::now();
+        let ahora = modificada();
+        if ahora == self.leida {
+            return false;
+        }
+        self.leida = ahora;
+        self.poner(todas());
+        true
+    }
+
+    /// Lo que ocupa la ventana estrecha: la lista o la tarjeta.
+    pub(super) fn vista(&self) -> chat::Vista {
+        if self.en_tarjeta {
+            chat::Vista::SoloChat
+        } else {
+            chat::Vista::SoloLista
+        }
+    }
+
+    fn consulta(&self) -> &str {
+        self.busqueda.texto()
+    }
+
+    /// Las filas de la lista: «Todas» y los grupos con algo que case con lo
+    /// buscado, con cuantas tienen.
+    fn filas(&self, textos: &Catalogo) -> Vec<Fila> {
+        let q = self.consulta();
+        let mut grupos: Vec<(String, usize)> = Vec::new();
+        let mut total = 0;
+        for f in self.figuras.iter().filter(|f| casa(f, q)) {
+            total += 1;
+            match grupos.iter_mut().find(|(g, _)| *g == f.grupo) {
                 Some((_, n)) => *n += 1,
-                None => v.push((f.grupo.clone(), 1)),
+                None => grupos.push((f.grupo.clone(), 1)),
+            }
+        }
+        let mut v = vec![Fila {
+            grupo: None,
+            nombre: textos.t("figuras-todas"),
+            cuantas: total,
+        }];
+        v.extend(grupos.into_iter().map(|(g, n)| Fila {
+            nombre: rotulo_del_grupo(&g, textos),
+            grupo: Some(g),
+            cuantas: n,
+        }));
+        v
+    }
+
+    /// Los grupos de la lista en su orden (`None`, todas), sin componer
+    /// nombres: para ↑ y ↓.
+    fn grupos(&self) -> Vec<Option<String>> {
+        let q = self.consulta();
+        let mut v = vec![None];
+        for f in self.figuras.iter().filter(|f| casa(f, q)) {
+            let g = Some(f.grupo.clone());
+            if !v.contains(&g) {
+                v.push(g);
             }
         }
         v
     }
+
+    /// Las figuras de la tarjeta: las del grupo elegido que casan con lo
+    /// buscado, por su puesto en `figuras`.
+    fn de_la_tarjeta(&self) -> Vec<usize> {
+        let q = self.consulta();
+        (0..self.figuras.len())
+            .filter(|&i| {
+                let f = &self.figuras[i];
+                self.grupo.as_ref().is_none_or(|g| &f.grupo == g) && casa(f, q)
+            })
+            .collect()
+    }
+
+    /// La de la portada: la elegida si esta en la tarjeta, si no la primera.
+    fn foco_en(&self, de: &[usize]) -> Option<usize> {
+        self.en_foco
+            .filter(|i| de.contains(i))
+            .or(de.first().copied())
+    }
+
+    // --- Pintar ----------------------------------------------------------------
+
+    /// La lista de grupos en el sitio de la de proyectos, su buscador, y la
+    /// tarjeta del grupo en el panel derecho. Va encima de lo que pinta el
+    /// chat: la barra, el interruptor y los botones redondos son los suyos.
+    pub(super) fn pintar(
+        &self,
+        p: &Pintor,
+        d: &Disposicion,
+        tema: &Tema,
+        claro: bool,
+        escala: u32,
+        textos: &Catalogo,
+    ) {
+        self.zonas.borrow_mut().clear();
+        self.tira.set(None);
+        let filas = self.filas(textos);
+        self.pintar_lista(p, d, tema, escala, textos, &filas);
+        let pal = if claro { &CLARA } else { &OSCURA };
+        self.pintar_tarjeta(p, d, tema, pal, escala, textos, &filas);
+    }
+
+    fn zona(&self, r: Rect, dentro: Rect, z: Zona) {
+        if let Some(r) = r.interseccion(dentro) {
+            self.zonas.borrow_mut().push((r, z));
+        }
+    }
+
+    fn pintar_lista(
+        &self,
+        p: &Pintor,
+        d: &Disposicion,
+        tema: &Tema,
+        escala: u32,
+        textos: &Catalogo,
+        filas: &[Fila],
+    ) {
+        let e = escala as f32 / 100.0;
+        // El buscador: el mismo sitio y la misma caja que el de proyectos.
+        let caja = d.buscador(escala);
+        if caja.ancho > 0 {
+            p.rellenar_redondeado(rf(caja), chat::BUSCADOR_RADIO as f32 * e, tema.buscador);
+            let margen = chat::BUSCADOR_TEXTO_X as f32 * e;
+            self.busqueda.pintar(
+                p,
+                rf(caja),
+                RectF {
+                    x: caja.x as f32 + margen,
+                    ancho: (caja.ancho as f32 - 2.0 * margen).max(0.0),
+                    ..rf(caja)
+                },
+                chat::BUSCADOR_TAM * e,
+                &textos.t("figuras-buscar"),
+                &colores_de_caja(tema, tema.texto, tema.apagado),
+                self.buscando,
+                Instant::now(),
+            );
+        }
+        if d.filas.ancho == 0 || d.filas.alto == 0 {
+            return;
+        }
+        // Las filas de proyectos (y su «+») quedan debajo: se tapan enteras.
+        crate::tema_cosmos::rellenar_o_cielo(p, rf(d.filas), tema.lista);
+        let linea = (1.0 * e).max(1.0);
+        p.rellenar(
+            RectF {
+                x: d.lista.derecha() as f32 - linea,
+                y: d.filas.y as f32,
+                ancho: linea,
+                alto: d.filas.alto as f32,
+            },
+            tema.separador,
+        );
+        if filas[0].cuantas == 0 {
+            let vacio = if self.figuras.is_empty() {
+                textos.t("figuras-vacia")
+            } else {
+                textos.t("figuras-sin-resultados")
+            };
+            let ancho = d.filas.ancho as f32 - 32.0 * e;
+            let (w, _) = p.medir_texto_ajustado(&vacio, 13.0 * e, ancho);
+            p.texto_ajustado(
+                &vacio,
+                d.filas.x as f32 + (d.filas.ancho as f32 - w) / 2.0,
+                d.filas.y as f32 + 40.0 * e,
+                13.0 * e,
+                ancho,
+                tema.apagado,
+            );
+            return;
+        }
+        p.empujar_recorte(rf(d.filas));
+        let (primera, cuantas) = d.visibles(self.scroll, filas.len(), escala);
+        for (i, f) in filas.iter().enumerate().skip(primera).take(cuantas) {
+            let r = d.fila(i, self.scroll, escala);
+            let elegida = self.grupo == f.grupo;
+            if elegida {
+                p.rellenar(rf(r), tema.fila_elegida);
+            } else if self.sobre.as_ref() == Some(&f.grupo) {
+                p.rellenar(rf(r), tema.fila_sobre);
+            }
+            self.zona(r, d.filas, Zona::Fila(f.grupo.clone()));
+            let partes = chat::partes_fila(r, d.plegada, escala);
+            // El avatar: un circulo de su color con las iniciales, como el
+            // de un proyecto sin logo.
+            let a = rf(partes.avatar);
+            p.rellenar_redondeado(a, a.ancho / 2.0, color_avatar(&f.nombre));
+            let letras = iniciales(&f.nombre);
+            let tam = a.alto * 0.4;
+            let (w, h) = p.medir_texto(&letras, tam);
+            p.texto(
+                &letras,
+                a.x + (a.ancho - w) / 2.0,
+                a.y + (a.alto - h) / 2.0,
+                tam,
+                Color::BLANCO,
+            );
+            if partes.ancho_texto == 0 {
+                continue;
+            }
+            let (nombre_color, cuenta_color) = if elegida {
+                (tema.texto_elegido, tema.texto_elegido)
+            } else {
+                (tema.texto, tema.apagado)
+            };
+            p.texto_linea(
+                &f.nombre,
+                partes.nombre.x as f32,
+                partes.nombre.y as f32,
+                chat::TEXTO_TAM * e,
+                partes.ancho_texto as f32,
+                nombre_color,
+            );
+            p.texto_linea(
+                &cuantas_figuras(f.cuantas, textos),
+                partes.resumen.x as f32,
+                partes.resumen.y as f32,
+                chat::TEXTO_TAM * e,
+                partes.ancho_texto as f32,
+                cuenta_color,
+            );
+        }
+        p.soltar_recorte();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn pintar_tarjeta(
+        &self,
+        p: &Pintor,
+        d: &Disposicion,
+        tema: &Tema,
+        pal: &Paleta,
+        escala: u32,
+        textos: &Catalogo,
+        filas: &[Fila],
+    ) {
+        let area = d.chat;
+        if area.ancho == 0 || area.alto == 0 {
+            return;
+        }
+        let e = escala as f32 / 100.0;
+        p.rellenar(rf(area), pal.fondo);
+        let panel = ui::panel(area, d.cabecera_chat.alto, escala, 0);
+        // Estrecha, el circulo de volver del chat lleva a la lista.
+        if d.lista.ancho == 0 {
+            let volver = d.pildoras(escala).volver;
+            pildora(p, tema, rf(volver), e);
+            icono_centrado(p, &mi::ARROW_BACK, volver, 24.0 * e, tema.pildora_texto);
+            self.zona(volver, area, Zona::Volver);
+        }
+        // Sin barra de acciones: la tarjeta se queda tambien con su sitio,
+        // y el mismo margen que a la izquierda.
+        let margen = ui::MARGEN * escala / 100;
+        let visible = Rect {
+            ancho: (area.derecha() - margen as i32 - panel.hueco.x).max(0) as u32,
+            alto: (area.abajo() - margen as i32 - panel.hueco.y).max(0) as u32,
+            ..panel.hueco
+        };
+        let r = visible;
+        p.empujar_recorte(rf(visible));
+        p.rellenar_redondeado(rf(r), ui::RADIO_TARJETA as f32 * e, pal.tarjeta);
+        let nombre = filas
+            .iter()
+            .find(|f| f.grupo == self.grupo)
+            .map(|f| f.nombre.clone())
+            .unwrap_or_else(|| textos.t("figuras-todas"));
+        let de = self.de_la_tarjeta();
+        let hay = !de.is_empty();
+        let foco = self.foco_en(&de);
+        let tuya = foco
+            .and_then(|i| self.figuras.get(i))
+            .is_some_and(|f| !f.de_serie);
+
+        // El nombre grande, en dos lineas como mucho, y cuantas debajo.
+        let provisional = ui::tarjeta(r, escala, 0, hay, self.rejilla);
+        let letra = Letra::de("Segoe UI Semibold");
+        let tam = ui::NOMBRE_TAM * e;
+        let (_, alto) =
+            p.medir_con_letra(&nombre, tam, provisional.texto.ancho.max(1) as f32, &letra);
+        let (_, linea) = p.medir_con_letra("Ag", tam, f32::MAX, &letra);
+        let alto_nombre = alto.min(2.0 * linea).max(linea);
+        let detalle = if self.borrar_pedido && tuya {
+            textos.t("figuras-borrar-seguro")
+        } else {
+            cuantas_figuras(de.len(), textos)
+        };
+        let (_, alto_det) = p.medir_texto(&detalle, ui::DETALLE_TAM * e);
+        let t = ui::tarjeta(
+            r,
+            escala,
+            (alto_nombre + alto_det).ceil() as u32,
+            hay,
+            self.rejilla,
+        );
+        let texto = rf(t.texto);
+        p.empujar_recorte(RectF {
+            alto: alto_nombre,
+            ..texto
+        });
+        p.texto_con_letra(
+            &nombre,
+            texto.x,
+            texto.y,
+            tam,
+            texto.ancho.max(1.0),
+            &letra,
+            pal.texto,
+        );
+        p.soltar_recorte();
+        p.texto_linea(
+            &detalle,
+            texto.x,
+            texto.y + alto_nombre,
+            ui::DETALLE_TAM * e,
+            texto.ancho,
+            if self.borrar_pedido && tuya {
+                ROJO
+            } else {
+                pal.texto_suave
+            },
+        );
+        // La rejilla o una a una, y la papelera si la de la portada es suya:
+        // iconos de 20 donde la de un proyecto lleva los tres puntos.
+        if hay {
+            let icono = if self.rejilla {
+                &VIEW_CAROUSEL
+            } else {
+                &mi::GRID_VIEW
+            };
+            icono_centrado(p, icono, t.rejilla, 20.0 * e, pal.texto);
+            self.zona(t.rejilla, visible, Zona::Rejilla);
+        }
+        if tuya {
+            let color = if self.borrar_pedido { ROJO } else { pal.texto };
+            icono_centrado(p, &mi::DELETE, t.menu, 20.0 * e, color);
+            self.zona(t.menu, visible, Zona::Borrar);
+        }
+        match foco {
+            None => {
+                let vacio = if self.figuras.is_empty() {
+                    textos.t("figuras-vacia")
+                } else {
+                    textos.t("figuras-sin-resultados")
+                };
+                let ancho = t.hojas.ancho as f32 - 32.0 * e;
+                let (w, h) = p.medir_texto_ajustado(&vacio, ui::DETALLE_TAM * e, ancho);
+                p.texto_ajustado(
+                    &vacio,
+                    t.hojas.x as f32 + (t.hojas.ancho as f32 - w) / 2.0,
+                    t.hojas.y as f32 + (t.hojas.alto as f32 - h) / 2.0,
+                    ui::DETALLE_TAM * e,
+                    ancho,
+                    pal.texto_suave,
+                );
+            }
+            Some(foco) if self.rejilla => {
+                let m = ui::rejilla(t.hojas.alto, de.len(), escala);
+                self.pintar_tira(p, pal, escala, &de, t.hojas, m, Some(foco), visible);
+            }
+            Some(foco) => {
+                self.pintar_portada(p, pal, e, textos, foco, t.hojas, visible);
+                let m = if t.apaisada {
+                    ui::tira_en_filas(t.tira.alto, de.len(), escala)
+                } else {
+                    ui::tira(de.len())
+                };
+                self.pintar_tira(p, pal, escala, &de, t.tira, m, Some(foco), visible);
+            }
+        }
+        p.soltar_recorte();
+    }
+
+    /// La figura que se esta mirando, en grande sobre su papel, con su
+    /// nombre, si es de serie o tuya, lo que mide y de que esta hecha.
+    #[allow(clippy::too_many_arguments)]
+    fn pintar_portada(
+        &self,
+        p: &Pintor,
+        pal: &Paleta,
+        e: f32,
+        textos: &Catalogo,
+        n: usize,
+        caja: Rect,
+        visible: Rect,
+    ) {
+        if caja.ancho == 0 || caja.alto == 0 {
+            return;
+        }
+        p.rellenar_redondeado(rf(caja), ui::RADIO_PORTADA as f32 * e, pal.variante);
+        self.zona(caja, visible, Zona::Portada);
+        let Some(f) = self.figuras.get(n) else { return };
+        p.empujar_recorte(rf(caja));
+        let papel = encoger(rf(caja), 10.0 * e);
+        p.rellenar_redondeado(papel, ui::RADIO_HOJA as f32 * e, PAPEL);
+        // La etiqueta va abajo: el dibujo deja su sitio.
+        let tam = ui::PORTADA_ETIQUETA_TAM * e;
+        let origen = if f.de_serie {
+            textos.t("figuras-de-serie")
+        } else {
+            textos.t("figuras-tuya")
+        };
+        let arriba = format!("{} · {}", f.nombre, origen);
+        let abajo = format!(
+            "{:.0} × {:.0} · {}",
+            f.tamano.0,
+            f.tamano.1,
+            resumen_de_piezas(&f.piezas, textos)
+        );
+        let (w1, h1) = p.medir_texto(&arriba, tam);
+        let (w2, h2) = p.medir_texto(&abajo, tam);
+        let alto_etiqueta = h1 + h2 + 8.0 * e;
+        if let Some(dibujo) = &f.dibujo {
+            let mut sitio = encoger(papel, 14.0 * e);
+            sitio.alto = (sitio.alto - alto_etiqueta).max(1.0);
+            pintar_lienzo(p, dibujo, sitio, None);
+        }
+        let w = w1.max(w2).min(caja.ancho as f32 - 32.0 * e).max(0.0);
+        let etiqueta = RectF {
+            x: caja.x as f32 + 8.0 * e,
+            y: caja.abajo() as f32 - 8.0 * e - alto_etiqueta,
+            ancho: w + 16.0 * e,
+            alto: alto_etiqueta,
+        };
+        p.rellenar_redondeado(etiqueta, 6.0 * e, con_alfa(pal.fondo, 0.85));
+        p.texto_linea(
+            &arriba,
+            etiqueta.x + 8.0 * e,
+            etiqueta.y + 4.0 * e,
+            tam,
+            w + 1.0,
+            pal.texto,
+        );
+        p.texto_linea(
+            &abajo,
+            etiqueta.x + 8.0 * e,
+            etiqueta.y + 4.0 * e + h1,
+            tam,
+            w + 1.0,
+            pal.texto_suave,
+        );
+        p.soltar_recorte();
+    }
+
+    /// La tira (o la rejilla): las figuras de la tarjeta en miniatura, en su
+    /// hueco, que se corre de lado con la rueda.
+    #[allow(clippy::too_many_arguments)]
+    fn pintar_tira(
+        &self,
+        p: &Pintor,
+        pal: &Paleta,
+        escala: u32,
+        de: &[usize],
+        area: Rect,
+        m: ui::Mosaico,
+        foco: Option<usize>,
+        visible: Rect,
+    ) {
+        if area.ancho == 0 || area.alto == 0 {
+            return;
+        }
+        let maximo = m.desplazamiento_maximo(area.ancho, escala).max(0);
+        let mut corrida = self.corrida.get();
+        if self.ver.replace(false)
+            && let Some(pos) = foco.and_then(|f| de.iter().position(|i| *i == f))
+        {
+            corrida = m.para_ver(pos, area.ancho, corrida, escala);
+        }
+        let corrida = corrida.clamp(0, maximo);
+        self.corrida.set(corrida);
+        self.tira.set(Some((area, m)));
+        let dentro = area.interseccion(visible);
+        if let Some(r) = dentro {
+            self.zonas.borrow_mut().push((r, Zona::Tira));
+        }
+        let e = escala as f32 / 100.0;
+        p.empujar_recorte(rf(area));
+        for x in m.columnas_visibles(area.ancho, corrida, escala) {
+            for fila in 0..m.filas {
+                let Some(k) = m.indice(x, fila) else { continue };
+                let n = de[k];
+                let celda = m.celda(area, x, fila, corrida, escala);
+                self.miniatura(p, pal, e, n, celda, foco == Some(n));
+                if let Some(dentro) = dentro {
+                    self.zona(celda, dentro, Zona::Figura(n));
+                }
+            }
+        }
+        p.soltar_recorte();
+    }
+
+    /// Una miniatura de la tira: la figura sobre su papel, el marco del
+    /// primario si es la de la portada y su nombre debajo.
+    fn miniatura(&self, p: &Pintor, pal: &Paleta, e: f32, n: usize, celda: Rect, en_foco: bool) {
+        let Some(f) = self.figuras.get(n) else { return };
+        let r = rf(celda);
+        p.rellenar_redondeado(r, ui::RADIO_HOJA as f32 * e, PAPEL);
+        if let Some(d) = &f.dibujo {
+            pintar_lienzo(p, d, encoger(r, 6.0 * e), None);
+        }
+        if en_foco {
+            p.trazar(encoger(r, 1.0 * e), 2.0 * e, pal.primario);
+        } else {
+            p.trazar(encoger(r, 0.5 * e), 1.0 * e, pal.filo);
+        }
+        let tam = ui::ETIQUETA_TAM * e;
+        let (w, _) = p.medir_texto(&f.nombre, tam);
+        p.texto_linea(
+            &f.nombre,
+            r.x + ((r.ancho - w) / 2.0).max(0.0),
+            r.y + r.alto + 2.0 * e,
+            tam,
+            r.ancho,
+            pal.texto,
+        );
+    }
+
+    // --- Lo que hace el usuario --------------------------------------------------
 
     fn zona_en(&self, l: Punto) -> Option<Zona> {
         self.zonas
@@ -327,17 +867,26 @@ impl Galeria {
             .map(|(_, z)| z.clone())
     }
 
-    fn pulsar(&mut self, l: Punto, vivo: &mut bool) -> Option<Zona> {
+    /// Un clic en la lista o en la tarjeta. Devuelve si hay que repintar.
+    pub(super) fn pulsar(&mut self, l: Punto) -> bool {
         let zona = self.zona_en(l);
         if zona != Some(Zona::Borrar) {
             self.borrar_pedido = false;
         }
-        match &zona {
-            Some(Zona::Grupo(g)) => {
-                self.filtro = g.clone();
-                self.scroll = 0;
+        match zona {
+            Some(Zona::Fila(g)) => {
+                if self.grupo != g {
+                    self.grupo = g;
+                    self.en_foco = None;
+                    self.corrida.set(0);
+                }
+                self.en_tarjeta = true;
             }
-            Some(Zona::Figura(i)) => self.elegida = Some(*i),
+            Some(Zona::Volver) => self.en_tarjeta = false,
+            Some(Zona::Rejilla) => {
+                self.rejilla = !self.rejilla;
+                self.ver.set(true);
+            }
             Some(Zona::Borrar) => {
                 if self.borrar_pedido {
                     self.borrar();
@@ -345,32 +894,150 @@ impl Galeria {
                     self.borrar_pedido = true;
                 }
             }
-            Some(Zona::Cerrar) => *vivo = false,
-            _ => {}
+            // En la rejilla, elegir una la sube a la portada, como en
+            // Proyectos.
+            Some(Zona::Figura(i)) => {
+                self.en_foco = Some(i);
+                if self.rejilla {
+                    self.rejilla = false;
+                }
+                self.ver.set(true);
+            }
+            Some(Zona::Portada | Zona::Tira) | None => return false,
         }
-        zona
+        true
     }
 
-    /// Las flechas: a la de al lado o a la de arriba/abajo en la rejilla.
-    fn mover_eleccion(&mut self, dx: i32, dy: i32) {
-        let v = self.visibles.borrow().clone();
-        if v.is_empty() {
-            return;
-        }
-        let actual = self
-            .elegida
-            .and_then(|e| v.iter().position(|i| *i == e))
-            .unwrap_or(0) as i32;
-        let paso = dx + dy * self.columnas.get().max(1) as i32;
-        let nueva = (actual + paso).clamp(0, v.len() as i32 - 1);
-        self.elegida = Some(v[nueva as usize]);
+    /// El raton se mueve: el resalte de la fila de debajo.
+    pub(super) fn mover(&mut self, l: Punto) -> bool {
+        let sobre = match self.zona_en(l) {
+            Some(Zona::Fila(g)) => Some(g),
+            _ => None,
+        };
+        let cambia = sobre != self.sobre;
+        self.sobre = sobre;
+        cambia
     }
 
-    /// Quita de la biblioteca la elegida (solo las del usuario).
+    /// La rueda: sobre la lista la baja, sobre la tira la corre de lado y
+    /// sobre la portada pasa a la figura de al lado.
+    pub(super) fn rueda(
+        &mut self,
+        l: Punto,
+        delta: i32,
+        d: &Disposicion,
+        escala: u32,
+        textos: &Catalogo,
+    ) -> bool {
+        if d.filas.contiene(l) {
+            let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
+            let n = self.filas(textos).len();
+            let nuevo = d.scroll_ajustado(self.scroll - giro_de_rueda(delta, paso), n, escala);
+            let cambia = nuevo != self.scroll;
+            self.scroll = nuevo;
+            return cambia;
+        }
+        match self.zona_en(l) {
+            Some(Zona::Tira | Zona::Figura(_)) => {
+                let Some((area, m)) = self.tira.get() else {
+                    return false;
+                };
+                let paso = (ui::ANCHO_COLUMNA * escala / 100) as i32;
+                let maximo = m.desplazamiento_maximo(area.ancho, escala).max(0);
+                let nueva = (self.corrida.get() - giro_de_rueda(delta, paso)).clamp(0, maximo);
+                let cambia = nueva != self.corrida.get();
+                self.corrida.set(nueva);
+                cambia
+            }
+            Some(Zona::Portada) => self.paso(if delta < 0 { 1 } else { -1 }),
+            _ => false,
+        }
+    }
+
+    /// Las teclas de la pestaña (sin el buscador): devuelve si era suya.
+    pub(super) fn tecla(&mut self, vk: u32) -> bool {
+        match vk {
+            VK_IZQUIERDA => {
+                self.paso(-1);
+                true
+            }
+            VK_DERECHA => {
+                self.paso(1);
+                true
+            }
+            VK_ARRIBA => {
+                self.grupo_vecino(-1);
+                true
+            }
+            VK_ABAJO => {
+                self.grupo_vecino(1);
+                true
+            }
+            VK_ESCAPE if !self.consulta().is_empty() => {
+                self.busqueda.vaciar();
+                self.buscado();
+                true
+            }
+            VK_ESCAPE if self.en_tarjeta => {
+                self.en_tarjeta = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Pone la pestaña como la dejaria el usuario, para las muestras.
+    #[cfg(test)]
+    pub(super) fn como(&mut self, grupo: Option<&str>, rejilla: bool, buscar: &str, en_tarjeta: bool) {
+        self.busqueda.poner_texto(buscar);
+        self.buscando = !buscar.is_empty();
+        self.grupo = grupo.map(String::from);
+        self.rejilla = rejilla;
+        self.en_tarjeta = en_tarjeta;
+        self.en_foco = None;
+        self.corrida.set(0);
+    }
+
+    /// Lo buscado cambio: la lista y la tarjeta vuelven a «Todas».
+    pub(super) fn buscado(&mut self) {
+        self.grupo = None;
+        self.en_foco = None;
+        self.scroll = 0;
+        self.corrida.set(0);
+    }
+
+    /// La figura de al lado en la tarjeta.
+    fn paso(&mut self, k: i32) -> bool {
+        let de = self.de_la_tarjeta();
+        let Some(actual) = self.foco_en(&de) else {
+            return false;
+        };
+        let pos = de.iter().position(|i| *i == actual).unwrap_or(0) as i32;
+        let nueva = de[(pos + k).clamp(0, de.len() as i32 - 1) as usize];
+        let cambia = nueva != actual;
+        self.en_foco = Some(nueva);
+        self.ver.set(true);
+        cambia
+    }
+
+    /// El grupo de al lado en la lista.
+    fn grupo_vecino(&mut self, k: i32) {
+        let grupos = self.grupos();
+        let pos = grupos.iter().position(|g| *g == self.grupo).unwrap_or(0) as i32;
+        let nuevo = grupos[(pos + k).clamp(0, grupos.len() as i32 - 1) as usize].clone();
+        if nuevo != self.grupo {
+            self.grupo = nuevo;
+            self.en_foco = None;
+            self.corrida.set(0);
+        }
+    }
+
+    /// Quita de la biblioteca la de la portada (solo las del usuario).
     fn borrar(&mut self) {
         self.borrar_pedido = false;
+        let de = self.de_la_tarjeta();
         let Some(f) = self
-            .elegida
+            .foco_en(&de)
             .and_then(|i| self.figuras.get(i))
             .filter(|f| !f.de_serie)
         else {
@@ -381,540 +1048,33 @@ impl Galeria {
         let antes = todas.len();
         todas.retain(|t| t.id != f.id);
         if todas.len() != antes && crate::biblioteca_figuras::guardar(&ruta, &todas) {
-            tracing::info!(nombre = %f.nombre, "figura borrada desde la ventana de figuras");
+            tracing::info!(nombre = %f.nombre, "figura borrada desde la pestaña de figuras");
         }
-        self.elegida = None;
-        self.leer();
+        self.en_foco = None;
+        self.poner(todas);
+        self.leida = modificada();
     }
 }
 
-// --- La ventana ----------------------------------------------------------------
-
-fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> {
-    let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
-    let monitor = monitores
-        .monitor_en(pixpin_shell::posicion_del_cursor())
-        .or_else(|| monitores.principal())
-        .context("sin monitor")?
-        .to_owned();
-    let escala = monitor.escala_por_cien;
-    let mut marco =
-        crate::ventanita::centrado(monitor.area_trabajo, 1320, 840, monitor.escala_por_cien);
-    let mut ventana = VentanaOverlay::nueva_normal(marco, &textos.t("figuras-titulo"))
-        .context("no se pudo abrir la ventana de las figuras")?;
-    let motor = recursos.motor();
-    let superficie = Superficie::nueva(
-        &motor,
-        &recursos.d3d(),
-        ventana.handle(),
-        marco.ancho,
-        marco.alto,
-    )
-    .context("sin superficie para las figuras")?;
-    ventana.mostrar();
-    ventana.enfocar();
-    ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
-    tracing::info!(figuras = g.figuras.len(), "ventana de las figuras abierta");
-
-    let mut moviendo: Option<(Punto, Rect)> = None;
-    let mut vivo = true;
-    let mut pintar = true;
-    let mut leida = std::fs::metadata(crate::biblioteca_figuras::ruta())
-        .and_then(|m| m.modified())
-        .ok();
-    let mut mirado = std::time::Instant::now();
-    while vivo {
-        pixpin_shell::overlay::bombear_pendientes();
-        for (hw, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
-            if hw != ventana.handle() {
-                continue;
-            }
-            let local = |p: Punto, m: Rect| Punto {
-                x: p.x - m.x,
-                y: p.y - m.y,
-            };
-            match ev {
-                EventoOverlay::Cerrar => vivo = false,
-                EventoOverlay::RatonMovido(p) => {
-                    if let Some((desde, origen)) = moviendo {
-                        marco = Rect {
-                            x: origen.x + (p.x - desde.x),
-                            y: origen.y + (p.y - desde.y),
-                            ..origen
-                        };
-                        ventana.mover(marco);
-                    }
-                    let l = local(p, marco);
-                    if g.zona_en(l) != g.zona_en(g.raton) {
-                        pintar = true;
-                    }
-                    g.raton = l;
-                }
-                EventoOverlay::BotonPulsado(p) => {
-                    let l = local(p, marco);
-                    g.raton = l;
-                    if g.pulsar(l, &mut vivo) == Some(Zona::Barra) {
-                        moviendo = Some((p, marco));
-                        ventana.capturar_raton();
-                    }
-                    pintar = true;
-                }
-                EventoOverlay::BotonSoltado(_) => {
-                    if moviendo.take().is_some() {
-                        ventana.soltar_raton();
-                    }
-                }
-                EventoOverlay::Rueda(delta) => {
-                    let paso = (CELDA_DIBUJO * escala / 100) as i32;
-                    let nuevo = (g.scroll - delta * paso / 120 * 6 / 10)
-                        .clamp(0, g.alto_total.get().max(0));
-                    if nuevo != g.scroll {
-                        g.scroll = nuevo;
-                        pintar = true;
-                    }
-                }
-                EventoOverlay::Tecla { vk, .. } => {
-                    pintar = true;
-                    match vk {
-                        VK_ESCAPE if !g.consulta.is_empty() => g.consulta.clear(),
-                        VK_ESCAPE => vivo = false,
-                        VK_RETROCESO => {
-                            g.consulta.pop();
-                        }
-                        VK_IZQUIERDA => g.mover_eleccion(-1, 0),
-                        VK_DERECHA => g.mover_eleccion(1, 0),
-                        VK_ARRIBA => g.mover_eleccion(0, -1),
-                        VK_ABAJO => g.mover_eleccion(0, 1),
-                        _ => pintar = false,
-                    }
-                }
-                EventoOverlay::Caracter(c) if !c.is_control() => {
-                    if g.consulta.chars().count() < 40 {
-                        g.consulta.push(c);
-                        g.scroll = 0;
-                    }
-                    pintar = true;
-                }
-                _ => {}
-            }
-        }
-        if !vivo {
-            break;
-        }
-        // La biblioteca cambio por fuera (una figura guardada en un lienzo,
-        // llegada del movil): se relee.
-        if mirado.elapsed() >= std::time::Duration::from_secs(2) {
-            mirado = std::time::Instant::now();
-            let ahora = std::fs::metadata(crate::biblioteca_figuras::ruta())
-                .and_then(|m| m.modified())
-                .ok();
-            if ahora != leida {
-                leida = ahora;
-                g.leer();
-                pintar = true;
-            }
-        }
-        if pintar {
-            pintar = false;
-            let tema = if pixpin_shell::entorno::tema_claro() {
-                &CLARO
-            } else {
-                &OSCURO
-            };
-            if let Ok(d) = superficie.empezar(&motor) {
-                let _ = motor.dibujar(&d, |p: &Pintor| {
-                    pintar_todo(p, g, marco.ancho, marco.alto, tema, escala, textos)
-                });
-                let _ = superficie.presentar();
-            }
-        }
-        pixpin_shell::overlay::esperar_eventos(Some(1_000));
-    }
-    ventana.ocultar();
-    tracing::info!("ventana de las figuras cerrada");
-    Ok(())
+/// «26 figuras».
+fn cuantas_figuras(n: usize, textos: &Catalogo) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("n", n as i64);
+    textos.t_args("figuras-cuantas", &args)
 }
 
-// --- Pintar ----------------------------------------------------------------------
-
-#[allow(clippy::too_many_arguments)]
-fn pintar_todo(
-    p: &Pintor,
-    g: &Galeria,
-    ancho: u32,
-    alto: u32,
-    tema: &Tema,
-    escala: u32,
-    textos: &Catalogo,
-) {
-    let e = escala as f32 / 100.0;
-    let ei = |x: u32| x * escala / 100;
-    let mut zonas = g.zonas.borrow_mut();
-    zonas.clear();
-    let todo = Rect {
-        x: 0,
-        y: 0,
-        ancho,
-        alto,
-    };
-    p.rellenar(rf(todo), tema.chat);
-
-    // La barra: titulo, buscador y cerrar. Lo que no es boton la arrastra.
-    let barra = Rect {
-        alto: ei(BARRA),
-        ..todo
-    };
-    p.rellenar(rf(barra), tema.barra);
-    zonas.push((barra, Zona::Barra));
-    let titulo = format!("{} · {}", textos.t("figuras-titulo"), g.figuras.len());
-    let (_, th) = p.medir_texto(&titulo, 16.0 * e);
-    p.texto(
-        &titulo,
-        ei(MARGEN) as f32,
-        (barra.alto as f32 - th) / 2.0,
-        16.0 * e,
-        tema.texto,
-    );
-    let buscador = Rect {
-        x: ei(GRUPOS + MARGEN) as i32,
-        y: ei(9) as i32,
-        ancho: ei(360),
-        alto: ei(BARRA - 18),
-    };
-    p.rellenar_redondeado(rf(buscador), buscador.alto as f32 / 2.0, tema.buscador);
+/// Un icono de `lado` centrado en `caja`.
+fn icono_centrado(p: &Pintor, icono: &Icono, caja: Rect, lado: f32, color: Color) {
     p.icono(
-        &mi::SEARCH,
+        icono,
         RectF {
-            x: buscador.x as f32 + 10.0 * e,
-            y: buscador.y as f32 + (buscador.alto as f32 - 18.0 * e) / 2.0,
-            ancho: 18.0 * e,
-            alto: 18.0 * e,
+            x: caja.x as f32 + (caja.ancho as f32 - lado) / 2.0,
+            y: caja.y as f32 + (caja.alto as f32 - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
         },
-        tema.apagado,
-    );
-    let (buscado, color) = if g.consulta.is_empty() {
-        (textos.t("figuras-buscar"), tema.apagado)
-    } else {
-        (format!("{}▏", g.consulta), tema.texto)
-    };
-    let (_, bh) = p.medir_texto(&buscado, 13.5 * e);
-    p.texto_linea(
-        &buscado,
-        buscador.x as f32 + 36.0 * e,
-        buscador.y as f32 + (buscador.alto as f32 - bh) / 2.0,
-        13.5 * e,
-        buscador.ancho as f32 - 44.0 * e,
         color,
     );
-    let cerrar = Rect {
-        x: ancho as i32 - ei(BARRA) as i32,
-        y: 0,
-        ancho: ei(BARRA),
-        alto: ei(BARRA),
-    };
-    if cerrar.contiene(g.raton) {
-        p.rellenar(rf(cerrar), tema.cerrar_sobre);
-    }
-    p.icono(
-        &mi::CLOSE,
-        RectF {
-            x: cerrar.x as f32 + (cerrar.ancho as f32 - 20.0 * e) / 2.0,
-            y: (cerrar.alto as f32 - 20.0 * e) / 2.0,
-            ancho: 20.0 * e,
-            alto: 20.0 * e,
-        },
-        tema.texto,
-    );
-    zonas.push((cerrar, Zona::Cerrar));
-
-    // Los grupos, a la izquierda.
-    let lista = Rect {
-        x: 0,
-        y: barra.abajo(),
-        ancho: ei(GRUPOS),
-        alto: alto.saturating_sub(barra.alto),
-    };
-    p.rellenar(rf(lista), tema.lista);
-    let grupos = g.grupos();
-    let mut filas: Vec<(Option<String>, String, usize)> =
-        vec![(None, textos.t("figuras-todas"), g.figuras.len())];
-    filas.extend(
-        grupos
-            .iter()
-            .map(|(gr, n)| (Some(gr.clone()), rotulo_del_grupo(gr, textos), *n)),
-    );
-    // Las filas se encogen para que entren todos los grupos (hay 18 de serie).
-    let paso_fila = (lista.alto.saturating_sub(ei(20)) / filas.len().max(1) as u32)
-        .clamp(ei(22), ei(FILA_GRUPO));
-    let mut y = lista.y + ei(10) as i32;
-    for (gr, rotulo, n) in filas {
-        let fila = Rect {
-            x: ei(8) as i32,
-            y,
-            ancho: lista.ancho - ei(16),
-            alto: paso_fila - ei(4),
-        };
-        if fila.abajo() > lista.abajo() {
-            break;
-        }
-        let elegida = g.filtro == gr;
-        if elegida || fila.contiene(g.raton) {
-            p.rellenar_redondeado(
-                rf(fila),
-                8.0 * e,
-                if elegida {
-                    tema.fila_elegida
-                } else {
-                    tema.fila_sobre
-                },
-            );
-        }
-        let tinta = if elegida {
-            tema.texto_elegido
-        } else {
-            tema.texto
-        };
-        let cuenta = n.to_string();
-        let (cw, ch) = p.medir_texto(&cuenta, 12.0 * e);
-        p.texto_linea(
-            &rotulo,
-            fila.x as f32 + 12.0 * e,
-            fila.y as f32 + (fila.alto as f32 - ch) / 2.0,
-            13.5 * e,
-            fila.ancho as f32 - cw - 32.0 * e,
-            tinta,
-        );
-        p.texto(
-            &cuenta,
-            fila.derecha() as f32 - cw - 12.0 * e,
-            fila.y as f32 + (fila.alto as f32 - ch) / 2.0,
-            12.0 * e,
-            if elegida { tinta } else { tema.apagado },
-        );
-        zonas.push((fila, Zona::Grupo(gr)));
-        y += paso_fila as i32;
-    }
-
-    // La rejilla, por grupos.
-    let previa_ancho = ei(PREVIA);
-    let rejilla = Rect {
-        x: lista.derecha(),
-        y: barra.abajo(),
-        ancho: ancho.saturating_sub(lista.ancho + previa_ancho),
-        alto: lista.alto,
-    };
-    let margen = ei(MARGEN) as i32;
-    let ancho_util = rejilla.ancho.saturating_sub(2 * ei(MARGEN));
-    let paso = ei(CELDA_ANCHO + HUECO);
-    let columnas = ((ancho_util + ei(HUECO)) / paso.max(1)).max(1) as usize;
-    g.columnas.set(columnas);
-    let alto_celda = ei(CELDA_DIBUJO + CELDA_NOMBRE);
-    let mut visibles = Vec::new();
-    p.empujar_recorte(rf(rejilla));
-    let mut y = rejilla.y - g.scroll + ei(6) as i32;
-    for (gr, _) in grupos
-        .iter()
-        .filter(|(gr, _)| g.filtro.as_ref().is_none_or(|f| f == gr))
-    {
-        let de_este: Vec<usize> = (0..g.figuras.len())
-            .filter(|i| &g.figuras[*i].grupo == gr && casa(&g.figuras[*i], &g.consulta))
-            .collect();
-        if de_este.is_empty() {
-            continue;
-        }
-        y += ei(8) as i32;
-        p.texto(
-            &format!("{}  ({})", rotulo_del_grupo(gr, textos), de_este.len()),
-            (rejilla.x + margen) as f32,
-            y as f32 + 4.0 * e,
-            15.0 * e,
-            tema.texto,
-        );
-        y += ei(ALTO_TITULO) as i32;
-        for (k, i) in de_este.iter().enumerate() {
-            let (col, fila) = (k % columnas, k / columnas);
-            let celda = Rect {
-                x: rejilla.x + margen + (col as u32 * paso) as i32,
-                y: y + (fila as u32 * (alto_celda + ei(HUECO))) as i32,
-                ancho: ei(CELDA_ANCHO),
-                alto: alto_celda,
-            };
-            visibles.push(*i);
-            if celda.abajo() < rejilla.y || celda.y > rejilla.abajo() {
-                continue;
-            }
-            pintar_celda(
-                p,
-                &g.figuras[*i],
-                celda,
-                tema,
-                e,
-                celda.contiene(g.raton),
-                g.elegida == Some(*i),
-            );
-            if let Some(vista) = celda.interseccion(rejilla) {
-                zonas.push((vista, Zona::Figura(*i)));
-            }
-        }
-        let filas = de_este.len().div_ceil(columnas) as u32;
-        y += (filas * (alto_celda + ei(HUECO))) as i32;
-    }
-    if visibles.is_empty() {
-        let vacio = if g.figuras.is_empty() {
-            textos.t("figuras-vacia")
-        } else {
-            textos.t("figuras-sin-resultados")
-        };
-        let (w, _) = p.medir_texto_ajustado(&vacio, 14.0 * e, rejilla.ancho as f32 - 40.0 * e);
-        p.texto_ajustado(
-            &vacio,
-            rejilla.x as f32 + (rejilla.ancho as f32 - w) / 2.0,
-            rejilla.y as f32 + 60.0 * e,
-            14.0 * e,
-            rejilla.ancho as f32 - 40.0 * e,
-            tema.apagado,
-        );
-    }
-    p.soltar_recorte();
-    *g.visibles.borrow_mut() = visibles;
-    g.alto_total
-        .set((y + g.scroll - rejilla.y - rejilla.alto as i32 + ei(MARGEN) as i32).max(0));
-
-    // El previsualizador, a la derecha.
-    let previa = Rect {
-        x: rejilla.derecha(),
-        y: barra.abajo(),
-        ancho: previa_ancho,
-        alto: lista.alto,
-    };
-    p.rellenar(rf(previa), tema.lista);
-    if let Some(f) = g.elegida.and_then(|i| g.figuras.get(i)) {
-        pintar_previa(p, f, previa, tema, e, textos, g, &mut zonas);
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn pintar_previa(
-    p: &Pintor,
-    f: &Vista,
-    caja: Rect,
-    tema: &Tema,
-    e: f32,
-    textos: &Catalogo,
-    g: &Galeria,
-    zonas: &mut Vec<(Rect, Zona)>,
-) {
-    let m = 18.0 * e;
-    let x = caja.x as f32 + m;
-    let ancho = caja.ancho as f32 - 2.0 * m;
-    let papel = RectF {
-        x,
-        y: caja.y as f32 + m,
-        ancho,
-        alto: ancho * 0.85,
-    };
-    p.rellenar_redondeado(papel, 12.0 * e, tema.papel);
-    if let Some(d) = &f.dibujo {
-        pintar_lienzo(
-            p,
-            d,
-            RectF {
-                x: papel.x + 14.0 * e,
-                y: papel.y + 14.0 * e,
-                ancho: papel.ancho - 28.0 * e,
-                alto: papel.alto - 28.0 * e,
-            },
-            None,
-        );
-    }
-    let mut y = papel.y + papel.alto + 16.0 * e;
-    let (_, h) = p.medir_texto_ajustado(&f.nombre, 17.0 * e, ancho);
-    p.texto_ajustado(&f.nombre, x, y, 17.0 * e, ancho, tema.texto);
-    y += h + 4.0 * e;
-    let grupo = rotulo_del_grupo(&f.grupo, textos);
-    let origen = if f.de_serie {
-        textos.t("figuras-de-serie")
-    } else {
-        textos.t("figuras-tuya")
-    };
-    p.texto_linea(
-        &format!("{grupo} · {origen}"),
-        x,
-        y,
-        12.5 * e,
-        ancho,
-        tema.apagado,
-    );
-    y += 26.0 * e;
-    let datos = [
-        (
-            textos.t("figuras-mide"),
-            format!("{:.0} × {:.0}", f.tamano.0, f.tamano.1),
-        ),
-        (
-            textos.t("figuras-piezas"),
-            resumen_de_piezas(&f.piezas, textos),
-        ),
-    ];
-    for (rotulo, valor) in datos {
-        p.texto(&rotulo, x, y, 12.5 * e, tema.apagado);
-        let (_, vh) = p.medir_texto_ajustado(&valor, 12.5 * e, ancho - 90.0 * e);
-        p.texto_ajustado(
-            &valor,
-            x + 90.0 * e,
-            y,
-            12.5 * e,
-            ancho - 90.0 * e,
-            tema.texto,
-        );
-        y += vh.max(16.0 * e) + 6.0 * e;
-    }
-    if !f.letras.is_empty() {
-        y += 4.0 * e;
-        p.texto(&textos.t("figuras-textos"), x, y, 12.5 * e, tema.apagado);
-        y += 20.0 * e;
-        let tope = caja.abajo() as f32 - 70.0 * e;
-        for l in &f.letras {
-            if y + 16.0 * e > tope {
-                p.texto("…", x, y, 12.5 * e, tema.apagado);
-                break;
-            }
-            p.texto_linea(&format!("• {l}"), x, y, 12.5 * e, ancho, tema.texto);
-            y += 18.0 * e;
-        }
-    }
-    if !f.de_serie {
-        let boton = Rect {
-            x: x as i32,
-            y: (caja.abajo() as f32 - m - 38.0 * e) as i32,
-            ancho: ancho as u32,
-            alto: (38.0 * e) as u32,
-        };
-        let rojo = crate::caja_dibujo::hex(0xd9534f);
-        p.rellenar_redondeado(
-            rf(boton),
-            10.0 * e,
-            if g.borrar_pedido || boton.contiene(g.raton) {
-                rojo
-            } else {
-                con_alfa(rojo, 0.75)
-            },
-        );
-        let rotulo = if g.borrar_pedido {
-            textos.t("figuras-borrar-seguro")
-        } else {
-            textos.t("figuras-borrar")
-        };
-        let (tw, th) = p.medir_texto(&rotulo, 14.0 * e);
-        p.texto(
-            &rotulo,
-            boton.x as f32 + (boton.ancho as f32 - tw) / 2.0,
-            boton.y as f32 + (boton.alto as f32 - th) / 2.0,
-            14.0 * e,
-            Color::BLANCO,
-        );
-        zonas.push((boton, Zona::Borrar));
-    }
 }
 
 /// «23 · 8 líneas, 6 textos, 4 formas».
@@ -940,64 +1100,6 @@ fn resumen_de_piezas(p: &Piezas, textos: &Catalogo) -> String {
     }
 }
 
-fn pintar_celda(
-    p: &Pintor,
-    f: &Vista,
-    celda: Rect,
-    tema: &Tema,
-    e: f32,
-    encima: bool,
-    elegida: bool,
-) {
-    let dibujo = RectF {
-        x: celda.x as f32,
-        y: celda.y as f32,
-        ancho: celda.ancho as f32,
-        alto: CELDA_DIBUJO as f32 * e,
-    };
-    if encima || elegida {
-        p.rellenar_redondeado(
-            RectF {
-                x: dibujo.x - 5.0 * e,
-                y: dibujo.y - 5.0 * e,
-                ancho: dibujo.ancho + 10.0 * e,
-                alto: celda.alto as f32 + 6.0 * e,
-            },
-            12.0 * e,
-            if elegida {
-                tema.fila_elegida
-            } else {
-                tema.fila_sobre
-            },
-        );
-    }
-    p.rellenar_redondeado(dibujo, 10.0 * e, tema.papel);
-    if let Some(d) = &f.dibujo {
-        pintar_lienzo(
-            p,
-            d,
-            RectF {
-                x: dibujo.x + 9.0 * e,
-                y: dibujo.y + 9.0 * e,
-                ancho: dibujo.ancho - 18.0 * e,
-                alto: dibujo.alto - 18.0 * e,
-            },
-            None,
-        );
-    }
-    p.texto_linea(
-        &f.nombre,
-        dibujo.x + 2.0 * e,
-        dibujo.y + dibujo.alto + 7.0 * e,
-        12.5 * e,
-        dibujo.ancho - 4.0 * e,
-        if elegida {
-            tema.texto_elegido
-        } else {
-            tema.texto
-        },
-    );
-}
 
 // --- Adjuntar figuras al asistente (25-oct-2026) --------------------------------
 //
@@ -1151,5 +1253,44 @@ mod pruebas {
         };
         assert!(letras_de(&sin).is_empty());
         assert_eq!(piezas_de(&sin), Piezas::default());
+    }
+
+    #[test]
+    fn la_pestana_agrupa_busca_y_se_recorre_con_el_teclado() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut v = VistaFiguras::con(pixpin_motor2d::figuras_de_serie::catalogo());
+        let filas = v.filas(&textos);
+        assert_eq!(filas[0].grupo, None, "«Todas» arriba");
+        assert_eq!(filas[0].cuantas, v.figuras.len());
+        let uml = filas.iter().find(|f| f.grupo.as_deref() == Some("UML"));
+        assert!(uml.is_some_and(|f| f.cuantas > 0));
+        // Buscar deja solo lo que casa, en la lista y en la tarjeta.
+        v.busqueda.poner_texto("puerta");
+        v.buscado();
+        let de = v.de_la_tarjeta();
+        assert!(!de.is_empty());
+        assert!(de.iter().all(|i| casa(&v.figuras[*i], "puerta")));
+        assert_eq!(v.filas(&textos)[0].cuantas, de.len());
+        // → pasa a la siguiente y ↓ al grupo de debajo.
+        let primera = v.foco_en(&de);
+        assert!(v.tecla(VK_DERECHA));
+        assert_ne!(v.foco_en(&v.de_la_tarjeta()), primera);
+        assert!(v.tecla(VK_ABAJO));
+        assert!(v.grupo.is_some());
+        // Escape borra lo buscado y vuelve a «Todas».
+        assert!(v.tecla(VK_ESCAPE));
+        assert!(v.consulta().is_empty());
+        assert_eq!(v.grupo, None);
+        // Caso negativo: nada casa, nada en la tarjeta ni en «Todas».
+        v.busqueda.poner_texto("zzzz-no-existe");
+        v.buscado();
+        assert!(v.de_la_tarjeta().is_empty());
+        assert_eq!(v.filas(&textos)[0].cuantas, 0);
+        // Y estrecha: elegir un grupo pasa a la tarjeta y Escape vuelve.
+        v.busqueda.vaciar();
+        v.en_tarjeta = true;
+        assert_eq!(v.vista(), chat::Vista::SoloChat);
+        assert!(v.tecla(VK_ESCAPE));
+        assert_eq!(v.vista(), chat::Vista::SoloLista);
     }
 }

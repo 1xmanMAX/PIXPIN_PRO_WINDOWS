@@ -129,13 +129,21 @@ mod descripcion;
 mod donde_vive;
 /// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
 mod envio;
-/// La ventana de las figuras guardadas, con su previsualizador: la abre la
-/// tercera parte del interruptor de arriba y la bandeja (24/25-oct-2026).
+/// La pestaña Figuras de la ventana del chat, con la cara de Proyectos: la
+/// abre la tercera parte del interruptor de arriba y la bandeja (24/26-oct).
 mod figuras;
 
-/// **Abre la ventana de las figuras** (o la trae delante).
-pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
-    figuras::abrir(idioma);
+/// La bandeja pidio la pestaña Figuras: el chat la pone en cuanto lo mira.
+static PEDIR_FIGURAS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// **Abre el chat en la pestaña Figuras** (o lo trae delante y la pone).
+pub(crate) fn abrir_figuras(
+    idioma: pixpin_store::Idioma,
+    ubicacion: Ubicacion,
+    lienzo: OpcionesLienzo,
+) {
+    PEDIR_FIGURAS.store(true, std::sync::atomic::Ordering::SeqCst);
+    lanzar(idioma, ubicacion, lienzo);
 }
 /// «Grabar clase»: el microfono y el sonido del equipo, con capturas de una
 /// zona en su minuto, y despues el texto (24-oct-2026).
@@ -884,6 +892,9 @@ pub fn abrir(
     // La pantalla de Proyectos del movil y el interruptor de la barra
     // (`proyectos.rs`): se abre en la que se eligio la ultima vez.
     let mut vista_proyectos = proyectos::VistaProyectos::nueva(ubicacion);
+    // La pestaña Figuras (`figuras.rs`), si esta delante: va encima de las
+    // otras dos sin tocarlas, y al salir se vuelve a la que estaba.
+    let mut vista_figuras: Option<figuras::VistaFiguras> = None;
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -918,7 +929,7 @@ pub fn abrir(
             hay_que_pintar = true;
         }
         let mut cerrar = false;
-        let disposicion = disponer(marco, escala, ancho_lista, abierto.as_ref());
+        let disposicion = disponer_con(marco, escala, ancho_lista, abierto.as_ref(), vista_figuras.as_ref());
         let mut nuevo_marco: Option<Rect> = None;
         // Lo del bucle que la pantalla de Proyectos puede tocar al cumplir
         // un pedido (`proyectos::cumplir`).
@@ -1085,7 +1096,95 @@ pub fn abrir(
             // de la tarjeta; lo de la lista sigue su camino. El teclado es de
             // la tarjeta salvo mientras se escribe en el buscador o el nombre
             // de un proyecto recien creado con el «+».
-            if vista_proyectos.activa() && pendientes.is_none() && menu.is_none() {
+            // La pestaña Figuras (`figuras.rs`): lo que cae en su lista, en su
+            // buscador o en su tarjeta es suyo, y el teclado tambien; las
+            // teclas que no usa siguen su camino (la escala, la pantalla
+            // completa). La barra, el interruptor, los bordes, el asa y los
+            // botones redondos de la lista siguen siendo del chat.
+            if let Some(vf) = vista_figuras.as_mut()
+                && pendientes.is_none()
+                && menu.is_none()
+            {
+                let buscador = disposicion.buscador(escala);
+                let en_la_pestana = |l: Punto| {
+                    (disposicion.filas.contiene(l)
+                        || disposicion.chat.contiene(l)
+                        || buscador.contiene(l))
+                        && chat::borde_en(l, marco.ancho, marco.alto, escala).is_none()
+                        && !disposicion.asa.contiene(l)
+                };
+                match evento {
+                    EventoOverlay::Rueda(delta) => {
+                        let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
+                        hay_que_pintar |= vf.rueda(aqui, delta, &disposicion, escala, textos);
+                        continue;
+                    }
+                    // Escribir busca, aunque el buscador no tenga el teclado.
+                    EventoOverlay::Caracter(c) => {
+                        vf.buscando = true;
+                        if vf.busqueda.caracter(c) {
+                            vf.buscado();
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
+                    EventoOverlay::Tecla {
+                        vk, shift, ctrl, ..
+                    } if !(vk == VK_ESCAPE && antes_de_maximizar.is_some()) => {
+                        if vf.buscando
+                            && vk != VK_ESCAPE
+                            && redaccion::CajaLinea::es_suya(vk, shift, ctrl)
+                        {
+                            if tecla_en_caja(&mut vf.busqueda, vk, shift, ctrl).cambio() {
+                                vf.buscado();
+                            }
+                            hay_que_pintar = true;
+                            continue;
+                        }
+                        // Escape es siempre suyo: debajo no hay nada que
+                        // cerrar que se vea.
+                        if vf.tecla(vk) || vk == VK_ESCAPE {
+                            hay_que_pintar = true;
+                            continue;
+                        }
+                    }
+                    EventoOverlay::BotonPulsado(p) if en_la_pestana(local(p)) => {
+                        let l = local(p);
+                        if buscador.contiene(l) {
+                            vf.buscando = true;
+                            vf.busqueda.pulsar(l, false, std::time::Instant::now());
+                            vf.busqueda.soltar_raton();
+                        } else {
+                            vf.buscando = false;
+                            vf.pulsar(l);
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
+                    EventoOverlay::BotonDerechoPulsado(p) if en_la_pestana(local(p)) => continue,
+                    EventoOverlay::RatonMovido(p) if arrastre.is_none() && en_la_pestana(local(p)) => {
+                        let l = local(p);
+                        hay_que_pintar |= vf.mover(l);
+                        ventana.poner_cursor(if buscador.contiene(l) {
+                            FormaCursorWin::Texto
+                        } else {
+                            FormaCursorWin::Flecha
+                        });
+                        if sobre.is_some() || fila_sobre.is_some() {
+                            sobre = None;
+                            fila_sobre = None;
+                            hay_que_pintar = true;
+                        }
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            if vista_proyectos.activa()
+                && vista_figuras.is_none()
+                && pendientes.is_none()
+                && menu.is_none()
+            {
                 let hay_tarjeta = abierto.is_some() && disposicion.chat.ancho > 0;
                 let escribiendo = buscando || abierto.as_ref().is_some_and(|a| a.renombrando);
                 match evento {
@@ -1412,10 +1511,16 @@ pub fn abrir(
                         // El interruptor Chat / Proyectos / Figuras
                         // (`proyectos.rs`, `figuras.rs`).
                         match parte {
-                            // Las figuras van en su propia ventana (25-oct):
-                            // el chat se queda como estaba.
-                            proyectos::Parte::Figuras => figuras::abrir(idioma),
+                            // Las figuras, en la misma ventana y con la cara
+                            // de Proyectos (26-oct): encima de lo que habia.
+                            proyectos::Parte::Figuras => {
+                                if vista_figuras.is_none() {
+                                    vista_figuras = Some(figuras::VistaFiguras::nueva());
+                                }
+                                menu = None;
+                            }
                             otra => {
+                                vista_figuras = None;
                                 let a_proyectos = otra == proyectos::Parte::Proyectos;
                                 if a_proyectos != vista_proyectos.activa() {
                                     vista_proyectos.poner(ubicacion, a_proyectos);
@@ -3889,6 +3994,18 @@ pub fn abrir(
             hay_que_pintar |=
                 proyectos::cumplir(pedido, &mut vista_proyectos, &mut bucle_de_proyectos!());
         }
+        // La pestaña Figuras: la pidio la bandeja, o la biblioteca cambio
+        // por fuera (una figura guardada en un lienzo, llegada del movil).
+        if PEDIR_FIGURAS.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            if vista_figuras.is_none() {
+                vista_figuras = Some(figuras::VistaFiguras::nueva());
+            }
+            menu = None;
+            hay_que_pintar = true;
+        }
+        if let Some(vf) = vista_figuras.as_mut() {
+            hay_que_pintar |= vf.latido();
+        }
 
         if cerrar {
             // Cerrar la ventana con una hoja o un lienzo abiertos los guarda:
@@ -3913,7 +4030,7 @@ pub fn abrir(
                 // Por `disponer` y no calculando aparte: con la ventana
                 // estrecha, lo que se ve depende de si hay proyecto abierto,
                 // y una cuenta suelta daria un tope de otra lista.
-                let d = disponer(marco, escala, ancho_lista, abierto.as_ref());
+                let d = disponer_con(marco, escala, ancho_lista, abierto.as_ref(), vista_figuras.as_ref());
                 scroll = d.scroll_ajustado(scroll, orden.len(), escala);
                 hay_que_pintar = true;
             }
@@ -3992,7 +4109,7 @@ pub fn abrir(
             hay_que_pintar = false;
             // La barra de responder cuenta como parte de la caja de escribir:
             // se vuelve a repartir con lo que haya cambiado en esta vuelta.
-            let disposicion = disponer(marco, escala, ancho_lista, abierto.as_ref());
+            let disposicion = disponer_con(marco, escala, ancho_lista, abierto.as_ref(), vista_figuras.as_ref());
             // Las fotos del historial que se ven, igual que las del panel.
             if let Some(a) = abierto.as_ref().filter(|a| a.info.is_none()) {
                 let rutas = fotos_del_historial(a, &disposicion, escala);
@@ -4067,7 +4184,9 @@ pub fn abrir(
                     marcados: &marcados,
                 };
                 // Con Proyectos delante, el chat no se pinta: no se ve.
-                let abierto_ref = abierto.as_ref().filter(|_| !vista_proyectos.activa());
+                let abierto_ref = abierto
+                    .as_ref()
+                    .filter(|_| !vista_proyectos.activa() && vista_figuras.is_none());
                 let pendientes_ref = pendientes.as_ref();
                 let menu_ref = menu.as_ref();
                 let aviso_ref = aviso.as_ref().map(|(t, _)| t.as_str());
@@ -4081,6 +4200,7 @@ pub fn abrir(
                     // panel derecho, donde iria su chat. Sin ninguno elegido
                     // queda el «Elige un proyecto» del chat.
                     if vista_proyectos.activa()
+                        && vista_figuras.is_none()
                         && let Some(a) = abierto.as_ref()
                         && let Some(f) = fichas.iter().find(|f| f.id == a.ficha.id)
                     {
@@ -4106,6 +4226,10 @@ pub fn abrir(
                             ubicacion.raiz(),
                         );
                     }
+                    // La pestaña Figuras, encima de la lista y del panel.
+                    if let Some(vf) = vista_figuras.as_ref() {
+                        vf.pintar(p, &disposicion, tema, claro, escala, textos);
+                    }
                     proyectos::pintar_interruptor(
                         p,
                         &vista_proyectos,
@@ -4113,6 +4237,7 @@ pub fn abrir(
                         tema,
                         escala,
                         textos,
+                        vista_figuras.is_some(),
                     );
                     let mut alto_caja = 0;
                     if let Some(a) = abierto_ref {
@@ -18946,6 +19071,21 @@ mod pruebas_cuaderno {
 }
 
 // --- Lo que atiende el bucle con el proyecto abierto ------------------
+
+/// Reparte la ventana como [`disponer`], o como la pestaña Figuras si esta
+/// delante: estrecha, su lista de grupos o la tarjeta del grupo.
+fn disponer_con(
+    marco: Rect,
+    escala: u32,
+    ancho_lista: u32,
+    abierto: Option<&Abierto>,
+    figuras: Option<&figuras::VistaFiguras>,
+) -> Disposicion {
+    match figuras {
+        Some(f) => Disposicion::calcular(marco.ancho, marco.alto, escala, ancho_lista, f.vista()),
+        None => disponer(marco, escala, ancho_lista, abierto),
+    }
+}
 
 /// Reparte la ventana, con el sitio de la barra de responder si se esta
 /// contestando a algo.

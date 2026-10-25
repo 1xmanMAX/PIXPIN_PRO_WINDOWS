@@ -58,7 +58,7 @@ mod cargar;
 mod muestra;
 mod pintar;
 
-pub(super) use pintar::{pintar, pintar_interruptor};
+pub(super) use pintar::{CLARA, OSCURA, Paleta, pintar, pintar_interruptor};
 
 /// Las partes del interruptor de la barra de arriba.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

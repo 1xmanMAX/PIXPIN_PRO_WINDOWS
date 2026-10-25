@@ -1252,7 +1252,7 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_FIGURAS => {
-                ventana_chat::abrir_figuras(lengua);
+                ventana_chat::abrir_figuras(lengua, ubicacion.clone(), opciones_lienzo);
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_GALERIA_CAPTURAS => {
