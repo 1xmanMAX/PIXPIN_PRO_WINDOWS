@@ -932,6 +932,22 @@ fn bucle(
     let mut firma_mirada = Instant::now();
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Lo que la ventana ocupa DE VERDAD, antes de repartir los clics:
+        // movida o estirada por fuera (AltSnap, Win+flecha, otro monitor),
+        // restar al raton la esquina vieja corria todos los clics esa
+        // diferencia (25-oct-2026, «el clic esta desplazado a la derecha»).
+        // Mientras la lleva el propio timeline, manda el.
+        if e.moviendo.is_none()
+            && let Some(real) = ventana.rect_del_sistema()
+            && real != marco
+        {
+            if (real.ancho, real.alto) != (marco.ancho, marco.alto) {
+                let _ = superficie.redimensionar(real.ancho, real.alto);
+            }
+            marco = real;
+            ventana.mover(marco);
+            pintar = true;
+        }
         // Otra entrada (las de lecciones) pidio una pestana.
         if let Some(p) = Pestana::de_numero(PEDIDA.swap(0, Ordering::SeqCst)) {
             e.detalle = None;
@@ -944,7 +960,9 @@ fn bucle(
                 continue;
             }
             pintar = true;
-            let local = |p: pixpin_geom::Punto, m: Rect| ((p.x - m.x) as f32, (p.y - m.y) as f32);
+            let local = |p: pixpin_geom::Punto, m: Rect| {
+                pixpin_ui::encuadre::a_la_ventana((p.x, p.y), (m.x, m.y))
+            };
             match ev {
                 EventoOverlay::Cerrar => vivo = false,
                 EventoOverlay::RatonMovido(p) => {

@@ -41,9 +41,10 @@ use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
 use pixpin_store::herramientas::SITIOS;
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 use pixpin_ui::ajustes::{
-    Control, Estado, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos, borrar_busqueda,
-    boton_restablecer_seccion, botones_del_pie, buscador, coincide, contenido, golpe_en,
-    limitar_desplazamiento, numero_tras, partes_de_fila, rect_de_fila, rect_de_seccion,
+    Control, Estado, FILA_ALTO, Fila, Foco, Golpe, NAV_ANCHO, Parte, Recta, ancho_de_textos,
+    borrar_busqueda, boton_restablecer_seccion, botones_del_pie, buscador, coincide, contenido,
+    golpe_en, limitar_desplazamiento, numero_tras, partes_de_fila, punto_logico, rect_de_fila,
+    rect_de_seccion,
 };
 
 /// Medidas de la ventana en pixeles logicos (se encogen si el monitor no
@@ -496,6 +497,7 @@ fn filas_de_automatizaciones(cx: &Contexto) -> Vec<(Clave, Fila)> {
                 control: Control::Nada,
                 cambiado: false,
                 quitar: false,
+                alto_de_textos: 0,
             },
         ));
         return v;
@@ -532,6 +534,7 @@ fn filas_de_automatizaciones(cx: &Contexto) -> Vec<(Clave, Fila)> {
                 control,
                 cambiado: false,
                 quitar: true,
+                alto_de_textos: 0,
             },
         ));
         if r.a_mano && r.otro_aparato.is_none() && r.rota.is_none() {
@@ -543,6 +546,7 @@ fn filas_de_automatizaciones(cx: &Contexto) -> Vec<(Clave, Fila)> {
                     control: Control::Boton(t.t("ajustes2-automatizacion-correr")),
                     cambiado: false,
                     quitar: false,
+                    alto_de_textos: 0,
                 },
             ));
         }
@@ -641,6 +645,7 @@ fn op(
             control,
             cambiado: distinto_de_fabrica(clave, a),
             quitar: matches!(clave, Clave::Ignorado(_) | Clave::Region(_)),
+            alto_de_textos: 0,
         },
     )
 }
@@ -1633,6 +1638,86 @@ fn filas_actuales(estado: &Estado, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fi
     v
 }
 
+/// Lo que miden los textos de una fila, en pixeles FISICOS: el ancho de la
+/// etiqueta (para el punto azul), su alto, el de la explicacion y los dos
+/// juntos con su aire.
+struct TextosDeFila {
+    ancho_etiqueta: f32,
+    alto_etiqueta: f32,
+    alto_ayuda: f32,
+    total: f32,
+}
+
+/// **La unica cuenta de lo que miden la etiqueta y la explicacion**: la usa
+/// el pintado ([`dibujar_fila`]) y la medida de antes de repartir los clics
+/// ([`medir_filas`]). `medir` es `(texto, tam, ancho_max) -> (ancho, alto)`
+/// en fisicos: el del pintor al pintar, el del motor fuera del fotograma,
+/// los dos con la misma disposicion de DirectWrite.
+fn textos_de_fila(
+    medir: &impl Fn(&str, f32, f32) -> (f32, f32),
+    fila: &Fila,
+    r: Recta,
+    e: f32,
+) -> TextosDeFila {
+    let ancho = ancho_de_textos(fila, r) * e;
+    let (ancho_etiqueta, alto_etiqueta) = medir(&fila.etiqueta, 14.0 * e, ancho);
+    let alto_ayuda = if fila.ayuda.is_empty() {
+        0.0
+    } else {
+        medir(&fila.ayuda, 12.0 * e, ancho).1
+    };
+    let total = alto_etiqueta
+        + if alto_ayuda > 0.0 {
+            alto_ayuda + 2.0 * e
+        } else {
+            0.0
+        };
+    TextosDeFila {
+        ancho_etiqueta,
+        alto_etiqueta,
+        alto_ayuda,
+        total,
+    }
+}
+
+/// Mide los textos de cada fila y le pone su alto (`alto_de_textos`, en
+/// logicos): una explicacion de varias lineas hace la fila mas alta, para
+/// el pintado y para el acierto del raton a la vez, porque los dos leen
+/// `Fila::alto`. Solo cuentan la x y el ancho de la fila (donde caen sus
+/// controles), no su y.
+fn medir_filas(
+    filas: &mut [(Clave, Fila)],
+    zona: Recta,
+    e: f32,
+    medir: &impl Fn(&str, f32, f32) -> (f32, f32),
+) {
+    let r = Recta {
+        alto: FILA_ALTO,
+        ..zona
+    };
+    for (_, fila) in filas.iter_mut() {
+        fila.alto_de_textos = if fila.es_grupo() {
+            0
+        } else {
+            (textos_de_fila(medir, fila, r, e).total / e).ceil() as u32
+        };
+    }
+}
+
+/// Las filas de lo que se ensena ahora, ya medidas.
+fn filas_medidas(
+    estado: &Estado,
+    a: &Ajustes,
+    cx: &Contexto,
+    zona: Recta,
+    e: f32,
+    medir: &impl Fn(&str, f32, f32) -> (f32, f32),
+) -> Vec<(Clave, Fila)> {
+    let mut filas = filas_actuales(estado, a, cx);
+    medir_filas(&mut filas, zona, e, medir);
+    filas
+}
+
 // --- Cambiar los ajustes ----------------------------------------------------
 
 /// Vuelve una clave a su valor de fabrica.
@@ -2460,7 +2545,7 @@ fn abrir(
     // guardando el texto como `String` para su logica; ver `Cajas`.
     let mut cajas = Cajas::default();
     let mut resaltado: Option<Golpe> = None;
-    let mut pintado: Option<(Estado, Option<Golpe>, u64)> = None;
+    let mut pintado: Option<(Estado, Option<Golpe>, u64, Vec<(Clave, Fila)>)> = None;
     let mut version = 0u64;
     let zona = contenido(ancho, alto);
     // La prueba de una clave acaba en otro hilo: cuando cambia esto, se
@@ -2474,6 +2559,17 @@ fn abrir(
     crate::ocr_motor::al_cambiar(despertar_ventana.clone());
     // Y la de Qwen3-ASR.
     crate::voz_motor::al_cambiar(despertar_ventana.clone());
+    // Lo que mide cada texto, con la misma disposicion que el pintado.
+    let medir =
+        |texto: &str, tam: f32, ancho_max: f32| motor.medir_texto_ajustado(texto, tam, ancho_max);
+    // **Las filas de lo que hay en pantalla.** Se rehacen (y se miden)
+    // despues de cada evento y antes de pintar, NUNCA entre el pintado y el
+    // siguiente clic: el clic se reparte con exactamente las filas que se
+    // pintaron. Antes se rehacian al empezar cada vuelta, y una fila que
+    // aparecia sola (la de borrar Indra o Qwen3-ASR en cuanto la descarga
+    // deja algo en el disco) movia hacia abajo los sitios de los clics sin
+    // repintar: se pulsaba lo de encima de lo que se veia.
+    let mut filas = filas_medidas(&estado, &copia.a, &cx, zona, e, &medir);
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -2485,7 +2581,6 @@ fn abrir(
             novedades_claves = n;
             version += 1;
         }
-        let mut filas = filas_actuales(&estado, &copia.a, &cx);
         let mut cerrar = false;
 
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
@@ -2495,9 +2590,15 @@ fn abrir(
             if hwnd != ventana.handle() {
                 continue;
             }
-            let local = |p: Punto| Punto {
-                x: ((p.x - marco.x) as f32 / e) as i32,
-                y: ((p.y - marco.y) as f32 / e) as i32,
+            let local = |p: Punto| {
+                punto_logico(
+                    p,
+                    Punto {
+                        x: marco.x,
+                        y: marco.y,
+                    },
+                    e,
+                )
             };
             let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
             let boton_seccion = (!estado.buscando())
@@ -2861,7 +2962,7 @@ fn abrir(
             }
             // Las filas pueden haber cambiado con el golpe: se rehacen para
             // el siguiente evento de esta misma vuelta.
-            filas = filas_actuales(&estado, &copia.a, &cx);
+            filas = filas_medidas(&estado, &copia.a, &cx, zona, e, &medir);
             let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
             estado.desplazamiento = limitar_desplazamiento(estado.desplazamiento, &solo, zona);
         }
@@ -2880,7 +2981,16 @@ fn abrir(
             break;
         }
 
-        let clave_pintado = (estado.clone(), resaltado, version);
+        // Lo que haya cambiado por su cuenta (el avance de una descarga, una
+        // fila que aparece) se recoge aqui, justo antes de pintar, y entra en
+        // la clave: si las filas cambian, se repintan YA, y el siguiente clic
+        // se reparte con estas mismas.
+        filas = filas_medidas(&estado, &copia.a, &cx, zona, e, &medir);
+        {
+            let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
+            estado.desplazamiento = limitar_desplazamiento(estado.desplazamiento, &solo, zona);
+        }
+        let clave_pintado = (estado.clone(), resaltado, version, filas.clone());
         if pintado.as_ref() != Some(&clave_pintado) {
             pintado = Some(clave_pintado);
             let vista = Vista {
@@ -3522,18 +3632,23 @@ fn dibujar_fila(
     r: Recta,
 ) {
     let sobre = |parte: Parte| v.resaltado == Some(Golpe::Fila(i, parte));
-    // La etiqueta y la explicacion, centradas en vertical juntas.
+    // La etiqueta y la explicacion, centradas en vertical juntas. La fila
+    // ya mide lo que ellas (`medir_filas`, con esta misma cuenta).
     let ancho_textos = ancho_de_textos(fila, r) * e;
     let x = (r.x + pixpin_ui::ajustes::TARJETA_RELLENO) * e;
     let tam = 14.0 * e;
     let tam_ayuda = 12.0 * e;
-    let (lw, lh) = p.medir_texto_ajustado(&fila.etiqueta, tam, ancho_textos);
-    let (_, ah) = if fila.ayuda.is_empty() {
-        (0.0, 0.0)
-    } else {
-        p.medir_texto_ajustado(&fila.ayuda, tam_ayuda, ancho_textos)
-    };
-    let total = lh + if ah > 0.0 { ah + 2.0 * e } else { 0.0 };
+    let TextosDeFila {
+        ancho_etiqueta: lw,
+        alto_etiqueta: lh,
+        alto_ayuda: ah,
+        total,
+    } = textos_de_fila(
+        &|texto: &str, tam: f32, ancho: f32| p.medir_texto_ajustado(texto, tam, ancho),
+        fila,
+        r,
+        e,
+    );
     let y0 = r.y * e + (r.alto * e - total) / 2.0;
     p.texto_ajustado(&fila.etiqueta, x, y0, tam, ancho_textos, TINTA);
     if fila.cambiado {
@@ -3888,6 +4003,132 @@ mod pruebas {
                     .map(move |(c, f)| (*s, c, f))
             })
             .collect()
+    }
+
+    /// Un medidor sin GPU, lineal con la escala como DirectWrite: parte el
+    /// texto en lineas del ancho dado (0,55 del tamano por letra) y cada
+    /// linea mide 1,33 del tamano. Basta para que las explicaciones largas
+    /// (el motor de OCR, el de voz) midan varias lineas.
+    fn medir_sin_gpu(texto: &str, tam: f32, ancho: f32) -> (f32, f32) {
+        let por_linea = (ancho / (tam * 0.55)).floor().max(1.0) as usize;
+        let letras = texto.chars().count().max(1);
+        let lineas = letras.div_ceil(por_linea);
+        let w = (letras.min(por_linea) as f32) * tam * 0.55;
+        (w, lineas as f32 * tam * 1.33)
+    }
+
+    /// **Cada fila de cada grupo de cada seccion se pulsa donde se ve**, a
+    /// escala 1, 1,5 y 2 y con la lista bajada: el centro de la fila cae en
+    /// esa fila, el de cada control en ese control, y lo que se pinta de sus
+    /// textos cabe dentro de la fila que reparte los clics. Es lo que fallaba
+    /// en una pantalla con mucha escala («los clics caen mas abajo»): las
+    /// explicaciones largas desbordaban sus filas de 60 y las filas que
+    /// aparecian solas movian los clics sin repintar.
+    #[test]
+    fn cada_fila_de_cada_seccion_se_pulsa_donde_se_pinta() {
+        let t = textos();
+        let cx = cx(&t);
+        let mut con_indra = Ajustes::default();
+        // Con Indra elegido salen tambien el diccionario y Mi vocabulario.
+        con_indra.ocr.motor = MotorOcr::Indra;
+        let zona = contenido(ANCHO, ALTO);
+        let origen = Punto { x: 160, y: 90 };
+        let mut alguna_alta = false;
+        for a in [Ajustes::default(), con_indra] {
+            for (s, seccion) in SECCIONES.iter().enumerate() {
+                for e in [1.0f32, 1.5, 2.0] {
+                    let estado0 = Estado {
+                        seccion: s,
+                        ..Estado::default()
+                    };
+                    let filas = filas_medidas(&estado0, &a, &cx, zona, e, &medir_sin_gpu);
+                    let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
+                    alguna_alta |= solo.iter().any(|f| f.alto() > FILA_ALTO);
+                    for (i, fila) in solo.iter().enumerate() {
+                        let arriba = rect_de_fila(&solo, i, 0, zona).y - zona.y;
+                        // Arriba del todo, con la fila en medio de la zona y
+                        // lo mas abajo posible.
+                        let bajadas = [
+                            0,
+                            (arriba + fila.alto() / 2.0 - zona.alto / 2.0) as i32,
+                            i32::MAX,
+                        ];
+                        for des in bajadas {
+                            let des = limitar_desplazamiento(des, &solo, zona);
+                            let estado = Estado {
+                                desplazamiento: des,
+                                ..estado0.clone()
+                            };
+                            let r = rect_de_fila(&solo, i, des, zona);
+                            let pulsar = |x: f32, y: f32| {
+                                let fisico = Punto {
+                                    x: origen.x + (x * e).round() as i32,
+                                    y: origen.y + (y * e).round() as i32,
+                                };
+                                let l = punto_logico(fisico, origen, e);
+                                (
+                                    pixpin_ui::ajustes::fila_en(
+                                        l.x as f32, l.y as f32, &solo, des, zona,
+                                    ),
+                                    golpe_en(
+                                        l,
+                                        ANCHO,
+                                        ALTO,
+                                        SECCIONES.len(),
+                                        &solo,
+                                        &estado,
+                                        true,
+                                        None,
+                                    ),
+                                )
+                            };
+                            let (cx_, cy_) = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
+                            if !zona.contiene(cx_, cy_) {
+                                continue;
+                            }
+                            let que = format!(
+                                "{:?} fila {i} «{}» a escala {e} bajada {des}",
+                                seccion, fila.etiqueta
+                            );
+                            let (en, golpe) = pulsar(cx_, cy_);
+                            assert_eq!(en, Some(i), "{que}");
+                            if let Some(g) = golpe {
+                                assert!(matches!(g, Golpe::Fila(j, _) if j == i), "{que}: {g:?}");
+                            }
+                            for (parte, c) in partes_de_fila(fila, r) {
+                                let (px, py) = (c.x + c.ancho / 2.0, c.y + c.alto / 2.0);
+                                if !zona.contiene(px, py) {
+                                    continue;
+                                }
+                                assert_eq!(
+                                    pulsar(px, py).1,
+                                    Some(Golpe::Fila(i, parte)),
+                                    "{que}: {parte:?}"
+                                );
+                            }
+                            // Lo pintado de sus textos cabe en la fila.
+                            if !fila.es_grupo() {
+                                let tx = textos_de_fila(&medir_sin_gpu, fila, r, e);
+                                assert!(tx.total <= r.alto * e + 0.5, "{que}: desborda");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // Caso negativo: sin medir, una explicacion larga NO cabe en 60 (era
+        // el fallo) y midiendo si; alguna fila de verdad crece.
+        assert!(alguna_alta, "el motor de OCR tiene que crecer");
+        let (_, mut ocr) = filas_de_ocr(&Ajustes::default(), &cx)
+            .into_iter()
+            .find(|(c, _)| *c == Clave::OcrMotor)
+            .unwrap();
+        // La de un equipo sin Indra bajado (la de este puede tenerlo).
+        let mut args = FluentArgs::new();
+        args.set("megas", 26);
+        ocr.ayuda = t.t_args("ajustes2-ayuda-ocr", &args);
+        let r = rect_de_fila(std::slice::from_ref(&ocr), 0, 0, zona);
+        assert!(textos_de_fila(&medir_sin_gpu, &ocr, r, 1.0).total > r.alto);
     }
 
     #[test]
@@ -4380,7 +4621,9 @@ mod pruebas {
         ];
         for (nombre, estado, resaltado) in casos {
             let mut estado = estado;
-            let filas = filas_actuales(&estado, &a, &cx);
+            let medir =
+                |texto: &str, tam: f32, ancho: f32| motor.medir_texto_ajustado(texto, tam, ancho);
+            let filas = filas_medidas(&estado, &a, &cx, contenido(ANCHO, ALTO), 1.0, &medir);
             if let Foco::Entrada(_) = estado.foco {
                 let i = filas
                     .iter()
@@ -4523,7 +4766,9 @@ mod pruebas {
             desplazamiento: 9_999,
             ..Estado::default()
         };
-        let filas = filas_actuales(&estado, &a, &cx);
+        let medir =
+            |texto: &str, tam: f32, ancho: f32| motor.medir_texto_ajustado(texto, tam, ancho);
+        let filas = filas_medidas(&estado, &a, &cx, contenido(ANCHO, ALTO), 1.0, &medir);
         let solo: Vec<Fila> = filas.iter().map(|(_, f)| f.clone()).collect();
         estado.desplazamiento =
             limitar_desplazamiento(estado.desplazamiento, &solo, contenido(ANCHO, ALTO));

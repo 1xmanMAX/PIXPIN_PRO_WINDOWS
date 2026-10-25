@@ -398,6 +398,16 @@ impl MotorRender {
         self.medir_parrafo(texto, tam, ancho_max, &[])
     }
 
+    /// Como `medir_texto`, pero con la MISMA disposicion cacheada que usa
+    /// `Pintor::medir_texto_ajustado` (y `texto_ajustado` al pintar): quien
+    /// reparte los clics fuera del fotograma mide exactamente lo que luego
+    /// se pinta, y medir en cada vuelta del bucle no crea disposiciones.
+    pub fn medir_texto_ajustado(&self, texto: &str, tam: f32, ancho_max: f32) -> (f32, f32) {
+        crate::lienzo::disposicion_cacheada(self, texto, tam, ancho_max, false, None)
+            .map(|(_, w, h)| (w, h))
+            .unwrap_or((0.0, 0.0))
+    }
+
     /// Como `medir_texto`, con tramos de estilo (negrita, cursiva, mono):
     /// lo que necesita una nota en Markdown para saber de que tamano nace.
     pub fn medir_parrafo(

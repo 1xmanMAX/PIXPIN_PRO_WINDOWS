@@ -896,6 +896,41 @@ fn guardar(
             tracing::warn!(?e, "la nota de la clase quedo sin sus enlaces");
         }
     }
+    // Y todo dentro de su carpeta: en el chat se ve UNA tarjeta y no la nota,
+    // el video y cada captura sueltos.
+    let grabacion_en_carpeta = carpeta_de_la_grabacion(
+        voz.as_ref().map(|v| v.id.as_str()),
+        grabacion.map_or(0, |g| g.duracion_ms),
+        video_id.as_deref(),
+        &enlazadas,
+    );
+    if !grabacion_en_carpeta.is_empty() {
+        let cuando = super::descripcion::hora_sin_repetir();
+        let m = pixpin_proyecto::carpeta_de_paginas::mensaje_de_grabacion(
+            &nombre,
+            &grabacion_en_carpeta,
+            &cuaderno::Sello {
+                cuando,
+                numero,
+                aparato: pedido.aparato.clone(),
+                proyecto: proyecto.clone(),
+            },
+        );
+        match cuaderno::anadir(&carpeta, &m) {
+            Ok(()) => {
+                let mut indice = almacen::Indice::leer(raiz);
+                if let Some(f) = indice.proyectos.iter_mut().find(|f| &f.id == proyecto) {
+                    f.tocado = cuando;
+                    f.resumen = m.nombre.clone();
+                    if let Err(e) = indice.guardar(raiz) {
+                        tracing::warn!(?e, "el indice no se entero de la clase");
+                    }
+                }
+            }
+            // Lo de dentro ya esta en el chat, suelto: como antes.
+            Err(e) => tracing::warn!(?e, "la clase quedo sin su carpeta"),
+        }
+    }
     super::refrescar();
     tracing::info!(
         con_voz = voz.is_some(),
@@ -905,6 +940,31 @@ fn guardar(
         "clase guardada"
     );
     Ok(voz)
+}
+
+/// **La carpeta de una clase**: la nota, el video y las capturas en el orden
+/// de la grabacion, cada una con su minuto (las capturas con el suyo de
+/// titulo, «⏱ 01:05»; la nota y el video, con su nombre).
+fn carpeta_de_la_grabacion(
+    voz: Option<&str>,
+    duracion_ms: i64,
+    video: Option<&str>,
+    capturas: &[(i64, String)],
+) -> pixpin_proyecto::carpeta_de_paginas::Carpeta {
+    let mut c = pixpin_proyecto::carpeta_de_paginas::Carpeta::grabacion(
+        voz.unwrap_or_default(),
+        duracion_ms,
+    );
+    c.video = video.unwrap_or_default().to_string();
+    for id in voz.into_iter().chain(video) {
+        c.anadir_al_minuto(id, "", 0);
+    }
+    let mut capturas = capturas.to_vec();
+    capturas.sort_by_key(|(ms, _)| *ms);
+    for (ms, id) in &capturas {
+        c.anadir_al_minuto(id, &format!("⏱ {}", minuto(*ms)), *ms);
+    }
+    c
 }
 
 /// Un nombre que no pise nada en `carpeta`: `nombre`, o `tronco (n).ext`.
@@ -2813,5 +2873,29 @@ mod pruebas {
         assert_eq!(captura_en(&c, 9_000), Some(1));
         assert_eq!(captura_en(&c, 99_000), Some(1));
         assert_eq!(captura_en(&[], 1_000), None);
+    }
+
+    #[test]
+    fn la_clase_entra_en_su_carpeta_en_el_orden_de_la_grabacion() {
+        let c = carpeta_de_la_grabacion(
+            Some("v"),
+            90_000,
+            Some("mp4"),
+            &[(65_000, "f2".into()), (5_000, "f1".into())],
+        );
+        assert!(c.es_grabacion());
+        assert_eq!((c.voz.as_str(), c.duracion_ms), ("v", 90_000));
+        let ids: Vec<&str> = c.paginas.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, ["v", "mp4", "f1", "f2"]);
+        assert_eq!(c.paginas[3].titulo, "⏱ 1:05");
+        assert_eq!(c.paginas[3].ms, Some(65_000));
+        assert_eq!(c.paginas[0].titulo, "", "la nota con su nombre");
+        assert_eq!(c.video, "mp4");
+        assert_eq!(c.capturas().count(), 2);
+        // Caso negativo: sin nota (no se pudo cerrar), solo las capturas.
+        let sola = carpeta_de_la_grabacion(None, 0, None, &[(1, "f".into())]);
+        assert_eq!(sola.voz, "");
+        assert_eq!(sola.len(), 1);
+        assert!(carpeta_de_la_grabacion(None, 0, None, &[]).is_empty());
     }
 }

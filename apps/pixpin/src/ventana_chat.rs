@@ -6293,9 +6293,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                     p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
                     pintar_ojeada_tabla(p, tema, escala, t, hoja);
                 }
-                Ojeada::Carpeta(ids) => {
-                    pintar_ojeada_carpeta(p, a, ids, hoja, previas, tema, e);
-                }
+                Ojeada::Carpeta(ids) => match carpetas::grabacion_de(m) {
+                    Some(c) => {
+                        pintar_ojeada_grabacion(p, a, &c, ids, hoja, previas, tema, textos, e)
+                    }
+                    None => pintar_ojeada_carpeta(p, a, ids, hoja, previas, tema, e),
+                },
                 Ojeada::Foto { .. } => {
                     let recortada = p.empujar_recorte_redondeado(hoja, 4.0 * e);
                     pintar_foto(p, a, i, hoja, previas, tema, e);
@@ -6917,6 +6920,18 @@ fn tocar_la_burbuja(
     idioma: pixpin_store::Idioma,
     identidad: &str,
 ) {
+    // La carpeta de una clase grabada se abre para estudiarla: es su vista
+    // natural (el video o la captura del minuto, el texto y las capturas).
+    // Lo que lleva, con lo adjuntado, en «Abrir la carpeta» de su menu.
+    if let Some(a) = abierto.as_ref()
+        && let Some((id, ms)) = a
+            .mensajes
+            .get(indice)
+            .and_then(carpetas::clase_de_la_grabacion)
+    {
+        estudiar_clase::abrir(idioma, ubicacion.clone(), a.ficha.id.clone(), id, ms);
+        return;
+    }
     // Una carpeta de paginas se abre en su ventana, con sus paginas en orden.
     if let Some(a) = abierto.as_ref()
         && let Some(m) = a.mensajes.get(indice)
@@ -7374,6 +7389,19 @@ fn se_ve(a: &Abierto, m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
     // Las paginas de un PDF unido (y sus fotos) son del proyecto: en el chat
     // ya esta su mensaje, y en la galeria se ven todas.
     if crate::pdf_en_chat::solo_galeria(m) {
+        return false;
+    }
+    // Lo de dentro de una carpeta lo representa su tarjeta. Con la lupa si
+    // sale (lo que se busca se encuentra), y tambien al ir a el desde su
+    // carpeta (el resaltado).
+    let buscando = a.busqueda.as_deref().is_some_and(|q| !q.trim().is_empty());
+    if carpetas::esta_dentro(m)
+        && !buscando
+        && !a
+            .resaltado
+            .and_then(|(j, _)| a.mensajes.get(j))
+            .is_some_and(|r| r.id == m.id)
+    {
         return false;
     }
     // Las lecciones no se mezclan con el chat (el movil, 4-oct): viajan como
@@ -8891,6 +8919,9 @@ fn anadir_hojas_del_proyecto(
     // Las paginas de un PDF (y lo que salio de un mensaje de este chat)
     // solo van a la tarjeta de Proyectos: del PDF, el chat lleva su mensaje.
     crate::pdf_en_chat::para_el_chat(ubicacion.raiz(), id, aparato, mensajes);
+    // Lo que esta en una carpeta (las paginas de un cuaderno, lo de una
+    // clase grabada) se ve en su carpeta y no suelto.
+    carpetas::marcar_lo_de_dentro(mensajes);
 }
 
 fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha) -> Abierto {
@@ -10200,6 +10231,134 @@ fn pintar_ojeada_tabla(
         }
     }
     p.soltar_recorte();
+}
+
+/// **La tarjeta de una clase grabada** (25-oct-2026): una sola en el chat
+/// por toda la grabacion. La primera captura de fondo (sin capturas, el
+/// icono del video o del microfono), arriba la chapa «● Grabacion», abajo
+/// lo que duro y cuantas capturas lleva, y la pastilla «Estudiar» (la
+/// tarjeta entera abre la clase en su ventana).
+#[allow(clippy::too_many_arguments)] // lo que pinta una burbuja, entero
+fn pintar_ojeada_grabacion(
+    p: &Pintor,
+    a: &Abierto,
+    c: &pixpin_proyecto::carpeta_de_paginas::Carpeta,
+    capturas: &[String],
+    hoja: RectF,
+    previas: &crate::miniaturas::Miniaturas,
+    tema: &Tema,
+    textos: &Catalogo,
+    e: f32,
+) {
+    p.rellenar_redondeado(hoja, 6.0 * e, con_alfa(tema.papel, 0.55));
+    let foto = capturas
+        .iter()
+        .filter_map(|id| a.mensajes.iter().position(|m| &m.id == id))
+        .find(|&j| matches!(a.vistas.get(j), Some(Some(Ojeada::Foto { .. }))));
+    match foto {
+        Some(j) => {
+            let recortada = p.empujar_recorte_redondeado(hoja, 6.0 * e);
+            pintar_foto(p, a, j, hoja, previas, tema, e);
+            if recortada {
+                p.soltar_recorte_redondeado();
+            }
+        }
+        None => {
+            let lado = 48.0 * e;
+            let icono = if c.video.is_empty() {
+                &mi::MIC
+            } else {
+                &mi::VIDEOCAM
+            };
+            p.icono(
+                icono,
+                RectF {
+                    x: hoja.x + (hoja.ancho - lado) / 2.0,
+                    y: hoja.y + (hoja.alto - lado) / 2.0,
+                    ancho: lado,
+                    alto: lado,
+                },
+                tema.texto_papel,
+            );
+        }
+    }
+    let oscuro = con_alfa(hex(0x000000), 0.65);
+    let blanco = hex(0xffffff);
+    // Arriba: el punto rojo y «Grabacion».
+    let rotulo = textos.t("carpeta-grabacion");
+    let (w, h) = p.medir_texto(&rotulo, HORA_TAM * e);
+    let punto = 8.0 * e;
+    let chapa = RectF {
+        x: hoja.x + 6.0 * e,
+        y: hoja.y + 6.0 * e,
+        ancho: w + punto + 18.0 * e,
+        alto: h + 6.0 * e,
+    };
+    p.rellenar_redondeado(chapa, chapa.alto / 2.0, oscuro);
+    p.rellenar_redondeado(
+        RectF {
+            x: chapa.x + 6.0 * e,
+            y: chapa.y + (chapa.alto - punto) / 2.0,
+            ancho: punto,
+            alto: punto,
+        },
+        punto / 2.0,
+        hex(0xe53935),
+    );
+    p.texto(
+        &rotulo,
+        chapa.x + punto + 11.0 * e,
+        chapa.y + 3.0 * e,
+        HORA_TAM * e,
+        blanco,
+    );
+    // Abajo a la izquierda: lo que duro y cuantas capturas.
+    let detalle = carpetas::detalle_de_grabacion(c, textos);
+    let (w, h) = p.medir_texto(&detalle, HORA_TAM * e);
+    let chapa = RectF {
+        x: hoja.x + 6.0 * e,
+        y: hoja.y + hoja.alto - h - 12.0 * e,
+        ancho: w + 12.0 * e,
+        alto: h + 6.0 * e,
+    };
+    p.rellenar_redondeado(chapa, chapa.alto / 2.0, oscuro);
+    p.texto(
+        &detalle,
+        chapa.x + 6.0 * e,
+        chapa.y + 3.0 * e,
+        HORA_TAM * e,
+        blanco,
+    );
+    // Abajo a la derecha: «Estudiar», si hay nota que estudiar.
+    if !c.voz.is_empty() {
+        let estudiar = textos.t("carpeta-estudiar");
+        let (w, h) = p.medir_texto(&estudiar, 13.0 * e);
+        let lado = 16.0 * e;
+        let pastilla = RectF {
+            x: hoja.x + hoja.ancho - w - lado - 26.0 * e,
+            y: hoja.y + hoja.alto - h - 16.0 * e,
+            ancho: w + lado + 20.0 * e,
+            alto: h + 10.0 * e,
+        };
+        p.rellenar_redondeado(pastilla, pastilla.alto / 2.0, tema.enviar);
+        p.icono(
+            &mi::MENU_BOOK,
+            RectF {
+                x: pastilla.x + 8.0 * e,
+                y: pastilla.y + (pastilla.alto - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            blanco,
+        );
+        p.texto(
+            &estudiar,
+            pastilla.x + lado + 12.0 * e,
+            pastilla.y + 5.0 * e,
+            13.0 * e,
+            blanco,
+        );
+    }
 }
 
 /// Cuantas paginas se ven en la tarjeta de una carpeta, una al lado de otra.
@@ -14670,6 +14829,13 @@ fn picos_de_voz(m: &pixpin_proyecto::cuaderno::Mensaje) -> Vec<i64> {
         .unwrap_or_default()
 }
 
+/// **La clase que estudia un mensaje**: `(id de su nota, minuto)`. La nota,
+/// una captura o el video de una clase (`estudiar_clase::de_una_clase`), o
+/// la carpeta de una grabacion (su nota, desde el principio).
+fn clase_que_estudia(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<(String, i64)> {
+    estudiar_clase::de_una_clase(m).or_else(|| carpetas::clase_de_la_grabacion(m))
+}
+
 /// **La pastilla de estudiar** de una nota de voz grabada como clase: a la
 /// izquierda de la de texto, del mismo tamano. `None` si no es de una clase.
 fn pastilla_de_estudiar(
@@ -15050,6 +15216,7 @@ fn fila_de(
         Clase::Voz => &mi::PLAY_ARROW,
         // Cualquier mini-app que conozcamos, no solo la tabla: una lista de
         // tareas llegada del movil salia hasta ahora como texto suelto.
+        Clase::MiniApp if pixpin_proyecto::carpeta_de_paginas::es_grabacion(m) => &mi::MIC,
         Clase::MiniApp => icono_de_miniapp(m.miniapp.as_deref().unwrap_or_default()),
         _ => return None,
     };
@@ -15059,6 +15226,10 @@ fn fila_de(
         // alarma—, que es lo que el movil pone en la burbuja
         // (`MiniApps.kt:79-89`). Sin el, la burbuja solo repetia su nombre.
         // Una carpeta de paginas, cuantas lleva.
+        // La de una grabacion, lo que duro y cuantas capturas lleva.
+        Clase::MiniApp if carpetas::grabacion_de(m).is_some() => carpetas::grabacion_de(m)
+            .map(|c| carpetas::detalle_de_grabacion(&c, textos))
+            .unwrap_or_default(),
         Clase::MiniApp if pixpin_proyecto::carpeta_de_paginas::es_carpeta(m) => {
             match carpetas::cuantas(m) {
                 0 => textos.t("carpeta-vacia-detalle"),
@@ -17590,7 +17761,7 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     ));
     // Una clase grabada (su nota, sus capturas o su video): estudiarla en su
     // ventana, con el texto y las capturas al lado.
-    if estudiar_clase::de_una_clase(m).is_some() {
+    if clase_que_estudia(m).is_some() {
         v.push(entrada(
             Some(&mi::MENU_BOOK),
             textos.t("chat-estudiar-clase"),
@@ -18446,7 +18617,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Transcribir(i) => empezar_a_transcribir(cx.ubicacion, a, i, cx.textos, cx.idioma),
         Accion::Letra(i) => abrir_la_letra(a, i),
         Accion::Estudiar(i) => {
-            if let Some((id, ms)) = a.mensajes.get(i).and_then(estudiar_clase::de_una_clase) {
+            if let Some((id, ms)) = a.mensajes.get(i).and_then(clase_que_estudia) {
                 estudiar_clase::abrir(cx.idioma, cx.ubicacion.clone(), a.ficha.id.clone(), id, ms);
             }
             Efecto::Nada
@@ -19476,6 +19647,14 @@ mod pruebas_menu_sin_repetir {
         assert!(
             matches!(a.vistas[1], Some(Ojeada::Carpeta(ref ids)) if ids == &["m1".to_string()])
         );
+        // La pagina ya solo esta en la carpeta: no sale suelta en el chat,
+        // y con la lupa si se encuentra.
+        assert!(carpetas::esta_dentro(&a.mensajes[0]));
+        assert!(!se_ve(&a, &a.mensajes[0]));
+        assert!(se_ve(&a, &a.mensajes[1]), "la carpeta si se ve");
+        a.busqueda = Some("algo".into());
+        assert!(se_ve(&a, &a.mensajes[0]), "buscando, si");
+        a.busqueda = None;
         // En el disco, tambien.
         let leida = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&dir).unwrap();
         assert!(
@@ -19498,6 +19677,73 @@ mod pruebas_menu_sin_repetir {
             .collect();
         assert!(principal.contains(&Accion::AbrirCarpeta(1)));
         assert!(!principal.contains(&Accion::AnadirACarpeta(1)));
+        let _ = std::fs::remove_dir_all(raiz);
+    }
+
+    /// La carpeta de una clase grabada (25-oct-2026): la nota y la captura
+    /// no salen sueltas, su fila dice lo que duro y cuantas capturas lleva,
+    /// su menu ofrece estudiarla y lo que se le anade es un adjunto.
+    #[test]
+    fn una_clase_grabada_es_una_sola_tarjeta_y_lo_que_se_le_anade_es_un_adjunto() {
+        use pixpin_proyecto::carpeta_de_paginas::{self as cp, Carpeta};
+        let mut voz = mensaje(Clase::Voz, Some("clase.m4a"));
+        voz.id = "v".into();
+        voz.duracion_ms = 65_000;
+        voz.resto
+            .insert("grabacion".into(), serde_json::json!("clase"));
+        let mut foto = mensaje(Clase::Imagen, Some("clase-1.png"));
+        foto.id = "f".into();
+        foto.resto.insert(
+            "enGrabacion".into(),
+            serde_json::json!({ "de": "v", "ms": 5000 }),
+        );
+        let mut nota = mensaje(Clase::Nota, None);
+        nota.id = "n".into();
+        let mut c = Carpeta::grabacion("v", 65_000);
+        c.anadir_al_minuto("v", "", 0);
+        c.anadir_al_minuto("f", "⏱ 0:05", 5000);
+        let sello = pixpin_proyecto::cuaderno::Sello {
+            cuando: 1_761_400_000_000,
+            numero: 9,
+            aparato: "PC".into(),
+            proyecto: "obra".into(),
+        };
+        let carpeta = cp::mensaje_de_grabacion("Clase 25-10 10h58", &c, &sello);
+        let id = carpeta.id.clone();
+        let (mut a, raiz) = abierto_con("grabacion", vec![voz, foto, nota, carpeta]);
+        let dir = pixpin_proyecto::almacen::carpeta(&raiz, &a.ficha.id);
+        for m in &a.mensajes {
+            pixpin_proyecto::cuaderno::anadir(&dir, m).unwrap();
+        }
+        carpetas::marcar_lo_de_dentro(&mut a.mensajes);
+        assert!(!se_ve(&a, &a.mensajes[0]) && !se_ve(&a, &a.mensajes[1]));
+        assert!(se_ve(&a, &a.mensajes[2]) && se_ve(&a, &a.mensajes[3]));
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let (_, nombre, detalle) = fila_de(&a.mensajes[3], false, &textos).unwrap();
+        assert_eq!(nombre, "Clase 25-10 10h58");
+        assert!(
+            detalle.contains("1:05") && detalle.contains("1 captura"),
+            "{detalle}"
+        );
+        let principal: Vec<Accion> = menu_de_mensaje(&a, 3, &textos)
+            .into_iter()
+            .map(|e| e.accion)
+            .collect();
+        assert!(principal.contains(&Accion::Estudiar(3)));
+        assert!(principal.contains(&Accion::AbrirCarpeta(3)));
+        assert_eq!(clase_que_estudia(&a.mensajes[3]), Some(("v".into(), 0)));
+        // La nota del chat entra en la clase como adjunto, aparte.
+        let u = Ubicacion::Portable { raiz: raiz.clone() };
+        let _ = carpetas::anadir(&u, &mut a, 2, &id, &textos);
+        let piezas = carpetas::piezas_de_grabacion(&a.mensajes[3], &a.mensajes).unwrap();
+        assert_eq!(piezas.voz, Some(0));
+        assert_eq!(piezas.capturas, [(5000, 1)]);
+        assert_eq!(piezas.adjuntos, [2]);
+        assert!(!se_ve(&a, &a.mensajes[2]), "el adjunto vive en la carpeta");
+        // Caso negativo: una carpeta de paginas no se estudia.
+        let normal = cp::mensaje_nuevo("Diario", &sello);
+        assert_eq!(clase_que_estudia(&normal), None);
+        assert!(carpetas::piezas_de_grabacion(&normal, &a.mensajes).is_none());
         let _ = std::fs::remove_dir_all(raiz);
     }
 

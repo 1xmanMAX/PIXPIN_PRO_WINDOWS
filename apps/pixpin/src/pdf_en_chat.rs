@@ -763,7 +763,11 @@ pub fn solo_galeria(m: &cuaderno::Mensaje) -> bool {
 pub fn cuenta_de_la_cabecera(mensajes: &[cuaderno::Mensaje]) -> (usize, i64) {
     mensajes
         .iter()
-        .filter(|m| !solo_galeria(m) && !cuaderno::es_de_sistema(m))
+        .filter(|m| {
+            !solo_galeria(m)
+                && !cuaderno::es_de_sistema(m)
+                && !crate::ventana_chat::carpetas::esta_dentro(m)
+        })
         .fold((0, 0), |(n, b), m| (n + 1, b + m.bytes.max(0)))
 }
 
