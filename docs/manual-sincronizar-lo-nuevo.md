@@ -333,3 +333,83 @@ cifrado de verdad:
 Y las reglas sueltas en `crates/pixpin-sincro/src/fusion.rs` (pruebas
 `un_marcador_en_cada_aparato_…`, `una_pagina_anadida_a_la_carpeta_…`,
 `la_biblioteca_de_figuras_guardada_en_los_dos_…`).
+
+## 10. La foto del chat (25-oct-2026)
+
+El circulo de cada chat puede llevar **una imagen**, **un emoji sobre un
+degradado** o **las iniciales sobre el color elegido**. Viaja como un campo
+mas del `Proyecto` (no del mensaje): `avatar`. Sin version nueva del
+protocolo; para un aparato que aun no lo conozca es un campo desconocido que
+**tiene que conservar** (regla 1), o cada vuelta veria el proyecto cambiado.
+
+### Campo
+
+```json
+"avatar": {"tipo": "imagen", "ruta": "pixpin:files/guardados/pc/AGJ36629KT/avatar-1761400000000.png", "cuando": 1761400000000}
+"avatar": {"tipo": "emoji", "emoji": "🏗️", "color": "#FFCD6A", "color2": "#FFA85C", "cuando": 1761400000000}
+"avatar": {"tipo": "iniciales", "color": "#72D5FD", "color2": "#2A9EF1", "cuando": 1761400000000}
+"avatar": {"tipo": "iniciales", "cuando": 1761400000000}
+```
+
+| Clave | Que es |
+|---|---|
+| `tipo` | `imagen`, `emoji` o `iniciales`. Otro valor: pintar como `iniciales` y **conservarlo tal cual** (con sus claves). |
+| `emoji` | Un emoji (puede llevar selector de variante, `U+FE0F`). Solo con `emoji`. |
+| `color`, `color2` | `#RRGGBB`: el degradado de arriba abajo del circulo, detras del emoji o de las iniciales. Sin `color2`, liso. Sin ninguno, el color de siempre (el que sale del codigo unico). |
+| `ruta` | Solo con `imagen`: el fichero, con ruta portatil (en el disco del movil, su ruta local, como `pdfOrigen`). |
+| `cuando` | Milisegundos desde 1970 de cuando se puso. Informativo. |
+
+- **«Volver a lo de siempre» se escribe**: `{"tipo":"iniciales","cuando":…}`
+  sin colores. No se borra el campo: asi la fusion ve un cambio y no una
+  ausencia.
+- Sin campo `avatar`: lo de siempre (en el PC, ademas, el `logo.png` de antes
+  si esta en la carpeta del proyecto; ese sale ya como `tipo: imagen`).
+
+### Fichero
+
+| Que | Donde lo deja el PC | Ruta portatil | Formato |
+|---|---|---|---|
+| La imagen | `<proyecto>/avatar-<ms>.png` | `pixpin:files/guardados/pc/<chat>/avatar-<ms>.png` | PNG cuadrado, 256 px de lado como mucho, ya recortado |
+
+Viaja con el proyecto porque su `Proyecto` la nombra (`Disco.alcance` recoge
+las rutas portatiles del texto del proyecto). **Un nombre nuevo cada vez**
+(`avatar-<ms>.png`): una foto nueva es un fichero nuevo, nunca el mismo
+cambiado. Al cambiarla, la vieja se borra de la carpeta (sin lapida: ya
+nadie la nombra). En Android cualquier carpeta de la regla 2 vale (lo natural,
+`files/guardados/`), con el mismo nombre.
+
+### Choques
+
+El `Proyecto` se junta campo a campo (`Mezcla.kt`): cambiada en un solo
+aparato, pasa; cambiada en los dos a la vez, gana el proyecto tocado mas
+tarde. En Android, como al archivar, cambiar la foto da el proyecto por
+tocado (`tocado = ahora`). El PC no mueve `tocado` de un proyecto nacido
+alli (es su fecha de creacion, a proposito): su foto pasa igual, porque
+solo cambio en un lado.
+
+### Lo que hace el que recibe
+
+1. Guarda `avatar` con el proyecto, tal cual.
+2. Pinta: con `imagen`, el fichero recortado al circulo (si aun no llego,
+   lo de siempre mientras tanto); con `emoji`, el emoji grande (~52 % del
+   circulo) sobre el degradado; con `iniciales`, las iniciales en blanco
+   sobre el degradado. En todos los sitios del avatar: la lista de chats,
+   la cabecera, la ficha del chat, la busqueda. La chapa de chat compartido
+   va **encima**.
+3. Para elegirla, lo mismo que el PC: imagen (de la galeria o pegada, con
+   recorte cuadrado que se mueve y se acerca), una rejilla de emojis con
+   buscador, doce fondos (`pixpin_ui::foto_del_chat::FONDOS`, los siete de
+   Telegram y cinco mas) y «Como siempre».
+
+### Tareas
+
+- [ ] Android: `avatar` en `Proyecto` (todos los campos opcionales, y lo
+      desconocido conservado), pintarlo en la lista y en la cabecera, y la
+      hoja para elegirlo desde la ficha del chat.
+- [ ] Mac, iPad e iPhone: el nucleo ya lo tiene (`apple/nucleo/pixpin-proyecto/src/avatar.rs`,
+      `apple/nucleo/pixpin-ui/src/foto_del_chat.rs`); falta pintarlo en Swift
+      y la hoja de elegirlo.
+
+Probado en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs`:
+`la_foto_del_chat_viaja_con_su_imagen_y_vuelve_cambiada_desde_el_movil` y
+`el_logo_de_antes_empieza_a_viajar_como_foto_del_chat`.
