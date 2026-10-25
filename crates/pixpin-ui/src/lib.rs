@@ -38,6 +38,8 @@ pub mod reproductor;
 pub mod resaltado;
 pub mod riel_marcas;
 pub mod tabla;
+/// Las vistas de la ventana de Tareas: Tarjetas, Kanban y Horario.
+pub mod vista_tareas;
 
 pub use barra::{AccionBarra, Barra};
 pub use caja_herramientas::{
