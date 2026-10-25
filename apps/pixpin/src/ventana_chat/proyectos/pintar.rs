@@ -28,20 +28,20 @@ use crate::caja_dibujo::hex;
 /// Los colores de la pantalla, los del tema del movil.
 pub(crate) struct Paleta {
     /// `surface`: el fondo de la pantalla.
-    pub(crate) fondo: Color,
+    fondo: Color,
     /// `surfaceContainerHighest`: la tarjeta (`Card` rellena de Material 3).
-    pub(crate) tarjeta: Color,
+    tarjeta: Color,
     /// `surfaceVariant`: detras de la portada y de cada hoja.
-    pub(crate) variante: Color,
+    variante: Color,
     /// `onSurface` y `onSurfaceVariant`.
-    pub(crate) texto: Color,
-    pub(crate) texto_suave: Color,
-    pub(crate) primario: Color,
-    pub(crate) sobre_primario: Color,
+    texto: Color,
+    texto_suave: Color,
+    primario: Color,
+    sobre_primario: Color,
     /// La barra de cristal (`surfaceContainerHigh` al 94 %) y su filo
     /// (`outlineVariant`).
-    pub(crate) cristal: Color,
-    pub(crate) filo: Color,
+    cristal: Color,
+    filo: Color,
 }
 
 const fn alfa(c: Color, a: f32) -> Color {
@@ -894,10 +894,9 @@ fn barra_de_acciones(p: &Pintor, cx: &Cx, pan: &ui::Panel) {
     }
 }
 
-/// El interruptor Chat ↔ Proyectos ↔ Figuras, en la barra de titulo: un
-/// selector de tres con la parte elegida puesta, como los de Windows 11. Se
-/// pinta en las tres vistas, siempre a la vista. `figuras`: la pestaña de
-/// las figuras esta delante (`figuras.rs`).
+/// El interruptor Chat ↔ Proyectos, en la barra de titulo: un selector de
+/// dos con la mitad elegida puesta, como los de Windows 11. Se pinta en las
+/// dos vistas, siempre a la vista.
 pub(crate) fn pintar_interruptor(
     p: &Pintor,
     v: &VistaProyectos,
@@ -905,7 +904,6 @@ pub(crate) fn pintar_interruptor(
     tema: &Tema,
     escala: u32,
     textos: &pixpin_store::Catalogo,
-    figuras: bool,
 ) {
     let e = escala as f32 / 100.0;
     let barra = d.barra;
@@ -926,23 +924,17 @@ pub(crate) fn pintar_interruptor(
     v.interruptor.set(Some(i));
     let radio = i.caja.alto as f32 / 2.0;
     p.rellenar_redondeado(rf(i.caja), radio, tema.boton_sobre);
-    let (chat, proyectos) = (!figuras && !v.activa(), !figuras && v.activa());
-    let puesta = if figuras {
-        i.figuras
-    } else if proyectos {
-        i.proyectos
-    } else {
-        i.chat
-    };
+    // Figuras no se queda elegida: abre su ventana y el chat sigue igual.
+    let puesta = if v.activa() { i.proyectos } else { i.chat };
     p.rellenar_redondeado(
         encoger(rf(puesta), 2.0 * e),
         radio - 2.0 * e,
         tema.fila_elegida,
     );
     for (mitad, clave, elegida) in [
-        (i.chat, "proyectos-interruptor-chat", chat),
-        (i.proyectos, "proyectos-interruptor-proyectos", proyectos),
-        (i.figuras, "proyectos-interruptor-figuras", figuras),
+        (i.chat, "proyectos-interruptor-chat", !v.activa()),
+        (i.proyectos, "proyectos-interruptor-proyectos", v.activa()),
+        (i.figuras, "proyectos-interruptor-figuras", false),
     ] {
         let t = textos.t(clave);
         let tam = ui::INTERRUPTOR_TAM * e;
