@@ -4706,21 +4706,29 @@ mod pruebas {
 
     /// Las piezas colocadas como lo haria un fotograma, con tarjetas de alto
     /// fijo: para probar el teclado sin pintar.
+    /// Las tarjetas como las pinta la vista de siempre (Tarjetas, una
+    /// rejilla desde que se quito la Lista el 25-oct): `colocadas` y
+    /// `celdas`, que es por donde andan las flechas.
     fn colocar(e: &mut Estado) {
         let palabras = tarjetas::palabras(e.buscar.texto());
         let g = tarjetas::agrupar(&e.listas, &palabras, e.hoy, &|_, _| false);
-        e.colocadas = tarjetas::disponer(
+        let (c, _) = rejilla::disponer(
             &g,
             &|_| false,
-            &mut |_, _| 60.0,
-            tarjetas::Medidas {
+            &mut |_, _, l| l,
+            &rejilla::Medidas {
+                ancho: 628.0,
+                lado: 200.0,
+                hueco: 12.0,
                 encabezado: 40.0,
                 pliegue: 40.0,
-                hueco: 8.0,
                 entre_grupos: 18.0,
+                respiro: 8.0,
+                fila_hecha: 44.0,
             },
-        )
-        .0;
+        );
+        e.colocadas = rejilla::colocadas(&c);
+        e.celdas = c;
     }
 
     #[test]
@@ -4754,18 +4762,24 @@ mod pruebas {
         assert!(t(&mut e, VK_ESCAPE, false));
         assert!(e.buscar.texto().is_empty());
         colocar(&mut e);
-        // Sin buscar: la caja, y bajando las tarjetas en orden.
+        // Sin buscar: la caja, abajo a la primera tarjeta y a la derecha la
+        // siguiente (en la rejilla, abajo es la de debajo).
         t(&mut e, VK_TAB, false);
         assert_eq!(e.foco, Foco::Apuntar);
         t(&mut e, VK_ABAJO, false);
         let orden = tarjetas::en_orden(&e.colocadas);
         assert_eq!(e.foco, Foco::Tarjeta(orden[0].0, orden[0].1));
-        t(&mut e, VK_ABAJO, false);
+        t(&mut e, VK_DERECHA, false);
         assert_eq!(e.foco, Foco::Tarjeta(orden[1].0, orden[1].1));
-        // Intro en una del Inbox abre «Mover a…» y las flechas eligen.
-        assert!(e.se_reparte(orden[1].0, orden[1].1));
+        // Intro en una del Inbox sin fotos abre «Mover a…» y las flechas
+        // eligen (en un cuadrado con foto, Intro la pinea).
+        let sin_fotos = *orden
+            .iter()
+            .find(|(l, f)| e.se_reparte(*l, *f) && !e.con_fotos(*l, *f))
+            .expect("una del Inbox sin fotos");
+        e.foco = Foco::Tarjeta(sin_fotos.0, sin_fotos.1);
         t(&mut e, VK_ENTRAR, false);
-        assert_eq!(e.repartiendo, Some(orden[1]));
+        assert_eq!(e.repartiendo, Some(sin_fotos));
         t(&mut e, VK_ABAJO, false);
         t(&mut e, VK_ABAJO, false);
         assert_eq!(e.destino_elegido, 1, "no se pasa del ultimo");
