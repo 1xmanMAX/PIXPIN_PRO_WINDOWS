@@ -1,11 +1,16 @@
 //! **tareas-v4** (5-oct): arriba, la barra comun de Galeria, Lecciones,
 //! Tareas y Timeline ([`crate::cabecera`]) con el titulo, el buscador y el
-//! conmutador Lista / Tarjetas. En «Tarjetas» cada tarea es un cuadrado
+//! conmutador Tarjetas / Kanban / Horario (la vista Lista se quito el
+//! 25-oct-2026: quien la tenia abre en Tarjetas). En «Tarjetas» cada tarea es un cuadrado
 //! ([`super::rejilla`]) con su primera foto de fondo, sus emoticonos como
 //! estados de WeChat ([`super::emoticonos`]) y, con varias fotos, la pila de
 //! bordes detras. En «Kanban» (17-oct-2026) cada lista es una columna
 //! ([`super::kanban`]) con esas mismas tarjetas, y arrastrar una a otra
-//! columna la pasa a esa lista. La vista elegida se recuerda en
+//! columna la pasa a esa lista. En «Horario» (25-oct-2026) la ventana se
+//! ensancha y ensena el calendario semanal de las clases
+//! ([`crate::horario::panel`], el mismo `horario.md` de las llamadas), con
+//! las tareas con hora de la semana como chapitas en su dia; «Horario de
+//! clases…» abre esta ventana en esa vista. La vista elegida se recuerda en
 //! `tareas-vista.txt`.
 //!
 //! La ventana de Tareas (tareas-v3): arriba del todo el buscador, debajo la
@@ -59,10 +64,11 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
-use super::rejilla::{self, Vista};
+use super::rejilla::{self, Recordada, Vista};
 use super::{Fila, Lista, emoticonos, kanban, tarjetas};
 use crate::caja_dibujo::hex;
 use crate::caja_texto::CajaLinea;
+use crate::horario::panel::{Panel, Salida, TareaConHora};
 use crate::lecciones::ui;
 use crate::overlay::Recursos;
 use crate::v2::aviso::Aviso;
@@ -84,8 +90,6 @@ const RESALTE: Color = Color {
 /// azul muy aguado, para que se vea que no es texto.
 const FICHA_LETRA: Color = hex(0x9cc4f0);
 const FICHA_FONDO: Color = con_alfa(ACENTO, 0.24);
-/// Lado de la miniatura de una imagen de tarea, en su tarjeta.
-const MINI: f32 = 48.0;
 /// Lado mayor de la vista de una ficha con el raton encima.
 const VISTA: f32 = 160.0;
 
@@ -104,8 +108,13 @@ const VK_ABAJO: u32 = 0x28;
 const VK_INSERTAR: u32 = 0x2D;
 const VK_SUPRIMIR: u32 = 0x2E;
 const VK_F: u32 = 0x46;
+#[cfg(test)]
+const VK_H: u32 = 0x48;
+#[cfg(test)]
 const VK_K: u32 = 0x4B;
+#[cfg(test)]
 const VK_L: u32 = 0x4C;
+#[cfg(test)]
 const VK_T: u32 = 0x54;
 const VK_V: u32 = 0x56;
 const VK_Z: u32 = 0x5A;
@@ -115,7 +124,8 @@ const VK_F2: u32 = 0x71;
 const DOBLE_CLIC: Duration = Duration::from_millis(500);
 
 /// El tamano de la ventana, en pixeles logicos.
-const ANCHO_VENTANA: u32 = 660;
+#[cfg(test)]
+const ANCHO_VENTANA: u32 = pixpin_ui::vista_tareas::ANCHO_TAREAS;
 const ALTO_VENTANA: u32 = 800;
 
 /// Medidas, en pixeles logicos.
@@ -138,29 +148,19 @@ const FILA_HECHA: f32 = 44.0;
 /// grande»).
 const LETRA_CUADRO: f32 = 18.0;
 const LETRA_FILA: f32 = 16.0;
-/// Diametro de los circulos de emoticonos en la lista (en los cuadrados,
-/// [`rejilla::CHAPA`]).
-const ESTADO_LISTA: f32 = 34.0;
 const CAJA: f32 = 44.0;
 const MARGEN: f32 = 16.0;
-/// Lo que baja la rueda por muesca en la lista, en «filas» de este alto
-/// (x1,5).
-const FILA: f32 = 36.0;
 /// En cuadrados, la rueda baja media fila de la rejilla por muesca: con el
 /// paso de la lista se tardaba una eternidad en pasar una fila de 212.
 const MEDIA_FILA_REJILLA: f32 = (LADO_CUADRADO + HUECO_REJILLA) / 2.0;
 const ENCABEZADO: f32 = 40.0;
 const PLIEGUE: f32 = 40.0;
-const HUECO: f32 = 8.0;
 const ENTRE_GRUPOS: f32 = 18.0;
 /// El objetivo de la casilla (el dibujo, de 24, va en medio).
 const CASILLA: f32 = 40.0;
 /// El objetivo del boton que quita una tarea, y de la papelera de una lista:
 /// el boton de icono del v2.
 const ASPA: f32 = crate::v2::BOTON;
-const TARJETA_MIN: f32 = 56.0;
-/// La letra del texto de una tarea.
-const TAM_TAREA: f32 = 15.0;
 
 /// Cuanto se queda arriba, tachada, una tarea recien marcada.
 const SE_QUEDA: Duration = Duration::from_secs(5);
@@ -189,6 +189,15 @@ pub(super) fn abrir_en(
 
 pub(super) fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
     abrir_en(idioma, ubicacion, aparato, None);
+}
+
+/// La vista a la que hay que pasar al abrir (o ya abierta), si se pidio una:
+/// «Horario de clases…» abre ESTA ventana en el Horario (25-oct-2026).
+static VISTA_PEDIDA: std::sync::Mutex<Option<Vista>> = std::sync::Mutex::new(None);
+
+pub(super) fn abrir_horario(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
+    *VISTA_PEDIDA.lock().unwrap_or_else(|e| e.into_inner()) = Some(Vista::Horario);
+    lanzar(idioma, ubicacion, aparato);
 }
 
 /// Llego algo de otro aparato que puede tocar las tareas: la ventana relee
@@ -224,7 +233,7 @@ fn lanzar(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
             let hecho = crate::dispositivo_perdido::con_recursos("tareas", |r| {
-                bucle(r, &textos, &ubicacion, &aparato)
+                bucle(r, &textos, idioma, &ubicacion, &aparato)
             });
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la ventana de tareas");
@@ -518,8 +527,12 @@ enum Accion {
     CompartirLista(usize),
     /// «Deshacer» del aviso (o Ctrl+Z): devolver la ultima tarea quitada.
     Deshacer,
-    /// El conmutador de la barra de arriba: lista o cuadrados.
+    /// El conmutador de la barra de arriba: tarjetas, tablero u horario.
     Vista(Vista),
+    /// En el Horario, el boton «Domingo» de la barra: ensenarlo o no.
+    HorarioDomingo,
+    /// En el Horario, «Como texto»: el `horario.md` en el editor de notas.
+    HorarioComoTexto,
     /// El icono de imagen de la caja de apuntar: elegir imagenes en el
     /// Explorador (lo mismo que pegarlas con Ctrl+V).
     ElegirImagen,
@@ -758,8 +771,16 @@ struct Estado {
     deshacer: Option<Quitada>,
     /// La ventana, duena del cuadro que pregunta antes de borrar una lista.
     hwnd: Option<windows::Win32::Foundation::HWND>,
-    /// Lista o cuadrados: la elegida se recuerda en `tareas-vista.txt`.
+    /// Tarjetas, Kanban u Horario: la elegida se recuerda en
+    /// `tareas-vista.txt`.
     vista: Vista,
+    /// El calendario semanal de la vista Horario, leido al entrar en ella
+    /// la primera vez.
+    horario: Option<Panel>,
+    /// Las tareas con hora que se pasaron al horario (lista y `Fila::indice`),
+    /// en el orden de sus chapitas.
+    con_hora: Vec<(usize, usize)>,
+    idioma: Idioma,
     /// En la vista de cuadrados, la caja de cada pieza del ultimo fotograma
     /// (desde el borde y lo alto del contenido): con ellas se pinta, se
     /// acierta el clic y se mueven las flechas. En la lista, vacia.
@@ -818,7 +839,10 @@ impl Estado {
             fichas_pintadas: Vec::new(),
             deshacer: None,
             hwnd: None,
-            vista: Vista::Lista,
+            vista: Vista::Tarjetas,
+            horario: None,
+            con_hora: Vec::new(),
+            idioma: Idioma::Espanol,
             celdas: Vec::new(),
             columnas: Vec::new(),
             agarre: None,
@@ -962,6 +986,39 @@ impl Estado {
             .collect()
     }
 
+    /// Al pasar al Horario: el calendario, leido la primera vez (las demas
+    /// ya esta, y se relee solo si `horario.md` cambio).
+    fn entrar_en_horario(&mut self, raiz: &std::path::Path) {
+        if self.horario.is_none() {
+            let mut h = Panel::nuevo(self.idioma);
+            h.abrir(raiz);
+            self.horario = Some(h);
+        }
+    }
+
+    /// Las tareas pendientes con hora (`⏰`), para el horario: lo que se lee
+    /// en su chapita, su hora y el color de su lista; y de que lista y que
+    /// tarea es cada una.
+    fn tareas_con_hora(&self) -> (Vec<TareaConHora>, Vec<(usize, usize)>) {
+        let mut tareas = Vec::new();
+        let mut sitios = Vec::new();
+        for (li, l) in self.listas.iter().enumerate() {
+            for f in l.filas.iter().filter(|f| !f.hecha) {
+                let Some(cuando) = super::hora_de_tarea(&f.texto) else {
+                    continue;
+                };
+                let texto = super::frase::a_la_vista(&super::sin_hora(&f.texto), None).texto;
+                tareas.push(TareaConHora {
+                    texto,
+                    cuando,
+                    color: degradado_de_lista(self, li).0,
+                });
+                sitios.push((li, f.indice));
+            }
+        }
+        (tareas, sitios)
+    }
+
     /// Deja de corregir: la caja vuelve a apuntar tareas nuevas, vacia.
     fn soltar_correccion(&mut self) {
         if self.corrigiendo.take().is_some() {
@@ -1009,6 +1066,7 @@ fn menu(
 fn bucle(
     recursos: &Recursos,
     textos: &Catalogo,
+    idioma: Idioma,
     ubicacion: &Ubicacion,
     aparato: &str,
 ) -> Result<()> {
@@ -1019,9 +1077,25 @@ fn bucle(
         .context("sin monitor")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
+    let mut e = Estado::nuevo();
+    e.idioma = idioma;
+    e.vista = Vista::leer(ubicacion.raiz());
+    // Abierta desde «Horario de clases…»: ya en el Horario, y del ancho de
+    // el desde el primer fotograma.
+    if let Some(v) = VISTA_PEDIDA
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        && v != e.vista
+    {
+        e.vista = v;
+        v.guardar(ubicacion.raiz());
+    }
+    // El ancho, el de la vista: el horario necesita sitio para la semana.
+    let mut ancho_de_la_vista = e.vista.ancho();
     let mut marco = centrado(
         monitor.area_trabajo,
-        ANCHO_VENTANA,
+        ancho_de_la_vista,
         ALTO_VENTANA,
         monitor.escala_por_cien,
     );
@@ -1040,12 +1114,17 @@ fn bucle(
     ventana.enfocar();
     ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
 
-    let mut e = Estado::nuevo();
     e.hwnd = Some(ventana.handle());
-    e.vista = Vista::leer(ubicacion.raiz());
     LLEGO.store(false, Ordering::SeqCst);
     e.recargar(ubicacion);
-    tracing::info!(listas = e.listas.len(), "ventana de tareas abierta");
+    if e.vista == Vista::Horario {
+        e.entrar_en_horario(ubicacion.raiz());
+    }
+    tracing::info!(
+        listas = e.listas.len(),
+        vista = e.vista.como_texto(),
+        "ventana de tareas abierta"
+    );
     let mut mirado = Instant::now();
     let mut vivo = true;
     let mut pintar = true;
@@ -1058,7 +1137,25 @@ fn bucle(
                 .chain(&e.destinos)
                 .find(|l| !k.is_empty() && l.clave() == k)
                 .cloned();
+            // Una lista pedida (pulsada en el chat) se ve en las tarjetas.
+            if !k.is_empty() && e.vista == Vista::Horario {
+                vivo = hacer(
+                    &mut e,
+                    Accion::Vista(Vista::Tarjetas),
+                    textos,
+                    ubicacion,
+                    aparato,
+                );
+            }
             e.ir_a_lista = (!k.is_empty()).then_some(k);
+            pintar = true;
+        }
+        if let Some(v) = VISTA_PEDIDA
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
+            vivo = hacer(&mut e, Accion::Vista(v), textos, ubicacion, aparato);
             pintar = true;
         }
         for (h, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
@@ -1067,6 +1164,8 @@ fn bucle(
             }
             pintar = true;
             let local = |p: pixpin_geom::Punto, m: Rect| ((p.x - m.x) as f32, (p.y - m.y) as f32);
+            // En el Horario, lo de debajo de la barra es del calendario.
+            let en_horario = e.vista == Vista::Horario && e.horario.is_some();
             match ev {
                 EventoOverlay::Cerrar => vivo = false,
                 EventoOverlay::RatonMovido(p) => {
@@ -1079,6 +1178,9 @@ fn bucle(
                         ventana.mover(marco);
                     }
                     e.botones.raton = local(p, marco);
+                    if en_horario && let Some(hor) = e.horario.as_mut() {
+                        hor.raton_movido(local(p, marco), escala);
+                    }
                     // Una tarjeta pulsada en el tablero pasa a arrastrarse
                     // cuando el raton se aleja lo bastante.
                     if let Some(ag) = e.agarre.as_mut()
@@ -1097,6 +1199,20 @@ fn bucle(
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     e.botones.raton = local(p, marco);
+                    // En el Horario: lo que no es de la barra (o todo, con la
+                    // ficha de una clase abierta) es del calendario.
+                    let de_la_barra =
+                        !matches!(e.botones.bajo_el_raton(), None | Some(Accion::Fondo));
+                    if en_horario
+                        && let Some(hor) = e.horario.as_mut()
+                        && (hor.con_ficha() || !de_la_barra)
+                    {
+                        match hor.pulsado(local(p, marco), textos, ubicacion, aparato) {
+                            Salida::Capturar => ventana.capturar_raton(),
+                            salida => vivo = atender(&mut e, salida, textos, ubicacion, aparato),
+                        }
+                        continue;
+                    }
                     // En lo escrito de la caja de apuntar (lo de encima es la
                     // caja, no un boton suyo ni la eleccion de un grupo): la
                     // rayita donde cae el clic, dos la palabra, tres todo, y
@@ -1151,12 +1267,20 @@ fn bucle(
                 }
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     e.botones.raton = local(p, marco);
-                    if let Some((li, fi)) = e.botones.bajo_el_raton().and_then(tarea_de) {
+                    if en_horario && let Some(hor) = e.horario.as_mut() {
+                        hor.derecho(local(p, marco), ubicacion.raiz(), textos);
+                    } else if let Some((li, fi)) = e.botones.bajo_el_raton().and_then(tarea_de) {
                         vivo = menu(&mut e, li, fi, textos, ubicacion, aparato);
                     }
                 }
                 EventoOverlay::BotonSoltado(p) => {
                     e.botones.raton = local(p, marco);
+                    if en_horario
+                        && let Some(hor) = e.horario.as_mut()
+                        && hor.soltado(local(p, marco), ubicacion.raiz(), textos)
+                    {
+                        ventana.soltar_raton();
+                    }
                     if let Some(ag) = e.agarre.take() {
                         ventana.soltar_raton();
                         if ag.arrastrando {
@@ -1169,15 +1293,21 @@ fn bucle(
                 }
                 // La rueda llega en 120 por muesca (y en trozos desde un
                 // panel tactil). En cuadrados y en el tablero, media fila
-                // de la rejilla.
+                // de la rejilla; en el horario, una asignatura por muesca.
                 EventoOverlay::Rueda(m) => {
-                    let paso = match e.vista {
-                        Vista::Lista => FILA * 1.5,
-                        Vista::Tarjetas | Vista::Kanban => MEDIA_FILA_REJILLA,
-                    };
-                    e.scroll -= m as f32 / 120.0 * paso * escala;
+                    if en_horario && let Some(hor) = e.horario.as_mut() {
+                        hor.rueda(m);
+                    } else {
+                        e.scroll -= m as f32 / 120.0 * MEDIA_FILA_REJILLA * escala;
+                    }
                 }
-                EventoOverlay::Caracter(c) => letra(&mut e, c),
+                EventoOverlay::Caracter(c) => {
+                    if en_horario && let Some(hor) = e.horario.as_mut() {
+                        hor.caracter(c);
+                    } else {
+                        letra(&mut e, c);
+                    }
+                }
                 EventoOverlay::Tecla {
                     vk, ctrl, shift, ..
                 } => vivo = tecla(&mut e, vk, ctrl, shift, textos, ubicacion, aparato),
@@ -1190,6 +1320,23 @@ fn bucle(
             break;
         }
 
+        // Otra vista, otro ancho: la ventana crece (o vuelve) desde su
+        // centro, sin salirse de la pantalla.
+        if e.vista.ancho() != ancho_de_la_vista {
+            ancho_de_la_vista = e.vista.ancho();
+            marco = pixpin_ui::vista_tareas::marco_para(
+                marco,
+                monitor.area_trabajo,
+                ancho_de_la_vista,
+                monitor.escala_por_cien,
+            );
+            ventana.mover(marco);
+            if let Err(err) = superficie.redimensionar(marco.ancho, marco.alto) {
+                tracing::warn!(?err, "tareas: no se pudo cambiar el ancho de la ventana");
+            }
+            pintar = true;
+        }
+
         // Lo que cambio fuera (el chat, el movil): la huella, cada segundo;
         // y al momento, lo que la sincronizacion dice que acaba de escribir.
         if LLEGO.swap(false, Ordering::SeqCst) {
@@ -1198,6 +1345,14 @@ fn bucle(
         }
         if mirado.elapsed() >= Duration::from_secs(1) {
             mirado = Instant::now();
+            // En el Horario: el horario cambiado fuera, las tareas de las
+            // asignaturas y la rayita de ahora.
+            if e.vista == Vista::Horario
+                && let Some(hor) = e.horario.as_mut()
+                && hor.mirar(ubicacion.raiz())
+            {
+                pintar = true;
+            }
             if super::firma(ubicacion.raiz(), &e.proyectos) != e.firma {
                 e.recargar(ubicacion);
                 pintar = true;
@@ -1220,6 +1375,11 @@ fn bucle(
             e.deshacer = None;
             pintar = true;
         }
+        if let Some(hor) = e.horario.as_mut()
+            && hor.caducar_aviso()
+        {
+            pintar = true;
+        }
 
         let mut faltan_minis = false;
         if pintar {
@@ -1238,9 +1398,22 @@ fn bucle(
             }
             pintar = faltan_minis;
         }
-        let espera = if faltan_minis {
+        // Las tareas de las asignaturas, despues de lo primero visible del
+        // horario: leer el chat no retrasa ensenar la semana.
+        if e.vista == Vista::Horario
+            && let Some(hor) = e.horario.as_mut()
+            && hor.leer_tareas_si_falta(ubicacion.raiz())
+        {
+            pintar = true;
+            continue;
+        }
+        let (arrastrando, con_aviso) = e
+            .horario
+            .as_ref()
+            .map_or((false, false), |h| (h.arrastrando(), h.con_aviso()));
+        let espera = if faltan_minis || arrastrando {
             16
-        } else if e.aviso.is_some() || !e.recien.is_empty() {
+        } else if e.aviso.is_some() || !e.recien.is_empty() || con_aviso {
             250
         } else {
             1_000
@@ -1249,6 +1422,58 @@ fn bucle(
     }
     tracing::info!("ventana de tareas cerrada");
     Ok(())
+}
+
+/// Lo que pide el horario tras un evento. Devuelve si la ventana sigue.
+fn atender(
+    e: &mut Estado,
+    salida: Salida,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    aparato: &str,
+) -> bool {
+    match salida {
+        Salida::Nada | Salida::Capturar => true,
+        Salida::Cerrar => false,
+        // «Abrir en Tareas» de una asignatura: sus tarjetas, y lo apuntado
+        // va a su lista, como al abrir desde una lista del chat.
+        Salida::IrATareas(clave) => {
+            let sigue = hacer(
+                e,
+                Accion::Vista(Vista::Tarjetas),
+                textos,
+                ubicacion,
+                aparato,
+            );
+            if let Some(k) = clave {
+                e.apuntar_en = e
+                    .listas
+                    .iter()
+                    .chain(&e.destinos)
+                    .find(|l| l.clave() == k)
+                    .cloned();
+                e.ir_a_lista = Some(k);
+            }
+            sigue
+        }
+        // La chapita de una tarea con hora: esa tarea, con el foco, en las
+        // tarjetas.
+        Salida::Tarea(k) => {
+            let Some(&(li, fi)) = e.con_hora.get(k) else {
+                return true;
+            };
+            let sigue = hacer(
+                e,
+                Accion::Vista(Vista::Tarjetas),
+                textos,
+                ubicacion,
+                aparato,
+            );
+            e.foco = Foco::Tarjeta(li, fi);
+            e.seguir_foco = true;
+            sigue
+        }
+    }
 }
 
 /// Una letra escrita (`WM_CHAR`): a la caja con el foco. Con el foco en una
@@ -1289,6 +1514,19 @@ fn tecla(
     ubicacion: &Ubicacion,
     aparato: &str,
 ) -> bool {
+    // La vista, con el teclado: Ctrl+T las tarjetas, Ctrl+K el tablero
+    // Kanban, Ctrl+H el horario (ni las cajas ni las tarjetas las usan). La
+    // tecla virtual de una letra es la letra en mayuscula.
+    if ctrl && let Some(v) = char::from_u32(vk).and_then(Vista::de_atajo) {
+        return hacer(e, Accion::Vista(v), textos, ubicacion, aparato);
+    }
+    // En el Horario, las teclas son del calendario.
+    if e.vista == Vista::Horario
+        && let Some(hor) = e.horario.as_mut()
+    {
+        let salida = hor.tecla(vk, shift, ctrl, textos, ubicacion, aparato);
+        return atender(e, salida, textos, ubicacion, aparato);
+    }
     // Con la eleccion del grupo abierta, las teclas son suyas.
     if e.repartiendo.is_some() {
         match vk {
@@ -1317,23 +1555,6 @@ fn tecla(
         (VK_F, _) if ctrl => {
             e.foco = Foco::Buscar;
             e.buscar.al_final();
-        }
-        // La vista, con el teclado: Ctrl+L la lista, Ctrl+T las tarjetas,
-        // Ctrl+K el tablero Kanban (ni las cajas ni las tarjetas las usan).
-        (VK_L, _) if ctrl => {
-            return hacer(e, Accion::Vista(Vista::Lista), textos, ubicacion, aparato);
-        }
-        (VK_T, _) if ctrl => {
-            return hacer(
-                e,
-                Accion::Vista(Vista::Tarjetas),
-                textos,
-                ubicacion,
-                aparato,
-            );
-        }
-        (VK_K, _) if ctrl => {
-            return hacer(e, Accion::Vista(Vista::Kanban), textos, ubicacion, aparato);
         }
         (VK_F2, Foco::Tarjeta(li, fi)) => {
             return hacer(e, Accion::Editar(li, fi), textos, ubicacion, aparato);
@@ -1565,6 +1786,20 @@ fn hacer(
                 v.guardar(raiz);
                 // La tarjeta con el foco sigue a la vista en su nuevo sitio.
                 e.seguir_foco = true;
+                e.agarre = None;
+                if v == Vista::Horario {
+                    e.entrar_en_horario(raiz);
+                }
+            }
+        }
+        Accion::HorarioDomingo => {
+            if let Some(h) = e.horario.as_mut() {
+                h.cambiar_domingo();
+            }
+        }
+        Accion::HorarioComoTexto => {
+            if let Some(h) = &e.horario {
+                h.como_texto(ubicacion);
             }
         }
         Accion::EnfocarBuscar => e.foco = Foco::Buscar,
@@ -2046,7 +2281,108 @@ fn es_fila(r: RectF, s: f32) -> bool {
     r.ancho > LADO_CUADRADO * s * 1.5
 }
 
+/// Los tres botones del conmutador de la vista, con su pista (y su atajo).
+fn conmutador<'a>(
+    vista: Vista,
+    pistas: &'a [String; 3],
+) -> [crate::cabecera::SegmentoIcono<'a, Accion>; 3] {
+    let icono = |v: Vista| match v {
+        Vista::Tarjetas => &mi::GRID_VIEW,
+        Vista::Kanban => &mi::VIEW_KANBAN,
+        Vista::Horario => &mi::CALENDAR_MONTH,
+    };
+    let [a, b, c] = Vista::TODAS;
+    [(a, 0), (b, 1), (c, 2)].map(|(v, k)| crate::cabecera::SegmentoIcono {
+        icono: icono(v),
+        activo: vista == v,
+        accion: Accion::Vista(v),
+        pista: &pistas[k],
+    })
+}
+
+/// Las pistas del conmutador, en el orden de `Vista::TODAS`.
+fn pistas_del_conmutador(textos: &Catalogo) -> [String; 3] {
+    Vista::TODAS.map(|v| {
+        textos.t(match v {
+            Vista::Tarjetas => "tareas5-vista-tarjetas",
+            Vista::Kanban => "tareas5-vista-kanban",
+            Vista::Horario => "tareas5-vista-horario",
+        })
+    })
+}
+
+/// **La vista Horario**: la barra comun (con el conmutador, «Domingo» y
+/// «Como texto»), debajo el calendario semanal ([`Panel`]) con las tareas
+/// con hora de la semana, y encima de todo lo suyo (la ficha, el aviso).
+fn pintar_horario(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
+    let (w, h) = (marco.ancho as f32, marco.alto as f32);
+    p.limpiar(FONDO);
+    e.botones.vaciar();
+    e.botones.zona(
+        RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: h,
+        },
+        Accion::Fondo,
+    );
+    let (tareas, sitios) = e.tareas_con_hora();
+    e.con_hora = sitios;
+    let Some(hor) = e.horario.as_mut() else {
+        return;
+    };
+    let arriba = crate::cabecera::ALTO * s + crate::v2::HUECO * s;
+    let area = RectF {
+        x: 0.0,
+        y: arriba,
+        ancho: w,
+        alto: (h - arriba).max(0.0),
+    };
+    hor.pintar(p, area, s, textos, &tareas);
+    let titulo = textos.t("tareas-titulo");
+    let subtitulo = hor.subtitulo(textos);
+    let domingo = textos.t("horario-domingo");
+    let como_texto = textos.t("horario-como-texto");
+    let pistas = pistas_del_conmutador(textos);
+    let cab = crate::cabecera::Cabecera {
+        titulo: &titulo,
+        subtitulo: &subtitulo,
+        buscador: None,
+        botones: vec![
+            crate::cabecera::Boton {
+                icono: None,
+                rotulo: &domingo,
+                chapa: None,
+                activo: hor.con_domingo(),
+                accion: Accion::HorarioDomingo,
+            },
+            crate::cabecera::Boton {
+                icono: Some(&mi::EDIT),
+                rotulo: &como_texto,
+                chapa: None,
+                activo: false,
+                accion: Accion::HorarioComoTexto,
+            },
+        ],
+        mover: Accion::Mover,
+        cerrar: Accion::Cerrar,
+    };
+    crate::cabecera::pintar_con_iconos(
+        p,
+        &mut e.botones,
+        w,
+        s,
+        &cab,
+        &conmutador(e.vista, &pistas),
+    );
+    hor.pintar_encima(p, w, h, s, textos);
+}
+
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
+    if e.vista == Vista::Horario && e.horario.is_some() {
+        return pintar_horario(e, p, marco, s, textos);
+    }
     let (w, h) = (marco.ancho as f32, marco.alto as f32);
     p.limpiar(FONDO);
     e.botones.vaciar();
@@ -2080,21 +2416,6 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                     .is_some_and(|l| e.abiertas.contains(&l.clave()))
         };
         match e.vista {
-            Vista::Lista => {
-                let est: &Estado = e;
-                let (c, total) = tarjetas::disponer(
-                    &grupos,
-                    &abierta,
-                    &mut |li, fi| hechura(est, p, li, fi, ancho, s, buscando, textos).alto,
-                    tarjetas::Medidas {
-                        encabezado: ENCABEZADO * s,
-                        pliegue: PLIEGUE * s,
-                        hueco: HUECO * s,
-                        entre_grupos: ENTRE_GRUPOS * s,
-                    },
-                );
-                (c, Vec::new(), total)
-            }
             Vista::Tarjetas => {
                 let est: &Estado = e;
                 let (c, total) = rejilla::disponer(
@@ -2135,6 +2456,9 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                 columnas = cols;
                 (rejilla::colocadas(&c), c, total)
             }
+            // El horario se pinta en `pintar_horario`; sin calendario (no
+            // deberia pasar), nada.
+            Vista::Horario => (Vec::new(), Vec::new(), 0.0),
         }
     };
     e.colocadas = colocadas;
@@ -2171,12 +2495,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     e.scroll = e.scroll.clamp(0.0, (e.alto_contenido - area.alto).max(0.0));
     e.encima = if dentro(area, e.botones.raton) && e.repartiendo.is_none() {
         let y = e.botones.raton.1 - arriba + e.scroll;
-        match e.vista {
-            Vista::Lista => tarjetas::pieza_en(&e.colocadas, y),
-            Vista::Tarjetas | Vista::Kanban => {
-                rejilla::pieza_en(&e.celdas, e.botones.raton.0 - m, y)
-            }
-        }
+        rejilla::pieza_en(&e.celdas, e.botones.raton.0 - m, y)
     } else {
         None
     };
@@ -2199,33 +2518,18 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         } else {
             // Cada pieza en su caja de ventana: la de la lista ocupa todo lo
             // ancho; la de la rejilla, la que le dio `rejilla::disponer`.
-            let piezas: Vec<(tarjetas::Pieza, RectF)> = match e.vista {
-                Vista::Lista => e
-                    .colocadas
-                    .iter()
-                    .map(|c| {
-                        let r = RectF {
-                            x: m,
-                            y: y0 + c.y,
-                            ancho,
-                            alto: c.alto,
-                        };
-                        (c.pieza, r)
-                    })
-                    .collect(),
-                Vista::Tarjetas | Vista::Kanban => e
-                    .celdas
-                    .iter()
-                    .map(|c| {
-                        let r = RectF {
-                            x: m + c.caja.x,
-                            y: y0 + c.caja.y,
-                            ..c.caja
-                        };
-                        (c.pieza, r)
-                    })
-                    .collect(),
-            };
+            let piezas: Vec<(tarjetas::Pieza, RectF)> = e
+                .celdas
+                .iter()
+                .map(|c| {
+                    let r = RectF {
+                        x: m + c.caja.x,
+                        y: y0 + c.caja.y,
+                        ..c.caja
+                    };
+                    (c.pieza, r)
+                })
+                .collect();
             // El tablero: el fondo de cada columna, debajo de todo, y la
             // columna adonde iria la tarjeta arrastrada, resaltada.
             let arrastrada = e.agarre.filter(|a| a.arrastrando);
@@ -2281,14 +2585,13 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                         fantasma = Some((li, fi, r));
                     }
                     tarjetas::Pieza::Tarjeta(li, fi) => match e.vista {
-                        Vista::Lista => pintar_tarjeta(e, p, li, fi, r, s, &palabras, textos),
                         Vista::Tarjetas if es_fila(r, s) => {
                             pintar_fila_hecha(e, p, li, fi, r, s, &palabras, textos)
                         }
                         Vista::Tarjetas => pintar_cuadrado(e, p, li, fi, r, s, &palabras, textos),
                         // En el tablero, lo hecho es fila (como en la
                         // rejilla) y lo pendiente, su cuadrado.
-                        Vista::Kanban => {
+                        Vista::Kanban | Vista::Horario => {
                             let hecha = grupos
                                 .iter()
                                 .any(|g| g.lista == li && g.hechas.contains(&fi));
@@ -2350,32 +2653,11 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     };
     pintar_caja(e, p, m, y_caja, ancho, s, textos);
     // La barra comun de Galeria, Lecciones, Tareas y Timeline: el titulo,
-    // el buscador y el conmutador Lista / Tarjetas, una sola pastilla.
+    // el buscador y el conmutador Tarjetas / Kanban / Horario, una sola
+    // pastilla.
     let titulo = textos.t("tareas-titulo");
     let pista = textos.t("tareas4-buscar");
-    let pista_lista = textos.t("tareas5-vista-lista");
-    let pista_tarjetas = textos.t("tareas5-vista-tarjetas");
-    let pista_kanban = textos.t("tareas5-vista-kanban");
-    let iconos = [
-        crate::cabecera::SegmentoIcono {
-            icono: &mi::LIST,
-            activo: e.vista == Vista::Lista,
-            accion: Accion::Vista(Vista::Lista),
-            pista: &pista_lista,
-        },
-        crate::cabecera::SegmentoIcono {
-            icono: &mi::GRID_VIEW,
-            activo: e.vista == Vista::Tarjetas,
-            accion: Accion::Vista(Vista::Tarjetas),
-            pista: &pista_tarjetas,
-        },
-        crate::cabecera::SegmentoIcono {
-            icono: &mi::VIEW_KANBAN,
-            activo: e.vista == Vista::Kanban,
-            accion: Accion::Vista(Vista::Kanban),
-            pista: &pista_kanban,
-        },
-    ];
+    let pistas = pistas_del_conmutador(textos);
     let cab = crate::cabecera::Cabecera {
         titulo: &titulo,
         subtitulo: &resumen,
@@ -2391,7 +2673,14 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         mover: Accion::Mover,
         cerrar: Accion::Cerrar,
     };
-    crate::cabecera::pintar_con_iconos(p, &mut e.botones, w, s, &cab, &iconos);
+    crate::cabecera::pintar_con_iconos(
+        p,
+        &mut e.botones,
+        w,
+        s,
+        &cab,
+        &conmutador(e.vista, &pistas),
+    );
 
     if e.repartiendo.is_some() {
         pintar_eleccion(e, p, w, h, s, textos);
@@ -3257,28 +3546,6 @@ fn pintar_pliegue(
     p.texto(&rotulo, tx, y + (r.alto - rh) / 2.0, 13.5 * s, GRIS);
 }
 
-/// Lo que ocupa una tarjeta y donde va cada cosa dentro (desde su esquina).
-/// La misma cuenta mide (para colocar) y pinta.
-struct Hechura {
-    alto: f32,
-    /// Donde empieza el texto, desde el borde izquierdo de la tarjeta.
-    texto_x: f32,
-    texto_ancho: f32,
-    /// Donde van las miniaturas, desde arriba; `None` si no tiene.
-    minis_y: Option<f32>,
-    /// Donde va la chapita de la lista y el chat (buscando).
-    chapa_y: Option<f32>,
-    /// Lo que se lee: el texto sin sus emoticonos, que van aparte.
-    texto: String,
-    /// Los emoticonos de la tarea: sus etiquetas, en circulos entre la
-    /// casilla y el texto, como los estados de WeChat.
-    emos: Vec<String>,
-    /// La urgencia y las #etiquetas, en chapitas bajo el texto
-    /// (`super::chapitas`), y donde van desde arriba.
-    chapas: Vec<super::frase::Chapa>,
-    chapas_y: Option<f32>,
-}
-
 /// El rotulo de la edad de una tarea («hace 2 días»), si tiene fecha.
 fn edad(f: &Fila, hoy: pixpin_proyecto::mini::Fecha, textos: &Catalogo) -> Option<String> {
     let creada = f.creada?;
@@ -3288,110 +3555,6 @@ fn edad(f: &Fila, hoy: pixpin_proyecto::mini::Fecha, textos: &Catalogo) -> Optio
         i64::from(pixpin_proyecto::mini::dias_desde(creada, hoy)),
     );
     Some(textos.t_args("mini-tarea-edad", &args))
-}
-
-#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, ancho, escala, si se busca y textos
-fn hechura(
-    e: &Estado,
-    p: &Pintor,
-    li: usize,
-    fi: usize,
-    ancho: f32,
-    s: f32,
-    buscando: bool,
-    textos: &Catalogo,
-) -> Hechura {
-    let Some((_, f)) = e.fila(li, fi) else {
-        return Hechura {
-            alto: 0.0,
-            texto_x: 0.0,
-            texto_ancho: 0.0,
-            minis_y: None,
-            chapa_y: None,
-            texto: String::new(),
-            emos: Vec::new(),
-            chapas: Vec::new(),
-            chapas_y: None,
-        };
-    };
-    let pad = 16.0 * s;
-    let super::frase::Vista {
-        texto,
-        emos,
-        chapas,
-    } = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
-    let estados = ancho_de_estados(p, &emos, ESTADO_LISTA * s, s);
-    let texto_x = 8.0 * s + CASILLA * s + 10.0 * s + estados;
-    // A la derecha va la edad o, con el raton encima, quitar (y «Mover a…»
-    // en el Inbox): se reserva siempre el sitio del mas ancho, para que el
-    // texto no salte de renglon al pasar el raton.
-    let mut reserva = edad(f, e.hoy, textos)
-        .map_or(0.0, |t| p.medir_texto(&t, 12.0 * s).0)
-        .max(ASPA * s);
-    if e.se_reparte(li, fi) {
-        let b = ui::ancho_de_boton(p, true, &textos.t("tareas-mover"), Some("Intro"), s);
-        reserva = reserva.max(b + ASPA * s + 4.0 * s);
-    }
-    if reserva > 0.0 {
-        reserva += 12.0 * s;
-    }
-    let texto_ancho = (ancho - texto_x - pad - reserva).max(40.0 * s);
-    let texto_alto = if texto.is_empty() {
-        0.0
-    } else {
-        p.medir_texto_ajustado(&texto, TAM_TAREA * s, texto_ancho).1
-    };
-    let mut y = 18.0 * s + texto_alto;
-    // La urgencia y las etiquetas, en su fila bajo el texto.
-    let chapas_y = (!chapas.is_empty()).then(|| {
-        let en = if texto_alto > 0.0 {
-            y + 8.0 * s
-        } else {
-            18.0 * s
-        };
-        y = en + super::chapitas::ALTO * s;
-        en
-    });
-    let minis_y = (!f.imagenes.is_empty()).then(|| {
-        let en = if texto_alto > 0.0 || chapas_y.is_some() {
-            y + 10.0 * s
-        } else {
-            12.0 * s
-        };
-        y = en + MINI * s;
-        en
-    });
-    let chapa_y = buscando.then(|| {
-        let en = y + 10.0 * s;
-        y = en + 22.0 * s;
-        en
-    });
-    Hechura {
-        alto: (y + 16.0 * s).max(TARJETA_MIN * s),
-        texto_x,
-        texto_ancho,
-        minis_y,
-        chapa_y,
-        texto,
-        emos,
-        chapas,
-        chapas_y,
-    }
-}
-
-/// Lo que ocupa a lo ancho la pila de circulos de `emos` (con su «+N» y el
-/// hueco hasta lo siguiente). Sin emoticonos, nada.
-fn ancho_de_estados(p: &Pintor, emos: &[String], d: f32, s: f32) -> f32 {
-    if emos.is_empty() {
-        return 0.0;
-    }
-    let (_, mas) = emoticonos::pila_de_estados(0.0, d, emos.len());
-    let extra = if mas > 0 {
-        4.0 * s + ancho_de_mas(p, mas, s)
-    } else {
-        0.0
-    };
-    emoticonos::ancho_de_pila(d, emos.len()) + extra + 10.0 * s
 }
 
 /// La chapita «+N» de los emoticonos que no se ven.
@@ -3629,213 +3792,6 @@ fn boton_quitar(
 }
 
 // ----------------------------------------------------------- las tarjetas
-
-/// Una tarea en su tarjeta: la casilla grande (lo unico que tacha), el
-/// texto entero en los renglones que haga falta (lo buscado resaltado), sus
-/// imagenes (un clic las pinea), buscando la chapita de su lista y su chat,
-/// y arriba a la derecha cuantos dias lleva o, con el raton encima o el
-/// foco, quitar y «Mover a…» si es del Inbox.
-#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, sitio, escala, palabras y textos
-fn pintar_tarjeta(
-    e: &mut Estado,
-    p: &Pintor,
-    li: usize,
-    fi: usize,
-    r: RectF,
-    s: f32,
-    palabras: &[String],
-    textos: &Catalogo,
-) {
-    let Some((lista, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
-        return;
-    };
-    let buscando = !palabras.is_empty();
-    let hc = hechura(e, p, li, fi, r.ancho, s, buscando, textos);
-    let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
-    let foco = e.foco == Foco::Tarjeta(li, fi);
-    crate::v2::tarjeta::fondo(p, r, encima, foco, s);
-    let mut fondo = if encima {
-        crate::v2::TARJETA_ENCIMA
-    } else {
-        crate::v2::TARJETA
-    };
-    if f.hecha {
-        // Lo hecho, hundido: mas oscuro que lo pendiente.
-        fondo = crate::v2::TARJETA_HECHA;
-        let g = 1.5 * s;
-        p.rellenar_redondeado(encoger(r, g), crate::v2::RADIO_TARJETA * s - g, fondo);
-    }
-    // La tarjeta entera da el foco; lo de dentro se apunta despues y gana.
-    e.botones.zona(r, Accion::Enfocar(li, fi));
-
-    let objetivo = RectF {
-        x: r.x + 8.0 * s,
-        y: r.y + 8.0 * s,
-        ancho: CASILLA * s,
-        alto: CASILLA * s,
-    };
-    pintar_casilla(e, p, objetivo, (li, fi), f.hecha, false, false, s);
-
-    // Sus emoticonos, en circulos entre la casilla y el texto, a la altura
-    // de la casilla.
-    if !hc.emos.is_empty() {
-        let x = objetivo.x + objetivo.ancho + 8.0 * s;
-        let cy = objetivo.y + objetivo.alto / 2.0;
-        pintar_estados(
-            e,
-            p,
-            (li, fi),
-            &hc.emos,
-            x,
-            cy,
-            ESTADO_LISTA * s,
-            fondo,
-            false,
-            s,
-        );
-    }
-
-    let tx = r.x + hc.texto_x;
-    pintar_texto_tarea(
-        p,
-        &hc.texto,
-        tx,
-        r.y + 18.0 * s,
-        hc.texto_ancho,
-        Letra {
-            tam: TAM_TAREA * s,
-            negrita: false,
-        },
-        palabras,
-        if f.hecha { GRIS } else { TEXTO },
-        f.hecha,
-        false,
-        s,
-    );
-
-    // La urgencia y las etiquetas, en chapitas bajo el texto: una pulsada
-    // busca las tareas que la llevan.
-    if let Some(cy) = hc.chapas_y {
-        let cajas = super::chapitas::pintar(
-            p,
-            &hc.chapas,
-            tx,
-            r.y + cy,
-            hc.texto_ancho,
-            super::chapitas::Sobre::Oscuro,
-            s,
-            textos,
-        );
-        for (c, k) in cajas {
-            e.botones.zona(c, Accion::BuscarChapa(li, fi, k));
-        }
-    }
-
-    // Arriba a la derecha: la edad o, con el raton o el foco, quitar y, si
-    // es del Inbox, «Mover a…» a su lado.
-    let derecha = r.x + r.ancho - 16.0 * s;
-    let a_mano = (encima || foco) && e.repartiendo.is_none();
-    if a_mano {
-        let aspa = RectF {
-            x: r.x + r.ancho - 8.0 * s - ASPA * s,
-            y: r.y + 8.0 * s,
-            ancho: ASPA * s,
-            alto: ASPA * s,
-        };
-        boton_quitar(e, p, aspa, (li, fi), false, s);
-    }
-    if e.se_reparte(li, fi) && a_mano {
-        let rotulo = textos.t("tareas-mover");
-        let tecla = foco.then_some("Intro");
-        let bw = ui::ancho_de_boton(p, true, &rotulo, tecla, s);
-        let b = RectF {
-            x: r.x + r.ancho - 8.0 * s - ASPA * s - 4.0 * s - bw,
-            y: r.y + 8.0 * s,
-            ancho: bw,
-            alto: crate::v2::BOTON * s,
-        };
-        ui::boton_v2(
-            p,
-            &mut e.botones,
-            b,
-            Accion::Repartir(li, fi),
-            Some(&mi::FORWARD),
-            &rotulo,
-            tecla,
-            Some(crate::v2::AZUL_LLENO),
-            Color::BLANCO,
-            s,
-        );
-    } else if !a_mano && let Some(t) = edad(&f, e.hoy, textos) {
-        let (ew, eh) = p.medir_texto(&t, 12.0 * s);
-        p.texto(&t, derecha - ew, r.y + 28.0 * s - eh / 2.0, 12.0 * s, GRIS);
-    }
-
-    // Sus imagenes, en una fila debajo del texto: un clic la pinea.
-    if let Some(my) = hc.minis_y {
-        let mini = MINI * s;
-        let mut mx = tx;
-        for k in 0..f.imagenes.len() {
-            let c = RectF {
-                x: mx,
-                y: r.y + my,
-                ancho: mini,
-                alto: mini,
-            };
-            if c.x + c.ancho > r.x + r.ancho - 16.0 * s {
-                break;
-            }
-            match e
-                .ruta_de(&lista, &f, k)
-                .as_deref()
-                .and_then(|ruta| e.minis.ya(ruta))
-            {
-                Some((b, iw, ih)) => {
-                    crate::miniaturas::pintar_recortado(p, b, c, iw, ih);
-                    if f.hecha {
-                        // Apagada como el texto tachado.
-                        p.rellenar(c, con_alfa(fondo, 0.45));
-                    }
-                }
-                // Aun no llego del movil (o no se pudo leer): su hueco con el
-                // dibujo de una imagen, para que se sepa que hay una.
-                None => {
-                    p.rellenar_redondeado(c, 6.0 * s, blanco(0.06));
-                    p.icono(&mi::IMAGE, encoger(c, 12.0 * s), GRIS);
-                }
-            }
-            if dentro(c, e.botones.raton) {
-                p.trazar(c, 2.0 * s, ACENTO);
-            }
-            e.botones.zona(c, Accion::Imagen(li, fi, k));
-            mx += mini + 8.0 * s;
-        }
-    }
-
-    // Buscando se mezclan grupos: de que lista y chat es cada una.
-    if let Some(cy) = hc.chapa_y {
-        let t = format!("{}  ·  {}", lista.titulo, lista.chat);
-        let tam_c = 12.0 * s;
-        let max = (r.ancho - hc.texto_x - 16.0 * s - 16.0 * s).max(0.0);
-        let (cw, ch) = p.medir_texto(&t, tam_c);
-        let cw = cw.min(max);
-        let chapa = RectF {
-            x: tx,
-            y: r.y + cy,
-            ancho: cw + 16.0 * s,
-            alto: 22.0 * s,
-        };
-        p.rellenar_redondeado(chapa, 6.0 * s, blanco(0.07));
-        p.texto_linea(
-            &t,
-            chapa.x + 8.0 * s,
-            chapa.y + (chapa.alto - ch) / 2.0,
-            tam_c,
-            cw,
-            crate::v2::CUERPO,
-        );
-    }
-}
 
 /// Redondea las esquinas de algo pintado en `r` sin ellas (una foto):
 /// pinta, en cada esquina, lo que queda fuera del cuarto de circulo con el
@@ -5111,15 +5067,17 @@ mod pruebas {
         t(&mut e, VK_IZQUIERDA);
         assert_eq!(e.foco, Foco::Tarjeta(orden[3].0, orden[3].1));
         // Caso negativo: arriba desde la primera fila sale a la caja, y en
-        // la lista izquierda y derecha no mueven el foco.
+        // el horario las flechas no mueven el foco de las tarjetas (son del
+        // calendario).
         t(&mut e, VK_ARRIBA);
         t(&mut e, VK_ARRIBA);
         assert_eq!(e.foco, Foco::Apuntar);
-        hacer(&mut e, Accion::Vista(Vista::Lista), &textos, &u, "PC01");
+        hacer(&mut e, Accion::Vista(Vista::Horario), &textos, &u, "PC01");
+        assert!(e.horario.is_some(), "el calendario, leido al entrar");
         e.foco = Foco::Tarjeta(orden[1].0, orden[1].1);
         t(&mut e, VK_DERECHA);
         assert_eq!(e.foco, Foco::Tarjeta(orden[1].0, orden[1].1));
-        assert_eq!(Vista::leer(&raiz), Vista::Lista);
+        assert_eq!(Vista::leer(&raiz), Vista::Horario);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
@@ -5275,7 +5233,7 @@ mod pruebas {
             al_doble_clic(a, Vista::Tarjetas, false),
             Accion::Editar(0, 1)
         );
-        assert_eq!(al_doble_clic(a, Vista::Lista, true), Accion::Editar(0, 1));
+        assert_eq!(al_doble_clic(a, Vista::Kanban, false), Accion::Editar(0, 1));
         // Caso negativo: el doble clic en la casilla o en un boton sigue
         // siendo lo mismo (marcar dos veces es marcar y desmarcar).
         assert_eq!(
@@ -5283,7 +5241,7 @@ mod pruebas {
             Accion::Marcar(0, 1)
         );
         assert_eq!(
-            al_doble_clic(Accion::Fondo, Vista::Lista, false),
+            al_doble_clic(Accion::Fondo, Vista::Tarjetas, false),
             Accion::Fondo
         );
     }
@@ -5459,7 +5417,7 @@ mod pruebas {
     }
 
     #[test]
-    fn ctrl_l_y_ctrl_t_cambian_la_vista_y_un_emoticono_se_busca() {
+    fn ctrl_t_y_ctrl_h_cambian_la_vista_y_un_emoticono_se_busca() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
         let raiz = std::env::temp_dir().join(format!("pixpin-tareas-v5-{}", std::process::id()));
         std::fs::create_dir_all(&raiz).unwrap();
@@ -5468,11 +5426,19 @@ mod pruebas {
         con_fotos_y_emoticonos(&mut e);
         tecla(&mut e, VK_T, true, false, &textos, &u, "PC01");
         assert_eq!(e.vista, Vista::Tarjetas);
-        // Caso negativo: la L sin Ctrl no cambia la vista.
-        tecla(&mut e, VK_L, false, false, &textos, &u, "PC01");
+        // Caso negativo: la H sin Ctrl no cambia la vista, y Ctrl+L (la
+        // lista, quitada) tampoco.
+        tecla(&mut e, VK_H, false, false, &textos, &u, "PC01");
         assert_eq!(e.vista, Vista::Tarjetas);
         tecla(&mut e, VK_L, true, false, &textos, &u, "PC01");
-        assert_eq!(e.vista, Vista::Lista);
+        assert_eq!(e.vista, Vista::Tarjetas);
+        tecla(&mut e, VK_H, true, false, &textos, &u, "PC01");
+        assert_eq!(e.vista, Vista::Horario);
+        // Y del horario se vuelve con Ctrl+T (sus teclas son del calendario,
+        // los atajos de la vista no).
+        tecla(&mut e, VK_T, true, false, &textos, &u, "PC01");
+        assert_eq!(e.vista, Vista::Tarjetas);
+        assert_eq!(Vista::leer(&raiz), Vista::Tarjetas);
         // El circulo del primer emoticono de «planos de la casa» busca 🔥.
         let fi = e.listas[2]
             .filas

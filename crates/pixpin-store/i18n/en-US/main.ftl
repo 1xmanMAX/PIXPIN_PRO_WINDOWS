@@ -2566,6 +2566,7 @@ tareas5-guardar = Save
 tareas5-corregida = Task updated
 tareas5-vista-lista = List · Ctrl+L
 tareas5-vista-tarjetas = Cards · Ctrl+T
+tareas5-vista-horario = Timetable · Ctrl+H
 tareas5-vista-kanban = Kanban board · Ctrl+K
 tareas5-marcar = Mark as done
 tareas5-desmarcar = Mark as pending

@@ -174,7 +174,10 @@ pub struct Colocada {
     pub alto: f32,
 }
 
-/// Las medidas fijas de la columna, ya con la escala.
+/// Las medidas fijas de la columna, ya con la escala. La columna era la
+/// vista Lista, quitada el 25-oct-2026: queda para las pruebas, que colocan
+/// asi las tarjetas sin pintarlas (el orden y las flechas son los mismos).
+#[cfg(test)]
 #[derive(Debug, Clone, Copy)]
 pub struct Medidas {
     pub encabezado: f32,
@@ -189,6 +192,7 @@ pub struct Medidas {
 /// y si tiene hechas su pliegue y, abiertas, las hechas. `alto_de(lista,
 /// fila)` es lo que ocupa cada tarjeta (lo mide quien pinta). Devuelve las
 /// piezas y el alto total.
+#[cfg(test)]
 pub fn disponer(
     grupos: &[Grupo],
     abierta: &dyn Fn(usize) -> bool,
@@ -241,6 +245,7 @@ pub fn disponer(
 
 /// La pieza que hay a la altura `y` del contenido (los huecos entre piezas
 /// no son de nadie). Las piezas van en orden, asi que se busca a saltos.
+#[cfg(test)]
 pub fn pieza_en(colocadas: &[Colocada], y: f32) -> Option<Pieza> {
     let i = colocadas.partition_point(|c| c.y + c.alto < y);
     colocadas

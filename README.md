@@ -291,8 +291,8 @@ de cualquier momento lo convierte en lección.
 
 ### Tareas y galería
 
-**Tareas**: todas las listas de todos los proyectos en una sola ventana, en **lista** o en
-**tarjetas**. Lo que se apunta rápido entra en el **Inbox**, y «Mover a…» lo lleva a la lista que
+**Tareas**: todas las listas de todos los proyectos en una sola ventana, en **tarjetas**, en
+**Kanban** o en el **horario** de la semana. Lo que se apunta rápido entra en el **Inbox**, y «Mover a…» lo lleva a la lista que
 toque. Una tarea puede llevar imágenes (`Ctrl V`): en la vista de tarjetas la foto es el fondo y,
 si hay varias, se ven apiladas. Los **emoticonos** de una tarea salen como estados de colores.
 
@@ -304,23 +304,25 @@ si hay varias, se ven apiladas. Los **emoticonos** de una tarea salen como estad
   - **Recordatorio**: «18/10 17:00», «18 oct 5pm», «el 20 a las 9», «mañana 7», «viernes 15:30».
     Sin año es este año; si el día ya pasó, el siguiente. También con el reloj de la caja de
     apuntar: hoy y los 6 días siguientes, horas comunes y ±15 min.
-  - Las etiquetas salen como chapitas en la lista, las tarjetas, el Kanban y el pin; pulsar una
+  - Las etiquetas salen como chapitas en las tarjetas, el Kanban y el pin; pulsar una
     busca las tareas que la llevan.
 - **Pin de una tarea**: una tarea con hora sale como un pin pequeño con solo su título y un botón
   «¿Por qué no ahora?» para apuntar una nota. También desde «Fijar como pin» en su menú.
 - **Kanban** (`Ctrl K`): una columna por lista; arrastrar una tarjeta a otra columna la mueve de lista.
-- **Horario de clases** (bandeja → «Horario de clases…»): un **calendario semanal**.
+- **Horario de clases** (`Ctrl H` en Tareas, o bandeja → «Horario de clases…»): la tercera
+  vista de la ventana de Tareas, un **calendario semanal**.
   - A la izquierda apuntas tus asignaturas («Geometría @A-12»); las **arrastras** a la rejilla de
     la semana, y cada clase se mueve y se alarga con el ratón, en saltos de 15 minutos.
   - **Cada asignatura es un grupo de tareas**: al apuntar una tarea, el libro de la caja la mete
     en la asignatura que elijas, y la asignatura enseña sus tareas pendientes.
   - Antes de cada clase sale una **llamada** en pantalla; «Contestar» pone la nota de voz que
     grabaste para esa clase. Las evaluaciones avisan 3 días y 1 día antes.
+  - Las tareas con hora de esta semana salen como chapitas en su día y su hora; pulsar una la
+    enseña en las tarjetas.
   - Todo se guarda en un `horario.md` que se lee a mano («Lun Mié 8:00-10:00 Geometría @A-12»).
+    Es solo de este equipo: no viaja al móvil (las tareas de las asignaturas sí).
 
-| Tarjetas | Lista |
-|---|---|
-| ![Tareas en tarjetas](docs/img/v2/tareas-tarjetas.png) | ![Tareas en lista](docs/img/v2/tareas-lista.png) |
+![Tareas en tarjetas](docs/img/v2/tareas-tarjetas.png)
 
 **Galería de capturas**: las capturas hechas en el PC **se borran solas a los 7 días** (van a la
 papelera de PixPin y se pueden recuperar), salvo las que conservas.
@@ -669,7 +671,7 @@ son letras que **solo valen dentro de la ventana abierta**, y cada botón muestr
 | Modelo 3D | `C` caja de sección · `L` niveles y categorías · `I` aislar · `F` todo · `P` planta · `A` aristas · `B` fondo · `T` encima · flechas girar · `+` `−` · `Esc` soltar o cerrar |
 | Lector de PDF y Word | `F11` pantalla completa · `Esc` vuelve a pin · `Ctrl F` buscar |
 | Lienzo | `W` ángulo con letra griega (otra vez: 90°) · `↑` `↓` cambiar la letra |
-| Tareas | `Ctrl K` Kanban |
+| Tareas | `Ctrl T` tarjetas · `Ctrl K` Kanban · `Ctrl H` horario |
 
 ## Instalar
 

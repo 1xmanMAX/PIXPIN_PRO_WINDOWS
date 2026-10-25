@@ -23,48 +23,23 @@ use super::tarjetas::{Colocada, Grupo, Pieza};
 
 // ------------------------------------------------------------------- vista
 
-/// Como se ensenan las tareas.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Vista {
-    /// Una tarjeta ancha por tarea, una debajo de otra (tareas-v3).
-    #[default]
-    Lista,
-    /// Cuadrados en rejilla, con la foto de fondo.
-    Tarjetas,
-    /// Una columna por lista; arrastrar una tarjeta a otra la pasa alli
-    /// (`kanban`, 17-oct-2026).
-    Kanban,
-}
+/// Como se ensenan las tareas: Tarjetas, Kanban u Horario. Lo puro (su
+/// palabra, su atajo, el ancho de la ventana) vive en `pixpin-ui`; aqui,
+/// recordarla en disco ([`Recordada`]).
+pub use pixpin_ui::vista_tareas::Vista;
 
 /// Donde se recuerda la vista elegida, en la carpeta de datos: una palabra.
 const FICHERO_VISTA: &str = "tareas-vista.txt";
 
-impl Vista {
-    /// Lo que no se entiende (un fichero roto, de otra version) es la lista:
-    /// la vista de siempre.
-    pub fn de_texto(s: &str) -> Vista {
-        match s.trim() {
-            "tarjetas" => Vista::Tarjetas,
-            "kanban" => Vista::Kanban,
-            _ => Vista::Lista,
-        }
-    }
+/// La vista elegida, recordada en `tareas-vista.txt`. Quien la tenia en la
+/// «lista» (que se quito el 25-oct-2026) abre en las tarjetas.
+pub trait Recordada: Sized {
+    fn leer(raiz: &Path) -> Self;
+    fn guardar(self, raiz: &Path);
+}
 
-    pub fn como_texto(self) -> &'static str {
-        match self {
-            Vista::Lista => "lista",
-            Vista::Tarjetas => "tarjetas",
-            Vista::Kanban => "kanban",
-        }
-    }
-
-    /// Si las tarjetas son las de la vista en cuadrados (con su foto de
-    /// fondo): en la rejilla y en el tablero Kanban, que usa las mismas.
-    pub fn con_cuadrados(self) -> bool {
-        matches!(self, Vista::Tarjetas | Vista::Kanban)
-    }
-
-    pub fn leer(raiz: &Path) -> Vista {
+impl Recordada for Vista {
+    fn leer(raiz: &Path) -> Vista {
         std::fs::read_to_string(raiz.join(FICHERO_VISTA))
             .map(|s| Vista::de_texto(&s))
             .unwrap_or_default()
@@ -72,7 +47,7 @@ impl Vista {
 
     /// Recordarla es un detalle: si no se puede escribir, se dice en el
     /// registro y la ventana sigue con la elegida.
-    pub fn guardar(self, raiz: &Path) {
+    fn guardar(self, raiz: &Path) {
         if let Err(e) = std::fs::write(raiz.join(FICHERO_VISTA), self.como_texto()) {
             tracing::warn!(?e, "tareas: no se pudo recordar la vista");
         }
@@ -705,20 +680,19 @@ mod pruebas {
     }
 
     #[test]
-    fn la_vista_se_lee_de_una_palabra_y_lo_raro_es_la_lista() {
+    fn la_vista_se_lee_de_una_palabra_y_la_lista_de_antes_es_tarjetas() {
         assert_eq!(Vista::de_texto("tarjetas\n"), Vista::Tarjetas);
-        assert_eq!(Vista::de_texto(Vista::Lista.como_texto()), Vista::Lista);
-        assert_eq!(
-            Vista::de_texto(Vista::Tarjetas.como_texto()),
-            Vista::Tarjetas
-        );
+        assert_eq!(Vista::de_texto(Vista::Horario.como_texto()), Vista::Horario);
         let raiz = std::env::temp_dir().join(format!("pixpin-tareas-vista-{}", std::process::id()));
         std::fs::create_dir_all(&raiz).unwrap();
-        Vista::Tarjetas.guardar(&raiz);
+        Vista::Horario.guardar(&raiz);
+        assert_eq!(Vista::leer(&raiz), Vista::Horario);
+        // Quien la tenia en la lista (quitada) abre en las tarjetas.
+        std::fs::write(raiz.join(FICHERO_VISTA), "lista").unwrap();
         assert_eq!(Vista::leer(&raiz), Vista::Tarjetas);
-        // Caso negativo: sin fichero o con basura, la lista.
-        assert_eq!(Vista::de_texto("rejilla"), Vista::Lista);
+        // Caso negativo: sin fichero o con basura, las tarjetas.
+        assert_eq!(Vista::de_texto("rejilla"), Vista::Tarjetas);
         let _ = std::fs::remove_dir_all(&raiz);
-        assert_eq!(Vista::leer(&raiz), Vista::Lista);
+        assert_eq!(Vista::leer(&raiz), Vista::Tarjetas);
     }
 }

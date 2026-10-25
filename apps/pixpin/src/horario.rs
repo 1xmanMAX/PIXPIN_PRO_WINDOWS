@@ -47,8 +47,11 @@
 //! El usuario: «una interfaz estilo calendario semanal en la que pueda
 //! ingresar mi horario: en el lado lateral mis asignaturas, y jalarlas sobre
 //! el calendario y soltarlas; que cada asignatura sea un grupo de tareas».
-//! «Horario de clases…» abre ahora [`ventana`]: la lista de asignaturas a
-//! la izquierda y la rejilla de la semana a la derecha. Lo que se hace alli
+//! «Horario de clases…» abre ahora el calendario semanal ([`panel`]): la
+//! lista de asignaturas a la izquierda y la rejilla de la semana a la
+//! derecha. Desde el 25-oct-2026 es la vista «Horario» de la ventana de
+//! Tareas (Tarjetas · Kanban · Horario), no una ventana aparte: el usuario
+//! lo quiso alli. Lo que se hace alli
 //! se escribe en el MISMO `horario.md` ([`semana`] reescribe solo las
 //! lineas de clases y de asignaturas: los titulos, los comentarios, las
 //! evaluaciones y el «avisar» se quedan donde estaban), asi que se sigue
@@ -66,8 +69,8 @@
 #![forbid(unsafe_code)]
 
 pub mod asignaturas;
+pub(crate) mod panel;
 pub(crate) mod semana;
-mod ventana;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -1083,11 +1086,12 @@ pub fn sonar(raiz: &Path, r: &Recordatorio, rotulos: crate::llamada::Rotulos, hw
     crate::llamada::lanzar(llamada, rotulos, hwnd_app);
 }
 
-/// **«Horario de clases…»**: la ventana semanal ([`ventana`]). Vuelve
-/// enseguida: la ventana vive en su propio hilo. `aparato` es el codigo de
-/// este equipo, para las listas de tareas de las asignaturas.
+/// **«Horario de clases…»**: la ventana de Tareas en su vista Horario (el
+/// calendario semanal, [`panel`]). Vuelve enseguida: la ventana vive en su
+/// propio hilo. `aparato` es el codigo de este equipo, para las listas de
+/// tareas de las asignaturas.
 pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: pixpin_store::Ubicacion, aparato: &str) {
-    ventana::abrir(idioma, ubicacion, aparato.to_string());
+    crate::tareas::abrir_horario(idioma, ubicacion, aparato);
 }
 
 /// Abre el horario como texto en el editor de notas (lo crea con la

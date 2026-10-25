@@ -33,6 +33,8 @@
 //! - [`tarjetas`]: lo puro de su vista en tarjetas: buscar, agrupar, colocar
 //!   y el foco.
 //! - [`rejilla`]: lo puro de la vista en cuadrados (tareas-v4).
+//! - La vista Horario (25-oct-2026) es el calendario semanal de
+//!   `horario::panel`, alojado en esta misma ventana.
 //! - [`kanban`]: lo puro de la vista Kanban: una columna por lista.
 //! - [`emoticonos`]: los emoticonos de una tarea, que son sus etiquetas.
 
@@ -65,6 +67,12 @@ pub fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: &str) {
 /// abre una lista de tareas pulsada en el chat. Una sola interfaz de tareas.
 pub fn abrir_en(idioma: Idioma, ubicacion: Ubicacion, aparato: &str, clave: String) {
     ventana::abrir_en(idioma, ubicacion, aparato.to_string(), Some(clave));
+}
+
+/// Como [`abrir`], en la vista Horario (el calendario semanal de las
+/// clases): lo que abre «Horario de clases…» (25-oct-2026).
+pub fn abrir_horario(idioma: Idioma, ubicacion: Ubicacion, aparato: &str) {
+    ventana::abrir_horario(idioma, ubicacion, aparato.to_string());
 }
 
 /// Que la ventana de tareas, si esta abierta, relea ya: lo llama la
