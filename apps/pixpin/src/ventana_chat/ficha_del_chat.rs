@@ -295,6 +295,8 @@ pub(super) enum ZonaInfo {
     Siguiente,
     Abrir,
     EnElChat,
+    /// El avatar de la cabecera: cambiar la foto del chat (25-oct-2026).
+    Avatar,
     /// Dentro de la isla, sin nada que hacer: no cierra.
     Dentro,
 }
@@ -332,6 +334,10 @@ pub(super) fn zona_en(a: &Abierto, l: Punto, d: &Disposicion, escala: u32) -> Zo
     }
     if a.buscando_info && i.caja_buscar.contiene(l) {
         return ZonaInfo::CajaBuscar;
+    }
+    // Con la lupa apagada, el avatar de arriba abre la hoja de su foto.
+    if !a.buscando_info && i.avatar.contiene(l) {
+        return ZonaInfo::Avatar;
     }
     if i.tira.contiene(l) {
         let lista = pestanas(a);
@@ -809,11 +815,11 @@ fn boton_redondo(p: &Pintor, c: &Pinta, r: Rect, icono: &Icono, encima: bool, pu
     );
 }
 
-/// El avatar de un proyecto, como en su fila de la lista: su logo, o el
-/// circulo de su color con las iniciales.
+/// El avatar de un proyecto, como en su fila de la lista: su foto (imagen,
+/// emoji o color), o el circulo de su color con las iniciales.
 fn avatar(p: &Pintor, f: &Ficha, caja: Rect) {
     let av = rf(caja);
-    if logo::pintar(p, &f.id, av) {
+    if logo::pintar(p, f, av) {
         return;
     }
     p.rellenar_redondeado(av, av.ancho / 2.0, color_avatar(&f.codigo_unico()));
@@ -864,6 +870,16 @@ fn pintar_cabecera(p: &Pintor, c: &Pinta, a: &Abierto, i: &Isla, sobre: ZonaInfo
         return;
     }
     avatar(p, &a.ficha, i.avatar);
+    // Se puede pulsar: cambia la foto del chat. Con el raton encima, un aro.
+    if sobre == ZonaInfo::Avatar {
+        let av = rf(i.avatar);
+        p.anillo(
+            (av.x + av.ancho / 2.0, av.y + av.alto / 2.0),
+            av.ancho / 2.0 + 1.5 * e,
+            (2.0 * e).max(1.0),
+            tema.enviar,
+        );
+    }
     // Debajo del nombre, cuantas cosas tiene y el codigo unico del chat: es
     // el que hay que mirar para saber si lo de aqui y lo del movil son la
     // misma cosa (en el movil sale igual).
