@@ -4,7 +4,7 @@
 //! ampliar con bilineal, mismos giros.
 
 use crate::gris::{
-    Borde, Gris, Interpolacion, girar_afin, matriz_de_giro, redimensionar, redondeo_py,
+    Borde, Gris, Interpolacion, en_paralelo, girar_afin, matriz_de_giro, redimensionar, redondeo_py,
 };
 
 pub const LADO_PREVIA: usize = 1600;
@@ -50,6 +50,11 @@ fn miniatura_de_tinta(g: &Gris, lado: usize) -> Gris {
 
 /// Lo bruscamente que cambia el perfil horizontal de tinta de fila a fila,
 /// con la pagina girada `a` grados: maximo con los renglones derechos.
+///
+/// Se gira la miniatura entera, como el original. Proyectar cada pixel a
+/// su fila girada seria diez veces mas barato, pero con papel gris (una
+/// foto) o un fondo oscuro el muestreo irregular mete ruido que gana a los
+/// renglones: en el banco elegia 45 grados en vez de 0 o de 1,8.
 fn nitidez_de_filas(tinta: &Gris, a: f64) -> f64 {
     let m = matriz_de_giro(tinta.ancho as f64 / 2.0, tinta.alto as f64 / 2.0, a);
     let r = girar_afin(tinta, &m, Borde::Fijo(0));
@@ -88,7 +93,7 @@ pub fn estimar_inclinacion(g: &Gris, lado: usize) -> f64 {
         rejilla.push(a);
         a += 2.0;
     }
-    let notas: Vec<f64> = rejilla.iter().map(|&a| nitidez_de_filas(&gruesa, a)).collect();
+    let notas: Vec<f64> = en_paralelo(rejilla.len(), |i| nitidez_de_filas(&gruesa, rejilla[i]));
     // np.argsort(notas)[-2:] (estable: en empate, el indice mayor al final).
     let mut idx: Vec<usize> = (0..notas.len()).collect();
     idx.sort_by(|&x, &y| notas[x].total_cmp(&notas[y]).then(x.cmp(&y)));
@@ -104,12 +109,14 @@ pub fn estimar_inclinacion(g: &Gris, lado: usize) -> f64 {
             cerca.push(np_arange(a0 - 2.0, 0.5, k));
         }
     }
-    let mut vistos: Vec<(f64, f64)> = Vec::new();
+    let mut unicos: Vec<f64> = Vec::new();
     for &x in &cerca {
-        if !vistos.iter().any(|&(v, _)| v == x) {
-            vistos.push((x, nitidez_de_filas(&fina, x)));
+        if !unicos.contains(&x) {
+            unicos.push(x);
         }
     }
+    let notas_finas = en_paralelo(unicos.len(), |i| nitidez_de_filas(&fina, unicos[i]));
+    let vistos: Vec<(f64, f64)> = unicos.into_iter().zip(notas_finas).collect();
     let nota = |x: f64| vistos.iter().find(|&&(v, _)| v == x).map_or(0.0, |&(_, n)| n);
     let mut a1 = cerca[0];
     let mut b1 = nota(a1);
@@ -122,9 +129,9 @@ pub fn estimar_inclinacion(g: &Gris, lado: usize) -> f64 {
     }
     let mut mejor = a1 - 0.5;
     let mut bv = f64::NEG_INFINITY;
-    for k in 0..=10 {
-        let x = np_arange(a1 - 0.5, 0.1, k);
-        let v = nitidez_de_filas(&fina, x);
+    let ultimos: Vec<f64> = (0..=10).map(|k| np_arange(a1 - 0.5, 0.1, k)).collect();
+    let notas_ultimas = en_paralelo(ultimos.len(), |i| nitidez_de_filas(&fina, ultimos[i]));
+    for (&x, &v) in ultimos.iter().zip(&notas_ultimas) {
         if v > bv {
             bv = v;
             mejor = x;
@@ -384,7 +391,8 @@ mod pruebas {
             }
         }
         let caja = [20.0, 20.0, 180.0, 40.0];
-        let r = recortar_linea(&g, &caja, 32, 1, None, 4096);
+        // Una mancha negra entera pareceria texto claro sobre oscuro: se dice.
+        let r = recortar_linea(&g, &caja, 32, 1, Some(false), 4096);
         assert_eq!(r.alto, 32);
         // ancho: (160 + 2·0,3·20) · 32 / (20·1,4) = 172 · 32 / 28 ≈ 196,6 → 197
         assert_eq!(r.ancho, 197);

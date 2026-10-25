@@ -8,6 +8,41 @@
 //! de OpenCV dan, como mucho, un nivel de gris de diferencia: no cambia lo
 //! que lee el reconocedor.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Hilos para lo que se reparte bien (las inclinaciones de prueba, la
+/// morfologia). 0 = los del equipo, hasta cuatro. Lo fija quien llama
+/// (`pixpin-ocr`: dos en el modo cuidadoso de 4 GB).
+static HILOS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn fijar_hilos(n: usize) {
+    HILOS.store(n, Ordering::Relaxed);
+}
+
+pub fn hilos() -> usize {
+    match HILOS.load(Ordering::Relaxed) {
+        0 => std::thread::available_parallelism().map_or(2, |n| n.get()).min(4),
+        n => n,
+    }
+}
+
+/// `f(0..n)` repartido entre [`hilos`], en orden.
+pub fn en_paralelo<T: Send>(n: usize, f: impl Fn(usize) -> T + Sync) -> Vec<T> {
+    let h = hilos().min(n).max(1);
+    if h == 1 {
+        return (0..n).map(f).collect();
+    }
+    let f = &f;
+    std::thread::scope(|s| {
+        let trozos: Vec<_> = (0..h)
+            .map(|k| s.spawn(move || (k..n).step_by(h).map(|i| (i, f(i))).collect::<Vec<_>>()))
+            .collect();
+        let mut v: Vec<(usize, T)> = trozos.into_iter().flat_map(|t| t.join().unwrap_or_default()).collect();
+        v.sort_by_key(|x| x.0);
+        v.into_iter().map(|x| x.1).collect()
+    })
+}
+
 /// Pagina en gris de 8 bits, fila a fila (0 negro, 255 blanco).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gris {
@@ -62,10 +97,13 @@ pub fn redondeo_py(x: f64) -> i64 {
     x.round_ties_even() as i64
 }
 
-/// Satura a 8 bits como `saturate_cast<uchar>` (redondeo a la par).
+/// Satura a 8 bits como `saturate_cast<uchar>`. Redondea la mitad hacia
+/// arriba y no a la par: `round_ties_even` sin SSE4.1 (el x86-64 de base,
+/// el del i3 de referencia) es una llamada a libm por pixel, y la
+/// diferencia es un nivel de gris en los empates.
 #[inline]
 pub fn a_byte(v: f32) -> u8 {
-    v.round_ties_even().clamp(0.0, 255.0) as u8
+    (v.clamp(0.0, 255.0) + 0.5) as u8
 }
 
 /// Como reducir o ampliar: los dos de `cv2.resize` que usa Indra.
@@ -217,19 +255,38 @@ pub fn girar_afin(g: &Gris, m: &[f64; 6], borde: Borde) -> Gris {
             }
         }
     };
+    let src = &g.px;
+    let wu = g.ancho;
     let mut px = vec![0u8; g.px.len()];
     for y in 0..h {
-        for x in 0..w {
-            let sx = a * x as f64 + b * y as f64 + tx;
-            let sy = c * x as f64 + d * y as f64 + ty;
-            let x0 = sx.floor();
-            let y0 = sy.floor();
-            let fx = (sx - x0) as f32;
-            let fy = (sy - y0) as f32;
-            let (x0, y0) = (x0 as i64, y0 as i64);
-            let v = (lee(x0, y0) * (1.0 - fx) + lee(x0 + 1, y0) * fx) * (1.0 - fy)
-                + (lee(x0, y0 + 1) * (1.0 - fx) + lee(x0 + 1, y0 + 1) * fx) * fy;
-            px[(y * w + x) as usize] = a_byte(v);
+        // A lo largo de la fila el origen avanza (a, c) por pixel.
+        let mut sx = b * y as f64 + tx;
+        let mut sy = d * y as f64 + ty;
+        let fila = &mut px[(y * w) as usize..((y + 1) * w) as usize];
+        for v in fila.iter_mut() {
+            // `floor` sin SSE4.1 tambien es libm: se trunca y se corrige.
+            let x0f = piso(sx);
+            let y0f = piso(sy);
+            let fx = (sx - x0f) as f32;
+            let fy = (sy - y0f) as f32;
+            let (x0, y0) = (x0f as i64, y0f as i64);
+            let r = if x0 >= 0 && y0 >= 0 && x0 + 1 < w && y0 + 1 < h {
+                // Camino rapido: los cuatro vecinos dentro.
+                let i = y0 as usize * wu + x0 as usize;
+                let (p00, p01) = (src[i] as f32, src[i + 1] as f32);
+                let (p10, p11) = (src[i + wu] as f32, src[i + wu + 1] as f32);
+                (p00 + (p01 - p00) * fx) * (1.0 - fy) + (p10 + (p11 - p10) * fx) * fy
+            } else if let Borde::Fijo(c) = borde
+                && (x0 < -1 || y0 < -1 || x0 >= w || y0 >= h)
+            {
+                c as f32
+            } else {
+                (lee(x0, y0) * (1.0 - fx) + lee(x0 + 1, y0) * fx) * (1.0 - fy)
+                    + (lee(x0, y0 + 1) * (1.0 - fx) + lee(x0 + 1, y0 + 1) * fx) * fy
+            };
+            *v = a_byte(r);
+            sx += a;
+            sy += c;
         }
     }
     Gris {
@@ -237,6 +294,12 @@ pub fn girar_afin(g: &Gris, m: &[f64; 6], borde: Borde) -> Gris {
         alto: g.alto,
         px,
     }
+}
+
+#[inline]
+fn piso(v: f64) -> f64 {
+    let t = v as i64 as f64;
+    if t > v { t - 1.0 } else { t }
 }
 
 /// Nucleo de `cv2.getGaussianKernel` para `sigma` (tamano de 8 bits:
@@ -272,26 +335,30 @@ fn refleja(i: i64, n: i64) -> usize {
 /// `cv2.GaussianBlur(g, (0, 0), sigma)`, separable.
 pub fn desenfocar(g: &Gris, sigma: f64) -> Vec<f32> {
     let k = nucleo_gaussiano(sigma);
-    let r = (k.len() / 2) as i64;
-    let (w, h) = (g.ancho as i64, g.alto as i64);
-    let mut medio = vec![0f32; g.px.len()];
+    let r = k.len() / 2;
+    let (w, h) = (g.ancho, g.alto);
+    // Horizontal: cada fila con su borde reflejado delante y detras.
+    let mut medio = vec![0f32; w * h];
+    let mut fila = vec![0f32; w + 2 * r];
     for y in 0..h {
-        for x in 0..w {
-            let mut s = 0f32;
-            for (j, kv) in k.iter().enumerate() {
-                s += g.px[(y * w) as usize + refleja(x + j as i64 - r, w)] as f32 * kv;
-            }
-            medio[(y * w + x) as usize] = s;
+        for (i, v) in fila.iter_mut().enumerate() {
+            *v = g.px[y * w + refleja(i as i64 - r as i64, w as i64)] as f32;
+        }
+        let sal = &mut medio[y * w..(y + 1) * w];
+        for (x, o) in sal.iter_mut().enumerate() {
+            *o = fila[x..x + k.len()].iter().zip(&k).map(|(a, b)| a * b).sum();
         }
     }
-    let mut sal = vec![0f32; g.px.len()];
+    // Vertical: se suman filas enteras, que es lo que mejor va a la cache.
+    let mut sal = vec![0f32; w * h];
     for y in 0..h {
-        for x in 0..w {
-            let mut s = 0f32;
-            for (j, kv) in k.iter().enumerate() {
-                s += medio[refleja(y + j as i64 - r, h) * w as usize + x as usize] * kv;
+        let o = &mut sal[y * w..(y + 1) * w];
+        for (j, kv) in k.iter().enumerate() {
+            let yy = refleja(y as i64 + j as i64 - r as i64, h as i64);
+            let src = &medio[yy * w..(yy + 1) * w];
+            for (d, s) in o.iter_mut().zip(src) {
+                *d += s * kv;
             }
-            sal[(y * w + x) as usize] = s;
         }
     }
     sal
@@ -361,35 +428,37 @@ fn morfologia(g: &Gris, el: &[(usize, usize)], dilatar: bool) -> Gris {
     let k = el.len() as i64;
     let c = k / 2;
     let (w, h) = (g.ancho as i64, g.alto as i64);
-    let mut px = vec![0u8; g.px.len()];
-    for y in 0..h {
-        for x in 0..w {
+    let filas = en_paralelo(g.alto, |y| {
+        let y = y as i64;
+        let mut fila = vec![0u8; g.ancho];
+        for (x, o) in fila.iter_mut().enumerate() {
+            let x = x as i64;
             let mut v: u8 = if dilatar { 0 } else { 255 };
             for (i, &(a, b)) in el.iter().enumerate() {
                 let yy = y + i as i64 - c;
                 if yy < 0 || yy >= h || a >= b {
                     continue;
                 }
-                let fila = &g.px[(yy * w) as usize..((yy + 1) * w) as usize];
                 let x0 = (x + a as i64 - c).max(0);
                 let x1 = (x + b as i64 - c).min(w);
                 if x0 >= x1 {
                     continue;
                 }
-                let tramo = &fila[x0 as usize..x1 as usize];
+                let tramo = &g.px[(yy * w + x0) as usize..(yy * w + x1) as usize];
                 v = if dilatar {
-                    v.max(*tramo.iter().max().unwrap_or(&0))
+                    tramo.iter().fold(v, |m, &p| m.max(p))
                 } else {
-                    v.min(*tramo.iter().min().unwrap_or(&255))
+                    tramo.iter().fold(v, |m, &p| m.min(p))
                 };
             }
-            px[(y * w + x) as usize] = v;
+            *o = v;
         }
-    }
+        fila
+    });
     Gris {
         ancho: g.ancho,
         alto: g.alto,
-        px,
+        px: filas.concat(),
     }
 }
 

@@ -22,6 +22,26 @@ pub const NUCLEO_FONDO: f64 = 1.0 / 30.0;
 pub const ENFOQUE: f32 = 0.6;
 pub const SIGMA_ENFOQUE: f64 = 1.0;
 
+/// Si conviene preparar la pagina: no en las oscuras (modo oscuro, una
+/// terminal). Ahi el «papel» es el fondo negro y dividir por el
+/// convierte el texto claro en blanco sobre blanco; el banco de PixPin lo
+/// vio con una captura de codigo (CER 0 → 1,95 % preparandola).
+pub fn conviene(g: &Gris) -> bool {
+    let mut hist = [0usize; 256];
+    for &v in &g.px {
+        hist[v as usize] += 1;
+    }
+    let mitad = g.px.len() / 2;
+    let mut acc = 0;
+    for (i, n) in hist.iter().enumerate() {
+        acc += n;
+        if acc > mitad {
+            return i >= 128;
+        }
+    }
+    true
+}
+
 /// La pagina preparada (nueva; `g` no cambia).
 pub fn preparar(g: &Gris) -> Gris {
     enfocar(&normalizar_fondo(g), ENFOQUE, SIGMA_ENFOQUE)
@@ -117,6 +137,12 @@ mod pruebas {
         );
         let tinta = (30..600).map(|x| p.en(x, 75)).min().unwrap();
         assert!(tinta < 80, "tinta {tinta}");
+    }
+
+    #[test]
+    fn una_pagina_oscura_no_se_prepara() {
+        assert!(!conviene(&Gris::lisa(10, 10, 30)));
+        assert!(conviene(&Gris::lisa(10, 10, 240)));
     }
 
     #[test]

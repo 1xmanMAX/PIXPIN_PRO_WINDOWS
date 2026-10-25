@@ -523,7 +523,9 @@ mod pruebas {
         ];
         assert_eq!(orden_xy(&b), [0, 2, 1, 3]);
         assert_eq!(orden_por_filas(&b), [0, 1, 2, 3]);
-        assert_eq!(bloques_xy(&b, 1.0), vec![vec![0, 2], vec![1, 3]]);
+        // Con huecos de una altura se parte todo; con dos, solo las columnas.
+        assert_eq!(bloques_xy(&b, 1.0).len(), 4);
+        assert_eq!(bloques_xy(&b, 2.0), vec![vec![0, 2], vec![1, 3]]);
     }
 
     #[test]
