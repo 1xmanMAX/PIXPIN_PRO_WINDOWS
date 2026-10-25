@@ -1,95 +1,52 @@
-//! El logo de un proyecto: una imagen en lugar del circulo con iniciales.
+//! **La foto del chat, pintada**: lo que se ve en el circulo de cada chat en
+//! vez de (o detras de) sus iniciales.
 //!
-//! El usuario lo pidio asi: «el logo de los proyectos esta un poco feo asi
-//! que dame la opcion de ponerle de logo una imagen». Es solo del PC (el
-//! movil no tiene logos de imagen), asi que no viaja: es un `logo.png` dentro
-//! de la carpeta del proyecto que sincronizar no mira.
+//! Empezo el 4-oct como el logo de imagen («el logo de los proyectos esta un
+//! poco feo asi que dame la opcion de ponerle de logo una imagen»), un
+//! `logo.png` solo del PC. Desde el 25-oct es la foto del chat
+//! (`pixpin_proyecto::avatar`): una imagen, un emoji sobre un degradado, o
+//! las iniciales sobre el color elegido, y **viaja** con el proyecto. El
+//! `logo.png` de antes sigue saliendo (y viajando) mientras no se cambie.
+//! Lo que se elige esta en `foto_del_chat.rs`.
 //!
 //! Dos reglas que no son evidentes:
 //!
-//! 1. **Se guarda ya cuadrado y pequeno** (256 de lado, del centro de la
-//!    foto). El avatar mide 46 px; guardar la foto de 12 MP para ensenarla
-//!    asi seria leer megas en cada arranque.
-//! 2. **El circulo va en los pixeles**, no en el dibujo: el pintor no tiene
-//!    recorte redondo, y horneando el alfa del circulo al cargarla el logo se
-//!    pinta como cualquier bitmap, con su borde suave.
+//! 1. **La imagen se guarda ya cuadrada y pequena** (256 de lado). El avatar
+//!    mide 46 px; guardar la foto de 12 MP para ensenarla asi seria leer
+//!    megas en cada arranque.
+//! 2. **El circulo va en los pixeles**, no en el dibujo: horneando el alfa
+//!    del circulo al cargarla, se pinta como cualquier bitmap, con su borde
+//!    suave.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use pixpin_codec::ImagenRgba;
-use pixpin_render::{Interpolacion, MotorRender, Pintor, RectF};
-use windows::Win32::Foundation::HWND;
+use pixpin_proyecto::almacen::Ficha;
+use pixpin_proyecto::avatar::{self, Avatar};
+use pixpin_render::{Color, Interpolacion, MotorRender, Pintor, RectF};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
-/// El nombre del fichero dentro de la carpeta del proyecto.
-const NOMBRE: &str = "logo.png";
+use super::{color_avatar, hex, iniciales};
 
-/// El lado con el que se guarda: el avatar mas grande (46 px) al 200 % y
-/// algo de sobra para que reducirlo no deje dientes.
-const LADO: u32 = 256;
+/// Cada cuanto se vuelve a mirar si llego la imagen de una foto que aun no
+/// esta (la sincronizacion trae el proyecto y sus ficheros por separado).
+const REINTENTO: Duration = Duration::from_secs(3);
 
-/// Donde vive el logo de un proyecto.
-pub(super) fn ruta(raiz: &Path, id: &str) -> PathBuf {
-    pixpin_proyecto::almacen::carpeta(raiz, id).join(NOMBRE)
-}
-
-/// Si el proyecto tiene logo puesto: lo pregunta el menu, una vez.
-pub(super) fn tiene(raiz: &Path, id: &str) -> bool {
-    ruta(raiz, id).is_file()
-}
-
-/// Pide una imagen y la deja de logo. `Ok(false)` si se cancelo el dialogo.
-pub(super) fn elegir_y_poner(padre: HWND, raiz: &Path, id: &str) -> anyhow::Result<bool> {
-    let Some(origen) = pixpin_shell::elegir::pedir_una_imagen(padre) else {
-        return Ok(false);
-    };
-    poner(raiz, id, &origen)?;
-    Ok(true)
-}
-
-/// Lee `origen`, toma su cuadrado central, lo reduce y lo guarda como logo.
-/// Entero o nada: un logo a medio escribir se quedaria roto para siempre.
-pub(super) fn poner(raiz: &Path, id: &str, origen: &Path) -> anyhow::Result<()> {
-    let imagen = pixpin_codec::cargar(origen)?;
-    let cuadrada = recortar_cuadrado(&imagen).ok_or_else(|| anyhow::anyhow!("imagen vacia"))?;
-    // Una pequena NO se agranda: solo gastaria disco y se veria igual.
-    let cuadrada = if cuadrada.ancho > LADO {
-        pixpin_codec::redimensionar(cuadrada, LADO, LADO)?
-    } else {
-        cuadrada
-    };
-    let png = pixpin_codec::codificar_png(&cuadrada)?;
-    pixpin_sincro::disco::escribir_atomico(&ruta(raiz, id), &png)?;
-    olvidar(id);
-    Ok(())
-}
-
-/// Quita el logo: vuelve el circulo con iniciales.
-pub(super) fn quitar(raiz: &Path, id: &str) -> std::io::Result<()> {
-    let r = ruta(raiz, id);
-    let hecho = match std::fs::remove_file(&r) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        otro => otro,
-    };
-    olvidar(id);
-    hecho
-}
-
-/// El cuadrado mas grande del centro de una imagen: `(x, y, lado)`.
-fn cuadrado_central(ancho: u32, alto: u32) -> (u32, u32, u32) {
-    let lado = ancho.min(alto);
-    ((ancho - lado) / 2, (alto - lado) / 2, lado)
-}
-
-/// La imagen recortada a su cuadrado central. `None` si esta vacia o sus
-/// pixeles no cuadran con su tamano.
-fn recortar_cuadrado(imagen: &ImagenRgba) -> Option<ImagenRgba> {
-    if imagen.ancho == 0 || imagen.alto == 0 || imagen.pixeles.len() != imagen.bytes_esperados() {
+/// El cuadrado `(x, y, lado)` de una imagen, recortado. `None` si esta vacia,
+/// sus pixeles no cuadran con su tamano o el cuadrado se sale.
+pub(super) fn recortar(imagen: &ImagenRgba, (x, y, lado): (u32, u32, u32)) -> Option<ImagenRgba> {
+    if imagen.ancho == 0
+        || imagen.alto == 0
+        || lado == 0
+        || imagen.pixeles.len() != imagen.bytes_esperados()
+        || x + lado > imagen.ancho
+        || y + lado > imagen.alto
+    {
         return None;
     }
-    let (x, y, lado) = cuadrado_central(imagen.ancho, imagen.alto);
     let (fila, trozo) = (imagen.ancho as usize * 4, lado as usize * 4);
     let mut pixeles = Vec::with_capacity(trozo * lado as usize);
     for f in y..y + lado {
@@ -101,6 +58,12 @@ fn recortar_cuadrado(imagen: &ImagenRgba) -> Option<ImagenRgba> {
         alto: lado,
         pixeles,
     })
+}
+
+/// La imagen recortada a su cuadrado central.
+fn recortar_cuadrado(imagen: &ImagenRgba) -> Option<ImagenRgba> {
+    let r = pixpin_ui::foto_del_chat::Recorte::centrado(imagen.ancho, imagen.alto);
+    recortar(imagen, r.en_pixeles(imagen.ancho, imagen.alto))
 }
 
 /// Cuanto del pixel `(x, y)` cae dentro del circulo inscrito en un cuadrado
@@ -120,111 +83,271 @@ fn en_circulo(pixeles: &mut [u8], lado: u32) {
     }
 }
 
+/// **Guarda como foto del chat** el cuadrado ya recortado `cuadrada`:
+/// reducida a 256 si es mayor, en PNG, en la carpeta del proyecto y apuntada
+/// en su ficha. Entero o nada.
+pub(super) fn guardar_imagen(
+    raiz: &Path,
+    id: &str,
+    cuadrada: ImagenRgba,
+    cuando: i64,
+) -> anyhow::Result<()> {
+    // Una pequena NO se agranda: solo gastaria disco y se veria igual.
+    let cuadrada = if cuadrada.ancho > avatar::LADO {
+        pixpin_codec::redimensionar(cuadrada, avatar::LADO, avatar::LADO)?
+    } else {
+        cuadrada
+    };
+    let png = pixpin_codec::codificar_png(&cuadrada)?;
+    let rel = avatar::guardar_imagen(raiz, id, &png, cuando)?;
+    avatar::poner(raiz, id, &Avatar::imagen(&rel, cuando))?;
+    olvidar(id);
+    Ok(())
+}
+
+// --- Pintar ----------------------------------------------------------------
+
+/// Un circulo con el degradado `(arriba, abajo)` de arriba abajo.
+pub(super) fn pintar_fondo(p: &Pintor, caja: RectF, (arriba, abajo): (u32, u32)) {
+    if arriba == abajo || !p.empujar_recorte_redondeado(caja, caja.ancho / 2.0) {
+        p.rellenar_redondeado(caja, caja.ancho / 2.0, hex(arriba));
+        return;
+    }
+    let cx = caja.x + caja.ancho / 2.0;
+    p.rect_degradado(
+        caja,
+        (cx, caja.y),
+        (cx, caja.y + caja.alto),
+        hex(arriba),
+        hex(abajo),
+    );
+    p.soltar_recorte_redondeado();
+}
+
+/// Un emoji grande, en color y centrado en el circulo.
+pub(super) fn pintar_emoji(p: &Pintor, caja: RectF, emoji: &str) {
+    let tam = caja.alto * 0.52;
+    let (w, h) = p.medir_texto(emoji, tam);
+    p.texto_color(
+        emoji,
+        caja.x + (caja.ancho - w) / 2.0,
+        caja.y + (caja.alto - h) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
+}
+
+/// Las iniciales en blanco, centradas.
+pub(super) fn pintar_letras(p: &Pintor, caja: RectF, nombre: &str) {
+    let letras = iniciales(nombre);
+    let tam = caja.alto * 0.4;
+    let (w, h) = p.medir_texto(&letras, tam);
+    p.texto(
+        &letras,
+        caja.x + (caja.ancho - w) / 2.0,
+        caja.y + (caja.alto - h) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
+}
+
+/// **Una foto del chat entera**: la imagen si la hay (`imagen`, ya en
+/// circulo), o el emoji o las iniciales sobre su fondo. Sin fondo elegido,
+/// el color de siempre del chat (`codigo`).
+pub(super) fn pintar_avatar(
+    p: &Pintor,
+    caja: RectF,
+    a: Option<&Avatar>,
+    imagen: Option<&ID2D1Bitmap1>,
+    nombre: &str,
+    codigo: &str,
+) {
+    if let Some(b) = imagen {
+        // Cubica: se reduce de 256 a 46, y la lineal dejaria dientes.
+        p.bitmap_con(b, caja, None, Interpolacion::Cubica);
+        return;
+    }
+    match a.and_then(Avatar::fondo) {
+        Some(f) => pintar_fondo(p, caja, f),
+        None => p.rellenar_redondeado(caja, caja.ancho / 2.0, color_avatar(codigo)),
+    }
+    match a.and_then(Avatar::el_emoji) {
+        Some(e) => pintar_emoji(p, caja, e),
+        None => pintar_letras(p, caja, nombre),
+    }
+}
+
 // --- La cache, del hilo del chat ----------------------------------------
 
-/// Un logo leido: sus pixeles (ya en circulo) y, si ya se subio, su bitmap.
-/// Los pixeles se quedan para volver a subirlo si se pierde el dispositivo.
-struct Logo {
+/// Una imagen leida: sus pixeles (ya en circulo) y, si ya se subio, su
+/// bitmap. Los pixeles se quedan para volver a subirla si se pierde el
+/// dispositivo.
+pub(super) struct Foto {
     pixeles: Vec<u8>,
     lado: u32,
     bitmap: Option<ID2D1Bitmap1>,
 }
 
-/// Lo que se sabe del logo de un proyecto. `Sin` vale tanto para «no tiene»
-/// como para «no se pudo leer»: en los dos se pinta el circulo de siempre,
-/// y no se vuelve a mirar el disco en cada fotograma.
-enum Estado {
-    Hecho(Logo),
-    Sin,
+enum Imagen {
+    Hecha(Foto),
+    /// No esta (o no se lee): se vuelve a mirar pasado un rato, por si la
+    /// trae la sincronizacion.
+    Falta(Instant),
+}
+
+/// Lo que se sabe de la foto de un proyecto.
+struct Entrada {
+    /// El JSON de la ficha del que salio: si cambia, se rehace.
+    valor: Option<serde_json::Value>,
+    avatar: Option<Avatar>,
+    /// Donde esta su imagen y como va, si es de imagen.
+    imagen: Option<(PathBuf, Imagen)>,
 }
 
 thread_local! {
     /// Por `id` de proyecto. Del hilo del chat, que es el que pinta, como
-    /// la cache del grafito: el menu que pone o quita un logo corre en el
-    /// mismo hilo y lo olvida aqui.
-    static LOGOS: RefCell<HashMap<String, Estado>> = RefCell::new(HashMap::new());
+    /// la cache del grafito. El editor de la foto corre en otro hilo: lo que
+    /// cambia lo apunta en el indice, la lista lo relee y aqui se nota en
+    /// que su JSON ya no es el mismo.
+    static FOTOS: RefCell<HashMap<String, Entrada>> = RefCell::new(HashMap::new());
 }
 
 /// Olvida lo leido de un proyecto: se vuelve a leer al pintarlo.
 pub(super) fn olvidar(id: &str) {
-    LOGOS.with_borrow_mut(|m| m.remove(id));
+    FOTOS.with_borrow_mut(|m| m.remove(id));
 }
 
 /// Suelta los bitmaps y conserva los pixeles: el dispositivo se perdio.
 pub(super) fn soltar() {
-    LOGOS.with_borrow_mut(|m| {
+    FOTOS.with_borrow_mut(|m| {
         for e in m.values_mut() {
-            if let Estado::Hecho(l) = e {
-                l.bitmap = None;
+            if let Some((_, Imagen::Hecha(f))) = &mut e.imagen {
+                f.bitmap = None;
             }
         }
     });
 }
 
-/// Lee y sube los logos de `ids` que falten. Se llama ANTES del fotograma:
-/// crear bitmaps a medio pintar no se puede.
+/// Lee y sube las fotos de `ids` (que estan en `fichas`) que falten. Se
+/// llama ANTES del fotograma: crear bitmaps a medio pintar no se puede.
 pub(super) fn preparar<'a>(
     raiz: &Path,
+    fichas: &[Ficha],
     ids: impl IntoIterator<Item = &'a str>,
     motor: &MotorRender,
 ) {
-    LOGOS.with_borrow_mut(|m| {
+    FOTOS.with_borrow_mut(|m| {
         for id in ids {
-            // Sin `entry`: esto corre en cada fotograma y casi siempre ya
-            // esta, asi que no se crea la cadena para nada.
-            if !m.contains_key(id) {
-                let estado = match leer(&ruta(raiz, id)) {
-                    Some(l) => Estado::Hecho(l),
-                    None => Estado::Sin,
-                };
-                m.insert(id.to_string(), estado);
-            }
-            let Some(Estado::Hecho(l)) = m.get_mut(id) else {
+            let Some(f) = fichas.iter().find(|f| f.id == id) else {
                 continue;
             };
-            if l.bitmap.is_none() {
+            let valor = avatar::valor_de(f);
+            // Casi siempre ya esta y no cambio: sin crear cadenas ni mirar
+            // el disco en cada fotograma.
+            let al_dia = m.get(id).is_some_and(|e| e.valor.as_ref() == valor);
+            if !al_dia {
+                let a = avatar::de_ficha_o_logo(raiz, f);
+                // «Ya tocaba mirar»: se lee en esta misma vuelta.
+                let ya = Instant::now()
+                    .checked_sub(REINTENTO)
+                    .unwrap_or_else(Instant::now);
+                let imagen = a
+                    .as_ref()
+                    .and_then(|a| avatar::ruta_de_la_imagen(raiz, id, a))
+                    .map(|r| (r, Imagen::Falta(ya)));
+                m.insert(
+                    id.to_string(),
+                    Entrada {
+                        valor: valor.cloned(),
+                        avatar: a,
+                        imagen,
+                    },
+                );
+            }
+            let Some(Entrada {
+                imagen: Some((ruta, estado)),
+                ..
+            }) = m.get_mut(id)
+            else {
+                continue;
+            };
+            if let Imagen::Falta(desde) = estado
+                && desde.elapsed() >= REINTENTO
+            {
+                *estado = match leer(ruta) {
+                    Some(f) => Imagen::Hecha(f),
+                    None => Imagen::Falta(Instant::now()),
+                };
+            }
+            if let Imagen::Hecha(l) = estado
+                && l.bitmap.is_none()
+            {
                 match motor.bitmap_desde_pixeles_premultiplicado(l.lado, l.lado, &l.pixeles) {
                     Ok(b) => l.bitmap = Some(b),
-                    Err(e) => tracing::warn!(?e, id, "no se pudo subir el logo"),
+                    Err(e) => tracing::warn!(?e, id, "no se pudo subir la foto del chat"),
                 }
             }
         }
     });
 }
 
-/// El logo del disco, cuadrado y en circulo; `None` si no hay o no se lee.
-fn leer(ruta: &Path) -> Option<Logo> {
+/// La imagen del disco, cuadrada y en circulo; `None` si no hay o no se lee.
+pub(super) fn leer(ruta: &Path) -> Option<Foto> {
     if !ruta.is_file() {
         return None;
     }
     let imagen = pixpin_codec::cargar(ruta)
-        .inspect_err(|e| tracing::info!(?e, ruta = %ruta.display(), "logo que no se lee"))
+        .inspect_err(|e| tracing::info!(?e, ruta = %ruta.display(), "foto que no se lee"))
         .ok()?;
-    // Lo guarda `poner` ya cuadrado, pero alguien pudo dejar otro a mano.
+    // Se guarda ya cuadrada, pero pudo llegar otra de otro aparato.
     let mut cuadrada = recortar_cuadrado(&imagen)?;
-    if cuadrada.ancho > LADO {
-        cuadrada = pixpin_codec::redimensionar(cuadrada, LADO, LADO).ok()?;
+    if cuadrada.ancho > avatar::LADO {
+        cuadrada = pixpin_codec::redimensionar(cuadrada, avatar::LADO, avatar::LADO).ok()?;
     }
     en_circulo(&mut cuadrada.pixeles, cuadrada.ancho);
-    Some(Logo {
+    Some(Foto {
         lado: cuadrada.ancho,
         pixeles: cuadrada.pixeles,
         bitmap: None,
     })
 }
 
-/// Pinta el logo de `id` en `caja` si lo hay ya subido. `false` si no, y
-/// quien llama pinta el circulo de siempre.
-pub(super) fn pintar(p: &Pintor, id: &str, caja: RectF) -> bool {
-    LOGOS.with_borrow(|m| match m.get(id) {
-        Some(Estado::Hecho(Logo {
-            bitmap: Some(b), ..
-        })) => {
-            // Cubica: se reduce de 256 a 46, y la lineal dejaria dientes.
-            p.bitmap_con(b, caja, None, Interpolacion::Cubica);
-            true
+impl Foto {
+    /// Sube la imagen para pintarla fuera de la cache (el editor).
+    pub(super) fn subir(&self, motor: &MotorRender) -> Option<ID2D1Bitmap1> {
+        motor
+            .bitmap_desde_pixeles_premultiplicado(self.lado, self.lado, &self.pixeles)
+            .ok()
+    }
+}
+
+/// **Pinta la foto de `f` en `caja`** si tiene una propia: su imagen (ya
+/// subida), su emoji o sus iniciales sobre el fondo elegido. `false` si se
+/// pinta como siempre (o su imagen aun no esta), y quien llama pinta lo
+/// suyo: el circulo con iniciales en la lista, la carpeta en la cabecera.
+pub(super) fn pintar(p: &Pintor, f: &Ficha, caja: RectF) -> bool {
+    FOTOS.with_borrow(|m| {
+        let Some(e) = m.get(&f.id) else {
+            return false;
+        };
+        let a = e.avatar.as_ref();
+        if let Some((
+            _,
+            Imagen::Hecha(Foto {
+                bitmap: Some(b), ..
+            }),
+        )) = &e.imagen
+        {
+            pintar_avatar(p, caja, a, Some(b), &f.nombre, &f.codigo_unico());
+            return true;
         }
-        _ => false,
+        match a {
+            Some(a) if !a.es_imagen() && !a.es_lo_de_siempre() => {
+                pintar_avatar(p, caja, Some(a), None, &f.nombre, &f.codigo_unico());
+                true
+            }
+            _ => false,
+        }
     })
 }
 
@@ -249,15 +372,6 @@ mod pruebas {
     }
 
     #[test]
-    fn el_cuadrado_sale_del_centro_por_el_lado_que_sobra() {
-        assert_eq!(cuadrado_central(400, 300), (50, 0, 300));
-        assert_eq!(cuadrado_central(300, 400), (0, 50, 300));
-        assert_eq!(cuadrado_central(256, 256), (0, 0, 256));
-        // Impar: el pixel de mas se queda a la derecha.
-        assert_eq!(cuadrado_central(5, 2), (1, 0, 2));
-    }
-
-    #[test]
     fn recortar_toma_los_pixeles_del_centro() {
         let r = recortar_cuadrado(&imagen(6, 4)).expect("no esta vacia");
         assert_eq!((r.ancho, r.alto), (4, 4));
@@ -269,6 +383,16 @@ mod pruebas {
             &r.pixeles[r.pixeles.len() - 4..r.pixeles.len() - 2],
             &[4, 3]
         );
+    }
+
+    #[test]
+    fn recortar_un_cuadrado_elegido_y_nunca_fuera() {
+        let r = recortar(&imagen(6, 4), (2, 1, 3)).unwrap();
+        assert_eq!((r.ancho, r.alto), (3, 3));
+        assert_eq!(&r.pixeles[0..2], &[2, 1]);
+        // Caso negativo: un cuadrado que se sale no se recorta.
+        assert!(recortar(&imagen(6, 4), (4, 0, 3)).is_none());
+        assert!(recortar(&imagen(6, 4), (0, 0, 0)).is_none());
     }
 
     #[test]
@@ -295,26 +419,34 @@ mod pruebas {
     }
 
     #[test]
-    fn poner_guarda_un_cuadrado_de_256_y_quitar_lo_borra() {
-        let raiz = std::env::temp_dir().join(format!("pixpin-logo-{}", std::process::id()));
+    fn guardar_deja_un_cuadrado_de_256_apuntado_en_la_ficha() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-foto-chat-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
-        std::fs::create_dir_all(&raiz).unwrap();
-        let origen = raiz.join("foto.png");
-        let grande = imagen(600, 300);
-        std::fs::write(&origen, pixpin_codec::codificar_png(&grande).unwrap()).unwrap();
-        poner(&raiz, "p1", &origen).expect("se guarda");
-        assert!(tiene(&raiz, "p1"));
-        let guardado = pixpin_codec::cargar(&ruta(&raiz, "p1")).unwrap();
-        assert_eq!((guardado.ancho, guardado.alto), (LADO, LADO));
-        quitar(&raiz, "p1").unwrap();
-        assert!(!tiene(&raiz, "p1"));
-        // Quitar lo que no esta no es un error.
-        quitar(&raiz, "p1").unwrap();
-        // Un fichero que no es imagen se rechaza sin dejar logo.
+        let f = Ficha::nueva("Casa", 1, "PC01");
+        pixpin_proyecto::almacen::Indice {
+            proyectos: vec![f.clone()],
+            ..Default::default()
+        }
+        .guardar(&raiz)
+        .unwrap();
+        let grande = recortar_cuadrado(&imagen(600, 300)).unwrap();
+        guardar_imagen(&raiz, &f.id, grande, 42).expect("se guarda");
+        let ficha = pixpin_proyecto::almacen::Indice::leer(&raiz)
+            .buscar(&f.id)
+            .cloned()
+            .unwrap();
+        let a = avatar::de_ficha(&ficha).unwrap();
+        let ruta = avatar::ruta_de_la_imagen(&raiz, &f.id, &a).unwrap();
+        let guardado = pixpin_codec::cargar(&ruta).unwrap();
+        assert_eq!(
+            (guardado.ancho, guardado.alto),
+            (avatar::LADO, avatar::LADO)
+        );
+        assert!(leer(&ruta).is_some());
+        // Caso negativo: lo que no es una imagen no se lee como foto.
         let falso = raiz.join("falso.png");
         std::fs::write(&falso, b"no soy una imagen").unwrap();
-        assert!(poner(&raiz, "p1", &falso).is_err());
-        assert!(!tiene(&raiz, "p1"));
+        assert!(leer(&falso).is_none());
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

@@ -145,6 +145,8 @@ pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
 /// La ventana de estudiar una clase grabada: el video o la captura del
 /// minuto, el texto y las capturas, que se siguen (25-oct-2026).
 mod estudiar_clase;
+/// La hoja para cambiar la foto del chat (25-oct-2026).
+mod foto_del_chat;
 /// La pestana de Funciones: la rejilla de las funciones fuertes (25-oct-2026).
 mod funciones;
 /// «Grabar clase»: el microfono y el sonido del equipo, con capturas de una
@@ -156,7 +158,7 @@ mod hoja_adjuntar;
 mod icono_de_tipo;
 /// El interruptor Chat · Funciones de la barra de titulo.
 mod interruptor;
-/// El logo de un proyecto: una imagen en vez de las iniciales (4-oct).
+/// La foto del chat pintada: imagen, emoji o color (4 y 25-oct).
 mod logo;
 /// Mayus+clic marca un tramo de burbujas.
 mod marcar;
@@ -2090,6 +2092,16 @@ pub fn abrir(
                                         a.resaltado = Some((n, std::time::Instant::now()));
                                     }
                                 }
+                                // El avatar de arriba: la hoja de la foto del
+                                // chat, con su ficha de la lista (la del
+                                // abierto pudo quedarse vieja).
+                                ZonaInfo::Avatar => {
+                                    let f = fichas
+                                        .iter()
+                                        .find(|f| f.id == a.ficha.id)
+                                        .unwrap_or(&a.ficha);
+                                    foto_del_chat::abrir(ubicacion.raiz(), f, textos);
+                                }
                                 ZonaInfo::Dentro => {}
                             }
                         }
@@ -2728,36 +2740,17 @@ pub fn abrir(
                             vec![id]
                         };
                         let con_carpeta_propia = fichas[orden[fila]].ubicacion.is_some();
-                        let con_logo = logo::tiene(ubicacion.raiz(), &fichas[orden[fila]].id);
                         let elegido = menu_de_proyecto(
                             &ventana,
                             textos,
                             ids.len(),
                             con_carpeta_propia,
-                            con_logo,
                             !fichas[orden[fila]].es_guardados(),
                         );
-                        // El logo: se pone o se quita y la lista lo vuelve a
-                        // leer al pintar.
-                        if matches!(
-                            elegido,
-                            Some(DelMenuProyecto::PonerLogo | DelMenuProyecto::QuitarLogo)
-                        ) {
-                            let id = &fichas[orden[fila]].id;
-                            let hecho = if elegido == Some(DelMenuProyecto::PonerLogo) {
-                                logo::elegir_y_poner(ventana.handle(), ubicacion.raiz(), id)
-                                    .map(|_| ())
-                            } else {
-                                logo::quitar(ubicacion.raiz(), id).map_err(anyhow::Error::from)
-                            };
-                            if let Err(e) = hecho {
-                                tracing::warn!(?e, "no se pudo cambiar el logo del proyecto");
-                                aviso = Some((
-                                    textos.t("proyecto-logo-error"),
-                                    std::time::Instant::now(),
-                                ));
-                            }
-                            hay_que_pintar = true;
+                        // La foto del chat: su hoja, aparte. Al guardar, la
+                        // lista se relee y la foto se ve.
+                        if elegido == Some(DelMenuProyecto::CambiarFoto) {
+                            foto_del_chat::abrir(ubicacion.raiz(), &fichas[orden[fila]], textos);
                             continue;
                         }
                         // Donde se guarda: moverlo, traerlo o ensenar su
@@ -4424,6 +4417,7 @@ pub fn abrir(
                     .unwrap_or_default();
                 logo::preparar(
                     ubicacion.raiz(),
+                    &fichas,
                     filas
                         .chain(del_abierto)
                         .chain(de_la_ficha.iter().map(String::as_str))
@@ -5772,10 +5766,10 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
         }
         let partes = pixpin_ui::chat::partes_fila(r, d.plegada, escala);
 
-        // El avatar: su logo si le puso uno, o un circulo de su color con
-        // las iniciales.
+        // El avatar: su foto si le puso una (imagen, emoji o color), o un
+        // circulo de su color con las iniciales.
         let a = rf(partes.avatar);
-        if !logo::pintar(p, &ficha.id, a) {
+        if !logo::pintar(p, ficha, a) {
             p.rellenar_redondeado(a, a.ancho / 2.0, color_avatar(&ficha.codigo_unico()));
             let letras = iniciales(&ficha.nombre);
             let tam = a.alto * 0.4;
@@ -8591,7 +8585,7 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     };
     // Con logo puesto, el logo ocupa el disco de la carpeta: es el mismo
     // proyecto que en la lista y tiene que reconocerse igual.
-    if !logo::pintar(p, &a.ficha.id, circulo) {
+    if !logo::pintar(p, &a.ficha, circulo) {
         p.rellenar_redondeado(circulo, disco / 2.0, tema.carpeta);
         let icono: &Icono = if a.ficha.es_guardados() {
             &mi::BOOKMARK_BORDER
@@ -13891,10 +13885,8 @@ enum DelMenuProyecto {
     Compartir,
     /// Sus personas: compartir el chat con otras (`sincronizar::compartidos_ui`).
     Personas,
-    /// Elegir una imagen para su avatar (`logo`).
-    PonerLogo,
-    /// Volver al circulo con iniciales.
-    QuitarLogo,
+    /// Cambiar la foto del chat: imagen, emoji o color (`foto_del_chat`).
+    CambiarFoto,
 }
 
 /// El menu del clic derecho sobre un proyecto de la lista.
@@ -13908,14 +13900,13 @@ enum DelMenuProyecto {
 /// Lo de la carpeta, tambien solo con uno: cada proyecto va a la suya.
 /// «Volver a la ubicacion habitual» solo sale si tiene una propia.
 ///
-/// El logo, tambien con uno solo, junto al nombre: es lo otro que se ve de
-/// el en la lista. «Quitar» solo si tiene uno puesto.
+/// La foto del chat, tambien con uno solo, junto al nombre: es lo otro que
+/// se ve de el en la lista.
 fn menu_de_proyecto(
     ventana: &VentanaOverlay,
     textos: &Catalogo,
     cuantos: usize,
     con_carpeta_propia: bool,
-    con_logo: bool,
     compartible: bool,
 ) -> Option<DelMenuProyecto> {
     const PERSONAS: u32 = 10;
@@ -13926,8 +13917,7 @@ fn menu_de_proyecto(
     const VOLVER_A_HABITUAL: u32 = 5;
     const ABRIR_CARPETA: u32 = 6;
     const COMPARTIR: u32 = 7;
-    const PONER_LOGO: u32 = 8;
-    const QUITAR_LOGO: u32 = 9;
+    const CAMBIAR_FOTO: u32 = 8;
     let rotulo = if cuantos > 1 {
         format!("{} ({cuantos})", textos.t("proyecto-borrar-varios"))
     } else {
@@ -13944,10 +13934,7 @@ fn menu_de_proyecto(
     }
     if cuantos == 1 {
         entradas.push((RENOMBRAR, textos.t("proyecto-renombrar")));
-        entradas.push((PONER_LOGO, textos.t("proyecto-logo-poner")));
-        if con_logo {
-            entradas.push((QUITAR_LOGO, textos.t("proyecto-logo-quitar")));
-        }
+        entradas.push((CAMBIAR_FOTO, textos.t("foto-chat-menu")));
         entradas.push((CAMBIAR_UBICACION, textos.t("ubicacion-cambiar")));
         if con_carpeta_propia {
             entradas.push((VOLVER_A_HABITUAL, textos.t("ubicacion-habitual")));
@@ -13959,8 +13946,7 @@ fn menu_de_proyecto(
     entradas.push((PAPELERA, textos.t("proyecto-papelera")));
     match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
         Some(RENOMBRAR) => Some(DelMenuProyecto::Renombrar),
-        Some(PONER_LOGO) => Some(DelMenuProyecto::PonerLogo),
-        Some(QUITAR_LOGO) => Some(DelMenuProyecto::QuitarLogo),
+        Some(CAMBIAR_FOTO) => Some(DelMenuProyecto::CambiarFoto),
         Some(PAPELERA) => Some(DelMenuProyecto::Papelera),
         Some(CAMBIAR_UBICACION) => Some(DelMenuProyecto::CambiarUbicacion),
         Some(VOLVER_A_HABITUAL) => Some(DelMenuProyecto::VolverAHabitual),

@@ -497,7 +497,7 @@ fn pintar_encontrado(
 
     // El avatar del chat, como en su fila: su logo o su color con iniciales.
     let a = rf(partes.avatar);
-    if !logo::pintar(p, &enc.chat, a) {
+    if !ficha.is_some_and(|f| logo::pintar(p, f, a)) {
         let color = ficha.map_or(tema.apagado, |f| color_avatar(&f.codigo_unico()));
         p.rellenar_redondeado(a, a.ancho / 2.0, color);
         let letras = iniciales(nombre);
