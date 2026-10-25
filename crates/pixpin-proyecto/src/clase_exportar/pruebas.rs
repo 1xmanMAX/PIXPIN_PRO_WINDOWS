@@ -177,14 +177,14 @@ fn las_urls_relativas_no_se_salen_ni_cambian_de_esquema() {
 fn el_markdown_lleva_las_capturas_en_su_minuto() {
     let c = ejemplo();
     let md = markdown(&c, &Rotulos::default(), &|r: &Path| {
-        Some(format!("Clase_archivos/{}", nombre(r)))
+        Some(format!("Clase x_archivos/{}", nombre(r)))
     });
     assert!(md.starts_with("# Clase \\<de\\> \"física\" & más\n"));
     assert!(md.contains("**1:00** Vamos con la ley de Ohm"));
-    assert!(md.contains("![Captura 2 · 1:05](<Clase_archivos/c1.png>)"));
-    assert!(md.contains("- Audio: [clase.m4a](<Clase_archivos/clase.m4a>)"));
+    assert!(md.contains("![Captura 2 · 1:05](Clase%20x_archivos/c1.png)"));
+    assert!(md.contains("- Audio: [clase.m4a](Clase%20x_archivos/clase.m4a)"));
     assert!(md.contains("## Marcadores\n\n- **1:00** Ojo: examen\n- **1:01:40** Marcador\n"));
-    let c1 = md.find("c1.png>)\n").unwrap();
+    let c1 = md.find("c1.png)\n").unwrap();
     assert!(md.find("**1:00** Vamos").unwrap() < c1);
     assert!(c1 < md.find("**2:00** Y la potencia").unwrap());
 }
@@ -270,4 +270,25 @@ fn de_la_nota_y_sus_enlaces() {
     assert_eq!(c.marcadores[1].texto, "importante");
     assert_eq!(c.ficheros().len(), 6);
     assert_eq!(c.duracion(), 90_000);
+}
+
+#[test]
+fn el_markdown_va_en_un_zip_con_su_carpeta() {
+    let c = ejemplo();
+    let zip = paquete_markdown(&c, &Rotulos::default(), "Clase 1", &|r: &Path| {
+        (nombre(r) == "c1.png").then(|| b"png".to_vec())
+    })
+    .unwrap();
+    let mut z = zip::ZipArchive::new(std::io::Cursor::new(zip)).unwrap();
+    let mut nombres: Vec<String> = z.file_names().map(String::from).collect();
+    nombres.sort();
+    assert_eq!(
+        nombres,
+        vec!["Clase 1.md", "Clase 1_archivos/captura-02-1m05s.png"]
+    );
+    let mut md = String::new();
+    std::io::Read::read_to_string(&mut z.by_name("Clase 1.md").unwrap(), &mut md).unwrap();
+    assert!(md.contains("![Captura 2 · 1:05](Clase%201_archivos/captura-02-1m05s.png)"));
+    // La que no se pudo leer no se enlaza.
+    assert!(!md.contains("Captura 1 ·"));
 }

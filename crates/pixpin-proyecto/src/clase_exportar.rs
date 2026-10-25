@@ -774,8 +774,9 @@ fn cabecera_texto(c: &ClaseParaExportar, r: &Rotulos) -> Vec<String> {
 
 /// **La grabacion en Markdown**: el titulo, la fecha y la duracion, los
 /// marcadores, y la transcripcion con las capturas en su minuto. `enlace`
-/// da la ruta relativa de cada fichero (las capturas, el audio, el video);
-/// `None`, no se enlaza.
+/// da la ruta relativa de cada fichero (las capturas, el audio, el video),
+/// que va escapada como URL y sin `<>` (el lector de fotos de las notas, y
+/// con el el Word, no las admite); `None`, no se enlaza.
 pub fn markdown(
     c: &ClaseParaExportar,
     r: &Rotulos,
@@ -792,16 +793,20 @@ pub fn markdown(
             && let Some(e) = enlace(ruta)
         {
             medios.push(format!(
-                "- {}: [{}](<{}>)",
+                "- {}: [{}]({})",
                 rotulo,
                 md_escapar(&nombre(ruta)),
-                e
+                url_relativa(&e)
             ));
         }
     }
     for a in &c.adjuntos {
         if let Some(e) = enlace(a) {
-            medios.push(format!("- [{}](<{}>)", md_escapar(&nombre(a)), e));
+            medios.push(format!(
+                "- [{}]({})",
+                md_escapar(&nombre(a)),
+                url_relativa(&e)
+            ));
         }
     }
     if !medios.is_empty() {
@@ -839,11 +844,11 @@ pub fn markdown(
                 let (ms, ruta) = &c.capturas[i];
                 if let Some(e) = enlace(ruta) {
                     v.push_str(&format!(
-                        "![{} {} · {}](<{}>)\n\n",
+                        "![{} {} · {}]({})\n\n",
                         r.captura,
                         i + 1,
                         minuto(*ms),
-                        e
+                        url_relativa(&e)
                     ));
                 }
             }
@@ -859,6 +864,64 @@ pub fn markdown(
         }
     }
     v.trim_end().to_string() + "\n"
+}
+
+/// El nombre de la captura `i` dentro de la carpeta de la grabacion:
+/// `captura-01-1m05s.png`, que se ordena solo y dice su minuto.
+pub fn nombre_de_captura(i: usize, ms: i64, ruta: &Path) -> String {
+    let s = ms.max(0) / 1000;
+    let ext = match extension(ruta).as_str() {
+        "" => "png".to_string(),
+        e => e.to_string(),
+    };
+    format!("captura-{:02}-{}m{:02}s.{ext}", i + 1, s / 60, s % 60)
+}
+
+/// **El Markdown con su carpeta, en un ZIP**: `<base>.md` y, al lado,
+/// `<base>_archivos/` con las capturas (lo que exporta Notion o Obsidian).
+/// `bytes` lee cada captura; la que no se lee no se enlaza.
+pub fn paquete_markdown(
+    c: &ClaseParaExportar,
+    r: &Rotulos,
+    base: &str,
+    bytes: &dyn Fn(&Path) -> Option<Vec<u8>>,
+) -> Result<Vec<u8>, crate::ErrorProyecto> {
+    use std::io::Write;
+    let carpeta = format!("{base}_archivos");
+    let mut dentro: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut nombres: Vec<(PathBuf, String)> = Vec::new();
+    for (i, (ms, ruta)) in c.capturas.iter().enumerate() {
+        if let Some(b) = bytes(ruta) {
+            let n = format!("{carpeta}/{}", nombre_de_captura(i, *ms, ruta));
+            nombres.push((ruta.clone(), n.clone()));
+            dentro.push((n, b));
+        }
+    }
+    let md = markdown(c, r, &|ruta: &Path| {
+        nombres
+            .iter()
+            .find(|(r, _)| r == ruta)
+            .map(|(_, n)| n.clone())
+    });
+    let mut salida = Vec::new();
+    {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut salida));
+        let o: zip::write::FileOptions<'_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let io = |e: std::io::Error| crate::ErrorProyecto::Io(e, base.to_string());
+        zip.start_file(format!("{base}.md"), o)?;
+        zip.write_all(md.as_bytes()).map_err(io)?;
+        for (n, b) in &dentro {
+            // Una imagen ya va comprimida: guardada tal cual.
+            zip.start_file(
+                n.as_str(),
+                o.compression_method(zip::CompressionMethod::Stored),
+            )?;
+            zip.write_all(b).map_err(io)?;
+        }
+        zip.finish()?;
+    }
+    Ok(salida)
 }
 
 /// **La transcripcion en texto**: el titulo, la fecha y la duracion, y cada
