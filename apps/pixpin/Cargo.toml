@@ -15,6 +15,9 @@ fluent-bundle = "0.16.0"
 pixpin-audio = { version = "0.1.0", path = "../../crates/pixpin-audio" }
 pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
+# «Mi vocabulario» de los ajustes del OCR se parte con la misma regla que
+# usa el lector Indra.
+pixpin-indra = { path = "../../crates/pixpin-indra" }
 # El asistente local del chat: motor llama.cpp aparte, herramientas y bucle.
 pixpin-ia = { path = "../../crates/pixpin-ia" }
 # Lo que se reconoce al escribir una tarea: el parser que comparten la app,

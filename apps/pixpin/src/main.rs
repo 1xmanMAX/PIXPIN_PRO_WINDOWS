@@ -133,6 +133,7 @@ mod modelo_bim;
 /// Los Word y PowerPoint de antes, convertidos para el visor propio (20-oct).
 mod office_convertido;
 mod orden;
+mod ocr_motor;
 mod oscuro;
 mod overlay;
 mod panel_dibujo;
@@ -550,6 +551,9 @@ fn arrancar(
     aligerar::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
     // Whisper, con la misma regla: sin arena y de uno en uno en modo cuidadoso.
     turno_pesado::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
+    // El motor de OCR de toda la app (`[ocr]`): despues del modo del
+    // equipo, que decide cuantos hilos usa Indra.
+    ocr_motor::aplicar(&ubicacion, &config);
     // Los visores de Markdown y HTML abren al instante con el navegador ya en
     // marcha (18-oct): se precalienta a los 6 s, cuando el arranque ya paso, y
     // solo con memoria de sobra (el proceso del navegador ocupa la suya).
@@ -866,6 +870,8 @@ fn arrancar(
             tema_cosmos::fijar(config.tema_cosmos);
             tareas::frase::fijar(config.tareas.palabras());
             aligerar::configurar(&config.pdf);
+            // El motor de OCR vale desde la siguiente lectura.
+            ocr_motor::aplicar(&ubicacion, &config);
             // Las herramientas apagadas valen desde el siguiente lienzo,
             // lector, pin o anotador que se abra.
             dibujo::permitidas::fijar(config.herramientas.clone());
