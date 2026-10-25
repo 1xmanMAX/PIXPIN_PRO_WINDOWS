@@ -18,7 +18,13 @@ escribe el editor de notas de los dos aparatos.
   (`disco::alcance_de`), asi que las fotos viajan con la nota (probado en
   `vista::pruebas::las_fotos_de_una_nota_rica_viajan_con_ella`).
 - El alt puede llevar el ancho del editor detras de una barra
-  (`![planta|300](…)`); el ancho no es parte del nombre.
+  (`![planta|300](…)`); el ancho no es parte del nombre. Las fotos pegadas
+  en la caja del PC llevan de alt su numero (`![foto 2](…)`), que es lo que
+  se lee mientras se escribe y lo que dice el resumen («🖼 foto 2»).
+- La ruta va hasta el `)` que cierra el `(`, contando los que se abren
+  dentro (`C:\Fotos (2)\a.png`), o entre `<…>`. Lo que va dentro de un
+  `` `codigo` `` es texto aunque parezca una foto. Una ruta de red
+  (`\\equipo\…`) o una relativa con `..` no se abre nunca.
 - Un `![…](…)` que no es una foto (por su extension: un PDF, un audio) es
   un adjunto de la nota y se nombra con 📎, no se pinta.
 

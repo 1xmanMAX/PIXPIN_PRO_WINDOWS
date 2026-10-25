@@ -68,8 +68,6 @@ pub(super) enum Medido {
         /// Cada foto: su caja, su fichero si esta aqui y cual es de la nota
         /// (para abrirla al pulsarla).
         fotos: Vec<(nr::Caja, Option<std::path::PathBuf>, usize)>,
-        /// Si es una foto sola: esa guarda su proporcion y no se recorta.
-        sola: bool,
     },
 }
 
@@ -89,36 +87,65 @@ pub(super) fn es_nota(m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
         && !crate::asistente::chat::es_del_asistente(m)
 }
 
+/// Cada cuanto se vuelve a mirar en el disco una foto de una nota: si esta
+/// y si cambio. Medir la conversacion entera (al cambiar el ancho, en cada
+/// paso de arrastrar el borde de la ventana) preguntaria al disco por cada
+/// foto de cada nota, miles de veces por segundo en un chat largo; asi, una
+/// vez cada tanto, y una foto que llega con la sincronizacion se ve en la
+/// siguiente medida despues de esto.
+const MIRAR_CADA: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Lo sabido de una foto de una nota: cuando se miro, su fecha (`None` si
+/// no esta) y lo que mide (`None` si no se pudo leer su cabecera).
+#[derive(Clone, Copy)]
+struct Sabido {
+    visto: std::time::Instant,
+    fecha: Option<std::time::SystemTime>,
+    medida: Option<(u32, u32)>,
+}
+
 thread_local! {
-    /// Lo que mide cada foto de las notas, por fichero y con su fecha: se
-    /// lee la cabecera una vez y no en cada medida.
-    static MEDIDAS: std::cell::RefCell<
-        std::collections::HashMap<std::path::PathBuf, (Option<std::time::SystemTime>, Option<(u32, u32)>)>,
-    > = Default::default();
+    /// Lo sabido de cada foto de las notas, por fichero: la cabecera se lee
+    /// una vez (y otra si cambia su fecha), no en cada medida.
+    static SABIDO: std::cell::RefCell<std::collections::HashMap<std::path::PathBuf, Sabido>> =
+        Default::default();
+}
+
+/// Lo que se sabe de `ruta`, mirando el disco solo si hace mas de
+/// [`MIRAR_CADA`] que no se miraba.
+fn sabido(ruta: &std::path::Path) -> Sabido {
+    let ahora = std::time::Instant::now();
+    if let Some(s) = SABIDO.with(|m| m.borrow().get(ruta).copied())
+        && ahora.duration_since(s.visto) < MIRAR_CADA
+    {
+        return s;
+    }
+    let fecha = std::fs::metadata(ruta)
+        .ok()
+        .filter(std::fs::Metadata::is_file)
+        .map(|m| m.modified().unwrap_or(std::time::UNIX_EPOCH));
+    let antes = SABIDO.with(|m| m.borrow().get(ruta).copied());
+    let medida = match antes {
+        Some(a) if a.fecha == fecha => a.medida,
+        _ if fecha.is_none() => None,
+        // Solo la cabecera: lo que mide, girado segun su EXIF como lo
+        // pintara `miniaturas` (que la lee entera, fuera de aqui).
+        _ => pixpin_codec::imagen::medidas(ruta)
+            .inspect_err(|e| tracing::info!(?e, ruta = %ruta.display(), "foto de nota sin medidas"))
+            .ok(),
+    };
+    let s = Sabido {
+        visto: ahora,
+        fecha,
+        medida,
+    };
+    SABIDO.with(|m| m.borrow_mut().insert(ruta.to_path_buf(), s));
+    s
 }
 
 /// Ancho / alto de una foto, o `NaN` si no se sabe (el album pone un 4:3).
 fn proporcion(ruta: Option<&std::path::Path>) -> f32 {
-    let Some(ruta) = ruta else {
-        return f32::NAN;
-    };
-    let fecha = std::fs::metadata(ruta).and_then(|m| m.modified()).ok();
-    let medida = MEDIDAS.with(|m| {
-        let mut m = m.borrow_mut();
-        match m.get(ruta) {
-            Some((f, medida)) if *f == fecha => *medida,
-            _ => {
-                let medida = pixpin_codec::imagen::medidas(ruta)
-                    .inspect_err(
-                        |e| tracing::info!(?e, ruta = %ruta.display(), "foto de nota sin medidas"),
-                    )
-                    .ok();
-                m.insert(ruta.to_path_buf(), (fecha, medida));
-                medida
-            }
-        }
-    });
-    match medida {
+    match ruta.and_then(|r| sabido(r).medida) {
         Some((w, h)) if w > 0 && h > 0 => w as f32 / h as f32,
         _ => f32::NAN,
     }
@@ -131,14 +158,26 @@ fn proporcion(ruta: Option<&std::path::Path>) -> f32 {
 /// Resolver una ruta portatil lee el indice de proyectos: se hace una vez
 /// por enlace y se guarda; lo que se mira en cada medida es solo si el
 /// fichero ya esta (una foto puede llegar con la sincronizacion despues).
+///
+/// **Nunca una ruta de red** (`\\equipo\carpeta\x.png`): la nota puede
+/// llegar de otro aparato, y solo con pintarla Windows llamaria a ese equipo
+/// y le daria las credenciales del usuario para entrar. Ni una relativa que
+/// se salga de la carpeta del proyecto con `..`.
 pub(super) fn ruta_de(
     raiz: &std::path::Path,
     proyecto: &str,
     enlace: &str,
 ) -> Option<std::path::PathBuf> {
     let enlace = enlace.trim();
+    if enlace.starts_with("\\\\") || enlace.starts_with("//") {
+        return None;
+    }
     if std::path::Path::new(enlace).is_absolute() && !enlace.starts_with('/') {
-        return Some(std::path::PathBuf::from(enlace)).filter(|p| p.is_file());
+        let ruta = std::path::PathBuf::from(enlace);
+        return sabido(&ruta).fecha.is_some().then_some(ruta);
+    }
+    if enlace.split(['/', '\\']).any(|trozo| trozo == "..") {
+        return None;
     }
     let clave = (raiz.to_path_buf(), proyecto.to_string(), enlace.to_string());
     RUTAS
@@ -148,7 +187,7 @@ pub(super) fn ruta_de(
                 .or_insert_with(|| pixpin_proyecto::vista::ruta_real(raiz, proyecto, enlace))
                 .clone()
         })
-        .filter(|p| p.is_file())
+        .filter(|p| sabido(p).fecha.is_some())
 }
 
 thread_local! {
@@ -268,7 +307,6 @@ pub(super) fn medir(
                     h::VISTA_ALTO as f32 * e,
                     HUECO_ALBUM * e,
                 );
-                let sola = cajas.len() == 1;
                 let fotos = cajas
                     .into_iter()
                     .zip(rutas)
@@ -277,7 +315,7 @@ pub(super) fn medir(
                         (c, r, foto - 1)
                     })
                     .collect();
-                Medido::Album { y, fotos, sola }
+                Medido::Album { y, fotos }
             }
         };
         let (w, alto_bloque) = medida_de(&medido, ancho_max, e);
@@ -577,7 +615,7 @@ pub(super) fn pintar(
                     con_alfa(c.apagado, 0.5),
                 );
             }
-            Medido::Album { y, fotos, sola } => {
+            Medido::Album { y, fotos } => {
                 for (caja, ruta, k) in fotos {
                     let r = RectF {
                         x: x0 + caja.x,
@@ -588,9 +626,9 @@ pub(super) fn pintar(
                     let bitmap = ruta.as_deref().and_then(|ruta| previas.ya(ruta));
                     let recortada = p.empujar_recorte_redondeado(r, RADIO_FOTO * e);
                     match bitmap {
-                        Some((b, _, _)) if *sola => {
-                            p.bitmap_con(b, r, None, pixpin_render::Interpolacion::Lineal)
-                        }
+                        // Recortada por el centro tambien la sola: su caja ya
+                        // tiene su proporcion y sale entera, y si su cabecera
+                        // no se pudo leer (la caja es un 4:3) no se deforma.
                         Some((b, w, h)) => crate::miniaturas::pintar_recortado(p, b, r, w, h),
                         // Mientras llega, o si su fichero no esta aqui: su
                         // sitio con el icono de imagen, nunca la ruta.
@@ -658,7 +696,7 @@ pub(super) fn abrir_foto(a: &Abierto, i: usize, k: usize, textos: &Catalogo) -> 
 
 /// **Una foto pegada con texto ya escrito va DENTRO de lo escrito**: se
 /// guarda en `notas/` del proyecto (donde guarda las suyas el editor de
-/// notas) y en la caja queda su renglon `![](notas/…)` donde estaba la
+/// notas) y en la caja queda su renglon `![foto 1](notas/…)` donde estaba la
 /// rayita. Al enviar sale UNA nota con el texto y sus fotos, como un
 /// mensaje de Telegram con su album. Devuelve cuantas entraron.
 pub(super) fn fotos_al_borrador(
@@ -669,6 +707,8 @@ pub(super) fn fotos_al_borrador(
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, &a.ficha.id).join("notas");
     std::fs::create_dir_all(&carpeta)?;
     let mut renglones = Vec::new();
+    // Las fotos se numeran detras de las que ya lleve lo escrito.
+    let ya = nr::imagenes(&nr::bloques(&a.borrador)).count();
     for (nombre, bytes) in fotos {
         // Sin repetir milisegundo: dos fotos pegadas juntas no se pisan.
         let cuando = descripcion::hora_sin_repetir();
@@ -684,7 +724,7 @@ pub(super) fn fotos_al_borrador(
             crate::notas_md::adjuntos::nombre_limpio(nombre)
         );
         std::fs::write(carpeta.join(&fichero), bytes)?;
-        renglones.push(nr::renglon_de_foto(&fichero));
+        renglones.push(nr::renglon_de_foto(&fichero, ya + renglones.len() + 1));
     }
     if renglones.is_empty() {
         return Ok(0);

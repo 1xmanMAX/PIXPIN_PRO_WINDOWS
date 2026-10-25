@@ -8597,8 +8597,12 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
         }
         Que::Rutas(rutas) => leer_ficheros(&rutas),
     };
-    // Fotos y solo fotos, con texto escrito: dentro de la nota.
+    // Fotos y solo fotos, con texto escrito: dentro de la nota. Salvo en el
+    // chat del asistente: ahi la foto con su pie es lo que el asistente mira
+    // y contesta (`asistente::al_enviar`), y metida en el texto solo le
+    // llegaria su ruta.
     if !a.borrador.trim().is_empty()
+        && !a.ficha.es_asistente()
         && !ficheros.is_empty()
         && ficheros
             .iter()

@@ -286,7 +286,7 @@ pub fn sin_rutas_de_fotos(texto: &str) -> String {
         let cierre = tras
             .find("](")
             .filter(|&c| !tras[..c].contains('\n'))
-            .and_then(|c| Some((c, tras[c + 2..].find(')')?)));
+            .and_then(|c| Some((c, cierre_del_parentesis(&tras[c + 2..])?)));
         match cierre {
             Some((c, f)) => {
                 let alt = tras[..c].split('|').next().unwrap_or_default().trim();
@@ -302,6 +302,29 @@ pub fn sin_rutas_de_fotos(texto: &str) -> String {
     }
     salida.push_str(resto);
     salida
+}
+
+/// El `)` que cierra la ruta de una foto, contando los que se abren dentro
+/// (`C:\Fotos (2)\a.png`), o el de detras del `>` en `<…>`; como
+/// `pixpin_ui::nota_rica`, que es quien pinta la nota.
+fn cierre_del_parentesis(tras: &str) -> Option<usize> {
+    if tras.trim_start().starts_with('<')
+        && let Some(g) = tras.find('>')
+        && let Some(k) = tras[g..].find(')')
+    {
+        return Some(g + k);
+    }
+    let mut nivel = 0usize;
+    for (k, c) in tras.char_indices() {
+        match c {
+            '(' => nivel += 1,
+            ')' if nivel == 0 => return Some(k),
+            ')' => nivel -= 1,
+            '\n' => break,
+            _ => {}
+        }
+    }
+    tras.find(')')
 }
 
 /// Quien escribe, cuando y en que conversacion: lo que sella un mensaje
@@ -963,6 +986,11 @@ mod pruebas {
         assert_eq!(m.resumen(), "hola\n🖼\n🖼 planta fin");
         // Caso negativo: un `![` sin cerrar se queda como se escribio.
         assert_eq!(sin_rutas_de_fotos("mira ![esto"), "mira ![esto");
+        // Una ruta de Windows con parentesis no deja un trozo detras.
+        assert_eq!(
+            sin_rutas_de_fotos(r"ver ![](C:\Fotos (2)\a.png) y ![b](<x (1.png>)."),
+            "ver 🖼 y 🖼 b."
+        );
     }
 
     #[test]

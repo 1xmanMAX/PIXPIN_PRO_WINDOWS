@@ -216,8 +216,10 @@ vuelve a ver eso mismo.
   - Números separados por espacios, con punto decimal; el PC los escribe a
     diezmilésimas y sin `.0` si son enteros.
 - **Al volver** en un hueco de `w`×`h` píxeles (los de la cámara, sin la
-  escala del sistema): `zoom = min(w/ancho, h/alto)` acotado a
-  `[0.05, 30]`, y la esquina de arriba a la izquierda en
+  escala del sistema): `zoom = min(w/ancho, h/alto)` acotado a los topes
+  del zoom de quien mira (en el editor del PC los de Excalidraw, `[0.1, 30]`:
+  por debajo del mínimo de la rueda, la primera muesca de alejar acercaría),
+  y la esquina de arriba a la izquierda en
   `(x − w/(2·zoom), y − h/(2·zoom))`. En la misma ventana da la cámara
   exacta de antes; en otra (el móvil de pie), todo lo guardado, entero y
   centrado. En Excalidraw: `scrollX = w/(2·zoom) − x`,
@@ -229,7 +231,12 @@ vuelve a ver eso mismo.
   siempre: centrado a lo ancho, arriba, con el aumento de ahora. Una entrada
   que no se entiende se ignora.
 - Quitar un marcador quita su entrada; sin ninguna se escribe `{}` (no se
-  borra). Lo resuelve la sincronización entero, gana el más nuevo.
+  borra). Lo resuelve la sincronización entero, gana el más nuevo. **Se
+  sabe y se acepta**: si dos aparatos cambian vistas del mismo lienzo entre
+  dos sincronizaciones (el PC fija la de 🏠 y el móvil la de ⭐), queda solo
+  el fichero del más nuevo y la otra vista vuelve a la de antes (la marca no
+  se pierde: va en `.marcas`). Mezclar por id pediría saber cuándo se quitó
+  cada una, y no compensa para algo que se vuelve a fijar con un Mayús+clic.
 - En el PC: **Mayús+clic** en el marcador o en su punto del riel (o
   **Ctrl+Mayús+1…9**) cambia su vista por la de ahora. El viaje hasta la
   vista acerca o aleja por múltiplos persiguiendo el centro.
