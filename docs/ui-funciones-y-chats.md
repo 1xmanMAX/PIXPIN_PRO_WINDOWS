@@ -84,3 +84,108 @@ mismos textos.
   `apps/pixpin/src/ventana_chat/interruptor.rs`: el interruptor.
 - `apps/pixpin/src/ventana_chat/funciones.rs`: pintar, raton, teclado y lo que
   hace cada mosaico.
+
+## Buscar en todos los chats y sincronizar
+
+Dos cosas de la cabecera de la lista de chats (25-oct-2026, el usuario:
+«que el buscador busque tambien dentro de todos los chats» y «mientras se
+sincroniza, que el boton gire»).
+
+### El buscador busca tambien dentro de los chats
+
+**Que hace.** Lo escrito en el buscador de la lista sigue filtrando los chats
+por su nombre y su ultima linea, y ademas, **debajo de esos chats**, sale una
+seccion **«Mensajes · N»** con los mensajes de *cualquier* chat que llevan lo
+escrito, como en Telegram. N es cuantos hay en total.
+
+- **Que se busca** de cada mensaje: su texto (en una nota rica, el texto sin
+  las rutas de sus fotos: el pie `alt` si cuenta, `pixpin:files/…` no), la
+  transcripcion de una nota de voz y el nombre de su fichero. El pie de una
+  foto es su texto. No hay OCR guardado por mensaje, asi que no se busca.
+- **No salen** los mensajes que no tienen burbuja en su chat: las paginas
+  sueltas de un PDF unido (`soloGaleria`), las lecciones y los de sistema
+  (`auto-*`). Pulsarlos no llevaria a ninguna parte.
+- **Como compara**: sin mayusculas ni tildes, con la misma tabla que la lupa
+  de dentro del chat (`a/á/à/â/ä/ã/å → a`, `ñ → n`, `ç → c`…, de un
+  caracter a uno), y la frase entera en cualquier sitio. Los saltos de linea y
+  tabuladores cuentan como un espacio («hola mundo» encuentra «hola⏎mundo»).
+  El filtro de los chats por nombre tambien deja de mirar tildes.
+- **Orden**: del mas nuevo al mas viejo (fecha del mensaje), y a igual fecha
+  por chat y codigo, para que la misma busqueda de siempre lo mismo.
+- **Cada fila** mide lo que una fila de chat (62 pt): el avatar del chat (su
+  logo o su circulo de color con iniciales), el nombre del chat, la fecha del
+  mensaje a la derecha (como la hora de la lista: hoy la hora, si no la fecha)
+  y debajo **un trozo en una linea**: empieza como mucho 22 caracteres antes
+  de lo encontrado, por el principio de una palabra y con «…» delante si se
+  corta; 160 caracteres como mucho, con «…» detras. Lo encontrado va en
+  negrita y con un fondo del color de enviar al 28 %.
+- **La cabecera** «Mensajes · N»: franja de 30 pt del color de la cabecera,
+  texto de 12 pt apagado.
+- **Ver mas**: se ensenan 20; si hay mas, una fila de 40 pt «Ver N más»
+  centrada, en el color de enviar, que anade otros 20 cada vez.
+- **Pulsar un mensaje** abre su chat llevado a el y resaltado (el mismo camino
+  que «Ver en el chat»). Si es el chat abierto y tenia su lupa o un chip de
+  etiqueta puestos, se quitan: el mensaje podria estar escondido.
+- **Sin chats que casen por nombre pero con mensajes**, la lista no dice
+  «Nada con eso»: ensena solo la seccion. Con la caja vacia (o Escape), la
+  seccion se va al momento.
+- La lista se desplaza entera, chats y seccion, con la rueda.
+
+**Rapido con muchos datos.**
+
+- El indice se hace **fuera del hilo de la ventana**, la primera vez que se
+  busca, y despues solo se relee el `guardados.jsonl` de un chat si cambio su
+  fecha o su tamano (y se sueltan los chats que ya no estan). Cada texto se
+  guarda tal cual y **aplanado** (minusculas, sin tildes), asi buscar es un
+  `contains` sobre lo ya aplanado; los tramos a resaltar se calculan solo de
+  los que se ensenan.
+- **Espera de 180 ms** desde la ultima tecla antes de buscar (el
+  «debounce»); si llegan varios pedidos al hilo, solo se atiende el ultimo, y
+  lo que conteste a uno viejo se tira.
+- Cuando llega algo por sincronizar (o cambia el indice de chats) con una
+  busqueda puesta, se repite sola.
+
+**Claves de idioma** (los cuatro `main.ftl`): `chat-buscar-mensajes` (con
+`$n`: «Mensajes · { $n }» / «Messages · { $n }») y `chat-buscar-ver-mas`
+(«Ver { $n } más» / «Show { $n } more»).
+
+**En el movil y el Mac**: el mismo buscador de la lista de chats, la misma
+seccion debajo y lo mismo al tocar (abrir el chat en ese mensaje,
+resaltado). En el movil, el indice en una corrutina de fondo
+(`Dispatchers.Default`) y la espera de 180 ms con `debounce`; en el Mac/iPad,
+una `Task` de fondo. Las reglas de comparar y del trozo estan en
+`crates/pixpin-ui/src/buscar_en_chats.rs` con sus pruebas: copiarlas tal cual
+(o llamar al nucleo Rust en Apple) para que den lo mismo en todos los
+aparatos.
+
+### El boton de sincronizar gira mientras se sincroniza
+
+- **Gira** (una vuelta por segundo, en el sentido de las agujas del reloj,
+  sobre su centro) mientras haya **cualquier vuelta en marcha**: la pulsada en
+  la pantalla de Sincronizar, la automatica, la de las tareas al instante, la
+  de los chats compartidos con otras personas y la que pide el otro aparato al
+  llamar a este. Las sondas de «¿estas ahi?» no cuentan (duran un instante).
+  Al acabar se para y vuelve a su posicion.
+- **Si la ultima vuelta fallo** (no conecto o se corto; en «con todos», si no
+  quedo al dia con ninguno), el boton lleva una **marca roja con «!»** arriba
+  a la derecha (circulo `#E53935` con aro del color de la cabecera), hasta que
+  se pulsa el boton (la pantalla de Sincronizar dice que paso) o empieza otra
+  vuelta. Cancelar no cuenta como fallo.
+- **Sin gasto en reposo**: se repinta 30 veces por segundo solo mientras
+  gira; quieto no hay temporizador. El hilo de la vuelta despierta la ventana
+  al empezar y al acabar.
+- En el movil: el icono del boton con una `rotate` infinita
+  (`rememberInfiniteTransition`, 1000 ms lineal) mientras el servicio de
+  sincronizar diga que hay una vuelta en marcha, y la chapa roja con «!» con
+  el ultimo resultado. En el Mac, lo mismo con `rotationEffect` y
+  `withAnimation(.linear(duration: 1).repeatForever(autoreverses: false))`.
+
+**Donde esta en el codigo (Windows)**
+
+- `crates/pixpin-ui/src/buscar_en_chats.rs`: aplanar, buscar con tope y
+  cuenta, el trozo, la espera y como se reparte la seccion; con pruebas.
+- `crates/pixpin-ui/src/giro.rs`: el angulo y cuando repintar; con pruebas.
+- `apps/pixpin/src/ventana_chat/buscar_en_chats.rs`: el hilo del indice y
+  pintar y pulsar la seccion.
+- `apps/pixpin/src/sincronizar.rs` (`EnCurso`, `ultima_fallo`,
+  `olvidar_fallo`): cuantas vueltas hay y como acabo la ultima.
