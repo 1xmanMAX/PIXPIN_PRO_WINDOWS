@@ -625,6 +625,32 @@ fn tomar_refrescar() -> bool {
     REFRESCAR.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
+/// La figura que se eligio en la ventana de las figuras para un chat
+/// (`figuras::abrir_para_adjuntar`): `(proyecto, id de la figura)`. Solo cabe
+/// una: si llegan dos seguidas antes de que el chat mire, gana la ultima.
+static FIGURA_PEDIDA: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
+
+/// **Manda una figura de la biblioteca al chat** `proyecto` (desde el hilo
+/// de la ventana de las figuras). El chat la recoge en su siguiente vuelta,
+/// se pone en ese proyecto si estaba en otro (como `ir_a`) y la adjunta como
+/// un lienzo con ella dentro.
+pub(super) fn entregar_figura(proyecto: String, id: String) {
+    if let Ok(mut g) = IR_A.lock() {
+        *g = Some((proyecto.clone(), None));
+    }
+    if let Ok(mut g) = FIGURA_PEDIDA.lock() {
+        *g = Some((proyecto, id));
+    }
+    let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
+}
+
+fn tomar_figura_pedida() -> Option<(String, String)> {
+    FIGURA_PEDIDA.lock().ok().and_then(|mut g| g.take())
+}
+
 /// La escala de la interfaz que se eligio en los ajustes generales y el chat
 /// abierto aun no ha puesto (0: ninguna).
 static ESCALA_PEDIDA: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -3714,6 +3740,29 @@ pub fn abrir(
                 None => {
                     tracing::warn!(%proyecto, "el universo pidio un proyecto que no esta en la lista")
                 }
+            }
+        }
+        // La figura elegida en su ventana para este chat (el «+» → «Figura»):
+        // despues de `ir_a`, que ya trajo su proyecto si era otro.
+        if let Some((proyecto, id)) = tomar_figura_pedida() {
+            match abierto.as_mut().filter(|a| a.ficha.id == proyecto) {
+                Some(a) => {
+                    let cx = Contexto {
+                        ubicacion,
+                        identidad: &identidad,
+                        textos,
+                        lienzo,
+                        ventana: &ventana,
+                        fichas: &fichas,
+                        idioma,
+                    };
+                    if let Efecto::Aviso(t) = adjuntar_figura(&cx, a, &id) {
+                        aviso = Some((t, std::time::Instant::now()));
+                    }
+                    a.colocado.borrow_mut().ancho = 0;
+                    hay_que_pintar = true;
+                }
+                None => tracing::warn!(%proyecto, "una figura para un chat que no esta abierto"),
             }
         }
         // El resalte se apaga solo, como el aviso.
@@ -9024,13 +9073,13 @@ fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     )
 }
 
-/// **Adjunta una figura de la biblioteca** al chat: un lienzo nuevo con la
-/// figura dentro, con su nombre, listo para que el asistente la mejore (y la
-/// caja empezada con «Mejora la figura …» si no habia nada escrito).
-fn adjuntar_figura(cx: &Contexto, a: &mut Abierto, i: usize) -> Efecto {
+/// **Adjunta una figura de la biblioteca** (por su id) al chat: un lienzo
+/// nuevo con la figura dentro, con su nombre. En el chat del asistente,
+/// ademas, la caja empieza con «Mejora la figura …» si no habia nada escrito.
+fn adjuntar_figura(cx: &Contexto, a: &mut Abierto, id: &str) -> Efecto {
     let todas = figuras::todas();
-    let Some(f) = todas.get(i) else {
-        return Efecto::Nada;
+    let Some(f) = todas.iter().find(|f| f.id == id) else {
+        return Efecto::Aviso(cx.textos.t("chat-no-se-pudo"));
     };
     let nombre = pixpin_motor2d::figuras_de_serie::categoria_de(&f.nombre)
         .map_or(f.nombre.clone(), |(_, n)| n.to_string());
@@ -9055,7 +9104,7 @@ fn adjuntar_figura(cx: &Contexto, a: &mut Abierto, i: usize) -> Efecto {
             a.ficha.resumen = m.nombre.clone();
             a.mensajes.push(m);
             let _ = subir_en_la_lista(raiz, &a.ficha.id, a.ficha.tocado, &a.ficha.resumen);
-            if a.borrador.trim().is_empty() {
+            if a.ficha.es_asistente() && a.borrador.trim().is_empty() {
                 let mut args = fluent_bundle::FluentArgs::new();
                 args.set("figura", nombre);
                 a.borrador = format!(
@@ -15954,12 +16003,10 @@ enum Accion {
     AdjLienzo,
     AdjTabla,
     AdjDelMovil,
-    /// La hoja del asistente (25-oct-2026): una figura de la biblioteca a un
-    /// lienzo del chat, para mejorarla. Primero el grupo, luego la figura
-    /// (su indice en `figuras::todas`).
+    /// «Figura» de la hoja del «+» (25-oct-2026): abre la ventana de las
+    /// figuras eligiendo para este chat; la elegida vuelve por el buzon
+    /// (`entregar_figura`) como un lienzo con ella dentro.
     AdjFigura,
-    AdjFiguraGrupo(usize),
-    AdjFiguraDe(usize),
     /// «Pedir una figura nueva»: deja empezada la peticion en la caja.
     PedirFigura,
     /// «Guardar en mis figuras» de un lienzo del chat.
@@ -18075,38 +18122,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Transcribir(i) => empezar_a_transcribir(cx.ubicacion, a, i, cx.textos, cx.idioma),
         Accion::Letra(i) => abrir_la_letra(a, i),
         Accion::Telepronter => Efecto::Menu(menu_del_telepronter(a, cx.textos)),
+        // Las figuras se eligen viendolas, en su ventana (el usuario: «me
+        // sale una lista y tengo que buscar»), no en menus en cascada.
         Accion::AdjFigura => {
-            let grupos = figuras::por_grupos(&figuras::todas());
-            if grupos.is_empty() {
-                return Efecto::Aviso(cx.textos.t("figuras-vacia"));
-            }
-            Efecto::Menu(
-                grupos
-                    .iter()
-                    .enumerate()
-                    .map(|(k, (g, l))| {
-                        entrada(
-                            Some(&mi::FOLDER),
-                            format!("{} ({})", figuras::grupo_legible(g, cx.textos), l.len()),
-                            Accion::AdjFiguraGrupo(k),
-                        )
-                        .con_tecla(menu_v2::Tecla::Sub)
-                    })
-                    .collect(),
-            )
+            figuras::abrir_para_adjuntar(cx.idioma, a.ficha.id.clone(), a.ficha.nombre.clone());
+            Efecto::Nada
         }
-        Accion::AdjFiguraGrupo(k) => {
-            let grupos = figuras::por_grupos(&figuras::todas());
-            match grupos.into_iter().nth(k) {
-                Some((_, l)) => Efecto::Menu(
-                    l.into_iter()
-                        .map(|(i, n)| entrada(Some(&mi::PALETTE), n, Accion::AdjFiguraDe(i)))
-                        .collect(),
-                ),
-                None => Efecto::Nada,
-            }
-        }
-        Accion::AdjFiguraDe(i) => adjuntar_figura(cx, a, i),
         Accion::PedirFigura => {
             if a.borrador.trim().is_empty() {
                 // Con su espacio: Fluent quita el del final del texto.

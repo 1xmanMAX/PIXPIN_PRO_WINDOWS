@@ -5,9 +5,10 @@
 //! ventana separada, y deberia haber como un previsualizador de las figuras
 //! y de todo lo que tiene»).
 //!
-//! Se abre con la tercera parte del interruptor de la barra del chat
-//! (Chat · Proyectos · **Figuras**) y desde el menu de la bandeja. Una sola a
-//! la vez, en su hilo, como la galeria de capturas:
+//! Se abre con la segunda parte del interruptor de la barra del chat
+//! (Chat · **Figuras**), desde el menu de la bandeja y desde «Figura» de la
+//! hoja del «+» de un chat. Una sola a la vez, en su hilo, como la galeria
+//! de capturas:
 //!
 //! - **A la izquierda, los grupos** con su cuenta: «Todas», «Mis figuras» y
 //!   las categorias (la categoria va en el nombre, «Diario · Gratitud», ver
@@ -19,11 +20,23 @@
 //!   grupo, lo que mide, de que piezas esta hecha y los textos que lleva. Las
 //!   del usuario se pueden borrar (dos clics).
 //!
-//! Teclado: escribir busca, las flechas recorren, Escape borra lo buscado y,
-//! sin nada buscado, cierra.
+//! **Elegir para adjuntar** (25-oct-2026, el usuario: «adjuntar figura deberia
+//! abrir directamente la ventana de figuras, yo selecciono, aparece el boton
+//! de adjuntar y se adjunta al chat»): abierta desde el «+» de un chat, la
+//! ventana sabe a que chat va (`abrir_para_adjuntar`). El previsualizador
+//! lleva entonces, justo debajo del dibujo, el boton grande «Adjuntar a …»;
+//! doble clic en una figura o Intro hacen lo mismo. La figura viaja al hilo
+//! del chat por un buzon (`super::entregar_figura`), que la mete como un
+//! lienzo con ella dentro, y la ventana se queda abierta con un
+//! «Adjuntada ✓» por si se quiere otra.
+//!
+//! Teclado: escribir busca, las flechas recorren, Intro adjunta (eligiendo
+//! para un chat), Escape borra lo buscado y, sin nada buscado, cierra.
 
 use std::cell::{Cell, RefCell};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicIsize, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
@@ -50,6 +63,14 @@ const ALTO_TITULO: u32 = 32;
 /// El grupo de lo que no lleva categoria: lo del usuario.
 pub(super) const MIS_FIGURAS: &str = "";
 
+/// Lo que mide el boton de adjuntar del previsualizador (logicos).
+const ALTO_ADJUNTAR: u32 = 44;
+/// Lo que se ve el «Adjuntada ✓» despues de adjuntar.
+const DURA_AVISO: Duration = Duration::from_millis(1800);
+/// Dos clics en la misma figura antes de esto son un doble clic.
+const DOBLE_CLIC: Duration = Duration::from_millis(450);
+
+const VK_ENTRAR: u32 = 0x0D;
 const VK_ESCAPE: u32 = 0x1B;
 const VK_RETROCESO: u32 = 0x08;
 const VK_IZQUIERDA: u32 = 0x25;
@@ -60,11 +81,49 @@ const VK_ABAJO: u32 = 0x28;
 /// La ventana abierta (su HWND), -1 mientras nace, 0 sin ventana.
 static ABIERTA: AtomicIsize = AtomicIsize::new(0);
 
-/// **Abre la ventana de las figuras**, o la trae delante si ya estaba.
+/// El chat al que se adjunta lo que se elija, si la ventana se abrio desde
+/// el «+» de uno. Abierta desde la bandeja o el interruptor, ninguno.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Destino {
+    /// El id del proyecto (el chat).
+    pub proyecto: String,
+    /// Su nombre, para el boton («Adjuntar a «Casa Lima»»).
+    pub chat: String,
+}
+
+static DESTINO: Mutex<Option<Destino>> = Mutex::new(None);
+
+fn destino() -> Option<Destino> {
+    DESTINO.lock().ok().and_then(|g| g.clone())
+}
+
+fn poner_destino(d: Option<Destino>) {
+    if let Ok(mut g) = DESTINO.lock() {
+        *g = d;
+    }
+}
+
+/// **Abre la ventana de las figuras**, o la trae delante si ya estaba, solo
+/// para mirarlas: sin chat al que adjuntar.
 pub(crate) fn abrir(idioma: Idioma) {
+    poner_destino(None);
+    lanzar(idioma);
+}
+
+/// **Abre la ventana de las figuras para adjuntar una al chat** `proyecto`
+/// (el «+» → «Figura»). Si ya estaba abierta, cambia a ese chat y se trae
+/// delante.
+pub(super) fn abrir_para_adjuntar(idioma: Idioma, proyecto: String, chat: String) {
+    poner_destino(Some(Destino { proyecto, chat }));
+    lanzar(idioma);
+}
+
+fn lanzar(idioma: Idioma) {
     let ya = ABIERTA.load(Ordering::SeqCst);
     if ya > 0 {
         VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
+        // Despierta para que se pinte con su destino nuevo.
+        pixpin_shell::overlay::despertar(ya);
         return;
     }
     if ya < 0 {
@@ -244,6 +303,8 @@ enum Zona {
     Grupo(Option<String>),
     Figura(usize),
     Borrar,
+    /// El boton grande «Adjuntar a …» (solo eligiendo para un chat).
+    Adjuntar,
     Cerrar,
     Barra,
 }
@@ -262,6 +323,12 @@ struct Galeria {
     /// Las que se ven, en el orden en que se pintan (para las flechas).
     visibles: RefCell<Vec<usize>>,
     columnas: Cell<usize>,
+    /// El chat al que va lo que se adjunte (copia de `DESTINO` de esta vuelta).
+    destino: Option<Destino>,
+    /// El ultimo clic en una figura, para el doble clic.
+    ultimo_clic: Option<(usize, Instant)>,
+    /// «Adjuntada a … ✓», mientras se ve.
+    aviso: Option<(String, Instant)>,
 }
 
 impl Default for Galeria {
@@ -278,6 +345,9 @@ impl Default for Galeria {
             alto_total: Cell::new(0),
             visibles: RefCell::new(Vec::new()),
             columnas: Cell::new(1),
+            destino: None,
+            ultimo_clic: None,
+            aviso: None,
         }
     }
 }
@@ -327,7 +397,9 @@ impl Galeria {
             .map(|(_, z)| z.clone())
     }
 
-    fn pulsar(&mut self, l: Punto, vivo: &mut bool) -> Option<Zona> {
+    /// Lo que hace un clic: elegir, y con un chat de destino, adjuntar (doble
+    /// clic en una figura o el boton «Adjuntar»). Devuelve la zona pulsada.
+    fn pulsar(&mut self, l: Punto, vivo: &mut bool, textos: &Catalogo) -> Option<Zona> {
         let zona = self.zona_en(l);
         if zona != Some(Zona::Borrar) {
             self.borrar_pedido = false;
@@ -337,7 +409,20 @@ impl Galeria {
                 self.filtro = g.clone();
                 self.scroll = 0;
             }
-            Some(Zona::Figura(i)) => self.elegida = Some(*i),
+            Some(Zona::Figura(i)) => {
+                self.elegida = Some(*i);
+                let doble = self
+                    .ultimo_clic
+                    .is_some_and(|(j, t)| j == *i && t.elapsed() <= DOBLE_CLIC);
+                self.ultimo_clic = Some((*i, Instant::now()));
+                if doble {
+                    self.ultimo_clic = None;
+                    self.adjuntar(textos);
+                }
+            }
+            Some(Zona::Adjuntar) => {
+                self.adjuntar(textos);
+            }
             Some(Zona::Borrar) => {
                 if self.borrar_pedido {
                     self.borrar();
@@ -349,6 +434,23 @@ impl Galeria {
             _ => {}
         }
         zona
+    }
+
+    /// **Adjunta la elegida** al chat del destino, si lo hay: va por el buzon
+    /// del chat y aqui solo queda el aviso. Sin destino no hace nada (la
+    /// ventana se abrio para mirar).
+    fn adjuntar(&mut self, textos: &Catalogo) -> bool {
+        let (Some(d), Some(f)) = (
+            self.destino.as_ref(),
+            self.elegida.and_then(|i| self.figuras.get(i)),
+        ) else {
+            return false;
+        };
+        super::entregar_figura(d.proyecto.clone(), f.id.clone());
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("chat", d.chat.clone());
+        self.aviso = Some((textos.t_args("figuras-adjuntada", &args), Instant::now()));
+        true
     }
 
     /// Las flechas: a la de al lado o a la de arriba/abajo en la rejilla.
@@ -425,6 +527,13 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
     let mut mirado = std::time::Instant::now();
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // A que chat va lo que se adjunte: puede cambiar con la ventana
+        // abierta (otro «+» → «Figura» desde otro chat).
+        let d = destino();
+        if d != g.destino {
+            g.destino = d;
+            pintar = true;
+        }
         for (hw, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hw != ventana.handle() {
                 continue;
@@ -453,7 +562,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
                 EventoOverlay::BotonPulsado(p) => {
                     let l = local(p, marco);
                     g.raton = l;
-                    if g.pulsar(l, &mut vivo) == Some(Zona::Barra) {
+                    if g.pulsar(l, &mut vivo, textos) == Some(Zona::Barra) {
                         moviendo = Some((p, marco));
                         ventana.capturar_raton();
                     }
@@ -476,6 +585,9 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
                 EventoOverlay::Tecla { vk, .. } => {
                     pintar = true;
                     match vk {
+                        VK_ENTRAR => {
+                            g.adjuntar(textos);
+                        }
                         VK_ESCAPE if !g.consulta.is_empty() => g.consulta.clear(),
                         VK_ESCAPE => vivo = false,
                         VK_RETROCESO => {
@@ -500,6 +612,14 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
         }
         if !vivo {
             break;
+        }
+        // El «Adjuntada ✓» se va solo.
+        if g.aviso
+            .as_ref()
+            .is_some_and(|(_, t)| t.elapsed() >= DURA_AVISO)
+        {
+            g.aviso = None;
+            pintar = true;
         }
         // La biblioteca cambio por fuera (una figura guardada en un lienzo,
         // llegada del movil): se relee.
@@ -528,8 +648,11 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
                 let _ = superficie.presentar();
             }
         }
-        pixpin_shell::overlay::esperar_eventos(Some(1_000));
+        // Con el aviso a la vista se despierta antes, para quitarlo a tiempo.
+        let espera = if g.aviso.is_some() { 200 } else { 1_000 };
+        pixpin_shell::overlay::esperar_eventos(Some(espera));
     }
+    poner_destino(None);
     ventana.ocultar();
     tracing::info!("ventana de las figuras cerrada");
     Ok(())
@@ -566,7 +689,15 @@ fn pintar_todo(
     };
     p.rellenar(rf(barra), tema.barra);
     zonas.push((barra, Zona::Barra));
-    let titulo = format!("{} · {}", textos.t("figuras-titulo"), g.figuras.len());
+    // Eligiendo para un chat, el titulo dice para cual.
+    let titulo = match &g.destino {
+        Some(d) => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("chat", d.chat.clone());
+            textos.t_args("figuras-elegir-para", &args)
+        }
+        None => format!("{} · {}", textos.t("figuras-titulo"), g.figuras.len()),
+    };
     let (_, th) = p.medir_texto(&titulo, 16.0 * e);
     p.texto(
         &titulo,
@@ -575,8 +706,10 @@ fn pintar_todo(
         16.0 * e,
         tema.texto,
     );
+    // El buscador, despues del titulo (que eligiendo es mas largo).
+    let (tw, _) = p.medir_texto(&titulo, 16.0 * e);
     let buscador = Rect {
-        x: ei(GRUPOS + MARGEN) as i32,
+        x: (ei(GRUPOS + MARGEN) as i32).max((ei(MARGEN) as f32 * 2.0 + tw) as i32),
         y: ei(9) as i32,
         ancho: ei(360),
         alto: ei(BARRA - 18),
@@ -791,6 +924,30 @@ fn pintar_todo(
     if let Some(f) = g.elegida.and_then(|i| g.figuras.get(i)) {
         pintar_previa(p, f, previa, tema, e, textos, g, &mut zonas);
     }
+
+    // «Adjuntada a … ✓», una pastilla abajo en el centro de la rejilla.
+    if let Some((texto, _)) = &g.aviso {
+        let tam = 14.0 * e;
+        let (w, h) = p.medir_texto(texto, tam);
+        let pastilla = RectF {
+            x: rejilla.x as f32 + (rejilla.ancho as f32 - w - 36.0 * e) / 2.0,
+            y: rejilla.abajo() as f32 - h - 40.0 * e,
+            ancho: w + 36.0 * e,
+            alto: h + 18.0 * e,
+        };
+        p.rellenar_redondeado(
+            pastilla,
+            pastilla.alto / 2.0,
+            crate::caja_dibujo::hex(0x248a3d),
+        );
+        p.texto(
+            texto,
+            pastilla.x + 18.0 * e,
+            pastilla.y + 9.0 * e,
+            tam,
+            Color::BLANCO,
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -828,6 +985,56 @@ fn pintar_previa(
         );
     }
     let mut y = papel.y + papel.alto + 16.0 * e;
+    // Eligiendo para un chat, el boton grande va justo debajo del dibujo:
+    // es lo primero que se busca al elegir una.
+    if let Some(d) = &g.destino {
+        let boton = Rect {
+            x: x as i32,
+            y: y as i32,
+            ancho: ancho as u32,
+            alto: (ALTO_ADJUNTAR as f32 * e) as u32,
+        };
+        let azul = crate::caja_dibujo::hex(0x0a6cd6);
+        p.rellenar_redondeado(
+            rf(boton),
+            12.0 * e,
+            if boton.contiene(g.raton) {
+                azul
+            } else {
+                con_alfa(azul, 0.88)
+            },
+        );
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("chat", d.chat.clone());
+        let rotulo = textos.t_args("figuras-adjuntar-a", &args);
+        let lado = 20.0 * e;
+        let (tw, th) = p.medir_texto(&rotulo, 15.0 * e);
+        let tw = tw.min(boton.ancho as f32 - lado - 40.0 * e);
+        let x0 = boton.x as f32 + (boton.ancho as f32 - lado - 8.0 * e - tw) / 2.0;
+        p.icono(
+            &mi::ATTACH_FILE,
+            RectF {
+                x: x0,
+                y: boton.y as f32 + (boton.alto as f32 - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            Color::BLANCO,
+        );
+        p.texto_linea(
+            &rotulo,
+            x0 + lado + 8.0 * e,
+            boton.y as f32 + (boton.alto as f32 - th) / 2.0,
+            15.0 * e,
+            tw,
+            Color::BLANCO,
+        );
+        zonas.push((boton, Zona::Adjuntar));
+        y += boton.alto as f32 + 6.0 * e;
+        let pista = textos.t("figuras-adjuntar-pista");
+        p.texto_linea(&pista, x, y, 11.5 * e, ancho, tema.apagado);
+        y += 26.0 * e;
+    }
     let (_, h) = p.medir_texto_ajustado(&f.nombre, 17.0 * e, ancho);
     p.texto_ajustado(&f.nombre, x, y, 17.0 * e, ancho, tema.texto);
     y += h + 4.0 * e;
@@ -1005,33 +1212,9 @@ fn pintar_celda(
 // figura para que la mejore, o decirle hazme una figura, y lo puedo anadir
 // facilmente a la lista de figuras».
 
-/// Las figuras de la biblioteca, en el orden de `biblioteca::cargar` (los
-/// indices del menu de adjuntar apuntan aqui).
+/// Las figuras de la biblioteca, en el orden de `biblioteca::cargar`.
 pub(super) fn todas() -> Vec<FiguraGuardada> {
     biblioteca::cargar(&crate::biblioteca_figuras::ruta())
-}
-
-/// Los grupos para el menu de adjuntar: `(grupo, [(indice, nombre)])`, lo del
-/// usuario primero y las categorias en su orden.
-pub(super) fn por_grupos(figuras: &[FiguraGuardada]) -> Vec<(String, Vec<(usize, String)>)> {
-    let mut v: Vec<(String, Vec<(usize, String)>)> = Vec::new();
-    for (i, f) in figuras.iter().enumerate() {
-        let (g, n) = match categoria_de(&f.nombre) {
-            Some((c, n)) => (c.to_string(), n.to_string()),
-            None => (MIS_FIGURAS.to_string(), f.nombre.clone()),
-        };
-        match v.iter_mut().find(|(x, _)| *x == g) {
-            Some((_, l)) => l.push((i, n)),
-            None => v.push((g, vec![(i, n)])),
-        }
-    }
-    v.sort_by_key(|(g, _)| orden_del_grupo(g));
-    v
-}
-
-/// El nombre de un grupo en el menu.
-pub(super) fn grupo_legible(g: &str, textos: &Catalogo) -> String {
-    rotulo_del_grupo(g, textos)
 }
 
 /// **La escena de un lienzo con la figura dentro**, para adjuntarla al chat.
@@ -1071,19 +1254,8 @@ mod pruebas {
     use super::*;
 
     #[test]
-    fn el_menu_de_adjuntar_agrupa_y_la_figura_entra_entera_en_su_lienzo() {
+    fn la_figura_adjuntada_entra_entera_en_su_lienzo() {
         let catalogo = pixpin_motor2d::figuras_de_serie::catalogo();
-        let mut todas = vec![FiguraGuardada {
-            id: "mia".into(),
-            nombre: "Mi árbol".into(),
-            elementos: catalogo[0].elementos.clone(),
-        }];
-        todas.extend(catalogo.iter().cloned());
-        let g = por_grupos(&todas);
-        assert_eq!(g[0].0, MIS_FIGURAS, "lo del usuario primero");
-        assert_eq!(g[0].1, vec![(0, "Mi árbol".to_string())]);
-        let total: usize = g.iter().map(|(_, l)| l.len()).sum();
-        assert_eq!(total, todas.len(), "cada figura sale una vez");
         // La figura estampada es la misma, pieza a pieza.
         let e = escena_con(&catalogo[0]);
         assert_eq!(
@@ -1092,6 +1264,38 @@ mod pruebas {
         );
         let c = e.caja().unwrap();
         assert!(c.0 >= -0.5 && c.1 >= -0.5, "desde el origen: {c:?}");
+    }
+
+    #[test]
+    fn sin_chat_de_destino_ni_el_doble_clic_ni_intro_adjuntan() {
+        let t = Catalogo::nuevo(Idioma::Espanol);
+        let mut g = Galeria {
+            figuras: vec![vista_de(&FiguraGuardada {
+                id: "mia".into(),
+                nombre: "Mi árbol".into(),
+                elementos: Vec::new(),
+            })],
+            elegida: Some(0),
+            ..Galeria::default()
+        };
+        assert!(!g.adjuntar(&t), "abierta para mirar: no va a ningun chat");
+        assert!(g.aviso.is_none());
+        // Caso positivo: con destino va al buzon del chat y deja el aviso
+        // con su nombre.
+        g.destino = Some(Destino {
+            proyecto: "p-prueba-figuras".into(),
+            chat: "Casa Lima".into(),
+        });
+        assert!(g.adjuntar(&t));
+        assert!(
+            g.aviso
+                .as_ref()
+                .is_some_and(|(a, _)| a.contains("Casa Lima"))
+        );
+        assert_eq!(
+            super::super::tomar_figura_pedida(),
+            Some(("p-prueba-figuras".to_string(), "mia".to_string()))
+        );
     }
 
     #[test]
