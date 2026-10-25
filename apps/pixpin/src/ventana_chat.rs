@@ -9580,11 +9580,13 @@ fn fecha_larga(cuando_ms: i64, ahora_ms: i64, textos: &Catalogo) -> String {
 
 /// Que proyectos pasan el filtro del buscador, por su indice.
 ///
-/// Se compara sin distinguir mayusculas y buscando la palabra en cualquier
-/// sitio del nombre o de la ultima linea: escribir «playa» tiene que
-/// encontrar «Casa de playa», no solo lo que empieza por ahi.
+/// Se compara sin distinguir mayusculas ni tildes (como los mensajes de la
+/// seccion «Mensajes», `resaltado`) y buscando la palabra en cualquier sitio
+/// del nombre o de la ultima linea: escribir «playa» tiene que encontrar
+/// «Casa de playa», no solo lo que empieza por ahi, y «cimentacion» la
+/// «Cimentación».
 fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<usize> {
-    let aguja = busqueda.trim().to_lowercase();
+    let aguja = busqueda.trim();
     if aguja.is_empty() {
         return (0..fichas.len()).collect();
     }
@@ -9592,7 +9594,8 @@ fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<us
         .iter()
         .enumerate()
         .filter(|(_, f)| {
-            f.nombre.to_lowercase().contains(&aguja) || f.resumen.to_lowercase().contains(&aguja)
+            pixpin_ui::resaltado::hay_coincidencia(&f.nombre, aguja)
+                || pixpin_ui::resaltado::hay_coincidencia(&f.resumen, aguja)
         })
         .map(|(i, _)| i)
         .collect()
