@@ -265,7 +265,11 @@ impl Lm {
         let mut p_ok = vec![false; n];
         let mut p_v = vec![0.0; n];
         for i in 0..n {
-            let mascara = if i == 0 { 0 } else { (1u64 << (b * i as u32)) - 1 };
+            let mascara = if i == 0 {
+                0
+            } else {
+                (1u64 << (b * i as u32)) - 1
+            };
             let hq = hist & mascara;
             if let Ok(j) = self.hk[i].binary_search(&hq) {
                 h_ok[i] = true;
@@ -361,11 +365,25 @@ impl Lm {
                 }
             }
             for (p, h) in &haces {
-                anadir(&mut sig, &mut pos, p.clone(), lse(h.b, h.nb) + b0, f64::NEG_INFINITY, h);
+                anadir(
+                    &mut sig,
+                    &mut pos,
+                    p.clone(),
+                    lse(h.b, h.nb) + b0,
+                    f64::NEG_INFINITY,
+                    h,
+                );
                 let ultimo = p.last().copied();
                 for &(c, lv) in &cand {
                     if Some(c) == ultimo {
-                        anadir(&mut sig, &mut pos, p.clone(), f64::NEG_INFINITY, h.nb + lv, h);
+                        anadir(
+                            &mut sig,
+                            &mut pos,
+                            p.clone(),
+                            f64::NEG_INFINITY,
+                            h.nb + lv,
+                            h,
+                        );
                     }
                 }
             }
@@ -381,7 +399,11 @@ impl Lm {
                 let total = lse(h.b, h.nb);
                 let ultimo = p.last().copied();
                 for &(c, lv) in &cand {
-                    let nuevo = if Some(c) == ultimo { h.b + lv } else { total + lv };
+                    let nuevo = if Some(c) == ultimo {
+                        h.b + lv
+                    } else {
+                        total + lv
+                    };
                     if nuevo == f64::NEG_INFINITY {
                         continue;
                     }
@@ -442,7 +464,9 @@ impl Lm {
                 nota_mejor = sc;
             }
         }
-        mejor.map_or((Vec::new(), Vec::new()), |(p, h)| (p.clone(), h.pasos.clone()))
+        mejor.map_or((Vec::new(), Vec::new()), |(p, h)| {
+            (p.clone(), h.pasos.clone())
+        })
     }
 }
 
@@ -470,7 +494,12 @@ fn anadir(
     );
 }
 
-fn anadir_haz(sig: &mut Vec<(Vec<u32>, Haz)>, pos: &mut HashMap<Vec<u32>, usize>, p: Vec<u32>, h: Haz) {
+fn anadir_haz(
+    sig: &mut Vec<(Vec<u32>, Haz)>,
+    pos: &mut HashMap<Vec<u32>, usize>,
+    p: Vec<u32>,
+    h: Haz,
+) {
     if let Some(&i) = pos.get(&p) {
         let o = &mut sig[i].1;
         o.b = lse(o.b, h.b);
@@ -495,15 +524,16 @@ fn palabra_final(v: &Vocab, prefijo: &[u32]) -> String {
     while i > 0 && letra_de(v, prefijo[i - 1]).is_some() {
         i -= 1;
     }
-    prefijo[i..].iter().filter_map(|&c| letra_de(v, c)).collect()
+    prefijo[i..]
+        .iter()
+        .filter_map(|&c| letra_de(v, c))
+        .collect()
 }
 
 fn delta_de_sesgo(s: &dyn SesgoDePalabras, v: &Vocab, prefijo: &[u32], c: u32) -> f64 {
     let w = palabra_final(v, prefijo);
     match letra_de(v, c) {
-        Some(ch) => {
-            s.parcial(&format!("{w}{ch}")) - if w.is_empty() { 0.0 } else { s.parcial(&w) }
-        }
+        Some(ch) => s.parcial(&format!("{w}{ch}")) - if w.is_empty() { 0.0 } else { s.parcial(&w) },
         None if w.is_empty() => 0.0,
         None => s.completa(&w) - s.parcial(&w),
     }

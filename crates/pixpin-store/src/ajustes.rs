@@ -1491,7 +1491,8 @@ alto = 200
         let a = Ajustes::default();
         assert_eq!(a.ocr.motor, MotorOcr::Windows);
         assert!(a.ocr.corregir);
-        let b: Ajustes = toml::from_str("[ocr]\nmotor = \"indra\"\nvocabulario = \"E030, Arequipa\"\n").unwrap();
+        let b: Ajustes =
+            toml::from_str("[ocr]\nmotor = \"indra\"\nvocabulario = \"E030, Arequipa\"\n").unwrap();
         assert_eq!(b.ocr.motor, MotorOcr::Indra);
         assert!(b.ocr.corregir, "lo que no se escribe sigue de fabrica");
         assert!(toml::from_str::<Ajustes>("[ocr]\nmotor = \"tesseract\"\n").is_err());

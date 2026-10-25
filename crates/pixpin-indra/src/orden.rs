@@ -3,6 +3,10 @@
 //! `order.onnx`, el orden desde sus logits por pares, la agrupacion de
 //! lineas en bloques (enlace medio) y el XY-cut de respaldo.
 
+// Las cuentas de matrices van por indice, como en `order_post.py` y en el
+// puerto de Kotlin: asi se pueden comparar linea a linea con el original.
+#![allow(clippy::needless_range_loop)]
+
 use crate::imagen::Caja;
 
 pub const CLASES_DE_BLOQUE: [&str; 10] = [
@@ -45,7 +49,9 @@ fn ancho_doble(cp: u32) -> bool {
 
 /// Ancho en columnas (CJK cuenta dos).
 pub fn largo_visible(t: &str) -> usize {
-    t.chars().map(|c| if ancho_doble(c as u32) { 2 } else { 1 }).sum()
+    t.chars()
+        .map(|c| if ancho_doble(c as u32) { 2 } else { 1 })
+        .sum()
 }
 
 /// Los 16 rasgos de cada linea (`line_features`), fila a fila.
@@ -82,7 +88,8 @@ pub fn rasgos(cajas: &[Caja], ancho: f32, alto: f32, textos: &[String]) -> Vec<f
         let cabeza = cabeza.trim_end_matches(['.', ')']);
         let primero = t.chars().next().unwrap_or(' ');
         let cabeza_numero = !cabeza.is_empty() && cabeza.chars().all(|c| c.is_numeric());
-        f[12] = if "•-–▪◦*·→".contains(primero) || (cabeza_numero && t.chars().count() > 3) {
+        f[12] = if "•-–▪◦*·→".contains(primero) || (cabeza_numero && t.chars().count() > 3)
+        {
             1.0
         } else {
             0.0
@@ -466,8 +473,18 @@ pub fn bloques_xy(cajas: &[Caja], hueco_min: f32) -> Vec<Vec<usize>> {
             if let Some(k) = c.k
                 && c.hueco >= hueco_min * h
             {
-                let mut a = rec(cajas, c.orden[..k].iter().map(|&i| ids[i]).collect(), h, hueco_min);
-                a.extend(rec(cajas, c.orden[k..].iter().map(|&i| ids[i]).collect(), h, hueco_min));
+                let mut a = rec(
+                    cajas,
+                    c.orden[..k].iter().map(|&i| ids[i]).collect(),
+                    h,
+                    hueco_min,
+                );
+                a.extend(rec(
+                    cajas,
+                    c.orden[k..].iter().map(|&i| ids[i]).collect(),
+                    h,
+                    hueco_min,
+                ));
                 return a;
             }
         }
@@ -506,7 +523,11 @@ mod pruebas {
             .collect();
         assert_eq!(decodificar_orden(&a, 4), [2, 0, 1]);
         let mismo: Vec<Vec<f32>> = (0..4)
-            .map(|i| (0..4).map(|j| if (i < 2) == (j < 2) { 3.0 } else { -3.0 }).collect())
+            .map(|i| {
+                (0..4)
+                    .map(|j| if (i < 2) == (j < 2) { 3.0 } else { -3.0 })
+                    .collect()
+            })
             .collect();
         let mut g = agrupar(&mismo);
         g.sort();
@@ -530,7 +551,12 @@ mod pruebas {
 
     #[test]
     fn rasgos_de_linea() {
-        let f = rasgos(&[[0.0, 0.0, 100.0, 10.0]], 200.0, 100.0, &["12) Hola.".into()]);
+        let f = rasgos(
+            &[[0.0, 0.0, 100.0, 10.0]],
+            200.0,
+            100.0,
+            &["12) Hola.".into()],
+        );
         assert_eq!(f.len(), 16);
         assert!((f[2] - 0.5).abs() < 1e-6);
         assert_eq!(f[12], 1.0); // empieza por enumerador
@@ -540,7 +566,11 @@ mod pruebas {
 
     #[test]
     fn bloques_de_pagina_con_su_etiqueta() {
-        let cajas = [[0.0, 0.0, 10.0, 5.0], [0.0, 6.0, 10.0, 11.0], [0.0, 30.0, 10.0, 35.0]];
+        let cajas = [
+            [0.0, 0.0, 10.0, 5.0],
+            [0.0, 6.0, 10.0, 11.0],
+            [0.0, 30.0, 10.0, 35.0],
+        ];
         let mismo = vec![
             vec![0.0, 2.0, -2.0],
             vec![2.0, 0.0, -2.0],

@@ -557,7 +557,10 @@ impl Runtime {
 
     /// Lo mismo con booleanos (un byte cada uno, 0 o 1).
     pub fn tensor_bool(&self, datos: Vec<bool>, forma: &[i64]) -> Result<Valor<'_>, ErrorVoz> {
-        self.tensor(Respaldo::Bool(datos.into_iter().map(u8::from).collect()), forma)
+        self.tensor(
+            Respaldo::Bool(datos.into_iter().map(u8::from).collect()),
+            forma,
+        )
     }
 
     fn tensor(&self, mut respaldo: Respaldo, forma: &[i64]) -> Result<Valor<'_>, ErrorVoz> {

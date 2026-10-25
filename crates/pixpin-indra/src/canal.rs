@@ -49,6 +49,10 @@ const VINETAS: &str = "•◦▪▫●○■□‣⁃∙*";
 /// recortes no ganan nada pasado esto.
 pub const LADO_MAX: usize = 4000;
 
+/// Lo que necesita el LM de una salida de `rec.onnx`: log-prob del blanco
+/// `[lote · pasos]`, las `k` mejores `[lote · pasos · k]`, sus clases y `k`.
+pub type SalidaLm = (Vec<f32>, Vec<f32>, Vec<i64>, usize);
+
 /// Lo que da `rec.onnx` para un lote.
 #[derive(Debug, Clone, Default)]
 pub struct SalidaRec {
@@ -61,7 +65,7 @@ pub struct SalidaRec {
     pub pasos: usize,
     /// Para el LM: log-prob del blanco `[lote · pasos]`, las `k` mejores
     /// `[lote · pasos · k]` y sus clases.
-    pub lm: Option<(Vec<f32>, Vec<f32>, Vec<i64>, usize)>,
+    pub lm: Option<SalidaLm>,
 }
 
 /// Lo que da `order.onnx`.
@@ -81,7 +85,12 @@ pub struct SalidaOrden {
 pub trait Modelos {
     /// `det.onnx` sobre `[1, 1, alto, ancho]`: los planos de salida y su
     /// alto y ancho (`[canales, alto_s, ancho_s]`).
-    fn detectar(&mut self, x: Vec<f32>, alto: usize, ancho: usize) -> Result<(Vec<f32>, usize, usize), String>;
+    fn detectar(
+        &mut self,
+        x: Vec<f32>,
+        alto: usize,
+        ancho: usize,
+    ) -> Result<(Vec<f32>, usize, usize), String>;
     /// `rec.onnx` sobre `[lote, 1, alto, ancho]` con el ancho util de cada
     /// linea; `con_lm` pide tambien las salidas de la busqueda en haz.
     fn reconocer(
@@ -208,11 +217,20 @@ pub struct Meta {
 
 impl Meta {
     pub fn de_json(texto: &str) -> Result<Meta, String> {
-        let v: serde_json::Value = serde_json::from_str(texto).map_err(|e| format!("meta.json: {e}"))?;
-        let vocab = Vocab::de_json(v.get("vocab").and_then(|x| x.as_str()).ok_or("meta.json sin vocab")?)?;
+        let v: serde_json::Value =
+            serde_json::from_str(texto).map_err(|e| format!("meta.json: {e}"))?;
+        let vocab = Vocab::de_json(
+            v.get("vocab")
+                .and_then(|x| x.as_str())
+                .ok_or("meta.json sin vocab")?,
+        )?;
         let entero = |k: &str| v.get(k).and_then(|x| x.as_u64()).map(|x| x as usize);
         let base = v.get("lm_params").and_then(|p| p.get("base"));
-        let real = |k: &str, d: f64| base.and_then(|b| b.get(k)).and_then(|x| x.as_f64()).unwrap_or(d);
+        let real = |k: &str, d: f64| {
+            base.and_then(|b| b.get(k))
+                .and_then(|x| x.as_f64())
+                .unwrap_or(d)
+        };
         Ok(Meta {
             vocab,
             lado_largo: entero("det_long_side").ok_or("meta.json sin det_long_side")?,
@@ -366,14 +384,21 @@ impl Indra {
                 k = i;
             }
         }
-        Ok(if p.get(k).is_some_and(|&v| v > self.orientacion_min) && k < 4 {
-            k as i32
-        } else {
-            0
-        })
+        Ok(
+            if p.get(k).is_some_and(|&v| v > self.orientacion_min) && k < 4 {
+                k as i32
+            } else {
+                0
+            },
+        )
     }
 
-    fn detectar_a(&self, m: &mut dyn Modelos, g: &Gris, lado: usize) -> Result<(Vec<Caja>, f64), String> {
+    fn detectar_a(
+        &self,
+        m: &mut dyn Modelos,
+        g: &Gris,
+        lado: usize,
+    ) -> Result<(Vec<Caja>, f64), String> {
         let e = imagen::entrada_detector(g, lado);
         let (s, ho, wo) = m.detectar(e.datos, e.alto, e.ancho)?;
         Ok((deteccion::decodificar(&s, wo, ho, 0.5, 2), e.escala))
@@ -388,7 +413,8 @@ impl Indra {
             let alturas: Vec<f32> = cajas.iter().map(|b| b[3] - b[1]).collect();
             let med = orden::mediana(&alturas);
             if med < ALTO_MIN_ADAPTATIVO {
-                let ls = ((LADO_MAX_ADAPTATIVO as f64).min(lado as f64 * ALTO_OBJETIVO_ADAPTATIVO / (med as f64).max(1.0))
+                let ls = ((LADO_MAX_ADAPTATIVO as f64)
+                    .min(lado as f64 * ALTO_OBJETIVO_ADAPTATIVO / (med as f64).max(1.0))
                     as usize)
                     / 32
                     * 32;
@@ -411,7 +437,13 @@ impl Indra {
             .collect())
     }
 
-    fn reconocer(&mut self, m: &mut dyn Modelos, g: &Gris, cajas: &[Caja], lote: usize) -> Result<Vec<Lectura>, String> {
+    fn reconocer(
+        &mut self,
+        m: &mut dyn Modelos,
+        g: &Gris,
+        cajas: &[Caja],
+        lote: usize,
+    ) -> Result<Vec<Lectura>, String> {
         let n = cajas.len();
         let mut out = vec![Lectura::default(); n];
         if n == 0 {
@@ -439,14 +471,20 @@ impl Indra {
         for idx in imagen::lotes_por_ancho(&anchos, lote) {
             let b = idx.len();
             let hh = altos[idx[0]].alto;
-            let wm = idx.iter().map(|&j| altos[j].ancho).max().unwrap_or(8).div_ceil(imagen::MULTIPLO_ANCHO)
+            let wm = idx
+                .iter()
+                .map(|&j| altos[j].ancho)
+                .max()
+                .unwrap_or(8)
+                .div_ceil(imagen::MULTIPLO_ANCHO)
                 * imagen::MULTIPLO_ANCHO;
             let mut arr = vec![0f32; b * hh * wm];
             let mut w_util = Vec::with_capacity(b);
             for (k, &j) in idx.iter().enumerate() {
                 let c = &altos[j];
                 for y in 0..hh {
-                    arr[(k * hh + y) * wm..(k * hh + y) * wm + c.ancho].copy_from_slice(&c.datos[y * c.ancho..(y + 1) * c.ancho]);
+                    arr[(k * hh + y) * wm..(k * hh + y) * wm + c.ancho]
+                        .copy_from_slice(&c.datos[y * c.ancho..(y + 1) * c.ancho]);
                 }
                 w_util.push(c.ancho as i64);
             }
@@ -454,7 +492,8 @@ impl Indra {
             let t_pasos = r.pasos;
             let paso_x = wm as f64 / t_pasos.max(1) as f64;
             for (k, &j) in idx.iter().enumerate() {
-                let largo = (r.longitudes.get(k).copied().unwrap_or(0).max(0) as usize).min(t_pasos);
+                let largo =
+                    (r.longitudes.get(k).copied().unwrap_or(0).max(0) as usize).min(t_pasos);
                 let mut guardar = Vec::new();
                 let mut suma = 0.0f64;
                 let mut previo = -1i64;
@@ -471,10 +510,15 @@ impl Indra {
                 } else {
                     (suma / guardar.len() as f64) as f32
                 };
-                let mut clases: Vec<u32> = guardar.iter().map(|&s| r.ids[k * t_pasos + s] as u32).collect();
+                let mut clases: Vec<u32> = guardar
+                    .iter()
+                    .map(|&s| r.ids[k * t_pasos + s] as u32)
+                    .collect();
                 let mut pasos: Vec<u32> = guardar.iter().map(|&s| s as u32).collect();
-                let mut probs: Vec<f32> = guardar.iter().map(|&s| r.conf[k * t_pasos + s]).collect();
-                if let (Some(lm), Some((blanco, topv, topi, kt))) = (self.lm.as_mut(), r.lm.as_ref())
+                let mut probs: Vec<f32> =
+                    guardar.iter().map(|&s| r.conf[k * t_pasos + s]).collect();
+                if let (Some(lm), Some((blanco, topv, topi, kt))) =
+                    (self.lm.as_mut(), r.lm.as_ref())
                     && conf >= suelo
                     && (conf as f64) < self.meta.puerta
                 {
@@ -569,7 +613,12 @@ impl Indra {
             .enumerate()
             .map(|(i, b)| {
                 let h = (b[3] - b[1]).max(1.0);
-                let xs: Vec<f32> = lect[i].fichas.iter().filter(|f| !self.es_espacio(f)).map(|f| f.x).collect();
+                let xs: Vec<f32> = lect[i]
+                    .fichas
+                    .iter()
+                    .filter(|f| !self.es_espacio(f))
+                    .map(|f| f.x)
+                    .collect();
                 let mut mios = Vec::new();
                 for q in 1..xs.len() {
                     let (a, c) = (xs[q - 1], xs[q]);
@@ -580,7 +629,9 @@ impl Indra {
                     let cerca = cajas
                         .iter()
                         .enumerate()
-                        .filter(|&(o, ob)| o != i && ((ob[2] - gl).abs() < 0.5 * h || (ob[0] - gr).abs() < 0.5 * h))
+                        .filter(|&(o, ob)| {
+                            o != i && ((ob[2] - gl).abs() < 0.5 * h || (ob[0] - gr).abs() < 0.5 * h)
+                        })
                         .count();
                     if cerca >= BORDES_CALLE {
                         mios.push((a + c) / 2.0);
@@ -591,7 +642,13 @@ impl Indra {
             .collect()
     }
 
-    fn partir(&self, caja: &Caja, fichas: &[Ficha], hueco: f32, cortes: &[f32]) -> Vec<(Caja, String, Vec<Ficha>)> {
+    fn partir(
+        &self,
+        caja: &Caja,
+        fichas: &[Ficha],
+        hueco: f32,
+        cortes: &[f32],
+    ) -> Vec<(Caja, String, Vec<Ficha>)> {
         let h = (caja[3] - caja[1]).max(1.0);
         let mut trozos: Vec<Vec<Ficha>> = vec![Vec::new()];
         let mut previo: Option<f32> = None;
@@ -616,12 +673,21 @@ impl Indra {
         let mut o = Vec::new();
         for t in trozos {
             let texto = self.texto_de(&t).trim().to_string();
-            let xs: Vec<f32> = t.iter().filter(|f| !self.es_espacio(f)).map(|f| f.x).collect();
+            let xs: Vec<f32> = t
+                .iter()
+                .filter(|f| !self.es_espacio(f))
+                .map(|f| f.x)
+                .collect();
             if !texto.is_empty() && !xs.is_empty() {
                 let mn = xs.iter().copied().fold(f32::MAX, f32::min);
                 let mx = xs.iter().copied().fold(f32::MIN, f32::max);
                 o.push((
-                    [caja[0].max(mn - 0.35 * h), caja[1], caja[2].min(mx + 0.35 * h), caja[3]],
+                    [
+                        caja[0].max(mn - 0.35 * h),
+                        caja[1],
+                        caja[2].min(mx + 0.35 * h),
+                        caja[3],
+                    ],
                     texto,
                     t,
                 ));
@@ -640,7 +706,10 @@ impl Indra {
             if !nucleo.is_empty() && nucleo.chars().all(|c| RELLENO.contains(c)) {
                 let w = r.caja[2] - r.caja[0];
                 let h = r.caja[3] - r.caja[1];
-                if nucleo.chars().count() >= 3 || w >= 3.0 * h || !nucleo.chars().any(|c| GUIONES.contains(c)) {
+                if nucleo.chars().count() >= 3
+                    || w >= 3.0 * h
+                    || !nucleo.chars().any(|c| GUIONES.contains(c))
+                {
                     queda[i] = false;
                 }
             }
@@ -648,7 +717,8 @@ impl Indra {
         let hs: Vec<f32> = l.iter().map(|r| r.caja[3] - r.caja[1]).collect();
         for i in 0..n {
             let t = l[i].texto.trim().to_string();
-            let unico = t.chars().count() == 1 && t.chars().next().is_some_and(|c| VINETAS.contains(c));
+            let unico =
+                t.chars().count() == 1 && t.chars().next().is_some_and(|c| VINETAS.contains(c));
             if !queda[i] || !(unico || es_enumerador(&t)) {
                 continue;
             }
@@ -667,7 +737,10 @@ impl Indra {
                     continue;
                 }
                 let hueco = bj[0] - bi[2];
-                if hueco >= -0.3 * hi && hueco <= HUECO_MARCADOR * hi.max(hj) && (mejor.is_none() || hueco < hueco_mejor) {
+                if hueco >= -0.3 * hi
+                    && hueco <= HUECO_MARCADOR * hi.max(hj)
+                    && (mejor.is_none() || hueco < hueco_mejor)
+                {
                     mejor = Some(j);
                     hueco_mejor = hueco;
                 }
@@ -679,16 +752,29 @@ impl Indra {
             {
                 let x = (bi[2] + l[j].caja[0]) / 2.0;
                 let mut f = l[i].fichas.clone();
-                f.push(Ficha { clase: sp, x, p: 1.0 });
+                f.push(Ficha {
+                    clase: sp,
+                    x,
+                    p: 1.0,
+                });
                 f.extend(l[j].fichas.iter().copied());
                 l[j].fichas = f;
             }
             l[j].texto = format!("{t} {}", l[j].texto.trim());
             let bj = l[j].caja;
-            l[j].caja = [bi[0].min(bj[0]), bi[1].min(bj[1]), bi[2].max(bj[2]), bi[3].max(bj[3])];
+            l[j].caja = [
+                bi[0].min(bj[0]),
+                bi[1].min(bj[1]),
+                bi[2].max(bj[2]),
+                bi[3].max(bj[3]),
+            ];
             queda[i] = false;
         }
-        l.into_iter().zip(queda).filter(|(_, q)| *q).map(|(r, _)| r).collect()
+        l.into_iter()
+            .zip(queda)
+            .filter(|(_, q)| *q)
+            .map(|(r, _)| r)
+            .collect()
     }
 
     /// Palabras de una linea: tramos entre espacios, con la caja desde las
@@ -708,7 +794,8 @@ impl Indra {
                 let x0 = caja[0].max(mn - 0.35 * h);
                 let x1 = caja[2].min(mx + 0.35 * h);
                 let ps: f32 = cur.iter().map(|f| f.p).sum();
-                let probs = (texto.chars().count() == cur.len()).then(|| cur.iter().map(|f| f.p).collect());
+                let probs =
+                    (texto.chars().count() == cur.len()).then(|| cur.iter().map(|f| f.p).collect());
                 o.push(Palabra {
                     texto,
                     caja: [x0, caja[1], x1.max(x0 + 1.0), caja[3]],
@@ -765,14 +852,17 @@ impl Indra {
             None => orden::orden_xy(&bx),
             Some(s) => {
                 let cuadrada = |v: &[f32], m2: usize| -> Vec<Vec<f32>> {
-                    (0..n).map(|i| (0..n).map(|j| v[i * m2 + j]).collect()).collect()
+                    (0..n)
+                        .map(|i| (0..n).map(|j| v[i * m2 + j]).collect())
+                        .collect()
                 };
                 let m2 = if s.n2 == 0 { n } else { s.n2 };
                 let a = cuadrada(&s.a, m2);
                 match (s.cls, s.mismo) {
                     (Some(c), Some(sm)) => {
                         let nc = c.len() / n;
-                        let c: Vec<Vec<f32>> = (0..n).map(|i| c[i * nc..(i + 1) * nc].to_vec()).collect();
+                        let c: Vec<Vec<f32>> =
+                            (0..n).map(|i| c[i * nc..(i + 1) * nc].to_vec()).collect();
                         let sm = cuadrada(&sm, m2);
                         let o = orden::decodificar_orden_por_bloques(&a, &sm, &bx, Some(&c));
                         cls = Some(c);
@@ -780,7 +870,10 @@ impl Indra {
                         o
                     }
                     _ => {
-                        let a64: Vec<Vec<f64>> = a.iter().map(|f| f.iter().map(|&v| v as f64).collect()).collect();
+                        let a64: Vec<Vec<f64>> = a
+                            .iter()
+                            .map(|f| f.iter().map(|&v| v as f64).collect())
+                            .collect();
                         orden::decodificar_orden(&a64, 4)
                     }
                 }
@@ -791,7 +884,11 @@ impl Indra {
             pos[i] = k;
         }
         let alturas: Vec<f32> = lineas.iter().map(|l| l.caja[3] - l.caja[1]).collect();
-        let med = if n == 0 { 1.0 } else { orden::mediana(&alturas) };
+        let med = if n == 0 {
+            1.0
+        } else {
+            orden::mediana(&alturas)
+        };
         let r1 = |c: &Caja| c.map(|v| (v * 10.0).round() / 10.0);
         let mut salida_lineas = Vec::with_capacity(n);
         for &i in &ord {
@@ -867,9 +964,15 @@ fn es_enumerador(t: &str) -> bool {
     let cuerpo_ok = |s: &[char], romanos: bool| {
         (!s.is_empty() && s.len() <= 3 && s.iter().all(|c| c.is_ascii_digit()))
             || (s.len() == 1 && s[0].is_ascii_alphabetic())
-            || (romanos && !s.is_empty() && s.len() <= 5 && s.iter().all(|c| "ivxlcIVXLC".contains(*c)))
+            || (romanos
+                && !s.is_empty()
+                && s.len() <= 5
+                && s.iter().all(|c| "ivxlcIVXLC".contains(*c)))
     };
-    if c.len() >= 2 && (c[c.len() - 1] == '.' || c[c.len() - 1] == ')') && cuerpo_ok(&c[..c.len() - 1], false) {
+    if c.len() >= 2
+        && (c[c.len() - 1] == '.' || c[c.len() - 1] == ')')
+        && cuerpo_ok(&c[..c.len() - 1], false)
+    {
         return true;
     }
     c.len() >= 3 && c[0] == '(' && c[c.len() - 1] == ')' && cuerpo_ok(&c[1..c.len() - 1], true)
@@ -890,7 +993,12 @@ mod pruebas {
     }
 
     impl Modelos for Falsos {
-        fn detectar(&mut self, _x: Vec<f32>, alto: usize, ancho: usize) -> Result<(Vec<f32>, usize, usize), String> {
+        fn detectar(
+            &mut self,
+            _x: Vec<f32>,
+            alto: usize,
+            ancho: usize,
+        ) -> Result<(Vec<f32>, usize, usize), String> {
             let (h, w) = (alto / 2, ancho / 2);
             let mut s = vec![-10.0; 3 * w * h];
             for &(x0, y0, x1, y1) in &self.nucleos {
@@ -964,7 +1072,10 @@ mod pruebas {
                 "lm_params": {"base": {"alpha": 0.7, "gate": 0.8}}}"#,
         )
         .unwrap();
-        assert_eq!((m.ventana, m.alfa, m.beta, m.puerta), (3, 0.7, BETA_LM, 0.8));
+        assert_eq!(
+            (m.ventana, m.alfa, m.beta, m.puerta),
+            (3, 0.7, BETA_LM, 0.8)
+        );
         assert!(Meta::de_json("{}").is_err());
     }
 
@@ -1046,7 +1157,10 @@ mod pruebas {
         indra.preparar = false;
         let p = indra.ejecutar(&mut f, &pagina_blanca()).unwrap();
         assert_eq!(p.lineas.len(), 2);
-        assert!(p.lineas[0].caja[1] > p.lineas[1].caja[1], "la de abajo primero");
+        assert!(
+            p.lineas[0].caja[1] > p.lineas[1].caja[1],
+            "la de abajo primero"
+        );
         assert_eq!(p.bloques.len(), 2);
         assert_eq!(p.bloques[0].etiqueta, "Text");
         assert_eq!(p.bloques[1].etiqueta, "Section-Header");

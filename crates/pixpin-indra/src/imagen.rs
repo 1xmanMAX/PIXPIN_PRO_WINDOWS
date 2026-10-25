@@ -117,7 +117,12 @@ pub fn estimar_inclinacion(g: &Gris, lado: usize) -> f64 {
     }
     let notas_finas = en_paralelo(unicos.len(), |i| nitidez_de_filas(&fina, unicos[i]));
     let vistos: Vec<(f64, f64)> = unicos.into_iter().zip(notas_finas).collect();
-    let nota = |x: f64| vistos.iter().find(|&&(v, _)| v == x).map_or(0.0, |&(_, n)| n);
+    let nota = |x: f64| {
+        vistos
+            .iter()
+            .find(|&&(v, _)| v == x)
+            .map_or(0.0, |&(_, n)| n)
+    };
     let mut a1 = cerca[0];
     let mut b1 = nota(a1);
     for &x in &cerca {
@@ -245,7 +250,11 @@ fn percentiles(g: &Gris, x0: usize, y0: usize, x1: usize, y1: usize) -> [f64; 3]
         let lo = derecha(i);
         let hi = derecha((i + 1).min(n.saturating_sub(1)));
         let d = hi - lo;
-        out[k] = if f >= 0.5 { hi - d * (1.0 - f) } else { lo + d * f };
+        out[k] = if f >= 0.5 {
+            hi - d * (1.0 - f)
+        } else {
+            lo + d * f
+        };
     }
     out
 }
@@ -307,21 +316,21 @@ pub fn recortar_linea(
             c.px[d..d + n].copy_from_slice(&g.px[o..o + n]);
         }
     }
-    let ancho = (redondeo_py(cw as f64 * hh as f64 / ch as f64) as usize).clamp(MULTIPLO_ANCHO, ancho_max.max(MULTIPLO_ANCHO));
+    let ancho = (redondeo_py(cw as f64 * hh as f64 / ch as f64) as usize)
+        .clamp(MULTIPLO_ANCHO, ancho_max.max(MULTIPLO_ANCHO));
     let modo = if ch > hh {
         Interpolacion::Area
     } else {
         Interpolacion::Lineal
     };
     let r = redimensionar(&c, ancho, hh, modo);
-    let datos = r
-        .px
-        .iter()
-        .map(|&v| {
-            let v = v as f32 / 255.0;
-            if oscura { v } else { 1.0 - v }
-        })
-        .collect();
+    let datos =
+        r.px.iter()
+            .map(|&v| {
+                let v = v as f32 / 255.0;
+                if oscura { v } else { 1.0 - v }
+            })
+            .collect();
     Recorte {
         datos,
         ancho,
@@ -446,6 +455,9 @@ mod pruebas {
         assert_eq!(c, b);
         // Girar 90 grados en una pagina cuadrada y volver.
         let c = desgirar_caja(&b, 90.0, 400, 400);
-        assert!((c[2] - c[0] - 20.0).abs() < 0.2 && (c[3] - c[1] - 100.0).abs() < 0.2, "{c:?}");
+        assert!(
+            (c[2] - c[0] - 20.0).abs() < 0.2 && (c[3] - c[1] - 100.0).abs() < 0.2,
+            "{c:?}"
+        );
     }
 }

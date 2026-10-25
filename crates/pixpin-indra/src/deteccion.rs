@@ -17,7 +17,13 @@ pub const ENCOGE_NUCLEO: f64 = 0.15;
 /// Cajas `[x0, y0, x1, y1]` en pixeles de la ENTRADA del detector.
 /// `salida` son los tres primeros planos `[3, alto, ancho]` (puede traer
 /// mas: el de imagenes, que aqui no se usa).
-pub fn decodificar(salida: &[f32], ancho: usize, alto: usize, umbral: f32, area_min: usize) -> Vec<Caja> {
+pub fn decodificar(
+    salida: &[f32],
+    ancho: usize,
+    alto: usize,
+    umbral: f32,
+    area_min: usize,
+) -> Vec<Caja> {
     let plano = ancho * alto;
     if salida.len() < 3 * plano || plano == 0 {
         return Vec::new();
@@ -84,7 +90,10 @@ mod pruebas {
         let [x0, y0, x1, y1] = c[0];
         // ys medio = (9 + 11) / 2 = 10 → 4..16 de alto 12; ex = 1,8.
         assert!((y0 - 4.0).abs() < 1e-4 && (y1 - 16.0).abs() < 1e-4);
-        assert!((x0 - 2.2).abs() < 1e-4 && (x1 - 33.8).abs() < 1e-4, "{x0} {x1}");
+        assert!(
+            (x0 - 2.2).abs() < 1e-4 && (x1 - 33.8).abs() < 1e-4,
+            "{x0} {x1}"
+        );
         // Nada encima del umbral: ningun renglon.
         assert!(decodificar(&vec![-5.0; 3 * w * h], w, h, 0.5, 2).is_empty());
     }

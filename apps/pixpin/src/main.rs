@@ -130,10 +130,10 @@ mod notas_md;
 mod notificaciones;
 // La linea de ordenes y los enlaces `pixpin://` (15-oct-2026).
 mod modelo_bim;
+mod ocr_motor;
 /// Los Word y PowerPoint de antes, convertidos para el visor propio (20-oct).
 mod office_convertido;
 mod orden;
-mod ocr_motor;
 mod oscuro;
 mod overlay;
 mod panel_dibujo;

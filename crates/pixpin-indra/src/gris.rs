@@ -21,7 +21,9 @@ pub fn fijar_hilos(n: usize) {
 
 pub fn hilos() -> usize {
     match HILOS.load(Ordering::Relaxed) {
-        0 => std::thread::available_parallelism().map_or(2, |n| n.get()).min(4),
+        0 => std::thread::available_parallelism()
+            .map_or(2, |n| n.get())
+            .min(4),
         n => n,
     }
 }
@@ -37,7 +39,10 @@ pub fn en_paralelo<T: Send>(n: usize, f: impl Fn(usize) -> T + Sync) -> Vec<T> {
         let trozos: Vec<_> = (0..h)
             .map(|k| s.spawn(move || (k..n).step_by(h).map(|i| (i, f(i))).collect::<Vec<_>>()))
             .collect();
-        let mut v: Vec<(usize, T)> = trozos.into_iter().flat_map(|t| t.join().unwrap_or_default()).collect();
+        let mut v: Vec<(usize, T)> = trozos
+            .into_iter()
+            .flat_map(|t| t.join().unwrap_or_default())
+            .collect();
         v.sort_by_key(|x| x.0);
         v.into_iter().map(|x| x.1).collect()
     })
@@ -224,7 +229,14 @@ pub fn rot90(g: &Gris, k: i32) -> Gris {
 pub fn matriz_de_giro(cx: f64, cy: f64, grados: f64) -> [f64; 6] {
     let r = grados.to_radians();
     let (a, b) = (r.cos(), r.sin());
-    [a, b, (1.0 - a) * cx - b * cy, -b, a, b * cx + (1.0 - a) * cy]
+    [
+        a,
+        b,
+        (1.0 - a) * cx - b * cy,
+        -b,
+        a,
+        b * cx + (1.0 - a) * cy,
+    ]
 }
 
 /// Que hay fuera de la pagina al girarla.
@@ -251,7 +263,9 @@ pub fn girar_afin(g: &Gris, m: &[f64; 6], borde: Borde) -> Gris {
         } else {
             match borde {
                 Borde::Fijo(v) => v as f32,
-                Borde::Replicar => g.px[(y.clamp(0, h - 1) * w + x.clamp(0, w - 1)) as usize] as f32,
+                Borde::Replicar => {
+                    g.px[(y.clamp(0, h - 1) * w + x.clamp(0, w - 1)) as usize] as f32
+                }
             }
         }
     };
@@ -346,7 +360,11 @@ pub fn desenfocar(g: &Gris, sigma: f64) -> Vec<f32> {
         }
         let sal = &mut medio[y * w..(y + 1) * w];
         for (x, o) in sal.iter_mut().enumerate() {
-            *o = fila[x..x + k.len()].iter().zip(&k).map(|(a, b)| a * b).sum();
+            *o = fila[x..x + k.len()]
+                .iter()
+                .zip(&k)
+                .map(|(a, b)| a * b)
+                .sum();
         }
     }
     // Vertical: se suman filas enteras, que es lo que mejor va a la cache.

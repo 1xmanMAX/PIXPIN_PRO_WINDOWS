@@ -70,7 +70,12 @@ fn hilos() -> usize {
 }
 
 /// Lo que se le dice a `pixpin-ocr` con estos ajustes (pura, para probarla).
-pub fn config_de(a: &Ajustes, raiz: &Path, exe: Option<PathBuf>, hilos: usize) -> pixpin_ocr::Config {
+pub fn config_de(
+    a: &Ajustes,
+    raiz: &Path,
+    exe: Option<PathBuf>,
+    hilos: usize,
+) -> pixpin_ocr::Config {
     pixpin_ocr::Config {
         motor: match a.ocr.motor {
             MotorOcr::Windows => pixpin_ocr::Motor::Windows,
@@ -188,7 +193,10 @@ pub fn estado(t: &Catalogo, raiz: &Path, elegido: MotorOcr) -> String {
         (_, listo) => {
             let mut args = FluentArgs::new();
             let exe = junto_al_exe();
-            args.set("megas", pixpin_ocr::indra::megas_a_bajar(raiz, exe.as_deref()) as i64);
+            args.set(
+                "megas",
+                pixpin_ocr::indra::megas_a_bajar(raiz, exe.as_deref()) as i64,
+            );
             if listo {
                 t.t("ajustes2-ayuda-ocr-windows-con-indra")
             } else {
@@ -211,7 +219,11 @@ mod pruebas {
     fn los_ajustes_pasan_tal_cual_al_ocr() {
         let mut a = Ajustes::default();
         let c = config_de(&a, Path::new("C:/datos"), None, 2);
-        assert_eq!(c.motor, pixpin_ocr::Motor::Windows, "de fabrica, el de Windows");
+        assert_eq!(
+            c.motor,
+            pixpin_ocr::Motor::Windows,
+            "de fabrica, el de Windows"
+        );
         assert!(c.corregir);
         a.ocr.motor = MotorOcr::Indra;
         a.ocr.vocabulario = "E030".into();

@@ -120,8 +120,8 @@ pub fn bajar(
     let destino = carpeta(raiz);
     std::fs::create_dir_all(&destino).map_err(|e| fallo(&destino.display().to_string(), e))?;
     let falta_runtime = !runtime_listo(raiz, junto_al_exe);
-    let total: u64 =
-        FICHEROS.iter().map(|f| f.bytes).sum::<u64>() + if falta_runtime { RUNTIME.largo } else { 0 };
+    let total: u64 = FICHEROS.iter().map(|f| f.bytes).sum::<u64>()
+        + if falta_runtime { RUNTIME.largo } else { 0 };
     let mut hecho: u64 = 0;
     for f in FICHEROS {
         let p = destino.join(f.nombre);
@@ -130,7 +130,9 @@ pub fn bajar(
             red::bajar(
                 f.url,
                 &p,
-                &mut |leidos, _| avance(((antes + leidos.min(f.bytes)) as f32 / total as f32).min(0.99)),
+                &mut |leidos, _| {
+                    avance(((antes + leidos.min(f.bytes)) as f32 / total as f32).min(0.99))
+                },
                 cancelado,
             )
             .map_err(de_voz)?;
@@ -144,7 +146,11 @@ pub fn bajar(
     }
     if falta_runtime {
         let antes = hecho;
-        bajar_runtime(raiz, &mut |b| avance(((antes + b) as f32 / total as f32).min(0.99)), cancelado)?;
+        bajar_runtime(
+            raiz,
+            &mut |b| avance(((antes + b) as f32 / total as f32).min(0.99)),
+            cancelado,
+        )?;
     }
     avance(1.0);
     tracing::info!(carpeta = %destino.display(), runtime_bajado = falta_runtime, "lector Indra bajado");
@@ -153,7 +159,11 @@ pub fn bajar(
 
 /// Solo la entrada de `onnxruntime.dll` del ZIP oficial, descomprimida y
 /// comprobada, a `<datos>/whisper/onnxruntime.dll`.
-fn bajar_runtime(raiz: &Path, avance: &mut dyn FnMut(u64), cancelado: &AtomicBool) -> Result<(), ErrorOcr> {
+fn bajar_runtime(
+    raiz: &Path,
+    avance: &mut dyn FnMut(u64),
+    cancelado: &AtomicBool,
+) -> Result<(), ErrorOcr> {
     let dir = raiz.join("whisper");
     std::fs::create_dir_all(&dir).map_err(|e| fallo("onnxruntime.dll", e))?;
     let tramo = dir.join("onnxruntime.zip-tramo");
@@ -169,16 +179,22 @@ fn bajar_runtime(raiz: &Path, avance: &mut dyn FnMut(u64), cancelado: &AtomicBoo
     let datos = std::fs::read(&tramo).map_err(|e| fallo("onnxruntime.dll", e));
     let _ = std::fs::remove_file(&tramo);
     let datos = datos?;
-    let ini = datos_de_la_entrada(&datos).ok_or_else(|| fallo("onnxruntime.dll", "el tramo no es la entrada del ZIP"))?;
+    let ini = datos_de_la_entrada(&datos)
+        .ok_or_else(|| fallo("onnxruntime.dll", "el tramo no es la entrada del ZIP"))?;
     let fin = (ini as u64 + RUNTIME.comprimido) as usize;
-    let comprimido = datos.get(ini..fin).ok_or_else(|| fallo("onnxruntime.dll", "tramo corto"))?;
+    let comprimido = datos
+        .get(ini..fin)
+        .ok_or_else(|| fallo("onnxruntime.dll", "tramo corto"))?;
     let mut dll = Vec::with_capacity(RUNTIME.bytes as usize);
     flate2::read::DeflateDecoder::new(comprimido)
         .read_to_end(&mut dll)
         .map_err(|e| fallo("onnxruntime.dll", e))?;
     let sha = hex(&Sha256::digest(&dll));
     if dll.len() as u64 != RUNTIME.bytes || sha != RUNTIME.sha256 {
-        return Err(fallo("onnxruntime.dll", format!("no es la DLL esperada ({} bytes, {sha})", dll.len())));
+        return Err(fallo(
+            "onnxruntime.dll",
+            format!("no es la DLL esperada ({} bytes, {sha})", dll.len()),
+        ));
     }
     let destino = dir.join(pixpin_voz::ort::NOMBRE_DE_LA_DLL);
     let parte = red::ruta_parte(&destino);
@@ -226,15 +242,27 @@ impl Sesiones {
 }
 
 impl Modelos for Sesiones {
-    fn detectar(&mut self, x: Vec<f32>, alto: usize, ancho: usize) -> Result<(Vec<f32>, usize, usize), String> {
-        let t = self.rt.tensor_f32(x, &[1, 1, alto as i64, ancho as i64]).map_err(onnx)?;
+    fn detectar(
+        &mut self,
+        x: Vec<f32>,
+        alto: usize,
+        ancho: usize,
+    ) -> Result<(Vec<f32>, usize, usize), String> {
+        let t = self
+            .rt
+            .tensor_f32(x, &[1, 1, alto as i64, ancho as i64])
+            .map_err(onnx)?;
         let o = self.det.correr(&[&t]).map_err(onnx)?;
         let s = o.first().ok_or("det.onnx sin salida")?;
         let f = s.forma().map_err(onnx)?;
         if f.len() != 4 {
             return Err(format!("det.onnx dio la forma {f:?}"));
         }
-        Ok((s.como_f32().map_err(onnx)?.to_vec(), f[2] as usize, f[3] as usize))
+        Ok((
+            s.como_f32().map_err(onnx)?.to_vec(),
+            f[2] as usize,
+            f[3] as usize,
+        ))
     }
 
     fn reconocer(
@@ -252,7 +280,8 @@ impl Modelos for Sesiones {
             .map_err(onnx)?;
         let tw = self.rt.tensor_i64(anchos, &[lote as i64]).map_err(onnx)?;
         let o = self.rec.correr(&[&tx, &tw]).map_err(onnx)?;
-        let toma = |n: &str| Self::salida(&self.rec, &o, n).ok_or_else(|| format!("rec.onnx sin «{n}»"));
+        let toma =
+            |n: &str| Self::salida(&self.rec, &o, n).ok_or_else(|| format!("rec.onnx sin «{n}»"));
         let ids = toma("ids")?;
         let pasos = ids.forma().map_err(onnx)?.get(1).copied().unwrap_or(0) as usize;
         let mut r = SalidaRec {
@@ -280,17 +309,32 @@ impl Modelos for Sesiones {
         let Some(s) = &self.orient else {
             return Ok(None);
         };
-        let t = self.rt.tensor_f32(x, &[1, 1, lado as i64, lado as i64]).map_err(onnx)?;
+        let t = self
+            .rt
+            .tensor_f32(x, &[1, 1, lado as i64, lado as i64])
+            .map_err(onnx)?;
         let o = s.correr(&[&t]).map_err(onnx)?;
-        Ok(Some(o.first().ok_or("orient.onnx sin salida")?.como_f32().map_err(onnx)?.to_vec()))
+        Ok(Some(
+            o.first()
+                .ok_or("orient.onnx sin salida")?
+                .como_f32()
+                .map_err(onnx)?
+                .to_vec(),
+        ))
     }
 
     fn ordenar(&mut self, rasgos: Vec<f32>, n: usize) -> Result<Option<SalidaOrden>, String> {
         let Some(s) = &self.orden else {
             return Ok(None);
         };
-        let tf = self.rt.tensor_f32(rasgos, &[1, n as i64, 16]).map_err(onnx)?;
-        let tm = self.rt.tensor_bool(vec![true; n], &[1, n as i64]).map_err(onnx)?;
+        let tf = self
+            .rt
+            .tensor_f32(rasgos, &[1, n as i64, 16])
+            .map_err(onnx)?;
+        let tm = self
+            .rt
+            .tensor_bool(vec![true; n], &[1, n as i64])
+            .map_err(onnx)?;
         let o = s.correr(&[&tf, &tm]).map_err(onnx)?;
         let a = Self::salida(s, &o, "a").ok_or("order.onnx sin «a»")?;
         let n2 = a.forma().map_err(onnx)?.get(2).copied().unwrap_or(n as i64) as usize;
@@ -337,7 +381,8 @@ pub fn soltar() {
 fn cargar(c: &Config, raiz: &Path) -> Result<Cargado, ErrorOcr> {
     let t = Instant::now();
     let dir = carpeta(raiz);
-    let rt = Runtime::del_proceso(raiz, c.junto_al_exe.as_deref()).map_err(|e| ErrorOcr::IndraNoListo(e.to_string()))?;
+    let rt = Runtime::del_proceso(raiz, c.junto_al_exe.as_deref())
+        .map_err(|e| ErrorOcr::IndraNoListo(e.to_string()))?;
     let hilos = c.hilos.clamp(1, 8);
     pixpin_indra::gris::fijar_hilos(hilos);
     let abre = |n: &str| rt.abrir_con(&dir.join(n), hilos, false);
@@ -353,9 +398,13 @@ fn cargar(c: &Config, raiz: &Path) -> Result<Cargado, ErrorOcr> {
         .map_err(|e| ErrorOcr::IndraNoListo(e.to_string()))
         .and_then(|t| Meta::de_json(&t).map_err(ErrorOcr::IndraNoListo))?;
     // Sin las salidas de la busqueda en haz (un rec.onnx viejo) no hay LM.
-    let con_salidas_lm = ["blank", "topv", "topi"]
-        .iter()
-        .all(|n| sesiones.rec.salidas.iter().any(|s| s.to_bytes() == n.as_bytes()));
+    let con_salidas_lm = ["blank", "topv", "topi"].iter().all(|n| {
+        sesiones
+            .rec
+            .salidas
+            .iter()
+            .any(|s| s.to_bytes() == n.as_bytes())
+    });
     let lm = if con_salidas_lm {
         Lm::cargar(&dir.join("lm.npz"))
             .map_err(|e| tracing::warn!(error = %e, "Indra sin modelo de lenguaje"))
@@ -449,7 +498,10 @@ pub fn a_lineas(p: &pixpin_indra::Pagina) -> Vec<Linea> {
 
 /// **Lee una imagen RGBA con Indra.**
 pub fn reconocer(c: &Config, ancho: u32, alto: u32, rgba: &[u8]) -> Result<Vec<Linea>, ErrorOcr> {
-    let raiz = c.raiz.as_deref().ok_or_else(|| ErrorOcr::IndraNoListo("sin carpeta de datos".into()))?;
+    let raiz = c
+        .raiz
+        .as_deref()
+        .ok_or_else(|| ErrorOcr::IndraNoListo("sin carpeta de datos".into()))?;
     let g = Gris::de_rgba(ancho as usize, alto as usize, rgba).ok_or(ErrorOcr::ImagenInvalida)?;
     // Mas de 4000 px de lado no gana nada (el detector trabaja a 1024).
     let lado = g.ancho.max(g.alto);
@@ -464,7 +516,9 @@ pub fn reconocer(c: &Config, ancho: u32, alto: u32, rgba: &[u8]) -> Result<Vec<L
     } else {
         g
     };
-    let mut guarda = CARGADO.lock().map_err(|_| ErrorOcr::Indra("cerrojo envenenado".into()))?;
+    let mut guarda = CARGADO
+        .lock()
+        .map_err(|_| ErrorOcr::Indra("cerrojo envenenado".into()))?;
     if guarda.is_none() {
         *guarda = Some(cargar(c, raiz)?);
         vigilar();

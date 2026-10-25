@@ -53,7 +53,10 @@ mod pruebas {
         assert!(!conservar("...", 0.45, 1.0, s), "puntos");
         assert!(!conservar("gi", 0.44, 1.0, s), "letras sueltas");
         assert!(!conservar("Texto largo", 0.2, 1.0, s), "bajo el suelo");
-        assert!(!conservar("la dei son de", 0.45, 3.5, s), "renglones fundidos");
+        assert!(
+            !conservar("la dei son de", 0.45, 3.5, s),
+            "renglones fundidos"
+        );
         assert!(!conservar("an t", 0.35, 1.0, s), "muy baja y corta");
         assert!(conservar("27 50", 0.35, 1.0, s), "cifras a baja confianza");
     }

@@ -123,7 +123,15 @@ pub fn bajar_tramo(
         return Err(fallo(&nombre, "tramo vacio"));
     }
     let parte = ruta_parte(destino);
-    match bajar_a(servidor, ruta, Some((desde, largo)), &parte, &nombre, avance, cancelado) {
+    match bajar_a(
+        servidor,
+        ruta,
+        Some((desde, largo)),
+        &parte,
+        &nombre,
+        avance,
+        cancelado,
+    ) {
         Ok(n) => {
             let _ = std::fs::remove_file(destino);
             std::fs::rename(&parte, destino).map_err(|e| fallo(&nombre, e))?;
@@ -304,7 +312,10 @@ mod pruebas {
 
     #[test]
     fn la_cabecera_del_tramo_cuenta_el_ultimo_byte_incluido() {
-        assert_eq!(cabecera_de_tramo(221_047, 6_178_089), "Range: bytes=221047-6399135");
+        assert_eq!(
+            cabecera_de_tramo(221_047, 6_178_089),
+            "Range: bytes=221047-6399135"
+        );
         assert_eq!(cabecera_de_tramo(0, 1), "Range: bytes=0-0");
     }
 

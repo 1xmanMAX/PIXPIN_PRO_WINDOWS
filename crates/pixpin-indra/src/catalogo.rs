@@ -36,12 +36,36 @@ macro_rules! indra {
 /// espanol (RLA-ES por LibreOffice, MPL), por orden de bajada: primero lo
 /// pequeno, para que un fallo de red se note en el acto.
 pub const FICHEROS: [Fichero; 8] = [
-    indra!("meta.json", 211_869, "4ce4c94b46f5d644033c02e718322014ff4081270f385038c571912b56696339"),
-    indra!("det.onnx", 389_948, "f2bd4cba23e9c328cf7ec824634e423e191a2c6aacbbf35c62bd79dd70f62f59"),
-    indra!("orient.onnx", 371_802, "20eaf670f55a7cf9facfe1bdd6c7b8e40be75bbf4d48a3df43f66aa3bbd874fd"),
-    indra!("order.onnx", 2_973_138, "a42db2e8b536ad3d84045a4b7f9b0a72667cf8be4aa02d63f7b38004719fb180"),
-    indra!("rec.onnx", 5_042_161, "475972a2710be4a3cbfeb2bc7f3624ffd563de07de42476fc7a290d4e1ece484"),
-    indra!("lm.npz", 15_695_957, "6c0fb618a363a0acdd05d4f5b0edd9e8146d2d990541b87f6130bbfe17cea58d"),
+    indra!(
+        "meta.json",
+        211_869,
+        "4ce4c94b46f5d644033c02e718322014ff4081270f385038c571912b56696339"
+    ),
+    indra!(
+        "det.onnx",
+        389_948,
+        "f2bd4cba23e9c328cf7ec824634e423e191a2c6aacbbf35c62bd79dd70f62f59"
+    ),
+    indra!(
+        "orient.onnx",
+        371_802,
+        "20eaf670f55a7cf9facfe1bdd6c7b8e40be75bbf4d48a3df43f66aa3bbd874fd"
+    ),
+    indra!(
+        "order.onnx",
+        2_973_138,
+        "a42db2e8b536ad3d84045a4b7f9b0a72667cf8be4aa02d63f7b38004719fb180"
+    ),
+    indra!(
+        "rec.onnx",
+        5_042_161,
+        "475972a2710be4a3cbfeb2bc7f3624ffd563de07de42476fc7a290d4e1ece484"
+    ),
+    indra!(
+        "lm.npz",
+        15_695_957,
+        "6c0fb618a363a0acdd05d4f5b0edd9e8146d2d990541b87f6130bbfe17cea58d"
+    ),
     Fichero {
         nombre: "es_ES.aff",
         url: "https://raw.githubusercontent.com/LibreOffice/dictionaries/libreoffice-25.8.2.2/es/es_ES.aff",
@@ -58,7 +82,11 @@ pub const FICHEROS: [Fichero; 8] = [
 
 /// Lo que se ensena al usuario: «unos 26 MB».
 pub fn megas() -> u64 {
-    FICHEROS.iter().map(|f| f.bytes).sum::<u64>().div_ceil(1_000_000)
+    FICHEROS
+        .iter()
+        .map(|f| f.bytes)
+        .sum::<u64>()
+        .div_ceil(1_000_000)
 }
 
 /// **ONNX Runtime oficial** (MIT), para los Windows que no lo traen en
@@ -115,7 +143,8 @@ mod pruebas {
             assert!(f.sha256.chars().all(|c| c.is_ascii_hexdigit()));
             assert!(f.url.starts_with("https://"));
             assert!(f.url.ends_with(f.nombre));
-            if f.nombre.ends_with(".onnx") || f.nombre.ends_with(".npz") || f.nombre == "meta.json" {
+            if f.nombre.ends_with(".onnx") || f.nombre.ends_with(".npz") || f.nombre == "meta.json"
+            {
                 assert!(f.url.contains(REVISION), "{}", f.nombre);
             }
         }

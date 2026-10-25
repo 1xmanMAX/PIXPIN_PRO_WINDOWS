@@ -25,13 +25,20 @@ impl Condicion {
         let mut i = 0;
         while i < c.len() {
             if c[i] == '[' {
-                let j = c[i..].iter().position(|&x| x == ']').map_or(c.len(), |p| i + p);
+                let j = c[i..]
+                    .iter()
+                    .position(|&x| x == ']')
+                    .map_or(c.len(), |p| i + p);
                 let neg = c.get(i + 1) == Some(&'^');
                 let desde = if neg { i + 2 } else { i + 1 };
                 partes.push(Some((neg, c[desde.min(j)..j].to_vec())));
                 i = j + 1;
             } else {
-                partes.push(if c[i] == '.' { None } else { Some((false, vec![c[i]])) });
+                partes.push(if c[i] == '.' {
+                    None
+                } else {
+                    Some((false, vec![c[i]]))
+                });
                 i += 1;
             }
         }
@@ -53,7 +60,10 @@ impl Condicion {
             return false;
         }
         let o = w.len() - self.partes.len();
-        self.partes.iter().enumerate().all(|(k, p)| Self::vale(p, w[o + k]))
+        self.partes
+            .iter()
+            .enumerate()
+            .all(|(k, p)| Self::vale(p, w[o + k]))
     }
 
     fn al_principio(&self, w: &[char]) -> bool {
@@ -63,7 +73,10 @@ impl Condicion {
         if w.len() < self.partes.len() {
             return false;
         }
-        self.partes.iter().enumerate().all(|(k, p)| Self::vale(p, w[k]))
+        self.partes
+            .iter()
+            .enumerate()
+            .all(|(k, p)| Self::vale(p, w[k]))
     }
 }
 
@@ -236,7 +249,9 @@ impl Hunspell {
                 if raiz.is_empty() || !r.cond.al_final(&rc) {
                     continue;
                 }
-                let ok = |s: &Hunspell| s.tiene(&raiz, r.bandera) && necesita.is_none_or(|n| s.tiene(&raiz, n));
+                let ok = |s: &Hunspell| {
+                    s.tiene(&raiz, r.bandera) && necesita.is_none_or(|n| s.tiene(&raiz, n))
+                };
                 if ok(self) {
                     return true;
                 }
@@ -359,7 +374,10 @@ impl Vocabulario {
     /// La forma del usuario de una palabra, por su clave.
     pub fn forma(&self, w: &str) -> Option<&str> {
         let k = clave(w);
-        self.palabras.iter().find(|(kk, _)| *kk == k).map(|(_, f)| f.as_str())
+        self.palabras
+            .iter()
+            .find(|(kk, _)| *kk == k)
+            .map(|(_, f)| f.as_str())
     }
 
     pub fn contiene(&self, w: &str) -> bool {
@@ -392,8 +410,18 @@ mod pruebas {
 
     #[test]
     fn el_vocabulario_quita_duplicados_y_compara_sin_tildes() {
-        let v = Vocabulario::nuevo(&["sismorresistente", "E030", "concreto armado", "sísmica", " ", "sísmica"]);
-        assert_eq!(v.terminos, ["sismorresistente", "E030", "concreto armado", "sísmica"]);
+        let v = Vocabulario::nuevo(&[
+            "sismorresistente",
+            "E030",
+            "concreto armado",
+            "sísmica",
+            " ",
+            "sísmica",
+        ]);
+        assert_eq!(
+            v.terminos,
+            ["sismorresistente", "E030", "concreto armado", "sísmica"]
+        );
         assert!(v.contiene("Armado"));
         assert!(v.contiene("sismica"), "sin tildes");
         assert_eq!(v.forma("SISMICA"), Some("sísmica"));

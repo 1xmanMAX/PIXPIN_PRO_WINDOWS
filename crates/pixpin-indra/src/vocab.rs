@@ -85,7 +85,8 @@ mod pruebas {
     #[test]
     fn decodifica_y_separa_los_comandos() {
         // IndraUnitTest.vocabDecodificaYEspacioDeComandos
-        let v = Vocab::de_json(r#"{"blank": 0, "chars": [" ", "a", "b", "\\alpha", "x"]}"#).unwrap();
+        let v =
+            Vocab::de_json(r#"{"blank": 0, "chars": [" ", "a", "b", "\\alpha", "x"]}"#).unwrap();
         assert_eq!(v.espacio, Some(1));
         assert_eq!(v.decodificar(&[2, 3, 1, 2]), "ab a");
         assert_eq!(v.decodificar(&[4, 5]), "\\alpha x");

@@ -74,12 +74,11 @@ pub fn normalizar_fondo(g: &Gris) -> Gris {
     } else {
         fondo
     };
-    let px = g
-        .px
-        .iter()
-        .zip(&fondo.px)
-        .map(|(&v, &p)| a_byte(v as f32 * 255.0 / (p as f32).max(1.0)))
-        .collect();
+    let px =
+        g.px.iter()
+            .zip(&fondo.px)
+            .map(|(&v, &p)| a_byte(v as f32 * 255.0 / (p as f32).max(1.0)))
+            .collect();
     Gris {
         ancho: w,
         alto: h,
@@ -90,12 +89,11 @@ pub fn normalizar_fondo(g: &Gris) -> Gris {
 /// Mascara de enfoque: `(1 + a)·g − a·desenfoque(g)`.
 pub fn enfocar(g: &Gris, a: f32, sigma: f64) -> Gris {
     let b = desenfocar(g, sigma);
-    let px = g
-        .px
-        .iter()
-        .zip(b)
-        .map(|(&v, d)| a_byte((1.0 + a) * v as f32 - a * d))
-        .collect();
+    let px =
+        g.px.iter()
+            .zip(b)
+            .map(|(&v, d)| a_byte((1.0 + a) * v as f32 - a * d))
+            .collect();
     Gris {
         ancho: g.ancho,
         alto: g.alto,

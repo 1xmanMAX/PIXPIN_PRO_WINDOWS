@@ -158,7 +158,9 @@ pub fn config() -> Option<Config> {
 /// no, el de Windows.
 pub fn motor_en_uso() -> Motor {
     match config() {
-        Some(c) if c.motor == Motor::Indra && c.raiz.as_deref().is_some_and(indra::listo) => Motor::Indra,
+        Some(c) if c.motor == Motor::Indra && c.raiz.as_deref().is_some_and(indra::listo) => {
+            Motor::Indra
+        }
         _ => Motor::Windows,
     }
 }
@@ -257,7 +259,10 @@ mod pruebas {
         // Elegido pero sin bajar: el de Windows.
         assert_eq!(motor_en_uso(), Motor::Windows);
         // Una imagen incoherente se rechaza antes de tocar ningun motor.
-        assert!(matches!(reconocer(10, 10, &[0u8; 8]), Err(ErrorOcr::ImagenInvalida)));
+        assert!(matches!(
+            reconocer(10, 10, &[0u8; 8]),
+            Err(ErrorOcr::ImagenInvalida)
+        ));
         configurar(Config::default());
     }
 }

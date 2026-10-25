@@ -93,7 +93,8 @@ impl Corrector<'_> {
             return (Vec::new(), false);
         }
         let (si, n) = self.parte_espanola(p);
-        let espanola = self.lexico.is_some() && n >= PALABRAS_MIN && si as f64 >= PARTE_ESPANOLA * n as f64;
+        let espanola =
+            self.lexico.is_some() && n >= PALABRAS_MIN && si as f64 >= PARTE_ESPANOLA * n as f64;
         let mut cambios = Vec::new();
         for l in &mut p.lineas {
             self.corregir_linea(l, espanola, &mut lm, &mut cambios);
@@ -101,7 +102,13 @@ impl Corrector<'_> {
         (cambios, espanola)
     }
 
-    fn corregir_linea(&self, l: &mut Linea, espanola: bool, lm: &mut Option<Desempate<'_>>, cambios: &mut Vec<Cambio>) {
+    fn corregir_linea(
+        &self,
+        l: &mut Linea,
+        espanola: bool,
+        lm: &mut Option<Desempate<'_>>,
+        cambios: &mut Vec<Cambio>,
+    ) {
         if l.palabras.is_empty() {
             return;
         }
@@ -168,7 +175,11 @@ impl Corrector<'_> {
             }
             let alias = alias_de_cifras(&c);
             for (_, v) in &self.vocabulario.palabras {
-                if v.chars().any(char::is_numeric) && v.chars().count() == largo && *v != c && alias_de_cifras(v) == alias {
+                if v.chars().any(char::is_numeric)
+                    && v.chars().count() == largo
+                    && *v != c
+                    && alias_de_cifras(v) == alias
+                {
                     return Some((format!("{pre}{v}{post}"), "vocabulario"));
                 }
             }
@@ -180,7 +191,8 @@ impl Corrector<'_> {
         if let Some(v) = self.vocabulario.forma(&c) {
             // Ya es del vocabulario: solo se le ponen sus tildes.
             let f = igualar_mayusculas(&c, v);
-            return (f != c && f.to_lowercase() != c.to_lowercase()).then(|| (format!("{pre}{f}{post}"), "vocabulario"));
+            return (f != c && f.to_lowercase() != c.to_lowercase())
+                .then(|| (format!("{pre}{f}{post}"), "vocabulario"));
         }
         if w.confianza >= CONFIANZA_MAX {
             return None;
@@ -212,7 +224,10 @@ impl Corrector<'_> {
             && coste_mejor <= coste_max_vocabulario(largo)
             && segundo - coste_mejor >= MARGEN
         {
-            return Some((format!("{pre}{}{post}", igualar_mayusculas(&c, v)), "vocabulario"));
+            return Some((
+                format!("{pre}{}{post}", igualar_mayusculas(&c, v)),
+                "vocabulario",
+            ));
         }
         // 2) Diccionario: una edicion, candidato unico. Tildes: basta con
         //    que sea unico. Otras ediciones: 6 letras y el LM de Indra debe
@@ -259,7 +274,11 @@ impl Corrector<'_> {
                 return None;
             }
             let mayus = c.chars().next().is_some_and(char::is_uppercase);
-            if g < if mayus { GANANCIA_LM_MAYUSCULA } else { GANANCIA_LM } {
+            if g < if mayus {
+                GANANCIA_LM_MAYUSCULA
+            } else {
+                GANANCIA_LM
+            } {
                 return None;
             }
         }
@@ -328,7 +347,11 @@ impl SesgoDePalabras for Sesgo<'_> {
         if !self.c.vocabulario.vacio() && self.c.vocabulario.contiene(w) {
             return self.vocabulario * w.chars().count() as f64 + self.fin;
         }
-        if self.lexico > 0.0 && w.chars().count() >= 3 && w.chars().all(char::is_alphabetic) && self.c.en_lexico(w) {
+        if self.lexico > 0.0
+            && w.chars().count() >= 3
+            && w.chars().all(char::is_alphabetic)
+            && self.c.en_lexico(w)
+        {
             return self.lexico;
         }
         0.0
@@ -378,13 +401,17 @@ fn alias_de_cifras(s: &str) -> String {
 
 /// Copia las mayusculas del original: TODO, Capitalizada o tal cual.
 pub fn igualar_mayusculas(orig: &str, cand: &str) -> String {
-    let todo = orig.chars().count() > 1 && orig.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
+    let todo =
+        orig.chars().count() > 1 && orig.chars().all(|c| !c.is_alphabetic() || c.is_uppercase());
     if todo {
         return cand.to_uppercase();
     }
     if orig.chars().next().is_some_and(char::is_uppercase) {
         let mut cs = cand.chars();
-        return cs.next().map(|c| c.to_uppercase().chain(cs).collect()).unwrap_or_default();
+        return cs
+            .next()
+            .map(|c| c.to_uppercase().chain(cs).collect())
+            .unwrap_or_default();
     }
     cand.to_string()
 }
@@ -442,7 +469,9 @@ pub fn distancia_ponderada(o: &str, c: &str, p: Option<&[f32]>) -> f64 {
             } else {
                 pc(i - 1)
             };
-            cur[j] = (prev[j - 1] + sub).min(prev[j] + pc(i - 1)).min(cur[j - 1] + COSTE_INSERTAR);
+            cur[j] = (prev[j - 1] + sub)
+                .min(prev[j] + pc(i - 1))
+                .min(cur[j - 1] + COSTE_INSERTAR);
         }
         prev = cur;
     }
@@ -507,11 +536,17 @@ mod pruebas {
             lexico: Some(&lx),
             vocabulario: &v,
         };
-        let mut p = pagina(vec![linea(CONTEXTO, 0.99, 0.0, false), linea("la evaluacion del analisis", 0.7, 30.0, false)]);
+        let mut p = pagina(vec![
+            linea(CONTEXTO, 0.99, 0.0, false),
+            linea("la evaluacion del analisis", 0.7, 30.0, false),
+        ]);
         let (_, esp) = c.corregir(&mut p, None);
         assert!(esp);
         assert_eq!(p.lineas[1].texto, "la evaluación del análisis");
-        let mut p = pagina(vec![linea(CONTEXTO, 0.99, 0.0, false), linea("la evaluacion", 0.97, 30.0, false)]);
+        let mut p = pagina(vec![
+            linea(CONTEXTO, 0.99, 0.0, false),
+            linea("la evaluacion", 0.97, 30.0, false),
+        ]);
         c.corregir(&mut p, None);
         assert_eq!(p.lineas[1].texto, "la evaluacion", "leida con seguridad");
     }
@@ -525,11 +560,19 @@ mod pruebas {
             vocabulario: &v,
         };
         let t = "CÓDIGO U20191A543 total 152.40 Erick Hotev";
-        let mut p = pagina(vec![linea(CONTEXTO, 0.99, 0.0, false), linea(t, 0.5, 30.0, false)]);
+        let mut p = pagina(vec![
+            linea(CONTEXTO, 0.99, 0.0, false),
+            linea(t, 0.5, 30.0, false),
+        ]);
         c.corregir(&mut p, None);
         assert_eq!(p.lineas[1].texto, t);
         let mut p = pagina(vec![
-            linea("the quick brown fox jumps over the lazy dog and the cat", 0.99, 0.0, false),
+            linea(
+                "the quick brown fox jumps over the lazy dog and the cat",
+                0.99,
+                0.0,
+                false,
+            ),
             linea("the evaluacion form", 0.5, 30.0, false),
         ]);
         let (_, esp) = c.corregir(&mut p, None);
@@ -550,9 +593,15 @@ mod pruebas {
             linea("Ing. Sismorresistenta norma E03O sismica", 0.6, 30.0, false),
         ]);
         let (cambios, _) = c.corregir(&mut p, None);
-        assert_eq!(p.lineas[1].texto, "Ing. Sismorresistente norma E030 sísmica");
+        assert_eq!(
+            p.lineas[1].texto,
+            "Ing. Sismorresistente norma E030 sísmica"
+        );
         assert!(cambios.iter().all(|x| x.origen == "vocabulario"));
-        let mut p = pagina(vec![linea(CONTEXTO, 0.99, 0.0, false), linea("parado hermano", 0.5, 30.0, false)]);
+        let mut p = pagina(vec![
+            linea(CONTEXTO, 0.99, 0.0, false),
+            linea("parado hermano", 0.5, 30.0, false),
+        ]);
         c.corregir(&mut p, None);
         assert_eq!(p.lineas[1].texto, "parado hermano", "lejos del termino");
         // Sin diccionario el vocabulario sigue.
@@ -581,7 +630,14 @@ mod pruebas {
         assert_eq!(s.completa("concreto"), 1.0);
         assert_eq!(s.completa("xyzzy"), 0.0);
         let vacio = Vocabulario::default();
-        assert!(!Corrector { lexico: None, vocabulario: &vacio }.sesgo().activo());
+        assert!(
+            !Corrector {
+                lexico: None,
+                vocabulario: &vacio
+            }
+            .sesgo()
+            .activo()
+        );
     }
 
     #[test]

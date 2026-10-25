@@ -32,7 +32,11 @@ enum Arr {
 }
 
 impl Servidor {
-    fn pedir(&mut self, m: &str, entradas: Vec<(&str, Vec<usize>, Arr)>) -> Vec<(String, Vec<usize>, Arr)> {
+    fn pedir(
+        &mut self,
+        m: &str,
+        entradas: Vec<(&str, Vec<usize>, Arr)>,
+    ) -> Vec<(String, Vec<usize>, Arr)> {
         let cab: Vec<serde_json::Value> = entradas
             .iter()
             .map(|(n, f, a)| {
@@ -63,18 +67,31 @@ impl Servidor {
         for s in v["salidas"].as_array().unwrap() {
             let nombre = s[0].as_str().unwrap().to_string();
             let tipo = s[1].as_str().unwrap();
-            let forma: Vec<usize> = s[2].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as usize).collect();
+            let forma: Vec<usize> = s[2]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_u64().unwrap() as usize)
+                .collect();
             let n: usize = forma.iter().product();
             let a = match tipo {
                 "float32" => {
                     let mut b = vec![0u8; n * 4];
                     self.salida.read_exact(&mut b).unwrap();
-                    Arr::F32(b.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect())
+                    Arr::F32(
+                        b.chunks_exact(4)
+                            .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+                            .collect(),
+                    )
                 }
                 "int64" => {
                     let mut b = vec![0u8; n * 8];
                     self.salida.read_exact(&mut b).unwrap();
-                    Arr::I64(b.chunks_exact(8).map(|c| i64::from_le_bytes(c.try_into().unwrap())).collect())
+                    Arr::I64(
+                        b.chunks_exact(8)
+                            .map(|c| i64::from_le_bytes(c.try_into().unwrap()))
+                            .collect(),
+                    )
                 }
                 t => panic!("tipo {t}"),
             };
@@ -98,7 +115,12 @@ fn i64s(a: Arr) -> Vec<i64> {
 }
 
 impl Modelos for Servidor {
-    fn detectar(&mut self, x: Vec<f32>, alto: usize, ancho: usize) -> Result<(Vec<f32>, usize, usize), String> {
+    fn detectar(
+        &mut self,
+        x: Vec<f32>,
+        alto: usize,
+        ancho: usize,
+    ) -> Result<(Vec<f32>, usize, usize), String> {
         let mut o = self.pedir("det", vec![("x", vec![1, 1, alto, ancho], Arr::F32(x))]);
         let (_, f, a) = o.remove(0);
         Ok((f32s(a), f[2], f[3]))
@@ -236,7 +258,11 @@ fn main() {
         let t = std::time::Instant::now();
         let p = indra.leer(&mut srv, &g).unwrap();
         let ms = t.elapsed().as_millis();
-        let nombre = Path::new(f).file_stem().unwrap().to_string_lossy().to_string();
+        let nombre = Path::new(f)
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         std::fs::write(destino.join(format!("{nombre}.txt")), p.texto()).unwrap();
         let mut tiempos: Vec<_> = p.ms.iter().collect();
         tiempos.sort();
