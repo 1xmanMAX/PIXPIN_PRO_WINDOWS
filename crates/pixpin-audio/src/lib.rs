@@ -24,14 +24,15 @@
 //! - Ya hay un precedente probado en la casa, con su arranque de MF y su
 //!   `Shutdown`, y no se anaden dependencias al arbol.
 //!
-//! Para **grabar** no vale: `IMFMediaEngine` solo reproduce. Se captura con
-//! **WASAPI** (`IAudioClient` en modo compartido) porque es lo unico que da
-//! el PCM crudo, que es de donde salen los **picos** de la onda: el `.m4a`
-//! ya escrito es AAC comprimido y sacarle las amplitudes obligaria a
-//! descodificarlo entero, que es justo lo que el movil evita capturandolos
-//! al grabar (`pin/Voz.kt:87-98`). Ese PCM se escribe a `.m4a` con
+//! Para **grabar** no vale: `IMFMediaEngine` solo reproduce. Grabar es cosa
+//! de `pixpin-motor-audio` (25-oct-2026): WASAPI por evento, un hilo por
+//! fuente, la deriva de los relojes corregida y el `.m4a` escrito con
 //! `IMFSinkWriter` y el codificador AAC del sistema, igual que
-//! `pixpin-record` escribe el MP4 del video.
+//! `pixpin-record` escribe el MP4 del video. [`Grabadora`] es la cara de
+//! siempre sobre ese motor, y de su PCM salen los **picos** de la onda: el
+//! `.m4a` ya escrito es AAC comprimido y sacarle las amplitudes obligaria a
+//! descodificarlo entero, que es justo lo que el movil evita capturandolos
+//! al grabar (`pin/Voz.kt:87-98`).
 //!
 //! ## Que queda igual que en el movil, y que no
 //!
@@ -41,9 +42,9 @@
 //!
 //! Distinto, y no por gusto: el movil graba a **22 050 Hz y 32 000 bps**
 //! (`Voz.kt:140-141`) y el codificador AAC de Windows **no admite ninguno de
-//! los dos**: solo 44 100 o 48 000 Hz y 96/128/160/192 kbps. Se graba al
-//! muestreo que ya tenga la tarjeta —48 000 casi siempre— y al bitrate mas
-//! bajo que acepta. El fichero pesa mas que uno del movil; suena igual o
+//! los dos**: solo 44 100 o 48 000 Hz y 96/128/160/192 kbps. Se graba a
+//! 48 000 —el motor remuestrea cada tarjeta a eso— y al bitrate mas bajo
+//! que acepta. El fichero pesa mas que uno del movil; suena igual o
 //! mejor, y **el movil lo reproduce sin enterarse**, porque lo que lee es el
 //! contenedor y el codec, no los ajustes con que se escribio.
 //!
@@ -51,15 +52,12 @@
 //!
 //! - [`reloj`] y [`picos`] y [`mezcla`]: aritmetica pura, sin Windows y sin
 //!   sonido. Es donde estan las pruebas de verdad.
-//! - [`realce`]: el paso alto, el control de ganancia y el limitador por
-//!   los que pasa toda grabacion antes de escribirse (tambien puro).
-//! - [`salida`] y [`entrada`]: lo que toca el sistema operativo, con su
-//!   `unsafe` acotado y comentado.
+//! - [`salida`]: oir, con su `unsafe` acotado y comentado.
+//! - [`entrada`]: grabar, sobre `pixpin-motor-audio` (el realce de la voz,
+//!   el paso alto y el limitador viven ahora alli, en su `dsp`).
 
 pub mod mezcla;
-pub mod mezclador;
 pub mod picos;
-pub mod realce;
 pub mod reloj;
 
 #[cfg(windows)]
@@ -76,7 +74,7 @@ pub use reloj::{
 };
 
 #[cfg(windows)]
-pub use entrada::{Copia, Fuentes, Grabacion, Grabadora};
+pub use entrada::{Copia, Fuentes, Grabacion, Grabadora, MUESTREO};
 #[cfg(windows)]
 pub use salida::{Rol, Salida};
 

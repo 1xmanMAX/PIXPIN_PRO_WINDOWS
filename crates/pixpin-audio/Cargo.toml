@@ -6,6 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Grabar: la captura, la mezcla y el `.m4a` (ver docs/motor-de-audio.md).
+pixpin-motor-audio = { workspace = true }
 thiserror = "2.0.20"
 tracing = "0.1.44"
 # El `#[implement]` del callback de Media Foundation se expande a
