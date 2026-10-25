@@ -1196,7 +1196,8 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 )?
                 .0
             } else {
-                let mensajes = cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, &f.id))?.mensajes;
+                let mensajes =
+                    cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, &f.id))?.mensajes;
                 let por_id = carpeta.as_deref().filter(|c| {
                     mensajes
                         .iter()

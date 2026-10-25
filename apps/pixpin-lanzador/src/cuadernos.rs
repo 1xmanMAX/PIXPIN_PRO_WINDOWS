@@ -112,7 +112,12 @@ pub fn resultados(
     let mut todas: Vec<(&Proyecto, &Mensaje)> = proyectos
         .iter()
         .filter(|p| en.is_none_or(|id| p.id == id))
-        .flat_map(|p| p.mensajes.iter().filter(|m| es_carpeta(m)).map(move |m| (p, m)))
+        .flat_map(|p| {
+            p.mensajes
+                .iter()
+                .filter(|m| es_carpeta(m))
+                .map(move |m| (p, m))
+        })
         .filter(|(_, m)| buscado.is_empty() || normalizar(nombre(m)).contains(&buscado))
         .collect();
     todas.sort_by_key(|(_, m)| std::cmp::Reverse(m.cuando));

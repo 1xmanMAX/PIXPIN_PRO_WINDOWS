@@ -432,7 +432,10 @@ fn clase_y_carpetas_de_paginas() {
     );
     // Con otro nombre: crearla en el proyecto del `@`.
     let v = buscar(&r, "carpeta Recetas @thesis");
-    let nueva = v.iter().find(|x| x.titulo == "Nueva carpeta «Recetas»").unwrap();
+    let nueva = v
+        .iter()
+        .find(|x| x.titulo == "Nueva carpeta «Recetas»")
+        .unwrap();
     assert_eq!(
         *pedido_de(nueva),
         json!({ "pixpin": 1, "accion": "carpeta_paginas", "hacer": "nueva", "proyecto": "P2", "nombre": "Recetas" })
@@ -449,7 +452,10 @@ fn clase_y_carpetas_de_paginas() {
     let v = buscar(&r, "carpeta clase 25");
     assert_eq!(v[0].titulo, "Clase 25-10");
     assert!(v[0].subtitulo.contains("grabada"), "{}", v[0].subtitulo);
-    assert!(!v.iter().any(|x| x.titulo == "Nueva página en «Clase 25-10»"));
+    assert!(
+        !v.iter()
+            .any(|x| x.titulo == "Nueva página en «Clase 25-10»")
+    );
     // En el chat del proyecto sale como carpeta, no como una mini-app con su
     // JSON.
     let v = buscar(&r, "Thesis > diario");

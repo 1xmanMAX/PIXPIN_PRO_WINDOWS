@@ -1760,7 +1760,10 @@ pub(crate) fn anadir_por_nombre(
     };
     let (id, creada) = match carpeta_por_nombre(&mensajes, nombre) {
         Some(i) => (mensajes[i].id.clone(), false),
-        None => (crear_en_disco(raiz, proyecto, aparato, nombre, &mensajes)?, true),
+        None => (
+            crear_en_disco(raiz, proyecto, aparato, nombre, &mensajes)?,
+            true,
+        ),
     };
     let nombre_de_la_pagina = if m.nombre.ends_with(".excalidraw") {
         String::new()
