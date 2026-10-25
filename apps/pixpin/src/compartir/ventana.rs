@@ -671,6 +671,9 @@ fn icono_de(id: &str) -> &'static Icono {
         "csv" => &mi::TABLE_CHART,
         // Una nota como Word: un documento, como el PDF.
         "word" => &mi::DESCRIPTION,
+        "md" => &mi::EDIT_NOTE,
+        // Las tarjetas de estudio: el mismo icono que «Enviar a Anki».
+        "anki" => &mi::MENU_BOOK,
         _ => &mi::ATTACH_FILE,
     }
 }
