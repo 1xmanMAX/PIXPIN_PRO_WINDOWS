@@ -52,21 +52,36 @@
 //!   grabacion. Sin `tipo` (o vacio), una carpeta de paginas de siempre.
 //! - `voz`: el `id` de su nota de voz (vacio si la nota no se pudo cerrar y
 //!   solo entraron el video y las capturas).
+//! - `video`: el `id` de su video, si se grabo (si no, no va).
 //! - `duracionMs`: lo que duro, para la tarjeta sin leer la nota.
 //!
 //! Y cada pagina puede llevar `ms`, el minuto de la grabacion en que se
 //! hizo (una captura; la voz y el video, `0`). Las paginas van en el orden
 //! de la grabacion: la voz, el video y las capturas por su minuto.
 //!
-//! Lo que cambia en el PC: **lo que esta dentro de una grabacion no sale
-//! suelto en el chat** ([`dentro_de_grabaciones`]); la tarjeta de la
-//! carpeta lo representa. En la galeria (Fotos, Videos, Audios) y en el
-//! buscador se sigue viendo. Los enlaces de siempre entre la voz y lo suyo
-//! (`capturas`, `video`, `enGrabacion` en `resto`) no cambian: «Estudiar la
-//! clase» sigue yendo por ellos.
+//! **Lo adjuntado a la clase** (un PDF del profesor, una foto de la
+//! pizarra, una nota) tambien va en la carpeta, pero no es de la grabacion:
+//! su pagina lleva `adjunto: true` y se ensena aparte, con otro color
+//! ([`Carpeta::de_la_grabacion`] y [`Carpeta::adjuntos`]). Sin el campo (o
+//! `false`), la pieza es de la grabacion.
+//!
+//! Los enlaces de siempre entre la voz y lo suyo (`capturas`, `video`,
+//! `enGrabacion` en `resto`) no cambian: «Estudiar la clase» sigue yendo
+//! por ellos.
+//!
+//! ## Lo de dentro no sale suelto en el chat
+//!
+//! (25-oct-2026, el usuario: «las paginas de un cuaderno tienen que estar
+//! solo dentro de la carpeta».) **Lo que esta en una carpeta, de cualquier
+//! tipo, no se ensena como burbuja en el chat** ([`dentro_de_carpetas`]): la
+//! tarjeta de la carpeta lo representa. Sigue siendo un mensaje del chat
+//! (viaja, se busca y sale en la galeria) y al quitarlo de la carpeta vuelve
+//! a verse. Es una regla de lo que se ensena, no del formato: un aparato que
+//! no la sepa lo ensena suelto, sin perder nada.
 //!
 //! ```json
-//! {"formato":1,"tipo":"grabacion","voz":"1761400000001","duracionMs":5400000,
+//! {"formato":1,"tipo":"grabacion","voz":"1761400000001",
+//!  "video":"1761400000002","duracionMs":5400000,
 //!  "paginas":[{"id":"1761400000001","titulo":"","ms":0},
 //!             {"id":"1761400000002","titulo":"","ms":0},
 //!             {"id":"1761400000003","titulo":"⏱ 01:05","ms":65000}]}
@@ -102,6 +117,9 @@ pub struct Pagina {
     /// En una grabacion, el minuto (ms desde que empezo) en que se hizo.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ms: Option<i64>,
+    /// En una grabacion, que se adjunto a la clase y no es de lo grabado.
+    #[serde(skip_serializing_if = "es_falso")]
+    pub adjunto: bool,
     #[serde(flatten)]
     pub resto: serde_json::Map<String, serde_json::Value>,
 }
@@ -117,6 +135,9 @@ pub struct Carpeta {
     /// En una grabacion, el `id` de su nota de voz (vacio si no entro).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub voz: String,
+    /// En una grabacion, el `id` de su video (vacio si no lo hay).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub video: String,
     /// En una grabacion, lo que duro.
     #[serde(rename = "duracionMs", skip_serializing_if = "es_cero")]
     pub duracion_ms: i64,
@@ -132,6 +153,7 @@ impl Default for Carpeta {
             formato: FORMATO,
             tipo: String::new(),
             voz: String::new(),
+            video: String::new(),
             duracion_ms: 0,
             paginas: Vec::new(),
             resto: serde_json::Map::new(),
@@ -141,6 +163,10 @@ impl Default for Carpeta {
 
 fn es_cero(n: &i64) -> bool {
     *n == 0
+}
+
+fn es_falso(b: &bool) -> bool {
+    !*b
 }
 
 /// Si el mensaje es una carpeta.
@@ -176,14 +202,13 @@ pub fn es_grabacion(m: &Mensaje) -> bool {
     Carpeta::de_mensaje(m).is_some_and(|c| c.es_grabacion())
 }
 
-/// **Los `id` de lo que esta dentro de alguna grabacion** de la
-/// conversacion: lo que el chat no ensena suelto (lo representa la tarjeta
-/// de su carpeta). Las carpetas de paginas de siempre no esconden nada.
-pub fn dentro_de_grabaciones(mensajes: &[Mensaje]) -> std::collections::HashSet<String> {
+/// **Los `id` de lo que esta dentro de alguna carpeta** de la conversacion
+/// (de paginas o de una grabacion): lo que el chat no ensena suelto, porque
+/// lo representa la tarjeta de su carpeta.
+pub fn dentro_de_carpetas(mensajes: &[Mensaje]) -> std::collections::HashSet<String> {
     mensajes
         .iter()
         .filter_map(Carpeta::de_mensaje)
-        .filter(Carpeta::es_grabacion)
         .flat_map(|c| c.paginas.into_iter().map(|p| p.id))
         .collect()
 }
@@ -230,6 +255,36 @@ impl Carpeta {
     /// Si es la carpeta de una grabacion.
     pub fn es_grabacion(&self) -> bool {
         self.tipo == TIPO_GRABACION
+    }
+
+    /// **Las capturas de una grabacion**: lo grabado que no es ni su nota
+    /// ni su video, en su orden.
+    pub fn capturas(&self) -> impl Iterator<Item = &Pagina> {
+        self.de_la_grabacion()
+            .filter(|p| p.id != self.voz && p.id != self.video)
+    }
+
+    /// **Lo que es de la grabacion**: la nota, el video y las capturas, en
+    /// su orden. En una carpeta de paginas, todas.
+    pub fn de_la_grabacion(&self) -> impl Iterator<Item = &Pagina> {
+        self.paginas.iter().filter(|p| !p.adjunto)
+    }
+
+    /// **Lo adjuntado a la clase** (que no es de lo grabado), en su orden.
+    pub fn adjuntos(&self) -> impl Iterator<Item = &Pagina> {
+        self.paginas.iter().filter(|p| p.adjunto)
+    }
+
+    /// **Adjunta a la clase** el mensaje `id`, al final y marcado como
+    /// adjunto. `false` si ya estaba.
+    pub fn adjuntar(&mut self, id: &str, titulo: &str) -> bool {
+        if !self.anadir(id, titulo) {
+            return false;
+        }
+        if let Some(p) = self.paginas.last_mut() {
+            p.adjunto = true;
+        }
+        true
     }
 
     /// Anade al final una pieza de la grabacion, con su minuto. Como
@@ -666,6 +721,7 @@ mod pruebas {
     #[test]
     fn la_carpeta_de_una_grabacion_lleva_su_voz_su_duracion_y_sus_minutos() {
         let mut c = Carpeta::grabacion("v", 5_400_000);
+        c.video = "video".into();
         assert!(c.es_grabacion());
         assert!(c.anadir_al_minuto("v", "", 0));
         assert!(c.anadir_al_minuto("video", "", 0));
@@ -683,6 +739,9 @@ mod pruebas {
         assert!(texto.contains("\"voz\":\"v\""), "{texto}");
         assert!(texto.contains("\"duracionMs\":5400000"), "{texto}");
         assert!(texto.contains("\"ms\":65000"), "{texto}");
+        assert!(texto.contains("\"video\":\"video\""), "{texto}");
+        let capturas: Vec<&str> = c.capturas().map(|p| p.id.as_str()).collect();
+        assert_eq!(capturas, ["f1"], "ni la nota ni el video");
         let leida = Carpeta::de_mensaje(&m).unwrap();
         assert_eq!(leida, c);
         assert_eq!(leida.paginas[2].ms, Some(65_000));
@@ -709,7 +768,7 @@ mod pruebas {
     }
 
     #[test]
-    fn lo_de_dentro_de_una_grabacion_no_sale_suelto_y_lo_de_una_carpeta_si() {
+    fn lo_de_dentro_de_cualquier_carpeta_no_sale_suelto() {
         let mut g = Carpeta::grabacion("v", 1000);
         g.anadir_al_minuto("v", "", 0);
         g.anadir_al_minuto("f1", "", 500);
@@ -721,11 +780,32 @@ mod pruebas {
             mensaje_de_grabacion("Clase", &g, &sello(2)),
             Mensaje::miniapp(MINIAPP, "Diario", &diario.escribir(), &sello(3)),
         ];
-        let dentro = dentro_de_grabaciones(&mensajes);
+        let dentro = dentro_de_carpetas(&mensajes);
         assert!(dentro.contains("v") && dentro.contains("f1"));
-        assert_eq!(dentro.len(), 2);
-        // Caso negativo: la pagina de una carpeta normal sigue en el chat.
-        assert!(!dentro.contains("a"));
-        assert!(dentro_de_grabaciones(&mensajes[..2]).is_empty());
+        assert!(dentro.contains("a"), "la pagina de un cuaderno, tambien");
+        assert_eq!(dentro.len(), 3);
+        // Caso negativo: sin carpetas, nada esta dentro.
+        assert!(dentro_de_carpetas(&mensajes[..2]).is_empty());
+    }
+
+    #[test]
+    fn lo_adjuntado_a_la_clase_va_aparte_de_lo_grabado() {
+        let mut c = Carpeta::grabacion("v", 1000);
+        c.anadir_al_minuto("v", "", 0);
+        c.anadir_al_minuto("f1", "⏱ 0:01", 1000);
+        assert!(c.adjuntar("pdf", "Apuntes"));
+        assert!(!c.adjuntar("f1", "otra vez"), "lo que ya estaba no entra");
+        let ids = |v: Vec<&Pagina>| v.into_iter().map(|p| p.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(c.de_la_grabacion().collect()), ["v", "f1"]);
+        assert_eq!(ids(c.adjuntos().collect()), ["pdf"]);
+        assert_eq!(
+            ids(c.capturas().collect()),
+            ["f1"],
+            "un adjunto no es captura"
+        );
+        let texto = c.escribir();
+        assert!(texto.contains("\"adjunto\":true"), "{texto}");
+        assert_eq!(texto.matches("adjunto").count(), 1, "solo en el adjunto");
+        assert_eq!(Carpeta::leer(&texto).unwrap(), c);
     }
 }

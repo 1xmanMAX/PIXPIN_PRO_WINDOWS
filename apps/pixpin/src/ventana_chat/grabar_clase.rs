@@ -955,6 +955,7 @@ fn carpeta_de_la_grabacion(
         voz.unwrap_or_default(),
         duracion_ms,
     );
+    c.video = video.unwrap_or_default().to_string();
     for id in voz.into_iter().chain(video) {
         c.anadir_al_minuto(id, "", 0);
     }
@@ -2889,6 +2890,8 @@ mod pruebas {
         assert_eq!(c.paginas[3].titulo, "⏱ 1:05");
         assert_eq!(c.paginas[3].ms, Some(65_000));
         assert_eq!(c.paginas[0].titulo, "", "la nota con su nombre");
+        assert_eq!(c.video, "mp4");
+        assert_eq!(c.capturas().count(), 2);
         // Caso negativo: sin nota (no se pudo cerrar), solo las capturas.
         let sola = carpeta_de_la_grabacion(None, 0, None, &[(1, "f".into())]);
         assert_eq!(sola.voz, "");
