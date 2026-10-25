@@ -82,6 +82,8 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
             raiz: std::path::Path::new(""),
             giro_sincro: 0.0,
             sincro_fallo: false,
+            en_chats: None,
+            sobre_mensaje: None,
         };
         motor
             .dibujar(&destino.destino, |p| {

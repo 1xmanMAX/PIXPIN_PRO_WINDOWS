@@ -532,6 +532,13 @@ chat-buscar-resultados = { $n ->
    *[other] { $n } resultados
 }
 chat-buscar-en-contexto = Ver en contexto
+# El buscador de la lista busca también dentro de todos los chats: la
+# sección de debajo de los chats y su «ver más» (25-oct-2026).
+chat-buscar-mensajes = { $n ->
+    [one] Mensajes · 1
+   *[other] Mensajes · { $n }
+}
+chat-buscar-ver-mas = Ver { $n } más
 chat-pagina-n = Página { $n }
 chat-unido-a = Unido a «{ $nombre }»
 chat-unir-nada = No hay nada que se pueda unir: solo fotos, dibujos, notas y PDF

@@ -598,6 +598,10 @@ fn muestra_del_chat_con_el_asistente() {
             buscando: false,
             marcados: &marcados,
             raiz: std::path::Path::new(""),
+            giro_sincro: 0.0,
+            sincro_fallo: false,
+            en_chats: None,
+            sobre_mensaje: None,
         };
         motor_r
             .dibujar(&destino.destino, |p| {
@@ -972,6 +976,10 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
             buscando: false,
             marcados: &marcados,
             raiz: std::path::Path::new(""),
+            giro_sincro: 0.0,
+            sincro_fallo: false,
+            en_chats: None,
+            sobre_mensaje: None,
         };
         motor_r
             .dibujar(&destino.destino, |p| {

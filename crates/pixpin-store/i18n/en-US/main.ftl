@@ -531,6 +531,13 @@ chat-buscar-resultados = { $n ->
    *[other] { $n } results
 }
 chat-buscar-en-contexto = See in context
+# The list search box also searches inside every chat: the section under the
+# chats and its "show more" (25-oct-2026).
+chat-buscar-mensajes = { $n ->
+    [one] Messages · 1
+   *[other] Messages · { $n }
+}
+chat-buscar-ver-mas = Show { $n } more
 chat-pagina-n = Page { $n }
 chat-unido-a = Added to "{ $nombre }"
 chat-unir-nada = Nothing here can be added: only photos, drawings, notes and PDFs

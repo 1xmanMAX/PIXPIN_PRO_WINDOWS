@@ -158,12 +158,15 @@ pub fn buscar<'a>(
 /// Ordena las entradas como se buscan: lo mas nuevo primero y, a la par,
 /// por chat y codigo, para que dos busquedas iguales den lo mismo.
 pub fn ordenar(entradas: &mut [&Entrada]) {
-    entradas.sort_by(|a, b| {
-        b.cuando
-            .cmp(&a.cuando)
-            .then_with(|| a.chat.cmp(&b.chat))
-            .then_with(|| a.codigo.cmp(&b.codigo))
-    });
+    entradas.sort_by(|a, b| comparar(a, b));
+}
+
+/// El orden de `ordenar`, para quien ordena sus propios indices.
+pub fn comparar(a: &Entrada, b: &Entrada) -> std::cmp::Ordering {
+    b.cuando
+        .cmp(&a.cuando)
+        .then_with(|| a.chat.cmp(&b.chat))
+        .then_with(|| a.codigo.cmp(&b.codigo))
 }
 
 /// El trozo de un mensaje que se ensena en su fila, en una linea, y donde

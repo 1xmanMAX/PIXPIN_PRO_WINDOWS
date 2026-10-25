@@ -120,6 +120,8 @@ pub(crate) mod sin_ventana {
 }
 /// «Enviar a Anki» del menu de un mensaje (24-oct-2026).
 mod anki;
+/// Buscar dentro de todos los chats desde el buscador de la lista.
+mod buscar_en_chats;
 /// Las carpetas de paginas: un cuaderno con nombre dentro del chat, su
 /// ventana con las paginas en orden y su PDF (26-oct-2026).
 pub(crate) mod carpetas;
@@ -609,6 +611,14 @@ fn pedir_ir_a(proyecto: String) {
     }
 }
 
+/// Pide, desde el buscador de la lista, abrir un chat llevado a un mensaje
+/// suyo (por su codigo unico): lo mismo que pide el universo.
+fn pedir_ir_a_mensaje(proyecto: String, codigo: String) {
+    if let Ok(mut g) = IR_A.lock() {
+        *g = Some((proyecto, Some(codigo)));
+    }
+}
+
 fn tomar_ir_a() -> Option<(String, Option<String>)> {
     IR_A.lock().ok().and_then(|mut g| g.take())
 }
@@ -965,6 +975,8 @@ pub fn abrir(
     let mut sobre: Option<BotonBarra> = None;
     let mut scroll: i32 = 0;
     let mut fila_sobre: Option<usize> = None;
+    // Lo de la seccion «Mensajes» del buscador que hay bajo el raton.
+    let mut mensaje_sobre: Option<pixpin_ui::buscar_en_chats::Elemento> = None;
     let mut elegida: Option<usize> = None;
     // Los proyectos marcados con Ctrl+clic, por `id`: por indice se
     // descolocarian al filtrar o al releer la lista.
@@ -1013,6 +1025,10 @@ pub fn abrir(
     let reloj = std::time::Instant::now();
     let mut giro = pixpin_ui::giro::Giro::default();
     let mut fallo_pintado = false;
+    // Buscar dentro de todos los chats desde el buscador de la lista
+    // (`buscar_en_chats`): su hilo nace con la primera busqueda.
+    let mut en_chats =
+        buscar_en_chats::BuscarEnChats::nuevo(ubicacion.raiz(), ventana.handle().0 as isize);
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -2420,6 +2436,34 @@ pub fn abrir(
                             abierto = Some(nuevo);
                         }
                         hay_que_pintar = true;
+                    } else if let Some(el) =
+                        en_chats.elemento_en(&disposicion, l, scroll, orden.len(), escala)
+                    {
+                        // Un mensaje encontrado en la seccion «Mensajes» del
+                        // buscador: su chat, llevado a el y resaltado, por
+                        // el mismo camino que «Ver en el chat» (`ir_a`).
+                        match el {
+                            pixpin_ui::buscar_en_chats::Elemento::Mensaje(n) => {
+                                if let Some(enc) = en_chats.encontrado(n) {
+                                    // Si es el chat abierto y tiene su propia
+                                    // lupa o un chip puestos, se quitan: el
+                                    // mensaje podria quedar escondido y no
+                                    // habria adonde ir.
+                                    if let Some(a) =
+                                        abierto.as_mut().filter(|a| a.ficha.id == enc.chat)
+                                    {
+                                        a.busqueda = None;
+                                        a.por_etiqueta = None;
+                                        a.colocado.borrow_mut().ancho = 0;
+                                    }
+                                    pedir_ir_a_mensaje(enc.chat.clone(), enc.codigo.clone());
+                                }
+                            }
+                            pixpin_ui::buscar_en_chats::Elemento::VerMas => en_chats.ver_mas(),
+                            pixpin_ui::buscar_en_chats::Elemento::Cabecera => {}
+                        }
+                        buscando = false;
+                        hay_que_pintar = true;
                     }
                 }
                 EventoOverlay::RatonMovido(p) => {
@@ -2551,6 +2595,8 @@ pub fn abrir(
                         None => {
                             sobre = disposicion.boton_barra_en(l, escala);
                             fila_sobre = disposicion.fila_en(l, scroll, orden.len(), escala);
+                            mensaje_sobre =
+                                en_chats.elemento_en(&disposicion, l, scroll, orden.len(), escala);
                             let cursor = chat::borde_en(l, marco.ancho, marco.alto, escala)
                                 .map(cursor_de)
                                 .unwrap_or(if disposicion.asa.contiene(l) {
@@ -3274,9 +3320,11 @@ pub fn abrir(
                     // Tres filas por muesca, como Telegram y como el ajuste
                     // de Windows por omision.
                     let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
+                    // Con la seccion «Mensajes» del buscador debajo de los
+                    // chats, se baja tambien por ella.
                     let nuevo = disposicion.scroll_ajustado(
                         scroll - giro_de_rueda(delta, paso),
-                        orden.len(),
+                        orden.len() + en_chats.seccion().filas(escala),
                         escala,
                     );
                     if nuevo != scroll {
@@ -3285,6 +3333,8 @@ pub fn abrir(
                         // se mueva.
                         let p = local(pixpin_shell::entorno::posicion_del_cursor());
                         fila_sobre = disposicion.fila_en(p, scroll, orden.len(), escala);
+                        mensaje_sobre =
+                            en_chats.elemento_en(&disposicion, p, scroll, orden.len(), escala);
                         hay_que_pintar = true;
                     }
                 }
@@ -4060,6 +4110,7 @@ pub fn abrir(
                 hay_que_pintar = true;
             }
             sello_indice = Some(ahora_sello);
+            en_chats.releer();
             // Si el indice cambio, el cuaderno del proyecto abierto pudo
             // cambiar con el: lo que llega del movil entra por los dos sitios.
             pendiente_de_releer = true;
@@ -4070,6 +4121,8 @@ pub fn abrir(
         // lienzo abiertos se espera: el que esta escribiendo manda.
         if tomar_refrescar() {
             pendiente_de_releer = true;
+            // Y lo encontrado en los chats, que pudo cambiar con lo llegado.
+            en_chats.releer();
         }
         // La escala que se cambio en los ajustes generales (25-oct-2026):
         // la misma cuenta que Ctrl + «+» / «-».
@@ -4202,7 +4255,11 @@ pub fn abrir(
                 // estrecha, lo que se ve depende de si hay proyecto abierto,
                 // y una cuenta suelta daria un tope de otra lista.
                 let d = disponer(marco, escala, ancho_lista, abierto.as_ref());
-                scroll = d.scroll_ajustado(scroll, orden.len(), escala);
+                scroll = d.scroll_ajustado(
+                    scroll,
+                    orden.len() + en_chats.seccion().filas(escala),
+                    escala,
+                );
                 hay_que_pintar = true;
             }
         }
@@ -4268,7 +4325,19 @@ pub fn abrir(
         if crate::sincronizar::ultima_fallo() != fallo_pintado {
             fallo_pintado = !fallo_pintado;
             hay_que_pintar = true;
-        } // El IME (japones, chino) compone encima de la rayita de la caja
+        }
+        // Lo escrito en el buscador de la lista, tambien dentro de todos los
+        // chats: tras la espera se le pide al hilo, y lo que conteste se pinta.
+        if en_chats.latido(&busqueda, ms) {
+            let d = disponer(marco, escala, ancho_lista, abierto.as_ref());
+            scroll = d.scroll_ajustado(
+                scroll,
+                orden.len() + en_chats.seccion().filas(escala),
+                escala,
+            );
+            hay_que_pintar = true;
+        }
+        // El IME (japones, chino) compone encima de la rayita de la caja
         // con el teclado, no en una esquina de la pantalla.
         if hay_que_pintar
             && let Some(sitio) = cajas_con_teclado(
@@ -4357,7 +4426,9 @@ pub fn abrir(
                     ubicacion.raiz(),
                     filas
                         .chain(del_abierto)
-                        .chain(de_la_ficha.iter().map(String::as_str)),
+                        .chain(de_la_ficha.iter().map(String::as_str))
+                        // Y los de los chats de los mensajes encontrados.
+                        .chain(en_chats.chats()),
                     &motor,
                 );
             }
@@ -4376,6 +4447,8 @@ pub fn abrir(
                     raiz: ubicacion.raiz(),
                     giro_sincro: giro.angulo(reloj.elapsed().as_millis() as u64),
                     sincro_fallo: fallo_pintado,
+                    en_chats: Some(&en_chats),
+                    sobre_mensaje: mensaje_sobre,
                 };
                 let abierto_ref = abierto.as_ref();
                 let pendientes_ref = pendientes.as_ref();
@@ -4693,6 +4766,7 @@ pub fn abrir(
             hasta_la_lectura,
             hasta_el_asistente,
             giro.ms_hasta(),
+            en_chats.ms_hasta(ms),
         ]
         .into_iter()
         .flatten()
@@ -5252,6 +5326,11 @@ struct Lista<'a> {
     giro_sincro: f32,
     /// La ultima vuelta de sincronizar fallo: el boton lleva la marca roja.
     sincro_fallo: bool,
+    /// Los mensajes de todos los chats que casan con lo buscado (la seccion
+    /// «Mensajes», debajo de los chats), si se busca.
+    en_chats: Option<&'a buscar_en_chats::BuscarEnChats>,
+    /// Lo de esa seccion que hay bajo el raton.
+    sobre_mensaje: Option<pixpin_ui::buscar_en_chats::Elemento>,
 }
 
 /// Los colores de los avatares, los mismos siete de Telegram. Cual toca sale
@@ -5550,7 +5629,10 @@ fn pintar(
 
     // Sin proyectos todavia: se dice, en vez de dejar la columna en blanco
     // que parece un fallo. Si lo que la vacia es la busqueda, se dice eso.
-    if lista.orden.is_empty() {
+    // Con mensajes encontrados en los chats, la lista no esta vacia aunque
+    // ningun chat case por su nombre.
+    let hay_mensajes = lista.en_chats.is_some_and(|b| b.seccion().hay());
+    if lista.orden.is_empty() && !hay_mensajes {
         centrar_texto(
             &textos.t(clave_de_lista_vacia(lista.busqueda)),
             d.filas,
@@ -5560,6 +5642,9 @@ fn pintar(
         );
     } else {
         pintar_filas(p, d, tema, escala, lista);
+    }
+    if let Some(b) = lista.en_chats {
+        buscar_en_chats::pintar(p, d, tema, escala, lista, b);
     }
     // Y encima de ellas, el boton de proyecto nuevo: flota sobre la lista, y
     // una fila resaltada no puede taparlo.

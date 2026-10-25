@@ -557,6 +557,10 @@ fn muestra_de_la_voz_del_asistente() {
                 buscando: false,
                 marcados: &marcados,
                 raiz: std::path::Path::new(""),
+                giro_sincro: 0.0,
+                sincro_fallo: false,
+                en_chats: None,
+                sobre_mensaje: None,
             };
             motor_r
                 .dibujar(&destino.destino, |p| {
