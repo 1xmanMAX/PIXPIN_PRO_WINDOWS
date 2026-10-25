@@ -914,6 +914,116 @@ mod pruebas {
         }
         assert_eq!(total, 9_120);
     }
+
+    /// **Como seria en Android**: la plataforma empuja el sonido desde un
+    /// hilo suyo (la llamada de datos de AAudio, o `AudioRecord.read` por
+    /// JNI) con su fecha de `CLOCK_MONOTONIC`, en bloques de 20 ms de 16
+    /// bits a 48 kHz mono, y el motor hace lo mismo que en Windows.
+    struct ComoAndroid {
+        cero: Instant,
+        parar: Arc<AtomicBool>,
+        hilos: Mutex<Vec<JoinHandle<()>>>,
+    }
+
+    struct PlatAndroid {
+        cero: Instant,
+    }
+
+    impl Plataforma for PlatAndroid {
+        type Aparato = crate::empuje::Empujado;
+        fn ahora(&self) -> u64 {
+            (self.cero.elapsed().as_nanos() / 100) as u64
+        }
+        fn dormir(&mut self, ms: u32) {
+            std::thread::sleep(Duration::from_millis(u64::from(ms)));
+        }
+        fn reabrir(&mut self, _: u32) -> Result<crate::empuje::Empujado, ErrorMotor> {
+            Err(ErrorMotor::SinMicrofono)
+        }
+    }
+
+    impl Sistema for ComoAndroid {
+        type Plataforma = PlatAndroid;
+        type Salida = Fichero;
+        type Prioridad = ();
+
+        fn captura(
+            &self,
+            pedido: &Pedido,
+        ) -> Result<(PlatAndroid, crate::empuje::Empujado), ErrorMotor> {
+            let (mut empujador, empujado) =
+                crate::empuje::empuje(48_000, 1, pedido.canales, 2, "microfono");
+            let (cero, parar) = (self.cero, Arc::clone(&self.parar));
+            let tono = pedido.origen.es_microfono();
+            self.hilos.lock().unwrap().push(std::thread::spawn(move || {
+                // Una onda cuadrada de 500 Hz (el paso alto se comeria una
+                // continua).
+                let amplitud = if tono { 8_000 } else { 0 };
+                let bloque: Vec<i16> = (0..960)
+                    .map(|i| if i % 96 < 48 { amplitud } else { -amplitud })
+                    .collect();
+                let empezo = cero.elapsed();
+                let mut fin = empezo;
+                while !parar.load(Ordering::Acquire) {
+                    fin += Duration::from_millis(20);
+                    if let Some(falta) = fin.checked_sub(cero.elapsed()) {
+                        std::thread::sleep(falta);
+                    }
+                    empujador.empujar_i16(&bloque, (fin.as_nanos() / 100) as u64);
+                }
+            }));
+            Ok((PlatAndroid { cero: self.cero }, empujado))
+        }
+
+        fn salida_aac(&self, _: &std::path::Path, _: u32, _: u16) -> Result<Fichero, ErrorMotor> {
+            Ok(Fichero {
+                escrito: Arc::default(),
+                cerrado: Arc::default(),
+            })
+        }
+
+        fn prioridad(&self, _: Tarea) {}
+
+        fn ahora(&self) -> u64 {
+            (self.cero.elapsed().as_nanos() / 100) as u64
+        }
+    }
+
+    #[test]
+    fn un_sistema_que_empuja_como_android_graba_igual() {
+        let sistema = Arc::new(ComoAndroid {
+            cero: Instant::now(),
+            parar: Arc::default(),
+            hilos: Mutex::default(),
+        });
+        let (s, r) = suscripcion(1_000);
+        let motor = MotorAudio::empezar_en(Arc::clone(&sistema), opciones(vec![s])).unwrap();
+        std::thread::sleep(Duration::from_millis(1_000));
+        let n = motor.niveles();
+        let resumen = motor.terminar().unwrap();
+        sistema.parar.store(true, Ordering::Release);
+        for h in sistema.hilos.lock().unwrap().drain(..) {
+            h.join().unwrap();
+        }
+        assert!(n.microfono.unwrap().pico > 0.2, "{n:?}");
+        assert!(
+            (850..1_200).contains(&resumen.duracion_ms),
+            "{}",
+            resumen.duracion_ms
+        );
+        let m = resumen.estadisticas.microfono.unwrap();
+        assert!(m.capturados > 40_000, "{m:?}");
+        // Sin quedarse corto en marcha; al parar, lo que el equipo tenia de
+        // mas que el microfono sale con el microfono en silencio (menos de
+        // un paquete).
+        assert!(m.faltaron < 1_000, "{m:?}");
+        let mut fin = 0;
+        while let Some(b) = r.recibir() {
+            assert_eq!(b.posicion, fin);
+            fin = b.fin();
+        }
+        assert_eq!(fin, resumen.marcos);
+    }
 }
 
 #[cfg(all(test, windows))]
@@ -996,5 +1106,42 @@ mod en_windows {
         eprintln!("{lista:#?}");
         assert!(lista.iter().filter(|a| a.defecto).count() <= 1);
         assert!(lista.iter().all(|a| !a.id.is_empty()));
+    }
+
+    /// Con la cancelacion de eco pedida: abre igual, dice que nivel consiguio
+    /// y el sonido del equipo lleva su latido.
+    #[test]
+    #[ignore = "necesita microfono y altavoces de verdad"]
+    fn con_cancelar_eco_se_abre_y_dice_lo_que_hay() {
+        let motor = MotorAudio::empezar(Opciones {
+            microfono: Some(Microfono::Defecto),
+            equipo: Some(Equipo::Todo),
+            cancelar_eco: true,
+            ..Opciones::default()
+        })
+        .expect("no se pudo empezar");
+        std::thread::sleep(Duration::from_millis(1_500));
+        let r = motor.terminar().unwrap();
+        eprintln!("{r:#?}");
+        let m = r.estadisticas.microfono.unwrap();
+        assert!(m.eco >= 1, "{m:?}");
+        assert!(r.estadisticas.equipo.unwrap().latido);
+    }
+
+    /// El sonido de este mismo proceso (que no suena): la captura por proceso
+    /// se abre (Windows 10 2004+) o cae a todo el equipo, y la linea de
+    /// tiempo avanza igual.
+    #[test]
+    #[ignore = "necesita altavoces de verdad"]
+    fn el_sonido_de_un_proceso_avanza_aunque_calle() {
+        let motor = MotorAudio::empezar(Opciones {
+            equipo: Some(Equipo::Proceso(std::process::id())),
+            ..Opciones::default()
+        })
+        .expect("no se pudo empezar");
+        std::thread::sleep(Duration::from_millis(2_000));
+        let r = motor.terminar().unwrap();
+        eprintln!("{r:#?}");
+        assert!((1_800..2_300).contains(&r.duracion_ms), "{}", r.duracion_ms);
     }
 }
