@@ -26,6 +26,8 @@
 pub(crate) mod adjuntos;
 /// Una carpeta de paginas del chat como PDF (26-oct-2026).
 pub(crate) mod carpeta;
+/// Una grabacion (clase, reunion, nota de voz) con su pagina web (27-oct-2026).
+pub(crate) mod clase;
 pub(crate) mod documento_web;
 pub(crate) mod enlace;
 /// El «Exportar» comun de todos los visores (13-oct-2026).
@@ -186,6 +188,10 @@ pub(crate) struct Preparado {
     pub adjuntos: Vec<PathBuf>,
     /// «Adjuntos», en el idioma de la app: la pagina no sabe de idiomas.
     pub rotulo_adjuntos: String,
+    /// **Una grabacion sola**: su «Pagina web» no son dibujos de sus
+    /// paginas sino la pagina con el reproductor y la transcripcion (ver
+    /// [`clase`]).
+    pub clase: Option<Arc<clase::Grabacion>>,
     siguiente_imagen: u64,
 }
 
@@ -203,6 +209,7 @@ impl Preparado {
             tablas: HashMap::new(),
             adjuntos: Vec::new(),
             rotulo_adjuntos: String::new(),
+            clase: None,
             // El cero lo reserva el escritor de PDF para «sin imagen».
             siguiente_imagen: 1,
         }
@@ -995,10 +1002,29 @@ fn de_mensajes(
         _ => titulo.to_string(),
     };
     let mut p = Preparado::nuevo(titulo);
-    for m in mensajes {
-        anadir_mensaje(&mut p, raiz, proyecto, m, solo, t);
-    }
-    let rutas = originales(raiz, proyecto, mensajes);
+    // Una grabacion sola (una clase, una reunion, una nota de voz): con su
+    // video, sus capturas y sus marcadores, y su pagina web propia.
+    let grabacion = match mensajes {
+        [m] => clase::leer(raiz, proyecto, m, t),
+        _ => None,
+    };
+    let es_grabacion = grabacion.is_some();
+    let rutas = match grabacion {
+        Some(g) => {
+            let rutas: Vec<PathBuf> = clase::anadir(&mut p, g, t)
+                .into_iter()
+                .filter(|r| r.is_file())
+                .collect();
+            p.adjuntos = adjuntos::de_originales(&rutas);
+            rutas
+        }
+        None => {
+            for m in mensajes {
+                anadir_mensaje(&mut p, raiz, proyecto, m, solo, t);
+            }
+            originales(raiz, proyecto, mensajes)
+        }
+    };
     // Las notas de voz y los ficheros, tambien dentro de la pagina web.
     p.adjuntos = adjuntos::de_originales(&rutas);
     if !rutas.is_empty() {
@@ -1029,8 +1055,9 @@ fn de_mensajes(
         });
     }
     // Una foto o un fichero solos: lo que se suele querer es mandarlos tal
-    // cual.
+    // cual. Una grabacion no: lo suyo es su pagina web.
     p.original_primero = solo
+        && !es_grabacion
         && mensajes.iter().any(|m| {
             matches!(
                 m.clase,
@@ -1742,7 +1769,14 @@ pub(crate) fn compartible(p: &Preparado, t: &Catalogo) -> Compartible {
     };
     let mut de_paginas = Vec::new();
     if !p.piezas.is_empty() {
-        let mut web = formato(WEB, "compartir-web", Cuantas::Varias);
+        // La de una grabacion va entera (el reproductor y todo el texto),
+        // sin elegir paginas.
+        let cuantas_web = if p.clase.is_some() {
+            Cuantas::Ninguna
+        } else {
+            Cuantas::Varias
+        };
+        let mut web = formato(WEB, "compartir-web", cuantas_web);
         // **La pagina web de un PDF que se lee**: con el interruptor
         // «Texto buscable» puesto, las hojas en lineas con su texto; quitado,
         // todas como imagen con el texto invisible encima (Android v0.98.1,
@@ -1975,6 +2009,10 @@ pub(crate) fn generar(
                 imagen = pixpin_codec::cargar(r).ok();
             }
             v
+        }
+        // Una grabacion: su pagina, con el reproductor y la transcripcion.
+        WEB | WEB_IMAGEN if p.clase.is_some() => {
+            clase::web(p.clase.as_deref().context("sin grabacion")?, &base, carpeta)?
         }
         WEB | WEB_IMAGEN if piezas.is_empty() && !p.adjuntos.is_empty() => {
             let trozo = adjuntos::html(&p.adjuntos, &p.rotulo_adjuntos);
