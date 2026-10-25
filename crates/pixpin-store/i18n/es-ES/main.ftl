@@ -2992,5 +2992,17 @@ carpeta-despues = Después
 carpeta-renombrar = Renombrar
 carpeta-quitar = Quitar de la carpeta
 carpeta-no-esta = Esa carpeta ya no está en el chat
-carpeta-pista = Arrastra una página para cambiarla de sitio · F2 cambia su título · Supr la quita (el lienzo sigue en el chat)
+carpeta-pista = Arrastra una página para cambiarla de sitio · F2 cambia su título · Supr la quita (vuelve a verse en el chat)
 carpeta-escribe-titulo = Escribe el título y pulsa Intro
+carpeta-grabacion = Grabación
+carpeta-grabacion-detalle = { $duracion } · { $capturas ->
+    [one] 1 captura
+   *[other] { $capturas } capturas
+}
+carpeta-estudiar = Estudiar
+carpeta-de-la-grabacion = De la grabación
+carpeta-adjuntos = Adjuntos a la clase
+carpeta-adjunto-insignia = Adjunto · no es de la grabación
+carpeta-adjuntar = Adjuntar a la clase
+carpeta-adjuntado = Adjuntado a la clase: { $nombre }
+carpeta-grabacion-pista = Pulsa una pieza para estudiarla en su minuto · «Adjuntar a la clase» suma un archivo, una foto o una nota sin mezclarlo con lo grabado

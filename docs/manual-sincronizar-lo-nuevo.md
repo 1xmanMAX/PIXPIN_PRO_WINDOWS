@@ -189,6 +189,55 @@ documento, en una linea, en `texto`:
 - Receptor: Android ya ensena el `texto` de una mini-app que no conoce sin
   romperse. Para ensenarla de verdad: una fila «carpeta» que abre sus
   paginas en orden.
+- **Lo de dentro no sale suelto** (25-oct-2026): en el PC, un mensaje que
+  esta en alguna carpeta (de cualquier tipo) no se ensena como burbuja en
+  el chat; lo representa la tarjeta de su carpeta. Sigue siendo un mensaje
+  normal (viaja, se busca, sale en la galeria) y al quitarlo de la carpeta
+  vuelve a verse. Es una regla de lo que se ensena, no del formato: un
+  aparato que no la sepa lo ensena suelto, sin perder nada. Lo ideal es
+  hacer lo mismo (`carpeta_de_paginas::dentro_de_carpetas`).
+
+### 5.1 La carpeta de una grabacion (25-oct-2026)
+
+Al terminar de grabar una clase o reunion, el PC mete la nota de voz, el
+video y las capturas (los mismos mensajes y enlaces de la seccion 1, sin
+cambios) **en una carpeta con el nombre de la grabacion**, que entra en el
+chat detras de ellos. Es una carpeta como las de arriba con campos de mas
+(todos opcionales; sin ellos es una carpeta de paginas):
+
+```json
+{"id":"1761400000004","clase":"MINIAPP","miniapp":"carpeta","nombre":"Clase 25-10 10h58",
+ "texto":"{\"formato\":1,\"tipo\":\"grabacion\",\"voz\":\"1761400000001\",\"video\":\"1761400000002\",\"duracionMs\":5400000,\"paginas\":[{\"id\":\"1761400000001\",\"titulo\":\"\",\"ms\":0},{\"id\":\"1761400000002\",\"titulo\":\"\",\"ms\":0},{\"id\":\"1761400000003\",\"titulo\":\"⏱ 1:05\",\"ms\":65000},{\"id\":\"1761400000009\",\"titulo\":\"Apuntes\",\"adjunto\":true}]}"}
+```
+
+| Campo | Donde | Que es |
+|---|---|---|
+| `tipo` | documento | `"grabacion"`. Sin el (o vacio): carpeta de paginas. |
+| `voz` | documento | `id` de la nota de voz (no va si la nota no se pudo cerrar). |
+| `video` | documento | `id` del video (no va si no se grabo video). |
+| `duracionMs` | documento | lo que duro, para la tarjeta sin leer la nota. |
+| `ms` | pagina | minuto de la pieza en la grabacion (voz y video, `0`). |
+| `adjunto` | pagina | `true`: se adjunto a la clase despues y **no es de lo grabado** (un PDF, una foto de la pizarra, una nota). No va si es `false`. |
+
+- `formato` sigue en `1`: lo nuevo son claves de mas, que un lector de
+  antes conserva (el PC las guarda en `resto`) y la fusion 7.2 junta como
+  cualquier clave del objeto.
+- Las paginas van en el orden de la grabacion: la voz, el video y las
+  capturas por su `ms`; los adjuntos, detras. Las capturas son lo grabado
+  que no es ni `voz` ni `video`.
+- Los enlaces `capturas`/`video`/`enGrabacion` de la seccion 1 se siguen
+  escribiendo igual: «Estudiar la clase» va por ellos, no por la carpeta.
+- Una grabacion de antes (sin carpeta) sigue igual: sus mensajes sueltos.
+- En el PC: la carpeta se ve como **una sola tarjeta** (la primera
+  captura, «● Grabacion», lo que duro, cuantas capturas y «Estudiar»);
+  pulsarla abre «Estudiar la clase». Su menu tiene «Abrir la carpeta»: lo
+  grabado con su minuto y, aparte y en otro color, lo adjuntado con la
+  chapa «Adjunto · no es de la grabacion». «Adjuntar a la clase» (en esa
+  ventana) o «Añadir a carpeta…» de un mensaje del chat lo anaden como
+  adjunto.
+- Para leerla (Rust): `Carpeta::es_grabacion`, `de_la_grabacion`,
+  `capturas`, `adjuntos`, `adjuntar` en
+  `crates/pixpin-proyecto/src/carpeta_de_paginas.rs`.
 
 ## 6. Lo que no viaja (a proposito)
 
@@ -247,6 +296,11 @@ archivo binario (no entra en `esTexto`).
 - [ ] `<d>.vistas.json` en el alcance de cada dibujo (ver §3).
 - [ ] Burbuja de `NOTA` con Markdown y album de fotos.
 - [ ] Carpeta: ensenar el `MINIAPP` «carpeta» (opcional), no tocar su `texto`.
+- [ ] Carpeta de grabacion (§5.1): conservar `tipo`, `voz`, `video`,
+      `duracionMs` y, en cada pagina, `ms` y `adjunto` (si el modelo de la
+      mini-app solo guarda el `texto` tal cual, ya esta). Opcional: una
+      tarjeta por grabacion y no ensenar sueltos los mensajes que estan en
+      una carpeta.
 - [ ] Datos moviles: si se quiere, no traer archivos grandes fuera de la
       Wi-Fi (se ofrecen otra vez en la vuelta siguiente).
 
@@ -257,7 +311,8 @@ archivo binario (no entra en `esTexto`).
 - [ ] `apple/nucleo/pixpin-proyecto` aun no tiene `clase.rs` ni
       `carpeta_de_paginas.rs`: copiarlos cuando la app quiera ensenar
       marcadores o carpetas (para sincronizar no hacen falta: los campos
-      viajan igual).
+      viajan igual). Al copiar `carpeta_de_paginas.rs`, ya trae la carpeta
+      de grabacion (§5.1).
 - [ ] La app: reproducir `.m4a`/`.mp4`, pintar la nota rica, recargar la
       biblioteca de figuras al llegar.
 
@@ -271,6 +326,7 @@ cifrado de verdad:
 - `una_clase_grabada_en_el_movil_llega_al_pc_con_sus_ficheros_y_su_texto_de_despues`
 - `la_biblioteca_de_figuras_viaja_y_guardar_una_en_cada_aparato_no_pierde_ninguna`
 - `una_carpeta_de_paginas_viaja_y_una_pagina_en_cada_aparato_deja_las_dos`
+- `una_carpeta_de_grabacion_viaja_y_un_adjunto_en_cada_aparato_deja_los_dos`
 - `una_nota_rica_del_pc_llega_al_movil_con_sus_fotos`
 - `las_vistas_de_los_marcadores_de_un_lienzo_viajan_con_sus_marcas` (de antes)
 
