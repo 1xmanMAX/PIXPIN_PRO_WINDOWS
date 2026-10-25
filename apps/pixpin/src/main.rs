@@ -2771,6 +2771,47 @@ fn escala_del_monitor(region: pixpin_geom::Rect) -> u32 {
     }
 }
 
+/// Cuenta las capturas de texto pedidas: cada una se queda con su numero y
+/// solo copia si al acabar sigue siendo la ultima. Sin esto, dos capturas
+/// seguidas podian acabar al reves y dejar en el portapapeles la vieja.
+static CAPTURAS_DE_TEXTO: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Si lo leido para la captura `turno` sigue valiendo: solo la ultima pedida.
+fn sigue_vigente(turno: u64, ultima: u64) -> bool {
+    turno == ultima
+}
+
+/// Lee el texto de una captura en otro hilo y lo copia al acabar, si nadie
+/// pidio otra mientras tanto.
+fn copiar_texto_aparte(imagen: pixpin_codec::ImagenRgba) {
+    use std::sync::atomic::Ordering;
+    let turno = CAPTURAS_DE_TEXTO.fetch_add(1, Ordering::SeqCst) + 1;
+    let lanzado = std::thread::Builder::new()
+        .name("captura-texto".into())
+        .spawn(move || {
+            // El OCR de Windows es WinRT: el hilo necesita su COM.
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let leido = texto_de_imagen(&imagen);
+            if !sigue_vigente(turno, CAPTURAS_DE_TEXTO.load(Ordering::SeqCst)) {
+                tracing::info!(turno, "texto de una captura vieja; se descarta");
+                return;
+            }
+            match leido {
+                Err(e) => tracing::warn!(?e, "no se pudo reconocer el texto de la zona"),
+                Ok(texto) if texto.trim().is_empty() => {
+                    tracing::info!("no se leyo texto en la zona elegida");
+                }
+                Ok(texto) => match pixpin_codec::copiar_texto(&texto) {
+                    Ok(()) => tracing::info!(largo = texto.len(), "texto copiado"),
+                    Err(e) => tracing::warn!(?e, "no se pudo copiar el texto"),
+                },
+            }
+        });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar la lectura del texto");
+    }
+}
+
 /// Ejecuta la accion que el overlay decidio. Devuelve la ruta si se guardo.
 fn ejecutar_accion(
     accion: AccionFinal,
@@ -2782,14 +2823,12 @@ fn ejecutar_accion(
         // Reconocer el texto del recorte y copiarlo. Las lineas llegan sin
         // orden de lectura: agruparlas en parrafos y columnas es lo que
         // hace que el texto pegado se parezca al que se veia.
+        //
+        // En un hilo: reconocer tarda de 0,2 a 1,5 s (mas la primera vez con
+        // Indra), y en el bucle principal eso congelaba los pines, la
+        // bandeja y los atajos mientras tanto.
         AccionFinal::Texto(imagen) => {
-            let texto = texto_de_imagen(&imagen)?;
-            if texto.trim().is_empty() {
-                tracing::info!("no se leyo texto en la zona elegida");
-                return Ok(None);
-            }
-            pixpin_codec::copiar_texto(&texto).context("no se pudo copiar el texto")?;
-            tracing::info!(largo = texto.len(), "texto copiado");
+            copiar_texto_aparte(imagen);
             Ok(None)
         }
         AccionFinal::Guardar(imagen) => {
@@ -2864,6 +2903,12 @@ fn iniciar_registro(ubicacion: &Ubicacion) -> tracing_appender::non_blocking::Wo
 #[cfg(test)]
 mod pruebas_bandeja {
     use super::*;
+
+    #[test]
+    fn solo_copia_la_ultima_captura_de_texto() {
+        assert!(sigue_vigente(3, 3));
+        assert!(!sigue_vigente(2, 3), "otra captura la adelanto");
+    }
 
     #[test]
     fn pinear_lo_copiado_se_atiende_por_su_comando() {
