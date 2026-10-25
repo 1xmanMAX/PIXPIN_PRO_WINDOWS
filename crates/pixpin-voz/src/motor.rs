@@ -31,7 +31,7 @@ use windows::core::{PCSTR, PCWSTR};
 use crate::credibilidad::creible;
 use crate::idiomas;
 use crate::pcm;
-use crate::tiempos::{EstadoDelTexto, Segmento, con_tiempos, estado_de};
+use crate::tiempos::{Segmento, con_tiempos, estado_de};
 use crate::{ErrorVoz, HERCIOS};
 
 /// Cuantas muestras se le dan al reconocedor de una vez.
@@ -471,7 +471,10 @@ mod pruebas {
         );
         assert!(segmentos.is_empty());
         assert_eq!(avisos, 1);
-        assert_eq!(estado_de(segmentos.len(), avisos), EstadoDelTexto::Mal);
+        assert_eq!(
+            estado_de(segmentos.len(), avisos),
+            crate::tiempos::EstadoDelTexto::Mal
+        );
     }
 
     #[test]

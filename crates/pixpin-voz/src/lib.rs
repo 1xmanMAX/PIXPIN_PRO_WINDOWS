@@ -135,10 +135,57 @@ pub enum MotorDeVoz {
     /// Whisper *base* sobre el ONNX Runtime que trae Windows; sin red una
     /// vez bajado el modelo. Ver `whisper`.
     Whisper,
+    /// Qwen3-ASR-0.6B sobre el mismo runtime, si el usuario lo eligio y lo
+    /// bajo. Ver [`qwen3`].
+    Qwen3,
     /// El reconocedor que ya trae Windows (SAPI 5, sin red). Ver `sapi`.
     Windows,
     /// Vosk, con los mismos modelos que el movil. Ver `motor`.
     Vosk,
+}
+
+/// **El motor que eligio el usuario** para pasar notas y grabaciones a
+/// texto (Ajustes › Voz, `[voz] motor`). Whisper es el de fabrica y el de
+/// reserva: con Qwen3-ASR elegido pero sin bajar, o si falla, se pasa con
+/// Whisper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MotorDeNotas {
+    #[default]
+    Whisper,
+    Qwen3,
+}
+
+/// Lo elegido en Ajustes. Lo fija la app al arrancar y al cerrar Ajustes.
+static ELEGIDO: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Lo fija la app (ver [`MotorDeNotas`]).
+pub fn fijar_motor_de_notas(m: MotorDeNotas) {
+    ELEGIDO.store(
+        u8::from(m == MotorDeNotas::Qwen3),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+}
+
+/// Lo elegido ahora.
+pub fn motor_de_notas() -> MotorDeNotas {
+    if ELEGIDO.load(std::sync::atomic::Ordering::Relaxed) == 1 {
+        MotorDeNotas::Qwen3
+    } else {
+        MotorDeNotas::Whisper
+    }
+}
+
+/// **Si toca Qwen3-ASR** con lo elegido y lo que hay (puro, para probarlo):
+/// elegido, bajado, con runtime y con el idioma en su lista. «Todo en el
+/// primero» con dos idiomas pide traducir, que Qwen3-ASR no hace: eso
+/// sigue con Whisper.
+pub fn toca_qwen3(elegido: MotorDeNotas, bajado: bool, runtime: bool, idiomas: &Idiomas) -> bool {
+    let traducir = idiomas.otro.is_some() && idiomas.modo == ModoDeIdiomas::TodoEnUno;
+    elegido == MotorDeNotas::Qwen3
+        && bajado
+        && runtime
+        && qwen3::sabe(&idiomas.principal)
+        && !traducir
 }
 
 /// **Que motor usar hoy**, o `None` si no hay ninguno para ese idioma.
@@ -149,6 +196,9 @@ pub enum MotorDeVoz {
 /// el de Windows, que no pide nada. Vosk queda para los idiomas que ninguno
 /// de los dos trae; con `preferir_vosk` manda Vosk si esta listo (quien lo
 /// puso a proposito).
+///
+/// **Actualizado el 2026-10-25**: antes que Whisper, Qwen3-ASR si el usuario
+/// lo eligio en Ajustes y esta bajado (ver [`toca_qwen3`]).
 #[cfg(windows)]
 pub fn motor_para(
     raiz: &std::path::Path,
@@ -156,12 +206,31 @@ pub fn motor_para(
     idioma: &str,
     preferir_vosk: bool,
 ) -> Option<MotorDeVoz> {
+    motor_para_con(raiz, junto_al_exe, &Idiomas::uno(idioma), preferir_vosk)
+}
+
+#[cfg(windows)]
+fn motor_para_con(
+    raiz: &std::path::Path,
+    junto_al_exe: Option<&std::path::Path>,
+    idiomas: &Idiomas,
+    preferir_vosk: bool,
+) -> Option<MotorDeVoz> {
+    let idioma = idiomas.principal.as_str();
     let vosk = matches!(
         idiomas::disponibilidad(raiz, junto_al_exe, idioma),
         Disponibilidad::Listo(_)
     );
     if preferir_vosk && vosk {
         return Some(MotorDeVoz::Vosk);
+    }
+    if toca_qwen3(
+        motor_de_notas(),
+        qwen3::modelo_listo(raiz),
+        whisper::runtime_disponible(raiz, junto_al_exe),
+        idiomas,
+    ) {
+        return Some(MotorDeVoz::Qwen3);
     }
     if whisper_posible(raiz, junto_al_exe, idioma) && whisper::modelo_listo(raiz) {
         return Some(MotorDeVoz::Whisper);
@@ -183,6 +252,18 @@ pub fn whisper_posible(
     whisper::sabe(idioma) && whisper::runtime_disponible(raiz, junto_al_exe)
 }
 
+/// Si un fallo de Qwen3-ASR merece probar con Whisper: no si se cancelo,
+/// ni si el audio no tiene nada (Whisper no lo haria mejor).
+pub fn caer_a_whisper(e: &ErrorVoz) -> bool {
+    !matches!(
+        e,
+        ErrorVoz::Cancelada
+            | ErrorVoz::NoSeEntiendeNada
+            | ErrorVoz::AudioVacio
+            | ErrorVoz::NoEsAudio { .. }
+    )
+}
+
 /// **Pasa una nota de voz a texto con el mejor motor que haya.**
 ///
 /// Ver [`motor_para`]. Con ONNX Runtime pero **sin el modelo de Whisper**
@@ -199,26 +280,24 @@ pub fn transcribir(
     avance: &mut dyn FnMut(f32),
     cancelado: &std::sync::atomic::AtomicBool,
 ) -> Result<Transcripcion, ErrorVoz> {
-    let motor = motor_para(raiz, junto_al_exe, idioma, false);
-    if motor != Some(MotorDeVoz::Whisper) && whisper_posible(raiz, junto_al_exe, idioma) {
-        return Err(ErrorVoz::SinModeloWhisper {
-            donde: whisper::carpeta(raiz).display().to_string(),
-            megas: whisper::MEGAS,
-        });
-    }
-    match motor {
-        Some(MotorDeVoz::Whisper) => {
-            whisper::transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado)
-        }
-        Some(MotorDeVoz::Windows) => sapi::transcribir(audio, idioma, avance, cancelado),
-        _ => motor::transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado),
-    }
+    transcribir_con(
+        audio,
+        raiz,
+        junto_al_exe,
+        &Idiomas::uno(idioma),
+        &[],
+        avance,
+        cancelado,
+    )
 }
 
-/// **Lo mismo con dos idiomas y con turnos** (B6, B10). Solo Whisper sabe
-/// de dos idiomas y de turnos con nombre: con otro motor se transcribe como
-/// siempre, en el primero y de corrido, que es lo que haria el movil con
-/// Vosk.
+/// **Lo mismo con dos idiomas y con turnos** (B6, B10). Solo Whisper y
+/// Qwen3-ASR saben de dos idiomas y de turnos con nombre: con otro motor se
+/// transcribe como siempre, en el primero y de corrido, que es lo que haria
+/// el movil con Vosk.
+///
+/// Con Qwen3-ASR elegido, si falla (un modelo roto, un runtime viejo…) se
+/// dice en el registro y se pasa con Whisper, que es el de reserva.
 #[cfg(windows)]
 pub fn transcribir_con(
     audio: &std::path::Path,
@@ -230,8 +309,10 @@ pub fn transcribir_con(
     cancelado: &std::sync::atomic::AtomicBool,
 ) -> Result<Transcripcion, ErrorVoz> {
     let idioma = idiomas.principal.as_str();
-    if motor_para(raiz, junto_al_exe, idioma, false) == Some(MotorDeVoz::Whisper) {
-        return whisper::transcribir_con(
+    let motor = motor_para_con(raiz, junto_al_exe, idiomas, false);
+    if motor == Some(MotorDeVoz::Qwen3) {
+        let t = std::time::Instant::now();
+        match qwen3::motor::transcribir_con(
             audio,
             raiz,
             junto_al_exe,
@@ -239,9 +320,42 @@ pub fn transcribir_con(
             turnos,
             avance,
             cancelado,
-        );
+        ) {
+            Ok(r) => {
+                tracing::info!(
+                    segundos = t.elapsed().as_secs_f32(),
+                    audio_s = r.duracion_ms as f32 / 1000.0,
+                    "pasado a texto con Qwen3-ASR"
+                );
+                return Ok(r);
+            }
+            Err(e) if caer_a_whisper(&e) => {
+                tracing::warn!(error = %e, "Qwen3-ASR fallo; se pasa con Whisper");
+                avance(0.0);
+            }
+            Err(e) => return Err(e),
+        }
     }
-    transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado)
+    let whisper_listo = whisper_posible(raiz, junto_al_exe, idioma) && whisper::modelo_listo(raiz);
+    if !whisper_listo && whisper_posible(raiz, junto_al_exe, idioma) {
+        return Err(ErrorVoz::SinModeloWhisper {
+            donde: whisper::carpeta(raiz).display().to_string(),
+            megas: whisper::MEGAS,
+        });
+    }
+    match motor {
+        Some(MotorDeVoz::Whisper | MotorDeVoz::Qwen3) => whisper::transcribir_con(
+            audio,
+            raiz,
+            junto_al_exe,
+            idiomas,
+            turnos,
+            avance,
+            cancelado,
+        ),
+        Some(MotorDeVoz::Windows) => sapi::transcribir(audio, idioma, avance, cancelado),
+        _ => motor::transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado),
+    }
 }
 
 /// A cuantas muestras por segundo oye el reconocedor.
@@ -335,4 +449,63 @@ pub enum ErrorVoz {
 #[cfg(windows)]
 pub(crate) fn en(paso: &'static str) -> impl Fn(windows::core::Error) -> ErrorVoz {
     move |fuente| ErrorVoz::Windows { paso, fuente }
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn qwen3_solo_si_se_eligio_esta_bajado_y_hay_runtime() {
+        let es = Idiomas::uno("es");
+        assert!(toca_qwen3(MotorDeNotas::Qwen3, true, true, &es));
+        assert!(
+            !toca_qwen3(MotorDeNotas::Whisper, true, true, &es),
+            "de fabrica, Whisper"
+        );
+        assert!(
+            !toca_qwen3(MotorDeNotas::Qwen3, false, true, &es),
+            "sin bajar"
+        );
+        assert!(
+            !toca_qwen3(MotorDeNotas::Qwen3, true, false, &es),
+            "sin runtime"
+        );
+        assert!(!toca_qwen3(
+            MotorDeNotas::Qwen3,
+            true,
+            true,
+            &Idiomas::uno("eu")
+        ));
+        // Dos idiomas, cada trozo como se dijo: Qwen3 adivina por tanda.
+        let dos = Idiomas::con("es", "en", ModoDeIdiomas::CadaUno);
+        assert!(toca_qwen3(MotorDeNotas::Qwen3, true, true, &dos));
+        // Todo en el primero pide traducir: Whisper.
+        let traducir = Idiomas::con("en", "es", ModoDeIdiomas::TodoEnUno);
+        assert!(!toca_qwen3(MotorDeNotas::Qwen3, true, true, &traducir));
+    }
+
+    #[test]
+    fn un_fallo_de_qwen3_cae_a_whisper_salvo_cancelar_o_audio_sin_nada() {
+        assert!(caer_a_whisper(&ErrorVoz::Onnx {
+            paso: "abrir el modelo",
+            detalle: String::new()
+        }));
+        assert!(caer_a_whisper(&ErrorVoz::SinModeloQwen3 {
+            donde: String::new(),
+            megas: 988
+        }));
+        assert!(!caer_a_whisper(&ErrorVoz::Cancelada));
+        assert!(!caer_a_whisper(&ErrorVoz::NoSeEntiendeNada));
+        assert!(!caer_a_whisper(&ErrorVoz::AudioVacio));
+    }
+
+    #[test]
+    fn lo_elegido_va_y_vuelve() {
+        assert_eq!(MotorDeNotas::default(), MotorDeNotas::Whisper);
+        fijar_motor_de_notas(MotorDeNotas::Qwen3);
+        assert_eq!(motor_de_notas(), MotorDeNotas::Qwen3);
+        fijar_motor_de_notas(MotorDeNotas::Whisper);
+        assert_eq!(motor_de_notas(), MotorDeNotas::Whisper);
+    }
 }
