@@ -2514,3 +2514,444 @@ fn el_plano_el_espacio_y_las_coordenadas_del_pc_llegan_al_movil_como_los_lee() {
     let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
     p.quieto(&chat);
 }
+
+// ------------------------- lo nuevo del 23 al 25-oct-2026 (todo viaja)
+//
+// Grabar clase (voz, video, capturas, marcadores y el texto que llega
+// despues), la biblioteca de figuras, las carpetas de paginas y las fotos de
+// la nota rica. El manual para Android y apple esta en
+// docs/manual-sincronizar-lo-nuevo.md.
+
+/// Un proyecto nuevo en el PC, sin nada dentro.
+fn ficha_pc(p: &Par, nombre: &str) -> Ficha {
+    let raiz = p.raiz();
+    let ficha = Ficha::nueva(nombre, p.reloj.tic(), &p.aparato_pc());
+    let mut i = Indice::leer(&raiz);
+    i.proyectos.push(ficha.clone());
+    i.guardar(&raiz).unwrap();
+    ficha
+}
+
+fn sello_pc(p: &Par, ficha: &Ficha, numero: i64) -> Sello {
+    Sello {
+        cuando: p.reloj.tic(),
+        numero,
+        aparato: p.aparato_pc(),
+        proyecto: ficha.id.clone(),
+    }
+}
+
+/// El mensaje `id` del movil, como `serde_json`.
+fn mensaje_movil(p: &Par, id: &str) -> serde_json::Value {
+    let m = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|m| kotlin::cadena(m, "id") == Some(id))
+        .unwrap_or_else(|| panic!("el mensaje {id} no llego al movil"));
+    serde_json::from_str(&m.a_texto()).unwrap()
+}
+
+/// Cambia el mensaje `id` del movil como lo haria su chat.
+fn cambiar_en_movil(p: &Par, id: &str, cambio: impl FnOnce(&mut serde_json::Value)) {
+    let mut lista = p.movil.leer_mensajes();
+    let i = lista
+        .iter()
+        .position(|m| kotlin::cadena(m, "id") == Some(id))
+        .unwrap();
+    let mut v: serde_json::Value = serde_json::from_str(&lista[i].a_texto()).unwrap();
+    cambio(&mut v);
+    lista[i] = Json::de_valor(&v);
+    p.movil.escribir_mensajes(&lista).unwrap();
+}
+
+fn mensaje_pc(p: &Par, ficha: &Ficha, id: &str) -> Mensaje {
+    p.mensajes_pc(&ficha.id)
+        .into_iter()
+        .find(|m| m.id == id)
+        .unwrap_or_else(|| panic!("el mensaje {id} no esta en el PC"))
+}
+
+fn ms_de_marcadores(v: &serde_json::Value) -> Vec<i64> {
+    v["marcadores"]
+        .as_array()
+        .map(|l| l.iter().filter_map(|m| m["ms"].as_i64()).collect())
+        .unwrap_or_default()
+}
+
+/// **Una clase grabada en el PC** (`grabar_clase.rs`): la nota de voz con
+/// `grabacion`, `capturas`, `video` y `marcadores`; el `.mp4` (varios
+/// megas: viaja a trozos de 1 MiB) con `enGrabacion`; y una captura. Todo
+/// llega al movil con sus ficheros, el texto que sale despues tambien, y un
+/// marcador puesto en cada aparato antes de sincronizar deja los dos.
+#[test]
+fn una_clase_grabada_en_el_pc_llega_al_movil_con_voz_video_capturas_y_el_texto_de_despues() {
+    use pixpin_proyecto::clase;
+    let p = montar("clase-pc");
+    let raiz = p.raiz();
+    let ficha = ficha_pc(&p, "Estructuras");
+    let carpeta = almacen::carpeta(&raiz, &ficha.id);
+    let audio = vec![7u8; 300_000];
+    let ruta_voz = almacen::guardar_adjunto(&raiz, &ficha.id, "Clase 25-oct.m4a", &audio).unwrap();
+    let mut voz = Mensaje::adjunto(
+        Clase::Voz,
+        "Clase 25-oct.m4a",
+        &ruta_voz,
+        audio.len() as i64,
+        &sello_pc(&p, &ficha, 1),
+    );
+    voz.duracion_ms = 90_000;
+    // Mas de un tramo del cable y por encima del umbral de la cache de
+    // resumenes: un video de verdad.
+    let video: Vec<u8> = (0..(5usize << 20) + 123).map(|i| (i % 251) as u8).collect();
+    std::fs::write(carpeta.join("archivos/Clase 25-oct.mp4"), &video).unwrap();
+    let mut mp4 = Mensaje::adjunto(
+        Clase::Archivo,
+        "Clase 25-oct.mp4",
+        "archivos/Clase 25-oct.mp4",
+        video.len() as i64,
+        &sello_pc(&p, &ficha, 2),
+    );
+    mp4.resto
+        .insert("enGrabacion".into(), json!({"de": voz.id, "ms": 0}));
+    let ruta_foto =
+        almacen::guardar_adjunto(&raiz, &ficha.id, "clase-1-1.png", b"PNG captura").unwrap();
+    let mut foto = Mensaje::adjunto(
+        Clase::Imagen,
+        "clase-1-1.png",
+        &ruta_foto,
+        11,
+        &sello_pc(&p, &ficha, 3),
+    );
+    foto.texto = "⏱ 01:05 · Clase 25-oct".into();
+    foto.resto
+        .insert("enGrabacion".into(), json!({"de": voz.id, "ms": 65_000}));
+    voz.resto.insert("grabacion".into(), json!("clase"));
+    voz.resto
+        .insert("capturas".into(), json!([{"ms": 65_000, "id": foto.id}]));
+    voz.resto.insert("video".into(), json!({"id": mp4.id}));
+    clase::poner_marcador(&mut voz.resto, 30_000, "ojo: examen");
+    for m in [&voz, &mp4, &foto] {
+        cuaderno::anadir(&carpeta, m).unwrap();
+    }
+    let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
+
+    p.vuelta_desde_pc();
+
+    let v = mensaje_movil(&p, &voz.id);
+    assert_eq!(v["clase"], "VOZ");
+    assert_eq!(v["grabacion"], "clase");
+    assert_eq!(v["capturas"][0]["id"], foto.id.as_str());
+    assert_eq!(v["video"]["id"], mp4.id.as_str());
+    assert_eq!(v["marcadores"][0]["texto"], "ojo: examen");
+    assert_eq!(
+        mensaje_movil(&p, &mp4.id)["enGrabacion"]["de"],
+        voz.id.as_str()
+    );
+    assert_eq!(mensaje_movil(&p, &foto.id)["enGrabacion"]["ms"], 65_000);
+    assert_eq!(abrir_en_el_movil(&p, &voz.id).as_deref(), Some(&audio[..]));
+    assert!(
+        abrir_en_el_movil(&p, &mp4.id).as_deref() == Some(&video[..]),
+        "el video llega entero y byte a byte"
+    );
+    assert_eq!(
+        abrir_en_el_movil(&p, &foto.id).as_deref(),
+        Some(&b"PNG captura"[..])
+    );
+    p.quieto(&chat);
+
+    // El texto sale despues (Whisper tarda): la nota cambia y viaja.
+    let mut m = mensaje_pc(&p, &ficha, &voz.id);
+    m.transcripcion = Some("[0:00] Hoy vemos vigas\n\n[0:40] Y columnas".into());
+    m.resto.insert("estadoDelTexto".into(), json!("LISTO"));
+    cuaderno::reemplazar(&carpeta, &m).unwrap();
+    p.vuelta_desde_pc();
+    let v = mensaje_movil(&p, &voz.id);
+    assert_eq!(
+        v["transcripcion"],
+        "[0:00] Hoy vemos vigas\n\n[0:40] Y columnas"
+    );
+    assert_eq!(v["estadoDelTexto"], "LISTO");
+
+    // Un marcador en cada aparato antes de sincronizar: quedan los dos, en
+    // orden, en los dos lados. Y el texto retocado en el movil tambien.
+    cambiar_en_movil(&p, &voz.id, |v| {
+        v["marcadores"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"ms": 120_000, "texto": "desde el movil"}));
+        v["transcripcion"] = json!("[0:00] Hoy vemos vigas\n\n[0:40] Y columnas de hormigon");
+    });
+    let mut m = mensaje_pc(&p, &ficha, &voz.id);
+    clase::poner_marcador(&mut m.resto, 60_000, "desde el PC");
+    cuaderno::reemplazar(&carpeta, &m).unwrap();
+    p.vuelta_desde_pc();
+    let v = mensaje_movil(&p, &voz.id);
+    assert_eq!(ms_de_marcadores(&v), [30_000, 60_000, 120_000], "{v}");
+    let en_pc = mensaje_pc(&p, &ficha, &voz.id);
+    assert_eq!(
+        clase::marcadores_de(&en_pc.resto)
+            .iter()
+            .map(|m| m.ms)
+            .collect::<Vec<_>>(),
+        [30_000, 60_000, 120_000]
+    );
+    assert_eq!(
+        en_pc.transcripcion.as_deref(),
+        Some("[0:00] Hoy vemos vigas\n\n[0:40] Y columnas de hormigon")
+    );
+    p.quieto(&chat);
+}
+
+/// **Una clase grabada en el movil** llega al PC igual: la voz en `voz/`, el
+/// video en `guardados/`, los campos en `resto`, y su texto de despues.
+#[test]
+fn una_clase_grabada_en_el_movil_llega_al_pc_con_sus_ficheros_y_su_texto_de_despues() {
+    let p = montar("clase-movil");
+    let m = &p.movil;
+    escribir_movil(&p, "voz/voz_1761400000000.m4a", "audio del movil");
+    escribir_movil(&p, "guardados/1761400000001_clase.mp4", "video del movil");
+    let (voz, mp4) = ("v-movil", "mp4-movil");
+    for (id, clase, rel, extra) in [
+        (
+            voz,
+            "VOZ",
+            "voz/voz_1761400000000.m4a",
+            json!({"grabacion": "clase", "capturas": [], "video": {"id": mp4},
+                   "marcadores": [{"ms": 5_000, "texto": "inicio"}], "duracionMs": 60_000}),
+        ),
+        (
+            mp4,
+            "ARCHIVO",
+            "guardados/1761400000001_clase.mp4",
+            json!({"enGrabacion": {"de": voz, "ms": 0}, "nombre": "clase.mp4"}),
+        ),
+    ] {
+        let mut v = json!({"id": id, "cuando": p.reloj.tic(), "clase": clase,
+                           "ruta": m.absoluta(rel), "numero": m.leer_mensajes().len() + 1,
+                           "letra": "a"});
+        for (k, x) in extra.as_object().unwrap() {
+            v[k] = x.clone();
+        }
+        m.anadir_mensaje(&Json::de_valor(&v)).unwrap();
+    }
+
+    p.vuelta_desde_pc();
+
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    let v = mensaje_pc(&p, &g, voz);
+    assert_eq!(v.resto["grabacion"], "clase");
+    assert_eq!(v.resto["video"]["id"], mp4);
+    assert_eq!(
+        pixpin_proyecto::clase::marcadores_de(&v.resto)[0].texto,
+        "inicio"
+    );
+    assert_eq!(
+        std::fs::read(doc_en_pc(&p, voz)).unwrap(),
+        b"audio del movil"
+    );
+    assert_eq!(
+        std::fs::read(doc_en_pc(&p, mp4)).unwrap(),
+        b"video del movil"
+    );
+    assert_eq!(mensaje_pc(&p, &g, mp4).resto["enGrabacion"]["de"], voz);
+
+    cambiar_en_movil(&p, voz, |v| v["transcripcion"] = json!("[0:00] hola"));
+    p.vuelta_desde_pc();
+    assert_eq!(
+        mensaje_pc(&p, &g, voz).transcripcion.as_deref(),
+        Some("[0:00] hola")
+    );
+    p.quieto(GENERAL);
+}
+
+fn figura_guardada(id: &str, nombre: &str) -> serde_json::Value {
+    json!({"id": id, "nombre": nombre, "propia": true, "elementos": [
+        {"id": format!("{id}-p"), "type": "rectangle", "x": 0, "y": 0, "width": 10,
+         "height": 10, "version": 1, "versionNonce": 3, "updated": 1}
+    ]})
+}
+
+fn ids_de_figuras(texto: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<serde_json::Value>>(texto)
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// **La biblioteca de figuras** (`pins/draw/figuras.json`, senalada por el
+/// mensaje `auto-figuras` del chat «Asistente»): viaja, y si se guardo una
+/// figura en cada aparato antes de sincronizar quedan las dos en los dos
+/// (antes ganaba el fichero tocado mas tarde y la otra se perdia).
+#[test]
+fn la_biblioteca_de_figuras_viaja_y_guardar_una_en_cada_aparato_no_pierde_ninguna() {
+    let p = montar("figuras");
+    let rel = "pins/draw/figuras.json";
+    let serie = json!([figura_guardada("serie-norte", "Norte")]).to_string();
+    escribir_movil(&p, rel, &serie);
+    p.movil
+        .guardar_proyecto(
+            &kotlin::normalizar_proyecto(&Json::de_valor(&json!({
+                "id": "asis", "nombre": "Asistente", "tocado": 5, "asistente": true,
+                "uid": "AAAAAAAAAA", "creado": 1_726_000_000_000_i64, "aparato": "MOVI",
+            })))
+            .unwrap(),
+        )
+        .unwrap();
+    p.movil
+        .anadir_mensaje(&Json::de_valor(&json!({
+            "id": "auto-figuras", "cuando": p.reloj.tic(), "clase": "ARCHIVO",
+            "ruta": p.movil.absoluta(rel), "nombre": "figuras.json", "proyecto": "asis",
+            "numero": 1, "letra": "a",
+        })))
+        .unwrap();
+
+    p.vuelta_desde_pc();
+    let en_pc = p.pc.ruta("asis", rel);
+    assert_eq!(
+        ids_de_figuras(&std::fs::read_to_string(&en_pc).unwrap()),
+        ["serie-norte"]
+    );
+
+    // Una en cada aparato.
+    p.reloj.saltar(10_000);
+    let pc = json!([
+        figura_guardada("serie-norte", "Norte"),
+        figura_guardada("f-pc", "Sello del PC")
+    ]);
+    std::fs::write(&en_pc, pc.to_string()).unwrap();
+    adelantar(&en_pc);
+    let movil = json!([
+        figura_guardada("serie-norte", "Norte"),
+        figura_guardada("f-movil", "Sello del movil")
+    ]);
+    escribir_movil(&p, rel, &movil.to_string());
+
+    p.vuelta_desde_pc();
+    let aqui = ids_de_figuras(&std::fs::read_to_string(&en_pc).unwrap());
+    let alli = ids_de_figuras(&leer_movil(&p, rel).unwrap());
+    assert_eq!(aqui, ["serie-norte", "f-pc", "f-movil"]);
+    assert_eq!(alli, aqui, "los dos quedan iguales");
+    // Lo que sale lo lee la biblioteca del PC (y es el formato del movil).
+    let leidas = pixpin_motor2d::biblioteca::desde_json(&std::fs::read_to_string(&en_pc).unwrap());
+    assert_eq!(leidas.len(), 3);
+    p.quieto("asis");
+
+    // Caso negativo: borrar una figura en un solo aparato sigue borrandola
+    // en los dos (no hay choque: solo cambio un lado).
+    p.reloj.saltar(10_000);
+    let sin = json!([
+        figura_guardada("serie-norte", "Norte"),
+        figura_guardada("f-movil", "Sello del movil")
+    ]);
+    std::fs::write(&en_pc, sin.to_string()).unwrap();
+    adelantar(&en_pc);
+    p.vuelta_desde_pc();
+    assert_eq!(
+        ids_de_figuras(&leer_movil(&p, rel).unwrap()),
+        ["serie-norte", "f-movil"]
+    );
+}
+
+/// **Una carpeta de paginas** (`carpeta_de_paginas.rs`, un `MINIAPP`
+/// «carpeta» con su documento en `texto`): viaja, y una pagina anadida en
+/// cada aparato antes de sincronizar deja las dos.
+#[test]
+fn una_carpeta_de_paginas_viaja_y_una_pagina_en_cada_aparato_deja_las_dos() {
+    use pixpin_proyecto::carpeta_de_paginas::{self as cp, Carpeta};
+    let p = montar("carpeta-paginas");
+    let raiz = p.raiz();
+    let ficha = ficha_pc(&p, "Diario");
+    let carpeta = almacen::carpeta(&raiz, &ficha.id);
+    let dia1 = p.nota_pc(&ficha, "dia 1");
+    let mut c = cp::mensaje_nuevo("Diario de obra", &sello_pc(&p, &ficha, 2));
+    let mut doc = Carpeta::default();
+    doc.anadir(&dia1.id, "Día 1");
+    c.texto = doc.escribir();
+    cuaderno::anadir(&carpeta, &c).unwrap();
+    let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
+
+    p.vuelta_desde_pc();
+    let v = mensaje_movil(&p, &c.id);
+    assert_eq!(v["clase"], "MINIAPP");
+    assert_eq!(v["miniapp"], "carpeta");
+    assert_eq!(v["nombre"], "Diario de obra");
+    let alli = Carpeta::leer(v["texto"].as_str().unwrap()).unwrap();
+    assert_eq!(alli.paginas[0].id, dia1.id);
+
+    // El PC anade el dia 2; el movil, a la vez, una pagina suya.
+    let dia2 = p.nota_pc(&ficha, "dia 2");
+    let mut m = mensaje_pc(&p, &ficha, &c.id);
+    let mut doc = Carpeta::leer(&m.texto).unwrap();
+    doc.anadir(&dia2.id, "Día 2");
+    m.texto = doc.escribir();
+    cuaderno::reemplazar(&carpeta, &m).unwrap();
+    cambiar_en_movil(&p, &c.id, |v| {
+        let mut doc = Carpeta::leer(v["texto"].as_str().unwrap()).unwrap();
+        doc.anadir("pagina-del-movil", "Foto del movil");
+        v["texto"] = json!(doc.escribir());
+    });
+
+    p.vuelta_desde_pc();
+    let ids = |texto: &str| -> Vec<String> {
+        Carpeta::leer(texto)
+            .unwrap()
+            .paginas
+            .into_iter()
+            .map(|p| p.id)
+            .collect()
+    };
+    let en_pc = ids(&mensaje_pc(&p, &ficha, &c.id).texto);
+    assert_eq!(
+        en_pc,
+        [dia1.id.clone(), dia2.id.clone(), "pagina-del-movil".into()]
+    );
+    assert_eq!(
+        ids(mensaje_movil(&p, &c.id)["texto"].as_str().unwrap()),
+        en_pc
+    );
+    p.quieto(&chat);
+}
+
+/// **La nota rica** (Markdown con fotos en `notas/`): llegan la nota y sus
+/// fotos, y en el movil la ruta de cada foto es un fichero que existe.
+#[test]
+fn una_nota_rica_del_pc_llega_al_movil_con_sus_fotos() {
+    let p = montar("nota-rica");
+    let raiz = p.raiz();
+    let ficha = ficha_pc(&p, "Visita");
+    let carpeta = almacen::carpeta(&raiz, &ficha.id);
+    std::fs::create_dir_all(carpeta.join("notas")).unwrap();
+    std::fs::write(carpeta.join("notas/1761400000000-pegado.png"), b"png 1").unwrap();
+    std::fs::write(carpeta.join("notas/1761400000001-planta.jpg"), b"jpg 2").unwrap();
+    let notas = vista::portatil_de_ruta(&raiz, &carpeta.join("notas")).unwrap();
+    let nota = p.nota_pc(
+        &ficha,
+        &format!(
+            "Visita\n\n**Pendiente:** la escalera\n![]({notas}/1761400000000-pegado.png)\n![planta|300]({notas}/1761400000001-planta.jpg)"
+        ),
+    );
+    let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
+
+    p.vuelta_desde_pc();
+
+    let v = mensaje_movil(&p, &nota.id);
+    let texto = v["texto"].as_str().unwrap();
+    assert!(texto.contains("**Pendiente:**"), "{texto}");
+    for (f, bytes) in [
+        ("1761400000000-pegado.png", &b"png 1"[..]),
+        ("1761400000001-planta.jpg", &b"jpg 2"[..]),
+    ] {
+        let rel = format!(
+            "guardados/pc/{}/notas/{f}",
+            pixpin_sincro::disco::limpio(&chat)
+        );
+        assert_eq!(
+            std::fs::read(p.movil.raiz().join(&rel)).ok().as_deref(),
+            Some(bytes),
+            "{rel}"
+        );
+    }
+    p.quieto(&chat);
+}
