@@ -244,6 +244,7 @@ chat-copiado = Copied
 chat-compartido = Copied to the clipboard: paste it wherever you want to share it
 chat-compartir-sin-panel = Windows did not open the Share panel: it is on the clipboard so you can paste it wherever you want
 chat-pineado = Pinned
+chat-foto-en-la-nota = Photo added to your text: it is all sent as one note
 chat-sin-archivo = This message has no file on this computer
 chat-sin-origen = That canvas is not in this project
 chat-sin-proyectos-otros = There is no other project to send it to

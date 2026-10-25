@@ -273,6 +273,7 @@ chat-copiado = Copiado
 chat-compartido = Copiado al portapapeles: pégalo donde quieras compartirlo
 chat-compartir-sin-panel = Windows no abrió el panel Compartir: lo he dejado en el portapapeles para que lo pegues donde quieras
 chat-pineado = Pineado
+chat-foto-en-la-nota = Foto añadida a lo escrito: se envía todo en una sola nota
 chat-sin-archivo = Este mensaje no tiene un archivo en este equipo
 chat-sin-origen = No encuentro ese lienzo en este proyecto
 chat-sin-proyectos-otros = No hay otro proyecto al que mandarlo
