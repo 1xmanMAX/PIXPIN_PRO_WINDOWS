@@ -404,6 +404,22 @@ impl Reproductor {
     /// (D63/D69). La carga es asincrona: `fallo()` se vuelve `true` si Media
     /// Foundation no puede con el (D72).
     pub fn nuevo(d3d: &ID3D11Device, ruta: &Path) -> Result<Reproductor, ErrorPin> {
+        Reproductor::abrir(d3d, ruta, true)
+    }
+
+    /// **Abre el archivo para verlo de principio a fin** (25-oct-2026, la
+    /// ventana de estudiar una clase): sin bucle, con sonido y quieto hasta
+    /// que se pulse reproducir. El primer fotograma se recoge con un
+    /// [`Reproductor::buscar`] en cuanto hay [`Reproductor::dimensiones`].
+    pub fn para_ver(d3d: &ID3D11Device, ruta: &Path) -> Result<Reproductor, ErrorPin> {
+        let r = Reproductor::abrir(d3d, ruta, false)?;
+        r.pausado_a_mano.set(true);
+        Ok(r)
+    }
+
+    /// `de_pin`: en bucle, silenciado y arrancando solo (el pin); sin el,
+    /// una vez, con sonido y quieto (verlo entero).
+    fn abrir(d3d: &ID3D11Device, ruta: &Path, de_pin: bool) -> Result<Reproductor, ErrorPin> {
         arrancar_mf();
 
         // SAFETY: COM se inicializa (o se reutiliza) en el hilo del pin y
@@ -448,9 +464,9 @@ impl Reproductor {
                 .CreateInstance(0, &atributos)
                 .map_err(ErrorPin::Video)?;
 
-            motor.SetAutoPlay(true).map_err(ErrorPin::Video)?;
-            motor.SetLoop(true).map_err(ErrorPin::Video)?;
-            motor.SetMuted(true).map_err(ErrorPin::Video)?;
+            motor.SetAutoPlay(de_pin).map_err(ErrorPin::Video)?;
+            motor.SetLoop(de_pin).map_err(ErrorPin::Video)?;
+            motor.SetMuted(de_pin).map_err(ErrorPin::Video)?;
             let url = BSTR::from(ruta.to_string_lossy().as_ref());
             motor.SetSource(&url).map_err(ErrorPin::Video)?;
 
@@ -678,6 +694,22 @@ impl Reproductor {
             }
         }
         self.avisar_ritmo();
+    }
+
+    /// Si llego al final (solo pasa sin bucle, ver [`Reproductor::para_ver`]).
+    pub fn acabado(&self) -> bool {
+        // SAFETY: consulta sobre el motor vivo.
+        unsafe { self.motor.IsEnded() }.as_bool()
+    }
+
+    /// La velocidad: 1 es la normal. Media Foundation conserva el tono.
+    pub fn poner_velocidad(&self, v: f64) {
+        // SAFETY: cambio de estado sobre el motor vivo; una velocidad que
+        // no admite se queda en la que tenia.
+        unsafe {
+            let _ = self.motor.SetPlaybackRate(v.clamp(0.25, 4.0));
+            let _ = self.motor.SetDefaultPlaybackRate(v.clamp(0.25, 4.0));
+        }
     }
 
     pub fn silenciado(&self) -> bool {
