@@ -34,8 +34,8 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::Atajo;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::ajustes::{
-    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorOcr, NivelPdf, PreferenciaIdioma,
-    PreferenciaNivel, Suavizado,
+    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorDeVoz, MotorOcr, NivelPdf,
+    PreferenciaIdioma, PreferenciaNivel, Suavizado,
 };
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
 use pixpin_store::herramientas::SITIOS;
@@ -319,6 +319,13 @@ enum Clave {
     /// Una herramienta de dibujo, por su nombre estable del TOML.
     Herramienta(&'static str),
     // Voz
+    /// El motor de pasar a texto: Whisper o Qwen3-ASR (`[voz] motor`).
+    /// Elegir Qwen3-ASR sin bajar empieza la descarga.
+    VozMotor,
+    /// Abrir la ficha (y la licencia) de Qwen3-ASR.
+    VozQwen3Licencia,
+    /// Borrar Qwen3-ASR bajado.
+    VozQwen3Borrar,
     VozSegundo,
     VozModo,
     // Asistente (13-oct-2026)
@@ -400,6 +407,8 @@ impl Clave {
                 | Clave::SinAutomatizaciones
                 | Clave::OcrLicencia
                 | Clave::OcrBorrar
+                | Clave::VozQwen3Licencia
+                | Clave::VozQwen3Borrar
         )
     }
 
@@ -714,6 +723,47 @@ fn filas_de_ocr(a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
             Clave::OcrBorrar,
             tt("ajustes2-ocr-borrar"),
             tt("ajustes2-ayuda-ocr-borrar"),
+            Control::Boton(tt("ajustes2-ocr-borrar-boton")),
+        ));
+    }
+    v
+}
+
+/// «Pasar a texto con»: Whisper (de fabrica) o Qwen3-ASR, que se baja solo
+/// al elegirlo, con lo que pesa, la memoria que pide y su licencia dichos
+/// antes (`docs/voz-qwen3.md`).
+fn filas_de_motor_de_voz(a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
+    let t = cx.t;
+    let tt = |k: &str| t.t(k);
+    let raiz = crate::ocr_motor::raiz().unwrap_or_default();
+    let mut v = vec![
+        op(
+            a,
+            Clave::VozMotor,
+            tt("ajustes2-voz-motor"),
+            crate::voz_motor::estado(t, &raiz, a.voz.motor),
+            opcion(
+                vec![
+                    tt("ajustes2-voz-motor-whisper"),
+                    tt("ajustes2-voz-motor-qwen3"),
+                ],
+                usize::from(a.voz.motor == MotorDeVoz::Qwen3),
+            ),
+        ),
+        op(
+            a,
+            Clave::VozQwen3Licencia,
+            tt("ajustes2-voz-qwen3-licencia"),
+            tt("ajustes2-ayuda-voz-qwen3-licencia"),
+            Control::Boton(tt("ajustes2-abrir")),
+        ),
+    ];
+    if crate::voz_motor::qwen3_bajado_algo(&raiz) {
+        v.push(op(
+            a,
+            Clave::VozQwen3Borrar,
+            tt("ajustes2-voz-qwen3-borrar"),
+            tt("ajustes2-ayuda-voz-qwen3-borrar"),
             Control::Boton(tt("ajustes2-ocr-borrar-boton")),
         ));
     }
@@ -1099,38 +1149,41 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
             }
             v
         }
-        Seccion::Voz => vec![
-            grupo(t, "ajustes2-g-voz"),
-            op(
-                a,
-                Clave::VozSegundo,
-                tt("ajustes-voz-segundo"),
-                tt("ajustes2-ayuda-voz-segundo"),
-                opcion(
-                    SEGUNDOS_IDIOMAS.iter().map(|(_, k)| t.t(k)).collect(),
-                    SEGUNDOS_IDIOMAS
-                        .iter()
-                        .position(|(c, _)| *c == a.voz.segundo_idioma)
-                        .unwrap_or(0),
+        Seccion::Voz => [grupo(t, "ajustes2-g-voz")]
+            .into_iter()
+            .chain(filas_de_motor_de_voz(a, cx))
+            .chain([
+                op(
+                    a,
+                    Clave::VozSegundo,
+                    tt("ajustes-voz-segundo"),
+                    tt("ajustes2-ayuda-voz-segundo"),
+                    opcion(
+                        SEGUNDOS_IDIOMAS.iter().map(|(_, k)| t.t(k)).collect(),
+                        SEGUNDOS_IDIOMAS
+                            .iter()
+                            .position(|(c, _)| *c == a.voz.segundo_idioma)
+                            .unwrap_or(0),
+                    ),
                 ),
-            ),
-            op(
-                a,
-                Clave::VozModo,
-                tt("ajustes-voz-modo"),
-                tt("ajustes2-ayuda-voz-modo"),
-                opcion(
-                    vec![
-                        tt("ajustes-voz-modo-cada-uno"),
-                        tt("ajustes-voz-modo-todo-en-uno"),
-                    ],
-                    match a.voz.modo_de_idiomas {
-                        ModoDeIdiomas::CadaUno => 0,
-                        ModoDeIdiomas::TodoEnUno => 1,
-                    },
+                op(
+                    a,
+                    Clave::VozModo,
+                    tt("ajustes-voz-modo"),
+                    tt("ajustes2-ayuda-voz-modo"),
+                    opcion(
+                        vec![
+                            tt("ajustes-voz-modo-cada-uno"),
+                            tt("ajustes-voz-modo-todo-en-uno"),
+                        ],
+                        match a.voz.modo_de_idiomas {
+                            ModoDeIdiomas::CadaUno => 0,
+                            ModoDeIdiomas::TodoEnUno => 1,
+                        },
+                    ),
                 ),
-            ),
-        ],
+            ])
+            .collect(),
         Seccion::Asistente => {
             use crate::asistente::nube as ia_nube;
             use pixpin_ia::nube::Proveedor;
@@ -1620,6 +1673,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         },
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
+        Clave::VozMotor => a.voz.motor = d.voz.motor,
         Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
         Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
@@ -1668,7 +1722,9 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::CorrerAutomatizacion(_)
         | Clave::SinAutomatizaciones
         | Clave::OcrLicencia
-        | Clave::OcrBorrar => {}
+        | Clave::OcrBorrar
+        | Clave::VozQwen3Licencia
+        | Clave::VozQwen3Borrar => {}
     }
 }
 
@@ -1926,6 +1982,26 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 _ => None,
             }
         }
+        Clave::VozMotor => {
+            // En un equipo sin memoria para Qwen3-ASR se queda Whisper.
+            a.voz.motor = if cual == 1 && crate::voz_motor::se_ofrece() {
+                MotorDeVoz::Qwen3
+            } else {
+                MotorDeVoz::Whisper
+            };
+            // Elegir Qwen3-ASR es pedirlo: si no esta, se baja ya (la fila
+            // dice antes cuanto pesa, la memoria y la licencia). Volver a
+            // Whisper corta una descarga a medias.
+            match (a.voz.motor, crate::ocr_motor::raiz()) {
+                (MotorDeVoz::Qwen3, Some(r)) if !crate::voz_motor::qwen3_listo(&r) => {
+                    crate::voz_motor::empezar_descarga(r)
+                }
+                (MotorDeVoz::Whisper, _) if crate::voz_motor::bajando() => {
+                    crate::voz_motor::cancelar_descarga()
+                }
+                _ => {}
+            }
+        }
         Clave::VozModo => {
             a.voz.modo_de_idiomas = if cual == 1 {
                 ModoDeIdiomas::TodoEnUno
@@ -2180,6 +2256,13 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
             crate::ocr_motor::borrar(ubicacion.raiz());
             Ok(())
         }
+        Clave::VozQwen3Licencia => pixpin_shell::abrir::abrir(std::path::Path::new(
+            pixpin_voz::qwen3::catalogo::ENLACE_LICENCIA,
+        )),
+        Clave::VozQwen3Borrar => {
+            crate::voz_motor::borrar(ubicacion.raiz());
+            Ok(())
+        }
         _ => Ok(()),
     };
     if let Err(e) = resultado {
@@ -2389,12 +2472,15 @@ fn abrir(
         std::sync::Arc::new(move || pixpin_shell::overlay::despertar(hwnd_ventana));
     // La descarga de Indra avisa a esta ventana para pintar su avance.
     crate::ocr_motor::al_cambiar(despertar_ventana.clone());
+    // Y la de Qwen3-ASR.
+    crate::voz_motor::al_cambiar(despertar_ventana.clone());
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
         let n = crate::asistente::nube::novedades()
             + crate::asistente::conexiones::novedades()
-            + crate::ocr_motor::novedades();
+            + crate::ocr_motor::novedades()
+            + crate::voz_motor::novedades();
         if n != novedades_claves {
             novedades_claves = n;
             version += 1;
@@ -3858,6 +3944,7 @@ mod pruebas {
             Clave::ImanCentros,
             Clave::ImanRadio,
             Clave::Suavizado,
+            Clave::VozMotor,
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteModelo,

@@ -1,7 +1,7 @@
 //! **Un solo trabajo gordo de memoria a la vez, en modo cuidadoso.**
 //!
-//! Whisper sin arena pica en ~350 MB y pdfsqueeze en modo cuidadoso en
-//! ~339 MB (medidos). En un equipo de 4 GB, los dos a la vez —o dos notas
+//! Whisper sin arena pica en ~350 MB, Qwen3-ASR sin preempaquetar en
+//! ~1,45 GB y pdfsqueeze en modo cuidadoso en ~339 MB (medidos). En un equipo de 4 GB, los dos a la vez —o dos notas
 //! transcribiendose a la vez— se comen lo que le queda a Windows. Asi que en
 //! modo cuidadoso los dos piden **turno** antes de empezar: el segundo espera
 //! a que acabe el primero (una cola, por orden de llegada al cerrojo). Fuera
@@ -23,6 +23,10 @@ pub fn fijar_equipo(ram_fisica_bytes: u64, nivel_ligero: bool) {
     let c = crate::aligerar::modo_cuidadoso(ram_fisica_bytes, nivel_ligero);
     CUIDADOSO.store(c, Ordering::Relaxed);
     pixpin_voz::whisper::fijar_modo_cuidadoso(c);
+    // Qwen3-ASR, con la misma regla: sin preempaquetar los pesos (~200 MB
+    // menos) y con un hilo libre. Y la memoria, para ofrecerlo o no.
+    pixpin_voz::qwen3::motor::fijar_modo_cuidadoso(c);
+    crate::voz_motor::fijar_memoria(ram_fisica_bytes);
     let r = reparto(ram_fisica_bytes, nivel_ligero, nucleos());
     let razon = if !c {
         "memoria de sobra"

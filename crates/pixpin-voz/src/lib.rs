@@ -19,7 +19,19 @@
 //!    un extra del PC en Pronunciar, «Oir el texto» (`sapi::Lector`), y la
 //!    pone Windows.
 //!
-//! ## Tres motores: Whisper, el de Windows y Vosk
+//! ## Cuatro motores: Whisper, Qwen3-ASR, el de Windows y Vosk
+//!
+//! **Actualizado el 2026-10-25.** Para pasar notas y grabaciones (clases,
+//! reuniones) a texto hay un motor **opcional**, **Qwen3-ASR-0.6B**
+//! (Apache-2.0, ver [`qwen3`] y `docs/voz-qwen3.md`): se elige en Ajustes ›
+//! Voz, se baja entonces (unos 988 MB, con sha256) y corre sobre **el mismo
+//! ONNX Runtime** que Whisper e Indra, con la exportacion int8 de
+//! sherpa-onnx. En el banco de FLEURS es_419 deja el WER en la mitad o menos
+//! que Whisper base (limpio, reunion y aula); a cambio pide ~1,5 GB de
+//! memoria mientras transcribe y es unas 4 veces mas lento. **Whisper base
+//! sigue siendo el de fabrica y el de reserva**: con Qwen3-ASR elegido pero
+//! sin bajar, con «todo en el primero» (traducir, que Qwen no hace) o si
+//! falla, se pasa con Whisper ([`toca_qwen3`], [`transcribir_con`]).
 //!
 //! **Actualizado otra vez el 2026-09-22, por decision del usuario.** Con sus
 //! propias notas, SAPI escribio frases que nadie dijo. Pasar a texto va
@@ -87,9 +99,13 @@
 //!
 //! ## Reparto del crate
 //!
-//! - [`tiempos`], [`credibilidad`], [`idiomas`] y [`telepronter`]:
-//!   aritmetica y texto, sin Windows y sin sonido. Es donde estan las
-//!   pruebas de verdad.
+//! - [`tiempos`], [`credibilidad`], [`idiomas`], [`cortes`] y
+//!   [`telepronter`]: aritmetica y texto, sin Windows y sin sonido. Es donde
+//!   estan las pruebas de verdad. Tambien las partes puras de [`qwen3`]
+//!   (mel, tokens, guion, catalogo).
+//! - [`ort`] y [`qwen3::motor`]: hablan con ONNX Runtime; compilan tambien
+//!   en Linux (con `libonnxruntime.so`) para probar Qwen3-ASR con el modelo
+//!   de verdad en la maquina de desarrollo.
 //! - [`pcm`] y [`motor`]: lo que toca el sistema operativo y la libreria en
 //!   C, con su `unsafe` acotado y comentado.
 #![deny(clippy::undocumented_unsafe_blocks)]

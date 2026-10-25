@@ -671,8 +671,17 @@ mod pruebas {
             eprintln!("{uid} rtf {:.3} {}", dt / dur, texto);
             salida.push(serde_json::json!({"uid": uid, "hyp": texto, "sec": dt, "dur": dur}));
         }
+        // El pico de memoria del proceso (Linux: `VmHWM`).
+        let pico = std::fs::read_to_string("/proc/self/status")
+            .ok()
+            .and_then(|s| {
+                s.lines()
+                    .find(|l| l.starts_with("VmHWM"))
+                    .map(|l| l.to_string())
+            })
+            .unwrap_or_default();
         eprintln!(
-            "carga {carga:.1} s | RTF {:.3} | runtime {}",
+            "carga {carga:.1} s | RTF {:.3} | runtime {} | {pico}",
             calculo_s / audio_s,
             q.version_del_runtime()
         );

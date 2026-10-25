@@ -11495,6 +11495,11 @@ pub(crate) fn razon_de_voz(e: &pixpin_voz::ErrorVoz, textos: &Catalogo) -> Strin
             args.set("megas", *megas as i64);
             textos.t_args("chat-voz-sin-modelo-whisper", &args)
         }
+        E::SinModeloQwen3 { megas, .. } => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("megas", *megas as i64);
+            textos.t_args("chat-voz-sin-modelo-qwen3", &args)
+        }
         E::SinOnnxRuntime { donde } => arg("chat-voz-sin-onnx", "donde", donde.clone()),
         E::Descarga { que, .. } => arg("chat-voz-descarga", "que", que.clone()),
         E::Onnx { detalle, .. } => arg("chat-voz-onnx", "detalle", detalle.clone()),

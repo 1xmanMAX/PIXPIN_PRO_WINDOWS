@@ -175,6 +175,8 @@ mod vista_rapida;
 mod visor_hoja;
 mod voz;
 mod voz_en_chat;
+/// El motor de pasar a texto (`[voz] motor`): Whisper o Qwen3-ASR (25-oct).
+mod voz_motor;
 mod zona_al_chat;
 
 use anyhow::{Context, Result};
@@ -554,6 +556,9 @@ fn arrancar(
     // El motor de OCR de toda la app (`[ocr]`): despues del modo del
     // equipo, que decide cuantos hilos usa Indra.
     ocr_motor::aplicar(&ubicacion, &config);
+    // El de pasar a texto (`[voz] motor`), tambien despues: si se ofrece
+    // Qwen3-ASR depende de la memoria del equipo.
+    voz_motor::aplicar(&ubicacion, &config);
     // Los visores de Markdown y HTML abren al instante con el navegador ya en
     // marcha (18-oct): se precalienta a los 6 s, cuando el arranque ya paso, y
     // solo con memoria de sobra (el proceso del navegador ocupa la suya).
@@ -872,6 +877,8 @@ fn arrancar(
             aligerar::configurar(&config.pdf);
             // El motor de OCR vale desde la siguiente lectura.
             ocr_motor::aplicar(&ubicacion, &config);
+            // Y el de pasar a texto, desde la siguiente nota.
+            voz_motor::aplicar(&ubicacion, &config);
             // Las herramientas apagadas valen desde el siguiente lienzo,
             // lector, pin o anotador que se abra.
             dibujo::permitidas::fijar(config.herramientas.clone());

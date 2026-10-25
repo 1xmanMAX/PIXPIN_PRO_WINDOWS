@@ -65,9 +65,31 @@ pub fn whisper_posible(ubicacion: &Ubicacion, idioma: Idioma) -> bool {
 
 /// Si «Pasar a texto» tiene que **bajar antes el modelo de Whisper** (una
 /// vez, unos 160 MB). El chat lo avisa y [`pasar_a_texto`] lo baja en su
-/// hilo antes de transcribir.
+/// hilo antes de transcribir. Con Qwen3-ASR elegido y bajado no hace falta
+/// Whisper (ver [`va_con_qwen3`]).
 pub fn falta_el_modelo(ubicacion: &Ubicacion, idioma: Idioma) -> bool {
-    whisper_posible(ubicacion, idioma) && !pixpin_voz::whisper::modelo_listo(ubicacion.raiz())
+    falta_whisper(
+        whisper_posible(ubicacion, idioma),
+        pixpin_voz::whisper::modelo_listo(ubicacion.raiz()),
+        va_con_qwen3(ubicacion, &idiomas_de(ubicacion, idioma)),
+    )
+}
+
+/// La regla de [`falta_el_modelo`], pura.
+pub fn falta_whisper(whisper_posible: bool, whisper_bajado: bool, con_qwen3: bool) -> bool {
+    whisper_posible && !whisper_bajado && !con_qwen3
+}
+
+/// Si esta nota va a ir con Qwen3-ASR: elegido en Ajustes, bajado, con
+/// runtime y con un idioma que sabe (ver `pixpin_voz::toca_qwen3`).
+pub fn va_con_qwen3(ubicacion: &Ubicacion, idiomas: &pixpin_voz::Idiomas) -> bool {
+    let exe = pixpin_shell::entorno::directorio_del_ejecutable().ok();
+    pixpin_voz::toca_qwen3(
+        pixpin_voz::motor_de_notas(),
+        pixpin_voz::qwen3::modelo_listo(ubicacion.raiz()),
+        pixpin_voz::whisper::runtime_disponible(ubicacion.raiz(), exe.as_deref()),
+        idiomas,
+    )
 }
 
 /// **Baja el modelo de Whisper** a `<datos>/whisper/base/`, en el hilo de
@@ -193,9 +215,20 @@ pub fn pasar_a_texto(
 ) -> EnMarcha {
     let avance = Arc::new(AtomicU32::new(0));
     let cancelado = Arc::new(AtomicBool::new(false));
+    // Los idiomas se leen aqui, al pedirlo: cambiar el segundo idioma en
+    // Ajustes vale para la siguiente nota sin reabrir el chat. Lo que se
+    // practica en Pronunciar manda sobre los dos.
+    let idiomas = match practicado {
+        Some(p) => pixpin_voz::Idiomas::uno(&p),
+        None => idiomas_de(ubicacion, idioma),
+    };
     // Se decide aqui y no en el hilo para que la primera vuelta del chat ya
     // pinte «bajando» y no un «pasando a texto 0 %» que no avanza.
-    let bajar = falta_el_modelo(ubicacion, idioma);
+    let bajar = falta_whisper(
+        whisper_posible(ubicacion, idioma),
+        pixpin_voz::whisper::modelo_listo(ubicacion.raiz()),
+        va_con_qwen3(ubicacion, &idiomas),
+    );
     let bajando = Arc::new(AtomicBool::new(bajar));
     let (enviar, resultado) = channel();
 
@@ -203,13 +236,6 @@ pub fn pasar_a_texto(
         let audio = audio.to_path_buf();
         let raiz = ubicacion.raiz().to_path_buf();
         let exe = pixpin_shell::entorno::directorio_del_ejecutable().ok();
-        // Los idiomas se leen aqui, al pedirlo: cambiar el segundo idioma en
-        // Ajustes vale para la siguiente nota sin reabrir el chat. Lo que
-        // se practica en Pronunciar manda sobre los dos.
-        let idiomas = match practicado {
-            Some(p) => pixpin_voz::Idiomas::uno(&p),
-            None => idiomas_de(ubicacion, idioma),
-        };
         let avance = Arc::clone(&avance);
         let bajando = Arc::clone(&bajando);
         let cancelado = Arc::clone(&cancelado);
@@ -284,7 +310,8 @@ pub fn idiomas_con(principal: &str, voz: &pixpin_store::Voz) -> pixpin_voz::Idio
         pixpin_store::ModoDeIdiomas::CadaUno => pixpin_voz::ModoDeIdiomas::CadaUno,
         pixpin_store::ModoDeIdiomas::TodoEnUno => pixpin_voz::ModoDeIdiomas::TodoEnUno,
     };
-    // Un segundo idioma que Whisper no sabe es «ninguno», no un error.
+    // Un segundo idioma que Whisper no sabe es «ninguno», no un error (los
+    // de Qwen3-ASR son todos de Whisper).
     let segundo = pixpin_voz::dos_idiomas::codigo(&voz.segundo_idioma, pixpin_voz::whisper::sabe)
         .unwrap_or_default();
     pixpin_voz::Idiomas::con(principal, &segundo, modo)
@@ -646,6 +673,14 @@ mod pruebas {
     }
 
     #[test]
+    fn con_qwen3_listo_no_se_baja_whisper() {
+        assert!(falta_whisper(true, false, false));
+        assert!(!falta_whisper(true, false, true), "va con Qwen3-ASR");
+        assert!(!falta_whisper(true, true, false), "ya bajado");
+        assert!(!falta_whisper(false, false, false), "sin runtime");
+    }
+
+    #[test]
     fn el_modelo_de_whisper_solo_falta_donde_whisper_puede_correr_y_no_esta_bajado() {
         let raiz = std::env::temp_dir().join(format!("pixpin-voz-falta-{}", std::process::id()));
         let u = Ubicacion::Portable { raiz: raiz.clone() };
@@ -739,6 +774,7 @@ mod pruebas {
         let voz = pixpin_store::Voz {
             segundo_idioma: "en".into(),
             modo_de_idiomas: pixpin_store::ModoDeIdiomas::TodoEnUno,
+            ..Default::default()
         };
         let i = idiomas_con("es", &voz);
         assert_eq!(i.otro.as_deref(), Some("en"));
