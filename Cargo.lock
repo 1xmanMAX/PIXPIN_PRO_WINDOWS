@@ -1516,6 +1516,7 @@ dependencies = [
  "pixpin-ia",
  "pixpin-lanzador",
  "pixpin-lecciones",
+ "pixpin-motor-video",
  "pixpin-motor2d",
  "pixpin-nivel",
  "pixpin-notas",
@@ -1707,6 +1708,17 @@ dependencies = [
  "pixpin-shell",
  "pixpin-store",
  "serde_json",
+ "windows",
+]
+
+[[package]]
+name = "pixpin-motor-video"
+version = "0.1.0"
+dependencies = [
+ "pixpin-capture",
+ "pixpin-record",
+ "thiserror",
+ "tracing",
  "windows",
 ]
 

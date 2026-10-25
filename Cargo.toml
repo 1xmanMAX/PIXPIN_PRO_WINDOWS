@@ -44,6 +44,9 @@ pixpin-hojas = { path = "crates/pixpin-hojas" }
 pixpin-office = { path = "crates/pixpin-office" }
 pixpin-ocr = { path = "crates/pixpin-ocr" }
 pixpin-record = { path = "crates/pixpin-record" }
+# El motor de video (captura por la GPU, codificador de la grafica, MP4 con
+# el sonido que le den). Ver docs/motor-de-video.md.
+pixpin-motor-video = { path = "crates/pixpin-motor-video" }
 pixpin-store = { path = "crates/pixpin-store" }
 # El visor de HTML empotrado (WebView2): abrir dentro de PixPin un .html del
 # chat y dejar que su propio boton de guardar sobrescriba el fichero. Cimiento

@@ -61,7 +61,9 @@ fn capa(nombre: &str) -> Option<u8> {
         "pixpin-puente" => 2,
         // `pixpin-render` pinta las vistas previas de PDF, Office y hojas, asi
         // que va encima de `pixpin-pdf` (capa 2).
-        "pixpin-ui" | "pixpin-render" => 3,
+        // El motor de video (25-oct-2026) usa la captura y, como ultimo
+        // recurso, el codificador de `pixpin-record` (los dos de la capa 2).
+        "pixpin-ui" | "pixpin-render" | "pixpin-motor-video" => 3,
         // `pixpin-notas` es la ventana del editor de notas Markdown (H12): usa
         // los componentes de `pixpin-ui` y `pixpin-render`, asi que va encima.
         // Los pines y la pila tambien pintan con `pixpin-render`.
@@ -101,14 +103,15 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_treinta_y_ocho_paquetes() {
+fn estan_los_treinta_y_nueve_paquetes() {
     let encontrados = manifiestos();
     // 32 con `pixpin-sistema` (lo que la logica pregunta al sistema, con
-    // version portable: la usa la copia del nucleo de Mac).
+    // version portable: la usa la copia del nucleo de Mac); 39 con el motor
+    // de video.
     assert_eq!(
         encontrados.len(),
-        38,
-        "se esperan 33 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        39,
+        "se esperan 34 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

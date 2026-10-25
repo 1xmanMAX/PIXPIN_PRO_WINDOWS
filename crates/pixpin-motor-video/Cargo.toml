@@ -1,0 +1,41 @@
+[package]
+name = "pixpin-motor-video"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# El motor de video de PixPin (ver docs/motor-de-video.md): la pantalla por
+# la GPU hasta el codificador de la grafica, el sonido que le dan, y el MP4.
+# Las cuentas (perfiles, tiempos, ritmo, encaje, colas) son puras y se
+# prueban en cualquier maquina; lo que toca Windows va en `win/`.
+
+[dependencies]
+thiserror = "2.0.20"
+tracing = "0.1.44"
+# Las cuentas del video en vivo de antes (`escala`), que el ultimo recurso
+# del motor —el camino por la CPU— sigue usando.
+pixpin-record = { version = "0.1.0", path = "../pixpin-record" }
+
+[target.'cfg(windows)'.dependencies]
+pixpin-capture = { version = "0.1.0", path = "../pixpin-capture" }
+windows = { version = "0.62.2", features = [
+    "Foundation",
+    "Foundation_Metadata",
+    "Graphics",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Performance",
+    "Win32_System_WinRT",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+] }
