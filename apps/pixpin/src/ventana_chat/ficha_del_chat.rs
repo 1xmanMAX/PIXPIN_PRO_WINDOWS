@@ -266,6 +266,15 @@ pub(super) fn zona_en(a: &Abierto, l: Punto, d: &Disposicion, escala: u32) -> Zo
     ZonaInfo::Dentro
 }
 
+/// Si lo que se teclea es para la lupa de la ficha: con la isla abierta y
+/// en su rejilla. En la previa la caja no se ve (las flechas pasan de cosa y
+/// Escape vuelve), y con la isla cerrada por otro camino (Ctrl+F, ir a un
+/// mensaje) la lupa puede haberse quedado encendida: entonces lo escrito es
+/// para la caja que se ve, no para una escondida.
+pub(super) fn teclado_en_la_lupa(a: &Abierto) -> bool {
+    a.buscando_info && a.info.is_some() && a.info_abierta.is_none()
+}
+
 /// Hasta donde baja la rueda en la seccion abierta.
 pub(super) fn tope(a: &Abierto, d: &Disposicion, escala: u32) -> i32 {
     let i = disposicion(d, escala);

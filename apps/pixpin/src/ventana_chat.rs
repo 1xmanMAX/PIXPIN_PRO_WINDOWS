@@ -640,6 +640,12 @@ static FIGURA_PEDIDA: std::sync::Mutex<Option<(String, String)>> = std::sync::Mu
 /// de la ventana de las figuras). El chat la recoge en su siguiente vuelta,
 /// se pone en ese proyecto si estaba en otro (como `ir_a`) y la adjunta como
 /// un lienzo con ella dentro.
+///
+/// Si el chat se cerro mientras se elegia, se vuelve a abrir (con lo que
+/// apunto `apuntar_para_reabrir` al abrir las figuras): si no, el buzon se
+/// quedaria lleno y la figura entraria por sorpresa la proxima vez que se
+/// abriera el chat, y la ventana de las figuras habria dicho «Adjuntada»
+/// sin serlo.
 pub(super) fn entregar_figura(proyecto: String, id: String) {
     if let Ok(mut g) = IR_A.lock() {
         *g = Some((proyecto.clone(), None));
@@ -650,11 +656,47 @@ pub(super) fn entregar_figura(proyecto: String, id: String) {
     let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
     if ya > 0 {
         pixpin_shell::overlay::despertar(ya);
+    } else if ya == 0 {
+        match PARA_REABRIR.lock().ok().and_then(|g| g.clone()) {
+            Some((idioma, ubicacion, opciones)) => lanzar(idioma, ubicacion, opciones),
+            None => tracing::warn!("una figura para el chat, cerrado y sin con que abrirlo"),
+        }
+    }
+}
+
+/// Con que se vuelve a abrir el chat si se cierra mientras la ventana de las
+/// figuras elige para el (`entregar_figura`).
+static PARA_REABRIR: std::sync::Mutex<Option<(pixpin_store::Idioma, Ubicacion, OpcionesLienzo)>> =
+    std::sync::Mutex::new(None);
+
+fn apuntar_para_reabrir(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    opciones: OpcionesLienzo,
+) {
+    if let Ok(mut g) = PARA_REABRIR.lock() {
+        *g = Some((idioma, ubicacion.clone(), opciones));
     }
 }
 
 fn tomar_figura_pedida() -> Option<(String, String)> {
     FIGURA_PEDIDA.lock().ok().and_then(|mut g| g.take())
+}
+
+/// **La figura vuelve al buzon** si llego cuando el chat aun no estaba en su
+/// proyecto pero el cambio ya esta pedido: `entregar_figura` deja los dos
+/// buzones uno detras de otro, y la vuelta del chat puede mirar `IR_A` justo
+/// antes y la figura justo despues. Se adjunta en la vuelta siguiente, ya en
+/// su chat. Una figura mas nueva que haya llegado mientras tanto gana.
+fn devolver_figura_si_va_a_su_chat(proyecto: String, id: String) -> bool {
+    let va = IR_A
+        .lock()
+        .ok()
+        .is_some_and(|g| g.as_ref().is_some_and(|(p, _)| *p == proyecto));
+    if va && let Ok(mut g) = FIGURA_PEDIDA.lock() {
+        g.get_or_insert((proyecto, id));
+    }
+    va
 }
 
 /// La escala de la interfaz que se eligio en los ajustes generales y el chat
@@ -1467,6 +1509,11 @@ pub fn abrir(
                                 // secciones: en el movil son las fichas que
                                 // se despliegan al tocarlo.
                                 Zona::Titulo => {
+                                    // Sin la lupa de la vez anterior: si la
+                                    // isla se cerro por otro camino, seguiria
+                                    // filtrando sin que nadie la pidiera.
+                                    a.buscando_info = false;
+                                    a.busqueda_info.vaciar();
                                     a.info = Some(ficha_del_chat::primera(a));
                                     a.info_abierta = None;
                                     a.scroll_info = 0;
@@ -3375,7 +3422,7 @@ pub fn abrir(
                 EventoOverlay::Caracter(c)
                     if abierto
                         .as_ref()
-                        .is_some_and(|a| a.buscando_info && a.info_abierta.is_none()) =>
+                        .is_some_and(ficha_del_chat::teclado_en_la_lupa) =>
                 {
                     if let Some(a) = abierto.as_mut()
                         && a.busqueda_info.caracter(c)
@@ -3389,7 +3436,7 @@ pub fn abrir(
                 } if redaccion::CajaLinea::es_suya(vk, shift, ctrl)
                     && abierto
                         .as_ref()
-                        .is_some_and(|a| a.buscando_info && a.info_abierta.is_none()) =>
+                        .is_some_and(ficha_del_chat::teclado_en_la_lupa) =>
                 {
                     if let Some(a) = abierto.as_mut()
                         && tecla_en_caja(&mut a.busqueda_info, vk, shift, ctrl).cambio()
@@ -3404,7 +3451,7 @@ pub fn abrir(
                     if vk == VK_ESCAPE
                         && abierto
                             .as_ref()
-                            .is_some_and(|a| a.buscando_info && a.info_abierta.is_none()) =>
+                            .is_some_and(ficha_del_chat::teclado_en_la_lupa) =>
                 {
                     if let Some(a) = abierto.as_mut() {
                         a.buscando_info = false;
@@ -3877,6 +3924,9 @@ pub fn abrir(
                         aviso = Some((t, std::time::Instant::now()));
                     }
                     a.colocado.borrow_mut().ancho = 0;
+                    hay_que_pintar = true;
+                }
+                None if devolver_figura_si_va_a_su_chat(proyecto.clone(), id) => {
                     hay_que_pintar = true;
                 }
                 None => tracing::warn!(%proyecto, "una figura para un chat que no esta abierto"),
@@ -4387,7 +4437,11 @@ pub fn abrir(
         pixpin_shell::overlay::esperar_eventos(if hay_que_pintar { Some(0) } else { dormir });
     }
 
-    // Donde quedo, para la proxima vez.
+    // Donde quedo, para la proxima vez. Sobre el estado releido, no sobre la
+    // copia de cuando se abrio: mientras tanto otros lo han podido cambiar
+    // (la escala desde Ajustes → General → Ventanas, que si no volveria a la
+    // de antes al cerrar el chat).
+    let mut estado = pixpin_store::estado::cargar(ubicacion);
     estado.chat_ventana = Some([marco.x, marco.y, marco.ancho as i32, marco.alto as i32]);
     if let Err(e) = pixpin_store::estado::guardar(ubicacion, &estado) {
         tracing::warn!(?e, "no se pudo recordar donde quedo la ventana de chat");
@@ -16748,7 +16802,11 @@ fn recordar_escala(ubicacion: &Ubicacion, estado: &mut pixpin_store::estado::Est
         return;
     }
     estado.escala_interfaz = Some(cuanto);
-    if let Err(e) = pixpin_store::estado::guardar(ubicacion, estado) {
+    // Se guarda sobre lo que hay en el disco: la copia del chat es de cuando
+    // se abrio y pisaria lo que otras ventanas cambiaron despues.
+    let mut fresco = pixpin_store::estado::cargar(ubicacion);
+    fresco.escala_interfaz = Some(cuanto);
+    if let Err(e) = pixpin_store::estado::guardar(ubicacion, &fresco) {
         tracing::warn!(?e, "no se pudo recordar la escala de la interfaz");
     }
 }
@@ -17853,6 +17911,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         // Las figuras se eligen viendolas, en su ventana (el usuario: «me
         // sale una lista y tengo que buscar»), no en menus en cascada.
         Accion::AdjFigura => {
+            apuntar_para_reabrir(cx.idioma, cx.ubicacion, cx.lienzo);
             figuras::abrir_para_adjuntar(cx.idioma, a.ficha.id.clone(), a.ficha.nombre.clone());
             Efecto::Nada
         }

@@ -2430,8 +2430,14 @@ fn abrir(
                                     }
                                     // La escala no es de `Ajustes`: se pone
                                     // ya, y el chat abierto la coge al vuelo.
+                                    // Desde la guardada, no desde la que se
+                                    // leyo al abrir: con Ctrl + «+» en el
+                                    // chat pudo cambiar mientras tanto.
                                     Parte::Menos | Parte::Mas if clave == Clave::EscalaInterfaz => {
-                                        cx.escala = escala_tras(cx.escala, parte == Parte::Mas);
+                                        cx.escala = escala_tras(
+                                            escala_guardada(ubicacion),
+                                            parte == Parte::Mas,
+                                        );
                                         crate::ventana_chat::poner_escala_interfaz(
                                             ubicacion, cx.escala,
                                         );
