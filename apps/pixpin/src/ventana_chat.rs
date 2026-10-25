@@ -132,8 +132,8 @@ mod envio;
 /// La ficha del chat: la isla flotante de fotos, videos, archivos, enlaces…
 /// que sale al pulsar el nombre de la cabecera (25-oct-2026).
 mod ficha_del_chat;
-/// La ventana de las figuras guardadas, con su previsualizador: la abre la
-/// tercera parte del interruptor de arriba y la bandeja (24/25-oct-2026).
+/// La ventana de las figuras guardadas, con su previsualizador: la abre su
+/// mosaico de Funciones y la bandeja (24/25-oct-2026).
 mod figuras;
 
 /// **Abre la ventana de las figuras** (o la trae delante).
@@ -143,6 +143,8 @@ pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
 /// La ventana de estudiar una clase grabada: el video o la captura del
 /// minuto, el texto y las capturas, que se siguen (25-oct-2026).
 mod estudiar_clase;
+/// La pestana de Funciones: la rejilla de las funciones fuertes (25-oct-2026).
+mod funciones;
 /// «Grabar clase»: el microfono y el sonido del equipo, con capturas de una
 /// zona en su minuto, y despues el texto (24-oct-2026).
 mod grabar_clase;
@@ -150,7 +152,7 @@ mod grabar_clase;
 mod hoja_adjuntar;
 /// Los archivos con el icono de su tipo, un color por extension (v0.98.4).
 mod icono_de_tipo;
-/// El interruptor Chat · Figuras de la barra de titulo.
+/// El interruptor Chat · Funciones de la barra de titulo.
 mod interruptor;
 /// El logo de un proyecto: una imagen en vez de las iniciales (4-oct).
 mod logo;
@@ -992,8 +994,10 @@ pub fn abrir(
     // no se pueda (ver `releer_lo_abierto`): se guarda la deuda en vez de
     // perderla, y se salda en cuanto la hoja o el lienzo se cierren.
     let mut pendiente_de_releer = false;
-    // El interruptor Chat · Figuras de la barra (`interruptor.rs`).
+    // El interruptor Chat · Funciones de la barra (`interruptor.rs`) y la
+    // pestana de Funciones (`funciones.rs`).
     let interruptor = interruptor::Interruptor::default();
+    let mut funciones = funciones::Funciones::default();
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -1200,6 +1204,18 @@ pub fn abrir(
                 x: p.x - marco.x,
                 y: p.y - marco.y,
             };
+            // Funciones (`funciones.rs`): el resalte sigue al raton, y pulsar
+            // fuera de la rejilla le quita el teclado (se va a escribir en
+            // otra cosa).
+            match evento {
+                EventoOverlay::RatonMovido(p) => {
+                    if funciones.mover_raton(local(p)) {
+                        hay_que_pintar = true;
+                    }
+                }
+                EventoOverlay::BotonPulsado(p) => funciones.pulsado_en(local(p)),
+                _ => {}
+            }
             match evento {
                 // Eligiendo con el raton en una caja de una linea (buscar,
                 // renombrar): el raton es suyo hasta soltar, aunque se salga
@@ -1260,6 +1276,72 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // Funciones con el teclado: flechas, Intro y Escape son suyos;
+                // lo que se teclee no va a parar a la caja de escribir.
+                EventoOverlay::Tecla { vk, ctrl, .. }
+                    if !ctrl && pendientes.is_none() && funciones.tecla_es_suya(vk) =>
+                {
+                    match funciones.tecla(vk) {
+                        funciones::Respuesta::Hacer(f) => funciones::hacer(
+                            f,
+                            &funciones::Para {
+                                idioma,
+                                ubicacion,
+                                aparato: &identidad,
+                                textos,
+                                lienzo,
+                            },
+                            abierto.as_mut(),
+                        ),
+                        funciones::Respuesta::Volver => funciones.elegir(interruptor::Parte::Chat),
+                        funciones::Respuesta::Sigue | funciones::Respuesta::NoEsMia => {}
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Caracter(_) if funciones.tiene_el_teclado() => {}
+                // Un clic en la rejilla hace su funcion; en el resto de la
+                // pestana, nada (la lista de debajo esta tapada). Los bordes
+                // y el asa de la lista siguen siendo suyos.
+                EventoOverlay::BotonPulsado(p)
+                    if menu.is_none()
+                        && pendientes.is_none()
+                        && funciones.contiene(local(p))
+                        && chat::borde_en(local(p), marco.ancho, marco.alto, escala).is_none()
+                        && !disposicion.asa.contiene(local(p)) =>
+                {
+                    if let Some(f) = funciones.en(local(p)) {
+                        funciones::hacer(
+                            f,
+                            &funciones::Para {
+                                idioma,
+                                ubicacion,
+                                aparato: &identidad,
+                                textos,
+                                lienzo,
+                            },
+                            abierto.as_mut(),
+                        );
+                    }
+                    buscando = false;
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::RatonMovido(p)
+                    if menu.is_none()
+                        && arrastre.is_none()
+                        && funciones.contiene(local(p))
+                        && chat::borde_en(local(p), marco.ancho, marco.alto, escala).is_none()
+                        && !disposicion.asa.contiene(local(p)) =>
+                {
+                    ventana.poner_cursor(FormaCursorWin::Flecha);
+                    if sobre.is_some() || fila_sobre.is_some() {
+                        sobre = None;
+                        fila_sobre = None;
+                        hay_que_pintar = true;
+                    }
+                }
+                // La rueda sobre la pestana no mueve la lista tapada.
+                EventoOverlay::Rueda(_)
+                    if funciones.contiene(local(pixpin_shell::entorno::posicion_del_cursor())) => {}
                 // El resalte sigue al raton, y «Más» se abre al pasar.
                 EventoOverlay::RatonMovido(p) if menu.is_some() && arrastre.is_none() => {
                     let l = local(p);
@@ -1437,12 +1519,11 @@ pub fn abrir(
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Borde(b));
                     } else if let Some(parte) = interruptor.en(l) {
-                        // El interruptor Chat · Figuras (`interruptor.rs`):
-                        // las figuras van en su propia ventana (25-oct) y el
-                        // chat se queda como estaba.
-                        if parte == interruptor::Parte::Figuras {
-                            figuras::abrir(idioma);
-                        }
+                        // El interruptor Chat · Funciones (`interruptor.rs`):
+                        // Funciones pone su rejilla en la columna de la lista
+                        // (`funciones.rs`); Chat la quita.
+                        funciones.elegir(parte);
+                        buscando = false;
                         hay_que_pintar = true;
                     } else if let Some(boton) = disposicion.boton_barra_en(l, escala) {
                         match boton {
@@ -2130,27 +2211,6 @@ pub fn abrir(
                         // La pantalla de Sincronizar del movil: tus aparatos,
                         // y desde ella Recibir y Enviar.
                         crate::sincronizar::lanzar(idioma, ubicacion.clone());
-                        buscando = false;
-                        hay_que_pintar = true;
-                    } else if let Some(extra) = pixpin_ui::chat::Extra::TODOS
-                        .into_iter()
-                        .find(|x| disposicion.boton_extra(*x, escala).contiene(l))
-                    {
-                        // Lecciones, galeria de capturas y tareas, cada una
-                        // en su ventana (en el sitio del universo, 3-oct).
-                        match extra {
-                            pixpin_ui::chat::Extra::Galeria => {
-                                crate::galeria_capturas::abrir(idioma, ubicacion.clone())
-                            }
-                            pixpin_ui::chat::Extra::Tareas => {
-                                crate::tareas::abrir(idioma, ubicacion.clone(), &identidad)
-                            }
-                            // Y con el las lecciones, en su pestana: un solo
-                            // boton para las dos (8-oct-2026, el usuario).
-                            pixpin_ui::chat::Extra::Timeline => {
-                                crate::timeline::abrir(idioma, ubicacion.clone())
-                            }
-                        }
                         buscando = false;
                         hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {
@@ -4292,6 +4352,7 @@ pub fn abrir(
                 let abierto_ref = abierto.as_ref();
                 let pendientes_ref = pendientes.as_ref();
                 let menu_ref = menu.as_ref();
+                let funciones_ref = &funciones;
                 let aviso_ref = aviso.as_ref().map(|(t, _)| t.as_str());
                 let papel = papel_de(fondo, claro);
                 // M1: el cielo del tema Cosmos se hornea fuera del fotograma.
@@ -4299,7 +4360,7 @@ pub fn abrir(
                 crate::tema_cosmos::preparar(&motor, cw, ch);
                 let resultado = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, papel, escala, textos, sobre, &lista);
-                    interruptor.pintar(p, &disposicion, tema, escala, textos);
+                    interruptor.pintar(funciones.parte(), p, &disposicion, tema, escala, textos);
                     let mut alto_caja = 0;
                     if let Some(a) = abierto_ref {
                         // Lo que se puede pulsar se apunta de nuevo en cada
@@ -4385,6 +4446,9 @@ pub fn abrir(
                             pintar_hora_a_mano(p, &c, a, marco);
                         }
                     }
+                    // La pestana de Funciones, encima de la lista (estrecha,
+                    // de la columna entera) y debajo de menus y avisos.
+                    funciones_ref.pintar(p, &disposicion, tema, escala, textos);
                     // El menu, el ultimo: se despliega encima de todo.
                     if let Some(m) = menu_ref {
                         let c = Pinta {
@@ -5380,28 +5444,12 @@ fn pintar(
     // usuario vio: «cuando pongo el mouse sobre un chat, este los superpone
     // y oculta el boton».
 
-    // Los botones de sincronizar y del universo (D210): redondos, marron
-    // oscuro y con el icono crema, los colores de los botones redondos del
-    // chat del movil. Los dos iguales porque los dos llevan a una pantalla
-    // de TODOS los proyectos.
-    for (boton, icono) in [
-        (d.boton_sincro(escala), &SINCRO),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Tareas, escala),
-            &mi::CHECKLIST,
-        ),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Galeria, escala),
-            &mi::PHOTO_LIBRARY,
-        ),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Timeline, escala),
-            &mi::TIMELINE,
-        ),
-    ] {
-        if boton.ancho == 0 {
-            continue;
-        }
+    // El boton de sincronizar (D210): redondo, marron oscuro y con el icono
+    // crema, los colores de los botones redondos del chat del movil. Tenia al
+    // lado los de tareas, galeria y timeline hasta el 25-oct-2026: ahora
+    // viven en la pestana Funciones (`funciones.rs`).
+    let (boton, icono) = (d.boton_sincro(escala), &SINCRO);
+    if boton.ancho > 0 {
         p.rellenar_redondeado(
             rf(boton),
             boton.alto as f32 / 2.0,

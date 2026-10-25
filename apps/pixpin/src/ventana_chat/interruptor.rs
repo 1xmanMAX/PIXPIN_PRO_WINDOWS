@@ -1,9 +1,11 @@
-//! **El interruptor Chat · Figuras** de la barra de titulo del chat.
+//! **El interruptor Chat · Funciones** de la barra de titulo del chat.
 //!
 //! Antes tenia en medio «Proyectos», la pantalla de Proyectos del movil
 //! dentro del chat; se quito el 25-oct-2026 (el usuario: «los proyectos no
-//! sirven»). «Figuras» no se queda elegida: abre su ventana aparte
-//! (`figuras.rs`) y el chat sigue como estaba. Las cuentas son de
+//! sirven»). La segunda parte fue «Figuras», que abria su ventana aparte;
+//! desde el 25-oct-2026 es «Funciones» y SI se queda elegida, como una
+//! pestana: la columna de la lista ensena la rejilla de las funciones
+//! (`funciones.rs`), con las figuras dentro. Las cuentas son de
 //! `pixpin_ui::interruptor`; aqui se pinta y se apunta donde quedo, para
 //! que el clic busque en lo mismo que se pinto.
 
@@ -19,8 +21,8 @@ use super::{Tema, encoger, rf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Parte {
     Chat,
-    /// La galeria de las figuras guardadas (`figuras.rs`, 24-oct-2026).
-    Figuras,
+    /// La rejilla de las funciones (`funciones.rs`, 25-oct-2026).
+    Funciones,
 }
 
 /// Donde quedo el interruptor en el ultimo fotograma (sin pintar, ninguno).
@@ -34,8 +36,8 @@ impl Interruptor {
     /// como un selector: pulsar «Chat» estando en el chat no cambia nada.
     pub(super) fn en(&self, l: Punto) -> Option<Parte> {
         let i = self.pintado.get()?;
-        if i.figuras.contiene(l) {
-            Some(Parte::Figuras)
+        if i.funciones.contiene(l) {
+            Some(Parte::Funciones)
         } else if i.caja.contiene(l) {
             Some(Parte::Chat)
         } else {
@@ -43,10 +45,11 @@ impl Interruptor {
         }
     }
 
-    /// Lo pinta en la barra de titulo: un selector de dos con «Chat» puesto,
-    /// como los de Windows 11.
+    /// Lo pinta en la barra de titulo: un selector de dos con `elegida`
+    /// puesta, como los de Windows 11.
     pub(super) fn pintar(
         &self,
+        elegida: Parte,
         p: &Pintor,
         d: &pixpin_ui::chat::Disposicion,
         tema: &Tema,
@@ -73,14 +76,22 @@ impl Interruptor {
         self.pintado.set(Some(i));
         let radio = i.caja.alto as f32 / 2.0;
         p.rellenar_redondeado(rf(i.caja), radio, tema.boton_sobre);
+        let puesta = match elegida {
+            Parte::Chat => i.chat,
+            Parte::Funciones => i.funciones,
+        };
         p.rellenar_redondeado(
-            encoger(rf(i.chat), 2.0 * e),
+            encoger(rf(puesta), 2.0 * e),
             radio - 2.0 * e,
             tema.fila_elegida,
         );
         for (mitad, clave, elegida) in [
-            (i.chat, "proyectos-interruptor-chat", true),
-            (i.figuras, "proyectos-interruptor-figuras", false),
+            (i.chat, "proyectos-interruptor-chat", elegida == Parte::Chat),
+            (
+                i.funciones,
+                "proyectos-interruptor-funciones",
+                elegida == Parte::Funciones,
+            ),
         ] {
             let t = textos.t(clave);
             let tam = ui::INTERRUPTOR_TAM * e;
@@ -130,7 +141,7 @@ mod pruebas {
             y: r.y + r.alto as i32 / 2,
         };
         assert_eq!(v.en(centro(i.chat)), Some(Parte::Chat));
-        assert_eq!(v.en(centro(i.figuras)), Some(Parte::Figuras));
+        assert_eq!(v.en(centro(i.funciones)), Some(Parte::Funciones));
         assert_eq!(v.en(Punto { x: 5, y: 5 }), None);
     }
 }

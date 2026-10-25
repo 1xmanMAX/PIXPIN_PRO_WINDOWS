@@ -5,9 +5,9 @@
 //! ventana separada, y deberia haber como un previsualizador de las figuras
 //! y de todo lo que tiene»).
 //!
-//! Se abre con la segunda parte del interruptor de la barra del chat
-//! (Chat · **Figuras**), desde el menu de la bandeja y desde «Figura» de la
-//! hoja del «+» de un chat. Una sola a la vez, en su hilo, como la galeria
+//! Se abre con su mosaico de la pestana Funciones del chat (hasta el
+//! 25-oct-2026, la parte «Figuras» del interruptor de la barra), desde el
+//! menu de la bandeja y desde «Figura» de la hoja del «+» de un chat. Una sola a la vez, en su hilo, como la galeria
 //! de capturas:
 //!
 //! - **A la izquierda, los grupos** con su cuenta: «Todas», «Mis figuras» y

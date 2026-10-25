@@ -19,11 +19,13 @@ pub mod conversacion;
 /// Acercar y mover una imagen en su caja, como en un lienzo.
 pub mod encuadre;
 pub mod evento_anotador;
+/// La pantalla de Funciones del chat: la rejilla de mosaicos.
+pub mod funciones;
 pub mod historial;
 pub mod hoja_compartir;
 pub mod hojita;
 pub mod info;
-/// El interruptor Chat · Figuras de la barra del chat.
+/// El interruptor Chat · Funciones de la barra del chat.
 pub mod interruptor;
 pub mod lupa;
 pub mod menu;
