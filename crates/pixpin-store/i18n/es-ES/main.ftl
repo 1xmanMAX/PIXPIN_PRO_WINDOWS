@@ -293,6 +293,7 @@ info-fijados = Fijados
 info-buzon = Buzón
 info-videos = Vídeos
 info-enlaces = Enlaces
+info-proyectos = Proyectos
 info-resumen = { $n ->
     [one] 1 cosa
    *[other] { $n } cosas
@@ -309,6 +310,8 @@ info-vacia-voz = Las notas de voz saldrán aquí
 info-vacia-dibujos = Los dibujos del chat saldrán aquí
 info-vacia-fijados = Lo que fijes saldrá aquí
 info-vacia-buzon = El buzón está vacío
+info-vacia-proyectos = Aún no hay proyectos
+info-proyecto-este = Este chat
 info-abrir = Abrir
 info-abrir-enlace = Abrir enlace
 info-reproducir = Reproducir

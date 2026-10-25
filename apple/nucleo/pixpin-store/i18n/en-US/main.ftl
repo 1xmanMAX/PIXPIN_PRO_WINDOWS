@@ -290,6 +290,7 @@ info-fijados = Pinned
 info-buzon = Inbox
 info-videos = Videos
 info-enlaces = Links
+info-proyectos = Projects
 info-resumen = { $n ->
     [one] 1 item
    *[other] { $n } items
@@ -306,6 +307,8 @@ info-vacia-voz = Voice notes will show up here
 info-vacia-dibujos = Drawings from this chat will show up here
 info-vacia-fijados = What you pin will show up here
 info-vacia-buzon = The inbox is empty
+info-vacia-proyectos = No projects yet
+info-proyecto-este = This chat
 info-abrir = Open
 info-abrir-enlace = Open link
 info-reproducir = Play
