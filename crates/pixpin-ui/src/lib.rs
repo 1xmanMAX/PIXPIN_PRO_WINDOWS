@@ -9,6 +9,8 @@
 
 pub mod ajustes;
 pub mod barra;
+/// Buscar dentro de todos los chats desde el buscador de la lista.
+pub mod buscar_en_chats;
 pub mod caja_herramientas;
 pub mod chat;
 /// Un color por tipo de archivo (`ColorDeExtension` del movil, v0.98.4).
