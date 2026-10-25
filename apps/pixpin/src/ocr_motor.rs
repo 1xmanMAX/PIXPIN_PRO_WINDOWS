@@ -206,6 +206,48 @@ pub fn estado(t: &Catalogo, raiz: &Path, elegido: MotorOcr) -> String {
     }
 }
 
+/// Hay un calentamiento en marcha (para no lanzar dos hilos a la vez).
+static CALENTANDO: AtomicBool = AtomicBool::new(false);
+
+/// Si toca calentar: solo con Indra elegido y bajado, si no esta ya cargado
+/// ni cargandose. Con el de Windows, nunca: su comportamiento no cambia.
+pub fn debe_calentar(indra_en_uso: bool, cargado: bool, calentando: bool) -> bool {
+    indra_en_uso && !cargado && !calentando
+}
+
+/// **Calienta el OCR**: con Indra en uso, carga sus modelos en un hilo por
+/// debajo de lo normal para que la primera lectura no congele nada.
+///
+/// Se llama cuando el usuario empieza algo que suele acabar leyendo texto
+/// (abrir una captura, pinear una foto), no al arrancar: cargar al arrancar
+/// un lector que nadie usa solo para que el vigilante lo suelte a los tres
+/// minutos seria gastar 150-250 MB de un equipo de 4 GB para nada. Y no le
+/// alarga la vida al lector cargado (`pixpin_ocr::indra::precargar`).
+pub fn calentar() {
+    let indra = pixpin_ocr::motor_en_uso() == pixpin_ocr::Motor::Indra;
+    if !debe_calentar(
+        indra,
+        indra && pixpin_ocr::indra::cargado(),
+        CALENTANDO.load(Ordering::SeqCst),
+    ) || CALENTANDO.swap(true, Ordering::SeqCst)
+    {
+        return;
+    }
+    let lanzado = std::thread::Builder::new()
+        .name("calentar-ocr".into())
+        .spawn(|| {
+            pixpin_shell::prioridad::hilo_por_debajo_de_lo_normal();
+            let t = std::time::Instant::now();
+            if pixpin_ocr::precargar() {
+                tracing::info!(ms = t.elapsed().as_millis() as u64, "lector Indra precargado");
+            }
+            CALENTANDO.store(false, Ordering::SeqCst);
+        });
+    if lanzado.is_err() {
+        CALENTANDO.store(false, Ordering::SeqCst);
+    }
+}
+
 /// La raiz de datos que se aplico (para quien no tiene la `Ubicacion`).
 pub fn raiz() -> Option<PathBuf> {
     RAIZ.lock().ok().and_then(|r| r.clone())
@@ -214,6 +256,14 @@ pub fn raiz() -> Option<PathBuf> {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn solo_se_calienta_indra_y_una_vez() {
+        assert!(debe_calentar(true, false, false));
+        assert!(!debe_calentar(false, false, false), "con Windows, nada");
+        assert!(!debe_calentar(true, true, false), "ya cargado");
+        assert!(!debe_calentar(true, false, true), "ya cargandose");
+    }
 
     #[test]
     fn los_ajustes_pasan_tal_cual_al_ocr() {

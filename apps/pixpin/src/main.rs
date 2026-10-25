@@ -1333,6 +1333,10 @@ fn arrancar(
             }
             _ if modo_overlay.is_some() => {
                 let (modo, inicio) = modo_overlay.expect("comprobado en la guarda");
+                // Una captura suele acabar leyendo texto (la de texto, o el
+                // pin que salga): con Indra, sus modelos se van cargando
+                // de fondo mientras se elige la zona. Con Windows, nada.
+                ocr_motor::calentar();
                 // Cuando lo pidio la mano: la pulsacion del gesto (la vio el
                 // gancho) o el mensaje del atajo. El overlay mide desde aqui.
                 let mut desde_ms = if inicio.is_some() {

@@ -65,6 +65,9 @@ impl Pines {
     /// imagen que Windows sepa leer»: quien llama la pinea como archivo.
     pub fn pinear_foto(&mut self, ruta: &Path, monitor: &Monitor) -> Result<u64> {
         let t0 = Instant::now();
+        // Una foto pineada se lee a menudo (modo texto, copiar texto): con
+        // Indra, que vaya cargando de fondo (`ocr_motor::calentar`).
+        crate::ocr_motor::calentar();
         let caja = caja_de_lectura(monitor);
         // Una foto grande, primero su vista previa; la buena, despues.
         let previa = pixpin_codec::vista::vista_previa(ruta, caja).ok().flatten();
