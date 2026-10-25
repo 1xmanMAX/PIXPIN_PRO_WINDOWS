@@ -255,9 +255,7 @@ struct Tema {
     /// Lo que se escribe ENCIMA del papel. No vale `texto`: en el tema
     /// oscuro ese es casi blanco, y sobre una hoja clara no se veria.
     texto_papel: Color,
-    /// La pildora de la pestana activa del panel de informacion, y su texto
-    /// (`lightButtonBgOver` y `lightButtonFg` de Telegram).
-    pestana_activa: Color,
+    /// El texto de lo elegido en un selector (`lightButtonFg` de Telegram).
     texto_pestana_activa: Color,
     /// El velo de detras de una capa (`layerBg`): negro a la mitad.
     velo: Color,
@@ -341,7 +339,6 @@ const CLARO: Tema = Tema {
     enlace_mio: hex(0x0f6cbd),
     papel: hex(0xffffff),
     texto_papel: hex(0x111111),
-    pestana_activa: hex(0xe3f1fa),
     texto_pestana_activa: hex(0x168acd),
     velo: Color {
         r: 0.0,
@@ -406,7 +403,6 @@ const OSCURO: Tema = Tema {
     // hoja clara, solo un poco apagada para no deslumbrar.
     papel: hex(0xe8e8e8),
     texto_papel: hex(0x111111),
-    pestana_activa: hex(0x1d2a39),
     texto_pestana_activa: hex(0x6ab2f2),
     velo: Color {
         r: 0.0,
@@ -640,6 +636,12 @@ static FIGURA_PEDIDA: std::sync::Mutex<Option<(String, String)>> = std::sync::Mu
 /// de la ventana de las figuras). El chat la recoge en su siguiente vuelta,
 /// se pone en ese proyecto si estaba en otro (como `ir_a`) y la adjunta como
 /// un lienzo con ella dentro.
+///
+/// Si el chat se cerro mientras se elegia, se vuelve a abrir (con lo que
+/// apunto `apuntar_para_reabrir` al abrir las figuras): si no, el buzon se
+/// quedaria lleno y la figura entraria por sorpresa la proxima vez que se
+/// abriera el chat, y la ventana de las figuras habria dicho «Adjuntada»
+/// sin serlo.
 pub(super) fn entregar_figura(proyecto: String, id: String) {
     if let Ok(mut g) = IR_A.lock() {
         *g = Some((proyecto.clone(), None));
@@ -650,11 +652,47 @@ pub(super) fn entregar_figura(proyecto: String, id: String) {
     let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
     if ya > 0 {
         pixpin_shell::overlay::despertar(ya);
+    } else if ya == 0 {
+        match PARA_REABRIR.lock().ok().and_then(|g| g.clone()) {
+            Some((idioma, ubicacion, opciones)) => lanzar(idioma, ubicacion, opciones),
+            None => tracing::warn!("una figura para el chat, cerrado y sin con que abrirlo"),
+        }
+    }
+}
+
+/// Con que se vuelve a abrir el chat si se cierra mientras la ventana de las
+/// figuras elige para el (`entregar_figura`).
+static PARA_REABRIR: std::sync::Mutex<Option<(pixpin_store::Idioma, Ubicacion, OpcionesLienzo)>> =
+    std::sync::Mutex::new(None);
+
+fn apuntar_para_reabrir(
+    idioma: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    opciones: OpcionesLienzo,
+) {
+    if let Ok(mut g) = PARA_REABRIR.lock() {
+        *g = Some((idioma, ubicacion.clone(), opciones));
     }
 }
 
 fn tomar_figura_pedida() -> Option<(String, String)> {
     FIGURA_PEDIDA.lock().ok().and_then(|mut g| g.take())
+}
+
+/// **La figura vuelve al buzon** si llego cuando el chat aun no estaba en su
+/// proyecto pero el cambio ya esta pedido: `entregar_figura` deja los dos
+/// buzones uno detras de otro, y la vuelta del chat puede mirar `IR_A` justo
+/// antes y la figura justo despues. Se adjunta en la vuelta siguiente, ya en
+/// su chat. Una figura mas nueva que haya llegado mientras tanto gana.
+fn devolver_figura_si_va_a_su_chat(proyecto: String, id: String) -> bool {
+    let va = IR_A
+        .lock()
+        .ok()
+        .is_some_and(|g| g.as_ref().is_some_and(|(p, _)| *p == proyecto));
+    if va && let Ok(mut g) = FIGURA_PEDIDA.lock() {
+        g.get_or_insert((proyecto, id));
+    }
+    va
 }
 
 /// La escala de la interfaz que se eligio en los ajustes generales y el chat
@@ -714,6 +752,7 @@ fn releer_lo_abierto(ubicacion: &Ubicacion, a: &mut Abierto) -> bool {
         .renombrando_mensaje
         .as_ref()
         .and_then(|(i, escrito)| Some((a.mensajes.get(*i)?.id.clone(), escrito.clone())));
+    let abierta_en_la_ficha = ficha_del_chat::apuntar_la_abierta(a);
 
     let mut mensajes = cuaderno.mensajes;
     anadir_hojas_del_proyecto(
@@ -751,6 +790,8 @@ fn releer_lo_abierto(ubicacion: &Ubicacion, a: &mut Abierto) -> bool {
     {
         a.respondiendo = None;
     }
+    // La previa de la ficha, tambien por id.
+    ficha_del_chat::reubicar_la_abierta(a, abierta_en_la_ficha);
     // Y a medir de nuevo: el historial tiene otras burbujas.
     a.colocado.borrow_mut().ancho = 0;
     true
@@ -1464,9 +1505,15 @@ pub fn abrir(
                                 // secciones: en el movil son las fichas que
                                 // se despliegan al tocarlo.
                                 Zona::Titulo => {
+                                    // Sin la lupa de la vez anterior: si la
+                                    // isla se cerro por otro camino, seguiria
+                                    // filtrando sin que nadie la pidiera.
+                                    a.buscando_info = false;
+                                    a.busqueda_info.vaciar();
                                     a.info = Some(ficha_del_chat::primera(a));
                                     a.info_abierta = None;
                                     a.scroll_info = 0;
+                                    a.nav_info.foco.set(None);
                                     Efecto::Nada
                                 }
                                 // La lupa busca DENTRO de la conversacion y
@@ -1752,11 +1799,7 @@ pub fn abrir(
                         });
                         let mut abrir_cosa = None;
                         if let Some(a) = abierto.as_mut() {
-                            let enlace_de = |a: &Abierto, n: usize| {
-                                a.mensajes.get(n).is_some_and(|m| {
-                                    m.ruta.is_none() && tarjetas::primer_enlace(&m.texto).is_some()
-                                })
-                            };
+                            let enlace_de = ficha_del_chat::es_enlace;
                             match zona {
                                 ZonaInfo::Fuera | ZonaInfo::Cerrar => {
                                     a.info = None;
@@ -1790,15 +1833,24 @@ pub fn abrir(
                                 ZonaInfo::Pestana(s) => {
                                     a.info = Some(s);
                                     a.scroll_info = 0;
+                                    a.nav_info.foco.set(None);
                                 }
                                 // Un enlace se abre en el navegador y la isla
                                 // se queda; lo demas, en su previa.
                                 ZonaInfo::Cosa(n) if enlace_de(a, n) => {
-                                    if let Efecto::Aviso(t) = abrir_enlace(a, n, textos) {
+                                    if let Efecto::Aviso(t) = abrir_enlace(a, n.mensaje, textos) {
                                         aviso = Some((t, std::time::Instant::now()));
                                     }
                                 }
-                                ZonaInfo::Cosa(n) => a.info_abierta = Some(n),
+                                // Una nota de voz suena sin salir de la isla.
+                                ZonaInfo::Cosa(n) if ficha_del_chat::es_voz(a, n) => {
+                                    a.nav_info.foco.set(Some(n));
+                                    abrir_cosa = Some(n.mensaje);
+                                }
+                                ZonaInfo::Cosa(n) => {
+                                    a.nav_info.foco.set(Some(n));
+                                    a.info_abierta = Some(n);
+                                }
                                 ZonaInfo::Volver => a.info_abierta = None,
                                 ZonaInfo::Anterior => {
                                     a.info_abierta =
@@ -1809,16 +1861,29 @@ pub fn abrir(
                                 }
                                 ZonaInfo::Abrir => match a.info_abierta {
                                     Some(n) if enlace_de(a, n) => {
-                                        if let Efecto::Aviso(t) = abrir_enlace(a, n, textos) {
+                                        if let Efecto::Aviso(t) = abrir_enlace(a, n.mensaje, textos)
+                                        {
                                             aviso = Some((t, std::time::Instant::now()));
                                         }
                                     }
-                                    otra => abrir_cosa = otra,
+                                    // La foto de una nota, en su pin: lo
+                                    // mismo que pulsarla en la burbuja.
+                                    Some(pixpin_ui::info::Cosa {
+                                        mensaje,
+                                        foto: Some(k),
+                                    }) => {
+                                        if let Efecto::Aviso(t) =
+                                            nota_rica::abrir_foto(a, mensaje, k, textos)
+                                        {
+                                            aviso = Some((t, std::time::Instant::now()));
+                                        }
+                                    }
+                                    otra => abrir_cosa = otra.map(|c| c.mensaje),
                                 },
                                 // «Ver en el chat»: es salir a proposito, a
                                 // ese mensaje y resaltado.
                                 ZonaInfo::EnElChat => {
-                                    if let Some(n) = a.info_abierta.take() {
+                                    if let Some(n) = a.info_abierta.take().map(|c| c.mensaje) {
                                         a.info = None;
                                         a.buscando_info = false;
                                         a.busqueda_info.vaciar();
@@ -3014,14 +3079,14 @@ pub fn abrir(
                 EventoOverlay::Rueda(delta)
                     if abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
                 {
-                    // En la previa de una cosa no hay nada que desplazar.
-                    if let Some(a) = abierto.as_mut().filter(|a| a.info_abierta.is_none()) {
+                    // En la previa de una cosa no hay nada que desplazar; sobre
+                    // las pestanas que no caben, la tira se desplaza de lado.
+                    if let Some(a) = abierto.as_mut() {
                         let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
                         // `alto_info` lo deja puesto el pintado de la vuelta
                         // anterior: es lo que mide todo el contenido, y con
                         // el se sabe hasta donde se puede bajar.
-                        let tope = ficha_del_chat::tope(a, &disposicion, escala);
-                        a.scroll_info = (a.scroll_info - giro_de_rueda(delta, paso)).clamp(0, tope);
+                        ficha_del_chat::rueda(a, &disposicion, escala, giro_de_rueda(delta, paso));
                     }
                     hay_que_pintar = true;
                 }
@@ -3360,7 +3425,11 @@ pub fn abrir(
                 // La lupa del panel: la caja de una linea comun, con todo lo
                 // de una caja de Windows (Ctrl+Retroceso, Mayus+flechas,
                 // Ctrl+Z, pegar...). Lo que no es de la caja sigue abajo.
-                EventoOverlay::Caracter(c) if abierto.as_ref().is_some_and(|a| a.buscando_info) => {
+                EventoOverlay::Caracter(c)
+                    if abierto
+                        .as_ref()
+                        .is_some_and(ficha_del_chat::teclado_en_la_lupa) =>
+                {
                     if let Some(a) = abierto.as_mut()
                         && a.busqueda_info.caracter(c)
                     {
@@ -3371,7 +3440,9 @@ pub fn abrir(
                 EventoOverlay::Tecla {
                     vk, shift, ctrl, ..
                 } if redaccion::CajaLinea::es_suya(vk, shift, ctrl)
-                    && abierto.as_ref().is_some_and(|a| a.buscando_info) =>
+                    && abierto
+                        .as_ref()
+                        .is_some_and(ficha_del_chat::teclado_en_la_lupa) =>
                 {
                     if let Some(a) = abierto.as_mut()
                         && tecla_en_caja(&mut a.busqueda_info, vk, shift, ctrl).cambio()
@@ -3383,7 +3454,10 @@ pub fn abrir(
                 // Escapar apaga la lupa antes que cerrar el panel, y el panel
                 // antes que la ventana.
                 EventoOverlay::Tecla { vk, .. }
-                    if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.buscando_info) =>
+                    if vk == VK_ESCAPE
+                        && abierto
+                            .as_ref()
+                            .is_some_and(ficha_del_chat::teclado_en_la_lupa) =>
                 {
                     if let Some(a) = abierto.as_mut() {
                         a.buscando_info = false;
@@ -3392,31 +3466,91 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
-                // En la previa de la ficha, Escape vuelve a la rejilla; en la
-                // rejilla, la cierra.
+                // El teclado en la ficha (`ficha_del_chat::tecla`): ← y →
+                // cambian de pestana o recorren la previa, ↓ y las flechas
+                // mueven el foco, Intro abre y Escape vuelve un paso.
                 EventoOverlay::Tecla { vk, .. }
-                    if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
+                    if matches!(
+                        vk,
+                        VK_ESCAPE | VK_ENTRAR | VK_IZQUIERDA | VK_DERECHA | VK_ARRIBA | VK_ABAJO
+                    ) && abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
                 {
-                    if let Some(a) = abierto.as_mut()
-                        && a.info_abierta.take().is_none()
-                    {
-                        a.info = None;
-                    }
-                    hay_que_pintar = true;
-                }
-                // ← y → recorren la previa de la ficha, como en Telegram.
-                EventoOverlay::Tecla { vk, .. }
-                    if (vk == VK_IZQUIERDA || vk == VK_DERECHA)
-                        && abierto
-                            .as_ref()
-                            .is_some_and(|a| a.info.is_some() && a.info_abierta.is_some()) =>
-                {
+                    use ficha_del_chat::Tecla;
+                    let hecho = match abierto.as_mut() {
+                        Some(a) => ficha_del_chat::tecla(a, vk, &disposicion, escala),
+                        None => Tecla::NoEsMia,
+                    };
+                    // Lo que se abre con Intro, como al pulsarlo.
+                    let mut tocar = None;
                     if let Some(a) = abierto.as_mut() {
-                        let paso = if vk == VK_IZQUIERDA { -1 } else { 1 };
-                        a.info_abierta = ficha_del_chat::vecina(a, paso).or(a.info_abierta);
+                        match hecho {
+                            Tecla::Cerrar => {
+                                a.info = None;
+                                a.info_abierta = None;
+                                a.buscando_info = false;
+                                a.busqueda_info.vaciar();
+                            }
+                            Tecla::Pulsar(c) if ficha_del_chat::es_enlace(a, c) => {
+                                if let Efecto::Aviso(t) = abrir_enlace(a, c.mensaje, textos) {
+                                    aviso = Some((t, std::time::Instant::now()));
+                                }
+                            }
+                            Tecla::Pulsar(c) if ficha_del_chat::es_voz(a, c) => {
+                                tocar = Some(c.mensaje)
+                            }
+                            Tecla::Pulsar(c) => a.info_abierta = Some(c),
+                            Tecla::Abrir => match a.info_abierta {
+                                Some(c) if ficha_del_chat::es_enlace(a, c) => {
+                                    if let Efecto::Aviso(t) = abrir_enlace(a, c.mensaje, textos) {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
+                                }
+                                Some(pixpin_ui::info::Cosa {
+                                    mensaje,
+                                    foto: Some(k),
+                                }) => {
+                                    if let Efecto::Aviso(t) =
+                                        nota_rica::abrir_foto(a, mensaje, k, textos)
+                                    {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
+                                }
+                                otra => tocar = otra.map(|c| c.mensaje),
+                            },
+                            Tecla::Hecho | Tecla::NoEsMia => {}
+                        }
+                    }
+                    if let Some(indice) = tocar {
+                        tocar_la_burbuja(
+                            indice,
+                            ubicacion,
+                            &mut abierto,
+                            &fichas,
+                            &mut elegida,
+                            &mut borradores,
+                            textos,
+                            lienzo,
+                            idioma,
+                            &identidad,
+                        );
+                        if let Some(a) = abierto.as_mut()
+                            && (a.mini.is_some() || a.letra.is_some())
+                        {
+                            a.info = None;
+                            a.info_abierta = None;
+                        }
                     }
                     hay_que_pintar = true;
                 }
+                // Con la ficha encima, lo que se teclea no va a la caja de
+                // escribir que queda bajo el velo: Entrar enviaria el
+                // borrador sin verlo, y Retroceso o pegar lo cambiarian.
+                EventoOverlay::Caracter(_)
+                    if abierto.as_ref().is_some_and(|a| a.info.is_some()) => {}
+                EventoOverlay::Tecla {
+                    vk, shift, ctrl, ..
+                } if (vk == VK_ENTRAR || redaccion::CajaLinea::es_suya(vk, shift, ctrl))
+                    && abierto.as_ref().is_some_and(|a| a.info.is_some()) => {}
                 // A pantalla completa, Escape devuelve la ventana a su sitio.
                 // Va DESPUES del panel y de la lupa a proposito: con algo
                 // abierto encima, Escape cierra eso primero, que es lo que
@@ -3847,6 +3981,9 @@ pub fn abrir(
                         aviso = Some((t, std::time::Instant::now()));
                     }
                     a.colocado.borrow_mut().ancho = 0;
+                    hay_que_pintar = true;
+                }
+                None if devolver_figura_si_va_a_su_chat(proyecto.clone(), id) => {
                     hay_que_pintar = true;
                 }
                 None => tracing::warn!(%proyecto, "una figura para un chat que no esta abierto"),
@@ -4357,7 +4494,11 @@ pub fn abrir(
         pixpin_shell::overlay::esperar_eventos(if hay_que_pintar { Some(0) } else { dormir });
     }
 
-    // Donde quedo, para la proxima vez.
+    // Donde quedo, para la proxima vez. Sobre el estado releido, no sobre la
+    // copia de cuando se abrio: mientras tanto otros lo han podido cambiar
+    // (la escala desde Ajustes → General → Ventanas, que si no volveria a la
+    // de antes al cerrar el chat).
+    let mut estado = pixpin_store::estado::cargar(ubicacion);
     estado.chat_ventana = Some([marco.x, marco.y, marco.ancho as i32, marco.alto as i32]);
     if let Err(e) = pixpin_store::estado::guardar(ubicacion, &estado) {
         tracing::warn!(?e, "no se pudo recordar donde quedo la ventana de chat");
@@ -4720,9 +4861,11 @@ struct Abierto {
     /// que es quien tiene la fuente; el raton lo necesita para saber en cual
     /// se pulso.
     anchos_pestanas: std::cell::RefCell<Vec<f32>>,
-    /// La cosa de la ficha que se ve en grande, dentro de la isla (su
-    /// posicion en `mensajes`); `None`, la rejilla.
-    info_abierta: Option<usize>,
+    /// La cosa de la ficha que se ve en grande, dentro de la isla (un
+    /// mensaje, o una foto de una nota rica); `None`, la rejilla.
+    info_abierta: Option<pixpin_ui::info::Cosa>,
+    /// La tira de pestanas desplazada y el foco del teclado de la ficha.
+    nav_info: ficha_del_chat::Navegacion,
     /// Donde esta el raton sobre la ficha, para resaltar lo que hay debajo.
     raton_info: Punto,
     /// A que mensaje se esta contestando (su id). Aparte de `marcados`:
@@ -8424,6 +8567,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         alto_info: std::cell::Cell::new(0),
         hojas_uid: pixpin_proyecto::almacen::uids_de_hojas(ubicacion.raiz(), &ficha.id),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
+        nav_info: Default::default(),
         info_abierta: None,
         raton_info: Punto { x: -1, y: -1 },
         respondiendo: None,
@@ -16722,7 +16866,11 @@ fn recordar_escala(ubicacion: &Ubicacion, estado: &mut pixpin_store::estado::Est
         return;
     }
     estado.escala_interfaz = Some(cuanto);
-    if let Err(e) = pixpin_store::estado::guardar(ubicacion, estado) {
+    // Se guarda sobre lo que hay en el disco: la copia del chat es de cuando
+    // se abrio y pisaria lo que otras ventanas cambiaron despues.
+    let mut fresco = pixpin_store::estado::cargar(ubicacion);
+    fresco.escala_interfaz = Some(cuanto);
+    if let Err(e) = pixpin_store::estado::guardar(ubicacion, &fresco) {
         tracing::warn!(?e, "no se pudo recordar la escala de la interfaz");
     }
 }
@@ -17827,6 +17975,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         // Las figuras se eligen viendolas, en su ventana (el usuario: «me
         // sale una lista y tengo que buscar»), no en menus en cascada.
         Accion::AdjFigura => {
+            apuntar_para_reabrir(cx.idioma, cx.ubicacion, cx.lienzo);
             figuras::abrir_para_adjuntar(cx.idioma, a.ficha.id.clone(), a.ficha.nombre.clone());
             Efecto::Nada
         }
@@ -17985,6 +18134,7 @@ fn borrar_mensajes(
         }
     }
     // En paralelo: los mensajes y lo que se lee de cada uno.
+    let abierta_en_la_ficha = ficha_del_chat::apuntar_la_abierta(a);
     let mut n = 0;
     a.vistas.retain(|_| {
         let queda = !ids.contains(&a.mensajes[n].id);
@@ -17992,6 +18142,7 @@ fn borrar_mensajes(
         queda
     });
     a.mensajes.retain(|m| !ids.contains(&m.id));
+    ficha_del_chat::reubicar_la_abierta(a, abierta_en_la_ficha);
     a.fijado = a.mensajes.iter().rposition(|m| m.fijado);
     a.marcados.retain(|id| !ids.contains(id));
     if a.respondiendo.as_ref().is_some_and(|id| ids.contains(id)) {

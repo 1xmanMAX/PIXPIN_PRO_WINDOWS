@@ -299,6 +299,16 @@ info-resumen = { $n ->
 }  ·  { $codigo }
 info-previa-posicion = { $k } de { $n }
 info-vacia = Aquí no hay nada todavía
+info-mes = { $mes } de { $ano }
+info-vacia-galeria = Las hojas del proyecto saldrán aquí
+info-vacia-fotos = Las fotos del chat saldrán aquí
+info-vacia-videos = Los vídeos del chat saldrán aquí
+info-vacia-archivos = Los archivos del chat saldrán aquí
+info-vacia-enlaces = Los enlaces del chat saldrán aquí
+info-vacia-voz = Las notas de voz saldrán aquí
+info-vacia-dibujos = Los dibujos del chat saldrán aquí
+info-vacia-fijados = Lo que fijes saldrá aquí
+info-vacia-buzon = El buzón está vacío
 info-abrir = Abrir
 info-abrir-enlace = Abrir enlace
 info-reproducir = Reproducir

@@ -298,6 +298,16 @@ info-resumen = { $n ->
 }  ·  { $codigo }
 info-previa-posicion = { $k } of { $n }
 info-vacia = Nothing here yet
+info-mes = { $mes } { $ano }
+info-vacia-galeria = The project's sheets will show up here
+info-vacia-fotos = Photos from this chat will show up here
+info-vacia-videos = Videos from this chat will show up here
+info-vacia-archivos = Files from this chat will show up here
+info-vacia-enlaces = Links from this chat will show up here
+info-vacia-voz = Voice notes will show up here
+info-vacia-dibujos = Drawings from this chat will show up here
+info-vacia-fijados = What you pin will show up here
+info-vacia-buzon = The inbox is empty
 info-abrir = Open
 info-abrir-enlace = Open link
 info-reproducir = Play
