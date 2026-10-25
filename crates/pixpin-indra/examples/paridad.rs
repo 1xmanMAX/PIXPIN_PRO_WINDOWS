@@ -7,8 +7,10 @@
 //!     <carpeta_modelos> <python> <servidor_ort.py> <hilos> <salida> a.pgm b.pgm…
 //! ```
 //!
-//! El servidor es el guion de `docs/ocr.md`. Escribe `<salida>/<nombre>.txt`
-//! con el texto leido y en la consola los milisegundos de cada pagina.
+//! El servidor es `herramientas/indra/servidor_ort.py` (ver `docs/ocr.md`),
+//! en un venv con `onnxruntime`. Escribe `<salida>/<nombre>.txt` con el texto
+//! leido y en la consola los milisegundos de cada pagina. `SIN_PREP=1` lee
+//! sin preparar la pagina, para comparar con `indra_ocr` tal cual.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
