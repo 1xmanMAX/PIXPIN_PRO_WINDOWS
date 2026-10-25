@@ -3084,14 +3084,13 @@ fn la_foto_del_chat_viaja_con_su_imagen_y_vuelve_cambiada_desde_el_movil() {
     let llego = foto_en_movil(&p, &chat).expect("el movil tiene la foto");
     assert_eq!(llego["tipo"], "imagen");
     let portatil = llego["ruta"].as_str().unwrap();
-    let en_files = format!(
-        "guardados/pc/{}/{rel}",
-        pixpin_sincro::disco::limpio(&chat)
-    );
+    let en_files = format!("guardados/pc/{}/{rel}", pixpin_sincro::disco::limpio(&chat));
     // El movil la guarda con su ruta local, como el `pdfOrigen`.
     assert_eq!(portatil, p.movil.absoluta(&en_files));
     assert_eq!(
-        std::fs::read(p.movil.raiz().join(&en_files)).ok().as_deref(),
+        std::fs::read(p.movil.raiz().join(&en_files))
+            .ok()
+            .as_deref(),
         Some(&b"PNG de la foto"[..]),
         "la imagen viaja con el proyecto"
     );

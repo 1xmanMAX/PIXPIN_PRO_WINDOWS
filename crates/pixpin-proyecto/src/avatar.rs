@@ -295,10 +295,8 @@ mod pruebas {
     use super::*;
 
     fn raiz(etiqueta: &str) -> PathBuf {
-        let r = std::env::temp_dir().join(format!(
-            "pixpin-avatar-{etiqueta}-{}",
-            std::process::id()
-        ));
+        let r =
+            std::env::temp_dir().join(format!("pixpin-avatar-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         r
     }
@@ -347,8 +345,10 @@ mod pruebas {
         // Lo que se guarda es lo crudo, con su `gif`.
         assert_eq!(valor_de(&f), Some(&raro));
         // Un emoji vacio tampoco es un emoji.
-        f.resto
-            .insert(CLAVE.into(), serde_json::json!({"tipo":"emoji","emoji":" "}));
+        f.resto.insert(
+            CLAVE.into(),
+            serde_json::json!({"tipo":"emoji","emoji":" "}),
+        );
         assert!(de_ficha(&f).unwrap().el_emoji().is_none());
         // Y algo que no es un objeto no es una foto.
         f.resto.insert(CLAVE.into(), serde_json::json!("hola"));
@@ -384,7 +384,10 @@ mod pruebas {
         assert!(!carpeta.join(&uno).exists(), "la vieja se va");
         assert_eq!(std::fs::read(carpeta.join(&dos)).unwrap(), b"png 2");
         let ficha = Indice::leer(&r).buscar(&f.id).cloned().unwrap();
-        assert_eq!(de_ficha(&ficha).unwrap().ruta.as_deref(), Some("avatar-200.png"));
+        assert_eq!(
+            de_ficha(&ficha).unwrap().ruta.as_deref(),
+            Some("avatar-200.png")
+        );
 
         // Volver a lo de siempre se escribe y se lleva la imagen.
         poner(&r, &f.id, &Avatar::iniciales(None, 300)).unwrap();

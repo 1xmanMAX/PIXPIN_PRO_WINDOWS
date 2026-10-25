@@ -118,7 +118,10 @@ pub const EMOJIS: &[Emoji] = &[
     ("🐶", "perro dog"),
     ("💼", "trabajo maletin oficina work briefcase office"),
     ("📚", "libros estudio clase books study school"),
-    ("🎓", "graduacion universidad tesis graduation university thesis"),
+    (
+        "🎓",
+        "graduacion universidad tesis graduation university thesis",
+    ),
     ("✏️", "lapiz escribir apuntes pencil write notes"),
     ("📝", "nota apuntes memo notes"),
     ("📐", "regla escuadra dibujo tecnico ruler drawing"),
@@ -356,7 +359,10 @@ mod pruebas {
         }
         assert_eq!(FONDOS.len(), 12);
         assert!(fondo_propuesto("AGJ36629KT") < FONDOS.len());
-        assert_eq!(fondo_propuesto("AGJ36629KT"), fondo_propuesto(" AGJ36629KT "));
+        assert_eq!(
+            fondo_propuesto("AGJ36629KT"),
+            fondo_propuesto(" AGJ36629KT ")
+        );
         // Caso negativo: un degradado que no es de la paleta no tiene lugar.
         assert_eq!(lugar_del_fondo(0x123456, 0x654321), None);
     }
@@ -389,8 +395,14 @@ mod pruebas {
 
     #[test]
     fn al_abrir_es_el_cuadrado_mas_grande_del_centro() {
-        assert_eq!(Recorte::centrado(400, 300).en_pixeles(400, 300), (50, 0, 300));
-        assert_eq!(Recorte::centrado(300, 400).en_pixeles(300, 400), (0, 50, 300));
+        assert_eq!(
+            Recorte::centrado(400, 300).en_pixeles(400, 300),
+            (50, 0, 300)
+        );
+        assert_eq!(
+            Recorte::centrado(300, 400).en_pixeles(300, 400),
+            (0, 50, 300)
+        );
         assert_eq!(Recorte::centrado(10, 10).en_pixeles(10, 10), (0, 0, 10));
     }
 
