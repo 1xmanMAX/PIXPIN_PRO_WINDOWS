@@ -1502,7 +1502,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                         if !movido {
                             let doble = v.clic_medio.is_some_and(|t| t.elapsed() < DOBLE_CLIC);
                             if doble {
+                                // El primer clic ya reprodujo o paro: se
+                                // deshace, el doble clic solo encaja.
                                 v.clic_medio = None;
+                                v.medio.alternar();
                                 v.encuadre.encajar();
                             } else {
                                 v.clic_medio = Some(Instant::now());
@@ -1562,6 +1565,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                     // pantalla completa y, si no, cierra.
                     let del_visor = if v.escribiendo.is_some() || ctrl {
                         None
+                    } else if vk == VK_ESCAPE && !v.encuadre.encajado() {
+                        // Acercado, Escape primero lo encaja.
+                        v.encuadre.encajar();
+                        continue;
                     } else {
                         crate::lector_pin::tecla(vk, pin.pantalla_completa)
                     };
