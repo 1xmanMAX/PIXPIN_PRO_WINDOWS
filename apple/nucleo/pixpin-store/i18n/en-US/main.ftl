@@ -905,6 +905,7 @@ imprimir-que-todo = The whole canvas on one page
 imprimir-que-seleccion = Only the selection
 marca-elige = What do you mark it with? (1-9, 0) · Esc to cancel
 marca-plantar = Click on the canvas where the mark goes · Esc cancels
+marca-vista-guardada = View saved with the mark · Shift+click it to update
 hojita-borrar = Clear
 hojita-insertar = Insert
 hojita-pegar = As a pin

@@ -13,9 +13,17 @@
 //!   numero, 1-9 y 0) y el siguiente clic en el lienzo la planta ahi. Escape
 //!   deja de ponerla.
 //! - **Ir**: un clic en su punto del riel, o **Ctrl+1…9** para las nueve
-//!   primeras. La camara viaja hasta dejarla arriba y centrada, como en el
-//!   movil. Un clic en la marca misma, con cualquier herramienta menos la
-//!   mano, hace lo mismo.
+//!   primeras. Un clic en la marca misma, con cualquier herramienta menos la
+//!   mano, hace lo mismo. Si la marca tiene vista (abajo), la camara viaja
+//!   hasta ella, encuadre y aumento; si no (las de antes, o las del movil
+//!   que aun no la guarda), hasta dejarla arriba y centrada, como en el
+//!   movil.
+//! - **La vista de la marca** (25-oct-2026, como las vistas con nombre de
+//!   AutoCAD: «que guarde la visualizacion que tengo en pantalla y quede
+//!   fijada a ese marcador»): al plantarla se guarda lo que se ve en ese
+//!   momento. **Mayus+clic** en la marca o en su punto del riel (o
+//!   **Ctrl+Mayus+1…9**) la cambia por lo que se ve ahora. Una pastilla bajo
+//!   la barra dice que se guardo.
 //! - **Mover**: solo con la mano (la herramienta de seleccion). En el movil
 //!   el dedo que pasaba dibujando se llevaba la marca puesta (v0.81.2), y
 //!   aqui pasaria lo mismo con el raton.
@@ -40,10 +48,16 @@
 //! (`pixpin_docs::lectura`). Quien abre el editor dice de que dibujo se trata
 //! con [`junto_a`]; sin eso (el lienzo en blanco de la bandeja) las marcas
 //! valen mientras dura la ventana.
+//!
+//! La vista de cada marca va en otro fichero hermano, `<nombre>.pixpin-vistas`
+//! (un lienzo de un chat: `pins/draw/<d>.vistas.json`, que viaja con el
+//! dibujo y sus marcas): un objeto JSON id de la marca → `"x y ancho alto"`
+//! (`pixpin_motor2d::marcas::VistaDeMarca`). No va en la linea de las
+//! marcas porque el movil la lee y juntaria lo de mas con el emoticono.
 
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::camara::Camara;
-use pixpin_motor2d::marcas::{self, EMOJIS, Marca, Vuelo};
+use pixpin_motor2d::marcas::{self, EMOJIS, Marca, VistaDeMarca, Vuelo};
 use pixpin_motor2d::vector::Punto2;
 use pixpin_render::icono::material;
 use pixpin_render::{Color, Pintor, RectF};
@@ -51,6 +65,7 @@ use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin};
 use pixpin_store::Catalogo;
 use pixpin_ui::riel_marcas::{DestinoRiel, PUNTO_CERCA, PUNTO_ELEGIDO, PUNTO_REPOSO, Riel, SALTO};
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -62,6 +77,9 @@ const RADIO_MARCA: f32 = 18.0;
 /// Por debajo de la barra: la marca a la que se va queda a esto del borde de
 /// abajo de la barra, que es donde se lee sin que nada la tape.
 const AIRE_BAJO_LA_BARRA: f32 = 48.0;
+
+/// Cuanto se ve la pastilla de «vista guardada».
+const AVISO_VISTA: std::time::Duration = std::time::Duration::from_millis(1800);
 
 const VK_ESCAPE: u32 = 0x1B;
 const VK_M: u32 = b'M' as u32;
@@ -152,6 +170,69 @@ pub(crate) fn escribir(dibujo: &Path, lista: &[Marca]) -> std::io::Result<()> {
     std::fs::rename(&temporal, &ruta)
 }
 
+/// El fichero hermano donde vive la vista de cada marca de un dibujo.
+pub(crate) fn ruta_de_vistas(dibujo: &Path) -> PathBuf {
+    let mut nombre = dibujo
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "dibujo".into());
+    nombre.push_str(".pixpin-vistas");
+    // Un lienzo de un chat: junto a sus marcas, que viajan con el dibujo.
+    crate::anotado_del_adjunto::vistas_del_lienzo(dibujo, dibujo.with_file_name(nombre))
+}
+
+/// Las vistas de las marcas de un dibujo, por id. Lo que no se entiende (un
+/// id que no es un numero, un texto que no es una vista) se salta: esa marca
+/// vuelve como antes.
+pub(crate) fn leer_vistas(dibujo: &Path) -> BTreeMap<i64, VistaDeMarca> {
+    std::fs::read_to_string(ruta_de_vistas(dibujo))
+        .map(|t| vistas_de_texto(&t))
+        .unwrap_or_default()
+}
+
+fn vistas_de_texto(t: &str) -> BTreeMap<i64, VistaDeMarca> {
+    serde_json::from_str::<BTreeMap<String, serde_json::Value>>(t)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(id, v)| {
+            Some((
+                id.trim().parse::<i64>().ok()?,
+                VistaDeMarca::de_texto(v.as_str()?)?,
+            ))
+        })
+        .collect()
+}
+
+fn vistas_a_texto(vistas: &BTreeMap<i64, VistaDeMarca>) -> String {
+    let de: BTreeMap<String, String> = vistas
+        .iter()
+        .map(|(id, v)| (id.to_string(), v.a_texto()))
+        .collect();
+    serde_json::to_string_pretty(&de).unwrap_or_else(|_| "{}".into())
+}
+
+/// Las guarda junto al dibujo. Sin ninguna, el de al lado se borra (como las
+/// marcas) y el que viaja se deja en `{}`: un fichero que desaparece no le
+/// dice nada al otro aparato, y la sincronizacion lo volveria a traer.
+pub(crate) fn escribir_vistas(
+    dibujo: &Path,
+    vistas: &BTreeMap<i64, VistaDeMarca>,
+) -> std::io::Result<()> {
+    let ruta = ruta_de_vistas(dibujo);
+    if vistas.is_empty() {
+        if ruta.to_string_lossy().ends_with(".pixpin-vistas") {
+            return match std::fs::remove_file(&ruta) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+                _ => Ok(()),
+            };
+        }
+        if !ruta.exists() {
+            return Ok(());
+        }
+    }
+    pixpin_proyecto::anotado::escribir(&ruta, &vistas_a_texto(vistas))
+}
+
 /// Los textos de la tira. El editor no recibe el catalogo de la aplicacion;
 /// se toma el idioma del sistema, como el panel lateral.
 pub(super) fn textos() -> &'static Catalogo {
@@ -187,6 +268,8 @@ pub(super) struct Contexto<'a> {
     pub camara: &'a Camara,
     /// Si la herramienta es la mano: solo con ella se arrastran las marcas.
     pub mano: bool,
+    /// Mayus pulsada en el clic: la vista de la marca pasa a ser la de ahora.
+    pub mayus: bool,
     /// Escribiendo un texto las teclas son del texto.
     pub escribiendo: bool,
     /// El gesto esta a medias (un trazo, un arrastre): el raton que pasa
@@ -232,7 +315,13 @@ pub(super) struct Marcador {
     arrastre: Option<(i64, Punto2)>,
     /// Que hay bajo el raton en el riel, para agrandarlo.
     encima: DestinoRiel,
-    vuelo: Option<(Vuelo, std::time::Instant)>,
+    /// El viaje, su reloj y el aumento en que lo dejo su ultimo paso.
+    vuelo: Option<(Vuelo, std::time::Instant, f32)>,
+    /// La vista de cada marca (por id): lo que se veia al ponerla.
+    pub vistas: BTreeMap<i64, VistaDeMarca>,
+    /// Desde cuando se ensena la pastilla de «vista guardada», y con que
+    /// emoticono.
+    guardada: Option<(std::time::Instant, String)>,
     /// Si se estan poniendo marcos (la herramienta Marco): el boton del
     /// marco del riel, pulsado. Lo pone el editor en cada vuelta.
     pub enmarcando: bool,
@@ -251,6 +340,15 @@ impl Marcador {
     pub fn cargar() -> Self {
         let dibujo = DIBUJO.with(|d| d.borrow().clone());
         let marcas = dibujo.as_deref().map(leer).unwrap_or_default();
+        let vistas = dibujo.as_deref().map(leer_vistas).unwrap_or_default();
+        Self::con(marcas, vistas, dibujo)
+    }
+
+    fn con(
+        marcas: Vec<Marca>,
+        vistas: BTreeMap<i64, VistaDeMarca>,
+        dibujo: Option<PathBuf>,
+    ) -> Self {
         Self {
             marcas,
             dibujo,
@@ -258,6 +356,8 @@ impl Marcador {
             arrastre: None,
             encima: DestinoRiel::Fuera,
             vuelo: None,
+            vistas,
+            guardada: None,
             enmarcando: false,
             editando: false,
             marcos: Vec::new(),
@@ -275,6 +375,37 @@ impl Marcador {
         }
     }
 
+    /// Guarda las vistas, sin las de marcas que ya no estan (quitadas, o
+    /// idas por el tope de [`marcas::MAXIMO`]).
+    fn guardar_vistas(&mut self) {
+        let marcas = &self.marcas;
+        self.vistas
+            .retain(|id, _| marcas.iter().any(|m| m.id == *id));
+        if let Some(d) = &self.dibujo
+            && let Err(e) = escribir_vistas(d, &self.vistas)
+        {
+            tracing::warn!(?e, ruta = %d.display(), "no se pudieron guardar las vistas de las marcas");
+        }
+    }
+
+    /// **Fija a la marca `id` lo que se ve ahora** (al plantarla, o con
+    /// Mayus+clic) y saca la pastilla que lo dice.
+    fn fijar_vista(&mut self, id: i64, cx: &Contexto) {
+        let (w, h) = hueco(cx);
+        let Some(v) = VistaDeMarca::de_camara(cx.camara, w, h) else {
+            return;
+        };
+        self.vistas.insert(id, v);
+        self.guardar_vistas();
+        let emoji = self
+            .marcas
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.emoji.clone())
+            .unwrap_or_default();
+        self.guardada = Some((std::time::Instant::now(), emoji));
+    }
+
     pub fn riel(&self, ancho: u32, alto: u32, escala_por_cien: u32, bajo_la_barra: i32) -> Riel {
         Riel::colocar(
             ancho,
@@ -287,44 +418,75 @@ impl Marcador {
         )
     }
 
-    /// Echa a volar la camara hacia la marca `i` del riel.
+    /// Echa a volar la camara hacia la marca `i` del riel: a su vista si la
+    /// tiene y, si no, a dejarla arriba con el aumento de ahora.
     fn ir_a(&mut self, i: usize, cx: &Contexto) {
         let Some(m) = self.marcas.get(i) else {
             return;
         };
-        let e = pixpin_escala(cx.escala_por_cien);
-        let destino = marcas::camara_con_la_marca_arriba(
-            m,
-            cx.camara.zoom,
-            cx.area.ancho as f32 / e,
-            cx.bajo_la_barra as f32 / e + AIRE_BAJO_LA_BARRA,
-        );
-        self.vuelo = Some((Vuelo::hacia(destino), std::time::Instant::now()));
+        let (w, h) = hueco(cx);
+        let vuelo = match self.vistas.get(&m.id) {
+            Some(v) => Vuelo::hacia_en(v.camara(w, h), w, h),
+            None => {
+                let e = pixpin_escala(cx.escala_por_cien);
+                Vuelo::hacia(marcas::camara_con_la_marca_arriba(
+                    m,
+                    cx.camara.zoom,
+                    w,
+                    cx.bajo_la_barra as f32 / e + AIRE_BAJO_LA_BARRA,
+                ))
+            }
+        };
+        self.vuelo = Some((vuelo, std::time::Instant::now(), cx.camara.zoom));
     }
 
     /// Mueve la camara un paso del viaje. `true` si la movio.
     pub fn avanzar(&mut self, camara: &mut Camara) -> bool {
-        let Some((v, reloj)) = self.vuelo.as_mut() else {
+        let Some((v, reloj, dejado)) = self.vuelo.as_mut() else {
             return false;
         };
         // Si alguien cambio el aumento a mitad de viaje (la rueda), manda
         // quien toca: seguir volando le devolveria el zoom que acaba de
-        // quitar.
-        if (camara.zoom - v.destino.zoom).abs() > 1e-4 {
+        // quitar. Se compara con el que dejo el propio viaje en su ultimo
+        // paso y no con el del destino: con una vista guardada el viaje
+        // tambien acerca o aleja, y se pararia a si mismo.
+        if (camara.zoom - *dejado).abs() > 1e-4 * dejado.max(1.0) {
             self.vuelo = None;
             return false;
         }
         let dt = reloj.elapsed().as_secs_f32();
         *reloj = std::time::Instant::now();
-        if !v.avanzar(camara, dt) {
+        let sigue = v.avanzar(camara, dt);
+        *dejado = camara.zoom;
+        if !sigue {
             self.vuelo = None;
         }
         true
     }
 
-    /// Cada cuanto hay que despertar el bucle: cada fotograma mientras vuela.
+    /// Si la pastilla de «vista guardada» se acaba de ir: hay que repintar
+    /// la interfaz para que deje de verse.
+    pub fn caduca(&mut self) -> bool {
+        if self
+            .guardada
+            .as_ref()
+            .is_some_and(|(desde, _)| desde.elapsed() >= AVISO_VISTA)
+        {
+            self.guardada = None;
+            return true;
+        }
+        false
+    }
+
+    /// Cada cuanto hay que despertar el bucle: cada fotograma mientras vuela,
+    /// y cuando toca quitar la pastilla.
     pub fn tope_ms(&self) -> Option<u32> {
-        self.vuelo.is_some().then_some(8)
+        if self.vuelo.is_some() {
+            return Some(8);
+        }
+        self.guardada
+            .as_ref()
+            .map(|(desde, _)| AVISO_VISTA.saturating_sub(desde.elapsed()).as_millis() as u32 + 1)
     }
 
     /// Atiende un evento de la ventana. Lo que no es suyo sale con
@@ -412,7 +574,10 @@ impl Marcador {
                         ..Respuesta::suya(true)
                     },
                     DestinoRiel::Marca(i) => {
-                        self.ir_a(i, cx);
+                        match self.marcas.get(i).map(|m| m.id) {
+                            Some(id) if cx.mayus => self.fijar_vista(id, cx),
+                            _ => self.ir_a(i, cx),
+                        }
                         Respuesta::suya(true)
                     }
                     DestinoRiel::Emoji(i) => {
@@ -427,6 +592,7 @@ impl Marcador {
                     DestinoRiel::Fuera => {
                         if let Poniendo::Plantando(i) = self.poniendo {
                             let w = cx.efectiva.a_mundo(Punto2::nuevo(q.x as f32, q.y as f32));
+                            let antes = self.marcas.clone();
                             self.marcas = marcas::con(
                                 &self.marcas,
                                 w.x as f64,
@@ -436,9 +602,25 @@ impl Marcador {
                             );
                             self.poniendo = Poniendo::No;
                             self.guardar();
+                            // Y con ella lo que se ve ahora: es adonde se
+                            // volvera.
+                            if let Some(nueva) = self
+                                .marcas
+                                .iter()
+                                .find(|m| antes.iter().all(|a| a.id != m.id))
+                                .map(|m| m.id)
+                            {
+                                self.fijar_vista(nueva, cx);
+                            }
                             return Respuesta::suya(true);
                         }
                         match marca_bajo(&self.marcas, q) {
+                            // Mayus+clic: la vista de esa marca, la de ahora
+                            // (con cualquier herramienta, tambien la mano).
+                            Some(id) if cx.mayus => {
+                                self.fijar_vista(id, cx);
+                                Respuesta::suya(true)
+                            }
                             Some(id) if cx.mano => {
                                 let s = self.en_pantalla(id, cx.efectiva);
                                 self.arrastre = s.map(|s| (id, s));
@@ -471,6 +653,10 @@ impl Marcador {
                     Some(id) => {
                         self.marcas = marcas::sin(&self.marcas, id);
                         self.guardar();
+                        // Su vista se va con ella.
+                        if self.vistas.contains_key(&id) {
+                            self.guardar_vistas();
+                        }
                         Respuesta::suya(true)
                     }
                     None => Respuesta::default(),
@@ -549,6 +735,18 @@ impl Marcador {
                 // Consumida aunque no haya tantas marcas: un Ctrl+7 sin
                 // septima marca no puede ir a parar a otra cosa.
                 Respuesta::suya(false)
+            }
+            // Ctrl+Mayus+1…9: la vista de esa marca pasa a ser la de ahora
+            // (el Mayus+clic del teclado).
+            (v, true, true, false) if (b'1' as u32..=b'9' as u32).contains(&v) => {
+                let i = (v - b'1' as u32) as usize;
+                match self.marcas.get(i).map(|m| m.id) {
+                    Some(id) => {
+                        self.fijar_vista(id, cx);
+                        Respuesta::suya(true)
+                    }
+                    None => Respuesta::suya(false),
+                }
             }
             (VK_ESCAPE, _, _, _) if self.poniendo != Poniendo::No => {
                 self.poniendo = Poniendo::No;
@@ -667,7 +865,28 @@ impl Marcador {
             let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), alto as f32, e);
             crate::marcos_doc::pintar_fichas(p, &fichas, e);
         }
+        // La pastilla de «vista guardada», donde va la de plantar.
+        if let Some((_, emoji)) = &self.guardada
+            && self.poniendo == Poniendo::No
+        {
+            let e = pixpin_escala(escala_por_cien);
+            aviso(
+                p,
+                &textos().t("marca-vista-guardada"),
+                Some(emoji.as_str()).filter(|em| !em.is_empty()),
+                ancho as f32 / 2.0,
+                bajo_la_barra as f32 + 8.0 * e,
+                e,
+            );
+        }
     }
+}
+
+/// El hueco de la ventana en los pixeles de la camara del usuario (sin la
+/// escala de Windows): lo que mide la vista de una marca.
+fn hueco(cx: &Contexto) -> (f32, f32) {
+    let e = pixpin_escala(cx.escala_por_cien);
+    (cx.area.ancho as f32 / e, cx.area.alto as f32 / e)
 }
 
 fn pixpin_escala(escala_por_cien: u32) -> f32 {
@@ -960,6 +1179,7 @@ mod pruebas {
             efectiva,
             camara: efectiva,
             mano,
+            mayus: false,
             escribiendo: false,
             ocupado: false,
             bajo_la_barra: 64,
@@ -967,17 +1187,16 @@ mod pruebas {
     }
 
     fn marcador(lista: Vec<Marca>) -> Marcador {
-        Marcador {
-            marcas: lista,
-            dibujo: None,
-            poniendo: Poniendo::No,
-            arrastre: None,
-            encima: DestinoRiel::Fuera,
-            vuelo: None,
-            enmarcando: false,
-            editando: false,
-            marcos: Vec::new(),
-            nombres: Vec::new(),
+        Marcador::con(lista, BTreeMap::new(), None)
+    }
+
+    /// Vuela hasta llegar (o hasta que se pare).
+    fn volar(m: &mut Marcador, c: &mut Camara) {
+        let mut vueltas = 0;
+        while m.avanzar(c) {
+            vueltas += 1;
+            std::thread::sleep(std::time::Duration::from_millis(4));
+            assert!(vueltas < 2000);
         }
     }
 
@@ -1197,6 +1416,165 @@ mod pruebas {
         assert!(m.tope_ms().is_none());
     }
 
+    /// 25-oct-2026, como las vistas de AutoCAD: plantar una marca guarda lo
+    /// que se ve, y volver a ella lo devuelve entero (sitio y aumento), con
+    /// un viaje que no se para por su propio cambio de aumento.
+    #[test]
+    fn plantar_guarda_la_vista_y_volver_la_devuelve_con_su_aumento() {
+        let mirando = Camara {
+            x: 100.0,
+            y: 50.0,
+            zoom: 2.0,
+        };
+        let cx = contexto(&mirando, false);
+        let mut m = marcador(Vec::new());
+        m.evento(&tecla(VK_M, true, false), &cx);
+        m.evento(&EventoOverlay::Caracter('1'), &cx);
+        m.evento(&EventoOverlay::BotonPulsado(Punto { x: 400, y: 300 }), &cx);
+        let id = m.marcas[0].id;
+        assert_eq!(
+            m.vistas.get(&id),
+            VistaDeMarca::de_camara(&mirando, 1600.0, 900.0).as_ref()
+        );
+        assert!(m.tope_ms().is_some(), "la pastilla de «vista guardada»");
+
+        // Lejos y con otro aumento, Ctrl+1 vuelve a lo de antes.
+        let mut c = Camara {
+            x: -9000.0,
+            y: 7000.0,
+            zoom: 0.25,
+        };
+        let lejos = c;
+        let cx = contexto(&lejos, false);
+        assert!(m.evento(&tecla(b'1' as u32, true, false), &cx).consumido);
+        volar(&mut m, &mut c);
+        assert!(
+            (c.zoom - 2.0).abs() < 1e-4,
+            "el aumento de la vista: {}",
+            c.zoom
+        );
+        assert!(
+            (c.x - 100.0).abs() < 0.01 && (c.y - 50.0).abs() < 0.01,
+            "{c:?}"
+        );
+    }
+
+    #[test]
+    fn una_marca_sin_vista_vuelve_como_antes_con_el_aumento_de_ahora() {
+        let mut c = Camara {
+            x: 0.0,
+            y: 0.0,
+            zoom: 1.5,
+        };
+        let quieta = c;
+        let cx = contexto(&quieta, false);
+        let mut m = marcador(marcas::con(&[], 3000.0, 2000.0, "⭐", 1));
+        m.evento(&tecla(b'1' as u32, true, false), &cx);
+        volar(&mut m, &mut c);
+        assert_eq!(c.zoom, 1.5);
+        let s = c.a_pantalla(Punto2::nuevo(3000.0, 2000.0));
+        assert!((s.x - 800.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn mayus_clic_en_la_marca_o_en_su_punto_del_riel_cambia_su_vista() {
+        let antes = Camara::nueva();
+        let mut m = marcador(marcas::con(&[], 200.0, 200.0, "⭐", 1));
+        m.vistas
+            .insert(1, VistaDeMarca::de_camara(&antes, 1600.0, 900.0).unwrap());
+        // En la marca del lienzo, aunque la herramienta sea la mano: no la
+        // arrastra ni viaja.
+        let ahora = Camara {
+            x: 0.0,
+            y: 0.0,
+            zoom: 3.0,
+        };
+        let mut cx = contexto(&ahora, true);
+        cx.mayus = true;
+        let r = m.evento(&EventoOverlay::BotonPulsado(Punto { x: 600, y: 600 }), &cx);
+        assert!(r.consumido);
+        assert_eq!(
+            m.vistas[&1],
+            VistaDeMarca::de_camara(&ahora, 1600.0, 900.0).unwrap()
+        );
+        assert!(
+            !m.evento(&EventoOverlay::RatonMovido(Punto { x: 900, y: 900 }), &cx)
+                .repintar,
+            "no se cogio para arrastrar"
+        );
+        assert_eq!((m.marcas[0].x, m.marcas[0].y), (200.0, 200.0));
+        // En su punto del riel.
+        let otra = Camara {
+            x: 50.0,
+            y: -40.0,
+            zoom: 0.5,
+        };
+        let mut cx = contexto(&otra, false);
+        cx.mayus = true;
+        let punto = m.riel(1600, 900, 100, 64).puntos[0];
+        assert!(m.evento(&EventoOverlay::BotonPulsado(punto), &cx).consumido);
+        assert_eq!(
+            m.vistas[&1],
+            VistaDeMarca::de_camara(&otra, 1600.0, 900.0).unwrap()
+        );
+        assert!(m.vuelo.is_none(), "Mayus+clic no viaja");
+        // Ctrl+Mayus+1, lo mismo desde el teclado; sin segunda marca, nada.
+        let cx = contexto(&antes, false);
+        assert!(m.evento(&tecla(b'1' as u32, true, true), &cx).consumido);
+        assert_eq!(
+            m.vistas[&1],
+            VistaDeMarca::de_camara(&antes, 1600.0, 900.0).unwrap()
+        );
+        assert!(m.evento(&tecla(b'2' as u32, true, true), &cx).consumido);
+        assert_eq!(m.vistas.len(), 1);
+    }
+
+    #[test]
+    fn quitar_una_marca_se_lleva_su_vista_del_fichero() {
+        let d = carpeta_de_prueba("vistas");
+        let dibujo = d.join("dib.excalidraw");
+        let c = Camara::nueva();
+        let cx = contexto(&c, false);
+        let lista = marcas::con(
+            &marcas::con(&[], 300.0, 300.0, "⭐", 1),
+            10.0,
+            10.0,
+            "🔖",
+            2,
+        );
+        let mut m = Marcador::con(lista, BTreeMap::new(), Some(dibujo.clone()));
+        m.fijar_vista(1, &cx);
+        m.fijar_vista(2, &cx);
+        assert_eq!(leer_vistas(&dibujo).len(), 2);
+        assert!(d.join("dib.excalidraw.pixpin-vistas").exists());
+        m.evento(
+            &EventoOverlay::BotonDerechoPulsado(Punto { x: 300, y: 300 }),
+            &cx,
+        );
+        let quedan = leer_vistas(&dibujo);
+        assert_eq!(quedan.keys().copied().collect::<Vec<_>>(), [2]);
+        // Sin ninguna, el de al lado del dibujo se va (no viaja).
+        m.evento(
+            &EventoOverlay::BotonDerechoPulsado(Punto { x: 10, y: 10 }),
+            &cx,
+        );
+        assert!(!d.join("dib.excalidraw.pixpin-vistas").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn las_vistas_se_leen_por_id_y_lo_roto_se_salta() {
+        let v = vistas_de_texto(
+            r#"{"7":"10 20 640 360","x":"1 2 3 4","8":"roto","9":5,"10":"1 2 0 4"}"#,
+        );
+        assert_eq!(v.keys().copied().collect::<Vec<_>>(), [7]);
+        assert_eq!(vistas_de_texto(&vistas_a_texto(&v)), v);
+        // Caso negativo: lo que no es un objeto no da ninguna.
+        assert!(vistas_de_texto("[1,2]").is_empty());
+        assert!(vistas_de_texto("").is_empty());
+        assert_eq!(vistas_a_texto(&BTreeMap::new()), "{}");
+    }
+
     #[test]
     fn la_rueda_a_mitad_de_viaje_para_el_viaje() {
         let mut c = Camara::nueva();
@@ -1307,16 +1685,9 @@ mod pruebas {
         let camara = Camara::nueva();
         for (nombre, encima, poniendo) in casos {
             let m = Marcador {
-                marcas: lista.clone(),
-                dibujo: None,
                 poniendo,
-                arrastre: None,
                 encima,
-                vuelo: None,
-                enmarcando: false,
-                editando: false,
-                marcos: Vec::new(),
-                nombres: Vec::new(),
+                ..marcador(lista.clone())
             };
             motor
                 .dibujar(&fuera.destino, |p| {

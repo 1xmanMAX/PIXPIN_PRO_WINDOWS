@@ -597,6 +597,14 @@ pub fn marcas_del_lienzo(lienzo: &Path, de_siempre: PathBuf) -> PathBuf {
     }
 }
 
+/// **La vista de cada marcador de un lienzo** (25-oct-2026): como sus
+/// marcas, junto a su dibujo del movil si es de un chat
+/// (`<dibujo>.vistas.json`, que viaja con el); si no, `de_siempre`. No hay
+/// nada de antes que pasar.
+pub fn vistas_del_lienzo(lienzo: &Path, de_siempre: PathBuf) -> PathBuf {
+    an::vistas_del_lienzo(lienzo).unwrap_or(de_siempre)
+}
+
 /// **La base de una nota de un proyecto por el nombre fijo de su riel**
 /// (`<raiz>/cache/riel-notas/<ficha>-<codigo>.md`, con la ficha y el codigo
 /// limpios como los deja `documento_del_riel`): `anot-<codigo>` en el chat

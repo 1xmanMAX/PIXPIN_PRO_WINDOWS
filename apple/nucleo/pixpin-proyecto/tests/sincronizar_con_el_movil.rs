@@ -1265,6 +1265,54 @@ fn los_marcadores_de_un_lienzo_la_voz_el_sitio_y_los_del_pdf_de_un_proyecto_tamb
     p.quieto(GENERAL);
 }
 
+/// 25-oct-2026: la vista guardada con cada marcador de un lienzo (como las
+/// vistas con nombre de AutoCAD) va y vuelve con sus marcas, y quitarlas
+/// todas deja `{}` en los dos lados (no hay lapidas: un fichero borrado
+/// volveria).
+#[test]
+fn las_vistas_de_los_marcadores_de_un_lienzo_viajan_con_sus_marcas() {
+    use pixpin_proyecto::anotado;
+    let p = montar("vistas-lienzo");
+    proyecto_del_movil(&p);
+    escribir_movil(&p, "pins/draw/d1.marcas", "7:10:20:⭐");
+    escribir_movil(&p, "pins/draw/d1.vistas.json", r#"{"7":"10 20 640 360"}"#);
+    p.vuelta_desde_pc();
+    let lienzo = almacen::lienzo(&p.raiz(), "pr-1", "d1");
+    let vistas = anotado::vistas_del_lienzo(&lienzo).unwrap();
+    assert_eq!(
+        vistas.parent(),
+        anotado::marcas_del_lienzo(&lienzo).unwrap().parent(),
+        "al lado de las marcas"
+    );
+    assert_eq!(
+        anotado::leer(&vistas).as_deref(),
+        Some(r#"{"7":"10 20 640 360"}"#)
+    );
+
+    // Del PC al movil: se pone otra marca con su vista.
+    p.reloj.saltar(10_000);
+    let otra = r#"{"7":"10 20 640 360","8":"-5 6 200 112.5"}"#;
+    anotado::escribir(&vistas, otra).unwrap();
+    adelantar(&vistas);
+    p.vuelta_desde_pc();
+    assert_eq!(
+        leer_movil(&p, "pins/draw/d1.vistas.json").as_deref(),
+        Some(otra)
+    );
+
+    // Vaciar es escribir `{}`, y el `{}` tambien viaja.
+    p.reloj.saltar(10_000);
+    anotado::escribir(&vistas, "{}").unwrap();
+    adelantar(&vistas);
+    p.vuelta_desde_pc();
+    assert_eq!(
+        leer_movil(&p, "pins/draw/d1.vistas.json").as_deref(),
+        Some("{}")
+    );
+    p.quieto("pr-1");
+    p.quieto(GENERAL);
+}
+
 #[test]
 fn borrar_el_mensaje_se_lleva_lo_anotado_en_los_dos_aparatos() {
     use pixpin_proyecto::anotado;

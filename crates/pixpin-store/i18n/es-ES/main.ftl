@@ -915,6 +915,7 @@ imprimir-que-todo = Todo el lienzo en una hoja
 imprimir-que-seleccion = Solo lo elegido
 marca-elige = ¿Con qué lo marcas? (1-9, 0) · Esc para dejarlo
 marca-plantar = Pulsa en el lienzo donde va la marca · Esc cancela
+marca-vista-guardada = Vista guardada en la marca · Mayús+clic en ella la actualiza
 hojita-borrar = Borrar
 hojita-insertar = Insertar
 hojita-pegar = Como pin
