@@ -380,7 +380,7 @@ mod pruebas {
 
     #[test]
     fn la_vista_kanban_elegida_se_recuerda_al_volver_a_abrir() {
-        use super::super::rejilla::Vista;
+        use super::super::rejilla::{Recordada, Vista};
         let raiz =
             std::env::temp_dir().join(format!("pixpin-tareas-kanban-{}", std::process::id()));
         std::fs::create_dir_all(&raiz).unwrap();
@@ -394,7 +394,7 @@ mod pruebas {
         Vista::Tarjetas.guardar(&raiz);
         assert_eq!(Vista::leer(&raiz), Vista::Tarjetas);
         // Caso negativo: una palabra parecida no es el tablero.
-        assert_eq!(Vista::de_texto("kanbann"), Vista::Lista);
+        assert_eq!(Vista::de_texto("kanbann"), Vista::Tarjetas);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

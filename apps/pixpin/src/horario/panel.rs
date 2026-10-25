@@ -1,9 +1,13 @@
-//! **La ventana «Horario»**: el calendario semanal donde se mete el horario
-//! arrastrando (18-oct-2026).
+//! **El panel «Horario»**: el calendario semanal donde se mete el horario
+//! arrastrando (18-oct-2026), dentro de la ventana de Tareas (25-oct-2026).
 //!
 //! El usuario: «una interfaz estilo calendario semanal en la que pueda
 //! ingresar mi horario: en el lado lateral puedo ingresar mis asignaturas y
-//! pueda jalarlas sobre el calendario semanal y soltarlas».
+//! pueda jalarlas sobre el calendario semanal y soltarlas». Y despues: «que
+//! la funcion de Horario aparezca en la ventana de Tareas». Hasta el
+//! 25-oct-2026 era una ventana aparte; ahora es la tercera vista de Tareas
+//! (Tarjetas · Kanban · Horario) y «Horario de clases…» abre Tareas en ella.
+//! Una sola ventana, un solo `horario.md`.
 //!
 //! - A la izquierda, la **lista de asignaturas**: la caja «Nueva
 //!   asignatura» (con el aula detras si se quiere: `Geometría @A-12`), el
@@ -13,7 +17,9 @@
 //!   [`super::asignaturas`]); doble clic, su aula.
 //! - A la derecha, la **rejilla de la semana**: lunes a sabado (el domingo
 //!   con su boton de la barra), de 7:00 a 22:00 en franjas de 15 min, con
-//!   el dia de hoy y la hora de ahora marcados.
+//!   el dia de hoy y la hora de ahora marcados. Las tareas con hora (`⏰`)
+//!   de la semana salen como chapitas en su dia y su hora; pulsar una la
+//!   ensena en las tarjetas.
 //! - **Arrastrar** una asignatura a la rejilla crea una clase de 1 h donde
 //!   se suelta; una clase se mueve arrastrandola y se alarga o se acorta
 //!   tirando de su borde de abajo. Clic derecho o Supr la borran (con
@@ -22,37 +28,33 @@
 //!
 //! Todo se escribe al momento en `horario.md` ([`super::semana::reescribir`])
 //! y se relee la agenda: las llamadas salen de lo mismo que se ve. Si el
-//! horario cambia fuera (editado como texto), la ventana lo relee.
+//! horario cambia fuera (editado como texto), el panel lo relee.
 //!
-//! La interfaz es la v2 de Tareas y Timeline: su cabecera
-//! (`crate::cabecera`), sus botones (`v2`, `lecciones::ui::boton_v2`), sus
-//! cajas (`lecciones::ui::Campo`) y su aviso con «Deshacer» (`v2::aviso`).
-//! Lo que se decide sin pintar vive en [`super::semana`].
+//! Quien lo aloja (la ventana de Tareas) pinta la barra de arriba y le pasa
+//! los eventos: el panel no tiene ventana. Donde va cada parte lo decide
+//! `pixpin_ui::vista_tareas::disponer_horario`; lo que se decide sin pintar
+//! de la semana vive en [`super::semana`].
 
 #![forbid(unsafe_code)]
 
 use std::path::Path;
-use std::sync::atomic::{AtomicIsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
-use anyhow::{Context, Result};
-use pixpin_geom::Rect;
 use pixpin_ia::fechas::{self, Momento};
 use pixpin_render::icono::material as mi;
-use pixpin_render::{Color, Pintor, RectF, Superficie};
-use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
+use pixpin_render::{Color, Pintor, RectF};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
+use pixpin_ui::vista_tareas::{self as vt, Disposicion, MedidasHorario};
 
 use super::semana::{self, Rejilla, Semana};
 use crate::caja_dibujo::hex;
 use crate::lecciones::ui;
-use crate::overlay::Recursos;
 use crate::tareas::{Fila, Lista};
 use crate::v2::aviso::Aviso;
 use crate::v2::color::{blanco, con_alfa, negro};
 use crate::v2::geom::{centrado as cuadrado, encoger};
-use crate::v2::{self as d, ACENTO, FONDO, GRIS, TEXTO};
-use crate::ventanita::{Botones, centrado, dentro};
+use crate::v2::{self as d, ACENTO, GRIS, TEXTO};
+use crate::ventanita::{Botones, dentro};
 
 const VK_TAB: u32 = 0x09;
 const VK_ENTRAR: u32 = 0x0D;
@@ -63,57 +65,53 @@ const VK_Z: u32 = 0x5A;
 /// Dos clics en lo mismo antes de esto son un doble clic (el de Tareas).
 const DOBLE_CLIC: Duration = Duration::from_millis(500);
 
-/// El tamano de la ventana, en pixeles logicos.
-const ANCHO_VENTANA: u32 = 1180;
-const ALTO_VENTANA: u32 = 780;
-
 /// Medidas, en pixeles logicos.
-const LATERAL: f32 = 280.0;
 const FILA: f32 = 44.0;
-const COLUMNA_HORAS: f32 = 48.0;
-const CABECERA_DIAS: f32 = 36.0;
 /// Lo que mide la zona del borde de abajo de una clase que la alarga.
 const BORDE: f32 = 7.0;
 /// Cuantas tareas pendientes se ensenan de la asignatura elegida.
 const TAREAS_A_LA_VISTA: usize = 8;
+/// El alto de la chapita de una tarea con hora en la semana.
+const ALTO_CHIP: f32 = 18.0;
+/// Dos tareas a menos de esto (minutos) en el mismo dia, una debajo de otra.
+const PASO_CHIP: u32 = 30;
 
 /// La rayita roja de la hora de ahora (la del calendario de siempre).
 const AHORA: Color = hex(0xFF453A);
 
-/// La ventana abierta (su HWND), -1 mientras nace, 0 sin ventana.
-static ABIERTA: AtomicIsize = AtomicIsize::new(0);
-
-/// Abre la ventana del horario, o la trae delante. Vuelve enseguida.
-pub fn abrir(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
-    let pedida = Instant::now();
-    let ya = ABIERTA.load(Ordering::SeqCst);
-    if ya > 0 {
-        VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
-        return;
-    }
-    if ya < 0 {
-        return;
-    }
-    ABIERTA.store(-1, Ordering::SeqCst);
-    let lanzado = std::thread::Builder::new()
-        .name("horario".into())
-        .spawn(move || {
-            let _com = pixpin_shell::ComDelHilo::iniciar();
-            let textos = Catalogo::nuevo(idioma);
-            let hecho = crate::dispositivo_perdido::con_recursos("horario", |r| {
-                bucle(r, &textos, idioma, &ubicacion, &aparato, pedida)
-            });
-            if let Err(e) = hecho {
-                tracing::warn!(?e, "no se pudo abrir la ventana del horario");
-            }
-            ABIERTA.store(0, Ordering::SeqCst);
-        });
-    if let Err(e) = lanzado {
-        tracing::warn!(?e, "no se pudo lanzar el hilo del horario");
-        ABIERTA.store(0, Ordering::SeqCst);
+/// Las medidas del horario (las de la ventana de antes).
+fn medidas() -> MedidasHorario {
+    MedidasHorario {
+        margen: d::MARGEN,
+        ..MedidasHorario::default()
     }
 }
 
+/// Una tarea con hora que quien aloja el panel quiere en la semana.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TareaConHora {
+    /// Lo que se lee en la chapita (sin las marcas).
+    pub texto: String,
+    /// Su hora local, en ms desde 1970.
+    pub cuando: i64,
+    pub color: Color,
+}
+
+/// Lo que el panel pide a quien lo aloja tras un evento.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Salida {
+    Nada,
+    /// Empezo un arrastre: que la ventana capture el raton.
+    Capturar,
+    /// Esc sin nada que soltar: cerrar la ventana.
+    Cerrar,
+    /// «Abrir en Tareas»: las tarjetas, en la lista de esta clave (o donde
+    /// estuvieran).
+    IrATareas(Option<String>),
+    /// La chapita de la tarea `.0` (su sitio en lo pasado a
+    /// [`Panel::pintar`]): ensenarla en las tarjetas.
+    Tarea(usize),
+}
 // --------------------------------------------------------------- el estado
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,12 +127,6 @@ enum Accion {
     /// Lo que no hace nada: el fondo, la caja del aviso, el velo.
     #[default]
     Fondo,
-    Mover,
-    Cerrar,
-    /// El boton «Domingo» de la barra: ensenar o no el domingo.
-    Domingo,
-    /// «Como texto»: el `horario.md` en el editor de notas.
-    ComoTexto,
     Campo(CampoId),
     /// El «+» de la caja de nueva asignatura (o Intro en ella).
     Anadir,
@@ -154,6 +146,8 @@ enum Accion {
     Tarea(usize),
     /// El evento `.0` de Google Calendar de la semana: abrirlo en Google.
     EventoGoogle(usize),
+    /// La chapita de la tarea con hora `.0` (25-oct-2026).
+    Chip(usize),
     AbrirTareas,
     Guardar,
     Cancelar,
@@ -189,7 +183,10 @@ enum Agarre {
     },
 }
 
-struct Estado {
+/// El horario a la vista: lo leido, lo elegido, lo que se arrastra y sus
+/// zonas. Lo aloja la ventana de Tareas.
+pub(crate) struct Panel {
+    idioma: Idioma,
     semana: Semana,
     /// La antelacion de todo el horario (lo que avisa una clase sin la suya).
     antelacion: u32,
@@ -210,7 +207,6 @@ struct Estado {
     /// La semana de antes del ultimo cambio, mientras su aviso ofrece
     /// «Deshacer».
     deshacer: Option<Semana>,
-    moviendo: Option<(pixpin_geom::Punto, Rect)>,
     ultimo_clic: Option<(Accion, Instant)>,
     /// Las listas del chat «Asignaturas» y la huella de su cuaderno.
     listas: Vec<Lista>,
@@ -228,6 +224,13 @@ struct Estado {
     /// Los eventos de Google Calendar que se pintaron (18-oct), para abrir
     /// el pulsado.
     google: Vec<pixpin_ia::conexiones::calendario::Evento>,
+    /// Si ya se leyeron las listas de las asignaturas (despues del primer
+    /// fotograma: leer el chat no retrasa ensenar la semana).
+    tareas_leidas: bool,
+    /// El minuto de la ultima mirada: al cambiar, la rayita de ahora baja.
+    minuto: i64,
+    /// Donde quedaron la lateral y la semana en el ultimo fotograma.
+    disposicion: Option<Disposicion>,
 }
 
 fn firma_de(ruta: &Path) -> Option<(SystemTime, u64)> {
@@ -236,9 +239,14 @@ fn firma_de(ruta: &Path) -> Option<(SystemTime, u64)> {
         .map(|m| (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()))
 }
 
-impl Estado {
-    fn nuevo() -> Estado {
-        Estado {
+impl Panel {
+    pub(crate) fn nuevo(idioma: Idioma) -> Panel {
+        let ahora_ms = pixpin_shell::entorno::ahora_local_ms();
+        Panel {
+            idioma,
+            tareas_leidas: false,
+            minuto: ahora_ms / 60_000,
+            disposicion: None,
             semana: Semana::default(),
             antelacion: super::ANTELACION,
             firma: None,
@@ -257,19 +265,18 @@ impl Estado {
             botones: Botones::default(),
             aviso: None,
             deshacer: None,
-            moviendo: None,
             ultimo_clic: None,
             listas: Vec::new(),
             chat: None,
             firma_chat: None,
             pendientes: Vec::new(),
             rejilla: None,
-            ahora_ms: pixpin_shell::entorno::ahora_local_ms(),
+            ahora_ms,
         }
     }
 
     /// Lee `horario.md` (vacio si aun no esta).
-    fn cargar(&mut self, raiz: &Path) {
+    pub(crate) fn cargar(&mut self, raiz: &Path) {
         let ruta = super::ruta(raiz);
         let texto = std::fs::read_to_string(&ruta).unwrap_or_default();
         self.cargar_de(&texto);
@@ -461,254 +468,231 @@ impl Estado {
     }
 }
 
-// --------------------------------------------------------------- el bucle
+// ------------------------------------------------------- lo que lo aloja
 
-#[allow(clippy::too_many_arguments)] // recursos, textos, idioma, datos, aparato y la hora del pedido
-fn bucle(
-    recursos: &Recursos,
-    textos: &Catalogo,
-    idioma: Idioma,
-    ubicacion: &Ubicacion,
-    aparato: &str,
-    pedida: Instant,
-) -> Result<()> {
-    let raiz = ubicacion.raiz().to_path_buf();
-    let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
-    let monitor = pixpin_shell::pantalla_de::monitor_de_la_ventana_activa()
-        .and_then(|r| monitores.monitores().iter().find(|m| m.area == r))
-        .or_else(|| monitores.principal())
-        .context("sin monitor")?
-        .to_owned();
-    let escala = monitor.escala_por_cien as f32 / 100.0;
-    let mut marco = centrado(
-        monitor.area_trabajo,
-        ANCHO_VENTANA,
-        ALTO_VENTANA,
-        monitor.escala_por_cien,
-    );
-    let mut ventana = VentanaOverlay::nueva_normal(marco, &textos.t("horario-titulo"))
-        .context("no se pudo abrir la ventana del horario")?;
-    let motor = recursos.motor();
-    let superficie = Superficie::nueva(
-        &motor,
-        &recursos.d3d(),
-        ventana.handle(),
-        marco.ancho,
-        marco.alto,
-    )
-    .context("sin superficie para el horario")?;
-    ventana.mostrar();
-    ventana.enfocar();
-    ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
-    let hwnd = ventana.handle();
-
-    let mut e = Estado::nuevo();
-    e.cargar(&raiz);
-    if e.semana.asignaturas.is_empty() {
-        e.foco = Some(CampoId::Nueva);
+impl Panel {
+    /// Al abrir la vista: el horario de disco y, si no hay asignaturas, el
+    /// foco en «Nueva asignatura».
+    pub(crate) fn abrir(&mut self, raiz: &Path) {
+        self.cargar(raiz);
+        if self.semana.asignaturas.is_empty() {
+            self.foco = Some(CampoId::Nueva);
+        }
     }
-    let mut primera = true;
-    let mut tareas_leidas = false;
-    let mut mirado = Instant::now();
-    let mut minuto = e.ahora_ms / 60_000;
-    let mut vivo = true;
-    let mut pintar = true;
-    while vivo {
-        pixpin_shell::overlay::bombear_pendientes();
-        for (h, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
-            if h != hwnd {
-                continue;
-            }
-            pintar = true;
-            let local = |p: pixpin_geom::Punto, m: Rect| ((p.x - m.x) as f32, (p.y - m.y) as f32);
-            match ev {
-                EventoOverlay::Cerrar => vivo = false,
-                // La rueda sobre la lista de asignaturas: una por muesca.
-                EventoOverlay::Rueda(m) if e.rejilla.is_some_and(|r| e.botones.raton.0 < r.x) => {
-                    let pasos = (m as f32 / 120.0).round() as i64;
-                    let max = e.semana.asignaturas.len().saturating_sub(1) as i64;
-                    e.primera = (e.primera as i64 - pasos).clamp(0, max) as usize;
-                }
-                EventoOverlay::RatonMovido(p) => {
-                    if let Some((desde, origen)) = e.moviendo {
-                        marco = Rect {
-                            x: origen.x + (p.x - desde.x),
-                            y: origen.y + (p.y - desde.y),
-                            ..origen
-                        };
-                        ventana.mover(marco);
-                    }
-                    e.botones.raton = local(p, marco);
-                    match e.agarre.as_mut() {
-                        Some(Agarre::Asignatura {
-                            desde, arrastrando, ..
-                        })
-                        | Some(Agarre::Bloque {
-                            desde, arrastrando, ..
-                        }) if !*arrastrando
-                            && crate::tareas::kanban::es_arrastre(
-                                *desde,
-                                e.botones.raton,
-                                escala,
-                            ) =>
-                        {
-                            *arrastrando = true;
-                        }
-                        _ => {}
-                    }
-                }
-                EventoOverlay::BotonPulsado(p) => {
-                    e.botones.raton = local(p, marco);
-                    let Some(a) = e.botones.bajo_el_raton() else {
-                        continue;
-                    };
-                    let doble = e
-                        .ultimo_clic
-                        .is_some_and(|(b, t)| b == a && t.elapsed() < DOBLE_CLIC);
-                    e.ultimo_clic = (!doble).then(|| (a, Instant::now()));
-                    match a {
-                        Accion::Mover => {
-                            e.moviendo = Some((p, marco));
-                            ventana.capturar_raton();
-                        }
-                        Accion::Asignatura(i) if doble => e.editar(Edicion::Asignatura(i)),
-                        Accion::Bloque(i) if doble => {
-                            e.bloque = Some(i);
-                            e.editar(Edicion::Bloque(i));
-                        }
-                        Accion::Asignatura(i) => {
-                            e.agarre = Some(Agarre::Asignatura {
-                                i,
-                                desde: e.botones.raton,
-                                arrastrando: false,
-                            });
-                            ventana.capturar_raton();
-                        }
-                        Accion::Bloque(i) => {
-                            let off = match (e.rejilla, e.semana.bloques.get(i)) {
-                                (Some(r), Some(b)) => {
-                                    r.minuto_en(e.botones.raton.1) - i64::from(b.inicio)
-                                }
-                                _ => 0,
-                            };
-                            e.bloque = Some(i);
-                            e.foco = None;
-                            e.agarre = Some(Agarre::Bloque {
-                                i,
-                                desde: e.botones.raton,
-                                off,
-                                arrastrando: false,
-                            });
-                            ventana.capturar_raton();
-                        }
-                        Accion::Borde(i) => {
-                            e.bloque = Some(i);
-                            e.agarre = Some(Agarre::Borde { i });
-                            ventana.capturar_raton();
-                        }
-                        a => vivo = hacer(&mut e, a, textos, idioma, ubicacion, aparato),
-                    }
-                }
-                EventoOverlay::BotonDerechoPulsado(p) => {
-                    e.botones.raton = local(p, marco);
-                    if let Some(Accion::Bloque(i) | Accion::Borde(i)) = e.botones.bajo_el_raton()
-                        && e.edicion.is_none()
-                    {
-                        e.borrar_bloque(i, &raiz, textos);
-                    }
-                }
-                EventoOverlay::BotonSoltado(p) => {
-                    e.botones.raton = local(p, marco);
-                    if e.moviendo.take().is_some() {
-                        ventana.soltar_raton();
-                    }
-                    if let Some(ag) = e.agarre {
-                        ventana.soltar_raton();
-                        soltar(&mut e, ag, &raiz, textos);
-                    }
-                }
-                EventoOverlay::Caracter(c) => {
-                    if let Some(f) = e.foco {
-                        e.campo_mut(f).letra(c);
-                    }
-                }
-                EventoOverlay::Tecla {
-                    vk, shift, ctrl, ..
-                } => vivo = tecla(&mut e, vk, shift, ctrl, textos, idioma, ubicacion, aparato),
-                _ => {}
-            }
-        }
-        if !vivo {
-            break;
-        }
 
-        // Cada segundo: el horario cambiado fuera, las tareas, el minuto.
-        if mirado.elapsed() >= Duration::from_secs(1) {
-            mirado = Instant::now();
-            e.ahora_ms = pixpin_shell::entorno::ahora_local_ms();
-            if e.ahora_ms / 60_000 != minuto {
-                minuto = e.ahora_ms / 60_000;
-                pintar = true;
-            }
-            if e.agarre.is_none() && firma_de(&super::ruta(&raiz)) != e.firma {
-                tracing::info!("horario: cambio fuera de la ventana, se relee");
-                e.cargar(&raiz);
-                pintar = true;
-            }
-            if tareas_leidas && super::asignaturas::firma(&raiz, e.chat.as_deref()) != e.firma_chat
-            {
-                e.cargar_tareas(&raiz);
-                pintar = true;
-            }
+    /// Cuantas asignaturas y clases hay: el subtitulo de la barra.
+    pub(crate) fn subtitulo(&self, textos: &Catalogo) -> String {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("asignaturas", self.semana.asignaturas.len());
+        args.set("clases", self.semana.bloques.len());
+        textos.t_args("horario-subtitulo", &args)
+    }
+
+    /// Si se ve el domingo (el boton de la barra).
+    pub(crate) fn con_domingo(&self) -> bool {
+        self.domingo
+    }
+
+    pub(crate) fn cambiar_domingo(&mut self) {
+        self.domingo = !self.domingo;
+    }
+
+    /// «Como texto»: el `horario.md` en el editor de notas.
+    pub(crate) fn como_texto(&self, ubicacion: &Ubicacion) {
+        super::abrir_nota(self.idioma, ubicacion.clone());
+    }
+
+    /// Si la ficha de una clase esta abierta: entonces todo el raton es del
+    /// panel (su velo tapa tambien la barra de arriba).
+    pub(crate) fn con_ficha(&self) -> bool {
+        self.edicion.is_some()
+    }
+
+    /// Si se esta arrastrando algo (para pintar a 60 fps).
+    pub(crate) fn arrastrando(&self) -> bool {
+        self.agarre.is_some()
+    }
+
+    /// Si el aviso de abajo sigue a la vista (para mirar su caducidad).
+    pub(crate) fn con_aviso(&self) -> bool {
+        self.aviso.is_some()
+    }
+
+    /// **Cada segundo**: el minuto de ahora, el horario cambiado fuera y las
+    /// tareas de las asignaturas. Devuelve si hay que repintar.
+    pub(crate) fn mirar(&mut self, raiz: &Path) -> bool {
+        let mut pintar = false;
+        self.ahora_ms = pixpin_shell::entorno::ahora_local_ms();
+        if self.ahora_ms / 60_000 != self.minuto {
+            self.minuto = self.ahora_ms / 60_000;
+            pintar = true;
         }
-        if let Some(a) = &e.aviso
-            && a.caducado()
+        if self.agarre.is_none() && firma_de(&super::ruta(raiz)) != self.firma {
+            tracing::info!("horario: cambio fuera del panel, se relee");
+            self.cargar(raiz);
+            pintar = true;
+        }
+        if self.tareas_leidas
+            && super::asignaturas::firma(raiz, self.chat.as_deref()) != self.firma_chat
         {
-            e.aviso = None;
-            e.deshacer = None;
+            self.cargar_tareas(raiz);
             pintar = true;
         }
-
-        if pintar {
-            if let Ok(dc) = superficie.empezar(&motor) {
-                let _ = motor.dibujar(&dc, |p: &Pintor| {
-                    pintar_todo(&mut e, p, marco, escala, textos)
-                });
-                let _ = superficie.presentar();
-            }
-            pintar = false;
-            if primera {
-                primera = false;
-                tracing::info!(
-                    ms = pedida.elapsed().as_millis() as u64,
-                    asignaturas = e.semana.asignaturas.len(),
-                    clases = e.semana.bloques.len(),
-                    "horario: ventana a la vista"
-                );
-            }
-        }
-        // Las tareas, despues de lo primero visible: leer el chat no retrasa
-        // abrir.
-        if !tareas_leidas {
-            tareas_leidas = true;
-            e.cargar_tareas(&raiz);
-            pintar = true;
-            continue;
-        }
-        let espera = if e.agarre.is_some() {
-            16
-        } else if e.aviso.is_some() {
-            250
-        } else {
-            1_000
-        };
-        pixpin_shell::overlay::esperar_eventos(Some(espera));
+        pintar
     }
-    Ok(())
+
+    /// Despues del primer fotograma: las listas de las asignaturas. Devuelve
+    /// si se leyeron ahora (y hay que repintar).
+    pub(crate) fn leer_tareas_si_falta(&mut self, raiz: &Path) -> bool {
+        if self.tareas_leidas {
+            return false;
+        }
+        self.tareas_leidas = true;
+        self.cargar_tareas(raiz);
+        true
+    }
+
+    /// El aviso de abajo, caducado, fuera (y con el su «Deshacer»).
+    /// Devuelve si se quito.
+    pub(crate) fn caducar_aviso(&mut self) -> bool {
+        if self.aviso.as_ref().is_some_and(Aviso::caducado) {
+            self.aviso = None;
+            self.deshacer = None;
+            return true;
+        }
+        false
+    }
+
+    /// La rueda sobre la lista de asignaturas: una por muesca.
+    pub(crate) fn rueda(&mut self, m: i32) {
+        if self
+            .disposicion
+            .is_some_and(|d| self.botones.raton.0 < d.semana.x)
+        {
+            let pasos = (m as f32 / 120.0).round() as i64;
+            let max = self.semana.asignaturas.len().saturating_sub(1) as i64;
+            self.primera = (self.primera as i64 - pasos).clamp(0, max) as usize;
+        }
+    }
+
+    /// El raton en `raton` (en la ventana): lo agarrado pasa a arrastrarse
+    /// cuando se aleja lo bastante.
+    pub(crate) fn raton_movido(&mut self, raton: (f32, f32), escala: f32) {
+        self.botones.raton = raton;
+        match self.agarre.as_mut() {
+            Some(Agarre::Asignatura {
+                desde, arrastrando, ..
+            })
+            | Some(Agarre::Bloque {
+                desde, arrastrando, ..
+            }) if !*arrastrando && crate::tareas::kanban::es_arrastre(*desde, raton, escala) => {
+                *arrastrando = true;
+            }
+            _ => {}
+        }
+    }
+
+    /// El boton izquierdo pulsado en `raton`.
+    pub(crate) fn pulsado(
+        &mut self,
+        raton: (f32, f32),
+        textos: &Catalogo,
+        ubicacion: &Ubicacion,
+        aparato: &str,
+    ) -> Salida {
+        self.botones.raton = raton;
+        let Some(a) = self.botones.bajo_el_raton() else {
+            return Salida::Nada;
+        };
+        let doble = self
+            .ultimo_clic
+            .is_some_and(|(b, t)| b == a && t.elapsed() < DOBLE_CLIC);
+        self.ultimo_clic = (!doble).then(|| (a, Instant::now()));
+        match a {
+            Accion::Asignatura(i) if doble => self.editar(Edicion::Asignatura(i)),
+            Accion::Bloque(i) if doble => {
+                self.bloque = Some(i);
+                self.editar(Edicion::Bloque(i));
+            }
+            Accion::Asignatura(i) => {
+                self.agarre = Some(Agarre::Asignatura {
+                    i,
+                    desde: raton,
+                    arrastrando: false,
+                });
+                return Salida::Capturar;
+            }
+            Accion::Bloque(i) => {
+                let off = match (self.rejilla, self.semana.bloques.get(i)) {
+                    (Some(r), Some(b)) => r.minuto_en(raton.1) - i64::from(b.inicio),
+                    _ => 0,
+                };
+                self.bloque = Some(i);
+                self.foco = None;
+                self.agarre = Some(Agarre::Bloque {
+                    i,
+                    desde: raton,
+                    off,
+                    arrastrando: false,
+                });
+                return Salida::Capturar;
+            }
+            Accion::Borde(i) => {
+                self.bloque = Some(i);
+                self.agarre = Some(Agarre::Borde { i });
+                return Salida::Capturar;
+            }
+            a => return hacer(self, a, textos, ubicacion, aparato),
+        }
+        Salida::Nada
+    }
+
+    /// El boton derecho: sobre una clase, borrarla (con «Deshacer»).
+    pub(crate) fn derecho(&mut self, raton: (f32, f32), raiz: &Path, textos: &Catalogo) {
+        self.botones.raton = raton;
+        if let Some(Accion::Bloque(i) | Accion::Borde(i)) = self.botones.bajo_el_raton()
+            && self.edicion.is_none()
+        {
+            self.borrar_bloque(i, raiz, textos);
+        }
+    }
+
+    /// El boton soltado. Devuelve si habia algo agarrado (y la ventana debe
+    /// soltar el raton).
+    pub(crate) fn soltado(&mut self, raton: (f32, f32), raiz: &Path, textos: &Catalogo) -> bool {
+        self.botones.raton = raton;
+        match self.agarre {
+            Some(ag) => {
+                soltar(self, ag, raiz, textos);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Una letra escrita, a la caja con el foco.
+    pub(crate) fn caracter(&mut self, c: char) {
+        if let Some(f) = self.foco {
+            self.campo_mut(f).letra(c);
+        }
+    }
+
+    /// Una tecla.
+    pub(crate) fn tecla(
+        &mut self,
+        vk: u32,
+        shift: bool,
+        ctrl: bool,
+        textos: &Catalogo,
+        ubicacion: &Ubicacion,
+        aparato: &str,
+    ) -> Salida {
+        tecla(self, vk, shift, ctrl, textos, ubicacion, aparato)
+    }
 }
 
 /// Lo que pasa al soltar el raton con algo agarrado.
-fn soltar(e: &mut Estado, ag: Agarre, raiz: &Path, textos: &Catalogo) {
+fn soltar(e: &mut Panel, ag: Agarre, raiz: &Path, textos: &Catalogo) {
     let previa = e.previa();
     e.agarre = None;
     match ag {
@@ -738,21 +722,19 @@ fn soltar(e: &mut Estado, ag: Agarre, raiz: &Path, textos: &Catalogo) {
     }
 }
 
-/// Una tecla. Devuelve si la ventana sigue.
-#[allow(clippy::too_many_arguments)] // estado, tecla, modificadores y lo de la ventana
+/// Una tecla.
 fn tecla(
-    e: &mut Estado,
+    e: &mut Panel,
     vk: u32,
     shift: bool,
     ctrl: bool,
     textos: &Catalogo,
-    idioma: Idioma,
     ubicacion: &Ubicacion,
     aparato: &str,
-) -> bool {
+) -> Salida {
     let raiz = ubicacion.raiz();
     if vk == VK_Z && ctrl && e.foco.is_none() {
-        return hacer(e, Accion::Deshacer, textos, idioma, ubicacion, aparato);
+        return hacer(e, Accion::Deshacer, textos, ubicacion, aparato);
     }
     if vk == VK_ESCAPE {
         if e.edicion.is_some() {
@@ -764,13 +746,13 @@ fn tecla(
             e.bloque = None;
             e.elegida = None;
         } else {
-            return false;
+            return Salida::Cerrar;
         }
-        return true;
+        return Salida::Nada;
     }
     match e.foco {
         Some(CampoId::Nueva) if vk == VK_ENTRAR => {
-            return hacer(e, Accion::Anadir, textos, idioma, ubicacion, aparato);
+            return hacer(e, Accion::Anadir, textos, ubicacion, aparato);
         }
         Some(CampoId::Nota) if vk == VK_ENTRAR && !ctrl => {
             e.nota.tecla(vk, ctrl, shift, true);
@@ -799,18 +781,17 @@ fn tecla(
         }
         None => {}
     }
-    true
+    Salida::Nada
 }
 
-/// Lo que hace un clic. Devuelve si la ventana sigue.
+/// Lo que hace un clic.
 fn hacer(
-    e: &mut Estado,
+    e: &mut Panel,
     a: Accion,
     textos: &Catalogo,
-    idioma: Idioma,
     ubicacion: &Ubicacion,
     aparato: &str,
-) -> bool {
+) -> Salida {
     let raiz = ubicacion.raiz();
     match a {
         Accion::Fondo => {
@@ -818,10 +799,7 @@ fn hacer(
                 e.foco = None;
             }
         }
-        Accion::Mover | Accion::Asignatura(_) | Accion::Bloque(_) | Accion::Borde(_) => {}
-        Accion::Cerrar => return false,
-        Accion::Domingo => e.domingo = !e.domingo,
-        Accion::ComoTexto => super::abrir_nota(idioma, ubicacion.clone()),
+        Accion::Asignatura(_) | Accion::Bloque(_) | Accion::Borde(_) => {}
         Accion::Campo(c) => e.foco = Some(c),
         Accion::Anadir => {
             let escrito = e.nueva.texto().to_string();
@@ -892,6 +870,7 @@ fn hacer(
                 let _ = pixpin_shell::abrir(std::path::Path::new(&ev.enlace));
             }
         }
+        Accion::Chip(k) => return Salida::Tarea(k),
         Accion::AbrirTareas => {
             let nombre = e
                 .elegida
@@ -899,10 +878,7 @@ fn hacer(
                 .map(|a| a.nombre.clone());
             let clave =
                 nombre.and_then(|n| super::asignaturas::de(&e.listas, &n).map(Lista::clave));
-            match clave {
-                Some(k) => crate::tareas::abrir_en(idioma, ubicacion.clone(), aparato, k),
-                None => crate::tareas::abrir(idioma, ubicacion.clone(), aparato),
-            }
+            return Salida::IrATareas(clave);
         }
         Accion::Guardar => e.guardar_edicion(raiz, textos),
         Accion::Cancelar => {
@@ -924,7 +900,7 @@ fn hacer(
             }
         }
     }
-    true
+    Salida::Nada
 }
 
 // --------------------------------------------------------------- pintar
@@ -934,114 +910,100 @@ fn color(rgb: u32) -> Color {
     hex(rgb)
 }
 
-/// Lo que mide de alto lo de arriba de la lateral y de la rejilla.
-fn arriba(s: f32) -> f32 {
-    crate::cabecera::ALTO * s + d::HUECO * s
-}
-
-/// Donde queda la rejilla en una ventana de `w` x `h` (pixeles), con
-/// `dias` dias.
-fn rejilla_en(w: f32, h: f32, s: f32, dias: u8) -> Rejilla {
-    let x0 = d::MARGEN * s + LATERAL * s + d::MARGEN * s + COLUMNA_HORAS * s;
-    let y0 = arriba(s) + CABECERA_DIAS * s;
-    let ancho = (w - d::MARGEN * s - x0).max(60.0);
-    let alto = (h - d::MARGEN * s - y0).max(60.0);
-    Rejilla {
-        x: x0,
-        y: y0,
-        ancho_dia: ancho / f32::from(dias),
-        alto_franja: alto / semana::FRANJAS as f32,
+/// **Donde queda el horario en `area`** (lo de debajo de la barra de
+/// arriba de la ventana), con `dias` dias: la lateral y la rejilla.
+fn disponer(area: RectF, s: f32, dias: u8) -> (Disposicion, Rejilla) {
+    let d = vt::disponer_horario(
+        vt::Caja {
+            x: area.x,
+            y: area.y,
+            ancho: area.ancho,
+            alto: area.alto,
+        },
+        s,
+        &medidas(),
+    );
+    let r = Rejilla {
+        x: d.semana.x,
+        y: d.semana.y,
+        ancho_dia: d.semana.ancho / f32::from(dias),
+        alto_franja: d.semana.alto / semana::FRANJAS as f32,
         dias,
-    }
+    };
+    (d, r)
 }
 
-fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
-    let (w, h) = (marco.ancho as f32, marco.alto as f32);
-    p.limpiar(FONDO);
-    e.botones.vaciar();
-    let todo = RectF {
-        x: 0.0,
-        y: 0.0,
-        ancho: w,
-        alto: h,
-    };
-    e.botones.zona(todo, Accion::Fondo);
-    let r = rejilla_en(w, h, s, if e.domingo { 7 } else { 6 });
-    e.rejilla = Some(r);
-    let sem = e.previa().unwrap_or_else(|| e.semana.clone());
+impl Panel {
+    /// **Pinta el horario en `area`** y apunta sus zonas: la semana con sus
+    /// clases y las chapitas de `tareas` (las tareas con hora), y la lista
+    /// de asignaturas. Lo de encima de todo (la ficha, el aviso, lo que se
+    /// arrastra) va despues de la barra de la ventana, en
+    /// [`Panel::pintar_encima`].
+    pub(crate) fn pintar(
+        &mut self,
+        p: &Pintor,
+        area: RectF,
+        s: f32,
+        textos: &Catalogo,
+        tareas: &[TareaConHora],
+    ) {
+        let e = self;
+        e.botones.vaciar();
+        e.botones.zona(area, Accion::Fondo);
+        let (disp, r) = disponer(area, s, if e.domingo { 7 } else { 6 });
+        e.disposicion = Some(disp);
+        e.rejilla = Some(r);
+        let sem = e.previa().unwrap_or_else(|| e.semana.clone());
+        pintar_rejilla(e, p, &sem, r, s, tareas);
+        pintar_lateral(e, p, disp.lateral, s, textos);
+    }
 
-    pintar_rejilla(e, p, &sem, r, s);
-    pintar_lateral(e, p, h, s, textos);
-
-    // La barra de arriba comun, con el domingo y «Como texto».
-    let titulo = textos.t("horario-titulo");
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("asignaturas", e.semana.asignaturas.len());
-    args.set("clases", e.semana.bloques.len());
-    let subtitulo = textos.t_args("horario-subtitulo", &args);
-    let domingo = textos.t("horario-domingo");
-    let como_texto = textos.t("horario-como-texto");
-    let cab = crate::cabecera::Cabecera {
-        titulo: &titulo,
-        subtitulo: &subtitulo,
-        buscador: None,
-        botones: vec![
-            crate::cabecera::Boton {
-                icono: Some(&mi::CALENDAR_MONTH),
-                rotulo: &domingo,
-                chapa: None,
-                activo: e.domingo,
-                accion: Accion::Domingo,
-            },
-            crate::cabecera::Boton {
-                icono: Some(&mi::EDIT),
-                rotulo: &como_texto,
-                chapa: None,
-                activo: false,
-                accion: Accion::ComoTexto,
-            },
-        ],
-        mover: Accion::Mover,
-        cerrar: Accion::Cerrar,
-    };
-    crate::cabecera::pintar(p, &mut e.botones, w, s, &cab);
-
-    // Lo que se arrastra desde la lista, fuera de la rejilla: su chapa.
-    if let Some(Agarre::Asignatura {
-        i,
-        arrastrando: true,
-        ..
-    }) = e.agarre
-        && r.en(e.botones.raton).is_none()
-        && let Some(a) = e.semana.asignaturas.get(i)
-    {
-        let tam = d::LETRA_SECUNDARIO * s;
-        let (tw, th) = p.medir_texto(&a.nombre, tam);
-        let caja = RectF {
-            x: e.botones.raton.0 + 10.0 * s,
-            y: e.botones.raton.1 - (th + 12.0 * s) / 2.0,
-            ancho: tw + 24.0 * s,
-            alto: th + 12.0 * s,
+    /// Lo de encima de todo, en una ventana de `w` x `h`: la chapa de lo que
+    /// se arrastra fuera de la rejilla, la ficha abierta y el aviso.
+    pub(crate) fn pintar_encima(&mut self, p: &Pintor, w: f32, h: f32, s: f32, textos: &Catalogo) {
+        let e = self;
+        let todo = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: w,
+            alto: h,
         };
-        p.rellenar_redondeado(
-            caja,
-            d::RADIO_BOTON * s,
-            color(e.semana.color_de(&a.nombre)),
-        );
-        p.texto(
-            &a.nombre,
-            caja.x + 12.0 * s,
-            caja.y + 6.0 * s,
-            tam,
-            Color::BLANCO,
-        );
-    }
-
-    if e.edicion.is_some() {
-        pintar_ficha(e, p, w, h, s, textos);
-    }
-    if let Some(a) = &e.aviso {
-        crate::v2::aviso::pintar(a, p, &mut e.botones, todo, s);
+        // Lo que se arrastra desde la lista, fuera de la rejilla: su chapa.
+        if let Some(Agarre::Asignatura {
+            i,
+            arrastrando: true,
+            ..
+        }) = e.agarre
+            && e.rejilla.is_some_and(|r| r.en(e.botones.raton).is_none())
+            && let Some(a) = e.semana.asignaturas.get(i)
+        {
+            let tam = d::LETRA_SECUNDARIO * s;
+            let (tw, th) = p.medir_texto(&a.nombre, tam);
+            let caja = RectF {
+                x: e.botones.raton.0 + 10.0 * s,
+                y: e.botones.raton.1 - (th + 12.0 * s) / 2.0,
+                ancho: tw + 24.0 * s,
+                alto: th + 12.0 * s,
+            };
+            p.rellenar_redondeado(
+                caja,
+                d::RADIO_BOTON * s,
+                color(e.semana.color_de(&a.nombre)),
+            );
+            p.texto(
+                &a.nombre,
+                caja.x + 12.0 * s,
+                caja.y + 6.0 * s,
+                tam,
+                Color::BLANCO,
+            );
+        }
+        if e.edicion.is_some() {
+            pintar_ficha(e, p, w, h, s, textos);
+        }
+        if let Some(a) = &e.aviso {
+            crate::v2::aviso::pintar(a, p, &mut e.botones, todo, s);
+        }
     }
 }
 
@@ -1075,10 +1037,11 @@ fn subtitulo_de_asignatura(s: &Semana, a: &super::Asignatura) -> String {
 }
 
 /// La lista de asignaturas y, debajo, las tareas de la elegida.
-fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo) {
-    let x = d::MARGEN * s;
-    let ancho = LATERAL * s;
-    let mut y = arriba(s);
+fn pintar_lateral(e: &mut Panel, p: &Pintor, lateral: vt::Caja, s: f32, textos: &Catalogo) {
+    let x = lateral.x;
+    let ancho = lateral.ancho;
+    let mut y = lateral.y;
+    let h = lateral.y + lateral.alto + d::MARGEN * s;
     // La caja «Nueva asignatura» con su «+».
     let alto_caja = d::BOTON * s;
     let caja = RectF {
@@ -1332,7 +1295,14 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, h: f32, s: f32, textos: &Catalogo)
 
 /// La semana: los dias arriba, las horas a la izquierda, las clases y la
 /// rayita de ahora.
-fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) {
+fn pintar_rejilla(
+    e: &mut Panel,
+    p: &Pintor,
+    sem: &Semana,
+    r: Rejilla,
+    s: f32,
+    tareas: &[TareaConHora],
+) {
     let dia_hoy = e.ahora_ms.div_euclid(86_400_000);
     let semana_hoy = fechas::dia_de_la_semana(dia_hoy) as u8;
     // (En domingo, sin la columna del domingo, la semana que empieza mañana:
@@ -1393,7 +1363,7 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
         let tam = d::LETRA_SECUNDARIO * s;
         let (tw, th) = p.medir_texto(&t, tam);
         let cx = x + r.ancho_dia / 2.0;
-        let cy = r.y - CABECERA_DIAS * s / 2.0;
+        let cy = r.y - medidas().cabecera_dias * s / 2.0;
         if dia == semana_hoy {
             let pastilla = RectF {
                 x: cx - tw / 2.0 - 10.0 * s,
@@ -1574,6 +1544,7 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
             e.botones.zona(borde, Accion::Borde(i));
         }
     }
+    pintar_chips(e, p, r, lunes, s, tareas);
     // La hora de ahora.
     let minuto = (e.ahora_ms.rem_euclid(86_400_000) / 60_000) as u32;
     if semana_hoy < r.dias && (semana::DESDE..semana::HASTA).contains(&minuto) {
@@ -1584,8 +1555,79 @@ fn pintar_rejilla(e: &mut Estado, p: &Pintor, sem: &Semana, r: Rejilla, s: f32) 
     }
 }
 
+/// **Las tareas con hora de la semana** (25-oct-2026), como chapitas en su
+/// dia y su hora, encima de las clases y pegadas a la derecha del dia: lo
+/// que hay que hacer, a la vista junto a donde se esta. Pulsar una la
+/// ensena en las tarjetas.
+fn pintar_chips(
+    e: &mut Panel,
+    p: &Pintor,
+    r: Rejilla,
+    lunes: i64,
+    s: f32,
+    tareas: &[TareaConHora],
+) {
+    let horas: Vec<i64> = tareas.iter().map(|t| t.cuando).collect();
+    let chips = vt::chips_de_la_semana(
+        &horas,
+        lunes,
+        r.dias,
+        semana::DESDE,
+        semana::HASTA,
+        PASO_CHIP,
+    );
+    let tam = 11.0 * s;
+    for c in chips {
+        let Some(t) = tareas.get(c.indice) else {
+            continue;
+        };
+        let x_dia = r.x + f32::from(c.dia) * r.ancho_dia;
+        let k = vt::caja_de_chip(
+            x_dia,
+            r.ancho_dia,
+            r.y_de(c.minuto),
+            c.carril,
+            ALTO_CHIP * s,
+            s,
+        );
+        let caja = RectF {
+            x: k.x,
+            y: k.y,
+            ancho: k.ancho,
+            alto: k.alto,
+        };
+        let encima = dentro(caja, e.botones.raton) && e.agarre.is_none();
+        p.rellenar_redondeado(caja, caja.alto / 2.0, negro(0.55));
+        p.rellenar_redondeado(
+            caja,
+            caja.alto / 2.0,
+            con_alfa(t.color, if encima { 0.55 } else { 0.35 }),
+        );
+        p.circulo(
+            (caja.x + caja.alto / 2.0, caja.y + caja.alto / 2.0),
+            3.0 * s,
+            t.color,
+        );
+        let texto = if c.mas > 0 {
+            format!("{} +{}", t.texto, c.mas)
+        } else {
+            t.texto.clone()
+        };
+        let (_, th) = p.medir_texto("Ag", tam);
+        p.texto_linea(
+            &texto,
+            caja.x + caja.alto,
+            caja.y + (caja.alto - th) / 2.0,
+            tam,
+            caja.ancho - caja.alto - 6.0 * s,
+            TEXTO,
+        );
+        e.botones.zona(caja, Accion::Chip(c.indice));
+    }
+}
+
 /// La ficha de una clase (o de una asignatura) encima de todo.
-fn pintar_ficha(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Catalogo) {
+fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Catalogo) {
     let Some(ed) = e.edicion else {
         return;
     };
@@ -1751,6 +1793,34 @@ fn pintar_ficha(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cat
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use pixpin_geom::Rect;
+
+    /// El horario como lo aloja la ventana de Tareas en su vista Horario.
+    const ANCHO_VENTANA: u32 = vt::ANCHO_HORARIO;
+    const ALTO_VENTANA: u32 = 780;
+
+    /// Lo de debajo de la barra de arriba, como se lo da la ventana.
+    fn area_de(w: f32, h: f32, s: f32) -> RectF {
+        let y = crate::cabecera::ALTO * s + d::HUECO * s;
+        RectF {
+            x: 0.0,
+            y,
+            ancho: w,
+            alto: h - y,
+        }
+    }
+
+    fn rejilla_en(w: f32, h: f32, s: f32, dias: u8) -> Rejilla {
+        disponer(area_de(w, h, s), s, dias).1
+    }
+
+    /// Lo que pinta la ventana de Tareas con el horario, sin su barra.
+    fn pintar_todo(e: &mut Panel, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
+        let (w, h) = (marco.ancho as f32, marco.alto as f32);
+        p.limpiar(d::FONDO);
+        e.pintar(p, area_de(w, h, s), s, textos, &[]);
+        e.pintar_encima(p, w, h, s, textos);
+    }
 
     const HORARIO: &str = "# Horario
 
@@ -1791,7 +1861,7 @@ avisar 10 min antes
     /// rejilla, mover la clase y alargarla, como lo hace el bucle.
     #[test]
     fn arrastrar_soltar_mover_y_alargar_como_en_la_ventana() {
-        let mut e = Estado::nuevo();
+        let mut e = Panel::nuevo(Idioma::Espanol);
         e.cargar_de(HORARIO);
         let r = rejilla_en(1180.0, 780.0, 1.0, 6);
         e.rejilla = Some(r);
@@ -1886,7 +1956,7 @@ avisar 10 min antes
             .expect("superficie");
         let t_disp = t0.elapsed();
         let t1 = Instant::now();
-        let mut e = Estado::nuevo();
+        let mut e = Panel::nuevo(Idioma::Espanol);
         e.cargar(&raiz);
         e.elegida = Some(0);
         let t_leer = t1.elapsed();
