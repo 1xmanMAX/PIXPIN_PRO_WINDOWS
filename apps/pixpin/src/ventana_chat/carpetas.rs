@@ -14,6 +14,15 @@
 //!   con sus flechas, o Ctrl+flechas), se renombran (lapiz o F2) y se quitan
 //!   de la carpeta (aspa o Supr): el lienzo sigue en el chat.
 //!
+//! **La carpeta de una grabacion** (25-oct-2026) se ve igual, adaptada: la
+//! nota y el video con su icono y lo que duran, las capturas con su foto y
+//! su minuto en la esquina, en el orden de la grabacion (no se arrastran:
+//! el orden es el del tiempo). Detras, **lo adjuntado a la clase**, con otro
+//! color y la chapa «Adjunto · no es de la grabacion». Arriba, «Estudiar»
+//! (la clase en su ventana), «Adjuntar a la clase» y «Exportar PDF» (las
+//! capturas y el texto de la nota). Pulsar una pieza de la grabacion abre
+//! la clase en su minuto.
+//!
 //! La carpeta vive en el cuaderno (`pixpin_proyecto::carpeta_de_paginas`):
 //! todo lo que se hace aqui se escribe alli en el momento, con el cerrojo
 //! del cuaderno, y se avisa al chat para que relea. Lo que cambie por fuera
@@ -37,6 +46,15 @@ use super::{
     CLARO, LienzoVisto, OSCURO, Ojeada, OpcionesLienzo, Tema, con_alfa, mi, pintar_lienzo, rf,
 };
 use crate::overlay::Recursos;
+
+/// El color de lo adjuntado a una clase (no es de lo grabado): un ambar
+/// que se lee igual en claro y en oscuro.
+const COLOR_ADJUNTO: Color = Color {
+    r: 0.80,
+    g: 0.45,
+    b: 0.05,
+    a: 1.0,
+};
 
 /// Lo que mide cada pagina de la rejilla (logicos).
 const CELDA_ANCHO: u32 = 196;
@@ -137,6 +155,11 @@ struct PaginaVista {
     dibujo: Option<LienzoVisto>,
     /// Lo que se ensena si no hay dibujo.
     icono: &'static Icono,
+    /// En una grabacion: que se adjunto a la clase y no es de lo grabado.
+    adjunto: bool,
+    /// Lo que va en su esquina: el numero de la pagina o, en una grabacion,
+    /// su minuto («⏱ 1:05») o lo que dura la nota.
+    esquina: String,
 }
 
 /// La miniatura de una pagina: un lienzo con lo dibujado, una foto con lo
@@ -161,11 +184,14 @@ fn dibujo_de(ubicacion: &Ubicacion, proyecto: &str, m: &Mensaje) -> Option<Lienz
 }
 
 fn icono_de(m: &Mensaje) -> &'static Icono {
+    if cuaderno::es_video(m) {
+        return &mi::VIDEOCAM;
+    }
     match m.clase {
         Some(Clase::Dibujo) => &mi::DRAW,
         Some(Clase::Pagina) => &mi::MENU_BOOK,
         Some(Clase::Imagen) => &mi::IMAGE,
-        Some(Clase::Voz) => &mi::PLAY_ARROW,
+        Some(Clase::Voz) => &mi::MIC,
         Some(Clase::Nota) | None => &mi::EDIT_NOTE,
         _ => &mi::DESCRIPTION,
     }
@@ -179,6 +205,8 @@ enum Zona {
     Cerrar,
     NuevaPagina,
     Exportar,
+    Estudiar,
+    Adjuntar,
     Pagina(usize),
     Antes(usize),
     Despues(usize),
@@ -195,6 +223,8 @@ struct Vista {
     dir: PathBuf,
     nombre: String,
     carpeta: Carpeta,
+    /// Si es la carpeta de una grabacion (ver la cabecera).
+    grabacion: bool,
     /// El chat entero, como se leyo (las paginas apuntan aqui).
     mensajes: Vec<Mensaje>,
     paginas: Vec<PaginaVista>,
@@ -231,6 +261,7 @@ impl Vista {
             dir,
             nombre: String::new(),
             carpeta: Carpeta::default(),
+            grabacion: false,
             mensajes: Vec::new(),
             paginas: Vec::new(),
             perdida: false,
@@ -309,21 +340,39 @@ impl Vista {
             self.carpeta = carpeta;
         }
         let ubicacion = self.que.ubicacion.clone();
-        self.paginas = self
-            .carpeta
-            .vivas(&mensajes)
+        self.grabacion = self.carpeta.es_grabacion();
+        let grabacion = self.grabacion;
+        let mut vivas = self.carpeta.vivas(&mensajes);
+        // En una grabacion, lo grabado delante y lo adjuntado detras.
+        if grabacion {
+            vivas.sort_by_key(|(_, p)| p.adjunto);
+        }
+        self.paginas = vivas
             .into_iter()
-            .map(|(i, p)| {
+            .enumerate()
+            .map(|(k, (i, p))| {
                 let m = mensajes[i].clone();
                 let titulo = if p.titulo.trim().is_empty() {
                     super::nombre_de_la_fila(&m, &self.catalogo)
                 } else {
                     p.titulo.clone()
                 };
+                let esquina = match (grabacion, p.adjunto, &m.clase) {
+                    (true, false, Some(Clase::Voz)) => {
+                        super::grabar_clase::minuto(m.duracion_ms.max(0))
+                    }
+                    (true, false, _) if !cuaderno::es_video(&m) => {
+                        format!("⏱ {}", super::grabar_clase::minuto(p.ms.unwrap_or(0)))
+                    }
+                    (true, _, _) => String::new(),
+                    (false, _, _) => (k + 1).to_string(),
+                };
                 PaginaVista {
                     dibujo: dibujo_de(&ubicacion, &self.que.proyecto, &m),
                     icono: icono_de(&m),
                     titulo,
+                    adjunto: grabacion && p.adjunto,
+                    esquina,
                     mensaje: m,
                 }
             })
@@ -399,6 +448,20 @@ impl Vista {
         let Some(j) = self.mensajes.iter().position(|x| x.id == m.id) else {
             return;
         };
+        // Lo de una grabacion se estudia en su minuto, con el texto al lado.
+        if self.grabacion
+            && !self.paginas[k].adjunto
+            && let Some((id, ms)) = super::estudiar_clase::de_una_clase(&m)
+        {
+            super::estudiar_clase::abrir(
+                self.que.idioma,
+                self.que.ubicacion.clone(),
+                self.que.proyecto.clone(),
+                id,
+                ms,
+            );
+            return;
+        }
         let (raiz, proyecto, opciones) = (
             self.raiz.clone(),
             self.que.proyecto.clone(),
@@ -463,6 +526,54 @@ impl Vista {
             // A la vista: la nueva es la ultima.
             self.scroll = self.alto_total.get().max(0) + 10_000;
             self.abrir_pagina(k);
+        }
+    }
+
+    /// **«Estudiar»**: la clase de esta grabacion en su ventana.
+    fn estudiar(&self) {
+        if self.carpeta.voz.is_empty() {
+            return;
+        }
+        super::estudiar_clase::abrir(
+            self.que.idioma,
+            self.que.ubicacion.clone(),
+            self.que.proyecto.clone(),
+            self.carpeta.voz.clone(),
+            0,
+        );
+    }
+
+    /// **«Adjuntar a la clase»**: los ficheros elegidos entran en el chat
+    /// (como si se soltaran en el) y en la carpeta como adjuntos, aparte de
+    /// lo grabado. No salen sueltos en el chat: estan en la carpeta.
+    fn adjuntar(&mut self, ventana: &VentanaOverlay, textos: &Catalogo) {
+        let elegidos = pixpin_shell::elegir::pedir_ficheros(ventana.handle());
+        if elegidos.is_empty() {
+            return;
+        }
+        let mut puestos = Vec::new();
+        for ruta in &elegidos {
+            match adjuntar_a_la_clase(
+                &self.raiz,
+                &self.que.proyecto,
+                &self.que.identidad,
+                &self.que.id,
+                ruta,
+            ) {
+                Ok(nombre) => puestos.push(nombre),
+                Err(e) => {
+                    tracing::warn!(?e, ruta = %ruta.display(), "no se pudo adjuntar a la clase")
+                }
+            }
+        }
+        self.recargar();
+        super::refrescar();
+        if puestos.is_empty() {
+            self.avisar(textos.t("chat-no-se-pudo"));
+        } else {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("nombre", puestos.join(", "));
+            self.avisar(textos.t_args("carpeta-adjuntado", &args));
         }
     }
 
@@ -658,6 +769,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                     }
                     let l = local(p, marco);
                     if let Some((_, desde)) = v.pulsada
+                        && !v.grabacion
                         && ((l.x - desde.x).abs() > ARRASTRE_MINIMO
                             || (l.y - desde.y).abs() > ARRASTRE_MINIMO)
                     {
@@ -690,6 +802,8 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                         Some(Zona::Cerrar) => vivo = false,
                         Some(Zona::NuevaPagina) => v.nueva_pagina(textos),
                         Some(Zona::Exportar) => v.exportar(&ventana, textos),
+                        Some(Zona::Estudiar) => v.estudiar(),
+                        Some(Zona::Adjuntar) => v.adjuntar(&ventana, textos),
                         Some(Zona::Pagina(k)) => {
                             v.elegida = Some(k);
                             v.pulsada = Some((k, l));
@@ -750,8 +864,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                     let elegida = v.elegida;
                     match (vk, elegida) {
                         (VK_ESCAPE, _) => vivo = false,
-                        (VK_IZQUIERDA | VK_ARRIBA, Some(k)) if ctrl && k > 0 => v.mover(k, k - 1),
-                        (VK_DERECHA | VK_ABAJO, Some(k)) if ctrl => v.mover(k, k + 1),
+                        (VK_IZQUIERDA | VK_ARRIBA, Some(k)) if ctrl && k > 0 && !v.grabacion => {
+                            v.mover(k, k - 1)
+                        }
+                        (VK_DERECHA | VK_ABAJO, Some(k)) if ctrl && !v.grabacion => {
+                            v.mover(k, k + 1)
+                        }
                         (VK_IZQUIERDA, _) => v.mover_eleccion(-1),
                         (VK_DERECHA, _) => v.mover_eleccion(1),
                         (VK_ARRIBA, _) => v.mover_eleccion(-(v.columnas.get() as i32)),
@@ -910,7 +1028,11 @@ fn pintar_todo(
     p.rellenar(rf(barra), tema.barra);
     zonas.push((barra, Zona::Barra));
     p.icono(
-        &mi::MENU_BOOK,
+        if v.grabacion {
+            &mi::MIC
+        } else {
+            &mi::MENU_BOOK
+        },
         RectF {
             x: ei(MARGEN) as f32,
             y: (barra.alto as f32 - 24.0 * e) / 2.0,
@@ -921,7 +1043,44 @@ fn pintar_todo(
     );
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("n", v.paginas.len() as i64);
-    let cuenta = textos.t_args("carpeta-paginas", &args);
+    let cuenta = if v.grabacion {
+        detalle_de_grabacion(&v.carpeta, textos)
+    } else {
+        textos.t_args("carpeta-paginas", &args)
+    };
+    // Los botones de la barra: en una grabacion, estudiar (si hay nota),
+    // adjuntar y exportar; en un cuaderno, una pagina nueva y exportar.
+    let mut botones: Vec<(&Icono, String, bool, Zona)> = Vec::new();
+    if v.grabacion {
+        if !v.carpeta.voz.is_empty() {
+            botones.push((
+                &mi::MENU_BOOK,
+                textos.t("carpeta-estudiar"),
+                true,
+                Zona::Estudiar,
+            ));
+        }
+        botones.push((
+            &mi::ATTACH_FILE,
+            textos.t("carpeta-adjuntar"),
+            false,
+            Zona::Adjuntar,
+        ));
+    } else {
+        botones.push((
+            &mi::ADD,
+            textos.t("carpeta-nueva-pagina"),
+            true,
+            Zona::NuevaPagina,
+        ));
+    }
+    let rotulo_exportar = if v.exportando.is_some() {
+        textos.t("carpeta-exportando")
+    } else {
+        textos.t("carpeta-exportar-pdf")
+    };
+    botones.push((&mi::IOS_SHARE, rotulo_exportar, false, Zona::Exportar));
+    let n_botones = botones.len() as u32;
     let titulo = if v.perdida {
         textos.t("carpeta-no-esta")
     } else {
@@ -929,7 +1088,7 @@ fn pintar_todo(
     };
     let (_, th) = p.medir_texto(&titulo, 17.0 * e);
     let x_titulo = ei(MARGEN) as f32 + 34.0 * e;
-    let botones_x = ancho as i32 - ei(BARRA) as i32 - ei(2 * 160 + 2 * 10) as i32;
+    let botones_x = ancho as i32 - ei(BARRA) as i32 - ei(n_botones * (160 + 10)) as i32;
     p.texto_linea(
         &titulo,
         x_titulo,
@@ -948,43 +1107,26 @@ fn pintar_todo(
     if !v.perdida {
         let alto_boton = ei(BOTON_ALTO);
         let y_boton = ((barra.alto - alto_boton) / 2) as i32;
-        let nueva = Rect {
+        let mut caja = Rect {
             x: botones_x,
             y: y_boton,
             ancho: ei(160),
             alto: alto_boton,
         };
-        boton(
-            p,
-            nueva,
-            &mi::ADD,
-            &textos.t("carpeta-nueva-pagina"),
-            true,
-            nueva.contiene(v.raton),
-            tema,
-            e,
-        );
-        zonas.push((nueva, Zona::NuevaPagina));
-        let exportar = Rect {
-            x: nueva.derecha() + ei(10) as i32,
-            ..nueva
-        };
-        let rotulo = if v.exportando.is_some() {
-            textos.t("carpeta-exportando")
-        } else {
-            textos.t("carpeta-exportar-pdf")
-        };
-        boton(
-            p,
-            exportar,
-            &mi::IOS_SHARE,
-            &rotulo,
-            false,
-            exportar.contiene(v.raton),
-            tema,
-            e,
-        );
-        zonas.push((exportar, Zona::Exportar));
+        for (icono, rotulo, fuerte, zona) in &botones {
+            boton(
+                p,
+                caja,
+                icono,
+                rotulo,
+                *fuerte,
+                caja.contiene(v.raton),
+                tema,
+                e,
+            );
+            zonas.push((caja, *zona));
+            caja.x = caja.derecha() + ei(10) as i32;
+        }
     }
     let cerrar = Rect {
         x: ancho as i32 - ei(BARRA) as i32,
@@ -1017,6 +1159,7 @@ fn pintar_todo(
     let (linea, color) = match (&v.aviso, &v.renombrando) {
         (Some((t, _)), _) => (t.clone(), tema.texto),
         (None, Some(_)) => (textos.t("carpeta-escribe-titulo"), tema.apagado),
+        (None, None) if v.grabacion => (textos.t("carpeta-grabacion-pista"), tema.apagado),
         (None, None) => (textos.t("carpeta-pista"), tema.apagado),
     };
     let (_, lh) = p.medir_texto(&linea, 12.5 * e);
@@ -1101,6 +1244,8 @@ fn pintar_todo(
                 renombrando,
                 ultima: k + 1 == v.paginas.len(),
                 raton: v.raton,
+                sin_mover: v.grabacion,
+                insignia: pg.adjunto.then(|| textos.t("carpeta-adjunto-insignia")),
             },
             tema,
             e,
@@ -1120,6 +1265,10 @@ struct Celda<'a> {
     renombrando: Option<&'a String>,
     ultima: bool,
     raton: Punto,
+    /// En una grabacion no se cambia el orden: es el del tiempo.
+    sin_mover: bool,
+    /// Lo adjuntado a una clase: la chapa que lo dice.
+    insignia: Option<String>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1169,6 +1318,11 @@ fn pintar_pagina(
             papel
         },
     );
+    // Lo adjuntado a una clase, con otro color: no es de lo grabado.
+    if c.insignia.is_some() {
+        p.rellenar_redondeado(dibujo, 8.0 * e, con_alfa(COLOR_ADJUNTO, 0.18));
+        p.trazar(dibujo, 2.0 * e, COLOR_ADJUNTO);
+    }
     match &pg.dibujo {
         Some(d) if !c.arrastrada => pintar_lienzo(
             p,
@@ -1193,23 +1347,45 @@ fn pintar_pagina(
             tema.texto_papel,
         ),
     }
-    // El numero de la pagina, en su esquina.
-    let numero = (k + 1).to_string();
-    let (nw, nh) = p.medir_texto(&numero, 12.0 * e);
-    let chapa = RectF {
-        x: dibujo.x + 8.0 * e,
-        y: dibujo.y + 8.0 * e,
-        ancho: (nw + 14.0 * e).max(24.0 * e),
-        alto: nh + 6.0 * e,
-    };
-    p.rellenar_redondeado(chapa, chapa.alto / 2.0, con_alfa(Color::NEGRO, 0.6));
-    p.texto(
-        &numero,
-        chapa.x + (chapa.ancho - nw) / 2.0,
-        chapa.y + 3.0 * e,
-        12.0 * e,
-        Color::BLANCO,
-    );
+    // En su esquina: el numero de la pagina, o su minuto en la grabacion.
+    let numero = &pg.esquina;
+    if !numero.is_empty() {
+        let (nw, nh) = p.medir_texto(numero, 12.0 * e);
+        let chapa = RectF {
+            x: dibujo.x + 8.0 * e,
+            y: dibujo.y + 8.0 * e,
+            ancho: (nw + 14.0 * e).max(24.0 * e),
+            alto: nh + 6.0 * e,
+        };
+        p.rellenar_redondeado(chapa, chapa.alto / 2.0, con_alfa(Color::NEGRO, 0.6));
+        p.texto(
+            numero,
+            chapa.x + (chapa.ancho - nw) / 2.0,
+            chapa.y + 3.0 * e,
+            12.0 * e,
+            Color::BLANCO,
+        );
+    }
+    // «Adjunto · no es de la grabacion», abajo, sobre su color.
+    if let Some(insignia) = &c.insignia {
+        let (iw, ih) = p.medir_texto(insignia, 11.5 * e);
+        let ancho_max = dibujo.ancho - 16.0 * e;
+        let chapa = RectF {
+            x: dibujo.x + 8.0 * e,
+            y: dibujo.y + dibujo.alto - ih - 14.0 * e,
+            ancho: (iw + 14.0 * e).min(ancho_max),
+            alto: ih + 6.0 * e,
+        };
+        p.rellenar_redondeado(chapa, chapa.alto / 2.0, COLOR_ADJUNTO);
+        p.texto_linea(
+            insignia,
+            chapa.x + 7.0 * e,
+            chapa.y + 3.0 * e,
+            11.5 * e,
+            chapa.ancho - 14.0 * e,
+            Color::BLANCO,
+        );
+    }
     zonas.push((
         Rect {
             x: celda.x,
@@ -1259,8 +1435,12 @@ fn pintar_pagina(
     let lado = (26.0 * e) as u32;
     let y_botones = celda.y + ((CELDA_DIBUJO + CELDA_TITULO) as f32 * e) as i32;
     let botones: [(&Icono, Zona, bool); 4] = [
-        (&mi::CHEVRON_LEFT, Zona::Antes(k), k > 0),
-        (&mi::CHEVRON_RIGHT, Zona::Despues(k), !c.ultima),
+        (&mi::CHEVRON_LEFT, Zona::Antes(k), k > 0 && !c.sin_mover),
+        (
+            &mi::CHEVRON_RIGHT,
+            Zona::Despues(k),
+            !c.ultima && !c.sin_mover,
+        ),
         (&mi::EDIT, Zona::Renombrar(k), true),
         (&mi::CLOSE, Zona::Quitar(k), true),
     ];
@@ -1298,11 +1478,132 @@ fn pintar_pagina(
     }
 }
 
+/// **Adjunta un fichero a una clase grabada**: entra en el chat como si se
+/// soltara (`adjuntar_con_pie`) y en la carpeta `carpeta` como adjunto, con
+/// su nombre. Devuelve ese nombre.
+fn adjuntar_a_la_clase(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    carpeta: &str,
+    ruta: &std::path::Path,
+) -> Result<String> {
+    let nombre = ruta
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .context("sin nombre")?;
+    let bytes =
+        std::fs::read(ruta).with_context(|| format!("no se pudo leer {}", ruta.display()))?;
+    let numero = super::siguiente_numero_en(raiz, proyecto)?;
+    let m = super::adjuntar_con_pie(raiz, proyecto, aparato, &nombre, &bytes, numero, "", None)?;
+    let dir = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
+    let titulo = pixpin_docs::sin_extension(&nombre);
+    carpetas::cambiar_en_disco(&dir, carpeta, |c| c.adjuntar(&m.id, &titulo))?
+        .context("la carpeta ya no esta")?;
+    Ok(nombre)
+}
+
 /// Las paginas que se ensenan en la tarjeta de la carpeta del chat: los
-/// `id` de las primeras, en orden.
+/// `id` de las primeras, en orden. De una grabacion, sus capturas (la
+/// primera es la foto de su tarjeta).
 pub(super) fn ids_de_la_tarjeta(m: &Mensaje) -> Option<Vec<String>> {
     let c = Carpeta::de_mensaje(m)?;
+    if c.es_grabacion() {
+        return Some(c.capturas().map(|p| p.id.clone()).collect());
+    }
     Some(c.paginas.iter().map(|p| p.id.clone()).collect())
+}
+
+// --- Lo de dentro no sale suelto en el chat ----------------------------------------
+
+/// La marca de lo que esta dentro de una carpeta (ver
+/// [`marcar_lo_de_dentro`]). Con guion bajo, como `_soloGaleria`: no es del
+/// formato, se rehace cada vez que se lee el chat.
+pub(crate) const DENTRO: &str = "_enCarpeta";
+
+/// **Marca lo que esta dentro de alguna carpeta** (de paginas o de una
+/// grabacion), que el chat no ensena suelto: lo representa la tarjeta de
+/// su carpeta (el usuario, 25-oct-2026: «las paginas de un cuaderno tienen
+/// que estar solo dentro de la carpeta»). Se quita de lo que ya no esta en
+/// ninguna, que asi vuelve a verse.
+pub(crate) fn marcar_lo_de_dentro(mensajes: &mut [Mensaje]) {
+    let dentro = carpetas::dentro_de_carpetas(mensajes);
+    for m in mensajes.iter_mut() {
+        if dentro.contains(&m.id) {
+            m.resto.insert(DENTRO.into(), serde_json::Value::Bool(true));
+        } else {
+            m.resto.remove(DENTRO);
+        }
+    }
+}
+
+/// Si el mensaje esta dentro de una carpeta (ver [`marcar_lo_de_dentro`]).
+pub(crate) fn esta_dentro(m: &Mensaje) -> bool {
+    m.resto.get(DENTRO).and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// **La clase de la carpeta de una grabacion**: `(id de su nota, 0)`, lo
+/// que pide «Estudiar la clase». `None` si no es una grabacion o no tiene
+/// nota (solo entraron el video y las capturas).
+pub(super) fn clase_de_la_grabacion(m: &Mensaje) -> Option<(String, i64)> {
+    grabacion_de(m)
+        .filter(|c| !c.voz.is_empty())
+        .map(|c| (c.voz, 0))
+}
+
+/// La carpeta de un mensaje si es la de una grabacion.
+pub(super) fn grabacion_de(m: &Mensaje) -> Option<Carpeta> {
+    Carpeta::de_mensaje(m).filter(Carpeta::es_grabacion)
+}
+
+/// **Lo que lleva la carpeta de una grabacion**, para quien lo quiera
+/// ensenar o compartir: lo grabado (la nota, el video y las capturas, en el
+/// orden de la grabacion) y, aparte, lo adjuntado a la clase. Cada uno con
+/// su sitio en `mensajes`; lo que ya no esta en el chat se salta.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct PiezasDeGrabacion {
+    pub voz: Option<usize>,
+    pub video: Option<usize>,
+    /// `(minuto en ms, posicion)`, por su minuto.
+    pub capturas: Vec<(i64, usize)>,
+    pub adjuntos: Vec<usize>,
+    pub duracion_ms: i64,
+}
+
+/// [`PiezasDeGrabacion`] de la carpeta `carpeta` (su mensaje). `None` si no
+/// es la de una grabacion.
+// Es la puerta para compartir una clase entera (otro trabajo la usa).
+#[allow(dead_code)]
+pub(crate) fn piezas_de_grabacion(
+    carpeta: &Mensaje,
+    mensajes: &[Mensaje],
+) -> Option<PiezasDeGrabacion> {
+    let c = grabacion_de(carpeta)?;
+    let donde = |id: &str| {
+        (!id.is_empty())
+            .then(|| mensajes.iter().position(|m| m.id == id))
+            .flatten()
+    };
+    let mut capturas: Vec<(i64, usize)> = c
+        .capturas()
+        .filter_map(|p| Some((p.ms.unwrap_or(0), donde(&p.id)?)))
+        .collect();
+    capturas.sort_by_key(|(ms, _)| *ms);
+    Some(PiezasDeGrabacion {
+        voz: donde(&c.voz),
+        video: donde(&c.video),
+        capturas,
+        adjuntos: c.adjuntos().filter_map(|p| donde(&p.id)).collect(),
+        duracion_ms: c.duracion_ms,
+    })
+}
+
+/// **El detalle de la fila de una grabacion**: «1:30:00 · 5 capturas».
+pub(super) fn detalle_de_grabacion(c: &Carpeta, textos: &Catalogo) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("duracion", super::grabar_clase::minuto(c.duracion_ms));
+    args.set("capturas", c.capturas().count() as i64);
+    textos.t_args("carpeta-grabacion-detalle", &args)
 }
 
 /// Cuantas paginas lleva, para el detalle de su fila en el chat.
@@ -1313,6 +1614,8 @@ pub(super) fn cuantas(m: &Mensaje) -> usize {
 /// Las carpetas de la conversacion `(indice, nombre)` para el menu
 /// «Añadir a carpeta…».
 pub(super) fn del_chat(mensajes: &[Mensaje], textos: &Catalogo) -> Vec<(usize, String)> {
+    // Las de las grabaciones tambien: lo que entra en una es un adjunto a
+    // la clase, que se ve aparte de lo grabado (ver `anadir`).
     carpetas::carpetas_de(mensajes)
         .into_iter()
         .map(|i| (i, super::nombre_de_la_fila(&mensajes[i], textos)))
@@ -1411,7 +1714,10 @@ pub(crate) fn carpeta_por_nombre(mensajes: &[Mensaje], nombre: &str) -> Option<u
     if buscado.is_empty() {
         return None;
     }
-    let todas = carpetas::carpetas_de(mensajes);
+    let todas: Vec<usize> = carpetas::carpetas_de(mensajes)
+        .into_iter()
+        .filter(|&i| !carpetas::es_grabacion(&mensajes[i]))
+        .collect();
     let nombre_de = |i: &usize| super::figuras::plegar(mensajes[*i].nombre.trim());
     todas
         .iter()
@@ -1560,6 +1866,7 @@ pub(super) fn crear(
     a.ficha.tocado = m.cuando;
     a.ficha.resumen = nombre.clone();
     a.mensajes.push(m);
+    marcar_lo_de_dentro(&mut a.mensajes);
     let _ = super::subir_en_la_lista(
         ubicacion.raiz(),
         &a.ficha.id,
@@ -1602,9 +1909,17 @@ pub(super) fn menu_de_anadir(
     let mut v: Vec<super::EntradaMenu> = del_chat(&a.mensajes, textos)
         .into_iter()
         .map(|(j, nombre)| {
-            let ya = Carpeta::de_mensaje(&a.mensajes[j]).is_some_and(|c| c.contiene(&m.id));
+            let c = Carpeta::de_mensaje(&a.mensajes[j]);
+            let ya = c.as_ref().is_some_and(|c| c.contiene(&m.id));
+            let de_clase = c.as_ref().is_some_and(Carpeta::es_grabacion);
             super::entrada(
-                Some(if ya { &mi::CHECK_BOX } else { &mi::MENU_BOOK }),
+                Some(if ya {
+                    &mi::CHECK_BOX
+                } else if de_clase {
+                    &mi::MIC
+                } else {
+                    &mi::MENU_BOOK
+                }),
                 nombre,
                 super::Accion::AnadirACarpetaDe(i, a.mensajes[j].id.clone()),
             )
@@ -1648,6 +1963,12 @@ pub(super) fn anadir(
             ya = true;
             return false;
         }
+        // A una grabacion entra como adjunto a la clase, con su nombre: no
+        // es de lo grabado y no lleva minuto.
+        if c.es_grabacion() {
+            titulo = nombre.clone();
+            return c.adjuntar(&m.id, &titulo);
+        }
         titulo = c.titulo_al_anadir(&nombre, &por_defecto);
         c.anadir(&m.id, &titulo)
     });
@@ -1660,6 +1981,8 @@ pub(super) fn anadir(
             if let Some(v) = a.vistas.get_mut(k) {
                 *v = super::leer_vista(ubicacion, &a.ficha.id, &a.mensajes[k]);
             }
+            // Y la pagina se va del chat: ahora vive en la carpeta.
+            marcar_lo_de_dentro(&mut a.mensajes);
             if ya {
                 return super::Efecto::Aviso(textos.t_args("carpeta-ya-estaba", &args));
             }
