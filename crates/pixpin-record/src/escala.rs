@@ -111,15 +111,6 @@ pub fn comienzo(indice: u64, por_segundo: u32) -> i64 {
     (indice as i64 * UNIDADES_POR_SEGUNDO) / i64::from(por_segundo.max(1))
 }
 
-/// Cuantos fotogramas **ya tocan** en el instante `tiempo` (100 ns): los
-/// que empiezan en `tiempo` o antes. En el cero ya toca el primero.
-pub fn fotogramas_debidos(tiempo: i64, por_segundo: u32) -> u64 {
-    if tiempo < 0 {
-        return 0;
-    }
-    (tiempo as i128 * i128::from(por_segundo) / i128::from(UNIDADES_POR_SEGUNDO)) as u64 + 1
-}
-
 /// El instante, en 100 ns, al que se llega tras `muestras` muestras de
 /// sonido a `muestreo` por segundo. Es el reloj del video: el sonido no se
 /// para nunca salvo en pausa, asi que el video no puede desacompasarse.
@@ -162,22 +153,6 @@ pub const SALTOS_SEGUIDOS: u32 = 4;
 pub fn saltar_fotograma(escritos: u64, en_cola: u64, saltados_seguidos: u32) -> bool {
     escritos > 0
         && (en_cola > TOPE_DURO || (en_cola > TOPE_EN_COLA && saltados_seguidos < SALTOS_SEGUIDOS))
-}
-
-/// **Inicio y duracion** (100 ns) del fotograma que se escribe cuando ya
-/// tocan `debidos` y se llevaban `hechos`: es el ultimo que toca. El
-/// primero empieza en el cero aunque llegue tarde (la pantalla tarda en
-/// dar su primera imagen y el sonido ya corre): si no, la pista de video
-/// empezaria despues que la del sonido y el reproductor ensenaria un hueco.
-pub fn tramo_del_fotograma(hechos: u64, debidos: u64, por_segundo: u32) -> (i64, i64) {
-    let indice = debidos.saturating_sub(1);
-    let inicio = if hechos == 0 {
-        0
-    } else {
-        comienzo(indice, por_segundo)
-    };
-    let fin = comienzo(indice + 1, por_segundo);
-    (inicio, (fin - inicio).max(1))
 }
 
 #[cfg(test)]
@@ -251,21 +226,6 @@ mod pruebas {
     }
 
     #[test]
-    fn los_fotogramas_debidos_siguen_al_reloj() {
-        assert_eq!(fotogramas_debidos(-1, 10), 0);
-        assert_eq!(fotogramas_debidos(0, 10), 1, "en el cero ya va el primero");
-        assert_eq!(fotogramas_debidos(999_999, 10), 1);
-        assert_eq!(fotogramas_debidos(1_000_000, 10), 2);
-        assert_eq!(fotogramas_debidos(UNIDADES_POR_SEGUNDO, 10), 11);
-        // Y el comienzo del ultimo debido nunca pasa del reloj.
-        for t in [0i64, 333_333, 1_000_000, 12_345_678] {
-            let n = fotogramas_debidos(t, 15);
-            assert!(comienzo(n - 1, 15) <= t);
-            assert!(comienzo(n, 15) > t);
-        }
-    }
-
-    #[test]
     fn el_tiempo_de_las_muestras_es_exacto() {
         assert_eq!(tiempo_de_muestras(48_000, 48_000), UNIDADES_POR_SEGUNDO);
         assert_eq!(
@@ -307,21 +267,5 @@ mod pruebas {
         // crece sin fin con un codificador que no da abasto.
         assert!(saltar_fotograma(10, TOPE_DURO + 1, SALTOS_SEGUIDOS));
         assert!(saltar_fotograma(10, TOPE_DURO + 1, 1_000));
-    }
-
-    #[test]
-    fn el_primer_fotograma_empieza_en_el_cero_aunque_llegue_tarde() {
-        // Llega con el segundo y medio ya sonando: cubre desde el cero.
-        assert_eq!(tramo_del_fotograma(0, 16, 10), (0, comienzo(16, 10)));
-        // Los demas, en su sitio y con su duracion.
-        assert_eq!(
-            tramo_del_fotograma(16, 17, 10),
-            (comienzo(16, 10), comienzo(17, 10) - comienzo(16, 10))
-        );
-        // Atrasado: el ultimo que toca, sin rellenar el hueco.
-        assert_eq!(tramo_del_fotograma(5, 9, 10), (comienzo(8, 10), 1_000_000));
-        // Caso negativo: sin ninguno debido no hay duracion cero ni negativa.
-        let (_, d) = tramo_del_fotograma(0, 0, 10);
-        assert!(d > 0);
     }
 }

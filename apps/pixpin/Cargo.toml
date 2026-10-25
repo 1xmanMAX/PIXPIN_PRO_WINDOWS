@@ -35,6 +35,9 @@ pixpin-nivel = { version = "0.1.0", path = "../../crates/pixpin-nivel" }
 pixpin-pin = { version = "0.1.0", path = "../../crates/pixpin-pin" }
 pixpin-pila = { version = "0.1.0", path = "../../crates/pixpin-pila" }
 pixpin-record = { version = "0.1.0", path = "../../crates/pixpin-record" }
+# El video de «Grabar clase»: la pantalla por la GPU hasta el codificador de
+# la grafica (ver docs/motor-de-video.md).
+pixpin-motor-video = { version = "0.1.0", path = "../../crates/pixpin-motor-video" }
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }

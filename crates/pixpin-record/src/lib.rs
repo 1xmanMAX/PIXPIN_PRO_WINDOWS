@@ -6,6 +6,9 @@
 //! - [`escala`]: las cuentas del video en vivo (tamano, encoger, tiempos),
 //!   puras y probadas en cualquier maquina.
 //! - `mp4` y `mp4_vivo`: lo que toca Media Foundation, solo en Windows.
+//!   `mp4` es la exportacion de GIF a MP4; `mp4_vivo` (BGRA por la CPU y
+//!   codificador por software) es el ultimo recurso del motor de video
+//!   (`pixpin-motor-video`, ver docs/motor-de-video.md).
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod escala;
