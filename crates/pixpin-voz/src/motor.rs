@@ -397,19 +397,9 @@ fn ruta_para_kaldi(carpeta: &Path) -> Result<CString, ErrorVoz> {
     })
 }
 
-/// El resultado de pasar una nota a texto: justo lo que hay que escribir en
-/// el mensaje del cuaderno.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Transcripcion {
-    /// El cuerpo con marcas, `[1:23] lo que se dijo`, separado por renglon
-    /// en blanco. Va a `Mensaje.transcripcion`.
-    pub texto: String,
-    /// Los trozos sueltos, por si quien llama quiere pintarlos.
-    pub segmentos: Vec<Segmento>,
-    /// Va a `resto["estadoDelTexto"]`.
-    pub estado: EstadoDelTexto,
-    pub duracion_ms: i64,
-}
+/// Vive en [`crate::tiempos`] (sin Windows); se reexporta aqui por las
+/// rutas de siempre.
+pub use crate::tiempos::Transcripcion;
 
 /// **Pasa una nota de voz a texto, de principio a fin.**
 ///

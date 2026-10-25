@@ -94,18 +94,22 @@
 //!   C, con su `unsafe` acotado y comentado.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+pub mod cortes;
 pub mod credibilidad;
 pub mod dos_idiomas;
 /// Las voces de Microsoft Edge para leer en voz alta (los lectores).
 pub mod edge;
 pub mod idiomas;
+/// Qwen3-ASR-0.6B, el motor opcional de las grabaciones (ver `qwen3`).
+pub mod qwen3;
 pub mod telepronter;
 pub mod tiempos;
 pub mod turnos;
 
 #[cfg(windows)]
 pub mod motor;
-#[cfg(windows)]
+/// El enlace a ONNX Runtime (Whisper, Indra y Qwen3-ASR). Compila tambien
+/// fuera de Windows, solo para las pruebas (ver `ort`).
 pub mod ort;
 #[cfg(windows)]
 pub mod pcm;
@@ -118,10 +122,10 @@ pub use credibilidad::creible;
 pub use dos_idiomas::{Idiomas, ModoDeIdiomas};
 pub use idiomas::{Disponibilidad, IDIOMAS, carpeta_de_modelos, enlace_del_modelo, modelo_de};
 pub use telepronter::{Desfile, parrafos_de};
-pub use tiempos::{EstadoDelTexto, Segmento, con_tiempos, marca_de_tiempo, tiempo_de};
+pub use tiempos::{
+    EstadoDelTexto, Segmento, Transcripcion, con_tiempos, marca_de_tiempo, tiempo_de,
+};
 
-#[cfg(windows)]
-pub use motor::Transcripcion;
 #[cfg(windows)]
 pub use sapi::{AvisoDeDictado, Dictado};
 
@@ -303,6 +307,11 @@ pub enum ErrorVoz {
     /// texto».
     #[error("falta el modelo de voz Whisper: hay que bajarlo (unos {megas} MB) a {donde}")]
     SinModeloWhisper { donde: String, megas: u64 },
+    /// Se eligio Qwen3-ASR en Ajustes pero sus ficheros (unos `megas` MB)
+    /// no estan en `donde`. La app no lo baja sola: cae a Whisper y lo dice
+    /// en Ajustes.
+    #[error("falta el modelo de voz Qwen3-ASR: hay que bajarlo (unos {megas} MB) a {donde}")]
+    SinModeloQwen3 { donde: String, megas: u64 },
     /// Ni `System32` ni `donde` tienen `onnxruntime.dll` (un Windows 10
     /// viejo): se puede poner a mano ahi o junto al ejecutable.
     #[error("este Windows no trae onnxruntime.dll; se puede copiar en {donde}")]
@@ -313,6 +322,7 @@ pub enum ErrorVoz {
     /// ONNX Runtime fallo en un paso (modelo roto, runtime muy viejo…).
     #[error("ONNX Runtime fallo al {paso}: {detalle}")]
     Onnx { paso: &'static str, detalle: String },
+    #[cfg(windows)]
     #[error("Windows fallo al {paso}: {fuente}")]
     Windows {
         paso: &'static str,
