@@ -25,10 +25,11 @@ pub mod medidas;
 pub mod nucleo;
 pub mod opciones;
 pub mod pcm;
+pub mod plataforma;
 pub mod reloj;
 pub mod remuestreo;
+pub mod toma;
 
-#[cfg(windows)]
 mod motor;
 #[cfg(windows)]
 mod sistema;
@@ -37,8 +38,7 @@ pub use medidas::{Estadisticas, EstadisticasFuente, Nivel, Niveles};
 pub use opciones::{Equipo, MUESTREOS, Microfono, Opciones, Salida};
 pub use pcm::{BloquePcm, Receptor, SinBloque, Suscripcion, suscripcion};
 
-#[cfg(windows)]
-pub use motor::{MotorAudio, Resumen};
+pub use motor::{CAPACIDAD_AAC, MotorAudio, Resumen, SEGUNDOS_DE_ANILLO};
 #[cfg(windows)]
 pub use sistema::aparatos::{Aparato, microfonos};
 

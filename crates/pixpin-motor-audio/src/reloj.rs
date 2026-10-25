@@ -133,6 +133,12 @@ impl Relleno {
         self.fin
     }
 
+    /// Hasta donde llega lo escrito en el anillo, contando el silencio
+    /// puesto al paso del reloj (100 ns): lo que se sella en el anillo.
+    pub fn hasta(&self) -> u64 {
+        self.fin + duracion_de(self.puesto, self.tasa)
+    }
+
     /// El paquete siguiente viene marcado con discontinuidad (o es el
     /// primero de un aparato vuelto a abrir): su hueco se cree desde 1 ms.
     pub fn discontinuidad(&mut self) {
