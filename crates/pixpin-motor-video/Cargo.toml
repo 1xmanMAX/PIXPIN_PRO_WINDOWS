@@ -7,8 +7,9 @@ license.workspace = true
 
 # El motor de video de PixPin (ver docs/motor-de-video.md): la pantalla por
 # la GPU hasta el codificador de la grafica, el sonido que le dan, y el MP4.
-# Las cuentas (perfiles, tiempos, ritmo, encaje, colas) son puras y se
-# prueban en cualquier maquina; lo que toca Windows va en `win/`.
+# Las cuentas (perfiles, tiempos, ritmo, encaje, colas) y el nucleo que
+# decide son puros y se prueban en cualquier maquina (sin nada de Windows:
+# los reutilizaria un backend de Android); lo que toca Windows va en `win/`.
 
 [dependencies]
 thiserror = "2.0.20"
@@ -38,4 +39,8 @@ windows = { version = "0.62.2", features = [
     "Win32_System_WinRT",
     "Win32_System_WinRT_Direct3D11",
     "Win32_System_WinRT_Graphics_Capture",
+    # Si la ventana grabada esta minimizada (`IsIconic`).
+    "Win32_UI_WindowsAndMessaging",
+    # Pedir la captura sin borde amarillo (`GraphicsCaptureAccess`).
+    "Security_Authorization_AppCapabilityAccess",
 ] }

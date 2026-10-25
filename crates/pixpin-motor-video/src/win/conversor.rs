@@ -32,16 +32,17 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC_0, D3D11_VIDEO_PROCESSOR_STREAM,
     D3D11_VIDEO_USAGE_PLAYBACK_NORMAL, D3D11_VPIV_DIMENSION_TEXTURE2D,
     D3D11_VPOV_DIMENSION_TEXTURE2D, D3D11_VPOV_DIMENSION_TEXTURE2DARRAY, ID3D11Device,
-    ID3D11DeviceContext, ID3D11Texture2D, ID3D11VideoContext, ID3D11VideoDevice,
-    ID3D11VideoProcessor, ID3D11VideoProcessorEnumerator, ID3D11VideoProcessorInputView,
-    ID3D11VideoProcessorOutputView,
+    ID3D11DeviceContext, ID3D11Multithread, ID3D11Texture2D, ID3D11VideoContext,
+    ID3D11VideoContext1, ID3D11VideoDevice, ID3D11VideoProcessor, ID3D11VideoProcessorEnumerator,
+    ID3D11VideoProcessorInputView, ID3D11VideoProcessorOutputView,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709, DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709,
     DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_NV12, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
 };
 use windows::core::Interface;
 
-use super::com::en;
+use super::com::{EnLaGpu, en, multihilo};
 use crate::ErrorMotor;
 use crate::geometria;
 
@@ -75,6 +76,7 @@ pub(crate) struct Conversor {
     video: ID3D11VideoDevice,
     contexto: ID3D11DeviceContext,
     d3d: ID3D11Device,
+    multi: Option<ID3D11Multithread>,
     /// El tamano de entrada para el que se creo el procesador.
     entrada: (u32, u32),
     salida: (u32, u32),
@@ -114,12 +116,45 @@ impl Conversor {
             video,
             contexto: contexto.clone(),
             d3d: d3d.clone(),
+            multi: multihilo(d3d),
             entrada,
             salida,
             por_segundo,
             copiar: false,
             ultima_entrada: (0, 0),
         })
+    }
+
+    /// **El mismo procesador en otro dispositivo**: tras perderse la
+    /// grafica (`crate::recuperacion`), con las mismas medidas.
+    pub fn rehacer(
+        &self,
+        d3d: &ID3D11Device,
+        contexto: &ID3D11DeviceContext,
+    ) -> Result<Conversor, ErrorMotor> {
+        Conversor::nuevo(d3d, contexto, self.entrada, self.salida, self.por_segundo)
+    }
+
+    /// Cambia el tamano de salida: el reintento de la grafica a un tamano
+    /// mas pequeno (`cadena::reintento_mas_pequeno`) o con el tope de su
+    /// codificador (`cadena::peculiaridades`).
+    pub fn con_salida(&mut self, salida: (u32, u32)) -> Result<(), ErrorMotor> {
+        if salida == self.salida {
+            return Ok(());
+        }
+        let (enumerador, procesador) = crear_procesador(
+            &self.video,
+            &self.video_ctx,
+            self.entrada,
+            salida,
+            self.por_segundo,
+        )?;
+        self.entradas.clear();
+        self.salidas.clear();
+        self.enumerador = enumerador;
+        self.procesador = procesador;
+        self.salida = salida;
+        Ok(())
     }
 
     /// **Convierte** lo que tiene imagen de `origen` (`contenido`, desde la
@@ -192,6 +227,7 @@ impl Conversor {
         destino: &ID3D11Texture2D,
         sub_destino: u32,
     ) {
+        let _gpu = EnLaGpu::entrar(self.multi.as_ref());
         // SAFETY: las dos texturas son NV12 del mismo tamano (las da el
         // mismo repartidor) y del mismo dispositivo; la copia se encola en
         // el contexto inmediato, protegido para varios hilos.
@@ -233,6 +269,7 @@ impl Conversor {
             pInputSurface: ManuallyDrop::new(Some(vista.clone())),
             ..Default::default()
         };
+        let gpu = EnLaGpu::entrar(self.multi.as_ref());
         // SAFETY: procesador, vistas y rectangulos son de este dispositivo y
         // estan vivos durante la llamada; el rectangulo de origen no pasa
         // de la textura (`convertir` lo recorta) y el de destino no pasa
@@ -258,6 +295,7 @@ impl Conversor {
                 std::slice::from_ref(&corriente),
             )
         };
+        drop(gpu);
         drop(ManuallyDrop::into_inner(corriente.pInputSurface));
         hecho.map_err(en("convertir el fotograma en la GPU"))
     }
@@ -315,6 +353,7 @@ impl Conversor {
         let vista = vista.ok_or(ErrorMotor::Sistema {
             paso: "crear la vista de entrada del procesador",
             detalle: "sin vista".into(),
+            codigo: 0,
         })?;
         if self.entradas.len() >= VISTAS_DE_ENTRADA {
             self.entradas.clear();
@@ -356,6 +395,7 @@ impl Conversor {
             let t = t.ok_or(ErrorMotor::Sistema {
                 paso: "crear la textura intermedia",
                 detalle: "sin textura".into(),
+                codigo: 0,
             })?;
             self.intermedia = Some((t, desc.Width, desc.Height));
         }
@@ -370,13 +410,16 @@ impl Conversor {
             bottom: ch,
             back: 1,
         };
-        // SAFETY: mismo formato y dispositivo; la caja no pasa de ninguna de
-        // las dos texturas (`cw`x`ch` cabe en el origen, y la intermedia es
-        // por lo menos tan grande como el).
-        unsafe {
-            self.contexto
-                .CopySubresourceRegion(&intermedia, 0, 0, 0, 0, origen, 0, Some(&caja))
-        };
+        {
+            let _gpu = EnLaGpu::entrar(self.multi.as_ref());
+            // SAFETY: mismo formato y dispositivo; la caja no pasa de
+            // ninguna de las dos texturas (`cw`x`ch` cabe en el origen, y la
+            // intermedia es por lo menos tan grande como el).
+            unsafe {
+                self.contexto
+                    .CopySubresourceRegion(&intermedia, 0, 0, 0, 0, origen, 0, Some(&caja))
+            };
+        }
         self.vista_de_entrada(&intermedia)
     }
 
@@ -427,6 +470,7 @@ impl Conversor {
         let vista = vista.ok_or(ErrorMotor::Sistema {
             paso: "crear la vista de salida del procesador",
             detalle: "sin vista".into(),
+            codigo: 0,
         })?;
         if self.salidas.len() >= VISTAS_DE_SALIDA {
             self.salidas.clear();
@@ -486,6 +530,7 @@ fn crear_procesador(
         return Err(ErrorMotor::Sistema {
             paso: "comprobar el procesador de video",
             detalle: "la grafica no convierte BGRA a NV12".into(),
+            codigo: 0,
         });
     }
     // SAFETY: enumerador vivo; el indice 0 de conversion de ritmo existe
@@ -529,6 +574,22 @@ fn crear_procesador(
                 _bitfield: SALIDA_709_ESTUDIO,
             },
         );
+        // Con D3D11.1 (Windows 8 en adelante, casi todos los controladores)
+        // el color se dice con los espacios de DXGI, que los controladores
+        // respetan mejor que los bits de arriba (hay Intel antiguos que
+        // ignoran el rango de estudio en la forma vieja y dan negros
+        // grises). Se ponen los dos: el nuevo, si esta, manda.
+        if let Ok(ctx1) = video_ctx.cast::<ID3D11VideoContext1>() {
+            ctx1.VideoProcessorSetStreamColorSpace1(
+                &procesador,
+                0,
+                DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
+            );
+            ctx1.VideoProcessorSetOutputColorSpace1(
+                &procesador,
+                DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709,
+            );
+        }
         // Sin «mejoras» del controlador (ruido, bordes): en texto hacen mas
         // mal que bien, y cuestan.
         video_ctx.VideoProcessorSetStreamAutoProcessingMode(&procesador, 0, false);
@@ -569,5 +630,6 @@ fn textura_negra(d3d: &ID3D11Device) -> Result<ID3D11Texture2D, ErrorMotor> {
     t.ok_or(ErrorMotor::Sistema {
         paso: "crear la textura negra",
         detalle: "sin textura".into(),
+        codigo: 0,
     })
 }

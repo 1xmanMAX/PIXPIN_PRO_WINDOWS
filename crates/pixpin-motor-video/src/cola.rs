@@ -50,6 +50,15 @@ impl Atasco {
         self.desde = None;
     }
 
+    /// Se vuelve a contar de cero: tras una pausa o una vuelta de la grafica
+    /// (`recuperacion`). Sin esto, un fotograma que no entro antes de una
+    /// pausa larga haria que el primero que no entre al seguir pareciera un
+    /// atasco de minutos y cortara el video: el fallo que Cap arreglo con
+    /// `notify_input_stall_recovered` (`enc-mediafoundation/src/video/h264.rs`).
+    pub fn reiniciar(&mut self) {
+        self.desde = None;
+    }
+
     /// Un fotograma no entro a la hora `ahora`. Devuelve si ya es un atasco
     /// de los que no se pasan.
     pub fn no_entro(&mut self, ahora: i64) -> bool {
@@ -80,6 +89,16 @@ mod pruebas {
         // Caso negativo: con que entre uno, se vuelve a contar de cero.
         a.entro();
         assert!(!a.no_entro(ATASCO * 3));
+    }
+
+    #[test]
+    fn una_pausa_larga_no_parece_un_atasco() {
+        let mut a = Atasco::default();
+        // Uno no entro y luego se pauso diez minutos.
+        assert!(!a.no_entro(0));
+        a.reiniciar();
+        // Caso negativo: el primero que no entra al seguir no es un atasco.
+        assert!(!a.no_entro(600 * crate::reloj::UNIDADES_POR_SEGUNDO));
     }
 
     #[test]

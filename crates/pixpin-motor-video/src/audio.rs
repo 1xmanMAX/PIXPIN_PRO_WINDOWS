@@ -120,6 +120,39 @@ impl FuenteAudio for CopiaMono {
     }
 }
 
+/// **La pista de sonido nunca va hacia atras**: lo que ya se escribio no se
+/// vuelve a escribir. Si el motor de audio entrega un bloque que pisa el
+/// anterior (un reinicio de su dispositivo, un bloque repetido), el MP4
+/// tendria dos muestras en el mismo instante y hay escritores que lo
+/// rechazan y reproductores que se atascan. Se recorta lo que pisa; un
+/// hueco (se salto sonido) se deja como esta: lo rellena el reproductor.
+/// Lo mismo que hace `windows-capture` al fechar el sonido con su propia
+/// cuenta en vez de la hora que le dan (`VideoEncoder::send_audio_buffer`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Pista {
+    /// Donde acaba lo escrito, en muestras por canal.
+    fin: u64,
+}
+
+impl Pista {
+    /// Para un bloque de `marcos` muestras por canal que dice empezar en
+    /// `posicion`: cuantos marcos del principio hay que saltar y donde
+    /// empieza lo que queda, o `None` si ya estaba todo escrito.
+    pub fn admitir(&mut self, posicion: u64, marcos: u64) -> Option<(u64, u64)> {
+        let fin = posicion.saturating_add(marcos);
+        if marcos == 0 || fin <= self.fin {
+            return None;
+        }
+        let salto = self.fin.saturating_sub(posicion);
+        self.fin = fin;
+        Some((salto, posicion + salto))
+    }
+
+    pub fn fin(&self) -> u64 {
+        self.fin
+    }
+}
+
 /// **Un bloque intercalado pasado a mono** (la media de los canales), para
 /// el camino por la CPU, cuyo codificador solo lleva un canal. Mono ya,
 /// tal cual.
@@ -141,6 +174,22 @@ pub fn a_mono(intercaladas: &[i16], canales: u16) -> Vec<i16> {
 mod pruebas {
     use super::*;
     use std::sync::mpsc::channel;
+
+    #[test]
+    fn la_pista_de_sonido_no_se_pisa() {
+        let mut p = Pista::default();
+        assert_eq!(p.admitir(0, 480), Some((0, 0)));
+        assert_eq!(p.admitir(480, 480), Some((0, 480)));
+        // Un bloque que vuelve 100 muestras atras: se recortan esas.
+        assert_eq!(p.admitir(860, 480), Some((100, 960)));
+        assert_eq!(p.fin(), 1340);
+        // Un hueco se deja como esta.
+        assert_eq!(p.admitir(2000, 10), Some((0, 2000)));
+        // Caso negativo: un bloque repetido entero, o vacio, no entra.
+        assert_eq!(p.admitir(2000, 10), None);
+        assert_eq!(p.admitir(5000, 0), None);
+        assert_eq!(p.fin(), 2010);
+    }
 
     #[test]
     fn solo_valen_los_formatos_del_aac() {

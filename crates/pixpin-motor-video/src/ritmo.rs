@@ -83,6 +83,49 @@ pub fn espera(ahora: i64, inicio: i64, ultimo: Option<i64>, hay_nuevo: bool, min
     (hasta - ahora).max(0)
 }
 
+/// **Si un fotograma de verdad ocupa el sitio del repetido que aun espera.**
+///
+/// El motor da cada fotograma al codificador cuando llega el siguiente (un
+/// fotograma de retraso, para saber su duracion). Si lo que espera es un
+/// repetido (el latido) y la pantalla cambia justo detras —el fotograma se
+/// capturo antes del latido pero Windows lo entrego despues—, el de verdad
+/// caeria pegado al repetido y el video tendria un fotograma de un
+/// milisegundo. Cap lo midio (`recording/src/output_pipeline/frame_pacing.rs`:
+/// 16 de 262 fotogramas de 11 µs) y lo arreglo no fechando el repetido donde
+/// cae uno tarde. Aqui sale mas facil: el repetido aun no se ha dado, asi
+/// que se tira y el de verdad va en su instante.
+///
+/// `t_pendiente` es el instante del que espera, `t_nuevo` el del que llega,
+/// y `minimo` lo minimo entre dos fotogramas del perfil.
+pub fn ocupa_el_sitio_del_repetido(
+    pendiente_es_repetido: bool,
+    t_pendiente: i64,
+    t_nuevo: i64,
+    minimo: i64,
+) -> bool {
+    pendiente_es_repetido && t_nuevo >= t_pendiente && t_nuevo - t_pendiente < minimo
+}
+
+/// Una region cambiada de un fotograma, en pixeles: `(x, y, ancho, alto)`.
+pub type Region = (i32, i32, i32, i32);
+
+/// **Si un fotograma trae algo nuevo** segun las regiones cambiadas que
+/// dice Windows (Windows 11 24H2, `DirtyRegionMode::ReportOnly`). Sin
+/// ninguna dentro de la imagen, es igual que el anterior y no hace falta
+/// codificarlo (el latido ya lo repite). Las que se salen de la superficie
+/// no cuentan: pasa justo al cambiar de tamano (los mismos recortes que
+/// hace `Win32CaptureSample`, `SimpleCapture::OnFrameArrived`).
+pub fn trae_cambios(regiones: &[Region], (ancho, alto): (u32, u32)) -> bool {
+    let (w, h) = (
+        ancho.min(i32::MAX as u32) as i32,
+        alto.min(i32::MAX as u32) as i32,
+    );
+    regiones.iter().any(|&(x, y, rw, rh)| {
+        let (derecha, abajo) = (x.saturating_add(rw), y.saturating_add(rh));
+        rw > 0 && rh > 0 && x < w && y < h && derecha > 0 && abajo > 0
+    })
+}
+
 /// **Fotogramas por segundo de verdad**, para ensenarlos: los escritos en
 /// la ultima ventana de un segundo.
 #[derive(Debug, Clone, Default)]
@@ -174,6 +217,36 @@ mod pruebas {
         // Caso negativo: nunca negativa, aunque ya toque.
         assert_eq!(espera(10 * S, 0, Some(0), false, m), 0);
         assert_eq!(espera(10 * S, 0, None, true, m), 0);
+    }
+
+    #[test]
+    fn el_fotograma_que_llega_pegado_al_latido_ocupa_su_sitio() {
+        let m = minimo_entre(15);
+        // El latido espera en 1 s y la pantalla cambia 3 ms despues.
+        assert!(ocupa_el_sitio_del_repetido(true, S, S + 3 * MS, m));
+        // Caso negativo: si lo que espera es de verdad, no se toca.
+        assert!(!ocupa_el_sitio_del_repetido(false, S, S + 3 * MS, m));
+        // Ni si llega con su hueco normal.
+        assert!(!ocupa_el_sitio_del_repetido(true, S, S + m, m));
+        // Ni uno que diga ir antes (no puede pasar: el reloj no va atras).
+        assert!(!ocupa_el_sitio_del_repetido(true, S, S - MS, m));
+    }
+
+    #[test]
+    fn sin_regiones_cambiadas_dentro_no_hay_nada_nuevo() {
+        assert!(trae_cambios(&[(10, 10, 4, 16)], (1920, 1080)));
+        // Una que asoma por la esquina tambien cuenta.
+        assert!(trae_cambios(&[(-5, -5, 10, 10)], (1920, 1080)));
+        // Caso negativo: ninguna, vacias o fuera de la superficie.
+        assert!(!trae_cambios(&[], (1920, 1080)));
+        assert!(!trae_cambios(&[(0, 0, 0, 10)], (1920, 1080)));
+        assert!(!trae_cambios(&[(1920, 0, 10, 10)], (1920, 1080)));
+        assert!(!trae_cambios(&[(-50, 0, 10, 10)], (1920, 1080)));
+        // Sin desbordar con numeros locos.
+        assert!(trae_cambios(
+            &[(i32::MAX - 1, 0, i32::MAX, 5), (0, 0, 1, 1)],
+            (8, 8)
+        ));
     }
 
     #[test]

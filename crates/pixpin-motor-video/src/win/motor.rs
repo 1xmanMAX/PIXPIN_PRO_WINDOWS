@@ -3,41 +3,54 @@
 //! los avisos de fotograma nuevo, la pausa y el final.
 //!
 //! Por que un solo hilo: el contexto inmediato de Direct3D y el escritor de
-//! Media Foundation se usan siempre desde el mismo sitio, sin cerrojos
-//! propios, y el orden entre el sonido y los fotogramas es el de llegada.
-//! Los codificadores de la grafica son asincronos y Media Foundation los
-//! mueve en sus hilos sobre el mismo dispositivo: por eso el dispositivo va
-//! protegido para varios hilos (`SetMultithreadProtected`) y el hilo esta
-//! en el apartamento multihilo de COM.
+//! Media Foundation se usan siempre desde el mismo sitio, y el orden entre
+//! el sonido y los fotogramas es el de llegada. Los codificadores de la
+//! grafica son asincronos y Media Foundation los mueve en sus hilos sobre
+//! el mismo dispositivo: por eso el dispositivo va protegido para varios
+//! hilos (`SetMultithreadProtected`), cada tanda de trabajo en la GPU va con
+//! su cerrojo (`com::EnLaGpu`) y el hilo esta en el apartamento multihilo
+//! de COM.
 //!
-//! Lo que hace en cada vuelta: atiende un mensaje (o se despierta a la hora
-//! que dijo el ritmo) y decide si toca un fotograma ([`crate::ritmo`]). El
-//! sonido se escribe siempre; los fotogramas solo si el codificador tiene
-//! sitio.
+//! Lo que decide (el ritmo, el reloj, el atasco, el cierre) es el nucleo
+//! comun ([`crate::nucleo`]); aqui va lo que es de Windows:
+//!
+//! - **la grafica** donde se graba (`grafica::dispositivo_para`: la del
+//!   monitor, nunca una virtual) y la cadena de caminos, con el tope de
+//!   Quick Sync en las Intel antiguas y el reintento mas pequeno;
+//! - **la grafica que se pierde** (TDR, controlador actualizado): se ve por
+//!   el codigo de un fallo o mirando `GetDeviceRemovedReason` una vez por
+//!   segundo, y se vuelve a montar todo en un dispositivo nuevo sin cerrar
+//!   el MP4 ([`Hilo::recuperar`], como `RebuildDevice` de OBS), hasta tres
+//!   veces cada diez minutos (`crate::recuperacion`);
+//! - **el monitor que se desconecta**: se busca otra vez por su nombre cada
+//!   tres segundos y, si no vuelve, el principal (`crate::reapertura`).
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, SyncSender, channel, sync_channel};
-use std::sync::{Arc, OnceLock};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use pixpin_capture::Dispositivo;
 use windows::Win32::Graphics::Direct3D11::ID3D11Multithread;
+use windows::Win32::Graphics::Gdi::HMONITOR;
+use windows::Win32::Media::MediaFoundation::{MFVideoFormat_H264, MFVideoFormat_HEVC};
 use windows::core::Interface;
 
-use super::captura::Captura;
+use super::captura::{Captura, Retenido};
 use super::com::{self, ComDelHilo, arrancar_media_foundation};
 use super::conversor::Conversor;
-use super::tubo::{Cpu, Escrito, Grafica, Pedido, Software, Tubo};
-use crate::cadena::{self, Capacidades};
-use crate::cola::{Atasco, CAPACIDAD_MENSAJES};
+use super::grafica;
+use super::tubo::{Cpu, EnLaGrafica, Grafica, Pedido, Software, Tubo};
+use crate::adaptador::Fabricante;
+use crate::cadena::{self, Capacidades, Peculiaridades};
+use crate::cola::CAPACIDAD_MENSAJES;
+use crate::nucleo::{Arranque, Contadores, Nucleo};
 use crate::perfil::{Ajustes, Perfil};
-use crate::reloj::{Reloj, UNIDADES_POR_SEGUNDO};
-use crate::ritmo::{self, Decision, Medidor};
-use crate::{
-    Codificador, ErrorMotor, Estadisticas, Formato, FormatoAudio, Opciones, Resumen, archivo,
-};
+use crate::reapertura::{self, Reintento};
+use crate::recuperacion::Presupuesto;
+use crate::reloj::UNIDADES_POR_SEGUNDO;
+use crate::{Camino, ErrorMotor, Estadisticas, Fuente, Opciones, Resumen, archivo, geometria};
 
 /// Lo que se le dice al hilo del motor.
 pub(crate) enum Mensaje {
@@ -55,24 +68,6 @@ pub(crate) enum Mensaje {
     },
     Terminar,
     Tirar,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Arranque {
-    codificador: Codificador,
-    formato: Formato,
-    medidas: (u32, u32),
-}
-
-/// Lo que el hilo cuenta y cualquiera puede leer sin pararlo.
-#[derive(Default)]
-struct Contadores {
-    fotogramas: AtomicU64,
-    caidos: AtomicU64,
-    bytes: AtomicU64,
-    fps: AtomicU32,
-    cortado: AtomicBool,
-    arranque: OnceLock<Arranque>,
 }
 
 /// **Un video grabandose.** Se crea con [`MotorVideo::empezar`] y se cierra
@@ -154,22 +149,7 @@ impl MotorVideo {
 
     /// Como va.
     pub fn estado(&self) -> Estadisticas {
-        let c = &self.contadores;
-        let a = c.arranque.get().copied().unwrap_or(Arranque {
-            codificador: Codificador::Cpu,
-            formato: Formato::H264,
-            medidas: (0, 0),
-        });
-        Estadisticas {
-            fps: f32::from_bits(c.fps.load(Ordering::Relaxed)),
-            fotogramas: c.fotogramas.load(Ordering::Relaxed),
-            caidos: c.caidos.load(Ordering::Relaxed),
-            bytes: c.bytes.load(Ordering::Relaxed),
-            codificador: a.codificador,
-            formato: a.formato,
-            medidas: a.medidas,
-            cortado: c.cortado.load(Ordering::Acquire),
-        }
+        self.contadores.estadisticas()
     }
 
     /// **Cierra el MP4** (el ultimo fotograma, el indice, el nombre bueno)
@@ -204,7 +184,7 @@ fn hilo(
     // El primero en crearse y el ultimo en soltarse.
     let _com = ComDelHilo::nuevo();
     arrancar_media_foundation();
-    match Hilo::preparar(&opciones, &destino, tx, contadores) {
+    match Hilo::preparar(opciones, &destino, tx, contadores) {
         Ok(h) => {
             let _ = listo.send(Ok(()));
             h.correr(&rx)
@@ -228,6 +208,26 @@ fn proteger(d: &Dispositivo) {
     }
 }
 
+/// Una captura que no hay (se perdio y aun no se pudo volver a abrir): el
+/// nucleo sigue repitiendo la ultima imagen con ella.
+struct Ninguna;
+
+impl crate::plataforma::Captura for Ninguna {
+    type Retenido = Retenido;
+
+    fn hora_retenida(&self) -> Option<i64> {
+        None
+    }
+
+    fn tomar(&self) -> Option<Retenido> {
+        None
+    }
+
+    fn cerrada(&self) -> bool {
+        true
+    }
+}
+
 /// Lo que vive en el hilo del motor. Los campos se sueltan en el orden en
 /// que estan: la captura (que no llegue nada mas), el tubo (codificador y
 /// fichero) y el dispositivo.
@@ -236,15 +236,15 @@ struct Hilo {
     tubo: Option<Tubo>,
     disp: Dispositivo,
     contadores: Arc<Contadores>,
-    audio: Option<FormatoAudio>,
-    reloj: Reloj,
-    inicio: i64,
-    minimo: i64,
-    duracion: i64,
-    ultimo_intento: Option<i64>,
-    medidor: Medidor,
-    atasco: Atasco,
-    caidos: u64,
+    nucleo: Nucleo,
+    opciones: Opciones,
+    /// Lo que se graba ahora (un monitor puede cambiar al reabrirse).
+    fuente: Fuente,
+    nombre_monitor: String,
+    despertar: SyncSender<Mensaje>,
+    reapertura: Reintento,
+    presupuesto: Presupuesto,
+    vueltas: u32,
     cortado: Option<String>,
     avisada_cerrada: bool,
     proximo_recuento: i64,
@@ -252,20 +252,20 @@ struct Hilo {
 
 impl Hilo {
     fn preparar(
-        opciones: &Opciones,
+        opciones: Opciones,
         destino: &std::path::Path,
         tx: SyncSender<Mensaje>,
         contadores: Arc<Contadores>,
     ) -> Result<Hilo, ErrorMotor> {
-        let disp = Dispositivo::nuevo().map_err(|e| ErrorMotor::Fuente(e.to_string()))?;
+        let disp = grafica::dispositivo_para(opciones.fuente)?;
         proteger(&disp);
         let ajustes = opciones.perfil.ajustes();
         let captura = Captura::abrir(
             &disp,
             opciones.fuente,
             opciones.con_cursor,
-            ritmo::minimo_entre(ajustes.por_segundo),
-            tx,
+            crate::ritmo::minimo_entre(ajustes.por_segundo),
+            tx.clone(),
         )?;
         let (cw, ch) = captura.tamano();
         let medidas = opciones.perfil.medidas(cw, ch);
@@ -287,16 +287,38 @@ impl Hilo {
             None
         };
         let con_gpu = conv.is_some();
+        let id = grafica::identidad(disp.d3d());
+        let h264 = grafica::codificadores_de_hardware(MFVideoFormat_H264);
+        let hevc = if opciones.hevc {
+            grafica::codificadores_de_hardware(MFVideoFormat_HEVC)
+        } else {
+            Vec::new()
+        };
+        for c in &h264 {
+            tracing::info!(nombre = %c.nombre, fabricante = ?c.fabricante, "codificador H.264 de hardware");
+        }
+        // Solo vale darle las texturas a un codificador de la misma grafica
+        // (lo que no se sabe, se da por bueno: lo comprueba el escritor).
+        let de_la_grafica = id.map(|i| Fabricante::de_id(i.fabricante));
         let caps = Capacidades {
             conversor_gpu: con_gpu,
-            h264_hardware: con_gpu && super::hay_h264_por_hardware(),
-            hevc_hardware: con_gpu && opciones.hevc && super::hay_hevc_por_hardware(),
+            h264_hardware: con_gpu && !h264.is_empty(),
+            hevc_hardware: con_gpu && !hevc.is_empty(),
+            hardware_en_la_grafica: de_la_grafica.is_none_or(|f| {
+                h264.iter()
+                    .chain(hevc.iter())
+                    .any(|c| c.fabricante.is_none_or(|x| x == f))
+            }),
         };
+        let pec = id
+            .map(|i| cadena::peculiaridades(i.fabricante, i.dispositivo))
+            .unwrap_or_default();
         let tubo = elegir(
             &disp,
             conv,
             caps,
-            opciones,
+            pec,
+            &opciones,
             destino,
             medidas,
             ajustes,
@@ -311,9 +333,9 @@ impl Hilo {
             formato: tubo.formato(),
             medidas: tubo.medidas(),
         };
-        let _ = contadores.arranque.set(arranque);
+        contadores.arrancar(arranque);
         tracing::info!(
-            codificador = arranque.codificador.clave(),
+            camino = tubo.camino().clave(),
             formato = ?arranque.formato,
             ancho = arranque.medidas.0,
             alto = arranque.medidas.1,
@@ -324,20 +346,23 @@ impl Hilo {
             "motor de video en marcha"
         );
         let ahora = com::ahora();
+        let nombre_monitor = match opciones.fuente {
+            Fuente::Monitor(h) => grafica::nombre_del_monitor(HMONITOR(h as *mut _)),
+            Fuente::Ventana(_) => String::new(),
+        };
         Ok(Hilo {
             captura: Some(captura),
             tubo: Some(tubo),
             disp,
             contadores,
-            audio: opciones.audio,
-            reloj: Reloj::nuevo(opciones.audio.map(|a| a.muestreo), ahora),
-            inicio: ahora,
-            minimo: ritmo::minimo_entre(por_segundo),
-            duracion: UNIDADES_POR_SEGUNDO / i64::from(por_segundo.max(1)),
-            ultimo_intento: None,
-            medidor: Medidor::default(),
-            atasco: Atasco::default(),
-            caidos: 0,
+            nucleo: Nucleo::nuevo(opciones.audio, por_segundo, ahora),
+            opciones,
+            fuente: opciones.fuente,
+            nombre_monitor,
+            despertar: tx,
+            reapertura: Reintento::default(),
+            presupuesto: Presupuesto::default(),
+            vueltas: 0,
             cortado: None,
             avisada_cerrada: false,
             proximo_recuento: ahora + UNIDADES_POR_SEGUNDO,
@@ -350,33 +375,31 @@ impl Hilo {
             let hay = self
                 .captura
                 .as_ref()
-                .is_some_and(|c| c.hora_retenida().is_some());
-            // Entre 1 y 250 ms: lo que diga el ritmo, con un techo para que
-            // los contadores se refresquen aunque no pase nada.
-            let espera = if self.reloj.en_pausa() {
-                // En pausa no hay nada que decidir: se espera a un mensaje.
-                UNIDADES_POR_SEGUNDO / 4
-            } else {
-                ritmo::espera(ahora, self.inicio, self.ultimo_intento, hay, self.minimo)
-                    .clamp(10_000, UNIDADES_POR_SEGUNDO / 4)
-            };
+                .is_some_and(|c| crate::plataforma::Captura::hora_retenida(c).is_some());
+            let espera = self.nucleo.espera(ahora, hay);
             match rx.recv_timeout(Duration::from_micros((espera / 10) as u64)) {
                 Ok(Mensaje::Audio { muestras, posicion }) => {
-                    if let Err(e) = self.audio(&muestras, posicion) {
-                        self.cortar(e);
+                    if let Err(e) = self.audio(&muestras, posicion)
+                        && !self.tratar(e)
+                    {
                         break true;
                     }
                 }
                 Ok(Mensaje::Fotograma) | Err(RecvTimeoutError::Timeout) => {}
-                Ok(Mensaje::Pausa { pausar, hora }) => self.pausa(pausar, hora),
+                Ok(Mensaje::Pausa { pausar, hora }) => {
+                    self.nucleo.pausa(self.captura.as_ref(), pausar, hora)
+                }
                 Ok(Mensaje::Terminar) => break true,
                 Ok(Mensaje::Tirar) | Err(RecvTimeoutError::Disconnected) => break false,
             }
-            if let Err(e) = self.paso() {
-                self.cortar(e);
+            if let Err(e) = self.paso()
+                && !self.tratar(e)
+            {
                 break true;
             }
-            self.recontar();
+            if !self.recontar() {
+                break true;
+            }
         };
         if terminar {
             self.cerrar()
@@ -390,140 +413,191 @@ impl Hilo {
     }
 
     fn audio(&mut self, muestras: &[i16], posicion: u64) -> Result<(), ErrorMotor> {
-        let Some(formato) = self.audio else {
+        let Some(tubo) = self.tubo.as_mut() else {
             return Ok(());
         };
-        if let Some(t) = self.tubo.as_mut() {
-            t.audio(muestras, posicion)?;
-        }
-        self.reloj
-            .sonido(posicion + formato.por_canal(muestras.len()), com::ahora());
-        Ok(())
+        let mut t = EnLaGrafica {
+            tubo,
+            disp: &self.disp,
+        };
+        self.nucleo.audio(&mut t, muestras, posicion, com::ahora())
     }
 
-    fn pausa(&mut self, pausar: bool, hora: i64) {
-        if pausar {
-            self.reloj.pausar(hora);
-            if let Some(r) = self.captura.as_ref().and_then(Captura::tomar) {
-                r.soltar();
-            }
-        } else {
-            self.reloj.seguir(hora);
-        }
-    }
-
-    /// **Un paso del video**: si toca, un fotograma nuevo o el repetido.
+    /// **Un paso del video**: la fuente que se fue, y lo que diga el nucleo.
     fn paso(&mut self) -> Result<(), ErrorMotor> {
         let ahora = com::ahora();
-        let Some(captura) = self.captura.as_ref() else {
+        let sin_fuente = self
+            .captura
+            .as_ref()
+            .is_none_or(crate::plataforma::Captura::cerrada);
+        if sin_fuente {
+            if !self.avisada_cerrada {
+                self.avisada_cerrada = true;
+                tracing::info!("la fuente del video se fue; el video sigue con su ultima imagen");
+            }
+            self.reabrir(ahora);
+        }
+        let Some(tubo) = self.tubo.as_mut() else {
             return Ok(());
         };
-        if captura.cerrada() && !self.avisada_cerrada {
-            self.avisada_cerrada = true;
-            tracing::info!("la ventana grabada se cerro; el video sigue con su ultima imagen");
-        }
-        if self.reloj.en_pausa() {
-            if let Some(r) = captura.tomar() {
-                r.soltar();
-            }
-            return Ok(());
-        }
-        let hora = captura.hora_retenida();
-        let escrito = match ritmo::decidir(
-            ahora,
-            self.inicio,
-            self.ultimo_intento,
-            hora.is_some(),
-            self.minimo,
-        ) {
-            Decision::Esperar => return Ok(()),
-            Decision::Nuevo => {
-                self.ultimo_intento = Some(ahora);
-                // Si el reloj aun no lo puede fechar (esperando al sonido
-                // tras una pausa) se queda retenido: es la imagen mas nueva
-                // y no se puede perder.
-                let Some(t) = hora.and_then(|h| self.reloj.fotograma(h)) else {
-                    return Ok(());
-                };
-                let Some(r) = captura.tomar() else {
-                    return Ok(());
-                };
-                let Some(tubo) = self.tubo.as_mut() else {
-                    r.soltar();
-                    return Ok(());
-                };
-                let hecho = match r.textura() {
-                    Ok(tex) => tubo.fotograma(&self.disp, &tex, r.contenido, t, self.duracion),
-                    // Un fotograma sin textura (raro: la superficie de un
-                    // pool recien recreado) se salta, no corta el video.
-                    Err(e) => {
-                        tracing::debug!(?e, "un fotograma sin textura");
-                        Ok(Escrito::Caido)
-                    }
-                };
-                // La GPU ya tiene en su cola todo lo que lo lee: se suelta.
-                r.soltar();
-                hecho?
-            }
-            Decision::Repetir => {
-                self.ultimo_intento = Some(ahora);
-                let Some(t) = self.reloj.fotograma(ahora) else {
-                    return Ok(());
-                };
-                let Some(tubo) = self.tubo.as_mut() else {
-                    return Ok(());
-                };
-                tubo.repetir(t, self.duracion)?
-            }
+        let mut t = EnLaGrafica {
+            tubo,
+            disp: &self.disp,
         };
-        self.contar(escrito, ahora)
-    }
-
-    fn contar(&mut self, e: Escrito, ahora: i64) -> Result<(), ErrorMotor> {
-        match e {
-            Escrito::Hecho => {
-                self.atasco.entro();
-                self.medidor.uno(ahora);
-                if let Some(t) = &self.tubo {
-                    self.contadores
-                        .fotogramas
-                        .store(t.escritos(), Ordering::Relaxed);
-                }
-            }
-            Escrito::Caido => {
-                self.caidos += 1;
-                self.contadores.caidos.store(self.caidos, Ordering::Relaxed);
-                if self.atasco.no_entro(ahora) {
-                    return Err(ErrorMotor::SinCodificador(
-                        "el codificador dejo de aceptar fotogramas".into(),
-                    ));
-                }
-            }
-        }
+        match &self.captura {
+            Some(c) => self.nucleo.paso(ahora, c, &mut t, &self.contadores)?,
+            None => self
+                .nucleo
+                .paso(ahora, &Ninguna, &mut t, &self.contadores)?,
+        };
         Ok(())
     }
 
-    /// Lo que ocupa el fichero y el ritmo, una vez por segundo.
-    fn recontar(&mut self) {
+    /// **Vuelve a abrir la fuente** si se puede: un monitor que se
+    /// desconecto (por su nombre, o el principal), o la captura que no se
+    /// pudo abrir tras una vuelta de la grafica. Una ventana cerrada no
+    /// vuelve.
+    fn reabrir(&mut self, ahora: i64) {
+        if matches!(self.fuente, Fuente::Ventana(_)) && self.captura.is_some() {
+            return;
+        }
+        if !self.reapertura.toca(ahora) {
+            return;
+        }
+        let fuente = match self.fuente {
+            Fuente::Monitor(_) => Fuente::Monitor(reapertura::elegir_monitor(
+                &self.nombre_monitor,
+                &grafica::monitores(),
+                grafica::principal().0 as isize,
+            )),
+            v => v,
+        };
+        // La vieja fuera antes de abrir la nueva: su manejador ya no tiene
+        // nada que dar.
+        self.captura = None;
+        match self.abrir_captura(fuente) {
+            Ok(c) => {
+                tracing::info!(?fuente, "la fuente del video volvio");
+                if let Fuente::Monitor(h) = fuente {
+                    self.nombre_monitor = grafica::nombre_del_monitor(HMONITOR(h as *mut _));
+                }
+                self.captura = Some(c);
+                self.fuente = fuente;
+                self.reapertura.olvidar();
+                self.avisada_cerrada = false;
+            }
+            Err(e) => tracing::debug!(?e, "la fuente del video aun no vuelve"),
+        }
+    }
+
+    fn abrir_captura(&self, fuente: Fuente) -> Result<Captura, ErrorMotor> {
+        Captura::abrir(
+            &self.disp,
+            fuente,
+            self.opciones.con_cursor,
+            self.nucleo.minimo(),
+            self.despertar.clone(),
+        )
+    }
+
+    /// **Que hacer con un fallo**: si es la grafica que se fue, volver a
+    /// montarlo todo; si no (o si no se pudo), cortar el video y guardar lo
+    /// que habia. Devuelve si se sigue grabando.
+    fn tratar(&mut self, e: ErrorMotor) -> bool {
+        let perdida = e.es_perdida_de_la_grafica() || grafica::perdido(self.disp.d3d()).is_some();
+        if !perdida {
+            self.cortar(e);
+            return false;
+        }
+        match self.recuperar(&e) {
+            Ok(()) => true,
+            Err(otro) => {
+                self.cortar(otro);
+                false
+            }
+        }
+    }
+
+    /// **La grafica se perdio**: un dispositivo nuevo (en la grafica de la
+    /// fuente, como al empezar), lo de la GPU del tubo otra vez encima de el
+    /// sin cerrar el MP4, y la captura otra vez. Como OBS
+    /// (`gs_device::RebuildDevice` y `winrt_capture_device_loss_rebuild`).
+    fn recuperar(&mut self, motivo: &ErrorMotor) -> Result<(), ErrorMotor> {
+        let ahora = com::ahora();
+        if !self.presupuesto.intentar(ahora) {
+            return Err(ErrorMotor::SinCodificador(format!(
+                "la grafica se perdio demasiadas veces: {motivo}"
+            )));
+        }
+        tracing::warn!(
+            %motivo,
+            razon = ?grafica::perdido(self.disp.d3d()),
+            vuelta = self.presupuesto.usadas(),
+            "se perdio la grafica; se vuelve a montar sin cerrar el video"
+        );
+        self.captura = None;
+        let nuevo = grafica::dispositivo_para(self.fuente)?;
+        proteger(&nuevo);
+        let Some(tubo) = self.tubo.as_mut() else {
+            return Err(ErrorMotor::HiloCaido);
+        };
+        if tubo.camino() == Camino::Grafica {
+            // El codificador de la grafica sigue siendo el de la de antes:
+            // solo vale si el dispositivo nuevo es la misma grafica.
+            let ids = |d: &Dispositivo| {
+                grafica::identidad(d.d3d()).map(|i| (i.fabricante, i.dispositivo))
+            };
+            if ids(&nuevo) != ids(&self.disp) {
+                return Err(ErrorMotor::SinCodificador(
+                    "la grafica volvio, pero es otra: su codificador no sirve".into(),
+                ));
+            }
+        }
+        tubo.recrear(&nuevo)?;
+        self.disp = nuevo;
+        match self.abrir_captura(self.fuente) {
+            Ok(c) => self.captura = Some(c),
+            // Sin captura el video sigue con la ultima imagen y se
+            // reintenta cada tres segundos (`reabrir`).
+            Err(e) => tracing::warn!(?e, "la captura no volvio con la grafica"),
+        }
+        self.nucleo.tras_una_vuelta();
+        self.vueltas += 1;
+        self.contadores.vuelta();
+        tracing::info!(vueltas = self.vueltas, "la grafica volvio y el video sigue");
+        Ok(())
+    }
+
+    /// Lo que ocupa el fichero, el ritmo y si la grafica sigue ahi, una vez
+    /// por segundo. Devuelve si se sigue grabando.
+    fn recontar(&mut self) -> bool {
         let ahora = com::ahora();
         if ahora < self.proximo_recuento {
-            return;
+            return true;
         }
         self.proximo_recuento = ahora + UNIDADES_POR_SEGUNDO;
         if let Some(t) = &self.tubo {
-            self.contadores
-                .bytes
-                .store(archivo::bytes(t.parcial()), Ordering::Relaxed);
+            self.contadores.bytes(archivo::bytes(t.parcial()));
         }
-        let fps = self.medidor.por_segundo(ahora);
-        self.contadores.fps.store(fps.to_bits(), Ordering::Relaxed);
+        self.nucleo.recontar(ahora, &self.contadores);
+        // Una grafica perdida no siempre da error: la captura deja de dar
+        // fotogramas y el repetido se copia en una GPU que ya no esta.
+        if let Some(codigo) = grafica::perdido(self.disp.d3d()) {
+            let e = ErrorMotor::Sistema {
+                paso: "mirar si la grafica sigue ahi",
+                detalle: format!("GetDeviceRemovedReason = 0x{:08X}", codigo as u32),
+                codigo,
+            };
+            return self.tratar(e);
+        }
+        true
     }
 
     /// El video se corta a mitad: se guarda lo que habia.
     fn cortar(&mut self, e: ErrorMotor) {
         tracing::warn!(?e, "el video se corto; se guarda lo grabado");
         self.cortado = Some(e.to_string());
-        self.contadores.cortado.store(true, Ordering::Release);
+        self.contadores.cortar();
     }
 
     /// **Cierra el MP4**: para la captura, pone el ultimo fotograma donde
@@ -533,38 +607,42 @@ impl Hilo {
         self.captura = None;
         let ahora = com::ahora();
         let mut tubo = self.tubo.take().ok_or(ErrorMotor::HiloCaido)?;
-        let fin = self.reloj.final_(ahora);
-        if tubo.escritos() == 0 {
-            // Ni un fotograma (una grabacion de medio segundo, una pantalla
-            // que nunca dio imagen): uno negro que lo cubra todo, para que
-            // el MP4 valga.
-            let _ = tubo.repetir(0, fin.max(self.duracion));
-        }
-        if let Err(e) = tubo.vaciar(fin, self.duracion) {
-            tracing::warn!(?e, "el ultimo fotograma del video no entro");
-        }
+        let fin = {
+            let mut t = EnLaGrafica {
+                tubo: &mut tubo,
+                disp: &self.disp,
+            };
+            self.nucleo.cerrar(&mut t, ahora)
+        };
         let (codificador, formato, medidas) = (tubo.codificador(), tubo.formato(), tubo.medidas());
         let fotogramas = tubo.escritos();
-        let (ruta, fragmentado) = tubo.terminar()?;
-        let bytes = archivo::bytes(&ruta);
+        let cerrado = tubo.terminar()?;
+        if let Some(f) = cerrado.fallo {
+            self.cortado
+                .get_or_insert_with(|| format!("el cierre del MP4 fallo: {f}"));
+        }
+        let bytes = archivo::bytes(&cerrado.ruta);
+        let caidos = self.nucleo.caidos();
         tracing::info!(
             fotogramas,
-            caidos = self.caidos,
+            caidos,
             bytes,
+            vueltas = self.vueltas,
             segundos = fin / UNIDADES_POR_SEGUNDO,
             "video cerrado"
         );
         Ok(Resumen {
-            ruta,
+            ruta: cerrado.ruta,
             duracion_ms: (fin.max(0) / 10_000) as u64,
             fotogramas,
-            caidos: self.caidos,
+            caidos,
             bytes,
             codificador,
             formato,
             medidas,
-            fragmentado,
+            fragmentado: cerrado.fragmentado,
             cortado: self.cortado.take(),
+            vueltas: self.vueltas,
         })
     }
 }
@@ -579,12 +657,16 @@ fn cpu_ajustes(pedido: Ajustes) -> Ajustes {
     }
 }
 
-/// **Recorre la cadena de caidas** hasta que un camino arranca.
+/// **Recorre la cadena de caidas** hasta que un camino arranca. Los de la
+/// grafica van con el tope de su codificador (`peculiaridades`) y, si no
+/// arrancan a mas de 1080p por algo que no sea que no hay codificador, se
+/// reintentan mas pequenos antes de bajar de camino.
 #[allow(clippy::too_many_arguments)]
 fn elegir(
     disp: &Dispositivo,
     mut conv: Option<Conversor>,
     caps: Capacidades,
+    pec: Peculiaridades,
     opciones: &Opciones,
     destino: &std::path::Path,
     medidas: (u32, u32),
@@ -592,37 +674,79 @@ fn elegir(
     fuente: (u32, u32),
 ) -> Result<Tubo, ErrorMotor> {
     let mut motivos = Vec::new();
-    for (codificador, formato) in cadena::intentos(caps, opciones.hevc) {
-        let pedido = Pedido {
-            destino,
-            formato,
-            medidas,
-            ajustes,
-            audio: opciones.audio,
-            fragmentado: opciones.fragmentado,
-        };
-        let hecho = match codificador {
-            Codificador::Hardware | Codificador::Software => {
-                let Some(c) = conv.take() else {
+    let minimo = crate::ritmo::minimo_entre(ajustes.por_segundo);
+    let pedido = |formato, medidas| Pedido {
+        destino,
+        formato,
+        medidas,
+        ajustes,
+        audio: opciones.audio,
+        fragmentado: opciones.fragmentado,
+        minimo,
+    };
+    let con_tope = match pec.tope {
+        Some(t) => geometria::medida_de_salida(medidas.0, medidas.1, Some(t)),
+        None => medidas,
+    };
+    for (camino, formato) in cadena::intentos(caps, opciones.hevc) {
+        let hecho = match camino {
+            Camino::Grafica | Camino::GraficaEnMemoria | Camino::Software => {
+                let Some(mut c) = conv.take() else {
                     continue;
                 };
-                let abierto = if codificador == Codificador::Hardware {
-                    Grafica::abrir(disp, c, &pedido).map(Tubo::Grafica)
+                let mut tam = if camino == Camino::Software {
+                    medidas
                 } else {
-                    Software::abrir(disp, c, &pedido).map(Tubo::Software)
+                    con_tope
                 };
-                abierto.map_err(|devuelto| {
-                    let (c, e) = *devuelto;
-                    conv = Some(c);
-                    e
-                })
+                loop {
+                    if let Err(e) = c.con_salida(tam) {
+                        conv = Some(c);
+                        break Err(e);
+                    }
+                    let p = pedido(formato, tam);
+                    let abierto = match camino {
+                        Camino::Grafica => Grafica::abrir(disp, c, &p).map(Tubo::Grafica),
+                        Camino::GraficaEnMemoria => {
+                            Software::abrir(disp, c, &p, true).map(Tubo::Software)
+                        }
+                        _ => Software::abrir(disp, c, &p, false).map(Tubo::Software),
+                    };
+                    match abierto {
+                        Ok(t) => break Ok(t),
+                        Err(devuelto) => {
+                            let (cc, e) = *devuelto;
+                            c = cc;
+                            let menor = cadena::reintento_mas_pequeno(tam);
+                            let reintentar = camino != Camino::Software
+                                && !matches!(e, ErrorMotor::SinCodificador(_));
+                            match menor {
+                                Some(m) if reintentar => {
+                                    tracing::info!(
+                                        camino = camino.clave(),
+                                        ?tam,
+                                        ?m,
+                                        ?e,
+                                        "la grafica no arranco a ese tamano; se reintenta mas pequeno"
+                                    );
+                                    tam = m;
+                                }
+                                _ => {
+                                    conv = Some(c);
+                                    break Err(e);
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            Codificador::Cpu => {
+            Camino::Cpu => {
                 let a = cpu_ajustes(ajustes);
                 Cpu::abrir(&Pedido {
                     medidas: Perfil::Ligero.medidas(fuente.0, fuente.1),
                     ajustes: a,
-                    ..pedido
+                    minimo: crate::ritmo::minimo_entre(a.por_segundo),
+                    ..pedido(formato, medidas)
                 })
                 .map(Tubo::Cpu)
             }
@@ -631,12 +755,12 @@ fn elegir(
             Ok(t) => return Ok(t),
             Err(e) => {
                 tracing::warn!(
-                    codificador = codificador.clave(),
+                    camino = camino.clave(),
                     ?formato,
                     ?e,
-                    "un codificador no arranco; se prueba el siguiente"
+                    "un camino no arranco; se prueba el siguiente"
                 );
-                motivos.push(format!("{}: {e}", codificador.clave()));
+                motivos.push(format!("{}: {e}", camino.clave()));
             }
         }
     }

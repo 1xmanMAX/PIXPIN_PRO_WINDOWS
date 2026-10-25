@@ -31,22 +31,34 @@
 //! - **Colas con tope** en todas partes: si el codificador se atrasa se
 //!   saltan fotogramas, nunca sonido, y la memoria no crece.
 //!
+//! - **Si algo sale mal, sigue**: la grafica que se pierde se vuelve a
+//!   montar sin cerrar el MP4 ([`recuperacion`]), el monitor que se
+//!   desconecta se vuelve a buscar ([`reapertura`]), y se graba en la
+//!   grafica del monitor, nunca en una virtual ([`adaptador`]).
+//!
 //! Las cuentas (perfiles, tiempos, ritmo, encaje, colas, caidas, el fichero
-//! a medias) son puras y se prueban en cualquier maquina; lo que habla con
-//! Windows va en `win/` y solo se compila alli. Fuera de Windows,
-//! [`MotorVideo::empezar`] dice que no esta disponible.
+//! a medias) y el nucleo que decide ([`nucleo`], que habla con cada sistema
+//! por los rasgos de [`plataforma`]) son puros y se prueban en cualquier
+//! maquina; lo que habla con Windows va en `win/` y solo se compila alli.
+//! Fuera de Windows, [`MotorVideo::empezar`] dice que no esta disponible
+//! (el diseno de Android esta en `docs/motor-de-video.md`).
 //!
 //! Este crate habla con el sistema operativo. El `unsafe` esta permitido,
 //! pero cada bloque lleva su comentario `// SAFETY:`.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+pub mod adaptador;
 pub mod archivo;
 pub mod audio;
 pub mod cadena;
 pub mod cola;
 pub mod geometria;
 pub mod lienzo;
+pub mod nucleo;
 pub mod perfil;
+pub mod plataforma;
+pub mod reapertura;
+pub mod recuperacion;
 pub mod reloj;
 pub mod ritmo;
 
@@ -56,7 +68,7 @@ mod win;
 use std::path::PathBuf;
 
 pub use audio::{CopiaMono, FormatoAudio, FuenteAudio, Siguiente};
-pub use cadena::{Codificador, Formato};
+pub use cadena::{Camino, Codificador, Formato};
 pub use perfil::Perfil;
 
 #[cfg(windows)]
@@ -142,6 +154,9 @@ pub struct Estadisticas {
     pub medidas: (u32, u32),
     /// El video dejo de grabarse a mitad (se guarda lo que habia).
     pub cortado: bool,
+    /// Veces que la grafica se perdio y se volvio a montar sin parar la
+    /// grabacion (ver `recuperacion`).
+    pub vueltas: u32,
 }
 
 /// Lo que quedo al terminar.
@@ -160,6 +175,8 @@ pub struct Resumen {
     pub fragmentado: bool,
     /// Por que se corto a mitad, si se corto.
     pub cortado: Option<String>,
+    /// Veces que la grafica se perdio y se volvio a montar.
+    pub vueltas: u32,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -173,7 +190,12 @@ pub enum ErrorMotor {
     #[error("ningun codificador de video arranco: {0}")]
     SinCodificador(String),
     #[error("Windows fallo al {paso}: {detalle}")]
-    Sistema { paso: &'static str, detalle: String },
+    Sistema {
+        paso: &'static str,
+        detalle: String,
+        /// El `HRESULT` (cero si no lo hubo).
+        codigo: i32,
+    },
     #[error("no se grabo ningun fotograma")]
     SinFotogramas,
     #[error("no se pudo poner el video en {ruta}: {fuente}")]
@@ -186,6 +208,14 @@ pub enum ErrorMotor {
     HiloCaido,
     #[error("la grabacion del video se tiro")]
     Tirado,
+}
+
+impl ErrorMotor {
+    /// **Si el fallo es que la grafica se fue** (TDR, controlador
+    /// actualizado): entonces se vuelve a montar todo en vez de cortar.
+    pub fn es_perdida_de_la_grafica(&self) -> bool {
+        matches!(self, ErrorMotor::Sistema { codigo, .. } if recuperacion::es_perdida(*codigo))
+    }
 }
 
 /// Fuera de Windows el motor no existe, pero su forma si: quien lo usa
