@@ -1098,6 +1098,59 @@ pub fn abrir(
                         fondo = n;
                         guardar_fondo(ubicacion, n);
                     }
+                    // Proyecto nuevo: se crea, se pone el primero y se abre
+                    // con el nombre ya listo para escribirlo. Nace sin
+                    // nombre a proposito: teclear es mas rapido que borrar
+                    // «Proyecto 3» para poner el de verdad. Compartido, nace
+                    // ya en `compartidos.json` conmigo dentro, y al ponerle
+                    // nombre se abren sus personas para invitar.
+                    Some(Accion::NuevoChat(compartido)) => {
+                        let cuando = pixpin_shell::entorno::ahora_utc_ms();
+                        let mut indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
+                        let ficha = pixpin_proyecto::almacen::Ficha::nueva("", cuando, &identidad);
+                        indice.proyectos.push(ficha.clone());
+                        match indice.guardar(ubicacion.raiz()) {
+                            Ok(()) => {
+                                if let Some(a) = abierto.as_mut() {
+                                    cerrar_panel(ubicacion, a);
+                                    apagar_lienzo(ubicacion, a);
+                                }
+                                if let Some(a) = abierto.take() {
+                                    borradores.insert(a.ficha.id.clone(), a.borrador);
+                                }
+                                let mut invitar = false;
+                                if compartido {
+                                    let chat = chat_de_la_ficha(ubicacion, &ficha.id);
+                                    match crate::sincronizar::compartidos_ui::compartir_chat_nuevo(
+                                        ubicacion.raiz(),
+                                        &chat,
+                                        "",
+                                    ) {
+                                        Ok(()) => invitar = true,
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                ?e,
+                                                "no se pudo compartir el chat nuevo"
+                                            );
+                                            aviso = Some((
+                                                textos.t("cc-nuevo-error"),
+                                                std::time::Instant::now(),
+                                            ));
+                                        }
+                                    }
+                                }
+                                fichas.push(ficha.clone());
+                                orden = filtrar(&fichas, &busqueda);
+                                elegida = Some(fichas.len() - 1);
+                                let mut nuevo = abrir_proyecto(ubicacion, &ficha);
+                                nuevo.empezar_a_renombrar();
+                                nuevo.invitar_al_nombrar = invitar;
+                                abierto = Some(nuevo);
+                                scroll = 0;
+                            }
+                            Err(e) => tracing::warn!(?e, "no se pudo crear el proyecto"),
+                        }
+                    }
                     // «Captura» de la hoja del «+»: la de zona, por el mismo camino
                     // que el atajo general (como el pedido `capturar`). Un poco
                     // despues, para que el menu ya no salga en la foto.
@@ -1574,6 +1627,16 @@ pub fn abrir(
                                     textos,
                                     asistente_nube::eleccion_reciente(&a.raiz),
                                 )),
+                                Zona::Personas => {
+                                    let chat = chat_de_la_ficha(ubicacion, &a.ficha.id);
+                                    crate::sincronizar::compartir_con_personas(
+                                        idioma,
+                                        ubicacion.clone(),
+                                        chat,
+                                        a.ficha.nombre.clone(),
+                                    );
+                                    Efecto::Nada
+                                }
                                 Zona::NuevaConversacion => {
                                     match asistente::nueva_conversacion(ubicacion, a, textos) {
                                         Some(t) => Efecto::Aviso(t),
@@ -2056,27 +2119,13 @@ pub fn abrir(
                         ventana.capturar_raton();
                         hay_que_pintar = true;
                     } else if disposicion.boton_nuevo(escala).contiene(l) {
-                        // Proyecto nuevo: se crea, se pone el primero y se
-                        // abre con el nombre ya listo para escribirlo. Nace
-                        // sin nombre a proposito: teclear es mas rapido que
-                        // borrar «Proyecto 3» para poner el de verdad.
-                        let cuando = pixpin_shell::entorno::ahora_utc_ms();
-                        let mut indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
-                        let ficha = pixpin_proyecto::almacen::Ficha::nueva("", cuando, &identidad);
-                        indice.proyectos.push(ficha.clone());
-                        match indice.guardar(ubicacion.raiz()) {
-                            Ok(()) => {
-                                fichas.push(ficha.clone());
-                                orden = filtrar(&fichas, &busqueda);
-                                elegida = Some(fichas.len() - 1);
-                                let mut nuevo = abrir_proyecto(ubicacion, &ficha);
-                                nuevo.empezar_a_renombrar();
-                                abierto = Some(nuevo);
-                                scroll = 0;
-                            }
-                            Err(e) => tracing::warn!(?e, "no se pudo crear el proyecto"),
-                        }
+                        // Chat nuevo (25-oct-2026, el usuario: «que primero
+                        // salgan dos opciones»): normal o compartido con
+                        // otras personas. Lo elegido lo crea el bucle
+                        // (`Accion::NuevoChat`).
+                        menu = Some(MenuAbierto::nuevo(l, menu_de_chat_nuevo(textos)));
                         buscando = false;
+                        hay_que_pintar = true;
                     } else if disposicion.boton_sincro(escala).contiene(l) {
                         // La pantalla de Sincronizar del movil: tus aparatos,
                         // y desde ella Recibir y Enviar.
@@ -3345,6 +3394,24 @@ pub fn abrir(
                             fichas[i].nombre = a.ficha.nombre.clone();
                             orden = filtrar(&fichas, &busqueda);
                         }
+                        // Recien nacido compartido: ya con nombre, a invitar
+                        // (sus personas: «Anadir», el codigo y el QR).
+                        if std::mem::take(&mut a.invitar_al_nombrar) {
+                            let chat = chat_de_la_ficha(ubicacion, &a.ficha.id);
+                            if let Err(e) = crate::sincronizar::compartidos_ui::nombrar_si_falta(
+                                ubicacion.raiz(),
+                                &chat,
+                                &a.ficha.nombre,
+                            ) {
+                                tracing::warn!(?e, "no se pudo nombrar el chat compartido");
+                            }
+                            crate::sincronizar::compartir_con_personas(
+                                idioma,
+                                ubicacion.clone(),
+                                chat,
+                                a.ficha.nombre.clone(),
+                            );
+                        }
                     }
                     hay_que_pintar = true;
                 }
@@ -4220,6 +4287,7 @@ pub fn abrir(
                     busqueda: &busqueda,
                     buscando,
                     marcados: &marcados,
+                    raiz: ubicacion.raiz(),
                 };
                 let abierto_ref = abierto.as_ref();
                 let pendientes_ref = pendientes.as_ref();
@@ -4875,6 +4943,9 @@ struct Abierto {
     /// proyecto recien creado nace asi: teclear es mas rapido que borrar
     /// un nombre puesto por la aplicacion para poner el de verdad.
     renombrando: bool,
+    /// Nacio como chat compartido (el «+», «Chat compartido»): al terminar
+    /// de escribir su nombre se abren sus personas para invitar.
+    invitar_al_nombrar: bool,
     /// El nombre mientras se escribe: la caja de una linea comun. Cada
     /// cambio se copia a `ficha.nombre`, que es lo que ensena todo lo demas.
     nombre_escrito: redaccion::CajaLinea,
@@ -5044,6 +5115,12 @@ struct Colocado {
     puestos: Vec<pixpin_ui::historial::Puesto>,
     /// De que se compone cada burbuja, ya medido, en el mismo orden.
     piezas: Vec<Piezas>,
+    /// En un chat compartido, de quien es cada burbuja que no es mia (por
+    /// su nombre), en el mismo orden; en uno normal, todo `None`.
+    de_otro: Vec<Option<String>>,
+    /// Con que chats compartidos se coloco (`compartidos_ui::generacion`):
+    /// si alguien entra o sale, se vuelve a colocar.
+    compartidos: u64,
 }
 
 impl Colocado {
@@ -5076,6 +5153,8 @@ struct Lista<'a> {
     buscando: bool,
     /// Los proyectos marcados para borrar, por `id`.
     marcados: &'a std::collections::BTreeSet<String>,
+    /// Donde viven los datos: de ahi sale que chats son compartidos.
+    raiz: &'a std::path::Path,
 }
 
 /// Los colores de los avatares, los mismos siete de Telegram. Cual toca sale
@@ -5099,6 +5178,40 @@ fn iniciales(nombre: &str) -> String {
 pub(crate) fn color_avatar(codigo: &str) -> Color {
     let suma: u32 = codigo.bytes().map(u32::from).sum();
     hex(COLORES_AVATAR[suma as usize % COLORES_AVATAR.len()])
+}
+
+/// El color de una persona en un chat compartido: su nombre encima de sus
+/// burbujas y su circulo (`conversacion::tono`, el mismo en todas partes).
+fn color_de_persona(nombre: &str) -> Color {
+    hex(COLORES_AVATAR[pixpin_ui::conversacion::tono(nombre, COLORES_AVATAR.len())])
+}
+
+/// El verde de la chapa de chat compartido: ni el azul de lo mio ni ningun
+/// color de avatar, para que se distinga sobre cualquiera.
+const VERDE_COMPARTIDO: u32 = 0x2e9e62;
+
+/// **La chapa de chat compartido** (25-oct-2026): un circulito verde con
+/// las dos personas, abajo a la derecha del avatar `avatar` y con un aro del
+/// color de lo de detras (`aro`), como el punto de «en linea» de Telegram.
+/// Un chat normal no la lleva. Devuelve donde quedo.
+fn pintar_chapa_compartido(p: &Pintor, avatar: RectF, aro: Color) -> RectF {
+    let lado = (avatar.ancho * 0.46).max(10.0);
+    let grosor = (lado * 0.12).max(1.0);
+    let caja = RectF {
+        x: avatar.x + avatar.ancho - lado * 0.8,
+        y: avatar.y + avatar.alto - lado * 0.8,
+        ancho: lado,
+        alto: lado,
+    };
+    p.rellenar_redondeado(caja, lado / 2.0, aro);
+    let dentro = encoger(caja, grosor);
+    p.rellenar_redondeado(dentro, dentro.ancho / 2.0, hex(VERDE_COMPARTIDO));
+    p.icono(
+        &mi::GROUP,
+        encoger(dentro, dentro.ancho * 0.14),
+        Color::BLANCO,
+    );
+    caja
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -5469,6 +5582,18 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
                 Color::BLANCO,
             );
         }
+        let compartido =
+            crate::sincronizar::compartidos_ui::personas_del_chat(lista.raiz, &ficha.id);
+        if compartido.is_some() {
+            let aro = if marcada || elegida {
+                tema.fila_elegida
+            } else if lista.sobre == Some(i) {
+                tema.fila_sobre
+            } else {
+                tema.lista
+            };
+            pintar_chapa_compartido(p, a, aro);
+        }
         if partes.ancho_texto == 0 {
             continue;
         }
@@ -5500,9 +5625,45 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
             );
             hueco_nombre -= w + chat::HORA_HUECO as f32 * e;
         }
+        // Compartido: delante del nombre, las dos personas y cuantas son,
+        // como el icono de grupo de Telegram delante del nombre del grupo.
+        let mut x_nombre = partes.nombre.x as f32;
+        if let Some(n) = compartido {
+            let lado = chat::TEXTO_TAM * e;
+            let color = if elegida {
+                tema.texto_elegido
+            } else {
+                hex(VERDE_COMPARTIDO)
+            };
+            p.icono(
+                &mi::GROUP,
+                RectF {
+                    x: x_nombre,
+                    y: partes.nombre.y as f32 + 1.0 * e,
+                    ancho: lado,
+                    alto: lado,
+                },
+                color,
+            );
+            x_nombre += lado + 3.0 * e;
+            if n > 1 {
+                let cuantas = n.to_string();
+                let tam = chat::CONTADOR_TAM * e;
+                let (w, h) = p.medir_texto(&cuantas, tam);
+                p.texto(
+                    &cuantas,
+                    x_nombre,
+                    partes.nombre.y as f32 + (chat::TEXTO_TAM * e - h) / 2.0 + 1.0 * e,
+                    tam,
+                    color,
+                );
+                x_nombre += w + 5.0 * e;
+            }
+            hueco_nombre -= x_nombre - partes.nombre.x as f32;
+        }
         p.texto_linea(
             &ficha.nombre,
-            partes.nombre.x as f32,
+            x_nombre,
             partes.nombre.y as f32,
             chat::TEXTO_TAM * e,
             hueco_nombre.max(0.0),
@@ -5803,12 +5964,14 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // cuando cambia el ancho, no en cada fotograma.
     let ancho_contenido = h::ancho_contenido(area, escala);
     let aguja = a.busqueda.as_deref().unwrap_or_default().to_owned();
+    let generacion = crate::sincronizar::compartidos_ui::generacion(&a.raiz);
     {
         let mut c = a.colocado.borrow_mut();
         if c.ancho != ancho_contenido
             || c.puestos.len() != cuantas_se_ven(a)
             || c.busqueda != aguja
             || c.por_etiqueta != a.por_etiqueta
+            || c.compartidos != generacion
         {
             // Buscando, solo se miden y se colocan las que casan: el movil
             // FILTRA la conversacion («quien busca "factura enero" quiere las
@@ -5838,6 +6001,10 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 entradas.push(entrada);
                 todas.push(piezas);
             }
+            // Un chat compartido es una conversacion de verdad: lo mio a la
+            // derecha, lo de cada otra persona a la izquierda con su nombre
+            // encima de su tanda (25-oct-2026).
+            let de_otro = lados_del_chat_compartido(a, &visibles, &mut entradas, e);
             let (puestos, alto) = h::colocar(area, &entradas, escala);
             a.alto.set(alto);
             *c = Colocado {
@@ -5847,6 +6014,8 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 por_etiqueta: a.por_etiqueta.clone(),
                 puestos,
                 piezas: todas,
+                de_otro,
+                compartidos: generacion,
             };
         }
     }
@@ -5921,6 +6090,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             }
         }
 
+        // El nombre de quien escribe, encima de la primera de su tanda.
+        if let (Some(sitio), Some(Some(quien))) = (puesto.nombre, c.de_otro.get(cual)) {
+            pintar_nombre_de_persona(p, mover(sitio), quien, e);
+        }
+
         let burbuja = mover(puesto.burbuja);
         // Lo elegido se tine de lado a lado, no solo la burbuja: se ve de un
         // vistazo cuantos van. Y la casilla dice CUAL (`Burbuja` del movil).
@@ -5973,8 +6147,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         // del color de su lienzo si viene de uno (`colorDelDibujo`).
         // Las del asistente, del otro color (`burbuja_otra`, la blanca de
         // Telegram): con cada uno a su lado, el color dice tambien quien habla.
+        // En un chat compartido, lo de las otras personas tambien: el blanco
+        // de Telegram para ellas y el azul para lo mio.
+        let ajeno = c.de_otro.get(cual).is_some_and(Option::is_some);
         let (color, color_texto, color_hora, color_enlace) =
-            if crate::asistente::chat::es_del_asistente(m) {
+            if ajeno || crate::asistente::chat::es_del_asistente(m) {
                 (tema.burbuja_otra, tema.texto, tema.apagado, tema.enlace)
             } else {
                 (
@@ -7386,6 +7563,97 @@ fn area_del_historial(d: &Disposicion, a: &Abierto, escala: u32) -> Rect {
     d.historial(a.alto_caja.get(), hay_barra(a), chips_de(a).len(), escala)
 }
 
+/// La letra del nombre de quien escribe, encima de su tanda.
+const NOMBRE_TAM: f32 = 12.5;
+
+/// **A que lado va cada burbuja de un chat compartido** y quien la escribio
+/// (`pixpin_ui::conversacion`). En un chat normal no toca nada y devuelve
+/// todo `None`: sigue siendo un cuaderno propio.
+fn lados_del_chat_compartido(
+    a: &Abierto,
+    visibles: &[usize],
+    entradas: &mut [pixpin_ui::historial::Entrada],
+    e: f32,
+) -> Vec<Option<String>> {
+    let mut de_otro = vec![None; entradas.len()];
+    let Some(cc) = crate::sincronizar::compartidos_ui::del_chat(&a.raiz, &a.ficha.id) else {
+        return de_otro;
+    };
+    let quienes: Vec<pixpin_ui::conversacion::Quien> = visibles
+        .iter()
+        .map(|i| cc.lados.quien(aparato_corto(&a.mensajes[*i]).as_deref()))
+        .collect();
+    let autores = pixpin_ui::conversacion::numerar(&quienes);
+    let alto_nombre = ((NOMBRE_TAM + 8.0) * e).ceil() as u32;
+    for (k, entrada) in entradas.iter_mut().enumerate() {
+        let Some(m) = visibles.get(k).and_then(|i| a.mensajes.get(*i)) else {
+            continue;
+        };
+        // El asistente no es una persona de la lista: a la izquierda, como
+        // en su chat, y sin nombre encima.
+        if crate::asistente::chat::es_del_asistente(m) {
+            entrada.mio = false;
+            entrada.autor = u32::MAX;
+            continue;
+        }
+        entrada.mio = quienes[k].es_mio();
+        entrada.autor = autores[k];
+        if let Some(n) = quienes[k].nombre() {
+            entrada.alto_nombre = alto_nombre;
+            de_otro[k] = Some(n.to_string());
+        }
+    }
+    de_otro
+}
+
+/// El codigo corto (`K7Q2`) del aparato donde nacio un mensaje. Unos se
+/// guardaron con el id entero del aparato: de ese sale el corto por el
+/// mismo camino que en el movil (como en `chapa_de_codigo`).
+fn aparato_corto(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
+    let a = m.aparato.as_deref()?.trim();
+    if a.chars().count() > 6 {
+        Some(pixpin_proyecto::codigos::de_aparato(a))
+    } else {
+        Some(a.to_string())
+    }
+}
+
+/// El nombre de quien escribe sobre su tanda: su circulo con la inicial y el
+/// nombre, los dos de su color (como un grupo de Telegram).
+fn pintar_nombre_de_persona(p: &Pintor, sitio: Rect, quien: &str, e: f32) {
+    let color = color_de_persona(quien);
+    let tam = NOMBRE_TAM * e;
+    let lado = tam + 5.0 * e;
+    let y = sitio.y as f32 + (sitio.alto as f32 - lado - 2.0 * e).max(0.0);
+    let circulo = RectF {
+        x: sitio.x as f32 + 2.0 * e,
+        y,
+        ancho: lado,
+        alto: lado,
+    };
+    p.rellenar_redondeado(circulo, lado / 2.0, color);
+    let letra = pixpin_ui::conversacion::inicial(quien);
+    let tam_letra = lado * 0.55;
+    let (wl, hl) = p.medir_texto(&letra, tam_letra);
+    p.texto(
+        &letra,
+        circulo.x + (lado - wl) / 2.0,
+        circulo.y + (lado - hl) / 2.0,
+        tam_letra,
+        Color::BLANCO,
+    );
+    let (_, h) = p.medir_texto(quien, tam);
+    let x = circulo.x + lado + 6.0 * e;
+    p.texto_linea(
+        quien,
+        x,
+        circulo.y + (lado - h) / 2.0,
+        tam,
+        (sitio.derecha() as f32 - x).max(0.0),
+        color,
+    );
+}
+
 /// Lo que hace falta para medir un mensaje: los textos, la escala y la hora
 /// de ahora (la de hoy se escribe como hora y la vieja como fecha, y miden
 /// distinto).
@@ -7515,6 +7783,10 @@ fn medir_mensaje(
             mio: asistente::a_la_derecha(cx.con_ia, m),
             cuando: m.cuando,
             dia: pixpin_shell::entorno::a_local(m.cuando).div_euclid(86_400_000),
+            // De quien es, en un chat compartido, lo pone
+            // `lados_del_chat_compartido` despues de medir.
+            autor: 0,
+            alto_nombre: 0,
         };
         let piezas = Piezas {
             foto_sola,
@@ -7720,6 +7992,8 @@ fn medir_mensaje(
         mio: asistente::a_la_derecha(cx.con_ia, m),
         cuando: m.cuando,
         dia: pixpin_shell::entorno::a_local(m.cuando).div_euclid(86_400_000),
+        autor: 0,
+        alto_nombre: 0,
     };
     let piezas = Piezas {
         foto_sola,
@@ -8039,6 +8313,17 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("n", se_ven);
     let mut sub = textos.t_args("chat-cosas", &args);
+    // Un chat compartido lo dice delante, con cuantas personas son: es lo
+    // primero que hay que saber antes de escribir en el.
+    let compartido = crate::sincronizar::compartidos_ui::del_chat(&a.raiz, &a.ficha.id);
+    let con_quien = compartido.as_ref().map(|c| {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", c.personas);
+        textos.t_args("cc-chapa-personas", &args)
+    });
+    if let Some(q) = &con_quien {
+        sub = format!("{q} · {sub}");
+    }
     if bytes > 0 {
         sub = format!("{sub} · {}", pixpin_ui::chat::tamano_corto(bytes as u64));
     }
@@ -8091,6 +8376,9 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             tema.carpeta_icono,
         );
     }
+    let chapa = compartido
+        .as_ref()
+        .map(|_| pintar_chapa_compartido(p, circulo, tema.pildora));
     let tx = x0 + disco + 10.0 * e;
     let ancho_nombre = (caja.derecha() as f32 - 14.0 * e - tx - flecha - 2.0 * e).max(0.0);
     if a.renombrando {
@@ -8139,6 +8427,29 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         tema.pildora_sub,
     );
     zonas.push((caja, Zona::Titulo));
+    // La chapa y «Compartido · N personas» llevan a sus personas (invitar,
+    // quitar, salir). Encima del titulo: la ultima zona es la que gana.
+    if let (Some(chapa), Some(q)) = (chapa, &con_quien) {
+        let (w, h) = p.medir_texto(q, tam_sub);
+        zonas.push((
+            Rect {
+                x: chapa.x as i32,
+                y: chapa.y as i32,
+                ancho: chapa.ancho.ceil() as u32,
+                alto: chapa.alto.ceil() as u32,
+            },
+            Zona::Personas,
+        ));
+        zonas.push((
+            Rect {
+                x: x0 as i32,
+                y: (y0 + disco) as i32,
+                ancho: w.min(caja.ancho as f32 - 28.0 * e).max(0.0).ceil() as u32,
+                alto: h.ceil() as u32,
+            },
+            Zona::Personas,
+        ));
+    }
 }
 
 /// La letra de la pastilla del modelo.
@@ -8630,6 +8941,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         scroll_info: 0,
         busqueda_info: redaccion::CajaLinea::nueva(),
         renombrando: false,
+        invitar_al_nombrar: false,
         nombre_escrito: redaccion::CajaLinea::nueva(),
         buscando_info: false,
         alto_info: std::cell::Cell::new(0),
@@ -14230,6 +14542,8 @@ const FICHA_DETALLE_TAM: f32 = 13.0;
 enum Zona {
     Volver,
     Titulo,
+    /// La chapa de chat compartido de la cabecera: sus personas.
+    Personas,
     Buscar,
     Menu,
     /// Sacar a la pantalla: la pastilla de la fila o la esquina de la foto.
@@ -15931,6 +16245,9 @@ enum Accion {
     Mas,
     /// v2: «Captura» de la hoja del «+»: la de zona, por el camino del atajo.
     AdjCaptura,
+    /// El «+» de la lista (25-oct-2026): un chat nuevo, normal (`false`) o
+    /// compartido con otras personas (`true`).
+    NuevoChat(bool),
     AdjArchivo,
     AdjImagen,
     AdjLienzo,
@@ -16089,6 +16406,9 @@ struct EntradaMenu {
     tecla: Option<menu_v2::Tecla>,
     separada: bool,
     en_mas: bool,
+    /// Una linea que explica la entrada, detras del rotulo y mas apagada
+    /// (el «+» de la lista: que es un chat compartido).
+    detalle: Option<String>,
 }
 
 fn entrada(icono: Option<&'static Icono>, texto: String, accion: Accion) -> EntradaMenu {
@@ -16100,6 +16420,7 @@ fn entrada(icono: Option<&'static Icono>, texto: String, accion: Accion) -> Entr
         tecla: None,
         separada: false,
         en_mas: false,
+        detalle: None,
     }
 }
 
@@ -16116,6 +16437,11 @@ impl EntradaMenu {
 
     fn en_mas(mut self) -> EntradaMenu {
         self.en_mas = true;
+        self
+    }
+
+    fn con_detalle(mut self, detalle: String) -> EntradaMenu {
+        self.detalle = Some(detalle);
         self
     }
 }
@@ -16609,8 +16935,25 @@ fn pintar_lista_menu(
             (derecha - reserva - x).max(0.0),
             color,
         );
+        // La explicacion, detras y apagada, en la misma linea.
+        if let Some(d) = &entrada.detalle {
+            let xd = x + p.medir_texto(&entrada.texto, tam).0 + DETALLE_HUECO * e;
+            let (_, alto_d) = p.medir_texto(d, DETALLE_TAM * e);
+            p.texto_linea(
+                d,
+                xd,
+                fila.y as f32 + (fila.alto as f32 - alto_d) / 2.0,
+                DETALLE_TAM * e,
+                (derecha - reserva - xd).max(0.0),
+                if es_azul { color } else { tema.apagado },
+            );
+        }
     }
 }
+
+/// La letra y el aire de la explicacion de una entrada de menu.
+const DETALLE_TAM: f32 = 12.0;
+const DETALLE_HUECO: f32 = 10.0;
 
 /// Lo que necesita cada fila: su rotulo y, si tiene, sus chapitas.
 fn medir_lista(p: &Pintor, textos: &Catalogo, lista: &[EntradaMenu], e: f32) -> Vec<f32> {
@@ -16618,7 +16961,10 @@ fn medir_lista(p: &Pintor, textos: &Catalogo, lista: &[EntradaMenu], e: f32) -> 
     lista
         .iter()
         .map(|n| {
-            let texto = p.medir_texto(&n.texto, tam).0;
+            let mut texto = p.medir_texto(&n.texto, tam).0;
+            if let Some(d) = &n.detalle {
+                texto += DETALLE_HUECO * e + p.medir_texto(d, DETALLE_TAM * e).0;
+            }
             let extra = match n.tecla {
                 Some(menu_v2::Tecla::Sub) => 14.0 * e + menu_v2::HUECO_CHAPA as f32 * e,
                 Some(t) => {
@@ -17013,6 +17359,30 @@ fn menu_de_recordatorio(i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
 }
 
 /// Los demas proyectos, para mandarles algo: todos menos el abierto.
+/// **El «+» de la lista** (25-oct-2026): un chat normal, como siempre, o
+/// uno compartido con otras personas, cada una con su lado.
+fn menu_de_chat_nuevo(textos: &Catalogo) -> Vec<EntradaMenu> {
+    vec![
+        entrada(
+            Some(&mi::FOLDER),
+            textos.t("chat-nuevo-normal"),
+            Accion::NuevoChat(false),
+        )
+        .con_detalle(textos.t("chat-nuevo-normal-detalle")),
+        entrada(
+            Some(&mi::GROUP),
+            textos.t("chat-nuevo-compartido"),
+            Accion::NuevoChat(true),
+        )
+        .con_detalle(textos.t("chat-nuevo-compartido-detalle")),
+    ]
+}
+
+/// El id con que viaja el chat de una ficha (el de `compartidos.json`).
+fn chat_de_la_ficha(ubicacion: &Ubicacion, ficha: &str) -> String {
+    pixpin_proyecto::vista::chat_de_ficha(ubicacion.raiz(), ficha).unwrap_or_else(|| ficha.into())
+}
+
 fn menu_de_proyectos(
     fichas: &[pixpin_proyecto::almacen::Ficha],
     excepto: &str,
@@ -18148,6 +18518,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         | Accion::AdjTabla
         | Accion::AdjDelMovil
         | Accion::Fondos
+        | Accion::NuevoChat(_)
         | Accion::Fondo(_) => Efecto::Nada,
     }
 }

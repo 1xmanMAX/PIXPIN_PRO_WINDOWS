@@ -2578,6 +2578,15 @@ hoja-enlace-no-abre = No se pudo abrir el enlace
 ## Chats compartidos con personas (Android 13-oct-2026, ChatCompartidoActivity)
 cc-menu-compartir = Compartir con personas
 cc-menu-entrar = Entrar en un chat compartido
+chat-nuevo-normal = Chat normal
+chat-nuevo-normal-detalle = Solo tú y tus aparatos
+chat-nuevo-compartido = Chat compartido
+chat-nuevo-compartido-detalle = Con otras personas, cada una en su lado
+cc-chapa-personas = { $n ->
+    [one] Compartido · 1 persona
+   *[other] Compartido · { $n } personas
+}
+cc-nuevo-error = No se pudo compartir el chat nuevo: queda como chat normal
 cc-portada-titulo = Chats compartidos
 cc-portada-como = El chat de un proyecto que llevas con otra persona: solo ve ese chat. Para compartir uno, clic derecho sobre el proyecto → Compartir con personas.
 cc-portada-entrar = Entrar en un chat compartido

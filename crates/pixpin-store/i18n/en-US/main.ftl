@@ -2577,6 +2577,15 @@ hoja-enlace-no-abre = The link could not be opened
 ## Chats shared with people (Android 13-oct-2026, ChatCompartidoActivity)
 cc-menu-compartir = Share with people
 cc-menu-entrar = Join a shared chat
+chat-nuevo-normal = Normal chat
+chat-nuevo-normal-detalle = Just you and your devices
+chat-nuevo-compartido = Shared chat
+chat-nuevo-compartido-detalle = With other people, each on their own side
+cc-chapa-personas = { $n ->
+    [one] Shared · 1 person
+   *[other] Shared · { $n } people
+}
+cc-nuevo-error = Couldn't share the new chat: it stays a normal chat
 cc-portada-titulo = Shared chats
 cc-portada-como = A project chat you keep with someone else: they only see that chat. To share one, right-click the project → Share with people.
 cc-portada-entrar = Join a shared chat

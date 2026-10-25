@@ -736,10 +736,7 @@ pub(crate) fn autor(raiz: &Path, aparato: &str) -> Option<String> {
     let mut g = CACHE.lock().ok()?;
     let vale = g.as_ref().is_some_and(|(r, x, _)| r == raiz && *x == v);
     if !vale {
-        let yo = super::leer_identidad(raiz)
-            .map(|i| i.yo.id)
-            .unwrap_or_default();
-        let mio = pixpin_sincro::grupo::codigo_de_aparato(&yo);
+        let (yo, mios) = mis_aparatos(raiz);
         let mut mapa = std::collections::HashMap::new();
         for c in CompartidosEnDisco::nuevo(raiz).leer() {
             if c.persona(&yo).is_none() {
@@ -747,10 +744,192 @@ pub(crate) fn autor(raiz: &Path, aparato: &str) -> Option<String> {
             }
             mapa.extend(compartidos::autores(&c));
         }
-        mapa.remove(&mio);
+        // Lo de cualquiera de mis aparatos (mi movil tambien) no lleva
+        // nombre: es lo de siempre.
+        for m in &mios {
+            mapa.remove(&pixpin_sincro::grupo::codigo_de_aparato(m));
+        }
         *g = Some((raiz.to_path_buf(), v, mapa));
     }
     g.as_ref().and_then(|(_, _, m)| m.get(aparato).cloned())
+}
+
+/// El id de este aparato y los de todos los mios: este y los del grupo de
+/// sincronizar (mi movil, mi tableta).
+fn mis_aparatos(raiz: &Path) -> (String, HashSet<String>) {
+    match super::leer_identidad(raiz) {
+        Ok(i) => {
+            let mut mios: HashSet<String> = i.miembros.iter().map(|m| m.id.clone()).collect();
+            mios.insert(i.yo.id.clone());
+            (i.yo.id, mios)
+        }
+        Err(_) => (String::new(), HashSet::new()),
+    }
+}
+
+// ------------------------------------------------------------------ en el chat
+
+/// **Un chat compartido visto desde la ventana del chat** (25-oct-2026): la
+/// chapa de la lista y de la cabecera, y de quien es cada burbuja.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct EnElChat {
+    /// El id del chat tal como viaja (el de `compartidos.json`).
+    pub chat: String,
+    /// Las personas que estan dentro, yo incluido, cada una una vez.
+    pub personas: usize,
+    /// Quien es quien, por el codigo de aparato de cada mensaje.
+    pub lados: pixpin_ui::conversacion::Lados,
+}
+
+/// **De quien es cada cosa** en un chat compartido, sin disco: `yo` es este
+/// aparato y `mios` todos los mios. Una persona de la lista cuyo aparato es
+/// mio (mi movil, que entro solo al sincronizar el grupo) es mia: si no, lo
+/// que escribo desde el movil saldria a la izquierda con mi propio nombre.
+pub(crate) fn en_el_chat(c: &ChatCompartido, mios: &HashSet<String>) -> EnElChat {
+    let codigos_mios = mios
+        .iter()
+        .map(|id| pixpin_sincro::grupo::codigo_de_aparato(id))
+        .chain(
+            c.personas
+                .iter()
+                .filter(|p| mios.contains(&p.id))
+                .map(|p| p.codigo.clone()),
+        );
+    // Por orden de entrada, como `compartidos::autores`: si un codigo
+    // saliera dos veces, gana el nombre mas reciente.
+    let mut personas: Vec<&Persona> = c.personas.iter().collect();
+    personas.sort_by_key(|p| p.desde);
+    EnElChat {
+        chat: c.chat.clone(),
+        personas: compartidos::nombres_dentro(c).len(),
+        lados: pixpin_ui::conversacion::Lados::nuevo(
+            codigos_mios,
+            personas
+                .into_iter()
+                .map(|p| (p.codigo.clone(), p.nombre.clone())),
+        ),
+    }
+}
+
+/// Cada cuanto se vuelve a mirar aunque la lista no cambie, si algun chat
+/// compartido aun no tenia proyecto aqui: el de un chat en el que se acaba
+/// de entrar llega DESPUES que su lista, y hasta entonces no hay ficha a la
+/// que ponerle la chapa.
+const RELEER_CADA: Duration = Duration::from_secs(3);
+
+type PorFicha = std::collections::HashMap<String, EnElChat>;
+
+struct Recuerdo {
+    raiz: std::path::PathBuf,
+    version: u64,
+    cuando: Instant,
+    /// Algun chat compartido donde estoy no tenia aun su proyecto.
+    faltan: bool,
+    generacion: u64,
+    por_ficha: Arc<PorFicha>,
+}
+
+static RECUERDO: std::sync::Mutex<Option<Recuerdo>> = std::sync::Mutex::new(None);
+
+/// Los chats compartidos en los que estoy dentro, por la ficha de su
+/// proyecto, y una generacion que solo sube cuando cambia algo (la ventana
+/// del chat la mira para volver a colocar las burbujas, no cada vez).
+fn por_ficha(raiz: &Path) -> (u64, Arc<PorFicha>) {
+    let v = compartidos::version();
+    let Ok(mut g) = RECUERDO.lock() else {
+        return (0, Arc::default());
+    };
+    if let Some(r) = g.as_ref()
+        && r.raiz == raiz
+        && r.version == v
+        && (!r.faltan || r.cuando.elapsed() < RELEER_CADA)
+    {
+        return (r.generacion, r.por_ficha.clone());
+    }
+    let (yo, mios) = mis_aparatos(raiz);
+    let lista = CompartidosEnDisco::nuevo(raiz).leer();
+    let mut nuevo = PorFicha::new();
+    let mut faltan = false;
+    if lista.iter().any(|c| compartidos::dentro(c, &yo)) {
+        let mapa = DiscoPc::nuevo(raiz).mapa();
+        for c in lista.iter().filter(|c| compartidos::dentro(c, &yo)) {
+            match mapa.iter().find(|(chat, _)| *chat == c.chat) {
+                Some((_, f)) => {
+                    nuevo.insert(f.id.clone(), en_el_chat(c, &mios));
+                }
+                None => faltan = true,
+            }
+        }
+    }
+    let generacion = match g.as_ref() {
+        Some(r) if r.raiz == raiz && *r.por_ficha == nuevo => r.generacion,
+        Some(r) => r.generacion + 1,
+        None => 1,
+    };
+    let por_ficha = Arc::new(nuevo);
+    *g = Some(Recuerdo {
+        raiz: raiz.to_path_buf(),
+        version: v,
+        cuando: Instant::now(),
+        faltan,
+        generacion,
+        por_ficha: por_ficha.clone(),
+    });
+    (generacion, por_ficha)
+}
+
+/// **El chat compartido de esta ficha**, si lo es y estoy dentro. `None` es
+/// un chat normal: se ve como siempre.
+pub(crate) fn del_chat(raiz: &Path, ficha: &str) -> Option<EnElChat> {
+    por_ficha(raiz).1.get(ficha).cloned()
+}
+
+/// Cuantas personas hay en el chat compartido de esta ficha (para la chapa
+/// de la lista), o `None` si es un chat normal.
+pub(crate) fn personas_del_chat(raiz: &Path, ficha: &str) -> Option<usize> {
+    por_ficha(raiz).1.get(ficha).map(|c| c.personas)
+}
+
+/// Sube cuando cambia algo de los chats compartidos que se ven.
+pub(crate) fn generacion(raiz: &Path) -> u64 {
+    por_ficha(raiz).0
+}
+
+/// **Nace un chat compartido** (el «+» de la lista, «Chat compartido»): el
+/// chat `chat` con una sola persona, yo, que lo creo. A los demas se les
+/// invita despues desde sus personas, como siempre.
+pub(crate) fn compartir_chat_nuevo(raiz: &Path, chat: &str, nombre: &str) -> std::io::Result<()> {
+    let id = super::leer_identidad(raiz)?;
+    let cd = CompartidosEnDisco::nuevo(raiz);
+    let yo = cd.yo(&id.yo.id, &id.yo.nombre)?;
+    cd.cambiar(|mut l| -> std::io::Result<_> {
+        if !l.iter().any(|c| c.chat == chat) {
+            l.push(compartidos::crear(chat, nombre, &yo, super::ahora_ms()));
+        }
+        Ok(l)
+    })?;
+    Ok(())
+}
+
+/// El nombre del chat compartido, si nacio sin el (se le pone al proyecto
+/// justo despues de crearlo). No va firmado: es solo el que ve quien entra
+/// antes de que le llegue el proyecto.
+pub(crate) fn nombrar_si_falta(raiz: &Path, chat: &str, nombre: &str) -> std::io::Result<()> {
+    let nombre: String = nombre.trim().chars().take(80).collect();
+    if nombre.is_empty() {
+        return Ok(());
+    }
+    CompartidosEnDisco::nuevo(raiz).cambiar(|l| -> std::io::Result<_> {
+        Ok(l.into_iter()
+            .map(|mut c| {
+                if c.chat == chat && c.nombre.trim().is_empty() {
+                    c.nombre = nombre.clone();
+                }
+                c
+            })
+            .collect())
+    })?;
+    Ok(())
 }
 
 /// La carpeta de datos de esta aplicacion, para [autor_aqui]: la pone la
@@ -1192,6 +1371,35 @@ fn pintar_entrar(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    fn yo(id: &str, nombre: &str) -> compartidos::Yo {
+        compartidos::Yo {
+            id: id.into(),
+            nombre: nombre.into(),
+            codigo: pixpin_sincro::grupo::codigo_de_aparato(id),
+            llaves: compartidos::Llaves::nuevas(),
+        }
+    }
+
+    #[test]
+    fn en_un_chat_compartido_lo_de_mi_movil_es_mio_y_lo_de_ana_de_ana() {
+        let pc = yo("pc-de-max", "Max");
+        let movil = yo("movil-de-max", "Max");
+        let ana = yo("movil-de-ana", "Ana");
+        let c = compartidos::crear("tesis", "Tesis", &pc, 1);
+        let c = compartidos::invitar(&c, &pc, &movil.ficha(0), 2).expect("mi movil entra");
+        let c = compartidos::invitar(&c, &pc, &ana.ficha(0), 3).expect("Ana entra");
+        let mios: HashSet<String> = ["pc-de-max".to_string(), "movil-de-max".to_string()].into();
+        let v = en_el_chat(&c, &mios);
+        use pixpin_ui::conversacion::Quien;
+        assert_eq!(v.lados.quien(Some(&pc.codigo)), Quien::Yo);
+        assert_eq!(v.lados.quien(Some(&movil.codigo)), Quien::Yo);
+        assert_eq!(v.lados.quien(Some(&ana.codigo)), Quien::Otro("Ana".into()));
+        // Lo de antes de compartir (sin codigo) sigue siendo mio.
+        assert_eq!(v.lados.quien(None), Quien::Yo);
+        assert_eq!(v.personas, 2, "Max (dos aparatos) y Ana");
+        assert_eq!(v.lados.otras_personas(), 1);
+    }
 
     #[test]
     fn se_entra_con_el_codigo_tecleado_o_con_el_texto_del_qr() {
