@@ -137,6 +137,27 @@ impl Drop for Video {
     }
 }
 
+/// Lo que acaba asi es un video que se estaba escribiendo cuando la
+/// aplicacion se cerro de golpe: sin su indice no lo abre nadie, y una hora
+/// de reunion son cientos de megas en un disco pequeno.
+const RESTO: &str = ".video.mp4.parte";
+
+/// **Borra los videos a medias** de otra vez en `carpeta`. Solo se graba una
+/// clase a la vez (`ABIERTA`), asi que cualquier `.parte` de video que haya
+/// al empezar es de una grabacion que ya no va a terminar nunca.
+fn barrer_restos(carpeta: &std::path::Path) {
+    let Ok(entradas) = std::fs::read_dir(carpeta) else {
+        return;
+    };
+    for e in entradas.flatten() {
+        let nombre = e.file_name();
+        if nombre.to_string_lossy().ends_with(RESTO) && e.path().is_file() {
+            tracing::info!(ruta = %e.path().display(), "se borra un video a medias de otra vez");
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
 /// El cuerpo del hilo.
 fn grabar(
     destino: &std::path::Path,
@@ -155,6 +176,9 @@ fn grabar(
         .context("sin monitor para el video")?
         .to_owned();
     let (ancho, alto) = escala::medida_de_salida(m.area.ancho, m.area.alto, TOPE.0, TOPE.1);
+    if let Some(carpeta) = destino.parent() {
+        barrer_restos(carpeta);
+    }
     let mut cod = pixpin_record::Codificador::nuevo(
         destino,
         pixpin_record::OpcionesVivo {
@@ -246,10 +270,9 @@ fn bucle(
             }
         }
         // Si se fue atrasado, se escribe solo el ultimo que toca: el anterior
-        // se queda en pantalla un poco mas, que es lo que se veria igual.
-        let indice = debidos - 1;
-        let inicio = escala::comienzo(indice, POR_SEGUNDO);
-        let duracion = escala::comienzo(indice + 1, POR_SEGUNDO) - inicio;
+        // se queda en pantalla un poco mas, que es lo que se veria igual. El
+        // primero cubre desde el cero (ver `escala::tramo_del_fotograma`).
+        let (inicio, duracion) = escala::tramo_del_fotograma(hechos, debidos, POR_SEGUNDO);
         cod.poner_fotograma(&listo, inicio, duracion)?;
         hechos = debidos;
     }
@@ -267,5 +290,30 @@ mod pruebas {
         assert_eq!(v, std::path::Path::new("C:/p/voz-1.m4a.parcial.video.mp4"));
         // Caso negativo: no puede ser el mismo fichero que el de la voz.
         assert_ne!(v, voz);
+    }
+
+    #[test]
+    fn barrer_restos_borra_solo_los_videos_a_medias() {
+        let dir = std::env::temp_dir().join("pixpin-clase-barrer-restos");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // El nombre que de verdad deja el codificador a medias.
+        let mut resto = temporal_del_video(&dir.join("voz-1.m4a.parcial")).into_os_string();
+        resto.push(".parte");
+        let resto = std::path::PathBuf::from(resto);
+        assert!(resto.to_string_lossy().ends_with(RESTO));
+        let hecho = dir.join("voz-1.m4a.parcial.video.mp4");
+        let otro = dir.join("voz-1.m4a.parcial.parte");
+        for f in [&resto, &hecho, &otro] {
+            std::fs::write(f, b"x").unwrap();
+        }
+        barrer_restos(&dir);
+        assert!(!resto.exists());
+        // Caso negativo: un video ya cerrado vale, y lo de la voz no es suyo.
+        assert!(hecho.exists());
+        assert!(otro.exists());
+        // Y una carpeta que no existe no es un cierre.
+        barrer_restos(&dir.join("no-esta"));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

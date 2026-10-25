@@ -119,6 +119,8 @@ pub enum ErrorMp4 {
          paquete de caracteristicas multimedia)"
     )]
     SinCodificadorAac,
+    #[error("el codificador AAC solo admite 44 100 o 48 000 muestras por segundo, no {muestreo}")]
+    MuestreoNoAdmitido { muestreo: u32 },
     #[error("no se pudo poner el video en {ruta}: {fuente}")]
     Renombrar {
         ruta: PathBuf,

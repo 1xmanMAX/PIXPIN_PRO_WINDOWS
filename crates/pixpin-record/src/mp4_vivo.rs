@@ -39,7 +39,7 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows::core::PCWSTR;
 
-use crate::escala::tiempo_de_muestras;
+use crate::escala::{muestreo_aac_valido, saltar_fotograma, tiempo_de_muestras};
 use crate::mp4::{
     ComDelHilo, ErrorMp4, a_utf16, anadir_flujo_h264, arrancar_media_foundation,
     bitrate_por_defecto, en, falta_codificador, fijar_entrada_rgb32,
@@ -49,16 +49,6 @@ use crate::mp4::{
 /// (`pixpin-audio::entrada::BYTES_POR_SEGUNDO_AAC`). El codificador de
 /// Windows solo admite 12 000, 16 000, 20 000 o 24 000.
 const BYTES_POR_SEGUNDO_AAC: u32 = 12_000;
-
-/// Cuantos fotogramas pueden esperar al codificador antes de saltarse uno.
-/// Veinte a 720p son unos 70 MB: holgura para un tiron, no para una hora.
-const TOPE_EN_COLA: u64 = 20;
-
-/// Cuantos fotogramas seguidos se pueden saltar como mucho. Si el
-/// codificador retiene fotogramas por diseno (mira hacia delante), saltar
-/// siempre lo dejaria sin alimento y el video congelado; asi sigue
-/// avanzando aunque sea a menos ritmo.
-const SALTOS_SEGUIDOS: u32 = 4;
 
 /// Como se graba.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +106,11 @@ impl Codificador {
                 par_ancho: ancho,
                 par_alto: alto,
             });
+        }
+        if let Some(m) = opciones.muestreo_audio
+            && !muestreo_aac_valido(m)
+        {
+            return Err(ErrorMp4::MuestreoNoAdmitido { muestreo: m });
         }
         let opciones = OpcionesVivo {
             ancho,
@@ -184,8 +179,11 @@ impl Codificador {
         }
         let escritor = self.escritor.as_ref().ok_or(ErrorMp4::SinFotogramas)?;
         if self.fotogramas > 0
-            && self.saltados_seguidos < SALTOS_SEGUIDOS
-            && en_cola(escritor, self.video) > TOPE_EN_COLA
+            && saltar_fotograma(
+                self.fotogramas,
+                en_cola(escritor, self.video),
+                self.saltados_seguidos,
+            )
         {
             self.saltados_seguidos += 1;
             self.saltados += 1;
@@ -239,10 +237,20 @@ impl Codificador {
             let _ = std::fs::remove_file(&self.parcial);
             return Err(e);
         }
-        std::fs::rename(&self.parcial, &self.destino).map_err(|fuente| ErrorMp4::Renombrar {
-            ruta: self.destino.clone(),
-            fuente,
-        })?;
+        // El MP4 ya esta cerrado y vale: si no se deja renombrar (otro
+        // volumen, un antivirus que lo tiene abierto), se copia; y si ni
+        // eso, se queda en `.parte` con su contenido, no se borra.
+        if std::fs::rename(&self.parcial, &self.destino).is_err() {
+            let copiado = std::fs::copy(&self.parcial, &self.destino);
+            if let Err(fuente) = copiado {
+                let _ = std::fs::remove_file(&self.destino);
+                return Err(ErrorMp4::Renombrar {
+                    ruta: self.destino.clone(),
+                    fuente,
+                });
+            }
+            let _ = std::fs::remove_file(&self.parcial);
+        }
         Ok(self.destino.clone())
     }
 }

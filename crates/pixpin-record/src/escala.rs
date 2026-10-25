@@ -130,6 +130,56 @@ pub fn tiempo_de_muestras(muestras: u64, muestreo: u32) -> i64 {
     (u128::from(muestras) * UNIDADES_POR_SEGUNDO as u128 / u128::from(muestreo)) as i64
 }
 
+/// Los unicos muestreos que admite el codificador AAC de Windows. La
+/// grabadora ya remuestrea a uno de ellos (`pixpin-audio::mezcla`); aqui se
+/// comprueba para que otro se diga claro y no como un fallo de Media
+/// Foundation sin contexto.
+pub const MUESTREOS_AAC: [u32; 2] = [44_100, 48_000];
+
+/// Si el codificador AAC acepta `muestreo`.
+pub fn muestreo_aac_valido(muestreo: u32) -> bool {
+    MUESTREOS_AAC.contains(&muestreo)
+}
+
+/// Cuantos fotogramas pueden esperar al codificador antes de saltarse uno.
+/// Veinte a 720p son unos 70 MB: holgura para un tiron, no para una hora.
+pub const TOPE_EN_COLA: u64 = 20;
+
+/// Por encima de esto se salta **siempre**, aunque se lleven muchos
+/// saltados: cuarenta a 720p son unos 150 MB, y en el equipo de referencia
+/// (4 GB) dejar crecer la cola es acabar sin memoria a mitad de reunion.
+pub const TOPE_DURO: u64 = 40;
+
+/// Cuantos fotogramas seguidos se pueden saltar como mucho por debajo de
+/// [`TOPE_DURO`]. Si el codificador retiene fotogramas por diseno (mira
+/// hacia delante), saltar siempre lo dejaria sin alimento y el video
+/// congelado; asi sigue avanzando aunque sea a menos ritmo.
+pub const SALTOS_SEGUIDOS: u32 = 4;
+
+/// **Si se salta el fotograma** que toca, con `escritos` ya dados al
+/// codificador, `en_cola` esperandole y `saltados_seguidos` justo antes.
+/// El primero nunca se salta: sin el no hay video.
+pub fn saltar_fotograma(escritos: u64, en_cola: u64, saltados_seguidos: u32) -> bool {
+    escritos > 0
+        && (en_cola > TOPE_DURO || (en_cola > TOPE_EN_COLA && saltados_seguidos < SALTOS_SEGUIDOS))
+}
+
+/// **Inicio y duracion** (100 ns) del fotograma que se escribe cuando ya
+/// tocan `debidos` y se llevaban `hechos`: es el ultimo que toca. El
+/// primero empieza en el cero aunque llegue tarde (la pantalla tarda en
+/// dar su primera imagen y el sonido ya corre): si no, la pista de video
+/// empezaria despues que la del sonido y el reproductor ensenaria un hueco.
+pub fn tramo_del_fotograma(hechos: u64, debidos: u64, por_segundo: u32) -> (i64, i64) {
+    let indice = debidos.saturating_sub(1);
+    let inicio = if hechos == 0 {
+        0
+    } else {
+        comienzo(indice, por_segundo)
+    };
+    let fin = comienzo(indice + 1, por_segundo);
+    (inicio, (fin - inicio).max(1))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -232,5 +282,46 @@ mod pruebas {
         assert_eq!(comienzo(0, 30), 0);
         assert_eq!(comienzo(30, 30), UNIDADES_POR_SEGUNDO);
         assert_eq!(comienzo(10, 10), UNIDADES_POR_SEGUNDO);
+    }
+
+    #[test]
+    fn solo_valen_los_muestreos_del_aac() {
+        assert!(muestreo_aac_valido(44_100));
+        assert!(muestreo_aac_valido(48_000));
+        // Caso negativo: los de algunas tarjetas, sin remuestrear.
+        assert!(!muestreo_aac_valido(96_000));
+        assert!(!muestreo_aac_valido(16_000));
+        assert!(!muestreo_aac_valido(0));
+    }
+
+    #[test]
+    fn saltar_fotogramas_tiene_un_tope_que_no_se_pasa() {
+        // El primero nunca, aunque la cola diga lo que diga.
+        assert!(!saltar_fotograma(0, 1_000, 0));
+        // Con poca cola, nunca.
+        assert!(!saltar_fotograma(10, TOPE_EN_COLA, 0));
+        // Atrasado: se salta, pero no mas de `SALTOS_SEGUIDOS` seguidos.
+        assert!(saltar_fotograma(10, TOPE_EN_COLA + 1, 0));
+        assert!(!saltar_fotograma(10, TOPE_EN_COLA + 1, SALTOS_SEGUIDOS));
+        // Caso negativo: muy atrasado, se salta siempre; si no, la cola
+        // crece sin fin con un codificador que no da abasto.
+        assert!(saltar_fotograma(10, TOPE_DURO + 1, SALTOS_SEGUIDOS));
+        assert!(saltar_fotograma(10, TOPE_DURO + 1, 1_000));
+    }
+
+    #[test]
+    fn el_primer_fotograma_empieza_en_el_cero_aunque_llegue_tarde() {
+        // Llega con el segundo y medio ya sonando: cubre desde el cero.
+        assert_eq!(tramo_del_fotograma(0, 16, 10), (0, comienzo(16, 10)));
+        // Los demas, en su sitio y con su duracion.
+        assert_eq!(
+            tramo_del_fotograma(16, 17, 10),
+            (comienzo(16, 10), comienzo(17, 10) - comienzo(16, 10))
+        );
+        // Atrasado: el ultimo que toca, sin rellenar el hueco.
+        assert_eq!(tramo_del_fotograma(5, 9, 10), (comienzo(8, 10), 1_000_000));
+        // Caso negativo: sin ninguno debido no hay duracion cero ni negativa.
+        let (_, d) = tramo_del_fotograma(0, 0, 10);
+        assert!(d > 0);
     }
 }

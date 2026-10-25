@@ -541,25 +541,49 @@ impl Estado {
         }
         let hecho = guardar(pedido, self, grabacion.as_ref(), video.as_deref());
         let _ = std::fs::remove_file(&self.temporal);
+        if let Some(v) = video.as_ref().filter(|v| v.is_file()) {
+            // No entro en el chat (fallo la nota, el disco) y no se borra:
+            // es la reunion entera. Queda en la carpeta del proyecto, al
+            // lado de su conversacion, con el nombre de la clase y no con
+            // el del temporal.
+            self.rescatar_video(pedido, v);
+        }
         match hecho {
             Ok(voz) => Guardado {
                 voz,
                 fallo_audio,
                 fallo_guardar: None,
             },
-            Err(e) => {
-                if let Some(v) = video.as_ref().filter(|v| v.is_file()) {
-                    // No se borra: es la reunion entera. Queda en la carpeta
-                    // del proyecto, al lado de su conversacion.
-                    tracing::warn!(ruta = %v.display(), "el video de la clase quedo sin entrar al chat");
-                }
-                Guardado {
-                    voz: None,
-                    fallo_audio,
-                    fallo_guardar: Some(e),
-                }
-            }
+            Err(e) => Guardado {
+                voz: None,
+                fallo_audio,
+                fallo_guardar: Some(e),
+            },
         }
+    }
+}
+
+impl Estado {
+    /// Pone el video que no entro en el chat en la carpeta del proyecto
+    /// como `Clase {fecha}.mp4` (sin pisar nada).
+    fn rescatar_video(&self, pedido: &Pedido, video: &Path) {
+        let Some((proyecto, _)) = pedido.proyectos.get(self.proyecto) else {
+            tracing::warn!(ruta = %video.display(), "el video de la clase quedo sin entrar al chat");
+            return;
+        };
+        let carpeta = almacen::carpeta(pedido.ubicacion.raiz(), proyecto);
+        let nombre = con(
+            &self.plantilla,
+            &fecha_del_nombre(pixpin_shell::entorno::ahora_local_ms()),
+        );
+        let elegido = nombre_libre(&carpeta, &almacen::nombre_seguro(&format!("{nombre}.mp4")));
+        let destino = carpeta.join(elegido);
+        let ruta = if std::fs::rename(video, &destino).is_ok() {
+            destino
+        } else {
+            video.to_path_buf()
+        };
+        tracing::warn!(ruta = %ruta.display(), "el video de la clase quedo sin entrar al chat");
     }
 }
 
@@ -766,7 +790,12 @@ fn adjuntar_video(
     let elegido = nombre_libre(&archivos, &almacen::nombre_seguro(nombre));
     let destino = archivos.join(&elegido);
     if std::fs::rename(origen, &destino).is_err() {
-        std::fs::copy(origen, &destino)?;
+        if let Err(e) = std::fs::copy(origen, &destino) {
+            // Una copia a medias (disco lleno) no puede quedar como si
+            // fuera el video: el bueno sigue en `origen`.
+            let _ = std::fs::remove_file(&destino);
+            return Err(e);
+        }
         let _ = std::fs::remove_file(origen);
     }
     let bytes = std::fs::metadata(&destino).map(|m| m.len()).unwrap_or(0);

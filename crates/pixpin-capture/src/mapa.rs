@@ -12,6 +12,9 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC,
     D3D11_USAGE_STAGING, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
 };
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+};
 
 use crate::dispositivo::{Dispositivo, ErrorCaptura};
 use crate::instantanea::Instantanea;
@@ -126,6 +129,14 @@ impl Bajada {
         // SAFETY: el llamante mantiene viva la textura durante la funcion;
         // `GetDesc` solo rellena la estructura que se le pasa.
         unsafe { textura.GetDesc(&mut desc) };
+        // Cuatro bytes por pixel en orden BGRA: es lo que se copia abajo.
+        // Otro formato (el de 16 bits por canal de una pantalla HDR) daria
+        // un fotograma revuelto; mejor decir que no hay fotograma.
+        if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM
+            && desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
+        {
+            return Err(ErrorCaptura::SinFotograma);
+        }
         let vale = self
             .escenificada
             .as_ref()
