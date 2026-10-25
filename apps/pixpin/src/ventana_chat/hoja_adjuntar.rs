@@ -173,6 +173,13 @@ impl Hoja {
                 0xc93c35,
                 &mi::CROP,
             ),
+            // Una figura de la biblioteca (25-oct-2026): abre la ventana de
+            // las figuras para elegirla viendola, con su boton «Adjuntar».
+            chip(
+                "asistente-adj-figura",
+                "figura plantilla biblioteca dibujo shape",
+                Accion::AdjFigura,
+            ),
             chip(
                 "v2menus-adj-pagina",
                 "pagina proyecto page",

@@ -247,14 +247,8 @@ chat-elegir = Elegir
 chat-borrar = Borrar
 chat-borrar-aviso = Se quitará de la conversación. Un archivo adjunto se borra con él. ¿Seguir?
 chat-biblioteca-audio = Biblioteca de audio
-chat-conversaciones = Conversaciones de proyectos
-chat-proyectos = Proyectos
-chat-comenzar = Comenzar
 chat-fondo = Fondo del chat
-chat-escala = Escala de la interfaz
-chat-escala-normal = la del monitor
 chat-escala-puesta = Escala de la interfaz: { $cuanto } %
-chat-ajustes = Ajustes
 chat-fondo-mar = Mar
 chat-fondo-arena = Arena
 chat-fondo-brezo = Brezo
@@ -277,7 +271,6 @@ chat-foto-en-la-nota = Foto añadida a lo escrito: se envía todo en una sola no
 chat-sin-archivo = Este mensaje no tiene un archivo en este equipo
 chat-sin-origen = No encuentro ese lienzo en este proyecto
 chat-sin-proyectos-otros = No hay otro proyecto al que mandarlo
-chat-ya-en-marcha = PixPin ya está en marcha en Windows: los pines salen con sus atajos
 chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
 chat-proyectos-lista = Los proyectos son la lista de la izquierda
 chat-no-hay-voz = Grabar notas de voz todavía no existe en Windows
@@ -296,6 +289,18 @@ info-voz = Voz
 info-dibujos = Dibujos
 info-fijados = Fijados
 info-buzon = Buzón
+info-videos = Vídeos
+info-enlaces = Enlaces
+info-resumen = { $n ->
+    [one] 1 cosa
+   *[other] { $n } cosas
+}  ·  { $codigo }
+info-previa-posicion = { $k } de { $n }
+info-vacia = Aquí no hay nada todavía
+info-abrir = Abrir
+info-abrir-enlace = Abrir enlace
+info-reproducir = Reproducir
+info-ver-en-el-chat = Ver en el chat
 info-titulo = Información
 adjuntar-imagen = Foto o vídeo
 adjuntar-archivo = Archivo
@@ -1204,7 +1209,6 @@ pin-hoja-nombre = Hoja
 
 ## Grupos de ventanas (H9) y editor de notas Markdown (H12)
 bandeja-grupos-ventanas = Grupos de ventanas…
-chat-grupos-ventanas = Grupos de ventanas
 chat-adj-nota-md = Nota
 chat-editar-nota = Abrir en el editor de notas
 grupos-nada-abierto = No hay lienzos, documentos ni notas abiertos que guardar
@@ -1343,9 +1347,8 @@ lienzo-panel-zona-foco = Zona iluminada
 lienzo-pista-foco = Foco (F): toca una figura cerrada y se oscurece alrededor, dentro de su marco
 lienzo-pista-serie = Pasos numerados: cada clic pone el siguiente número
 
-## Pantalla de Proyectos del chat e interruptor Chat / Proyectos (ui/Proyectos.kt del movil)
+## El interruptor Chat / Figuras de la barra del chat
 proyectos-interruptor-chat = Chat
-proyectos-interruptor-proyectos = Proyectos
 proyectos-interruptor-figuras = Figuras
 figuras-mias = Mis figuras
 figuras-todas = Todas
@@ -1353,6 +1356,10 @@ figuras-vacia = Todavía no hay figuras. En un lienzo, elige algo y «Guardar co
 figuras-cerrar = Cerrar
 figuras-borrar = Borrar la figura
 figuras-borrar-seguro = Pulsa otra vez para borrar
+figuras-elegir-para = Elige una figura para «{ $chat }»
+figuras-adjuntar-a = Adjuntar a «{ $chat }»
+figuras-adjuntar-pista = O doble clic en la figura, o Intro.
+figuras-adjuntada = Adjuntada a «{ $chat }» ✓
 asistente-adj-figura = Figura
 asistente-adj-pedir-figura = Pedir una figura nueva
 asistente-pide-figura = Hazme una figura de 
@@ -1375,23 +1382,6 @@ figuras-de-texto = { $n } textos
 figuras-trazos = { $n } trazos a mano
 figuras-otras = { $n } otras
 bandeja-figuras = Figuras…
-proyectos-hojas = { $total } hojas
-proyectos-hojas-de = { $anotadas } de { $total } hojas anotadas
-proyectos-chat = Chat
-proyectos-hoja = Hoja
-proyectos-nota = Nota
-proyectos-tabla = Tabla
-proyectos-hoja-hecha = Hoja nueva en «{ $nombre }»
-proyectos-renombrar = Cambiar el nombre
-proyectos-renombrar-titulo = Nombre del proyecto
-proyectos-guardar = Guardar
-proyectos-archivar = Archivar
-proyectos-desarchivar = Desarchivar
-proyectos-compartir = Compartir
-proyectos-copias = Copias de seguridad
-proyectos-borrar = Borrar
-proyectos-borrar-titulo = ¿Borrar «{ $nombre }»?
-proyectos-borrar-aviso = Se borra también en tus otros aparatos la próxima vez que sincronices. Queda una copia en el menú del proyecto → «Copias de seguridad» por si te arrepientes.
 
 ## --- Lienzo: cajetines de la gráfica y de la tabla, meter en una celda (F12/F14) ---
 cajetin-cancelar = Cancelar
@@ -1688,6 +1678,11 @@ ajustes2-g-lapiz = Filtro del lápiz (modo Natural)
 ajustes2-g-fichero = El archivo de ajustes
 ajustes2-ayuda-arranque = Se queda en la bandeja sin abrir ninguna ventana. En modo portable no se puede.
 ajustes2-ayuda-idioma = Vale desde el próximo arranque.
+ajustes2-g-ventanas = Ventanas
+ajustes2-escala = Escala de la interfaz
+ajustes2-ayuda-escala = El tamaño de todo en el chat. Se aplica al momento; en el chat también con Ctrl + «+», «-» y «0».
+ajustes2-grupos-ventanas = Grupos de ventanas
+ajustes2-ayuda-grupos-ventanas = Guarda las ventanas que tienes abiertas como un grupo y vuelve a abrirlas juntas.
 ajustes2-ayuda-pdf-aligerar = Después de meterlo al chat, en segundo plano.
 ajustes2-pdf-nivel = Cuánto se aligera
 ajustes2-ayuda-pdf-nivel = Al entrar solo se usan Exacto y Medio; Chico y Máx. quedan para «Aligerar el PDF» a mano.

@@ -259,6 +259,13 @@ enum Clave {
     // General
     Arranque,
     Idioma,
+    /// La escala de la interfaz del chat (25-oct-2026: salio de los tres
+    /// puntos del chat). No esta en `Ajustes`: vive en el estado, al lado
+    /// de donde quedo la ventana (`estado.escala_interfaz`).
+    EscalaInterfaz,
+    /// El menu de los grupos de ventanas guardados (H9), que tambien salio
+    /// de los tres puntos del chat.
+    GruposVentanas,
     PdfAligerar,
     PdfNivel,
     // Captura
@@ -363,6 +370,8 @@ impl Clave {
         !matches!(
             self,
             Clave::Grupo
+                | Clave::EscalaInterfaz
+                | Clave::GruposVentanas
                 | Clave::SitioHerramientas
                 | Clave::Carpeta
                 | Clave::Ignorado(_)
@@ -408,6 +417,9 @@ struct Contexto<'a> {
     /// Las automatizaciones del asistente, leidas de su JSON al abrir y
     /// despues de cada cambio (no estan en `Ajustes`).
     automatizaciones: Vec<crate::automatizaciones::Resumen>,
+    /// La escala de la interfaz del chat, en por ciento (del estado, no de
+    /// `Ajustes`): se cambia al momento, sin esperar a cerrar.
+    escala: u32,
 }
 
 /// Las automatizaciones de este PC, para la lista. Sin chat «Asistente»
@@ -651,6 +663,29 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                         PreferenciaIdioma::Ingles => 2,
                     },
                 ),
+            ),
+            grupo(t, "ajustes2-g-ventanas"),
+            op(
+                a,
+                Clave::EscalaInterfaz,
+                tt("ajustes2-escala"),
+                tt("ajustes2-ayuda-escala"),
+                numero(
+                    cx.escala,
+                    pixpin_ui::chat::ESCALAS[0],
+                    pixpin_ui::chat::ESCALAS[pixpin_ui::chat::ESCALAS.len() - 1],
+                    // El paso de verdad es el escalon de la lista: lo da
+                    // `escala_tras`, no este numero.
+                    1,
+                    format!("{} %", cx.escala),
+                ),
+            ),
+            op(
+                a,
+                Clave::GruposVentanas,
+                tt("ajustes2-grupos-ventanas"),
+                tt("ajustes2-ayuda-grupos-ventanas"),
+                Control::Boton(tt("ajustes2-abrir")),
             ),
             grupo(t, "ajustes2-g-pdf"),
             op(
@@ -1524,6 +1559,8 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
             }
         }
         Clave::Grupo
+        | Clave::EscalaInterfaz
+        | Clave::GruposVentanas
         | Clave::Carpeta
         | Clave::Ignorado(_)
         | Clave::AnadirIgnorado
@@ -1950,9 +1987,36 @@ fn pulsar_conexion(clave: Clave, despertar: std::sync::Arc<dyn Fn() + Send + Syn
     }
 }
 
+/// La escala de la interfaz del chat que hay guardada, en un escalon valido.
+fn escala_guardada(ubicacion: &Ubicacion) -> u32 {
+    pixpin_ui::chat::escala_valida(
+        pixpin_store::estado::cargar(ubicacion)
+            .escala_interfaz
+            .unwrap_or(pixpin_ui::chat::ESCALA_POR_DEFECTO),
+    )
+}
+
+/// El escalon de la escala de al lado: los mismos que Ctrl + «+» / «-» en
+/// el chat, y en los topes se queda donde esta.
+fn escala_tras(actual: u32, subir: bool) -> u32 {
+    if subir {
+        pixpin_ui::chat::escala_siguiente(actual)
+    } else {
+        pixpin_ui::chat::escala_anterior(actual)
+    }
+}
+
 /// Lo que se hace al pulsar un `Control::Boton`.
 fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
     let resultado = match clave {
+        // Los grupos de ventanas abren lo suyo en el hilo principal, que es
+        // quien sabe lanzar cada ventana: el mismo `WM_COMMAND` de la bandeja.
+        Clave::GruposVentanas => {
+            if !pixpin_shell::mensajero::pedir_ventana_principal(crate::ID_GRUPOS_VENTANAS) {
+                tracing::warn!("ajustes: nadie escucha para abrir los grupos de ventanas");
+            }
+            Ok(())
+        }
         Clave::BorrarClave(i) => {
             if let Some(p) = pixpin_ia::nube::Proveedor::TODOS.get(i as usize) {
                 crate::asistente::nube::borrar(*p);
@@ -2172,6 +2236,7 @@ fn abrir(
             .display()
             .to_string(),
         automatizaciones: leer_automatizaciones(ubicacion),
+        escala: escala_guardada(ubicacion),
     };
     // Copia de trabajo: se toca esta y se guarda al cerrar.
     let mut copia = Copia {
@@ -2362,6 +2427,14 @@ fn abrir(
                                         ) {
                                             cx.automatizaciones = leer_automatizaciones(ubicacion);
                                         }
+                                    }
+                                    // La escala no es de `Ajustes`: se pone
+                                    // ya, y el chat abierto la coge al vuelo.
+                                    Parte::Menos | Parte::Mas if clave == Clave::EscalaInterfaz => {
+                                        cx.escala = escala_tras(cx.escala, parte == Parte::Mas);
+                                        crate::ventana_chat::poner_escala_interfaz(
+                                            ubicacion, cx.escala,
+                                        );
                                     }
                                     Parte::Alternar => {
                                         copia.cambiar(|a| aplicar_interruptor(a, clave))
@@ -3593,6 +3666,7 @@ mod pruebas {
             t,
             carpeta: r"C:\Users\Max\AppData\Roaming\PixPinMax\capturas".into(),
             automatizaciones: Vec::new(),
+            escala: pixpin_ui::chat::ESCALA_POR_DEFECTO,
         }
     }
 
