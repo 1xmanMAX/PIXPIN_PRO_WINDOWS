@@ -597,7 +597,7 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
 /// direccion apuntada. Devuelve lo que contar al acabar.
 fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
     // Mientras dura, ni la ventana ni el grupo arrancan otra.
-    let _en_curso = super::EnCurso::nueva();
+    let mut en_curso = super::EnCurso::nueva();
     let disco = pixpin_proyecto::vista::DiscoPc::nuevo(raiz).con_avisos(|c| {
         if c == pixpin_sincro::disco::Cambio::Identidad {
             presencia::difundir(Novedad::Identidad);
@@ -648,6 +648,7 @@ fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
             }
         }
     }
+    en_curso.acabo(bien);
     Entrada::FinPersonas { bien, trajo, fallo }
 }
 

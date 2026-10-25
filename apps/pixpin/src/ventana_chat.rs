@@ -637,6 +637,16 @@ pub(crate) fn refrescar() {
     }
 }
 
+/// Una vuelta de sincronizar empezo o acabo (`sincronizar::EnCurso`, desde
+/// su hilo): el boton de sincronizar de la lista empieza o deja de girar.
+/// Solo despierta al chat; lo que haya que releer lo pide `refrescar`.
+pub(crate) fn avisar_de_la_sincronizacion() {
+    let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
+}
+
 fn tomar_refrescar() -> bool {
     REFRESCAR.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
@@ -998,6 +1008,11 @@ pub fn abrir(
     // pestana de Funciones (`funciones.rs`).
     let interruptor = interruptor::Interruptor::default();
     let mut funciones = funciones::Funciones::default();
+    // El boton de sincronizar gira mientras haya una vuelta en marcha, y
+    // dice si la ultima fallo (`pixpin_ui::giro`). `reloj` solo avanza.
+    let reloj = std::time::Instant::now();
+    let mut giro = pixpin_ui::giro::Giro::default();
+    let mut fallo_pintado = false;
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -2211,6 +2226,8 @@ pub fn abrir(
                         // La pantalla de Sincronizar del movil: tus aparatos,
                         // y desde ella Recibir y Enviar.
                         crate::sincronizar::lanzar(idioma, ubicacion.clone());
+                        // Lo que fallo se ve ahi: la marca roja ya se vio.
+                        crate::sincronizar::olvidar_fallo();
                         buscando = false;
                         hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {
@@ -4242,7 +4259,16 @@ pub fn abrir(
             rayita_pintada = rayita_ahora;
             hay_que_pintar = true;
         }
-        // El IME (japones, chino) compone encima de la rayita de la caja
+        // El boton de sincronizar: girando se repinta a su paso; quieto, solo
+        // cuando empieza o acaba una vuelta (la despierta `EnCurso`).
+        let ms = reloj.elapsed().as_millis() as u64;
+        if giro.poner(crate::sincronizar::hay_vueltas(), ms) || giro.gira() {
+            hay_que_pintar = true;
+        }
+        if crate::sincronizar::ultima_fallo() != fallo_pintado {
+            fallo_pintado = !fallo_pintado;
+            hay_que_pintar = true;
+        } // El IME (japones, chino) compone encima de la rayita de la caja
         // con el teclado, no en una esquina de la pantalla.
         if hay_que_pintar
             && let Some(sitio) = cajas_con_teclado(
@@ -4348,6 +4374,8 @@ pub fn abrir(
                     buscando,
                     marcados: &marcados,
                     raiz: ubicacion.raiz(),
+                    giro_sincro: giro.angulo(reloj.elapsed().as_millis() as u64),
+                    sincro_fallo: fallo_pintado,
                 };
                 let abierto_ref = abierto.as_ref();
                 let pendientes_ref = pendientes.as_ref();
@@ -4664,6 +4692,7 @@ pub fn abrir(
             hasta_el_dictado,
             hasta_la_lectura,
             hasta_el_asistente,
+            giro.ms_hasta(),
         ]
         .into_iter()
         .flatten()
@@ -5219,6 +5248,10 @@ struct Lista<'a> {
     marcados: &'a std::collections::BTreeSet<String>,
     /// Donde viven los datos: de ahi sale que chats son compartidos.
     raiz: &'a std::path::Path,
+    /// Lo girado del boton de sincronizar (radianes; quieto, cero).
+    giro_sincro: f32,
+    /// La ultima vuelta de sincronizar fallo: el boton lleva la marca roja.
+    sincro_fallo: bool,
 }
 
 /// Los colores de los avatares, los mismos siete de Telegram. Cual toca sale
@@ -5461,21 +5494,34 @@ fn pintar(
             },
         );
         let lado = boton.ancho as f32 * 0.56;
-        p.icono(
-            icono,
-            RectF {
-                x: boton.x as f32 + (boton.ancho as f32 - lado) / 2.0,
-                y: boton.y as f32 + (boton.alto as f32 - lado) / 2.0,
-                ancho: lado,
-                alto: lado,
-            },
-            Color {
-                r: 0.961,
-                g: 0.902,
-                b: 0.722,
-                a: 1.0,
-            },
+        let pintar_icono = |p: &Pintor| {
+            p.icono(
+                icono,
+                RectF {
+                    x: boton.x as f32 + (boton.ancho as f32 - lado) / 2.0,
+                    y: boton.y as f32 + (boton.alto as f32 - lado) / 2.0,
+                    ancho: lado,
+                    alto: lado,
+                },
+                Color {
+                    r: 0.961,
+                    g: 0.902,
+                    b: 0.722,
+                    a: 1.0,
+                },
+            )
+        };
+        // Sincronizando gira sobre su centro (`pixpin_ui::giro`); y si la
+        // ultima vuelta fallo, una marca roja con «!» en la esquina, como la
+        // de pendientes de Telegram, hasta pulsarlo.
+        let centro = (
+            boton.x as f32 + boton.ancho as f32 / 2.0,
+            boton.y as f32 + boton.alto as f32 / 2.0,
         );
+        p.girado(centro, lista.giro_sincro, pintar_icono);
+        if lista.sincro_fallo && lista.giro_sincro == 0.0 {
+            pintar_marca_de_fallo(p, rf(boton), tema.cabecera);
+        }
     }
 
     // El buscador, en el sitio del titulo: es lo que hay en Telegram y lo
@@ -5531,6 +5577,33 @@ fn pintar(
         );
     }
 }
+
+/// La marca de «la ultima sincronizacion fallo»: un circulito rojo con «!»
+/// arriba a la derecha del boton, con un aro del color de detras (`aro`).
+fn pintar_marca_de_fallo(p: &Pintor, boton: RectF, aro: Color) {
+    let lado = (boton.ancho * 0.42).max(9.0);
+    let caja = RectF {
+        x: boton.x + boton.ancho - lado * 0.75,
+        y: boton.y - lado * 0.25,
+        ancho: lado,
+        alto: lado,
+    };
+    p.rellenar_redondeado(caja, lado / 2.0, aro);
+    let dentro = encoger(caja, (lado * 0.12).max(1.0));
+    p.rellenar_redondeado(dentro, dentro.ancho / 2.0, hex(ROJO_FALLO));
+    let tam = dentro.alto * 0.8;
+    let (w, h) = p.medir_texto("!", tam);
+    p.texto(
+        "!",
+        dentro.x + (dentro.ancho - w) / 2.0,
+        dentro.y + (dentro.alto - h) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
+}
+
+/// El rojo de la marca de fallo: el de los avisos de error de Telegram.
+const ROJO_FALLO: u32 = 0xe53935;
 
 /// Que dice la lista cuando no ensena ninguna fila: con la busqueda puesta
 /// (la misma regla que `filtrar`: espacios solos no filtran), que no hay

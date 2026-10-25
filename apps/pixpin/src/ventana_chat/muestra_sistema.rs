@@ -195,6 +195,8 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
             buscando: false,
             marcados: &marcados,
             raiz: std::path::Path::new(""),
+            giro_sincro: 0.0,
+            sincro_fallo: false,
         };
         motor
             .dibujar(&destino.destino, |p| {

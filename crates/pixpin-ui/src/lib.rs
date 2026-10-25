@@ -23,6 +23,8 @@ pub mod encuadre;
 pub mod evento_anotador;
 /// La pantalla de Funciones del chat: la rejilla de mosaicos.
 pub mod funciones;
+/// El giro del boton de sincronizar mientras hay una vuelta en marcha.
+pub mod giro;
 pub mod historial;
 pub mod hoja_compartir;
 pub mod hojita;

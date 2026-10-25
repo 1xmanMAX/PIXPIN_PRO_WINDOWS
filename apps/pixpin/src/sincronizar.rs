@@ -275,24 +275,60 @@ enum Fase {
 /// la vez sobre los mismos chats se pisarian.
 static EN_CURSO: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
-struct EnCurso;
+/// Como acabo la ultima vuelta que dijo como acababa: 0 sin saberlo (o ya
+/// visto), 1 bien, 2 mal. Lo lee el boton de sincronizar del chat para
+/// ensenar que fallo (`ventana_chat`, 25-oct-2026).
+static ULTIMA_VUELTA: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Una vuelta en marcha mientras vive. Al nacer y al morir despierta al chat:
+/// su boton de sincronizar gira mientras haya alguna, venga de donde venga
+/// (pulsada aqui, la automatica o la que pide el movil al llamar).
+struct EnCurso {
+    /// Como acabo, si quien la lleva lo sabe (`acabo`).
+    bien: Option<bool>,
+}
 
 impl EnCurso {
     fn nueva() -> EnCurso {
-        EN_CURSO.fetch_add(1, Ordering::SeqCst);
-        EnCurso
+        if EN_CURSO.fetch_add(1, Ordering::SeqCst) == 0 {
+            // Una vuelta nueva tapa el fallo de la anterior: si vuelve a
+            // fallar, se dira otra vez al acabar.
+            ULTIMA_VUELTA.store(0, Ordering::SeqCst);
+        }
+        crate::ventana_chat::avisar_de_la_sincronizacion();
+        EnCurso { bien: None }
+    }
+
+    /// Apunta como acabo: lo vera el boton del chat cuando se suelte.
+    fn acabo(&mut self, bien: bool) {
+        self.bien = Some(bien);
     }
 }
 
 impl Drop for EnCurso {
     fn drop(&mut self) {
+        if let Some(bien) = self.bien {
+            ULTIMA_VUELTA.store(if bien { 1 } else { 2 }, Ordering::SeqCst);
+        }
         EN_CURSO.fetch_sub(1, Ordering::SeqCst);
+        crate::ventana_chat::avisar_de_la_sincronizacion();
     }
 }
 
 /// Si hay alguna vuelta en marcha.
 pub(crate) fn hay_vueltas() -> bool {
     EN_CURSO.load(Ordering::SeqCst) > 0
+}
+
+/// Si la ultima vuelta fallo y nadie lo ha visto aun (el boton del chat lo
+/// ensena hasta que se pulsa o empieza otra).
+pub(crate) fn ultima_fallo() -> bool {
+    ULTIMA_VUELTA.load(Ordering::SeqCst) == 2
+}
+
+/// Ya se vio el fallo: el boton vuelve a ser el de siempre.
+pub(crate) fn olvidar_fallo() {
+    let _ = ULTIMA_VUELTA.compare_exchange(2, 0, Ordering::SeqCst, Ordering::SeqCst);
 }
 
 /// Lo que mandan los hilos de red a la ventana.
@@ -1569,7 +1605,7 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
         return Ok(());
     }
     // Mientras dura, la sincronizacion automatica no arranca otra.
-    let _en_curso = EnCurso::nueva();
+    let mut en_curso = EnCurso::nueva();
     // Largo, como `Red.escuchar` del movil: mientras el otro decide que
     // sincronizar, aqui no llega nada, y cortarle a los dos minutos le
     // tiraria la vuelta.
@@ -1644,6 +1680,7 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     crate::marco_de_la_tinta::tras_sincronizar(raiz);
     // Lo que se escribio (la lista de proyectos, «sincronizado hace…»).
     presencia::difundir(presencia::Novedad::Identidad);
+    en_curso.acabo(hecho.is_ok());
     hecho?;
     Ok(())
 }
@@ -2003,6 +2040,9 @@ enum Alcance<'a> {
 /// `unaVuelta`: conecta, saluda, resuelve lo borrado y junta lo elegido
 /// (`alcance`) o lo de la ultima vez con ese aparato. `rotulo` va delante
 /// de lo que se ensena, para saber por donde va una ronda.
+///
+/// Cuenta como vuelta en marcha mientras dura y apunta como acabo (el boton
+/// del chat), tambien si no llega ni a conectar.
 #[allow(clippy::too_many_arguments)]
 fn una_vuelta(
     raiz: &Path,
@@ -2015,7 +2055,31 @@ fn una_vuelta(
     hecho: &mut Hecho,
     rotulo: &str,
 ) -> Result<vuelta::Vuelta> {
-    let _en_curso = EnCurso::nueva();
+    let mut en_curso = EnCurso::nueva();
+    let r = hacer_una_vuelta(
+        raiz, tx, host, puerto, nombre, mi_puerto, alcance, hecho, rotulo,
+    );
+    match &r {
+        Ok(v) if v.cancelada => {}
+        Ok(_) => en_curso.acabo(true),
+        Err(_) => en_curso.acabo(false),
+    }
+    r
+}
+
+/// Lo de `una_vuelta`, sin la cuenta.
+#[allow(clippy::too_many_arguments)]
+fn hacer_una_vuelta(
+    raiz: &Path,
+    tx: &mpsc::Sender<Aviso>,
+    host: &str,
+    puerto: u16,
+    nombre: &str,
+    mi_puerto: Option<u16>,
+    alcance: Alcance<'_>,
+    hecho: &mut Hecho,
+    rotulo: &str,
+) -> Result<vuelta::Vuelta> {
     let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
         "{rotulo}Conectando con {nombre}…"
     ))));
@@ -2146,7 +2210,7 @@ fn lanzar_con_todos(
         .spawn(move || {
             // Toda la ronda cuenta como una: entre aparato y aparato la
             // automatica no puede colarse.
-            let _en_curso = EnCurso::nueva();
+            let mut en_curso = EnCurso::nueva();
             let mut hecho = Hecho::default();
             let mut avisos: Vec<String> = Vec::new();
             let mut fallaron: Vec<(String, String)> = Vec::new();
@@ -2197,6 +2261,9 @@ fn lanzar_con_todos(
                 }
             }
             let segundos = empezo.elapsed().as_secs_f64();
+            // La ronda salio si quedo al dia con alguno: que uno estuviera
+            // apagado no pone el boton del chat en rojo.
+            en_curso.acabo(!al_dia.is_empty());
             let fase = if al_dia.is_empty() {
                 let t: Vec<String> = fallaron.iter().map(|(_, t)| t.clone()).collect();
                 Fase::Fallo(if t.is_empty() {
