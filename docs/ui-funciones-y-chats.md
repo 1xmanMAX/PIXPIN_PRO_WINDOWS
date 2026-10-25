@@ -41,7 +41,7 @@ analitica.
 | 2 | `lienzo` | Nuevo lienzo / New canvas | Un lienzo en blanco para dibujar o calcar | `draw` | `#8E4EC6` | Crea un lienzo vacio en el chat abierto (sale en su conversacion, como el «Lienzo» del «+») o, sin chat abierto, en «Guardados», y lo abre al momento. |
 | 3 | `tareas` | Tareas / Tasks | Las listas de tareas de todos tus chats | `checklist` | `#1F7A3A` | La pantalla de Tareas (todas las listas juntas). |
 | 4 | `timeline` | Timeline / Timeline | Tu día minuto a minuto, y las lecciones | `timeline` | `#0090FF` | El timeline, con la pestaña de Lecciones dentro. |
-| 5 | `horario` | Horario / Timetable | Tus clases de la semana, con aviso antes | `calendar_month` | `#F76B15` | El horario de clases. Si el horario pasa a vivir dentro de Tareas, este mosaico abre Tareas en su vista Horario. |
+| 5 | `horario` | Horario / Timetable | Tus clases de la semana, con aviso antes | `calendar_month` | `#F76B15` | Abre Tareas en su vista Horario (el horario vive dentro de Tareas desde el 25-oct). |
 | 6 | `galeria` | Capturas / Screenshots | Todas las capturas que has guardado | `photo_library` | `#12A594` | La galeria de capturas. |
 | 7 | `figuras` | Figuras / Shapes | Tu biblioteca de figuras para los lienzos | `layers` | `#3E63DD` | La biblioteca de figuras (en Windows, su ventana con previsualizador). |
 
