@@ -27,9 +27,39 @@
 //! (`[{ms, texto}]`), que viaja al movil como lo demas de `resto`. Las
 //! banderitas del movil (`marcas`, sin nota) se ensenan con ellos.
 //!
+//! **Como los visores** (25-oct-2026, el usuario: «el visualizador de las
+//! grabaciones deberia ser como el previsualizador, con la misma
+//! interfaz»): la ventana es un pin-lector (`crate::lector_pin`), sin marco,
+//! que se estira por los bordes, con la barra de los visores fuera, encima
+//! (el asa para llevarla, el nombre, la luna/sol, pantalla completa, el pin
+//! y cerrar). **Claro u oscuro** como los visores (`crate::oscuro`: lo
+//! guardado o, si nunca se toco, el tema de Windows), y la luna/sol lo
+//! cambia. Lo de dentro sigue repartido igual.
+//!
+//! **Acercar lo que se ve como en un lienzo** (`pixpin_ui::encuadre`): la
+//! rueda encima del video o de la captura acerca hacia el raton, arrastrar
+//! la lleva, el doble clic la vuelve a encajar; abajo a la derecha, −, el
+//! tanto por ciento, + y encajar. Al cambiar de captura o de video a
+//! captura, vuelve a encajada.
+//!
+//! **Anotar encima** con el lienzo de siempre: «Anotar» abre la captura que
+//! se ve en SU lienzo (`foto-<id>`, el de las fotos del chat: K11,
+//! `crate::foto_anotada`), con todas las herramientas (lapiz, resaltador,
+//! flecha, rectangulo, texto, goma). Lo anotado viaja con la foto como
+//! cualquier foto anotada, se ve en su burbuja del chat y aqui encima de la
+//! captura. Con el video, «Anotar» lo para y guarda el fotograma que se ve
+//! como una captura mas de la clase, en su minuto, y la abre para anotar.
+//!
+//! **El clic en la barra del tiempo** cae bajo el raton: los clics se
+//! cuentan desde la esquina de la ventana DE VERDAD (`clase::ms_del_raton`);
+//! antes se restaba la esquina con la que se creo y, movida o estirada por
+//! fuera, todo quedaba corrido. Al arrastrar, el tirador va con el raton.
+//!
 //! Teclado: espacio o K reproduce y para, ←/→ cinco segundos, J/L diez,
 //! ↑/↓ el trozo anterior y el siguiente, M pone un marcador (se escribe su
-//! nota e Intro lo guarda), S enciende y apaga «Seguir», Escape cierra.
+//! nota e Intro lo guarda), S enciende y apaga «Seguir», A anota, Ctrl+0
+//! encaja, Ctrl+más/menos acerca y aleja, F11 pantalla completa, Escape
+//! sale de ella o cierra.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -46,17 +76,22 @@ use pixpin_proyecto::{almacen, cuaderno};
 use pixpin_render::{Color, MotorRender, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
+use pixpin_ui::encuadre::{self, Encuadre};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
-use super::{CLARO, OSCURO, Tema, con_alfa, mi};
+use super::{CLARO, LienzoVisto, OSCURO, Tema, con_alfa, mi};
 use crate::caja_dibujo::hex;
+use crate::lector_pin::{AccionPin, PinLector};
 use crate::overlay::Recursos;
 use crate::ventanita::dentro;
 
 /// Lo que mide la ventana (logicos) y sus columnas.
 const ANCHO: u32 = 1360;
 const ALTO: u32 = 840;
-const BARRA: f32 = 48.0;
+/// Lo menos que se deja estirar (logicos): caben las tres columnas y los
+/// mandos de debajo del video sin pisarse.
+const ANCHO_MINIMO: f32 = 1200.0;
+const ALTO_MINIMO: f32 = 640.0;
 const MARGEN: f32 = 16.0;
 const ANCHO_FOTOS: f32 = 236.0;
 const CABECERA: f32 = 36.0;
@@ -77,6 +112,13 @@ const PEGAR: f32 = 6.0;
 /// una columna de 236 a 200 %, y treinta capturas a pantalla entera no
 /// caben en la memoria del equipo de referencia.
 const ANCHO_MINIATURA: u32 = 480;
+/// Dos clics en lo que se ve antes de esto: encajar.
+const DOBLE_CLIC: Duration = Duration::from_millis(400);
+/// Arrastrando la barra, una busqueda exacta como mucho cada tanto: el
+/// video no cae en un fotograma clave lejano y el motor no se atasca.
+const BUSCAR_CADA: Duration = Duration::from_millis(70);
+/// Lo que se mueve el raton antes de que pulsar lo que se ve sea llevarlo.
+const ARRASTRE: f32 = 4.0;
 
 const VK_ESPACIO: u32 = 0x20;
 const VK_ENTRAR: u32 = 0x0D;
@@ -86,11 +128,17 @@ const VK_IZQUIERDA: u32 = 0x25;
 const VK_ARRIBA: u32 = 0x26;
 const VK_DERECHA: u32 = 0x27;
 const VK_ABAJO: u32 = 0x28;
+const VK_0: u32 = 0x30;
+const VK_A: u32 = 0x41;
 const VK_J: u32 = 0x4A;
 const VK_K: u32 = 0x4B;
 const VK_L: u32 = 0x4C;
 const VK_M: u32 = 0x4D;
 const VK_S: u32 = 0x53;
+const VK_MAS: u32 = 0xBB;
+const VK_MENOS: u32 = 0xBD;
+const VK_MAS_NUM: u32 = 0x6B;
+const VK_MENOS_NUM: u32 = 0x6D;
 
 /// La ventana abierta (su HWND), -1 mientras nace, 0 sin ventana.
 static ABIERTA: AtomicIsize = AtomicIsize::new(0);
@@ -188,6 +236,8 @@ struct Clase {
     video: Option<PathBuf>,
     /// `(ms, ruta)` en orden; las que ya no estan en el disco, fuera.
     capturas: Vec<(i64, PathBuf)>,
+    /// El mensaje de cada captura (el mismo orden): para su lienzo anotado.
+    fotos: Vec<cuaderno::Mensaje>,
     /// Los trozos del texto: su minuto (si lo lleva) y lo que dice.
     lineas: Vec<(Option<i64>, String)>,
     senales: Vec<Senal>,
@@ -214,17 +264,19 @@ impl Clase {
                 .context("la nota de la clase ya no esta")?,
             _ => m,
         };
-        let ruta_de = |id: &str| {
-            mensajes
-                .iter()
-                .find(|c| c.id == id)
-                .and_then(|c| super::ruta_del_mensaje(raiz, proyecto, c))
-                .filter(|r| r.is_file())
+        let con_ruta = |id: &str| {
+            let c = mensajes.iter().find(|c| c.id == id)?;
+            let r = super::ruta_del_mensaje(raiz, proyecto, c).filter(|r| r.is_file())?;
+            Some((c, r))
         };
-        let capturas = super::grabar_clase::capturas_de(voz)
+        let ruta_de = |id: &str| con_ruta(id).map(|(_, r)| r);
+        let (capturas, fotos) = clase::capturas_de(&voz.resto)
             .into_iter()
-            .filter_map(|(ms, id)| Some((ms, ruta_de(&id)?)))
-            .collect();
+            .filter_map(|(ms, id)| {
+                let (m, r) = con_ruta(&id)?;
+                Some(((ms, r), m.clone()))
+            })
+            .unzip();
         let video = voz
             .resto
             .get("video")
@@ -248,6 +300,7 @@ impl Clase {
             audio,
             video,
             capturas,
+            fotos,
             lineas,
             senales: Vec::new(),
             filas: Vec::new(),
@@ -447,16 +500,17 @@ impl Medio {
         }
     }
 
-    /// Va a `ms`. `aproximado` mientras se arrastra la barra: el fotograma
-    /// clave mas cercano, que es instantaneo.
-    fn ir_a(&mut self, ms: i64, aproximado: bool) {
+    /// Va a `ms`, al fotograma exacto. Tambien arrastrando la barra (cada
+    /// `BUSCAR_CADA`): el salto aproximado cae en el fotograma clave mas
+    /// cercano, y en una grabacion de pantalla pueden estar a segundos.
+    fn ir_a(&mut self, ms: i64) {
         let ms = ms.max(0);
         match self {
             Medio::Video { r, ir, .. } => {
                 if ir.is_some() {
                     *ir = Some(ms);
                 } else {
-                    r.buscar(ms as f64 / 1000.0, aproximado);
+                    r.buscar(ms as f64 / 1000.0, false);
                 }
             }
             Medio::Audio { s, ir, .. } => {
@@ -530,10 +584,11 @@ impl Medio {
 
 // --- Las imagenes, en su hilo ---------------------------------------------------
 
-/// Lo que vuelve del hilo de las imagenes.
+/// Lo que vuelve del hilo de las imagenes, con lo que mide la captura de
+/// verdad (lo anotado va en sus pixeles).
 enum Cargada {
-    Miniatura(usize, ImagenRgba),
-    Grande(usize, ImagenRgba),
+    Miniatura(usize, ImagenRgba, (u32, u32)),
+    Grande(usize, ImagenRgba, (u32, u32)),
 }
 
 /// Lee las capturas fuera del hilo de la ventana: las miniaturas de todas,
@@ -552,7 +607,8 @@ impl Cargador {
             .spawn(move || {
                 let grande = |i: usize| -> Option<Cargada> {
                     let img = pixpin_codec::imagen::cargar(rutas.get(i)?).ok()?;
-                    Some(Cargada::Grande(i, reducir(img, lado_maximo)))
+                    let medida = (img.ancho, img.alto);
+                    Some(Cargada::Grande(i, reducir(img, lado_maximo), medida))
                 };
                 for (i, ruta) in rutas.iter().enumerate() {
                     // Lo pedido va antes que la tira: es lo que se esta
@@ -566,8 +622,9 @@ impl Cargador {
                     }
                     if let Ok(img) = pixpin_codec::imagen::cargar(ruta) {
                         let ancho = img.ancho.min(ANCHO_MINIATURA);
+                        let medida = (img.ancho, img.alto);
                         let m = reducir(img, ancho.max(1));
-                        if envia.send(Cargada::Miniatura(i, m)).is_err() {
+                        if envia.send(Cargada::Miniatura(i, m, medida)).is_err() {
                             return;
                         }
                     }
@@ -615,6 +672,20 @@ fn reducir(img: ImagenRgba, lado: u32) -> ImagenRgba {
 /// Un bitmap con su tamano.
 type Imagen = (ID2D1Bitmap1, u32, u32);
 
+/// Un `RectF` como caja del encuadre, y al reves.
+fn caja_de(r: RectF) -> encuadre::Caja {
+    (r.x, r.y, r.ancho, r.alto)
+}
+
+fn rect(c: encuadre::Caja) -> RectF {
+    RectF {
+        x: c.0,
+        y: c.1,
+        ancho: c.2,
+        alto: c.3,
+    }
+}
+
 fn subir(motor: &MotorRender, img: &ImagenRgba) -> Option<Imagen> {
     motor
         .bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)
@@ -626,8 +697,6 @@ fn subir(motor: &MotorRender, img: &ImagenRgba) -> Option<Imagen> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Zona {
-    Barra,
-    Cerrar,
     Tocar,
     Atras,
     Adelante,
@@ -649,6 +718,19 @@ enum Zona {
     /// Las listas, para la rueda.
     ListaTexto,
     ListaFotos,
+    /// Los mandos del encuadre de lo que se ve.
+    ZoomMenos,
+    ZoomMas,
+    Encajar,
+    /// Anotar lo que se ve (la captura, o el fotograma del video).
+    Anotar,
+}
+
+/// Que se esta viendo en grande: al cambiar, el encuadre vuelve a encajado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Visto {
+    Video,
+    Captura(usize),
 }
 
 /// Donde va cada cosa, en pixeles de la ventana.
@@ -668,7 +750,8 @@ struct Disposicion {
 
 fn disponer(ancho: f32, alto: f32, e: f32) -> Disposicion {
     let m = MARGEN * e;
-    let arriba = BARRA * e + m;
+    // Sin barra dentro: la de los visores va fuera, encima de la ventana.
+    let arriba = m;
     let abajo = alto - m;
     let ancho_fotos = ANCHO_FOTOS * e;
     let x_fotos = ancho - m - ancho_fotos;
@@ -749,12 +832,34 @@ struct Vista {
     /// La M que abrio el marcador llega tambien como caracter: se traga.
     tragar: Option<char>,
     arrastrando_tiempo: bool,
+    /// Arrastrando la barra: el milisegundo bajo el raton, que es lo que se
+    /// ensena (`clase::posicion_a_la_vista`), y la ultima busqueda.
+    arrastre_ms: Option<i64>,
+    ultima_busqueda: Instant,
+    /// Donde se pulso la barra (x de pantalla): soltar ahi mismo es un
+    /// clic, y se queda en la captura o el marcador al que se pego.
+    pulsado_x: i32,
     raton: (f32, f32),
     zonas: Vec<(RectF, Zona)>,
     disp: Disposicion,
     /// Lo alto de cada fila del texto, para el ancho con que se midio.
     altos_texto: RefCell<(u32, Vec<f32>)>,
+    /// Como se ve lo de la izquierda (acercado, movido) y que es.
+    encuadre: Encuadre,
+    visto: Option<Visto>,
+    /// Pulsado en lo que se ve: donde iba el raton y si ya se movio (es
+    /// llevarlo, no reproducir).
+    llevando: Option<((f32, f32), bool)>,
+    /// El ultimo clic en lo que se ve, para el doble clic.
+    clic_medio: Option<Instant>,
+    /// Pulso «Anotar» (lo hace el bucle, que tiene el motor).
+    anotar: bool,
+    /// Lo anotado encima de la captura que se ve: cual, la fecha de su
+    /// lienzo y sus ordenes en pixeles de la captura.
+    dibujo: Option<(usize, Option<std::time::SystemTime>, LienzoVisto)>,
     miniaturas: Vec<Option<Imagen>>,
+    /// Lo que mide cada captura de verdad (lo anotado va en sus pixeles).
+    medidas: Vec<Option<(u32, u32)>>,
     grande: Option<(usize, Imagen)>,
     pedida: Option<usize>,
     cargador: Option<Cargador>,
@@ -776,6 +881,7 @@ impl Vista {
         Vista {
             raiz,
             miniaturas: (0..clase.capturas.len()).map(|_| None).collect(),
+            medidas: (0..clase.capturas.len()).map(|_| None).collect(),
             clase,
             medio,
             seguir: true,
@@ -787,10 +893,19 @@ impl Vista {
             escribiendo: None,
             tragar: None,
             arrastrando_tiempo: false,
+            arrastre_ms: None,
+            ultima_busqueda: Instant::now(),
+            pulsado_x: 0,
             raton: (-1.0, -1.0),
             zonas: Vec::new(),
             disp: disponer(ANCHO as f32, ALTO as f32, 1.0),
             altos_texto: RefCell::new((0, Vec::new())),
+            encuadre: Encuadre::default(),
+            visto: None,
+            llevando: None,
+            clic_medio: None,
+            anotar: false,
+            dibujo: None,
             grande: None,
             pedida: None,
             cargador,
@@ -810,16 +925,15 @@ impl Vista {
     }
 
     /// Ir a `ms`, y que el texto y la tira vayan con el.
-    fn ir_a(&mut self, ms: i64, aproximado: bool) {
-        self.medio
-            .ir_a(clase::saltar(ms, 0, self.duracion()), aproximado);
+    fn ir_a(&mut self, ms: i64) {
+        self.medio.ir_a(clase::saltar(ms, 0, self.duracion()));
         self.a_mano_hasta = None;
         self.ir_ya = true;
     }
 
     fn saltar(&mut self, delta: i64) {
         let ms = clase::saltar(self.medio.posicion_ms(), delta, self.duracion());
-        self.ir_a(ms, false);
+        self.ir_a(ms);
     }
 
     /// El trozo anterior o el siguiente al que suena.
@@ -839,7 +953,7 @@ impl Vista {
             }
         };
         if let Some(t) = destino {
-            self.ir_a(t, false);
+            self.ir_a(t);
         }
     }
 
@@ -1017,9 +1131,12 @@ impl Vista {
         self.clase.lineas = nueva.lineas;
         self.clase.nombre = nueva.nombre;
         self.clase.poner_senales(nueva.senales);
+        self.clase.fotos = nueva.fotos;
         if otras_capturas {
             self.clase.capturas = nueva.capturas;
             self.miniaturas = (0..self.clase.capturas.len()).map(|_| None).collect();
+            self.medidas = (0..self.clase.capturas.len()).map(|_| None).collect();
+            self.dibujo = None;
             self.grande = None;
             self.pedida = None;
             self.cargador = Cargador::lanzar(
@@ -1037,12 +1154,18 @@ impl Vista {
         if let Some(c) = &self.cargador {
             for llegada in c.llegan.try_iter() {
                 match llegada {
-                    Cargada::Miniatura(i, img) => {
+                    Cargada::Miniatura(i, img, medida) => {
                         if let Some(sitio) = self.miniaturas.get_mut(i) {
                             *sitio = subir(motor, &img);
                         }
+                        if let Some(sitio) = self.medidas.get_mut(i) {
+                            *sitio = Some(medida);
+                        }
                     }
-                    Cargada::Grande(i, img) => {
+                    Cargada::Grande(i, img, medida) => {
+                        if let Some(sitio) = self.medidas.get_mut(i) {
+                            *sitio = Some(medida);
+                        }
                         if let Some(b) = subir(motor, &img) {
                             self.grande = Some((i, b));
                         }
@@ -1073,6 +1196,89 @@ impl Vista {
         clase::ultimo_antes(&self.clase.tiempos_capturas(), self.medio.posicion_ms())
     }
 
+    /// Lo que se ve en grande ahora y lo que mide su imagen (la que se
+    /// pinta: la grande, o su miniatura mientras llega).
+    fn lo_visto(&mut self) -> Option<(Visto, u32, u32)> {
+        if let Some(i) = self.captura_a_la_vista() {
+            let img = match &self.grande {
+                Some((g, img)) if *g == i => Some(img),
+                _ => self.miniaturas.get(i).and_then(|m| m.as_ref()),
+            };
+            return img.map(|(_, w, h)| (Visto::Captura(i), *w, *h));
+        }
+        match &mut self.medio {
+            Medio::Video {
+                bitmap: Some(_), r, ..
+            } => r.dimensiones().map(|(w, h)| (Visto::Video, w, h)),
+            _ => None,
+        }
+    }
+
+    /// Si cambio lo que se ve (otra captura, del video a la captura), el
+    /// encuadre vuelve a encajado: acercar una no es acercar la otra.
+    fn al_dia_lo_visto(&mut self) {
+        let ahora = self.lo_visto().map(|(v, _, _)| v);
+        if ahora.is_some() && ahora != self.visto {
+            self.visto = ahora;
+            self.encuadre.encajar();
+            self.llevando = None;
+        }
+    }
+
+    /// Acerca (o aleja) lo que se ve hacia `punto`.
+    fn acercar(&mut self, factor: f32, punto: Option<(f32, f32)>) {
+        let Some((_, w, h)) = self.lo_visto() else {
+            return;
+        };
+        let c = caja_de(self.disp.medio);
+        let punto = punto.unwrap_or((c.0 + c.2 / 2.0, c.1 + c.3 / 2.0));
+        self.encuadre.acercar(c, w as f32, h as f32, factor, punto);
+    }
+
+    /// **Lo anotado encima de la captura que se ve**, al dia: se relee si
+    /// su lienzo cambio (se anoto en el lienzo, llego del movil). Devuelve
+    /// si hay que repintar.
+    fn releer_dibujo(&mut self) -> bool {
+        let Some(i) = self.captura_a_la_vista() else {
+            return std::mem::take(&mut self.dibujo).is_some();
+        };
+        let (Some(m), Some(Some((w, h)))) = (self.clase.fotos.get(i), self.medidas.get(i)) else {
+            return false;
+        };
+        let lienzo = crate::foto_anotada::lienzo_de_la_foto(&self.raiz, &self.clase.proyecto, m);
+        let fecha = lienzo
+            .as_ref()
+            .and_then(|(_, r)| std::fs::metadata(r).and_then(|d| d.modified()).ok());
+        if self
+            .dibujo
+            .as_ref()
+            .is_some_and(|(j, f, _)| *j == i && *f == fecha)
+        {
+            return false;
+        }
+        let ordenes = crate::foto_anotada::dibujo_de_la_foto(
+            &self.raiz,
+            &self.clase.proyecto,
+            m,
+            (*w as f32, *h as f32),
+        )
+        .map(|d| d.ordenes)
+        .unwrap_or_default();
+        self.dibujo = Some((
+            i,
+            fecha,
+            LienzoVisto {
+                ordenes,
+                grafitos: Vec::new(),
+                caja: (0.0, 0.0, *w as f32, *h as f32),
+                fondo: None,
+                papel: None,
+                giro_del_fondo: 0.0,
+            },
+        ));
+        true
+    }
+
     fn zona_en(&self, p: (f32, f32)) -> Option<Zona> {
         self.zonas
             .iter()
@@ -1088,6 +1294,22 @@ fn mtime(raiz: &Path, proyecto: &str) -> Option<std::time::SystemTime> {
         .ok()
 }
 
+/// La escala del monitor donde esta `area` (su centro).
+fn escala_de(area: Rect) -> f32 {
+    let centro = Punto {
+        x: area.x + area.ancho as i32 / 2,
+        y: area.y + area.alto as i32 / 2,
+    };
+    pixpin_capture::enumerar_monitores()
+        .ok()
+        .and_then(|d| {
+            d.monitor_en(centro)
+                .or_else(|| d.principal())
+                .map(|m| m.escala_por_cien)
+        })
+        .map_or(1.0, |e| e as f32 / 100.0)
+}
+
 fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = monitores
@@ -1096,24 +1318,36 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         .context("sin monitor")?
         .to_owned();
     let escala = monitor.escala_por_cien;
-    let e = escala as f32 / 100.0;
+    let mut e = escala as f32 / 100.0;
     let raiz = pedido.ubicacion.raiz().to_path_buf();
     let clase = Clase::leer(&raiz, &pedido.proyecto, &pedido.id)?;
     let mut v = Vista::nueva(recursos, raiz, clase, pedido.ms);
-    let mut marco = crate::ventanita::centrado(monitor.area_trabajo, ANCHO, ALTO, escala);
-    let mut ventana = VentanaOverlay::nueva_normal(marco, &textos.t("estudiar-titulo"))
+    // Un visor como los demas: sin marco, se estira por los bordes y lleva
+    // su barra fuera, encima (`lector_pin`).
+    let mut pin = PinLector::nuevo(
+        crate::ventanita::centrado(monitor.area_trabajo, ANCHO, ALTO, escala),
+        e,
+    )
+    .con_minimo(
+        ((ANCHO_MINIMO * e) as u32).min(monitor.area_trabajo.ancho),
+        ((ALTO_MINIMO * e) as u32).min(monitor.area_trabajo.alto),
+    );
+    let mut area = pin.area;
+    let mut ventana = VentanaOverlay::nueva_normal(area, &textos.t("estudiar-titulo"))
         .context("no se pudo abrir la ventana de estudiar la clase")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
         &motor,
         &recursos.d3d(),
         ventana.handle(),
-        marco.ancho,
-        marco.alto,
+        area.ancho,
+        area.alto,
     )
     .context("sin superficie para estudiar la clase")?;
     ventana.mostrar();
     ventana.enfocar();
+    pin.al_nacer(&ventana);
+    pin.crear_barra(&motor, &recursos.d3d(), &ventana);
     ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
     tracing::info!(
         capturas = v.clase.capturas.len(),
@@ -1121,13 +1355,25 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         con_video = v.medio.es_video(),
         "ventana de estudiar la clase abierta"
     );
-    v.disp = disponer(marco.ancho as f32, marco.alto as f32, e);
+    v.disp = disponer(area.ancho as f32, area.alto as f32, e);
 
-    let mut moviendo: Option<(Punto, Rect)> = None;
     let mut vivo = true;
     let mut pintar = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Lo que la ventana ocupa DE VERDAD, antes de repartir ningun clic:
+        // movida o estirada por fuera (AltSnap, Win+flecha, otro monitor),
+        // la esquina vieja corria todos los clics esa diferencia.
+        pin.seguir_ventana(&mut ventana);
+        if pin.area != area {
+            if (pin.area.ancho, pin.area.alto) != (area.ancho, area.alto) {
+                let _ = superficie.redimensionar(pin.area.ancho, pin.area.alto);
+                *v.altos_texto.borrow_mut() = (0, Vec::new());
+            }
+            area = pin.area;
+            v.disp = disponer(area.ancho as f32, area.alto as f32, e);
+            pintar = true;
+        }
         // Otra clase pedida con la ventana abierta.
         let otra = OTRA.lock().ok().and_then(|mut g| g.take());
         if let Some(o) = otra {
@@ -1143,26 +1389,69 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
             pintar = true;
         }
         for (hw, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            // La barra de los visores: llevar la ventana, la luna/sol,
+            // pantalla completa, el pin y cerrar.
+            if pin.es_de_la_barra(hw) {
+                let (accion, _) = pin.evento_barra(&ev, &mut ventana);
+                match accion {
+                    Some(AccionPin::PantallaCompleta) => {
+                        pin.alternar_pantalla_completa(&mut ventana)
+                    }
+                    Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
+                    Some(AccionPin::Cerrar) => vivo = false,
+                    _ => {}
+                }
+                pintar = true;
+                continue;
+            }
             if hw != ventana.handle() {
                 continue;
             }
-            let local = |p: Punto, m: Rect| ((p.x - m.x) as f32, (p.y - m.y) as f32);
+            // Estirar por los bordes es del pin.
+            if pin.evento_ventana(&ev, &mut ventana).consumido {
+                pintar = true;
+                continue;
+            }
+            // Siempre desde la esquina de ahora (el pin la sigue).
+            let esquina = (pin.area.x, pin.area.y);
+            let local = |p: Punto| encuadre::a_la_ventana((p.x, p.y), esquina);
+            let ms_bajo = |p: Punto, v: &Vista| {
+                let t = v.disp.tiempo;
+                clase::ms_del_raton(p.x, esquina.0, t.x, t.ancho, v.duracion())
+            };
             match ev {
                 EventoOverlay::Cerrar => vivo = false,
-                EventoOverlay::RatonMovido(p) => {
-                    if let Some((desde, origen)) = moviendo {
-                        marco = Rect {
-                            x: origen.x + (p.x - desde.x),
-                            y: origen.y + (p.y - desde.y),
-                            ..origen
-                        };
-                        ventana.mover(marco);
+                EventoOverlay::CambioDpi => {
+                    let nueva = escala_de(pin.area);
+                    if (nueva - e).abs() > f32::EPSILON {
+                        e = nueva;
+                        pin.poner_escala(e);
+                        v.disp = disponer(area.ancho as f32, area.alto as f32, e);
+                        *v.altos_texto.borrow_mut() = (0, Vec::new());
                     }
-                    let l = local(p, marco);
-                    if v.arrastrando_tiempo {
-                        let t = v.disp.tiempo;
-                        let ms = clase::ms_de_la_barra(l.0 - t.x, t.ancho, v.duracion());
-                        v.ir_a(ms, true);
+                    pintar = true;
+                }
+                EventoOverlay::RatonMovido(p) => {
+                    let l = local(p);
+                    if v.arrastrando_tiempo && (p.x - v.pulsado_x).abs() > 2 {
+                        let ms = ms_bajo(p, &v);
+                        v.arrastre_ms = Some(ms);
+                        if v.ultima_busqueda.elapsed() >= BUSCAR_CADA {
+                            v.ultima_busqueda = Instant::now();
+                            v.ir_a(ms);
+                        }
+                        pintar = true;
+                    }
+                    if let Some((antes, movido)) = v.llevando {
+                        let (dx, dy) = (l.0 - antes.0, l.1 - antes.1);
+                        if movido || dx.abs().max(dy.abs()) >= ARRASTRE * e {
+                            if let Some((_, w, h)) = v.lo_visto() {
+                                let c = caja_de(v.disp.medio);
+                                v.encuadre.mover(c, w as f32, h as f32, dx, dy);
+                            }
+                            v.llevando = Some((l, true));
+                            pintar = true;
+                        }
                     }
                     if v.zona_en(l) != v.zona_en(v.raton) {
                         pintar = true;
@@ -1170,14 +1459,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                     v.raton = l;
                 }
                 EventoOverlay::BotonPulsado(p) => {
-                    let l = local(p, marco);
+                    let l = local(p);
                     v.raton = l;
                     pintar = true;
                     match v.zona_en(l) {
-                        Some(Zona::Barra) => {
-                            moviendo = Some((p, marco));
-                            ventana.capturar_raton();
-                        }
                         Some(Zona::Tiempo) => {
                             let t = v.disp.tiempo;
                             let senales: Vec<i64> = v
@@ -1194,8 +1479,17 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                                 &senales,
                                 PEGAR * e,
                             );
-                            v.ir_a(ms, false);
+                            v.ir_a(ms);
+                            v.arrastre_ms = Some(ms);
+                            v.pulsado_x = p.x;
+                            v.ultima_busqueda = Instant::now();
                             v.arrastrando_tiempo = true;
+                            ventana.capturar_raton();
+                        }
+                        // Lo que se ve: llevarlo si se arrastra; un clic
+                        // reproduce o para, y dos seguidos lo encajan.
+                        Some(Zona::Medio) => {
+                            v.llevando = Some((l, false));
                             ventana.capturar_raton();
                         }
                         Some(z) => pulsar(&mut v, z, textos, &mut vivo),
@@ -1203,23 +1497,41 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                     }
                 }
                 EventoOverlay::BotonSoltado(p) => {
-                    if moviendo.take().is_some() {
+                    if let Some((_, movido)) = v.llevando.take() {
                         ventana.soltar_raton();
+                        if !movido {
+                            let doble = v.clic_medio.is_some_and(|t| t.elapsed() < DOBLE_CLIC);
+                            if doble {
+                                // El primer clic ya reprodujo o paro: se
+                                // deshace, el doble clic solo encaja.
+                                v.clic_medio = None;
+                                v.medio.alternar();
+                                v.encuadre.encajar();
+                            } else {
+                                v.clic_medio = Some(Instant::now());
+                                v.medio.alternar();
+                            }
+                        }
+                        pintar = true;
                     }
                     if v.arrastrando_tiempo {
                         v.arrastrando_tiempo = false;
                         ventana.soltar_raton();
-                        // Al soltar, el fotograma exacto.
-                        let l = local(p, marco);
-                        let t = v.disp.tiempo;
-                        let ms = clase::ms_de_la_barra(l.0 - t.x, t.ancho, v.duracion());
-                        v.ir_a(ms, false);
+                        // Al soltar, el fotograma exacto, si se arrastro;
+                        // un clic quieto se queda donde se pego.
+                        let ms = match v.arrastre_ms {
+                            Some(ms) if (p.x - v.pulsado_x).abs() <= 2 => ms,
+                            _ => ms_bajo(p, &v),
+                        };
+                        v.ir_a(ms);
+                        v.arrastre_ms = None;
+                        pintar = true;
                     }
                 }
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     // Clic derecho en una senal: quitarla (como mantener
                     // pulsada una banderita en el movil).
-                    let l = local(p, marco);
+                    let l = local(p);
                     if let Some(Zona::Ir(ms)) = v.zona_en(l)
                         && v.clase.senales.iter().any(|s| s.ms == ms)
                     {
@@ -1232,6 +1544,15 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                         v.rueda(false, delta, e);
                         pintar = true;
                     }
+                    // Encima de lo que se ve, la rueda acerca hacia el raton.
+                    Some(_) if dentro(v.disp.medio, v.raton) => {
+                        if let Some((_, w, h)) = v.lo_visto() {
+                            let c = caja_de(v.disp.medio);
+                            let raton = v.raton;
+                            v.encuadre.rueda(c, w as f32, h as f32, delta, raton);
+                            pintar = true;
+                        }
+                    }
                     Some(_) if dentro(v.disp.texto, v.raton) => {
                         v.rueda(true, delta, e);
                         pintar = true;
@@ -1240,7 +1561,22 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                 },
                 EventoOverlay::Tecla { vk, ctrl, .. } => {
                     pintar = true;
-                    tecla(&mut v, vk, ctrl, textos, &mut vivo);
+                    // F11 y Escape, como en los visores: Escape sale de
+                    // pantalla completa y, si no, cierra.
+                    let del_visor = if v.escribiendo.is_some() || ctrl {
+                        None
+                    } else if vk == VK_ESCAPE && !v.encuadre.encajado() {
+                        // Acercado, Escape primero lo encaja.
+                        v.encuadre.encajar();
+                        continue;
+                    } else {
+                        crate::lector_pin::tecla(vk, pin.pantalla_completa)
+                    };
+                    match del_visor {
+                        Some(true) => vivo = false,
+                        Some(false) => pin.alternar_pantalla_completa(&mut ventana),
+                        None => tecla(&mut v, vk, ctrl, textos, &mut vivo),
+                    }
                 }
                 EventoOverlay::Caracter(c) => {
                     if v.tragar.take().is_some_and(|t| t.eq_ignore_ascii_case(&c)) {
@@ -1260,6 +1596,11 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         if !vivo {
             break;
         }
+        // «Anotar»: la captura que se ve, o el fotograma del video.
+        if std::mem::take(&mut v.anotar) {
+            anotar_lo_visto(&mut v, &motor, &recursos.d3d(), textos);
+            pintar = true;
+        }
         // El video que no se pudo decodificar: se oye la nota.
         if v.medio.es_video() && v.medio.fallo() {
             tracing::warn!("el video de la clase no se puede ver aqui; va el audio");
@@ -1274,7 +1615,18 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         if v.imagenes(&motor) {
             pintar = true;
         }
+        let toca_mirar = v.mirado.elapsed() >= Duration::from_millis(1500);
         if v.releer_si_cambio(&motor) {
+            pintar = true;
+        }
+        v.al_dia_lo_visto();
+        // Lo anotado de la captura que se ve: al cambiar de captura y, de
+        // vez en cuando, por si se anoto en su lienzo o llego del movil.
+        let otra_captura = match v.captura_a_la_vista() {
+            Some(i) => v.dibujo.as_ref().is_none_or(|(j, _, _)| *j != i),
+            None => v.dibujo.is_some(),
+        };
+        if (toca_mirar || otra_captura) && v.releer_dibujo() {
             pintar = true;
         }
         if v.seguir_al_sonido() {
@@ -1287,21 +1639,27 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
             v.aviso = None;
             pintar = true;
         }
+        // La barra de los visores; si su luna/sol (o la de otro visor)
+        // cambio el modo, se repinta.
+        let nombre = v.clase.nombre.clone();
+        if pin.actualizar(&motor, &nombre, &[]) {
+            pintar = true;
+        }
         if pintar {
             pintar = false;
-            let tema = if pixpin_shell::entorno::tema_claro() {
-                &CLARO
-            } else {
+            let tema = if crate::oscuro::activo() {
                 &OSCURO
+            } else {
+                &CLARO
             };
-            v.disp = disponer(marco.ancho as f32, marco.alto as f32, e);
+            v.disp = disponer(area.ancho as f32, area.alto as f32, e);
             if let Ok(d) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&d, |p: &Pintor| {
                     pintar_todo(
                         p,
                         &mut v,
-                        marco.ancho as f32,
-                        marco.alto as f32,
+                        area.ancho as f32,
+                        area.alto as f32,
                         tema,
                         e,
                         textos,
@@ -1311,10 +1669,11 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
             }
         }
         pedido.ms = v.medio.posicion_ms();
-        let latido = if v.medio.sonando() || v.ir_ya || v.arrastrando_tiempo {
+        let latido = if v.medio.sonando() || v.ir_ya || v.arrastrando_tiempo || v.llevando.is_some()
+        {
             16
-        } else if v.pedida.is_some() || v.aviso.is_some() {
-            100
+        } else if v.pedida.is_some() || v.aviso.is_some() || pin.quiere_reloj() {
+            50
         } else {
             400
         };
@@ -1325,9 +1684,152 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
     Ok(())
 }
 
+/// **Anota lo que se ve**: la captura en su lienzo y, con el video, el
+/// fotograma de ahora guardado antes como una captura mas de la clase.
+fn anotar_lo_visto(
+    v: &mut Vista,
+    motor: &MotorRender,
+    d3d: &windows::Win32::Graphics::Direct3D11::ID3D11Device,
+    textos: &Catalogo,
+) {
+    let id = match v.captura_a_la_vista() {
+        Some(i) => v.clase.fotos.get(i).map(|m| m.id.clone()),
+        None if v.medio.es_video() => {
+            // Se para: se anota lo que se esta viendo, no lo que viene.
+            if v.medio.sonando() {
+                v.medio.alternar();
+            }
+            match guardar_fotograma(v, motor, d3d) {
+                Ok(id) => {
+                    v.avisar(textos.t("estudiar-fotograma-guardado"));
+                    // Que se vea la captura nueva (se relee en la siguiente
+                    // vuelta) y no el video.
+                    v.ver_capturas = true;
+                    v.leido = None;
+                    v.mirado = Instant::now()
+                        .checked_sub(Duration::from_secs(2))
+                        .unwrap_or_else(Instant::now);
+                    Some(id)
+                }
+                Err(e) => {
+                    tracing::warn!(?e, "el fotograma de la clase no se guardo");
+                    v.avisar(textos.t("estudiar-no-se-guardo"));
+                    return;
+                }
+            }
+        }
+        None => None,
+    };
+    let Some(id) = id else {
+        v.avisar(textos.t("estudiar-nada-que-anotar"));
+        return;
+    };
+    if let Err(e) = anotar_foto(&v.raiz, &v.clase.proyecto, &id) {
+        tracing::warn!(?e, "no se pudo abrir la captura para anotar");
+        v.avisar(textos.t("estudiar-no-se-guardo"));
+    }
+}
+
+/// **Abre la foto `id` del chat en SU lienzo**, como al pulsarla en el
+/// chat: el `foto-<id>` que viaja con ella (K11, `crate::foto_anotada`),
+/// con todas las herramientas del lienzo. Va en su hilo
+/// (`lienzo_aparte`) y la ventana de estudiar sigue sonando.
+fn anotar_foto(raiz: &Path, proyecto: &str, id: &str) -> Result<()> {
+    let carpeta = almacen::carpeta(raiz, proyecto);
+    let mut mensajes = cuaderno::Cuaderno::leer_de(&carpeta)
+        .context("sin cuaderno")?
+        .mensajes;
+    let indice = mensajes
+        .iter()
+        .position(|m| m.id == id)
+        .context("la captura ya no esta en el chat")?;
+    crate::foto_anotada::asegurar_lienzo(raiz, proyecto, &mut mensajes, indice);
+    let plana = mensajes
+        .get(indice)
+        .and_then(|m| super::ruta_del_mensaje(raiz, proyecto, m));
+    let opciones = crate::notas_md::paginas_vivas::opciones_del_lienzo();
+    let clave = super::clave_de_hoja(proyecto, &mensajes, indice);
+    let (raiz, proyecto) = (raiz.to_path_buf(), proyecto.to_string());
+    super::lienzo_aparte(clave, move || {
+        if !crate::foto_anotada::abrir_si_tiene_lienzo(
+            &raiz, &proyecto, &mensajes, indice, opciones,
+        ) && let Some(ruta) = plana
+        {
+            super::abrir_foto_en_lienzo(&ruta, opciones);
+        }
+    });
+    Ok(())
+}
+
+/// **Guarda el fotograma que se ve** como una captura mas de la clase: una
+/// imagen en el chat, enlazada a la nota en su minuto (`enGrabacion`) y en
+/// la lista de capturas de la nota (`clase::poner_captura`). Devuelve su id.
+fn guardar_fotograma(
+    v: &mut Vista,
+    motor: &MotorRender,
+    d3d: &windows::Win32::Graphics::Direct3D11::ID3D11Device,
+) -> Result<String> {
+    let ms = v.medio.posicion_ms();
+    let Medio::Video {
+        bitmap: Some(b), r, ..
+    } = &mut v.medio
+    else {
+        anyhow::bail!("sin fotograma");
+    };
+    let (w, h) = r.dimensiones().context("el video aun no tiene tamano")?;
+    let lienzo = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(motor, d3d, w, h)
+        .context("sin lienzo para el fotograma")?;
+    motor
+        .dibujar(&lienzo.destino, |p| {
+            p.limpiar(Color::NEGRO);
+            p.bitmap(
+                b,
+                RectF {
+                    x: 0.0,
+                    y: 0.0,
+                    ancho: w as f32,
+                    alto: h as f32,
+                },
+                None,
+                false,
+            );
+        })
+        .context("no se pudo pintar el fotograma")?;
+    let (ancho, alto, mut pixeles) = lienzo.leer_rgba().context("no se pudo leer el fotograma")?;
+    // Un video no tiene transparencia.
+    for a in pixeles.iter_mut().skip(3).step_by(4) {
+        *a = 255;
+    }
+    let png = pixpin_codec::imagen::codificar_png(&ImagenRgba {
+        ancho,
+        alto,
+        pixeles,
+    })
+    .context("no se pudo codificar el fotograma")?;
+    let (raiz, proyecto) = (v.raiz.clone(), v.clase.proyecto.clone());
+    let numero = super::siguiente_numero_en(&raiz, &proyecto)?;
+    let aparato = crate::letras_que_viajan::aparato(&raiz);
+    let fichero = format!("clase-{}-{ms}.png", pixpin_shell::entorno::ahora_utc_ms());
+    let pie = format!("⏱ {} · {}", pixpin_voz::marca_de_tiempo(ms), v.clase.nombre);
+    let mut m = super::adjuntar_con_pie(
+        &raiz, &proyecto, &aparato, &fichero, &png, numero, &pie, None,
+    )?;
+    m.resto.insert(
+        "enGrabacion".into(),
+        serde_json::json!({ "de": v.clase.id, "ms": ms }),
+    );
+    cuaderno::reemplazar(&almacen::carpeta(&raiz, &proyecto), &m)?;
+    let id = m.id.clone();
+    cambiar_la_nota(&raiz, &proyecto, &v.clase.id, |n| {
+        clase::poner_captura(&mut n.resto, ms, &id);
+        true
+    })?;
+    tracing::info!(ms, "fotograma de la clase guardado como captura");
+    Ok(m.id)
+}
+
 fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
     match z {
-        Zona::Cerrar => *vivo = false,
         Zona::Tocar | Zona::Medio => v.medio.alternar(),
         Zona::Atras => v.saltar(-SALTO_LARGO),
         Zona::Adelante => v.saltar(SALTO_LARGO),
@@ -1347,17 +1849,22 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
             }
         }
         Zona::CambiarVista => v.ver_capturas = !v.ver_capturas,
-        Zona::Ir(ms) => v.ir_a(ms, false),
+        Zona::Ir(ms) => v.ir_a(ms),
         Zona::Quitar(ms) => v.quitar_senal(ms, textos),
         Zona::Captura(i) => {
             if let Some((ms, _)) = v.clase.capturas.get(i) {
                 let ms = *ms;
                 v.ver_capturas = true;
-                v.ir_a(ms, false);
+                v.ir_a(ms);
             }
         }
-        Zona::Barra | Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
+        Zona::ZoomMenos => v.acercar(1.0 / encuadre::PASO, None),
+        Zona::ZoomMas => v.acercar(encuadre::PASO, None),
+        Zona::Encajar => v.encuadre.encajar(),
+        Zona::Anotar => v.anotar = true,
+        Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
+    let _ = vivo;
 }
 
 fn tecla(v: &mut Vista, vk: u32, ctrl: bool, textos: &Catalogo, vivo: &mut bool) {
@@ -1376,6 +1883,13 @@ fn tecla(v: &mut Vista, vk: u32, ctrl: bool, textos: &Catalogo, vivo: &mut bool)
         return;
     }
     if ctrl {
+        // El encuadre, como en el lienzo: Ctrl+0 encaja, Ctrl+mas/menos.
+        match vk {
+            VK_0 => v.encuadre.encajar(),
+            VK_MAS | VK_MAS_NUM => v.acercar(encuadre::PASO, None),
+            VK_MENOS | VK_MENOS_NUM => v.acercar(1.0 / encuadre::PASO, None),
+            _ => {}
+        }
         return;
     }
     match vk {
@@ -1394,12 +1908,16 @@ fn tecla(v: &mut Vista, vk: u32, ctrl: bool, textos: &Catalogo, vivo: &mut bool)
             v.tragar = Some('s');
             pulsar(v, Zona::Seguir, textos, vivo);
         }
+        VK_A => {
+            v.tragar = Some('a');
+            v.anotar = true;
+        }
         VK_ESCAPE => *vivo = false,
         _ => {}
     }
     // Las letras de los atajos tambien llegan como caracter: sin marcador
     // abierto no hacen nada, pero la de la M no puede acabar en su nota.
-    if !matches!(vk, VK_M | VK_S) {
+    if !matches!(vk, VK_M | VK_S | VK_A) {
         v.tragar = None;
     }
 }
@@ -1425,57 +1943,10 @@ fn pintar_todo(
         },
         tema.chat,
     );
-    // La barra: el titulo y cerrar. Lo que no es boton la arrastra.
-    let barra = RectF {
-        x: 0.0,
-        y: 0.0,
-        ancho,
-        alto: BARRA * e,
-    };
-    p.rellenar(barra, tema.barra);
-    v.zonas.push((barra, Zona::Barra));
-    let titulo = format!("{} · {}", textos.t("estudiar-titulo"), v.clase.nombre);
-    let (_, th) = p.medir_texto(&titulo, 16.0 * e);
-    p.icono(
-        &mi::MENU_BOOK,
-        RectF {
-            x: MARGEN * e,
-            y: (barra.alto - 20.0 * e) / 2.0,
-            ancho: 20.0 * e,
-            alto: 20.0 * e,
-        },
-        tema.enviar,
-    );
-    p.texto_linea(
-        &titulo,
-        MARGEN * e + 30.0 * e,
-        (barra.alto - th) / 2.0,
-        16.0 * e,
-        ancho - 200.0 * e,
-        tema.texto,
-    );
-    let cerrar = RectF {
-        x: ancho - BARRA * e,
-        y: 0.0,
-        ancho: BARRA * e,
-        alto: BARRA * e,
-    };
-    if dentro(cerrar, v.raton) {
-        p.rellenar(cerrar, tema.cerrar_sobre);
-    }
-    p.icono(
-        &mi::CLOSE,
-        RectF {
-            x: cerrar.x + (cerrar.ancho - 20.0 * e) / 2.0,
-            y: (cerrar.alto - 20.0 * e) / 2.0,
-            ancho: 20.0 * e,
-            alto: 20.0 * e,
-        },
-        tema.texto,
-    );
-    v.zonas.push((cerrar, Zona::Cerrar));
-
-    let posicion = v.medio.posicion_ms();
+    // Sin barra dentro: el nombre, el asa y cerrar van en la de los
+    // visores, fuera (`lector_pin`).
+    // Arrastrando la barra, el tirador y lo que suena van con el raton.
+    let posicion = clase::posicion_a_la_vista(v.medio.posicion_ms(), v.arrastre_ms);
     pintar_medio(p, v, e, textos);
     pintar_tiempo(p, v, tema, e, posicion);
     pintar_mandos(p, v, tema, e, textos, posicion);
@@ -1519,33 +1990,46 @@ fn encajar(caja: RectF, w: u32, h: u32) -> RectF {
 }
 
 /// Lo que se ve: el fotograma del video, o la captura del minuto en grande
-/// (la grande si ya llego, si no su miniatura), o el aviso de solo audio.
+/// (la grande si ya llego, si no su miniatura) con lo anotado encima, o el
+/// aviso de solo audio. Va con su encuadre: acercado y movido como en un
+/// lienzo, Direct2D la escala al pintarla.
 fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
     let caja = v.disp.medio;
     p.rellenar_redondeado(caja, 10.0 * e, hex(0x0b0f14));
     let recortado = p.empujar_recorte_redondeado(caja, 10.0 * e);
-    let mut algo = false;
+    // Lo que mide lo que se pinta, para el tanto por ciento.
+    let mut visto: Option<(u32, u32)> = None;
+    let encuadre = v.encuadre;
     if let Some(i) = v.captura_a_la_vista() {
         let img = match &v.grande {
             Some((g, img)) if *g == i => Some(img),
             _ => v.miniaturas.get(i).and_then(|m| m.as_ref()),
         };
         if let Some((b, w, h)) = img {
-            p.bitmap(b, encajar(caja, *w, *h), None, false);
-            algo = true;
+            let d = rect(encuadre.destino(caja_de(caja), *w as f32, *h as f32));
+            p.bitmap_con(b, d, None, interpolacion(d.ancho, *w));
+            // Lo anotado en su lienzo, encima y con el mismo encuadre.
+            if let Some((j, _, dibujo)) = &v.dibujo
+                && *j == i
+                && !dibujo.ordenes.is_empty()
+            {
+                super::pintar_lienzo(p, dibujo, d, None);
+            }
+            visto = Some((*w, *h));
         }
     } else if let Medio::Video {
         bitmap: Some(b), r, ..
     } = &mut v.medio
         && let Some((w, h)) = r.dimensiones()
     {
-        p.bitmap(b, encajar(caja, w, h), None, false);
-        algo = true;
+        let d = rect(encuadre.destino(caja_de(caja), w as f32, h as f32));
+        p.bitmap_con(b, d, None, interpolacion(d.ancho, w));
+        visto = Some((w, h));
     }
     if recortado {
         p.soltar_recorte_redondeado();
     }
-    if !algo {
+    if visto.is_none() {
         let (icono, texto) = match (&v.medio, v.clase.capturas.is_empty()) {
             (Medio::Nada, _) => (&mi::MIC, textos.t("estudiar-sin-sonido")),
             (Medio::Video { .. }, _) => (&mi::VIDEOCAM, textos.t("estudiar-cargando")),
@@ -1581,34 +2065,157 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
         } else {
             (&mi::IMAGE, textos.t("estudiar-ver-captura"))
         };
-        let tam = 12.5 * e;
-        let (tw, th) = p.medir_texto(&rotulo, tam);
+        let w = ancho_de_ficha(p, Some(icono), &rotulo, e);
         let ficha = RectF {
-            x: caja.x + caja.ancho - tw - 52.0 * e,
+            x: caja.x + caja.ancho - w - 10.0 * e,
             y: caja.y + 10.0 * e,
-            ancho: tw + 42.0 * e,
+            ancho: w,
             alto: 28.0 * e,
         };
-        let fondo = if dentro(ficha, v.raton) { 0.85 } else { 0.65 };
-        p.rellenar_redondeado(ficha, ficha.alto / 2.0, con_alfa(hex(0x000000), fondo));
+        pintar_ficha(p, v, ficha, Some(icono), &rotulo, Zona::CambiarVista, e);
+    }
+    let Some((w, h)) = visto else {
+        return;
+    };
+    // Arriba a la izquierda, «Anotar»: la captura en su lienzo o el
+    // fotograma del video.
+    let anotar = textos.t("estudiar-anotar");
+    let ficha = RectF {
+        x: caja.x + 10.0 * e,
+        y: caja.y + 10.0 * e,
+        ancho: ancho_de_ficha(p, Some(&mi::DRAW), &anotar, e),
+        alto: 28.0 * e,
+    };
+    pintar_ficha(p, v, ficha, Some(&mi::DRAW), &anotar, Zona::Anotar, e);
+    // Abajo a la derecha, el encuadre: −, el tanto por ciento, + y encajar.
+    let por_ciento = format!(
+        "{} %",
+        v.encuadre.por_ciento(caja_de(caja), w as f32, h as f32)
+    );
+    let lado = 28.0 * e;
+    let ancho_cifra = p
+        .medir_texto("000 %", 12.5 * e)
+        .0
+        .max(p.medir_texto(&por_ciento, 12.5 * e).0)
+        + 12.0 * e;
+    let total = lado * 3.0 + ancho_cifra + 4.0 * e;
+    let pastilla = RectF {
+        x: caja.x + caja.ancho - total - 10.0 * e,
+        y: caja.y + caja.alto - lado - 10.0 * e,
+        ancho: total,
+        alto: lado,
+    };
+    p.rellenar_redondeado(pastilla, lado / 2.0, con_alfa(hex(0x000000), 0.65));
+    let mut x = pastilla.x + 2.0 * e;
+    let mut sitio = |ancho: f32| {
+        let r = RectF {
+            x,
+            y: pastilla.y,
+            ancho,
+            alto: lado,
+        };
+        x += ancho;
+        r
+    };
+    let (menos, cifra, mas, encajar) = (sitio(lado), sitio(ancho_cifra), sitio(lado), sitio(lado));
+    for (r, z) in [
+        (menos, Zona::ZoomMenos),
+        (mas, Zona::ZoomMas),
+        (encajar, Zona::Encajar),
+    ] {
+        if dentro(r, v.raton) {
+            p.rellenar_redondeado(r, lado / 2.0, con_alfa(Color::BLANCO, 0.16));
+        }
+        v.zonas.push((r, z));
+    }
+    let centrado = |p: &Pintor, t: &str, r: RectF, tam: f32| {
+        let (tw, th) = p.medir_texto(t, tam);
+        p.texto(
+            t,
+            r.x + (r.ancho - tw) / 2.0,
+            r.y + (r.alto - th) / 2.0,
+            tam,
+            Color::BLANCO,
+        );
+    };
+    centrado(p, "−", menos, 16.0 * e);
+    centrado(p, "+", mas, 16.0 * e);
+    centrado(p, &por_ciento, cifra, 12.5 * e);
+    let i = 16.0 * e;
+    p.icono(
+        &mi::CROP_FREE,
+        RectF {
+            x: encajar.x + (lado - i) / 2.0,
+            y: encajar.y + (lado - i) / 2.0,
+            ancho: i,
+            alto: i,
+        },
+        if v.encuadre.encajado() {
+            con_alfa(Color::BLANCO, 0.5)
+        } else {
+            Color::BLANCO
+        },
+    );
+}
+
+/// Lo que mide una ficha encima de lo que se ve: icono y rotulo.
+fn ancho_de_ficha(
+    p: &Pintor,
+    icono: Option<&pixpin_render::icono::Icono>,
+    rotulo: &str,
+    e: f32,
+) -> f32 {
+    let icono = if icono.is_some() { 22.0 * e } else { 0.0 };
+    p.medir_texto(rotulo, 12.5 * e).0 + icono + 20.0 * e
+}
+
+/// Una ficha encima de lo que se ve (cristal oscuro: va sobre el video, en
+/// claro y en oscuro), apuntada para el raton.
+fn pintar_ficha(
+    p: &Pintor,
+    v: &mut Vista,
+    ficha: RectF,
+    icono: Option<&pixpin_render::icono::Icono>,
+    rotulo: &str,
+    zona: Zona,
+    e: f32,
+) {
+    let tam = 12.5 * e;
+    let (_, th) = p.medir_texto(rotulo, tam);
+    let fondo = if dentro(ficha, v.raton) { 0.85 } else { 0.65 };
+    p.rellenar_redondeado(ficha, ficha.alto / 2.0, con_alfa(hex(0x000000), fondo));
+    let mut x = ficha.x + 10.0 * e;
+    if let Some(icono) = icono {
         p.icono(
             icono,
             RectF {
-                x: ficha.x + 10.0 * e,
+                x,
                 y: ficha.y + (ficha.alto - 16.0 * e) / 2.0,
                 ancho: 16.0 * e,
                 alto: 16.0 * e,
             },
             Color::BLANCO,
         );
-        p.texto(
-            &rotulo,
-            ficha.x + 32.0 * e,
-            ficha.y + (ficha.alto - th) / 2.0,
-            tam,
-            Color::BLANCO,
-        );
-        v.zonas.push((ficha, Zona::CambiarVista));
+        x += 22.0 * e;
+    }
+    p.texto(
+        rotulo,
+        x,
+        ficha.y + (ficha.alto - th) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
+    v.zonas.push((ficha, zona));
+}
+
+/// Como se escala lo que se ve: suave al acercar y al reducir; a partir del
+/// triple, pixeles tal cual (se acerca para ver la letra pequena).
+fn interpolacion(ancho_pintado: f32, ancho_imagen: u32) -> pixpin_render::Interpolacion {
+    let k = ancho_pintado / ancho_imagen.max(1) as f32;
+    if k >= 3.0 {
+        pixpin_render::Interpolacion::Vecino
+    } else {
+        pixpin_render::Interpolacion::Lineal
     }
 }
 
@@ -2336,6 +2943,9 @@ mod pruebas {
             (1360.0, 840.0, 1.0),
             (2040.0, 1260.0, 1.5),
             (1100.0, 700.0, 1.0),
+            // Lo menos que se deja estirar, a 100 % y a 150 %.
+            (ANCHO_MINIMO, ALTO_MINIMO, 1.0),
+            (ANCHO_MINIMO * 1.5, ALTO_MINIMO * 1.5, 1.5),
         ] {
             let d = disponer(w, h, e);
             assert!(d.medio.x + d.medio.ancho <= d.texto.x, "{w}");
@@ -2343,7 +2953,14 @@ mod pruebas {
             assert!(d.fotos.x + d.fotos.ancho <= w, "{w}");
             assert!(d.mandos.y + d.mandos.alto <= h, "{w}");
             assert!(d.fila_foto > 0.0);
+            // Sin barra dentro: lo de arriba empieza en el margen.
+            assert_eq!(d.medio.y, MARGEN * e, "{w}");
         }
+        // Los mandos de debajo del video caben a lo menos que se estira:
+        // los de la izquierda (unos 270 logicos) y los de la derecha (unos
+        // 270) no se pisan.
+        let d = disponer(ANCHO_MINIMO, ALTO_MINIMO, 1.0);
+        assert!(d.mandos.ancho >= 540.0, "{}", d.mandos.ancho);
     }
 
     #[test]
