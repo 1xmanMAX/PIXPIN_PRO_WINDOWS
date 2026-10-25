@@ -425,8 +425,24 @@ impl Marcador {
             return;
         };
         let (w, h) = hueco(cx);
+        // Sin hueco (la ventana minimizada, o a medio crear) no hay a donde
+        // mirar: la camara saldria para una ventana de un pixel.
+        if w < 1.0 || h < 1.0 {
+            return;
+        }
         let vuelo = match self.vistas.get(&m.id) {
-            Some(v) => Vuelo::hacia_en(v.camara(w, h), w, h),
+            // Con los topes del editor y no los de la camara: por debajo del
+            // minimo de la rueda, la primera muesca de alejar acercaria.
+            Some(v) => Vuelo::hacia_en(
+                v.camara_entre(
+                    w,
+                    h,
+                    crate::navegacion::ZOOM_MINIMO,
+                    crate::navegacion::ZOOM_MAXIMO,
+                ),
+                w,
+                h,
+            ),
             None => {
                 let e = pixpin_escala(cx.escala_por_cien);
                 Vuelo::hacia(marcas::camara_con_la_marca_arriba(
