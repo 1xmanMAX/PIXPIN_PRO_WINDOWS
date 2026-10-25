@@ -96,3 +96,85 @@ pub fn textura_a_imagen(
         pixeles,
     })
 }
+
+/// **Bajadas seguidas de una textura**, para grabar video (25-oct-2026,
+/// grabar la reunion entera).
+///
+/// [`textura_a_imagen`] crea su textura de escenificacion en cada llamada y
+/// cambia los canales a RGBA: bien para una captura suelta, caro diez veces
+/// por segundo durante una hora en un portatil con 4 GB. Aqui la textura de
+/// escenificacion se crea una vez y se reutiliza mientras no cambie el
+/// tamano, y los pixeles salen **BGRA tal cual**, que es lo que come el
+/// codificador de video (lo que Media Foundation llama RGB32).
+#[derive(Default)]
+pub struct Bajada {
+    escenificada: Option<(ID3D11Texture2D, u32, u32)>,
+}
+
+impl Bajada {
+    /// Copia `textura` a `destino` como BGRA sin relleno de fila y devuelve
+    /// su `(ancho, alto)`. `destino` se reutiliza: solo crece si hace falta.
+    pub fn bajar_bgra(
+        &mut self,
+        dispositivo: &Dispositivo,
+        textura: &ID3D11Texture2D,
+        destino: &mut Vec<u8>,
+    ) -> Result<(u32, u32), ErrorCaptura> {
+        let d3d = dispositivo.d3d();
+        let contexto = dispositivo.contexto();
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        // SAFETY: el llamante mantiene viva la textura durante la funcion;
+        // `GetDesc` solo rellena la estructura que se le pasa.
+        unsafe { textura.GetDesc(&mut desc) };
+        let vale = self
+            .escenificada
+            .as_ref()
+            .is_some_and(|(_, w, h)| (*w, *h) == (desc.Width, desc.Height));
+        if !vale {
+            let desc_lectura = D3D11_TEXTURE2D_DESC {
+                Usage: D3D11_USAGE_STAGING,
+                BindFlags: 0,
+                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                MiscFlags: 0,
+                ..desc
+            };
+            let mut nueva: Option<ID3D11Texture2D> = None;
+            // SAFETY: descripcion completa; `nueva` es local y la API la
+            // rellena si sale bien.
+            unsafe { d3d.CreateTexture2D(&desc_lectura, None, Some(&mut nueva))? };
+            let nueva = nueva.ok_or(ErrorCaptura::SinFotograma)?;
+            self.escenificada = Some((nueva, desc.Width, desc.Height));
+        }
+        let Some((escenificada, _, _)) = self.escenificada.as_ref() else {
+            return Err(ErrorCaptura::SinFotograma);
+        };
+
+        // SAFETY: misma descripcion salvo uso y permisos de CPU, que es lo
+        // que `CopyResource` admite (comprobado arriba por el tamano; el
+        // formato de una sesion no cambia).
+        unsafe { contexto.CopyResource(escenificada, textura) };
+        let mut mapa = D3D11_MAPPED_SUBRESOURCE::default();
+        // SAFETY: textura de escenificacion con lectura de CPU; se desmapea
+        // mas abajo sin ningun `?` entre medias.
+        unsafe { contexto.Map(escenificada, 0, D3D11_MAP_READ, 0, Some(&mut mapa))? };
+
+        let ancho = desc.Width as usize;
+        let alto = desc.Height as usize;
+        let paso = mapa.RowPitch as usize;
+        let fila_util = ancho * 4;
+        destino.clear();
+        destino.reserve(fila_util * alto);
+        // SAFETY: `mapa.pData` apunta a `alto * paso` bytes legibles mientras
+        // dure el mapeo; se lee fila a fila solo lo util de cada una.
+        unsafe {
+            let base = mapa.pData as *const u8;
+            for fila in 0..alto {
+                let franja = std::slice::from_raw_parts(base.add(fila * paso), fila_util);
+                destino.extend_from_slice(franja);
+            }
+        }
+        // SAFETY: el mismo subrecurso que se mapeo arriba, una sola vez.
+        unsafe { contexto.Unmap(escenificada, 0) };
+        Ok((desc.Width, desc.Height))
+    }
+}

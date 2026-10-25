@@ -114,6 +114,17 @@ pub enum ErrorMp4 {
         #[source]
         fuente: windows::core::Error,
     },
+    #[error(
+        "este Windows no trae el codificador AAC (suele ser una edicion N sin el \
+         paquete de caracteristicas multimedia)"
+    )]
+    SinCodificadorAac,
+    #[error("no se pudo poner el video en {ruta}: {fuente}")]
+    Renombrar {
+        ruta: PathBuf,
+        #[source]
+        fuente: std::io::Error,
+    },
     #[error("Media Foundation fallo al {paso}: {fuente}")]
     MediaFoundation {
         paso: &'static str,
@@ -125,7 +136,7 @@ pub enum ErrorMp4 {
 /// Envuelve un fallo de Media Foundation diciendo en que paso ocurrio. Sin
 /// esto todos los errores serian el mismo HRESULT sin contexto, y depurar
 /// una tuberia de seis pasos a base de `0x80004005` es perder la tarde.
-fn en(paso: &'static str) -> impl Fn(windows::core::Error) -> ErrorMp4 {
+pub(crate) fn en(paso: &'static str) -> impl Fn(windows::core::Error) -> ErrorMp4 {
     move |fuente| ErrorMp4::MediaFoundation { paso, fuente }
 }
 
@@ -133,7 +144,7 @@ fn en(paso: &'static str) -> impl Fn(windows::core::Error) -> ErrorMp4 {
 /// haga H.264 es el mismo que cuando el tipo de salida no le gusta, asi que
 /// los dos se traducen al mensaje sobre el que el usuario puede actuar:
 /// falta el paquete multimedia.
-fn falta_codificador(e: &windows::core::Error) -> bool {
+pub(crate) fn falta_codificador(e: &windows::core::Error) -> bool {
     e.code() == MF_E_TOPO_CODEC_NOT_FOUND || e.code() == MF_E_INVALIDMEDIATYPE
 }
 
@@ -142,7 +153,7 @@ fn falta_codificador(e: &windows::core::Error) -> bool {
 /// cuenta, asi que este arranque convive con el de aquel sin pisarlo.
 static ARRANQUE: Once = Once::new();
 
-fn arrancar_media_foundation() {
+pub(crate) fn arrancar_media_foundation() {
     ARRANQUE.call_once(|| {
         // SAFETY: `MFStartup` no tiene mas precondicion que recibir la
         // version de la cabecera con la que se compilo, que es lo que vale
@@ -162,12 +173,12 @@ fn arrancar_media_foundation() {
 /// de un pool. `CoInitializeEx` devuelve `RPC_E_CHANGED_MODE` cuando el hilo
 /// ya esta en otro apartamento; en ese caso no incrementa la cuenta, y
 /// llamar a `CoUninitialize` cerraria el COM de otro.
-struct ComDelHilo {
+pub(crate) struct ComDelHilo {
     nuestro: bool,
 }
 
 impl ComDelHilo {
-    fn nuevo() -> ComDelHilo {
+    pub(crate) fn nuevo() -> ComDelHilo {
         // SAFETY: `CoInitializeEx` es la forma normal de entrar en COM y no
         // tiene precondiciones. Se guarda si la cuenta subio, para poder
         // deshacerlo con exactitud en `Drop`.
@@ -192,7 +203,7 @@ impl Drop for ComDelHilo {
 
 /// Empaqueta dos u32 en el u64 que espera Media Foundation para los pares
 /// (ancho, alto), (numerador, denominador) y demas: el primero arriba.
-fn empaquetar(primero: u32, segundo: u32) -> u64 {
+pub(crate) fn empaquetar(primero: u32, segundo: u32) -> u64 {
     ((primero as u64) << 32) | (segundo as u64)
 }
 
@@ -204,7 +215,7 @@ fn empaquetar(primero: u32, segundo: u32) -> u64 {
 /// sobran de largo. Sale 6,2 Mb/s para 1920x1080 a 30, holgado para que el
 /// texto se lea nitido. Los topes evitan los dos extremos absurdos: un
 /// video ilegible de 100 kb/s para una ventanita, y 80 Mb/s para una 4K.
-fn bitrate_por_defecto(ancho: u32, alto: u32, por_segundo: u32) -> u32 {
+pub(crate) fn bitrate_por_defecto(ancho: u32, alto: u32, por_segundo: u32) -> u32 {
     let pixeles_por_segundo = ancho as u64 * alto as u64 * por_segundo as u64;
     (pixeles_por_segundo / 10).clamp(500_000, 20_000_000) as u32
 }
@@ -263,7 +274,7 @@ fn medidas(fotogramas: &[ImagenRgba]) -> Result<(u32, u32), ErrorMp4> {
 /// La ruta como cadena ancha terminada en cero, que es lo que come
 /// `MFCreateSinkWriterFromURL`. Se pasa por `OsStr` para no romper las
 /// rutas con caracteres que no sean UTF-8 valido.
-fn a_utf16(ruta: &Path) -> Vec<u16> {
+pub(crate) fn a_utf16(ruta: &Path) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt;
     ruta.as_os_str()
         .encode_wide()
@@ -399,7 +410,7 @@ fn atributos_del_escritor() -> Result<IMFAttributes, ErrorMp4> {
 }
 
 /// Anade el flujo de salida H.264 y devuelve su indice.
-fn anadir_flujo_h264(
+pub(crate) fn anadir_flujo_h264(
     escritor: &IMFSinkWriter,
     ancho: u32,
     alto: u32,
@@ -442,7 +453,7 @@ fn anadir_flujo_h264(
 }
 
 /// Describe lo que le vamos a dar al escritor: RGB32 de arriba abajo.
-fn fijar_entrada_rgb32(
+pub(crate) fn fijar_entrada_rgb32(
     escritor: &IMFSinkWriter,
     flujo: u32,
     ancho: u32,

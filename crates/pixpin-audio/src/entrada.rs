@@ -27,7 +27,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
-use std::sync::mpsc::{SyncSender, sync_channel};
+use std::sync::mpsc::{Sender, SyncSender, sync_channel};
 use std::thread::JoinHandle;
 
 use windows::Win32::Foundation::{CloseHandle, HANDLE, RPC_E_CHANGED_MODE};
@@ -123,6 +123,15 @@ fn a_medias(destino: &Path) -> PathBuf {
     PathBuf::from(s)
 }
 
+/// **Una copia del sonido ya mezclado** (25-oct-2026, grabar la reunion en
+/// video): cada bloque mono de 16 bits, al muestreo de la grabacion
+/// ([`Grabadora::muestreo`]), justo despues de escribirse en el `.m4a`. En
+/// pausa no llega nada, asi que contar lo recibido es el mismo reloj que
+/// [`Grabadora::llevado_ms`]. Cuando la grabacion termina —o se tira— el
+/// emisor se suelta y el canal se cierra: ese cierre es la senal de fin para
+/// quien escucha.
+pub type Copia = Sender<Vec<i16>>;
+
 /// Una grabacion en marcha.
 pub struct Grabadora {
     /// Donde acabara la nota **si sale bien**. Hasta el renombrado no existe.
@@ -152,6 +161,17 @@ impl Grabadora {
     /// Lo mismo, de las `fuentes` dadas: el microfono, lo que suena en el
     /// equipo o las dos juntas en una sola nota.
     pub fn empezar_con(destino: &Path, fuentes: Fuentes) -> Result<Grabadora, ErrorAudio> {
+        Grabadora::empezar_con_copia(destino, fuentes, None)
+    }
+
+    /// Lo mismo, y ademas manda por `copia` cada bloque del sonido mezclado
+    /// (ver [`Copia`]): lo que necesita el video de una reunion para llevar
+    /// el mismo sonido que la nota y al mismo compas.
+    pub fn empezar_con_copia(
+        destino: &Path,
+        fuentes: Fuentes,
+        copia: Option<Copia>,
+    ) -> Result<Grabadora, ErrorAudio> {
         if !fuentes.microfono && !fuentes.equipo {
             return Err(ErrorAudio::SinMicrofono);
         }
@@ -180,7 +200,7 @@ impl Grabadora {
                 .name("pixpin-grabar".into())
                 .spawn(move || {
                     grabar(
-                        &parcial, fuentes, &parar, &pausa, &nivel, &muestras, &avisar,
+                        &parcial, fuentes, &parar, &pausa, &nivel, &muestras, &avisar, copia,
                     )
                 })
                 .map_err(|_| ErrorAudio::HiloCaido)?
@@ -228,6 +248,12 @@ impl Grabadora {
     /// mientras se graba.
     pub fn nivel(&self) -> i32 {
         self.nivel.load(Ordering::Relaxed)
+    }
+
+    /// Muestras por segundo de la grabacion (44 100 o 48 000): las de la
+    /// [`Copia`].
+    pub fn muestreo(&self) -> u32 {
+        self.muestreo
     }
 
     /// Cuanto lleva grabado, en milisegundos.
@@ -381,6 +407,7 @@ impl Drop for FormatoDeLaMesa {
 }
 
 /// El cuerpo del hilo que graba.
+#[allow(clippy::too_many_arguments)]
 fn grabar(
     destino: &Path,
     fuentes: Fuentes,
@@ -389,6 +416,7 @@ fn grabar(
     nivel: &AtomicI32,
     muestras_vistas: &AtomicU64,
     avisar: &SyncSender<Result<u32, ErrorAudio>>,
+    copia: Option<Copia>,
 ) -> Result<Grabacion, ErrorAudio> {
     let _com = ComDelHilo::nuevo();
     arrancar_media_foundation();
@@ -407,7 +435,11 @@ fn grabar(
         }
     };
 
+    equipo.copia = copia;
     let resultado = bucle(&mut equipo, parar, pausa, nivel, muestras_vistas);
+    // Se suelta ya: el canal cerrado le dice a quien escucha que no llega
+    // mas sonido, aunque el `Finalize` de abajo tarde.
+    equipo.copia = None;
     let total = equipo.escritas;
 
     for f in &equipo.fuentes {
@@ -458,6 +490,8 @@ struct Equipo {
     muestreo: u32,
     /// Muestras mono ya escritas: marca el tiempo de cada muestra del MP4.
     escritas: u64,
+    /// A quien mas le llega el sonido mezclado (ver [`Copia`]).
+    copia: Option<Copia>,
 }
 
 /// Abre una tarjeta de sonido de Windows para leer de ella. `loopback`: la
@@ -580,6 +614,7 @@ fn preparar(destino: &Path, fuentes: Fuentes) -> Result<Equipo, ErrorAudio> {
             reparto: Reparto::nuevo(muestreo),
             muestreo,
             escritas: 0,
+            copia: None,
         })
     }
 }
@@ -659,6 +694,13 @@ fn emitir(
     equipo.reparto.empuja(muestras);
     escribir(equipo, muestras)?;
     muestras_vistas.store(equipo.escritas, Ordering::Relaxed);
+    // Si quien escuchaba ya no esta (su video fallo), se deja de copiar: la
+    // nota sigue igual.
+    if let Some(copia) = &equipo.copia
+        && copia.send(muestras.to_vec()).is_err()
+    {
+        equipo.copia = None;
+    }
     Ok(())
 }
 

@@ -905,6 +905,7 @@ pub const LIGHT_MODE: Icono = Icono {
 
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    VIDEOCAM,
     EDIT_NOTE,
     CROP_FREE,
     MORE_VERT,
@@ -1003,6 +1004,16 @@ pub const TODOS: &[Icono] = &[
     VIEW_IN_AR,
     WIFI,
 ];
+
+/// `videocam` (`src/av/videocam/materialicons/24px.svg`): grabar tambien el
+/// video de la pantalla en «Grabar clase» (25-oct-2026).
+pub const VIDEOCAM: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z",
+        false,
+    )],
+};
 
 /// `fullscreen` (`src/navigation/fullscreen/materialicons/24px.svg`): los
 /// lectores, de pin a pantalla completa.

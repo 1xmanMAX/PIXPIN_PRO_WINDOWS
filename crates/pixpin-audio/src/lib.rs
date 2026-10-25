@@ -76,7 +76,7 @@ pub use reloj::{
 };
 
 #[cfg(windows)]
-pub use entrada::{Fuentes, Grabacion, Grabadora};
+pub use entrada::{Copia, Fuentes, Grabacion, Grabadora};
 #[cfg(windows)]
 pub use salida::{Rol, Salida};
 

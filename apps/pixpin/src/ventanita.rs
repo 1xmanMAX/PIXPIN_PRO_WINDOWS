@@ -151,12 +151,24 @@ pub fn abrir_audio(
     fichero: std::path::PathBuf,
     fuentes: pixpin_audio::Fuentes,
 ) -> std::sync::mpsc::Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>> {
+    abrir_audio_con_copia(fichero, fuentes, None)
+}
+
+/// [`abrir_audio`] mandando ademas el sonido mezclado por `copia` (ver
+/// `pixpin_audio::Copia`): el video de una reunion lleva ese mismo sonido.
+pub fn abrir_audio_con_copia(
+    fichero: std::path::PathBuf,
+    fuentes: pixpin_audio::Fuentes,
+    copia: Option<pixpin_audio::Copia>,
+) -> std::sync::mpsc::Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let lanzado = std::thread::Builder::new()
         .name("abrir-microfono".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
-            let _ = tx.send(pixpin_audio::Grabadora::empezar_con(&fichero, fuentes));
+            let _ = tx.send(pixpin_audio::Grabadora::empezar_con_copia(
+                &fichero, fuentes, copia,
+            ));
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del microfono");
