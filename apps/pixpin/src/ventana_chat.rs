@@ -144,6 +144,8 @@ mod grabar_clase;
 mod hoja_adjuntar;
 /// Los archivos con el icono de su tipo, un color por extension (v0.98.4).
 mod icono_de_tipo;
+/// El interruptor Chat · Figuras de la barra de titulo.
+mod interruptor;
 /// El logo de un proyecto: una imagen en vez de las iniciales (4-oct).
 mod logo;
 /// Mayus+clic marca un tramo de burbujas.
@@ -175,8 +177,6 @@ mod paginas;
 mod papel_de_la_vista;
 /// «Pensando…» y la peticion mejorada encima de la respuesta del asistente.
 mod pensado;
-/// La pantalla de Proyectos del movil y el interruptor Chat / Proyectos.
-mod proyectos;
 /// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
 mod quien_llama;
 use crate::asistente::nube as asistente_nube;
@@ -198,8 +198,6 @@ const VK_ESCAPE: u32 = 0x1B;
 const VK_RETROCESO: u32 = 0x08;
 const VK_ENTRAR: u32 = 0x0D;
 const VK_V: u32 = 0x56;
-#[cfg(test)]
-const VK_U: u32 = 0x55;
 const VK_C: u32 = 0x43;
 /// Las teclas de la escala de la interfaz. Las dos de cada signo porque el
 /// «+» del teclado numerico y el de la fila de arriba son teclas distintas,
@@ -627,6 +625,34 @@ fn tomar_refrescar() -> bool {
     REFRESCAR.swap(false, std::sync::atomic::Ordering::SeqCst)
 }
 
+/// La escala de la interfaz que se eligio en los ajustes generales y el chat
+/// abierto aun no ha puesto (0: ninguna).
+static ESCALA_PEDIDA: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// **Pone la escala de la interfaz** desde fuera del chat (los ajustes
+/// generales, 25-oct-2026: salio de los tres puntos del chat).
+///
+/// Se apunta en el estado para la proxima vez y, si el chat esta abierto,
+/// se le despierta para que la ponga ya: el chat guarda su propia copia del
+/// estado y, sin enterarse, la pisaria al cerrar con la de antes.
+pub(crate) fn poner_escala_interfaz(ubicacion: &Ubicacion, cuanto: u32) {
+    let cuanto = chat::escala_valida(cuanto);
+    let mut estado = pixpin_store::estado::cargar(ubicacion);
+    recordar_escala(ubicacion, &mut estado, cuanto);
+    ESCALA_PEDIDA.store(cuanto, std::sync::atomic::Ordering::SeqCst);
+    let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
+}
+
+fn tomar_escala_pedida() -> Option<u32> {
+    match ESCALA_PEDIDA.swap(0, std::sync::atomic::Ordering::SeqCst) {
+        0 => None,
+        n => Some(n),
+    }
+}
+
 /// Relee el cuaderno del proyecto abierto SIN perder lo que el usuario tenga
 /// a medias: el borrador escrito, la seleccion, a quien contesta, la
 /// busqueda, el panel y la posicion del historial.
@@ -881,9 +907,8 @@ pub fn abrir(
     // no se pueda (ver `releer_lo_abierto`): se guarda la deuda en vez de
     // perderla, y se salda en cuanto la hoja o el lienzo se cierren.
     let mut pendiente_de_releer = false;
-    // La pantalla de Proyectos del movil y el interruptor de la barra
-    // (`proyectos.rs`): se abre en la que se eligio la ultima vez.
-    let mut vista_proyectos = proyectos::VistaProyectos::nueva(ubicacion);
+    // El interruptor Chat · Figuras de la barra (`interruptor.rs`).
+    let interruptor = interruptor::Interruptor::default();
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -920,27 +945,6 @@ pub fn abrir(
         let mut cerrar = false;
         let disposicion = disponer(marco, escala, ancho_lista, abierto.as_ref());
         let mut nuevo_marco: Option<Rect> = None;
-        // Lo del bucle que la pantalla de Proyectos puede tocar al cumplir
-        // un pedido (`proyectos::cumplir`).
-        macro_rules! bucle_de_proyectos {
-            () => {
-                proyectos::Bucle {
-                    ubicacion,
-                    textos,
-                    idioma,
-                    lienzo,
-                    identidad: &identidad,
-                    ventana: &ventana,
-                    fichas: &fichas,
-                    orden: &orden,
-                    abierto: &mut abierto,
-                    elegida: &mut elegida,
-                    borradores: &mut borradores,
-                    aviso: &mut aviso,
-                    cerrar: &mut cerrar,
-                }
-            };
-        }
         // Lo que se elige en un menu abierto, con el raton o con su tecla:
         // las dos vias pasan por aqui (v2-menus).
         macro_rules! hacer_del_menu {
@@ -1009,25 +1013,6 @@ pub fn abrir(
                         fondo = n;
                         guardar_fondo(ubicacion, n);
                     }
-                    Some(Accion::Escalas) => {
-                        menu = Some(MenuAbierto::nuevo(
-                            ancla_del_menu,
-                            menu_de_escalas(textos, factor_escala),
-                        ));
-                    }
-                    Some(Accion::Escala(cuanto)) => {
-                        factor_escala = chat::escala_valida(cuanto);
-                        escala = escala_monitor * factor_escala / 100;
-                        recordar_escala(ubicacion, &mut estado, factor_escala);
-                        if let Some(a) = abierto.as_mut() {
-                            a.colocado.borrow_mut().ancho = 0;
-                        }
-                    }
-                    // ⋮ → Proyectos lleva a la pantalla de Proyectos,
-                    // como `abrirLaPortada(enProyectos = true)` del
-                    // movil. Es ir, no elegir: lo que recuerda el
-                    // interruptor no cambia.
-                    Some(Accion::Proyectos) => vista_proyectos.ver_proyectos(),
                     // «Captura» de la hoja del «+»: la de zona, por el mismo camino
                     // que el atajo general (como el pedido `capturar`). Un poco
                     // despues, para que el menu ya no salga en la foto.
@@ -1066,8 +1051,6 @@ pub fn abrir(
                 }
             }};
         }
-        // La tarjeta de Proyectos es la del proyecto que el chat tiene abierto.
-        vista_proyectos.seguir(abierto.as_ref().map(|a| a.ficha.id.as_str()));
 
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
@@ -1079,123 +1062,6 @@ pub fn abrir(
                 x: p.x - marco.x,
                 y: p.y - marco.y,
             };
-            // En modo Proyectos la ventana es la del chat de siempre y solo
-            // cambia el panel derecho: la tarjeta del proyecto elegido en vez
-            // de su conversacion (`proyectos.rs`). Lo que cae en el panel es
-            // de la tarjeta; lo de la lista sigue su camino. El teclado es de
-            // la tarjeta salvo mientras se escribe en el buscador o el nombre
-            // de un proyecto recien creado con el «+».
-            if vista_proyectos.activa() && pendientes.is_none() && menu.is_none() {
-                let hay_tarjeta = abierto.is_some() && disposicion.chat.ancho > 0;
-                let escribiendo = buscando || abierto.as_ref().is_some_and(|a| a.renombrando);
-                match evento {
-                    EventoOverlay::Rueda(delta) => {
-                        let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
-                        if hay_tarjeta && disposicion.chat.contiene(aqui) {
-                            vista_proyectos.mover(aqui);
-                            if let Some(pedido) = vista_proyectos.evento(evento) {
-                                hay_que_pintar |= proyectos::cumplir(
-                                    pedido,
-                                    &mut vista_proyectos,
-                                    &mut bucle_de_proyectos!(),
-                                );
-                            }
-                        } else {
-                            // La lista, aunque detras el chat tenga abierta
-                            // una hoja o un panel que se llevarian la rueda.
-                            let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
-                            let nuevo = disposicion.scroll_ajustado(
-                                scroll - giro_de_rueda(delta, paso),
-                                orden.len(),
-                                escala,
-                            );
-                            if nuevo != scroll {
-                                scroll = nuevo;
-                                fila_sobre = disposicion.fila_en(aqui, scroll, orden.len(), escala);
-                                hay_que_pintar = true;
-                            }
-                        }
-                        continue;
-                    }
-                    EventoOverlay::RuedaHorizontal(_) if hay_tarjeta => {
-                        if let Some(pedido) = vista_proyectos.evento(evento) {
-                            hay_que_pintar |= proyectos::cumplir(
-                                pedido,
-                                &mut vista_proyectos,
-                                &mut bucle_de_proyectos!(),
-                            );
-                        }
-                        continue;
-                    }
-                    // A pantalla completa, Escape devuelve la ventana a su
-                    // sitio, como en el chat: no la cierra.
-                    EventoOverlay::Tecla { vk, .. }
-                        if !escribiendo && !(vk == VK_ESCAPE && antes_de_maximizar.is_some()) =>
-                    {
-                        if let Some(pedido) = vista_proyectos.evento(evento) {
-                            hay_que_pintar |= proyectos::cumplir(
-                                pedido,
-                                &mut vista_proyectos,
-                                &mut bucle_de_proyectos!(),
-                            );
-                            continue;
-                        }
-                    }
-                    EventoOverlay::Caracter(_) if !escribiendo => {
-                        if let Some(pedido) = vista_proyectos.evento(evento) {
-                            hay_que_pintar |= proyectos::cumplir(
-                                pedido,
-                                &mut vista_proyectos,
-                                &mut bucle_de_proyectos!(),
-                            );
-                            continue;
-                        }
-                    }
-                    // Lo que se suelta encima va al chat de su proyecto, que
-                    // es donde se pregunta antes de meterlo.
-                    EventoOverlay::FicherosSoltados if hay_tarjeta => {
-                        proyectos::abrir_el_que_se_ve(
-                            &mut vista_proyectos,
-                            &mut bucle_de_proyectos!(),
-                        );
-                        hay_que_pintar = true;
-                    }
-                    EventoOverlay::BotonDerechoPulsado(p)
-                        if hay_tarjeta && disposicion.chat.contiene(local(p)) =>
-                    {
-                        let pedido = vista_proyectos.pulsar_derecho(local(p));
-                        hay_que_pintar |= proyectos::cumplir(
-                            pedido,
-                            &mut vista_proyectos,
-                            &mut bucle_de_proyectos!(),
-                        );
-                        continue;
-                    }
-                    EventoOverlay::RatonMovido(p)
-                        if arrastre.is_none()
-                            && hay_tarjeta
-                            && disposicion.chat.contiene(local(p)) =>
-                    {
-                        // Sobre la tarjeta no hay burbujas: solo se apunta
-                        // donde esta el raton (para la rueda) y se quita el
-                        // resalte de la fila de la lista que se dejo atras.
-                        let l = local(p);
-                        vista_proyectos.mover(l);
-                        ventana.poner_cursor(
-                            chat::borde_en(l, marco.ancho, marco.alto, escala)
-                                .map(cursor_de)
-                                .unwrap_or(FormaCursorWin::Flecha),
-                        );
-                        if sobre.is_some() || fila_sobre.is_some() {
-                            sobre = None;
-                            fila_sobre = None;
-                            hay_que_pintar = true;
-                        }
-                        continue;
-                    }
-                    _ => {}
-                }
-            }
             match evento {
                 // Eligiendo con el raton en una caja de una linea (buscar,
                 // renombrar): el raton es suyo hasta soltar, aunque se salga
@@ -1408,20 +1274,12 @@ pub fn abrir(
                     } else if let Some(b) = chat::borde_en(l, marco.ancho, marco.alto, escala) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Borde(b));
-                    } else if let Some(parte) = vista_proyectos.interruptor_en(l) {
-                        // El interruptor Chat / Proyectos / Figuras
-                        // (`proyectos.rs`, `figuras.rs`).
-                        match parte {
-                            // Las figuras van en su propia ventana (25-oct):
-                            // el chat se queda como estaba.
-                            proyectos::Parte::Figuras => figuras::abrir(idioma),
-                            otra => {
-                                let a_proyectos = otra == proyectos::Parte::Proyectos;
-                                if a_proyectos != vista_proyectos.activa() {
-                                    vista_proyectos.poner(ubicacion, a_proyectos);
-                                    menu = None;
-                                }
-                            }
+                    } else if let Some(parte) = interruptor.en(l) {
+                        // El interruptor Chat · Figuras (`interruptor.rs`):
+                        // las figuras van en su propia ventana (25-oct) y el
+                        // chat se queda como estaba.
+                        if parte == interruptor::Parte::Figuras {
+                            figuras::abrir(idioma);
                         }
                         hay_que_pintar = true;
                     } else if let Some(boton) = disposicion.boton_barra_en(l, escala) {
@@ -1451,22 +1309,6 @@ pub fn abrir(
                     } else if disposicion.arrastra_ventana(l, escala) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Ventana(l));
-                    } else if vista_proyectos.activa()
-                        && menu.is_none()
-                        && abierto.is_some()
-                        && disposicion.chat.contiene(l)
-                        && !disposicion.asa.contiene(l)
-                    {
-                        // En modo Proyectos el panel derecho es la tarjeta:
-                        // el clic ahi es suyo entero (debajo estan los
-                        // botones del chat, que no se ven). En la lista
-                        // sigue su camino de siempre.
-                        let pedido = vista_proyectos.pulsar(l);
-                        hay_que_pintar |= proyectos::cumplir(
-                            pedido,
-                            &mut vista_proyectos,
-                            &mut bucle_de_proyectos!(),
-                        );
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
@@ -3809,6 +3651,19 @@ pub fn abrir(
         if tomar_refrescar() {
             pendiente_de_releer = true;
         }
+        // La escala que se cambio en los ajustes generales (25-oct-2026):
+        // la misma cuenta que Ctrl + «+» / «-».
+        if let Some(pedido) = tomar_escala_pedida()
+            && pedido != factor_escala
+        {
+            factor_escala = pedido;
+            escala = escala_monitor * factor_escala / 100;
+            recordar_escala(ubicacion, &mut estado, factor_escala);
+            if let Some(a) = abierto.as_mut() {
+                a.colocado.borrow_mut().ancho = 0;
+            }
+            hay_que_pintar = true;
+        }
         if pendiente_de_releer
             && let Some(a) = abierto.as_mut()
             && releer_lo_abierto(ubicacion, a)
@@ -3827,8 +3682,6 @@ pub fn abrir(
         // llevar la vista a el y resaltarlo. Se mira en cada vuelta, que es
         // un candado sin nadie esperando: asi vale al despertar y al nacer.
         if let Some((proyecto, codigo)) = tomar_ir_a() {
-            // Se viene a ver ese chat: la pantalla de Proyectos se aparta.
-            vista_proyectos.ver_chat();
             match fichas.iter().position(|f| f.id == proyecto) {
                 Some(i) => {
                     if elegida != Some(i) || abierto.is_none() {
@@ -3879,17 +3732,6 @@ pub fn abrir(
             aviso = Some((t, std::time::Instant::now()));
         }
         hay_que_pintar |= repintar;
-        // La pantalla de Proyectos: lo leido en su hilo, lo que falta pedir y
-        // un nombre recien escrito. Sin ella delante no pide nada.
-        // Con el proyecto que haya quedado abierto tras los eventos.
-        vista_proyectos.seguir(abierto.as_ref().map(|a| a.ficha.id.as_str()));
-        let (repintar, pedido) = vista_proyectos.latido(ubicacion, &fichas);
-        hay_que_pintar |= repintar;
-        if let Some(pedido) = pedido {
-            hay_que_pintar |=
-                proyectos::cumplir(pedido, &mut vista_proyectos, &mut bucle_de_proyectos!());
-        }
-
         if cerrar {
             // Cerrar la ventana con una hoja o un lienzo abiertos los guarda:
             // es lo mismo que cerrarlos con Escape, y perderlos aqui seria una
@@ -4036,10 +3878,6 @@ pub fn abrir(
             {
                 faltan_fondos |= previas.asegurar(&[ruta], &motor);
             }
-            // Y las de la pantalla de Proyectos: sus miniaturas y la portada.
-            if vista_proyectos.activa() {
-                faltan_fondos |= vista_proyectos.preparar(&mut previas, &motor);
-            }
             // Los logos de las filas que se ven y el del abierto (su
             // cabecera): leidos una vez, luego solo se pintan.
             {
@@ -4066,8 +3904,7 @@ pub fn abrir(
                     buscando,
                     marcados: &marcados,
                 };
-                // Con Proyectos delante, el chat no se pinta: no se ve.
-                let abierto_ref = abierto.as_ref().filter(|_| !vista_proyectos.activa());
+                let abierto_ref = abierto.as_ref();
                 let pendientes_ref = pendientes.as_ref();
                 let menu_ref = menu.as_ref();
                 let aviso_ref = aviso.as_ref().map(|(t, _)| t.as_str());
@@ -4077,43 +3914,7 @@ pub fn abrir(
                 crate::tema_cosmos::preparar(&motor, cw, ch);
                 let resultado = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, papel, escala, textos, sobre, &lista);
-                    // En modo Proyectos, la tarjeta del proyecto elegido en el
-                    // panel derecho, donde iria su chat. Sin ninguno elegido
-                    // queda el «Elige un proyecto» del chat.
-                    if vista_proyectos.activa()
-                        && let Some(a) = abierto.as_ref()
-                        && let Some(f) = fichas.iter().find(|f| f.id == a.ficha.id)
-                    {
-                        let c = Pinta {
-                            tema,
-                            escala,
-                            textos,
-                            ahora,
-                            miniaturas: &miniaturas,
-                            previas: &previas,
-                        };
-                        // El nombre, el que se esta escribiendo si acaba de
-                        // nacer con el «+» de la lista.
-                        proyectos::pintar(
-                            p,
-                            &vista_proyectos,
-                            &disposicion,
-                            &c,
-                            f,
-                            &a.ficha.nombre,
-                            a.renombrando.then_some(&a.nombre_escrito),
-                            claro,
-                            ubicacion.raiz(),
-                        );
-                    }
-                    proyectos::pintar_interruptor(
-                        p,
-                        &vista_proyectos,
-                        &disposicion,
-                        tema,
-                        escala,
-                        textos,
-                    );
+                    interruptor.pintar(p, &disposicion, tema, escala, textos);
                     let mut alto_caja = 0;
                     if let Some(a) = abierto_ref {
                         // Lo que se puede pulsar se apunta de nuevo en cada
@@ -4222,7 +4023,6 @@ pub fn abrir(
                     CACHE_GRAFITO.with_borrow_mut(|c| c.vaciar());
                     logo::soltar();
                     crate::tema_cosmos::soltar();
-                    vista_proyectos.soltar();
                 }
                 let _ = superficie.presentar();
             }
@@ -4235,8 +4035,6 @@ pub fn abrir(
                     .any(|r| previas.pendiente(r));
             }
             hay_que_pintar |= faltan_fondos;
-            // Lo que la pantalla de Proyectos pinto sin imagen todavia: otra vuelta.
-            hay_que_pintar |= vista_proyectos.falta_algo(&previas);
             // Un destino que esperaba a que se midieran las burbujas: ya
             // estan, otra vuelta para llevar la vista alli.
             // Solo con el historial a la vista: con la hoja o el panel
@@ -16266,18 +16064,12 @@ enum Accion {
     // La cabecera.
     Fondos,
     Fondo(usize),
-    /// El submenu de la escala de la interfaz, y cada escalon.
-    Escalas,
-    Escala(u32),
-    Proyectos,
     /// Lo que en Windows aun no existe: la clave del aviso.
     Aviso(&'static str),
     /// Una nota Markdown nueva en el proyecto, en su editor (H12).
     AdjNotaMd,
     /// Abrir esa nota (o ese `.md`) en el editor de notas (H12).
     EditarNota(usize),
-    /// El menu de los grupos de ventanas guardados (H9).
-    GruposVentanas,
     /// «Añadir arrastrando…»: la caja de soltar de este proyecto (2-oct).
     CajaDeSoltar,
     /// Las lecciones aprendidas, con las de este proyecto primero (3-oct).
@@ -17047,8 +16839,8 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
     }
 }
 
-/// Los tres puntos de la cabecera, en el orden del movil. La biblioteca y
-/// las conversaciones solo salen en «Mensajes guardados», que es la general.
+/// Los tres puntos de la cabecera: solo lo que es del chat. La biblioteca de
+/// audio solo sale en «Mensajes guardados», que es la general.
 ///
 /// Ni las lecciones ni la galeria de capturas: estan en los botones de la
 /// lista de proyectos, como en el movil desde el 4-oct-2026.
@@ -17070,13 +16862,7 @@ fn menu_de_cabecera(
             textos.t("chat-biblioteca-audio"),
             Accion::Biblioteca,
         ));
-        v.push(entrada(
-            None,
-            textos.t("chat-conversaciones"),
-            Accion::Proyectos,
-        ));
     }
-    v.push(entrada(None, textos.t("chat-proyectos"), Accion::Proyectos));
     // Una caja flotante a la que soltar ficheros para este proyecto, con el
     // chat cerrado (el usuario, 2-oct).
     v.push(entrada(
@@ -17085,27 +16871,14 @@ fn menu_de_cabecera(
         Accion::CajaDeSoltar,
     ));
     v.push(entrada(
-        None,
-        textos.t("chat-comenzar"),
-        Accion::Aviso("chat-ya-en-marcha"),
-    ));
-    v.push(entrada(
         Some(&mi::PALETTE),
         textos.t("chat-fondo"),
         Accion::Fondos,
     ));
-    // La escala de la interfaz, justo encima de los ajustes: es un ajuste de
-    // la ventana, no del proyecto, y es donde Telegram la pone.
-    // Sin icono, como los ajustes: de los Material portados ninguno dice
-    // «escala», y uno que diga otra cosa confunde mas que la falta de uno.
-    v.push(entrada(None, textos.t("chat-escala"), Accion::Escalas));
-    // Los grupos de ventanas (H9): en el movil salen en el menu de inicio.
-    v.push(entrada(
-        None,
-        textos.t("chat-grupos-ventanas"),
-        Accion::GruposVentanas,
-    ));
-    v.push(entrada(None, textos.t("chat-ajustes"), Accion::Ajustes));
+    // Ni Proyectos, ni «Comenzar» (del movil), ni la escala, los grupos de
+    // ventanas o los ajustes (25-oct-2026, el usuario: «todo lo que no
+    // pertenece al chat»): la escala y los grupos viven en los ajustes
+    // generales (`ventana_ajustes.rs`).
     // Lo del asistente, apartado de lo de siempre por una raya.
     if propias > 0
         && let Some(x) = v.get_mut(propias)
@@ -17183,27 +16956,6 @@ fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<En
     borrar.peligro = true;
     v.push(borrar);
     v
-}
-
-/// Los escalones de la escala de la interfaz, con el puesto marcado.
-fn menu_de_escalas(textos: &Catalogo, actual: u32) -> Vec<EntradaMenu> {
-    chat::ESCALAS
-        .iter()
-        .map(|cuanto| {
-            let icono: &'static Icono = if *cuanto == actual {
-                &mi::CHECK_BOX
-            } else {
-                &mi::CHECK_BOX_OUTLINE_BLANK
-            };
-            let mut rotulo = format!("{cuanto} %");
-            if *cuanto == chat::ESCALA_POR_DEFECTO {
-                // La del monitor lleva su nombre al lado: es a la que se
-                // vuelve con Ctrl+0 y conviene reconocerla entre las demas.
-                rotulo.push_str(&format!("  ({})", textos.t("chat-escala-normal")));
-            }
-            entrada(Some(icono), rotulo, Accion::Escala(*cuanto))
-        })
-        .collect()
 }
 
 /// Lo que se ensena al cambiar la escala con el teclado.
@@ -17817,18 +17569,17 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         )),
         Accion::QuienLlama(i) => {
             a.hora_a_mano = None;
-            a.quien_llama = a
-                .mensajes
-                .get(i)
-                .map(|m| (m.id.clone(), quien_llama::caja(&quien_llama::nombre_actual(&carpeta, m))));
+            a.quien_llama = a.mensajes.get(i).map(|m| {
+                (
+                    m.id.clone(),
+                    quien_llama::caja(&quien_llama::nombre_actual(&carpeta, m)),
+                )
+            });
             Efecto::Cambio
         }
         Accion::RecordarAMano(i) => {
             a.quien_llama = None;
-            a.hora_a_mano = a
-                .mensajes
-                .get(i)
-                .map(|m| (m.id.clone(), caja_de_la_hora()));
+            a.hora_a_mano = a.mensajes.get(i).map(|m| (m.id.clone(), caja_de_la_hora()));
             Efecto::Cambio
         }
         // La hora viaja en el mensaje, como en el movil, asi que ponerla es
@@ -17951,7 +17702,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::InsertarEnNota(i) => {
             if let Some(m) = a.mensajes.get(i) {
-                crate::notas_md::paginas_vivas::insertar_en_nota(cx.idioma, cx.ubicacion, &a.ficha.id, m);
+                crate::notas_md::paginas_vivas::insertar_en_nota(
+                    cx.idioma,
+                    cx.ubicacion,
+                    &a.ficha.id,
+                    m,
+                );
             }
             Efecto::Nada
         }
@@ -17960,7 +17716,9 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 // Un audio se escribe sin su «.m4a», como en el movil: al
                 // guardar se le vuelve a poner (`renombrar::con_su_extension`).
                 let escrito = match m.nombre.trim() {
-                    n if m.clase != Some(pixpin_proyecto::cuaderno::Clase::Dibujo) && !n.is_empty() => {
+                    n if m.clase != Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
+                        && !n.is_empty() =>
+                    {
                         n.strip_suffix(".m4a").unwrap_or(n).to_string()
                     }
                     _ => nombre_de_la_fila(m, cx.textos),
@@ -18048,7 +17806,13 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::FotoEnLienzo(i) => {
             // Como al pulsarla: en su lienzo, estrenandolo si hace falta.
-            if crate::foto_anotada::abrir_en_su_lienzo(cx.ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, i, cx.lienzo) {
+            if crate::foto_anotada::abrir_en_su_lienzo(
+                cx.ubicacion.raiz(),
+                &a.ficha.id,
+                &mut a.mensajes,
+                i,
+                cx.lienzo,
+            ) {
                 if let Some(m) = a.mensajes.get(i).cloned() {
                     a.vistas[i] = leer_vista(cx.ubicacion, &a.ficha.id, &m);
                 }
@@ -18112,8 +17876,9 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             let v: Vec<EntradaMenu> = menu_de_proyectos(cx.fichas, "", Accion::AdjPaginaDe)
                 .into_iter()
                 .filter(|e| match &e.accion {
-                    Accion::AdjPaginaDe(id) => paginas::leer(raiz, id)
-                        .is_some_and(|p| !paginas::elegibles(&p).is_empty()),
+                    Accion::AdjPaginaDe(id) => {
+                        paginas::leer(raiz, id).is_some_and(|p| !paginas::elegibles(&p).is_empty())
+                    }
                     _ => false,
                 })
                 .collect();
@@ -18226,8 +17991,13 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             crate::lecciones::lista(cx.ubicacion.clone(), cx.idioma);
             Efecto::Nada
         }
-        Accion::GuardarReceta(i) => asistente::recetas::guardar_desde(cx.ubicacion, cx.identidad, a, i, cx.textos),
-        Accion::MenuModeloIa => Efecto::Menu(menu_de_modelo(cx.textos, asistente_nube::eleccion_reciente(raiz))),
+        Accion::GuardarReceta(i) => {
+            asistente::recetas::guardar_desde(cx.ubicacion, cx.identidad, a, i, cx.textos)
+        }
+        Accion::MenuModeloIa => Efecto::Menu(menu_de_modelo(
+            cx.textos,
+            asistente_nube::eleccion_reciente(raiz),
+        )),
         Accion::ElegirModeloIa(n) => {
             let Some(e) = asistente_nube::OPCIONES.get(n).copied() else {
                 return Efecto::Nada;
@@ -18241,10 +18011,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Err(e) => fallo(&e),
             }
         }
-        Accion::NuevaConversacion => match asistente::nueva_conversacion(cx.ubicacion, a, cx.textos) {
-            Some(t) => Efecto::Aviso(t),
-            None => Efecto::Cambio,
-        },
+        Accion::NuevaConversacion => {
+            match asistente::nueva_conversacion(cx.ubicacion, a, cx.textos) {
+                Some(t) => Efecto::Aviso(t),
+                None => Efecto::Cambio,
+            }
+        }
         Accion::BorrarChat => {
             if !pixpin_shell::confirmar_destructivo(
                 cx.ventana.handle(),
@@ -18265,7 +18037,9 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             Some(t) => Efecto::Aviso(t),
             None => Efecto::Nada,
         },
-        Accion::Receta(id, que) => asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos),
+        Accion::Receta(id, que) => {
+            asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos)
+        }
         Accion::Anki(i) => anki::enviar(a, i, cx.textos),
         Accion::HacerLeccion(i) => {
             // Lo que paso suele estar ya en el chat: la leccion sale con su
@@ -18288,17 +18062,6 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 );
             }
             Efecto::Nada
-        }
-        Accion::GruposVentanas => {
-            let l = crate::grupos_ventanas::Lanzador {
-                idioma: cx.idioma,
-                ubicacion: cx.ubicacion.clone(),
-                opciones: cx.lienzo,
-            };
-            match crate::grupos_ventanas::menu(Some(cx.ventana.handle().0 as isize), &l, cx.textos) {
-                Some(aviso) => Efecto::Aviso(aviso),
-                None => Efecto::Nada,
-            }
         }
         Accion::Aligerar(i) => aligerar_el_pdf(cx.ubicacion, a, i, cx.textos),
         Accion::FusionarPaginas => {
@@ -18408,12 +18171,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         | Accion::AdjTabla
         | Accion::AdjDelMovil
         | Accion::Fondos
-        | Accion::Fondo(_)
-        // La escala es de la VENTANA, no del proyecto: la atiende el bucle,
-        // que es quien tiene la variable y quien la recuerda.
-        | Accion::Escalas
-        | Accion::Escala(_)
-        | Accion::Proyectos => Efecto::Nada,
+        | Accion::Fondo(_) => Efecto::Nada,
     }
 }
 
@@ -19926,7 +19684,7 @@ mod pruebas_ir_al_chat {
     }
 
     #[test]
-    fn los_tres_puntos_ya_no_llevan_lecciones_ni_galeria_ni_universo() {
+    fn los_tres_puntos_solo_llevan_lo_del_chat() {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         for en_guardados in [false, true] {
             let v = menu_de_cabecera(&textos, en_guardados, None);
@@ -19934,8 +19692,13 @@ mod pruebas_ir_al_chat {
                 !v.iter().any(|e| matches!(e.accion, Accion::Lecciones)),
                 "estan en los botones de la lista, como en el movil"
             );
-            // Caso negativo: lo demas sigue, con los ajustes al final.
-            assert_eq!(v.last().map(|e| e.accion.clone()), Some(Accion::Ajustes));
+            // Ni los ajustes ni «Comenzar»: viven fuera del chat.
+            assert!(
+                !v.iter()
+                    .any(|e| matches!(e.accion, Accion::Ajustes | Accion::Aviso(_)))
+            );
+            // Caso negativo: lo del chat sigue, con el papel al final.
+            assert_eq!(v.last().map(|e| e.accion.clone()), Some(Accion::Fondos));
         }
     }
 }

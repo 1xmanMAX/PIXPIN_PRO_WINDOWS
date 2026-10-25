@@ -218,14 +218,8 @@ chat-elegir = Select
 chat-borrar = Delete
 chat-borrar-aviso = It will be removed from the conversation. An attached file is deleted with it. Continue?
 chat-biblioteca-audio = Audio library
-chat-conversaciones = Project conversations
-chat-proyectos = Projects
-chat-comenzar = Start
 chat-fondo = Chat background
-chat-escala = Interface scale
-chat-escala-normal = monitor default
 chat-escala-puesta = Interface scale: { $cuanto } %
-chat-ajustes = Settings
 chat-fondo-mar = Sea
 chat-fondo-arena = Sand
 chat-fondo-brezo = Heather
@@ -247,7 +241,6 @@ chat-pineado = Pinned
 chat-sin-archivo = This message has no file on this computer
 chat-sin-origen = That canvas is not in this project
 chat-sin-proyectos-otros = There is no other project to send it to
-chat-ya-en-marcha = PixPin is already running on Windows: pins come out with its shortcuts
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
 chat-proyectos-lista = Projects are the list on the left
 chat-no-hay-voz = Recording voice notes does not exist on Windows yet
@@ -1234,7 +1227,6 @@ pin-hoja-nombre = Sheet
 
 ## Window groups (H9) and Markdown note editor (H12)
 bandeja-grupos-ventanas = Window groups…
-chat-grupos-ventanas = Window groups
 chat-adj-nota-md = Note
 chat-editar-nota = Open in the note editor
 grupos-nada-abierto = No open canvases, documents or notes to save
@@ -1373,9 +1365,8 @@ lienzo-panel-zona-foco = Lit area
 lienzo-pista-foco = Spotlight (F): tap a closed shape and the area around it darkens, inside its frame
 lienzo-pista-serie = Numbered steps: each click places the next number
 
-## Projects screen in the chat and the Chat / Projects switch (ui/Proyectos.kt on the phone)
+## The Chat / Shapes switch in the chat title bar
 proyectos-interruptor-chat = Chat
-proyectos-interruptor-proyectos = Projects
 proyectos-interruptor-figuras = Shapes
 figuras-mias = My shapes
 figuras-todas = All
@@ -1405,23 +1396,6 @@ figuras-de-texto = { $n } texts
 figuras-trazos = { $n } hand strokes
 figuras-otras = { $n } others
 bandeja-figuras = Shapes…
-proyectos-hojas = { $total } sheets
-proyectos-hojas-de = { $anotadas } of { $total } sheets annotated
-proyectos-chat = Chat
-proyectos-hoja = Sheet
-proyectos-nota = Note
-proyectos-tabla = Table
-proyectos-hoja-hecha = New sheet in “{ $nombre }”
-proyectos-renombrar = Rename
-proyectos-renombrar-titulo = Project name
-proyectos-guardar = Save
-proyectos-archivar = Archive
-proyectos-desarchivar = Unarchive
-proyectos-compartir = Share
-proyectos-copias = Backups
-proyectos-borrar = Delete
-proyectos-borrar-titulo = Delete “{ $nombre }”?
-proyectos-borrar-aviso = It will also be deleted on your other devices the next time you sync. A copy stays in the project menu → “Backups” in case you change your mind.
 
 ## --- Canvas: graph and table dialogs, put into a cell (F12/F14) ---
 cajetin-cancelar = Cancel
@@ -1749,6 +1723,11 @@ ajustes2-g-lapiz = Pen filter (Natural mode)
 ajustes2-g-fichero = The settings file
 ajustes2-ayuda-arranque = Stays in the tray without opening any window. Not available in portable mode.
 ajustes2-ayuda-idioma = Applies from the next start.
+ajustes2-g-ventanas = Windows
+ajustes2-escala = Interface scale
+ajustes2-ayuda-escala = The size of everything in the chat. Applies right away; in the chat also with Ctrl + "+", "-" and "0".
+ajustes2-grupos-ventanas = Window groups
+ajustes2-ayuda-grupos-ventanas = Save the windows you have open as a group and open them again together.
 ajustes2-ayuda-pdf-aligerar = After it enters the chat, in the background.
 ajustes2-pdf-nivel = How much lighter
 ajustes2-ayuda-pdf-nivel = On entry only Exact and Medium are used; Small and Max. are for “Make PDF lighter” by hand.
