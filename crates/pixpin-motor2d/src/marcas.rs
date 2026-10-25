@@ -734,7 +734,7 @@ mod pruebas {
                 },
                 Camara {
                     x: 2_003_000.5,
-                    y: -1_499_000.25,
+                    y: -1_499_000.5,
                     zoom: ZOOM_MAXIMO,
                 },
             ),
@@ -746,7 +746,7 @@ mod pruebas {
                 },
                 VistaDeMarca {
                     x: 2_003_000.5,
-                    y: -1_499_000.25,
+                    y: -1_499_000.5,
                     ancho: 50.0,
                     alto: 28.125,
                 }
