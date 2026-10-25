@@ -49,9 +49,19 @@ galeria). El editor de notas («Abrir en el editor de notas» del menu de la
 nota) anade mas fotos por pegar, soltar o el boton de imagen, con la misma
 ruta; al guardar, la burbuja se relee y las ensena.
 
-Pendiente: las fotos de una nota rica no salen todavia en la galeria del
-panel de informacion (`indices_de_la_seccion`), que solo cuenta mensajes
-`IMAGEN`.
+## En la ficha del chat
+
+Las fotos de una nota rica salen en la pestana **Fotos** de la ficha del
+chat (la isla que abre el nombre en la cabecera), **cada una como su propia
+miniatura** y en el sitio de su nota, entre las fotos sueltas por orden del
+chat; la cuenta de la pestana las incluye. Pulsar una abre su previa dentro
+de la isla, con las flechas a la anterior y la siguiente; «Abrir» la pone en
+un pin (como pulsarla en la burbuja) y «Ver en el chat» lleva a su nota. Se
+cuentan con el mismo parser y en el mismo orden que la burbuja
+(`pixpin_ui::info::fotos_de_la_nota`, `con_las_fotos_de_las_notas`); un
+`![…](…)` que no es foto no sale. Si el fichero aun no esta en el aparato,
+su celda es el recuadro con el icono de imagen. La nota en si sigue en
+«Todo» (y en «Enlaces» si lleva una direccion web) como un mensaje.
 
 ## Para Android
 

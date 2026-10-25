@@ -18,6 +18,10 @@
 //!
 //! Solo el aspa, Escape (desde la rejilla) o un clic FUERA la cierran.
 //!
+//! **Las fotos de las notas ricas** (`![…](pixpin:files/…)` en su texto)
+//! salen en «Fotos» cada una como una miniatura mas, en el sitio de su nota,
+//! y se ven en su previa como cualquier otra foto ([`Cosa`] con `foto`).
+//!
 //! Pintar y repartir los clics salen de las mismas cuentas
 //! (`pixpin_ui::info::Isla`, [`colocar`] y [`zona_en`]): cuando eran dos,
 //! se veian botones que no respondian.
@@ -27,7 +31,7 @@ use pixpin_proyecto::cuaderno::{Clase, Mensaje, Seccion};
 use pixpin_render::icono::Icono;
 use pixpin_render::{Color, Pintor, RectF};
 use pixpin_ui::chat::{self, Disposicion};
-use pixpin_ui::info::{self as ui, Isla};
+use pixpin_ui::info::{self as ui, Cosa, Isla};
 
 use super::{
     Abierto, Ojeada, Pinta, color_avatar, colores_de_caja, con_alfa, encoger,
@@ -79,7 +83,7 @@ pub(super) fn disposicion(d: &Disposicion, escala: u32) -> Isla {
 pub(super) fn pestanas(a: &Abierto) -> Vec<(Seccion, usize)> {
     ORDEN
         .iter()
-        .map(|s| (*s, indices_de_la_seccion(a, *s).len()))
+        .map(|s| (*s, cosas_de(a, *s).len()))
         .filter(|(s, n)| *n > 0 || a.info == Some(*s))
         .collect()
 }
@@ -90,16 +94,39 @@ pub(super) fn primera(a: &Abierto) -> Seccion {
     ORDEN
         .iter()
         .copied()
-        .find(|s| !indices_de_la_seccion(a, *s).is_empty())
+        .find(|s| !cosas_de(a, *s).is_empty())
         .unwrap_or(Seccion::Todo)
 }
 
-/// Lo que ensena la seccion, con lo buscado con la lupa ya filtrado.
-pub(super) fn de_la_seccion(a: &Abierto, seccion: Seccion) -> Vec<usize> {
-    let mut suyos = indices_de_la_seccion(a, seccion);
-    if !a.busqueda_info.trim().is_empty() {
-        suyos.retain(|n| {
+/// Todo lo de la seccion: sus mensajes y, en «Fotos», tambien cada foto de
+/// las notas ricas, en el sitio de su nota.
+fn cosas_de(a: &Abierto, seccion: Seccion) -> Vec<Cosa> {
+    let suyos = indices_de_la_seccion(a, seccion);
+    if seccion != Seccion::Fotos {
+        return suyos.into_iter().map(Cosa::entera).collect();
+    }
+    // Las notas, de las de «Todo» (sin buzon, sistema ni lecciones), y solo
+    // las que la burbuja pinta como nota rica.
+    let notas: Vec<usize> = indices_de_la_seccion(a, Seccion::Todo)
+        .into_iter()
+        .filter(|n| {
             let m = &a.mensajes[*n];
+            m.texto.contains("![") && super::nota_rica::es_nota(m)
+        })
+        .collect();
+    ui::con_las_fotos_de_las_notas(&suyos, &notas, |n| {
+        ui::fotos_de_la_nota(&a.mensajes[n].texto).len()
+    })
+}
+
+/// Lo que ensena la seccion, con lo buscado con la lupa ya filtrado.
+pub(super) fn de_la_seccion(a: &Abierto, seccion: Seccion) -> Vec<Cosa> {
+    let mut suyos = cosas_de(a, seccion);
+    if !a.busqueda_info.trim().is_empty() {
+        suyos.retain(|c| {
+            let Some(m) = a.mensajes.get(c.mensaje) else {
+                return false;
+            };
             pixpin_ui::resaltado::hay_coincidencia(&m.resumen(), &a.busqueda_info)
                 || pixpin_ui::resaltado::hay_coincidencia(&m.nombre, &a.busqueda_info)
         });
@@ -109,10 +136,10 @@ pub(super) fn de_la_seccion(a: &Abierto, seccion: Seccion) -> Vec<usize> {
 
 /// Como queda el contenido de una seccion: lo que se ve y donde.
 pub(super) struct Colocado {
-    /// Todo lo de la seccion, por su posicion en `a.mensajes`.
-    pub suyos: Vec<usize>,
-    /// Lo que se ve: `(posicion en a.mensajes, su celda o su fila)`.
-    pub cosas: Vec<(usize, Rect)>,
+    /// Todo lo de la seccion.
+    pub suyos: Vec<Cosa>,
+    /// Lo que se ve: `(la cosa, su celda o su fila)`.
+    pub cosas: Vec<(Cosa, Rect)>,
     /// Lo que mide todo junto (para el tope de la rueda).
     pub alto: u32,
     pub cuadricula: bool,
@@ -129,12 +156,12 @@ pub(super) fn colocar(a: &Abierto, seccion: Seccion, i: &Isla, escala: u32) -> C
             y: area.y + r.hueco as i32,
             ..area
         };
-        let (primera, cuantas) = r.visibles(arriba, suyos.len(), a.scroll_info, escala);
+        let (primera, cuantas) = r.visibles(arriba, suyos.len(), a.scroll_info);
         let cosas = (primera..primera + cuantas)
-            .map(|n| (suyos[n], r.celda(n, arriba, a.scroll_info, escala)))
+            .map(|n| (suyos[n], r.celda(n, arriba, a.scroll_info)))
             .collect();
         Colocado {
-            alto: r.alto_total(suyos.len(), escala) + 2 * r.hueco,
+            alto: r.alto_total(suyos.len()) + 2 * r.hueco,
             suyos,
             cosas,
             cuadricula: true,
@@ -155,7 +182,7 @@ pub(super) fn colocar(a: &Abierto, seccion: Seccion, i: &Isla, escala: u32) -> C
 
 /// La anterior (`paso` -1) o la siguiente (+1) a la que se esta viendo en
 /// la previa, dentro de su seccion.
-pub(super) fn vecina(a: &Abierto, paso: i32) -> Option<usize> {
+pub(super) fn vecina(a: &Abierto, paso: i32) -> Option<Cosa> {
     let (seccion, actual) = (a.info?, a.info_abierta?);
     let suyos = de_la_seccion(a, seccion);
     let k = suyos.iter().position(|n| *n == actual)? as i32 + paso;
@@ -171,8 +198,8 @@ pub(super) enum ZonaInfo {
     Buscar,
     CajaBuscar,
     Pestana(Seccion),
-    /// Una cosa de la rejilla o de las filas (su posicion en `a.mensajes`).
-    Cosa(usize),
+    /// Una cosa de la rejilla o de las filas.
+    Cosa(Cosa),
     /// En la previa: la flecha de volver a la rejilla, las de los lados y
     /// los dos botones del pie.
     Volver,
@@ -256,13 +283,8 @@ pub(super) fn a_cargar(
     let Some(seccion) = a.info else {
         return (Vec::new(), Vec::new());
     };
-    let foto = |n: usize| {
-        let m = a.mensajes.get(n)?;
-        (m.clase == Some(Clase::Imagen) && !pixpin_proyecto::cuaderno::es_video(m))
-            .then(|| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-            .flatten()
-    };
-    let fondo = |n: usize| match a.vistas.get(n) {
+    let foto = |c: Cosa| ruta_de_la_foto(a, c);
+    let fondo = |c: Cosa| match a.vistas.get(c.mensaje).filter(|_| c.foto.is_none()) {
         Some(Some(Ojeada::Lienzo(l))) => l.fondo.as_ref().map(|(r, _)| r.clone()),
         _ => None,
     };
@@ -275,6 +297,56 @@ pub(super) fn a_cargar(
     let miniaturas = cosas.iter().filter_map(|(n, _)| foto(*n)).collect();
     let fondos = cosas.iter().filter_map(|(n, _)| fondo(*n)).collect();
     (miniaturas, fondos)
+}
+
+/// El fichero de la foto que es `c`: el de un mensaje de foto (no un video)
+/// o, en una nota rica, el de su foto numero `k`. Solo si esta en el aparato.
+pub(super) fn ruta_de_la_foto(a: &Abierto, c: Cosa) -> Option<std::path::PathBuf> {
+    let m = a.mensajes.get(c.mensaje)?;
+    match c.foto {
+        Some(k) => {
+            let enlace = ui::fotos_de_la_nota(&m.texto).into_iter().nth(k)?.enlace;
+            super::nota_rica::ruta_de(&a.raiz, &a.ficha.id, &enlace)
+        }
+        None => (m.clase == Some(Clase::Imagen) && !pixpin_proyecto::cuaderno::es_video(m))
+            .then(|| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+            .flatten(),
+    }
+}
+
+/// Si pulsar `c` abre un enlace en el navegador: un mensaje sin fichero con
+/// una direccion web. La foto de una nota rica es una foto aunque su nota
+/// lleve un enlace.
+pub(super) fn es_enlace(a: &Abierto, c: Cosa) -> bool {
+    c.foto.is_none()
+        && a.mensajes
+            .get(c.mensaje)
+            .is_some_and(|m| m.ruta.is_none() && tarjetas::primer_enlace(&m.texto).is_some())
+}
+
+/// Lo que la ficha tiene abierto en su previa, por el id de su mensaje: se
+/// apunta ANTES de que la lista cambie (una sincronizacion que mete
+/// mensajes en medio, un borrado), como `releer_lo_abierto` hace con lo
+/// demas que va por posicion.
+pub(super) fn apuntar_la_abierta(a: &Abierto) -> Option<(String, Option<usize>)> {
+    let c = a.info_abierta?;
+    Some((a.mensajes.get(c.mensaje)?.id.clone(), c.foto))
+}
+
+/// Y se vuelve a buscar DESPUES: si ya no esta (se borro, o la nota perdio
+/// esa foto), la ficha vuelve a su rejilla en vez de ensenar otra cosa. Lo
+/// desplazado se sujeta a lo que mide ahora la seccion, que puede ser mas
+/// corta.
+pub(super) fn reubicar_la_abierta(a: &mut Abierto, apunte: Option<(String, Option<usize>)>) {
+    a.info_abierta = apunte.and_then(|(id, foto)| {
+        let c = Cosa {
+            mensaje: a.mensajes.iter().position(|m| m.id == id)?,
+            foto,
+        };
+        let seccion = a.info?;
+        de_la_seccion(a, seccion).contains(&c).then_some(c)
+    });
+    a.scroll_info = a.scroll_info.clamp(0, a.alto_info.get() as i32);
 }
 
 // --- Pintar ------------------------------------------------------------------
@@ -328,7 +400,7 @@ pub(super) fn pintar(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, seccio
     );
 
     match a.info_abierta {
-        Some(n) => pintar_previa(p, c, a, &i, n, sobre),
+        Some(cosa) => pintar_previa(p, c, a, &i, cosa, sobre),
         None => {
             pintar_pestanas(p, c, a, &i, seccion, sobre);
             pintar_contenido(p, c, a, &i, seccion, sobre);
@@ -363,13 +435,13 @@ fn pintar_cabecera(p: &Pintor, c: &Pinta, a: &Abierto, i: &Isla, sobre: ZonaInfo
 
     // En la previa: la flecha de volver en el sitio del avatar, el nombre de
     // la cosa y «3 de 24 · fecha · tamano».
-    if let Some(n) = a.info_abierta {
+    if let Some(cosa) = a.info_abierta {
         boton_redondo(p, c, i.avatar, &mi::ARROW_BACK, sobre == ZonaInfo::Volver);
-        let Some(m) = a.mensajes.get(n) else {
+        let Some(m) = a.mensajes.get(cosa.mensaje) else {
             return;
         };
         let suyos = a.info.map(|s| de_la_seccion(a, s)).unwrap_or_default();
-        let k = suyos.iter().position(|x| *x == n).map_or(0, |k| k + 1);
+        let k = suyos.iter().position(|x| *x == cosa).map_or(0, |k| k + 1);
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("k", k as i64);
         args.set("n", suyos.len() as i64);
@@ -377,10 +449,11 @@ fn pintar_cabecera(p: &Pintor, c: &Pinta, a: &Abierto, i: &Isla, sobre: ZonaInfo
             textos.t_args("info-previa-posicion", &args),
             chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), c.ahora),
         ];
-        if m.bytes > 0 {
+        // Lo que pesa la nota no es lo que pesa su foto.
+        if m.bytes > 0 && cosa.foto.is_none() {
             sub.push(chat::tamano_corto(m.bytes as u64));
         }
-        titulo_y_subtitulo(p, c, i, &nombre_de(m), &sub.join("  ·  "));
+        titulo_y_subtitulo(p, c, i, &nombre_de_la_cosa(m, cosa), &sub.join("  ·  "));
         return;
     }
 
@@ -454,6 +527,24 @@ fn titulo_y_subtitulo(p: &Pintor, c: &Pinta, i: &Isla, titulo: &str, subtitulo: 
     let ancho = i.titulo.ancho as f32;
     p.texto_linea(titulo, x, y, t, ancho, c.tema.texto);
     p.texto_linea(subtitulo, x, y + th + hueco, s, ancho, c.tema.apagado);
+}
+
+/// El nombre de una foto de nota: lo que dice su alt (sin el ancho del
+/// editor, `planta|300`) o, si no dice nada, la nota.
+fn nombre_de_la_cosa(m: &Mensaje, c: Cosa) -> String {
+    let alt = c
+        .foto
+        .and_then(|k| ui::fotos_de_la_nota(&m.texto).into_iter().nth(k))
+        .map(|f| {
+            f.alt
+                .split('|')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default();
+    if alt.is_empty() { nombre_de(m) } else { alt }
 }
 
 /// El nombre con el que se ensena una cosa: el del fichero, o su texto.
@@ -572,12 +663,12 @@ fn pintar_contenido(
         return;
     }
     p.empujar_recorte(rf(i.contenido));
-    for (n, r) in &colocado.cosas {
-        let encima = sobre == ZonaInfo::Cosa(*n);
+    for (cosa, r) in &colocado.cosas {
+        let encima = sobre == ZonaInfo::Cosa(*cosa);
         if colocado.cuadricula {
-            pintar_celda(p, c, a, *n, *r, encima);
+            pintar_celda(p, c, a, *cosa, *r, encima);
         } else {
-            pintar_fila(p, c, a, *n, *r, encima);
+            pintar_fila(p, c, a, cosa.mensaje, *r, encima);
         }
     }
     p.soltar_recorte();
@@ -599,20 +690,28 @@ fn icono_de_la_seccion(s: Seccion) -> &'static Icono {
 /// Una celda de la rejilla: la foto recortada al cuadrado, el dibujo sobre
 /// su papel, o la tarjeta de lo que no tiene vista previa. Los videos llevan
 /// el triangulo encima.
-fn pintar_celda(p: &Pintor, c: &Pinta, a: &Abierto, n: usize, celda: Rect, encima: bool) {
+fn pintar_celda(p: &Pintor, c: &Pinta, a: &Abierto, cosa: Cosa, celda: Rect, encima: bool) {
     let (tema, e) = (c.tema, c.escala as f32 / 100.0);
+    let n = cosa.mensaje;
     let Some(m) = a.mensajes.get(n) else {
         return;
     };
-    let video = pixpin_proyecto::cuaderno::es_video(m);
-    let foto = (!video)
-        .then(|| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-        .flatten()
-        .and_then(|ruta| c.miniaturas.ya(&ruta));
+    let video = cosa.foto.is_none() && pixpin_proyecto::cuaderno::es_video(m);
+    let foto = match cosa.foto {
+        Some(_) => ruta_de_la_foto(a, cosa),
+        None => (!video)
+            .then(|| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+            .flatten(),
+    }
+    .and_then(|ruta| c.miniaturas.ya(&ruta));
     if let Some((b, w, h)) = foto {
         p.empujar_recorte(rf(celda));
         crate::miniaturas::pintar_recortado(p, b, rf(celda), w, h);
         p.soltar_recorte();
+    } else if cosa.foto.is_some() {
+        // La foto de una nota que carga o que aun no esta en el aparato: el
+        // recuadro con el icono de imagen, como en su burbuja.
+        hueco_de_foto(p, c, rf(celda));
     } else {
         match a
             .vistas
@@ -637,6 +736,24 @@ fn pintar_celda(p: &Pintor, c: &Pinta, a: &Abierto, n: usize, celda: Rect, encim
         p.rellenar(rf(celda), con_alfa(Color::BLANCO, 0.12));
         p.trazar(encoger(rf(celda), 1.0), (2.0 * e).max(1.0), tema.enviar);
     }
+}
+
+/// El sitio de una foto que no se puede ensenar (todavia): un recuadro con
+/// el icono de imagen en medio.
+fn hueco_de_foto(p: &Pintor, c: &Pinta, caja: RectF) {
+    let e = c.escala as f32 / 100.0;
+    p.rellenar_redondeado(caja, 6.0 * e, c.tema.buscador);
+    let lado = (caja.ancho.min(caja.alto) * 0.3).clamp(1.0, (48.0 * e).max(1.0));
+    p.icono(
+        &mi::PHOTO_LIBRARY,
+        RectF {
+            x: caja.x + (caja.ancho - lado) / 2.0,
+            y: caja.y + (caja.alto - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
+        con_alfa(c.tema.apagado, 0.8),
+    );
 }
 
 /// Una vista ya leida (dibujo, tabla, cuaderno) dentro de `caja`, sobre su
@@ -779,30 +896,31 @@ fn pintar_fila(p: &Pintor, c: &Pinta, a: &Abierto, n: usize, fila: Rect, encima:
 }
 
 /// **La previa de una cosa**, en grande dentro de la isla.
-fn pintar_previa(p: &Pintor, c: &Pinta, a: &Abierto, i: &Isla, n: usize, sobre: ZonaInfo) {
+fn pintar_previa(p: &Pintor, c: &Pinta, a: &Abierto, i: &Isla, cosa: Cosa, sobre: ZonaInfo) {
     let (tema, escala, textos) = (c.tema, c.escala, c.textos);
     let e = escala as f32 / 100.0;
+    let n = cosa.mensaje;
     let Some(m) = a.mensajes.get(n) else {
         return;
     };
     let pr = ui::previa(i.hueco_de_la_previa(), escala);
     let vista = rf(pr.vista);
-    let video = pixpin_proyecto::cuaderno::es_video(m);
-    let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m);
+    let de_nota = cosa.foto.is_some();
+    let video = !de_nota && pixpin_proyecto::cuaderno::es_video(m);
     // La foto, entera y sin deformar: de las grandes si ya esta, si no de
     // las miniaturas (se vera borrosa un instante).
-    let foto = (!video)
-        .then_some(ruta.as_ref())
-        .flatten()
-        .filter(|_| m.clase == Some(Clase::Imagen))
-        .and_then(|r| c.previas.ya(r).or_else(|| c.miniaturas.ya(r)));
+    let foto =
+        ruta_de_la_foto(a, cosa).and_then(|r| c.previas.ya(&r).or_else(|| c.miniaturas.ya(&r)));
     let ojeada = a
         .vistas
         .get(n)
+        .filter(|_| !de_nota)
         .and_then(|v| v.as_ref())
         .filter(|v| !matches!(v, Ojeada::Foto { .. }));
     if let Some((b, w, h)) = foto {
         p.bitmap(b, rf(ui::encajar(w, h, pr.vista)), None, false);
+    } else if de_nota {
+        hueco_de_foto(p, c, vista);
     } else if let Some(o) = ojeada {
         pintar_ojeada(p, c, o, vista, 12.0 * e);
     } else if matches!(m.clase, Some(Clase::Nota) | None) {
@@ -887,7 +1005,7 @@ fn pintar_previa(p: &Pintor, c: &Pinta, a: &Abierto, i: &Isla, n: usize, sobre: 
     }
 
     // El pie: «Ver en el chat» y «Abrir».
-    let abrir = if tarjetas::primer_enlace(&m.texto).is_some() && m.ruta.is_none() {
+    let abrir = if es_enlace(a, cosa) {
         textos.t("info-abrir-enlace")
     } else if m.clase == Some(Clase::Voz) || video {
         textos.t("info-reproducir")
