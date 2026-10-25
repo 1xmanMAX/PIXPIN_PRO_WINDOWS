@@ -1361,9 +1361,25 @@ lienzo-panel-zona-foco = Zona iluminada
 lienzo-pista-foco = Foco (F): toca una figura cerrada y se oscurece alrededor, dentro de su marco
 lienzo-pista-serie = Pasos numerados: cada clic pone el siguiente número
 
-## El interruptor Chat / Figuras de la barra del chat
+## El interruptor Chat / Funciones de la barra del chat
 proyectos-interruptor-chat = Chat
-proyectos-interruptor-figuras = Figuras
+proyectos-interruptor-funciones = Funciones
+## La pantalla de Funciones: los mosaicos, en su orden
+funciones-titulo = Funciones
+funciones-grabar = Grabar reunión
+funciones-grabar-detalle = Clase o reunión, con capturas y transcripción
+funciones-lienzo = Nuevo lienzo
+funciones-lienzo-detalle = Un lienzo en blanco para dibujar o calcar
+funciones-tareas = Tareas
+funciones-tareas-detalle = Las listas de tareas de todos tus chats
+funciones-timeline = Timeline
+funciones-timeline-detalle = Tu día minuto a minuto, y las lecciones
+funciones-horario = Horario
+funciones-horario-detalle = Tus clases de la semana, con aviso antes
+funciones-galeria = Capturas
+funciones-galeria-detalle = Todas las capturas que has guardado
+funciones-figuras = Figuras
+funciones-figuras-detalle = Tu biblioteca de figuras para los lienzos
 figuras-mias = Mis figuras
 figuras-todas = Todas
 figuras-vacia = Todavía no hay figuras. En un lienzo, elige algo y «Guardar como figura».
