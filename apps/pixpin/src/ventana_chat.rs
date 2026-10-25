@@ -2213,27 +2213,6 @@ pub fn abrir(
                         crate::sincronizar::lanzar(idioma, ubicacion.clone());
                         buscando = false;
                         hay_que_pintar = true;
-                    } else if let Some(extra) = pixpin_ui::chat::Extra::TODOS
-                        .into_iter()
-                        .find(|x| disposicion.boton_extra(*x, escala).contiene(l))
-                    {
-                        // Lecciones, galeria de capturas y tareas, cada una
-                        // en su ventana (en el sitio del universo, 3-oct).
-                        match extra {
-                            pixpin_ui::chat::Extra::Galeria => {
-                                crate::galeria_capturas::abrir(idioma, ubicacion.clone())
-                            }
-                            pixpin_ui::chat::Extra::Tareas => {
-                                crate::tareas::abrir(idioma, ubicacion.clone(), &identidad)
-                            }
-                            // Y con el las lecciones, en su pestana: un solo
-                            // boton para las dos (8-oct-2026, el usuario).
-                            pixpin_ui::chat::Extra::Timeline => {
-                                crate::timeline::abrir(idioma, ubicacion.clone())
-                            }
-                        }
-                        buscando = false;
-                        hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {
                         // El clic pone la rayita donde cae (dos, la palabra;
                         // tres, todo) y sin soltar se elige arrastrando.
@@ -5465,28 +5444,12 @@ fn pintar(
     // usuario vio: «cuando pongo el mouse sobre un chat, este los superpone
     // y oculta el boton».
 
-    // Los botones de sincronizar y del universo (D210): redondos, marron
-    // oscuro y con el icono crema, los colores de los botones redondos del
-    // chat del movil. Los dos iguales porque los dos llevan a una pantalla
-    // de TODOS los proyectos.
-    for (boton, icono) in [
-        (d.boton_sincro(escala), &SINCRO),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Tareas, escala),
-            &mi::CHECKLIST,
-        ),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Galeria, escala),
-            &mi::PHOTO_LIBRARY,
-        ),
-        (
-            d.boton_extra(pixpin_ui::chat::Extra::Timeline, escala),
-            &mi::TIMELINE,
-        ),
-    ] {
-        if boton.ancho == 0 {
-            continue;
-        }
+    // El boton de sincronizar (D210): redondo, marron oscuro y con el icono
+    // crema, los colores de los botones redondos del chat del movil. Tenia al
+    // lado los de tareas, galeria y timeline hasta el 25-oct-2026: ahora
+    // viven en la pestana Funciones (`funciones.rs`).
+    let (boton, icono) = (d.boton_sincro(escala), &SINCRO);
+    if boton.ancho > 0 {
         p.rellenar_redondeado(
             rf(boton),
             boton.alto as f32 / 2.0,
