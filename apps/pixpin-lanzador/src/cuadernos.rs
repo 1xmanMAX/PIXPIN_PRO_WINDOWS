@@ -25,13 +25,23 @@ pub fn es_carpeta(m: &Mensaje) -> bool {
     m.clase == "MINIAPP" && m.miniapp.as_deref() == Some(MINIAPP)
 }
 
+fn documento(m: &Mensaje) -> Option<Value> {
+    serde_json::from_str::<Value>(m.texto()).ok()
+}
+
 /// Cuantas paginas lleva (las borradas del chat aun cuentan: la app las
 /// salta al abrirla).
 pub fn paginas(m: &Mensaje) -> usize {
-    serde_json::from_str::<Value>(m.texto())
-        .ok()
+    documento(m)
         .and_then(|v| v.get("paginas")?.as_array().map(Vec::len))
         .unwrap_or(0)
+}
+
+/// Si es la carpeta de una clase o reunion grabada (`tipo: "grabacion"`,
+/// `carpeta_de_paginas::TIPO_GRABACION`): se abre, pero no se le anaden
+/// paginas.
+pub fn es_grabacion(m: &Mensaje) -> bool {
+    documento(m).is_some_and(|v| v.get("tipo").and_then(Value::as_str) == Some("grabacion"))
 }
 
 pub fn nombre(m: &Mensaje) -> &str {
@@ -60,11 +70,15 @@ fn pedido_carpeta(hacer: &str, p: &Proyecto, m: &Mensaje) -> Value {
 pub fn resultado(p: &Proyecto, m: &Mensaje) -> Resultado {
     let mut r = Resultado::nuevo(
         nombre(m),
-        format!(
-            "Carpeta de páginas · {} · {} · Intro: abrirla",
-            cuantas(paginas(m)),
-            p.nombre
-        ),
+        if es_grabacion(m) {
+            format!("Clase o reunión grabada · {} · Intro: abrirla", p.nombre)
+        } else {
+            format!(
+                "Carpeta de páginas · {} · {} · Intro: abrirla",
+                cuantas(paginas(m)),
+                p.nombre
+            )
+        },
         glifo::CARPETA_PAGINAS,
         Accion::Pedido(pedido_carpeta("abrir", p, m)),
     );
@@ -106,7 +120,9 @@ pub fn resultados(
     let mut v = Vec::new();
     for (p, m) in todas.iter().take(TOPE) {
         v.push(resultado(p, m));
-        v.push(resultado_pagina(p, m));
+        if !es_grabacion(m) {
+            v.push(resultado_pagina(p, m));
+        }
     }
     if !exacta {
         let (titulo, sub) = if buscado.is_empty() {

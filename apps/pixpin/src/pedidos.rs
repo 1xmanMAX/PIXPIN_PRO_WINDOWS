@@ -2495,7 +2495,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 37] = [
+    const EJEMPLOS: [(&str, &str); 38] = [
         (
             "pines",
             r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,

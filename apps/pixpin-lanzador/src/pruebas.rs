@@ -437,6 +437,19 @@ fn clase_y_carpetas_de_paginas() {
         *pedido_de(nueva),
         json!({ "pixpin": 1, "accion": "carpeta_paginas", "hacer": "nueva", "proyecto": "P2", "nombre": "Recetas" })
     );
+    // La carpeta de una clase grabada se abre, pero no se le anaden paginas.
+    let clase = json!({ "id": "c2", "cuando": 301, "clase": "MINIAPP", "miniapp": "carpeta",
+        "nombre": "Clase 25-10",
+        "texto": r#"{"formato":1,"tipo":"grabacion","voz":"v","paginas":[]}"# });
+    fs::write(
+        r.join("proyectos/P2/guardados.jsonl"),
+        format!("{carpeta}\n{clase}"),
+    )
+    .unwrap();
+    let v = buscar(&r, "carpeta clase 25");
+    assert_eq!(v[0].titulo, "Clase 25-10");
+    assert!(v[0].subtitulo.contains("grabada"), "{}", v[0].subtitulo);
+    assert!(!v.iter().any(|x| x.titulo == "Nueva página en «Clase 25-10»"));
     // En el chat del proyecto sale como carpeta, no como una mini-app con su
     // JSON.
     let v = buscar(&r, "Thesis > diario");
