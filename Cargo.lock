@@ -1675,6 +1675,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-indra"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-lanzador"
 version = "0.1.0"
 dependencies = [
