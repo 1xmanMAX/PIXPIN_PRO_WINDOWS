@@ -24,6 +24,10 @@ pixpin-codec = { path = "crates/pixpin-codec" }
 # Oir y grabar notas de voz: Media Foundation para reproducir, WASAPI para
 # el microfono. Sin dependencias de PixPin: vive con los cimientos.
 pixpin-audio = { path = "crates/pixpin-audio" }
+# El motor de grabar: WASAPI para el microfono y el sonido del equipo, la
+# deriva de los relojes, la mezcla y el `.m4a`. Cimiento, sin depender de
+# ningun crate de PixPin (ver docs/motor-de-audio.md).
+pixpin-motor-audio = { path = "crates/pixpin-motor-audio" }
 # Pasar una nota de voz a texto y el telepronter. Cimiento como
 # `pixpin-audio`: Media Foundation para decodificar y Vosk cargado al vuelo,
 # sin depender de ningun crate de PixPin.
@@ -122,4 +126,9 @@ opt-level = 1
 [profile.dev.package.pixpin-puente]
 opt-level = 3
 [profile.dev.package.serde_json]
+opt-level = 3
+# El motor de audio: sus pruebas remuestrean diez minutos de sonido con el
+# filtro de verdad (la deriva de los relojes solo se ve en tiradas largas), y
+# sin optimizar tardarian minutos. Asi se prueba el mismo codigo que suena.
+[profile.dev.package.pixpin-motor-audio]
 opt-level = 3

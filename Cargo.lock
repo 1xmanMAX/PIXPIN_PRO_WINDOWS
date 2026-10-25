@@ -1568,6 +1568,7 @@ dependencies = [
 name = "pixpin-audio"
 version = "0.1.0"
 dependencies = [
+ "pixpin-motor-audio",
  "thiserror",
  "tracing",
  "windows",
@@ -1708,6 +1709,16 @@ dependencies = [
  "pixpin-store",
  "serde_json",
  "windows",
+]
+
+[[package]]
+name = "pixpin-motor-audio"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "tracing",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]
