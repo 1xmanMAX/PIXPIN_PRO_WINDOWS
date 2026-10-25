@@ -247,10 +247,14 @@ pub(super) fn preparar<'a>(
             let al_dia = m.get(id).is_some_and(|e| e.valor.as_ref() == valor);
             if !al_dia {
                 let a = avatar::de_ficha_o_logo(raiz, f);
+                // «Ya tocaba mirar»: se lee en esta misma vuelta.
+                let ya = Instant::now()
+                    .checked_sub(REINTENTO)
+                    .unwrap_or_else(Instant::now);
                 let imagen = a
                     .as_ref()
                     .and_then(|a| avatar::ruta_de_la_imagen(raiz, id, a))
-                    .map(|r| (r, Imagen::Falta(Instant::now() - REINTENTO)));
+                    .map(|r| (r, Imagen::Falta(ya)));
                 m.insert(
                     id.to_string(),
                     Entrada {
