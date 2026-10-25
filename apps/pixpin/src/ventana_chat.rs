@@ -129,6 +129,9 @@ mod descripcion;
 mod donde_vive;
 /// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
 mod envio;
+/// La ficha del chat: la isla flotante de fotos, videos, archivos, enlaces…
+/// que sale al pulsar el nombre de la cabecera (25-oct-2026).
+mod ficha_del_chat;
 /// La ventana de las figuras guardadas, con su previsualizador: la abre la
 /// tercera parte del interruptor de arriba y la bandeja (24/25-oct-2026).
 mod figuras;
@@ -1160,6 +1163,30 @@ pub fn abrir(
                 }
                 // v2: el cuadro de enviar sigue al raton (resalte y foto
                 // arrastrada) y, al soltar, la foto cae en su hueco.
+                // Con la ficha del chat delante, el raton solo resalta lo
+                // suyo: lo de debajo esta tapado por el velo.
+                EventoOverlay::RatonMovido(p)
+                    if arrastre.is_none()
+                        && menu.is_none()
+                        && abierto
+                            .as_ref()
+                            .is_some_and(|a| a.info.is_some() && !a.busqueda_info.eligiendo()) =>
+                {
+                    let l = local(p);
+                    if let Some(a) = abierto.as_mut() {
+                        let antes = ficha_del_chat::zona_en(a, a.raton_info, &disposicion, escala);
+                        a.raton_info = l;
+                        if ficha_del_chat::zona_en(a, l, &disposicion, escala) != antes {
+                            hay_que_pintar = true;
+                        }
+                    }
+                    ventana.poner_cursor(FormaCursorWin::Flecha);
+                    if sobre.is_some() || fila_sobre.is_some() {
+                        sobre = None;
+                        fila_sobre = None;
+                        hay_que_pintar = true;
+                    }
+                }
                 EventoOverlay::RatonMovido(p) if pendientes.is_some() && arrastre.is_none() => {
                     let l = local(p);
                     if let Some(pend) = pendientes.as_mut() {
@@ -1434,7 +1461,8 @@ pub fn abrir(
                                 // secciones: en el movil son las fichas que
                                 // se despliegan al tocarlo.
                                 Zona::Titulo => {
-                                    a.info = Some(SECCIONES[0]);
+                                    a.info = Some(ficha_del_chat::primera(a));
+                                    a.info_abierta = None;
                                     a.scroll_info = 0;
                                     Efecto::Nada
                                 }
@@ -1709,19 +1737,100 @@ pub fn abrir(
                         }
                         hay_que_pintar = true;
                     } else if abierto.as_ref().is_some_and(|a| a.info.is_some()) {
-                        // Una miniatura de la galeria abre lo que ensena, como
-                        // si se hubiera pulsado su burbuja. Se mira ANTES que
-                        // el resto del panel porque abre otra cosa encima y se
-                        // lleva el prestamo de `abierto` entero.
-                        let cual = abierto
-                            .as_ref()
-                            .and_then(|a| cosa_de_la_cuadricula(a, l, &disposicion, escala));
-                        if let Some(indice) = cual {
-                            if let Some(a) = abierto.as_mut() {
-                                a.info = None;
-                                a.buscando_info = false;
-                                a.busqueda_info.vaciar();
+                        // La ficha del chat (`ficha_del_chat.rs`): lo que se
+                        // pulsa DENTRO se queda dentro (el usuario: «hacer
+                        // click dentro no debe salir de esa zona»). Una cosa
+                        // se ve en su previa, dentro de la isla; solo el
+                        // aspa o un clic fuera la cierran.
+                        use ficha_del_chat::ZonaInfo;
+                        let zona = abierto.as_ref().map_or(ZonaInfo::Fuera, |a| {
+                            ficha_del_chat::zona_en(a, l, &disposicion, escala)
+                        });
+                        let mut abrir_cosa = None;
+                        if let Some(a) = abierto.as_mut() {
+                            let enlace_de = |a: &Abierto, n: usize| {
+                                a.mensajes.get(n).is_some_and(|m| {
+                                    m.ruta.is_none() && tarjetas::primer_enlace(&m.texto).is_some()
+                                })
+                            };
+                            match zona {
+                                ZonaInfo::Fuera | ZonaInfo::Cerrar => {
+                                    a.info = None;
+                                    a.info_abierta = None;
+                                    a.buscando_info = false;
+                                    a.busqueda_info.vaciar();
+                                }
+                                ZonaInfo::CajaBuscar => {
+                                    // La rayita donde cae el clic, como en
+                                    // cualquier caja de texto.
+                                    if a.busqueda_info.pulsar(
+                                        l,
+                                        pixpin_shell::entrada::modificadores_pulsados().shift,
+                                        std::time::Instant::now(),
+                                    ) {
+                                        ventana.capturar_raton();
+                                    }
+                                }
+                                ZonaInfo::Buscar => {
+                                    // La lupa enciende y apaga. Al apagarla
+                                    // se limpia: una busqueda escondida haria
+                                    // que la seccion pareciera vacia.
+                                    a.buscando_info = !a.buscando_info;
+                                    if a.buscando_info {
+                                        a.busqueda_info.despertar();
+                                    } else {
+                                        a.busqueda_info.vaciar();
+                                    }
+                                    a.scroll_info = 0;
+                                }
+                                ZonaInfo::Pestana(s) => {
+                                    a.info = Some(s);
+                                    a.scroll_info = 0;
+                                }
+                                // Un enlace se abre en el navegador y la isla
+                                // se queda; lo demas, en su previa.
+                                ZonaInfo::Cosa(n) if enlace_de(a, n) => {
+                                    if let Efecto::Aviso(t) = abrir_enlace(a, n, textos) {
+                                        aviso = Some((t, std::time::Instant::now()));
+                                    }
+                                }
+                                ZonaInfo::Cosa(n) => a.info_abierta = Some(n),
+                                ZonaInfo::Volver => a.info_abierta = None,
+                                ZonaInfo::Anterior => {
+                                    a.info_abierta =
+                                        ficha_del_chat::vecina(a, -1).or(a.info_abierta)
+                                }
+                                ZonaInfo::Siguiente => {
+                                    a.info_abierta = ficha_del_chat::vecina(a, 1).or(a.info_abierta)
+                                }
+                                ZonaInfo::Abrir => match a.info_abierta {
+                                    Some(n) if enlace_de(a, n) => {
+                                        if let Efecto::Aviso(t) = abrir_enlace(a, n, textos) {
+                                            aviso = Some((t, std::time::Instant::now()));
+                                        }
+                                    }
+                                    otra => abrir_cosa = otra,
+                                },
+                                // «Ver en el chat»: es salir a proposito, a
+                                // ese mensaje y resaltado.
+                                ZonaInfo::EnElChat => {
+                                    if let Some(n) = a.info_abierta.take() {
+                                        a.info = None;
+                                        a.buscando_info = false;
+                                        a.busqueda_info.vaciar();
+                                        a.ir_a = Some(n);
+                                        a.resaltado = Some((n, std::time::Instant::now()));
+                                    }
+                                }
+                                ZonaInfo::Dentro => {}
                             }
+                        }
+                        // «Abrir»: lo mismo que tocar su burbuja. Casi todo
+                        // se abre en su propia ventana y la isla se queda;
+                        // lo que se abre DENTRO del chat (una mini-app, otro
+                        // chat) la cierra, porque si no quedaria debajo.
+                        if let Some(indice) = abrir_cosa {
+                            let antes = abierto.as_ref().map(|a| a.ficha.id.clone());
                             tocar_la_burbuja(
                                 indice,
                                 ubicacion,
@@ -1734,67 +1843,16 @@ pub fn abrir(
                                 idioma,
                                 &identidad,
                             );
-                            hay_que_pintar = true;
-                            continue;
-                        }
-                        // Con el panel abierto, la columna de la derecha es
-                        // suya: no se pincha ni el historial ni la caja.
-                        if let Some(a) = abierto.as_mut() {
-                            let d = disposicion_info(&disposicion, escala);
-                            // Fuera de la capa se cierra, como cualquier capa
-                            // con velo: lo de debajo esta esperando, y pulsarlo
-                            // es decir que ya se vio bastante.
-                            if !d.panel.contiene(l) {
-                                a.info = None;
-                                a.buscando_info = false;
-                                a.busqueda_info.vaciar();
-                                hay_que_pintar = true;
-                                continue;
-                            }
-                            if d.volver.contiene(l) {
-                                a.info = None;
-                                a.buscando_info = false;
-                                a.busqueda_info.vaciar();
-                            } else if a.buscando_info
-                                && d.caja_buscar(escala).contiene(l)
-                                && a.busqueda_info.pulsar(
-                                    l,
-                                    pixpin_shell::entrada::modificadores_pulsados().shift,
-                                    std::time::Instant::now(),
-                                )
+                            if let Some(a) = abierto.as_mut()
+                                && (a.mini.is_some()
+                                    || a.letra.is_some()
+                                    || antes.as_deref() != Some(a.ficha.id.as_str()))
                             {
-                                // En la caja de buscar: la rayita donde cae
-                                // el clic, como en cualquier caja de texto.
-                                ventana.capturar_raton();
-                            } else if d.buscar(escala).contiene(l) {
-                                // La lupa enciende y apaga. Al apagarla se
-                                // limpia: dejar una busqueda escondida haria
-                                // que la seccion pareciera vacia sin motivo.
-                                a.buscando_info = !a.buscando_info;
-                                if a.buscando_info {
-                                    a.busqueda_info.despertar();
-                                } else {
-                                    a.busqueda_info.vaciar();
-                                }
-                                a.scroll_info = 0;
-                            } else if let Some(i) = {
-                                let anchos = a.anchos_pestanas.borrow().clone();
-                                d.pestana_en(l, &d.pestanas(&anchos, escala))
-                            } {
-                                a.info = Some(SECCIONES[i]);
-                                a.scroll_info = 0;
-                            } else if !a.buscando_info && d.cabecera.contiene(l) {
-                                // Pulsar el nombre del proyecto lo pone a
-                                // escribir. Va el ultimo de la cabecera: el
-                                // aspa y la lupa estan ahi dentro y mandan
-                                // ellas. Se cierra el panel porque el nombre
-                                // se escribe en la cabecera de la
-                                // conversacion, que es donde se ve de verdad.
                                 a.info = None;
-                                a.empezar_a_renombrar();
+                                a.info_abierta = None;
                             }
-                            hay_que_pintar = true;
                         }
+                        hay_que_pintar = true;
                     } else if abierto.as_ref().is_some_and(|a| a.letra.is_some()) {
                         // Con la letra abierta, lo que se pulsa de ella ya
                         // lo atendieron sus zonas. El resto es el hueco entre
@@ -2952,13 +3010,13 @@ pub fn abrir(
                 EventoOverlay::Rueda(delta)
                     if abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
                 {
-                    if let Some(a) = abierto.as_mut() {
-                        let d = disposicion_info(&disposicion, escala);
+                    // En la previa de una cosa no hay nada que desplazar.
+                    if let Some(a) = abierto.as_mut().filter(|a| a.info_abierta.is_none()) {
                         let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
                         // `alto_info` lo deja puesto el pintado de la vuelta
                         // anterior: es lo que mide todo el contenido, y con
                         // el se sabe hasta donde se puede bajar.
-                        let tope = (a.alto_info.get() as i32 - d.contenido.alto as i32).max(0);
+                        let tope = ficha_del_chat::tope(a, &disposicion, escala);
                         a.scroll_info = (a.scroll_info - giro_de_rueda(delta, paso)).clamp(0, tope);
                     }
                     hay_que_pintar = true;
@@ -3330,11 +3388,28 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // En la previa de la ficha, Escape vuelve a la rejilla; en la
+                // rejilla, la cierra.
                 EventoOverlay::Tecla { vk, .. }
                     if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
                 {
-                    if let Some(a) = abierto.as_mut() {
+                    if let Some(a) = abierto.as_mut()
+                        && a.info_abierta.take().is_none()
+                    {
                         a.info = None;
+                    }
+                    hay_que_pintar = true;
+                }
+                // ← y → recorren la previa de la ficha, como en Telegram.
+                EventoOverlay::Tecla { vk, .. }
+                    if (vk == VK_IZQUIERDA || vk == VK_DERECHA)
+                        && abierto
+                            .as_ref()
+                            .is_some_and(|a| a.info.is_some() && a.info_abierta.is_some()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        let paso = if vk == VK_IZQUIERDA { -1 } else { 1 };
+                        a.info_abierta = ficha_del_chat::vecina(a, paso).or(a.info_abierta);
                     }
                     hay_que_pintar = true;
                 }
@@ -3896,17 +3971,16 @@ pub fn abrir(
             // leer del disco dentro del fotograma se notaria.
             let mut faltan_fondos = false;
             if let Some(a) = abierto.as_ref() {
-                if let Some(seccion) = a.info {
-                    let d = disposicion_info(&disposicion, escala);
-                    let rutas = fotos_a_la_vista(a, seccion, &d, escala);
-                    if !rutas.is_empty() {
-                        miniaturas.asegurar(&rutas, &motor);
-                    }
-                    // Las paginas de PDF de la galeria se pintan de las
-                    // vistas previas; las que no quepan en este fotograma,
+                if a.info.is_some() {
+                    // Las miniaturas de lo que se ve en la ficha y, en la
+                    // previa, la foto grande; las paginas de PDF se pintan de
+                    // las vistas previas. Lo que no quepa en este fotograma,
                     // en el siguiente.
-                    let fondos = fondos_a_la_vista(a, seccion, &d, escala);
-                    faltan_fondos = !fondos.is_empty() && previas.asegurar(&fondos, &motor);
+                    let (rutas, grandes) = ficha_del_chat::a_cargar(a, &disposicion, escala);
+                    if !rutas.is_empty() {
+                        faltan_fondos |= miniaturas.asegurar(&rutas, &motor);
+                    }
+                    faltan_fondos |= !grandes.is_empty() && previas.asegurar(&grandes, &motor);
                 }
             }
             // Y las del cuadro de confirmar, que son pocas y se ven todas.
@@ -4000,7 +4074,9 @@ pub fn abrir(
                         match a.info {
                             // Con la informacion abierta, la columna de la
                             // derecha es suya entera.
-                            Some(seccion) => pintar_info(p, &disposicion, &c, a, seccion),
+                            Some(seccion) => {
+                                ficha_del_chat::pintar(p, &disposicion, &c, a, seccion)
+                            }
                             // La letra de una nota de voz, igual que la
                             // biblioteca: la cabecera se ve pero sus
                             // pastillas no se apuntan (pulsarla vuelve), y
@@ -4632,6 +4708,11 @@ struct Abierto {
     /// que es quien tiene la fuente; el raton lo necesita para saber en cual
     /// se pulso.
     anchos_pestanas: std::cell::RefCell<Vec<f32>>,
+    /// La cosa de la ficha que se ve en grande, dentro de la isla (su
+    /// posicion en `mensajes`); `None`, la rejilla.
+    info_abierta: Option<usize>,
+    /// Donde esta el raton sobre la ficha, para resaltar lo que hay debajo.
+    raton_info: Punto,
     /// A que mensaje se esta contestando (su id). Aparte de `marcados`:
     /// uno elige sobre que actuar y esto deja un mensaje colgado mientras se
     /// escribe la respuesta, como en el movil.
@@ -8305,6 +8386,8 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         alto_info: std::cell::Cell::new(0),
         hojas_uid: pixpin_proyecto::almacen::uids_de_hojas(ubicacion.raiz(), &ficha.id),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
+        info_abierta: None,
+        raton_info: Punto { x: -1, y: -1 },
         respondiendo: None,
         renombrando_mensaje: None,
         describiendo: false,
@@ -8833,72 +8916,6 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
             _ => foto_de(i).into_iter().collect(),
         })
         .collect()
-}
-
-/// Las fotos que se ven ahora mismo en el panel, en cuadricula o en lista.
-///
-/// Solo las visibles, y en el orden en que se ven: con trescientas fotos, lo
-/// que importa es que salgan primero las que el usuario esta mirando.
-fn fotos_a_la_vista(
-    a: &Abierto,
-    seccion: pixpin_proyecto::cuaderno::Seccion,
-    d: &pixpin_ui::info::Disposicion,
-    escala: u32,
-) -> Vec<std::path::PathBuf> {
-    use pixpin_proyecto::cuaderno::Clase;
-    a_la_vista_del_panel(a, seccion, d, escala)
-        .into_iter()
-        .filter_map(|n| {
-            let m = a.mensajes.get(n)?;
-            // Solo las fotos: un dibujo ya se pinta de su lienzo, y de un
-            // archivo no hay nada que descomprimir.
-            (m.clase == Some(Clase::Imagen))
-                .then(|| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-                .flatten()
-        })
-        .collect()
-}
-
-/// Los fondos de los lienzos que se ven en el panel: las paginas de un PDF
-/// unido y las hojas dibujadas sobre una. Se pintan de las vistas previas
-/// (`pintar_lienzo`), y desde que esas paginas ya no salen en el chat nadie
-/// mas las pedia: la galeria las ensenaba en blanco.
-fn fondos_a_la_vista(
-    a: &Abierto,
-    seccion: pixpin_proyecto::cuaderno::Seccion,
-    d: &pixpin_ui::info::Disposicion,
-    escala: u32,
-) -> Vec<std::path::PathBuf> {
-    a_la_vista_del_panel(a, seccion, d, escala)
-        .into_iter()
-        .filter_map(|n| match a.vistas.get(n) {
-            Some(Some(Ojeada::Lienzo(l))) => l.fondo.as_ref().map(|(r, _)| r.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Que mensajes se ven ahora en el panel, por su posicion y en orden.
-fn a_la_vista_del_panel(
-    a: &Abierto,
-    seccion: pixpin_proyecto::cuaderno::Seccion,
-    d: &pixpin_ui::info::Disposicion,
-    escala: u32,
-) -> Vec<usize> {
-    let suyos = indices_de_la_seccion(a, seccion);
-    let (primera, cuantas) = if seccion.es_cuadricula() {
-        let r = pixpin_ui::info::rejilla(d.contenido.ancho, escala);
-        r.visibles(d.contenido, suyos.len(), a.scroll_info, escala)
-    } else {
-        // La misma cuenta que al pintar las filas, incluida la fila de mas
-        // por arriba y por abajo que asoma al desplazar.
-        let alto = (pixpin_ui::info::ARCHIVO_ALTO * escala / 100).max(1);
-        (
-            (a.scroll_info / alto as i32).max(0) as usize,
-            (d.contenido.alto / alto) as usize + 2,
-        )
-    };
-    suyos.into_iter().skip(primera).take(cuantas).collect()
 }
 
 /// Apunta en el indice el nombre que se acaba de escribir.
@@ -9978,10 +9995,6 @@ fn abrir_mensaje(
     }
 }
 
-/// Las secciones del panel, en el orden en que se ensenan.
-const SECCIONES: [pixpin_proyecto::cuaderno::Seccion; 8] =
-    pixpin_proyecto::cuaderno::Seccion::TODAS;
-
 /// El area COMPLETA del monitor donde esta la ventana (barra de tareas
 /// incluida). `respaldo` es el monitor de arrancar, por si no se pueden
 /// enumerar ahora.
@@ -10026,57 +10039,6 @@ fn indices_de_la_seccion(a: &Abierto, seccion: pixpin_proyecto::cuaderno::Seccio
         })
         .map(|(n, _)| n)
         .collect()
-}
-
-/// Donde cae el panel del proyecto, para PINTARLO y para repartir sus clics.
-///
-/// Una sola cuenta y no dos. Hubo dos: el pintado lo colocaba como capa
-/// flotante centrada y el raton lo buscaba en la columna de la derecha, que
-/// es donde vivia antes. Las pestanas se veian pero no respondian, porque su
-/// rectangulo de verdad estaba en otro sitio. El usuario lo dijo asi: «los
-/// otros botones como fotos archivos voz y mas no se pueden dar click».
-fn disposicion_info(d: &Disposicion, escala: u32) -> pixpin_ui::info::Disposicion {
-    let ventana = Rect {
-        x: 0,
-        y: 0,
-        ancho: d.barra.ancho,
-        alto: d.chat.abajo().max(d.lista.abajo()).max(0) as u32,
-    };
-    let (caja, _completa) = pixpin_ui::info::capa_en(ventana, escala);
-    pixpin_ui::info::Disposicion::capa(caja, escala)
-}
-
-/// Que cosa del proyecto hay bajo `l`, si el panel ensena una cuadricula.
-///
-/// Devuelve la posicion en `a.mensajes`, que es con la que trabaja todo lo
-/// demas. `None` si el panel esta en una seccion de filas, si el punto cae
-/// fuera del contenido o si ahi no hay ninguna celda.
-///
-/// Recorre las MISMAS celdas visibles que el pintado y con la misma cuenta:
-/// si cada uno hiciera la suya, un dia el clic abriria la de al lado.
-fn cosa_de_la_cuadricula(a: &Abierto, l: Punto, d: &Disposicion, escala: u32) -> Option<usize> {
-    let seccion = a.info?;
-    if !seccion.es_cuadricula() {
-        return None;
-    }
-    let i = disposicion_info(d, escala);
-    if !i.contenido.contiene(l) {
-        return None;
-    }
-    let mut suyos = indices_de_la_seccion(a, seccion);
-    if !a.busqueda_info.trim().is_empty() {
-        suyos.retain(|n| {
-            let m = &a.mensajes[*n];
-            pixpin_ui::resaltado::hay_coincidencia(&m.resumen(), &a.busqueda_info)
-                || pixpin_ui::resaltado::hay_coincidencia(&m.nombre, &a.busqueda_info)
-        });
-    }
-    let r = pixpin_ui::info::rejilla(i.contenido.ancho, escala);
-    let (primera, cuantas) = r.visibles(i.contenido, suyos.len(), a.scroll_info, escala);
-    (primera..primera + cuantas).find_map(|n| {
-        let celda = r.celda(n, i.contenido, a.scroll_info, escala);
-        celda.contiene(l).then(|| suyos.get(n).copied()).flatten()
-    })
 }
 
 /// La tarjeta de una cosa de la galeria que no tiene vista previa que
@@ -10182,340 +10144,6 @@ fn pintar_nota_galeria(p: &Pintor, c: &Pinta, m: &pixpin_proyecto::cuaderno::Men
         &[],
         tema.texto,
     );
-}
-
-/// La pantalla de informacion del proyecto: ficha, pestanas y contenido.
-///
-/// Ocupa la columna de la derecha entera. En Telegram seria una tercera
-/// columna cuando la ventana es muy ancha; aqui la ventana no suele serlo
-/// tanto, y tapar la conversacion es lo que hace el propio Telegram en
-/// cuanto no le caben tres columnas.
-fn pintar_info(
-    p: &Pintor,
-    d: &Disposicion,
-    c: &Pinta,
-    a: &Abierto,
-    seccion: pixpin_proyecto::cuaderno::Seccion,
-) {
-    use pixpin_ui::info;
-    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
-    let e = escala as f32 / 100.0;
-    // El velo oscurece TODA la ventana, no solo la conversacion: es lo que
-    // dice que lo de debajo esta esperando, y lo que hace que el recuadro se
-    // lea como una capa y no como otra columna mas.
-    let ventana = Rect {
-        x: 0,
-        y: 0,
-        ancho: d.barra.ancho,
-        alto: d.chat.abajo().max(d.lista.abajo()).max(0) as u32,
-    };
-    p.rellenar(rf(ventana), tema.velo);
-
-    // La MISMA cuenta que reparte los clics: si aqui se colocara aparte,
-    // volverian a verse botones que no responden.
-    let i = disposicion_info(d, escala);
-    p.rellenar_redondeado(rf(i.panel), info::CAPA_RADIO as f32 * e, tema.lista);
-
-    // La cabecera: el nombre del proyecto y, debajo, lo que tiene dentro. No
-    // hay flecha de volver: en una capa se cierra con el aspa.
-    let lupa = i.buscar(escala);
-    let ancho_titulo = (lupa.x - i.cabecera.x) as f32 - info::CAPA_TITULO_X as f32 * e;
-    if a.buscando_info {
-        // Con la lupa encendida, la caja de buscar ocupa el sitio del
-        // titulo: mientras se busca, el nombre del proyecto no dice nada que
-        // no se sepa ya.
-        let b = i.caja_buscar(escala);
-        p.rellenar_redondeado(rf(b), b.alto as f32 / 2.0, tema.buscador);
-        // La caja de una linea comun, con su rayita donde se escribe.
-        let margen = info::BUSCAR_TEXTO_X as f32 * e;
-        a.busqueda_info.pintar(
-            p,
-            rf(b),
-            RectF {
-                x: b.x as f32 + margen,
-                ancho: (b.ancho as f32 - 2.0 * margen).max(0.0),
-                ..rf(b)
-            },
-            info::BUSCAR_TAM * e,
-            &textos.t("chat-buscar"),
-            &colores_de_caja(tema, tema.texto, tema.apagado),
-            true,
-            std::time::Instant::now(),
-        );
-    } else {
-        p.texto_linea(
-            &a.ficha.nombre,
-            i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
-            i.cabecera.y as f32 + info::CAPA_TITULO_Y as f32 * e,
-            info::CAPA_TITULO_TAM * e,
-            ancho_titulo.max(0.0),
-            tema.texto,
-        );
-        let mut args = fluent_bundle::FluentArgs::new();
-        args.set("cuantas", a.ficha.hojas);
-        // Las hojas y, detras, el codigo unico del proyecto: es el que hay
-        // que mirar para saber si lo que hay aqui y lo que hay en el movil
-        // son la misma cosa, y sin verlo no se puede comprobar una
-        // sincronizacion. En el movil sale igual.
-        let subtitulo = format!(
-            "{}  ·  {}",
-            textos.t_args("chat-hojas", &args),
-            a.ficha.codigo_unico()
-        );
-        p.texto_linea(
-            &subtitulo,
-            i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
-            i.cabecera.y as f32 + info::CAPA_SUBTITULO_Y as f32 * e,
-            info::CAPA_SUBTITULO_TAM * e,
-            ancho_titulo.max(0.0),
-            tema.apagado,
-        );
-    }
-
-    // El aspa de cerrar, pegada al borde derecho, y la lupa a su izquierda.
-    let grosor = (2.0 * e).max(1.0);
-    let centro = |r: Rect| {
-        (
-            r.x as f32 + r.ancho as f32 / 2.0,
-            r.y as f32 + r.alto as f32 / 2.0,
-        )
-    };
-    let (cx, cy) = centro(i.volver);
-    let brazo = 5.0 * e;
-    p.linea(
-        (cx - brazo, cy - brazo),
-        (cx + brazo, cy + brazo),
-        grosor,
-        tema.texto,
-    );
-    p.linea(
-        (cx - brazo, cy + brazo),
-        (cx + brazo, cy - brazo),
-        grosor,
-        tema.texto,
-    );
-    let (lx, ly) = centro(lupa);
-    let lado = 16.0 * e;
-    p.icono(
-        &pixpin_render::iconos_excalidraw::SEARCH_ICON,
-        RectF {
-            x: lx - lado / 2.0,
-            y: ly - lado / 2.0,
-            ancho: lado,
-            alto: lado,
-        },
-        tema.texto,
-    );
-
-    // La tira de pestanas. Se miden aqui, que es donde esta la fuente, y se
-    // apuntan para que el raton sepa luego en cual se pulso.
-    let rotulos: Vec<String> = SECCIONES.iter().map(|s| textos.t(s.clave())).collect();
-    let anchos: Vec<f32> = rotulos
-        .iter()
-        .map(|r| p.medir_texto(r, info::PESTANA_TAM * e).0)
-        .collect();
-    *a.anchos_pestanas.borrow_mut() = anchos.clone();
-    let pestanas = i.pestanas(&anchos, escala);
-    p.rellenar_redondeado(rf(i.isla), i.isla.alto as f32 / 2.0, tema.cabecera);
-    p.empujar_recorte(rf(i.isla));
-    for (n, r) in pestanas.iter().enumerate() {
-        let activa = SECCIONES[n] == seccion;
-        if activa {
-            let pildora = i.pildora(*r, escala);
-            p.rellenar_redondeado(rf(pildora), pildora.alto as f32 / 2.0, tema.pestana_activa);
-        }
-        let (w, h) = p.medir_texto(&rotulos[n], info::PESTANA_TAM * e);
-        p.texto(
-            &rotulos[n],
-            r.x as f32 + (r.ancho as f32 - w) / 2.0,
-            r.y as f32 + (r.alto as f32 - h) / 2.0,
-            info::PESTANA_TAM * e,
-            if activa {
-                tema.texto_pestana_activa
-            } else {
-                tema.apagado
-            },
-        );
-    }
-    p.soltar_recorte();
-
-    // Y el contenido de la seccion.
-    // Por indice y no por referencia: con el numero se llega tambien a
-    // `a.vistas`, que es donde esta el lienzo ya leido de cada dibujo.
-    let mut suyos = indices_de_la_seccion(a, seccion);
-    if !a.busqueda_info.trim().is_empty() {
-        suyos.retain(|n| {
-            let m = &a.mensajes[*n];
-            pixpin_ui::resaltado::hay_coincidencia(&m.resumen(), &a.busqueda_info)
-                || pixpin_ui::resaltado::hay_coincidencia(&m.nombre, &a.busqueda_info)
-        });
-    }
-    if suyos.is_empty() {
-        let vacio = textos.t("chat-sin-mensajes");
-        let (w, h) = p.medir_texto(&vacio, 13.0 * e);
-        p.texto(
-            &vacio,
-            i.contenido.x as f32 + (i.contenido.ancho as f32 - w) / 2.0,
-            i.contenido.y as f32 + (i.contenido.alto as f32 - h) / 2.0,
-            13.0 * e,
-            tema.apagado,
-        );
-        a.alto_info.set(0);
-        return;
-    }
-
-    p.empujar_recorte(rf(i.contenido));
-    if seccion.es_cuadricula() {
-        let r = info::rejilla(i.contenido.ancho, escala);
-        a.alto_info.set(r.alto_total(suyos.len(), escala));
-        let (primera, cuantas) = r.visibles(i.contenido, suyos.len(), a.scroll_info, escala);
-        for (n, indice) in suyos
-            .iter()
-            .copied()
-            .enumerate()
-            .skip(primera)
-            .take(cuantas)
-        {
-            let celda = r.celda(n, i.contenido, a.scroll_info, escala);
-            let m = &a.mensajes[indice];
-            // En la galeria cada cosa lleva su nombre debajo: ahi conviven
-            // lienzos, paginas y PDF, y un mosaico mudo obliga a abrirlos uno
-            // a uno para saber cual es cual.
-            let galeria = seccion == pixpin_proyecto::cuaderno::Seccion::Galeria;
-            // Una foto de verdad, si ya esta leida.
-            let foto =
-                ruta_del_mensaje(&a.raiz, &a.ficha.id, m).and_then(|ruta| c.miniaturas.ya(&ruta));
-            if let Some((b, w, h)) = foto {
-                p.empujar_recorte(rf(celda));
-                crate::miniaturas::pintar_recortado(p, b, rf(celda), w, h);
-                p.soltar_recorte();
-            } else {
-                // Una foto que aun no esta leida sale como las demas cosas sin
-                // miniatura: con su nombre, no con un papel en blanco.
-                let vista = a
-                    .vistas
-                    .get(indice)
-                    .and_then(|v| v.as_ref())
-                    .filter(|v| !matches!(v, Ojeada::Foto { .. }));
-                match vista {
-                    // Un dibujo se ensena dibujado. Sobre papel blanco y no
-                    // sobre el gris de la celda: los trazos vienen de un lienzo
-                    // claro y sobre gris se pierden, igual que en las burbujas.
-                    Some(vista) => {
-                        let papel = match vista {
-                            Ojeada::Lienzo(l) => papel_de_vista(l, tema.papel),
-                            _ => tema.papel,
-                        };
-                        p.rellenar_redondeado(rf(celda), 4.0 * e, papel);
-                        p.empujar_recorte(rf(celda));
-                        let dentro = encoger(rf(celda), 4.0 * e);
-                        match vista {
-                            Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro, Some(c.previas)),
-                            Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, dentro),
-                            // En el panel de informacion, el icono del
-                            // cuaderno: sus paginas ya salen cada una.
-                            Ojeada::Carpeta(_) => {
-                                let lado = (dentro.ancho.min(dentro.alto) * 0.5).max(1.0);
-                                p.icono(
-                                    &mi::MENU_BOOK,
-                                    RectF {
-                                        x: dentro.x + (dentro.ancho - lado) / 2.0,
-                                        y: dentro.y + (dentro.alto - lado) / 2.0,
-                                        ancho: lado,
-                                        alto: lado,
-                                    },
-                                    tema.texto_papel,
-                                );
-                            }
-                            Ojeada::Foto { .. } => {}
-                        }
-                        p.soltar_recorte();
-                    }
-                    // Un PDF no tiene vista previa que dibujar: su tarjeta es
-                    // el icono grande en medio, como la portada de un libro
-                    // cerrado. El nombre lo pone el pie, abajo.
-                    None if galeria => pintar_tarjeta_galeria(p, c, m, celda),
-                    // Lo que no tiene miniatura: la misma tarjeta que en la
-                    // galeria (chapa de extension, o icono de su clase). Antes
-                    // salia un recuadro oscuro con el nombre encima, que es lo
-                    // que el usuario veia como «miniatura negra».
-                    None => pintar_tarjeta_galeria(p, c, m, celda),
-                }
-            }
-            // El nombre NO va debajo: el usuario lo pidio quitar («que las
-            // cosas de galeria no aparezca el nombre del archivo»). Lo que
-            // hay dentro de la celda —el dibujo, la foto o la chapa con la
-            // extension— ya dice lo que es.
-            let _ = galeria;
-        }
-    } else {
-        let alto = info::ARCHIVO_ALTO * escala / 100;
-        a.alto_info.set(alto * suyos.len() as u32);
-        let primera = (a.scroll_info / alto.max(1) as i32).max(0) as usize;
-        let caben = (i.contenido.alto / alto.max(1)) as usize + 2;
-        for (n, indice) in suyos.iter().copied().enumerate().skip(primera).take(caben) {
-            let m = &a.mensajes[indice];
-            let fila = Rect {
-                x: i.contenido.x,
-                y: i.contenido.y + (n as u32 * alto) as i32 - a.scroll_info,
-                ancho: i.contenido.ancho,
-                alto,
-            };
-            let f = info::fila_archivo(fila, escala);
-            // La miniatura solo si hay fichero: una nota no tiene ninguno, y
-            // un recuadro vacio al lado de un texto parece algo que no cargo.
-            let foto = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).and_then(|r| c.miniaturas.ya(&r));
-            match foto {
-                Some((b, w, h)) => {
-                    p.empujar_recorte(rf(f.miniatura));
-                    crate::miniaturas::pintar_recortado(p, b, rf(f.miniatura), w, h);
-                    p.soltar_recorte();
-                }
-                // Sin miniatura, la chapa con su extension (o el icono de su
-                // clase): el recuadro liso de antes parecia una foto que no
-                // habia cargado.
-                None if m.ruta.is_some() || !m.nombre.is_empty() => {
-                    pintar_tarjeta_galeria(p, c, m, f.miniatura)
-                }
-                // Una nota no tiene fichero, y un recuadro vacio al lado de
-                // un texto parece algo que no cargo.
-                None => {}
-            }
-            // Lo encontrado va en negrita. Un fondo de color seria mas
-            // parecido a Telegram, pero para eso hace falta preguntarle a
-            // DirectWrite donde cae cada trozo ya partido en lineas; la
-            // negrita dice lo mismo y se ve en una sola pasada.
-            let nombre = m.resumen();
-            p.parrafo(
-                &nombre,
-                f.nombre.x as f32,
-                f.nombre.y as f32,
-                info::ARCHIVO_NOMBRE_TAM * e,
-                f.ancho_texto as f32,
-                &negritas(&nombre, &a.busqueda_info),
-                tema.texto,
-            );
-            if let Some(etiqueta) = clase_de(m, textos) {
-                p.texto_linea(
-                    &etiqueta,
-                    f.estado.x as f32,
-                    f.estado.y as f32,
-                    info::ARCHIVO_ESTADO_TAM * e,
-                    f.ancho_texto as f32,
-                    tema.apagado,
-                );
-            }
-            p.texto_linea(
-                &pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), c.ahora),
-                f.fecha.x as f32,
-                f.fecha.y as f32,
-                info::ARCHIVO_ESTADO_TAM * e,
-                f.ancho_texto as f32,
-                tema.apagado,
-            );
-        }
-    }
-    p.soltar_recorte();
 }
 
 #[cfg(test)]

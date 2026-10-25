@@ -289,6 +289,18 @@ info-voz = Voice
 info-dibujos = Drawings
 info-fijados = Pinned
 info-buzon = Inbox
+info-videos = Videos
+info-enlaces = Links
+info-resumen = { $n ->
+    [one] 1 item
+   *[other] { $n } items
+}  ·  { $codigo }
+info-previa-posicion = { $k } of { $n }
+info-vacia = Nothing here yet
+info-abrir = Open
+info-abrir-enlace = Open link
+info-reproducir = Play
+info-ver-en-el-chat = Show in chat
 info-titulo = Info
 adjuntar-imagen = Photo or video
 adjuntar-archivo = File

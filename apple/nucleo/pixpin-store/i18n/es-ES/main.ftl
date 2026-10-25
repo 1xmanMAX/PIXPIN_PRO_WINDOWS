@@ -288,6 +288,18 @@ info-voz = Voz
 info-dibujos = Dibujos
 info-fijados = Fijados
 info-buzon = Buzón
+info-videos = Vídeos
+info-enlaces = Enlaces
+info-resumen = { $n ->
+    [one] 1 cosa
+   *[other] { $n } cosas
+}  ·  { $codigo }
+info-previa-posicion = { $k } de { $n }
+info-vacia = Aquí no hay nada todavía
+info-abrir = Abrir
+info-abrir-enlace = Abrir enlace
+info-reproducir = Reproducir
+info-ver-en-el-chat = Ver en el chat
 info-titulo = Información
 adjuntar-imagen = Foto o vídeo
 adjuntar-archivo = Archivo
