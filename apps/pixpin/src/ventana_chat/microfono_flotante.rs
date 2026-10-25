@@ -25,7 +25,7 @@
 //! Se arrastra por cualquier sitio: pulsar y mover es llevarla; pulsar y
 //! soltar sin moverse es un clic. La nota se mete en el proyecto por
 //! [`super::guardar_la_voz`], el mismo camino que el boton del chat, con el
-//! mismo sello y el mismo realce de la voz (`pixpin_audio::realce`).
+//! mismo sello y el mismo realce de la voz (`pixpin_motor_audio::dsp::Realce`).
 //!
 //! Va en su hilo, como la llamada secreta: el bucle principal sigue con sus
 //! atajos y sus pines. El microfono se abre en otro hilo a la vez que nace la
