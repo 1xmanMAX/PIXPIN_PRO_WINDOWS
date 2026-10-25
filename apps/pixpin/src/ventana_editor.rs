@@ -1664,6 +1664,10 @@ fn abrir_en_modo(
                         efectiva: &efectiva,
                         camara: &camara,
                         mano: gesto.herramienta == Herramienta::Mano,
+                        // Solo hace falta en el clic (Mayus+clic fija la
+                        // vista de la marca): no se pregunta en cada muestra.
+                        mayus: matches!(ev, EventoOverlay::BotonPulsado(_))
+                            && pixpin_shell::entrada::modificadores_pulsados().shift,
                         escribiendo: gesto.esta_escribiendo(),
                         ocupado: !gesto.en_reposo() || gesto.lazo.is_some() || mano.borrando,
                         bajo_la_barra: bajo_la_barra(&caja, area),
@@ -2798,6 +2802,12 @@ fn abrir_en_modo(
         if marcador.avanzar(&mut camara) {
             efectiva = vista_efectiva(&camara, escala_por_cien);
             todo_sucio = true;
+            ventana.invalidar();
+        }
+        // La pastilla de «vista guardada» de una marca se va sola.
+        if marcador.caduca() {
+            todo_sucio = true;
+            interfaz_sucia = true;
             ventana.invalidar();
         }
         let mut pintado_medido = None;

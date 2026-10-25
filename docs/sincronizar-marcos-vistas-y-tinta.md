@@ -192,6 +192,52 @@ formato (se distingue por el tipo del adjunto):
   (`anot-<uid>.excalidraw.gz` + `.hoja`), como antes. Los marcadores 2D, en
   `.vistas.json` (§3.2).
 
+### 3.8 Vista de cada marcador de un lienzo — `pins/draw/<d>.vistas.json` (25-oct-2026)
+
+Como las vistas con nombre de AutoCAD: al plantar un marcador en un lienzo
+se guarda **lo que se ve en pantalla** (encuadre y aumento), y al ir a él se
+vuelve a ver eso mismo.
+
+- Va al lado del dibujo y de sus marcas: `pins/draw/<d>.excalidraw.gz`,
+  `pins/draw/<d>.marcas` (`id:x:y:emoji|…`, sin cambios) y
+  `pins/draw/<d>.vistas.json`. No lleva `anot-`: viaja con el dibujo por
+  `alcance` (`vistas_junto_a`, al lado de `marcas_junto_a`), no por
+  `TERMINACIONES`.
+- Un objeto de id del marcador (el mismo `id` de la línea de `.marcas`, en
+  texto) a `"x y ancho alto"`:
+
+```json
+{ "1792000000000": "320.5 1040 800 450" }
+```
+
+  - `x`, `y`: el **centro** de lo que se veía, en coordenadas del mundo del
+    lienzo (las de los elementos Excalidraw, y hacia abajo).
+  - `ancho`, `alto`: cuánto mundo se veía (> 0), en las mismas unidades.
+  - Números separados por espacios, con punto decimal; el PC los escribe a
+    diezmilésimas y sin `.0` si son enteros.
+- **Al volver** en un hueco de `w`×`h` píxeles (los de la cámara, sin la
+  escala del sistema): `zoom = min(w/ancho, h/alto)` acotado a
+  `[0.05, 30]`, y la esquina de arriba a la izquierda en
+  `(x − w/(2·zoom), y − h/(2·zoom))`. En la misma ventana da la cámara
+  exacta de antes; en otra (el móvil de pie), todo lo guardado, entero y
+  centrado. En Excalidraw: `scrollX = w/(2·zoom) − x`,
+  `scrollY = h/(2·zoom) − y`.
+- **Al guardar** desde una cámara (esquina `cx, cy`, `zoom`) en un hueco de
+  `w`×`h`: `ancho = w/zoom`, `alto = h/zoom`, `x = cx + ancho/2`,
+  `y = cy + alto/2`.
+- Un marcador **sin** vista (los de antes, o un id que no está) vuelve como
+  siempre: centrado a lo ancho, arriba, con el aumento de ahora. Una entrada
+  que no se entiende se ignora.
+- Quitar un marcador quita su entrada; sin ninguna se escribe `{}` (no se
+  borra). Lo resuelve la sincronización entero, gana el más nuevo.
+- En el PC: **Mayús+clic** en el marcador o en su punto del riel (o
+  **Ctrl+Mayús+1…9**) cambia su vista por la de ahora. El viaje hasta la
+  vista acerca o aleja por múltiplos persiguiendo el centro.
+- Fuera de un chat (un `.excalidraw` suelto), la misma vista en
+  `<dibujo>.pixpin-vistas` al lado del fichero, que no viaja.
+- Lógica: `VistaDeMarca` en `crates/pixpin-motor2d/src/marcas.rs`; ficheros
+  y teclas en `apps/pixpin/src/ventana_editor/marcas.rs`.
+
 ## 4. Lo que NO viaja (a propósito)
 
 - Lo de un documento que **no es un adjunto** de un chat: queda al lado del
@@ -263,4 +309,6 @@ formato (se distingue por el tipo del adjunto):
    `anot-<uid>.excalidraw.gz` sin regla de columnas.
 4. Marcadores con vista: al ponerlo, guardar el zoom y el sitio en
    `.vistas.json`; al ir, restaurarlos.
-5. La interfaz y las teclas de §5.
+5. Lienzos: añadir `pins/draw/<d>.vistas.json` al alcance de cada dibujo,
+   junto a `<d>.marcas` (§3.8), y guardar/restaurar la vista de cada marca.
+6. La interfaz y las teclas de §5.
