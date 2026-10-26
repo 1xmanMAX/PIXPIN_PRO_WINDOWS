@@ -24,9 +24,17 @@ use super::Destino;
 pub fn leer_texto(raiz: &Path, destino: &Destino) -> Option<String> {
     match destino {
         Destino::Nueva { .. } => Some(String::new()),
-        Destino::Fichero { ruta } => std::fs::read(ruta)
-            .ok()
-            .map(|b| String::from_utf8_lossy(&b).into_owned()),
+        Destino::Fichero { ruta } => std::fs::read(ruta).ok().map(|b| {
+            if super::es_markdown(ruta) {
+                return String::from_utf8_lossy(&b).into_owned();
+            }
+            // Un texto llano (tambien en UTF-16, como los de Windows).
+            let texto = pixpin_docs::texto_de(&b);
+            match lenguaje_de(ruta) {
+                Some(l) => envolver(l, &texto),
+                None => texto,
+            }
+        }),
         Destino::Mensaje { proyecto, codigo } => {
             let carpeta = almacen::carpeta(raiz, proyecto);
             if let Ok(c) = cuaderno::Cuaderno::leer_de(&carpeta)
@@ -72,6 +80,10 @@ pub fn guardar(
 ) -> std::io::Result<Destino> {
     match destino {
         Destino::Fichero { ruta } => {
+            let texto = match lenguaje_de(ruta) {
+                Some(l) => desenvolver(l, texto),
+                None => texto,
+            };
             escribir_atomico(ruta, texto.as_bytes())?;
             Ok(destino.clone())
         }
@@ -197,9 +209,126 @@ fn tocar_ficha(
     Ok(())
 }
 
+/// El lenguaje con que se colorea un fichero de codigo o de datos abierto
+/// en el lector de notas, o `None` si se lee como texto (un `.txt`, un
+/// `.log`, unos subtitulos) o es un Markdown.
+pub fn lenguaje_de(ruta: &Path) -> Option<&'static str> {
+    if !super::es_texto_para_nota(ruta) {
+        return None;
+    }
+    let ext = pixpin_docs::extension(&pixpin_docs::nombre(ruta));
+    Some(match ext.as_str() {
+        "txt" | "log" | "srt" | "vtt" | "nfo" | "rst" => return None,
+        "rs" => "rust",
+        "py" => "python",
+        "js" | "mjs" | "jsx" => "javascript",
+        "ts" | "tsx" => "typescript",
+        "c" | "h" => "c",
+        "cpp" | "hpp" => "cpp",
+        "cs" => "csharp",
+        "kt" => "kotlin",
+        "rb" => "ruby",
+        "sh" => "bash",
+        "ps1" => "powershell",
+        "bat" | "cmd" => "batch",
+        "yml" | "yaml" => "yaml",
+        "jsonl" | "json" => "json",
+        "tex" => "latex",
+        "bib" => "bibtex",
+        "env" | "cfg" | "conf" | "ini" => "ini",
+        "xml" => "xml",
+        "toml" => "toml",
+        "sql" => "sql",
+        "go" => "go",
+        "php" => "php",
+        "lua" => "lua",
+        "css" => "css",
+        "scss" => "scss",
+        "java" => "java",
+        "csv" => "csv",
+        "tsv" => "tsv",
+        _ => "text",
+    })
+}
+
+/// Las comillas del bloque: tres, o mas que las que traiga el texto.
+fn valla(texto: &str) -> String {
+    let mut mas_larga = 0;
+    let mut seguidas = 0;
+    for c in texto.chars() {
+        seguidas = if c == '`' { seguidas + 1 } else { 0 };
+        mas_larga = mas_larga.max(seguidas);
+    }
+    "`".repeat((mas_larga + 1).max(3))
+}
+
+/// El texto de un fichero de codigo como bloque de codigo de Markdown.
+pub fn envolver(lenguaje: &str, texto: &str) -> String {
+    let v = valla(texto);
+    let salto = if texto.ends_with('\n') || texto.is_empty() {
+        ""
+    } else {
+        "\n"
+    };
+    format!("{v}{lenguaje}\n{texto}{salto}{v}\n")
+}
+
+/// Lo contrario de [`envolver`]: lo de dentro del bloque. Si el bloque ya no
+/// esta entero (se borro una valla al escribir), el texto tal cual.
+pub fn desenvolver<'a>(lenguaje: &str, texto: &'a str) -> &'a str {
+    let Some((primera, resto)) = texto.split_once('\n') else {
+        return texto;
+    };
+    let v = primera.trim_end_matches(lenguaje);
+    if v.len() < 3 || !v.chars().all(|c| c == '`') || primera.trim_end() != format!("{v}{lenguaje}")
+    {
+        return texto;
+    }
+    let sin_final = resto.trim_end_matches(['\n', '\r']);
+    match sin_final.strip_suffix(v) {
+        Some(dentro) if dentro.is_empty() || dentro.ends_with('\n') => dentro,
+        _ => texto,
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_codigo_va_en_su_bloque_y_vuelve_tal_cual() {
+        for (l, t) in [
+            ("json", "{\n  \"a\": 1\n}\n"),
+            ("python", "# titulo\nprint(1)\n"),
+            ("rust", "fn main() {}\n"),
+            ("text", ""),
+            ("bash", "echo ```hola```\n"),
+        ] {
+            let e = envolver(l, t);
+            assert!(e.starts_with("```"), "{e}");
+            assert_eq!(desenvolver(l, &e), t, "{l}");
+        }
+        // Sin salto al final: vuelve con uno.
+        assert_eq!(desenvolver("json", &envolver("json", "{}")), "{}\n");
+        // Caso negativo: si se rompio el bloque, se guarda lo que haya.
+        assert_eq!(desenvolver("json", "{}\n"), "{}\n");
+        assert_eq!(desenvolver("json", "```json\n{}\n"), "```json\n{}\n");
+    }
+
+    #[test]
+    fn los_textos_van_al_lector_de_notas_y_el_codigo_coloreado() {
+        use std::path::Path;
+        for n in ["a.txt", "b.log", "c.csv", "d.json", "e.py", "f.xml", "g.yaml"] {
+            assert!(super::super::es_texto_para_nota(Path::new(n)), "{n}");
+        }
+        for n in ["a.md", "b.html", "c.pdf", "d.png", "e.docx"] {
+            assert!(!super::super::es_texto_para_nota(Path::new(n)), "{n}");
+        }
+        assert_eq!(lenguaje_de(Path::new("a.txt")), None);
+        assert_eq!(lenguaje_de(Path::new("a.md")), None);
+        assert_eq!(lenguaje_de(Path::new("a.py")), Some("python"));
+        assert_eq!(lenguaje_de(Path::new("a.JSON")), Some("json"));
+    }
 
     struct Carpeta(std::path::PathBuf);
     impl Drop for Carpeta {

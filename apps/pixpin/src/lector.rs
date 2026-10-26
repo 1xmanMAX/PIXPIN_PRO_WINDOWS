@@ -141,6 +141,16 @@ pub fn abrir_en_su_lector(
     if crate::lector_pdf::se_abre(nombre) {
         crate::lector_pdf::lanzar(idioma, ubicacion.clone(), ruta);
         true
+    } else if crate::notas_md::es_texto_para_nota(ruta) {
+        // Un texto o codigo, en el lector de notas como un Markdown.
+        crate::notas_md::abrir(
+            idioma,
+            ubicacion.clone(),
+            crate::notas_md::Destino::Fichero {
+                ruta: ruta.to_path_buf(),
+            },
+        );
+        true
     } else if crate::visor::se_abre(nombre) {
         crate::visor::lanzar(idioma, ubicacion.clone(), ruta);
         true

@@ -331,6 +331,26 @@ pub(crate) fn ejecutar_en(
     }
 }
 
+/// Hasta cuando (ms desde [`reloj_ms`]) una pagina NO toma el teclado al
+/// nacer: lo abierto con el espacio en el Explorador lo deja alli (26-oct-2026).
+static SIN_FOCO_HASTA: AtomicU64 = AtomicU64::new(0);
+
+fn reloj_ms() -> u64 {
+    static INICIO: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    INICIO.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64 + 1
+}
+
+/// Durante `ms` milisegundos desde ahora, las paginas nuevas no toman el
+/// teclado (0 lo quita).
+pub fn no_quitar_el_foco_durante(ms: u64) {
+    SIN_FOCO_HASTA.store(if ms == 0 { 0 } else { reloj_ms() + ms }, Ordering::Relaxed);
+}
+
+pub(crate) fn puede_tomar_el_foco() -> bool {
+    let hasta = SIN_FOCO_HASTA.load(Ordering::Relaxed);
+    hasta == 0 || reloj_ms() >= hasta
+}
+
 /// El teclado, a la pagina.
 pub(crate) fn enfocar(controlador: &ICoreWebView2Controller) {
     use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC;

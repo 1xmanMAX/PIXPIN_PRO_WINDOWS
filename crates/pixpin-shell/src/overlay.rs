@@ -12,6 +12,27 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::sync::Once;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Hasta cuando (`GetTickCount64`, ms) [`VentanaOverlay::enfocar`] no hace
+/// nada: lo que abre la vista rapida del Explorador no le roba el teclado
+/// (25-oct-2026: el lector de Word se quedaba el foco y el segundo espacio
+/// ya no lo cerraba).
+static SIN_FOCO_HASTA: AtomicU64 = AtomicU64::new(0);
+
+/// Durante `ms` milisegundos desde ahora, ninguna ventana de PixPin toma el
+/// foco al abrirse (0 lo quita).
+pub fn no_quitar_el_foco_durante(ms: u64) {
+    // SAFETY: GetTickCount64 no tiene precondiciones.
+    let ahora = unsafe { windows::Win32::System::SystemInformation::GetTickCount64() };
+    SIN_FOCO_HASTA.store(if ms == 0 { 0 } else { ahora + ms }, Ordering::Relaxed);
+}
+
+fn sin_quitar_el_foco_ahora() -> bool {
+    let hasta = SIN_FOCO_HASTA.load(Ordering::Relaxed);
+    // SAFETY: GetTickCount64 no tiene precondiciones.
+    hasta != 0 && unsafe { windows::Win32::System::SystemInformation::GetTickCount64() } < hasta
+}
 
 use pixpin_geom::{Punto, Rect};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -705,6 +726,11 @@ impl VentanaOverlay {
     /// dura, ambos hilos comparten el permiso de foco.
     pub fn enfocar(&self) {
         use windows::Win32::System::Threading::GetCurrentThreadId;
+        // Abierto con el espacio en el Explorador: el teclado se queda alli
+        // (otro espacio lo cierra, las flechas eligen otro fichero).
+        if sin_quitar_el_foco_ahora() {
+            return;
+        }
         // SAFETY: consultas de solo lectura sobre el estado global, adjunto
         // simetrico (true/false) entre hilos vivos, y foco sobre ventana
         // propia; si el primer plano cambia entre medias, lo peor es que el

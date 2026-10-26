@@ -222,7 +222,9 @@ impl Pagina {
             unsafe {
                 let _ = controlador.SetBounds(crate::a_rect(area));
                 let _ = controlador.SetIsVisible(true);
-                let _ = controlador.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+                if crate::puede_tomar_el_foco() {
+                    let _ = controlador.MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+                }
             }
             navegar(&vista)?;
             return Ok(Pagina {

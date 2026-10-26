@@ -27,6 +27,7 @@ pub mod paginas_vivas;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +67,15 @@ pub fn es_markdown(ruta: &std::path::Path) -> bool {
         pixpin_docs::extension(&pixpin_docs::nombre(ruta)).as_str(),
         "md" | "markdown"
     )
+}
+
+/// **Un texto llano que se lee en el lector de notas** (26-oct-2026, el
+/// usuario: «que se pueda abrir otros formatos en el visualizador de
+/// Markdown… como txt»): `.txt`, `.log`, `.csv`, JSON, XML, codigo... (los
+/// de `Formato::Texto`). El codigo y los datos se ven como bloque de codigo
+/// coloreado ([`guardar::lenguaje_de`]); el fichero se guarda tal cual.
+pub fn es_texto_para_nota(ruta: &std::path::Path) -> bool {
+    pixpin_docs::formato_de(&pixpin_docs::nombre(ruta)) == Some(pixpin_docs::Formato::Texto)
 }
 
 /// Donde se recuerda la letra y el tamano de las notas (H12): al lado del
@@ -176,15 +186,74 @@ pub fn abrir(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, destino: Destin
         ));
         return;
     }
+    // El lector de repuesto, si lo hay (y es de este idioma y almacen): la
+    // nota sale al instante en su pagina ya cargada.
+    let repuesto = REPUESTO.lock().ok().and_then(|mut r| r.take());
+    if let Some((i, raiz, tx)) = repuesto
+        && i == idioma
+        && raiz == ubicacion.raiz()
+        && tx.send(destino.clone()).is_ok()
+    {
+        return;
+    }
     let lanzado = std::thread::Builder::new()
         .name("nota-md".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            correr(&textos, idioma, &ubicacion, destino);
+            correr(&textos, idioma, &ubicacion, destino, None);
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo de la nota");
+    }
+}
+
+/// El lector de notas de repuesto que espera ([`lector_web::Repuesto`]): su
+/// idioma, su almacen y por donde se le manda la nota.
+type Encargo = std::sync::mpsc::Sender<Destino>;
+static REPUESTO: Mutex<Option<(pixpin_store::Idioma, PathBuf, Encargo)>> = Mutex::new(None);
+
+/// **Deja un lector de notas listo** (26-oct-2026: abrir un Markdown o un
+/// texto con el espacio, «casi al instante»): en su hilo, la ventana
+/// escondida y la pagina cargada, esperando. Al usarse se prepara el
+/// siguiente, `espera` despues (para no quitarle la maquina al que se abre).
+pub fn preparar_repuesto(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, espera: Duration) {
+    let lanzado = std::thread::Builder::new()
+        .name("nota-md-repuesto".into())
+        .spawn(move || {
+            std::thread::sleep(espera);
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let t = std::time::Instant::now();
+            let mut repuesto = match lector_web::Repuesto::preparar(&ubicacion) {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::info!(%e, "sin lector de notas de repuesto");
+                    return;
+                }
+            };
+            let (tx, rx) = std::sync::mpsc::channel::<Destino>();
+            if let Ok(mut r) = REPUESTO.lock() {
+                *r = Some((idioma, ubicacion.raiz().to_path_buf(), tx));
+            }
+            tracing::info!(
+                ms = t.elapsed().as_millis() as u64,
+                "lector de notas de repuesto: hecho"
+            );
+            loop {
+                match rx.try_recv() {
+                    Ok(destino) => {
+                        preparar_repuesto(idioma, ubicacion.clone(), Duration::from_secs(2));
+                        let textos = Catalogo::nuevo(idioma);
+                        correr(&textos, idioma, &ubicacion, destino, Some(repuesto));
+                        return;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => repuesto.esperar(100),
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+                }
+            }
+        });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el lector de notas de repuesto");
     }
 }
 
@@ -249,6 +318,7 @@ fn correr(
     idioma: pixpin_store::Idioma,
     ubicacion: &Ubicacion,
     destino: Destino,
+    repuesto: Option<lector_web::Repuesto>,
 ) {
     use crate::grupos_ventanas::{self, Clase};
     use std::cell::RefCell;
@@ -267,8 +337,17 @@ fn correr(
     let apunte = grupos_ventanas::apuntar(clase.clone());
     let colocacion = grupos_ventanas::tomar_colocacion(&clase);
     let inicial = destino.clone();
-    let actual = Rc::new(RefCell::new(destino));
-    let resultado = lector_web::correr(lector_web::Contexto {
+    // Con repuesto, su pagina ya sirve desde su `actual`: se le pone la nota.
+    let actual = match &repuesto {
+        Some(r) => {
+            let a = r.actual();
+            *a.borrow_mut() = destino;
+            a
+        }
+        None => Rc::new(RefCell::new(destino)),
+    };
+    let resultado = lector_web::correr(
+        lector_web::Contexto {
         textos,
         idioma,
         ubicacion,
@@ -292,7 +371,9 @@ fn correr(
                 }
             }
         },
-    });
+        },
+        repuesto,
+    );
     let fin = actual.borrow().clone();
     if let Ok(mut v) = ABIERTAS.lock() {
         v.retain(|(d, _)| *d != fin && *d != inicial);

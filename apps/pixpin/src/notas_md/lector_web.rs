@@ -298,9 +298,81 @@ fn hwnd(h: isize) -> windows::Win32::Foundation::HWND {
     windows::Win32::Foundation::HWND(h as *mut _)
 }
 
+/// **Un lector de repuesto** (26-oct-2026, el usuario: «que sea casi al
+/// instante»): la ventana escondida con la pagina ya cargada, esperando
+/// nota. Arrancar el WebView2 y su pagina (800 KB) eran ~0,5-0,7 s en cada
+/// apertura; con el repuesto, abrir es ensenar la ventana y mandar el texto.
+pub struct Repuesto {
+    pin: PinLector,
+    ventana: VentanaOverlay,
+    pagina: Pagina,
+    actual: Rc<RefCell<Destino>>,
+    /// La pagina ya dijo `listo`.
+    listo: bool,
+}
+
+impl Repuesto {
+    /// Hace la ventana (escondida) y carga la pagina.
+    pub fn preparar(ubicacion: &Ubicacion) -> anyhow::Result<Repuesto> {
+        if !pixpin_web::VisorHtml::hay_runtime() {
+            anyhow::bail!("este equipo no tiene el runtime de WebView2");
+        }
+        let e = pixpin_capture::enumerar_monitores()
+            .ok()
+            .and_then(|m| m.principal().map(|p| p.escala_por_cien as f32 / 100.0))
+            .unwrap_or(1.0);
+        let (area_pin, _) = crate::lector_pin::area_inicial();
+        let pin = PinLector::nuevo(area_pin, e).con_extension("md");
+        let ventana = VentanaOverlay::nueva_llana(pin.area, "PixPin")
+            .map_err(|e| anyhow::anyhow!("no se pudo hacer la ventana de repuesto: {e:?}"))?;
+        let actual = Rc::new(RefCell::new(Destino::Nueva {
+            proyecto: String::new(),
+        }));
+        let (r_servir, a_servir) = (ubicacion.raiz().to_path_buf(), actual.clone());
+        // Escondida y a destiempo: no le quita el teclado a nadie.
+        pixpin_web::no_quitar_el_foco_durante(3000);
+        let pagina = Pagina::nueva(OpcionesPagina {
+            titulo: "PixPin".into(),
+            area: Some(pin.area_de_la_vista()),
+            maximizada: false,
+            fondo: fondo(pin.oscuro()),
+            pagina: PAGINA,
+            servir: Box::new(move |resto| servir(&r_servir, &a_servir.borrow(), resto)),
+            padre: Some(ventana.handle().0 as isize),
+            oscuro: Some(pin.oscuro()),
+        })
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(Repuesto {
+            pin,
+            ventana,
+            pagina,
+            actual,
+            listo: false,
+        })
+    }
+
+    /// Atiende la pagina mientras espera (WebView2 necesita el bucle).
+    pub fn esperar(&mut self, ms: u32) {
+        for s in self.pagina.esperar(ms) {
+            if let Suceso::Mensaje(m) = s
+                && serde_json::from_str::<DeLaPagina>(&m).is_ok_and(|p| p == DeLaPagina::Listo)
+            {
+                self.listo = true;
+            }
+        }
+        let _ = pixpin_shell::overlay::tomar_eventos_pendientes();
+    }
+
+    /// Donde dice la pagina que esta la nota (lo que sirve sus fotos): quien
+    /// lo use le pone el destino de verdad.
+    pub fn actual(&self) -> Rc<RefCell<Destino>> {
+        self.actual.clone()
+    }
+}
+
 /// Abre la nota en el lector. `Err` si no se pudo (sin WebView2): quien
-/// llama abre el editor de antes.
-pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
+/// llama abre el editor de antes. Con `repuesto`, en su ventana ya hecha.
+pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida> {
     if !pixpin_web::VisorHtml::hay_runtime() {
         anyhow::bail!("este equipo no tiene el runtime de WebView2");
     }
@@ -324,10 +396,20 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         .ok()
         .and_then(|m| m.principal().map(|p| p.escala_por_cien as f32 / 100.0))
         .unwrap_or(1.0);
-    let (area_pin, _) = crate::lector_pin::area_inicial();
-    let mut pin = PinLector::nuevo(area_pin, e).con_extension("md");
-    let mut ventana = VentanaOverlay::nueva_llana(pin.area, &titulo_de_ventana(&nombre, cx.textos))
-        .map_err(|e| anyhow::anyhow!("no se pudo abrir la ventana de la nota: {e:?}"))?;
+    let (mut pin, mut ventana, hecha, listo_ya) = match repuesto {
+        Some(r) => {
+            r.pagina.poner_titulo(&titulo_de_ventana(&nombre, cx.textos));
+            (r.pin, r.ventana, Some(r.pagina), r.listo)
+        }
+        None => {
+            let (area_pin, _) = crate::lector_pin::area_inicial();
+            let pin = PinLector::nuevo(area_pin, e).con_extension("md");
+            let ventana =
+                VentanaOverlay::nueva_llana(pin.area, &titulo_de_ventana(&nombre, cx.textos))
+                    .map_err(|e| anyhow::anyhow!("no se pudo abrir la ventana de la nota: {e:?}"))?;
+            (pin, ventana, None, false)
+        }
+    };
     let hwnd_pin = ventana.handle().0 as isize;
     pin.al_nacer(&ventana);
     ventana.mostrar();
@@ -366,18 +448,29 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
         pin.actualizar(m, &en_la_barra, &propios);
     }
 
-    let (r_servir, a_servir) = (raiz.clone(), cx.actual.clone());
-    let pagina = Pagina::nueva(OpcionesPagina {
-        titulo: titulo_de_ventana(&nombre, cx.textos),
-        area: Some(pin.area_de_la_vista()),
-        maximizada: false,
-        fondo: fondo(pin.oscuro()),
-        pagina: PAGINA,
-        servir: Box::new(move |resto| servir(&r_servir, &a_servir.borrow(), resto)),
-        padre: Some(hwnd_pin),
-        oscuro: Some(pin.oscuro()),
-    })
-    .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let pagina = match hecha {
+        // La del repuesto: a la medida de donde quedo la ventana y con la
+        // luna/sol de ahora.
+        Some(p) => {
+            p.mover(pin.area_de_la_vista());
+            p.poner_oscuro(pin.oscuro(), fondo(pin.oscuro()));
+            p
+        }
+        None => {
+            let (r_servir, a_servir) = (raiz.clone(), cx.actual.clone());
+            Pagina::nueva(OpcionesPagina {
+                titulo: titulo_de_ventana(&nombre, cx.textos),
+                area: Some(pin.area_de_la_vista()),
+                maximizada: false,
+                fondo: fondo(pin.oscuro()),
+                pagina: PAGINA,
+                servir: Box::new(move |resto| servir(&r_servir, &a_servir.borrow(), resto)),
+                padre: Some(hwnd_pin),
+                oscuro: Some(pin.oscuro()),
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+        }
+    };
     tracing::info!(
         ms = inicio.elapsed().as_millis() as u64,
         "lector de notas: pagina pedida"
@@ -440,6 +533,15 @@ pub fn correr(cx: Contexto) -> anyhow::Result<Salida> {
             aparato: cx.aparato.to_string(),
         },
     );
+
+    // La pagina del repuesto ya estaba lista: la nota, ya.
+    if listo_ya {
+        tracing::info!(
+            ms = inicio.elapsed().as_millis() as u64,
+            "lector de notas: pagina lista (repuesto)"
+        );
+        pagina.mandar(&abrir);
+    }
 
     'bucle: loop {
         // Atiende la cola del hilo: la pagina y, por `pixpin_shell`, la
@@ -1315,6 +1417,7 @@ mod a_mano {
                 pixpin_store::Idioma::Espanol,
                 &ub,
                 super::Destino::Fichero { ruta: md },
+                None,
             );
             eprintln!("fin de correr");
         });

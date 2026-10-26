@@ -58,6 +58,13 @@ pub fn que_abrir(seleccion: Vec<PathBuf>) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Ni las ventanas (`enfocar`) ni las paginas web (el lector de notas) se
+/// quedan el teclado durante `ms`.
+fn sin_quitar_el_foco(ms: u64) {
+    pixpin_shell::overlay::no_quitar_el_foco_durante(ms);
+    pixpin_web::no_quitar_el_foco_durante(ms);
+}
+
 /// Lo que pasa al pulsar el espacio: `true` si era para PixPin.
 fn al_pulsar() -> bool {
     let rutas = que_abrir(pixpin_shell::explorador::seleccion_del_explorador());
@@ -85,7 +92,11 @@ fn al_pulsar() -> bool {
         }
     }
     let antes = pixpin_shell::espacio_explorador::ventanas_propias();
+    // El teclado se queda en el Explorador: los lectores no se lo quitan al
+    // abrirse (hasta que esten; uno pesado puede tardar unos segundos).
+    sin_quitar_el_foco(8000);
     if !pixpin_shell::mensajero::enviar_ficheros(&rutas) {
+        sin_quitar_el_foco(0);
         return false;
     }
     // Las ventanas nuevas, para poder cerrarlas con el siguiente espacio:
@@ -101,6 +112,10 @@ fn al_pulsar() -> bool {
             break;
         }
         std::thread::sleep(Duration::from_millis(25));
+    }
+    if nuevas.len() >= rutas.len() {
+        // Ya estan: un poco mas, para el `enfocar` que llega tras mostrarse.
+        sin_quitar_el_foco(1500);
     }
     tracing::info!(
         cuantos = rutas.len(),

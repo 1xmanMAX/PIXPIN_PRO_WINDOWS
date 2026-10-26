@@ -574,6 +574,15 @@ fn arrancar(
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);
     let textos = Catalogo::nuevo(lengua);
+    // Y un lector de notas con su pagina ya cargada, para que un Markdown o
+    // un texto (el espacio en el Explorador) salgan al instante (26-oct).
+    if decision.nivel == Nivel::Completo && hechos.ram_fisica_bytes >= 7 * 1024 * 1024 * 1024 {
+        notas_md::preparar_repuesto(
+            lengua,
+            ubicacion.clone(),
+            std::time::Duration::from_secs(8),
+        );
+    }
     // El panel de propiedades del lienzo vive en el hilo del editor y no
     // recibe el catalogo: se le dice aqui el idioma elegido, o usaria el de
     // Windows aunque el usuario haya puesto otro en los ajustes.
@@ -2370,9 +2379,13 @@ fn destino_con(
         .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
     {
         DestinoDeFichero::Proyecto
+    } else if notas_md::es_texto_para_nota(ruta) {
+        // Un texto, un CSV, un JSON, codigo...: al lector de notas, como un
+        // Markdown (el usuario, 26-oct-2026), no a la ficha del archivo.
+        // Va despues del Lector: un LandXML o unos puntos, al visor 3D.
+        DestinoDeFichero::Nota
     } else if visor::se_abre(&pixpin_docs::nombre(ruta)) {
-        // Un texto, un HTML, un JSON, codigo...: al visor de documentos (la
-        // vista rapida del espacio, 25-oct-2026), no a la ficha del archivo.
+        // Un HTML: al visor de documentos.
         DestinoDeFichero::Lector
     } else if previsualiza(ruta) {
         // Lo demas con previsualizador de Windows: al pin de Office.
