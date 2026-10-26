@@ -95,6 +95,22 @@ pub fn se_abre(ruta: &Path) -> bool {
     va_al_pin(&ext, hay, vista_previa::atascado())
 }
 
+/// **Cualquier otro documento con previsualizador de Windows** (el del panel
+/// del Explorador: SolidWorks, Illustrator, un `.eml`, lo que el equipo
+/// tenga): tambien al pin de Office, que es el anfitrion de esas vistas. Es
+/// el ultimo recurso de la vista rapida y de «Abrir con PixPin», despues de
+/// los visores propios: ni fotos, ni videos, ni audios (tienen su pin).
+pub fn se_previsualiza(ruta: &Path) -> bool {
+    use pixpin_shell::asociaciones::{AUDIOS, IMAGENES, VIDEOS};
+    let ext = vista_previa::extension_de(ruta);
+    !ext.is_empty()
+        && !IMAGENES.contains(&ext.as_str())
+        && !VIDEOS.contains(&ext.as_str())
+        && !AUDIOS.contains(&ext.as_str())
+        && !vista_previa::atascado()
+        && vista_previa::manejador_de_extension(&ext).is_some()
+}
+
 /// Abre `ruta` en un pin de Office, en su propio hilo.
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
     let ruta = ruta.to_path_buf();

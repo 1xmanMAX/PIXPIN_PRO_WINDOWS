@@ -6,7 +6,9 @@
 //! videos, audios, PDF, Word, EPUB, PowerPoint, libros de Excel (`.xlsx`,
 //! `.xlsm`), los Office viejos (`.doc`, `.xls`, `.ppt`), Visio y correos
 //! `.msg` (en el pin de Office), Markdown, planos DWG/DXF y modelos IFC,
-//! Revit y de Civil 3D.
+//! Revit y de Civil 3D. Desde el 25-oct-2026 tambien los textos (TXT, CSV,
+//! JSON, XML, HTML, codigo...) en el visor de documentos y cualquier otro
+//! fichero con previsualizador de Windows en el pin de Office.
 //!
 //! Como en QuickLook: **otro espacio con lo mismo elegido lo cierra**, y un
 //! espacio con otra cosa elegida cierra lo de antes y abre lo nuevo (se
@@ -40,6 +42,11 @@ pub fn se_abre(ruta: &Path) -> bool {
         // Los Office viejos, Visio, correos, OpenDocument... con la vista
         // previa de Office (si el equipo la tiene): el pin de Office.
         || crate::pin_office::se_abre(ruta)
+        // Textos, HTML, CSV, JSON, codigo...: en el visor de documentos.
+        || crate::visor::se_abre(&pixpin_docs::nombre(ruta))
+        // Y cualquier otro documento con previsualizador de Windows (el del
+        // panel del Explorador), en el pin de Office: «todos los documentos».
+        || crate::pin_office::se_previsualiza(ruta)
 }
 
 /// Lo de la seleccion que se abre, en su orden y sin pasar del maximo.
@@ -128,7 +135,7 @@ mod pruebas {
     fn se_abren_las_fotos_documentos_planos_y_modelos_y_lo_demas_no() {
         for n in [
             "a.png", "b.JPG", "c.mp4", "d.mp3", "e.pdf", "f.docx", "g.dwg", "h.ifc", "i.rvt",
-            "j.md",
+            "j.md", "k.txt", "l.csv", "m.json", "n.html", "o.xml", "p.py", "q.log",
         ] {
             assert!(se_abre(Path::new(n)), "{n}");
         }

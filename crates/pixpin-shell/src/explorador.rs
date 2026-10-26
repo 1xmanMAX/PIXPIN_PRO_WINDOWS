@@ -185,6 +185,11 @@ fn recolectar() -> Vec<String> {
 /// esta mirando el usuario.
 fn buscar_ventana_de_shell(ventanas: &IShellWindows, delante: HWND) -> Option<IDispatch> {
     let objetivo = delante.0 as isize;
+    // Con las pestanas de Windows 11 todas las de una ventana publican el
+    // MISMO handle: la primera que salga puede no ser la que se mira, y su
+    // seleccion sale vacia (25-oct-2026: el espacio «no hacia nada» con dos
+    // o mas pestanas abiertas). Se juntan todas y se elige la de delante.
+    let mut candidatas = Vec::new();
     // SAFETY: llamadas de solo lectura sobre la coleccion de la Shell; cada
     // elemento que no conteste se salta con `continue` en vez de cortar,
     // porque una ventana cerrandose no debe ocultar a las demas.
@@ -201,9 +206,20 @@ fn buscar_ventana_de_shell(ventanas: &IShellWindows, delante: HWND) -> Option<ID
                 continue;
             };
             if handle.0 == objetivo {
-                return Some(elemento);
+                candidatas.push(elemento);
             }
         }
+    }
+    if candidatas.len() > 1
+        && let Some(pestana) = pestana_activa(delante)
+        && let Some(i) = candidatas
+            .iter()
+            .position(|c| ventana_de_la_pestana(c) == Some(pestana))
+    {
+        return Some(candidatas.swap_remove(i));
+    }
+    if let Some(primera) = candidatas.into_iter().next() {
+        return Some(primera);
     }
     // El escritorio va aparte. Sus iconos son una vista de la Shell como
     // cualquier carpeta, pero la ventana que tiene el foco es Progman (o
@@ -216,6 +232,57 @@ fn buscar_ventana_de_shell(ventanas: &IShellWindows, delante: HWND) -> Option<ID
         return ventana_del_escritorio(ventanas);
     }
     None
+}
+
+/// La pestana que se esta mirando en esa ventana del Explorador: la
+/// «ShellTabWindowClass» que lleva el foco dentro, o si no la primera hija
+/// de esa clase (Windows pone delante la activa).
+fn pestana_activa(delante: HWND) -> Option<isize> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        FindWindowExW, GUITHREADINFO, GetGUIThreadInfo, GetParent, GetWindowThreadProcessId,
+    };
+    // SAFETY: consultas de solo lectura sobre ventanas del Explorador; si
+    // alguna ya no existe devuelven cero o Err y se sigue con lo siguiente.
+    unsafe {
+        let hilo = GetWindowThreadProcessId(delante, None);
+        let mut info = GUITHREADINFO {
+            cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+            ..Default::default()
+        };
+        if GetGUIThreadInfo(hilo, &mut info).is_ok() {
+            let mut h = info.hwndFocus;
+            for _ in 0..12 {
+                if h.0.is_null() || h == delante {
+                    break;
+                }
+                if clase_de_ventana(h).as_deref() == Some("ShellTabWindowClass") {
+                    return Some(h.0 as isize);
+                }
+                h = GetParent(h).unwrap_or_default();
+            }
+        }
+        FindWindowExW(
+            Some(delante),
+            None,
+            windows::core::w!("ShellTabWindowClass"),
+            None,
+        )
+        .ok()
+        .map(|h| h.0 as isize)
+    }
+}
+
+/// La ventana de la pestana de un elemento de `ShellWindows`.
+fn ventana_de_la_pestana(navegador: &IDispatch) -> Option<isize> {
+    // SAFETY: la misma cadena documentada que `rutas_seleccionadas`; el
+    // navegador de arriba es un IOleWindow y su ventana es la de la pestana.
+    unsafe {
+        let proveedor = navegador.cast::<IServiceProvider>().ok()?;
+        let explorador = proveedor
+            .QueryService::<IShellBrowser>(&SID_STopLevelBrowser)
+            .ok()?;
+        explorador.GetWindow().ok().map(|h| h.0 as isize)
+    }
 }
 
 /// La ventana del escritorio dentro de la coleccion de la Shell.

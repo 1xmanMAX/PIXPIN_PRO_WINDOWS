@@ -2339,7 +2339,7 @@ enum DestinoDeFichero {
 }
 
 fn destino_de_fichero(ruta: &std::path::Path) -> DestinoDeFichero {
-    destino_con(ruta, pin_office::se_abre)
+    destino_con(ruta, pin_office::se_abre, pin_office::se_previsualiza)
 }
 
 /// [`destino_de_fichero`] con la pregunta del pin de Office aparte (si hay
@@ -2351,6 +2351,7 @@ fn destino_de_fichero(ruta: &std::path::Path) -> DestinoDeFichero {
 fn destino_con(
     ruta: &std::path::Path,
     office: impl Fn(&std::path::Path) -> bool,
+    previsualiza: impl Fn(&std::path::Path) -> bool,
 ) -> DestinoDeFichero {
     if notas_md::es_markdown(ruta) {
         DestinoDeFichero::Nota
@@ -2369,6 +2370,13 @@ fn destino_con(
         .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
     {
         DestinoDeFichero::Proyecto
+    } else if visor::se_abre(&pixpin_docs::nombre(ruta)) {
+        // Un texto, un HTML, un JSON, codigo...: al visor de documentos (la
+        // vista rapida del espacio, 25-oct-2026), no a la ficha del archivo.
+        DestinoDeFichero::Lector
+    } else if previsualiza(ruta) {
+        // Lo demas con previsualizador de Windows: al pin de Office.
+        DestinoDeFichero::Office
     } else {
         DestinoDeFichero::Pin
     }
@@ -2406,11 +2414,15 @@ mod pruebas_abrir_ficheros {
     #[test]
     fn abrir_office_va_al_pin_de_office_si_hay_previsualizador() {
         let con = |r: &str| {
-            destino_con(Path::new(r), |p| {
-                pin_office::va_al_pin(&pixpin_shell::vista_previa::extension_de(p), true, false)
-            })
+            destino_con(
+                Path::new(r),
+                |p| {
+                    pin_office::va_al_pin(&pixpin_shell::vista_previa::extension_de(p), true, false)
+                },
+                |_| false,
+            )
         };
-        let sin = |r: &str| destino_con(Path::new(r), |_| false);
+        let sin = |r: &str| destino_con(Path::new(r), |_| false, |_| false);
         for f in [
             "viejo.xls",
             "g.xlsb",
