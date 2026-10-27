@@ -683,6 +683,66 @@ pub trait Disco {
         )
     }
 
+    /// **Los chats que se ofrecieron** la ultima vez que se eligio con
+    /// `otro` (`Disco.ofrecidos` de Android, 26-oct-2026): con eso se sabe
+    /// despues cuales nacieron mas tarde. `None` si no se apunto (elegido
+    /// con una version de antes). Ver [Disco::elegidos_ahora].
+    fn ofrecidos(&self, otro: &str) -> Option<BTreeSet<String>> {
+        let t = std::fs::read_to_string(
+            self.sincro()
+                .join("elegidos")
+                .join(format!("{}.ofrecidos", limpio(otro))),
+        )
+        .ok()?;
+        Some(
+            t.lines()
+                .filter(|l| !l.trim().is_empty())
+                .map(str::to_string)
+                .collect(),
+        )
+    }
+
+    /// `guardarElegidos(otro, chats, ofrecidos)` de Android: lo elegido y,
+    /// en `elegidos/<otro>.ofrecidos`, lo que se ofrecio (con lo elegido
+    /// dentro), una linea por chat. El mismo fichero y el mismo formato que
+    /// el movil.
+    fn guardar_elegidos_de(
+        &self,
+        otro: &str,
+        chats: &BTreeSet<String>,
+        ofrecidos: &BTreeSet<String>,
+    ) -> io::Result<()> {
+        self.guardar_elegidos(otro, chats)?;
+        let todos: BTreeSet<&String> = ofrecidos.iter().chain(chats.iter()).collect();
+        let texto = todos.into_iter().cloned().collect::<Vec<_>>().join("\n");
+        escribir_atomico(
+            &self
+                .sincro()
+                .join("elegidos")
+                .join(format!("{}.ofrecidos", limpio(otro))),
+            texto.as_bytes(),
+        )
+    }
+
+    /// **Los chats que van con `otro` ahora**, de entre `candidatos`
+    /// (`Disco.elegidosAhora` de Android, 26-oct-2026): los elegidos la
+    /// ultima vez y, ademas, **los que nacieron despues** (no se ofrecieron
+    /// entonces). `None` si nunca se eligio: van todos.
+    ///
+    /// Con la eleccion guardada, un chat nuevo —el proyecto donde se grabo
+    /// la clase, el chat que se creo en el otro aparato— no estaba en la
+    /// lista y **no viajaba nunca** sin preguntar. Lo que se desmarco a
+    /// proposito sigue fuera; lo que nadie llego a ver, entra. Sin la lista
+    /// de ofrecidos, como antes: solo lo elegido.
+    fn elegidos_ahora(&self, otro: &str, candidatos: &[String]) -> Option<BTreeSet<String>> {
+        let mut elegidos = self.elegidos(otro)?;
+        let Some(vistos) = self.ofrecidos(otro) else {
+            return Some(elegidos);
+        };
+        elegidos.extend(candidatos.iter().filter(|c| !vistos.contains(*c)).cloned());
+        Some(elegidos)
+    }
+
     fn ultima_vez(&self, otro: &str) -> i64 {
         std::fs::read_to_string(
             self.sincro()
@@ -1359,6 +1419,13 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
         let etiqueta = etiqueta_de(&m);
         for rel in en_texto(&m.a_texto()) {
             poner(Some(rel), &etiqueta, &mut salida);
+        }
+        // La ruta del adjunto, ENTERA (Android `alcanceCon`, 1-oct-2026):
+        // `en_texto` corta en `)` por los enlaces de Markdown, y «Clase
+        // (1).mp4» se quedaba en «Clase (1»: no viajaba nunca y el otro lo
+        // volvia a mandar en cada vuelta.
+        if let Some(rel) = kotlin::cadena(&m, "ruta").and_then(|r| r.strip_prefix(PORTATIL)) {
+            poner(Some(rel.to_string()), &etiqueta, &mut salida);
         }
         // De un adjunto o, desde el 30-sep, de una nota (sus comentarios).
         if crate::anotado::lleva_anotado(&m)
