@@ -254,6 +254,12 @@ fn abrir(
             titulo: nombre.clone(),
             menu: false,
             maqueta: false,
+            // Entero, con su aplicacion (Word, Excel...): la vista previa de
+            // Office no imprime.
+            entero: Some(crate::visor_html::riel::Entero::ConSuApp(
+                crate::marcos_doc::Entero::de_fichero(ruta),
+                ruta.to_path_buf(),
+            )),
         },
         textos,
     );

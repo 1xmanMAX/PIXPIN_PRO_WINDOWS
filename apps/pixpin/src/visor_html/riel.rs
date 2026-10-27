@@ -426,6 +426,29 @@ pub struct Opciones {
     /// Si la tinta va a la medida de la columna con que se anoto (las notas:
     /// [`capa_web::Maqueta`]).
     pub maqueta: bool,
+    /// Como se imprime entero lo de debajo (la segunda entrada del clic
+    /// derecho en el boton del marco). `None`: solo los marcos.
+    pub entero: Option<Entero>,
+}
+
+/// **Como se imprime entero** lo que hay debajo del riel (27-oct-2026).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entero {
+    /// Una pagina: su `window.print()`, el imprimir del navegador con la
+    /// vista previa (lo anotado va dentro de la pagina y sale tambien).
+    Pagina(marcos_doc::Entero),
+    /// Un fichero que imprime su aplicacion (el pin de Office: la vista
+    /// previa de Office no sabe imprimir).
+    ConSuApp(marcos_doc::Entero, PathBuf),
+}
+
+impl Entero {
+    /// Que es, para el rotulo del menu.
+    fn que(&self) -> marcos_doc::Entero {
+        match self {
+            Entero::Pagina(e) | Entero::ConSuApp(e, _) => *e,
+        }
+    }
 }
 
 /// El marcador especial de la maqueta: pulsarlo pone la columna a la medida
@@ -1179,9 +1202,13 @@ impl RielDeLaVista {
                 let destino = self.colocado().destino(self.local(p));
                 self.pulsar(destino, pagina, textos)
             }
-            // El derecho sobre un punto quita esa marca, como en el PDF.
+            // El derecho sobre un punto quita esa marca, como en el PDF; en
+            // el boton del marco, que imprimir.
             EventoOverlay::BotonDerechoPulsado(p) => {
-                if let DestinoRiel::Marca(i) = self.colocado().destino(self.local(p))
+                let destino = self.colocado().destino(self.local(p));
+                if destino == DestinoRiel::Imprimir {
+                    self.menu_del_marco(pagina, textos);
+                } else if let DestinoRiel::Marca(i) = destino
                     && i < self.marcas.len()
                 {
                     let m = self.marcas.remove(i);
@@ -2200,6 +2227,34 @@ impl RielDeLaVista {
             }
         }
         Some(hoja)
+    }
+
+    /// **El clic derecho en el boton del marco** (27-oct-2026, como la
+    /// pulsacion larga del movil): imprimir los marcos (lo de Ctrl+P) o lo
+    /// de debajo entero.
+    fn menu_del_marco(&mut self, pagina: Option<&dyn Pagina>, textos: &Catalogo) {
+        let entero = self.opciones.entero.as_ref().map(Entero::que);
+        match marcos_doc::menu_de_imprimir(self.visor, textos, self.marcos.lista.len(), entero) {
+            Some(marcos_doc::QueImprimir::Marcos) => self.imprimir_marcos(pagina),
+            Some(marcos_doc::QueImprimir::Entero) => self.imprimir_entero(pagina),
+            None => {}
+        }
+    }
+
+    /// **Imprime entero** lo de debajo, como diga [`Opciones::entero`].
+    fn imprimir_entero(&mut self, pagina: Option<&dyn Pagina>) {
+        match &self.opciones.entero {
+            Some(Entero::Pagina(_)) => match pagina {
+                Some(pg) => pg.ejecutar("window.print()", Box::new(|_| {})),
+                None => tracing::warn!("riel: imprimir la pagina entera sin pagina"),
+            },
+            Some(Entero::ConSuApp(_, ruta)) => {
+                if let Err(err) = pixpin_shell::imprimir_con_su_app(ruta) {
+                    tracing::warn!(?err, ruta = %ruta.display(), "riel: su aplicacion no lo imprime");
+                }
+            }
+            None => {}
+        }
     }
 
     /// **Ctrl+P: imprime todos los marcos en grupo**, una hoja por marco y

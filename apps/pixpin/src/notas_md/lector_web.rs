@@ -502,6 +502,10 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                 // La tinta, a la medida de la columna con que se anoto
                 // (`capa_web::Maqueta`): el texto de una nota se recoloca.
                 maqueta: true,
+                // Entera, con el imprimir de la pagina (la nota maquetada).
+                entero: Some(crate::visor_html::riel::Entero::Pagina(
+                    crate::marcos_doc::Entero::Documento,
+                )),
             },
             cx.textos,
         ),
