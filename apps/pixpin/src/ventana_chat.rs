@@ -34,6 +34,8 @@ use crate::overlay::Recursos;
 
 /// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
 // El asistente local en la conversacion (`crate::asistente`).
+/// El «↓» de Telegram: vuelve al ultimo mensaje al subir.
+mod al_final;
 mod asistente;
 /// El aviso flotante del asistente sin el chat (Flow, automatizaciones).
 mod aviso_asistente;
@@ -1821,6 +1823,10 @@ pub fn abrir(
                                 }
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
                                 Zona::Versiones(i) => Efecto::Menu(menu_de_versiones(a, i, textos)),
+                                Zona::AlFinal => {
+                                    a.scroll = None;
+                                    Efecto::Nada
+                                }
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
                                 Zona::Sistema => Efecto::Menu(menu_de_sistema(a, textos)),
                                 Zona::ConfirmarIa(i, si) => {
@@ -5423,14 +5429,16 @@ fn pintar_chapa_compartido(p: &Pintor, avatar: RectF, aro: Color) -> RectF {
         alto: lado,
     };
     p.rellenar_redondeado(caja, lado / 2.0, aro);
-    let dentro = encoger(caja, grosor);
-    p.rellenar_redondeado(dentro, dentro.ancho / 2.0, hex(VERDE_COMPARTIDO));
-    p.icono(
-        &mi::GROUP,
-        encoger(dentro, dentro.ancho * 0.14),
-        Color::BLANCO,
-    );
+    pintar_insignia_compartido(p, encoger(caja, grosor));
     caja
+}
+
+/// **La insignia de chat compartido**, sin aro: el circulito verde con las
+/// dos personas en `caja`. La misma en la lista de chats y en lo que viene
+/// de un chat compartido fuera de el (las listas de Tareas, checklist 26).
+pub(crate) fn pintar_insignia_compartido(p: &Pintor, caja: RectF) {
+    p.rellenar_redondeado(caja, caja.ancho / 2.0, hex(VERDE_COMPARTIDO));
+    p.icono(&mi::GROUP, encoger(caja, caja.ancho * 0.14), Color::BLANCO);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -7080,6 +7088,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         pintar_flecha_de_comentar(p, tema, burbuja, corrida, escala, e);
     }
     p.soltar_recorte();
+    // Subido: el «↓» que vuelve al ultimo mensaje (`al_final`).
+    if al_final::se_ve(a.scroll, h::scroll_maximo(area, a.alto.get()), area.alto) {
+        let caja = al_final::caja(area, e);
+        al_final::pintar(p, tema, caja, e);
+        a.zonas.borrow_mut().push((caja, Zona::AlFinal));
+    }
 }
 
 /// La onda de una nota de voz, en el sitio del nombre de su fila: las barras
@@ -8676,8 +8690,10 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
 
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
-    // guardados»), el nombre con su flechita y debajo cuantas cosas guarda y
-    // cuanto ocupan, que es lo que se pregunta de un cajon de documentos.
+    // guardados») y el nombre con su flechita. Debajo ya no va «N cosas · X
+    // MB» (27-oct-2026, checklist 6, como el movil: «Cabecera del chat:
+    // quitar "N cosas · X MB"»): solo lo que hay que saber antes de
+    // escribir, si es compartido, y lo que no se pudo leer.
     // Escribiendolo, se mide lo escrito (o la invitacion) y se pinta con la
     // caja de una linea comun, que pone la rayita donde va.
     let (nombre, color_nombre) = if a.renombrando && a.nombre_escrito.is_empty() {
@@ -8687,28 +8703,20 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     } else {
         (a.ficha.nombre.clone(), tema.pildora_texto)
     };
-    let (se_ven, bytes) = crate::pdf_en_chat::cuenta_de_la_cabecera(&a.mensajes);
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("n", se_ven);
-    let mut sub = textos.t_args("chat-cosas", &args);
-    // Un chat compartido lo dice delante, con cuantas personas son: es lo
-    // primero que hay que saber antes de escribir en el.
+    // Un chat compartido lo dice, con cuantas personas son: es lo primero
+    // que hay que saber antes de escribir en el.
     let compartido = crate::sincronizar::compartidos_ui::del_chat(&a.raiz, &a.ficha.id);
     let con_quien = compartido.as_ref().map(|c| {
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("n", c.personas);
         textos.t_args("cc-chapa-personas", &args)
     });
-    if let Some(q) = &con_quien {
-        sub = format!("{q} · {sub}");
-    }
-    if bytes > 0 {
-        sub = format!("{sub} · {}", pixpin_ui::chat::tamano_corto(bytes as u64));
-    }
+    let mut partes: Vec<String> = con_quien.iter().cloned().collect();
     if a.rotas > 0 {
         // Lo que no se pudo leer se dice, no se calla.
-        sub.push_str(&format!(" · {} ?", a.rotas));
+        partes.push(format!("{} ?", a.rotas));
     }
+    let sub = partes.join(" · ");
     let (tam_nombre, tam_sub) = (15.0 * e, 12.0 * e);
     let disco = 28.0 * e;
     let flecha = 18.0 * e;
@@ -8726,7 +8734,12 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
     pildora(p, tema, rf(caja), e);
     let x0 = caja.x as f32 + 14.0 * e;
-    let y0 = caja.y as f32 + 4.0 * e;
+    // Sin nada debajo, el disco y el nombre van centrados en la pastilla.
+    let y0 = if sub.is_empty() {
+        caja.y as f32 + (caja.alto as f32 - disco) / 2.0
+    } else {
+        caja.y as f32 + 4.0 * e
+    };
     let circulo = RectF {
         x: x0,
         y: y0,
@@ -15151,6 +15164,8 @@ enum Zona {
     ImagenDeNota(usize, usize),
     /// Ir a un mensaje: la cita de una respuesta o la barra del fijado.
     Ir(usize),
+    /// El «↓»: al ultimo mensaje, pegado al final (`al_final`).
+    AlFinal,
     /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
     /// como se sale de una busqueda sin perder el sitio.
     EnContexto,

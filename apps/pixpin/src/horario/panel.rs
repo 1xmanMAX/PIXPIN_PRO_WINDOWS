@@ -95,6 +95,8 @@ pub(crate) struct TareaConHora {
     /// Su hora local, en ms desde 1970.
     pub cuando: i64,
     pub color: Color,
+    /// De una lista de un chat compartido: lleva su insignia verde.
+    pub compartida: bool,
 }
 
 /// Lo que el panel pide a quien lo aloja tras un evento.
@@ -1614,12 +1616,29 @@ fn pintar_chips(
             t.texto.clone()
         };
         let (_, th) = p.medir_texto("Ag", tam);
+        // De un chat compartido: su insignia verde al final de la chapita.
+        let insignia = if t.compartida {
+            caja.alto - 4.0 * s
+        } else {
+            0.0
+        };
+        if t.compartida {
+            crate::ventana_chat::pintar_insignia_compartido(
+                p,
+                RectF {
+                    x: caja.x + caja.ancho - insignia - 2.0 * s,
+                    y: caja.y + 2.0 * s,
+                    ancho: insignia,
+                    alto: insignia,
+                },
+            );
+        }
         p.texto_linea(
             &texto,
             caja.x + caja.alto,
             caja.y + (caja.alto - th) / 2.0,
             tam,
-            caja.ancho - caja.alto - 6.0 * s,
+            (caja.ancho - caja.alto - 6.0 * s - insignia).max(0.0),
             TEXTO,
         );
         e.botones.zona(caja, Accion::Chip(c.indice));

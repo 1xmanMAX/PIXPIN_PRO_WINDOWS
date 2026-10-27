@@ -171,8 +171,8 @@ pub(crate) struct Preparado {
     pub excalidraw: Option<String>,
     /// Lo marcado al abrir; `None`, todo.
     pub marcadas: Option<BTreeSet<String>>,
-    /// Si lo natural es mandar el original (una foto, un PDF, un Word): va
-    /// el primero de la fila.
+    /// Si lo natural es mandar el original (una foto, un PDF, un Word): la
+    /// hoja se abre con el puesto (la fila va siempre en el mismo orden).
     pub original_primero: bool,
     /// **Los documentos que se leen** (un Word, un libro, un PDF) con la
     /// clave de sus filas: su «Pagina web» no son dibujos de sus paginas
@@ -1755,14 +1755,16 @@ fn caja_de_orden(o: &Orden) -> Option<(f32, f32, f32, f32)> {
 // La hoja: formatos y paginas
 
 /// **Lo que ensena la hoja** para lo preparado: las paginas y los formatos
-/// que tocan. Con paginas: pagina web, PDF, PNG, JPG y SVG (los de una
+/// que tocan. Con paginas: PNG, JPG, SVG, PDF y pagina web (los de una
 /// pagina solo con una marcada, lo decide la hoja); detras, lo que va
-/// entero. Una foto, un PDF o un Word llevan el original delante: es lo que
-/// se suele querer mandar.
+/// entero. **El orden y el nombre son los de toda la app**
+/// ([`pixpin_ui::hoja_compartir::FORMATOS_EN_ORDEN`], como el movil):
+/// una foto, un PDF o un Word no ponen el original delante sino que la
+/// hoja se abre con el puesto, que es lo que se suele querer mandar.
 pub(crate) fn compartible(p: &Preparado, t: &Catalogo) -> Compartible {
     let formato = |id: &str, clave: &str, cuantas: Cuantas| Formato {
         id: id.into(),
-        nombre: t.t(clave),
+        nombre: t.t(pixpin_ui::hoja_compartir::clave_del_formato(id, clave)),
         cuantas,
         admite: None,
         interruptor: None,
@@ -1822,16 +1824,18 @@ pub(crate) fn compartible(p: &Preparado, t: &Catalogo) -> Compartible {
         .iter()
         .map(|e| formato(e.id, e.clave, Cuantas::Ninguna))
         .collect();
-    let formatos = if p.original_primero {
+    let mut formatos: Vec<Formato> = if p.original_primero {
         enteros.into_iter().chain(de_paginas).collect()
     } else {
         de_paginas.into_iter().chain(enteros).collect()
     };
+    let inicial = pixpin_ui::hoja_compartir::ordenar(&mut formatos);
     Compartible {
         titulo: p.titulo.clone(),
         paginas: p.piezas.iter().map(|x| x.pagina.clone()).collect(),
         formatos,
         marcadas: p.marcadas.clone(),
+        inicial,
     }
 }
 

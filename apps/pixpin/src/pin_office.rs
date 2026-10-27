@@ -385,6 +385,8 @@ fn abrir(
                 pin.fijado,
                 false,
             );
+            // El riel se va y vuelve con la barra del pin.
+            r.con_barras(pin.barra_a_la_vista());
             r.tic(None);
         }
         let tope = if pin.quiere_reloj() { 50 } else { 250 };

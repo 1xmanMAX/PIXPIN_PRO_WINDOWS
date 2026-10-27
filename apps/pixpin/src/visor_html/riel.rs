@@ -112,6 +112,9 @@ const VK_G: u32 = 0x47;
 /// recargarse se pierde), con la capa ya puesta; sin ella, mas a menudo.
 const LATIDO: Duration = Duration::from_millis(1000);
 const LATIDO_SIN_CAPA: Duration = Duration::from_millis(250);
+/// Con el riel escondido, cada cuanto se mira si el raton se acerco a su
+/// borde (encima de la pagina el visor no se entera de que se mueve).
+const MIRAR_EL_BORDE: Duration = Duration::from_millis(120);
 /// Lo que se espera para volver a mandar la capa si cayo en la pagina
 /// vacia del principio.
 const REINTENTO: Duration = Duration::from_millis(200);
@@ -581,6 +584,9 @@ pub struct RielDeLaVista {
     /// Pruebas: el raton de mentira esta sobre el riel (no se mira el de
     /// verdad para saber si se fue).
     globo_de_prueba: bool,
+    /// **Si las barras del visor se ven** (la del pin): el riel se va y
+    /// vuelve con ellas (ver [`RielDeLaVista::con_barras`]).
+    barras: bool,
 }
 
 /// Lo que la pagina tiene de la capa del riel ([`capa_web`]).
@@ -729,6 +735,7 @@ impl RielDeLaVista {
             web: Web::nueva(),
             arrastre: None,
             globo_de_prueba: false,
+            barras: true,
         };
         r.recolocar();
         r.riel.mostrar(true);
@@ -1564,9 +1571,50 @@ impl RielDeLaVista {
         }
     }
 
+    /// **Si las barras del visor se ven** (la del pin, `lector_pin`): el
+    /// riel se va con ellas y vuelve con ellas (27-oct-2026, como el movil:
+    /// «que la barra lateral se esconda y aparezca junto con las de arriba y
+    /// abajo»). Se llama cada vuelta, antes de [`RielDeLaVista::tic`].
+    pub fn con_barras(&mut self, si: bool) {
+        self.barras = si;
+    }
+
+    /// **Si el riel se ve** (`pixpin_ui::riel_a_la_vista`, la regla de
+    /// todos los visores): con las barras, mientras se anota, se enmarca o
+    /// se pone una marca, o con el raton cerca de su borde. Fotografiando
+    /// los marcos, nunca.
+    fn riel_a_la_vista(&self) -> bool {
+        if self.imprimiendo {
+            return false;
+        }
+        let l = self.local(pixpin_shell::overlay::raton_en_pantalla());
+        lector::riel_a_la_vista(
+            self.barras || self.globo_de_prueba,
+            self.anotando,
+            self.marcos.activo,
+            self.poniendo,
+            (l.x as f32, l.y as f32),
+            self.vista.ancho as f32,
+            self.vista.alto as f32,
+            self.e(),
+        )
+    }
+
     /// **Cada vuelta del bucle del visor**: lo que conto la pagina, si el
     /// raton se fue del riel, la forma rapida, guardar la tinta y pintar.
     pub fn tic(&mut self, pagina: Option<&dyn Pagina>) {
+        // El riel, con las barras (o con el raton en su borde).
+        let ver = self.riel_a_la_vista();
+        if ver != self.riel.visible {
+            self.riel.mostrar(ver);
+            if ver {
+                self.riel.ventana.traer_encima();
+                self.repintar_riel = true;
+            } else {
+                self.encima = DestinoRiel::Fuera;
+                self.crecido = false;
+            }
+        }
         let llegados: Vec<Sitio> = self.buzon.borrow_mut().drain(..).collect();
         // (La pagina se recargo y perdio el guion: la capa, otra vez.)
         if llegados.iter().any(|s| s.nuevo) {
@@ -1658,6 +1706,16 @@ impl RielDeLaVista {
 
     /// Cuanto puede dormir el bucle como mucho.
     pub fn tope_ms(&self) -> Option<u32> {
+        let tope = self.tope_sin_el_borde();
+        // Escondido, se mira a menudo si el raton se acerco a su borde.
+        if self.riel.visible || self.imprimiendo {
+            return tope;
+        }
+        let borde = MIRAR_EL_BORDE.as_millis() as u32;
+        Some(tope.map_or(borde, |t| t.min(borde)))
+    }
+
+    fn tope_sin_el_borde(&self) -> Option<u32> {
         if !self.quiere_reloj() {
             // Con pagina, solo el latido (si sigue teniendo el guion).
             return self.opciones.con_pagina.then(|| {
@@ -2203,7 +2261,8 @@ impl RielDeLaVista {
             }
         }
         self.imprimiendo = false;
-        self.riel.mostrar(true);
+        let ver = self.riel_a_la_vista();
+        self.riel.mostrar(ver);
         self.repintar_riel = true;
         self.repintar_tinta = true;
         self.sincronizar(pagina);

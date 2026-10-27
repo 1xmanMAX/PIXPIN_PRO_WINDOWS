@@ -77,14 +77,121 @@ impl Formato {
     }
 }
 
+// ---------------------------------------------------------------------------
+// El orden y el nombre de los formatos, los mismos en toda la app
+
+/// **Cada formato de la hoja, en el orden en que sale** (27-oct-2026,
+/// `FormatosDeCompartir.Clase` del movil, a6c62b9f). Lo pidio el usuario:
+/// «en todo compartir de toda la aplicacion siempre tienen que estar las
+/// mismas opciones que en las demas... de forma entendible siempre». Quien
+/// abre la hoja solo dice **que** formatos hay (por su id); el orden y el
+/// nombre se deciden aqui, una vez para toda la app: la imagen (PNG, JPG,
+/// SVG), el PDF, la pagina web, Word, Markdown, el texto, la tabla en CSV,
+/// lo propio de ese contenido (el DXF de un plano), el `.pixpin`, el
+/// original, Anki y, al final, la Wi-Fi a mis aparatos (que en el PC es un
+/// boton del pie, no un redondel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ClaseDeFormato {
+    Png,
+    Jpg,
+    Svg,
+    Pdf,
+    Web,
+    Word,
+    Markdown,
+    Texto,
+    Csv,
+    /// Lo propio de un contenido (el DXF de un plano): con su nombre.
+    Otro,
+    Pixpin,
+    Original,
+    Anki,
+    Wifi,
+}
+
+/// **La tabla unica**: cada clase, en el orden de la hoja, con la clave de
+/// su nombre en el catalogo (la misma que el rotulo del movil: «Imagen
+/// PNG», «Pagina web (HTML)», «PixPin (.pixpin)»...). [`ClaseDeFormato::Otro`]
+/// no tiene: lleva el nombre que le da quien lo ofrece.
+pub const FORMATOS_EN_ORDEN: [(ClaseDeFormato, Option<&str>); 14] = [
+    (ClaseDeFormato::Png, Some("compartir-png")),
+    (ClaseDeFormato::Jpg, Some("compartir-jpg")),
+    (ClaseDeFormato::Svg, Some("compartir-svg")),
+    (ClaseDeFormato::Pdf, Some("compartir-pdf")),
+    (ClaseDeFormato::Web, Some("compartir-web")),
+    (ClaseDeFormato::Word, Some("compartir-word")),
+    (ClaseDeFormato::Markdown, Some("compartir-md")),
+    (ClaseDeFormato::Texto, Some("compartir-texto")),
+    (ClaseDeFormato::Csv, Some("compartir-csv")),
+    (ClaseDeFormato::Otro, None),
+    (ClaseDeFormato::Pixpin, Some("compartir-pixpin")),
+    (ClaseDeFormato::Original, Some("compartir-original")),
+    (ClaseDeFormato::Anki, Some("compartir-anki")),
+    (ClaseDeFormato::Wifi, Some("compartir-wifi")),
+];
+
+impl ClaseDeFormato {
+    /// **De que clase es un formato por su id.** Los ids son los de cada
+    /// generador (`pdf-limpio`, `web-imagen`, `originales`...): sus
+    /// variantes caen en su clase por el prefijo (`claseDe` del movil).
+    pub fn de_id(id: &str) -> ClaseDeFormato {
+        let i = id.to_ascii_lowercase();
+        match i.as_str() {
+            "png" | "imagen" => ClaseDeFormato::Png,
+            "jpg" | "jpeg" => ClaseDeFormato::Jpg,
+            "svg" => ClaseDeFormato::Svg,
+            "word" | "docx" => ClaseDeFormato::Word,
+            "md" | "markdown" => ClaseDeFormato::Markdown,
+            "texto" | "txt" => ClaseDeFormato::Texto,
+            "csv" => ClaseDeFormato::Csv,
+            "editable" | "pixpin" => ClaseDeFormato::Pixpin,
+            "original" | "originales" => ClaseDeFormato::Original,
+            "anki" => ClaseDeFormato::Anki,
+            "wifi" => ClaseDeFormato::Wifi,
+            _ if i == "pdf" || i.starts_with("pdf-") => ClaseDeFormato::Pdf,
+            _ if i == "web" || i.starts_with("web-") => ClaseDeFormato::Web,
+            _ => ClaseDeFormato::Otro,
+        }
+    }
+
+    /// La clave de su nombre en el catalogo; `None` en lo propio.
+    pub fn clave(self) -> Option<&'static str> {
+        FORMATOS_EN_ORDEN
+            .iter()
+            .find(|(c, _)| *c == self)
+            .and_then(|(_, k)| *k)
+    }
+}
+
+/// **La clave del nombre con el que sale el formato `id`**: la de su clase
+/// y, si es lo propio de un contenido, la que le dio quien lo ofrece.
+pub fn clave_del_formato<'a>(id: &str, propia: &'a str) -> &'a str {
+    ClaseDeFormato::de_id(id).clave().unwrap_or(propia)
+}
+
+/// **Pone los formatos en el orden de la hoja** (los de la misma clase,
+/// como venian) y dice donde quedo el que iba primero: es el que se pone al
+/// abrir, lo que mas se comparte desde ahi (una foto o un PDF, su original),
+/// no el primero de la fila.
+pub fn ordenar(formatos: &mut [Formato]) -> usize {
+    let primero = formatos.first().map(|f| f.id.clone());
+    formatos.sort_by_key(|f| ClaseDeFormato::de_id(&f.id));
+    primero
+        .and_then(|id| formatos.iter().position(|f| f.id == id))
+        .unwrap_or(0)
+}
+
 /// Lo que se comparte, visto desde la hoja.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Compartible {
     pub titulo: String,
     pub paginas: Vec<Pagina>,
+    /// Ya en el orden de la hoja (ver [`ordenar`]).
     pub formatos: Vec<Formato>,
     /// Las marcadas al abrir; `None`, todas.
     pub marcadas: Option<BTreeSet<String>>,
+    /// El formato puesto al abrir, por su posicion en `formatos`.
+    pub inicial: usize,
 }
 
 /// Lo que se ha elegido en la hoja.
@@ -101,10 +208,10 @@ pub struct Estado {
 }
 
 impl Estado {
-    /// Al abrir: el primer formato y lo que diga `marcadas` (o todo).
+    /// Al abrir: el formato `inicial` y lo que diga `marcadas` (o todo).
     pub fn nuevo(c: &Compartible) -> Estado {
         Estado {
-            formato: 0,
+            formato: c.inicial.min(c.formatos.len().saturating_sub(1)),
             marcadas: c
                 .marcadas
                 .clone()
@@ -626,7 +733,76 @@ mod pruebas {
                 formato("original", Cuantas::Ninguna),
             ],
             marcadas: None,
+            inicial: 0,
         }
+    }
+
+    #[test]
+    fn la_tabla_va_en_el_orden_del_movil_y_cada_clase_sale_una_vez() {
+        let clases: Vec<ClaseDeFormato> = FORMATOS_EN_ORDEN.iter().map(|(c, _)| *c).collect();
+        assert!(clases.windows(2).all(|w| w[0] < w[1]), "{clases:?}");
+        assert_eq!(clases.first(), Some(&ClaseDeFormato::Png));
+        assert_eq!(clases.last(), Some(&ClaseDeFormato::Wifi));
+        // Todas con su nombre del catalogo, menos lo propio.
+        for (c, k) in FORMATOS_EN_ORDEN {
+            assert_eq!(k.is_none(), c == ClaseDeFormato::Otro, "{c:?}");
+        }
+    }
+
+    #[test]
+    fn cada_id_cae_en_su_clase_y_lo_desconocido_es_lo_propio() {
+        use ClaseDeFormato as C;
+        for (id, c) in [
+            ("png", C::Png),
+            ("jpg", C::Jpg),
+            ("svg", C::Svg),
+            ("pdf", C::Pdf),
+            ("pdf-limpio", C::Pdf),
+            ("web", C::Web),
+            ("web-imagen", C::Web),
+            ("word", C::Word),
+            ("md", C::Markdown),
+            ("texto", C::Texto),
+            ("csv", C::Csv),
+            ("pixpin", C::Pixpin),
+            ("editable", C::Pixpin),
+            ("original", C::Original),
+            ("originales", C::Original),
+            ("anki", C::Anki),
+            ("dxf", C::Otro),
+            ("webp", C::Otro),
+        ] {
+            assert_eq!(ClaseDeFormato::de_id(id), c, "{id}");
+        }
+        assert_eq!(clave_del_formato("originales", "x"), "compartir-original");
+        assert_eq!(clave_del_formato("dxf", "compartir-dxf"), "compartir-dxf");
+    }
+
+    #[test]
+    fn ordenar_pone_el_orden_de_la_hoja_y_recuerda_el_que_iba_primero() {
+        let mut f = vec![
+            formato("original", Cuantas::Ninguna),
+            formato("pixpin", Cuantas::Ninguna),
+            formato("dxf", Cuantas::Ninguna),
+            formato("web", Cuantas::Varias),
+            formato("pdf", Cuantas::Varias),
+            formato("svg", Cuantas::Una),
+            formato("jpg", Cuantas::Una),
+            formato("png", Cuantas::Una),
+            formato("anki", Cuantas::Ninguna),
+            formato("texto", Cuantas::Ninguna),
+        ];
+        let inicial = ordenar(&mut f);
+        let ids: Vec<&str> = f.iter().map(|x| x.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "png", "jpg", "svg", "pdf", "web", "texto", "dxf", "pixpin", "original", "anki"
+            ]
+        );
+        assert_eq!(ids[inicial], "original", "se abre con lo que dio primero");
+        // Caso limite: sin formatos, nada que ordenar.
+        assert_eq!(ordenar(&mut []), 0);
     }
 
     #[test]

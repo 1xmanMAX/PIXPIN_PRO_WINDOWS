@@ -44,6 +44,7 @@ pub mod panel_lateral;
 pub mod propiedades;
 pub mod reproductor;
 pub mod resaltado;
+pub mod riel_a_la_vista;
 pub mod riel_marcas;
 pub mod tabla;
 /// Las vistas de la ventana de Tareas: Tarjetas, Kanban y Horario.

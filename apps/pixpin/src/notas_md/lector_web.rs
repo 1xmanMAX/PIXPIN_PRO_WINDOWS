@@ -671,6 +671,8 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                 pin.fijado,
                 pin.oscuro(),
             );
+            // El riel se va y vuelve con la barra del pin.
+            r.con_barras(pin.barra_a_la_vista());
             r.tic(Some(&pagina));
         }
         for s in sucesos {

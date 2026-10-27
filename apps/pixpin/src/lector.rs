@@ -384,6 +384,35 @@ pub fn riel(ancho: f32, alto: f32, escala_por_cien: u32, cuantas: usize, tira: b
     )
 }
 
+/// **Si el riel de un visor se ve** (27-oct-2026, el usuario: «que la barra
+/// lateral se esconda y aparezca junto con las de arriba y abajo»): con
+/// `barras` (las del visor a la vista), mientras se usa (anotando, con los
+/// marcos o poniendo un marcador) o con el raton cerca de su borde, en una
+/// vista de `ancho` x `alto` a escala `e`. La regla es la de
+/// [`pixpin_ui::riel_a_la_vista`], la misma en todos los visores.
+#[allow(clippy::too_many_arguments)] // lo que decide si se ve, tal cual
+pub fn riel_a_la_vista(
+    barras: bool,
+    anotando: bool,
+    marcos: bool,
+    poniendo_marca: bool,
+    raton: (f32, f32),
+    ancho: f32,
+    alto: f32,
+    e: f32,
+) -> bool {
+    use pixpin_ui::riel_a_la_vista as rv;
+    rv::visible(
+        barras,
+        rv::EnUso {
+            anotando,
+            marcos,
+            poniendo_marca,
+        },
+        rv::raton_cerca(raton, ancho, alto, e),
+    )
+}
+
 /// Un emoticono sobre su redondel oscuro, centrado en `c`.
 pub fn redondel(p: &Pintor<'_>, emoji: &str, c: (f32, f32), radio: f32, alfa: f32) {
     p.circulo(c, radio, con_alfa(OSCURO, alfa));

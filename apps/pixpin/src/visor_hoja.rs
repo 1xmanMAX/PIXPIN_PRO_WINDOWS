@@ -398,6 +398,10 @@ struct Estado<'l> {
     anotando: bool,
     poniendo_marca: bool,
     encima: pixpin_ui::riel_marcas::DestinoRiel,
+    /// Si la barra del pin se ve: el riel se va y vuelve con ella
+    /// (`riel::riel_a_la_vista`); y si se veia en el ultimo pintado.
+    barras: bool,
+    riel_visto: bool,
     marcas: Vec<pixpin_motor2d::marcas::Marca>,
     recuerdo: riel::Recuerdo,
     /// La tinta cambio algo en el gesto en curso (se guarda al acabarlo).
@@ -1859,6 +1863,8 @@ fn ver_en(
         anotando: false,
         poniendo_marca: false,
         encima: pixpin_ui::riel_marcas::DestinoRiel::Fuera,
+        barras: true,
+        riel_visto: true,
         marcas,
         recuerdo,
         tinta_cambio: false,
@@ -2309,6 +2315,11 @@ fn ver_en(
         // La luna/sol de la barra cambia el modo oscuro: se repinta (viendo
         // y editando, que es el mismo pintor).
         if pin.actualizar(motor, &nombre, &botones) {
+            hay_que_pintar = true;
+        }
+        // El riel se va y vuelve con la barra del pin.
+        est.barras = pin.barra_a_la_vista();
+        if est.riel_a_la_vista() != est.riel_visto {
             hay_que_pintar = true;
         }
         if est
