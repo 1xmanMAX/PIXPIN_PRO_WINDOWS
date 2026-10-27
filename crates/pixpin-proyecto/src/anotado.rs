@@ -180,6 +180,16 @@ pub fn adjunto_de(raiz: &Path, doc: &Path) -> Option<Adjunto> {
     if let Some(x) = conocidos().lock().ok().and_then(|c| c.get(&doc).cloned()) {
         return Some(x);
     }
+    // **El borrador de una version** (27-oct-2026): la copia de un documento
+    // de otra persona que se esta anotando aun no es un mensaje, pero su
+    // tinta ya va con el codigo que tendra (`crate::versiones`).
+    if let Some((chat, uid)) = crate::versiones::borrador_de(raiz, &doc) {
+        let x = Adjunto { chat, uid };
+        if let Ok(mut c) = conocidos().lock() {
+            c.insert(doc, x.clone());
+        }
+        return Some(x);
+    }
     let d = DiscoPc::nuevo(raiz);
     for (chat, f) in d.mapa() {
         let carpeta = canonica(&almacen::carpeta(raiz, &f.id));

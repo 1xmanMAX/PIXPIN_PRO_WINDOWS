@@ -48,6 +48,7 @@ pub mod tabla;
 pub mod tabla_web;
 pub mod tabla_xlsx;
 pub mod ubicacion;
+pub mod versiones;
 pub mod vista;
 
 use std::collections::BTreeMap;

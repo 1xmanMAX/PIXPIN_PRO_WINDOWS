@@ -28,3 +28,6 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 # Android, para hablar con el del PC por un socket de verdad.
 pixpin-sincro = { version = "0.1.0", path = "../pixpin-sincro", features = ["simulador"] }
 flate2 = "1.1"
+# De quien es cada mensaje de un chat compartido (`conversacion::Lados`): las
+# pruebas de las versiones vinculadas deciden «ajeno» con la regla de verdad.
+pixpin-ui = { version = "0.1.0", path = "../pixpin-ui" }

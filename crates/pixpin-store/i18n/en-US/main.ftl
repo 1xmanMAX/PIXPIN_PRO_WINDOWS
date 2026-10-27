@@ -1092,6 +1092,25 @@ diapositivas-transiciones-no = Transitions off (T)
 ## Chat: a page from a project, the link card, «Received from» and the inbox
 chat-sin-paginas = No project has pages to attach
 chat-recibido-de = Received from { $de }
+# Linked versions in a shared chat (27-oct-2026): touching someone else's
+# message makes your version, which replies to theirs, and theirs stays as is.
+chat-version-sola = Version
+chat-version-sola-n = Version { $n }
+chat-version-de = Version of { $quien }'s
+chat-version-de-n = Version { $n } of { $quien }'s
+chat-version-de-lo-tuyo = Version of yours
+chat-version-de-lo-tuyo-n = Version { $n } of yours
+chat-version-de-otro = Version of another message
+chat-version-de-otro-n = Version { $n } of another message
+chat-version-de-la-lista = Version { $n } · { $quien }
+chat-version-tuya = Version { $n } · yours
+chat-versiones = { $cuantas ->
+    [one] 1 version
+   *[other] { $cuantas } versions
+  }
+chat-version-es-de = This is { $quien }'s: if you change it, it's saved as your version and theirs isn't touched
+chat-version-guardada = Saved as your version; the original wasn't touched
+chat-version-no = Couldn't prepare your version
 chat-fecha-corta = { $mes } { $dia }
 chat-enlace-no-abre = The link could not be opened
 
