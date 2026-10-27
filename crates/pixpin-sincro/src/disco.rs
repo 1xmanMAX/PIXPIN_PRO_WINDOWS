@@ -45,6 +45,14 @@ pub const CARPETAS: [&str; 7] = [
     "notas/",
     "voz/",
 ];
+/// Lo que llega a medias de un archivo grande (27-oct-2026): ver
+/// [escribir_reanudable].
+pub const PARCIAL: &str = ".parcial";
+/// Lo llegado a medias de hace mas de esto se tira.
+pub const DIAS_DE_PARCIAL: i64 = 7;
+/// Lo que se deja libre siempre al recibir: un disco lleno del todo no
+/// arranca bien.
+pub const MARGEN_DE_ESPACIO: u64 = 16 << 20;
 /// El prefijo con que viajan las rutas de un aparato (`Rutas.PORTATIL`).
 pub const PORTATIL: &str = "pixpin:files/";
 

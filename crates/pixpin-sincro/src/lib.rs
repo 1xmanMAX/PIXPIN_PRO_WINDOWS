@@ -51,6 +51,7 @@ pub mod canonico;
 pub mod codigo;
 pub mod compartidos;
 pub mod copias;
+pub mod diario;
 pub mod diferencia;
 pub mod disco;
 #[cfg(any(test, feature = "simulador"))]
