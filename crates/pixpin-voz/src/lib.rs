@@ -99,10 +99,10 @@
 //!
 //! ## Reparto del crate
 //!
-//! - [`tiempos`], [`credibilidad`], [`idiomas`], [`cortes`] y
-//!   [`telepronter`]: aritmetica y texto, sin Windows y sin sonido. Es donde
-//!   estan las pruebas de verdad. Tambien las partes puras de [`qwen3`]
-//!   (mel, tokens, guion, catalogo).
+//! - [`tiempos`], [`credibilidad`], [`idiomas`], [`cortes`],
+//!   [`letra_de_cancion`] y [`telepronter`]: aritmetica y texto, sin
+//!   Windows y sin sonido. Es donde estan las pruebas de verdad. Tambien
+//!   las partes puras de [`qwen3`] (mel, tokens, guion, catalogo).
 //! - [`ort`] y [`qwen3::motor`]: hablan con ONNX Runtime; compilan tambien
 //!   en Linux (con `libonnxruntime.so`) para probar Qwen3-ASR con el modelo
 //!   de verdad en la maquina de desarrollo.
@@ -116,6 +116,9 @@ pub mod dos_idiomas;
 /// Las voces de Microsoft Edge para leer en voz alta (los lectores).
 pub mod edge;
 pub mod idiomas;
+/// La letra de una cancion: leer LRC, guardarla como la leen el PC y el
+/// movil, la linea que suena y sincronizarla a toques (27-oct-2026).
+pub mod letra_de_cancion;
 /// Qwen3-ASR-0.6B, el motor opcional de las grabaciones (ver `qwen3`).
 pub mod qwen3;
 pub mod telepronter;

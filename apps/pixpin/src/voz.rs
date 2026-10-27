@@ -390,13 +390,25 @@ pub fn quitar_marca(m: &mut Mensaje, ms: i64) -> bool {
 /// **La letra escrita a mano** vuelve al mensaje, como el editor del movil
 /// (`MarkdownEditorActivity`: `transcripcion = texto`, y `estadoDelTexto`
 /// el que tuviera o `letra` si no tenia). Devuelve si cambio.
+///
+/// **Un LRC pegado** (27-oct-2026, «Musica con su letra») se convierte antes
+/// al formato que leen la pantalla de la letra y el movil —`[m:ss] linea`
+/// con un renglon en blanco entre lineas, ver
+/// `pixpin_voz::letra_de_cancion`— y la nota queda como musica
+/// (`estadoDelTexto = "letra"`): un LRC solo puede ser la letra de una
+/// cancion. Lo que no es LRC se guarda tal cual, como siempre.
 pub fn escribir_letra(m: &mut Mensaje, texto: &str) -> bool {
     let texto = texto.replace("\r\n", "\n");
-    if m.transcripcion.as_deref() == Some(texto.as_str()) {
+    let (texto, es_cancion) = match pixpin_voz::letra_de_cancion::convertir_si_es_lrc(&texto) {
+        Some(convertido) => (convertido, true),
+        None => (texto, false),
+    };
+    let ya_era_cancion = estado_del_texto(m) == Some(pixpin_voz::EstadoDelTexto::Letra);
+    if m.transcripcion.as_deref() == Some(texto.as_str()) && (!es_cancion || ya_era_cancion) {
         return false;
     }
     m.transcripcion = Some(texto);
-    if !m.resto.contains_key("estadoDelTexto") {
+    if es_cancion || !m.resto.contains_key("estadoDelTexto") {
         m.resto.insert(
             "estadoDelTexto".into(),
             serde_json::Value::String(pixpin_voz::EstadoDelTexto::Letra.palabra().into()),
@@ -745,6 +757,28 @@ mod pruebas {
             !escribir_letra(&mut m, "la la\nla"),
             "lo mismo no es un cambio"
         );
+    }
+
+    #[test]
+    fn un_lrc_pegado_en_el_lapiz_se_guarda_como_letra_con_minutos() {
+        let mut m = Mensaje::default();
+        aplicar(&mut m, &transcripcion("[0:00] ola", EstadoDelTexto::Bien));
+        assert!(escribir_letra(
+            &mut m,
+            "[ti:Canción]\r\n[00:12.30]Uno\r\n[00:17.80][00:40.00]Coro"
+        ));
+        assert_eq!(
+            m.transcripcion.as_deref(),
+            Some("[0:12] Uno\n\n[0:18] Coro\n\n[0:40] Coro")
+        );
+        assert_eq!(estado_del_texto(&m), Some(EstadoDelTexto::Letra));
+        // Y la pantalla de la letra lo lee con sus minutos.
+        let t = trozos(m.transcripcion.as_deref().unwrap_or_default());
+        assert_eq!(t[1].ms, Some(18_000));
+        assert!(!escribir_letra(
+            &mut m,
+            "[00:12.30]Uno\n[00:17.80][00:40.00]Coro"
+        ));
     }
 
     #[test]
