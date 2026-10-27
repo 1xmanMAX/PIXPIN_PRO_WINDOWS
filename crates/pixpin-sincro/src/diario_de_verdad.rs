@@ -1013,3 +1013,39 @@ fn la_vuelta_con_diario_es_mucho_mas_rapida_y_mueve_mucho_menos() {
     );
     assert!(texto_del_dibujo(&p.tab, "d10").contains("lienzo cambiado 2"));
 }
+
+// ------------------------------------------------------------ lo que no se conoce
+
+#[test]
+fn lo_que_no_se_conoce_se_contesta_con_un_error_y_la_conversacion_sigue() {
+    // Un PixPin de antes (sin capacidades) al que le llega `novedades`, y
+    // cualquiera al que le llega un tipo que no existe: «No sé qué es»,
+    // y la peticion siguiente se contesta como siempre.
+    let p = montar("no-se-que-es");
+    tres_chats_al_dia(&p);
+    for (caps_responde, caps_dirige) in [
+        (&[][..], &crate::CAPACIDADES[..]),
+        (&crate::CAPACIDADES[..], &[][..]),
+    ] {
+        let como = Como {
+            caps_responde,
+            caps_dirige,
+            ..Como::default()
+        };
+        conectado(&p.tel, &p.tab, false, None, &p.reloj, como, |s| {
+            for t in ["novedades", "algo-de-una-version-futura"] {
+                let r = s.pedir_sin_lanzar(&crate::mensajes::Peticion::de(t))?;
+                assert_eq!(
+                    r.error.as_deref(),
+                    Some(format!("No sé qué es «{t}»").as_str())
+                );
+            }
+            let inv =
+                s.pedir_sin_lanzar(&crate::mensajes::Peticion::sobre("inventario", GENERAL))?;
+            assert!(inv.error.is_none());
+            assert!(!inv.apuntes.is_empty(), "la conversacion sigue sana");
+            Ok(())
+        })
+        .unwrap();
+    }
+}

@@ -3377,6 +3377,14 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     pub fn disco(&self) -> &'a D {
         self.disco
     }
+
+    /// **Una peticion cualquiera, tal cual**, con el error del otro dentro
+    /// de la respuesta en vez de convertido en error aqui. Para probar que
+    /// lo que el otro no conoce se contesta sin cortar la conversacion.
+    pub fn pedir_sin_lanzar(&mut self, p: &Peticion) -> Resultado<Respuesta> {
+        enviar(&mut self.canal, p)?;
+        leer_respuesta_sin_lanzar(&mut self.canal)
+    }
 }
 
 /// La hora de esta maquina en milisegundos (la de la verificacion entera,

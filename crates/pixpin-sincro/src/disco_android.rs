@@ -438,6 +438,35 @@ pub mod prueba {
         A: Disco + Sync,
         B: Disco + Sync,
     {
+        conectado_con(
+            desde,
+            hacia,
+            unirme,
+            codigo,
+            reloj,
+            &crate::CAPACIDADES,
+            &crate::CAPACIDADES,
+            uso,
+        )
+    }
+
+    /// [conectado] diciendo cada uno lo que sabe hacer (27-oct-2026): con
+    /// `&[]`, un PixPin de antes del diario.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conectado_con<A, B, T>(
+        desde: &A,
+        hacia: &B,
+        unirme: bool,
+        codigo: Option<&str>,
+        reloj: &Reloj,
+        caps_dirige: &[&str],
+        caps_responde: &[&str],
+        uso: impl FnOnce(&mut Sesion<'_, A, TcpStream>) -> T,
+    ) -> Resultado<T>
+    where
+        A: Disco + Sync,
+        B: Disco + Sync,
+    {
         let escucha = TcpListener::bind(("127.0.0.1", 0))?;
         let puerto = escucha.local_addr()?.port();
         std::thread::scope(|hilos| {
@@ -451,12 +480,20 @@ pub mod prueba {
                         al_saludar: &|_, _| {},
                         suelto: None,
                     };
-                    let _ = r.atender(flujo, [7u8; 32]);
+                    let _ = r.atender_con(flujo, [7u8; 32], None, caps_responde);
                 }
             });
             let flujo = TcpStream::connect(("127.0.0.1", puerto))?;
-            let mut s =
-                Sesion::conectar(flujo, desde, unirme, codigo, || reloj.ahora(), 0, [3u8; 32]);
+            let mut s = Sesion::conectar_con(
+                flujo,
+                desde,
+                unirme,
+                codigo,
+                || reloj.ahora(),
+                0,
+                [3u8; 32],
+                caps_dirige,
+            );
             match &mut s {
                 Ok(s) => {
                     let r = uso(s);
