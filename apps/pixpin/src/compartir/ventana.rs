@@ -222,14 +222,16 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
 
     let mut e = Estado::nuevo(&c);
     // Con varias paginas marcadas se empieza por un formato que las lleve
-    // todas; con una, por el primero.
-    let primero = if e.marcadas.len() > 1 {
+    // todas; con una, por el que dio primero quien abre la hoja.
+    let primero = if e.marcadas.len() > 1
+        && c.formatos.get(c.inicial).map(|f| f.cuantas) == Some(Cuantas::Una)
+    {
         c.formatos
             .iter()
             .position(|f| f.cuantas != Cuantas::Una)
-            .unwrap_or(0)
+            .unwrap_or(c.inicial)
     } else {
-        0
+        c.inicial
     };
     e.elegir_formato(&c, primero);
     let mut hoja = Hoja {
@@ -658,23 +660,25 @@ fn con_alfa(c: Color, a: f32) -> Color {
     Color { a: c.a * a, ..c }
 }
 
-/// El icono de cada formato: los del movil donde hay uno igual en la
+/// El icono de cada formato, **por su clase** (el mismo en toda la app,
+/// `iconoDeFormato` del movil): los del movil donde hay uno igual en la
 /// coleccion de iconos, y el mas parecido donde no.
 fn icono_de(id: &str) -> &'static Icono {
-    match id {
-        super::WEB => &mi::PUBLIC,
-        super::PDF => &mi::DESCRIPTION,
-        super::PNG | super::JPG => &mi::IMAGE,
-        super::SVG => &mi::DRAW,
-        "pixpin" => &mi::FOLDER,
-        "texto" => &mi::LIST,
-        "csv" => &mi::TABLE_CHART,
+    use pixpin_ui::hoja_compartir::ClaseDeFormato as C;
+    match C::de_id(id) {
+        C::Web => &mi::PUBLIC,
         // Una nota como Word: un documento, como el PDF.
-        "word" => &mi::DESCRIPTION,
-        "md" => &mi::EDIT_NOTE,
+        C::Pdf | C::Word => &mi::DESCRIPTION,
+        C::Png | C::Jpg => &mi::IMAGE,
+        C::Svg => &mi::DRAW,
+        C::Pixpin => &mi::FOLDER,
+        C::Texto => &mi::LIST,
+        C::Csv => &mi::TABLE_CHART,
+        C::Markdown => &mi::EDIT_NOTE,
         // Las tarjetas de estudio: el mismo icono que «Enviar a Anki».
-        "anki" => &mi::MENU_BOOK,
-        _ => &mi::ATTACH_FILE,
+        C::Anki => &mi::MENU_BOOK,
+        C::Wifi => &mi::WIFI,
+        C::Original | C::Otro => &mi::ATTACH_FILE,
     }
 }
 
@@ -683,6 +687,34 @@ fn centrado(p: &Pintor, texto: &str, caja: RectF, tam: f32, color: Color) {
     let (w, _) = p.medir_texto(texto, tam);
     let x = caja.x + ((caja.ancho - w) / 2.0).max(0.0);
     p.texto_linea(texto, x, caja.y, tam, caja.ancho, color);
+}
+
+/// **El nombre de un formato**, centrado y en dos lineas si no cabe en una
+/// («Pagina web» / «(HTML)»), como el `maxLines = 2` del movil: los nombres
+/// son los de toda la app y algunos son largos.
+fn nombre_de_formato(p: &Pintor, texto: &str, caja: RectF, tam: f32, color: Color) {
+    let cabe = |t: &str| p.medir_texto(t, tam).0 <= caja.ancho;
+    if cabe(texto) {
+        return centrado(p, texto, caja, tam, color);
+    }
+    // El ultimo espacio con el que la primera linea cabe.
+    let corte = texto
+        .char_indices()
+        .rev()
+        .filter(|(_, c)| *c == ' ')
+        .map(|(i, _)| i)
+        .find(|&i| cabe(&texto[..i]));
+    match corte {
+        Some(i) => {
+            centrado(p, &texto[..i], caja, tam, color);
+            let abajo = RectF {
+                y: caja.y + tam * 1.3,
+                ..caja
+            };
+            centrado(p, texto[i + 1..].trim(), abajo, tam, color);
+        }
+        None => centrado(p, texto, caja, tam, color),
+    }
 }
 
 fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
@@ -759,7 +791,7 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
             },
             TEXTO,
         );
-        centrado(
+        nombre_de_formato(
             p,
             &f.nombre,
             rf(*nombre),
