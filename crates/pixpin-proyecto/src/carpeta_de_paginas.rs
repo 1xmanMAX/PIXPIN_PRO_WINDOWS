@@ -299,6 +299,27 @@ impl Carpeta {
         true
     }
 
+    /// **Anade una pieza de la grabacion en su sitio**: delante de la
+    /// primera que es de despues (o de lo adjuntado), y no al final. Es lo
+    /// que llega cuando la carpeta ya esta hecha (una foto del movil subida
+    /// tarde). `false` si ya estaba.
+    pub fn anadir_en_su_minuto(&mut self, id: &str, titulo: &str, ms: i64) -> bool {
+        if !self.anadir_al_minuto(id, titulo, ms) {
+            return false;
+        }
+        let Some(nueva) = self.paginas.pop() else {
+            return false;
+        };
+        let ms = ms.max(0);
+        let sitio = self
+            .paginas
+            .iter()
+            .position(|p| p.adjunto || p.ms.is_some_and(|m| m > ms))
+            .unwrap_or(self.paginas.len());
+        self.paginas.insert(sitio, nueva);
+        true
+    }
+
     /// El documento, para ir en `Mensaje::texto`.
     pub fn escribir(&self) -> String {
         let mut c = self.clone();
@@ -499,6 +520,24 @@ pub fn cambiar_en_disco(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn lo_que_llega_tarde_entra_en_su_minuto_y_no_al_final() {
+        let mut c = Carpeta::grabacion("voz", 100_000);
+        c.anadir_al_minuto("voz", "", 0);
+        c.anadir_al_minuto("c1", "⏱ 0:10", 10_000);
+        c.anadir_al_minuto("c3", "⏱ 1:00", 60_000);
+        c.adjuntar("pdf", "Apuntes");
+        assert!(c.anadir_en_su_minuto("movil", "📱 ⏱ 0:30", 30_000));
+        assert!(c.anadir_en_su_minuto("tarde", "📱 ⏱ 1:30", 90_000));
+        let ids: Vec<&str> = c.paginas.iter().map(|p| p.id.as_str()).collect();
+        // Despues de lo grabado y antes de lo adjuntado.
+        assert_eq!(ids, ["voz", "c1", "movil", "c3", "tarde", "pdf"]);
+        assert_eq!(c.paginas[2].ms, Some(30_000));
+        // Caso negativo: la misma no entra dos veces.
+        assert!(!c.anadir_en_su_minuto("movil", "", 5));
+        assert_eq!(c.len(), 6);
+    }
 
     #[test]
     fn cambiar_en_disco_guarda_y_poda_lo_borrado() {

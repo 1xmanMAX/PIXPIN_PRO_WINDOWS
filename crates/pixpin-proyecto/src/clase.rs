@@ -403,6 +403,79 @@ pub fn poner_captura(resto: &mut Map<String, Value>, ms: i64, id: &str) {
     resto.insert(CAPTURAS.into(), Value::Array(lista));
 }
 
+// --- Los clips de la clase ---------------------------------------------------
+
+/// La clave de los clips de video de una clase en `resto` (los que grabo el
+/// movil haciendo de camara, `pixpin_sincro::camara`): `[{ms, duracionMs,
+/// id}]`, en orden. Aparte de las capturas: un clip no es una foto y quien
+/// no lo conozca (un aparato de antes) sigue leyendo las capturas igual.
+pub const CLIPS: &str = "clips";
+
+/// Un clip de la clase: donde empieza, lo que dura y su mensaje.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Clip {
+    pub ms: i64,
+    pub duracion_ms: i64,
+    pub id: String,
+}
+
+impl Clip {
+    /// Si suena en `ms`.
+    pub fn en(&self, ms: i64) -> bool {
+        ms >= self.ms && ms < self.ms + self.duracion_ms.max(1)
+    }
+}
+
+/// Los clips de una nota (su `resto`), en orden.
+pub fn clips_de(resto: &Map<String, Value>) -> Vec<Clip> {
+    let mut v: Vec<Clip> = resto
+        .get(CLIPS)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| {
+                    Some(Clip {
+                        ms: c.get("ms")?.as_i64()?,
+                        duracion_ms: c.get("duracionMs").and_then(Value::as_i64).unwrap_or(0),
+                        id: c.get("id")?.as_str()?.to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort_by_key(|c| c.ms);
+    v
+}
+
+/// **Anade un clip a la clase**, en su sitio. Un id que ya estaba no se
+/// repite.
+pub fn poner_clip(resto: &mut Map<String, Value>, ms: i64, duracion_ms: i64, id: &str) {
+    let mut lista: Vec<Value> = resto
+        .get(CLIPS)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if lista
+        .iter()
+        .any(|c| c.get("id").and_then(Value::as_str) == Some(id))
+    {
+        return;
+    }
+    lista.push(serde_json::json!({
+        "ms": ms.max(0),
+        "duracionMs": duracion_ms.max(0),
+        "id": id,
+    }));
+    lista.sort_by_key(|c| c.get("ms").and_then(Value::as_i64).unwrap_or(0));
+    resto.insert(CLIPS.into(), Value::Array(lista));
+}
+
+/// El clip que suena en `ms`, si lo hay (el ultimo que empezo, si se
+/// pisan).
+pub fn clip_en(clips: &[Clip], ms: i64) -> Option<usize> {
+    clips.iter().rposition(|c| c.en(ms))
+}
+
 /// Salta `delta` desde `ms` sin salirse de la nota.
 pub fn saltar(ms: i64, delta: i64, duracion_ms: i64) -> i64 {
     let fin = if duracion_ms > 0 {
@@ -416,6 +489,28 @@ pub fn saltar(ms: i64, delta: i64, duracion_ms: i64) -> i64 {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn los_clips_van_en_orden_sin_repetirse_y_se_sabe_cual_suena() {
+        let mut r = Map::new();
+        assert!(clips_de(&r).is_empty());
+        poner_clip(&mut r, 50_000, 20_000, "b");
+        poner_clip(&mut r, 10_000, 5_000, "a");
+        poner_clip(&mut r, 99_000, 1, "b");
+        let c = clips_de(&r);
+        assert_eq!(
+            c.iter().map(|c| (c.ms, c.id.as_str())).collect::<Vec<_>>(),
+            vec![(10_000, "a"), (50_000, "b")]
+        );
+        assert_eq!(c[1].duracion_ms, 20_000);
+        assert_eq!(clip_en(&c, 12_000), Some(0));
+        assert_eq!(clip_en(&c, 69_999), Some(1));
+        // Casos negativos: entre los dos, y justo al acabar.
+        assert_eq!(clip_en(&c, 30_000), None);
+        assert_eq!(clip_en(&c, 70_000), None);
+        // Lo que se escribe es lo que se lee el movil: `duracionMs`.
+        assert!(Value::Object(r).to_string().contains("\"duracionMs\":5000"));
+    }
 
     #[test]
     fn los_marcadores_van_y_vuelven_en_orden_y_vacios_quitan_la_clave() {

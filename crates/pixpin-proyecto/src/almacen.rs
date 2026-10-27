@@ -195,6 +195,39 @@ pub fn guardar_adjunto(
 ) -> std::io::Result<String> {
     let carpeta = carpeta(raiz, id).join("archivos");
     std::fs::create_dir_all(&carpeta)?;
+    let intento = nombre_libre_en(&carpeta, nombre)?;
+    std::fs::write(carpeta.join(&intento), bytes)?;
+    Ok(format!("archivos/{intento}"))
+}
+
+/// [guardar_adjunto] **moviendo** `origen` en vez de escribir bytes ya
+/// leidos: un clip de video de cien megas no tiene por que pasar por
+/// memoria. Si no se puede renombrar (otro disco), se copia y se borra el
+/// original; una copia a medias no se queda. Devuelve la ruta y los bytes.
+pub fn mover_adjunto(
+    raiz: &Path,
+    id: &str,
+    nombre: &str,
+    origen: &Path,
+) -> std::io::Result<(String, i64)> {
+    let carpeta = carpeta(raiz, id).join("archivos");
+    std::fs::create_dir_all(&carpeta)?;
+    let intento = nombre_libre_en(&carpeta, nombre)?;
+    let destino = carpeta.join(&intento);
+    if std::fs::rename(origen, &destino).is_err() {
+        if let Err(e) = std::fs::copy(origen, &destino) {
+            let _ = std::fs::remove_file(&destino);
+            return Err(e);
+        }
+        let _ = std::fs::remove_file(origen);
+    }
+    let bytes = std::fs::metadata(&destino).map_or(0, |m| m.len() as i64);
+    Ok((format!("archivos/{intento}"), bytes))
+}
+
+/// Un nombre seguro que no pisa a otro en `carpeta`: `nombre` o
+/// `tronco (n).ext`.
+fn nombre_libre_en(carpeta: &Path, nombre: &str) -> std::io::Result<String> {
     let seguro = nombre_seguro(nombre);
     let (tronco, extension) = match seguro.rsplit_once('.') {
         Some((t, e)) if !t.is_empty() => (t.to_string(), format!(".{e}")),
@@ -209,8 +242,7 @@ pub fn guardar_adjunto(
             return Err(std::io::Error::other("demasiados ficheros con ese nombre"));
         }
     }
-    std::fs::write(carpeta.join(&intento), bytes)?;
-    Ok(format!("archivos/{intento}"))
+    Ok(intento)
 }
 
 impl Indice {
