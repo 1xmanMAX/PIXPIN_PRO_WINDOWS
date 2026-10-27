@@ -1883,10 +1883,82 @@ const M_ANOTAR: u32 = 11;
 const M_LETRAS: u32 = 12;
 const M_EXPORTAR: u32 = 13;
 const M_MARCADOR: u32 = 14;
+// Las del clic derecho en el boton del marco del riel (tambien las del 3D).
+pub(crate) const M_IMPRIMIR_LOS_MARCOS: u32 = 60;
+pub(crate) const M_IMPRIMIR_ENTERO: u32 = 61;
 // Las del menu del boton «Aa».
 const M_ANADIR_LETRAS: u32 = 40;
 const M_QUITAR_LETRAS: u32 = 41;
 const M_NADA: u32 = 49;
+
+/// **Los rotulos del menu del boton del marco** (27-oct-2026): el de los
+/// marcos con `{n}` (cuantos hay), el de cuando aun no hay ninguno (en gris)
+/// y el del plano o la vista entera. La app los pone de su catalogo, los
+/// mismos de los demas visores (`marcos_doc::entradas_de_imprimir`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextosImprimir {
+    pub los_marcos: String,
+    pub sin_marcos: String,
+    pub entero: String,
+}
+
+impl TextosImprimir {
+    /// Los del plano.
+    pub fn plano() -> TextosImprimir {
+        TextosImprimir {
+            los_marcos: "Imprimir los marcos ({n})".into(),
+            sin_marcos: "Imprimir los marcos (aún no hay: pulsa el marco y arrastra)".into(),
+            entero: "Imprimir el plano entero".into(),
+        }
+    }
+
+    /// Los del modelo 3D: entera, la vista de ahora.
+    pub fn modelo() -> TextosImprimir {
+        TextosImprimir {
+            entero: "Imprimir la vista del modelo".into(),
+            ..TextosImprimir::plano()
+        }
+    }
+
+    /// Las dos entradas con `n` marcos: `(id, rotulo, en gris)`.
+    pub(crate) fn entradas(&self, n: usize) -> [(u32, String, bool); 2] {
+        let marcos = if n == 0 {
+            (M_IMPRIMIR_LOS_MARCOS, self.sin_marcos.clone(), true)
+        } else {
+            (
+                M_IMPRIMIR_LOS_MARCOS,
+                self.los_marcos.replace("{n}", &n.to_string()),
+                false,
+            )
+        };
+        [marcos, (M_IMPRIMIR_ENTERO, self.entero.clone(), false)]
+    }
+}
+
+/// **El clic derecho en el boton del marco del riel** (como la pulsacion
+/// larga del movil): imprimir los marcos o el plano (o la vista) entero. Lo
+/// elegido llega como [`Ev::Menu`] con [`M_IMPRIMIR_LOS_MARCOS`] o
+/// [`M_IMPRIMIR_ENTERO`].
+pub(crate) fn menu_de_imprimir(hwnd: HWND, t: &TextosImprimir, n: usize) {
+    // SAFETY: menu propio que se destruye antes de salir; cadenas vivas.
+    unsafe {
+        let Ok(m) = CreatePopupMenu() else { return };
+        for (id, texto, gris) in t.entradas(n) {
+            let v: Vec<u16> = texto.encode_utf16().chain(std::iter::once(0)).collect();
+            let f = if gris {
+                MF_STRING | MF_GRAYED
+            } else {
+                MF_STRING
+            };
+            let _ = AppendMenuW(m, f, id as usize, PCWSTR(v.as_ptr()));
+        }
+        let mut p = POINT::default();
+        let _ = GetCursorPos(&mut p);
+        let _ = SetForegroundWindow(hwnd);
+        let _ = TrackPopupMenu(m, TPM_RIGHTBUTTON, p.x, p.y, Some(0), hwnd, None);
+        let _ = DestroyMenu(m);
+    }
+}
 
 /// **El menu del boton «Aa»** (el dialogo «Letras del plano» de Android):
 /// que letras pide el plano y no estan, donde suelen estar, añadir las
@@ -2370,6 +2442,8 @@ pub fn ver(
         let mut cambiar_marcos = false;
         let mut cambiar_anotar = false;
         let mut imprimir = false;
+        // El clic derecho en el boton del marco: el plano entero.
+        let mut imprimir_entero = false;
         let mut exportar = false;
         let mut ver_letras = false;
         // Poner un marcador aqui, ir a uno o quitarlo.
@@ -2453,6 +2527,12 @@ pub fn ver(
                             }
                             // SAFETY: suelta la captura que puso el boton.
                             let _ = unsafe { ReleaseCapture() };
+                            // El derecho en el marco: que imprimir.
+                            if matches!(ev, Ev::Bajar(_, _, 2))
+                                && b.map(|i| botones_riel[i]) == Some("marcos")
+                            {
+                                menu_de_imprimir(hwnd, &textos_ui.imprimir_menu, marcos.len());
+                            }
                             continue;
                         }
                     }
@@ -2740,7 +2820,8 @@ pub fn ver(
                     M_ANOTAR => cambiar_anotar = true,
                     M_MARCADOR => poner_marcador = true,
                     M_LETRAS => ver_letras = true,
-                    M_IMPRIMIR => imprimir = true,
+                    M_IMPRIMIR | M_IMPRIMIR_LOS_MARCOS => imprimir = true,
+                    M_IMPRIMIR_ENTERO => imprimir_entero = true,
                     M_EXPORTAR => exportar = true,
                     M_BORRAR_MARCOS => {
                         marcos.clear();
@@ -2884,12 +2965,16 @@ pub fn ver(
             }
             f(hwnd.0 as isize, m, &marcos, &cotas);
         }
-        if imprimir && let (Some(f), Some((m, _))) = (&acciones.imprimir, &plano) {
+        if (imprimir || imprimir_entero)
+            && let (Some(f), Some((m, _))) = (&acciones.imprimir, &plano)
+        {
             let mut cotas = acotar.hechas.clone();
             if acotar.puntos.len() >= 2 {
                 cotas.push(acotar.puntos.clone());
             }
-            f(hwnd.0 as isize, m, &marcos, &cotas);
+            // Sin marcos, quien imprime pone el plano entero en una hoja.
+            let que: &[[f64; 4]] = if imprimir_entero { &[] } else { &marcos };
+            f(hwnd.0 as isize, m, que, &cotas);
         }
         if cambiar_acotar {
             acotar.activo = !acotar.activo;
@@ -3329,6 +3414,8 @@ pub struct TextosUi {
     /// Con `{n}`: cuantas faltan.
     pub faltan_letras: String,
     pub releyendo: String,
+    /// El clic derecho en el boton del marco del riel.
+    pub imprimir_menu: TextosImprimir,
 }
 
 impl Default for TextosUi {
@@ -3367,6 +3454,7 @@ impl Default for TextosUi {
             letras_quitar: "Quitar las mías ({n})".into(),
             faltan_letras: "Faltan {n} letras del plano: pulsa Aa arriba para añadirlas".into(),
             releyendo: "Leyendo el plano con tus letras…".into(),
+            imprimir_menu: TextosImprimir::plano(),
         }
     }
 }

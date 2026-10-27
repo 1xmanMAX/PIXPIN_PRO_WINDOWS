@@ -120,6 +120,14 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
 
 /// Los textos de los marcadores y los marcos del modelo.
 fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
+    let mut t = textos_marcos_sin_menu(idioma);
+    // El clic derecho en el boton del marco, como en los demas visores.
+    t.imprimir_menu =
+        crate::marcos_doc::textos_de_imprimir(idioma, crate::marcos_doc::Entero::Modelo);
+    t
+}
+
+fn textos_marcos_sin_menu(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
     match idioma {
         Idioma::Ingles => pixpin_cad::ventana3d::TextosMarcos3d {
             marcador: "Bookmark here (with the section and what is hidden)\tCtrl+M".into(),
@@ -130,6 +138,7 @@ fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
             pista_anotar: "What you annotate is only seen in this bookmark's view".into(),
             anotar: "Annotate this view\tA".into(),
             botones: pixpin_cad::ventana::NombresDeBotones::ingles(),
+            imprimir_menu: pixpin_cad::ventana::TextosImprimir::modelo(),
         },
         _ => pixpin_cad::ventana3d::TextosMarcos3d::default(),
     }

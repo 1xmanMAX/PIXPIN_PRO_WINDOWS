@@ -325,6 +325,14 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo::Modelo, String
 }
 
 fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
+    let mut t = textos_sin_menu(idioma);
+    // El clic derecho en el boton del marco, como en los demas visores.
+    t.imprimir_menu =
+        crate::marcos_doc::textos_de_imprimir(idioma, crate::marcos_doc::Entero::Plano);
+    t
+}
+
+fn textos_sin_menu(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
     match idioma {
         Idioma::Ingles => pixpin_cad::ventana::TextosUi {
             abriendo: "Opening the drawing…".into(),
@@ -360,6 +368,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
             letras_quitar: "Remove mine ({n})".into(),
             faltan_letras: "{n} fonts of the drawing are missing: click Aa above to add them".into(),
             releyendo: "Reading the drawing with your fonts…".into(),
+            imprimir_menu: pixpin_cad::ventana::TextosImprimir::plano(),
         },
         _ => pixpin_cad::ventana::TextosUi::default(),
     }

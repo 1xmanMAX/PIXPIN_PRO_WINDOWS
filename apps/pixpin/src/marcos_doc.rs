@@ -545,6 +545,24 @@ pub fn entradas_de_imprimir(
     v
 }
 
+/// **Los rotulos para un visor que pinta el solo su menu** (el plano y el
+/// modelo 3D, en `pixpin-cad`), del catalogo como en los demas: el de los
+/// marcos con `{n}` en el sitio del numero, el de sin marcos y el del
+/// entero.
+pub fn textos_de_imprimir(
+    idioma: pixpin_store::Idioma,
+    entero: Entero,
+) -> pixpin_cad::ventana::TextosImprimir {
+    let textos = pixpin_store::Catalogo::nuevo(idioma);
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("n", "{n}");
+    pixpin_cad::ventana::TextosImprimir {
+        los_marcos: textos.t_args("marcos-menu-los-marcos", &args),
+        sin_marcos: textos.t("marcos-menu-sin-marcos"),
+        entero: textos.t(entero.clave()),
+    }
+}
+
 /// Lo que es cada entrada de [`entradas_de_imprimir`].
 pub fn elegido_de_imprimir(id: u32) -> Option<QueImprimir> {
     match id {
@@ -692,6 +710,16 @@ mod pruebas {
         assert_eq!(elegido_de_imprimir(con[0].0), Some(QueImprimir::Marcos));
         assert_eq!(elegido_de_imprimir(con[1].0), Some(QueImprimir::Entero));
         assert_eq!(entradas_de_imprimir(&t, 1, None).len(), 1);
+    }
+
+    #[test]
+    fn el_plano_y_el_modelo_llevan_los_rotulos_del_catalogo() {
+        let p = textos_de_imprimir(pixpin_store::Idioma::Espanol, Entero::Plano);
+        assert_eq!(p.los_marcos, "Imprimir los marcos ({n})");
+        assert_eq!(p.entero, "Imprimir el plano entero");
+        let m = textos_de_imprimir(pixpin_store::Idioma::Ingles, Entero::Modelo);
+        assert_eq!(m.entero, "Print the model view");
+        assert!(m.los_marcos.contains("{n}"));
     }
 
     #[test]

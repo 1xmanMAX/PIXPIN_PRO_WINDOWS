@@ -57,6 +57,7 @@ use crate::ventana::{
     Globo, NombresDeBotones, Unificada, ficha_en, globo_de_la_barra, globo_izquierda,
     pintar_fichas_y_pista, tecla_unificada,
 };
+use crate::ventana::{M_IMPRIMIR_ENTERO, M_IMPRIMIR_LOS_MARCOS, TextosImprimir, menu_de_imprimir};
 use arbol::Arbol;
 
 const INFINITE: u32 = u32::MAX;
@@ -878,6 +879,8 @@ pub struct TextosMarcos3d {
     pub anotar: String,
     /// Los nombres de los botones de la barra y del riel, para su globo.
     pub botones: NombresDeBotones,
+    /// El clic derecho en el boton del marco del riel.
+    pub imprimir_menu: TextosImprimir,
 }
 
 impl Default for TextosMarcos3d {
@@ -891,6 +894,7 @@ impl Default for TextosMarcos3d {
             borrar_marcos: "Borrar los marcos".into(),
             pista_marcos: "Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último · Los números: ir a su vista · Esc: salir".into(),
             pista_anotar: "Lo anotado solo se ve en la vista de este marcador".into(),
+            imprimir_menu: TextosImprimir::modelo(),
         }
     }
 }
@@ -1332,6 +1336,8 @@ pub fn ver_con_barra(
         let mut cambiar_anotar = false;
         let mut cambiar_marcos = false;
         let mut imprimir_marcos = false;
+        // El clic derecho en el boton del marco: la vista de ahora entera.
+        let mut imprimir_vista = false;
         let mut pedir_estado: Option<(crate::marcadores::Estado3d, bool)> = None;
         let isla_riel = riel_cajas(w, e, botones_riel.len()).map(|(i, _)| i);
         let (n_marcadores, n_marcos, alto_ahora) =
@@ -1431,6 +1437,12 @@ pub fn ver_con_barra(
                                     Some("marcos") => cambiar_marcos = true,
                                     _ => {}
                                 }
+                            }
+                            // El derecho en el marco: que imprimir.
+                            if matches!(ev, Ev::Bajar(_, _, 2))
+                                && b.map(|i| botones_riel[i]) == Some("marcos")
+                            {
+                                menu_de_imprimir(hwnd, &tm.imprimir_menu, guardados.c.marcos.len());
                             }
                             continue;
                         }
@@ -1936,7 +1948,8 @@ pub fn ver_con_barra(
                     M_MARCADOR => poner_marcador = true,
                     M_ANOTAR => cambiar_anotar = true,
                     M_MARCOS => cambiar_marcos = true,
-                    M_IMPRIMIR => imprimir_marcos = true,
+                    M_IMPRIMIR | M_IMPRIMIR_LOS_MARCOS => imprimir_marcos = true,
+                    M_IMPRIMIR_ENTERO => imprimir_vista = true,
                     M_BORRAR_MARCOS => {
                         guardados.c.marcos.clear();
                         guardados.guardar();
@@ -2149,7 +2162,7 @@ pub fn ver_con_barra(
         // cada uno, se pinta sin la interfaz y se fotografia su recuadro;
         // al final se vuelve a donde se estaba y las fotos van juntas al
         // dialogo. Sin marcos, la vista entera.
-        if imprimir_marcos
+        if (imprimir_marcos || imprimir_vista)
             && imprimiendo.is_none()
             && al_imprimir.is_some()
             && foto.is_some()
@@ -2169,7 +2182,7 @@ pub fn ver_con_barra(
                 claro,
                 aristas,
             );
-            let cola = if guardados.c.marcos.is_empty() {
+            let cola = if guardados.c.marcos.is_empty() || imprimir_vista {
                 vec![None]
             } else {
                 (0..guardados.c.marcos.len()).map(Some).collect()
