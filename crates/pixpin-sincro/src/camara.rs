@@ -348,6 +348,26 @@ pub fn aceptar(p: &Suelto) -> Result<(), String> {
     Ok(())
 }
 
+/// **Donde espera lo llegado de una toma** que se puede reanudar: por su
+/// `clave` y su largo (otra toma con la misma clave y otro largo empieza de
+/// cero).
+pub fn parcial(carpeta: &Path, clave: &str, bytes: i64) -> std::path::PathBuf {
+    let limpia: String = clave
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(80)
+        .collect();
+    carpeta
+        .join("parciales")
+        .join(format!("{limpia}-{bytes}.parcial"))
+}
+
 /// Lo que se contesta a lo que no es una foto ni un clip.
 pub const SOLO_FOTOS_Y_CLIPS: &str = "Solo se aceptan fotos (JPEG, PNG o WebP) y clips MP4";
 
@@ -415,6 +435,9 @@ pub struct FotoDeCamara {
     pub reloj: i64,
     /// Un clip: lo que dura (su `ms` es donde empezo).
     pub duracion_ms: i64,
+    /// El id de la toma (el mismo en cada intento): con el, un clip cortado
+    /// sigue donde se quedo.
+    pub clave: String,
 }
 
 fn enviar<F: Read + Write, T: Serialize>(
@@ -518,6 +541,7 @@ impl<F: Read + Write> Conexion<F> {
                 tomada_en: foto.tomada_en,
                 reloj: foto.reloj,
                 duracion_ms: foto.duracion_ms,
+                clave: foto.clave.clone(),
                 ..Default::default()
             },
         )?;

@@ -198,6 +198,18 @@ impl Salida {
         })
     }
 
+    /// [`Salida::de_fichero`] **solo desde el byte `desde`**: lo que sigue
+    /// de una foto o un clip de la camara que se corto a medias
+    /// (`camara`, `desdeByte`).
+    pub fn de_fichero_desde(ruta: &std::path::Path, desde: i64) -> Resultado<Salida> {
+        let meta = std::fs::metadata(ruta)?;
+        let inicio = (desde.max(0) as u64).min(meta.len());
+        Ok(Salida {
+            largo: (meta.len() - inicio) as i64,
+            fuente: Fuente::Archivo(ruta.to_path_buf(), disco::milis(&meta), inicio, meta.len()),
+        })
+    }
+
     /// Manda los trozos y detras la cola con el resumen. Devuelve el resumen,
     /// o None si el archivo cambio mientras se leia (la cola dice
     /// «saltado» y el otro no lo escribe: medio viejo y medio nuevo no vale).

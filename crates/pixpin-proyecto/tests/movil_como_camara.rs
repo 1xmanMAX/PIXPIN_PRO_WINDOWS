@@ -640,3 +640,84 @@ fn un_pc_de_antes_contesta_no_se_que_es_y_sigue() {
     hilo.join().unwrap();
     assert!(Indice::leer(&pc.raiz).proyectos.is_empty(), "no entro nada");
 }
+
+/// **Un clip cortado a medias sigue donde se quedo** (`clave` y
+/// `desdeByte`): lo que ya llego espera en su `.parcial` y el movil solo
+/// manda lo que falta. El clip entra entero y con sus bytes.
+#[test]
+fn un_clip_cortado_sigue_donde_se_quedo() {
+    let _turno = turno();
+    let pc = pc("reanudar");
+    a_las(0);
+    pc.camaras
+        .lock()
+        .unwrap()
+        .empezar("g-3", "Reunion", ahora_pc(), 0);
+    a_las(90);
+    // Un clip de 3 MB, del que ya llego 1,5 MB en un intento cortado.
+    let mut clip = mp4();
+    clip.extend((0..3_000_000u32).map(|i| (i % 253) as u8));
+    let clave = format!("toma-{}", std::process::id());
+    let parcial = camara::parcial(
+        &std::env::temp_dir().join("pixpin-suelto"),
+        &clave,
+        clip.len() as i64,
+    );
+    std::fs::create_dir_all(parcial.parent().unwrap()).unwrap();
+    // Con una marca que el clip no tiene: si al final esta, es que de
+    // verdad se siguio desde ahi y no se mando entero otra vez.
+    let mut ya = clip[..1_500_000].to_vec();
+    ya[500] = !ya[500];
+    std::fs::write(&parcial, &ya).unwrap();
+    let mut esperado = ya.clone();
+    esperado.extend_from_slice(&clip[1_500_000..]);
+    let (puerto, hilo) = escuchar(&pc, true);
+    let mut c = llamar(puerto);
+    let dir = pc.raiz.join("movil");
+    let ms = c
+        .mandar_foto(
+            &fichero(&dir, "VID_2.mp4", &clip),
+            "VID_2.mp4",
+            &FotoDeCamara {
+                grabacion: "g-3".into(),
+                ms: Some(60 * S),
+                duracion_ms: 20 * S,
+                clave: clave.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(ms, 60 * S);
+    c.adios();
+    hilo.join().unwrap();
+    assert!(!parcial.exists(), "el .parcial se fue al entrar");
+    // Al guardarse la clase, el clip entra entero.
+    pc.camaras.lock().unwrap().acabar(ahora_pc());
+    let (proyecto, voz, carpeta) = guardar_la_clase(&pc.raiz, 90 * S);
+    let destino = Destino {
+        raiz: pc.raiz.clone(),
+        proyecto: proyecto.clone(),
+        voz: Some(voz),
+        carpeta: Some(carpeta),
+        aparato: "K7Q2".into(),
+        hora: hora_sin_repetir,
+    };
+    let hechas = pc
+        .camaras
+        .lock()
+        .unwrap()
+        .guardada(destino, Some(90 * S), ahora_pc());
+    assert_eq!(hechas, 1);
+    let mensajes = leer(&pc.raiz, &proyecto);
+    let m = mensajes.iter().find(|m| m.nombre == "VID_2.mp4").unwrap();
+    let ruta = almacen::carpeta(&pc.raiz, &proyecto).join(m.ruta.as_deref().unwrap());
+    assert_eq!(
+        std::fs::read(ruta).unwrap(),
+        esperado,
+        "lo que ya habia y lo que faltaba, sin repetir nada"
+    );
+    assert_eq!(
+        m.resto["enGrabacion"]["duracionMs"],
+        serde_json::json!(20 * S)
+    );
+}

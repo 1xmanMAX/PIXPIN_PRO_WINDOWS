@@ -91,6 +91,11 @@ pub struct Suelto {
     /// Lo que dura un clip de video de la camara (su `ms` es donde empezo).
     #[serde(rename = "duracionMs", skip_serializing_if = "es_cero")]
     pub duracion_ms: i64,
+    /// **El id de la toma en el movil**, unico y el mismo en cada intento:
+    /// con el, un clip cortado a medias sigue donde se quedo (el «vale»
+    /// dice `desdeByte`). Sin el, entero cada vez.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub clave: String,
 }
 
 fn es_cero(v: &i64) -> bool {
@@ -110,6 +115,7 @@ impl Default for Suelto {
             tomada_en: 0,
             reloj: 0,
             duracion_ms: 0,
+            clave: String::new(),
         }
     }
 }
@@ -138,6 +144,10 @@ pub struct Contestacion {
     /// (`donde: "grabacion"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ms: Option<i64>,
+    /// En el «vale» de una foto o clip con `clave`: lo que ya llego de un
+    /// intento anterior. Quien manda sigue desde ahi.
+    #[serde(rename = "desdeByte", skip_serializing_if = "es_cero")]
+    pub desde_byte: i64,
 }
 
 /// Donde quedo en el otro aparato.
@@ -386,6 +396,7 @@ impl<F: Read + Write> Conexion<F> {
         // Antes de pedir nada: si el fichero no esta, no se le promete al
         // otro algo que no llegara.
         let sale = Salida::de_fichero(ruta)?;
+        let con_clave = !p.clave.is_empty();
         enviar(
             &mut self.canal,
             &Suelto {
@@ -397,6 +408,12 @@ impl<F: Read + Write> Conexion<F> {
         if let Some(e) = vale.error {
             return Err(error_remoto(e));
         }
+        // Lo que ya tenia de otro intento (solo con `clave`): lo demas.
+        let sale = if vale.desde_byte > 0 && con_clave {
+            Salida::de_fichero_desde(ruta, vale.desde_byte)?
+        } else {
+            sale
+        };
         if sale.mandar(&mut self.canal, &mut |_| {})?.is_none() {
             // La cola ya dijo «saltado»: el otro lo tira y contesta.
             let _ = leer::<_, Contestacion>(&mut self.canal);
@@ -489,19 +506,52 @@ pub fn responder<F: Read + Write>(
     if let Err(e) = aceptado {
         return negarse(canal, e);
     }
-    let fichero = fichero_temporal(carpeta, &p.nombre);
-    let mut salida =
-        match std::fs::create_dir_all(carpeta).and_then(|_| std::fs::File::create(&fichero)) {
-            Ok(f) => io::BufWriter::new(f),
-            Err(e) => return negarse(canal, format!("No se pudo guardar: {e}")),
-        };
-    enviar(canal, &Contestacion::default())?;
-    let entera = recibir_trozos(canal, p.bytes, &mut salida, &mut |_| {});
+    // **Reanudable** (una toma de la camara con su `clave`): lo llegado
+    // espera en su `.parcial` y el siguiente intento sigue desde ahi.
+    let reanudable = camara && !p.clave.trim().is_empty();
+    let (fichero, desde) = if reanudable {
+        let f = crate::camara::parcial(carpeta, &p.clave, p.bytes);
+        let ya = std::fs::metadata(&f).map_or(0, |m| m.len() as i64);
+        if (crate::REANUDAR_DESDE..p.bytes).contains(&ya) {
+            (f, ya)
+        } else {
+            let _ = std::fs::remove_file(&f);
+            (f, 0)
+        }
+    } else {
+        (fichero_temporal(carpeta, &p.nombre), 0)
+    };
+    let abierto = fichero
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|_| {
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(desde > 0)
+                .write(true)
+                .truncate(desde == 0)
+                .open(&fichero)
+        });
+    let mut salida = match abierto {
+        Ok(f) => io::BufWriter::new(f),
+        Err(e) => return negarse(canal, format!("No se pudo guardar: {e}")),
+    };
+    enviar(
+        canal,
+        &Contestacion {
+            desde_byte: desde,
+            ..Default::default()
+        },
+    )?;
+    let entera = recibir_trozos(canal, p.bytes - desde, &mut salida, &mut |_| {});
     let escrito = salida.into_inner().map_err(|e| e.into_error());
     let r = match (entera, escrito) {
-        // La red corto a medias: no hay a quien contestar.
+        // La red corto a medias: no hay a quien contestar. Lo reanudable se
+        // queda para el siguiente intento.
         (Err(e), _) => {
-            let _ = std::fs::remove_file(&fichero);
+            if !(reanudable && e.es_corte()) {
+                let _ = std::fs::remove_file(&fichero);
+            }
             return Err(e.into());
         }
         (Ok(None), _) => Contestacion {
