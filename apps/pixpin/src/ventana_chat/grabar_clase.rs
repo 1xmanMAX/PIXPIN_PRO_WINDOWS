@@ -478,6 +478,9 @@ enum Accion {
     Listo,
     /// «Abrir para estudiar» del final: la clase en su ventana.
     Estudiar,
+    /// «📱 Cámara del móvil» de la barra: la enciende o la apaga
+    /// (`sincronizar::camara`).
+    CamaraMovil,
 }
 
 type Abriendo = Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>>;
@@ -904,6 +907,7 @@ fn guardar(
         video_id.as_deref(),
         &enlazadas,
     );
+    let mut carpeta_id = None;
     if !grabacion_en_carpeta.is_empty() {
         let cuando = super::descripcion::hora_sin_repetir();
         let m = pixpin_proyecto::carpeta_de_paginas::mensaje_de_grabacion(
@@ -918,6 +922,7 @@ fn guardar(
         );
         match cuaderno::anadir(&carpeta, &m) {
             Ok(()) => {
+                carpeta_id = Some(m.id.clone());
                 let mut indice = almacen::Indice::leer(raiz);
                 if let Some(f) = indice.proyectos.iter_mut().find(|f| &f.id == proyecto) {
                     f.tocado = cuando;
@@ -931,6 +936,14 @@ fn guardar(
             Err(e) => tracing::warn!(?e, "la clase quedo sin su carpeta"),
         }
     }
+    // Lo que llego del movil grabando entra ahora, en su minuto.
+    crate::sincronizar::camara::guardada(
+        raiz,
+        proyecto,
+        voz.as_ref().map(|v| v.id.as_str()),
+        carpeta_id.as_deref(),
+        grabacion.map_or(0, |g| g.duracion_ms),
+    );
     super::refrescar();
     tracing::info!(
         con_voz = voz.is_some(),
@@ -1336,6 +1349,28 @@ fn flotar(
             }
         }
 
+        // El movil como camara (`sincronizar::camara`): sabe en que minuto va
+        // la grabacion y avisa de lo que llega.
+        let grabando = match &estado.fase {
+            Fase::Grabando(g) => Some((g.llevado_ms(), g.en_pausa())),
+            _ => None,
+        };
+        let titulo = con(
+            &estado.plantilla,
+            &fecha_del_nombre(pixpin_shell::entorno::ahora_local_ms()),
+        );
+        if let Some(aviso) =
+            crate::sincronizar::camara::latido(crate::sincronizar::camara::Latido {
+                ubicacion: &pedido.ubicacion,
+                idioma: pedido.idioma,
+                titulo: &titulo,
+                grabando,
+            })
+        {
+            estado.destello = Some(Instant::now());
+            estado.avisar(aviso);
+        }
+
         // El video que se corto: se dice una vez; la nota sigue.
         if !estado.video_avisado && estado.grabando_video.as_ref().is_some_and(|v| v.roto()) {
             estado.video_avisado = true;
@@ -1677,8 +1712,10 @@ fn pulsar(
                 };
             }
         }
+        (Accion::CamaraMovil, _) => crate::sincronizar::camara::alternar(pedido.ubicacion.raiz()),
         (Accion::Tirar, Fase::Grabando(_)) => {
             if estado.tirar_desde.is_some() {
+                crate::sincronizar::camara::tirada(pedido.ubicacion.raiz());
                 if let Fase::Grabando(g) = std::mem::replace(&mut estado.fase, Fase::Preparar) {
                     g.cancelar();
                 }
@@ -2717,6 +2754,32 @@ fn pintar_barra(
         );
         p.texto(&r.video_corto, x, 62.0 * e, tam, tinta);
         ancho_linea -= tw + lado + 16.0 * e;
+    }
+    // El movil como camara, a la izquierda del video: un clic la apaga o
+    // la enciende.
+    if g.is_some()
+        && let Some((texto, encendida)) = crate::sincronizar::camara::indicador_actual()
+    {
+        let tam = 12.0 * e;
+        let (tw, th) = p.medir_texto(&texto, tam);
+        let x = 16.0 * e + ancho_linea - tw;
+        let caja = RectF {
+            x: x - 4.0 * e,
+            y: 58.0 * e,
+            ancho: tw + 8.0 * e,
+            alto: th + 8.0 * e,
+        };
+        if dentro(caja, botones.raton) {
+            p.rellenar_redondeado(caja, 6.0 * e, tema.campo);
+        }
+        let tinta = if encendida {
+            tema.texto
+        } else {
+            tema.campo_apagado
+        };
+        p.texto(&texto, x, 62.0 * e, tam, tinta);
+        botones.zona(caja, Accion::CamaraMovil);
+        ancho_linea -= tw + 16.0 * e;
     }
     p.texto_linea(
         &linea,
