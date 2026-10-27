@@ -177,6 +177,7 @@ impl BuscarEnChats {
             Some(r) => Seccion {
                 mensajes: r.encontrados.len(),
                 ver_mas: r.total > r.encontrados.len(),
+                ..Default::default()
             },
             None => Seccion::default(),
         }
@@ -382,7 +383,9 @@ impl Indice {
                     chat: e.chat.clone(),
                     codigo: e.codigo.clone(),
                     cuando: e.cuando,
-                    fragmento: b::fragmento(&e.piezas[a.pieza].texto, &p.aguja, ANTES, LARGO),
+                    fragmento: a.pieza.map_or_else(b::Fragmento::default, |k| {
+                        b::fragmento(&e.piezas[k].texto, &p.aguja, ANTES, LARGO)
+                    }),
                 }
             })
             .collect();
