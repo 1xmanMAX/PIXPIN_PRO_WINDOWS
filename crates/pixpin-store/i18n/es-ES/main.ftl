@@ -1497,6 +1497,9 @@ chat-figura-guardada = Guardada en tus figuras como «{ $nombre }»
 chat-figura-vacia = Ese lienzo está vacío: no hay nada que guardar
 figuras-titulo = Figuras
 figuras-buscar = Buscar una figura…
+# El interruptor ☀/☾ de los paneles de figuras: las plantillas de día o sus gemelas «(noche)».
+figuras-dia = Día
+figuras-noche = Noche
 figuras-sin-resultados = Ninguna figura tiene eso en el nombre ni en sus textos.
 figuras-de-serie = de serie
 figuras-tuya = tuya

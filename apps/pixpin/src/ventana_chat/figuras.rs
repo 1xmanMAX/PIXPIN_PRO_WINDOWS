@@ -30,6 +30,12 @@
 //! lienzo con ella dentro, y la ventana se queda abierta con un
 //! «Adjuntada ✓» por si se quiere otra.
 //!
+//! **De dia o de noche** (27-oct-2026, como el movil): el interruptor ☀/☾ de
+//! la barra ensena las plantillas de dia o, en su mismo sitio, sus gemelas
+//! «(noche)», nunca las dos mezcladas (`figuras_de_serie::segun_el_modo`).
+//! Es el mismo que el de la ventana de figuras del lienzo y se recuerda
+//! (`biblioteca_figuras::de_noche`).
+//!
 //! Teclado: escribir busca, las flechas recorren, Intro adjunta (eligiendo
 //! para un chat), Escape borra lo buscado y, sin nada buscado, cierra.
 
@@ -41,7 +47,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::biblioteca::{self, FiguraGuardada};
-use pixpin_motor2d::figuras_de_serie::{CATEGORIAS, categoria_de, es_de_serie};
+use pixpin_motor2d::figuras_de_serie::{
+    CATEGORIAS, categoria_de, es_de_serie, pareja, segun_el_modo,
+};
 use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Idioma};
@@ -135,7 +143,10 @@ fn lanzar(idioma: Idioma) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let mut g = Galeria::default();
+            let mut g = Galeria {
+                noche: crate::biblioteca_figuras::de_noche(),
+                ..Galeria::default()
+            };
             g.leer();
             let hecho =
                 crate::dispositivo_perdido::con_recursos("figuras", |r| bucle(r, &textos, &mut g));
@@ -305,12 +316,18 @@ enum Zona {
     Borrar,
     /// El boton grande «Adjuntar a …» (solo eligiendo para un chat).
     Adjuntar,
+    /// El interruptor ☀/☾ de la barra.
+    DiaNoche,
     Cerrar,
     Barra,
 }
 
 struct Galeria {
     figuras: Vec<Vista>,
+    /// El interruptor ☀/☾: de noche, las gemelas «(noche)».
+    noche: bool,
+    /// Las del modo puesto, en su orden (`segun_el_modo`).
+    modo: Vec<usize>,
     /// El grupo elegido a la izquierda; `None`, todas.
     filtro: Option<String>,
     consulta: String,
@@ -335,6 +352,8 @@ impl Default for Galeria {
     fn default() -> Self {
         Galeria {
             figuras: Vec::new(),
+            noche: false,
+            modo: Vec::new(),
             filtro: None,
             consulta: String::new(),
             scroll: 0,
@@ -362,24 +381,52 @@ impl Galeria {
         self.figuras = figuras.iter().map(vista_de).collect();
         // Las del usuario primero y despues las categorias en su orden.
         self.figuras.sort_by_key(|f| orden_del_grupo(&f.grupo));
+        self.modo = segun_el_modo(&self.pares(), self.noche);
         if let Some(g) = &self.filtro
-            && !self.figuras.iter().any(|f| &f.grupo == g)
+            && !self.modo.iter().any(|i| &self.figuras[*i].grupo == g)
         {
             self.filtro = None;
         }
         self.elegida = elegida
             .and_then(|id| self.figuras.iter().position(|f| f.id == id))
-            .or(if self.figuras.is_empty() {
-                None
-            } else {
-                Some(0)
-            });
+            .filter(|i| self.modo.contains(i))
+            .or(self.modo.first().copied());
     }
 
-    /// Los grupos que hay, en orden, con cuantas figuras tiene cada uno.
+    /// `(id, nombre)` de cada una, para `segun_el_modo` y `pareja`.
+    fn pares(&self) -> Vec<(&str, &str)> {
+        self.figuras
+            .iter()
+            .map(|f| (f.id.as_str(), f.nombre.as_str()))
+            .collect()
+    }
+
+    /// **El interruptor ☀/☾**: cambia de modo y la elegida pasa a su pareja
+    /// (el diario de dia, a su gemela de noche), si la tiene.
+    fn poner_noche(&mut self, noche: bool) {
+        if noche == self.noche {
+            return;
+        }
+        self.noche = noche;
+        self.modo = segun_el_modo(&self.pares(), noche);
+        let pareja = self.elegida.and_then(|i| pareja(&self.pares(), i));
+        self.elegida = pareja
+            .or(self.elegida)
+            .filter(|i| self.modo.contains(i))
+            .or(self.modo.first().copied());
+        if let Some(g) = &self.filtro
+            && !self.modo.iter().any(|i| &self.figuras[*i].grupo == g)
+        {
+            self.filtro = None;
+        }
+        self.scroll = 0;
+    }
+
+    /// Los grupos que hay, en orden, con cuantas figuras del modo tiene cada
+    /// uno.
     fn grupos(&self) -> Vec<(String, usize)> {
         let mut v: Vec<(String, usize)> = Vec::new();
-        for f in &self.figuras {
+        for f in self.modo.iter().map(|i| &self.figuras[*i]) {
             match v.iter_mut().find(|(g, _)| *g == f.grupo) {
                 Some((_, n)) => *n += 1,
                 None => v.push((f.grupo.clone(), 1)),
@@ -429,6 +476,11 @@ impl Galeria {
                 } else {
                     self.borrar_pedido = true;
                 }
+            }
+            Some(Zona::DiaNoche) => {
+                let noche = !self.noche;
+                self.poner_noche(noche);
+                crate::biblioteca_figuras::poner_de_noche(noche);
             }
             Some(Zona::Cerrar) => *vivo = false,
             _ => {}
@@ -633,6 +685,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
                 g.leer();
                 pintar = true;
             }
+            // El ☀/☾ se cambio en la ventana de figuras del lienzo.
+            let noche = crate::biblioteca_figuras::de_noche();
+            if noche != g.noche {
+                g.poner_noche(noche);
+                pintar = true;
+            }
         }
         if pintar {
             pintar = false;
@@ -696,7 +754,7 @@ fn pintar_todo(
             args.set("chat", d.chat.clone());
             textos.t_args("figuras-elegir-para", &args)
         }
-        None => format!("{} · {}", textos.t("figuras-titulo"), g.figuras.len()),
+        None => format!("{} · {}", textos.t("figuras-titulo"), g.modo.len()),
     };
     let (_, th) = p.medir_texto(&titulo, 16.0 * e);
     p.texto(
@@ -760,6 +818,60 @@ fn pintar_todo(
     );
     zonas.push((cerrar, Zona::Cerrar));
 
+    // ☀/☾, a la izquierda de cerrar: dice el modo puesto y, de noche, va
+    // encendido.
+    let rotulo_modo = textos.t(if g.noche {
+        "figuras-noche"
+    } else {
+        "figuras-dia"
+    });
+    let (mw, mh) = p.medir_texto(&rotulo_modo, 13.0 * e);
+    let modo = Rect {
+        x: cerrar.x - ei(10) as i32 - (mw + 46.0 * e) as i32,
+        y: ei(9) as i32,
+        ancho: (mw + 46.0 * e) as u32,
+        alto: ei(BARRA - 18),
+    };
+    let sobre = modo.contiene(g.raton);
+    p.rellenar_redondeado(
+        rf(modo),
+        modo.alto as f32 / 2.0,
+        if g.noche {
+            tema.fila_elegida
+        } else if sobre {
+            tema.fila_sobre
+        } else {
+            tema.buscador
+        },
+    );
+    let tinta_modo = if g.noche {
+        tema.texto_elegido
+    } else {
+        tema.texto
+    };
+    p.icono(
+        if g.noche {
+            &mi::DARK_MODE
+        } else {
+            &mi::LIGHT_MODE
+        },
+        RectF {
+            x: modo.x as f32 + 12.0 * e,
+            y: modo.y as f32 + (modo.alto as f32 - 16.0 * e) / 2.0,
+            ancho: 16.0 * e,
+            alto: 16.0 * e,
+        },
+        tinta_modo,
+    );
+    p.texto(
+        &rotulo_modo,
+        modo.x as f32 + 34.0 * e,
+        modo.y as f32 + (modo.alto as f32 - mh) / 2.0,
+        13.0 * e,
+        tinta_modo,
+    );
+    zonas.push((modo, Zona::DiaNoche));
+
     // Los grupos, a la izquierda.
     let lista = Rect {
         x: 0,
@@ -770,7 +882,7 @@ fn pintar_todo(
     p.rellenar(rf(lista), tema.lista);
     let grupos = g.grupos();
     let mut filas: Vec<(Option<String>, String, usize)> =
-        vec![(None, textos.t("figuras-todas"), g.figuras.len())];
+        vec![(None, textos.t("figuras-todas"), g.modo.len())];
     filas.extend(
         grupos
             .iter()
@@ -849,7 +961,10 @@ fn pintar_todo(
         .iter()
         .filter(|(gr, _)| g.filtro.as_ref().is_none_or(|f| f == gr))
     {
-        let de_este: Vec<usize> = (0..g.figuras.len())
+        let de_este: Vec<usize> = g
+            .modo
+            .iter()
+            .copied()
             .filter(|i| &g.figuras[*i].grupo == gr && casa(&g.figuras[*i], &g.consulta))
             .collect();
         if de_este.is_empty() {
@@ -1355,5 +1470,45 @@ mod pruebas {
         };
         assert!(letras_de(&sin).is_empty());
         assert_eq!(piezas_de(&sin), Piezas::default());
+    }
+
+    #[test]
+    fn de_dia_sin_las_gemelas_y_de_noche_cada_una_en_su_sitio() {
+        let f = |id: &str, nombre: &str| {
+            vista_de(&FiguraGuardada {
+                id: id.into(),
+                nombre: nombre.into(),
+                elementos: Vec::new(),
+            })
+        };
+        let mut g = Galeria {
+            figuras: vec![
+                f("mia", "Mi flecha"),
+                f("serie-diario", "Diario · Diario"),
+                f("serie-gratitud", "Diario · Gratitud"),
+                f("serie-diario-noche", "Diario · Diario (noche)"),
+            ],
+            ..Galeria::default()
+        };
+        g.modo = segun_el_modo(&g.pares(), false);
+        g.elegida = Some(1);
+        let ids = |g: &Galeria| -> Vec<String> {
+            g.modo.iter().map(|i| g.figuras[*i].id.clone()).collect()
+        };
+        assert_eq!(ids(&g), ["mia", "serie-diario", "serie-gratitud"]);
+        assert_eq!(
+            g.grupos(),
+            [(MIS_FIGURAS.to_string(), 1), ("Diario".into(), 2)]
+        );
+        g.poner_noche(true);
+        assert_eq!(ids(&g), ["mia", "serie-diario-noche", "serie-gratitud"]);
+        assert_eq!(g.figuras[g.elegida.unwrap()].id, "serie-diario-noche");
+        // Caso negativo: lo que no tiene gemela sigue igual de noche.
+        assert_eq!(
+            g.grupos(),
+            [(MIS_FIGURAS.to_string(), 1), ("Diario".into(), 2)]
+        );
+        g.poner_noche(false);
+        assert_eq!(g.figuras[g.elegida.unwrap()].id, "serie-diario");
     }
 }

@@ -147,6 +147,28 @@ fn avisar(ruta: &Path) {
     }
 }
 
+/// **Si los paneles de figuras van de noche** (el interruptor ☀/☾, uno para
+/// el del lienzo y el del chat; `pixpin_motor2d::figuras_de_serie::segun_el_modo`).
+/// Se recuerda en `estado.toml`; sin tocar, de dia, como el movil.
+pub fn de_noche() -> bool {
+    crate::oscuro::ubicacion()
+        .and_then(|u| pixpin_store::estado::cargar(&u).figuras_de_noche)
+        .unwrap_or(false)
+}
+
+/// Pone el interruptor ☀/☾ y lo recuerda. Si no se puede guardar solo se
+/// pierde que se recuerde: el cambio ya se ve.
+pub fn poner_de_noche(noche: bool) {
+    let Some(u) = crate::oscuro::ubicacion() else {
+        return;
+    };
+    let mut estado = pixpin_store::estado::cargar(&u);
+    estado.figuras_de_noche = Some(noche);
+    if let Err(e) = pixpin_store::estado::guardar(&u, &estado) {
+        tracing::warn!(?e, "figuras: no se pudo recordar el dia o la noche");
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

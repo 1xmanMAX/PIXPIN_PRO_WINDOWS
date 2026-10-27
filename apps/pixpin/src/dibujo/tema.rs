@@ -15,9 +15,21 @@
 //!
 //! El papel se fija por fotograma con [`con_papel`]: sin fijarlo nada cambia,
 //! asi que las pruebas y los bancos que no lo fijan no notan nada.
+//!
+//! **Una hoja lleva su propio papel** (27-oct-2026, `PapelDeLaHoja.kt` del
+//! movil; la regla en `pixpin_motor2d::papel_de_la_hoja`): las piezas de una
+//! plantilla estampada se pintan como se disenaron, lo dibujado encima se
+//! adapta a su pagina y, dentro de un simbolo, cada pieza a lo que tiene
+//! debajo. Antes, en el lienzo de noche, la tinta oscura de una hoja de dia
+//! salia clara sobre su pagina blanca y el papel azul de las gemelas
+//! «(noche)» se aclaraba. Quien pinta fija las hojas de su escena
+//! ([`fijar_hojas`], [`con_hojas`]) y cada elemento se pinta dentro de
+//! [`con_la_pieza`] (lo hace `pintar::por_cada_orden`).
 
 use pixpin_motor2d::ColorRgba;
+use pixpin_motor2d::papel_de_la_hoja::{self as hoja, PapelDeLaPieza};
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 /// Por debajo de esta saturacion, un color es un gris: tinta, no color.
 const ES_GRIS: f64 = 0.14;
@@ -151,10 +163,18 @@ pub fn adaptar(c: ColorRgba, papel: ColorRgba) -> ColorRgba {
 thread_local! {
     /// El papel de noche del fotograma que se esta pintando en este hilo.
     static PAPEL: Cell<Option<ColorRgba>> = const { Cell::new(None) };
-    /// Lo ya adaptado contra ese papel: en un dibujo hay pocos colores
-    /// distintos y adaptarlos es buscar paso a paso. Sin esto se repetiria
-    /// la busqueda con cada orden de cada elemento en cada fotograma.
-    static HECHOS: RefCell<Vec<([u8; 4], ColorRgba)>> = const { RefCell::new(Vec::new()) };
+    /// Lo ya adaptado: en un dibujo hay pocos colores distintos y adaptarlos
+    /// es buscar paso a paso. Sin esto se repetiria la busqueda con cada
+    /// orden de cada elemento en cada fotograma. La clave es el color y el
+    /// papel contra el que se adapto (el del lienzo o el de una hoja).
+    static HECHOS: RefCell<Vec<([u8; 4], [u8; 4], ColorRgba)>> = const { RefCell::new(Vec::new()) };
+    /// Las hojas de la escena que se pinta ahora ([`fijar_hojas`]).
+    static HOJAS: RefCell<Rc<hoja::Mapa>> = RefCell::new(Rc::new(hoja::Mapa::default()));
+    /// El ultimo mapa hecho y la huella de los elementos de que salio: se
+    /// rehace solo si el dibujo cambio.
+    static HOJAS_HECHAS: RefCell<Option<(u64, Rc<hoja::Mapa>)>> = const { RefCell::new(None) };
+    /// La pieza que se esta pintando ([`con_la_pieza`]).
+    static PIEZA: Cell<Option<u64>> = const { Cell::new(None) };
     /// El papel del fotograma tal cual, de dia o de noche: la cota lo
     /// necesita siempre (ver [`papel_del_fotograma`]).
     static PAPEL_DEL_FOTOGRAMA: Cell<Option<ColorRgba>> = const { Cell::new(None) };
@@ -214,26 +234,103 @@ pub fn de_noche() -> bool {
 }
 
 /// La tinta `c` tal como se pinta ahora: adaptada si hay papel de noche
-/// fijado, y tal cual si no (el camino de siempre, sin coste).
+/// fijado, y tal cual si no (el camino de siempre, sin coste). Si la pieza
+/// que se pinta es de una hoja, tal cual; si va encima de una, contra el
+/// papel de esa hoja (ver [`con_la_pieza`]).
 pub fn tinta(c: ColorRgba) -> ColorRgba {
     let Some(papel) = PAPEL.with(Cell::get) else {
         return c;
     };
-    let k = clave(c);
+    let contra = match PIEZA.with(Cell::get) {
+        None => papel,
+        Some(id) => match HOJAS.with(|h| h.borrow().de_la_pieza(id)) {
+            PapelDeLaPieza::ComoSeDiseno => return c,
+            PapelDeLaPieza::Papel(p) => p,
+            PapelDeLaPieza::Lienzo => papel,
+        },
+    };
+    let (k, kp) = (clave(c), clave(contra));
     HECHOS.with(|h| {
         let mut h = h.borrow_mut();
-        if let Some((_, hecho)) = h.iter().find(|(kk, _)| *kk == k) {
+        if let Some((_, _, hecho)) = h.iter().find(|(kk, pp, _)| *kk == k && *pp == kp) {
             return *hecho;
         }
-        let hecho = adaptar(c, papel);
+        let hecho = adaptar(c, contra);
         // Tope: un dibujo con cientos de colores distintos no puede hacer
         // crecer esto sin fin.
         if h.len() >= 256 {
             h.clear();
         }
-        h.push((k, hecho));
+        h.push((k, kp, hecho));
         hecho
     })
+}
+
+/// La huella de lo que decide las hojas: que piezas hay, en que orden, de
+/// que version y donde. Cambia con cualquier edicion.
+fn huella(elementos: &[pixpin_motor2d::Elemento]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    elementos.len().hash(&mut h);
+    for e in elementos {
+        (e.id, e.version, e.borrado, e.grupos.len()).hash(&mut h);
+        (
+            e.x.to_bits(),
+            e.y.to_bits(),
+            e.ancho.to_bits(),
+            e.alto.to_bits(),
+        )
+            .hash(&mut h);
+    }
+    h.finish()
+}
+
+/// **Las hojas de estos elementos**, hechas una vez por cambio del dibujo.
+/// Sin papel de noche no hacen falta (la tinta va tal cual) y sale vacio.
+fn mapa_de(elementos: &[pixpin_motor2d::Elemento]) -> Rc<hoja::Mapa> {
+    if PAPEL.with(Cell::get).is_none() || elementos.iter().all(|e| e.grupos.is_empty()) {
+        return Rc::new(hoja::Mapa::default());
+    }
+    let k = huella(elementos);
+    HOJAS_HECHAS.with(|c| {
+        let mut c = c.borrow_mut();
+        if let Some((kk, m)) = c.as_ref()
+            && *kk == k
+        {
+            return m.clone();
+        }
+        let m = Rc::new(hoja::de(elementos));
+        *c = Some((k, m.clone()));
+        m
+    })
+}
+
+/// **Fija las hojas de la escena** que se pinta en este hilo hasta nuevo
+/// aviso, como [`fijar_papel`] (despues de el: sin papel de noche no se
+/// mira nada). Para el lienzo, que pinta desde varios sitios.
+pub fn fijar_hojas(elementos: &[pixpin_motor2d::Elemento]) {
+    let m = mapa_de(elementos);
+    HOJAS.with(|h| *h.borrow_mut() = m);
+}
+
+/// Pinta lo que haga `f` con las hojas de `elementos` (ver [`fijar_hojas`]).
+/// Al salir vuelven las que hubiera.
+pub fn con_hojas<R>(elementos: &[pixpin_motor2d::Elemento], f: impl FnOnce() -> R) -> R {
+    let m = mapa_de(elementos);
+    let antes = HOJAS.with(|h| std::mem::replace(&mut *h.borrow_mut(), m));
+    let r = f();
+    HOJAS.with(|h| *h.borrow_mut() = antes);
+    r
+}
+
+/// Pinta lo que haga `f` como la pieza `id`: su tinta, segun sea de una
+/// hoja o vaya encima de una. Se anida (el mosaico pinta lo de debajo desde
+/// dentro de su propio pintado): al salir vuelve la que hubiera.
+pub fn con_la_pieza<R>(id: u64, f: impl FnOnce() -> R) -> R {
+    let antes = PIEZA.with(|p| p.replace(Some(id)));
+    let r = f();
+    PIEZA.with(|p| p.set(antes));
+    r
 }
 
 /// **El grafito, con su tinta adaptada** al papel de noche fijado, o `None`
@@ -458,6 +555,85 @@ mod pruebas {
         });
         assert_ne!(dentro, negro);
         assert_eq!(tinta(negro), negro, "fuera del fotograma, nada");
+    }
+
+    // --- Una hoja lleva su propio papel ------------------------------------
+
+    /// Una hoja blanca agrupada con su tinta oscura, y un trazo suelto
+    /// encima en el centro.
+    fn hoja_con_trazo() -> Vec<pixpin_motor2d::Elemento> {
+        use pixpin_motor2d::relleno::EstiloRelleno;
+        use pixpin_motor2d::{Elemento, Figura};
+        let g = vec!["g1".to_string()];
+        let pagina = Elemento {
+            id: 1,
+            figura: Figura::Rectangulo,
+            ancho: 200.0,
+            alto: 200.0,
+            relleno: Some(hex(0xffffff)),
+            estilo_relleno: EstiloRelleno::Solido,
+            grupos: g.clone(),
+            ..Default::default()
+        };
+        let raya = Elemento {
+            id: 2,
+            figura: Figura::Rectangulo,
+            x: 10.0,
+            y: 10.0,
+            ancho: 50.0,
+            alto: 5.0,
+            trazo: hex(0x22304a),
+            grupos: g,
+            ..Default::default()
+        };
+        let encima = Elemento {
+            id: 3,
+            figura: Figura::Rectangulo,
+            x: 90.0,
+            y: 90.0,
+            ancho: 20.0,
+            alto: 20.0,
+            trazo: hex(0xffffff),
+            ..Default::default()
+        };
+        vec![pagina, raya, encima]
+    }
+
+    #[test]
+    fn en_el_lienzo_de_noche_la_tinta_de_una_hoja_va_como_se_diseno() {
+        let v = hoja_con_trazo();
+        let oscura = hex(0x22304a);
+        let (de_la_hoja, encima, suelta) = con_papel(Some(hex(PIZARRA)), || {
+            con_hojas(&v, || {
+                (
+                    con_la_pieza(2, || tinta(oscura)),
+                    con_la_pieza(3, || tinta(hex(0xffffff))),
+                    con_la_pieza(99, || tinta(oscura)),
+                )
+            })
+        });
+        // La de la hoja, tal cual: oscura sobre su pagina blanca.
+        assert_eq!(de_la_hoja, oscura);
+        // Lo de encima, contra la hoja: el blanco pasa a oscuro y se lee.
+        assert!(contraste_de(encima, hex(0xffffff)) >= 4.5, "{encima:?}");
+        // Caso negativo: lo que no es de la hoja, contra la pizarra, como siempre.
+        assert_eq!(suelta, adaptar(oscura, hex(PIZARRA)));
+        // Y fuera de todo, las hojas se van con el fotograma.
+        assert_eq!(
+            con_papel(Some(hex(PIZARRA)), || con_la_pieza(2, || tinta(oscura))),
+            suelta
+        );
+    }
+
+    #[test]
+    fn sobre_papel_claro_las_hojas_no_cambian_nada() {
+        // Caso negativo: de dia nada se adapta, haya hojas o no.
+        let v = hoja_con_trazo();
+        let blanco = hex(0xffffff);
+        let c = con_papel(Some(blanco), || {
+            con_hojas(&v, || con_la_pieza(3, || tinta(blanco)))
+        });
+        assert_eq!(c, blanco);
     }
 
     // --- Fuera del lienzo: las vistas previas ------------------------------
