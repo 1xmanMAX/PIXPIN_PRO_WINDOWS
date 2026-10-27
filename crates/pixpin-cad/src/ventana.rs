@@ -690,6 +690,18 @@ const BOTONES: [&str; 9] = [
     "asa", "nombre", "acotar", "tres", "letras", "tema", "pantalla", "fijar", "cerrar",
 ];
 pub(crate) const ALTO_BARRA: f64 = 48.0;
+
+/// **Los botones de la barra con «Guardar»** si lo abierto es de paso (un
+/// fichero de fuera, que no es de ningun chat): antes de luna/sol, como en
+/// la barra de los lectores (`lector_pin`).
+pub(crate) fn con_guardar(botones: &[&'static str], si: bool) -> Vec<&'static str> {
+    let mut v = botones.to_vec();
+    if si {
+        let i = v.iter().position(|b| *b == "tema").unwrap_or(v.len());
+        v.insert(i, "guardar");
+    }
+    v
+}
 const BOTON: f64 = 40.0;
 /// Las medidas del asa, el nombre y el recuadro del tipo: las del lector.
 const ASA: f64 = 22.0;
@@ -1256,6 +1268,8 @@ pub struct NombresDeBotones {
     pub pantalla: String,
     pub fijar: String,
     pub cerrar: String,
+    /// «Guardar» lo abierto de paso en un chat.
+    pub guardar: String,
 }
 
 impl Default for NombresDeBotones {
@@ -1274,6 +1288,7 @@ impl Default for NombresDeBotones {
             pantalla: "Pantalla completa".into(),
             fijar: "Siempre encima".into(),
             cerrar: "Cerrar".into(),
+            guardar: "Guardar en un chat".into(),
         }
     }
 }
@@ -1294,6 +1309,7 @@ impl NombresDeBotones {
             pantalla: "Full screen".into(),
             fijar: "Always on top".into(),
             cerrar: "Close".into(),
+            guardar: "Save to a chat".into(),
         }
     }
 
@@ -1314,6 +1330,7 @@ impl NombresDeBotones {
             "pantalla" => &self.pantalla,
             "fijar" => &self.fijar,
             "cerrar" => &self.cerrar,
+            "guardar" => &self.guardar,
             _ => return None,
         };
         Some(match tecla_de_boton(boton) {
@@ -2138,6 +2155,9 @@ pub struct Acciones {
     pub marcadores: Option<std::path::PathBuf>,
     /// El globo de los botones de la barra (ver [`Globo`]); sin el, no sale.
     pub globo: Option<Globo>,
+    /// **«Guardar» en un chat** lo abierto de paso (la ventana del visor):
+    /// con el, la barra lleva su boton.
+    pub guardar: Option<Box<dyn Fn(isize)>>,
 }
 
 /// **El marcador de la vista de ahora** en el plano: el centro (absoluto) y
@@ -2277,8 +2297,9 @@ pub fn ver(
     let e = dpi as f64 / 96.0;
     let mut textos = Textos::nuevo();
     let cabecera = Cabecera::nueva(&mut textos, titulo, acciones.tipo.take(), e);
+    let botones = con_guardar(&BOTONES, acciones.guardar.is_some());
     let (bw, bh) = (
-        ancho_barra(e, &BOTONES, &cabecera).ceil() as i32,
+        ancho_barra(e, &botones, &cabecera).ceil() as i32,
         (ALTO_BARRA * e).ceil() as i32,
     );
     let hbarra = crear_barra(hwnd, bw, bh).map_err(|e| e.to_string())?;
@@ -2456,7 +2477,7 @@ pub fn ver(
             }
         }
         let eventos: Vec<(De, Ev)> = ESTADO.with(|s| s.borrow_mut().eventos.drain(..).collect());
-        let b_barra = botones_barra(e, &BOTONES, &cabecera);
+        let b_barra = botones_barra(e, &botones, &cabecera);
         let boton_en = |x: i32| -> Option<usize> {
             b_barra
                 .iter()
@@ -2475,6 +2496,7 @@ pub fn ver(
         // El clic derecho en el boton del marco: el plano entero.
         let mut imprimir_entero = false;
         let mut exportar = false;
+        let mut guardar = false;
         let mut ver_letras = false;
         // Poner un marcador aqui, ir a uno o quitarlo.
         let mut poner_marcador = false;
@@ -2675,7 +2697,7 @@ pub fn ver(
                     boton_encima = None;
                     barra_sucia = true;
                 }
-                (De::Barra, Ev::Bajar(x, _, 0)) => match boton_en(x).map(|i| BOTONES[i]) {
+                (De::Barra, Ev::Bajar(x, _, 0)) => match boton_en(x).map(|i| botones[i]) {
                     // El asa (o el nombre): Windows arrastra la ventana del
                     // plano; a pantalla completa no se mueve.
                     Some("asa" | "nombre") if antes_de_pantalla_completa.is_none() => {
@@ -2694,6 +2716,7 @@ pub fn ver(
                     Some("acotar") => cambiar_acotar = true,
                     Some("tres") => ver_en_3d = true,
                     Some("letras") => ver_letras = true,
+                    Some("guardar") => guardar = true,
                     Some("pantalla") => cambiar_pantalla = true,
                     Some("fijar") => cambiar_encima = true,
                     Some("cerrar") => break 'bucle,
@@ -2998,6 +3021,9 @@ pub fn ver(
             marcando = false;
             barra_sucia = true;
         }
+        if guardar && let Some(f) = &acciones.guardar {
+            f(hwnd.0 as isize);
+        }
         if exportar && let (Some(f), Some((m, _))) = (&acciones.exportar, &plano) {
             let mut cotas = acotar.hechas.clone();
             if acotar.puntos.len() >= 2 {
@@ -3209,12 +3235,18 @@ pub fn ver(
             sucio = true;
         }
         if barra_sucia && barra_visible {
-            let activos = BOTONES.map(|b| match b {
-                "acotar" => acotar.activo,
-                "fijar" => fijada,
-                _ => false,
-            });
-            let avisos = BOTONES.map(|b| b == "letras" && !faltan_letras.is_empty());
+            let activos: Vec<bool> = botones
+                .iter()
+                .map(|b| match *b {
+                    "acotar" => acotar.activo,
+                    "fijar" => fijada,
+                    _ => false,
+                })
+                .collect();
+            let avisos: Vec<bool> = botones
+                .iter()
+                .map(|b| *b == "letras" && !faltan_letras.is_empty())
+                .collect();
             let aspecto = Aspecto {
                 encima: boton_encima,
                 claro,
@@ -3222,7 +3254,7 @@ pub fn ver(
                 activos: &activos,
                 avisos: &avisos,
             };
-            let m = barra(&mut textos, e, &BOTONES, &cabecera, aspecto);
+            let m = barra(&mut textos, e, &botones, &cabecera, aspecto);
             if let Ok(p) = gpu_barra.subir(&m) {
                 let (gw, gh) = gpu_barra.tamano();
                 let fondo = if claro {
@@ -3243,7 +3275,7 @@ pub fn ver(
                 hbarra,
                 barra_visible,
                 quiere_globo,
-                &BOTONES,
+                &botones,
                 &b_barra,
                 &textos_ui.botones,
                 e,
@@ -3714,6 +3746,22 @@ mod pruebas_letras {
     /// **El riel de la derecha** como el de los lectores: arriba a la
     /// derecha, botones de 36 px uno debajo de otro; fuera de la isla, nada.
     #[test]
+    fn guardar_va_antes_de_la_luna_solo_si_es_de_paso() {
+        let con = con_guardar(&BOTONES, true);
+        let i = con.iter().position(|b| *b == "guardar").unwrap();
+        assert_eq!(con[i + 1], "tema");
+        assert_eq!(con.len(), BOTONES.len() + 1);
+        assert!(crate::iconos::de_boton("guardar", false, false).is_some());
+        // Caso negativo: lo que ya es de un chat no lo lleva.
+        assert_eq!(con_guardar(&BOTONES, false), BOTONES.to_vec());
+        let tres = con_guardar(&crate::ventana3d::BOTONES, true);
+        assert_eq!(
+            tres[tres.iter().position(|b| *b == "guardar").unwrap() + 1],
+            "tema"
+        );
+    }
+
+    #[test]
     fn el_riel_se_va_con_la_barra_salvo_usandolo_o_con_el_raton_al_borde() {
         let (w, h) = (1000, 700);
         assert!(riel_a_la_vista(true, false, false, None, w, h, 1.0));
@@ -3896,7 +3944,7 @@ mod pruebas_letras {
         for b in BOTONES
             .iter()
             .chain(crate::ventana3d::BOTONES.iter())
-            .chain(["marcador", "anotar", "marcos"].iter())
+            .chain(["marcador", "anotar", "marcos", "guardar"].iter())
         {
             assert!(*b == "nombre" || n.globo(b).is_some(), "sin globo: {b}");
         }

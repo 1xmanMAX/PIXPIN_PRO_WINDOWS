@@ -199,6 +199,7 @@ fn barra_del_modelo(
         })),
         textos: textos_marcos(idioma),
         globo: Some(crate::plano_cad::globo_de_la_barra()),
+        guardar: crate::plano_cad::guardar_de_paso(idioma, raiz, ruta),
     }
 }
 
