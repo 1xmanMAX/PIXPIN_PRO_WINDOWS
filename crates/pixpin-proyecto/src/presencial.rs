@@ -20,6 +20,11 @@
 //! - **Que una imagen salio de la camara** ([`marcar_de_camara`]): en el
 //!   `resto` del mensaje, `origen: "camara"`. Es el unico campo nuevo; lo
 //!   demas (`enGrabacion: {de, ms}`) es lo de las capturas.
+//! - **Los clips de video** con la camara ([`modo_para_clip`],
+//!   [`bits_del_clip`], [`poner_clips`]): 1080p a 30 fps como mucho, a ritmo
+//!   variable (~5 Mbps en H.264, un 30 % menos en HEVC), y en la nota de
+//!   voz `clips: [{ms, id, duracionMs}]`; cada clip lleva `enGrabacion:
+//!   {de, ms, duracionMs}`.
 //! - **Cuando hace falta la imagen entera** al acercarla en «Estudiar la
 //!   clase» ([`hace_falta_la_entera`]).
 
@@ -145,6 +150,8 @@ pub struct ModoDeCamara {
     pub ancho: u32,
     pub alto: u32,
     pub formato: String,
+    /// Fotogramas por segundo (0 si no lo dice: las fotos no tienen).
+    pub fps: u32,
 }
 
 impl ModoDeCamara {
@@ -173,6 +180,110 @@ pub fn mejor_modo(modos: &[ModoDeCamara]) -> Option<usize> {
         .filter(|(_, m)| m.ancho > 0 && m.alto > 0)
         .max_by_key(|(i, m)| (m.pixeles(), m.en_jpeg(), std::cmp::Reverse(*i)))
         .map(|(i, _)| i)
+}
+
+/// El tope de los clips de video: 1080p a 30 fps. Mas no se ve mejor en una
+/// reunion y pesa el doble.
+pub const CLIP_ANCHO_MAXIMO: u32 = 1920;
+pub const CLIP_ALTO_MAXIMO: u32 = 1080;
+pub const CLIP_FPS_MAXIMO: u32 = 30;
+
+/// **El modo de los clips de video**: el de mas pixeles que no pase de
+/// 1080p (en cualquiera de los dos lados, la camara puede ir de pie) ni de
+/// 30 fps; entre iguales, el de mas fotogramas (hasta 30) y luego el que no
+/// llega en JPEG (el codificador lo quiere sin comprimir). `None` si no hay
+/// ninguno asi: entonces se graba con el de la camara por defecto.
+pub fn modo_para_clip(modos: &[ModoDeCamara]) -> Option<usize> {
+    modos
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| {
+            m.ancho > 0
+                && m.alto > 0
+                && m.ancho.max(m.alto) <= CLIP_ANCHO_MAXIMO
+                && m.ancho.min(m.alto) <= CLIP_ALTO_MAXIMO
+                && m.fps <= CLIP_FPS_MAXIMO
+        })
+        .max_by_key(|(i, m)| (m.pixeles(), m.fps, !m.en_jpeg(), std::cmp::Reverse(*i)))
+        .map(|(i, _)| i)
+}
+
+/// **Lo que pesa un clip por segundo de imagen**, en bits: ~5 Mbps a 1080p
+/// y en proporcion por debajo (720p, ~2,5), nunca menos de 1 Mbps. Con HEVC
+/// un 30 % menos para la misma calidad. Se codifica a ritmo variable: es el
+/// medio, no el tope.
+pub fn bits_del_clip(ancho: u32, alto: u32, hevc: bool) -> u32 {
+    let pixeles = ancho as u64 * alto as u64;
+    let base = 1920u64 * 1080;
+    let h264 = (5_000_000u64 * pixeles / base.max(1)).clamp(1_000_000, 6_000_000);
+    let bits = if hevc { h264 * 7 / 10 } else { h264 };
+    bits.max(1_000_000) as u32
+}
+
+/// El sonido de los clips: AAC a 96 kbps.
+pub const CLIP_BITS_SONIDO: u32 = 96_000;
+
+/// Un clip de video grabado en la reunion: cuando empezo, cuanto dura y su
+/// mensaje.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Clip {
+    pub ms: i64,
+    pub duracion_ms: i64,
+    pub id: String,
+}
+
+/// La clave de los clips en la nota de voz.
+pub const CLIPS: &str = "clips";
+
+/// Lo que se apunta en la nota de voz: sus clips en orden,
+/// `[{ms, id, duracionMs}]`. Sin clips **la clave se quita**: una clase sin
+/// ellos sigue siendo byte a byte la de antes.
+pub fn poner_clips(resto: &mut Map<String, Value>, clips: &[Clip]) {
+    if clips.is_empty() {
+        resto.remove(CLIPS);
+        return;
+    }
+    let mut v: Vec<&Clip> = clips.iter().collect();
+    v.sort_by_key(|c| c.ms);
+    resto.insert(
+        CLIPS.into(),
+        Value::Array(
+            v.into_iter()
+                .map(|c| serde_json::json!({ "ms": c.ms, "id": c.id, "duracionMs": c.duracion_ms }))
+                .collect(),
+        ),
+    );
+}
+
+/// Los clips de una nota de voz, en orden. Lo que no se entiende se salta.
+pub fn clips_de(resto: &Map<String, Value>) -> Vec<Clip> {
+    let mut v: Vec<Clip> = resto
+        .get(CLIPS)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| {
+                    Some(Clip {
+                        ms: c.get("ms")?.as_i64()?.max(0),
+                        id: c.get("id")?.as_str()?.to_string(),
+                        duracion_ms: c
+                            .get("duracionMs")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0)
+                            .max(0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort_by_key(|c| c.ms);
+    v
+}
+
+/// **El enlace de un clip con su grabacion**: `enGrabacion: {de, ms,
+/// duracionMs}` (el de las capturas, con su duracion).
+pub fn enlace_del_clip(de: &str, ms: i64, duracion_ms: i64) -> Value {
+    serde_json::json!({ "de": de, "ms": ms.max(0), "duracionMs": duracion_ms.max(0) })
 }
 
 /// **Por que no hay foto**: lo que se le dice a quien graba.
@@ -327,7 +438,91 @@ mod pruebas {
             ancho,
             alto,
             formato: formato.into(),
+            fps: 0,
         }
+    }
+
+    fn video(ancho: u32, alto: u32, formato: &str, fps: u32) -> ModoDeCamara {
+        ModoDeCamara {
+            fps,
+            ..modo(ancho, alto, formato)
+        }
+    }
+
+    #[test]
+    fn el_clip_va_a_1080p_y_30_fps_como_mucho() {
+        let modos = vec![
+            video(3840, 2160, "NV12", 30),
+            video(1920, 1080, "MJPG", 30),
+            video(1920, 1080, "NV12", 30),
+            video(1920, 1080, "NV12", 60),
+            video(1280, 720, "NV12", 30),
+        ];
+        assert_eq!(modo_para_clip(&modos), Some(2), "1080p30 sin comprimir");
+        let modos = vec![video(1280, 720, "NV12", 15), video(1280, 720, "YUY2", 30)];
+        assert_eq!(modo_para_clip(&modos), Some(1), "mas fotogramas");
+        // De pie (una tableta) tambien vale.
+        assert_eq!(modo_para_clip(&[video(1080, 1920, "NV12", 30)]), Some(0));
+        // Caso negativo: solo 4K o solo 60 fps, ninguno (el de por defecto).
+        assert_eq!(modo_para_clip(&[video(3840, 2160, "NV12", 30)]), None);
+        assert_eq!(modo_para_clip(&[video(1280, 720, "NV12", 60)]), None);
+    }
+
+    #[test]
+    fn el_clip_pesa_poco_y_menos_con_hevc() {
+        assert_eq!(bits_del_clip(1920, 1080, false), 5_000_000);
+        assert_eq!(bits_del_clip(1920, 1080, true), 3_500_000);
+        let hd = bits_del_clip(1280, 720, false);
+        assert!((2_000_000..=2_600_000).contains(&hd), "{hd}");
+        // Caso negativo: ni una camara enana baja de 1 Mbps ni una enorme
+        // pasa de 6.
+        assert_eq!(bits_del_clip(160, 120, false), 1_000_000);
+        assert_eq!(bits_del_clip(0, 0, true), 1_000_000);
+        assert_eq!(bits_del_clip(3840, 2160, false), 6_000_000);
+    }
+
+    #[test]
+    fn los_clips_van_y_vuelven_en_orden() {
+        let mut resto = Map::new();
+        let clips = vec![
+            Clip {
+                ms: 90_000,
+                duracion_ms: 12_000,
+                id: "b".into(),
+            },
+            Clip {
+                ms: 5_000,
+                duracion_ms: 3_000,
+                id: "a".into(),
+            },
+        ];
+        poner_clips(&mut resto, &clips);
+        let v = clips_de(&resto);
+        assert_eq!(
+            v.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(v[1].duracion_ms, 12_000);
+        assert_eq!(
+            enlace_del_clip("voz", 5_000, 3_000),
+            serde_json::json!({ "de": "voz", "ms": 5_000, "duracionMs": 3_000 })
+        );
+        // Caso negativo: sin clips la clave se quita, y una entrada rota se
+        // salta sin llevarse las demas.
+        poner_clips(&mut resto, &[]);
+        assert!(!resto.contains_key(CLIPS));
+        resto.insert(
+            CLIPS.into(),
+            serde_json::json!([{ "ms": "x" }, { "ms": 7, "id": "c" }]),
+        );
+        assert_eq!(
+            clips_de(&resto),
+            vec![Clip {
+                ms: 7,
+                duracion_ms: 0,
+                id: "c".into()
+            }]
+        );
     }
 
     #[test]
