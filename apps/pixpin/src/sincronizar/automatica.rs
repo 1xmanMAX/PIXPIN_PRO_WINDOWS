@@ -18,7 +18,15 @@
 //! - **Sin ruido**: sin globos cuando sale bien y no trae nada. Avisa si llega
 //!   algo del otro lado, o si falla [`FALLOS_PARA_AVISAR`] veces seguidas (una
 //!   vez, no en cada intento). Lo hecho queda en «Actividad» de la ventana.
-//! - Se apaga con `[sincro] automatica = false` en `ajustes.toml`.
+//! - Se apaga con `[sincro] automatica = false` en `ajustes.toml`. **Esta
+//!   encendida si el usuario no la ha apagado** (Android 27-oct-2026: «que
+//!   la sincronización sea automática por defecto para los dispositivos y
+//!   para los chats compartidos»): una instalacion nueva, encendida, con los
+//!   aparatos propios y con las personas de los chats compartidos.
+//! - **Reintentos** (27-oct-2026, `Reintentos` de Android): si el otro
+//!   estaba ocupado se vuelve a intentar en 1–4 s con azar; un fallo de
+//!   verdad, a los 5 s, 10 s, 20 s… hasta 5 min (±25 %), sin esperar al
+//!   periodo. Y **al volver la red** se sondea enseguida (`presencia`).
 //!
 //! **Las tareas, al instante** (10-oct-2026, el usuario: «implementa una
 //! funcion para sincronizar las tareas de forma rapida a todos los
@@ -73,6 +81,8 @@ pub enum Motivo {
     Aparecio,
     Cambio,
     Periodo,
+    /// Fallo (u oyo «ocupado») y ya toca volver a intentarlo.
+    Reintento,
 }
 
 /// Lo que toca hacer ahora ([`Reloj::siguiente`]).
@@ -251,6 +261,9 @@ pub struct Reloj {
     /// Cuando llego el primer aviso de tareas sin mandar, y el ultimo.
     pub tareas_desde: i64,
     pub tareas_ultimo: i64,
+    /// Los fallos seguidos y cuando toca reintentar (ver [Reloj::reintentar]).
+    pub reintentos: pixpin_sincro::reintentos::Reintentos,
+    pub reintentar_en: Option<i64>,
 }
 
 impl Reloj {
@@ -291,6 +304,9 @@ impl Reloj {
         }
         if !self.aparecidos.is_empty() {
             return Some(Motivo::Aparecio);
+        }
+        if self.reintentar_en.is_some_and(|t| ahora >= t) {
+            return Some(Motivo::Reintento);
         }
         if let (Some(base), Some((vista, desde))) = (self.base, self.vista)
             && vista != base
@@ -355,6 +371,21 @@ impl Reloj {
         self.tareas.clear();
         self.ultima = Some(ahora);
         self.aparecidos.clear();
+        self.reintentar_en = None;
+    }
+
+    /// **Cuando volver a intentarlo** tras una vuelta (`Reintentos` de
+    /// Android): bien, se olvida; «ocupado», en 1–4 s con azar; un fallo de
+    /// verdad, con espera que se dobla hasta 5 min. Sin esperar al periodo.
+    pub fn reintentar(&mut self, bien: bool, ocupado: bool, ahora: i64) {
+        const TODOS: &str = "grupo";
+        if bien {
+            self.reintentos.bien(TODOS);
+            self.reintentar_en = None;
+        } else {
+            let espera = self.reintentos.fallo(TODOS, ahora, ocupado);
+            self.reintentar_en = Some(ahora + espera);
+        }
     }
 
     /// Acabo una vuelta, con la huella de despues (lo que escribio la propia
@@ -416,12 +447,16 @@ fn cuanto_dormir(reloj: &Reloj, ahora: i64, corriendo: bool) -> Duration {
         // El final de la vuelta despierta por el canal.
         return LATIDO;
     }
-    match reloj.espera_tareas(ahora) {
+    let hasta_reintento = reloj
+        .reintentar_en
+        .map(|t| Duration::from_millis((t - ahora).max(0) as u64));
+    let d = match reloj.espera_tareas(ahora) {
         // Toca ya y no se pudo (otra vuelta en marcha): se reintenta pronto.
         Some(0) => REINTENTO,
         Some(ms) => Duration::from_millis(ms as u64).min(LATIDO),
         None => LATIDO,
-    }
+    };
+    hasta_reintento.map_or(d, |r| d.min(r.max(REINTENTO)))
 }
 
 fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
@@ -460,6 +495,7 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                 Entrada::FinPersonas { bien, trajo, fallo } => {
                     corriendo = false;
                     let avisar = personas.acabo(bien, firma_de(&carpeta), ahora);
+                    personas.reintentar(bien, false, ahora);
                     for t in trajo {
                         presencia::difundir(Novedad::Registro(t.clone()));
                         super::al_movil::avisar(t);
@@ -675,7 +711,11 @@ fn acabo_rapida(fin: Option<Fase>) {
 /// Lo que se hace al acabar una vuelta automatica.
 fn acabo(reloj: &mut Reloj, fin: Option<Fase>, firma: Firma, ahora: i64) {
     let bien = matches!(fin, Some(Fase::Terminado { .. }));
-    let avisar_fallo = reloj.acabo(bien, firma, ahora);
+    let ocupado =
+        matches!(&fin, Some(Fase::Fallo(e)) if e.contains(pixpin_sincro::mensajes::OCUPADO));
+    reloj.reintentar(bien, ocupado, ahora);
+    // «Ocupado» no es un fallo: no cuenta para avisar.
+    let avisar_fallo = reloj.acabo(bien || ocupado, firma, ahora);
     match &fin {
         Some(f @ Fase::Terminado { titulo, trajo, .. }) => {
             presencia::difundir(Novedad::Registro(format!("Automática: {titulo}")));
@@ -753,6 +793,40 @@ mod pruebas {
         r.empezo(50_000);
         r.acabo(true, firma(9), 60_000);
         assert_eq!(r.toca(60_000 + QUIETO * 2), None);
+    }
+
+    #[test]
+    fn un_fallo_se_reintenta_antes_del_periodo_y_ocupado_enseguida() {
+        let mut r = Reloj {
+            reintentos: pixpin_sincro::reintentos::Reintentos::con_azar(|| 0.5),
+            ..Default::default()
+        };
+        r.responde("tel", true);
+        r.ver(firma(1), 0);
+        r.empezo(0);
+        r.acabo(false, firma(1), 1_000);
+        r.reintentar(false, false, 1_000);
+        assert_eq!(r.toca(1_000 + pixpin_sincro::reintentos::BASE - 1), None);
+        assert_eq!(
+            r.toca(1_000 + pixpin_sincro::reintentos::BASE),
+            Some(Motivo::Reintento),
+            "a los 5 s, sin esperar a los diez minutos"
+        );
+        r.empezo(7_000);
+        r.reintentar(false, false, 7_000);
+        assert_eq!(
+            r.toca(7_000 + 2 * pixpin_sincro::reintentos::BASE),
+            Some(Motivo::Reintento),
+            "el segundo, al doble"
+        );
+        // Ocupado: entre uno y cuatro segundos.
+        r.empezo(30_000);
+        r.reintentar(false, true, 30_000);
+        assert_eq!(r.toca(30_000 + 4_000), Some(Motivo::Reintento));
+        // Bien: se olvida.
+        r.empezo(40_000);
+        r.reintentar(true, false, 40_000);
+        assert_eq!(r.toca(41_000), None);
     }
 
     #[test]

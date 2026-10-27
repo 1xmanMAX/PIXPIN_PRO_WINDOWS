@@ -1485,6 +1485,7 @@ fn sondear(raiz: PathBuf, vivo: Arc<AtomicBool>) {
         .name("sincro-sonda".into())
         .spawn(move || {
             let mut etiqueta = (String::new(), String::new());
+            let mut red = presencia::red_local();
             while vivo.load(Ordering::SeqCst) {
                 if let Ok(id) = leer_identidad(&raiz)
                     && let Some(codigo) = id.codigo.clone()
@@ -1524,12 +1525,21 @@ fn sondear(raiz: PathBuf, vivo: Arc<AtomicBool>) {
                     en_fondo::apuntar_estado(&raiz, responden);
                 }
                 // A cachitos de 100 ms para que cerrar la aplicacion no tenga
-                // que esperar a que pase la espera entera.
+                // que esperar a que pase la espera entera. **Al volver la
+                // red** (27-oct-2026) se pregunta ya: mirarla cada segundo es
+                // abrir un socket UDP que no manda nada.
                 let espera = presencia::espera_de_la_sonda();
                 let trozos = (espera.as_millis() / 100).max(1);
-                for _ in 0..trozos {
+                for i in 0..trozos {
                     if !vivo.load(Ordering::SeqCst) {
                         return;
+                    }
+                    if i % 10 == 9 && presencia::volvio_la_red(&mut red, presencia::red_local()) {
+                        presencia::sondear_ya();
+                    }
+                    if presencia::tomar_sondear_ya() {
+                        tracing::info!("la red volvio: se sondea ya");
+                        break;
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }
