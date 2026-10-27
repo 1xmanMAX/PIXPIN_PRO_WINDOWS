@@ -723,6 +723,10 @@ struct Estado {
     /// Los chats (por su `id`) que son compartidos: sus listas llevan la
     /// insignia verde de las dos personas, como en la lista de chats.
     compartidos: HashSet<String>,
+    /// Quien apunto cada lista de un chat compartido, si fue otra persona
+    /// (por la clave de la lista, `tareas::autor`): su inicial y su color van
+    /// detras de la insignia, como encima de sus burbujas en el chat.
+    autores: HashMap<String, String>,
     /// Adonde se puede mover lo del Inbox: todas las demas listas, tambien
     /// las vacias.
     destinos: Vec<Lista>,
@@ -856,7 +860,16 @@ impl Estado {
             asignatura: None,
             selector: false,
             compartidos: HashSet::new(),
+            autores: HashMap::new(),
         }
+    }
+
+    /// Quien apunto la lista `li`, si es de un chat compartido y no fui yo.
+    fn autor(&self, li: usize) -> Option<&str> {
+        self.listas
+            .get(li)
+            .and_then(|l| self.autores.get(&l.clave()))
+            .map(String::as_str)
     }
 
     /// Si la lista `li` viene de un chat compartido.
@@ -874,6 +887,14 @@ impl Estado {
             .iter()
             .map(|l| l.proyecto.clone())
             .filter(|id| crate::sincronizar::compartidos_ui::personas_del_chat(raiz, id).is_some())
+            .collect();
+        self.autores = todas
+            .iter()
+            .filter(|l| self.compartidos.contains(&l.proyecto))
+            .filter_map(|l| {
+                let cc = crate::sincronizar::compartidos_ui::del_chat(raiz, &l.proyecto)?;
+                Some((l.clave(), super::autor(l, &cc.lados)?))
+            })
             .collect();
         // Las imagenes de las tareas, resueltas una vez por lectura y no en
         // cada fotograma (resolver un enlace lee el indice). Lo que ya se
@@ -3472,6 +3493,16 @@ fn pintar_encabezado(
     let compartida = e.compartida(g.lista);
     let insignia = if compartida { th * 0.9 } else { 0.0 };
     let libre = (libre - if compartida { insignia + 6.0 * s } else { 0.0 }).max(0.0);
+    // Y si la apunto otra persona, su inicial en su color detras (checklist
+    // 26, Android `TareasCompartidas.autor`).
+    let autor = e.autor(g.lista).map(str::to_string);
+    let libre = (libre
+        - if autor.is_some() {
+            insignia + 4.0 * s
+        } else {
+            0.0
+        })
+    .max(0.0);
     let (nw, _) = ui::medir_negrita(p, &l.titulo, tam, libre);
     let nw = if con_chat {
         nw.min(libre * 0.7)
@@ -3515,6 +3546,22 @@ fn pintar_encabezado(
     } else {
         x
     };
+    let x = match &autor {
+        Some(nombre) => {
+            pintar_inicial_de_persona(
+                p,
+                RectF {
+                    x: x + 4.0 * s + nw + 2.0 * s,
+                    y: ty + (th - insignia) / 2.0,
+                    ancho: insignia,
+                    alto: insignia,
+                },
+                nombre,
+            );
+            x + insignia + 4.0 * s
+        }
+        None => x,
+    };
     if con_chat {
         p.texto_linea(
             &format!("·  {}", l.chat),
@@ -3525,6 +3572,26 @@ fn pintar_encabezado(
             GRIS,
         );
     }
+}
+
+/// El circulo de una persona con su inicial, en su color: el mismo que lleva
+/// su nombre encima de sus burbujas en el chat compartido.
+fn pintar_inicial_de_persona(p: &Pintor, caja: RectF, nombre: &str) {
+    p.rellenar_redondeado(
+        caja,
+        caja.ancho / 2.0,
+        crate::ventana_chat::color_de_persona(nombre),
+    );
+    let letra = pixpin_ui::conversacion::inicial(nombre);
+    let tam = caja.alto * 0.58;
+    let (wl, hl) = p.medir_texto(&letra, tam);
+    p.texto(
+        &letra,
+        caja.x + (caja.ancho - wl) / 2.0,
+        caja.y + (caja.alto - hl) / 2.0,
+        tam,
+        Color::BLANCO,
+    );
 }
 
 /// «Hechas (N)» con su flecha: abre y cierra lo hecho de la lista. Buscando
@@ -4676,6 +4743,7 @@ mod pruebas {
             titulo: titulo.into(),
             cuando,
             filas: super::super::filas_de(doc),
+            aparato: None,
         };
         let mut e = Estado::nuevo();
         e.hoy = pixpin_proyecto::mini::Fecha {
@@ -4780,6 +4848,12 @@ mod pruebas {
         // Caso negativo: las demas siguen sin ella, y una lista que no esta
         // tampoco.
         assert!(!e.compartida(0) && !e.compartida(99));
+        // Quien la apunto: solo si fue otra persona (lo mio no lleva inicial).
+        assert_eq!(e.autor(li), None);
+        e.autores.insert(e.listas[li].clave(), "Ana".into());
+        assert_eq!(e.autor(li), Some("Ana"));
+        assert_eq!(e.autor(0), None);
+        assert_eq!(e.autor(99), None);
         // Una tarea con hora de esa lista sale en el horario con su insignia.
         e.listas[li]
             .filas
