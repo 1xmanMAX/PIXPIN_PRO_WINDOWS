@@ -237,6 +237,19 @@ pub struct Mensaje {
     pub uid: Option<String>,
     pub aparato: Option<String>,
     pub origen: Option<String>,
+    /// **Es una version de otro mensaje** (Android v0.145.0, 27-oct-2026,
+    /// «versiones vinculadas en los chats compartidos»): el codigo unico
+    /// (`codigo_unico`) del original, el mismo en todos los aparatos. En un
+    /// chat compartido, tocar lo de otra persona no lo cambia: hace una copia
+    /// mia que lleva esto y contesta al original (`responde_a`). Ver
+    /// `versiones` y `docs/manual-chats-compartidos.md`. No se escribe si no
+    /// hay: un mensaje de siempre sale igual que antes.
+    #[serde(rename = "versionDe", skip_serializing_if = "Option::is_none")]
+    pub version_de: Option<String>,
+    /// Que version es de su original (1, 2…), para nombrarla: «Version 2».
+    /// Solo una etiqueta: dos aparatos pueden dar el mismo numero.
+    #[serde(rename = "versionN", skip_serializing_if = "Option::is_none")]
+    pub version_n: Option<i64>,
     /// Lo que no se entiende, tal cual: guardar no puede perder lo que
     /// anada una version de Android.
     #[serde(flatten)]
@@ -1414,5 +1427,54 @@ mod pruebas_lineas {
         anadir_lineas(&b, &[]).unwrap();
         assert_eq!(leer(&a), leer(&b));
         let _ = std::fs::remove_dir_all(d);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_versiones {
+    use super::*;
+
+    /// Una version tal como la escribe Android v0.145.0
+    /// (`VersionesVinculadas.nueva`), con una clave que el PC no tiene.
+    const DE_ANDROID: &str = r#"{"id":"nuevo","cuando":5000,"clase":"DIBUJO","texto":"planta","referencia":"dib-nuevo","proyecto":"p1","respondeA":"orig","numero":4,"uid":"NUEVOUID23","aparato":"MAXX","versionDe":"ORIGUID123","versionN":2,"escaneado":{"x":1}}"#;
+
+    #[test]
+    fn las_claves_de_la_version_se_leen_con_su_nombre_y_salen_igual() {
+        let m: Mensaje = serde_json::from_str(DE_ANDROID).unwrap();
+        assert_eq!(m.version_de.as_deref(), Some("ORIGUID123"));
+        assert_eq!(m.version_n, Some(2));
+        assert_eq!(m.responde_a.as_deref(), Some("orig"));
+        // Ya no van en `resto`: no salen dos veces.
+        assert!(!m.resto.contains_key("versionDe"));
+        assert!(!m.resto.contains_key("versionN"));
+        let vuelta: serde_json::Value = serde_json::to_value(&m).unwrap();
+        assert_eq!(vuelta["versionDe"], "ORIGUID123");
+        assert_eq!(vuelta["versionN"], 2);
+        // Lo que el PC no entiende sigue tal cual.
+        assert_eq!(vuelta["escaneado"]["x"], 1);
+        let otra: Mensaje = serde_json::from_value(vuelta).unwrap();
+        assert_eq!(otra.version_de, m.version_de);
+        assert_eq!(otra.version_n, m.version_n);
+    }
+
+    #[test]
+    fn un_mensaje_de_siempre_no_gana_ninguna_clave() {
+        // Caso negativo: sin version, la linea es la de antes, sin
+        // `"versionDe":null` que el movil tomaria por un cambio.
+        let m = Mensaje::nota(
+            "hola",
+            &Sello {
+                cuando: 1,
+                numero: 1,
+                aparato: "K7Q2".into(),
+                proyecto: "p".into(),
+            },
+        );
+        let linea = linea_de(&m).unwrap();
+        assert!(!linea.contains("versionDe"), "{linea}");
+        assert!(!linea.contains("versionN"), "{linea}");
+        // Y una linea de antes (sin las claves) se lee sin version.
+        let vieja: Mensaje = serde_json::from_str(r#"{"id":"a","cuando":1}"#).unwrap();
+        assert_eq!((vieja.version_de, vieja.version_n), (None, None));
     }
 }

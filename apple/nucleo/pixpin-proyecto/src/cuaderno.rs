@@ -237,6 +237,18 @@ pub struct Mensaje {
     pub uid: Option<String>,
     pub aparato: Option<String>,
     pub origen: Option<String>,
+    /// **Es una version de otro mensaje** (Android v0.145.0, 27-oct-2026,
+    /// «versiones vinculadas en los chats compartidos»): el codigo unico
+    /// (`codigo_unico`) del original, el mismo en todos los aparatos. En un
+    /// chat compartido, tocar lo de otra persona no lo cambia: hace una copia
+    /// mia que lleva esto y contesta al original (`responde_a`). No se
+    /// escribe si no hay: un mensaje de siempre sale igual que antes.
+    #[serde(rename = "versionDe", skip_serializing_if = "Option::is_none")]
+    pub version_de: Option<String>,
+    /// Que version es de su original (1, 2…), para nombrarla: «Version 2».
+    /// Solo una etiqueta: dos aparatos pueden dar el mismo numero.
+    #[serde(rename = "versionN", skip_serializing_if = "Option::is_none")]
+    pub version_n: Option<i64>,
     /// Lo que no se entiende, tal cual: guardar no puede perder lo que
     /// anada una version de Android.
     #[serde(flatten)]
