@@ -552,6 +552,7 @@ chat-buscar-mensajes = { $n ->
    *[other] Messages · { $n }
 }
 chat-buscar-ver-mas = Show { $n } more
+chat-buscar-en = in { $chat }
 chat-pagina-n = Page { $n }
 chat-unido-a = Added to "{ $nombre }"
 chat-unir-nada = Nothing here can be added: only photos, drawings, notes and PDFs
