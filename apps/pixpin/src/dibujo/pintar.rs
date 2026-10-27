@@ -51,6 +51,22 @@ pub(crate) fn por_cada_orden(
     e: &Elemento,
     zoom: f32,
     escala: Option<&Escala>,
+    dibuja: impl FnMut(&Orden),
+) {
+    // **Con la tinta de su hoja** (`tema::con_la_pieza`): las piezas de una
+    // plantilla, como se disenaron; lo de encima, contra su pagina. Aqui y no
+    // en cada anfitrion por lo mismo que el grafito: por aqui pasan todos, y
+    // `dibuja` pinta dentro (lo que pinta es lo que lee la tinta).
+    super::tema::con_la_pieza(e.id, || {
+        por_cada_orden_de_la_pieza(cache, e, zoom, escala, dibuja)
+    });
+}
+
+fn por_cada_orden_de_la_pieza(
+    cache: &mut Cache,
+    e: &Elemento,
+    zoom: f32,
+    escala: Option<&Escala>,
     mut dibuja: impl FnMut(&Orden),
 ) {
     // **El grafito va entero en su mapa** (`tinta::grafito`): en vez de sus
@@ -368,6 +384,20 @@ pub(crate) fn pintar_copia_predicha(
     zoom: f32,
     escala: Option<&Escala>,
 ) {
+    // Con la tinta de la real (`tema::con_la_pieza`), que es la que ocupa.
+    super::tema::con_la_pieza(copia.id, || {
+        pintar_copia_predicha_de_la_pieza(p, copia, vista, imagenes, zoom, escala)
+    });
+}
+
+fn pintar_copia_predicha_de_la_pieza(
+    p: &pixpin_render::Pintor<'_>,
+    copia: &Elemento,
+    vista: (f32, f32, f32, f32),
+    imagenes: &ImagenesLienzo,
+    zoom: f32,
+    escala: Option<&Escala>,
+) {
     use pixpin_motor2d::tinta::grafito;
     let adaptado = grafito::es_de_grafito(copia)
         .then(|| super::tema::grafito_adaptado(copia))
@@ -585,6 +615,34 @@ pub(crate) fn pintar_escena(
 /// presupuesto es lo de siempre.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn pintar_escena_si(
+    p: &pixpin_render::Pintor<'_>,
+    escena: &pixpin_motor2d::Escena,
+    cache: &mut Cache,
+    cache_tinta: &mut pixpin_render::CacheTinta,
+    imagenes: &ImagenesLienzo,
+    vista: (f32, f32, f32, f32),
+    zoom: f32,
+    sin_cache: impl Fn(u64) -> bool,
+    pintar_este: impl Fn((f32, f32, f32, f32)) -> bool,
+) {
+    // Con las hojas de esta escena: cada una lleva su papel (`tema::con_hojas`).
+    super::tema::con_hojas(&escena.elementos, || {
+        pintar_lo_que_se_ve(
+            p,
+            escena,
+            cache,
+            cache_tinta,
+            imagenes,
+            vista,
+            zoom,
+            sin_cache,
+            pintar_este,
+        )
+    });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn pintar_lo_que_se_ve(
     p: &pixpin_render::Pintor<'_>,
     escena: &pixpin_motor2d::Escena,
     cache: &mut Cache,
