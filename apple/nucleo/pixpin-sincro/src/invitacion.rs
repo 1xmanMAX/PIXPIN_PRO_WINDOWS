@@ -18,7 +18,9 @@ use std::sync::Mutex;
 use rand_core::RngCore;
 
 use crate::canal::{Canal, ErrorCanal, MAGIA_DE_INVITACION};
-use crate::codigo::{SIGNOS, clave_cruda, etiqueta as etiqueta_de_clave, limpiar as limpiar_codigo};
+use crate::codigo::{
+    SIGNOS, clave_cruda, etiqueta as etiqueta_de_clave, limpiar as limpiar_codigo,
+};
 use crate::compartidos::{self, ChatCompartido, CompartidosEnDisco};
 use crate::disco::Disco;
 use crate::mensajes::{Aparato, Hola, Peticion, Respuesta};
@@ -40,10 +42,12 @@ pub fn nuevo_codigo() -> String {
     let tope = u32::MAX - u32::MAX % n;
     let mut azar = rand_core::OsRng;
     (0..LARGO)
-        .map(|_| loop {
-            let x = azar.next_u32();
-            if x < tope {
-                break signos[(x % n) as usize];
+        .map(|_| {
+            loop {
+                let x = azar.next_u32();
+                if x < tope {
+                    break signos[(x % n) as usize];
+                }
             }
         })
         .collect()
@@ -188,7 +192,11 @@ pub fn entrar<D: Disco + ?Sized, F: Read + Write>(
     }
     let suyo = llegan.remove(0);
     let juntos = cd.cambiar(|l| -> std::io::Result<_> {
-        Ok(compartidos::juntar_todos(&l, std::slice::from_ref(&suyo), |_| true))
+        Ok(compartidos::juntar_todos(
+            &l,
+            std::slice::from_ref(&suyo),
+            |_| true,
+        ))
     })?;
     let junto = juntos
         .into_iter()
@@ -254,7 +262,15 @@ impl Puerta {
         ahora: fn() -> i64,
         avisar: impl Fn(AvisoDePuerta) + Send + 'static,
     ) -> std::io::Result<Puerta> {
-        Puerta::abrir_con(disco, chat, &nuevo_codigo(), ("0.0.0.0", 0), mi_puerto, ahora, avisar)
+        Puerta::abrir_con(
+            disco,
+            chat,
+            &nuevo_codigo(),
+            ("0.0.0.0", 0),
+            mi_puerto,
+            ahora,
+            avisar,
+        )
     }
 
     /// [Puerta::abrir] con el codigo y la direccion dados (las pruebas).
@@ -395,14 +411,8 @@ pub fn vuelta_con_persona<D: Disco + ?Sized, F: Read + Write>(
     nonce: [u8; 32],
     estado: &mut dyn FnMut(&str),
 ) -> Resultado<ConPersona> {
-    let mut s = crate::protocolo::Sesion::conectar_con_persona(
-        flujo,
-        d,
-        a_quien,
-        ahora,
-        mi_puerto,
-        nonce,
-    )?;
+    let mut s =
+        crate::protocolo::Sesion::conectar_con_persona(flujo, d, a_quien, ahora, mi_puerto, nonce)?;
     estado("Mirando quién está en cada chat…");
     s.juntar_miembros()?;
     let chats: Vec<String> = s
@@ -418,6 +428,11 @@ pub fn vuelta_con_persona<D: Disco + ?Sized, F: Read + Write>(
         .map(|c| (c.id, c.nombre))
         .collect();
     let mut hecho = crate::protocolo::Hecho::default();
+    // **Por prioridad** (27-oct-2026, `Sesion.vuelta` de Android): los
+    // mensajes de todos los chats primero, luego sus archivos juntos por
+    // niveles y grupos, y al final lo acordado. Lo que sigue como quedo en
+    // los dos lados ni se mira (el diario).
+    let mut preps = Vec::new();
     for chat in &chats {
         let nombre = nombres
             .iter()
@@ -426,9 +441,28 @@ pub fn vuelta_con_persona<D: Disco + ?Sized, F: Read + Write>(
         estado(&format!("Juntando «{nombre}» con {}…", s.otro.nombre));
         let prep = s.preparar(chat)?;
         s.aplicar(&prep, &mut hecho)?;
-        let arch = s.preparar_archivos(&prep)?;
-        s.aplicar_archivos(&arch, &mut hecho, &mut |_| {})?;
-        s.cerrar(&prep, ahora())?;
+        preps.push(prep);
+    }
+    let mut archivos = Vec::new();
+    for prep in preps.into_iter().filter(|p| !p.quieto) {
+        let a = s.preparar_archivos(&prep)?;
+        archivos.push((prep, a));
+    }
+    let todos: Vec<(usize, &crate::diferencia::Paso)> = archivos
+        .iter()
+        .enumerate()
+        .flat_map(|(i, (_, a))| a.pasos.iter().map(move |p| (i, p)))
+        .collect();
+    let orden = crate::prioridad::ordenar(todos, |(i, p)| archivos[*i].1.pieza(p, true));
+    for (i, p) in orden {
+        s.aplicar_pasos(&archivos[i].1, &[p], &mut hecho, &mut |_| {})?;
+    }
+    for (prep, _) in &archivos {
+        s.cerrar(prep, ahora())?;
+    }
+    // Las recortadas (`solo_estos`) no cuentan para la verificacion entera.
+    if solo_estos.is_none() {
+        s.contar_vuelta();
     }
     let bytes = s.enviados() + s.recibidos();
     let quien = s.otro.clone();
@@ -457,7 +491,12 @@ mod pruebas {
             texto_del_qr("K7Q2M9XP", None, 4000),
             "pixpin-chat:1:K7Q2M9XP::4000"
         );
-        assert!(leer_qr("pixpin-chat:1:K7Q2M9XP::4000").unwrap().host.is_none());
+        assert!(
+            leer_qr("pixpin-chat:1:K7Q2M9XP::4000")
+                .unwrap()
+                .host
+                .is_none()
+        );
         // Casos negativos: otro QR de PixPin, un codigo malo, poco texto.
         assert!(leer_qr("pixpin-envio:1:123456::0").is_none());
         assert!(leer_qr("pixpin-chat:1:K7Q2M9X0:h:1").is_none());

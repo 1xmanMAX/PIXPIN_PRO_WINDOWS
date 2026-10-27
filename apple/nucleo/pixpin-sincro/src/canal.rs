@@ -65,6 +65,12 @@ pub enum ErrorCanal {
     /// No descifra. En la practica siempre significa lo mismo.
     #[error("el otro aparato tiene otro codigo de grupo")]
     CodigoDistinto,
+    /// **Un tramo que no se descifra a mitad de conversacion** (27-oct-2026,
+    /// `Canal.TramoDanado` de Android): repetido, fuera de orden o danado por
+    /// el camino —cada tramo lleva su numero dentro del cifrado—. Es una
+    /// conexion rota, no un aparato de otro grupo, y asi se dice.
+    #[error("Llegó un trozo dañado o repetido: se corta la sincronización")]
+    TramoDanado,
     #[error("tramo de {0} bytes, fuera de lo admitido")]
     TramoRaro(i32),
     #[error("tipo de tramo desconocido: {0}")]
@@ -374,9 +380,16 @@ impl<F: Read + Write> Canal<F> {
                     aad: &[],
                 },
             )
-            // Que no descifre solo puede querer decir una cosa: el otro
-            // deriva otra clave, o sea que tiene otro codigo.
-            .map_err(|_| ErrorCanal::CodigoDistinto)?;
+            // **Solo el primer tramo dice «otro codigo»**: que no descifre el
+            // primero es que el otro deriva otra clave. Uno que falla despues
+            // es un tramo repetido, reordenado o danado (Android 27-oct-2026).
+            .map_err(|_| {
+                if self.contador_entrada == 0 {
+                    ErrorCanal::CodigoDistinto
+                } else {
+                    ErrorCanal::TramoDanado
+                }
+            })?;
         self.contador_entrada += 1;
         self.recibidos += claro.len().saturating_sub(1) as u64;
 
@@ -533,6 +546,70 @@ mod pruebas {
         ));
     }
 
+    /// Una tuberia que ademas guarda lo que escribe, para mandarlo otra vez.
+    struct Grabadora {
+        dentro: Tuberia,
+        copia: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+        crudo: std::sync::mpsc::Sender<u8>,
+    }
+
+    impl Read for Grabadora {
+        fn read(&mut self, d: &mut [u8]) -> std::io::Result<usize> {
+            self.dentro.read(d)
+        }
+    }
+
+    impl Write for Grabadora {
+        fn write(&mut self, d: &[u8]) -> std::io::Result<usize> {
+            self.copia.lock().unwrap().extend_from_slice(d);
+            self.dentro.write(d)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn un_tramo_repetido_a_mitad_es_un_trozo_danado_y_no_otro_codigo() {
+        // Android 27-oct-2026 (`Canal.TramoDanado`): cada tramo lleva su
+        // numero dentro del cifrado; uno repetido no se descifra, y eso es
+        // una conexion rota, no un aparato de otro grupo.
+        let (uno, otro) = par();
+        let copia = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let crudo = uno.escribe.clone();
+        let g = Grabadora {
+            dentro: uno,
+            copia: copia.clone(),
+            crudo,
+        };
+        let clave = clave_de_grupo("K7Q2M9XMPA");
+        let hilo = std::thread::spawn(move || Canal::saludar(otro, &clave, [9u8; NONCE], false));
+        let mut cliente = Canal::saludar(g, &clave, [7u8; NONCE], true).unwrap();
+        let mut servidor = hilo.join().unwrap().unwrap();
+        cliente.mandar(Tipo::Json, b"{}").unwrap();
+        assert_eq!(servidor.recibir().unwrap().0, Tipo::Json);
+        copia.lock().unwrap().clear();
+        cliente.mandar(Tipo::Trozo, &[1u8; 10]).unwrap();
+        let tramo = copia.lock().unwrap().clone();
+        for b in &tramo {
+            cliente.flujo.crudo.send(*b).unwrap();
+        }
+        assert_eq!(servidor.recibir().unwrap().0, Tipo::Trozo);
+        assert!(matches!(servidor.recibir(), Err(ErrorCanal::TramoDanado)));
+    }
+
+    #[test]
+    fn un_trozo_de_mas_corta_sin_escribir_nada() {
+        let (uno, otro) = par();
+        let clave = clave_de_grupo("K7Q2M9XMPA");
+        let (mut cliente, mut servidor) = saludar_los_dos(uno, otro, clave, clave);
+        cliente.mandar(Tipo::Trozo, &[0u8; 10]).unwrap();
+        let mut salida = Vec::new();
+        let r = crate::protocolo::recibir_trozos(&mut servidor, 5, &mut salida, &mut |_| {});
+        assert!(r.is_err(), "de mas no");
+        assert!(salida.is_empty());
+    }
+
     #[test]
     fn lo_que_no_empieza_por_pxs1_se_rechaza() {
         let (mut uno, otro) = par();
@@ -546,15 +623,14 @@ mod pruebas {
 
     use crate::compartidos::{Llaves, mezcladas};
 
+    type Lado = Result<(Canal<Tuberia>, Vec<u8>), ErrorCanal>;
+
     /// Los dos lados de una conversacion entre personas, a la vez. `acepta`
     /// dice que claves acepta cada uno.
     fn personas(
         uno: (Llaves, fn(&[u8]) -> bool),
         otro: (Llaves, fn(&[u8]) -> bool),
-    ) -> (
-        Result<(Canal<Tuberia>, Vec<u8>), ErrorCanal>,
-        Result<(Canal<Tuberia>, Vec<u8>), ErrorCanal>,
-    ) {
+    ) -> (Lado, Lado) {
         let (a, b) = par();
         let hilo = std::thread::spawn(move || {
             Canal::entre_personas(b, &otro.0, [9u8; NONCE], false, otro.1)

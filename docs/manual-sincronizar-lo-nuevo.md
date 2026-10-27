@@ -6,11 +6,13 @@ viven, con que formato, como se resuelven los choques y que tiene que hacer
 el aparato que lo recibe para ensenarlo. Asi lo que se hace en un aparato
 llega a todos los del grupo por la red (Wi-Fi), en los dos sentidos.
 
-**No hay mensajes nuevos en el protocolo** ni version nueva: todo viaja
-como siempre, en mensajes del chat (sus campos, conservados en `resto`) y en
-ficheros que esos mensajes nombran. Lo unico que cambia son **tres reglas de
-fusion** (seccion 7), que el PC ya aplica y Android tiene que copiar para
-que tambien junte bien cuando dirige el.
+**No hay version nueva del protocolo** (sigue la 4): todo viaja como
+siempre, en mensajes del chat (sus campos, conservados en `resto`) y en
+ficheros que esos mensajes nombran. Cambian **tres reglas de fusion**
+(seccion 7), y desde el 27-oct hay **lo negociado de la sincronizacion por
+diario** (seccion 13): `novedades`, `entero`, `desdeByte` y `reanudar`, que
+solo se usan si los dos dicen `capacidades: ["diario1","reanudar1"]` en el
+saludo. Con quien no las dice, todo va exactamente como antes.
 
 Lo de antes sigue igual: [novedades-2026-10-25-para-los-otros-aparatos.md](novedades-2026-10-25-para-los-otros-aparatos.md)
 (resumen), [sincronizar-marcos-vistas-y-tinta.md](sincronizar-marcos-vistas-y-tinta.md)
@@ -440,31 +442,35 @@ lo marcado. Al volver a preguntar, lo nacido despues sale marcado.
 
 ### 11.2 El orden de los archivos
 
-Quien dirige mueve **primero los mensajes de todos los chats** (con ellos,
-las tareas, que son mensajes; los chats compartidos con otras personas,
-delante) y despues **los archivos de todos los chats juntos**, por esta
-prioridad (la lista del usuario en Android, checklist 16):
+Quien dirige mueve **primero los mensajes de todos los chats**, en este
+orden de chats: los que tienen una **lista de tareas** (o una tabla del
+chat), los **compartidos** con otras personas y luego los demas **del que
+tiene menos mensajes al que tiene mas** (a igualdad, por id). Despues **los
+archivos de todos los chats juntos**, por estos niveles (los de Android,
+`Prioridad.kt`, desde el 27-oct; antes el PC tenia cuatro numeros):
 
-| Prioridad | Que |
+| Nivel | Que |
 |---|---|
-| 0 | lo de un chat compartido con otra persona (menos videos y sonidos) |
-| 1 | archivos: documentos, fotos, lo demas |
-| 2 | lienzos, notas y textos (`pins/…`, `notas/…`, lo que se junta como texto) |
-| 3 | videos y sonidos: grabaciones, notas de voz, musica (`mp4 mov avi mkv webm 3gp m4v wmv flv m4a mp3 aac ogg opus wav amr flac wma`, `voz/…`) |
+| Tareas | lo que nombra una lista de tareas (menos lo pesado) |
+| Compartidos | lo de un chat compartido con otra persona (menos lo pesado) |
+| Archivos | `pdf doc docx xls xlsx ppt pptx odt ods odp rtf epub csv txt zip png jpg jpeg webp gif heic heif bmp svg tif tiff dwg dxf` |
+| Lienzos y notas | `*.excalidraw.gz`, `*.croquis.gz`, `tablas/…`, `notas/…`, `.md`, `.json` y lo demas |
+| Pesado | `mp4 m4v mov mkv webm avi 3gp 3gpp m4a mp3 wav ogg oga opus aac flac amr wma`: **pesado siempre** |
 
-Dentro de cada prioridad, **de lo mas ligero a lo mas pesado** (lo mas
-grande de los dos lados; a igual peso, el orden del plan). Cada chat se
-**cierra dos veces**: tras sus mensajes (lo acordado de los mensajes ya no
-se pierde si la vuelta se corta en un video) y tras sus archivos.
-`cerrar` solo apunta lo que de verdad esta igual, asi que cerrar dos veces
-no cambia nada mas. El protocolo **no reanuda** un archivo cortado: se tira
-el `.sincro` y se ofrece entero en la vuelta siguiente.
+**Grupos**: lo de una carpeta del chat (una clase grabada: su voz, sus
+capturas, su video) va junto, y lo de un mensaje suelto (su adjunto y lo
+anotado) tambien. El grupo va en el nivel **mas tardio** de sus piezas y
+pesa **lo que pesan todas**. Orden: nivel del grupo → peso del grupo →
+grupo → peso del archivo → ruta. Cada chat se **cierra dos veces**: tras
+sus mensajes (lo acordado de los mensajes ya no se pierde si la vuelta se
+corta en un video) y tras sus archivos. Un archivo grande cortado a medias
+**se reanuda** con quien sabe (`reanudar1`, §13.5).
 
-Codigo: `PreparadoArchivos::en_orden`, `Sesion::aplicar_pasos`,
-`vuelta::prioridad_de_archivo` (`crates/pixpin-sincro`, copiado en
-`apple/nucleo/pixpin-sincro`). Una grabacion **no** cuenta aun por su peso
-total: sus piezas van cada una por el suyo (la captura antes que la voz y la
-voz antes que el video, que ya es lo que se quiere si se corta).
+Codigo: `prioridad::{nivel_de, ordenar, ordenar_chats, grupos_de_archivos}`,
+`PreparadoArchivos::{en_orden, pieza}`, `Sesion::aplicar_pasos`,
+`vuelta::una` (`crates/pixpin-sincro`, copiado en `apple/nucleo/pixpin-sincro`).
+Probado en `prioridad::pruebas` (los vectores de `PrioridadTest`) y en
+`diario_de_verdad::cortada_a_mitad_del_video_las_tareas_y_el_chat_compartido_ya_llegaron`.
 
 ### 11.3 Versiones vinculadas en los chats compartidos (Android v0.145)
 
@@ -509,29 +515,170 @@ hashes). Lo de sincronizar desde el 20-oct:
 | Ruta con `)` en el alcance | desde el 1-oct | si; y el movil de pruebas desde hoy | si |
 | Chats nacidos despues de elegir (`.ofrecidos`) | `elegidosAhora` (ea0a779e) | `elegidos_ahora` (hoy) | si |
 | Archivos de pequeno a grande en un chat | `aplicarArchivos` (ea0a779e) | `en_orden` (hoy) | si |
-| Prioridades entre chats (checklist 16) | pendiente | hecho (§11.2) | si (solo orden) |
+| Prioridades entre chats (checklist 16) | `Prioridad.kt` (261b67a5) | `prioridad.rs`, los mismos niveles y grupos (§11.2) | si (solo orden) |
+| Sincronizar por diario, `diario1`/`reanudar1` | 261b67a5 | hecho (§13) | si, y con quien no lo dice, como siempre |
 | Versiones vinculadas (`versionDe`, `versionN`, copias) | 4d57eb71 | se conservan y viajan (pruebas de hoy); la regla al editar, la ventana del chat | si |
 | Boton de sincronizar que gira (`VueltasEnMarcha`) | a437419a | 0470294 | no viaja |
 | Pantalla de aparatos en tarjetas (e5ae6844) | solo pantalla | — | no viaja |
 | Chats compartidos como conversacion (0486b8d6, `EntrePersonas.kt`) | puerto de `conversacion.rs` | `pixpin_ui::conversacion` | no cambia nada de lo que viaja |
-| «Diario de cambios» entre Androids (checklist 13: `docs/sincronizacion-por-diario.md`, `docs/guia-sincronizacion-para-windows.md`) | **aun no existe en ninguna rama** | — | ver abajo |
+| «Diario de cambios» (checklist 13: `docs/sincronizacion-por-diario.md`, `docs/guia-sincronizacion-para-windows.md`) | 261b67a5 | §13 | si |
 
 ### Lo que Android tiene que hacer
 
-- [ ] **Prioridades (§11.2)** en `SincronizarActivity` y
-      `VueltaCallada`: primero los mensajes de todos los chats (compartidos
-      delante), cerrar cada uno, despues los archivos de todos por
-      prioridad y peso, y cerrar otra vez. `Sesion.aplicarArchivos` ya
-      ordena por peso dentro de un chat; falta mover pasos de varios chats
-      (un `aplicarPasos(prep, pasos)` como el del PC).
+- [x] **Prioridades (§11.2)**: hecho en Android (`Sesion.vuelta`,
+      261b67a5) con niveles y grupos; el PC tiene ahora los mismos.
 - [ ] **Reenviar** ya quita `versionDe`/`versionN`; comprobar que «Copiar a
       otro chat» y «Enviar a mis aparatos» (`suelto`) tambien.
-- [ ] **El diario de cambios** (checklist 13): si se hace, que sea
-      **negociado** (una palabra nueva en `hola`, p. ej. `capacidades:
-      ["diario"]`, o una peticion nueva que el PC conteste «No sé qué es»)
-      y que con el PC siga el protocolo de siempre, como dice la checklist.
-      Un tipo de peticion que el otro no conoce **le mata la conversacion**
-      si no contesta: cualquier peticion nueva tiene que tener respuesta
-      vacia en el `Respondedor` de los dos antes de usarse.
-- [ ] Opcional: que «Una grabacion cuenta por su peso total» (checklist
-      16) se haga sumando las piezas de su carpeta; el PC lo copiara.
+- [x] **El diario de cambios** (checklist 13): hecho en Android
+      (261b67a5) y en el PC (§13), negociado con `capacidades` en `hola`.
+      Lo que un aparato no conoce se contesta «No sé qué es «…»» en los dos
+      lados y la conversacion sigue (probado).
+- [x] «Una grabacion cuenta por su peso total» (checklist 16): los grupos
+      de §11.2, en los dos.
+
+## 13. Sincronizar por diario (27-oct)
+
+El usuario: «comprueba si se implementó la sincronización inteligente; es
+muy importante, acelera la sincronización entre Windows, Android y los
+demás». En Windows **no estaba**. Ahora si, como Android (`261b67a5`, «lo
+quieto ni se mira, por prioridad, reanudar y automatica por defecto»),
+siguiendo su guia para el PC (`docs/guia-sincronizacion-para-windows.md`) y
+su especificacion (`docs/sincronizacion-por-diario.md`). **Nunca es la unica
+verdad**: si el diario falta, esta roto o no lo explica todo, la vuelta hace
+lo de siempre. Un fallo del diario cuesta tiempo, nunca datos.
+
+### 13.1 El diario (`<raiz>/sincro/diario/`)
+
+| Fichero | Que | Formato |
+|---|---|---|
+| `diario.jsonl` | una linea por cambio, con un numero `n` que solo crece | cabecera `{"libro":"<uuid>","piso":0,"v":1}`; apuntes `{"n","t","k","c","o","a","r","h"}` con `k` ∈ `m p f l x` (como Android) |
+| `huellas.tsv` | lo que vio el ultimo barrido | `ruta \t bytes \t fecha_ns \t nodo \t crc32|-` |
+| `indice.tsv` | de que chat es cada archivo (de cada alcance calculado) | `#<libro>`, luego `chat \t ruta␁ruta…` |
+| `cursores/<id>.json` | hasta donde quedo igual cada chat con cada aparato | `{"libro","chats":{"<chat>":{"n","alli","sello"}},"verificado","vueltas"}` |
+| `cerrojo` | cerrojo entre procesos (se crea solo si no existe; uno de mas de 10 s es de un proceso muerto) | — |
+
+En el PC las rutas del diario son las de este equipo relativas a su raiz
+(`proyectos/<ficha>/lienzos/d1.excalidraw`): el diario no viaja. El **nodo**
+es el indice de archivo de NTFS con el numero de volumen
+(`(vol=…,idx=…)`, `pixpin_sistema::archivos::nodo_de`); en Mac, el inodo.
+
+- **Se apunta despues de escribir**: lo que escribe la sincronizacion
+  (`Disco::escribir_archivo_de`, `escribir_reanudable`, marcas, lapidas,
+  `vista::DiscoPc` al aplicar mensajes, guardar un proyecto o borrar un
+  chat, con las huellas de su cuaderno, su `proyecto.json` y su ficha) y el
+  chat del PC (`cuaderno::anadir`, `anadir_lineas`, `reemplazar`,
+  `cambiar`, `quitar`).
+- **El barrido** (`Disco::barrer`, al empezar cada vuelta en los dos lados,
+  con el aparato ocupado): tamano, fecha en ns y nodo de cada archivo de lo
+  que viaja, y CRC32 de lo escrito hace menos de 3 s (y menos de 8 MB). En
+  el PC, el cuaderno de una carpeta es un **mensaje de ese chat**, su
+  `proyecto.json` **su proyecto**, la ficha de cada chat en el indice
+  (`@chat/<chat>`, sin `tocado` ni `resumen`) **su proyecto**; lo demas, un
+  archivo que el indice (o su carpeta) dice de quien es. Solo
+  `sincro/borrados.jsonl` y `sincro/chatsborrados.jsonl` son «todo» (`x`).
+- **Se compacta** pasadas 4 000 lineas si hay el triple que cosas; con mas
+  de 200 000 cosas se olvida la mitad mas vieja y sube el `piso`.
+- **Una linea rota, el indice perdido o de otro libro** → `x`. Sin diario o
+  sin cabecera → otro libro (los cursores dejan de valer).
+
+### 13.2 Los cursores y lo quieto
+
+Al cerrar un chat, quien dirige lee su ultimo numero `N` **antes** de mirar
+y, si los dos lados quedaron **identicos** (plan de mensajes vacio con lo
+acordado, plan de archivos vacio sin contar lo vedado y el mismo proyecto
+canonico), guarda `{n: N, alli: huella del inventario del otro, sello: el de
+lo acordado}`; si no, lo quita. Quien responde apunta el suyo con el numero
+que tenia al contestar el ultimo `inventario` de ese chat, si `base` llega
+con `entero`. Un chat esta **quieto aqui** si tiene cursor, el libro es el
+de ahora, `piso ≤ n ≤ ultimo` y no hay apuntes de ese chat (ni `x`) despues.
+**Cada 25 vueltas o cada dia** (o con el reloj hacia atras) se mira todo
+(las vueltas recortadas de tareas no cuentan). Salir del grupo borra los
+cursores.
+
+### 13.3 Lo negociado
+
+| Peticion | Respuesta | Quien |
+|---|---|---|
+| `hola` con `"capacidades":["diario1","reanudar1"]` | lo mismo en el suyo | los dos; se usa la **interseccion**; `version` sigue en **4** |
+| `{"t":"novedades"}` | `{"quietos":[…]}` (con una persona, solo los chats compartidos) o `{"error":"No sé qué es «novedades»"}` | solo a quien dijo `diario1` |
+| `{"t":"base",…,"entero":true}` | `{}` | apunta el cursor del que responde |
+| `dame` con `desdeByte` | `{"bytes":<lo que falta>,"desdeByte":…}` y los trozos desde ahi | solo con `reanudar1` |
+| `pon` con `reanudar:true`, `bytes` entero y `resumen` del entero | **antes de los trozos** `{"desdeByte":<lo que ya tiene>}` (o un error, y no sale ningun trozo) | solo con `reanudar1` |
+
+Un chat quieto **en los dos** no se mira (ni una peticion). Con quien no
+tiene diario (un PC o un Android de antes): `inventario` + `archivos` y, si
+el `selloDeBase` es el del cursor y la huella de lo que dice tener
+(§7.1 de la guia: `<sena>=<resumen>[!]`, `--`, proyecto canonico, `--`,
+`<ruta>=<resumen>`, SHA-256) es la del cursor, tampoco se sigue. **Lo que un
+aparato no conoce se contesta con un error en los dos lados**, sin cortar
+la conversacion.
+
+### 13.4 La copia que no se rehace
+
+`Disco::hacer_copia_si_cambio` (`copias::hacer_si_cambio`): si el chat no
+se ha tocado desde la ultima vez que se miro (`<raiz>/copias/diario.tsv`:
+`chat \t libro \t n`), la ultima copia sigue valiendo y no se relee nada.
+
+### 13.5 Fiabilidad
+
+| Caso | Que hace ahora el PC |
+|---|---|
+| Se corta a mitad de un archivo de ≥ 1 MiB (no de texto) | lo llegado se queda en `<ruta>.parcial` con `<ruta>.parcial.json` `{"resumen","largo","cuando"}` y `fsync`; con `reanudar1` la vuelta siguiente pide o manda solo lo que falta y comprueba el **SHA-256 del entero** antes de renombrarlo a su sitio. Otra version: se tira y empieza de cero. Mas de 7 dias: se tira |
+| Escribir lo recibido | temporal `.sincro`, `fsync` y renombrar **encima** de un paso |
+| Disco lleno | antes de recibir se mira el sitio (lo que llega + 16 MB); si no cabe o se llena a mitad, lo que llega se lee y se tira (la conversacion no se descuadra), queda `saltado` y la vuelta avisa «No queda espacio en este aparato…» |
+| La aplicacion murio a mitad | al empezar la vuelta siguiente, fuera los `*.sincro` |
+| Trozo de mas | «Llegó más de lo prometido»: corta sin escribirlo |
+| Tramo repetido o fuera de orden | solo el **primero** que no descifra es «otro codigo de grupo»; los demas, `ErrorCanal::TramoDanado` |
+| Dos a la vez | «ocupado» se reintenta en **1–4 s con azar**; un fallo de verdad a los 5 s, 10 s, 20 s… hasta 5 min (±25 %), sin esperar a los 10 min (las cuentas en `pixpin_sincro::reintentos`; el reloj, `automatica::Reloj` con `reintento`, `acabo` y `no_empezo`) |
+| Al volver la red | Windows avisa del cambio de direccion (`pixpin_shell::red`, `NotifyAddrChange`) y se sondea ya (`presencia::sondear_ya`, `Reloj::volvio_la_red`) |
+
+### 13.6 Automatica por defecto
+
+Ya lo era en el PC (`[sincro] automatica = true` de fabrica) con los
+aparatos del grupo y con las personas de los chats compartidos; lo que el
+usuario apaga se respeta. Ahora ademas reintenta como Android y sondea al
+volver la red (§13.5).
+
+### 13.7 Lo que gana (medido)
+
+En las pruebas (compilacion de depuracion, dos «aparatos» en la misma
+maquina; lo que cuenta es la proporcion):
+
+| Prueba | Sin diario | Con diario | |
+|---|---|---|---|
+| 31 chats de un movil de mentira (30 × 120 mensajes, 6 lienzos, 6 archivos de 64 KB), sin cambios | 38 383 ms · 1 395 437 bytes | 1 819 ms · 4 158 bytes | ×21 en tiempo, ×335 en bytes |
+| Lo mismo, con un mensaje y un lienzo cambiados en dos chats | 38 122 ms · 1 425 482 bytes | 4 800 ms · 128 154 bytes (29 quietos) | ×8, ×11 |
+| PC con 110 chats, sin cambios | 56 515 ms · 1 320 lecturas de cuadernos | 703 ms · **0 cuadernos leidos** (dirigiendo y respondiendo) | ×80 |
+
+### 13.8 Lista de tareas de la guia (§8 de Android)
+
+- [x] 1. Orden por prioridad: mensajes de todos (tareas, compartidos, del
+      mas ligero), archivos de todos por niveles y grupos, cerrar al final.
+- [x] 2. Fiabilidad: renombrar encima tras `fsync`; mirar el sitio y
+      leer-y-tirar; limpiar `*.sincro`; reintentos con azar y espera que se
+      dobla; primer tramo distinto de los demas; cortar si un trozo se pasa.
+- [x] 3. Diario + barrido + indice + cursores, y saltarse un chat con un
+      Android sin diario por la huella de su inventario.
+- [x] 4. `capacidades:["diario1"]`, `novedades` y `entero`.
+- [x] 5. `reanudar1`.
+- [x] 6. Automatica tambien con las personas de los chats compartidos (ya
+      lo era) y al volver la red.
+- [x] 7. Versiones vinculadas: ya estaban (§11.3).
+
+Pruebas (`crates/pixpin-sincro/src/diario_de_verdad.rs`,
+`diario::pruebas`, `prioridad::pruebas`, `reintentos::pruebas`,
+`canal::pruebas`, `crates/pixpin-proyecto/tests/sincronizar_por_diario.rs`):
+la segunda vuelta no mira nada desde los dos lados, un cambio solo mira su
+chat, lo escrito sin apuntar llega, un lienzo se encuentra por el indice,
+sin diario o con una linea rota no se pierde nada, apagado como antes, la
+verificacion entera, con uno de antes por su inventario, reanudar en los
+dos sentidos, otra version a medias, sin sitio no se descuadra, restos,
+tramo repetido y trozo de mas, dos a la vez, borrado contra cambiado,
+idempotencia, la copia de un chat que no cambio no se rehace, cortada a
+mitad del video ya trajo las tareas y el chat
+compartido, el orden por niveles, lo que no se conoce se contesta, el PC con
+el Android nuevo y con uno de antes en los dos sentidos, y 110 chats sin
+leer ni un cuaderno.
+
+Mac, iPad e iPhone: el nucleo (`apple/nucleo/pixpin-sincro`,
+`pixpin-proyecto`, `pixpin-sistema`) lleva lo mismo.

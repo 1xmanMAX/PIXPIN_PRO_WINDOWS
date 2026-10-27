@@ -14,7 +14,7 @@
 //! Kotlin (ver `kotlin`), y los textos llevan `pixpin:files/` donde el
 //! aparato tenia una ruta suya.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::base::{Base, Mapa};
 use crate::canonico::{self, Json};
+use crate::diario::{self, Diario};
 use crate::diferencia::{Apunte, MARCA_VIEJA};
 use crate::kotlin;
 use crate::mensajes::{Aparato, ArchivoInfo, Chat, LapidaDeChat};
@@ -45,6 +46,14 @@ pub const CARPETAS: [&str; 7] = [
     "notas/",
     "voz/",
 ];
+/// Lo que llega a medias de un archivo grande (27-oct-2026): ver
+/// [escribir_reanudable].
+pub const PARCIAL: &str = ".parcial";
+/// Lo llegado a medias de hace mas de esto se tira.
+pub const DIAS_DE_PARCIAL: i64 = 7;
+/// Lo que se deja libre siempre al recibir: un disco lleno del todo no
+/// arranca bien.
+pub const MARGEN_DE_ESPACIO: u64 = 16 << 20;
 /// El prefijo con que viajan las rutas de un aparato (`Rutas.PORTATIL`).
 pub const PORTATIL: &str = "pixpin:files/";
 
@@ -186,6 +195,145 @@ pub trait Disco {
         }
     }
 
+    // ------------------------------------------------ el diario de cambios
+
+    /// **El diario de cambios** de este aparato (27-oct-2026): ver `diario`.
+    /// Todo lo que la sincronizacion escribe aqui se apunta.
+    fn diario(&self) -> Diario {
+        Diario::de(&self.raiz())
+    }
+
+    /// Donde esta `rel` de `chat`, relativo a la raiz y con `/`: el nombre
+    /// que lleva en el diario. `None` si no cae dentro de la raiz.
+    fn local_de(&self, chat: &str, rel: &str) -> Option<String> {
+        relativa(&self.raiz(), &self.ruta(chat, rel))
+    }
+
+    /// Las carpetas (relativas a la raiz, con la barra del final) donde vive
+    /// lo que viaja: las que recorre el barrido y donde se limpian los restos
+    /// de una vuelta que murio. Por defecto las del movil.
+    fn carpetas_que_viajan(&self) -> Vec<String> {
+        CARPETAS.iter().map(|c| c.to_string()).collect()
+    }
+
+    /// **El barrido** al empezar cada vuelta (`Diario.barrer`): lo escrito
+    /// sin apuntar se apunta. Por defecto como el movil: lo de las carpetas
+    /// que viajan es un archivo y los indices de muchos chats son «todo».
+    fn barrer(&self) -> usize {
+        let detectado = |rel: &str, a: &str| {
+            let k = if INDICES.contains(&rel) {
+                diario::TODO
+            } else {
+                diario::ARCHIVO
+            };
+            vec![diario::Apunte::nuevo(k, None, rel, a)]
+        };
+        self.diario().barrer(&diario::Barrido {
+            carpetas: self.carpetas_que_viajan(),
+            sueltos: INDICES.iter().map(|s| s.to_string()).collect(),
+            virtuales: Vec::new(),
+            detectado: &detectado,
+        })
+    }
+
+    /// **De que chats son estos archivos** (rutas del diario) que el indice
+    /// no conoce (`Disco.chatsQueNombran`): los chats cuyo alcance los
+    /// nombra. Lo que no nombra nadie no es de ningun chat. `None` si no se
+    /// pudo saber.
+    fn chats_que_nombran(
+        &self,
+        rels: &BTreeSet<String>,
+    ) -> Option<HashMap<String, BTreeSet<String>>> {
+        let mut salida: HashMap<String, BTreeSet<String>> = HashMap::new();
+        for c in self.chats().ok()? {
+            for (rel, _) in self.alcance(&c.id).ok()? {
+                if let Some(l) = self.local_de(&c.id, &rel)
+                    && rels.contains(&l)
+                {
+                    salida.entry(l).or_default().insert(c.id.clone());
+                }
+            }
+        }
+        Some(salida)
+    }
+
+    /// Lo que dice el diario por chats, resolviendo con
+    /// [Disco::chats_que_nombran] lo apuntado despues de `desde`.
+    fn vista_del_diario(&self, desde: i64) -> diario::Vista {
+        self.diario().vista(desde, &|r| self.chats_que_nombran(r))
+    }
+
+    /// Los chats que tienen alguna lista de tareas (o tabla del chat): van
+    /// los primeros en la vuelta (`Disco.chatsConTareas`).
+    fn chats_con_tareas(&self) -> BTreeSet<String> {
+        let Ok(chats) = self.chats() else {
+            return BTreeSet::new();
+        };
+        chats
+            .into_iter()
+            .filter(|c| {
+                self.mensajes(&c.id)
+                    .is_ok_and(|l| l.iter().any(crate::prioridad::es_de_tareas))
+            })
+            .map(|c| c.id)
+            .collect()
+    }
+
+    /// Los grupos de archivos de un chat, para el orden de la vuelta: ver
+    /// `prioridad::grupos_de_archivos`.
+    fn grupos_de_archivos(&self, chat: &str) -> HashMap<String, (String, bool)> {
+        crate::prioridad::grupos_de_archivos(self, chat)
+    }
+
+    /// **Los restos de una vuelta que no acabo** (`Disco.limpiarRestos`): los
+    /// temporales `.sincro` se tiran siempre —con el aparato ocupado no hay
+    /// otra vuelta escribiendolos— y lo llegado a medias cuando tiene mas de
+    /// [DIAS_DE_PARCIAL] dias. Devuelve cuantos tiro.
+    fn limpiar_restos(&self, ahora: i64) -> usize {
+        let raiz = self.raiz();
+        let mut n = 0;
+        let mut pendientes: Vec<(PathBuf, u32)> = self
+            .carpetas_que_viajan()
+            .iter()
+            .map(|c| (raiz.join(c), 0))
+            .collect();
+        while let Some((d, hondo)) = pendientes.pop() {
+            let Ok(l) = std::fs::read_dir(&d) else {
+                continue;
+            };
+            for e in l.flatten() {
+                let ruta = e.path();
+                let Ok(meta) = std::fs::metadata(&ruta) else {
+                    continue;
+                };
+                if meta.is_dir() {
+                    if hondo < 24 {
+                        pendientes.push((ruta, hondo + 1));
+                    }
+                    continue;
+                }
+                let nombre = e.file_name().to_string_lossy().to_string();
+                let viejo = ahora - milis(&meta) > DIAS_DE_PARCIAL * 24 * 3_600_000;
+                let tirar = nombre.ends_with(".sincro")
+                    || ((nombre.ends_with(PARCIAL)
+                        || nombre.ends_with(&format!("{PARCIAL}.json")))
+                        && viejo);
+                if tirar && std::fs::remove_file(&ruta).is_ok() {
+                    n += 1;
+                }
+            }
+        }
+        n
+    }
+
+    /// `Copias.hacer` **mirando el diario primero** (27-oct-2026): si el chat
+    /// no se ha tocado desde la ultima vez que se miro aqui, la ultima copia
+    /// sigue valiendo y no se relee nada. Solo desde la sincronizacion, que
+    /// ha barrido el diario justo antes.
+    fn hacer_copia_si_cambio(&self, chat: &str, motivo: &str, ahora: i64) -> io::Result<bool> {
+        crate::copias::hacer_si_cambio(self, chat, motivo, ahora)
+    }
+
     // ------------------------------------------------------------ por defecto
 
     /// `Disco.apuntes`: uno por mensaje, por su codigo unico, y uno por cada
@@ -260,11 +408,13 @@ pub trait Disco {
     }
 
     fn anotar_borrados(&self, nuevas: &[Marca]) -> io::Result<()> {
-        anadir_lineas(&self.sincro().join("borrados.jsonl"), nuevas)
+        anotar_marcas_en(&self.sincro(), nuevas)
     }
 
     fn escribir_marcas(&self, lista: &[Marca]) -> io::Result<()> {
-        escribir_lineas(&self.sincro().join("borrados.jsonl"), lista)
+        escribir_lineas(&self.sincro().join("borrados.jsonl"), lista)?;
+        diario_de_sincro(&self.sincro()).marcas(&[]);
+        Ok(())
     }
 
     /// Las marcas despues de poner y quitar mensajes en un chat
@@ -364,6 +514,28 @@ pub trait Disco {
     /// Si `llenar` dice que no vale, el de antes se queda como estaba. Lo de
     /// texto se pasa a local y se comprime si su sitio acaba en `.gz`.
     fn escribir_archivo(&self, chat: &str, rel: &str, llenar: Llenar<'_>) -> io::Result<bool> {
+        self.escribir_archivo_de(chat, rel, -1, llenar)
+    }
+
+    /// **Escribe un archivo que llega de `bytes` bytes** (-1: no se sabe)
+    /// sin perder lo de antes ni descuadrar la conversacion (27-oct-2026,
+    /// `Disco.escribirArchivo` de Android):
+    ///
+    /// - El temporal se baja a disco (`fsync`) y se renombra **encima** del
+    ///   de antes, de un paso ([reemplazar]).
+    /// - **Sin sitio** (lo que llega no cabe con [MARGEN_DE_ESPACIO] de
+    ///   margen, o el disco se llena a medias): lo que viene por el cable se
+    ///   lee y se tira para que la conversacion siga en su sitio, el temporal
+    ///   se borra y se devuelve `false` (el que manda lo ve «saltado").
+    ///   [tomar_sin_espacio] lo dice despues.
+    /// - Lo escrito se apunta en el diario.
+    fn escribir_archivo_de(
+        &self,
+        chat: &str,
+        rel: &str,
+        bytes: i64,
+        llenar: Llenar<'_>,
+    ) -> io::Result<bool> {
         if !permitida(rel) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -371,17 +543,27 @@ pub trait Disco {
             ));
         }
         let destino = self.ruta(chat, rel);
-        if let Some(p) = destino.parent() {
-            std::fs::create_dir_all(p)?;
+        let carpeta = destino
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or(self.raiz());
+        std::fs::create_dir_all(&carpeta)?;
+        if bytes >= 0 && !cabe(&self.raiz(), &carpeta, bytes as u64) {
+            marcar_sin_espacio(&self.raiz());
+            llenar(&mut io::sink())?;
+            return Ok(false);
         }
         let tmp = con_sufijo(&destino, ".sincro");
         let hecho = (|| -> io::Result<bool> {
-            let mut f = io::BufWriter::new(std::fs::File::create(&tmp)?);
-            if !llenar(&mut f)? {
+            let mut a = Aguanta::nuevo(std::fs::File::create(&tmp)?);
+            let entero = llenar(&mut a)?;
+            if a.cerrar_y_bajar().is_err() {
+                marcar_sin_espacio(&self.raiz());
                 return Ok(false);
             }
-            f.flush()?;
-            drop(f);
+            if !entero {
+                return Ok(false);
+            }
             if es_texto(rel) {
                 let texto = String::from_utf8(std::fs::read(&tmp)?)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
@@ -392,9 +574,9 @@ pub trait Disco {
                         flate2::Compression::default(),
                     );
                     gz.write_all(local.as_bytes())?;
-                    gz.finish()?;
+                    gz.finish()?.sync_all()?;
                 } else {
-                    std::fs::write(&tmp, local)?;
+                    escribir_y_bajar(&tmp, local.as_bytes())?;
                 }
             }
             // Una leccion aprendida que tambien cambio aqui no se pisa: se
@@ -408,8 +590,128 @@ pub trait Disco {
         }
         if matches!(hecho, Ok(true)) {
             self.avisar(Cambio::Archivos);
+            if let Some(l) = self.local_de(chat, rel) {
+                self.diario().archivo(&l);
+            }
         }
         hecho
+    }
+
+    /// **Cuanto hay ya de `rel` en la version `resumen`** de `largo` bytes,
+    /// de una vuelta que se corto a medias (`Disco.yaLlegado`). 0 si no hay
+    /// nada de esa version.
+    fn ya_llegado(&self, chat: &str, rel: &str, resumen: &str, largo: i64) -> i64 {
+        if !permitida(rel) {
+            return 0;
+        }
+        let destino = self.ruta(chat, rel);
+        let parcial = con_sufijo(&destino, PARCIAL);
+        let ficha: Option<Parcial> =
+            std::fs::read_to_string(con_sufijo(&destino, &format!("{PARCIAL}.json")))
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok());
+        let Ok(m) = std::fs::metadata(&parcial) else {
+            return 0;
+        };
+        match ficha {
+            Some(f)
+                if m.is_file()
+                    && f.resumen == resumen
+                    && f.largo == largo
+                    && m.len() as i64 <= largo =>
+            {
+                m.len() as i64
+            }
+            _ => 0,
+        }
+    }
+
+    /// **Escribe un archivo grande que puede llegar en varias vueltas**
+    /// (`Disco.escribirReanudable`). Lo llegado se va guardando en
+    /// `<ruta>.parcial` (con su ficha `<ruta>.parcial.json`); si la conexion
+    /// se corta se queda ahi (con `fsync`), y la vuelta siguiente pide solo
+    /// lo que falta ([Disco::ya_llegado]). Al completarse se comprueba el
+    /// SHA-256 **del archivo entero** contra `resumen` antes de ponerlo en su
+    /// sitio. `desde` es lo que ya habia. Devuelve si quedo escrito; falla si
+    /// se corto la conexion (lo llegado se conserva).
+    fn escribir_reanudable(
+        &self,
+        chat: &str,
+        rel: &str,
+        resumen: &str,
+        largo: i64,
+        desde: i64,
+        llenar: Llenar<'_>,
+    ) -> io::Result<bool> {
+        if !permitida(rel) || es_texto(rel) {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                format!("Ruta no permitida: {rel}"),
+            ));
+        }
+        let destino = self.ruta(chat, rel);
+        let carpeta = destino
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or(self.raiz());
+        std::fs::create_dir_all(&carpeta)?;
+        let parcial = con_sufijo(&destino, PARCIAL);
+        let ficha = con_sufijo(&destino, &format!("{PARCIAL}.json"));
+        if desde == 0 || self.ya_llegado(chat, rel, resumen, largo) != desde {
+            let _ = std::fs::remove_file(&parcial);
+            let p = Parcial {
+                resumen: resumen.into(),
+                largo,
+                cuando: ahora_ms(),
+            };
+            escribir_atomico(
+                &ficha,
+                serde_json::to_string(&p)
+                    .map_err(io::Error::other)?
+                    .as_bytes(),
+            )?;
+        }
+        let ya = std::fs::metadata(&parcial).map_or(0, |m| m.len()) as i64;
+        if !cabe(&self.raiz(), &carpeta, (largo - ya).max(0) as u64) {
+            marcar_sin_espacio(&self.raiz());
+            llenar(&mut io::sink())?;
+            return Ok(false);
+        }
+        let tirar = || {
+            let _ = std::fs::remove_file(&parcial);
+            let _ = std::fs::remove_file(&ficha);
+            Ok(false)
+        };
+        let mut a = Aguanta::nuevo(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&parcial)?,
+        );
+        let entero = llenar(&mut a);
+        // Lo llegado se queda en disco aunque se corte: es lo que la vuelta
+        // siguiente no pedira.
+        let bajado = a.cerrar_y_bajar();
+        let entero = entero?;
+        if bajado.is_err() {
+            marcar_sin_espacio(&self.raiz());
+            return tirar();
+        }
+        if !entero {
+            return tirar();
+        }
+        let completo = std::fs::metadata(&parcial).is_ok_and(|m| m.len() as i64 == largo)
+            && sha256_de(&mut std::fs::File::open(&parcial)?)? == resumen;
+        if !completo {
+            return tirar();
+        }
+        reemplazar(&parcial, &destino)?;
+        let _ = std::fs::remove_file(&ficha);
+        self.avisar(Cambio::Archivos);
+        if let Some(l) = self.local_de(chat, rel) {
+            self.diario().archivo(&l);
+        }
+        Ok(true)
     }
 
     fn escribir_texto(&self, chat: &str, rel: &str, portatil: &str) -> io::Result<bool> {
@@ -437,7 +739,15 @@ pub trait Disco {
         let mut cache = self.leer_cache();
         let mut tocada = false;
         let mut salida = Vec::new();
-        for (rel, etiqueta) in self.alcance(chat)? {
+        let alcance = self.alcance(chat)?;
+        // Lo que es de este chat, para el diario: un archivo cambiado dice
+        // asi de que chat es (`Disco.alcance` de Android).
+        let locales: BTreeSet<String> = alcance
+            .iter()
+            .filter_map(|(rel, _)| self.local_de(chat, rel))
+            .collect();
+        self.diario().indexar(chat, &locales);
+        for (rel, etiqueta) in alcance {
             let f = self.ruta(chat, &rel);
             let Ok(meta) = std::fs::metadata(&f) else {
                 continue;
@@ -835,7 +1145,11 @@ pub fn permitida(rel: &str) -> bool {
     if rel.trim().is_empty() || rel.starts_with('/') || rel.contains("..") || rel.contains('\\') {
         return false;
     }
-    if rel.ends_with(".tmp") || rel.ends_with(".sincro") {
+    if rel.ends_with(".tmp")
+        || rel.ends_with(".sincro")
+        || rel.ends_with(PARCIAL)
+        || rel.ends_with(&format!("{PARCIAL}.json"))
+    {
         return false;
     }
     if rel == "proyectos/proyectos.json" {
@@ -1205,7 +1519,14 @@ pub fn anotar_lapida_en(sincro: &Path, chat: &str, cuando: i64, aparato: &str) -
             cuando,
             aparato: aparato.into(),
         }],
-    )
+    )?;
+    diario_de_sincro(sincro).lapida(chat, diario::ALTA);
+    Ok(())
+}
+
+/// El diario de la carpeta de datos de `sincro` (su carpeta de arriba).
+pub fn diario_de_sincro(sincro: &Path) -> Diario {
+    Diario::de(sincro.parent().unwrap_or(sincro))
 }
 
 /// Quita las lapidas de un chat en la carpeta `sincro` dada: lo usa la
@@ -1216,11 +1537,14 @@ pub fn quitar_lapida_en(sincro: &Path, chat: &str) -> io::Result<()> {
     if !f.exists() {
         return Ok(());
     }
-    let quedan: Vec<LapidaDeChat> = leer_lineas::<LapidaDeChat>(&f)
-        .into_iter()
-        .filter(|l| l.chat != chat)
-        .collect();
-    escribir_lineas(&f, &quedan)
+    let todas = leer_lineas::<LapidaDeChat>(&f);
+    let quedan: Vec<LapidaDeChat> = todas.iter().filter(|l| l.chat != chat).cloned().collect();
+    if quedan.len() == todas.len() {
+        return Ok(());
+    }
+    escribir_lineas(&f, &quedan)?;
+    diario_de_sincro(sincro).lapida(chat, diario::BAJA);
+    Ok(())
 }
 
 /// Olvida lo acordado de un chat con todos los aparatos. Lo usa la papelera
@@ -1244,7 +1568,153 @@ pub fn olvidar_bases_en(sincro: &Path, chat: &str) -> io::Result<()> {
 
 /// Apunta marcas de borrado en la carpeta `sincro` dada.
 pub fn anotar_marcas_en(sincro: &Path, marcas: &[Marca]) -> io::Result<()> {
-    anadir_lineas(&sincro.join("borrados.jsonl"), marcas)
+    if marcas.is_empty() {
+        return Ok(());
+    }
+    anadir_lineas(&sincro.join("borrados.jsonl"), marcas)?;
+    diario_de_sincro(sincro).marcas(marcas);
+    Ok(())
+}
+
+/// Los indices de muchos chats del movil: cambiados sin apunte, no se sabe
+/// de cual (`Diario.INDICES`).
+pub const INDICES: [&str; 4] = [
+    "guardados.jsonl",
+    "proyectos/proyectos.json",
+    diario::RUTA_DE_MARCAS,
+    diario::RUTA_DE_LAPIDAS,
+];
+
+/// `fichero` relativo a `raiz`, con `/`. `None` si no esta dentro.
+pub fn relativa(raiz: &Path, fichero: &Path) -> Option<String> {
+    let r = fichero.strip_prefix(raiz).ok()?;
+    let partes: Vec<String> = r
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_string())
+        .collect();
+    (!partes.is_empty()).then(|| partes.join("/"))
+}
+
+/// La ficha de lo llegado a medias (`<ruta>.parcial.json`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct Parcial {
+    resumen: String,
+    largo: i64,
+    cuando: i64,
+}
+
+fn ahora_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Escribe `bytes` en `f` y lo baja a disco antes de volver.
+pub fn escribir_y_bajar(f: &Path, bytes: &[u8]) -> io::Result<()> {
+    let mut a = std::fs::File::create(f)?;
+    a.write_all(bytes)?;
+    a.sync_all()
+}
+
+/// **Una salida que no se cae** (`SalidaQueAguanta` de Android): escribe en
+/// el fichero hasta el primer fallo (el disco lleno) y desde entonces tira lo
+/// que le llega sin fallar. Asi quien recibe sigue leyendo los trozos del
+/// cable hasta su cola y la conversacion no se descuadra; despues mira
+/// [Aguanta::cerrar_y_bajar].
+pub struct Aguanta {
+    dentro: io::BufWriter<std::fs::File>,
+    fallo: Option<io::Error>,
+}
+
+impl Aguanta {
+    pub fn nuevo(f: std::fs::File) -> Aguanta {
+        Aguanta {
+            dentro: io::BufWriter::with_capacity(1 << 16, f),
+            fallo: None,
+        }
+    }
+
+    /// Lo que quede, a disco y bajado (`fsync`). El primer fallo, si lo hubo.
+    pub fn cerrar_y_bajar(mut self) -> io::Result<()> {
+        if let Some(e) = self.fallo.take() {
+            return Err(e);
+        }
+        self.dentro.flush()?;
+        let f = self.dentro.into_inner().map_err(|e| e.into_error())?;
+        f.sync_all()
+    }
+}
+
+impl Write for Aguanta {
+    fn write(&mut self, b: &[u8]) -> io::Result<usize> {
+        if self.fallo.is_none()
+            && let Err(e) = self.dentro.write_all(b)
+        {
+            self.fallo = Some(e);
+        }
+        Ok(b.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if self.fallo.is_none()
+            && let Err(e) = self.dentro.flush()
+        {
+            self.fallo = Some(e);
+        }
+        Ok(())
+    }
+}
+
+/// Los aparatos (por su raiz) que se quedaron sin sitio al recibir.
+static SIN_ESPACIO: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
+/// El espacio libre que fingen las pruebas, por raiz.
+static ESPACIO_FINGIDO: std::sync::Mutex<BTreeMap<PathBuf, u64>> =
+    std::sync::Mutex::new(BTreeMap::new());
+
+/// **Para las pruebas**: el espacio libre que se finge en el aparato de
+/// `raiz` (`None`: el de verdad).
+pub fn fingir_espacio(raiz: &Path, libre: Option<u64>) {
+    if let Ok(mut m) = ESPACIO_FINGIDO.lock() {
+        match libre {
+            Some(b) => {
+                m.insert(raiz.to_path_buf(), b);
+            }
+            None => {
+                m.remove(raiz);
+            }
+        }
+    }
+}
+
+/// Si en `carpeta` del aparato de `raiz` caben `bytes` mas el margen. Sin
+/// saberlo, se intenta.
+pub fn cabe(raiz: &Path, carpeta: &Path, bytes: u64) -> bool {
+    let fingido = ESPACIO_FINGIDO
+        .lock()
+        .ok()
+        .and_then(|m| m.get(raiz).copied());
+    let libre = fingido.or_else(|| pixpin_sistema::archivos::espacio_libre(carpeta));
+    match libre {
+        None | Some(0) => true,
+        Some(l) => l >= bytes.saturating_add(MARGEN_DE_ESPACIO),
+    }
+}
+
+fn marcar_sin_espacio(raiz: &Path) {
+    if let Ok(mut s) = SIN_ESPACIO.lock() {
+        s.insert(raiz.to_path_buf());
+    }
+}
+
+/// Si algo que llegaba al aparato de `raiz` no cupo desde la ultima vez que
+/// se pregunto (y lo olvida).
+pub fn tomar_sin_espacio(raiz: &Path) -> bool {
+    SIN_ESPACIO
+        .lock()
+        .map(|mut s| s.remove(raiz))
+        .unwrap_or(false)
 }
 
 fn leer_lineas<T: for<'de> Deserialize<'de>>(f: &Path) -> Vec<T> {

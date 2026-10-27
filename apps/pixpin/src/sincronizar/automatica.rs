@@ -41,13 +41,14 @@
 //! a la vez, cada uno encontraba al otro ocupado y los dos esperaban esos
 //! diez minutos. Ahora:
 //!
-//! - **Un fallo de verdad** se reintenta a los [`REINTENTO_BASE`], el doble,
-//!   el doble… hasta [`REINTENTO_TOPE`], con ±25 % de azar
+//! - **Un fallo de verdad** se reintenta a los cinco segundos, el doble,
+//!   el doble… hasta cinco minutos, con ±25 % de azar
 //!   ([`espera_tras_fallo`]). Salir bien lo borra.
 //! - **«Ocupado»** (el otro, o aqui, con otra vuelta en marcha) no es un
-//!   fallo: se reintenta entre [`OCUPADO_MIN`] y [`OCUPADO_MIN`] +
-//!   [`OCUPADO_AZAR`], con azar para que dos que chocaron no vuelvan a chocar
-//!   al mismo compas ([`espera_si_ocupado`]).
+//!   fallo: se reintenta entre uno y cuatro segundos, con azar para que
+//!   dos que chocaron no vuelvan a chocar al mismo compas
+//!   ([`espera_si_ocupado`]). Las cuentas son las de
+//!   `pixpin_sincro::reintentos`, compartidas con el nucleo.
 //! - **Al volver la red** (`pixpin_shell::red`, cuando Windows cambia una
 //!   direccion) se sondea enseguida, al grupo y a las personas, y lo que
 //!   esperaba para reintentar se intenta ya ([`Reloj::volvio_la_red`]).
@@ -90,39 +91,23 @@ const LATIDO: Duration = Duration::from_secs(5);
 /// Cada cuanto se recorre la carpeta de los chats (ms).
 const CADA_FIRMA: i64 = 15_000;
 
-/// Tras el primer fallo de verdad se reintenta a los cinco segundos; cada
-/// fallo seguido dobla la espera…
-pub const REINTENTO_BASE: i64 = 5_000;
-/// … hasta cinco minutos, la mitad del [`PERIODO`].
-pub const REINTENTO_TOPE: i64 = 5 * 60_000;
-/// Con el otro ocupado se reintenta en un segundo…
-pub const OCUPADO_MIN: i64 = 1_000;
-/// … y hasta tres mas, al azar.
-pub const OCUPADO_AZAR: i64 = 3_000;
+// Un fallo se reintenta a los cinco segundos, el doble, el doble… hasta
+// cinco minutos, la mitad del [`PERIODO`]. Los numeros y las cuentas son los
+// de `pixpin_sincro::reintentos` (puerto de `Reintentos` de Android), para
+// que no puedan salir distintos en dos sitios.
+#[cfg(test)]
+use pixpin_sincro::reintentos::{
+    BASE as REINTENTO_BASE, OCUPADO_AZAR, OCUPADO_MIN, TOPE as REINTENTO_TOPE,
+};
+pub use pixpin_sincro::reintentos::{espera_si_ocupado, espera_tras_fallo};
+
 /// Lo que se deja asentar la red tras un cambio antes de sondear: la
 /// direccion nueva llega antes que la ruta.
 const ASENTAR_RED: Duration = Duration::from_millis(1_500);
 
-/// **Pura**: cuanto esperar tras `seguidos` fallos seguidos (el primero es
-/// `1`), con `azar` en `[0, 1)`: [`REINTENTO_BASE`] doblado por cada fallo
-/// de mas, sin pasar de [`REINTENTO_TOPE`], y de ahi un ±25 %.
-pub fn espera_tras_fallo(seguidos: u32, azar: f64) -> i64 {
-    let dobles = seguidos.saturating_sub(1).min(16);
-    let sin_azar = (REINTENTO_BASE << dobles).min(REINTENTO_TOPE);
-    (sin_azar as f64 * (0.75 + azar.clamp(0.0, 1.0) * 0.5)) as i64
-}
-
-/// **Pura**: cuanto esperar con el otro ocupado, con `azar` en `[0, 1)`.
-pub fn espera_si_ocupado(azar: f64) -> i64 {
-    OCUPADO_MIN + (azar.clamp(0.0, 1.0) * OCUPADO_AZAR as f64) as i64
-}
-
-/// Un numero al azar en `[0, 1)`, sin mas dependencias: la semilla de
-/// `RandomState` cambia en cada llamada.
+/// Un numero al azar en `[0, 1)`, del sistema.
 fn azar() -> f64 {
-    use std::hash::BuildHasher;
-    let h = std::collections::hash_map::RandomState::new().hash_one(super::ahora_ms());
-    (h >> 11) as f64 / (1u64 << 53) as f64
+    pixpin_sincro::reintentos::azar_del_sistema()
 }
 
 /// Si un fallo de la vuelta es solo que el otro estaba ocupado: todos sus

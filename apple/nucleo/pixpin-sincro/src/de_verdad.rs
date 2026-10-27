@@ -1571,23 +1571,29 @@ fn los_archivos_van_de_pequeno_a_grande_y_si_se_corta_lo_pequeno_ya_esta() {
 
 #[test]
 fn la_prioridad_de_cada_archivo_es_la_de_la_lista_del_usuario() {
-    use crate::vuelta::prioridad_de_archivo as prio;
-    // 2 chats compartidos, 3 archivos, 4 lienzos/notas/textos, 5 videos.
-    assert_eq!(prio("guardados/plano.pdf", true), 0);
-    assert_eq!(prio("pins/draw/d1.excalidraw.gz", true), 0);
-    assert_eq!(prio("guardados/plano.pdf", false), 1);
-    assert_eq!(prio("guardados/foto.png", false), 1);
-    assert_eq!(prio("pins/draw/d1.excalidraw.gz", false), 2);
-    assert_eq!(prio("pins/draw/d1.marcas", false), 2);
-    assert_eq!(prio("guardados/pc/AB/notas/1-foto.png", false), 2);
-    assert_eq!(prio("tablas/t1.json", false), 2);
-    assert_eq!(prio("guardados/Clase (1).mp4", false), 3);
+    use crate::prioridad::{Nivel, Pieza, nivel};
+    // 1 tareas, 2 chats compartidos, 3 archivos, 4 lienzos/notas/textos, 5
+    // videos (`Prioridad.nivel` de Android).
+    let n = |rel: &str, compartido: bool| {
+        nivel(&Pieza {
+            compartido,
+            ..Pieza::de(rel, 1)
+        })
+    };
+    assert_eq!(n("guardados/plano.pdf", true), Nivel::Compartidos);
+    assert_eq!(n("pins/draw/d1.excalidraw.gz", true), Nivel::Compartidos);
+    assert_eq!(n("guardados/plano.pdf", false), Nivel::Archivos);
+    assert_eq!(n("guardados/foto.png", false), Nivel::Archivos);
+    assert_eq!(n("pins/draw/d1.excalidraw.gz", false), Nivel::LienzosYNotas);
+    assert_eq!(n("pins/draw/d1.marcas", false), Nivel::LienzosYNotas);
+    assert_eq!(n("tablas/t1.json", false), Nivel::LienzosYNotas);
+    assert_eq!(n("guardados/Clase (1).mp4", false), Nivel::Pesado);
     assert_eq!(
-        prio("guardados/Clase (1).MP4", true),
-        3,
+        n("guardados/Clase (1).MP4", true),
+        Nivel::Pesado,
         "un video, ultimo siempre"
     );
-    assert_eq!(prio("voz/nota.m4a", false), 3);
+    assert_eq!(n("voz/nota.m4a", false), Nivel::Pesado);
 }
 
 #[test]

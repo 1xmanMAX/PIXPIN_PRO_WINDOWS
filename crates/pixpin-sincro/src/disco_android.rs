@@ -72,20 +72,30 @@ impl DiscoAndroid {
             .unwrap_or_default()
     }
 
+    /// Reescribe el chat entero **como la aplicacion** (`MensajesStore`): el
+    /// archivo y su apunte en el diario de cambios.
     pub fn escribir_mensajes(&self, lista: &[Json]) -> io::Result<()> {
+        let antes = self.leer_mensajes();
         let texto: String = lista.iter().map(|m| m.a_texto() + "\n").collect();
-        escribir_atomico(&self.archivo_del_chat(), texto.as_bytes())
+        escribir_atomico(&self.archivo_del_chat(), texto.as_bytes())?;
+        self.diario().mensajes(&antes, lista, "guardados.jsonl");
+        Ok(())
     }
 
-    /// Como hace el chat al guardar: una linea al final.
+    /// Como hace el chat al guardar: una linea al final, y su apunte.
     pub fn anadir_mensaje(&self, m: &Json) -> io::Result<()> {
         use std::io::Write;
         let n = kotlin::normalizar_mensaje(m).ok_or_else(|| io::Error::other("mensaje roto"))?;
+        let antes = self.leer_mensajes();
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(self.archivo_del_chat())?
-            .write_all((n.a_texto() + "\n").as_bytes())
+            .write_all((n.a_texto() + "\n").as_bytes())?;
+        let mut despues = antes.clone();
+        despues.push(n);
+        self.diario().mensajes(&antes, &despues, "guardados.jsonl");
+        Ok(())
     }
 
     fn archivo_de_proyectos(&self) -> PathBuf {
@@ -103,11 +113,16 @@ impl DiscoAndroid {
             .collect()
     }
 
+    /// La lista de proyectos, con temporal y renombrar, y su apunte.
     pub fn escribir_proyectos(&self, lista: &[Json]) -> io::Result<()> {
+        let antes = self.leer_proyectos();
         escribir_atomico(
             &self.archivo_de_proyectos(),
             Json::Lista(lista.to_vec()).a_texto().as_bytes(),
-        )
+        )?;
+        self.diario()
+            .proyectos(&antes, lista, "proyectos/proyectos.json");
+        Ok(())
     }
 
     fn portatil(&self, t: &str) -> String {
@@ -217,8 +232,9 @@ impl Disco for DiscoAndroid {
             if let Some(r) = kotlin::cadena(m, "ruta")
                 .and_then(|r| r.strip_prefix(&self.prefijo))
                 .filter(|r| r.starts_with("guardados/"))
+                && std::fs::remove_file(self.files.join(r)).is_ok()
             {
-                let _ = std::fs::remove_file(self.files.join(r));
+                self.diario().archivo(r);
             }
             // Y lo anotado sobre el, que sin su mensaje ya no viaja (v0.96);
             // de una nota, sus comentarios (30-sep).
@@ -326,6 +342,15 @@ impl Disco for DiscoAndroid {
         self.files.join(rel)
     }
 
+    /// Como `Disco.chatsConTareas`: una lectura del chat, no una por chat.
+    fn chats_con_tareas(&self) -> std::collections::BTreeSet<String> {
+        self.leer_mensajes()
+            .iter()
+            .filter(|m| crate::prioridad::es_de_tareas(m))
+            .map(kotlin::chat_de)
+            .collect()
+    }
+
     fn a_portatil(&self, _chat: &str, _rel: &str, texto: String) -> String {
         self.portatil(&texto)
     }
@@ -413,6 +438,35 @@ pub mod prueba {
         A: Disco + Sync,
         B: Disco + Sync,
     {
+        conectado_con(
+            desde,
+            hacia,
+            unirme,
+            codigo,
+            reloj,
+            &crate::CAPACIDADES,
+            &crate::CAPACIDADES,
+            uso,
+        )
+    }
+
+    /// [conectado] diciendo cada uno lo que sabe hacer (27-oct-2026): con
+    /// `&[]`, un PixPin de antes del diario.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conectado_con<A, B, T>(
+        desde: &A,
+        hacia: &B,
+        unirme: bool,
+        codigo: Option<&str>,
+        reloj: &Reloj,
+        caps_dirige: &[&str],
+        caps_responde: &[&str],
+        uso: impl FnOnce(&mut Sesion<'_, A, TcpStream>) -> T,
+    ) -> Resultado<T>
+    where
+        A: Disco + Sync,
+        B: Disco + Sync,
+    {
         let escucha = TcpListener::bind(("127.0.0.1", 0))?;
         let puerto = escucha.local_addr()?.port();
         std::thread::scope(|hilos| {
@@ -426,12 +480,20 @@ pub mod prueba {
                         al_saludar: &|_, _| {},
                         suelto: None,
                     };
-                    let _ = r.atender(flujo, [7u8; 32]);
+                    let _ = r.atender_con(flujo, [7u8; 32], None, caps_responde);
                 }
             });
             let flujo = TcpStream::connect(("127.0.0.1", puerto))?;
-            let mut s =
-                Sesion::conectar(flujo, desde, unirme, codigo, || reloj.ahora(), 0, [3u8; 32]);
+            let mut s = Sesion::conectar_con(
+                flujo,
+                desde,
+                unirme,
+                codigo,
+                || reloj.ahora(),
+                0,
+                [3u8; 32],
+                caps_dirige,
+            );
             match &mut s {
                 Ok(s) => {
                     let r = uso(s);

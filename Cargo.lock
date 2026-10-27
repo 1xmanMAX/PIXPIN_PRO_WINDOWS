@@ -1915,11 +1915,13 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "base64",
+ "crc32fast",
  "flate2",
  "hmac",
  "p256",
  "pbkdf2",
  "pixpin-lecciones",
+ "pixpin-sistema",
  "rand_core 0.6.4",
  "serde",
  "serde_json",

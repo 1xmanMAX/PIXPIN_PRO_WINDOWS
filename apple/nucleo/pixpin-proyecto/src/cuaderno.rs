@@ -406,7 +406,31 @@ pub fn anadir(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<()> {
         .open(carpeta.join("guardados.jsonl"))?;
     // El salto va DESPUES de la linea: si el fichero se corta, lo roto es lo
     // ultimo y lo anterior sigue entero.
-    writeln!(f, "{linea}")
+    writeln!(f, "{linea}")?;
+    apuntar_en_el_diario(carpeta);
+    Ok(())
+}
+
+/// **Apunta en el diario de sincronizar que el cuaderno de `carpeta` se
+/// escribio** (27-oct-2026, `MensajesStore` de Android): despues de
+/// escribirlo, con su huella. Asi la vuelta siguiente sabe que este chat
+/// cambio sin mirar los demas. Solo para la carpeta de un chat
+/// (`<raiz>/proyectos/<ficha>`); apuntar nunca falla ni para a quien
+/// guarda.
+pub fn apuntar_en_el_diario(carpeta: &std::path::Path) {
+    let Some(id) = carpeta.file_name().map(|n| n.to_string_lossy().to_string()) else {
+        return;
+    };
+    let Some(proyectos) = carpeta.parent() else {
+        return;
+    };
+    if proyectos.file_name().is_none_or(|n| n != "proyectos") {
+        return;
+    }
+    let Some(raiz) = proyectos.parent() else {
+        return;
+    };
+    pixpin_sincro::diario::Diario::de(raiz).archivo(&format!("proyectos/{id}/guardados.jsonl"));
 }
 
 /// La linea que [`anadir`] escribiria para `m`, sin escribirla: quien tiene
@@ -430,7 +454,9 @@ pub fn anadir_lineas(carpeta: &std::path::Path, lineas: &[String]) -> std::io::R
         .create(true)
         .append(true)
         .open(carpeta.join("guardados.jsonl"))?;
-    f.write_all(todo.as_bytes())
+    f.write_all(todo.as_bytes())?;
+    apuntar_en_el_diario(carpeta);
+    Ok(())
 }
 
 /// Cambia un mensaje que ya estaba escrito, dejando el resto del fichero como
@@ -514,6 +540,7 @@ pub fn quitar(
         let temporal = fichero.with_extension("jsonl.tmp");
         std::fs::write(&temporal, salida)?;
         std::fs::rename(&temporal, &fichero)?;
+        apuntar_en_el_diario(carpeta);
     }
     Ok(quitados)
 }
@@ -540,6 +567,9 @@ fn reescribir_con_el(fichero: &std::path::Path, texto: &str, m: &Mensaje) -> std
     let temporal = fichero.with_extension("jsonl.tmp");
     std::fs::write(&temporal, salida)?;
     std::fs::rename(&temporal, fichero)?;
+    if let Some(carpeta) = fichero.parent() {
+        apuntar_en_el_diario(carpeta);
+    }
     Ok(true)
 }
 

@@ -19,6 +19,7 @@ use crate::base::{Base, Mapa};
 use crate::canal::{Canal, ErrorCanal, MAGIA_DE_INVITACION, TOPE_DE_TRAMO, Tipo};
 use crate::canonico::{self, Json};
 use crate::compartidos::{self, AccesoDePersona, ChatCompartido, CompartidosEnDisco};
+use crate::diario;
 use crate::diferencia::{self, Apunte, Paso};
 use crate::disco::{self, Disco, Identidad, es_texto, permitida};
 use crate::fusion::{self, Criterio, Cuenta};
@@ -140,7 +141,8 @@ pub struct Salida {
 
 enum Fuente {
     Texto(Vec<u8>),
-    Archivo(PathBuf, i64),
+    /// El fichero, su fecha, desde que byte sale y cuanto mide entero.
+    Archivo(PathBuf, i64, u64, u64),
 }
 
 impl Salida {
@@ -158,7 +160,28 @@ impl Salida {
         let meta = std::fs::metadata(&f)?;
         Ok(Salida {
             largo: meta.len() as i64,
-            fuente: Fuente::Archivo(f, disco::milis(&meta)),
+            fuente: Fuente::Archivo(f, disco::milis(&meta), 0, meta.len()),
+        })
+    }
+
+    /// **Solo desde el byte `desde`** (reanudar, 27-oct-2026): lo que va de
+    /// ahi al final, con la cola del resumen de lo mandado. Lo de texto sale
+    /// entero siempre.
+    pub fn de_desde<D: Disco + ?Sized>(
+        d: &D,
+        chat: &str,
+        rel: &str,
+        desde: i64,
+    ) -> Resultado<Salida> {
+        if desde <= 0 || es_texto(rel) {
+            return Salida::de(d, chat, rel);
+        }
+        let f = d.ruta(chat, rel);
+        let meta = std::fs::metadata(&f)?;
+        let inicio = (desde as u64).min(meta.len());
+        Ok(Salida {
+            largo: (meta.len() - inicio) as i64,
+            fuente: Fuente::Archivo(f, disco::milis(&meta), inicio, meta.len()),
         })
     }
 
@@ -171,7 +194,7 @@ impl Salida {
         let meta = std::fs::metadata(ruta)?;
         Ok(Salida {
             largo: meta.len() as i64,
-            fuente: Fuente::Archivo(ruta.to_path_buf(), disco::milis(&meta)),
+            fuente: Fuente::Archivo(ruta.to_path_buf(), disco::milis(&meta), 0, meta.len()),
         })
     }
 
@@ -200,11 +223,15 @@ impl Salida {
                 )?;
                 Ok(Some(r))
             }
-            Fuente::Archivo(ruta, fecha) => {
+            Fuente::Archivo(ruta, fecha, inicio, entero) => {
+                use std::io::Seek;
                 let largo = self.largo as u64;
                 let mut md = sha2::Sha256::new();
                 let mut corto = false;
                 let mut entrada = std::fs::File::open(&ruta)?;
+                if inicio > 0 {
+                    entrada.seek(io::SeekFrom::Start(inicio))?;
+                }
                 let mut buf = vec![0u8; TOPE_DE_TRAMO];
                 let mut quedan = largo;
                 while quedan > 0 {
@@ -232,7 +259,7 @@ impl Salida {
                 let cambio = corto
                     || ahora
                         .as_ref()
-                        .is_none_or(|m| m.len() != largo || disco::milis(m) != fecha);
+                        .is_none_or(|m| m.len() != entero || disco::milis(m) != fecha);
                 let r: String = md.finalize().iter().map(|b| format!("{b:02x}")).collect();
                 enviar(
                     c,
@@ -264,6 +291,12 @@ pub fn recibir_trozos<F: Read + Write>(
         let (tipo, datos) = c.recibir()?;
         if tipo != Tipo::Trozo {
             return Err(fallo("Se esperaba un trozo de archivo"));
+        }
+        // **Ni un byte de mas** (27-oct-2026): un trozo repetido o uno que se
+        // pasa del largo prometido descuadraria el archivo y la conversacion.
+        // Se corta aqui, sin escribirlo.
+        if datos.len() as i64 > quedan {
+            return Err(fallo("Llegó más de lo prometido"));
         }
         salida.write_all(&datos)?;
         md.update(&datos);
@@ -356,13 +389,6 @@ fn recibir_captura<F: Read + Write>(
 
 fn json(texto: &str) -> Resultado<Json> {
     Json::analizar(texto).map_err(|e| fallo(e.to_string()))
-}
-
-fn io_de(e: ErrorSincro) -> io::Error {
-    match e {
-        ErrorSincro::Io(e) => e,
-        otro => io::Error::other(otro.to_string()),
-    }
 }
 
 // ------------------------------------------------------------ parches
@@ -486,6 +512,19 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         nonce: [u8; 32],
         galeria: Option<&dyn CapturasDelAparato>,
     ) -> Resultado<()> {
+        self.atender_con(flujo, nonce, galeria, &crate::CAPACIDADES)
+    }
+
+    /// [`Respondedor::atender_con_galeria`] diciendo saber hacer
+    /// `capacidades` (27-oct-2026): las pruebas fingen asi un PixPin de antes
+    /// con ninguna. Solo se usa lo que dicen los dos.
+    pub fn atender_con<F: Read + Write>(
+        &self,
+        flujo: F,
+        nonce: [u8; 32],
+        galeria: Option<&dyn CapturasDelAparato>,
+        capacidades: &[&str],
+    ) -> Resultado<()> {
         let d = self.disco;
         let id = d.identidad()?;
         let codigo = id
@@ -537,7 +576,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             })?;
             enviar(
                 &mut canal,
-                &respuesta_hola(&actual, juntos, ahora, self.mi_puerto),
+                &respuesta_hola(&actual, juntos, ahora, self.mi_puerto, capacidades),
             )?;
             d.avisar(disco::Cambio::Identidad);
             (self.estado)(&format!(
@@ -555,7 +594,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             otro = hola.yo.clone();
             enviar(
                 &mut canal,
-                &respuesta_hola(&actual, juntos, ahora, self.mi_puerto),
+                &respuesta_hola(&actual, juntos, ahora, self.mi_puerto, capacidades),
             )?;
         }
         (self.al_saludar)(&otro, hola.puerto);
@@ -564,7 +603,9 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             // este aparato este ocupado con otro.
             return self.contestar_ocupado(&mut canal, &otro, true);
         }
-        let hecho = self.responder(&mut canal, &otro, galeria, None);
+        antes_de_la_vuelta(d);
+        let sus = en_comun(&hola.capacidades, capacidades);
+        let hecho = self.responder(&mut canal, &otro, galeria, None, &sus);
         soltar(d);
         hecho
     }
@@ -575,12 +616,13 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         otro: &Aparato,
         galeria: Option<&dyn CapturasDelAparato>,
         acceso: Option<&AccesoDePersona<'_, D>>,
+        sus_capacidades: &BTreeSet<String>,
     ) -> Resultado<()> {
-        // Lo que es de cada chat, calculado al preguntar por sus archivos:
-        // sin esto, cada archivo pedido volveria a recorrer el chat entero.
-        let mut alcance: Option<(String, HashSet<String>)> = None;
-        // Los resumenes ya calculados en esta conexion.
-        let mut conocidos: HashMap<String, ArchivoInfo> = HashMap::new();
+        let mut con = Conexion {
+            con_diario: sus_capacidades.contains(crate::DIARIO) && diario::activo(),
+            reanudable: sus_capacidades.contains(crate::REANUDAR),
+            ..Default::default()
+        };
         loop {
             let (p, cruda) = match leer_peticion_cruda(canal) {
                 Ok(p) => p,
@@ -618,7 +660,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                     None => Err(fallo(format!("No sé qué es «{}»", p.t))),
                 }
             } else {
-                self.una(canal, otro, &p, &mut alcance, &mut conocidos, acceso)
+                self.una(canal, otro, &p, &mut con, acceso)
             };
             match hecho {
                 Ok(()) => {}
@@ -723,11 +765,12 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         canal: &mut Canal<F>,
         otro: &Aparato,
         p: &Peticion,
-        alcance: &mut Option<(String, HashSet<String>)>,
-        conocidos: &mut HashMap<String, ArchivoInfo>,
+        con: &mut Conexion,
         acceso: Option<&AccesoDePersona<'_, D>>,
     ) -> Resultado<()> {
         let d = self.disco;
+        let conocidos = &mut con.conocidos;
+        let alcances = &mut con.alcances;
         let ahora = (self.ahora)();
         // `chatPermitido`: con una persona, cualquier peticion con un chat
         // que no compartimos los dos es un error, sea cual sea.
@@ -804,6 +847,32 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 )?;
                 enviar(canal, &Respuesta::default())
             }
+            // **Que chats siguen como quedaron con quien pregunta** (diario,
+            // 27-oct-2026): de esos no hace falta ni el inventario. Solo a
+            // quien dijo saber de diarios; a los demas, como un PixPin de
+            // antes.
+            "novedades" => {
+                if !con.con_diario {
+                    return Err(fallo("No sé qué es «novedades»"));
+                }
+                let diario = d.diario();
+                let cs = diario.cursores(&otro.id);
+                let desde = cs.chats.values().map(|c| c.n).min().unwrap_or(0);
+                let vista = d.vista_del_diario(desde);
+                let quietos: Vec<String> = cs
+                    .chats
+                    .keys()
+                    .filter(|c| vista.quieto(&cs, c) && acceso.is_none_or(|a| a.puede(c)))
+                    .cloned()
+                    .collect();
+                enviar(
+                    canal,
+                    &Respuesta {
+                        quietos,
+                        ..Default::default()
+                    },
+                )
+            }
             "inventario" => {
                 let c = chat()?;
                 (self.estado)(&format!(
@@ -813,14 +882,20 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 ));
                 // Antes de tocar nada, como estaba. Si la copia no se pudo
                 // hacer, la vuelta se para aqui: sin ella no hay con que
-                // volver si lo que llega viene roto.
-                d.hacer_copia(
+                // volver si lo que llega viene roto. Con el diario, si el
+                // chat no se ha tocado desde la ultima copia, ni se mira.
+                d.hacer_copia_si_cambio(
                     &c,
                     &format!("Antes de sincronizar con {}", otro.nombre),
                     ahora,
                 )?;
                 d.sellar()?;
                 d.adoptar_documentos()?;
+                // **El numero del diario cuando se miro el chat**: si al
+                // cerrar quedo identico al del otro, ese es el cursor.
+                if con.con_diario {
+                    con.visto_en.insert(c.clone(), d.diario().ultimo());
+                }
                 enviar(
                     canal,
                     &Respuesta {
@@ -848,6 +923,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             "aplicar" => {
                 let c = chat()?;
+                alcances.remove(&c);
                 if let Some(a) = acceso {
                     // **De una persona, solo lo de este chat**: ni mensajes
                     // que nombren archivos de otros chats, ni otro proyecto;
@@ -887,11 +963,62 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 for a in &lista {
                     conocidos.insert(a.ruta.clone(), a.clone());
                 }
-                *alcance = Some((c, lista.iter().map(|a| a.ruta.clone()).collect()));
+                con.ultimo_chat = Some(c.clone());
+                alcances.insert(c, lista.iter().map(|a| a.ruta.clone()).collect());
                 enviar(
                     canal,
                     &Respuesta {
                         archivos: lista,
+                        ..Default::default()
+                    },
+                )
+            }
+            // **Reanudable** (`reanudar1`): primero se dice cuanto hay ya de
+            // esa version y luego llegan solo los trozos que faltan. Solo de
+            // quien lo sabe hacer: el que no, manda los trozos sin esperar.
+            "pon" if p.reanudar && con.reanudable => {
+                let rel = ruta()?;
+                let c = p.chat.clone().filter(|c| !c.trim().is_empty());
+                let permitido = permitida(&rel)
+                    && !es_texto(&rel)
+                    && p.bytes >= 0
+                    && p.resumen.is_some()
+                    && c.as_ref().is_some_and(|c| {
+                        acceso.is_none_or(|a| a.puede(c) && a.puede_escribir(c, &rel))
+                    });
+                let (Some(c), Some(resumen), true) = (c, p.resumen.clone(), permitido) else {
+                    // Aun no ha salido ningun trozo: basta con decir que no.
+                    return Err(fallo(format!("No es de este chat: {rel}")));
+                };
+                alcances.remove(&c);
+                conocidos.remove(&rel);
+                let desde = d.ya_llegado(&c, &rel, &resumen, p.bytes);
+                enviar(
+                    canal,
+                    &Respuesta {
+                        desde_byte: desde,
+                        ..Default::default()
+                    },
+                )?;
+                (self.estado)(&format!("Recibiendo {}", nombre(&rel)));
+                let mut roto = None;
+                let entero = d.escribir_reanudable(&c, &rel, &resumen, p.bytes, desde, &mut |s| {
+                    match recibir_trozos(canal, p.bytes - desde, s, &mut |_| {}) {
+                        Ok(r) => Ok(r.is_some()),
+                        Err(e) => {
+                            let texto = e.to_string();
+                            roto = Some(e);
+                            Err(io::Error::other(texto))
+                        }
+                    }
+                });
+                if let Some(e) = roto {
+                    return Err(e);
+                }
+                enviar(
+                    canal,
+                    &Respuesta {
+                        saltado: !entero?,
                         ..Default::default()
                     },
                 )
@@ -916,7 +1043,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 let Some(c) = p
                     .chat
                     .clone()
-                    .or_else(|| alcance.as_ref().map(|a| a.0.clone()))
+                    .or_else(|| con.ultimo_chat.clone())
                     .filter(|c| !c.trim().is_empty())
                 else {
                     recibir_trozos(canal, p.bytes, &mut io::sink(), &mut |_| {})?;
@@ -924,6 +1051,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 };
                 (self.estado)(&format!("Recibiendo {}", nombre(&rel)));
                 conocidos.remove(&rel);
+                alcances.remove(&c);
                 if !permitida(&rel) {
                     // Los trozos ya vienen: se leen y se tiran para no
                     // perder el paso de la conversacion.
@@ -931,19 +1059,19 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                     return Err(fallo(format!("Ruta no permitida: {rel}")));
                 }
                 let mut roto = None;
-                let entero = d.escribir_archivo(&c, &rel, &mut |s| match recibir_trozos(
-                    canal,
+                let entero = d.escribir_archivo_de(
+                    &c,
+                    &rel,
                     p.bytes,
-                    s,
-                    &mut |_| {},
-                ) {
-                    Ok(r) => Ok(r.is_some()),
-                    Err(e) => {
-                        let texto = e.to_string();
-                        roto = Some(e);
-                        Err(io::Error::other(texto))
-                    }
-                });
+                    &mut |s| match recibir_trozos(canal, p.bytes, s, &mut |_| {}) {
+                        Ok(r) => Ok(r.is_some()),
+                        Err(e) => {
+                            let texto = e.to_string();
+                            roto = Some(e);
+                            Err(io::Error::other(texto))
+                        }
+                    },
+                );
                 if let Some(e) = roto {
                     return Err(e);
                 }
@@ -969,6 +1097,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 }
                 (self.estado)(&format!("Recibiendo cambios de {}", nombre(&rel)));
                 conocidos.remove(&rel);
+                alcances.remove(&c);
                 let puesto = poner_parche(
                     d,
                     &c,
@@ -990,7 +1119,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 let c = chat()?;
                 // De una persona, ademas, nada que sea tambien de otro chat.
                 let es_suyo =
-                    suyo(d, alcance, &c, &rel)? && acceso.is_none_or(|a| !a.vedado(&c, &rel));
+                    suyo(d, alcances, &c, &rel)? && acceso.is_none_or(|a| !a.vedado(&c, &rel));
                 if !(permitida(&rel) && es_texto(&rel) && es_suyo) {
                     return Err(fallo(format!("No es de este chat: {rel}")));
                 }
@@ -1013,16 +1142,24 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 let c = chat()?;
                 // De una persona, ademas, nada que sea tambien de otro chat.
                 let es_suyo =
-                    suyo(d, alcance, &c, &rel)? && acceso.is_none_or(|a| !a.vedado(&c, &rel));
+                    suyo(d, alcances, &c, &rel)? && acceso.is_none_or(|a| !a.vedado(&c, &rel));
                 if !(permitida(&rel) && es_suyo) {
                     return Err(fallo(format!("No es de este chat: {rel}")));
                 }
                 (self.estado)(&format!("Mandando {}", nombre(&rel)));
-                let sale = Salida::de(d, &c, &rel)?;
+                // Reanudar: solo lo que le falta, si lo pide quien sabe.
+                let desde = if p.desde_byte > 0 && con.reanudable && !es_texto(&rel) {
+                    p.desde_byte
+                        .min(std::fs::metadata(d.ruta(&c, &rel)).map_or(0, |m| m.len() as i64))
+                } else {
+                    0
+                };
+                let sale = Salida::de_desde(d, &c, &rel, desde)?;
                 enviar(
                     canal,
                     &Respuesta {
                         bytes: sale.largo,
+                        desde_byte: desde,
                         ..Default::default()
                     },
                 )?;
@@ -1035,6 +1172,20 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 d.guardar_base(&otro.id, &c, &base)?;
                 d.guardar_objetos_de_base(&c, &base);
                 d.apuntar_vez(&otro.id, ahora)?;
+                // **Hasta donde quedo igual** (diario): solo si quien dirige
+                // vio los dos lados identicos y lo dice; si no, lo de antes
+                // ya no vale.
+                if con.con_diario {
+                    let cursor =
+                        con.visto_en
+                            .get(&c)
+                            .filter(|_| p.entero)
+                            .map(|n| diario::Cursor {
+                                n: *n,
+                                ..Default::default()
+                            });
+                    d.diario().poner_cursor(&otro.id, &c, cursor);
+                }
                 enviar(canal, &Respuesta::default())?;
                 (self.estado)(&format!(
                     "«{}» al día con {}",
@@ -1147,6 +1298,16 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
     /// entero (la galeria, borrar proyectos, archivos sueltos, las listas del
     /// grupo) se le contesta como un PixPin de antes.
     pub fn atender_persona<F: Read + Write>(&self, flujo: F, nonce: [u8; 32]) -> Resultado<()> {
+        self.atender_persona_con(flujo, nonce, &crate::CAPACIDADES)
+    }
+
+    /// [`Respondedor::atender_persona`] diciendo saber hacer `capacidades`.
+    pub fn atender_persona_con<F: Read + Write>(
+        &self,
+        flujo: F,
+        nonce: [u8; 32],
+        capacidades: &[&str],
+    ) -> Resultado<()> {
         let d = self.disco;
         let cd = CompartidosEnDisco::nuevo(&d.raiz());
         let yo = cd.yo_de(d)?;
@@ -1181,6 +1342,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                     },
                     reloj: (self.ahora)(),
                     puerto: self.mi_puerto,
+                    capacidades: capacidades.iter().map(|c| c.to_string()).collect(),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -1190,8 +1352,10 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         if !ocupar(d) {
             return self.contestar_ocupado(&mut canal, &otro, false);
         }
+        antes_de_la_vuelta(d);
         let acceso = AccesoDePersona::nuevo(d, &yo.id, &persona.id);
-        let hecho = self.responder(&mut canal, &otro, None, Some(&acceso));
+        let sus = en_comun(&hola.capacidades, capacidades);
+        let hecho = self.responder(&mut canal, &otro, None, Some(&acceso), &sus);
         soltar(d);
         hecho
     }
@@ -1295,16 +1459,62 @@ fn solo_del_grupo(t: &str) -> bool {
         || t == "borrarchat"
 }
 
+/// Si `rel` es de `chat`, con lo que es de cada chat calculado una vez por
+/// conexion (**uno por chat**, 27-oct-2026: quien dirige ya pide los
+/// archivos de varios chats mezclados, por prioridad). Lo que se escribe en
+/// un chat le borra el suyo.
 fn suyo<D: Disco + ?Sized>(
     d: &D,
-    alcance: &Option<(String, HashSet<String>)>,
+    alcances: &mut HashMap<String, HashSet<String>>,
     chat: &str,
     rel: &str,
 ) -> Resultado<bool> {
-    Ok(match alcance {
-        Some((c, rutas)) if c == chat => rutas.contains(rel),
-        _ => d.alcance(chat)?.iter().any(|(r, _)| r == rel),
-    })
+    if let Some(r) = alcances.get(chat) {
+        return Ok(r.contains(rel));
+    }
+    let rutas: HashSet<String> = d.alcance(chat)?.into_iter().map(|(r, _)| r).collect();
+    let es = rutas.contains(rel);
+    alcances.insert(chat.to_string(), rutas);
+    Ok(es)
+}
+
+/// Lo que recuerda quien responde durante una conexion.
+#[derive(Default)]
+struct Conexion {
+    /// Lo que es de cada chat, calculado al preguntar por sus archivos: sin
+    /// esto, cada archivo pedido volveria a recorrer el chat entero.
+    alcances: HashMap<String, HashSet<String>>,
+    /// Los resumenes ya calculados en esta conexion.
+    conocidos: HashMap<String, ArchivoInfo>,
+    /// El chat del ultimo «archivos»: el de un «pon» que no dice el suyo.
+    ultimo_chat: Option<String>,
+    /// El numero del diario cuando se miro cada chat (`inventario`).
+    visto_en: HashMap<String, i64>,
+    /// Con el otro se habla de diarios (`diario1`).
+    con_diario: bool,
+    /// Y de reanudar (`reanudar1`).
+    reanudable: bool,
+}
+
+/// Lo que saben hacer los dos: lo que dijo el otro y digo yo.
+fn en_comun(suyas: &[String], mias: &[&str]) -> BTreeSet<String> {
+    suyas
+        .iter()
+        .filter(|c| mias.contains(&c.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// **Con el aparato ya ocupado y antes del primer chat** (27-oct-2026, los
+/// dos lados): fuera los restos de una vuelta que murio a medias
+/// ([Disco::limpiar_restos]) y el diario al dia con lo escrito sin apuntar
+/// ([Disco::barrer]).
+pub fn antes_de_la_vuelta<D: Disco + ?Sized>(d: &D) {
+    let ahora = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |x| x.as_millis() as i64);
+    d.limpiar_restos(ahora);
+    d.barrer();
 }
 
 fn nombre_de<D: Disco + ?Sized>(d: &D, chat: &str) -> String {
@@ -1323,13 +1533,20 @@ fn miembros_o_yo(id: &Identidad) -> Vec<Aparato> {
     }
 }
 
-fn respuesta_hola(yo: &Identidad, miembros: Vec<Aparato>, ahora: i64, puerto: u32) -> Respuesta {
+fn respuesta_hola(
+    yo: &Identidad,
+    miembros: Vec<Aparato>,
+    ahora: i64,
+    puerto: u32,
+    capacidades: &[&str],
+) -> Respuesta {
     Respuesta {
         hola: Some(Hola {
             yo: yo.yo.clone(),
             miembros,
             reloj: ahora,
             puerto,
+            capacidades: capacidades.iter().map(|c| c.to_string()).collect(),
             ..Default::default()
         }),
         ..Default::default()
@@ -1357,6 +1574,11 @@ pub struct Hecho {
     pub capturas: usize,
     /// Las quitadas aqui por quitarse a mano en el otro.
     pub capturas_tiradas: usize,
+    /// Chats que no hizo falta ni mirar: seguian como quedaron en los dos
+    /// (diario, 27-oct-2026).
+    pub quietos: usize,
+    /// Algo no se pudo recibir aqui por falta de espacio.
+    pub sin_espacio: bool,
 }
 
 /// El paso 1 preparado: que pasa con los mensajes de un chat.
@@ -1365,6 +1587,10 @@ pub struct Preparado {
     pub chat: String,
     pub pasos: Vec<Paso>,
     pub base: Base,
+    /// **Sigue como quedo en los dos** (diario): no hay nada que hacer y ni
+    /// se pregunta. [Sesion::aplicar], [Sesion::preparar_archivos] y
+    /// [Sesion::cerrar] no hacen nada con el.
+    pub quieto: bool,
     suyo_proyecto: Option<String>,
     mios: HashMap<String, Apunte>,
     suyos: HashMap<String, Apunte>,
@@ -1378,6 +1604,9 @@ pub struct PreparadoArchivos {
     acordado: BTreeMap<String, String>,
     mios: HashMap<String, ArchivoInfo>,
     suyos: HashMap<String, ArchivoInfo>,
+    /// Ruta → (grupo, si es de una lista de tareas), para el orden
+    /// (`prioridad`).
+    pub grupos: HashMap<String, (String, bool)>,
 }
 
 impl PreparadoArchivos {
@@ -1402,10 +1631,25 @@ impl PreparadoArchivos {
     /// ofrecer en la vuelta siguiente (el protocolo no reanuda). El orden no
     /// cambia lo que queda: cada archivo va por su lado. A igual peso, el
     /// orden del plan (la ordenacion es estable, como `sortedBy`).
+    ///
+    /// Desde el 27-oct-2026, ademas, **por niveles y grupos**
+    /// (`prioridad::ordenar`): lo de las listas de tareas, documentos,
+    /// lienzos y notas, y al final video y audio; una clase grabada va junta.
     pub fn en_orden(&self) -> Vec<&Paso> {
-        let mut pasos: Vec<&Paso> = self.pasos.iter().collect();
-        pasos.sort_by_key(|p| self.bytes_de(p));
-        pasos
+        crate::prioridad::ordenar(self.pasos.iter().collect(), |p| self.pieza(p, false))
+    }
+
+    /// La pieza de `p` para ordenarla (`prioridad::ordenar`), en un chat
+    /// `compartido` o no.
+    pub fn pieza(&self, p: &Paso, compartido: bool) -> crate::prioridad::Pieza {
+        let g = self.grupos.get(p.sena());
+        crate::prioridad::Pieza {
+            rel: p.sena().to_string(),
+            bytes: self.bytes_de(p) as i64,
+            grupo: g.map(|(g, _)| format!("{}|{g}", self.chat)),
+            de_tareas: g.is_some_and(|(_, t)| *t),
+            compartido,
+        }
     }
 
     fn nombre_de(&self, rel: &str) -> String {
@@ -1452,6 +1696,22 @@ pub struct Sesion<'a, D: Disco + ?Sized, F: Read + Write> {
     /// chats que compartimos y nada de los demas sale ni se pisa aqui,
     /// aunque lo que llega lo nombre. Nulo con el grupo.
     acceso: Option<AccesoDePersona<'a, D>>,
+    /// Lo que saben hacer los dos (`Hola::capacidades`).
+    pub capacidades: BTreeSet<String>,
+    /// El diario en esta vuelta (ver [Sesion::preparar]).
+    diario: ConDiario,
+}
+
+/// Lo que la sesion sabe del diario en esta vuelta.
+#[derive(Default)]
+struct ConDiario {
+    /// **Mirarlo todo esta vez** (verificacion entera, o el diario apagado).
+    /// Se decide al primer chat.
+    completa: Option<bool>,
+    cursores: Option<diario::Cursores>,
+    vista: Option<diario::Vista>,
+    novedades_pedidas: bool,
+    quietos_alli: Option<BTreeSet<String>>,
 }
 
 impl<D: Disco + ?Sized, F: Read + Write> Drop for Sesion<'_, D, F> {
@@ -1474,6 +1734,32 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         ahora: impl Fn() -> i64 + 'a,
         mi_puerto: u32,
         nonce: [u8; 32],
+    ) -> Resultado<Sesion<'a, D, F>> {
+        Sesion::conectar_con(
+            flujo,
+            disco,
+            unirme,
+            codigo,
+            ahora,
+            mi_puerto,
+            nonce,
+            &crate::CAPACIDADES,
+        )
+    }
+
+    /// [Sesion::conectar] diciendo saber hacer `capacidades` (27-oct-2026):
+    /// las pruebas fingen asi un PixPin de antes. Solo se usa lo que dicen
+    /// los dos.
+    #[allow(clippy::too_many_arguments)]
+    pub fn conectar_con(
+        flujo: F,
+        disco: &'a D,
+        unirme: bool,
+        codigo: Option<&str>,
+        ahora: impl Fn() -> i64 + 'a,
+        mi_puerto: u32,
+        nonce: [u8; 32],
+        capacidades: &[&str],
     ) -> Resultado<Sesion<'a, D, F>> {
         let id = disco.identidad()?;
         let el_codigo = codigo
@@ -1498,6 +1784,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                         reloj: antes,
                         unirme,
                         puerto: mi_puerto,
+                        capacidades: capacidades.iter().map(|c| c.to_string()).collect(),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -1533,10 +1820,12 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 })?;
             }
             disco.avisar(disco::Cambio::Identidad);
+            antes_de_la_vuelta(disco);
             Ok(Sesion {
                 canal,
                 disco,
                 ahora: Box::new(|| 0),
+                capacidades: en_comun(&hola.capacidades, capacidades),
                 otro: hola.yo,
                 desfase,
                 puerto_del_otro: hola.puerto,
@@ -1547,6 +1836,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 mando: Mando::default(),
                 capturas: None,
                 acceso: None,
+                diario: ConDiario::default(),
             })
         })();
         match abierta {
@@ -1574,6 +1864,27 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         ahora: impl Fn() -> i64 + 'a,
         mi_puerto: u32,
         nonce: [u8; 32],
+    ) -> Resultado<Sesion<'a, D, F>> {
+        Sesion::conectar_a_persona_con(
+            flujo,
+            disco,
+            a_quien,
+            ahora,
+            mi_puerto,
+            nonce,
+            &crate::CAPACIDADES,
+        )
+    }
+
+    /// [Sesion::conectar_con_persona] diciendo saber hacer `capacidades`.
+    pub fn conectar_a_persona_con(
+        flujo: F,
+        disco: &'a D,
+        a_quien: Option<&str>,
+        ahora: impl Fn() -> i64 + 'a,
+        mi_puerto: u32,
+        nonce: [u8; 32],
+        capacidades: &[&str],
     ) -> Resultado<Sesion<'a, D, F>> {
         if !ocupar(disco) {
             return Err(ErrorSincro::Remoto(OCUPADO.into()));
@@ -1603,6 +1914,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                         },
                         reloj: antes,
                         puerto: mi_puerto,
+                        capacidades: capacidades.iter().map(|c| c.to_string()).collect(),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -1622,10 +1934,13 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             if hola.yo.id != persona.id {
                 return Err(fallo("No es quien dice ser"));
             }
+            antes_de_la_vuelta(disco);
             Ok(Sesion {
                 canal,
                 disco,
                 ahora: Box::new(|| 0),
+                capacidades: en_comun(&hola.capacidades, capacidades),
+                diario: ConDiario::default(),
                 otro: Aparato {
                     id: persona.id.clone(),
                     nombre: persona.nombre.clone(),
@@ -1790,7 +2105,111 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         Ok(self.pedir(&Peticion::de("catalogo"))?.chats)
     }
 
+    /// Con el otro se habla de diarios (`diario1`).
+    fn con_diario(&self) -> bool {
+        self.capacidades.contains(crate::DIARIO) && diario::activo()
+    }
+
+    /// Con el otro se reanudan los archivos grandes (`reanudar1`).
+    fn reanudable(&self) -> bool {
+        self.capacidades.contains(crate::REANUDAR)
+    }
+
+    /// Si esta vuelta usa el diario (lo de aqui), mirando una vez los
+    /// cursores con el otro: cada tantas vueltas o cada dia se mira todo.
+    fn usar_diario(&mut self) -> bool {
+        if let Some(c) = self.diario.completa {
+            return !c;
+        }
+        let cs = self.disco.diario().cursores(&self.otro.id);
+        let toca = !diario::activo() || cs.toca_verificar(ahora_de_verdad());
+        if !toca {
+            let desde = cs.chats.values().map(|c| c.n).min().unwrap_or(0);
+            self.diario.vista = Some(self.disco.vista_del_diario(desde));
+        }
+        self.diario.cursores = Some(cs);
+        self.diario.completa = Some(toca);
+        !toca
+    }
+
+    /// El cursor de `chat` si aqui sigue exactamente como quedo con el otro.
+    fn cursor_quieto(&mut self, chat: &str) -> Option<diario::Cursor> {
+        if !self.usar_diario() {
+            return None;
+        }
+        let cs = self.diario.cursores.as_ref()?;
+        let v = self.diario.vista.as_ref()?;
+        cs.chats.get(chat).filter(|_| v.quieto(cs, chat)).cloned()
+    }
+
+    /// Los chats que el otro tiene como quedaron conmigo (`novedades`), o
+    /// `None` si no lo sabe decir. «No sé qué es» no es un error; otro
+    /// (ocupado) si.
+    fn quietos_del_otro(&mut self) -> Resultado<Option<BTreeSet<String>>> {
+        if !self.con_diario() || self.diario.completa == Some(true) {
+            return Ok(None);
+        }
+        if !self.diario.novedades_pedidas {
+            self.diario.novedades_pedidas = true;
+            enviar(&mut self.canal, &Peticion::de("novedades"))?;
+            let r = leer_respuesta_sin_lanzar(&mut self.canal)?;
+            if let Some(e) = &r.error
+                && !e.starts_with("No sé qué es")
+            {
+                return Err(ErrorSincro::Remoto(e.clone()));
+            }
+            self.diario.quietos_alli = r.error.is_none().then(|| r.quietos.into_iter().collect());
+        }
+        Ok(self.diario.quietos_alli.clone())
+    }
+
+    /// Si esta vuelta lo esta mirando todo (verificacion entera).
+    pub fn mirando_todo(&self) -> bool {
+        self.diario.completa != Some(false)
+    }
+
+    /// **Se cuenta la vuelta** para la verificacion entera: si fue entera,
+    /// desde ahora; si no, una mas. Lo llama la vuelta al acabar bien (las
+    /// recortadas de tareas no cuentan).
+    pub fn contar_vuelta(&mut self) {
+        if !diario::activo() {
+            return;
+        }
+        let entera = self.diario.completa == Some(true);
+        self.disco
+            .diario()
+            .cambiar_cursores(&self.otro.id, |mut cs| {
+                if entera || cs.verificado == 0 {
+                    cs.verificado = ahora_de_verdad();
+                    cs.vueltas = 0;
+                } else {
+                    cs.vueltas += 1;
+                }
+                cs
+            });
+    }
+
+    fn quieto(&self, chat: &str) -> Preparado {
+        Preparado {
+            chat: chat.into(),
+            pasos: Vec::new(),
+            base: Base::default(),
+            quieto: true,
+            suyo_proyecto: None,
+            mios: HashMap::new(),
+            suyos: HashMap::new(),
+        }
+    }
+
     /// Paso 1: que pasa con los mensajes de `chat`.
+    ///
+    /// **Primero, si hay algo que mirar** (27-oct-2026, ver `diario`). Si
+    /// aqui no se ha tocado desde que los dos quedaron identicos y el otro
+    /// dice lo mismo de lo suyo (`novedades`, un PixPin con diario) o —uno
+    /// que no lleva diario— su inventario y sus archivos siguen siendo los de
+    /// entonces ([diario::huella_de_inventario]), el chat sale
+    /// [Preparado::quieto]: ni copia de seguridad, ni sellar, ni leer el
+    /// chat, ni resumir un archivo, ni cerrar. Si no, lo de siempre.
     pub fn preparar(&mut self, chat: &str) -> Resultado<Preparado> {
         let d = self.disco;
         if let Some(a) = &self.acceso
@@ -1801,17 +2220,38 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 self.otro.nombre
             )));
         }
-        // Sin copia no se sincroniza: ver `Disco::hacer_copia`.
-        d.hacer_copia(
-            chat,
-            &format!("Antes de sincronizar con {}", self.otro.nombre),
-            (self.ahora)(),
-        )?;
-        d.sellar()?;
-        d.adoptar_documentos()?;
         self.conocidos.clear();
         self.chat_de_la_vuelta = chat.to_string();
+        let cursor = self.cursor_quieto(chat);
+        let alli = match cursor {
+            Some(_) => self.quietos_del_otro()?,
+            None => None,
+        };
+        if cursor.is_some() && alli.as_ref().is_some_and(|q| q.contains(chat)) {
+            return Ok(self.quieto(chat));
+        }
         let r = self.pedir(&Peticion::sobre("inventario", chat))?;
+        if let Some(c) = &cursor
+            && alli.is_none()
+            && !c.sello.is_empty()
+            && r.sello_de_base.as_deref() == Some(c.sello.as_str())
+            && d.base(&self.otro.id, chat).map(|b| b.sello()).as_deref() == Some(c.sello.as_str())
+        {
+            let suyos = self.pedir(&Peticion::sobre("archivos", chat))?.archivos;
+            if diario::huella_de_inventario(&r.apuntes, r.proyecto.as_deref(), &suyos) == c.alli {
+                return Ok(self.quieto(chat));
+            }
+        }
+        // Sin copia no se sincroniza: ver `Disco::hacer_copia`. Con el
+        // diario, si el chat no se ha tocado desde la ultima, ni se mira.
+        let motivo = format!("Antes de sincronizar con {}", self.otro.nombre);
+        if self.diario.completa == Some(false) {
+            d.hacer_copia_si_cambio(chat, &motivo, (self.ahora)())?;
+        } else {
+            d.hacer_copia(chat, &motivo, (self.ahora)())?;
+        }
+        d.sellar()?;
+        d.adoptar_documentos()?;
         let mia = d.base(&self.otro.id, chat);
         // Lo acordado solo vale si los dos recuerdan lo mismo: si una vuelta
         // se corto a medias uno lo guardo y el otro no, y se hace como la
@@ -1833,6 +2273,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             chat: chat.into(),
             pasos,
             base,
+            quieto: false,
             suyo_proyecto: r.proyecto,
             mios,
             suyos,
@@ -1864,8 +2305,13 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// Aplica el paso 1: trae, manda, borra y **fusiona** mensajes, y junta
     /// el proyecto.
     pub fn aplicar(&mut self, prep: &Preparado, hecho: &mut Hecho) -> Resultado<()> {
+        if prep.quieto {
+            hecho.quietos += 1;
+            return Ok(());
+        }
         let d = self.disco;
         let chat = prep.chat.as_str();
+        self.chat_de_la_vuelta = chat.to_string();
         let (mut traer, mut mandar, mut fusionar) = (Vec::new(), Vec::new(), Vec::new());
         for p in &prep.pasos {
             match p {
@@ -2080,6 +2526,16 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// Paso 2: con los chats ya iguales, que archivos hay que mover.
     pub fn preparar_archivos(&mut self, prep: &Preparado) -> Resultado<PreparadoArchivos> {
         let chat = prep.chat.clone();
+        if prep.quieto {
+            return Ok(PreparadoArchivos {
+                chat,
+                pasos: Vec::new(),
+                acordado: BTreeMap::new(),
+                mios: HashMap::new(),
+                suyos: HashMap::new(),
+                grupos: HashMap::new(),
+            });
+        }
         self.chat_de_la_vuelta = chat.clone();
         let suyos: HashMap<String, ArchivoInfo> = self
             .pedir(&Peticion::sobre("archivos", &chat))?
@@ -2109,17 +2565,23 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         };
         let m: Vec<Apunte> = mios.values().map(apunte).collect();
         let s: Vec<Apunte> = suyos.values().map(apunte).collect();
-        let pasos = diferencia::plan(&m, &s, &acordado)
+        let pasos: Vec<Paso> = diferencia::plan(&m, &s, &acordado)
             .into_iter()
             // Con una persona, lo de los demas chats no entra en ningun plan.
             .filter(|p| permitida(p.sena()) && !self.vedado(&chat, p.sena()))
             .collect();
+        let grupos = if pasos.is_empty() {
+            HashMap::new()
+        } else {
+            self.disco.grupos_de_archivos(&chat)
+        };
         PreparadoArchivos {
             chat,
             pasos,
             acordado,
             mios,
             suyos,
+            grupos,
         }
     }
 
@@ -2184,7 +2646,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 // Lo mio manda: lo que tengo yo, va; solo se trae lo que aqui
                 // no existe (`Protocolo.kt:680`).
                 _ if self.mando == Mando::LoMioManda && mio.is_some() => {
-                    self.mandar_archivo(rel, suyo, acordado, avance, hecho)
+                    self.mandar_archivo(rel, suyo, acordado, avance, hecho, mio)
                 }
                 Paso::Fusionar(_) if texto && mio.is_some() && suyo.is_some() => self
                     .fusionar_archivo(
@@ -2222,13 +2684,13 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                     let tm = mio.map_or(0, |a| a.tocado);
                     let ts = suyo.map_or(0, |a| a.tocado);
                     if tm >= ts - self.desfase {
-                        self.mandar_archivo(rel, suyo, acordado, avance, hecho)
+                        self.mandar_archivo(rel, suyo, acordado, avance, hecho, mio)
                     } else {
-                        self.traer_archivo(rel, mio, acordado, avance, hecho)
+                        self.traer_archivo(rel, mio, acordado, avance, hecho, suyo)
                     }
                 }
-                Paso::Mandar(_) => self.mandar_archivo(rel, suyo, acordado, avance, hecho),
-                Paso::Traer(_) => self.traer_archivo(rel, mio, acordado, avance, hecho),
+                Paso::Mandar(_) => self.mandar_archivo(rel, suyo, acordado, avance, hecho, mio),
+                Paso::Traer(_) => self.traer_archivo(rel, mio, acordado, avance, hecho, suyo),
             };
             let puesto = match intento {
                 Ok(x) => x,
@@ -2247,6 +2709,9 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             hecho.archivos += 1;
         }
         hecho.rescatados += cuenta.rescatados as usize;
+        if disco::tomar_sin_espacio(&self.disco.raiz()) {
+            hecho.sin_espacio = true;
+        }
         Ok(())
     }
 
@@ -2259,6 +2724,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         acordado: Option<&str>,
         avance: &mut dyn FnMut(u64),
         hecho: &mut Hecho,
+        mio: Option<&ArchivoInfo>,
     ) -> Resultado<Option<String>> {
         let d = self.disco;
         let chat = self.chat_de_la_vuelta.clone();
@@ -2276,6 +2742,34 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 hecho.ahorrados += (actual.len() as i64 - parche.len() as i64).max(0);
                 return Ok(Some(resumen));
             }
+        }
+        // **Reanudable** (`reanudar1`): el otro dice cuanto tiene ya y salen
+        // solo los trozos que faltan. Solo con quien lo sabe hacer y para lo
+        // grande.
+        let f = d.ruta(&chat, rel);
+        let largo = std::fs::metadata(&f).map_or(-1, |m| m.len() as i64);
+        if let Some(m) = mio.filter(|m| {
+            self.reanudable()
+                && !es_texto(rel)
+                && largo >= crate::REANUDAR_DESDE
+                && largo == m.bytes
+                && !m.resumen.is_empty()
+        }) {
+            let r = self.pedir(&Peticion {
+                ruta: Some(rel.into()),
+                bytes: m.bytes,
+                resumen: Some(m.resumen.clone()),
+                reanudar: true,
+                ..self.sobre("pon")
+            })?;
+            let tiene = r.desde_byte.clamp(0, m.bytes);
+            let sale = Salida::de_desde(d, &chat, rel, tiene)?;
+            let mandado = sale.mandar(&mut self.canal, avance)?;
+            hecho.ahorrados += tiene;
+            if leer_respuesta(&mut self.canal)?.saltado || mandado.is_none() {
+                return Ok(None);
+            }
+            return Ok(Some(m.resumen.clone()));
         }
         let sale = Salida::de(d, &chat, rel)?;
         let pon = Peticion {
@@ -2320,6 +2814,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         acordado: Option<&str>,
         avance: &mut dyn FnMut(u64),
         hecho: &mut Hecho,
+        suyo: Option<&ArchivoInfo>,
     ) -> Resultado<Option<String>> {
         let d = self.disco;
         let chat = self.chat_de_la_vuelta.clone();
@@ -2334,18 +2829,58 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             hecho.ahorrados += suyo.len() as i64;
             return Ok(Some(resumen));
         }
+        // **Reanudable**: se pide desde lo que ya llego de esa misma version
+        // en una vuelta cortada.
+        if let Some(s) = suyo.filter(|s| {
+            self.reanudable()
+                && !es_texto(rel)
+                && s.bytes >= crate::REANUDAR_DESDE
+                && !s.resumen.is_empty()
+        }) {
+            let desde = d.ya_llegado(&chat, rel, &s.resumen, s.bytes);
+            let cabecera = self.pedir(&Peticion {
+                ruta: Some(rel.into()),
+                desde_byte: desde,
+                ..self.sobre("dame")
+            })?;
+            let desde_alli = cabecera.desde_byte;
+            hecho.ahorrados += desde_alli;
+            let canal = &mut self.canal;
+            let mut roto = None;
+            let entero =
+                d.escribir_reanudable(&chat, rel, &s.resumen, s.bytes, desde_alli, &mut |w| {
+                    recibir_trozos(canal, cabecera.bytes, w, avance)
+                        .map(|r| r.is_some())
+                        .map_err(|e| {
+                            let t = e.to_string();
+                            roto = Some(e);
+                            io::Error::other(t)
+                        })
+                });
+            if let Some(e) = roto {
+                return Err(e);
+            }
+            return Ok(entero?.then(|| s.resumen.clone()));
+        }
         let cabecera = self.pedir(&Peticion {
             ruta: Some(rel.into()),
             ..self.sobre("dame")
         })?;
         let canal = &mut self.canal;
-        let entero = d
-            .escribir_archivo(&chat, rel, &mut |s| {
-                recibir_trozos(canal, cabecera.bytes, s, avance)
-                    .map(|r| r.is_some())
-                    .map_err(io_de)
-            })
-            .map_err(ErrorSincro::Io)?;
+        let mut roto = None;
+        let entero = d.escribir_archivo_de(&chat, rel, cabecera.bytes, &mut |s| {
+            recibir_trozos(canal, cabecera.bytes, s, avance)
+                .map(|r| r.is_some())
+                .map_err(|e| {
+                    let t = e.to_string();
+                    roto = Some(e);
+                    io::Error::other(t)
+                })
+        });
+        if let Some(e) = roto {
+            return Err(e);
+        }
+        let entero = entero?;
         Ok(if entero {
             Some(d.resumen_de_archivo(&chat, rel)?)
         } else {
@@ -2400,7 +2935,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         let aqui = std::fs::read_to_string(d.ruta(&chat, rel)).unwrap_or_default();
         let junta = pixpin_lecciones::fusion::en_choque(&aqui, &de_alli).unwrap_or(de_alli);
         d.escribir_texto(&chat, rel, &junta)?;
-        self.mandar_archivo(rel, suyo, acordado, avance, hecho)
+        self.mandar_archivo(rel, suyo, acordado, avance, hecho, None)
     }
 
     /// **La biblioteca de figuras cambiada en los dos**: se trae la suya, se
@@ -2432,7 +2967,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             None => de_alli,
         };
         d.escribir_texto(&chat, rel, &junta)?;
-        self.mandar_archivo(rel, suyo, acordado, avance, hecho)
+        self.mandar_archivo(rel, suyo, acordado, avance, hecho, None)
     }
 
     /// Su version entera, a memoria.
@@ -2500,7 +3035,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 .unwrap_or_else(|| "null".into());
             if !self.mandar_parche(rel, &suyo_ahora, &parche, &resumen)?
                 && self
-                    .mandar_archivo(rel, None, None, &mut |_| {}, hecho)?
+                    .mandar_archivo(rel, None, None, &mut |_| {}, hecho, None)?
                     .is_none()
             {
                 return Ok(None);
@@ -2523,15 +3058,21 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// quedaron. Solo se apunta lo que de verdad esta igual en los dos; lo
     /// demas se queda con lo acordado antes.
     pub fn cerrar(&mut self, prep: &Preparado, ahora: i64) -> Resultado<()> {
+        if prep.quieto {
+            return Ok(());
+        }
         let d = self.disco;
         let chat = prep.chat.as_str();
         let antes = &prep.base;
+        // El numero del diario **antes** de mirar como quedo esto: lo que se
+        // escriba despues (el usuario, mientras tanto) queda por encima del
+        // cursor y se vera la vuelta siguiente.
+        let n_antes = diario::activo().then(|| d.diario().ultimo());
         let inv = self.pedir(&Peticion::sobre("inventario", chat))?;
-        let suyos: Vec<(String, String)> = self
-            .pedir(&Peticion::sobre("archivos", chat))?
-            .archivos
-            .into_iter()
-            .map(|a| (a.ruta, a.resumen))
+        let lista_suya = self.pedir(&Peticion::sobre("archivos", chat))?.archivos;
+        let suyos: Vec<(String, String)> = lista_suya
+            .iter()
+            .map(|a| (a.ruta.clone(), a.resumen.clone()))
             .collect();
         self.conocidos.clear();
         let mios: Vec<(String, String)> = self
@@ -2574,14 +3115,78 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             archivos,
             proyecto,
         };
+        // **¿Quedaron identicos?** Nada que traer ni que mandar, ni de
+        // mensajes ni de archivos, y el mismo proyecto. Solo entonces vale
+        // un cursor: desde aqui, mientras ninguno de los dos toque el chat,
+        // la vuelta ni lo mira.
+        let entero = self.identicos(
+            &mis_apuntes,
+            &inv,
+            &mios,
+            &suyos,
+            &base,
+            mi_proyecto.as_deref(),
+            chat,
+        );
         self.pedir(&Peticion {
             base: Some(base.clone()),
+            entero: entero && self.con_diario(),
             ..Peticion::sobre("base", chat)
         })?;
         d.guardar_base(&self.otro.id, chat, &base)?;
         d.guardar_objetos_de_base(chat, &base);
         d.apuntar_vez(&self.otro.id, ahora)?;
+        if let Some(n) = n_antes {
+            let cursor = entero.then(|| diario::Cursor {
+                n,
+                alli: diario::huella_de_inventario(
+                    &inv.apuntes,
+                    inv.proyecto.as_deref(),
+                    &lista_suya,
+                ),
+                sello: base.sello(),
+            });
+            d.diario().poner_cursor(&self.otro.id, chat, cursor);
+        }
         Ok(())
+    }
+
+    /// Si al cerrar los dos lados quedaron identicos en `chat`: el plan de
+    /// mensajes con lo acordado sale vacio, el de archivos tambien (lo que
+    /// una persona no puede ver no cuenta) y el proyecto es el mismo.
+    #[allow(clippy::too_many_arguments)]
+    fn identicos(
+        &self,
+        mis_apuntes: &[Apunte],
+        inv: &Respuesta,
+        mios: &[(String, String)],
+        suyos: &[(String, String)],
+        base: &Base,
+        mi_proyecto: Option<&str>,
+        chat: &str,
+    ) -> bool {
+        if !diferencia::plan(mis_apuntes, &inv.apuntes, &base.mensajes.a_btree()).is_empty() {
+            return false;
+        }
+        let como_apunte = |(r, h): &(String, String)| Apunte {
+            sena: r.clone(),
+            creado: 0,
+            tocado: 0,
+            resumen: h.clone(),
+            borrado: false,
+            alias: None,
+        };
+        let m: Vec<Apunte> = mios.iter().map(como_apunte).collect();
+        let s: Vec<Apunte> = suyos.iter().map(como_apunte).collect();
+        let archivos_iguales = diferencia::plan(&m, &s, &base.archivos.a_btree())
+            .iter()
+            .all(|p| !permitida(p.sena()) || self.vedado(chat, p.sena()));
+        let proyecto_igual = match (mi_proyecto, inv.proyecto.as_deref()) {
+            (None, None) => true,
+            (Some(a), Some(b)) => canonico::de(a) == canonico::de(b),
+            _ => false,
+        };
+        archivos_iguales && proyecto_igual
     }
 
     fn acordado(
@@ -2772,6 +3377,22 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     pub fn disco(&self) -> &'a D {
         self.disco
     }
+
+    /// **Una peticion cualquiera, tal cual**, con el error del otro dentro
+    /// de la respuesta en vez de convertido en error aqui. Para probar que
+    /// lo que el otro no conoce se contesta sin cortar la conversacion.
+    pub fn pedir_sin_lanzar(&mut self, p: &Peticion) -> Resultado<Respuesta> {
+        enviar(&mut self.canal, p)?;
+        leer_respuesta_sin_lanzar(&mut self.canal)
+    }
+}
+
+/// La hora de esta maquina en milisegundos (la de la verificacion entera,
+/// que es de este aparato y no del reloj de la prueba).
+fn ahora_de_verdad() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64)
 }
 
 /// `Sesion.traducir`: lo acordado antes del 15-sep-2026 se apunto con el
