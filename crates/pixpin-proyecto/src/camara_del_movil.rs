@@ -13,8 +13,10 @@
 //!   de los relojes (`pixpin_sincro::camara::ms_de_la_foto`).
 //! - **Lo pone en la clase** ([`adjuntar`]) como una captura mas: una
 //!   IMAGEN (o el ARCHIVO `.mp4` de un clip) con `resto.enGrabacion` (`{de,
-//!   ms}`, y `duracionMs` el clip), `resto.fuente: "movil"` ([`FUENTE`]), en la lista de
-//!   la nota (`capturas` o `clips`) y dentro de su carpeta, en su minuto.
+//!   ms}`, y `duracionMs` el clip), `resto.fuente: "movil"`
+//!   (`presencial::FUENTE`; la camara del equipo dice `"camara"`), en la lista de
+//!   la nota (`capturas` o `clips`, la misma de la reunion presencial) y
+//!   dentro de su carpeta, en su minuto.
 //!   La foto entra tal cual llego: sus bytes, con su EXIF.
 //!
 //! **Cuando entra**: la clase se guarda al «Terminar» (la nota de voz no
@@ -31,18 +33,13 @@ use std::sync::{Arc, Mutex};
 use pixpin_sincro::al_lienzo::Suelto;
 use pixpin_sincro::camara::{self, Anuncio, Reloj};
 
-use crate::{almacen, carpeta_de_paginas, clase, cuaderno};
+use crate::{almacen, carpeta_de_paginas, clase, cuaderno, presencial};
 
-/// La clave de `resto` que dice que lo hizo la camara del movil, y su
-/// valor ([`MOVIL`]). No es `origen`: ese nombre ya es un campo del mensaje
-/// (el aparato donde nacio, `Mensaje::origen`) y escribirlo en `resto` lo
-/// pisaria al guardar.
-pub const FUENTE: &str = "fuente";
-pub const MOVIL: &str = "movil";
-
-/// Si un mensaje lo hizo la camara del movil en una grabacion.
+/// Si un mensaje lo hizo la camara del movil en una grabacion
+/// (`resto.fuente: "movil"`, ver [`presencial::FUENTE`]: la misma clave que
+/// lo de la camara del equipo, con otro valor).
 pub fn es_del_movil(m: &cuaderno::Mensaje) -> bool {
-    m.resto.get(FUENTE).and_then(|v| v.as_str()) == Some(MOVIL)
+    presencial::es_del_movil(&m.resto)
 }
 
 /// Cuantas grabaciones acabadas se recuerdan para lo que llegue tarde.
@@ -435,20 +432,22 @@ pub fn adjuntar(destino: &Destino, titulo: &str, l: &Llegada) -> std::io::Result
             proyecto: proyecto.clone(),
         },
     );
-    let rotulo = format!("📱 ⏱ {}", minuto(l.ms));
+    // Como lo de la camara del equipo: «⏱» una foto, «▶» un clip.
+    let rotulo = format!("📱 {} {}", if l.clip { "▶" } else { "⏱" }, minuto(l.ms));
     m.texto = if titulo.trim().is_empty() {
         rotulo.clone()
     } else {
         format!("{rotulo} · {}", titulo.trim())
     };
     if let Some(voz) = &destino.voz {
-        let mut enlace = serde_json::json!({ "de": voz, "ms": l.ms });
-        if l.clip {
-            enlace["duracionMs"] = serde_json::json!(l.duracion_ms);
-        }
+        let enlace = if l.clip {
+            presencial::enlace_del_clip(voz, l.ms, l.duracion_ms)
+        } else {
+            serde_json::json!({ "de": voz, "ms": l.ms })
+        };
         m.resto.insert("enGrabacion".into(), enlace);
     }
-    m.resto.insert(FUENTE.into(), serde_json::json!(MOVIL));
+    presencial::marcar_del_movil(&mut m.resto);
     if !l.de.is_empty() {
         m.resto
             .insert("deAparato".into(), serde_json::json!(l.de.clone()));
@@ -462,7 +461,16 @@ pub fn adjuntar(destino: &Destino, titulo: &str, l: &Llegada) -> std::io::Result
     if let Some(voz) = &destino.voz {
         cuaderno::cambiar(&carpeta, voz, |n| {
             if l.clip {
-                clase::poner_clip(&mut n.resto, l.ms, l.duracion_ms, &id);
+                // La misma lista que los clips de la camara del equipo.
+                let mut clips = presencial::clips_de(&n.resto);
+                if !clips.iter().any(|c| c.id == id) {
+                    clips.push(presencial::Clip {
+                        ms: l.ms,
+                        duracion_ms: l.duracion_ms,
+                        id: id.clone(),
+                    });
+                }
+                presencial::poner_clips(&mut n.resto, &clips);
             } else {
                 clase::poner_captura(&mut n.resto, l.ms, &id);
             }

@@ -487,7 +487,7 @@ fn el_movil_hace_de_camara_con_pausa_y_reloj_adelantado() {
         .map(|(ms, _)| ms)
         .collect();
     assert_eq!(capturas, vec![12 * S, 30 * S, 45 * S]);
-    let clips = clase::clips_de(&nota.resto);
+    let clips = pixpin_proyecto::presencial::clips_de(&nota.resto);
     assert_eq!(clips.len(), 1);
     assert_eq!((clips[0].ms, clips[0].duracion_ms), (20 * S, 5 * S));
     // Y en su carpeta, en el orden de la grabacion.
