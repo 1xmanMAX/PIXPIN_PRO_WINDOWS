@@ -1885,6 +1885,8 @@ fn ver_en(
     let mut vivo = true;
     // Ctrl+P: los marcos (o lo que se ve), en grupo al dialogo de imprimir.
     let mut imprimir_marcos = false;
+    // El clic derecho en el boton del marco: la hoja abierta entera.
+    let mut imprimir_entera = false;
     // Para que modo estan puestas las pistas de la barra (ver o editar).
     let mut pistas_de: Option<bool> = None;
     // Pruebas: imprimir los marcos solo, a los 2 s de abrir (con
@@ -2011,11 +2013,24 @@ fn ver_en(
             match evento {
                 EventoOverlay::Cerrar => vivo = false,
                 EventoOverlay::Despierta => {}
-                // El derecho en un punto del riel quita su marca; en lo demas,
-                // con marcos puestos, su menu (imprimirlos o borrarlos).
+                // El derecho en un punto del riel quita su marca; en el boton
+                // del marco, que imprimir (los marcos o la hoja entera); en lo
+                // demas, con marcos puestos, su menu (imprimirlos o borrarlos).
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     est.raton = local(p);
-                    if est.pulsar_derecho_riel() {
+                    if est.destino_del_riel() == pixpin_ui::riel_marcas::DestinoRiel::Imprimir {
+                        match crate::marcos_doc::menu_de_imprimir(
+                            est.hwnd,
+                            textos,
+                            est.marcos.lista.len(),
+                            Some(crate::marcos_doc::Entero::Hoja),
+                        ) {
+                            Some(crate::marcos_doc::QueImprimir::Marcos) => imprimir_marcos = true,
+                            Some(crate::marcos_doc::QueImprimir::Entero) => imprimir_entera = true,
+                            None => {}
+                        }
+                        hay_que_pintar = true;
+                    } else if est.pulsar_derecho_riel() {
                         hay_que_pintar = true;
                     } else if let Some(pedido) = est.menu_de_marcos(textos) {
                         imprimir_marcos |= pedido == crate::marcos_doc::Pedido::Imprimir;
@@ -2341,6 +2356,14 @@ fn ver_en(
                 ventana.soltar_raton();
             }
             marcos::imprimir(&superficie, motor, &mut est, textos);
+            hay_que_pintar = true;
+        }
+        if std::mem::take(&mut imprimir_entera) {
+            if est.gesto.is_some() {
+                est.gesto = None;
+                ventana.soltar_raton();
+            }
+            marcos::imprimir_entera(&superficie, motor, &mut est, textos);
             hay_que_pintar = true;
         }
         if hay_que_pintar {

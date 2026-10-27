@@ -392,6 +392,31 @@ pub(super) fn imprimir(
     }
 }
 
+/// El trozo de papel de la hoja entera, en px de la hoja al 100 %: un A4
+/// tumbado a un tamano que se lee (las hojas de calculo suelen ser anchas).
+const TROZO_DE_LA_HOJA: (f64, f64) = (1414.0, 1000.0);
+
+/// **Imprime la hoja abierta entera** (el clic derecho en el boton del
+/// marco, 27-oct-2026): todo lo usado de ella, partido en trozos de papel
+/// ([`marcos_doc::trozos`]) que se fotografian como si fueran sus marcos.
+/// Los marcos del usuario no se tocan: se ponen aparte y vuelven al acabar.
+pub(super) fn imprimir_entera(
+    superficie: &Superficie,
+    motor: &MotorRender,
+    est: &mut Estado,
+    textos: &Catalogo,
+) {
+    let ab = est.abierta();
+    let (w, h) = ab.rejilla.tamano_usado(&ab.hoja);
+    let trozos = marcos_doc::trozos(w, h, TROZO_DE_LA_HOJA, est.activa as u32);
+    if trozos.is_empty() {
+        return;
+    }
+    let suyos = std::mem::replace(&mut est.marcos.lista, trozos);
+    imprimir(superficie, motor, est, textos);
+    est.marcos.lista = suyos;
+}
+
 /// Pinta ya sin interfaz, espera a que se vea y fotografia `caja` (en la
 /// ventana) dentro de `limite`.
 fn foto(
