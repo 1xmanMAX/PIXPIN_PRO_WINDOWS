@@ -275,3 +275,40 @@ pantalla de la letra de los dos aparatos y viaja como cualquier nota.
 
 El auricular de llamadas del móvil es solo de allí: es del aparato y no
 viaja.
+
+## Imprimir desde el botón de marcos
+
+El botón del marco del riel de los visores (el de los marcos numerados)
+sigue igual al pulsarlo: entra y sale de poner marcos. **El clic derecho**
+(en Android y en el Mac, la **pulsación larga**) saca un menú pequeño con
+dos cosas:
+
+- **«Imprimir los marcos (N)»**: lo mismo que Ctrl+P con marcos, una hoja
+  por marco. Sin ningún marco sale en gris, con la pista «aún no hay: pulsa
+  el marco y arrastra».
+- **«Imprimir el … entero»**, con el nombre de lo que es: «el PDF entero»,
+  «el Word entero», «el PowerPoint entero», «la hoja entera» (una hoja de
+  cálculo), «la página entera» (una página web), «el documento entero» (un
+  libro, unas notas, un formato viejo de Office), «el plano entero» y, en
+  un modelo 3D, «la vista del modelo».
+
+En Windows se quedan además los atajos y botones de imprimir de siempre
+(Ctrl+P, «Imprimir» del menu ⋯); en Android solo queda este botón. Los
+textos van en los cuatro catálogos (`marcos-menu-*`).
+
+Cómo imprime entero cada visor en Windows:
+
+| Visor | Entero |
+| --- | --- |
+| PDF (`lector_pdf`) | El diálogo de imprimir con todas las hojas y su tinta (`lector_pdf/entero.rs`). |
+| Word y PowerPoint (`lector_pdf`) | El imprimir de siempre (`office::imprimir`). |
+| Word, libros y notas leídos como texto (`visor`) | El texto en trozos de papel, fotografiados como los marcos. |
+| Hoja de cálculo (`visor_hoja`) | Lo usado de la hoja abierta, en trozos de papel (A4 tumbado). |
+| Página web y notas (`visor_html`, `notas_md/lector_web`) | El imprimir de la página (`window.print()`), con lo anotado dentro. |
+| Pin de Office (formatos viejos) | Su aplicación (el verbo «Imprimir» de Windows). |
+| Plano (`pixpin-cad`) | El plano entero en una lámina, como Ctrl+P sin marcos. |
+| Modelo 3D (`pixpin-cad`) | La vista de ahora. |
+
+El menú lo hacen `marcos_doc::menu_de_imprimir` (las entradas en
+`marcos_doc::entradas_de_imprimir`) y, en el plano y el modelo,
+`pixpin_cad::ventana::menu_de_imprimir` con los mismos textos.
