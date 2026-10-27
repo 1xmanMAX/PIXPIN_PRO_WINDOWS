@@ -720,6 +720,9 @@ struct Estado {
     /// Las listas que se ensenan: las que tienen alguna tarea, el Inbox el
     /// primero.
     listas: Vec<Lista>,
+    /// Los chats (por su `id`) que son compartidos: sus listas llevan la
+    /// insignia verde de las dos personas, como en la lista de chats.
+    compartidos: HashSet<String>,
     /// Adonde se puede mover lo del Inbox: todas las demas listas, tambien
     /// las vacias.
     destinos: Vec<Lista>,
@@ -852,13 +855,26 @@ impl Estado {
             apuntar_en: None,
             asignatura: None,
             selector: false,
+            compartidos: HashSet::new(),
         }
+    }
+
+    /// Si la lista `li` viene de un chat compartido.
+    fn compartida(&self, li: usize) -> bool {
+        self.listas
+            .get(li)
+            .is_some_and(|l| self.compartidos.contains(&l.proyecto))
     }
 
     fn recargar(&mut self, ubicacion: &Ubicacion) {
         let raiz = ubicacion.raiz();
         let (todas, proyectos) = super::reunir(raiz);
         self.firma = super::firma(raiz, &proyectos);
+        self.compartidos = todas
+            .iter()
+            .map(|l| l.proyecto.clone())
+            .filter(|id| crate::sincronizar::compartidos_ui::personas_del_chat(raiz, id).is_some())
+            .collect();
         // Las imagenes de las tareas, resueltas una vez por lectura y no en
         // cada fotograma (resolver un enlace lee el indice). Lo que ya se
         // encontro no se vuelve a buscar.
@@ -1012,6 +1028,7 @@ impl Estado {
                     texto,
                     cuando,
                     color: degradado_de_lista(self, li).0,
+                    compartida: self.compartida(li),
                 });
                 sitios.push((li, f.indice));
             }
@@ -3450,6 +3467,11 @@ fn pintar_encabezado(
     let derecha = cw.max(2.0 * ASPA * s + 4.0 * s);
     let libre = (ancho - derecha - 34.0 * s).max(0.0);
     let con_chat = !super::es_inbox(&l);
+    // De un chat compartido: la insignia verde detras del nombre (como en
+    // la lista de chats), en Tarjetas y en Kanban.
+    let compartida = e.compartida(g.lista);
+    let insignia = if compartida { th * 0.9 } else { 0.0 };
+    let libre = (libre - if compartida { insignia + 6.0 * s } else { 0.0 }).max(0.0);
     let (nw, _) = ui::medir_negrita(p, &l.titulo, tam, libre);
     let nw = if con_chat {
         nw.min(libre * 0.7)
@@ -3479,6 +3501,20 @@ fn pintar_encabezado(
         },
         |p| ui::negrita(p, &l.titulo, x + 4.0 * s, ty, tam, 100_000.0, TEXTO),
     );
+    let x = if compartida {
+        crate::ventana_chat::pintar_insignia_compartido(
+            p,
+            RectF {
+                x: x + 4.0 * s + nw + 6.0 * s,
+                y: ty + (th - insignia) / 2.0,
+                ancho: insignia,
+                alto: insignia,
+            },
+        );
+        x + insignia + 6.0 * s
+    } else {
+        x
+    };
     if con_chat {
         p.texto_linea(
             &format!("·  {}", l.chat),
@@ -4729,6 +4765,30 @@ mod pruebas {
         );
         e.colocadas = rejilla::colocadas(&c);
         e.celdas = c;
+    }
+
+    #[test]
+    fn las_listas_de_un_chat_compartido_llevan_su_insignia_tambien_en_el_horario() {
+        let mut e = muestra_estado();
+        assert!(
+            !(0..e.listas.len()).any(|li| e.compartida(li)),
+            "nada compartido"
+        );
+        e.compartidos.insert("o".into());
+        let li = e.listas.iter().position(|l| l.proyecto == "o").unwrap();
+        assert!(e.compartida(li));
+        // Caso negativo: las demas siguen sin ella, y una lista que no esta
+        // tampoco.
+        assert!(!e.compartida(0) && !e.compartida(99));
+        // Una tarea con hora de esa lista sale en el horario con su insignia.
+        e.listas[li]
+            .filas
+            .push(super::super::filas_de("- [ ] reunion ⏰ 2026-10-05 10:00")[0].clone());
+        let (tareas, sitios) = e.tareas_con_hora();
+        assert!(sitios.iter().any(|(de, _)| *de == li), "{sitios:?}");
+        for (t, (de, _)) in tareas.iter().zip(&sitios) {
+            assert_eq!(t.compartida, *de == li, "{}", t.texto);
+        }
     }
 
     #[test]

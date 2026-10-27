@@ -5374,14 +5374,16 @@ fn pintar_chapa_compartido(p: &Pintor, avatar: RectF, aro: Color) -> RectF {
         alto: lado,
     };
     p.rellenar_redondeado(caja, lado / 2.0, aro);
-    let dentro = encoger(caja, grosor);
-    p.rellenar_redondeado(dentro, dentro.ancho / 2.0, hex(VERDE_COMPARTIDO));
-    p.icono(
-        &mi::GROUP,
-        encoger(dentro, dentro.ancho * 0.14),
-        Color::BLANCO,
-    );
+    pintar_insignia_compartido(p, encoger(caja, grosor));
     caja
+}
+
+/// **La insignia de chat compartido**, sin aro: el circulito verde con las
+/// dos personas en `caja`. La misma en la lista de chats y en lo que viene
+/// de un chat compartido fuera de el (las listas de Tareas, checklist 26).
+pub(crate) fn pintar_insignia_compartido(p: &Pintor, caja: RectF) {
+    p.rellenar_redondeado(caja, caja.ancho / 2.0, hex(VERDE_COMPARTIDO));
+    p.icono(&mi::GROUP, encoger(caja, caja.ancho * 0.14), Color::BLANCO);
 }
 
 #[allow(clippy::too_many_arguments)]
