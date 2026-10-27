@@ -1596,6 +1596,7 @@ dependencies = [
  "flate2",
  "lyon_tessellation",
  "opencadcodec",
+ "pixpin-ui",
  "png",
  "serde",
  "serde_json",

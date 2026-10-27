@@ -1578,6 +1578,13 @@ lector-al-proyecto = Al proyecto
 lector-al-proyecto-hecho = Ya está en proyectos, con lo anotado
 lector-al-proyecto-fallo = No se pudo crear el proyecto
 
+## «Guardar» en los visores de lo abierto de fuera (modo de paso, Android 15a52aed)
+guardar-de-paso = Guardar en un chat
+guardar-de-paso-guardados = En «Mensajes guardados»
+guardar-de-paso-en = En «{ $chat }»
+guardar-de-paso-hecho = Guardado en «{ $chat }», con lo anotado
+guardar-de-paso-fallo = No se pudo guardar en el chat
+
 ## Lector de Word y libros: las cuatro letras y los cuatro grosores del movil (K16)
 lector-letra-serif = Serif
 lector-letra-sans = Sans
