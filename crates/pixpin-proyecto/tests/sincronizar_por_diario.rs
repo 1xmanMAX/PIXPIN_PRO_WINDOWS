@@ -31,7 +31,12 @@ struct Par {
     pc: DiscoPc,
     movil: DiscoAndroid,
     reloj: Reloj,
+    /// Una a la vez: el interruptor del diario y la cuenta de lecturas son
+    /// del proceso.
+    _fila: std::sync::MutexGuard<'static, ()>,
 }
+
+static EN_FILA: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 impl Drop for Par {
     fn drop(&mut self) {
@@ -41,6 +46,7 @@ impl Drop for Par {
 }
 
 fn montar(etiqueta: &str) -> Par {
+    let fila = EN_FILA.lock().unwrap_or_else(|e| e.into_inner());
     pixpin_sincro::diario::poner_activo(true);
     let dir = std::env::temp_dir().join(format!(
         "pixpin-pc-diario-{etiqueta}-{}",
@@ -56,6 +62,7 @@ fn montar(etiqueta: &str) -> Par {
         pc,
         movil,
         reloj: Reloj::nuevo(),
+        _fila: fila,
     };
     crear_grupo(&p.movil, "ABCDE23456", p.reloj.ahora());
     conectado_con(

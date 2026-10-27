@@ -29,7 +29,14 @@ struct Par {
     tel: DiscoAndroid,
     tab: DiscoAndroid,
     reloj: Reloj,
+    /// Una prueba del diario a la vez: el interruptor es del proceso.
+    _fila: std::sync::MutexGuard<'static, ()>,
 }
+
+/// Las pruebas de aqui apagan y encienden el diario (`diario::poner_activo`),
+/// que es de todo el proceso: van de una en una aunque las demas pruebas
+/// vayan en paralelo.
+static EN_FILA: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 impl Drop for Par {
     fn drop(&mut self) {
@@ -41,6 +48,7 @@ impl Drop for Par {
 }
 
 fn montar(etiqueta: &str) -> Par {
+    let fila = EN_FILA.lock().unwrap_or_else(|e| e.into_inner());
     diario::poner_activo(true);
     let dir = std::env::temp_dir().join(format!(
         "pixpin-diario-de-verdad-{etiqueta}-{}",
@@ -56,6 +64,7 @@ fn montar(etiqueta: &str) -> Par {
         tel,
         tab,
         reloj: Reloj::nuevo(),
+        _fila: fila,
     }
 }
 
