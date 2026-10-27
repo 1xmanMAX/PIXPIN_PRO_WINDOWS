@@ -44,6 +44,7 @@ pub mod lienzo_de_la_foto;
 pub mod mini;
 pub mod para_el_movil;
 pub mod portapapeles_tabla;
+pub mod presencial;
 pub mod tabla;
 pub mod tabla_web;
 pub mod tabla_xlsx;
