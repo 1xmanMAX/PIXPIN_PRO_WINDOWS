@@ -280,6 +280,9 @@ struct Estado {
     doc: Documento,
     indice: Vec<indice::Entrada>,
     ajustes: lectura::Ajustes,
+    /// El % de lo leido en Lectura Veloz (lo ultimo que mando), para
+    /// ponerlo junto a «⚡ Lectura veloz»; `None` si nunca se leyo alli.
+    lectura_veloz: Option<u8>,
     /// La esquina de arriba a la izquierda de la ventana, en unidades del
     /// documento.
     x: f32,
@@ -446,6 +449,7 @@ pub fn abrir(
     let tinta_de_antes =
         ajustes.de_antes && ajustes.letra_fijada() && !del_mensaje && !capa.vacia();
     let mut e = Estado {
+        lectura_veloz: crate::lectura_veloz::porcentaje_de_ruta(ruta),
         indice: indice::de(&doc),
         doc,
         zoom: ajustes.zoom,
@@ -526,6 +530,7 @@ pub fn abrir(
             if let Some(f) = al_dia_de_lectura_veloz(&mut e, &p) {
                 ir_a = Some(f);
             }
+            e.lectura_veloz = crate::lectura_veloz::porcentaje_de_ruta(ruta);
             hay_que_pintar = true;
         }
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
@@ -1884,7 +1889,10 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
     }
     filas.extend([
         (textos.t("visor-letra"), Accion::Letra),
-        (textos.t("lector-lectura-veloz"), Accion::LecturaVeloz),
+        (
+            crate::lectura_veloz::rotulo(textos, e.lectura_veloz),
+            Accion::LecturaVeloz,
+        ),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
@@ -3553,6 +3561,7 @@ mod pruebas {
             doc: Documento::default(),
             indice: Vec::new(),
             ajustes: lectura::Ajustes::default(),
+            lectura_veloz: None,
             x: 0.0,
             y: 0.0,
             zoom: 1.0,
@@ -3615,6 +3624,13 @@ mod pruebas {
             filas_del_panel(&e, &textos)
                 .iter()
                 .any(|(_, a)| *a == Accion::LecturaVeloz)
+        );
+        // Ya leido alli: el % al lado de la opcion.
+        e.lectura_veloz = Some(47);
+        assert!(
+            filas_del_panel(&e, &textos)
+                .iter()
+                .any(|(t, a)| *a == Accion::LecturaVeloz && t.ends_with("· 47 %"))
         );
         e.ajustes.voz = Some((10, 0.1));
         e.ajustes.tamano = 130;

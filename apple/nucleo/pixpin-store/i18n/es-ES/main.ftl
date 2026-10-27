@@ -269,6 +269,15 @@ chat-compartir-sin-panel = Windows no abrió el panel Compartir: lo he dejado en
 chat-pineado = Pineado
 chat-foto-en-la-nota = Foto añadida a lo escrito: se envía todo en una sola nota
 chat-sin-archivo = Este mensaje no tiene un archivo en este equipo
+# Lectura veloz (27-oct-2026): el % junto a la opcion, la chapa de la
+# burbuja y por que no se abre, con el motivo de verdad.
+lector-lectura-veloz-con = ⚡ Lectura veloz · { $pct } %
+lector-lectura-veloz-sin-codigo = Este documento no se puede leer en Lectura Veloz: no es un archivo del chat ni una nota guardada (no tiene código de mensaje).
+lector-lectura-veloz-formato = Este documento no se puede leer en Lectura Veloz: no lee archivos «.{ $ext }».
+lector-lectura-veloz-falta-archivo = Este documento no se puede leer en Lectura Veloz: el archivo ya no está en este equipo ({ $nombre }).
+chat-lectura-veloz-chapa = Lectura veloz · { $pct } %
+# La chapa de lo que llego del escaner del movil (`escaneado`).
+chat-escaneado = Escaneado
 chat-sin-origen = No encuentro ese lienzo en este proyecto
 chat-sin-proyectos-otros = No hay otro proyecto al que mandarlo
 chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja

@@ -684,6 +684,15 @@ lector-ver-como-texto = View as text (like a Word file)
 lector-lectura-veloz = ⚡ Speed reading
 lector-lectura-veloz-no-instalada = Lectura Veloz isn't installed on this PC (the lecturaveloz:// link is missing). Install it and try again.
 lector-lectura-veloz-no-se-pudo = Couldn't open Lectura Veloz: { $motivo }
+# Speed reading (27-oct-2026): the % next to the option, the bubble chip
+# and the real reason when it can't open.
+lector-lectura-veloz-con = ⚡ Speed reading · { $pct } %
+lector-lectura-veloz-sin-codigo = This document can't be read in Lectura Veloz: it isn't a chat file or a saved note (it has no message code).
+lector-lectura-veloz-formato = This document can't be read in Lectura Veloz: it doesn't read «.{ $ext }» files.
+lector-lectura-veloz-falta-archivo = This document can't be read in Lectura Veloz: the file is no longer on this computer ({ $nombre }).
+chat-lectura-veloz-chapa = Speed reading · { $pct } %
+# The chip of what came from the phone's scanner (`escaneado`).
+chat-escaneado = Scanned
 lector-pasando-a-texto = Turning the PDF into text…
 lector-texto-escaneo = This PDF has no text to extract: it is probably a scan (a photo of the pages)
 lector-texto-cifrado = The PDF is password protected

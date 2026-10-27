@@ -685,6 +685,15 @@ lector-ver-como-texto = Ver como texto (como un Word)
 lector-lectura-veloz = ⚡ Lectura veloz
 lector-lectura-veloz-no-instalada = Lectura Veloz no está instalada en este equipo (falta el enlace lecturaveloz://). Instálala y vuelve a probar.
 lector-lectura-veloz-no-se-pudo = No se pudo abrir Lectura Veloz: { $motivo }
+# Lectura veloz (27-oct-2026): el % junto a la opcion, la chapa de la
+# burbuja y por que no se abre, con el motivo de verdad.
+lector-lectura-veloz-con = ⚡ Lectura veloz · { $pct } %
+lector-lectura-veloz-sin-codigo = Este documento no se puede leer en Lectura Veloz: no es un archivo del chat ni una nota guardada (no tiene código de mensaje).
+lector-lectura-veloz-formato = Este documento no se puede leer en Lectura Veloz: no lee archivos «.{ $ext }».
+lector-lectura-veloz-falta-archivo = Este documento no se puede leer en Lectura Veloz: el archivo ya no está en este equipo ({ $nombre }).
+chat-lectura-veloz-chapa = Lectura veloz · { $pct } %
+# La chapa de lo que llego del escaner del movil (`escaneado`).
+chat-escaneado = Escaneado
 lector-pasando-a-texto = Pasando el PDF a texto…
 lector-texto-escaneo = Este PDF no tiene texto que se pueda sacar: seguramente es un escaneo (una foto de las hojas)
 lector-texto-cifrado = El PDF está protegido con contraseña
