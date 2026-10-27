@@ -617,15 +617,6 @@ pub(crate) fn ir_a(
     }
 }
 
-/// Pide, desde el propio chat, pasar a otro proyecto: lo mismo que pide el
-/// universo, sin mensaje al que ir. Lo recoge `tomar_ir_a` en la vuelta del
-/// bucle, que guarda lo escrito y lo abierto del que se deja.
-fn pedir_ir_a(proyecto: String) {
-    if let Ok(mut g) = IR_A.lock() {
-        *g = Some((proyecto, None));
-    }
-}
-
 /// Pide, desde el buscador de la lista, abrir un chat llevado a un mensaje
 /// suyo (por su codigo unico): lo mismo que pide el universo.
 fn pedir_ir_a_mensaje(proyecto: String, codigo: String) {
@@ -1718,9 +1709,6 @@ pub fn abrir(
                                     // filtrando sin que nadie la pidiera.
                                     a.buscando_info = false;
                                     a.busqueda_info.vaciar();
-                                    // Se abre en «Proyectos»: tiene que saber
-                                    // cuales hay antes de elegir pestana.
-                                    ficha_del_chat::poner_proyectos(a, &fichas);
                                     a.info = Some(ficha_del_chat::primera(a));
                                     a.info_abierta = None;
                                     a.scroll_info = 0;
@@ -2062,14 +2050,6 @@ pub fn abrir(
                                     a.info = Some(s);
                                     a.scroll_info = 0;
                                     a.nav_info.foco.set(None);
-                                }
-                                // Un proyecto: el de este chat lleva a su
-                                // galeria; otro cierra la isla y el chat pasa
-                                // a el (lo recoge `tomar_ir_a` en esta vuelta).
-                                ZonaInfo::Proyecto(n) => {
-                                    if let Some(id) = ficha_del_chat::pulsar_proyecto(a, n) {
-                                        pedir_ir_a(id);
-                                    }
                                 }
                                 // Un enlace se abre en el navegador y la isla
                                 // se queda; lo demas, en su previa.
@@ -3766,11 +3746,6 @@ pub fn abrir(
                                 tocar = Some(c.mensaje)
                             }
                             Tecla::Pulsar(c) => a.info_abierta = Some(c),
-                            Tecla::Proyecto(n) => {
-                                if let Some(id) = ficha_del_chat::pulsar_proyecto(a, n) {
-                                    pedir_ir_a(id);
-                                }
-                            }
                             Tecla::Abrir => match a.info_abierta {
                                 Some(c) if ficha_del_chat::es_enlace(a, c) => {
                                     if let Efecto::Aviso(t) = abrir_enlace(a, c.mensaje, textos) {
@@ -4471,11 +4446,6 @@ pub fn abrir(
             // el fotograma: crear recursos de dibujo a medias no se puede, y
             // leer del disco dentro del fotograma se notaria.
             let mut faltan_fondos = false;
-            // Los proyectos de la pestana «Proyectos», al dia con la lista
-            // antes de pintar: lo que se pulse despues es lo que se vio.
-            if let Some(a) = abierto.as_mut().filter(|a| a.info.is_some()) {
-                ficha_del_chat::poner_proyectos(a, &fichas);
-            }
             if let Some(a) = abierto.as_ref() {
                 if a.info.is_some() {
                     // Las miniaturas de lo que se ve en la ficha y, en la
@@ -4522,17 +4492,11 @@ pub fn abrir(
                     .filter_map(|i| fichas.get(*i))
                     .map(|f| f.id.as_str());
                 let del_abierto = abierto.as_ref().map(|a| a.ficha.id.as_str());
-                // Y los de la pestana de proyectos de la ficha, si se ve.
-                let de_la_ficha = abierto
-                    .as_ref()
-                    .map(|a| ficha_del_chat::logos_a_preparar(a, &disposicion, escala))
-                    .unwrap_or_default();
                 logo::preparar(
                     ubicacion.raiz(),
                     &fichas,
                     filas
                         .chain(del_abierto)
-                        .chain(de_la_ficha.iter().map(String::as_str))
                         // Y los de los chats de los mensajes encontrados.
                         .chain(en_chats.chats()),
                     &motor,
@@ -5266,10 +5230,6 @@ struct Abierto {
     info_abierta: Option<pixpin_ui::info::Cosa>,
     /// La tira de pestanas desplazada y el foco del teclado de la ficha.
     nav_info: ficha_del_chat::Navegacion,
-    /// Los proyectos que lista la pestana «Proyectos» de la ficha: los de la
-    /// lista de chats, apuntados antes de pintar (`poner_proyectos`) para
-    /// que lo que se pulsa sea lo que se pinto.
-    proyectos_info: Vec<pixpin_proyecto::almacen::Ficha>,
     /// Donde esta el raton sobre la ficha, para resaltar lo que hay debajo.
     raton_info: Punto,
     /// A que mensaje se esta contestando (su id). Aparte de `marcados`:
@@ -9324,7 +9284,6 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         hojas_uid: pixpin_proyecto::almacen::uids_de_hojas(ubicacion.raiz(), &ficha.id),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
         nav_info: Default::default(),
-        proyectos_info: Vec::new(),
         info_abierta: None,
         raton_info: Punto { x: -1, y: -1 },
         respondiendo: None,

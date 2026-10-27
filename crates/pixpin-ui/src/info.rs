@@ -454,41 +454,6 @@ pub fn lista_isla(
     }
 }
 
-/// **Filas sin rotulos de mes**, una bajo otra, para lo que no va por
-/// fechas: la pestana de proyectos, que sigue el orden de la lista de chats
-/// («Mensajes guardados» y el asistente delante, aunque sean viejos) y con
-/// rotulos de mes repetiria meses. Arriba lleva el mismo aire que el pie,
-/// para que la primera fila no pegue con la tira de pestanas.
-pub fn filas_isla(area: Rect, cuantas: usize, alto_fila: u32, escala_por_cien: u32) -> Lista {
-    let e = |v: u32| e(v, escala_por_cien);
-    let alto = e(alto_fila).max(1);
-    let aire = e(ISLA_PIE_DE_LISTA);
-    let fila_x = area.x + e(ISLA_RELLENO / 2) as i32;
-    let fila_ancho = area.ancho.saturating_sub(e(ISLA_RELLENO));
-    let piezas = (0..cuantas)
-        .map(|n| {
-            (
-                Pieza::Cosa(n),
-                Rect {
-                    x: fila_x,
-                    y: area.y + aire as i32 + (n as u32 * alto) as i32,
-                    ancho: fila_ancho,
-                    alto,
-                },
-            )
-        })
-        .collect();
-    Lista {
-        piezas,
-        alto: if cuantas == 0 {
-            0
-        } else {
-            2 * aire + cuantas as u32 * alto
-        },
-        columnas: 1,
-    }
-}
-
 impl Lista {
     /// Las piezas que se ven en `area` con el desplazamiento `scroll`, ya
     /// movidas a su sitio en la pantalla.
@@ -1011,44 +976,6 @@ mod pruebas {
         let lejos = l.visibles(area(), 50 * ISLA_FILA as i32);
         assert!(lejos.iter().all(|(_, r)| r.abajo() > area().y));
         assert!(lejos.iter().any(|(p, _)| *p == Pieza::Cosa(50)));
-    }
-
-    #[test]
-    fn las_filas_de_proyectos_van_seguidas_sin_rotulos_y_se_pulsan_donde_se_ven() {
-        let l = filas_isla(area(), 30, ISLA_FILA, 100);
-        assert!(
-            l.piezas.iter().all(|(p, _)| matches!(p, Pieza::Cosa(_))),
-            "sin rotulos de mes"
-        );
-        let a = l.caja_de(0).unwrap();
-        assert_eq!(a.y, area().y + ISLA_PIE_DE_LISTA as i32, "con aire arriba");
-        assert_eq!(l.caja_de(1).unwrap().y, a.abajo());
-        assert_eq!(a.alto, ISLA_FILA);
-        assert_eq!(l.alto, 2 * ISLA_PIE_DE_LISTA + 30 * ISLA_FILA);
-        // Lo que se pinta desplazado es lo que recibe el clic: la fila 12,
-        // bajada a la vista, esta donde la da `visibles`.
-        let scroll = l.para_ver(12, area(), 0);
-        let (_, r) = l
-            .visibles(area(), scroll)
-            .into_iter()
-            .find(|(p, _)| *p == Pieza::Cosa(12))
-            .unwrap();
-        assert!(area().contiene(Punto {
-            x: r.x + 5,
-            y: r.y + 5
-        }));
-        assert_eq!(r.y, l.caja_de(12).unwrap().y - scroll);
-        // Las flechas: arriba y abajo de una en una, y nada bajo la ultima.
-        assert_eq!(l.vecina(0, 0, 1), Some(1));
-        assert_eq!(l.vecina(5, 0, -1), Some(4));
-        assert_eq!(l.vecina(29, 0, 1), None);
-        // Caso negativo: sin proyectos no hay nada que medir.
-        let vacia = filas_isla(area(), 0, ISLA_FILA, 100);
-        assert!(vacia.piezas.is_empty());
-        assert_eq!(vacia.alto, 0);
-        // Y con la escala crecen las filas, no el numero de ellas.
-        let grande = filas_isla(area(), 3, ISLA_FILA, 150);
-        assert_eq!(grande.caja_de(0).unwrap().alto, ISLA_FILA * 3 / 2);
     }
 
     #[test]

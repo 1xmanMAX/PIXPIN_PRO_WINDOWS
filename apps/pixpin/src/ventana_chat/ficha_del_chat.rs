@@ -26,16 +26,10 @@
 //!   y las flechas mueven el foco; Intro abre; Escape vuelve (de la previa a
 //!   la rejilla, del foco a las pestanas) y, al final, cierra.
 //!
-//! **Los proyectos viven aqui** (25-oct-2026, el usuario: «quita la seccion
-//! de proyectos o al menos muevela: quiero que esta zona de proyectos se
-//! mueva al menu que se abre al darle click en la parte de arriba del
-//! chat»). La pantalla aparte de Proyectos ya no existe; su sitio es la
-//! primera pestana de la isla, con la que se abre: cada proyecto en su fila,
-//! en el orden de la lista de chats, con su avatar, su nombre, cuantas hojas
-//! tiene, su ultima linea y cuando se toco por ultima vez. La lupa los
-//! filtra por nombre. Pulsar **otro** proyecto es salir a proposito: la isla
-//! se cierra y el chat pasa a ese proyecto. Pulsar **el de este chat** no
-//! sale: lleva a su «Galeria», que es lo que ensenaba su tarjeta (sus hojas).
+//! **Sin pestana de proyectos** (27-oct-2026, como Android): la tuvo
+//! delante y la isla se abria en ella, pero para pasar de un proyecto a
+//! otro ya esta la lista de chats de la izquierda. La isla se abre en la
+//! primera pestana con algo (la «Galeria»; en un chat vacio, «Todo»).
 //!
 //! **Las fotos de las notas ricas** (`![…](pixpin:files/…)` en su texto)
 //! salen en «Fotos» cada una como una miniatura mas, en el sitio de su nota,
@@ -61,11 +55,9 @@ use super::{
     pintar_ojeada_tabla, pintar_tarjeta_galeria, rf, ruta_del_mensaje, tarjetas,
 };
 
-/// En que orden salen las pestanas: los proyectos delante (es con la que se
-/// abre la isla), luego lo que se mira, lo que se lee, y «Todo» y el buzon
-/// al final.
-pub(super) const ORDEN: [Seccion; 11] = [
-    Seccion::Proyectos,
+/// En que orden salen las pestanas: primero lo que se mira, luego lo que se
+/// lee, y «Todo» y el buzon al final.
+pub(super) const ORDEN: [Seccion; 10] = [
     Seccion::Galeria,
     Seccion::Fotos,
     Seccion::Videos,
@@ -137,11 +129,6 @@ pub(super) fn primera(a: &Abierto) -> Seccion {
 /// mensajes y, en «Fotos», tambien cada foto de las notas ricas, en el
 /// sitio de su nota y en el orden de su burbuja.
 fn cosas_de(a: &Abierto, seccion: Seccion) -> Vec<Cosa> {
-    // Los proyectos no son mensajes: cada cosa es el proyecto de ese lugar
-    // en `proyectos_info`, en el orden de la lista de chats.
-    if seccion == Seccion::Proyectos {
-        return (0..a.proyectos_info.len()).map(Cosa::entera).collect();
-    }
     let suyos = indices_de_la_seccion(a, seccion);
     let mut v = if seccion != Seccion::Fotos {
         suyos.into_iter().map(Cosa::entera).collect()
@@ -166,16 +153,6 @@ fn cosas_de(a: &Abierto, seccion: Seccion) -> Vec<Cosa> {
 /// Lo que ensena la seccion, con lo buscado con la lupa ya filtrado.
 pub(super) fn de_la_seccion(a: &Abierto, seccion: Seccion) -> Vec<Cosa> {
     let mut suyos = cosas_de(a, seccion);
-    if seccion == Seccion::Proyectos {
-        if !a.busqueda_info.trim().is_empty() {
-            suyos.retain(|c| {
-                a.proyectos_info.get(c.mensaje).is_some_and(|f| {
-                    pixpin_ui::resaltado::hay_coincidencia(&f.nombre, &a.busqueda_info)
-                })
-            });
-        }
-        return suyos;
-    }
     if !a.busqueda_info.trim().is_empty() {
         suyos.retain(|c| {
             let Some(m) = a.mensajes.get(c.mensaje) else {
@@ -230,15 +207,6 @@ impl Colocado {
 /// cargar las fotos.
 pub(super) fn colocar(a: &Abierto, seccion: Seccion, i: &Isla, escala: u32) -> Colocado {
     let suyos = de_la_seccion(a, seccion);
-    if seccion == Seccion::Proyectos {
-        // Sin rotulos de mes: van en el orden de la lista de chats.
-        let lista = ui::filas_isla(i.contenido, suyos.len(), ui::ISLA_FILA, escala);
-        return Colocado {
-            suyos,
-            lista,
-            cuadricula: false,
-        };
-    }
     let meses: Vec<i64> = suyos
         .iter()
         .map(|c| a.mensajes.get(c.mensaje).map_or(0, clave_del_mes))
@@ -285,9 +253,6 @@ pub(super) enum ZonaInfo {
     Pestana(Seccion),
     /// Una cosa de la rejilla o de las filas.
     Cosa(Cosa),
-    /// Un proyecto de la pestana de proyectos, por su lugar en
-    /// `proyectos_info`.
-    Proyecto(usize),
     /// En la previa: la flecha de volver a la rejilla, las de los lados y
     /// los dos botones de la cabecera.
     Volver,
@@ -359,11 +324,7 @@ pub(super) fn zona_en(a: &Abierto, l: Punto, d: &Disposicion, escala: u32) -> Zo
                 _ => None,
             })
         {
-            return if seccion == Seccion::Proyectos {
-                ZonaInfo::Proyecto(c.suyos[n].mensaje)
-            } else {
-                ZonaInfo::Cosa(c.suyos[n])
-            };
+            return ZonaInfo::Cosa(c.suyos[n]);
         }
     }
     ZonaInfo::Dentro
@@ -405,8 +366,6 @@ pub(super) enum Tecla {
     Hecho,
     /// Intro sobre una cosa: lo mismo que pulsarla.
     Pulsar(Cosa),
-    /// Intro sobre un proyecto de su pestana: lo mismo que pulsarlo.
-    Proyecto(usize),
     /// Intro en la previa: lo mismo que «Abrir».
     Abrir,
     /// Escape sin nada mas que deshacer: se cierra la isla.
@@ -455,9 +414,6 @@ pub(super) fn tecla(a: &mut Abierto, vk: u32, d: &Disposicion, escala: u32) -> T
             Tecla::Hecho
         }
         (VK_ESCAPE, None) => Tecla::Cerrar,
-        (VK_ENTRAR, Some(n)) if seccion == Seccion::Proyectos => {
-            Tecla::Proyecto(c.suyos[n].mensaje)
-        }
         (VK_ENTRAR, Some(n)) => Tecla::Pulsar(c.suyos[n]),
         (VK_IZQUIERDA | VK_DERECHA, None) => {
             let lista = pestanas(a);
@@ -510,9 +466,7 @@ pub(super) fn a_cargar(
     d: &Disposicion,
     escala: u32,
 ) -> (Vec<std::path::PathBuf>, Vec<std::path::PathBuf>) {
-    // Los proyectos no tienen fotos que leer: sus logos van aparte
-    // (`logos_a_preparar`).
-    let Some(seccion) = a.info.filter(|s| *s != Seccion::Proyectos) else {
+    let Some(seccion) = a.info else {
         return (Vec::new(), Vec::new());
     };
     let foto = |c: Cosa| ruta_de_la_foto(a, c);
@@ -605,60 +559,6 @@ pub(super) fn reubicar_la_abierta(a: &mut Abierto, apunte: Option<(String, Optio
 /// para la caja que se ve, no para una escondida.
 pub(super) fn teclado_en_la_lupa(a: &Abierto) -> bool {
     a.buscando_info && a.info.is_some() && a.info_abierta.is_none()
-}
-
-// --- Los proyectos -----------------------------------------------------------
-
-/// **Apunta los proyectos que lista la isla**: los de la lista de chats, tal
-/// cual. Se llama antes de pintar, y lo que se pulsa despues es lo que se
-/// pinto. Solo se copian si cambiaron; si cambian, el foco del teclado (que
-/// va por lugar en la lista) se suelta.
-pub(super) fn poner_proyectos(a: &mut Abierto, fichas: &[Ficha]) {
-    if a.proyectos_info.as_slice() != fichas {
-        a.proyectos_info = fichas.to_vec();
-        if a.info == Some(Seccion::Proyectos) {
-            a.nav_info.foco.set(None);
-        }
-    }
-}
-
-/// **Pulsar el proyecto `n`** de la pestana. El de este chat no sale de la
-/// isla: lleva a su «Galeria», sus hojas, que es lo que ensenaba su tarjeta
-/// en la pantalla de Proyectos. Otro es salir a proposito: la isla se cierra
-/// y devuelve su `id` para que el chat pase a el.
-pub(super) fn pulsar_proyecto(a: &mut Abierto, n: usize) -> Option<String> {
-    let id = a.proyectos_info.get(n)?.id.clone();
-    // La lupa se apaga en los dos casos: lo buscado era un nombre de
-    // proyecto, y en la galeria o en el otro chat no significa nada.
-    a.buscando_info = false;
-    a.busqueda_info.vaciar();
-    a.scroll_info = 0;
-    a.nav_info.foco.set(None);
-    if id == a.ficha.id {
-        a.info = Some(Seccion::Galeria);
-        return None;
-    }
-    a.info = None;
-    a.info_abierta = None;
-    Some(id)
-}
-
-/// Los proyectos que se ven en la pestana, por su `id`: sus logos se leen
-/// antes de pintar, como los de las filas de la lista.
-pub(super) fn logos_a_preparar(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<String> {
-    if a.info != Some(Seccion::Proyectos) || a.info_abierta.is_some() {
-        return Vec::new();
-    }
-    let i = disposicion(d, escala);
-    let c = colocar(a, Seccion::Proyectos, &i, escala);
-    c.visibles(&i, a.scroll_info)
-        .iter()
-        .filter_map(|(p, _)| match p {
-            Pieza::Cosa(n) => a.proyectos_info.get(c.suyos[*n].mensaje),
-            Pieza::Mes(_) => None,
-        })
-        .map(|f| f.id.clone())
-        .collect()
 }
 
 // --- Pintar ------------------------------------------------------------------
@@ -815,8 +715,8 @@ fn boton_redondo(p: &Pintor, c: &Pinta, r: Rect, icono: &Icono, encima: bool, pu
     );
 }
 
-/// El avatar de un proyecto, como en su fila de la lista: su foto (imagen,
-/// emoji o color), o el circulo de su color con las iniciales.
+/// El avatar del chat, como en su fila de la lista: su foto (imagen, emoji
+/// o color), o el circulo de su color con las iniciales.
 fn avatar(p: &Pintor, f: &Ficha, caja: Rect) {
     let av = rf(caja);
     if logo::pintar(p, f, av) {
@@ -1141,10 +1041,7 @@ fn pintar_contenido(
             Pieza::Cosa(n) => {
                 let cosa = colocado.suyos[n];
                 let encima = sobre == ZonaInfo::Cosa(cosa);
-                if seccion == Seccion::Proyectos {
-                    let encima = sobre == ZonaInfo::Proyecto(cosa.mensaje);
-                    pintar_fila_de_proyecto(p, c, a, cosa.mensaje, r, encima);
-                } else if colocado.cuadricula {
+                if colocado.cuadricula {
                     pintar_celda(p, c, a, cosa, r, encima);
                 } else {
                     pintar_fila(p, c, a, seccion, cosa.mensaje, r, encima);
@@ -1208,7 +1105,6 @@ fn clave_del_vacio(s: Seccion) -> &'static str {
         Seccion::Fijados => "info-vacia-fijados",
         Seccion::Buzon => "info-vacia-buzon",
         Seccion::Todo => "info-vacia",
-        Seccion::Proyectos => "info-vacia-proyectos",
     }
 }
 
@@ -1221,7 +1117,6 @@ fn icono_de_la_seccion(s: Seccion) -> &'static Icono {
         Seccion::Voz => &mi::MIC,
         Seccion::Dibujos => &mi::DRAW,
         Seccion::Fijados => &mi::PUSH_PIN,
-        Seccion::Proyectos => &mi::FOLDER,
         _ => &mi::DESCRIPTION,
     }
 }
@@ -1600,100 +1495,6 @@ fn pintar_fila(
     );
 }
 
-/// **Un proyecto de su pestana**: su avatar, su nombre en seminegrita con lo
-/// buscado resaltado y, a la derecha, cuando se toco; debajo, cuantas hojas
-/// tiene y su ultima linea. El de este chat va marcado como la fila elegida
-/// de la lista y lo dice delante.
-fn pintar_fila_de_proyecto(p: &Pintor, c: &Pinta, a: &Abierto, n: usize, fila: Rect, encima: bool) {
-    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
-    let e = escala as f32 / 100.0;
-    let Some(f) = a.proyectos_info.get(n) else {
-        return;
-    };
-    let actual = f.id == a.ficha.id;
-    if actual {
-        p.rellenar_redondeado(rf(fila), 10.0 * e, tema.fila_elegida);
-    } else if encima {
-        p.rellenar_redondeado(rf(fila), 10.0 * e, tema.fila_sobre);
-    }
-    let (texto, apagado) = if actual {
-        (tema.texto_elegido, tema.texto_elegido)
-    } else {
-        (tema.texto, tema.apagado)
-    };
-    let d = ui::dentro_de_la_fila(fila, escala);
-    avatar(p, f, d.miniatura);
-    let (tam, tam_2) = (13.5 * e, 12.0 * e);
-    // La hora primero: dice cuanto sitio le queda al nombre.
-    let hora = chat::etiqueta_hora(pixpin_shell::entorno::a_local(f.tocado), c.ahora);
-    let mut ancho_nombre = d.ancho_texto as f32;
-    if !hora.is_empty() {
-        let (w, _) = p.medir_texto(&hora, tam_2);
-        p.texto(
-            &hora,
-            d.fila.derecha() as f32 - 8.0 * e - w,
-            d.nombre.y as f32 + 1.0 * e,
-            tam_2,
-            apagado,
-        );
-        ancho_nombre -= w + 8.0 * e;
-    }
-    let marcas = negritas(&f.nombre, &a.busqueda_info);
-    if marcas.is_empty() {
-        linea_negrita(
-            p,
-            &f.nombre,
-            d.nombre.x as f32,
-            d.nombre.y as f32,
-            tam,
-            ancho_nombre.max(0.0),
-            texto,
-        );
-    } else {
-        p.empujar_recorte(RectF {
-            x: d.nombre.x as f32,
-            y: d.nombre.y as f32,
-            ancho: ancho_nombre.max(0.0),
-            alto: 20.0 * e,
-        });
-        p.parrafo(
-            &crate::caja_texto::en_una_linea(&f.nombre),
-            d.nombre.x as f32,
-            d.nombre.y as f32,
-            tam,
-            ancho_nombre.max(0.0) * 2.0 + 200.0,
-            &marcas,
-            texto,
-        );
-        p.soltar_recorte();
-    }
-    // Debajo: «Este chat · 12 hojas · lo ultimo que se dijo». Guardado en un
-    // disco que ahora no esta, eso manda: es lo que explica por que no abre.
-    let mut partes = Vec::new();
-    if actual {
-        partes.push(textos.t("info-proyecto-este"));
-    }
-    if !pixpin_proyecto::ubicacion::disponible(f) {
-        partes.push(textos.t("ubicacion-no-disponible"));
-    } else {
-        let mut args = fluent_bundle::FluentArgs::new();
-        args.set("cuantas", f.hojas);
-        partes.push(textos.t_args("chat-hojas", &args));
-        let resumen = f.resumen.lines().next().unwrap_or_default().trim();
-        if !resumen.is_empty() {
-            partes.push(resumen.to_string());
-        }
-    }
-    p.texto_linea(
-        &partes.join("  ·  "),
-        d.estado.x as f32,
-        d.estado.y as f32,
-        tam_2,
-        d.ancho_texto as f32,
-        apagado,
-    );
-}
-
 /// **La previa de una cosa**, en grande dentro de la isla: una foto sobre
 /// fondo oscuro, entera y sin deformar; lo demas en su tarjeta. Las flechas
 /// van encima, a los lados.
@@ -1817,9 +1618,8 @@ mod pruebas {
         assert!(sitio(Seccion::Fotos) < sitio(Seccion::Archivos));
         assert!(sitio(Seccion::Videos) < sitio(Seccion::Enlaces));
         assert_eq!(ORDEN[ORDEN.len() - 1], Seccion::Buzon);
-        // Los proyectos, delante: la isla se abre en ellos.
-        assert_eq!(ORDEN[0], Seccion::Proyectos);
-        assert_eq!(ORDEN[1], Seccion::Galeria);
+        // La galeria, delante: la isla se abre en ella si tiene algo.
+        assert_eq!(ORDEN[0], Seccion::Galeria);
     }
 
     #[test]
