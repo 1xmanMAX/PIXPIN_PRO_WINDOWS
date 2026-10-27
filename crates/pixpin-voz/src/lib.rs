@@ -115,6 +115,9 @@ pub mod credibilidad;
 pub mod dos_idiomas;
 /// Las voces de Microsoft Edge para leer en voz alta (los lectores).
 pub mod edge;
+/// Titulo, artista y portada de una cancion, leidos de sus etiquetas
+/// (ID3v2, MPEG-4 y FLAC): la tarjeta de musica del chat (27-oct-2026).
+pub mod etiquetas;
 pub mod idiomas;
 /// La letra de una cancion: leer LRC, guardarla como la leen el PC y el
 /// movil, la linea que suena y sincronizarla a toques (27-oct-2026).
