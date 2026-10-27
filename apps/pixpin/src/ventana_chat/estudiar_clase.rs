@@ -252,6 +252,10 @@ struct Clase {
     capturas: Vec<(i64, PathBuf)>,
     /// El mensaje de cada captura (el mismo orden): para su lienzo anotado.
     fotos: Vec<cuaderno::Mensaje>,
+    /// **Los clips de video del movil** (`clase::clips_de`, la camara del
+    /// movil): donde empieza cada uno, lo que dura y su fichero. Se ven como
+    /// una franja en la barra del tiempo y, sonando, «▶ Clip del móvil».
+    clips: Vec<(clase::Clip, PathBuf)>,
     /// Los trozos del texto: su minuto (si lo lleva) y lo que dice.
     lineas: Vec<(Option<i64>, String)>,
     senales: Vec<Senal>,
@@ -291,6 +295,13 @@ impl Clase {
                 Some(((ms, r), m.clone()))
             })
             .unzip();
+        let clips = clase::clips_de(&voz.resto)
+            .into_iter()
+            .filter_map(|c| {
+                let r = ruta_de(&c.id)?;
+                Some((c, r))
+            })
+            .collect();
         let video = voz
             .resto
             .get("video")
@@ -315,6 +326,7 @@ impl Clase {
             video,
             capturas,
             fotos,
+            clips,
             lineas,
             senales: Vec::new(),
             filas: Vec::new(),
@@ -729,6 +741,8 @@ enum Zona {
     Quitar(i64),
     /// Una captura de la tira: ir a su minuto y ensenarla.
     Captura(usize),
+    /// «▶ Clip del móvil»: abrir el clip que suena.
+    Clip(usize),
     /// Las listas, para la rueda.
     ListaTexto,
     ListaFotos,
@@ -1242,6 +1256,7 @@ impl Vista {
         self.clase.nombre = nueva.nombre;
         self.clase.poner_senales(nueva.senales);
         self.clase.fotos = nueva.fotos;
+        self.clase.clips = nueva.clips;
         if otras_capturas {
             self.clase.capturas = nueva.capturas;
             self.miniaturas = (0..self.clase.capturas.len()).map(|_| None).collect();
@@ -1990,6 +2005,22 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
         Zona::Anotar => v.anotar = true,
         Zona::Transcripcion => v.reparto.texto = !v.reparto.texto,
         Zona::PantallaEntera => v.pedir_entera = true,
+        Zona::Clip(i) => {
+            if let Some(ruta) = v.clase.clips.get(i).map(|(_, r)| r.clone()) {
+                // Un clip HEVC sin la extension de la tienda: se dice que
+                // falta, y se abre igual (el reproductor del sistema lo dira
+                // tambien, y el fichero no se pierde).
+                if pixpin_pin::video::examinar(&ruta)
+                    .and_then(|f| f.extension_que_falta())
+                    .is_some()
+                {
+                    v.avisar(textos.t("estudiar-sin-hevc"));
+                }
+                if let Err(e) = pixpin_shell::abrir::abrir(&ruta) {
+                    tracing::warn!(?e, "no se pudo abrir el clip del movil");
+                }
+            }
+        }
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
@@ -2195,6 +2226,26 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
         );
     }
     v.zonas.push((caja, Zona::Medio));
+    // Sonando un clip del movil, abajo a la izquierda: «▶ Clip del móvil».
+    let clips: Vec<clase::Clip> = v.clase.clips.iter().map(|(c, _)| c.clone()).collect();
+    if let Some(i) = clase::clip_en(&clips, v.medio.posicion_ms()) {
+        let rotulo = textos.t("estudiar-clip-movil");
+        let ficha = RectF {
+            x: caja.x + 10.0 * e,
+            y: caja.y + caja.alto - 38.0 * e,
+            ancho: ancho_de_ficha(p, Some(&mi::PLAY_ARROW), &rotulo, e),
+            alto: 28.0 * e,
+        };
+        pintar_ficha(
+            p,
+            v,
+            ficha,
+            Some(&mi::PLAY_ARROW),
+            &rotulo,
+            Zona::Clip(i),
+            e,
+        );
+    }
     // Con video y capturas, una ficha arriba a la derecha cambia entre los
     // dos: «Ver la captura» / «Ver el vídeo».
     if v.medio.es_video() && !v.clase.capturas.is_empty() {
@@ -2396,6 +2447,19 @@ fn pintar_tiempo(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, posicion: i64) 
         3.0 * e,
         tema.enviar,
     );
+    // Los clips del movil: una franja verde de lo que dura cada uno.
+    for (c, _) in &v.clase.clips {
+        let (x0, x1) = (x_de(c.ms), x_de(c.ms + c.duracion_ms));
+        p.rellenar_redondeado(
+            RectF {
+                x: x0,
+                ancho: (x1 - x0).max(3.0 * e),
+                ..pista
+            },
+            3.0 * e,
+            con_alfa(crate::ventanita::VERDE, 0.8),
+        );
+    }
     for (ms, _) in &v.clase.capturas {
         let x = x_de(*ms);
         p.rellenar(
