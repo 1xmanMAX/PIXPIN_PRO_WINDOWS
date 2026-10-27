@@ -1,4 +1,4 @@
-# Manualito: sincronizar lo nuevo (23 al 25-oct-2026)
+# Manualito: sincronizar lo nuevo (23 al 27-oct-2026)
 
 Para los agentes de **PixPin Android** y de **Mac, iPad e iPhone**
 (`apple/`). Dice, funcion por funcion, que ficheros y campos hay, donde
@@ -96,13 +96,14 @@ En Android lo natural es la voz en `files/voz/` y el resto en
 - El video se mueve a `archivos/` **solo al terminar** la grabacion, ya
   cerrado: nunca viaja un MP4 a medias. Si cambia mientras se lee, la cola
   dice `saltado` y el otro no lo escribe.
-- **Android: nombres con `(`**. El PC llama «Clase (1).mp4» al segundo con
-  el mismo nombre. `Rutas.enTexto` corta en `)`, asi que Android tiene que
-  **anadir a `Disco.alcance` la `ruta` exacta de cada mensaje** (como hace
-  `DiscoPc::alcance`, ver
-  [investigacion/2026-10-01-ficheros-de-proyectos-del-pc-android.md](investigacion/2026-10-01-ficheros-de-proyectos-del-pc-android.md)).
-  Sin eso no rompe nada, pero el PC le vuelve a mandar ese video entero en
-  **cada** vuelta. Con videos esto es lo primero que hay que arreglar.
+- **Nombres con `(`** («Clase (1).mp4»): `Rutas.enTexto` corta en `)`,
+  asi que el alcance anade ademas **la `ruta` exacta de cada mensaje**.
+  Android lo hace desde el 1-oct (`Disco.alcanceCon`); el PC
+  (`DiscoPc::alcance`) tambien, y desde el 27-oct el movil de las pruebas
+  (`disco::alcance_de`). Probado en
+  `los_archivos_van_de_pequeno_a_grande_y_si_se_corta_lo_pequeno_ya_esta`.
+- **Lo pequeno primero** (seccion 11): si la vuelta se corta en el video,
+  la voz y las capturas ya estan; el video se ofrece entero otra vez.
 
 ### Choques
 
@@ -284,19 +285,19 @@ archivo binario (no entra en `esTexto`).
 
 ### Android
 
-- [ ] `Disco.alcance`: anadir la `ruta` exacta de cada mensaje (nombres con
-      `)`; imprescindible para los videos).
+- [x] `Disco.alcance`: anadir la `ruta` exacta de cada mensaje (hecho en
+      Android desde el 1-oct, `alcanceCon`).
 - [ ] Conservar `grabacion`, `capturas`, `video`, `enGrabacion`,
       `marcadores`, `estadoDelTexto` (ya viajan en lo desconocido;
       comprobar que el modelo no los tira al reescribir el mensaje).
-- [ ] Reproducir el `.mp4` de un `ARCHIVO`; opcional, «Estudiar la clase».
+- [x] Reproducir el `.mp4` de un `ARCHIVO`; opcional, «Estudiar la clase».
 - [ ] Al llegar `transcripcion` nueva, repintar la letra de la nota.
-- [ ] `Fusion.kt`: reglas 7.1 y 7.2; `Protocolo.kt`: regla 7.3.
-- [ ] Recargar `BibliotecaStore` cuando llega `figuras.json`.
-- [ ] `<d>.vistas.json` en el alcance de cada dibujo (ver §3).
-- [ ] Burbuja de `NOTA` con Markdown y album de fotos.
-- [ ] Carpeta: ensenar el `MINIAPP` «carpeta» (opcional), no tocar su `texto`.
-- [ ] Carpeta de grabacion (§5.1): conservar `tipo`, `voz`, `video`,
+- [x] `Fusion.kt`: reglas 7.1 y 7.2; `Protocolo.kt`: regla 7.3.
+- [x] Recargar `BibliotecaStore` cuando llega `figuras.json`.
+- [x] `<d>.vistas.json` en el alcance de cada dibujo (ver §3).
+- [x] Burbuja de `NOTA` con Markdown y album de fotos.
+- [x] Carpeta: ensenar el `MINIAPP` «carpeta» (opcional), no tocar su `texto`.
+- [x] Carpeta de grabacion (§5.1, Android v0.140-v0.143): conservar `tipo`, `voz`, `video`,
       `duracionMs` y, en cada pagina, `ms` y `adjunto` (si el modelo de la
       mini-app solo guarda el `texto` tal cual, ya esta). Opcional: una
       tarjeta por grabacion y no ensenar sueltos los mensajes que estan en
@@ -403,7 +404,7 @@ solo cambio en un lado.
 
 ### Tareas
 
-- [ ] Android: `avatar` en `Proyecto` (todos los campos opcionales, y lo
+- [x] Android: `avatar` en `Proyecto` (todos los campos opcionales, y lo
       desconocido conservado), pintarlo en la lista y en la cabecera, y la
       hoja para elegirlo desde la ficha del chat.
 - [ ] Mac, iPad e iPhone: el nucleo ya lo tiene (`apple/nucleo/pixpin-proyecto/src/avatar.rs`,
@@ -413,3 +414,124 @@ solo cambio en un lado.
 Probado en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs`:
 `la_foto_del_chat_viaja_con_su_imagen_y_vuelve_cambiada_desde_el_movil` y
 `el_logo_de_antes_empieza_a_viajar_como_foto_del_chat`.
+
+## 11. El orden de la vuelta y lo nacido despues de elegir (26 y 27-oct-2026)
+
+Sin mensajes nuevos ni version nueva del protocolo: solo cambia **en que
+orden** pide las cosas quien dirige y **que chats** entran en una vuelta sin
+preguntar. Un aparato que no lo sepa sigue entendiendose con los demas.
+
+### 11.1 Lo nacido despues de elegir
+
+Al contestar «¿Que sincronizar?», ademas de `sincro/elegidos/<otro>.txt` (lo
+marcado), se escribe **`sincro/elegidos/<otro>.ofrecidos`**: los ids de
+todos los chats que salian en la lista (con los marcados dentro), uno por
+linea. No viaja. En la vuelta sin preguntar (la automatica, «Sincronizar
+con todos»), van **lo marcado y los chats que no estan en `.ofrecidos`**
+(nacieron despues). Lo desmarcado a proposito sigue fuera. Sin
+`.ofrecidos` (elegido con una version de antes) se hace como siempre: solo
+lo marcado. Al volver a preguntar, lo nacido despues sale marcado.
+
+| | Android | PC |
+|---|---|---|
+| Fichero | `files/sincro/elegidos/<otro>.ofrecidos` | `<raiz>/sincro/elegidos/<otro>.ofrecidos` |
+| Escribir | `Disco.guardarElegidos(otro, chats, ofrecidos)` | `Disco::guardar_elegidos_de` |
+| Leer | `Disco.elegidosAhora(otro, candidatos)` | `Disco::elegidos_ahora` |
+
+### 11.2 El orden de los archivos
+
+Quien dirige mueve **primero los mensajes de todos los chats** (con ellos,
+las tareas, que son mensajes; los chats compartidos con otras personas,
+delante) y despues **los archivos de todos los chats juntos**, por esta
+prioridad (la lista del usuario en Android, checklist 16):
+
+| Prioridad | Que |
+|---|---|
+| 0 | lo de un chat compartido con otra persona (menos videos y sonidos) |
+| 1 | archivos: documentos, fotos, lo demas |
+| 2 | lienzos, notas y textos (`pins/…`, `notas/…`, lo que se junta como texto) |
+| 3 | videos y sonidos: grabaciones, notas de voz, musica (`mp4 mov avi mkv webm 3gp m4v wmv flv m4a mp3 aac ogg opus wav amr flac wma`, `voz/…`) |
+
+Dentro de cada prioridad, **de lo mas ligero a lo mas pesado** (lo mas
+grande de los dos lados; a igual peso, el orden del plan). Cada chat se
+**cierra dos veces**: tras sus mensajes (lo acordado de los mensajes ya no
+se pierde si la vuelta se corta en un video) y tras sus archivos.
+`cerrar` solo apunta lo que de verdad esta igual, asi que cerrar dos veces
+no cambia nada mas. El protocolo **no reanuda** un archivo cortado: se tira
+el `.sincro` y se ofrece entero en la vuelta siguiente.
+
+Codigo: `PreparadoArchivos::en_orden`, `Sesion::aplicar_pasos`,
+`vuelta::prioridad_de_archivo` (`crates/pixpin-sincro`, copiado en
+`apple/nucleo/pixpin-sincro`). Una grabacion **no** cuenta aun por su peso
+total: sus piezas van cada una por el suyo (la captura antes que la voz y la
+voz antes que el video, que ya es lo que se quiere si se corta).
+
+### 11.3 Versiones vinculadas en los chats compartidos (Android v0.145)
+
+Del lado de la sincronizacion no hay nada nuevo: la version es **un
+mensaje mas** con claves de mas y sus propios ficheros
+([docs/versiones-en-chats-compartidos.md de Android](https://github.com/1xmanMAX/pixpin_pro_android/blob/ccr-e5daeb2c-m4d1f4/docs/versiones-en-chats-compartidos.md)).
+
+| Que | Formato |
+|---|---|
+| `versionDe` | cadena: el **codigo unico** (`uid`, o el sacado del `id`) del original |
+| `versionN` | entero: 1, 2… Solo una etiqueta («Version 2»); se puede repetir |
+| `respondeA` | el `id` del original: un PixPin que no sepa de versiones la ensena como respuesta |
+| `id`, `uid`, `aparato`, `numero`, `cuando` | nuevos, del que la hace |
+| Fuera | `fijado`, `emoji`, `recuerdaEn`, `enBuzon`, `unido`, `letra`, `origen`, `recibidoDe`, `hojaDelTexto` |
+| Adjunto | copia en otra ruta: `guardados/<hora>_v<n>_<nombre sin el prefijo de hora>` (en el PC, `archivos/` de su carpeta) |
+| Lienzo o pagina | dibujo copiado a `dib-<id nuevo>` (`pins/draw/dib-<id>.excalidraw.gz`, en el PC `lienzos/dib-<id>.excalidraw`), con su `.marcas` y `.vistas.json` |
+| Foto anotada | su dibujo a `foto-<id nuevo>` |
+| Lo anotado | `pins/draw/anot-<uid original>*` copiado a `anot-<uid nuevo>*` |
+
+Ninguna regla de fusion cambia: el original no se toca. Kotlin no escribe
+las dos claves si no hay (`@EncodeDefault(NEVER)`), y el PC las conserva
+(en `resto`, o tipadas en `cuaderno::Mensaje`). Probado en
+`una_version_hecha_en_el_movil_llega_al_pc_con_sus_copias_y_el_original_no_cambia`
+y `una_version_hecha_en_el_pc_llega_al_movil_con_los_nombres_de_android`.
+Reenviar a otro chat **quita** `versionDe` y `versionN` (Android
+`reenviado`): el original se queda en el chat de antes.
+
+## 12. Compatibilidad con Android (27-oct)
+
+Revisadas todas las ramas de `pixpin_pro_android` (`main` = v0.145.0,
+`ccr-e5daeb2c-m4d1f4` con 19 commits mas, `union-24-oct`,
+`ccr-4d2f0b52-3ktfkq`; lo de `union-24-oct` ya esta dentro con otros
+hashes). Lo de sincronizar desde el 20-oct:
+
+| Que | Android | PC | ¿Se entienden? |
+|---|---|---|---|
+| Protocolo, version, mensajes (`hola`, `catalogo`, `archivos`, `pon`, `dame`, `parche`, `base`…) | sin cambios | sin cambios | si |
+| Fusion: `marcas`/`marcadores`, carpeta, `figuras.json` (§7) | `Fusion.kt` igual byte a byte (eee70717) | `fusion.rs` | si |
+| Carpeta de grabacion (`tipo`, `voz`, `video`, `duracionMs`, `ms`, `adjunto`) | `CarpetaDePaginas.kt` (ea0a779e) | `carpeta_de_paginas.rs` | si |
+| Lo de dentro de una carpeta, sin su tarjeta | sale suelto (`sueltosDelChat`) | se esconde solo con la carpeta en el mismo chat (`marcar_lo_de_dentro`) | si (solo pantalla) |
+| Foto del chat (`avatar`, `avatar-<ms>.png`, borrar la vieja) | `FotoDelChat.kt` (a437419a) | `avatar.rs` | si |
+| Ruta con `)` en el alcance | desde el 1-oct | si; y el movil de pruebas desde hoy | si |
+| Chats nacidos despues de elegir (`.ofrecidos`) | `elegidosAhora` (ea0a779e) | `elegidos_ahora` (hoy) | si |
+| Archivos de pequeno a grande en un chat | `aplicarArchivos` (ea0a779e) | `en_orden` (hoy) | si |
+| Prioridades entre chats (checklist 16) | pendiente | hecho (§11.2) | si (solo orden) |
+| Versiones vinculadas (`versionDe`, `versionN`, copias) | 4d57eb71 | se conservan y viajan (pruebas de hoy); la regla al editar, la ventana del chat | si |
+| Boton de sincronizar que gira (`VueltasEnMarcha`) | a437419a | 0470294 | no viaja |
+| Pantalla de aparatos en tarjetas (e5ae6844) | solo pantalla | — | no viaja |
+| Chats compartidos como conversacion (0486b8d6, `EntrePersonas.kt`) | puerto de `conversacion.rs` | `pixpin_ui::conversacion` | no cambia nada de lo que viaja |
+| «Diario de cambios» entre Androids (checklist 13: `docs/sincronizacion-por-diario.md`, `docs/guia-sincronizacion-para-windows.md`) | **aun no existe en ninguna rama** | — | ver abajo |
+
+### Lo que Android tiene que hacer
+
+- [ ] **Prioridades (§11.2)** en `SincronizarActivity` y
+      `VueltaCallada`: primero los mensajes de todos los chats (compartidos
+      delante), cerrar cada uno, despues los archivos de todos por
+      prioridad y peso, y cerrar otra vez. `Sesion.aplicarArchivos` ya
+      ordena por peso dentro de un chat; falta mover pasos de varios chats
+      (un `aplicarPasos(prep, pasos)` como el del PC).
+- [ ] **Reenviar** ya quita `versionDe`/`versionN`; comprobar que «Copiar a
+      otro chat» y «Enviar a mis aparatos» (`suelto`) tambien.
+- [ ] **El diario de cambios** (checklist 13): si se hace, que sea
+      **negociado** (una palabra nueva en `hola`, p. ej. `capacidades:
+      ["diario"]`, o una peticion nueva que el PC conteste «No sé qué es»)
+      y que con el PC siga el protocolo de siempre, como dice la checklist.
+      Un tipo de peticion que el otro no conoce **le mata la conversacion**
+      si no contesta: cualquier peticion nueva tiene que tener respuesta
+      vacia en el `Respondedor` de los dos antes de usarse.
+- [ ] Opcional: que «Una grabacion cuenta por su peso total» (checklist
+      16) se haga sumando las piezas de su carpeta; el PC lo copiara.
