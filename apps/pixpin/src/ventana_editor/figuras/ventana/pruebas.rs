@@ -35,8 +35,9 @@ fn las_categorias_van_en_su_orden_con_las_nuevas_y_mis_figuras_al_final() {
     );
     assert_eq!(e.cats[serie::CATEGORIAS.len()], "Obra");
     assert_eq!(e.cats.last().unwrap(), "Mis figuras");
-    // Todas: cada figura una vez.
-    assert_eq!(e.lista.len(), e.figuras.len());
+    // Todas: cada figura del modo una vez (de dia, sin las gemelas de noche).
+    assert_eq!(e.lista.len(), e.modo.len());
+    assert!(e.lista.len() < e.figuras.len());
 }
 
 #[test]
@@ -44,22 +45,17 @@ fn se_busca_sin_tildes_y_se_filtra_por_categoria() {
     let mut e = estado();
     e.consulta.poner("habitos");
     e.rehacer_lista(900.0, 1.0);
-    // La de dia y su gemela de noche (24-oct-2026).
-    assert_eq!(
-        e.lista.len(),
-        2,
-        "{:?}",
+    // De dia, solo la de dia (27-oct-2026: antes salia tambien su gemela de
+    // noche, mezclada).
+    let nombres = |e: &Estado| {
         e.lista
             .iter()
-            .map(|i| &e.figuras[*i].nombre)
+            .map(|i| e.figuras[*i].nombre.clone())
             .collect::<Vec<_>>()
-    );
-    assert!(
-        e.lista
-            .iter()
-            .all(|i| e.figuras[*i].nombre.contains("Hábitos"))
-    );
-    assert!(e.figuras[e.lista[1]].nombre.ends_with("(noche)"));
+    };
+    assert_eq!(e.lista.len(), 1, "{:?}", nombres(&e));
+    assert!(e.figuras[e.lista[0]].nombre.contains("Hábitos"));
+    assert!(!e.figuras[e.lista[0]].nombre.ends_with("(noche)"));
     e.consulta.poner("");
     let storyboard = e.cats.iter().position(|c| c == "Storyboard").unwrap();
     e.cat = Some(storyboard);
@@ -254,4 +250,32 @@ fn muestra_de_la_ventana_de_figuras() {
         subir_miniaturas(&mut e, motor, LADO_MINI as u32);
         pintar_todo(&mut e, p, w, h, s, &t);
     });
+}
+
+#[test]
+fn el_interruptor_de_noche_cambia_cada_plantilla_por_su_gemela_y_la_elegida_tambien() {
+    let mut e = estado();
+    let de_dia = e.lista.clone();
+    let diario = e
+        .figuras
+        .iter()
+        .position(|f| f.id == "serie-diario")
+        .unwrap();
+    e.elegir(Some(diario));
+    e.poner_noche(true, 900.0, 1.0);
+    assert_eq!(e.lista.len(), de_dia.len(), "las mismas, cambiadas");
+    assert_eq!(e.figuras[e.elegida.unwrap()].id, "serie-diario-noche");
+    // Buscando, la de noche.
+    e.consulta.poner("habitos");
+    e.rehacer_lista(900.0, 1.0);
+    assert_eq!(e.lista.len(), 1);
+    assert!(e.figuras[e.lista[0]].nombre.ends_with("(noche)"));
+    // Caso negativo: lo que no tiene version de noche (las propias) sigue.
+    e.consulta.poner("");
+    e.rehacer_lista(900.0, 1.0);
+    assert!(e.lista.iter().any(|i| e.figuras[*i].id == "a"));
+    // Y de vuelta a dia, como estaba.
+    e.poner_noche(false, 900.0, 1.0);
+    assert_eq!(e.figuras[e.elegida.unwrap()].id, "serie-diario");
+    assert_eq!(e.lista, de_dia);
 }
