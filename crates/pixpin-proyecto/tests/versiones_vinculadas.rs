@@ -800,3 +800,75 @@ fn los_rotulos_dicen_de_quien_es_el_original_y_cuantas_versiones_tiene() {
     );
     assert!(vv::rotulos(&[de_ana, mio], true, autor).cabecera.is_empty());
 }
+
+// ------------------------------------------------------------------ lo que viaja
+
+#[test]
+fn la_version_sale_al_movil_con_sus_claves_y_sus_propios_archivos() {
+    use pixpin_sincro::disco::Disco;
+    let (r, ficha) = con_un_chat("viaja");
+    let carpeta = almacen::carpeta(&r, &ficha);
+    let pdf = en_disco(&r, &ficha, "guardados/1761_plano.pdf");
+    std::fs::create_dir_all(pdf.parent().unwrap()).unwrap();
+    std::fs::write(&pdf, "%PDF plano").unwrap();
+    let mut original = m(
+        "orig",
+        Clase::Archivo,
+        Some("ANA1"),
+        "",
+        Some("pixpin:files/guardados/1761_plano.pdf"),
+        None,
+        None,
+    );
+    original.nombre = "plano.pdf".into();
+    cuaderno::anadir(&carpeta, &original).unwrap();
+    let lista = vec![original.clone()];
+    vv::empezar(
+        &r,
+        &ficha,
+        &original,
+        &lista,
+        Some("MAXX"),
+        5_000,
+        "v1",
+        "VERSIONUID",
+    )
+    .unwrap();
+    lienzo(&r, &ficha, "anot-VERSIONUID-p0", "raya de Max", 1);
+    assert_eq!(vv::cerrar(&r, 6_000).unwrap().len(), 1);
+    let chat = pixpin_proyecto::vista::chat_de_ficha(&r, &ficha).unwrap();
+    let d = pixpin_proyecto::vista::DiscoPc::nuevo(&r);
+    // El mensaje sale con las claves de Android y la ruta portatil del movil.
+    let salen: Vec<serde_json::Value> = d
+        .mensajes(&chat)
+        .unwrap()
+        .iter()
+        .map(|j| j.a_valor())
+        .collect();
+    let v = salen
+        .iter()
+        .find(|j| j["id"] == "v1")
+        .expect("la version sale");
+    assert_eq!(v["versionDe"], serde_json::json!(original.codigo_unico()));
+    assert_eq!(v["versionN"], serde_json::json!(1));
+    assert_eq!(v["respondeA"], "orig");
+    assert_eq!(v["ruta"], "pixpin:files/guardados/5000_v1_plano.pdf");
+    // Y sus archivos van con el, con los nombres del movil.
+    let alcance: Vec<String> = d
+        .alcance(&chat)
+        .unwrap()
+        .into_iter()
+        .map(|(r, _)| r)
+        .collect();
+    assert!(
+        alcance.contains(&"guardados/5000_v1_plano.pdf".to_string()),
+        "{alcance:?}"
+    );
+    assert!(
+        alcance.contains(&"pins/draw/anot-VERSIONUID-p0.excalidraw.gz".to_string()),
+        "{alcance:?}"
+    );
+    // El original y lo suyo, tal cual.
+    assert!(alcance.contains(&"guardados/1761_plano.pdf".to_string()));
+    let _ = std::fs::remove_dir_all(&r);
+}
