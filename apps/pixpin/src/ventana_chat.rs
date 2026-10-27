@@ -5481,7 +5481,7 @@ pub(crate) fn color_avatar(codigo: &str) -> Color {
 
 /// El color de una persona en un chat compartido: su nombre encima de sus
 /// burbujas y su circulo (`conversacion::tono`, el mismo en todas partes).
-fn color_de_persona(nombre: &str) -> Color {
+pub(crate) fn color_de_persona(nombre: &str) -> Color {
     hex(COLORES_AVATAR[pixpin_ui::conversacion::tono(nombre, COLORES_AVATAR.len())])
 }
 

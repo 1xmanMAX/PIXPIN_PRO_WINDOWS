@@ -34,6 +34,29 @@
 //! recibe con la vuelta entera al aparecer, como todo. La de siempre sigue
 //! detras ([`QUIETO`]): si la rapida no llego a alguno, esa lo arregla.
 //!
+//! **Reintentar sin esperar al periodo** (27-oct-2026, Android
+//! `SincronizacionAutomatica.Reintentos`, guia para Windows §4–§5). Antes una
+//! vuelta que fallaba, o que encontraba al otro ocupado, no se repetia hasta
+//! el siguiente [`PERIODO`]: diez minutos. Y si los dos aparatos se llamaban
+//! a la vez, cada uno encontraba al otro ocupado y los dos esperaban esos
+//! diez minutos. Ahora:
+//!
+//! - **Un fallo de verdad** se reintenta a los [`REINTENTO_BASE`], el doble,
+//!   el doble… hasta [`REINTENTO_TOPE`], con ±25 % de azar
+//!   ([`espera_tras_fallo`]). Salir bien lo borra.
+//! - **«Ocupado»** (el otro, o aqui, con otra vuelta en marcha) no es un
+//!   fallo: se reintenta entre [`OCUPADO_MIN`] y [`OCUPADO_MIN`] +
+//!   [`OCUPADO_AZAR`], con azar para que dos que chocaron no vuelvan a chocar
+//!   al mismo compas ([`espera_si_ocupado`]).
+//! - **Al volver la red** (`pixpin_shell::red`, cuando Windows cambia una
+//!   direccion) se sondea enseguida, al grupo y a las personas, y lo que
+//!   esperaba para reintentar se intenta ya ([`Reloj::volvio_la_red`]).
+//!
+//! **Encendida salvo que el usuario la apague**, para los aparatos y para las
+//! personas de los chats compartidos: sin `automatica` en `ajustes.toml`
+//! (instalacion nueva, o un fichero de antes) vale `true`
+//! (`pixpin_store::ajustes::Sincro`).
+//!
 //! La decision es pura ([`Reloj::siguiente`]) y se prueba sin red.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -67,12 +90,71 @@ const LATIDO: Duration = Duration::from_secs(5);
 /// Cada cuanto se recorre la carpeta de los chats (ms).
 const CADA_FIRMA: i64 = 15_000;
 
+/// Tras el primer fallo de verdad se reintenta a los cinco segundos; cada
+/// fallo seguido dobla la espera…
+pub const REINTENTO_BASE: i64 = 5_000;
+/// … hasta cinco minutos, la mitad del [`PERIODO`].
+pub const REINTENTO_TOPE: i64 = 5 * 60_000;
+/// Con el otro ocupado se reintenta en un segundo…
+pub const OCUPADO_MIN: i64 = 1_000;
+/// … y hasta tres mas, al azar.
+pub const OCUPADO_AZAR: i64 = 3_000;
+/// Lo que se deja asentar la red tras un cambio antes de sondear: la
+/// direccion nueva llega antes que la ruta.
+const ASENTAR_RED: Duration = Duration::from_millis(1_500);
+
+/// **Pura**: cuanto esperar tras `seguidos` fallos seguidos (el primero es
+/// `1`), con `azar` en `[0, 1)`: [`REINTENTO_BASE`] doblado por cada fallo
+/// de mas, sin pasar de [`REINTENTO_TOPE`], y de ahi un ±25 %.
+pub fn espera_tras_fallo(seguidos: u32, azar: f64) -> i64 {
+    let dobles = seguidos.saturating_sub(1).min(16);
+    let sin_azar = (REINTENTO_BASE << dobles).min(REINTENTO_TOPE);
+    (sin_azar as f64 * (0.75 + azar.clamp(0.0, 1.0) * 0.5)) as i64
+}
+
+/// **Pura**: cuanto esperar con el otro ocupado, con `azar` en `[0, 1)`.
+pub fn espera_si_ocupado(azar: f64) -> i64 {
+    OCUPADO_MIN + (azar.clamp(0.0, 1.0) * OCUPADO_AZAR as f64) as i64
+}
+
+/// Un numero al azar en `[0, 1)`, sin mas dependencias: la semilla de
+/// `RandomState` cambia en cada llamada.
+fn azar() -> f64 {
+    use std::hash::BuildHasher;
+    let h = std::collections::hash_map::RandomState::new().hash_one(super::ahora_ms());
+    (h >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// Si un fallo de la vuelta es solo que el otro estaba ocupado: todos sus
+/// parrafos son el «esta sincronizando con otro aparato» del protocolo
+/// (`explicar` lo dice con el nombre delante).
+pub fn fue_ocupado(fallo: &str) -> bool {
+    let ocupado = pixpin_sincro::mensajes::OCUPADO.to_lowercase();
+    let mut parrafos = fallo
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .peekable();
+    parrafos.peek().is_some() && parrafos.all(|p| p.to_lowercase().ends_with(&ocupado))
+}
+
+/// Como acabo una vuelta, para saber cuando reintentar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Como {
+    Bien,
+    /// El otro (o este, con otra vuelta) estaba ocupado: no es un fallo.
+    Ocupado,
+    Fallo,
+}
+
 /// Por que se sincroniza ahora.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Motivo {
     Aparecio,
     Cambio,
     Periodo,
+    /// Fallo (u ocupado) la anterior y ya toca volver a intentarlo.
+    Reintento,
 }
 
 /// Lo que toca hacer ahora ([`Reloj::siguiente`]).
@@ -108,7 +190,11 @@ enum Entrada {
         bien: bool,
         trajo: Vec<String>,
         fallo: Option<String>,
+        /// Alguna estaba ocupada (y ninguna fallo de verdad).
+        ocupado: bool,
     },
+    /// Windows cambio una direccion de red: puede que haya vuelto.
+    Red,
 }
 
 /// **Cada cuanto se mira si las personas de los chats compartidos estan en
@@ -251,6 +337,9 @@ pub struct Reloj {
     /// Cuando llego el primer aviso de tareas sin mandar, y el ultimo.
     pub tareas_desde: i64,
     pub tareas_ultimo: i64,
+    /// Cuando volver a intentarlo tras un fallo o un «ocupado», sin esperar
+    /// al [`PERIODO`].
+    pub reintento: Option<i64>,
 }
 
 impl Reloj {
@@ -291,6 +380,9 @@ impl Reloj {
         }
         if !self.aparecidos.is_empty() {
             return Some(Motivo::Aparecio);
+        }
+        if self.reintento.is_some_and(|t| ahora >= t) {
+            return Some(Motivo::Reintento);
         }
         if let (Some(base), Some((vista, desde))) = (self.base, self.vista)
             && vista != base
@@ -355,20 +447,52 @@ impl Reloj {
         self.tareas.clear();
         self.ultima = Some(ahora);
         self.aparecidos.clear();
+        self.reintento = None;
     }
 
     /// Acabo una vuelta, con la huella de despues (lo que escribio la propia
-    /// vuelta no cuenta como cambio). Devuelve si hay que avisar del fallo.
-    pub fn acabo(&mut self, bien: bool, firma: Firma, ahora: i64) -> bool {
+    /// vuelta no cuenta como cambio). Con un fallo o un «ocupado» apunta
+    /// cuando reintentar (`azar` en `[0, 1)`). Devuelve si hay que avisar del
+    /// fallo.
+    pub fn acabo(&mut self, como: Como, firma: Firma, ahora: i64, azar: f64) -> bool {
         self.base = Some(firma);
         self.vista = Some((firma, ahora));
-        if bien {
-            self.fallos_seguidos = 0;
-            false
-        } else {
-            self.fallos_seguidos += 1;
-            self.fallos_seguidos == FALLOS_PARA_AVISAR
+        match como {
+            Como::Bien => {
+                self.fallos_seguidos = 0;
+                self.reintento = None;
+                false
+            }
+            Como::Ocupado => {
+                self.reintento = Some(ahora + espera_si_ocupado(azar));
+                false
+            }
+            Como::Fallo => {
+                self.fallos_seguidos += 1;
+                self.reintento = Some(ahora + espera_tras_fallo(self.fallos_seguidos, azar));
+                self.fallos_seguidos == FALLOS_PARA_AVISAR
+            }
         }
+    }
+
+    /// No se pudo ni empezar: aqui ya habia otra vuelta (la de Flow). Como
+    /// un «ocupado», sin tocar la huella.
+    pub fn no_empezo(&mut self, ahora: i64, azar: f64) {
+        self.reintento = Some(ahora + espera_si_ocupado(azar));
+    }
+
+    /// **Volvio la red**: lo que esperaba para reintentar se intenta ya (lo
+    /// mas probable es que fallara por eso). Sin reintento pendiente no hace
+    /// nada: quien aparezca lo dira la sonda.
+    pub fn volvio_la_red(&mut self, ahora: i64) {
+        if let Some(t) = self.reintento.as_mut() {
+            *t = (*t).min(ahora);
+        }
+    }
+
+    /// Cuanto falta para reintentar (0: ya), o `None` si no hay que.
+    pub fn espera_reintento(&self, ahora: i64) -> Option<i64> {
+        self.reintento.map(|t| (t - ahora).max(0))
     }
 }
 
@@ -401,6 +525,18 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
         tracing::warn!(?e, "no se pudo lanzar la sincronizacion automatica");
         return;
     }
+    // **Al volver la red**, sondear ya (y no al siguiente latido de la sonda,
+    // que sin nadie mirando es un minuto). El aviso llega en el hilo que
+    // vigila la red: ahi se espera a que se asiente.
+    if let Some(tx) = AVISOS.get().cloned() {
+        let vigila = pixpin_shell::red::al_cambiar(move || {
+            std::thread::sleep(ASENTAR_RED);
+            let _ = tx.send(Entrada::Red);
+        });
+        if !vigila {
+            tracing::info!("sin aviso de cambios de red: se sondea a su ritmo");
+        }
+    }
     let lanzado = std::thread::Builder::new()
         .name("sincro-automatica".into())
         .spawn(move || bucle(&raiz, rx));
@@ -410,18 +546,26 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
     }
 }
 
-/// Cuanto dormir hasta la siguiente mirada.
-fn cuanto_dormir(reloj: &Reloj, ahora: i64, corriendo: bool) -> Duration {
+/// Cuanto dormir hasta la siguiente mirada: lo justo para mandar las tareas
+/// a tiempo y para reintentar (con el grupo o con las personas) a su hora.
+fn cuanto_dormir(reloj: &Reloj, personas: &Reloj, ahora: i64, corriendo: bool) -> Duration {
     if corriendo {
         // El final de la vuelta despierta por el canal.
         return LATIDO;
     }
-    match reloj.espera_tareas(ahora) {
+    [
+        reloj.espera_tareas(ahora),
+        reloj.espera_reintento(ahora),
+        personas.espera_reintento(ahora),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|ms| match ms {
         // Toca ya y no se pudo (otra vuelta en marcha): se reintenta pronto.
-        Some(0) => REINTENTO,
-        Some(ms) => Duration::from_millis(ms as u64).min(LATIDO),
-        None => LATIDO,
-    }
+        0 => REINTENTO,
+        ms => Duration::from_millis(ms as u64),
+    })
+    .fold(LATIDO, Duration::min)
 }
 
 fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
@@ -439,7 +583,7 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
     let mut sondeado: Option<i64> = None;
     let mut sondeando = false;
     loop {
-        let espera = cuanto_dormir(&reloj, super::ahora_ms(), corriendo);
+        let espera = cuanto_dormir(&reloj, &personas, super::ahora_ms(), corriendo);
         let primera = match rx.recv_timeout(espera) {
             Ok(e) => Some(e),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
@@ -457,9 +601,28 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                 Entrada::Tareas(ficha) => reloj.avisan_tareas(&ficha, ahora),
                 Entrada::RespondePersona(id, si) => personas.responde(&id, si),
                 Entrada::SondeoAcabado => sondeando = false,
-                Entrada::FinPersonas { bien, trajo, fallo } => {
+                Entrada::Red => {
+                    tracing::info!("cambio la red: se sondea ya");
+                    presencia::sondear_ya();
+                    sondeado = None;
+                    reloj.volvio_la_red(ahora);
+                    personas.volvio_la_red(ahora);
+                }
+                Entrada::FinPersonas {
+                    bien,
+                    trajo,
+                    fallo,
+                    ocupado,
+                } => {
                     corriendo = false;
-                    let avisar = personas.acabo(bien, firma_de(&carpeta), ahora);
+                    let como = if !bien {
+                        Como::Fallo
+                    } else if ocupado {
+                        Como::Ocupado
+                    } else {
+                        Como::Bien
+                    };
+                    let avisar = personas.acabo(como, firma_de(&carpeta), ahora, azar());
                     for t in trajo {
                         presencia::difundir(Novedad::Registro(t.clone()));
                         super::al_movil::avisar(t);
@@ -558,12 +721,14 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                         let _ = tx.send(Entrada::Fin { fin, rapida: false });
                     }
                 });
-                // Si no se pudo (ya habia una de fondo, la de Flow), se cuenta como
-                // hecha: se vuelve a mirar en el siguiente periodo.
+                // Si no se pudo (ya habia una de fondo, la de Flow), como un
+                // «ocupado»: se vuelve a intentar en unos segundos.
                 reloj.empezo(ahora);
                 if lanzada {
                     tracing::info!(?motivo, aparatos = ids.len(), "sincronizacion automatica");
                     corriendo = true;
+                } else {
+                    reloj.no_empezo(ahora, azar());
                 }
             }
         }
@@ -608,7 +773,7 @@ fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
     });
     let quienes = personas_con_direccion(raiz);
     let mi_puerto = presencia::puerto().map_or(0, u32::from);
-    let (mut trajo, mut fallo, mut bien) = (Vec::new(), None, true);
+    let (mut trajo, mut fallo, mut bien, mut ocupado) = (Vec::new(), None, true, false);
     for (id, nombre, host, puerto) in quienes.into_iter().filter(|(i, ..)| ids.contains(i)) {
         let Some(n) = super::nonce() else { continue };
         let r = super::conectar(&host, puerto)
@@ -639,9 +804,9 @@ fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
                     ));
                 }
             }
-            // Ocupado (otra vuelta en marcha alli) no es un fallo: la
-            // proxima.
-            Err(e) if e == pixpin_sincro::mensajes::OCUPADO => {}
+            // Ocupado (otra vuelta en marcha alli) no es un fallo: se
+            // reintenta en unos segundos.
+            Err(e) if e == pixpin_sincro::mensajes::OCUPADO => ocupado = true,
             Err(e) => {
                 bien = false;
                 fallo = Some(format!("No se pudo sincronizar solo con {nombre} ({e})"));
@@ -649,7 +814,12 @@ fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
         }
     }
     en_curso.acabo(bien);
-    Entrada::FinPersonas { bien, trajo, fallo }
+    Entrada::FinPersonas {
+        bien,
+        trajo,
+        fallo,
+        ocupado,
+    }
 }
 
 /// Lo que se hace al acabar una vuelta de tareas: solo apuntarlo. Ni globo
@@ -674,8 +844,12 @@ fn acabo_rapida(fin: Option<Fase>) {
 
 /// Lo que se hace al acabar una vuelta automatica.
 fn acabo(reloj: &mut Reloj, fin: Option<Fase>, firma: Firma, ahora: i64) {
-    let bien = matches!(fin, Some(Fase::Terminado { .. }));
-    let avisar_fallo = reloj.acabo(bien, firma, ahora);
+    let como = match &fin {
+        Some(Fase::Terminado { .. }) => Como::Bien,
+        Some(Fase::Fallo(e)) if fue_ocupado(e) => Como::Ocupado,
+        _ => Como::Fallo,
+    };
+    let avisar_fallo = reloj.acabo(como, firma, ahora, azar());
     match &fin {
         Some(f @ Fase::Terminado { titulo, trajo, .. }) => {
             presencia::difundir(Novedad::Registro(format!("Automática: {titulo}")));
@@ -726,7 +900,7 @@ mod pruebas {
         r.responde("tel", true);
         assert_eq!(r.toca(1_000), Some(Motivo::Aparecio));
         r.empezo(1_000);
-        r.acabo(true, firma(1), 2_000);
+        r.acabo(Como::Bien, firma(1), 2_000, 0.5);
         // Sigue contestando: no vuelve a «aparecer».
         r.responde("tel", true);
         assert_eq!(r.toca(3_000), None);
@@ -742,7 +916,7 @@ mod pruebas {
         r.responde("tel", true);
         r.ver(firma(1), 0);
         r.empezo(0);
-        r.acabo(true, firma(1), 0);
+        r.acabo(Como::Bien, firma(1), 0, 0.5);
         r.ver(firma(2), 1_000);
         assert_eq!(r.toca(1_000 + QUIETO - 1), None, "aun escribiendo");
         // Sigue cambiando: el reloj vuelve a empezar.
@@ -751,7 +925,7 @@ mod pruebas {
         assert_eq!(r.toca(20_000 + QUIETO), Some(Motivo::Cambio));
         // Lo que escribe la propia vuelta no es un cambio.
         r.empezo(50_000);
-        r.acabo(true, firma(9), 60_000);
+        r.acabo(Como::Bien, firma(9), 60_000, 0.5);
         assert_eq!(r.toca(60_000 + QUIETO * 2), None);
     }
 
@@ -762,7 +936,7 @@ mod pruebas {
         r.ver(firma(1), 0);
         assert_eq!(r.toca(0), Some(Motivo::Aparecio));
         r.empezo(0);
-        r.acabo(true, firma(1), 0);
+        r.acabo(Como::Bien, firma(1), 0, 0.5);
         assert_eq!(r.toca(PERIODO - 1), None);
         assert_eq!(r.toca(PERIODO), Some(Motivo::Periodo));
     }
@@ -770,14 +944,14 @@ mod pruebas {
     #[test]
     fn se_avisa_del_fallo_una_vez_al_tercero_seguido_y_un_acierto_lo_borra() {
         let mut r = Reloj::default();
-        assert!(!r.acabo(false, firma(1), 0));
-        assert!(!r.acabo(false, firma(1), 0));
-        assert!(r.acabo(false, firma(1), 0), "el tercero avisa");
+        assert!(!r.acabo(Como::Fallo, firma(1), 0, 0.5));
+        assert!(!r.acabo(Como::Fallo, firma(1), 0, 0.5));
+        assert!(r.acabo(Como::Fallo, firma(1), 0, 0.5), "el tercero avisa");
         assert!(
-            !r.acabo(false, firma(1), 0),
+            !r.acabo(Como::Fallo, firma(1), 0, 0.5),
             "caso negativo: el cuarto ya no"
         );
-        assert!(!r.acabo(true, firma(1), 0));
+        assert!(!r.acabo(Como::Bien, firma(1), 0, 0.5));
         assert_eq!(r.fallos_seguidos, 0);
     }
 
@@ -799,7 +973,7 @@ mod pruebas {
         r.ver(firma(1), 0);
         // Lo de aparecer ya se hizo: aqui se mira lo de las tareas.
         r.empezo(0);
-        r.acabo(true, firma(1), 0);
+        r.acabo(Como::Bien, firma(1), 0, 0.5);
         r
     }
 
@@ -895,19 +1069,19 @@ mod pruebas {
     #[test]
     fn el_hilo_duerme_lo_justo_para_mandar_las_tareas_a_tiempo() {
         let mut r = con_tel();
-        assert_eq!(cuanto_dormir(&r, 0, false), LATIDO);
+        assert_eq!(cuanto_dormir(&r, &Reloj::default(), 0, false), LATIDO);
         r.avisan_tareas("obra", 0);
         assert_eq!(
-            cuanto_dormir(&r, 100, false),
+            cuanto_dormir(&r, &Reloj::default(), 100, false),
             Duration::from_millis((CALMA_TAREAS - 100) as u64)
         );
         assert_eq!(
-            cuanto_dormir(&r, CALMA_TAREAS, false),
+            cuanto_dormir(&r, &Reloj::default(), CALMA_TAREAS, false),
             REINTENTO,
             "ocupado: reintentar pronto"
         );
         assert_eq!(
-            cuanto_dormir(&r, 0, true),
+            cuanto_dormir(&r, &Reloj::default(), 0, true),
             LATIDO,
             "con una vuelta suya en marcha, la despierta su final"
         );
@@ -975,5 +1149,162 @@ mod pruebas {
         r.empezo(0);
         assert_eq!(r.toca(1_000), None);
         const { assert!(SONDEO_PERSONAS >= 60_000, "las personas se miran sin prisa") };
+    }
+
+    #[test]
+    fn tras_un_fallo_se_espera_cinco_segundos_doblando_hasta_cinco_minutos() {
+        // Con el azar en medio (0.5) no hay azar: 5, 10, 20, 40 s…
+        assert_eq!(espera_tras_fallo(1, 0.5), 5_000);
+        assert_eq!(espera_tras_fallo(2, 0.5), 10_000);
+        assert_eq!(espera_tras_fallo(3, 0.5), 20_000);
+        assert_eq!(espera_tras_fallo(4, 0.5), 40_000);
+        // … hasta el tope, que no se pasa nunca (ni con muchisimos fallos).
+        assert_eq!(espera_tras_fallo(7, 0.5), REINTENTO_TOPE);
+        assert_eq!(espera_tras_fallo(u32::MAX, 0.5), REINTENTO_TOPE);
+        // El cero (no deberia llegar) cuenta como el primero.
+        assert_eq!(espera_tras_fallo(0, 0.5), REINTENTO_BASE);
+    }
+
+    #[test]
+    fn el_azar_mueve_la_espera_un_cuarto_arriba_o_abajo_y_no_mas() {
+        assert_eq!(espera_tras_fallo(1, 0.0), 3_750);
+        assert!(espera_tras_fallo(1, 0.999_999) <= 6_250);
+        assert!(espera_tras_fallo(1, 0.999_999) > 6_200);
+        assert_eq!(espera_tras_fallo(20, 0.0), REINTENTO_TOPE * 3 / 4);
+        // Caso negativo: un azar fuera de rango no se sale del ±25 %.
+        assert_eq!(espera_tras_fallo(1, -3.0), 3_750);
+        assert_eq!(espera_tras_fallo(1, 7.0), 6_250);
+        // Y el de verdad cae siempre dentro.
+        for _ in 0..200 {
+            let a = azar();
+            assert!((0.0..1.0).contains(&a), "{a}");
+            let e = espera_tras_fallo(2, a);
+            assert!((7_500..=12_500).contains(&e), "{e}");
+        }
+    }
+
+    #[test]
+    fn con_el_otro_ocupado_se_reintenta_entre_uno_y_cuatro_segundos() {
+        assert_eq!(espera_si_ocupado(0.0), 1_000);
+        assert_eq!(espera_si_ocupado(0.5), 2_500);
+        assert!(espera_si_ocupado(0.999_999) < 4_000);
+        assert_eq!(espera_si_ocupado(9.0), 4_000, "caso negativo: azar de mas");
+    }
+
+    #[test]
+    fn un_fallo_se_reintenta_sin_esperar_al_periodo_y_salir_bien_lo_borra() {
+        let mut r = con_tel();
+        r.empezo(1_000);
+        r.acabo(Como::Fallo, firma(1), 2_000, 0.5);
+        assert_eq!(r.toca(2_000 + 4_999), None, "aun no");
+        assert_eq!(r.toca(2_000 + 5_000), Some(Motivo::Reintento));
+        assert_eq!(r.espera_reintento(3_000), Some(4_000));
+        // Falla otra vez: el doble.
+        r.empezo(7_000);
+        assert_eq!(r.espera_reintento(7_000), None, "empezar lo gasta");
+        r.acabo(Como::Fallo, firma(1), 8_000, 0.5);
+        assert_eq!(r.toca(8_000 + 9_999), None);
+        assert_eq!(r.toca(8_000 + 10_000), Some(Motivo::Reintento));
+        // Sale bien: ni reintento ni fallos.
+        r.empezo(18_000);
+        r.acabo(Como::Bien, firma(1), 19_000, 0.5);
+        assert_eq!(r.fallos_seguidos, 0);
+        assert_eq!(r.reintento, None);
+        assert_eq!(r.toca(19_000 + REINTENTO_TOPE), None);
+        // Y vuelve a empezar por cinco segundos.
+        r.acabo(Como::Fallo, firma(1), 30_000, 0.5);
+        assert_eq!(r.espera_reintento(30_000), Some(REINTENTO_BASE));
+    }
+
+    #[test]
+    fn ocupado_no_es_un_fallo_ni_dobla_la_espera() {
+        let mut r = con_tel();
+        r.acabo(Como::Fallo, firma(1), 0, 0.5);
+        assert_eq!(r.fallos_seguidos, 1);
+        for _ in 0..5 {
+            assert!(!r.acabo(Como::Ocupado, firma(1), 10_000, 0.0));
+        }
+        assert_eq!(r.fallos_seguidos, 1, "ocupado no cuenta");
+        assert_eq!(r.espera_reintento(10_000), Some(OCUPADO_MIN));
+        assert_eq!(
+            r.siguiente(10_000 + OCUPADO_MIN, false),
+            Paso::Entera(Motivo::Reintento)
+        );
+        // Con otra vuelta en marcha, nunca a la par.
+        assert_eq!(r.siguiente(10_000 + OCUPADO_MIN, true), Paso::Nada);
+        // Aqui ya habia otra (la de Flow): igual que ocupado.
+        let mut r = con_tel();
+        r.no_empezo(0, 1.0);
+        assert_eq!(r.espera_reintento(0), Some(OCUPADO_MIN + OCUPADO_AZAR));
+    }
+
+    #[test]
+    fn sin_nadie_que_conteste_no_se_reintenta() {
+        // Caso negativo: el reintento es con los que contestan; si se fue
+        // el unico, no se gasta red.
+        let mut r = con_tel();
+        r.acabo(Como::Fallo, firma(1), 0, 0.5);
+        r.responde("tel", false);
+        assert_eq!(r.toca(REINTENTO_TOPE), None);
+    }
+
+    #[test]
+    fn al_volver_la_red_lo_pendiente_se_intenta_ya() {
+        let mut r = con_tel();
+        for _ in 0..6 {
+            r.acabo(Como::Fallo, firma(1), 0, 0.5);
+        }
+        assert_eq!(r.toca(1_000), None, "esperando minutos");
+        r.volvio_la_red(1_000);
+        assert_eq!(r.toca(1_000), Some(Motivo::Reintento));
+        // Caso negativo: sin nada pendiente, volver la red no dispara nada
+        // (quien aparezca lo dira la sonda), ni retrasa lo que ya tocaba.
+        let mut r = con_tel();
+        r.volvio_la_red(1_000);
+        assert_eq!(r.reintento, None);
+        assert_eq!(r.toca(1_000), None);
+        r.acabo(Como::Ocupado, firma(1), 0, 0.0);
+        r.volvio_la_red(5_000);
+        assert_eq!(r.espera_reintento(5_000), Some(0));
+    }
+
+    #[test]
+    fn el_hilo_despierta_a_la_hora_del_reintento() {
+        let mut r = con_tel();
+        let mut personas = Reloj::default();
+        r.acabo(Como::Ocupado, firma(1), 0, 0.5);
+        assert_eq!(
+            cuanto_dormir(&r, &personas, 0, false),
+            Duration::from_millis(2_500)
+        );
+        personas.acabo(Como::Ocupado, firma(1), 0, 0.0);
+        assert_eq!(
+            cuanto_dormir(&r, &personas, 0, false),
+            Duration::from_millis(1_000),
+            "la mas cercana de las dos"
+        );
+        assert_eq!(cuanto_dormir(&r, &personas, 9_000, false), REINTENTO);
+        // Un reintento lejano no alarga el latido.
+        let mut r = con_tel();
+        r.acabo(Como::Fallo, firma(1), 0, 0.5);
+        r.acabo(Como::Fallo, firma(1), 0, 0.5);
+        assert_eq!(cuanto_dormir(&r, &Reloj::default(), 0, false), LATIDO);
+    }
+
+    #[test]
+    fn se_reconoce_el_ocupado_de_la_vuelta_con_todos() {
+        let uno = format!(
+            "Tableta {}",
+            pixpin_sincro::mensajes::OCUPADO.replacen('E', "e", 1)
+        );
+        assert!(fue_ocupado(&uno));
+        assert!(fue_ocupado(&format!("{uno}\n\n{uno}")));
+        assert!(fue_ocupado(pixpin_sincro::mensajes::OCUPADO));
+        // Casos negativos: si alguno fallo de verdad, es un fallo.
+        assert!(!fue_ocupado(&format!(
+            "{uno}\n\nNo se pudo llegar a Movil. Comprueba que está en la misma Wi-Fi y con PixPin abierto."
+        )));
+        assert!(!fue_ocupado("No se pudo con ninguno."));
+        assert!(!fue_ocupado(""));
     }
 }

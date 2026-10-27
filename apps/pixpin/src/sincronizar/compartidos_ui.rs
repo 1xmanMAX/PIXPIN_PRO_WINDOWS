@@ -950,6 +950,14 @@ pub(crate) fn fijar_raiz(raiz: &Path) {
     let _ = RAIZ.set(raiz.to_path_buf());
 }
 
+/// Si la ficha `ficha` es de un chat compartido en el que estoy, con la
+/// carpeta de esta aplicacion: la insignia del pin de una tarea, que solo
+/// sabe la carpeta de su chat. Sin presencia arrancada (las pruebas), no.
+pub(crate) fn compartido_aqui(ficha: &str) -> bool {
+    RAIZ.get()
+        .is_some_and(|raiz| personas_del_chat(raiz, ficha).is_some())
+}
+
 /// [autor] con la carpeta de esta aplicacion: lo que usa la chapa del
 /// codigo de cada mensaje en el chat.
 pub(crate) fn autor_aqui(aparato: &str) -> Option<String> {

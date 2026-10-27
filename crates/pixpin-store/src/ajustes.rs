@@ -1193,6 +1193,26 @@ arranque_con_windows = true
         assert_eq!(a.atajos, Atajos::default());
     }
 
+    /// **La automatica, encendida salvo que el usuario la apague**
+    /// (27-oct-2026, guia de Android §5): sin nada guardado —instalacion
+    /// nueva o un fichero de antes, con o sin `[sincro]`— vale `true`, para
+    /// los aparatos y para las personas de los chats compartidos; un `false`
+    /// escrito a mano se respeta y sobrevive a guardar.
+    #[test]
+    fn la_automatica_sin_guardar_esta_encendida_y_apagada_a_mano_se_respeta() {
+        assert!(Ajustes::default().sincro.automatica);
+        let viejo: Ajustes = toml::from_str("idioma = \"es\"\n").unwrap();
+        assert!(viejo.sincro.automatica, "sin [sincro]");
+        let viejo: Ajustes = toml::from_str("[sincro]\npresencia = true\n").unwrap();
+        assert!(viejo.sincro.automatica, "con [sincro] pero sin la clave");
+        let u = temporal("automatica-apagada");
+        fs::write(u.fichero_ajustes(), "[sincro]\nautomatica = false\n").unwrap();
+        let a = cargar(&u).unwrap();
+        assert!(!a.sincro.automatica, "caso negativo: la apago el usuario");
+        guardar(&u, &a).unwrap();
+        assert!(!cargar(&u).unwrap().sincro.automatica);
+    }
+
     #[test]
     fn las_claves_desconocidas_se_ignoran() {
         // Compatibilidad hacia atras: un fichero escrito por una version mas

@@ -1527,9 +1527,13 @@ fn sondear(raiz: PathBuf, vivo: Arc<AtomicBool>) {
                 // que esperar a que pase la espera entera.
                 let espera = presencia::espera_de_la_sonda();
                 let trozos = (espera.as_millis() / 100).max(1);
+                // Y sin esperar, si volvio la red (`presencia::sondear_ya`).
                 for _ in 0..trozos {
                     if !vivo.load(Ordering::SeqCst) {
                         return;
+                    }
+                    if presencia::tomar_sondear_ya() {
+                        break;
                     }
                     std::thread::sleep(Duration::from_millis(100));
                 }

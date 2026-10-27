@@ -51,6 +51,7 @@ pub mod powerpoint;
 pub mod primer_plano;
 pub mod prioridad;
 pub mod puntero;
+pub mod red;
 pub mod regional;
 pub mod reproductor_sistema;
 pub mod subir;

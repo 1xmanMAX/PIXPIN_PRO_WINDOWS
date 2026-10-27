@@ -164,6 +164,20 @@ impl Drop for Suscripcion {
     }
 }
 
+/// Que la sonda pregunte ya, sin acabar su espera: lo pide la automatica
+/// al volver la red (27-oct-2026), que es justo cuando hay cosas pendientes
+/// con los demas.
+static SONDEAR_YA: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn sondear_ya() {
+    SONDEAR_YA.store(true, Ordering::SeqCst);
+}
+
+/// Si alguien pidio [`sondear_ya`] desde la ultima vez (y lo olvida).
+pub(crate) fn tomar_sondear_ya() -> bool {
+    SONDEAR_YA.swap(false, Ordering::SeqCst)
+}
+
 /// Cuanto espera la sonda antes de volver a preguntar.
 pub(crate) fn espera_de_la_sonda() -> std::time::Duration {
     let mirando = SERVICIO
@@ -183,6 +197,16 @@ mod pruebas {
         difundir(Novedad::Identidad);
         let _ = puerto();
         let _ = encendida();
+    }
+
+    #[test]
+    fn sondear_ya_se_pide_una_vez_y_se_olvida() {
+        let _ = tomar_sondear_ya();
+        assert!(!tomar_sondear_ya(), "caso negativo: nadie lo pidio");
+        sondear_ya();
+        sondear_ya();
+        assert!(tomar_sondear_ya());
+        assert!(!tomar_sondear_ya(), "dos peticiones, una sonda");
     }
 
     #[test]
