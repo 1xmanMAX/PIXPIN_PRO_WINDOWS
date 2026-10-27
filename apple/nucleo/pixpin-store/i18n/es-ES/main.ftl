@@ -2750,6 +2750,17 @@ asistente-listo = El asistente está listo.
 asistente-ocupado = El asistente todavía está contestando: espera o pulsa parar.
 asistente-sin-modelo = Primero baja el asistente en el chat «Asistente».
 asistente-fallo = El asistente no pudo empezar a contestar.
+asistente-nube-titulo = Falta la clave de la nube
+asistente-nube-explica = El asistente contesta con { $nube }: pega su clave en Ajustes → Asistente (se saca en { $pagina }). Las órdenes simples («apunta pan», «abre la galería») funcionan sin clave.
+asistente-abrir-ajustes = Abrir Ajustes
+asistente-viejos-titulo = Los modelos locales ya no se usan
+asistente-viejos-explica = El asistente contesta ahora solo con la nube (Claude o DeepSeek). Lo que bajaste para el modelo de este PC sigue ocupando { $tamano } en el disco.
+asistente-viejos-liberar = Liberar { $tamano }
+asistente-viejos-dejar = Dejarlos
+asistente-viejos-borrados = Listo: los modelos locales se borraron y el espacio quedó libre.
+asistente-viejos-no-borrados = No se pudieron borrar todos los modelos locales. Cierra lo que los use y prueba otra vez desde Ajustes → Asistente.
+ajustes2-asistente-borrar-locales = Modelos locales antiguos
+ajustes2-ayuda-asistente-borrar-locales = Lo que se bajó para el asistente local, que ya no se usa: { $tamano } en %LOCALAPPDATA%\PixPinMax\modelos.
 ajustes-asistente-modelo = Modelo del asistente
 ajustes2-ayuda-asistente-modelo = Con motor Local. El 2B dibuja y ve mejor; el 0.8B gasta menos.
 

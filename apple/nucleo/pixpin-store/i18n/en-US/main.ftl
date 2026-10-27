@@ -2749,6 +2749,17 @@ asistente-listo = The assistant is ready.
 asistente-ocupado = The assistant is still answering: wait or press stop.
 asistente-sin-modelo = First download the assistant in the «Asistente» chat.
 asistente-fallo = The assistant could not start answering.
+asistente-nube-titulo = The cloud key is missing
+asistente-nube-explica = The assistant answers with { $nube }: paste its key in Settings → Assistant (get one at { $pagina }). Simple commands ("note bread", "open the gallery") work without a key.
+asistente-abrir-ajustes = Open Settings
+asistente-viejos-titulo = Local models are no longer used
+asistente-viejos-explica = The assistant now answers only through the cloud (Claude or DeepSeek). What you downloaded for this PC's model still takes { $tamano } on disk.
+asistente-viejos-liberar = Free { $tamano }
+asistente-viejos-dejar = Keep them
+asistente-viejos-borrados = Done: the local models were deleted and the space is free.
+asistente-viejos-no-borrados = Not all local models could be deleted. Close whatever uses them and try again from Settings → Assistant.
+ajustes2-asistente-borrar-locales = Old local models
+ajustes2-ayuda-asistente-borrar-locales = What was downloaded for the local assistant, no longer used: { $tamano } in %LOCALAPPDATA%\PixPinMax\modelos.
 ajustes-asistente-modelo = Assistant model
 ajustes2-ayuda-asistente-modelo = With the Local engine. The 2B draws and sees better; the 0.8B uses less.
 
