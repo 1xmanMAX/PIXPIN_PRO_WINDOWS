@@ -1496,6 +1496,9 @@ chat-figura-guardada = Saved to your shapes as “{ $nombre }”
 chat-figura-vacia = That canvas is empty: nothing to save
 figuras-titulo = Shapes
 figuras-buscar = Search a shape…
+# The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
+figuras-dia = Day
+figuras-noche = Night
 figuras-sin-resultados = No shape has that in its name or its texts.
 figuras-de-serie = built-in
 figuras-tuya = yours

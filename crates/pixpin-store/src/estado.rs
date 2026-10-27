@@ -56,6 +56,11 @@ pub struct Estado {
     /// Donde y de que tamano quedo el lienzo en ventana: (x, y, ancho, alto)
     /// en pixeles fisicos. `None` la primera vez.
     pub lienzo_ventana: Option<[i32; 4]>,
+    /// **El interruptor ☀/☾ de los paneles de figuras** (el del lienzo y el
+    /// del chat): de noche se ven las gemelas «(noche)» de las plantillas en
+    /// vez de las de dia. Uno para los dos. `None` es «nunca se toco», y
+    /// entonces de dia, como el movil.
+    pub figuras_de_noche: Option<bool>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -107,6 +112,7 @@ mod pruebas {
             palabras_por_minuto: Some(260),
             lienzo_pantalla_completa: Some(false),
             lienzo_ventana: Some([-1200, 40, 900, 640]),
+            figuras_de_noche: Some(true),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);
