@@ -135,7 +135,7 @@ chat si viaja como siempre:
 
 | Mensaje | `resto` nuevo |
 |---|---|
-| La nota de voz (`VOZ`) | `clips: [{ms, duracionMs, id}]` en orden de `ms` (los clips de video del movil; las fotos van en `capturas`, como siempre) |
+| La nota de voz (`VOZ`) | `clips: [{ms, id, duracionMs}]` en orden de `ms`, la misma lista que los clips de la reunion presencial (las fotos van en `capturas`, como siempre) |
 | Cada foto del movil (`IMAGEN`) | `enGrabacion: {de, ms}`, `fuente: "movil"`, `deAparato`, `tomadaEn` |
 | Cada clip del movil (`ARCHIVO`, `.mp4`) | `enGrabacion: {de, ms, duracionMs}`, `fuente: "movil"`, `deAparato` |
 

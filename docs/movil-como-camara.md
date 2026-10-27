@@ -152,20 +152,27 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
      para `es_video`) con **sus bytes tal cual** (el EXIF se queda);
    - `resto.enGrabacion = {"de":"<id de la nota>","ms":754000}` (un clip,
      además `"duracionMs"`);
-   - `resto.fuente = "movil"`, `resto.deAparato = "<nombre del móvil>"`,
-     `resto.tomadaEn` (no `origen`: ese nombre ya es un campo del mensaje);
+   - `resto.fuente = "movil"` (lo de la cámara del propio PC en la reunión
+     presencial dice `"camara"`; las capturas de pantalla no lo llevan),
+     `resto.deAparato = "<nombre del móvil>"`, `resto.tomadaEn`. **Nunca
+     `origen`** en `resto`: ese nombre ya es un campo del mensaje y la línea
+     del cuaderno dejaría de leerse;
    - en la nota, en `resto.capturas` (`[{ms, id}]`) o, el clip, en
-     `resto.clips` (`[{ms, duracionMs, id}]`);
+     `resto.clips` (`[{ms, id, duracionMs}]`), **la misma lista que los clips
+     de la reunión presencial** (`pixpin_proyecto::presencial`);
    - dentro de la carpeta de la grabación, **en su minuto** (no al final),
-     con título «📱 ⏱ 12:34».
+     con título «📱 ⏱ 12:34» (un clip, «📱 ▶ 12:34»).
 4. **Lo que llega tarde** (el móvil se quedó sin red y lo sube después):
    si es de una de las últimas 4 grabaciones, entra al momento en la clase
    ya guardada y sale un aviso en la bandeja («Del móvil a «Clase…» · 12:34»).
    El móvil sabe cuál era por `grabacion`; aunque el anuncio diga
    `activa:false`, **sigue subiendo su cola**.
 5. «Estudiar la clase» enseña las fotos del móvil como capturas, y cada clip
-   como una franja verde en la barra del tiempo, del minuto en que empieza a
-   lo que dura; al pasar por ella, «▶ Clip del móvil» lo abre.
+   por el mismo camino que los de la cámara del equipo: un ▶ en su minuto
+   entre los marcadores («Vídeo del móvil · 0:18»); un clic lleva ahí y lo
+   abre. Un clip HEVC en un PC sin «HEVC Video Extensions» se abre igual y se
+   dice qué falta (aunque, con `codecs` del §6, el móvil ya lo habrá grabado
+   en H.264).
 
 ## 5. Seguridad y límites
 
@@ -252,7 +259,9 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 - [ ] La cola persistente y la subida en segundo plano con reintentos.
 - [ ] Clips: códec según `codecs`, 1080p/30, 4-6 Mbit/s, AAC, 2 min.
 - [ ] Al recibir una clase por la sincronización: `resto.clips` y
-      `resto.fuente:"movil"` se conservan (y, si se quiere, se enseñan).
+      `resto.fuente` (`"movil"` o `"camara"`) se conservan (y, si se quiere,
+      se enseñan). Lo de la reunión presencial grabada en el propio móvil
+      (novedades §3.3) usa este mismo formato con `fuente: "camara"`.
 
 ### Mac, iPad e iPhone (`apple/`)
 

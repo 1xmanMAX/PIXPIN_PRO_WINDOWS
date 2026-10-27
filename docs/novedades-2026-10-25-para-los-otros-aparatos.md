@@ -113,14 +113,23 @@ la clase» carga la imagen entera al acercarla.
 | Mensaje | `resto` |
 |---|---|
 | La nota de voz (`VOZ`) | lo de siempre y, si hubo clips, `clips: [{ms, id, duracionMs}]` en orden de `ms` (**sin clips la clave se quita**, no `[]`) |
-| Cada foto de la camara (`IMAGEN`, `foto-<hora>-<n>.jpg`) | `enGrabacion: {de, ms}` (el minuto en que se pulso) y **`origen: "camara"`** |
-| Cada clip (`ARCHIVO`, `.mp4`) | `enGrabacion: {de, ms, duracionMs}` (`ms`: cuando empezo) y `origen: "camara"` |
+| Cada foto de la camara (`IMAGEN`, `foto-<hora>-<n>.jpg`) | `enGrabacion: {de, ms}` (el minuto en que se pulso) y **`fuente: "camara"`** |
+| Cada clip (`ARCHIVO`, `.mp4`) | `enGrabacion: {de, ms, duracionMs}` (`ms`: cuando empezo) y `fuente: "camara"` |
 
 En la carpeta de la grabacion (§3.2) las fotos van como las capturas («⏱
-1:05») y cada clip con «▶ 1:05» en su minuto. `origen` falta en las capturas
+1:05») y cada clip con «▶ 1:05» en su minuto. `fuente` falta en las capturas
 de pantalla (y en todo lo de antes): **falta = pantalla**. Las cuentas puras
 (modos, que camara, que resolucion, nombres, `clips`) estan en
 `crates/pixpin-proyecto/src/presencial.rs`.
+
+**`fuente` y no `origen`** (27-oct-2026, al juntarlo con la camara del
+movil): la primera version escribia `origen: "camara"` en `resto`, pero
+`origen` ya es un campo del mensaje (el aparato de donde se copio): la linea
+del cuaderno salia con `"origen"` dos veces y **no se volvia a leer** (la
+foto desaparecia del chat). Ahora es `fuente: "camara"` (y `"movil"` lo de
+la camara del movil, §3.4); el PC rescata al leer las lineas escritas con
+`origen` repetido. **Android / apple**: escribir y leer `fuente`; nunca
+`origen` en `resto`.
 
 **En el movil es el uso natural** (por hacer en Android y iPhone):
 
@@ -141,7 +150,7 @@ de pantalla (y en todo lo de antes): **falta = pantalla**. Las cuentas puras
   de la nota en trozos de ~15 s, cada linea `[m:ss] texto`.
 - **Fotos durante la reunion** a la resolucion entera de la camara de atras
   (sin reducir; JPEG de la camara, o HEVC/HEIC convertido a JPEG ~92 para
-  que el PC lo lea), con `enGrabacion {de, ms}` y `origen: "camara"`; y
+  que el PC lo lea), con `enGrabacion {de, ms}` y `fuente: "camara"`; y
   **clips** con su `duracionMs`, como en la tabla de arriba. Tocar la foto o
   el clip en la notificacion no saca la app delante.
 - **Mismo formato, para que sincronice al PC sin tocar nada**: la nota con
@@ -161,9 +170,11 @@ de pantalla (y en todo lo de antes): **falta = pantalla**. Las cuentas puras
   `camara_remota` (el PC le pasa al movil en que milisegundo va la grabacion
   y si esta en pausa) y `suelto` con `destino: "grabacion"` y `ms` (el
   minuto calculado en el movil).
-- Campos nuevos: en la nota de voz `clips: [{ms, duracionMs, id}]`; en cada
-  foto o clip del movil `enGrabacion` (un clip, con `duracionMs`),
-  `fuente: "movil"`, `deAparato` y `tomadaEn`.
+- Mismo formato que la reunion presencial (§3.3): los clips en la misma
+  `clips: [{ms, id, duracionMs}]` de la nota, cada pieza con `enGrabacion`
+  (un clip, con `duracionMs`) y **`fuente: "movil"`** (la camara del equipo,
+  `"camara"`); ademas `deAparato` y `tomadaEn`. «Estudiar la clase» los
+  ensena por el mismo camino (▶ en su minuto, «Vídeo del móvil»).
 - Guia completa (mensajes, JSON, flujo de la pantalla, CameraX, codecs):
   [movil-como-camara.md](movil-como-camara.md).
 - **Android**: hacerla (§9 de la guia). **apple**: el nucleo ya tiene el
