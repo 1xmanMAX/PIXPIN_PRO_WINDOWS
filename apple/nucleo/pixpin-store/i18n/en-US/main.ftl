@@ -2879,3 +2879,16 @@ carpeta-adjunto-insignia = Attachment · not part of the recording
 carpeta-adjuntar = Attach to the class
 carpeta-adjuntado = Attached to the class: { $nombre }
 carpeta-grabacion-pista = Click an item to study it at its minute · “Attach to the class” adds a file, photo or note without mixing it with what was recorded
+
+# Right-click on the rail's frame button (27-oct-2026): what to print
+marcos-menu-los-marcos = Print the frames ({ $n })
+marcos-menu-sin-marcos = Print the frames (none yet: press the frame and drag)
+marcos-menu-entero-pdf = Print the whole PDF
+marcos-menu-entero-word = Print the whole Word document
+marcos-menu-entero-powerpoint = Print the whole PowerPoint
+marcos-menu-entero-hoja = Print the whole sheet
+marcos-menu-entero-pagina = Print the whole page
+marcos-menu-entero-documento = Print the whole document
+marcos-menu-entero-plano = Print the whole drawing
+marcos-menu-entero-modelo = Print the model view
+marcos-menu-no-imprime = The whole document could not be printed

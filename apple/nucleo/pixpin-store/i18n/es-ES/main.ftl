@@ -2880,3 +2880,16 @@ carpeta-adjunto-insignia = Adjunto · no es de la grabación
 carpeta-adjuntar = Adjuntar a la clase
 carpeta-adjuntado = Adjuntado a la clase: { $nombre }
 carpeta-grabacion-pista = Pulsa una pieza para estudiarla en su minuto · «Adjuntar a la clase» suma un archivo, una foto o una nota sin mezclarlo con lo grabado
+
+# El clic derecho en el boton del marco del riel (27-oct-2026): que imprimir
+marcos-menu-los-marcos = Imprimir los marcos ({ $n })
+marcos-menu-sin-marcos = Imprimir los marcos (aún no hay: pulsa el marco y arrastra)
+marcos-menu-entero-pdf = Imprimir el PDF entero
+marcos-menu-entero-word = Imprimir el Word entero
+marcos-menu-entero-powerpoint = Imprimir el PowerPoint entero
+marcos-menu-entero-hoja = Imprimir la hoja entera
+marcos-menu-entero-pagina = Imprimir la página entera
+marcos-menu-entero-documento = Imprimir el documento entero
+marcos-menu-entero-plano = Imprimir el plano entero
+marcos-menu-entero-modelo = Imprimir la vista del modelo
+marcos-menu-no-imprime = No se pudo imprimir el documento entero

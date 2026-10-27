@@ -451,6 +451,158 @@ pub fn pista(textos: &pixpin_store::Catalogo) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// El clic derecho en el boton del marco: que imprimir
+
+/// **Que es «el documento entero»** en cada visor (27-oct-2026), para el
+/// rotulo de la segunda entrada del menu del boton del marco: «el PDF
+/// entero», «la hoja entera», «el plano entero»...
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Entero {
+    Pdf,
+    Word,
+    PowerPoint,
+    /// Una hoja de calculo (la abierta del libro).
+    Hoja,
+    /// Una pagina web.
+    Pagina,
+    /// Lo demas (un libro, unas notas, un formato viejo de Office).
+    Documento,
+    Plano,
+    /// Un modelo 3D: lo que se ve de el.
+    Modelo,
+}
+
+impl Entero {
+    /// Su clave del catalogo.
+    pub fn clave(self) -> &'static str {
+        match self {
+            Entero::Pdf => "marcos-menu-entero-pdf",
+            Entero::Word => "marcos-menu-entero-word",
+            Entero::PowerPoint => "marcos-menu-entero-powerpoint",
+            Entero::Hoja => "marcos-menu-entero-hoja",
+            Entero::Pagina => "marcos-menu-entero-pagina",
+            Entero::Documento => "marcos-menu-entero-documento",
+            Entero::Plano => "marcos-menu-entero-plano",
+            Entero::Modelo => "marcos-menu-entero-modelo",
+        }
+    }
+
+    /// El de un fichero, por su extension: lo que no se reconoce es «el
+    /// documento».
+    pub fn de_fichero(ruta: &Path) -> Entero {
+        let ext = ruta
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        match ext.as_str() {
+            "pdf" => Entero::Pdf,
+            "doc" | "docx" | "docm" | "dot" | "dotx" | "rtf" | "odt" => Entero::Word,
+            "ppt" | "pptx" | "pptm" | "pps" | "ppsx" | "odp" => Entero::PowerPoint,
+            "xls" | "xlsx" | "xlsm" | "xlsb" | "ods" | "csv" | "tsv" => Entero::Hoja,
+            "html" | "htm" | "xhtml" | "mht" | "mhtml" => Entero::Pagina,
+            _ => Entero::Documento,
+        }
+    }
+}
+
+/// Lo elegido en el menu del boton del marco.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueImprimir {
+    /// Los marcos numerados, en grupo (lo mismo que Ctrl+P con marcos).
+    Marcos,
+    /// El documento entero, con lo de imprimir de siempre de cada visor.
+    Entero,
+}
+
+const MENU_LOS_MARCOS: u32 = 1;
+const MENU_ENTERO: u32 = 2;
+
+/// **Las entradas del menu del boton del marco** (el clic derecho; en el
+/// movil, la pulsacion larga): «Imprimir los marcos (N)», en gris y con la
+/// pista si aun no hay ninguno, e «Imprimir el … entero». Sin `entero` (un
+/// visor que no sabe imprimirse entero), solo la primera. `(id, rotulo, si
+/// se puede elegir)`, para [`pixpin_shell::menu_llano_con`].
+pub fn entradas_de_imprimir(
+    textos: &pixpin_store::Catalogo,
+    n: usize,
+    entero: Option<Entero>,
+) -> Vec<(u32, String, bool)> {
+    let marcos = if n == 0 {
+        (MENU_LOS_MARCOS, textos.t("marcos-menu-sin-marcos"), false)
+    } else {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", n);
+        (
+            MENU_LOS_MARCOS,
+            textos.t_args("marcos-menu-los-marcos", &args),
+            true,
+        )
+    };
+    let mut v = vec![marcos];
+    if let Some(e) = entero {
+        v.push((MENU_ENTERO, textos.t(e.clave()), true));
+    }
+    v
+}
+
+/// Lo que es cada entrada de [`entradas_de_imprimir`].
+pub fn elegido_de_imprimir(id: u32) -> Option<QueImprimir> {
+    match id {
+        MENU_LOS_MARCOS => Some(QueImprimir::Marcos),
+        MENU_ENTERO => Some(QueImprimir::Entero),
+        _ => None,
+    }
+}
+
+/// **El menu del boton del marco** junto al raton, sobre la ventana `hwnd`
+/// del visor: lo elegido, o `None` si se cierra sin elegir.
+pub fn menu_de_imprimir(
+    hwnd: isize,
+    textos: &pixpin_store::Catalogo,
+    n: usize,
+    entero: Option<Entero>,
+) -> Option<QueImprimir> {
+    let entradas = entradas_de_imprimir(textos, n, entero);
+    let id = pixpin_shell::menu_llano_con(
+        windows::Win32::Foundation::HWND(hwnd as *mut core::ffi::c_void),
+        &entradas,
+    )?;
+    elegido_de_imprimir(id)
+}
+
+/// **El documento entero en hojas de papel** (`ancho` x `alto` en sus
+/// unidades): trozos de `trozo` (ancho y alto, la forma del papel), de
+/// izquierda a derecha y de arriba abajo, el ultimo de cada fila y de cada
+/// columna recortado a lo que queda. Asi se imprime entero lo que no tiene
+/// hojas propias (un Word leido como texto, una hoja de calculo), con las
+/// mismas fotos que los marcos: cada trozo es un marco mas de `parte`.
+pub fn trozos(ancho: f64, alto: f64, trozo: (f64, f64), parte: u32) -> Vec<Marco> {
+    let (tw, th) = (trozo.0.max(1.0), trozo.1.max(1.0));
+    if !(ancho > 0.0 && alto > 0.0) {
+        return Vec::new();
+    }
+    let mut v = Vec::new();
+    let mut y = 0.0;
+    while y < alto && v.len() < MAXIMO_DE_TROZOS {
+        let mut x = 0.0;
+        while x < ancho && v.len() < MAXIMO_DE_TROZOS {
+            v.push(Marco {
+                caja: [x, y, (x + tw).min(ancho), (y + th).min(alto)],
+                parte,
+                vista: String::new(),
+            });
+            x += tw;
+        }
+        y += th;
+    }
+    v
+}
+
+/// Tope de hojas de [`trozos`]: un documento enorme no deja la ventana horas
+/// fotografiando.
+pub const MAXIMO_DE_TROZOS: usize = 200;
+
+// ---------------------------------------------------------------------------
 // Las vistas de los marcadores
 
 /// **Las vistas de los marcadores** de un documento: por cada marcador (su
@@ -523,6 +675,47 @@ mod pruebas {
         let d = std::env::temp_dir().join(format!("pixpin-marcos-{n}-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn el_menu_del_marco_ofrece_los_marcos_y_el_documento_entero() {
+        let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let sin = entradas_de_imprimir(&t, 0, Some(Entero::Pdf));
+        assert_eq!(sin.len(), 2);
+        assert!(!sin[0].2, "sin marcos, la primera va en gris");
+        assert!(sin[0].1.contains("pulsa el marco"), "{}", sin[0].1);
+        assert_eq!(sin[1].1, "Imprimir el PDF entero");
+        assert!(sin[1].2);
+        let con = entradas_de_imprimir(&t, 3, Some(Entero::Hoja));
+        assert!(con[0].2 && con[0].1.contains('3'), "{}", con[0].1);
+        assert_eq!(con[1].1, "Imprimir la hoja entera");
+        assert_eq!(elegido_de_imprimir(con[0].0), Some(QueImprimir::Marcos));
+        assert_eq!(elegido_de_imprimir(con[1].0), Some(QueImprimir::Entero));
+        assert_eq!(entradas_de_imprimir(&t, 1, None).len(), 1);
+    }
+
+    #[test]
+    fn cada_fichero_dice_que_es_entero() {
+        assert_eq!(Entero::de_fichero(Path::new("a.PDF")), Entero::Pdf);
+        assert_eq!(Entero::de_fichero(Path::new("b.docx")), Entero::Word);
+        assert_eq!(Entero::de_fichero(Path::new("c.ppt")), Entero::PowerPoint);
+        assert_eq!(Entero::de_fichero(Path::new("d.xlsx")), Entero::Hoja);
+        assert_eq!(Entero::de_fichero(Path::new("e.html")), Entero::Pagina);
+        assert_eq!(Entero::de_fichero(Path::new("f.epub")), Entero::Documento);
+    }
+
+    #[test]
+    fn el_documento_entero_se_parte_en_trozos_de_papel() {
+        let v = trozos(100.0, 250.0, (100.0, 141.0), 2);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0].caja, [0.0, 0.0, 100.0, 141.0]);
+        assert_eq!(v[1].caja, [0.0, 141.0, 100.0, 250.0]);
+        assert!(v.iter().all(|m| m.parte == 2));
+        let r = trozos(250.0, 100.0, (100.0, 100.0), 0);
+        assert_eq!(r.len(), 3);
+        assert_eq!(r[2].caja, [200.0, 0.0, 250.0, 100.0]);
+        assert!(trozos(0.0, 10.0, (1.0, 1.0), 0).is_empty());
+        assert_eq!(trozos(1e6, 1e6, (1.0, 1.0), 0).len(), MAXIMO_DE_TROZOS);
     }
 
     #[test]

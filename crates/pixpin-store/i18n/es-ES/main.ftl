@@ -3025,6 +3025,20 @@ lector-marco = Marco para imprimir (P)
 marcos-pista = Arrastra para marcar · un número: ir a ese marco · Ctrl+P: imprimir todos · Supr: quitar el último · I o Esc: salir
 marcos-imprimir = Imprimir los marcos (Ctrl+P)
 marcos-borrar = Borrar los marcos
+
+# El clic derecho en el boton del marco del riel (27-oct-2026): que imprimir
+marcos-menu-los-marcos = Imprimir los marcos ({ $n })
+marcos-menu-sin-marcos = Imprimir los marcos (aún no hay: pulsa el marco y arrastra)
+marcos-menu-entero-pdf = Imprimir el PDF entero
+marcos-menu-entero-word = Imprimir el Word entero
+marcos-menu-entero-powerpoint = Imprimir el PowerPoint entero
+marcos-menu-entero-hoja = Imprimir la hoja entera
+marcos-menu-entero-pagina = Imprimir la página entera
+marcos-menu-entero-documento = Imprimir el documento entero
+marcos-menu-entero-plano = Imprimir el plano entero
+marcos-menu-entero-modelo = Imprimir la vista del modelo
+marcos-menu-no-imprime = No se pudo imprimir el documento entero
+
 riel-marcador = Marcador (Ctrl+M)
 riel-anotar = Anotar (A)
 riel-marcos = Marcos para imprimir (I)
