@@ -92,6 +92,40 @@ pub(crate) fn clave_de_vista(d: &Destino) -> String {
     }
 }
 
+/// **«Lectura veloz» del ⋮ de la nota**, sin el ⚡ (lo pone la pagina como
+/// icono) y con el % de lo leido alli si ya se leyo (27-oct-2026, como el
+/// ⋮ de `MarkdownEditorActivity`): el de su codigo, o el del `.md` suelto.
+pub(crate) fn rotulo_de_lectura_veloz(d: &Destino, t: &Catalogo) -> String {
+    let pct = match d {
+        Destino::Mensaje { codigo, .. } => crate::lectura_veloz::porcentaje(codigo),
+        Destino::Nueva { .. } => None,
+        Destino::Fichero { ruta } => crate::lectura_veloz::porcentaje_de_ruta(ruta),
+    };
+    let r = crate::lectura_veloz::rotulo(t, pct);
+    r.trim_start_matches('⚡').trim_start().to_string()
+}
+
+/// **La nota en Lectura Veloz**: una del chat va como `.md` con el codigo de
+/// su mensaje (`lectura_veloz::abrir_nota`); un `.md` suelto, tal cual
+/// (ya guardado: la pagina guarda antes de pedirlo). Una nueva aun no tiene
+/// codigo, y se dice.
+pub(crate) fn a_lectura_veloz(
+    d: &Destino,
+    titulo: &str,
+    texto: &str,
+) -> Result<(), crate::lectura_veloz::NoSeAbrio> {
+    match d {
+        Destino::Mensaje { codigo, .. } => {
+            crate::lectura_veloz::abrir_nota(Some(codigo), titulo, texto)
+        }
+        Destino::Nueva { .. } => crate::lectura_veloz::abrir_nota(None, titulo, texto),
+        Destino::Fichero { ruta } => {
+            let doc = crate::lectura_veloz::doc_de(ruta);
+            crate::lectura_veloz::abrir_guardado(ruta, Some(&doc))
+        }
+    }
+}
+
 /// Los textos de la ventana, del catalogo.
 fn rotulos(t: &Catalogo) -> pixpin_notas::Rotulos {
     pixpin_notas::Rotulos {
