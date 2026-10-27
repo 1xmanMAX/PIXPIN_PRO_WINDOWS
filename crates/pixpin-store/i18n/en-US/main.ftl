@@ -2011,6 +2011,32 @@ clase-captura-entera = Capture: the whole screen, instantly
 clase-pista-entera = “Capture” saves the whole screen at this minute; the area button, just a part
 clase-capturas-entera = Screenshots: { $n } · the whole screen
 clase-abrir-para-estudiar = Open to study
+# In-person meeting (27-oct-2026): the computer's camera, photos and clips.
+clase-modo-presencial = In person
+clase-modo-presencial-sub = Records the microphone; “Photo” uses the camera at full resolution
+clase-camara = Camera: { $camara }
+clase-camara-buscando = Looking for cameras…
+clase-camara-ninguna = No camera: only the audio is recorded
+clase-foto = Photo
+clase-fotos = Photos: { $n } · with the camera, at full resolution
+clase-pista-foto = “Photo” takes a picture with the camera at this minute; the video camera records a clip
+clase-foto-hecha = Photo saved at { $minuto }
+clase-camara-abriendo = Opening the camera…
+clase-camara-lista = Camera ready: photos at { $medida }
+clase-camara-sin = No camera is connected
+clase-camara-en-uso = Another app is using the camera (Teams, Zoom…): close it and try again
+clase-camara-sin-permiso = Windows doesn't allow camera access: turn it on in Settings › Privacy › Camera
+clase-camara-fallo = The camera didn't respond; try again
+clase-clip-empezado = Recording a clip with the camera… press ■ to stop it
+clase-clip-guardado = Clip saved at { $minuto }
+clase-clip-corto = The clip couldn't be closed
+estudiar-clip = Camera video · { $duracion }
+bandeja-grabando = PixPin Max — Recording…
+salir-grabando-titulo = A meeting is being recorded
+salir-grabando-mensaje =
+    Finish and save the recording before quitting?
+    Yes: finish, save it to its chat and quit (ask for the text later on the note).
+    No: keep recording.
 chat-estudiar-clase = Study the class
 estudiar-titulo = Study the class
 estudiar-transcripcion = Transcript

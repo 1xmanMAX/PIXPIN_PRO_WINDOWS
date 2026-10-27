@@ -1955,6 +1955,32 @@ clase-captura-entera = Captura: la pantalla entera, al instante
 clase-pista-entera = «Captura» guarda la pantalla entera en este minuto; la zona, solo un trozo
 clase-capturas-entera = Capturas: { $n } · la pantalla entera
 clase-abrir-para-estudiar = Abrir para estudiar
+# Reunion presencial (27-oct-2026): la camara del equipo, fotos y clips.
+clase-modo-presencial = Presencial
+clase-modo-presencial-sub = Graba el micrófono; «Foto» usa la cámara a su resolución completa
+clase-camara = Cámara: { $camara }
+clase-camara-buscando = Buscando las cámaras…
+clase-camara-ninguna = No hay cámara: se graba solo el audio
+clase-foto = Foto
+clase-fotos = Fotos: { $n } · con la cámara, a resolución completa
+clase-pista-foto = «Foto» saca una foto con la cámara en este minuto; la cámara de vídeo graba un clip
+clase-foto-hecha = Foto guardada en el { $minuto }
+clase-camara-abriendo = Abriendo la cámara…
+clase-camara-lista = Cámara lista: fotos a { $medida }
+clase-camara-sin = No hay ninguna cámara conectada
+clase-camara-en-uso = La cámara la está usando otra aplicación (Teams, Zoom…): ciérrala y vuelve a probar
+clase-camara-sin-permiso = Windows no deja usar la cámara: actívala en Configuración › Privacidad › Cámara
+clase-camara-fallo = La cámara no respondió; prueba otra vez
+clase-clip-empezado = Grabando un clip con la cámara… pulsa ■ para pararlo
+clase-clip-guardado = Clip guardado en el { $minuto }
+clase-clip-corto = El clip no se pudo cerrar
+estudiar-clip = Vídeo de la cámara · { $duracion }
+bandeja-grabando = PixPin Max — Grabando…
+salir-grabando-titulo = Se está grabando una reunión
+salir-grabando-mensaje =
+    ¿Terminar y guardar la grabación antes de salir?
+    Sí: termina, la guarda en su chat y sale (el texto se pide luego en la nota).
+    No: sigue grabando.
 chat-estudiar-clase = Estudiar la clase
 estudiar-titulo = Estudiar la clase
 estudiar-transcripcion = Transcripción
