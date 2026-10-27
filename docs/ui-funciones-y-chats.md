@@ -293,7 +293,7 @@ dos cosas:
   un modelo 3D, «la vista del modelo».
 
 En Windows se quedan además los atajos y botones de imprimir de siempre
-(Ctrl+P, «Imprimir» del menu ⋯); en Android solo queda este botón. Los
+(Ctrl+P, «Imprimir» del menú ⋯); en Android solo queda este botón. Los
 textos van en los cuatro catálogos (`marcos-menu-*`).
 
 Cómo imprime entero cada visor en Windows:
