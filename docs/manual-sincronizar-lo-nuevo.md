@@ -290,14 +290,14 @@ archivo binario (no entra en `esTexto`).
 - [ ] Conservar `grabacion`, `capturas`, `video`, `enGrabacion`,
       `marcadores`, `estadoDelTexto` (ya viajan en lo desconocido;
       comprobar que el modelo no los tira al reescribir el mensaje).
-- [ ] Reproducir el `.mp4` de un `ARCHIVO`; opcional, «Estudiar la clase».
+- [x] Reproducir el `.mp4` de un `ARCHIVO`; opcional, «Estudiar la clase».
 - [ ] Al llegar `transcripcion` nueva, repintar la letra de la nota.
-- [ ] `Fusion.kt`: reglas 7.1 y 7.2; `Protocolo.kt`: regla 7.3.
-- [ ] Recargar `BibliotecaStore` cuando llega `figuras.json`.
-- [ ] `<d>.vistas.json` en el alcance de cada dibujo (ver §3).
-- [ ] Burbuja de `NOTA` con Markdown y album de fotos.
-- [ ] Carpeta: ensenar el `MINIAPP` «carpeta» (opcional), no tocar su `texto`.
-- [ ] Carpeta de grabacion (§5.1): conservar `tipo`, `voz`, `video`,
+- [x] `Fusion.kt`: reglas 7.1 y 7.2; `Protocolo.kt`: regla 7.3.
+- [x] Recargar `BibliotecaStore` cuando llega `figuras.json`.
+- [x] `<d>.vistas.json` en el alcance de cada dibujo (ver §3).
+- [x] Burbuja de `NOTA` con Markdown y album de fotos.
+- [x] Carpeta: ensenar el `MINIAPP` «carpeta» (opcional), no tocar su `texto`.
+- [x] Carpeta de grabacion (§5.1, Android v0.140-v0.143): conservar `tipo`, `voz`, `video`,
       `duracionMs` y, en cada pagina, `ms` y `adjunto` (si el modelo de la
       mini-app solo guarda el `texto` tal cual, ya esta). Opcional: una
       tarjeta por grabacion y no ensenar sueltos los mensajes que estan en
@@ -404,7 +404,7 @@ solo cambio en un lado.
 
 ### Tareas
 
-- [ ] Android: `avatar` en `Proyecto` (todos los campos opcionales, y lo
+- [x] Android: `avatar` en `Proyecto` (todos los campos opcionales, y lo
       desconocido conservado), pintarlo en la lista y en la cabecera, y la
       hoja para elegirlo desde la ficha del chat.
 - [ ] Mac, iPad e iPhone: el nucleo ya lo tiene (`apple/nucleo/pixpin-proyecto/src/avatar.rs`,
