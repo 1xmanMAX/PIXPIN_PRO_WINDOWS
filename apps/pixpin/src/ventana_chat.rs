@@ -1037,8 +1037,11 @@ pub fn abrir(
     let mut fallo_pintado = false;
     // Buscar dentro de todos los chats desde el buscador de la lista
     // (`buscar_en_chats`): su hilo nace con la primera busqueda.
-    let mut en_chats =
-        buscar_en_chats::BuscarEnChats::nuevo(ubicacion.raiz(), ventana.handle().0 as isize);
+    let mut en_chats = buscar_en_chats::BuscarEnChats::nuevo(
+        ubicacion.raiz(),
+        ventana.handle().0 as isize,
+        textos,
+    );
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -1198,7 +1201,7 @@ pub fn abrir(
                                     }
                                 }
                                 fichas.push(ficha.clone());
-                                orden = filtrar(&fichas, &busqueda);
+                                orden = en_chats.filtrar(&fichas, &busqueda);
                                 elegida = Some(fichas.len() - 1);
                                 let mut nuevo = abrir_proyecto(ubicacion, &ficha);
                                 nuevo.empezar_a_renombrar();
@@ -2475,33 +2478,25 @@ pub fn abrir(
                             abierto = Some(nuevo);
                         }
                         hay_que_pintar = true;
-                    } else if let Some(el) =
-                        en_chats.elemento_en(&disposicion, l, scroll, orden.len(), escala)
-                    {
-                        // Un mensaje encontrado en la seccion «Mensajes» del
-                        // buscador: su chat, llevado a el y resaltado, por
-                        // el mismo camino que «Ver en el chat» (`ir_a`).
-                        match el {
-                            pixpin_ui::buscar_en_chats::Elemento::Mensaje(n) => {
-                                if let Some(enc) = en_chats.encontrado(n) {
-                                    // Si es el chat abierto y tiene su propia
-                                    // lupa o un chip puestos, se quitan: el
-                                    // mensaje podria quedar escondido y no
-                                    // habria adonde ir.
-                                    if let Some(a) =
-                                        abierto.as_mut().filter(|a| a.ficha.id == enc.chat)
-                                    {
-                                        a.busqueda = None;
-                                        a.por_etiqueta = None;
-                                        a.colocado.borrow_mut().ancho = 0;
-                                    }
-                                    pedir_ir_a_mensaje(enc.chat.clone(), enc.codigo.clone());
-                                }
-                            }
-                            pixpin_ui::buscar_en_chats::Elemento::VerMas => en_chats.ver_mas(),
-                            pixpin_ui::buscar_en_chats::Elemento::Cabecera => {}
+                    } else if let Some(pulsado) = en_chats.pulsar(
+                        &disposicion,
+                        l,
+                        scroll,
+                        orden.len(),
+                        escala,
+                        false,
+                        &mut abierto,
+                    ) {
+                        // La seccion «Mensajes» del buscador: una pestana
+                        // por tipo vuelve a filtrar los chats; un mensaje
+                        // encontrado se abre o se va a el
+                        // (`buscar_en_chats::BuscarEnChats::pulsar`).
+                        if pulsado == buscar_en_chats::Pulsado::Pestana {
+                            orden = en_chats.filtrar(&fichas, &busqueda);
+                            scroll = 0;
+                        } else {
+                            buscando = false;
                         }
-                        buscando = false;
                         hay_que_pintar = true;
                     }
                 }
@@ -2694,6 +2689,23 @@ pub fn abrir(
                         }
                         hay_que_pintar = true;
                     }
+                    // Clic derecho sobre un mensaje encontrado en todos los
+                    // chats: ir a el, sin abrirlo.
+                    else if !disposicion.boton_nuevo(escala).contiene(l)
+                        && en_chats
+                            .pulsar(
+                                &disposicion,
+                                l,
+                                scroll,
+                                orden.len(),
+                                escala,
+                                true,
+                                &mut abierto,
+                            )
+                            .is_some()
+                    {
+                        hay_que_pintar = true;
+                    }
                     // Clic derecho sobre «+»: crearlo en una carpeta elegida
                     // («Guardar en…»). El clic izquierdo sigue creandolo en
                     // la zona habitual: si no se elige, va donde siempre.
@@ -2744,7 +2756,7 @@ pub fn abrir(
                                 borradores.insert(a.ficha.id.clone(), a.borrador);
                             }
                             fichas.push(ficha.clone());
-                            orden = filtrar(&fichas, &busqueda);
+                            orden = en_chats.filtrar(&fichas, &busqueda);
                             elegida = Some(fichas.len() - 1);
                             let mut nuevo = abrir_proyecto(ubicacion, &ficha);
                             nuevo.empezar_a_renombrar();
@@ -3551,7 +3563,7 @@ pub fn abrir(
                         guardar_nombre(ubicacion, a);
                         if let Some(i) = elegida {
                             fichas[i].nombre = a.ficha.nombre.clone();
-                            orden = filtrar(&fichas, &busqueda);
+                            orden = en_chats.filtrar(&fichas, &busqueda);
                         }
                         // Recien nacido compartido: ya con nombre, a invitar
                         // (sus personas: «Anadir», el codigo y el QR).
@@ -3860,7 +3872,7 @@ pub fn abrir(
                 // El buscador de la lista, igual: la caja de una linea comun.
                 EventoOverlay::Caracter(c) if buscando => {
                     if busqueda.caracter(c) {
-                        orden = filtrar(&fichas, &busqueda);
+                        orden = en_chats.filtrar(&fichas, &busqueda);
                         scroll = 0;
                     }
                     hay_que_pintar = true;
@@ -3869,7 +3881,7 @@ pub fn abrir(
                     vk, shift, ctrl, ..
                 } if buscando && redaccion::CajaLinea::es_suya(vk, shift, ctrl) => {
                     if tecla_en_caja(&mut busqueda, vk, shift, ctrl).cambio() {
-                        orden = filtrar(&fichas, &busqueda);
+                        orden = en_chats.filtrar(&fichas, &busqueda);
                         scroll = 0;
                     }
                     hay_que_pintar = true;
@@ -3879,7 +3891,8 @@ pub fn abrir(
                 EventoOverlay::Tecla { vk, .. } if buscando && vk == VK_ESCAPE => {
                     buscando = false;
                     busqueda.vaciar();
-                    orden = filtrar(&fichas, &busqueda);
+                    en_chats.cerrar();
+                    orden = en_chats.filtrar(&fichas, &busqueda);
                     hay_que_pintar = true;
                 }
                 // Editando una receta del asistente en la caja: Entrar guarda
@@ -4135,7 +4148,7 @@ pub fn abrir(
                     .into_iter()
                     .cloned()
                     .collect();
-                orden = filtrar(&fichas, &busqueda);
+                orden = en_chats.filtrar(&fichas, &busqueda);
                 // El proyecto abierto sigue siendo el mismo aunque haya
                 // cambiado de sitio en la lista.
                 elegida = elegida_id.and_then(|id| fichas.iter().position(|f| f.id == id));
@@ -4212,6 +4225,8 @@ pub fn abrir(
                         a.info = None;
                         cerrar_panel(ubicacion, a);
                         if let Some(j) = codigo.and_then(|c| indice_de_codigo(&a.mensajes, &c)) {
+                            // Lo de dentro de una carpeta, a su tarjeta.
+                            let j = buscar_en_chats::adonde_saltar(&a.mensajes, j);
                             a.ir_a = Some(j);
                             a.resaltado = Some((j, std::time::Instant::now()));
                         }
@@ -4223,6 +4238,23 @@ pub fn abrir(
                     tracing::warn!(%proyecto, "el universo pidio un proyecto que no esta en la lista")
                 }
             }
+        }
+        // Lo encontrado en todos los chats que se pulso para abrirlo: ya en
+        // su chat, se toca su burbuja, que lo abre en su visor.
+        if let Some(j) = en_chats.tomar_abrir(abierto.as_ref(), textos) {
+            tocar_la_burbuja(
+                j,
+                ubicacion,
+                &mut abierto,
+                &fichas,
+                &mut elegida,
+                &mut borradores,
+                textos,
+                lienzo,
+                idioma,
+                &identidad,
+            );
+            hay_que_pintar = true;
         }
         // La figura elegida en su ventana para este chat (el «+» → «Figura»):
         // despues de `ir_a`, que ya trajo su proyecto si era otro.
@@ -4363,7 +4395,7 @@ pub fn abrir(
         }
         // Lo escrito en el buscador de la lista, tambien dentro de todos los
         // chats: tras la espera se le pide al hilo, y lo que conteste se pinta.
-        if en_chats.latido(&busqueda, ms) {
+        if en_chats.latido(&busqueda, buscando, disposicion.filas.ancho, escala, ms) {
             let d = disponer(marco, escala, ancho_lista, abierto.as_ref());
             scroll = d.scroll_ajustado(
                 scroll,
@@ -4472,6 +4504,7 @@ pub fn abrir(
                     &motor,
                 );
             }
+            faltan_fondos |= en_chats.preparar(&motor);
             if let Ok(destino) = superficie.empezar(&motor) {
                 let lista = Lista {
                     fichas: &fichas,
@@ -4612,6 +4645,7 @@ pub fn abrir(
                     // asi que volver a subirlos no toca el disco.
                     miniaturas.soltar();
                     previas.soltar();
+                    en_chats.soltar();
                     CACHE_GRAFITO.with_borrow_mut(|c| c.vaciar());
                     logo::soltar();
                     crate::tema_cosmos::soltar();
