@@ -31,6 +31,8 @@
 //!   trait: cada aparato pone como guarda sus chats) y lo que es igual en
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
+//! - `camara`: el movil como camara de la reunion que graba el PC
+//!   (`camara_remota` y las fotos y clips con `destino: "grabacion"`).
 //! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
 //! - `compartidos`, `valla` e `invitacion`: los chats compartidos con otras
 //!   personas (Android v0.122.0): llaves P-256, listas firmadas, la valla de
@@ -46,6 +48,7 @@
 pub mod al_lienzo;
 pub mod anotado;
 pub mod base;
+pub mod camara;
 pub mod canal;
 pub mod canonico;
 pub mod codigo;
@@ -94,6 +97,11 @@ pub const VERSION: u32 = 4;
 pub const DIARIO: &str = "diario1";
 pub const REANUDAR: &str = "reanudar1";
 pub const CAPACIDADES: [&str; 2] = [DIARIO, REANUDAR];
+/// [CAPACIDADES] mas [camara::CAPACIDAD] (`camara1`): lo que dice el PC que
+/// recibe las fotos y clips del movil en sus grabaciones. Va aparte porque
+/// solo lo puede decir quien de verdad las atiende
+/// ([`al_lienzo::Recibe::camara`]).
+pub const CAPACIDADES_CON_CAMARA: [&str; 3] = [DIARIO, REANUDAR, camara::CAPACIDAD];
 /// Desde aqui, un archivo se reanuda en vez de volver a mandarse entero.
 pub const REANUDAR_DESDE: i64 = 1 << 20;
 

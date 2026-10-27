@@ -75,6 +75,26 @@ pub struct Suelto {
     pub mime: String,
     pub bytes: i64,
     pub destino: String,
+    /// **Lo de la camara** (`destino: "grabacion"`, ver [`crate::camara`]):
+    /// de que grabacion es la foto, su minuto calculado en el movil (`ms`,
+    /// lo primero), la hora del movil al hacerla (`tomada_en`) y lo que va
+    /// adelantado su reloj sobre el del PC (`reloj`). En cualquier otro
+    /// `suelto`, vacios y sin escribir.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub grabacion: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ms: Option<i64>,
+    #[serde(skip_serializing_if = "es_cero")]
+    pub tomada_en: i64,
+    #[serde(skip_serializing_if = "es_cero")]
+    pub reloj: i64,
+    /// Lo que dura un clip de video de la camara (su `ms` es donde empezo).
+    #[serde(rename = "duracionMs", skip_serializing_if = "es_cero")]
+    pub duracion_ms: i64,
+}
+
+fn es_cero(v: &i64) -> bool {
+    *v == 0
 }
 
 impl Default for Suelto {
@@ -85,6 +105,11 @@ impl Default for Suelto {
             mime: String::new(),
             bytes: 0,
             destino: DESTINO_ABIERTO.into(),
+            grabacion: String::new(),
+            ms: None,
+            tomada_en: 0,
+            reloj: 0,
+            duracion_ms: 0,
         }
     }
 }
@@ -109,6 +134,10 @@ pub struct Contestacion {
     /// El nombre del chat abierto donde quedo, con `donde: "chat_abierto"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat: Option<String>,
+    /// El minuto de la grabacion donde quedo una foto de la camara
+    /// (`donde: "grabacion"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ms: Option<i64>,
 }
 
 /// Donde quedo en el otro aparato.
@@ -263,7 +292,7 @@ fn leer<F: Read + Write, T: for<'a> Deserialize<'a>>(c: &mut Canal<F>) -> Result
 }
 
 /// Un error del otro, con su tipo cuando lo tiene.
-fn error_remoto(e: String) -> ErrorAlLienzo {
+pub(crate) fn error_remoto(e: String) -> ErrorAlLienzo {
     if e == OCUPADO {
         ErrorAlLienzo::Ocupado
     } else if es_sin_soporte(&e) {
@@ -279,11 +308,13 @@ fn error_remoto(e: String) -> ErrorAlLienzo {
 
 /// Una conexion ya saludada con el otro, lista para mandarle archivos.
 pub struct Conexion<F: Read + Write> {
-    canal: Canal<F>,
+    pub(crate) canal: Canal<F>,
     /// El otro, tal como se presento.
     pub otro: Aparato,
     /// En que puerto escucha el, para recordarlo.
     pub puerto_del_otro: u32,
+    /// Lo que dijo saber hacer en su `hola` (ver [`crate::CAPACIDADES`]).
+    pub capacidades: Vec<String>,
     despedida: bool,
 }
 
@@ -322,6 +353,7 @@ impl<F: Read + Write> Conexion<F> {
             canal,
             otro: hola.yo,
             puerto_del_otro: hola.puerto,
+            capacidades: hola.capacidades,
             despedida: false,
         })
     }
@@ -330,16 +362,35 @@ impl<F: Read + Write> Conexion<F> {
     /// y [ErrorAlLienzo::SoloFotos] dejan la conexion sana: no salio ningun
     /// trozo.
     pub fn mandar(&mut self, ruta: &Path, nombre: &str) -> Result<Llegada, ErrorAlLienzo> {
+        let listo = self.mandar_suelto(
+            ruta,
+            Suelto {
+                nombre: nombre.to_string(),
+                mime: mime_de(nombre).to_string(),
+                ..Default::default()
+            },
+        )?;
+        Ok(Llegada {
+            donde: Donde::de_texto(listo.donde.as_deref()),
+            chat: listo.chat.filter(|c| !c.trim().is_empty()),
+        })
+    }
+
+    /// El `suelto` entero, con su «vale» y su «listo» (`bytes` lo pone el
+    /// fichero).
+    pub(crate) fn mandar_suelto(
+        &mut self,
+        ruta: &Path,
+        p: Suelto,
+    ) -> Result<Contestacion, ErrorAlLienzo> {
         // Antes de pedir nada: si el fichero no esta, no se le promete al
         // otro algo que no llegara.
         let sale = Salida::de_fichero(ruta)?;
         enviar(
             &mut self.canal,
             &Suelto {
-                nombre: nombre.to_string(),
-                mime: mime_de(nombre).to_string(),
                 bytes: sale.largo,
-                ..Default::default()
+                ..p
             },
         )?;
         let vale: Contestacion = leer(&mut self.canal)?;
@@ -353,14 +404,11 @@ impl<F: Read + Write> Conexion<F> {
                 "El archivo cambió mientras se mandaba".into(),
             ));
         }
-        let listo: Contestacion = leer(&mut self.canal)?;
-        if let Some(e) = listo.error {
+        let mut listo: Contestacion = leer(&mut self.canal)?;
+        if let Some(e) = listo.error.take() {
             return Err(error_remoto(e));
         }
-        Ok(Llegada {
-            donde: Donde::de_texto(listo.donde.as_deref()),
-            chat: listo.chat.filter(|c| !c.trim().is_empty()),
-        })
+        Ok(listo)
     }
 
     /// Se despide (`adios`). Si la conexion ya se rompio, no pasa nada.
@@ -398,6 +446,12 @@ pub trait Recibe {
     /// Lo llegado esta en `fichero` (temporal: quien lo guarda lo copia o lo
     /// mueve; si sigue ahi al volver, se borra).
     fn guardar(&mut self, p: &Suelto, fichero: &Path) -> Result<Llegada, String>;
+    /// **Quien atiende la camara del movil** (`camara_remota` y las fotos
+    /// con `destino: "grabacion"`, ver [`crate::camara`]). Sin ella, como un
+    /// aparato de antes.
+    fn camara(&mut self) -> Option<&mut dyn crate::camara::Camara> {
+        None
+    }
 }
 
 /// Atiende una peticion `suelto` ya leida: el lado del PC que recibe y el
@@ -422,7 +476,17 @@ pub fn responder<F: Read + Write>(
     if !(0..=TOPE_DE_SUELTO).contains(&p.bytes) {
         return negarse(canal, "El archivo es demasiado grande".into());
     }
-    if let Err(e) = quien.aceptar(p) {
+    // Una foto de la camara del movil: a la grabacion, no a lo abierto.
+    let camara = p.destino == crate::camara::DESTINO;
+    let aceptado = if camara {
+        crate::camara::aceptar(p).and_then(|()| match quien.camara() {
+            Some(c) => c.aceptar_foto(p),
+            None => Err(format!("No sé qué es «{}»", crate::camara::PETICION)),
+        })
+    } else {
+        quien.aceptar(p)
+    };
+    if let Err(e) = aceptado {
         return negarse(canal, e);
     }
     let fichero = fichero_temporal(carpeta, &p.nombre);
@@ -448,6 +512,18 @@ pub fn responder<F: Read + Write>(
             error: Some(format!("No se pudo guardar: {e}")),
             ..Default::default()
         },
+        (Ok(Some(_)), Ok(f)) if camara => {
+            drop(f);
+            let clip = crate::camara::es_clip(p);
+            crate::camara::listo_de_foto(if !crate::camara::fichero_es_valido(&fichero, clip) {
+                Err(crate::camara::SOLO_FOTOS_Y_CLIPS.into())
+            } else {
+                match quien.camara() {
+                    Some(c) => c.guardar_foto(p, &fichero),
+                    None => Err(format!("No sé qué es «{}»", crate::camara::PETICION)),
+                }
+            })
+        }
         (Ok(Some(_)), Ok(f)) => {
             drop(f);
             match quien.guardar(p, &fichero) {

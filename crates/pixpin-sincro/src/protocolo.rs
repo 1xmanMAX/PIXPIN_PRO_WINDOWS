@@ -497,6 +497,30 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         })
     }
 
+    /// **`camara_remota`** ([`crate::camara`]): como va la grabacion de este
+    /// aparato, con su reloj para que el otro mida el desfase. Lo contesta
+    /// quien atiende los sueltos ([`crate::al_lienzo::Recibe::camara`]); sin
+    /// el, como un aparato de antes. Solo devuelve error si la red se corto.
+    fn atender_camara<F: Read + Write>(
+        &self,
+        canal: &mut Canal<F>,
+        otro: &Aparato,
+    ) -> Resultado<()> {
+        let mut quien = self.suelto.map(|fabrica| fabrica(otro));
+        let anuncio = match quien.as_mut().and_then(|q| q.camara()) {
+            Some(c) => crate::camara::Anuncio {
+                t: crate::camara::PETICION.into(),
+                reloj: (self.ahora)(),
+                ..c.anuncio().unwrap_or_else(crate::camara::Anuncio::nada)
+            },
+            None => crate::camara::Anuncio {
+                error: Some(format!("No sé qué es «{}»", crate::camara::PETICION)),
+                ..Default::default()
+            },
+        };
+        enviar(canal, &anuncio)
+    }
+
     pub fn atender<F: Read + Write>(&self, flujo: F, nonce: [u8; 32]) -> Resultado<()> {
         self.atender_con_galeria(flujo, nonce, None)
     }
@@ -645,6 +669,10 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             if p.t == crate::al_lienzo::SUELTO {
                 self.atender_suelto(canal, otro, &cruda)?;
+                continue;
+            }
+            if p.t == crate::camara::PETICION {
+                self.atender_camara(canal, otro)?;
                 continue;
             }
             if p.t == "adios" {
@@ -1277,6 +1305,13 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 }
                 continue;
             }
+            // La camara del movil tampoco toca lo sincronizado.
+            if con_sueltos && p.t == crate::camara::PETICION {
+                if self.atender_camara(canal, otro).is_err() {
+                    break;
+                }
+                continue;
+            }
             let adios = p.t == "adios";
             let r = if adios {
                 Respuesta::default()
@@ -1454,6 +1489,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
 /// contesta (`SOLO_DEL_GRUPO`).
 fn solo_del_grupo(t: &str) -> bool {
     t == crate::al_lienzo::SUELTO
+        || t == crate::camara::PETICION
         || galeria::es_de_galeria(t)
         || t == "compartidos"
         || t == "borrarchat"
