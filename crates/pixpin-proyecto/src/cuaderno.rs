@@ -642,6 +642,28 @@ pub struct Cuaderno {
     pub lineas_rotas: usize,
 }
 
+/// **Rescata una linea con una clave repetida** (27-oct-2026): las fotos y
+/// los clips de la camara de la reunion presencial se escribieron un dia con
+/// `origen: "camara"` en `resto`, y `origen` ya es un campo del mensaje: la
+/// linea salia con `"origen"` dos veces y no se leia (el mensaje se perdia
+/// del chat). Leida como JSON suelto gana la ultima, la de `resto`; si es
+/// una de las fuentes de la camara, vuelve a su sitio (`resto.fuente`, ver
+/// `presencial::FUENTE`) y el campo del mensaje queda como estaba, vacio.
+fn rescatar(linea: &str) -> serde_json::Result<Mensaje> {
+    let v: serde_json::Value = serde_json::from_str(linea)?;
+    let mut m: Mensaje = serde_json::from_value(v)?;
+    if let Some(f) = m
+        .origen
+        .take_if(|o| o == crate::presencial::DE_CAMARA || o == crate::presencial::DEL_MOVIL)
+    {
+        m.resto.insert(
+            crate::presencial::FUENTE.into(),
+            serde_json::Value::String(f),
+        );
+    }
+    Ok(m)
+}
+
 impl Cuaderno {
     /// Lee un cuaderno de su texto.
     ///
@@ -654,7 +676,7 @@ impl Cuaderno {
             if linea.trim().is_empty() {
                 continue;
             }
-            match serde_json::from_str::<Mensaje>(linea) {
+            match serde_json::from_str::<Mensaje>(linea).or_else(|_| rescatar(linea)) {
                 Ok(m) => mensajes.push(m),
                 Err(_) => lineas_rotas += 1,
             }
@@ -1478,5 +1500,43 @@ mod pruebas_versiones {
         // Y una linea de antes (sin las claves) se lee sin version.
         let vieja: Mensaje = serde_json::from_str(r#"{"id":"a","cuando":1}"#).unwrap();
         assert_eq!((vieja.version_de, vieja.version_n), (None, None));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_fuente {
+    use super::*;
+
+    #[test]
+    fn la_foto_de_la_camara_se_vuelve_a_leer() {
+        let mut m = Mensaje {
+            id: "1".into(),
+            ..Default::default()
+        };
+        crate::presencial::marcar_de_camara(&mut m.resto);
+        let leido = Cuaderno::leer(&format!("{}\n", linea_de(&m).unwrap()));
+        assert_eq!(leido.mensajes.len(), 1, "no se pierde");
+        assert!(crate::presencial::es_de_camara(&leido.mensajes[0].resto));
+        assert_eq!(leido.mensajes[0].origen, None);
+    }
+
+    #[test]
+    fn la_linea_con_origen_repetido_se_rescata() {
+        // Lo que escribia la reunion presencial con `origen` en `resto`.
+        let linea = r#"{"id":"7","cuando":7,"clase":"IMAGEN","nombre":"foto.jpg","aparato":null,"origen":null,"origen":"camara","enGrabacion":{"de":"v","ms":5}}"#;
+        let c = Cuaderno::leer(&format!("{linea}\n"));
+        assert_eq!((c.mensajes.len(), c.lineas_rotas), (1, 0));
+        let m = &c.mensajes[0];
+        assert!(crate::presencial::es_de_camara(&m.resto));
+        assert_eq!(m.origen, None, "el campo del mensaje queda vacio");
+        assert!(m.resto.contains_key("enGrabacion"));
+        // Caso negativo: un `origen` de verdad (un aparato) no se toca, y lo
+        // que no es JSON sigue roto.
+        let otra = r#"{"id":"8","origen":"K7Q2"}"#;
+        assert_eq!(
+            Cuaderno::leer(otra).mensajes[0].origen.as_deref(),
+            Some("K7Q2")
+        );
+        assert_eq!(Cuaderno::leer("{no es json\n").lineas_rotas, 1);
     }
 }

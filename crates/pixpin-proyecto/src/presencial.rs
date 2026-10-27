@@ -18,7 +18,7 @@
 //! - **El minuto de cada foto** ([`ms_de_la_foto`]) y **su nombre**
 //!   ([`nombre_de_la_foto`]).
 //! - **Que una imagen salio de la camara** ([`marcar_de_camara`]): en el
-//!   `resto` del mensaje, `origen: "camara"`. Es el unico campo nuevo; lo
+//!   `resto` del mensaje, `fuente: "camara"` (el movil, `"movil"`). Es el unico campo nuevo; lo
 //!   demas (`enGrabacion: {de, ms}`) es lo de las capturas.
 //! - **Los clips de video** con la camara ([`modo_para_clip`],
 //!   [`bits_del_clip`], [`poner_clips`]): 1080p a 30 fps como mucho, a ritmo
@@ -354,19 +354,42 @@ pub fn nombre_de_la_foto(
     )
 }
 
-/// La clave del origen de una imagen en `resto`.
-pub const ORIGEN: &str = "origen";
-/// Su valor para las fotos de la camara.
+/// **La clave de donde salio una imagen o un clip** en `resto`:
+/// `fuente`. **No `origen`**: ese nombre ya es un campo del mensaje
+/// (`Mensaje::origen`, el aparato de donde se copio) y, escrito tambien en
+/// `resto`, la linea del cuaderno salia con `"origen"` dos veces y **no se
+/// podia volver a leer** (el mensaje desaparecia del chat). Lo escrito asi
+/// se rescata al leer (`cuaderno::Cuaderno::leer`).
+pub const FUENTE: &str = "fuente";
+/// Su valor para lo de la camara del equipo (reunion presencial).
 pub const DE_CAMARA: &str = "camara";
+/// Su valor para lo de la camara del movil (`camara_del_movil`).
+pub const DEL_MOVIL: &str = "movil";
 
 /// Apunta en el `resto` de una imagen que salio de la camara.
 pub fn marcar_de_camara(resto: &mut Map<String, Value>) {
-    resto.insert(ORIGEN.into(), Value::String(DE_CAMARA.into()));
+    resto.insert(FUENTE.into(), Value::String(DE_CAMARA.into()));
+}
+
+/// Apunta en el `resto` de una foto o un clip que mando el movil.
+pub fn marcar_del_movil(resto: &mut Map<String, Value>) {
+    resto.insert(FUENTE.into(), Value::String(DEL_MOVIL.into()));
+}
+
+/// De donde salio: `camara`, `movil` o nada (la pantalla, y todo lo de
+/// antes).
+pub fn fuente_de(resto: &Map<String, Value>) -> Option<&str> {
+    resto.get(FUENTE).and_then(Value::as_str)
 }
 
 /// Si una imagen salio de la camara (y no de la pantalla).
 pub fn es_de_camara(resto: &Map<String, Value>) -> bool {
-    resto.get(ORIGEN).and_then(Value::as_str) == Some(DE_CAMARA)
+    fuente_de(resto) == Some(DE_CAMARA)
+}
+
+/// Si una foto o un clip lo mando el movil.
+pub fn es_del_movil(resto: &Map<String, Value>) -> bool {
+    fuente_de(resto) == Some(DEL_MOVIL)
 }
 
 // --- La resolucion completa al estudiar -------------------------------------
@@ -594,10 +617,15 @@ mod pruebas {
         assert!(!es_de_camara(&resto));
         marcar_de_camara(&mut resto);
         assert!(es_de_camara(&resto));
-        assert_eq!(resto.get("origen"), Some(&Value::String("camara".into())));
-        // Caso negativo: otro origen no es la camara.
-        resto.insert(ORIGEN.into(), Value::String("pantalla".into()));
+        assert_eq!(resto.get("fuente"), Some(&Value::String("camara".into())));
+        assert!(!es_del_movil(&resto));
+        marcar_del_movil(&mut resto);
+        assert!(es_del_movil(&resto) && !es_de_camara(&resto));
+        // Caso negativo: otra fuente no es la camara.
+        resto.insert(FUENTE.into(), Value::String("pantalla".into()));
         assert!(!es_de_camara(&resto));
+        // Y el campo `origen` del mensaje no se toca.
+        assert!(!resto.contains_key("origen"));
     }
 
     #[test]
