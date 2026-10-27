@@ -38,9 +38,16 @@
 //!
 //! **Acercar lo que se ve como en un lienzo** (`pixpin_ui::encuadre`): la
 //! rueda encima del video o de la captura acerca hacia el raton, arrastrar
-//! la lleva, el doble clic la vuelve a encajar; abajo a la derecha, −, el
-//! tanto por ciento, + y encajar. Al cambiar de captura o de video a
-//! captura, vuelve a encajada.
+//! la lleva, el doble clic la vuelve a encajar; abajo a la derecha, −, + y
+//! encajar. Al cambiar de captura o de video a captura, vuelve a encajada.
+//!
+//! **Mas sitio para la imagen** (27-oct-2026, como el movil 497f6aac): en
+//! la esquina, el boton de pantalla entera (como el de YouTube) pone la
+//! ventana a pantalla completa con la imagen ocupandola, y otra vez la
+//! reduce; «Texto» (o la T) oculta o ensena la transcripcion y su sitio se
+//! lo queda la imagen; la ventana se deja estrechar hasta 900 (las columnas
+//! ceden y los mandos se quedan en iconos); y las miniaturas van con su
+//! proporcion de verdad, sin franjas, mas pequenas. Sin el tanto por ciento.
 //!
 //! **Anotar encima** con el lienzo de siempre: «Anotar» abre la captura que
 //! se ve en SU lienzo (`foto-<id>`, el de las fotos del chat: K11,
@@ -57,7 +64,8 @@
 //!
 //! Teclado: espacio o K reproduce y para, ←/→ cinco segundos, J/L diez,
 //! ↑/↓ el trozo anterior y el siguiente, M pone un marcador (se escribe su
-//! nota e Intro lo guarda), S enciende y apaga «Seguir», A anota, Ctrl+0
+//! nota e Intro lo guarda), S enciende y apaga «Seguir», A anota, T
+//! oculta o ensena la transcripcion, Ctrl+0
 //! encaja, Ctrl+más/menos acerca y aleja, F11 pantalla completa, Escape
 //! sale de ella o cierra.
 
@@ -88,12 +96,17 @@ use crate::ventanita::dentro;
 /// Lo que mide la ventana (logicos) y sus columnas.
 const ANCHO: u32 = 1360;
 const ALTO: u32 = 840;
-/// Lo menos que se deja estirar (logicos): caben las tres columnas y los
-/// mandos de debajo del video sin pisarse.
-const ANCHO_MINIMO: f32 = 1200.0;
+/// Lo menos que se deja estirar (logicos). Mas sitio para la imagen
+/// (27-oct-2026, como el movil 497f6aac): de 1200 a 900; estrecha, la tira
+/// y el texto se estrechan y, si los mandos no caben con sus rotulos, se
+/// quedan en iconos (`Disposicion::compacto`).
+const ANCHO_MINIMO: f32 = 900.0;
 const ALTO_MINIMO: f32 = 640.0;
 const MARGEN: f32 = 16.0;
-const ANCHO_FOTOS: f32 = 236.0;
+/// La tira de capturas, mas estrecha que antes (236): las miniaturas, mas
+/// pequenas (checklist 25).
+const ANCHO_FOTOS: f32 = 210.0;
+const ANCHO_FOTOS_MINIMO: f32 = 150.0;
 const CABECERA: f32 = 36.0;
 /// El color de los marcadores: ambar, que se distingue del azul de las
 /// capturas en la barra del tiempo.
@@ -135,6 +148,7 @@ const VK_K: u32 = 0x4B;
 const VK_L: u32 = 0x4C;
 const VK_M: u32 = 0x4D;
 const VK_S: u32 = 0x53;
+const VK_T: u32 = 0x54;
 const VK_MAS: u32 = 0xBB;
 const VK_MENOS: u32 = 0xBD;
 const VK_MAS_NUM: u32 = 0x6B;
@@ -724,6 +738,10 @@ enum Zona {
     Encajar,
     /// Anotar lo que se ve (la captura, o el fotograma del video).
     Anotar,
+    /// Ensenar u ocultar la columna de la transcripcion.
+    Transcripcion,
+    /// La imagen a pantalla entera, o reducirla (en su esquina).
+    PantallaEntera,
 }
 
 /// Que se esta viendo en grande: al cambiar, el encuadre vuelve a encajado.
@@ -744,24 +762,73 @@ struct Disposicion {
     texto: RectF,
     cabecera_fotos: RectF,
     fotos: RectF,
-    /// Lo que mide una fila de la tira.
-    fila_foto: f32,
+    /// Lo que mide a lo ancho la imagen de una fila de la tira (lo alto va
+    /// con su proporcion, ver [`alto_de_miniatura`]).
+    ancho_miniatura: f32,
+    /// Los mandos, solo con su icono: no caben con sus rotulos.
+    compacto: bool,
+    /// La escala con que se repartio (1.0 = 96 ppp).
+    escala: f32,
 }
 
-fn disponer(ancho: f32, alto: f32, e: f32) -> Disposicion {
+/// **Como se reparte la ventana**: con la transcripcion o sin ella (su
+/// boton, o la T) y con la imagen a pantalla entera (el boton de su
+/// esquina, como el de YouTube).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Reparto {
+    texto: bool,
+    entera: bool,
+}
+
+impl Default for Reparto {
+    fn default() -> Reparto {
+        Reparto {
+            texto: true,
+            entera: false,
+        }
+    }
+}
+
+fn disponer(ancho: f32, alto: f32, e: f32, reparto: Reparto) -> Disposicion {
     let m = MARGEN * e;
     // Sin barra dentro: la de los visores va fuera, encima de la ventana.
     let arriba = m;
     let abajo = alto - m;
-    let ancho_fotos = ANCHO_FOTOS * e;
+    // Estrecha, la tira y el texto ceden sitio.
+    let logico = ancho / e;
+    let ancho_fotos = if reparto.entera {
+        0.0
+    } else {
+        (logico * 0.17).clamp(ANCHO_FOTOS_MINIMO, ANCHO_FOTOS) * e
+    };
     let x_fotos = ancho - m - ancho_fotos;
-    let ancho_texto = (ancho * 0.30).clamp(320.0 * e, 460.0 * e);
-    let x_texto = x_fotos - m - ancho_texto;
-    let ancho_medio = (x_texto - 2.0 * m).max(100.0 * e);
+    let ancho_texto = if reparto.texto && !reparto.entera {
+        (ancho * 0.30).clamp(240.0 * e, 460.0 * e)
+    } else {
+        0.0
+    };
+    // Sin columna, sin su hueco.
+    let x_texto = if ancho_texto > 0.0 {
+        x_fotos - m - ancho_texto
+    } else {
+        x_fotos
+    };
+    let derecha = if ancho_fotos > 0.0 {
+        x_texto - m
+    } else {
+        ancho - m
+    };
+    let ancho_medio = (derecha - m).max(100.0 * e);
     let alto_columna = abajo - arriba;
-    let alto_medio = (ancho_medio * 9.0 / 16.0)
-        .min(alto_columna - 230.0 * e)
-        .max(120.0 * e);
+    // A pantalla entera, la imagen llega hasta los mandos (sin marcadores).
+    let bajo_el_medio = if reparto.entera { 92.0 } else { 230.0 } * e;
+    let alto_medio = if reparto.entera {
+        (alto_columna - bajo_el_medio).max(120.0 * e)
+    } else {
+        (ancho_medio * 9.0 / 16.0)
+            .min(alto_columna - bajo_el_medio)
+            .max(120.0 * e)
+    };
     let medio = RectF {
         x: m,
         y: arriba,
@@ -798,18 +865,42 @@ fn disponer(ancho: f32, alto: f32, e: f32) -> Disposicion {
         ancho: w,
         alto: (alto_columna - CABECERA * e).max(0.0),
     };
-    let alto_imagen = (ancho_fotos - 16.0 * e) * 9.0 / 16.0;
     Disposicion {
         medio,
         tiempo,
         mandos,
-        senales,
+        senales: if reparto.entera {
+            RectF {
+                alto: 0.0,
+                ..senales
+            }
+        } else {
+            senales
+        },
         cabecera_texto: cab(x_texto, ancho_texto),
         texto: lista(x_texto, ancho_texto),
         cabecera_fotos: cab(x_fotos, ancho_fotos),
         fotos: lista(x_fotos, ancho_fotos),
-        fila_foto: 8.0 * e + alto_imagen + 24.0 * e,
+        ancho_miniatura: (ancho_fotos - 16.0 * e).max(0.0),
+        compacto: ancho_medio < 640.0 * e,
+        escala: e,
     }
+}
+
+/// **Lo alto de la imagen de una miniatura**, con su proporcion de verdad
+/// (checklist 25: «miniaturas de capturas con su proporcion real»): a lo
+/// ancho de la tira y, una captura de pie, como mucho tan alta como ancha
+/// (el alto es el tope y lo que varia es el ancho). Sin medidas aun, 16:9.
+fn alto_de_miniatura(ancho: f32, medidas: Option<(u32, u32)>) -> f32 {
+    match medidas {
+        Some((w, h)) if w > 0 && h > 0 => (ancho * h as f32 / w as f32).min(ancho),
+        _ => ancho * 9.0 / 16.0,
+    }
+}
+
+/// Lo que mide una fila de la tira con una imagen de `alto_imagen`.
+fn alto_de_fila(alto_imagen: f32, e: f32) -> f32 {
+    8.0 * e + alto_imagen + 24.0 * e
 }
 
 /// Todo lo de la ventana abierta.
@@ -820,6 +911,12 @@ struct Vista {
     seguir: bool,
     /// Ensenar la captura del minuto aunque haya video.
     ver_capturas: bool,
+    /// Como se reparte: con la transcripcion o sin ella, y la imagen a
+    /// pantalla entera (ver [`Reparto`]).
+    reparto: Reparto,
+    /// Pulso el boton de pantalla entera (lo hace el bucle, que tiene la
+    /// ventana).
+    pedir_entera: bool,
     scroll_texto: f32,
     scroll_fotos: f32,
     /// Hasta cuando no se sigue al sonido: se movio una lista a mano.
@@ -886,6 +983,8 @@ impl Vista {
             medio,
             seguir: true,
             ver_capturas: false,
+            reparto: Reparto::default(),
+            pedir_entera: false,
             scroll_texto: 0.0,
             scroll_fotos: 0.0,
             a_mano_hasta: None,
@@ -898,7 +997,7 @@ impl Vista {
             pulsado_x: 0,
             raton: (-1.0, -1.0),
             zonas: Vec::new(),
-            disp: disponer(ANCHO as f32, ALTO as f32, 1.0),
+            disp: disponer(ANCHO as f32, ALTO as f32, 1.0, Reparto::default()),
             altos_texto: RefCell::new((0, Vec::new())),
             encuadre: Encuadre::default(),
             visto: None,
@@ -961,8 +1060,19 @@ impl Vista {
         self.disp.texto.alto
     }
 
+    /// Lo alto de cada fila de la tira: cada captura con su proporcion.
     fn altos_fotos(&self) -> Vec<f32> {
-        vec![self.disp.fila_foto; self.clase.capturas.len()]
+        let e = self.disp.escala;
+        (0..self.clase.capturas.len())
+            .map(|i| {
+                let medidas = self
+                    .miniaturas
+                    .get(i)
+                    .and_then(|m| m.as_ref().map(|(_, w, h)| (*w, *h)))
+                    .or_else(|| self.medidas.get(i).copied().flatten());
+                alto_de_fila(alto_de_miniatura(self.disp.ancho_miniatura, medidas), e)
+            })
+            .collect()
     }
 
     /// Movio una lista con la rueda: la otra la sigue (con «Seguir») y se
@@ -1355,7 +1465,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         con_video = v.medio.es_video(),
         "ventana de estudiar la clase abierta"
     );
-    v.disp = disponer(area.ancho as f32, area.alto as f32, e);
+    v.disp = disponer(area.ancho as f32, area.alto as f32, e, v.reparto);
 
     let mut vivo = true;
     let mut pintar = true;
@@ -1371,7 +1481,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                 *v.altos_texto.borrow_mut() = (0, Vec::new());
             }
             area = pin.area;
-            v.disp = disponer(area.ancho as f32, area.alto as f32, e);
+            v.disp = disponer(area.ancho as f32, area.alto as f32, e, v.reparto);
             pintar = true;
         }
         // Otra clase pedida con la ventana abierta.
@@ -1379,9 +1489,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         if let Some(o) = otra {
             match Clase::leer(&v.raiz, &o.proyecto, &o.id) {
                 Ok(c) => {
-                    let disp = v.disp;
+                    let (disp, reparto) = (v.disp, v.reparto);
                     v = Vista::nueva(recursos, v.raiz.clone(), c, o.ms);
                     v.disp = disp;
+                    v.reparto = reparto;
                     *pedido = o;
                 }
                 Err(e) => tracing::warn!(?e, "la otra clase no se pudo leer"),
@@ -1426,7 +1537,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                     if (nueva - e).abs() > f32::EPSILON {
                         e = nueva;
                         pin.poner_escala(e);
-                        v.disp = disponer(area.ancho as f32, area.alto as f32, e);
+                        v.disp = disponer(area.ancho as f32, area.alto as f32, e, v.reparto);
                         *v.altos_texto.borrow_mut() = (0, Vec::new());
                     }
                     pintar = true;
@@ -1596,6 +1707,21 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
         if !vivo {
             break;
         }
+        // **La imagen a pantalla entera** (el boton de su esquina): la
+        // ventana a pantalla completa y la imagen ocupandola; otra vez,
+        // reducir. Saliendo de pantalla completa por la barra, F11 o Esc,
+        // la imagen vuelve a su sitio.
+        if std::mem::take(&mut v.pedir_entera) {
+            v.reparto.entera = !v.reparto.entera;
+            if v.reparto.entera != pin.pantalla_completa {
+                pin.alternar_pantalla_completa(&mut ventana);
+            }
+            pintar = true;
+        }
+        if v.reparto.entera && !pin.pantalla_completa {
+            v.reparto.entera = false;
+            pintar = true;
+        }
         // «Anotar»: la captura que se ve, o el fotograma del video.
         if std::mem::take(&mut v.anotar) {
             anotar_lo_visto(&mut v, &motor, &recursos.d3d(), textos);
@@ -1652,7 +1778,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
             } else {
                 &CLARO
             };
-            v.disp = disponer(area.ancho as f32, area.alto as f32, e);
+            v.disp = disponer(area.ancho as f32, area.alto as f32, e, v.reparto);
             if let Ok(d) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&d, |p: &Pintor| {
                     pintar_todo(
@@ -1862,6 +1988,8 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
         Zona::ZoomMas => v.acercar(encuadre::PASO, None),
         Zona::Encajar => v.encuadre.encajar(),
         Zona::Anotar => v.anotar = true,
+        Zona::Transcripcion => v.reparto.texto = !v.reparto.texto,
+        Zona::PantallaEntera => v.pedir_entera = true,
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
@@ -1912,12 +2040,16 @@ fn tecla(v: &mut Vista, vk: u32, ctrl: bool, textos: &Catalogo, vivo: &mut bool)
             v.tragar = Some('a');
             v.anotar = true;
         }
+        VK_T => {
+            v.tragar = Some('t');
+            pulsar(v, Zona::Transcripcion, textos, vivo);
+        }
         VK_ESCAPE => *vivo = false,
         _ => {}
     }
     // Las letras de los atajos tambien llegan como caracter: sin marcador
     // abierto no hacen nada, pero la de la M no puede acabar en su nota.
-    if !matches!(vk, VK_M | VK_S | VK_A) {
+    if !matches!(vk, VK_M | VK_S | VK_A | VK_T) {
         v.tragar = None;
     }
 }
@@ -1950,9 +2082,15 @@ fn pintar_todo(
     pintar_medio(p, v, e, textos);
     pintar_tiempo(p, v, tema, e, posicion);
     pintar_mandos(p, v, tema, e, textos, posicion);
-    pintar_senales(p, v, tema, e, textos, posicion);
-    pintar_texto(p, v, tema, e, textos, posicion);
-    pintar_fotos(p, v, tema, e, textos, posicion);
+    // A pantalla entera, solo la imagen y sus mandos; sin la transcripcion,
+    // su columna se la queda la imagen.
+    if !v.reparto.entera {
+        pintar_senales(p, v, tema, e, textos, posicion);
+        if v.reparto.texto {
+            pintar_texto(p, v, tema, e, textos, posicion);
+        }
+        pintar_fotos(p, v, tema, e, textos, posicion);
+    }
 
     if let Some((texto, _)) = &v.aviso {
         let tam = 14.0 * e;
@@ -1997,7 +2135,7 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
     let caja = v.disp.medio;
     p.rellenar_redondeado(caja, 10.0 * e, hex(0x0b0f14));
     let recortado = p.empujar_recorte_redondeado(caja, 10.0 * e);
-    // Lo que mide lo que se pinta, para el tanto por ciento.
+    // Lo que mide lo que se pinta (sin nada, sin mandos encima).
     let mut visto: Option<(u32, u32)> = None;
     let encuadre = v.encuadre;
     if let Some(i) = v.captura_a_la_vista() {
@@ -2074,9 +2212,9 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
         };
         pintar_ficha(p, v, ficha, Some(icono), &rotulo, Zona::CambiarVista, e);
     }
-    let Some((w, h)) = visto else {
+    if visto.is_none() {
         return;
-    };
+    }
     // Arriba a la izquierda, «Anotar»: la captura en su lienzo o el
     // fotograma del video.
     let anotar = textos.t("estudiar-anotar");
@@ -2087,21 +2225,39 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
         alto: 28.0 * e,
     };
     pintar_ficha(p, v, ficha, Some(&mi::DRAW), &anotar, Zona::Anotar, e);
-    // Abajo a la derecha, el encuadre: −, el tanto por ciento, + y encajar.
-    let por_ciento = format!(
-        "{} %",
-        v.encuadre.por_ciento(caja_de(caja), w as f32, h as f32)
-    );
     let lado = 28.0 * e;
-    let ancho_cifra = p
-        .medir_texto("000 %", 12.5 * e)
-        .0
-        .max(p.medir_texto(&por_ciento, 12.5 * e).0)
-        + 12.0 * e;
-    let total = lado * 3.0 + ancho_cifra + 4.0 * e;
-    let pastilla = RectF {
-        x: caja.x + caja.ancho - total - 10.0 * e,
+    // En la esquina, como en YouTube: la imagen a pantalla entera, o
+    // reducirla (checklist 25).
+    let entera = RectF {
+        x: caja.x + caja.ancho - lado - 10.0 * e,
         y: caja.y + caja.alto - lado - 10.0 * e,
+        ancho: lado,
+        alto: lado,
+    };
+    let fondo = if dentro(entera, v.raton) { 0.85 } else { 0.65 };
+    p.rellenar_redondeado(entera, lado / 2.0, con_alfa(hex(0x000000), fondo));
+    let i = 18.0 * e;
+    p.icono(
+        if v.reparto.entera {
+            &mi::FULLSCREEN_EXIT
+        } else {
+            &mi::FULLSCREEN
+        },
+        RectF {
+            x: entera.x + (lado - i) / 2.0,
+            y: entera.y + (lado - i) / 2.0,
+            ancho: i,
+            alto: i,
+        },
+        Color::BLANCO,
+    );
+    v.zonas.push((entera, Zona::PantallaEntera));
+    // A su izquierda, el encuadre: −, + y encajar (sin el tanto por
+    // ciento, checklist 25).
+    let total = lado * 3.0 + 4.0 * e;
+    let pastilla = RectF {
+        x: entera.x - total - 8.0 * e,
+        y: entera.y,
         ancho: total,
         alto: lado,
     };
@@ -2117,7 +2273,7 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
         x += ancho;
         r
     };
-    let (menos, cifra, mas, encajar) = (sitio(lado), sitio(ancho_cifra), sitio(lado), sitio(lado));
+    let (menos, mas, encajar) = (sitio(lado), sitio(lado), sitio(lado));
     for (r, z) in [
         (menos, Zona::ZoomMenos),
         (mas, Zona::ZoomMas),
@@ -2140,7 +2296,6 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
     };
     centrado(p, "−", menos, 16.0 * e);
     centrado(p, "+", mas, 16.0 * e);
-    centrado(p, &por_ciento, cifra, 12.5 * e);
     let i = 16.0 * e;
     p.icono(
         &mi::CROP_FREE,
@@ -2376,22 +2531,43 @@ fn pintar_mandos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalo
         pixpin_voz::marca_de_tiempo(v.duracion())
     );
     let tam = 14.0 * e;
-    let (_, th) = p.medir_texto(&reloj, tam);
-    p.texto(
-        &reloj,
-        adelante.x + adelante.ancho + 14.0 * e,
-        y + (alto - th) / 2.0,
-        tam,
-        tema.texto,
-    );
-    // A la derecha: la velocidad, «Marcador» y «Seguir».
+    let (w_reloj, th) = p.medir_texto(&reloj, tam);
+    let x_reloj = adelante.x + adelante.ancho + 14.0 * e;
+    // A la derecha: la velocidad, «Marcador», «Seguir» y «Texto» (ensenar u
+    // ocultar la transcripcion; a pantalla entera no hay). Estrecha la
+    // ventana, solo sus iconos (`Disposicion::compacto`).
+    let rotulo = |t: String| if v.disp.compacto { String::new() } else { t };
     let velocidad = pixpin_audio::reloj::velocidad_legible(v.medio.velocidad());
-    let marcar = textos.t("estudiar-marcador");
-    let seguir = textos.t("estudiar-seguir");
+    let marcar = rotulo(textos.t("estudiar-marcador"));
+    let seguir = rotulo(textos.t("estudiar-seguir"));
+    let ver_texto = rotulo(textos.t("estudiar-ver-texto"));
+    let con_texto = !v.reparto.entera;
+    let ancho_boton = |r: &str| {
+        if r.is_empty() {
+            44.0 * e
+        } else {
+            ancho_de(p, r, e)
+        }
+    };
     let w_vel = p.medir_texto(&velocidad, 13.5 * e).0 + 24.0 * e;
-    let w_marcar = ancho_de(p, &marcar, e);
-    let w_seguir = ancho_de(p, &seguir, e);
-    let mut x = caja.x + caja.ancho - w_seguir;
+    let w_marcar = ancho_boton(&marcar);
+    let w_seguir = ancho_boton(&seguir);
+    let w_texto = if con_texto {
+        ancho_boton(&ver_texto)
+    } else {
+        0.0
+    };
+    let mut x = caja.x + caja.ancho - w_texto;
+    let c_texto = RectF {
+        x,
+        y,
+        ancho: w_texto,
+        alto,
+    };
+    if con_texto {
+        x -= 6.0 * e;
+    }
+    x -= w_seguir;
     let c_seguir = RectF {
         x,
         y,
@@ -2412,6 +2588,10 @@ fn pintar_mandos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalo
         ancho: w_vel,
         alto,
     };
+    // El reloj, si cabe entre los de la izquierda y los de la derecha.
+    if x_reloj + w_reloj + 8.0 * e <= c_vel.x {
+        p.texto(&reloj, x_reloj, y + (alto - th) / 2.0, tam, tema.texto);
+    }
     let fondo = if dentro(c_vel, v.raton) {
         tema.fila_sobre
     } else {
@@ -2451,6 +2631,20 @@ fn pintar_mandos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalo
         tema,
         e,
     );
+    if con_texto {
+        let encendido = v.reparto.texto;
+        boton(
+            p,
+            v,
+            c_texto,
+            Zona::Transcripcion,
+            &mi::SUBTITLES,
+            &ver_texto,
+            encendido,
+            tema,
+            e,
+        );
+    }
 }
 
 /// Los marcadores: el que se esta escribiendo arriba y, debajo, los que
@@ -2845,23 +3039,31 @@ fn pintar_fotos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
     v.scroll_fotos = v.scroll_fotos.clamp(0.0, clase::tope(&altos, caja.alto));
     let actual = clase::ultimo_antes(&v.clase.tiempos_capturas(), posicion);
     p.empujar_recorte(caja);
-    let paso = v.disp.fila_foto;
+    // Cada fila con lo alto de su captura (su proporcion de verdad).
+    let mut y = caja.y - v.scroll_fotos;
     for (i, (ms, _)) in v.clase.capturas.clone().iter().enumerate() {
-        let y = caja.y - v.scroll_fotos + i as f32 * paso;
-        if y + paso < caja.y || y > caja.y + caja.alto {
+        let paso = altos.get(i).copied().unwrap_or(0.0);
+        let arriba = y;
+        y += paso;
+        if arriba + paso < caja.y || arriba > caja.y + caja.alto {
             continue;
         }
         let fila = RectF {
             x: caja.x + 6.0 * e,
-            y,
+            y: arriba,
             ancho: caja.ancho - 12.0 * e,
             alto: paso,
         };
-        let marco = RectF {
+        let hueco = RectF {
             x: caja.x + 8.0 * e,
-            y: y + 8.0 * e,
+            y: arriba + 8.0 * e,
             ancho: caja.ancho - 16.0 * e,
             alto: paso - 32.0 * e,
+        };
+        // El marco es la imagen misma, sin franjas: centrada a lo ancho.
+        let marco = match v.miniaturas.get(i) {
+            Some(Some((_, w, h))) => encajar(hueco, *w, *h),
+            _ => hueco,
         };
         let es_actual = actual == Some(i);
         let encima = dentro(fila, v.raton) && dentro(caja, v.raton);
@@ -2880,14 +3082,14 @@ fn pintar_fotos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
             p.rellenar_redondeado(fila, 8.0 * e, tema.fila_sobre);
         }
         p.rellenar_redondeado(marco, 6.0 * e, hex(0x0b0f14));
-        if let Some(Some((b, w, h))) = v.miniaturas.get(i) {
-            p.bitmap(b, encajar(marco, *w, *h), None, false);
+        if let Some(Some((b, _, _))) = v.miniaturas.get(i) {
+            p.bitmap(b, marco, None, false);
         }
         let rotulo = format!("⏱ {}", pixpin_voz::marca_de_tiempo(*ms));
         p.texto(
             &rotulo,
-            marco.x + 2.0 * e,
-            marco.y + marco.alto + 5.0 * e,
+            hueco.x + 2.0 * e,
+            hueco.y + hueco.alto + 5.0 * e,
             12.5 * e,
             if es_actual { tema.enviar } else { tema.apagado },
         );
@@ -2939,6 +3141,14 @@ mod pruebas {
 
     #[test]
     fn las_columnas_caben_y_no_se_pisan() {
+        let sin_texto = Reparto {
+            texto: false,
+            ..Reparto::default()
+        };
+        let entera = Reparto {
+            entera: true,
+            ..Reparto::default()
+        };
         for (w, h, e) in [
             (1360.0, 840.0, 1.0),
             (2040.0, 1260.0, 1.5),
@@ -2947,20 +3157,44 @@ mod pruebas {
             (ANCHO_MINIMO, ALTO_MINIMO, 1.0),
             (ANCHO_MINIMO * 1.5, ALTO_MINIMO * 1.5, 1.5),
         ] {
-            let d = disponer(w, h, e);
-            assert!(d.medio.x + d.medio.ancho <= d.texto.x, "{w}");
-            assert!(d.texto.x + d.texto.ancho <= d.fotos.x, "{w}");
-            assert!(d.fotos.x + d.fotos.ancho <= w, "{w}");
-            assert!(d.mandos.y + d.mandos.alto <= h, "{w}");
-            assert!(d.fila_foto > 0.0);
-            // Sin barra dentro: lo de arriba empieza en el margen.
-            assert_eq!(d.medio.y, MARGEN * e, "{w}");
+            for r in [Reparto::default(), sin_texto, entera] {
+                let d = disponer(w, h, e, r);
+                assert!(d.medio.x + d.medio.ancho <= d.texto.x, "{w} {r:?}");
+                assert!(d.texto.x + d.texto.ancho <= d.fotos.x, "{w} {r:?}");
+                assert!(d.fotos.x + d.fotos.ancho <= w, "{w} {r:?}");
+                assert!(d.mandos.y + d.mandos.alto <= h, "{w} {r:?}");
+                // Sin barra dentro: lo de arriba empieza en el margen.
+                assert_eq!(d.medio.y, MARGEN * e, "{w}");
+            }
+            // Sin la transcripcion, su sitio es para la imagen; a pantalla
+            // entera, toda la ventana.
+            let con = disponer(w, h, e, Reparto::default());
+            let sin = disponer(w, h, e, sin_texto);
+            let toda = disponer(w, h, e, entera);
+            assert!(sin.medio.ancho > con.medio.ancho, "{w}");
+            assert_eq!(sin.texto.ancho, 0.0);
+            assert!(toda.medio.ancho >= sin.medio.ancho && toda.medio.alto > con.medio.alto);
+            assert_eq!((toda.fotos.ancho, toda.senales.alto), (0.0, 0.0));
+            assert!(con.ancho_miniatura > 0.0);
         }
-        // Los mandos de debajo del video caben a lo menos que se estira:
-        // los de la izquierda (unos 270 logicos) y los de la derecha (unos
-        // 270) no se pisan.
-        let d = disponer(ANCHO_MINIMO, ALTO_MINIMO, 1.0);
-        assert!(d.mandos.ancho >= 540.0, "{}", d.mandos.ancho);
+        // Holgada, los mandos con sus rotulos; a lo menos que se estira, solo
+        // sus iconos (unos 360 logicos), que caben.
+        assert!(!disponer(1360.0, 840.0, 1.0, Reparto::default()).compacto);
+        let d = disponer(ANCHO_MINIMO, ALTO_MINIMO, 1.0, Reparto::default());
+        assert!(d.compacto && d.mandos.ancho >= 360.0, "{}", d.mandos.ancho);
+        // Sin la transcripcion vuelven los rotulos.
+        assert!(!disponer(ANCHO_MINIMO, ALTO_MINIMO, 1.0, sin_texto).compacto);
+    }
+
+    #[test]
+    fn las_miniaturas_van_con_su_proporcion_y_de_pie_con_tope() {
+        assert_eq!(alto_de_miniatura(160.0, Some((1600, 900))), 90.0);
+        // De pie: como mucho cuadrada (varia el ancho, no el alto).
+        assert_eq!(alto_de_miniatura(160.0, Some((900, 1600))), 160.0);
+        // Caso negativo: sin medidas (aun no llego) o vacia, 16:9.
+        assert_eq!(alto_de_miniatura(160.0, None), 90.0);
+        assert_eq!(alto_de_miniatura(160.0, Some((0, 10))), 90.0);
+        assert!(alto_de_fila(90.0, 1.0) > 90.0);
     }
 
     #[test]

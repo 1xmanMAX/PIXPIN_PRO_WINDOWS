@@ -1921,6 +1921,7 @@ estudiar-cargando = Cargando…
 estudiar-ver-video = Ver el vídeo
 estudiar-ver-captura = Ver la captura
 estudiar-anotar = Anotar
+estudiar-ver-texto = Texto
 estudiar-fotograma-guardado = Fotograma guardado como captura: anótalo en el lienzo
 estudiar-nada-que-anotar = Aún no hay nada que anotar aquí
 anki-enviar = Enviar a Anki

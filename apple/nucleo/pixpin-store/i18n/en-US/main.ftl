@@ -1920,6 +1920,7 @@ estudiar-cargando = Loading…
 estudiar-ver-video = Show the video
 estudiar-ver-captura = Show the screenshot
 estudiar-anotar = Annotate
+estudiar-ver-texto = Text
 estudiar-fotograma-guardado = Frame saved as a screenshot: annotate it on the canvas
 estudiar-nada-que-anotar = There is nothing to annotate here yet
 anki-enviar = Send to Anki
