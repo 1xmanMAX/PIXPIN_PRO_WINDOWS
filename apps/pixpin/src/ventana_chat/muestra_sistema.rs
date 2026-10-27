@@ -121,11 +121,7 @@ fn los_mensajes_de_sistema_no_son_burbujas_ni_franja() {
     assert!(!hay_barra(&a));
     // La memoria, que solo se abria desde la franja, sigue en los tres
     // puntos del chat «Asistente».
-    let menu = menu_de_cabecera(
-        &textos,
-        false,
-        Some(crate::asistente::nube::Eleccion::Local),
-    );
+    let menu = menu_de_cabecera(&textos, false, Some(pixpin_ia::nube::Proveedor::Claude));
     assert!(menu.iter().any(|e| e.accion == Accion::AbrirMemoria));
     let _ = std::fs::remove_dir_all(&raiz);
 }
