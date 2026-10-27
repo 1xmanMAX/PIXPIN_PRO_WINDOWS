@@ -22,11 +22,13 @@
 //!   asi sale igual que entro y su resumen no cambia. Al salir solo se
 //!   reescribe lo nacido aqui con ruta relativa.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use pixpin_sincro::canonico::Json;
+use pixpin_sincro::diario::{self, Diario};
 use pixpin_sincro::disco::{
     self, Cambio, Disco, GENERAL, Identidad, NOMBRE_GENERAL, PORTATIL, escribir_atomico, limpio,
 };
@@ -180,6 +182,7 @@ impl DiscoPc {
     /// (un chat recien creado) cuenta como vacio; cualquier otro error sube y
     /// quien iba a escribir se para.
     fn lineas(&self, chat: &str) -> io::Result<(Vec<Json>, Vec<String>)> {
+        LECTURAS_DE_CUADERNOS.fetch_add(1, Ordering::SeqCst);
         let texto = match std::fs::read_to_string(self.carpeta_de(chat).join("guardados.jsonl")) {
             Ok(t) => t,
             Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
@@ -212,7 +215,80 @@ impl DiscoPc {
         escribir_atomico(
             &self.carpeta_de(chat).join("guardados.jsonl"),
             texto.as_bytes(),
-        )
+        )?;
+        self.apuntar(chat, diario::CAMBIO);
+        Ok(())
+    }
+
+    /// **Apunta en el diario de cambios que `chat` cambio** (27-oct-2026),
+    /// despues de escribir, con la huella de lo suyo que se acaba de tocar:
+    /// su cuaderno, su `proyecto.json` y su ficha del indice. Asi el barrido
+    /// de la vuelta siguiente no lo toma por escrito sin avisar.
+    fn apuntar(&self, chat: &str, accion: &str) {
+        let d = self.diario();
+        let virtual_ = format!("{VIRTUAL}{chat}");
+        let mut v = Vec::new();
+        match self.ficha_de(chat) {
+            Some(f) => {
+                for (nombre, k) in [
+                    ("guardados.jsonl", diario::MENSAJE),
+                    ("proyecto.json", diario::PROYECTO),
+                ] {
+                    let rel = format!("proyectos/{}/{nombre}", f.id);
+                    let h = d.huella(&rel);
+                    v.push(
+                        diario::Apunte::nuevo(k, Some(chat), "", diario::CAMBIO)
+                            .con_huella(&rel, h),
+                    );
+                }
+                v.push(
+                    diario::Apunte::nuevo(diario::PROYECTO, Some(chat), chat, accion)
+                        .con_huella(&virtual_, Diario::huella_virtual(&huella_de_ficha(&f))),
+                );
+            }
+            None => v.push(
+                diario::Apunte::nuevo(diario::PROYECTO, Some(chat), chat, diario::BAJA)
+                    .con_huella(&virtual_, diario::NO_ESTA.into()),
+            ),
+        }
+        d.apuntar(v);
+    }
+
+    /// Lo que se sabe de un cuaderno sin leerlo otra vez: cuantos mensajes,
+    /// el ultimo `cuando` y si tiene listas de tareas. Por su tamano y su
+    /// fecha (ver [RESUMENES]); leerlo, solo si cambio.
+    fn resumen_de_cuaderno(&self, chat: &str) -> io::Result<ResumenDeCuaderno> {
+        let fichero = self.carpeta_de(chat).join("guardados.jsonl");
+        let firma = std::fs::metadata(&fichero)
+            .ok()
+            .map(|m| (m.len(), m.modified().ok()));
+        if let Some(f) = &firma
+            && let Ok(g) = RESUMENES.lock()
+            && let Some((x, r)) = g.get(&fichero)
+            && x == f
+        {
+            return Ok(r.clone());
+        }
+        let (l, _) = self.lineas(chat)?;
+        let r = ResumenDeCuaderno {
+            mensajes: l.len() as u32,
+            ultimo: l
+                .iter()
+                .filter_map(|m| kotlin::numero(m, "cuando"))
+                .max()
+                .unwrap_or(0)
+                .max(0),
+            tareas: l
+                .iter()
+                .filter_map(|m| self.portatil_de(chat, m))
+                .any(|m| pixpin_sincro::prioridad::es_de_tareas(&m)),
+        };
+        if let Some(f) = firma
+            && let Ok(mut g) = RESUMENES.lock()
+        {
+            g.insert(fichero, (f, r.clone()));
+        }
+        Ok(r)
     }
 
     /// Un mensaje guardado aqui, a como viaja.
@@ -312,6 +388,59 @@ impl DiscoPc {
         }
         Some(a)
     }
+}
+
+/// **Cuantas veces se ha leido un cuaderno entero** (`guardados.jsonl`) en
+/// este proceso. Para medir lo que ahorra el diario: una vuelta sin cambios
+/// con quien tambien lo lleva no lee ninguno.
+static LECTURAS_DE_CUADERNOS: AtomicUsize = AtomicUsize::new(0);
+
+/// Las lecturas de cuadernos hasta ahora (ver [LECTURAS_DE_CUADERNOS]).
+pub fn lecturas_de_cuadernos() -> usize {
+    LECTURAS_DE_CUADERNOS.load(Ordering::SeqCst)
+}
+
+/// Lo que se recuerda de cada cuaderno (ver [DiscoPc::resumen_de_cuaderno]).
+#[derive(Debug, Clone, Default)]
+struct ResumenDeCuaderno {
+    mensajes: u32,
+    ultimo: i64,
+    tareas: bool,
+}
+
+type FirmaDeCuaderno = (u64, Option<std::time::SystemTime>);
+
+/// Los resumenes de los cuadernos, por fichero y con la firma (tamano y
+/// fecha) con que se leyeron. Del proceso: cada vuelta hace su `DiscoPc`.
+static RESUMENES: std::sync::LazyLock<
+    std::sync::Mutex<HashMap<PathBuf, (FirmaDeCuaderno, ResumenDeCuaderno)>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// Como se llama en el diario la ficha de un chat en el indice: no es un
+/// archivo, pero cambia como uno (su nombre, su foto, archivado…).
+const VIRTUAL: &str = "@chat/";
+
+/// La huella de lo que una ficha del indice dice del proyecto que viaja: sin
+/// lo que cambia con cada mensaje (`tocado`, `resumen`) ni lo que solo es de
+/// este equipo.
+fn huella_de_ficha(f: &Ficha) -> String {
+    let mut v = serde_json::to_value(f).unwrap_or_default();
+    if let Some(o) = v.as_object_mut() {
+        for k in [
+            "tocado",
+            "resumen",
+            "hojas",
+            "sin_leer",
+            "sinLeer",
+            "paquete",
+            "ubicacion",
+            MARCA_SINCRO,
+        ] {
+            o.remove(k);
+        }
+    }
+    let texto = serde_json::to_string(&v).unwrap_or_default();
+    pixpin_sincro::canonico::sha256_hex(texto.as_bytes())[..16].to_string()
 }
 
 /// El `proyecto` de un mensaje de ese chat: nulo en la general.
@@ -664,15 +793,12 @@ impl Disco for DiscoPc {
 
     fn chats(&self) -> io::Result<Vec<Chat>> {
         let mapa = self.mapa();
+        // Sin leer los cuadernos que no han cambiado (27-oct-2026): el
+        // catalogo se pide en cada vuelta, y con cien chats quietos eran cien
+        // lecturas para no mover nada.
         let resumen = |chat: &str| -> io::Result<(u32, i64)> {
-            let (l, _) = self.lineas(chat)?;
-            let ultimo = l
-                .iter()
-                .filter_map(|m| kotlin::numero(m, "cuando"))
-                .max()
-                .unwrap_or(0)
-                .max(0);
-            Ok((l.len() as u32, ultimo))
+            let r = self.resumen_de_cuaderno(chat)?;
+            Ok((r.mensajes, r.ultimo))
         };
         let (n, ultimo) = if mapa.iter().any(|(c, _)| c == GENERAL) {
             resumen(GENERAL)?
@@ -804,6 +930,8 @@ impl Disco for DiscoPc {
             indice.guardar(&self.raiz)?;
             self.olvidar_mapa();
         }
+        // El indice se toco despues del cuaderno: su huella tambien.
+        self.apuntar(chat, diario::CAMBIO);
         self.avisar(Cambio::Mensajes);
         Ok(())
     }
@@ -852,6 +980,7 @@ impl Disco for DiscoPc {
         self.marcas_tras_aplicar(chat, &[], &claves, &mensajes, cuando)?;
         almacen::borrar_proyectos(&self.raiz, std::slice::from_ref(&f.id), cuando)?;
         self.olvidar_mapa();
+        self.apuntar(chat, diario::BAJA);
         // `borrar_proyectos` ya dejo lapida; esta dice ademas quien lo borro.
         self.anotar_lapida(chat, cuando, aparato)?;
         self.avisar(Cambio::Proyectos);
@@ -921,6 +1050,7 @@ impl Disco for DiscoPc {
             }
             self.olvidar_mapa();
         }
+        self.apuntar(&chat, diario::CAMBIO);
         self.avisar(Cambio::Proyectos);
         Ok(())
     }
@@ -959,6 +1089,108 @@ impl Disco for DiscoPc {
     /// quien lo lee aqui lo resuelve con [ruta_real].
     fn a_local(&self, _chat: &str, texto: String) -> String {
         texto
+    }
+
+    /// Lo que viaja en el PC: la carpeta de cada chat (`proyectos/<ficha>`)
+    /// y las letras de los planos del chat «Asistente».
+    fn carpetas_que_viajan(&self) -> Vec<String> {
+        vec!["proyectos/".into(), format!("{CARPETA_DE_LETRAS}/")]
+    }
+
+    /// **El barrido del PC** (27-oct-2026). Aqui cada chat tiene su
+    /// carpeta, asi que lo escrito sin apuntar casi siempre dice de que chat
+    /// es: su cuaderno es un mensaje de ese chat, su `proyecto.json` su
+    /// proyecto, y la ficha de cada chat en el indice (nombre, foto,
+    /// archivado…) se mira como una cosa aparte (`@chat/<chat>`), sin lo que
+    /// cambia con cada mensaje. Lo demas de una carpeta es un archivo, que el
+    /// indice del diario (o la carpeta) dice de quien es. Solo las marcas de
+    /// borrado y las lapidas, que son de muchos chats, son «todo».
+    fn barrer(&self) -> usize {
+        let mapa = self.mapa();
+        let por_ficha: HashMap<String, String> = mapa
+            .iter()
+            .map(|(c, f)| (f.id.clone(), c.clone()))
+            .collect();
+        let virtuales: Vec<(String, String)> = mapa
+            .iter()
+            .map(|(c, f)| (format!("{VIRTUAL}{c}"), huella_de_ficha(f)))
+            .collect();
+        let detectado = |rel: &str, a: &str| -> Vec<diario::Apunte> {
+            let de = |k: &str, c: &str| vec![diario::Apunte::nuevo(k, Some(c), "", a)];
+            if let Some(c) = rel.strip_prefix(VIRTUAL) {
+                return vec![diario::Apunte::nuevo(diario::PROYECTO, Some(c), c, a)];
+            }
+            if rel == "proyectos/indice.json" {
+                // Lo dicen las fichas, una por una.
+                return Vec::new();
+            }
+            if rel == diario::RUTA_DE_MARCAS || rel == diario::RUTA_DE_LAPIDAS {
+                return vec![diario::Apunte::nuevo(diario::TODO, None, rel, a)];
+            }
+            if let Some((id, dentro)) = rel
+                .strip_prefix("proyectos/")
+                .and_then(|r| r.split_once('/'))
+                && let Some(c) = por_ficha.get(id)
+            {
+                match dentro {
+                    "guardados.jsonl" => return de(diario::MENSAJE, c),
+                    "proyecto.json" => return de(diario::PROYECTO, c),
+                    _ => {}
+                }
+            }
+            vec![diario::Apunte::nuevo(diario::ARCHIVO, None, rel, a)]
+        };
+        self.diario().barrer(&diario::Barrido {
+            carpetas: self.carpetas_que_viajan(),
+            sueltos: vec![
+                diario::RUTA_DE_MARCAS.into(),
+                diario::RUTA_DE_LAPIDAS.into(),
+            ],
+            virtuales,
+            detectado: &detectado,
+        })
+    }
+
+    /// De que chat es un archivo que el indice del diario no conoce: el de
+    /// la carpeta donde esta (y las letras, del «Asistente»). Sin leer nada.
+    fn chats_que_nombran(
+        &self,
+        rels: &BTreeSet<String>,
+    ) -> Option<HashMap<String, BTreeSet<String>>> {
+        let mapa = self.mapa();
+        let asistente = mapa
+            .iter()
+            .find(|(_, f)| f.es_asistente())
+            .map(|(c, _)| c.clone());
+        let mut salida: HashMap<String, BTreeSet<String>> = HashMap::new();
+        for rel in rels {
+            let chat = if let Some((id, _)) = rel
+                .strip_prefix("proyectos/")
+                .and_then(|r| r.split_once('/'))
+            {
+                mapa.iter()
+                    .find(|(_, f)| f.id == id)
+                    .map(|(c, _)| c.clone())
+            } else if rel.starts_with(&format!("{CARPETA_DE_LETRAS}/")) {
+                asistente.clone()
+            } else {
+                None
+            };
+            if let Some(c) = chat {
+                salida.entry(rel.clone()).or_default().insert(c);
+            }
+        }
+        Some(salida)
+    }
+
+    /// Los chats con listas de tareas, sin leer los cuadernos que no han
+    /// cambiado ([DiscoPc::resumen_de_cuaderno]).
+    fn chats_con_tareas(&self) -> BTreeSet<String> {
+        self.mapa()
+            .into_iter()
+            .filter(|(c, _)| self.resumen_de_cuaderno(c).is_ok_and(|r| r.tareas))
+            .map(|(c, _)| c)
+            .collect()
     }
 
     /// Lo anotado de este chat: la tinta en `lienzos/anot-…excalidraw`
@@ -1057,7 +1289,11 @@ impl DiscoPc {
             }
             // Como el movil (`File.delete()`): si no se deja, se queda; el
             // mensaje ya se fue y nada lo vuelve a mandar.
-            let _ = std::fs::remove_file(self.ruta(chat, &rel));
+            if std::fs::remove_file(self.ruta(chat, &rel)).is_ok()
+                && let Some(l) = self.local_de(chat, &rel)
+            {
+                self.diario().archivo(&l);
+            }
         }
     }
 
