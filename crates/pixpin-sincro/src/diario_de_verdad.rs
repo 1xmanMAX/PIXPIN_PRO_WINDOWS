@@ -798,6 +798,45 @@ fn dos_vueltas_seguidas_sin_cambios_no_mueven_nada_y_es_idempotente() {
     );
 }
 
+#[test]
+fn la_copia_de_un_chat_que_no_cambio_no_se_rehace() {
+    // `Copias.hacer` con el diario (Android 27-oct-2026): si el chat no se
+    // ha tocado desde la ultima vez que se miro, la ultima copia vale y no se
+    // relee nada. Se ve tirando las copias: sin cambios no vuelven a hacerse.
+    let p = montar("copia");
+    p.emparejar();
+    proyecto(&p.tel, "p1", "Uno");
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("p1"),
+            ..nota("a1", "en uno")
+        },
+    );
+    let copias = p.tel.raiz().join("copias/proyectos/p1");
+    assert!(p.tel.hacer_copia_si_cambio("p1", "prueba", 1).unwrap());
+    assert!(copias.is_dir());
+    std::fs::remove_dir_all(&copias).unwrap();
+    assert!(!p.tel.hacer_copia_si_cambio("p1", "prueba", 2).unwrap());
+    assert!(!copias.exists(), "sin cambios, ni se mira");
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("p1"),
+            ..nota("a2", "otra en uno")
+        },
+    );
+    assert!(p.tel.hacer_copia_si_cambio("p1", "prueba", 3).unwrap());
+    assert!(copias.is_dir(), "cambio: se copia");
+    // Y con el diario apagado, siempre como antes.
+    std::fs::remove_dir_all(&copias).unwrap();
+    diario::poner_activo(false);
+    assert!(p.tel.hacer_copia_si_cambio("p1", "prueba", 4).unwrap());
+    diario::poner_activo(true);
+}
+
 // ------------------------------------------------------------ prioridades
 
 #[test]

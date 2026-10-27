@@ -674,7 +674,8 @@ sin diario o con una linea rota no se pierde nada, apagado como antes, la
 verificacion entera, con uno de antes por su inventario, reanudar en los
 dos sentidos, otra version a medias, sin sitio no se descuadra, restos,
 tramo repetido y trozo de mas, dos a la vez, borrado contra cambiado,
-idempotencia, cortada a mitad del video ya trajo las tareas y el chat
+idempotencia, la copia de un chat que no cambio no se rehace, cortada a
+mitad del video ya trajo las tareas y el chat
 compartido, el orden por niveles, lo que no se conoce se contesta, el PC con
 el Android nuevo y con uno de antes en los dos sentidos, y 110 chats sin
 leer ni un cuaderno.
