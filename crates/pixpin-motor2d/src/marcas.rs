@@ -88,6 +88,15 @@ pub fn con(lista: &[Marca], x: f64, y: f64, emoji: &str, ahora: i64) -> Vec<Marc
     todas
 }
 
+/// **La unica de su emoticono**, en ese sitio: se quitan las que ya lo
+/// llevaban y se pone una. Es el 🟢 del lector de PDF (el marcador verde de
+/// la voz y de Lectura Veloz), del que nunca hay mas de uno; las demas
+/// marcas no se tocan.
+pub fn con_una_sola(lista: &[Marca], x: f64, y: f64, emoji: &str, ahora: i64) -> Vec<Marca> {
+    let otras: Vec<Marca> = lista.iter().filter(|m| m.emoji != emoji).cloned().collect();
+    con(&otras, x, y, emoji, ahora)
+}
+
 /// Poner dos en el mismo milisegundo es raro, pero dos marcas con el mismo id
 /// serian una.
 fn id_libre(lista: &[Marca], ahora: i64) -> i64 {
@@ -438,6 +447,18 @@ fn acercar(a: f32, b: f32, t: f32) -> f32 {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn con_una_sola_cambia_el_verde_y_deja_las_demas() {
+        let antes = de_texto("1:0.5:2.3:⭐|2:0.5:7.1:🟢|3:0.2:9:🟢|4:0.5:0.4:🔖");
+        let (x, y) = en_la_pagina(4, 0.25, 0.5);
+        let ahora = con_una_sola(&antes, x, y, "🟢", 99);
+        assert_eq!(a_texto(&ahora), "4:0.5:0.4:🔖|1:0.5:2.3:⭐|99:0.5:4.25:🟢");
+        // Sin verde antes, uno; y otra vez, sigue siendo uno.
+        let solo = con_una_sola(&[], 0.5, 1.5, "🟢", 7);
+        let otra = con_una_sola(&solo, 0.5, 3.0, "🟢", 8);
+        assert_eq!(a_texto(&otra), "8:0.5:3:🟢");
+    }
 
     fn emojis(l: &[Marca]) -> Vec<&str> {
         l.iter().map(|m| m.emoji.as_str()).collect()

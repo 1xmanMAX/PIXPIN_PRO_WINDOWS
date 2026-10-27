@@ -116,6 +116,8 @@ mod lector_pdf_proyecto;
 /// Los lectores como un pin: su ventana y su barra de fuera.
 mod lector_pin;
 mod lector_tinta;
+/// Lectura Veloz, la app de lectura rapida: ida y vuelta (27-oct).
+mod lectura_veloz;
 mod leer_en_voz;
 mod letras_que_viajan;
 mod lista_del_icono;

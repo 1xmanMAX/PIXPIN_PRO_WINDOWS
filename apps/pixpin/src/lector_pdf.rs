@@ -703,6 +703,9 @@ enum Accion {
     BorrarMarcos,
     /// PDF: «Ver como texto», en el lector de Word (`visor::como_texto`).
     ComoTexto,
+    /// «⚡ Lectura veloz»: seguir leyendo en la app de lectura rapida, desde
+    /// el 🟢 o desde donde se va (`crate::lectura_veloz`).
+    LecturaVeloz,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1048,6 +1051,8 @@ fn abrir_con(
     let mut ruta_nueva: Option<PathBuf> = None;
     // Abierto: el asistente lo lleva a una pagina o un texto sin otra ventana.
     let _abierto = Abierto::nuevo(ruta);
+    // Y para Lectura Veloz, que mueve el 🟢 mientras se lee alli.
+    let _para_lectura_veloz = crate::lectura_veloz::abierto(ruta);
     while vivo {
         let ruta_de_la_vuelta = ruta_viva.clone();
         let ruta: &Path = &ruta_de_la_vuelta;
@@ -1065,6 +1070,11 @@ fn abrir_con(
         // una pagina o buscar un texto, como al abrirlo.
         if let Some(p) = tomar_pagina_al_abrir(ruta) {
             office::ir_a(&mut e, p as usize, marco);
+            hay_que_pintar = true;
+        }
+        // Lo leido en Lectura Veloz (de fondo): el 🟢 y la vista, ahi.
+        if let Some(p) = crate::lectura_veloz::tomar(ruta) {
+            al_dia_de_lectura_veloz(&mut e, &p);
             hay_que_pintar = true;
         }
         if let Some(q) = tomar_busqueda_al_abrir(ruta) {
@@ -2518,6 +2528,7 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("compartir-lector"), Accion::Compartir));
         filas.push((textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta));
     }
+    filas.push((textos.t("lector-lectura-veloz"), Accion::LecturaVeloz));
     if !e.marcas.is_empty() {
         filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
     }
@@ -3422,6 +3433,10 @@ fn hacer(
             e.panel = false;
             ver_como_texto(e, textos, ruta);
         }
+        Accion::LecturaVeloz => {
+            e.panel = false;
+            a_lectura_veloz(e, textos, ruta);
+        }
         // Los mandos de abajo: en un PDF cada lado tiene un paso (esta o no).
         Accion::Lado(b) => match b {
             lector::BotonLado::Izquierda(mas) => {
@@ -3623,6 +3638,59 @@ fn marcas_del_indice(bytes: &[u8], ahora: i64) -> Vec<Marca> {
         lista = marcas::con(&lista, x, y, emoji, ahora);
     }
     lista
+}
+
+/// **«⚡ Lectura veloz»**: lo de aqui al disco (si cambio) y el documento a
+/// la app de lectura rapida, desde el 🟢 si lo hay y si no desde donde se
+/// va. Si no esta instalada, se dice en el aviso.
+fn a_lectura_veloz(e: &mut Estado, textos: &Catalogo, ruta: &Path) {
+    use pixpin_docs::lectura_veloz as lv;
+    let paginas = e.hojas.cuantas() as u32;
+    if paginas > 0 {
+        e.ajustes.pagina = sitio(e);
+    }
+    e.ajustes.zoom = e.zoom;
+    e.ajustes.marcas = marcas::a_texto(&e.marcas);
+    crate::lectura_veloz::guardar_si_cambio(ruta, &e.ajustes);
+    let donde = e
+        .marcas
+        .iter()
+        .find(|m| m.emoji == pixpin_docs::voz_alta::EMOJI_DE_VOZ)
+        .map_or(e.ajustes.pagina, |m| m.y);
+    let (pagina, frac, fraccion) = lv::posicion_de_hojas(donde, paginas);
+    // Un Word o un PowerPoint en hojas va de corrido (con su pagina igual).
+    let tipo = lv::tipo_de(ruta).unwrap_or(lv::Tipo::Pdf);
+    let salida = crate::lectura_veloz::salida(ruta, tipo, pagina, frac, fraccion, paginas);
+    if let Err(no) = crate::lectura_veloz::enviar(&salida) {
+        e.aviso = Some((no.aviso(textos), ahora_ms() + 6000));
+    }
+}
+
+/// **Lo que llego de Lectura Veloz con el lector abierto**: el 🟢 y la
+/// pagina, en memoria (al cerrar se guarda esto y no lo de antes), y la
+/// vista ahi. De corrido (un Word en hojas), la fraccion del documento.
+fn al_dia_de_lectura_veloz(e: &mut Estado, p: &pixpin_docs::lectura_veloz::Progreso) {
+    use pixpin_docs::lectura_veloz::Destino;
+    let hay_hojas = e.hojas.cuantas() > 0;
+    let donde = match p.destino() {
+        Destino::Hojas => p.sitio_de_hojas(),
+        Destino::Corrido if hay_hojas => e.hojas.sitio(p.fraccion * e.hojas.total),
+        Destino::Corrido => return,
+    };
+    let pagina = donde.floor().max(0.0);
+    let (x, y) = marcas::en_la_pagina(pagina as i32, donde - pagina, 0.5);
+    e.marcas = marcas::con_una_sola(
+        &e.marcas,
+        x,
+        y,
+        pixpin_docs::voz_alta::EMOJI_DE_VOZ,
+        ahora_ms() as i64,
+    );
+    e.ajustes.marcas = marcas::a_texto(&e.marcas);
+    e.ajustes.pagina = donde;
+    if hay_hojas {
+        e.y = e.hojas.y_de(donde);
+    }
 }
 
 fn guardar_ajustes(e: &mut Estado, ruta: &Path) {
@@ -4068,6 +4136,42 @@ mod pruebas {
         assert_eq!(palabras_de(None, 2), None);
         let con = Ok(vec![pagina_con("uno dos", 0.1), pagina_con("tres", 0.1)]);
         assert_eq!(palabras_de(Some(&con), 2), Some(3));
+    }
+
+    #[test]
+    fn lectura_veloz_esta_en_el_menu_y_lo_que_llega_mueve_el_verde() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut e = estado(5);
+        assert!(
+            filas_del_panel(&e, &textos)
+                .iter()
+                .any(|(_, a)| *a == Accion::LecturaVeloz)
+        );
+        e.marcas = marcas::de_texto("1:0.5:0.2:⭐|2:0.5:1.5:🟢");
+        let campos = [
+            ("doc", "uid-1"),
+            ("ruta", r"C:\x\plano.pdf"),
+            ("tipo", "pdf"),
+            ("pagina", "3"),
+            ("frac", "0.5"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let p = pixpin_docs::lectura_veloz::Progreso::de_campos(&campos).unwrap();
+        al_dia_de_lectura_veloz(&mut e, &p);
+        let verdes: Vec<_> = e.marcas.iter().filter(|m| m.emoji == "🟢").collect();
+        assert_eq!(verdes.len(), 1);
+        assert_eq!(verdes[0].y, 3.5);
+        assert!(e.marcas.iter().any(|m| m.emoji == "⭐"));
+        assert_eq!(e.ajustes.pagina, 3.5);
+        // La vista, en la mitad de la cuarta hoja.
+        assert!(
+            (e.hojas.sitio(e.y) - 3.5).abs() < 1e-3,
+            "{}",
+            e.hojas.sitio(e.y)
+        );
+        assert_eq!(e.ajustes.marcas, marcas::a_texto(&e.marcas));
     }
 
     #[test]

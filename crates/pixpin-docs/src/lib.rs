@@ -29,6 +29,8 @@ pub mod exportar_docx;
 pub mod html;
 pub mod indice;
 pub mod lectura;
+/// El puente con Lectura Veloz (`docs/integracion-lectura-veloz.md`).
+pub mod lectura_veloz;
 pub mod md_bloques;
 pub mod md_comandos;
 pub mod md_comentarios;

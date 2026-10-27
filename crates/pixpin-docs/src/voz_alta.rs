@@ -337,27 +337,47 @@ pub fn idioma_para_leer(muestra: &str, lang: &str, del_equipo: &str) -> String {
 
 // ------------------------------------------------------- el marcador verde
 
-/// `parrafo:fraccion`, como `Lectura.vozATexto`.
+/// **El parrafo que no se sabe** (27-oct-2026): el movil escribe `-1:<fraccion>`
+/// cuando sabe por donde va en el documento pero no en que parrafo (y
+/// Lectura Veloz igual). Aqui es `usize::MAX`, que no es el numero de ningun
+/// parrafo: quien lo usa lo busca **por la fraccion**
+/// ([`parrafo_de_la_marca`]) y se escribe otra vez como `-1`.
+pub const PARRAFO_DESCONOCIDO: usize = usize::MAX;
+
+/// `parrafo:fraccion`, como `Lectura.vozATexto` (`-1:…` el parrafo que no
+/// se sabe, [`PARRAFO_DESCONOCIDO`]).
 pub fn voz_a_texto(parrafo: usize, fraccion: f32) -> String {
-    format!("{parrafo}:{}", fraccion.clamp(0.0, 1.0))
+    let f = fraccion.clamp(0.0, 1.0);
+    if parrafo == PARRAFO_DESCONOCIDO {
+        format!("-1:{f}")
+    } else {
+        format!("{parrafo}:{f}")
+    }
 }
 
 /// Al reves (`Lectura.vozDeTexto`); `None` si no se entiende o esta vacio.
+/// `-1` es el parrafo que no se sabe ([`PARRAFO_DESCONOCIDO`]); otro
+/// negativo no se entiende.
 pub fn voz_de_texto(texto: &str) -> Option<(usize, f32)> {
     let mut p = texto.trim().split(':');
     let (a, b) = (p.next()?, p.next()?);
     if p.next().is_some() {
         return None;
     }
-    let parrafo = a.trim().parse::<i64>().ok().filter(|n| *n >= 0)? as usize;
+    let parrafo = match a.trim().parse::<i64>().ok()? {
+        -1 => PARRAFO_DESCONOCIDO,
+        n if n >= 0 => n as usize,
+        _ => return None,
+    };
     let f = b.trim().parse::<f32>().ok().filter(|f| f.is_finite())?;
     Some((parrafo, f.clamp(0.0, 1.0)))
 }
 
 /// **Por que parrafo se sigue**: el del numero si su fraccion cae cerca de la
-/// apuntada (el mismo documento contado igual); si no, el que empieza mas
-/// cerca de esa fraccion (contado por el otro aparato). `fracciones` es
-/// donde empieza cada parrafo, en orden.
+/// apuntada (el mismo documento contado igual); si no —o si el parrafo no se
+/// sabe, `-1` ([`PARRAFO_DESCONOCIDO`])—, el que empieza mas cerca de esa
+/// fraccion (contado por el otro aparato). `fracciones` es donde empieza
+/// cada parrafo, en orden.
 pub fn parrafo_de_la_marca(fracciones: &[f32], marca: (usize, f32)) -> Option<usize> {
     if fracciones.is_empty() {
         return None;
@@ -492,8 +512,25 @@ mod pruebas {
         assert_eq!(voz_de_texto("3:1.0E-4"), Some((3, 0.0001)));
         assert_eq!(voz_de_texto("3:7"), Some((3, 1.0)), "la fraccion se acota");
         assert_eq!(voz_de_texto(""), None, "vacio es sin verde");
-        assert_eq!(voz_de_texto("-1:0.2"), None);
+        assert_eq!(voz_de_texto("-2:0.2"), None);
         assert_eq!(voz_de_texto("1:2:3"), None);
+    }
+
+    #[test]
+    fn el_parrafo_menos_uno_del_movil_se_busca_por_la_fraccion() {
+        // Lo que escribe Android cuando solo sabe la fraccion del documento.
+        assert_eq!(voz_de_texto("-1:0.5"), Some((PARRAFO_DESCONOCIDO, 0.5)));
+        assert_eq!(
+            voz_de_texto(" -1:0.4375 "),
+            Some((PARRAFO_DESCONOCIDO, 0.4375))
+        );
+        // Y vuelve a salir igual: no se inventa un numero al guardarlo.
+        assert_eq!(voz_a_texto(PARRAFO_DESCONOCIDO, 0.5), "-1:0.5");
+        let f = [0.0, 0.2, 0.45, 0.7];
+        assert_eq!(parrafo_de_la_marca(&f, (PARRAFO_DESCONOCIDO, 0.5)), Some(2));
+        assert_eq!(parrafo_de_la_marca(&f, (PARRAFO_DESCONOCIDO, 0.0)), Some(0));
+        assert_eq!(parrafo_de_la_marca(&f, (PARRAFO_DESCONOCIDO, 1.0)), Some(3));
+        assert_eq!(parrafo_de_la_marca(&[], (PARRAFO_DESCONOCIDO, 0.5)), None);
     }
 
     #[test]

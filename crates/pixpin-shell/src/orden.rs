@@ -91,6 +91,13 @@ pub enum Orden {
         rutas: Vec<PathBuf>,
         proyecto: Option<String>,
     },
+    /// **Lectura Veloz** (`lectura-veloz`, 27-oct-2026): mover el marcador
+    /// verde de un documento a donde se va leyendo alli. Ya mirado
+    /// ([`pixpin_docs::lectura_veloz::Progreso::de_campos`]). Va **de fondo**:
+    /// a la PixPin que corre si la hay, sin traer nada al frente; si no, lo
+    /// escribe esta misma copia y se va, sin ensenar nada
+    /// (`apps/pixpin/src/orden.rs`).
+    LecturaVeloz(pixpin_docs::lectura_veloz::Progreso),
     /// La ayuda.
     Ayuda,
 }
@@ -378,6 +385,16 @@ pub const VERBOS: &[Verbo] = &[
         opciones: &["cual"],
         por_enlace: true,
         armar: armar_ventana,
+    },
+    Verbo {
+        nombres: &["lectura-veloz", "lecturaveloz"],
+        uso: "lectura-veloz --ruta <documento> --tipo pdf|texto [--pagina N --frac F | --fraccion F] [--doc ID] [--t MS]",
+        ayuda: "Lectura Veloz: mueve el marcador verde de ese documento a donde se va leyendo alli. No abre ni trae nada al frente (docs/integracion-lectura-veloz.md).",
+        opciones: &[
+            "v", "doc", "ruta", "tipo", "pagina", "frac", "fraccion", "t",
+        ],
+        por_enlace: true,
+        armar: armar_lectura_veloz,
     },
     Verbo {
         nombres: &["pedido"],
@@ -894,7 +911,7 @@ pub enum Seguridad {
 /// las tres ultimas: marcar una tarea, posponer un recordatorio y conservar
 /// una captura (que la app solo hace con una ruta de su carpeta de capturas,
 /// `pedidos::captura_de`; una de red sigue sin pasar).
-pub const SEGURAS: [&str; 17] = [
+pub const SEGURAS: [&str; 18] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -912,6 +929,12 @@ pub const SEGURAS: [&str; 17] = [
     "marcar_tarea",
     "posponer",
     "conservar_captura",
+    // 27-oct: Lectura Veloz mueve el marcador verde de un documento. Solo
+    // escribe lo leido de ESE documento (nunca abre, ejecuta ni pisa otra
+    // cosa), y solo de una ruta local con extension de documento
+    // (`pixpin_docs::lectura_veloz::Progreso::de_campos`, que se mira otra
+    // vez en la app al recibirlo).
+    "lectura_veloz",
 ];
 
 /// **Cuanto se fia uno de un pedido llegado por enlace.** Se mira el pedido
@@ -932,7 +955,7 @@ pub fn seguridad(pedido: &Value) -> Seguridad {
     {
         return Seguridad::Prohibida("crear-automatizacion".into());
     }
-    if !rutas.is_empty() && accion != "conservar_captura" {
+    if !rutas.is_empty() && accion != "conservar_captura" && accion != "lectura_veloz" {
         return Seguridad::Confirmar("ficheros".into());
     }
     let vacio = |c: &str| {
@@ -1543,6 +1566,48 @@ fn armar_ventana(e: &Entrada) -> Result<Orden, Fallo> {
             "ventana: tareas, galeria, lecciones o sincronizar",
         )),
     }
+}
+
+/// `lectura-veloz`: todo se mira aqui (ruta local de documento, numeros
+/// finitos y acotados) antes de que nadie toque el disco. En la consola, la
+/// ruta puede ir suelta; `doc` es opcional (sin el, el de la ruta).
+fn armar_lectura_veloz(e: &Entrada) -> Result<Orden, Fallo> {
+    use pixpin_docs::lectura_veloz::{self as lv, Progreso};
+    let mut campos = e.campos.clone();
+    if !campos.contains_key("ruta")
+        && let Some(r) = e.sueltos.first()
+    {
+        campos.insert("ruta".into(), r.clone());
+    }
+    if !e.enlace
+        && !campos.contains_key("doc")
+        && let Some(r) = campos.get("ruta").cloned()
+    {
+        campos.insert("doc".into(), lv::id_de_ruta(&r));
+    }
+    Progreso::de_campos(&campos)
+        .map(Orden::LecturaVeloz)
+        .map_err(Fallo::no_se_entiende)
+}
+
+/// **El pedido de Lectura Veloz** para la PixPin que corre (`lectura_veloz`
+/// del protocolo), con los campos ya mirados.
+pub fn pedido_de_lectura_veloz(p: &pixpin_docs::lectura_veloz::Progreso) -> Value {
+    let campos: Map<String, Value> = p
+        .a_campos()
+        .into_iter()
+        .map(|(k, v)| (k, Value::String(v)))
+        .collect();
+    pedido("lectura_veloz", Value::Object(campos))
+}
+
+/// Si la linea de ordenes es de Lectura Veloz (el verbo o su enlace): va de
+/// fondo, y lo que salga mal no saca ningun cuadro (se dice en la salida de
+/// errores), porque quien lo manda es otro programa mientras se lee alli.
+pub fn es_de_lectura_veloz(args: &[String]) -> bool {
+    let es = |v: &str| verbo(v).is_some_and(|f| f.nombres[0] == "lectura-veloz");
+    args.iter()
+        .any(|a| es(a) || (es_enlace(a) && partir_enlace(a).is_ok_and(|p| es(&p.verbo))))
 }
 
 fn armar_pedido(e: &Entrada) -> Result<Orden, Fallo> {

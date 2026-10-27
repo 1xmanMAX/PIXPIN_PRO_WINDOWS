@@ -204,6 +204,15 @@ pub enum Pedido {
         carpeta: Option<String>,
         nombre: Option<String>,
     },
+    /// 27-oct: **Lectura Veloz** mueve el marcador verde de un documento a
+    /// donde se va leyendo alli (`docs/integracion-lectura-veloz.md`). Los
+    /// campos se miran con la regla de los enlaces
+    /// (`pixpin_docs::lectura_veloz::Progreso::de_campos`), asi que aqui van
+    /// tal cual llegan.
+    LecturaVeloz {
+        #[serde(flatten)]
+        campos: std::collections::BTreeMap<String, serde_json::Value>,
+    },
     /// Capturar como el atajo general. Sin `modo`, una zona.
     Capturar {
         modo: Option<ModoCaptura>,
@@ -504,6 +513,27 @@ pub enum Que {
 pub struct Zona(pub [f64; 3]);
 
 impl Eq for Zona {}
+
+/// Los campos del pedido `lectura_veloz`, mirados como los de su enlace.
+/// Un numero puede venir como numero o como texto; otra cosa no vale.
+fn progreso_de(
+    campos: &std::collections::BTreeMap<String, serde_json::Value>,
+) -> Result<pixpin_docs::lectura_veloz::Progreso, String> {
+    let mut texto = std::collections::BTreeMap::new();
+    for (k, v) in campos {
+        let t = match v {
+            serde_json::Value::String(t) => t.clone(),
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Null => continue,
+            _ if k == "pixpin" => continue,
+            _ => return Err(format!("lectura-veloz: {k} no es un texto ni un numero")),
+        };
+        texto.insert(k.clone(), t);
+    }
+    // `pixpin` es la version del protocolo de pedidos, no un campo suyo.
+    texto.remove("pixpin");
+    pixpin_docs::lectura_veloz::Progreso::de_campos(&texto)
+}
 
 /// Lee un pedido. Un fallo aqui es un pedido que paso el vistazo de la
 /// ventana (version y accion buenas) pero le falta un campo o lo trae de
@@ -1177,6 +1207,14 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                 std::time::Duration::ZERO,
             ),
         },
+        // De fondo, mientras se lee en Lectura Veloz: ni ventanas ni globo,
+        // tampoco si sale mal (queda en el registro).
+        Pedido::LecturaVeloz { campos } => {
+            let hecho = progreso_de(&campos).and_then(|p| crate::lectura_veloz::apuntar(&p));
+            if let Err(motivo) = hecho {
+                tracing::warn!(%motivo, "lectura veloz: no se apunto el verde");
+            }
+        }
         Pedido::CarpetaPaginas {
             hacer,
             proyecto,
@@ -2496,7 +2534,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 38] = [
+    const EJEMPLOS: [(&str, &str); 39] = [
         (
             "pines",
             r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,
@@ -2625,7 +2663,44 @@ mod pruebas {
             "carpeta_paginas",
             r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"Diario"}"#,
         ),
+        (
+            "lectura_veloz",
+            r#"{"pixpin":1,"accion":"lectura_veloz","doc":"uid-1","ruta":"C:\\Libros\\Tesis.pdf","tipo":"pdf","pagina":4,"frac":"0.25","fraccion":0.3,"t":1761562800000}"#,
+        ),
     ];
+
+    #[test]
+    fn lectura_veloz_lee_sus_campos_como_los_del_enlace() {
+        let Ok(Pedido::LecturaVeloz { campos }) = leer(
+            EJEMPLOS
+                .iter()
+                .find(|(a, _)| *a == "lectura_veloz")
+                .unwrap()
+                .1,
+        ) else {
+            panic!("no es lectura_veloz");
+        };
+        let p = progreso_de(&campos).unwrap();
+        assert_eq!(p.ruta, r"C:\Libros\Tesis.pdf");
+        assert_eq!((p.pagina, p.frac, p.fraccion), (4, 0.25, 0.3));
+        assert_eq!(p.t, 1_761_562_800_000);
+        // Lo que manda la linea de ordenes se lee igual.
+        let json = pixpin_shell::orden::pedido_de_lectura_veloz(&p).to_string();
+        let Ok(Pedido::LecturaVeloz { campos }) = leer(&json) else {
+            panic!("{json}");
+        };
+        assert_eq!(progreso_de(&campos).unwrap(), p);
+        // Caso negativo: una ruta de red o un objeto donde va un numero.
+        for malo in [
+            r#"{"pixpin":1,"accion":"lectura_veloz","doc":"a","ruta":"\\\\srv\\x.pdf","tipo":"pdf","pagina":1}"#,
+            r#"{"pixpin":1,"accion":"lectura_veloz","doc":"a","ruta":"C:\\x.pdf","tipo":"pdf","pagina":{"n":1}}"#,
+        ] {
+            let Ok(Pedido::LecturaVeloz { campos }) = leer(malo) else {
+                panic!("{malo}");
+            };
+            assert!(progreso_de(&campos).is_err(), "{malo}");
+        }
+    }
 
     #[test]
     fn la_aplicacion_entiende_todas_las_acciones_que_acepta_la_ventana() {
