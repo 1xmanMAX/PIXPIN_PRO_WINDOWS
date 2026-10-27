@@ -848,6 +848,26 @@ chat-transcribir-otra-vez = Convert to text again
 chat-transcripcion-no = Could not convert to text: nothing in the audio was understood.
 chat-letra-vacia = This note has no text yet.
 chat-letra-copiada = Text copied, with its timestamps
+
+## Music with its lyrics (karaoke, 27-Oct-2026)
+chat-adj-musica = Music
+musica-anadida = Song added. Press the pencil to type or paste its lyrics
+musica-anadidas = { $n } songs added
+musica-no-es-audio = “{ $nombre }” is not audio that can be played
+musica-sin-letra = This song has no lyrics yet
+musica-escribir-letra = Press the pencil to type or paste the lyrics (plain text or LRC)
+musica-sinc-primero-letra = Type or paste the lyrics first
+musica-sinc-empieza = Press Space (or “Mark”) right as each line starts
+musica-sinc-siguiente = Next: { $linea }
+musica-sinc-todas = All lines marked. Save the lyrics.
+musica-sinc-marcar = Mark { $n }/{ $total }
+musica-sinc-deshacer = Undo
+musica-sinc-guardar = Save
+musica-sinc-cancelar = Cancel
+musica-sinc-guardada = Lyrics synced
+musica-sinc-teclas = Space marks · Backspace undoes · Enter saves · Esc cancels
+musica-lrc-copiada = Lyrics copied as LRC
+
 chat-recordar-hora = Pick the time…
 chat-recordar-hora-a-las = Remind me at
 chat-recordar-hora-teclas = Type the time · Enter sets it · Esc leaves it

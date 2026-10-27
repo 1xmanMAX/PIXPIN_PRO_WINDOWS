@@ -849,6 +849,26 @@ chat-transcribir-otra-vez = Volver a pasar a texto
 chat-transcripcion-no = No se pudo pasar a texto: no se entendió nada del audio.
 chat-letra-vacia = Esta nota todavía no tiene texto.
 chat-letra-copiada = Texto copiado, con sus minutos
+
+## Música con su letra (karaoke, 27-oct-2026)
+chat-adj-musica = Música
+musica-anadida = Canción añadida. Pulsa el lápiz para escribir o pegar su letra
+musica-anadidas = { $n } canciones añadidas
+musica-no-es-audio = «{ $nombre }» no es un audio que se pueda tocar
+musica-sin-letra = Esta canción aún no tiene letra
+musica-escribir-letra = Pulsa el lápiz para escribir o pegar la letra (vale texto normal o LRC)
+musica-sinc-primero-letra = Primero escribe o pega la letra
+musica-sinc-empieza = Pulsa Espacio (o «Marcar») justo cuando empiece cada línea
+musica-sinc-siguiente = Siguiente: { $linea }
+musica-sinc-todas = Todas marcadas. Guarda la letra.
+musica-sinc-marcar = Marcar { $n }/{ $total }
+musica-sinc-deshacer = Deshacer
+musica-sinc-guardar = Guardar
+musica-sinc-cancelar = Cancelar
+musica-sinc-guardada = Letra sincronizada
+musica-sinc-teclas = Espacio marca · Retroceso deshace · Intro guarda · Esc cancela
+musica-lrc-copiada = Letra copiada en LRC
+
 chat-recordar-hora = Elegir la hora…
 chat-recordar-hora-a-las = Avisar a las
 chat-recordar-hora-teclas = Escribe la hora · Intro la pone · Esc la deja
