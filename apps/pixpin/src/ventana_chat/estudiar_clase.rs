@@ -238,6 +238,42 @@ struct Senal {
     ms: i64,
     texto: String,
     banderita: bool,
+    /// Un clip de la camara de la reunion presencial (27-oct-2026): su
+    /// fichero y lo que dura. No se edita ni se quita como un marcador; un
+    /// clic lleva a su minuto y lo abre.
+    clip: Option<(PathBuf, i64)>,
+}
+
+impl Senal {
+    fn icono(&self) -> &'static pixpin_render::icono::Icono {
+        if self.clip.is_some() {
+            &mi::PLAY_ARROW
+        } else {
+            &mi::FLAG
+        }
+    }
+
+    fn nota(&self, textos: &Catalogo) -> String {
+        if let Some((_, duracion)) = &self.clip {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("duracion", pixpin_voz::marca_de_tiempo(*duracion));
+            return textos.t_args("estudiar-clip", &args);
+        }
+        if self.texto.is_empty() {
+            textos.t("estudiar-marcador-sin-nota")
+        } else {
+            self.texto.clone()
+        }
+    }
+
+    /// Lo que hace un clic en ella: ir a su minuto, y si es un clip, abrirlo.
+    fn zona(&self, indice: usize) -> Zona {
+        if self.clip.is_some() {
+            Zona::Clip(indice)
+        } else {
+            Zona::Ir(self.ms)
+        }
+    }
 }
 
 /// Todo lo de una clase, leido del cuaderno.
@@ -252,10 +288,8 @@ struct Clase {
     capturas: Vec<(i64, PathBuf)>,
     /// El mensaje de cada captura (el mismo orden): para su lienzo anotado.
     fotos: Vec<cuaderno::Mensaje>,
-    /// **Los clips de video del movil** (`clase::clips_de`, la camara del
-    /// movil): donde empieza cada uno, lo que dura y su fichero. Se ven como
-    /// una franja en la barra del tiempo y, sonando, «▶ Clip del móvil».
-    clips: Vec<(clase::Clip, PathBuf)>,
+    /// Los clips de la camara (reunion presencial): `(ms, duracion, ruta)`.
+    clips: Vec<(i64, i64, PathBuf)>,
     /// Los trozos del texto: su minuto (si lo lleva) y lo que dice.
     lineas: Vec<(Option<i64>, String)>,
     senales: Vec<Senal>,
@@ -295,19 +329,16 @@ impl Clase {
                 Some(((ms, r), m.clone()))
             })
             .unzip();
-        let clips = clase::clips_de(&voz.resto)
-            .into_iter()
-            .filter_map(|c| {
-                let r = ruta_de(&c.id)?;
-                Some((c, r))
-            })
-            .collect();
         let video = voz
             .resto
             .get("video")
             .and_then(|v| v.get("id"))
             .and_then(|v| v.as_str())
             .and_then(ruta_de);
+        let clips = pixpin_proyecto::presencial::clips_de(&voz.resto)
+            .into_iter()
+            .filter_map(|c| Some((c.ms, c.duracion_ms, ruta_de(&c.id)?)))
+            .collect();
         let audio = super::ruta_del_mensaje(raiz, proyecto, voz).filter(|r| r.is_file());
         let lineas = super::trozos_de_la_letra(voz)
             .into_iter()
@@ -336,7 +367,18 @@ impl Clase {
         Ok(c)
     }
 
-    fn poner_senales(&mut self, senales: Vec<Senal>) {
+    /// Pone los marcadores y las banderitas, con los clips de la camara
+    /// metidos en su minuto (los que traiga `senales` se cambian por los de
+    /// la clase).
+    fn poner_senales(&mut self, mut senales: Vec<Senal>) {
+        senales.retain(|s| s.clip.is_none());
+        senales.extend(self.clips.iter().map(|(ms, duracion, ruta)| Senal {
+            ms: *ms,
+            texto: String::new(),
+            banderita: false,
+            clip: Some((ruta.clone(), *duracion)),
+        }));
+        senales.sort_by_key(|s| s.ms);
         self.senales = senales;
         let lineas: Vec<Option<i64>> = self.lineas.iter().map(|(ms, _)| *ms).collect();
         let ms: Vec<i64> = self.senales.iter().map(|s| s.ms).collect();
@@ -357,6 +399,7 @@ fn senales_de(m: &cuaderno::Mensaje) -> Vec<Senal> {
             ms,
             texto,
             banderita: false,
+            clip: None,
         })
         .collect();
     for ms in crate::voz::marcas_de(m) {
@@ -365,6 +408,7 @@ fn senales_de(m: &cuaderno::Mensaje) -> Vec<Senal> {
                 ms,
                 texto: String::new(),
                 banderita: true,
+                clip: None,
             });
         }
     }
@@ -619,22 +663,32 @@ enum Cargada {
 
 /// Lee las capturas fuera del hilo de la ventana: las miniaturas de todas,
 /// una detras de otra, y la grande que se pida (esa primero).
+///
+/// **La entera al acercar** (27-oct-2026, «a resolucion COMPLETA, para que
+/// se vean mas detalles»): la grande se lee a 2560 como mucho (sobra para
+/// verla encajada); al acercarla mas alla de eso se pide `(i, true)` y
+/// llega a su tamano de verdad (hasta lo que admita la grafica).
 struct Cargador {
-    pedir: Sender<usize>,
+    pedir: Sender<(usize, bool)>,
     llegan: Receiver<Cargada>,
 }
 
 impl Cargador {
-    fn lanzar(rutas: Vec<PathBuf>, lado_maximo: u32) -> Option<Cargador> {
-        let (pedir, pedidas) = channel::<usize>();
+    fn lanzar(rutas: Vec<PathBuf>, lado_maximo: u32, lado_entero: u32) -> Option<Cargador> {
+        let (pedir, pedidas) = channel::<(usize, bool)>();
         let (envia, llegan) = channel::<Cargada>();
         let lanzado = std::thread::Builder::new()
             .name("estudiar-imagenes".into())
             .spawn(move || {
-                let grande = |i: usize| -> Option<Cargada> {
+                let grande = |(i, entera): (usize, bool)| -> Option<Cargada> {
                     let img = pixpin_codec::imagen::cargar(rutas.get(i)?).ok()?;
                     let medida = (img.ancho, img.alto);
-                    Some(Cargada::Grande(i, reducir(img, lado_maximo), medida))
+                    let lado = if entera {
+                        lado_entero.max(lado_maximo)
+                    } else {
+                        lado_maximo
+                    };
+                    Some(Cargada::Grande(i, reducir(img, lado), medida))
                 };
                 for (i, ruta) in rutas.iter().enumerate() {
                     // Lo pedido va antes que la tira: es lo que se esta
@@ -739,10 +793,10 @@ enum Zona {
     Ir(i64),
     /// Quitar la senal de ese milisegundo.
     Quitar(i64),
+    /// Un clip de la camara (su senal): ir a su minuto y abrirlo.
+    Clip(usize),
     /// Una captura de la tira: ir a su minuto y ensenarla.
     Captura(usize),
-    /// «▶ Clip del móvil»: abrir el clip que suena.
-    Clip(usize),
     /// Las listas, para la rueda.
     ListaTexto,
     ListaFotos,
@@ -973,6 +1027,8 @@ struct Vista {
     medidas: Vec<Option<(u32, u32)>>,
     grande: Option<(usize, Imagen)>,
     pedida: Option<usize>,
+    /// La captura de la que ya se pidio la imagen entera (al acercarla).
+    pedida_entera: Option<usize>,
     cargador: Option<Cargador>,
     aviso: Option<(String, Instant)>,
     /// La ultima vez que se miro si el cuaderno cambio, y como estaba.
@@ -983,10 +1039,11 @@ struct Vista {
 impl Vista {
     fn nueva(recursos: &Recursos, raiz: PathBuf, clase: Clase, ms: i64) -> Vista {
         let medio = Medio::abrir(&recursos.d3d(), &clase, ms);
-        let lado = recursos.motor().lado_maximo_bitmap().min(2560);
+        let entero = recursos.motor().lado_maximo_bitmap();
         let cargador = Cargador::lanzar(
             clase.capturas.iter().map(|(_, r)| r.clone()).collect(),
-            lado,
+            entero.min(2560),
+            entero,
         );
         let leido = mtime(&raiz, &clase.proyecto);
         Vista {
@@ -1021,6 +1078,7 @@ impl Vista {
             dibujo: None,
             grande: None,
             pedida: None,
+            pedida_entera: None,
             cargador,
             aviso: None,
             mirado: Instant::now(),
@@ -1187,7 +1245,7 @@ impl Vista {
             .clase
             .senales
             .iter()
-            .find(|s| s.ms == ms && !s.banderita)
+            .find(|s| s.ms == ms && !s.banderita && s.clip.is_none())
             .map(|s| s.texto.clone())
             .unwrap_or_default();
         self.escribiendo = Some((ms, ya));
@@ -1215,6 +1273,15 @@ impl Vista {
     }
 
     fn quitar_senal(&mut self, ms: i64, textos: &Catalogo) {
+        // Un clip no se quita desde aqui: es de lo grabado.
+        if self
+            .clase
+            .senales
+            .iter()
+            .all(|s| s.ms != ms || s.clip.is_some())
+        {
+            return;
+        }
         let banderita = self.clase.senales.iter().any(|s| s.ms == ms && s.banderita);
         let hecho = cambiar_la_nota(&self.raiz, &self.clase.proyecto, &self.clase.id, |m| {
             if banderita {
@@ -1254,9 +1321,9 @@ impl Vista {
         let otras_capturas = nueva.capturas != self.clase.capturas;
         self.clase.lineas = nueva.lineas;
         self.clase.nombre = nueva.nombre;
+        self.clase.clips = nueva.clips;
         self.clase.poner_senales(nueva.senales);
         self.clase.fotos = nueva.fotos;
-        self.clase.clips = nueva.clips;
         if otras_capturas {
             self.clase.capturas = nueva.capturas;
             self.miniaturas = (0..self.clase.capturas.len()).map(|_| None).collect();
@@ -1267,7 +1334,9 @@ impl Vista {
             self.cargador = Cargador::lanzar(
                 self.clase.capturas.iter().map(|(_, r)| r.clone()).collect(),
                 motor.lado_maximo_bitmap().min(2560),
+                motor.lado_maximo_bitmap(),
             );
+            self.pedida_entera = None;
         }
         *self.altos_texto.borrow_mut() = (0, Vec::new());
         true
@@ -1306,9 +1375,27 @@ impl Vista {
             && self.grande.as_ref().is_none_or(|(g, _)| *g != i)
             && self.pedida != Some(i)
             && let Some(c) = &self.cargador
-            && c.pedir.send(i).is_ok()
+            && c.pedir.send((i, false)).is_ok()
         {
             self.pedida = Some(i);
+            self.pedida_entera = None;
+        }
+        // Acercada mas alla de lo cargado: la entera, una vez por captura.
+        if let Some(i) = self.captura_a_la_vista()
+            && let Some((g, (_, w, h))) = &self.grande
+            && *g == i
+            && self.pedida_entera != Some(i)
+            && let Some(Some((de_verdad, _))) = self.medidas.get(i)
+        {
+            let pintada = self
+                .encuadre
+                .destino(caja_de(self.disp.medio), *w as f32, *h as f32);
+            if pixpin_proyecto::presencial::hace_falta_la_entera(pintada.2, *w, *de_verdad)
+                && let Some(c) = &self.cargador
+                && c.pedir.send((i, true)).is_ok()
+            {
+                self.pedida_entera = Some(i);
+            }
         }
         cambio
     }
@@ -1992,6 +2079,16 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
         Zona::CambiarVista => v.ver_capturas = !v.ver_capturas,
         Zona::Ir(ms) => v.ir_a(ms),
         Zona::Quitar(ms) => v.quitar_senal(ms, textos),
+        Zona::Clip(i) => {
+            if let Some(s) = v.clase.senales.get(i).cloned() {
+                v.ir_a(s.ms);
+                if let Some((ruta, _)) = &s.clip
+                    && let Err(e) = pixpin_shell::abrir(ruta)
+                {
+                    tracing::warn!(?e, "no se pudo abrir el clip de la clase");
+                }
+            }
+        }
         Zona::Captura(i) => {
             if let Some((ms, _)) = v.clase.capturas.get(i) {
                 let ms = *ms;
@@ -2005,22 +2102,6 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
         Zona::Anotar => v.anotar = true,
         Zona::Transcripcion => v.reparto.texto = !v.reparto.texto,
         Zona::PantallaEntera => v.pedir_entera = true,
-        Zona::Clip(i) => {
-            if let Some(ruta) = v.clase.clips.get(i).map(|(_, r)| r.clone()) {
-                // Un clip HEVC sin la extension de la tienda: se dice que
-                // falta, y se abre igual (el reproductor del sistema lo dira
-                // tambien, y el fichero no se pierde).
-                if pixpin_pin::video::examinar(&ruta)
-                    .and_then(|f| f.extension_que_falta())
-                    .is_some()
-                {
-                    v.avisar(textos.t("estudiar-sin-hevc"));
-                }
-                if let Err(e) = pixpin_shell::abrir::abrir(&ruta) {
-                    tracing::warn!(?e, "no se pudo abrir el clip del movil");
-                }
-            }
-        }
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
@@ -2226,26 +2307,6 @@ fn pintar_medio(p: &Pintor, v: &mut Vista, e: f32, textos: &Catalogo) {
         );
     }
     v.zonas.push((caja, Zona::Medio));
-    // Sonando un clip del movil, abajo a la izquierda: «▶ Clip del móvil».
-    let clips: Vec<clase::Clip> = v.clase.clips.iter().map(|(c, _)| c.clone()).collect();
-    if let Some(i) = clase::clip_en(&clips, v.medio.posicion_ms()) {
-        let rotulo = textos.t("estudiar-clip-movil");
-        let ficha = RectF {
-            x: caja.x + 10.0 * e,
-            y: caja.y + caja.alto - 38.0 * e,
-            ancho: ancho_de_ficha(p, Some(&mi::PLAY_ARROW), &rotulo, e),
-            alto: 28.0 * e,
-        };
-        pintar_ficha(
-            p,
-            v,
-            ficha,
-            Some(&mi::PLAY_ARROW),
-            &rotulo,
-            Zona::Clip(i),
-            e,
-        );
-    }
     // Con video y capturas, una ficha arriba a la derecha cambia entre los
     // dos: «Ver la captura» / «Ver el vídeo».
     if v.medio.es_video() && !v.clase.capturas.is_empty() {
@@ -2447,19 +2508,6 @@ fn pintar_tiempo(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, posicion: i64) 
         3.0 * e,
         tema.enviar,
     );
-    // Los clips del movil: una franja verde de lo que dura cada uno.
-    for (c, _) in &v.clase.clips {
-        let (x0, x1) = (x_de(c.ms), x_de(c.ms + c.duracion_ms));
-        p.rellenar_redondeado(
-            RectF {
-                x: x0,
-                ancho: (x1 - x0).max(3.0 * e),
-                ..pista
-            },
-            3.0 * e,
-            con_alfa(crate::ventanita::VERDE, 0.8),
-        );
-    }
     for (ms, _) in &v.clase.capturas {
         let x = x_de(*ms);
         p.rellenar(
@@ -2815,7 +2863,7 @@ fn pintar_senales(
             );
         }
         p.icono(
-            &mi::FLAG,
+            s.icono(),
             RectF {
                 x: fila.x + 8.0 * e,
                 y: fila.y + 7.0 * e,
@@ -2831,25 +2879,21 @@ fn pintar_senales(
             12.5 * e,
             AMBAR,
         );
-        let nota = if s.texto.is_empty() {
-            textos.t("estudiar-marcador-sin-nota")
-        } else {
-            s.texto.clone()
-        };
+        let nota = s.nota(textos);
         p.texto_linea(
             &nota,
             fila.x + 84.0 * e,
             fila.y + 7.0 * e,
             13.0 * e,
             fila.ancho - 120.0 * e,
-            if s.texto.is_empty() {
+            if s.texto.is_empty() && s.clip.is_none() {
                 tema.apagado
             } else {
                 tema.texto
             },
         );
-        v.zonas.push((fila, Zona::Ir(s.ms)));
-        if encima {
+        v.zonas.push((fila, s.zona(k)));
+        if encima && s.clip.is_none() {
             let x = RectF {
                 x: fila.x + fila.ancho - 28.0 * e,
                 y: fila.y + 3.0 * e,
@@ -3023,7 +3067,7 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
                     con_alfa(AMBAR, if encima { 0.26 } else { 0.16 }),
                 );
                 p.icono(
-                    &mi::FLAG,
+                    s.icono(),
                     RectF {
                         x: marca.x + 10.0 * e,
                         y: marca.y + (marca.alto - 16.0 * e) / 2.0,
@@ -3032,11 +3076,7 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
                     },
                     AMBAR,
                 );
-                let nota = if s.texto.is_empty() {
-                    textos.t("estudiar-marcador-sin-nota")
-                } else {
-                    s.texto.clone()
-                };
+                let nota = s.nota(textos);
                 let (_, nh) = p.medir_texto(&nota, 13.0 * e);
                 p.texto_linea(
                     &format!("{} · {nota}", pixpin_voz::marca_de_tiempo(s.ms)),
@@ -3046,7 +3086,7 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
                     ancho_texto,
                     tema.texto,
                 );
-                v.zonas.push((marca, Zona::Ir(s.ms)));
+                v.zonas.push((marca, s.zona(*j)));
             }
         }
     }

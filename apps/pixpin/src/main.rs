@@ -248,6 +248,11 @@ const ID_ZONA_DE_LA_CLASE: u32 = 911;
 /// «Figuras…» (25-oct-2026): la ventana de las figuras guardadas, con su
 /// previsualizador.
 const ID_FIGURAS: u32 = 912;
+/// Una clase o reunion empezo o dejo de grabarse (27-oct-2026): no sale en
+/// ningun menu; lo manda la barra de grabar para que el icono de la bandeja
+/// diga «Grabando…» mientras tanto (la barra sigue aunque PixPin no este
+/// delante).
+const ID_CLASE_EN_MARCHA: u32 = 913;
 
 const _: () = assert!(
     ID_ABRIR_DOCUMENTO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -950,6 +955,18 @@ fn arrancar(
             tracing::debug!(%programa, "atajo ignorado: el programa esta en la lista");
             return Continuar::Si;
         }
+        // La barra de grabar clase empezo o termino: el titulo del icono.
+        if matches!(evento, Evento::Menu(id) if id == ID_CLASE_EN_MARCHA) {
+            let titulo = if ventana_chat::clase_grabandose() {
+                textos.t("bandeja-grabando")
+            } else if registrados.is_none() {
+                textos.t("bandeja-silenciada")
+            } else {
+                textos.t("app-nombre")
+            };
+            let _ = bandeja.poner_titulo(&titulo);
+            return Continuar::Si;
+        }
         if comando == Some(comandos::Comando::SilenciarAtajos) {
             match registrados.take() {
                 Some(guardia) => {
@@ -1021,8 +1038,29 @@ fn arrancar(
             },
         };
         let seguir = match evento {
+            // Salir a mitad de una grabacion: se pregunta antes. «Si»
+            // termina y guarda (sin pasar a texto) y sale; «No» sigue
+            // grabando (27-oct-2026: la reunion presencial no se puede
+            // perder por un clic en la bandeja).
+            _ if comando == Some(comandos::Comando::Salir)
+                && ventana_chat::clase_grabandose()
+                && !pixpin_shell::dialogo::preguntar_al_frente(
+                    &textos.t("salir-grabando-titulo"),
+                    &textos.t("salir-grabando-mensaje"),
+                ) =>
+            {
+                tracing::info!("salida cancelada: se sigue grabando la clase");
+                Continuar::Si
+            }
             _ if comando == Some(comandos::Comando::Salir) => {
                 tracing::info!("salida pedida por el usuario");
+                // Lo que se estuviera grabando se termina y se guarda.
+                if ventana_chat::clase_grabandose() {
+                    let a_tiempo = ventana_chat::terminar_la_clase_para_salir(
+                        std::time::Duration::from_secs(120),
+                    );
+                    tracing::info!(a_tiempo, "clase terminada para salir");
+                }
                 // El PDF que se estuviera aligerando se deja como estaba.
                 aligerar::cancelar_todo();
                 // Lo que se estuviera escuchando se calla y sus mandos se van.

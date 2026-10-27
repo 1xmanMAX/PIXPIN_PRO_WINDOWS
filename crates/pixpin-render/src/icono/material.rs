@@ -928,6 +928,7 @@ pub const TODOS: &[Icono] = &[
     GROUP,
     SAVE,
     VIDEOCAM,
+    PHOTO_CAMERA,
     EDIT_NOTE,
     CROP_FREE,
     MORE_VERT,
@@ -1039,6 +1040,20 @@ pub const VIDEOCAM: Icono = Icono {
         "M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z",
         false,
     )],
+};
+
+/// `photo_camera` (`src/image/photo_camera/materialicons/24px.svg`): «Foto»
+/// con la camara del equipo en la reunion presencial (27-oct-2026). El
+/// `<circle>` del centro va como dos arcos.
+pub const PHOTO_CAMERA: Icono = Icono {
+    vista: VISTA,
+    trazos: &[
+        relleno("M12 8.8a3.2 3.2 0 1 0 0 6.4a3.2 3.2 0 1 0 0-6.4z", false),
+        relleno(
+            "M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z",
+            false,
+        ),
+    ],
 };
 
 /// `fullscreen` (`src/navigation/fullscreen/materialicons/24px.svg`): los
