@@ -3166,3 +3166,251 @@ fn el_logo_de_antes_empieza_a_viajar_como_foto_del_chat() {
     );
     p.quieto(&chat);
 }
+
+// ------------------------- versiones vinculadas (Android v0.145, 27-oct-2026)
+
+/// Las claves de un mensaje del PC como las escribe su cuaderno, se guarden
+/// tipadas o en `resto`: lo que cuenta es lo que viaja.
+fn json_pc(m: &Mensaje) -> serde_json::Value {
+    serde_json::to_value(m).unwrap()
+}
+
+/// Un mensaje del movil por su id, en JSON.
+fn del_movil(p: &Par, id: &str) -> serde_json::Value {
+    p.movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|m| kotlin::cadena(m, "id") == Some(id))
+        .map(|m| serde_json::from_str(&m.a_texto()).unwrap())
+        .unwrap_or_else(|| panic!("no esta en el movil: {id}"))
+}
+
+/// Copia un fichero del movil (`VersionesVinculadas.conArchivos`: copias, no enlaces).
+fn copiar_en_movil(p: &Par, de: &str, a: &str) {
+    let r = p.movil.raiz();
+    std::fs::create_dir_all(r.join(a).parent().unwrap()).unwrap();
+    std::fs::copy(r.join(de), r.join(a)).unwrap();
+}
+
+#[test]
+fn una_version_hecha_en_el_movil_llega_al_pc_con_sus_copias_y_el_original_no_cambia() {
+    // El movil de Android v0.145 (`VersionesVinculadas.nueva` + `conArchivos`):
+    // en un chat compartido, cambiar el lienzo y el PDF de otra persona hace
+    // una copia suya que contesta al original y dice de cual es.
+    let p = montar("version-del-movil");
+    let obra = proyecto_del_pc(&p);
+    let u_pdf = adjunto_movil(&p, "p", "1_plano.pdf", b"%PDF-1.4 de Ana");
+    dibujo_movil(&p, &format!("anot-{u_pdf}-p0"), &["tinta-ana"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u_pdf}.marcas"), "0.3:📌");
+    p.vuelta_desde_pc();
+    let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    let original = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|m| kotlin::cadena(m, "referencia") == Some("d9"))
+        .expect("el lienzo del PC esta en el movil");
+    let id_original = kotlin::cadena(&original, "id").unwrap().to_string();
+    let uid_lienzo = kotlin::unico(&original);
+    let antes_pc: Vec<serde_json::Value> = p.mensajes_pc(&obra.id).iter().map(json_pc).collect();
+
+    // La version del lienzo: su dibujo copiado a `dib-<id nuevo>` con algo mas.
+    let lienzo = de_gz(&p.movil.raiz().join("pins/draw/d9.excalidraw.gz"));
+    let mio = lienzo.replacen(
+        r#""elements":["#,
+        r#""elements":[{"id":"B","type":"ellipse","x":9,"version":1,"versionNonce":5,"updated":2},"#,
+        1,
+    );
+    assert_ne!(mio, lienzo);
+    gz(&p.movil.raiz().join("pins/draw/dib-v1.excalidraw.gz"), &mio);
+    escribir_movil(&p, "pins/draw/dib-v1.marcas", "m1:0.5:0.5:⭐");
+    let numero = p
+        .movil
+        .leer_mensajes()
+        .iter()
+        .filter(|m| kotlin::chat_de(m) == chat)
+        .filter_map(|m| kotlin::numero(m, "numero"))
+        .max()
+        .unwrap()
+        + 1;
+    p.movil
+        .anadir_mensaje(&Json::de_valor(&json!({
+            "id": "v1", "cuando": p.reloj.tic(), "clase": "DIBUJO", "proyecto": chat,
+            "referencia": "dib-v1", "nombre": kotlin::cadena(&original, "nombre"),
+            "respondeA": id_original, "versionDe": uid_lienzo, "versionN": 1,
+            "uid": "VVVVVVVVV2", "aparato": "ANAM", "numero": numero,
+        })))
+        .unwrap();
+    // La version del PDF: el archivo a `guardados/<hora>_v1_<nombre>` y lo
+    // anotado de Ana copiado a su codigo, con su tinta encima.
+    let hora = p.reloj.tic();
+    let copia = format!("guardados/{hora}_v1_plano.pdf");
+    copiar_en_movil(&p, "guardados/1_plano.pdf", &copia);
+    dibujo_movil(&p, "anot-VVVVVVVVV3-p0", &["tinta-ana", "tinta-mia"]);
+    copiar_en_movil(
+        &p,
+        &format!("pins/draw/anot-{u_pdf}.marcas"),
+        "pins/draw/anot-VVVVVVVVV3.marcas",
+    );
+    p.movil
+        .anadir_mensaje(&Json::de_valor(&json!({
+            "id": "v2", "cuando": hora, "clase": "ARCHIVO", "ruta": p.movil.absoluta(&copia),
+            "nombre": "1_plano.pdf", "respondeA": "p", "versionDe": u_pdf, "versionN": 1,
+            "uid": "VVVVVVVVV3", "aparato": "ANAM", "numero": 9,
+        })))
+        .unwrap();
+
+    p.vuelta_desde_pc();
+
+    // En el PC: dos mensajes nuevos con el vinculo tal cual...
+    let v1 = p
+        .mensajes_pc(&obra.id)
+        .into_iter()
+        .find(|m| m.id == "v1")
+        .expect("la version del lienzo llega al PC");
+    let j = json_pc(&v1);
+    assert_eq!(j["versionDe"], json!(uid_lienzo));
+    assert_eq!(j["versionN"], json!(1));
+    assert_eq!(v1.responde_a.as_deref(), Some(id_original.as_str()));
+    assert_eq!(v1.referencia.as_deref(), Some("dib-v1"));
+    // ...con su propio dibujo y sus marcadores, y el original sin tocar.
+    let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
+    let suyo = std::fs::read_to_string(carpeta.join("lienzos/dib-v1.excalidraw")).unwrap();
+    assert!(figuras(&suyo).contains("B") && figuras(&suyo).contains("A"));
+    let el_original = std::fs::read_to_string(carpeta.join("lienzos/d9.excalidraw")).unwrap();
+    assert_eq!(figuras(&el_original), ["A".to_string()].into());
+    assert!(carpeta.join("android/pins/draw/dib-v1.marcas").is_file());
+    let despues_pc: Vec<serde_json::Value> = p
+        .mensajes_pc(&obra.id)
+        .iter()
+        .filter(|m| m.id != "v1")
+        .map(json_pc)
+        .collect();
+    assert_eq!(despues_pc, antes_pc, "lo del PC no cambia");
+    // El PDF: su copia, lo anotado con el codigo de la version, y el de Ana igual.
+    let raiz = p.raiz();
+    let pdf_v = doc_en_pc(&p, "v2");
+    assert_eq!(std::fs::read(&pdf_v).unwrap(), b"%PDF-1.4 de Ana");
+    assert_ne!(pdf_v, doc_en_pc(&p, "p"), "otro fichero, no el mismo");
+    let tinta_v = pixpin_proyecto::anotado::hoja_del_pdf(&raiz, &pdf_v, 0).unwrap();
+    assert_eq!(
+        figuras(&std::fs::read_to_string(tinta_v).unwrap()),
+        ["tinta-ana".to_string(), "tinta-mia".into()].into()
+    );
+    let tinta_o = pixpin_proyecto::anotado::hoja_del_pdf(&raiz, &doc_en_pc(&p, "p"), 0).unwrap();
+    assert_eq!(
+        figuras(&std::fs::read_to_string(tinta_o).unwrap()),
+        ["tinta-ana".to_string()].into()
+    );
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    let v2 = p
+        .mensajes_pc(&g.id)
+        .into_iter()
+        .find(|m| m.id == "v2")
+        .unwrap();
+    assert_eq!(json_pc(&v2)["versionDe"], json!(u_pdf));
+
+    // Ida y vuelta: el movil conserva el vinculo y nada mas se mueve.
+    p.desde_movil(&[chat.as_str(), GENERAL]);
+    assert_eq!(del_movil(&p, "v1")["versionDe"], json!(uid_lienzo));
+    assert_eq!(del_movil(&p, "v2")["versionN"], json!(1));
+    p.quieto(&chat);
+    p.quieto(GENERAL);
+}
+
+#[test]
+fn una_version_hecha_en_el_pc_llega_al_movil_con_los_nombres_de_android() {
+    // Lo mismo desde el PC (la regla para la ventana del chat): el mensaje
+    // y los ficheros con los nombres que espera `VersionesVinculadas.kt`.
+    let p = montar("version-del-pc");
+    let obra = proyecto_del_pc(&p);
+    p.vuelta_desde_pc();
+    let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
+    let original = p
+        .mensajes_pc(&obra.id)
+        .into_iter()
+        .find(|m| m.referencia.as_deref() == Some("d9"))
+        .unwrap();
+    // `nueva`: id, uid, aparato, numero y cuando nuevos; respondeA al
+    // original; versionDe con su codigo unico; el dibujo a `dib-<id nuevo>`.
+    let id = p.reloj.tic().to_string();
+    let dib = format!("dib-{id}");
+    let lienzo = std::fs::read_to_string(carpeta.join("lienzos/d9.excalidraw")).unwrap();
+    let mio = lienzo.replacen(
+        r#""elements":["#,
+        r#""elements":[{"id":"C","type":"diamond","x":3,"version":1,"versionNonce":2,"updated":3},"#,
+        1,
+    );
+    std::fs::write(carpeta.join(format!("lienzos/{dib}.excalidraw")), mio).unwrap();
+    let mut v = json_pc(&original);
+    let o = v.as_object_mut().unwrap();
+    o.insert("id".into(), json!(id));
+    o.insert("cuando".into(), json!(id.parse::<i64>().unwrap()));
+    o.insert("uid".into(), json!("PCVVVVVVV4"));
+    o.insert("numero".into(), json!(4));
+    o.insert("referencia".into(), json!(dib));
+    o.insert("ruta".into(), json!(format!("lienzos/{dib}.excalidraw")));
+    o.insert("respondeA".into(), json!(original.id));
+    o.insert("versionDe".into(), json!(original.codigo_unico()));
+    o.insert("versionN".into(), json!(1));
+    let version: Mensaje = serde_json::from_value(v).unwrap();
+    cuaderno::anadir(&carpeta, &version).unwrap();
+
+    p.vuelta_desde_pc();
+
+    let en_movil = del_movil(&p, &id);
+    assert_eq!(en_movil["versionDe"], json!(original.codigo_unico()));
+    assert_eq!(en_movil["versionN"], json!(1));
+    assert_eq!(en_movil["respondeA"], json!(original.id));
+    assert_eq!(en_movil["referencia"], json!(dib));
+    let suyo = de_gz(
+        &p.movil
+            .raiz()
+            .join(format!("pins/draw/{dib}.excalidraw.gz")),
+    );
+    assert!(figuras(&suyo).contains("C"));
+    let el_original = de_gz(&p.movil.raiz().join("pins/draw/d9.excalidraw.gz"));
+    assert!(
+        !figuras(&el_original).contains("C"),
+        "el original no se toca"
+    );
+    p.quieto(&chat);
+}
+
+// ------------------------------- lo nacido despues de elegir (Android 26-oct)
+
+#[test]
+fn un_chat_nacido_en_el_movil_despues_de_elegir_llega_al_pc_sin_preguntar() {
+    let p = montar("nacido-en-el-movil");
+    let obra = proyecto_del_pc(&p);
+    let chat_obra = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    p.nota_movil("n1", "general", None);
+    // El usuario elige en el PC: todo menos su «Obra del PC».
+    p.vuelta_preguntando(&|f| f.id != chat_obra, false);
+    assert!(p.movil.leer_proyectos().is_empty(), "desmarcado no viaja");
+    // El movil graba una clase en un proyecto nuevo.
+    p.movil
+        .guardar_proyecto(
+            &kotlin::normalizar_proyecto(&Json::de_valor(&json!({
+                "id": "pr-clase", "nombre": "Clase del lunes", "tocado": 5,
+            })))
+            .unwrap(),
+        )
+        .unwrap();
+    p.nota_movil("c1", "la clase", Some("pr-clase"));
+    // La vuelta sin preguntar (la automatica) lo trae; «Obra» sigue fuera.
+    p.vuelta_desde_pc();
+    assert!(
+        p.pc.ficha_de("pr-clase").is_some(),
+        "lo nacido despues entra"
+    );
+    assert!(p.textos_pc("pr-clase").contains("la clase"));
+    assert!(
+        p.movil
+            .leer_proyectos()
+            .iter()
+            .all(|x| kotlin::cadena(x, "id") != Some(chat_obra.as_str())),
+        "lo desmarcado sigue fuera"
+    );
+}
