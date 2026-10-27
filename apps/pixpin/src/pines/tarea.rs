@@ -44,6 +44,8 @@ const ANCHO: u32 = 280;
 const ALTO: u32 = 112;
 const MARGEN: f32 = 10.0;
 const BOTON_ALTO: f32 = 26.0;
+/// El lado de la insignia de chat compartido.
+const INSIGNIA: f32 = 18.0;
 
 /// La ruta con la que se pide el pin de la tarea `indice` de la lista `id`.
 pub fn ruta_de_tarea(carpeta: &Path, id: &str, indice: usize) -> PathBuf {
@@ -69,6 +71,29 @@ pub fn tarea_de_ruta(ruta: &Path) -> Option<(Vinculo, usize)> {
             indice,
         )
     })
+}
+
+/// **Si la tarea es de un chat compartido** (27-oct-2026, checklist 26): el
+/// pin lleva la insignia verde de las dos personas, la misma de la lista de
+/// chats y de las listas de Tareas. Lo dice la carpeta del chat de su
+/// vinculo (`proyectos/<ficha>`).
+fn compartida(h: &Herramienta) -> bool {
+    h.vinculo
+        .as_ref()
+        .and_then(|v| v.carpeta.file_name()?.to_str())
+        .is_some_and(crate::sincronizar::compartidos_ui::compartido_aqui)
+}
+
+/// Donde va la insignia de compartida: arriba a la derecha, a la altura del
+/// titulo.
+fn insignia(caja: RectF, e: f32) -> RectF {
+    let lado = INSIGNIA * e;
+    RectF {
+        x: caja.x + caja.ancho - MARGEN * e - lado,
+        y: caja.y + MARGEN * e,
+        ancho: lado,
+        alto: lado,
+    }
 }
 
 /// El titulo por el que se reconoce la tarea de un pin.
@@ -186,6 +211,15 @@ pub(super) fn pintar(
     );
     let x = caja.x + margen + 4.0 * e;
     let ancho = (caja.ancho - 2.0 * margen - 4.0 * e).max(1.0);
+    // De un chat compartido: la insignia arriba a la derecha, y el titulo
+    // no se mete debajo.
+    let ancho_titulo = if compartida(h) {
+        let i = insignia(caja, e);
+        crate::ventana_chat::pintar_insignia_compartido(p, i);
+        (i.x - 6.0 * e - x).max(1.0)
+    } else {
+        ancho
+    };
     let b = boton((caja.ancho as u32, caja.alto as u32), escala);
     let boton = RectF {
         x: caja.x + b.x as f32,
@@ -196,16 +230,16 @@ pub(super) fn pintar(
     let mut y = caja.y + margen;
     // El titulo, hasta donde quepa sobre lo de abajo.
     let tam = 14.5 * e;
-    let (_, alto_t) = p.medir_texto_ajustado(&m.titulo, tam, ancho);
+    let (_, alto_t) = p.medir_texto_ajustado(&m.titulo, tam, ancho_titulo);
     let tope = boton.y - y - 4.0 * e;
     p.con_recorte(
         RectF {
             x,
             y,
-            ancho,
+            ancho: ancho_titulo,
             alto: alto_t.min(tope).max(1.0),
         },
-        |p| p.texto_ajustado(&m.titulo, x, y, tam, ancho, tema.texto),
+        |p| p.texto_ajustado(&m.titulo, x, y, tam, ancho_titulo, tema.texto),
     );
     y += alto_t.min(tope) + 3.0 * e;
     // La hora y, detras, las chapitas (urgencia y etiquetas) en una linea;
@@ -334,6 +368,37 @@ mod pruebas {
             };
             crate::ventanita::muestra(nombre, w, h, |p, _| cuadro.pintar(p, caja, &textos));
         }
+    }
+
+    #[test]
+    fn la_insignia_va_arriba_a_la_derecha_dentro_del_pin() {
+        let (w, h) = tamano_natural(150);
+        let caja = RectF {
+            x: 10.0,
+            y: 20.0,
+            ancho: w as f32,
+            alto: h as f32,
+        };
+        let i = insignia(caja, 1.5);
+        assert!((i.x + i.ancho - (caja.x + caja.ancho - MARGEN * 1.5)).abs() < 0.01);
+        assert!((i.y - (caja.y + MARGEN * 1.5)).abs() < 0.01);
+        assert_eq!(i.ancho, i.alto);
+        // Por encima del boton de la nota.
+        assert!(i.y + i.alto < caja.y + boton((w, h), 150).y as f32);
+    }
+
+    #[test]
+    fn sin_vinculo_o_fuera_de_un_chat_compartido_no_hay_insignia() {
+        // Casos negativos: un pin suelto (sin chat) y uno de un chat normal
+        // (en las pruebas no hay carpeta de la aplicacion: ninguno es
+        // compartido).
+        let mut h = tarea("pan");
+        assert!(!compartida(&h));
+        h.vinculo = Some(Vinculo {
+            carpeta: PathBuf::from("C:/p/proyectos/obra"),
+            mensaje: "m1".into(),
+        });
+        assert!(!compartida(&h));
     }
 
     #[test]
