@@ -11606,6 +11606,19 @@ pub(crate) fn grabar_flotante(
     );
 }
 
+/// **Si se esta grabando una clase o reunion** (la barra de
+/// [`grabar_clase`], que sigue aunque el chat se cierre): para el
+/// «Grabando…» de la bandeja y para preguntar antes de salir.
+pub(crate) fn clase_grabandose() -> bool {
+    grabar_clase::grabando()
+}
+
+/// **Termina y guarda la clase que se graba** antes de salir de PixPin
+/// (sin pasar a texto). Devuelve si dio tiempo a guardarla.
+pub(crate) fn terminar_la_clase_para_salir(tope: std::time::Duration) -> bool {
+    grabar_clase::terminar_para_salir(tope)
+}
+
 /// **Graba una clase o una reunion** (24-oct-2026): la ventanita de
 /// [`grabar_clase`], que guarda en el proyecto elegido la nota con sus
 /// capturas y la pasa a texto. Sin proyectos, en «Guardados».
