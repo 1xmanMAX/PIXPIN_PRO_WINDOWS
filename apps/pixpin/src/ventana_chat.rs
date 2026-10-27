@@ -8528,8 +8528,10 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
 
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
-    // guardados»), el nombre con su flechita y debajo cuantas cosas guarda y
-    // cuanto ocupan, que es lo que se pregunta de un cajon de documentos.
+    // guardados») y el nombre con su flechita. Debajo ya no va «N cosas · X
+    // MB» (27-oct-2026, checklist 6, como el movil: «Cabecera del chat:
+    // quitar "N cosas · X MB"»): solo lo que hay que saber antes de
+    // escribir, si es compartido, y lo que no se pudo leer.
     // Escribiendolo, se mide lo escrito (o la invitacion) y se pinta con la
     // caja de una linea comun, que pone la rayita donde va.
     let (nombre, color_nombre) = if a.renombrando && a.nombre_escrito.is_empty() {
@@ -8539,28 +8541,20 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     } else {
         (a.ficha.nombre.clone(), tema.pildora_texto)
     };
-    let (se_ven, bytes) = crate::pdf_en_chat::cuenta_de_la_cabecera(&a.mensajes);
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("n", se_ven);
-    let mut sub = textos.t_args("chat-cosas", &args);
-    // Un chat compartido lo dice delante, con cuantas personas son: es lo
-    // primero que hay que saber antes de escribir en el.
+    // Un chat compartido lo dice, con cuantas personas son: es lo primero
+    // que hay que saber antes de escribir en el.
     let compartido = crate::sincronizar::compartidos_ui::del_chat(&a.raiz, &a.ficha.id);
     let con_quien = compartido.as_ref().map(|c| {
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("n", c.personas);
         textos.t_args("cc-chapa-personas", &args)
     });
-    if let Some(q) = &con_quien {
-        sub = format!("{q} · {sub}");
-    }
-    if bytes > 0 {
-        sub = format!("{sub} · {}", pixpin_ui::chat::tamano_corto(bytes as u64));
-    }
+    let mut partes: Vec<String> = con_quien.iter().cloned().collect();
     if a.rotas > 0 {
         // Lo que no se pudo leer se dice, no se calla.
-        sub.push_str(&format!(" · {} ?", a.rotas));
+        partes.push(format!("{} ?", a.rotas));
     }
+    let sub = partes.join(" · ");
     let (tam_nombre, tam_sub) = (15.0 * e, 12.0 * e);
     let disco = 28.0 * e;
     let flecha = 18.0 * e;
@@ -8578,7 +8572,12 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
     pildora(p, tema, rf(caja), e);
     let x0 = caja.x as f32 + 14.0 * e;
-    let y0 = caja.y as f32 + 4.0 * e;
+    // Sin nada debajo, el disco y el nombre van centrados en la pastilla.
+    let y0 = if sub.is_empty() {
+        caja.y as f32 + (caja.alto as f32 - disco) / 2.0
+    } else {
+        caja.y as f32 + 4.0 * e
+    };
     let circulo = RectF {
         x: x0,
         y: y0,

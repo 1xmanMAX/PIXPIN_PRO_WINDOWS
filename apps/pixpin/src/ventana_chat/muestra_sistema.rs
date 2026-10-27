@@ -109,11 +109,6 @@ fn los_mensajes_de_sistema_van_en_la_franja_y_no_como_burbujas() {
     let textos = Catalogo::nuevo(Idioma::Espanol);
     let a = abrir_proyecto(&u, &ficha);
     assert_eq!(a.mensajes.len(), 6, "siguen en el cuaderno");
-    assert_eq!(
-        crate::pdf_en_chat::cuenta_de_la_cabecera(&a.mensajes).0,
-        2,
-        "la cabecera no los cuenta"
-    );
     let vistos: Vec<String> = indices_visibles(&a)
         .into_iter()
         .map(|i| a.mensajes[i].texto.clone())

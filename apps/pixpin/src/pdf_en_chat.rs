@@ -757,20 +757,6 @@ pub fn solo_galeria(m: &cuaderno::Mensaje) -> bool {
     m.resto.get(SOLO_GALERIA).and_then(|v| v.as_bool()) == Some(true)
 }
 
-/// **Lo que dice la cabecera del chat**: cuantos mensajes se ven y cuanto
-/// ocupan. Sin las paginas escondidas: «8 cosas» con dos burbujas a la vista
-/// parecia que faltaban seis. Ni los de sistema (`auto-*`), que van en su franja.
-pub fn cuenta_de_la_cabecera(mensajes: &[cuaderno::Mensaje]) -> (usize, i64) {
-    mensajes
-        .iter()
-        .filter(|m| {
-            !solo_galeria(m)
-                && !cuaderno::es_de_sistema(m)
-                && !crate::ventana_chat::carpetas::esta_dentro(m)
-        })
-        .fold((0, 0), |(n, b), m| (n + 1, b + m.bytes.max(0)))
-}
-
 /// **El punto rojo del movil**: el mensaje se unio al proyecto y su hoja ya
 /// no esta (se quito, o la quito la sincronizacion). Lee `proyecto.json`
 /// solo cuando cambia: se pregunta en cada fotograma.
@@ -1246,9 +1232,8 @@ mod pruebas {
         marcar_solo_galeria(&carpeta, &mut mensajes, 1);
         assert!(!solo_galeria(&mensajes[0]), "el PDF sigue en el chat");
         assert!(mensajes[1..].iter().all(solo_galeria));
-        // La cabecera cuenta solo lo que se ve: el PDF, no sus paginas.
-        assert_eq!(cuenta_de_la_cabecera(&mensajes).0, 1);
-        assert_eq!(cuenta_de_la_cabecera(&[]), (0, 0));
+        // En el chat solo se ve el PDF, no sus paginas.
+        assert_eq!(mensajes.iter().filter(|m| !solo_galeria(m)).count(), 1);
         // Y las paginas no salen ni aunque el mensaje del PDF no este en
         // este chat: una pagina del PDF nunca es un mensaje (movil).
         let mut solas: Vec<_> = almacen::hojas_para_ensenar(&raiz, &ficha.id, "PC01");
