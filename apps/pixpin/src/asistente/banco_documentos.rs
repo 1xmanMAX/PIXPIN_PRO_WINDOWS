@@ -709,7 +709,7 @@ fn motor_de(p: Proveedor) -> Result<(Arc<dyn Motor>, Arc<dyn Motor>), String> {
         pixpin_ia::nube::claves::leer(p).ok_or_else(|| format!("sin clave de {}", p.nombre()))?;
     let vision: Arc<dyn Motor> = Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero());
     let pensar = false;
-    let motor = super::nube::motor(p, None, pensar)?;
+    let motor = super::nube::motor(p, pensar)?;
     Ok((motor, vision))
 }
 

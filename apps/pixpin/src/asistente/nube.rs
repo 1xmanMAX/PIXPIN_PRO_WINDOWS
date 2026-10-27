@@ -1,9 +1,11 @@
 //! **El asistente con Claude o DeepSeek** (13-oct-2026): lo que la app
 //! necesita del motor de la nube de `pixpin_ia::nube`.
 //!
+//! Desde el 27-oct-2026 es el UNICO que contesta: el modelo local (llama.cpp
+//! con Qwen3.5 y Gemma) se quito, como en Android.
+//!
 //! - [`eleccion`]: quien contesta segun `[asistente] motor`.
-//! - [`motor`]: el motor de la nube con la clave guardada y, si el usuario
-//!   no lo apago, el local detras como respaldo.
+//! - [`motor`]: el motor de la nube con la clave guardada.
 //! - [`guardar_y_probar`] / [`borrar`] / [`estado`]: lo de Ajustes →
 //!   Asistente. Probar es una peticion de red: va en su hilo y avisa a la
 //!   ventana al acabar ([`novedades`] cambia y se la despierta).
@@ -18,43 +20,41 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use pixpin_ia::motor::Motor;
-use pixpin_ia::nube::{self, MotorConRespaldo, MotorNube, Proveedor, claves};
+use pixpin_ia::nube::{self, MotorNube, Proveedor, claves};
 use pixpin_store::Ubicacion;
 
-/// Quien contesta.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Eleccion {
-    Local,
-    Nube(Proveedor),
+/// **Quien contesta**, con `hay_clave` aparte para probarlo. Lo de los
+/// ajustes si es un proveedor; si no —vacio, o el `local` de cuando habia
+/// modelo en este PC—, el primero que tenga clave guardada, y sin ninguna,
+/// Claude (la tarjeta del chat pide entonces su clave).
+pub fn eleccion_con(
+    a: &pixpin_store::ajustes::Asistente,
+    hay_clave: impl Fn(Proveedor) -> bool,
+) -> Proveedor {
+    Proveedor::por_id(&a.motor).unwrap_or_else(|| {
+        Proveedor::TODOS
+            .into_iter()
+            .find(|p| hay_clave(*p))
+            .unwrap_or(Proveedor::Claude)
+    })
 }
 
-/// Lo elegido en los ajustes. Algo que no se entienda es el local.
-pub fn eleccion(a: &pixpin_store::ajustes::Asistente) -> Eleccion {
-    Proveedor::por_id(&a.motor).map_or(Eleccion::Local, Eleccion::Nube)
+/// Lo elegido en los ajustes (ver [`eleccion_con`]).
+pub fn eleccion(a: &pixpin_store::ajustes::Asistente) -> Proveedor {
+    eleccion_con(a, hay_clave)
 }
 
 /// Las opciones de «Motor», en el orden de los botones de Ajustes.
-pub const OPCIONES: [Eleccion; 3] = [
-    Eleccion::Local,
-    Eleccion::Nube(Proveedor::Claude),
-    Eleccion::Nube(Proveedor::DeepSeek),
-];
-
-pub fn id_de(e: Eleccion) -> &'static str {
-    match e {
-        Eleccion::Local => "",
-        Eleccion::Nube(p) => p.id(),
-    }
-}
+pub const OPCIONES: [Proveedor; 2] = Proveedor::TODOS;
 
 /// Lo ultimo leido de los ajustes: cuando, de donde y que.
-static CACHE: Mutex<Option<(Instant, std::path::PathBuf, Eleccion)>> = Mutex::new(None);
+static CACHE: Mutex<Option<(Instant, std::path::PathBuf, Proveedor)>> = Mutex::new(None);
 
 /// Lo elegido, mirado como mucho cada 5 s (la tarjeta del chat pregunta en
 /// cada fotograma y el TOML no se lee tanto).
-pub fn eleccion_reciente(raiz_datos: &Path) -> Eleccion {
+pub fn eleccion_reciente(raiz_datos: &Path) -> Proveedor {
     let Ok(mut g) = CACHE.lock() else {
-        return Eleccion::Local;
+        return Proveedor::Claude;
     };
     if let Some((t, r, e)) = g.as_ref()
         && r == raiz_datos
@@ -75,57 +75,56 @@ pub fn eleccion_reciente(raiz_datos: &Path) -> Eleccion {
 /// Ajustes → Asistente → Motor (`[asistente] motor`): se lee el TOML, se
 /// cambia solo eso y se guarda; y lo recordado por [`eleccion_reciente`]
 /// pasa a ser lo nuevo al instante (la pastilla no espera 5 s).
-pub fn elegir(u: &Ubicacion, e: Eleccion) -> Result<(), String> {
+pub fn elegir(u: &Ubicacion, p: Proveedor) -> Result<(), String> {
     let mut a = pixpin_store::cargar(u).map_err(|e| e.to_string())?;
-    a.asistente.motor = id_de(e).to_string();
+    a.asistente.motor = p.id().to_string();
     pixpin_store::guardar(u, &a).map_err(|e| e.to_string())?;
     if let Ok(mut g) = CACHE.lock() {
-        *g = Some((Instant::now(), u.raiz().to_path_buf(), e));
+        *g = Some((Instant::now(), u.raiz().to_path_buf(), p));
     }
     Ok(())
 }
 
-/// El nombre corto para la pastilla del chat: «Claude Haiku», «DeepSeek»,
-/// «Local».
-pub fn nombre_corto(e: Eleccion) -> &'static str {
-    match e {
-        Eleccion::Local => "Local",
-        Eleccion::Nube(Proveedor::Claude) => "Claude Haiku",
-        Eleccion::Nube(Proveedor::DeepSeek) => "DeepSeek",
+/// El nombre corto para la pastilla del chat: «Claude Haiku», «DeepSeek».
+pub fn nombre_corto(p: Proveedor) -> &'static str {
+    match p {
+        Proveedor::Claude => "Claude Haiku",
+        Proveedor::DeepSeek => "DeepSeek",
     }
 }
 
-/// **El motor de la nube** con la clave guardada. `local`: el respaldo si
-/// la nube falla (ya filtrado por el ajuste y por estar bajado). `Err`: el
-/// aviso para el usuario (falta la clave). `pensar`: si piensa este turno
-/// (`pixpin_ia::complejidad`); el respaldo local lo recibe en la peticion.
-pub fn motor(
-    p: Proveedor,
-    local: Option<Arc<dyn Motor>>,
-    pensar: bool,
-) -> Result<Arc<dyn Motor>, String> {
-    let clave = claves::leer(p).ok_or_else(|| {
-        format!(
-            "Falta la clave de {}: pégala en Ajustes → Asistente (se saca en {}).",
-            p.nombre(),
-            p.pagina_de_claves()
-        )
-    })?;
-    let nube: Arc<dyn Motor> = Arc::new(MotorNube::nuevo(p, clave).pensando(pensar));
-    Ok(Arc::new(MotorConRespaldo::nuevo(nube, local, p.nombre())))
+/// El aviso de que falta la clave de `p`: que hacer y donde se saca.
+pub fn falta_la_clave(p: Proveedor) -> String {
+    format!(
+        "Falta la clave de {}: pégala en Ajustes → Asistente (se saca en {}).",
+        p.nombre(),
+        p.pagina_de_claves()
+    )
+}
+
+/// **El motor de la nube** con la clave guardada. `Err`: el aviso para el
+/// usuario (falta la clave). `pensar`: si piensa este turno
+/// (`pixpin_ia::complejidad`).
+pub fn motor(p: Proveedor, pensar: bool) -> Result<Arc<dyn Motor>, String> {
+    #[cfg(test)]
+    if SIN_CLAVES.get() {
+        return Err(falta_la_clave(p));
+    }
+    let clave = claves::leer(p).ok_or_else(|| falta_la_clave(p))?;
+    Ok(Arc::new(MotorNube::nuevo(p, clave).pensando(pensar)))
 }
 
 /// **El critico de respaldo** de la revision con rubrica (23-oct): con Claude
 /// elegido y su clave guardada, Sonnet con la misma clave, sin pensar (solo
 /// puntua una vista). Entra solo si Haiku no da una nota que se lea o ya
 /// suspendio dos veces (`pixpin_ia::agente::Opciones::critico`). Con
-/// DeepSeek o el local, ninguno: la revision se queda con su propio juez.
+/// DeepSeek, ninguno: la revision se queda con su propio juez.
 pub fn critico(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
     // Las pruebas nunca salen a la red.
     if cfg!(test) {
         return None;
     }
-    if eleccion_reciente(raiz_datos) != Eleccion::Nube(Proveedor::Claude) {
+    if eleccion_reciente(raiz_datos) != Proveedor::Claude {
         return None;
     }
     let clave = claves::leer(Proveedor::Claude)?;
@@ -139,14 +138,12 @@ pub fn critico(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
 /// **El jefe** (23-oct, `pixpin_ia::orquesta`): con la nube elegida y su
 /// clave, el modelo fuerte del mismo proveedor y con la misma clave: Sonnet
 /// con Claude, DeepSeek V4 Pro con DeepSeek. Piensa (planear y supervisar es
-/// donde mas rinde). Con el local, ninguno.
+/// donde mas rinde).
 pub fn jefe(raiz_datos: &Path) -> Option<Arc<dyn Motor>> {
     if cfg!(test) {
         return None;
     }
-    let Eleccion::Nube(p) = eleccion_reciente(raiz_datos) else {
-        return None;
-    };
+    let p = eleccion_reciente(raiz_datos);
     let clave = claves::leer(p)?;
     let modelo = match p {
         Proveedor::Claude => nube::claude::MODELO_CRITICO,
@@ -198,6 +195,10 @@ fn con_fichas<R>(f: impl FnOnce(&mut HashMap<Proveedor, Ficha>) -> R) -> R {
 
 /// Si hay clave guardada de este proveedor.
 pub fn hay_clave(p: Proveedor) -> bool {
+    #[cfg(test)]
+    if SIN_CLAVES.get() {
+        return false;
+    }
     con_fichas(|m| m.get(&p).is_some_and(|f| f.guardada.is_some()))
 }
 
@@ -277,27 +278,76 @@ pub fn borrar(p: Proveedor) {
 }
 
 #[cfg(test)]
+thread_local! {
+    static SIN_CLAVES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Las pruebas hacen como si no hubiera ninguna clave guardada en este
+/// hilo (el equipo de quien las corre puede tenerlas): sin red, siempre igual.
+#[cfg(test)]
+pub fn sin_claves_para_pruebas(si: bool) {
+    SIN_CLAVES.set(si);
+}
+
+/// **El motor de las pruebas `#[ignore]` de verdad**: la nube de
+/// `PIXPIN_IA_MOTOR` (`claude` o `deepseek`; Claude por omision) con la
+/// clave guardada en Ajustes. Antes iban con el modelo local.
+#[cfg(test)]
+pub fn de_verdad() -> Arc<dyn Motor> {
+    let p = std::env::var("PIXPIN_IA_MOTOR")
+        .ok()
+        .and_then(|m| Proveedor::por_id(&m.to_lowercase()))
+        .unwrap_or(Proveedor::Claude);
+    motor(p, false).expect("la clave de la nube, en Ajustes → Asistente")
+}
+
+#[cfg(test)]
 mod pruebas {
     use super::*;
 
     #[test]
     fn la_eleccion_sale_de_los_ajustes() {
+        let nada = |_| false;
         let mut a = pixpin_store::ajustes::Asistente::default();
-        assert_eq!(eleccion(&a), Eleccion::Local);
-        assert!(a.respaldo_local, "el respaldo viene encendido");
+        assert_eq!(eleccion_con(&a, nada), Proveedor::Claude);
         a.motor = "claude".into();
-        assert_eq!(eleccion(&a), Eleccion::Nube(Proveedor::Claude));
+        assert_eq!(eleccion_con(&a, nada), Proveedor::Claude);
         a.motor = "deepseek".into();
-        assert_eq!(eleccion(&a), Eleccion::Nube(Proveedor::DeepSeek));
-        a.motor = "otro".into();
-        assert_eq!(eleccion(&a), Eleccion::Local);
-        for e in OPCIONES {
+        assert_eq!(eleccion_con(&a, nada), Proveedor::DeepSeek);
+        for p in OPCIONES {
             let a = pixpin_store::ajustes::Asistente {
-                motor: id_de(e).into(),
+                motor: p.id().into(),
                 ..Default::default()
             };
-            assert_eq!(eleccion(&a), e);
+            assert_eq!(eleccion_con(&a, nada), p);
         }
+    }
+
+    /// Quien tenia el modelo local (motor vacio o `local`) pasa a la nube:
+    /// la que tenga clave, y sin ninguna, Claude.
+    #[test]
+    fn el_local_de_antes_pasa_a_la_nube_con_clave() {
+        for viejo in ["", "local", "otro"] {
+            let a = pixpin_store::ajustes::Asistente {
+                motor: viejo.into(),
+                ..Default::default()
+            };
+            assert_eq!(eleccion_con(&a, |_| false), Proveedor::Claude);
+            assert_eq!(
+                eleccion_con(&a, |p| p == Proveedor::DeepSeek),
+                Proveedor::DeepSeek
+            );
+            assert_eq!(eleccion_con(&a, |_| true), Proveedor::Claude);
+        }
+        // Un TOML viejo con los ajustes del local se sigue leyendo, y al
+        // guardar desaparecen.
+        let viejo = "[asistente]\nmodelo = \"qwen3.5-0.8b\"\nmotor = \"local\"\n\
+                     respaldo_local = true\nmejor_vista = true\nrevisar_lo_dicho = true\n";
+        let a: pixpin_store::ajustes::Ajustes = toml::from_str(viejo).unwrap();
+        assert!(a.asistente.revisar_lo_dicho);
+        assert_eq!(eleccion_con(&a.asistente, |_| false), Proveedor::Claude);
+        let otra_vez = toml::to_string(&a).unwrap();
+        assert!(!otra_vez.contains("mejor_vista") && !otra_vez.contains("qwen"));
     }
 
     /// La pastilla del chat cambia el mismo ajuste que Ajustes → Asistente,
@@ -310,23 +360,16 @@ mod pruebas {
         let u = Ubicacion::Instalado { raiz: raiz.clone() };
         let mut a = pixpin_store::ajustes::Ajustes::default();
         a.asistente.revisar_lo_dicho = true;
+        a.asistente.motor = "claude".into();
         pixpin_store::guardar(&u, &a).unwrap();
-        assert_eq!(eleccion_reciente(&raiz), Eleccion::Local);
-        elegir(&u, Eleccion::Nube(Proveedor::DeepSeek)).unwrap();
+        assert_eq!(eleccion_reciente(&raiz), Proveedor::Claude);
+        elegir(&u, Proveedor::DeepSeek).unwrap();
         // Al instante, sin esperar los 5 s de lo recordado.
-        assert_eq!(
-            eleccion_reciente(&raiz),
-            Eleccion::Nube(Proveedor::DeepSeek)
-        );
+        assert_eq!(eleccion_reciente(&raiz), Proveedor::DeepSeek);
         let leido = pixpin_store::cargar(&u).unwrap().asistente;
-        assert_eq!(eleccion(&leido), Eleccion::Nube(Proveedor::DeepSeek));
+        assert_eq!(leido.motor, "deepseek");
         assert!(leido.revisar_lo_dicho, "lo demas de los ajustes no se toca");
-        elegir(&u, Eleccion::Local).unwrap();
-        assert_eq!(pixpin_store::cargar(&u).unwrap().asistente.motor, "");
-        assert_eq!(
-            nombre_corto(Eleccion::Nube(Proveedor::Claude)),
-            "Claude Haiku"
-        );
+        assert_eq!(nombre_corto(Proveedor::Claude), "Claude Haiku");
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

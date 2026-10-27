@@ -113,11 +113,11 @@ pub(crate) mod sin_ventana {
     /// El motor elegido en Ajustes → Asistente.
     pub(crate) fn motor(
         ubicacion: &Ubicacion,
-        textos: &Catalogo,
+        _textos: &Catalogo,
     ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
         // Los encargos de las automatizaciones: sin pedido que clasificar,
         // la nube piensa como antes.
-        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false, true)
+        super::asistente::motor_de_los_ajustes(ubicacion, true)
     }
 }
 /// «Enviar a Anki» del menu de un mensaje (24-oct-2026).
@@ -17822,7 +17822,7 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
 fn menu_de_cabecera(
     textos: &Catalogo,
     en_guardados: bool,
-    asistente: Option<asistente_nube::Eleccion>,
+    asistente: Option<pixpin_ia::nube::Proveedor>,
 ) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
     // En el chat «Asistente», lo suyo arriba: el modelo (lo mismo que la
@@ -17866,7 +17866,7 @@ fn menu_de_cabecera(
 /// **Lo del chat «Asistente»** en los tres puntos: el modelo (submenu, con
 /// el elegido en el rotulo), «Conversación nueva» y «Borrar chat» en rojo.
 /// Lo de siempre va debajo, apartado por una raya.
-fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+fn menu_de_asistente(textos: &Catalogo, actual: pixpin_ia::nube::Proveedor) -> Vec<EntradaMenu> {
     let modelo = entrada(
         None,
         format!(
@@ -17898,7 +17898,7 @@ fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec
 /// con el elegido marcado como en la escala; debajo, separadas, empezar de
 /// cero y borrar el chat. Elegir cambia el MISMO ajuste que Ajustes →
 /// Asistente (`asistente::nube::elegir`).
-fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+fn menu_de_modelo(textos: &Catalogo, actual: pixpin_ia::nube::Proveedor) -> Vec<EntradaMenu> {
     let mut v: Vec<EntradaMenu> = asistente_nube::OPCIONES
         .iter()
         .enumerate()
@@ -17908,11 +17908,11 @@ fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<En
             } else {
                 &mi::CHECK_BOX_OUTLINE_BLANK
             };
-            let rotulo = match e {
-                asistente_nube::Eleccion::Local => textos.t("ajustes2-asistente-local"),
-                asistente_nube::Eleccion::Nube(p) => p.nombre().to_string(),
-            };
-            entrada(Some(icono), rotulo, Accion::ElegirModeloIa(n))
+            entrada(
+                Some(icono),
+                e.nombre().to_string(),
+                Accion::ElegirModeloIa(n),
+            )
         })
         .collect();
     v.push(
@@ -20548,27 +20548,23 @@ mod pruebas_menu_sin_repetir {
     }
 
     /// La pastilla y los tres puntos del chat «Asistente» (17-oct-2026):
-    /// los tres modelos con el elegido marcado, y empezar de cero y borrar
-    /// apartados; en otro chat, nada de eso.
+    /// los dos de la nube con el elegido marcado (sin el local desde el
+    /// 27-oct-2026), y empezar de cero y borrar apartados; en otro chat,
+    /// nada de eso.
     #[test]
     fn el_menu_del_modelo_marca_el_elegido_y_aparta_borrar() {
-        use asistente_nube::Eleccion;
         use pixpin_ia::nube::Proveedor;
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        let v = menu_de_modelo(&textos, Eleccion::Nube(Proveedor::DeepSeek));
-        let marcados: Vec<bool> = v[..3]
+        let v = menu_de_modelo(&textos, Proveedor::DeepSeek);
+        let marcados: Vec<bool> = v[..2]
             .iter()
             .map(|e| format!("{:?}", e.icono.unwrap()) == format!("{:?}", mi::CHECK_BOX))
             .collect();
-        assert_eq!(
-            marcados,
-            vec![false, false, true],
-            "DeepSeek, el tercero, marcado"
-        );
-        assert_eq!(v[2].accion, Accion::ElegirModeloIa(2));
-        assert!(v[3].accion == Accion::NuevaConversacion && v[3].separada);
-        assert!(v[4].accion == Accion::BorrarChat && v[4].peligro);
-        let c = menu_de_cabecera(&textos, false, Some(Eleccion::Nube(Proveedor::Claude)));
+        assert_eq!(marcados, vec![false, true], "DeepSeek, el segundo, marcado");
+        assert_eq!(v[1].accion, Accion::ElegirModeloIa(1));
+        assert!(v[2].accion == Accion::NuevaConversacion && v[2].separada);
+        assert!(v[3].accion == Accion::BorrarChat && v[3].peligro);
+        let c = menu_de_cabecera(&textos, false, Some(Proveedor::Claude));
         assert!(c[0].texto.contains("Claude Haiku") && c[0].accion == Accion::MenuModeloIa);
         assert!(
             !menu_de_cabecera(&textos, false, None)

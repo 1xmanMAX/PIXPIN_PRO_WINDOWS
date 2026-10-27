@@ -18,7 +18,7 @@ pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
 # «Mi vocabulario» de los ajustes del OCR se parte con la misma regla que
 # usa el lector Indra.
 pixpin-indra = { path = "../../crates/pixpin-indra" }
-# El asistente local del chat: motor llama.cpp aparte, herramientas y bucle.
+# El asistente del chat: la nube (Claude o DeepSeek), herramientas y bucle.
 pixpin-ia = { path = "../../crates/pixpin-ia" }
 # Lo que se reconoce al escribir una tarea: el parser que comparten la app,
 # el pedido `anadir_tarea` y el plugin de Flow Launcher.

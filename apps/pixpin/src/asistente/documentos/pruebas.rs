@@ -442,32 +442,17 @@ fn sin_datos_ni_consulta_no_rompe() {
     vaciar_para_pruebas();
 }
 
-/// **De verdad, con Qwen3.5-2B**: un turno entero preguntando por la tesis
+/// **De verdad, con la nube** (`PIXPIN_IA_MOTOR=claude|deepseek`): un turno entero preguntando por la tesis
 /// (una copia de `E:\pixpin-demo-om\Tesis.pdf` en unos datos inventados).
 ///
 /// ```text
 /// cargo test -p pixpin -- --ignored --nocapture asistente::documentos::pruebas::de_verdad
 /// ```
 #[test]
-#[ignore = "necesita el motor y el modelo bajados, y la muestra Tesis.pdf"]
+#[ignore = "necesita la clave de la nube y la muestra Tesis.pdf"]
 fn de_verdad() {
-    use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
     let _s = SERIE.lock().unwrap_or_else(|e| e.into_inner());
-    let base = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
-        .join("PixPinMax")
-        .join("modelos");
-    let mut config = Config::nueva(
-        base.join("llama.cpp")
-            .join("b11580")
-            .join("llama-server.exe"),
-        base.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf"),
-        None,
-    );
-    config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
-        Ok("cpu") | Err(_) => Dispositivo::Cpu,
-        Ok(d) => Dispositivo::Gpu(d.into()),
-    };
-    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+    let motor = crate::asistente::nube::de_verdad();
     let raiz = carpeta("de-verdad");
     datos(&raiz, true);
     poner_ubicacion(ubicacion(&raiz));
@@ -514,6 +499,5 @@ fn de_verdad() {
         }
         assert!(!citas.is_empty(), "tenia que buscar en los documentos");
     }
-    motor.soltar();
     vaciar_para_pruebas();
 }

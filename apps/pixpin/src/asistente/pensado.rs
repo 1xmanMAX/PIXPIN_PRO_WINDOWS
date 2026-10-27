@@ -205,12 +205,6 @@ pub fn pensar(ajuste: Option<bool>, pedido: &str) -> bool {
 /// de esto deja cada peticion por debajo de ~45k tokens.
 pub const VENTANA_NUBE: u32 = 64_000;
 
-/// La ventana del motor local (`servidor::CONTEXTO`, la que se le pide a
-/// `llama-server`).
-pub fn ventana_local() -> u32 {
-    pixpin_ia::servidor::CONTEXTO
-}
-
 /// Cuantos mensajes de antes se mandan como mucho, y cuanto de cada uno
 /// (los de `turno::historial_para_el_modelo`), con el modelo local (no se
 /// toca: la IA local esta congelada).
@@ -291,10 +285,7 @@ pub fn preparar_turno(
 
 /// Quien firma lo que se guarda en la memoria: el modelo elegido.
 fn quien_escribe(raiz: &Path) -> String {
-    match super::nube::eleccion_reciente(raiz) {
-        super::nube::Eleccion::Nube(p) => p.nombre().to_string(),
-        super::nube::Eleccion::Local => "modelo local".into(),
-    }
+    super::nube::eleccion_reciente(raiz).nombre().to_string()
 }
 
 /// Lo de [`preparar_turno`] sin disco, para probarlo: desde el ultimo

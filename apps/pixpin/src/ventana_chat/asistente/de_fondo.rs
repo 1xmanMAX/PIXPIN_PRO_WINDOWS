@@ -442,11 +442,10 @@ pub(crate) fn retomar_al_arrancar(chat: Chat) {
             return;
         }
         tracing::info!(cuantos = cortados.len(), "asistente: turnos que quedaron a medias al cerrarse PixPin");
-        let textos = pixpin_store::Catalogo::nuevo(chat.idioma);
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
         let mut otra_vez = Vec::new();
         for e in &cortados {
-            match retomar_uno(&chat, &textos, e, ahora) {
+            match retomar_uno(&chat, e, ahora) {
                 Ok(Some(s)) => otra_vez.push(s),
                 Ok(None) => {}
                 Err(err) => tracing::warn!(?err, proyecto = %e.proyecto, "asistente: no se pudo retomar un turno cortado"),
@@ -469,12 +468,7 @@ pub(crate) fn retomar_al_arrancar(chat: Chat) {
 }
 
 /// Uno: reescribe su burbuja y, si toca, lo lanza otra vez (la `Sesion`).
-fn retomar_uno(
-    chat: &Chat,
-    textos: &pixpin_store::Catalogo,
-    e: &EnMarcha,
-    ahora: i64,
-) -> std::io::Result<Option<Sesion>> {
+fn retomar_uno(chat: &Chat, e: &EnMarcha, ahora: i64) -> std::io::Result<Option<Sesion>> {
     let raiz = chat.ubicacion.raiz();
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, &e.proyecto);
     let mut mensajes = cuaderno::Cuaderno::leer_de(&carpeta)?.mensajes;
@@ -496,7 +490,7 @@ fn retomar_uno(
         // lo que escribiera el usuario) no es parte de este pedido.
         let contexto = &mensajes[..=i];
         let numero = mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-        match super::motor_para(&chat.ubicacion, textos, contexto, &pregunta) {
+        match super::motor_para(&chat.ubicacion, &pregunta) {
             Ok((motor, pensar, ventana)) => {
                 // La burbuja cortada, antes: la nueva nace debajo.
                 escribir_cortado(&carpeta, e, &parcial, &decision);

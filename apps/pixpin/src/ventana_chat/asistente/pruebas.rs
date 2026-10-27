@@ -1,6 +1,6 @@
 //! El chat con el asistente de mentira (`MotorGuionado`): la burbuja que
 //! crece, el dibujo que acaba en un lienzo del chat, la mencion, parar, sin
-//! modelo, la descarga cancelada y el texto leido.
+//! clave de la nube, la tarjeta del chat «Asistente» y el texto leido.
 
 use super::*;
 use pixpin_ia::motor::{MotorGuionado, Respuesta};
@@ -177,15 +177,18 @@ fn en_otro_chat_solo_contesta_con_la_mencion_y_cuelga_de_la_pregunta() {
 }
 
 #[test]
-fn sin_el_modelo_bajado_avisa_y_no_escribe_nada() {
-    let (u, mut a, raiz) = chat("sin-modelo", true);
+fn sin_la_clave_de_la_nube_avisa_y_no_escribe_nada() {
+    let (u, mut a, raiz) = chat("sin-clave", true);
     let textos = Catalogo::nuevo(Idioma::Espanol);
-    crate::asistente::motor::raiz_de_prueba(Some(raiz.join("modelos")));
+    ia_nube::sin_claves_para_pruebas(true);
     escribir(&u, &mut a, "hola");
     let n = a.mensajes.len();
     let aviso = al_enviar(&u, &mut a, &textos);
-    crate::asistente::motor::raiz_de_prueba(None);
-    assert_eq!(aviso, Some(textos.t("asistente-sin-modelo")));
+    ia_nube::sin_claves_para_pruebas(false);
+    assert_eq!(
+        aviso,
+        Some(ia_nube::falta_la_clave(pixpin_ia::nube::Proveedor::Claude))
+    );
     assert_eq!(a.mensajes.len(), n, "no nace ninguna burbuja");
     let _ = std::fs::remove_dir_all(&raiz);
 }
@@ -206,36 +209,43 @@ fn parar_a_mitad_deja_lo_escrito_y_lo_dice() {
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
+/// **La tarjeta del chat «Asistente»** (27-oct-2026, sin modelo local):
+/// primero, una vez, los modelos de antes que siguen en el disco; luego, si
+/// falta la clave de la nube. En otro chat, nunca.
 #[test]
-fn la_descarga_cancelada_vuelve_a_la_tarjeta_con_el_aviso() {
-    let (u, a, raiz) = chat("descarga", true);
-    lanzar_descarga_para_pruebas(Descarga::lanzar_con(
-        pixpin_ia::modelos::QWEN35_08B,
-        |_, c| {
-            while !c.load(std::sync::atomic::Ordering::Relaxed) {
-                std::thread::sleep(Duration::from_millis(5));
-            }
-            Err(pixpin_ia::ErrorIa::Cancelado)
-        },
-    ));
-    assert!(espera().is_some());
-    cumplir(&u, &a, Accion::Cancelar);
-    let hasta = Instant::now() + Duration::from_secs(10);
-    while espera().is_some() && Instant::now() < hasta {
-        latido(&u, None);
-        std::thread::sleep(Duration::from_millis(10));
-    }
+fn la_tarjeta_ofrece_liberar_los_modelos_de_antes_y_luego_pide_la_clave() {
+    use crate::asistente::modelos_viejos;
+    let (u, a, raiz) = chat("tarjeta", true);
+    let viejos = raiz.join("modelos");
+    std::fs::create_dir_all(viejos.join("qwen3.5-2b")).unwrap();
+    std::fs::write(
+        viejos.join("qwen3.5-2b/Qwen3.5-2B-Q4_K_M.gguf"),
+        [0u8; 2048],
+    )
+    .unwrap();
+    modelos_viejos::carpeta_de_prueba(Some(viejos.clone()));
+    ia_nube::sin_claves_para_pruebas(true);
+    assert_eq!(tarjeta_para_pruebas(&a), Some(Cual::Viejos(2048)));
+    // «Dejarlos»: no vuelve a salir, y queda la de la clave.
+    pulsar_para_pruebas(Accion::Dejarlos);
+    let claude = pixpin_ia::nube::Proveedor::Claude;
+    assert_eq!(tarjeta_para_pruebas(&a), Some(Cual::SinClave(claude)));
+    assert!(viejos.exists(), "dejarlos no borra nada");
+    // «Liberar espacio» (desde Ajustes, o antes de dejarlos): fuera entera,
+    // y el chat lo dice en el siguiente latido.
+    pulsar_para_pruebas(Accion::Liberar);
+    assert!(!viejos.exists());
     assert_eq!(
-        noticia_para_pruebas().as_deref(),
-        Some("asistente-cancelada")
+        latido(&u, None).1.as_deref(),
+        Some("asistente-viejos-borrados")
     );
-    // Elegir el ligero se guarda en los ajustes.
-    cumplir(&u, &a, Accion::Elegir { ligero: true });
-    assert_eq!(
-        pixpin_store::cargar(&u).unwrap().asistente.modelo,
-        "qwen3.5-0.8b"
-    );
+    // En otro chat, ninguna tarjeta.
+    let (_u2, b, raiz2) = chat("tarjeta-otro", false);
+    assert_eq!(tarjeta_para_pruebas(&b), None);
+    ia_nube::sin_claves_para_pruebas(false);
+    modelos_viejos::carpeta_de_prueba(None);
     let _ = std::fs::remove_dir_all(&raiz);
+    let _ = std::fs::remove_dir_all(&raiz2);
 }
 
 #[test]
@@ -267,15 +277,15 @@ fn png_de_prueba(lado: u32) -> Vec<u8> {
 
 #[test]
 fn una_foto_al_chat_del_asistente_lanza_el_turno_y_en_otro_chat_no() {
-    // Sin modelo bajado, al_enviar avisa: es la prueba de que SI quiso
+    // Sin clave de la nube, al_enviar avisa: es la prueba de que SI quiso
     // contestar a la foto (antes ni se le llamaba).
     let (u, mut a, raiz) = chat("foto-al-asistente", true);
     let textos = Catalogo::nuevo(Idioma::Espanol);
-    crate::asistente::motor::raiz_de_prueba(Some(raiz.join("modelos")));
+    ia_nube::sin_claves_para_pruebas(true);
     adjuntar(&u, &mut a, "K7Q2", "foto.png", &png_de_prueba(32), "").unwrap();
     assert_eq!(
         al_enviar(&u, &mut a, &textos),
-        Some(textos.t("asistente-sin-modelo"))
+        Some(ia_nube::falta_la_clave(pixpin_ia::nube::Proveedor::Claude))
     );
     let (u2, mut b, raiz2) = chat("foto-en-otro", false);
     adjuntar(&u2, &mut b, "K7Q2", "foto.png", &png_de_prueba(32), "").unwrap();
@@ -284,7 +294,7 @@ fn una_foto_al_chat_del_asistente_lanza_el_turno_y_en_otro_chat_no() {
         None,
         "sin mencion no es para el"
     );
-    crate::asistente::motor::raiz_de_prueba(None);
+    ia_nube::sin_claves_para_pruebas(false);
     let _ = std::fs::remove_dir_all(&raiz);
     let _ = std::fs::remove_dir_all(&raiz2);
 }
@@ -890,46 +900,6 @@ fn una_receta_nace_de_una_respuesta_y_se_cambia_desde_su_menu() {
     assert!(!rcui::hay_barra(&b));
     let _ = std::fs::remove_dir_all(&raiz);
     let _ = std::fs::remove_dir_all(&raiz2);
-}
-
-#[test]
-fn la_mejor_vista_solo_si_esta_encendida_bajada_y_se_pide_mirar() {
-    use pixpin_ia::modelos::{GEMMA4_E2B, QWEN35_2B, QWEN35_08B};
-    let mut aj = pixpin_store::ajustes::Asistente::default();
-    let mirar = "¿Qué pone en el cartel?";
-    // Apagada: el de siempre (y ni se mira el disco).
-    assert_eq!(
-        ia_motor::elegir_para_el_turno(&aj, || panic!("no hace falta mirar"), mirar, true),
-        QWEN35_2B
-    );
-    aj.mejor_vista = true;
-    // Encendida pero sin bajar: el de siempre (negativo).
-    assert_eq!(
-        ia_motor::elegir_para_el_turno(&aj, || false, mirar, true),
-        QWEN35_2B
-    );
-    assert_eq!(
-        ia_motor::elegir_para_el_turno(&aj, || true, mirar, true),
-        GEMMA4_E2B
-    );
-    // Sin foto, o para dibujar, el de siempre: el que eligio el usuario.
-    aj.modelo = QWEN35_08B.id.into();
-    assert_eq!(
-        ia_motor::elegir_para_el_turno(&aj, || true, mirar, false),
-        QWEN35_08B
-    );
-    assert_eq!(
-        ia_motor::elegir_para_el_turno(&aj, || true, "dibuja eso en el lienzo", true),
-        QWEN35_08B
-    );
-    // El de mejor vista nunca se elige como «el de siempre».
-    assert_eq!(ia_motor::modelo_elegido(Some("gemma-4-e2b")), QWEN35_2B);
-    // Y en el disco de verdad, sin nada bajado, no se elige.
-    let raiz = std::env::temp_dir().join(format!("pixpin-mejor-vista-{}", std::process::id()));
-    assert_eq!(
-        ia_motor::modelo_para_el_turno(&aj, &raiz, mirar, true),
-        QWEN35_08B
-    );
 }
 
 /// Pinta el chat abierto como la ventana, con la GPU de verdad, a un PNG.

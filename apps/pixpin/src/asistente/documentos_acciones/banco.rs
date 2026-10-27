@@ -689,41 +689,14 @@ fn motor() -> (Box<dyn Motor>, String) {
     let eleccion = std::env::var("PIXPIN_IA_MOTOR")
         .unwrap_or_else(|_| "deepseek".into())
         .to_lowercase();
-    if eleccion == "local" {
-        return (Box::new(motor_local()), eleccion);
-    }
     let p = Proveedor::por_id(&eleccion)
-        .unwrap_or_else(|| panic!("motor «{eleccion}»: claude, deepseek o local"));
+        .unwrap_or_else(|| panic!("motor «{eleccion}»: claude o deepseek"));
     let var = match p {
         Proveedor::Claude => "ANTHROPIC_API_KEY",
         Proveedor::DeepSeek => "DEEPSEEK_API_KEY",
     };
     let clave = std::env::var(var).unwrap_or_else(|_| panic!("sin {var}"));
     (Box::new(MotorNube::nuevo(p, clave)), eleccion)
-}
-
-/// El modelo local (Qwen3.5 2B con llama.cpp), donde lo deja la app; otro
-/// con `PIXPIN_IA_MODELO`.
-fn motor_local() -> pixpin_ia::servidor::MotorLlama {
-    use pixpin_ia::servidor::{Config, MotorLlama, elegir_dispositivo, listar_dispositivos};
-    let base = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
-        .join("PixPinMax")
-        .join("modelos");
-    let modelo = std::env::var("PIXPIN_IA_MODELO")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| base.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf"));
-    let vision = modelo
-        .parent()
-        .map(|d| d.join("mmproj-F16.gguf"))
-        .filter(|p| p.exists());
-    let servidor = base
-        .join("llama.cpp")
-        .join("b11580")
-        .join("llama-server.exe");
-    let mut config = Config::nueva(servidor.clone(), modelo.clone(), vision);
-    let bytes = std::fs::metadata(&modelo).map(|m| m.len()).unwrap_or(0);
-    config.dispositivo = elegir_dispositivo(&listar_dispositivos(&servidor), bytes);
-    MotorLlama::nuevo(config)
 }
 
 /// Hace de verdad las herramientas de documentos (sobre las copias) y
@@ -889,7 +862,6 @@ fn banco_de_documentos() {
     println!("\n{nota}");
     informe.push(nota);
     std::fs::write(carpeta.join("documentos-informe.txt"), informe.join("\n")).unwrap();
-    motor.soltar();
 }
 
 /// **Sin modelo**: las herramientas llamadas a mano sobre las muestras, con
