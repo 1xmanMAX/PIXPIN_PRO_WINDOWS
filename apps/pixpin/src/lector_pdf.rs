@@ -822,6 +822,8 @@ struct Estado {
     /// **Como un pin** (`lector_pin`): fuera de pantalla completa la pastilla
     /// de arriba no se pinta (lo suyo va en la barra de fuera).
     en_pin: bool,
+    /// Si la barra de fuera (la del pin) se ve: el riel se va con ella.
+    barra_del_pin: bool,
     /// Pantalla completa (o volver a pin) pedida desde dentro: la pastilla o Esc.
     pedir_pantalla_completa: bool,
     /// **Un Word o un PowerPoint** (`office`): sus hojas maquetadas en vez
@@ -1011,6 +1013,7 @@ fn abrir_con(
         // al llegar el texto (se pide abajo).
         engancharse: crate::leer_en_voz::suena(ruta),
         en_pin: true,
+        barra_del_pin: true,
         pedir_pantalla_completa: false,
         office,
         auto: None,
@@ -1462,6 +1465,11 @@ fn abrir_con(
             hay_que_pintar = true;
         }
         e.en_pin = !pin.pantalla_completa;
+        // El riel se va y vuelve con la barra del pin.
+        if pin.barra_a_la_vista() != e.barra_del_pin {
+            e.barra_del_pin = pin.barra_a_la_vista();
+            hay_que_pintar = true;
+        }
         // Luna/sol (de este pin o de otro): a repintar con el modo nuevo.
         if pin.actualizar(
             &motor,
@@ -2042,10 +2050,8 @@ fn a_la_tinta(e: &mut Estado, ev: &EventoOverlay, ruta: &Path, m: Marco) -> lect
 /// Si el clic es del lector aunque se este anotando: el riel, sus botones,
 /// o cerrar lo que hubiera abierto.
 fn el_lector_primero(e: &Estado, m: Marco) -> bool {
-    !matches!(
-        riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1)),
-        DestinoRiel::Fuera
-    ) || que_hay_debajo(e).is_some()
+    !matches!(destino_del_riel(e, m), DestinoRiel::Fuera)
+        || que_hay_debajo(e).is_some()
         || e.panel
         || e.poniendo_marca
 }
@@ -2289,23 +2295,25 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
 
     barra_de_avance(e, p, m);
     let emojis: Vec<&str> = e.marcas.iter().map(|x| x.emoji.as_str()).collect();
-    let riel = lector::riel(
-        m.ancho,
-        m.alto,
-        m.escala_por_cien,
-        emojis.len(),
-        e.poniendo_marca,
-    );
-    lector::pintar_riel_con(
-        p,
-        &riel,
-        &emojis,
-        e.encima,
-        e.poniendo_marca,
-        e.anotando,
-        e.marcos.activo,
-        &textos.t("marca-elige"),
-    );
+    if riel_a_la_vista(e, m) {
+        let riel = lector::riel(
+            m.ancho,
+            m.alto,
+            m.escala_por_cien,
+            emojis.len(),
+            e.poniendo_marca,
+        );
+        lector::pintar_riel_con(
+            p,
+            &riel,
+            &emojis,
+            e.encima,
+            e.poniendo_marca,
+            e.anotando,
+            e.marcos.activo,
+            &textos.t("marca-elige"),
+        );
+    }
     // Abajo: la barra de escuchar o los mandos de los lados (los mismos del
     // lector de Word: espacio a cada lado y el candado), con la pastilla o
     // con el raton en la franja de abajo.
@@ -2575,8 +2583,38 @@ fn riel_de(e: &Estado, m: Marco) -> pixpin_ui::riel_marcas::Riel {
     )
 }
 
+/// **Si el riel se ve** (`pixpin_ui::riel_a_la_vista`): con la pastilla de
+/// arriba (o la barra del pin), mientras se anota, se enmarca o se pone un
+/// marcador, o con el raton cerca de su borde.
+fn riel_a_la_vista(e: &Estado, m: Marco) -> bool {
+    let barras = if e.en_pin {
+        e.barra_del_pin
+    } else {
+        e.renombre.editando.is_some()
+            || (!e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel))
+    };
+    lector::riel_a_la_vista(
+        barras,
+        e.anotando,
+        e.marcos.activo,
+        e.poniendo_marca,
+        e.raton,
+        m.ancho,
+        m.alto,
+        m.e,
+    )
+}
+
+/// Lo que hay del riel bajo el raton: nada si esta escondido.
+fn destino_del_riel(e: &Estado, m: Marco) -> DestinoRiel {
+    if !riel_a_la_vista(e, m) {
+        return DestinoRiel::Fuera;
+    }
+    riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1))
+}
+
 fn mover_raton(e: &mut Estado, m: Marco) {
-    e.encima = riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1));
+    e.encima = destino_del_riel(e, m);
     match e.arrastre {
         Some(Arrastre::Mover {
             desde,
@@ -2622,7 +2660,7 @@ fn pulsar(
     if e.renombre.editando.is_some() && que_hay_debajo(e) != Some(Accion::Renombrar) {
         e.renombre.editando = None;
     }
-    match riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1)) {
+    match destino_del_riel(e, m) {
         DestinoRiel::PonerMarca => {
             e.poniendo_marca = !e.poniendo_marca;
             return false;
@@ -2711,7 +2749,7 @@ fn soltar(e: &mut Estado, m: Marco) {
 }
 
 fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco) {
-    if let DestinoRiel::Marca(i) = riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1))
+    if let DestinoRiel::Marca(i) = destino_del_riel(e, m)
         && let Some(id) = e.marcas.get(i).map(|x| x.id)
     {
         e.marcas = marcas::sin(&e.marcas, id);
@@ -3040,7 +3078,7 @@ fn alternar_marcos(e: &mut Estado, ruta: &Path) {
 
 /// Si en `q` (pixeles de la ventana) hay interfaz: un boton o el riel.
 fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
-    riel_de(e, m).contiene(lector::punto(q.0, q.1))
+    (riel_a_la_vista(e, m) && riel_de(e, m).contiene(lector::punto(q.0, q.1)))
         || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
 }
 
@@ -4004,6 +4042,7 @@ mod pruebas {
             elegir_voz: false,
             engancharse: false,
             en_pin: false,
+            barra_del_pin: false,
             pedir_pantalla_completa: false,
             office: None,
             auto: None,

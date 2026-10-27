@@ -780,6 +780,12 @@ impl PinLector {
         crate::globo_pista::ocultar();
     }
 
+    /// **Si la barra se ve**: el riel del visor se va y vuelve con ella
+    /// (`pixpin_ui::riel_a_la_vista`).
+    pub fn barra_a_la_vista(&self) -> bool {
+        self.visible
+    }
+
     /// Si hay que seguir despertando al bucle (la barra puede irse sola).
     pub fn quiere_reloj(&self) -> bool {
         self.visible || self.gesto.is_some() || std::time::Instant::now() < self.al_abrir

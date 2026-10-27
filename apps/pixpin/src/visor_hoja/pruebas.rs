@@ -49,6 +49,8 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
         anotando: false,
         poniendo_marca: false,
         encima: pixpin_ui::riel_marcas::DestinoRiel::Fuera,
+        barras: true,
+        riel_visto: true,
         marcas: Vec::new(),
         recuerdo: super::riel::Recuerdo::de(None).0,
         tinta_cambio: false,

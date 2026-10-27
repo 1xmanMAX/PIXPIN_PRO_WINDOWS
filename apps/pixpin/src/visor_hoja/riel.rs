@@ -146,15 +146,36 @@ impl Estado<'_> {
         r
     }
 
+    /// **Si el riel se ve** (`pixpin_ui::riel_a_la_vista`, como en los
+    /// demas visores): con la barra del pin, mientras se anota, se enmarca
+    /// o se pone una marca, o con el raton cerca de su borde.
+    pub(super) fn riel_a_la_vista(&self) -> bool {
+        lector::riel_a_la_vista(
+            self.barras,
+            self.anotando,
+            self.marcos.activo,
+            self.poniendo_marca,
+            self.raton,
+            self.ancho,
+            self.alto,
+            self.e,
+        )
+    }
+
+    /// Lo que hay del riel bajo el raton: nada si esta escondido.
     pub(super) fn destino_del_riel(&self) -> DestinoRiel {
+        if !self.riel_a_la_vista() {
+            return DestinoRiel::Fuera;
+        }
         self.riel()
             .destino(lector::punto(self.raton.0, self.raton.1))
     }
 
-    /// Lo que tiene el raton encima en el riel; `true` si cambio (repintar).
+    /// Lo que tiene el raton encima en el riel; `true` si cambio (repintar),
+    /// tambien si con el raton el riel sale o se va.
     pub(super) fn mirar_riel(&mut self) -> bool {
         let d = self.destino_del_riel();
-        let cambio = d != self.encima;
+        let cambio = d != self.encima || self.riel_a_la_vista() != self.riel_visto;
         self.encima = d;
         cambio
     }
@@ -521,18 +542,21 @@ pub(super) fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
             }
         }
     }
-    let riel = est.riel();
-    let emojis: Vec<&str> = est.marcas.iter().map(|m| m.emoji.as_str()).collect();
-    lector::pintar_riel_con(
-        p,
-        &riel,
-        &emojis,
-        est.encima,
-        est.poniendo_marca,
-        est.anotando,
-        est.marcos.activo,
-        &textos.t("marca-elige"),
-    );
+    est.riel_visto = est.riel_a_la_vista();
+    if est.riel_visto {
+        let riel = est.riel();
+        let emojis: Vec<&str> = est.marcas.iter().map(|m| m.emoji.as_str()).collect();
+        lector::pintar_riel_con(
+            p,
+            &riel,
+            &emojis,
+            est.encima,
+            est.poniendo_marca,
+            est.anotando,
+            est.marcos.activo,
+            &textos.t("marca-elige"),
+        );
+    }
     if est.anotando {
         let (area, escala) = (est.area, est.escala_por_cien());
         est.anotado.pintar_interfaz(p, area, escala);

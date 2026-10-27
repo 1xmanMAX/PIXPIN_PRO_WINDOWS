@@ -407,6 +407,8 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 pin.fijado,
                 pin.oscuro(),
             );
+            // El riel se va y vuelve con la barra del pin.
+            r.con_barras(pin.barra_a_la_vista());
             r.tic(Some(&visor));
             // Con marcos, Ctrl+P es suyo (y no la impresion de Edge).
             visor.tomar_ctrl_p(r.hay_marcos());

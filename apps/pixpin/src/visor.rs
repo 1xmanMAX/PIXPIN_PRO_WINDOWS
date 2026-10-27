@@ -353,6 +353,8 @@ struct Estado {
     /// **Como un pin** (`lector_pin`): fuera de pantalla completa la pastilla
     /// de arriba no se pinta (lo suyo va en la barra de fuera).
     en_pin: bool,
+    /// Si la barra de fuera (la del pin) se ve: el riel se va con ella.
+    barra_del_pin: bool,
     /// Se pidio pantalla completa (o volver a pin) desde dentro: la pastilla
     /// o Esc. Lo hace el bucle, que es quien tiene la ventana.
     pedir_pantalla_completa: bool,
@@ -485,6 +487,7 @@ pub fn abrir(
         elegir_voz: false,
         cursor: None,
         en_pin: true,
+        barra_del_pin: true,
         pedir_pantalla_completa: false,
         voz: None,
         // Si se esta escuchando este documento (con su lector cerrado), se
@@ -820,6 +823,11 @@ pub fn abrir(
             hay_que_pintar = true;
         }
         e.en_pin = !pin.pantalla_completa;
+        // El riel se va y vuelve con la barra del pin.
+        if pin.barra_a_la_vista() != e.barra_del_pin {
+            e.barra_del_pin = pin.barra_a_la_vista();
+            hay_que_pintar = true;
+        }
         if pin.actualizar(
             &motor,
             &crate::lector_pin::nombre_limpio(&nombre_del_pin(&e)),
@@ -1403,23 +1411,25 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     // Los del usuario y, entre ellos, el verde de donde se dejo de escuchar.
     let lista = lista_del_riel(e);
     let emojis: Vec<&str> = lista.iter().map(|x| x.emoji.as_str()).collect();
-    let riel = lector::riel(
-        m.ancho,
-        m.alto,
-        m.escala_por_cien,
-        emojis.len(),
-        e.poniendo_marca,
-    );
-    lector::pintar_riel_con(
-        p,
-        &riel,
-        &emojis,
-        e.encima,
-        e.poniendo_marca,
-        e.anotando,
-        e.marcos.activo,
-        &textos.t("marca-elige"),
-    );
+    if riel_a_la_vista(e, m) {
+        let riel = lector::riel(
+            m.ancho,
+            m.alto,
+            m.escala_por_cien,
+            emojis.len(),
+            e.poniendo_marca,
+        );
+        lector::pintar_riel_con(
+            p,
+            &riel,
+            &emojis,
+            e.encima,
+            e.poniendo_marca,
+            e.anotando,
+            e.marcos.activo,
+            &textos.t("marca-elige"),
+        );
+    }
 
     if e.anotando {
         // La barra y el panel del lienzo (`lector_tinta::Tinta`).
@@ -1912,6 +1922,37 @@ fn riel_de(e: &Estado, m: Marco) -> pixpin_ui::riel_marcas::Riel {
     )
 }
 
+/// **Si el riel se ve** (`pixpin_ui::riel_a_la_vista`): con la pastilla de
+/// arriba (o la barra del pin), mientras se anota, se enmarca o se pone un
+/// marcador, o con el raton cerca de su borde.
+fn riel_a_la_vista(e: &Estado, m: Marco) -> bool {
+    let barras = if e.en_pin {
+        e.barra_del_pin
+    } else {
+        e.nombre.editando.is_some()
+            || (!e.hallar.caja.abierto
+                && (e.pastilla_hasta > ahora_ms() || e.panel || e.viendo_indice))
+    };
+    lector::riel_a_la_vista(
+        barras,
+        e.anotando,
+        e.marcos.activo,
+        e.poniendo_marca,
+        e.raton,
+        m.ancho,
+        m.alto,
+        m.e,
+    )
+}
+
+/// Lo que hay del riel bajo el raton: nada si esta escondido.
+fn destino_del_riel(e: &Estado, m: Marco) -> DestinoRiel {
+    if !riel_a_la_vista(e, m) {
+        return DestinoRiel::Fuera;
+    }
+    riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1))
+}
+
 /// La camara del documento: la misma transformada con la que `pintar` pone
 /// la vista (`poner_vista((0,0), s, (-x*s, -y*s))`), para que la tinta
 /// traduzca el raton exactamente donde se pinta.
@@ -1934,10 +1975,8 @@ fn a_la_tinta(e: &mut Estado, ev: &EventoOverlay, m: Marco) -> lector_tinta::Hec
 /// Si el clic es del lector aunque se este anotando: el riel (marcas y
 /// dejar de anotar), sus botones, o cerrar lo que hubiera abierto.
 fn el_lector_primero(e: &Estado, m: Marco) -> bool {
-    !matches!(
-        riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1)),
-        DestinoRiel::Fuera
-    ) || que_hay_debajo(e).is_some()
+    !matches!(destino_del_riel(e, m), DestinoRiel::Fuera)
+        || que_hay_debajo(e).is_some()
         || e.panel
         || e.viendo_indice
         || e.poniendo_marca
@@ -1957,10 +1996,7 @@ fn imagen_bajo_raton(e: &Estado, m: Marco) -> Option<usize> {
     if e.anotando || e.panel || e.viendo_indice || e.poniendo_marca || que_hay_debajo(e).is_some() {
         return None;
     }
-    if !matches!(
-        riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1)),
-        DestinoRiel::Fuera
-    ) {
+    if !matches!(destino_del_riel(e, m), DestinoRiel::Fuera) {
         return None;
     }
     let s = px(e, m);
@@ -2005,7 +2041,7 @@ fn cursor_leyendo(e: &mut Estado, m: Marco) -> Option<pixpin_shell::overlay::For
 }
 
 fn mover_raton(e: &mut Estado, m: Marco) {
-    let destino = riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1));
+    let destino = destino_del_riel(e, m);
     e.encima = destino;
     match e.arrastre {
         Some(Arrastre::Mover {
@@ -2045,8 +2081,7 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
     if e.nombre.editando.is_some() && que_hay_debajo(e) != Some(Accion::Renombrar) {
         e.nombre.editando = None;
     }
-    let riel = riel_de(e, m);
-    match riel.destino(lector::punto(e.raton.0, e.raton.1)) {
+    match destino_del_riel(e, m) {
         DestinoRiel::PonerMarca => {
             e.poniendo_marca = !e.poniendo_marca;
             return false;
@@ -2133,7 +2168,7 @@ fn soltar(e: &mut Estado, m: Marco) {
 fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco) {
     // Quitar un marcador: clic derecho en su punto del riel (el toque largo
     // del movil, que un raton no tiene).
-    if let DestinoRiel::Marca(i) = riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1))
+    if let DestinoRiel::Marca(i) = destino_del_riel(e, m)
         && let Some(quitado) = lista_del_riel(e).get(i).cloned()
     {
         // El verde es el de la voz: se quita su sitio, no un marcador.
@@ -2391,7 +2426,7 @@ fn alternar_marcos(e: &mut Estado, ruta: &Path, m: Marco) {
 }
 
 fn sobre_la_interfaz(e: &Estado, m: Marco, q: (f32, f32)) -> bool {
-    riel_de(e, m).contiene(lector::punto(q.0, q.1))
+    (riel_a_la_vista(e, m) && riel_de(e, m).contiene(lector::punto(q.0, q.1)))
         || e.botones.iter().any(|(r, _)| lector::dentro(r, q.0, q.1))
 }
 
@@ -3442,6 +3477,7 @@ mod pruebas {
             elegir_voz: false,
             cursor: None,
             en_pin: false,
+            barra_del_pin: false,
             pedir_pantalla_completa: false,
             voz: None,
             engancharse: false,
@@ -3470,6 +3506,39 @@ mod pruebas {
                 .collect(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn el_riel_se_va_con_la_pastilla_y_vuelve_con_el_raton_en_su_borde() {
+        let m = marco();
+        let mut e = estado_de_prueba();
+        e.raton = (400.0, 400.0);
+        e.pastilla_hasta = 0;
+        assert!(!riel_a_la_vista(&e, m), "sin barras, se va");
+        assert_eq!(destino_del_riel(&e, m), DestinoRiel::Fuera);
+        // Con la pastilla, su isla se pulsa.
+        let isla = riel_de(&e, m).isla;
+        e.raton = (
+            isla.x as f32 + isla.ancho as f32 / 2.0,
+            isla.y as f32 + isla.alto as f32 / 2.0,
+        );
+        e.pastilla_hasta = u64::MAX;
+        assert_ne!(destino_del_riel(&e, m), DestinoRiel::Fuera);
+        // Con el raton en su borde vuelve aunque las barras sigan fuera.
+        e.pastilla_hasta = 0;
+        assert!(riel_a_la_vista(&e, m));
+        // Anotando se queda, lejos del borde y sin barras.
+        e.raton = (400.0, 400.0);
+        assert!(!riel_a_la_vista(&e, m));
+        e.anotando = true;
+        assert!(riel_a_la_vista(&e, m));
+        // Como pin, va con la barra de fuera.
+        e.anotando = false;
+        e.en_pin = true;
+        e.barra_del_pin = true;
+        assert!(riel_a_la_vista(&e, m));
+        e.barra_del_pin = false;
+        assert!(!riel_a_la_vista(&e, m));
     }
 
     #[test]
