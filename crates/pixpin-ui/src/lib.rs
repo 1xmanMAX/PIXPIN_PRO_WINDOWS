@@ -18,6 +18,8 @@ pub mod color_de_extension;
 pub mod confirmar;
 /// Un chat compartido como conversacion: de quien es cada mensaje.
 pub mod conversacion;
+/// Donde se dejo cada chat y lo que queda sin ver debajo (el «↓»).
+pub mod donde_se_dejo;
 /// Acercar y mover una imagen en su caja, como en un lienzo.
 pub mod encuadre;
 pub mod evento_anotador;
