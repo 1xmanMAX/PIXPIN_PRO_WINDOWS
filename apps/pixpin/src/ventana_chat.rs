@@ -129,6 +129,8 @@ mod buscar_en_chats;
 pub(crate) mod carpetas;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
+/// Cada chat se abre donde se dejo, y lo no visto del «↓» (27-oct-2026).
+mod donde_se_dejo;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).
 mod donde_vive;
 /// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
@@ -4308,6 +4310,7 @@ pub fn abrir(
             && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
             && let Some(j) = a.ir_a.take()
         {
+            a.donde_se_dejo.olvidar_la_vuelta();
             let area = area_del_historial(&disposicion, a, escala);
             // Con una busqueda puesta, el mensaje al que se iba puede estar
             // filtrado y no tener sitio: entonces no se salta a ninguna parte.
@@ -4324,6 +4327,34 @@ pub fn abrir(
                     arriba - (24 * escala / 100) as i32,
                 );
                 a.scroll = if quiero >= tope { None } else { Some(quiero) };
+            }
+            hay_que_pintar = true;
+        }
+        // Volver a donde se dejo el chat recien abierto, en cuanto esten
+        // medidas sus burbujas (igual que `ir_a`). Buscando no: lo que se ve
+        // es otra lista.
+        if let Some(a) = abierto.as_mut()
+            && a.donde_se_dejo.por_volver()
+            && a.mini.is_none()
+            && a.info.is_none()
+            && a.letra.is_none()
+            && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
+        {
+            if a.busqueda.is_none() && a.por_etiqueta.is_none() {
+                let area = area_del_historial(&disposicion, a, escala);
+                let c = a.colocado.borrow();
+                let ids: Vec<&str> = c
+                    .visibles
+                    .iter()
+                    .map(|i| a.mensajes[*i].id.as_str())
+                    .collect();
+                let vuelta = a
+                    .donde_se_dejo
+                    .volver(area, &c.puestos, a.alto.get(), &ids, escala);
+                drop(c);
+                a.scroll = vuelta;
+            } else {
+                a.donde_se_dejo.olvidar_la_vuelta();
             }
             hay_que_pintar = true;
         }
@@ -4632,7 +4663,10 @@ pub fn abrir(
             // Solo con el historial a la vista: con la hoja o el panel
             // delante no se mide nada, y esto daria vueltas sin parar.
             if abierto.as_ref().is_some_and(|a| {
-                a.ir_a.is_some() && a.mini.is_none() && a.info.is_none() && a.letra.is_none()
+                (a.ir_a.is_some() || a.donde_se_dejo.por_volver())
+                    && a.mini.is_none()
+                    && a.info.is_none()
+                    && a.letra.is_none()
             }) {
                 hay_que_pintar = true;
             }
@@ -5223,6 +5257,9 @@ struct Abierto {
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
+    /// Donde se dejo este chat (se vuelve ahi al abrirlo) y lo que queda
+    /// sin ver debajo, para la chapa del «↓» (`donde_se_dejo`).
+    donde_se_dejo: donde_se_dejo::Recuerdo,
     /// Lo que ocupa todo el historial, que solo se sabe al medirlo (hace
     /// falta la fuente). Lo apunta el pintado para que la rueda sepa su tope.
     alto: std::cell::Cell<u32>,
@@ -6298,6 +6335,17 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let scroll = a
         .scroll
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
+    // Donde se queda este chat y lo que hay sin ver debajo (`donde_se_dejo`).
+    // Buscando, lo que se ve es otra lista: no se apunta.
+    if a.busqueda.is_none() && a.por_etiqueta.is_none() {
+        let ids: Vec<&str> = c
+            .visibles
+            .iter()
+            .map(|i| a.mensajes[*i].id.as_str())
+            .collect();
+        a.donde_se_dejo
+            .apuntar(area, &c.puestos, a.alto.get(), a.scroll, &ids, escala);
+    }
     p.empujar_recorte(rf(area));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
     for cual in primero..primero + cuantos {
@@ -7089,9 +7137,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
     p.soltar_recorte();
     // Subido: el «↓» que vuelve al ultimo mensaje (`al_final`).
-    if al_final::se_ve(a.scroll, h::scroll_maximo(area, a.alto.get()), area.alto) {
+    let sin_ver = a.donde_se_dejo.sin_ver();
+    if al_final::se_ve(
+        a.scroll,
+        h::scroll_maximo(area, a.alto.get()),
+        area.alto,
+        sin_ver,
+    ) {
         let caja = al_final::caja(area, e);
-        al_final::pintar(p, tema, caja, e);
+        al_final::pintar(p, tema, caja, e, sin_ver);
         a.zonas.borrow_mut().push((caja, Zona::AlFinal));
     }
 }
@@ -9387,6 +9441,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         resaltado: None,
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
+        donde_se_dejo: donde_se_dejo::Recuerdo::nuevo(ubicacion.raiz(), &ficha.id),
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
         mini: None,
