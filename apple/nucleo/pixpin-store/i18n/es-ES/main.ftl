@@ -1064,6 +1064,25 @@ diapositivas-transiciones-no = Transiciones desactivadas (T)
 ## Chat: una pagina de un proyecto, la tarjeta del enlace, «Recibido de» y el buzon
 chat-sin-paginas = Ningún proyecto tiene páginas que adjuntar
 chat-recibido-de = Recibido de { $de }
+# Las versiones vinculadas de un chat compartido (27-oct-2026): tocar lo de
+# otra persona hace tu versión, que contesta a la suya, y la suya no cambia.
+chat-version-sola = Versión
+chat-version-sola-n = Versión { $n }
+chat-version-de = Versión de { $quien }
+chat-version-de-n = Versión { $n } de { $quien }
+chat-version-de-lo-tuyo = Versión de lo tuyo
+chat-version-de-lo-tuyo-n = Versión { $n } de lo tuyo
+chat-version-de-otro = Versión de otro mensaje
+chat-version-de-otro-n = Versión { $n } de otro mensaje
+chat-version-de-la-lista = Versión { $n } · { $quien }
+chat-version-tuya = Versión { $n } · tuya
+chat-versiones = { $cuantas ->
+    [one] 1 versión
+   *[other] { $cuantas } versiones
+  }
+chat-version-es-de = Es de { $quien }: si lo cambias, se guarda como tu versión y lo suyo no se toca
+chat-version-guardada = Se guardó como tu versión; el original no se ha tocado
+chat-version-no = No se pudo preparar tu versión
 chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = No se pudo abrir el enlace
 
