@@ -1845,6 +1845,7 @@ dependencies = [
  "pixpin-motor2d",
  "pixpin-sincro",
  "pixpin-sistema",
+ "pixpin-ui",
  "serde",
  "serde_json",
  "thiserror",
