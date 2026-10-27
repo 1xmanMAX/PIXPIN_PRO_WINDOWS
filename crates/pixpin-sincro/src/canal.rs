@@ -546,6 +546,70 @@ mod pruebas {
         ));
     }
 
+    /// Una tuberia que ademas guarda lo que escribe, para mandarlo otra vez.
+    struct Grabadora {
+        dentro: Tuberia,
+        copia: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+        crudo: std::sync::mpsc::Sender<u8>,
+    }
+
+    impl Read for Grabadora {
+        fn read(&mut self, d: &mut [u8]) -> std::io::Result<usize> {
+            self.dentro.read(d)
+        }
+    }
+
+    impl Write for Grabadora {
+        fn write(&mut self, d: &[u8]) -> std::io::Result<usize> {
+            self.copia.lock().unwrap().extend_from_slice(d);
+            self.dentro.write(d)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn un_tramo_repetido_a_mitad_es_un_trozo_danado_y_no_otro_codigo() {
+        // Android 27-oct-2026 (`Canal.TramoDanado`): cada tramo lleva su
+        // numero dentro del cifrado; uno repetido no se descifra, y eso es
+        // una conexion rota, no un aparato de otro grupo.
+        let (uno, otro) = par();
+        let copia = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let crudo = uno.escribe.clone();
+        let g = Grabadora {
+            dentro: uno,
+            copia: copia.clone(),
+            crudo,
+        };
+        let clave = clave_de_grupo("K7Q2M9XMPA");
+        let hilo = std::thread::spawn(move || Canal::saludar(otro, &clave, [9u8; NONCE], false));
+        let mut cliente = Canal::saludar(g, &clave, [7u8; NONCE], true).unwrap();
+        let mut servidor = hilo.join().unwrap().unwrap();
+        cliente.mandar(Tipo::Json, b"{}").unwrap();
+        assert_eq!(servidor.recibir().unwrap().0, Tipo::Json);
+        copia.lock().unwrap().clear();
+        cliente.mandar(Tipo::Trozo, &[1u8; 10]).unwrap();
+        let tramo = copia.lock().unwrap().clone();
+        for b in &tramo {
+            cliente.flujo.crudo.send(*b).unwrap();
+        }
+        assert_eq!(servidor.recibir().unwrap().0, Tipo::Trozo);
+        assert!(matches!(servidor.recibir(), Err(ErrorCanal::TramoDanado)));
+    }
+
+    #[test]
+    fn un_trozo_de_mas_corta_sin_escribir_nada() {
+        let (uno, otro) = par();
+        let clave = clave_de_grupo("K7Q2M9XMPA");
+        let (mut cliente, mut servidor) = saludar_los_dos(uno, otro, clave, clave);
+        cliente.mandar(Tipo::Trozo, &[0u8; 10]).unwrap();
+        let mut salida = Vec::new();
+        let r = crate::protocolo::recibir_trozos(&mut servidor, 5, &mut salida, &mut |_| {});
+        assert!(r.is_err(), "de mas no");
+        assert!(salida.is_empty());
+    }
+
     #[test]
     fn lo_que_no_empieza_por_pxs1_se_rechaza() {
         let (mut uno, otro) = par();

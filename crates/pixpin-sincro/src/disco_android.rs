@@ -342,6 +342,15 @@ impl Disco for DiscoAndroid {
         self.files.join(rel)
     }
 
+    /// Como `Disco.chatsConTareas`: una lectura del chat, no una por chat.
+    fn chats_con_tareas(&self) -> std::collections::BTreeSet<String> {
+        self.leer_mensajes()
+            .iter()
+            .filter(|m| crate::prioridad::es_de_tareas(m))
+            .map(kotlin::chat_de)
+            .collect()
+    }
+
     fn a_portatil(&self, _chat: &str, _rel: &str, texto: String) -> String {
         self.portatil(&texto)
     }

@@ -122,3 +122,6 @@ mod de_verdad;
 
 #[cfg(test)]
 mod compartidos_de_verdad;
+
+#[cfg(test)]
+mod diario_de_verdad;
