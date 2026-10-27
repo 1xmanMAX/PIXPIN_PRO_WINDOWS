@@ -1722,6 +1722,71 @@ pub fn ancho_fila_archivo(ancho_texto: u32, escala_por_cien: u32) -> u32 {
     f.abrir.derecha().max(0) as u32
 }
 
+// --- Las chapas de la burbuja ------------------------------------------------
+
+/// **Las chapas de debajo del nombre** («Escaneado», «Lectura veloz · 47 %»,
+/// las del movil, 23 y 27-oct-2026): apagadas, redondas del todo, con su
+/// icono de 12 y la letra de 11 (`ChapaDeLecturaVeloz`: `padding(start = 7,
+/// end = 8, top = 2, bottom = 2)`, el icono y 4 de aire hasta el texto).
+pub const CHAPA_TAM: u32 = 11;
+pub const CHAPA_ICONO: u32 = 12;
+pub const CHAPA_IZQUIERDA: u32 = 7;
+pub const CHAPA_DERECHA: u32 = 8;
+pub const CHAPA_ARRIBA: u32 = 2;
+/// Del icono al texto.
+pub const CHAPA_AIRE_ICONO: u32 = 4;
+/// De una chapa a la siguiente.
+pub const CHAPA_AIRE: u32 = 6;
+/// Lo alto de una chapa: la letra de 11 (unos 14) mas su relleno.
+pub const CHAPA_ALTO: u32 = 18;
+
+/// Lo que mide una chapa con un texto de `ancho_texto`.
+pub fn ancho_de_chapa(ancho_texto: u32, escala_por_cien: u32) -> u32 {
+    let e = |v: u32| v * escala_por_cien / 100;
+    e(CHAPA_IZQUIERDA + CHAPA_ICONO + CHAPA_AIRE_ICONO + CHAPA_DERECHA) + ancho_texto
+}
+
+/// **Donde cae cada chapa**, en fila desde `x, y`, con `anchos_texto` lo que
+/// mide el texto de cada una. La que no cabe en `ancho_max` se acorta si es
+/// la primera (su texto se corta) y si no se queda fuera: una chapa a medias
+/// diria otra cosa.
+pub fn chapas_de_la_burbuja(
+    x: i32,
+    y: i32,
+    anchos_texto: &[u32],
+    ancho_max: u32,
+    escala_por_cien: u32,
+) -> Vec<Rect> {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let tope = x.saturating_add(ancho_max as i32);
+    let mut v = Vec::with_capacity(anchos_texto.len());
+    let mut cx = x;
+    for &t in anchos_texto {
+        let mut ancho = ancho_de_chapa(t, escala_por_cien);
+        if cx + ancho as i32 > tope {
+            if !v.is_empty() {
+                break;
+            }
+            ancho = ancho_max;
+        }
+        v.push(Rect {
+            x: cx,
+            y,
+            ancho,
+            alto: e(CHAPA_ALTO),
+        });
+        cx += (ancho + e(CHAPA_AIRE)) as i32;
+    }
+    v
+}
+
+/// Lo ancho de la fila de chapas entera (para medir la burbuja).
+pub fn ancho_de_chapas(anchos_texto: &[u32], escala_por_cien: u32) -> u32 {
+    chapas_de_la_burbuja(0, 0, anchos_texto, u32::MAX / 4, escala_por_cien)
+        .last()
+        .map_or(0, |r| r.derecha().max(0) as u32)
+}
+
 // --- Buscar dentro de la conversacion -------------------------------------
 
 /// Si un mensaje casa con lo que se busca.
@@ -2072,6 +2137,34 @@ mod pruebas_movil {
         // Caso negativo: un nombre larguisimo no empuja la pastilla fuera.
         let f = fila_archivo(10, 20, 5000, 300, 100);
         assert!(f.abrir.derecha() <= 10 + 300, "{:?}", f.abrir);
+    }
+
+    #[test]
+    fn las_chapas_van_en_fila_y_la_que_no_cabe_se_queda_fuera() {
+        let c = chapas_de_la_burbuja(10, 50, &[60, 100], 400, 100);
+        assert_eq!(c.len(), 2);
+        // 7 + 12 + 4 + texto + 8.
+        assert_eq!((c[0].x, c[0].y, c[0].ancho, c[0].alto), (10, 50, 91, 18));
+        assert_eq!(c[1].x, c[0].derecha() + CHAPA_AIRE as i32);
+        assert_eq!(
+            ancho_de_chapas(&[60, 100], 100),
+            (c[1].derecha() - 10) as u32
+        );
+        // A doble escala, todo el doble salvo el texto, que ya viene medido.
+        let d = chapas_de_la_burbuja(0, 0, &[60], 400, 200);
+        assert_eq!((d[0].ancho, d[0].alto), (122, 36));
+        assert_eq!(ancho_de_chapas(&[], 100), 0);
+    }
+
+    #[test]
+    fn caso_negativo_una_chapa_no_se_sale_de_la_burbuja() {
+        // La segunda no cabe: fuera, no a medias.
+        let c = chapas_de_la_burbuja(0, 0, &[60, 100], 150, 100);
+        assert_eq!(c.len(), 1);
+        // La primera, aunque no quepa, se acorta al ancho que hay.
+        let c = chapas_de_la_burbuja(0, 0, &[500], 120, 100);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].ancho, 120);
     }
 
     #[test]

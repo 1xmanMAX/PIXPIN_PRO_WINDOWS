@@ -402,6 +402,216 @@ pub fn aplicar(a: &mut Ajustes, p: &Progreso) {
     }
 }
 
+// ------------------------------------------------------------ lo ultimo suyo
+
+/// **Lo ultimo que mando Lectura Veloz de un documento**, guardado en este
+/// equipo y por su `doc` (como `LecturaVeloz.Ultimo` del movil): su punto y
+/// su hora. Es la chapa «Lectura veloz · N %» de la burbuja y el % junto a la
+/// opcion de los lectores. **No viaja**: cada aparato sabe lo que se leyo en
+/// su Lectura Veloz (el 🟢, que si viaja, va en las marcas de siempre).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Ultimo {
+    /// Cuando lo leyo alli, en milisegundos desde 1970.
+    pub t: u64,
+    pub pagina: u32,
+    pub frac: f32,
+    pub fraccion: f32,
+}
+
+/// Cuantos documentos se recuerdan como mucho: los mas viejos se olvidan.
+pub const TOPE_ULTIMOS: usize = 2000;
+
+/// **El porcentaje de la chapa**, de 0 a 100, redondeado.
+pub fn porcentaje(fraccion: f32) -> u8 {
+    (f64::from(acotada(f64::from(fraccion))) * 100.0)
+        .round()
+        .clamp(0.0, 100.0) as u8
+}
+
+impl Ultimo {
+    /// Lo que llego, con `ahora` si no trae su hora.
+    pub fn de_progreso(p: &Progreso, ahora: u64) -> Ultimo {
+        Ultimo {
+            t: if p.t > 0 { p.t } else { ahora },
+            pagina: p.pagina,
+            frac: p.frac,
+            fraccion: p.fraccion,
+        }
+    }
+
+    pub fn porcentaje(&self) -> u8 {
+        porcentaje(self.fraccion)
+    }
+
+    /// `v1;t;pagina;frac;fraccion`, como el `aTexto` del movil (sin lo que
+    /// alli apunta del marcador escrito: aqui el 🟢 lo lleva el documento).
+    fn a_texto(&self) -> String {
+        format!(
+            "v1;{};{};{};{}",
+            self.t, self.pagina, self.frac, self.fraccion
+        )
+    }
+
+    fn de_texto(s: &str) -> Option<Ultimo> {
+        let mut c = s.trim().split(';');
+        if c.next()? != "v1" {
+            return None;
+        }
+        let t = c.next()?.parse().ok()?;
+        let pagina = c.next()?.parse::<u32>().ok()?.min(TOPE_PAGINA);
+        let mut fraccion = || -> Option<f32> {
+            let f = c.next()?.parse::<f64>().ok().filter(|f| f.is_finite())?;
+            Some(acotada(f))
+        };
+        let frac = fraccion()?;
+        let fraccion = fraccion()?;
+        Some(Ultimo {
+            t,
+            pagina,
+            frac,
+            fraccion,
+        })
+    }
+}
+
+/// **Lo ultimo de cada documento**: un renglon por `doc` (`doc` y un
+/// tabulador delante de [`Ultimo`]). Lo que no se entiende se salta.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Ultimos(BTreeMap<String, Ultimo>);
+
+impl Ultimos {
+    pub fn de_texto(texto: &str) -> Ultimos {
+        Ultimos(
+            texto
+                .lines()
+                .filter_map(|l| {
+                    let (doc, u) = l.split_once('\t')?;
+                    if !doc_valido(doc) {
+                        return None;
+                    }
+                    Some((doc.to_string(), Ultimo::de_texto(u)?))
+                })
+                .collect(),
+        )
+    }
+
+    pub fn a_texto(&self) -> String {
+        self.0
+            .iter()
+            .map(|(doc, u)| format!("{doc}\t{}\n", u.a_texto()))
+            .collect()
+    }
+
+    pub fn de(&self, doc: &str) -> Option<&Ultimo> {
+        self.0.get(doc)
+    }
+
+    /// **Lo apunta si es lo mas nuevo** de ese documento (gana la hora mas
+    /// reciente: un aviso viejo que llega tarde no hace retroceder la
+    /// chapa). Devuelve si cambio algo. Pasado el [`TOPE_ULTIMOS`], se
+    /// olvida el mas viejo.
+    pub fn con(&mut self, doc: &str, u: Ultimo) -> bool {
+        if !doc_valido(doc) {
+            return false;
+        }
+        if let Some(antes) = self.0.get(doc)
+            && (antes.t > u.t || *antes == u)
+        {
+            return false;
+        }
+        self.0.insert(doc.to_string(), u);
+        while self.0.len() > TOPE_ULTIMOS {
+            let Some(viejo) = self
+                .0
+                .iter()
+                .min_by_key(|(_, u)| u.t)
+                .map(|(d, _)| d.clone())
+            else {
+                break;
+            };
+            self.0.remove(&viejo);
+        }
+        true
+    }
+}
+
+// ------------------------------------------------------------ por que no
+
+/// Si un `doc` vale: no vacio, sin blancos a los lados, corto y sin
+/// caracteres de control (lo mismo que se le pide a lo que llega).
+pub fn doc_valido(doc: &str) -> bool {
+    !doc.is_empty()
+        && doc.trim() == doc
+        && doc.chars().count() <= TOPE_DOC
+        && !doc.chars().any(char::is_control)
+}
+
+/// **Por que no se abre en Lectura Veloz** (`LecturaVeloz.motivoDe` del
+/// movil, 27-oct-2026: «me dice que no pudo abrir el archivo»): el aviso
+/// dice el problema de verdad, y el registro lo apunta.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Motivo {
+    /// No es un archivo del chat ni una nota guardada: no hay codigo con
+    /// que reconocer luego lo que mande.
+    SinCodigo,
+    /// Lectura Veloz no lee esa extension («?» si no tiene).
+    Formato(String),
+    /// El archivo ya no esta en este equipo (su nombre).
+    FaltaArchivo(String),
+    /// `lecturaveloz://` no lo tiene nadie.
+    NoInstalada,
+    /// Windows no la pudo abrir, o no se pudo preparar el documento: que
+    /// se intentaba y la causa ([`motivo_de_error`]).
+    Fallo(String),
+}
+
+impl Motivo {
+    /// Una linea para el registro.
+    pub fn para_el_registro(&self) -> String {
+        match self {
+            Motivo::SinCodigo => {
+                "sin codigo de mensaje (ni archivo del chat ni nota guardada)".into()
+            }
+            Motivo::Formato(e) => format!("Lectura Veloz no lee archivos .{e}"),
+            Motivo::FaltaArchivo(n) => format!("el archivo ya no esta en este equipo ({n})"),
+            Motivo::NoInstalada => format!("no esta instalada (nadie tiene {ESQUEMA}://)"),
+            Motivo::Fallo(m) => m.clone(),
+        }
+    }
+}
+
+/// **Lo que se mira antes de abrir**: el `doc` (si se sabe cual: `None` es
+/// que no hay), que Lectura Veloz lea su formato y que el archivo este.
+/// `None` si todo esta bien. No toca el disco: `existe` lo dice quien llama.
+pub fn motivo_del_documento(doc: Option<&str>, ruta: &Path, existe: bool) -> Option<Motivo> {
+    if !doc.is_some_and(doc_valido) {
+        return Some(Motivo::SinCodigo);
+    }
+    if tipo_de(ruta).is_none() {
+        let e = extension_de(&ruta.to_string_lossy());
+        return Some(Motivo::Formato(if e.is_empty() { "?".into() } else { e }));
+    }
+    if !existe {
+        let r = ruta.to_string_lossy();
+        let nombre = r.rsplit(['\\', '/']).next().unwrap_or(&r).to_string();
+        return Some(Motivo::FaltaArchivo(nombre));
+    }
+    None
+}
+
+/// **Un error al preparar o abrir**, con lo que se intentaba y la causa en
+/// una linea corta (sin saltos ni rutas larguisimas): «abrir Lectura Veloz:
+/// Acceso denegado.».
+pub fn motivo_de_error(paso: &str, causa: &str) -> String {
+    let causa = causa.split_whitespace().collect::<Vec<_>>().join(" ");
+    let causa: String = causa.chars().take(160).collect();
+    if causa.is_empty() {
+        paso.to_string()
+    } else {
+        format!("{paso}: {causa}")
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -641,5 +851,134 @@ mod pruebas {
         assert_eq!(tipo_de(Path::new(r"C:\a\b.md")), Some(Tipo::Texto));
         assert_eq!(tipo_de(Path::new(r"C:\a\b.exe")), None);
         assert_eq!(tipo_de(Path::new(r"C:\a\.pdf")), None);
+    }
+    #[test]
+    fn lo_ultimo_gana_la_hora_mas_nueva_y_vuelve_igual() {
+        let mut u = Ultimos::default();
+        let a = Ultimo {
+            t: 100,
+            pagina: 3,
+            frac: 0.5,
+            fraccion: 0.47,
+        };
+        assert!(u.con("uid-1", a));
+        assert_eq!(u.de("uid-1").map(Ultimo::porcentaje), Some(47));
+        // Uno viejo que llega tarde no hace retroceder la chapa.
+        assert!(!u.con("uid-1", Ultimo { t: 50, ..a }));
+        assert!(!u.con("uid-1", a));
+        assert!(u.con(
+            "uid-1",
+            Ultimo {
+                t: 200,
+                fraccion: 0.9,
+                ..a
+            }
+        ));
+        assert_eq!(u.de("uid-1").unwrap().porcentaje(), 90);
+        assert!(u.con("ruta:0123456789abcdef", a));
+        let texto = u.a_texto();
+        assert_eq!(Ultimos::de_texto(&texto), u);
+        assert!(texto.contains("uid-1\tv1;200;3;0.5;0.9\n"), "{texto}");
+    }
+
+    #[test]
+    fn caso_negativo_lo_ultimo_raro_no_se_lee_ni_se_apunta() {
+        let u = Ultimos::de_texto(
+            "a\tv2;1;0;0;0\nb\tv1;x;0;0;0\nc\tv1;1;0;0;NaN\n\tv1;1;0;0;0\nsin-tab\nd\tv1;1;7;9;-3\n",
+        );
+        assert_eq!(u.de("a"), None);
+        assert_eq!(u.de("b"), None);
+        assert_eq!(u.de("c"), None);
+        // Lo que se pasa de rango se acota.
+        assert_eq!(
+            u.de("d"),
+            Some(&Ultimo {
+                t: 1,
+                pagina: 7,
+                frac: 1.0,
+                fraccion: 0.0
+            })
+        );
+        let mut u = Ultimos::default();
+        let x = Ultimo {
+            t: 1,
+            pagina: 0,
+            frac: 0.0,
+            fraccion: 0.0,
+        };
+        assert!(!u.con("", x));
+        assert!(!u.con("a\nb", x));
+        assert!(!u.con(" a", x));
+        assert!(!u.con(&"x".repeat(TOPE_DOC + 1), x));
+    }
+
+    #[test]
+    fn pasado_el_tope_se_olvida_el_mas_viejo() {
+        let mut u = Ultimos::default();
+        for i in 0..=TOPE_ULTIMOS as u64 {
+            let x = Ultimo {
+                t: 1000 + i,
+                pagina: 0,
+                frac: 0.0,
+                fraccion: 0.1,
+            };
+            u.con(&format!("d{i}"), x);
+        }
+        assert_eq!(u.de("d0"), None);
+        assert!(u.de("d1").is_some());
+        assert!(u.de(&format!("d{TOPE_ULTIMOS}")).is_some());
+    }
+
+    #[test]
+    fn el_porcentaje_se_redondea_y_se_acota() {
+        assert_eq!(porcentaje(0.474), 47);
+        assert_eq!(porcentaje(0.476), 48);
+        assert_eq!(porcentaje(1.7), 100);
+        assert_eq!(porcentaje(-1.0), 0);
+        assert_eq!(porcentaje(f32::NAN), 0);
+        let p = Progreso::de_campos(&pdf()).unwrap();
+        assert_eq!(Ultimo::de_progreso(&p, 5).t, 1_761_562_800_000);
+        let sin_hora = Progreso { t: 0, ..p };
+        assert_eq!(Ultimo::de_progreso(&sin_hora, 5).t, 5);
+    }
+
+    #[test]
+    fn el_motivo_dice_lo_que_falla_de_verdad() {
+        let pdf = Path::new(r"C:\Libros\Tesis.pdf");
+        assert_eq!(motivo_del_documento(Some("uid-1"), pdf, true), None);
+        assert_eq!(
+            motivo_del_documento(None, pdf, true),
+            Some(Motivo::SinCodigo)
+        );
+        assert_eq!(
+            motivo_del_documento(Some(" "), pdf, true),
+            Some(Motivo::SinCodigo)
+        );
+        assert_eq!(
+            motivo_del_documento(Some("uid-1"), Path::new(r"C:\a\foto.png"), true),
+            Some(Motivo::Formato("png".into()))
+        );
+        assert_eq!(
+            motivo_del_documento(Some("uid-1"), Path::new(r"C:\a\sin-extension"), true),
+            Some(Motivo::Formato("?".into()))
+        );
+        assert_eq!(
+            motivo_del_documento(Some("uid-1"), pdf, false),
+            Some(Motivo::FaltaArchivo("Tesis.pdf".into()))
+        );
+        assert!(
+            Motivo::NoInstalada
+                .para_el_registro()
+                .contains("lecturaveloz://")
+        );
+        assert_eq!(
+            motivo_de_error("abrir Lectura Veloz", "  Acceso\n denegado. "),
+            "abrir Lectura Veloz: Acceso denegado."
+        );
+        assert_eq!(motivo_de_error("abrir", ""), "abrir");
+        assert_eq!(
+            motivo_de_error("x", &"a".repeat(500)).chars().count(),
+            "x: ".len() + 160
+        );
     }
 }

@@ -240,6 +240,15 @@ chat-compartir-sin-panel = Windows did not open the Share panel: it is on the cl
 chat-pineado = Pinned
 chat-foto-en-la-nota = Photo added to your text: it is all sent as one note
 chat-sin-archivo = This message has no file on this computer
+# Speed reading (27-oct-2026): the % next to the option, the bubble chip
+# and the real reason when it can't open.
+lector-lectura-veloz-con = ⚡ Speed reading · { $pct } %
+lector-lectura-veloz-sin-codigo = This document can't be read in Lectura Veloz: it isn't a chat file or a saved note (it has no message code).
+lector-lectura-veloz-formato = This document can't be read in Lectura Veloz: it doesn't read «.{ $ext }» files.
+lector-lectura-veloz-falta-archivo = This document can't be read in Lectura Veloz: the file is no longer on this computer ({ $nombre }).
+chat-lectura-veloz-chapa = Speed reading · { $pct } %
+# The chip of what came from the phone's scanner (`escaneado`).
+chat-escaneado = Scanned
 chat-sin-origen = That canvas is not in this project
 chat-sin-proyectos-otros = There is no other project to send it to
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray

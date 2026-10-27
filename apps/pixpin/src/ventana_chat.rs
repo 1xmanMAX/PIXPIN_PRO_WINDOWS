@@ -127,6 +127,9 @@ mod buscar_en_chats;
 /// Las carpetas de paginas: un cuaderno con nombre dentro del chat, su
 /// ventana con las paginas en orden y su PDF (26-oct-2026).
 pub(crate) mod carpetas;
+/// Las chapas de debajo del nombre: «Escaneado» y «Lectura veloz · N %»
+/// (23 y 27-oct-2026), y «⚡ Lectura veloz» del menu del mensaje.
+mod chapas;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
 /// Cada chat se abre donde se dejo, y lo no visto del «↓» (27-oct-2026).
@@ -1944,6 +1947,7 @@ pub fn abrir(
                                     Efecto::Nada
                                 }
                                 Zona::Renombrar(i) => ejecutar(Accion::Renombrar(i), a, &cx),
+                                Zona::LecturaVeloz(i) => ejecutar(Accion::LecturaVeloz(i), a, &cx),
                                 Zona::CerrarNombre => {
                                     a.renombrando_mensaje = None;
                                     Efecto::Nada
@@ -6258,7 +6262,10 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // cuando cambia el ancho, no en cada fotograma.
     let ancho_contenido = h::ancho_contenido(area, escala);
     let aguja = a.busqueda.as_deref().unwrap_or_default().to_owned();
-    let generacion = crate::sincronizar::compartidos_ui::generacion(&a.raiz);
+    // Y con lo ultimo de Lectura Veloz: su chapa sale o crece al llegar.
+    let generacion = crate::sincronizar::compartidos_ui::generacion(&a.raiz)
+        .wrapping_mul(1_000_003)
+        .wrapping_add(crate::lectura_veloz::generacion());
     {
         let mut c = a.colocado.borrow_mut();
         if c.ancho != ancho_contenido
@@ -6830,6 +6837,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 a.zonas.borrow_mut().push((c, Zona::Estudiar(i)));
             }
             y += chat::FILA_CIRCULO as f32 * e + hueco;
+        }
+        if let Some(c) = &piezas.chapas {
+            for (caja, que) in chapas::pintar(p, c, dentro.x, y as i32, dentro.ancho, color_hora, e)
+            {
+                if que == chapas::Que::LecturaVeloz {
+                    a.zonas.borrow_mut().push((caja, Zona::LecturaVeloz(i)));
+                }
+            }
+            y += c.alto + hueco;
         }
 
         // El texto de una nota de voz, pegado bajo su fila.
@@ -8118,6 +8134,7 @@ fn medir_mensaje(
             rica: None,
             version: None,
             versiones: None,
+            chapas: None,
         };
         return (entrada, piezas);
     }
@@ -8156,6 +8173,11 @@ fn medir_mensaje(
             w as f32,
             pixpin_ui::chat::FILA_CIRCULO as f32 * e,
         );
+    }
+    // Sus chapas, debajo del nombre (`chapas`).
+    let chapas = chapas::medir(p, m, textos, e, ancho_max);
+    if let Some(c) = &chapas {
+        sumar(&mut ancho, &mut alto, c.ancho, c.alto);
     }
     // El texto de una nota de voz va pegado a su fila, debajo de la onda,
     // con el aire de `padding(top = 6.dp)` y no con el hueco de siempre.
@@ -8330,6 +8352,7 @@ fn medir_mensaje(
         rica,
         version,
         versiones: versiones_chip,
+        chapas,
     };
     (entrada, piezas)
 }
@@ -15167,6 +15190,8 @@ enum Zona {
     /// «2 versiones ▾» de un original (las versiones vinculadas): la lista
     /// de sus versiones, cada una lleva a la suya.
     Versiones(usize),
+    /// La chapa «Lectura veloz · N %»: seguir leyendo alli.
+    LecturaVeloz(usize),
     /// La pastilla del modelo en la cabecera del chat «Asistente»: abre la
     /// lista Claude Haiku / DeepSeek / Local (17-oct-2026).
     ModeloIa,
@@ -15285,6 +15310,8 @@ struct Piezas {
     version: Option<Rotulo>,
     /// «2 versiones ▾»: esta burbuja es un original con versiones.
     versiones: Option<Rotulo>,
+    /// Las chapas de debajo del nombre («Escaneado», «Lectura veloz · N %»).
+    chapas: Option<chapas::Chapas>,
 }
 
 /// Un rotulo de las versiones vinculadas, ya medido: el lapiz y su texto.
@@ -16871,6 +16898,9 @@ enum Accion {
     /// al reves (`soloLaFoto` del movil).
     AlternarRecorte(usize),
     AbrirCon(usize),
+    /// «⚡ Lectura veloz»: el archivo en la app de lectura rapida, desde el
+    /// 🟢 (`chapas::abrir`). Tambien al tocar su chapa.
+    LecturaVeloz(usize),
     Renombrar(usize),
     /// «Añadir descripción» / «Editar descripción» de una foto: la barra de
     /// renombrar, escribiendo su `texto` (`descripcion`).
@@ -18104,6 +18134,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             .con_tecla(Tecla::Letra('n')),
         );
     }
+    // Un PDF, un Word, un libro, una pagina o un texto, en Lectura Veloz,
+    // con el % de lo leido alli si ya se leyo (27-oct-2026, como el movil).
+    if chapas::se_ofrece_lectura_veloz(m) {
+        v.push(entrada(
+            Some(&mi::SPEED),
+            crate::lectura_veloz::rotulo(textos, chapas::porcentaje(m)),
+            Accion::LecturaVeloz(i),
+        ));
+    }
     if m.clase == Some(Clase::Voz) {
         // Con texto es VOLVER a pasarlo (`MensajesActivity.kt:2620-2626`).
         // Sin texto se ofrece tambien: la nota ya no se pasa a texto sola
@@ -18585,6 +18624,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         // ya lo hace pulsar la burbuja. Se le pasa el fichero de verdad del
         // adjunto (un `.bin` del movil que es un PDF, como PDF, igual que al
         // tocar la burbuja) y, si no sale, el motivo con palabras.
+        Accion::LecturaVeloz(i) => match a.mensajes.get(i) {
+            Some(m) => {
+                chapas::abrir(raiz, &a.ficha.id, m, cx.textos).map_or(Efecto::Nada, Efecto::Aviso)
+            }
+            None => Efecto::Nada,
+        },
         Accion::AbrirCon(i) => match ruta_de(a, i) {
             Some(ruta) => {
                 let ruta = crate::recibir::ruta_para_abrir(&ruta);

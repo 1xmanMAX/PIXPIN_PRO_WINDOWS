@@ -748,6 +748,9 @@ struct Marco {
 struct Estado {
     nombre: String,
     ajustes: lectura::Ajustes,
+    /// El % de lo leido en Lectura Veloz (lo ultimo que mando), para
+    /// ponerlo junto a «⚡ Lectura veloz»; `None` si nunca se leyo alli.
+    lectura_veloz: Option<u8>,
     medidas: Vec<(f32, f32)>,
     hojas: vista::Hojas,
     /// Cada hoja ya pintada: con que ancho y su bitmap.
@@ -976,6 +979,7 @@ fn abrir_con(
     }
     let mut e = Estado {
         nombre: pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta)),
+        lectura_veloz: crate::lectura_veloz::porcentaje_de_ruta(ruta),
         marcas: marcas::de_texto(&ajustes.marcas),
         zoom: ajustes.zoom,
         ajustes,
@@ -1091,6 +1095,7 @@ fn abrir_con(
         // Lo leido en Lectura Veloz (de fondo): el 🟢 y la vista, ahi.
         if let Some(p) = crate::lectura_veloz::tomar(ruta) {
             al_dia_de_lectura_veloz(&mut e, &p);
+            e.lectura_veloz = crate::lectura_veloz::porcentaje_de_ruta(ruta);
             hay_que_pintar = true;
         }
         if let Some(q) = tomar_busqueda_al_abrir(ruta) {
@@ -2550,7 +2555,10 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("compartir-lector"), Accion::Compartir));
         filas.push((textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta));
     }
-    filas.push((textos.t("lector-lectura-veloz"), Accion::LecturaVeloz));
+    filas.push((
+        crate::lectura_veloz::rotulo(textos, e.lectura_veloz),
+        Accion::LecturaVeloz,
+    ));
     if !e.marcas.is_empty() {
         filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
     }
@@ -4130,6 +4138,7 @@ mod pruebas {
         Estado {
             nombre: "plano".into(),
             ajustes: lectura::Ajustes::default(),
+            lectura_veloz: None,
             hojas: vista::Hojas::colocar(&medidas),
             medidas,
             pintadas: HashMap::new(),
