@@ -87,9 +87,9 @@ pub const VERSION: u32 = 4;
 /// antes no manda ninguna, y con el todo va exactamente como antes. Ver
 /// `diario` y `docs/manual-sincronizar-lo-nuevo.md`.
 ///
-/// - [DIARIO]: «`novedades`» (que chats siguen como quedaron, por el diario)
+/// - [DIARIO], «`novedades`» (que chats siguen como quedaron, por el diario)
 ///   y `entero` en `base` (los dos quedaron identicos: apunta el cursor).
-/// - [REANUDAR]: un archivo grande cortado a medias sigue donde se quedo
+/// - [REANUDAR], un archivo grande cortado a medias sigue donde se quedo
 ///   (`desdeByte`, y `pon` con `reanudar`, que contesta antes de los trozos).
 pub const DIARIO: &str = "diario1";
 pub const REANUDAR: &str = "reanudar1";

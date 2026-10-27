@@ -130,11 +130,7 @@ fn sigue_igual<D: Disco + ?Sized>(d: &D, chat: &str) -> bool {
     let Ok(texto) = std::fs::read_to_string(archivo_de_mirados(d)) else {
         return false;
     };
-    let Some(l) = texto
-        .lines()
-        .filter(|l| l.split('\t').next() == Some(chat))
-        .next_back()
-    else {
+    let Some(l) = texto.lines().rfind(|l| l.split('\t').next() == Some(chat)) else {
         return false;
     };
     let p: Vec<&str> = l.split('\t').collect();

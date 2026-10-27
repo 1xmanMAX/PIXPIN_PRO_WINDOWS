@@ -2,11 +2,11 @@
 //! `sincro/Prioridad.kt` de Android.
 //!
 //! El usuario: «añade un listado de prioridades al sincronizar, por defecto:
-//! 1) las listas de tareas, primero y lo más rápido; 2) los chats
-//! compartidos; 3) los archivos (PDF y demás); 4) los lienzos, textos, notas
-//! y lo demás; 5) al final lo pesado: vídeos y grabaciones. Dentro de cada
-//! nivel, y para los grupos (una grabación = su grupo de ficheros, su peso
-//! total), lo más ligero primero, para avanzar más rápido».
+//! (1) las listas de tareas, primero y lo más rápido; (2) los chats
+//! compartidos; (3) los archivos (PDF y demás); (4) los lienzos, textos,
+//! notas y lo demás; (5) al final lo pesado: vídeos y grabaciones. Dentro de
+//! cada nivel, y para los grupos (una grabación = su grupo de ficheros, su
+//! peso total), lo más ligero primero, para avanzar más rápido».
 //!
 //! Por que importa: **una vuelta se puede cortar** (la Wi-Fi del telefono que
 //! se duerme, la aplicacion que se cierra). Lo que haya pasado hasta entonces
