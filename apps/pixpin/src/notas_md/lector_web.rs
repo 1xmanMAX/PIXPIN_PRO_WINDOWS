@@ -597,7 +597,8 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                     }
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => pedir_cierre(&mut cerrando, &pagina),
-                    None => {}
+                    // La nota no lleva «Guardar»: es del chat o se edita en su fichero.
+                    Some(AccionPin::Guardar) | None => {}
                 }
                 continue;
             }

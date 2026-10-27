@@ -568,6 +568,16 @@ pub const REPLY: Icono = Icono {
     )],
 };
 
+/// `save` (`src/content/save/materialicons/24px.svg`): «Guardar» lo
+/// abierto de paso en un chat (`guardar_de_paso`).
+pub const SAVE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z",
+        false,
+    )],
+};
+
 /// `settings` (`src/action/settings/materialicons/24px.svg`): el engranaje
 /// de la cabecera del visor, al lado del marcador (v0.66 del movil).
 pub const SETTINGS: Icono = Icono {
@@ -916,6 +926,7 @@ pub const GROUP: Icono = Icono {
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
     GROUP,
+    SAVE,
     VIDEOCAM,
     EDIT_NOTE,
     CROP_FREE,
