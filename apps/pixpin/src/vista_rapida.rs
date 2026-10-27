@@ -113,6 +113,9 @@ fn al_pulsar() -> bool {
         }
         std::thread::sleep(Duration::from_millis(25));
     }
+    if nuevas.len() > 1 {
+        pixpin_shell::espacio_explorador::escalonar(&nuevas, 40);
+    }
     if nuevas.len() >= rutas.len() {
         // Ya estan: un poco mas, para el `enfocar` que llega tras mostrarse.
         sin_quitar_el_foco(1500);

@@ -388,6 +388,10 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         cx.textos,
     );
     tracing::info!("abriendo el lector de notas");
+    // Abierta con el espacio (vista rapida) o un fichero de codigo: se lee,
+    // no se escribe (el codigo se ve coloreado, sin las vallas del bloque).
+    let leer_al_abrir = pixpin_shell::overlay::sin_quitar_el_foco_ahora()
+        || matches!(&*cx.actual.borrow(), Destino::Fichero { ruta } if guardar::lenguaje_de(ruta).is_some());
 
     // **La ventana es la de los visores como pin** (`lector_pin`): sale ya,
     // con el fondo de la nota, y la pagina llega dentro en cuanto el
@@ -541,6 +545,9 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
             "lector de notas: pagina lista (repuesto)"
         );
         pagina.mandar(&abrir);
+        if leer_al_abrir {
+            pagina.mandar(r#"{"tipo":"orden","que":"leer"}"#);
+        }
     }
 
     'bucle: loop {
@@ -694,6 +701,9 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                                 "lector de notas: pagina lista"
                             );
                             pagina.mandar(&abrir);
+                            if leer_al_abrir {
+                                pagina.mandar(r#"{"tipo":"orden","que":"leer"}"#);
+                            }
                         }
                         // Lo que encienden los botones de la barra.
                         DeLaPagina::Estado {

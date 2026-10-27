@@ -28,7 +28,8 @@ pub fn no_quitar_el_foco_durante(ms: u64) {
     SIN_FOCO_HASTA.store(if ms == 0 { 0 } else { ahora + ms }, Ordering::Relaxed);
 }
 
-fn sin_quitar_el_foco_ahora() -> bool {
+/// Si ahora mismo se abre algo con la vista rapida (sin tomar el foco).
+pub fn sin_quitar_el_foco_ahora() -> bool {
     let hasta = SIN_FOCO_HASTA.load(Ordering::Relaxed);
     // SAFETY: GetTickCount64 no tiene precondiciones.
     hasta != 0 && unsafe { windows::Win32::System::SystemInformation::GetTickCount64() } < hasta

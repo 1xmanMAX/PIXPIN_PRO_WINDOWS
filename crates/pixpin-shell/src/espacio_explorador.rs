@@ -341,6 +341,38 @@ pub fn viva(h: isize) -> bool {
     unsafe { IsWindow(Some(h)).as_bool() && IsWindowVisible(h).as_bool() }
 }
 
+/// Varias abiertas de una vez: en escalera (cada una `paso` px mas abajo y a
+/// la derecha que la anterior), para que no se tapen del todo.
+pub fn escalonar(ventanas: &[isize], paso: i32) {
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+    };
+    let Some(&primera) = ventanas.first() else {
+        return;
+    };
+    let mut r = RECT::default();
+    // SAFETY: ventanas de este proceso (las abrio la vista rapida); si una ya
+    // no existe, las llamadas fallan sin mas.
+    unsafe {
+        if GetWindowRect(HWND(primera as *mut _), &mut r).is_err() {
+            return;
+        }
+        for (i, &h) in ventanas.iter().enumerate().skip(1) {
+            let d = paso * i as i32;
+            let _ = SetWindowPos(
+                HWND(h as *mut _),
+                None,
+                r.left + d,
+                r.top + d,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
 pub fn cerrar(ventanas: &[isize]) {
     use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
