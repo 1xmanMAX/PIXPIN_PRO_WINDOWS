@@ -706,18 +706,10 @@ fn soltar_si_reposa() {
     }
 }
 
-/// Si el asistente se puede usar: modelo bajado o un motor de la nube.
+/// Si el asistente se puede usar: la nube elegida tiene su clave.
 fn asistente_en_uso(u: &Ubicacion) -> bool {
     let ajustes = pixpin_store::ajustes::cargar(u).unwrap_or_default();
-    if !ajustes.asistente.motor.is_empty() && ajustes.asistente.motor != "local" {
-        return true;
-    }
-    super::motor::raiz().is_some_and(|r| {
-        let m = super::motor::modelo_elegido(Some(&ajustes.asistente.modelo));
-        pixpin_ia::descarga::carpeta_modelo(&r, &m)
-            .join(m.pesos.nombre)
-            .is_file()
-    })
+    super::nube::hay_clave(super::nube::eleccion(&ajustes.asistente))
 }
 
 /// **Arranca el hilo de fondo** que tiene el indice al dia. Una vez por

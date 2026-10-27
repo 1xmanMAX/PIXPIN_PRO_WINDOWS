@@ -56,6 +56,9 @@ pub enum AccionPin {
     Propio(u8),
     /// El nombre: cambiarlo.
     Nombre,
+    /// «Guardar» lo abierto de paso en un chat (`guardar_de_paso`): solo
+    /// en los visores de un fichero de fuera ([`PinLector::con_guardar`]).
+    Guardar,
     PantallaCompleta,
     Fijar,
     Cerrar,
@@ -193,6 +196,8 @@ pub struct PinLector {
     barra_en_pantalla_completa: bool,
     /// Sin barra ninguna, ni asomando (el lienzo mientras se edita, 24-oct).
     sin_barra: bool,
+    /// Con el boton «Guardar» (lo que se lee es de paso, de fuera del chat).
+    con_guardar: bool,
     piezas: Vec<(f32, f32, Pieza)>,
     /// Al abrir, la barra se ve un rato aunque el raton no este encima: asi
     /// se sabe que esta (como la pastilla de antes).
@@ -344,6 +349,7 @@ impl PinLector {
             minimo: MINIMO,
             barra_en_pantalla_completa: false,
             sin_barra: false,
+            con_guardar: false,
         }
     }
 
@@ -412,6 +418,21 @@ impl PinLector {
     pub fn con_extension(mut self, ext: &str) -> PinLector {
         self.ext = ext.trim_start_matches('.').to_lowercase();
         self
+    }
+
+    /// **Con el boton «Guardar»** (`si`): lo que se lee es de paso, de fuera
+    /// del chat (`guardar_de_paso::es_de_paso`). Va antes de luna/sol.
+    pub fn con_guardar(mut self, si: bool) -> PinLector {
+        self.con_guardar = si;
+        self
+    }
+
+    /// Quita o pone el boton «Guardar» (ya guardado, no se ofrece otra vez).
+    pub fn poner_guardar(&mut self, si: bool) {
+        if self.con_guardar != si {
+            self.con_guardar = si;
+            self.pintado = None;
+        }
     }
 
     /// Sin el boton luna/sol: para el lector que no sabe pintarse en oscuro
@@ -693,6 +714,7 @@ impl PinLector {
         let texto = match pieza {
             Some(Pieza::Asa) => Some(t.t("barra-mover")),
             Some(Pieza::Oscuro) => Some(t.t("barra-oscuro")),
+            Some(Pieza::Boton(AccionPin::Guardar)) => Some(t.t("guardar-de-paso")),
             Some(Pieza::Boton(AccionPin::PantallaCompleta)) => Some(t.t("barra-pantalla")),
             Some(Pieza::Boton(AccionPin::Fijar)) => Some(t.t("barra-fijar")),
             Some(Pieza::Boton(AccionPin::Cerrar)) => Some(t.t("barra-cerrar")),
@@ -843,7 +865,14 @@ impl PinLector {
         }
         // Las piezas y lo que mide: no dependen del raton.
         let e = self.e;
-        let (piezas, ancho) = piezas_de(nombre, &self.ext, propios, self.con_oscuro, e);
+        let (piezas, ancho) = piezas_de(
+            nombre,
+            &self.ext,
+            propios,
+            self.con_oscuro,
+            self.con_guardar,
+            e,
+        );
         let alto = (ALTO * e).ceil() as u32;
         let sep = (SEPARACION * e) as i32;
         let raton = pixpin_shell::overlay::raton_en_pantalla();
@@ -977,13 +1006,14 @@ struct Aspecto {
 
 /// **Las piezas de la barra** de izquierda a derecha (x desde, x hasta,
 /// que) y su ancho total en pixeles: el asa, el nombre con su recuadro, los
-/// botones propios, la luna/sol si la lleva y, al final, pantalla completa,
-/// el pin y cerrar.
+/// botones propios, «Guardar» si es de paso, la luna/sol si la lleva y, al
+/// final, pantalla completa, el pin y cerrar.
 fn piezas_de(
     nombre: &str,
     ext: &str,
     propios: &[BotonLector],
     con_oscuro: bool,
+    con_guardar: bool,
     e: f32,
 ) -> (Vec<(f32, f32, Pieza)>, u32) {
     let mut piezas = Vec::new();
@@ -1000,6 +1030,10 @@ fn piezas_de(
         x += BOTON * e + 2.0 * e;
     }
     x += 6.0 * e;
+    if con_guardar {
+        piezas.push((x, x + BOTON * e, Pieza::Boton(AccionPin::Guardar)));
+        x += BOTON * e + 2.0 * e;
+    }
     if con_oscuro {
         piezas.push((x, x + BOTON * e, Pieza::Oscuro));
         x += BOTON * e + 2.0 * e;
@@ -1162,6 +1196,7 @@ fn pintar_barra(
                 },
             ),
             Pieza::Boton(AccionPin::Cerrar) => p.icono(&material::CLOSE, centrado, TINTA),
+            Pieza::Boton(AccionPin::Guardar) => p.icono(&material::SAVE, centrado, TINTA),
             Pieza::Boton(AccionPin::Nombre) => {}
         }
     }
@@ -1180,7 +1215,7 @@ pub(crate) fn pintar_barra_de_muestra(
     con_oscuro: bool,
     pantalla_completa: bool,
 ) -> (u32, u32) {
-    let (piezas, ancho) = piezas_de(nombre, ext, &[], con_oscuro, e);
+    let (piezas, ancho) = piezas_de(nombre, ext, &[], con_oscuro, false, e);
     let alto = (ALTO * e).ceil() as u32;
     p.desplazar(origen.0, origen.1);
     pintar_barra(
@@ -1210,7 +1245,7 @@ pub(crate) fn disposicion(
     propios: &[BotonLector],
     con_oscuro: bool,
 ) -> Vec<String> {
-    piezas_de(nombre, ext, propios, con_oscuro, 1.0)
+    piezas_de(nombre, ext, propios, con_oscuro, false, 1.0)
         .0
         .into_iter()
         .map(|(_, _, p)| match p {
@@ -1222,6 +1257,7 @@ pub(crate) fn disposicion(
             Pieza::Boton(AccionPin::Fijar) => "fijar".to_string(),
             Pieza::Boton(AccionPin::Cerrar) => "cerrar".to_string(),
             Pieza::Boton(AccionPin::Nombre) => "nombre".to_string(),
+            Pieza::Boton(AccionPin::Guardar) => "guardar".to_string(),
         })
         .collect()
 }
@@ -1230,7 +1266,7 @@ pub(crate) fn disposicion(
 #[cfg(test)]
 pub(crate) fn medida_de_la_barra(e: f32, nombre: &str, ext: &str, con_oscuro: bool) -> (u32, u32) {
     (
-        piezas_de(nombre, ext, &[], con_oscuro, e).1,
+        piezas_de(nombre, ext, &[], con_oscuro, false, e).1,
         (ALTO * e).ceil() as u32,
     )
 }
@@ -1627,6 +1663,25 @@ mod pruebas {
     }
 
     #[test]
+    fn guardar_sale_solo_de_paso_antes_de_la_luna() {
+        let nombres = |con: bool| -> Vec<Pieza> {
+            piezas_de("Informe", "pdf", &[], true, con, 1.0)
+                .0
+                .into_iter()
+                .map(|(_, _, p)| p)
+                .collect()
+        };
+        let con = nombres(true);
+        let i = con
+            .iter()
+            .position(|p| *p == Pieza::Boton(AccionPin::Guardar))
+            .expect("con guardar");
+        assert_eq!(con[i + 1], Pieza::Oscuro);
+        // Caso negativo: lo que ya es de un chat no lo lleva.
+        assert!(!nombres(false).contains(&Pieza::Boton(AccionPin::Guardar)));
+    }
+
+    #[test]
     fn a_pantalla_completa_la_barra_asoma_solo_en_su_rincon() {
         let monitor = Rect {
             x: 0,
@@ -1634,7 +1689,7 @@ mod pruebas {
             ancho: 1920,
             alto: 1080,
         };
-        let (piezas, ancho) = piezas_de("Plano", "pixpin", &[], false, 1.0);
+        let (piezas, ancho) = piezas_de("Plano", "pixpin", &[], false, false, 1.0);
         // Sin luna/sol: asa, nombre y los tres de siempre.
         assert_eq!(piezas.len(), 5);
         assert!(!piezas.iter().any(|(_, _, p)| *p == Pieza::Oscuro));

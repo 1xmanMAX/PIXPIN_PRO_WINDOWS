@@ -1,32 +1,19 @@
-//! **Un modelo de lenguaje pequeno, en este ordenador y sin red.**
+//! **El asistente de PixPin: Claude o DeepSeek con las herramientas de la
+//! app.**
 //!
-//! Pedido del usuario (13-oct-2026): un asistente local que viva en el chat y
+//! Pedido del usuario (13-oct-2026): un asistente que viva en el chat y
 //! que, ademas de contestar, use **herramientas** de PixPin: dibujar en el
 //! lienzo lo que se le pide o lo que ve en una foto, hacer graficas, pasar
-//! por OCR un PDF escaneado... Aceptando alguna alucinacion pequena, pero sin
-//! nada pesado. El analisis completo, con las medidas en este PC, esta en
-//! `docs/investigacion/2026-10-13-ia-local.md`.
-//!
-//! ## Lo que se eligio y por que (resumen)
-//!
-//! - **Modelo: Qwen3.5** (Apache-2.0), en GGUF cuantizado a 4 bits. El 2B
-//!   por omision (ve imagenes y llama herramientas bien); el 0.8B como
-//!   «ligero» para equipos flojos o moviles. Los dos tienen vision.
-//! - **Motor: llama.cpp** (MIT), su `llama-server` **en un proceso aparte**.
-//!   El mismo GGUF corre en Android con llama.cpp, que es la condicion para
-//!   que el PC y el movil se porten igual. Ni un byte en el ejecutable: el
-//!   motor (unos 30 MB) y el modelo se bajan cuando el usuario lo pide.
+//! por OCR un PDF escaneado... Empezo con un modelo pequeno en este PC
+//! (llama.cpp con Qwen3.5); el **27-oct-2026** el usuario decidio quitarlo,
+//! como en Android: el asistente contesta **solo con la nube**. La historia
+//! esta en `docs/investigacion/2026-10-13-ia-local.md`.
 //!
 //! ## Las piezas
 //!
-//! - [`modelos`]: que se baja, de donde, cuanto pesa y su huella.
-//! - [`descarga`]: bajar y verificar (SHA-256) a
-//!   `%LOCALAPPDATA%\PixPinMax\modelos`, nunca en el instalador.
 //! - [`motor`]: el trait [`Motor`] —lo unico que ve el resto— y los tipos de
-//!   la conversacion. Detras puede ir llama.cpp ([`servidor`]) o un motor
-//!   falso para las pruebas ([`motor::MotorGuionado`]).
-//! - [`servidor`]: lanzar `llama-server`, hablarle por HTTP local con
-//!   streaming, y matarlo al rato de no usarlo para devolver la memoria.
+//!   la conversacion. Detras va la nube ([`nube`]) o un motor falso para las
+//!   pruebas ([`motor::MotorGuionado`]).
 //! - [`herramientas`]: el **protocolo comun PC/Android** (nombre,
 //!   descripcion, parametros en JSON Schema) y la validacion estricta de lo
 //!   que devuelve el modelo.
@@ -42,18 +29,16 @@
 //!   `buscar_historial` para lo viejo ([`agente::turno_con`]).
 //! - [`complejidad`] (15-oct): si un turno piensa. En automatico, solo las
 //!   tareas complejas, con unas reglas fijas sobre el pedido (sin modelo) y
-//!   el mismo criterio para el local, Claude y DeepSeek.
+//!   el mismo criterio para Claude y DeepSeek.
 //! - [`calcar`]: copiar una imagen al lienzo con un algoritmo clasico
 //!   (k-medias + marching squares, o Canny + cadenas; RDP y suavizado): el
 //!   modelo solo elige el detalle.
 //! - [`acciones`]: toda la app como herramientas, generadas de UNA tabla
 //!   que produce pedidos del protocolo (`docs/protocolo-pedidos.md`); lo
 //!   que borra o sale del PC lleva su pregunta de confirmacion.
-//! - [`seleccion`]: las 6 herramientas que vienen a cuento en cada turno.
-//!   Y si una foto merece el modelo de mejor vista
-//!   ([`seleccion::pide_mejor_vista`], Gemma 4 E2B, opcional).
-//! - [`relevo`]: varios modelos locales con un solo `llama-server` cargado a
-//!   la vez (cambiar suelta al otro).
+//! - [`seleccion`]: las 6 herramientas que vienen a cuento en un turno sin
+//!   el catalogo entero, y las palabras que dicen que se pide (la imagen, una
+//!   tabla, cambiar lo que hay).
 //! - [`conocimiento`]: el resumen de PixPin y el indice de `ayuda_app`.
 //! - [`rapido`], [`tareas`] y [`fechas`] (14-oct): las ordenes simples sin
 //!   modelo (<100 ms), las tareas por su nombre («la tarea comprar pan»,
@@ -100,7 +85,6 @@ pub mod conexiones;
 pub mod conocimiento;
 pub mod contexto;
 pub mod cronograma;
-pub mod descarga;
 pub mod diagrama;
 pub mod diario;
 // Las fechas dichas viven en `pixpin-frase` (18-oct-2026): las comparte el
@@ -120,7 +104,6 @@ pub mod lienzo;
 pub mod lint;
 pub mod manual;
 pub mod memoria;
-pub mod modelos;
 pub mod motor;
 pub mod nube;
 pub mod ojos;
@@ -131,11 +114,9 @@ pub mod pizarra;
 pub mod preguntar;
 pub mod problema;
 pub mod rapido;
-pub mod relevo;
 pub mod revision_tabla;
 pub mod rotulos;
 pub mod seleccion;
-pub mod servidor;
 pub mod sse;
 pub mod svg;
 pub mod tabla_aspecto;
@@ -150,16 +131,6 @@ pub use motor::{Mensaje, Motor, Parte, Peticion, Respuesta, Rol};
 /// burbuja del chat.
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorIa {
-    #[error("no se pudo bajar {que}: {detalle}")]
-    Descarga { que: String, detalle: String },
-    #[error(
-        "el fichero {que} esta danado (su huella no coincide); se borra y hay que bajarlo otra vez"
-    )]
-    HuellaDistinta { que: String },
-    #[error("falta {0}: hay que bajar el asistente primero")]
-    Falta(String),
-    #[error("no se pudo arrancar el modelo: {0}")]
-    Arranque(String),
     #[error("el modelo dejo de responder: {0}")]
     Conexion(String),
     #[error("el modelo contesto algo que no se entiende: {0}")]

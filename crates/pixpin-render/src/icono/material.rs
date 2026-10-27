@@ -568,6 +568,16 @@ pub const REPLY: Icono = Icono {
     )],
 };
 
+/// `save` (`src/content/save/materialicons/24px.svg`): «Guardar» lo
+/// abierto de paso en un chat (`guardar_de_paso`).
+pub const SAVE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z",
+        false,
+    )],
+};
+
 /// `settings` (`src/action/settings/materialicons/24px.svg`): el engranaje
 /// de la cabecera del visor, al lado del marcador (v0.66 del movil).
 pub const SETTINGS: Icono = Icono {
@@ -916,6 +926,7 @@ pub const GROUP: Icono = Icono {
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
     GROUP,
+    SAVE,
     VIDEOCAM,
     EDIT_NOTE,
     CROP_FREE,
@@ -993,6 +1004,8 @@ pub const TODOS: &[Icono] = &[
     LIBRARY_MUSIC,
     MUSIC_NOTE,
     TIMER,
+    SPEED,
+    DOCUMENT_SCANNER,
     LINK,
     LIST,
     LYRICS,
@@ -1116,6 +1129,28 @@ pub const TIMER: Icono = Icono {
     trazos: &[relleno(
         "M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z",
         false,
+    )],
+};
+
+/// `speed` (`src/av/speed/materialicons/24px.svg`): «Lectura veloz», en el
+/// menu del mensaje y en su chapa de la burbuja (`Icons.Filled.Speed` del
+/// movil, 27-oct-2026).
+pub const SPEED: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M20.38 8.57l-1.23 1.85a8 8 0 01-.22 7.58H5.07A8 8 0 0115.58 6.85l1.85-1.23A10 10 0 003.35 19a2 2 0 001.72 1h13.85a2 2 0 001.74-1 10 10 0 00-.27-10.44zm-9.79 6.84a2 2 0 002.83 0l5.66-8.49-8.49 5.66a2 2 0 000 2.83z",
+        false,
+    )],
+};
+
+/// `document_scanner` (`src/action/document_scanner/materialicons/24px.svg`):
+/// la chapa «Escaneado» de la burbuja (`Icons.Filled.DocumentScanner` del
+/// movil). Par-impar: las rayas del papel son huecos.
+pub const DOCUMENT_SCANNER: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M7 3H4v3H2V1h5v2zm15 3V1h-5v2h3v3h2zM7 21H4v-3H2v5h5v-2zm13-3v3h-3v2h5v-5h-2zM19 18c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2v12zM15 8H9v2h6V8zm0 3H9v2h6v-2zm0 3H9v2h6v-2z",
+        true,
     )],
 };
 

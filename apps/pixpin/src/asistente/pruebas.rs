@@ -1,9 +1,9 @@
 //! Pruebas del asistente sin ventana y sin modelo: el turno en su hilo con
 //! el motor de mentira (`MotorGuionado`), el lienzo, el OCR de Windows sobre
-//! imagenes y PDF fabricados aqui, la descarga y la foto.
+//! imagenes y PDF fabricados aqui y la foto.
 //!
 //! Las del chat abierto (burbuja en vivo, parar, tarjeta) estan en
-//! `ventana_chat/asistente.rs`; la de extremo a extremo con el modelo de
+//! `ventana_chat/asistente.rs`; la de extremo a extremo con la nube de
 //! verdad, `#[ignore]`, en [`de_verdad`].
 
 use std::path::PathBuf;
@@ -13,12 +13,10 @@ use std::time::{Duration, Instant};
 
 use pixpin_ia::ErrorIa;
 use pixpin_ia::agente::Evento;
-use pixpin_ia::descarga::Progreso;
 use pixpin_ia::motor::{Mensaje, MotorGuionado, Respuesta};
 
 use super::al_lienzo;
 use super::chat::{self, EnVivo};
-use super::descarga::{AvisoDescarga, Descarga};
 use super::turno::{Adjunto, Aviso, Turno};
 
 fn carpeta(nombre: &str) -> PathBuf {
@@ -882,114 +880,24 @@ fn recortar_dice_que_recorta() {
 }
 
 // ---------------------------------------------------------------------------
-// Descarga
-
-fn esperar_descarga(d: &mut Descarga) -> AvisoDescarga {
-    let hasta = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < hasta {
-        d.mirar();
-        if let Some(f) = d.acabada.clone() {
-            return f;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    panic!("la descarga no acabo");
-}
-
-#[test]
-fn la_descarga_cancelada_se_dice_cancelada() {
-    let mut d = Descarga::lanzar_con(pixpin_ia::modelos::QWEN35_08B, |avance, cancelado| {
-        let mut hecho = 0;
-        loop {
-            if cancelado.load(std::sync::atomic::Ordering::Relaxed) {
-                return Err(ErrorIa::Cancelado);
-            }
-            hecho += 1000;
-            avance(Progreso {
-                hecho,
-                total: 1_000_000,
-                fichero: "x.gguf".into(),
-                verificando: false,
-            });
-            std::thread::sleep(Duration::from_millis(5));
-        }
-    });
-    std::thread::sleep(Duration::from_millis(150));
-    d.mirar();
-    assert!(d.fraccion() > 0.0, "llega el progreso");
-    d.cancelar();
-    assert_eq!(esperar_descarga(&mut d), AvisoDescarga::Cancelada);
-}
-
-#[test]
-fn la_descarga_que_falla_trae_el_motivo_y_la_buena_acaba_lista() {
-    let mut d = Descarga::lanzar_con(pixpin_ia::modelos::QWEN35_2B, |_, _| {
-        Err(ErrorIa::HuellaDistinta {
-            que: "Qwen3.5-2B-Q4_K_M.gguf".into(),
-        })
-    });
-    match esperar_descarga(&mut d) {
-        AvisoDescarga::Fallo(m) => assert!(m.contains("huella"), "{m}"),
-        otro => panic!("{otro:?}"),
-    }
-    let mut d = Descarga::lanzar_con(pixpin_ia::modelos::QWEN35_2B, |_, _| Ok(()));
-    assert_eq!(esperar_descarga(&mut d), AvisoDescarga::Lista);
-}
-
-#[test]
-fn sin_modelo_bajado_no_hay_motor_y_se_sabe_cuanto_falta() {
-    let c = carpeta("sin-modelo");
-    let m = pixpin_ia::modelos::QWEN35_2B;
-    assert!(!super::descarga::listo(&c, &m));
-    assert!(super::motor::del_proceso(&c, &m).is_err());
-    assert_eq!(
-        super::descarga::falta(&c, &m),
-        m.bytes() + pixpin_ia::modelos::LLAMA_CPP.zip.bytes
-    );
-    assert_eq!(super::descarga::tamano(1_981_062_350), "2,0 GB");
-    assert_eq!(super::descarga::tamano(737_504_352), "738 MB");
-    let _ = std::fs::remove_dir_all(&c);
-}
-
-#[test]
-fn el_modelo_de_los_ajustes() {
-    use pixpin_ia::modelos::{QWEN35_2B, QWEN35_08B};
-    assert_eq!(super::motor::modelo_elegido(None), QWEN35_2B);
-    assert_eq!(
-        super::motor::modelo_elegido(Some("qwen3.5-0.8b")),
-        QWEN35_08B
-    );
-    assert_eq!(super::motor::modelo_elegido(Some("inventado")), QWEN35_2B);
-}
-
-// ---------------------------------------------------------------------------
-// De verdad (modelo bajado)
+// De verdad (con la nube)
 
 /// **De extremo a extremo con el modelo de verdad**: pedir un dibujo, que
 /// acabe en un lienzo de prueba y pintarlo a PNG; y el OCR de una imagen con
 /// texto por el turno entero.
 ///
 /// ```text
-/// PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>
-/// PIXPIN_IA_MODELO=<Qwen3.5-2B-Q4_K_M.gguf>  PIXPIN_IA_SALIDA=<carpeta de los PNG>
+/// PIXPIN_IA_MOTOR=claude|deepseek (la clave guardada)  PIXPIN_IA_SALIDA=<carpeta de los PNG>
 /// cargo test -p pixpin -- --ignored --nocapture asistente::pruebas::de_verdad
 /// ```
 #[test]
-#[ignore = "necesita el motor y el modelo bajados (ver la cabecera)"]
+#[ignore = "necesita la clave de la nube (ver la cabecera)"]
 fn de_verdad() {
-    use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
-    let motor_dir = PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
-    let modelo = PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
     let salida = PathBuf::from(
         std::env::var("PIXPIN_IA_SALIDA")
             .unwrap_or_else(|_| std::env::temp_dir().display().to_string()),
     );
-    let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, None);
-    config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
-        Ok("cpu") | Err(_) => Dispositivo::Cpu,
-        Ok(d) => Dispositivo::Gpu(d.into()),
-    };
-    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+    let motor = super::nube::de_verdad();
 
     // 1. Un dibujo, al lienzo «abierto» (una escena de prueba).
     al_lienzo::vaciar_para_pruebas();
@@ -1065,45 +973,30 @@ fn de_verdad() {
             .any(|a| matches!(a, Aviso::TextoLeido { texto, .. } if texto.contains("4512")));
         assert!(leido, "el OCR tiene que haber leido el recibo");
     }
-    motor.soltar();
 }
 
-/// **Los tres fallos del 13-oct, con el modelo de verdad** (2B con su
-/// vision, en la CPU para no pelear con la app abierta por la tarjeta):
+/// **Los tres fallos del 13-oct** (los vio el 2B local), con la nube de
+/// verdad:
 ///
 /// 1. una foto sola tiene respuesta;
 /// 2. «dibuja esto» con la foto deja figuras en el lienzo (PNG);
 /// 3. un pedido que daria una llamada enorme no acaba en un error tecnico.
 ///
 /// ```text
-/// PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>
-/// PIXPIN_IA_MODELO=<Qwen3.5-2B-Q4_K_M.gguf>  PIXPIN_IA_VISION=<mmproj-F16.gguf>
+/// PIXPIN_IA_MOTOR=claude|deepseek (la clave guardada)
 /// PIXPIN_IA_SALIDA=<carpeta de los PNG>
 /// PIXPIN_IA_PASOS=1,2,3 (los que se quieran; por omision, todos)
-/// PIXPIN_IA_DISPOSITIVO=Vulkan1 (por omision, la CPU)
 /// cargo test -p pixpin -- --ignored --nocapture asistente::pruebas::de_verdad_arreglos
 /// ```
 #[test]
-#[ignore = "necesita el motor, el modelo y su vision bajados (ver la cabecera)"]
+#[ignore = "necesita la clave de la nube (ver la cabecera)"]
 fn de_verdad_arreglos() {
-    use pixpin_ia::servidor::{Config, MotorLlama};
-    let motor_dir = PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
-    let modelo = PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
-    let vision = PathBuf::from(std::env::var("PIXPIN_IA_VISION").expect("PIXPIN_IA_VISION"));
     let salida = PathBuf::from(
         std::env::var("PIXPIN_IA_SALIDA")
             .unwrap_or_else(|_| std::env::temp_dir().display().to_string()),
     );
     std::fs::create_dir_all(&salida).unwrap();
-    let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, Some(vision));
-    config.registro = Some(salida.join("servidor-arreglos.log"));
-    // En la CPU por omision; `PIXPIN_IA_DISPOSITIVO=Vulkan1` para la tarjeta.
-    if let Ok(d) = std::env::var("PIXPIN_IA_DISPOSITIVO")
-        && d != "cpu"
-    {
-        config.dispositivo = pixpin_ia::servidor::Dispositivo::Gpu(d);
-    }
-    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+    let motor = super::nube::de_verdad();
 
     // La foto: una casa sencilla (cuadrado azul, tejado rojo, puerta).
     let c = carpeta("de-verdad-arreglos");
@@ -1226,7 +1119,6 @@ fn de_verdad_arreglos() {
         );
         assert!(escena.cuantos_visibles() as u64 <= pixpin_ia::agente::TOPE_LISTAS * 4);
     }
-    motor.soltar();
     let _ = std::fs::remove_dir_all(&c);
 }
 
@@ -1301,26 +1193,15 @@ pub(super) fn pintar_a_png(escena: &pixpin_motor2d::Escena, ruta: &std::path::Pa
 /// en el lienzo», con el modelo de verdad, pintado a PNG para mirarlo.
 ///
 /// ```text
-/// PIXPIN_IA_MODELOS=%LOCALAPPDATA%\PixPinMax\modelos  PIXPIN_IA_SALIDA=<carpeta con perrito.png>
-/// PIXPIN_IA_DISPOSITIVO=cpu|Vulkan1   PIXPIN_IA_NOMBRE=perrito-en-el-lienzo-2.png
+/// PIXPIN_IA_MOTOR=claude|deepseek  PIXPIN_IA_SALIDA=<carpeta con perrito.png>
+/// PIXPIN_IA_NOMBRE=perrito-en-el-lienzo-2.png
 /// cargo test -p pixpin -- --ignored --nocapture asistente::pruebas::demo_perrito
 /// ```
 #[test]
-#[ignore = "demostracion con el modelo real"]
+#[ignore = "demostracion con la nube de verdad"]
 fn demo_perrito() {
-    use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
-    let m = PathBuf::from(std::env::var("PIXPIN_IA_MODELOS").unwrap());
     let salida = PathBuf::from(std::env::var("PIXPIN_IA_SALIDA").unwrap());
-    let mut config = Config::nueva(
-        m.join("llama.cpp").join("b11580").join("llama-server.exe"),
-        m.join("qwen3.5-2b").join("Qwen3.5-2B-Q4_K_M.gguf"),
-        Some(m.join("qwen3.5-2b").join("mmproj-F16.gguf")),
-    );
-    config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
-        Ok("cpu") | Err(_) => Dispositivo::Cpu,
-        Ok(d) => Dispositivo::Gpu(d.into()),
-    };
-    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+    let motor = super::nube::de_verdad();
     al_lienzo::vaciar_para_pruebas();
     let editor = al_lienzo::EditorAbierto::nuevo(1);
     let mut escena = pixpin_motor2d::Escena::nueva();
@@ -1346,7 +1227,6 @@ fn demo_perrito() {
     let nombre =
         std::env::var("PIXPIN_IA_NOMBRE").unwrap_or_else(|_| "perrito-en-el-lienzo-2.png".into());
     pintar_a_png(&escena, &salida.join(nombre));
-    motor.soltar();
     assert!(escena.cuantos_visibles() >= 4, "{}", vivo.mostrar());
 }
 

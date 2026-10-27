@@ -236,7 +236,7 @@ pub(crate) fn de_la_barra(a: crate::lector_pin::AccionPin) -> DeLaBarra {
         AccionPin::Fijar => DeLaBarra::Fijar,
         AccionPin::Cerrar => DeLaBarra::Cerrar,
         AccionPin::Propio(BOTON_LAPIZ) => DeLaBarra::Lapiz,
-        AccionPin::Nombre | AccionPin::Propio(_) => DeLaBarra::Nada,
+        AccionPin::Nombre | AccionPin::Guardar | AccionPin::Propio(_) => DeLaBarra::Nada,
     }
 }
 

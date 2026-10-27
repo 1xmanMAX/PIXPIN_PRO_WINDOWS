@@ -19,6 +19,20 @@ pub const TOPE: i64 = 5 * 60_000;
 pub const OCUPADO_MIN: i64 = 1_000;
 pub const OCUPADO_AZAR: i64 = 3_000;
 
+/// **Pura**: cuanto esperar tras `seguidos` fallos seguidos (el primero es
+/// `1`), con `azar` en `[0, 1)`: [BASE] doblado por cada fallo de mas, sin
+/// pasar de [TOPE], y de ahi un ±25 %.
+pub fn espera_tras_fallo(seguidos: u32, azar: f64) -> i64 {
+    let dobles = seguidos.saturating_sub(1).min(16);
+    let sin_azar = (BASE << dobles).min(TOPE);
+    (sin_azar as f64 * (0.75 + azar.clamp(0.0, 1.0) * 0.5)) as i64
+}
+
+/// **Pura**: cuanto esperar con el otro ocupado, con `azar` en `[0, 1)`.
+pub fn espera_si_ocupado(azar: f64) -> i64 {
+    OCUPADO_MIN + (azar.clamp(0.0, 1.0) * OCUPADO_AZAR as f64) as i64
+}
+
 /// Un numero al azar en `[0, 1)`, del sistema.
 pub fn azar_del_sistema() -> f64 {
     use rand_core::RngCore;
@@ -54,12 +68,11 @@ impl Reintentos {
     pub fn fallo(&mut self, otro: &str, ahora: i64, ocupado: bool) -> i64 {
         let azar = (self.azar)();
         let espera = if ocupado {
-            OCUPADO_MIN + (azar * OCUPADO_AZAR as f64) as i64
+            espera_si_ocupado(azar)
         } else {
             let n = self.fallos.get(otro).copied().unwrap_or(0) + 1;
             self.fallos.insert(otro.to_string(), n);
-            let sin_azar = (BASE << (n - 1).min(16)).min(TOPE);
-            (sin_azar as f64 * (0.75 + azar * 0.5)) as i64
+            espera_tras_fallo(n, azar)
         };
         self.cuando.insert(otro.to_string(), ahora + espera);
         espera

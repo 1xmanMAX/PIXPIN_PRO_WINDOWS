@@ -446,6 +446,11 @@ impl Lapiz {
 mod noche;
 pub use noche::{SUFIJO_NOCHE, es_de_noche};
 
+/// El interruptor ☀/☾ de los paneles: de dia sin las gemelas de noche, de
+/// noche cada una en el sitio de su de dia.
+mod dia_y_noche;
+pub use dia_y_noche::{MARCA_NOCHE, es_gemela_de_noche, pareja, segun_el_modo};
+
 #[cfg(test)]
 #[path = "figuras_de_serie/pruebas.rs"]
 mod pruebas;

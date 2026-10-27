@@ -629,8 +629,8 @@ se ha tocado desde la ultima vez que se miro (`<raiz>/copias/diario.tsv`:
 | La aplicacion murio a mitad | al empezar la vuelta siguiente, fuera los `*.sincro` |
 | Trozo de mas | «Llegó más de lo prometido»: corta sin escribirlo |
 | Tramo repetido o fuera de orden | solo el **primero** que no descifra es «otro codigo de grupo»; los demas, `ErrorCanal::TramoDanado` |
-| Dos a la vez | «ocupado» se reintenta en **1–4 s con azar**; un fallo de verdad a los 5 s, 10 s, 20 s… hasta 5 min (±25 %), sin esperar a los 10 min (`reintentos::Reintentos`, `automatica::Reloj::reintentar`) |
-| Al volver la red | la sonda de la presencia pregunta ya (`presencia::volvio_la_red`, `sondear_ya`) |
+| Dos a la vez | «ocupado» se reintenta en **1–4 s con azar**; un fallo de verdad a los 5 s, 10 s, 20 s… hasta 5 min (±25 %), sin esperar a los 10 min (las cuentas en `pixpin_sincro::reintentos`; el reloj, `automatica::Reloj` con `reintento`, `acabo` y `no_empezo`) |
+| Al volver la red | Windows avisa del cambio de direccion (`pixpin_shell::red`, `NotifyAddrChange`) y se sondea ya (`presencia::sondear_ya`, `Reloj::volvio_la_red`) |
 
 ### 13.6 Automatica por defecto
 

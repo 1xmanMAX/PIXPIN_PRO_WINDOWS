@@ -269,6 +269,15 @@ chat-compartir-sin-panel = Windows no abrió el panel Compartir: lo he dejado en
 chat-pineado = Pineado
 chat-foto-en-la-nota = Foto añadida a lo escrito: se envía todo en una sola nota
 chat-sin-archivo = Este mensaje no tiene un archivo en este equipo
+# Lectura veloz (27-oct-2026): el % junto a la opcion, la chapa de la
+# burbuja y por que no se abre, con el motivo de verdad.
+lector-lectura-veloz-con = ⚡ Lectura veloz · { $pct } %
+lector-lectura-veloz-sin-codigo = Este documento no se puede leer en Lectura Veloz: no es un archivo del chat ni una nota guardada (no tiene código de mensaje).
+lector-lectura-veloz-formato = Este documento no se puede leer en Lectura Veloz: no lee archivos «.{ $ext }».
+lector-lectura-veloz-falta-archivo = Este documento no se puede leer en Lectura Veloz: el archivo ya no está en este equipo ({ $nombre }).
+chat-lectura-veloz-chapa = Lectura veloz · { $pct } %
+# La chapa de lo que llego del escaner del movil (`escaneado`).
+chat-escaneado = Escaneado
 chat-sin-origen = No encuentro ese lienzo en este proyecto
 chat-sin-proyectos-otros = No hay otro proyecto al que mandarlo
 chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
@@ -544,6 +553,7 @@ chat-buscar-mensajes = { $n ->
    *[other] Mensajes · { $n }
 }
 chat-buscar-ver-mas = Ver { $n } más
+chat-buscar-en = en { $chat }
 chat-pagina-n = Página { $n }
 chat-unido-a = Unido a «{ $nombre }»
 chat-unir-nada = No hay nada que se pueda unir: solo fotos, dibujos, notas y PDF
@@ -1460,6 +1470,9 @@ chat-figura-guardada = Guardada en tus figuras como «{ $nombre }»
 chat-figura-vacia = Ese lienzo está vacío: no hay nada que guardar
 figuras-titulo = Figuras
 figuras-buscar = Buscar una figura…
+# El interruptor ☀/☾ de los paneles de figuras: las plantillas de día o sus gemelas «(noche)».
+figuras-dia = Día
+figuras-noche = Noche
 figuras-sin-resultados = Ninguna figura tiene eso en el nombre ni en sus textos.
 figuras-de-serie = de serie
 figuras-tuya = tuya
@@ -1538,6 +1551,13 @@ ajustes-herramientas-sitio-lector = Lector
 lector-al-proyecto = Al proyecto
 lector-al-proyecto-hecho = Ya está en proyectos, con lo anotado
 lector-al-proyecto-fallo = No se pudo crear el proyecto
+
+## «Guardar» en los visores de lo abierto de fuera (modo de paso, Android 15a52aed)
+guardar-de-paso = Guardar en un chat
+guardar-de-paso-guardados = En «Mensajes guardados»
+guardar-de-paso-en = En «{ $chat }»
+guardar-de-paso-hecho = Guardado en «{ $chat }», con lo anotado
+guardar-de-paso-fallo = No se pudo guardar en el chat
 
 ## Lector de Word y libros: las cuatro letras y los cuatro grosores del movil (K16)
 lector-letra-serif = Serif
@@ -2750,6 +2770,17 @@ asistente-listo = El asistente está listo.
 asistente-ocupado = El asistente todavía está contestando: espera o pulsa parar.
 asistente-sin-modelo = Primero baja el asistente en el chat «Asistente».
 asistente-fallo = El asistente no pudo empezar a contestar.
+asistente-nube-titulo = Falta la clave de la nube
+asistente-nube-explica = El asistente contesta con { $nube }: pega su clave en Ajustes → Asistente (se saca en { $pagina }). Las órdenes simples («apunta pan», «abre la galería») funcionan sin clave.
+asistente-abrir-ajustes = Abrir Ajustes
+asistente-viejos-titulo = Los modelos locales ya no se usan
+asistente-viejos-explica = El asistente contesta ahora solo con la nube (Claude o DeepSeek). Lo que bajaste para el modelo de este PC sigue ocupando { $tamano } en el disco.
+asistente-viejos-liberar = Liberar { $tamano }
+asistente-viejos-dejar = Dejarlos
+asistente-viejos-borrados = Listo: los modelos locales se borraron y el espacio quedó libre.
+asistente-viejos-no-borrados = No se pudieron borrar todos los modelos locales. Cierra lo que los use y prueba otra vez desde Ajustes → Asistente.
+ajustes2-asistente-borrar-locales = Modelos locales antiguos
+ajustes2-ayuda-asistente-borrar-locales = Lo que se bajó para el asistente local, que ya no se usa: { $tamano } en %LOCALAPPDATA%\PixPinMax\modelos.
 ajustes-asistente-modelo = Modelo del asistente
 ajustes2-ayuda-asistente-modelo = Con motor Local. El 2B dibuja y ve mejor; el 0.8B gasta menos.
 

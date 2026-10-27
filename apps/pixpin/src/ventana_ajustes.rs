@@ -330,16 +330,13 @@ enum Clave {
     VozSegundo,
     VozModo,
     // Asistente (13-oct-2026)
-    /// El modelo del asistente local: 2B o 0.8B (`[asistente] modelo`).
-    AsistenteModelo,
     /// Si el asistente piensa antes de contestar (`[asistente] pensar`).
     AsistentePensar,
-    /// Quien contesta: local, Claude o DeepSeek (`[asistente] motor`).
+    /// Quien contesta: Claude o DeepSeek (`[asistente] motor`).
     AsistenteMotor,
-    /// Seguir con el local si la nube falla (`[asistente] respaldo_local`).
-    AsistenteRespaldo,
-    /// Gemma 4 E2B para mirar fotos (`[asistente] mejor_vista`).
-    AsistenteMejorVista,
+    /// Borrar los modelos del asistente local que quedaron bajados
+    /// (27-oct-2026, `asistente::modelos_viejos`). Solo mientras queden.
+    AsistenteBorrarLocales,
     /// Si lo hallado en los documentos puede ir a la nube
     /// (`[asistente] documentos_a_la_nube`).
     AsistenteDocsNube,
@@ -410,6 +407,7 @@ impl Clave {
                 | Clave::OcrBorrar
                 | Clave::VozQwen3Licencia
                 | Clave::VozQwen3Borrar
+                | Clave::AsistenteBorrarLocales
         )
     }
 
@@ -1197,35 +1195,21 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 grupo(t, "ajustes2-g-asistente"),
                 // Quien contesta en el chat «Asistente» y con @asistente
                 // (13-oct-2026). Los modelos de la nube ya vienen elegidos:
-                // solo se pide la clave.
+                // solo se pide la clave. Sin modelo local desde el 27-oct.
                 op(
                     a,
                     Clave::AsistenteMotor,
                     tt("ajustes2-asistente-motor"),
                     tt("ajustes2-ayuda-asistente-motor"),
                     opcion(
-                        vec![
-                            tt("ajustes2-asistente-local"),
-                            Proveedor::Claude.nombre().to_string(),
-                            Proveedor::DeepSeek.nombre().to_string(),
-                        ],
+                        ia_nube::OPCIONES
+                            .iter()
+                            .map(|p| p.nombre().to_string())
+                            .collect(),
                         ia_nube::OPCIONES
                             .iter()
                             .position(|e| *e == eleccion)
                             .unwrap_or(0),
-                    ),
-                ),
-                // El asistente local del chat: el modelo que se baja y se
-                // usa. Cambiarlo no baja nada: lo pide la tarjeta del chat
-                // «Asistente».
-                op(
-                    a,
-                    Clave::AsistenteModelo,
-                    tt("ajustes-asistente-modelo"),
-                    tt("ajustes2-ayuda-asistente-modelo"),
-                    opcion(
-                        vec![tt("asistente-modelo-normal"), tt("asistente-modelo-ligero")],
-                        usize::from(a.asistente.modelo == pixpin_ia::modelos::QWEN35_08B.id),
                     ),
                 ),
                 // Que piense antes de contestar: lo que piensa se ve, plegable,
@@ -1247,23 +1231,6 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                             Some(false) => 2,
                         },
                     ),
-                ),
-                op(
-                    a,
-                    Clave::AsistenteRespaldo,
-                    tt("ajustes2-asistente-respaldo"),
-                    tt("ajustes2-ayuda-asistente-respaldo"),
-                    Control::Interruptor(a.asistente.respaldo_local),
-                ),
-                // El modelo de mejor vista (Gemma 4 E2B): opcional, se baja
-                // aparte desde el chat «Asistente» y solo se usa para MIRAR
-                // una foto (`seleccion::pide_mejor_vista`).
-                op(
-                    a,
-                    Clave::AsistenteMejorVista,
-                    tt("ajustes2-asistente-mejor-vista"),
-                    crate::asistente::motor::estado_mejor_vista(t),
-                    Control::Interruptor(a.asistente.mejor_vista),
                 ),
                 // Lo hallado en los documentos del usuario, ¿a la nube?
                 // (`buscar_en_mis_cosas`; por omision se pregunta la
@@ -1301,6 +1268,26 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 ),
                 grupo(t, "ajustes2-g-claves"),
             ];
+            // Lo que quedo bajado del asistente local (27-oct-2026): el boton
+            // para liberarlo, mientras quede algo.
+            if let Some(bytes) = crate::asistente::modelos_viejos::ocupan() {
+                let mut args = FluentArgs::new();
+                args.set("tamano", crate::asistente::modelos_viejos::tamano(bytes));
+                let i = v
+                    .iter()
+                    .position(|(c, _)| *c == Clave::AsistenteDocsNube)
+                    .map_or(v.len(), |i| i + 1);
+                v.insert(
+                    i,
+                    op(
+                        a,
+                        Clave::AsistenteBorrarLocales,
+                        tt("ajustes2-asistente-borrar-locales"),
+                        t.t_args("ajustes2-ayuda-asistente-borrar-locales", &args),
+                        Control::Boton(t.t_args("asistente-viejos-liberar", &args)),
+                    ),
+                );
+            }
             for (i, p) in Proveedor::TODOS.into_iter().enumerate() {
                 let mut args = FluentArgs::new();
                 args.set("proveedor", p.nombre());
@@ -1759,11 +1746,8 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
         Clave::VozMotor => a.voz.motor = d.voz.motor,
-        Clave::AsistenteModelo => a.asistente.modelo = d.asistente.modelo.clone(),
         Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
-        Clave::AsistenteRespaldo => a.asistente.respaldo_local = d.asistente.respaldo_local,
-        Clave::AsistenteMejorVista => a.asistente.mejor_vista = d.asistente.mejor_vista,
         Clave::AsistenteDocsNube => {
             a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone()
         }
@@ -1809,7 +1793,8 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::OcrLicencia
         | Clave::OcrBorrar
         | Clave::VozQwen3Licencia
-        | Clave::VozQwen3Borrar => {}
+        | Clave::VozQwen3Borrar
+        | Clave::AsistenteBorrarLocales => {}
     }
 }
 
@@ -1951,14 +1936,6 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
     match clave {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
         Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
-        Clave::AsistenteRespaldo => a.asistente.respaldo_local = !a.asistente.respaldo_local,
-        Clave::AsistenteMejorVista => {
-            a.asistente.mejor_vista = !a.asistente.mejor_vista;
-            // Apagado, Gemma no se queda ocupando memoria.
-            if !a.asistente.mejor_vista {
-                crate::asistente::motor::soltar_mejor_vista();
-            }
-        }
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = !a.asistente.revisar_lo_dicho,
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::Apilar => {
@@ -2037,11 +2014,11 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 .unwrap_or_default();
         }
         Clave::AsistenteMotor => {
-            let e = crate::asistente::nube::OPCIONES
+            let p = crate::asistente::nube::OPCIONES
                 .get(cual)
                 .copied()
-                .unwrap_or(crate::asistente::nube::Eleccion::Local);
-            a.asistente.motor = crate::asistente::nube::id_de(e).to_string();
+                .unwrap_or(pixpin_ia::nube::Proveedor::Claude);
+            a.asistente.motor = p.id().to_string();
         }
         Clave::AsistenteDocsNube => {
             use crate::asistente::documentos::PermisoNube;
@@ -2050,15 +2027,6 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 .copied()
                 .unwrap_or(PermisoNube::Preguntar);
             a.asistente.documentos_a_la_nube = p.clave().to_string();
-        }
-        Clave::AsistenteModelo => {
-            a.asistente.modelo = if cual == 1 {
-                pixpin_ia::modelos::QWEN35_08B.id.to_string()
-            } else {
-                pixpin_ia::modelos::QWEN35_2B.id.to_string()
-            };
-            // El motor del otro modelo se suelta ya (su memoria vuelve).
-            crate::asistente::motor::soltar_todo();
         }
         Clave::AsistentePensar => {
             a.asistente.pensar = match cual {
@@ -2346,6 +2314,12 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
         )),
         Clave::VozQwen3Borrar => {
             crate::voz_motor::borrar(ubicacion.raiz());
+            Ok(())
+        }
+        Clave::AsistenteBorrarLocales => {
+            if let Err(e) = crate::asistente::modelos_viejos::borrar() {
+                tracing::warn!(?e, "ajustes: no se pudieron borrar los modelos locales");
+            }
             Ok(())
         }
         _ => Ok(()),
@@ -4188,8 +4162,6 @@ mod pruebas {
             Clave::VozMotor,
             Clave::VozSegundo,
             Clave::VozModo,
-            Clave::AsistenteModelo,
-            Clave::AsistenteMejorVista,
             Clave::AsistenteDocsNube,
             Clave::AsistentePensar,
             Clave::Presencia,

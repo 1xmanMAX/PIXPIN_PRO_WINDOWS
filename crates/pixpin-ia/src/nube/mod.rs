@@ -2,13 +2,13 @@
 //! V4.1 Flash, con la clave del usuario.
 //!
 //! Pedido del usuario (13-oct-2026): poder cambiar del modelo local a la API
-//! de Claude o de DeepSeek, con los modelos ya elegidos (solo se le pide la
+//! de Claude o de DeepSeek (y el 27-oct-2026, quitar el local: solo la nube), con los modelos ya elegidos (solo se le pide la
 //! clave), con instrucciones optimizadas para cada uno, que puedan usar todo
 //! lo de la app y que fallen poco gracias a buenas instrucciones y entorno.
 //!
 //! ## Como encaja
 //!
-//! [`MotorNube`] implementa el mismo [`Motor`] que llama.cpp: el bucle del
+//! [`MotorNube`] implementa el [`Motor`] comun: el bucle del
 //! agente (`agente::turno`), el catalogo de herramientas, su validacion y el
 //! chat no cambian. Cada proveedor tiene su **adaptador** ([`claude`],
 //! [`deepseek`]) que traduce la peticion comun y lee su streaming, y las
@@ -24,8 +24,8 @@
 //!   (respetando `retry-after`), **solo si aun no se enseno nada** (no se
 //!   duplica texto en la burbuja).
 //! - Clave mala, sin saldo, peticion rechazada: un [`ErrorIa::Nube`] con un
-//!   aviso en espanol que dice que hacer. [`MotorConRespaldo`] sigue con el
-//!   modelo local si esta bajado y el usuario no lo apago.
+//!   aviso en espanol que dice que hacer. Desde el 27-oct-2026 no hay modelo
+//!   local de respaldo: el asistente contesta solo con la nube.
 //! - Una respuesta cortada por `max_tokens` con una herramienta a medias no
 //!   se ejecuta: vuelve al agente como llamada rota (que pide repetirla mas
 //!   corta). Un rechazo (`refusal`) no ejecuta nada y se dice.
@@ -42,9 +42,9 @@ pub mod instrucciones;
 mod pruebas;
 
 use std::collections::HashMap;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -730,121 +730,5 @@ pub fn probar_en(p: Proveedor, clave: &str, url: &str) -> Result<String, String>
             Err(format!("no hay conexion con {}", p.nombre()))
         }
         Err(http::Fallo::Http { codigo, cuerpo, .. }) => Err(clasificar(p, codigo, &cuerpo).0),
-    }
-}
-
-/// La peticion para el modelo local cuando hace de respaldo: con las pocas
-/// herramientas que vienen a cuento (`seleccion`), como si lo hubiera
-/// elegido el usuario; con el catalogo entero un 2B se pierde.
-pub fn para_el_local(p: &Peticion) -> Peticion {
-    let mut q = p.clone();
-    if q.herramientas.len() > crate::seleccion::MAXIMO {
-        let ultimo = p
-            .mensajes
-            .iter()
-            .rev()
-            .find(|m| m.rol == crate::motor::Rol::Usuario);
-        let pedido = ultimo
-            .map(crate::motor::Mensaje::texto_entero)
-            .unwrap_or_default();
-        let con_imagen = p.mensajes.iter().any(crate::motor::Mensaje::tiene_imagen);
-        let elegidas = crate::seleccion::para_el_pedido(&pedido, con_imagen);
-        q.herramientas
-            .retain(|h| elegidas.iter().any(|e| e.nombre == h.nombre));
-    }
-    q
-}
-
-/// **La nube con red de seguridad**: si falla antes de decir nada (sin red,
-/// clave mala, sin saldo, saturado) y hay modelo local, sigue con el local
-/// avisandolo en la burbuja. Tras un fallo, los siguientes minutos van
-/// directos al local (no se repite el aviso en cada vuelta del turno).
-pub struct MotorConRespaldo {
-    pub nube: Arc<dyn Motor>,
-    pub local: Option<Arc<dyn Motor>>,
-    pub nombre: String,
-    caido_hasta: Mutex<Option<Instant>>,
-}
-
-/// Cuanto se tira del local tras un fallo de la nube.
-pub const PAUSA_TRAS_FALLO: Duration = Duration::from_secs(3 * 60);
-
-impl MotorConRespaldo {
-    pub fn nuevo(
-        nube: Arc<dyn Motor>,
-        local: Option<Arc<dyn Motor>>,
-        nombre: impl Into<String>,
-    ) -> MotorConRespaldo {
-        MotorConRespaldo {
-            nube,
-            local,
-            nombre: nombre.into(),
-            caido_hasta: Mutex::new(None),
-        }
-    }
-
-    fn caido(&self) -> bool {
-        self.caido_hasta
-            .lock()
-            .ok()
-            .and_then(|g| *g)
-            .is_some_and(|t| Instant::now() < t)
-    }
-}
-
-impl Motor for MotorConRespaldo {
-    fn completar(
-        &self,
-        p: &Peticion,
-        al_trozo: &mut dyn FnMut(&Trozo) -> Seguir,
-    ) -> Result<Respuesta, ErrorIa> {
-        if let Some(local) = &self.local
-            && self.caido()
-        {
-            return local.completar(&para_el_local(p), al_trozo);
-        }
-        let mut emitido = false;
-        let r = self.nube.completar(p, &mut |t| {
-            emitido = true;
-            al_trozo(t)
-        });
-        match (r, &self.local) {
-            (Err(ErrorIa::Nube(aviso)), Some(local)) if !emitido => {
-                if let Ok(mut g) = self.caido_hasta.lock() {
-                    *g = Some(Instant::now() + PAUSA_TRAS_FALLO);
-                }
-                let nota = format!(
-                    "⚠️ {}: {aviso}\nSigo con el asistente local.\n\n",
-                    self.nombre
-                );
-                if al_trozo(&Trozo::Texto(nota)) == Seguir::Parar {
-                    return Ok(Respuesta {
-                        fin: Fin::Cortado,
-                        ..Respuesta::de_texto("")
-                    });
-                }
-                local.completar(&para_el_local(p), al_trozo)
-            }
-            (r, _) => r,
-        }
-    }
-
-    fn catalogo_completo(&self) -> bool {
-        self.nube.catalogo_completo()
-    }
-
-    fn a_la_vez(&self) -> usize {
-        self.nube.a_la_vez()
-    }
-
-    fn ve_imagenes(&self) -> bool {
-        self.nube.ve_imagenes()
-    }
-
-    fn soltar(&self) {
-        self.nube.soltar();
-        if let Some(l) = &self.local {
-            l.soltar();
-        }
     }
 }

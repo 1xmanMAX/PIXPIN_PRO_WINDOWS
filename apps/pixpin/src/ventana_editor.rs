@@ -1067,6 +1067,9 @@ fn abrir_en_modo(
         // se fija por vuelta porque el papel se cambia desde el panel.
         // Sin papel en el anotador de pantalla: debajo hay cualquier cosa.
         crate::dibujo::tema::fijar_papel(pantalla.is_none().then_some(escena.fondo));
+        // Y las hojas de la escena: cada plantilla lleva su papel
+        // (`tema::fijar_hojas`); sin papel de noche no se mira nada.
+        crate::dibujo::tema::fijar_hojas(&escena.elementos);
         // Una pagina de PDF de fondo trae su resolucion desde otro hilo: al
         // llegar, la capa congelada (que la lleva cocida) se rehace.
         if let Some(f) = fondo.as_mut() {
@@ -3671,6 +3674,7 @@ fn abrir_en_modo(
     }
     ventana.ocultar();
     crate::dibujo::tema::fijar_papel(None);
+    crate::dibujo::tema::fijar_hojas(&[]);
     escena.compactar();
     // Lo pegado sale con la escena: quien la guarda escribe tambien sus
     // pixeles (`imagenes_lienzo`), o al reabrir la imagen no estaria.

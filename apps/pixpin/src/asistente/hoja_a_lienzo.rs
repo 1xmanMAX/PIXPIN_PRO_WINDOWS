@@ -1979,15 +1979,11 @@ pub fn motor_de_vision() -> Option<Arc<dyn Motor>> {
 /// Lo mismo con los ajustes de los datos de `raiz` (la cola de encargos
 /// sabe cuales son los suyos).
 pub fn motor_de_vision_en(raiz: &Path) -> Option<Arc<dyn Motor>> {
-    match super::nube::eleccion_reciente(raiz) {
-        super::nube::Eleccion::Nube(p) => {
-            let clave = pixpin_ia::nube::claves::leer(p)?;
-            Some(Arc::new(
-                pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero(),
-            ))
-        }
-        super::nube::Eleccion::Local => None,
-    }
+    let p = super::nube::eleccion_reciente(raiz);
+    let clave = pixpin_ia::nube::claves::leer(p)?;
+    Some(Arc::new(
+        pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero(),
+    ))
 }
 
 /// **¿Calcar o pasar como lamina?** (15-oct). Lo decide quien EJECUTA

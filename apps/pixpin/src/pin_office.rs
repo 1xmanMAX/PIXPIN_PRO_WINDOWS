@@ -184,7 +184,9 @@ fn abrir(
     // puede oscurecer desde aqui.
     let mut pin = PinLector::nuevo(area_pin, e)
         .con_extension(&pixpin_docs::extension(&nombre_fichero))
-        .sin_oscuro();
+        .sin_oscuro()
+        // Abierto de fuera (de paso): «Guardar» en un chat.
+        .con_guardar(crate::guardar_de_paso::es_de_paso(ubicacion.raiz(), ruta));
     let mut area = pin.area;
     let mut ventana =
         VentanaOverlay::nueva_llana(area, &format!("{nombre} — {}", textos.t("office-titulo")))
@@ -306,6 +308,18 @@ fn abrir(
                         vivo = false;
                     }
                     Some(AccionPin::Propio(_)) => {}
+                    Some(AccionPin::Guardar) => {
+                        if crate::guardar_de_paso::preguntar_y_guardar(
+                            ventana.handle(),
+                            ubicacion.raiz(),
+                            ruta,
+                            crate::guardar_de_paso::Visor::Otro,
+                            &[],
+                            textos,
+                        ) {
+                            pin.poner_guardar(false);
+                        }
+                    }
                     Some(AccionPin::PantallaCompleta) => {
                         pin.alternar_pantalla_completa(&mut ventana)
                     }

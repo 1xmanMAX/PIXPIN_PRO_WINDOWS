@@ -113,11 +113,11 @@ pub(crate) mod sin_ventana {
     /// El motor elegido en Ajustes → Asistente.
     pub(crate) fn motor(
         ubicacion: &Ubicacion,
-        textos: &Catalogo,
+        _textos: &Catalogo,
     ) -> Result<std::sync::Arc<dyn pixpin_ia::motor::Motor>, String> {
         // Los encargos de las automatizaciones: sin pedido que clasificar,
         // la nube piensa como antes.
-        super::asistente::motor_de_los_ajustes(ubicacion, textos, "", false, true)
+        super::asistente::motor_de_los_ajustes(ubicacion, true)
     }
 }
 /// «Enviar a Anki» del menu de un mensaje (24-oct-2026).
@@ -127,8 +127,13 @@ mod buscar_en_chats;
 /// Las carpetas de paginas: un cuaderno con nombre dentro del chat, su
 /// ventana con las paginas en orden y su PDF (26-oct-2026).
 pub(crate) mod carpetas;
+/// Las chapas de debajo del nombre: «Escaneado» y «Lectura veloz · N %»
+/// (23 y 27-oct-2026), y «⚡ Lectura veloz» del menu del mensaje.
+mod chapas;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
 mod descripcion;
+/// Cada chat se abre donde se dejo, y lo no visto del «↓» (27-oct-2026).
+mod donde_se_dejo;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).
 mod donde_vive;
 /// v2-menus: el cuadro de enviar fotos (ordenar arrastrando, quitar).
@@ -181,7 +186,7 @@ mod muestra_menus;
 /// Muestra en PNG de «Pensando…» en la burbuja del asistente (13-oct).
 #[cfg(test)]
 mod muestra_pensado;
-/// Los mensajes de sistema (`auto-*`) en su franja y no como burbujas (14-oct).
+/// Los mensajes de sistema (`auto-*`) sin burbuja ni franja (14 y 27-oct).
 #[cfg(test)]
 mod muestra_sistema;
 /// F8: muestra en PNG del chat con una zona recien mandada.
@@ -1037,8 +1042,11 @@ pub fn abrir(
     let mut fallo_pintado = false;
     // Buscar dentro de todos los chats desde el buscador de la lista
     // (`buscar_en_chats`): su hilo nace con la primera busqueda.
-    let mut en_chats =
-        buscar_en_chats::BuscarEnChats::nuevo(ubicacion.raiz(), ventana.handle().0 as isize);
+    let mut en_chats = buscar_en_chats::BuscarEnChats::nuevo(
+        ubicacion.raiz(),
+        ventana.handle().0 as isize,
+        textos,
+    );
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -1198,7 +1206,7 @@ pub fn abrir(
                                     }
                                 }
                                 fichas.push(ficha.clone());
-                                orden = filtrar(&fichas, &busqueda);
+                                orden = en_chats.filtrar(&fichas, &busqueda);
                                 elegida = Some(fichas.len() - 1);
                                 let mut nuevo = abrir_proyecto(ubicacion, &ficha);
                                 nuevo.empezar_a_renombrar();
@@ -1828,7 +1836,6 @@ pub fn abrir(
                                     Efecto::Nada
                                 }
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
-                                Zona::Sistema => Efecto::Menu(menu_de_sistema(a, textos)),
                                 Zona::ConfirmarIa(i, si) => {
                                     asistente::contestar(a, i, si);
                                     Efecto::Nada
@@ -1940,6 +1947,7 @@ pub fn abrir(
                                     Efecto::Nada
                                 }
                                 Zona::Renombrar(i) => ejecutar(Accion::Renombrar(i), a, &cx),
+                                Zona::LecturaVeloz(i) => ejecutar(Accion::LecturaVeloz(i), a, &cx),
                                 Zona::CerrarNombre => {
                                     a.renombrando_mensaje = None;
                                     Efecto::Nada
@@ -2475,33 +2483,25 @@ pub fn abrir(
                             abierto = Some(nuevo);
                         }
                         hay_que_pintar = true;
-                    } else if let Some(el) =
-                        en_chats.elemento_en(&disposicion, l, scroll, orden.len(), escala)
-                    {
-                        // Un mensaje encontrado en la seccion «Mensajes» del
-                        // buscador: su chat, llevado a el y resaltado, por
-                        // el mismo camino que «Ver en el chat» (`ir_a`).
-                        match el {
-                            pixpin_ui::buscar_en_chats::Elemento::Mensaje(n) => {
-                                if let Some(enc) = en_chats.encontrado(n) {
-                                    // Si es el chat abierto y tiene su propia
-                                    // lupa o un chip puestos, se quitan: el
-                                    // mensaje podria quedar escondido y no
-                                    // habria adonde ir.
-                                    if let Some(a) =
-                                        abierto.as_mut().filter(|a| a.ficha.id == enc.chat)
-                                    {
-                                        a.busqueda = None;
-                                        a.por_etiqueta = None;
-                                        a.colocado.borrow_mut().ancho = 0;
-                                    }
-                                    pedir_ir_a_mensaje(enc.chat.clone(), enc.codigo.clone());
-                                }
-                            }
-                            pixpin_ui::buscar_en_chats::Elemento::VerMas => en_chats.ver_mas(),
-                            pixpin_ui::buscar_en_chats::Elemento::Cabecera => {}
+                    } else if let Some(pulsado) = en_chats.pulsar(
+                        &disposicion,
+                        l,
+                        scroll,
+                        orden.len(),
+                        escala,
+                        false,
+                        &mut abierto,
+                    ) {
+                        // La seccion «Mensajes» del buscador: una pestana
+                        // por tipo vuelve a filtrar los chats; un mensaje
+                        // encontrado se abre o se va a el
+                        // (`buscar_en_chats::BuscarEnChats::pulsar`).
+                        if pulsado == buscar_en_chats::Pulsado::Pestana {
+                            orden = en_chats.filtrar(&fichas, &busqueda);
+                            scroll = 0;
+                        } else {
+                            buscando = false;
                         }
-                        buscando = false;
                         hay_que_pintar = true;
                     }
                 }
@@ -2694,6 +2694,23 @@ pub fn abrir(
                         }
                         hay_que_pintar = true;
                     }
+                    // Clic derecho sobre un mensaje encontrado en todos los
+                    // chats: ir a el, sin abrirlo.
+                    else if !disposicion.boton_nuevo(escala).contiene(l)
+                        && en_chats
+                            .pulsar(
+                                &disposicion,
+                                l,
+                                scroll,
+                                orden.len(),
+                                escala,
+                                true,
+                                &mut abierto,
+                            )
+                            .is_some()
+                    {
+                        hay_que_pintar = true;
+                    }
                     // Clic derecho sobre «+»: crearlo en una carpeta elegida
                     // («Guardar en…»). El clic izquierdo sigue creandolo en
                     // la zona habitual: si no se elige, va donde siempre.
@@ -2744,7 +2761,7 @@ pub fn abrir(
                                 borradores.insert(a.ficha.id.clone(), a.borrador);
                             }
                             fichas.push(ficha.clone());
-                            orden = filtrar(&fichas, &busqueda);
+                            orden = en_chats.filtrar(&fichas, &busqueda);
                             elegida = Some(fichas.len() - 1);
                             let mut nuevo = abrir_proyecto(ubicacion, &ficha);
                             nuevo.empezar_a_renombrar();
@@ -3551,7 +3568,7 @@ pub fn abrir(
                         guardar_nombre(ubicacion, a);
                         if let Some(i) = elegida {
                             fichas[i].nombre = a.ficha.nombre.clone();
-                            orden = filtrar(&fichas, &busqueda);
+                            orden = en_chats.filtrar(&fichas, &busqueda);
                         }
                         // Recien nacido compartido: ya con nombre, a invitar
                         // (sus personas: «Anadir», el codigo y el QR).
@@ -3860,7 +3877,7 @@ pub fn abrir(
                 // El buscador de la lista, igual: la caja de una linea comun.
                 EventoOverlay::Caracter(c) if buscando => {
                     if busqueda.caracter(c) {
-                        orden = filtrar(&fichas, &busqueda);
+                        orden = en_chats.filtrar(&fichas, &busqueda);
                         scroll = 0;
                     }
                     hay_que_pintar = true;
@@ -3869,7 +3886,7 @@ pub fn abrir(
                     vk, shift, ctrl, ..
                 } if buscando && redaccion::CajaLinea::es_suya(vk, shift, ctrl) => {
                     if tecla_en_caja(&mut busqueda, vk, shift, ctrl).cambio() {
-                        orden = filtrar(&fichas, &busqueda);
+                        orden = en_chats.filtrar(&fichas, &busqueda);
                         scroll = 0;
                     }
                     hay_que_pintar = true;
@@ -3879,7 +3896,8 @@ pub fn abrir(
                 EventoOverlay::Tecla { vk, .. } if buscando && vk == VK_ESCAPE => {
                     buscando = false;
                     busqueda.vaciar();
-                    orden = filtrar(&fichas, &busqueda);
+                    en_chats.cerrar();
+                    orden = en_chats.filtrar(&fichas, &busqueda);
                     hay_que_pintar = true;
                 }
                 // Editando una receta del asistente en la caja: Entrar guarda
@@ -4135,7 +4153,7 @@ pub fn abrir(
                     .into_iter()
                     .cloned()
                     .collect();
-                orden = filtrar(&fichas, &busqueda);
+                orden = en_chats.filtrar(&fichas, &busqueda);
                 // El proyecto abierto sigue siendo el mismo aunque haya
                 // cambiado de sitio en la lista.
                 elegida = elegida_id.and_then(|id| fichas.iter().position(|f| f.id == id));
@@ -4212,6 +4230,8 @@ pub fn abrir(
                         a.info = None;
                         cerrar_panel(ubicacion, a);
                         if let Some(j) = codigo.and_then(|c| indice_de_codigo(&a.mensajes, &c)) {
+                            // Lo de dentro de una carpeta, a su tarjeta.
+                            let j = buscar_en_chats::adonde_saltar(&a.mensajes, j);
                             a.ir_a = Some(j);
                             a.resaltado = Some((j, std::time::Instant::now()));
                         }
@@ -4223,6 +4243,23 @@ pub fn abrir(
                     tracing::warn!(%proyecto, "el universo pidio un proyecto que no esta en la lista")
                 }
             }
+        }
+        // Lo encontrado en todos los chats que se pulso para abrirlo: ya en
+        // su chat, se toca su burbuja, que lo abre en su visor.
+        if let Some(j) = en_chats.tomar_abrir(abierto.as_ref(), textos) {
+            tocar_la_burbuja(
+                j,
+                ubicacion,
+                &mut abierto,
+                &fichas,
+                &mut elegida,
+                &mut borradores,
+                textos,
+                lienzo,
+                idioma,
+                &identidad,
+            );
+            hay_que_pintar = true;
         }
         // La figura elegida en su ventana para este chat (el «+» → «Figura»):
         // despues de `ir_a`, que ya trajo su proyecto si era otro.
@@ -4308,6 +4345,7 @@ pub fn abrir(
             && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
             && let Some(j) = a.ir_a.take()
         {
+            a.donde_se_dejo.olvidar_la_vuelta();
             let area = area_del_historial(&disposicion, a, escala);
             // Con una busqueda puesta, el mensaje al que se iba puede estar
             // filtrado y no tener sitio: entonces no se salta a ninguna parte.
@@ -4324,6 +4362,34 @@ pub fn abrir(
                     arriba - (24 * escala / 100) as i32,
                 );
                 a.scroll = if quiero >= tope { None } else { Some(quiero) };
+            }
+            hay_que_pintar = true;
+        }
+        // Volver a donde se dejo el chat recien abierto, en cuanto esten
+        // medidas sus burbujas (igual que `ir_a`). Buscando no: lo que se ve
+        // es otra lista.
+        if let Some(a) = abierto.as_mut()
+            && a.donde_se_dejo.por_volver()
+            && a.mini.is_none()
+            && a.info.is_none()
+            && a.letra.is_none()
+            && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
+        {
+            if a.busqueda.is_none() && a.por_etiqueta.is_none() {
+                let area = area_del_historial(&disposicion, a, escala);
+                let c = a.colocado.borrow();
+                let ids: Vec<&str> = c
+                    .visibles
+                    .iter()
+                    .map(|i| a.mensajes[*i].id.as_str())
+                    .collect();
+                let vuelta = a
+                    .donde_se_dejo
+                    .volver(area, &c.puestos, a.alto.get(), &ids, escala);
+                drop(c);
+                a.scroll = vuelta;
+            } else {
+                a.donde_se_dejo.olvidar_la_vuelta();
             }
             hay_que_pintar = true;
         }
@@ -4363,7 +4429,7 @@ pub fn abrir(
         }
         // Lo escrito en el buscador de la lista, tambien dentro de todos los
         // chats: tras la espera se le pide al hilo, y lo que conteste se pinta.
-        if en_chats.latido(&busqueda, ms) {
+        if en_chats.latido(&busqueda, buscando, disposicion.filas.ancho, escala, ms) {
             let d = disponer(marco, escala, ancho_lista, abierto.as_ref());
             scroll = d.scroll_ajustado(
                 scroll,
@@ -4472,6 +4538,7 @@ pub fn abrir(
                     &motor,
                 );
             }
+            faltan_fondos |= en_chats.preparar(&motor);
             if let Ok(destino) = superficie.empezar(&motor) {
                 let lista = Lista {
                     fichas: &fichas,
@@ -4612,6 +4679,7 @@ pub fn abrir(
                     // asi que volver a subirlos no toca el disco.
                     miniaturas.soltar();
                     previas.soltar();
+                    en_chats.soltar();
                     CACHE_GRAFITO.with_borrow_mut(|c| c.vaciar());
                     logo::soltar();
                     crate::tema_cosmos::soltar();
@@ -4632,7 +4700,10 @@ pub fn abrir(
             // Solo con el historial a la vista: con la hoja o el panel
             // delante no se mide nada, y esto daria vueltas sin parar.
             if abierto.as_ref().is_some_and(|a| {
-                a.ir_a.is_some() && a.mini.is_none() && a.info.is_none() && a.letra.is_none()
+                (a.ir_a.is_some() || a.donde_se_dejo.por_volver())
+                    && a.mini.is_none()
+                    && a.info.is_none()
+                    && a.letra.is_none()
             }) {
                 hay_que_pintar = true;
             }
@@ -5223,6 +5294,9 @@ struct Abierto {
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
+    /// Donde se dejo este chat (se vuelve ahi al abrirlo) y lo que queda
+    /// sin ver debajo, para la chapa del «↓» (`donde_se_dejo`).
+    donde_se_dejo: donde_se_dejo::Recuerdo,
     /// Lo que ocupa todo el historial, que solo se sabe al medirlo (hace
     /// falta la fuente). Lo apunta el pintado para que la rueda sepa su tope.
     alto: std::cell::Cell<u32>,
@@ -5407,7 +5481,7 @@ pub(crate) fn color_avatar(codigo: &str) -> Color {
 
 /// El color de una persona en un chat compartido: su nombre encima de sus
 /// burbujas y su circulo (`conversacion::tono`, el mismo en todas partes).
-fn color_de_persona(nombre: &str) -> Color {
+pub(crate) fn color_de_persona(nombre: &str) -> Color {
     hex(COLORES_AVATAR[pixpin_ui::conversacion::tono(nombre, COLORES_AVATAR.len())])
 }
 
@@ -6083,39 +6157,6 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             tema.separador,
         );
         a.zonas.borrow_mut().push((barra, Zona::Ir(indice_fijado)));
-    } else if let Some(linea) = linea_de_sistema(a, textos) {
-        // En el chat «Asistente», lo del sistema plegado en una linea
-        // discreta: pulsarla lo lista (`menu_de_sistema`).
-        let barra = d.fijado(escala);
-        p.rellenar(rf(barra), tema.cabecera);
-        let x = barra.x as f32 + chat::FIJADO_MARGEN_X as f32 * e;
-        let ancho = (barra.derecha() as f32 - chat::FIJADO_MARGEN_X as f32 * e - x).max(0.0);
-        p.texto_linea(
-            &textos.t("chat-sistema-titulo"),
-            x,
-            barra.y as f32 + 7.0 * e,
-            chat::CONTADOR_TAM * e,
-            ancho,
-            tema.apagado,
-        );
-        p.texto_linea(
-            &linea,
-            x,
-            barra.y as f32 + 25.0 * e,
-            chat::CABECERA_TAM * e,
-            ancho,
-            tema.apagado,
-        );
-        p.rellenar(
-            RectF {
-                x: barra.x as f32,
-                y: barra.abajo() as f32 - (1.0 * e).max(1.0),
-                ancho: barra.ancho as f32,
-                alto: (1.0 * e).max(1.0),
-            },
-            tema.separador,
-        );
-        a.zonas.borrow_mut().push((barra, Zona::Sistema));
     } else if let Some(aviso) = aviso_de_lecciones(a) {
         // Sin fijado, la franja es del aviso de lecciones: «💡 N lecciones:»
         // y la primera. Tocarla abre las de este proyecto.
@@ -6221,7 +6262,10 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // cuando cambia el ancho, no en cada fotograma.
     let ancho_contenido = h::ancho_contenido(area, escala);
     let aguja = a.busqueda.as_deref().unwrap_or_default().to_owned();
-    let generacion = crate::sincronizar::compartidos_ui::generacion(&a.raiz);
+    // Y con lo ultimo de Lectura Veloz: su chapa sale o crece al llegar.
+    let generacion = crate::sincronizar::compartidos_ui::generacion(&a.raiz)
+        .wrapping_mul(1_000_003)
+        .wrapping_add(crate::lectura_veloz::generacion());
     {
         let mut c = a.colocado.borrow_mut();
         if c.ancho != ancho_contenido
@@ -6298,6 +6342,17 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let scroll = a
         .scroll
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
+    // Donde se queda este chat y lo que hay sin ver debajo (`donde_se_dejo`).
+    // Buscando, lo que se ve es otra lista: no se apunta.
+    if a.busqueda.is_none() && a.por_etiqueta.is_none() {
+        let ids: Vec<&str> = c
+            .visibles
+            .iter()
+            .map(|i| a.mensajes[*i].id.as_str())
+            .collect();
+        a.donde_se_dejo
+            .apuntar(area, &c.puestos, a.alto.get(), a.scroll, &ids, escala);
+    }
     p.empujar_recorte(rf(area));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
     for cual in primero..primero + cuantos {
@@ -6783,6 +6838,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             }
             y += chat::FILA_CIRCULO as f32 * e + hueco;
         }
+        if let Some(c) = &piezas.chapas {
+            for (caja, que) in chapas::pintar(p, c, dentro.x, y as i32, dentro.ancho, color_hora, e)
+            {
+                if que == chapas::Que::LecturaVeloz {
+                    a.zonas.borrow_mut().push((caja, Zona::LecturaVeloz(i)));
+                }
+            }
+            y += c.alto + hueco;
+        }
 
         // El texto de una nota de voz, pegado bajo su fila.
         if let Some(v) = &piezas.voz {
@@ -7089,9 +7153,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     }
     p.soltar_recorte();
     // Subido: el «↓» que vuelve al ultimo mensaje (`al_final`).
-    if al_final::se_ve(a.scroll, h::scroll_maximo(area, a.alto.get()), area.alto) {
+    let sin_ver = a.donde_se_dejo.sin_ver();
+    if al_final::se_ve(
+        a.scroll,
+        h::scroll_maximo(area, a.alto.get()),
+        area.alto,
+        sin_ver,
+    ) {
         let caja = al_final::caja(area, e);
-        al_final::pintar(p, tema, caja, e);
+        al_final::pintar(p, tema, caja, e, sin_ver);
         a.zonas.borrow_mut().push((caja, Zona::AlFinal));
     }
 }
@@ -7711,7 +7781,7 @@ fn se_ve(a: &Abierto, m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
         return false;
     }
     // Los de sistema (`auto-*`: letras, figuras, automatizaciones) viajan
-    // pero no son conversacion: van en la franja de arriba (`linea_de_sistema`).
+    // pero no son conversacion: ni burbuja ni franja (ver `hay_barra`).
     if pixpin_proyecto::cuaderno::es_de_sistema(m) {
         return false;
     }
@@ -7745,80 +7815,6 @@ fn aviso_de_lecciones(a: &Abierto) -> Option<crate::lecciones::Aviso> {
     crate::lecciones::aviso(&a.raiz, &a.ficha.id, &a.ficha.nombre)
 }
 
-/// **La linea de lo del sistema** del chat «Asistente» (14-oct): los
-/// mensajes `auto-*` no son burbujas ([`cuaderno::es_de_sistema`]); en su
-/// lugar, una franja plegada «⚙️ Letras de planos: N · Figuras ·
-/// Automatizaciones» que al pulsarla los lista. Solo en el chat «Asistente»
-/// (es el unico donde nacen) y solo si hay alguno.
-///
-/// [`cuaderno::es_de_sistema`]: pixpin_proyecto::cuaderno::es_de_sistema
-fn linea_de_sistema(a: &Abierto, textos: &Catalogo) -> Option<String> {
-    if !a.ficha.es_asistente() {
-        return None;
-    }
-    resumen_de_sistema(&a.mensajes, textos)
-}
-
-/// El texto de la franja, de los mensajes de sistema que haya. `None` sin ninguno.
-fn resumen_de_sistema(
-    mensajes: &[pixpin_proyecto::cuaderno::Mensaje],
-    textos: &Catalogo,
-) -> Option<String> {
-    let de_sistema: Vec<&pixpin_proyecto::cuaderno::Mensaje> = mensajes
-        .iter()
-        .filter(|m| pixpin_proyecto::cuaderno::es_de_sistema(m))
-        .collect();
-    if de_sistema.is_empty() {
-        return None;
-    }
-    let letras = de_sistema
-        .iter()
-        .filter(|m| m.id.starts_with("auto-letra-"))
-        .count();
-    let mut partes = Vec::new();
-    if letras > 0 {
-        partes.push(format!("{}: {letras}", textos.t("chat-sistema-letras")));
-    }
-    if de_sistema
-        .iter()
-        .any(|m| m.id == crate::biblioteca_figuras::ID_MENSAJE)
-    {
-        partes.push(textos.t("chat-sistema-figuras"));
-    }
-    if de_sistema
-        .iter()
-        .any(|m| m.id == crate::automatizaciones::ID_MENSAJE)
-    {
-        partes.push(textos.t("chat-sistema-automatizaciones"));
-    }
-    // La memoria del asistente (22-oct): un mensaje por fichero, una sola
-    // entrada en la franja.
-    let memoria = de_sistema
-        .iter()
-        .filter(|m| m.id.starts_with(crate::asistente::memoria::PREFIJO_ID))
-        .count();
-    if memoria > 0 {
-        partes.push(format!("{}: {memoria}", textos.t("chat-sistema-memoria")));
-    }
-    let otros = de_sistema.len()
-        - letras
-        - memoria
-        - de_sistema
-            .iter()
-            .filter(|m| {
-                m.id == crate::biblioteca_figuras::ID_MENSAJE
-                    || m.id == crate::automatizaciones::ID_MENSAJE
-            })
-            .count();
-    if otros > 0 {
-        partes.push(format!("{}: {otros}", textos.t("chat-sistema-otros")));
-    }
-    Some(format!("⚙️ {}  ▾", partes.join(" · ")))
-}
-
-/// **Lo que lista la franja al pulsarla**: cada letra con «Quitar» (borra
-/// su mensaje, y con el la letra en todos los aparatos, como borrar la
-/// burbuja antes), las figuras y las automatizaciones con donde se usan.
 /// **Las versiones de un original** («2 versiones ▾», 27-oct-2026): «Version
 /// 1 · tuya», «Version 2 · Ana»…, y cada una lleva a la suya.
 fn menu_de_versiones(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
@@ -7837,72 +7833,18 @@ fn menu_de_versiones(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMen
         .unwrap_or_default()
 }
 
-fn menu_de_sistema(a: &Abierto, textos: &Catalogo) -> Vec<EntradaMenu> {
-    let mut v = Vec::new();
-    let mut con_memoria = false;
-    for (i, m) in a
-        .mensajes
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| pixpin_proyecto::cuaderno::es_de_sistema(m))
-    {
-        if m.id.starts_with(crate::asistente::memoria::PREFIJO_ID) {
-            // Una entrada para toda la memoria: abre su carpeta, donde se lee
-            // y se cambia con cualquier editor.
-            if !con_memoria {
-                con_memoria = true;
-                v.push(
-                    entrada(
-                        None,
-                        textos.t("chat-sistema-memoria-menu"),
-                        Accion::AbrirMemoria,
-                    )
-                    .separada(),
-                );
-            }
-        } else if m.id.starts_with("auto-letra-") {
-            let mut e = entrada(
-                Some(&mi::DELETE),
-                format!("{} {}", textos.t("chat-sistema-quitar-letra"), m.nombre),
-                Accion::Borrar(vec![i]),
-            );
-            e.peligro = true;
-            v.push(e);
-        } else if m.id == crate::biblioteca_figuras::ID_MENSAJE {
-            v.push(
-                entrada(
-                    None,
-                    textos.t("chat-sistema-figuras-menu"),
-                    Accion::Aviso("chat-sistema-figuras-aviso"),
-                )
-                .separada(),
-            );
-        } else if m.id == crate::automatizaciones::ID_MENSAJE {
-            v.push(
-                entrada(
-                    None,
-                    textos.t("chat-sistema-automatizaciones-menu"),
-                    Accion::Ajustes,
-                )
-                .separada(),
-            );
-        } else {
-            v.push(entrada(None, m.nombre.clone(), Accion::Pinear(i)).separada());
-        }
-    }
-    v
-}
-
-/// Si hay franja bajo la cabecera: la del fijado o, sin el, la de lo del
-/// sistema (chat «Asistente») o la del aviso de lecciones. Van en el mismo
-/// sitio.
+/// Si hay franja bajo la cabecera: la del fijado o, sin el, la del aviso
+/// de lecciones. Van en el mismo sitio.
+///
+/// La de lo del sistema del chat «Asistente» («⚙️ Letras de planos · N
+/// figuras · Otros») ya no sale (27-oct-2026, checklist del usuario, punto
+/// 3: «quitar la tira … que tapa el chat»; Android 00ac81c2): los mensajes
+/// `auto-*` siguen guardados y viajando, sin burbuja. Lo que daba esa lista
+/// sigue a mano: las letras, en el boton «Aa» del visor de planos («Quitar
+/// las mias»); las automatizaciones, en Ajustes → Asistente; la memoria, en
+/// los tres puntos del chat «Asistente» (`menu_de_asistente`).
 fn hay_barra(a: &Abierto) -> bool {
-    a.fijado.is_some()
-        || (a.ficha.es_asistente()
-            && a.mensajes
-                .iter()
-                .any(pixpin_proyecto::cuaderno::es_de_sistema))
-        || aviso_de_lecciones(a).is_some()
+    a.fijado.is_some() || aviso_de_lecciones(a).is_some()
 }
 
 /// El area de las burbujas, ya descontada la fila de chips si la hay.
@@ -8192,6 +8134,7 @@ fn medir_mensaje(
             rica: None,
             version: None,
             versiones: None,
+            chapas: None,
         };
         return (entrada, piezas);
     }
@@ -8230,6 +8173,11 @@ fn medir_mensaje(
             w as f32,
             pixpin_ui::chat::FILA_CIRCULO as f32 * e,
         );
+    }
+    // Sus chapas, debajo del nombre (`chapas`).
+    let chapas = chapas::medir(p, m, textos, e, ancho_max);
+    if let Some(c) = &chapas {
+        sumar(&mut ancho, &mut alto, c.ancho, c.alto);
     }
     // El texto de una nota de voz va pegado a su fila, debajo de la onda,
     // con el aire de `padding(top = 6.dp)` y no con el hueco de siempre.
@@ -8404,6 +8352,7 @@ fn medir_mensaje(
         rica,
         version,
         versiones: versiones_chip,
+        chapas,
     };
     (entrada, piezas)
 }
@@ -9387,6 +9336,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         resaltado: None,
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
+        donde_se_dejo: donde_se_dejo::Recuerdo::nuevo(ubicacion.raiz(), &ficha.id),
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
         mini: None,
@@ -15223,8 +15173,6 @@ enum Zona {
     Renombrar(usize),
     /// La franja del aviso de lecciones: abre las de este proyecto.
     Lecciones,
-    /// La franja de lo del sistema del chat «Asistente»: la lista.
-    Sistema,
     /// «Sí» (`true`) o «No» en la tarjeta de confirmar del asistente dentro
     /// de la burbuja de ese mensaje.
     ConfirmarIa(usize, bool),
@@ -15242,6 +15190,8 @@ enum Zona {
     /// «2 versiones ▾» de un original (las versiones vinculadas): la lista
     /// de sus versiones, cada una lleva a la suya.
     Versiones(usize),
+    /// La chapa «Lectura veloz · N %»: seguir leyendo alli.
+    LecturaVeloz(usize),
     /// La pastilla del modelo en la cabecera del chat «Asistente»: abre la
     /// lista Claude Haiku / DeepSeek / Local (17-oct-2026).
     ModeloIa,
@@ -15360,6 +15310,8 @@ struct Piezas {
     version: Option<Rotulo>,
     /// «2 versiones ▾»: esta burbuja es un original con versiones.
     versiones: Option<Rotulo>,
+    /// Las chapas de debajo del nombre («Escaneado», «Lectura veloz · N %»).
+    chapas: Option<chapas::Chapas>,
 }
 
 /// Un rotulo de las versiones vinculadas, ya medido: el lapiz y su texto.
@@ -16925,8 +16877,6 @@ enum Accion {
     AdjPagina,
     AdjPaginaDe(String),
     AdjPaginaHoja(String, String),
-    /// Los ajustes de PixPin, los mismos de la bandeja.
-    Ajustes,
     /// La carpeta de la memoria del asistente, en el Explorador (22-oct).
     AbrirMemoria,
     /// Una de las siete del movil, por su palabra de `Mensaje.miniapp`. La
@@ -16948,6 +16898,9 @@ enum Accion {
     /// al reves (`soloLaFoto` del movil).
     AlternarRecorte(usize),
     AbrirCon(usize),
+    /// «⚡ Lectura veloz»: el archivo en la app de lectura rapida, desde el
+    /// 🟢 (`chapas::abrir`). Tambien al tocar su chapa.
+    LecturaVeloz(usize),
     Renombrar(usize),
     /// «Añadir descripción» / «Editar descripción» de una foto: la barra de
     /// renombrar, escribiendo su `texto` (`descripcion`).
@@ -17822,7 +17775,7 @@ fn icono_de_miniapp(cual: &str) -> &'static Icono {
 fn menu_de_cabecera(
     textos: &Catalogo,
     en_guardados: bool,
-    asistente: Option<asistente_nube::Eleccion>,
+    asistente: Option<pixpin_ia::nube::Proveedor>,
 ) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
     // En el chat «Asistente», lo suyo arriba: el modelo (lo mismo que la
@@ -17864,9 +17817,10 @@ fn menu_de_cabecera(
 }
 
 /// **Lo del chat «Asistente»** en los tres puntos: el modelo (submenu, con
-/// el elegido en el rotulo), «Conversación nueva» y «Borrar chat» en rojo.
+/// el elegido en el rotulo), «Conversación nueva», su memoria (abre la
+/// carpeta; antes estaba en la franja de sistema) y «Borrar chat» en rojo.
 /// Lo de siempre va debajo, apartado por una raya.
-fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+fn menu_de_asistente(textos: &Catalogo, actual: pixpin_ia::nube::Proveedor) -> Vec<EntradaMenu> {
     let modelo = entrada(
         None,
         format!(
@@ -17890,6 +17844,11 @@ fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec
             textos.t("asistente-nueva-conversacion"),
             Accion::NuevaConversacion,
         ),
+        entrada(
+            Some(&mi::FOLDER),
+            textos.t("chat-sistema-memoria-menu"),
+            Accion::AbrirMemoria,
+        ),
         borrar,
     ]
 }
@@ -17898,7 +17857,7 @@ fn menu_de_asistente(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec
 /// con el elegido marcado como en la escala; debajo, separadas, empezar de
 /// cero y borrar el chat. Elegir cambia el MISMO ajuste que Ajustes →
 /// Asistente (`asistente::nube::elegir`).
-fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<EntradaMenu> {
+fn menu_de_modelo(textos: &Catalogo, actual: pixpin_ia::nube::Proveedor) -> Vec<EntradaMenu> {
     let mut v: Vec<EntradaMenu> = asistente_nube::OPCIONES
         .iter()
         .enumerate()
@@ -17908,11 +17867,11 @@ fn menu_de_modelo(textos: &Catalogo, actual: asistente_nube::Eleccion) -> Vec<En
             } else {
                 &mi::CHECK_BOX_OUTLINE_BLANK
             };
-            let rotulo = match e {
-                asistente_nube::Eleccion::Local => textos.t("ajustes2-asistente-local"),
-                asistente_nube::Eleccion::Nube(p) => p.nombre().to_string(),
-            };
-            entrada(Some(icono), rotulo, Accion::ElegirModeloIa(n))
+            entrada(
+                Some(icono),
+                e.nombre().to_string(),
+                Accion::ElegirModeloIa(n),
+            )
         })
         .collect();
     v.push(
@@ -18174,6 +18133,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             )
             .con_tecla(Tecla::Letra('n')),
         );
+    }
+    // Un PDF, un Word, un libro, una pagina o un texto, en Lectura Veloz,
+    // con el % de lo leido alli si ya se leyo (27-oct-2026, como el movil).
+    if chapas::se_ofrece_lectura_veloz(m) {
+        v.push(entrada(
+            Some(&mi::SPEED),
+            crate::lectura_veloz::rotulo(textos, chapas::porcentaje(m)),
+            Accion::LecturaVeloz(i),
+        ));
     }
     if m.clase == Some(Clase::Voz) {
         // Con texto es VOLVER a pasarlo (`MensajesActivity.kt:2620-2626`).
@@ -18656,6 +18624,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         // ya lo hace pulsar la burbuja. Se le pasa el fichero de verdad del
         // adjunto (un `.bin` del movil que es un PDF, como PDF, igual que al
         // tocar la burbuja) y, si no sale, el motivo con palabras.
+        Accion::LecturaVeloz(i) => match a.mensajes.get(i) {
+            Some(m) => {
+                chapas::abrir(raiz, &a.ficha.id, m, cx.textos).map_or(Efecto::Nada, Efecto::Aviso)
+            }
+            None => Efecto::Nada,
+        },
         Accion::AbrirCon(i) => match ruta_de(a, i) {
             Some(ruta) => {
                 let ruta = crate::recibir::ruta_para_abrir(&ruta);
@@ -18957,18 +18931,6 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                     Efecto::Cambio
                 }
                 Err(e) => fallo(&e),
-            }
-        }
-        // Los ajustes viven en el hilo principal (vuelven a registrar los
-        // atajos al cerrarse): se le pide con el mismo `WM_COMMAND` que manda
-        // la bandeja. Si no hay nadie escuchando, se dice por donde ir.
-        Accion::Ajustes => {
-            if pixpin_shell::mensajero::pedir_ventana_principal(
-                pixpin_store::comandos::Comando::AbrirAjustes.id(),
-            ) {
-                Efecto::Nada
-            } else {
-                Efecto::Aviso(cx.textos.t("chat-ajustes-bandeja"))
             }
         }
         Accion::AbrirMemoria => match crate::asistente::memoria::abrir_carpeta(raiz) {
@@ -20548,27 +20510,23 @@ mod pruebas_menu_sin_repetir {
     }
 
     /// La pastilla y los tres puntos del chat «Asistente» (17-oct-2026):
-    /// los tres modelos con el elegido marcado, y empezar de cero y borrar
-    /// apartados; en otro chat, nada de eso.
+    /// los dos de la nube con el elegido marcado (sin el local desde el
+    /// 27-oct-2026), y empezar de cero y borrar apartados; en otro chat,
+    /// nada de eso.
     #[test]
     fn el_menu_del_modelo_marca_el_elegido_y_aparta_borrar() {
-        use asistente_nube::Eleccion;
         use pixpin_ia::nube::Proveedor;
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        let v = menu_de_modelo(&textos, Eleccion::Nube(Proveedor::DeepSeek));
-        let marcados: Vec<bool> = v[..3]
+        let v = menu_de_modelo(&textos, Proveedor::DeepSeek);
+        let marcados: Vec<bool> = v[..2]
             .iter()
             .map(|e| format!("{:?}", e.icono.unwrap()) == format!("{:?}", mi::CHECK_BOX))
             .collect();
-        assert_eq!(
-            marcados,
-            vec![false, false, true],
-            "DeepSeek, el tercero, marcado"
-        );
-        assert_eq!(v[2].accion, Accion::ElegirModeloIa(2));
-        assert!(v[3].accion == Accion::NuevaConversacion && v[3].separada);
-        assert!(v[4].accion == Accion::BorrarChat && v[4].peligro);
-        let c = menu_de_cabecera(&textos, false, Some(Eleccion::Nube(Proveedor::Claude)));
+        assert_eq!(marcados, vec![false, true], "DeepSeek, el segundo, marcado");
+        assert_eq!(v[1].accion, Accion::ElegirModeloIa(1));
+        assert!(v[2].accion == Accion::NuevaConversacion && v[2].separada);
+        assert!(v[3].accion == Accion::BorrarChat && v[3].peligro);
+        let c = menu_de_cabecera(&textos, false, Some(Proveedor::Claude));
         assert!(c[0].texto.contains("Claude Haiku") && c[0].accion == Accion::MenuModeloIa);
         assert!(
             !menu_de_cabecera(&textos, false, None)
@@ -20793,10 +20751,7 @@ mod pruebas_ir_al_chat {
                 "estan en los botones de la lista, como en el movil"
             );
             // Ni los ajustes ni «Comenzar»: viven fuera del chat.
-            assert!(
-                !v.iter()
-                    .any(|e| matches!(e.accion, Accion::Ajustes | Accion::Aviso(_)))
-            );
+            assert!(!v.iter().any(|e| matches!(e.accion, Accion::Aviso(_))));
             // Caso negativo: lo del chat sigue, con el papel al final.
             assert_eq!(v.last().map(|e| e.accion.clone()), Some(Accion::Fondos));
         }

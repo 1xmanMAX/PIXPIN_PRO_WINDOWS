@@ -131,6 +131,36 @@ escrito, como en Telegram. N es cuantos hay en total.
   seccion se va al momento.
 - La lista se desplaza entera, chats y seccion, con la rueda.
 
+**Pestañas por tipo, abrir lo encontrado e ir al mensaje** (27-oct-2026, lo
+de PixPin Android 8815b492 y 80e76094).
+
+- **Pestañas** encima de la seccion, mientras se busca (el buscador con el
+  teclado, algo escrito o una pestaña puesta): Todo, Fotos, Vídeos, Archivos,
+  Enlaces, Voz y Dibujos, con cuantos hay en cada una («Fotos 3»). Que
+  mensaje sale en cual es la regla de la ficha del chat
+  (`cuaderno::indices_de_seccion`): un video no es foto ni archivo, lo del
+  buzon solo sale en «Todo». Se filtra antes del tope de 20. Pildoras de
+  28 pt repartidas en lineas si no caben; la puesta, del color de enviar.
+  Pulsar la puesta vuelve a «Todo»; Escape en el buscador, tambien.
+- **Con una pestaña puesta**, los chats de la lista no salen, y **sin
+  escribir nada** salen todos los de esa clase de todos los chats. Sin
+  escribir y en «Todo», nada (para eso esta la lista de chats).
+- **Cada fila** lleva delante la cosa: la miniatura de la foto, el icono del
+  formato de un archivo (el de su fila en el chat) o el de su tipo (video,
+  voz, lienzo, pagina, carpeta, enlace); una nota, el avatar de su chat como
+  antes. Arriba «en <chat>» con la foto del chat y la fecha; debajo el trozo
+  (o su nombre, si no hay nada escrito y no tiene texto).
+- **Pulsar** la abre en su visor, lo mismo que tocar su burbuja (se lleva el
+  chat a ella y se toca); una nota con enlace abre el enlace. Una nota sin
+  enlace, una nota de voz, un fichero que aun no llego al equipo o lo que no
+  apunta a nada, al mensaje (`buscar_en_chats::al_pulsar`). **La flechita**
+  de la derecha o **el clic derecho** llevan siempre al mensaje.
+- **Lo de dentro de una carpeta** no sale suelto en el chat: el salto va a la
+  tarjeta de su carpeta (`adonde_saltar`), venga de la busqueda o del
+  universo.
+- Clave nueva (los cuatro `main.ftl`): `chat-buscar-en` («en { $chat }» /
+  «in { $chat }»); los nombres de las pestañas son los `info-*` de la ficha.
+
 **Rapido con muchos datos.**
 
 - El indice se hace **fuera del hilo de la ventana**, la primera vez que se

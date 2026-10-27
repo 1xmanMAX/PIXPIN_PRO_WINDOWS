@@ -240,6 +240,15 @@ chat-compartir-sin-panel = Windows did not open the Share panel: it is on the cl
 chat-pineado = Pinned
 chat-foto-en-la-nota = Photo added to your text: it is all sent as one note
 chat-sin-archivo = This message has no file on this computer
+# Speed reading (27-oct-2026): the % next to the option, the bubble chip
+# and the real reason when it can't open.
+lector-lectura-veloz-con = ⚡ Speed reading · { $pct } %
+lector-lectura-veloz-sin-codigo = This document can't be read in Lectura Veloz: it isn't a chat file or a saved note (it has no message code).
+lector-lectura-veloz-formato = This document can't be read in Lectura Veloz: it doesn't read «.{ $ext }» files.
+lector-lectura-veloz-falta-archivo = This document can't be read in Lectura Veloz: the file is no longer on this computer ({ $nombre }).
+chat-lectura-veloz-chapa = Speed reading · { $pct } %
+# The chip of what came from the phone's scanner (`escaneado`).
+chat-escaneado = Scanned
 chat-sin-origen = That canvas is not in this project
 chat-sin-proyectos-otros = There is no other project to send it to
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
@@ -543,6 +552,7 @@ chat-buscar-mensajes = { $n ->
    *[other] Messages · { $n }
 }
 chat-buscar-ver-mas = Show { $n } more
+chat-buscar-en = in { $chat }
 chat-pagina-n = Page { $n }
 chat-unido-a = Added to "{ $nombre }"
 chat-unir-nada = Nothing here can be added: only photos, drawings, notes and PDFs
@@ -1459,6 +1469,9 @@ chat-figura-guardada = Saved to your shapes as “{ $nombre }”
 chat-figura-vacia = That canvas is empty: nothing to save
 figuras-titulo = Shapes
 figuras-buscar = Search a shape…
+# The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
+figuras-dia = Day
+figuras-noche = Night
 figuras-sin-resultados = No shape has that in its name or its texts.
 figuras-de-serie = built-in
 figuras-tuya = yours
@@ -1537,6 +1550,13 @@ ajustes-herramientas-sitio-lector = Reader
 lector-al-proyecto = To project
 lector-al-proyecto-hecho = It's in projects now, with your notes
 lector-al-proyecto-fallo = The project could not be created
+
+## «Save» in the viewers of files opened from outside (passing mode, Android 15a52aed)
+guardar-de-paso = Save to a chat
+guardar-de-paso-guardados = To «Saved messages»
+guardar-de-paso-en = To «{ $chat }»
+guardar-de-paso-hecho = Saved to «{ $chat }», with your notes
+guardar-de-paso-fallo = It could not be saved to the chat
 
 ## Word and book reader: the four types and four weights of the phone (K16)
 lector-letra-serif = Serif
@@ -2749,6 +2769,17 @@ asistente-listo = The assistant is ready.
 asistente-ocupado = The assistant is still answering: wait or press stop.
 asistente-sin-modelo = First download the assistant in the «Asistente» chat.
 asistente-fallo = The assistant could not start answering.
+asistente-nube-titulo = The cloud key is missing
+asistente-nube-explica = The assistant answers with { $nube }: paste its key in Settings → Assistant (get one at { $pagina }). Simple commands ("note bread", "open the gallery") work without a key.
+asistente-abrir-ajustes = Open Settings
+asistente-viejos-titulo = Local models are no longer used
+asistente-viejos-explica = The assistant now answers only through the cloud (Claude or DeepSeek). What you downloaded for this PC's model still takes { $tamano } on disk.
+asistente-viejos-liberar = Free { $tamano }
+asistente-viejos-dejar = Keep them
+asistente-viejos-borrados = Done: the local models were deleted and the space is free.
+asistente-viejos-no-borrados = Not all local models could be deleted. Close whatever uses them and try again from Settings → Assistant.
+ajustes2-asistente-borrar-locales = Old local models
+ajustes2-ayuda-asistente-borrar-locales = What was downloaded for the local assistant, no longer used: { $tamano } in %LOCALAPPDATA%\PixPinMax\modelos.
 ajustes-asistente-modelo = Assistant model
 ajustes2-ayuda-asistente-modelo = With the Local engine. The 2B draws and sees better; the 0.8B uses less.
 

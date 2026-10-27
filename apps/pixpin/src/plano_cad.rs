@@ -134,6 +134,31 @@ pub fn carpeta_de_marcadores(raiz: &Path, ruta: &Path) -> PathBuf {
     raiz.join("marcadores").join(format!("{h:016x}"))
 }
 
+/// **«Guardar» en un chat** un plano o un modelo abierto de paso (de fuera
+/// de los chats; `guardar_de_paso`): su capa de la cache y sus marcadores
+/// pasan a los `anot-<uid>…` del mensaje nuevo. `None` si ya es de un chat.
+pub(crate) fn guardar_de_paso(
+    idioma: Idioma,
+    raiz: &Path,
+    ruta: &Path,
+) -> Option<Box<dyn Fn(isize)>> {
+    if !crate::guardar_de_paso::es_de_paso(raiz, ruta) {
+        return None;
+    }
+    let (raiz, ruta) = (raiz.to_path_buf(), ruta.to_path_buf());
+    Some(Box::new(move |v: isize| {
+        let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
+        crate::guardar_de_paso::preguntar_y_guardar(
+            windows::Win32::Foundation::HWND(v as *mut _),
+            &raiz,
+            &ruta,
+            crate::guardar_de_paso::Visor::Plano,
+            &[capa.tinta, capa.hoja],
+            &pixpin_store::Catalogo::nuevo(idioma),
+        );
+    }))
+}
+
 /// La marca de que lo de una carpeta local ya paso a los ficheros del
 /// mensaje (se pasa una vez; lo de antes se queda, como `copiarSiFalta`).
 const YA_PASADO: &str = "pasado-al-chat.txt";
@@ -525,6 +550,7 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
                 tipo: tipo_de_archivo(&ruta),
                 marcadores: Some(SitioDeMarcadores::abrir(&raiz, &ruta).vistas()),
                 globo: Some(globo_de_la_barra()),
+                guardar: guardar_de_paso(idioma, &raiz, &ruta),
             };
             if let Err(e) = pixpin_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
                 tracing::warn!(%e, "no se pudo abrir el visor de planos");
@@ -571,6 +597,7 @@ mod pruebas {
                 "PUSH_PIN" => &m::PUSH_PIN,
                 "CLOSE" => &m::CLOSE,
                 "BOOKMARK_ADD" => &m::BOOKMARK_ADD,
+                "SAVE" => &m::SAVE,
                 otro => panic!("{otro} no esta en la lista: anadelo aqui"),
             }
         };
@@ -598,6 +625,7 @@ mod pruebas {
         mismo("anotar", false, &m::EDIT);
         mismo("marcos", false, &m::CROP_FREE);
         mismo("marcador", false, &m::BOOKMARK_ADD);
+        mismo("guardar", false, &m::SAVE);
         // En oscuro, el sol para volver a claro (como el lector); en claro, la luna.
         mismo("tema", false, &m::LIGHT_MODE);
         mismo("tema", true, &m::DARK_MODE);

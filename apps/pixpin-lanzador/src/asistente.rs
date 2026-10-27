@@ -301,11 +301,12 @@ pub fn filas_de_encargos(lista: &[Encargo], ahora: i64) -> Vec<Resultado> {
 // --- El motor ---------------------------------------------------------------
 
 /// **El motor que contestara**, leido de `[asistente]` de `pixpinmax.toml`
-/// (sin cargar un lector de TOML: dos claves de texto). Vacio o `local` es
-/// el modelo de este PC (`pixpin_store::ajustes::Asistente`).
+/// (sin cargar un lector de TOML: una clave de texto). Vacio o `local` (de
+/// cuando habia modelo en este PC, quitado el 27-oct-2026) es la nube que
+/// tenga clave, Claude si ninguna (`asistente::nube::eleccion` en la app).
 pub fn motor_de_toml(toml: &str) -> String {
     let mut en = false;
-    let (mut motor, mut modelo) = (String::new(), String::new());
+    let mut motor = String::new();
     for l in toml.lines() {
         let l = l.trim();
         if l.starts_with('[') {
@@ -319,19 +320,14 @@ pub fn motor_de_toml(toml: &str) -> String {
             continue;
         };
         let v = v.trim().trim_matches('"').to_string();
-        match k.trim() {
-            "motor" => motor = v,
-            "modelo" => modelo = v,
-            _ => {}
+        if k.trim() == "motor" {
+            motor = v;
         }
     }
     match motor.as_str() {
         "claude" => "Claude Haiku 5.5".into(),
         "deepseek" => "DeepSeek Flash".into(),
-        "" | "local" => match modelo.as_str() {
-            "" => "el modelo de este PC (Qwen 3.5 2B)".into(),
-            m => format!("el modelo de este PC ({m})"),
-        },
+        "" | "local" => "la nube (Claude Haiku 5.5 o DeepSeek)".into(),
         otro => otro.to_string(),
     }
 }

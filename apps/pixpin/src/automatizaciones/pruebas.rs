@@ -1071,8 +1071,7 @@ fn pedido_calca_esto_con_claude() {
         aparato: "PC01".into(),
     };
     let p = pixpin_ia::nube::Proveedor::Claude;
-    let motor =
-        crate::asistente::nube::motor(p, None, false).expect("la clave de Claude en Ajustes");
+    let motor = crate::asistente::nube::motor(p, false).expect("la clave de Claude en Ajustes");
     let clave = pixpin_ia::nube::claves::leer(p).unwrap();
     let vision: Arc<dyn pixpin_ia::motor::Motor> =
         Arc::new(pixpin_ia::nube::MotorNube::nuevo(p, clave).ligero());

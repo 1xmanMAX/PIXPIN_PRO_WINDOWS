@@ -365,6 +365,7 @@ mod pruebas {
             titulo: titulo.into(),
             cuando,
             filas: filas_de(doc),
+            aparato: None,
         }
     }
 

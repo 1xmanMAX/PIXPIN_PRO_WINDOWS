@@ -807,7 +807,8 @@ fn sin_clave_lo_dice() {
 }
 
 #[test]
-fn si_la_nube_falla_sigue_el_local() {
+fn si_la_nube_falla_el_error_llega_tal_cual() {
+    // Sin modelo local (27-oct-2026): el aviso de la nube es la respuesta.
     let s = servidor(
         "/v1/messages",
         vec![crudo(
@@ -815,41 +816,11 @@ fn si_la_nube_falla_sigue_el_local() {
             r#"{"type":"error","error":{"type":"authentication_error","message":"x"}}"#,
         )],
     );
-    let local: Arc<dyn Motor> = Arc::new(MotorGuionado::nuevo(vec![
-        crate::motor::Respuesta::de_texto("respuesta local"),
-        crate::motor::Respuesta::de_texto("otra local"),
-    ]));
-    let m = MotorConRespaldo::nuevo(Arc::new(claude(&s.url)), Some(local), "Claude Haiku 5.5");
-    let mut visto = String::new();
-    let r = m
-        .completar(&Peticion::nueva(historial("hola")), &mut |t| {
-            if let Trozo::Texto(x) = t {
-                visto.push_str(x);
-            }
-            Seguir::Si
-        })
-        .unwrap();
-    assert_eq!(r.texto, "respuesta local");
-    assert!(
-        visto.contains("no acepta la clave") && visto.contains("Sigo con el asistente local"),
-        "{visto}"
-    );
-    // La siguiente va directa al local, sin otra peticion ni otro aviso.
-    let r2 = m
+    let e = claude(&s.url)
         .completar(&Peticion::nueva(historial("hola")), &mut |_| Seguir::Si)
-        .unwrap();
-    assert_eq!(r2.texto, "otra local");
-    assert_eq!(s.recibidas.lock().unwrap().len(), 1);
-    // Sin local, el error llega tal cual.
-    let solo = MotorConRespaldo::nuevo(
-        Arc::new(MotorNube::nuevo(Proveedor::Claude, "")),
-        None,
-        "Claude",
-    );
-    assert!(matches!(
-        solo.completar(&Peticion::nueva(historial("a")), &mut |_| Seguir::Si),
-        Err(ErrorIa::Nube(_))
-    ));
+        .unwrap_err();
+    assert!(matches!(&e, ErrorIa::Nube(_)), "{e}");
+    assert!(e.to_string().contains("no acepta la clave"), "{e}");
 }
 
 #[test]
@@ -909,25 +880,10 @@ fn en_vivo_deepseek() {
 }
 
 #[test]
-fn la_nube_recibe_el_catalogo_entero_y_el_respaldo_solo_lo_que_toca() {
+fn la_nube_recibe_el_catalogo_entero() {
     assert!(MotorNube::nuevo(Proveedor::Claude, "x").catalogo_completo());
+    assert!(MotorNube::nuevo(Proveedor::DeepSeek, "x").catalogo_completo());
     assert!(!MotorGuionado::nuevo(vec![]).catalogo_completo());
-    let r = MotorConRespaldo::nuevo(
-        Arc::new(MotorNube::nuevo(Proveedor::DeepSeek, "x")),
-        None,
-        "DeepSeek",
-    );
-    assert!(r.catalogo_completo());
-    let mut p = Peticion::nueva(historial("dibuja una estrella roja"));
-    p.herramientas = catalogo();
-    assert!(p.herramientas.len() > crate::seleccion::MAXIMO);
-    let q = para_el_local(&p);
-    assert!(q.herramientas.len() <= crate::seleccion::MAXIMO);
-    assert!(
-        q.herramientas
-            .iter()
-            .any(|h| h.nombre == crate::herramientas::DIBUJAR)
-    );
 }
 
 #[test]

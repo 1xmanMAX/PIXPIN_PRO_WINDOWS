@@ -362,6 +362,11 @@ const ORDENES = {
     guardarYa()
     mandar({ tipo: 'exportar_word', texto: texto(), titulo: tituloDe(texto()) })
   },
+  // «⚡ Lectura veloz» (27-oct-2026): guardada antes, a la app de lectura rapida.
+  lecturaVeloz: () => {
+    guardarYa()
+    mandar({ tipo: 'lectura_veloz', texto: texto(), titulo: tituloDe(texto()) })
+  },
   cambiarTitulo: () => editarTitulo(),
   comentar: () => com.comentar(),
   buscar: () => openSearchPanel(vista),
@@ -559,6 +564,10 @@ function menuMas() {
             { icono: '💬', texto: tx.delChat, accion: ORDENES.chat },
             { icono: '🎧', texto: tx.audio, accion: ORDENES.audio },
           ]
+        : []),
+      // El rotulo lo pone PixPin, con el % de lo leido alli si ya se leyo.
+      ...(capacidades.lecturaVeloz
+        ? [{ icono: '⚡', texto: capacidades.lecturaVeloz, accion: ORDENES.lecturaVeloz }]
         : []),
       { pista: tx.pistaBarra },
     ],
@@ -927,7 +936,7 @@ function tabEnTabla(atras) {
 // ------------------------------------------------------------------ preferencias
 
 let preferencias = { cuerpo: 'Work Sans', titulos: 'Fraunces', px: 16, soloEsta: false }
-let capacidades = { hojas: false, medios: false }
+let capacidades = { hojas: false, medios: false, lecturaVeloz: '' }
 
 function aplicarPreferencias() {
   const r = document.documentElement.style
@@ -1342,6 +1351,9 @@ function recibir(msg) {
     case 'insertar':
       if (msg.bloque) insertarBloque(msg.texto + '\n')
       else insertar(msg.texto)
+      break
+    case 'capacidades':
+      capacidades = { ...capacidades, ...(msg.capacidades || {}) }
       break
     case 'aviso':
       aviso(msg.texto)

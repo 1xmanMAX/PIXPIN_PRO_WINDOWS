@@ -15,6 +15,11 @@
 //!   con su intervalo («del 1 al 40, de 10 en 10») para insertarla ya
 //!   alargada; las propias, con renombrar y quitar.
 //!
+//! En la cabecera, el interruptor ☀/☾ (27-oct-2026, como el movil): de dia
+//! no sale ninguna gemela «(noche)» de las plantillas; de noche cada una va
+//! en el sitio de su de dia (`figuras_de_serie::segun_el_modo`). Se recuerda,
+//! y vale tambien para la ventana de figuras del chat.
+//!
 //! Doble clic o «Insertar» la pone en medio de lo que se ve y la ventana se
 //! cierra. Mientras esta abierta, el lienzo espera (como un dialogo): vive en
 //! el hilo del editor y usa su mismo motor de dibujo.
@@ -78,6 +83,8 @@ enum Accion {
     Quitar,
     Renombrar,
     GuardarSeleccion,
+    /// El interruptor ☀/☾.
+    DiaNoche,
 }
 
 /// Los campos del panel de la derecha.
@@ -121,11 +128,25 @@ fn plegar(s: &str) -> String {
     pixpin_ia::acciones::normalizar(s)
 }
 
-/// **Las que se ven**: de la categoria elegida (`None`, todas) y que
-/// contengan todas las palabras buscadas (en el nombre o la categoria), en
-/// el orden de las categorias.
+/// **Las del modo puesto** (☀/☾), en su orden: de dia sin las gemelas de
+/// noche, de noche cada una en el sitio de su de dia.
+fn del_modo(figuras: &[FiguraGuardada], noche: bool) -> Vec<usize> {
+    serie::segun_el_modo(&pares(figuras), noche)
+}
+
+fn pares(figuras: &[FiguraGuardada]) -> Vec<(&str, &str)> {
+    figuras
+        .iter()
+        .map(|f| (f.id.as_str(), f.nombre.as_str()))
+        .collect()
+}
+
+/// **Las que se ven**: de las del modo (`modo`, ver [`del_modo`]), las de la
+/// categoria elegida (`None`, todas) que contengan todas las palabras
+/// buscadas (en el nombre o la categoria), en el orden de las categorias.
 fn visibles(
     figuras: &[FiguraGuardada],
+    modo: &[usize],
     cats: &[String],
     cat: Option<usize>,
     consulta: &str,
@@ -140,7 +161,8 @@ fn visibles(
         if cat.is_some_and(|x| x != k) {
             continue;
         }
-        for (i, f) in figuras.iter().enumerate() {
+        for &i in modo {
+            let f = &figuras[i];
             let (fc, _) = de_que_es(f, mis);
             if fc != c {
                 continue;
@@ -303,6 +325,10 @@ struct Estado {
     buscando: bool,
     campos: HashMap<Dato, Campo>,
     elegida: Option<usize>,
+    /// El interruptor ☀/☾: de noche, las gemelas «(noche)».
+    noche: bool,
+    /// Las del modo puesto, en su orden ([`del_modo`]).
+    modo: Vec<usize>,
     lista: Vec<usize>,
     disp: Disposicion,
     scroll: f32,
@@ -336,6 +362,8 @@ impl Estado {
             buscando: false,
             campos: HashMap::new(),
             elegida: None,
+            noche: false,
+            modo: Vec::new(),
             lista: Vec::new(),
             disp: Disposicion::default(),
             scroll: 0.0,
@@ -353,8 +381,16 @@ impl Estado {
 
     fn rehacer_lista(&mut self, ancho_rejilla: f32, s: f32) {
         self.cats = categorias(&self.figuras, &self.mis);
+        self.modo = del_modo(&self.figuras, self.noche);
         let consulta = self.consulta.texto().to_string();
-        self.lista = visibles(&self.figuras, &self.cats, self.cat, &consulta, &self.mis);
+        self.lista = visibles(
+            &self.figuras,
+            &self.modo,
+            &self.cats,
+            self.cat,
+            &consulta,
+            &self.mis,
+        );
         let con_titulos = self.cat.is_none() && consulta.trim().is_empty();
         self.disp = disponer(
             &self.figuras,
@@ -367,6 +403,21 @@ impl Estado {
         if self.elegida.is_none_or(|i| !self.lista.contains(&i)) {
             self.elegir(self.lista.first().copied());
         }
+    }
+
+    /// **El interruptor ☀/☾**: cambia de modo y la elegida pasa a su pareja
+    /// (el diario de dia, a su gemela de noche), si la tiene.
+    fn poner_noche(&mut self, noche: bool, ancho_rejilla: f32, s: f32) {
+        if noche == self.noche {
+            return;
+        }
+        self.noche = noche;
+        if let Some(i) = self.elegida
+            && let Some(j) = serie::pareja(&pares(&self.figuras), i)
+        {
+            self.elegida = Some(j);
+        }
+        self.rehacer_lista(ancho_rejilla, s);
     }
 
     fn elegir(&mut self, i: Option<usize>) {
@@ -577,6 +628,7 @@ pub(in crate::ventana_editor) fn elegir(
         hay_seleccion,
         t.t("figuras-mis-figuras"),
     );
+    e.noche = crate::biblioteca_figuras::de_noche();
     // Solo para probar: `PIXPIN_MENU_FIGURAS_AL_ABRIR=<categoria>` abre la
     // ventana ya en esa categoria.
     let de_prueba = std::env::var("PIXPIN_MENU_FIGURAS_AL_ABRIR").ok();
@@ -737,6 +789,12 @@ fn clic(
         Accion::GuardarSeleccion => {
             e.pedido = Some(Pedido::Herramienta(Eleccion::GuardarSeleccion))
         }
+        Accion::DiaNoche => {
+            let noche = !e.noche;
+            e.scroll = 0.0;
+            e.poner_noche(noche, ancho_rejilla, s);
+            crate::biblioteca_figuras::poner_de_noche(noche);
+        }
         Accion::Celda(i) => {
             e.elegir(Some(i));
             if doble {
@@ -893,12 +951,28 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, t: &Catalogo)
 fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32, t: &Catalogo) {
     let titulo = t.t("figuras-ventana-titulo");
     let mut a = fluent_bundle::FluentArgs::new();
-    a.set("n", e.figuras.len());
+    a.set("n", e.modo.len());
     let subtitulo = t.t_args("figuras-ventana-subtitulo", &a);
     let pista = t.t("figuras-ventana-buscar");
     let guardar = t.t("figuras-ventana-guardar-seleccion");
     let texto = e.consulta.texto().to_string();
-    let mut botones = Vec::new();
+    // ☀/☾: el boton dice el modo puesto y, de noche, va encendido.
+    let modo = t.t(if e.noche {
+        "figuras-noche"
+    } else {
+        "figuras-dia"
+    });
+    let mut botones = vec![crate::cabecera::Boton {
+        icono: Some(if e.noche {
+            &mi::DARK_MODE
+        } else {
+            &mi::LIGHT_MODE
+        }),
+        rotulo: &modo,
+        chapa: None,
+        activo: e.noche,
+        accion: Accion::DiaNoche,
+    }];
     if e.hay_seleccion {
         botones.push(crate::cabecera::Boton {
             icono: Some(&mi::LIBRARY_ADD),
@@ -989,7 +1063,10 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
         + (0..e.cats.len())
             .filter(|k| {
                 let c = &e.cats[*k];
-                c == &e.mis || e.figuras.iter().any(|f| de_que_es(f, &e.mis).0 == *c)
+                c == &e.mis
+                    || e.modo
+                        .iter()
+                        .any(|i| de_que_es(&e.figuras[*i], &e.mis).0 == *c)
             })
             .count()
         + e.herramientas.len();
@@ -999,13 +1076,13 @@ fn pintar_lateral(e: &mut Estado, p: &Pintor, z: RectF, s: f32, t: &Catalogo) {
     let ancho = z.ancho - m * 1.5;
     let mut y = z.y + m;
     let cuenta_de = |e: &Estado, c: &str| {
-        e.figuras
+        e.modo
             .iter()
-            .filter(|f| de_que_es(f, &e.mis).0 == c)
+            .filter(|i| de_que_es(&e.figuras[**i], &e.mis).0 == c)
             .count()
     };
     let todas = t.t("figuras-ventana-todas");
-    let n = e.figuras.len();
+    let n = e.modo.len();
     let elegida = e.cat.is_none();
     fila_lateral(
         e,

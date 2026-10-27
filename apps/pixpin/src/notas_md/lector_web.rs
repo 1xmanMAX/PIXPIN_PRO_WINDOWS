@@ -164,6 +164,12 @@ pub enum DeLaPagina {
         si: bool,
     },
     Compartir,
+    /// «⚡ Lectura veloz» del ⋮ (27-oct-2026): la nota, ya guardada, en la
+    /// app de lectura rapida (`super::a_lectura_veloz`).
+    LecturaVeloz {
+        texto: String,
+        titulo: String,
+    },
     Cerrar,
     CerrarListo,
     EditorAnterior,
@@ -516,6 +522,8 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
     let mut ultimo_conocido = cx.texto.clone();
     let mut firma = huella(&raiz, &cx.actual.borrow());
     let mut mirado = Instant::now();
+    // Lo ultimo de Lectura Veloz con que se puso su % en el ⋮.
+    let mut lectura_veloz = crate::lectura_veloz::generacion();
     let mut cerrando: Option<Instant> = None;
     let mut salida = Salida::Cerrada;
     let clave_vista = super::clave_de_vista(&cx.actual.borrow());
@@ -527,7 +535,11 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         "texto": cx.texto,
         "nombre": nombre,
         "vista": {"cuerpo": vista.cuerpo, "titulos": vista.titulos, "px": vista.px, "soloEsta": solo_esta},
-        "capacidades": {"hojas": de_proyecto, "medios": true},
+        "capacidades": {
+            "hojas": de_proyecto,
+            "medios": true,
+            "lecturaVeloz": super::rotulo_de_lectura_veloz(&cx.actual.borrow(), cx.textos),
+        },
         // La cabecera propia no: la barra es la comun de los visores.
         "enPin": true,
     })
@@ -597,7 +609,8 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                     }
                     Some(AccionPin::Fijar) => pin.alternar_fijado(&ventana),
                     Some(AccionPin::Cerrar) => pedir_cierre(&mut cerrando, &pagina),
-                    None => {}
+                    // La nota no lleva «Guardar»: es del chat o se edita en su fichero.
+                    Some(AccionPin::Guardar) | None => {}
                 }
                 continue;
             }
@@ -960,6 +973,15 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                             let destino = cx.actual.borrow().clone();
                             super::compartir(cx.idioma, cx.ubicacion, &destino, cx.aparato);
                         }
+                        DeLaPagina::LecturaVeloz { texto, titulo } => {
+                            let destino = cx.actual.borrow().clone();
+                            if let Err(no) = super::a_lectura_veloz(&destino, &titulo, &texto) {
+                                pagina.mandar(
+                                    &json!({"tipo": "aviso", "texto": no.aviso(cx.textos)})
+                                        .to_string(),
+                                );
+                            }
+                        }
                         DeLaPagina::Cerrar => pedir_cierre(&mut cerrando, &pagina),
                         DeLaPagina::CerrarListo => break 'bucle,
                         DeLaPagina::EditorAnterior => {
@@ -979,6 +1001,14 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         }
         if mirado.elapsed() >= MIRAR_FUERA {
             mirado = Instant::now();
+            // Llego un punto de Lectura Veloz: su % al dia en el ⋮.
+            if crate::lectura_veloz::generacion() != lectura_veloz {
+                lectura_veloz = crate::lectura_veloz::generacion();
+                let r = super::rotulo_de_lectura_veloz(&cx.actual.borrow(), cx.textos);
+                pagina.mandar(
+                    &json!({"tipo": "capacidades", "capacidades": {"lecturaVeloz": r}}).to_string(),
+                );
+            }
             let ahora = huella(&raiz, &cx.actual.borrow());
             if ahora != firma {
                 firma = ahora;
@@ -1256,6 +1286,16 @@ mod pruebas {
         assert_eq!(
             serde_json::from_str::<DeLaPagina>(r#"{"tipo":"cerrar_listo"}"#).unwrap(),
             DeLaPagina::CerrarListo
+        );
+        assert_eq!(
+            serde_json::from_str::<DeLaPagina>(
+                r##"{"tipo":"lectura_veloz","texto":"# Tema 3","titulo":"Tema 3"}"##
+            )
+            .unwrap(),
+            DeLaPagina::LecturaVeloz {
+                texto: "# Tema 3".into(),
+                titulo: "Tema 3".into()
+            }
         );
         // Caso negativo: un tipo que no existe no se toma por otro.
         assert!(serde_json::from_str::<DeLaPagina>(r#"{"tipo":"borrar_todo"}"#).is_err());

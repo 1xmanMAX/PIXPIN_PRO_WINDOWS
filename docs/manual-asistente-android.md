@@ -5,6 +5,11 @@ PC (`1xmanMAX/PIXPIN_PRO_WINDOWS`, rama `main`, 14-oct-2026). No hace falta habe
 código del PC. Cada apartado dice qué hace el PC, dónde está en Rust y qué tiene que hacer el
 móvil para dar **el mismo resultado y sincronizar sin perder nada**.
 
+> **27-oct-2026: sin modelo local.** Los dos aparatos contestan solo con la nube (Claude o
+> DeepSeek): Android lo quitó en `d1daa08a` y el PC el mismo mes. Lo que este manual cuenta del
+> motor local (llama.cpp, los GGUF, `modelos.rs`, `descarga.rs`, `servidor.rs`, `relevo.rs`, la
+> mejor vista) es historia: ya no existe en ninguno de los dos.
+
 Pedido del usuario: «un pequeño manual para que la gente que está haciendo la versión de
 Android pueda implementarlo también de la misma forma y que sea compatible para sincronización
 y todo eso».

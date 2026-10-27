@@ -303,37 +303,25 @@ fn pensar_en_automatico_es_solo_en_lo_complejo() {
     // «Siempre» y «Nunca» mandan.
     assert!(pensado::pensar(Some(true), "dibuja un circulo rojo"));
     assert!(!pensado::pensar(Some(false), "resuelve x^2 - 4 = 0"));
-    assert_eq!(pensado::ventana_local(), 8192);
 }
 
 // ---------------------------------------------------------------------------
 // De verdad
 
-/// **Una conversacion larga con el 2B de verdad**, con la ventana forzada a
+/// **Una conversacion larga con la nube de verdad**, con la ventana forzada a
 /// pequena (4096 en vez de 8192; `PIXPIN_IA_VENTANA`) para que se reinicie: al final se pregunta por
 /// datos del primer mensaje, que ya no estan cargados, y la respuesta tiene
 /// que traerlos (de la hoja de trabajo o con `buscar_historial`).
 ///
 /// ```text
-/// PIXPIN_IA_MOTOR=<carpeta con llama-server.exe>  PIXPIN_IA_MODELO=<Qwen3.5-2B-Q4_K_M.gguf>
-/// PIXPIN_IA_DISPOSITIVO=cpu|Vulkan1  PIXPIN_IA_PENSAR=1 (por omision)
+/// PIXPIN_IA_MOTOR=claude|deepseek (la clave guardada)  PIXPIN_IA_PENSAR=1 (por omision)
 /// cargo test -p pixpin --bin pixpinmax de_verdad_conversacion_larga -- --ignored --nocapture --test-threads=1
 /// ```
 #[test]
-#[ignore = "necesita el motor y el modelo bajados (ver la cabecera)"]
+#[ignore = "necesita la clave de la nube (ver la cabecera)"]
 fn de_verdad_conversacion_larga_con_reinicios() {
-    use pixpin_ia::servidor::{Config, Dispositivo, MotorLlama};
-    let motor_dir =
-        std::path::PathBuf::from(std::env::var("PIXPIN_IA_MOTOR").expect("PIXPIN_IA_MOTOR"));
-    let modelo =
-        std::path::PathBuf::from(std::env::var("PIXPIN_IA_MODELO").expect("PIXPIN_IA_MODELO"));
-    let mut config = Config::nueva(motor_dir.join("llama-server.exe"), modelo, None);
-    config.dispositivo = match std::env::var("PIXPIN_IA_DISPOSITIVO").as_deref() {
-        Ok("cpu") | Err(_) => Dispositivo::Cpu,
-        Ok(d) => Dispositivo::Gpu(d.into()),
-    };
     let pensar = std::env::var("PIXPIN_IA_PENSAR").map_or(true, |v| v != "0");
-    let motor: Arc<dyn pixpin_ia::Motor> = Arc::new(MotorLlama::nuevo(config));
+    let motor = super::nube::de_verdad();
     // 4096 por omision: el pedido sin pensar y sin herramientas es corto, y
     // con 6144 no llegaba al 70 % (medido, 14-oct). `PIXPIN_IA_VENTANA` la cambia.
     let ventana: u32 = std::env::var("PIXPIN_IA_VENTANA")
@@ -417,7 +405,6 @@ fn de_verdad_conversacion_larga_con_reinicios() {
         notas.push(nota(n + 2, true, &vivo.mostrar()));
         ultima = vivo.mostrar();
     }
-    motor.soltar();
     let bajo = ultima.to_lowercase();
     let aciertos = [
         bajo.contains("17"),

@@ -3,9 +3,9 @@
 //!
 //! La conversacion sigue la forma de la API de chat de OpenAI (mensajes con
 //! rol, partes de texto e imagen, llamadas a herramientas con `id`), porque es
-//! la que hablan `llama-server`, LiteRT-LM y casi todo lo demas: cambiar de
-//! motor —por ejemplo a uno en el mismo proceso, o al de Android— no toca ni
-//! el bucle del agente ni el chat.
+//! la que hablan casi todos: cada proveedor de la nube la traduce a la suya
+//! (`nube::claude`, `nube::deepseek`) y ni el bucle del agente ni el chat
+//! cambian.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -309,42 +309,25 @@ pub trait Motor: Send + Sync {
         al_trozo: &mut dyn FnMut(&Trozo) -> Seguir,
     ) -> Result<Respuesta, ErrorIa>;
 
-    /// Soltar la memoria ya (cerrar el modelo). Se vuelve a cargar solo en la
-    /// siguiente peticion.
-    fn soltar(&self) {}
-
-    /// Dejarlo listo para contestar sin esperar (cargar el modelo local).
-    /// Bloquea: se llama en un hilo de fondo. Por omision no hace nada (la
-    /// nube no tiene nada que cargar).
-    fn precalentar(&self) {}
-
     /// Si este motor recibe el catalogo ENTERO en cada turno en vez de las
     /// pocas herramientas de `seleccion::para_el_pedido`. Los modelos de la
     /// nube eligen bien entre todas, y un catalogo que no cambia de un turno
-    /// a otro es un prefijo que se cachea (ver `nube`). Los locales, no.
+    /// a otro es un prefijo que se cachea (ver `nube`). Los de las pruebas
+    /// (`MotorGuionado`), no, salvo `como_nube`.
     fn catalogo_completo(&self) -> bool {
         false
     }
 
     /// **Si ve imagenes** (15-oct, los ojos del lienzo: `ojos.rs`). Claude
-    /// y DeepSeek si; el local, por ahora no (el usuario, 15-oct: primero la
-    /// nube, el local no se toca). Sin vision, el turno no ofrece
+    /// y DeepSeek si. Sin vision, el turno no ofrece
     /// `ver_lienzo` ni revisa lo dibujado.
     fn ve_imagenes(&self) -> bool {
         false
     }
 
-    /// **Si es el modelo local** (llama.cpp en este PC). Esta congelado por
-    /// decision del usuario (15-oct): lo que se le anada a la nube (la
-    /// revision con rubrica, 22-oct) no se le enciende aunque un dia vea
-    /// imagenes. Por omision, no.
-    fn es_local(&self) -> bool {
-        false
-    }
-
     /// **Cuantas peticiones a la vez** aguanta (15-oct: una lamina se
     /// secciona y cada zona va a su trabajador en paralelo). Claude, 8;
-    /// DeepSeek, 3 (pocos creditos y limites mas bajos); el local, 1.
+    /// DeepSeek, 3 (pocos creditos y limites mas bajos).
     fn a_la_vez(&self) -> usize {
         1
     }

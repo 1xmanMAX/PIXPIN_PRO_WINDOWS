@@ -601,33 +601,29 @@ impl Tareas {
     }
 }
 
-// --- Asistente local (13-oct-2026) ---------------------------------------
+// --- Asistente (13-oct-2026) ---------------------------------------------
 
-/// Seccion `[asistente]`: el modelo de lenguaje local del chat
-/// (`crates/pixpin-ia`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Seccion `[asistente]`: el asistente del chat (`crates/pixpin-ia`), que
+/// desde el 27-oct-2026 contesta solo con la nube.
+///
+/// El modelo local se quito ese dia (como en Android): `modelo`,
+/// `respaldo_local` y `mejor_vista` ya no existen. Un TOML viejo que los
+/// traiga se sigue leyendo (sin `deny_unknown_fields`) y al guardar
+/// desaparecen; un `motor` vacio o `local` pasa a la nube (ver `motor`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Asistente {
-    /// El id del modelo (`qwen3.5-2b`, `qwen3.5-0.8b`). Vacio: el 2B, el
-    /// recomendado.
-    pub modelo: String,
     /// Si piensa antes de contestar (lo que piensa se ve, plegable, en la
     /// burbuja del chat). `None`: automatico, solo en las tareas complejas
-    /// (`pixpin_ia::complejidad`, 15-oct), el local y la nube igual.
+    /// (`pixpin_ia::complejidad`, 15-oct).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pensar: Option<bool>,
-    /// Quien contesta (13-oct-2026): vacio o `local` (el modelo de este PC),
-    /// `claude` (Claude Haiku 5.5) o `deepseek` (DeepSeek V4.1 Flash). Las
-    /// claves de la nube NO van aqui: van cifradas en su fichero propio
-    /// (`pixpin_ia::nube::claves`).
+    /// Quien contesta (13-oct-2026): `claude` (Claude Haiku 5.5) o
+    /// `deepseek` (DeepSeek V4.1 Flash). Vacio —o `local`, de cuando habia
+    /// modelo en este PC— es «el que tenga clave», y sin ninguna, Claude
+    /// (`asistente::nube::eleccion` en la app). Las claves NO van aqui: van
+    /// cifradas en su fichero propio (`pixpin_ia::nube::claves`).
     pub motor: String,
-    /// Si la nube falla (red, clave, saldo), seguir con el modelo local si
-    /// esta bajado.
-    pub respaldo_local: bool,
-    /// **Mejor vista con fotos** (13-oct-2026): con el modelo local, usar
-    /// Gemma 4 E2B (opcional, ~4,1 GB que se bajan aparte) cuando se pide
-    /// MIRAR una foto: describirla, leer lo que pone. Apagado de fabrica.
-    pub mejor_vista: bool,
     /// Si con un motor de la nube se le pueden mandar trozos de los
     /// documentos propios (`buscar_en_mis_cosas`): vacio = preguntar la
     /// primera vez, `si` o `no` (13-oct-2026).
@@ -638,20 +634,6 @@ pub struct Asistente {
     // `leer_respuestas` (leer cada respuesta sola al acabar) se quito el
     // 17-oct-2026 a peticion del usuario: el TOML viejo que lo traiga se
     // sigue leyendo (sin `deny_unknown_fields`) y al guardar desaparece.
-}
-
-impl Default for Asistente {
-    fn default() -> Self {
-        Self {
-            modelo: String::new(),
-            motor: String::new(),
-            respaldo_local: true,
-            mejor_vista: false,
-            documentos_a_la_nube: String::new(),
-            pensar: None,
-            revisar_lo_dicho: false,
-        }
-    }
 }
 
 impl Default for Ajustes {
@@ -1118,18 +1100,6 @@ arranque_con_windows = true
     }
 
     #[test]
-    fn la_sincronizacion_automatica_esta_encendida_salvo_que_el_usuario_la_apague() {
-        // Android 27-oct-2026 (`encendidaSegun`): sin nada guardado,
-        // encendida; lo apagado a mano se respeta.
-        let nuevo: Ajustes = toml::from_str("").unwrap();
-        assert!(nuevo.sincro.automatica && nuevo.sincro.presencia);
-        let sin_tocar: Ajustes = toml::from_str("[sincro]\nlo_mio_manda = false").unwrap();
-        assert!(sin_tocar.sincro.automatica);
-        let apagada: Ajustes = toml::from_str("[sincro]\nautomatica = false").unwrap();
-        assert!(!apagada.sincro.automatica);
-    }
-
-    #[test]
     fn la_pila_se_lee_del_toml_y_se_apaga_entera_con_un_cero() {
         let a: Ajustes =
             toml::from_str("[capturas]\napilar_segundos = 25\nesquina = \"arriba-izquierda\"")
@@ -1221,6 +1191,26 @@ arranque_con_windows = true
 
         assert!(a.arranque_con_windows);
         assert_eq!(a.atajos, Atajos::default());
+    }
+
+    /// **La automatica, encendida salvo que el usuario la apague**
+    /// (27-oct-2026, guia de Android §5): sin nada guardado —instalacion
+    /// nueva o un fichero de antes, con o sin `[sincro]`— vale `true`, para
+    /// los aparatos y para las personas de los chats compartidos; un `false`
+    /// escrito a mano se respeta y sobrevive a guardar.
+    #[test]
+    fn la_automatica_sin_guardar_esta_encendida_y_apagada_a_mano_se_respeta() {
+        assert!(Ajustes::default().sincro.automatica);
+        let viejo: Ajustes = toml::from_str("idioma = \"es\"\n").unwrap();
+        assert!(viejo.sincro.automatica, "sin [sincro]");
+        let viejo: Ajustes = toml::from_str("[sincro]\npresencia = true\n").unwrap();
+        assert!(viejo.sincro.automatica, "con [sincro] pero sin la clave");
+        let u = temporal("automatica-apagada");
+        fs::write(u.fichero_ajustes(), "[sincro]\nautomatica = false\n").unwrap();
+        let a = cargar(&u).unwrap();
+        assert!(!a.sincro.automatica, "caso negativo: la apago el usuario");
+        guardar(&u, &a).unwrap();
+        assert!(!cargar(&u).unwrap().sincro.automatica);
     }
 
     #[test]

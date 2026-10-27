@@ -218,8 +218,10 @@ miniatura.
 ### El asistente
 
 Un chat más, «Asistente», con una IA que hace cosas dentro de PixPin. **Solo si tú la activas**
-en Ajustes → Asistente, con tu propia clave: Claude (Haiku) o DeepSeek; el modelo local va aparte.
-El modelo se cambia desde la pastilla de arriba del propio chat.
+en Ajustes → Asistente, con tu propia clave: Claude (Haiku) o DeepSeek. Contesta solo con la nube
+(el modelo local se quitó el 27-oct-2026, como en Android); quien lo tenía bajado ve una vez en el
+chat cuánto ocupa y un botón para liberar el espacio. El modelo se cambia desde la pastilla de
+arriba del propio chat.
 
 - **Lee y entiende lo tuyo**: los PDF, Word, Excel y fotos del chat (con OCR), y busca en todos
   tus proyectos con la fecha y la hora de cada cosa.

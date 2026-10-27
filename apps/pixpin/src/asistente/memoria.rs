@@ -243,12 +243,10 @@ pub fn guardar_en_segundo_plano(
 /// hace nada: la memoria sigue como estaba.
 pub fn al_cerrar(raiz: &Path, conversacion: Vec<(bool, String)>) {
     use pixpin_ia::nube::Proveedor;
-    if super::nube::eleccion_reciente(raiz) == super::nube::Eleccion::Local
-        || !super::nube::hay_clave(Proveedor::Claude)
-    {
+    if !super::nube::hay_clave(Proveedor::Claude) {
         return;
     }
-    let Ok(motor) = super::nube::motor(Proveedor::Claude, None, false) else {
+    let Ok(motor) = super::nube::motor(Proveedor::Claude, false) else {
         return;
     };
     let Some(m) = de(raiz, Proveedor::Claude.nombre()) else {

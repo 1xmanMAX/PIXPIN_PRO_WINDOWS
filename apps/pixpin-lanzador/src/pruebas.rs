@@ -3466,7 +3466,7 @@ fn el_motor_sale_de_los_ajustes() {
     );
     assert_eq!(
         motor_de_toml("idioma = \"es\"\n[asistente]\nmodelo = \"qwen3.5-0.8b\"\nmotor = \"local\""),
-        "el modelo de este PC (qwen3.5-0.8b)"
+        "la nube (Claude Haiku 5.5 o DeepSeek)"
     );
     assert_eq!(
         motor_de_toml("[asistente]\nmotor = \"deepseek\""),
@@ -3475,7 +3475,7 @@ fn el_motor_sale_de_los_ajustes() {
     // Caso negativo: un `motor` de otra tabla no cuenta.
     assert_eq!(
         motor_de_toml("[otra]\nmotor = \"claude\"\n[asistente]\n"),
-        "el modelo de este PC (Qwen 3.5 2B)"
+        "la nube (Claude Haiku 5.5 o DeepSeek)"
     );
     let r = raiz("cola-motor");
     fs::write(

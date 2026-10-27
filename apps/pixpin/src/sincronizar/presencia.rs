@@ -164,41 +164,18 @@ impl Drop for Suscripcion {
     }
 }
 
-/// **Que se sondee ya**, sin esperar a la espera de la sonda (al volver la
-/// red, 27-oct-2026: la Wi-Fi que se reconecta es justo cuando hay cosas
-/// pendientes con el otro).
+/// Que la sonda pregunte ya, sin acabar su espera: lo pide la automatica
+/// al volver la red (27-oct-2026), que es justo cuando hay cosas pendientes
+/// con los demas.
 static SONDEAR_YA: AtomicBool = AtomicBool::new(false);
 
-/// Pide que la sonda pregunte ya.
 pub(crate) fn sondear_ya() {
     SONDEAR_YA.store(true, Ordering::SeqCst);
 }
 
-/// Si alguien pidio sondear ya (y lo olvida).
+/// Si alguien pidio [`sondear_ya`] desde la ultima vez (y lo olvida).
 pub(crate) fn tomar_sondear_ya() -> bool {
     SONDEAR_YA.swap(false, Ordering::SeqCst)
-}
-
-/// **La direccion de este equipo en la red local**, sin mandar nada: la que
-/// elegiria el sistema para salir (un socket UDP «conectado» no manda ningun
-/// paquete). `None` sin red.
-pub(crate) fn red_local() -> Option<std::net::IpAddr> {
-    let s = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
-    s.connect(("192.0.2.1", 9)).ok()?;
-    let ip = s.local_addr().ok()?.ip();
-    (!ip.is_unspecified() && !ip.is_loopback()).then_some(ip)
-}
-
-/// **Si la red volvio o cambio** desde `antes` (lo visto la ultima vez, que
-/// se pone al dia). Volver de no tener red, o pasar a otra, cuenta; perderla
-/// no.
-pub(crate) fn volvio_la_red(
-    antes: &mut Option<std::net::IpAddr>,
-    ahora: Option<std::net::IpAddr>,
-) -> bool {
-    let volvio = ahora.is_some() && ahora != *antes;
-    *antes = ahora;
-    volvio
 }
 
 /// Cuanto espera la sonda antes de volver a preguntar.
@@ -223,18 +200,13 @@ mod pruebas {
     }
 
     #[test]
-    fn la_red_que_vuelve_o_cambia_cuenta_y_perderla_no() {
-        let ip = |s: &str| Some(s.parse::<std::net::IpAddr>().unwrap());
-        let mut antes = None;
-        assert!(volvio_la_red(&mut antes, ip("192.168.1.5")), "volvio");
-        assert!(!volvio_la_red(&mut antes, ip("192.168.1.5")), "sigue igual");
-        assert!(!volvio_la_red(&mut antes, None), "perderla no");
-        assert!(volvio_la_red(&mut antes, ip("192.168.1.5")), "y otra vez");
-        assert!(volvio_la_red(&mut antes, ip("10.0.0.2")), "otra red");
+    fn sondear_ya_se_pide_una_vez_y_se_olvida() {
         let _ = tomar_sondear_ya();
+        assert!(!tomar_sondear_ya(), "caso negativo: nadie lo pidio");
+        sondear_ya();
         sondear_ya();
         assert!(tomar_sondear_ya());
-        assert!(!tomar_sondear_ya());
+        assert!(!tomar_sondear_ya(), "dos peticiones, una sonda");
     }
 
     #[test]
