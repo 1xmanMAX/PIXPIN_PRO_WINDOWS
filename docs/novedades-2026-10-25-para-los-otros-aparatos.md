@@ -86,6 +86,22 @@ Al terminar una grabacion entran en el chat, con numeros seguidos:
   hace con las mini-apps). Opcional: la tarjeta de la grabacion y no
   ensenar sueltos los mensajes de una carpeta.
 
+### 3.3 El movil como camara de la reunion (27-oct-2026)
+
+- Mientras el PC graba, **el movil hace las fotos y clips cortos** y entran
+  en la clase en su minuto, como una captura mas. Va por el canal cifrado del
+  grupo y el `suelto` de siempre, con la capacidad `camara1` en el `hola`:
+  `camara_remota` (el PC le pasa al movil en que milisegundo va la grabacion
+  y si esta en pausa) y `suelto` con `destino: "grabacion"` y `ms` (el
+  minuto calculado en el movil).
+- Campos nuevos: en la nota de voz `clips: [{ms, duracionMs, id}]`; en cada
+  foto o clip del movil `enGrabacion` (un clip, con `duracionMs`),
+  `fuente: "movil"`, `deAparato` y `tomadaEn`.
+- Guia completa (mensajes, JSON, flujo de la pantalla, CameraX, codecs):
+  [movil-como-camara.md](movil-como-camara.md).
+- **Android**: hacerla (§9 de la guia). **apple**: el nucleo ya tiene el
+  cable.
+
 ## 4. La ficha del chat (la isla al pulsar el nombre)
 
 - Pestanas nuevas en `Seccion` (`crates/pixpin-proyecto/src/cuaderno.rs`):

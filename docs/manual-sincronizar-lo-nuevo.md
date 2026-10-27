@@ -125,6 +125,24 @@ En Android lo natural es la voz en `files/voz/` y el resto en
   `enGrabacion.ms` es el ultimo `<=` al minuto que suena; los marcadores
   como fichas con su minuto en la letra.
 
+### El movil como camara (27-oct-2026)
+
+Con la capacidad `camara1` en el `hola` de los dos, el movil hace fotos y
+clips para la grabacion que esta en curso en el PC y entran en la clase en
+su minuto. No es sincronizacion: va por `camara_remota` y por `suelto` con
+`destino: "grabacion"` (lo de «Enviar a tus aparatos»). Lo que queda en el
+chat si viaja como siempre:
+
+| Mensaje | `resto` nuevo |
+|---|---|
+| La nota de voz (`VOZ`) | `clips: [{ms, duracionMs, id}]` en orden de `ms` (los clips de video del movil; las fotos van en `capturas`, como siempre) |
+| Cada foto del movil (`IMAGEN`) | `enGrabacion: {de, ms}`, `fuente: "movil"`, `deAparato`, `tomadaEn` |
+| Cada clip del movil (`ARCHIVO`, `.mp4`) | `enGrabacion: {de, ms, duracionMs}`, `fuente: "movil"`, `deAparato` |
+
+Y cada una en la carpeta de la grabacion, en su minuto (§5.1). Conservar
+todo eso tal cual. Mensajes, flujo y tareas de Android:
+[movil-como-camara.md](movil-como-camara.md).
+
 ## 2. La biblioteca de figuras
 
 - Fichero `files/pins/draw/figuras.json` en el movil (donde lo lee
@@ -306,6 +324,9 @@ archivo binario (no entra en `esTexto`).
       una carpeta.
 - [ ] Datos moviles: si se quiere, no traer archivos grandes fuera de la
       Wi-Fi (se ofrecen otra vez en la vuelta siguiente).
+- [ ] El movil como camara de la reunion del PC (`camara1`):
+      [movil-como-camara.md §9](movil-como-camara.md). Conservar `clips` en
+      la nota y `fuente`, `deAparato`, `tomadaEn` en lo que llega.
 
 ### Mac, iPad e iPhone (`apple/`)
 
