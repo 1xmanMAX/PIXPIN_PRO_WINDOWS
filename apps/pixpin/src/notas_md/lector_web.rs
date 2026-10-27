@@ -402,7 +402,8 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         .unwrap_or(1.0);
     let (mut pin, mut ventana, hecha, listo_ya) = match repuesto {
         Some(r) => {
-            r.pagina.poner_titulo(&titulo_de_ventana(&nombre, cx.textos));
+            r.pagina
+                .poner_titulo(&titulo_de_ventana(&nombre, cx.textos));
             (r.pin, r.ventana, Some(r.pagina), r.listo)
         }
         None => {
@@ -410,7 +411,9 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
             let pin = PinLector::nuevo(area_pin, e).con_extension("md");
             let ventana =
                 VentanaOverlay::nueva_llana(pin.area, &titulo_de_ventana(&nombre, cx.textos))
-                    .map_err(|e| anyhow::anyhow!("no se pudo abrir la ventana de la nota: {e:?}"))?;
+                    .map_err(|e| {
+                        anyhow::anyhow!("no se pudo abrir la ventana de la nota: {e:?}")
+                    })?;
             (pin, ventana, None, false)
         }
     };

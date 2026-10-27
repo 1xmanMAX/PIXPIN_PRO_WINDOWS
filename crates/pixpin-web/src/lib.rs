@@ -337,7 +337,11 @@ static SIN_FOCO_HASTA: AtomicU64 = AtomicU64::new(0);
 
 fn reloj_ms() -> u64 {
     static INICIO: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    INICIO.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64 + 1
+    INICIO
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_millis() as u64
+        + 1
 }
 
 /// Durante `ms` milisegundos desde ahora, las paginas nuevas no toman el

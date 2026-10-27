@@ -318,7 +318,9 @@ mod pruebas {
     #[test]
     fn los_textos_van_al_lector_de_notas_y_el_codigo_coloreado() {
         use std::path::Path;
-        for n in ["a.txt", "b.log", "c.csv", "d.json", "e.py", "f.xml", "g.yaml"] {
+        for n in [
+            "a.txt", "b.log", "c.csv", "d.json", "e.py", "f.xml", "g.yaml",
+        ] {
             assert!(super::super::es_texto_para_nota(Path::new(n)), "{n}");
         }
         for n in ["a.md", "b.html", "c.pdf", "d.png", "e.docx"] {

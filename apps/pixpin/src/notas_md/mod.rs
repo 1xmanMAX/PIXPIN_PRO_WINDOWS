@@ -348,29 +348,29 @@ fn correr(
     };
     let resultado = lector_web::correr(
         lector_web::Contexto {
-        textos,
-        idioma,
-        ubicacion,
-        aparato: &aparato,
-        actual: actual.clone(),
-        texto,
-        colocacion,
-        al_nacer: &mut |hwnd| {
-            apunte.con_ventana(hwnd);
-            if let Ok(mut v) = ABIERTAS.lock() {
-                v.push((inicial.clone(), hwnd));
-            }
-        },
-        al_cambiar_destino: &mut |antes, nuevo| {
-            apunte.cambiar_clase(Clase::Nota {
-                destino: nuevo.clone(),
-            });
-            if let Ok(mut v) = ABIERTAS.lock() {
-                for (d, _) in v.iter_mut().filter(|(d, _)| d == antes) {
-                    *d = nuevo.clone();
+            textos,
+            idioma,
+            ubicacion,
+            aparato: &aparato,
+            actual: actual.clone(),
+            texto,
+            colocacion,
+            al_nacer: &mut |hwnd| {
+                apunte.con_ventana(hwnd);
+                if let Ok(mut v) = ABIERTAS.lock() {
+                    v.push((inicial.clone(), hwnd));
                 }
-            }
-        },
+            },
+            al_cambiar_destino: &mut |antes, nuevo| {
+                apunte.cambiar_clase(Clase::Nota {
+                    destino: nuevo.clone(),
+                });
+                if let Ok(mut v) = ABIERTAS.lock() {
+                    for (d, _) in v.iter_mut().filter(|(d, _)| d == antes) {
+                        *d = nuevo.clone();
+                    }
+                }
+            },
         },
         repuesto,
     );
