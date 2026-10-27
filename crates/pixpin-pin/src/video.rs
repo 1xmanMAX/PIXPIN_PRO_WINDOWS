@@ -175,8 +175,7 @@ pub fn examinar(ruta: &Path) -> Option<FichaVideo> {
     arrancar_mf();
     let url = HSTRING::from(ruta.as_os_str());
     // SAFETY: COM inicializado (o reutilizado) en este hilo; todo lo creado
-    // es propio. El arreglo de MFTEnumEx se libera con CoTaskMemFree tras
-    // soltar cada activador.
+    // es propio.
     unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
         let lector = MFCreateSourceReaderFromURL(&url, None).ok()?;
@@ -187,12 +186,28 @@ pub fn examinar(ruta: &Path) -> Option<FichaVideo> {
         let tam = tipo.GetUINT64(&MF_MT_FRAME_SIZE).unwrap_or(0);
         let (ancho, alto) = ((tam >> 32) as u32, tam as u32);
 
-        let entrada = MFT_REGISTER_TYPE_INFO {
-            guidMajorType: MFMediaType_Video,
-            guidSubtype: subtipo,
-        };
-        let mut lista: *mut Option<IMFActivate> = std::ptr::null_mut();
-        let mut cuantos = 0u32;
+        let decodificable = hay_decodificador(subtipo);
+        Some(FichaVideo {
+            ancho,
+            alto,
+            codec: codec_de_subtipo(subtipo),
+            decodificable,
+        })
+    }
+}
+
+/// Si hay algun decodificador de Media Foundation para `subtipo`. Si no se
+/// pudo preguntar, se da por bueno: ya lo dira el motor.
+fn hay_decodificador(subtipo: GUID) -> bool {
+    let entrada = MFT_REGISTER_TYPE_INFO {
+        guidMajorType: MFMediaType_Video,
+        guidSubtype: subtipo,
+    };
+    let mut lista: *mut Option<IMFActivate> = std::ptr::null_mut();
+    let mut cuantos = 0u32;
+    // SAFETY: el arreglo de MFTEnumEx es propio y se libera con
+    // CoTaskMemFree tras soltar cada activador.
+    unsafe {
         let ok = MFTEnumEx(
             MFT_CATEGORY_VIDEO_DECODER,
             MFT_ENUM_FLAG_ALL,
@@ -208,14 +223,21 @@ pub fn examinar(ruta: &Path) -> Option<FichaVideo> {
             }
             CoTaskMemFree(Some(lista as *const _));
         }
-        Some(FichaVideo {
-            ancho,
-            alto,
-            codec: codec_de_subtipo(subtipo),
-            // Si no se pudo preguntar, se da por bueno: ya lo dira el motor.
-            decodificable: !ok || cuantos > 0,
-        })
+        !ok || cuantos > 0
     }
+}
+
+/// **Si este equipo sabe ver HEVC (H.265)**: Windows no lo trae de serie
+/// (hace falta «HEVC Video Extensions» de la tienda). Lo pregunta el movil
+/// antes de grabar un clip para la reunion (`camara_remota`): sin el, graba
+/// en H.264.
+pub fn sabe_hevc() -> bool {
+    arrancar_mf();
+    // SAFETY: COM inicializado (o reutilizado) en este hilo.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
+    hay_decodificador(windows::Win32::Media::MediaFoundation::MFVideoFormat_HEVC)
 }
 
 /// Lo que comparten la ventana y el hilo del ritmo.
