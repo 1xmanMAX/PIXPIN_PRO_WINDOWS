@@ -695,3 +695,99 @@ fn al_lienzo_manda_texto_y_fotos_al_lienzo_por_su_nombre() {
     assert!(orden(&["al-lienzo", "Plano"]).is_err());
     assert!(orden(&["al-lienzo", "Plano", "C:\\a\\plano.pdf"]).is_err());
 }
+
+#[test]
+fn lectura_veloz_por_enlace_se_mira_y_va_de_fondo() {
+    use pixpin_docs::lectura_veloz::{Progreso, Tipo};
+    let u = "pixpinmax://lectura-veloz?v=1&doc=a1b2&ruta=C%3A%5CLibros%5CTesis%20final.pdf\
+             &tipo=pdf&pagina=4&frac=0.25&fraccion=0.3&t=1761562800000";
+    let l = de_enlace(u).unwrap();
+    assert_eq!(l.origen, Origen::Enlace { firmado: false });
+    let Orden::LecturaVeloz(p) = l.orden else {
+        panic!("no es de Lectura Veloz: {:?}", l.orden);
+    };
+    assert_eq!(
+        p,
+        Progreso {
+            doc: "a1b2".into(),
+            ruta: r"C:\Libros\Tesis final.pdf".into(),
+            tipo: Tipo::Pdf,
+            pagina: 4,
+            frac: 0.25,
+            fraccion: 0.3,
+            t: 1_761_562_800_000,
+        }
+    );
+    // El pedido para la PixPin que corre: del protocolo, y de la lista
+    // blanca aunque lleve una ruta (solo escribe lo leido de ese documento).
+    let pedido = pedido_de_lectura_veloz(&p);
+    valido(&pedido);
+    assert_eq!(pedido["accion"], json!("lectura_veloz"));
+    assert_eq!(pedido["ruta"], json!(r"C:\Libros\Tesis final.pdf"));
+    assert_eq!(seguridad(&pedido), Seguridad::Directa);
+    // Y lo mismo por `pixpin:` y con la seña de Android.
+    assert!(matches!(
+        de_enlace(&u.replace("pixpinmax://", "pixpin://atajo/"))
+            .unwrap()
+            .orden,
+        Orden::LecturaVeloz(_)
+    ));
+    assert!(es_de_lectura_veloz(&args(&[u])));
+    assert!(es_de_lectura_veloz(&args(&["--url", u])));
+    assert!(es_de_lectura_veloz(&args(&[
+        "lecturaveloz",
+        "--ruta",
+        "C:\\a.pdf"
+    ])));
+    assert!(!es_de_lectura_veloz(&args(&["pixpin://capturar"])));
+}
+
+#[test]
+fn lectura_veloz_por_la_consola_admite_la_ruta_suelta_y_sin_doc() {
+    let l = orden(&[
+        "lectura-veloz",
+        "C:\\libros\\cuento.epub",
+        "--tipo",
+        "texto",
+        "--fraccion",
+        "0.5",
+    ])
+    .unwrap();
+    let Orden::LecturaVeloz(p) = l.orden else {
+        panic!("no es de Lectura Veloz");
+    };
+    assert_eq!(p.ruta, "C:\\libros\\cuento.epub");
+    assert!(p.doc.starts_with("ruta:"), "{}", p.doc);
+    assert_eq!(p.fraccion, 0.5);
+}
+
+#[test]
+fn caso_negativo_lectura_veloz_no_deja_pasar_nada_raro() {
+    for u in [
+        // Ruta de red: Windows daria las credenciales al servidor.
+        "pixpin://lectura-veloz?doc=a&ruta=%5C%5Csrv%5Cx.pdf&tipo=pdf&pagina=1",
+        // Algo que no es un documento.
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Cx%5Ccalc.exe&tipo=pdf&pagina=1",
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Cx%5Cfin.ps1&tipo=texto",
+        // Relativa, o subiendo carpetas.
+        "pixpin://lectura-veloz?doc=a&ruta=x.pdf&tipo=pdf&pagina=1",
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Ca%5C..%5Cb.pdf&tipo=pdf&pagina=1",
+        // Numeros que no lo son, otra version, sin doc, sin tipo.
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Cx.pdf&tipo=pdf&pagina=NaN",
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Cx.pdf&tipo=pdf&pagina=1&frac=inf",
+        "pixpin://lectura-veloz?v=2&doc=a&ruta=C%3A%5Cx.pdf&tipo=pdf&pagina=1",
+        "pixpin://lectura-veloz?ruta=C%3A%5Cx.pdf&tipo=pdf&pagina=1",
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Cx.pdf&pagina=1",
+        // Un PDF sin pagina.
+        "pixpin://lectura-veloz?doc=a&ruta=C%3A%5Cx.pdf&tipo=pdf",
+    ] {
+        let f = de_enlace(u).expect_err(u);
+        assert_eq!(f.codigo, codigo::NO_SE_ENTIENDE, "{u}");
+    }
+    // Por el pedido a mano, una ruta de red tampoco.
+    let p = pedido(
+        "lectura_veloz",
+        json!({"doc":"a","ruta":"\\\\srv\\x.pdf","tipo":"pdf","pagina":"1"}),
+    );
+    assert!(matches!(seguridad(&p), Seguridad::Prohibida(_)));
+}

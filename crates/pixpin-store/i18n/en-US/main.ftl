@@ -680,6 +680,10 @@ lector-auto-menos-de-un-minuto = under 1 min
 lector-auto-terminado = Finished
 lector-auto-contando = Counting the words…
 lector-ver-como-texto = View as text (like a Word file)
+# Lectura Veloz, the speed-reading app (27-Oct-2026).
+lector-lectura-veloz = ⚡ Speed reading
+lector-lectura-veloz-no-instalada = Lectura Veloz isn't installed on this PC (the lecturaveloz:// link is missing). Install it and try again.
+lector-lectura-veloz-no-se-pudo = Couldn't open Lectura Veloz: { $motivo }
 lector-pasando-a-texto = Turning the PDF into text…
 lector-texto-escaneo = This PDF has no text to extract: it is probably a scan (a photo of the pages)
 lector-texto-cifrado = The PDF is password protected

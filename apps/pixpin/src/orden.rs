@@ -55,6 +55,12 @@ pub fn ejecutar_si_toca() -> Option<i32> {
     let llamada = orden::de_argumentos(&args, &|p: &Path| p.is_file())?;
     Some(match llamada {
         Ok(l) => ejecutar(l),
+        // Lo de Lectura Veloz llega de fondo mientras se lee alli: ningun
+        // cuadro, solo la salida de errores.
+        Err(f) if orden::es_de_lectura_veloz(&args) => {
+            pixpin_shell::consola::escribir_error(&format!("pixpinmax: {}\n", f.motivo));
+            f.codigo
+        }
         Err(f) => {
             let enlace = args.iter().any(|a| orden::es_enlace(a));
             decir_fallo(&f.motivo, enlace);
@@ -129,6 +135,39 @@ fn ejecutar(l: Llamada) -> i32 {
             None => codigo::RECHAZADO,
         },
         Orden::Pedidos(pedidos) => mandar(pedidos, &l.origen, l.sin_arrancar),
+        Orden::LecturaVeloz(p) => lectura_veloz(&p),
+    }
+}
+
+/// **Lo leido en Lectura Veloz, de fondo** (`pixpinmax://lectura-veloz?…`):
+/// a la PixPin que corre, para que lo lleve tambien un lector abierto de ese
+/// documento, sin arrancarla si no corre y sin traer nada al frente (el
+/// pedido no abre ventanas, `pedidos::atender`). Si no corre, o no lo
+/// entiende (una version de antes), lo escribe esta misma copia y se va.
+/// Nunca un cuadro: quien lo manda es otro programa mientras se lee alli.
+fn lectura_veloz(p: &pixpin_docs::lectura_veloz::Progreso) -> i32 {
+    // Lo que no es un fichero de verdad no se le manda a nadie.
+    if !Path::new(&p.ruta).is_file() {
+        pixpin_shell::consola::escribir_error(&format!(
+            "pixpinmax: lectura-veloz: {} no es un fichero\n",
+            p.ruta
+        ));
+        return codigo::FALLO;
+    }
+    // `enviar_pedido` y no `enviar_pedidos_o_arrancar`: ni se arranca la app
+    // ni se le da permiso para pasar al frente (`AllowSetForegroundWindow`).
+    let pedido = orden::pedido_de_lectura_veloz(p).to_string();
+    if pixpin_shell::mensajero::enviar_pedido(&pedido)
+        == pixpin_shell::mensajero::respuesta::ACEPTADO
+    {
+        return codigo::ACEPTADO;
+    }
+    match crate::lectura_veloz::apuntar(p) {
+        Ok(()) => codigo::ACEPTADO,
+        Err(m) => {
+            pixpin_shell::consola::escribir_error(&format!("pixpinmax: lectura-veloz: {m}\n"));
+            codigo::FALLO
+        }
     }
 }
 

@@ -681,6 +681,10 @@ lector-auto-menos-de-un-minuto = menos de 1 min
 lector-auto-terminado = Terminado
 lector-auto-contando = Contando las palabras…
 lector-ver-como-texto = Ver como texto (como un Word)
+# Lectura Veloz, la app de lectura rapida (27-oct-2026).
+lector-lectura-veloz = ⚡ Lectura veloz
+lector-lectura-veloz-no-instalada = Lectura Veloz no está instalada en este equipo (falta el enlace lecturaveloz://). Instálala y vuelve a probar.
+lector-lectura-veloz-no-se-pudo = No se pudo abrir Lectura Veloz: { $motivo }
 lector-pasando-a-texto = Pasando el PDF a texto…
 lector-texto-escaneo = Este PDF no tiene texto que se pueda sacar: seguramente es un escaneo (una foto de las hojas)
 lector-texto-cifrado = El PDF está protegido con contraseña

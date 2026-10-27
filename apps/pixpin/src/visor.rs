@@ -245,6 +245,9 @@ enum Accion {
     AutoBoton(lector::BotonAuto),
     /// Un PDF leido como texto: «Ver el PDF original, en hojas».
     VerPdf,
+    /// «⚡ Lectura veloz»: seguir leyendo en la app de lectura rapida, desde
+    /// el verde de la voz o desde donde se va (`crate::lectura_veloz`).
+    LecturaVeloz,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -512,10 +515,19 @@ pub fn abrir(
     // vuelta trabaja con la de ahora.
     let mut ruta_viva = ruta.to_path_buf();
     let mut ruta_nueva: Option<PathBuf> = None;
+    // Abierto para Lectura Veloz, que mueve el verde mientras se lee alli.
+    let _para_lectura_veloz = crate::lectura_veloz::abierto(ruta);
     while vivo {
         let ruta_de_la_vuelta = ruta_viva.clone();
         let ruta: &Path = &ruta_de_la_vuelta;
         pixpin_shell::overlay::bombear_pendientes();
+        // Lo leido en Lectura Veloz (de fondo): el verde y la vista, ahi.
+        if let Some(p) = crate::lectura_veloz::tomar(ruta) {
+            if let Some(f) = al_dia_de_lectura_veloz(&mut e, &p) {
+                ir_a = Some(f);
+            }
+            hay_que_pintar = true;
+        }
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if pin.es_de_la_barra(hwnd) {
                 let (accion, _) = pin.evento_barra(&evento, &mut ventana);
@@ -1872,6 +1884,7 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
     }
     filas.extend([
         (textos.t("visor-letra"), Accion::Letra),
+        (textos.t("lector-lectura-veloz"), Accion::LecturaVeloz),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
@@ -3030,6 +3043,10 @@ fn hacer(
         Accion::AjusteVoz(leer_en_voz::AjusteVoz::ElegirVoz) => e.elegir_voz = true,
         Accion::Auto => alternar_auto(e, textos),
         Accion::AutoBoton(b) => boton_de_auto(e, b),
+        Accion::LecturaVeloz => {
+            e.panel = false;
+            a_lectura_veloz(e, textos, ruta);
+        }
         Accion::VerPdf => {
             e.panel = false;
             if let Some(pdf) = &e.pdf_de_origen {
@@ -3140,6 +3157,52 @@ fn hacer(
             let _ = pixpin_shell::abrir_ubicacion(&carpeta_de_salida(ubicacion));
         }
     }
+}
+
+/// **«⚡ Lectura veloz»**: lo de aqui al disco (si cambio) y el documento a
+/// la app de lectura rapida, desde el verde de la voz si lo hay y si no
+/// desde donde se va. Si no esta instalada, se dice en el aviso.
+fn a_lectura_veloz(e: &mut Estado, textos: &Catalogo, ruta: &Path) {
+    use pixpin_docs::lectura_veloz as lv;
+    // Sin medir aun, la fraccion de la vista no dice nada: la de antes.
+    if e.alto_doc > 0.0 {
+        e.ajustes.sitio = fraccion(e);
+    }
+    e.ajustes.zoom = e.zoom;
+    crate::lectura_veloz::guardar_si_cambio(ruta, &e.ajustes);
+    let donde = e.ajustes.voz.map_or(e.ajustes.sitio, |(_, f)| f);
+    let tipo = lv::tipo_de(ruta).unwrap_or(lv::Tipo::Texto);
+    let salida = crate::lectura_veloz::salida(ruta, tipo, 0, 0.0, donde, 0);
+    if let Err(no) = crate::lectura_veloz::enviar(&salida) {
+        e.aviso = Some((no.aviso(textos), ahora_ms() + 6000));
+    }
+}
+
+/// **Lo que llego de Lectura Veloz con el lector abierto**: el verde de la
+/// voz y el sitio, en memoria (al cerrar se guarda esto y no lo de antes).
+/// Con el documento medido, el parrafo del verde es el de verdad (el que
+/// empieza mas cerca de esa fraccion). Devuelve a que fraccion llevar la
+/// vista (de corrido).
+fn al_dia_de_lectura_veloz(
+    e: &mut Estado,
+    p: &pixpin_docs::lectura_veloz::Progreso,
+) -> Option<f32> {
+    use pixpin_docs::lectura_veloz::Destino;
+    crate::lectura_veloz::aplicar(&mut e.ajustes, p, ahora_ms() as i64);
+    if p.destino() != Destino::Corrido {
+        return None;
+    }
+    let f = p.fraccion.clamp(0.0, 1.0);
+    let idx = para_leer(&e.colocados);
+    if !idx.is_empty() && e.alto_doc > 0.0 {
+        let fracciones = fracciones_de(e, &idx);
+        if let Some(i) =
+            voz_alta::parrafo_de_la_marca(&fracciones, (voz_alta::PARRAFO_DESCONOCIDO, f))
+        {
+            e.ajustes.voz = Some((i, f));
+        }
+    }
+    Some(f)
 }
 
 fn guardar_ajustes(e: &Estado, ruta: &Path) {
@@ -3542,6 +3605,35 @@ mod pruebas {
             },
             pdf_de_origen: None,
         }
+    }
+
+    #[test]
+    fn lectura_veloz_esta_en_el_menu_y_lo_que_llega_mueve_el_verde() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut e = estado_de_prueba();
+        assert!(
+            filas_del_panel(&e, &textos)
+                .iter()
+                .any(|(_, a)| *a == Accion::LecturaVeloz)
+        );
+        e.ajustes.voz = Some((10, 0.1));
+        e.ajustes.tamano = 130;
+        let campos = [
+            ("doc", "uid-1"),
+            ("ruta", r"C:\x\libro.epub"),
+            ("tipo", "texto"),
+            ("fraccion", "0.3"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        let p = pixpin_docs::lectura_veloz::Progreso::de_campos(&campos).unwrap();
+        assert_eq!(al_dia_de_lectura_veloz(&mut e, &p), Some(0.3));
+        // Sin medir, el parrafo que no se sabe (`-1`, como el movil): el
+        // lector lo busca por la fraccion al escuchar.
+        assert_eq!(e.ajustes.voz, Some((voz_alta::PARRAFO_DESCONOCIDO, 0.3)));
+        assert_eq!(e.ajustes.sitio, 0.3);
+        assert_eq!(e.ajustes.tamano, 130);
     }
 
     // ---- La pagina que sube sola y el PDF leido como texto ----
