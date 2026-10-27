@@ -14,6 +14,7 @@
 //!
 //! Capa 0: no depende de ningun crate de PixPin.
 
+pub mod archivos;
 pub mod atajo;
 pub mod entorno;
 pub mod union;
