@@ -10,6 +10,7 @@
 //! captura corrientes.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+pub mod camara;
 pub mod dispositivo;
 pub mod duplicacion;
 pub mod instantanea;
