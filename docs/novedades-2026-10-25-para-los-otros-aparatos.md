@@ -86,6 +86,73 @@ Al terminar una grabacion entran en el chat, con numeros seguidos:
   hace con las mini-apps). Opcional: la tarjeta de la grabacion y no
   ensenar sueltos los mensajes de una carpeta.
 
+### 3.3 Reunion presencial (27-oct-2026)
+
+El usuario: «supon que estoy en una reunion PRESENCIAL: que siga grabando
+aunque haya salido de la app, que aparezca un boton flotante para tomar
+FOTOS de la reunion y, como las capturas, que todo se adjunte a la reunion;
+y las fotos y las capturas a resolucion COMPLETA».
+
+**En el PC** (hecho): tercer modo **Presencial** en «Grabar clase». Graba el
+microfono (el sonido del equipo, apagado de salida) y la barra flotante
+(siempre encima, pequena, se arrastra, no sale en las capturas) lleva
+**«Foto»**: una foto con la camara del equipo (`MediaCapture`) a la mayor
+resolucion que tenga, guardada tal cual en JPEG; y **«Video»**: un clip corto
+con la camara (1080p30 como mucho, HEVC si la grafica lo codifica, si no
+H.264, ~5 Mbps a ritmo variable, AAC 96 kbps). Con varias camaras se elige
+en Preparar (la de atras primero: mira a la sala) y se recuerda. La barra
+vive en su propio hilo: cerrar el chat o dejar PixPin en la bandeja no corta
+nada; el icono de la bandeja dice «Grabando…» y «Salir» pregunta antes
+(«Si» termina y guarda; «No» sigue grabando). Las capturas de pantalla de
+los otros modos van en PNG a los pixeles de la pantalla, sin escalar; en el
+chat entran los bytes tal cual y solo las miniaturas se reducen. «Estudiar
+la clase» carga la imagen entera al acercarla.
+
+**Lo que se guarda** (lo mismo de la tabla del §3, con dos campos nuevos):
+
+| Mensaje | `resto` |
+|---|---|
+| La nota de voz (`VOZ`) | lo de siempre y, si hubo clips, `clips: [{ms, id, duracionMs}]` en orden de `ms` (**sin clips la clave se quita**, no `[]`) |
+| Cada foto de la camara (`IMAGEN`, `foto-<hora>-<n>.jpg`) | `enGrabacion: {de, ms}` (el minuto en que se pulso) y **`origen: "camara"`** |
+| Cada clip (`ARCHIVO`, `.mp4`) | `enGrabacion: {de, ms, duracionMs}` (`ms`: cuando empezo) y `origen: "camara"` |
+
+En la carpeta de la grabacion (§3.2) las fotos van como las capturas («⏱
+1:05») y cada clip con «▶ 1:05» en su minuto. `origen` falta en las capturas
+de pantalla (y en todo lo de antes): **falta = pantalla**. Las cuentas puras
+(modos, que camara, que resolucion, nombres, `clips`) estan en
+`crates/pixpin-proyecto/src/presencial.rs`.
+
+**En el movil es el uso natural** (por hacer en Android y iPhone):
+
+- **Grabar la reunion entera con el propio telefono**, en segundo plano:
+  servicio en primer plano (Android, `foregroundServiceType="microphone|camera"`)
+  o sesion de audio/camara en segundo plano (iOS), con la notificacion
+  permanente «Grabando…» y sus botones **Foto**, **Clip** y **Terminar**
+  (y, si se quiere, la burbuja flotante encima de otras apps). Dos formas:
+  - **Video de la reunion** (el movil apoyado mirando a la sala): HEVC
+    (H.265) por hardware, si no H.264; **1080p30 a ~4–6 Mbps VBR**, o
+    **720p a ~2,5 Mbps** para reuniones largas (se elige o se pasa solo a
+    720p pasada la hora); sonido **AAC 96 kbps mono**. Entra como el video
+    del §3 (`video: {id}` en la nota y `enGrabacion {de, ms: 0}` en el MP4).
+  - **Solo audio** (el movil en la mesa): la nota de voz de siempre.
+- **La nota de voz sale siempre** (con video tambien: la pista de audio a
+  `.m4a`), porque **la transcripcion se hace despues de su audio**, como en
+  el PC (Whisper o Qwen3 en el aparato, o en el PC al sincronizar): el texto
+  de la nota en trozos de ~15 s, cada linea `[m:ss] texto`.
+- **Fotos durante la reunion** a la resolucion entera de la camara de atras
+  (sin reducir; JPEG de la camara, o HEVC/HEIC convertido a JPEG ~92 para
+  que el PC lo lea), con `enGrabacion {de, ms}` y `origen: "camara"`; y
+  **clips** con su `duracionMs`, como en la tabla de arriba. Tocar la foto o
+  el clip en la notificacion no saca la app delante.
+- **Mismo formato, para que sincronice al PC sin tocar nada**: la nota con
+  su transcripcion, el video, las fotos y los clips enlazados por `resto`, y
+  la carpeta de la grabacion del §3.2. El PC los ensena en «Estudiar la
+  clase» en su minuto (los clips, con ▶ en la lista de marcadores; un clic
+  lleva al minuto y lo abre).
+- **El movil como camara del PC** (otra cosa: el telefono manda su imagen a
+  una grabacion que hace el PC) va en
+  [movil-como-camara.md](movil-como-camara.md); no se repite aqui.
+
 ## 4. La ficha del chat (la isla al pulsar el nombre)
 
 - Pestanas nuevas en `Seccion` (`crates/pixpin-proyecto/src/cuaderno.rs`):
