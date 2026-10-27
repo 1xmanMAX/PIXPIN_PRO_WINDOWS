@@ -54,9 +54,35 @@
 //!
 //! Las fotos se hacen en su propio hilo ([`fotografo`]): la barra no se
 //! congela mientras se captura una zona grande.
+//!
+//! **Reunion presencial** (27-oct-2026, «supon que estoy en una reunion
+//! PRESENCIAL: que siga grabando aunque haya salido de la app, que aparezca
+//! un boton flotante para tomar FOTOS … y todo se adjunte a la reunion; y a
+//! resolucion COMPLETA»): el tercer modo. Graba el microfono (el sonido del
+//! equipo, apagado de salida) y el boton grande de la barra es **«Foto»**:
+//! una foto con la camara del equipo a su resolucion entera ([`camara`],
+//! `MediaCapture`), que entra como una captura mas (`IMAGEN` con
+//! `enGrabacion {de, ms}` y `origen: "camara"`). Al lado, **«Video»**
+//! graba un clip corto con la camara (1080p30 como mucho, HEVC si la
+//! grafica lo codifica, si no H.264), que entra con `enGrabacion {de, ms,
+//! duracionMs}`. Con varias camaras se elige en Preparar (la de atras de una
+//! tableta va primero: mira a la sala) y se recuerda. Lo puro, en
+//! `pixpin_proyecto::presencial`.
+//!
+//! **Sigue grabando sin PixPin delante**: la barra vive en su hilo, siempre
+//! encima, y no depende de la ventana del chat (cerrarla no corta nada). El
+//! icono de la bandeja dice «Grabando…» mientras tanto ([`grabando`]), y
+//! «Salir» de la bandeja pregunta antes y, si se termina, guarda todo
+//! ([`terminar_para_salir`]).
+//!
+//! **Resolucion entera**: las capturas van en PNG al tamano de la pantalla
+//! (sus pixeles de verdad, sin escalar) y las fotos de la camara en el JPEG
+//! que da a su resolucion mayor. Al chat entran los bytes tal cual
+//! (`almacen::guardar_adjunto`); solo las miniaturas se reducen.
 
 #![forbid(unsafe_code)]
 
+mod camara;
 mod fotografo;
 mod video;
 
@@ -70,6 +96,7 @@ use anyhow::{Context, Result};
 use pixpin_codec::imagen::ImagenRgba;
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor_video::{Codificador, Perfil};
+use pixpin_proyecto::presencial::{self, FalloDeCamara};
 use pixpin_proyecto::{almacen, cuaderno};
 use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
@@ -117,8 +144,29 @@ pub(crate) struct Rotulos {
     /// del titulo.
     modo_pantalla: String,
     modo_capturas: String,
+    modo_presencial: String,
     sub_pantalla: String,
     sub_capturas: String,
+    sub_presencial: String,
+    /// La fila de la camara en Preparar: «Cámara: …», con [`HUECO`].
+    camara: String,
+    buscando_camaras: String,
+    sin_camaras: String,
+    /// «Foto» y «Fotos: N · …» de la barra presencial.
+    foto: String,
+    fotos: String,
+    pista_foto: String,
+    foto_hecha: String,
+    abriendo_camara: String,
+    camara_lista: String,
+    /// Los fallos de la camara, en el orden de `FalloDeCamara`.
+    camara_sin: String,
+    camara_en_uso: String,
+    camara_sin_permiso: String,
+    camara_fallo: String,
+    clip_empezado: String,
+    clip_guardado: String,
+    clip_corto: String,
     /// La fila que explica «Captura» en el modo de capturas.
     captura_entera: String,
     pista_entera: String,
@@ -184,8 +232,26 @@ impl Rotulos {
             titulo: t.t("clase-titulo"),
             modo_pantalla: t.t("clase-modo-pantalla"),
             modo_capturas: t.t("clase-modo-capturas"),
+            modo_presencial: t.t("clase-modo-presencial"),
             sub_pantalla: t.t("clase-modo-pantalla-sub"),
             sub_capturas: t.t("clase-modo-capturas-sub"),
+            sub_presencial: t.t("clase-modo-presencial-sub"),
+            camara: con("clase-camara", "camara"),
+            buscando_camaras: t.t("clase-camara-buscando"),
+            sin_camaras: t.t("clase-camara-ninguna"),
+            foto: t.t("clase-foto"),
+            fotos: con("clase-fotos", "n"),
+            pista_foto: t.t("clase-pista-foto"),
+            foto_hecha: con("clase-foto-hecha", "minuto"),
+            abriendo_camara: t.t("clase-camara-abriendo"),
+            camara_lista: con("clase-camara-lista", "medida"),
+            camara_sin: t.t("clase-camara-sin"),
+            camara_en_uso: t.t("clase-camara-en-uso"),
+            camara_sin_permiso: t.t("clase-camara-sin-permiso"),
+            camara_fallo: t.t("clase-camara-fallo"),
+            clip_empezado: t.t("clase-clip-empezado"),
+            clip_guardado: con("clase-clip-guardado", "minuto"),
+            clip_corto: t.t("clase-clip-corto"),
             captura_entera: t.t("clase-captura-entera"),
             pista_entera: t.t("clase-pista-entera"),
             capturas_entera: con("clase-capturas-entera", "n"),
@@ -266,6 +332,16 @@ impl Rotulos {
         con(&self.video_con, &self.codificadores[i])
     }
 
+    /// Lo que se dice cuando la camara no puede.
+    fn de_la_camara(&self, f: FalloDeCamara) -> String {
+        match f {
+            FalloDeCamara::SinCamara => self.camara_sin.clone(),
+            FalloDeCamara::EnUso => self.camara_en_uso.clone(),
+            FalloDeCamara::SinPermiso => self.camara_sin_permiso.clone(),
+            FalloDeCamara::Otro => self.camara_fallo.clone(),
+        }
+    }
+
     fn de_un_fallo(&self, e: &pixpin_audio::ErrorAudio) -> String {
         match e {
             pixpin_audio::ErrorAudio::SinSonidoDelEquipo => self.sin_equipo.clone(),
@@ -284,40 +360,9 @@ fn con(plantilla: &str, que: &str) -> String {
     plantilla.replace(HUECO, que)
 }
 
-/// **Que se graba**: el selector de arriba de Preparar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Modo {
-    /// El video de la pantalla con su sonido.
-    Pantalla,
-    /// Solo el sonido, con capturas de la pantalla entera.
-    Capturas,
-}
-
-impl Modo {
-    /// La palabra con que se recuerda.
-    pub(super) fn palabra(self) -> &'static str {
-        match self {
-            Modo::Pantalla => "pantalla",
-            Modo::Capturas => "capturas",
-        }
-    }
-
-    /// Lo recordado. Lo que no se entiende (o nada) es el modo de capturas:
-    /// el que menos ocupa, que era el de siempre.
-    pub(super) fn de(palabra: &str) -> Modo {
-        match palabra.trim() {
-            "pantalla" => Modo::Pantalla,
-            _ => Modo::Capturas,
-        }
-    }
-
-    fn otro(self) -> Modo {
-        match self {
-            Modo::Pantalla => Modo::Capturas,
-            Modo::Capturas => Modo::Pantalla,
-        }
-    }
-}
+/// **Que se graba**: el selector de arriba de Preparar (lo puro, con sus
+/// pruebas, en `pixpin_proyecto::presencial`).
+pub(super) use pixpin_proyecto::presencial::Modo;
 
 /// Donde se recuerda el ultimo modo: al lado de las notas de voz, en este
 /// equipo (no viaja: es como se graba aqui).
@@ -329,6 +374,18 @@ fn modo_recordado(u: &Ubicacion) -> Modo {
     std::fs::read_to_string(fichero_del_modo(u))
         .map(|t| Modo::de(&t))
         .unwrap_or(Modo::Capturas)
+}
+
+/// Donde se recuerda la camara elegida (su identificador de Windows), al
+/// lado del modo.
+fn fichero_de_la_camara(u: &Ubicacion) -> PathBuf {
+    crate::voz::carpeta_de_audios(u).join("camara-de-grabar.txt")
+}
+
+fn recordar_camara(u: &Ubicacion, id: &str) {
+    if let Err(e) = std::fs::write(fichero_de_la_camara(u), id) {
+        tracing::debug!(?e, "no se pudo recordar la camara");
+    }
 }
 
 fn recordar_modo(u: &Ubicacion, m: Modo) {
@@ -344,6 +401,47 @@ fn recordar_modo(u: &Ubicacion, m: Modo) {
 /// Una sola a la vez: dos grabaciones se pelearian por el microfono, y las
 /// capturas no sabrian a cual van.
 static ABIERTA: AtomicBool = AtomicBool::new(false);
+
+/// Hay algo grabandose (abriendo el audio, grabando o cerrandolo): lo mira
+/// la bandeja para su «Grabando…» y «Salir» para preguntar antes.
+static GRABANDO: AtomicBool = AtomicBool::new(false);
+
+/// «Salir» de la bandeja pidio terminar y guardar: la barra termina sin
+/// pasar a texto y se cierra.
+static TERMINAR_YA: AtomicBool = AtomicBool::new(false);
+
+/// **Si se esta grabando una clase o reunion** ahora mismo.
+pub(crate) fn grabando() -> bool {
+    GRABANDO.load(Ordering::SeqCst)
+}
+
+/// **Termina y guarda la grabacion para salir de PixPin**: lo que hace
+/// «Terminar», sin pasar a texto (se pide luego en la nota), esperando como
+/// mucho `tope` a que este guardada. Devuelve si dio tiempo.
+pub(crate) fn terminar_para_salir(tope: Duration) -> bool {
+    if !ABIERTA.load(Ordering::SeqCst) {
+        return true;
+    }
+    TERMINAR_YA.store(true, Ordering::SeqCst);
+    let hasta = Instant::now() + tope;
+    while ABIERTA.load(Ordering::SeqCst) {
+        if Instant::now() >= hasta {
+            tracing::warn!("la clase no termino de guardarse antes de salir");
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    true
+}
+
+/// Apunta si se graba y, si cambio, se lo dice a la bandeja.
+fn poner_grabando(si: bool) {
+    if GRABANDO.swap(si, Ordering::SeqCst) != si
+        && !pixpin_shell::mensajero::pedir_ventana_principal(crate::ID_CLASE_EN_MARCHA)
+    {
+        tracing::debug!("la bandeja no se entero de la grabacion");
+    }
+}
 
 /// Por donde llega la zona elegida en el hilo principal, con su primera
 /// foto; `None` si se cancelo.
@@ -365,6 +463,7 @@ pub(crate) fn lanzar(pedido: Pedido, rotulos: Rotulos) {
         tracing::info!("ya hay una clase grabandose; no se abre otra");
         return;
     }
+    TERMINAR_YA.store(false, Ordering::SeqCst);
     let (tx, rx) = channel();
     *ZONA.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
     let hecho = std::thread::Builder::new()
@@ -381,6 +480,8 @@ pub(crate) fn lanzar(pedido: Pedido, rotulos: Rotulos) {
             }
             estado.cerrar(&pedido);
             *ZONA.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            poner_grabando(false);
+            TERMINAR_YA.store(false, Ordering::SeqCst);
             ABIERTA.store(false, Ordering::SeqCst);
         });
     if let Err(e) = hecho {
@@ -392,11 +493,29 @@ pub(crate) fn lanzar(pedido: Pedido, rotulos: Rotulos) {
 
 // --- Lo puro ---------------------------------------------------------------
 
-/// Una captura hecha grabando: en que milisegundo de la nota y el PNG.
+/// Una captura hecha grabando: en que milisegundo de la nota y sus bytes,
+/// tal cual se guardan (el PNG de la pantalla o el JPEG de la camara, a su
+/// resolucion entera).
 #[derive(Debug, Clone)]
 pub(super) struct Captura {
     pub ms: i64,
-    pub png: Vec<u8>,
+    pub bytes: Vec<u8>,
+    /// Si es una foto de la camara (JPEG) y no de la pantalla (PNG).
+    pub de_camara: bool,
+}
+
+impl Captura {
+    fn de_pantalla(ms: i64, png: Vec<u8>) -> Captura {
+        Captura {
+            ms,
+            bytes: png,
+            de_camara: false,
+        }
+    }
+
+    fn extension(&self) -> &'static str {
+        if self.de_camara { "jpg" } else { "png" }
+    }
 }
 
 /// El minuto de una captura en el pie y en los avisos: `12:34` o `1:02:03`.
@@ -458,8 +577,14 @@ pub(crate) fn captura_en(capturas: &[(i64, String)], posicion_ms: i64) -> Option
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Accion {
-    /// Uno de los dos modos del selector de arriba.
+    /// Uno de los modos del selector de arriba.
     Modo(Modo),
+    /// La fila de la camara (presencial): un clic pasa a la siguiente.
+    Camara,
+    /// «Foto» de la barra presencial.
+    Foto,
+    /// «Video» de la barra presencial: empieza o para un clip.
+    Clip,
     Microfono,
     Equipo,
     /// El perfil del video («Ligero», «Normal», «Nitido»): un clic pasa al
@@ -533,6 +658,19 @@ struct Estado {
     video_guardado: bool,
     /// El hilo de las fotos.
     fotografo: fotografo::Fotografo,
+    /// El hilo de la camara (reunion presencial).
+    camarografo: camara::Camarografo,
+    /// Las camaras del equipo, una vez buscadas, y la elegida.
+    camaras: Vec<pixpin_capture::camara::InfoCamara>,
+    camara: usize,
+    /// Buscando las camaras (la lista llega por aqui).
+    buscando_camaras: Option<Receiver<Vec<pixpin_capture::camara::InfoCamara>>>,
+    /// Los clips de la camara ya cerrados.
+    clips: Vec<camara::ClipHecho>,
+    /// Cuantos clips se han empezado (para su nombre temporal).
+    clips_empezados: usize,
+    /// Los clips guardados, para el «Guardada» del final.
+    clips_guardados: usize,
     /// El proyecto elegido, en `Pedido::proyectos`.
     proyecto: usize,
     temporal: PathBuf,
@@ -570,6 +708,13 @@ impl Estado {
             video_avisado: false,
             video_guardado: false,
             fotografo: fotografo::Fotografo::default(),
+            camarografo: camara::Camarografo::default(),
+            camaras: Vec::new(),
+            camara: 0,
+            buscando_camaras: None,
+            clips: Vec::new(),
+            clips_empezados: 0,
+            clips_guardados: 0,
             proyecto: 0,
             temporal: PathBuf::new(),
             capturas: Vec::new(),
@@ -583,6 +728,134 @@ impl Estado {
             para_estudiar: None,
         }
         .con_temporal(pedido)
+        .con_sonidos_del_modo()
+    }
+
+    /// Los sonidos del modo recordado (el presencial, solo el microfono) y,
+    /// si es el presencial, a buscar las camaras.
+    fn con_sonidos_del_modo(mut self) -> Estado {
+        (self.microfono, self.equipo) = self.modo.sonidos();
+        if self.modo.con_camara() {
+            self.buscar_camaras();
+        }
+        self
+    }
+
+    fn buscar_camaras(&mut self) {
+        if self.camaras.is_empty() && self.buscando_camaras.is_none() {
+            self.buscando_camaras = Some(camara::buscar_camaras());
+        }
+    }
+
+    /// Las camaras que llegaron de su hilo: se empieza con la recordada o
+    /// con la que mejor mira a la sala.
+    fn camaras_encontradas(&mut self, u: &Ubicacion) {
+        let Some(rx) = &self.buscando_camaras else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(v) => {
+                let recordada = std::fs::read_to_string(fichero_de_la_camara(u)).ok();
+                let lados: Vec<(String, presencial::Lado)> = v
+                    .iter()
+                    .map(|c| {
+                        let lado = match c.lado {
+                            pixpin_capture::camara::LadoCamara::Delante => {
+                                presencial::Lado::Delante
+                            }
+                            pixpin_capture::camara::LadoCamara::Detras => presencial::Lado::Detras,
+                            pixpin_capture::camara::LadoCamara::Fuera => presencial::Lado::Fuera,
+                        };
+                        (c.id.clone(), lado)
+                    })
+                    .collect();
+                self.camara = presencial::camara_elegida(&lados, recordada.as_deref()).unwrap_or(0);
+                self.camaras = v;
+                self.buscando_camaras = None;
+                // Se empezo a grabar antes de encontrarlas: se abre ahora.
+                if self.modo.con_camara()
+                    && matches!(self.fase, Fase::Abriendo(_) | Fase::Grabando(_))
+                    && let Some(c) = self.camaras.get(self.camara)
+                {
+                    let id = c.id.clone();
+                    self.camarografo.abrir(&id);
+                }
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => self.buscando_camaras = None,
+        }
+    }
+
+    /// Lo que vuelve del hilo de la camara.
+    fn de_la_camara(&mut self, r: &Rotulos) {
+        for v in self.camarografo.recoger() {
+            match v {
+                camara::Vuelta::Abierta(Ok((w, h))) => {
+                    if w > 0 {
+                        self.avisar(con(&r.camara_lista, &format!("{w}×{h}")));
+                    }
+                }
+                camara::Vuelta::Abierta(Err(f)) | camara::Vuelta::ClipEmpezado(Err(f)) => {
+                    self.avisar(r.de_la_camara(f));
+                }
+                camara::Vuelta::Foto(ms, Ok(jpg)) => {
+                    self.capturas.push(Captura {
+                        ms,
+                        bytes: jpg,
+                        de_camara: true,
+                    });
+                    self.destello = Some(Instant::now());
+                    self.avisar(con(&r.foto_hecha, &minuto(ms)));
+                }
+                camara::Vuelta::Foto(_, Err(f)) => self.avisar(r.de_la_camara(f)),
+                camara::Vuelta::ClipEmpezado(Ok(_)) => self.avisar(r.clip_empezado.clone()),
+                camara::Vuelta::ClipParado(Some(c)) => {
+                    self.avisar(con(&r.clip_guardado, &minuto(c.ms)));
+                    self.clips.push(c);
+                }
+                camara::Vuelta::ClipParado(None) => self.avisar(r.clip_corto.clone()),
+            }
+        }
+    }
+
+    /// La ruta del siguiente clip: al lado del temporal de la nota (en la
+    /// carpeta del proyecto: guardarlo luego es renombrarlo).
+    fn ruta_del_clip(&mut self) -> PathBuf {
+        self.clips_empezados += 1;
+        let tronco = self
+            .temporal
+            .file_stem()
+            .map(|t| t.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "clase".into());
+        self.temporal
+            .with_file_name(format!("{tronco}-clip-{}.mp4", self.clips_empezados))
+    }
+
+    /// Recoge lo ultimo de la camara al terminar: las fotos que faltaban y
+    /// el clip que se estuviera grabando.
+    fn acabar_la_camara(&mut self) {
+        for v in self.camarografo.acabar(Duration::from_secs(10)) {
+            match v {
+                camara::Vuelta::Foto(ms, Ok(jpg)) => self.capturas.push(Captura {
+                    ms,
+                    bytes: jpg,
+                    de_camara: true,
+                }),
+                camara::Vuelta::ClipParado(Some(c)) => self.clips.push(c),
+                camara::Vuelta::Foto(ms, Err(f)) => {
+                    tracing::warn!(?f, ms, "una foto de la reunion no se hizo");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Tira los clips (la grabacion se tira).
+    fn tirar_clips(&mut self) {
+        self.acabar_la_camara();
+        for c in self.clips.drain(..) {
+            let _ = std::fs::remove_file(&c.ruta);
+        }
     }
 
     fn con_temporal(mut self, pedido: &Pedido) -> Estado {
@@ -594,7 +867,7 @@ impl Estado {
 
     /// Si se graba el video de la pantalla.
     fn video(&self) -> bool {
-        self.modo == Modo::Pantalla
+        self.modo.con_video()
     }
 
     fn avisar(&mut self, texto: String) {
@@ -653,9 +926,10 @@ impl Estado {
     /// fue, el disco), las capturas y el video se guardan igual: una
     /// reunion sin su nota sigue valiendo por sus imagenes.
     fn guardar_todo(&mut self, pedido: &Pedido, parado: Parado) -> Guardado {
+        self.acabar_la_camara();
         for (ms, hecha) in self.fotografo.acabar(Duration::from_secs(5)) {
             match hecha {
-                Ok(png) => self.capturas.push(Captura { ms, png }),
+                Ok(png) => self.capturas.push(Captura::de_pantalla(ms, png)),
                 Err(e) => tracing::warn!(?e, ms, "una captura de la clase no se hizo"),
             }
         }
@@ -682,7 +956,16 @@ impl Estado {
             }
             otro => otro,
         };
-        if grabacion.is_none() && self.capturas.is_empty() && video.is_none() {
+        if corta {
+            for c in self.clips.drain(..) {
+                let _ = std::fs::remove_file(&c.ruta);
+            }
+        }
+        if grabacion.is_none()
+            && self.capturas.is_empty()
+            && video.is_none()
+            && self.clips.is_empty()
+        {
             let _ = std::fs::remove_file(&self.temporal);
             return Guardado {
                 voz: None,
@@ -816,15 +1099,22 @@ fn guardar(
     };
     let de = voz.as_ref().map(|v| v.id.clone());
     let carpeta = almacen::carpeta(raiz, proyecto);
-    let enlazar = |m: &mut cuaderno::Mensaje, ms: i64| {
+    // `de_camara`: la foto o el clip salio de la camara (`origen`), y se
+    // apunta aunque no haya nota con que enlazarlo.
+    let enlazar = |m: &mut cuaderno::Mensaje, ms: i64, de_camara: bool| {
+        if de_camara {
+            presencial::marcar_de_camara(&mut m.resto);
+        }
         if let Some(de) = &de {
             m.resto.insert(
                 "enGrabacion".into(),
                 serde_json::json!({ "de": de, "ms": ms }),
             );
-            if let Err(e) = cuaderno::reemplazar(&carpeta, m) {
-                tracing::warn!(?e, "un adjunto de la clase quedo sin enlazar");
-            }
+        }
+        if (de.is_some() || de_camara)
+            && let Err(e) = cuaderno::reemplazar(&carpeta, m)
+        {
+            tracing::warn!(?e, "un adjunto de la clase quedo sin enlazar");
         }
     };
 
@@ -841,7 +1131,7 @@ fn guardar(
         ) {
             Ok(mut m) => {
                 numero += 1;
-                enlazar(&mut m, 0);
+                enlazar(&mut m, 0, false);
                 video_id = Some(m.id);
                 estado.video_guardado = true;
             }
@@ -857,15 +1147,21 @@ fn guardar(
     capturas.sort_by_key(|c| c.ms);
     let mut enlazadas = Vec::new();
     for (i, c) in capturas.into_iter().enumerate() {
-        let cuando = pixpin_shell::entorno::ahora_utc_ms();
-        let fichero = format!("clase-{cuando}-{}.png", i + 1);
+        // Los bytes tal cual: el PNG de la pantalla o el JPEG de la camara,
+        // a su resolucion entera (solo las miniaturas se reducen).
+        let fichero = presencial::nombre_de_la_foto(
+            c.de_camara,
+            pixpin_shell::entorno::ahora_utc_ms(),
+            i + 1,
+            c.extension(),
+        );
         let pie = format!("⏱ {} · {}", minuto(c.ms), nombre);
         let hecho = super::adjuntar_con_pie(
             raiz,
             proyecto,
             &pedido.aparato,
             &fichero,
-            &c.png,
+            &c.bytes,
             numero,
             &pie,
             None,
@@ -873,13 +1169,56 @@ fn guardar(
         match hecho {
             Ok(mut m) => {
                 numero += 1;
-                enlazar(&mut m, c.ms);
+                enlazar(&mut m, c.ms, c.de_camara);
                 enlazadas.push((c.ms, m.id));
             }
             Err(e) => tracing::warn!(?e, ms = c.ms, "una captura de la clase no se guardo"),
         }
     }
     estado.guardadas = enlazadas.len();
+
+    // Los clips de la camara, como el video: movidos (no leidos enteros) y
+    // enlazados en su minuto, con lo que duran.
+    let mut clips = std::mem::take(&mut estado.clips);
+    clips.sort_by_key(|c| c.ms);
+    let mut clips_dentro: Vec<presencial::Clip> = Vec::new();
+    for (i, c) in clips.into_iter().enumerate() {
+        let hecho = adjuntar_video(
+            raiz,
+            proyecto,
+            &pedido.aparato,
+            &format!("{nombre} · clip {}.mp4", i + 1),
+            &c.ruta,
+            numero,
+        );
+        match hecho {
+            Ok(mut m) => {
+                numero += 1;
+                presencial::marcar_de_camara(&mut m.resto);
+                if let Some(de) = &de {
+                    m.resto.insert(
+                        "enGrabacion".into(),
+                        presencial::enlace_del_clip(de, c.ms, c.duracion_ms),
+                    );
+                }
+                if let Err(e) = cuaderno::reemplazar(&carpeta, &m) {
+                    tracing::warn!(?e, "un clip de la clase quedo sin enlazar");
+                }
+                clips_dentro.push(presencial::Clip {
+                    ms: c.ms,
+                    duracion_ms: c.duracion_ms,
+                    id: m.id,
+                });
+            }
+            // Se queda en la carpeta del proyecto, con su nombre temporal.
+            Err(e) => tracing::warn!(
+                ?e,
+                ruta = %c.ruta.display(),
+                "un clip de la clase no entro en el chat (se queda en la carpeta)"
+            ),
+        }
+    }
+    estado.clips_guardados = clips_dentro.len();
     if let Some(voz) = voz.as_mut() {
         // Siempre, aunque no haya capturas: es lo que dice que la nota es
         // de una clase y no una nota de voz cualquiera.
@@ -891,6 +1230,7 @@ fn guardar(
             voz.resto
                 .insert("video".into(), serde_json::json!({ "id": id }));
         }
+        presencial::poner_clips(&mut voz.resto, &clips_dentro);
         if let Err(e) = cuaderno::reemplazar(&carpeta, voz) {
             // La nota y sus adjuntos ya estan dentro; solo falta el enlace.
             tracing::warn!(?e, "la nota de la clase quedo sin sus enlaces");
@@ -903,6 +1243,7 @@ fn guardar(
         grabacion.map_or(0, |g| g.duracion_ms),
         video_id.as_deref(),
         &enlazadas,
+        &clips_dentro,
     );
     if !grabacion_en_carpeta.is_empty() {
         let cuando = super::descripcion::hora_sin_repetir();
@@ -936,20 +1277,23 @@ fn guardar(
         con_voz = voz.is_some(),
         con_video = video_id.is_some(),
         capturas = enlazadas.len(),
+        clips = clips_dentro.len(),
         duracion_ms = grabacion.map(|g| g.duracion_ms),
         "clase guardada"
     );
     Ok(voz)
 }
 
-/// **La carpeta de una clase**: la nota, el video y las capturas en el orden
-/// de la grabacion, cada una con su minuto (las capturas con el suyo de
-/// titulo, «⏱ 01:05»; la nota y el video, con su nombre).
+/// **La carpeta de una clase**: la nota, el video, las capturas y los clips
+/// de la camara en el orden de la grabacion, cada uno con su minuto (las
+/// capturas con el suyo de titulo, «⏱ 01:05», y los clips «▶ 01:05»; la
+/// nota y el video, con su nombre).
 fn carpeta_de_la_grabacion(
     voz: Option<&str>,
     duracion_ms: i64,
     video: Option<&str>,
     capturas: &[(i64, String)],
+    clips: &[presencial::Clip],
 ) -> pixpin_proyecto::carpeta_de_paginas::Carpeta {
     let mut c = pixpin_proyecto::carpeta_de_paginas::Carpeta::grabacion(
         voz.unwrap_or_default(),
@@ -959,10 +1303,18 @@ fn carpeta_de_la_grabacion(
     for id in voz.into_iter().chain(video) {
         c.anadir_al_minuto(id, "", 0);
     }
-    let mut capturas = capturas.to_vec();
-    capturas.sort_by_key(|(ms, _)| *ms);
-    for (ms, id) in &capturas {
-        c.anadir_al_minuto(id, &format!("⏱ {}", minuto(*ms)), *ms);
+    let mut en_orden: Vec<(i64, &str, String)> = capturas
+        .iter()
+        .map(|(ms, id)| (*ms, id.as_str(), format!("⏱ {}", minuto(*ms))))
+        .chain(
+            clips
+                .iter()
+                .map(|k| (k.ms, k.id.as_str(), format!("▶ {}", minuto(k.ms)))),
+        )
+        .collect();
+    en_orden.sort_by_key(|(ms, _, _)| *ms);
+    for (ms, id, titulo) in &en_orden {
+        c.anadir_al_minuto(id, titulo, *ms);
     }
     c
 }
@@ -1252,8 +1604,11 @@ fn flotar(
                     (VK_ESCAPE, Fase::Preparar) => accion = Some(Accion::Cerrar),
                     (VK_ENTRAR, Fase::Preparar) => accion = Some(Accion::Empezar),
                     // Las flechas o el tabulador cambian de modo.
-                    (VK_IZQUIERDA | VK_DERECHA | VK_TABULADOR, Fase::Preparar) => {
-                        accion = Some(Accion::Modo(estado.modo.otro()))
+                    (VK_DERECHA | VK_TABULADOR, Fase::Preparar) => {
+                        accion = Some(Accion::Modo(estado.modo.siguiente()))
+                    }
+                    (VK_IZQUIERDA, Fase::Preparar) => {
+                        accion = Some(Accion::Modo(estado.modo.anterior()))
                     }
                     (VK_ENTRAR, Fase::Lista { .. }) if estado.para_estudiar.is_some() => {
                         accion = Some(Accion::Estudiar)
@@ -1287,6 +1642,20 @@ fn flotar(
                 tracing::warn!(?e, "no se pudo redimensionar grabar clase");
             }
         }
+
+        // «Salir» de la bandeja: terminar y guardar ya, sin pasar a texto.
+        if TERMINAR_YA.load(Ordering::SeqCst) {
+            match &estado.fase {
+                Fase::Grabando(_) => accion = Some(Accion::Terminar),
+                // Lo demas lo cierra y lo guarda `Estado::cerrar`.
+                Fase::Parando { .. } => {}
+                _ => break,
+            }
+        }
+
+        // Las camaras encontradas y lo que vuelve de la camara.
+        estado.camaras_encontradas(&pedido.ubicacion);
+        estado.de_la_camara(r);
 
         // La zona elegida en el hilo principal.
         while let Ok(z) = zonas.try_recv() {
@@ -1325,7 +1694,7 @@ fn flotar(
         for (ms, hecha) in estado.fotografo.recoger() {
             match hecha {
                 Ok(png) => {
-                    estado.capturas.push(Captura { ms, png });
+                    estado.capturas.push(Captura::de_pantalla(ms, png));
                     estado.destello = Some(Instant::now());
                     estado.avisar(con(&r.captura_hecha, &minuto(ms)));
                 }
@@ -1442,6 +1811,12 @@ fn flotar(
         if let Some(a) = accion {
             pulsar(a, pedido, r, estado, (monitor.id, monitor.area), &mut vivo);
         }
+        // La bandeja dice «Grabando…» mientras se graba (aunque PixPin no
+        // este delante: la barra sigue en su hilo).
+        poner_grabando(matches!(
+            estado.fase,
+            Fase::Abriendo(_) | Fase::Grabando(_) | Fase::Parando { .. }
+        ));
         if !vivo {
             break;
         }
@@ -1522,6 +1897,10 @@ fn tras_parar(pedido: &Pedido, r: &Rotulos, estado: &mut Estado, parado: Parado)
     if let Some(voz) = &g.voz {
         estado.para_estudiar = Some((proyecto.clone(), voz.id.clone()));
     }
+    // Para salir de PixPin no se pasa a texto: se pide luego en la nota.
+    if TERMINAR_YA.load(Ordering::SeqCst) {
+        return lista(r, &nombre, estado, false);
+    }
     match (g.voz, g.fallo_audio) {
         (Some(voz), _) => match empezar_el_texto(pedido, &proyecto, &voz) {
             Some(f) => f,
@@ -1547,7 +1926,8 @@ fn tras_parar(pedido: &Pedido, r: &Rotulos, estado: &mut Estado, parado: Parado)
 }
 
 fn lista(r: &Rotulos, proyecto: &str, estado: &Estado, con_texto: bool) -> Fase {
-    let n = estado.guardadas.to_string();
+    // Las fotos y los clips de la camara cuentan con las capturas.
+    let n = (estado.guardadas + estado.clips_guardados).to_string();
     let sub = con(
         if con_texto {
             &r.lista_con_texto
@@ -1585,6 +1965,20 @@ fn pulsar(
             if estado.modo != m {
                 estado.modo = m;
                 recordar_modo(&pedido.ubicacion, m);
+                // En persona, el microfono solo; en los otros, los dos.
+                (estado.microfono, estado.equipo) = m.sonidos();
+                if m.con_camara() {
+                    estado.buscar_camaras();
+                }
+            }
+        }
+        (Accion::Camara, Fase::Preparar) => {
+            if estado.camaras.is_empty() {
+                // Se enchufo una despues de mirar: se vuelve a mirar.
+                estado.buscar_camaras();
+            } else {
+                estado.camara = (estado.camara + 1) % estado.camaras.len();
+                recordar_camara(&pedido.ubicacion, &estado.camaras[estado.camara].id);
             }
         }
         (Accion::Calidad, Fase::Preparar) => estado.perfil_video = estado.perfil_video.siguiente(),
@@ -1621,6 +2015,17 @@ fn pulsar(
                 fuentes,
                 copia,
             ));
+            // En persona, la camara se abre ya: la primera foto no espera.
+            if estado.modo.con_camara() {
+                match estado.camaras.get(estado.camara) {
+                    Some(c) => {
+                        let id = c.id.clone();
+                        estado.camarografo.abrir(&id);
+                        estado.avisar(r.abriendo_camara.clone());
+                    }
+                    None => estado.avisar(r.camara_sin.clone()),
+                }
+            }
         }
         (Accion::Cerrar, Fase::Preparar) | (Accion::Listo, _) => *vivo = false,
         (Accion::Estudiar, Fase::Lista { .. }) => {
@@ -1637,6 +2042,29 @@ fn pulsar(
         }
         // Cerrar mientras se pasa a texto: `Estado::cerrar` lo deja de fondo.
         (Accion::DeFondo, Fase::Texto { .. }) => *vivo = false,
+        // En persona, «Foto» con la camara, en el minuto en que se pulsa.
+        (Accion::Foto, Fase::Grabando(g)) => {
+            let ms = presencial::ms_de_la_foto(g.llevado_ms(), None);
+            if estado.camaras.is_empty() {
+                estado.avisar(r.camara_sin.clone());
+            } else if !estado.camarografo.foto(ms) {
+                estado.avisar(r.camara_fallo.clone());
+            }
+        }
+        // «Video»: empieza un clip o para el que va.
+        (Accion::Clip, Fase::Grabando(g)) => {
+            if estado.camarografo.clip_llevado().is_some() {
+                estado.camarografo.parar_clip();
+            } else if estado.camaras.is_empty() {
+                estado.avisar(r.camara_sin.clone());
+            } else {
+                let ms = g.llevado_ms();
+                let ruta = estado.ruta_del_clip();
+                if !estado.camarografo.empezar_clip(ms, ruta) {
+                    estado.avisar(r.camara_fallo.clone());
+                }
+            }
+        }
         // En el modo de capturas, la pantalla entera donde esta la barra, al
         // instante: la barra no sale (`excluir_de_capturas`) y la foto se
         // hace en su hilo.
@@ -1668,6 +2096,10 @@ fn pulsar(
             if let Some(v) = &estado.grabando_video {
                 v.pausar(pausa);
             }
+            // En pausa no se graba nada: tampoco el clip.
+            if pausa {
+                estado.camarografo.parar_clip();
+            }
         }
         (Accion::Terminar, Fase::Grabando(_)) => {
             if let Fase::Grabando(g) = std::mem::replace(&mut estado.fase, Fase::Preparar) {
@@ -1686,6 +2118,7 @@ fn pulsar(
                     v.tirar();
                 }
                 let _ = estado.fotografo.acabar(Duration::from_secs(2));
+                estado.tirar_clips();
                 estado.capturas.clear();
                 tracing::info!("clase tirada sin guardar");
                 *vivo = false;
@@ -2079,17 +2512,21 @@ const Y_PROYECTO: f32 = 274.0;
 const Y_EMPEZAR: f32 = 334.0;
 const Y_AVISO: f32 = 392.0;
 
-/// Las dos mitades del selector de modo.
-fn mitades_del_modo(w: f32, e: f32) -> [(RectF, Modo); 2] {
+/// Los tres tercios del selector de modo, en el orden de `Modo::TODOS`.
+fn mitades_del_modo(w: f32, e: f32) -> [(RectF, Modo); 3] {
     let m = 18.0 * e;
-    let ancho = (w - 2.0 * m) / 2.0;
-    let caja = |x: f32| RectF {
-        x,
+    let ancho = (w - 2.0 * m) / 3.0;
+    let caja = |i: usize| RectF {
+        x: m + ancho * i as f32,
         y: Y_MODO * e,
         ancho,
         alto: 38.0 * e,
     };
-    [(caja(m), Modo::Pantalla), (caja(m + ancho), Modo::Capturas)]
+    [
+        (caja(0), Modo::Pantalla),
+        (caja(1), Modo::Capturas),
+        (caja(2), Modo::Presencial),
+    ]
 }
 
 /// Un interruptor de la fase de preparar: icono, rotulo y la pildora.
@@ -2209,7 +2646,7 @@ fn fila_sin_pildora(
     }
 }
 
-/// **El selector de modo**: dos mitades, la elegida en azul.
+/// **El selector de modo**: tres tercios, el elegido en azul.
 fn pintar_selector_de_modo(
     p: &Pintor,
     w: f32,
@@ -2219,11 +2656,11 @@ fn pintar_selector_de_modo(
     botones: &mut Botones<Accion>,
 ) {
     let tema = &OSCURO;
-    let [(a, _), (b, _)] = mitades_del_modo(w, e);
+    let [(a, _), _, (c, _)] = mitades_del_modo(w, e);
     let fondo = RectF {
         x: a.x,
         y: a.y,
-        ancho: a.ancho + b.ancho,
+        ancho: c.x + c.ancho - a.x,
         alto: a.alto,
     };
     p.rellenar_redondeado(fondo, 12.0 * e, tema.campo);
@@ -2243,15 +2680,16 @@ fn pintar_selector_de_modo(
         let (icono, rotulo) = match modo {
             Modo::Pantalla => (&mi::VIDEOCAM, &r.modo_pantalla),
             Modo::Capturas => (&mi::IMAGE, &r.modo_capturas),
+            Modo::Presencial => (&mi::GROUP, &r.modo_presencial),
         };
         let tinta = if elegido {
             Color::BLANCO
         } else {
             tema.campo_apagado
         };
-        let tam = 13.0 * e;
-        let lado = 16.0 * e;
-        let hueco = 6.0 * e;
+        let tam = 12.0 * e;
+        let lado = 15.0 * e;
+        let hueco = 5.0 * e;
         let (tw, th) = p.medir_texto(rotulo, tam);
         let tw = tw.min(dentro_caja.ancho - lado - hueco - 8.0 * e);
         let x = dentro_caja.x + (dentro_caja.ancho - lado - hueco - tw) / 2.0;
@@ -2312,6 +2750,7 @@ fn pintar_preparar(
             match estado.modo {
                 Modo::Pantalla => &r.sub_pantalla,
                 Modo::Capturas => &r.sub_capturas,
+                Modo::Presencial => &r.sub_presencial,
             }
         },
         m,
@@ -2399,6 +2838,42 @@ fn pintar_preparar(
                 tam,
                 tema.texto,
             );
+        }
+        // En persona, la camara: un clic pasa a la siguiente.
+        None if estado.modo.con_camara() => {
+            let rotulo = match estado.camaras.get(estado.camara) {
+                Some(c) => con(&r.camara, &c.nombre),
+                None if estado.buscando_camaras.is_some() => r.buscando_camaras.clone(),
+                None => r.sin_camaras.clone(),
+            };
+            fila_sin_pildora(
+                p,
+                botones,
+                fila(Y_TERCERA),
+                Some(Accion::Camara),
+                &mi::PHOTO_CAMERA,
+                &rotulo,
+                if estado.camaras.len() > 1 {
+                    28.0 * e
+                } else {
+                    0.0
+                },
+                e,
+            );
+            if estado.camaras.len() > 1 {
+                let caja = fila(Y_TERCERA);
+                let lado = 20.0 * e;
+                p.icono(
+                    &mi::CHEVRON_RIGHT,
+                    RectF {
+                        x: caja.x + caja.ancho - 32.0 * e,
+                        y: caja.y + (caja.alto - lado) / 2.0,
+                        ancho: lado,
+                        alto: lado,
+                    },
+                    tema.campo_apagado,
+                );
+            }
         }
         None => fila_sin_pildora(
             p,
@@ -2593,36 +3068,76 @@ fn pintar_barra(
         .destello
         .is_some_and(|d| d.elapsed() < Duration::from_millis(600));
     // Las que aun se estan haciendo cuentan ya: el clic se vio.
-    let hechas = estado.capturas.len() + estado.fotografo.pendientes();
-    let rotulo_captura = if hechas == 0 {
-        r.captura.clone()
+    let hechas = estado.capturas.len()
+        + estado.fotografo.pendientes()
+        + estado.camarografo.pendientes()
+        + estado.clips.len();
+    let presencial = estado.modo.con_camara();
+    // En persona, «Foto» con la camara; si no, «Captura» de la pantalla.
+    let (accion, icono, nombre) = if presencial {
+        (Accion::Foto, &mi::PHOTO_CAMERA, &r.foto)
     } else {
-        format!("{} · {}", r.captura, hechas)
+        (Accion::Captura, &mi::IMAGE, &r.captura)
+    };
+    let rotulo_captura = if hechas == 0 {
+        nombre.clone()
+    } else {
+        format!("{} · {}", nombre, hechas)
     };
     boton_si(
         p,
         botones,
         sitio(128.0),
-        Accion::Captura,
-        &mi::IMAGE,
+        accion,
+        icono,
         &rotulo_captura,
         if destello { VERDE } else { tema.enviar },
         Color::BLANCO,
         e,
         activo,
     );
-    boton_si(
-        p,
-        botones,
-        sitio(44.0),
-        Accion::Zona,
-        &mi::CROP_FREE,
-        "",
-        tema.campo,
-        tema.texto,
-        e,
-        activo,
-    );
+    // Al lado, la zona de la pantalla o, en persona, «Video» (un clip con
+    // la camara; en rojo mientras graba).
+    let clip = estado.camarografo.clip_llevado();
+    if presencial {
+        boton_si(
+            p,
+            botones,
+            sitio(44.0),
+            Accion::Clip,
+            if clip.is_some() {
+                &mi::STOP
+            } else {
+                &mi::VIDEOCAM
+            },
+            "",
+            if clip.is_some() {
+                ROJO_GRABAR
+            } else {
+                tema.campo
+            },
+            if clip.is_some() {
+                Color::BLANCO
+            } else {
+                tema.texto
+            },
+            e,
+            activo,
+        );
+    } else {
+        boton_si(
+            p,
+            botones,
+            sitio(44.0),
+            Accion::Zona,
+            &mi::CROP_FREE,
+            "",
+            tema.campo,
+            tema.texto,
+            e,
+            activo,
+        );
+    }
     boton_si(
         p,
         botones,
@@ -2676,25 +3191,43 @@ fn pintar_barra(
         (r.en_pausa.clone(), tema.campo_apagado)
     } else if hechas == 0 {
         (
-            if estado.modo == Modo::Capturas {
-                r.pista_entera.clone()
-            } else {
-                r.pista.clone()
+            match estado.modo {
+                Modo::Capturas => r.pista_entera.clone(),
+                Modo::Presencial => r.pista_foto.clone(),
+                Modo::Pantalla => r.pista.clone(),
             },
             tema.campo_apagado,
         )
     } else {
-        let plantilla = if estado.modo == Modo::Capturas {
-            &r.capturas_entera
-        } else {
-            &r.capturas
+        let plantilla = match estado.modo {
+            Modo::Capturas => &r.capturas_entera,
+            Modo::Presencial => &r.fotos,
+            Modo::Pantalla => &r.capturas,
         };
         (con(plantilla, &hechas.to_string()), tema.campo_apagado)
     };
     // Con video, a la derecha de la linea de abajo: que se esta grabando
-    // la pantalla tiene que verse siempre.
+    // la pantalla (o un clip con la camara) tiene que verse siempre.
     let mut ancho_linea = w - 32.0 * e;
-    if estado.grabando_video.is_some() {
+    if let Some(llevado) = clip {
+        let texto = format!("{} {}", r.video_corto, minuto(llevado.as_millis() as i64));
+        let tam = 12.0 * e;
+        let (tw, th) = p.medir_texto(&texto, tam);
+        let lado = 14.0 * e;
+        let x = w - 16.0 * e - tw;
+        p.icono(
+            &mi::VIDEOCAM,
+            RectF {
+                x: x - lado - 4.0 * e,
+                y: 62.0 * e + (th - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            ROJO_GRABAR,
+        );
+        p.texto(&texto, x, 62.0 * e, tam, ROJO_GRABAR);
+        ancho_linea -= tw + lado + 16.0 * e;
+    } else if estado.grabando_video.is_some() {
         let roto = estado.grabando_video.as_ref().is_some_and(|v| v.roto());
         let tam = 12.0 * e;
         let (tw, th) = p.medir_texto(&r.video_corto, tam);
@@ -2768,23 +3301,6 @@ mod pruebas {
             serde_json::json!([{ "ms": "x" }, { "ms": 5, "id": "c" }]),
         );
         assert_eq!(capturas_de(&m), vec![(5, "c".to_string())]);
-    }
-
-    #[test]
-    fn el_modo_se_recuerda_por_su_palabra() {
-        for m in [Modo::Pantalla, Modo::Capturas] {
-            assert_eq!(Modo::de(m.palabra()), m);
-            assert_eq!(m.otro().otro(), m);
-            assert_ne!(m.otro(), m);
-        }
-        assert_eq!(
-            Modo::de("pantalla\n"),
-            Modo::Pantalla,
-            "con su salto de linea"
-        );
-        // Caso negativo: lo que no se entiende es el modo que menos ocupa.
-        assert_eq!(Modo::de(""), Modo::Capturas);
-        assert_eq!(Modo::de("video"), Modo::Capturas);
     }
 
     #[test]
@@ -2882,20 +3398,26 @@ mod pruebas {
             90_000,
             Some("mp4"),
             &[(65_000, "f2".into()), (5_000, "f1".into())],
+            &[presencial::Clip {
+                ms: 30_000,
+                duracion_ms: 8_000,
+                id: "k".into(),
+            }],
         );
         assert!(c.es_grabacion());
         assert_eq!((c.voz.as_str(), c.duracion_ms), ("v", 90_000));
         let ids: Vec<&str> = c.paginas.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, ["v", "mp4", "f1", "f2"]);
-        assert_eq!(c.paginas[3].titulo, "⏱ 1:05");
-        assert_eq!(c.paginas[3].ms, Some(65_000));
+        assert_eq!(ids, ["v", "mp4", "f1", "k", "f2"]);
+        assert_eq!(c.paginas[4].titulo, "⏱ 1:05");
+        assert_eq!(c.paginas[4].ms, Some(65_000));
+        assert_eq!(c.paginas[3].titulo, "▶ 0:30", "el clip, en su minuto");
         assert_eq!(c.paginas[0].titulo, "", "la nota con su nombre");
         assert_eq!(c.video, "mp4");
-        assert_eq!(c.capturas().count(), 2);
+        assert_eq!(c.capturas().count(), 3);
         // Caso negativo: sin nota (no se pudo cerrar), solo las capturas.
-        let sola = carpeta_de_la_grabacion(None, 0, None, &[(1, "f".into())]);
+        let sola = carpeta_de_la_grabacion(None, 0, None, &[(1, "f".into())], &[]);
         assert_eq!(sola.voz, "");
         assert_eq!(sola.len(), 1);
-        assert!(carpeta_de_la_grabacion(None, 0, None, &[]).is_empty());
+        assert!(carpeta_de_la_grabacion(None, 0, None, &[], &[]).is_empty());
     }
 }
