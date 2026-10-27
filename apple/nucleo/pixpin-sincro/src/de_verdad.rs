@@ -1386,3 +1386,237 @@ fn la_vuelta_recortada_respeta_lo_desmarcado_con_ese_aparato() {
     .unwrap();
     assert!(senas(&p.tab, GENERAL).is_empty());
 }
+
+// ------------------------------------- lo nacido despues y lo pequeno primero
+
+/// Elige con el usuario: todo menos `fuera`.
+fn todo_menos(pr: &crate::vuelta::Pregunta, fuera: &str) -> crate::vuelta::Eleccion {
+    crate::vuelta::Eleccion {
+        elegidos: pr
+            .filas
+            .iter()
+            .filter(|f| f.id != fuera)
+            .map(|f| f.id.clone())
+            .collect(),
+        lo_mio_manda: false,
+    }
+}
+
+#[test]
+fn un_chat_nacido_despues_de_elegir_viaja_solo_y_lo_desmarcado_sigue_fuera() {
+    // Android 26-oct-2026 (`Disco.elegidosAhora`): con la eleccion guardada,
+    // el proyecto donde se grabo la clase —nacido despues de elegir— no
+    // viajaba nunca en la vuelta sin preguntar.
+    let p = montar("nacido-despues");
+    p.emparejar();
+    for (pr, nombre) in [("pr-1", "Obra"), ("pr-2", "Privado")] {
+        proyecto(&p.tel, json!({"id": pr, "nombre": nombre, "tocado": 1}));
+        let id = format!("{pr}-n");
+        mensaje(
+            &p.tel,
+            &p.reloj,
+            Nuevo {
+                proyecto: Some(pr),
+                ..nota(&id, nombre)
+            },
+        );
+    }
+    p.vuelta_del_tel(Some(&mut |pr: crate::vuelta::Pregunta| {
+        Some(todo_menos(&pr, "pr-2"))
+    }));
+    assert_eq!(senas(&p.tab, "pr-1").len(), 1);
+    assert!(senas(&p.tab, "pr-2").is_empty(), "desmarcado no viaja");
+    // Lo ofrecido queda apuntado como en el movil: un chat por linea.
+    let ofrecidos = std::fs::read_to_string(p.tel.sincro().join("elegidos/id-tab.ofrecidos"))
+        .expect("elegidos/<otro>.ofrecidos, como Android");
+    assert!(ofrecidos.lines().any(|l| l == "pr-2"));
+    assert!(ofrecidos.lines().any(|l| l == "pr-1"));
+
+    // Nace un chat en cada aparato despues de elegir.
+    proyecto(
+        &p.tel,
+        json!({"id":"pr-3","nombre":"Clase grabada","tocado":2}),
+    );
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-3"),
+            ..nota("c1", "la clase")
+        },
+    );
+    proyecto(
+        &p.tab,
+        json!({"id":"pr-4","nombre":"De la tableta","tocado":2}),
+    );
+    mensaje(
+        &p.tab,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-4"),
+            ..nota("t4", "de alli")
+        },
+    );
+    // La vuelta automatica (sin preguntar) se los lleva y deja fuera pr-2.
+    p.vuelta_del_tel(None);
+    assert_eq!(senas(&p.tab, "pr-3").len(), 1, "lo nacido aqui entra");
+    assert_eq!(senas(&p.tel, "pr-4").len(), 1, "y lo nacido alli tambien");
+    assert!(
+        senas(&p.tab, "pr-2").is_empty(),
+        "lo desmarcado sigue fuera"
+    );
+    // Al preguntar otra vez, lo nuevo sale marcado y pr-2 desmarcado.
+    let mut marcados = BTreeSet::new();
+    p.vuelta_del_tel(Some(&mut |pr: crate::vuelta::Pregunta| {
+        marcados = pr
+            .filas
+            .iter()
+            .filter(|f| f.marcado)
+            .map(|f| f.id.clone())
+            .collect();
+        Some(todo_menos(&pr, "pr-2"))
+    }));
+    assert!(marcados.contains("pr-3") && marcados.contains("pr-4"));
+    assert!(!marcados.contains("pr-2"));
+}
+
+#[test]
+fn elegido_con_una_version_de_antes_lo_nuevo_no_entra_solo() {
+    // Sin `.ofrecidos` (elegido antes del 26-oct) se hace como siempre: solo
+    // lo elegido. Es lo que hace Android con la lista vieja.
+    let p = montar("elegido-de-antes");
+    p.emparejar();
+    proyecto(&p.tel, json!({"id":"pr-5","nombre":"Nuevo","tocado":1}));
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-5"),
+            ..nota("n5", "nuevo")
+        },
+    );
+    p.tel
+        .guardar_elegidos("id-tab", &BTreeSet::from([GENERAL.to_string()]))
+        .unwrap();
+    assert_eq!(
+        p.tel.elegidos_ahora("id-tab", &["pr-5".to_string()]),
+        Some(BTreeSet::from([GENERAL.to_string()]))
+    );
+    p.vuelta_del_tel(None);
+    assert!(senas(&p.tab, "pr-5").is_empty());
+}
+
+/// Un adjunto de `bytes` en el telefono, con su mensaje en `proyecto`.
+fn adjunto(p: &Par, rel: &str, bytes: usize, id: &str, proyecto: Option<&str>) {
+    let f = p.tel.raiz().join(rel);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(&f, vec![7u8; bytes]).unwrap();
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            clase: "ARCHIVO",
+            proyecto,
+            ruta: Some(p.tel.absoluta(rel)),
+            ..nota(id, "")
+        },
+    );
+}
+
+#[test]
+fn los_archivos_van_de_pequeno_a_grande_y_si_se_corta_lo_pequeno_ya_esta() {
+    // Android 26-oct-2026 (`aplicarArchivos`): una clase con un video de
+    // megas y su captura. Si la vuelta se corta en el video, la captura ya
+    // llego, y el video se ofrece otra vez en la vuelta siguiente.
+    let p = montar("pequeno-primero");
+    p.emparejar();
+    // El grande primero en el chat, para que el orden no sea por casualidad.
+    adjunto(&p, "guardados/Clase (1).mp4", 3 * 1024 * 1024, "v1", None);
+    adjunto(&p, "guardados/clase-1-1.png", 2_000, "c1", None);
+    conectado(&p.tel, &p.tab, false, None, &p.reloj, |s| {
+        let mut hecho = Hecho::default();
+        let prep = s.preparar(GENERAL).unwrap();
+        s.aplicar(&prep, &mut hecho).unwrap();
+        let arch = s.preparar_archivos(&prep).unwrap();
+        let orden: Vec<String> = arch
+            .en_orden()
+            .iter()
+            .map(|p| p.sena().to_string())
+            .collect();
+        assert_eq!(
+            orden,
+            ["guardados/clase-1-1.png", "guardados/Clase (1).mp4"],
+            "de pequeno a grande"
+        );
+        // Se corta despues del primero.
+        let primero = arch.en_orden()[0].clone();
+        s.aplicar_pasos(&arch, &[&primero], &mut hecho, &mut |_| {})
+            .unwrap();
+    })
+    .unwrap();
+    assert!(p.tab.raiz().join("guardados/clase-1-1.png").is_file());
+    assert!(!p.tab.raiz().join("guardados/Clase (1).mp4").is_file());
+    // La vuelta siguiente trae lo que falto, aunque no se cerro la anterior.
+    p.vuelta_del_tel(None);
+    assert_eq!(
+        std::fs::metadata(p.tab.raiz().join("guardados/Clase (1).mp4"))
+            .unwrap()
+            .len(),
+        3 * 1024 * 1024
+    );
+    // Y la otra ya no mueve nada: el parentesis no hace que se reenvie.
+    let hecho = p.general();
+    assert_eq!(hecho.archivos, 0, "nada que mover");
+}
+
+#[test]
+fn la_prioridad_de_cada_archivo_es_la_de_la_lista_del_usuario() {
+    use crate::vuelta::prioridad_de_archivo as prio;
+    // 2 chats compartidos, 3 archivos, 4 lienzos/notas/textos, 5 videos.
+    assert_eq!(prio("guardados/plano.pdf", true), 0);
+    assert_eq!(prio("pins/draw/d1.excalidraw.gz", true), 0);
+    assert_eq!(prio("guardados/plano.pdf", false), 1);
+    assert_eq!(prio("guardados/foto.png", false), 1);
+    assert_eq!(prio("pins/draw/d1.excalidraw.gz", false), 2);
+    assert_eq!(prio("pins/draw/d1.marcas", false), 2);
+    assert_eq!(prio("guardados/pc/AB/notas/1-foto.png", false), 2);
+    assert_eq!(prio("tablas/t1.json", false), 2);
+    assert_eq!(prio("guardados/Clase (1).mp4", false), 3);
+    assert_eq!(
+        prio("guardados/Clase (1).MP4", true),
+        3,
+        "un video, ultimo siempre"
+    );
+    assert_eq!(prio("voz/nota.m4a", false), 3);
+}
+
+#[test]
+fn una_vuelta_con_archivos_en_varios_chats_los_deja_todos_acordados() {
+    // La vuelta mueve los archivos de todos los chats juntos, por
+    // prioridad, y cierra cada chat dos veces: lo de los dos lados tiene
+    // que quedar igual y acordado, como chat a chat.
+    let p = montar("varios-chats-archivos");
+    p.emparejar();
+    for (pr, n) in [("pr-a", 5_000usize), ("pr-b", 50)] {
+        proyecto(&p.tel, json!({"id": pr, "nombre": pr, "tocado": 1}));
+        let rel = format!("guardados/{pr}.pdf");
+        let id = format!("{pr}-f");
+        adjunto(&p, &rel, n, &id, Some(pr));
+    }
+    adjunto(&p, "guardados/video.mp4", 9_000, "v-g", None);
+    p.vuelta_del_tel(None);
+    for pr in ["pr-a", "pr-b"] {
+        assert!(p.tab.raiz().join(format!("guardados/{pr}.pdf")).is_file());
+        assert_eq!(senas(&p.tab, pr).len(), 1);
+    }
+    assert!(p.tab.raiz().join("guardados/video.mp4").is_file());
+    for chat in ["pr-a", "pr-b", GENERAL] {
+        let pendiente = conectado(&p.tel, &p.tab, false, None, &p.reloj, |s| {
+            let prep = s.preparar(chat).unwrap();
+            let arch = s.preparar_archivos(&prep).unwrap();
+            (prep.pasos.len(), arch.pasos.len())
+        })
+        .unwrap();
+        assert_eq!(pendiente, (0, 0), "{chat}: todo acordado");
+    }
+}

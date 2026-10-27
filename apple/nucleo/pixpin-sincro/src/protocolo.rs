@@ -1383,14 +1383,29 @@ pub struct PreparadoArchivos {
 impl PreparadoArchivos {
     /// Cuantos bytes hay que mover como mucho, para la barra.
     pub fn bytes(&self) -> u64 {
-        self.pasos
-            .iter()
-            .map(|p| {
-                let m = self.mios.get(p.sena()).map_or(0, |a| a.bytes);
-                let s = self.suyos.get(p.sena()).map_or(0, |a| a.bytes);
-                m.max(s).max(0) as u64
-            })
-            .sum()
+        self.pasos.iter().map(|p| self.bytes_de(p)).sum()
+    }
+
+    /// Lo que pesa un paso: lo mas grande de los dos lados.
+    pub fn bytes_de(&self, p: &Paso) -> u64 {
+        let m = self.mios.get(p.sena()).map_or(0, |a| a.bytes);
+        let s = self.suyos.get(p.sena()).map_or(0, |a| a.bytes);
+        m.max(s).max(0) as u64
+    }
+
+    /// **Los pasos de pequeno a grande** (26-oct-2026, `aplicarArchivos` de
+    /// Android). Una grabacion son una nota, unas capturas y un video de
+    /// cientos de megas; si la vuelta se corta a mitad del video (la Wi-Fi
+    /// del telefono que se duerme, la aplicacion que se cierra), lo que iba
+    /// detras no llegaba y la tarjeta salia sin nada que abrir. Asi la voz y
+    /// las capturas ya estan cuando empieza el video, y el video se vuelve a
+    /// ofrecer en la vuelta siguiente (el protocolo no reanuda). El orden no
+    /// cambia lo que queda: cada archivo va por su lado. A igual peso, el
+    /// orden del plan (la ordenacion es estable, como `sortedBy`).
+    pub fn en_orden(&self) -> Vec<&Paso> {
+        let mut pasos: Vec<&Paso> = self.pasos.iter().collect();
+        pasos.sort_by_key(|p| self.bytes_de(p));
+        pasos
     }
 
     fn nombre_de(&self, rel: &str) -> String {
@@ -2140,9 +2155,26 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         hecho: &mut Hecho,
         avance: &mut dyn FnMut(u64),
     ) -> Resultado<()> {
+        // Lo pequeno primero: ver [PreparadoArchivos::en_orden].
+        let pasos = prep.en_orden();
+        self.aplicar_pasos(prep, &pasos, hecho, avance)
+    }
+
+    /// **Solo esos pasos de `prep`**, en ese orden (27-oct-2026): para que la
+    /// vuelta entera pueda mover los archivos de todos los chats por orden
+    /// de prioridad (ver `vuelta::prioridad_de_archivo`) y no chat a chat.
+    /// Cada paso pide lo suyo con el chat de `prep`, asi que se pueden
+    /// mezclar pasos de chats distintos en llamadas seguidas.
+    pub fn aplicar_pasos(
+        &mut self,
+        prep: &PreparadoArchivos,
+        pasos: &[&Paso],
+        hecho: &mut Hecho,
+        avance: &mut dyn FnMut(u64),
+    ) -> Resultado<()> {
         self.chat_de_la_vuelta = prep.chat.clone();
         let mut cuenta = Cuenta::default();
-        for p in &prep.pasos {
+        for &p in pasos {
             let rel = p.sena();
             let texto = es_texto(rel);
             let mio = prep.mios.get(rel);
