@@ -1118,6 +1118,18 @@ arranque_con_windows = true
     }
 
     #[test]
+    fn la_sincronizacion_automatica_esta_encendida_salvo_que_el_usuario_la_apague() {
+        // Android 27-oct-2026 (`encendidaSegun`): sin nada guardado,
+        // encendida; lo apagado a mano se respeta.
+        let nuevo: Ajustes = toml::from_str("").unwrap();
+        assert!(nuevo.sincro.automatica && nuevo.sincro.presencia);
+        let sin_tocar: Ajustes = toml::from_str("[sincro]\nlo_mio_manda = false").unwrap();
+        assert!(sin_tocar.sincro.automatica);
+        let apagada: Ajustes = toml::from_str("[sincro]\nautomatica = false").unwrap();
+        assert!(!apagada.sincro.automatica);
+    }
+
+    #[test]
     fn la_pila_se_lee_del_toml_y_se_apaga_entera_con_un_cero() {
         let a: Ajustes =
             toml::from_str("[capturas]\napilar_segundos = 25\nesquina = \"arriba-izquierda\"")

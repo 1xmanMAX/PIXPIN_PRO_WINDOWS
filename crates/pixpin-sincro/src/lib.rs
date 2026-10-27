@@ -66,6 +66,7 @@ pub mod mensajes;
 pub mod mezcla;
 pub mod prioridad;
 pub mod protocolo;
+pub mod reintentos;
 pub mod valla;
 pub mod vuelta;
 
