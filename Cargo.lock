@@ -1665,14 +1665,12 @@ dependencies = [
  "pixpin-ocr",
  "pixpin-pdf",
  "pixpin-shell",
- "pixpin-voz",
  "roxmltree",
  "serde_json",
  "sha2 0.10.9",
  "thiserror",
  "tracing",
  "windows",
- "zip",
 ]
 
 [[package]]

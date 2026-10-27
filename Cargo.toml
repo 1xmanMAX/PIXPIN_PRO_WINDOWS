@@ -32,8 +32,8 @@ pixpin-motor-audio = { path = "crates/pixpin-motor-audio" }
 # `pixpin-audio`: Media Foundation para decodificar y Vosk cargado al vuelo,
 # sin depender de ningun crate de PixPin.
 pixpin-voz = { path = "crates/pixpin-voz" }
-# El asistente local (modelo de lenguaje pequeno, sin red) y sus herramientas.
-# Ver docs/investigacion/2026-10-13-ia-local.md.
+# El asistente (Claude o DeepSeek por su API) y sus herramientas. Hasta el
+# 27-oct-2026 tambien un modelo local; ver docs/investigacion/2026-10-13-ia-local.md.
 pixpin-ia = { path = "crates/pixpin-ia" }
 pixpin-capture = { path = "crates/pixpin-capture" }
 pixpin-pin = { path = "crates/pixpin-pin" }

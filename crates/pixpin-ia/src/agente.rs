@@ -1845,6 +1845,11 @@ pub const TOPE_LISTAS_REINTENTO: u64 = 10;
 /// Lo mas largo que puede ser un texto suelto dentro de una llamada.
 pub const TOPE_TEXTO: u64 = 120;
 
+/// Los tokens de contexto que se le suponen a un motor sin el catalogo
+/// entero (el de las pruebas; el modelo local que los tenia se quito el
+/// 27-oct-2026). Con ellos no se pide mas respuesta de la que cabe.
+pub const CONTEXTO: u32 = 8192;
+
 /// **Cuanta respuesta se pide**: [`MAX_TOKENS_CON_HERRAMIENTAS`], o lo que
 /// quepa en el contexto con lo que ya lleva la conversacion (estimado por
 /// lo alto: 3 letras por token y ~1000 por foto).
@@ -1863,7 +1868,7 @@ pub fn tope_de_tokens(p: &Peticion) -> u32 {
             .sum::<usize>();
     let fotos = p.mensajes.iter().filter(|m| m.tiene_imagen()).count() as u32;
     let entrada = (letras / 3) as u32 + 1000 * fotos + 200;
-    crate::servidor::CONTEXTO
+    CONTEXTO
         .saturating_sub(entrada)
         .clamp(MIN_TOKENS, MAX_TOKENS_CON_HERRAMIENTAS)
 }
@@ -1985,12 +1990,6 @@ fn llamada_rota(m: &str) -> bool {
 /// del servidor) va al registro, nunca a la burbuja.
 pub fn para_el_usuario(e: &ErrorIa) -> String {
     match e {
-        ErrorIa::Falta(_) => {
-            "Falta bajar el asistente: abre el chat «Asistente» para bajarlo.".into()
-        }
-        ErrorIa::Arranque(_) => {
-            "No pude arrancar el asistente. Prueba otra vez en un momento.".into()
-        }
         ErrorIa::Conexion(_) => "El asistente dejó de responder. Prueba otra vez.".into(),
         ErrorIa::Protocolo(_) => {
             "Esta vez no me salió la respuesta. Prueba otra vez o pídelo más corto.".into()
@@ -1999,7 +1998,6 @@ pub fn para_el_usuario(e: &ErrorIa) -> String {
         // La nube ya lo dice en palabras del usuario (sin codigos ni JSON:
         // ver `nube::clasificar`).
         ErrorIa::Nube(aviso) => aviso.clone(),
-        ErrorIa::Descarga { .. } | ErrorIa::HuellaDistinta { .. } => e.to_string(),
         ErrorIa::Io(_) => "No pude contestar por un fallo del equipo. Prueba otra vez.".into(),
     }
 }
@@ -3389,8 +3387,7 @@ Plantillas de serie que YA estan en el lienzo: «Cronograma». Para agrandarlas 
         for e in [
             ErrorIa::Protocolo("HTTP 500: {\"error\":{\"code\":500}}".into()),
             ErrorIa::Conexion("os error 10054".into()),
-            ErrorIa::Arranque("el motor se cerro (exit code: 0xc0000005)".into()),
-            ErrorIa::Falta("C:\\x\\llama-server.exe".into()),
+            ErrorIa::Io(std::io::Error::other("C:\\x\\os error 5")),
         ] {
             let t = para_el_usuario(&e);
             assert!(
