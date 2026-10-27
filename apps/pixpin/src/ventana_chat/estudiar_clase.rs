@@ -240,8 +240,10 @@ struct Senal {
     banderita: bool,
     /// Un clip de la camara de la reunion presencial (27-oct-2026): su
     /// fichero y lo que dura. No se edita ni se quita como un marcador; un
-    /// clic lleva a su minuto y lo abre.
-    clip: Option<(PathBuf, i64)>,
+    /// clic lleva a su minuto y lo abre. Los del movil (`fuente: "movil"`,
+    /// la camara del movil) van por aqui igual; el `bool` dice que son
+    /// suyos, para su rotulo.
+    clip: Option<(PathBuf, i64, bool)>,
 }
 
 impl Senal {
@@ -254,10 +256,15 @@ impl Senal {
     }
 
     fn nota(&self, textos: &Catalogo) -> String {
-        if let Some((_, duracion)) = &self.clip {
+        if let Some((_, duracion, del_movil)) = &self.clip {
             let mut args = fluent_bundle::FluentArgs::new();
             args.set("duracion", pixpin_voz::marca_de_tiempo(*duracion));
-            return textos.t_args("estudiar-clip", &args);
+            let clave = if *del_movil {
+                "estudiar-clip-movil"
+            } else {
+                "estudiar-clip"
+            };
+            return textos.t_args(clave, &args);
         }
         if self.texto.is_empty() {
             textos.t("estudiar-marcador-sin-nota")
@@ -288,8 +295,10 @@ struct Clase {
     capturas: Vec<(i64, PathBuf)>,
     /// El mensaje de cada captura (el mismo orden): para su lienzo anotado.
     fotos: Vec<cuaderno::Mensaje>,
-    /// Los clips de la camara (reunion presencial): `(ms, duracion, ruta)`.
-    clips: Vec<(i64, i64, PathBuf)>,
+    /// Los clips de la camara (reunion presencial) y del movil (la camara
+    /// del movil), en la misma lista de la nota: `(ms, duracion, ruta, del
+    /// movil)`.
+    clips: Vec<(i64, i64, PathBuf, bool)>,
     /// Los trozos del texto: su minuto (si lo lleva) y lo que dice.
     lineas: Vec<(Option<i64>, String)>,
     senales: Vec<Senal>,
@@ -337,7 +346,11 @@ impl Clase {
             .and_then(ruta_de);
         let clips = pixpin_proyecto::presencial::clips_de(&voz.resto)
             .into_iter()
-            .filter_map(|c| Some((c.ms, c.duracion_ms, ruta_de(&c.id)?)))
+            .filter_map(|c| {
+                let (m, r) = con_ruta(&c.id)?;
+                let del_movil = pixpin_proyecto::presencial::es_del_movil(&m.resto);
+                Some((c.ms, c.duracion_ms, r, del_movil))
+            })
             .collect();
         let audio = super::ruta_del_mensaje(raiz, proyecto, voz).filter(|r| r.is_file());
         let lineas = super::trozos_de_la_letra(voz)
@@ -372,11 +385,11 @@ impl Clase {
     /// la clase).
     fn poner_senales(&mut self, mut senales: Vec<Senal>) {
         senales.retain(|s| s.clip.is_none());
-        senales.extend(self.clips.iter().map(|(ms, duracion, ruta)| Senal {
+        senales.extend(self.clips.iter().map(|(ms, duracion, ruta, movil)| Senal {
             ms: *ms,
             texto: String::new(),
             banderita: false,
-            clip: Some((ruta.clone(), *duracion)),
+            clip: Some((ruta.clone(), *duracion, *movil)),
         }));
         senales.sort_by_key(|s| s.ms);
         self.senales = senales;
@@ -2082,10 +2095,18 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
         Zona::Clip(i) => {
             if let Some(s) = v.clase.senales.get(i).cloned() {
                 v.ir_a(s.ms);
-                if let Some((ruta, _)) = &s.clip
-                    && let Err(e) = pixpin_shell::abrir(ruta)
-                {
-                    tracing::warn!(?e, "no se pudo abrir el clip de la clase");
+                if let Some((ruta, _, _)) = &s.clip {
+                    // Un clip HEVC sin «HEVC Video Extensions»: se dice que
+                    // falta y se abre igual (el fichero no se pierde).
+                    if pixpin_pin::video::examinar(ruta)
+                        .and_then(|f| f.extension_que_falta())
+                        .is_some()
+                    {
+                        v.avisar(textos.t("estudiar-sin-hevc"));
+                    }
+                    if let Err(e) = pixpin_shell::abrir(ruta) {
+                        tracing::warn!(?e, "no se pudo abrir el clip de la clase");
+                    }
                 }
             }
         }
