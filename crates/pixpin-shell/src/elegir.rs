@@ -34,6 +34,12 @@ pub fn pedir_imagenes(hwnd_padre: HWND) -> Vec<PathBuf> {
     pedir(hwnd_padre, Clase::FotosYVideos)
 }
 
+/// Pide canciones (27-oct-2026, Adjuntar → «Musica»): los audios que el
+/// chat sabe tocar. Como arriba, el filtro es comodidad.
+pub fn pedir_musica(hwnd_padre: HWND) -> Vec<PathBuf> {
+    pedir(hwnd_padre, Clase::Musica)
+}
+
 /// Pide UNA foto, sin videos: el logo de un proyecto es una imagen fija y
 /// solo cabe una. Como arriba, el filtro es comodidad: quien llama tiene que
 /// aguantar un fichero que no se deje leer.
@@ -47,6 +53,7 @@ enum Clase {
     Todo,
     FotosYVideos,
     UnaFoto,
+    Musica,
 }
 
 /// Lista vacia si cancela o si el dialogo falla: no poder abrirlo no puede
@@ -73,13 +80,16 @@ fn pedir(hwnd_padre: HWND, clase: Clase) -> Vec<PathBuf> {
         if clase != Clase::Todo {
             // Las cadenas tienen que vivir hasta despues de la llamada: el
             // dialogo guarda los punteros, no copia.
-            let (fotos, patron) = if clase == Clase::UnaFoto {
-                (w!("Imagenes"), w!("*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif"))
-            } else {
-                (
+            let (fotos, patron) = match clase {
+                Clase::UnaFoto => (w!("Imagenes"), w!("*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif")),
+                Clase::Musica => (
+                    w!("Musica"),
+                    w!("*.mp3;*.m4a;*.aac;*.flac;*.ogg;*.opus;*.wav"),
+                ),
+                _ => (
                     w!("Fotos y videos"),
                     w!("*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.avif;*.mp4;*.mov;*.mkv;*.webm"),
-                )
+                ),
             };
             let (todos, estrella) = (w!("Todos los archivos"), w!("*.*"));
             let filtros = [

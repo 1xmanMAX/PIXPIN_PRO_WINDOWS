@@ -991,6 +991,8 @@ pub const TODOS: &[Icono] = &[
     LAUNCH,
     LIBRARY_ADD,
     LIBRARY_MUSIC,
+    MUSIC_NOTE,
+    TIMER,
     LINK,
     LIST,
     LYRICS,
@@ -1092,6 +1094,27 @@ pub const FONT_DOWNLOAD: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno(
         "M9.93 13.5h4.14L12 7.98zM20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-4.05 16.5l-1.14-3H9.17l-1.12 3H5.96l5.11-13h1.86l5.11 13h-2.09z",
+        false,
+    )],
+};
+
+/// `music_note` (`src/image/music_note/materialicons/24px.svg`): la
+/// portada de una cancion que no la trae y la entrada «Musica» de la hoja
+/// del «+» (27-oct-2026).
+pub const MUSIC_NOTE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z",
+        false,
+    )],
+};
+
+/// `timer` (`src/image/timer/materialicons/24px.svg`): «Sincronizar la
+/// letra» del karaoke, como el reloj del movil.
+pub const TIMER: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M15 1H9v2h6V1zm-4 13h2V8h-2v6zm8.03-6.61l1.42-1.42c-.43-.51-.9-.99-1.41-1.41l-1.42 1.42C16.07 4.74 14.12 4 12 4c-4.97 0-9 4.03-9 9s4.02 9 9 9 9-4.03 9-9c0-2.12-.74-4.07-1.97-5.61zM12 20c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z",
         false,
     )],
 };
