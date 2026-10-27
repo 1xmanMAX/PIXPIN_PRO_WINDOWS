@@ -250,9 +250,9 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
                 titulo: nombre.clone(),
                 menu: false,
                 maqueta: false,
-                entero: Some(riel::Entero::Pagina(
-                    crate::marcos_doc::Entero::de_fichero(ruta),
-                )),
+                entero: Some(riel::Entero::Pagina(crate::marcos_doc::Entero::de_fichero(
+                    ruta,
+                ))),
             },
             textos,
         ),
