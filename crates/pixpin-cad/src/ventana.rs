@@ -1118,6 +1118,34 @@ pub(crate) fn riel_en(w: u32, e: f64, n: usize, x: i32, y: i32) -> Option<Option
     dentro(&isla).then(|| botones.iter().position(dentro))
 }
 
+/// **Si el riel (y los puntos de los marcadores) se ve** (27-oct-2026,
+/// Android 57c1441a, la regla de [`pixpin_ui::riel_a_la_vista`], la de
+/// todos los visores): con la barra a la vista, mientras se anota o se
+/// enmarca, o con el raton (`raton`, si esta dentro) cerca del borde
+/// derecho de la ventana de `w` x `h`. Pixeles de la ventana, escala `e`.
+pub(crate) fn riel_a_la_vista(
+    barra: bool,
+    anotando: bool,
+    marcando: bool,
+    raton: Option<(i32, i32)>,
+    w: u32,
+    h: u32,
+    e: f64,
+) -> bool {
+    use pixpin_ui::riel_a_la_vista as rv;
+    let cerca = raton
+        .is_some_and(|(x, y)| rv::raton_cerca((x as f32, y as f32), w as f32, h as f32, e as f32));
+    rv::visible(
+        barra,
+        rv::EnUso {
+            anotando,
+            marcos: marcando,
+            poniendo_marca: false,
+        },
+        cerca,
+    )
+}
+
 /// Pinta el riel: `botones` por nombre ("anotar", "marcos"), el que tiene
 /// el raton encima y cuales estan pulsados. Siempre en los colores de los
 /// lectores (el cristal oscuro), sea cual sea el fondo del plano.
@@ -2222,6 +2250,8 @@ pub fn ver(
         vec!["marcador", "marcos"]
     };
     let mut riel_encima: Option<usize> = None;
+    // Si el riel se veia en el ultimo pintado (se va con la barra).
+    let mut riel_visto = false;
     // **Los marcadores** (19-oct-2026): la vista (centro y zoom) con su
     // numero; sus puntos van bajo el riel. El que tiene el raton encima.
     let mut marcadores = crate::marcadores::Guardados::de(acciones.marcadores.as_deref());
@@ -2467,11 +2497,21 @@ pub fn ver(
             isla_riel
                 .and_then(|i| crate::marcadores::punto_en(i, n_marcadores, alto_ahora, e, x, y))
         };
+        // El riel se va con la barra: escondido, sus clics son del plano.
+        let riel_ve = riel_a_la_vista(
+            barra_visible,
+            anotando,
+            marcando,
+            dentro_plano.then_some(raton),
+            w,
+            h,
+            e,
+        );
         for (de, ev) in eventos {
             // **El riel de la derecha** (marcador, lapiz y marco) y los puntos
             // de los marcadores: sus clics no son del plano ni del motor del
             // lienzo.
-            if de == De::Plano && plano.is_some() {
+            if de == De::Plano && plano.is_some() && riel_ve {
                 match ev {
                     Ev::Mover(x, y) => {
                         let ahora = riel_en(w, e, botones_riel.len(), x, y).flatten();
@@ -3149,6 +3189,25 @@ pub fn ver(
             };
             sucio = true;
         }
+        // **El riel se va con la barra** (y vuelve con ella): si cambia, se
+        // repinta; escondido, nada suyo tiene el raton encima.
+        let riel_ve = riel_a_la_vista(
+            barra_visible,
+            anotando,
+            marcando,
+            dentro_plano.then_some(raton),
+            w,
+            h,
+            e,
+        );
+        if !riel_ve {
+            riel_encima = None;
+            punto_encima = None;
+        }
+        if riel_ve != riel_visto {
+            riel_visto = riel_ve;
+            sucio = true;
+        }
         if barra_sucia && barra_visible {
             let activos = BOTONES.map(|b| match b {
                 "acotar" => acotar.activo,
@@ -3269,8 +3328,7 @@ pub fn ver(
                 capas.push((p, vista_pantalla(m, w, h)));
             }
             // El riel de la derecha, encima del plano.
-            let riel_m = plano
-                .is_some()
+            let riel_m = (plano.is_some() && riel_ve)
                 .then(|| {
                     let activos: Vec<bool> = botones_riel
                         .iter()
@@ -3286,7 +3344,7 @@ pub fn ver(
             // El globo del boton del riel bajo el raton: su nombre y su
             // tecla, a su izquierda.
             let globo_m = match (
-                plano.is_some(),
+                plano.is_some() && riel_ve,
                 riel_encima,
                 riel_cajas(w, e, botones_riel.len()),
             ) {
@@ -3305,7 +3363,7 @@ pub fn ver(
             // Los puntos de los marcadores, bajo el riel: el de la vista de
             // ahora en azul.
             let puntos_m = match (&plano, riel_cajas(w, e, botones_riel.len())) {
-                (Some((pm, _)), Some((isla, _))) if !marcadores.c.plano.is_empty() => {
+                (Some((pm, _)), Some((isla, _))) if riel_ve && !marcadores.c.plano.is_empty() => {
                     let mut c = Constructor::nuevo();
                     let actual = marcador_actual(&marcadores.c.plano, &camara, pm.origen, w, h);
                     crate::marcadores::pintar_puntos(
@@ -3655,6 +3713,33 @@ mod pruebas_letras {
 
     /// **El riel de la derecha** como el de los lectores: arriba a la
     /// derecha, botones de 36 px uno debajo de otro; fuera de la isla, nada.
+    #[test]
+    fn el_riel_se_va_con_la_barra_salvo_usandolo_o_con_el_raton_al_borde() {
+        let (w, h) = (1000, 700);
+        assert!(riel_a_la_vista(true, false, false, None, w, h, 1.0));
+        assert!(!riel_a_la_vista(false, false, false, None, w, h, 1.0));
+        assert!(riel_a_la_vista(false, true, false, None, w, h, 1.0));
+        assert!(riel_a_la_vista(false, false, true, None, w, h, 1.0));
+        assert!(riel_a_la_vista(
+            false,
+            false,
+            false,
+            Some((990, 300)),
+            w,
+            h,
+            1.0
+        ));
+        assert!(!riel_a_la_vista(
+            false,
+            false,
+            false,
+            Some((500, 300)),
+            w,
+            h,
+            1.0
+        ));
+    }
+
     #[test]
     fn el_riel_va_arriba_a_la_derecha_con_el_lapiz_y_el_marco() {
         let (isla, b) = riel_cajas(1000, 1.0, 2).unwrap();

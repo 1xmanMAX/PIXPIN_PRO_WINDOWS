@@ -22,6 +22,8 @@ thiserror = "2.0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 flate2 = "1.1"
+# La regla de cuando se ve el riel, la de todos los visores (`riel_a_la_vista`).
+pixpin-ui = { path = "../pixpin-ui" }
 # Solo con el rasgo `pintar-png` (las pruebas de la app).
 png = { version = "0.18", optional = true }
 windows = { version = "0.62.2", features = [

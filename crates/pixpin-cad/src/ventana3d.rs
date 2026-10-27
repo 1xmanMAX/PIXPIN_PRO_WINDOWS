@@ -50,8 +50,8 @@ use crate::texto::Textos;
 use crate::ventana::{
     ALTO_BARRA, Aspecto, CAPA_ENCIMA, Cabecera, De, ESTADO, Ev, TipoDeArchivo,
     alternar_pantalla_completa, ancho_barra, aviso, barra, botones_barra, colocar_barra,
-    crear_barra, crear_ventana, poner_encima, raya, rect, riel, riel_cajas, riel_en, seguir_barra,
-    tecla_de_pantalla_completa, vista_pantalla,
+    crear_barra, crear_ventana, poner_encima, raya, rect, riel, riel_a_la_vista, riel_cajas,
+    riel_en, seguir_barra, tecla_de_pantalla_completa, vista_pantalla,
 };
 use crate::ventana::{
     Globo, NombresDeBotones, Unificada, ficha_en, globo_de_la_barra, globo_izquierda,
@@ -1142,6 +1142,10 @@ pub fn ver_con_barra(
         botones_riel.push("marcos");
     }
     let mut riel_encima: Option<usize> = None;
+    // **El riel se va con la barra** (27-oct-2026, como en el plano y los
+    // demas visores): si se veia en el ultimo pintado, y el raton dentro.
+    let mut riel_visto = false;
+    let mut raton_dentro: Option<(i32, i32)> = None;
     // **Los marcadores y los marcos** (19-oct-2026), con todo el estado.
     let mut guardados = crate::marcadores::Guardados::de(fichero_marcadores.as_deref());
     let mut punto_encima: Option<usize> = None;
@@ -1366,9 +1370,24 @@ pub fn ver_con_barra(
         let limite = modelo
             .as_ref()
             .map_or([0f32; 6], |(m, _)| caja_inicial(caja_inicial(m.caja)));
+        // El riel se va con la barra: escondido, sus clics son del modelo.
+        let riel_ve = riel_a_la_vista(
+            barra_visible,
+            anotando.is_some(),
+            marcando,
+            raton_dentro,
+            w,
+            h,
+            e,
+        );
         for (de, ev) in eventos {
             if matches!((de, &ev), (De::Plano, Ev::Tecla(_))) {
                 sin_tocar = false;
+            }
+            match (de, &ev) {
+                (De::Plano, Ev::Mover(x, y)) => raton_dentro = Some((*x, *y)),
+                (De::Plano, Ev::Salir) => raton_dentro = None,
+                _ => {}
             }
             // Imprimiendo, la ventana no atiende (va de vista en vista sola).
             if imprimiendo.is_some()
@@ -1380,7 +1399,7 @@ pub fn ver_con_barra(
             // **El riel de la derecha** (marcador, lapiz y marco), los puntos
             // de los marcadores y los numeros de los marcos: sus clics no son
             // del modelo ni del motor del lienzo.
-            if de == De::Plano && modelo.is_some() {
+            if de == De::Plano && modelo.is_some() && riel_ve {
                 match ev {
                     Ev::Mover(x, y) => {
                         let ahora = riel_en(w, e, botones_riel.len(), x, y).flatten();
@@ -2367,6 +2386,25 @@ pub fn ver_con_barra(
             cam = if c.cerca_de(&destino) { destino } else { c };
             sucio = true;
         }
+        // **El riel se va con la barra** (y vuelve con ella): si cambia, se
+        // repinta; escondido, nada suyo tiene el raton encima.
+        let riel_ve = riel_a_la_vista(
+            barra_visible,
+            anotando.is_some(),
+            marcando,
+            raton_dentro,
+            w,
+            h,
+            e,
+        );
+        if !riel_ve {
+            riel_encima = None;
+            punto_encima = None;
+        }
+        if riel_ve != riel_visto {
+            riel_visto = riel_ve;
+            sucio = true;
+        }
         if barra_sucia && barra_visible {
             let activos = BOTONES.map(|b| match b {
                 "corte" => seccion.is_some(),
@@ -2534,7 +2572,7 @@ pub fn ver_con_barra(
             }
             // El riel de la derecha, encima del modelo, y debajo los puntos
             // de los marcadores (el de esta vista en azul).
-            let con_riel = modelo.is_some() && !sin_interfaz;
+            let con_riel = modelo.is_some() && !sin_interfaz && riel_ve;
             let riel_m = con_riel
                 .then(|| {
                     let activos: Vec<bool> = botones_riel
