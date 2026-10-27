@@ -98,6 +98,67 @@ pub fn hacer<D: Disco + ?Sized>(d: &D, chat: &str, motivo: &str, ahora: i64) -> 
     hacer_con(d, chat, motivo, ahora, &[])
 }
 
+/// **Hace la copia mirando el diario primero** (27-oct-2026, `Copias.hacer`
+/// con `conDiario` de Android): si el chat no se ha tocado desde la ultima
+/// vez que se miro aqui, la ultima copia sigue valiendo y **no se relee
+/// nada** (antes se leia el chat y se resumian todos sus archivos para
+/// acabar viendo que era igual). Lo mirado se apunta en `copias/diario.tsv`:
+/// `chat`, libro y numero del diario. Solo desde la sincronizacion, que ha
+/// barrido el diario justo antes.
+pub fn hacer_si_cambio<D: Disco + ?Sized>(
+    d: &D,
+    chat: &str,
+    motivo: &str,
+    ahora: i64,
+) -> io::Result<bool> {
+    if crate::diario::activo() && sigue_igual(d, chat) {
+        return Ok(false);
+    }
+    let diario = d.diario();
+    let n = diario.ultimo();
+    let hecho = hacer(d, chat, motivo, ahora)?;
+    apuntar_mirado(d, chat, &diario.libro(), n);
+    Ok(hecho)
+}
+
+fn archivo_de_mirados<D: Disco + ?Sized>(d: &D) -> PathBuf {
+    raiz(d).join("diario.tsv")
+}
+
+/// El chat no ha cambiado desde que se miro aqui por ultima vez.
+fn sigue_igual<D: Disco + ?Sized>(d: &D, chat: &str) -> bool {
+    let Ok(texto) = std::fs::read_to_string(archivo_de_mirados(d)) else {
+        return false;
+    };
+    let Some(l) = texto
+        .lines()
+        .filter(|l| l.split('\t').next() == Some(chat))
+        .next_back()
+    else {
+        return false;
+    };
+    let p: Vec<&str> = l.split('\t').collect();
+    let (Some(libro), Some(Ok(n))) = (p.get(1), p.get(2).map(|x| x.parse::<i64>())) else {
+        return false;
+    };
+    let v = d.vista_del_diario(n);
+    *libro == v.libro && n >= v.piso && n <= v.ultimo && !v.cambio(chat, n)
+}
+
+fn apuntar_mirado<D: Disco + ?Sized>(d: &D, chat: &str, libro: &str, n: i64) {
+    let f = archivo_de_mirados(d);
+    let mut lineas: Vec<String> = std::fs::read_to_string(&f)
+        .map(|t| {
+            t.lines()
+                .filter(|l| !l.trim().is_empty() && l.split('\t').next() != Some(chat))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    lineas.push(format!("{chat}\t{libro}\t{n}"));
+    let _ = escribir_atomico(&f, (lineas.join("\n") + "\n").as_bytes());
+}
+
 /// Lo mismo, guardando ademas los ficheros de `ademas` aunque ya no sean del
 /// chat: al volver a una copia se van a escribir encima, y sin esto no habria
 /// como deshacerlo.
