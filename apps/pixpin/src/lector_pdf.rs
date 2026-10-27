@@ -96,6 +96,8 @@ use crate::overlay::Recursos;
 mod al_dia;
 mod cola;
 mod elegir;
+/// Imprimir el PDF entero (el clic derecho en el boton del marco).
+mod entero;
 #[cfg(test)]
 mod medir;
 pub(crate) mod office;
@@ -1360,7 +1362,8 @@ fn abrir_con(
                 }
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     e.raton = local(p);
-                    pulsar_derecho(&mut e, ruta, marco);
+                    pulsar_derecho(&mut e, ruta, marco, textos);
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Rueda(delta) => rueda(&mut e, delta, marco),
                 EventoOverlay::RuedaHorizontal(delta) => {
@@ -2759,7 +2762,13 @@ fn soltar(e: &mut Estado, m: Marco) {
     }
 }
 
-fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco) {
+fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco, textos: &Catalogo) {
+    // El boton del marco: que imprimir (el clic izquierdo sigue poniendo y
+    // quitando el modo).
+    if destino_del_riel(e, m) == DestinoRiel::Imprimir {
+        menu_del_marco(e, ruta, textos);
+        return;
+    }
     if let DestinoRiel::Marca(i) = destino_del_riel(e, m)
         && let Some(id) = e.marcas.get(i).map(|x| x.id)
     {
@@ -3165,6 +3174,31 @@ impl FotosDeMarcos {
         if let Err(err) = crate::marco_imprimir::imprimir_fotos(hwnd, self.fotos, &self.titulo) {
             tracing::warn!(?err, "marcos: no se pudo imprimir");
         }
+    }
+}
+
+/// **El clic derecho en el boton del marco** (27-oct-2026, como la
+/// pulsacion larga del movil): imprimir los marcos (lo de Ctrl+P) o el
+/// documento entero (el PDF con lo anotado, o el Word o el PowerPoint con el
+/// imprimir de siempre).
+fn menu_del_marco(e: &mut Estado, ruta: &Path, textos: &Catalogo) {
+    use crate::marcos_doc::{Entero, QueImprimir};
+    let entero = match e.office.as_ref().map(|o| o.tipo) {
+        Some(pixpin_office::Tipo::Word) => Entero::Word,
+        Some(pixpin_office::Tipo::PowerPoint) => Entero::PowerPoint,
+        None => Entero::Pdf,
+    };
+    let elegido =
+        crate::marcos_doc::menu_de_imprimir(e.hwnd, textos, e.marcos.lista.len(), Some(entero));
+    match elegido {
+        Some(QueImprimir::Marcos) => {
+            imprimir_marcos(e, ruta);
+        }
+        Some(QueImprimir::Entero) if e.office.is_some() => {
+            office::imprimir(e, e.hwnd, ruta, textos)
+        }
+        Some(QueImprimir::Entero) => entero::imprimir(e, ruta, textos),
+        None => {}
     }
 }
 

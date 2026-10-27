@@ -449,6 +449,12 @@ impl Pintor<'_> {
         self.motor.pincel(color)
     }
 
+    /// El motor con que se pinta: para subir un mapa que se dibuja justo al
+    /// pintar la hoja (las de un PDF entero al imprimirlo, una a una).
+    pub fn motor(&self) -> &MotorRender {
+        self.motor
+    }
+
     pub fn limpiar(&self, color: Color) {
         // SAFETY: Clear dentro de BeginDraw/EndDraw (lo garantiza `dibujar`).
         unsafe { self.motor.contexto().Clear(Some(&color.a_d2d())) };
