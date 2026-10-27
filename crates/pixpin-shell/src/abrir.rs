@@ -37,6 +37,29 @@ pub fn abrir(ruta: &Path) -> windows::core::Result<()> {
     Ok(())
 }
 
+/// **Imprime el fichero con su aplicacion** (el verbo «print» del
+/// Explorador, el «Imprimir» de su menu contextual): lo que el visor no sabe
+/// pintar en papel por si mismo, como un `.doc` o un `.xls` que se ven con la
+/// vista previa de Office. Error si ninguna aplicacion registra ese verbo.
+pub fn imprimir_con_su_app(ruta: &Path) -> windows::core::Result<()> {
+    let objetivo = HSTRING::from(ruta.as_os_str());
+    // SAFETY: igual que en `abrir`.
+    let r = unsafe {
+        ShellExecuteW(
+            None,
+            w!("print"),
+            PCWSTR(objetivo.as_ptr()),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        )
+    };
+    if r.0 as isize <= EXITO_MINIMO {
+        return Err(windows::core::Error::from_thread());
+    }
+    Ok(())
+}
+
 /// Abre el Explorador con el fichero seleccionado.
 pub fn abrir_ubicacion(ruta: &Path) -> windows::core::Result<()> {
     // Las comillas importan: sin ellas, una ruta con espacios llega al

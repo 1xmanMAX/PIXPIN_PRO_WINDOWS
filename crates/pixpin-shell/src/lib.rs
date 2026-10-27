@@ -62,7 +62,7 @@ pub mod ventanas_visibles;
 pub mod vigia_carpeta;
 pub mod vista_previa;
 
-pub use abrir::{abrir, abrir_ubicacion};
+pub use abrir::{abrir, abrir_ubicacion, imprimir_con_su_app};
 pub use arranque::ErrorArranque;
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
 pub use atajos::{
@@ -98,10 +98,24 @@ pub fn menu_llano(
     hwnd: windows::Win32::Foundation::HWND,
     entradas: &[(u32, String)],
 ) -> Option<u32> {
+    let activas: Vec<(u32, String, bool)> = entradas
+        .iter()
+        .map(|(id, rotulo)| (*id, rotulo.clone(), true))
+        .collect();
+    menu_llano_con(hwnd, &activas)
+}
+
+/// Como [`menu_llano`], pero cada entrada dice si se puede elegir: las que
+/// no, salen en gris (con su rotulo, que explica por que), como «Imprimir
+/// los marcos» sin ningun marco puesto.
+pub fn menu_llano_con(
+    hwnd: windows::Win32::Foundation::HWND,
+    entradas: &[(u32, String, bool)],
+) -> Option<u32> {
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, MF_STRING, SetForegroundWindow,
-        TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
+        AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, MF_GRAYED, MF_STRING,
+        SetForegroundWindow, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
     };
     use windows::core::HSTRING;
 
@@ -112,9 +126,14 @@ pub fn menu_llano(
     // HSTRING durante la llamada y el hwnd es una ventana propia.
     unsafe {
         let menu = CreatePopupMenu().ok()?;
-        for (id, rotulo) in entradas {
+        for (id, rotulo, activa) in entradas {
             let texto = HSTRING::from(rotulo.as_str());
-            if AppendMenuW(menu, MF_STRING, *id as usize, &texto).is_err() {
+            let banderas = if *activa {
+                MF_STRING
+            } else {
+                MF_STRING | MF_GRAYED
+            };
+            if AppendMenuW(menu, banderas, *id as usize, &texto).is_err() {
                 let _ = DestroyMenu(menu);
                 return None;
             }
