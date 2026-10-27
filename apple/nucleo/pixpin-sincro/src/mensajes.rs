@@ -54,6 +54,12 @@ pub struct Hola {
     pub unirme: bool,
     #[serde(skip_serializing_if = "es_cero_u32")]
     pub puerto: u32,
+    /// **Lo que sabe hacer ademas del protocolo** (27-oct-2026, Android
+    /// `Hola.capacidades`): ver [crate::CAPACIDADES]. Solo se usa lo que
+    /// dicen **los dos** (la interseccion). Un PixPin de antes no lo manda y
+    /// no lo lee: con el, todo va como siempre.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub capacidades: Vec<String>,
 }
 
 impl Default for Hola {
@@ -67,6 +73,7 @@ impl Default for Hola {
             version: crate::VERSION,
             unirme: false,
             puerto: 0,
+            capacidades: Vec::new(),
         }
     }
 }
@@ -200,6 +207,19 @@ pub struct Peticion {
     /// CADENA con JSON dentro. Ver `compartidos`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compartidos: Option<String>,
+    /// [crate::REANUDAR] — `dame`: mandame desde este byte (lo que ya tengo
+    /// de esa version).
+    #[serde(rename = "desdeByte", skip_serializing_if = "es_cero_i64")]
+    pub desde_byte: i64,
+    /// [crate::REANUDAR] — `pon`: contesta cuanto tienes ya antes de que
+    /// salgan los trozos; `bytes` es el largo entero y `resumen` el del
+    /// archivo entero.
+    #[serde(skip_serializing_if = "es_falso")]
+    pub reanudar: bool,
+    /// [crate::DIARIO] — `base`: los dos lados quedaron identicos en este
+    /// chat; apunta tu cursor.
+    #[serde(skip_serializing_if = "es_falso")]
+    pub entero: bool,
 }
 
 impl Peticion {
@@ -270,6 +290,14 @@ pub struct Respuesta {
     /// CADENA con JSON dentro. Ver `compartidos`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compartidos: Option<String>,
+    /// [crate::REANUDAR] — `dame`, `pon`: desde que byte van los trozos (lo
+    /// que quien recibe ya tenia).
+    #[serde(rename = "desdeByte", skip_serializing_if = "es_cero_i64")]
+    pub desde_byte: i64,
+    /// [crate::DIARIO] — `novedades`: los chats que siguen **exactamente**
+    /// como quedaron la ultima vez que los dos estuvieron identicos.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub quietos: Vec<String>,
 }
 
 /// El texto que manda Android cuando ya esta sincronizando con otro.
@@ -374,6 +402,57 @@ mod pruebas {
         assert_eq!(r.lapidas[0].chat, "pr-1");
         assert_eq!(r.lapidas[0].aparato, "9FMQ");
         assert!(r.error.is_none());
+    }
+
+    #[test]
+    fn lo_nuevo_del_diario_solo_viaja_si_se_usa() {
+        // Sin capacidades, el saludo es el de siempre: el PC de antes y un
+        // Android de antes leen exactamente lo mismo que leian.
+        let h = Hola::default();
+        assert!(!serde_json::to_string(&h).unwrap().contains("capacidades"));
+        let h = Hola {
+            capacidades: vec![crate::DIARIO.into(), crate::REANUDAR.into()],
+            ..Default::default()
+        };
+        let t = serde_json::to_string(&h).unwrap();
+        assert!(
+            t.contains(r#""capacidades":["diario1","reanudar1"]"#),
+            "{t}"
+        );
+        // Los nombres de Android, tal cual (§7.4 y §7.5 de su guia).
+        let p = Peticion {
+            ruta: Some("guardados/clase.mp4".into()),
+            desde_byte: 2_097_152,
+            ..Peticion::sobre("dame", "general")
+        };
+        assert_eq!(
+            serde_json::to_string(&p).unwrap(),
+            r#"{"t":"dame","chat":"general","ruta":"guardados/clase.mp4","desdeByte":2097152}"#
+        );
+        let p = Peticion {
+            ruta: Some("guardados/obra.mp4".into()),
+            bytes: 4_194_304,
+            resumen: Some("r".into()),
+            reanudar: true,
+            ..Peticion::sobre("pon", "general")
+        };
+        assert_eq!(
+            serde_json::to_string(&p).unwrap(),
+            r#"{"t":"pon","chat":"general","ruta":"guardados/obra.mp4","bytes":4194304,"resumen":"r","reanudar":true}"#
+        );
+        let r: Respuesta = serde_json::from_str(r#"{"quietos":["general","p-1"]}"#).unwrap();
+        assert_eq!(r.quietos, ["general", "p-1"]);
+        let r: Respuesta =
+            serde_json::from_str(r#"{"bytes":2097152,"desdeByte":2097152}"#).unwrap();
+        assert_eq!(r.desde_byte, 2_097_152);
+        let b = Peticion {
+            entero: true,
+            ..Peticion::sobre("base", "general")
+        };
+        assert_eq!(
+            serde_json::to_string(&b).unwrap(),
+            r#"{"t":"base","chat":"general","entero":true}"#
+        );
     }
 
     #[test]

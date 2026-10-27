@@ -51,6 +51,7 @@ pub mod canonico;
 pub mod codigo;
 pub mod compartidos;
 pub mod copias;
+pub mod diario;
 pub mod diferencia;
 pub mod disco;
 #[cfg(any(test, feature = "simulador"))]
@@ -63,7 +64,9 @@ pub mod invitacion;
 pub mod kotlin;
 pub mod mensajes;
 pub mod mezcla;
+pub mod prioridad;
 pub mod protocolo;
+pub mod reintentos;
 pub mod valla;
 pub mod vuelta;
 
@@ -77,6 +80,22 @@ pub mod vuelta;
 /// codigos unicos, la fusion sin preguntar y los parches; la 4 (16-sep-2026)
 /// hace viajar el borrado de un proyecto con las lapidas de chat.
 pub const VERSION: u32 = 4;
+
+/// **Lo que sabe hacer este aparato ademas del protocolo [VERSION]**
+/// (27-oct-2026, Android `Protocolo.CAPACIDADES`). Va en el saludo
+/// (`Hola::capacidades`) y solo se usa si **los dos** lo dicen: un PixPin de
+/// antes no manda ninguna, y con el todo va exactamente como antes. Ver
+/// `diario` y `docs/manual-sincronizar-lo-nuevo.md`.
+///
+/// - [DIARIO], «`novedades`» (que chats siguen como quedaron, por el diario)
+///   y `entero` en `base` (los dos quedaron identicos: apunta el cursor).
+/// - [REANUDAR], un archivo grande cortado a medias sigue donde se quedo
+///   (`desdeByte`, y `pon` con `reanudar`, que contesta antes de los trozos).
+pub const DIARIO: &str = "diario1";
+pub const REANUDAR: &str = "reanudar1";
+pub const CAPACIDADES: [&str; 2] = [DIARIO, REANUDAR];
+/// Desde aqui, un archivo se reanuda en vez de volver a mandarse entero.
+pub const REANUDAR_DESDE: i64 = 1 << 20;
 
 /// El tipo de servicio que se anuncia y se busca por mDNS al sincronizar.
 pub const SERVICIO: &str = "_pixpin._tcp.";
@@ -104,3 +123,6 @@ mod de_verdad;
 
 #[cfg(test)]
 mod compartidos_de_verdad;
+
+#[cfg(test)]
+mod diario_de_verdad;

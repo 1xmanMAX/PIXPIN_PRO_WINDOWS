@@ -14,6 +14,7 @@ use crate::diferencia::Paso;
 use crate::disco::Disco;
 use crate::mensajes::{Aparato, Chat, LapidaDeChat};
 use crate::mezcla::Mando;
+use crate::prioridad;
 use crate::protocolo::{Hecho, Preparado, PreparadoArchivos, Resultado, Sesion};
 
 /// Un chat en la lista de elegir: donde esta y cuando se toco en cada lado.
@@ -510,21 +511,34 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
     };
 
     let empezo = std::time::Instant::now();
-    let compartidos: BTreeSet<String> = CompartidosEnDisco::nuevo(&disco.raiz())
-        .leer()
-        .into_iter()
-        // Con otra persona dentro (no otro aparato mio): si no, es mio.
-        .filter(|c| crate::compartidos::nombres_dentro(c).len() > 1)
-        .map(|c| c.chat)
-        .collect();
-    let mut van: Vec<&String> = ids
+    // Los chats compartidos con otras personas (no otro aparato mio): van
+    // detras de los de tareas. Con una persona, todos lo son.
+    let compartidos: BTreeSet<String> = if s.acceso().is_some() {
+        ids.iter().cloned().collect()
+    } else {
+        CompartidosEnDisco::nuevo(&disco.raiz())
+            .leer()
+            .into_iter()
+            .filter(|c| crate::compartidos::nombres_dentro(c).len() > 1)
+            .map(|c| c.chat)
+            .collect()
+    };
+    let van: Vec<String> = ids
         .iter()
         .filter(|c| elegidos.contains(*c) && !decision.fuera.contains(*c))
         .filter(|c| solo.is_none_or(|x| x.contains(*c)))
+        .cloned()
         .collect();
-    // **Los chats compartidos, primero** (prioridad 2 de
-    // [prioridad_de_archivo]); dentro, el orden de siempre.
-    van.sort_by_key(|c| !compartidos.contains(*c));
+    // **Por prioridad** (27-oct-2026, `Prioridad.ordenarChats` de Android):
+    // los chats con listas de tareas, los compartidos y luego del mas ligero
+    // (menos mensajes) al mas pesado.
+    let con_tareas = disco.chats_con_tareas();
+    let peso = |c: &str| {
+        mios.get(c)
+            .or(suyos.get(c))
+            .map_or(0, |x| i64::from(x.mensajes))
+    };
+    let orden = prioridad::ordenar_chats(&van, &con_tareas, &compartidos, peso);
     let nombre_de_fila = |chat: &str| {
         filas
             .iter()
@@ -533,56 +547,57 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
             .unwrap_or_default()
     };
     // 1. **Los mensajes de todos los chats** (con ellos, las tareas: son
-    // mensajes). Cada chat se cierra ya, con lo que queda igual: si la vuelta
-    // se corta despues en un video, lo acordado de los mensajes no se pierde
-    // y la vuelta siguiente no tiene que adivinar lo borrado.
-    let mut pendientes: Vec<(Preparado, PreparadoArchivos, String)> = Vec::new();
-    for chat in van {
+    // mensajes). Lo que sigue como quedo en los dos lados ni se mira (el
+    // diario: `Sesion::preparar`).
+    let mut preps: Vec<(Preparado, String)> = Vec::new();
+    for chat in &orden {
         let nombre = nombre_de_fila(chat);
         progreso(Trabajo::solo(format!(
             "{rotulo}Comparando «{nombre}» con {}…",
             otro.nombre
         )));
         let prep = s.preparar(chat)?;
-        progreso(Trabajo::solo(format!("{rotulo}Juntando «{nombre}»…")));
+        if !prep.quieto {
+            progreso(Trabajo::solo(format!("{rotulo}Juntando «{nombre}»…")));
+        }
         s.aplicar(&prep, hecho)?;
+        preps.push((prep, nombre));
+    }
+    // Cada chat sin archivos que mover se cierra ya; los demas tambien, con
+    // lo que queda igual: si la vuelta se corta despues en un video, lo
+    // acordado de los mensajes no se pierde y la vuelta siguiente no tiene
+    // que adivinar lo borrado.
+    let mut pendientes: Vec<(Preparado, PreparadoArchivos, String)> = Vec::new();
+    for (prep, nombre) in preps.into_iter().filter(|(p, _)| !p.quieto) {
         let archivos = s.preparar_archivos(&prep)?;
-        if archivos.pasos.is_empty() {
-            progreso(Trabajo::solo(format!("{rotulo}Terminando «{nombre}»…")));
-            s.cerrar(&prep, ahora())?;
-        } else {
+        progreso(Trabajo::solo(format!("{rotulo}Terminando «{nombre}»…")));
+        s.cerrar(&prep, ahora())?;
+        if !archivos.pasos.is_empty() {
             pendientes.push((prep, archivos, nombre));
         }
     }
-    // 2. **Los archivos de todos, por prioridad** (27-oct-2026, la lista
-    // del usuario en Android: «1 tareas, 2 chats compartidos, 3 archivos, 4
-    // lienzos/notas/textos, 5 videos y grabaciones; dentro, lo mas ligero
-    // primero»). El orden no cambia lo que queda, solo lo que ya esta si la
+    // 2. **Los archivos de todos, por prioridad** (`Prioridad.ordenar`): lo
+    // de las listas de tareas, lo de los chats compartidos, documentos,
+    // lienzos y notas, y al final video y audio; por grupos (una clase
+    // grabada va junta, con lo que pesa entera) y dentro, lo mas ligero
+    // primero. El orden no cambia lo que queda, solo lo que ya esta si la
     // vuelta se corta.
     if !pendientes.is_empty() {
-        for (prep, _, nombre) in &pendientes {
-            progreso(Trabajo::solo(format!("{rotulo}Terminando «{nombre}»…")));
-            s.cerrar(prep, ahora())?;
-        }
-        let mut orden: Vec<(u8, u64, usize, &Paso)> = Vec::new();
+        let mut todos: Vec<(usize, &Paso)> = Vec::new();
         for (i, (_, a, _)) in pendientes.iter().enumerate() {
-            let compartido = compartidos.contains(&a.chat);
-            for p in a.en_orden() {
-                orden.push((
-                    prioridad_de_archivo(p.sena(), compartido),
-                    a.bytes_de(p),
-                    i,
-                    p,
-                ));
+            for p in &a.pasos {
+                todos.push((i, p));
             }
         }
-        // Estable: a igual prioridad y peso, el orden de los chats y del plan.
-        orden.sort_by_key(|(prio, bytes, _, _)| (*prio, *bytes));
+        let orden = prioridad::ordenar(todos, |(i, p)| {
+            let a = &pendientes[*i].1;
+            a.pieza(p, compartidos.contains(&a.chat))
+        });
         let total: u64 = pendientes.iter().map(|(_, a, _)| a.bytes()).sum();
         let mut hechos = 0u64;
         let t0 = std::time::Instant::now();
         let mut ultimo = std::time::Instant::now() - std::time::Duration::from_secs(1);
-        for (_, _, i, paso) in orden {
+        for (i, paso) in orden {
             let (_, archivos, nombre) = &pendientes[i];
             s.aplicar_pasos(archivos, &[paso], hecho, &mut |n| {
                 hechos += n;
@@ -603,6 +618,11 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
             progreso(Trabajo::solo(format!("{rotulo}Terminando «{nombre}»…")));
             s.cerrar(prep, ahora())?;
         }
+    }
+    // **Se cuenta la vuelta** para la verificacion entera del diario: las
+    // recortadas de tareas no cuentan.
+    if solo.is_none() {
+        s.contar_vuelta();
     }
     // **La galeria de capturas**, con sus fechas de irse (Android v0.107.0).
     // Si el otro no sabe de galerias, no pasa nada.
@@ -647,6 +667,12 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
             lista.join(", ")
         ));
     }
+    if hecho.sin_espacio {
+        avisos.push(format!(
+            "No queda espacio en este aparato: algo de {} no se pudo recibir.",
+            otro.nombre
+        ));
+    }
     if let Some(a) = aviso_del_reloj(&otro, s.desfase) {
         avisos.push(a);
     }
@@ -657,50 +683,6 @@ fn con_alcance<D: Disco + ?Sized, F: Read + Write>(
         avisos,
         cancelada: false,
     })
-}
-
-/// Las extensiones de video y de sonido: lo de una grabacion (la nota de
-/// voz y su video) y la musica. Van al final de la vuelta.
-const DE_GRABACION: [&str; 18] = [
-    "mp4", "mov", "avi", "mkv", "webm", "3gp", "m4v", "wmv", "flv", "m4a", "mp3", "aac", "ogg",
-    "opus", "wav", "amr", "flac", "wma",
-];
-
-/// **La prioridad de un archivo en la vuelta** (27-oct-2026), de menor a
-/// mayor, como la lista del usuario en Android (checklist 16, «1 tareas, 2
-/// chats compartidos, 3 archivos, 4 lienzos/notas/textos, 5 videos y
-/// grabaciones»). Las tareas son mensajes y ya han pasado todas antes del
-/// primer archivo.
-///
-/// - `0`: lo de un chat compartido (menos sus videos y sonidos);
-/// - `1`: los archivos (documentos, fotos, lo demas);
-/// - `2`: lienzos, notas y textos (`pins/draw/…`, `notas/…`, lo que se
-///   junta como texto);
-/// - `3`: videos y sonidos (grabaciones, notas de voz, musica).
-///
-/// Dentro de cada una, lo mas ligero primero ([PreparadoArchivos::en_orden]).
-pub fn prioridad_de_archivo(rel: &str, de_compartido: bool) -> u8 {
-    let ext = rel
-        .rsplit('/')
-        .next()
-        .and_then(|n| n.rsplit_once('.'))
-        .map(|(_, e)| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    if DE_GRABACION.contains(&ext.as_str()) || rel.starts_with("voz/") {
-        3
-    } else if de_compartido {
-        0
-    } else if crate::disco::es_texto(rel)
-        || rel.starts_with("pins/")
-        || rel.starts_with("notas/")
-        || rel.contains("/notas/")
-        || ext == "md"
-        || ext == "txt"
-    {
-        2
-    } else {
-        1
-    }
 }
 
 /// `avisoDelReloj`: con la hora mal, lo que llega se coloca en el chat donde

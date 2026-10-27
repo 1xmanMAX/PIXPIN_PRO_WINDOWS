@@ -32,6 +32,13 @@ flate2 = "1.1"
 # Juntar dos versiones de una leccion aprendida en vez de pisar una con la
 # otra (`disco::juntar_leccion`). Logica pura, sin mas dependencias.
 pixpin-lecciones = { path = "../pixpin-lecciones" }
+# El diario de cambios (27-oct-2026, `diario`): el nodo de cada fichero (el
+# indice de NTFS en Windows, el inodo en Unix) y el espacio libre del disco,
+# que piden llamar al sistema y aqui no se puede (`forbid(unsafe_code)`).
+pixpin-sistema = { path = "../pixpin-sistema" }
+# El CRC32 de lo recien escrito en el barrido del diario. Ya estaba en el
+# arbol por `flate2`.
+crc32fast = "1.5.1"
 
 [features]
 # Un `Disco` con la carpeta `files` de Android, puerto directo de `Disco.kt`:
