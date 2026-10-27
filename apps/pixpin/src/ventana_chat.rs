@@ -137,6 +137,9 @@ mod ficha_del_chat;
 /// La ventana de las figuras guardadas, con su previsualizador: la abre su
 /// mosaico de Funciones y la bandeja (24/25-oct-2026).
 mod figuras;
+/// Las versiones vinculadas de un chat compartido: tocar lo de otra persona
+/// hace mi version y su original no cambia (27-oct-2026).
+pub(crate) mod versiones;
 
 /// **Abre la ventana de las figuras** (o la trae delante).
 pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
@@ -1801,6 +1804,7 @@ pub fn abrir(
                                     }
                                 }
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
+                                Zona::Versiones(i) => Efecto::Menu(menu_de_versiones(a, i, textos)),
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
                                 Zona::Sistema => Efecto::Menu(menu_de_sistema(a, textos)),
                                 Zona::ConfirmarIa(i, si) => {
@@ -4113,6 +4117,9 @@ pub fn abrir(
         // sin tirar lo que el usuario tenga a medias. Con una hoja o un
         // lienzo abiertos se espera: el que esta escribiendo manda.
         if tomar_refrescar() {
+            // Al volver de un editor (un lienzo, el lector), lo cambiado sobre
+            // lo de otra persona pasa a ser mi version (27-oct-2026).
+            versiones::cerrar(ubicacion.raiz(), textos);
             pendiente_de_releer = true;
             // Y lo encontrado en los chats, que pudo cambiar con lo llegado.
             en_chats.releer();
@@ -4645,6 +4652,12 @@ pub fn abrir(
         }
         if let Some(clave) = aviso_ia {
             aviso = Some((textos.t(&clave), std::time::Instant::now()));
+        }
+        // Lo que dicen las versiones vinculadas («Es de Ana: si lo cambias…»,
+        // «Se guardo como tu version»), desde donde no hay aviso a mano.
+        if let Some(t) = versiones::tomar_aviso(textos) {
+            aviso = Some((t, std::time::Instant::now()));
+            hay_que_pintar = true;
         }
         // «…y ábrelo»: el lienzo donde acaba de dibujar, abierto como si se
         // hubiera tocado su burbuja.
@@ -6179,6 +6192,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             // Con el asistente de por medio, cada uno a su lado (una vez,
             // no por mensaje: mirarlo es recorrer la conversacion).
             let con_ia = asistente::conversacion_con_ia(a);
+            let rotulos = versiones::rotulos(a, textos);
             let visibles = indices_visibles(a);
             let mut entradas = Vec::with_capacity(visibles.len());
             let mut todas = Vec::with_capacity(visibles.len());
@@ -6196,6 +6210,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                         ahora,
                         aguja: &aguja,
                         con_ia,
+                        versiones: &rotulos,
                     },
                 );
                 entradas.push(entrada);
@@ -6411,6 +6426,22 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         };
         let hueco = h::RELLENO_Y as f32 * e;
         let mut y = dentro.y as f32;
+
+        // Las versiones vinculadas (27-oct-2026): de quien es el original que
+        // esta copia cambio (lleva a el), y en el original cuantas versiones
+        // tiene (las lista).
+        if let Some(r) = &piezas.version {
+            let caja = pintar_rotulo_de_version(p, r, dentro.x as f32, y, tema.enviar, e);
+            if let Some(j) = r.ir {
+                a.zonas.borrow_mut().push((caja, Zona::Ir(j)));
+            }
+            y += r.alto + hueco;
+        }
+        if let Some(r) = &piezas.versiones {
+            let caja = pintar_rotulo_de_version(p, r, dentro.x as f32, y, tema.enviar, e);
+            a.zonas.borrow_mut().push((caja, Zona::Versiones(i)));
+            y += r.alto + hueco;
+        }
 
         // A que contesta: la banda con la barra de color de Telegram, del
         // ancho de la burbuja. Tocarla lleva al original.
@@ -7215,6 +7246,14 @@ fn tocar_la_burbuja(
     {
         return;
     }
+    // **Lo de otra persona en un chat compartido se abre como version mia**
+    // (27-oct-2026): el editor trabaja sobre una copia y el original no se
+    // toca. Lo mio, y todo en un chat propio, sigue por aqui abajo.
+    if let Some(a) = abierto.as_ref()
+        && versiones::abrir_como_version(ubicacion, a, indice, textos, lienzo, idioma, identidad)
+    {
+        return;
+    }
     // Lo demas, con su aplicacion.
     let vista = |f: fn(&Option<Ojeada>) -> bool| {
         abierto
@@ -7718,6 +7757,24 @@ fn resumen_de_sistema(
 /// **Lo que lista la franja al pulsarla**: cada letra con «Quitar» (borra
 /// su mensaje, y con el la letra en todos los aparatos, como borrar la
 /// burbuja antes), las figuras y las automatizaciones con donde se usan.
+/// **Las versiones de un original** («2 versiones ▾», 27-oct-2026): «Version
+/// 1 · tuya», «Version 2 · Ana»…, y cada una lleva a la suya.
+fn menu_de_versiones(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
+    let Some(m) = a.mensajes.get(i) else {
+        return Vec::new();
+    };
+    versiones::rotulos(a, textos)
+        .chip
+        .remove(&m.id)
+        .map(|(_, lista)| {
+            lista
+                .into_iter()
+                .map(|(texto, j)| entrada(Some(&mi::EDIT), texto, Accion::Ir(j)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn menu_de_sistema(a: &Abierto, textos: &Catalogo) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
     let mut con_memoria = false;
@@ -7897,6 +7954,9 @@ struct Medir<'a> {
     /// Si se habla con el asistente: lo del usuario va a la derecha
     /// (`asistente::a_la_derecha`).
     con_ia: bool,
+    /// Los rotulos de las versiones vinculadas del chat (27-oct-2026), una
+    /// vez por colocacion y no por mensaje.
+    versiones: &'a versiones::Rotulos,
 }
 
 /// Mide un mensaje y decide de que piezas se compone, como la `Burbuja` del
@@ -7970,7 +8030,34 @@ fn medir_mensaje(
             ancho: ancho.min(ancho_max),
         }
     });
-    let foto_sola = es_foto && texto.is_empty() && cita.is_none();
+    // «Version de Ana» encima de una version, y «2 versiones» en su
+    // original (las versiones vinculadas de un chat compartido): una linea
+    // cada una, encima de la cita, como en el movil.
+    let (cabecera, chip) = cx.versiones.de(m);
+    let version = cabecera.map(|(t, ir)| {
+        let (w, alto) = p.medir_texto(t, VERSION_TAM * e);
+        Rotulo {
+            texto: t.clone(),
+            ancho: (w + VERSION_ICONO * e).min(ancho_max),
+            alto: alto.max(VERSION_ICONO * e),
+            ir: *ir,
+        }
+    });
+    let versiones_chip = chip.map(|t| {
+        let t = format!("{t} ▾");
+        let (w, alto) = p.medir_texto(&t, VERSION_TAM * e);
+        Rotulo {
+            texto: t,
+            ancho: (w + VERSION_ICONO * e).min(ancho_max),
+            alto: alto.max(VERSION_ICONO * e),
+            ir: None,
+        }
+    });
+    let foto_sola = es_foto
+        && texto.is_empty()
+        && cita.is_none()
+        && version.is_none()
+        && versiones_chip.is_none();
     let vista_medida = vista.map(|v| {
         let vivo = a.vivo.as_ref().is_some_and(|v| v.indice == indice);
         // Vivo se dibuja sobre la foto ENTERA y sola (ver `pintar_foto`).
@@ -8033,8 +8120,13 @@ fn medir_mensaje(
             elegir: None,
             ia: None,
             rica: None,
+            version: None,
+            versiones: None,
         };
         return (entrada, piezas);
+    }
+    for r in [&version, &versiones_chip].into_iter().flatten() {
+        sumar(&mut ancho, &mut alto, r.ancho, r.alto);
     }
     if cita.is_some() {
         sumar(
@@ -8240,6 +8332,8 @@ fn medir_mensaje(
         elegir,
         ia,
         rica,
+        version,
+        versiones: versiones_chip,
     };
     (entrada, piezas)
 }
@@ -8937,6 +9031,39 @@ fn pintar_viene_de(
 
 /// La cita de una respuesta: barra de 3 del color de acento y su fondo al
 /// 10 %, con el numero, el nombre y el resumen del citado (`ReplyMessageLine`).
+/// **Un rotulo de las versiones vinculadas**: el lapiz y el texto, en el
+/// color de acento y en negrita como el de Android (`CabeceraDeVersion`).
+/// Devuelve su caja, que es lo que se pulsa.
+fn pintar_rotulo_de_version(p: &Pintor, r: &Rotulo, x: f32, y: f32, color: Color, e: f32) -> Rect {
+    let lado = 13.0 * e;
+    p.icono(
+        &mi::EDIT,
+        RectF {
+            x,
+            y: y + (r.alto - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
+        color,
+    );
+    let ix = x + VERSION_ICONO * e;
+    let (_, alto_texto) = p.medir_texto(&r.texto, VERSION_TAM * e);
+    p.texto_linea(
+        &r.texto,
+        ix,
+        y + (r.alto - alto_texto) / 2.0,
+        VERSION_TAM * e,
+        (r.ancho - VERSION_ICONO * e).max(0.0) + 1.0,
+        color,
+    );
+    Rect {
+        x: x as i32,
+        y: y as i32,
+        ancho: r.ancho.ceil() as u32,
+        alto: r.alto.ceil() as u32,
+    }
+}
+
 fn pintar_cita(
     p: &Pintor,
     tema: &Tema,
@@ -10871,9 +10998,20 @@ fn abrir_mensaje(
     _textos: &Catalogo,
     idioma: pixpin_store::Idioma,
 ) {
-    let Some(m) = a.mensajes.get(indice) else {
-        return;
-    };
+    if let Some(m) = a.mensajes.get(indice) {
+        abrir_el_mensaje(ubicacion, &a.ficha.id, m, idioma);
+    }
+}
+
+/// Lo de [`abrir_mensaje`] con el mensaje en la mano, este o no en el chat:
+/// la copia de una version vinculada se abre asi antes de ser mensaje
+/// (`versiones::abrir_como_version`).
+fn abrir_el_mensaje(
+    ubicacion: &Ubicacion,
+    proyecto: &str,
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    idioma: pixpin_store::Idioma,
+) {
     // Una hoja que ES una pagina del documento no llega aqui: se abre en el
     // lienzo con la pagina de fondo (`tocar_la_burbuja`), como en el movil.
     let Some(relativa) = m.ruta.as_deref().filter(|r| !r.is_empty()) else {
@@ -10882,8 +11020,7 @@ fn abrir_mensaje(
     // La ruta del mensaje es relativa a la carpeta del proyecto. Una que
     // venga del movil sera absoluta y de otro aparato: entonces no hay nada
     // que abrir aqui, y decirlo es mejor que abrir cualquier cosa.
-    let Some(ruta) = pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), &a.ficha.id, relativa)
-    else {
+    let Some(ruta) = pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), proyecto, relativa) else {
         return;
     };
     if !ruta.is_file() {
@@ -13335,13 +13472,13 @@ fn abrir_mini(a: &mut Abierto, indice: usize, textos: &Catalogo) -> bool {
 
 /// Cierra el panel, guardandolo si se toco.
 fn cerrar_mini(ubicacion: &Ubicacion, a: &mut Abierto) {
-    let Some(m) = a.mini.take() else {
+    let Some(mut m) = a.mini.take() else {
         return;
     };
     if !m.tocada {
         return;
     }
-    if let Err(e) = guardar_mini(ubicacion, a, &m) {
+    if let Err(e) = guardar_mini(ubicacion, a, &mut m) {
         tracing::error!(?e, "no se pudo guardar la mini-app; sigue como estaba");
     }
 }
@@ -13351,7 +13488,20 @@ fn cerrar_mini(ubicacion: &Ubicacion, a: &mut Abierto) {
 /// Por `cuaderno::reemplazar`, que **copia tal cual las lineas que no
 /// entiende**: marcar una casilla no puede llevarse por delante lo que
 /// escribio una version mas nueva del movil.
-fn guardar_mini(ubicacion: &Ubicacion, a: &mut Abierto, m: &MiniAbierta) -> Result<()> {
+fn guardar_mini(ubicacion: &Ubicacion, a: &mut Abierto, m: &mut MiniAbierta) -> Result<()> {
+    // **La mini-app de otra persona en un chat compartido** (27-oct-2026):
+    // el primer cambio hace mi version, con el cambio ya hecho, y el panel
+    // sigue sobre ella; la suya no cambia. Lo de despues ya es mio.
+    let documento = m.documento.clone();
+    if let Some(hecho) = versiones::al_momento(ubicacion, a, m.indice, |mut v| {
+        v.texto = documento;
+        v
+    }) {
+        versiones::avisar_de_un_toque(&hecho);
+        m.indice = hecho?;
+        a.colocado.borrow_mut().ancho = 0;
+        return Ok(());
+    }
     let Some(mensaje) = a.mensajes.get_mut(m.indice) else {
         return Ok(());
     };
@@ -13509,7 +13659,7 @@ fn cumplir_mini(
         al_final = matches!(o, Orden::Anadir(_));
         if m.hacer(o, textos)
             && m.tocada
-            && let Err(e) = guardar_mini(ubicacion, a, &m)
+            && let Err(e) = guardar_mini(ubicacion, a, &mut m)
         {
             tracing::warn!(?e, "no se pudo guardar la mini-app; se reintenta al cerrar");
         }
@@ -14989,6 +15139,9 @@ enum Zona {
     /// El altavoz de una respuesta del asistente: la lee o la calla
     /// (`voz_del_asistente`).
     LeerRespuesta(usize),
+    /// «2 versiones ▾» de un original (las versiones vinculadas): la lista
+    /// de sus versiones, cada una lleva a la suya.
+    Versiones(usize),
     /// La pastilla del modelo en la cabecera del chat «Asistente»: abre la
     /// lista Claude Haiku / DeepSeek / Local (17-oct-2026).
     ModeloIa,
@@ -15101,7 +15254,24 @@ struct Piezas {
     ia: Option<pensado::Pieza>,
     /// La nota con formato y fotos, ya medida: va en lugar de `texto`.
     rica: Option<nota_rica::Pieza>,
+    /// «Version de Ana»: esta burbuja es una version de otro mensaje.
+    version: Option<Rotulo>,
+    /// «2 versiones ▾»: esta burbuja es un original con versiones.
+    versiones: Option<Rotulo>,
 }
+
+/// Un rotulo de las versiones vinculadas, ya medido: el lapiz y su texto.
+struct Rotulo {
+    texto: String,
+    ancho: f32,
+    alto: f32,
+    /// Adonde lleva tocarlo (el original de una version), si esta.
+    ir: Option<usize>,
+}
+
+/// La letra de los rotulos de las versiones (12, la del movil) y su lapiz.
+const VERSION_TAM: f32 = 12.0;
+const VERSION_ICONO: f32 = 17.0;
 
 /// La letra de «Recibido de …» y de la tarjeta del enlace: 11 y 13, las del
 /// movil (`fontSize = 11.sp`, `13.sp`).
@@ -18541,6 +18711,22 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Err(e) => fallo(&e),
             }
         }
+        // La foto de otra persona en un chat compartido se dibuja en mi
+        // version, tambien desde el menu y tambien «aqui» (en la burbuja se
+        // pintaria encima de la suya): en el lienzo grande, sobre la copia.
+        Accion::FotoEnLienzo(i) | Accion::FotoAqui(i)
+            if versiones::abrir_como_version(
+                cx.ubicacion,
+                a,
+                i,
+                cx.textos,
+                cx.lienzo,
+                cx.idioma,
+                cx.identidad,
+            ) =>
+        {
+            Efecto::Nada
+        }
         Accion::FotoEnLienzo(i) => {
             // Como al pulsarla: en su lienzo, estrenandolo si hace falta.
             if crate::foto_anotada::abrir_en_su_lienzo(
@@ -19036,6 +19222,8 @@ fn reenviar(
         copia.fijado = false;
         copia.en_buzon = false;
         copia.responde_a = None;
+        // Reenviada deja de ser version: su original se queda en este chat.
+        pixpin_proyecto::versiones::sin_vinculo(&mut copia);
         match ruta_del_mensaje(raiz, &a.ficha.id, m) {
             Some(ruta) if ruta.is_file() => {
                 let bytes = std::fs::read(&ruta)?;
@@ -19609,6 +19797,16 @@ fn guardar_descripcion(ubicacion: &Ubicacion, a: &mut Abierto, i: usize, texto: 
     else {
         return;
     };
+    // De otra persona, en un chat compartido: la descripcion va en mi
+    // version y la suya no cambia (27-oct-2026, versiones vinculadas).
+    let nuevo = m.texto.clone();
+    if let Some(hecho) = versiones::al_momento(ubicacion, a, i, |mut v| {
+        v.texto = nuevo;
+        v
+    }) {
+        versiones::avisar_de_un_toque(&hecho);
+        return;
+    }
     let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
     match pixpin_proyecto::cuaderno::reemplazar(&carpeta, &m) {
         Ok(_) => a.mensajes[i] = m,

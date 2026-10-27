@@ -291,9 +291,19 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &Path) {
             if let Err(e) = hecho {
                 tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el lector de PDF");
             }
+            al_cerrar(&ubicacion);
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del lector de PDF");
+    }
+}
+
+/// **Al cerrar el lector**: si se estaba anotando la copia de un documento
+/// de otra persona (una version vinculada, 27-oct-2026), el chat la recoge
+/// ahora y no a la siguiente vuelta. Sin borradores apuntados, nada.
+fn al_cerrar(ubicacion: &Ubicacion) {
+    if pixpin_proyecto::versiones::hay_en_curso(ubicacion.raiz()) {
+        crate::ventana_chat::refrescar();
     }
 }
 
@@ -343,6 +353,7 @@ pub fn lanzar_office(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, ruta: &
         if let Err(e) = hecho {
             tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el lector de Office");
         }
+        al_cerrar(&ubicacion);
     });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo del lector de Office");
