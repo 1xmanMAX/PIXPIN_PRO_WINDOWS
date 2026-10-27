@@ -139,6 +139,10 @@ pub struct AlFrente {
     /// Donde quedan las fotos que esperan a su lienzo: el fichero recibido
     /// se borra al volver de `guardar`.
     pub carpeta_lienzo: PathBuf,
+    /// **La camara del movil** (`camara_remota` y las fotos y clips para
+    /// la grabacion de aqui): ver `sincronizar::camara`. Sin ella, como un
+    /// PC de antes.
+    pub camara: Option<crate::sincronizar::camara::RecepcionPc>,
 }
 
 impl Recibe for AlFrente {
@@ -170,6 +174,12 @@ impl Recibe for AlFrente {
             &llegada,
         ));
         Ok(llegada)
+    }
+
+    fn camara(&mut self) -> Option<&mut dyn pixpin_sincro::camara::Camara> {
+        self.camara
+            .as_mut()
+            .map(|c| c as &mut dyn pixpin_sincro::camara::Camara)
     }
 }
 
@@ -321,6 +331,7 @@ mod pruebas {
                     de: otro.id.clone(),
                     de_nombre: otro.nombre.clone(),
                     carpeta_lienzo: r2.join("al-lienzo"),
+                    camara: None,
                 })
             };
             pixpin_sincro::protocolo::Respondedor {

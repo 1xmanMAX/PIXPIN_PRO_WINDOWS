@@ -131,7 +131,7 @@ pub(crate) mod carpetas;
 /// (23 y 27-oct-2026), y «⚡ Lectura veloz» del menu del mensaje.
 mod chapas;
 /// La descripcion de una foto: su `texto`, como en el movil (3-oct).
-mod descripcion;
+pub(crate) mod descripcion;
 /// Cada chat se abre donde se dejo, y lo no visto del «↓» (27-oct-2026).
 mod donde_se_dejo;
 /// Donde se guarda cada proyecto (su carpeta elegida o la habitual).

@@ -49,6 +49,7 @@ use crate::overlay::Recursos;
 mod al_dia;
 pub(crate) mod al_movil;
 pub(crate) mod automatica;
+pub(crate) mod camara;
 pub(crate) mod compartidos_ui;
 mod copias_ui;
 mod elegir;
@@ -1665,6 +1666,7 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
                 de: otro.id.clone(),
                 de_nombre: otro.nombre.clone(),
                 carpeta_lienzo: carpeta_sincro(raiz).join("al-lienzo"),
+                camara: Some(camara::RecepcionPc::nueva(raiz, &otro.id, &otro.nombre)),
             })
         }),
     };
@@ -1677,7 +1679,14 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
         r.atender_persona(flujo, nonce().context("sin azar")?)
     } else {
         let capturas = galeria::CapturasDelPc::nuevas(raiz);
-        r.atender_con_galeria(flujo, nonce().context("sin azar")?, Some(&capturas))
+        // Y con la camara del movil (`camara1`): este PC recibe sus fotos y
+        // clips en lo que este grabando.
+        r.atender_con(
+            flujo,
+            nonce().context("sin azar")?,
+            Some(&capturas),
+            &pixpin_sincro::CAPACIDADES_CON_CAMARA,
+        )
     };
     // Lo que llego sin marco de la tinta (el movil de hoy no lo escribe)
     // recibe el suyo, en otro hilo; viaja en la vuelta siguiente (K21).
