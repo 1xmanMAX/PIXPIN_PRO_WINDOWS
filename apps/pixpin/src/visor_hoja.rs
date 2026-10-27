@@ -1773,7 +1773,13 @@ fn abrir(
         .map(|r| pixpin_docs::extension(&pixpin_docs::nombre(r)))
         .filter(|x| !x.is_empty())
         .unwrap_or_else(|| "xlsx".into());
-    let pin = PinLector::nuevo(area_pin, e).con_extension(&ext);
+    // Abierto de fuera (de paso): «Guardar» en un chat.
+    let de_paso = ruta.is_some_and(|r| {
+        crate::oscuro::ubicacion().is_some_and(|u| crate::guardar_de_paso::es_de_paso(u.raiz(), r))
+    });
+    let pin = PinLector::nuevo(area_pin, e)
+        .con_extension(&ext)
+        .con_guardar(de_paso);
     let area = pin.area;
     let ventana = VentanaOverlay::nueva_normal(area, nombre)
         .context("no se pudo abrir la ventana del visor de hojas")?;
@@ -1986,6 +1992,20 @@ fn ver_en(
                         }
                     }
                     Some(AccionPin::Propio(BOTON_EDITAR)) => quiere_editar = true,
+                    Some(AccionPin::Guardar) => {
+                        if let (Some(r), Some(u)) = (ruta, crate::oscuro::ubicacion())
+                            && crate::guardar_de_paso::preguntar_y_guardar(
+                                ventana.handle(),
+                                u.raiz(),
+                                r,
+                                crate::guardar_de_paso::Visor::Libro,
+                                &[],
+                                textos,
+                            )
+                        {
+                            pin.poner_guardar(false);
+                        }
+                    }
                     Some(AccionPin::PantallaCompleta) => {
                         pin.alternar_pantalla_completa(&mut ventana)
                     }

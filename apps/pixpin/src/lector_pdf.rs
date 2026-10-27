@@ -907,7 +907,9 @@ fn abrir_con(
         crate::lector_pin::PinLector::nuevo(area_pin, monitor.escala_por_cien as f32 / 100.0)
             .con_extension(&pixpin_docs::extension(&pixpin_docs::nombre(
                 &pixpin_proyecto::anotado::original_de(ruta).unwrap_or_else(|| ruta.to_path_buf()),
-            )));
+            )))
+            // Abierto de fuera (de paso): «Guardar» en un chat.
+            .con_guardar(crate::guardar_de_paso::es_de_paso(ubicacion.raiz(), ruta));
     let mut area = pin.area;
     let mut marco = Marco {
         ancho: area.ancho as f32,
@@ -1137,6 +1139,21 @@ fn abrir_con(
                         &tx_pedidos,
                         marco,
                     ),
+                    Some(crate::lector_pin::AccionPin::Guardar) => {
+                        // Lo anotado, al disco antes de llevarlo al chat.
+                        guardar_capas(&mut e, ruta);
+                        guardar_ajustes(&mut e, ruta);
+                        if crate::guardar_de_paso::preguntar_y_guardar(
+                            ventana.handle(),
+                            ubicacion.raiz(),
+                            ruta,
+                            crate::guardar_de_paso::Visor::Pdf,
+                            &[],
+                            textos,
+                        ) {
+                            pin.poner_guardar(false);
+                        }
+                    }
                     Some(crate::lector_pin::AccionPin::PantallaCompleta) => {
                         pin.alternar_pantalla_completa(&mut ventana)
                     }
