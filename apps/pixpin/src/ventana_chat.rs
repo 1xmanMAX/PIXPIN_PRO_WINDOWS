@@ -34,6 +34,8 @@ use crate::overlay::Recursos;
 
 /// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
 // El asistente local en la conversacion (`crate::asistente`).
+/// El «↓» de Telegram: vuelve al ultimo mensaje al subir.
+mod al_final;
 mod asistente;
 /// El aviso flotante del asistente sin el chat (Flow, automatizaciones).
 mod aviso_asistente;
@@ -1801,6 +1803,10 @@ pub fn abrir(
                                     }
                                 }
                                 Zona::Ir(j) => ejecutar(Accion::Ir(j), a, &cx),
+                                Zona::AlFinal => {
+                                    a.scroll = None;
+                                    Efecto::Nada
+                                }
                                 Zona::Lecciones => ejecutar(Accion::Lecciones, a, &cx),
                                 Zona::Sistema => Efecto::Menu(menu_de_sistema(a, textos)),
                                 Zona::ConfirmarIa(i, si) => {
@@ -7003,6 +7009,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         pintar_flecha_de_comentar(p, tema, burbuja, corrida, escala, e);
     }
     p.soltar_recorte();
+    // Subido: el «↓» que vuelve al ultimo mensaje (`al_final`).
+    if al_final::se_ve(a.scroll, h::scroll_maximo(area, a.alto.get()), area.alto) {
+        let caja = al_final::caja(area, e);
+        al_final::pintar(p, tema, caja, e);
+        a.zonas.borrow_mut().push((caja, Zona::AlFinal));
+    }
 }
 
 /// La onda de una nota de voz, en el sitio del nombre de su fila: las barras
@@ -14919,6 +14931,8 @@ enum Zona {
     ImagenDeNota(usize, usize),
     /// Ir a un mensaje: la cita de una respuesta o la barra del fijado.
     Ir(usize),
+    /// El «↓»: al ultimo mensaje, pegado al final (`al_final`).
+    AlFinal,
     /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
     /// como se sale de una busqueda sin perder el sitio.
     EnContexto,
