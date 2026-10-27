@@ -91,6 +91,21 @@ pub fn guardar(
             let carpeta = almacen::carpeta(raiz, proyecto);
             let mut puesta = false;
             if let Ok(c) = cuaderno::Cuaderno::leer_de(&carpeta)
+                && let Some(v) =
+                    version_de_la_nota(raiz, proyecto, &c.mensajes, codigo, texto, aparato, ahora)
+            {
+                // **La nota de otra persona en un chat compartido**
+                // (27-oct-2026): lo escrito va a mi version, que contesta a la
+                // suya, y la suya no cambia; lo que se siga escribiendo ya va
+                // a la mia (el destino de aqui en adelante).
+                cuaderno::anadir(&carpeta, &v)?;
+                tocar_ficha(raiz, proyecto, ahora, None)?;
+                return Ok(Destino::Mensaje {
+                    proyecto: proyecto.clone(),
+                    codigo: v.codigo_unico(),
+                });
+            }
+            if let Ok(c) = cuaderno::Cuaderno::leer_de(&carpeta)
                 && let Some(m) = c.mensajes.into_iter().find(|m| m.codigo_unico() == *codigo)
             {
                 let m = cuaderno::Mensaje {
@@ -188,6 +203,42 @@ pub fn guardar(
             })
         }
     }
+}
+
+/// **Mi version de la nota `codigo`**, con `texto` dentro, si es de otra
+/// persona de un chat compartido y lo escrito la cambia
+/// (`pixpin_proyecto::versiones::al_momento`); `None` si se guarda en su
+/// sitio, como siempre (es mia, el chat no es compartido, o no cambio).
+fn version_de_la_nota(
+    raiz: &Path,
+    proyecto: &str,
+    mensajes: &[cuaderno::Mensaje],
+    codigo: &str,
+    texto: &str,
+    aparato: &str,
+    ahora: i64,
+) -> Option<cuaderno::Mensaje> {
+    use pixpin_proyecto::versiones as vv;
+    let m = mensajes.iter().find(|m| m.codigo_unico() == codigo)?;
+    if m.texto == texto || vv::como(m) != Some(vv::Como::AlMomento) {
+        return None;
+    }
+    crate::ventana_chat::versiones::de_quien(raiz, proyecto, m)?;
+    let v = vv::al_momento(
+        raiz,
+        proyecto,
+        m,
+        mensajes,
+        Some(aparato).filter(|a| !a.is_empty()),
+        ahora,
+        |mut v| {
+            v.texto = texto.to_string();
+            v
+        },
+        &vv::id_nuevo(ahora),
+        &pixpin_proyecto::codigos::nuevo(),
+    );
+    Some(vv::con_numero(mensajes, v))
 }
 
 /// La ficha del proyecto en el indice: cuando se toco y, al crear, el
