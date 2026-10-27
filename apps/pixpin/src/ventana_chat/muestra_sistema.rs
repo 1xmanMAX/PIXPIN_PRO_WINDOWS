@@ -1,10 +1,11 @@
 //! **Los mensajes de sistema no ensucian el chat «Asistente»** (14-oct):
 //! las letras, las figuras y las automatizaciones (`auto-*`) siguen en el
-//! cuaderno y viajan, pero no son burbujas: van plegadas en una franja
-//! arriba que al pulsarla las lista. Y la muestra en PNG:
+//! cuaderno y viajan, pero no son burbujas. Desde el 27-oct-2026 tampoco
+//! hay franja arriba que las liste (checklist del usuario, punto 3: «quitar
+//! la tira … que tapa el chat»; Android 00ac81c2). Y la muestra en PNG:
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixpinmax muestra_de_la_franja_de_sistema -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pixpinmax muestra_del_asistente_sin_franja -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja los PNG en `%TEMP%/pixpin-muestras-sistema` (o en `PIXPIN_MUESTRAS`).
@@ -18,8 +19,8 @@ use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 use super::{
     Abierto, Accion, CLARO, Lista, OSCURO, Pinta, Tema, abrir_proyecto, disponer, escribir_nota,
-    hay_barra, indices_visibles, linea_de_sistema, menu_de_sistema, papel_de, pintar,
-    pintar_historial, pintar_redaccion,
+    hay_barra, indices_visibles, menu_de_cabecera, papel_de, pintar, pintar_historial,
+    pintar_redaccion,
 };
 
 /// Un chat «Asistente» con una letra (de verdad: `letras_que_viajan`), las
@@ -104,7 +105,7 @@ fn montar(nombre: &str) -> (std::path::PathBuf, Ubicacion, Ficha) {
 }
 
 #[test]
-fn los_mensajes_de_sistema_van_en_la_franja_y_no_como_burbujas() {
+fn los_mensajes_de_sistema_no_son_burbujas_ni_franja() {
     let (raiz, u, ficha) = montar("chat");
     let textos = Catalogo::nuevo(Idioma::Espanol);
     let a = abrir_proyecto(&u, &ficha);
@@ -116,37 +117,16 @@ fn los_mensajes_de_sistema_van_en_la_franja_y_no_como_burbujas() {
     assert_eq!(vistos.len(), 2, "{vistos:?}");
     // Caso negativo: una nota cuyo TEXTO empieza por «auto-» si se ve.
     assert!(vistos.iter().any(|t| t.starts_with("auto-guardado")));
-    let linea = linea_de_sistema(&a, &textos).expect("franja");
-    assert!(
-        linea.contains("Letras de planos: 2")
-            && linea.contains("Figuras")
-            && linea.contains("Automatizaciones"),
-        "{linea}"
+    // Sin la franja que tapaba el chat.
+    assert!(!hay_barra(&a));
+    // La memoria, que solo se abria desde la franja, sigue en los tres
+    // puntos del chat «Asistente».
+    let menu = menu_de_cabecera(
+        &textos,
+        false,
+        Some(crate::asistente::nube::Eleccion::Local),
     );
-    assert!(hay_barra(&a));
-    // La lista: quitar cada letra borra su mensaje (como la burbuja antes);
-    // las figuras y las automatizaciones dicen donde se usan.
-    let menu = menu_de_sistema(&a, &textos);
-    assert_eq!(menu.len(), 4);
-    let quitar: Vec<_> = menu.iter().filter(|e| e.peligro).collect();
-    assert_eq!(quitar.len(), 2);
-    for e in &quitar {
-        let Accion::Borrar(v) = &e.accion else {
-            panic!("{:?}", e.accion)
-        };
-        assert!(a.mensajes[v[0]].id.starts_with("auto-letra-"));
-        assert!(e.texto.contains(".shx"));
-    }
-    assert!(menu.iter().any(|e| e.accion == Accion::Ajustes));
-    // En otro chat no hay franja aunque hubiera un `auto-` (solo nacen en el
-    // del asistente), y sin ninguno tampoco.
-    let otra = almacen::Ficha::nueva("Obra", 2, "PC01");
-    let mut ind = almacen::Indice::leer(&raiz);
-    ind.proyectos.push(otra.clone());
-    ind.guardar(&raiz).unwrap();
-    escribir_nota(&raiz, &otra.id, "PC01", "hola", 5, 1, None).unwrap();
-    let b = abrir_proyecto(&u, &otra);
-    assert!(linea_de_sistema(&b, &textos).is_none());
+    assert!(menu.iter().any(|e| e.accion == Accion::AbrirMemoria));
     let _ = std::fs::remove_dir_all(&raiz);
 }
 
@@ -243,10 +223,10 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
 
 #[test]
 #[ignore = "necesita GPU; genera PNG para mirarlos"]
-fn muestra_de_la_franja_de_sistema() {
+fn muestra_del_asistente_sin_franja() {
     let (raiz, u, ficha) = montar("png");
     let a = abrir_proyecto(&u, &ficha);
-    assert!(a_png(&a, &ficha, &CLARO, true, "asistente-franja-sistema").is_file());
-    a_png(&a, &ficha, &OSCURO, false, "asistente-franja-sistema-noche");
+    assert!(a_png(&a, &ficha, &CLARO, true, "asistente-sin-franja").is_file());
+    a_png(&a, &ficha, &OSCURO, false, "asistente-sin-franja-noche");
     let _ = std::fs::remove_dir_all(&raiz);
 }
