@@ -237,3 +237,41 @@ indice) y, por la red, como el campo `avatar` del `Proyecto`
 El `logo.png` de antes sigue saliendo y empieza a viajar como `tipo: imagen`
 hasta que se cambie. Formato y reglas para Android y Apple:
 [manual-sincronizar-lo-nuevo.md §10](manual-sincronizar-lo-nuevo.md#10-la-foto-del-chat-25-oct-2026).
+
+## Música con letra
+
+Lo pidió el usuario en el móvil (27-oct-2026): «Quiero guardar música, con su
+letra adjunta, para poder cantar cuando quiera». El PC hace lo mismo con el
+**mismo formato**, sin campos nuevos (`apps/pixpin/src/ventana_chat/musica.rs`).
+
+**El formato.** Una canción es una nota de voz (`clase: "VOZ"`) con
+`estadoDelTexto: "letra"` y la letra en `transcripcion`: `[m:ss] línea`, un
+renglón en blanco entre líneas (`[h:mm:ss]` pasada la hora); una marca sin
+texto es un silencio y un párrafo sin marca es texto suelto. Lo lee la
+pantalla de la letra de los dos aparatos y viaja como cualquier nota.
+
+- **Adjuntar → «Música»** (chip de la hoja del «+»): el diálogo de Windows
+  con los audios (`mp3`, `m4a`, `flac`, `ogg`, `wav`…). Entran ya marcados
+  como música; un `.lrc` o `.txt` con el mismo nombre al lado del audio es
+  su letra. Con una sola canción se abre su karaoke.
+- **Pegar un LRC** en el lápiz de la letra: se convierte solo
+  (`pixpin_voz::letra_de_cancion`: centésimas, varias marcas en una línea,
+  `[offset:]`, `[ti:]`/`[ar:]`, marcas por palabra `<mm:ss.xx>`), redondeado
+  al segundo, y la nota queda como música. Lo que no es LRC se guarda tal
+  cual.
+- **La tarjeta** de la burbuja: la portada que trae el fichero (ID3 `APIC`,
+  `covr` de MP4, `PICTURE` de FLAC; `pixpin_voz::etiquetas`) o un degradado
+  con la nota, y el título y el artista de sus etiquetas en vez de la onda.
+  Su pastilla (icono de letra) abre el karaoke; pulsar la burbuja la toca.
+- **El karaoke** (la pantalla de la letra de una canción): portada, título y
+  artista arriba; la línea que suena grande y en color a un tercio de la
+  altura, las cantadas apagadas; un clic en una línea lleva la canción ahí.
+  Ctrl+C (o copiar) la lleva en LRC.
+- **Sincronizar la letra** (el reloj de la cabecera, en el sitio de la
+  banderita): suena desde el principio y **Espacio** (o «Marcar», o un clic
+  en la lista) al empezar cada línea le pone su minuto; **Retroceso** deshace
+  y vuelve dos segundos antes de la anterior; **Intro** guarda en `[m:ss]` y
+  **Escape** lo deja. Un toque nunca queda antes que el anterior.
+
+El auricular de llamadas del móvil es solo de allí: es del aparato y no
+viaja.
