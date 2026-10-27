@@ -703,7 +703,8 @@ pub fn abrir(
                 }
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     e.raton = local(p);
-                    pulsar_derecho(&mut e, ruta, marco);
+                    pulsar_derecho(&mut e, ruta, marco, textos);
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Rueda(delta) => {
                     rueda(&mut e, delta, marco);
@@ -2165,7 +2166,23 @@ fn soltar(e: &mut Estado, m: Marco) {
     }
 }
 
-fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco) {
+fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco, textos: &Catalogo) {
+    // **El boton del marco**: que imprimir, los marcos o el documento entero
+    // (27-oct-2026; el clic izquierdo sigue poniendo y quitando el modo).
+    if destino_del_riel(e, m) == DestinoRiel::Imprimir {
+        let entero = crate::marcos_doc::Entero::de_fichero(ruta);
+        match crate::marcos_doc::menu_de_imprimir(
+            e.hwnd,
+            textos,
+            e.marcos.lista.len(),
+            Some(entero),
+        ) {
+            Some(crate::marcos_doc::QueImprimir::Marcos) => empezar_fotos(e, ruta),
+            Some(crate::marcos_doc::QueImprimir::Entero) => imprimir_entero(e, ruta, m),
+            None => {}
+        }
+        return;
+    }
     // Quitar un marcador: clic derecho en su punto del riel (el toque largo
     // del movil, que un raton no tiene).
     if let DestinoRiel::Marca(i) = destino_del_riel(e, m)
@@ -2464,6 +2481,43 @@ fn empezar_fotos(e: &mut Estado, ruta: &Path) {
     ));
 }
 
+/// **Imprimir el documento entero** (el clic derecho en el boton del marco):
+/// el ancho que se lee (la columna y lo que se abra a los lados) en trozos
+/// de papel, de arriba abajo, fotografiados como los marcos. Cada trozo es
+/// como un A4 en vertical, o mas apaisado si la ventana lo es (asi cabe
+/// entero en ella sin alejarse mas de lo que deja el lector).
+fn imprimir_entero(e: &mut Estado, ruta: &Path, m: Marco) {
+    let (izq, der) = limites(e);
+    let ancho = (der - izq) as f64;
+    if ancho <= 0.0 || e.alto_doc <= 0.0 {
+        return;
+    }
+    if e.anotando {
+        alternar_anotar(e, ruta, m);
+    }
+    e.poniendo_marca = false;
+    let forma = (m.alto as f64 / m.ancho.max(1.0) as f64).min(std::f64::consts::SQRT_2);
+    let mut trozos = crate::marcos_doc::trozos(
+        ancho,
+        e.alto_doc as f64 + renglon(e) as f64,
+        (ancho, ancho * forma),
+        0,
+    );
+    for t in &mut trozos {
+        t.caja[0] += izq as f64;
+        t.caja[2] += izq as f64;
+    }
+    let titulo = ruta
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    e.fotos = Some(crate::lector_pdf::FotosDeMarcos::de_trozos(
+        (e.x, e.y, e.zoom),
+        &titulo,
+        trozos,
+    ));
+}
+
 /// Un paso de las fotos de los marcos (como `lector_pdf`): acercarse hasta
 /// que el marco llena la ventana, pintar solo el documento con sus colores,
 /// fotografiarlo y, con el ultimo, volver e imprimir todos juntos.
@@ -2471,7 +2525,7 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
     let Some(mut f) = e.fotos.take() else {
         return false;
     };
-    let Some(marco) = e.marcos.lista.get(f.i).cloned() else {
+    let Some(marco) = f.lista(&e.marcos.lista).get(f.i).cloned() else {
         terminar_fotos(e, f);
         return true;
     };
@@ -2497,7 +2551,7 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
         ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s)
     });
     f.fotografiar(e.hwnd, r);
-    if f.i >= e.marcos.lista.len() {
+    if f.i >= f.lista(&e.marcos.lista).len() {
         terminar_fotos(e, f);
     } else {
         e.fotos = Some(f);

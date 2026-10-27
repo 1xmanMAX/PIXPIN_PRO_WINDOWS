@@ -3131,6 +3131,9 @@ pub(crate) struct FotosDeMarcos {
     pub(crate) antes: (f32, f32, f32),
     fotos: Vec<ImagenRgba>,
     titulo: String,
+    /// Imprimiendo el documento entero: sus trozos de papel
+    /// (`marcos_doc::trozos`), que se fotografian como si fueran marcos.
+    trozos: Option<Vec<crate::marcos_doc::Marco>>,
 }
 
 impl FotosDeMarcos {
@@ -3142,7 +3145,29 @@ impl FotosDeMarcos {
             antes,
             fotos: Vec::new(),
             titulo: titulo.to_string(),
+            trozos: None,
         }
+    }
+
+    /// Para imprimir el documento entero: los `trozos` en vez de los
+    /// marcos, con las mismas fotos.
+    pub(crate) fn de_trozos(
+        antes: (f32, f32, f32),
+        titulo: &str,
+        trozos: Vec<crate::marcos_doc::Marco>,
+    ) -> FotosDeMarcos {
+        FotosDeMarcos {
+            trozos: Some(trozos),
+            ..FotosDeMarcos::nuevas(antes, titulo)
+        }
+    }
+
+    /// Lo que se fotografia: los trozos o, si no, los marcos del documento.
+    pub(crate) fn lista<'a>(
+        &'a self,
+        marcos: &'a [crate::marcos_doc::Marco],
+    ) -> &'a [crate::marcos_doc::Marco] {
+        self.trozos.as_deref().unwrap_or(marcos)
     }
 
     /// Lo pintado ya esta en la pantalla: la foto de `r` (pixeles de la
@@ -3225,7 +3250,7 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
         return false;
     };
     let ahora = ahora_ms();
-    let Some(marco) = e.marcos.lista.get(f.i).cloned() else {
+    let Some(marco) = f.lista(&e.marcos.lista).get(f.i).cloned() else {
         // Se quitaron marcos mientras tanto: lo hecho, a imprimir.
         terminar_fotos(e, f);
         return true;
@@ -3257,7 +3282,7 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
         ((q[0] as f32 - ex) * s, (q[1] as f32 - ey) * s)
     });
     f.fotografiar(e.hwnd, r);
-    if f.i >= e.marcos.lista.len() {
+    if f.i >= f.lista(&e.marcos.lista).len() {
         terminar_fotos(e, f);
     } else {
         e.fotos = Some(f);
