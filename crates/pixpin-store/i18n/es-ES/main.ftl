@@ -542,6 +542,7 @@ chat-buscar-mensajes = { $n ->
    *[other] Mensajes · { $n }
 }
 chat-buscar-ver-mas = Ver { $n } más
+chat-buscar-en = en { $chat }
 chat-pagina-n = Página { $n }
 chat-unido-a = Unido a «{ $nombre }»
 chat-unir-nada = No hay nada que se pueda unir: solo fotos, dibujos, notas y PDF
