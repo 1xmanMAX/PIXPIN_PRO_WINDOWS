@@ -1429,7 +1429,8 @@ pub fn ver_con_barra(
                     // Soltar el derecho sobre el riel no saca el menu del
                     // modelo (el del boton del marco ya salio al pulsarlo).
                     Ev::Subir(x, y, 2)
-                        if arrastre.is_none() && riel_en(w, e, botones_riel.len(), x, y).is_some() =>
+                        if arrastre.is_none()
+                            && riel_en(w, e, botones_riel.len(), x, y).is_some() =>
                     {
                         continue;
                     }
