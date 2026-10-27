@@ -98,6 +98,28 @@ pub fn confirmar_al_frente(titulo: &str, mensaje: &str) -> bool {
     r == IDYES
 }
 
+/// Pregunta de si/no **sin ventana propia y por encima de todo, con «Si»
+/// por defecto**: «Salir» de la bandeja con una reunion grabandose, donde
+/// «Si» es terminar y guardar (lo que se queria al salir) y «No» seguir
+/// grabando. Ninguna de las dos pierde nada.
+pub fn preguntar_al_frente(titulo: &str, mensaje: &str) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IDYES, MB_DEFBUTTON1, MB_ICONQUESTION, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO,
+    };
+    let mensaje = HSTRING::from(mensaje);
+    let titulo = HSTRING::from(titulo);
+    // SAFETY: HSTRING propias vivas durante la llamada; sin propietaria.
+    let r = unsafe {
+        MessageBoxW(
+            None,
+            &mensaje,
+            &titulo,
+            MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON1 | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    r == IDYES
+}
+
 /// Un aviso de solo «Aceptar», sin ventana propia y por encima de todo:
 /// lo que la linea de ordenes no pudo hacer cuando no hay consola donde
 /// decirlo (un enlace, el menu del Explorador).
