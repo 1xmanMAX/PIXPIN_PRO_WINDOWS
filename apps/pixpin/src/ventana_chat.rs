@@ -182,6 +182,9 @@ mod muestra_sistema;
 /// F8: muestra en PNG del chat con una zona recien mandada.
 #[cfg(test)]
 mod muestra_zona;
+/// Musica con su letra (27-oct): Adjuntar → «Musica», la tarjeta con su
+/// portada y el karaoke con «Sincronizar la letra».
+mod musica;
 /// La burbuja de una nota como un Markdown pequeno: texto con formato y
 /// sus fotos en album (25-oct-2026).
 mod nota_rica;
@@ -1086,6 +1089,19 @@ pub fn abrir(
                             abierto.as_mut(),
                         );
                     }
+                    Some(Accion::AdjMusica) => {
+                        let rutas = pixpin_shell::elegir::pedir_musica(ventana.handle());
+                        if let Some(a) = abierto.as_mut()
+                            && let Some(t) =
+                                musica::adjuntar(ubicacion, a, &identidad, &rutas, textos)
+                        {
+                            aviso = Some((t, std::time::Instant::now()));
+                            if let Some(i) = elegida {
+                                fichas[i].tocado = a.ficha.tocado;
+                                fichas[i].resumen = a.ficha.resumen.clone();
+                            }
+                        }
+                    }
                     // Traer del movil abre su propio cartel, en otro
                     // hilo: mientras se espera al movil, el chat
                     // sigue usandose.
@@ -1897,6 +1913,7 @@ pub fn abrir(
                                 Zona::LetraCopiar => copiar_la_letra(a, textos),
                                 Zona::LetraMarcar => poner_la_marca(ubicacion, a, textos),
                                 Zona::LetraEditar => editar_la_letra(a, textos),
+                                Zona::Musica(b) => musica::pulsar(ubicacion, a, b, textos),
                                 Zona::Marca(i, ms) => match saltar_en_el_audio(a, i, ms) {
                                     Ok(()) => Efecto::Nada,
                                     Err(e) => {
@@ -3184,6 +3201,18 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // Sincronizando la letra de una cancion, las teclas son suyas
+                // (Espacio marca, Retroceso deshace, Intro guarda).
+                EventoOverlay::Tecla { vk, ctrl, .. }
+                    if menu.is_none() && abierto.as_ref().is_some_and(musica::sincronizando) =>
+                {
+                    if let Some(a) = abierto.as_mut()
+                        && let Efecto::Aviso(t) = musica::tecla(ubicacion, a, vk, ctrl, textos)
+                    {
+                        aviso = Some((t, std::time::Instant::now()));
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Tecla { vk, .. }
                     if vk == VK_ESCAPE
                         && menu.is_none()
@@ -4399,6 +4428,10 @@ pub fn abrir(
             {
                 faltan_fondos |= previas.asegurar(&[ruta], &motor);
             }
+            // Y la portada de la cancion del karaoke.
+            if let Some(ruta) = abierto.as_ref().and_then(musica::portada_de_la_letra) {
+                faltan_fondos |= previas.asegurar(&[ruta], &motor);
+            }
             // Los logos de las filas que se ven y el del abierto (su
             // cabecera): leidos una vez, luego solo se pintan.
             {
@@ -5255,6 +5288,9 @@ struct LetraAbierta {
     /// La captura de la clase que se ensena (la del minuto que suena): se
     /// repinta cuando cambia, aunque el parrafo siga siendo el mismo.
     captura: Option<usize>,
+    /// «Sincronizar la letra» de una cancion, si se esta haciendo
+    /// (`musica`): las lineas y los minutos marcados hasta ahora.
+    sincronizando: Option<pixpin_voz::letra_de_cancion::Sincronizador>,
 }
 
 #[derive(Default)]
@@ -6526,9 +6562,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 escala,
             );
             let circulo = rf(fila.circulo);
-            // Un archivo, con el icono de su tipo (v0.98.4); lo demas, el
-            // boton redondo de siempre.
-            if let Some(nombre) = &f.archivo {
+            // Una cancion, con su portada; un archivo, con el icono de su
+            // tipo (v0.98.4); lo demas, el boton redondo de siempre.
+            if let Some(t) = &f.musica {
+                musica::pintar_portada(p, circulo, 10.0 * e, t, &m.id, previas);
+            } else if let Some(nombre) = &f.archivo {
                 icono_de_tipo::pintar(p, nombre, circulo);
             } else {
                 p.rellenar_redondeado(circulo, circulo.ancho / 2.0, tema.circulo);
@@ -6671,14 +6709,24 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                         chat::FILA_ABRIR_RADIO as f32 * e,
                         con_alfa(color_hora, 0.156),
                     );
+                    // La de una cancion abre su karaoke (`musica`).
+                    let cancion = f.musica.is_some();
                     match boton {
+                        _ if cancion => icono_centrado(p, &mi::LYRICS, fila.abrir, 16.0 * e, tinta),
                         BotonDeTexto::Plegar | BotonDeTexto::Desplegar => {
                             pintar_flechita(p, abrir, boton == BotonDeTexto::Plegar, tinta, e)
                         }
                         _ => icono_centrado(p, &mi::SUBTITLES, fila.abrir, 16.0 * e, tinta),
                     }
                     if !trabajando {
-                        a.zonas.borrow_mut().push((fila.abrir, Zona::Texto(i)));
+                        a.zonas.borrow_mut().push((
+                            fila.abrir,
+                            if cancion {
+                                Zona::Musica(musica::Boton::Karaoke(i))
+                            } else {
+                                Zona::Texto(i)
+                            },
+                        ));
                     }
                 }
             }
@@ -7917,9 +7965,16 @@ fn medir_mensaje(
     let vista = a.vistas.get(indice).and_then(|v| v.as_ref());
     let es_foto = matches!(vista, Some(Ojeada::Foto { .. }));
     let fila = fila_de(m, es_foto, textos).map(|(icono, nombre, detalle)| {
+        // Una cancion es su tarjeta: el titulo y el artista de sus etiquetas
+        // en vez del nombre del fichero y la onda (`musica`).
+        let musica = musica::tarjeta(a, m);
+        let (nombre, detalle) = match &musica {
+            Some(t) => (musica::titulo(t, m), musica::detalle(t, &detalle)),
+            None => (nombre, detalle),
+        };
         let (wn, _) = p.medir_texto(&nombre, FICHA_NOMBRE_TAM * e);
         let (wd, _) = p.medir_texto(&detalle, FICHA_DETALLE_TAM * e);
-        let onda = if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz) {
+        let onda = if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz) && musica.is_none() {
             pixpin_ui::chat::barras_de_onda(&picos_de_voz(m))
         } else {
             Vec::new()
@@ -7947,6 +8002,7 @@ fn medir_mensaje(
             ancho_texto,
             onda,
             archivo: icono_de_tipo::nombre_para_el_icono(m),
+            musica,
         }
     });
     let texto = texto_de(m, vista.is_some() || fila.is_some(), textos);
@@ -9744,6 +9800,12 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
             _ => foto_de(i).into_iter().collect(),
         })
         .chain(de_notas)
+        // Y las portadas de las canciones que se ven (`musica`).
+        .chain(
+            (primero..primero + cuantos)
+                .filter_map(|cual| c.mensaje(cual))
+                .filter_map(|i| musica::portada(a, i)),
+        )
         .collect()
 }
 
@@ -12247,6 +12309,7 @@ fn abrir_la_letra(a: &mut Abierto, i: usize) -> Efecto {
         altos: std::cell::RefCell::new(Vec::new()),
         seguido: None,
         captura: None,
+        sincronizando: None,
     });
     Efecto::Cambio
 }
@@ -12385,6 +12448,10 @@ fn latido_de_la_letra(a: &mut Abierto, escala: u32, d: &Disposicion) -> bool {
 /// y viaja (`[1:23] ...`): pegada en otra nota del movil, sigue sabiendo
 /// saltar; y leida por una persona, el minuto dice donde esta cada cosa.
 fn copiar_la_letra(a: &Abierto, textos: &Catalogo) -> Efecto {
+    // Una cancion con tiempos se lleva en LRC (`Copiar como LRC` del movil).
+    if let Some(hecho) = musica::copiar_lrc(a, textos) {
+        return hecho;
+    }
     let Some(texto) = a
         .letra
         .as_ref()
@@ -12820,11 +12887,17 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let t = caja_de_la_letra(a, d, escala);
     p.rellenar(rf(t.panel), tema.papel);
     let m = a.mensajes.iter().enumerate().find(|(_, m)| m.id == l.id);
-    // La banderita solo con audio (`enabled = m?.ruta != null`).
+    // La banderita solo con audio (`enabled = m?.ruta != null`). En una
+    // cancion su sitio es el reloj de «Sincronizar la letra» (`musica`).
     let con_audio = m.is_some_and(|(_, m)| m.ruta.is_some());
+    let cancion = m.filter(|(_, m)| crate::biblioteca_audio::es_musica(m));
     icono_centrado(
         p,
-        &mi::FLAG,
+        if cancion.is_some() {
+            &mi::TIMER
+        } else {
+            &mi::FLAG
+        },
         t.marcar,
         18.0 * e,
         if con_audio { tema.texto } else { tema.apagado },
@@ -12833,7 +12906,14 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     {
         let mut z = a.zonas.borrow_mut();
         if con_audio {
-            z.push((t.marcar, Zona::LetraMarcar));
+            z.push((
+                t.marcar,
+                if cancion.is_some() {
+                    Zona::Musica(musica::Boton::Sincronizar)
+                } else {
+                    Zona::LetraMarcar
+                },
+            ));
         }
         z.push((t.editar, Zona::LetraEditar));
     }
@@ -12920,7 +13000,10 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // Los parrafos. Sin texto se dice, en el centro, en vez de una pantalla
     // en blanco que parece rota (`letra_vacia`).
     let trozos = m.map(|(_, m)| trozos_de_la_letra(m)).unwrap_or_default();
-    if trozos.is_empty() {
+    if let Some((i, _)) = cancion {
+        // Una cancion se canta: el karaoke (`musica`).
+        musica::pintar_karaoke(p, t.texto, c, a, i, l);
+    } else if trozos.is_empty() {
         let vacio = textos.t("chat-letra-vacia");
         let tam = 14.0 * e;
         let (w, h) = p.medir_texto(&vacio, tam);
@@ -14963,6 +15046,8 @@ enum Zona {
     /// Una banderita de esa nota: clic, el audio a ese milisegundo; clic
     /// derecho, se quita (mantener pulsado en el movil).
     Marca(usize, i64),
+    /// La musica: abrir el karaoke de una cancion y sincronizar su letra.
+    Musica(musica::Boton),
     /// El aspa de la barra de teclear la hora de un recordatorio.
     CerrarHora,
     /// El aspa de la barra de teclear quien llama.
@@ -15009,6 +15094,8 @@ struct FilaDeArchivo {
     /// El nombre por el que se elige el icono de su tipo, si es un archivo
     /// (`icono_de_tipo`); `None` lleva el boton redondo.
     archivo: Option<String>,
+    /// La tarjeta de una cancion: su portada va en el sitio del boton.
+    musica: Option<std::rc::Rc<musica::Tarjeta>>,
 }
 
 /// Los picos del microfono que el movil anoto al grabar la nota.
@@ -16621,6 +16708,9 @@ enum Accion {
     NuevoChat(bool),
     AdjArchivo,
     AdjImagen,
+    /// «Musica» de la hoja del «+» (27-oct-2026): elegir canciones, que
+    /// entran ya marcadas como musica (`musica::adjuntar`).
+    AdjMusica,
     AdjLienzo,
     AdjTabla,
     AdjDelMovil,
@@ -18885,6 +18975,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         | Accion::Mas
         | Accion::AdjCaptura
         | Accion::AdjImagen
+        | Accion::AdjMusica
         | Accion::AdjLienzo
         | Accion::AdjTabla
         | Accion::AdjDelMovil

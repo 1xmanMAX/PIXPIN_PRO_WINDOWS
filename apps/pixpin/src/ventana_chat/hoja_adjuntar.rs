@@ -206,6 +206,12 @@ impl Hoja {
                 "pronunciar ingles pronounce",
                 Accion::Pronunciar,
             ),
+            // Musica con su letra (27-oct-2026): canciones para cantarlas.
+            chip(
+                "chat-adj-musica",
+                "musica cancion karaoke letra lrc mp3 music song lyrics",
+                Accion::AdjMusica,
+            ),
             chip(
                 "mini-cronometro",
                 "cronometro stopwatch mini-app",
