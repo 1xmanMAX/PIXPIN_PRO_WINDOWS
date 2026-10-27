@@ -1542,6 +1542,13 @@ lector-al-proyecto = To project
 lector-al-proyecto-hecho = It's in projects now, with your notes
 lector-al-proyecto-fallo = The project could not be created
 
+## «Save» in the viewers of files opened from outside (passing mode, Android 15a52aed)
+guardar-de-paso = Save to a chat
+guardar-de-paso-guardados = To «Saved messages»
+guardar-de-paso-en = To «{ $chat }»
+guardar-de-paso-hecho = Saved to «{ $chat }», with your notes
+guardar-de-paso-fallo = It could not be saved to the chat
+
 ## Word and book reader: the four types and four weights of the phone (K16)
 lector-letra-serif = Serif
 lector-letra-sans = Sans

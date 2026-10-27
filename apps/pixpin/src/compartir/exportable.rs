@@ -227,7 +227,7 @@ pub(crate) fn pixpin_de(
 ///   de un plano o un modelo 3D (`marcadores/<h>/`), que no cuelgan del
 ///   nombre, ya con los del mensaje (`anot-<uid>…`);
 /// - lo demas de `anotado`, en `archivos/<nombre>.pixpin-anotado/`.
-fn lo_anotado_del_suelto(
+pub(crate) fn lo_anotado_del_suelto(
     raiz: Option<&Path>,
     original: &Path,
     anotado: &[PathBuf],
