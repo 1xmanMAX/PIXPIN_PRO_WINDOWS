@@ -284,8 +284,8 @@ pub fn fragmento(texto: &str, aguja: &str, antes: usize, largo: usize) -> Fragme
 // --- Las pestanas por tipo (27-oct-2026) ---------------------------------
 
 /// **Las pestanas de la busqueda**: las de la ficha de un chat con «Todo»
-/// delante y sin las que no son una clase de cosa: «Proyectos» (ya son las
-/// filas de chats), «Fijados» (es de cada chat, no de todos) y el buzon.
+/// delante y sin las que no son una clase de cosa: «Fijados» (es de cada
+/// chat, no de todos) y el buzon.
 ///
 /// Que mensaje sale en cual lo decide la app con la misma regla que la ficha
 /// (`cuaderno::indices_de_seccion`: un video no es foto ni archivo, una

@@ -255,8 +255,8 @@ siempre encima, en el tema claro u oscuro del chat:
 
 **Donde se pinta.** En todos los sitios del avatar del chat, con la misma
 funcion (`ventana_chat/logo.rs`, `logo::pintar`): la fila de la lista (y por
-tanto los resultados de buscar chats), la pildora de la cabecera, la isla y
-las filas de su pestana Proyectos. La chapa verde de chat compartido sigue
+tanto los resultados de buscar chats), la pildora de la cabecera y la
+cabecera de la isla. La chapa verde de chat compartido sigue
 encima. Una imagen que aun no ha llegado por la sincronizacion se pinta como
 siempre y se vuelve a mirar cada 3 s.
 
