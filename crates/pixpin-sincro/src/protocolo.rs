@@ -265,6 +265,12 @@ pub fn recibir_trozos<F: Read + Write>(
         if tipo != Tipo::Trozo {
             return Err(fallo("Se esperaba un trozo de archivo"));
         }
+        // **Ni un byte de mas** (27-oct-2026): un trozo repetido o uno que se
+        // pasa del largo prometido descuadraria el archivo y la conversacion.
+        // Se corta aqui, sin escribirlo.
+        if datos.len() as i64 > quedan {
+            return Err(fallo("Llegó más de lo prometido"));
+        }
         salida.write_all(&datos)?;
         md.update(&datos);
         quedan -= datos.len() as i64;

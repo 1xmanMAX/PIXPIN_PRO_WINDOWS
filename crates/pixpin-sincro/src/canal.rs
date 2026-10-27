@@ -65,6 +65,12 @@ pub enum ErrorCanal {
     /// No descifra. En la practica siempre significa lo mismo.
     #[error("el otro aparato tiene otro codigo de grupo")]
     CodigoDistinto,
+    /// **Un tramo que no se descifra a mitad de conversacion** (27-oct-2026,
+    /// `Canal.TramoDanado` de Android): repetido, fuera de orden o danado por
+    /// el camino —cada tramo lleva su numero dentro del cifrado—. Es una
+    /// conexion rota, no un aparato de otro grupo, y asi se dice.
+    #[error("Llegó un trozo dañado o repetido: se corta la sincronización")]
+    TramoDanado,
     #[error("tramo de {0} bytes, fuera de lo admitido")]
     TramoRaro(i32),
     #[error("tipo de tramo desconocido: {0}")]
@@ -374,9 +380,16 @@ impl<F: Read + Write> Canal<F> {
                     aad: &[],
                 },
             )
-            // Que no descifre solo puede querer decir una cosa: el otro
-            // deriva otra clave, o sea que tiene otro codigo.
-            .map_err(|_| ErrorCanal::CodigoDistinto)?;
+            // **Solo el primer tramo dice «otro codigo»**: que no descifre el
+            // primero es que el otro deriva otra clave. Uno que falla despues
+            // es un tramo repetido, reordenado o danado (Android 27-oct-2026).
+            .map_err(|_| {
+                if self.contador_entrada == 0 {
+                    ErrorCanal::CodigoDistinto
+                } else {
+                    ErrorCanal::TramoDanado
+                }
+            })?;
         self.contador_entrada += 1;
         self.recibidos += claro.len().saturating_sub(1) as u64;
 
