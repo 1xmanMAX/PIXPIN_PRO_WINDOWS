@@ -261,6 +261,16 @@ pub fn leer() -> Option<ContenidoPortapapeles> {
         .map(ContenidoPortapapeles::Texto)
 }
 
+/// **Solo el texto** del portapapeles (el plano o, sin el, el de un HTML o
+/// un RTF), aunque traiga tambien una imagen: lo que pega una caja de texto
+/// (los temas de una reunion copiados de Word, que deja ademas un dibujo).
+pub fn leer_texto_solo() -> Option<String> {
+    // SAFETY: si abre, el guardia de mas abajo garantiza el cierre.
+    unsafe { OpenClipboard(None) }.ok()?;
+    let _guardia = GuardiaPortapapeles;
+    leer_texto().or_else(texto_plano::leer_con_formato)
+}
+
 /// **El numero de cambios del portapapeles** (`GetClipboardSequenceNumber`):
 /// sube cada vez que alguien copia algo. Sirve para saber si lo del sistema
 /// es mas nuevo que algo copiado dentro de PixPin, sin abrir el portapapeles.
