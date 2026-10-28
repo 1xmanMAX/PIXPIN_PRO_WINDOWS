@@ -238,12 +238,18 @@ public static extern bool PostMessageW(System.IntPtr h, uint m, System.IntPtr w,
 function Cerrar-PixPin {
     # La app vive en la bandeja e ignora el taskkill normal. Se le pide Salir
     # (WM_COMMAND 25) a su ventana de mensajes, que guarda lo pendiente.
-    $h = [PixPin.W]::FindWindowExW([IntPtr](-3), [IntPtr]::Zero, 'PixPinMaxVentanaMensajes', $null)
+    # [NullString]::Value y no $null: PowerShell pasa $null a un string de
+    # C# como "" y Windows buscaba la ventana de TITULO vacio, que no existe;
+    # nunca la encontraba y la app acababa siempre cerrada a la fuerza.
+    $h = [PixPin.W]::FindWindowExW([IntPtr](-3), [IntPtr]::Zero, 'PixPinMaxVentanaMensajes', [NullString]::Value)
+    if ($h -ne [IntPtr]::Zero) { Write-Host 'Cerrando PixPin con Salir (guarda lo pendiente)...' }
+    else { Write-Warning 'No se encontro la ventana de PixPin: si sigue abierta se cerrara a la fuerza' }
     if ($h -ne [IntPtr]::Zero) { [void][PixPin.W]::PostMessageW($h, 0x0111, [IntPtr]25, [IntPtr]::Zero) }
     for ($i = 0; $i -lt 50 -and (Get-Process pixpinmax -ErrorAction SilentlyContinue); $i++) {
         Start-Sleep -Milliseconds 200
     }
     # Ultimo recurso tras 10 s: una copia colgada no puede impedir actualizar.
+    if (Get-Process pixpinmax -ErrorAction SilentlyContinue) { Write-Warning 'PixPin no se cerro en 10 s: se cierra a la fuerza' }
     Get-Process pixpinmax -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
