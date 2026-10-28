@@ -77,6 +77,10 @@ pub use reloj::{
 pub use entrada::{
     Copia, Fuentes, Grabacion, Grabadora, MUESTREO, hay_algo_que_recuperar, recuperar,
 };
+/// Lo que recibe una suscripcion al PCM de una grabacion
+/// (`Grabadora::suscribir_pcm`): la escucha en vivo de los temas de una
+/// reunion.
+pub use pixpin_motor_audio::pcm::{BloquePcm, Receptor, SinBloque};
 /// El respaldo WAV de una grabacion a prueba de cortes (para leer lo que
 /// dura uno que quedo de un corte, sin depender del motor).
 pub use pixpin_motor_audio::respaldo;
