@@ -1,4 +1,4 @@
-# Manualito: sincronizar lo nuevo (23 al 27-oct-2026)
+# Manualito: sincronizar lo nuevo (23 al 28-oct-2026)
 
 Para los agentes de **PixPin Android** y de **Mac, iPad e iPhone**
 (`apple/`). Dice, funcion por funcion, que ficheros y campos hay, donde
@@ -142,6 +142,52 @@ chat si viaja como siempre:
 Y cada una en la carpeta de la grabacion, en su minuto (§5.1). Conservar
 todo eso tal cual. Mensajes, flujo y tareas de Android:
 [movil-como-camara.md](movil-como-camara.md).
+
+### Fotos por su hora, de la PC al movil y colaboradores (28-oct-2026)
+
+Las fotos entran en una grabacion **por su hora**, lleguen por donde
+lleguen (sincronizacion normal o por diario, «Enviar por Wi-Fi», un chat
+compartido o la camara en directo). Todo viaja en campos de mensajes, sin
+version nueva del protocolo; la guia completa (reglas, flujo, tareas) esta
+en [movil-como-camara.md](movil-como-camara.md) §9-§11.
+
+| Mensaje | `resto` nuevo | Quien lo escribe |
+|---|---|---|
+| La nota de voz de una clase (`VOZ`) | `reloj: {aparato, inicio, fin, pausas: [[desde,hasta]], vistoEn}` (ms desde 1970 en el reloj de `aparato`; `fin` 0 sigue; `hasta` 0 en pausa) | quien grabo, al guardarla |
+| La misma nota | `colaboradores: ["K7Q2", …]` o `["*"]` (todos los del chat compartido) | quien grabo, al invitar |
+| La misma nota, cada entrada de `capturas` | ademas de `{ms, id}`: `aparato` (quien la hizo), `uid` (el de la foto) y `horaSinComprobar: true` si no habia desfase medido de su aparato | quien grabo, al colocarla |
+| Cada foto (`IMAGEN`) | `tomadaEn` (ms en el reloj de su aparato); si falta, `tomadaEnExif` (`"2026:10:28 10:05:03"`) + `desfaseExif` (`"+01:00"`); opcional `paraGrabacion` (id de la nota) | el aparato que la hizo |
+| Una foto de mis aparatos ya colocada | `enGrabacion: {de, ms}` y `fuente: "movil"` (como las de la camara) | quien grabo |
+| La copia que hizo la camara en directo | `fotoUid` = el uid de la foto en su aparato (la `clave` del `suelto`) | quien grabo |
+
+Fuera del chat:
+
+- `<raiz>/sincro/desfases.json`: `{"aparatos":{"<codigo>":[{"cuando","desfase"}]}}`
+  (lo que va adelantado cada reloj, por codigo de aparato, 32 medidas como
+  mucho; se apunta en cada saludo de sincronizar, con el grupo y con
+  personas). **No viaja**: cada aparato mide los suyos.
+- `<raiz>/sincro/camara-movil/relojes/<id>.json`: el `reloj` de la grabacion
+  en curso (cada 15 s), por si el programa se cae. **No viaja.**
+- `<raiz>/sincro/camara-movil/al-movil/`: capturas del PC para la grabacion
+  del movil que esperan a que conteste. **No viaja.**
+
+**Choques**: los campos nuevos de la nota los escribe solo el aparato que
+grabo (`reloj.aparato`): nadie mas coloca fotos en esa grabacion, asi que no
+hay dos escribiendo la misma nota. Repasar es idempotente: dos aparatos
+que lo hicieran llegarian a lo mismo. La foto de otra persona no se toca
+nunca (la colocacion vive en la nota).
+
+**Lo que hace el que recibe**: conservar todo tal cual; si quiere ensenar
+la clase, `capturas` ya trae las fotos de los colaboradores en su minuto
+(con su `aparato` para el circulo del autor y `horaSinComprobar`).
+
+**`camara_remota` en el otro sentido**: la peticion puede traer `suya` (el
+anuncio de la grabacion de quien pregunta, ver movil-como-camara §10). Un
+aparato de antes la contesta igual y no pasa nada.
+
+**`suelto` con `destino:"grabacion"`**: `grabacion` puede ir vacia si lleva
+`tomada_en` (por su hora, §9.4); la respuesta «La foto no cae en ninguna
+grabación de este equipo» quiere decir: dejala como foto normal.
 
 ## 2. La biblioteca de figuras
 
