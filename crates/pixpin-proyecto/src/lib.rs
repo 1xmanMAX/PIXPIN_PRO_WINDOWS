@@ -51,6 +51,7 @@ pub mod presencial;
 pub mod tabla;
 pub mod tabla_web;
 pub mod tabla_xlsx;
+pub mod temas;
 pub mod ubicacion;
 pub mod versiones;
 pub mod vista;
