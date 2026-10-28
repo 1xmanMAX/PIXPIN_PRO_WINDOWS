@@ -9,9 +9,11 @@ mod conversor;
 mod escritor;
 mod grafica;
 mod motor;
+mod rehacer;
 mod tubo;
 
 pub use motor::MotorVideo;
+pub(crate) use rehacer::rehacer_mp4;
 
 use windows::Win32::Media::MediaFoundation::{MFVideoFormat_H264, MFVideoFormat_HEVC};
 

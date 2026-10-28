@@ -17,6 +17,8 @@ tracing = "0.1.44"
 # Las cuentas del video en vivo de antes (`escala`), que el ultimo recurso
 # del motor —el camino por la CPU— sigue usando.
 pixpin-record = { version = "0.1.0", path = "../pixpin-record" }
+# Mirar si un MP4 a medias se puede abrir (`archivo::recuperar_video`).
+pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 
 [target.'cfg(windows)'.dependencies]
 pixpin-capture = { version = "0.1.0", path = "../pixpin-capture" }

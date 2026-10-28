@@ -1737,6 +1737,7 @@ version = "0.1.0"
 dependencies = [
  "pixpin-capture",
  "pixpin-record",
+ "pixpin-sistema",
  "thiserror",
  "tracing",
  "windows",
