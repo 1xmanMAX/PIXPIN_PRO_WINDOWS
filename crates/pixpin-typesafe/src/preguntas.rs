@@ -137,6 +137,71 @@ pub mod reunion {
     }
 }
 
+/// **Que temas de la agenda ya se trataron** en una reunion que se esta
+/// grabando: una peticion por tramo de unos 15 s pasado a texto en vivo, con
+/// dos Nouls por cada tema aun pendiente (el tema va dentro de la pregunta:
+/// cada tema, su pregunta). Estado: `reunion` (el titulo, si lo hay),
+/// `agenda` (todos los temas, para que se sepa de que otros se hablara),
+/// `antes` (el tramo anterior, de contexto; si no lo hay, no va) y `tramo`
+/// (lo que se acaba de decir). Lo copia el movil tal cual (`docs/jev.md`).
+pub mod temas {
+    use super::*;
+
+    /// El nombre de la respuesta de «se trato» del tema `id`.
+    pub fn tratado(id: &str) -> String {
+        format!("tratado_{id}")
+    }
+
+    /// Y el de «quedo cerrado».
+    pub fn cerrado(id: &str) -> String {
+        format!("cerrado_{id}")
+    }
+
+    /// Por encima de esto en dos tramos seguidos, tratado (ver
+    /// `crate::temas`): una conversacion larga sobre un tema se reparte en
+    /// varios tramos y en cada uno parece a medias.
+    pub const CASI: f64 = 0.5;
+
+    /// Cuantos temas pendientes van en una peticion (dos preguntas cada
+    /// uno). Los demas, en el tramo siguiente.
+    pub const POR_PETICION: usize = 20;
+
+    /// **¿Se trato el tema en `tramo`?** El caso que confunde, dicho en el
+    /// «no»: nombrarlo de pasada o dejarlo para luego no es tratarlo.
+    pub fn se_trato(tema: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("In `tramo`, do the speakers actually discuss the agenda topic «{tema}»?"),
+            "They talk about it in substance in `tramo`: they explain it, give opinions, ask and answer about it, or decide something about it, e.g. for «presupuesto 2027»: «el presupuesto queda en cuarenta mil, lo aprobamos».",
+            "It is only named in passing or announced for later, e.g. «del presupuesto hablamos al final» or «eso lo vemos la próxima semana»; or `tramo` is about another topic. What was said only in `antes` does not count.",
+        )
+    }
+
+    /// **¿Quedo cerrado?** Una decision, una respuesta o un siguiente paso
+    /// acordado.
+    pub fn quedo_cerrado(tema: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!(
+                "In `tramo`, is the agenda topic «{tema}» settled with a decision, an answer or an agreed next step?"
+            ),
+            "Something is concluded about it, e.g. «entonces queda así», «lo aprobamos» or «Ana se encarga y lo revisamos el lunes».",
+            "It is still open: options are being compared, it is postponed, e.g. «lo dejamos para la próxima», or it is not talked about in `tramo`.",
+        )
+    }
+
+    /// Las dos preguntas de cada tema, con su nombre.
+    pub fn preguntas(temas: &[(&str, &str)]) -> Vec<(String, Pregunta)> {
+        temas
+            .iter()
+            .flat_map(|(id, texto)| {
+                [
+                    (tratado(id), se_trato(texto)),
+                    (cerrado(id), quedo_cerrado(texto)),
+                ]
+            })
+            .collect()
+    }
+}
+
 /// **Tarjetas de Anki que valen la pena**: una peticion por tarjeta de la
 /// clase. Estado: `clase` (el titulo), `minuto` («12:30») y `dicho` (lo que
 /// se dijo en ese tramo, el reverso de la tarjeta).
@@ -321,6 +386,17 @@ mod pruebas {
                 assert!(texto.contains('`'), "{n} no nombra su campo del estado");
             }
         }
+        // Los temas: dos por tema, cada una con el tema dentro y nombrando
+        // `tramo`.
+        let t = temas::preguntas(&[("t1", "Presupuesto"), ("t2", "Viaje")]);
+        assert_eq!(t.len(), 4);
+        for (n, p) in &t {
+            let texto = serde_json::to_string(p).unwrap();
+            assert!(texto.contains("`tramo`"), "{n}");
+            assert!(texto.contains("Presupuesto") || texto.contains("Viaje"));
+        }
+        assert_eq!(t[0].0, "tratado_t1");
+        assert_eq!(t[1].0, "cerrado_t1");
         // Sin mensajes recientes, no se pregunta por ellos.
         assert!(
             !urgencia::preguntas(false)

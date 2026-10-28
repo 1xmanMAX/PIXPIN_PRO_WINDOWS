@@ -21,7 +21,8 @@
 //! - Lo de cada funcion, con su tabla de decision: [`reunion`] (las partes
 //!   importantes de una clase o reunion), [`anki`] (que tarjetas valen la
 //!   pena), [`urgencia`] (la prioridad de una tarea) y [`modelo`] (que modelo
-//!   contesta al asistente).
+//!   contesta al asistente) y [`temas`] (que temas de la agenda ya se
+//!   trataron, mientras se graba la reunion).
 //!
 //! Sin clave no se llama a nadie: quien usa esto sigue como siempre.
 
@@ -32,6 +33,7 @@ pub mod cliente;
 pub mod modelo;
 pub mod preguntas;
 pub mod reunion;
+pub mod temas;
 pub mod transporte;
 pub mod urgencia;
 
