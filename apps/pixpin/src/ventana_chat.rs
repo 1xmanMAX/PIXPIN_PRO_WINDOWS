@@ -8606,7 +8606,11 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let mut centro = pil.centro;
     if a.ficha.es_asistente() {
         let eleccion = asistente_nube::eleccion_reciente(&a.raiz);
-        let rotulo_modelo = asistente_nube::nombre_corto(eleccion);
+        // Con Jev, el modelo que eligio para el ultimo pedido (`jev::modelo`).
+        let rotulo_jev = crate::jev::modelo::rotulo(&a.ficha.id);
+        let rotulo_modelo = rotulo_jev
+            .as_deref()
+            .unwrap_or(asistente_nube::nombre_corto(eleccion));
         let tam = PASTILLA_MODELO_TAM * e;
         let (w_modelo, alto_t) = p.medir_texto(rotulo_modelo, tam);
         let rotulo_nuevo = textos.t("asistente-nuevo-chat");
@@ -12230,6 +12234,8 @@ fn latido_de_transcribir(
             a.mensajes[i] = m;
             // La burbuja crece: ahora ensena el texto bajo la onda.
             a.colocado.borrow_mut().ancho = 0;
+            // Lo importante de lo dicho (Jev, en su hilo; sin clave, nada).
+            crate::jev::reunion::lanzar(ubicacion, &a.ficha.id, &id, true);
             Some(textos.t("chat-transcribir-hecha"))
         }
         Err(e) => {

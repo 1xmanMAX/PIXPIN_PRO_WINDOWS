@@ -105,6 +105,8 @@ mod grabador;
 mod grupos_ventanas;
 mod hoja_pin;
 mod imagenes_lienzo;
+/// Jev de TypeSafe: la clave, los ajustes y cada funcion que lo usa.
+mod jev;
 // Solo para desarrollar: `PIXPIN_INSTANCIA` (ver el modulo).
 /// Google Calendar, solo para ver: sus eventos en el horario y en los avisos.
 mod calendario_google;

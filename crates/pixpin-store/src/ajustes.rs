@@ -292,6 +292,38 @@ pub struct Ajustes {
     /// Con que se reconoce el texto de las imagenes (`[ocr]`). Tabla: al
     /// final.
     pub ocr: Ocr,
+    /// Que funciones usan Jev, de TypeSafe (`[jev]`, 28-oct-2026). La clave
+    /// NO va aqui: va cifrada en su fichero (`pixpin_typesafe::claves`).
+    /// Tabla: al final.
+    pub jev: Jev,
+}
+
+/// Seccion `[jev]`: que funciones le preguntan a Jev (`docs/jev.md`). Todas
+/// encendidas de fabrica: sin la clave de TypeSafe ninguna hace nada y todo
+/// sigue como siempre, asi que encenderlas solo cuenta cuando hay clave.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Jev {
+    /// Las partes importantes de una clase o reunion (tareas, decisiones,
+    /// preguntas, examen) al acabar de pasarla a texto.
+    pub reunion: bool,
+    /// Mandar a Anki solo las tarjetas de una clase que valen la pena.
+    pub anki: bool,
+    /// La prioridad de cada tarea segun su contexto, en Tareas.
+    pub urgencia: bool,
+    /// Elegir el modelo del asistente segun lo dificil del pedido.
+    pub modelo: bool,
+}
+
+impl Default for Jev {
+    fn default() -> Self {
+        Jev {
+            reunion: true,
+            anki: true,
+            urgencia: true,
+            modelo: true,
+        }
+    }
 }
 
 /// Que motor lee el texto de las capturas, los pines, la galeria, los PDF
@@ -670,6 +702,7 @@ impl Default for Ajustes {
             asistente: Asistente::default(),
             tareas: Tareas::default(),
             ocr: Ocr::default(),
+            jev: Jev::default(),
         }
     }
 }

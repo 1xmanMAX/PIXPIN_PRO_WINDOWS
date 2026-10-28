@@ -881,7 +881,9 @@ impl Estado {
 
     fn recargar(&mut self, ubicacion: &Ubicacion) {
         let raiz = ubicacion.raiz();
-        let (todas, proyectos) = super::reunir(raiz);
+        let (mut todas, proyectos) = super::reunir(raiz);
+        // La prioridad de cada tarea por su contexto (Jev; sin clave, nada).
+        crate::jev::urgencia::aplicar(ubicacion, &mut todas);
         self.firma = super::firma(raiz, &proyectos);
         self.compartidos = todas
             .iter()
@@ -1927,7 +1929,7 @@ fn hacer(
         }
         Accion::BuscarChapa(li, fi, k) => {
             let q = e.fila(li, fi).and_then(|(_, f)| {
-                super::frase::a_la_vista(&f.texto, None)
+                super::frase::a_la_vista_con(&f.texto, None, f.prioridad)
                     .chapas
                     .get(k)
                     .map(super::frase::Chapa::busqueda)
@@ -4061,7 +4063,7 @@ fn alto_de_cuadrado(e: &Estado, p: &Pintor, li: usize, fi: usize, lado: f32, s: 
         texto,
         emos,
         chapas,
-    } = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
+    } = super::frase::a_la_vista_con(&f.texto, Some(super::frase::ahora()), f.prioridad);
     // Una fila de las hechas (`lado` es entonces todo el ancho): su texto
     // entero entre la casilla y la edad, con su aire arriba y abajo.
     if lado > LADO_CUADRADO * s * 1.5 {
@@ -4132,7 +4134,7 @@ fn pintar_cuadrado(
         texto,
         emos,
         chapas,
-    } = super::frase::a_la_vista(&f.texto, Some(super::frase::ahora()));
+    } = super::frase::a_la_vista_con(&f.texto, Some(super::frase::ahora()), f.prioridad);
     let partes = rejilla::partes(r, s, !emos.is_empty());
     let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
     let foco = e.foco == Foco::Tarjeta(li, fi);

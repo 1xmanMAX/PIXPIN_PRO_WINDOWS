@@ -61,6 +61,10 @@ pixpin-web = { version = "0.1.0", path = "../../crates/pixpin-web" }
 pixpin-voz = { version = "0.1.0", path = "../../crates/pixpin-voz" }
 # Tarjetas de Anki de una clase, una foto o una nota (24-oct-2026).
 pixpin-anki = { version = "0.1.0", path = "../../crates/pixpin-anki" }
+# Jev de TypeSafe (28-oct-2026, docs/jev.md): lo importante de una clase, las
+# tarjetas que valen la pena, la prioridad de las tareas y el modelo de cada
+# pedido. Sin clave, nada cambia.
+pixpin-typesafe = { version = "0.1.0", path = "../../crates/pixpin-typesafe" }
 # El borrador de las imagenes pegadas en Flow (`[img 01]` -> fichero): el
 # mismo modulo que lee el plugin, asi el formato es uno solo. Solo serde y
 # `windows`, que ya estan; el plugin no depende de nada de PixPin.

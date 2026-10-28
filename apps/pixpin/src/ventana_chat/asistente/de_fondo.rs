@@ -490,7 +490,7 @@ fn retomar_uno(chat: &Chat, e: &EnMarcha, ahora: i64) -> std::io::Result<Option<
         // lo que escribiera el usuario) no es parte de este pedido.
         let contexto = &mensajes[..=i];
         let numero = mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-        match super::motor_para(&chat.ubicacion, &pregunta) {
+        match super::motor_para(&chat.ubicacion, &e.proyecto, contexto, &pregunta) {
             Ok((motor, pensar, ventana)) => {
                 // La burbuja cortada, antes: la nueva nace debajo.
                 escribir_cortado(&carpeta, e, &parcial, &decision);

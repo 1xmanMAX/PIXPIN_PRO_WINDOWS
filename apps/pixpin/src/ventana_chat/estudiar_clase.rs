@@ -108,6 +108,8 @@ const MARGEN: f32 = 16.0;
 const ANCHO_FOTOS: f32 = 210.0;
 const ANCHO_FOTOS_MINIMO: f32 = 150.0;
 const CABECERA: f32 = 36.0;
+/// La franja de lo importante (Jev) bajo la cabecera del texto: el filtro.
+const FRANJA: f32 = 32.0;
 /// El color de los marcadores: ambar, que se distingue del azul de las
 /// capturas en la barra del tiempo.
 const AMBAR: Color = hex(0xf2a33a);
@@ -304,6 +306,9 @@ struct Clase {
     clips: Vec<(i64, i64, PathBuf, bool)>,
     /// Los trozos del texto: su minuto (si lo lleva) y lo que dice.
     lineas: Vec<(Option<i64>, String)>,
+    /// Lo importante que hallo Jev (`resto["importantes"]`); `None` si aun
+    /// no se miro.
+    importantes: Option<Vec<clase::Importante>>,
     senales: Vec<Senal>,
     /// El texto con las senales en su minuto, y el minuto de cada fila.
     filas: Vec<Fila>,
@@ -388,6 +393,7 @@ impl Clase {
             autores,
             clips,
             lineas,
+            importantes: clase::importantes_de(&voz.resto),
             senales: Vec::new(),
             filas: Vec::new(),
             tiempos_filas: Vec::new(),
@@ -413,6 +419,22 @@ impl Clase {
         let ms: Vec<i64> = self.senales.iter().map(|s| s.ms).collect();
         self.filas = clase::mezclar(&lineas, &ms);
         self.tiempos_filas = clase::tiempos_de_filas(&self.filas, &lineas, &ms);
+    }
+
+    /// Si va la franja de lo importante: con algo hallado, o mientras Jev
+    /// lo busca.
+    fn con_franja(&self) -> bool {
+        self.importantes.as_ref().is_some_and(|v| !v.is_empty())
+            || (self.importantes.is_none() && crate::jev::reunion::en_marcha(&self.id))
+    }
+
+    /// Las tareas halladas que aun no estan en Tareas.
+    fn tareas_por_apuntar(&self) -> usize {
+        self.importantes.as_ref().map_or(0, |v| {
+            v.iter()
+                .filter(|i| i.tipo == clase::TipoImportante::Tarea && !i.en_tareas)
+                .count()
+        })
     }
 
     fn tiempos_capturas(&self) -> Vec<i64> {
@@ -839,6 +861,10 @@ enum Zona {
     Transcripcion,
     /// La imagen a pantalla entera, o reducirla (en su esquina).
     PantallaEntera,
+    /// Una chapita del filtro de lo importante (`None`: todo).
+    Filtro(Option<clase::TipoImportante>),
+    /// Apuntar en Tareas las tareas halladas.
+    ATareas,
 }
 
 /// Que se esta viendo en grande: al cambiar, el encuadre vuelve a encajado.
@@ -875,6 +901,8 @@ struct Disposicion {
 struct Reparto {
     texto: bool,
     entera: bool,
+    /// La franja del filtro de lo importante bajo la cabecera del texto.
+    franja: bool,
 }
 
 impl Default for Reparto {
@@ -882,6 +910,7 @@ impl Default for Reparto {
         Reparto {
             texto: true,
             entera: false,
+            franja: false,
         }
     }
 }
@@ -950,18 +979,21 @@ fn disponer(ancho: f32, alto: f32, e: f32, reparto: Reparto) -> Disposicion {
         ancho: ancho_medio,
         alto: (abajo - (mandos.y + mandos.alto + 12.0 * e)).max(0.0),
     };
-    let cab = |x: f32, w: f32| RectF {
+    let cab = |x: f32, w: f32, alto: f32| RectF {
         x,
         y: arriba,
         ancho: w,
-        alto: CABECERA * e,
+        alto: alto * e,
     };
-    let lista = |x: f32, w: f32| RectF {
+    let lista = |x: f32, w: f32, alto: f32| RectF {
         x,
-        y: arriba + CABECERA * e,
+        y: arriba + alto * e,
         ancho: w,
-        alto: (alto_columna - CABECERA * e).max(0.0),
+        alto: (alto_columna - alto * e).max(0.0),
     };
+    // Con lo importante hallado, la cabecera del texto lleva debajo la
+    // franja de su filtro.
+    let cab_texto = CABECERA + if reparto.franja { FRANJA } else { 0.0 };
     Disposicion {
         medio,
         tiempo,
@@ -974,10 +1006,10 @@ fn disponer(ancho: f32, alto: f32, e: f32, reparto: Reparto) -> Disposicion {
         } else {
             senales
         },
-        cabecera_texto: cab(x_texto, ancho_texto),
-        texto: lista(x_texto, ancho_texto),
-        cabecera_fotos: cab(x_fotos, ancho_fotos),
-        fotos: lista(x_fotos, ancho_fotos),
+        cabecera_texto: cab(x_texto, ancho_texto, cab_texto),
+        texto: lista(x_texto, ancho_texto, cab_texto),
+        cabecera_fotos: cab(x_fotos, ancho_fotos, CABECERA),
+        fotos: lista(x_fotos, ancho_fotos, CABECERA),
         ancho_miniatura: (ancho_fotos - 16.0 * e).max(0.0),
         compacto: ancho_medio < 640.0 * e,
         escala: e,
@@ -1016,6 +1048,8 @@ struct Vista {
     pedir_entera: bool,
     scroll_texto: f32,
     scroll_fotos: f32,
+    /// El filtro de lo importante: solo los renglones de ese tipo.
+    filtro: Option<clase::TipoImportante>,
     /// Hasta cuando no se sigue al sonido: se movio una lista a mano.
     a_mano_hasta: Option<Instant>,
     /// Ir a lo que suena en la siguiente vuelta, aunque este parado (tras
@@ -1087,6 +1121,7 @@ impl Vista {
             pedir_entera: false,
             scroll_texto: 0.0,
             scroll_fotos: 0.0,
+            filtro: None,
             a_mano_hasta: None,
             ir_ya: true,
             escribiendo: None,
@@ -1349,6 +1384,7 @@ impl Vista {
         };
         let otras_capturas = nueva.capturas != self.clase.capturas;
         self.clase.lineas = nueva.lineas;
+        self.clase.importantes = nueva.importantes;
         self.clase.nombre = nueva.nombre;
         self.clase.clips = nueva.clips;
         self.clase.poner_senales(nueva.senales);
@@ -1563,6 +1599,9 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
     let raiz = pedido.ubicacion.raiz().to_path_buf();
     let clase = Clase::leer(&raiz, &pedido.proyecto, &pedido.id)?;
     let mut v = Vista::nueva(recursos, raiz, clase, pedido.ms);
+    // Una clase pasada a texto antes de Jev (o con la clave puesta despues):
+    // se busca lo importante ahora, en su hilo (sin clave, nada).
+    crate::jev::reunion::lanzar(&pedido.ubicacion, &v.clase.proyecto, &v.clase.id, false);
     // Un visor como los demas: sin marco, se estira por los bordes y lleva
     // su barra fuera, encima (`lector_pin`).
     let mut pin = PinLector::nuevo(
@@ -1624,6 +1663,12 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
                     v = Vista::nueva(recursos, v.raiz.clone(), c, o.ms);
                     v.disp = disp;
                     v.reparto = reparto;
+                    crate::jev::reunion::lanzar(
+                        &o.ubicacion,
+                        &v.clase.proyecto,
+                        &v.clase.id,
+                        false,
+                    );
                     *pedido = o;
                 }
                 Err(e) => tracing::warn!(?e, "la otra clase no se pudo leer"),
@@ -1909,6 +1954,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, pedido: &mut Pedido) -> Result<
             } else {
                 &CLARO
             };
+            v.reparto.franja = v.clase.con_franja();
             v.disp = disponer(area.ancho as f32, area.alto as f32, e, v.reparto);
             if let Ok(d) = superficie.empezar(&motor) {
                 let _ = motor.dibujar(&d, |p: &Pintor| {
@@ -2139,6 +2185,28 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
         Zona::Anotar => v.anotar = true,
         Zona::Transcripcion => v.reparto.texto = !v.reparto.texto,
         Zona::PantallaEntera => v.pedir_entera = true,
+        Zona::Filtro(f) => {
+            v.filtro = if v.filtro == f { None } else { f };
+            v.scroll_texto = 0.0;
+            *v.altos_texto.borrow_mut() = (0, Vec::new());
+        }
+        Zona::ATareas => {
+            match crate::jev::reunion::a_tareas(&v.raiz, &v.clase.proyecto, &v.clase.id) {
+                Ok(0) => {}
+                Ok(n) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("n", n as i64);
+                    v.avisar(textos.t_args("clase-importante-anadidas", &args));
+                    // Se relee ya: la chapita «+N» se va.
+                    v.leido = None;
+                    v.mirado = Instant::now() - Duration::from_secs(2);
+                }
+                Err(e) => {
+                    tracing::warn!("jev: no se apuntaron las tareas de la clase: {e}");
+                    v.avisar(textos.t("chat-no-se-pudo"));
+                }
+            }
+        }
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
@@ -2974,12 +3042,18 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
         tema.lista,
     );
     let titulo = textos.t("estudiar-transcripcion");
-    let (_, th) = p.medir_texto(&titulo, 14.0 * e);
+    let (tw, th) = p.medir_texto(&titulo, 14.0 * e);
+    // El titulo va en la fila de arriba; debajo, si la hay, la franja de lo
+    // importante.
+    let fila_titulo = RectF {
+        alto: CABECERA * e,
+        ..cab
+    };
     p.icono(
         &mi::LYRICS,
         RectF {
             x: cab.x + 12.0 * e,
-            y: cab.y + (cab.alto - 18.0 * e) / 2.0,
+            y: cab.y + (fila_titulo.alto - 18.0 * e) / 2.0,
             ancho: 18.0 * e,
             alto: 18.0 * e,
         },
@@ -2988,10 +3062,11 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
     p.texto(
         &titulo,
         cab.x + 38.0 * e,
-        cab.y + (cab.alto - th) / 2.0,
+        cab.y + (fila_titulo.alto - th) / 2.0,
         14.0 * e,
         tema.texto,
     );
+    pintar_lo_importante(p, v, tema, e, textos, fila_titulo, cab.x + 38.0 * e + tw);
     v.zonas.push((caja, Zona::ListaTexto));
     if v.clase.lineas.is_empty() && v.clase.senales.is_empty() {
         p.texto_ajustado(
@@ -3004,8 +3079,11 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
         );
         return;
     }
-    // Lo alto de cada fila, medido una vez por ancho.
+    // Lo alto de cada fila, medido una vez por ancho (y por filtro: al
+    // cambiarlo se vacia).
     let ancho_texto = caja.ancho - (COLUMNA_MINUTO + 24.0) * e;
+    let sin_importantes = Vec::new();
+    let importantes = v.clase.importantes.as_ref().unwrap_or(&sin_importantes);
     {
         let mut cache = v.altos_texto.borrow_mut();
         let clave = caja.ancho.round() as u32;
@@ -3016,9 +3094,25 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
                 .iter()
                 .map(|f| match f {
                     Fila::Linea(i) => {
-                        let t = v.clase.lineas.get(*i).map_or("", |(_, t)| t.as_str());
-                        p.medir_texto_ajustado(t, TAM_TEXTO * e, ancho_texto).1 + 14.0 * e
+                        let (ms, t) = v
+                            .clase
+                            .lineas
+                            .get(*i)
+                            .map_or((None, ""), |(ms, t)| (*ms, t.as_str()));
+                        if !clase::se_ve_con_filtro(importantes, ms, v.filtro) {
+                            return 0.0;
+                        }
+                        let alto_texto = p.medir_texto_ajustado(t, TAM_TEXTO * e, ancho_texto).1;
+                        // Con chapitas bajo el minuto, que quepan.
+                        let minimo = if clase::tipos_en(importantes, ms).is_empty() {
+                            0.0
+                        } else {
+                            22.0 * e
+                        };
+                        alto_texto.max(minimo) + 14.0 * e
                     }
+                    // Filtrando, solo los renglones de ese tipo.
+                    Fila::Marcador(_) if v.filtro.is_some() => 0.0,
                     Fila::Marcador(_) => 34.0 * e,
                 })
                 .collect();
@@ -3041,7 +3135,7 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
             alto,
         };
         y += alto;
-        if fila.y + fila.alto < caja.y || fila.y > caja.y + caja.alto {
+        if alto <= 0.0 || fila.y + fila.alto < caja.y || fila.y > caja.y + caja.alto {
             continue;
         }
         let encima = dentro(fila, v.raton) && dentro(caja, v.raton);
@@ -3072,6 +3166,21 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
                         12.0 * e,
                         if es_actual { tema.enviar } else { tema.apagado },
                     );
+                    // Lo importante de este renglon: un punto de su color
+                    // por tipo, bajo el minuto.
+                    for (k, t) in clase::tipos_en(importantes, Some(*ms)).iter().enumerate() {
+                        let d = 8.0 * e;
+                        p.rellenar_redondeado(
+                            RectF {
+                                x: fila.x + 11.0 * e + k as f32 * 11.0 * e,
+                                y: fila.y + 27.0 * e,
+                                ancho: d,
+                                alto: d,
+                            },
+                            d / 2.0,
+                            hex(crate::jev::reunion::color_de(*t)),
+                        );
+                    }
                     v.zonas.push((fila, Zona::Ir(*ms)));
                 }
                 // Lo que aun no se ha oido, un poco apagado.
@@ -3128,6 +3237,139 @@ fn pintar_texto(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
         }
     }
     p.soltar_recorte();
+}
+
+/// **Lo importante que hallo Jev**, en la cabecera del texto: a la derecha
+/// del titulo, «+N tareas» para apuntarlas en Tareas; debajo, la franja
+/// del filtro («Todo» y una chapita de su color por tipo, con cuantas hay)
+/// o, mientras se busca, «Buscando lo importante…».
+fn pintar_lo_importante(
+    p: &Pintor,
+    v: &mut Vista,
+    tema: &Tema,
+    e: f32,
+    textos: &Catalogo,
+    fila_titulo: RectF,
+    fin_titulo: f32,
+) {
+    let tam = 12.0 * e;
+    let alto = 22.0 * e;
+    let por_apuntar = v.clase.tareas_por_apuntar();
+    if por_apuntar > 0 {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", por_apuntar as i64);
+        let rotulo = textos.t_args("clase-importante-tareas", &args);
+        let (w, h) = p.medir_texto(&rotulo, tam);
+        let boton = RectF {
+            x: fila_titulo.x + fila_titulo.ancho - w - 20.0 * e - 10.0 * e,
+            y: fila_titulo.y + (fila_titulo.alto - alto) / 2.0,
+            ancho: w + 20.0 * e,
+            alto,
+        };
+        if boton.x > fin_titulo + 8.0 * e {
+            let azul = hex(crate::jev::reunion::color_de(clase::TipoImportante::Tarea));
+            let encima = dentro(boton, v.raton);
+            p.rellenar_redondeado(
+                boton,
+                alto / 2.0,
+                con_alfa(azul, if encima { 0.32 } else { 0.2 }),
+            );
+            p.texto(
+                &rotulo,
+                boton.x + 10.0 * e,
+                boton.y + (alto - h) / 2.0,
+                tam,
+                tema.texto,
+            );
+            v.zonas.push((boton, Zona::ATareas));
+        }
+    }
+    if !v.reparto.franja {
+        return;
+    }
+    let franja = RectF {
+        x: fila_titulo.x + 10.0 * e,
+        y: fila_titulo.y + fila_titulo.alto,
+        ancho: fila_titulo.ancho - 20.0 * e,
+        alto: FRANJA * e,
+    };
+    let Some(importantes) = v.clase.importantes.clone().filter(|i| !i.is_empty()) else {
+        let rotulo = textos.t("clase-importante-buscando");
+        let (_, h) = p.medir_texto(&rotulo, tam);
+        p.texto(
+            &rotulo,
+            franja.x + 4.0 * e,
+            franja.y + (franja.alto - h) / 2.0 - 3.0 * e,
+            tam,
+            tema.apagado,
+        );
+        return;
+    };
+    let mut x = franja.x;
+    let y = franja.y + (franja.alto - alto) / 2.0 - 3.0 * e;
+    let mut chapas: Vec<(Option<clase::TipoImportante>, String, Color)> =
+        vec![(None, textos.t("clase-importante-todo"), tema.enviar)];
+    for t in clase::TipoImportante::TODOS {
+        let n = importantes
+            .iter()
+            .filter(|i| i.tipo == t)
+            .map(|i| i.ms)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        if n > 0 {
+            chapas.push((
+                Some(t),
+                format!("{} {n}", textos.t(crate::jev::reunion::clave_de(t))),
+                hex(crate::jev::reunion::color_de(t)),
+            ));
+        }
+    }
+    for (filtro, rotulo, color) in chapas {
+        let (w, h) = p.medir_texto(&rotulo, tam);
+        let punto = if filtro.is_some() { 12.0 * e } else { 0.0 };
+        let chapa = RectF {
+            x,
+            y,
+            ancho: w + 18.0 * e + punto,
+            alto,
+        };
+        if chapa.x + chapa.ancho > franja.x + franja.ancho {
+            break;
+        }
+        let elegida = v.filtro == filtro;
+        let encima = dentro(chapa, v.raton);
+        p.rellenar_redondeado(
+            chapa,
+            alto / 2.0,
+            if elegida {
+                con_alfa(color, 0.9)
+            } else {
+                con_alfa(color, if encima { 0.26 } else { 0.14 })
+            },
+        );
+        if filtro.is_some() {
+            let d = 7.0 * e;
+            p.rellenar_redondeado(
+                RectF {
+                    x: chapa.x + 9.0 * e,
+                    y: chapa.y + (alto - d) / 2.0,
+                    ancho: d,
+                    alto: d,
+                },
+                d / 2.0,
+                if elegida { Color::BLANCO } else { color },
+            );
+        }
+        p.texto(
+            &rotulo,
+            chapa.x + 9.0 * e + punto,
+            chapa.y + (alto - h) / 2.0,
+            tam,
+            if elegida { Color::BLANCO } else { tema.texto },
+        );
+        v.zonas.push((chapa, Zona::Filtro(filtro)));
+        x += chapa.ancho + 6.0 * e;
+    }
 }
 
 fn pintar_fotos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalogo, posicion: i64) {
@@ -3285,6 +3527,25 @@ mod pruebas {
         assert_eq!(s.len(), 2, "la banderita del mismo minuto no se repite");
         assert!(s[0].banderita && s[0].ms == 1_000);
         assert!(!s[1].banderita && s[1].texto == "ojo");
+    }
+
+    #[test]
+    fn la_franja_de_lo_importante_baja_solo_el_texto() {
+        let con = disponer(
+            1360.0,
+            840.0,
+            1.0,
+            Reparto {
+                franja: true,
+                ..Reparto::default()
+            },
+        );
+        let sin = disponer(1360.0, 840.0, 1.0, Reparto::default());
+        assert_eq!(con.texto.y, sin.texto.y + FRANJA);
+        assert_eq!(con.cabecera_texto.alto, CABECERA + FRANJA);
+        assert_eq!(con.texto.y + con.texto.alto, sin.texto.y + sin.texto.alto);
+        // La tira de las capturas no se mueve.
+        assert_eq!(con.fotos.y, sin.fotos.y);
     }
 
     #[test]

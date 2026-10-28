@@ -203,3 +203,31 @@ mark { background: var(--marca-suave); color: inherit; border-radius: 3px; box-s
   .oculta { display: flex !important; }
   mark { background: none; box-shadow: none; }
 }
+
+/* Lo importante que hallo Jev: chapitas en cada renglon y el filtro. */
+.filtro-importante { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+.filtro-importante button {
+  border: 1px solid var(--raya); background: var(--papel); color: var(--tinta);
+  border-radius: 999px; padding: 0.2rem 0.75rem; font: inherit; font-size: 0.85rem; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 0.35rem;
+}
+.filtro-importante button.activo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.punto-chip { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: currentColor; display: inline-block; }
+.filtro-importante .tarea .punto-chip, .chip.tarea { --chip: #3b82f6; }
+.filtro-importante .decision .punto-chip, .chip.decision { --chip: #22a06b; }
+.filtro-importante .pregunta .punto-chip, .chip.pregunta { --chip: #8b5cf6; }
+.filtro-importante .examen .punto-chip, .chip.examen { --chip: #e5534b; }
+.filtro-importante button:not(.activo) .punto-chip { background: var(--chip); }
+.chips { display: inline-flex; gap: 0.25rem; margin: 0 0.4rem 0 0.2rem; vertical-align: 0.1em; }
+.chip {
+  font-size: 0.72rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 999px;
+  color: var(--chip); background: color-mix(in srgb, var(--chip) 14%, transparent);
+}
+body[data-filtro] .texto > .captura,
+body[data-filtro] .texto > .marca,
+body[data-filtro] .texto > .linea:not([data-tipos]) { display: none; }
+body[data-filtro="tarea"] .texto > .linea[data-tipos]:not([data-tipos~="tarea"]),
+body[data-filtro="decision"] .texto > .linea[data-tipos]:not([data-tipos~="decision"]),
+body[data-filtro="pregunta"] .texto > .linea[data-tipos]:not([data-tipos~="pregunta"]),
+body[data-filtro="examen"] .texto > .linea[data-tipos]:not([data-tipos~="examen"]) { display: none; }
+@media print { .filtro-importante { display: none; } }

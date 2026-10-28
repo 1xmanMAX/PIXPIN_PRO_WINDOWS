@@ -197,28 +197,11 @@ pub fn de_la_clase(
     let mut capturas = capturas;
     capturas.sort_by_key(|(ms, _)| *ms);
     let tiempos: Vec<i64> = capturas.iter().map(|(ms, _)| *ms).collect();
+    let dichos = lo_dicho_por_captura(trozos, &tiempos);
     capturas
         .into_iter()
-        .enumerate()
-        .map(|(n, (ms, imagen))| {
-            let hasta = tiempos.get(n + 1).copied().unwrap_or(i64::MAX);
-            // Lo dicho en el tramo: desde el trozo que sonaba al hacer la
-            // captura (empezo un poco antes) hasta la siguiente.
-            let primero = trozos.iter().rposition(|(t, _)| *t <= ms).unwrap_or(0);
-            let mut dicho = String::new();
-            for (t, texto) in trozos.iter().skip(primero) {
-                if *t >= hasta && !dicho.is_empty() {
-                    break;
-                }
-                if !dicho.is_empty() {
-                    dicho.push(' ');
-                }
-                dicho.push_str(texto.trim());
-                if dicho.chars().count() > MAXIMO_REVERSO {
-                    dicho = dicho.chars().take(MAXIMO_REVERSO).collect::<String>() + "…";
-                    break;
-                }
-            }
+        .zip(dichos)
+        .map(|((ms, imagen), dicho)| {
             let cabeza = format!("{} · ⏱ {}", titulo.trim(), minuto(ms));
             Tarjeta {
                 frente: format!(
@@ -236,6 +219,49 @@ pub fn de_la_clase(
                 imagenes: vec![imagen],
             }
         })
+        .collect()
+}
+
+/// **Lo dicho en el tramo de cada captura** (`tiempos`, en orden): desde el
+/// trozo que sonaba al hacerla (empezo un poco antes) hasta la siguiente,
+/// recortado a [`MAXIMO_REVERSO`]. Es el reverso de su tarjeta, y lo que se
+/// valora para quedarse solo con las que valen la pena (Jev, en la app).
+pub fn lo_dicho_por_captura(trozos: &[(i64, String)], tiempos: &[i64]) -> Vec<String> {
+    tiempos
+        .iter()
+        .enumerate()
+        .map(|(n, &ms)| {
+            let hasta = tiempos.get(n + 1).copied().unwrap_or(i64::MAX);
+            let primero = trozos.iter().rposition(|(t, _)| *t <= ms).unwrap_or(0);
+            let mut dicho = String::new();
+            for (t, texto) in trozos.iter().skip(primero) {
+                if *t >= hasta && !dicho.is_empty() {
+                    break;
+                }
+                if !dicho.is_empty() {
+                    dicho.push(' ');
+                }
+                dicho.push_str(texto.trim());
+                if dicho.chars().count() > MAXIMO_REVERSO {
+                    dicho = dicho.chars().take(MAXIMO_REVERSO).collect::<String>() + "…";
+                    break;
+                }
+            }
+            dicho
+        })
+        .collect()
+}
+
+/// **Solo las que quedan**: `quedan[i]` dice si la tarjeta `i` se manda. Si
+/// los largos no casan, todas (lo de siempre: nada se pierde por un error).
+pub fn quedarse_con(tarjetas: Vec<Tarjeta>, quedan: &[bool]) -> Vec<Tarjeta> {
+    if quedan.len() != tarjetas.len() {
+        return tarjetas;
+    }
+    tarjetas
+        .into_iter()
+        .zip(quedan)
+        .filter_map(|(t, q)| q.then_some(t))
         .collect()
 }
 
@@ -328,5 +354,33 @@ mod pruebas {
     #[test]
     fn las_etiquetas_no_llevan_espacios() {
         assert_eq!(etiqueta(" Clase de física "), "Clase_de_física");
+    }
+
+    #[test]
+    fn lo_dicho_por_captura_y_quedarse_con_las_buenas() {
+        let trozos = vec![
+            (0, "Buenos días.".to_string()),
+            (10_000, "La derivada mide el cambio.".to_string()),
+            (30_000, "Ejemplo con una recta.".to_string()),
+        ];
+        let d = lo_dicho_por_captura(&trozos, &[12_000, 31_000]);
+        assert_eq!(
+            d,
+            vec![
+                "La derivada mide el cambio. Ejemplo con una recta.".to_string(),
+                "Ejemplo con una recta.".to_string()
+            ]
+        );
+        let t = |f: &str| Tarjeta {
+            frente: f.into(),
+            ..Default::default()
+        };
+        let v = quedarse_con(vec![t("a"), t("b"), t("c")], &[true, false, true]);
+        assert_eq!(
+            v.iter().map(|t| t.frente.as_str()).collect::<Vec<_>>(),
+            ["a", "c"]
+        );
+        // Si no casan los largos, todas.
+        assert_eq!(quedarse_con(vec![t("a"), t("b")], &[false]).len(), 2);
     }
 }

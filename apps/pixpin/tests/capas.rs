@@ -55,6 +55,9 @@ fn capa(nombre: &str) -> Option<u8> {
         | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web" | "pdfsqueeze-core"
         // Las tarjetas de Anki (24-oct-2026): sin crates de PixPin, solo red.
         | "pixpin-anki"
+        // Jev de TypeSafe (28-oct-2026): las preguntas, el cliente y las
+        // tablas de decision; sin crates de PixPin, solo red y DPAPI.
+        | "pixpin-typesafe"
         | "pixpin-office" | "pixpin-bim" => 1,
         // El plugin de Flow Launcher es un ejecutable aparte que no enlaza
         // ningun crate de PixPin: habla con la app por WM_COPYDATA. La app si
@@ -117,11 +120,11 @@ fn estan_los_cuarenta_paquetes() {
     // 32 con `pixpin-sistema` (lo que la logica pregunta al sistema, con
     // version portable: la usa la copia del nucleo de Mac); 40 con los
     // motores de video y de audio; 41 con el lector Indra; 42 con las
-    // paginas web del asistente.
+    // paginas web del asistente; 43 con Jev (`pixpin-typesafe`).
     assert_eq!(
         encontrados.len(),
-        42,
-        "se esperan 37 crates de libreria y los cinco ejecutables, encontrados: {:?}",
+        43,
+        "se esperan 38 crates de libreria y los cinco ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

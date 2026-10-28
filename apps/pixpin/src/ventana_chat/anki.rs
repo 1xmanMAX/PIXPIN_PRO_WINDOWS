@@ -29,8 +29,9 @@ pub(super) fn se_puede(a: &Abierto, m: &Mensaje) -> bool {
     }
 }
 
-/// Las tarjetas de ese mensaje.
-fn tarjetas_de(a: &Abierto, m: &Mensaje, textos: &Catalogo) -> Vec<Tarjeta> {
+/// Las tarjetas de ese mensaje y cuantas de una clase dejo fuera Jev.
+fn tarjetas_de(a: &Abierto, m: &Mensaje, textos: &Catalogo) -> (Vec<Tarjeta>, usize) {
+    let mut quitadas = 0;
     let leer = |c: &Mensaje| -> Option<Imagen> {
         let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, c)?;
         let bytes = std::fs::read(&ruta).ok()?;
@@ -55,14 +56,27 @@ fn tarjetas_de(a: &Abierto, m: &Mensaje, textos: &Catalogo) -> Vec<Tarjeta> {
                 .into_iter()
                 .filter_map(|t| Some((t.ms?, crate::voz::sin_marcas(&t.texto))))
                 .collect();
-            let capturas: Vec<(i64, Imagen)> = grabar_clase::capturas_de(m)
+            let mut capturas: Vec<(i64, Imagen)> = grabar_clase::capturas_de(m)
                 .into_iter()
                 .filter_map(|(ms, id)| {
                     let c = a.mensajes.iter().find(|c| c.id == id)?;
                     Some((ms, leer(c)?))
                 })
                 .collect();
-            tarjetas::de_la_clase(&titulo, &textos.t("anki-pregunta-clase"), &trozos, capturas)
+            // En el orden de `de_la_clase` (por minuto, estable).
+            capturas.sort_by_key(|(ms, _)| *ms);
+            let tiempos: Vec<i64> = capturas.iter().map(|(ms, _)| *ms).collect();
+            let todas =
+                tarjetas::de_la_clase(&titulo, &textos.t("anki-pregunta-clase"), &trozos, capturas);
+            // Con Jev, solo las que valen la pena (`pixpin_typesafe::anki`);
+            // sin clave o si falla, todas, como siempre.
+            match valer_la_pena(a, &titulo, &trozos, &tiempos) {
+                Some(quedan) => {
+                    quitadas = quedan.iter().filter(|q| !**q).count();
+                    tarjetas::quedarse_con(todas, &quedan)
+                }
+                None => todas,
+            }
         }
         Some(Clase::Imagen) => leer(m)
             .map(|i| vec![tarjetas::de_la_foto(i, &m.texto, &m.nombre)])
@@ -73,7 +87,38 @@ fn tarjetas_de(a: &Abierto, m: &Mensaje, textos: &Catalogo) -> Vec<Tarjeta> {
     for t in &mut v {
         t.etiquetas = etiquetas.clone();
     }
-    v
+    (v, quitadas)
+}
+
+/// **Que tarjetas de la clase valen la pena**, segun Jev: lo dicho en el
+/// tramo de cada captura, valorado de 0 a 3 y si dice que entra en el
+/// examen; la tabla de `pixpin_typesafe::anki::elegir` decide. `None`: sin
+/// Jev, o fallo (se mandan todas).
+fn valer_la_pena(
+    a: &Abierto,
+    titulo: &str,
+    trozos: &[(i64, String)],
+    tiempos: &[i64],
+) -> Option<Vec<bool>> {
+    let u = pixpin_store::Ubicacion::Instalado {
+        raiz: a.raiz.clone(),
+    };
+    let cliente = crate::jev::para(&u, crate::jev::Funcion::Anki)?;
+    let tramos: Vec<pixpin_typesafe::anki::Tramo> = tarjetas::lo_dicho_por_captura(trozos, tiempos)
+        .into_iter()
+        .zip(tiempos)
+        .map(|(dicho, ms)| pixpin_typesafe::anki::Tramo {
+            minuto: pixpin_voz::marca_de_tiempo(*ms),
+            dicho,
+        })
+        .collect();
+    match pixpin_typesafe::anki::valorar(&cliente, titulo, &tramos, 4) {
+        Ok(senales) => Some(pixpin_typesafe::anki::elegir(&senales)),
+        Err(e) => {
+            tracing::warn!("jev: sin valorar las tarjetas, van todas: {e}");
+            None
+        }
+    }
 }
 
 /// El mazo de un proyecto.
@@ -87,17 +132,25 @@ pub(super) fn enviar(a: &Abierto, i: usize, textos: &Catalogo) -> Efecto {
     let Some(m) = a.mensajes.get(i) else {
         return Efecto::Nada;
     };
-    let tarjetas = tarjetas_de(a, m, textos);
+    let (tarjetas, quitadas) = tarjetas_de(a, m, textos);
     if tarjetas.is_empty() {
         return Efecto::Aviso(textos.t("anki-nada"));
     }
+    // Lo que dejo fuera Jev, dicho al final del aviso.
+    let jev = if quitadas > 0 {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", quitadas as i64);
+        format!(" · {}", textos.t_args("anki-jev-quitadas", &args))
+    } else {
+        String::new()
+    };
     let mazo = mazo_de(&a.ficha.nombre);
     let con = |clave: &str, n: usize, donde: &str| {
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("n", n as i64);
         args.set("mazo", mazo.clone());
         args.set("donde", donde.to_string());
-        textos.t_args(clave, &args)
+        format!("{}{jev}", textos.t_args(clave, &args))
     };
     match pixpin_anki::conectar::anadir(&mazo, &tarjetas) {
         Ok(0) => Efecto::Aviso(con("anki-ya-estaban", tarjetas.len(), "")),

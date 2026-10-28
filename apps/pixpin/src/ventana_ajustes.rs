@@ -348,6 +348,9 @@ enum Clave {
     ClaveNube(u8),
     /// Borrar la clave guardada de un proveedor.
     BorrarClave(u8),
+    /// Encender o apagar una funcion de Jev (`[jev]`, indice en
+    /// `FUNCIONES_JEV`). La clave de TypeSafe va en `ClaveNube(CLAVE_JEV)`.
+    JevFuncion(u8),
     /// La caja del ID de cliente de una conexion (indice en
     /// `conexiones::SERVICIOS`). Va cifrado a su fichero, nunca al TOML.
     ClienteConexion(u8),
@@ -418,6 +421,47 @@ impl Clave {
             self,
             Clave::PalabrasDe(_) | Clave::PalabrasUrgencia(_) | Clave::OcrVocabulario
         )
+    }
+}
+
+/// La caja de la clave de TypeSafe (Jev, 28-oct-2026) es una
+/// `Clave::ClaveNube` mas, con este indice fuera de `Proveedor::TODOS`: asi
+/// se pinta tapada, se guarda y se prueba por el mismo camino que las de
+/// Claude y DeepSeek (y `BorrarClave(CLAVE_JEV)` la borra).
+const CLAVE_JEV: u8 = u8::MAX;
+
+/// Las funciones de Jev de Ajustes, en orden: la funcion, su rotulo y su
+/// ayuda.
+const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 4] = [
+    (
+        crate::jev::Funcion::Reunion,
+        "ajustes2-jev-reunion",
+        "ajustes2-ayuda-jev-reunion",
+    ),
+    (
+        crate::jev::Funcion::Anki,
+        "ajustes2-jev-anki",
+        "ajustes2-ayuda-jev-anki",
+    ),
+    (
+        crate::jev::Funcion::Urgencia,
+        "ajustes2-jev-urgencia",
+        "ajustes2-ayuda-jev-urgencia",
+    ),
+    (
+        crate::jev::Funcion::Modelo,
+        "ajustes2-jev-modelo",
+        "ajustes2-ayuda-jev-modelo",
+    ),
+];
+
+/// El interruptor de una funcion de Jev en los ajustes.
+fn jev_de(a: &mut pixpin_store::ajustes::Jev, f: crate::jev::Funcion) -> &mut bool {
+    match f {
+        crate::jev::Funcion::Reunion => &mut a.reunion,
+        crate::jev::Funcion::Anki => &mut a.anki,
+        crate::jev::Funcion::Urgencia => &mut a.urgencia,
+        crate::jev::Funcion::Modelo => &mut a.modelo,
     }
 }
 
@@ -1311,6 +1355,39 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     ));
                 }
             }
+            // Jev de TypeSafe (28-oct-2026, docs/jev.md): su clave, por el
+            // mismo camino que las de arriba, y un interruptor por funcion.
+            v.push(grupo(t, "ajustes2-g-jev"));
+            let mut args = FluentArgs::new();
+            args.set("proveedor", t.t("ajustes2-jev-proveedor"));
+            v.push(op(
+                a,
+                Clave::ClaveNube(CLAVE_JEV),
+                t.t_args("ajustes2-clave-de", &args),
+                crate::jev::estado(t),
+                Control::Entrada {
+                    marcador: t.t("ajustes2-clave-marcador"),
+                    boton: tt("ajustes2-clave-probar"),
+                },
+            ));
+            if crate::jev::hay_clave() {
+                v.push(op(
+                    a,
+                    Clave::BorrarClave(CLAVE_JEV),
+                    t.t_args("ajustes2-clave-borrar-de", &args),
+                    tt("ajustes2-ayuda-clave-borrar"),
+                    Control::Boton(tt("ajustes2-clave-borrar")),
+                ));
+            }
+            for (i, (f, rotulo, ayuda)) in FUNCIONES_JEV.into_iter().enumerate() {
+                v.push(op(
+                    a,
+                    Clave::JevFuncion(i as u8),
+                    tt(rotulo),
+                    tt(ayuda),
+                    Control::Interruptor(f.encendida_en(&a.jev)),
+                ));
+            }
             // Conexiones (17-oct-2026): Google Drive y los que vengan, un
             // par de filas por servicio con las mismas piezas que las claves.
             v.push(grupo(t, "ajustes2-g-conexiones"));
@@ -1752,6 +1829,12 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
             a.asistente.documentos_a_la_nube = d.asistente.documentos_a_la_nube.clone()
         }
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = d.asistente.revisar_lo_dicho,
+        Clave::JevFuncion(i) => {
+            if let Some((f, _, _)) = FUNCIONES_JEV.get(i as usize) {
+                let mut de_fabrica = d.jev;
+                *jev_de(&mut a.jev, *f) = *jev_de(&mut de_fabrica, *f);
+            }
+        }
         Clave::Presencia => a.sincro.presencia = d.sincro.presencia,
         Clave::LoMioManda => a.sincro.lo_mio_manda = d.sincro.lo_mio_manda,
         Clave::AbrirCon => a.abrir_con = d.abrir_con,
@@ -1937,6 +2020,12 @@ fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
         Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
         Clave::AsistenteRevisarVoz => a.asistente.revisar_lo_dicho = !a.asistente.revisar_lo_dicho,
+        Clave::JevFuncion(i) => {
+            if let Some((f, _, _)) = FUNCIONES_JEV.get(i as usize) {
+                let s = jev_de(&mut a.jev, *f);
+                *s = !*s;
+            }
+        }
         Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::Apilar => {
             // Cero apaga la pila; encenderla vuelve a su numero de fabrica
@@ -2199,6 +2288,10 @@ fn es_clave(filas: &[(Clave, Fila)], i: usize) -> bool {
 /// «Guardar y probar» la clave del proveedor `n`: lo escrito, o la guardada
 /// si no se escribio nada. Vuelve en seguida; la prueba va en su hilo.
 fn probar_clave(n: u8, escrito: &str, despertar: std::sync::Arc<dyn Fn() + Send + Sync>) {
+    if n == CLAVE_JEV {
+        crate::jev::guardar_y_probar(escrito, despertar);
+        return;
+    }
     let Some(p) = pixpin_ia::nube::Proveedor::TODOS.get(n as usize).copied() else {
         return;
     };
@@ -2270,7 +2363,9 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
             Ok(())
         }
         Clave::BorrarClave(i) => {
-            if let Some(p) = pixpin_ia::nube::Proveedor::TODOS.get(i as usize) {
+            if i == CLAVE_JEV {
+                crate::jev::borrar();
+            } else if let Some(p) = pixpin_ia::nube::Proveedor::TODOS.get(i as usize) {
                 crate::asistente::nube::borrar(*p);
             }
             Ok(())
@@ -2524,8 +2619,9 @@ fn abrir(
     let zona = contenido(ancho, alto);
     // La prueba de una clave acaba en otro hilo: cuando cambia esto, se
     // repinta su linea de estado.
-    let mut novedades_claves =
-        crate::asistente::nube::novedades() + crate::asistente::conexiones::novedades();
+    let mut novedades_claves = crate::asistente::nube::novedades()
+        + crate::asistente::conexiones::novedades()
+        + crate::jev::novedades();
     let hwnd_ventana = ventana.handle().0 as isize;
     let despertar_ventana: std::sync::Arc<dyn Fn() + Send + Sync> =
         std::sync::Arc::new(move || pixpin_shell::overlay::despertar(hwnd_ventana));
@@ -2549,6 +2645,7 @@ fn abrir(
         pixpin_shell::overlay::bombear_pendientes();
         let n = crate::asistente::nube::novedades()
             + crate::asistente::conexiones::novedades()
+            + crate::jev::novedades()
             + crate::ocr_motor::novedades()
             + crate::voz_motor::novedades();
         if n != novedades_claves {

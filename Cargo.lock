@@ -1535,6 +1535,7 @@ dependencies = [
  "pixpin-store",
  "pixpin-timeline",
  "pixpin-tinta",
+ "pixpin-typesafe",
  "pixpin-ui",
  "pixpin-voz",
  "pixpin-web",
@@ -1979,6 +1980,18 @@ dependencies = [
 [[package]]
 name = "pixpin-tinta"
 version = "0.1.0"
+
+[[package]]
+name = "pixpin-typesafe"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tracing",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-ui"

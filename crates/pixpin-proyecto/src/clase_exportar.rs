@@ -53,6 +53,10 @@ pub struct ClaseParaExportar {
     /// Lo demas que cuelga de la grabacion (un PDF adjunto, una foto que no
     /// es captura).
     pub adjuntos: Vec<PathBuf>,
+    /// Lo importante que hallo Jev en la transcripcion (`importantes`, ver
+    /// `clase`): chapitas en cada renglon y un filtro arriba. Vacio, la
+    /// pagina es la de siempre.
+    pub importantes: Vec<clase::Importante>,
 }
 
 /// Si un mensaje es una grabacion: una nota de voz.
@@ -195,6 +199,7 @@ impl ClaseParaExportar {
             lineas,
             marcadores,
             adjuntos,
+            importantes: clase::importantes_de(&voz.resto).unwrap_or_default(),
         }
     }
 
@@ -332,6 +337,10 @@ pub struct Rotulos {
     pub cerrar: String,
     pub audio: String,
     pub video: String,
+    /// El filtro de lo importante: «Todo» y cada tipo (tarea, decision,
+    /// pregunta, examen), en el orden de `TipoImportante::TODOS`.
+    pub importante_todo: String,
+    pub importantes: [String; 4],
 }
 
 impl Default for Rotulos {
@@ -354,8 +363,50 @@ impl Default for Rotulos {
             cerrar: "Cerrar".into(),
             audio: "Audio".into(),
             video: "Vídeo".into(),
+            importante_todo: "Todo".into(),
+            importantes: [
+                "Tarea".into(),
+                "Decisión".into(),
+                "Pregunta".into(),
+                "Examen".into(),
+            ],
         }
     }
+}
+
+impl Rotulos {
+    /// Lo que dice la chapita de un tipo.
+    pub fn importante(&self, t: clase::TipoImportante) -> &str {
+        let i = clase::TipoImportante::TODOS
+            .iter()
+            .position(|x| *x == t)
+            .unwrap_or(0);
+        &self.importantes[i]
+    }
+}
+
+/// Las chapitas de lo importante de un renglon (`ms`), y sus tipos para el
+/// filtro (`data-tipos`). Sin nada, cadenas vacias.
+fn chapitas_de(c: &ClaseParaExportar, r: &Rotulos, ms: i64) -> (String, String) {
+    let tipos = clase::tipos_en(&c.importantes, Some(ms));
+    if tipos.is_empty() {
+        return (String::new(), String::new());
+    }
+    let ids: Vec<&str> = tipos.iter().map(|t| t.id()).collect();
+    let chapas: String = tipos
+        .iter()
+        .map(|t| {
+            format!(
+                "<span class=\"chip {}\">{}</span>",
+                t.id(),
+                escapar(r.importante(*t))
+            )
+        })
+        .collect();
+    (
+        format!(" data-tipos=\"{}\"", ids.join(" ")),
+        format!("<span class=\"chips\">{chapas}</span>"),
+    )
 }
 
 // --- Escapar -------------------------------------------------------------------
@@ -574,6 +625,30 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
             escapar(&r.velocidad)
         ));
     }
+    // El filtro de lo importante (Jev): «Todo» y un boton por tipo hallado.
+    if !c.importantes.is_empty() && !c.lineas.is_empty() {
+        h.push_str(&format!(
+            "<div class=\"filtro-importante\" role=\"group\"><button type=\"button\" data-filtro=\"\" class=\"activo\">{}</button>",
+            escapar(&r.importante_todo)
+        ));
+        for t in clase::TipoImportante::TODOS {
+            let n = c
+                .importantes
+                .iter()
+                .filter(|i| i.tipo == t)
+                .map(|i| i.ms)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len();
+            if n > 0 {
+                h.push_str(&format!(
+                    "<button type=\"button\" data-filtro=\"{0}\" class=\"{0}\"><span class=\"punto-chip\" aria-hidden=\"true\"></span>{1} {n}</button>",
+                    t.id(),
+                    escapar(r.importante(t))
+                ));
+            }
+        }
+        h.push_str("</div>\n");
+    }
     if !c.lineas.is_empty() {
         h.push_str(&format!(
             "<div class=\"busqueda\"><input type=\"search\" id=\"buscar\" placeholder=\"{0}\" aria-label=\"{0}\" autocomplete=\"off\">{1}</div>\n",
@@ -641,11 +716,14 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
             Fila::Linea(i) => {
                 let (ms, texto) = &c.lineas[i];
                 match ms {
-                    Some(ms) => h.push_str(&format!(
-                        "<p class=\"linea\" id=\"t-{ms}\" data-ms=\"{ms}\">{}<span class=\"dicho\">{}</span></p>\n",
-                        minuto_html(*ms, con_medio),
-                        texto_con_saltos(texto)
-                    )),
+                    Some(ms) => {
+                        let (tipos, chapas) = chapitas_de(c, r, *ms);
+                        h.push_str(&format!(
+                            "<p class=\"linea\" id=\"t-{ms}\" data-ms=\"{ms}\"{tipos}>{}{chapas}<span class=\"dicho\">{}</span></p>\n",
+                            minuto_html(*ms, con_medio),
+                            texto_con_saltos(texto)
+                        ))
+                    }
                     None => h.push_str(&format!(
                         "<p class=\"linea sin-tiempo\"><span class=\"dicho\">{}</span></p>\n",
                         texto_con_saltos(texto)
