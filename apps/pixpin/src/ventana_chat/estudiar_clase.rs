@@ -295,6 +295,9 @@ struct Clase {
     capturas: Vec<(i64, PathBuf)>,
     /// El mensaje de cada captura (el mismo orden): para su lienzo anotado.
     fotos: Vec<cuaderno::Mensaje>,
+    /// De cada captura (el mismo orden): la persona que la aporto (un
+    /// colaborador; lo mio, `None`) y si su hora no se pudo comprobar.
+    autores: Vec<(Option<String>, bool)>,
     /// Los clips de la camara (reunion presencial) y del movil (la camara
     /// del movil), en la misma lista de la nota: `(ms, duracion, ruta, del
     /// movil)`.
@@ -331,13 +334,25 @@ impl Clase {
             Some((c, r))
         };
         let ruta_de = |id: &str| con_ruta(id).map(|(_, r)| r);
-        let (capturas, fotos) = clase::capturas_de(&voz.resto)
-            .into_iter()
-            .filter_map(|(ms, id)| {
-                let (m, r) = con_ruta(&id)?;
-                Some(((ms, r), m.clone()))
+        let (capturas, fotos): (Vec<(i64, PathBuf)>, Vec<cuaderno::Mensaje>) =
+            clase::capturas_de(&voz.resto)
+                .into_iter()
+                .filter_map(|(ms, id)| {
+                    let (m, r) = con_ruta(&id)?;
+                    Some(((ms, r), m.clone()))
+                })
+                .unzip();
+        let autores = fotos
+            .iter()
+            .map(|m: &cuaderno::Mensaje| {
+                (
+                    m.aparato
+                        .as_deref()
+                        .and_then(crate::sincronizar::compartidos_ui::autor_aqui),
+                    pixpin_proyecto::por_su_hora::sin_comprobar(voz, &m.id),
+                )
             })
-            .unzip();
+            .collect();
         let video = voz
             .resto
             .get("video")
@@ -370,6 +385,7 @@ impl Clase {
             video,
             capturas,
             fotos,
+            autores,
             clips,
             lineas,
             senales: Vec::new(),
@@ -3209,6 +3225,13 @@ fn pintar_fotos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
         p.rellenar_redondeado(marco, 6.0 * e, hex(0x0b0f14));
         if let Some(Some((b, _, _))) = v.miniaturas.get(i) {
             p.bitmap(b, marco, None, false);
+        }
+        // De quien es (un colaborador) y si su hora no se comprobo.
+        if let Some((autor, sin)) = v.clase.autores.get(i)
+            && (autor.is_some() || *sin)
+        {
+            let aviso = sin.then(|| textos.t("clase-hora-sin-comprobar"));
+            super::chapa_de_autor(p, marco, autor.as_deref(), aviso.as_deref(), e);
         }
         let rotulo = format!("⏱ {}", pixpin_voz::marca_de_tiempo(*ms));
         p.texto(

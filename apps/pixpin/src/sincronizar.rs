@@ -48,6 +48,7 @@ use crate::overlay::Recursos;
 
 mod al_dia;
 pub(crate) mod al_movil;
+pub(crate) mod aporte;
 pub(crate) mod automatica;
 pub(crate) mod camara;
 pub(crate) mod compartidos_ui;
@@ -56,6 +57,7 @@ mod elegir;
 pub(crate) mod en_fondo;
 mod enviar_wifi;
 mod galeria;
+pub(crate) mod por_su_hora;
 pub(crate) mod presencia;
 mod recibir_wifi;
 
@@ -1691,6 +1693,8 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     // Lo que llego sin marco de la tinta (el movil de hoy no lo escribe)
     // recibe el suyo, en otro hilo; viaja en la vuelta siguiente (K21).
     crate::marco_de_la_tinta::tras_sincronizar(raiz);
+    // Y las fotos con hora que trajo, a su grabacion (por su hora).
+    por_su_hora::repasar(raiz);
     // Lo que se escribio (la lista de proyectos, «sincronizado hace…»).
     presencia::difundir(presencia::Novedad::Identidad);
     en_curso.acabo(hecho.is_ok());
@@ -2160,6 +2164,8 @@ fn hacer_una_vuelta(
         puerto
     };
     apuntar_direccion(raiz, &s.otro.id, host, suyo);
+    // Lo que va adelantado su reloj, para poner sus fotos por su hora.
+    por_su_hora::medido(raiz, &s.otro.id, s.desfase);
     let _ = tx.send(Aviso::Identidad);
     let mut elegir = |otro: &m::Aparato, pregunta: vuelta::Pregunta| {
         let (responde, espera) = mpsc::channel();
@@ -2193,6 +2199,7 @@ fn hacer_una_vuelta(
     }
     // Lo que llego sin marco de la tinta recibe el suyo, en otro hilo (K21).
     crate::marco_de_la_tinta::tras_sincronizar(raiz);
+    por_su_hora::repasar(raiz);
     Ok(r?)
 }
 

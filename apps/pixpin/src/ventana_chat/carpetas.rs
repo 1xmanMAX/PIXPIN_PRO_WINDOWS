@@ -160,6 +160,10 @@ struct PaginaVista {
     /// Lo que va en su esquina: el numero de la pagina o, en una grabacion,
     /// su minuto («⏱ 1:05») o lo que dura la nota.
     esquina: String,
+    /// En una grabacion, la persona que la aporto (un colaborador; lo mio
+    /// no) y, si su hora no se pudo comprobar, el aviso.
+    autor: Option<String>,
+    hora_sin_comprobar: Option<String>,
 }
 
 /// La miniatura de una pagina: un lienzo con lo dibujado, una foto con lo
@@ -342,6 +346,11 @@ impl Vista {
         let ubicacion = self.que.ubicacion.clone();
         self.grabacion = self.carpeta.es_grabacion();
         let grabacion = self.grabacion;
+        let voz = mensajes
+            .iter()
+            .find(|m| grabacion && m.id == self.carpeta.voz)
+            .cloned();
+        let sin_comprobar = self.catalogo.t("clase-hora-sin-comprobar");
         let mut vivas = self.carpeta.vivas(&mensajes);
         // En una grabacion, lo grabado delante y lo adjuntado detras.
         if grabacion {
@@ -367,12 +376,25 @@ impl Vista {
                     (true, _, _) => String::new(),
                     (false, _, _) => (k + 1).to_string(),
                 };
+                let autor = if grabacion {
+                    m.aparato
+                        .as_deref()
+                        .and_then(crate::sincronizar::compartidos_ui::autor_aqui)
+                } else {
+                    None
+                };
+                let hora_sin_comprobar = voz
+                    .as_ref()
+                    .filter(|v| pixpin_proyecto::por_su_hora::sin_comprobar(v, &m.id))
+                    .map(|_| sin_comprobar.clone());
                 PaginaVista {
                     dibujo: dibujo_de(&ubicacion, &self.que.proyecto, &m),
                     icono: icono_de(&m),
                     titulo,
                     adjunto: grabacion && p.adjunto,
                     esquina,
+                    autor,
+                    hora_sin_comprobar,
                     mensaje: m,
                 }
             })
@@ -1384,6 +1406,16 @@ fn pintar_pagina(
             11.5 * e,
             chapa.ancho - 14.0 * e,
             Color::BLANCO,
+        );
+    }
+    // De quien es (un colaborador) y si su hora no se comprobo.
+    if pg.autor.is_some() || pg.hora_sin_comprobar.is_some() {
+        super::chapa_de_autor(
+            p,
+            dibujo,
+            pg.autor.as_deref(),
+            pg.hora_sin_comprobar.as_deref(),
+            e,
         );
     }
     zonas.push((

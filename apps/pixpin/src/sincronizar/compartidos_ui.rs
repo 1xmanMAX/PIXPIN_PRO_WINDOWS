@@ -619,6 +619,7 @@ fn sincronizar_ahora(cx: &Contexto, turno: u64, chat: &str, mios: &HashSet<Strin
                 if r.puerto > 0 {
                     super::apuntar_direccion(&cx.raiz, &p.id, &host, r.puerto as u16);
                 }
+                super::por_su_hora::medido(&cx.raiz, &p.id, r.desfase);
                 hechos.push(p.nombre.clone());
             }
             Err(ErrorSincro::Remoto(m)) if m == pixpin_sincro::mensajes::OCUPADO => {
@@ -628,6 +629,7 @@ fn sincronizar_ahora(cx: &Contexto, turno: u64, chat: &str, mios: &HashSet<Strin
         }
     }
     hechos.dedup();
+    super::por_su_hora::repasar(&cx.raiz);
     if hechos.is_empty() {
         Dicho::de("cc-nadie-en-wifi")
     } else {

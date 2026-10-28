@@ -781,6 +781,7 @@ fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
                 if r.puerto > 0 {
                     super::apuntar_direccion(raiz, &id, &host, r.puerto as u16);
                 }
+                super::por_su_hora::medido(raiz, &r.quien.id, r.desfase);
                 if r.trajo_algo() {
                     trajo.push(format!(
                         "Chat compartido con {}: {}",
@@ -798,6 +799,8 @@ fn con_personas(raiz: &Path, ids: &[String]) -> Entrada {
             }
         }
     }
+    // Las fotos de los colaboradores, a su grabacion por su hora.
+    super::por_su_hora::repasar(raiz);
     en_curso.acabo(bien);
     Entrada::FinPersonas {
         bien,

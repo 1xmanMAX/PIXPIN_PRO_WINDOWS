@@ -388,10 +388,16 @@ fn tramitar(mut r: Receptor<TcpStream>, cx: &Contexto, turno: u64) -> Estado {
         }
     });
     match llegados {
-        Ok(cosas) => Estado::Hecho {
-            de: oferta.de.clone(),
-            guardados: crate::recibir::guardar_lo_recibido(&cx.raiz, &cx.id, &cosas, &como_nuevo),
-        },
+        Ok(cosas) => {
+            let guardados =
+                crate::recibir::guardar_lo_recibido(&cx.raiz, &cx.id, &cosas, &como_nuevo);
+            // Lo que llego con hora, a su grabacion (por su hora).
+            super::por_su_hora::repasar(&cx.raiz);
+            Estado::Hecho {
+                de: oferta.de.clone(),
+                guardados,
+            }
+        }
         Err(e) => Estado::Fallo(Falla::Cortado(e.to_string())),
     }
 }

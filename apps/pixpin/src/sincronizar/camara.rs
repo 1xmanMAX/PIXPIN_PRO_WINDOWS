@@ -17,6 +17,13 @@
 //! - **Quien atiende al movil** ([`RecepcionPc`]): la da `al_frente` a cada
 //!   conexion del grupo; refresca el chat al entrar algo.
 //! - **El interruptor** de la barra ([`alternar`], [`indicador`]).
+//! - **Por su hora** (28-oct-2026, `super::por_su_hora`): el reloj de la
+//!   grabacion se apunta en disco al empezar, pausar, seguir, acabar y cada
+//!   [`APUNTAR_CADA`]; al guardarse entra en la nota y se repasan los chats
+//!   (lo que llego sin conexion entra en su minuto).
+//! - **La grabacion del movil** ([`RecepcionPc::anuncio_ajeno`]): cuando el
+//!   movil graba y lo dice, sale el boton flotante para mandarle capturas
+//!   (`super::aporte`).
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -30,6 +37,10 @@ use super::al_movil;
 
 static CAMARAS: OnceLock<Arc<Mutex<Camaras>>> = OnceLock::new();
 
+/// Cada cuanto se apunta el reloj de la grabacion en disco: si el programa
+/// se cae, la ventana de la grabacion acaba como mucho esto antes.
+const APUNTAR_CADA: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Lo de la barra: si ya se empezo a anunciar esta grabacion.
 static BARRA: Mutex<Option<Barra>> = Mutex::new(None);
 
@@ -42,6 +53,8 @@ struct Barra {
     /// El rotulo de la barra, y de que (encendida, cuantas) salio: se
     /// rehace solo cuando cambia, no a cada fotograma.
     rotulo: Option<((bool, usize), String)>,
+    /// Cuando se apunto el reloj en disco por ultima vez.
+    apuntado: std::time::Instant,
 }
 
 /// Las camaras de este equipo, creadas la primera vez.
@@ -54,6 +67,13 @@ pub(crate) fn camaras(raiz: &Path) -> Arc<Mutex<Camaras>> {
                 .filter(|n| !n.trim().is_empty())
                 .unwrap_or_else(super::nombre_del_equipo);
             let mut c = Camaras::nuevas(super::carpeta_sincro(raiz).join("camara-movil"), &nombre);
+            // Por su hora: el reloj lleva el codigo de este equipo, y lo que
+            // no sabe de que grabacion es se busca en las guardadas.
+            c.codigo = crate::letras_que_viajan::aparato(raiz);
+            c.almacen = Some((
+                raiz.to_path_buf(),
+                crate::ventana_chat::descripcion::hora_sin_repetir,
+            ));
             // HEVC solo si este equipo lo sabe ver: si no, el movil graba
             // los clips en H.264, que Windows trae de serie.
             if pixpin_pin::video::sabe_hevc() {
@@ -93,12 +113,33 @@ pub(crate) fn latido(l: Latido<'_>) -> Option<String> {
                 textos: Catalogo::nuevo(l.idioma),
                 hay_moviles: !al_movil::aparatos_de(raiz).is_empty(),
                 rotulo: None,
+                apuntado: std::time::Instant::now(),
             });
             let id = format!("g-{ahora}");
-            con(raiz, |c| c.empezar(&id, l.titulo, ahora, ms));
+            con(raiz, |c| {
+                c.empezar(&id, l.titulo, ahora, ms);
+                apuntar(c, ahora);
+            });
             true
         }
-        (Some((ms, pausa)), true) => con(raiz, |c| c.seguir_a(ahora, ms, pausa)),
+        (Some((ms, pausa)), true) => {
+            let cada = barra
+                .as_mut()
+                .is_some_and(|b| b.apuntado.elapsed() >= APUNTAR_CADA);
+            let cambio = con(raiz, |c| {
+                let cambio = c.seguir_a(ahora, ms, pausa);
+                if cambio || cada {
+                    apuntar(c, ahora);
+                }
+                cambio
+            });
+            if (cambio || cada)
+                && let Some(b) = barra.as_mut()
+            {
+                b.apuntado = std::time::Instant::now();
+            }
+            cambio
+        }
         (None, true) => {
             *barra = None;
             con(raiz, |c| c.acabar(ahora));
@@ -156,6 +197,16 @@ pub(crate) fn guardada(
     if hechas > 0 {
         tracing::info!(hechas, "fotos del movil en la clase");
         crate::ventana_chat::refrescar();
+    }
+    // Con el reloj ya en la nota: lo que llego sin conexion mientras se
+    // grababa (por la sincronizacion) entra ahora en su minuto.
+    super::por_su_hora::repasar(raiz);
+}
+
+/// Apunta en disco el reloj de la grabacion en curso.
+fn apuntar(c: &Camaras, ahora: i64) {
+    if let Err(e) = c.apuntar_reloj(ahora) {
+        tracing::debug!(?e, "no se apunto el reloj de la grabacion");
     }
 }
 
@@ -218,7 +269,10 @@ fn avisar_a_los_moviles(raiz: &Path) {
             };
             for otro in al_movil::aparatos_de(&raiz) {
                 match avisar_a(&raiz, &otro, &anuncio) {
-                    Ok(Some(desfase)) => con(&raiz, |c| c.medir(&otro.id, desfase)),
+                    Ok(Some(desfase)) => {
+                        con(&raiz, |c| c.medir(&otro.id, desfase));
+                        super::por_su_hora::medido(&raiz, &otro.id, desfase);
+                    }
                     Ok(None) => {}
                     Err(e) => {
                         tracing::debug!(movil = %otro.nombre, %e, "camara del movil: sin aviso")
@@ -236,6 +290,21 @@ fn avisar_a(
     otro: &al_movil::AparatoDelGrupo,
     anuncio: &Anuncio,
 ) -> anyhow::Result<Option<i64>> {
+    let Some(mut c) = abrir_con(raiz, otro)? else {
+        return Ok(None);
+    };
+    let desfase = c.anunciar_camara(anuncio, &super::ahora_ms)?;
+    c.adios();
+    Ok(Some(desfase))
+}
+
+/// **Abre el canal de la camara con un aparato del grupo** en su ultima
+/// direccion. `None` si no tiene direccion o no sabe de la camara
+/// (`camara1`).
+pub(super) fn abrir_con(
+    raiz: &Path,
+    otro: &al_movil::AparatoDelGrupo,
+) -> anyhow::Result<Option<Conexion<std::net::TcpStream>>> {
     let Some((host, puerto)) = otro.direccion.clone() else {
         return Ok(None);
     };
@@ -254,14 +323,12 @@ fn avisar_a(
             .collect(),
         ..Default::default()
     };
-    let mut c = Conexion::abrir(flujo, &codigo, nonce, hola)?;
+    let c = Conexion::abrir(flujo, &codigo, nonce, hola)?;
     if !c.sabe_de_camara() {
         c.adios();
         return Ok(None);
     }
-    let desfase = c.anunciar_camara(anuncio, &super::ahora_ms)?;
-    c.adios();
-    Ok(Some(desfase))
+    Ok(Some(c))
 }
 
 /// **Quien atiende la camara del movil** en una conexion del grupo: el de
@@ -293,6 +360,18 @@ impl Camara for RecepcionPc {
 
     fn aceptar_foto(&mut self, p: &Suelto) -> Result<(), String> {
         self.dentro.aceptar_foto(p)
+    }
+
+    fn anuncio_ajeno(&mut self, de: &pixpin_sincro::mensajes::Aparato, a: &Anuncio, desfase: i64) {
+        let ahora = super::ahora_ms();
+        let nueva = con(&self.raiz, |c| {
+            c.apuntar_ajena(&de.id, &de.nombre, a, desfase, ahora)
+        });
+        super::por_su_hora::medido(&self.raiz, &de.id, desfase);
+        if nueva {
+            tracing::info!(movil = %de.nombre, grabacion = %a.grabacion, "el movil graba: boton para mandarle capturas");
+            super::aporte::lanzar(&self.raiz);
+        }
     }
 
     fn guardar_foto(&mut self, p: &Suelto, fichero: &Path) -> Result<i64, String> {

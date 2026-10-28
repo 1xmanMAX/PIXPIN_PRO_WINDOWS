@@ -7867,6 +7867,79 @@ fn aparato_corto(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
     }
 }
 
+/// **De quien es una foto de una grabacion** (28-oct-2026, colaboradores):
+/// su circulo con la inicial en su color arriba a la izquierda de `marco`
+/// (la foto) y, si su hora no se pudo comprobar, `aviso` en una pastilla al
+/// lado. Lo mio no lleva circulo (`quien` `None`).
+pub(crate) fn chapa_de_autor(
+    p: &Pintor,
+    marco: RectF,
+    quien: Option<&str>,
+    aviso: Option<&str>,
+    e: f32,
+) {
+    let lado = 20.0 * e;
+    let mut x = marco.x + 6.0 * e;
+    let y = marco.y + 6.0 * e;
+    if let Some(quien) = quien {
+        let circulo = RectF {
+            x,
+            y,
+            ancho: lado,
+            alto: lado,
+        };
+        p.rellenar_redondeado(
+            RectF {
+                x: x - 1.5 * e,
+                y: y - 1.5 * e,
+                ancho: lado + 3.0 * e,
+                alto: lado + 3.0 * e,
+            },
+            (lado + 3.0 * e) / 2.0,
+            Color::BLANCO,
+        );
+        p.rellenar_redondeado(circulo, lado / 2.0, color_de_persona(quien));
+        let letra = pixpin_ui::conversacion::inicial(quien);
+        let tam = lado * 0.55;
+        let (wl, hl) = p.medir_texto(&letra, tam);
+        p.texto(
+            &letra,
+            circulo.x + (lado - wl) / 2.0,
+            circulo.y + (lado - hl) / 2.0,
+            tam,
+            Color::BLANCO,
+        );
+        x += lado + 6.0 * e;
+    }
+    if let Some(aviso) = aviso {
+        let tam = 11.0 * e;
+        let (w, h) = p.medir_texto(aviso, tam);
+        let ancho = (w + 12.0 * e).min((marco.x + marco.ancho - x - 6.0 * e).max(0.0));
+        let chapa = RectF {
+            x,
+            y: y + (lado - h - 6.0 * e) / 2.0,
+            ancho,
+            alto: h + 6.0 * e,
+        };
+        p.rellenar_redondeado(
+            chapa,
+            chapa.alto / 2.0,
+            Color {
+                a: 0.65,
+                ..Color::NEGRO
+            },
+        );
+        p.texto_linea(
+            aviso,
+            chapa.x + 6.0 * e,
+            chapa.y + 3.0 * e,
+            tam,
+            (ancho - 12.0 * e).max(0.0),
+            Color::BLANCO,
+        );
+    }
+}
+
 /// El nombre de quien escribe sobre su tanda: su circulo con la inicial y el
 /// nombre, los dos de su color (como un grupo de Telegram).
 fn pintar_nombre_de_persona(p: &Pintor, sitio: Rect, quien: &str, e: f32) {
@@ -16919,6 +16992,12 @@ enum Accion {
     /// «Estudiar la clase»: la nota de una clase (o una captura o el video
     /// de una) en su ventana, con el texto y las capturas al lado.
     Estudiar(usize),
+    /// «Adjuntar a la grabación…» (28-oct-2026, fotos por su hora): esa
+    /// foto en la grabacion del chat donde cae su hora (o la ultima).
+    AdjuntarAGrabacion(usize),
+    /// Que todos los del chat compartido aporten fotos a la grabacion de
+    /// esa nota (`true`), o solo las mias (`false`).
+    Colaboradores(usize, bool),
     /// Pronunciar (B9): hablar, oirse y repetir con una guia delante.
     Pronunciar,
     /// La conversacion por turnos (B10).
@@ -18178,6 +18257,35 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             Accion::Estudiar(i),
         ));
     }
+    // **Por su hora** (28-oct-2026): una foto que no entro sola (sin hora,
+    // de alguien sin invitar, con el reloj roto) se adjunta a mano; y la
+    // nota de una clase en un chat compartido deja aportar a todos.
+    let es_clase = |x: &pixpin_proyecto::cuaderno::Mensaje| {
+        x.clase == Some(Clase::Voz)
+            && x.resto.get("grabacion").and_then(|g| g.as_str()) == Some("clase")
+    };
+    if m.clase == Some(Clase::Imagen)
+        && !m.resto.contains_key("enGrabacion")
+        && a.mensajes.iter().any(es_clase)
+    {
+        v.push(entrada(
+            Some(&mi::PHOTO_CAMERA),
+            textos.t("chat-adjuntar-a-la-grabacion"),
+            Accion::AdjuntarAGrabacion(i),
+        ));
+    }
+    if es_clase(m) && crate::sincronizar::compartidos_ui::del_chat(&a.raiz, &a.ficha.id).is_some() {
+        let todos = crate::sincronizar::por_su_hora::abierta_a_todos(m);
+        v.push(entrada(
+            Some(&mi::GROUP),
+            textos.t(if todos {
+                "chat-colaboradores-nadie"
+            } else {
+                "chat-colaboradores-todos"
+            }),
+            Accion::Colaboradores(i, !todos),
+        ));
+    }
     // La hora a la que avisar. Con una puesta, la entrada pasa a quitarla en
     // vez de volver a preguntar, como en el movil (`guardados_recordar_quitar`).
     // En una nota de voz, recordar es **llamarse** (B11).
@@ -19039,6 +19147,32 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Estudiar(i) => {
             if let Some((id, ms)) = a.mensajes.get(i).and_then(clase_que_estudia) {
                 estudiar_clase::abrir(cx.idioma, cx.ubicacion.clone(), a.ficha.id.clone(), id, ms);
+            }
+            Efecto::Nada
+        }
+        Accion::AdjuntarAGrabacion(i) => {
+            let Some(id) = a.mensajes.get(i).map(|m| m.id.clone()) else {
+                return Efecto::Nada;
+            };
+            match crate::sincronizar::por_su_hora::a_mano(&a.raiz, &a.ficha.id, &id) {
+                Ok(Some(ms)) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("minuto", pixpin_proyecto::camara_del_movil::minuto(ms));
+                    Efecto::Aviso(cx.textos.t_args("chat-adjuntada-a-la-grabacion", &args))
+                }
+                Ok(None) => Efecto::Aviso(cx.textos.t("chat-sin-grabacion")),
+                Err(e) => {
+                    tracing::warn!(?e, "no se pudo adjuntar a la grabacion");
+                    Efecto::Aviso(cx.textos.t("chat-sin-grabacion"))
+                }
+            }
+        }
+        Accion::Colaboradores(i, si) => {
+            if let Some(id) = a.mensajes.get(i).map(|m| m.id.clone())
+                && let Err(e) =
+                    crate::sincronizar::por_su_hora::invitar_a_todos(&a.raiz, &a.ficha.id, &id, si)
+            {
+                tracing::warn!(?e, "no se pudo cambiar quien aporta fotos");
             }
             Efecto::Nada
         }
