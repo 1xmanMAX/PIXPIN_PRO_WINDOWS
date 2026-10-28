@@ -270,10 +270,15 @@ pub const RESULTADO_MAXIMO: usize = 4000;
 
 /// Recorta un resultado para el modelo, avisando de que hay mas.
 pub fn recortar_resultado(texto: String) -> String {
-    if texto.chars().count() <= RESULTADO_MAXIMO {
+    recortar_resultado_hasta(texto, RESULTADO_MAXIMO)
+}
+
+/// Lo mismo con otro tope (las paginas web, `web::LETRAS_RESULTADO`).
+pub fn recortar_resultado_hasta(texto: String, maximo: usize) -> String {
+    if texto.chars().count() <= maximo {
         return texto;
     }
-    let mut s: String = texto.chars().take(RESULTADO_MAXIMO).collect();
+    let mut s: String = texto.chars().take(maximo).collect();
     s.push_str("\n[...recortado: el usuario tiene el resultado entero]");
     s
 }
@@ -1447,6 +1452,24 @@ fn vueltas(
                 huecos.push((cruda.id.clone(), Some(motivo)));
                 continue;
             }
+            // **La guarda de la web** (28-oct-2026): una direccion armada
+            // por el modelo que no salio en la conversacion no se abre
+            // (`web::guarda`: una pagina no puede hacerle mandar datos).
+            if let Ok(v) = &validada
+                && let Some(motivo) = crate::web::guarda(historial, &v.llamada)
+            {
+                alguna_mal = true;
+                est.fallos += 1;
+                tracing::info!("asistente: direccion web que no salio en la conversacion");
+                if al_evento(Evento::Reintento {
+                    motivo: motivo.clone(),
+                }) == Seguir::Parar
+                {
+                    est.cortado = true;
+                }
+                huecos.push((cruda.id.clone(), Some(motivo)));
+                continue;
+            }
             match validada {
                 Ok(mut v) => {
                     match &mut v.llamada {
@@ -1506,7 +1529,12 @@ fn vueltas(
                     ok,
                     texto: texto.clone(),
                 });
-                let mut para_el_modelo = recortar_resultado(texto);
+                // Una parte de pagina web cabe entera (con sus enlaces).
+                let mut para_el_modelo = if crate::web::es_de_la_web(v.llamada.nombre()) {
+                    recortar_resultado_hasta(texto, crate::web::LETRAS_RESULTADO)
+                } else {
+                    recortar_resultado(texto)
+                };
                 if !v.avisos.is_empty() {
                     para_el_modelo.push_str(&format!(" (avisos: {})", v.avisos.join("; ")));
                 }

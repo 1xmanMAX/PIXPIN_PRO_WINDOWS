@@ -1335,6 +1335,9 @@ pub const SOLO_NUBE: &[&str] = &[
     crate::conexiones::acciones::BAJAR,
     crate::conexiones::acciones::SUBIR,
     crate::conexiones::acciones::VER_CALENDARIO,
+    // La web (28-oct, `crate::web`): buscar y abrir paginas.
+    crate::web::BUSCAR,
+    crate::web::ABRIR,
 ];
 
 /// **Las opciones que solo ve la nube** en una fila de las de siempre
@@ -1387,6 +1390,7 @@ pub fn todas() -> impl Iterator<Item = &'static Accion> {
         .iter()
         .chain(crate::acciones_documentos::ACCIONES_DOCUMENTOS.iter())
         .chain(crate::conexiones::acciones::ACCIONES_CONEXIONES.iter())
+        .chain(crate::web::ACCIONES_WEB.iter())
 }
 
 /// Busca una fila por el nombre de su herramienta.
