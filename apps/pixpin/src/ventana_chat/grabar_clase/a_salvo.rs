@@ -9,6 +9,8 @@
 //!
 //! - **Al empezar**: el diario, con el chat, el modo, el nombre, donde va la
 //!   nota y el video, y la hora de pared ([`Estado::abrir_diario`]).
+//! - **Los temas de la reunion**, al empezar y cada vez que se marca uno
+//!   ([`Estado::apuntar_temas`]): la clase recuperada los lleva.
 //! - **Cada captura o foto**: su fichero en la carpeta del diario y su
 //!   minuto en el diario; en memoria se queda solo la ruta
 //!   ([`Estado::anadir_captura`]). Cada clip, al empezar y al cerrarse.
@@ -97,6 +99,8 @@ impl Estado {
         if self.video() {
             d.video = Some(video::temporal_del_video(&self.temporal));
         }
+        d.temas = self.temas_en_json();
+        d.temas_lista = self.temas_lista.clone();
         self.a_salvo = ASalvo {
             dir: d.carpeta(pedido.ubicacion.raiz()),
             diario: Some(d),
@@ -127,6 +131,23 @@ impl Estado {
             }
         }
         self.capturas.push(c);
+    }
+
+    /// Los temas como van a la nota (`Null` sin temas).
+    fn temas_en_json(&self) -> serde_json::Value {
+        let mut r = serde_json::Map::new();
+        pixpin_proyecto::temas::poner_temas(&mut r, &self.temas);
+        r.remove(pixpin_proyecto::temas::TEMAS)
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    /// **Los temas, al diario** (se marco uno, a mano o Jev).
+    pub(super) fn apuntar_temas(&mut self) {
+        let temas = self.temas_en_json();
+        if let Some(d) = self.a_salvo.diario.as_mut() {
+            d.temas = temas;
+            self.a_salvo.guardar();
+        }
     }
 
     /// Un clip empezo en `ms`, en `ruta`.

@@ -94,6 +94,8 @@ pub(crate) fn rotulos(t: &Catalogo) -> Rotulos {
         importante_todo: t.t("clase-importante-todo"),
         importantes: pixpin_proyecto::clase::TipoImportante::TODOS
             .map(|tipo| t.t(crate::jev::reunion::clave_de(tipo))),
+        temas: t.t("clase-temas-titulo"),
+        sin_tratar: t.t("clase-temas-sin-tratar"),
     }
 }
 
@@ -683,6 +685,7 @@ mod pruebas {
                 }],
                 adjuntos: vec![],
                 importantes: vec![],
+                temas: vec![],
             },
             rotulos: Rotulos::default(),
             mazo: "PixPin::Fisica".into(),

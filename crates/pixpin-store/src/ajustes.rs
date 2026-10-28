@@ -313,6 +313,9 @@ pub struct Jev {
     pub urgencia: bool,
     /// Elegir el modelo del asistente segun lo dificil del pedido.
     pub modelo: bool,
+    /// Marcar los temas de la reunion que ya se trataron, mientras se graba
+    /// (lo oido se pasa a texto en vivo, por tramos).
+    pub temas: bool,
 }
 
 impl Default for Jev {
@@ -322,6 +325,7 @@ impl Default for Jev {
             anki: true,
             urgencia: true,
             modelo: true,
+            temas: true,
         }
     }
 }

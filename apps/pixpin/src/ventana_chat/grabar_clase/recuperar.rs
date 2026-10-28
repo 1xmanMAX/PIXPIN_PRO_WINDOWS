@@ -47,6 +47,8 @@ pub(crate) struct TextosRecuperar {
     perdida: String,
     descartar: String,
     fallo: String,
+    /// «Temas · {nombre}», el titulo de la lista de tareas de los temas.
+    temas_lista_de: String,
 }
 
 impl TextosRecuperar {
@@ -64,6 +66,11 @@ impl TextosRecuperar {
             perdida: con("clase-recuperar-sin-nada"),
             descartar: con("clase-recuperar-descartar"),
             fallo: con("clase-recuperar-fallo"),
+            temas_lista_de: {
+                let mut a = fluent_bundle::FluentArgs::new();
+                a.set("nombre", super::HUECO);
+                t.t_args("clase-temas-lista-de", &a)
+            },
         }
     }
 
@@ -138,7 +145,7 @@ fn preguntar(pedido: &Pedido, textos: &TextosRecuperar, dir: &Path, d: &Diario) 
     };
     match eleccion {
         Eleccion::Si => {
-            if let Err(e) = recuperar_una(pedido, dir, d, &p) {
+            if let Err(e) = recuperar_una(pedido, textos, dir, d, &p) {
                 tracing::warn!(?e, marca = %d.marca, "la grabacion no se pudo recuperar");
                 pixpin_shell::dialogo::avisar_al_frente(
                     &textos.titulo,
@@ -162,7 +169,13 @@ fn preguntar(pedido: &Pedido, textos: &TextosRecuperar, dir: &Path, d: &Diario) 
 }
 
 /// **Rehace la clase** del diario `d` con el plan `p` y la mete en el chat.
-fn recuperar_una(pedido: &Pedido, dir: &Path, d: &Diario, p: &Plan) -> anyhow::Result<()> {
+fn recuperar_una(
+    pedido: &Pedido,
+    textos: &TextosRecuperar,
+    dir: &Path,
+    d: &Diario,
+    p: &Plan,
+) -> anyhow::Result<()> {
     let raiz = pedido.ubicacion.raiz();
     // La nota.
     let grabacion = match p.nota {
@@ -199,6 +212,12 @@ fn recuperar_una(pedido: &Pedido, dir: &Path, d: &Diario, p: &Plan) -> anyhow::R
     // Lo capturado, en su minuto.
     let mut estado = Estado::vacio(pedido, d.nombre.clone());
     estado.modo = Modo::de(&d.modo);
+    // Los temas de la reunion, con lo que ya se habia tratado.
+    let mut resto = serde_json::Map::new();
+    resto.insert(pixpin_proyecto::temas::TEMAS.into(), d.temas.clone());
+    estado.temas = pixpin_proyecto::temas::temas_de(&resto);
+    estado.temas_lista = d.temas_lista.clone();
+    estado.titulo_temas = textos.temas_lista_de.clone();
     estado.temporal = d.audio.clone();
     estado.capturas = p
         .capturas

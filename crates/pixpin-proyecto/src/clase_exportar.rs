@@ -57,6 +57,10 @@ pub struct ClaseParaExportar {
     /// `clase`): chapitas en cada renglon y un filtro arriba. Vacio, la
     /// pagina es la de siempre.
     pub importantes: Vec<clase::Importante>,
+    /// Los temas de la reunion (`temas`, ver `crate::temas`), en el orden
+    /// de la agenda: lo tratado con su minuto y lo que quedo sin tratar.
+    /// Vacio, la pagina es la de siempre.
+    pub temas: Vec<crate::temas::Tema>,
 }
 
 /// Si un mensaje es una grabacion: una nota de voz.
@@ -200,6 +204,7 @@ impl ClaseParaExportar {
             marcadores,
             adjuntos,
             importantes: clase::importantes_de(&voz.resto).unwrap_or_default(),
+            temas: crate::temas::temas_de(&voz.resto),
         }
     }
 
@@ -341,6 +346,9 @@ pub struct Rotulos {
     /// pregunta, examen), en el orden de `TipoImportante::TODOS`.
     pub importante_todo: String,
     pub importantes: [String; 4],
+    /// «Temas de la reunión» y la chapita de lo que quedo sin tratar.
+    pub temas: String,
+    pub sin_tratar: String,
 }
 
 impl Default for Rotulos {
@@ -370,6 +378,8 @@ impl Default for Rotulos {
                 "Pregunta".into(),
                 "Examen".into(),
             ],
+            temas: "Temas de la reunión".into(),
+            sin_tratar: "Sin tratar".into(),
         }
     }
 }
@@ -665,7 +675,7 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
     }
     // Al lado: los marcadores y el indice de las capturas. Sin ellos, el
     // texto a lo ancho (una nota de voz sin mas).
-    let con_lado = !c.marcadores.is_empty() || n_capturas > 0;
+    let con_lado = !c.marcadores.is_empty() || n_capturas > 0 || !c.temas.is_empty();
     h.push_str(if con_lado {
         "</section>\n<main class=\"cuerpo con-lado\">\n"
     } else {
@@ -673,6 +683,9 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
     });
     if con_lado {
         h.push_str("<aside class=\"lado\">\n");
+        if !c.temas.is_empty() {
+            h.push_str(&temas_html(c, r, con_medio));
+        }
         if !c.marcadores.is_empty() {
             h.push_str(&format!(
                 "<section class=\"bloque\"><h2>{}</h2>\n<ol class=\"lista-marcadores\">\n",
@@ -821,6 +834,38 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
     h
 }
 
+/// **La agenda con su estado**: cada tema con ✓ y su minuto (que salta
+/// ahi) o, si quedo sin tratar, resaltado con su chapita.
+fn temas_html(c: &ClaseParaExportar, r: &Rotulos, con_medio: bool) -> String {
+    let (hechos, total) = crate::temas::cuenta(&c.temas);
+    let mut h = format!(
+        "<section class=\"bloque\"><h2>{} <span class=\"cuenta\">{hechos}/{total}</span></h2>\n<ol class=\"lista-temas\">\n",
+        escapar(&r.temas)
+    );
+    for t in &c.temas {
+        if t.hecho {
+            let minuto =
+                t.ms.map(|ms| format!(" {}", minuto_html(ms, con_medio)))
+                    .unwrap_or_default();
+            let data =
+                t.ms.map(|ms| format!(" data-ms=\"{ms}\""))
+                    .unwrap_or_default();
+            h.push_str(&format!(
+                "<li class=\"tema hecho\"{data}><span class=\"casilla\" aria-hidden=\"true\">✓</span><span>{}</span>{minuto}</li>\n",
+                escapar(&t.texto)
+            ));
+        } else {
+            h.push_str(&format!(
+                "<li class=\"tema pendiente\"><span class=\"casilla\" aria-hidden=\"true\"></span><span>{}</span> <span class=\"chip sin-tratar\">{}</span></li>\n",
+                escapar(&t.texto),
+                escapar(&r.sin_tratar)
+            ));
+        }
+    }
+    h.push_str("</ol></section>\n");
+    h
+}
+
 // --- Markdown y texto -----------------------------------------------------------
 
 fn md_escapar(s: &str) -> String {
@@ -895,6 +940,27 @@ pub fn markdown(
     if !medios.is_empty() {
         v.push_str(&medios.join("\n"));
         v.push_str("\n\n");
+    }
+    if !c.temas.is_empty() {
+        let (hechos, total) = crate::temas::cuenta(&c.temas);
+        v.push_str(&format!("## {} ({hechos}/{total})\n\n", r.temas));
+        for t in &c.temas {
+            let minuto =
+                t.ms.filter(|_| t.hecho)
+                    .map(|ms| format!(" · {}", minuto(ms)))
+                    .unwrap_or_default();
+            let marca = if t.hecho { "x" } else { " " };
+            let falta = if t.hecho {
+                String::new()
+            } else {
+                format!(" — *{}*", r.sin_tratar)
+            };
+            v.push_str(&format!(
+                "- [{marca}] {}{minuto}{falta}\n",
+                md_escapar(&t.texto)
+            ));
+        }
+        v.push('\n');
     }
     if !c.marcadores.is_empty() {
         v.push_str(&format!("## {}\n\n", r.marcadores));

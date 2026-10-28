@@ -8,6 +8,8 @@
 //!   la pena.
 //! - [`urgencia`]: la prioridad de cada tarea pendiente, en Tareas.
 //! - [`modelo`]: el modelo del asistente segun lo dificil del pedido.
+//! - [`temas`]: los temas de la reunion que ya se trataron, mientras se
+//!   graba (la escucha en vivo, en `ventana_chat::grabar_clase`).
 //!
 //! Las preguntas y las tablas de decision viven en `pixpin_typesafe`. Sin
 //! clave (o con la funcion apagada) [`para`] da `None` y cada funcion hace
@@ -18,6 +20,7 @@
 
 pub mod modelo;
 pub mod reunion;
+pub mod temas;
 pub mod urgencia;
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -33,6 +36,8 @@ pub enum Funcion {
     Anki,
     Urgencia,
     Modelo,
+    /// Los temas de la reunion tratados, mientras se graba.
+    Temas,
 }
 
 impl Funcion {
@@ -42,6 +47,7 @@ impl Funcion {
             Funcion::Anki => a.anki,
             Funcion::Urgencia => a.urgencia,
             Funcion::Modelo => a.modelo,
+            Funcion::Temas => a.temas,
         }
     }
 }
@@ -199,6 +205,7 @@ mod pruebas {
             Funcion::Anki,
             Funcion::Urgencia,
             Funcion::Modelo,
+            Funcion::Temas,
         ] {
             assert!(para(&u, f).is_none());
         }

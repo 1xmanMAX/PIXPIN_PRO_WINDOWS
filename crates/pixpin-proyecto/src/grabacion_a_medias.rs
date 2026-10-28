@@ -149,6 +149,14 @@ pub struct Diario {
     /// Lo demas (capturas, video, clips) ya entro en el chat y solo falta
     /// la nota: lo que pasa si la nota no se pudo cerrar al terminar.
     pub solo_la_nota: bool,
+    /// Los temas de la reunion tal cual iran a la nota (`resto["temas"]`,
+    /// ver `crate::temas`), con lo ya tratado: la clase recuperada los
+    /// lleva. Sin temas, no va.
+    #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+    pub temas: serde_json::Value,
+    /// La lista de tareas elegida al preparar, `(proyecto, id)`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temas_lista: Option<(String, String)>,
 }
 
 /// La carpeta de todos los diarios.

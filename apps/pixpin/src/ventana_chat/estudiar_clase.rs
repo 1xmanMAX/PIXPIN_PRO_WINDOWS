@@ -62,6 +62,13 @@
 //! antes se restaba la esquina con la que se creo y, movida o estirada por
 //! fuera, todo quedaba corrido. Al arrastrar, el tirador va con el raton.
 //!
+//! **Los temas de la reunion** (28-oct-2026, `docs/jev.md`): si la reunion
+//! se grabo con temas, encima de los marcadores va la agenda con ✓ y su
+//! minuto (un clic en el tema salta ahi; en la casilla, se marca o desmarca
+//! a mano y su lista de tareas tambien). Lo que quedo sin tratar va
+//! resaltado, con «Pasar a la próxima reunión» (sale solo al preparar la
+//! siguiente) y «Añadir a Tareas» (al Inbox).
+//!
 //! Teclado: espacio o K reproduce y para, ←/→ cinco segundos, J/L diez,
 //! ↑/↓ el trozo anterior y el siguiente, M pone un marcador (se escribe su
 //! nota e Intro lo guarda), S enciende y apaga «Seguir», A anota, T
@@ -80,6 +87,7 @@ use anyhow::{Context, Result};
 use pixpin_codec::imagen::ImagenRgba;
 use pixpin_geom::{Punto, Rect};
 use pixpin_proyecto::clase::{self, Fila, Marcador};
+use pixpin_proyecto::temas as agenda;
 use pixpin_proyecto::{almacen, cuaderno};
 use pixpin_render::{Color, MotorRender, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
@@ -309,6 +317,8 @@ struct Clase {
     /// Lo importante que hallo Jev (`resto["importantes"]`); `None` si aun
     /// no se miro.
     importantes: Option<Vec<clase::Importante>>,
+    /// Los temas de la reunion (`resto["temas"]`), en el orden de la agenda.
+    temas: Vec<agenda::Tema>,
     senales: Vec<Senal>,
     /// El texto con las senales en su minuto, y el minuto de cada fila.
     filas: Vec<Fila>,
@@ -394,6 +404,7 @@ impl Clase {
             clips,
             lineas,
             importantes: clase::importantes_de(&voz.resto),
+            temas: agenda::temas_de(&voz.resto),
             senales: Vec::new(),
             filas: Vec::new(),
             tiempos_filas: Vec::new(),
@@ -865,6 +876,11 @@ enum Zona {
     Filtro(Option<clase::TipoImportante>),
     /// Apuntar en Tareas las tareas halladas.
     ATareas,
+    /// La casilla de un tema de la reunion: marcarlo o desmarcarlo a mano.
+    Tema(usize),
+    /// Lo que quedo sin tratar: a la proxima reunion, o al Inbox de Tareas.
+    TemasProxima,
+    TemasATareas,
 }
 
 /// Que se esta viendo en grande: al cambiar, el encuadre vuelve a encajado.
@@ -1385,6 +1401,7 @@ impl Vista {
         let otras_capturas = nueva.capturas != self.clase.capturas;
         self.clase.lineas = nueva.lineas;
         self.clase.importantes = nueva.importantes;
+        self.clase.temas = nueva.temas;
         self.clase.nombre = nueva.nombre;
         self.clase.clips = nueva.clips;
         self.clase.poner_senales(nueva.senales);
@@ -2207,6 +2224,52 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
                 }
             }
         }
+        Zona::Tema(i) => {
+            if let Some(t) = v.clase.temas.get(i).cloned() {
+                match crate::jev::temas::cambiar_a_mano(
+                    &v.raiz,
+                    &v.clase.proyecto,
+                    &v.clase.id,
+                    &t.id,
+                    !t.hecho,
+                ) {
+                    Ok(_) => {
+                        agenda::a_mano(&mut v.clase.temas, &t.id, !t.hecho, None);
+                    }
+                    Err(e) => {
+                        tracing::warn!("temas: no se pudo marcar a mano: {e}");
+                        v.avisar(textos.t("chat-no-se-pudo"));
+                    }
+                }
+            }
+        }
+        Zona::TemasProxima => {
+            let sin: Vec<String> = agenda::sin_tratar(&v.clase.temas)
+                .into_iter()
+                .map(|t| t.texto.clone())
+                .collect();
+            match crate::jev::temas::guardar_para_la_proxima(&v.raiz, &sin) {
+                Ok(n) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("n", n as i64);
+                    v.avisar(textos.t_args("clase-temas-pasados", &args));
+                }
+                Err(e) => {
+                    tracing::warn!(?e, "temas: no se guardaron para la proxima reunion");
+                    v.avisar(textos.t("chat-no-se-pudo"));
+                }
+            }
+        }
+        Zona::TemasATareas => {
+            let sin: Vec<String> = agenda::sin_tratar(&v.clase.temas)
+                .into_iter()
+                .map(|t| t.texto.clone())
+                .collect();
+            let n = crate::jev::temas::a_tareas(&v.raiz, &sin, &v.clase.nombre);
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("n", n as i64);
+            v.avisar(textos.t_args("clase-temas-anadidos", &args));
+        }
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
@@ -2881,6 +2944,9 @@ fn pintar_senales(
     p.rellenar_redondeado(caja, 10.0 * e, tema.lista);
     let m = 12.0 * e;
     let mut y = caja.y + 10.0 * e;
+    if !v.clase.temas.is_empty() {
+        y = pintar_temas(p, v, tema, e, textos, y);
+    }
     let titulo = format!(
         "{} · {}",
         textos.t("estudiar-marcadores"),
@@ -3024,6 +3090,133 @@ fn pintar_senales(
         y += 32.0 * e;
     }
     p.soltar_recorte();
+}
+
+/// **La agenda de la reunion**, arriba de los marcadores: cada tema con su
+/// casilla (un clic la cambia, a mano), su texto (un clic salta a su
+/// minuto) y su minuto; lo que quedo sin tratar, resaltado, con los dos
+/// botones para llevarlo a la proxima reunion o a Tareas. Devuelve donde
+/// sigue lo de debajo.
+fn pintar_temas(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalogo, y0: f32) -> f32 {
+    let caja = v.disp.senales;
+    let m = 12.0 * e;
+    let mut y = y0;
+    let (hechos, total) = agenda::cuenta(&v.clase.temas);
+    let titulo = format!("{} · {hechos}/{total}", textos.t("clase-temas-titulo"));
+    p.texto(&titulo, caja.x + m, y, 14.0 * e, tema.texto);
+    let fin_titulo = caja.x + m + p.medir_texto(&titulo, 14.0 * e).0;
+    // Los dos botones de lo sin tratar, a la derecha del titulo.
+    if hechos < total {
+        let tam = 12.0 * e;
+        let alto = 22.0 * e;
+        let mut x = caja.x + caja.ancho - m;
+        for (clave, zona) in [
+            ("clase-temas-a-tareas", Zona::TemasATareas),
+            ("clase-temas-proxima", Zona::TemasProxima),
+        ] {
+            let rotulo = textos.t(clave);
+            let (w, h) = p.medir_texto(&rotulo, tam);
+            let boton = RectF {
+                x: x - w - 20.0 * e,
+                y: y - 2.0 * e,
+                ancho: w + 20.0 * e,
+                alto,
+            };
+            if boton.x < fin_titulo + 8.0 * e {
+                break;
+            }
+            let encima = dentro(boton, v.raton);
+            p.rellenar_redondeado(
+                boton,
+                alto / 2.0,
+                con_alfa(AMBAR, if encima { 0.32 } else { 0.2 }),
+            );
+            p.texto(
+                &rotulo,
+                boton.x + 10.0 * e,
+                boton.y + (alto - h) / 2.0,
+                tam,
+                tema.texto,
+            );
+            v.zonas.push((boton, zona));
+            x = boton.x - 6.0 * e;
+        }
+    }
+    y += 28.0 * e;
+    let verde = hex(0x22a06b);
+    let temas = v.clase.temas.clone();
+    for (i, t) in temas.iter().enumerate() {
+        let fila = RectF {
+            x: caja.x + m,
+            y,
+            ancho: caja.ancho - 2.0 * m,
+            alto: 28.0 * e,
+        };
+        if fila.y + fila.alto > caja.y + caja.alto {
+            break;
+        }
+        let encima = dentro(fila, v.raton);
+        if !t.hecho {
+            // Lo que quedo sin tratar, resaltado.
+            p.rellenar_redondeado(fila, 8.0 * e, con_alfa(AMBAR, 0.14));
+        } else if encima {
+            p.rellenar_redondeado(fila, 8.0 * e, tema.fila_sobre);
+        }
+        let casilla = RectF {
+            x: fila.x + 4.0 * e,
+            y: fila.y + 4.0 * e,
+            ancho: 20.0 * e,
+            alto: 20.0 * e,
+        };
+        p.icono(
+            if t.hecho {
+                &mi::CHECK_BOX
+            } else {
+                &mi::CHECK_BOX_OUTLINE_BLANK
+            },
+            casilla,
+            if t.hecho { verde } else { tema.apagado },
+        );
+        let derecha = match (t.hecho, t.ms) {
+            (true, Some(ms)) => pixpin_voz::marca_de_tiempo(ms),
+            (false, _) => textos.t("clase-temas-sin-tratar"),
+            _ => String::new(),
+        };
+        let tam = 12.5 * e;
+        let (dw, _) = p.medir_texto(&derecha, tam);
+        if !derecha.is_empty() {
+            p.texto(
+                &derecha,
+                fila.x + fila.ancho - dw - 8.0 * e,
+                fila.y + 7.0 * e,
+                tam,
+                if t.hecho { verde } else { AMBAR },
+            );
+        }
+        p.texto_linea(
+            &format!("{}. {}", i + 1, t.texto),
+            fila.x + 32.0 * e,
+            fila.y + 6.0 * e,
+            13.0 * e,
+            fila.ancho - 48.0 * e - dw,
+            if t.hecho { tema.apagado } else { tema.texto },
+        );
+        // El texto salta a su minuto; la casilla (despues: gana) se marca.
+        if let Some(ms) = t.ms.filter(|_| t.hecho) {
+            v.zonas.push((fila, Zona::Ir(ms)));
+        }
+        v.zonas.push((
+            RectF {
+                x: fila.x,
+                y: fila.y,
+                ancho: 30.0 * e,
+                alto: fila.alto,
+            },
+            Zona::Tema(i),
+        ));
+        y += 30.0 * e;
+    }
+    y + 10.0 * e
 }
 
 /// Lo que mide la columna del minuto en el texto.

@@ -87,13 +87,22 @@
 //! de la grabacion ([`a_salvo`]). Si PixPin muere, se va la luz o el disco
 //! falla, al volver a abrirlo se ofrece «Recuperar / Descartar»
 //! ([`recuperar`]). Ver `docs/grabar-sin-perder-nada.md`.
+//!
+//! **Los temas de la reunion** (28-oct-2026, «la persona crea una lista de
+//! TEMAS a tratar; durante la reunion se queda escuchando y transcribiendo;
+//! eso se manda a JEV y Jev marca que temas ya se trataron»): en Preparar,
+//! la fila «Temas de la reunion»; grabando, «Temas 2/5» en la barra con su
+//! lista para marcar a mano, y la escucha en vivo que le pregunta a Jev
+//! ([`temas`], [`escucha`]; `docs/jev.md`).
 
 #![forbid(unsafe_code)]
 
 mod a_salvo;
 mod camara;
+mod escucha;
 mod fotografo;
 mod recuperar;
+mod temas;
 mod video;
 
 pub(crate) use recuperar::{TextosRecuperar, al_arrancar as recuperar_al_arrancar};
@@ -234,6 +243,31 @@ pub(crate) struct Rotulos {
     disco_lleno: String,
     /// «El equipo se suspendió N min…», con [`HUECO`] en los minutos.
     suspendido: String,
+    /// Los temas de la reunion ([`temas`]). Los que llevan dos cosas
+    /// dentro traen [`HUECO`] y `temas::HUECO2`.
+    temas_ninguno: String,
+    temas_n: String,
+    temas_titulo: String,
+    temas_sub: String,
+    temas_escribe: String,
+    temas_pegar: String,
+    temas_de_lista: String,
+    temas_lista: String,
+    temas_sin_listas: String,
+    temas_pegados: String,
+    temas_nada_que_pegar: String,
+    temas_vaciar: String,
+    temas_listo: String,
+    temas_anteriores: String,
+    temas_tratado: String,
+    temas_escuchando: String,
+    temas_sin_jev: String,
+    temas_apagado: String,
+    temas_sin_modelo: String,
+    temas_jev_fallo: String,
+    temas_cargado: String,
+    /// «Temas · {nombre}»: el titulo de la lista de tareas de la reunion.
+    temas_lista_de: String,
 }
 
 const HUECO: &str = "\u{1}";
@@ -243,6 +277,12 @@ impl Rotulos {
         let con = |clave: &str, nombre: &str| {
             let mut args = fluent_bundle::FluentArgs::new();
             args.set(nombre.to_string(), HUECO);
+            t.t_args(clave, &args)
+        };
+        let con2 = |clave: &str, uno: &str, dos: &str| {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set(uno.to_string(), HUECO);
+            args.set(dos.to_string(), temas::HUECO2);
             t.t_args(clave, &args)
         };
         Rotulos {
@@ -329,6 +369,28 @@ impl Rotulos {
             disco_poco: t.t("clase-disco-poco"),
             disco_lleno: t.t("clase-disco-lleno"),
             suspendido: con("clase-suspendido", "minutos"),
+            temas_ninguno: t.t("clase-temas-ninguno"),
+            temas_n: con("clase-temas-n", "n"),
+            temas_titulo: t.t("clase-temas-titulo"),
+            temas_sub: t.t("clase-temas-sub"),
+            temas_escribe: t.t("clase-temas-escribe"),
+            temas_pegar: t.t("clase-temas-pegar"),
+            temas_de_lista: t.t("clase-temas-de-lista"),
+            temas_lista: con2("clase-temas-lista", "lista", "n"),
+            temas_sin_listas: t.t("clase-temas-sin-listas"),
+            temas_pegados: con("clase-temas-pegados", "n"),
+            temas_nada_que_pegar: t.t("clase-temas-nada-que-pegar"),
+            temas_vaciar: t.t("clase-temas-vaciar"),
+            temas_listo: t.t("clase-temas-listo"),
+            temas_anteriores: con("clase-temas-anteriores", "n"),
+            temas_tratado: con2("clase-temas-tratado", "n", "minuto"),
+            temas_escuchando: t.t("clase-temas-escuchando"),
+            temas_sin_jev: t.t("clase-temas-sin-jev"),
+            temas_apagado: t.t("clase-temas-apagado"),
+            temas_sin_modelo: t.t("clase-temas-sin-modelo"),
+            temas_jev_fallo: t.t("clase-temas-jev-fallo"),
+            temas_cargado: t.t("clase-temas-cargado"),
+            temas_lista_de: con("clase-temas-lista-de", "nombre"),
         }
     }
 
@@ -492,7 +554,9 @@ pub(crate) fn lanzar(pedido: Pedido, rotulos: Rotulos) {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             // Los datos viven fuera de `con_recursos`: si el dispositivo de
             // dibujo se pierde y la ventana se reabre, la grabacion sigue.
-            let mut estado = Estado::nuevo(&pedido, rotulos.nombre.clone());
+            let mut estado = Estado::nuevo(&pedido, rotulos.nombre.clone())
+                .con_los_de_la_proxima(&pedido, &rotulos);
+            estado.titulo_temas = rotulos.temas_lista_de.clone();
             if let Err(e) = crate::dispositivo_perdido::con_recursos("grabar clase", |r| {
                 flotar(r, &pedido, &rotulos, &rx, &mut estado)
             }) {
@@ -638,6 +702,19 @@ enum Accion {
     /// «📱 Cámara del móvil» de la barra: la enciende o la apaga
     /// (`sincronizar::camara`).
     CamaraMovil,
+    /// La fila «Temas de la reunion» de Preparar: abre su pantalla.
+    Temas,
+    /// En esa pantalla: pegar, tomar de una lista, vaciar, quitar uno y
+    /// volver.
+    TemasPegar,
+    TemasDeLista,
+    TemasVaciar,
+    QuitarTema(usize),
+    TemasListo,
+    /// «Temas 2/5» de la barra: abre o pliega la lista.
+    PanelTemas,
+    /// Un tema de esa lista: marcarlo o desmarcarlo a mano.
+    Tema(usize),
 }
 
 type Abriendo = Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>>;
@@ -732,6 +809,30 @@ struct Estado {
     sin_video_por_disco: bool,
     /// El mensaje de la carpeta de la clase, una vez guardada.
     carpeta_id: Option<String>,
+    /// **Los temas de la reunion** ([`temas`]), en el orden de la agenda.
+    temas: Vec<pixpin_proyecto::temas::Tema>,
+    /// La lista de tareas de la que salieron, `(proyecto, id)`.
+    temas_lista: Option<(String, String)>,
+    /// Salieron de lo que se paso a la proxima reunion (se olvida al
+    /// empezar).
+    temas_de_la_proxima: bool,
+    /// Preparar ensena la pantalla de los temas, y lo que se va escribiendo.
+    editando_temas: bool,
+    escrito: String,
+    /// Las listas de tareas de «De una lista», una vez leidas, y la
+    /// siguiente.
+    listas_de_temas: Option<Vec<crate::jev::temas::ListaDeTemas>>,
+    lista_de_temas: usize,
+    /// La lista de los temas abierta bajo la barra.
+    panel_temas: bool,
+    /// La escucha en vivo ([`escucha`]) y lo que dice.
+    escucha: Option<escucha::Escucha>,
+    estado_escucha: Option<String>,
+    /// Lo recien marcado por Jev (para su brillo) y el destello del boton.
+    recien_tratados: Vec<(String, Instant)>,
+    destello_temas: Option<Instant>,
+    /// «Temas · {nombre}» (con [`HUECO`]), el titulo de su lista de tareas.
+    titulo_temas: String,
 }
 
 impl Estado {
@@ -778,6 +879,19 @@ impl Estado {
             a_salvo: a_salvo::ASalvo::default(),
             sin_video_por_disco: false,
             carpeta_id: None,
+            temas: Vec::new(),
+            temas_lista: None,
+            temas_de_la_proxima: false,
+            editando_temas: false,
+            escrito: String::new(),
+            listas_de_temas: None,
+            lista_de_temas: 0,
+            panel_temas: false,
+            escucha: None,
+            estado_escucha: None,
+            recien_tratados: Vec::new(),
+            destello_temas: None,
+            titulo_temas: String::new(),
         }
     }
 
@@ -934,6 +1048,7 @@ impl Estado {
     /// (cerrar no es tirar; tirar es ✕ dos veces) y el temporal se borra.
     /// Si se estaba pasando a texto, sigue de fondo.
     fn cerrar(&mut self, pedido: &Pedido) {
+        self.acabar_escucha(None);
         let parado = match std::mem::replace(&mut self.fase, Fase::Preparar) {
             Fase::Grabando(g) => Some(g.parar()),
             Fase::Abriendo(rx) => {
@@ -987,6 +1102,7 @@ impl Estado {
     /// fue, el disco), las capturas y el video se guardan igual: una
     /// reunion sin su nota sigue valiendo por sus imagenes.
     fn guardar_todo(&mut self, pedido: &Pedido, parado: Parado) -> Guardado {
+        self.acabar_escucha(None);
         self.acabar_la_camara();
         for (ms, hecha) in self.fotografo.acabar(Duration::from_secs(5)) {
             match hecha {
@@ -1293,6 +1409,8 @@ fn guardar(
             .insert("grabacion".into(), serde_json::json!("clase"));
         voz.resto
             .insert("capturas".into(), capturas_en_json(&enlazadas));
+        // Los temas de la reunion, con lo tratado (su lista, al final).
+        pixpin_proyecto::temas::poner_temas(&mut voz.resto, &estado.temas);
         if let Some(id) = &video_id {
             voz.resto
                 .insert("video".into(), serde_json::json!({ "id": id }));
@@ -1342,6 +1460,11 @@ fn guardar(
             Err(e) => tracing::warn!(?e, "la clase quedo sin su carpeta"),
         }
     }
+    // Los temas, en su lista de tareas (detras de la carpeta: los numeros
+    // van seguidos), enlazada en la nota.
+    if !estado.temas.is_empty() {
+        guardar_los_temas(pedido, proyecto, &nombre, estado, voz.as_mut(), &carpeta);
+    }
     // Lo que llego del movil grabando entra ahora, en su minuto.
     crate::sincronizar::camara::guardada(
         raiz,
@@ -1360,6 +1483,67 @@ fn guardar(
         "clase guardada"
     );
     Ok(voz)
+}
+
+/// **Los temas de la reunion al guardar**: lo marcado mientras tanto en su
+/// lista de tareas (en Tareas o en el movil) entra como hecho a mano; la
+/// lista (la elegida al preparar o una nueva) queda con los temas nuevos y
+/// lo tratado marcado, y la nota los lleva en `resto["temas"]` con
+/// `resto["temasLista"]`. Un fallo con la lista no tira la clase.
+fn guardar_los_temas(
+    pedido: &Pedido,
+    proyecto: &str,
+    nombre: &str,
+    estado: &mut Estado,
+    voz: Option<&mut cuaderno::Mensaje>,
+    carpeta: &Path,
+) {
+    use pixpin_proyecto::temas;
+    let raiz = pedido.ubicacion.raiz();
+    if let Some((p, c)) = &estado.temas_lista
+        && let Ok(m) = crate::pedidos::mensaje_de(raiz, p, c)
+    {
+        temas::con_la_lista(&mut estado.temas, &m.texto);
+    }
+    let titulo = if estado.titulo_temas.is_empty() {
+        nombre.to_string()
+    } else {
+        con(&estado.titulo_temas, nombre)
+    };
+    match crate::jev::temas::guardar_lista(
+        raiz,
+        proyecto,
+        &pedido.aparato,
+        &titulo,
+        &estado.temas,
+        estado.temas_lista.as_ref(),
+    ) {
+        Ok(l) => estado.temas_lista = Some(l),
+        Err(e) => tracing::warn!(
+            ?e,
+            "los temas de la reunion quedaron sin su lista de tareas"
+        ),
+    }
+    let Some(voz) = voz else {
+        return;
+    };
+    temas::poner_temas(&mut voz.resto, &estado.temas);
+    if let Some((p, c)) = &estado.temas_lista {
+        temas::poner_lista(&mut voz.resto, p, c);
+    }
+    let resto = voz.resto.clone();
+    let hecho = cuaderno::cambiar(carpeta, &voz.id, |m| {
+        for k in [temas::TEMAS, temas::TEMAS_LISTA] {
+            match resto.get(k) {
+                Some(v) => m.resto.insert(k.into(), v.clone()),
+                None => m.resto.remove(k),
+            };
+        }
+        true
+    });
+    if let Err(e) = hecho {
+        tracing::warn!(?e, "la nota de la clase quedo sin sus temas");
+    }
 }
 
 /// **La carpeta de una clase**: la nota, el video, las capturas y los clips
@@ -1536,7 +1720,7 @@ fn pedir_zona(estado: &mut Estado, ms: i64, r: &Rotulos) {
 
 fn tamano(fase: &Fase) -> (u32, u32) {
     match fase {
-        Fase::Preparar => (340, 412),
+        Fase::Preparar => (340, 464),
         // Lo que piden los botones de la barra (ver `pintar_barra`): 146 de
         // tiempo y nivel, 392 de botones y el margen.
         Fase::Abriendo(_) | Fase::Grabando(_) => (556, 92),
@@ -1544,10 +1728,28 @@ fn tamano(fase: &Fase) -> (u32, u32) {
     }
 }
 
+/// [`tamano`] con los temas: la barra con temas lleva su boton y, abierta,
+/// su lista debajo.
+fn tamano_de(estado: &Estado) -> (u32, u32) {
+    let (w, h) = tamano(&estado.fase);
+    match &estado.fase {
+        Fase::Abriendo(_) | Fase::Grabando(_) if !estado.temas.is_empty() => {
+            (w + temas::ANCHO_BOTON, h + temas::alto_del_panel(estado))
+        }
+        _ => (w, h),
+    }
+}
+
 /// Preparar, en el centro del monitor; la barra, arriba en el centro (a la
 /// vista y lejos de lo que se suele mirar); lo demas, donde quedo la barra.
-fn marco_para(area: Rect, escala: u32, fase: &Fase, antes: Option<Rect>) -> Rect {
-    let (lw, lh) = tamano(fase);
+/// `(lw, lh)`: su tamano en logicos ([`tamano_de`]).
+fn marco_para(
+    area: Rect,
+    escala: u32,
+    fase: &Fase,
+    (lw, lh): (u32, u32),
+    antes: Option<Rect>,
+) -> Rect {
     let e = |v: u32| v * escala / 100;
     let (w, h) = (e(lw).min(area.ancho), e(lh).min(area.alto));
     let (x, y) = match (fase, antes) {
@@ -1572,8 +1774,7 @@ fn marco_para(area: Rect, escala: u32, fase: &Fase, antes: Option<Rect>) -> Rect
 /// **El marco tras arrastrar la ventana a otra pantalla**: el tamano de la
 /// fase con la escala de esa pantalla, en el mismo sitio (centrado sobre
 /// donde se solto) y sin salirse de ella.
-fn reencajar(area: Rect, escala: u32, fase: &Fase, antes: Rect) -> Rect {
-    let (lw, lh) = tamano(fase);
+fn reencajar(area: Rect, escala: u32, (lw, lh): (u32, u32), antes: Rect) -> Rect {
     let (w, h) = (
         (lw * escala / 100).min(area.ancho),
         (lh * escala / 100).min(area.alto),
@@ -1611,8 +1812,8 @@ fn flotar(
         .to_owned();
     let mut escala = monitor.escala_por_cien as f32 / 100.0;
     let mut area = monitor.area_trabajo;
-    let mut logico = tamano(&estado.fase);
-    let mut marco = marco_para(area, monitor.escala_por_cien, &estado.fase, None);
+    let mut logico = tamano_de(estado);
+    let mut marco = marco_para(area, monitor.escala_por_cien, &estado.fase, logico, None);
     let mut ventana = VentanaOverlay::nueva(marco).context("no se pudo abrir la ventana")?;
     ventana.excluir_de_capturas();
     let motor = recursos.motor();
@@ -1680,6 +1881,19 @@ fn flotar(
                         _ => {}
                     }
                 }
+                // La pantalla de los temas se lleva el teclado.
+                EventoOverlay::Caracter(c)
+                    if estado.editando_temas && matches!(estado.fase, Fase::Preparar) =>
+                {
+                    estado.escribir_tema(c);
+                }
+                EventoOverlay::Tecla { vk, ctrl, .. }
+                    if estado.editando_temas && matches!(estado.fase, Fase::Preparar) =>
+                {
+                    if let Some(a) = estado.tecla_de_temas(vk, ctrl, r) {
+                        accion = Some(a);
+                    }
+                }
                 EventoOverlay::Tecla { vk, .. } => match (vk, &estado.fase) {
                     (VK_ESCAPE, Fase::Preparar) => accion = Some(Accion::Cerrar),
                     (VK_ENTRAR, Fase::Preparar) => accion = Some(Accion::Empezar),
@@ -1716,7 +1930,7 @@ fn flotar(
             monitor = m.to_owned();
             escala = monitor.escala_por_cien as f32 / 100.0;
             area = monitor.area_trabajo;
-            marco = reencajar(area, monitor.escala_por_cien, &estado.fase, marco);
+            marco = reencajar(area, monitor.escala_por_cien, tamano_de(estado), marco);
             ventana.mover(marco);
             if let Err(e) = superficie.redimensionar(marco.ancho, marco.alto) {
                 tracing::warn!(?e, "no se pudo redimensionar grabar clase");
@@ -1787,6 +2001,8 @@ fn flotar(
 
         // El diario de la grabacion: el latido y el disco ([`a_salvo`]).
         estado.latir(pedido, r);
+        // Lo que Jev marco de los temas.
+        estado.de_la_escucha(r);
 
         // El movil como camara (`sincronizar::camara`): sabe en que minuto va
         // la grabacion y avisa de lo que llega.
@@ -1836,6 +2052,8 @@ fn flotar(
                     // A partir de aqui los clics en la barra no le quitan el
                     // teclado a la reunion.
                     ventana.poner_sin_activar();
+                    // Con temas, a escuchar (de la misma grabacion).
+                    estado.empezar_escucha(&g, pedido, r);
                     // Sin sitio en el disco, el video ni empieza: el sonido
                     // pesa cien veces menos y es lo que no se puede perder.
                     if let Some(sonido) = estado.sonido_para_video.take()
@@ -1954,9 +2172,15 @@ fn flotar(
             break;
         }
 
-        if tamano(&estado.fase) != logico {
-            logico = tamano(&estado.fase);
-            marco = marco_para(area, monitor.escala_por_cien, &estado.fase, Some(marco));
+        if tamano_de(estado) != logico {
+            logico = tamano_de(estado);
+            marco = marco_para(
+                area,
+                monitor.escala_por_cien,
+                &estado.fase,
+                logico,
+                Some(marco),
+            );
             ventana.mover(marco);
             if let Err(e) = superficie.redimensionar(marco.ancho, marco.alto) {
                 tracing::warn!(?e, "no se pudo redimensionar grabar clase");
@@ -1980,6 +2204,8 @@ fn flotar(
             let _ = superficie.presentar();
         }
         let latido = match &estado.fase {
+            // El cursor de la pantalla de los temas parpadea.
+            Fase::Preparar if estado.editando_temas => 60,
             Fase::Preparar | Fase::Lista { .. } | Fase::Fallo { .. } => 120,
             _ => 33,
         };
@@ -2094,6 +2320,30 @@ fn pulsar(
             }
         }
         (Accion::Calidad, Fase::Preparar) => estado.perfil_video = estado.perfil_video.siguiente(),
+        // Los temas de la reunion ([`temas`]).
+        (Accion::Temas, Fase::Preparar) => {
+            estado.editando_temas = true;
+            estado.aviso = None;
+        }
+        (Accion::TemasPegar, Fase::Preparar) => estado.pegar_temas(r),
+        (Accion::TemasDeLista, Fase::Preparar) => estado.temas_de_una_lista(pedido, r),
+        (Accion::TemasVaciar, Fase::Preparar) => estado.vaciar_temas(),
+        (Accion::QuitarTema(i), Fase::Preparar) => {
+            if let Some(id) = estado.temas.get(i).map(|t| t.id.clone()) {
+                pixpin_proyecto::temas::quitar(&mut estado.temas, &id);
+            }
+        }
+        (Accion::TemasListo, Fase::Preparar) => {
+            // Lo que quedo escrito sin Intro tambien vale.
+            let escrito = std::mem::take(&mut estado.escrito);
+            pixpin_proyecto::temas::anadir(&mut estado.temas, &escrito);
+            estado.editando_temas = false;
+            estado.aviso = None;
+        }
+        (Accion::PanelTemas, Fase::Abriendo(_) | Fase::Grabando(_)) => {
+            estado.panel_temas = !estado.panel_temas;
+        }
+        (Accion::Tema(i), Fase::Abriendo(_) | Fase::Grabando(_)) => estado.tocar_tema(i),
         (Accion::Proyecto, Fase::Preparar) => {
             if !pedido.proyectos.is_empty() {
                 estado.proyecto = (estado.proyecto + 1) % pedido.proyectos.len();
@@ -2130,6 +2380,12 @@ fn pulsar(
                 copia,
             ));
             estado.abrir_diario(pedido);
+            // Con temas, su lista abierta bajo la barra; los que esperaban
+            // de la reunion anterior ya estan en esta.
+            estado.panel_temas = !estado.temas.is_empty();
+            if estado.temas_de_la_proxima {
+                crate::jev::temas::olvidar_la_proxima(pedido.ubicacion.raiz());
+            }
             // En persona, la camara se abre ya: la primera foto no espera.
             if estado.modo.con_camara() {
                 match estado.camaras.get(estado.camara) {
@@ -2219,6 +2475,9 @@ fn pulsar(
             }
         }
         (Accion::Terminar, Fase::Grabando(_)) => {
+            // La escucha se para ya (lo ultimo que marco Jev se recoge): la
+            // transcripcion entera de despues es la de siempre.
+            estado.acabar_escucha(Some(r));
             if let Fase::Grabando(g) = std::mem::replace(&mut estado.fase, Fase::Preparar) {
                 estado.fase = Fase::Parando {
                     audio: crate::ventanita::cerrar_microfono(g),
@@ -2229,6 +2488,7 @@ fn pulsar(
         (Accion::CamaraMovil, _) => crate::sincronizar::camara::alternar(pedido.ubicacion.raiz()),
         (Accion::Tirar, Fase::Grabando(_)) => {
             if estado.tirar_desde.is_some() {
+                estado.acabar_escucha(None);
                 crate::sincronizar::camara::tirada(pedido.ubicacion.raiz());
                 if let Fase::Grabando(g) = std::mem::replace(&mut estado.fase, Fase::Preparar) {
                     g.cancelar();
@@ -2393,8 +2653,14 @@ fn pintar(
         alto: h,
     };
     match &estado.fase {
+        Fase::Preparar if estado.editando_temas => {
+            temas::pintar_editor(p, w, h, e, estado, r, llevado, botones)
+        }
         Fase::Preparar => pintar_preparar(p, w, e, estado, pedido, r, botones),
-        Fase::Abriendo(_) | Fase::Grabando(_) => pintar_barra(p, w, e, estado, r, llevado, botones),
+        Fase::Abriendo(_) | Fase::Grabando(_) => {
+            pintar_barra(p, w, e, estado, r, llevado, botones);
+            temas::pintar_panel(p, w, e, estado, r, botones);
+        }
         Fase::Parando { .. } => {
             centrado_en(p, &r.guardando, todo, 70.0 * e, 16.0 * e, tema.texto);
         }
@@ -2631,8 +2897,9 @@ const Y_MICROFONO: f32 = 118.0;
 const Y_EQUIPO: f32 = 170.0;
 const Y_TERCERA: f32 = 222.0;
 const Y_PROYECTO: f32 = 274.0;
-const Y_EMPEZAR: f32 = 334.0;
-const Y_AVISO: f32 = 392.0;
+const Y_TEMAS: f32 = 326.0;
+const Y_EMPEZAR: f32 = 386.0;
+const Y_AVISO: f32 = 444.0;
 
 /// Los tres tercios del selector de modo, en el orden de `Modo::TODOS`.
 fn mitades_del_modo(w: f32, e: f32) -> [(RectF, Modo); 3] {
@@ -3056,6 +3323,8 @@ fn pintar_preparar(
         );
     }
     botones.zona(caja, Accion::Proyecto);
+    // Los temas de la reunion: un clic abre su pantalla.
+    temas::pintar_fila(p, fila(Y_TEMAS), e, estado, r, botones);
 
     // El boton grande.
     let caja = RectF {
@@ -3258,6 +3527,17 @@ fn pintar_barra(
             tema.texto,
             e,
             activo,
+        );
+    }
+    // Con temas, «Temas 2/5»: abre o pliega su lista.
+    if !estado.temas.is_empty() {
+        temas::pintar_boton(
+            p,
+            sitio(temas::ANCHO_BOTON as f32 - 8.0),
+            e,
+            estado,
+            activo,
+            botones,
         );
     }
     boton_si(
@@ -3463,7 +3743,8 @@ mod pruebas {
             (Y_MICROFONO + 44.0, Y_EQUIPO),
             (Y_EQUIPO + 44.0, Y_TERCERA),
             (Y_TERCERA + 44.0, Y_PROYECTO),
-            (Y_PROYECTO + 44.0, Y_EMPEZAR),
+            (Y_PROYECTO + 44.0, Y_TEMAS),
+            (Y_TEMAS + 44.0, Y_EMPEZAR),
         ] {
             assert!(a <= b, "{a} > {b}");
         }
@@ -3478,6 +3759,8 @@ mod pruebas {
         let (_, rx) = channel();
         let (w, _) = tamano(&Fase::Abriendo(rx));
         assert!(w >= barra + 12, "{w} < {barra}");
+        // Con temas, su boton (72 y el hueco) cabe en lo que se suma.
+        assert!(w + temas::ANCHO_BOTON >= barra + 72 + 8 + 12);
     }
 
     #[test]
@@ -3495,8 +3778,8 @@ mod pruebas {
             ancho: 340,
             alto: 412,
         };
-        let m = reencajar(area, 150, &Fase::Preparar, antes);
-        assert_eq!((m.ancho, m.alto), (510, 618), "la escala de la nueva");
+        let m = reencajar(area, 150, tamano(&Fase::Preparar), antes);
+        assert_eq!((m.ancho, m.alto), (510, 696), "la escala de la nueva");
         assert!(m.x >= area.x && m.x + m.ancho as i32 <= area.x + area.ancho as i32);
         assert!(m.y >= area.y && m.y + m.alto as i32 <= area.y + area.alto as i32);
         // Caso negativo: dentro y a la misma escala no se mueve.
@@ -3504,9 +3787,12 @@ mod pruebas {
             x: 2200,
             y: 100,
             ancho: 340,
-            alto: 412,
+            alto: 464,
         };
-        assert_eq!(reencajar(area, 100, &Fase::Preparar, quieta), quieta);
+        assert_eq!(
+            reencajar(area, 100, tamano(&Fase::Preparar), quieta),
+            quieta
+        );
     }
 
     #[test]
