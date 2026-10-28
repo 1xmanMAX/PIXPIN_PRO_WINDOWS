@@ -138,6 +138,9 @@ const POR_NOMBRE: &[(&str, &str)] = &[
     ("buscar_lecciones", "Lecciones"),
     ("web_search", "Saber y recordar"),
     ("web_fetch", "Saber y recordar"),
+    // Las de la web que hace PixPin (con DeepSeek, `web.rs`).
+    (crate::web::BUSCAR, "Saber y recordar"),
+    (crate::web::ABRIR, "Saber y recordar"),
     ("preguntar_usuario", "Hablar con el usuario"),
     // La lista de pasos que el usuario ve marcarse (`pasos.rs`).
     (crate::pasos::NOMBRE, "Hablar con el usuario"),

@@ -124,6 +124,22 @@ mod pruebas {
     }
 
     #[test]
+    fn los_rotulos_de_la_web_del_asistente_llevan_el_dominio() {
+        let mut args = FluentArgs::new();
+        args.set("dominio", "ugr.es");
+        for (idioma, leyendo) in [
+            (Idioma::Espanol, "🌐 leyendo ugr.es…"),
+            (Idioma::Ingles, "🌐 reading ugr.es…"),
+        ] {
+            let c = Catalogo::nuevo(idioma);
+            assert_eq!(c.t_args("asistente-web-leyendo", &args), leyendo);
+            for clave in ["asistente-web-buscando", "asistente-web-leyendo-pagina"] {
+                assert_ne!(c.t(clave), clave, "falta {clave}");
+            }
+        }
+    }
+
+    #[test]
     fn los_textos_de_la_pila_estan_en_los_dos_idiomas() {
         // La paridad comprueba que las claves coinciden; esto, que existen.
         let es = Catalogo::nuevo(Idioma::Espanol);

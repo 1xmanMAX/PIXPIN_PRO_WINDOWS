@@ -201,7 +201,15 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -
     // no cambian de una pregunta a otra) y lo que cambia cada turno (la hoja
     // de trabajo, la peticion mejorada) detras, sin punto: si fuera dentro
     // del mismo bloque, cada pregunta nueva volveria a escribir la cache.
-    let (fijo, variable) = instrucciones::en_dos(Proveedor::Claude, &base, &p.herramientas);
+    // La web de PixPin (`crate::web`, para DeepSeek) no va: con Claude la
+    // hacen `web_search` y `web_fetch` de la API (abajo).
+    let propias: Vec<Herramienta> = p
+        .herramientas
+        .iter()
+        .filter(|h| !crate::web::es_de_la_web(&h.nombre))
+        .cloned()
+        .collect();
+    let (fijo, variable) = instrucciones::en_dos(Proveedor::Claude, &base, &propias);
     let mut sistema =
         vec![json!({"type": "text", "text": fijo, "cache_control": {"type": "ephemeral"}})];
     if !variable.is_empty() {
@@ -226,7 +234,7 @@ pub fn cuerpo(p: &Peticion, memoria: &HashMap<String, Value>, max_tokens: u32) -
         "output_config": {"effort": ESFUERZO},
     });
     // Las de la app y, siempre, las de la web (las ejecuta la API).
-    let mut tools: Vec<Value> = p.herramientas.iter().map(herramienta).collect();
+    let mut tools: Vec<Value> = propias.iter().map(herramienta).collect();
     tools.extend(herramientas_web());
     c["tools"] = Value::Array(tools);
     c["tool_choice"] = json!({"type": "auto"});
@@ -760,6 +768,26 @@ mod pruebas {
         let c = cuerpo_de_prueba();
         assert_eq!(c["max_tokens"], 16);
         assert!(c.get("stream").is_none() && c.get("tools").is_none());
+    }
+
+    /// La web de PixPin (`crate::web`, para DeepSeek) no se le manda a
+    /// Claude: la suya la hace la API.
+    #[test]
+    fn a_claude_no_le_van_las_de_la_web_de_pixpin() {
+        let mut p = Peticion::nueva(vec![Mensaje::usuario("busca el horario")]);
+        p.herramientas = crate::web::ACCIONES_WEB
+            .iter()
+            .map(crate::acciones::herramienta)
+            .chain([por_nombre("grafica")])
+            .collect();
+        let c = cuerpo(&p, &HashMap::new(), 100);
+        let nombres: Vec<&str> = c["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        assert_eq!(nombres, ["grafica", BUSCAR_EN_LA_WEB, LEER_LA_WEB]);
     }
 
     #[test]

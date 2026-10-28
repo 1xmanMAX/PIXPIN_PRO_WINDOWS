@@ -1,0 +1,15 @@
+[package]
+name = "pixpin-paginas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Leer la web para el asistente (28-oct-2026), sin red ni ventanas: si una
+# direccion se puede abrir (solo http/https, nada de la red de casa ni de
+# este PC), el texto legible de una pagina HTML y los resultados de un
+# buscador. Rust puro y portable, para que sus pruebas corran en cualquier
+# sistema; la red (WinHTTP) la pone pixpin-ia (`web.rs`).
+[dependencies]
+# Los resultados de Brave Search llegan en JSON. Ya esta en el arbol.
+serde_json = "1.0"

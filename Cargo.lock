@@ -1666,6 +1666,7 @@ dependencies = [
  "pixpin-motor2d",
  "pixpin-notas",
  "pixpin-ocr",
+ "pixpin-paginas",
  "pixpin-pdf",
  "pixpin-shell",
  "roxmltree",
@@ -1795,6 +1796,13 @@ dependencies = [
  "memchr",
  "pixpin-docs",
  "zip",
+]
+
+[[package]]
+name = "pixpin-paginas"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

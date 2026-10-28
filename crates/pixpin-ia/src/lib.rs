@@ -122,6 +122,7 @@ pub mod svg;
 pub mod tabla_aspecto;
 pub mod tabla_escaneada;
 pub mod tareas;
+pub mod web;
 
 pub use agente::{Ejecutor, Evento, turno};
 pub use herramientas::{Herramienta, Llamada, catalogo};

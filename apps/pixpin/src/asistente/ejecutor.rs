@@ -392,6 +392,42 @@ impl EjecutorDelChat {
 impl EjecutorDelChat {
     /// **`hoja_a_lienzo`**: solo con la nube; cada zona por la cola del
     /// lienzo en cuanto esta hecha, y «3/9 zonas» en la burbuja.
+    /// **La web** (`pixpin_ia::web`): buscar en internet y leer paginas. Un
+    /// PDF de la web se lee con el lector de siempre (con su OCR si es
+    /// escaneado), desde un fichero temporal que se borra al acabar.
+    fn web(&mut self, a: &pixpin_ia::acciones::AccionApp) -> Result<String, String> {
+        let tx = self.tx.clone();
+        let al_leer = |dominio: &str| {
+            let _ = tx.send(Aviso::Evento(pixpin_ia::Evento::Llamando(format!(
+                "{}:{dominio}",
+                pixpin_ia::web::ABRIR
+            ))));
+        };
+        let parar = self.parar.clone();
+        let pdf = |bytes: &[u8]| {
+            let carpeta = std::env::temp_dir().join("pixpin-asistente").join("web");
+            std::fs::create_dir_all(&carpeta)
+                .map_err(|e| format!("no se pudo guardar el PDF: {e}"))?;
+            let marca = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos());
+            let ruta = carpeta.join(format!("pagina-{}-{marca}.pdf", std::process::id()));
+            std::fs::write(&ruta, bytes).map_err(|e| format!("no se pudo guardar el PDF: {e}"))?;
+            let r = super::en_el_chat::texto_del_documento(&ruta, &[], &parar);
+            let _ = std::fs::remove_file(&ruta);
+            r
+        };
+        pixpin_ia::web::hacer(
+            a,
+            &pixpin_ia::web::Lector {
+                red: &pixpin_ia::web::Internet,
+                pdf: &pdf,
+                al_leer: &al_leer,
+                clave_brave: pixpin_ia::web::clave_brave(),
+            },
+        )
+    }
+
     fn hoja_a_lienzo(&mut self, args: &serde_json::Value) -> Result<String, String> {
         if !self.nube && self.vision.is_none() {
             return Err(pixpin_ia::hoja::SOLO_NUBE.into());
@@ -1137,6 +1173,9 @@ impl Ejecutor for EjecutorDelChat {
                     },
                 )
             }
+            // La web (28-oct, con DeepSeek; con Claude la hace su API):
+            // buscar y leer paginas, con «🌐 leyendo <dominio>» en la burbuja.
+            Llamada::App(a) if pixpin_ia::web::es_de_la_web(a.herramienta) => self.web(a),
             // Las conexiones (17-oct, Google Drive...): con los archivos de
             // este chat, y subir pregunta antes en la burbuja.
             Llamada::App(a) if pixpin_ia::conexiones::acciones::es_de_conexiones(a.herramienta) => {
