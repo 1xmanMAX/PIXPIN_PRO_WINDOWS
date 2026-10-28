@@ -3025,7 +3025,6 @@ clase-temas-nada-que-pegar = There is no text on the clipboard
 clase-temas-vaciar = Clear
 clase-temas-listo = Done
 clase-temas-anteriores = { $n } topics left over from the previous meeting
-clase-temas-boton = Topics
 clase-temas-tratado = ✓ Topic { $n } covered · { $minuto }
 clase-temas-escuchando = Listening: Jev ticks the topics as they are covered
 clase-temas-sin-jev = No Jev (the TypeSafe key is missing): tick the topics by hand

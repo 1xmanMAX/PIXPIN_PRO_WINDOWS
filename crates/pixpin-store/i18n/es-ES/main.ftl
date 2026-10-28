@@ -3217,7 +3217,6 @@ clase-temas-nada-que-pegar = No hay texto en el portapapeles
 clase-temas-vaciar = Vaciar
 clase-temas-listo = Listo
 clase-temas-anteriores = { $n } temas pendientes de la reunión anterior
-clase-temas-boton = Temas
 clase-temas-tratado = ✓ Tema { $n } tratado · { $minuto }
 clase-temas-escuchando = Escuchando: Jev marca los temas que se traten
 clase-temas-sin-jev = Sin Jev (falta la clave de TypeSafe): marca los temas a mano
