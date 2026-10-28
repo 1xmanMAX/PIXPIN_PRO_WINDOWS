@@ -786,6 +786,71 @@ pub fn a_mano(
     Ok(ms)
 }
 
+// ------------------------------------------------------------ todos los chats
+
+/// Si el cuaderno de un chat puede tener una grabacion con reloj, sin
+/// leerlo entero: lo que no lleva la palabra no la tiene.
+fn puede_tener_reloj(dir: &Path) -> bool {
+    std::fs::read_to_string(dir.join("guardados.jsonl")).is_ok_and(|t| t.contains("\"reloj\""))
+}
+
+/// **Repasa todos los chats** de `raiz` ([`repasar`] en cada uno con una
+/// grabacion de este aparato). Devuelve los chats donde entro algo, con
+/// cuantas.
+pub fn repasar_todos(
+    raiz: &Path,
+    yo: &str,
+    mios: &HashSet<String>,
+    desfases: &Desfases,
+) -> Vec<(String, usize)> {
+    let mut hechas = Vec::new();
+    for f in crate::almacen::Indice::leer(raiz).proyectos {
+        let dir = crate::almacen::carpeta(raiz, &f.id);
+        if !puede_tener_reloj(&dir) {
+            continue;
+        }
+        match repasar(&dir, yo, mios, desfases) {
+            Ok(0) => {}
+            Ok(n) => hechas.push((f.id.clone(), n)),
+            Err(_) => {}
+        }
+    }
+    hechas
+}
+
+/// **La grabacion guardada de este aparato (`yo`) donde cae la hora `t`**
+/// (ya en su reloj), en cualquier chat: el chat, la grabacion y el minuto.
+/// Es lo que hace la camara en directo con una foto que no sabe de que
+/// grabacion es (se hizo sin conexion) o de una que ya no recuerda.
+pub fn buscar_por_hora(raiz: &Path, t: i64, yo: &str) -> Option<(String, Grabacion, i64)> {
+    let mut mejor: Option<(String, Grabacion, i64)> = None;
+    for f in crate::almacen::Indice::leer(raiz).proyectos {
+        let dir = crate::almacen::carpeta(raiz, &f.id);
+        if !puede_tener_reloj(&dir) {
+            continue;
+        }
+        let Ok(c) = cuaderno::Cuaderno::leer_de(&dir) else {
+            continue;
+        };
+        for g in grabaciones_de(&c.mensajes) {
+            if g.reloj.aparato != yo {
+                continue;
+            }
+            let duracion = (g.duracion_ms > 0).then_some(g.duracion_ms);
+            let Some(ms) = lugar(t, &g.reloj, duracion, MARGEN_MS) else {
+                continue;
+            };
+            if mejor
+                .as_ref()
+                .is_none_or(|(_, b, _)| g.reloj.inicio > b.reloj.inicio)
+            {
+                mejor = Some((f.id.clone(), g, ms));
+            }
+        }
+    }
+    mejor
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

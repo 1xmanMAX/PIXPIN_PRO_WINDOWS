@@ -25,6 +25,16 @@
 //! despues (el movil lo subio tarde, sin red) entra al momento en la clase
 //! ya guardada. Las ultimas grabaciones acabadas se recuerdan un rato
 //! ([`ACABADAS`]) para eso.
+//!
+//! **Por su hora** (28-oct-2026, [`crate::por_su_hora`]): el reloj de cada
+//! grabacion se apunta en disco mientras se graba
+//! ([`Camaras::apuntar_reloj`], por si el programa se cae) y entra en la
+//! nota al guardarse (`resto.reloj`). Una foto que no sabe de que grabacion
+//! es (se hizo sin conexion) o de una que ya no se recuerda entra por su
+//! hora (`tomada_en`): en la de ahora o una acabada si cae dentro, o en la
+//! guardada de cualquier chat ([`por_su_hora::buscar_por_hora`]); si no cae
+//! en ninguna, se niega y el movil la deja como una foto normal. La misma
+//! foto dos veces (por su `clave`, el uid de la foto en el movil) entra una.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -33,6 +43,7 @@ use std::sync::{Arc, Mutex};
 use pixpin_sincro::al_lienzo::Suelto;
 use pixpin_sincro::camara::{self, Anuncio, Reloj};
 
+use crate::por_su_hora::{self, RelojDeGrabacion};
 use crate::{almacen, carpeta_de_paginas, clase, cuaderno, presencial};
 
 /// Si un mensaje lo hizo la camara del movil en una grabacion
@@ -85,6 +96,9 @@ pub struct Llegada {
     /// Del aparato que la hizo.
     pub de: String,
     pub tomada_en: i64,
+    /// El uid de la foto en su aparato (la `clave` de la toma): con el no
+    /// entra dos veces.
+    pub clave: String,
 }
 
 /// Lo que acaba de llegar, para el aviso de la barra («Foto del móvil ·
@@ -135,6 +149,13 @@ pub struct Camaras {
     /// El desfase medido con cada aparato (lo que va adelantado su reloj).
     desfases: BTreeMap<String, i64>,
     nuevas: Vec<Recibida>,
+    /// El codigo de este equipo (`K7Q2`): el `aparato` del reloj de sus
+    /// grabaciones.
+    pub codigo: String,
+    /// Donde buscar las grabaciones ya guardadas (la carpeta de datos) y la
+    /// hora sin repetir de los mensajes nuevos: sin ello, solo las de
+    /// memoria.
+    pub almacen: Option<(PathBuf, fn() -> i64)>,
 }
 
 impl Camaras {
@@ -148,7 +169,44 @@ impl Camaras {
             codecs: vec![camara::H264.into()],
             desfases: BTreeMap::new(),
             nuevas: Vec::new(),
+            codigo: String::new(),
+            almacen: None,
         }
+    }
+
+    /// **El reloj de la grabacion `g` como va en la nota** (hora de pared de
+    /// este equipo), visto en `ahora`.
+    fn reloj_de(&self, g: &Grabacion, ahora: i64) -> RelojDeGrabacion {
+        RelojDeGrabacion {
+            aparato: self.codigo.clone(),
+            inicio: g.reloj.desde,
+            fin: g.reloj.fin.unwrap_or(0),
+            pausas: g.reloj.pausas_al_cable(),
+            visto: if g.reloj.fin.is_some() { 0 } else { ahora },
+        }
+    }
+
+    /// El reloj de la que esta en curso, con su id.
+    pub fn reloj_en_curso(&self, ahora: i64) -> Option<(String, RelojDeGrabacion)> {
+        let g = self.actual.as_ref()?;
+        Some((g.id.clone(), self.reloj_de(g, ahora)))
+    }
+
+    /// **Apunta en disco el reloj de la que esta en curso** (al empezar,
+    /// pausar, seguir, acabar y cada poco): si el programa se cae, lo
+    /// grabado se recupera con su ventana ([`relojes_sueltos`]) y las fotos
+    /// que lleguen despues aun encuentran su sitio.
+    pub fn apuntar_reloj(&self, ahora: i64) -> std::io::Result<()> {
+        let Some((id, r)) = self.reloj_en_curso(ahora) else {
+            return Ok(());
+        };
+        let f = fichero_del_reloj(&self.cola, &id);
+        if let Some(d) = f.parent() {
+            std::fs::create_dir_all(d)?;
+        }
+        let tmp = f.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec(&r).map_err(std::io::Error::other)?)?;
+        std::fs::rename(&tmp, &f)
     }
 
     /// El id de la que esta en curso.
@@ -190,8 +248,12 @@ impl Camaras {
     /// **Acaba la que esta en curso.** Lo suyo queda en la cola hasta
     /// [`Camaras::guardada`].
     pub fn acabar(&mut self, ahora: i64) {
-        if let Some(mut g) = self.actual.take() {
+        if let Some(g) = self.actual.as_mut() {
             g.reloj.acabar(ahora);
+        }
+        // Con su fin, por si no llega a guardarse.
+        let _ = self.apuntar_reloj(ahora);
+        if let Some(g) = self.actual.take() {
             self.acabadas.insert(0, g);
             while self.acabadas.len() > ACABADAS {
                 if let Some(vieja) = self.acabadas.pop() {
@@ -203,10 +265,17 @@ impl Camaras {
 
     /// **La grabacion se tiro** sin guardarse: lo suyo tambien.
     pub fn tirar(&mut self) {
-        if let Some(g) = self.actual.take() {
+        let tirada = match self.actual.take() {
+            Some(g) => Some(g),
+            None => self
+                .acabadas
+                .iter()
+                .position(|g| g.destino.is_none())
+                .map(|i| self.acabadas.remove(i)),
+        };
+        if let Some(g) = tirada {
             tirar_cola(&g);
-        } else if let Some(i) = self.acabadas.iter().position(|g| g.destino.is_none()) {
-            tirar_cola(&self.acabadas.remove(i));
+            olvidar_reloj(&self.cola, &g.id);
         }
     }
 
@@ -218,6 +287,7 @@ impl Camaras {
         if self.acabadas.iter().all(|g| g.destino.is_some()) {
             self.acabar(ahora);
         }
+        let (codigo, cola) = (self.codigo.clone(), self.cola.clone());
         let Some(g) = self.acabadas.iter_mut().find(|g| g.destino.is_none()) else {
             return 0;
         };
@@ -237,6 +307,26 @@ impl Camaras {
             }
         }
         g.cola = quedan;
+        // **El reloj entra en la nota** (`resto.reloj`): con el, lo que
+        // llegue despues por cualquier camino encuentra su minuto por su
+        // hora. Y ya no hace falta el apuntado en disco.
+        let reloj = RelojDeGrabacion {
+            aparato: codigo,
+            inicio: g.reloj.desde,
+            fin: g.reloj.fin.unwrap_or(ahora),
+            pausas: g.reloj.pausas_al_cable(),
+            visto: 0,
+        };
+        if let Some(voz) = &destino.voz {
+            let dir = almacen::carpeta(&destino.raiz, &destino.proyecto);
+            let puesto = cuaderno::cambiar(&dir, voz, |n| {
+                reloj.poner(&mut n.resto);
+                true
+            });
+            if puesto.is_ok_and(|m| m.is_some()) {
+                olvidar_reloj(&cola, &g.id);
+            }
+        }
         g.destino = Some(destino);
         hechas
     }
@@ -287,10 +377,84 @@ impl Camaras {
         if !self.encendida {
             return Err("La cámara del móvil está apagada en el PC".into());
         }
-        if self.buscar(&p.grabacion).is_none() {
+        // Sin grabacion que se conozca, por su hora (se decide al llegar).
+        if self.buscar(&p.grabacion).is_none() && p.tomada_en <= 0 {
             return Err("Esa grabación ya no está en el PC".into());
         }
         Ok(())
+    }
+
+    /// **Una foto que no sabe de que grabacion es** (o de una que ya no se
+    /// recuerda): por su hora, pasada a este reloj con su desfase. En la de
+    /// ahora o una acabada si cae dentro; si no, en una guardada de
+    /// cualquier chat. `Err` si no cae en ninguna: el movil la deja como una
+    /// foto normal.
+    fn recibir_por_su_hora(
+        &mut self,
+        p: &Suelto,
+        fichero: &Path,
+        de_id: &str,
+        de: &str,
+        ahora: i64,
+    ) -> Result<i64, String> {
+        let desfase = if p.reloj != 0 {
+            p.reloj
+        } else {
+            self.desfases.get(de_id).copied().unwrap_or(0)
+        };
+        let t = p.tomada_en - desfase;
+        let en_memoria = self
+            .actual
+            .iter()
+            .chain(self.acabadas.iter())
+            .filter_map(|g| {
+                let r = self.reloj_de(g, ahora);
+                let ms = por_su_hora::lugar(t, &r, g.duracion, por_su_hora::MARGEN_MS)?;
+                Some((g.id.clone(), r.inicio, ms))
+            })
+            .max_by_key(|(_, inicio, _)| *inicio);
+        if let Some((id, _, ms)) = en_memoria {
+            let p = Suelto {
+                grabacion: id,
+                ms: Some(ms),
+                ..p.clone()
+            };
+            return self.recibir(&p, fichero, de_id, de, ahora);
+        }
+        let (raiz, hora) = self.almacen.clone().ok_or(NINGUNA)?;
+        let (proyecto, g, ms) =
+            por_su_hora::buscar_por_hora(&raiz, t, &self.codigo).ok_or(NINGUNA)?;
+        let clip = camara::es_clip(p);
+        let tope = g.reloj.duracion(ahora).max(g.duracion_ms);
+        let l = Llegada {
+            ms,
+            duracion_ms: if clip {
+                camara::duracion_del_clip(p, ms, tope)
+            } else {
+                0
+            },
+            clip,
+            fichero: fichero.to_path_buf(),
+            nombre: nombre_de(p, clip, 1),
+            de: de.to_string(),
+            tomada_en: p.tomada_en,
+            clave: p.clave.clone(),
+        };
+        let destino = Destino {
+            raiz,
+            proyecto,
+            voz: Some(g.voz.clone()),
+            carpeta: g.carpeta.clone(),
+            aparato: self.codigo.clone(),
+            hora,
+        };
+        adjuntar(&destino, &g.titulo, &l).map_err(|e| format!("No se pudo guardar: {e}"))?;
+        self.nuevas.push(Recibida {
+            ms,
+            clip,
+            de: de.to_string(),
+        });
+        Ok(ms)
     }
 
     /// **Una foto o un clip llego** a `fichero` (temporal) de `de`
@@ -305,6 +469,9 @@ impl Camaras {
         ahora: i64,
     ) -> Result<i64, String> {
         self.aceptar(p)?;
+        if self.buscar(&p.grabacion).is_none() {
+            return self.recibir_por_su_hora(p, fichero, de_id, de, ahora);
+        }
         let medido = self.desfases.get(de_id).copied();
         let cola = self.cola.clone();
         let g = self
@@ -327,6 +494,7 @@ impl Camaras {
             nombre,
             de: de.to_string(),
             tomada_en: p.tomada_en,
+            clave: p.clave.clone(),
         };
         match g.destino.clone() {
             Some(d) => {
@@ -354,6 +522,40 @@ impl Camaras {
     pub fn tomar_nuevas(&mut self) -> Vec<Recibida> {
         std::mem::take(&mut self.nuevas)
     }
+}
+
+/// Lo que se contesta a una foto cuya hora no cae en ninguna grabacion.
+const NINGUNA: &str = "La foto no cae en ninguna grabación de este equipo";
+
+fn fichero_del_reloj(cola: &Path, id: &str) -> PathBuf {
+    cola.join("relojes")
+        .join(format!("{}.json", almacen::nombre_seguro(id)))
+}
+
+/// **Los relojes apuntados de grabaciones que no llegaron a guardarse** (el
+/// programa se cayo grabando): el id y su ventana, hasta lo ultimo visto.
+/// Quien recupera la grabacion pone el suyo en la nota (`resto.reloj`) y
+/// borra el fichero ([`olvidar_reloj`]).
+pub fn relojes_sueltos(cola: &Path) -> Vec<(String, RelojDeGrabacion)> {
+    let Ok(d) = std::fs::read_dir(cola.join("relojes")) else {
+        return Vec::new();
+    };
+    d.filter_map(Result::ok)
+        .filter_map(|e| {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                return None;
+            }
+            let r: RelojDeGrabacion = serde_json::from_slice(&std::fs::read(&p).ok()?).ok()?;
+            let id = p.file_stem()?.to_string_lossy().to_string();
+            Some((id, r))
+        })
+        .collect()
+}
+
+/// Borra el reloj apuntado de la grabacion `id` (ya esta en su nota).
+pub fn olvidar_reloj(cola: &Path, id: &str) {
+    let _ = std::fs::remove_file(fichero_del_reloj(cola, id));
 }
 
 fn tirar_cola(g: &Grabacion) {
@@ -413,11 +615,22 @@ pub fn adjuntar(destino: &Destino, titulo: &str, l: &Llegada) -> std::io::Result
     let raiz = &destino.raiz;
     let proyecto = &destino.proyecto;
     let carpeta = almacen::carpeta(raiz, proyecto);
-    let numero = match cuaderno::Cuaderno::leer_de(&carpeta) {
-        Ok(c) => c.siguiente_numero(Some(proyecto)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 1,
+    let leido = match cuaderno::Cuaderno::leer_de(&carpeta) {
+        Ok(c) => Some(c),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(e),
     };
+    let numero = leido
+        .as_ref()
+        .map_or(1, |c| c.siguiente_numero(Some(proyecto)));
+    // **La misma foto otra vez** (el movil la reintento, o ya llego por la
+    // sincronizacion): no se copia de nuevo.
+    if let Some(c) = &leido
+        && let Some(id) = ya_llego(c, destino, l)?
+    {
+        let _ = std::fs::remove_file(&l.fichero);
+        return Ok(id);
+    }
     let (ruta, bytes) = almacen::mover_adjunto(raiz, proyecto, &l.nombre, &l.fichero)?;
     let cuando = (destino.hora)();
     let mut m = cuaderno::Mensaje::adjunto(
@@ -456,6 +669,10 @@ pub fn adjuntar(destino: &Destino, titulo: &str, l: &Llegada) -> std::io::Result
         m.resto
             .insert("tomadaEn".into(), serde_json::json!(l.tomada_en));
     }
+    if !l.clave.trim().is_empty() {
+        m.resto
+            .insert(por_su_hora::FOTO_UID.into(), serde_json::json!(l.clave));
+    }
     cuaderno::anadir(&carpeta, &m)?;
     let id = m.id.clone();
     if let Some(voz) = &destino.voz {
@@ -488,6 +705,52 @@ pub fn adjuntar(destino: &Destino, titulo: &str, l: &Llegada) -> std::io::Result
         indice.guardar(raiz)?;
     }
     Ok(id)
+}
+
+/// **Si la foto `l` ya esta en el chat**: copiada antes por la camara (su
+/// `fotoUid` es la `clave`) o llegada por la sincronizacion (su uid es la
+/// `clave`; entonces se pone esa en la grabacion, sin copiarla). El id del
+/// mensaje que la tiene.
+fn ya_llego(
+    c: &cuaderno::Cuaderno,
+    destino: &Destino,
+    l: &Llegada,
+) -> std::io::Result<Option<String>> {
+    let clave = l.clave.trim();
+    if clave.is_empty() {
+        return Ok(None);
+    }
+    if let Some(m) = c
+        .mensajes
+        .iter()
+        .find(|m| m.resto.get(por_su_hora::FOTO_UID).and_then(|v| v.as_str()) == Some(clave))
+    {
+        return Ok(Some(m.id.clone()));
+    }
+    let Some(m) = c
+        .mensajes
+        .iter()
+        .find(|m| !l.clip && m.uid.as_deref() == Some(clave))
+    else {
+        return Ok(None);
+    };
+    if let Some(voz) = &destino.voz {
+        let f = por_su_hora::FotoConHora {
+            id: m.id.clone(),
+            uid: m.codigo_unico(),
+            aparato: m.aparato.clone().unwrap_or_default(),
+            tomada_en: l.tomada_en,
+            para: None,
+        };
+        let g = por_su_hora::Grabacion {
+            voz: voz.clone(),
+            carpeta: destino.carpeta.clone(),
+            ..Default::default()
+        };
+        let dir = almacen::carpeta(&destino.raiz, &destino.proyecto);
+        por_su_hora::colocar(&dir, &g, &f, l.ms, false, true)?;
+    }
+    Ok(Some(m.id.clone()))
 }
 
 // ------------------------------------------------------------ al cable
