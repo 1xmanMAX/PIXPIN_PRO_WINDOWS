@@ -306,7 +306,9 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
   grabaciones que se tocan, el repaso que pone cada foto una vez (nota y
   carpeta), la copia de la cámara en directo que no se repite al
   sincronizar y «Adjuntar a la grabación…».
-- `movil_como_camara.rs`: `las_fotos_sin_conexion_entran_por_su_hora_en_la_clase_guardada`
+- `movil_como_camara.rs`: `lo_que_llega_tarde_entra_en_la_grabacion_recuperada_tras_un_corte`
+  (reloj del diario con pausa y hueco en la nota recuperada; foto con su
+  id, foto solo con su hora, una fuera), `las_fotos_sin_conexion_entran_por_su_hora_en_la_clase_guardada`
   (PC recién arrancado, foto sin grabación por su hora, la misma dos veces,
   una fuera que se niega) y `el_pc_manda_capturas_a_la_grabacion_del_movil`
   (`camara_remota` con `suya`, el reloj del móvil en el PC, la captura en su
@@ -561,13 +563,24 @@ cuándo acabó y sus pausas en la hora de pared de quien grabó**:
 | `inicio` / `fin` | ms desde 1970 en el reloj de `aparato`. `fin` 0: sigue grabando (o se cortó) |
 | `pausas` | `[desde, hasta]`; `hasta` 0: en pausa ahora |
 | `vistoEn` | la última vez que se apuntó grabando: si el programa se cae, la ventana acaba aquí |
+| `huecos` | `[desde, hasta]` en que la hora siguió y la nota no grabó (el equipo se suspendió). Cuentan como las pausas. Los mide el diario de la grabación (`grabacion_a_medias`) |
+| `grabacion` | el id con que se anunció al móvil (`g-…`): lo que llegue tarde con ese id encuentra la nota aunque el PC ya no la recuerde |
 
 Mientras se graba (la nota aún no existe), el PC apunta lo mismo en
 `<raiz>/sincro/camara-movil/relojes/<id>.json` al empezar, pausar, seguir,
 acabar y **cada 15 s**; al guardarse la clase entra en la nota y el fichero
-se borra. Quien recupere una grabación cortada lo encuentra con
-`camara_del_movil::relojes_sueltos` y lo pone en su nota. Android, al
-grabar él, escribe lo mismo en su nota.
+se borra.
+
+**Un solo reloj de pared.** El diario de la grabación
+(`grabacion_a_medias::Reloj`, en `crates/pixpin-proyecto/src/grabacion_a_medias.rs`) y este son
+el mismo: `RelojDeGrabacion::del_diario` pasa uno al otro y
+`Diario::ms_en` hace la cuenta de `RelojDeGrabacion::ms_hasta`. **Al
+recuperar una grabación cortada** se pone en su nota el reloj del diario
+(hasta el último latido, con pausas y huecos) o, si el diario no lo tiene,
+el apuntado por la cámara (`camara_del_movil::reloj_recuperado` /
+`poner_reloj_recuperado`), y se repasan los chats. Desde ahí lo que llegue
+tarde, con el id de la grabación o solo con su hora, entra en su minuto.
+Android, al grabar él, escribe lo mismo en su nota.
 
 ### 12.2 Cada foto lleva su hora: `resto.tomadaEn`
 

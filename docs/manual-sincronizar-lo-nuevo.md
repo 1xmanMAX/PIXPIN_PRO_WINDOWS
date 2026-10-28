@@ -153,7 +153,7 @@ en [movil-como-camara.md](movil-como-camara.md) §12-§14.
 
 | Mensaje | `resto` nuevo | Quien lo escribe |
 |---|---|---|
-| La nota de voz de una clase (`VOZ`) | `reloj: {aparato, inicio, fin, pausas: [[desde,hasta]], vistoEn}` (ms desde 1970 en el reloj de `aparato`; `fin` 0 sigue; `hasta` 0 en pausa) | quien grabo, al guardarla |
+| La nota de voz de una clase (`VOZ`) | `reloj: {aparato, inicio, fin, pausas: [[desde,hasta]], vistoEn, huecos: [[desde,hasta]], grabacion}` (ms desde 1970 en el reloj de `aparato`; `fin` 0 sigue; `hasta` 0 en pausa) | quien grabo, al guardarla |
 | La misma nota | `colaboradores: ["K7Q2", …]` o `["*"]` (todos los del chat compartido) | quien grabo, al invitar |
 | La misma nota, cada entrada de `capturas` | ademas de `{ms, id}`: `aparato` (quien la hizo), `uid` (el de la foto) y `horaSinComprobar: true` si no habia desfase medido de su aparato | quien grabo, al colocarla |
 | Cada foto (`IMAGEN`) | `tomadaEn` (ms en el reloj de su aparato); si falta, `tomadaEnExif` (`"2026:10:28 10:05:03"`) + `desfaseExif` (`"+01:00"`); opcional `paraGrabacion` (id de la nota) | el aparato que la hizo |
