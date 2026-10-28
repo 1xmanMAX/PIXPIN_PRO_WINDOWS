@@ -152,6 +152,8 @@ pub(crate) fn guardada(
         con(raiz, |c| c.acabar(ahora));
         avisar_a_los_moviles(raiz);
     }
+    // Lo de esta grabacion sale primero en la sincronizacion (`automatica`).
+    super::automatica::grabacion_guardada(proyecto);
     let hechas = con(raiz, |c| c.guardada(destino, Some(duracion_ms), ahora));
     if hechas > 0 {
         tracing::info!(hechas, "fotos del movil en la clase");
@@ -209,6 +211,8 @@ pub(crate) fn indicador_actual() -> Option<(String, bool)> {
 /// movil pregunta solo, y esto solo adelanta el aviso). Mide de paso el
 /// desfase de cada reloj.
 fn avisar_a_los_moviles(raiz: &Path) {
+    // La baliza, al momento: el movil que la oye no espera al aviso.
+    super::baliza::cambio_la_grabacion();
     let raiz = raiz.to_path_buf();
     let lanzado = std::thread::Builder::new()
         .name("camara-movil".into())
@@ -229,6 +233,26 @@ fn avisar_a_los_moviles(raiz: &Path) {
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el aviso a la camara del movil");
     }
+}
+
+/// Lo mismo, ya: un movil del grupo acaba de aparecer (o cambio de
+/// direccion) mientras se graba (`baliza`).
+pub(crate) fn avisar_ya(raiz: &Path) {
+    avisar_a_los_moviles(raiz);
+}
+
+/// **Lo que dice la baliza** (`baliza`): la grabacion de este equipo, si
+/// graba, sin crear las camaras.
+pub(crate) fn para_la_baliza(ahora: i64) -> Option<super::baliza::Local> {
+    let c = CAMARAS.get()?.lock().unwrap_or_else(|e| e.into_inner());
+    let id = c.en_curso()?.to_string();
+    let a = c.anuncio(ahora);
+    Some(super::baliza::Local {
+        id,
+        en_pausa: a.as_ref().is_some_and(|a| a.en_pausa),
+        ms: a.as_ref().map_or(0, |a| a.ms_actual),
+        camara: c.encendida,
+    })
 }
 
 fn avisar_a(

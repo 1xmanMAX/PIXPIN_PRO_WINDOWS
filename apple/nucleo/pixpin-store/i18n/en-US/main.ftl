@@ -1960,6 +1960,8 @@ clase-camara-movil-apagada = 📱 Phone camera: off
 clase-foto-movil = Photo from the phone · { $minuto }
 clase-clip-movil = Clip from the phone · { $minuto }
 camara-movil-tarde = From the phone to “{ $titulo }” · { $minuto }
+baliza-movil-aislado = Your phone isn’t showing up, though you’re on the same network: this Wi-Fi may keep devices apart (guest, hotel and office networks do) or a firewall may be blocking PixPin. Connect the PC to the phone’s hotspot, or both to another Wi-Fi. Photos you take wait on the phone and go in at their minute once they find each other.
+baliza-movil-otra-red = Your phone is on a different network from this PC. Connect both to the same Wi-Fi (or the PC to the phone’s hotspot). Photos you take wait on the phone and go in at their minute once they find each other.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
 clase-modo-presencial = In person
 clase-modo-presencial-sub = Records the microphone; “Photo” uses the camera at full resolution
