@@ -1535,6 +1535,7 @@ dependencies = [
  "pixpin-store",
  "pixpin-timeline",
  "pixpin-tinta",
+ "pixpin-typesafe",
  "pixpin-ui",
  "pixpin-voz",
  "pixpin-web",
