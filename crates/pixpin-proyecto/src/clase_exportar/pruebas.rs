@@ -37,6 +37,7 @@ fn sin_ordenar() -> ClaseParaExportar {
         ],
         adjuntos: vec![],
         importantes: vec![],
+        temas: vec![],
     }
 }
 
@@ -330,4 +331,29 @@ fn el_markdown_va_en_un_zip_con_su_carpeta() {
     assert!(md.contains("![Captura 2 · 1:05](Clase%201_archivos/captura-02-1m05s.png)"));
     // La que no se pudo leer no se enlaza.
     assert!(!md.contains("Captura 1 ·"));
+}
+
+#[test]
+fn la_agenda_va_con_su_estado() {
+    use crate::temas::{Tema, por_jev};
+    let mut c = ejemplo();
+    let mut t = vec![
+        Tema::nuevo("t1", "Presupuesto <2027>"),
+        Tema::nuevo("t2", "Viaje"),
+    ];
+    por_jev(&mut t, "t1", 65_000, 0.9);
+    c.temas = t;
+    let h = html(&c, &Rotulos::default(), &incrustar);
+    assert!(h.contains("Temas de la reunión"));
+    assert!(h.contains("1/2"));
+    assert!(h.contains("Presupuesto &lt;2027&gt;"));
+    assert!(h.contains("class=\"tema hecho\" data-ms=\"65000\""));
+    assert!(h.contains("Sin tratar"));
+    let md = markdown(&c, &Rotulos::default(), &|_| None);
+    assert!(md.contains("- [x] Presupuesto"));
+    assert!(md.contains("· 1:05"));
+    assert!(md.contains("- [ ] Viaje — *Sin tratar*"));
+    // Sin temas, la pagina es la de siempre.
+    c.temas.clear();
+    assert!(!html(&c, &Rotulos::default(), &incrustar).contains("lista-temas\""));
 }
