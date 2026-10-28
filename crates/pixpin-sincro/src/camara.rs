@@ -162,6 +162,23 @@ impl Anuncio {
     }
 }
 
+/// **La pregunta `camara_remota`** de quien conduce. Sola (`{"t":
+/// "camara_remota","reloj":t0}`) es la de siempre: «¿como va tu
+/// grabacion?». Con `suya` (28-oct-2026), quien pregunta **tambien graba**
+/// y dice como va la suya: el movil que graba, para que el PC le mande
+/// capturas. Va metida en `suya` y no suelta porque la peticion se lee
+/// tambien como una `Peticion` de sincronizar, cuyos `desde` y demas son
+/// otra cosa.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Pregunta {
+    pub t: String,
+    #[serde(skip_serializing_if = "es_cero")]
+    pub reloj: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suya: Option<Anuncio>,
+}
+
 /// **El desfase entre dos relojes, como NTP**: `t0` sale de aqui, `t1` es el
 /// reloj del otro al contestar, `t2` vuelve aqui. Lo que va adelantado el
 /// otro (negativo: atrasado), suponiendo que la ida y la vuelta tardan lo
@@ -525,10 +542,14 @@ impl<F: Read + Write> Conexion<F> {
         let t0 = ahora();
         enviar(
             &mut self.canal,
-            &Anuncio {
+            &Pregunta {
                 t: PETICION.into(),
                 reloj: t0,
-                ..mia.clone()
+                suya: Some(Anuncio {
+                    t: PETICION.into(),
+                    reloj: t0,
+                    ..mia.clone()
+                }),
             },
         )?;
         let r: Anuncio = leer(&mut self.canal)?;

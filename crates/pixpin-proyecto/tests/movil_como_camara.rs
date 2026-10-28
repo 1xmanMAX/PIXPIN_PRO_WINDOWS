@@ -721,3 +721,233 @@ fn un_clip_cortado_sigue_donde_se_quedo() {
         serde_json::json!(20 * S)
     );
 }
+
+/// **Fotos sin conexion, por su hora** (28-oct-2026): el movil no supo de
+/// la grabacion (sin red en la reunion) y sube luego sus fotos solo con su
+/// hora y su desfase. Un PC recien arrancado (sin nada en memoria) las pone
+/// en la clase guardada por su hora; la que cae fuera se niega y el movil la
+/// deja como una foto normal; la misma foto dos veces entra una.
+#[test]
+fn las_fotos_sin_conexion_entran_por_su_hora_en_la_clase_guardada() {
+    let _turno = turno();
+    let pc = pc("por-su-hora");
+    {
+        let mut c = pc.camaras.lock().unwrap();
+        c.codigo = "K7Q2".into();
+        c.almacen = Some((pc.raiz.clone(), hora_sin_repetir));
+    }
+    // Graba de 0 a 100 s con una pausa de 30 a 50.
+    a_las(0);
+    pc.camaras
+        .lock()
+        .unwrap()
+        .empezar("g-h", "Clase", ahora_pc(), 0);
+    a_las(30);
+    pc.camaras
+        .lock()
+        .unwrap()
+        .seguir_a(ahora_pc(), 30 * S, true);
+    a_las(50);
+    pc.camaras
+        .lock()
+        .unwrap()
+        .seguir_a(ahora_pc(), 30 * S, false);
+    a_las(100);
+    pc.camaras.lock().unwrap().acabar(ahora_pc());
+    let (proyecto, voz, carpeta) = guardar_la_clase(&pc.raiz, 80 * S);
+    let destino = Destino {
+        raiz: pc.raiz.clone(),
+        proyecto: proyecto.clone(),
+        voz: Some(voz.clone()),
+        carpeta: Some(carpeta.clone()),
+        aparato: "K7Q2".into(),
+        hora: hora_sin_repetir,
+    };
+    pc.camaras
+        .lock()
+        .unwrap()
+        .guardada(destino, Some(80 * S), ahora_pc());
+    // El reloj quedo en la nota.
+    let nota = leer(&pc.raiz, &proyecto)
+        .into_iter()
+        .find(|m| m.id == voz)
+        .unwrap();
+    let r = pixpin_proyecto::por_su_hora::RelojDeGrabacion::de(&nota.resto).unwrap();
+    assert_eq!(
+        (r.aparato.as_str(), r.inicio, r.fin),
+        ("K7Q2", PARED, PARED + 100 * S)
+    );
+    assert_eq!(r.pausas, vec![[PARED + 30 * S, PARED + 50 * S]]);
+
+    // Un PC recien arrancado: lo de memoria se fue.
+    {
+        let mut c = Camaras::nuevas(pc.raiz.join("cola-camara"), "Portatil");
+        c.codigo = "K7Q2".into();
+        c.almacen = Some((pc.raiz.clone(), hora_sin_repetir));
+        *pc.camaras.lock().unwrap() = c;
+    }
+    a_las(3600);
+    let (puerto, hilo) = escuchar(&pc, true);
+    let mut c = llamar(puerto);
+    let dir = pc.raiz.join("movil");
+    // Hecha a los 70 s del PC (el 50 de la grabacion), con el reloj del
+    // movil 7 s adelantado.
+    let foto = FotoDeCamara {
+        tomada_en: PARED + 70 * S + ADELANTO,
+        reloj: ADELANTO,
+        clave: "uid-foto-1".into(),
+        ..Default::default()
+    };
+    let ms = c
+        .mandar_foto(&fichero(&dir, "IMG_1.jpg", &jpeg(1)), "IMG_1.jpg", &foto)
+        .unwrap();
+    assert_eq!(ms, 50 * S);
+    // La misma otra vez (el movil no supo si llego): una sola.
+    let ms = c
+        .mandar_foto(&fichero(&dir, "IMG_1.jpg", &jpeg(1)), "IMG_1.jpg", &foto)
+        .unwrap();
+    assert_eq!(ms, 50 * S);
+    // Caso negativo: hecha una hora despues, fuera de la grabacion.
+    let e = c
+        .mandar_foto(
+            &fichero(&dir, "IMG_2.jpg", &jpeg(2)),
+            "IMG_2.jpg",
+            &FotoDeCamara {
+                tomada_en: PARED + 3600 * S,
+                reloj: ADELANTO,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("no cae en ninguna"), "{e}");
+    c.adios();
+    hilo.join().unwrap();
+
+    let mensajes = leer(&pc.raiz, &proyecto);
+    let fotos: Vec<&Mensaje> = mensajes
+        .iter()
+        .filter(|m| m.resto.contains_key("fotoUid"))
+        .collect();
+    assert_eq!(fotos.len(), 1, "la misma foto, una vez");
+    assert_eq!(
+        fotos[0].resto["enGrabacion"]["ms"],
+        serde_json::json!(50 * S)
+    );
+    let nota = mensajes.iter().find(|m| m.id == voz).unwrap();
+    assert_eq!(
+        clase::capturas_de(&nota.resto),
+        vec![(50 * S, fotos[0].id.clone())]
+    );
+    let car = mensajes
+        .iter()
+        .find(|m| m.id == carpeta)
+        .and_then(Carpeta::de_mensaje)
+        .unwrap();
+    assert!(car.contiene(&fotos[0].id));
+}
+
+/// **De la PC a la grabacion del movil** (28-oct-2026): el movil graba y se
+/// lo dice al PC (`camara_remota` con su `grabacion`, el mismo cable en el
+/// otro sentido); el PC le manda una captura de su pantalla con el minuto de
+/// la grabacion del movil, y el movil (aqui, el mismo codigo de quien graba
+/// que usa el PC) la pone en su sitio.
+#[test]
+fn el_pc_manda_capturas_a_la_grabacion_del_movil() {
+    let _turno = turno();
+    let pc = pc("al-movil");
+    // El movil, que graba: el mismo `Camaras` con su reloj (adelantado).
+    let movil = Arc::new(Mutex::new(Camaras::nuevas(
+        pc.raiz.join("cola-del-movil"),
+        "Telefono",
+    )));
+    a_las(0);
+    movil
+        .lock()
+        .unwrap()
+        .empezar("m-1", "Clase del movil", ahora_movil(), 0);
+    a_las(20);
+    // El movil se lo dice al PC.
+    let (puerto, hilo) = escuchar(&pc, true);
+    let mut c = llamar(puerto);
+    let mio = movil.lock().unwrap().anuncio(ahora_movil()).unwrap();
+    let (_, adelanto) = c.anunciar_la_mia(&mio, &ahora_movil).unwrap();
+    assert_eq!(adelanto, ADELANTO);
+    c.adios();
+    hilo.join().unwrap();
+    let ajena = pc
+        .camaras
+        .lock()
+        .unwrap()
+        .ajena(ahora_pc())
+        .cloned()
+        .unwrap();
+    assert_eq!(ajena.anuncio.grabacion, "m-1");
+    assert_eq!(ajena.de_id, "tel");
+    // El desfase de una sola ida: lo que va adelantado el movil.
+    assert_eq!(ajena.desfase, ADELANTO);
+    // Caso negativo: pasado el rato sin oirlo, ya no hay grabacion ajena.
+    assert!(
+        pc.camaras
+            .lock()
+            .unwrap()
+            .ajena(ahora_pc() + 91 * S)
+            .is_none()
+    );
+
+    // A los 35 s el PC hace una captura: el 35 de la grabacion del movil.
+    a_las(35);
+    let foto = ajena.foto(ahora_pc(), "pc-captura-1");
+    assert_eq!(foto.ms, Some(35 * S));
+    assert_eq!(foto.reloj, -ADELANTO);
+    // El movil la recibe con su `Respondedor` (el de Android hace lo mismo).
+    let escucha = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let puerto = escucha.local_addr().unwrap().port();
+    let raiz = pc.raiz.clone();
+    let suyas = movil.clone();
+    let hilo = std::thread::spawn(move || {
+        let (flujo, _) = escucha.accept().unwrap();
+        let disco = DiscoPc::nuevo(&raiz);
+        let fabrica = |otro: &m::Aparato| -> Box<dyn Recibe> {
+            Box::new(Recepcion {
+                camaras: suyas.clone(),
+                de_id: otro.id.clone(),
+                de_nombre: otro.nombre.clone(),
+                ahora: ahora_movil,
+            })
+        };
+        let r = Respondedor {
+            disco: &disco,
+            estado: &|_| {},
+            ahora: &ahora_movil,
+            mi_puerto: 0,
+            al_saludar: &|_, _| {},
+            suelto: Some(&fabrica),
+        };
+        r.atender_con(flujo, [5; 32], None, &pixpin_sincro::CAPACIDADES_CON_CAMARA)
+            .unwrap();
+    });
+    let yo = ficha("pc", "Portatil", "A");
+    let hola = m::Hola {
+        yo: al_cable(&yo),
+        miembros: vec![al_cable(&yo), al_cable(&ficha("tel", "Telefono", "B"))],
+        reloj: ahora_pc(),
+        capacidades: vec![camara::CAPACIDAD.into()],
+        ..Default::default()
+    };
+    let flujo = TcpStream::connect(("127.0.0.1", puerto)).unwrap();
+    let mut c = Conexion::abrir(flujo, CODIGO, [6; 32], hola).unwrap();
+    let png = b"\x89PNG\r\n\x1a\n0000000000000000".to_vec();
+    let ms = c
+        .mandar_foto(
+            &fichero(&pc.raiz.join("pc"), "Captura.png", &png),
+            "Captura.png",
+            &foto,
+        )
+        .unwrap();
+    assert_eq!(ms, 35 * S);
+    c.adios();
+    hilo.join().unwrap();
+    let nuevas = movil.lock().unwrap().tomar_nuevas();
+    assert_eq!(nuevas.len(), 1);
+    assert_eq!((nuevas[0].ms, nuevas[0].de.as_str()), (35 * S, "Portatil"));
+}

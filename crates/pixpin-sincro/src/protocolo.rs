@@ -527,11 +527,14 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
     ) -> Resultado<()> {
         let mut quien = self.suelto.map(|fabrica| fabrica(otro));
         let ahora = (self.ahora)();
-        let suyo: Option<crate::camara::Anuncio> = serde_json::from_slice(cruda).ok();
+        let pregunta: Option<crate::camara::Pregunta> = serde_json::from_slice(cruda).ok();
         let anuncio = match quien.as_mut().and_then(|q| q.camara()) {
             Some(c) => {
-                if let Some(a) = suyo.filter(|a| !a.grabacion.is_empty()) {
-                    let desfase = if a.reloj > 0 { a.reloj - ahora } else { 0 };
+                if let Some(p) = pregunta
+                    && let Some(a) = p.suya.filter(|a| !a.grabacion.is_empty())
+                {
+                    let suyo = if a.reloj > 0 { a.reloj } else { p.reloj };
+                    let desfase = if suyo > 0 { suyo - ahora } else { 0 };
                     c.anuncio_ajeno(otro, &a, desfase);
                 }
                 crate::camara::Anuncio {

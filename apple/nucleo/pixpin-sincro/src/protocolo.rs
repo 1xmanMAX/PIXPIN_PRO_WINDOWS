@@ -513,18 +513,36 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
     /// aparato, con su reloj para que el otro mida el desfase. Lo contesta
     /// quien atiende los sueltos ([`crate::al_lienzo::Recibe::camara`]); sin
     /// el, como un aparato de antes. Solo devuelve error si la red se corto.
+    ///
+    /// **En el otro sentido** (28-oct-2026): si la peticion trae una
+    /// `grabacion`, es el otro diciendo como va **la suya** (el movil que
+    /// graba y deja que el PC le mande capturas): se le pasa a quien atiende
+    /// ([`crate::camara::Camara::anuncio_ajeno`]) con el desfase de su reloj
+    /// medido de una vez (su `reloj` menos el de aqui), y se contesta igual.
     fn atender_camara<F: Read + Write>(
         &self,
         canal: &mut Canal<F>,
         otro: &Aparato,
+        cruda: &[u8],
     ) -> Resultado<()> {
         let mut quien = self.suelto.map(|fabrica| fabrica(otro));
+        let ahora = (self.ahora)();
+        let pregunta: Option<crate::camara::Pregunta> = serde_json::from_slice(cruda).ok();
         let anuncio = match quien.as_mut().and_then(|q| q.camara()) {
-            Some(c) => crate::camara::Anuncio {
-                t: crate::camara::PETICION.into(),
-                reloj: (self.ahora)(),
-                ..c.anuncio().unwrap_or_else(crate::camara::Anuncio::nada)
-            },
+            Some(c) => {
+                if let Some(p) = pregunta
+                    && let Some(a) = p.suya.filter(|a| !a.grabacion.is_empty())
+                {
+                    let suyo = if a.reloj > 0 { a.reloj } else { p.reloj };
+                    let desfase = if suyo > 0 { suyo - ahora } else { 0 };
+                    c.anuncio_ajeno(otro, &a, desfase);
+                }
+                crate::camara::Anuncio {
+                    t: crate::camara::PETICION.into(),
+                    reloj: ahora,
+                    ..c.anuncio().unwrap_or_else(crate::camara::Anuncio::nada)
+                }
+            }
             None => crate::camara::Anuncio {
                 error: Some(format!("No sé qué es «{}»", crate::camara::PETICION)),
                 ..Default::default()
@@ -684,7 +702,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                 continue;
             }
             if p.t == crate::camara::PETICION {
-                self.atender_camara(canal, otro)?;
+                self.atender_camara(canal, otro, &cruda)?;
                 continue;
             }
             if p.t == "adios" {
@@ -1319,7 +1337,7 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             // La camara del movil tampoco toca lo sincronizado.
             if con_sueltos && p.t == crate::camara::PETICION {
-                if self.atender_camara(canal, otro).is_err() {
+                if self.atender_camara(canal, otro, &cruda).is_err() {
                     break;
                 }
                 continue;

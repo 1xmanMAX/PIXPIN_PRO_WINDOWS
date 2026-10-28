@@ -156,6 +156,45 @@ pub struct Camaras {
     /// hora sin repetir de los mensajes nuevos: sin ello, solo las de
     /// memoria.
     pub almacen: Option<(PathBuf, fn() -> i64)>,
+    /// La grabacion de otro aparato que admite lo de aqui (ver [`Ajena`]).
+    ajena: Option<Ajena>,
+}
+
+/// Lo que dura una grabacion ajena sin que su aparato vuelva a decir como
+/// va: pasado esto se da por perdida (el movil se fue de la red).
+pub const AJENA_CADUCA_MS: i64 = 90_000;
+
+/// **La grabacion de otro aparato** (28-oct-2026, «De la PC a la grabación
+/// del móvil»): el movil graba y este equipo le puede mandar capturas de su
+/// pantalla con su minuto. Lo que dijo su anuncio, su reloj pasado al de
+/// aqui y cuando se oyo por ultima vez.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ajena {
+    pub de_id: String,
+    pub de_nombre: String,
+    pub anuncio: Anuncio,
+    /// Su reloj, en el de aqui.
+    pub reloj: Reloj,
+    /// Lo que va adelantado su reloj sobre el de aqui.
+    pub desfase: i64,
+    pub visto: i64,
+}
+
+impl Ajena {
+    /// **Lo que lleva una captura hecha aqui en `ahora`** para su
+    /// grabacion: su minuto (en su grabacion), la hora de aqui y lo que va
+    /// adelantado el reloj de aqui sobre el suyo, para que la ponga por su
+    /// hora si prefiere.
+    pub fn foto(&self, ahora: i64, clave: &str) -> camara::FotoDeCamara {
+        camara::FotoDeCamara {
+            grabacion: self.anuncio.grabacion.clone(),
+            ms: Some(self.reloj.ms_en(ahora)),
+            tomada_en: ahora,
+            reloj: -self.desfase,
+            clave: clave.to_string(),
+            ..Default::default()
+        }
+    }
 }
 
 impl Camaras {
@@ -171,7 +210,42 @@ impl Camaras {
             nuevas: Vec::new(),
             codigo: String::new(),
             almacen: None,
+            ajena: None,
         }
+    }
+
+    /// **El otro dijo como va su grabacion** (`camara_remota` con su
+    /// `grabacion`): se apunta con su reloj pasado al de aqui. Devuelve si
+    /// es nueva (otra grabacion, o la primera): para sacar el boton.
+    pub fn apuntar_ajena(
+        &mut self,
+        de_id: &str,
+        de_nombre: &str,
+        a: &Anuncio,
+        desfase: i64,
+        ahora: i64,
+    ) -> bool {
+        let nueva = self
+            .ajena
+            .as_ref()
+            .is_none_or(|x| x.anuncio.grabacion != a.grabacion || x.de_id != de_id);
+        self.ajena = Some(Ajena {
+            de_id: de_id.to_string(),
+            de_nombre: de_nombre.to_string(),
+            anuncio: a.clone(),
+            reloj: Reloj::del_anuncio(a, desfase, ahora),
+            desfase,
+            visto: ahora,
+        });
+        nueva && a.grabando()
+    }
+
+    /// **La grabacion ajena viva**: la que se oyo hace menos de
+    /// [`AJENA_CADUCA_MS`] y sigue grabando. `None` si no hay o acabo.
+    pub fn ajena(&self, ahora: i64) -> Option<&Ajena> {
+        self.ajena
+            .as_ref()
+            .filter(|a| a.anuncio.grabando() && ahora - a.visto <= AJENA_CADUCA_MS)
     }
 
     /// **El reloj de la grabacion `g` como va en la nota** (hora de pared de
@@ -785,6 +859,11 @@ impl camara::Camara for Recepcion {
         let ahora = (self.ahora)();
         let (id, nombre) = (self.de_id.clone(), self.de_nombre.clone());
         self.con(|c| c.recibir(p, fichero, &id, &nombre, ahora))
+    }
+
+    fn anuncio_ajeno(&mut self, de: &pixpin_sincro::mensajes::Aparato, a: &Anuncio, desfase: i64) {
+        let ahora = (self.ahora)();
+        self.con(|c| c.apuntar_ajena(&de.id, &de.nombre, a, desfase, ahora));
     }
 }
 

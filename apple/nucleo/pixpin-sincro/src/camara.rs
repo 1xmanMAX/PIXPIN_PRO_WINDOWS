@@ -162,6 +162,23 @@ impl Anuncio {
     }
 }
 
+/// **La pregunta `camara_remota`** de quien conduce. Sola (`{"t":
+/// "camara_remota","reloj":t0}`) es la de siempre: «¿como va tu
+/// grabacion?». Con `suya` (28-oct-2026), quien pregunta **tambien graba**
+/// y dice como va la suya: el movil que graba, para que el PC le mande
+/// capturas. Va metida en `suya` y no suelta porque la peticion se lee
+/// tambien como una `Peticion` de sincronizar, cuyos `desde` y demas son
+/// otra cosa.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Pregunta {
+    pub t: String,
+    #[serde(skip_serializing_if = "es_cero")]
+    pub reloj: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suya: Option<Anuncio>,
+}
+
 /// **El desfase entre dos relojes, como NTP**: `t0` sale de aqui, `t1` es el
 /// reloj del otro al contestar, `t2` vuelve aqui. Lo que va adelantado el
 /// otro (negativo: atrasado), suponiendo que la ida y la vuelta tardan lo
@@ -273,6 +290,43 @@ impl Reloj {
             .map(|(d, h)| [*d, h.unwrap_or(0)])
             .collect()
     }
+
+    /// **El reloj de la grabacion de otro**, pasado al reloj de aqui: lo que
+    /// dice su [`Anuncio`] (`desde`, `pausas`, `duracion`, en su reloj) menos
+    /// lo que va adelantado el suyo (`desfase`). Es lo que hace el PC con la
+    /// grabacion del movil para mandarle capturas con su minuto (28-oct-2026,
+    /// «De la PC a la grabación del móvil»). Sin `desde`, con lo que llevaba
+    /// (`ms_actual`) al recibirlo (`ahora`).
+    pub fn del_anuncio(a: &Anuncio, desfase: i64, ahora: i64) -> Reloj {
+        let mut r = if a.desde > 0 {
+            Reloj {
+                desde: a.desde - desfase,
+                pausas: a
+                    .pausas
+                    .iter()
+                    .map(|[d, h]| (d - desfase, (*h != 0).then_some(h - desfase)))
+                    .collect(),
+                fin: None,
+            }
+        } else {
+            let mut r = Reloj::empezar(ahora, a.ms_actual);
+            if a.en_pausa {
+                r.pausar(ahora);
+            }
+            r
+        };
+        if !a.activa && !a.grabacion.is_empty() {
+            // Acabo: el fin, donde suma lo que duro.
+            let pausado: i64 = r
+                .pausas
+                .iter()
+                .filter_map(|(d, h)| h.map(|h| (h - d).max(0)))
+                .sum();
+            let fin = r.desde + a.duracion.max(0) + pausado;
+            r.acabar(fin);
+        }
+        r
+    }
 }
 
 /// **El minuto de la grabacion de una foto** que llega a quien graba, con el
@@ -330,8 +384,12 @@ pub fn es_clip(p: &Suelto) -> bool {
 
 /// **Antes del «vale»**: que sea para una grabacion, una foto de un tipo
 /// que se sabe ensenar y de un tamano razonable. `Err` con el motivo.
+///
+/// **Por su hora** (28-oct-2026): una foto hecha sin conexion no sabe de que
+/// grabacion es; con su hora (`tomada_en`) vale igual y quien graba decide
+/// si cae en alguna (`pixpin_proyecto::por_su_hora`).
 pub fn aceptar(p: &Suelto) -> Result<(), String> {
-    if p.grabacion.trim().is_empty() {
+    if p.grabacion.trim().is_empty() && p.tomada_en <= 0 {
         return Err("La foto no dice de qué grabación es".into());
     }
     if !TIPOS.contains(&p.mime.as_str()) {
@@ -419,6 +477,12 @@ pub trait Camara {
     /// La foto llego entera a `fichero` (temporal: se copia o se mueve).
     /// Devuelve el milisegundo de la grabacion donde quedo.
     fn guardar_foto(&mut self, p: &Suelto, fichero: &Path) -> Result<i64, String>;
+    /// **La grabacion del otro** (28-oct-2026, «De la PC a la grabación del
+    /// móvil»): quien pregunta `camara_remota` con una `grabacion` dice como
+    /// va la suya. `desfase`: lo que va adelantado su reloj (medido de una
+    /// vez, sin la vuelta). Sin hacer nada, como un aparato de antes.
+    fn anuncio_ajeno(&mut self, _de: &crate::mensajes::Aparato, _anuncio: &Anuncio, _desfase: i64) {
+    }
 }
 
 // ------------------------------------------------------------ el movil
@@ -462,6 +526,43 @@ impl<F: Read + Write> Conexion<F> {
     /// Si el otro sabe de la camara ([`CAPACIDAD`] en su `hola`).
     pub fn sabe_de_camara(&self) -> bool {
         self.capacidades.iter().any(|c| c == CAPACIDAD)
+    }
+
+    /// **Quien graba avisa de la suya al otro** (28-oct-2026: el movil que
+    /// graba, al PC que le puede mandar capturas). Es la misma `camara_remota`
+    /// que [`Conexion::preguntar_camara`], pero con la grabacion de aqui: el
+    /// otro la apunta ([`Camara::anuncio_ajeno`]) y contesta con la suya.
+    /// Devuelve su anuncio y lo que va adelantado el reloj de aqui sobre el
+    /// suyo.
+    pub fn anunciar_la_mia(
+        &mut self,
+        mia: &Anuncio,
+        ahora: &dyn Fn() -> i64,
+    ) -> Result<(Anuncio, i64), ErrorAlLienzo> {
+        let t0 = ahora();
+        enviar(
+            &mut self.canal,
+            &Pregunta {
+                t: PETICION.into(),
+                reloj: t0,
+                suya: Some(Anuncio {
+                    t: PETICION.into(),
+                    reloj: t0,
+                    ..mia.clone()
+                }),
+            },
+        )?;
+        let r: Anuncio = leer(&mut self.canal)?;
+        let t2 = ahora();
+        if let Some(e) = r.error.clone() {
+            return Err(crate::al_lienzo::error_remoto(e));
+        }
+        let mio_sobre_el_suyo = if r.reloj > 0 {
+            -desfase(t0, r.reloj, t2)
+        } else {
+            0
+        };
+        Ok((r, mio_sobre_el_suyo))
     }
 
     /// **El movil pregunta al PC como va su grabacion** y mide el desfase
@@ -720,9 +821,14 @@ mod pruebas {
         assert!(aceptar(&p).is_err());
         p.mime = "image/jpeg".into();
         p.bytes = 1234;
-        // Casos negativos: sin grabacion, un PDF, un HEIC, vacia, enorme.
+        // Casos negativos: sin grabacion (ni hora), un PDF, un HEIC, vacia,
+        // enorme.
         p.grabacion.clear();
         assert!(aceptar(&p).is_err());
+        // Sin grabacion pero con su hora (hecha sin conexion): vale.
+        p.tomada_en = PARED;
+        assert_eq!(aceptar(&p), Ok(()));
+        p.tomada_en = 0;
         p.grabacion = "g1".into();
         for (mime, bytes) in [
             ("application/pdf", 1234),
@@ -775,6 +881,44 @@ mod pruebas {
         let ms = ms_de_la_foto(&r, ahora, None, &clip, None);
         assert_eq!(ms, 50 * S);
         assert_eq!(duracion_del_clip(&clip, ms, r.duracion(ahora)), 5 * S);
+    }
+
+    #[test]
+    fn el_reloj_del_movil_pasado_al_del_pc() {
+        // El movil va 5 s adelantado; empezo a grabar (en su reloj) en
+        // PARED+5 s, con una pausa de 10 s.
+        let a = Anuncio {
+            grabacion: "m1".into(),
+            activa: true,
+            desde: PARED + 5 * S,
+            pausas: vec![[PARED + 25 * S, PARED + 35 * S]],
+            ..Anuncio::nada()
+        };
+        let r = Reloj::del_anuncio(&a, 5 * S, PARED + 60 * S);
+        assert_eq!(r.desde, PARED);
+        assert_eq!(r.pausas, vec![(PARED + 20 * S, Some(PARED + 30 * S))]);
+        // Una captura del PC a sus +40 s es del minuto 30 del movil.
+        assert_eq!(r.ms_en(PARED + 40 * S), 30 * S);
+        // Sin `desde` (un movil que solo dice por donde va): con `ms_actual`.
+        let a = Anuncio {
+            grabacion: "m1".into(),
+            activa: true,
+            ms_actual: 12 * S,
+            ..Anuncio::nada()
+        };
+        let r = Reloj::del_anuncio(&a, 0, PARED);
+        assert_eq!(r.ms_en(PARED + 3 * S), 15 * S);
+        // Acabada: no pasa de lo que duro.
+        let a = Anuncio {
+            grabacion: "m1".into(),
+            activa: false,
+            desde: PARED,
+            duracion: 50 * S,
+            ..Anuncio::nada()
+        };
+        let r = Reloj::del_anuncio(&a, 0, PARED + 999 * S);
+        assert!(r.acabado());
+        assert_eq!(r.ms_en(PARED + 999 * S), 50 * S);
     }
 
     #[test]
