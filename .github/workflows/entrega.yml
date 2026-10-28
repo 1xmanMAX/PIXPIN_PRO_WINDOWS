@@ -1,0 +1,64 @@
+# La entrega para instalar: compila PixPin Max en Windows (release) y deja un
+# ZIP con los ejecutables y un «Instalar.cmd», como artefacto del trabajo y,
+# si se pide, como version publicada en Releases. A mano (Actions → Entrega →
+# Run workflow) o con una etiqueta `v*`.
+name: Entrega
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Etiqueta de la version (p. ej. v0.5.0). Vacio: solo el artefacto"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Compilar (release)
+        run: cargo build --release -p pixpin -p pixpin-aligerar -p pixpin-lanzador -p pixpin-puente -p pixpin-mcp
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          $dir = "PixPinMax"
+          New-Item -ItemType Directory $dir | Out-Null
+          foreach ($exe in 'pixpinmax','pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
+            Copy-Item "target\release\$exe.exe" $dir
+          }
+          # Instalar.cmd: copia todo a %LOCALAPPDATA%\Programs\PixPinMax (el
+          # mismo sitio fijo que herramientas\instalar.ps1, para que el
+          # arranque con Windows apunte siempre a la ultima) y la abre.
+          @'
+          @echo off
+          set "DEST=%LOCALAPPDATA%\Programs\PixPinMax"
+          taskkill /im pixpinmax.exe /f >nul 2>&1
+          if not exist "%DEST%" mkdir "%DEST%"
+          copy /y "%~dp0*.exe" "%DEST%\" >nul
+          start "" "%DEST%\pixpinmax.exe"
+          echo PixPin Max instalado en %DEST%
+          '@ | Set-Content -Encoding ascii "$dir\Instalar.cmd"
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          $zip = "PixPinMax-windows-x64-$sha.zip"
+          Compress-Archive -Path "$dir\*" -DestinationPath $zip
+          "ZIP=$zip" | Out-File -Append $env:GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PixPinMax-windows-x64
+          path: ${{ env.ZIP }}
+      - name: Publicar en Releases
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = if ("${{ inputs.version }}") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
+          gh release create $tag $env:ZIP --target "${{ github.sha }}" --title "PixPin Max $tag" --notes "Descomprime el ZIP y ejecuta Instalar.cmd (o pixpinmax.exe directamente)."
