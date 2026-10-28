@@ -536,6 +536,26 @@ pub fn rotulo_de(nombre: &str) -> String {
             None => "📄 pasando la hoja al lienzo…".to_string(),
         };
     }
+    // La web (28-oct): `abrir_pagina:ugr.es` mientras se baja cada pagina.
+    if let Some(resto) = nombre.strip_prefix(pixpin_ia::web::ABRIR) {
+        return match resto.strip_prefix(':').filter(|d| !d.is_empty()) {
+            Some(dominio) => {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("dominio", dominio.to_string());
+                textos().t_args("asistente-web-leyendo", &args)
+            }
+            None => textos().t("asistente-web-leyendo-pagina"),
+        };
+    }
+    if matches!(
+        nombre,
+        pixpin_ia::web::BUSCAR | pixpin_ia::nube::claude::BUSCAR_EN_LA_WEB
+    ) {
+        return textos().t("asistente-web-buscando");
+    }
+    if nombre == pixpin_ia::nube::claude::LEER_LA_WEB {
+        return textos().t("asistente-web-leyendo-pagina");
+    }
     match nombre {
         "repasar" => "🔎 repasando el pedido…",
         "jefe:planear" => "🧭 el jefe está planeando…",
@@ -548,11 +568,21 @@ pub fn rotulo_de(nombre: &str) -> String {
         pixpin_ia::contexto::BUSCAR_HISTORIAL => "🗂️ buscando en la conversación…",
         CALCAR => "🖼️ calcando la imagen…",
         AYUDA => "📖 mirando la ayuda…",
-        pixpin_ia::nube::claude::BUSCAR_EN_LA_WEB => "🌐 buscando en la web…",
-        pixpin_ia::nube::claude::LEER_LA_WEB => "🌐 leyendo la página…",
         _ => "⚙️ trabajando…",
     }
     .to_string()
+}
+
+/// Los textos de los rotulos de la web, en el idioma del sistema (el chat
+/// vivo no recibe el catalogo de la ventana).
+fn textos() -> &'static pixpin_store::Catalogo {
+    static TEXTOS: std::sync::OnceLock<pixpin_store::Catalogo> = std::sync::OnceLock::new();
+    TEXTOS.get_or_init(|| {
+        pixpin_store::Catalogo::nuevo(pixpin_store::resolver_idioma(
+            &pixpin_shell::entorno::locale_del_sistema(),
+            pixpin_store::ajustes::PreferenciaIdioma::Sistema,
+        ))
+    })
 }
 
 impl EnVivo {
