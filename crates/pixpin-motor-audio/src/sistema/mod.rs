@@ -11,7 +11,19 @@ pub(crate) mod proceso;
 use std::path::Path;
 
 use crate::ErrorMotor;
-use crate::plataforma::{Pedido, Sistema, Tarea};
+use crate::plataforma::{Pedido, SalidaAac, Sistema, Tarea};
+use crate::respaldo::{self, Wav};
+
+/// El `.m4a` de un respaldo WAV ya leido (ver [`crate::rehacer_m4a`]), en
+/// el hilo que llama. Un segundo de sonido por vuelta.
+pub(crate) fn rehacer_m4a(wav: &Path, w: &Wav, destino: &Path) -> Result<(), ErrorMotor> {
+    let mut salida = m4a::Escritor::abrir(destino, w.muestreo, w.canales)?;
+    let escrito = respaldo::recorrer(wav, w, w.muestreo as usize, |m| salida.escribir(m));
+    // Se cierra siempre: lo escrito hasta un fallo queda legible.
+    let cerrado = salida.cerrar();
+    escrito?;
+    cerrado
+}
 
 /// **El sistema Windows**: WASAPI para capturar, Media Foundation para el
 /// AAC, MMCSS para la prioridad y el QPC como reloj.

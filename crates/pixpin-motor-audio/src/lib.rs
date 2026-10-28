@@ -36,6 +36,7 @@ pub mod pcm;
 pub mod plataforma;
 pub mod reloj;
 pub mod remuestreo;
+pub mod respaldo;
 pub mod toma;
 
 mod motor;
@@ -49,6 +50,35 @@ pub use pcm::{BloquePcm, Receptor, SinBloque, Suscripcion, suscripcion};
 pub use motor::{CAPACIDAD_AAC, MotorAudio, Resumen, SEGUNDOS_DE_ANILLO};
 #[cfg(windows)]
 pub use sistema::aparatos::{Aparato, microfonos};
+
+/// **Vuelve a hacer el `.m4a` desde un respaldo WAV** ([`respaldo`]): lo
+/// que queda de una grabacion cortada (la aplicacion murio, se fue la luz).
+/// Escribe `destino` (AAC-LC en MPEG-4, como siempre) y devuelve lo que dura
+/// en milisegundos. Lento lo justo: el codificador AAC de Windows va muy por
+/// encima del tiempo real (una hora en unos pocos segundos).
+///
+/// Fuera de Windows no hay codificador: [`ErrorMotor::SinCodificadorAac`].
+pub fn rehacer_m4a(wav: &std::path::Path, destino: &std::path::Path) -> Result<i64, ErrorMotor> {
+    let w = respaldo::leer(wav).map_err(|_| ErrorMotor::Fichero {
+        ruta: wav.display().to_string(),
+    })?;
+    if !MUESTREOS.contains(&w.muestreo) || !(1..=2).contains(&w.canales) {
+        return Err(ErrorMotor::SalidaNoValida {
+            canales: w.canales,
+            muestreo: w.muestreo,
+        });
+    }
+    #[cfg(windows)]
+    {
+        sistema::rehacer_m4a(wav, &w, destino)?;
+        Ok(w.duracion_ms())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = destino;
+        Err(ErrorMotor::SinCodificadorAac)
+    }
+}
 
 /// Lo que puede salir mal.
 ///
@@ -81,6 +111,16 @@ pub enum ErrorMotor {
     HiloCaido,
     #[error("Windows fallo al {paso} (0x{codigo:08X})")]
     Windows { paso: &'static str, codigo: i32 },
+}
+
+/// Leer el respaldo WAV ([`respaldo::recorrer`]) es lo unico que da un
+/// fallo de `std::io` al motor.
+impl From<std::io::Error> for ErrorMotor {
+    fn from(e: std::io::Error) -> ErrorMotor {
+        ErrorMotor::Fichero {
+            ruta: format!("el respaldo de la grabacion ({e})"),
+        }
+    }
 }
 
 impl From<formato::ErrorFormato> for ErrorMotor {
