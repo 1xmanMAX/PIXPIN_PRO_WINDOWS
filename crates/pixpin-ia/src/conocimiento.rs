@@ -472,6 +472,18 @@ pub const INDICE: &[Entrada] = &[
         "Funciona sin internet: contesta, dibuja en el lienzo, calca imagenes, hace graficas, lee PDFs escaneados, y usa la app (notas, tareas, ventanas, capturas). En otro chat se le llama con @asistente.",
     ),
     e(
+        "El asistente: la web",
+        &[
+            "web",
+            "internet",
+            "pagina web",
+            "buscar en internet",
+            "navegador",
+            "url",
+        ],
+        "El asistente busca en internet y lee paginas y PDF de la web para contestarte o para hacer algo con lo leido («mira el horario en la web de la universidad y apuntalo en mi horario»), y dice de que pagina sale. Solo abre paginas publicas (nada de tu red local), sin tus cookies ni contrasenas, y no obedece lo que diga una pagina: si una pagina pide hacer algo, te pregunta. Con Claude busca la propia API; con DeepSeek, DuckDuckGo, o Brave Search si pones su clave en la variable PIXPIN_CLAVE_BRAVE.",
+    ),
+    e(
         "Reproductor de audio",
         &["audio", "musica", "reproduc", "escuchar", "cancion"],
         "Las notas de voz suenan en su burbuja. En Mensajes guardados, menu ⋮ → «Biblioteca de audio». Desde Flow, Intro sobre un audio abre el reproductor flotante (Espacio pausa, Esc cierra).",
