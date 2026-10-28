@@ -99,6 +99,10 @@ pub struct Fila {
     /// Los enlaces de sus imagenes (`pixpin:files/…`), en orden. Se
     /// resuelven con [`ruta_de_imagen`].
     pub imagenes: Vec<String>,
+    /// Su prioridad segun su contexto (Jev, 28-oct-2026,
+    /// `jev::urgencia`). `None`: sin Jev, o aun no se sabe; entonces todo
+    /// va como siempre.
+    pub prioridad: Option<pixpin_typesafe::urgencia::Prioridad>,
 }
 
 /// Una lista de tareas de un chat.
@@ -148,11 +152,20 @@ impl Lista {
     }
 }
 
-/// Como se ordena lo pendiente: primero lo que tiene fecha, de la mas vieja
-/// a la mas nueva; detras lo que no la tiene. A igualdad, el orden del
-/// documento, que es el que el usuario le dio en el chat.
-pub fn orden_de_pendiente(f: &Fila) -> (bool, Option<mini::Fecha>, usize) {
-    (f.creada.is_none(), f.creada, f.indice)
+/// Como se ordena lo pendiente: con Jev, primero por su prioridad (urgente,
+/// alta, normal, baja; lo que aun no se sabe cuenta como normal); luego lo
+/// que tiene fecha, de la mas vieja a la mas nueva, y detras lo que no la
+/// tiene. A igualdad, el orden del documento, que es el que el usuario le
+/// dio en el chat. Sin Jev todas son «normal» y el orden es el de siempre.
+pub fn orden_de_pendiente(f: &Fila) -> (u8, bool, Option<mini::Fecha>, usize) {
+    use pixpin_typesafe::urgencia::Prioridad;
+    let rango = match f.prioridad.unwrap_or(Prioridad::Normal) {
+        Prioridad::Urgente => 0,
+        Prioridad::Alta => 1,
+        Prioridad::Normal => 2,
+        Prioridad::Baja => 3,
+    };
+    (rango, f.creada.is_none(), f.creada, f.indice)
 }
 
 /// Las tareas de un documento, con su texto partido de su fecha.
@@ -170,6 +183,7 @@ pub fn filas_de(documento: &str) -> Vec<Fila> {
                 creada,
                 hecha: t.hecha,
                 crudo: t.texto,
+                prioridad: None,
             }
         })
         .collect()

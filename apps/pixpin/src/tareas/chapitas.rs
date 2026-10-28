@@ -23,6 +23,8 @@ const HUECO: f32 = 6.0;
 /// pin de la tarea).
 pub const ROJO: Color = hex(0xe5534b);
 pub const AMBAR: Color = hex(0xe8a33d);
+/// La prioridad «baja» de Jev.
+const GRIS: Color = hex(0x8b949e);
 /// La letra de una etiqueta: el azul claro de las fichas de la caja.
 const AZUL_LETRA: Color = hex(0x9cc4f0);
 
@@ -32,6 +34,16 @@ pub fn rotulo(c: &Chapa, textos: &Catalogo) -> String {
         Chapa::Urgencia(Urgencia::MuyUrgente) => textos.t("tareas-muy-urgente"),
         Chapa::Urgencia(_) => textos.t("tareas-urgente"),
         Chapa::Etiqueta(e) => format!("#{e}"),
+        // La de Jev lleva su chispa: no es una marca del usuario.
+        Chapa::Prioridad(p) => {
+            use pixpin_typesafe::urgencia::Prioridad;
+            let clave = match p {
+                Prioridad::Urgente => "tareas-prioridad-urgente",
+                Prioridad::Alta => "tareas-prioridad-alta",
+                Prioridad::Normal | Prioridad::Baja => "tareas-prioridad-baja",
+            };
+            format!("✦ {}", textos.t(clave))
+        }
     }
 }
 
@@ -56,6 +68,20 @@ fn colores(c: &Chapa, sobre: Sobre) -> (Color, Color) {
         (Chapa::Etiqueta(_), Sobre::Foto) => (negro(0.55), Color::BLANCO),
         (Chapa::Etiqueta(_), Sobre::Claro) => (negro(0.07), hex(0x1d5fa8)),
         (Chapa::Etiqueta(_), Sobre::Oscuro) => (blanco(0.08), AZUL_LETRA),
+        // Las de Jev, mas suaves que las marcas del usuario.
+        (Chapa::Prioridad(p), sobre) => {
+            use pixpin_typesafe::urgencia::Prioridad;
+            let color = match p {
+                Prioridad::Urgente => ROJO,
+                Prioridad::Alta => AMBAR,
+                Prioridad::Normal | Prioridad::Baja => GRIS,
+            };
+            match sobre {
+                Sobre::Foto => (negro(0.6), color),
+                Sobre::Claro => (con_alfa(color, 0.18), color),
+                Sobre::Oscuro => (con_alfa(color, 0.16), color),
+            }
+        }
     }
 }
 

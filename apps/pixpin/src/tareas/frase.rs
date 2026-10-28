@@ -78,11 +78,13 @@ pub fn marcas(texto: &str) -> Frase {
     pixpin_frase::tarea::marcas(&visible)
 }
 
-/// Una chapita de una tarea: su urgencia o una etiqueta.
+/// Una chapita de una tarea: su urgencia, una etiqueta o la prioridad que
+/// le dio Jev por su contexto (28-oct-2026).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chapa {
     Urgencia(Urgencia),
     Etiqueta(String),
+    Prioridad(pixpin_typesafe::urgencia::Prioridad),
 }
 
 impl Chapa {
@@ -92,6 +94,8 @@ impl Chapa {
         match self {
             Chapa::Urgencia(u) => u.marca().unwrap_or_default().to_string(),
             Chapa::Etiqueta(e) => format!("#{e}"),
+            // No esta en el texto: no se busca.
+            Chapa::Prioridad(_) => String::new(),
         }
     }
 }
@@ -138,6 +142,25 @@ pub fn a_la_vista(texto: &str, ahora: Option<Momento>) -> Vista {
         emos,
         chapas,
     }
+}
+
+/// **Lo mismo con la prioridad de Jev**: si el usuario no marco urgencia
+/// (lo suyo manda y ya tiene su chapita) y Jev dice urgente, alta o baja,
+/// su chapita va la primera. «Normal» no se ensena.
+pub fn a_la_vista_con(
+    texto: &str,
+    ahora: Option<Momento>,
+    prioridad: Option<pixpin_typesafe::urgencia::Prioridad>,
+) -> Vista {
+    use pixpin_typesafe::urgencia::Prioridad;
+    let mut v = a_la_vista(texto, ahora);
+    let marcada = v.chapas.iter().any(|c| matches!(c, Chapa::Urgencia(_)));
+    if let Some(p) = prioridad.filter(|p| *p != Prioridad::Normal)
+        && !marcada
+    {
+        v.chapas.insert(0, Chapa::Prioridad(p));
+    }
+    v
 }
 
 /// Una nota en un renglon y sin las marcas que confundirian al leerla.
@@ -257,6 +280,30 @@ mod pruebas {
         assert!(v.chapas.is_empty(), "normal: sin chapita");
         // La «baja» de antes ya no se ensena.
         assert!(a_la_vista("pan 🔽", None).chapas.is_empty());
+    }
+
+    #[test]
+    fn la_prioridad_de_jev_no_pisa_la_marca_del_usuario() {
+        use pixpin_typesafe::urgencia::Prioridad;
+        let v = a_la_vista_con("pagar la luz #casa", None, Some(Prioridad::Alta));
+        assert_eq!(
+            v.chapas,
+            [
+                Chapa::Prioridad(Prioridad::Alta),
+                Chapa::Etiqueta("casa".into())
+            ]
+        );
+        assert_eq!(v.chapas[0].busqueda(), "");
+        // Marcada a mano: solo su marca.
+        let v = a_la_vista_con("pagar la luz 🔼", None, Some(Prioridad::Urgente));
+        assert_eq!(v.chapas, [Chapa::Urgencia(Urgencia::Urgente)]);
+        // Normal, o sin Jev: como siempre.
+        assert!(
+            a_la_vista_con("pan", None, Some(Prioridad::Normal))
+                .chapas
+                .is_empty()
+        );
+        assert!(a_la_vista_con("pan", None, None).chapas.is_empty());
     }
 
     #[test]
