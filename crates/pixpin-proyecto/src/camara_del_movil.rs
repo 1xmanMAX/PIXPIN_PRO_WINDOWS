@@ -25,6 +25,13 @@
 //! despues (el movil lo subio tarde, sin red) entra al momento en la clase
 //! ya guardada. Las ultimas grabaciones acabadas se recuerdan un rato
 //! ([`ACABADAS`]) para eso.
+//!
+//! **Sin perder nada** (28-oct-2026): cada llegada en cola lleva al lado su
+//! ficha (`<fichero>.json`: minuto, lo que dura, de quien), escrita entera
+//! en el acto. Si PixPin se cierra de golpe antes de guardar la clase, la
+//! memoria se pierde pero la cola no: al recuperar la grabacion
+//! (`grabacion_a_medias`), [`cola_en_disco`] la vuelve a leer y
+//! [`recuperar_cola`] la mete en su minuto.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -73,7 +80,7 @@ impl std::fmt::Debug for Destino {
 }
 
 /// Una foto o un clip llegado, esperando a que la clase se guarde.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Llegada {
     pub ms: i64,
     /// Un clip: lo que dura. Una foto, 0.
@@ -231,7 +238,10 @@ impl Camaras {
             l.ms = l.ms.clamp(0, tope);
             l.duracion_ms = l.duracion_ms.min((tope - l.ms).max(0));
             match adjuntar(&destino, &g.titulo, &l) {
-                Ok(_) => hechas += 1,
+                Ok(_) => {
+                    let _ = std::fs::remove_file(ficha_de(&l.fichero));
+                    hechas += 1;
+                }
                 // No se tira: sigue en la cola, en su carpeta.
                 Err(_) => quedan.push(l),
             }
@@ -333,11 +343,16 @@ impl Camaras {
                 adjuntar(&d, &g.titulo, &l).map_err(|e| format!("No se pudo guardar: {e}"))?;
             }
             None => {
-                let dir = cola.join(almacen::nombre_seguro(&g.id));
+                let dir = carpeta_de_la_cola(&cola, &g.id);
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
                 let sitio = dir.join(format!("{}-{}", g.cola.len(), l.nombre));
                 mover(fichero, &sitio).map_err(|e| format!("No se pudo guardar: {e}"))?;
                 l.fichero = sitio;
+                // La ficha, en el acto: un cierre de golpe antes de guardar
+                // la clase no se lleva su minuto.
+                // Sin ficha (el disco), la foto sigue en la cola de memoria:
+                // solo un corte antes de guardar la dejaria sin su minuto.
+                let _ = apuntar(&l);
                 g.cola.push(l);
             }
         }
@@ -356,9 +371,76 @@ impl Camaras {
     }
 }
 
+/// La ficha de una llegada en cola: `<fichero>.json`.
+fn ficha_de(fichero: &Path) -> PathBuf {
+    let mut s = fichero.as_os_str().to_os_string();
+    s.push(".json");
+    PathBuf::from(s)
+}
+
+fn apuntar(l: &Llegada) -> std::io::Result<()> {
+    let json = serde_json::to_vec(l).map_err(std::io::Error::other)?;
+    crate::grabacion_a_medias::escribir_entero(&ficha_de(&l.fichero), &json)
+}
+
+/// La carpeta de la cola de la grabacion `grabacion`, dentro de `cola`.
+pub fn carpeta_de_la_cola(cola: &Path, grabacion: &str) -> PathBuf {
+    cola.join(almacen::nombre_seguro(grabacion))
+}
+
+/// **Lo que espera en la cola de `grabacion`**, leido del disco (sus
+/// fichas), en el orden de la grabacion. Lo que no tiene ficha o ya no tiene
+/// fichero no sale.
+pub fn cola_en_disco(cola: &Path, grabacion: &str) -> Vec<Llegada> {
+    let Ok(entradas) = std::fs::read_dir(carpeta_de_la_cola(cola, grabacion)) else {
+        return Vec::new();
+    };
+    let mut v: Vec<Llegada> = entradas
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .filter_map(|p| serde_json::from_slice::<Llegada>(&std::fs::read(&p).ok()?).ok())
+        .filter(|l| l.fichero.is_file())
+        .collect();
+    v.sort_by_key(|l| (l.ms, l.tomada_en));
+    v
+}
+
+/// **Mete en la clase recuperada** `destino` lo que llego del movil a la
+/// grabacion `grabacion` antes del corte, en su minuto (dentro de los
+/// `duracion_ms` de la nota). Lo que no entra se queda en la cola. Devuelve
+/// cuantas entraron.
+pub fn recuperar_cola(
+    destino: &Destino,
+    cola: &Path,
+    grabacion: &str,
+    titulo: &str,
+    duracion_ms: i64,
+) -> usize {
+    let tope = duracion_ms.max(0);
+    let mut hechas = 0;
+    for mut l in cola_en_disco(cola, grabacion) {
+        let ficha = ficha_de(&l.fichero);
+        l.ms = l.ms.clamp(0, tope);
+        l.duracion_ms = l.duracion_ms.min((tope - l.ms).max(0));
+        if adjuntar(destino, titulo, &l).is_ok() {
+            let _ = std::fs::remove_file(ficha);
+            hechas += 1;
+        }
+    }
+    let _ = std::fs::remove_dir(carpeta_de_la_cola(cola, grabacion));
+    hechas
+}
+
+/// Tira lo que espera en la cola de `grabacion` (se descarto).
+pub fn tirar_cola_en_disco(cola: &Path, grabacion: &str) {
+    let _ = std::fs::remove_dir_all(carpeta_de_la_cola(cola, grabacion));
+}
+
 fn tirar_cola(g: &Grabacion) {
     for l in &g.cola {
         let _ = std::fs::remove_file(&l.fichero);
+        let _ = std::fs::remove_file(ficha_de(&l.fichero));
     }
     if let Some(dir) = g.cola.first().and_then(|l| l.fichero.parent()) {
         let _ = std::fs::remove_dir(dir);
@@ -624,6 +706,57 @@ mod pruebas {
         c.tirar();
         assert_eq!(c.en_curso(), None);
         assert!(c.aceptar(&foto("g1", Some(1))).is_err());
+    }
+
+    #[test]
+    fn la_cola_sobrevive_a_un_cierre_de_golpe_y_se_recupera_en_su_minuto() {
+        let base = std::env::temp_dir().join(format!("pixpin-camara-c-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let cola = base.join("cola");
+        let mut c = Camaras::nuevas(cola.clone(), "Portatil");
+        c.empezar("g-7", "Clase 28-10", PARED, 0);
+        let f = temporal("cola-1.jpg");
+        assert_eq!(
+            c.recibir(&foto("g-7", Some(90 * S)), &f, "tel", "Tel", PARED + 95 * S),
+            Ok(90 * S)
+        );
+        let f = temporal("cola-2.jpg");
+        assert_eq!(
+            c.recibir(&foto("g-7", Some(30 * S)), &f, "tel", "Tel", PARED + 96 * S),
+            Ok(30 * S)
+        );
+        // **El corte**: la memoria se va sin `acabar` ni `guardada`.
+        drop(c);
+
+        let en_disco = cola_en_disco(&cola, "g-7");
+        assert_eq!(
+            en_disco.iter().map(|l| l.ms).collect::<Vec<_>>(),
+            vec![30 * S, 90 * S]
+        );
+        assert!(en_disco.iter().all(|l| l.fichero.is_file()));
+        // Caso negativo: la cola de otra grabacion esta vacia.
+        assert!(cola_en_disco(&cola, "otra").is_empty());
+
+        // Se recupera en una nota que duro un minuto: la de 1:30 cae al
+        // final, no fuera.
+        let raiz = base.join("raiz");
+        let destino = Destino {
+            raiz: raiz.clone(),
+            proyecto: "p1".into(),
+            voz: None,
+            carpeta: None,
+            aparato: "K7Q2".into(),
+            hora: || PARED,
+        };
+        assert_eq!(recuperar_cola(&destino, &cola, "g-7", "Clase", 60 * S), 2);
+        assert!(cola_en_disco(&cola, "g-7").is_empty());
+        let mensajes = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, "p1"))
+            .unwrap()
+            .mensajes;
+        assert_eq!(mensajes.len(), 2);
+        assert!(mensajes.iter().all(es_del_movil));
+        assert!(mensajes.iter().any(|m| m.texto.contains("1:00")));
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
