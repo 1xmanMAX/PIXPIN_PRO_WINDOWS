@@ -1666,6 +1666,7 @@ dependencies = [
  "pixpin-motor2d",
  "pixpin-notas",
  "pixpin-ocr",
+ "pixpin-paginas",
  "pixpin-pdf",
  "pixpin-shell",
  "roxmltree",

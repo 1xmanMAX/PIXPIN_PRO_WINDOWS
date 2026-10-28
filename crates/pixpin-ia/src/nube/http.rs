@@ -12,21 +12,26 @@
 //!
 //! `http://` solo se acepta hacia `127.0.0.1`/`localhost`: es para el
 //! servidor falso de las pruebas. Una clave nunca sale sin cifrar a la red.
+//! La excepcion es [`bajar_web`] (el asistente que lee paginas): sin clave,
+//! sin cookies y sin credenciales, hacia una direccion ya comprobada.
 //!
 //! Este modulo habla con el sistema operativo: cada `unsafe` lleva su
 //! `// SAFETY:`.
 
 use std::ffi::c_void;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Networking::WinHttp::{
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-    WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPEN_REQUEST_FLAGS,
-    WINHTTP_QUERY_CUSTOM, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle,
-    WinHttpConnect, WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData,
-    WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetTimeouts,
+    WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH,
+    WINHTTP_DISABLE_AUTHENTICATION, WINHTTP_DISABLE_COOKIES, WINHTTP_DISABLE_REDIRECTS,
+    WINHTTP_FLAG_SECURE, WINHTTP_OPEN_REQUEST_FLAGS, WINHTTP_OPTION_AUTOLOGON_POLICY,
+    WINHTTP_OPTION_DISABLE_FEATURE, WINHTTP_QUERY_CUSTOM, WINHTTP_QUERY_FLAG_NUMBER,
+    WINHTTP_QUERY_STATUS_CODE, WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
+    WinHttpQueryHeaders, WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest,
+    WinHttpSetOption, WinHttpSetTimeouts,
 };
-use windows::core::{HSTRING, PCWSTR, w};
+use windows::core::{HSTRING, PCWSTR};
 
 use crate::motor::Seguir;
 
@@ -113,7 +118,7 @@ pub fn enviar(p: &Pedido, al_trozo: &mut dyn FnMut(&[u8]) -> Seguir) -> Result<b
         ("Accept", "text/event-stream".to_string()),
     ];
     cabeceras.extend(p.cabeceras.iter().cloned());
-    let a = abrir("POST", p.url, &cabeceras, p.cuerpo)?;
+    let a = abrir("POST", p.url, &cabeceras, p.cuerpo, Modo::Api)?;
     let mut buf = vec![0u8; 16 * 1024];
     loop {
         let mut n: u32 = 0;
@@ -159,7 +164,7 @@ pub fn pedir(
     cuerpo: &[u8],
     limite: usize,
 ) -> Result<Respuesta, Fallo> {
-    let a = abrir(metodo, url, cabeceras, cuerpo)?;
+    let a = abrir(metodo, url, cabeceras, cuerpo, Modo::Api)?;
     let mut buf = vec![0u8; 64 * 1024];
     let mut todo = Vec::new();
     loop {
@@ -194,8 +199,102 @@ pub fn pedir(
     })
 }
 
-/// Una peticion mandada y con la respuesta empezada (codigo 2xx). Los
-/// campos se sueltan en este orden: peticion, conexion, sesion.
+/// Lo que contesto una pagina web ([`bajar_web`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RespuestaWeb {
+    pub codigo: u32,
+    pub cuerpo: Vec<u8>,
+    /// La cabecera `Content-Type`.
+    pub tipo: Option<String>,
+    /// A donde manda una redireccion (3xx), sin seguirla.
+    pub ubicacion: Option<String>,
+}
+
+/// Como se presenta PixPin a las paginas: como un navegador (algunas no
+/// contestan a lo que no lo parece) que dice quien es.
+const AGENTE_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PixPinMax/1.0 (asistente; lee la pagina para el usuario)";
+
+/// **Un GET a una pagina cualquiera de internet** (el asistente que lee la
+/// web, `crate::web`). Lo que la hace distinta de [`pedir`]:
+///
+/// - `http://` hacia cualquier servidor (quien llama ya comprobo que es
+///   publico con `pixpin_paginas::direccion`);
+/// - **sin cookies ni credenciales** (ni las de Windows de la intranet ni
+///   las de una ventana de inicio de sesion) y **sin seguir
+///   redirecciones**: una 3xx vuelve con su `ubicacion` para que quien llama
+///   la compruebe otra vez antes de seguirla;
+/// - tiempos cortos (10 s para conectar, 20 s sin recibir nada) y un
+///   `plazo` para la respuesta entera; mas de `limite` bytes, error.
+///
+/// Un codigo que no es 2xx ni 3xx es [`Fallo::Http`]. Bloquea.
+pub fn bajar_web(
+    url: &str,
+    cabeceras: &[(&'static str, String)],
+    limite: usize,
+    plazo: Duration,
+) -> Result<RespuestaWeb, Fallo> {
+    let empezo = Instant::now();
+    let a = abrir("GET", url, cabeceras, &[], Modo::Web)?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut todo = Vec::new();
+    loop {
+        if empezo.elapsed() > plazo {
+            return Err(Fallo::Red(format!(
+                "la pagina tarda demasiado (mas de {} s)",
+                plazo.as_secs()
+            )));
+        }
+        let mut n: u32 = 0;
+        // SAFETY: como en `enviar`.
+        unsafe {
+            WinHttpReadData(
+                a.peticion.0,
+                buf.as_mut_ptr().cast(),
+                buf.len() as u32,
+                &mut n,
+            )
+        }
+        .map_err(|e| Fallo::Red(format!("se corto la pagina: {}", e.message())))?;
+        if n == 0 {
+            break;
+        }
+        todo.extend_from_slice(&buf[..n as usize]);
+        if todo.len() > limite {
+            return Err(Fallo::Red(format!(
+                "la pagina pasa de {} MB",
+                (limite / (1024 * 1024)).max(1)
+            )));
+        }
+    }
+    // SAFETY: el asa sigue viva en `a` y ya recibio la respuesta.
+    let (tipo, ubicacion) = unsafe {
+        (
+            cabecera(a.peticion.0, "Content-Type"),
+            cabecera(a.peticion.0, "Location"),
+        )
+    };
+    Ok(RespuestaWeb {
+        codigo: a.codigo,
+        cuerpo: todo,
+        tipo,
+        ubicacion,
+    })
+}
+
+/// Hacia donde va una peticion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Modo {
+    /// Las API de la nube y las conexiones: `https://` (o `http://` solo
+    /// hacia este equipo, las pruebas), con el proxy y los tiempos de
+    /// siempre.
+    Api,
+    /// Una pagina de internet ([`bajar_web`]).
+    Web,
+}
+
+/// Una peticion mandada y con la respuesta empezada (codigo 2xx, o 3xx en
+/// [`Modo::Web`]). Los campos se sueltan en este orden: peticion,
+/// conexion, sesion.
 struct Abierta {
     peticion: Asa,
     _conexion: Asa,
@@ -211,8 +310,20 @@ fn abrir(
     url: &str,
     extra: &[(&'static str, String)],
     cuerpo: &[u8],
+    modo: Modo,
 ) -> Result<Abierta, Fallo> {
-    let d = partir(url).ok_or_else(|| Fallo::Red(format!("direccion no valida: {url}")))?;
+    let d = match modo {
+        Modo::Api => partir(url),
+        Modo::Web => pixpin_paginas::direccion::leer(url)
+            .ok()
+            .map(|u| Direccion {
+                segura: u.segura,
+                servidor: u.servidor,
+                puerto: u.puerto,
+                ruta: u.ruta,
+            }),
+    }
+    .ok_or_else(|| Fallo::Red(format!("direccion no valida: {url}")))?;
     let mut cabeceras = String::new();
     for (k, v) in extra {
         cabeceras.push_str(k);
@@ -235,9 +346,13 @@ fn abrir(
     // cierra en todos los caminos y en orden inverso. Los bufferes que se
     // pasan a WinHTTP viven mientras dura cada llamada, que es sincrona.
     unsafe {
-        let local = !d.segura;
+        let local = !d.segura && modo == Modo::Api;
+        let agente = HSTRING::from(match modo {
+            Modo::Api => "PixPin",
+            Modo::Web => AGENTE_WEB,
+        });
         let mut sesion = Asa(WinHttpOpen(
-            w!("PixPin"),
+            &agente,
             if local {
                 WINHTTP_ACCESS_TYPE_NO_PROXY
             } else {
@@ -249,7 +364,7 @@ fn abrir(
         ));
         if sesion.0.is_null() && !local {
             sesion = Asa(WinHttpOpen(
-                w!("PixPin"),
+                &agente,
                 WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                 PCWSTR::null(),
                 PCWSTR::null(),
@@ -262,7 +377,10 @@ fn abrir(
         // 20 s para conectar y mandar; hasta 3 min sin recibir nada (un
         // modelo que piensa mucho antes de escribir manda latidos, pero
         // mejor holgado).
-        let _ = WinHttpSetTimeouts(sesion.0, 20_000, 20_000, 30_000, 180_000);
+        let _ = match modo {
+            Modo::Api => WinHttpSetTimeouts(sesion.0, 20_000, 20_000, 30_000, 180_000),
+            Modo::Web => WinHttpSetTimeouts(sesion.0, 10_000, 10_000, 15_000, 20_000),
+        };
         let conexion = Asa(WinHttpConnect(
             sesion.0,
             &HSTRING::from(d.servidor.as_str()),
@@ -283,6 +401,27 @@ fn abrir(
         ));
         if peticion.0.is_null() {
             return Err(error("no se pudo preparar la peticion"));
+        }
+        if modo == Modo::Web {
+            // Sin cookies, sin credenciales y sin seguir redirecciones (ver
+            // `bajar_web`). Si no se pudiera apagar, no se sigue: mejor no
+            // leer la pagina que leerla mandando lo que no toca.
+            let fuera = (WINHTTP_DISABLE_COOKIES
+                | WINHTTP_DISABLE_REDIRECTS
+                | WINHTTP_DISABLE_AUTHENTICATION)
+                .to_ne_bytes();
+            WinHttpSetOption(
+                Some(peticion.0),
+                WINHTTP_OPTION_DISABLE_FEATURE,
+                Some(&fuera),
+            )
+            .map_err(|e| Fallo::Red(format!("no se pudo preparar la peticion: {}", e.message())))?;
+            let nivel = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH.to_ne_bytes();
+            let _ = WinHttpSetOption(
+                Some(peticion.0),
+                WINHTTP_OPTION_AUTOLOGON_POLICY,
+                Some(&nivel),
+            );
         }
         WinHttpSendRequest(
             peticion.0,
@@ -305,7 +444,8 @@ fn abrir(
             &mut largo,
             std::ptr::null_mut(),
         );
-        if !(200..300).contains(&codigo) {
+        let redireccion = modo == Modo::Web && (300..400).contains(&codigo);
+        if !(200..300).contains(&codigo) && !redireccion {
             let esperar = cabecera(peticion.0, "retry-after")
                 .and_then(|s| s.trim().parse::<f64>().ok())
                 .filter(|s| s.is_finite() && *s >= 0.0)
@@ -353,22 +493,33 @@ fn abrir(
 unsafe fn cabecera(peticion: *mut c_void, nombre: &str) -> Option<String> {
     let nombre = HSTRING::from(nombre);
     let mut buf = vec![0u16; 256];
-    let mut largo = (buf.len() * 2) as u32;
-    // SAFETY: el bufer vive durante la llamada y su tamano en bytes es el
-    // que se pasa; el nombre es un `HSTRING` vivo.
-    unsafe {
-        WinHttpQueryHeaders(
-            peticion,
-            WINHTTP_QUERY_CUSTOM,
-            &nombre,
-            Some(buf.as_mut_ptr().cast()),
-            &mut largo,
-            std::ptr::null_mut(),
-        )
-        .ok()?;
+    // Una vez con 256 letras y, si no cabia (una `Location` larga), otra
+    // con lo que dijo WinHTTP que hace falta (hasta 16 000).
+    for _ in 0..2 {
+        let mut largo = (buf.len() * 2) as u32;
+        // SAFETY: el bufer vive durante la llamada y su tamano en bytes es
+        // el que se pasa; el nombre es un `HSTRING` vivo.
+        let r = unsafe {
+            WinHttpQueryHeaders(
+                peticion,
+                WINHTTP_QUERY_CUSTOM,
+                &nombre,
+                Some(buf.as_mut_ptr().cast()),
+                &mut largo,
+                std::ptr::null_mut(),
+            )
+        };
+        if r.is_ok() {
+            let n = (largo as usize / 2).min(buf.len());
+            return Some(String::from_utf16_lossy(&buf[..n]));
+        }
+        let hace_falta = largo as usize / 2 + 1;
+        if hace_falta <= buf.len() || hace_falta > 16_000 {
+            return None;
+        }
+        buf = vec![0u16; hace_falta];
     }
-    let n = (largo as usize / 2).min(buf.len());
-    Some(String::from_utf16_lossy(&buf[..n]))
+    None
 }
 
 #[cfg(test)]

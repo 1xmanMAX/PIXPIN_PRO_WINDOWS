@@ -16,6 +16,9 @@ serde_json = "1.0"
 sha2 = "0.10.9"
 # Las fechas dichas y lo que se reconoce al escribir una tarea (sin dependencias).
 pixpin-frase = { path = "../pixpin-frase" }
+# Leer la web para el asistente con DeepSeek (`web.rs`): direcciones seguras,
+# texto legible y buscadores, sin red (la red la pone `nube::http`).
+pixpin-paginas = { path = "../pixpin-paginas" }
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Security",
