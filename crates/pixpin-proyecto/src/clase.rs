@@ -403,6 +403,147 @@ pub fn poner_captura(resto: &mut Map<String, Value>, ms: i64, id: &str) {
     resto.insert(CAPTURAS.into(), Value::Array(lista));
 }
 
+// --- Las partes importantes (Jev) -------------------------------------------
+//
+// Lo que Jev (TypeSafe) hallo en la transcripcion al acabar de pasarla a
+// texto (28-oct-2026, `docs/jev.md`): `resto["importantes"]`, una lista
+// `[{ms, tipo, p}]` en orden, con `tipo` = `tarea`, `decision`, `pregunta`
+// o `examen`, `p` la probabilidad (0-1, dos decimales) y, en las tareas,
+// `quien`/`cuando` (`true`/`false`, solo si se sabe). `ms` es el del renglon
+// de la transcripcion. `resto["importantesDe"]` dice que modelo lo hallo.
+//
+// **La clave sin lista** es «no se ha mirado»; una lista vacia es «se miro
+// y no hay nada»: asi no se vuelve a preguntar. Android la lee igual (ver
+// `docs/manual-sincronizar-lo-nuevo.md`).
+
+/// La clave de las partes importantes en `resto`.
+pub const IMPORTANTES: &str = "importantes";
+/// Y la del modelo que las hallo.
+pub const IMPORTANTES_DE: &str = "importantesDe";
+
+/// Que clase de parte importante.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TipoImportante {
+    Tarea,
+    Decision,
+    Pregunta,
+    Examen,
+}
+
+impl TipoImportante {
+    pub const TODOS: [TipoImportante; 4] = [
+        TipoImportante::Tarea,
+        TipoImportante::Decision,
+        TipoImportante::Pregunta,
+        TipoImportante::Examen,
+    ];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            TipoImportante::Tarea => "tarea",
+            TipoImportante::Decision => "decision",
+            TipoImportante::Pregunta => "pregunta",
+            TipoImportante::Examen => "examen",
+        }
+    }
+
+    pub fn de_id(s: &str) -> Option<TipoImportante> {
+        Self::TODOS.into_iter().find(|t| t.id() == s)
+    }
+}
+
+/// Una parte importante de la clase.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Importante {
+    pub ms: i64,
+    pub tipo: TipoImportante,
+    pub p: f64,
+    /// En una tarea: si dice quien la hace (`None`: no se sabe).
+    pub quien: Option<bool>,
+    /// En una tarea: si dice para cuando.
+    pub cuando: Option<bool>,
+}
+
+/// Las partes importantes de una nota, en orden. `None` si nunca se
+/// miraron; lo que no se entiende (un tipo de otra version) se salta.
+pub fn importantes_de(resto: &Map<String, Value>) -> Option<Vec<Importante>> {
+    let a = resto.get(IMPORTANTES)?.as_array()?;
+    let mut v: Vec<Importante> = a
+        .iter()
+        .filter_map(|x| {
+            Some(Importante {
+                ms: x.get("ms")?.as_i64()?.max(0),
+                tipo: TipoImportante::de_id(x.get("tipo")?.as_str()?)?,
+                p: x.get("p")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(1.0)
+                    .clamp(0.0, 1.0),
+                quien: x.get("quien").and_then(Value::as_bool),
+                cuando: x.get("cuando").and_then(Value::as_bool),
+            })
+        })
+        .collect();
+    v.sort_by(|a, b| a.ms.cmp(&b.ms).then(a.tipo.cmp(&b.tipo)));
+    Some(v)
+}
+
+/// **Escribe lo hallado** (tambien una lista vacia: «ya se miro»).
+pub fn poner_importantes(resto: &mut Map<String, Value>, v: &[Importante], modelo: &str) {
+    let mut v = v.to_vec();
+    v.sort_by(|a, b| a.ms.cmp(&b.ms).then(a.tipo.cmp(&b.tipo)));
+    let lista = v
+        .iter()
+        .map(|i| {
+            let mut o = Map::new();
+            o.insert("ms".into(), Value::from(i.ms.max(0)));
+            o.insert("tipo".into(), Value::from(i.tipo.id()));
+            o.insert(
+                "p".into(),
+                Value::from((i.p.clamp(0.0, 1.0) * 100.0).round() / 100.0),
+            );
+            if let Some(q) = i.quien {
+                o.insert("quien".into(), Value::from(q));
+            }
+            if let Some(c) = i.cuando {
+                o.insert("cuando".into(), Value::from(c));
+            }
+            Value::Object(o)
+        })
+        .collect();
+    resto.insert(IMPORTANTES.into(), Value::Array(lista));
+    if modelo.trim().is_empty() {
+        resto.remove(IMPORTANTES_DE);
+    } else {
+        resto.insert(IMPORTANTES_DE.into(), Value::from(modelo.trim()));
+    }
+}
+
+/// Los tipos de las partes importantes de un renglon que empieza en `ms`.
+pub fn tipos_en(importantes: &[Importante], ms: Option<i64>) -> Vec<TipoImportante> {
+    let Some(ms) = ms else { return Vec::new() };
+    let mut v: Vec<TipoImportante> = importantes
+        .iter()
+        .filter(|i| i.ms == ms)
+        .map(|i| i.tipo)
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// **El filtro de lo importante**: que renglones se ven con `filtro`
+/// (`None`: todos). Un renglon sin minuto solo se ve sin filtro.
+pub fn se_ve_con_filtro(
+    importantes: &[Importante],
+    ms: Option<i64>,
+    filtro: Option<TipoImportante>,
+) -> bool {
+    match filtro {
+        None => true,
+        Some(t) => tipos_en(importantes, ms).contains(&t),
+    }
+}
+
 /// Salta `delta` desde `ms` sin salirse de la nota.
 pub fn saltar(ms: i64, delta: i64, duracion_ms: i64) -> i64 {
     let fin = if duracion_ms > 0 {
@@ -653,5 +794,76 @@ mod pruebas {
         assert_eq!(saltar(2_000, -5_000, 60_000), 0);
         assert_eq!(saltar(58_000, 5_000, 60_000), 60_000);
         assert_eq!(saltar(58_000, 5_000, 0), 63_000, "sin duracion no hay fin");
+    }
+
+    #[test]
+    fn las_partes_importantes_ida_y_vuelta() {
+        let mut r = Map::new();
+        // Sin la clave: nunca se miro.
+        assert_eq!(importantes_de(&r), None);
+        poner_importantes(&mut r, &[], "jev-1.14.0");
+        // Lista vacia: se miro y no hay nada.
+        assert_eq!(importantes_de(&r), Some(vec![]));
+        let v = vec![
+            Importante {
+                ms: 45_000,
+                tipo: TipoImportante::Tarea,
+                p: 0.9372,
+                quien: Some(true),
+                cuando: None,
+            },
+            Importante {
+                ms: 20_000,
+                tipo: TipoImportante::Examen,
+                p: 0.81,
+                quien: None,
+                cuando: None,
+            },
+        ];
+        poner_importantes(&mut r, &v, "jev-1.14.0");
+        assert_eq!(r[IMPORTANTES_DE], "jev-1.14.0");
+        // El formato que lee Android: {ms, tipo, p} y, en las tareas, quien
+        // y cuando si se saben.
+        assert_eq!(
+            r[IMPORTANTES],
+            serde_json::json!([
+                {"ms": 20000, "tipo": "examen", "p": 0.81},
+                {"ms": 45000, "tipo": "tarea", "p": 0.94, "quien": true}
+            ])
+        );
+        let leidos = importantes_de(&r).unwrap();
+        assert_eq!(leidos[0].tipo, TipoImportante::Examen);
+        assert_eq!(leidos[1].p, 0.94);
+        assert_eq!(tipos_en(&leidos, Some(45_000)), vec![TipoImportante::Tarea]);
+        assert!(tipos_en(&leidos, None).is_empty());
+        assert!(se_ve_con_filtro(&leidos, None, None));
+        assert!(se_ve_con_filtro(
+            &leidos,
+            Some(20_000),
+            Some(TipoImportante::Examen)
+        ));
+        assert!(!se_ve_con_filtro(
+            &leidos,
+            Some(20_000),
+            Some(TipoImportante::Tarea)
+        ));
+        assert!(!se_ve_con_filtro(
+            &leidos,
+            None,
+            Some(TipoImportante::Tarea)
+        ));
+    }
+
+    #[test]
+    fn un_tipo_que_no_se_conoce_se_salta() {
+        let mut r = Map::new();
+        r.insert(
+            IMPORTANTES.into(),
+            serde_json::json!([{"ms": 1, "tipo": "chiste", "p": 0.9}, {"ms": 2, "tipo": "pregunta"}]),
+        );
+        let v = importantes_de(&r).unwrap();
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].tipo, TipoImportante::Pregunta);
+        assert_eq!(v[0].p, 1.0);
     }
 }
