@@ -100,10 +100,17 @@ Paso a paso:
 5. **El MP4** (`archivo.rs`). Se escribe en `<destino>.parte`; al terminar,
    `Finalize` y se renombra (si no se deja, se copia; si ni eso, el `.parte`
    se queda con su contenido). Soltar el motor sin terminar borra el
-   `.parte`. Si la aplicacion se cierra de golpe queda un `.parte` sin
-   indice que `grabar_clase::video::barrer_restos` borra la siguiente vez.
+   `.parte`. Si la aplicacion se cierra de golpe queda el `.parte`, que ya
+   no se borra: lo recupera `grabar_clase::recuperar` (ver
+   `docs/grabar-sin-perder-nada.md`).
 
-### Por que no MP4 fragmentado de salida
+### Por que no MP4 fragmentado de salida (y por que la clase si lo usa)
+
+**28-oct-2026**: la grabadora de clases y reuniones lo enciende, y al
+cerrar (si falta el indice de fragmentos) o al recuperar un corte lo rehace a
+MP4 normal sin volver a codificar (`rehacer_mp4`, `archivo::recuperar_video`),
+lo que resuelve el punto (2). Lo de abajo sigue valiendo para quien use
+`Opciones::de` tal cual.
 
 Un MP4 fragmentado (`MFTranscodeContainerType_FMPEG4`) se puede abrir aunque
 la aplicacion se caiga. Esta como opcion (`Opciones::fragmentado`, apagada):
