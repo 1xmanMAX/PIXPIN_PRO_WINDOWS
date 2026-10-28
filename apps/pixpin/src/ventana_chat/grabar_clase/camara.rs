@@ -237,15 +237,32 @@ fn lanzar() -> Option<(Sender<Encargo>, Receiver<Vuelta>)> {
             let parar = |c: &mut Camara, clip: &mut Option<(i64, PathBuf, Instant)>| {
                 let (ms, ruta, desde) = clip.take()?;
                 let duracion_ms = desde.elapsed().as_millis() as i64;
-                match c.parar_clip() {
+                let parado = c.parar_clip();
+                // **La camara que se desenchufa a mitad** (28-oct-2026):
+                // parar falla, pero lo grabado puede haberse cerrado igual.
+                // Si se abre, vale; si no, no se borra (es de la reunion y
+                // solo el usuario lo descarta, en la recuperacion).
+                let se_abre = pixpin_sistema::mp4::mirar(&ruta).se_abre();
+                match parado {
                     Ok(()) if ruta.is_file() => Some(ClipHecho {
                         ms,
                         duracion_ms,
                         ruta,
                     }),
+                    Err(e) if se_abre => {
+                        tracing::warn!(?e, "el clip no se paro bien, pero se abre: se guarda");
+                        Some(ClipHecho {
+                            ms,
+                            duracion_ms,
+                            ruta,
+                        })
+                    }
                     otro => {
-                        tracing::warn!(?otro, "un clip de la reunion no se cerro");
-                        let _ = std::fs::remove_file(&ruta);
+                        tracing::warn!(
+                            ?otro,
+                            ruta = %ruta.display(),
+                            "un clip de la reunion no se cerro (se deja en su carpeta)"
+                        );
                         None
                     }
                 }

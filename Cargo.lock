@@ -1531,6 +1531,7 @@ dependencies = [
  "pixpin-render",
  "pixpin-shell",
  "pixpin-sincro",
+ "pixpin-sistema",
  "pixpin-store",
  "pixpin-timeline",
  "pixpin-tinta",

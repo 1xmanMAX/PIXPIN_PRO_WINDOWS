@@ -44,6 +44,9 @@ pixpin-motor-video = { version = "0.1.0", path = "../../crates/pixpin-motor-vide
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
+# Si lo que dejo una grabacion cortada se puede abrir (`mp4::mirar`) y
+# cuanto cabe en el disco mientras se graba (`archivos::espacio_libre`).
+pixpin-sistema = { version = "0.1.0", path = "../../crates/pixpin-sistema" }
 # Lecciones aprendidas: la logica pura (ficha, repaso, buscador, etiquetas).
 pixpin-lecciones = { path = "../../crates/pixpin-lecciones" }
 pixpin-timeline = { path = "../../crates/pixpin-timeline" }
