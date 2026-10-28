@@ -66,7 +66,7 @@ pub(crate) fn camaras(raiz: &Path) -> Arc<Mutex<Camaras>> {
                 .ok()
                 .filter(|n| !n.trim().is_empty())
                 .unwrap_or_else(super::nombre_del_equipo);
-            let mut c = Camaras::nuevas(super::carpeta_sincro(raiz).join("camara-movil"), &nombre);
+            let mut c = Camaras::nuevas(carpeta_de_la_cola(raiz), &nombre);
             // Por su hora: el reloj lleva el codigo de este equipo, y lo que
             // no sabe de que grabacion es se busca en las guardadas.
             c.codigo = crate::letras_que_viajan::aparato(raiz);
@@ -193,6 +193,8 @@ pub(crate) fn guardada(
         con(raiz, |c| c.acabar(ahora));
         avisar_a_los_moviles(raiz);
     }
+    // Lo de esta grabacion sale primero en la sincronizacion (`automatica`).
+    super::automatica::grabacion_guardada(proyecto);
     let hechas = con(raiz, |c| c.guardada(destino, Some(duracion_ms), ahora));
     if hechas > 0 {
         tracing::info!(hechas, "fotos del movil en la clase");
@@ -208,6 +210,57 @@ fn apuntar(c: &Camaras, ahora: i64) {
     if let Err(e) = c.apuntar_reloj(ahora) {
         tracing::debug!(?e, "no se apunto el reloj de la grabacion");
     }
+}
+
+/// La cola en disco de lo que llega del movil grabando.
+pub(crate) fn carpeta_de_la_cola(raiz: &Path) -> std::path::PathBuf {
+    super::carpeta_sincro(raiz).join("camara-movil")
+}
+
+/// **El id de la grabacion que se anuncia al movil** ahora mismo, para
+/// apuntarlo en el diario de la grabacion (`grabacion_a_medias`): con el se
+/// recupera lo que llego del movil si PixPin se cierra de golpe.
+pub(crate) fn en_curso(raiz: &Path) -> Option<String> {
+    CAMARAS.get()?;
+    con(raiz, |c| c.en_curso().map(str::to_string))
+}
+
+/// **Una grabacion cortada se recupero** en `proyecto`: lo que llego del
+/// movil a `grabacion` antes del corte entra en su minuto. Devuelve cuantas
+/// entraron.
+pub(crate) fn recuperada(
+    raiz: &Path,
+    grabacion: &str,
+    proyecto: &str,
+    voz: Option<&str>,
+    carpeta: Option<&str>,
+    titulo: &str,
+    duracion_ms: i64,
+) -> usize {
+    let destino = Destino {
+        raiz: raiz.to_path_buf(),
+        proyecto: proyecto.to_string(),
+        voz: voz.map(str::to_string),
+        carpeta: carpeta.map(str::to_string),
+        aparato: crate::letras_que_viajan::aparato(raiz),
+        hora: crate::ventana_chat::descripcion::hora_sin_repetir,
+    };
+    let hechas = pixpin_proyecto::camara_del_movil::recuperar_cola(
+        &destino,
+        &carpeta_de_la_cola(raiz),
+        grabacion,
+        titulo,
+        duracion_ms,
+    );
+    if hechas > 0 {
+        tracing::info!(hechas, "fotos del movil recuperadas en la clase");
+    }
+    hechas
+}
+
+/// Una grabacion cortada se descarto: lo que llego del movil, tambien.
+pub(crate) fn descartada(raiz: &Path, grabacion: &str) {
+    pixpin_proyecto::camara_del_movil::tirar_cola_en_disco(&carpeta_de_la_cola(raiz), grabacion);
 }
 
 /// **La grabacion se tiro**: lo que llego del movil, tambien.
@@ -260,6 +313,8 @@ pub(crate) fn indicador_actual() -> Option<(String, bool)> {
 /// movil pregunta solo, y esto solo adelanta el aviso). Mide de paso el
 /// desfase de cada reloj.
 fn avisar_a_los_moviles(raiz: &Path) {
+    // La baliza, al momento: el movil que la oye no espera al aviso.
+    super::baliza::cambio_la_grabacion();
     let raiz = raiz.to_path_buf();
     let lanzado = std::thread::Builder::new()
         .name("camara-movil".into())
@@ -283,6 +338,26 @@ fn avisar_a_los_moviles(raiz: &Path) {
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el aviso a la camara del movil");
     }
+}
+
+/// Lo mismo, ya: un movil del grupo acaba de aparecer (o cambio de
+/// direccion) mientras se graba (`baliza`).
+pub(crate) fn avisar_ya(raiz: &Path) {
+    avisar_a_los_moviles(raiz);
+}
+
+/// **Lo que dice la baliza** (`baliza`): la grabacion de este equipo, si
+/// graba, sin crear las camaras.
+pub(crate) fn para_la_baliza(ahora: i64) -> Option<super::baliza::Local> {
+    let c = CAMARAS.get()?.lock().unwrap_or_else(|e| e.into_inner());
+    let id = c.en_curso()?.to_string();
+    let a = c.anuncio(ahora);
+    Some(super::baliza::Local {
+        id,
+        en_pausa: a.as_ref().is_some_and(|a| a.en_pausa),
+        ms: a.as_ref().map_or(0, |a| a.ms_actual),
+        camara: c.encendida,
+    })
 }
 
 fn avisar_a(

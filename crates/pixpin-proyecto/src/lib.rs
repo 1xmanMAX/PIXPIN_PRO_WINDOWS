@@ -39,6 +39,7 @@ pub mod codigos;
 pub mod comentarios_de_notas;
 pub mod cuaderno;
 pub mod formula;
+pub mod grabacion_a_medias;
 pub mod identidad;
 pub mod importar_hojas;
 pub mod lienzo_de_la_foto;

@@ -99,9 +99,11 @@ pub struct Opciones {
     /// queda en H.264, que es lo que reproduce cualquier movil.
     pub hevc: bool,
     /// Intentar el MP4 fragmentado, que se puede abrir aunque la aplicacion
-    /// se cierre de golpe. Apagado de salida: ver `docs/motor-de-video.md`
-    /// (no todos los reproductores lo buscan bien y Windows 10 no lo
-    /// garantiza en el escritor). Si no se puede, MP4 normal.
+    /// se cierre de golpe. Apagado en [`Opciones::de`]; la grabadora de
+    /// clases y reuniones lo enciende (28-oct-2026) y, al acabar o al
+    /// recuperar, lo rehace a MP4 normal ([`archivo::recuperar_video`]), que
+    /// es lo que salta bien en el movil. Si el escritor no lo acepta (no
+    /// todos los Windows 10 lo garantizan), MP4 normal.
     pub fragmentado: bool,
 }
 
@@ -215,6 +217,22 @@ impl ErrorMotor {
     /// actualizado): entonces se vuelve a montar todo en vez de cortar.
     pub fn es_perdida_de_la_grafica(&self) -> bool {
         matches!(self, ErrorMotor::Sistema { codigo, .. } if recuperacion::es_perdida(*codigo))
+    }
+}
+
+/// **Rehace un MP4 sin volver a codificarlo** (ver
+/// [`archivo::recuperar_video`]): las pistas de `origen` copiadas tal cual a
+/// un MP4 normal en `destino`, con su indice. Devuelve las muestras
+/// copiadas. Fuera de Windows, [`ErrorMotor::SoloWindows`].
+pub fn rehacer_mp4(origen: &std::path::Path, destino: &std::path::Path) -> Result<u64, ErrorMotor> {
+    #[cfg(windows)]
+    {
+        win::rehacer_mp4(origen, destino)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (origen, destino);
+        Err(ErrorMotor::SoloWindows)
     }
 }
 

@@ -1531,6 +1531,7 @@ dependencies = [
  "pixpin-render",
  "pixpin-shell",
  "pixpin-sincro",
+ "pixpin-sistema",
  "pixpin-store",
  "pixpin-timeline",
  "pixpin-tinta",
@@ -1571,6 +1572,7 @@ name = "pixpin-audio"
 version = "0.1.0"
 dependencies = [
  "pixpin-motor-audio",
+ "pixpin-sistema",
  "thiserror",
  "tracing",
  "windows",
@@ -1736,6 +1738,7 @@ version = "0.1.0"
 dependencies = [
  "pixpin-capture",
  "pixpin-record",
+ "pixpin-sistema",
  "thiserror",
  "tracing",
  "windows",

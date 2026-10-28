@@ -120,6 +120,45 @@ pub fn preguntar_al_frente(titulo: &str, mensaje: &str) -> bool {
     r == IDYES
 }
 
+/// Lo elegido en [`elegir_al_frente`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Eleccion {
+    /// «Si».
+    Si,
+    /// «No».
+    No,
+    /// «Cancelar» o el cuadro cerrado: ni una cosa ni otra, por ahora.
+    Luego,
+}
+
+/// Pregunta de **si / no / cancelar sin ventana propia y por encima de
+/// todo**, con «Si» por defecto: «Se cortó una grabación… ¿Recuperar?»,
+/// donde «Si» recupera, «No» descarta (y quien llama vuelve a preguntar
+/// antes de borrar) y «Cancelar» lo deja para la proxima vez.
+pub fn elegir_al_frente(titulo: &str, mensaje: &str) -> Eleccion {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IDNO, IDYES, MB_DEFBUTTON1, MB_ICONWARNING, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNOCANCEL,
+    };
+    let mensaje = HSTRING::from(mensaje);
+    let titulo = HSTRING::from(titulo);
+    // SAFETY: HSTRING propias vivas durante la llamada; sin propietaria.
+    let r = unsafe {
+        MessageBoxW(
+            None,
+            &mensaje,
+            &titulo,
+            MB_YESNOCANCEL | MB_ICONWARNING | MB_DEFBUTTON1 | MB_TOPMOST | MB_SETFOREGROUND,
+        )
+    };
+    if r == IDYES {
+        Eleccion::Si
+    } else if r == IDNO {
+        Eleccion::No
+    } else {
+        Eleccion::Luego
+    }
+}
+
 /// Un aviso de solo «Aceptar», sin ventana propia y por encima de todo:
 /// lo que la linea de ordenes no pudo hacer cuando no hay consola donde
 /// decirlo (un enlace, el menu del Explorador).

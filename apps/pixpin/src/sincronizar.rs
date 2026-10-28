@@ -50,6 +50,7 @@ mod al_dia;
 pub(crate) mod al_movil;
 pub(crate) mod aporte;
 pub(crate) mod automatica;
+mod baliza;
 pub(crate) mod camara;
 pub(crate) mod compartidos_ui;
 mod copias_ui;
@@ -1578,7 +1579,10 @@ fn escuchar(raiz: PathBuf, vivo: Arc<AtomicBool>) -> Option<u16> {
                             });
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(150));
+                        // Grabando, cada llamada se atiende en 20 ms: la foto
+                        // del movil tiene que empezar a subir ya (`baliza`).
+                        let espera = if baliza::grabando_alguien() { 20 } else { 150 };
+                        std::thread::sleep(Duration::from_millis(espera));
                     }
                     Err(e) => {
                         tracing::warn!(?e, "la escucha de sincronizar fallo");

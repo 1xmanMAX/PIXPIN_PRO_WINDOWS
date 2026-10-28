@@ -88,6 +88,9 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
     });
     if let Some(p) = puerto {
         super::anunciarse(raiz.clone(), p, vivo.clone());
+        // Y la baliza UDP: lo que hace que el movil sepa en un segundo que
+        // este equipo graba, y donde esta (`baliza`).
+        super::baliza::instalar(raiz.clone(), p);
         super::sondear(raiz, vivo);
         tracing::info!(puerto = p, "presencia encendida");
     } else if encendida {
@@ -180,9 +183,13 @@ pub(crate) fn tomar_sondear_ya() -> bool {
 
 /// Cuanto espera la sonda antes de volver a preguntar.
 pub(crate) fn espera_de_la_sonda() -> std::time::Duration {
+    // Grabando (aqui o en otro del grupo), tan deprisa como con alguien
+    // mirando: si el movil no manda balizas (uno de antes), la sonda a su
+    // ultima direccion es lo que queda (`baliza`).
     let mirando = SERVICIO
         .get()
-        .is_some_and(|s| s.mirando.load(Ordering::SeqCst) > 0);
+        .is_some_and(|s| s.mirando.load(Ordering::SeqCst) > 0)
+        || super::baliza::grabando_alguien();
     std::time::Duration::from_millis(if mirando { MIRANDO_MS } else { A_SOLAS_MS })
 }
 

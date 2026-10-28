@@ -2002,6 +2002,16 @@ clase-codificador-software = the processor
 clase-codificador-cpu = the processor, simple mode
 clase-zona-perdida = No area was picked: press “Capture” again
 clase-salvado = The rest was saved: { $n } screenshots
+clase-disco-poco = The disk is running out of space (less than 2 GB)
+clase-disco-lleno = Disk almost full: the video was closed and the audio is still recording
+clase-suspendido = The computer slept for { $minutos } min; the recording continued on wake
+clase-recuperar-titulo = Interrupted recording
+clase-recuperar-pregunta =
+    A recording was interrupted ({ $nombre }, { $minutos } min) in “{ $chat }”.
+    Yes: Recover · No: Discard · Cancel: ask again next time PixPin opens
+clase-recuperar-sin-nada = Only a video that cannot be opened is left of “{ $nombre }”. Delete it?
+clase-recuperar-descartar = Discard “{ $nombre }”? The recording will be deleted and cannot be recovered.
+clase-recuperar-fallo = “{ $nombre }” could not be recovered. The recording is still safe and will be offered again when PixPin opens.
 clase-texto-de-fondo = Close (keeps going)
 clase-modo-pantalla = Screen and sound
 clase-modo-capturas = Audio and screenshots
@@ -2029,6 +2039,8 @@ chat-sin-grabacion = There's no recording in this chat
 chat-colaboradores-todos = Let everyone in the chat add photos
 chat-colaboradores-nadie = Only my photos in this recording
 clase-hora-sin-comprobar = time not verified
+baliza-movil-aislado = Your phone isn’t showing up, though you’re on the same network: this Wi-Fi may keep devices apart (guest, hotel and office networks do) or a firewall may be blocking PixPin. Connect the PC to the phone’s hotspot, or both to another Wi-Fi. Photos you take wait on the phone and go in at their minute once they find each other.
+baliza-movil-otra-red = Your phone is on a different network from this PC. Connect both to the same Wi-Fi (or the PC to the phone’s hotspot). Photos you take wait on the phone and go in at their minute once they find each other.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
 clase-modo-presencial = In person
 clase-modo-presencial-sub = Records the microphone; “Photo” uses the camera at full resolution

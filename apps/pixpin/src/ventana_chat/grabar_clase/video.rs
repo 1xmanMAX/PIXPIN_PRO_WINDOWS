@@ -21,6 +21,16 @@
 //! casi no se entera. Si la grafica no puede, cae a software y luego a la
 //! CPU, y dice cual quedo ([`Video::codificador`]). La barra no sale en el
 //! video: esta excluida de las capturas.
+//!
+//! **A prueba de cortes** (28-oct-2026): el MP4 se escribe **fragmentado**
+//! (`Opciones::fragmentado`), que se puede abrir aunque PixPin muera a mitad
+//! de la reunion; al cerrarlo bien, si le falta el indice de fragmentos, se
+//! rehace a MP4 normal sin volver a codificar
+//! (`pixpin_motor_video::archivo::recuperar_video`), que es lo que salta
+//! bien en el movil. Lo que quede de un corte lo recupera la siguiente vez
+//! `grabar_clase::recuperar`; aqui ya no se barre nada. Si el disco se
+//! queda sin sitio, [`Video::cortar`] cierra el video con lo grabado y la
+//! nota sigue.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,6 +47,8 @@ use pixpin_motor_video::{
 /// Un video grabandose.
 pub(super) struct Video {
     tirar: Arc<AtomicBool>,
+    /// Cerrar ya el MP4 con lo grabado (el disco se llena): la nota sigue.
+    cortar: Arc<AtomicBool>,
     roto: Arc<AtomicBool>,
     /// La pausa que pide la barra; el hilo se la pasa al motor.
     pausa: Arc<AtomicBool>,
@@ -66,11 +78,13 @@ impl Video {
         sonido: Receiver<Vec<i16>>,
     ) -> Video {
         let tirar = Arc::new(AtomicBool::new(false));
+        let cortar = Arc::new(AtomicBool::new(false));
         let roto = Arc::new(AtomicBool::new(false));
         let pausa = Arc::new(AtomicBool::new(false));
         let codificador = Arc::new(OnceLock::new());
         let hilo = {
             let tirar = Arc::clone(&tirar);
+            let cortar = Arc::clone(&cortar);
             let roto = Arc::clone(&roto);
             let pausa = Arc::clone(&pausa);
             let codificador = Arc::clone(&codificador);
@@ -84,6 +98,7 @@ impl Video {
                         CopiaMono::nueva(sonido, muestreo),
                         &Senales {
                             tirar: &tirar,
+                            cortar: &cortar,
                             roto: &roto,
                             pausa: &pausa,
                             codificador: &codificador,
@@ -108,6 +123,7 @@ impl Video {
         };
         Video {
             tirar,
+            cortar,
             roto,
             pausa,
             codificador,
@@ -118,6 +134,13 @@ impl Video {
     /// Pausa o sigue el video, a la vez que la nota.
     pub(super) fn pausar(&self, en_pausa: bool) {
         self.pausa.store(en_pausa, Ordering::Release);
+    }
+
+    /// **Cierra ya el video** con lo grabado hasta ahora (el disco se esta
+    /// llenando): el MP4 queda bueno y la nota sigue sola. Se recoge al
+    /// terminar, como siempre.
+    pub(super) fn cortar(&self) {
+        self.cortar.store(true, Ordering::Release);
     }
 
     /// Con que se esta codificando (la grafica, el procesador...), en
@@ -162,31 +185,15 @@ impl Video {
 
 impl Drop for Video {
     fn drop(&mut self) {
-        // Soltarlo sin recogerlo es tirarlo: no puede quedar un hilo
-        // grabando la pantalla sin nadie que lo pare.
-        if self.hilo.is_some() {
-            self.parar_sin_guardar();
-        }
-    }
-}
-
-/// Lo que acaba asi es un video que se estaba escribiendo cuando la
-/// aplicacion se cerro de golpe: sin su indice no lo abre nadie, y una hora
-/// de reunion son cientos de megas en un disco pequeno.
-const RESTO: &str = ".video.mp4.parte";
-
-/// **Borra los videos a medias** de otra vez en `carpeta`. Solo se graba una
-/// clase a la vez (`ABIERTA`), asi que cualquier `.parte` de video que haya
-/// al empezar es de una grabacion que ya no va a terminar nunca.
-fn barrer_restos(carpeta: &std::path::Path) {
-    let Ok(entradas) = std::fs::read_dir(carpeta) else {
-        return;
-    };
-    for e in entradas.flatten() {
-        let nombre = e.file_name();
-        if nombre.to_string_lossy().ends_with(RESTO) && e.path().is_file() {
-            tracing::info!(ruta = %e.path().display(), "se borra un video a medias de otra vez");
-            let _ = std::fs::remove_file(e.path());
+        // Soltarlo sin recogerlo (la barra se cayo a mitad) no es tirarlo:
+        // se para el hilo, que no puede quedar grabando sin nadie que lo
+        // pare, pero cerrando el MP4. Queda en su sitio y la recuperacion lo
+        // encuentra por el diario. Tirar es [`Video::tirar`].
+        if let Some(h) = self.hilo.take() {
+            self.cortar.store(true, Ordering::Release);
+            if let Ok(Ok(ruta)) = h.join() {
+                tracing::warn!(ruta = %ruta.display(), "video soltado sin recoger; queda para recuperarlo");
+            }
         }
     }
 }
@@ -194,6 +201,7 @@ fn barrer_restos(carpeta: &std::path::Path) {
 /// Lo que el hilo comparte con la barra.
 struct Senales<'a> {
     tirar: &'a AtomicBool,
+    cortar: &'a AtomicBool,
     roto: &'a AtomicBool,
     pausa: &'a AtomicBool,
     codificador: &'a OnceLock<Codificador>,
@@ -208,9 +216,6 @@ fn grabar(
     mut sonido: impl FuenteAudio,
     s: &Senales,
 ) -> Result<PathBuf> {
-    if let Some(carpeta) = destino.parent() {
-        barrer_restos(carpeta);
-    }
     // La pantalla de la ventana; si ya no esta (se desconecto), la
     // principal.
     let fuente = pixpin_capture::handle_de_monitor(monitor)
@@ -220,6 +225,8 @@ fn grabar(
         Opciones {
             perfil,
             audio: Some(sonido.formato()),
+            // Se puede abrir aunque PixPin muera a mitad (ver arriba).
+            fragmentado: true,
             ..Opciones::de(fuente)
         },
         destino.to_path_buf(),
@@ -230,6 +237,11 @@ fn grabar(
     loop {
         // Soltar el motor sin terminarlo es tirarlo: borra el `.parte`.
         anyhow::ensure!(!s.tirar.load(Ordering::Acquire), "video tirado");
+        if s.cortar.load(Ordering::Acquire) {
+            tracing::warn!("el video de la clase se cierra antes: el disco se llena");
+            s.roto.store(true, Ordering::Release);
+            break;
+        }
         let pausa = s.pausa.load(Ordering::Acquire);
         if pausa != en_pausa {
             en_pausa = pausa;
@@ -270,9 +282,40 @@ fn grabar(
         codificador = r.codificador.clave(),
         ancho = r.medidas.0,
         alto = r.medidas.1,
+        fragmentado = r.fragmentado,
         "video de la clase cerrado"
     );
+    if r.fragmentado {
+        a_normal(&r.ruta);
+    }
     Ok(r.ruta)
+}
+
+/// **Un MP4 fragmentado ya cerrado, a MP4 normal**, si le falta el indice de
+/// fragmentos (sin el, el movil salta mal por una hora de video). Se copia
+/// sin volver a codificar; si no se puede, se queda fragmentado, que se abre
+/// igual.
+fn a_normal(ruta: &std::path::Path) {
+    use pixpin_sistema::mp4::{EstadoMp4, mirar};
+    if mirar(ruta) != (EstadoMp4::Fragmentado { con_indice: false }) {
+        return;
+    }
+    let mut s = ruta.as_os_str().to_os_string();
+    s.push(".fragmentado.parte");
+    let fragmentado = PathBuf::from(s);
+    if std::fs::rename(ruta, &fragmentado).is_err() {
+        return;
+    }
+    let como = pixpin_motor_video::archivo::recuperar_video(
+        &fragmentado,
+        ruta,
+        pixpin_motor_video::rehacer_mp4,
+    );
+    if como.is_none() {
+        // No deberia (era fragmentado): que vuelva a su nombre tal cual.
+        let _ = std::fs::rename(&fragmentado, ruta);
+    }
+    tracing::info!(?como, "video de la clase pasado a MP4 normal");
 }
 
 #[cfg(test)]
@@ -286,30 +329,5 @@ mod pruebas {
         assert_eq!(v, std::path::Path::new("C:/p/voz-1.m4a.parcial.video.mp4"));
         // Caso negativo: no puede ser el mismo fichero que el de la voz.
         assert_ne!(v, voz);
-    }
-
-    #[test]
-    fn barrer_restos_borra_solo_los_videos_a_medias() {
-        let dir = std::env::temp_dir().join("pixpin-clase-barrer-restos");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        // El nombre que de verdad deja el codificador a medias.
-        let mut resto = temporal_del_video(&dir.join("voz-1.m4a.parcial")).into_os_string();
-        resto.push(".parte");
-        let resto = std::path::PathBuf::from(resto);
-        assert!(resto.to_string_lossy().ends_with(RESTO));
-        let hecho = dir.join("voz-1.m4a.parcial.video.mp4");
-        let otro = dir.join("voz-1.m4a.parcial.parte");
-        for f in [&resto, &hecho, &otro] {
-            std::fs::write(f, b"x").unwrap();
-        }
-        barrer_restos(&dir);
-        assert!(!resto.exists());
-        // Caso negativo: un video ya cerrado vale, y lo de la voz no es suyo.
-        assert!(hecho.exists());
-        assert!(otro.exists());
-        // Y una carpeta que no existe no es un cierre.
-        barrer_restos(&dir.join("no-esta"));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

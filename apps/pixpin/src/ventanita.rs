@@ -176,6 +176,29 @@ pub fn abrir_audio_con_copia(
     rx
 }
 
+/// [`abrir_audio_con_copia`] **a prueba de cortes** (ver
+/// `pixpin_audio::Grabadora::empezar_a_prueba_de_cortes`): la grabadora de
+/// clases y reuniones, que escribe ademas el respaldo WAV.
+pub fn abrir_reunion(
+    fichero: std::path::PathBuf,
+    fuentes: pixpin_audio::Fuentes,
+    copia: Option<pixpin_audio::Copia>,
+) -> std::sync::mpsc::Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let lanzado = std::thread::Builder::new()
+        .name("abrir-microfono".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let _ = tx.send(pixpin_audio::Grabadora::empezar_a_prueba_de_cortes(
+                &fichero, fuentes, copia,
+            ));
+        });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo del microfono");
+    }
+    rx
+}
+
 #[cfg(test)]
 pub fn muestra(
     nombre: &str,

@@ -74,7 +74,12 @@ pub use reloj::{
 };
 
 #[cfg(windows)]
-pub use entrada::{Copia, Fuentes, Grabacion, Grabadora, MUESTREO};
+pub use entrada::{
+    Copia, Fuentes, Grabacion, Grabadora, MUESTREO, hay_algo_que_recuperar, recuperar,
+};
+/// El respaldo WAV de una grabacion a prueba de cortes (para leer lo que
+/// dura uno que quedo de un corte, sin depender del motor).
+pub use pixpin_motor_audio::respaldo;
 #[cfg(windows)]
 pub use salida::{Rol, Salida};
 

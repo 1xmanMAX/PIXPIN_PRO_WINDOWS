@@ -818,6 +818,9 @@ fn arrancar(
     // cierre de golpe): se retoma o su burbuja dice que paso. Despues de
     // lanzar el chat, que asi ya consta como naciendo y se lo queda el.
     ventana_chat::sin_ventana::retomar_lo_cortado(lengua, ubicacion.clone(), opciones_lienzo);
+    // Y una clase o reunion que se corto sin guardarse (PixPin murio, se fue
+    // la luz): «Recuperar / Descartar», en su hilo.
+    ventana_chat::recuperar_grabaciones_cortadas(&textos, &ubicacion, lengua, &identidad_equipo);
 
     // 8e. Los recordatorios. Su hilo duerme hasta que vence el proximo y solo
     // da un toque a ESTA ventana: el pin y el globo los saca el bucle de

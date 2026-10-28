@@ -149,7 +149,7 @@ Las fotos entran en una grabacion **por su hora**, lleguen por donde
 lleguen (sincronizacion normal o por diario, «Enviar por Wi-Fi», un chat
 compartido o la camara en directo). Todo viaja en campos de mensajes, sin
 version nueva del protocolo; la guia completa (reglas, flujo, tareas) esta
-en [movil-como-camara.md](movil-como-camara.md) §9-§11.
+en [movil-como-camara.md](movil-como-camara.md) §12-§14.
 
 | Mensaje | `resto` nuevo | Quien lo escribe |
 |---|---|---|
@@ -182,11 +182,11 @@ la clase, `capturas` ya trae las fotos de los colaboradores en su minuto
 (con su `aparato` para el circulo del autor y `horaSinComprobar`).
 
 **`camara_remota` en el otro sentido**: la peticion puede traer `suya` (el
-anuncio de la grabacion de quien pregunta, ver movil-como-camara §10). Un
+anuncio de la grabacion de quien pregunta, ver movil-como-camara §13). Un
 aparato de antes la contesta igual y no pasa nada.
 
 **`suelto` con `destino:"grabacion"`**: `grabacion` puede ir vacia si lleva
-`tomada_en` (por su hora, §9.4); la respuesta «La foto no cae en ninguna
+`tomada_en` (por su hora, movil-como-camara §12.4); la respuesta «La foto no cae en ninguna
 grabación de este equipo» quiere decir: dejala como foto normal.
 
 ## 2. La biblioteca de figuras
