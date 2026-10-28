@@ -1,0 +1,31 @@
+[package]
+name = "pixpin-typesafe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Jev, el modelo de decisiones de TypeSafe (28-oct-2026, docs/jev.md): sus
+# preguntas tipadas (Noul, Choice, Score y Box), las respuestas con su
+# probabilidad, el cache de lo ya preguntado, la clave cifrada y las tablas
+# de decision de PixPin. Cimiento como `pixpin-anki`: sin ningun crate de
+# PixPin. Portable: la red de Windows (WinHTTP, la misma que usa el
+# asistente) y DPAPI solo en Windows; en las pruebas, un transporte grabado.
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# La huella de cada peticion para el cache. Ya esta en el arbol.
+sha2 = "0.10.9"
+# Las imagenes van en base64 (`assets`). Ya esta en el arbol.
+base64 = "0.22"
+tracing = "0.1.44"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    # La clave de TypeSafe, cifrada con DPAPI como las de Claude y DeepSeek.
+    "Win32_Security_Cryptography",
+    # El POST a api.typesafe.ai con lo que ya trae Windows.
+    "Win32_Networking_WinHttp",
+] }
