@@ -1509,6 +1509,8 @@ fn escribir_el_texto(
     crate::voz::aplicar(&mut m, t);
     cuaderno::reemplazar(&carpeta, &m)?;
     super::refrescar();
+    // Lo importante de la clase (Jev, en su hilo; sin clave, nada).
+    crate::jev::reunion::lanzar(&pedido.ubicacion, proyecto, id, true);
     Ok(())
 }
 
