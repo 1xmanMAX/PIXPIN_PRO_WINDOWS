@@ -230,7 +230,9 @@ fn cabeceras() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// Las ultimas paginas leidas (para pedir la parte 2 sin bajarla otra vez).
+/// Las ultimas paginas leidas (para pedir la parte 2 sin bajarla otra vez;
+/// la parte 1 siempre se baja de nuevo, asi una pagina que cambio no se
+/// queda vieja).
 static RECIENTES: Mutex<VecDeque<(String, String, Pagina)>> = Mutex::new(VecDeque::new());
 const CUANTAS_RECIENTES: usize = 6;
 
@@ -297,7 +299,9 @@ fn abrir_pagina(args: &Value, l: &Lector) -> Result<String, String> {
         .and_then(Value::as_u64)
         .unwrap_or(1)
         .clamp(1, 500) as usize;
-    if let Some((final_, p)) = de_las_recientes(pedida) {
+    if parte > 1
+        && let Some((final_, p)) = de_las_recientes(pedida)
+    {
         return Ok(pixpin_paginas::pagina_para_el_modelo(&final_, &p, parte));
     }
     let mut url = direccion::leer(pedida)?;

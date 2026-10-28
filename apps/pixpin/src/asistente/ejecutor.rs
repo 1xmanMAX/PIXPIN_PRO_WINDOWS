@@ -406,7 +406,8 @@ impl EjecutorDelChat {
         let parar = self.parar.clone();
         let pdf = |bytes: &[u8]| {
             let carpeta = std::env::temp_dir().join("pixpin-asistente").join("web");
-            std::fs::create_dir_all(&carpeta).map_err(|e| format!("no se pudo guardar el PDF: {e}"))?;
+            std::fs::create_dir_all(&carpeta)
+                .map_err(|e| format!("no se pudo guardar el PDF: {e}"))?;
             let marca = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_nanos());
