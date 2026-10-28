@@ -44,6 +44,7 @@ pub mod importar_hojas;
 pub mod lienzo_de_la_foto;
 pub mod mini;
 pub mod para_el_movil;
+pub mod por_su_hora;
 pub mod portapapeles_tabla;
 pub mod presencial;
 pub mod tabla;
