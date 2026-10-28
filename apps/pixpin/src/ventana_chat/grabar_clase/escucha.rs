@@ -239,11 +239,14 @@ fn pasar_a_texto(
     let mut whisper: Option<pixpin_voz::whisper::Whisper> = None;
     let mut freno = Freno::default();
     let mut cpu = pixpin_shell::prioridad::MedidorCpu::default();
-    let _ = cpu.medir();
     let mut seguimiento = Seguimiento::default();
     let mut antes: Option<String> = None;
     let mut fallo_dicho = false;
     while let Some(tramo) = siguiente(c) {
+        // La carga de ahora mismo (un tercio de segundo), no la media de
+        // los 15 s del tramo: esa incluiria el texto del tramo anterior.
+        let _ = cpu.medir();
+        std::thread::sleep(Duration::from_millis(300));
         match freno.decidir(&tramo, cpu.medir()) {
             Paso::Pasar => {}
             Paso::SaltarCpu => {
