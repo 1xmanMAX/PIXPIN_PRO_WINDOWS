@@ -191,6 +191,9 @@ fn mandar(raiz: &Path, puerto_tcp: u16, contestar: mpsc::Receiver<Ipv4Addr>) {
     let mut leido: Option<Instant> = None;
     let mut grupo: Option<Grupo> = None;
     let mut redes_leidas: Option<Instant> = None;
+    // Las que se pidieron al abrir el emisor (puede que alguna no se
+    // dejara abrir: no por eso se reabre cada medio minuto).
+    let mut redes_pedidas: Vec<Interfaz> = Vec::new();
     let mut emisor: Option<Emisor> = None;
     let mut preguntar = true;
     let mut grabacion: Option<Grabacion> = None;
@@ -228,8 +231,9 @@ fn mandar(raiz: &Path, puerto_tcp: u16, contestar: mpsc::Receiver<Ipv4Addr>) {
         if nuevas || redes_leidas.is_none_or(|l| l.elapsed() > Duration::from_secs(30)) {
             redes_leidas = Some(Instant::now());
             let ahora = redes();
-            if nuevas || emisor.as_ref().is_none_or(|e| e.redes() != ahora) {
+            if nuevas || emisor.is_none() || redes_pedidas != ahora {
                 emisor = Emisor::nuevo(b::PUERTO_BALIZA, &ahora).ok();
+                redes_pedidas = ahora.clone();
                 // Red nueva: se pregunta otra vez quien esta, y el oyente se
                 // apunta a la multidifusion en las nuevas.
                 preguntar = true;

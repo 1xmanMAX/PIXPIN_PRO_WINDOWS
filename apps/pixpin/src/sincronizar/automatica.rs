@@ -1165,19 +1165,22 @@ mod pruebas {
     #[test]
     fn el_hilo_duerme_lo_justo_para_mandar_las_tareas_a_tiempo() {
         let mut r = con_tel();
-        assert_eq!(cuanto_dormir(&r, &Reloj::default(), 0, false), LATIDO);
+        assert_eq!(
+            cuanto_dormir(&r, &Reloj::default(), 0, false, false),
+            LATIDO
+        );
         r.avisan_tareas("obra", 0);
         assert_eq!(
-            cuanto_dormir(&r, &Reloj::default(), 100, false),
+            cuanto_dormir(&r, &Reloj::default(), 100, false, false),
             Duration::from_millis((CALMA_TAREAS - 100) as u64)
         );
         assert_eq!(
-            cuanto_dormir(&r, &Reloj::default(), CALMA_TAREAS, false),
+            cuanto_dormir(&r, &Reloj::default(), CALMA_TAREAS, false, false),
             REINTENTO,
             "ocupado: reintentar pronto"
         );
         assert_eq!(
-            cuanto_dormir(&r, &Reloj::default(), 0, true),
+            cuanto_dormir(&r, &Reloj::default(), 0, true, false),
             LATIDO,
             "con una vuelta suya en marcha, la despierta su final"
         );
@@ -1370,21 +1373,24 @@ mod pruebas {
         let mut personas = Reloj::default();
         r.acabo(Como::Ocupado, firma(1), 0, 0.5);
         assert_eq!(
-            cuanto_dormir(&r, &personas, 0, false),
+            cuanto_dormir(&r, &personas, 0, false, false),
             Duration::from_millis(2_500)
         );
         personas.acabo(Como::Ocupado, firma(1), 0, 0.0);
         assert_eq!(
-            cuanto_dormir(&r, &personas, 0, false),
+            cuanto_dormir(&r, &personas, 0, false, false),
             Duration::from_millis(1_000),
             "la mas cercana de las dos"
         );
-        assert_eq!(cuanto_dormir(&r, &personas, 9_000, false), REINTENTO);
+        assert_eq!(cuanto_dormir(&r, &personas, 9_000, false, false), REINTENTO);
         // Un reintento lejano no alarga el latido.
         let mut r = con_tel();
         r.acabo(Como::Fallo, firma(1), 0, 0.5);
         r.acabo(Como::Fallo, firma(1), 0, 0.5);
-        assert_eq!(cuanto_dormir(&r, &Reloj::default(), 0, false), LATIDO);
+        assert_eq!(
+            cuanto_dormir(&r, &Reloj::default(), 0, false, false),
+            LATIDO
+        );
     }
 
     #[test]
@@ -1402,5 +1408,25 @@ mod pruebas {
         )));
         assert!(!fue_ocupado("No se pudo con ninguno."));
         assert!(!fue_ocupado(""));
+    }
+
+    #[test]
+    fn al_acabar_de_grabar_lo_aplazado_sale_ya_y_la_grabacion_no_espera() {
+        // Modo prioritario: lo que se aplazo mientras se grababa sale sin
+        // esperar al periodo, y una grabacion pendiente despierta enseguida.
+        let mut r = Reloj::default();
+        r.responde("tel", true);
+        r.empezo(0);
+        assert_eq!(r.toca(1_000), None);
+        r.acabo_de_grabar(1_000);
+        assert_eq!(r.toca(1_000), Some(Motivo::Reintento));
+        assert_eq!(
+            cuanto_dormir(&Reloj::default(), &Reloj::default(), 0, false, true),
+            REINTENTO
+        );
+        // Caso negativo: sin nadie que conteste no hay nada que sacar.
+        let mut solo = Reloj::default();
+        solo.acabo_de_grabar(0);
+        assert_eq!(solo.toca(0), None);
     }
 }
