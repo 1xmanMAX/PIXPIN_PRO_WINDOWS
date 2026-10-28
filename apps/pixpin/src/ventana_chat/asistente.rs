@@ -261,7 +261,8 @@ pub(super) fn al_enviar(
         });
         return (!llego).then(|| textos.t("asistente-ocupado"));
     }
-    let (motor, pensar, ventana) = match motor_para(ubicacion, &pregunta) {
+    let (motor, pensar, ventana) = match motor_para(ubicacion, &a.ficha.id, &a.mensajes, &pregunta)
+    {
         Ok(m) => m,
         Err(aviso) => return Some(aviso),
     };
@@ -277,8 +278,14 @@ pub(super) fn al_enviar(
 /// **El motor de un pedido y como pensarlo**: el de los ajustes, si piensa
 /// y la ventana del modelo. Lo comparten el chat abierto y lo que se retoma
 /// al arrancar ([`de_fondo`]); `Err` es el aviso para el usuario.
+///
+/// **Con Jev** (28-oct-2026, `jev::modelo`): lo que no es una orden del
+/// camino rapido puede ir al modelo fuerte del mismo proveedor si Jev lo
+/// juzga dificil; `mensajes` es la conversacion hasta la pregunta.
 fn motor_para(
     ubicacion: &Ubicacion,
+    proyecto: &str,
+    mensajes: &[cuaderno::Mensaje],
     pregunta: &str,
 ) -> Result<(Arc<dyn Motor>, bool, u32), String> {
     // Pensar (15-oct): «Siempre», «Nunca» o, en automatico, solo si la
@@ -293,6 +300,16 @@ fn motor_para(
     // automatizaciones). Lo demas dira el aviso.
     let motor =
         crate::asistente::rapido::motor_o_sin(motor_de_los_ajustes(ubicacion, pensar), pregunta)?;
+    let anteriores = &mensajes[..mensajes.len().saturating_sub(1)];
+    let motor = crate::jev::modelo::segun_jev(
+        ubicacion,
+        proyecto,
+        motor,
+        ia_nube::eleccion(&aj),
+        pensar,
+        pregunta,
+        &ia_chat::conversacion(anteriores),
+    );
     Ok((motor, pensar, ia_pensado::VENTANA_NUBE))
 }
 
