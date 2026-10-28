@@ -185,10 +185,15 @@ impl Video {
 
 impl Drop for Video {
     fn drop(&mut self) {
-        // Soltarlo sin recogerlo es tirarlo: no puede quedar un hilo
-        // grabando la pantalla sin nadie que lo pare.
-        if self.hilo.is_some() {
-            self.parar_sin_guardar();
+        // Soltarlo sin recogerlo (la barra se cayo a mitad) no es tirarlo:
+        // se para el hilo, que no puede quedar grabando sin nadie que lo
+        // pare, pero cerrando el MP4. Queda en su sitio y la recuperacion lo
+        // encuentra por el diario. Tirar es [`Video::tirar`].
+        if let Some(h) = self.hilo.take() {
+            self.cortar.store(true, Ordering::Release);
+            if let Ok(Ok(ruta)) = h.join() {
+                tracing::warn!(ruta = %ruta.display(), "video soltado sin recoger; queda para recuperarlo");
+            }
         }
     }
 }
