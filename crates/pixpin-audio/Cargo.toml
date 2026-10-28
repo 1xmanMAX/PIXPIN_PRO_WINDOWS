@@ -8,6 +8,9 @@ license.workspace = true
 [dependencies]
 # Grabar: la captura, la mezcla y el `.m4a` (ver docs/motor-de-audio.md).
 pixpin-motor-audio = { workspace = true }
+# Mirar si el `.m4a` a medias de una grabacion cortada llego a cerrarse
+# (`entrada::recuperar`).
+pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 thiserror = "2.0.20"
 tracing = "0.1.44"
 # El `#[implement]` del callback de Media Foundation se expande a

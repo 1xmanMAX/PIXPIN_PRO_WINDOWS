@@ -1571,6 +1571,7 @@ name = "pixpin-audio"
 version = "0.1.0"
 dependencies = [
  "pixpin-motor-audio",
+ "pixpin-sistema",
  "thiserror",
  "tracing",
  "windows",

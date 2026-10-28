@@ -22,6 +22,13 @@
 //! Lo de los picos y la copia lo hace un hilo pequeno suscrito al PCM del
 //! motor: nada de eso puede retrasar la captura.
 //!
+//! - El **respaldo** (28-oct-2026, «si se perdiera algo … se perderia una
+//!   reunion»), con [`Grabadora::empezar_a_prueba_de_cortes`]: el mismo PCM
+//!   a un WAV al lado (`pixpin_motor_audio::respaldo`), que vale aunque la
+//!   aplicacion muera o se vaya la luz, y del que [`recuperar`] rehace la
+//!   nota. Con respaldo, **nada se borra sin que lo pida el usuario**: ni al
+//!   soltar la grabadora sin pararla ni cuando el cierre falla.
+//!
 //! El formato del fichero es el de antes: AAC-LC **mono** en MPEG-4, a
 //! 48 000 Hz y 96 kbps. Lo leen igual el movil, el reproductor del chat y
 //! `pixpin-voz` para pasarlo a texto (que lo descodifica a 16 kHz mono con
@@ -31,6 +38,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
+use pixpin_motor_audio::respaldo::{self, Respaldo};
 use pixpin_motor_audio::{
     BloquePcm, Equipo, ErrorMotor, Estadisticas, Microfono, MotorAudio, Niveles, Opciones,
     Receptor, Salida, Suscripcion, suscripcion,
@@ -136,9 +144,11 @@ pub struct Grabadora {
     /// bytes), y la grabadora viaja por canales y vive dentro de los
     /// estados de varias ventanas, que no tienen por que crecer con el.
     motor: Option<Box<MotorAudio>>,
-    /// El hilo de los picos y de la copia; devuelve los picos al cerrarse
-    /// el PCM.
+    /// El hilo de los picos, de la copia y del respaldo; devuelve los picos
+    /// al cerrarse el PCM.
     oyente: Option<JoinHandle<Vec<i32>>>,
+    /// El respaldo WAV, si se pidio ([`Grabadora::empezar_a_prueba_de_cortes`]).
+    respaldo: Option<PathBuf>,
 }
 
 impl Grabadora {
@@ -167,7 +177,20 @@ impl Grabadora {
         fuentes: Fuentes,
         copia: Option<Copia>,
     ) -> Result<Grabadora, ErrorAudio> {
-        Grabadora::empezar_del_todo(destino, fuentes, copia, Vec::new())
+        Grabadora::empezar_del_todo(destino, fuentes, copia, Vec::new(), false)
+    }
+
+    /// **Lo mismo, a prueba de cortes**: ademas del `.m4a`, el mismo sonido
+    /// a `<destino>.respaldo.wav` (ver `pixpin_motor_audio::respaldo`). Si la
+    /// aplicacion muere, se va la luz o el `.m4a` no se puede cerrar, la nota
+    /// se rehace del respaldo ([`recuperar`]). Es lo que usan las clases y
+    /// reuniones: horas que no se pueden perder.
+    pub fn empezar_a_prueba_de_cortes(
+        destino: &Path,
+        fuentes: Fuentes,
+        copia: Option<Copia>,
+    ) -> Result<Grabadora, ErrorAudio> {
+        Grabadora::empezar_del_todo(destino, fuentes, copia, Vec::new(), true)
     }
 
     /// Lo mismo, con suscripciones al PCM del motor que reciben **desde el
@@ -179,7 +202,7 @@ impl Grabadora {
         fuentes: Fuentes,
         pcm: Vec<Suscripcion>,
     ) -> Result<Grabadora, ErrorAudio> {
-        Grabadora::empezar_del_todo(destino, fuentes, None, pcm)
+        Grabadora::empezar_del_todo(destino, fuentes, None, pcm, false)
     }
 
     fn empezar_del_todo(
@@ -187,6 +210,7 @@ impl Grabadora {
         fuentes: Fuentes,
         copia: Option<Copia>,
         mut pcm: Vec<Suscripcion>,
+        con_respaldo: bool,
     ) -> Result<Grabadora, ErrorAudio> {
         if !fuentes.microfono && !fuentes.equipo {
             return Err(ErrorAudio::SinMicrofono);
@@ -215,24 +239,47 @@ impl Grabadora {
             pcm,
             ..Opciones::default()
         };
+        // El respaldo se abre antes que el motor: el primer bloque ya cae en
+        // el. Si no se puede (sin permiso, disco lleno), se graba sin el.
+        let respaldo = if con_respaldo {
+            let ruta = respaldo::ruta_del_respaldo(destino);
+            match Respaldo::crear(&ruta, MUESTREO, 1) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    tracing::warn!(?e, ruta = %ruta.display(), "la grabacion va sin respaldo");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let ruta_respaldo = respaldo.as_ref().map(|r| r.ruta().to_path_buf());
+        let quitar_respaldo = || {
+            if let Some(r) = &ruta_respaldo {
+                let _ = std::fs::remove_file(r);
+            }
+        };
         let motor = match MotorAudio::empezar(opciones) {
             Ok(m) => m,
             Err(e) => {
                 // Si fallo despues de crear el `.m4a`, que no se quede
                 // huerfano. Es el `.parte`, nunca el destino del usuario.
                 let _ = std::fs::remove_file(&parcial);
+                drop(respaldo);
+                quitar_respaldo();
                 return Err(de_motor(e));
             }
         };
         let oyente = std::thread::Builder::new()
             .name("pixpin-grabar".into())
-            .spawn(move || escuchar(&receptor, copia))
+            .spawn(move || escuchar(&receptor, copia, respaldo))
             .map_err(|_| ErrorAudio::HiloCaido);
         let oyente = match oyente {
             Ok(h) => h,
             Err(e) => {
                 drop(motor);
                 let _ = std::fs::remove_file(&parcial);
+                quitar_respaldo();
                 return Err(e);
             }
         };
@@ -241,6 +288,7 @@ impl Grabadora {
             parcial,
             motor: Some(Box::new(motor)),
             oyente: Some(oyente),
+            respaldo: ruta_respaldo,
         })
     }
 
@@ -305,8 +353,62 @@ impl Grabadora {
     /// fichero**, igual que en el movil, donde `Voz.parar` devuelve `false`
     /// y quien llama borra (`GrabadoraActivity.kt:134-151`): por debajo de
     /// eso lo que hubo fue un resbalon en el boton, no una nota.
+    ///
+    /// **Con respaldo** ([`Grabadora::empezar_a_prueba_de_cortes`]), si el
+    /// `.m4a` no se pudo cerrar (el disco, el codificador) la nota se rehace
+    /// del respaldo antes de rendirse; y si ni eso, el `.parte` y el respaldo
+    /// **se quedan** para [`recuperar`] mas tarde.
     pub fn parar(mut self) -> Result<Grabacion, ErrorAudio> {
-        let grabacion = match self.terminar() {
+        let respaldo = self.respaldo.take();
+        let terminado = self.terminar();
+        let Some(respaldo) = respaldo else {
+            return self.parar_sin_respaldo(terminado);
+        };
+        let picos = match &terminado {
+            Ok(g) if g.duracion_ms < MINIMO_MS => {
+                // Un resbalon en el boton: ni nota ni respaldo.
+                let _ = std::fs::remove_file(&self.parcial);
+                let _ = std::fs::remove_file(&respaldo);
+                return Err(ErrorAudio::DemasiadoCorta {
+                    duro_ms: g.duracion_ms,
+                    minimo_ms: MINIMO_MS,
+                });
+            }
+            Ok(g) => {
+                if std::fs::rename(&self.parcial, &self.destino).is_ok() {
+                    let _ = std::fs::remove_file(&respaldo);
+                    return terminado;
+                }
+                g.picos.clone()
+            }
+            Err(e) => {
+                tracing::warn!(?e, "el .m4a no se cerro; se rehace del respaldo");
+                Vec::new()
+            }
+        };
+        match recuperar(&self.destino) {
+            Ok(mut g) => {
+                if !picos.is_empty() {
+                    g.picos = picos;
+                }
+                Ok(g)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    ?e,
+                    respaldo = %respaldo.display(),
+                    "la nota no se pudo rehacer; el respaldo se queda para recuperarla"
+                );
+                terminado.and(Err(e))
+            }
+        }
+    }
+
+    fn parar_sin_respaldo(
+        &mut self,
+        terminado: Result<Grabacion, ErrorAudio>,
+    ) -> Result<Grabacion, ErrorAudio> {
+        let grabacion = match terminado {
             Ok(g) => g,
             Err(e) => {
                 // El `.m4a` a medias no vale para nada y nadie lo va a
@@ -338,6 +440,15 @@ impl Grabadora {
     pub fn cancelar(mut self) {
         let _ = self.terminar();
         let _ = std::fs::remove_file(&self.parcial);
+        // Tirar es lo unico que se lleva el respaldo: lo pidio el usuario.
+        if let Some(r) = self.respaldo.take() {
+            let _ = std::fs::remove_file(r);
+        }
+    }
+
+    /// El respaldo WAV, si se graba con el.
+    pub fn respaldo(&self) -> Option<&Path> {
+        self.respaldo.as_deref()
     }
 
     fn terminar(&mut self) -> Result<Grabacion, ErrorAudio> {
@@ -363,6 +474,16 @@ impl Drop for Grabadora {
         // hilo girando hasta que se cierre la aplicacion.
         if self.motor.is_some() {
             let _ = self.terminar();
+            if self.respaldo.is_some() {
+                // A prueba de cortes: soltarla sin pararla (un panico, la
+                // ventana que se cierra mal) no es tirarla. El `.parte` ya
+                // cerrado y el respaldo se quedan para `recuperar`.
+                tracing::warn!(
+                    parte = %self.parcial.display(),
+                    "grabadora soltada sin parar; queda para recuperarla"
+                );
+                return;
+            }
             // El `.parte`, nunca el destino: este `Drop` corria sobre la ruta
             // que dio quien llama, asi que soltar una grabadora sin pararla
             // borraba un fichero del usuario si ya habia uno ahi.
@@ -371,11 +492,24 @@ impl Drop for Grabadora {
     }
 }
 
-/// El hilo de los picos y de la copia: hasta que el motor cierre el PCM.
-fn escuchar(receptor: &Receptor, mut copia: Option<Copia>) -> Vec<i32> {
+/// El hilo de los picos, de la copia y del respaldo: hasta que el motor
+/// cierre el PCM.
+fn escuchar(
+    receptor: &Receptor,
+    mut copia: Option<Copia>,
+    mut respaldo: Option<Respaldo>,
+) -> Vec<i32> {
     let mut reparto = Reparto::nuevo(MUESTREO);
     let mut fin = 0u64;
     let mut ceros: Vec<i16> = Vec::new();
+    let al_respaldo = |r: &mut Option<Respaldo>, m: &[i16]| {
+        if let Some(x) = r.as_mut()
+            && let Err(e) = x.escribir(m)
+        {
+            // El disco se lleno o se fue: la nota sigue, sin respaldo.
+            tracing::warn!(?e, "el respaldo de la grabacion dejo de escribirse");
+        }
+    };
     while let Some(bloque) = receptor.recibir() {
         // Si se perdio algo (no deberia, con una cola tan larga), el hueco es
         // silencio: la onda y la copia siguen al compas de la nota.
@@ -383,16 +517,108 @@ fn escuchar(receptor: &Receptor, mut copia: Option<Copia>) -> Vec<i32> {
             ceros.clear();
             ceros.resize((bloque.posicion - fin) as usize, 0);
             reparto.empuja(&ceros);
+            al_respaldo(&mut respaldo, &ceros);
             enviar(&mut copia, ceros.clone());
         }
         fin = bloque.fin();
         reparto.empuja(&bloque.muestras);
+        al_respaldo(&mut respaldo, &bloque.muestras);
         if copia.is_some() {
             let BloquePcm { muestras, .. } = bloque;
             enviar(&mut copia, muestras);
         } else {
             receptor.devolver(bloque);
         }
+    }
+    if let Some(r) = respaldo
+        && let Err(e) = r.cerrar()
+    {
+        tracing::warn!(?e, "el respaldo de la grabacion no se cerro (se lee igual)");
+    }
+    reparto.terminar()
+}
+
+/// **Rehace una nota cortada** que se grababa en `destino` con respaldo
+/// ([`Grabadora::empezar_a_prueba_de_cortes`]): la aplicacion murio, se fue
+/// la luz o el `.m4a` no se pudo cerrar.
+///
+/// - Si el `.parte` llego a cerrarse (tiene su indice), se pone en `destino`
+///   tal cual.
+/// - Si no, se vuelve a codificar el respaldo WAV a `destino`.
+///
+/// Los picos salen del respaldo. Si sale bien, el `.parte` y el respaldo se
+/// borran (ya estan en `destino`); si no, **no se toca nada**.
+pub fn recuperar(destino: &Path) -> Result<Grabacion, ErrorAudio> {
+    use pixpin_sistema::mp4::{EstadoMp4, mirar};
+    let parcial = a_medias(destino);
+    let ruta_respaldo = respaldo::ruta_del_respaldo(destino);
+    let wav = respaldo::leer(&ruta_respaldo).ok();
+    let picos = wav
+        .map(|w| picos_del_respaldo(&ruta_respaldo, &w))
+        .unwrap_or_default();
+    let duracion_ms =
+        if mirar(&parcial) == EstadoMp4::Cerrado && std::fs::rename(&parcial, destino).is_ok() {
+            // Sin respaldo no se sabe lo que dura sin descodificarlo: lo dice
+            // quien lo guarda (el diario de la grabacion) o se queda en cero.
+            wav.map_or(0, |w| w.duracion_ms())
+        } else {
+            let w = wav.ok_or_else(|| ErrorAudio::NoEsAudio {
+                ruta: ruta_respaldo.display().to_string(),
+            })?;
+            if w.duracion_ms() < MINIMO_MS {
+                return Err(ErrorAudio::DemasiadoCorta {
+                    duro_ms: w.duracion_ms(),
+                    minimo_ms: MINIMO_MS,
+                });
+            }
+            // A un `.parte` propio: el destino solo aparece entero.
+            let mut rehecho = destino.as_os_str().to_os_string();
+            rehecho.push(".rehecho.parte");
+            let rehecho = PathBuf::from(rehecho);
+            if let Err(e) = pixpin_motor_audio::rehacer_m4a(&ruta_respaldo, &rehecho) {
+                let _ = std::fs::remove_file(&rehecho);
+                return Err(de_motor(e));
+            }
+            std::fs::rename(&rehecho, destino).map_err(|_| ErrorAudio::NoEsAudio {
+                ruta: destino.display().to_string(),
+            })?;
+            let _ = std::fs::remove_file(&parcial);
+            w.duracion_ms()
+        };
+    let _ = std::fs::remove_file(&ruta_respaldo);
+    Ok(Grabacion {
+        ruta: destino.to_path_buf(),
+        duracion_ms,
+        picos,
+    })
+}
+
+/// Si queda algo de una grabacion con respaldo en `destino` que
+/// [`recuperar`] pueda rehacer.
+pub fn hay_algo_que_recuperar(destino: &Path) -> bool {
+    let wav = respaldo::leer(&respaldo::ruta_del_respaldo(destino));
+    wav.is_ok_and(|w| w.marcos > 0)
+        || pixpin_sistema::mp4::mirar(&a_medias(destino)) == pixpin_sistema::mp4::EstadoMp4::Cerrado
+}
+
+/// Los picos de la onda, de un respaldo entero (como si se grabara otra
+/// vez, pero sin sonido: solo cuentas).
+fn picos_del_respaldo(ruta: &Path, w: &respaldo::Wav) -> Vec<i32> {
+    let mut reparto = Reparto::nuevo(w.muestreo);
+    let canales = w.canales.max(1) as usize;
+    let mut mono: Vec<i16> = Vec::new();
+    let hecho = respaldo::recorrer::<std::io::Error>(ruta, w, w.muestreo as usize, |m| {
+        if canales == 1 {
+            reparto.empuja(m);
+        } else {
+            mono.clear();
+            mono.extend(m.chunks_exact(canales).map(|c| c[0]));
+            reparto.empuja(&mono);
+        }
+        Ok(())
+    });
+    if let Err(e) = hecho {
+        tracing::info!(?e, "los picos del respaldo salen hasta donde se leyo");
     }
     reparto.terminar()
 }
@@ -454,6 +680,85 @@ mod pruebas {
         );
         assert!(!ruta.exists(), "se quedo un .m4a que no suena");
         assert!(!a_medias(&ruta).exists(), "se quedo el fichero a medias");
+    }
+
+    /// **La aplicacion muere a mitad de una reunion** (el proceso se aborta:
+    /// ni `parar`, ni `Drop`, ni `Finalize`). La prueba se lanza a si misma
+    /// como hijo, que graba tres segundos y se mata; el padre recupera la
+    /// nota del respaldo. Necesita microfono:
+    /// `cargo test -p pixpin-audio -- --ignored --nocapture cortada`
+    #[test]
+    #[ignore = "necesita un microfono conectado y el permiso de Windows"]
+    fn una_grabacion_cortada_de_golpe_se_recupera_del_respaldo() {
+        const HIJO: &str = "PIXPIN_PRUEBA_CORTE_HIJO";
+        if let Some(destino) = std::env::var_os(HIJO) {
+            let g = Grabadora::empezar_a_prueba_de_cortes(
+                Path::new(&destino),
+                Fuentes::MICROFONO,
+                None,
+            )
+            .expect("no se pudo abrir el microfono");
+            std::thread::sleep(std::time::Duration::from_millis(3_000));
+            // Sin soltar nada: como un corte de luz para este proceso.
+            let _ = &g;
+            std::process::abort();
+        }
+        let ruta = std::env::temp_dir().join("pixpin-audio-corte.m4a.parcial");
+        let limpiar = |r: &Path| {
+            let _ = std::fs::remove_file(r);
+            let _ = std::fs::remove_file(a_medias(r));
+            let _ = std::fs::remove_file(respaldo::ruta_del_respaldo(r));
+        };
+        limpiar(&ruta);
+        let estado = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "entrada::pruebas::una_grabacion_cortada_de_golpe_se_recupera_del_respaldo",
+            ])
+            .env(HIJO, &ruta)
+            .status()
+            .expect("lanzar el hijo");
+        assert!(!estado.success(), "el hijo tenia que morir de golpe");
+        // Lo que deja un corte: nada con el nombre bueno, un `.parte` sin
+        // indice y el respaldo.
+        assert!(!ruta.exists());
+        assert!(!pixpin_sistema::mp4::mirar(&a_medias(&ruta)).se_abre());
+        assert!(hay_algo_que_recuperar(&ruta));
+
+        let g = recuperar(&ruta).expect("la nota tenia que rehacerse del respaldo");
+        assert!(g.duracion_ms >= 2_000, "{g:?}");
+        assert!(!g.picos.is_empty());
+        assert_eq!(
+            pixpin_sistema::mp4::mirar(&ruta),
+            pixpin_sistema::mp4::EstadoMp4::Cerrado
+        );
+        // Y lo de la recuperacion ya no hace falta.
+        assert!(!respaldo::ruta_del_respaldo(&ruta).exists());
+        assert!(!a_medias(&ruta).exists());
+        limpiar(&ruta);
+    }
+
+    /// Soltar la grabadora sin pararla (un panico, una ventana que se cierra
+    /// mal) **no tira la nota**: el `.parte` se cierra y se queda.
+    #[test]
+    #[ignore = "necesita un microfono conectado y el permiso de Windows"]
+    fn una_grabadora_soltada_sin_parar_se_recupera() {
+        let ruta = std::env::temp_dir().join("pixpin-audio-soltada.m4a.parcial");
+        let _ = std::fs::remove_file(&ruta);
+        let g = Grabadora::empezar_a_prueba_de_cortes(&ruta, Fuentes::MICROFONO, None)
+            .expect("no se pudo abrir el microfono");
+        std::thread::sleep(std::time::Duration::from_millis(1_500));
+        drop(g);
+        assert!(!ruta.exists());
+        assert_eq!(
+            pixpin_sistema::mp4::mirar(&a_medias(&ruta)),
+            pixpin_sistema::mp4::EstadoMp4::Cerrado
+        );
+        let g = recuperar(&ruta).expect("recuperar");
+        assert!(g.duracion_ms >= 1_000, "{g:?}");
+        assert!(ruta.is_file());
+        let _ = std::fs::remove_file(&ruta);
     }
 
     #[test]
