@@ -31,6 +31,7 @@
 //!   trait: cada aparato pone como guarda sus chats) y lo que es igual en
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
+//! - `baliza`: descubrir rapido por UDP y que va primero mientras se graba.
 //! - `camara`: el movil como camara de la reunion que graba el PC
 //!   (`camara_remota` y las fotos y clips con `destino: "grabacion"`).
 //! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
@@ -47,6 +48,7 @@
 
 pub mod al_lienzo;
 pub mod anotado;
+pub mod baliza;
 pub mod base;
 pub mod camara;
 pub mod canal;
@@ -134,3 +136,6 @@ mod compartidos_de_verdad;
 
 #[cfg(test)]
 mod diario_de_verdad;
+
+#[cfg(test)]
+mod baliza_de_verdad;
