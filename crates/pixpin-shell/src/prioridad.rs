@@ -65,6 +65,47 @@ pub fn memoria_del_sistema() -> Option<(u64, u64)> {
     Some((m.ullTotalPhys, m.ullAvailPhys))
 }
 
+/// **Lo ocupado que va el procesador** (todos los nucleos), entre dos
+/// medidas: `GetSystemTimes` da el tiempo ocioso, el del nucleo (que incluye
+/// el ocioso) y el de usuario desde que arranco Windows. Lo usa la escucha
+/// en vivo de una reunion (los temas, 28-oct-2026) para no pasar a texto
+/// mientras el equipo va cargado: la grabacion va primero.
+#[derive(Debug, Default)]
+pub struct MedidorCpu {
+    antes: Option<(u64, u64)>,
+}
+
+impl MedidorCpu {
+    /// Lo ocupado desde la medida anterior, de 0 a 1. La primera vez (o si
+    /// Windows no contesta), `None`.
+    pub fn medir(&mut self) -> Option<f32> {
+        use windows::Win32::Foundation::FILETIME;
+        use windows::Win32::System::Threading::GetSystemTimes;
+        let (mut ocioso, mut nucleo, mut usuario) = (
+            FILETIME::default(),
+            FILETIME::default(),
+            FILETIME::default(),
+        );
+        // SAFETY: las tres estructuras son nuestras y viven durante la
+        // llamada; Windows solo escribe en ellas.
+        unsafe { GetSystemTimes(Some(&mut ocioso), Some(&mut nucleo), Some(&mut usuario)).ok()? };
+        let n = |f: FILETIME| (u64::from(f.dwHighDateTime) << 32) | u64::from(f.dwLowDateTime);
+        let ahora = (n(ocioso), n(nucleo) + n(usuario));
+        let antes = self.antes.replace(ahora)?;
+        ocupado(antes, ahora)
+    }
+}
+
+/// La cuenta de [`MedidorCpu::medir`]: `(ocioso, total)` antes y ahora.
+fn ocupado(antes: (u64, u64), ahora: (u64, u64)) -> Option<f32> {
+    let total = ahora.1.checked_sub(antes.1)?;
+    let ocioso = ahora.0.checked_sub(antes.0)?;
+    if total == 0 {
+        return None;
+    }
+    Some((1.0 - ocioso as f64 / total as f64).clamp(0.0, 1.0) as f32)
+}
+
 /// **Congela o descongela un proceso** (todos sus hilos). Es la pausa del
 /// compresor de PDF cuando la memoria del sistema se acaba: congelado no pide
 /// mas, y Windows puede sacar a disco lo que ya tiene. `false` si no se pudo
@@ -110,6 +151,17 @@ pub fn congelar(pid: u32, congelado: bool) -> bool {
 
 #[cfg(test)]
 mod pruebas {
+    #[test]
+    fn lo_ocupado_del_procesador() {
+        assert_eq!(super::ocupado((10, 100), (30, 200)), Some(0.8));
+        assert_eq!(super::ocupado((10, 100), (10, 100)), None);
+        assert_eq!(super::ocupado((10, 100), (5, 200)), None);
+        let mut m = super::MedidorCpu::default();
+        assert!(m.medir().is_none());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(m.medir().is_none_or(|c| (0.0..=1.0).contains(&c)));
+    }
+
     #[test]
     fn el_pico_de_memoria_de_este_proceso_se_sabe_y_no_es_cero() {
         assert!(super::memoria_pico().is_some_and(|b| b > 0));

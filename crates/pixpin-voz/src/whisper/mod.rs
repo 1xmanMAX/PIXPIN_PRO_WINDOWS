@@ -295,6 +295,25 @@ struct Oido {
 impl Whisper {
     /// Carga el runtime y los tres ficheros de `<datos>/whisper/base/`.
     pub fn cargar(raiz: &Path, junto_al_exe: Option<&Path>) -> Result<Whisper, ErrorVoz> {
+        Whisper::cargar_con(raiz, junto_al_exe, reparto_de_este_equipo())
+    }
+
+    /// **Para escuchar en vivo mientras se graba** ([`crate::en_vivo`]): el
+    /// reparto del modo cuidadoso (uno o dos hilos, sin arena), pase lo que
+    /// pase en el equipo. La grabacion y lo que el usuario tiene delante van
+    /// primero; el texto en vivo puede ir mas despacio.
+    pub fn cargar_ligero(raiz: &Path, junto_al_exe: Option<&Path>) -> Result<Whisper, ErrorVoz> {
+        let nucleos = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2);
+        Whisper::cargar_con(raiz, junto_al_exe, reparto(true, nucleos / 2))
+    }
+
+    fn cargar_con(
+        raiz: &Path,
+        junto_al_exe: Option<&Path>,
+        r: Reparto,
+    ) -> Result<Whisper, ErrorVoz> {
         let rt = Runtime::del_proceso(raiz, junto_al_exe)?;
         if !modelo_listo(raiz) {
             return Err(ErrorVoz::SinModeloWhisper {
@@ -311,7 +330,6 @@ impl Whisper {
         if fichas.is_empty() {
             return Err(ilegible());
         }
-        let r = reparto_de_este_equipo();
         tracing::info!(
             hilos = r.hilos,
             arena = r.arena,

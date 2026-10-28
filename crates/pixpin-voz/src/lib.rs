@@ -115,6 +115,9 @@ pub mod credibilidad;
 pub mod dos_idiomas;
 /// Las voces de Microsoft Edge para leer en voz alta (los lectores).
 pub mod edge;
+/// Pasar a texto en vivo, por tramos, lo que oye una reunion que se graba
+/// (los temas de la reunion, 28-oct-2026).
+pub mod en_vivo;
 /// Titulo, artista y portada de una cancion, leidos de sus etiquetas
 /// (ID3v2, MPEG-4 y FLAC): la tarjeta de musica del chat (27-oct-2026).
 pub mod etiquetas;
