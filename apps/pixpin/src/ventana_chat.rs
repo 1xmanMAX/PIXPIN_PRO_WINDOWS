@@ -11654,6 +11654,24 @@ pub(crate) fn grabar_clase(
     );
 }
 
+/// **Al arrancar**: si una clase o reunion se corto sin guardarse (PixPin
+/// murio, se fue la luz, el disco fallo), pregunta si recuperarla o
+/// descartarla (ver `grabar_clase::recuperar`). Sin nada cortado no cuesta
+/// mas que mirar si existe una carpeta.
+pub(crate) fn recuperar_grabaciones_cortadas(
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    idioma: pixpin_store::Idioma,
+    aparato: &str,
+) {
+    grabar_clase::recuperar_al_arrancar(
+        ubicacion.clone(),
+        idioma,
+        aparato.to_string(),
+        grabar_clase::TextosRecuperar::de(textos),
+    );
+}
+
 /// La zona de las capturas de la clase, elegida en la captura de siempre
 /// (`None` si se cancelo). Ver [`grabar_clase`].
 pub(crate) fn zona_de_la_clase(

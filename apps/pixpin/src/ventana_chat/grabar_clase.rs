@@ -79,12 +79,24 @@
 //! (sus pixeles de verdad, sin escalar) y las fotos de la camara en el JPEG
 //! que da a su resolucion mayor. Al chat entran los bytes tal cual
 //! (`almacen::guardar_adjunto`); solo las miniaturas se reducen.
+//!
+//! **Sin perder nada** (28-oct-2026, «si se perdiera algo seria malo, se
+//! perderia una reunion»): la nota se graba con su respaldo WAV
+//! (`Grabadora::empezar_a_prueba_de_cortes`), el video en MP4 fragmentado, y
+//! cada captura, foto o clip se apunta en el disco en el acto, en el diario
+//! de la grabacion ([`a_salvo`]). Si PixPin muere, se va la luz o el disco
+//! falla, al volver a abrirlo se ofrece «Recuperar / Descartar»
+//! ([`recuperar`]). Ver `docs/grabar-sin-perder-nada.md`.
 
 #![forbid(unsafe_code)]
 
+mod a_salvo;
 mod camara;
 mod fotografo;
+mod recuperar;
 mod video;
+
+pub(crate) use recuperar::{TextosRecuperar, al_arrancar as recuperar_al_arrancar};
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -217,6 +229,11 @@ pub(crate) struct Rotulos {
     sin_codec: String,
     fallo: String,
     muy_corta: String,
+    /// El disco se llena (menos de 2 GB) y, casi lleno, el video se cerro.
+    disco_poco: String,
+    disco_lleno: String,
+    /// «El equipo se suspendió N min…», con [`HUECO`] en los minutos.
+    suspendido: String,
 }
 
 const HUECO: &str = "\u{1}";
@@ -309,6 +326,9 @@ impl Rotulos {
             sin_codec: t.t("chat-voz-sin-codec"),
             fallo: t.t("chat-voz-fallo"),
             muy_corta: t.t("chat-voz-muy-corta"),
+            disco_poco: t.t("clase-disco-poco"),
+            disco_lleno: t.t("clase-disco-lleno"),
+            suspendido: con("clase-suspendido", "minutos"),
         }
     }
 
@@ -502,6 +522,9 @@ pub(super) struct Captura {
     pub bytes: Vec<u8>,
     /// Si es una foto de la camara (JPEG) y no de la pantalla (PNG).
     pub de_camara: bool,
+    /// Ya a salvo en el disco, en el diario de la grabacion ([`a_salvo`]):
+    /// entonces `bytes` va vacio y se lee de aqui al guardar.
+    pub fichero: Option<PathBuf>,
 }
 
 impl Captura {
@@ -510,6 +533,15 @@ impl Captura {
             ms,
             bytes: png,
             de_camara: false,
+            fichero: None,
+        }
+    }
+
+    /// Sus bytes: los de memoria o, si ya estaba a salvo, los del disco.
+    fn leer(&self) -> std::io::Result<std::borrow::Cow<'_, [u8]>> {
+        match &self.fichero {
+            Some(f) if self.bytes.is_empty() => Ok(std::fs::read(f)?.into()),
+            _ => Ok(self.bytes.as_slice().into()),
         }
     }
 
@@ -694,10 +726,24 @@ struct Estado {
     plantilla: String,
     /// La nota guardada, `(proyecto, id)`, para «Abrir para estudiar».
     para_estudiar: Option<(String, String)>,
+    /// El diario de la grabacion en el disco ([`a_salvo`]).
+    a_salvo: a_salvo::ASalvo,
+    /// El disco esta casi lleno: el video no empieza (o se cerro).
+    sin_video_por_disco: bool,
+    /// El mensaje de la carpeta de la clase, una vez guardada.
+    carpeta_id: Option<String>,
 }
 
 impl Estado {
     fn nuevo(pedido: &Pedido, plantilla: String) -> Estado {
+        Estado::vacio(pedido, plantilla)
+            .con_temporal(pedido)
+            .con_sonidos_del_modo()
+    }
+
+    /// Sin temporal ni camaras buscadas: lo que necesita la recuperacion
+    /// para guardar una grabacion cortada ([`recuperar`]).
+    fn vacio(pedido: &Pedido, plantilla: String) -> Estado {
         Estado {
             fase: Fase::Preparar,
             microfono: true,
@@ -729,9 +775,10 @@ impl Estado {
             guardadas: 0,
             plantilla,
             para_estudiar: None,
+            a_salvo: a_salvo::ASalvo::default(),
+            sin_video_por_disco: false,
+            carpeta_id: None,
         }
-        .con_temporal(pedido)
-        .con_sonidos_del_modo()
     }
 
     /// Los sonidos del modo recordado (el presencial, solo el microfono) y,
@@ -802,10 +849,11 @@ impl Estado {
                     self.avisar(r.de_la_camara(f));
                 }
                 camara::Vuelta::Foto(ms, Ok(jpg)) => {
-                    self.capturas.push(Captura {
+                    self.anadir_captura(Captura {
                         ms,
                         bytes: jpg,
                         de_camara: true,
+                        fichero: None,
                     });
                     self.destello = Some(Instant::now());
                     self.avisar(con(&r.foto_hecha, &minuto(ms)));
@@ -814,6 +862,7 @@ impl Estado {
                 camara::Vuelta::ClipEmpezado(Ok(_)) => self.avisar(r.clip_empezado.clone()),
                 camara::Vuelta::ClipParado(Some(c)) => {
                     self.avisar(con(&r.clip_guardado, &minuto(c.ms)));
+                    self.apuntar_clip(&c);
                     self.clips.push(c);
                 }
                 camara::Vuelta::ClipParado(None) => self.avisar(r.clip_corto.clone()),
@@ -839,12 +888,16 @@ impl Estado {
     fn acabar_la_camara(&mut self) {
         for v in self.camarografo.acabar(Duration::from_secs(10)) {
             match v {
-                camara::Vuelta::Foto(ms, Ok(jpg)) => self.capturas.push(Captura {
+                camara::Vuelta::Foto(ms, Ok(jpg)) => self.anadir_captura(Captura {
                     ms,
                     bytes: jpg,
                     de_camara: true,
+                    fichero: None,
                 }),
-                camara::Vuelta::ClipParado(Some(c)) => self.clips.push(c),
+                camara::Vuelta::ClipParado(Some(c)) => {
+                    self.apuntar_clip(&c);
+                    self.clips.push(c);
+                }
                 camara::Vuelta::Foto(ms, Err(f)) => {
                     tracing::warn!(?f, ms, "una foto de la reunion no se hizo");
                 }
@@ -887,6 +940,8 @@ impl Estado {
                 if let Ok(Ok(g)) = rx.recv_timeout(Duration::from_secs(5)) {
                     g.cancelar();
                 }
+                // No llego a grabarse nada.
+                self.tirar_diario();
                 None
             }
             Fase::Parando { audio, listo } => Some(listo.unwrap_or_else(|| {
@@ -914,12 +969,15 @@ impl Estado {
             if let Some(e) = &g.fallo_guardar {
                 tracing::warn!(?e, "la clase no se guardo al cerrar la ventana");
             }
+            self.cerrar_diario(&g);
         }
         // Lo que no llego a grabarse ya no tiene a quien ir.
         if let Some(v) = self.grabando_video.take() {
             v.tirar();
         }
-        if !self.temporal.as_os_str().is_empty() {
+        // El temporal, solo si no queda un diario que lo necesite para
+        // recuperar la clase.
+        if !self.temporal.as_os_str().is_empty() && !self.con_diario() {
             let _ = std::fs::remove_file(&self.temporal);
         }
     }
@@ -932,7 +990,7 @@ impl Estado {
         self.acabar_la_camara();
         for (ms, hecha) in self.fotografo.acabar(Duration::from_secs(5)) {
             match hecha {
-                Ok(png) => self.capturas.push(Captura::de_pantalla(ms, png)),
+                Ok(png) => self.anadir_captura(Captura::de_pantalla(ms, png)),
                 Err(e) => tracing::warn!(?e, ms, "una captura de la clase no se hizo"),
             }
         }
@@ -977,7 +1035,11 @@ impl Estado {
             };
         }
         let hecho = guardar(pedido, self, grabacion.as_ref(), video.as_deref());
-        let _ = std::fs::remove_file(&self.temporal);
+        // La nota ya esta copiada en el chat: el temporal sobra. Si no entro,
+        // se queda para recuperarla (lo dice el diario).
+        if hecho.as_ref().is_ok_and(|v| v.is_some()) {
+            let _ = std::fs::remove_file(&self.temporal);
+        }
         if let Some(v) = video.as_ref().filter(|v| v.is_file()) {
             // No entro en el chat (fallo la nota, el disco) y no se borra:
             // es la reunion entera. Queda en la carpeta del proyecto, al
@@ -1159,16 +1221,18 @@ fn guardar(
             c.extension(),
         );
         let pie = format!("⏱ {} · {}", minuto(c.ms), nombre);
-        let hecho = super::adjuntar_con_pie(
-            raiz,
-            proyecto,
-            &pedido.aparato,
-            &fichero,
-            &c.bytes,
-            numero,
-            &pie,
-            None,
-        );
+        let hecho = c.leer().and_then(|bytes| {
+            super::adjuntar_con_pie(
+                raiz,
+                proyecto,
+                &pedido.aparato,
+                &fichero,
+                &bytes,
+                numero,
+                &pie,
+                None,
+            )
+        });
         match hecho {
             Ok(mut m) => {
                 numero += 1;
@@ -1264,6 +1328,7 @@ fn guardar(
         match cuaderno::anadir(&carpeta, &m) {
             Ok(()) => {
                 carpeta_id = Some(m.id.clone());
+                estado.carpeta_id = Some(m.id.clone());
                 let mut indice = almacen::Indice::leer(raiz);
                 if let Some(f) = indice.proyectos.iter_mut().find(|f| &f.id == proyecto) {
                     f.tocado = cuando;
@@ -1707,7 +1772,7 @@ fn flotar(
         for (ms, hecha) in estado.fotografo.recoger() {
             match hecha {
                 Ok(png) => {
-                    estado.capturas.push(Captura::de_pantalla(ms, png));
+                    estado.anadir_captura(Captura::de_pantalla(ms, png));
                     estado.destello = Some(Instant::now());
                     estado.avisar(con(&r.captura_hecha, &minuto(ms)));
                 }
@@ -1717,6 +1782,9 @@ fn flotar(
                 }
             }
         }
+
+        // El diario de la grabacion: el latido y el disco ([`a_salvo`]).
+        estado.latir(pedido, r);
 
         // El movil como camara (`sincronizar::camara`): sabe en que minuto va
         // la grabacion y avisa de lo que llega.
@@ -1766,7 +1834,11 @@ fn flotar(
                     // A partir de aqui los clics en la barra no le quitan el
                     // teclado a la reunion.
                     ventana.poner_sin_activar();
-                    if let Some(sonido) = estado.sonido_para_video.take() {
+                    // Sin sitio en el disco, el video ni empieza: el sonido
+                    // pesa cien veces menos y es lo que no se puede perder.
+                    if let Some(sonido) = estado.sonido_para_video.take()
+                        && !estado.sin_video_por_disco
+                    {
                         estado.grabando_video = Some(video::Video::empezar(
                             video::temporal_del_video(&estado.temporal),
                             estado.monitor_video,
@@ -1780,6 +1852,7 @@ fn flotar(
                 Ok(Err(e)) => {
                     tracing::warn!(?e, "no se pudo abrir el audio de la clase");
                     estado.sonido_para_video = None;
+                    estado.tirar_diario();
                     Fase::Fallo {
                         texto: r.de_un_fallo(&e),
                         desde: Instant::now(),
@@ -1788,6 +1861,7 @@ fn flotar(
                 Err(TryRecvError::Empty) => Fase::Abriendo(rx),
                 Err(TryRecvError::Disconnected) => {
                     estado.sonido_para_video = None;
+                    estado.tirar_diario();
                     Fase::Fallo {
                         texto: r.fallo.clone(),
                         desde: Instant::now(),
@@ -1917,6 +1991,7 @@ fn flotar(
 /// o decir que se guardo, o que fallo y que se salvo.
 fn tras_parar(pedido: &Pedido, r: &Rotulos, estado: &mut Estado, parado: Parado) -> Fase {
     let g = estado.guardar_todo(pedido, parado);
+    estado.cerrar_diario(&g);
     let (proyecto, nombre) = pedido
         .proyectos
         .get(estado.proyecto)
@@ -2045,11 +2120,14 @@ fn pulsar(
             } else {
                 None
             };
-            estado.fase = Fase::Abriendo(crate::ventanita::abrir_audio_con_copia(
+            // A prueba de cortes: la nota lleva su respaldo WAV, y todo lo
+            // que se haga grabando se apunta en el diario ([`a_salvo`]).
+            estado.fase = Fase::Abriendo(crate::ventanita::abrir_reunion(
                 estado.temporal.clone(),
                 fuentes,
                 copia,
             ));
+            estado.abrir_diario(pedido);
             // En persona, la camara se abre ya: la primera foto no espera.
             if estado.modo.con_camara() {
                 match estado.camaras.get(estado.camara) {
@@ -2095,7 +2173,9 @@ fn pulsar(
             } else {
                 let ms = g.llevado_ms();
                 let ruta = estado.ruta_del_clip();
-                if !estado.camarografo.empezar_clip(ms, ruta) {
+                if estado.camarografo.empezar_clip(ms, ruta.clone()) {
+                    estado.apuntar_clip_empezado(ms, &ruta);
+                } else {
                     estado.avisar(r.camara_fallo.clone());
                 }
             }
@@ -2157,6 +2237,9 @@ fn pulsar(
                 let _ = estado.fotografo.acabar(Duration::from_secs(2));
                 estado.tirar_clips();
                 estado.capturas.clear();
+                // Tirar es lo unico que se lleva el diario: lo pidio el
+                // usuario (✕ dos veces).
+                estado.tirar_diario();
                 tracing::info!("clase tirada sin guardar");
                 *vivo = false;
             } else {

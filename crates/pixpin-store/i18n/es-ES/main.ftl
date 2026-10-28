@@ -2003,6 +2003,16 @@ clase-codificador-software = el procesador
 clase-codificador-cpu = el procesador, en modo sencillo
 clase-zona-perdida = No se eligió ninguna zona: pulsa «Captura» otra vez
 clase-salvado = Lo demás se guardó: { $n } capturas
+clase-disco-poco = Queda poco sitio en el disco (menos de 2 GB)
+clase-disco-lleno = Disco casi lleno: el vídeo se cerró y el audio sigue grabándose
+clase-suspendido = El equipo se suspendió { $minutos } min; la grabación siguió al volver
+clase-recuperar-titulo = Grabación cortada
+clase-recuperar-pregunta =
+    Se cortó una grabación ({ $nombre }, { $minutos } min) en «{ $chat }».
+    Sí: Recuperar · No: Descartar · Cancelar: preguntar al volver a abrir PixPin
+clase-recuperar-sin-nada = De la grabación «{ $nombre }» solo quedó un vídeo que no se puede abrir. ¿Borrarlo?
+clase-recuperar-descartar = ¿Descartar «{ $nombre }»? Se borrará lo grabado y no se podrá recuperar.
+clase-recuperar-fallo = No se pudo recuperar «{ $nombre }». Lo grabado sigue a salvo y se volverá a ofrecer al abrir PixPin.
 clase-texto-de-fondo = Cerrar (sigue de fondo)
 clase-modo-pantalla = Pantalla y sonido
 clase-modo-capturas = Audio y capturas

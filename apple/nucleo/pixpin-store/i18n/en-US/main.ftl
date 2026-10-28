@@ -1945,6 +1945,16 @@ clase-codificador-software = the processor
 clase-codificador-cpu = the processor, simple mode
 clase-zona-perdida = No area was picked: press “Capture” again
 clase-salvado = The rest was saved: { $n } screenshots
+clase-disco-poco = The disk is running out of space (less than 2 GB)
+clase-disco-lleno = Disk almost full: the video was closed and the audio is still recording
+clase-suspendido = The computer slept for { $minutos } min; the recording continued on wake
+clase-recuperar-titulo = Interrupted recording
+clase-recuperar-pregunta =
+    A recording was interrupted ({ $nombre }, { $minutos } min) in “{ $chat }”.
+    Yes: Recover · No: Discard · Cancel: ask again next time PixPin opens
+clase-recuperar-sin-nada = Only a video that cannot be opened is left of “{ $nombre }”. Delete it?
+clase-recuperar-descartar = Discard “{ $nombre }”? The recording will be deleted and cannot be recovered.
+clase-recuperar-fallo = “{ $nombre }” could not be recovered. The recording is still safe and will be offered again when PixPin opens.
 clase-texto-de-fondo = Close (keeps going)
 clase-modo-pantalla = Screen and sound
 clase-modo-capturas = Audio and screenshots

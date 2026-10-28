@@ -53,7 +53,7 @@ pub(crate) fn camaras(raiz: &Path) -> Arc<Mutex<Camaras>> {
                 .ok()
                 .filter(|n| !n.trim().is_empty())
                 .unwrap_or_else(super::nombre_del_equipo);
-            let mut c = Camaras::nuevas(super::carpeta_sincro(raiz).join("camara-movil"), &nombre);
+            let mut c = Camaras::nuevas(carpeta_de_la_cola(raiz), &nombre);
             // HEVC solo si este equipo lo sabe ver: si no, el movil graba
             // los clips en H.264, que Windows trae de serie.
             if pixpin_pin::video::sabe_hevc() {
@@ -157,6 +157,57 @@ pub(crate) fn guardada(
         tracing::info!(hechas, "fotos del movil en la clase");
         crate::ventana_chat::refrescar();
     }
+}
+
+/// La cola en disco de lo que llega del movil grabando.
+pub(crate) fn carpeta_de_la_cola(raiz: &Path) -> std::path::PathBuf {
+    super::carpeta_sincro(raiz).join("camara-movil")
+}
+
+/// **El id de la grabacion que se anuncia al movil** ahora mismo, para
+/// apuntarlo en el diario de la grabacion (`grabacion_a_medias`): con el se
+/// recupera lo que llego del movil si PixPin se cierra de golpe.
+pub(crate) fn en_curso(raiz: &Path) -> Option<String> {
+    CAMARAS.get()?;
+    con(raiz, |c| c.en_curso().map(str::to_string))
+}
+
+/// **Una grabacion cortada se recupero** en `proyecto`: lo que llego del
+/// movil a `grabacion` antes del corte entra en su minuto. Devuelve cuantas
+/// entraron.
+pub(crate) fn recuperada(
+    raiz: &Path,
+    grabacion: &str,
+    proyecto: &str,
+    voz: Option<&str>,
+    carpeta: Option<&str>,
+    titulo: &str,
+    duracion_ms: i64,
+) -> usize {
+    let destino = Destino {
+        raiz: raiz.to_path_buf(),
+        proyecto: proyecto.to_string(),
+        voz: voz.map(str::to_string),
+        carpeta: carpeta.map(str::to_string),
+        aparato: crate::letras_que_viajan::aparato(raiz),
+        hora: crate::ventana_chat::descripcion::hora_sin_repetir,
+    };
+    let hechas = pixpin_proyecto::camara_del_movil::recuperar_cola(
+        &destino,
+        &carpeta_de_la_cola(raiz),
+        grabacion,
+        titulo,
+        duracion_ms,
+    );
+    if hechas > 0 {
+        tracing::info!(hechas, "fotos del movil recuperadas en la clase");
+    }
+    hechas
+}
+
+/// Una grabacion cortada se descarto: lo que llego del movil, tambien.
+pub(crate) fn descartada(raiz: &Path, grabacion: &str) {
+    pixpin_proyecto::camara_del_movil::tirar_cola_en_disco(&carpeta_de_la_cola(raiz), grabacion);
 }
 
 /// **La grabacion se tiro**: lo que llego del movil, tambien.
