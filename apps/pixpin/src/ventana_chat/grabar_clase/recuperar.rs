@@ -249,6 +249,11 @@ fn recuperar_una(pedido: &Pedido, dir: &Path, d: &Diario, p: &Plan) -> anyhow::R
             duracion,
         );
     }
+    // Su reloj de pared en la nota: lo que llegue tarde (fotos sin
+    // conexion, de colaboradores, la cola del movil) entra por su hora.
+    if let Some(v) = &voz {
+        crate::sincronizar::camara::reloj_recuperado(raiz, d, &v.id);
+    }
     // Ya esta todo en el chat: la nota temporal (copiada) y el diario con
     // sus capturas sobran. Lo que no se pudo abrir (un video sin indice, un
     // clip sin cerrar) no se borra: se queda en la carpeta del chat.

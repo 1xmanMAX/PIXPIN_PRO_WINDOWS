@@ -258,9 +258,38 @@ pub(crate) fn recuperada(
     hechas
 }
 
+/// **El reloj de una grabacion recuperada tras un corte** (el del diario,
+/// con sus pausas y huecos, o el apuntado por la camara) entra en su nota
+/// (`resto.reloj`), y se repasan los chats: las fotos que llegaron o lleguen
+/// tarde, por la sincronizacion o por la camara (con su id o por su hora),
+/// encuentran su minuto como en una clase guardada sin cortes.
+pub(crate) fn reloj_recuperado(
+    raiz: &Path,
+    d: &pixpin_proyecto::grabacion_a_medias::Diario,
+    voz: &str,
+) {
+    let cola = carpeta_de_la_cola(raiz);
+    let aparato = crate::letras_que_viajan::aparato(raiz);
+    let Some(reloj) = pixpin_proyecto::camara_del_movil::reloj_recuperado(d, &aparato, &cola)
+    else {
+        return;
+    };
+    match pixpin_proyecto::camara_del_movil::poner_reloj_recuperado(
+        raiz,
+        &d.proyecto,
+        voz,
+        &reloj,
+        &cola,
+    ) {
+        Ok(_) => super::por_su_hora::repasar(raiz),
+        Err(e) => tracing::warn!(?e, "la clase recuperada quedo sin su reloj"),
+    }
+}
+
 /// Una grabacion cortada se descarto: lo que llego del movil, tambien.
 pub(crate) fn descartada(raiz: &Path, grabacion: &str) {
     pixpin_proyecto::camara_del_movil::tirar_cola_en_disco(&carpeta_de_la_cola(raiz), grabacion);
+    pixpin_proyecto::camara_del_movil::olvidar_reloj(&carpeta_de_la_cola(raiz), grabacion);
 }
 
 /// **La grabacion se tiro**: lo que llego del movil, tambien.
