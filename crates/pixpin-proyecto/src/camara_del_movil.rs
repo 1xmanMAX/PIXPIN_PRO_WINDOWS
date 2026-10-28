@@ -265,6 +265,8 @@ impl Camaras {
             fin: g.reloj.fin.unwrap_or(0),
             pausas: g.reloj.pausas_al_cable(),
             visto: if g.reloj.fin.is_some() { 0 } else { ahora },
+            huecos: Vec::new(),
+            grabacion: g.id.clone(),
         }
     }
 
@@ -401,6 +403,8 @@ impl Camaras {
             fin: g.reloj.fin.unwrap_or(ahora),
             pausas: g.reloj.pausas_al_cable(),
             visto: 0,
+            huecos: Vec::new(),
+            grabacion: g.id.clone(),
         };
         if let Some(voz) = &destino.voz {
             let dir = almacen::carpeta(&destino.raiz, &destino.proyecto);
@@ -462,11 +466,23 @@ impl Camaras {
         if !self.encendida {
             return Err("La cámara del móvil está apagada en el PC".into());
         }
-        // Sin grabacion que se conozca, por su hora (se decide al llegar).
-        if self.buscar(&p.grabacion).is_none() && p.tomada_en <= 0 {
+        // Sin grabacion que se conozca en memoria: por su hora, o la
+        // guardada con ese id (tras un reinicio o un corte recuperado). Se
+        // decide al llegar.
+        if self.buscar(&p.grabacion).is_none()
+            && p.tomada_en <= 0
+            && self.guardada_con_id(&p.grabacion).is_none()
+        {
             return Err("Esa grabación ya no está en el PC".into());
         }
         Ok(())
+    }
+
+    /// La grabacion guardada (en cualquier chat) que se anuncio con el id
+    /// `grabacion`, si se sabe donde mirar.
+    fn guardada_con_id(&self, grabacion: &str) -> Option<(String, por_su_hora::Grabacion)> {
+        let (raiz, _) = self.almacen.as_ref()?;
+        por_su_hora::buscar_por_id(raiz, grabacion, &self.codigo)
     }
 
     /// **Una foto que no sabe de que grabacion es** (o de una que ya no se
@@ -507,8 +523,24 @@ impl Camaras {
             return self.recibir(&p, fichero, de_id, de, ahora);
         }
         let (raiz, hora) = self.almacen.clone().ok_or(NINGUNA)?;
-        let (proyecto, g, ms) =
-            por_su_hora::buscar_por_hora(&raiz, t, &self.codigo).ok_or(NINGUNA)?;
+        // Con su id, la guardada que se anuncio asi (aunque se recuperase
+        // tras un corte): su minuto el que dice, o el de su hora.
+        let por_id = self.guardada_con_id(&p.grabacion).map(|(proyecto, g)| {
+            let duracion = (g.duracion_ms > 0).then_some(g.duracion_ms);
+            let ms =
+                p.ms.or_else(|| {
+                    (p.tomada_en > 0)
+                        .then(|| por_su_hora::lugar(t, &g.reloj, duracion, por_su_hora::MARGEN_MS))
+                        .flatten()
+                })
+                .unwrap_or_else(|| g.duracion_ms.max(0))
+                .clamp(0, duracion.unwrap_or(i64::MAX));
+            (proyecto, g, ms)
+        });
+        let (proyecto, g, ms) = match por_id {
+            Some(x) => x,
+            None => por_su_hora::buscar_por_hora(&raiz, t, &self.codigo).ok_or(NINGUNA)?,
+        };
         let clip = camara::es_clip(p);
         let tope = g.reloj.duracion(ahora).max(g.duracion_ms);
         let l = Llegada {
@@ -646,6 +678,56 @@ pub fn relojes_sueltos(cola: &Path) -> Vec<(String, RelojDeGrabacion)> {
 /// Borra el reloj apuntado de la grabacion `id` (ya esta en su nota).
 pub fn olvidar_reloj(cola: &Path, id: &str) {
     let _ = std::fs::remove_file(fichero_del_reloj(cola, id));
+}
+
+/// **El reloj de una grabacion recuperada tras un corte**: el del diario
+/// (`grabacion_a_medias`, con sus pausas y huecos, hasta el ultimo latido)
+/// y, si el diario no lo tiene, el apuntado por la camara (`relojes`) con el
+/// id `movil`. Lleva el codigo de este equipo (`aparato`) y el id con que se
+/// anuncio al movil, para que lo que llegue tarde la encuentre.
+pub fn reloj_recuperado(
+    d: &crate::grabacion_a_medias::Diario,
+    aparato: &str,
+    cola: &Path,
+) -> Option<RelojDeGrabacion> {
+    let movil = d.movil.clone().unwrap_or_default();
+    let mut r = if d.reloj.inicio > 0 {
+        RelojDeGrabacion::del_diario(&d.reloj, aparato, d.latido.utc)
+    } else {
+        let (_, mut r) = relojes_sueltos(cola)
+            .into_iter()
+            .find(|(id, _)| !movil.is_empty() && *id == almacen::nombre_seguro(&movil))?;
+        r.aparato = aparato.to_string();
+        r
+    };
+    if r.inicio <= 0 {
+        return None;
+    }
+    r.grabacion = movil;
+    Some(r)
+}
+
+/// **Pone el reloj recuperado en su nota** (`resto.reloj`) del chat
+/// `proyecto` y olvida el apuntado por la camara: desde ya, las fotos que
+/// lleguen tarde (por la sincronizacion o por la camara, con su id o por su
+/// hora) encuentran su minuto como en una clase guardada sin cortes.
+pub fn poner_reloj_recuperado(
+    raiz: &Path,
+    proyecto: &str,
+    voz: &str,
+    reloj: &RelojDeGrabacion,
+    cola: &Path,
+) -> std::io::Result<bool> {
+    let dir = almacen::carpeta(raiz, proyecto);
+    let puesto = cuaderno::cambiar(&dir, voz, |n| {
+        reloj.poner(&mut n.resto);
+        true
+    })?
+    .is_some();
+    if puesto && !reloj.grabacion.is_empty() {
+        olvidar_reloj(cola, &reloj.grabacion);
+    }
+    Ok(puesto)
 }
 
 /// La ficha de una llegada en cola: `<fichero>.json`.

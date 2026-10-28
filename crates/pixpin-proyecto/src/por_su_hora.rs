@@ -115,6 +115,17 @@ pub struct RelojDeGrabacion {
     /// se cae, la ventana acaba aqui y no queda abierta para siempre.
     #[serde(rename = "vistoEn", skip_serializing_if = "es_cero")]
     pub visto: i64,
+    /// **Los huecos** (`[desde, hasta]`): la hora siguio y la nota no grabo
+    /// (el equipo se suspendio). Cuentan como las pausas: lo de dentro va al
+    /// minuto en que empezo el hueco. Los mide el diario de la grabacion
+    /// (`grabacion_a_medias`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub huecos: Vec<[i64; 2]>,
+    /// El id con que se anuncio al movil (`camara_remota`, `g-…`): lo que
+    /// llegue tarde con ese id encuentra la nota aunque el PC ya no la
+    /// recuerde (o se recuperase tras un corte).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub grabacion: String,
 }
 
 impl RelojDeGrabacion {
@@ -122,6 +133,31 @@ impl RelojDeGrabacion {
     pub fn de(resto: &Map<String, Value>) -> Option<RelojDeGrabacion> {
         let r: RelojDeGrabacion = serde_json::from_value(resto.get(RELOJ)?.clone()).ok()?;
         (r.inicio > 0).then_some(r)
+    }
+
+    /// **El del diario de la grabacion** (`grabacion_a_medias::Reloj`, el
+    /// mismo reloj de pared con sus pausas y huecos), de `aparato`, visto
+    /// por ultima vez en `visto` (el ultimo latido): lo que se pone en la
+    /// nota de una grabacion recuperada tras un corte.
+    pub fn del_diario(
+        r: &crate::grabacion_a_medias::Reloj,
+        aparato: &str,
+        visto: i64,
+    ) -> RelojDeGrabacion {
+        let tramos = |v: &[crate::grabacion_a_medias::Tramo]| {
+            v.iter()
+                .map(|t| [t.desde, t.hasta.unwrap_or(0)])
+                .collect::<Vec<_>>()
+        };
+        RelojDeGrabacion {
+            aparato: aparato.to_string(),
+            inicio: r.inicio,
+            fin: r.fin.unwrap_or(0),
+            pausas: tramos(&r.pausas),
+            visto: if r.fin.is_some() { 0 } else { visto },
+            huecos: tramos(&r.huecos),
+            grabacion: String::new(),
+        }
     }
 
     /// Lo pone en la nota.
@@ -150,7 +186,10 @@ impl RelojDeGrabacion {
     }
 
     /// Lo corrido hasta `t` sin lo pausado (sin mirar si esta dentro).
-    fn ms_hasta(&self, t: i64) -> i64 {
+    /// **Lo corrido hasta `t` sin lo pausado ni los huecos** (sin mirar si
+    /// esta dentro de la ventana). Es tambien el minuto de la nota del
+    /// diario (`grabacion_a_medias::Diario::ms_en`).
+    pub fn ms_hasta(&self, t: i64) -> i64 {
         let tope = self.final_().map_or(t, |f| t.min(f));
         if tope <= self.inicio {
             return 0;
@@ -158,6 +197,7 @@ impl RelojDeGrabacion {
         let pausado: i64 = self
             .pausas
             .iter()
+            .chain(&self.huecos)
             .map(|[d, h]| {
                 let h = if *h == 0 { tope } else { (*h).min(tope) };
                 (h - (*d).max(self.inicio)).max(0)
@@ -170,6 +210,7 @@ impl RelojDeGrabacion {
     fn pausa_en(&self, t: i64) -> Option<i64> {
         self.pausas
             .iter()
+            .chain(&self.huecos)
             .find(|[d, h]| t >= *d && (*h == 0 || t < *h))
             .map(|[d, _]| *d)
     }
@@ -818,6 +859,31 @@ pub fn repasar_todos(
     hechas
 }
 
+/// **La grabacion guardada de este aparato (`yo`) que se anuncio al movil
+/// con el id `grabacion`** (`reloj.grabacion`), en cualquier chat: el chat y
+/// la grabacion. Lo que llega tarde con su id tras un reinicio o un corte.
+pub fn buscar_por_id(raiz: &Path, grabacion: &str, yo: &str) -> Option<(String, Grabacion)> {
+    if grabacion.trim().is_empty() {
+        return None;
+    }
+    for f in crate::almacen::Indice::leer(raiz).proyectos {
+        let dir = crate::almacen::carpeta(raiz, &f.id);
+        if !puede_tener_reloj(&dir) {
+            continue;
+        }
+        let Ok(c) = cuaderno::Cuaderno::leer_de(&dir) else {
+            continue;
+        };
+        if let Some(g) = grabaciones_de(&c.mensajes)
+            .into_iter()
+            .find(|g| g.reloj.aparato == yo && g.reloj.grabacion == grabacion)
+        {
+            return Some((f.id.clone(), g));
+        }
+    }
+    None
+}
+
 /// **La grabacion guardada de este aparato (`yo`) donde cae la hora `t`**
 /// (ya en su reloj), en cualquier chat: el chat, la grabacion y el minuto.
 /// Es lo que hace la camara en directo con una foto que no sabe de que
@@ -865,8 +931,50 @@ mod pruebas {
             inicio: PARED,
             fin: PARED + 130 * S,
             pausas: vec![[PARED + 40 * S, PARED + 70 * S]],
-            visto: 0,
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn un_hueco_cuenta_como_una_pausa_y_el_reloj_del_diario_es_el_mismo() {
+        use crate::grabacion_a_medias::{Reloj, Tramo};
+        // El diario: pausa de 40 a 70 y el equipo suspendido de 100 a 110.
+        let d = Reloj {
+            inicio: PARED,
+            fin: None,
+            pausas: vec![Tramo {
+                desde: PARED + 40 * S,
+                hasta: Some(PARED + 70 * S),
+            }],
+            huecos: vec![Tramo {
+                desde: PARED + 100 * S,
+                hasta: Some(PARED + 110 * S),
+            }],
+        };
+        let r = RelojDeGrabacion::del_diario(&d, "PC01", PARED + 130 * S);
+        assert_eq!(
+            r.visto,
+            PARED + 130 * S,
+            "cortada: acaba en el ultimo latido"
+        );
+        assert_eq!(r.huecos, vec![[PARED + 100 * S, PARED + 110 * S]]);
+        // Antes del hueco, sin la pausa; dentro, al minuto en que empezo;
+        // despues, sin la pausa ni el hueco.
+        assert_eq!(ms_en_la_grabacion(PARED + 90 * S, &r), Some(60 * S));
+        assert_eq!(ms_en_la_grabacion(PARED + 105 * S, &r), Some(70 * S));
+        assert_eq!(ms_en_la_grabacion(PARED + 120 * S, &r), Some(80 * S));
+        // Despues del ultimo latido: fuera.
+        assert_eq!(ms_en_la_grabacion(PARED + 131 * S, &r), None);
+        // El mismo minuto que el diario.
+        let mut diario = crate::grabacion_a_medias::Diario {
+            reloj: d,
+            ..Default::default()
+        };
+        assert_eq!(diario.ms_en(PARED + 120 * S), 80 * S);
+        diario.acabar(PARED + 125 * S);
+        let r = RelojDeGrabacion::del_diario(&diario.reloj, "PC01", 0);
+        assert_eq!((r.fin, r.visto), (PARED + 125 * S, 0));
+        assert_eq!(diario.ms_en(PARED + 999 * S), r.ms_hasta(PARED + 999 * S));
     }
 
     #[test]

@@ -301,19 +301,12 @@ impl Diario {
     }
 
     /// **El minuto de la nota** a la hora de pared `utc`: lo que paso desde
-    /// el inicio menos las pausas y los huecos de antes. Nunca negativo.
+    /// el inicio menos las pausas y los huecos de antes. Nunca negativo. La
+    /// cuenta es la de las fotos por su hora
+    /// ([`crate::por_su_hora::RelojDeGrabacion::ms_hasta`]): un solo reloj
+    /// de pared para los dos.
     pub fn ms_en(&self, utc: i64) -> i64 {
-        let r = &self.reloj;
-        let hasta = r.fin.map_or(utc, |f| utc.min(f));
-        let mut ms = hasta - r.inicio;
-        for t in r.pausas.iter().chain(&r.huecos) {
-            let fin = t.hasta.unwrap_or(hasta).min(hasta);
-            let ini = t.desde.max(r.inicio);
-            if fin > ini {
-                ms -= fin - ini;
-            }
-        }
-        ms.max(0)
+        crate::por_su_hora::RelojDeGrabacion::del_diario(&self.reloj, "", 0).ms_hasta(utc)
     }
 
     /// **Lo capturado en orden**, con su minuto dentro de la nota de

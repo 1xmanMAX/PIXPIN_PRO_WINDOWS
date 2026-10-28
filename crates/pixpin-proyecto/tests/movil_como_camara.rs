@@ -951,3 +951,111 @@ fn el_pc_manda_capturas_a_la_grabacion_del_movil() {
     assert_eq!(nuevas.len(), 1);
     assert_eq!((nuevas[0].ms, nuevas[0].de.as_str()), (35 * S, "Portatil"));
 }
+
+/// **Una grabacion cortada y recuperada** (28-oct-2026): PixPin se cerro de
+/// golpe grabando; al arrancar se recupera la clase y su reloj de pared (el
+/// del diario, con una pausa y un hueco del equipo suspendido) entra en la
+/// nota. Lo que el movil sube despues, con el id de la grabacion o solo con
+/// su hora, entra en su minuto aunque el PC ya no recuerde nada.
+#[test]
+fn lo_que_llega_tarde_entra_en_la_grabacion_recuperada_tras_un_corte() {
+    use pixpin_proyecto::grabacion_a_medias::{Diario, Latido, Reloj, Tramo};
+    let _turno = turno();
+    let pc = pc("recuperada");
+    // El diario de la grabacion cortada: de 0 a 200 s (ultimo latido), con
+    // una pausa de 30 a 50 y el equipo suspendido de 100 a 120.
+    let diario = Diario {
+        movil: Some("g-cortada".into()),
+        reloj: Reloj {
+            inicio: PARED,
+            fin: None,
+            pausas: vec![Tramo {
+                desde: PARED + 30 * S,
+                hasta: Some(PARED + 50 * S),
+            }],
+            huecos: vec![Tramo {
+                desde: PARED + 100 * S,
+                hasta: Some(PARED + 120 * S),
+            }],
+        },
+        latido: Latido {
+            utc: PARED + 200 * S,
+            ms: 160 * S,
+            pausa: false,
+        },
+        ..Default::default()
+    };
+    let cola = pc.raiz.join("cola-camara");
+    let (proyecto, voz, _carpeta) = guardar_la_clase(&pc.raiz, 160 * S);
+    let reloj =
+        pixpin_proyecto::camara_del_movil::reloj_recuperado(&diario, "K7Q2", &cola).unwrap();
+    assert_eq!(reloj.grabacion, "g-cortada");
+    assert_eq!(reloj.visto, PARED + 200 * S);
+    assert!(
+        pixpin_proyecto::camara_del_movil::poner_reloj_recuperado(
+            &pc.raiz, &proyecto, &voz, &reloj, &cola
+        )
+        .unwrap()
+    );
+    // Un PC recien arrancado.
+    {
+        let mut c = pc.camaras.lock().unwrap();
+        c.codigo = "K7Q2".into();
+        c.almacen = Some((pc.raiz.clone(), hora_sin_repetir));
+    }
+    a_las(5000);
+    let (puerto, hilo) = escuchar(&pc, true);
+    let mut c = llamar(puerto);
+    let dir = pc.raiz.join("movil");
+    // Con su id y su minuto (lo calculo el movil): ese.
+    let ms = c
+        .mandar_foto(
+            &fichero(&dir, "IMG_A.jpg", &jpeg(11)),
+            "IMG_A.jpg",
+            &FotoDeCamara {
+                grabacion: "g-cortada".into(),
+                ms: Some(20 * S),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(ms, 20 * S);
+    // Solo con su hora: las 130 s del PC (despues de la pausa y del hueco)
+    // son el 90 de la nota.
+    let ms = c
+        .mandar_foto(
+            &fichero(&dir, "IMG_B.jpg", &jpeg(12)),
+            "IMG_B.jpg",
+            &FotoDeCamara {
+                tomada_en: PARED + 130 * S + ADELANTO,
+                reloj: ADELANTO,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(ms, 90 * S);
+    // Caso negativo: despues del ultimo latido (y del margen), fuera.
+    let e = c
+        .mandar_foto(
+            &fichero(&dir, "IMG_C.jpg", &jpeg(13)),
+            "IMG_C.jpg",
+            &FotoDeCamara {
+                tomada_en: PARED + 400 * S + ADELANTO,
+                reloj: ADELANTO,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("no cae en ninguna"), "{e}");
+    c.adios();
+    hilo.join().unwrap();
+    let nota = leer(&pc.raiz, &proyecto)
+        .into_iter()
+        .find(|m| m.id == voz)
+        .unwrap();
+    let minutos: Vec<i64> = clase::capturas_de(&nota.resto)
+        .into_iter()
+        .map(|(ms, _)| ms)
+        .collect();
+    assert_eq!(minutos, vec![20 * S, 90 * S]);
+}
