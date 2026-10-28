@@ -279,3 +279,219 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
   durante una grabación con una pausa (una foto sin `ms`), luego una tarde;
   el PC avisa al móvil y mide su reloj; un clip cortado sigue donde se
   quedó; un PC de antes dice «No sé qué es» y sigue.
+
+## 11. Descubrir rápido y prioridad al grabar (28-oct-2026)
+
+El usuario: «con las clases grabadas, el MÓVIL tarda demasiado en saber si
+el PC está grabando, y no puedo hacer fotos rápido. Cuando el PC grabe, que
+active un modo de sincronización PRIORITARIO para la grabación y sus fotos
+y todo lo relacionado, que localice cualquier aparato de la red rápido y
+simple. Todo tiene que ser rápido y fiable mientras se graba: perder algo
+sería perder una reunión».
+
+**Por qué tardaba**: los aparatos se encuentran por mDNS (`_pixpin._tcp`),
+que muchas Wi-Fi reparten con uno o dos minutos de retraso, y por la sonda
+TCP a la **última dirección conocida** (cada 60 s en el PC sin nadie
+mirando), que no sirve si el DHCP le dio otra al móvil. El aviso del PC al
+empezar a grabar también iba solo a esa última dirección.
+
+**Lo nuevo es una baliza UDP** firmada con la clave del grupo. No cambia el
+protocolo (sigue la 4) ni el canal: la baliza solo dice *dónde* llamar y
+*si se graba*; todo lo demás va por el canal cifrado de siempre.
+
+Código de referencia: `crates/pixpin-sincro/src/baliza.rs` (formato, firma,
+sockets, ritmo, barrido, prioridad, diagnóstico) y
+`apps/pixpin/src/sincronizar/baliza.rs` (lo del PC). Probado con sockets de
+verdad en `crates/pixpin-sincro/src/baliza_de_verdad.rs`.
+
+### 11.1 Puertos y destinos
+
+| Qué | Valor |
+| --- | --- |
+| Puerto UDP de la baliza (fijo) | **47475** (el de sincronizar, 47474, más uno) |
+| Multidifusión | **239.255.74.74:47475**, TTL 1 |
+| Difusión | `255.255.255.255:47475` **y** la de cada red (`192.168.1.255:47475`) |
+| Directa | a la última dirección conocida de cada aparato del grupo |
+| Barrido (§11.4) | cada IP de la red (/24 o menor), directa |
+
+Se manda **por cada red** del aparato (un socket atado a cada IPv4: Wi-Fi,
+cable, VPN), porque una difusión solo sale por la red del socket que la
+manda. Se oye con **un** socket atado a `0.0.0.0:47475` (la difusión solo
+llega así), apuntado a la multidifusión en cada red.
+
+### 11.2 Formato (binario, big-endian)
+
+| Bytes | Campo |
+| --- | --- |
+| 0–3 | `PXB1` (ASCII) |
+| 4 | versión = `1` |
+| 5 | banderas: bit0 **grabando**, bit1 **en pausa**, bit2 **pregunta** (contestadme), bit3 **cámara** (acepta fotos y clips) |
+| 6–13 | etiqueta del grupo **en crudo**: 8 primeros bytes de `HMAC-SHA256(clave, "etiqueta")` (la `g` del mDNS es esto en hex) |
+| 14–15 | puerto TCP de la sincronización (`u16`) |
+| 16–23 | reloj de quien la manda, ms desde 1970 (`i64`) |
+| 24–27 | secuencia (`u32`, sube con cada baliza que manda) |
+| 28–35 | `ms_actual`: en qué ms de la grabación va (`i64`; 0 sin grabar) |
+| 36 | largo del id del aparato (1–64), y el id en UTF-8 |
+| … | largo de la grabación (0–64), y el id de la grabación (`camara_remota.grabacion`, p. ej. `g-1761559500000`) |
+| últimos 16 | firma: 16 primeros bytes de `HMAC-SHA256(claveBaliza, todo lo anterior)` |
+
+`claveBaliza = HMAC-SHA256(clave del grupo, "baliza")` (la clave del grupo
+es la de PBKDF2 de siempre, `Identidad.kt`). Lo más largo son 182 bytes.
+
+**Vector** (código `K7Q2M9XMPA`; id `pc-portatil`, puerto 47474, reloj
+1761559500000, secuencia 7, banderas grabando+cámara, grabación
+`g-1761559500000`, `ms_actual` 754000), comprobado también con Python:
+
+```
+50584231 01 09 09df6bf6b40e77f0 b972 0000019a2520d4e0 00000007
+00000000000b8150 0b 70632d706f72746174696c 0f 672d31373631353539353030303030
+41e37ec235431670bb92572185a1c4e2
+```
+
+**Al leer**, en este orden (lo que no cuadra se tira sin contestar):
+
+1. `PXB1`, versión 1, largo entre 55 y 182, los dos largos cuadran y el id no está vacío.
+2. La etiqueta es la nuestra (si no, es de otro grupo: ni se calcula la firma).
+3. La firma, en tiempo constante (`MessageDigest.isEqual`).
+4. No es mía (`id` ≠ el mío).
+5. **No repetida**: `(reloj, secuencia)` mayor que la última de ese `id`, y
+   `|reloj − ahora| ≤ 10 min`. La misma baliza llega por tres caminos
+   (difusión, multidifusión, directa): solo cuenta la primera.
+
+### 11.3 Tiempos
+
+| Cuándo | Cada cuánto |
+| --- | --- |
+| Grabando | **cada 1 s** |
+| Al empezar, pausar, seguir o acabar | **al momento** |
+| Sin grabar (PixPin abierto o su servicio vivo) | cada **15 s** |
+| Al abrir PixPin, al volver la red | una con **pregunta**, al momento |
+| Contestar a una pregunta | al momento, directa a quien preguntó (como mucho una por segundo a cada IP) |
+| «Sigue grabando» | hasta **4 s** después de la última baliza con grabando |
+
+Medido en `baliza_de_verdad.rs` (loopback): con el aviso al momento, el
+«móvil» oye «PC grabando» en **~5 ms**; sin él, al siguiente latido de 1 s
+(**~0,7 s** en la prueba, nunca más de ~1 s); y de empezar a grabar a tener
+la conexión TCP con el PC, **<1 ms**. En una Wi-Fi de verdad se suma lo que
+tarde el aire: muy por debajo de los 2 s pedidos.
+
+### 11.4 Si la difusión no pasa
+
+Algunas Wi-Fi filtran la difusión o la multidifusión hacia los aparatos
+inalámbricos. Por eso:
+
+- la baliza va **también directa** a la última dirección conocida de cada
+  aparato del grupo;
+- **grabando sin oír a nadie** durante 5 s, se **barre la red**: la baliza
+  (con pregunta) a cada IP de la red, empezando por la última conocida y sus
+  8 vecinas a cada lado (el DHCP suele dar la de al lado); como mucho 254
+  por red, y cada 10 s mientras siga sin oírse a nadie. En redes mayores de
+  /22, solo la conocida y sus vecinas;
+- y siguen la sonda TCP a la última dirección (en el PC, cada 4 s mientras
+  alguien del grupo graba) y el mDNS.
+
+Si a los **20 s** de grabar no aparece ningún móvil del grupo (ni baliza ni
+sonda), el PC lo dice una vez (bandeja y «Actividad»):
+
+- su última dirección es de otra red → «Tu móvil está en otra red…»
+  (`baliza-movil-otra-red`);
+- es de la misma red → «puede que esta Wi-Fi aísle a los aparatos (las de
+  invitados, hotel o empresa lo hacen) o que un cortafuegos bloquee
+  PixPin…», con el punto de acceso del móvil como salida
+  (`baliza-movil-aislado`).
+
+### 11.5 Qué hace quien oye una baliza del grupo
+
+1. **Apunta su dirección**: la IP de **origen del datagrama** (no la que
+   creía) y el puerto TCP de la baliza. Así un cambio de DHCP se arregla en
+   un segundo.
+2. Lo da por **presente** (como si hubiera contestado a la sonda): la
+   sincronización automática no espera a la siguiente sonda.
+3. Si trae **pregunta**, contesta con su propia baliza, directa.
+4. Si trae **grabando** (y cámara): el móvil enseña al momento la tira
+   «Cámara para la reunión del PC» y **pregunta `camara_remota`** al PC en
+   la dirección de la baliza (el anuncio trae el título, las pausas…). El
+   `ms_actual` de la baliza sirve para pintar «● 12:34» mientras llega la
+   respuesta; el reloj bueno es el de `camara_remota` (§3).
+5. Si **quien oye está grabando** (el PC) y el que aparece es nuevo en esta
+   grabación o cambió de dirección: le manda el anuncio de la cámara al
+   momento.
+
+### 11.6 Prioridad mientras se graba
+
+Mientras **cualquier** aparato del grupo graba (el propio, o uno oído con
+grabando hace menos de 4 s), el orden es
+(`pixpin_sincro::baliza::que_toca`):
+
+1. **La cámara**: `camara_remota` y los `suelto` con `destino:"grabacion"`
+   (fotos y clips). Es lo único que se hace.
+2. Al acabar: **los ficheros de esa grabación** (su chat: la voz, el vídeo,
+   la nota y sus fotos), en una vuelta solo con ese chat, antes que nada.
+   Si no sale, se reintenta; nunca se da por hecha sin acabar bien.
+3. Después: las tareas al instante, la vuelta entera y los chats
+   compartidos, como siempre (sale ya, sin esperar al periodo).
+
+En el PC, además:
+
+- la sincronización automática **no arranca nada** mientras alguien graba
+  (ni vuelta entera, ni tareas, ni personas);
+- el PC que graba **se da por ocupado**: quien llame para sincronizar oye
+  «ocupado» (`OCUPADO`), pero `suelto` y `camara_remota` **se atienden
+  igual** en esa conexión (`contestar_ocupado` con sueltos). Una vuelta que
+  ya estaba en marcha al empezar a grabar acaba sola; no se corta;
+- la escucha TCP atiende cada llamada en ≤ 20 ms (150 ms sin grabar) y la
+  sonda va cada 4 s.
+
+### 11.7 Conexión caliente para las fotos
+
+Para que una foto empiece a subir **en menos de 1 s** desde el disparo:
+
+- El móvil, mientras el PC graba (baliza o anuncio `activa`), **mantiene
+  abierta una conexión** con el PC (`hola` con `camara1`) y pregunta
+  `camara_remota` por ella **cada 3 s**: esa pregunta es el *keepalive* y a
+  la vez el reloj. Cada foto es un `suelto` más en esa misma conexión, sin
+  saludo ni PBKDF2 (la clave del grupo se guarda derivada).
+- Si la conexión se cae (red, PC que se reinicia), se abre otra en cuanto
+  llegue la siguiente baliza, o enseguida con esperas de 0,5, 1, 2… s hasta
+  5 s mientras haya fotos en cola.
+- Al acabar (`activa:false`) y con la cola vacía: `adios` y cerrarla.
+- El PC no corta esa conexión: tras el `hola` espera hasta 30 min entre
+  peticiones.
+
+### 11.8 Lo que tiene que hacer Android
+
+- [ ] **Oír** en UDP 47475 (`DatagramSocket` atado a `0.0.0.0:47475` con
+      `reuseAddress`, y `MulticastSocket.joinGroup(239.255.74.74)` en la
+      interfaz Wi-Fi) mientras PixPin esté a la vista **o** viva su servicio
+      de grabación o de subida. Con un **`WifiManager.MulticastLock`**
+      (`setReferenceCounted(false)`) mientras se oye —sin él, muchos
+      teléfonos tiran la difusión y la multidifusión con la pantalla
+      apagada— y soltarlo al dejar de oír (gasta batería).
+- [ ] Leer y comprobar la baliza como §11.2 y actuar como §11.5.
+- [ ] **Mandar la suya**: una con pregunta al abrir PixPin y al volver la
+      red; cada 15 s mientras esté a la vista; **cada 1 s y al momento al
+      empezar/pausar/seguir/acabar** cuando el móvil grabe (grabando, en
+      pausa, `ms_actual`, id de su grabación): así el PC lo oye igual.
+- [ ] El barrido de §11.4 al grabar sin oír a nadie.
+- [ ] La conexión caliente de §11.7 y la cola de fotos que no se pierde.
+- [ ] Mientras alguien del grupo graba, **no arrancar vueltas** de
+      sincronización (solo la cámara), y al acabar, el chat de la grabación
+      primero (§11.6).
+- [ ] Permiso `CHANGE_WIFI_MULTICAST_STATE` en el manifiesto.
+
+### 11.9 El cortafuegos de Windows
+
+El PC oye la baliza con el **mismo programa** que ya escucha la
+sincronización en TCP 47474. La primera vez que escucha, Windows pregunta
+«¿Permitir?»; la regla que crea al permitirlo es **para el programa, en TCP
+y UDP**, así que vale también para el UDP 47475. Dos casos en que no:
+
+- la red está marcada como **«Pública»** (esa regla suele ser solo para
+  las privadas): marcar la Wi-Fi como **«Privada»** (Configuración → Red e
+  Internet → Wi-Fi → la red → Tipo de perfil de red);
+- se pulsó «Cancelar» o una directiva de empresa no deja preguntar:
+  `herramientas\cortafuegos-sincro.ps1` (como administrador) pone las
+  reglas para el programa, TCP y UDP 47475, en los perfiles privado y de
+  dominio (`-Quitar` las quita).
+
+Mandar no necesita regla (el cortafuegos de Windows deja salir).

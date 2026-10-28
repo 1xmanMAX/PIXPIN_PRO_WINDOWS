@@ -65,6 +65,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, mpsc};
 use std::time::Duration;
 
+use pixpin_sincro::baliza::Trabajo;
+
 use super::Fase;
 use super::en_fondo::Arranque;
 use super::presencia::{self, Novedad};
@@ -180,6 +182,13 @@ enum Entrada {
     },
     /// Windows cambio una direccion de red: puede que haya vuelto.
     Red,
+    /// Se guardo una grabacion en el chat de esta ficha: sale primero.
+    Grabada(String),
+    /// Acabo la vuelta con los chats de las grabaciones recien guardadas.
+    FinGrabadas {
+        fin: Option<Fase>,
+        chats: BTreeSet<String>,
+    },
 }
 
 /// **Cada cuanto se mira si las personas de los chats compartidos estan en
@@ -259,6 +268,16 @@ static AVISOS: OnceLock<mpsc::Sender<Entrada>> = OnceLock::new();
 pub(crate) fn avisar_tareas(ficha: &str) {
     if let Some(tx) = AVISOS.get() {
         let _ = tx.send(Entrada::Tareas(ficha.to_string()));
+    }
+}
+
+/// **Se guardo una grabacion** en el chat de `ficha` (lo dice la camara
+/// del movil al guardarse la clase): en cuanto nadie del grupo grabe, ese
+/// chat sale antes que nada —la voz, el video, la nota y sus fotos—, y la
+/// vuelta entera detras (modo prioritario, `baliza`).
+pub(crate) fn grabacion_guardada(ficha: &str) {
+    if let Some(tx) = AVISOS.get() {
+        let _ = tx.send(Entrada::Grabada(ficha.to_string()));
     }
 }
 
@@ -475,6 +494,12 @@ impl Reloj {
         }
     }
 
+    /// **Acabo una grabacion** (aqui o en otro del grupo): lo que se aplazo
+    /// mientras tanto sale ya, sin esperar al [`PERIODO`].
+    pub fn acabo_de_grabar(&mut self, ahora: i64) {
+        self.reintento = Some(self.reintento.map_or(ahora, |t| t.min(ahora)));
+    }
+
     /// Cuanto falta para reintentar (0: ya), o `None` si no hay que.
     pub fn espera_reintento(&self, ahora: i64) -> Option<i64> {
         self.reintento.map(|t| (t - ahora).max(0))
@@ -533,10 +558,20 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
 
 /// Cuanto dormir hasta la siguiente mirada: lo justo para mandar las tareas
 /// a tiempo y para reintentar (con el grupo o con las personas) a su hora.
-fn cuanto_dormir(reloj: &Reloj, personas: &Reloj, ahora: i64, corriendo: bool) -> Duration {
+fn cuanto_dormir(
+    reloj: &Reloj,
+    personas: &Reloj,
+    ahora: i64,
+    corriendo: bool,
+    grabadas: bool,
+) -> Duration {
     if corriendo {
         // El final de la vuelta despierta por el canal.
         return LATIDO;
+    }
+    if grabadas {
+        // Una grabacion esperando a salir: en cuanto se pueda.
+        return REINTENTO;
     }
     [
         reloj.espera_tareas(ahora),
@@ -567,8 +602,18 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
     let mut personas = Reloj::default();
     let mut sondeado: Option<i64> = None;
     let mut sondeando = false;
+    // **El modo prioritario** (`baliza`): los chats de las grabaciones recien
+    // guardadas, y si se estaba grabando en la ultima mirada.
+    let mut grabadas: BTreeSet<String> = BTreeSet::new();
+    let mut estaba_grabando = false;
     loop {
-        let espera = cuanto_dormir(&reloj, &personas, super::ahora_ms(), corriendo);
+        let espera = cuanto_dormir(
+            &reloj,
+            &personas,
+            super::ahora_ms(),
+            corriendo,
+            !grabadas.is_empty(),
+        );
         let primera = match rx.recv_timeout(espera) {
             Ok(e) => Some(e),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
@@ -589,6 +634,7 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                 Entrada::Red => {
                     tracing::info!("cambio la red: se sondea ya");
                     presencia::sondear_ya();
+                    super::baliza::cambio_la_red();
                     sondeado = None;
                     reloj.volvio_la_red(ahora);
                     personas.volvio_la_red(ahora);
@@ -616,6 +662,28 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                         presencia::difundir(Novedad::Registro(e.clone()));
                         if avisar {
                             super::al_movil::avisar(e);
+                        }
+                    }
+                }
+                Entrada::Grabada(ficha) => {
+                    let chat = pixpin_proyecto::vista::chat_de_ficha(raiz, &ficha).unwrap_or(ficha);
+                    grabadas.insert(chat);
+                }
+                Entrada::FinGrabadas { fin, chats } => {
+                    corriendo = false;
+                    match &fin {
+                        Some(Fase::Terminado { titulo, .. }) => {
+                            presencia::difundir(Novedad::Registro(format!(
+                                "Grabación sincronizada: {titulo}"
+                            )));
+                        }
+                        // No llego: se queda para la siguiente, que ya sale
+                        // con la vuelta entera si hace falta. Perderla seria
+                        // perder la reunion.
+                        otro => {
+                            tracing::info!(?otro, "la grabacion no salio aun: se reintenta");
+                            grabadas.extend(chats);
+                            reloj.no_empezo(ahora, azar());
                         }
                     }
                 }
@@ -662,6 +730,49 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                     sondeando = false;
                 }
             }
+        }
+        // **Que va primero** (`pixpin_sincro::baliza::que_toca`): mientras
+        // alguien del grupo graba, nada de esto (la camara va por su lado);
+        // al acabar, los chats de la grabacion antes que nada.
+        let grabando = super::baliza::grabando_alguien();
+        if estaba_grabando && !grabando {
+            tracing::info!("acabo la grabacion: sale lo aplazado");
+            reloj.acabo_de_grabar(ahora);
+            personas.acabo_de_grabar(ahora);
+        }
+        estaba_grabando = grabando;
+        let mut espera = vec![Trabajo::Tareas, Trabajo::VueltaEntera, Trabajo::Personas];
+        if !grabadas.is_empty() {
+            espera.push(Trabajo::ArchivosDeLaGrabacion);
+        }
+        let toca = pixpin_sincro::baliza::que_toca(&espera, grabando);
+        if toca.is_none() {
+            continue;
+        }
+        if toca == Some(Trabajo::ArchivosDeLaGrabacion) {
+            if !corriendo && !super::hay_vueltas() {
+                let ids = reloj.con_quien();
+                let chats = std::mem::take(&mut grabadas);
+                let tx = AVISOS.get().cloned();
+                let llevar = chats.clone();
+                let lanzada =
+                    super::en_fondo::lanzar_tareas(raiz, &ids, chats.clone(), move |fin| {
+                        if let Some(tx) = tx {
+                            let _ = tx.send(Entrada::FinGrabadas { fin, chats: llevar });
+                        }
+                    });
+                match lanzada {
+                    Arranque::Lanzada => {
+                        corriendo = true;
+                        tracing::info!(?chats, aparatos = ids.len(), "la grabacion, primero");
+                    }
+                    Arranque::Ocupada => grabadas = chats,
+                    // Nadie contesta ahora: sale con la vuelta entera cuando
+                    // aparezca, que la lleva igual.
+                    Arranque::SinNadie => {}
+                }
+            }
+            continue;
         }
         match reloj.siguiente(ahora, corriendo || super::hay_vueltas()) {
             Paso::Nada => {}
@@ -1054,19 +1165,22 @@ mod pruebas {
     #[test]
     fn el_hilo_duerme_lo_justo_para_mandar_las_tareas_a_tiempo() {
         let mut r = con_tel();
-        assert_eq!(cuanto_dormir(&r, &Reloj::default(), 0, false), LATIDO);
+        assert_eq!(
+            cuanto_dormir(&r, &Reloj::default(), 0, false, false),
+            LATIDO
+        );
         r.avisan_tareas("obra", 0);
         assert_eq!(
-            cuanto_dormir(&r, &Reloj::default(), 100, false),
+            cuanto_dormir(&r, &Reloj::default(), 100, false, false),
             Duration::from_millis((CALMA_TAREAS - 100) as u64)
         );
         assert_eq!(
-            cuanto_dormir(&r, &Reloj::default(), CALMA_TAREAS, false),
+            cuanto_dormir(&r, &Reloj::default(), CALMA_TAREAS, false, false),
             REINTENTO,
             "ocupado: reintentar pronto"
         );
         assert_eq!(
-            cuanto_dormir(&r, &Reloj::default(), 0, true),
+            cuanto_dormir(&r, &Reloj::default(), 0, true, false),
             LATIDO,
             "con una vuelta suya en marcha, la despierta su final"
         );
@@ -1259,21 +1373,24 @@ mod pruebas {
         let mut personas = Reloj::default();
         r.acabo(Como::Ocupado, firma(1), 0, 0.5);
         assert_eq!(
-            cuanto_dormir(&r, &personas, 0, false),
+            cuanto_dormir(&r, &personas, 0, false, false),
             Duration::from_millis(2_500)
         );
         personas.acabo(Como::Ocupado, firma(1), 0, 0.0);
         assert_eq!(
-            cuanto_dormir(&r, &personas, 0, false),
+            cuanto_dormir(&r, &personas, 0, false, false),
             Duration::from_millis(1_000),
             "la mas cercana de las dos"
         );
-        assert_eq!(cuanto_dormir(&r, &personas, 9_000, false), REINTENTO);
+        assert_eq!(cuanto_dormir(&r, &personas, 9_000, false, false), REINTENTO);
         // Un reintento lejano no alarga el latido.
         let mut r = con_tel();
         r.acabo(Como::Fallo, firma(1), 0, 0.5);
         r.acabo(Como::Fallo, firma(1), 0, 0.5);
-        assert_eq!(cuanto_dormir(&r, &Reloj::default(), 0, false), LATIDO);
+        assert_eq!(
+            cuanto_dormir(&r, &Reloj::default(), 0, false, false),
+            LATIDO
+        );
     }
 
     #[test]
@@ -1291,5 +1408,25 @@ mod pruebas {
         )));
         assert!(!fue_ocupado("No se pudo con ninguno."));
         assert!(!fue_ocupado(""));
+    }
+
+    #[test]
+    fn al_acabar_de_grabar_lo_aplazado_sale_ya_y_la_grabacion_no_espera() {
+        // Modo prioritario: lo que se aplazo mientras se grababa sale sin
+        // esperar al periodo, y una grabacion pendiente despierta enseguida.
+        let mut r = Reloj::default();
+        r.responde("tel", true);
+        r.empezo(0);
+        assert_eq!(r.toca(1_000), None);
+        r.acabo_de_grabar(1_000);
+        assert_eq!(r.toca(1_000), Some(Motivo::Reintento));
+        assert_eq!(
+            cuanto_dormir(&Reloj::default(), &Reloj::default(), 0, false, true),
+            REINTENTO
+        );
+        // Caso negativo: sin nadie que conteste no hay nada que sacar.
+        let mut solo = Reloj::default();
+        solo.acabo_de_grabar(0);
+        assert_eq!(solo.toca(0), None);
     }
 }

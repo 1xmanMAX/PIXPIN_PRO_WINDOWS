@@ -2028,6 +2028,8 @@ clase-camara-movil-apagada = 📱 Cámara del móvil: apagada
 clase-foto-movil = Foto del móvil · { $minuto }
 clase-clip-movil = Clip del móvil · { $minuto }
 camara-movil-tarde = Del móvil a «{ $titulo }» · { $minuto }
+baliza-movil-aislado = No aparece tu móvil, y estáis en la misma red: puede que esta Wi-Fi aísle a los aparatos (las de invitados, hotel o empresa lo hacen) o que un cortafuegos bloquee PixPin. Conecta el PC al punto de acceso del móvil, o los dos a otra Wi-Fi. Las fotos que hagas esperan en el móvil y entran en su minuto al encontrarse.
+baliza-movil-otra-red = Tu móvil está en otra red que este PC. Conéctalos a la misma Wi-Fi (o el PC al punto de acceso del móvil). Las fotos que hagas esperan en el móvil y entran en su minuto al encontrarse.
 # Reunion presencial (27-oct-2026): la camara del equipo, fotos y clips.
 clase-modo-presencial = Presencial
 clase-modo-presencial-sub = Graba el micrófono; «Foto» usa la cámara a su resolución completa
