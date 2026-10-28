@@ -409,8 +409,8 @@ pub fn poner_captura(resto: &mut Map<String, Value>, ms: i64, id: &str) {
 // texto (28-oct-2026, `docs/jev.md`): `resto["importantes"]`, una lista
 // `[{ms, tipo, p}]` en orden, con `tipo` = `tarea`, `decision`, `pregunta`
 // o `examen`, `p` la probabilidad (0-1, dos decimales) y, en las tareas,
-// `quien`/`cuando` (`true`/`false`, solo si se sabe). `ms` es el del renglon
-// de la transcripcion. `resto["importantesDe"]` dice que modelo lo hallo.
+// `quien`/`cuando` (`true`/`false`, solo si se sabe) y `enTareas: true` una
+// vez apuntada en Tareas. `ms` es el del renglon de la transcripcion. `resto["importantesDe"]` dice que modelo lo hallo.
 //
 // **La clave sin lista** es «no se ha mirado»; una lista vacia es «se miro
 // y no hay nada»: asi no se vuelve a preguntar. Android la lee igual (ver
@@ -462,6 +462,8 @@ pub struct Importante {
     pub quien: Option<bool>,
     /// En una tarea: si dice para cuando.
     pub cuando: Option<bool>,
+    /// En una tarea: si ya se apunto en Tareas (no se ofrece otra vez).
+    pub en_tareas: bool,
 }
 
 /// Las partes importantes de una nota, en orden. `None` si nunca se
@@ -480,6 +482,7 @@ pub fn importantes_de(resto: &Map<String, Value>) -> Option<Vec<Importante>> {
                     .clamp(0.0, 1.0),
                 quien: x.get("quien").and_then(Value::as_bool),
                 cuando: x.get("cuando").and_then(Value::as_bool),
+                en_tareas: x.get("enTareas").and_then(Value::as_bool) == Some(true),
             })
         })
         .collect();
@@ -507,6 +510,9 @@ pub fn poner_importantes(resto: &mut Map<String, Value>, v: &[Importante], model
             if let Some(c) = i.cuando {
                 o.insert("cuando".into(), Value::from(c));
             }
+            if i.en_tareas {
+                o.insert("enTareas".into(), Value::from(true));
+            }
             Value::Object(o)
         })
         .collect();
@@ -516,6 +522,29 @@ pub fn poner_importantes(resto: &mut Map<String, Value>, v: &[Importante], model
     } else {
         resto.insert(IMPORTANTES_DE.into(), Value::from(modelo.trim()));
     }
+}
+
+/// **Marca como apuntadas en Tareas** las tareas de esos minutos. Devuelve
+/// si cambio algo. Lo demas de cada entrada se respeta tal cual.
+pub fn marcar_en_tareas(resto: &mut Map<String, Value>, minutos: &[i64]) -> bool {
+    let Some(Value::Array(lista)) = resto.get_mut(IMPORTANTES) else {
+        return false;
+    };
+    let mut cambio = false;
+    for x in lista.iter_mut() {
+        let es = x.get("tipo").and_then(Value::as_str) == Some("tarea")
+            && x.get("ms")
+                .and_then(Value::as_i64)
+                .is_some_and(|ms| minutos.contains(&ms));
+        if es
+            && x.get("enTareas").and_then(Value::as_bool) != Some(true)
+            && let Some(o) = x.as_object_mut()
+        {
+            o.insert("enTareas".into(), Value::from(true));
+            cambio = true;
+        }
+    }
+    cambio
 }
 
 /// Los tipos de las partes importantes de un renglon que empieza en `ms`.
@@ -811,6 +840,7 @@ mod pruebas {
                 p: 0.9372,
                 quien: Some(true),
                 cuando: None,
+                en_tareas: false,
             },
             Importante {
                 ms: 20_000,
@@ -818,6 +848,7 @@ mod pruebas {
                 p: 0.81,
                 quien: None,
                 cuando: None,
+                en_tareas: false,
             },
         ];
         poner_importantes(&mut r, &v, "jev-1.14.0");
@@ -852,6 +883,14 @@ mod pruebas {
             None,
             Some(TipoImportante::Tarea)
         ));
+        // Apuntar las tareas en Tareas: solo la tarea de ese minuto, una vez.
+        assert!(marcar_en_tareas(&mut r, &[45_000, 20_000]));
+        assert!(!marcar_en_tareas(&mut r, &[45_000]));
+        let leidos = importantes_de(&r).unwrap();
+        assert!(leidos[1].en_tareas);
+        assert!(!leidos[0].en_tareas);
+        assert_eq!(r[IMPORTANTES][1]["enTareas"], true);
+        assert!(r[IMPORTANTES][0].get("enTareas").is_none());
     }
 
     #[test]
