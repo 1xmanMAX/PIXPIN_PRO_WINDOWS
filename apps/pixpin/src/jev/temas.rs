@@ -170,14 +170,15 @@ pub fn cambiar_a_mano(
 // --- Lo que pasa a la proxima reunion ---------------------------------------
 
 /// Donde esperan los temas de la proxima reunion: al lado de las notas de
-/// voz, en este equipo (como el modo de grabar). Uno por linea.
-fn fichero_de_la_proxima(u: &Ubicacion) -> PathBuf {
-    crate::voz::carpeta_de_audios(u).join("temas-para-la-proxima.txt")
+/// voz (`<datos>/voz`, `voz::carpeta_de_audios`), en este equipo, como el
+/// modo de grabar. Uno por linea.
+fn fichero_de_la_proxima(raiz: &Path) -> PathBuf {
+    raiz.join("voz").join("temas-para-la-proxima.txt")
 }
 
 /// Los temas que esperan a la proxima reunion.
-pub fn para_la_proxima(u: &Ubicacion) -> Vec<String> {
-    std::fs::read_to_string(fichero_de_la_proxima(u))
+pub fn para_la_proxima(raiz: &Path) -> Vec<String> {
+    std::fs::read_to_string(fichero_de_la_proxima(raiz))
         .map(|t| temas::de_texto(&t))
         .unwrap_or_default()
 }
@@ -185,11 +186,11 @@ pub fn para_la_proxima(u: &Ubicacion) -> Vec<String> {
 /// **Pasa estos temas a la proxima reunion**: se suman a los que ya
 /// esperaban (sin repetir) y salen solos al preparar la siguiente.
 /// Devuelve cuantos esperan ahora.
-pub fn guardar_para_la_proxima(u: &Ubicacion, nuevos: &[String]) -> std::io::Result<usize> {
-    let mut v = para_la_proxima(u);
+pub fn guardar_para_la_proxima(raiz: &Path, nuevos: &[String]) -> std::io::Result<usize> {
+    let mut v = para_la_proxima(raiz);
     v.extend(nuevos.iter().cloned());
     let v = temas::de_texto(&v.join("\n"));
-    let f = fichero_de_la_proxima(u);
+    let f = fichero_de_la_proxima(raiz);
     if let Some(d) = f.parent() {
         std::fs::create_dir_all(d)?;
     }
@@ -198,8 +199,8 @@ pub fn guardar_para_la_proxima(u: &Ubicacion, nuevos: &[String]) -> std::io::Res
 }
 
 /// Ya se usaron (empezo la reunion con ellos).
-pub fn olvidar_la_proxima(u: &Ubicacion) {
-    let _ = std::fs::remove_file(fichero_de_la_proxima(u));
+pub fn olvidar_la_proxima(raiz: &Path) {
+    let _ = std::fs::remove_file(fichero_de_la_proxima(raiz));
 }
 
 /// **Apunta en el Inbox de Tareas** los temas sin tratar, cada uno con su
@@ -237,19 +238,19 @@ mod pruebas {
         let raiz =
             std::env::temp_dir().join(format!("pixpin-temas-proxima-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&raiz);
-        let u = Ubicacion::Instalado { raiz: raiz.clone() };
-        assert!(para_la_proxima(&u).is_empty());
+        let u = raiz.as_path();
+        assert!(para_la_proxima(u).is_empty());
         assert_eq!(
-            guardar_para_la_proxima(&u, &["Viaje".into(), "Varios".into()]).unwrap(),
+            guardar_para_la_proxima(u, &["Viaje".into(), "Varios".into()]).unwrap(),
             2
         );
         assert_eq!(
-            guardar_para_la_proxima(&u, &["viaje".into(), "Becario".into()]).unwrap(),
+            guardar_para_la_proxima(u, &["viaje".into(), "Becario".into()]).unwrap(),
             3
         );
-        assert_eq!(para_la_proxima(&u), vec!["Viaje", "Varios", "Becario"]);
-        olvidar_la_proxima(&u);
-        assert!(para_la_proxima(&u).is_empty());
+        assert_eq!(para_la_proxima(u), vec!["Viaje", "Varios", "Becario"]);
+        olvidar_la_proxima(u);
+        assert!(para_la_proxima(u).is_empty());
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

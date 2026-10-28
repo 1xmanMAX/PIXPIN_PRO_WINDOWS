@@ -2384,7 +2384,7 @@ fn pulsar(
             // de la reunion anterior ya estan en esta.
             estado.panel_temas = !estado.temas.is_empty();
             if estado.temas_de_la_proxima {
-                crate::jev::temas::olvidar_la_proxima(&pedido.ubicacion);
+                crate::jev::temas::olvidar_la_proxima(pedido.ubicacion.raiz());
             }
             // En persona, la camara se abre ya: la primera foto no espera.
             if estado.modo.con_camara() {
@@ -3759,6 +3759,8 @@ mod pruebas {
         let (_, rx) = channel();
         let (w, _) = tamano(&Fase::Abriendo(rx));
         assert!(w >= barra + 12, "{w} < {barra}");
+        // Con temas, su boton (72 y el hueco) cabe en lo que se suma.
+        assert!(w + temas::ANCHO_BOTON >= barra + 72 + 8 + 12);
     }
 
     #[test]

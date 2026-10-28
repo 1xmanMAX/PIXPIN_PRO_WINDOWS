@@ -68,11 +68,11 @@ pub(super) enum Aviso {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum NoSeEscucha {
     /// Sin clave de TypeSafe o con la funcion apagada.
-    PorJev(SinJev),
+    Jev(SinJev),
     /// Sin el modelo de Whisper bajado o sin ONNX Runtime.
-    PorElModelo,
+    Modelo,
     /// La grabadora no dio PCM (ya se estaba cerrando).
-    PorElPcm,
+    Pcm,
 }
 
 /// Lo que comparten la barra y los dos hilos.
@@ -102,12 +102,12 @@ impl Escucha {
         agenda: Vec<String>,
         pendientes: Vec<Pendiente>,
     ) -> Result<Escucha, NoSeEscucha> {
-        let cliente = crate::jev::temas::cliente(u).map_err(NoSeEscucha::PorJev)?;
+        let cliente = crate::jev::temas::cliente(u).map_err(NoSeEscucha::Jev)?;
         let raiz = u.raiz().to_path_buf();
         if !crate::voz::whisper_posible(u, idioma) || !pixpin_voz::whisper::modelo_listo(&raiz) {
-            return Err(NoSeEscucha::PorElModelo);
+            return Err(NoSeEscucha::Modelo);
         }
-        let receptor = g.suscribir_pcm(CAPACIDAD).ok_or(NoSeEscucha::PorElPcm)?;
+        let receptor = g.suscribir_pcm(CAPACIDAD).ok_or(NoSeEscucha::Pcm)?;
         let c = Arc::new(Compartido {
             cola: Mutex::new((Cola::nueva(COLA), false)),
             hay: Condvar::new(),
@@ -122,7 +122,7 @@ impl Escucha {
                 .spawn(move || oir(&receptor, &c))
         };
         if oido.is_err() {
-            return Err(NoSeEscucha::PorElPcm);
+            return Err(NoSeEscucha::Pcm);
         }
         let idioma = crate::voz::idioma_de_voz(idioma).to_string();
         let texto = {
@@ -135,7 +135,7 @@ impl Escucha {
         };
         if texto.is_err() {
             c.parar.store(true, Ordering::SeqCst);
-            return Err(NoSeEscucha::PorElPcm);
+            return Err(NoSeEscucha::Pcm);
         }
         tracing::info!("temas: escuchando en vivo");
         Ok(Escucha { c, vueltas })

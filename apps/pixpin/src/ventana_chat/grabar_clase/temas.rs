@@ -71,9 +71,9 @@ impl Rotulos {
     /// Por que no se escucha, para la cabecera de la lista.
     fn de_no_escuchar(&self, n: NoSeEscucha) -> String {
         match n {
-            NoSeEscucha::PorJev(SinJev::SinClave) => self.temas_sin_jev.clone(),
-            NoSeEscucha::PorJev(SinJev::Apagado) => self.temas_apagado.clone(),
-            NoSeEscucha::PorElModelo | NoSeEscucha::PorElPcm => self.temas_sin_modelo.clone(),
+            NoSeEscucha::Jev(SinJev::SinClave) => self.temas_sin_jev.clone(),
+            NoSeEscucha::Jev(SinJev::Apagado) => self.temas_apagado.clone(),
+            NoSeEscucha::Modelo | NoSeEscucha::Pcm => self.temas_sin_modelo.clone(),
         }
     }
 
@@ -97,7 +97,7 @@ impl Rotulos {
 impl Estado {
     /// Los temas que esperaban de la reunion anterior, al abrir Preparar.
     pub(super) fn con_los_de_la_proxima(mut self, pedido: &Pedido, r: &Rotulos) -> Estado {
-        let v = crate::jev::temas::para_la_proxima(&pedido.ubicacion);
+        let v = crate::jev::temas::para_la_proxima(pedido.ubicacion.raiz());
         if temas::anadir_varios(&mut self.temas, &v) > 0 {
             self.temas_de_la_proxima = true;
             self.avisar(con(&r.temas_anteriores, &self.temas.len().to_string()));
