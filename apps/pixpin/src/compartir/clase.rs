@@ -91,6 +91,9 @@ pub(crate) fn rotulos(t: &Catalogo) -> Rotulos {
         cerrar: t.t("grabacion-cerrar"),
         audio: t.t("grabacion-audio"),
         video: t.t("grabacion-video"),
+        importante_todo: t.t("clase-importante-todo"),
+        importantes: pixpin_proyecto::clase::TipoImportante::TODOS
+            .map(|tipo| t.t(crate::jev::reunion::clave_de(tipo))),
     }
 }
 
@@ -679,6 +682,7 @@ mod pruebas {
                     texto: "ojo".into(),
                 }],
                 adjuntos: vec![],
+                importantes: vec![],
             },
             rotulos: Rotulos::default(),
             mazo: "PixPin::Fisica".into(),

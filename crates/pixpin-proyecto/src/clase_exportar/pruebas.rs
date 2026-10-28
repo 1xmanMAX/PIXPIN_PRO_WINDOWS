@@ -36,6 +36,7 @@ fn sin_ordenar() -> ClaseParaExportar {
             },
         ],
         adjuntos: vec![],
+        importantes: vec![],
     }
 }
 
@@ -44,6 +45,44 @@ fn incrustar(_: &Path) -> Option<Medio> {
         mime: "image/png".into(),
         bytes: b"png".to_vec(),
     })
+}
+
+#[test]
+fn lo_importante_lleva_sus_chapitas_y_el_filtro() {
+    // Sin nada hallado, la pagina es la de siempre.
+    let h = html(&ejemplo(), &Rotulos::default(), &incrustar);
+    assert!(!h.contains("filtro-importante\" role"));
+    assert!(!h.contains(" data-tipos="));
+    let mut c = ejemplo();
+    c.importantes = vec![
+        clase::Importante {
+            ms: 60_000,
+            tipo: clase::TipoImportante::Examen,
+            p: 0.9,
+            quien: None,
+            cuando: None,
+            en_tareas: false,
+        },
+        clase::Importante {
+            ms: 60_000,
+            tipo: clase::TipoImportante::Tarea,
+            p: 0.8,
+            quien: Some(true),
+            cuando: None,
+            en_tareas: false,
+        },
+    ];
+    let h = html(&c, &Rotulos::default(), &incrustar);
+    assert!(h.contains("data-tipos=\"tarea examen\""));
+    assert!(h.contains(
+        "<span class=\"chip tarea\">Tarea</span><span class=\"chip examen\">Examen</span>"
+    ));
+    assert!(h.contains("data-filtro=\"tarea\""));
+    assert!(h.contains("Examen 1</button>"));
+    // Sin decisiones ni preguntas, sus botones no salen.
+    assert!(!h.contains("button\" data-filtro=\"decision\""));
+    // Lo que no es importante no lleva `data-tipos`.
+    assert!(h.contains("<p class=\"linea\" id=\"t-0\" data-ms=\"0\"><a"));
 }
 
 #[test]

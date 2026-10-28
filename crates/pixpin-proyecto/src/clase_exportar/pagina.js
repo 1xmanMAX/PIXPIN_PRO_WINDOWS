@@ -272,6 +272,15 @@
     });
   }
 
+  // El filtro de lo importante (Jev): solo los renglones de ese tipo.
+  todos(".filtro-importante button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var f = b.getAttribute("data-filtro") || "";
+      if (f) doc.body.setAttribute("data-filtro", f); else doc.body.removeAttribute("data-filtro");
+      todos(".filtro-importante button").forEach(function (o) { o.classList.toggle("activo", o === b); });
+    });
+  });
+
   // Un enlace con minuto (#t-12000) abre la pagina en ese punto.
   var m = /^#t-(\d+)$/.exec(location.hash);
   if (m && maestro) ir(parseInt(m[1], 10) / 1000, false);
