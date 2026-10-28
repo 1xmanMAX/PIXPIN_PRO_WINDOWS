@@ -387,6 +387,9 @@ pub struct ConPersona {
     pub chats: Vec<String>,
     pub hecho: crate::protocolo::Hecho,
     pub bytes: u64,
+    /// Lo que va adelantado el reloj del otro, medido al saludar (para
+    /// poner sus fotos por su hora, `pixpin_proyecto::por_su_hora`).
+    pub desfase: i64,
 }
 
 impl ConPersona {
@@ -467,6 +470,7 @@ pub fn vuelta_con_persona<D: Disco + ?Sized, F: Read + Write>(
     let bytes = s.enviados() + s.recibidos();
     let quien = s.otro.clone();
     let puerto = s.puerto_del_otro;
+    let desfase = s.desfase;
     s.adios();
     Ok(ConPersona {
         quien,
@@ -474,6 +478,7 @@ pub fn vuelta_con_persona<D: Disco + ?Sized, F: Read + Write>(
         chats,
         hecho,
         bytes,
+        desfase,
     })
 }
 

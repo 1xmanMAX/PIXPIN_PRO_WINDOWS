@@ -1960,6 +1960,18 @@ clase-camara-movil-apagada = 📱 Phone camera: off
 clase-foto-movil = Photo from the phone · { $minuto }
 clase-clip-movil = Clip from the phone · { $minuto }
 camara-movil-tarde = From the phone to “{ $titulo }” · { $minuto }
+# Photos by their time, from the PC to the phone's recording and collaborators (28-oct-2026).
+aporte-captura-al-movil = Screenshot for the phone's recording
+aporte-de-la-grabacion = { $movil } is recording · { $minuto }
+aporte-enviada = Sent to the phone · { $minuto }
+aporte-pendiente = Offline: will be sent when it's back
+aporte-fallo = Couldn't capture the screen
+chat-adjuntar-a-la-grabacion = Attach to the recording…
+chat-adjuntada-a-la-grabacion = In the recording · { $minuto }
+chat-sin-grabacion = There's no recording in this chat
+chat-colaboradores-todos = Let everyone in the chat add photos
+chat-colaboradores-nadie = Only my photos in this recording
+clase-hora-sin-comprobar = time not verified
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
 clase-modo-presencial = In person
 clase-modo-presencial-sub = Records the microphone; “Photo” uses the camera at full resolution

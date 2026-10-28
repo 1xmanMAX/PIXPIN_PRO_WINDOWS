@@ -1961,6 +1961,18 @@ clase-camara-movil-apagada = 📱 Cámara del móvil: apagada
 clase-foto-movil = Foto del móvil · { $minuto }
 clase-clip-movil = Clip del móvil · { $minuto }
 camara-movil-tarde = Del móvil a «{ $titulo }» · { $minuto }
+# Fotos por su hora, de la PC a la grabacion del movil y colaboradores (28-oct-2026).
+aporte-captura-al-movil = Captura para la grabación del móvil
+aporte-de-la-grabacion = { $movil } graba · { $minuto }
+aporte-enviada = Enviada al móvil · { $minuto }
+aporte-pendiente = Sin conexión: se enviará al volver
+aporte-fallo = No se pudo capturar la pantalla
+chat-adjuntar-a-la-grabacion = Adjuntar a la grabación…
+chat-adjuntada-a-la-grabacion = En la grabación · { $minuto }
+chat-sin-grabacion = No hay ninguna grabación en este chat
+chat-colaboradores-todos = Que todos los del chat aporten fotos
+chat-colaboradores-nadie = Solo mis fotos en esta grabación
+clase-hora-sin-comprobar = hora sin comprobar
 # Reunion presencial (27-oct-2026): la camara del equipo, fotos y clips.
 clase-modo-presencial = Presencial
 clase-modo-presencial-sub = Graba el micrófono; «Foto» usa la cámara a su resolución completa
