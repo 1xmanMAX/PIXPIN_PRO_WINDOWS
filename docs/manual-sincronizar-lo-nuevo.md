@@ -703,3 +703,60 @@ leer ni un cuaderno.
 
 Mac, iPad e iPhone: el nucleo (`apple/nucleo/pixpin-sincro`,
 `pixpin-proyecto`, `pixpin-sistema`) lleva lo mismo.
+
+## 14. Lo importante de una clase o reunion (Jev, 28-oct-2026)
+
+Al acabar de pasar a texto una nota de voz (una clase, una reunion), el PC
+con clave de TypeSafe le pregunta a **Jev** que renglones de la
+transcripcion encargan una tarea, anuncian una decision, hacen una pregunta
+o dicen algo de examen (o un dato clave). Lo hallado va **en la propia nota
+de voz**, en `resto`, y viaja como lo demas del mensaje. Todo lo de Jev
+esta en [jev.md](jev.md).
+
+### Campo
+
+```json
+"importantes": [
+  {"ms": 20000, "tipo": "examen", "p": 0.81},
+  {"ms": 45000, "tipo": "tarea", "p": 0.94, "quien": true, "enTareas": true}
+],
+"importantesDe": "jev-1.14.0"
+```
+
+- `ms`: el del renglon de la transcripcion (`[m:ss] texto`) al que se
+  refiere, el mismo milisegundo con que empieza ese renglon.
+- `tipo`: `tarea`, `decision`, `pregunta` o `examen` (un tipo que no se
+  conozca se salta, sin llevarse los demas). Un renglon puede tener varios:
+  uno por elemento.
+- `p`: la probabilidad (0-1, dos decimales). Solo se guarda lo que pasa de
+  0.7.
+- Solo en `tarea`: `quien` y `cuando` (`true`/`false`) si el renglon dice
+  quien la hace y para cuando (falta si no esta claro), y `enTareas: true`
+  una vez apuntada en Tareas (no se vuelve a ofrecer).
+- **Sin la clave `importantes`**: nunca se miro. **Con `[]`**: se miro y
+  no hay nada (no se vuelve a preguntar). `importantesDe`: el modelo que lo
+  hallo.
+- Las cuentas (leer, escribir, el filtro) estan en
+  `crates/pixpin-proyecto/src/clase.rs` (`importantes_de`,
+  `poner_importantes`, `marcar_en_tareas`, `tipos_en`,
+  `se_ve_con_filtro`).
+
+### Choques
+
+Regla general (la lista entera, gana el que dirige): solo un aparato con
+clave lo escribe, y volver a pasar la nota a texto lo rehace entero (lo ya
+apuntado en Tareas sigue marcado).
+
+### Lo que hace el que recibe
+
+- **Ensenarlo** en la pantalla de estudiar la clase y en la letra: un punto
+  de color por tipo bajo el minuto de cada renglon (azul `#3b82f6` tarea,
+  verde `#22a06b` decision, morado `#8b5cf6` pregunta, rojo `#e5534b`
+  examen) y, arriba, el filtro «Todo · Tarea N · Decision N · Pregunta N ·
+  Examen N» (N = renglones de ese tipo).
+- **Las tareas**: «+N tareas a Tareas» apunta en el Inbox de Tareas el
+  texto del renglon con su nota `💬 🎙 <clase> ⏱ m:ss` y pone `enTareas`.
+- **No hace falta preguntar a Jev** en el movil: si llega con
+  `importantes`, ya esta. Un Android con su propia clave puede hacerlo igual
+  (mismas preguntas, `crates/pixpin-typesafe/src/preguntas.rs`).
+- La pagina compartida (`clase_exportar`) lleva las chapitas y el filtro.
