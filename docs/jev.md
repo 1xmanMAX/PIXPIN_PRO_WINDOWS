@@ -84,11 +84,11 @@ medio como «sin decidir» (tiene su fila en cada tabla); los campos vacios
 no se mandan (una lista vacia se leeria como senal); las preguntas en
 ingles (donde Jev acierta mas) sobre el estado tal cual, en espanol.
 
-## Las cuatro funciones
+## Las cinco funciones
 
 Cada una tiene su interruptor en **Ajustes › Asistente › TypeSafe (Jev)**
-(`[jev]` del TOML: `reunion`, `anki`, `urgencia`, `modelo`; encendidas de
-fabrica, pero sin clave no hacen nada).
+(`[jev]` del TOML: `reunion`, `anki`, `urgencia`, `modelo`, `temas`;
+encendidas de fabrica, pero sin clave no hacen nada).
 
 ### 1. Partes importantes de la clase o reunion
 
@@ -240,6 +240,137 @@ el ultimo pedido («Claude Sonnet · Jev») durante 15 minutos.
 
 **Sin clave o si Jev falla**: el de siempre.
 
+### 5. Temas de la reunion tratados (mientras se graba)
+
+El usuario (28-oct-2026): «una funcion de TAREAS para la reunion: la
+persona crea una lista de TEMAS a tratar en la reunion; durante la reunion
+el telefono (o el PC) se queda escuchando y transcribiendo; eso se manda a
+JEV y Jev marca que temas ya se trataron».
+
+**Como se usa (PC)**:
+
+1. **Preparar** de «Grabar clase» lleva la fila **«Temas de la reunión»**.
+   Abre su pantalla: se escribe un tema e Intro, se pegan varios (`Ctrl+V`
+   o «Pegar», uno por linea: se quitan vinetas, casillas `- [ ]` y numeros
+   `1.`), o **«De una lista»** toma lo pendiente de una lista de tareas del
+   chat (cada clic pasa a la siguiente; primero las del chat donde se
+   guarda) y deja la reunion enlazada a esa lista. Los temas que se pasaron
+   «a la proxima reunion» salen ya puestos.
+2. **Grabando**, la barra lleva **«☑ 2/5»**: abre (o pliega) la lista
+   debajo, con una casilla por tema. **Un clic marca o desmarca a mano**,
+   con el minuto de ese momento. Lo que marca Jev sale con ✓, «Jev · 12:30»
+   a la derecha, la fila se ilumina en verde y se apaga poco a poco, el
+   boton destella y la linea de abajo dice **«✓ Tema 2 tratado · 12:30»**.
+   Arriba de la lista, como va la escucha («Escuchando: Jev marca los temas
+   que se traten», o por que no: sin clave, apagado en Ajustes, sin el
+   modelo de voz, Jev no contesta, equipo ocupado).
+3. **Al terminar**, la nota lleva `resto["temas"]` y los temas quedan en
+   **una lista de tareas** del chat, «Temas · Clase 28-10 10h05» (o la
+   lista elegida, con los temas nuevos anadidos), con lo tratado marcado:
+   se ve en la ventana Tareas y viaja al movil como cualquier lista. Lo
+   marcado en esa lista durante la reunion (en Tareas o en el movil) entra
+   como hecho a mano.
+4. **«Estudiar la clase»**: encima de los marcadores, la agenda con ✓ y su
+   minuto (un clic en el tema salta ahi; en la casilla se cambia a mano, y
+   tambien en su lista). Lo que quedo **sin tratar** va resaltado en ambar,
+   con **«Pasar a la próxima reunión»** (sale solo al preparar la siguiente
+   grabacion en este PC; `<datos>/voz/temas-para-la-proxima.txt`) y
+   **«Añadir a Tareas»** (al Inbox, con su nota `💬 🎙 <reunion>`).
+5. **La pagina compartida** (HTML y Markdown) lleva la agenda con su estado
+   (✓ y minuto que salta, o «Sin tratar»).
+
+**La escucha en vivo** (`ventana_chat::grabar_clase::escucha`):
+
+- **No abre otro microfono**: se suscribe al PCM de la misma grabacion
+  (`Grabadora::suscribir_pcm`). El hilo de la mezcla nunca espera: si la
+  escucha va tarde, su suscripcion pierde bloques solo ella (la nota, el
+  respaldo y el video no se enteran).
+- **Tramos de unos 15 s** (`pixpin_voz::en_vivo::Ventanero`), cortados en el
+  punto mas callado de sus ultimos 3 s, en mono a 16 kHz, cada uno con su
+  numero y el milisegundo de la grabacion en que empieza (en pausa no
+  corre, como la nota). Un hueco corto se rellena con silencio; uno largo
+  cierra el tramo.
+- **Cola de dos que tira el mas viejo** (`en_vivo::Cola`): si el texto va
+  por detras se pierde texto en vivo, nunca grabacion.
+- **El texto**, en un hilo **por debajo de lo normal**, con **Whisper
+  *base*** con uno o dos hilos y sin arena (`Whisper::cargar_ligero`),
+  cargado al primer tramo con voz. **Se salta** (`en_vivo::Freno`): lo que
+  no tiene voz (menos del 10 % de trozos de 20 ms con RMS ≥ 300), todo
+  mientras el procesador pase del **85 %** (`prioridad::MedidorCpu`, con
+  `GetSystemTimes`) y, si un tramo tardo mas del **80 %** de lo que dura,
+  el siguiente. Sin el modelo de Whisper bajado no se escucha (se dice).
+- **Al terminar** (o tirar) la escucha se para en el acto (Whisper se
+  cancela, lo ultimo que marco Jev se recoge) y **la transcripcion entera
+  de despues es la de siempre**, con el motor elegido en Ajustes.
+
+**Estado** (uno por tramo con tres palabras o mas y algun tema pendiente):
+`reunion` (el titulo), `agenda` (todos los temas), `antes` (el texto del
+tramo anterior, de contexto; si no lo hay, no va) y `tramo` (lo que se
+acaba de decir).
+
+**Preguntas** (`preguntas::temas`), **dos Nouls por cada tema pendiente**
+(hasta 20 temas por peticion), con el tema dentro de la pregunta, en **una
+sola peticion por tramo** (comparten el estado):
+
+- `tratado_<id>`: «In `tramo`, do the speakers actually discuss the agenda
+  topic «<tema>»?». Si: hablan de el en serio (lo explican, opinan,
+  preguntan y contestan, deciden algo). **No, el caso que confunde**: solo
+  se nombra de pasada o **se deja para luego** («del presupuesto hablamos
+  al final», «eso lo vemos la próxima semana»), o el tramo es de otra cosa;
+  lo dicho solo en `antes` no cuenta.
+- `cerrado_<id>`: «In `tramo`, is the agenda topic «<tema>» settled with a
+  decision, an answer or an agreed next step?». No: sigue abierto, se
+  aplaza («lo dejamos para la próxima») o no se habla de el.
+
+**Tabla** (`temas::Seguimiento::decidir`), por tema y por tramo, con SI =
+0.7 y CASI = 0.5:
+
+| tratado (este tramo) | cerrado (este tramo) | el tramo anterior (el numero justo antes) | se marca |
+|---|---|---|---|
+| ≥ SI | — | — | tratado: `ms` de este tramo, `p` = tratado |
+| ≥ CASI y < SI | ≥ SI | — | tratado (se hablo y se cerro): `ms` de este tramo, `p` = cerrado |
+| ≥ CASI y < SI | < SI | tratado ≥ CASI | tratado (dos tramos seguidos a medias): `ms` del anterior, `p` = la mayor |
+| ≥ CASI y < SI | < SI | otro, o se salto | nada aun: se recuerda para el siguiente |
+| < CASI | — | — | nada (y se olvida lo recordado) |
+
+«Cerrado» sin «tratado» (< CASI) no marca: el cierre seria de otra cosa.
+Un tramo saltado (equipo ocupado) rompe la racha de «dos seguidos». **Jev
+solo marca, nunca desmarca, y solo lo pendiente que nadie toco a mano.**
+
+**Lo hecho a mano manda** (`pixpin_proyecto::temas`): un tema que la
+persona marco **o desmarco** queda `aMano` y Jev ya no lo toca; la escucha
+deja de preguntar por el.
+
+**Datos**: en la nota de voz, `resto["temas"]`, en el orden de la agenda:
+
+```json
+"temas": [
+  {"id": "t1", "texto": "Presupuesto 2027", "hecho": true, "ms": 750000, "p": 0.86, "porJev": true, "aMano": false},
+  {"id": "t2", "texto": "Nuevo becario", "hecho": true, "ms": 1210000, "porJev": false, "aMano": true},
+  {"id": "t3", "texto": "Viaje a Lima", "hecho": false, "porJev": false, "aMano": false}
+],
+"temasLista": {"proyecto": "<id del chat>", "id": "<id del mensaje de la lista>"}
+```
+
+- `id`: estable (`t1`, `t2`… en el orden en que se apuntaron; uno quitado
+  no se reutiliza). Es lo que enlaza la marca de Jev con su tema.
+- `hecho`: ya se trato. `ms`: el milisegundo de la grabacion en que se
+  trato (Jev: el principio del tramo; a mano grabando: el del clic; a mano
+  al estudiar: no va). `p`: la probabilidad de Jev (0-1, dos decimales),
+  solo si lo marco el.
+- `porJev`: lo marco Jev. `aMano`: la persona lo toco (marcado o
+  desmarcado): **ningun aparato deja que Jev lo cambie despues**.
+- Sin temas, la clave no va (la nota sigue byte a byte como antes).
+- `temasLista`: la lista de tareas (mini-app `tareas`, `- [ ] texto`) con
+  los mismos temas; su casilla dice lo mismo que `hecho`.
+- En el diario de la grabacion (`grabacion_a_medias::Diario`) van `temas`
+  (el mismo JSON) y `temas_lista`, apuntados al empezar y a cada marca: la
+  clase recuperada tras un corte los lleva.
+
+**Sin clave, con la funcion apagada o si Jev falla**: no se marca nada
+solo (un fallo nunca es «no se trato»); la cabecera de la lista lo dice y
+los temas se marcan a mano, igual que siempre.
+
 ## Privacidad: que se manda
 
 Solo con clave y con la funcion encendida, y solo a `api.typesafe.ai` por
@@ -253,6 +384,9 @@ HTTPS:
   el nombre de su chat y los cinco ultimos mensajes escritos de ese chat.
 - **Modelo**: el pedido al asistente y los tres ultimos mensajes de la
   conversacion.
+- **Temas**: el titulo de la reunion, los temas y, por cada tramo de unos
+  15 s con voz, su texto (pasado a texto **en este equipo**) y el del
+  tramo anterior. Nunca el audio.
 
 La clave va cifrada con DPAPI en
 `%LOCALAPPDATA%\PixPinMax\claves\typesafe.clave`: nunca en el TOML de
@@ -275,6 +409,11 @@ que cuesta en PixPin, mas o menos:
   al no mandar a Sonnet lo facil, y al no mandar a Haiku lo dificil, es
   mucho mas).
 
+- los temas de una reunion de una hora con 8 temas: unos 240 tramos con
+  voz, ~600 tokens cada uno (los tramos, la agenda y 16 preguntas) ≈
+  150 000 tokens ≈ **0.006 $** (menos segun se van tratando: los temas
+  hechos ya no se preguntan).
+
 Lo identico sale del cache del proceso y no se paga dos veces.
 
 ## Pruebas
@@ -288,6 +427,12 @@ Lo identico sale del cache del proceso y no se paga dos veces.
 - `pixpin-proyecto`: `clase` (el formato de `importantes`) y
   `clase_exportar` (las chapitas y el filtro de la pagina).
 - `pixpin-anki`: lo dicho por captura y quedarse con algunas.
+- Temas: `pixpin-typesafe` `temas` (la tabla, dos tramos seguidos, el
+  estado, una peticion por tramo, los fallos como errores;
+  `de_verdad_con_la_api` con `#[ignore]`), `pixpin-proyecto` `temas` (leer
+  lo pegado y las listas, el formato, lo hecho a mano manda) y
+  `clase_exportar` (la agenda en la pagina), `pixpin-voz` `en_vivo`
+  (tramos, cortes, huecos, 44,1/48 kHz a 16 kHz, la cola y el freno).
 
 Las preguntas se escribieron sin probarlas contra la API (no habia clave el
 28-oct-2026): antes de fiarse, probar con casos reales, dificiles y
@@ -303,7 +448,59 @@ texto en `preguntas.rs`, no los umbrales a unos pocos casos.
 - **Lo que no viaja**: la clave, los interruptores de `[jev]` (son de este
   PC), las prioridades de las tareas (se calculan en cada aparato) y el
   modelo elegido.
+- **Los temas de la reunion** (ver abajo): `resto["temas"]` y
+  `resto["temasLista"]` en la nota de voz; la lista de tareas es una lista
+  normal.
 - **Si Android quiere preguntar el mismo** (con su propia clave): las
   mismas preguntas y tablas, copiando `preguntas.rs` y las funciones
   `decidir` de cada modulo; la API es un POST con JSON (no hace falta SDK).
   Guardar la clave en el Keystore, nunca en lo que se sincroniza.
+
+### Android: los temas de la reunion en el movil
+
+El usuario espera que **en una reunion presencial escuche el telefono**.
+Lo que tiene que hacer el movil, con el mismo formato y las mismas
+preguntas que el PC:
+
+1. **Antes de grabar**: «Temas de la reunión» en la pantalla de grabar
+   (escribir, pegar uno por linea —las mismas reglas de limpieza que
+   `pixpin_proyecto::temas::de_texto`: sin vinetas, `- [ ]`, `1.`, `#
+   titulo`, repetidos ni mas de 40, 200 caracteres como mucho— o tomar lo
+   pendiente de una lista de tareas). Los `id` son `t1`, `t2`… como en el
+   PC.
+2. **Grabando** con su servicio en primer plano (el de siempre: sigue con
+   la pantalla apagada), **pasa a texto en vivo** por tramos de unos 15 s:
+   Whisper *base* o Qwen3-ASR en el aparato (los mismos modelos que el PC)
+   o, para ir mas ligero, `SpeechRecognizer` en el aparato
+   (`createOnDeviceSpeechRecognizer` con `EXTRA_PREFER_OFFLINE` y
+   resultados parciales, como el motor «Google» de `MotorGoogle.kt`), que
+   da el texto mientras se habla; se junta en tramos de ~15 s con el
+   milisegundo de la grabacion en que empieza cada uno. **La grabacion va
+   primero**: sin bateria (< 20 %), con el aparato caliente o si el texto
+   va por detras, se saltan tramos (cola de dos que tira el mas viejo,
+   como `pixpin_voz::en_vivo`); la grabacion no se toca.
+3. **Cada tramo**, una peticion a Jev con el estado `{reunion, agenda,
+   antes, tramo}` y dos Nouls por tema pendiente (hasta 20), **copiando
+   el texto tal cual de `crates/pixpin-typesafe/src/preguntas.rs`**
+   (`preguntas::temas::se_trato` y `quedo_cerrado`; nombres
+   `tratado_<id>` y `cerrado_<id>`), y la **misma tabla** (arriba;
+   `pixpin_typesafe::temas::Seguimiento::decidir`). Sin clave en el movil,
+   sin red o si Jev falla: no se marca nada solo, se dice, y se marca a
+   mano.
+4. **En la pantalla de grabar**, la lista con sus casillas: un toque marca
+   o desmarca a mano (`aMano: true`, con el minuto del toque) y Jev ya no
+   lo toca; lo que marca Jev sale con ✓ y su minuto, y un aviso
+   «✓ Tema 2 tratado · 12:30».
+5. **Al guardar**: `resto["temas"]` en la nota de voz (el formato de
+   arriba) y una lista de tareas «Temas · <nombre>» enlazada en
+   `resto["temasLista"]` (o la lista elegida, con lo tratado marcado).
+   Viaja al PC por la sincronizacion de siempre; el PC la ensena en
+   «Estudiar la clase», en la ventana Tareas y en la pagina compartida.
+6. **Al sincronizar**, la nota viaja entera como hasta ahora (gana la
+   version mas nueva del mensaje): cada aparato escribe `temas` completo y
+   nunca deja que Jev cambie un tema que llego con `aMano: true`. Las
+   casillas de la lista de tareas viajan con su lista, como siempre.
+7. **Cuando el movil es la camara de una grabacion del PC**
+   ([movil-como-camara.md](movil-como-camara.md), §13): **escucha el PC**
+   (la grabacion y su audio son suyos). El movil no transcribe ni pregunta:
+   solo hace fotos y clips.

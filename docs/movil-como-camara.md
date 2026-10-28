@@ -726,3 +726,21 @@ puede calcular su posición exacta».
   cada foto de otra persona lleva **su círculo con la inicial en su color**
   (el mismo de sus burbujas en el chat compartido) y, si toca, la pastilla
   «hora sin comprobar».
+
+## 13. Los temas de la reunión (28-oct-2026)
+
+Una grabación del PC puede llevar **temas de la reunión** (ver
+[jev.md](jev.md), «5. Temas de la reunion tratados»): una agenda que Jev
+va marcando como tratada mientras se graba, a partir del texto en vivo.
+
+- **Con el móvil como cámara de una grabación del PC, escucha el PC**: el
+  audio de la reunión es el de la grabación del PC (su micrófono y, si se
+  eligió, el sonido del equipo), y la escucha en vivo se suscribe a ese
+  mismo PCM. El móvil no transcribe ni pregunta a Jev en ese modo: hace
+  fotos y clips como siempre (§2-§8).
+- **Lo que ve el móvil**: nada nuevo en `camara_remota`; los temas llegan
+  con la nota al sincronizar (`resto["temas"]`, `resto["temasLista"]`), y
+  la lista de tareas de la reunión es una lista normal.
+- **Sin PC (reunión grabada solo con el móvil)**: el móvil hace lo mismo
+  que el PC con su servicio en primer plano: ver jev.md, «Android: los
+  temas de la reunion en el movil».
