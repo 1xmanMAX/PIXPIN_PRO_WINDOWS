@@ -24,9 +24,12 @@
 //! pasarse a texto y el **retraso** total (se dejo de hablar → texto). Al
 //! final, medias y maximos y el RTF.
 //!
-//! `--salida` escribe `[m:ss] Quien: frase`, el guion que leen los
-//! prototipos de Jev (`crates/pixpin-typesafe/examples/`); `Quien` es
-//! `--quien` (por omision «Voz»: aqui no se sabe quien habla).
+//! `--salida` escribe `[inicio fin_voz texto] Quien: frase` (cada hora en
+//! `m:ss.d`: donde empieza, cuando se dejo de hablar y cuando estuvo el
+//! texto), el guion oido que leen los prototipos de Jev
+//! (`crates/pixpin-typesafe/examples/`): cada frase les llega a la hora de
+//! su texto, y lo que tardan se mide desde que se dejo de hablar. `Quien`
+//! es `--quien` (por omision «Voz»: aqui no se sabe quien habla).
 
 mod comun;
 
@@ -36,11 +39,11 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use comun::{Argumentos, leer_audio, mmss, raiz_y_ort};
+use pixpin_voz::HERCIOS;
 use pixpin_voz::en_vivo::{
     COLA, Cola, Frase, Frasero, Freno, Medida, PARA_WHISPER, PARA_WINDOWS, Paso,
 };
 use pixpin_voz::whisper::Whisper;
-use pixpin_voz::{HERCIOS, marca_de_tiempo};
 
 /// Lo que da la mezcla de la grabacion: 48 kHz, dos canales, de 10 en 10 ms.
 const HZ_MEZCLA: u32 = 48_000;
@@ -145,7 +148,15 @@ fn correr() -> Result<(), String> {
         let guion: String = medidos
             .iter()
             .filter(|m| m.paso == Paso::Pasar && !m.texto.trim().is_empty())
-            .map(|m| format!("[{}] {quien}: {}\n", marca_de_tiempo(m.ms), m.texto.trim()))
+            .map(|m| {
+                format!(
+                    "[{} {} {}] {quien}: {}\n",
+                    mmss(m.ms),
+                    mmss(m.fin_voz_ms),
+                    mmss(m.fin_voz_ms + m.retraso_ms()),
+                    m.texto.trim()
+                )
+            })
             .collect();
         std::fs::write(p, guion).map_err(|e| format!("{p}: {e}"))?;
         println!("# guion escrito en {p}");

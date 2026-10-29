@@ -1,0 +1,61 @@
+# Reunion inventada para probar de punta a punta (audio → Whisper → Jev),
+# ver `audio_coordinacion.txt`. Aqui el paro sale sin nombrarlo («los
+# camiones, que dicen que paran») y sin anunciar el cambio de tema, y los
+# proyectores se nombran pero se dejan para otra reunion.
+#
+# reunion: Reunión de departamento
+# fecha: 2026-10-28
+# duracion: 30
+# participantes: Ana, Luis, Marta
+# agenda: Cotización del viernes
+# agenda: Paro de transportistas
+# agenda: Notas de los estudiantes
+# agenda: Compra de proyectores
+# chat: Obra Calle Lima
+# chat: Compras
+# chat: Coordinación docentes
+
+[0:00] Luis: A ver, eh, ¿se me oye? Vale. Empezamos.
+[0:05] Ana: Sí, se te oye bien.
+[0:08] Luis: Primero las notas de los estudiantes, que las piden las familias.
+[0:14] Ana: Pues mira, las de primero ya están, pero faltan las de segundo, porque hubo un examen de recuperación.
+[0:23] Marta: Y el examen de recuperación lo corregimos esta semana, ¿no?
+[0:28] Luis: Sí, sí. Queda decidido entonces: las notas se publican el viernes en la plataforma.
+[0:36] Ana: Perfecto.
+[0:39] Marta: Eh, otra cosa, lo de los proyectores. ¿Los compramos ya o esperamos?
+[0:45] Luis: Eso mejor lo vemos en la próxima reunión, que hoy no tenemos el presupuesto.
+[0:52] Ana: Vale. Lo de la cotización del viernes: la imprenta nos mandó dos opciones.
+[0:59] Luis: ¿Y cuál es más barata?
+[1:02] Ana: La segunda, mil novecientos euros con el envío incluido.
+[1:08] Marta: Pues yo diría que la segunda, sin duda.
+[1:12] Luis: Marta se encarga de llamar a la imprenta mañana a primera hora para aceptarla.
+[1:19] Marta: Hecho, mañana la llamo.
+[1:22] Ana: Oye, y los camiones, que dicen que paran desde el lunes y no sabemos hasta cuándo.
+[1:29] Marta: — Sí, lo vi en las noticias, es en toda la región.
+[1:33] Luis: Si paran, los libros de la biblioteca no llegan a tiempo. ¿Alguien ha hablado con la distribuidora?
+[1:41] Ana: Bueno, ya lo miraremos. Nos vemos el martes a las 3 y lo cerramos.
+[1:47] Luis: Venga, el martes a las 3. Gracias a todos.
+
+# espera[temas_en_vivo]: tratado notas de los estudiantes
+# espera[temas_en_vivo]: tratado cotización del viernes
+# espera[temas_en_vivo]: tratado paro de transportistas
+# espera-no[temas_en_vivo]: tratado compra de proyectores
+
+# Tareas: Marta, mañana (jueves 29); lo que se opina no es tarea.
+# espera[tareas_dichas]: tarea Marta 2026-10-29
+# espera-no[tareas_dichas]: yo diría
+# espera-no[tareas_dichas]: se me oye
+
+# espera[decisiones]: las notas se publican el viernes
+# espera-no[decisiones]: se me oye
+
+# espera[preguntas_pendientes]: contestada ¿Y cuál es más barata?
+# espera[preguntas_pendientes]: sin respuesta
+# espera-no[preguntas_pendientes]: sin respuesta ¿Y cuál es más barata?
+# espera-no[preguntas_pendientes]: sin respuesta Y el examen de recuperación
+
+# Dicho un miércoles, «el martes» es el 3 de noviembre.
+# espera[fechas_al_horario]: evento mar 2026-11-03 15:00
+# espera-no[fechas_al_horario]: evento vie
+
+# espera[tiempo_por_tema]: más tiempo:

@@ -408,8 +408,9 @@ frase y cuando estaria su texto con un solo reconocedor).
 
 Por frase: inicio, fin de la voz, **corte** (se dejo de hablar → sale la
 frase), espera en la cola, lo que tarda Whisper, **retraso** (se dejo de
-hablar → texto) y RTF. `--salida` escribe el guion `[m:ss] Quien: frase`
-que leen los prototipos de Jev (`crates/pixpin-typesafe/examples/`); aqui no
+hablar → texto) y RTF. `--salida` escribe el guion oido
+`[inicio fin_voz texto] Quien: frase` que leen los prototipos de Jev
+(`crates/pixpin-typesafe/examples/`, ver «De punta a punta»); aqui no
 se sabe quien habla, asi que `Quien` es `--quien` (por omision «Voz»).
 
 #### Medido (la «reunion» de 186 s, cuatro lectores)
@@ -616,3 +617,172 @@ etiquetas ≈ 0,00003 $; una ráfaga de cuatro fotos ≈ 0,00017 $.
 - Lo de antes (`reunion`, `anki`, `urgencia`, `modelo`) ya está cableado;
   estos guiones quedan como prueba de evaluación para cuando cambie el
   modelo (`jev-latest`) o una pregunta.
+
+## De punta a punta (audio → Jev)
+
+Lo que faltaba: los prototipos de Jev se probaron con guiones escritos a
+mano, con quien habla. Aqui se prueba la cadena entera, en vivo: audio de
+una reunion en castellano → `pixpin_voz::en_vivo::Frasero` (con la `Cola`
+y el `Freno`) → Whisper base como en la app (`frases_en_vivo`) → la logica
+de Jev en vivo (`temas_en_vivo` y `reunion_completa`), con el texto de
+Whisper y **sin quien habla** («Voz»).
+
+### Las reuniones y el audio
+
+Tres guiones inventados (sin datos de nadie) en
+`crates/pixpin-typesafe/examples/guiones/`, con la misma agenda
+(«Cotización del viernes», «Paro de transportistas», «Notas de los
+estudiantes», «Compra de proyectores») tratada en otro orden, muletillas
+(«eh», «o sea», «mmm»), interrupciones (un «—» delante: pisa 0,35 s la
+frase anterior), una tarea con plazo, una decision, una pregunta que nadie
+contesta y «nos vemos el martes a las 3»:
+
+- `audio_coordinacion` (lunes): los proyectores «para el final» y no se
+  llega; un dictado al chat de Compras.
+- `audio_departamento` (miercoles): el paro sale sin nombrarlo («los
+  camiones, que dicen que paran») ni anunciar el cambio; los proyectores se
+  nombran y se dejan para otra reunion; «Marta se encarga… mañana».
+- `audio_compras` (jueves): las notas se aplazan y los proyectores no se
+  tratan; «yo mando el correo antes del lunes».
+
+Las esperas son las de siempre (`# espera…`) y valen para el guion escrito
+y para lo oido; donde Whisper cambia palabras se espera lo que importa
+(«sin respuesta ¿Y quién avisa», no la frase entera).
+
+El audio se hace con **Piper** (`pip install piper-tts`, sin red al
+hablar), una voz por persona por orden de aparicion: `es_MX-claude-high`,
+`es_ES-davefx-medium` y `es_ES-sharvard-medium` (hablante F), con un eco
+corto (`aecho`) y ruido rosa de fondo (`anoisesrc`, amplitud 0,004) con
+`ffmpeg`. Entre turnos, 0,25-0,8 s de silencio. Salen reuniones de 74-90 s
+(las voces sinteticas hablan deprisa). Piper no da dos veces el mismo
+audio: cada toma es otra grabacion.
+
+### Como se corre
+
+```sh
+# Una vez (fuera del repo): lo de «Preparar» de arriba, y Piper con sus voces.
+pip install piper-tts
+V=https://huggingface.co/rhasspy/piper-voices/resolve/main/es
+for v in es_MX/claude/high/es_MX-claude-high es_ES/davefx/medium/es_ES-davefx-medium \
+         es_ES/sharvard/medium/es_ES-sharvard-medium; do
+  curl -L -O $V/$v.onnx; curl -L -O $V/$v.onnx.json
+done
+# Cada reunion: hablar → oir → Jev (lo oido) → Jev (lo escrito, con y sin nombres).
+PIXPIN_VOZ=$D VOCES=<carpeta de las voces> PYTHON=<python con piper> \
+TYPESAFE_API_KEY_FILE=… SALIDA=/tmp/punta \
+  crates/pixpin-typesafe/examples/guiones/de_punta_a_punta.sh audio_coordinacion.txt
+```
+
+`QUE="jev"` repite solo Jev sobre lo ya oido (`$SALIDA/<guion>.frases.txt`);
+cada vuelta graba sus respuestas (`--grabar`) en `$SALIDA`.
+
+**El guion oido**: `frases_en_vivo --salida` escribe
+`[0:12.3 0:17.1 0:19.0] Voz: …` (empieza, se deja de hablar, llega el
+texto) y el script le pone delante la cabecera y las esperas del guion
+escrito. Los prototipos leen las dos formas (los guiones a mano siguen
+igual). Con un guion oido, cada frase entra **cuando llega su texto** y el
+reloj de la reunion avanza con lo que tarda Jev de verdad (`--rapido`):
+corte + Whisper (lo mide `frases_en_vivo` en tiempo real simulado, ver
+arriba) y luego Jev, con el `Ritmo` juntando lo que llega mientras hay una
+peticion en vuelo. Al final sale lo que se tarda **de que se deja de
+hablar a lo decidido** (`voz_p50_ms`, `voz_max_ms` en el `RESUMEN`).
+
+### Medido (29-oct-2026, jev-1.14.0, Whisper base, Xeon 4 nucleos)
+
+**Lo que oye Whisper**: WER 9-12 %, 15-19 % y 18-21 % (dos tomas de cada
+reunion; 193-236 palabras). Ademas de palabras («A no tener chat de
+compras» por «Anota en el chat de Compras», «¡Má, estás en carga!» por
+«Marta se encarga»), **se come frases enteras** cuando el trozo junta
+varios turnos (en `audio_compras`, «Nos llegaron tres presupuestos…»; en
+la segunda toma de `audio_departamento`, el encargo a Marta) y **la
+puntuacion**: «Sabemos si el paro afecta también a los envíos urgentes.»
+sin «¿?», o una pregunta y su respuesta en una sola oracion («Cuando se
+publican el viernes en cuanto al tutor de tercero la suba.»).
+
+**Latencia**, por reunion (primera toma):
+
+| tramo | medido |
+|---|---|
+| corte (se calla → sale la frase) | 0,45-0,62 s de media, 1,5 s max |
+| Whisper base (`cargar_ligero`) | 1,8-1,9 s de media, 2,7 s max (3,1 / 4,8 s con la maquina ocupada compilando) |
+| Jev | p50 175-195 ms, p95 200-440 ms |
+| **se deja de hablar → ✓ del tema** | **p50 3,0 s, max 3,3 s** (segunda toma: max 3,9 s); de ello ~2,8 s son corte y Whisper y 0,2 s Jev |
+| se deja de decir una oracion → lo decidido (`reunion_completa`, partida en oraciones) | p50 3,1-3,9 s, p95 9 s, max 10,8 s |
+
+Con un guion escrito el ✓ sale a los 0,2 s; con audio, a los ~3 s: lo pone
+Whisper, no Jev. Los trozos son de 5-12 s (`PARA_WHISPER`), asi que la
+primera oracion de un trozo largo espera a que acabe el trozo: de ahi los
+9-10 s del p95 por oracion. Ninguna frase espero en la cola ni se salto.
+
+**Aciertos** (esperas cumplidas; «sin nombres» = el guion escrito con
+«Voz» en vez de quien habla; «oido» = el texto de Whisper):
+
+| | escrito | sin nombres | oido, antes | oido, despues |
+|---|---|---|---|---|
+| `temas_en_vivo` (3 reuniones) | 9/12 | — | 11/12 | 12/12 (2ª toma 11/12) |
+| `reunion_completa` (3 reuniones) | 35/36 | 35/36 | 29/36 | **31/36** (2ª toma 31/36) |
+
+Quitar quien habla **no cuesta nada** (35/36 en los dos). Lo que cuesta es
+Whisper: 6-7 esperas de 36. Repetidos 3 veces los temas (mismo texto), lo
+oido da 34/36 y lo escrito 29/36: los fallos son **todos el mismo**, abajo.
+
+### Lo que fallo y lo que se cambio
+
+1. **La escucha junta turnos.** Con `PARA_WHISPER` una «frase» trae dos o
+   tres turnos: «Pues yo diría que la segunda. ¡Má, estás en carga de
+   llamar…! ¡Echo, mañana la llamo!» salia como **una** tarea con «yo
+   diría» dentro; «¿Y quién avisa…? mm, buena pregunta. Vale, pasamos a
+   la cotización…» como pregunta 0.46 (no se abria). Arreglo, en codigo:
+   **`vivo::partir`** parte lo de `en_vivo` en oraciones (tras `.?!` y un
+   espacio, no en «2.400»; delante de «¿¡» salvo tras una coma; un trozo
+   de menos de 3 palabras va con el siguiente) y reparte el milisegundo por
+   letras. Los prototipos lo hacen con un guion oido (`--sin-partir` para
+   comparar). 29/36 → 31/36; cuesta ~1,8 peticiones por trozo (unos 0,08 $
+   la hora con todo encendido). **En la app**: el hilo de `vivo` del
+   cableado (arriba, paso 1) tiene que partir asi cada frase de
+   `en_vivo` antes de preguntar; los temas en vivo no lo necesitan (miran
+   la ventana de 40 s).
+2. **Sin saber quien habla, `quien` adivina.** «Yo me encargo…» con
+   «Voz»: `quien_dicho` 0.98 (alguien se lo queda) y `quien` reparte entre
+   los participantes (Ana 0.40, Luis 0.37): una tarea a nombre de quien no
+   es. Arreglo, en codigo (`compromisos::QUIEN_MINIMO` = 0.5): con el
+   elegido por debajo, «¿quién?». Cuando se nombra a alguien sale 0.97.
+   Con nombres en el guion no cambia nada (las grabadas dan lo mismo).
+3. **Lo que no se arreglo** (limites de Whisper base, no de Jev): el
+   dictado con «A no tener chat de compras» (0.38); «¿Cuándo se publican?»
+   pegada a su respuesta sin puntuacion; «Sabemos si el paro afecta…» sin
+   «¿?» (pregunta 0.57-0.65, no llega a 0.7); la tarea de Marta si Whisper
+   se come su nombre o la frase.
+
+**Probado y descartado** (sin ganancia medible, se quito):
+
+- Decir en el estado que es una transcripcion automatica (sin quien habla,
+  sin puntuacion fiable): la pregunta sin «¿?» bajo de 0.65 a 0.57 y lo
+  demas igual.
+- **«Compra de proyectores» marcado sin tratarse** (el unico fallo de los
+  temas, en lo escrito 1 de cada 4 vueltas por reunion): se marca cuando
+  se cierra **otra** compra («hacemos el pedido mañana», aceptar la
+  cotizacion de la imprenta) — tratado 0.52-0.86, cerrado 0.74-0.94. Se
+  probo (3 vueltas × 8 guiones, con `coordinacion` y
+  `temas_prueba_ignorada` de control): (B) nombrar el caso en el «no» de
+  `se_trato` («also one that only shares a word or a kind of task with
+  it»), (C) que la fila de «a medias y cerrado» pida `ahora` ≥ CASI, y
+  (D) las dos. Dio 87, 87, 88 y 89 de 96 (sin cambio: 87): ruido. **No se
+  cambio `preguntas.rs`.** Queda abierto; lo que si se ve:
+- **Jev no es determinista**: la misma peticion, byte a byte, dio tratado
+  0.59 y 0.78 en dos vueltas (hasta ±0.2). Un caso en el borde cambia de
+  lado de una vuelta a otra: para ajustar, varias vueltas, no una.
+- `tema_anterior` **si arrastra** (la duda de arriba): «nos vemos el martes
+  para cerrar lo del pedido» fue a «Compra de proyectores», y el «lo
+  dejamos aquí» siguiente (de la agenda 0.40) siguio ahi; el aviso de
+  cierre ya no nombro los proyectores.
+- Otros de Jev que salen igual en lo escrito: «el paro empieza el
+  miércoles» y «empieza el martes» salen como **evento** (cita 0.77: «an
+  event to take place»); «Sí, sí, queda decidido» no contesta «lo
+  corregimos esta semana, ¿no?».
+- Las reuniones sinteticas duran 1,5 min: con `MINIMO_TRATADO_MS` (30 s)
+  casi todo tema queda «sin tratar» para el aviso de cierre; de ahi que
+  sus esperas solo miren que salga el tema que toca.
+
+**Coste** de todo esto: ~4,1 M tokens ≈ 0,17 $ (la mayor parte, las 96
+vueltas de los temas).

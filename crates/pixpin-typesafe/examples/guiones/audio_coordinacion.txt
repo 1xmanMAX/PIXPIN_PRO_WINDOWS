@@ -1,0 +1,67 @@
+# Reunion inventada para probar de punta a punta (audio → Whisper → Jev):
+# se lee en voz alta con voces sinteticas (`de_punta_a_punta.sh`), una por
+# persona, y lo que oye Whisper, sin quien habla, pasa por los prototipos.
+# Sin datos de nadie. Un «—» delante: se pisa con la frase anterior.
+#
+# reunion: Coordinación semanal
+# fecha: 2026-10-26
+# duracion: 30
+# participantes: Ana, Luis, Marta
+# agenda: Cotización del viernes
+# agenda: Paro de transportistas
+# agenda: Notas de los estudiantes
+# agenda: Compra de proyectores
+# chat: Obra Calle Lima
+# chat: Compras
+# chat: Coordinación docentes
+# tarea: Llamar al proveedor por el pedido | 2026-11-02
+
+[0:00] Ana: Bueno, eh, buenos días a todos. Vamos empezando, que hay bastante.
+[0:06] Luis: Buenos días.
+[0:08] Ana: Lo de la compra de proyectores lo dejamos para el final, si da tiempo.
+[0:14] Marta: Perfecto. Oye, ¿empezamos por el paro de transportistas? Que me tiene preocupada.
+[0:20] Luis: Sí, dicen que el paro empieza el miércoles y puede durar toda la semana.
+[0:27] Marta: O sea, que el material de la obra no llegaría hasta el lunes que viene, más o menos.
+[0:34] Ana: Pues entonces está decidido: hacemos el pedido mañana, para que llegue antes del paro.
+[0:41] Luis: ¿Y quién avisa a la gente de la obra?
+[0:45] Marta: Mmm, buena pregunta.
+[0:48] Ana: Vale, pasamos a la cotización del viernes, la de la imprenta.
+[0:54] Luis: Nos piden dos mil cuatrocientos euros por los folletos. A mí me parece mucho.
+[1:01] Marta: — Es que el año pasado pagamos mil ochocientos.
+[1:05] Ana: Yo me encargo de pedirles una rebaja, y les contesto antes del jueves.
+[1:12] Luis: Anota en el chat de Compras que la imprenta pide dos mil cuatrocientos.
+[1:18] Marta: Bueno, y lo de las notas de los estudiantes. Ya están todas puestas, menos las de tercero.
+[1:26] Luis: ¿Cuándo se publican?
+[1:29] Marta: El viernes, en cuanto el tutor de tercero las suba.
+[1:34] Ana: Luis, tú hablas con el tutor de tercero esta semana, ¿vale?
+[1:39] Luis: Sí, sin problema, hablo con él el miércoles.
+[1:44] Ana: Bien. Y nos vemos el martes a las 3 para cerrar lo del pedido.
+[1:50] Marta: Perfecto, el martes a las 3.
+[1:53] Ana: Pues nada, si no hay nada más, lo dejamos aquí. Gracias.
+
+# Temas: en otro orden que la agenda; los proyectores, «para el final», no.
+# espera[temas_en_vivo]: tratado paro de transportistas
+# espera[temas_en_vivo]: tratado cotización del viernes
+# espera[temas_en_vivo]: tratado notas de los estudiantes
+# espera-no[temas_en_vivo]: tratado compra de proyectores
+
+# Tareas: la rebaja con plazo (el jueves 29) y lo de Luis (se le nombra).
+# espera[tareas_dichas]: 2026-10-29
+# espera[tareas_dichas]: tarea Luis
+# espera-no[tareas_dichas]: tarea Luis 2026-10-29
+# espera-no[tareas_dichas]: me parece mucho
+# espera-no[tareas_dichas]: buenos días
+
+# espera[decisiones]: hacemos el pedido mañana
+# espera-no[decisiones]: me parece mucho
+
+# espera[preguntas_pendientes]: sin respuesta ¿Y quién avisa
+# espera[preguntas_pendientes]: contestada ¿Cuándo se publican?
+
+# espera[fechas_al_horario]: evento mar 2026-10-27 15:00
+# espera-no[fechas_al_horario]: evento jue
+
+# espera[dictado_a_chat]: nota en Compras: la imprenta pide
+
+# espera-no[tiempo_por_tema]: compra de proyectores: lo de la compra
+# espera[tema_olvidado]: Compra de proyectores
