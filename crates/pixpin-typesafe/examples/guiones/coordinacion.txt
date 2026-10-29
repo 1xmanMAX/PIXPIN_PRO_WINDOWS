@@ -1,0 +1,86 @@
+# Reunion inventada para probar las ideas de Jev (sin datos de nadie).
+# Formato: `# clave: valor` arriba, `[m:ss] Quien: lo que dice` y
+# `# espera: …` / `# espera-no: …` (o `# espera[prototipo]: …`).
+#
+# reunion: Coordinación semanal
+# fecha: 2026-10-26
+# participantes: Ana, Luis, Marta
+# agenda: Cotización del viernes
+# agenda: Paro de transportistas
+# agenda: Notas de los estudiantes
+# agenda: Compra de proyectores
+# chat: Obra Calle Lima
+# chat: Compras
+# chat: Coordinación docentes
+# tarea: Llamar al proveedor por el pedido | 2026-11-02
+# tarea: Responder a la imprenta | 2026-11-06
+# tarea: Ordenar el archivo de actas | 2026-11-20
+
+[0:00] Ana: Buenos días, empezamos, gracias por venir.
+[0:05] Ana: Lo de la compra de proyectores lo vemos al final si da tiempo.
+[0:12] Luis: Primero las notas de los estudiantes del segundo curso.
+[0:20] Luis: Han subido bastante, la media está en catorce y solo suspenden tres.
+[0:30] Marta: ¿Y cuándo se publican las notas?
+[0:36] Luis: Entonces se decidió: las publicamos el lunes en la plataforma.
+[0:46] Ana: Vale.
+[0:50] Ana: Ahora, el paro de transportistas de la semana que viene.
+[0:58] Marta: Si paran el martes no llega el material, así que podríamos adelantar el pedido al lunes.
+[1:10] Luis: ¿Alguien sabe si el proveedor puede entregar antes?
+[1:18] Ana: De acuerdo, queda decidido: adelantamos el pedido al lunes.
+[1:26] Marta: Yo llamo al proveedor hoy mismo, es urgente.
+[1:35] Ana: Y la cotización del viernes, la que mandó la imprenta.
+[1:43] Luis: Pide dos mil cuatrocientos por los mil folletos, me parece caro.
+[1:52] Marta: ¿Le pedimos que la rebaje?
+[1:58] Ana: Sí, le pedimos que la rebaje a dos mil y si no, buscamos otra imprenta.
+[2:08] Ana: Yo me encargo de mandar la respuesta a la imprenta el viernes.
+[2:16] Luis: Anota en el chat de Compras que la imprenta pide dos mil cuatrocientos.
+[2:26] Marta: Y nos vemos el martes a las 3 para cerrar lo del pedido.
+[2:36] Ana: Bueno, si no hay nada más, lo dejamos aquí.
+
+# Temas: los tres tratados se marcan; el que se deja «para el final» no.
+# espera[temas_en_vivo]: tratado notas de los estudiantes
+# espera[temas_en_vivo]: tratado paro de transportistas
+# espera[temas_en_vivo]: tratado cotización del viernes
+# espera-no[temas_en_vivo]: tratado compra de proyectores
+
+# Tareas dichas: Marta hoy (urgente), Ana el viernes 30; lo que solo se
+# discute o se propone no es tarea.
+# espera[tareas_dichas]: tarea Marta 2026-10-26 urgente
+# espera[tareas_dichas]: tarea Ana 2026-10-30
+# espera-no[tareas_dichas]: me parece caro
+# espera-no[tareas_dichas]: podríamos adelantar
+# espera-no[tareas_dichas]: buenos días
+
+# Urgencia: «hoy mismo, es urgente» adelanta la llamada al proveedor.
+# espera[urgencia_en_vivo]: fecha Llamar al proveedor por el pedido 2026-11-02 → 2026-10-26
+# espera[urgencia_en_vivo]: prioridad Llamar al proveedor por el pedido
+# espera[urgencia_en_vivo]: fecha Responder a la imprenta 2026-11-06 → 2026-10-30
+# espera-no[urgencia_en_vivo]: Ordenar el archivo de actas
+
+# Decisiones: lo decidido, no lo propuesto.
+# espera[decisiones]: decisión entonces se decidió
+# espera[decisiones]: decisión de acuerdo, queda decidido
+# espera-no[decisiones]: podríamos adelantar
+# espera-no[decisiones]: me parece caro
+# espera-no[decisiones]: buenos días
+
+# Preguntas: dos contestadas, una que nadie contesta.
+# espera[preguntas_pendientes]: contestada ¿Y cuándo se publican las notas?
+# espera[preguntas_pendientes]: contestada ¿Le pedimos que la rebaje?
+# espera[preguntas_pendientes]: sin respuesta ¿Alguien sabe si el proveedor puede entregar antes?
+# espera-no[preguntas_pendientes]: sin respuesta ¿Y cuándo se publican
+
+# Al horario: la cita del martes a las 3; el plazo del viernes no es una cita.
+# espera[fechas_al_horario]: evento mar 2026-10-27 15:00
+# espera-no[fechas_al_horario]: evento vie
+
+# Dictado: al chat de Compras, lo que sigue a «que».
+# espera[dictado_a_chat]: nota en Compras: la imprenta pide dos mil cuatrocientos
+# espera-no[dictado_a_chat]: nota en Obra
+
+# Tiempo por tema.
+# espera[tiempo_por_tema]: otro: buenos días
+# espera[tiempo_por_tema]: notas de los estudiantes: han subido bastante
+# espera[tiempo_por_tema]: paro de transportistas: si paran el martes
+# espera[tiempo_por_tema]: cotización del viernes: pide dos mil cuatrocientos
+# espera-no[tiempo_por_tema]: compra de proyectores: han subido
