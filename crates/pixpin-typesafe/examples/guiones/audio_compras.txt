@@ -1,0 +1,56 @@
+# Reunion inventada para probar de punta a punta (audio → Whisper → Jev),
+# ver `audio_coordinacion.txt`. Aqui las notas se aplazan (no se tratan) y
+# los proyectores quedan para el final y no se llega.
+#
+# reunion: Comité de compras
+# fecha: 2026-10-29
+# duracion: 30
+# participantes: Ana, Luis, Marta
+# agenda: Cotización del viernes
+# agenda: Paro de transportistas
+# agenda: Notas de los estudiantes
+# agenda: Compra de proyectores
+# chat: Obra Calle Lima
+# chat: Compras
+# chat: Coordinación docentes
+
+[0:00] Marta: Buenas tardes. Eh, bueno, a ver, tenemos poco tiempo, así que vamos rápido.
+[0:06] Marta: Al final, si queda tiempo, vemos lo de los proyectores.
+[0:11] Luis: Vale. Y lo de las notas de los estudiantes lo dejamos para la semana que viene, que hoy falta el tutor.
+[0:19] Marta: De acuerdo. Empezamos con la cotización del viernes.
+[0:24] Ana: Nos llegaron tres presupuestos, y el más barato es el de la imprenta de siempre, dos mil cien.
+[0:32] Luis: — Pero esa imprenta tardó mucho la última vez.
+[0:35] Ana: Ya, pero las otras piden casi el doble.
+[0:39] Marta: Entonces decidido, nos quedamos con la imprenta de siempre y le pedimos que cumpla el plazo.
+[0:46] Ana: Yo mando el correo a la imprenta antes del lunes.
+[0:50] Luis: Apunta en el chat de Compras que la cotización final es de dos mil cien.
+[0:56] Marta: Bien. Lo otro es el paro de transportistas. Empieza el martes, según la radio.
+[1:03] Luis: ¿Sabemos si el paro afecta también a los envíos urgentes?
+[1:07] Ana: Mmm, ni idea.
+[1:09] Marta: Pues, eh, podríamos pedir el material esta semana, por si acaso.
+[1:15] Luis: Me parece bien, aunque habría que ver si hay presupuesto.
+[1:20] Marta: Bueno, se nos acaba el tiempo. Nos vemos el martes a las 3 y seguimos.
+[1:26] Ana: Hasta el martes.
+
+# espera[temas_en_vivo]: tratado cotización del viernes
+# espera[temas_en_vivo]: tratado paro de transportistas
+# espera-no[temas_en_vivo]: tratado notas de los estudiantes
+# espera-no[temas_en_vivo]: tratado compra de proyectores
+
+# Tareas: el correo, antes del lunes 2 de noviembre; lo propuesto, no.
+# espera[tareas_dichas]: 2026-11-02
+# espera-no[tareas_dichas]: podríamos pedir
+# espera-no[tareas_dichas]: me parece bien
+
+# espera[decisiones]: nos quedamos con la imprenta
+# espera-no[decisiones]: podríamos pedir el material
+
+# espera[preguntas_pendientes]: sin respuesta ¿Sabemos si el paro afecta
+
+# espera[fechas_al_horario]: evento mar 2026-11-03 15:00
+# espera-no[fechas_al_horario]: evento lun
+
+# espera[dictado_a_chat]: nota en Compras: la cotización final
+
+# Se cierra con dos temas sin tratar: el aplazado y el del final.
+# espera[tema_olvidado]: Notas de los estudiantes, Compra de proyectores

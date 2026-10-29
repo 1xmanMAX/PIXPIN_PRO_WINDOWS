@@ -86,6 +86,80 @@ pub fn vale_la_pena(f: &Frase) -> bool {
     f.dice.split_whitespace().count() >= crate::temas::PALABRAS_MINIMAS
 }
 
+/// **Parte en oraciones** lo que da la escucha en vivo (29-oct-2026, de
+/// punta a punta con audio): para Whisper, `en_vivo` junta 5-12 s de voz,
+/// asi que una «frase» suele traer dos o tres turnos («¿Cuándo se
+/// publican? El viernes, en cuanto…»): una pregunta y su respuesta, o el
+/// final de un tema y el principio del siguiente. Las preguntas de aqui
+/// miran una frase dicha por alguien: se le da una por oracion, como en
+/// los guiones escritos.
+///
+/// Corta despues de `.`, `?` o `!` seguidos de un espacio (no en «2.400»)
+/// y antes de `¿` o `¡`. Un trozo de menos de
+/// [`crate::temas::PALABRAS_MINIMAS`] palabras («Vale.», «Buenos días.»)
+/// va con el siguiente (o con el anterior si es el ultimo). El milisegundo
+/// de cada trozo se reparte por letras entre `f.ms` y `fin_ms` (donde se
+/// dejo de hablar): `(frase, fin)` de cada uno.
+pub fn partir(f: &Frase, fin_ms: i64) -> Vec<(Frase, i64)> {
+    let texto = f.dice.trim();
+    let mut cortes = vec![0];
+    let cs: Vec<(usize, char)> = texto.char_indices().collect();
+    for (k, &(i, c)) in cs.iter().enumerate() {
+        let siguiente = cs.get(k + 1).map(|x| x.1);
+        if matches!(c, '.' | '?' | '!') && siguiente.is_some_and(char::is_whitespace) {
+            cortes.push(i + c.len_utf8());
+        } else if matches!(c, '¿' | '¡') {
+            // Delante, si va tras un espacio y lo de antes no acaba en coma
+            // («Oye, ¿empezamos?» va junto).
+            let desde = cortes.last().copied().unwrap_or(0);
+            let antes = texto[desde..i].trim_end();
+            if !antes.trim().is_empty()
+                && antes.len() < i - desde
+                && !antes.ends_with([',', ';', ':'])
+            {
+                cortes.push(i);
+            }
+        }
+    }
+    cortes.push(texto.len());
+    cortes.dedup();
+    let mut trozos: Vec<(usize, usize)> = cortes
+        .windows(2)
+        .map(|w| (w[0], w[1]))
+        .filter(|(a, b)| !texto[*a..*b].trim().is_empty())
+        .collect();
+    let palabras = |(a, b): (usize, usize)| texto[a..b].split_whitespace().count();
+    let mut i = 0;
+    while trozos.len() > 1 && i < trozos.len() {
+        if palabras(trozos[i]) < crate::temas::PALABRAS_MINIMAS {
+            if i + 1 < trozos.len() {
+                trozos[i + 1].0 = trozos[i].0;
+            } else {
+                trozos[i - 1].1 = trozos[i].1;
+            }
+            trozos.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+    let total = texto.chars().count().max(1) as i64;
+    let dura = (fin_ms - f.ms).max(0);
+    let en = |b: usize| f.ms + dura * texto[..b].chars().count() as i64 / total;
+    trozos
+        .into_iter()
+        .map(|(a, b)| {
+            (
+                Frase {
+                    ms: en(a),
+                    quien: f.quien.clone(),
+                    dice: texto[a..b].trim().to_string(),
+                },
+                en(b),
+            )
+        })
+        .collect()
+}
+
 /// La clave de una opcion: su texto en minusculas, sin tildes y con `_`
 /// (el nombre de la opcion se le manda a Jev: mejor que «c1»).
 pub fn clave(texto: &str) -> String {
@@ -507,6 +581,42 @@ mod pruebas {
 
     fn hoy() -> Fecha {
         Fecha::nueva(2026, 10, 26).unwrap()
+    }
+
+    #[test]
+    fn lo_que_junta_la_escucha_se_parte_en_oraciones() {
+        let f = Frase {
+            ms: 10_000,
+            quien: "Voz".into(),
+            dice: "Buenos días. Nos piden 2.400 euros, me parece mucho. ¿Cuándo se publican? El viernes, en cuanto las suba. Vale.".into(),
+        };
+        let v = partir(&f, 20_000);
+        let textos: Vec<&str> = v.iter().map(|(t, _)| t.dice.as_str()).collect();
+        assert_eq!(
+            textos,
+            [
+                "Buenos días. Nos piden 2.400 euros, me parece mucho.",
+                "¿Cuándo se publican?",
+                "El viernes, en cuanto las suba. Vale."
+            ]
+        );
+        assert_eq!(v[0].0.ms, 10_000);
+        assert!(v[1].0.ms > v[0].0.ms && v[1].0.ms == v[0].1);
+        assert_eq!(v[2].1, 20_000);
+        assert!(v.iter().all(|(t, _)| t.quien == "Voz"));
+        // «Oye, ¿empezamos…?» no se corta delante de «¿»; sin puntos, entera.
+        let g = Frase {
+            dice: "Oye, ¿empezamos por el paro? Que me tiene preocupada".into(),
+            ..f.clone()
+        };
+        let w = partir(&g, 20_000);
+        assert_eq!(w[0].0.dice, "Oye, ¿empezamos por el paro?");
+        assert_eq!(w.len(), 2);
+        let h = Frase {
+            dice: "sabemos si el paro afecta también a los envíos".into(),
+            ..f
+        };
+        assert_eq!(partir(&h, 20_000)[0].0.dice, h.dice);
     }
 
     #[test]
