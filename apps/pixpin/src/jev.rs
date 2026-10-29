@@ -10,6 +10,10 @@
 //! - [`modelo`]: el modelo del asistente segun lo dificil del pedido.
 //! - [`temas`]: los temas de la reunion que ya se trataron, mientras se
 //!   graba (la escucha en vivo, en `ventana_chat::grabar_clase`).
+//! - Dictar al chat (`ventana_chat::dictado_a_chat`): «anota en el chat de
+//!   la obra que…» al dictar en la caja propone anotarlo en ese chat.
+//! - Repasar en voz alta (`ventana_chat::repaso_oral`): desde «Estudiar la
+//!   clase», que puntos clave cubre lo que explica el alumno.
 //!
 //! Las preguntas y las tablas de decision viven en `pixpin_typesafe`. Sin
 //! clave (o con la funcion apagada) [`para`] da `None` y cada funcion hace
@@ -38,6 +42,10 @@ pub enum Funcion {
     Modelo,
     /// Los temas de la reunion tratados, mientras se graba.
     Temas,
+    /// Dictar al chat: «anota en el chat de la obra…» (`ventana_chat::dictado_a_chat`).
+    Dictado,
+    /// Repasar una clase en voz alta (`ventana_chat::repaso_oral`).
+    Repaso,
 }
 
 impl Funcion {
@@ -48,6 +56,8 @@ impl Funcion {
             Funcion::Urgencia => a.urgencia,
             Funcion::Modelo => a.modelo,
             Funcion::Temas => a.temas,
+            Funcion::Dictado => a.dictado,
+            Funcion::Repaso => a.repaso,
         }
     }
 }
@@ -206,6 +216,8 @@ mod pruebas {
             Funcion::Urgencia,
             Funcion::Modelo,
             Funcion::Temas,
+            Funcion::Dictado,
+            Funcion::Repaso,
         ] {
             assert!(para(&u, f).is_none());
         }

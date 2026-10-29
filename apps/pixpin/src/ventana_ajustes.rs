@@ -432,7 +432,7 @@ const CLAVE_JEV: u8 = u8::MAX;
 
 /// Las funciones de Jev de Ajustes, en orden: la funcion, su rotulo y su
 /// ayuda.
-const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 5] = [
+const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 7] = [
     (
         crate::jev::Funcion::Reunion,
         "ajustes2-jev-reunion",
@@ -458,6 +458,16 @@ const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 5] = [
         "ajustes2-jev-temas",
         "ajustes2-ayuda-jev-temas",
     ),
+    (
+        crate::jev::Funcion::Dictado,
+        "ajustes2-jev-dictado",
+        "ajustes2-ayuda-jev-dictado",
+    ),
+    (
+        crate::jev::Funcion::Repaso,
+        "ajustes2-jev-repaso",
+        "ajustes2-ayuda-jev-repaso",
+    ),
 ];
 
 /// El interruptor de una funcion de Jev en los ajustes.
@@ -468,6 +478,8 @@ fn jev_de(a: &mut pixpin_store::ajustes::Jev, f: crate::jev::Funcion) -> &mut bo
         crate::jev::Funcion::Urgencia => &mut a.urgencia,
         crate::jev::Funcion::Modelo => &mut a.modelo,
         crate::jev::Funcion::Temas => &mut a.temas,
+        crate::jev::Funcion::Dictado => &mut a.dictado,
+        crate::jev::Funcion::Repaso => &mut a.repaso,
     }
 }
 
