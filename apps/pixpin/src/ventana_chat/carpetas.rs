@@ -208,6 +208,7 @@ enum Zona {
     Barra,
     Cerrar,
     NuevaPagina,
+    Compartir,
     Exportar,
     Estudiar,
     Adjuntar,
@@ -599,6 +600,25 @@ impl Vista {
         }
     }
 
+    /// **«Compartir»**: la hoja de compartir de toda la aplicacion con el
+    /// cuaderno entero (PDF, pagina web, imagenes, Word, Markdown, Texto, el
+    /// original y el `.pixpin`), o la grabacion entera si es la de una clase.
+    fn compartir(&self) {
+        let Some(m) = self.mensajes.iter().find(|m| m.id == self.que.id).cloned() else {
+            return;
+        };
+        crate::compartir::ventana::abrir(
+            self.que.idioma,
+            self.que.ubicacion.clone(),
+            crate::compartir::Cosa::Mensajes {
+                raiz: self.raiz.clone(),
+                proyecto: self.que.proyecto.clone(),
+                titulo: self.nombre.clone(),
+                mensajes: vec![m],
+            },
+        );
+    }
+
     /// **«Exportar PDF»**: pregunta donde con el dialogo de guardar y lo
     /// escribe en otro hilo (un cuaderno de treinta paginas tarda).
     fn exportar(&mut self, ventana: &VentanaOverlay, textos: &Catalogo) {
@@ -823,6 +843,7 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
                         }
                         Some(Zona::Cerrar) => vivo = false,
                         Some(Zona::NuevaPagina) => v.nueva_pagina(textos),
+                        Some(Zona::Compartir) => v.compartir(),
                         Some(Zona::Exportar) => v.exportar(&ventana, textos),
                         Some(Zona::Estudiar) => v.estudiar(),
                         Some(Zona::Adjuntar) => v.adjuntar(&ventana, textos),
@@ -1101,7 +1122,15 @@ fn pintar_todo(
     } else {
         textos.t("carpeta-exportar-pdf")
     };
-    botones.push((&mi::IOS_SHARE, rotulo_exportar, false, Zona::Exportar));
+    // **Compartir con todos los formatos** (29-oct-2026, como el movil): la
+    // hoja de siempre, la misma que desde el chat (`compartir::carpeta`).
+    botones.push((
+        &mi::IOS_SHARE,
+        textos.t("carpeta-compartir"),
+        false,
+        Zona::Compartir,
+    ));
+    botones.push((&mi::FILE_DOWNLOAD, rotulo_exportar, false, Zona::Exportar));
     let n_botones = botones.len() as u32;
     let titulo = if v.perdida {
         textos.t("carpeta-no-esta")

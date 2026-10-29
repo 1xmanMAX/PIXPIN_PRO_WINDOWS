@@ -4,9 +4,10 @@
 //! lo que llega, que cambia en los ajustes) en `pixpin_docs::lectura_veloz`;
 //! aqui, lo que toca el disco y las ventanas:
 //!
-//! - **Hacia alli** ([`enviar`]): «⚡ Lectura veloz» del menu de los dos
-//!   lectores (PDF y Word/libro), del menu del mensaje del chat
-//!   ([`abrir_guardado`]) y del ⋮ de la nota ([`abrir_nota`]). Lo leido se
+//! - **Hacia alli** ([`enviar`]): «⚡ Lectura veloz» del menu del mensaje
+//!   del chat ([`abrir_guardado`]) y del ⋮ de la nota ([`abrir_nota`]);
+//!   desde el 29-oct-2026 ya no del ⋮ de los lectores (como el movil: «se
+//!   abre solo desde el menu del mensaje»). Lo leido se
 //!   guarda antes, se arma el enlace con el 🟢 (o por donde se va) y se abre
 //!   con `ShellExecute`. Si no se puede, el aviso dice por que de verdad
 //!   (sin codigo, formato que no lee, falta el archivo, no instalada, el
@@ -207,20 +208,6 @@ pub fn cuando_cambio(ruta: &Path) -> u64 {
     t
 }
 
-/// Guarda los ajustes solo si cambiaron: asi la fecha que se manda ([`cuando_cambio`]) es la
-/// del ultimo cambio de verdad, no la de pulsar el boton.
-pub fn guardar_si_cambio(ruta: &Path, a: &Ajustes) {
-    if crate::anotado_del_adjunto::leer(ruta) == *a {
-        return;
-    }
-    if let Err(err) = crate::anotado_del_adjunto::escribir(ruta, a) {
-        tracing::info!(
-            ?err,
-            "lectura veloz: no se pudo guardar lo leido antes de enviar"
-        );
-    }
-}
-
 /// La [`Salida`] de un documento con su posicion ya calculada.
 pub fn salida(
     ruta: &Path,
@@ -398,7 +385,7 @@ static ULTIMOS: Mutex<Option<lv::Ultimos>> = Mutex::new(None);
 /// medir sus burbujas (la chapa puede salir o crecer).
 static GENERACION: AtomicU64 = AtomicU64::new(0);
 
-/// El `doc` de cada ruta ya mirada: el menu de los lectores pregunta su %
+/// El `doc` de cada ruta ya mirada: la nota de un fichero pregunta su %
 /// y buscar el mensaje de un adjunto recorre el chat.
 static DOCS: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
 

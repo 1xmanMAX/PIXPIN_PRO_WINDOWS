@@ -201,6 +201,7 @@ mod musica;
 /// La burbuja de una nota como un Markdown pequeno: texto con formato y
 /// sus fotos en album (25-oct-2026).
 mod nota_rica;
+mod opciones_del_mensaje;
 /// Clip → «Una pagina de un proyecto».
 mod paginas;
 /// La vista previa de un lienzo, con el papel y la tinta del lienzo.
@@ -18673,24 +18674,38 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             Accion::Recordar(i)
         },
     );
-    // Recordar abre las horas: lleva la flecha de submenu.
-    v.push(if recordado {
-        recordar
-    } else {
-        recordar.con_tecla(Tecla::Sub)
-    });
+    // Recordar abre las horas: lleva la flecha de submenu. **Solo donde
+    // tiene sentido** (29-oct-2026, como el movil: «un PDF con
+    // recordatorio o llamada falsa es absurdo»): ver `opciones_del_mensaje`.
+    let tipo = opciones_del_mensaje::tipo_de(m);
+    let a_su_sitio = |e: EntradaMenu, sitio| match sitio {
+        opciones_del_mensaje::Sitio::Vista => e,
+        opciones_del_mensaje::Sitio::Mas => e.en_mas(),
+    };
+    if let Some(sitio) = opciones_del_mensaje::recordar(tipo, recordado) {
+        let recordar = if recordado {
+            recordar
+        } else {
+            recordar.con_tecla(Tecla::Sub)
+        };
+        v.push(a_su_sitio(recordar, sitio));
+    }
     // **De un mensaje, una leccion** (`MensajesActivity.kt`, 3-oct). No de un
-    // archivo (8-oct-2026, el usuario: «las lecciones no aceptan archivos»):
-    // de su texto, su nota de voz o su foto.
-    if !crate::lecciones::almacen::es_leccion(m) && m.clase != Some(Clase::Archivo) {
-        v.push(
+    // archivo (8-oct-2026, el usuario: «las lecciones no aceptan archivos»)
+    // ni de un documento, un video, una cancion o una carpeta: de su texto,
+    // su nota de voz, su clase o su foto.
+    if !crate::lecciones::almacen::es_leccion(m)
+        && let Some(sitio) = opciones_del_mensaje::leccion(tipo)
+    {
+        v.push(a_su_sitio(
             entrada(
                 Some(&mi::LIGHTBULB),
                 textos.t("chat-hacer-leccion"),
                 Accion::HacerLeccion(i),
             )
             .con_tecla(Tecla::Letra('l')),
-        );
+            sitio,
+        ));
     }
 
     // Un lienzo (lo que hizo el asistente, o uno propio), a la biblioteca de
@@ -18876,8 +18891,10 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     {
         v.push(entrada(Some(&mi::FORUM), textos.t("chat-ver-hilo"), Accion::Hilo(i)).en_mas());
     }
-    // La letra, como en el movil, para toda nota con su audio detras.
-    if es_voz && ruta.is_some() {
+    // La letra, como en el movil, para toda nota con su audio detras. Menos
+    // en una clase: su letra es «Estudiar la clase», una sola pantalla para
+    // una misma clase (29-oct-2026, como el movil 4e830ea).
+    if es_voz && ruta.is_some() && tipo != opciones_del_mensaje::Tipo::Grabacion {
         v.push(entrada(Some(&mi::LYRICS), textos.t("chat-letra"), Accion::Letra(i)).en_mas());
     }
     v.push(
@@ -19542,7 +19559,15 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
         }
         Accion::Transcribir(i) => empezar_a_transcribir(cx.ubicacion, a, i, cx.textos, cx.idioma),
-        Accion::Letra(i) => abrir_la_letra(a, i),
+        // Una clase se estudia en su ventana (con el texto, las capturas y
+        // los marcadores), no en la letra: una sola pantalla para ella.
+        Accion::Letra(i) => match a.mensajes.get(i).and_then(estudiar_clase::de_una_clase) {
+            Some((id, ms)) => {
+                estudiar_clase::abrir(cx.idioma, cx.ubicacion.clone(), a.ficha.id.clone(), id, ms);
+                Efecto::Nada
+            }
+            None => abrir_la_letra(a, i),
+        },
         Accion::Estudiar(i) => {
             if let Some((id, ms)) = a.mensajes.get(i).and_then(clase_que_estudia) {
                 estudiar_clase::abrir(cx.idioma, cx.ubicacion.clone(), a.ficha.id.clone(), id, ms);

@@ -716,9 +716,6 @@ enum Accion {
     BorrarMarcos,
     /// PDF: «Ver como texto», en el lector de Word (`visor::como_texto`).
     ComoTexto,
-    /// «⚡ Lectura veloz»: seguir leyendo en la app de lectura rapida, desde
-    /// el 🟢 o desde donde se va (`crate::lectura_veloz`).
-    LecturaVeloz,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -748,9 +745,6 @@ struct Marco {
 struct Estado {
     nombre: String,
     ajustes: lectura::Ajustes,
-    /// El % de lo leido en Lectura Veloz (lo ultimo que mando), para
-    /// ponerlo junto a «⚡ Lectura veloz»; `None` si nunca se leyo alli.
-    lectura_veloz: Option<u8>,
     medidas: Vec<(f32, f32)>,
     hojas: vista::Hojas,
     /// Cada hoja ya pintada: con que ancho y su bitmap.
@@ -981,7 +975,6 @@ fn abrir_con(
     }
     let mut e = Estado {
         nombre: pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta)),
-        lectura_veloz: crate::lectura_veloz::porcentaje_de_ruta(ruta),
         marcas: marcas::de_texto(&ajustes.marcas),
         zoom: ajustes.zoom,
         ajustes,
@@ -1097,7 +1090,6 @@ fn abrir_con(
         // Lo leido en Lectura Veloz (de fondo): el 🟢 y la vista, ahi.
         if let Some(p) = crate::lectura_veloz::tomar(ruta) {
             al_dia_de_lectura_veloz(&mut e, &p);
-            e.lectura_veloz = crate::lectura_veloz::porcentaje_de_ruta(ruta);
             hay_que_pintar = true;
         }
         if let Some(q) = tomar_busqueda_al_abrir(ruta) {
@@ -2572,10 +2564,8 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("compartir-lector"), Accion::Compartir));
         filas.push((textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta));
     }
-    filas.push((
-        crate::lectura_veloz::rotulo(textos, e.lectura_veloz),
-        Accion::LecturaVeloz,
-    ));
+    // Sin «⚡ Lectura veloz» (29-oct-2026, como el movil 442eadf; el
+    // usuario: «Lectura veloz se abre solo desde el menu del mensaje»).
     if !e.marcas.is_empty() {
         filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
     }
@@ -3566,10 +3556,6 @@ fn hacer(
             e.panel = false;
             ver_como_texto(e, textos, ruta);
         }
-        Accion::LecturaVeloz => {
-            e.panel = false;
-            a_lectura_veloz(e, textos, ruta);
-        }
         // Los mandos de abajo: en un PDF cada lado tiene un paso (esta o no).
         Accion::Lado(b) => match b {
             lector::BotonLado::Izquierda(mas) => {
@@ -3771,32 +3757,6 @@ fn marcas_del_indice(bytes: &[u8], ahora: i64) -> Vec<Marca> {
         lista = marcas::con(&lista, x, y, emoji, ahora);
     }
     lista
-}
-
-/// **«⚡ Lectura veloz»**: lo de aqui al disco (si cambio) y el documento a
-/// la app de lectura rapida, desde el 🟢 si lo hay y si no desde donde se
-/// va. Si no esta instalada, se dice en el aviso.
-fn a_lectura_veloz(e: &mut Estado, textos: &Catalogo, ruta: &Path) {
-    use pixpin_docs::lectura_veloz as lv;
-    let paginas = e.hojas.cuantas() as u32;
-    if paginas > 0 {
-        e.ajustes.pagina = sitio(e);
-    }
-    e.ajustes.zoom = e.zoom;
-    e.ajustes.marcas = marcas::a_texto(&e.marcas);
-    crate::lectura_veloz::guardar_si_cambio(ruta, &e.ajustes);
-    let donde = e
-        .marcas
-        .iter()
-        .find(|m| m.emoji == pixpin_docs::voz_alta::EMOJI_DE_VOZ)
-        .map_or(e.ajustes.pagina, |m| m.y);
-    let (pagina, frac, fraccion) = lv::posicion_de_hojas(donde, paginas);
-    // Un Word o un PowerPoint en hojas va de corrido (con su pagina igual).
-    let tipo = lv::tipo_de(ruta).unwrap_or(lv::Tipo::Pdf);
-    let salida = crate::lectura_veloz::salida(ruta, tipo, pagina, frac, fraccion, paginas);
-    if let Err(no) = crate::lectura_veloz::enviar(&salida) {
-        e.aviso = Some((no.aviso(textos), ahora_ms() + 6000));
-    }
 }
 
 /// **Lo que llego de Lectura Veloz con el lector abierto**: el 🟢 y la
@@ -4155,7 +4115,6 @@ mod pruebas {
         Estado {
             nombre: "plano".into(),
             ajustes: lectura::Ajustes::default(),
-            lectura_veloz: None,
             hojas: vista::Hojas::colocar(&medidas),
             medidas,
             pintadas: HashMap::new(),
@@ -4274,14 +4233,12 @@ mod pruebas {
     }
 
     #[test]
-    fn lectura_veloz_esta_en_el_menu_y_lo_que_llega_mueve_el_verde() {
+    fn lectura_veloz_ya_no_esta_en_el_menu_pero_lo_que_llega_mueve_el_verde() {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let mut e = estado(5);
-        assert!(
-            filas_del_panel(&e, &textos)
-                .iter()
-                .any(|(_, a)| *a == Accion::LecturaVeloz)
-        );
+        // Se abre desde el menu del mensaje del chat (29-oct-2026).
+        let lv = crate::lectura_veloz::rotulo(&textos, None);
+        assert!(!filas_del_panel(&e, &textos).iter().any(|(t, _)| *t == lv));
         e.marcas = marcas::de_texto("1:0.5:0.2:⭐|2:0.5:1.5:🟢");
         let campos = [
             ("doc", "uid-1"),
