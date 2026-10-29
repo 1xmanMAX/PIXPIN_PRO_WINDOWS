@@ -38,7 +38,9 @@
 //!    con texto va a `pixpin_typesafe::en_la_reunion` en **una sola
 //!    peticion** (tareas dichas, urgencia de las que ya existen, decisiones,
 //!    preguntas sin respuesta, fechas al horario, minutos por tema y tema
-//!    olvidado; `crate::jev::en_vivo`). Como mucho una en vuelo: lo que
+//!    olvidado; `crate::jev::en_vivo`), partida antes en oraciones
+//!    (`vivo::partir`: lo que corta la escucha trae a menudo dos o tres
+//!    turnos). Como mucho una en vuelo: lo que
 //!    llega mientras tanto va junto en la siguiente. Lo que sale
 //!    ([`Vuelta::Reunion`]) lo ensena la barra como propuesta; un fallo no
 //!    propone nada y se dice una vez.
@@ -634,50 +636,71 @@ fn lo_demas_de_la_reunion(c: &Compartido, tx: &Sender<Vuelta>, cliente: &pixpin_
         tracing::debug!("reunion: el hilo de Jev sigue a prioridad normal");
     }
     let mut fallo_dicho = false;
-    while let Some((f, fin)) = frases_que_esperan(c, v) {
-        let prep = {
-            let g = v.lock().unwrap_or_else(|e| e.into_inner());
-            g.mesa.vale_la_pena(&f).then(|| g.mesa.preparar(&f))
-        };
-        let respuesta = match prep {
-            None => None,
-            Some(p) => {
-                let empezo = Instant::now();
-                let r = cliente.preguntar(&p.peticion).and_then(|r| p.leer(&r));
-                let jev_ms = empezo.elapsed().as_millis() as u64;
-                match r {
-                    Ok(s) => {
-                        tracing::debug!(
-                            jev_ms,
-                            preguntas = p.peticion.questions.len(),
-                            "reunion: Jev contesto"
-                        );
-                        fallo_dicho = false;
-                        Some((s, p.fechas))
+    while let Some((junta, fin_junta)) = frases_que_esperan(c, v) {
+        // Lo que da la escucha trae a menudo dos o tres turnos: una peticion
+        // por oracion, como en los ejemplos (`vivo::partir`).
+        for (f, fin) in vivo::partir(&junta, fin_junta) {
+            if c.parar.load(Ordering::SeqCst) {
+                return;
+            }
+            una_oracion(c, v, tx, cliente, f, fin, &mut fallo_dicho);
+        }
+    }
+}
+
+/// Una oracion: su peticion (armada con el candado, enviada sin el) y sus
+/// tablas.
+fn una_oracion(
+    c: &Compartido,
+    v: &Mutex<Viva>,
+    tx: &Sender<Vuelta>,
+    cliente: &pixpin_typesafe::Cliente,
+    f: vivo::Frase,
+    fin: i64,
+    fallo_dicho: &mut bool,
+) {
+    let prep = {
+        let g = v.lock().unwrap_or_else(|e| e.into_inner());
+        g.mesa.vale_la_pena(&f).then(|| g.mesa.preparar(&f))
+    };
+    let respuesta = match prep {
+        None => None,
+        Some(p) => {
+            let empezo = Instant::now();
+            let r = cliente.preguntar(&p.peticion).and_then(|r| p.leer(&r));
+            let jev_ms = empezo.elapsed().as_millis() as u64;
+            match r {
+                Ok(s) => {
+                    tracing::debug!(
+                        jev_ms,
+                        preguntas = p.peticion.questions.len(),
+                        "reunion: Jev contesto"
+                    );
+                    *fallo_dicho = false;
+                    Some((s, p.fechas))
+                }
+                // Un fallo no es un «no»: esa oracion no propone nada.
+                Err(e) => {
+                    tracing::warn!(jev_ms, "reunion: Jev no contesto: {e}");
+                    if !*fallo_dicho {
+                        *fallo_dicho = true;
+                        let _ = tx.send(Vuelta::Aviso(Aviso::ReunionFalla));
                     }
-                    // Un fallo no es un «no»: esa frase no propone nada.
-                    Err(e) => {
-                        tracing::warn!(jev_ms, "reunion: Jev no contesto: {e}");
-                        if !fallo_dicho {
-                            fallo_dicho = true;
-                            let _ = tx.send(Vuelta::Aviso(Aviso::ReunionFalla));
-                        }
-                        None
-                    }
+                    None
                 }
             }
-        };
-        if c.parar.load(Ordering::SeqCst) {
-            return;
         }
-        let sucesos =
-            v.lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .mesa
-                .tras_frase(f, respuesta.as_ref(), fin);
-        if !sucesos.is_empty() {
-            let _ = tx.send(Vuelta::Reunion(sucesos));
-        }
+    };
+    if c.parar.load(Ordering::SeqCst) {
+        return;
+    }
+    let sucesos =
+        v.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .mesa
+            .tras_frase(f, respuesta.as_ref(), fin);
+    if !sucesos.is_empty() {
+        let _ = tx.send(Vuelta::Reunion(sucesos));
     }
 }
 

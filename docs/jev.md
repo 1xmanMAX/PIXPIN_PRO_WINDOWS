@@ -511,14 +511,19 @@ Asistente → Jev).
 
 **Como va.** La misma escucha de los temas (§5: las frases cortadas al
 callarse y pasadas a texto en este equipo) y, con alguna de estas ideas
-encendida, **tambien sin temas en la agenda**. Cada frase con texto va a
+encendida, **tambien sin temas en la agenda**. Lo que corta la escucha
+se parte antes en oraciones (`vivo::partir`: un trozo de Whisper trae a
+menudo dos o tres turnos; el minuto de cada una se reparte por letras).
+Cada oracion va a
 `pixpin_typesafe::en_la_reunion::Mesa` en **una sola peticion**
 (`vivo`), con las preguntas de las ideas encendidas, en su hilo
 (`reunion-jev`, por debajo de lo normal): como mucho una en vuelo, lo que
 llega mientras tanto va junto en la siguiente, 3 s de espera. Es la misma
 mesa que `examples/reunion_completa.rs` (30/30 esperas con la API de
 verdad). La escucha no sabe quien habla: la frase va como de «Voz» y no se
-pregunta quien hace una tarea (el responsable queda sin decir). Los
+pregunta quien hace una tarea (el responsable queda sin decir, «¿quién?»,
+como manda `compromisos::decidir` con `QUIEN_MINIMO` cuando hay
+participantes). Los
 umbrales son los de cada tabla (SI = 0.7): solo se propone lo seguro.
 
 **En la barra** (debajo de los botones y, si esta abierta, de la lista de
