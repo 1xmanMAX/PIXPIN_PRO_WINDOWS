@@ -219,6 +219,16 @@ Para lo nuevo:
    añadir un guion de control con casos de la vida real (inventados, sin
    datos de nadie).
 
+**Hecho para la reunion** (29-oct-2026): los puntos 1, 2 y 4 para las
+siete ideas de la reunion (tareas dichas, urgencia en vivo, tema olvidado,
+tiempo por tema, decisiones, preguntas pendientes y fechas al horario).
+La mesa de `reunion_completa` es ahora biblioteca
+(`pixpin_typesafe::en_la_reunion`) y la usa la escucha de «Grabar clase»
+(hilo `reunion-jev`, una peticion por frase); las fichas de la barra, el
+acta de la nota (`pixpin_proyecto::acta_viva`) y lo que se ve en «Estudiar
+la clase» y en la pagina compartida estan en `docs/jev.md` §6. El dictado
+a chat y el repaso oral van aparte.
+
 ### Android
 
 Las mismas preguntas y tablas, copiando `preguntas.rs` (`vivo`, `repaso`) y

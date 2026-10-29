@@ -84,7 +84,7 @@ medio como «sin decidir» (tiene su fila en cada tabla); los campos vacios
 no se mandan (una lista vacia se leeria como senal); las preguntas en
 ingles (donde Jev acierta mas) sobre el estado tal cual, en espanol.
 
-## Las cinco funciones
+## Las funciones
 
 Cada una tiene su interruptor en **Ajustes › Asistente › TypeSafe (Jev)**
 (`[jev]` del TOML: `reunion`, `anki`, `urgencia`, `modelo`, `temas`;
@@ -439,6 +439,101 @@ deja de preguntar por el.
 solo (un fallo nunca es «no se trato»); la cabecera de la lista lo dice y
 los temas se marcan a mano, igual que siempre.
 
+### 6. En la reunion: lo demas que se oye (mientras se graba)
+
+(29-oct-2026: las ideas probadas sin interfaz —ver
+[probar-ideas-sin-interfaz.md](probar-ideas-sin-interfaz.md)— llevadas a
+la app.) Siete interruptores mas en `[jev]`, encendidos de fabrica:
+`tareas_dichas`, `urgencia_en_vivo`, `tema_olvidado`, `tiempo_por_tema`,
+`decisiones`, `preguntas_pendientes` y `fechas_al_horario` (Ajustes →
+Asistente → Jev).
+
+**Como va.** La misma escucha de los temas (§5: las frases cortadas al
+callarse y pasadas a texto en este equipo) y, con alguna de estas ideas
+encendida, **tambien sin temas en la agenda**. Cada frase con texto va a
+`pixpin_typesafe::en_la_reunion::Mesa` en **una sola peticion**
+(`vivo`), con las preguntas de las ideas encendidas, en su hilo
+(`reunion-jev`, por debajo de lo normal): como mucho una en vuelo, lo que
+llega mientras tanto va junto en la siguiente, 3 s de espera. Es la misma
+mesa que `examples/reunion_completa.rs` (30/30 esperas con la API de
+verdad). La escucha no sabe quien habla: la frase va como de «Voz» y no se
+pregunta quien hace una tarea (el responsable queda sin decir). Los
+umbrales son los de cada tabla (SI = 0.7): solo se propone lo seguro.
+
+**En la barra** (debajo de los botones y, si esta abierta, de la lista de
+los temas), las tres fichas mas nuevas:
+
+- **Tareas dichas**: «＋ Tarea: mandar la cotización el viernes · 30/10»
+  con ✓ y ✕. ✓ la apunta en el **Inbox de Tareas** con su urgencia (⏫
+  urgente, 🔼 alta), su fecha (`⏰`, a la hora dicha o a las 9:00) y la
+  nota `💬 <responsable> · 🎙 <reunion>`; desde ese momento tambien puede
+  cambiar de urgencia en la reunion.
+- **Fechas al horario**: «📅 Evento: nos vemos el martes a las 3 · 3/11
+  15:00». ✓ lo apunta en Tareas con su hora: sale en la vista «Horario» de
+  Tareas y suena como recordatorio (el horario de clases, `horario.md`, es
+  solo de clases semanales).
+- **Urgencia en vivo**: al empezar se toman hasta 8 tareas pendientes (las
+  del chat de la reunion y luego las del Inbox, menos la lista de los
+  temas), con lo que Tareas ya sabe de su urgencia (`jev::urgencia`).
+  «esto es para hoy» → `urgencia_viva::actualizar`. **Es lo unico que se
+  aplica solo**: la fecha nueva en el `⏰` de la tarea y lo que la apura en
+  lo que sabe Tareas (en memoria, como siempre); se avisa
+  («↑ Pagar al proveedor: Normal → Urgente») y la ficha trae «Deshacer».
+- **Tema olvidado**: con «Duración prevista» en Preparar (la ficha a la
+  derecha de «Temas de la reunión»: 15, 30, 45, 60, 90, 120 o 180 min),
+  avisa una vez cuando quedan ≤ max(5 min, 15 %), otra si se pasa la hora y
+  otra si se estan despidiendo, con los temas que faltan (los marcados a
+  mano o por Jev no cuentan).
+- **Decisiones**: «Decisión apuntada · 12:30», abajo de la barra.
+
+Lo que nadie toco queda en la nota como `pendiente` y se puede aceptar al
+estudiarla. **Sin clave, con todo apagado o si Jev falla**: no sale
+ninguna ficha; un fallo se dice una vez («Jev no contesta: por ahora no se
+propone nada») y esa frase no propone nada (el reloj de los temas sigue,
+con la frase en el tema de la anterior).
+
+**En «Estudiar la clase»**: los minutos de cada tema a la derecha de la
+agenda («12:30 · 6 min»), y debajo «Decisiones · N» (un clic salta a su
+minuto), «Preguntas sin respuesta · N» con «Añadir a Tareas» y
+«Propuestas sin aceptar · N» con «Aceptar». **En la pagina compartida**
+(HTML y Markdown): los minutos de cada tema, las decisiones y las
+preguntas sin respuesta, con su minuto.
+
+**El formato**, en el `resto` de la nota de voz
+(`pixpin_proyecto::acta_viva`; cada clave solo si tiene algo):
+
+```json
+"decisiones": [{"ms": 125000, "texto": "queda decidido: adelantamos el pedido"}],
+"preguntasAbiertas": [{"ms": 300000, "texto": "¿quién paga el autobús?"}],
+"tiempoPorTema": {"temas": [{"id": "t1", "ms": 360000}], "otro": 120000},
+"propuestas": [{"id": "p1", "tipo": "tarea", "ms": 90000,
+                "texto": "yo mando la cotización el viernes",
+                "responsable": "Luis", "fecha": "2026-10-30", "hora": "15:00",
+                "prioridad": "alta", "estado": "aceptada"}],
+"cambiosDeUrgencia": [{"ms": 400000, "tarea": "Pagar al proveedor",
+                       "antes": "normal", "despues": "urgente",
+                       "fechaAntes": "2026-11-05", "fechaDespues": "2026-10-29",
+                       "deshecho": false}]
+```
+
+- `ms`: el milisegundo de la grabacion en que empezo la frase (en
+  `cambiosDeUrgencia`, cuando se aplico).
+- `tiempoPorTema.temas[].id` es el `id` de `resto["temas"]`; `otro`, lo
+  que no fue de la agenda. Cada frase cuenta hasta la siguiente, 60 s como
+  mucho.
+- `propuestas[].tipo`: `tarea` o `evento`. `estado`: `pendiente`,
+  `aceptada` (ya esta en Tareas: no apuntarla otra vez) o `descartada`.
+  `responsable`, `fecha` (`AAAA-MM-DD`), `hora` (`HH:MM`) y `prioridad`
+  (`urgente`, `alta`, `normal`, `baja`) solo si se saben.
+- `preguntasAbiertas`: las que seguian sin respuesta al terminar.
+- Lo que no se entiende se salta (no tira lo demas).
+
+**Pruebas**: `pixpin-typesafe` `en_la_reunion` (las partes segun las
+ideas, una sola peticion por frase con respuestas grabadas, un fallo no
+propone nada, lo tratado fuera no se avisa), `pixpin-proyecto`
+`acta_viva` (el formato de ida y vuelta, lo vacio no cambia la nota) y
+`clase_exportar` (lo de la reunion en la pagina).
+
 ## Privacidad: que se manda
 
 Solo con clave y con la funcion encendida, y solo a `api.typesafe.ai` por
@@ -456,6 +551,10 @@ HTTPS:
   algo nuevo, el texto de los ultimos 40 s (pasado a texto **en este
   equipo**, con el reconocedor de Windows o Whisper, sin red). Nunca el
   audio.
+- **Lo demas de la reunion** (§6): cada frase pasada a texto con las dos de
+  antes, el titulo, la agenda (si van el tiempo por tema o el tema
+  olvidado), el texto de hasta 8 tareas pendientes (si va la urgencia) y
+  las preguntas aun abiertas.
 
 La clave va cifrada con DPAPI en
 `%LOCALAPPDATA%\PixPinMax\claves\typesafe.clave`: nunca en el TOML de
@@ -483,6 +582,8 @@ que cuesta en PixPin, mas o menos:
   cada una (los 40 s, la agenda y 24 preguntas) ≈ 3-4 millones de tokens
   ≈ **0.15 $** como mucho (menos segun se van tratando: los temas hechos ya
   no se preguntan, y en silencio no se pregunta).
+- lo demas de la reunion (§6), con todo encendido: ~2 200 tokens por
+  frase, unas 1 000 frases en una hora ≈ 2,2 M tokens ≈ **0.09 $**.
 
 Lo identico sale del cache del proceso y no se paga dos veces.
 
@@ -535,6 +636,18 @@ texto en `preguntas.rs`, no los umbrales a unos pocos casos.
 - **Los temas de la reunion** (ver abajo): `resto["temas"]` y
   `resto["temasLista"]` en la nota de voz; la lista de tareas es una lista
   normal.
+- **Lo demas de la reunion** (§6): `decisiones`, `preguntasAbiertas`,
+  `tiempoPorTema`, `propuestas` y `cambiosDeUrgencia` en el `resto` de la
+  nota de voz, con el formato de §6. El movil lo ensena sin clave ni red:
+  los minutos junto a cada tema, las decisiones y las preguntas con su
+  minuto, y las propuestas `pendiente` con «Aceptar» (que la apunta en el
+  Inbox con el mismo texto que el PC —`jev::en_vivo::texto_de`— y la pone
+  `aceptada`). Lo aceptado ya viaja como tarea normal; las prioridades
+  cambiadas en memoria no viajan (cada aparato calcula las suyas), la fecha
+  nueva si (va en el `⏰` del texto). Para escuchar en el movil: la misma
+  mesa (`en_la_reunion.rs`) y sus tablas, copiando `preguntas.rs` (`vivo`)
+  y `fechas.rs`; una peticion por frase del reconocedor (el paso 2 de
+  abajo).
 - **Si Android quiere preguntar el mismo** (con su propia clave): las
   mismas preguntas y tablas, copiando `preguntas.rs` y las funciones
   `decidir` de cada modulo; la API es un POST con JSON (no hace falta SDK).
