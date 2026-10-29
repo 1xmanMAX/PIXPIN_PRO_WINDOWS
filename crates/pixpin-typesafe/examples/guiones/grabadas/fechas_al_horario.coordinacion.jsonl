@@ -1,0 +1,8 @@
+{"answers":{"cita":{"noul":0.56,"type":"noul"}},"huella":"02849197f0d41eb7247be7c46758d2e9e171948cb1d71ff3df214747b8ee8531","model":"jev-1.14.0","usage":{"input_tokens":479,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.66,"type":"noul"}},"huella":"1bc27aaaf75cac2cfc76969eb991877eced1011bed7ae09b707aa328b5daefa5","model":"jev-1.14.0","usage":{"input_tokens":465,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.22,"type":"noul"},"cita_cuando":{"choice":"el_martes","confidence":0.64,"probabilities":{"el_martes":0.82,"lunes":0.18},"type":"choice"}},"huella":"ca416ba205122e05d73728e2683e9e59ed81a871c0f289e83538d50a25ec8e49","model":"jev-1.14.0","usage":{"input_tokens":542,"output_tokens":59}}
+{"answers":{"cita":{"noul":0.3,"type":"noul"}},"huella":"a56bb9539646fc4bcc8f94f0d63418252894679029157718b64bf08dd72f84b4","model":"jev-1.14.0","usage":{"input_tokens":483,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.17,"type":"noul"}},"huella":"d641042d542e778ba2d5de7c7dee0d6fbefc7ceab742a71397de2dbfdd532980","model":"jev-1.14.0","usage":{"input_tokens":473,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.04,"type":"noul"}},"huella":"6984480c9fefd1e8a48ac485131c75f5413b1e7c0da7a7e63731888b734f9859","model":"jev-1.14.0","usage":{"input_tokens":477,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.07,"type":"noul"}},"huella":"92d2521c276dbe2bc979d84131a92bc8723b2341463c2d438ccd594045bf09c8","model":"jev-1.14.0","usage":{"input_tokens":480,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.99,"type":"noul"}},"huella":"43cc89e055e8b44f7db0dfcea275d5fa5f3131efd235156d1f5050385b983210","model":"jev-1.14.0","usage":{"input_tokens":486,"output_tokens":21}}

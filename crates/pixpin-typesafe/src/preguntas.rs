@@ -436,9 +436,9 @@ pub mod vivo {
 
     pub fn compromiso() -> Pregunta {
         Pregunta::noul(
-            "Does `frase.dice` contain a commitment: someone offers, agrees or is asked to do something after this moment?",
-            "Someone will do a concrete thing, e.g. «yo me encargo de mandar la cotización el viernes» or «Luis, tú llamas al proveedor».",
-            "It describes, discusses or reports something without anyone taking on a job, e.g. «la cotización llegó ayer» or «podríamos pedir otra».",
+            "Does `frase.dice` contain an action item: something concrete that has to be done after this moment?",
+            "A job is taken on, given or stated as needed, with or without a person, e.g. «yo me encargo de mandar la cotización el viernes», «Luis, tú llamas al proveedor» or «hay que pedir los permisos este mes».",
+            "It describes, discusses or reports something and no job comes out of it, e.g. «la cotización llegó ayer» or an idea still open, «podríamos pedir otra».",
         )
     }
 
@@ -576,9 +576,9 @@ pub mod vivo {
 
     pub fn dictado() -> Pregunta {
         Pregunta::noul(
-            "Does the speaker in `frase.dice` ask for something to be noted down in a chat?",
-            "e.g. «anota esto en el chat de la obra» or «pon en el grupo de compras que faltan tornillos».",
-            "A chat is only mentioned, e.g. «lo vi en el chat de la obra», or nothing is to be noted.",
+            "Does the speaker in `frase.dice` ask for something to be written down?",
+            "They ask to note, write or post something, with or without saying where, e.g. «anota esto en el chat de la obra», «apúntalo» or «pon en el grupo de compras que faltan tornillos».",
+            "Nothing is to be written down; a chat may only be mentioned, e.g. «lo vi en el chat de la obra».",
         )
     }
 

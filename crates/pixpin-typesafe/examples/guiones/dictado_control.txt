@@ -1,0 +1,19 @@
+# Dictado, casos de control (no se usaron para ajustar las preguntas).
+# reunion: Mudanza de la oficina
+# fecha: 2026-10-28
+# chat: Oficina nueva
+# chat: Proveedores
+# chat: Equipo
+
+[0:00] Sara: El camión de la mudanza viene el sábado a las siete.
+[0:06] Tomás: Ponlo en el chat del equipo, que lo vean todos.
+[0:14] Sara: Escribe en Proveedores que necesitamos cajas grandes.
+[0:22] Tomás: Lo que dijeron en el chat de la oficina nueva no lo entendí.
+[0:30] Sara: Apúntate que hay que devolver las llaves el lunes.
+[0:38] Tomás: Me parece bien, seguimos con lo demás.
+
+# espera: nota en Equipo: El camión de la mudanza viene el sábado
+# espera: nota en Proveedores: necesitamos cajas grandes
+# espera: nota en ¿qué chat?: hay que devolver las llaves el lunes
+# espera-no: no lo entendí
+# espera-no: seguimos con lo demás

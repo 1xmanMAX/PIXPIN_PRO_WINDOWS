@@ -1,0 +1,6 @@
+{"answers":{"cita":{"noul":0.99,"type":"noul"}},"huella":"aa41e9ba6542f6b7b40d8313c636bb48c29b5dd31708bf73f60f74863de607bb","model":"jev-1.14.0","usage":{"input_tokens":453,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.04,"type":"noul"}},"huella":"ef8ea2e0a6bd343c28f446654c72b0ac07f9762ab5c81e06e09e420729b01813","model":"jev-1.14.0","usage":{"input_tokens":471,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.99,"type":"noul"}},"huella":"a4a295910b62d098ddf01cc35a60029782725c4631410df9f49ef8606029c619","model":"jev-1.14.0","usage":{"input_tokens":476,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.08,"type":"noul"}},"huella":"4cb3d0e2a5cfd978f65567913f327cc6d24c511fafa543bebbde9dcfe544a44d","model":"jev-1.14.0","usage":{"input_tokens":474,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.99,"type":"noul"}},"huella":"4ef68aaa285a6a92a0114b8236de073e75d4c68c6c8f3be870866b6fc7ba7d8f","model":"jev-1.14.0","usage":{"input_tokens":484,"output_tokens":21}}
+{"answers":{"cita":{"noul":0.95,"type":"noul"},"cita_cuando":{"choice":"manana_a_las_4","confidence":0.98,"probabilities":{"manana_a_las_4":0.99,"viernes":0.01},"type":"choice"}},"huella":"667dcb21c4a0b07120f9f2c721c6116de8aa3e0fe182a47ee3f3fb8dff0e1dcf","model":"jev-1.14.0","usage":{"input_tokens":566,"output_tokens":65}}

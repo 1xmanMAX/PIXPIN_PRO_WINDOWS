@@ -1,0 +1,5 @@
+// Escrito a mano: un fallo de red en la primera decision (tiene que salir
+// como ERROR, no como «no») y la segunda contestada. Las demas frases, «no».
+// cargo run -q -p pixpin-typesafe --example decisiones -- coordinacion.txt --rapido --grabadas grabadas/decisiones.fallos.jsonl
+{"pide": "Entonces se decidió", "fallo": "sin red (grabado)"}
+{"pide": "queda decidido", "answers": {"decision": 0.95}}

@@ -1,0 +1,21 @@
+# Tareas dichas, casos de control (no se usaron para ajustar las preguntas).
+# reunion: Claustro de profesores
+# fecha: 2026-10-28
+# participantes: Rosa, Pablo, Inés
+
+[0:00] Rosa: Empezamos, que hoy vamos justos de tiempo.
+[0:06] Pablo: Las actas del mes pasado ya están firmadas.
+[0:12] Inés: Hay que subir las notas a la plataforma antes del viernes.
+[0:20] Rosa: Pablo, ¿puedes encargarte tú de la reunión con las familias el lunes?
+[0:28] Pablo: Sí, me encargo yo.
+[0:34] Inés: Yo creo que el examen debería ser oral, pero no estoy segura.
+[0:42] Rosa: Mañana sin falta mando el calendario de exámenes, es urgente.
+[0:50] Inés: El año pasado la excursión salió muy bien.
+
+# espera: tarea nadie 2026-10-30
+# espera: tarea Rosa 2026-10-29 urgente
+# espera: tarea Pablo
+# espera-no: actas del mes pasado
+# espera-no: debería ser oral
+# espera-no: excursión salió
+# espera-no: vamos justos
