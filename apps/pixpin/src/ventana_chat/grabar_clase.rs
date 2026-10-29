@@ -94,6 +94,13 @@
 //! la fila «Temas de la reunion»; grabando, «Temas 2/5» en la barra con su
 //! lista para marcar a mano, y la escucha en vivo que le pregunta a Jev
 //! ([`temas`], [`escucha`]; `docs/jev.md`).
+//!
+//! **Lo demas de la reunion** (29-oct-2026): la misma escucha, con temas o
+//! sin ellos, propone en la barra las tareas y los eventos dichos, aplica
+//! (con «Deshacer») los cambios de urgencia de las tareas que ya existen,
+//! avisa del tema olvidado cerca de la «Duración prevista» y apunta las
+//! decisiones, las preguntas sin respuesta y los minutos de cada tema en la
+//! nota ([`reunion`]).
 
 #![forbid(unsafe_code)]
 
@@ -102,6 +109,7 @@ mod camara;
 mod escucha;
 mod fotografo;
 mod recuperar;
+mod reunion;
 mod temas;
 mod video;
 
@@ -268,6 +276,8 @@ pub(crate) struct Rotulos {
     temas_cargado: String,
     /// «Temas · {nombre}»: el titulo de la lista de tareas de la reunion.
     temas_lista_de: String,
+    /// Lo de las fichas de la reunion ([`reunion`]).
+    reunion: reunion::Rotulos,
 }
 
 const HUECO: &str = "\u{1}";
@@ -391,6 +401,7 @@ impl Rotulos {
             temas_jev_fallo: t.t("clase-temas-jev-fallo"),
             temas_cargado: t.t("clase-temas-cargado"),
             temas_lista_de: con("clase-temas-lista-de", "nombre"),
+            reunion: reunion::Rotulos::de(t),
         }
     }
 
@@ -715,6 +726,12 @@ enum Accion {
     PanelTemas,
     /// Un tema de esa lista: marcarlo o desmarcarlo a mano.
     Tema(usize),
+    /// El ✓ (o «Deshacer») y el ✕ de una ficha de la reunion ([`reunion`]),
+    /// por su id.
+    FichaSi(u32),
+    FichaNo(u32),
+    /// «Duración prevista» de Preparar: la siguiente.
+    Duracion,
 }
 
 type Abriendo = Receiver<Result<pixpin_audio::Grabadora, pixpin_audio::ErrorAudio>>;
@@ -833,6 +850,12 @@ struct Estado {
     destello_temas: Option<Instant>,
     /// «Temas · {nombre}» (con [`HUECO`]), el titulo de su lista de tareas.
     titulo_temas: String,
+    /// Lo demas de la reunion: las fichas de la barra y lo que va a la nota
+    /// ([`reunion`]).
+    reunion: reunion::EnVivo,
+    /// Lo que se piensa que dura la reunion, en minutos (para el tema
+    /// olvidado).
+    duracion_prevista: Option<u32>,
 }
 
 impl Estado {
@@ -892,6 +915,8 @@ impl Estado {
             recien_tratados: Vec::new(),
             destello_temas: None,
             titulo_temas: String::new(),
+            reunion: reunion::EnVivo::default(),
+            duracion_prevista: None,
         }
     }
 
@@ -1411,6 +1436,8 @@ fn guardar(
             .insert("capturas".into(), capturas_en_json(&enlazadas));
         // Los temas de la reunion, con lo tratado (su lista, al final).
         pixpin_proyecto::temas::poner_temas(&mut voz.resto, &estado.temas);
+        // Y lo demas que saco Jev mientras se grababa (sin nada, nada).
+        pixpin_proyecto::acta_viva::poner(&mut voz.resto, &estado.reunion.acta());
         if let Some(id) = &video_id {
             voz.resto
                 .insert("video".into(), serde_json::json!({ "id": id }));
@@ -1733,9 +1760,11 @@ fn tamano(fase: &Fase) -> (u32, u32) {
 fn tamano_de(estado: &Estado) -> (u32, u32) {
     let (w, h) = tamano(&estado.fase);
     match &estado.fase {
-        Fase::Abriendo(_) | Fase::Grabando(_) if !estado.temas.is_empty() => {
-            (w + temas::ANCHO_BOTON, h + temas::alto_del_panel(estado))
-        }
+        Fase::Abriendo(_) | Fase::Grabando(_) if !estado.temas.is_empty() => (
+            w + temas::ANCHO_BOTON,
+            h + temas::alto_del_panel(estado) + reunion::alto(estado),
+        ),
+        Fase::Abriendo(_) | Fase::Grabando(_) => (w, h + reunion::alto(estado)),
         _ => (w, h),
     }
 }
@@ -2002,7 +2031,7 @@ fn flotar(
         // El diario de la grabacion: el latido y el disco ([`a_salvo`]).
         estado.latir(pedido, r);
         // Lo que Jev marco de los temas.
-        estado.de_la_escucha(r);
+        estado.de_la_escucha(pedido, r);
 
         // El movil como camara (`sincronizar::camara`): sabe en que minuto va
         // la grabacion y avisa de lo que llega.
@@ -2344,6 +2373,10 @@ fn pulsar(
             estado.panel_temas = !estado.panel_temas;
         }
         (Accion::Tema(i), Fase::Abriendo(_) | Fase::Grabando(_)) => estado.tocar_tema(i),
+        // Lo demas de la reunion ([`reunion`]).
+        (Accion::FichaSi(id), Fase::Grabando(_)) => estado.ficha_si(id, pedido, &r.reunion),
+        (Accion::FichaNo(id), Fase::Grabando(_)) => estado.ficha_no(id),
+        (Accion::Duracion, Fase::Preparar) => estado.otra_duracion(),
         (Accion::Proyecto, Fase::Preparar) => {
             if !pedido.proyectos.is_empty() {
                 estado.proyecto = (estado.proyecto + 1) % pedido.proyectos.len();
@@ -2477,7 +2510,7 @@ fn pulsar(
         (Accion::Terminar, Fase::Grabando(_)) => {
             // La escucha se para ya (lo ultimo que marco Jev se recoge): la
             // transcripcion entera de despues es la de siempre.
-            estado.acabar_escucha(Some(r));
+            estado.acabar_escucha(Some((pedido, r)));
             if let Fase::Grabando(g) = std::mem::replace(&mut estado.fase, Fase::Preparar) {
                 estado.fase = Fase::Parando {
                     audio: crate::ventanita::cerrar_microfono(g),
@@ -2660,6 +2693,7 @@ fn pintar(
         Fase::Abriendo(_) | Fase::Grabando(_) => {
             pintar_barra(p, w, e, estado, r, llevado, botones);
             temas::pintar_panel(p, w, e, estado, r, botones);
+            reunion::pintar(p, w, e, estado, &r.reunion, botones);
         }
         Fase::Parando { .. } => {
             centrado_en(p, &r.guardando, todo, 70.0 * e, 16.0 * e, tema.texto);
@@ -3325,6 +3359,8 @@ fn pintar_preparar(
     botones.zona(caja, Accion::Proyecto);
     // Los temas de la reunion: un clic abre su pantalla.
     temas::pintar_fila(p, fila(Y_TEMAS), e, estado, r, botones);
+    // Y a su derecha, lo que se piensa que dura (el tema olvidado).
+    reunion::pintar_duracion(p, fila(Y_TEMAS), e, estado, &r.reunion, botones);
 
     // El boton grande.
     let caja = RectF {

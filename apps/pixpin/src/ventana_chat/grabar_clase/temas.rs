@@ -83,6 +83,7 @@ impl Rotulos {
             Aviso::SinModelo => self.temas_sin_modelo.clone(),
             Aviso::JevFalla => self.temas_jev_fallo.clone(),
             Aviso::Cargado => self.temas_cargado.clone(),
+            Aviso::ReunionFalla => self.reunion.falla(),
         }
     }
 
@@ -212,25 +213,79 @@ impl Estado {
     fn temas_cambiados(&mut self) {
         if let Some(e) = &self.escucha {
             e.pendientes(pendientes(&self.temas));
+            e.tratados(self.tratados());
         }
         self.apuntar_temas();
     }
 
-    /// **Empieza a escuchar** con la grabadora ya abierta (si hay temas).
+    /// Los temas ya tratados, por su sitio en la agenda (el tema olvidado
+    /// no avisa de ellos).
+    fn tratados(&self) -> Vec<usize> {
+        let ids: Vec<&str> = self
+            .temas
+            .iter()
+            .filter(|t| t.hecho)
+            .map(|t| t.id.as_str())
+            .collect();
+        self.reunion
+            .agenda_ids()
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| ids.contains(&id.as_str()))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// **Empieza a escuchar** con la grabadora ya abierta: con temas, o con
+    /// alguna idea de la reunion encendida en `[jev]` (`jev::en_vivo`).
     pub(super) fn empezar_escucha(
         &mut self,
         g: &pixpin_audio::Grabadora,
         pedido: &Pedido,
         r: &Rotulos,
     ) {
-        if self.temas.is_empty() {
-            return;
-        }
         let titulo = con(
             &self.plantilla,
             &super::fecha_del_nombre(pixpin_shell::entorno::ahora_local_ms()),
         );
         let agenda: Vec<String> = self.temas.iter().map(|t| t.texto.clone()).collect();
+        // Lo demas de la reunion: las ideas encendidas y las tareas que ya
+        // existen (las del chat de la reunion y las del Inbox).
+        let proyecto = pedido
+            .proyectos
+            .get(self.proyecto)
+            .map(|(id, _)| id.clone())
+            .unwrap_or_default();
+        let raiz = pedido.ubicacion.raiz();
+        let mut sitios = Vec::new();
+        let viva = crate::jev::en_vivo::ideas(&pedido.ubicacion).map(|(cliente, ideas)| {
+            let tareas = if ideas.urgencia {
+                crate::jev::en_vivo::tareas_de_partida(raiz, &proyecto, self.temas_lista.as_ref())
+            } else {
+                Vec::new()
+            };
+            let mut vivas = Vec::new();
+            for (t, sitio) in tareas {
+                sitios.push((t.id.clone(), sitio));
+                vivas.push(t);
+            }
+            let duracion = self.duracion_prevista.map(|m| i64::from(m) * 60_000);
+            super::escucha::Reunion {
+                cliente,
+                mesa: pixpin_typesafe::en_la_reunion::Mesa::nueva(
+                    ideas,
+                    &titulo,
+                    agenda.clone(),
+                    crate::jev::en_vivo::hoy(),
+                    duracion,
+                    vivas,
+                ),
+            }
+        });
+        if self.temas.is_empty() && viva.is_err() {
+            return;
+        }
+        self.preparar_reunion(titulo.clone(), sitios);
         match Escucha::empezar(
             g,
             &pedido.ubicacion,
@@ -238,8 +293,21 @@ impl Estado {
             titulo,
             agenda,
             pendientes(&self.temas),
+            viva,
         ) {
-            Ok(e) => self.escucha = Some(e),
+            Ok(e) => {
+                // Se escucha por lo demas de la reunion, pero los temas van a
+                // mano: se dice por que.
+                if let Some(n) = e.sin_temas.filter(|_| !self.temas.is_empty()) {
+                    let texto = r.de_no_escuchar(n);
+                    self.estado_escucha = Some(texto.clone());
+                    self.avisar(texto);
+                }
+                self.escucha = Some(e);
+            }
+            Err(n) if self.temas.is_empty() => {
+                tracing::info!(?n, "reunion: sin escucha en vivo");
+            }
             Err(n) => {
                 tracing::info!(?n, "temas: sin escucha en vivo; a mano");
                 let texto = r.de_no_escuchar(n);
@@ -251,7 +319,7 @@ impl Estado {
 
     /// **Lo que llega de la escucha**: lo que Jev marco (si nadie lo toco)
     /// y como va.
-    pub(super) fn de_la_escucha(&mut self, r: &Rotulos) {
+    pub(super) fn de_la_escucha(&mut self, pedido: &Pedido, r: &Rotulos) {
         let Some(e) = &self.escucha else {
             return;
         };
@@ -281,6 +349,9 @@ impl Estado {
                         self.recien_tratados.push((t.id, Instant::now()));
                     }
                 }
+                Vuelta::Reunion(sucesos) => self.de_la_reunion(sucesos, pedido, &r.reunion),
+                // Lo de la reunion no es de los temas: no cambia su cabecera.
+                Vuelta::Aviso(Aviso::ReunionFalla) => self.avisar(r.reunion.falla()),
                 Vuelta::Aviso(a) => {
                     let texto = r.de_un_aviso(a);
                     if a != Aviso::Escuchando && self.estado_escucha.as_ref() != Some(&texto) {
@@ -299,9 +370,9 @@ impl Estado {
     /// **Para la escucha** (al terminar o tirar): recoge lo ultimo y la
     /// suelta, que cancela Whisper en el acto. La transcripcion de despues
     /// es la de siempre.
-    pub(super) fn acabar_escucha(&mut self, r: Option<&Rotulos>) {
-        if let Some(r) = r {
-            self.de_la_escucha(r);
+    pub(super) fn acabar_escucha(&mut self, ultimo: Option<(&Pedido, &Rotulos)>) {
+        if let Some((pedido, r)) = ultimo {
+            self.de_la_escucha(pedido, r);
         }
         self.escucha = None;
     }
@@ -331,7 +402,8 @@ pub(super) fn pintar_fila(
         Some(Accion::Temas),
         &mi::CHECKLIST,
         &rotulo,
-        28.0 * e,
+        // La flecha y, a su izquierda, la «Duración prevista».
+        150.0 * e,
         e,
     );
     let lado = 20.0 * e;
