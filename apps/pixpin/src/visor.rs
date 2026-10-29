@@ -245,9 +245,6 @@ enum Accion {
     AutoBoton(lector::BotonAuto),
     /// Un PDF leido como texto: «Ver el PDF original, en hojas».
     VerPdf,
-    /// «⚡ Lectura veloz»: seguir leyendo en la app de lectura rapida, desde
-    /// el verde de la voz o desde donde se va (`crate::lectura_veloz`).
-    LecturaVeloz,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -280,9 +277,6 @@ struct Estado {
     doc: Documento,
     indice: Vec<indice::Entrada>,
     ajustes: lectura::Ajustes,
-    /// El % de lo leido en Lectura Veloz (lo ultimo que mando), para
-    /// ponerlo junto a «⚡ Lectura veloz»; `None` si nunca se leyo alli.
-    lectura_veloz: Option<u8>,
     /// La esquina de arriba a la izquierda de la ventana, en unidades del
     /// documento.
     x: f32,
@@ -451,7 +445,6 @@ pub fn abrir(
     let tinta_de_antes =
         ajustes.de_antes && ajustes.letra_fijada() && !del_mensaje && !capa.vacia();
     let mut e = Estado {
-        lectura_veloz: crate::lectura_veloz::porcentaje_de_ruta(ruta),
         indice: indice::de(&doc),
         doc,
         zoom: ajustes.zoom,
@@ -532,7 +525,6 @@ pub fn abrir(
             if let Some(f) = al_dia_de_lectura_veloz(&mut e, &p) {
                 ir_a = Some(f);
             }
-            e.lectura_veloz = crate::lectura_veloz::porcentaje_de_ruta(ruta);
             hay_que_pintar = true;
         }
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
@@ -1906,10 +1898,9 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
     }
     filas.extend([
         (textos.t("visor-letra"), Accion::Letra),
-        (
-            crate::lectura_veloz::rotulo(textos, e.lectura_veloz),
-            Accion::LecturaVeloz,
-        ),
+        // Sin «⚡ Lectura veloz» (29-oct-2026, como el movil 442eadf; el
+        // usuario: «Lectura veloz se abre solo desde el menu del mensaje»):
+        // va en el menu del mensaje del chat y en el ⋮ de la nota.
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
@@ -3068,10 +3059,6 @@ fn hacer(
         Accion::AjusteVoz(leer_en_voz::AjusteVoz::ElegirVoz) => e.elegir_voz = true,
         Accion::Auto => alternar_auto(e, textos),
         Accion::AutoBoton(b) => boton_de_auto(e, b),
-        Accion::LecturaVeloz => {
-            e.panel = false;
-            a_lectura_veloz(e, textos, ruta);
-        }
         Accion::VerPdf => {
             e.panel = false;
             if let Some(pdf) = &e.pdf_de_origen {
@@ -3181,25 +3168,6 @@ fn hacer(
         Accion::AbrirCarpeta => {
             let _ = pixpin_shell::abrir_ubicacion(&carpeta_de_salida(ubicacion));
         }
-    }
-}
-
-/// **«⚡ Lectura veloz»**: lo de aqui al disco (si cambio) y el documento a
-/// la app de lectura rapida, desde el verde de la voz si lo hay y si no
-/// desde donde se va. Si no esta instalada, se dice en el aviso.
-fn a_lectura_veloz(e: &mut Estado, textos: &Catalogo, ruta: &Path) {
-    use pixpin_docs::lectura_veloz as lv;
-    // Sin medir aun, la fraccion de la vista no dice nada: la de antes.
-    if e.alto_doc > 0.0 {
-        e.ajustes.sitio = fraccion(e);
-    }
-    e.ajustes.zoom = e.zoom;
-    crate::lectura_veloz::guardar_si_cambio(ruta, &e.ajustes);
-    let donde = e.ajustes.voz.map_or(e.ajustes.sitio, |(_, f)| f);
-    let tipo = lv::tipo_de(ruta).unwrap_or(lv::Tipo::Texto);
-    let salida = crate::lectura_veloz::salida(ruta, tipo, 0, 0.0, donde, 0);
-    if let Err(no) = crate::lectura_veloz::enviar(&salida) {
-        e.aviso = Some((no.aviso(textos), ahora_ms() + 6000));
     }
 }
 
@@ -3578,7 +3546,6 @@ mod pruebas {
             doc: Documento::default(),
             indice: Vec::new(),
             ajustes: lectura::Ajustes::default(),
-            lectura_veloz: None,
             x: 0.0,
             y: 0.0,
             zoom: 1.0,
@@ -3634,21 +3601,12 @@ mod pruebas {
     }
 
     #[test]
-    fn lectura_veloz_esta_en_el_menu_y_lo_que_llega_mueve_el_verde() {
+    fn lectura_veloz_ya_no_esta_en_el_menu_pero_lo_que_llega_mueve_el_verde() {
         let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let mut e = estado_de_prueba();
-        assert!(
-            filas_del_panel(&e, &textos)
-                .iter()
-                .any(|(_, a)| *a == Accion::LecturaVeloz)
-        );
-        // Ya leido alli: el % al lado de la opcion.
-        e.lectura_veloz = Some(47);
-        assert!(
-            filas_del_panel(&e, &textos)
-                .iter()
-                .any(|(t, a)| *a == Accion::LecturaVeloz && t.ends_with("· 47 %"))
-        );
+        // Se abre desde el menu del mensaje del chat (29-oct-2026).
+        let lv = crate::lectura_veloz::rotulo(&textos, None);
+        assert!(!filas_del_panel(&e, &textos).iter().any(|(t, _)| *t == lv));
         e.ajustes.voz = Some((10, 0.1));
         e.ajustes.tamano = 130;
         let campos = [
