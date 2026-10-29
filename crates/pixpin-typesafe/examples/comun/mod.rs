@@ -630,8 +630,22 @@ impl Transporte for Repetido {
             .unwrap_or_default();
         Ok(Contestado {
             codigo: 200,
-            cuerpo: contestar(cuerpo, &dado, 0.03)?,
+            cuerpo: con_uso(contestar(cuerpo, &dado, 0.03)?, l.get("usage")),
         })
+    }
+}
+
+/// Los tokens grabados, si los hay (si no, los estimados).
+fn con_uso(cuerpo: Vec<u8>, uso: Option<&Value>) -> Vec<u8> {
+    let Some(u) = uso.filter(|u| u.is_object()) else {
+        return cuerpo;
+    };
+    match serde_json::from_slice::<Value>(&cuerpo) {
+        Ok(mut v) => {
+            v["usage"] = u.clone();
+            serde_json::to_vec(&v).unwrap_or(cuerpo)
+        }
+        Err(_) => cuerpo,
     }
 }
 
@@ -655,7 +669,7 @@ impl Transporte for Grabador {
             && let Ok(v) = serde_json::from_slice::<Value>(&c.cuerpo)
             && let Ok(mut f) = self.fichero.lock()
         {
-            let l = json!({"huella": huella(cuerpo), "model": v["model"], "answers": v["answers"]});
+            let l = json!({"huella": huella(cuerpo), "model": v["model"], "answers": v["answers"], "usage": v["usage"]});
             let _ = writeln!(f, "{l}");
         }
         Ok(c)
@@ -760,6 +774,9 @@ impl Reloj {
 pub struct Hecho {
     pub ms: i64,
     pub texto: String,
+    /// El prototipo que lo decidio (en `reunion_completa`, una espera
+    /// `[tareas_dichas]` solo se compara con lo de las tareas).
+    pub de: &'static str,
 }
 
 /// **Una prueba**: el guion, el cliente, el reloj y lo que va saliendo.
@@ -918,8 +935,13 @@ impl Sesion {
 
     /// Apunta algo decidido.
     pub fn hecho(&mut self, ms: i64, texto: String) {
+        self.hecho_de(self.nombre, ms, texto);
+    }
+
+    /// Apunta algo decidido por la parte `de`.
+    pub fn hecho_de(&mut self, de: &'static str, ms: i64, texto: String) {
         println!("    ⇒ {texto}");
-        self.hechos.push(Hecho { ms, texto });
+        self.hechos.push(Hecho { ms, texto, de });
     }
 
     /// **Pasa el guion frase a frase**, cada una cuando se deja de decir:
@@ -991,7 +1013,11 @@ impl Sesion {
                     .is_none_or(|s| s == self.nombre || self.tambien.contains(&s))
             })
             .collect();
-        let hechos: Vec<String> = self.hechos.iter().map(|h| normal(&h.texto)).collect();
+        let hechos: Vec<(String, &str)> = self
+            .hechos
+            .iter()
+            .map(|h| (normal(&h.texto), h.de))
+            .collect();
         let mut bien = 0;
         let mut fallos = 0;
         if self.op.modo == Modo::EnSeco {
@@ -1002,7 +1028,13 @@ impl Sesion {
         } else {
             for e in &esperas {
                 let t = normal(&e.texto);
-                let hay = hechos.iter().any(|h| h.contains(&t));
+                // Con varias partes juntas, lo de una parte solo se compara
+                // con lo suyo; en un prototipo suelto, con todo.
+                let de_aqui = |de: &str| match e.solo.as_deref() {
+                    Some(s) if !self.tambien.is_empty() => s == de,
+                    _ => true,
+                };
+                let hay = hechos.iter().any(|(h, de)| de_aqui(de) && h.contains(&t));
                 let ok = hay == e.si;
                 if ok {
                     bien += 1;

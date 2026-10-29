@@ -91,7 +91,8 @@ pub fn tareas(s: &mut Sesion, f: &Frase, sen: &Senales, fe: &[Expresion], hoy: F
                 (Some(m), Some(e)) => format!(" [{m}, de «{e}»]"),
                 _ => String::new(),
             };
-            s.hecho(
+            s.hecho_de(
+                "tareas_dichas",
                 f.ms,
                 format!(
                     "tarea {} {fecha} {}: {}{detalle}",
@@ -159,7 +160,8 @@ pub fn urgencias(
             let ms = s.reloj.ahora();
             if c.fecha_antes != c.fecha_despues {
                 let f = |x: Option<Fecha>| x.map_or("sin fecha".into(), |f| f.to_string());
-                s.hecho(
+                s.hecho_de(
+                    "urgencia_en_vivo",
                     ms,
                     format!(
                         "fecha {}: {} → {}",
@@ -170,7 +172,8 @@ pub fn urgencias(
                 );
             }
             if c.antes != c.despues {
-                s.hecho(
+                s.hecho_de(
+                    "urgencia_en_vivo",
                     ms,
                     format!(
                         "prioridad {}: {} → {}",
@@ -191,7 +194,11 @@ pub fn decision(s: &mut Sesion, f: &Frase, sen: &Senales) {
         println!("    decision {p:.2}");
     }
     if vivo::es_decision(sen) {
-        s.hecho(f.ms, format!("decisión [{}]: {}", hora(f.ms), f.dice));
+        s.hecho_de(
+            "decisiones",
+            f.ms,
+            format!("decisión: {} [{}]", f.dice, hora(f.ms)),
+        );
     }
 }
 
@@ -203,8 +210,13 @@ pub fn preguntas(s: &mut Sesion, p: &mut Pendientes, f: &Frase, sen: &Senales) {
     }
     for ev in p.tras_frase(f, sen.pregunta, &sen.respondidas) {
         match ev {
-            Evento::Abierta(a) => s.hecho(f.ms, format!("abierta: {}", a.texto)),
-            Evento::Contestada(c) => s.hecho(
+            Evento::Abierta(a) => s.hecho_de(
+                "preguntas_pendientes",
+                f.ms,
+                format!("abierta: {}", a.texto),
+            ),
+            Evento::Contestada(c) => s.hecho_de(
+                "preguntas_pendientes",
                 f.ms,
                 format!(
                     "contestada {} por {}: {}",
@@ -221,7 +233,8 @@ pub fn preguntas(s: &mut Sesion, p: &mut Pendientes, f: &Frase, sen: &Senales) {
 /// Al final: las que nadie contesto. Hecho: «sin respuesta <pregunta>».
 pub fn preguntas_al_final(s: &mut Sesion, p: &Pendientes) {
     for a in p.abiertas() {
-        s.hecho(
+        s.hecho_de(
+            "preguntas_pendientes",
             a.ms,
             format!(
                 "sin respuesta {} (de {}, a las {})",
@@ -243,7 +256,8 @@ pub fn cita(s: &mut Sesion, h: &mut Horario, f: &Frase, sen: &Senales, fe: &[Exp
         );
     }
     match h.proponer(f, sen.cita.as_ref(), fe) {
-        citas::Resultado::Evento(e) => s.hecho(
+        citas::Resultado::Evento(e) => s.hecho_de(
+            "fechas_al_horario",
             f.ms,
             format!("evento {}: {} (de «{}»)", e.momento, e.titulo, e.expresion),
         ),
@@ -267,7 +281,8 @@ pub fn dictado(s: &mut Sesion, f: &Frase, sen: &Senales, chats: &[String]) {
         );
     }
     match dictado::decidir(f, sen.dictado.as_ref(), chats) {
-        dictado::Resultado::Nota(n) => s.hecho(
+        dictado::Resultado::Nota(n) => s.hecho_de(
+            "dictado_a_chat",
             f.ms,
             format!(
                 "nota en {}: {}",
@@ -294,7 +309,11 @@ pub fn tema(s: &mut Sesion, r: &Reunion, c: &mut Cronometro, f: &Frase, sen: Opt
     }
     let d = tiempo_de_temas::asignar(t, c.anterior());
     c.frase(f.ms, d);
-    s.hecho(f.ms, format!("{}: {}", r.tema(d), f.dice));
+    s.hecho_de(
+        "tiempo_por_tema",
+        f.ms,
+        format!("{}: {}", r.tema(d), f.dice),
+    );
 }
 
 /// El tiempo de cada tema, contado hasta `fin`.
@@ -311,7 +330,11 @@ pub fn tiempos(s: &mut Sesion, r: &Reunion, c: &Cronometro, fin: i64) {
     }
     println!("     {:>7}  (otro)", hora(h.otro));
     if let Some((i, _)) = mayor {
-        s.hecho(fin, format!("más tiempo: {}", r.agenda[i]));
+        s.hecho_de(
+            "tiempo_por_tema",
+            fin,
+            format!("más tiempo: {}", r.agenda[i]),
+        );
     }
 }
 
@@ -358,6 +381,6 @@ pub fn olvidados(
                 format!("aviso están cerrando y quedan: {}", nombres(&temas))
             }
         };
-        s.hecho(ahora, t);
+        s.hecho_de("tema_olvidado", ahora, t);
     }
 }
