@@ -57,6 +57,37 @@ fn clave_de(l: &Lista, texto: &str) -> String {
     format!("{}\u{1f}{}\u{1f}{}", l.proyecto, l.titulo, texto)
 }
 
+/// **Lo que dijo Jev de una tarea**, si ya se sabe: por su chat, el titulo
+/// de su lista y lo que se ve de ella (sin la fecha de creada). Lo usa la
+/// reunion en vivo (`jev::en_vivo`) para partir de la prioridad de Tareas.
+pub fn sabidas(proyecto: &str, lista: &str, visible: &str) -> Option<Senales> {
+    let clave = clave_por_texto(proyecto, lista, visible);
+    con_sabido(|s| match s.get(&clave) {
+        Some(Sabido::Senales(x)) => Some(x.clone()),
+        _ => None,
+    })
+}
+
+/// **Cambia lo sabido de una tarea** (lo dicho en la reunion la apura) o,
+/// con `None`, lo olvida: Tareas lo vuelve a preguntar. Solo en memoria,
+/// como todo lo de aqui.
+pub fn poner_sabidas(proyecto: &str, lista: &str, visible: &str, s: Option<Senales>) {
+    let clave = clave_por_texto(proyecto, lista, visible);
+    con_sabido(|m| match s {
+        Some(x) => {
+            m.insert(clave, Sabido::Senales(x));
+        }
+        None => {
+            m.remove(&clave);
+        }
+    });
+}
+
+fn clave_por_texto(proyecto: &str, lista: &str, visible: &str) -> String {
+    let texto = texto_para_jev(&frase::marcas(visible));
+    format!("{proyecto}\u{1f}{lista}\u{1f}{texto}")
+}
+
 /// La marca del usuario.
 fn marca_de(u: Urgencia) -> Marca {
     match u {
