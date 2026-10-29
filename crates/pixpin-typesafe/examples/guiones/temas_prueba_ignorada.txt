@@ -1,0 +1,27 @@
+# La reunion de la prueba `temas::de_verdad_con_la_api` (#[ignore], solo
+# Windows), frase a frase cada 4 s: tres temas tratados en otro orden que
+# la agenda y uno que se deja para luego. Con este guion, la misma prueba
+# corre en Linux: `--example temas_en_vivo -- temas_prueba_ignorada.txt`.
+# reunion: Reunión de coordinación
+# fecha: 2026-10-26
+# agenda: Cotización del viernes
+# agenda: Paro de transportistas
+# agenda: Notas de los estudiantes
+# agenda: Compra de proyectores
+
+[0:00] Ana: Bueno, empezamos, gracias por venir.
+[0:04] Ana: Lo de los proyectores lo vemos al final si da tiempo.
+[0:08] Ana: Primero las notas de los estudiantes del segundo curso.
+[0:12] Luis: Han subido bastante, la media está en catorce y solo suspenden tres.
+[0:16] Ana: Vale, entonces las publicamos el lunes en la plataforma.
+[0:20] Ana: Ahora, el paro de transportistas de la semana que viene.
+[0:24] Marta: Si paran el martes no llega el material, así que adelantamos el pedido al lunes.
+[0:28] Ana: De acuerdo, Marta llama al proveedor hoy.
+[0:32] Ana: Y la cotización del viernes, la que mandó la imprenta.
+[0:36] Luis: Pide dos mil cuatrocientos por los mil folletos, me parece caro.
+[0:40] Ana: Le pedimos que la rebaje a dos mil y si no, buscamos otra.
+
+# espera: tratado Notas de los estudiantes
+# espera: tratado Paro de transportistas
+# espera: tratado Cotización del viernes
+# espera-no: tratado Compra de proyectores

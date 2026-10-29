@@ -1,0 +1,21 @@
+# Dictar al chat: con chat, sin chat, «esto» y menciones que no son dictado.
+# reunion: Visita a la obra
+# fecha: 2026-10-26
+# chat: Obra Calle Lima
+# chat: Compras
+# chat: Familia
+
+[0:00] Jorge: El cemento llega el jueves a las ocho.
+[0:06] Ana: Anota esto en el chat de la obra.
+[0:12] Luis: Pon en el grupo de compras que faltan tornillos del seis.
+[0:20] Marta: Lo vi ayer en el chat de la obra, ya lo sabían.
+[0:28] Ana: Apunta en Familia: llego tarde a cenar.
+[0:36] Jorge: Anótalo, que la grúa se va el viernes.
+[0:44] Luis: ¿Quién tiene el teléfono del electricista?
+
+# espera: nota en Obra Calle Lima: El cemento llega el jueves
+# espera: nota en Compras: faltan tornillos
+# espera: nota en Familia: llego tarde a cenar
+# espera: nota en ¿qué chat?: la grúa se va el viernes
+# espera-no: ya lo sabían
+# espera-no: electricista

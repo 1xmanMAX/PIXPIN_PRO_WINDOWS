@@ -15,6 +15,7 @@
 //!   siguiente viernes despues de hoy; dicho un viernes, el de dentro de una
 //!   semana. «este viernes»: el de esta semana (hoy, si es viernes).
 //! - «el martes de la semana que viene»: el martes de la semana siguiente.
+//!   «el lunes pasado»: el anterior.
 //! - «la semana que viene»: el lunes de la semana siguiente, **aproximada**.
 //! - «a fin de mes»: el ultimo dia del mes.
 //! - «el 15»: el proximo dia 15 (este mes si no paso, si no el siguiente);
@@ -339,6 +340,15 @@ fn fecha_en(p: &[Pal], i: usize, hoy: Fecha) -> Option<(usize, Fecha, bool)> {
             let n = if es(p, j + 2, "semana") { 5 } else { 4 };
             return Some((j + n, lunes.mas(i64::from(d)), false));
         }
+        if es(p, j, "pasado") {
+            // «el lunes pasado»: el anterior (dicho un lunes, el de hace una
+            // semana).
+            let mut atras = (i64::from(hd) - i64::from(d)).rem_euclid(7);
+            if atras == 0 {
+                atras = 7;
+            }
+            return Some((j + 1, hoy.mas(-atras), false));
+        }
         if sigue(p, j, &["que", "viene"]) {
             j += 2;
         }
@@ -540,6 +550,11 @@ mod pruebas {
         assert_eq!(una("este lunes sin falta").1, "lun 2026-10-26");
         assert_eq!(una("el próximo miércoles").1, "mié 2026-10-28");
         assert_eq!(una("el jueves que viene").0, "el jueves que viene");
+        assert_eq!(
+            una("el lunes pasado ya hablamos"),
+            ("el lunes pasado".into(), "lun 2026-10-19".into())
+        );
+        assert_eq!(una("el viernes pasado").1, "vie 2026-10-23");
         assert_eq!(
             una("el martes de la semana que viene"),
             (

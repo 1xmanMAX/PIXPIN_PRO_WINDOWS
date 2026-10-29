@@ -19,6 +19,8 @@
 
 #![allow(dead_code)]
 
+pub mod partes;
+
 use std::collections::{HashMap, VecDeque};
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -772,6 +774,9 @@ pub struct Sesion {
     pub hechos: Vec<Hecho>,
     pub errores: usize,
     pub del_cache: usize,
+    /// Las esperas de otros prototipos que tambien valen aqui
+    /// (`reunion_completa` comprueba las de todos).
+    pub tambien: Vec<&'static str>,
 }
 
 /// **Empieza**: lee las opciones y el guion y prepara el cliente.
@@ -857,6 +862,7 @@ pub fn empezar(nombre: &'static str, que_prueba: &str) -> Sesion {
         hechos: Vec::new(),
         errores: 0,
         del_cache: 0,
+        tambien: Vec::new(),
     }
 }
 
@@ -979,7 +985,11 @@ impl Sesion {
             .guion
             .esperas
             .iter()
-            .filter(|e| e.solo.as_deref().is_none_or(|s| s == self.nombre))
+            .filter(|e| {
+                e.solo
+                    .as_deref()
+                    .is_none_or(|s| s == self.nombre || self.tambien.contains(&s))
+            })
             .collect();
         let hechos: Vec<String> = self.hechos.iter().map(|h| normal(&h.texto)).collect();
         let mut bien = 0;

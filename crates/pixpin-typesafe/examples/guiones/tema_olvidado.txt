@@ -1,0 +1,29 @@
+# Tema olvidado: una reunion de 12 minutos que se alarga en dos temas y se
+# cierra sin tocar el tercero (inventada). Con --rapido no se espera.
+# reunion: Comité de curso
+# fecha: 2026-10-26
+# duracion: 12
+# agenda: Horario de tutorías
+# agenda: Excursión al museo
+# agenda: Material de laboratorio
+
+[0:00] Ana: Buenos días a todos, empezamos.
+[0:20] Ana: Primero el horario de tutorías del segundo trimestre.
+[0:50] Luis: Yo propongo pasar las tutorías al martes por la tarde, los lunes no viene nadie.
+[1:40] Marta: Los martes tengo clase hasta las cinco, a mí me viene mal.
+[2:40] Luis: Podríamos hacer una tutoría el martes y otra el jueves.
+[3:40] Ana: Vale, quedan martes y jueves de cinco a seis para las tutorías.
+[4:30] Marta: Ahora la excursión al museo, que ya nos han dado fecha.
+[5:30] Luis: El museo nos ofrece el doce de diciembre, con guía incluido.
+[6:30] Marta: El autobús cuesta trescientos euros, habría que cobrar diez euros por alumno.
+[7:30] Ana: Hay familias que no pueden pagar eso, tenemos que buscar una ayuda.
+[8:40] Luis: Podemos pedirla a la asociación de padres, el año pasado nos ayudaron.
+[9:40] Marta: Y también hay que pedir las autorizaciones firmadas.
+[10:20] Ana: Bueno, se nos hace tarde, vamos cerrando, si no hay nada más lo dejamos aquí.
+
+# espera[tema_olvidado]: aviso queda poco
+# espera[tema_olvidado]: Material de laboratorio
+# espera[tema_olvidado]: aviso están cerrando y quedan: Material de laboratorio
+# espera-no[tema_olvidado]: aviso están cerrando y quedan: Horario de tutorías
+# espera-no[tema_olvidado]: quedan: Excursión al museo
+# espera[tema_olvidado]: más tiempo: Excursión al museo

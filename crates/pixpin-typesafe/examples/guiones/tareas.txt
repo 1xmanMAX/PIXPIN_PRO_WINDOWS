@@ -1,0 +1,27 @@
+# Tareas dichas: casos claros, dificiles y negativos (inventados).
+# reunion: Seguimiento de obra
+# fecha: 2026-10-26
+# participantes: Ana, Luis, Marta, Jorge
+
+[0:00] Ana: Buenos días, empezamos con lo de la obra.
+[0:06] Ana: Yo me encargo de mandar la cotización el viernes.
+[0:14] Luis: La cotización del viernes pasado llegó tarde, eso fue un problema.
+[0:22] Marta: Jorge, tú llamas al electricista mañana a las 9.
+[0:30] Jorge: Vale, lo llamo yo.
+[0:36] Luis: Hay que revisar los planos antes del 15 de noviembre.
+[0:44] Ana: Podríamos pedir otra grúa, pero no sé si hace falta.
+[0:52] Marta: El material llegó el lunes y está todo bien.
+[1:00] Luis: Esto es urgente: hoy mismo hay que pagar al proveedor, lo hago yo.
+[1:10] Ana: Entre todos ordenamos el almacén la semana que viene.
+[1:18] Marta: ¿Alguien sabe dónde están las llaves del almacén?
+
+# espera: tarea Ana 2026-10-30
+# espera: tarea Jorge 2026-10-27
+# espera: tarea nadie 2026-11-15
+# espera: tarea Luis 2026-10-26 urgente
+# espera: tarea todos 2026-11-02
+# espera-no: viernes pasado
+# espera-no: podríamos pedir
+# espera-no: el material llegó
+# espera-no: dónde están las llaves
+# espera-no: buenos días

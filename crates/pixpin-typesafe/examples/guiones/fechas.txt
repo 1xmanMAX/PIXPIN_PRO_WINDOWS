@@ -1,0 +1,19 @@
+# Fechas dichas al horario: citas, plazos que no son citas y pasado.
+# reunion: Planificación del trimestre
+# fecha: 2026-10-26
+
+[0:00] Ana: Bueno, repasamos las fechas que tenemos pendientes.
+[0:06] Luis: Nos vemos el martes a las 3 para cerrar el presupuesto.
+[0:14] Marta: Mándame el informe el viernes, por favor.
+[0:22] Ana: La visita a la obra es el jueves a las 9 de la mañana.
+[0:30] Luis: El lunes pasado ya hablamos de esto con el cliente.
+[0:38] Marta: La reunión con el cliente queda para el 15 de noviembre a las 10:30.
+[0:46] Ana: La cotización del viernes la revisamos mañana a las 4 en mi despacho.
+[0:56] Luis: Perfecto, entonces quedamos así.
+
+# espera: evento mar 2026-10-27 15:00
+# espera: evento jue 2026-10-29 09:00
+# espera: evento dom 2026-11-15 10:30
+# espera: evento mar 2026-10-27 16:00
+# espera-no: evento vie
+# espera-no: lunes pasado

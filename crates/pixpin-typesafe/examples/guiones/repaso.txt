@@ -1,0 +1,19 @@
+# Repaso oral: un alumno explica la clase de fotosintesis (inventado).
+# clase: Biología: la fotosíntesis
+# punto: La fotosíntesis ocurre en los cloroplastos, gracias a la clorofila.
+# punto: La planta usa la luz del sol como fuente de energía.
+# punto: Toma dióxido de carbono del aire y agua del suelo.
+# punto: Produce glucosa y libera oxígeno.
+# punto: La glucosa se usa como energía o se guarda como almidón.
+
+[0:00] Alumno: Bueno, la fotosíntesis es cómo las plantas fabrican su comida.
+[0:08] Alumno: Pasa en las hojas, en unos orgánulos que se llaman cloroplastos, que tienen clorofila y por eso son verdes.
+[0:20] Alumno: Para eso necesitan la luz del sol, que les da la energía.
+[0:30] Alumno: Y toman oxígeno del aire y lo convierten en dióxido de carbono, que sueltan.
+[0:42] Alumno: Al final sale glucosa, que es un azúcar.
+
+# espera: cubierto La fotosíntesis ocurre en los cloroplastos
+# espera: cubierto La planta usa la luz del sol
+# espera: mal Toma dióxido de carbono del aire
+# espera: falta La glucosa se usa como energía
+# espera-no: cubierto Produce glucosa y libera oxígeno
