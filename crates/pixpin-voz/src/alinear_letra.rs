@@ -236,6 +236,77 @@ pub fn palabras_oidas(segmentos: &[Segmento]) -> Vec<PalabraOida> {
     salida
 }
 
+/// Las palabras mas corrientes de cada idioma, para adivinar en cual esta
+/// una letra pegada. Solo las que no se comparten entre ellos.
+const CORRIENTES: &[(&str, &[&str])] = &[
+    (
+        "es",
+        &[
+            "que", "el", "los", "las", "del", "con", "por", "para", "pero", "como", "mas", "yo",
+            "mi", "tu", "esta", "estoy", "eres", "soy", "una", "porque", "corazon", "quiero",
+            "nada", "cuando", "donde", "nunca", "siempre", "noche", "amor", "y",
+        ],
+    ),
+    (
+        "en",
+        &[
+            "the", "and", "you", "your", "is", "are", "my", "me", "it", "that", "with", "for",
+            "this", "love", "baby", "dont", "cant", "im", "what", "when", "never", "know", "just",
+            "all", "be", "we", "oh", "will", "hope",
+        ],
+    ),
+    (
+        "pt",
+        &[
+            "nao", "voce", "meu", "minha", "com", "uma", "isso", "eu", "ela", "ele", "coracao",
+            "saudade", "tudo", "agora", "muito", "quero", "sou", "estou", "nos", "do", "da",
+        ],
+    ),
+    (
+        "fr",
+        &[
+            "le", "les", "et", "je", "tu", "est", "pas", "moi", "toi", "mon", "ma", "avec", "pour",
+            "qui", "dans", "cest", "amour", "nous", "vous", "suis", "jamais", "toujours",
+        ],
+    ),
+    (
+        "it",
+        &[
+            "il", "che", "non", "sono", "di", "per", "una", "mio", "mia", "con", "ti", "amore",
+            "cuore", "sei", "come", "tutto", "questo", "anche", "sempre", "perche",
+        ],
+    ),
+    (
+        "de",
+        &[
+            "und", "ich", "du", "der", "die", "das", "nicht", "ist", "mein", "dich", "mich", "ein",
+            "eine", "wir", "auf", "liebe", "herz", "immer", "nie", "bin",
+        ],
+    ),
+];
+
+/// **En que idioma esta una letra**, por sus palabras corrientes: el codigo
+/// de Whisper (`es`, `en`...) o `None` si no esta claro (pocas palabras, o
+/// dos idiomas igualados). Asi una cancion en ingles se oye en ingles
+/// aunque PixPin este en castellano.
+pub fn idioma_de_la_letra<S: AsRef<str>>(lineas: &[S]) -> Option<&'static str> {
+    let palabras: Vec<String> = lineas.iter().flat_map(|l| normalizar(l.as_ref())).collect();
+    let mut cuentas: Vec<(&'static str, usize)> = CORRIENTES
+        .iter()
+        .map(|(codigo, lista)| {
+            let n = palabras
+                .iter()
+                .filter(|p| lista.contains(&p.as_str()))
+                .count();
+            (*codigo, n)
+        })
+        .collect();
+    cuentas.sort_by(|a, b| b.1.cmp(&a.1));
+    let (codigo, n) = cuentas[0];
+    let segundo = cuentas.get(1).map_or(0, |c| c.1);
+    (n >= 4 && n * 2 >= segundo * 3).then_some(codigo)
+}
+
 /// Una palabra de la letra: de que linea es y cuantas letras de su linea
 /// van delante (para correr el minuto hacia atras).
 struct DeLaLetra {
@@ -718,6 +789,18 @@ mod pruebas {
                 PalabraOida::new("mundo", 11_000)
             ]
         );
+    }
+
+    #[test]
+    fn se_adivina_el_idioma_de_la_letra() {
+        assert_eq!(idioma_de_la_letra(&LETRA), Some("es"));
+        let ingles = [
+            "I will always love you",
+            "and I hope that life treats you kind",
+            "you know that I'm not what you need",
+        ];
+        assert_eq!(idioma_de_la_letra(&ingles), Some("en"));
+        assert_eq!(idioma_de_la_letra(&["la la la"]), None);
     }
 
     #[test]
