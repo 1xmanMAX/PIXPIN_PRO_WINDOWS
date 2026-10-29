@@ -2020,6 +2020,23 @@ clase-camara-fallo = La cámara no respondió; prueba otra vez
 clase-clip-empezado = Grabando un clip con la cámara… pulsa ■ para pararlo
 clase-clip-guardado = Clip guardado en el { $minuto }
 clase-clip-corto = El clip no se pudo cerrar
+# Una sola grabación (29-oct-2026): sin modos; en la barra, Foto, Captura, Pantalla y Clip,
+# el reloj que pausa y termina, y la pantalla completa con los temas y la transcripción.
+clase-unica-sub = El sonido siempre; en la barra, Foto, Captura, Pantalla y Clip
+clase-pantalla-al-empezar = Empezar grabando la pantalla
+clase-pantalla = Pantalla
+clase-clip = Clip
+clase-pantalla-encendida = Grabando la pantalla; el audio sigue
+clase-pantalla-apagada = Pantalla apagada; el audio sigue grabándose
+clase-pista-unica = Clic en el reloj: pausa · mantenlo: terminar · mantén «Captura»: una zona
+clase-imagenes = { $n } imágenes y clips
+clase-completa-temas = Lo que voy a decir
+clase-completa-sin-temas = Sin temas: ponlos en «Temas de la reunión» antes de empezar
+clase-completa-dice = Lo que se dice
+clase-completa-sin-frases = Escuchando… las frases salen aquí en cuanto se dicen
+clase-completa-sin-escucha = La transcripción en vivo necesita la clave de Jev (TypeSafe) y el reconocedor de voz; el texto entero sale al terminar
+clase-descartar = Descartar
+clase-descartar-otra = Pulsa «Descartar» otra vez para borrar la grabación
 estudiar-clip = Vídeo de la cámara · { $duracion }
 bandeja-grabando = PixPin Max — Grabando…
 salir-grabando-titulo = Se está grabando una reunión

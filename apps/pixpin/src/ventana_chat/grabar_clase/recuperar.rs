@@ -32,7 +32,7 @@ use pixpin_shell::dialogo::{Eleccion, confirmar_al_frente, elegir_al_frente};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 use super::camara::ClipHecho;
-use super::{Captura, Estado, Fase, Modo, Pedido, empezar_el_texto, guardar, texto_de_fondo};
+use super::{Captura, Estado, Fase, Pedido, empezar_el_texto, guardar, texto_de_fondo};
 
 /// Donde van el nombre, los minutos y el chat en los textos.
 const NOMBRE: &str = "\u{1}";
@@ -211,7 +211,6 @@ fn recuperar_una(
     };
     // Lo capturado, en su minuto.
     let mut estado = Estado::vacio(pedido, d.nombre.clone());
-    estado.modo = Modo::de(&d.modo);
     // Los temas de la reunion, con lo que ya se habia tratado.
     let mut resto = serde_json::Map::new();
     resto.insert(pixpin_proyecto::temas::TEMAS.into(), d.temas.clone());
@@ -238,6 +237,7 @@ fn recuperar_una(
             ms: c.ms,
             duracion_ms: c.duracion_ms.unwrap_or(0),
             ruta: c.ruta.clone(),
+            de_pantalla: c.pantalla,
         })
         .collect();
     let hay_movil = d.movil.as_ref().is_some_and(|id| {

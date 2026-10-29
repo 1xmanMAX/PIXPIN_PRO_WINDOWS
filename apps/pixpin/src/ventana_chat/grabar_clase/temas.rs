@@ -350,6 +350,8 @@ impl Estado {
                     }
                 }
                 Vuelta::Reunion(sucesos) => self.de_la_reunion(sucesos, pedido, &r.reunion),
+                // La transcripcion en vivo de la pantalla completa.
+                Vuelta::Frase(ms, texto) => self.oida(ms, texto),
                 // Lo de la reunion no es de los temas: no cambia su cabecera.
                 Vuelta::Aviso(Aviso::ReunionFalla) => self.avisar(r.reunion.falla()),
                 Vuelta::Aviso(a) => {

@@ -2019,6 +2019,23 @@ clase-camara-fallo = The camera didn't respond; try again
 clase-clip-empezado = Recording a clip with the camera… press ■ to stop it
 clase-clip-guardado = Clip saved at { $minuto }
 clase-clip-corto = The clip couldn't be closed
+# A single recording (29-oct-2026): no modes; Photo, Capture, Screen and Clip on the bar,
+# the clock that pauses and ends, and full screen with the topics and the transcript.
+clase-unica-sub = Sound always; on the bar, Photo, Capture, Screen and Clip
+clase-pantalla-al-empezar = Start recording the screen
+clase-pantalla = Screen
+clase-clip = Clip
+clase-pantalla-encendida = Recording the screen; the audio goes on
+clase-pantalla-apagada = Screen off; the audio is still recording
+clase-pista-unica = Click the clock: pause · hold it: end · hold “Capture”: an area
+clase-imagenes = { $n } images and clips
+clase-completa-temas = What I'm going to say
+clase-completa-sin-temas = No topics: add them in “Meeting topics” before starting
+clase-completa-dice = What's being said
+clase-completa-sin-frases = Listening… sentences show up here as soon as they're said
+clase-completa-sin-escucha = The live transcript needs the Jev (TypeSafe) key and the speech recognizer; the full text comes when you finish
+clase-descartar = Discard
+clase-descartar-otra = Press “Discard” again to delete the recording
 estudiar-clip = Camera video · { $duracion }
 bandeja-grabando = PixPin Max — Recording…
 salir-grabando-titulo = A meeting is being recorded

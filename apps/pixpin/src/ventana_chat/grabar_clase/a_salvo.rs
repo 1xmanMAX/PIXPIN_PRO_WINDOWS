@@ -93,10 +93,12 @@ impl Estado {
         );
         let mut d = Diario::nuevo(ahora, &proyecto, &nombre, &self.temporal);
         d.nombre_proyecto = nombre_proyecto;
-        d.modo = self.modo.palabra().to_string();
+        // Ya no hay modos (29-oct-2026): se apunta como empezo, para quien
+        // lea el diario.
+        d.modo = self.modo_del_diario().palabra().to_string();
         d.microfono = self.microfono;
         d.equipo = self.equipo;
-        if self.video() {
+        if self.pantalla_al_empezar {
             d.video = Some(video::temporal_del_video(&self.temporal));
         }
         d.temas = self.temas_en_json();
@@ -158,6 +160,23 @@ impl Estado {
         }
     }
 
+    /// Un trozo del video de la pantalla empezo en `ms`, en `ruta`
+    /// (`super::pantalla`).
+    pub(super) fn apuntar_trozo_empezado(&mut self, ms: i64, ruta: &Path) {
+        if let Some(d) = self.a_salvo.diario.as_mut() {
+            d.empezar_trozo_de_pantalla(ms, ruta);
+            self.a_salvo.guardar();
+        }
+    }
+
+    /// Un trozo de la pantalla se cerro y dura `duracion_ms`.
+    pub(super) fn apuntar_trozo_cerrado(&mut self, ruta: &Path, duracion_ms: i64) {
+        if let Some(d) = self.a_salvo.diario.as_mut() {
+            d.cerrar_clip(ruta, duracion_ms);
+            self.a_salvo.guardar();
+        }
+    }
+
     /// Un clip se cerro.
     pub(super) fn apuntar_clip(&mut self, c: &super::camara::ClipHecho) {
         if let Some(d) = self.a_salvo.diario.as_mut() {
@@ -214,14 +233,12 @@ impl Estado {
         self.a_salvo.disco_mirado = Some(Instant::now());
         let carpeta = self.temporal.parent().unwrap_or(Path::new("."));
         let ahora = a_medias::espacio(pixpin_sistema::archivos::espacio_libre(carpeta));
-        if ahora == Espacio::Critico
-            && let Some(v) = &self.grabando_video
-        {
-            v.cortar();
-            self.sin_video_por_disco = true;
-        }
-        if ahora == Espacio::Critico && self.video() && self.grabando_video.is_none() {
-            // Aun abriendo: el video ni empieza.
+        if ahora == Espacio::Critico {
+            // El video que va se cierra con lo grabado y no empieza otro (ni
+            // el del principio, si aun se esta abriendo).
+            if let Some(v) = self.video_en_marcha() {
+                v.cortar();
+            }
             self.sin_video_por_disco = true;
         }
         let Some(r) = r else {

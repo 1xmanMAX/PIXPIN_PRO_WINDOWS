@@ -35,6 +35,9 @@ pub(super) struct ClipHecho {
     pub ms: i64,
     pub duracion_ms: i64,
     pub ruta: PathBuf,
+    /// Un trozo del video de la pantalla (`super::pantalla`), no de la
+    /// camara: entra sin `fuente` y con otro nombre.
+    pub de_pantalla: bool,
 }
 
 /// Lo que vuelve del hilo de la camara.
@@ -248,6 +251,7 @@ fn lanzar() -> Option<(Sender<Encargo>, Receiver<Vuelta>)> {
                         ms,
                         duracion_ms,
                         ruta,
+                        de_pantalla: false,
                     }),
                     Err(e) if se_abre => {
                         tracing::warn!(?e, "el clip no se paro bien, pero se abre: se guarda");
@@ -255,6 +259,7 @@ fn lanzar() -> Option<(Sender<Encargo>, Receiver<Vuelta>)> {
                             ms,
                             duracion_ms,
                             ruta,
+                            de_pantalla: false,
                         })
                     }
                     otro => {

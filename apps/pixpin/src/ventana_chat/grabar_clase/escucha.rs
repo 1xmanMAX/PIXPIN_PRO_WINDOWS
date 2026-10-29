@@ -45,6 +45,10 @@
 //!    ([`Vuelta::Reunion`]) lo ensena la barra como propuesta; un fallo no
 //!    propone nada y se dice una vez.
 //!
+//! 6. **La transcripcion en vivo** (29-oct-2026): cada frase con texto
+//!    vuelve tambien tal cual ([`Vuelta::Frase`]) para «Lo que se dice» de
+//!    la pantalla completa de la barra (`super::completa`).
+//!
 //! La grabacion nunca depende de esto: si algo falla, se dice en la barra
 //! y los temas se marcan a mano. Al terminar, la escucha se para en el acto
 //! (Whisper se cancela) y la transcripcion entera de despues es la de
@@ -86,6 +90,10 @@ pub(super) enum Vuelta {
     Aviso(Aviso),
     /// Lo que salio de una frase para lo demas de la reunion.
     Reunion(Vec<Suceso>),
+    /// **Una frase ya oida**, con su minuto en la grabacion (29-oct-2026,
+    /// la transcripcion en vivo de la pantalla completa). Solo se ensena: el
+    /// texto de verdad sale al terminar, de la nota entera.
+    Frase(i64, String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -568,6 +576,7 @@ fn pasar_a_texto(
         if texto.trim().is_empty() {
             continue;
         }
+        let _ = tx.send(Vuelta::Frase(frase.ms, texto.trim().to_string()));
         if let Some(v) = &c.viva {
             v.lock().unwrap_or_else(|e| e.into_inner()).frases.push((
                 vivo::Frase {
