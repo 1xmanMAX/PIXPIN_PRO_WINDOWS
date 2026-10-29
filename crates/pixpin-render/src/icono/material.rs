@@ -951,6 +951,7 @@ pub const TODOS: &[Icono] = &[
     LIGHT_MODE,
     FULLSCREEN,
     FULLSCREEN_EXIT,
+    SCREEN_SHARE,
     DRAG_INDICATOR,
     ADD,
     GRID_VIEW,
@@ -1071,6 +1072,18 @@ pub const FULLSCREEN_EXIT: Icono = Icono {
     vista: VISTA,
     trazos: &[relleno(
         "M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z",
+        false,
+    )],
+};
+
+/// `screen_share` (`src/hardware/screen_share/materialicons/24px.svg`):
+/// «Pantalla» de la barra de grabar (29-oct-2026), que enciende o apaga el
+/// video de la pantalla mientras el audio sigue. El mismo dibujo que
+/// `ic_reunion_pantalla` del movil.
+pub const SCREEN_SHARE: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.11-.9-2-2-2H4c-1.11 0-2 .89-2 2v10c0 1.1.89 2 2 2H0v2h24v-2h-4zM4 16V6h16v10.01L4 16zM13 13.52v-2.19c-2.78 0-4.61.85-6 2.72.56-2.67 2.11-5.33 6-5.87V6l4 3.73-4 3.79z",
         false,
     )],
 };

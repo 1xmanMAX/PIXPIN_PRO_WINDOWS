@@ -102,13 +102,20 @@ pub struct CapturaApuntada {
     pub de_camara: bool,
 }
 
-/// Un clip de la camara: donde se graba y, al cerrarse, lo que dura.
+/// Un clip de la camara (o un trozo del video de la pantalla): donde se
+/// graba y, al cerrarse, lo que dura.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipApuntado {
     pub ms: i64,
     pub ruta: PathBuf,
     /// `None` mientras se graba (o si se corto).
     pub duracion_ms: Option<i64>,
+    /// **Un trozo del video de la pantalla** (29-oct-2026, la grabacion
+    /// unica: «Pantalla» se enciende y se apaga mientras el audio sigue) y
+    /// no un clip de la camara: entra sin `fuente`. Los diarios de antes no
+    /// lo llevan (`false`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pantalla: bool,
 }
 
 /// Una marca puesta a mano en un minuto.
@@ -256,7 +263,17 @@ impl Diario {
             ms,
             ruta: ruta.to_path_buf(),
             duracion_ms: None,
+            pantalla: false,
         });
+    }
+
+    /// Un trozo del video de la pantalla empieza en `ms`, en `ruta` (se
+    /// cierra como un clip, [`Diario::cerrar_clip`]).
+    pub fn empezar_trozo_de_pantalla(&mut self, ms: i64, ruta: &Path) {
+        self.empezar_clip(ms, ruta);
+        if let Some(c) = self.clips.last_mut() {
+            c.pantalla = true;
+        }
     }
 
     /// El clip de `ruta` se cerro y dura `duracion_ms`.
@@ -619,6 +636,7 @@ mod pruebas {
         assert_eq!(leido.version, VERSION);
         assert_eq!(std::fs::read(dir.join("captura-1.png")).unwrap(), b"png!");
         assert_eq!(leido.clips[0].duracion_ms, Some(12_345));
+        assert!(!leido.clips[0].pantalla);
         // Sin `.tmp` olvidados.
         assert!(!dir.join("estado.json.tmp").exists());
 
@@ -626,6 +644,24 @@ mod pruebas {
         assert_eq!(p.len(), 1);
         assert_eq!(p[0].1.marca, T0.to_string());
         std::fs::remove_dir_all(&raiz).unwrap();
+    }
+
+    #[test]
+    fn un_trozo_de_la_pantalla_se_apunta_como_clip_y_lo_dice() {
+        let mut d = Diario::nuevo(T0, "p1", "Clase", Path::new("voz.m4a"));
+        d.empezar_clip(1_000, Path::new("clip-1.mp4"));
+        d.empezar_trozo_de_pantalla(60_000, Path::new("pantalla-2.mp4"));
+        d.cerrar_clip(Path::new("pantalla-2.mp4"), 30_000);
+        assert!(!d.clips[0].pantalla);
+        assert!(d.clips[1].pantalla);
+        assert_eq!(d.clips[1].duracion_ms, Some(30_000));
+        // Un clip de la camara no escribe la clave: el diario de antes
+        // sigue igual, y uno de antes (sin ella) se lee como camara.
+        let json = serde_json::to_string(&d.clips[0]).unwrap();
+        assert!(!json.contains("pantalla"));
+        let viejo: ClipApuntado =
+            serde_json::from_str(r#"{"ms":5,"ruta":"c.mp4","duracion_ms":7}"#).unwrap();
+        assert!(!viejo.pantalla);
     }
 
     #[test]
