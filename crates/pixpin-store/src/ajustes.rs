@@ -316,6 +316,25 @@ pub struct Jev {
     /// Marcar los temas de la reunion que ya se trataron, mientras se graba
     /// (lo oido se pasa a texto en vivo, por tramos).
     pub temas: bool,
+    // Lo que se oye en la reunion, frase a frase y en una sola peticion por
+    // frase (29-oct-2026, `pixpin_typesafe::en_la_reunion`). Todo se propone
+    // y se acepta o descarta en la barra; solo la urgencia se aplica sola,
+    // con «Deshacer».
+    /// «Yo me encargo de mandar la cotización el viernes» → una tarea
+    /// propuesta.
+    pub tareas_dichas: bool,
+    /// «Esto es para hoy» → sube la prioridad de una tarea que ya existe.
+    pub urgencia_en_vivo: bool,
+    /// Avisar cerca del final previsto si quedan temas sin tratar.
+    pub tema_olvidado: bool,
+    /// Los minutos de cada tema de la agenda.
+    pub tiempo_por_tema: bool,
+    /// Las decisiones, con su minuto.
+    pub decisiones: bool,
+    /// Las preguntas que nadie contesto.
+    pub preguntas_pendientes: bool,
+    /// «Nos vemos el martes a las 3» → un evento propuesto para el horario.
+    pub fechas_al_horario: bool,
 }
 
 impl Default for Jev {
@@ -326,6 +345,13 @@ impl Default for Jev {
             urgencia: true,
             modelo: true,
             temas: true,
+            tareas_dichas: true,
+            urgencia_en_vivo: true,
+            tema_olvidado: true,
+            tiempo_por_tema: true,
+            decisiones: true,
+            preguntas_pendientes: true,
+            fechas_al_horario: true,
         }
     }
 }

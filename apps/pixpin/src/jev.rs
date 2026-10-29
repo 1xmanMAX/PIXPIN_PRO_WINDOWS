@@ -10,6 +10,10 @@
 //! - [`modelo`]: el modelo del asistente segun lo dificil del pedido.
 //! - [`temas`]: los temas de la reunion que ya se trataron, mientras se
 //!   graba (la escucha en vivo, en `ventana_chat::grabar_clase`).
+//! - [`en_vivo`]: lo demas que se oye en la reunion, frase a frase y en una
+//!   sola peticion por frase (tareas dichas, urgencia, tema olvidado,
+//!   minutos por tema, decisiones, preguntas sin respuesta, fechas al
+//!   horario), por la misma escucha.
 //!
 //! Las preguntas y las tablas de decision viven en `pixpin_typesafe`. Sin
 //! clave (o con la funcion apagada) [`para`] da `None` y cada funcion hace
@@ -18,6 +22,7 @@
 //! La clave pasa por aqui en claro solo de camino a DPAPI o a la cabecera
 //! HTTP: nunca a `tracing` ni a los ajustes.
 
+pub mod en_vivo;
 pub mod modelo;
 pub mod reunion;
 pub mod temas;
@@ -38,6 +43,17 @@ pub enum Funcion {
     Modelo,
     /// Los temas de la reunion tratados, mientras se graba.
     Temas,
+    /// Lo que se oye en la reunion, frase a frase ([`en_vivo`]): las tareas
+    /// dichas, la urgencia de las que ya existen, el tema olvidado, los
+    /// minutos de cada tema, las decisiones, las preguntas sin respuesta y
+    /// las fechas al horario.
+    TareasDichas,
+    UrgenciaEnVivo,
+    TemaOlvidado,
+    TiempoPorTema,
+    Decisiones,
+    PreguntasPendientes,
+    FechasAlHorario,
 }
 
 impl Funcion {
@@ -48,6 +64,13 @@ impl Funcion {
             Funcion::Urgencia => a.urgencia,
             Funcion::Modelo => a.modelo,
             Funcion::Temas => a.temas,
+            Funcion::TareasDichas => a.tareas_dichas,
+            Funcion::UrgenciaEnVivo => a.urgencia_en_vivo,
+            Funcion::TemaOlvidado => a.tema_olvidado,
+            Funcion::TiempoPorTema => a.tiempo_por_tema,
+            Funcion::Decisiones => a.decisiones,
+            Funcion::PreguntasPendientes => a.preguntas_pendientes,
+            Funcion::FechasAlHorario => a.fechas_al_horario,
         }
     }
 }
@@ -206,6 +229,8 @@ mod pruebas {
             Funcion::Urgencia,
             Funcion::Modelo,
             Funcion::Temas,
+            Funcion::TareasDichas,
+            Funcion::FechasAlHorario,
         ] {
             assert!(para(&u, f).is_none());
         }

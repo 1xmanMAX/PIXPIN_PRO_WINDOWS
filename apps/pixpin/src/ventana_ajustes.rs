@@ -432,7 +432,7 @@ const CLAVE_JEV: u8 = u8::MAX;
 
 /// Las funciones de Jev de Ajustes, en orden: la funcion, su rotulo y su
 /// ayuda.
-const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 5] = [
+const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 12] = [
     (
         crate::jev::Funcion::Reunion,
         "ajustes2-jev-reunion",
@@ -458,6 +458,41 @@ const FUNCIONES_JEV: [(crate::jev::Funcion, &str, &str); 5] = [
         "ajustes2-jev-temas",
         "ajustes2-ayuda-jev-temas",
     ),
+    (
+        crate::jev::Funcion::TareasDichas,
+        "ajustes2-jev-tareas-dichas",
+        "ajustes2-ayuda-jev-tareas-dichas",
+    ),
+    (
+        crate::jev::Funcion::UrgenciaEnVivo,
+        "ajustes2-jev-urgencia-en-vivo",
+        "ajustes2-ayuda-jev-urgencia-en-vivo",
+    ),
+    (
+        crate::jev::Funcion::TemaOlvidado,
+        "ajustes2-jev-tema-olvidado",
+        "ajustes2-ayuda-jev-tema-olvidado",
+    ),
+    (
+        crate::jev::Funcion::TiempoPorTema,
+        "ajustes2-jev-tiempo-por-tema",
+        "ajustes2-ayuda-jev-tiempo-por-tema",
+    ),
+    (
+        crate::jev::Funcion::Decisiones,
+        "ajustes2-jev-decisiones",
+        "ajustes2-ayuda-jev-decisiones",
+    ),
+    (
+        crate::jev::Funcion::PreguntasPendientes,
+        "ajustes2-jev-preguntas-pendientes",
+        "ajustes2-ayuda-jev-preguntas-pendientes",
+    ),
+    (
+        crate::jev::Funcion::FechasAlHorario,
+        "ajustes2-jev-fechas-al-horario",
+        "ajustes2-ayuda-jev-fechas-al-horario",
+    ),
 ];
 
 /// El interruptor de una funcion de Jev en los ajustes.
@@ -468,6 +503,13 @@ fn jev_de(a: &mut pixpin_store::ajustes::Jev, f: crate::jev::Funcion) -> &mut bo
         crate::jev::Funcion::Urgencia => &mut a.urgencia,
         crate::jev::Funcion::Modelo => &mut a.modelo,
         crate::jev::Funcion::Temas => &mut a.temas,
+        crate::jev::Funcion::TareasDichas => &mut a.tareas_dichas,
+        crate::jev::Funcion::UrgenciaEnVivo => &mut a.urgencia_en_vivo,
+        crate::jev::Funcion::TemaOlvidado => &mut a.tema_olvidado,
+        crate::jev::Funcion::TiempoPorTema => &mut a.tiempo_por_tema,
+        crate::jev::Funcion::Decisiones => &mut a.decisiones,
+        crate::jev::Funcion::PreguntasPendientes => &mut a.preguntas_pendientes,
+        crate::jev::Funcion::FechasAlHorario => &mut a.fechas_al_horario,
     }
 }
 
