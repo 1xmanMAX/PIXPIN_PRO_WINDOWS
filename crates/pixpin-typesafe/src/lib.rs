@@ -30,7 +30,9 @@
 //!   [`urgencia_viva`] (la prioridad que cambia al hablar),
 //!   [`tiempo_de_temas`] (minutos por tema y el tema olvidado),
 //!   [`pendientes`] (preguntas sin respuesta), [`citas`] (al horario),
-//!   [`dictado`] (anotar en un chat) y [`repaso`] (repaso oral).
+//!   [`dictado`] (anotar en un chat) y [`repaso`] (repaso oral); y
+//!   [`en_la_reunion`], las de la reunion juntas en una peticion por frase
+//!   (lo que usa la app mientras graba).
 //!
 //! Sin clave no se llama a nadie: quien usa esto sigue como siempre.
 
@@ -41,6 +43,7 @@ pub mod claves;
 pub mod cliente;
 pub mod compromisos;
 pub mod dictado;
+pub mod en_la_reunion;
 pub mod fechas;
 pub mod modelo;
 pub mod pendientes;
