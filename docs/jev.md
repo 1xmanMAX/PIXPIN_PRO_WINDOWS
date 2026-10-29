@@ -279,63 +279,131 @@ JEV y Jev marca que temas ya se trataron».
 5. **La pagina compartida** (HTML y Markdown) lleva la agenda con su estado
    (✓ y minuto que salta, o «Sin tratar»).
 
-**La escucha en vivo** (`ventana_chat::grabar_clase::escucha`):
+**La escucha en vivo** (`ventana_chat::grabar_clase::escucha`). **En vivo
+de verdad** desde el 29-oct-2026 (el usuario: «en cuanto termino de decir
+un tema, que se marque»; los temas se dicen en cualquier orden). Antes iba
+por tramos de 15 s con Whisper y el ✓ llegaba 20-40 s tarde; ahora, frase a
+frase y con Jev mirando los ultimos 40 s cada vez que hay texto nuevo.
 
 - **No abre otro microfono**: se suscribe al PCM de la misma grabacion
   (`Grabadora::suscribir_pcm`). El hilo de la mezcla nunca espera: si la
   escucha va tarde, su suscripcion pierde bloques solo ella (la nota, el
   respaldo y el video no se enteran).
-- **Tramos de unos 15 s** (`pixpin_voz::en_vivo::Ventanero`), cortados en el
-  punto mas callado de sus ultimos 3 s, en mono a 16 kHz, cada uno con su
-  numero y el milisegundo de la grabacion en que empieza (en pausa no
-  corre, como la nota). Un hueco corto se rellena con silencio; uno largo
-  cierra el tramo.
-- **Cola de dos que tira el mas viejo** (`en_vivo::Cola`): si el texto va
+- **Frases** (`pixpin_voz::en_vivo::Frasero`), en mono a 16 kHz: se corta
+  **en cuanto se calla** quien habla (450 ms sin voz, RMS ≥ 300 cada 20 ms,
+  despues de medio segundo de voz), o en lo mas callado de los ultimos 2 s
+  si alguien habla 8 s sin parar. Lo callado de antes de la voz no se
+  guarda (salvo 300 ms). Cada frase lleva su numero, el milisegundo de la
+  grabacion en que empieza y en que se dejo de hablar, y cuanto silencio ya
+  se habia oido al cortarla (en pausa no corre, como la nota). Un hueco
+  corto se rellena con silencio; uno largo cierra la frase. Una tos suelta
+  no es frase.
+- **Cola de tres que tira la mas vieja** (`en_vivo::Cola`): si el texto va
   por detras se pierde texto en vivo, nunca grabacion.
-- **El texto**, en un hilo **por debajo de lo normal**, con **Whisper
-  *base*** con uno o dos hilos y sin arena (`Whisper::cargar_ligero`),
-  cargado al primer tramo con voz. **Se salta** (`en_vivo::Freno`): lo que
-  no tiene voz (menos del 10 % de trozos de 20 ms con RMS ≥ 300), todo
-  mientras el procesador pase del **85 %** (`prioridad::MedidorCpu`, con
-  `GetSystemTimes`) y, si un tramo tardo mas del **80 %** de lo que dura,
-  el siguiente. Sin el modelo de Whisper bajado no se escucha (se dice).
+- **El texto**, en un hilo **por debajo de lo normal**:
+  - **el reconocedor de Windows** (SAPI, sin red), si sabe el idioma:
+    `sapi::DeFrases`, montado una vez; a cada frase se le cambia la entrada
+    (`SetInput` con el audio en memoria), y la lee **mucho mas rapido que
+    en tiempo real** (una frase de 3 s en unas decimas). Si cambiar la
+    entrada falla o una frase no acaba a tiempo, se monta otra vez. Tres
+    fallos seguidos: a Whisper.
+  - si no, **Whisper *base*** con uno o dos hilos y sin arena
+    (`Whisper::cargar_ligero`), cargado a la primera frase. Su encoder oye
+    siempre 30 s (cuesta casi lo mismo con 2 que con 30), asi que el oido
+    corta con otra medida (`en_vivo::PARA_WHISPER`): **trozos de 5 s o
+    mas**, cortados en un silencio, o antes si se acaba el turno (1,5 s
+    callado). Sin solaparse: Jev no lee dos veces lo mismo.
+  - **Se salta** (`en_vivo::Freno`): lo que no tiene voz, todo mientras el
+    procesador pase del **85 %** (`prioridad::MedidorCpu`, `GetSystemTimes`,
+    medido 100 ms justo antes de cada frase) y, si una frase tardo mas del
+    **80 %** de lo que dura, la siguiente. Sin reconocedor de Windows ni
+    modelo de Whisper bajado no se escucha (se dice).
+- **Jev**, en su hilo (`temas-jev`): cada frase va al **rollo** de la
+  conversacion (`pixpin_typesafe::temas::Rollo`). En cuanto hay texto nuevo
+  (tres palabras o mas; un «vale» suelto espera a juntarse con lo
+  siguiente) y algun tema pendiente, **una peticion** con los ultimos 40 s.
+  **El ritmo** (`temas::Ritmo`): como mucho una peticion en vuelo y 1,5 s
+  entre una y otra; lo que llega mientras tanto **va junto en la
+  siguiente**. Sin texto nuevo no se pregunta. Tras un fallo, 5 s de
+  espera, y lo que no se miro va en la siguiente.
+- **La conexion se reusa**: la sesion de WinHTTP con `api.typesafe.ai` se
+  guarda abierta (`transporte::winhttp`), asi que cada peticion no vuelve
+  a hacer DNS, TCP ni TLS.
+- **El retraso se mide**: cada ✓ va al registro (`info`, «temas: Jev marca
+  un tema tratado») con lo que tardo desde que se dejo de hablar en la
+  ultima frase nueva (`desde_que_se_callo_ms`) y en la primera
+  (`desde_la_primera_frase_ms`), y lo que tardo Jev (`jev_ms`); en las
+  compilaciones de depuracion, tambien en la cabecera de la lista
+  («Escuchando… · ✓ 3,4 s»).
 - **Al terminar** (o tirar) la escucha se para en el acto (Whisper se
   cancela, lo ultimo que marco Jev se recoge) y **la transcripcion entera
   de despues es la de siempre**, con el motor elegido en Ajustes.
 
-**Estado** (uno por tramo con tres palabras o mas y algun tema pendiente):
-`reunion` (el titulo), `agenda` (todos los temas), `antes` (el texto del
-tramo anterior, de contexto; si no lo hay, no va) y `tramo` (lo que se
-acaba de decir).
+**Lo que se espera que tarde** (desde que se deja de hablar de un tema
+hasta el ✓), con el reconocedor de Windows: 0,45 s hasta cortar la frase +
+0,1 s de medir el procesador + 0,2-0,6 s de pasarla a texto + 0,3-0,8 s de
+Jev (con la conexion abierta; si habia una peticion en vuelo o hace menos
+de 1,5 s de la anterior, hasta ~1,5 s mas) ≈ **1-3 s**; si el tema necesita
+dos peticiones a medias (se va tratando poco a poco), lo que tarde la
+siguiente frase sobre el. Con Whisper: hasta que se juntan 5 s o se acaba
+el turno, mas 1-3 s de Whisper ≈ **3-8 s**. No medido aun en un equipo de
+verdad (el 29-oct-2026 no habia clave ni Windows a mano): mirar el registro.
 
-**Preguntas** (`preguntas::temas`), **dos Nouls por cada tema pendiente**
+**Estado** (`temas::estado`): `reunion` (el titulo), `agenda` (todos los
+temas) y `conversacion`, los ultimos 40 s pasados a texto:
+`conversacion.antes` (lo que ya miro Jev en la peticion anterior; si no
+hay, no va) y `conversacion.ahora` (lo nuevo, que aun no miro nadie: lo que
+se acaba de decir).
+
+```json
+{"reunion": "Reunión 29-10 10h05", "agenda": ["Cotización del viernes", "Paro de transportistas", "Notas de los estudiantes"],
+ "conversacion": {"antes": "…han subido bastante, la media está en catorce.", "ahora": "Vale, entonces las publicamos el lunes."}}
+```
+
+**Preguntas** (`preguntas::temas`), **tres Nouls por cada tema pendiente**
 (hasta 20 temas por peticion), con el tema dentro de la pregunta, en **una
-sola peticion por tramo** (comparten el estado):
+sola peticion** (comparten el estado):
 
-- `tratado_<id>`: «In `tramo`, do the speakers actually discuss the agenda
-  topic «<tema>»?». Si: hablan de el en serio (lo explican, opinan,
+- `tratado_<id>`: «In `conversacion`, do the speakers actually discuss the
+  agenda topic «<tema>»?». Si: hablan de el en serio (lo explican, opinan,
   preguntan y contestan, deciden algo). **No, el caso que confunde**: solo
   se nombra de pasada o **se deja para luego** («del presupuesto hablamos
-  al final», «eso lo vemos la próxima semana»), o el tramo es de otra cosa;
-  lo dicho solo en `antes` no cuenta.
-- `cerrado_<id>`: «In `tramo`, is the agenda topic «<tema>» settled with a
-  decision, an answer or an agreed next step?». No: sigue abierto, se
-  aplaza («lo dejamos para la próxima») o no se habla de el.
+  al final», «eso lo vemos la próxima semana»), o se habla de otra cosa.
+- `cerrado_<id>`: «In `conversacion`, is the agenda topic «<tema>» settled
+  with a decision, an answer or an agreed next step?». No: sigue abierto,
+  se aplaza («lo dejamos para la próxima») o no se habla de el.
+- `ahora_<id>`: «Is `conversacion.ahora` about the agenda topic
+  «<tema>»?». Si: lo que se acaba de decir anade algo del tema. No: es de
+  otra cosa, o solo lo nombra para dejarlo para luego; lo dicho solo en
+  `conversacion.antes` no cuenta.
 
-**Tabla** (`temas::Seguimiento::decidir`), por tema y por tramo, con SI =
-0.7 y CASI = 0.5:
+**Tabla** (`temas::Seguimiento::decidir`), por tema y por peticion, con SI
+= 0.7 y CASI = 0.5. «Recordado»: una peticion anterior, de hace como mucho
+60 s de grabacion, en que el tema quedo a medias.
 
-| tratado (este tramo) | cerrado (este tramo) | el tramo anterior (el numero justo antes) | se marca |
-|---|---|---|---|
-| ≥ SI | — | — | tratado: `ms` de este tramo, `p` = tratado |
-| ≥ CASI y < SI | ≥ SI | — | tratado (se hablo y se cerro): `ms` de este tramo, `p` = cerrado |
-| ≥ CASI y < SI | < SI | tratado ≥ CASI | tratado (dos tramos seguidos a medias): `ms` del anterior, `p` = la mayor |
-| ≥ CASI y < SI | < SI | otro, o se salto | nada aun: se recuerda para el siguiente |
-| < CASI | — | — | nada (y se olvida lo recordado) |
+| tratado | cerrado | ahora | recordado | se marca |
+|---|---|---|---|---|
+| ≥ SI | — | — | — | tratado, `p` = tratado |
+| ≥ CASI y < SI | ≥ SI | — | — | tratado (se hablo y se cerro), `p` = cerrado |
+| ≥ CASI y < SI | < SI | ≥ CASI | si | tratado (dos peticiones a medias, la segunda con algo nuevo del tema), `p` = la mayor |
+| ≥ CASI y < SI | < SI | < CASI, o sin recordado | — | nada aun: se recuerda (o se mantiene lo recordado) |
+| < CASI | — | — | — | nada (y se olvida lo recordado) |
+
+**Por que `ahora`**: cada peticion vuelve a llevar los 40 s de antes, asi
+que «dos a medias seguidas» podria ser la misma frase leida dos veces. La
+segunda solo cuenta si **trae algo nuevo del tema**. Las dos primeras filas
+no lo piden: con mas conversacion delante, Jev puede ver claro lo que antes
+no.
+
+**El minuto** (`ms`): el del principio de `conversacion.ahora` (la primera
+frase nueva) si lo nuevo es del tema, o el del principio de la conversacion
+si no; si habia algo recordado, el de entonces (ahi empezo a tratarse).
 
 «Cerrado» sin «tratado» (< CASI) no marca: el cierre seria de otra cosa.
-Un tramo saltado (equipo ocupado) rompe la racha de «dos seguidos». **Jev
-solo marca, nunca desmarca, y solo lo pendiente que nadie toco a mano.**
+**Un tema que solo se anuncia para luego no se marca** (lo dicen los
+criterios de `tratado` y de `ahora`). **Jev solo marca, nunca desmarca, y
+solo lo pendiente que nadie toco a mano** (lo que se marco a mano mientras
+Jev pensaba tampoco).
 
 **Lo hecho a mano manda** (`pixpin_proyecto::temas`): un tema que la
 persona marco **o desmarco** queda `aMano` y Jev ya no lo toca; la escucha
@@ -355,7 +423,7 @@ deja de preguntar por el.
 - `id`: estable (`t1`, `t2`… en el orden en que se apuntaron; uno quitado
   no se reutiliza). Es lo que enlaza la marca de Jev con su tema.
 - `hecho`: ya se trato. `ms`: el milisegundo de la grabacion en que se
-  trato (Jev: el principio del tramo; a mano grabando: el del clic; a mano
+  trato (Jev: ver «El minuto» arriba; a mano grabando: el del clic; a mano
   al estudiar: no va). `p`: la probabilidad de Jev (0-1, dos decimales),
   solo si lo marco el.
 - `porJev`: lo marco Jev. `aMano`: la persona lo toco (marcado o
@@ -384,9 +452,10 @@ HTTPS:
   el nombre de su chat y los cinco ultimos mensajes escritos de ese chat.
 - **Modelo**: el pedido al asistente y los tres ultimos mensajes de la
   conversacion.
-- **Temas**: el titulo de la reunion, los temas y, por cada tramo de unos
-  15 s con voz, su texto (pasado a texto **en este equipo**) y el del
-  tramo anterior. Nunca el audio.
+- **Temas**: el titulo de la reunion, los temas y, cada vez que se dice
+  algo nuevo, el texto de los ultimos 40 s (pasado a texto **en este
+  equipo**, con el reconocedor de Windows o Whisper, sin red). Nunca el
+  audio.
 
 La clave va cifrada con DPAPI en
 `%LOCALAPPDATA%\PixPinMax\claves\typesafe.clave`: nunca en el TOML de
@@ -409,10 +478,11 @@ que cuesta en PixPin, mas o menos:
   al no mandar a Sonnet lo facil, y al no mandar a Haiku lo dificil, es
   mucho mas).
 
-- los temas de una reunion de una hora con 8 temas: unos 240 tramos con
-  voz, ~600 tokens cada uno (los tramos, la agenda y 16 preguntas) ≈
-  150 000 tokens ≈ **0.006 $** (menos segun se van tratando: los temas
-  hechos ya no se preguntan).
+- los temas de una reunion de una hora con 8 temas, en vivo: una
+  peticion cada 2-4 s mientras se habla (unas 1 000-1 500), ~2 800 tokens
+  cada una (los 40 s, la agenda y 24 preguntas) ≈ 3-4 millones de tokens
+  ≈ **0.15 $** como mucho (menos segun se van tratando: los temas hechos ya
+  no se preguntan, y en silencio no se pregunta).
 
 Lo identico sale del cache del proceso y no se paga dos veces.
 
@@ -427,15 +497,22 @@ Lo identico sale del cache del proceso y no se paga dos veces.
 - `pixpin-proyecto`: `clase` (el formato de `importantes`) y
   `clase_exportar` (las chapitas y el filtro de la pagina).
 - `pixpin-anki`: lo dicho por captura y quedarse con algunas.
-- Temas: `pixpin-typesafe` `temas` (la tabla, dos tramos seguidos, el
-  estado, una peticion por tramo, los fallos como errores;
-  `de_verdad_con_la_api` con `#[ignore]`), `pixpin-proyecto` `temas` (leer
-  lo pegado y las listas, el formato, lo hecho a mano manda) y
-  `clase_exportar` (la agenda en la pagina), `pixpin-voz` `en_vivo`
-  (tramos, cortes, huecos, 44,1/48 kHz a 16 kHz, la cola y el freno).
+- Temas: `pixpin-typesafe` `temas` (la tabla, dos a medias solo con algo
+  nuevo, lo recordado que caduca, el rollo y su ventana de 40 s, el ritmo
+  con un reloj de mentira —una en vuelo, 1,5 s entre peticiones, lo que
+  llega se junta, 5 s tras un fallo—, el estado, una peticion por ventana
+  con respuestas grabadas, los fallos como errores; `de_verdad_con_la_api`
+  con `#[ignore]`: una reunion inventada, frase a frase, con tres temas en
+  otro orden que la agenda y uno dejado para luego, y lo que tarda cada
+  peticion), `pixpin-proyecto` `temas` (leer lo pegado y las listas, el
+  formato, lo hecho a mano manda) y `clase_exportar` (la agenda en la
+  pagina), `pixpin-voz` `en_vivo` (las frases: cortar al callarse, la tos,
+  quien no para, la medida de Whisper, huecos, 44,1/48 kHz a 16 kHz, la
+  cola y el freno).
 
 Las preguntas se escribieron sin probarlas contra la API (no habia clave el
-28-oct-2026): antes de fiarse, probar con casos reales, dificiles y
+28-oct-2026 ni el 29, cuando los temas pasaron a ir en vivo; la prueba de
+los temas en vivo solo corre en Windows): antes de fiarse, probar con casos reales, dificiles y
 negativos (la guia de TypeSafe, «Test with the live API») y ajustar el
 texto en `preguntas.rs`, no los umbrales a unos pocos casos.
 
@@ -469,22 +546,35 @@ preguntas que el PC:
    pendiente de una lista de tareas). Los `id` son `t1`, `t2`… como en el
    PC.
 2. **Grabando** con su servicio en primer plano (el de siempre: sigue con
-   la pantalla apagada), **pasa a texto en vivo** por tramos de unos 15 s:
-   Whisper *base* o Qwen3-ASR en el aparato (los mismos modelos que el PC)
-   o, para ir mas ligero, `SpeechRecognizer` en el aparato
-   (`createOnDeviceSpeechRecognizer` con `EXTRA_PREFER_OFFLINE` y
-   resultados parciales, como el motor «Google» de `MotorGoogle.kt`), que
-   da el texto mientras se habla; se junta en tramos de ~15 s con el
-   milisegundo de la grabacion en que empieza cada uno. **La grabacion va
-   primero**: sin bateria (< 20 %), con el aparato caliente o si el texto
-   va por detras, se saltan tramos (cola de dos que tira el mas viejo,
-   como `pixpin_voz::en_vivo`); la grabacion no se toca.
-3. **Cada tramo**, una peticion a Jev con el estado `{reunion, agenda,
-   antes, tramo}` y dos Nouls por tema pendiente (hasta 20), **copiando
-   el texto tal cual de `crates/pixpin-typesafe/src/preguntas.rs`**
-   (`preguntas::temas::se_trato` y `quedo_cerrado`; nombres
-   `tratado_<id>` y `cerrado_<id>`), y la **misma tabla** (arriba;
-   `pixpin_typesafe::temas::Seguimiento::decidir`). Sin clave en el movil,
+   la pantalla apagada), **pasa a texto en vivo, frase a frase**, con
+   `SpeechRecognizer` en el aparato (`createOnDeviceSpeechRecognizer` con
+   `EXTRA_PREFER_OFFLINE`, `EXTRA_PARTIAL_RESULTS` y, en Android 13 o mas,
+   `EXTRA_SEGMENTED_SESSION` para que no pare en cada silencio; si no hay,
+   se vuelve a lanzar en `onResults`/`onEndOfSegmentedSession`, como el
+   motor «Google» de `MotorGoogle.kt`). **Cada resultado final** (o cada
+   segmento) es una frase, con el milisegundo de la grabacion en que
+   empezo y en que se dejo de hablar; los parciales solo se ensenan, no se
+   mandan (cambian). Si el aparato no tiene reconocedor sin red: Whisper
+   *base* o Qwen3-ASR en el aparato sobre trozos de 5 s o mas cortados en
+   un silencio (la medida `PARA_WHISPER` de `pixpin_voz::en_vivo`). **La
+   grabacion va primero**: sin bateria (< 20 %), con el aparato caliente o
+   si el texto va por detras, se saltan frases (cola de tres que tira la
+   mas vieja); la grabacion no se toca. Si el reconocedor del sistema no
+   puede compartir el microfono con la grabacion, el texto en vivo cae a
+   Whisper sobre el PCM de la grabacion (nunca se para la grabacion por
+   esto).
+3. **La misma politica que el PC** (arriba): las frases a un rollo de 40 s
+   (`pixpin_typesafe::temas::Rollo`); en cuanto hay tres palabras nuevas y
+   algun tema pendiente, una peticion con el estado `{reunion, agenda,
+   conversacion: {antes, ahora}}` y tres Nouls por tema pendiente (hasta
+   20), **copiando el texto tal cual de
+   `crates/pixpin-typesafe/src/preguntas.rs`** (`preguntas::temas::se_trato`,
+   `quedo_cerrado` y `en_lo_ultimo`; nombres `tratado_<id>`, `cerrado_<id>`
+   y `ahora_<id>`); como mucho una en vuelo, 1,5 s entre una y otra, lo que
+   llega mientras tanto va junto en la siguiente, 5 s tras un fallo
+   (`temas::Ritmo`); la **misma tabla** (`temas::Seguimiento::decidir`,
+   con lo recordado que caduca a los 60 s). Una sola conexion HTTPS que se
+   reusa (OkHttp ya lo hace con un solo cliente). Sin clave en el movil,
    sin red o si Jev falla: no se marca nada solo, se dice, y se marca a
    mano.
 4. **En la pantalla de grabar**, la lista con sus casillas: un toque marca

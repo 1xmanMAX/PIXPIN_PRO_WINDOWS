@@ -138,12 +138,15 @@ pub mod reunion {
 }
 
 /// **Que temas de la agenda ya se trataron** en una reunion que se esta
-/// grabando: una peticion por tramo de unos 15 s pasado a texto en vivo, con
-/// dos Nouls por cada tema aun pendiente (el tema va dentro de la pregunta:
-/// cada tema, su pregunta). Estado: `reunion` (el titulo, si lo hay),
-/// `agenda` (todos los temas, para que se sepa de que otros se hablara),
-/// `antes` (el tramo anterior, de contexto; si no lo hay, no va) y `tramo`
-/// (lo que se acaba de decir). Lo copia el movil tal cual (`docs/jev.md`).
+/// grabando, **en vivo** (29-oct-2026): una peticion cada vez que llega
+/// texto nuevo (frase a frase, como mucho una cada 1,5 s), con tres Nouls
+/// por cada tema aun pendiente (el tema va dentro de la pregunta: cada
+/// tema, su pregunta). Estado: `reunion` (el titulo, si lo hay), `agenda`
+/// (todos los temas, para que se sepa de que otros se hablara) y
+/// `conversacion`, los ultimos ~40 s pasados a texto: `conversacion.antes`
+/// (lo ya mirado en la peticion anterior; si no hay, no va) y
+/// `conversacion.ahora` (lo que se acaba de decir y aun nadie miro). Lo
+/// copia el movil tal cual (`docs/jev.md`).
 pub mod temas {
     use super::*;
 
@@ -152,27 +155,34 @@ pub mod temas {
         format!("tratado_{id}")
     }
 
-    /// Y el de «quedo cerrado».
+    /// El de «quedo cerrado».
     pub fn cerrado(id: &str) -> String {
         format!("cerrado_{id}")
     }
 
-    /// Por encima de esto en dos tramos seguidos, tratado (ver
-    /// `crate::temas`): una conversacion larga sobre un tema se reparte en
-    /// varios tramos y en cada uno parece a medias.
+    /// Y el de «se habla de el en lo ultimo».
+    pub fn ahora(id: &str) -> String {
+        format!("ahora_{id}")
+    }
+
+    /// Por encima de esto en dos peticiones, la segunda con algo nuevo del
+    /// tema, tratado (ver `crate::temas`): una conversacion larga sobre un
+    /// tema se reparte en muchas frases y al principio parece a medias.
     pub const CASI: f64 = 0.5;
 
-    /// Cuantos temas pendientes van en una peticion (dos preguntas cada
-    /// uno). Los demas, en el tramo siguiente.
+    /// Cuantos temas pendientes van en una peticion (tres preguntas cada
+    /// uno). Los demas, en la siguiente.
     pub const POR_PETICION: usize = 20;
 
-    /// **¿Se trato el tema en `tramo`?** El caso que confunde, dicho en el
-    /// «no»: nombrarlo de pasada o dejarlo para luego no es tratarlo.
+    /// **¿Se trato el tema en `conversacion`?** El caso que confunde, dicho
+    /// en el «no»: nombrarlo de pasada o dejarlo para luego no es tratarlo.
     pub fn se_trato(tema: &str) -> Pregunta {
         Pregunta::noul(
-            &format!("In `tramo`, do the speakers actually discuss the agenda topic «{tema}»?"),
-            "They talk about it in substance in `tramo`: they explain it, give opinions, ask and answer about it, or decide something about it, e.g. for «presupuesto 2027»: «el presupuesto queda en cuarenta mil, lo aprobamos».",
-            "It is only named in passing or announced for later, e.g. «del presupuesto hablamos al final» or «eso lo vemos la próxima semana»; or `tramo` is about another topic. What was said only in `antes` does not count.",
+            &format!(
+                "In `conversacion`, do the speakers actually discuss the agenda topic «{tema}»?"
+            ),
+            "They talk about it in substance: they explain it, give opinions, ask and answer about it, or decide something about it, e.g. for «presupuesto 2027»: «el presupuesto queda en cuarenta mil, lo aprobamos».",
+            "It is only named in passing or announced for later, e.g. «del presupuesto hablamos al final» or «eso lo vemos la próxima semana»; or `conversacion` is about other topics.",
         )
     }
 
@@ -181,14 +191,25 @@ pub mod temas {
     pub fn quedo_cerrado(tema: &str) -> Pregunta {
         Pregunta::noul(
             &format!(
-                "In `tramo`, is the agenda topic «{tema}» settled with a decision, an answer or an agreed next step?"
+                "In `conversacion`, is the agenda topic «{tema}» settled with a decision, an answer or an agreed next step?"
             ),
             "Something is concluded about it, e.g. «entonces queda así», «lo aprobamos» or «Ana se encarga y lo revisamos el lunes».",
-            "It is still open: options are being compared, it is postponed, e.g. «lo dejamos para la próxima», or it is not talked about in `tramo`.",
+            "It is still open: options are being compared, it is postponed, e.g. «lo dejamos para la próxima», or it is not talked about in `conversacion`.",
         )
     }
 
-    /// Las dos preguntas de cada tema, con su nombre.
+    /// **¿Lo que se acaba de decir es de ese tema?** Para que dos peticiones
+    /// a medias no cuenten dos veces lo mismo: la segunda tiene que traer
+    /// algo nuevo del tema.
+    pub fn en_lo_ultimo(tema: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Is `conversacion.ahora` about the agenda topic «{tema}»?"),
+            "What was just said adds something about it: a comment, a figure, a question, an answer or a decision about it, e.g. for «presupuesto 2027»: «y en personal nos quedamos en doce mil».",
+            "`conversacion.ahora` is about something else, or only names it to leave it for later, e.g. «del presupuesto hablamos luego»; what was said only in `conversacion.antes` does not count.",
+        )
+    }
+
+    /// Las tres preguntas de cada tema, con su nombre.
     pub fn preguntas(temas: &[(&str, &str)]) -> Vec<(String, Pregunta)> {
         temas
             .iter()
@@ -196,6 +217,7 @@ pub mod temas {
                 [
                     (tratado(id), se_trato(texto)),
                     (cerrado(id), quedo_cerrado(texto)),
+                    (ahora(id), en_lo_ultimo(texto)),
                 ]
             })
             .collect()
@@ -386,17 +408,20 @@ mod pruebas {
                 assert!(texto.contains('`'), "{n} no nombra su campo del estado");
             }
         }
-        // Los temas: dos por tema, cada una con el tema dentro y nombrando
-        // `tramo`.
+        // Los temas: tres por tema, cada una con el tema dentro y nombrando
+        // `conversacion` (la de lo ultimo, `conversacion.ahora`).
         let t = temas::preguntas(&[("t1", "Presupuesto"), ("t2", "Viaje")]);
-        assert_eq!(t.len(), 4);
+        assert_eq!(t.len(), 6);
         for (n, p) in &t {
             let texto = serde_json::to_string(p).unwrap();
-            assert!(texto.contains("`tramo`"), "{n}");
+            assert!(texto.contains("`conversacion"), "{n}");
             assert!(texto.contains("Presupuesto") || texto.contains("Viaje"));
         }
         assert_eq!(t[0].0, "tratado_t1");
         assert_eq!(t[1].0, "cerrado_t1");
+        assert_eq!(t[2].0, "ahora_t1");
+        let ahora = serde_json::to_string(&t[2].1).unwrap();
+        assert!(ahora.contains("`conversacion.ahora`"));
         // Sin mensajes recientes, no se pregunta por ellos.
         assert!(
             !urgencia::preguntas(false)
