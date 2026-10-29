@@ -86,6 +86,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use pixpin_codec::imagen::ImagenRgba;
 use pixpin_geom::{Punto, Rect};
+use pixpin_proyecto::acta_viva::{self, EstadoPropuesta, Tipo as TipoPropuesta};
 use pixpin_proyecto::clase::{self, Fila, Marcador};
 use pixpin_proyecto::temas as agenda;
 use pixpin_proyecto::{almacen, cuaderno};
@@ -319,6 +320,10 @@ struct Clase {
     importantes: Option<Vec<clase::Importante>>,
     /// Los temas de la reunion (`resto["temas"]`), en el orden de la agenda.
     temas: Vec<agenda::Tema>,
+    /// Lo que saco Jev mientras se grababa (`acta_viva`): los minutos de
+    /// cada tema, las decisiones, las preguntas sin respuesta y lo que se
+    /// propuso.
+    acta: acta_viva::Acta,
     senales: Vec<Senal>,
     /// El texto con las senales en su minuto, y el minuto de cada fila.
     filas: Vec<Fila>,
@@ -405,6 +410,7 @@ impl Clase {
             lineas,
             importantes: clase::importantes_de(&voz.resto),
             temas: agenda::temas_de(&voz.resto),
+            acta: acta_viva::de(&voz.resto),
             senales: Vec::new(),
             filas: Vec::new(),
             tiempos_filas: Vec::new(),
@@ -881,6 +887,10 @@ enum Zona {
     /// Lo que quedo sin tratar: a la proxima reunion, o al Inbox de Tareas.
     TemasProxima,
     TemasATareas,
+    /// Las preguntas que nadie contesto, al Inbox de Tareas.
+    PreguntasATareas,
+    /// Aceptar una propuesta que quedo sin tocar (su sitio en el acta).
+    Aceptar(usize),
 }
 
 /// Que se esta viendo en grande: al cambiar, el encuadre vuelve a encajado.
@@ -1402,6 +1412,7 @@ impl Vista {
         self.clase.lineas = nueva.lineas;
         self.clase.importantes = nueva.importantes;
         self.clase.temas = nueva.temas;
+        self.clase.acta = nueva.acta;
         self.clase.nombre = nueva.nombre;
         self.clase.clips = nueva.clips;
         self.clase.poner_senales(nueva.senales);
@@ -2270,9 +2281,64 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
             args.set("n", n as i64);
             v.avisar(textos.t_args("clase-temas-anadidos", &args));
         }
+        Zona::PreguntasATareas => {
+            let preguntas: Vec<String> = v
+                .clase
+                .acta
+                .preguntas_abiertas
+                .iter()
+                .map(|d| d.texto.clone())
+                .collect();
+            let n = crate::jev::en_vivo::preguntas_a_tareas(&v.raiz, &preguntas, &v.clase.nombre);
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("n", n as i64);
+            v.avisar(textos.t_args("clase-acta-anadidas", &args));
+        }
+        Zona::Aceptar(i) => aceptar_propuesta(v, i, textos),
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
+}
+
+/// **Acepta una propuesta** de la reunion que quedo sin tocar: a Tareas,
+/// como desde la barra, y la nota la apunta como aceptada.
+fn aceptar_propuesta(v: &mut Vista, i: usize, textos: &Catalogo) {
+    let Some(p) = v
+        .clase
+        .acta
+        .propuestas
+        .get(i)
+        .filter(|p| p.estado == EstadoPropuesta::Pendiente)
+        .cloned()
+    else {
+        return;
+    };
+    let hecho = match p.tipo {
+        TipoPropuesta::Tarea => {
+            crate::jev::en_vivo::apuntar_tarea(&v.raiz, &p, &v.clase.nombre).map(|_| ())
+        }
+        TipoPropuesta::Evento => crate::jev::en_vivo::apuntar_evento(&v.raiz, &p, &v.clase.nombre),
+    };
+    if let Err(e) = hecho {
+        tracing::warn!(?e, "reunion: la propuesta no se apunto");
+        v.avisar(textos.t("chat-no-se-pudo"));
+        return;
+    }
+    v.clase.acta.propuestas[i].estado = EstadoPropuesta::Aceptada;
+    let acta = v.clase.acta.clone();
+    if let Err(e) = cambiar_la_nota(&v.raiz, &v.clase.proyecto, &v.clase.id, |m| {
+        let mut a = acta_viva::de(&m.resto);
+        if let Some(x) = a.propuestas.iter_mut().find(|x| x.id == p.id) {
+            x.estado = EstadoPropuesta::Aceptada;
+        } else {
+            a = acta;
+        }
+        acta_viva::poner(&mut m.resto, &a);
+        true
+    }) {
+        tracing::warn!(?e, "reunion: la nota no apunto la propuesta aceptada");
+    }
+    v.avisar(textos.t("clase-acta-aceptada"));
 }
 
 fn tecla(v: &mut Vista, vk: u32, ctrl: bool, textos: &Catalogo, vivo: &mut bool) {
@@ -2947,6 +3013,7 @@ fn pintar_senales(
     if !v.clase.temas.is_empty() {
         y = pintar_temas(p, v, tema, e, textos, y);
     }
+    y = pintar_acta(p, v, tema, e, textos, y);
     let titulo = format!(
         "{} · {}",
         textos.t("estudiar-marcadores"),
@@ -3182,6 +3249,19 @@ fn pintar_temas(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
             (false, _) => textos.t("clase-temas-sin-tratar"),
             _ => String::new(),
         };
+        // Y lo que se hablo de el, si se conto (`tiempoPorTema`).
+        let derecha = match v
+            .clase
+            .acta
+            .tiempo_por_tema
+            .as_ref()
+            .and_then(|x| x.de(&t.id))
+            .filter(|ms| *ms > 0)
+        {
+            Some(ms) if derecha.is_empty() => acta_viva::duracion_corta(ms),
+            Some(ms) => format!("{derecha} · {}", acta_viva::duracion_corta(ms)),
+            None => derecha,
+        };
         let tam = 12.5 * e;
         let (dw, _) = p.medir_texto(&derecha, tam);
         if !derecha.is_empty() {
@@ -3217,6 +3297,164 @@ fn pintar_temas(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
         y += 30.0 * e;
     }
     y + 10.0 * e
+}
+
+/// **Lo de la reunion en vivo**, debajo de la agenda: las decisiones (un
+/// clic salta a su minuto), las preguntas sin respuesta (con «Añadir a
+/// Tareas») y las propuestas que nadie acepto ni descarto (con «Aceptar»).
+/// Devuelve donde sigue lo de debajo.
+fn pintar_acta(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalogo, y0: f32) -> f32 {
+    let caja = v.disp.senales;
+    let m = 12.0 * e;
+    let mut y = y0;
+    let acta = v.clase.acta.clone();
+    let pendientes: Vec<(usize, &acta_viva::Propuesta)> = acta
+        .propuestas
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.estado == EstadoPropuesta::Pendiente)
+        .collect();
+    let bloques: [(&str, Vec<(i64, String, Option<Zona>)>, Option<(&str, Zona)>); 3] = [
+        (
+            "clase-acta-decisiones",
+            acta.decisiones
+                .iter()
+                .map(|d| (d.ms, d.texto.clone(), None))
+                .collect(),
+            None,
+        ),
+        (
+            "clase-acta-preguntas",
+            acta.preguntas_abiertas
+                .iter()
+                .map(|d| (d.ms, d.texto.clone(), None))
+                .collect(),
+            Some(("clase-temas-a-tareas", Zona::PreguntasATareas)),
+        ),
+        (
+            "clase-acta-propuestas",
+            pendientes
+                .iter()
+                .map(|(i, p)| {
+                    let marca = match p.tipo {
+                        TipoPropuesta::Tarea => "＋",
+                        TipoPropuesta::Evento => "📅",
+                    };
+                    let cuando = match (&p.fecha, &p.hora) {
+                        (Some(f), Some(h)) => format!(" · {f} {h}"),
+                        (Some(f), None) => format!(" · {f}"),
+                        _ => String::new(),
+                    };
+                    (
+                        p.ms,
+                        format!("{marca} {}{cuando}", p.texto),
+                        Some(Zona::Aceptar(*i)),
+                    )
+                })
+                .collect(),
+            None,
+        ),
+    ];
+    for (clave, filas, boton) in bloques {
+        if filas.is_empty() {
+            continue;
+        }
+        if y + 28.0 * e > caja.y + caja.alto {
+            break;
+        }
+        let titulo = format!("{} · {}", textos.t(clave), filas.len());
+        p.texto(&titulo, caja.x + m, y, 14.0 * e, tema.texto);
+        if let Some((clave, zona)) = boton {
+            let rotulo = textos.t(clave);
+            let tam = 12.0 * e;
+            let alto = 22.0 * e;
+            let (w, h) = p.medir_texto(&rotulo, tam);
+            let b = RectF {
+                x: caja.x + caja.ancho - m - w - 20.0 * e,
+                y: y - 2.0 * e,
+                ancho: w + 20.0 * e,
+                alto,
+            };
+            if b.x > caja.x + m + p.medir_texto(&titulo, 14.0 * e).0 + 8.0 * e {
+                let encima = dentro(b, v.raton);
+                p.rellenar_redondeado(
+                    b,
+                    alto / 2.0,
+                    con_alfa(AMBAR, if encima { 0.32 } else { 0.2 }),
+                );
+                p.texto(
+                    &rotulo,
+                    b.x + 10.0 * e,
+                    b.y + (alto - h) / 2.0,
+                    tam,
+                    tema.texto,
+                );
+                v.zonas.push((b, zona));
+            }
+        }
+        y += 28.0 * e;
+        for (ms, texto, aceptar) in filas {
+            let fila = RectF {
+                x: caja.x + m,
+                y,
+                ancho: caja.ancho - 2.0 * m,
+                alto: 28.0 * e,
+            };
+            if fila.y + fila.alto > caja.y + caja.alto {
+                break;
+            }
+            if dentro(fila, v.raton) {
+                p.rellenar_redondeado(fila, 8.0 * e, tema.fila_sobre);
+            }
+            p.texto(
+                &pixpin_voz::marca_de_tiempo(ms),
+                fila.x + 8.0 * e,
+                fila.y + 7.0 * e,
+                12.5 * e,
+                AMBAR,
+            );
+            let mut ancho_texto = fila.ancho - 72.0 * e;
+            v.zonas.push((fila, Zona::Ir(ms)));
+            if let Some(z) = aceptar {
+                let rotulo = textos.t("clase-acta-aceptar");
+                let tam = 12.0 * e;
+                let (w, h) = p.medir_texto(&rotulo, tam);
+                let b = RectF {
+                    x: fila.x + fila.ancho - w - 24.0 * e,
+                    y: fila.y + 3.0 * e,
+                    ancho: w + 20.0 * e,
+                    alto: 22.0 * e,
+                };
+                let encima = dentro(b, v.raton);
+                p.rellenar_redondeado(
+                    b,
+                    11.0 * e,
+                    con_alfa(hex(0x22a06b), if encima { 0.45 } else { 0.3 }),
+                );
+                p.texto(
+                    &rotulo,
+                    b.x + 10.0 * e,
+                    b.y + (22.0 * e - h) / 2.0,
+                    tam,
+                    tema.texto,
+                );
+                // Despues de la fila: gana el boton.
+                v.zonas.push((b, z));
+                ancho_texto -= b.ancho + 8.0 * e;
+            }
+            p.texto_linea(
+                &texto,
+                fila.x + 64.0 * e,
+                fila.y + 6.0 * e,
+                13.0 * e,
+                ancho_texto,
+                tema.texto,
+            );
+            y += 30.0 * e;
+        }
+        y += 10.0 * e;
+    }
+    y
 }
 
 /// Lo que mide la columna del minuto en el texto.
