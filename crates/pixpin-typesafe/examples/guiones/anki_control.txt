@@ -1,0 +1,36 @@
+# Tarjetas de Anki, casos de control (no se usaron para ajustar las
+# preguntas).
+# clase: Física 1.º Bachillerato - Leyes de Newton
+
+# caso: t01
+# minuto: 0:20
+# dicho: A ver, los del fondo, sentaos ya que empezamos, y apagad los móviles.
+# espera: t01 sobra
+
+# caso: t02
+# minuto: 3:05
+# dicho: La segunda ley de Newton dice que la fuerza es igual a la masa por la aceleración, F igual a m por a.
+# espera: t02 queda
+
+# caso: t03
+# minuto: 6:40
+# dicho: Esto lo pregunto seguro en el parcial: la unidad de fuerza es el newton, kilogramo por metro partido por segundo al cuadrado.
+# espera: t03 queda
+
+# caso: t04
+# minuto: 9:30
+# dicho: El otro día en el autobús casi me caigo cuando frenó, ja, ja.
+# espera-no: t04 queda
+
+# caso: t05
+# minuto: 12:10
+# dicho: La tercera ley es la de acción y reacción: si un cuerpo empuja a otro, el otro le empuja con la misma fuerza en sentido contrario.
+# espera: t05 queda
+
+# caso: t06
+# minuto: 15:00
+# dicho: Vale, ¿alguna duda? ¿No? Pues seguimos, que vamos justos de tiempo.
+# espera: t06 sobra
+
+# espera: t02 se manda
+# espera: t06 no se manda

@@ -1,0 +1,27 @@
+# Etiquetas solas, casos de control (no se usaron para ajustar las
+# preguntas): otras etiquetas.
+# etiqueta: Coche
+# etiqueta: Casa
+# etiqueta: Deporte
+# etiqueta: Banco
+# etiqueta: Colegio de los niños
+
+# caso: n01
+# texto: ITV del coche: cita el jueves 13 a las 9:15 en la estación de Alcobendas. Llevar la ficha técnica.
+# espera: n01 + coche
+
+# caso: n02
+# texto: Reunión de padres de 3.º B el lunes a las 17:00; hablar con la tutora de las notas de Lucas.
+# espera: n02 + colegio de los ninos
+
+# caso: n03
+# texto: Plan de entrenamiento: lunes 5 km suaves, miércoles series de 400 m, sábado tirada larga de 12 km.
+# espera: n03 + deporte
+
+# caso: n04
+# texto: Transferencia recibida: 1.250,00 € de Inmobiliaria Sol. Saldo disponible: 3.410,22 €.
+# espera: n04 + banco
+
+# caso: n05
+# texto: Poema que me gustó: «caminante, no hay camino, se hace camino al andar».
+# espera: n05 sin etiquetas

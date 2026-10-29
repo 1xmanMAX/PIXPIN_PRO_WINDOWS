@@ -335,6 +335,12 @@ pub struct Jev {
     pub preguntas_pendientes: bool,
     /// «Nos vemos el martes a las 3» → un evento propuesto para el horario.
     pub fechas_al_horario: bool,
+    /// **Dictar al chat** (29-oct-2026): al dictar en la caja del chat,
+    /// «anota en el chat de la obra que…» propone anotarlo en ese chat.
+    pub dictado: bool,
+    /// **Repasar en voz alta** (29-oct-2026): en «Estudiar la clase», se
+    /// explica la clase de viva voz y se ve que puntos clave se cubren.
+    pub repaso: bool,
 }
 
 impl Default for Jev {
@@ -352,6 +358,8 @@ impl Default for Jev {
             decisiones: true,
             preguntas_pendientes: true,
             fechas_al_horario: true,
+            dictado: true,
+            repaso: true,
         }
     }
 }

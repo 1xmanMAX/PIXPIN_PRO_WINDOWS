@@ -1,0 +1,21 @@
+# Citas de un chat, casos de control (no se usaron para ajustar las
+# preguntas). El 28-oct-2026 es miercoles.
+# chat: Familia
+# fecha: 2026-10-28
+
+[0:00] Mamá: El domingo comemos todos en casa de la abuela a las 2.
+[0:40] Yo: Genial, llevo yo el postre.
+[1:10] Dani: ¿Quedamos el viernes a las 7 para comprar el regalo de papá?
+[1:50] Yo: Sí, me va bien.
+[2:30] Mamá: El médico me dijo el lunes pasado que todo está bien.
+[3:00] Dani: Acuérdate de pagar la luz antes del 5 de noviembre.
+[3:40] Papá: ¿Y si vamos al cine el sábado a las 6?
+[4:10] Mamá: Uf, el sábado no puedo, tengo turno.
+
+# espera: evento dom 2026-11-01 14:00
+# espera: pendiente vie 2026-10-30 19:00
+# espera: evento vie 2026-10-30 19:00 (aceptado)
+# espera-no: evento lun
+# espera-no: evento jue
+# espera: pendiente sáb 2026-10-31 18:00
+# espera-no: evento sáb

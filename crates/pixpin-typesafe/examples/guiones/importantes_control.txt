@@ -1,0 +1,24 @@
+# Partes importantes, casos de control (no se usaron para ajustar las
+# preguntas): una reunion de trabajo, sin quien habla.
+# clase: Reunión semanal del equipo de soporte
+# fecha: 2026-10-26
+
+[0:00] Voz: Hola, ¿se me oye? Perdonad, tenía el micro apagado.
+[0:12] Voz: Queda aprobado que los sábados haya siempre una persona de guardia.
+[0:27] Voz: Javier, tú preparas el informe mensual para el miércoles.
+[0:40] Voz: ¿Alguien sabe si el cliente de Valencia ya pagó la factura?
+[0:52] Voz: Podríamos cambiar de herramienta de tickets, pero eso lo vemos otro día.
+[1:05] Voz: El tiempo de primera respuesta es lo que tarda en contestarse un ticket desde que entra.
+[1:20] Voz: Hay que actualizar la guía de respuestas antes de fin de mes.
+[1:33] Voz: Ayer vi un partido buenísimo, por cierto, qué golazo.
+[1:45] Voz: Yo me encargo de llamar al proveedor mañana por la mañana.
+
+# espera-no: en 0:00
+# espera: decision en 0:12
+# espera: tarea en 0:27 cuando=si quien=si
+# espera: pregunta en 0:40
+# espera-no: decision en 0:52
+# espera: examen en 1:05
+# espera: tarea en 1:20 cuando=si quien=no
+# espera-no: en 1:33
+# espera: tarea en 1:45 cuando=si quien=si

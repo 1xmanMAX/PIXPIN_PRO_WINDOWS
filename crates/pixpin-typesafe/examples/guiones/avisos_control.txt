@@ -1,0 +1,42 @@
+# Que aviso interrumpe, casos de control (no se usaron para ajustar las
+# preguntas).
+
+# caso: a01
+# actividad: grabando
+# app: Copia de seguridad
+# texto: La copia de seguridad de esta semana terminó sin errores.
+# espera: a01 → bandeja
+
+# caso: a02
+# actividad: reunion: Claustro de profesores
+# app: Chat Colegio
+# de: Secretaría
+# texto: Su hijo tiene fiebre alta, tienen que venir a recogerlo ahora.
+# espera: a02 → interrumpir
+
+# caso: a03
+# actividad: reunion: Claustro de profesores
+# app: Chat Profesores
+# de: Elena
+# texto: Os paso el orden del día del claustro, está en el punto 3.
+# espera: a03 → discreto
+
+# caso: a04
+# actividad: presentando
+# app: Chat Amigos
+# de: Marcos
+# texto: ¿Has visto el último capítulo de la serie?
+# espera: a04 → para despues
+
+# caso: a05
+# actividad: libre
+# app: Banco
+# texto: Su tarjeta ha sido bloqueada por un intento de pago sospechoso de 900 €. Si no ha sido usted, llame ya.
+# espera: a05 → interrumpir
+
+# caso: a06
+# actividad: reunion: Claustro de profesores
+# app: Chat Vecinos
+# de: Pilar
+# texto: Mañana cortan el agua de 9 a 12 por obras.
+# espera: a06 → para despues

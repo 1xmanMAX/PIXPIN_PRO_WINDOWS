@@ -19,6 +19,7 @@
 
 #![allow(dead_code)]
 
+pub mod casos;
 pub mod partes;
 
 use std::collections::{HashMap, VecDeque};

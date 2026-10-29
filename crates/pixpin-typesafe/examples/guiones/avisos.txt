@@ -1,0 +1,76 @@
+# Que aviso interrumpe: lo que llega y lo que hace el usuario en ese
+# momento (libre, reunion con su titulo, grabando o presentando).
+
+# caso: a01
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Sincronizar
+# texto: Sincronización completada: 12 notas nuevas del móvil.
+# espera: a01 → bandeja
+
+# caso: a02
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Chat Familia
+# de: Mamá
+# texto: La abuela se ha caído, vamos camino de urgencias. Llámame.
+# espera: a02 → interrumpir
+
+# caso: a03
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Chat Obra Calle Mayor
+# de: Pedro
+# texto: Llego diez minutos tarde a la revisión, empezad sin mí.
+# espera: a03 → discreto
+
+# caso: a04
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Correo
+# de: Deportes Ya
+# texto: ¡50 % de descuento en zapatillas, solo hoy!
+# espera: a04 → bandeja
+
+# caso: a05
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Chat Amigos
+# de: Javi
+# texto: ¿Al final te vienes al cine el sábado?
+# espera: a05 → para despues
+
+# caso: a06
+# actividad: grabando
+# app: Chat Trabajo
+# de: Laura
+# texto: Se ha caído la web de pagos, los clientes no pueden comprar. ¿Puedes mirarlo ya?
+# espera: a06 → interrumpir (sin sonido)
+
+# caso: a07
+# actividad: libre
+# app: Chat Amigos
+# de: Javi
+# texto: ¿Al final te vienes al cine el sábado?
+# espera: a07 → mostrar
+
+# caso: a08
+# actividad: presentando
+# app: Chat Trabajo
+# de: Laura
+# texto: ¿Me pasas el documento del trimestre cuando puedas?
+# espera: a08 → para despues
+
+# caso: a09
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Mensajes
+# de: Repartidor
+# texto: Estoy en tu portal con el paquete, ¿me abres?
+# espera: a09 → discreto
+
+# caso: a10
+# actividad: libre
+# app: Windows Update
+# texto: Hay actualizaciones listas para instalar.
+# espera: a10 → bandeja
+
+# caso: a11
+# actividad: reunion: Revisión de la obra Calle Mayor
+# app: Google
+# texto: Nuevo inicio de sesión en tu cuenta desde Moscú. ¿Has sido tú? Si no, cambia la contraseña ahora.
+# espera-no: a11 → bandeja

@@ -14,6 +14,10 @@
 //!   sola peticion por frase (tareas dichas, urgencia, tema olvidado,
 //!   minutos por tema, decisiones, preguntas sin respuesta, fechas al
 //!   horario), por la misma escucha.
+//! - Dictar al chat (`ventana_chat::dictado_a_chat`): «anota en el chat de
+//!   la obra que…» al dictar en la caja propone anotarlo en ese chat.
+//! - Repasar en voz alta (`ventana_chat::repaso_oral`): desde «Estudiar la
+//!   clase», que puntos clave cubre lo que explica el alumno.
 //!
 //! Las preguntas y las tablas de decision viven en `pixpin_typesafe`. Sin
 //! clave (o con la funcion apagada) [`para`] da `None` y cada funcion hace
@@ -54,6 +58,10 @@ pub enum Funcion {
     Decisiones,
     PreguntasPendientes,
     FechasAlHorario,
+    /// Dictar al chat: «anota en el chat de la obra…» (`ventana_chat::dictado_a_chat`).
+    Dictado,
+    /// Repasar una clase en voz alta (`ventana_chat::repaso_oral`).
+    Repaso,
 }
 
 impl Funcion {
@@ -71,6 +79,8 @@ impl Funcion {
             Funcion::Decisiones => a.decisiones,
             Funcion::PreguntasPendientes => a.preguntas_pendientes,
             Funcion::FechasAlHorario => a.fechas_al_horario,
+            Funcion::Dictado => a.dictado,
+            Funcion::Repaso => a.repaso,
         }
     }
 }
@@ -231,6 +241,8 @@ mod pruebas {
             Funcion::Temas,
             Funcion::TareasDichas,
             Funcion::FechasAlHorario,
+            Funcion::Dictado,
+            Funcion::Repaso,
         ] {
             assert!(para(&u, f).is_none());
         }

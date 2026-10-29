@@ -1,0 +1,61 @@
+# A que chat va cada captura: los chats del usuario (nombre | de que
+# trata) y, por caso, el titulo de la ventana y lo que leyo el OCR.
+# chat: Obra Calle Mayor | reforma del piso: planos, presupuestos, fontanero y azulejos
+# chat: Cálculo I | asignatura de la universidad: derivadas, integrales y exámenes
+# chat: Viaje a Lisboa | vuelos, hotel y planes del viaje de diciembre
+# chat: Familia | cosas de casa, cumpleaños y comidas familiares
+
+# caso: c01
+# ventana: Presupuesto_reforma.pdf - Visor de PDF
+# texto: Partida 3: alicatado del baño ..... 312,00 €\nPartida 4: fontanería ..... 1.250,00 €\nTotal con IVA: 1.890,00 €
+# espera: c01 → obra calle mayor
+
+# caso: c02
+# ventana: Apuntes - integrales por partes.docx - Word
+# texto: Integración por partes: ∫ u dv = u·v − ∫ v du\nEjercicio 4: ∫ x·e^x dx
+# espera: c02 → calculo i
+
+# caso: c03
+# ventana: Booking.com - Hotel Alfama - Google Chrome
+# texto: Hotel Alfama ★★★ · 12-15 dic · 2 adultos · 340 € · Cancelación gratuita
+# espera: c03 → viaje a lisboa
+
+# caso: c04
+# ventana: Minecraft - Wiki - Mozilla Firefox
+# texto: Cómo encantar una espada: necesitas una mesa de encantamientos y lapislázuli.
+# espera: c04 → ninguno
+
+# caso: c05
+# ventana: WhatsApp
+# texto: Mamá: el domingo comemos en casa de la abuela, trae tú el postre.
+# espera: c05 → familia
+
+# caso: c06
+# ventana: El País - Economía
+# texto: El Banco Central Europeo sube los tipos de interés un cuarto de punto.
+# espera: c06 → ninguno
+
+# caso: c07
+# ventana: Google Maps
+# texto: Aeropuerto Humberto Delgado → Baixa-Chiado · metro línea roja y verde · 25 min
+# espera: c07 → viaje a lisboa
+
+# caso: c08
+# ventana: Fontanería García - Factura 2026-118.pdf
+# texto: Cambio de bajante del baño y grifo del lavabo. Mano de obra: 3 h.
+# espera: c08 → obra calle mayor
+
+# caso: c09
+# ventana: notas_parcial.xlsx - Excel
+# texto: Notas del primer parcial: media 6,2 · aprobados 41 de 60 · revisión el martes
+# espera: c09 → calculo i
+
+# caso: c10
+# ventana: Ryanair - Tarjeta de embarque
+# texto: MAD → LIS · 12 DIC · Puerta B23 · Asiento 14C · Embarque 08:10
+# espera: c10 → viaje a lisboa
+
+# caso: c11
+# ventana: Spotify
+# texto: Lista: Para correr · 42 canciones · 2 h 31 min
+# espera: c11 → ninguno

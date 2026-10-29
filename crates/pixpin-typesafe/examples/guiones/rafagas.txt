@@ -1,0 +1,42 @@
+# La mejor foto de cada rafaga. Fotos inventadas (fotos/hacer_fotos.py):
+# personas dibujadas, una pizarra y un paisaje, con fallos hechos a mano
+# (movida, ojos cerrados, oscura, quemada, torcida).
+
+# caso: r01
+# foto: fotos/r01_1.jpg
+# foto: fotos/r01_2.jpg
+# foto: fotos/r01_3.jpg
+# espera: r01 elige foto_2
+# espera: r01 descarta foto_1 (movida)
+# espera: r01 descarta foto_3 (ojos cerrados)
+
+# caso: r02
+# foto: fotos/r02_1.jpg
+# foto: fotos/r02_2.jpg
+# foto: fotos/r02_3.jpg
+# espera: r02 elige foto_3
+# espera: r02 descarta foto_1 (ojos cerrados)
+# espera: r02 descarta foto_2 (mal expuesta)
+
+# caso: r03
+# foto: fotos/r03_1.jpg
+# foto: fotos/r03_2.jpg
+# foto: fotos/r03_3.jpg
+# espera: r03 elige foto_1
+# espera: r03 descarta foto_2 (torcida)
+# espera: r03 descarta foto_3 (movida)
+
+# caso: r04
+# foto: fotos/r04_1.jpg
+# foto: fotos/r04_2.jpg
+# foto: fotos/r04_3.jpg
+# foto: fotos/r04_4.jpg
+# espera: r04 elige foto_2
+# espera: r04 descarta foto_1 (mal expuesta)
+# espera: r04 descarta foto_3 (movida)
+# espera: r04 descarta foto_4 (mal expuesta)
+
+# caso: r05
+# foto: fotos/r05_1.jpg
+# foto: fotos/r05_2.jpg
+# espera: r05 ninguna buena

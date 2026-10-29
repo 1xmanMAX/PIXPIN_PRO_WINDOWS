@@ -672,6 +672,354 @@ pub mod repaso {
     }
 }
 
+// ------------------------------------------------------------------
+// Mas casos (29-oct-2026, `docs/probar-ideas-sin-interfaz.md`, «Más
+// casos»): fuera de las reuniones. Cada idea, su modulo de la biblioteca
+// con su tabla; aqui solo el texto.
+// ------------------------------------------------------------------
+
+/// **A que chat va una captura**: el texto que el OCR saco de la captura y
+/// el titulo de su ventana, contra los chats del usuario. Estado:
+/// `captura.ventana`, `captura.texto` y `chats` (cada uno, «Nombre: de que
+/// trata»). Un Noul de «es de alguno» y una Choice de cual (con el nombre
+/// y de que trata en la opcion).
+pub mod captura_a_chat {
+    use super::*;
+
+    pub const DE_ALGUNO: &str = "de_algun_chat";
+    pub const CHAT: &str = "chat";
+
+    pub fn de_alguno() -> Pregunta {
+        Pregunta::noul(
+            "Is `captura` about the subject of one of the chats in `chats`?",
+            "What the screenshot shows belongs with one of them, e.g. a plan or a budget of a building site when there is a chat about that site.",
+            "It is about something none of the chats deal with, e.g. a recipe, a game or a news article when the chats are about work and classes.",
+        )
+    }
+
+    /// `opciones`: (clave, «Nombre: de que trata») de cada chat.
+    pub fn chat(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "In which chat of `chats` should `captura` be saved?".to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, n)| (k.clone(), format!("The chat «{n}».")))
+                .collect(),
+        }
+    }
+}
+
+/// **Etiquetas de una nota o captura**, de las que el usuario ya tiene. Un
+/// Noul por etiqueta (puede valer mas de una), con la etiqueta dentro.
+/// Estado: `nota.titulo` (si lo hay) y `nota.texto`.
+pub mod etiquetas {
+    use super::*;
+
+    /// El nombre de la respuesta de la etiqueta de clave `id`.
+    pub fn nombre(id: &str) -> String {
+        format!("etiqueta_{id}")
+    }
+
+    /// Cuantas etiquetas van en una peticion.
+    pub const POR_PETICION: usize = 30;
+
+    pub fn va(etiqueta: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Would the user file `nota` under their tag «{etiqueta}»?"),
+            &format!(
+                "`nota` is the kind of thing the tag «{etiqueta}» collects, also when the tag names a part of life rather than the subject of the text, e.g. the vet's bill for the dog under a tag «Mascotas»."
+            ),
+            &format!(
+                "`nota` belongs with other things, or «{etiqueta}» only comes up in passing, e.g. one word in a long text about something else."
+            ),
+        )
+    }
+}
+
+/// **La mejor foto de una rafaga**: las fotos de la rafaga van en el
+/// estado (`fotos.foto_1`, `fotos.foto_2`...), y por cada una cinco Nouls
+/// (nitida, ojos cerrados, oscura, quemada, torcida) con la ruta de esa foto
+/// dentro; y una Choice de cual se quedaria una persona.
+pub mod mejor_foto {
+    use super::*;
+
+    pub fn clave(i: usize) -> String {
+        format!("foto_{}", i + 1)
+    }
+
+    pub fn nitida(i: usize) -> String {
+        format!("nitida_{}", i + 1)
+    }
+
+    pub fn ojos(i: usize) -> String {
+        format!("ojos_cerrados_{}", i + 1)
+    }
+
+    pub fn oscura(i: usize) -> String {
+        format!("oscura_{}", i + 1)
+    }
+
+    pub fn quemada(i: usize) -> String {
+        format!("quemada_{}", i + 1)
+    }
+
+    pub fn torcida(i: usize) -> String {
+        format!("torcida_{}", i + 1)
+    }
+
+    pub const MEJOR: &str = "mejor";
+
+    /// Cuantas fotos de una rafaga se miran como mucho.
+    pub const COMO_MUCHO: usize = 6;
+
+    pub fn es_nitida(i: usize) -> Pregunta {
+        let f = clave(i);
+        Pregunta::noul(
+            &format!("Is the main subject of `fotos.{f}` sharp?"),
+            "Edges and details are crisp: the camera was focused and held still.",
+            "The picture is blurred: out of focus, or smeared by movement of the camera or the subject.",
+        )
+    }
+
+    pub fn ojos_cerrados(i: usize) -> Pregunta {
+        let f = clave(i);
+        Pregunta::noul(
+            &format!("Is someone in `fotos.{f}` caught with their eyes closed?"),
+            "At least one person has their eyes shut or half shut, as when blinking.",
+            "Everyone's eyes are open, or there are no people in the picture.",
+        )
+    }
+
+    /// Oscura y quemada, dos preguntas (una sola con «ni oscura ni
+    /// quemada» dudaba con las quemadas: 0.50).
+    pub fn es_oscura(i: usize) -> Pregunta {
+        let f = clave(i);
+        Pregunta::noul(
+            &format!("Is `fotos.{f}` too dark?"),
+            "It is underexposed: the subject is hard to make out in the dark.",
+            "There is enough light to see the subject clearly.",
+        )
+    }
+
+    pub fn es_quemada(i: usize) -> Pregunta {
+        let f = clave(i);
+        Pregunta::noul(
+            &format!("Is `fotos.{f}` washed out by too much light?"),
+            "It is overexposed: bright parts turn to plain white and the colours look faded.",
+            "Bright areas and colours keep their detail.",
+        )
+    }
+
+    pub fn esta_torcida(i: usize) -> Pregunta {
+        let f = clave(i);
+        Pregunta::noul(
+            &format!("Is `fotos.{f}` visibly tilted?"),
+            "The horizon, the walls or the edges of the main subject lean clearly to one side.",
+            "The picture is level: vertical lines are upright and horizontal lines are flat.",
+        )
+    }
+
+    pub fn mejor(n: usize) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "Which picture of `fotos`, all taken in a quick burst of the same scene, would a person keep?".to_string(),
+            criteria: (0..n)
+                .map(|i| {
+                    let f = clave(i);
+                    (f.clone(), format!("The picture `fotos.{f}`."))
+                })
+                .collect(),
+        }
+    }
+}
+
+/// **Recortar la pizarra o la hoja** de una foto: un Noul de «hay una», un
+/// Box de donde esta y un Noul de si se ve entera. Estado: `foto`.
+pub mod pizarra {
+    use super::*;
+
+    pub const HAY: &str = "hay_pizarra";
+    pub const DONDE: &str = "donde";
+    pub const ENTERA: &str = "entera";
+
+    pub fn hay() -> Pregunta {
+        Pregunta::noul(
+            "Does `foto` show a whiteboard, a blackboard or a sheet of paper with writing or drawings on it?",
+            "There is a board or a page whose writing someone would want to keep, e.g. a whiteboard with a diagram, or notes on a sheet on a desk.",
+            "There is nothing written to keep, e.g. a wall with a painting or a window, or an empty desk.",
+        )
+    }
+
+    pub fn donde() -> Pregunta {
+        Pregunta::caja(
+            "the whiteboard, blackboard or sheet of paper with writing in `foto`, edge to edge",
+        )
+    }
+
+    pub fn entera() -> Pregunta {
+        Pregunta::noul(
+            "Is the whole board or sheet in `foto` inside the picture?",
+            "All four of its edges can be seen.",
+            "Part of it is cut off by the border of the picture.",
+        )
+    }
+}
+
+/// **Que OCR lee una imagen**: si tiene texto, de que clase es (la Choice
+/// con la que el codigo elige el motor) y, si ya hay lecturas de los dos
+/// motores, cual copia mejor el texto. Estado: `imagen`.
+pub mod ocr {
+    use super::*;
+
+    pub const HAY_TEXTO: &str = "hay_texto";
+    pub const TIPO: &str = "tipo";
+    pub const MEJOR: &str = "mejor_lectura";
+
+    pub const CAPTURA: &str = "captura_de_pantalla";
+    pub const IMPRESO: &str = "impreso";
+    pub const TABLA: &str = "tabla";
+    pub const MANUSCRITO: &str = "manuscrito";
+
+    pub fn hay_texto() -> Pregunta {
+        Pregunta::noul(
+            "Is there text to read in `imagen`?",
+            "Words or numbers can be read, printed, on a screen or written by hand.",
+            "It is a picture with no words in it, e.g. a landscape or a face.",
+        )
+    }
+
+    pub fn tipo() -> Pregunta {
+        Pregunta::choice(
+            "What kind of text is in `imagen`?",
+            &[
+                (
+                    CAPTURA,
+                    "A screenshot: the windows, menus, buttons or chat bubbles of a program or a web page, captured from a screen.",
+                ),
+                (
+                    IMPRESO,
+                    "A photo or a scan of a sheet of paper with printed paragraphs, e.g. a book page, a letter or a printed form lying on a table.",
+                ),
+                (
+                    TABLA,
+                    "A table: values arranged in rows and columns, printed or on a screen.",
+                ),
+                (
+                    MANUSCRITO,
+                    "Text written by hand with a pen, a pencil or a marker.",
+                ),
+            ],
+        )
+    }
+
+    /// `lecturas`: (motor, lo que leyo).
+    pub fn mejor(lecturas: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "Which of these readings copies the text of `imagen` most faithfully?"
+                .to_string(),
+            criteria: lecturas
+                .iter()
+                .map(|(k, t)| (k.clone(), format!("«{t}»")))
+                .collect(),
+        }
+    }
+}
+
+/// **Avisos que interrumpen o esperan**: lo que llega (una sincronizacion,
+/// un mensaje, un aviso de una app) mientras el usuario esta en una
+/// reunion, grabando o presentando. Lo que hace el usuario lo sabe el
+/// codigo; Jev solo juzga el aviso. Estado: `aviso.app`, `aviso.de`,
+/// `aviso.texto` y, si esta en una reunion, `reunion` (su titulo).
+pub mod alertas {
+    use super::*;
+
+    pub const RUTINA: &str = "rutina";
+    pub const PIDE_YA: &str = "pide_ya";
+    pub const GRAVE: &str = "grave";
+    pub const DE_LA_REUNION: &str = "de_la_reunion";
+
+    pub fn rutina() -> Pregunta {
+        Pregunta::noul(
+            "Is `aviso` an automatic notice from an app rather than something a person wrote?",
+            "e.g. «sincronización completada», «hay una actualización disponible», «tu copia de seguridad terminó» or an advert.",
+            "A person wrote it, e.g. a message from a colleague or a family member, or a reminder the user set for something to do.",
+        )
+    }
+
+    pub fn pide_ya() -> Pregunta {
+        Pregunta::noul(
+            "Does `aviso` ask the user to answer or act within the next few minutes?",
+            "e.g. «¿me abres la puerta?», «llámame en cuanto puedas», «el taxi está abajo».",
+            "It can wait, e.g. «cuando puedas mírate esto», «mañana hablamos» or a plain piece of news.",
+        )
+    }
+
+    pub fn grave() -> Pregunta {
+        Pregunta::noul(
+            "Would waiting an hour to read `aviso` cause real harm?",
+            "e.g. a family emergency, the server is down for customers, the flight gate is closing, a payment fails today.",
+            "Waiting only delays something, e.g. a question about next week, a document to review or a social chat.",
+        )
+    }
+
+    pub fn de_la_reunion() -> Pregunta {
+        Pregunta::noul(
+            "Is `aviso` about the meeting `reunion` that the user is in right now?",
+            "It is about that meeting, e.g. someone says they will be late to it, or sends the document being discussed.",
+            "It is about other matters.",
+        )
+    }
+}
+
+/// **Citas en los mensajes de un chat** (fuera de las reuniones): «¿te va
+/// el jueves a las 5?» → «vale». Como `vivo::cita`, pero en un chat se
+/// propone en un mensaje y se acepta en otro. Estado: `chat` (su nombre),
+/// `mensaje.de`, `mensaje.texto` y `antes` (los dos anteriores, «Quien:
+/// texto»; si no hay, no va).
+pub mod horario_de_chat {
+    use super::*;
+
+    pub const CITA: &str = "cita";
+    pub const CUANDO: &str = "cuando";
+    pub const ACORDADA: &str = "acordada";
+    pub const ACEPTA: &str = "acepta";
+
+    pub fn cita() -> Pregunta {
+        Pregunta::noul(
+            "Does `mensaje.texto` give a day or time for people to meet or for an appointment or event?",
+            "A meeting, a visit, a call, a class or an appointment gets a moment, e.g. «¿quedamos el jueves a las 5?» or «la cena es el sábado a las 9».",
+            "A day is only a deadline for a task or names a past event, e.g. «mándamelo el viernes» or «el lunes pasado fui al médico».",
+        )
+    }
+
+    pub fn cuando(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "Which words in `mensaje.texto` say when they meet or when the event is?"
+                .to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, t)| (k.clone(), format!("«{t}»")))
+                .collect(),
+        }
+    }
+
+    pub fn acordada() -> Pregunta {
+        Pregunta::noul(
+            "Does `mensaje.texto` state the moment as settled, rather than propose it or ask about it?",
+            "It is fixed or confirmed, e.g. «quedamos el jueves a las 5», «la cita es el martes a las 10» or «perfecto, el martes entonces».",
+            "It is only proposed or asked, e.g. «¿te va bien el jueves?» or «podríamos vernos el martes».",
+        )
+    }
+
+    /// La propuesta pendiente va dentro.
+    pub fn acepta(propuesta: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Does `mensaje.texto` accept the proposal «{propuesta}»?"),
+            "It says yes to it, e.g. «vale», «perfecto, ahí nos vemos» or «sí, me va bien».",
+            "It turns it down, proposes another moment or talks about something else, e.g. «ese día no puedo» or «mejor el viernes».",
+        )
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
