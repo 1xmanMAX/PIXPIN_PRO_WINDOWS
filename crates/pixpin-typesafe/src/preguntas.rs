@@ -363,7 +363,7 @@ pub mod modelo {
                 Pregunta::noul(
                     "Does `pedido` need several steps of reasoning, such as solving a problem, proving something or comparing options?",
                     "e.g. «resuelve: un tren sale a 80 km/h…», «compara estos dos planes».",
-                    "The answer is direct or takes a single step, e.g. one calculation, «¿qué hora es en Tokio?» or «dibuja un triángulo».",
+                    "The answer is direct, e.g. «¿qué hora es en Tokio?» or «dibuja un triángulo».",
                 ),
             ),
             (
