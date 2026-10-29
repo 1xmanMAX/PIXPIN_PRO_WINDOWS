@@ -439,6 +439,67 @@ deja de preguntar por el.
 solo (un fallo nunca es «no se trato»); la cabecera de la lista lo dice y
 los temas se marcan a mano, igual que siempre.
 
+### 6. Dictar al chat (29-oct-2026)
+
+La idea probada sin interfaz con `dictado_a_chat`
+([probar-ideas-sin-interfaz.md](probar-ideas-sin-interfaz.md)), cableada
+tal cual: `ventana_chat/dictado_a_chat.rs`, interruptor `[jev] dictado`.
+
+**Como se usa**: dictando en la caja del chat (clic derecho en el
+microfono), se dice «anota en el chat de la obra que faltan tornillos»,
+«apunta en Familia: llego tarde» o, tras dictar algo, «anota esto en el
+chat de la obra». Encima de la caja sale la chapa **«Anotar en «Obra Calle
+Lima»: faltan tornillos · Intro»**: Intro o un clic lo anotan en ese chat
+(un mensaje como escrito alli; el chat sube en la lista) y quitan de la
+caja lo dictado para pedirlo; Escape o la ✕ la quitan. Sin chat dicho
+(«anótalo, que la grua se va el viernes») la chapa pregunta **en que
+chat** y aceptar abre la lista de chats. **Nunca se anota solo**.
+
+**Que se pregunta**: por cada frase dictada (tres palabras o mas),
+`vivo::preguntar` con solo la parte `chats`: `dictado`,
+`dictado_chat_dicho`, `dictado_chat` (Choice entre los nombres de los 30
+chats mas recientes, sin el abierto ni el del asistente) y, si hay dos
+candidatos, `dictado_que`. **El texto no se genera**: lo sacan
+`dictado::textos` (lo que sigue a «:» o a «que»; para «esto», la frase
+dictada antes o, si es la primera, lo escrito en la caja) y Jev elige. La
+tabla es `dictado::decidir` (≥ 0.7 propone; dudoso, nada). Una en vuelo
+como mucho; lo que se dicta mientras tanto espera (las tres ultimas), 4 s
+por peticion.
+
+**Se manda**: la frase dictada, la anterior (o lo escrito) y los nombres de
+los chats. **Sin clave, apagado o si Jev falla**: el dictado de siempre,
+sin chapa (un fallo se apunta en el registro; nunca es «no»).
+
+### 7. Repasar en voz alta (29-oct-2026)
+
+La idea probada con `repaso_oral`, cableada tal cual:
+`ventana_chat/repaso_oral.rs` (su ventana), interruptor `[jev] repaso`.
+
+**Como se usa**: en «Estudiar la clase», en la fila del titulo del texto,
+**«Repasar en voz alta»** (solo con clave y encendido). Abre una ventana
+con los puntos clave de la clase y «Empezar a hablar» (o espacio): se
+explica la clase de viva voz (el dictado de Windows, frase a frase) y cada
+punto pasa a **✓ cubierto**, **✗ dicho mal**, **· falta** o **? no queda
+claro**. Lo dicho mal y lo que falta llevan **«▶ 12:34»**: un clic vuelve a
+la clase en ese minuto (la ventana de estudiar). Abajo, el recuento y lo
+ultimo dicho; «Empezar otra vez» lo pone todo a cero.
+
+**Los puntos clave** (`puntos_clave`, doce como mucho, los primeros los de
+examen y los marcadores): el renglon de cada parte que Jev marco como
+**examen** o **decision** (`importantes`), los **marcadores con nota** y
+los **temas tratados** de la reunion; sin repetir, en el orden de la clase.
+Sin ninguno, la ventana dice de donde salen.
+
+**Que se pregunta**: tras cada frase, `repaso::preguntar` con lo explicado
+hasta ahora (lo ultimo, 4 000 letras) y dos Nouls por punto aun no «mal»
+(`cubre_<id>`, `contradice_<id>`); la tabla entre peticiones es
+`Repaso::decidir` (lo mal se queda, lo cubierto no vuelve a faltar). Una en
+vuelo; lo dicho mientras tanto va en la siguiente.
+
+**Se manda**: el titulo, los puntos clave y lo explicado (pasado a texto en
+este equipo). **Si Jev falla**: se dice abajo y los puntos se quedan como
+estaban.
+
 ## Privacidad: que se manda
 
 Solo con clave y con la funcion encendida, y solo a `api.typesafe.ai` por
@@ -601,3 +662,31 @@ preguntas que el PC:
    ([movil-como-camara.md](movil-como-camara.md), §13): **escucha el PC**
    (la grabacion y su audio son suyos). El movil no transcribe ni pregunta:
    solo hace fotos y clips.
+
+### Android: dictar al chat
+
+- **Nada nuevo viaja**: la nota anotada es un mensaje normal del chat
+  elegido; la propuesta sin aceptar no sale del aparato.
+- **Si el movil lo hace** (con su clave): al dictar en la caja (el
+  `SpeechRecognizer` de siempre), por cada resultado final una peticion con
+  el estado `{antes, frase: {quien, dice}}` y las preguntas `dictado`,
+  `dictado_chat_dicho`, `dictado_chat` (Choice: los nombres de los chats
+  recientes, la clave de cada opcion con `vivo::clave`) y `dictado_que`
+  si hay dos textos, **copiando el texto de `preguntas::vivo`**; los
+  candidatos con `dictado::textos` y la tabla `dictado::decidir`, copiados
+  tal cual. Lo decidido como una chapa encima de la caja: tocarla anota,
+  la ✕ la quita; sin chat, la lista de chats. Nunca anotar solo.
+
+### Android: repasar en voz alta
+
+- **Nada nuevo viaja**: el repaso no se guarda (es un ejercicio); los
+  puntos clave salen de lo que ya viaja en la nota de voz (`importantes`,
+  `marcadores`, `temas`).
+- **Si el movil lo hace**: un boton «Repasar en voz alta» en su pantalla
+  de estudiar; los puntos con las mismas reglas que `puntos_clave` (doce
+  como mucho, examen y marcadores primero, sin repetir, en orden); el
+  `SpeechRecognizer` frase a frase; por cada frase final,
+  `{clase, explicacion}` con dos Nouls por punto (`preguntas::repaso`:
+  `explica` y `lo_contradice`, nombres `cubre_<id>` y `contradice_<id>`) y
+  la tabla `Repaso::decidir`. Lo mal y lo que falta, con su minuto para
+  saltar en el audio de la clase.
