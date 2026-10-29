@@ -297,7 +297,13 @@ mod pruebas {
         assert_eq!(x.momento.to_string(), "jue 2026-10-29 17:00");
         // «vale» de otra persona: sin fechas, solo se pregunta si acepta.
         let b = m("Luis", "Vale, allí estaré");
-        let p = preparar("Obra", &[a.clone()], &b, hoy(), h.pendiente.as_ref());
+        let p = preparar(
+            "Obra",
+            std::slice::from_ref(&a),
+            &b,
+            hoy(),
+            h.pendiente.as_ref(),
+        );
         let pet = p.peticion.as_ref().unwrap();
         assert_eq!(pet.questions.len(), 1);
         assert!(pet.questions.contains_key(q::ACEPTA));
