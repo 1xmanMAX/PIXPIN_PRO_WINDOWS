@@ -363,7 +363,7 @@ pub mod modelo {
                 Pregunta::noul(
                     "Does `pedido` need several steps of reasoning, such as solving a problem, proving something or comparing options?",
                     "e.g. «resuelve: un tren sale a 80 km/h…», «compara estos dos planes».",
-                    "The answer is direct, e.g. «¿qué hora es en Tokio?» or «dibuja un triángulo».",
+                    "The answer is direct or takes a single step, e.g. one calculation, «¿qué hora es en Tokio?» or «dibuja un triángulo».",
                 ),
             ),
             (
@@ -725,20 +725,20 @@ pub mod etiquetas {
 
     pub fn va(etiqueta: &str) -> Pregunta {
         Pregunta::noul(
-            &format!("Is «{etiqueta}» one of the main subjects of `nota`?"),
+            &format!("Would the user file `nota` under their tag «{etiqueta}»?"),
             &format!(
-                "A person filing `nota` would put it under «{etiqueta}»: most of it, or one of its main parts, is about what «{etiqueta}» names."
+                "`nota` is the kind of thing the tag «{etiqueta}» collects, also when the tag names a part of life rather than the subject of the text, e.g. the vet's bill for the dog under a tag «Mascotas»."
             ),
             &format!(
-                "`nota` is about other things, or «{etiqueta}» only comes up in passing, e.g. one word in a long text about something else."
+                "`nota` belongs with other things, or «{etiqueta}» only comes up in passing, e.g. one word in a long text about something else."
             ),
         )
     }
 }
 
 /// **La mejor foto de una rafaga**: las fotos de la rafaga van en el
-/// estado (`fotos.foto_1`, `fotos.foto_2`...), y por cada una cuatro Nouls
-/// (nitida, ojos cerrados, bien expuesta, torcida) con la ruta de esa foto
+/// estado (`fotos.foto_1`, `fotos.foto_2`...), y por cada una cinco Nouls
+/// (nitida, ojos cerrados, oscura, quemada, torcida) con la ruta de esa foto
 /// dentro; y una Choice de cual se quedaria una persona.
 pub mod mejor_foto {
     use super::*;
@@ -755,8 +755,12 @@ pub mod mejor_foto {
         format!("ojos_cerrados_{}", i + 1)
     }
 
-    pub fn expuesta(i: usize) -> String {
-        format!("expuesta_{}", i + 1)
+    pub fn oscura(i: usize) -> String {
+        format!("oscura_{}", i + 1)
+    }
+
+    pub fn quemada(i: usize) -> String {
+        format!("quemada_{}", i + 1)
     }
 
     pub fn torcida(i: usize) -> String {
@@ -786,12 +790,23 @@ pub mod mejor_foto {
         )
     }
 
-    pub fn bien_expuesta(i: usize) -> Pregunta {
+    /// Oscura y quemada, dos preguntas (una sola con «ni oscura ni
+    /// quemada» dudaba con las quemadas: 0.50).
+    pub fn es_oscura(i: usize) -> Pregunta {
         let f = clave(i);
         Pregunta::noul(
-            &format!("Is `fotos.{f}` well exposed?"),
-            "The light is right: the subject is easy to see, neither too dark nor washed out.",
-            "It is much too dark, or so bright that parts are washed out to white.",
+            &format!("Is `fotos.{f}` too dark?"),
+            "It is underexposed: the subject is hard to make out in the dark.",
+            "There is enough light to see the subject clearly.",
+        )
+    }
+
+    pub fn es_quemada(i: usize) -> Pregunta {
+        let f = clave(i);
+        Pregunta::noul(
+            &format!("Is `fotos.{f}` washed out by too much light?"),
+            "It is overexposed: bright parts turn to plain white and the colours look faded.",
+            "Bright areas and colours keep their detail.",
         )
     }
 
@@ -878,11 +893,11 @@ pub mod ocr {
             &[
                 (
                     CAPTURA,
-                    "A screenshot of a program, a web page or a chat: text drawn by a computer on a screen.",
+                    "A screenshot: the windows, menus, buttons or chat bubbles of a program or a web page, captured from a screen.",
                 ),
                 (
                     IMPRESO,
-                    "A photo or a scan of printed paragraphs: a book page, a letter or a printed form.",
+                    "A photo or a scan of a sheet of paper with printed paragraphs, e.g. a book page, a letter or a printed form lying on a table.",
                 ),
                 (
                     TABLA,

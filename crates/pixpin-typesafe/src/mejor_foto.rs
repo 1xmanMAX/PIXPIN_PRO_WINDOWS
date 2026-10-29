@@ -2,7 +2,7 @@
 //! ver `docs/probar-ideas-sin-interfaz.md`, «Más casos»): de varias fotos
 //! seguidas de lo mismo (la camara del movil, la de PixPin), cual se
 //! queda. Las fotos van en el estado una vez (`fotos.foto_1`...) y por cada
-//! una cuatro Nouls (nitida, ojos cerrados, bien expuesta, torcida) mas
+//! una cinco Nouls (nitida, ojos cerrados, oscura, quemada, torcida) mas
 //! una Choice de cual se quedaria una persona. Una peticion por rafaga.
 //!
 //! **Tabla** ([`decidir`]):
@@ -11,7 +11,7 @@
 //! |---|---|
 //! | `nitida` ≤ NO | se descarta: movida |
 //! | `ojos_cerrados` ≥ SI | se descarta: ojos cerrados |
-//! | `expuesta` ≤ NO | se descarta: oscura o quemada |
+//! | `oscura` ≥ SI o `quemada` ≥ SI | se descarta: mal expuesta |
 //! | `torcida` ≥ SI | se descarta: torcida |
 //! | lo demas | candidata |
 //!
@@ -54,7 +54,8 @@ pub fn peticion(fotos: &[Imagen]) -> Peticion {
             .con_imagen(&r, f.clone())
             .con(&q::nitida(i), q::es_nitida(i))
             .con(&q::ojos(i), q::ojos_cerrados(i))
-            .con(&q::expuesta(i), q::bien_expuesta(i))
+            .con(&q::oscura(i), q::es_oscura(i))
+            .con(&q::quemada(i), q::es_quemada(i))
             .con(&q::torcida(i), q::esta_torcida(i));
     }
     p.state = json!({ "fotos": estado });
@@ -69,7 +70,8 @@ pub fn peticion(fotos: &[Imagen]) -> Peticion {
 pub struct DeUna {
     pub nitida: f64,
     pub ojos_cerrados: f64,
-    pub expuesta: f64,
+    pub oscura: f64,
+    pub quemada: f64,
     pub torcida: f64,
     /// Su probabilidad en `mejor` (1 si es la unica).
     pub mejor: f64,
@@ -87,7 +89,8 @@ pub fn senales(r: &crate::Respuestas, n: usize) -> Result<Vec<DeUna>, Error> {
             Ok(DeUna {
                 nitida: r.noul(&q::nitida(i))?,
                 ojos_cerrados: r.noul(&q::ojos(i))?,
-                expuesta: r.noul(&q::expuesta(i))?,
+                oscura: r.noul(&q::oscura(i))?,
+                quemada: r.noul(&q::quemada(i))?,
                 torcida: r.noul(&q::torcida(i))?,
                 mejor: if n > 1 {
                     probs.get(&q::clave(i)).copied().unwrap_or(0.0)
@@ -128,7 +131,7 @@ pub fn motivos(s: &DeUna) -> Vec<Motivo> {
     if s.ojos_cerrados >= SI {
         v.push(Motivo::OjosCerrados);
     }
-    if s.expuesta <= NO {
+    if s.oscura >= SI || s.quemada >= SI {
         v.push(Motivo::MalExpuesta);
     }
     if s.torcida >= SI {
@@ -198,11 +201,13 @@ pub fn elegir(
 mod pruebas {
     use super::*;
 
-    fn u(nitida: f64, ojos: f64, expuesta: f64, torcida: f64, mejor: f64) -> DeUna {
+    /// `luz`: lo bien expuesta que esta (1 bien, 0 muy oscura).
+    fn u(nitida: f64, ojos: f64, luz: f64, torcida: f64, mejor: f64) -> DeUna {
         DeUna {
             nitida,
             ojos_cerrados: ojos,
-            expuesta,
+            oscura: 1.0 - luz,
+            quemada: 0.05,
             torcida,
             mejor,
         }
@@ -236,6 +241,10 @@ mod pruebas {
         let e = decidir(&[u(0.5, 0.5, 0.5, 0.5, 0.5), u(0.9, 0.1, 0.9, 0.1, 0.5)]).unwrap();
         assert_eq!(e.elegida, 1);
         assert!(e.descartadas.is_empty());
+        // Quemada tambien es mal expuesta.
+        let mut q = u(0.9, 0.1, 0.9, 0.1, 0.9);
+        q.quemada = 0.8;
+        assert_eq!(motivos(&q), vec![Motivo::MalExpuesta]);
         assert!(decidir(&[]).is_none());
     }
 
@@ -247,7 +256,7 @@ mod pruebas {
         };
         let p = peticion(&[f(1), f(2), f(1)]);
         assert_eq!(p.assets.len(), 3);
-        assert_eq!(p.questions.len(), 3 * 4 + 1);
+        assert_eq!(p.questions.len(), 3 * 5 + 1);
         let v: Value = serde_json::from_slice(&p.cuerpo().unwrap()).unwrap();
         let r1 = v["state"]["fotos"]["foto_1"].as_str().unwrap();
         let r3 = v["state"]["fotos"]["foto_3"].as_str().unwrap();

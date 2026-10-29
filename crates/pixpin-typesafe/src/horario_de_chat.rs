@@ -18,7 +18,8 @@
 //! | lo demas | nada |
 //!
 //! Un evento en un momento ya puesto es «repetido». Sin fechas en el
-//! mensaje ni nada pendiente de otro, no se pregunta.
+//! mensaje ni nada pendiente de otro, no se pregunta. Un dia y una hora
+//! separados en el mismo mensaje son un solo momento ([`juntar`]).
 
 use serde_json::{Map, Value, json};
 
@@ -94,6 +95,39 @@ pub fn estado(chat: &str, antes: &[Mensaje], m: &Mensaje) -> Value {
     Value::Object(e)
 }
 
+/// «El domingo comemos en casa de la abuela **a las 2**»: el dia y la hora
+/// separados por otras palabras salen de [`fechas::buscar`] como dos
+/// expresiones (el domingo sin hora; las 2 de hoy). Si hay un solo dia sin
+/// hora y una sola hora suelta («a las…»), son el mismo momento: una
+/// expresion con el dia de la una y la hora de la otra.
+pub fn juntar(v: Vec<Expresion>) -> Vec<Expresion> {
+    let suelta = |e: &Expresion| {
+        let t = e.texto.trim().to_lowercase();
+        t.starts_with("a las ") || t.starts_with("a la ")
+    };
+    let dias: Vec<usize> = (0..v.len())
+        .filter(|i| v[*i].momento.hora.is_none() && !suelta(&v[*i]))
+        .collect();
+    let horas: Vec<usize> = (0..v.len()).filter(|i| suelta(&v[*i])).collect();
+    let ([d], [h]) = (dias.as_slice(), horas.as_slice()) else {
+        return v;
+    };
+    let (d, h) = (*d, *h);
+    let junta = Expresion {
+        texto: format!("{} … {}", v[d].texto, v[h].texto),
+        momento: Momento {
+            fecha: v[d].momento.fecha,
+            hora: v[h].momento.hora,
+            aproximado: v[d].momento.aproximado,
+        },
+    };
+    v.into_iter()
+        .enumerate()
+        .filter(|(i, _)| *i != h)
+        .map(|(i, e)| if i == d { junta.clone() } else { e })
+        .collect()
+}
+
 /// **Prepara la peticion** de un mensaje.
 pub fn preparar(
     chat: &str,
@@ -102,7 +136,7 @@ pub fn preparar(
     hoy: Fecha,
     pendiente: Option<&Pendiente>,
 ) -> Preparada {
-    let fechas = fechas::buscar(&m.texto, hoy);
+    let fechas = juntar(fechas::buscar(&m.texto, hoy));
     let claves: Vec<String> =
         crate::claves_unicas(&fechas.iter().map(|f| f.texto.clone()).collect::<Vec<_>>())
             .into_iter()
@@ -329,6 +363,20 @@ mod pruebas {
             .peticion
             .is_none()
         );
+    }
+
+    #[test]
+    fn el_dia_y_la_hora_separados_son_un_momento() {
+        let hoy = Fecha::nueva(2026, 10, 28).unwrap();
+        let f = juntar(fechas::buscar(
+            "El domingo comemos todos en casa de la abuela a las 2.",
+            hoy,
+        ));
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].momento.to_string(), "dom 2026-11-01 14:00");
+        // Con hora ya puesta, o con dos dias, no se toca.
+        let f = juntar(fechas::buscar("el jueves a las 5 o el viernes", hoy));
+        assert_eq!(f.len(), 2);
     }
 
     #[test]

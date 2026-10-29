@@ -11,7 +11,7 @@
 //! | condicion | libre | en reunion o grabando | presentando |
 //! |---|---|---|---|
 //! | `grave` ≥ SI | interrumpir | interrumpir | interrumpir |
-//! | `rutina` ≥ SI | a la bandeja | a la bandeja | a la bandeja |
+//! | `rutina` ≥ SI y `pide_ya` < SI | a la bandeja | a la bandeja | a la bandeja |
 //! | `de_la_reunion` ≥ SI | — | discreto | discreto |
 //! | `pide_ya` ≥ SI | mostrar | discreto | para despues |
 //! | lo demas | mostrar | para despues | para despues |
@@ -20,6 +20,10 @@
 //! grabando, nunca suena: se oiria en la grabacion); «para despues», al
 //! resumen de cuando acabe; «a la bandeja», sin aviso. Lo dudoso (entre NO
 //! y SI) no sube de fila. Sin respuesta de Jev, lo de siempre: mostrar.
+//!
+//! Automatico no es lo mismo que sin importancia: un aviso de una app que
+//! pide algo ya («nuevo inicio de sesion, ¿has sido tu? cambia la
+//! contraseña ahora») no va a la bandeja, sigue por las filas de abajo.
 
 use serde_json::{Map, Value, json};
 
@@ -138,7 +142,7 @@ pub fn decidir(act: &Actividad, s: &Senales) -> Que {
             sonido: !matches!(act, Actividad::Grabando),
         };
     }
-    if s.rutina >= SI {
+    if s.rutina >= SI && s.pide_ya < SI {
         return Que::Bandeja;
     }
     if !ocupado {
@@ -198,6 +202,12 @@ mod pruebas {
         assert_eq!(
             decidir(&Actividad::Libre, &s(0.1, 0.1, 0.1, None)),
             Que::Mostrar
+        );
+        // Automatico pero pide algo ya: no es de la bandeja.
+        let reunion_ = Actividad::EnReunion("Obra".into());
+        assert_eq!(
+            decidir(&reunion_, &s(0.95, 0.8, 0.5, Some(0.0))),
+            Que::Discreto
         );
         // Ocupado: lo de la reunion y lo que pide algo ya, discreto.
         assert_eq!(
