@@ -240,7 +240,7 @@ impl Mesa {
     /// **La peticion de una frase** (para verla en las pruebas o el
     /// registro).
     pub fn preparar(&self, frase: &Frase) -> Preparada {
-        self.con_peticion(frase, |c, p| vivo::preparar(c, p))
+        self.con_peticion(frase, vivo::preparar)
     }
 
     /// **Pregunta por una frase**: una sola peticion con todas las partes
