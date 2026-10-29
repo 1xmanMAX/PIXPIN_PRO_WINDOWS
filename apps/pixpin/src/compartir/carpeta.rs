@@ -20,8 +20,8 @@ use pixpin_proyecto::cuaderno::{Clase, Mensaje};
 use pixpin_store::Catalogo;
 
 use super::{
-    BLANCO, FuenteImagen, Lector, Pieza, Preparado, anadir_mensaje, lienzo_de_hoja, pagina,
-    papel_de_pagina, tapar_para_compartir,
+    BLANCO, Entero, Extra, FuenteImagen, Lector, Pieza, Preparado, anadir_mensaje, lienzo_de_hoja,
+    pagina, papel_de_pagina, tapar_para_compartir,
 };
 
 /// Las hojas de un lienzo de la carpeta, con la regla del cuaderno.
@@ -143,6 +143,190 @@ pub(crate) fn pdf(
     super::pdf::de_piezas_con_indice(&piezas, &lector, &indice).context("sin paginas")
 }
 
+// --- Compartir el cuaderno con todos los formatos -------------------------------
+
+/// **Las paginas vivas de la carpeta `carpeta`**, `(mensaje, titulo)` en su
+/// orden (en una grabacion, lo adjuntado detras), con `todos` el chat
+/// entero. `None` si el mensaje no es una carpeta que se entienda.
+pub(crate) fn paginas_de(carpeta: &Mensaje, todos: &[Mensaje]) -> Option<Vec<(Mensaje, String)>> {
+    let c = pixpin_proyecto::carpeta_de_paginas::Carpeta::de_mensaje(carpeta)?;
+    let mut vivas = c.vivas(todos);
+    if c.es_grabacion() {
+        vivas.sort_by_key(|(_, p)| p.adjunto);
+    }
+    Some(
+        vivas
+            .into_iter()
+            .map(|(i, p)| {
+                let m = todos[i].clone();
+                let titulo = if p.titulo.trim().is_empty() {
+                    pixpin_docs::sin_extension(m.nombre.trim())
+                } else {
+                    p.titulo.clone()
+                };
+                (m, titulo)
+            })
+            .collect(),
+    )
+}
+
+/// **Lo marcado en el chat, con las carpetas abiertas** (28-oct-2026, como
+/// `CompartirCarpeta.conSusPaginas` del movil): una carpeta marcada junto a
+/// otros mensajes va con sus paginas (las que no esten ya), y no con el JSON
+/// de su documento.
+pub(crate) fn con_sus_paginas(lista: &[Mensaje], todos: &[Mensaje]) -> Vec<Mensaje> {
+    let mut vistos = std::collections::HashSet::new();
+    lista
+        .iter()
+        .flat_map(|m| {
+            if pixpin_proyecto::carpeta_de_paginas::es_carpeta(m) {
+                paginas_de(m, todos)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(p, _)| p)
+                    .collect()
+            } else {
+                vec![m.clone()]
+            }
+        })
+        .filter(|m| vistos.insert(m.id.clone()))
+        .collect()
+}
+
+/// El texto de una pagina que lo lleva: una nota escrita o la transcripcion
+/// de una nota de voz. Una mini-app o una foto, no.
+fn texto_de(m: &Mensaje) -> Option<String> {
+    let texto = match m.clase {
+        None | Some(Clase::Nota) if m.miniapp.is_none() => m.texto.trim().to_string(),
+        Some(Clase::Voz) => m.transcripcion.as_deref().unwrap_or("").trim().to_string(),
+        _ => return None,
+    };
+    (!texto.is_empty()).then_some(texto)
+}
+
+/// **El Markdown de las notas del cuaderno**: el titulo del cuaderno arriba
+/// y cada pagina con texto bajo su titulo. `None` si ninguna lleva texto.
+pub(crate) fn markdown(titulo: &str, paginas: &[(Mensaje, String)]) -> Option<String> {
+    let trozos: Vec<String> = paginas
+        .iter()
+        .filter_map(|(m, t)| Some(format!("## {t}\n\n{}", texto_de(m)?)))
+        .collect();
+    if trozos.is_empty() {
+        return None;
+    }
+    Some(format!("# {titulo}\n\n{}\n", trozos.join("\n\n")))
+}
+
+/// El mismo texto sin las marcas de los titulos, para el `.txt`.
+fn texto_llano(titulo: &str, paginas: &[(Mensaje, String)]) -> Option<String> {
+    let trozos: Vec<String> = paginas
+        .iter()
+        .filter_map(|(m, t)| Some(format!("{t}\n\n{}", texto_de(m)?)))
+        .collect();
+    if trozos.is_empty() {
+        return None;
+    }
+    Some(format!("{titulo}\n\n{}\n", trozos.join("\n\n")))
+}
+
+/// **Un cuaderno en la hoja de compartir, con todos sus formatos**
+/// (29-oct-2026, como el movil 201d327; el usuario: «mejora el compartir de
+/// los cuadernos para que anada todos los formatos que tienen los demas:
+/// PDF, HTML, PixPin, fotos… Esa interfaz tiene que estar siempre
+/// unificada»). Se usa desde su ventana, desde «Compartir» en el menu de su
+/// mensaje del chat y con lo marcado:
+///
+/// - **PDF, pagina web, PNG, JPG y SVG** de sus paginas, con la regla del
+///   cuaderno (un lienzo, por su plantilla o sus marcos; una foto, en una
+///   sola pagina) y el titulo de cada una («Dia 1», «Dia 2»).
+/// - **Word, Markdown y Texto**, si alguna pagina lleva texto (una nota, la
+///   transcripcion de una nota de voz), cada uno bajo su titulo.
+/// - **Original**: los ficheros de sus paginas tal cual (fotos, PDF, audios).
+/// - **PixPin (.pixpin)**: el chat entero con la carpeta, que se abre en
+///   otro PC y en el movil con su carpeta.
+///
+/// La carpeta de una grabacion no pasa por aqui: se comparte como la
+/// grabacion que es (ver `de_mensajes`).
+pub(crate) fn preparar(
+    raiz: &Path,
+    proyecto: &str,
+    carpeta: &Mensaje,
+    todos: &[Mensaje],
+    t: &Catalogo,
+) -> Option<Preparado> {
+    let paginas = paginas_de(carpeta, todos)?;
+    let titulo = match carpeta.nombre.trim() {
+        "" => t.t("compartir-sin-nombre"),
+        n => n.to_string(),
+    };
+    let mut p = Preparado::nuevo(titulo.clone());
+    for (m, nombre) in &paginas {
+        let antes = p.piezas.len();
+        anadir_pagina(&mut p, raiz, proyecto, m, t);
+        if !nombre.is_empty() {
+            for x in &mut p.piezas[antes..] {
+                x.pagina.nombre = nombre.clone();
+            }
+        }
+    }
+    // Todas sus paginas marcadas al abrir: el cuaderno es lo que se comparte
+    // (una nota marcaria solo la suya).
+    p.marcadas = None;
+    let base = super::nombre_de_fichero(&titulo);
+    if let Some(md) = markdown(&titulo, &paginas) {
+        let resolver = |_: &str| None;
+        if let Some((bytes, _)) = pixpin_notas::word::exportar(
+            &md,
+            &titulo,
+            &pixpin_notas::vista::Vista::default(),
+            None,
+            &resolver,
+            "",
+            pixpin_shell::entorno::ahora_utc_ms(),
+        ) {
+            p.extras.push(Extra {
+                id: "word",
+                clave: "compartir-word",
+                que: Entero::Escrito {
+                    fichero: format!("{base}.docx"),
+                    bytes,
+                },
+            });
+        }
+        p.extras.push(Extra {
+            id: "md",
+            clave: "compartir-md",
+            que: Entero::Escrito {
+                fichero: format!("{base}.md"),
+                bytes: md.into_bytes(),
+            },
+        });
+    }
+    if let Some(txt) = texto_llano(&titulo, &paginas) {
+        p.extras.push(Extra {
+            id: "texto",
+            clave: "compartir-texto",
+            que: Entero::Escrito {
+                fichero: format!("{base}.txt"),
+                bytes: txt.into_bytes(),
+            },
+        });
+    }
+    let mensajes: Vec<Mensaje> = paginas.into_iter().map(|(m, _)| m).collect();
+    let rutas = super::originales(raiz, proyecto, &mensajes);
+    p.adjuntos = super::adjuntos::de_originales(&rutas);
+    if !rutas.is_empty() {
+        let (id, clave) = if rutas.len() == 1 {
+            ("original", "compartir-original")
+        } else {
+            ("originales", "compartir-originales")
+        };
+        super::anadir_original(&mut p, id, clave, rutas);
+    }
+    super::anadir_pixpin_del_chat(&mut p, raiz, proyecto);
+    Some(p)
+}
+
 /// El nombre del fichero que se sugiere al guardar: el de la carpeta.
 pub(crate) fn nombre_de_fichero(titulo: &str) -> String {
     // Sin titulo, el de serie (el de compartir pondria «dibujo»).
@@ -260,6 +444,80 @@ mod pruebas {
         };
         assert!(pdf(&raiz, "p", "X", &[(fantasma, "Día 1".into())], &textos()).is_err());
         assert!(pdf(&raiz, "p", "X", &[], &textos()).is_err());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// Un cuaderno con un lienzo y una nota, y el mensaje de su carpeta.
+    fn cuaderno(raiz: &Path) -> (Mensaje, Vec<Mensaje>) {
+        let mut escena = Escena::nueva();
+        escena.anadir(pixpin_motor2d::Elemento {
+            x: 10.0,
+            y: 10.0,
+            ancho: 60.0,
+            alto: 40.0,
+            figura: pixpin_motor2d::Figura::Rectangulo,
+            ..Default::default()
+        });
+        let lienzo = lienzo_con(raiz, "p", "d1", &escena);
+        let nota = Mensaje {
+            id: "n".into(),
+            clase: Some(Clase::Nota),
+            texto: "Lo que paso entre medias".into(),
+            ..Default::default()
+        };
+        let mut c = pixpin_proyecto::carpeta_de_paginas::Carpeta::default();
+        c.anadir(&lienzo.id, "Día 1");
+        c.anadir(&nota.id, "Día 2");
+        let carpeta = Mensaje {
+            id: "c".into(),
+            clase: Some(Clase::MiniApp),
+            miniapp: Some(pixpin_proyecto::carpeta_de_paginas::MINIAPP.into()),
+            nombre: "Diario".into(),
+            texto: c.escribir(),
+            ..Default::default()
+        };
+        let todos = vec![lienzo, nota, carpeta.clone()];
+        (carpeta, todos)
+    }
+
+    /// El caso del usuario (28-oct-2026): un cuaderno se comparte con todos
+    /// los formatos, no con el JSON de su documento.
+    #[test]
+    fn un_cuaderno_se_comparte_con_sus_paginas_y_los_formatos_de_texto() {
+        let raiz = raiz_temporal("compartir");
+        let (carpeta, todos) = cuaderno(&raiz);
+        let p = preparar(&raiz, "p", &carpeta, &todos, &textos()).expect("es una carpeta");
+        assert_eq!(p.titulo, "Diario");
+        let nombres: Vec<&str> = p.piezas.iter().map(|x| x.pagina.nombre.as_str()).collect();
+        assert_eq!(nombres, ["Día 1", "Día 2"], "cada pagina con su titulo");
+        assert!(p.marcadas.is_none(), "todas marcadas al abrir");
+        let ids: Vec<&str> = p.extras.iter().map(|e| e.id).collect();
+        for id in ["word", "md", "texto"] {
+            assert!(ids.contains(&id), "{id} en {ids:?}");
+        }
+        let md = markdown("Diario", &paginas_de(&carpeta, &todos).unwrap()).unwrap();
+        assert!(md.starts_with("# Diario"), "{md}");
+        assert!(md.contains("## Día 2\n\nLo que paso entre medias"), "{md}");
+        assert!(!md.contains("Día 1"), "un lienzo no aporta texto: {md}");
+        let c = super::super::compartible(&p, &textos());
+        let formatos: Vec<&str> = c.formatos.iter().map(|f| f.id.as_str()).collect();
+        assert!(
+            formatos.contains(&"pdf") && formatos.contains(&"png"),
+            "{formatos:?}"
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn lo_marcado_con_un_cuaderno_lleva_sus_paginas_sin_repetir() {
+        let raiz = raiz_temporal("marcado");
+        let (carpeta, todos) = cuaderno(&raiz);
+        let nota = todos[1].clone();
+        let abiertos = con_sus_paginas(&[nota, carpeta], &todos);
+        let ids: Vec<&str> = abiertos.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["n", "m-d1"]);
+        // Caso negativo: un mensaje que no es carpeta no es un cuaderno.
+        assert!(preparar(&raiz, "p", &todos[1], &todos, &textos()).is_none());
         let _ = std::fs::remove_dir_all(&raiz);
     }
 

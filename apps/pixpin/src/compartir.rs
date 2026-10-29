@@ -989,6 +989,35 @@ fn de_mensajes(
     mensajes: &[Mensaje],
     t: &Catalogo,
 ) -> Preparado {
+    // **Un cuaderno** (29-oct-2026, como el movil 201d327): solo, con todos
+    // sus formatos (`carpeta::preparar`); la carpeta de una grabacion, como
+    // la grabacion que es; y entre otros mensajes, con sus paginas en vez
+    // del JSON de su documento.
+    if mensajes
+        .iter()
+        .any(pixpin_proyecto::carpeta_de_paginas::es_carpeta)
+    {
+        let todos = pixpin_proyecto::cuaderno::Cuaderno::leer_de(
+            &pixpin_proyecto::almacen::carpeta(raiz, proyecto),
+        )
+        .map(|c| c.mensajes)
+        .unwrap_or_default();
+        if let [m] = mensajes
+            && let Some(c) = pixpin_proyecto::carpeta_de_paginas::Carpeta::de_mensaje(m)
+        {
+            if c.es_grabacion() {
+                if let Some(voz) = todos.iter().find(|x| !c.voz.is_empty() && x.id == c.voz) {
+                    return de_mensajes(raiz, proyecto, titulo, std::slice::from_ref(voz), t);
+                }
+            } else if let Some(p) = carpeta::preparar(raiz, proyecto, m, &todos, t) {
+                return p;
+            }
+        }
+        let abiertos = carpeta::con_sus_paginas(mensajes, &todos);
+        if !abiertos.is_empty() {
+            return de_mensajes(raiz, proyecto, titulo, &abiertos, t);
+        }
+    }
     let solo = mensajes.len() == 1;
     let titulo = match mensajes {
         [m] if matches!(
@@ -1035,25 +1064,7 @@ fn de_mensajes(
         };
         anadir_original(&mut p, id, clave, rutas);
     }
-    // El proyecto entero del chat, para abrirlo en otro PixPin o el movil.
-    if pixpin_proyecto::almacen::Indice::leer(raiz)
-        .buscar(proyecto)
-        .is_some()
-    {
-        let nombre = pixpin_proyecto::almacen::Indice::leer(raiz)
-            .buscar(proyecto)
-            .map(|f| f.nombre.clone())
-            .unwrap_or_default();
-        p.extras.push(Extra {
-            id: exportable::PIXPIN,
-            clave: "compartir-pixpin",
-            que: Entero::Proyectos(vec![(
-                raiz.to_path_buf(),
-                proyecto.to_string(),
-                format!("{}.pixpin", exportar_html::nombre_de_fichero(&nombre)),
-            )]),
-        });
-    }
+    anadir_pixpin_del_chat(&mut p, raiz, proyecto);
     // Una foto o un fichero solos: lo que se suele querer es mandarlos tal
     // cual. Una grabacion no: lo suyo es su pagina web.
     p.original_primero = solo
@@ -1123,6 +1134,25 @@ fn de_proyectos(raiz: &Path, ids: &[String], t: &Catalogo) -> Result<Preparado> 
         que: Entero::Proyectos(paquetes),
     });
     Ok(p)
+}
+
+/// **El proyecto entero del chat**, para abrirlo en otro PixPin o el movil.
+fn anadir_pixpin_del_chat(p: &mut Preparado, raiz: &Path, proyecto: &str) {
+    let Some(nombre) = pixpin_proyecto::almacen::Indice::leer(raiz)
+        .buscar(proyecto)
+        .map(|f| f.nombre.clone())
+    else {
+        return;
+    };
+    p.extras.push(Extra {
+        id: exportable::PIXPIN,
+        clave: "compartir-pixpin",
+        que: Entero::Proyectos(vec![(
+            raiz.to_path_buf(),
+            proyecto.to_string(),
+            format!("{}.pixpin", exportar_html::nombre_de_fichero(&nombre)),
+        )]),
+    });
 }
 
 fn anadir_original(p: &mut Preparado, id: &'static str, clave: &'static str, rutas: Vec<PathBuf>) {

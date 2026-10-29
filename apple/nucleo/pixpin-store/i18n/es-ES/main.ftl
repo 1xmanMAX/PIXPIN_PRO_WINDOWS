@@ -2972,6 +2972,7 @@ carpeta-anadida = Añadida a «{ $carpeta }» como «{ $titulo }»
 carpeta-ya-estaba = Ya está en «{ $carpeta }»
 carpeta-abrir = Abrir la carpeta
 carpeta-nueva-pagina = Nueva página
+carpeta-compartir = Compartir
 carpeta-exportar-pdf = Exportar PDF
 carpeta-exportando = Exportando el PDF…
 carpeta-exportado = PDF guardado: { $nombre }
