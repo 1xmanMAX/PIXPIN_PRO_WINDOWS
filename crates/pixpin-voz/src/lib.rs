@@ -110,6 +110,9 @@
 //!   C, con su `unsafe` acotado y comentado.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+/// «Sincronizar sola»: el minuto de cada linea de una letra pegada,
+/// alineandola con lo que el reconocedor oye en la cancion (29-oct-2026).
+pub mod alinear_letra;
 pub mod cortes;
 pub mod credibilidad;
 pub mod dos_idiomas;
