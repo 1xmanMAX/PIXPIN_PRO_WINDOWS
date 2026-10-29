@@ -31,19 +31,32 @@
 //!   [`tiempo_de_temas`] (minutos por tema y el tema olvidado),
 //!   [`pendientes`] (preguntas sin respuesta), [`citas`] (al horario),
 //!   [`dictado`] (anotar en un chat) y [`repaso`] (repaso oral).
+//! - Mas casos, fuera de las reuniones (29-oct-2026, mismos ejemplos sin
+//!   interfaz): [`captura_a_chat`] (a que chat va una captura),
+//!   [`etiquetas`] (las etiquetas de una nota), [`mejor_foto`] (la mejor de
+//!   una rafaga), [`pizarra`] (recortar la pizarra o la hoja de una foto),
+//!   [`motor_ocr`] (Windows o Indra), [`alertas`] (que aviso interrumpe) y
+//!   [`horario_de_chat`] (citas propuestas y aceptadas en un chat).
 //!
 //! Sin clave no se llama a nadie: quien usa esto sigue como siempre.
 
+pub mod alertas;
 pub mod anki;
 pub mod api;
+pub mod captura_a_chat;
 pub mod citas;
 pub mod claves;
 pub mod cliente;
 pub mod compromisos;
 pub mod dictado;
+pub mod etiquetas;
 pub mod fechas;
+pub mod horario_de_chat;
+pub mod mejor_foto;
 pub mod modelo;
+pub mod motor_ocr;
 pub mod pendientes;
+pub mod pizarra;
 pub mod preguntas;
 pub mod repaso;
 pub mod reunion;
@@ -112,6 +125,24 @@ pub(crate) fn recortar(s: &str, n: usize) -> String {
         r.push('…');
         r
     }
+}
+
+/// Claves unicas para las opciones de una Choice con estos textos, en el
+/// mismo orden ([`vivo::clave`]: el nombre de la opcion se le manda a Jev,
+/// mejor que «c1»).
+pub(crate) fn claves_unicas(textos: &[String]) -> Vec<(String, String)> {
+    let mut v: Vec<(String, String)> = Vec::new();
+    for t in textos {
+        let base = vivo::clave(t);
+        let mut k = base.clone();
+        let mut n = 2;
+        while v.iter().any(|(x, _)| *x == k) {
+            k = format!("{base}_{n}");
+            n += 1;
+        }
+        v.push((k, t.clone()));
+    }
+    v
 }
 
 /// Corre `f` sobre cada elemento con hasta `hilos` a la vez, en orden. El
