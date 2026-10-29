@@ -301,7 +301,7 @@ pub fn idioma_de_la_letra<S: AsRef<str>>(lineas: &[S]) -> Option<&'static str> {
             (*codigo, n)
         })
         .collect();
-    cuentas.sort_by(|a, b| b.1.cmp(&a.1));
+    cuentas.sort_by_key(|c| std::cmp::Reverse(c.1));
     let (codigo, n) = cuentas[0];
     let segundo = cuentas.get(1).map_or(0, |c| c.1);
     (n >= 4 && n * 2 >= segundo * 3).then_some(codigo)
