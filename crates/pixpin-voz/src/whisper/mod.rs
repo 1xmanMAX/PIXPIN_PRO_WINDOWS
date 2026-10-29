@@ -400,6 +400,87 @@ impl Whisper {
         } else {
             tandas(muestras)
         };
+        let (segmentos, avisos) = self.oir_tandas(
+            muestras,
+            &tandas,
+            &idiomas,
+            &con_el_principal,
+            avance,
+            cancelado,
+        )?;
+        if segmentos.is_empty() {
+            return Err(ErrorVoz::NoSeEntiendeNada);
+        }
+        Ok(Transcripcion {
+            texto: con_tiempos(&segmentos, ""),
+            estado: estado_de(segmentos.len(), avisos),
+            duracion_ms: pcm::duracion_ms(muestras),
+            segmentos: lineas(&segmentos),
+        })
+    }
+
+    /// **Lo que se oye cantar en una cancion**, tanda a tanda y sin juntar
+    /// en lineas: lo que necesita [`crate::alinear_letra`] para poner el
+    /// minuto a cada linea de una letra pegada. Las tandas son mas cortas
+    /// que las de una nota (frases de hasta [`TANDA_CANCION_SEGUNDOS`]):
+    /// cuanto mas corta la tanda, mas cerca cae el tiempo de cada palabra.
+    /// Una tanda que no se entiende no tumba las demas.
+    pub fn oir_cancion_pcm(
+        &self,
+        muestras: &[i16],
+        idiomas: &Idiomas,
+        avance: &mut dyn FnMut(f32),
+        cancelado: &AtomicBool,
+    ) -> Result<Vec<Segmento>, ErrorVoz> {
+        if muestras.is_empty() {
+            return Err(ErrorVoz::AudioVacio);
+        }
+        let principal = idiomas.principal.clone();
+        let con_el_principal = self
+            .meta
+            .inicio_con(&principal, idiomas.tarea())
+            .ok_or_else(|| ErrorVoz::IdiomaSinModelo {
+                idioma: principal.clone(),
+            })?;
+        let idiomas = match &idiomas.otro {
+            Some(o) if self.meta.inicio(o).is_none() => Idiomas::uno(&principal),
+            _ => idiomas.clone(),
+        };
+        let tope = mel::MUESTRAS_30S;
+        let tandas: Vec<std::ops::Range<usize>> =
+            cortes::agrupar(&cortes::cortes(muestras), TANDA_CANCION_SEGUNDOS)
+                .into_iter()
+                .flat_map(|r| {
+                    (r.start..r.end)
+                        .step_by(tope)
+                        .map(move |a| a..(a + tope).min(r.end))
+                })
+                .collect();
+        let (segmentos, _) = self.oir_tandas(
+            muestras,
+            &tandas,
+            &idiomas,
+            &con_el_principal,
+            avance,
+            cancelado,
+        )?;
+        if segmentos.is_empty() {
+            return Err(ErrorVoz::NoSeEntiendeNada);
+        }
+        Ok(segmentos)
+    }
+
+    /// Cada tanda por el encoder y el decoder: sus segmentos (uno por tanda
+    /// con algo creible) y cuantas se tiraron por no serlo.
+    fn oir_tandas(
+        &self,
+        muestras: &[i16],
+        tandas: &[std::ops::Range<usize>],
+        idiomas: &Idiomas,
+        con_el_principal: &[i64],
+        avance: &mut dyn FnMut(f32),
+        cancelado: &AtomicBool,
+    ) -> Result<(Vec<Segmento>, usize), ErrorVoz> {
         let mut segmentos = Vec::new();
         let mut avisos = 0usize;
         for (i, tanda) in tandas.iter().enumerate() {
@@ -410,7 +491,7 @@ impl Whisper {
                 .iter()
                 .map(|&m| m as f32 / 32_768.0)
                 .collect();
-            let (lengua, oido) = self.una_tanda(&audio, &idiomas, &con_el_principal, cancelado)?;
+            let (lengua, oido) = self.una_tanda(&audio, idiomas, con_el_principal, cancelado)?;
             // Lo que hace Whisper con los silencios (`transcribe.py`): si
             // cree que no habla nadie y ademas no esta seguro de lo que
             // escribio, es un silencio, no una frase.
@@ -429,15 +510,7 @@ impl Whisper {
             avance((i + 1) as f32 / tandas.len() as f32);
         }
         avance(1.0);
-        if segmentos.is_empty() {
-            return Err(ErrorVoz::NoSeEntiendeNada);
-        }
-        Ok(Transcripcion {
-            texto: con_tiempos(&segmentos, ""),
-            estado: estado_de(segmentos.len(), avisos),
-            duracion_ms: pcm::duracion_ms(muestras),
-            segmentos: lineas(&segmentos),
-        })
+        Ok((segmentos, avisos))
     }
 
     /// Una tanda con las reglas del movil (`MotorWhisper.kt:197-234`).
@@ -709,6 +782,30 @@ fn repite_al_final(t: &[i64]) -> Option<usize> {
         }
     }
     None
+}
+
+/// Lo que dura como mucho una tanda de una cancion: frases juntas hasta
+/// 8 s (y no 15 como una nota), para que el tiempo repartido de cada palabra
+/// caiga cerca de cuando se canta.
+pub const TANDA_CANCION_SEGUNDOS: usize = 8;
+
+/// **Lo que se oye cantar en una cancion**, de principio a fin: las tandas
+/// con su texto ([`Whisper::oir_cancion_pcm`]) y lo que dura el audio.
+pub fn oir_cancion(
+    audio: &Path,
+    raiz: &Path,
+    junto_al_exe: Option<&Path>,
+    idiomas: &Idiomas,
+    avance: &mut dyn FnMut(f32),
+    cancelado: &AtomicBool,
+) -> Result<(Vec<Segmento>, i64), ErrorVoz> {
+    let w = Whisper::cargar(raiz, junto_al_exe)?;
+    let muestras = pcm::decodificar(audio)?;
+    if cancelado.load(Ordering::Relaxed) {
+        return Err(ErrorVoz::Cancelada);
+    }
+    let segmentos = w.oir_cancion_pcm(&muestras, idiomas, avance, cancelado)?;
+    Ok((segmentos, pcm::duracion_ms(&muestras)))
 }
 
 /// **Pasa una nota de voz a texto con Whisper**, de principio a fin.
