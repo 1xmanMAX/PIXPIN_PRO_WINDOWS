@@ -1460,6 +1460,98 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // Arrastrar la letra la mueve, como en un movil (y como el
+                // panel tactil de dos dedos, que llega como rueda). Un clic
+                // sin mover en una linea con minuto salta ahi al soltar.
+                EventoOverlay::BotonPulsado(p)
+                    if menu.is_none()
+                        && pendientes.is_none()
+                        && arrastre.is_none()
+                        && !disposicion.arrastra_ventana(local(p), escala)
+                        && abierto.as_ref().is_some_and(|a| {
+                            arrastre_de_la_letra(a, local(p), &disposicion, escala).is_some()
+                        }) =>
+                {
+                    let l = local(p);
+                    if let Some(a) = abierto.as_mut()
+                        && let Some(trozo) = arrastre_de_la_letra(a, l, &disposicion, escala)
+                    {
+                        let sonando = suena_la_letra(a);
+                        if let Some(letra) = a.letra.as_mut() {
+                            let scroll = if sigue_a_la_cancion(
+                                letra.a_mano,
+                                std::time::Instant::now(),
+                                sonando,
+                            ) {
+                                letra.pintado.get()
+                            } else {
+                                letra.scroll
+                            };
+                            letra.arrastre = Some(ArrastreDeLetra {
+                                y: l.y,
+                                scroll,
+                                movido: false,
+                                trozo,
+                            });
+                            ventana.capturar_raton();
+                        }
+                    }
+                }
+                EventoOverlay::RatonMovido(p)
+                    if abierto
+                        .as_ref()
+                        .and_then(|a| a.letra.as_ref())
+                        .is_some_and(|l| l.arrastre.is_some()) =>
+                {
+                    let l = local(p);
+                    if let Some(a) = abierto.as_mut()
+                        && let Some(g) = a.letra.as_ref().and_then(|x| x.arrastre)
+                    {
+                        let dy = g.y - l.y;
+                        if g.movido || dy.abs() >= LETRA_UMBRAL_DE_ARRASTRE * escala as i32 / 100 {
+                            if let Some(x) = a.letra.as_mut() {
+                                // Desde donde se agarro: mover cuenta todo
+                                // lo arrastrado, no solo lo de este evento.
+                                x.a_mano = None;
+                                x.pintado.set(g.scroll);
+                                x.arrastre = Some(ArrastreDeLetra { movido: true, ..g });
+                            }
+                            mover_la_letra(a, &disposicion, escala, dy);
+                            hay_que_pintar = true;
+                        }
+                    }
+                    ventana.poner_cursor(FormaCursorWin::Flecha);
+                }
+                EventoOverlay::BotonSoltado(_)
+                    if abierto
+                        .as_ref()
+                        .and_then(|a| a.letra.as_ref())
+                        .is_some_and(|l| l.arrastre.is_some()) =>
+                {
+                    ventana.soltar_raton();
+                    if let Some(a) = abierto.as_mut()
+                        && let Some(g) = a.letra.as_mut().and_then(|x| x.arrastre.take())
+                        && !g.movido
+                        && let Some((i, ms)) = g.trozo
+                    {
+                        match saltar_en_el_audio(a, i, ms) {
+                            Ok(()) => {
+                                if let Some(x) = a.letra.as_mut() {
+                                    x.a_mano = None;
+                                    x.seguido = None;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(?e, "no se pudo saltar en el audio");
+                                aviso = Some((
+                                    textos.t("chat-voz-no-es-audio"),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::BotonPulsado(p) => {
                     let l = local(p);
                     // El lienzo vivo manda dentro de su burbuja: ahi el clic
@@ -1899,7 +1991,15 @@ pub fn abrir(
                                     Efecto::Cambio
                                 }
                                 Zona::Trozo(i, ms) => match saltar_en_el_audio(a, i, ms) {
-                                    Ok(()) => Efecto::Nada,
+                                    Ok(()) => {
+                                        // Pulsar una linea vuelve a seguir a
+                                        // la cancion desde ahi.
+                                        if let Some(l) = a.letra.as_mut() {
+                                            l.a_mano = None;
+                                            l.seguido = None;
+                                        }
+                                        Efecto::Nada
+                                    }
                                     Err(e) => {
                                         tracing::warn!(?e, "no se pudo saltar en el audio");
                                         Efecto::Aviso(textos.t("chat-voz-no-es-audio"))
@@ -1918,6 +2018,9 @@ pub fn abrir(
                                 Zona::LetraCopiar => copiar_la_letra(a, textos),
                                 Zona::LetraMarcar => poner_la_marca(ubicacion, a, textos),
                                 Zona::LetraEditar => editar_la_letra(a, textos),
+                                Zona::Musica(musica::Boton::SincronizarSola) => {
+                                    musica::sincronizar_sola(ubicacion, a, idioma, textos)
+                                }
                                 Zona::Musica(b) => musica::pulsar(ubicacion, a, b, textos),
                                 Zona::Marca(i, ms) => match saltar_en_el_audio(a, i, ms) {
                                     Ok(()) => Efecto::Nada,
@@ -3197,14 +3300,37 @@ pub fn abrir(
                 EventoOverlay::Rueda(delta)
                     if abierto.as_ref().is_some_and(|a| a.letra.is_some()) =>
                 {
-                    if let Some(a) = abierto.as_mut()
-                        && let caja = caja_de_la_letra(a, &disposicion, escala).texto
-                        && let Some(l) = a.letra.as_mut()
-                    {
-                        let tope =
-                            pixpin_ui::chat::tope_de_la_letra(caja, &l.altos.borrow(), escala);
+                    if let Some(a) = abierto.as_mut() {
                         let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
-                        l.scroll = (l.scroll - giro_de_rueda(delta, paso)).clamp(0, tope);
+                        mover_la_letra(a, &disposicion, escala, -giro_de_rueda(delta, paso));
+                    }
+                    hay_que_pintar = true;
+                }
+                // Y las teclas de siempre: Re Pag / Av Pag, las flechas,
+                // Inicio y Fin.
+                EventoOverlay::Tecla {
+                    vk, ctrl: false, ..
+                } if menu.is_none()
+                    && matches!(
+                        vk,
+                        VK_RE_PAG | VK_AV_PAG | VK_ARRIBA | VK_ABAJO | VK_INICIO | VK_FIN
+                    )
+                    && abierto
+                        .as_ref()
+                        .is_some_and(|a| a.letra.is_some() && !musica::sincronizando(a)) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        let pagina = caja_de_la_letra(a, &disposicion, escala).texto.alto as i32;
+                        let fila = (chat::FILA * escala / 100) as i32;
+                        let dy = match vk {
+                            VK_RE_PAG => -pagina * 4 / 5,
+                            VK_AV_PAG => pagina * 4 / 5,
+                            VK_ARRIBA => -fila,
+                            VK_ABAJO => fila,
+                            VK_INICIO => -i32::MAX / 2,
+                            _ => i32::MAX / 2,
+                        };
+                        mover_la_letra(a, &disposicion, escala, dy);
                     }
                     hay_que_pintar = true;
                 }
@@ -4797,7 +4923,9 @@ pub fn abrir(
                 // pero acaba igual: escrita en el cuaderno.
                 .or_else(|| latido_del_telepronter(ubicacion, a, &identidad, textos))
                 // Y las ventanas de la voz (letra, Pronunciar, conversacion).
-                .or_else(|| latido_de_la_voz(ubicacion, a, &identidad, textos, idioma));
+                .or_else(|| latido_de_la_voz(ubicacion, a, &identidad, textos, idioma))
+                // Y «Sincronizar sola» de una cancion, que acaba en su hilo.
+                .or_else(|| musica::latido_sola(ubicacion, a, textos));
             if let Some(dicho) = dicho {
                 aviso = Some((dicho, std::time::Instant::now()));
                 hay_que_pintar = true;
@@ -4807,7 +4935,7 @@ pub fn abrir(
         // diez: mas es gastar procesador que le hace falta al reconocedor.
         let hasta_la_transcripcion = abierto
             .as_ref()
-            .and_then(|a| a.transcribiendo.as_ref())
+            .filter(|a| a.transcribiendo.is_some() || a.sola.is_some())
             .map(|_| 250u32);
         // Dictando, lo provisional tiene que ir apareciendo mientras se
         // habla: una decima de segundo es lo que tarda SAPI en dar la
@@ -5306,6 +5434,9 @@ struct Abierto {
     desplegados: std::collections::BTreeSet<String>,
     /// La pantalla de la letra, si esta abierta (`LetraActivity`).
     letra: Option<LetraAbierta>,
+    /// «Sincronizar sola» en marcha (`musica`): la cancion se oye en su
+    /// hilo y la letra pegada se alinea con lo oido.
+    sola: Option<musica::Sola>,
     /// Lo que la voz tiene a medias en otras ventanas: la caja de la
     /// letra, Pronunciar y la conversacion por turnos.
     voz: crate::voz_en_chat::Pendiente,
@@ -5344,6 +5475,46 @@ struct LetraAbierta {
     /// «Sincronizar la letra» de una cancion, si se esta haciendo
     /// (`musica`): las lineas y los minutos marcados hasta ahora.
     sincronizando: Option<pixpin_voz::letra_de_cancion::Sincronizador>,
+    /// Cuando se movio la letra a mano por ultima vez (rueda, teclas o
+    /// arrastrando). Mientras suena, seguir a la cancion se para
+    /// [`LETRA_A_MANO`] desde entonces; un clic en una linea lo vuelve a
+    /// encender (ver [`sigue_a_la_cancion`]).
+    a_mano: Option<std::time::Instant>,
+    /// El desplazamiento que se pinto de verdad: siguiendo a la cancion no
+    /// es `scroll`, y mover a mano tiene que empezar desde lo que se ve.
+    pintado: std::cell::Cell<i32>,
+    /// Arrastrando la letra con el raton (o el dedo).
+    arrastre: Option<ArrastreDeLetra>,
+}
+
+/// Un arrastre de la letra: donde se pulso, desde que desplazamiento, si ya
+/// se movio y la linea pulsada (que se salta al soltar si no se movio).
+#[derive(Debug, Clone, Copy)]
+struct ArrastreDeLetra {
+    y: i32,
+    scroll: i32,
+    movido: bool,
+    trozo: Option<(usize, i64)>,
+}
+
+/// Lo que se para «seguir a la cancion» tras mover la letra a mano.
+const LETRA_A_MANO: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// Lo que hay que mover el raton para que un clic sea un arrastre.
+const LETRA_UMBRAL_DE_ARRASTRE: i32 = 6;
+
+/// **Si la vista de la letra sigue a la cancion**: siempre, salvo en los
+/// [`LETRA_A_MANO`] que siguen a moverla a mano mientras suena. Parada, lo
+/// movido a mano se queda donde se dejo (no hay nada que seguir).
+fn sigue_a_la_cancion(
+    a_mano: Option<std::time::Instant>,
+    ahora: std::time::Instant,
+    sonando: bool,
+) -> bool {
+    match a_mano {
+        None => true,
+        Some(t) => sonando && ahora.saturating_duration_since(t) >= LETRA_A_MANO,
+    }
 }
 
 #[derive(Default)]
@@ -9388,6 +9559,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         barriendo: false,
         desplegados: Default::default(),
         letra: None,
+        sola: None,
         voz: Default::default(),
         salto_pendiente: None,
         hora_a_mano: None,
@@ -11546,6 +11718,8 @@ const VK_ABAJO: u32 = 0x28;
 /// la palabra (lo mismo que la lista de proyectos).
 const DOBLE_CLIC: std::time::Duration = std::time::Duration::from_millis(500);
 const VK_FIN: u32 = 0x23;
+const VK_RE_PAG: u32 = 0x21;
+const VK_AV_PAG: u32 = 0x22;
 const VK_INICIO: u32 = 0x24;
 const VK_A: u32 = 0x41;
 const VK_X: u32 = 0x58;
@@ -12479,6 +12653,9 @@ fn abrir_la_letra(a: &mut Abierto, i: usize) -> Efecto {
         seguido: None,
         captura: None,
         sincronizando: None,
+        a_mano: None,
+        pintado: std::cell::Cell::new(0),
+        arrastre: None,
     });
     Efecto::Cambio
 }
@@ -12556,6 +12733,72 @@ fn ir_al_milisegundo(ms: i64) -> bool {
     true
 }
 
+/// Si la nota cuya letra esta abierta es la que suena ahora.
+fn suena_la_letra(a: &Abierto) -> bool {
+    let Some(m) = indice_de_la_letra(a).and_then(|i| a.mensajes.get(i)) else {
+        return false;
+    };
+    crate::audio::estado().sonando
+        && ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
+            .is_some_and(|r| crate::audio::cargado().as_deref() == Some(r.as_path()))
+}
+
+/// **Mueve la letra a mano** `dy` pixeles (positivo, hacia abajo en el
+/// texto) y para un rato el seguir a la cancion. Empieza desde lo que se ve
+/// (siguiendo a la cancion no es `scroll`) y no pasa de los topes, aunque
+/// deja quedarse donde la cancion la tenia (la primera linea a un tercio de
+/// la altura, por encima del principio).
+///
+/// Era el fallo de la rueda en el karaoke (29-oct-2026): con tiempos, la
+/// vista se calculaba en cada fotograma desde la linea que suena y lo que
+/// la rueda escribia en `scroll` no se leia nunca.
+fn mover_la_letra(a: &mut Abierto, d: &Disposicion, escala: u32, dy: i32) {
+    let caja = caja_de_la_letra(a, d, escala).texto;
+    let sonando = suena_la_letra(a);
+    let Some(l) = a.letra.as_mut() else {
+        return;
+    };
+    if l.sincronizando.is_some() {
+        return;
+    }
+    let ahora = std::time::Instant::now();
+    let base = if sigue_a_la_cancion(l.a_mano, ahora, sonando) {
+        l.pintado.get()
+    } else {
+        l.scroll
+    };
+    let tope = pixpin_ui::chat::tope_de_la_letra(caja, &l.altos.borrow(), escala).max(base);
+    l.scroll = base.saturating_add(dy).clamp(base.min(0), tope);
+    l.a_mano = Some(ahora);
+}
+
+/// Si un clic en `p` empieza a arrastrar la letra: dentro del texto, sin
+/// sincronizar a toques y fuera de los botones. Devuelve la linea pulsada,
+/// si es una con minuto (`Some(None)`: en el hueco entre lineas).
+fn arrastre_de_la_letra(
+    a: &Abierto,
+    p: Punto,
+    d: &Disposicion,
+    escala: u32,
+) -> Option<Option<(usize, i64)>> {
+    let l = a.letra.as_ref()?;
+    if l.sincronizando.is_some() || !caja_de_la_letra(a, d, escala).texto.contiene(p) {
+        return None;
+    }
+    match a
+        .zonas
+        .borrow()
+        .iter()
+        .rev()
+        .find(|(r, _)| r.contiene(p))
+        .map(|(_, z)| *z)
+    {
+        None => Some(None),
+        Some(Zona::Trozo(i, ms)) => Some(Some((i, ms))),
+        Some(_) => None,
+    }
+}
+
 /// Lo que hace la letra en cada vuelta del bucle, sin eventos de por medio:
 /// saldar el salto que esperaba a la duracion y seguir al parrafo que suena.
 /// Devuelve si hay que repintar.
@@ -12588,12 +12831,31 @@ fn latido_de_la_letra(a: &mut Abierto, escala: u32, d: &Disposicion) -> bool {
     let Some(l) = a.letra.as_ref() else {
         return cambio;
     };
-    let Some(m) = a.mensajes.iter().find(|m| m.id == l.id) else {
-        return cambio;
-    };
     if !suena {
         return cambio;
     }
+    // Movida a mano hace poco: no se le quita de donde la dejo.
+    if !sigue_a_la_cancion(
+        l.a_mano,
+        std::time::Instant::now(),
+        crate::audio::estado().sonando,
+    ) {
+        return cambio;
+    }
+    if l.a_mano.is_some() {
+        // Se acabo la pausa: vuelve a seguir desde la linea que suena.
+        if let Some(l) = a.letra.as_mut() {
+            l.a_mano = None;
+            l.seguido = None;
+        }
+        cambio = true;
+    }
+    let Some(l) = a.letra.as_ref() else {
+        return cambio;
+    };
+    let Some(m) = a.mensajes.iter().find(|m| m.id == l.id) else {
+        return cambio;
+    };
     let trozos = trozos_de_la_letra(m);
     let Some(n) = crate::voz::por_donde_va(&trozos, crate::audio::estado().posicion_ms) else {
         return cambio;
@@ -12651,13 +12913,30 @@ fn caja_de_la_letra(a: &Abierto, d: &Disposicion, escala: u32) -> pixpin_ui::cha
 }
 
 /// [`caja_de_la_letra`] sin apartar el sitio de las capturas de una clase.
+///
+/// **Una cancion no lleva la tira de arriba** (flecha, nombre del fichero y
+/// botones; peticion del usuario, 29-oct-2026): el karaoke pone arriba su
+/// portada, su titulo y sus botones, y el texto empieza donde empezaba la
+/// tira. Tampoco lleva la fila de banderitas: su boton es el reloj de
+/// sincronizar.
 fn caja_de_la_letra_entera(a: &Abierto, d: &Disposicion, escala: u32) -> pixpin_ui::chat::Letra {
-    let con_marcas = a
+    let m = a
         .letra
         .as_ref()
-        .and_then(|l| a.mensajes.iter().find(|m| m.id == l.id))
-        .is_some_and(|m| !crate::voz::marcas_de(m).is_empty());
-    pixpin_ui::chat::letra_con(hueco_hoja(d), crate::audio::hay_algo(), con_marcas, escala)
+        .and_then(|l| a.mensajes.iter().find(|m| m.id == l.id));
+    let cancion = m.is_some_and(crate::biblioteca_audio::es_musica);
+    let con_marcas = !cancion && m.is_some_and(|m| !crate::voz::marcas_de(m).is_empty());
+    let mut t =
+        pixpin_ui::chat::letra_con(hueco_hoja(d), crate::audio::hay_algo(), con_marcas, escala);
+    if cancion {
+        t.texto = Rect {
+            y: t.cabecera.y,
+            alto: (t.texto.abajo() - t.cabecera.y).max(0) as u32,
+            ..t.texto
+        };
+        t.cabecera.alto = 0;
+    }
+    t
 }
 
 /// **La letra de una clase con capturas** (24-oct-2026): el texto a la
@@ -12930,7 +13209,10 @@ fn latido_de_la_voz(
         }
         return match reescribir_mensaje(ubicacion, a, i, m, textos) {
             Efecto::Aviso(t) => Some(t),
-            _ => Some(textos.t("chat-letra-guardada")),
+            // La letra pegada de una cancion, sin tiempos: se sincroniza
+            // sola (29-oct-2026).
+            _ => musica::tras_pegar(ubicacion, a, &id, idioma, textos)
+                .or_else(|| Some(textos.t("chat-letra-guardada"))),
         };
     }
     if let Some(toma) = a.voz.toma() {
@@ -13056,17 +13338,20 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let t = caja_de_la_letra(a, d, escala);
     p.rellenar(rf(t.panel), tema.papel);
     let m = a.mensajes.iter().enumerate().find(|(_, m)| m.id == l.id);
-    // La banderita solo con audio (`enabled = m?.ruta != null`). En una
-    // cancion su sitio es el reloj de «Sincronizar la letra» (`musica`).
+    // Una cancion se canta: el karaoke (`musica`), con sus botones arriba y
+    // sin la tira de las notas.
+    if let Some((i, _)) = m.filter(|(_, m)| crate::biblioteca_audio::es_musica(m)) {
+        musica::pintar_karaoke(p, t.texto, c, a, i, l);
+        if t.barra.alto > 0 {
+            pintar_barra_del_reproductor(p, t.barra, c, a);
+        }
+        return;
+    }
+    // La banderita solo con audio (`enabled = m?.ruta != null`).
     let con_audio = m.is_some_and(|(_, m)| m.ruta.is_some());
-    let cancion = m.filter(|(_, m)| crate::biblioteca_audio::es_musica(m));
     icono_centrado(
         p,
-        if cancion.is_some() {
-            &mi::TIMER
-        } else {
-            &mi::FLAG
-        },
+        &mi::FLAG,
         t.marcar,
         18.0 * e,
         if con_audio { tema.texto } else { tema.apagado },
@@ -13075,14 +13360,7 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     {
         let mut z = a.zonas.borrow_mut();
         if con_audio {
-            z.push((
-                t.marcar,
-                if cancion.is_some() {
-                    Zona::Musica(musica::Boton::Sincronizar)
-                } else {
-                    Zona::LetraMarcar
-                },
-            ));
+            z.push((t.marcar, Zona::LetraMarcar));
         }
         z.push((t.editar, Zona::LetraEditar));
     }
@@ -13169,10 +13447,8 @@ fn pintar_letra(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // Los parrafos. Sin texto se dice, en el centro, en vez de una pantalla
     // en blanco que parece rota (`letra_vacia`).
     let trozos = m.map(|(_, m)| trozos_de_la_letra(m)).unwrap_or_default();
-    if let Some((i, _)) = cancion {
-        // Una cancion se canta: el karaoke (`musica`).
-        musica::pintar_karaoke(p, t.texto, c, a, i, l);
-    } else if trozos.is_empty() {
+    l.pintado.set(l.scroll);
+    if trozos.is_empty() {
         let vacio = textos.t("chat-letra-vacia");
         let tam = 14.0 * e;
         let (w, h) = p.medir_texto(&vacio, tam);
@@ -20907,7 +21183,20 @@ fn giro_de_rueda(delta: i32, por_muesca: i32) -> i32 {
 
 #[cfg(test)]
 mod pruebas_rueda {
-    use super::giro_de_rueda;
+    use super::{LETRA_A_MANO, giro_de_rueda, sigue_a_la_cancion};
+
+    #[test]
+    fn mover_la_letra_a_mano_para_un_rato_el_seguir_a_la_cancion() {
+        let t = std::time::Instant::now();
+        assert!(sigue_a_la_cancion(None, t, true));
+        assert!(sigue_a_la_cancion(None, t, false));
+        // Recien movida: ni sonando la sigue.
+        assert!(!sigue_a_la_cancion(Some(t), t, true));
+        // Pasado el rato, sonando, vuelve a seguirla.
+        assert!(sigue_a_la_cancion(Some(t), t + LETRA_A_MANO, true));
+        // Parada, lo movido a mano se queda donde se dejo.
+        assert!(!sigue_a_la_cancion(Some(t), t + LETRA_A_MANO * 10, false));
+    }
 
     #[test]
     fn una_muesca_mueve_lo_de_una_muesca_y_en_su_sentido() {

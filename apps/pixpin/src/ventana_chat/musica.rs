@@ -24,6 +24,18 @@
 //! - **Sincronizar a toques** ([`Boton::Sincronizar`]): suena desde el
 //!   principio y Espacio (o «Marcar») al empezar cada linea le pone su
 //!   minuto; Retroceso deshace, Intro guarda y Escape lo deja.
+//! - **Sincronizar sola** ([`Boton::SincronizarSola`], [`Sola`];
+//!   29-oct-2026): Whisper oye la cancion en su hilo y la letra pegada se
+//!   alinea con lo oido (`pixpin_voz::alinear_letra`): cada linea se lleva
+//!   un minuto aproximado, con el texto pegado intacto. Arranca sola al
+//!   pegar una letra sin tiempos (si el reconocedor ya esta bajado) y con
+//!   su boton cuando se quiera; lo que salga se corrige luego a toques.
+//!
+//! La pantalla de la letra de una cancion **no lleva la tira de arriba**
+//! de las notas (flecha, nombre del fichero, copiar): arriba va la portada
+//! con el titulo y el artista de sus etiquetas, y a la derecha los botones
+//! (letra menor y mayor, sincronizar a toques, sincronizar sola, el lapiz
+//! y una ✕ para volver, como Escape o la cabecera del chat).
 //!
 //! El auricular de llamadas del movil no tiene sitio aqui: es del aparato.
 
@@ -31,11 +43,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use pixpin_geom::Rect;
 use pixpin_proyecto::cuaderno::{Clase, Mensaje};
 use pixpin_render::{Color, Pintor, RectF};
 use pixpin_store::{Catalogo, Ubicacion};
+use pixpin_voz::alinear_letra::{self as alinear, Alineado};
 use pixpin_voz::letra_de_cancion as letra;
 
 use super::{Abierto, Efecto, LetraAbierta, Pinta, Zona, con_alfa, hex, icono_centrado, mi, rf};
@@ -47,6 +63,9 @@ pub(super) enum Boton {
     Karaoke(usize),
     /// El reloj de la cabecera del karaoke.
     Sincronizar,
+    /// «Sincronizar sola»: oir la cancion y poner los tiempos (o pararlo si
+    /// ya se esta haciendo).
+    SincronizarSola,
     Marcar,
     Deshacer,
     Guardar,
@@ -343,7 +362,8 @@ pub(super) fn pulsar(
         return Efecto::Nada;
     };
     match boton {
-        Boton::Karaoke(_) => Efecto::Nada,
+        // Lo atiende `sincronizar_sola`, que necesita el idioma.
+        Boton::Karaoke(_) | Boton::SincronizarSola => Efecto::Nada,
         Boton::Sincronizar => {
             if sincronizando(a) {
                 return Efecto::Nada;
@@ -443,7 +463,7 @@ pub(super) fn tecla(
     pulsar(ubicacion, a, boton, textos)
 }
 
-/// Ctrl+C y el boton de copiar de una cancion: su letra en LRC, para
+/// Ctrl+C en la letra de una cancion: su letra en LRC, para
 /// llevarla a otra aplicacion de karaoke (`Copiar como LRC` del movil).
 /// `None` si la letra abierta no es de una cancion.
 pub(super) fn copiar_lrc(a: &Abierto, textos: &Catalogo) -> Option<Efecto> {
@@ -468,8 +488,253 @@ pub(super) fn copiar_lrc(a: &Abierto, textos: &Catalogo) -> Option<Efecto> {
     })
 }
 
+// --- Sincronizar sola ---------------------------------------------------------
+
+/// **«Sincronizar sola» en marcha**: la cancion se oye en su hilo (Whisper,
+/// tanda a tanda) y lo oido se alinea con la letra pegada. El chat lo mira
+/// en cada vuelta ([`latido_sola`]) y, al acabar, guarda la letra con sus
+/// minutos. Tirarlo lo cancela.
+pub(super) struct Sola {
+    /// La cancion, por id.
+    pub(super) id: String,
+    /// Las lineas que se alinean: las mismas que sincronizar a toques.
+    lineas: Vec<String>,
+    /// La letra como estaba al empezar: si se edita entre medias, lo oido
+    /// ya no es de esas lineas y no se guarda.
+    original: Option<String>,
+    /// Milesimas, de 0 a 1000.
+    avance: Arc<AtomicU32>,
+    /// Si todavia esta bajando el reconocedor (la primera vez).
+    bajando: Arc<AtomicBool>,
+    cancelado: Arc<AtomicBool>,
+    resultado: Receiver<Result<Option<Alineado>, pixpin_voz::ErrorVoz>>,
+}
+
+impl Sola {
+    pub(super) fn avance(&self) -> f32 {
+        self.avance.load(Ordering::Relaxed) as f32 / 1000.0
+    }
+
+    pub(super) fn bajando(&self) -> bool {
+        self.bajando.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for Sola {
+    fn drop(&mut self) {
+        // Cerrar el chat a medias no deja un hilo moliendo la cancion.
+        self.cancelado.store(true, Ordering::Relaxed);
+    }
+}
+
+/// El boton «Sincronizar sola»: arranca (bajando el reconocedor si falta)
+/// o, si ya va con esta cancion, lo para.
+pub(super) fn sincronizar_sola(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    idioma: pixpin_store::Idioma,
+    textos: &Catalogo,
+) -> Efecto {
+    let Some(i) = super::indice_de_la_letra(a) else {
+        return Efecto::Nada;
+    };
+    if let Some(s) = a.sola.as_ref() {
+        if s.id == a.mensajes[i].id {
+            a.sola = None;
+            return Efecto::Aviso(textos.t("musica-sola-parada"));
+        }
+        return Efecto::Aviso(textos.t("musica-sola-ocupada"));
+    }
+    match empezar_sola(ubicacion, a, i, idioma, true) {
+        Ok(()) => Efecto::Aviso(textos.t("musica-sola-empieza")),
+        Err(clave) => Efecto::Aviso(textos.t(clave)),
+    }
+}
+
+/// **Tras pegar o escribir la letra de una cancion**: si no lleva tiempos,
+/// se sincroniza sola (solo si el reconocedor ya esta bajado: bajar 160 MB
+/// sin preguntar no; entonces se dice que su boton lo hace). Devuelve el
+/// aviso, si hay que dar alguno.
+pub(super) fn tras_pegar(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    id: &str,
+    idioma: pixpin_store::Idioma,
+    textos: &Catalogo,
+) -> Option<String> {
+    let i = a.mensajes.iter().position(|m| m.id == id)?;
+    let m = &a.mensajes[i];
+    if !crate::biblioteca_audio::es_musica(m) || a.sola.is_some() {
+        return None;
+    }
+    let guardada = crate::voz::transcripcion_de(m)?;
+    if letra::leer(guardada).con_tiempos() {
+        return None;
+    }
+    match empezar_sola(ubicacion, a, i, idioma, false) {
+        Ok(()) => Some(textos.t("musica-sola-empieza")),
+        Err("musica-sola-falta-modelo") => Some(textos.t("musica-sola-falta-modelo")),
+        Err(_) => None,
+    }
+}
+
+/// Arranca el hilo. `Err` con la clave del aviso que lo impide.
+fn empezar_sola(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    i: usize,
+    idioma: pixpin_store::Idioma,
+    se_puede_bajar: bool,
+) -> Result<(), &'static str> {
+    let m = &a.mensajes[i];
+    let original = m.transcripcion.clone();
+    let s = letra::Sincronizador::de(&letra::leer(original.as_deref().unwrap_or_default()));
+    let lineas = s.textos().to_vec();
+    if lineas.is_empty() {
+        return Err("musica-sinc-primero-letra");
+    }
+    let Some(audio) = super::ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file())
+    else {
+        return Err("chat-voz-no-es-audio");
+    };
+    if !crate::voz::whisper_posible(ubicacion, idioma) {
+        return Err("musica-sola-sin-reconocedor");
+    }
+    let bajar = !pixpin_voz::whisper::modelo_listo(ubicacion.raiz());
+    if bajar && !se_puede_bajar {
+        return Err("musica-sola-falta-modelo");
+    }
+    // El idioma de la letra manda (una cancion en ingles se oye en ingles);
+    // si no esta claro, el de Ajustes, con su segundo idioma.
+    let idiomas =
+        match alinear::idioma_de_la_letra(&lineas).filter(|c| pixpin_voz::whisper::sabe(c)) {
+            Some(c) => pixpin_voz::Idiomas::uno(c),
+            None => crate::voz::idiomas_de(ubicacion, idioma),
+        };
+    let avance = Arc::new(AtomicU32::new(0));
+    let bajando = Arc::new(AtomicBool::new(bajar));
+    let cancelado = Arc::new(AtomicBool::new(false));
+    let (enviar, resultado) = channel();
+    let hilo = {
+        let raiz = ubicacion.raiz().to_path_buf();
+        let exe = pixpin_shell::entorno::directorio_del_ejecutable().ok();
+        let lineas = lineas.clone();
+        let (avance, bajando, cancelado) = (avance.clone(), bajando.clone(), cancelado.clone());
+        std::thread::Builder::new()
+            .name("pixpin-letra-sola".into())
+            .spawn(move || {
+                // Media Foundation decodifica la cancion en este hilo.
+                let _com = pixpin_shell::ComDelHilo::iniciar();
+                let mut avisar = |f: f32| {
+                    avance.store((f.clamp(0.0, 1.0) * 1000.0) as u32, Ordering::Relaxed);
+                };
+                if bajar {
+                    if let Err(e) = crate::voz::bajar_modelo(&raiz, &mut avisar, &cancelado) {
+                        let _ = enviar.send(Err(e));
+                        return;
+                    }
+                    bajando.store(false, Ordering::Relaxed);
+                    avisar(0.0);
+                }
+                // Como pasar a texto: de uno en uno en los equipos justos.
+                let _turno = crate::turno_pesado::tomar("sincronizar-letra");
+                let t = std::time::Instant::now();
+                let salida = pixpin_voz::whisper::oir_cancion(
+                    &audio,
+                    &raiz,
+                    exe.as_deref(),
+                    &idiomas,
+                    &mut avisar,
+                    &cancelado,
+                )
+                .map(|(segmentos, dura)| {
+                    let oidas = alinear::palabras_oidas(&segmentos);
+                    let hecho = alinear::alinear(&lineas, &oidas, Some(dura));
+                    tracing::info!(
+                        segundos = t.elapsed().as_secs_f32(),
+                        palabras = oidas.len(),
+                        lineas = lineas.len(),
+                        ancladas = hecho.as_ref().map_or(0, Alineado::ancladas),
+                        "letra sincronizada sola"
+                    );
+                    hecho
+                });
+                let _ = enviar.send(salida);
+            })
+    };
+    if let Err(e) = hilo {
+        tracing::warn!(?e, "no se pudo lanzar el hilo de sincronizar la letra");
+        return Err("chat-no-se-pudo");
+    }
+    a.sola = Some(Sola {
+        id: m.id.clone(),
+        lineas,
+        original,
+        avance,
+        bajando,
+        cancelado,
+        resultado,
+    });
+    Ok(())
+}
+
+/// **Lo que trae «Sincronizar sola»** cuando acaba: la letra guardada con
+/// sus minutos (el texto pegado, intacto) y el aviso de como fue. No
+/// bloquea; `None` mientras sigue.
+pub(super) fn latido_sola(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    textos: &Catalogo,
+) -> Option<String> {
+    let r = match a.sola.as_ref()?.resultado.try_recv() {
+        Ok(r) => r,
+        Err(TryRecvError::Empty) => return None,
+        Err(TryRecvError::Disconnected) => Err(pixpin_voz::ErrorVoz::Cancelada),
+    };
+    let sola = a.sola.take()?;
+    let alineado = match r {
+        Ok(Some(al)) => al,
+        Ok(None) | Err(pixpin_voz::ErrorVoz::NoSeEntiendeNada) => {
+            return Some(textos.t("musica-sola-no-se-oye"));
+        }
+        Err(pixpin_voz::ErrorVoz::Cancelada) => return None,
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo sincronizar la letra sola");
+            return Some(textos.t("musica-sola-fallo"));
+        }
+    };
+    let i = a.mensajes.iter().position(|m| m.id == sola.id)?;
+    if a.mensajes[i].transcripcion != sola.original {
+        return Some(textos.t("musica-sola-cambio"));
+    }
+    let texto = letra::a_guardar(&alineado.letra(&sola.lineas));
+    let mut m = a.mensajes[i].clone();
+    if crate::voz::escribir_letra(&mut m, &texto)
+        && let Efecto::Aviso(t) = super::reescribir_mensaje(ubicacion, a, i, m, textos)
+    {
+        return Some(t);
+    }
+    // La vista vuelve a seguir a la cancion con los minutos nuevos.
+    if let Some(l) = a.letra.as_mut().filter(|l| l.id == sola.id) {
+        l.a_mano = None;
+        l.seguido = None;
+    }
+    let (n, total) = (alineado.ancladas(), alineado.lineas.len());
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("n", n as i64);
+    args.set("total", total as i64);
+    let clave = if n * 3 < total {
+        "musica-sola-hecha-poca"
+    } else {
+        "musica-sola-hecha"
+    };
+    Some(textos.t_args(clave, &args))
+}
+
 /// Lo alto de la cabecera del karaoke (portada, titulo y artista).
 const CABECERA: f32 = 88.0;
+/// Lo alto de la pastilla de «Sincronizando la letra… 40 %».
+const PASTILLA: f32 = 34.0;
 /// Lo alto del panel de sincronizar, abajo.
 const PANEL: f32 = 124.0;
 
@@ -492,8 +757,10 @@ pub(super) fn pintar_karaoke(
     };
     let t = tarjeta(a, m).unwrap_or_default();
 
-    // La cabecera: la portada de 64 y, al lado, el titulo y el artista.
+    // La cabecera: la portada de 64, al lado el titulo y el artista de sus
+    // etiquetas (nunca el nombre del fichero) y a la derecha los botones.
     let alto_cab = (CABECERA * e).min(caja.alto as f32);
+    let botones = pintar_botones(p, caja, alto_cab, c, a, m);
     let lado = 64.0 * e;
     let x0 = caja.x as f32 + 20.0 * e;
     let portada = RectF {
@@ -504,8 +771,7 @@ pub(super) fn pintar_karaoke(
     };
     pintar_portada(p, portada, 12.0 * e, &t, &m.id, c.previas);
     let tx = portada.x + lado + 14.0 * e;
-    let ancho_t = (caja.x as f32 + caja.ancho as f32 - tx - 16.0 * e).max(1.0);
-    let rotulo = titulo(&t, m);
+    let ancho_t = (botones - tx - 12.0 * e).max(1.0);
     let (tam_t, tam_a) = (17.0 * e, 13.0 * e);
     let (_, alto_t) = p.medir_texto("Ag", tam_t);
     let debajo: Vec<&str> = [t.artista.as_deref(), t.album.as_deref()]
@@ -513,28 +779,155 @@ pub(super) fn pintar_karaoke(
         .flatten()
         .collect();
     let (_, alto_a) = p.medir_texto("Ag", tam_a);
-    let alto_todo = alto_t + if debajo.is_empty() { 0.0 } else { alto_a };
-    let ty = caja.y as f32 + (alto_cab - alto_todo) / 2.0;
-    p.texto_linea(&rotulo, tx, ty, tam_t, ancho_t, tema.texto_papel);
+    let con_titulo = t.titulo.is_some();
+    let alto_todo =
+        if con_titulo { alto_t } else { 0.0 } + if debajo.is_empty() { 0.0 } else { alto_a };
+    let mut ty = caja.y as f32 + (alto_cab - alto_todo) / 2.0;
+    if let Some(rotulo) = t.titulo.as_deref() {
+        p.texto_linea(rotulo, tx, ty, tam_t, ancho_t, tema.texto_papel);
+        ty += alto_t;
+    }
     if !debajo.is_empty() {
         p.texto_linea(
             &debajo.join(" · "),
             tx,
-            ty + alto_t,
+            ty,
             tam_a,
             ancho_t,
             con_alfa(tema.texto_papel, 0.6),
         );
     }
+    let mut arriba = alto_cab;
+    if let Some(s) = a.sola.as_ref().filter(|s| s.id == m.id) {
+        arriba += pintar_pastilla(p, caja, arriba, c, s);
+    }
     let lista = Rect {
-        y: caja.y + alto_cab as i32,
-        alto: caja.alto.saturating_sub(alto_cab as u32),
+        y: caja.y + arriba as i32,
+        alto: caja.alto.saturating_sub(arriba as u32),
         ..caja
     };
     match l.sincronizando.as_ref() {
         Some(s) => pintar_sincronizar(p, lista, c, a, s, l.tam),
-        None => pintar_lineas(p, lista, c, a, i, m, l, alto_cab as u32),
+        None => pintar_lineas(p, lista, c, a, i, m, l, arriba as u32),
     }
+}
+
+/// Los botones de la cabecera, de derecha a izquierda: volver (✕), el
+/// lapiz, sincronizar sola, sincronizar a toques, letra mayor y menor. Sin
+/// copiar: el usuario no lo queria aqui (Ctrl+C sigue llevandose la letra).
+/// Devuelve donde empiezan, para que el titulo no se meta debajo.
+fn pintar_botones(
+    p: &Pintor,
+    caja: Rect,
+    alto_cab: f32,
+    c: &Pinta,
+    a: &Abierto,
+    m: &Mensaje,
+) -> f32 {
+    let (tema, e) = (c.tema, c.escala as f32 / 100.0);
+    let lado = pixpin_ui::chat::LETRA_BOTON as f32 * e;
+    let y = caja.y as f32 + (alto_cab - lado) / 2.0;
+    let con_audio = m.ruta.is_some();
+    let sola = a.sola.as_ref().is_some_and(|s| s.id == m.id);
+    let mut x = caja.x as f32 + caja.ancho as f32 - 10.0 * e;
+    let mut z = a.zonas.borrow_mut();
+    let botones: [(Option<&pixpin_render::icono::Icono>, f32, Zona, bool); 6] = [
+        (Some(&mi::CLOSE), 0.0, Zona::LetraVolver, true),
+        (Some(&mi::EDIT), 0.0, Zona::LetraEditar, true),
+        (
+            Some(&mi::SUBTITLES),
+            0.0,
+            Zona::Musica(Boton::SincronizarSola),
+            con_audio,
+        ),
+        (
+            Some(&mi::TIMER),
+            0.0,
+            Zona::Musica(Boton::Sincronizar),
+            con_audio,
+        ),
+        (None, 18.0, Zona::LetraMas, true),
+        (None, 12.0, Zona::LetraMenos, true),
+    ];
+    for (icono, tam_a, zona, activo) in botones {
+        x -= lado;
+        let r = Rect {
+            x: x as i32,
+            y: y as i32,
+            ancho: lado as u32,
+            alto: lado as u32,
+        };
+        let encendido = sola && zona == Zona::Musica(Boton::SincronizarSola);
+        if encendido {
+            p.rellenar_redondeado(rf(r), lado / 2.0, con_alfa(tema.enviar, 0.18));
+        }
+        let color = match (activo, encendido) {
+            (_, true) => tema.enviar,
+            (true, false) => tema.texto_papel,
+            (false, false) => tema.apagado,
+        };
+        match icono {
+            Some(i) => icono_centrado(p, i, r, 18.0 * e, color),
+            None => {
+                let (w, h) = p.medir_texto("A", tam_a * e);
+                p.texto(
+                    "A",
+                    r.x as f32 + (r.ancho as f32 - w) / 2.0,
+                    r.y as f32 + (r.alto as f32 - h) / 2.0,
+                    tam_a * e,
+                    color,
+                );
+            }
+        }
+        if activo {
+            z.push((r, zona));
+        }
+    }
+    x
+}
+
+/// «Sincronizando la letra… 40 %» bajo la cabecera, mientras se oye la
+/// cancion. Devuelve lo alto que ocupa.
+fn pintar_pastilla(p: &Pintor, caja: Rect, arriba: f32, c: &Pinta, s: &Sola) -> f32 {
+    let (tema, e) = (c.tema, c.escala as f32 / 100.0);
+    let alto = PASTILLA * e;
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("pct", (s.avance() * 100.0).round() as i64);
+    let rotulo = c.textos.t_args(
+        if s.bajando() {
+            "musica-sola-bajando"
+        } else {
+            "musica-sola-avance"
+        },
+        &args,
+    );
+    let tam = 13.0 * e;
+    let (w, h) = p.medir_texto(&rotulo, tam);
+    let ancho = (w + 28.0 * e).min(caja.ancho as f32 - 16.0 * e).max(1.0);
+    let pastilla = RectF {
+        x: caja.x as f32 + (caja.ancho as f32 - ancho) / 2.0,
+        y: caja.y as f32 + arriba,
+        ancho,
+        alto: alto - 8.0 * e,
+    };
+    p.rellenar_redondeado(pastilla, pastilla.alto / 2.0, con_alfa(tema.enviar, 0.14));
+    // Lo hecho, como una barra dentro de la pastilla.
+    let hecho = RectF {
+        ancho: pastilla.ancho * s.avance().clamp(0.0, 1.0),
+        ..pastilla
+    };
+    if hecho.ancho > 0.0 {
+        p.rellenar_redondeado(hecho, pastilla.alto / 2.0, con_alfa(tema.enviar, 0.22));
+    }
+    p.texto_linea(
+        &rotulo,
+        pastilla.x + 14.0 * e,
+        pastilla.y + (pastilla.alto - h) / 2.0,
+        tam,
+        pastilla.ancho - 28.0 * e,
+        tema.texto_papel,
+    );
+    alto
 }
 
 /// La letra que se canta, centrada: la linea que suena grande y en color a
@@ -578,7 +971,9 @@ fn pintar_lineas(
         return;
     }
     let con_tiempos = trozos.iter().any(|t| t.ms.is_some());
-    let actual = posicion_de(a, m).and_then(|ms| crate::voz::por_donde_va(&trozos, ms));
+    let posicion = posicion_de(a, m);
+    let sonando = posicion.is_some() && crate::audio::estado().sonando;
+    let actual = posicion.and_then(|ms| crate::voz::por_donde_va(&trozos, ms));
     let tam = l.tam as f32 * e;
     let tam_activa = tam * 1.15;
     let ancho = ui::ancho_de_la_letra(lista, escala) as f32;
@@ -608,9 +1003,11 @@ fn pintar_lineas(
         *l.altos.borrow_mut() = guardados;
     }
     // Con tiempos la vista la lleva la cancion: la linea que suena (o la
-    // primera, antes de empezar) a un tercio de la altura. Sin tiempos, la
-    // rueda.
-    let scroll = if con_tiempos {
+    // primera, antes de empezar) a un tercio de la altura, salvo un rato
+    // despues de moverla a mano (la rueda, las teclas o arrastrando). Sin
+    // tiempos, siempre a mano.
+    let sigue = super::sigue_a_la_cancion(l.a_mano, std::time::Instant::now(), sonando);
+    let scroll = if con_tiempos && sigue {
         let foco = actual.unwrap_or(0);
         let cajas = ui::parrafos_de_la_letra(lista, &altos, 0, escala);
         cajas.get(foco).map_or(0, |k| {
@@ -619,6 +1016,7 @@ fn pintar_lineas(
     } else {
         l.scroll
     };
+    l.pintado.set(scroll);
     let cajas = ui::parrafos_de_la_letra(lista, &altos, scroll, escala);
     let tinta = tema.texto_papel;
     let aire = ui::LETRA_AIRE_Y as f32 * e;
@@ -646,7 +1044,17 @@ fn pintar_lineas(
             color,
         );
         if let Some(ms) = trozos[n].ms {
-            a.zonas.borrow_mut().push((*k, Zona::Trozo(i, ms)));
+            // Solo lo que se ve: una linea cortada por arriba no puede
+            // quitarle el clic a los botones de la cabecera.
+            let (y0, y1) = (k.y.max(lista.y), k.abajo().min(lista.abajo()));
+            if y1 > y0 {
+                let visible = Rect {
+                    y: y0,
+                    alto: (y1 - y0) as u32,
+                    ..*k
+                };
+                a.zonas.borrow_mut().push((visible, Zona::Trozo(i, ms)));
+            }
         }
     }
     p.soltar_recorte();
