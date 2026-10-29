@@ -13,11 +13,19 @@
 //! | entre NO y SI | nada, se apunta como dudosa (el usuario no ve nada) |
 //! | ≤ NO | nada |
 //!
-//! | quien_dicho | responsable |
-//! |---|---|
-//! | ≥ SI | el nombre que elige `quien` (con «todos») |
-//! | ≤ NO | nadie |
-//! | entre los dos, o sin participantes | sin decidir («¿quien?») |
+//! | quien_dicho | `quien` | responsable |
+//! |---|---|---|
+//! | ≥ SI | el elegido con ≥ [`QUIEN_MINIMO`] | ese nombre (o «todos») |
+//! | ≥ SI | el elegido con menos | sin decidir («¿quien?») |
+//! | ≤ NO | — | nadie |
+//! | entre los dos, o sin participantes | — | sin decidir |
+//!
+//! La fila del «con menos» (29-oct-2026, de punta a punta con audio): sin
+//! saber quien habla (Whisper da el texto, no la voz), «mañana la llamo»
+//! dice que alguien se lo queda (`quien_dicho` 0.93) pero no quien, y
+//! `quien` reparte entre los participantes (0.37 el primero): es una
+//! adivinanza, no un nombre. Cuando se nombra («Luis, tú hablas con el
+//! tutor») sale 0.97.
 //!
 //! | plazo_dicho | fecha |
 //! |---|---|
@@ -33,6 +41,10 @@ use crate::fechas::{Expresion, Fecha, Momento};
 use crate::preguntas::{NO, SI};
 use crate::urgencia::{Prioridad, puntos_del_plazo};
 use crate::vivo::{Compromiso, Frase, Plazo};
+
+/// Lo menos que tiene que tener el elegido de `quien` para ponerlo de
+/// responsable (si no, «¿quien?»).
+pub const QUIEN_MINIMO: f64 = 0.5;
 
 /// Quien hace la tarea.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,7 +118,9 @@ pub fn decidir(
         return Resultado::Dudosa(c.p);
     }
     let responsable = match (c.quien_dicho, &c.quien) {
-        (Some(p), Some((n, _))) if p >= SI => Responsable::Nombre(n.clone()),
+        (Some(p), Some((n, pn))) if p >= SI && *pn >= QUIEN_MINIMO => {
+            Responsable::Nombre(n.clone())
+        }
         (Some(p), _) if p <= NO => Responsable::Nadie,
         _ => Responsable::SinDecidir,
     };
@@ -171,6 +185,14 @@ mod pruebas {
         assert_eq!(t.fecha, None);
         // Quien a medias: sin decidir.
         let Resultado::Propuesta(t) = decidir(&f, &c(0.8, 0.5, 0.1), None, &fe, hoy()) else {
+            panic!()
+        };
+        assert_eq!(t.responsable, Responsable::SinDecidir);
+        // Alguien se lo queda, pero `quien` adivina (sin saber quien habla):
+        // sin decidir.
+        let mut adivina = c(0.95, 0.93, 0.1);
+        adivina.quien = Some(("Luis".into(), 0.37));
+        let Resultado::Propuesta(t) = decidir(&f, &adivina, None, &fe, hoy()) else {
             panic!()
         };
         assert_eq!(t.responsable, Responsable::SinDecidir);
