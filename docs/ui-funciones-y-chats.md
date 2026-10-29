@@ -293,15 +293,94 @@ pantalla de la letra de los dos aparatos y viaja como cualquier nota.
   `covr` de MP4, `PICTURE` de FLAC; `pixpin_voz::etiquetas`) o un degradado
   con la nota, y el título y el artista de sus etiquetas en vez de la onda.
   Su pastilla (icono de letra) abre el karaoke; pulsar la burbuja la toca.
-- **El karaoke** (la pantalla de la letra de una canción): portada, título y
-  artista arriba; la línea que suena grande y en color a un tercio de la
-  altura, las cantadas apagadas; un clic en una línea lleva la canción ahí.
-  Ctrl+C (o copiar) la lleva en LRC.
-- **Sincronizar la letra** (el reloj de la cabecera, en el sitio de la
-  banderita): suena desde el principio y **Espacio** (o «Marcar», o un clic
-  en la lista) al empezar cada línea le pone su minuto; **Retroceso** deshace
-  y vuelve dos segundos antes de la anterior; **Intro** guarda en `[m:ss]` y
-  **Escape** lo deja. Un toque nunca queda antes que el anterior.
+- **El karaoke** (la pantalla de la letra de una canción): **sin la tira de
+  arriba** de las notas (la flecha con el nombre del fichero; 29-oct-2026, a
+  petición del usuario). Arriba va la portada con el título y el artista de
+  las etiquetas (sin etiquetas, nada: nunca el nombre del fichero) y, a la
+  derecha, **A−**, **A+**, el reloj (sincronizar a toques), los subtítulos
+  («Sincronizar sola»), el lápiz y una **✕** para volver; también vuelven
+  Escape y la cabecera del chat, como en las demás pantallas de la letra.
+  **Sin botón de copiar** (no lo quería); Ctrl+C sigue llevándola en LRC.
+  La línea que suena va grande y en color a un tercio de la altura, las
+  cantadas apagadas; un clic en una línea lleva la canción ahí.
+- **Moverse por la letra**: la rueda, el panel táctil, **arrastrar** con el
+  ratón y las teclas (Re Pág/Av Pág, flechas, Inicio, Fin), con y sin
+  tiempos. Mientras suena, la vista sigue a la línea que suena; moverla a
+  mano lo para **6 s** (o hasta pulsar una línea) y luego vuelve sola.
+  Parada, se queda donde se dejó. *El fallo que había* (29-oct-2026): con
+  tiempos, el karaoke calculaba la vista en cada fotograma desde la línea
+  que suena y lo que la rueda escribía en `scroll` no se leía nunca; ahora
+  se pinta desde `scroll` mientras dura lo movido a mano y se apunta lo
+  pintado (`LetraAbierta::pintado`) para que mover empiece desde lo que se
+  ve (`mover_la_letra`, `sigue_a_la_cancion` en `ventana_chat.rs`).
+- **Sincronizar la letra** (el reloj): suena desde el principio y
+  **Espacio** (o «Marcar», o un clic en la lista) al empezar cada línea le
+  pone su minuto; **Retroceso** deshace y vuelve dos segundos antes de la
+  anterior; **Intro** guarda en `[m:ss]` y **Escape** lo deja. Un toque
+  nunca queda antes que el anterior. Sirve también para corregir lo que
+  ponga «Sincronizar sola».
+- **Sincronizar sola** (los subtítulos; 29-oct-2026): Whisper oye la
+  canción en su hilo y la letra pegada **se alinea** con lo oído; cada línea
+  se lleva un minuto aproximado y se guarda en el mismo `[m:ss] línea` (el
+  móvil la canta sin cambiar nada). **El texto guardado es siempre el
+  pegado**, nunca lo que oyó Whisper. Arranca sola al pegar (lápiz) una
+  letra sin tiempos si el reconocedor ya está bajado; si no, el aviso dice
+  que su botón lo baja (una vez, unos 160 MB). Se ve el avance en una
+  pastilla bajo la cabecera («Sincronizando la letra… 40 %»); pulsar otra
+  vez el botón lo para, y cerrar la conversación también. Al acabar, el
+  aviso dice cuántas líneas se oyeron («12 de 30»); con menos de un tercio,
+  que va a ojo. Si la letra se edita mientras, no se guarda. El idioma con
+  el que se oye es el de la letra si se nota (`idioma_de_la_letra`: una
+  canción en inglés se oye en inglés con PixPin en castellano) y si no, el
+  de Ajustes con su segundo idioma.
+
+### Cómo se alinea la letra con lo oído (`pixpin_voz::alinear_letra`)
+
+Puro, sin sonido ni ventanas, con sus pruebas (errores del reconocedor,
+estribillos repetidos, líneas que no se oyen, coros de fondo y «yeah»,
+huecos instrumentales, rótulos, el final de la canción).
+
+**Entra**: las líneas de la letra (texto, en orden: las mismas que
+sincronizar a toques, un renglón por línea) y las palabras oídas (texto y
+milisegundo en que empiezan), más lo que dura la canción si se sabe.
+**Sale**: por línea, un milisegundo, una confianza de 0 a 1 y si es un
+ancla (sale de palabras oídas) o se repartió; o nada si ninguna línea se
+pudo anclar.
+
+1. **Lo oído.** Whisper (`whisper::oir_cancion`) oye la canción en tandas
+   de frases de hasta 8 s (cortadas en los silencios, `cortes.rs`); cada
+   tanda trae su texto con principio y fin, y dentro se reparte el tiempo
+   de cada palabra según lo larga que es (`palabras_oidas`).
+2. **Normalizar** las dos partes: minúsculas, sin tildes ni puntuación, el
+   apóstrofo junta (`can't` → `cant`), los «x2» no son palabras. Una línea
+   que es solo un rótulo entre corchetes (`[Coro]`) no se canta.
+3. **Needleman–Wunsch palabra a palabra**, monótono: una pareja suma
+   `1 + parecido` si se parecen (Levenshtein, desde 0,65; las palabras de
+   una o dos letras solo exactas y valen 0,5), una pareja distinta resta
+   0,9, una palabra de la letra sin pareja resta 0,6 y una oída sin pareja
+   0,4. Lo oído antes de la primera palabra y después de la última no
+   cuesta. Un estribillo repetido casa con su vez porque el camino nunca
+   vuelve atrás.
+4. **Anclas**: confianza de una línea = suma de los parecidos de sus
+   palabras casadas / sus palabras; ancla con ≥ 0,4 y al menos dos casadas
+   (una si la línea tiene una). Su minuto es el de su primera palabra
+   casada menos lo que se tarda en cantar las de delante (al ritmo de la
+   canción), nunca antes que el ancla anterior.
+5. **El ritmo** (ms por letra): la mediana de lo medido dentro de las
+   líneas y entre dos líneas seguidas ancladas (hasta 20 s); 70 si no hay,
+   entre 35 y 300.
+6. **Las líneas sin ancla**: entre dos anclas, repartidas por letras pero
+   nunca más despacio que el ritmo (así un solo de guitarra queda antes de
+   la estrofa siguiente y no estira la anterior); antes de la primera,
+   hacia atrás al ritmo; después de la última, al ritmo sin pasar del final.
+   Un rótulo va con la línea que lo sigue. Todo en orden.
+
+**Para Android**: es el mismo cálculo, sin dependencias, y se porta tal
+cual a `guardados/LetraDeCancion.kt` (las constantes están arriba de
+`alinear_letra.rs`); las palabras oídas pueden salir de su `MotorWhisper`
+por tandas igual que aquí. El resultado se guarda en el formato de siempre,
+así que un PC y un móvil pueden sincronizar cada uno a su manera y leer lo
+del otro.
 
 El auricular de llamadas del móvil es solo de allí: es del aparato y no
 viaja.
