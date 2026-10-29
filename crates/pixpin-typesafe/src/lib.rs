@@ -23,19 +23,36 @@
 //!   pena), [`urgencia`] (la prioridad de una tarea) y [`modelo`] (que modelo
 //!   contesta al asistente) y [`temas`] (que temas de la agenda ya se
 //!   trataron, mientras se graba la reunion).
+//! - Las ideas en vivo (29-oct-2026, probadas sin interfaz con los
+//!   ejemplos de `examples/`, ver `docs/probar-ideas-sin-interfaz.md`):
+//!   [`vivo`] (una peticion por frase que sirve a varias), [`fechas`] (los
+//!   dias y horas dichos, en codigo), [`compromisos`] (tareas dichas),
+//!   [`urgencia_viva`] (la prioridad que cambia al hablar),
+//!   [`tiempo_de_temas`] (minutos por tema y el tema olvidado),
+//!   [`pendientes`] (preguntas sin respuesta), [`citas`] (al horario),
+//!   [`dictado`] (anotar en un chat) y [`repaso`] (repaso oral).
 //!
 //! Sin clave no se llama a nadie: quien usa esto sigue como siempre.
 
 pub mod anki;
 pub mod api;
+pub mod citas;
 pub mod claves;
 pub mod cliente;
+pub mod compromisos;
+pub mod dictado;
+pub mod fechas;
 pub mod modelo;
+pub mod pendientes;
 pub mod preguntas;
+pub mod repaso;
 pub mod reunion;
 pub mod temas;
+pub mod tiempo_de_temas;
 pub mod transporte;
 pub mod urgencia;
+pub mod urgencia_viva;
+pub mod vivo;
 
 pub use api::{Escala, Imagen, Peticion, Pregunta, Respuestas};
 pub use cliente::Cliente;
@@ -172,6 +189,21 @@ pub(crate) mod grabadas {
             .collect();
         format!(
             "\"{nombre}\":{{\"type\":\"score\",\"score\":{valor},\"confidence\":0.6,\"legend\":{{}},\"probabilities\":{{{}}}}}",
+            probs.join(",")
+        )
+    }
+
+    /// Una Choice: `elegida` con 0.8 y el resto repartido entre `otras`.
+    pub fn choice(nombre: &str, elegida: &str, otras: &[&str]) -> String {
+        let resto = if otras.is_empty() {
+            0.0
+        } else {
+            0.2 / otras.len() as f64
+        };
+        let mut probs = vec![format!("\"{elegida}\":0.8")];
+        probs.extend(otras.iter().map(|o| format!("\"{o}\":{resto}")));
+        format!(
+            "\"{nombre}\":{{\"type\":\"choice\",\"choice\":\"{elegida}\",\"confidence\":0.6,\"probabilities\":{{{}}}}}",
             probs.join(",")
         )
     }

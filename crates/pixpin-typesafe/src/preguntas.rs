@@ -378,6 +378,294 @@ pub mod modelo {
     }
 }
 
+/// **Lo que se dice en vivo, frase a frase** (29-oct-2026, los prototipos de
+/// `docs/probar-ideas-sin-interfaz.md`): **una sola peticion por frase** con
+/// las preguntas de varias ideas, porque todas comparten el estado (ver
+/// `crate::vivo`). Estado: `reunion` (el titulo), `frase.quien` y
+/// `frase.dice` (quien habla y lo que acaba de decir), `antes` (las dos
+/// frases anteriores, «Quien: lo que dijo»; si no hay, no va) y, solo si
+/// van sus preguntas, `participantes` (los nombres) y `agenda` (los temas).
+///
+/// Lo que va dentro de cada pregunta (una tarea, una pregunta abierta, las
+/// expresiones de fecha, los chats) va en su texto o en sus opciones: cada
+/// cosa, su pregunta.
+pub mod vivo {
+    use super::*;
+
+    pub const COMPROMISO: &str = "compromiso";
+    pub const QUIEN_DICHO: &str = "quien_dicho";
+    pub const QUIEN: &str = "quien";
+    pub const PLAZO_DICHO: &str = "plazo_dicho";
+    pub const PLAZO: &str = "plazo";
+    pub const URGENTE: &str = "urgente";
+    pub const DECISION: &str = "decision";
+    pub const PREGUNTA: &str = "pregunta";
+    pub const CITA: &str = "cita";
+    pub const CITA_CUANDO: &str = "cita_cuando";
+    pub const CIERRE: &str = "cierre";
+    pub const DE_LA_AGENDA: &str = "de_la_agenda";
+    pub const TEMA: &str = "tema";
+    pub const DICTADO: &str = "dictado";
+    pub const DICTADO_CHAT_DICHO: &str = "dictado_chat_dicho";
+    pub const DICTADO_CHAT: &str = "dictado_chat";
+    pub const DICTADO_QUE: &str = "dictado_que";
+
+    /// La opcion de [`QUIEN`] para «todos».
+    pub const TODOS: &str = "todos";
+    /// Las opciones de [`DICTADO_QUE`].
+    pub const LO_QUE_SIGUE: &str = "lo_que_sigue_en_la_frase";
+    pub const LA_ANTERIOR: &str = "la_frase_anterior";
+
+    /// Cuantas tareas y cuantas preguntas abiertas van en una peticion.
+    pub const POR_PETICION: usize = 8;
+
+    /// «¿La frase es de la tarea `id`?»
+    pub fn sobre(id: &str) -> String {
+        format!("sobre_{id}")
+    }
+
+    /// «¿La apura?»
+    pub fn apura(id: &str) -> String {
+        format!("apura_{id}")
+    }
+
+    /// «¿Contesta la pregunta abierta `id`?»
+    pub fn respondida(id: &str) -> String {
+        format!("respondida_{id}")
+    }
+
+    pub fn compromiso() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` contain a commitment: someone offers, agrees or is asked to do something after this moment?",
+            "Someone will do a concrete thing, e.g. «yo me encargo de mandar la cotización el viernes» or «Luis, tú llamas al proveedor».",
+            "It describes, discusses or reports something without anyone taking on a job, e.g. «la cotización llegó ayer» or «podríamos pedir otra».",
+        )
+    }
+
+    pub fn quien_dicho() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` say who will do it?",
+            "A person or group is named, or the speaker takes it on, e.g. «yo me encargo», «Marta lo llama», «lo hacemos todos».",
+            "Nobody is named, e.g. «hay que mandar la cotización».",
+        )
+    }
+
+    /// `opciones`: (clave, nombre) de cada participante; `habla`, el nombre
+    /// de quien habla.
+    pub fn quien(opciones: &[(String, String)], habla: &str) -> Pregunta {
+        let mut v: Vec<(String, String)> = opciones
+            .iter()
+            .map(|(k, n)| {
+                let d = if n == habla {
+                    format!(
+                        "«{n}», the person speaking in `frase.quien`, will do it (e.g. «yo me encargo»)."
+                    )
+                } else {
+                    format!("«{n}» will do it.")
+                };
+                (k.clone(), d)
+            })
+            .collect();
+        v.push((
+            TODOS.to_string(),
+            "Everyone in the meeting will do it together.".to_string(),
+        ));
+        Pregunta::Choice {
+            instructions: "Who will do what `frase.dice` commits to?".to_string(),
+            criteria: v,
+        }
+    }
+
+    pub fn plazo_dicho() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` give a day or time by which something has to be done?",
+            "A deadline is set, e.g. «la mando el viernes», «esto es para hoy», «para mañana a las 10».",
+            "No deadline is set: a day only names a topic or a past event, e.g. «la cotización del viernes» or «el material llegó el lunes».",
+        )
+    }
+
+    /// `opciones`: (clave, palabras) de cada expresion de fecha de la frase.
+    pub fn plazo(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "Which words in `frase.dice` say by when it has to be done?".to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, t)| (k.clone(), format!("«{t}»")))
+                .collect(),
+        }
+    }
+
+    pub fn urgente() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` stress that something is urgent?",
+            "Hurry is expressed, e.g. «es urgente», «cuanto antes», «sin falta hoy».",
+            "No hurry is expressed, e.g. «cuando puedas» or only a plain date.",
+        )
+    }
+
+    pub fn decision() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` announce a decision that the group has made?",
+            "Something is settled from now on, e.g. «entonces se decidió: compramos los proyectores en enero» or «queda aprobado».",
+            "Options are only discussed or proposed, e.g. «podríamos comprarlos en enero» or «yo propondría otra imprenta».",
+        )
+    }
+
+    pub fn pregunta() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` ask a question that expects an answer from someone else in the meeting?",
+            "A real question to the others, e.g. «¿alguien sabe cuándo llega el material?».",
+            "There is no question, or the speaker asks and answers at once, e.g. «¿y por qué? Porque…», or it is rhetorical.",
+        )
+    }
+
+    /// La pregunta abierta va dentro.
+    pub fn contesta(pregunta: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Does `frase.dice` answer the question «{pregunta}»?"),
+            "It gives what was asked, also a plain yes or no, e.g. for «¿cuándo llega el material?»: «llega el jueves».",
+            "It is about something else, or only puts the answer off, e.g. «lo averiguo y te digo».",
+        )
+    }
+
+    pub fn cita() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` set a day or time for people to meet or for an event to take place?",
+            "A meeting, visit, class or event gets a moment, e.g. «nos vemos el martes a las 3» or «la visita a la obra es el jueves a las 9».",
+            "A day is only a deadline for a task or names a past event, e.g. «mándalo el viernes» or «el material llegó el lunes».",
+        )
+    }
+
+    pub fn cita_cuando(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "Which words in `frase.dice` say when they meet or when the event is?"
+                .to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, t)| (k.clone(), format!("«{t}»")))
+                .collect(),
+        }
+    }
+
+    pub fn cierre() -> Pregunta {
+        Pregunta::noul(
+            "Is the speaker wrapping up the meeting in `frase.dice`?",
+            "The meeting is being closed, e.g. «bueno, si no hay nada más, lo dejamos aquí» or «vamos cerrando».",
+            "The discussion goes on, e.g. a new point is opened or someone is still explaining.",
+        )
+    }
+
+    pub fn de_la_agenda() -> Pregunta {
+        Pregunta::noul(
+            "Is `frase.dice` about one of the topics in `agenda`?",
+            "It talks about one of them: a figure, an opinion, a question or a decision about it, also through «eso» or «esto» pointing to `antes`.",
+            "It is about something else: greetings, jokes, the room or the call, or a matter that is not in `agenda`.",
+        )
+    }
+
+    /// `opciones`: (clave, tema) de cada tema de la agenda.
+    pub fn tema(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "Which topic in `agenda` is `frase.dice` about?".to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, t)| (k.clone(), format!("The topic «{t}».")))
+                .collect(),
+        }
+    }
+
+    pub fn dictado() -> Pregunta {
+        Pregunta::noul(
+            "Does the speaker in `frase.dice` ask for something to be noted down in a chat?",
+            "e.g. «anota esto en el chat de la obra» or «pon en el grupo de compras que faltan tornillos».",
+            "A chat is only mentioned, e.g. «lo vi en el chat de la obra», or nothing is to be noted.",
+        )
+    }
+
+    pub fn dictado_chat_dicho() -> Pregunta {
+        Pregunta::noul(
+            "Does `frase.dice` say in which chat to note it?",
+            "A chat is named, e.g. «en el chat de la obra» or «en el grupo de compras».",
+            "No chat is named, e.g. «anótalo».",
+        )
+    }
+
+    /// `opciones`: (clave, nombre) de cada chat.
+    pub fn dictado_chat(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "In which chat does the speaker want it noted?".to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, n)| (k.clone(), format!("The chat «{n}».")))
+                .collect(),
+        }
+    }
+
+    /// `opciones`: (clave, texto) de lo que se podria anotar.
+    pub fn dictado_que(opciones: &[(String, String)]) -> Pregunta {
+        Pregunta::Choice {
+            instructions: "What does the speaker want noted?".to_string(),
+            criteria: opciones
+                .iter()
+                .map(|(k, t)| (k.clone(), format!("«{t}»")))
+                .collect(),
+        }
+    }
+
+    /// La tarea va dentro.
+    pub fn es_de_la_tarea(tarea: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Is `frase.dice` about the task «{tarea}»?"),
+            "It talks about doing it, its date or its state, also through «esto» or «eso» pointing to it in `antes`.",
+            "It is about other things.",
+        )
+    }
+
+    pub fn la_apura(tarea: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!(
+                "Does `frase.dice` ask for the task «{tarea}» to be done sooner or say it is more urgent?"
+            ),
+            "e.g. «esto es para hoy», «lo necesito ya», «hay que adelantarlo al lunes».",
+            "No hurry is added for it, or it is given more time, e.g. «eso puede esperar».",
+        )
+    }
+}
+
+/// **Repaso oral**: lo que explica un alumno, contra los puntos clave de la
+/// clase. Estado: `clase` (el titulo) y `explicacion` (lo dicho hasta
+/// ahora). Dos Nouls por punto, con el punto dentro.
+pub mod repaso {
+    use super::*;
+
+    pub fn cubre(id: &str) -> String {
+        format!("cubre_{id}")
+    }
+
+    pub fn contradice(id: &str) -> String {
+        format!("contradice_{id}")
+    }
+
+    /// Cuantos puntos van en una peticion.
+    pub const POR_PETICION: usize = 12;
+
+    pub fn explica(punto: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Does `explicacion` explain the key point «{punto}»?"),
+            "The student states the idea in their own words, e.g. for «las plantas producen oxígeno»: «al hacer la fotosíntesis la planta suelta oxígeno».",
+            "The point is missing or only named, e.g. «y también está lo del oxígeno».",
+        )
+    }
+
+    pub fn lo_contradice(punto: &str) -> Pregunta {
+        Pregunta::noul(
+            &format!("Does `explicacion` say something that contradicts the key point «{punto}»?"),
+            "Something said is wrong about it, e.g. for «las plantas producen oxígeno»: «las plantas producen dióxido de carbono en la fotosíntesis».",
+            "What is said about it agrees with it, or it is not mentioned.",
+        )
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
