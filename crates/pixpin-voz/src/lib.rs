@@ -139,11 +139,12 @@ pub mod motor;
 /// El enlace a ONNX Runtime (Whisper, Indra y Qwen3-ASR). Compila tambien
 /// fuera de Windows, solo para las pruebas (ver `ort`).
 pub mod ort;
-#[cfg(windows)]
+/// Fuera de Windows, solo las cuentas de tiempo (ver `pcm`).
 pub mod pcm;
 #[cfg(windows)]
 pub mod sapi;
-#[cfg(windows)]
+/// Compila tambien en Linux (sin bajar ni decodificar: eso es de
+/// Windows) para los prototipos sin interfaz de `examples/`.
 pub mod whisper;
 
 pub use credibilidad::creible;

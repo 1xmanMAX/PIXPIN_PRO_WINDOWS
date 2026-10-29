@@ -36,6 +36,7 @@
 //! 4. Los tokens pasan a texto ([`fichas`]) y el texto pasa por
 //!    [`creible`](crate::credibilidad::creible).
 
+#[cfg(windows)]
 pub mod bajar;
 /// Los cortes viven en la raiz del crate (sin Windows): tambien los usa
 /// Qwen3-ASR (ver [`crate::qwen3`]). Se reexportan para no cambiar rutas.
@@ -48,7 +49,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::credibilidad::creible;
 use crate::dos_idiomas::{Idiomas, MINIMO_PARA_ADIVINAR_MS, Tarea};
-use crate::motor::Transcripcion;
+use crate::tiempos::Transcripcion;
 use crate::ort::{Runtime, Sesion, Valor};
 use crate::tiempos::{Segmento, con_tiempos, estado_de, lineas};
 use crate::{ErrorVoz, HERCIOS, pcm};
@@ -107,6 +108,7 @@ pub fn runtime_disponible(raiz: &Path, junto_al_exe: Option<&Path>) -> bool {
 
 /// **Baja lo que falte del modelo** a `<datos>/whisper/base/`. `avance` de
 /// 0 a 1 sobre el total de los tres. Tarda: hilo de fondo.
+#[cfg(windows)]
 pub fn bajar_modelo(
     raiz: &Path,
     avance: &mut dyn FnMut(f32),
@@ -791,6 +793,7 @@ pub const TANDA_CANCION_SEGUNDOS: usize = 8;
 
 /// **Lo que se oye cantar en una cancion**, de principio a fin: las tandas
 /// con su texto ([`Whisper::oir_cancion_pcm`]) y lo que dura el audio.
+#[cfg(windows)]
 pub fn oir_cancion(
     audio: &Path,
     raiz: &Path,
@@ -809,6 +812,7 @@ pub fn oir_cancion(
 }
 
 /// **Pasa una nota de voz a texto con Whisper**, de principio a fin.
+#[cfg(windows)]
 pub fn transcribir(
     audio: &Path,
     raiz: &Path,
@@ -830,6 +834,7 @@ pub fn transcribir(
 /// turnos** (B6 y B10). Sin turnos es [`Whisper::transcribir_pcm_con`] de la
 /// nota entera; con turnos, cada turno por su cuenta y con su nombre
 /// delante (ver [`crate::turnos`]).
+#[cfg(windows)]
 pub fn transcribir_con(
     audio: &Path,
     raiz: &Path,
@@ -1082,6 +1087,7 @@ mod pruebas {
     }
 
     /// Baja el modelo de verdad (unos 160 MB) a `PIXPIN_VOZ_RAIZ`.
+    #[cfg(windows)]
     #[test]
     #[ignore = "baja 160 MB de Hugging Face"]
     fn baja_el_modelo_de_verdad() {
@@ -1107,6 +1113,7 @@ mod pruebas {
     /// Dos idiomas de verdad (B6): `PIXPIN_VOZ_RAIZ`, `PIXPIN_VOZ_AUDIO`,
     /// `PIXPIN_VOZ_SEGUNDO` (p. ej. `en`) y `PIXPIN_VOZ_MODO`
     /// (`cada_uno`/`todo_en_uno`). Imprime el texto y el tiempo.
+    #[cfg(windows)]
     #[test]
     #[ignore = "pide el modelo Whisper bajado y un audio de verdad"]
     fn whisper_dos_idiomas_de_verdad() {
@@ -1147,6 +1154,7 @@ mod pruebas {
     /// `PIXPIN_VOZ_RAIZ` (la carpeta con `whisper/base/`) y
     /// `PIXPIN_VOZ_AUDIO` (un `.m4a`). Se corre a mano con
     /// `cargo test -p pixpin-voz --release -- --ignored whisper_transcribe`.
+    #[cfg(windows)]
     #[test]
     #[ignore = "pide el modelo Whisper bajado y un .m4a de verdad"]
     fn whisper_transcribe_una_nota_real() {
