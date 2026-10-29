@@ -19,9 +19,11 @@ use pixpin_typesafe::Cliente;
 use super::Funcion;
 use crate::pedidos::{self, Fallo};
 
-/// Lo que espera Jev a un tramo: la peticion lleva dos preguntas por tema
-/// (hasta 40) y va de fondo; nadie espera delante.
-const TIEMPO: Duration = Duration::from_secs(6);
+/// Lo que espera Jev a una peticion de la escucha en vivo: lleva tres
+/// preguntas por tema (hasta 60) y va de fondo, pero mientras esta en vuelo
+/// no sale la siguiente: una que se atasca no puede retrasar el ✓ mucho
+/// mas que esto.
+const TIEMPO: Duration = Duration::from_secs(4);
 
 /// Por que no marca Jev.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
