@@ -27,9 +27,12 @@
 //! cambio no pide nada y no tarda nada, que es lo que hace que «pasar a
 //! texto» se sienta instantaneo.
 //!
-//! ## Dos usos
+//! ## Tres usos
 //!
 //! - [`transcribir_pcm`]: una nota de voz ya grabada (PCM 16 kHz mono).
+//! - [`DeFrases`]: la grabacion de una reunion, frase a frase mientras se
+//!   graba (los temas de la reunion: el PCM de la grabacion, sin abrir otro
+//!   microfono), con el reconocedor montado una sola vez.
 //! - [`Dictado`]: dictar en vivo por el microfono, frase a frase, con el
 //!   texto provisional mientras se habla. Es lo que usa el microfono de la
 //!   caja de escribir del chat.
@@ -48,7 +51,8 @@ use windows::Win32::Media::Speech::{
     ISpRecoResult, ISpRecognizer, ISpStream, SPCAT_AUDIOIN, SPCAT_RECOGNIZERS, SPEI_END_SR_STREAM,
     SPEI_HYPOTHESIS, SPEI_RECOGNITION, SPET_LPARAM_IS_OBJECT, SPET_LPARAM_IS_POINTER,
     SPET_LPARAM_IS_STRING, SPET_LPARAM_IS_TOKEN, SPEVENT, SPLO_STATIC, SPRECORESULTTIMES,
-    SPRS_ACTIVE, SPRST_ACTIVE, SpInprocRecognizer, SpObjectToken, SpObjectTokenCategory, SpStream,
+    SPRS_ACTIVE, SPRST_ACTIVE, SPRST_INACTIVE, SpInprocRecognizer, SpObjectToken,
+    SpObjectTokenCategory, SpStream,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance, CoTaskMemFree};
 use windows::Win32::UI::Shell::SHCreateMemStream;
@@ -360,6 +364,25 @@ fn formato() -> WAVEFORMATEX {
     }
 }
 
+/// El audio en memoria como entrada del reconocedor: el flujo copia los
+/// bytes y el `ISpStream` lo envuelve anunciando el formato.
+fn flujo_de(muestras: &[i16]) -> Result<IUnknown, ErrorVoz> {
+    let bytes: Vec<u8> = muestras.iter().flat_map(|m| m.to_le_bytes()).collect();
+    // SAFETY: COM iniciado en el hilo (contrato del modulo); el flujo en
+    // memoria es una copia y el `ISpStream` se queda con el.
+    let flujo: ISpStream = unsafe {
+        let memoria = SHCreateMemStream(Some(&bytes)).ok_or(ErrorVoz::AudioVacio)?;
+        let flujo: ISpStream = CoCreateInstance(&SpStream, None, CLSCTX_ALL)
+            .map_err(en("crear el flujo de audio para el reconocedor"))?;
+        let f = formato();
+        flujo
+            .SetBaseStream(&memoria, &SPDFID_WAVE_FORMAT_EX, &f)
+            .map_err(en("darle formato al audio"))?;
+        flujo
+    };
+    flujo.cast().map_err(en("darle el audio al reconocedor"))
+}
+
 /// **Pasa a texto un audio ya decodificado** (PCM 16 bits mono a 16 kHz)
 /// con el reconocedor de Windows.
 ///
@@ -378,22 +401,8 @@ pub fn transcribir_pcm(
     if cancelado.load(Ordering::Relaxed) {
         return Err(ErrorVoz::Cancelada);
     }
-    let bytes: Vec<u8> = muestras.iter().flat_map(|m| m.to_le_bytes()).collect();
-    let total = bytes.len() as f32;
-
-    // SAFETY: el flujo en memoria copia los bytes; el `ISpStream` lo
-    // envuelve anunciando el formato, y los dos viven hasta el final.
-    let flujo: ISpStream = unsafe {
-        let memoria = SHCreateMemStream(Some(&bytes)).ok_or(ErrorVoz::AudioVacio)?;
-        let flujo: ISpStream = CoCreateInstance(&SpStream, None, CLSCTX_ALL)
-            .map_err(en("crear el flujo de audio para el reconocedor"))?;
-        let f = formato();
-        flujo
-            .SetBaseStream(&memoria, &SPDFID_WAVE_FORMAT_EX, &f)
-            .map_err(en("darle formato al audio"))?;
-        flujo
-    };
-    let entrada: IUnknown = flujo.cast().map_err(en("darle el audio al reconocedor"))?;
+    let total = (muestras.len() * 2) as f32;
+    let entrada = flujo_de(muestras)?;
     let montado = montar(idioma, &entrada, false)?;
 
     let mut segmentos: Vec<Segmento> = Vec::new();
@@ -460,6 +469,85 @@ pub fn transcribir(
     }
     let muestras = pcm::decodificar(audio)?;
     transcribir_pcm(&muestras, idioma, avance, cancelado)
+}
+
+/// **Pasa a texto frase a frase**, en vivo (los temas de la reunion,
+/// `crate::en_vivo`): cada frase de la grabacion, ya cortada en un
+/// silencio, entra como un audio en memoria. El reconocedor se monta una
+/// vez y a cada frase se le cambia la entrada (`SetInput`), que es lo que
+/// ahorra cargar el dictado cada vez; si cambiarla falla o la frase no
+/// acaba a tiempo, se vuelve a montar entero para la siguiente.
+///
+/// Vive en un solo hilo con COM iniciado (no es `Send`).
+pub struct DeFrases {
+    idioma: String,
+    montado: Option<Montado>,
+}
+
+impl DeFrases {
+    pub fn nuevo(idioma: &str) -> DeFrases {
+        DeFrases {
+            idioma: idioma.to_string(),
+            montado: None,
+        }
+    }
+
+    /// **El texto de una frase** (PCM 16 bits mono a 16 kHz), con las
+    /// frases que entendio el reconocedor juntas; vacio si no entendio nada
+    /// creible. Tarda unas decimas: el audio no se oye, se lee.
+    pub fn pasar(&mut self, muestras: &[i16], cancelado: &AtomicBool) -> Result<String, ErrorVoz> {
+        if muestras.is_empty() {
+            return Ok(String::new());
+        }
+        let entrada = flujo_de(muestras)?;
+        let reusado = self.montado.as_ref().is_some_and(|m| {
+            // SAFETY: el reconocedor esta vivo en `self`; se para, se le da
+            // la entrada nueva (que se queda) y se pone en marcha.
+            unsafe {
+                let _ = m.reconocedor.SetRecoState(SPRST_INACTIVE);
+                m.reconocedor.SetInput(&entrada, true).is_ok()
+                    && m.reconocedor.SetRecoState(SPRST_ACTIVE).is_ok()
+            }
+        });
+        if !reusado {
+            self.montado = None;
+            self.montado = Some(montar(&self.idioma, &entrada, false)?);
+        }
+        let Some(m) = self.montado.as_ref() else {
+            return Ok(String::new());
+        };
+        // Leer va mucho mas rapido que oir: el doble de lo que dura, y 3 s
+        // de margen, es que se atasco.
+        let dura = muestras.len() as u64 * 1000 / u64::from(HERCIOS);
+        let tope = std::time::Instant::now() + std::time::Duration::from_millis(2 * dura + 3_000);
+        let mut textos: Vec<String> = Vec::new();
+        let mut por_donde = 0u64;
+        let mut acabo = false;
+        while !acabo {
+            if cancelado.load(Ordering::Relaxed) {
+                return Err(ErrorVoz::Cancelada);
+            }
+            if std::time::Instant::now() > tope {
+                tracing::debug!("sapi: una frase no acabo a tiempo; se vuelve a montar");
+                self.montado = None;
+                break;
+            }
+            // SAFETY: el contexto esta vivo; esperar con tope no toca nada mas.
+            let _ = unsafe { m.contexto.WaitForNotifyEvent(ESPERA_MS) };
+            for suceso in recoger(&m.contexto, &mut por_donde) {
+                match suceso {
+                    Suceso::Frase { texto, .. } => {
+                        if !texto.is_empty() && creible(&texto, &self.idioma) {
+                            textos.push(texto);
+                        }
+                    }
+                    Suceso::FinDelAudio => acabo = true,
+                    Suceso::Provisional(_) | Suceso::Otro => {}
+                }
+            }
+        }
+        Ok(textos.join(" "))
+    }
 }
 
 /// Lo que va llegando mientras se dicta.
