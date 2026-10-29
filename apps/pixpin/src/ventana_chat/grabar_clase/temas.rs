@@ -258,7 +258,17 @@ impl Estado {
         let mut cambio = false;
         for v in e.recoger() {
             match v {
-                Vuelta::Tratado(t) => {
+                Vuelta::Tratado(t, tarde) => {
+                    // Lo que tardo el ✓ desde que se dejo de hablar: en las
+                    // compilaciones de depuracion, en la cabecera de la lista
+                    // (en todas, al registro, `escucha`).
+                    if cfg!(debug_assertions) {
+                        self.estado_escucha = Some(format!(
+                            "{} · ✓ {:.1} s",
+                            r.temas_escuchando,
+                            tarde.as_secs_f32()
+                        ));
+                    }
                     if temas::por_jev(&mut self.temas, &t.id, t.ms, t.p) {
                         cambio = true;
                         let n = self

@@ -164,6 +164,12 @@ impl Frasero {
         }
     }
 
+    /// Otra medida desde ahora (el reconocedor cambio: de Windows a
+    /// Whisper).
+    pub fn poner_medida(&mut self, medida: Medida) {
+        self.medida = medida;
+    }
+
     /// **Mete un bloque** (`posicion` en marcos, i16 intercalado con
     /// `canales`). Devuelve las frases que se cerraron (casi siempre
     /// ninguna o una).
