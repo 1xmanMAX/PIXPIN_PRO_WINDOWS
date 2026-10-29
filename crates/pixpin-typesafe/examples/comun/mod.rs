@@ -45,8 +45,12 @@ pub const DOLARES_POR_MILLON: f64 = 0.042;
 #[derive(Debug, Clone)]
 pub struct FraseGuion {
     pub ms: i64,
-    /// Cuando se deja de hablar (cuando llega el texto).
+    /// Cuando llega el texto (y entra en la prueba).
     pub fin_ms: i64,
+    /// Cuando se dejo de hablar. En un guion escrito a mano, lo mismo que
+    /// `fin_ms`; en uno oido (`frases_en_vivo --salida`), antes: el corte
+    /// y Whisper van en medio.
+    pub fin_voz_ms: i64,
     pub quien: String,
     pub dice: String,
     pub linea: usize,
@@ -82,16 +86,18 @@ pub struct Guion {
     pub esperas: Vec<Espera>,
 }
 
+/// «1:05» o «1:05.3» (o «1:02:05»), en ms.
 fn minuto(s: &str) -> Option<i64> {
-    let p: Vec<i64> = s
-        .split(':')
-        .map(|x| x.trim().parse().ok())
-        .collect::<Option<_>>()?;
-    match p.as_slice() {
-        [m, s] => Some((m * 60 + s) * 1000),
-        [h, m, s] => Some(((h * 60 + m) * 60 + s) * 1000),
-        _ => None,
-    }
+    let p: Vec<&str> = s.split(':').map(str::trim).collect();
+    let (seg, hm) = p.split_last()?;
+    let seg: f64 = seg.parse().ok().filter(|x: &f64| *x >= 0.0)?;
+    let hm: Vec<i64> = hm.iter().map(|x| x.parse().ok()).collect::<Option<_>>()?;
+    let min = match hm.as_slice() {
+        [m] => *m,
+        [h, m] => h * 60 + m,
+        _ => return None,
+    };
+    Some(min * 60_000 + (seg * 1000.0).round() as i64)
 }
 
 impl Guion {
@@ -142,27 +148,41 @@ impl Guion {
             let (t, resto) = resto
                 .split_once(']')
                 .ok_or_else(|| format!("{}:{n}: falta «]»", ruta.display()))?;
-            let ms = minuto(t).ok_or_else(|| format!("{}:{n}: minuto «{t}»", ruta.display()))?;
+            // `[0:12]` (escrito a mano) o `[0:12.3 0:17.1 0:19.0]` (oido:
+            // empieza, se deja de hablar, llega el texto).
+            let tiempos: Vec<i64> = t
+                .split_whitespace()
+                .map(minuto)
+                .collect::<Option<_>>()
+                .filter(|v: &Vec<i64>| v.len() == 1 || v.len() == 3)
+                .ok_or_else(|| format!("{}:{n}: minuto «{t}»", ruta.display()))?;
+            let ms = tiempos[0];
+            let oido = (tiempos.len() == 3).then(|| (tiempos[1], tiempos[2]));
             let (quien, dice) = resto
                 .split_once(':')
                 .ok_or_else(|| format!("{}:{n}: falta «Quien:»", ruta.display()))?;
             g.frases.push(FraseGuion {
                 ms,
-                fin_ms: 0,
+                fin_ms: oido.map_or(0, |o| o.1),
+                fin_voz_ms: oido.map_or(0, |o| o.0),
                 quien: quien.trim().to_string(),
                 dice: dice.trim().to_string(),
                 linea: n,
             });
         }
-        // Cuando se deja de hablar: ~350 ms por palabra, sin pisar la
-        // siguiente.
+        // Escrito a mano, cuando se deja de hablar: ~350 ms por palabra,
+        // sin pisar la siguiente (y el texto llega en el acto).
         for i in 0..g.frases.len() {
             let f = &g.frases[i];
+            if f.fin_ms > 0 {
+                continue;
+            }
             let mut fin = f.ms + 350 * f.dice.split_whitespace().count() as i64;
             if let Some(s) = g.frases.get(i + 1) {
                 fin = fin.min(s.ms);
             }
             g.frases[i].fin_ms = fin.max(f.ms + 200);
+            g.frases[i].fin_voz_ms = g.frases[i].fin_ms;
         }
         Ok(g)
     }
@@ -794,6 +814,9 @@ pub struct Sesion {
     /// Las esperas de otros prototipos que tambien valen aqui
     /// (`reunion_completa` comprueba las de todos).
     pub tambien: Vec<&'static str>,
+    /// Con un guion oido: de que se dejo de hablar a lo decidido, en ms
+    /// (corte + Whisper + Jev), una por frase preguntada o por ✓.
+    pub desde_voz: Vec<i64>,
 }
 
 /// **Empieza**: lee las opciones y el guion y prepara el cliente.
@@ -880,6 +903,7 @@ pub fn empezar(nombre: &'static str, que_prueba: &str) -> Sesion {
         errores: 0,
         del_cache: 0,
         tambien: Vec::new(),
+        desde_voz: Vec::new(),
     }
 }
 
@@ -933,6 +957,31 @@ impl Sesion {
         }
     }
 
+    /// ¿El guion es oido (`frases_en_vivo --salida`, con la hora en que
+    /// se dejo de hablar y la del texto)?
+    pub fn oido(&self) -> bool {
+        self.guion.frases.iter().any(|f| f.fin_voz_ms < f.fin_ms)
+    }
+
+    /// Con un guion oido, apunta y escribe lo que tardo lo decidido desde
+    /// que se dejo de hablar en `f`: el corte y Whisper (hasta el texto) y
+    /// lo demas (Jev, y la espera si iba otra peticion).
+    pub fn desde_la_voz(&mut self, f: &FraseGuion) {
+        if !self.oido() {
+            return;
+        }
+        let ahora = self.reloj.ahora();
+        let total = ahora - f.fin_voz_ms;
+        self.desde_voz.push(total);
+        println!(
+            "    ⏱ se dejo de hablar a las {} → decidido +{:.1} s (corte y texto +{:.1} s, Jev +{:.1} s)",
+            hora(f.fin_voz_ms),
+            total as f64 / 1000.0,
+            (f.fin_ms - f.fin_voz_ms) as f64 / 1000.0,
+            (ahora - f.fin_ms) as f64 / 1000.0
+        );
+    }
+
     /// Apunta algo decidido.
     pub fn hecho(&mut self, ms: i64, texto: String) {
         self.hecho_de(self.nombre, ms, texto);
@@ -958,6 +1007,7 @@ impl Sesion {
                 continue;
             }
             f(self, i, &vivas[..i], &vivas[i]);
+            self.desde_la_voz(fg);
         }
     }
 
@@ -1018,6 +1068,21 @@ impl Sesion {
             .iter()
             .map(|h| (normal(&h.texto), h.de))
             .collect();
+        let voz = if self.desde_voz.is_empty() {
+            String::new()
+        } else {
+            let mut v = self.desde_voz.clone();
+            v.sort_unstable();
+            let p = |x: f64| v[((v.len() as f64 - 1.0) * x).round() as usize];
+            println!(
+                "   de que se deja de hablar a lo decidido: p50 {:.1} s · p95 {:.1} s · max {:.1} s ({} veces)",
+                p(0.5) as f64 / 1000.0,
+                p(0.95) as f64 / 1000.0,
+                p(1.0) as f64 / 1000.0,
+                v.len()
+            );
+            format!(" voz_p50_ms={} voz_max_ms={}", p(0.5), p(1.0))
+        };
         let mut bien = 0;
         let mut fallos = 0;
         if self.op.modo == Modo::EnSeco {
@@ -1058,7 +1123,7 @@ impl Sesion {
             }
         }
         println!(
-            "RESUMEN {} esperas={bien}/{} peticiones={n} errores={} tokens={tokens} p50_ms={:.0} p95_ms={:.0}",
+            "RESUMEN {} esperas={bien}/{} peticiones={n} errores={} tokens={tokens} p50_ms={:.0} p95_ms={:.0}{voz}",
             self.nombre,
             esperas.len(),
             self.errores,

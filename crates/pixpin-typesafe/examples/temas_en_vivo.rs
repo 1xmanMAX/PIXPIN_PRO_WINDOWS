@@ -44,10 +44,12 @@ fn main() -> std::process::ExitCode {
             println!("[{}] {}: {}", comun::hora(f.ms), f.quien, f.dice);
             rollo.meter(Dicho {
                 ms: f.ms,
-                fin_ms: f.fin_ms,
+                fin_ms: f.fin_voz_ms,
                 // Como en la app: el texto de Whisper, sin quien lo dice.
                 texto: f.dice.clone(),
-                reloj_fin: f.fin_ms as u64,
+                // Cuando se dejo de hablar: el ✓ se mide desde ahi (en un
+                // guion oido, el texto llego despues: `fin_ms`).
+                reloj_fin: f.fin_voz_ms as u64,
             });
             i += 1;
         }
@@ -105,12 +107,19 @@ fn main() -> std::process::ExitCode {
                 .unwrap_or_default();
             pendientes.retain(|p| p.id != t.id);
             println!(
-                "    ✓ «{texto}» marcado a las {} · empezo a tratarse a las {} · la ultima frase mirada acabo a las {} (+{:.1} s)",
+                "    ✓ «{texto}» marcado a las {} · empezo a tratarse a las {} · en la ultima frase mirada se dejo de hablar a las {} (+{:.1} s)",
                 comun::hora(vuelta),
                 comun::hora(t.ms),
                 comun::hora(v.reloj_ultima as i64),
                 (vuelta - v.reloj_ultima as i64) as f64 / 1000.0
             );
+            if let Some(f) = frases[..i]
+                .iter()
+                .rev()
+                .find(|f| f.fin_voz_ms as u64 == v.reloj_ultima)
+            {
+                s.desde_la_voz(f);
+            }
             s.hecho(vuelta, format!("tratado {texto}"));
         }
     }
