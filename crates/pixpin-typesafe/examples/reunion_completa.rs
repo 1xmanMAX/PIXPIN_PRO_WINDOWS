@@ -62,7 +62,9 @@ fn main() -> std::process::ExitCode {
             abiertas: &abiertas,
             chats: &r.chats,
         };
-        let ctx = r.contexto(antes, f);
+        let anterior = r.tema_anterior(&c);
+        let mut ctx = r.contexto(antes, f);
+        ctx.tema_anterior = anterior.as_deref();
         let n = vivo::preparar(&ctx, &p).peticion.questions.len();
         println!("    → {n} preguntas en una peticion");
         let sen = s.preguntar(|cl| vivo::preguntar(cl, &ctx, &p));

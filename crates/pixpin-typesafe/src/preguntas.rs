@@ -559,14 +559,20 @@ pub mod vivo {
         Pregunta::noul(
             "Is `frase.dice` about one of the topics in `agenda`?",
             "It talks about one of them: a figure, an opinion, a question or a decision about it, also through «eso» or «esto» pointing to `antes`.",
-            "It is about something else: greetings, jokes, the room or the call, or a matter that is not in `agenda`.",
+            "It is about something else: greetings, jokes, the room or the call, or a matter that is not in `agenda`; or a topic is only named to leave it for later, e.g. «eso lo vemos al final».",
         )
     }
 
     /// `opciones`: (clave, tema) de cada tema de la agenda.
-    pub fn tema(opciones: &[(String, String)]) -> Pregunta {
+    /// `con_anterior`: si el estado lleva `tema_anterior`.
+    pub fn tema(opciones: &[(String, String)], con_anterior: bool) -> Pregunta {
+        let instrucciones = if con_anterior {
+            "Which topic in `agenda` is being discussed in `frase.dice`? `antes` is what was said just before, and it was about `tema_anterior`."
+        } else {
+            "Which topic in `agenda` is being discussed in `frase.dice`, given what was said just before in `antes`?"
+        };
         Pregunta::Choice {
-            instructions: "Which topic in `agenda` is `frase.dice` about?".to_string(),
+            instructions: instrucciones.to_string(),
             criteria: opciones
                 .iter()
                 .map(|(k, t)| (k.clone(), format!("The topic «{t}».")))

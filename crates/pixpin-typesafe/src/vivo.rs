@@ -59,6 +59,9 @@ pub struct Contexto<'a> {
     pub frase: &'a Frase,
     /// El dia de la reunion (para resolver «el viernes»).
     pub hoy: Fecha,
+    /// El tema de la agenda de lo anterior, si el codigo lo sabe (solo va
+    /// con la parte `tema`).
+    pub tema_anterior: Option<&'a str>,
 }
 
 /// **Que ideas van en la peticion.**
@@ -157,6 +160,10 @@ pub fn estado(c: &Contexto, partes: &Partes) -> Value {
     if partes.tema && !c.agenda.is_empty() {
         let a: Vec<String> = c.agenda.iter().map(|t| crate::recortar(t, 160)).collect();
         m.insert("agenda".into(), json!(a));
+        // Lo que el codigo ya sabe: de que tema iba lo anterior.
+        if let Some(t) = c.tema_anterior.filter(|t| !t.trim().is_empty()) {
+            m.insert("tema_anterior".into(), json!(crate::recortar(t, 160)));
+        }
     }
     let antes: Vec<String> = c
         .antes
@@ -232,7 +239,7 @@ pub fn preparar(c: &Contexto, partes: &Partes) -> Preparada {
     if con_tema {
         p = p
             .con(q::DE_LA_AGENDA, q::de_la_agenda())
-            .con(q::TEMA, q::tema(&tema));
+            .con(q::TEMA, q::tema(&tema, c.tema_anterior.is_some()));
     }
     let mut tareas = Vec::new();
     for (id, texto) in partes.tareas.iter().take(q::POR_PETICION) {
@@ -530,6 +537,7 @@ mod pruebas {
             antes: &antes,
             frase: &f,
             hoy: hoy(),
+            tema_anterior: None,
         };
         let solo_decision = Partes {
             decision: true,
@@ -574,6 +582,45 @@ mod pruebas {
     }
 
     #[test]
+    fn el_tema_anterior_solo_va_con_la_parte_tema() {
+        let agenda = vec!["Paro de transportistas".to_string()];
+        let f = frase("Ana", "adelantamos el pedido al lunes");
+        let mut c = Contexto {
+            reunion: "",
+            participantes: &[],
+            agenda: &agenda,
+            antes: &[],
+            frase: &f,
+            hoy: hoy(),
+            tema_anterior: Some("Paro de transportistas"),
+        };
+        let tema = Partes {
+            tema: true,
+            ..Default::default()
+        };
+        let p = preparar(&c, &tema);
+        assert_eq!(p.peticion.state["tema_anterior"], "Paro de transportistas");
+        let q = serde_json::to_string(&p.peticion.questions["tema"]).unwrap();
+        assert!(q.contains("`tema_anterior`"), "{q}");
+        // Sin tema anterior, la pregunta no lo nombra.
+        c.tema_anterior = None;
+        let p = preparar(&c, &tema);
+        assert!(p.peticion.state.get("tema_anterior").is_none());
+        let q = serde_json::to_string(&p.peticion.questions["tema"]).unwrap();
+        assert!(!q.contains("tema_anterior"));
+        // Sin la parte tema, ni aunque se sepa.
+        c.tema_anterior = Some("Paro de transportistas");
+        let p = preparar(
+            &c,
+            &Partes {
+                decision: true,
+                ..Default::default()
+            },
+        );
+        assert!(p.peticion.state.get("tema_anterior").is_none());
+    }
+
+    #[test]
     fn sin_fechas_no_se_pregunta_por_plazos_ni_citas() {
         let f = frase("Ana", "hay que mandar la cotización");
         let c = Contexto {
@@ -583,6 +630,7 @@ mod pruebas {
             antes: &[],
             frase: &f,
             hoy: hoy(),
+            tema_anterior: None,
         };
         let p = preparar(
             &c,
@@ -612,6 +660,7 @@ mod pruebas {
             antes: &[],
             frase: &f,
             hoy: hoy(),
+            tema_anterior: None,
         };
         let partes = Partes {
             compromiso: true,

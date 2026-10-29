@@ -84,3 +84,8 @@
 # espera[tiempo_por_tema]: paro de transportistas: si paran el martes
 # espera[tiempo_por_tema]: cotización del viernes: pide dos mil cuatrocientos
 # espera-no[tiempo_por_tema]: compra de proyectores: han subido
+# Añadidas tras la primera prueba de verdad (29-oct-2026): dejarlo «para el
+# final» no es hablar del tema, y el pedido es por el paro, no la compra.
+# espera-no[tiempo_por_tema]: compra de proyectores: lo de la compra de proyectores
+# espera[tiempo_por_tema]: paro de transportistas: de acuerdo, queda decidido
+# espera-no[tiempo_por_tema]: compra de proyectores: yo llamo al proveedor

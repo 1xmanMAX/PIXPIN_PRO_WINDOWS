@@ -43,6 +43,15 @@ impl Reunion {
             antes,
             frase,
             hoy: self.hoy,
+            tema_anterior: None,
+        }
+    }
+
+    /// El tema de la agenda de la frase anterior, si lo hay.
+    pub fn tema_anterior(&self, c: &Cronometro) -> Option<String> {
+        match c.anterior()? {
+            Destino::Tema(i) => self.agenda.get(i).cloned(),
+            Destino::Otro => None,
         }
     }
 

@@ -25,7 +25,9 @@ fn main() -> std::process::ExitCode {
         ..Default::default()
     };
     s.por_frase(|s, _, antes, f| {
-        let ctx = r.contexto(antes, f);
+        let anterior = r.tema_anterior(&c);
+        let mut ctx = r.contexto(antes, f);
+        ctx.tema_anterior = anterior.as_deref();
         let sen = s.preguntar(|cl| vivo::preguntar(cl, &ctx, &p)).map(|x| x.0);
         partes::tema(s, &r, &mut c, f, sen.as_ref());
     });
