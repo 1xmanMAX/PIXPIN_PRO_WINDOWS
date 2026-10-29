@@ -207,11 +207,14 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 ## 7. La pantalla del móvil (flujo)
 
-1. **Aviso**: con PixPin a la vista, si el anuncio dice `activa`, una tira
-   arriba: «**Cámara para la reunión del PC: «Clase 27-10 10h05»**» con
-   «Abrir cámara». Funciona igual en todos los modos de grabación del PC
-   (Pantalla y sonido, Audio y capturas, Presencial…): al móvil solo le
-   importa el anuncio.
+1. **Aviso**: con PixPin a la vista, si el anuncio dice `activa`, el móvil
+   enseña la entrada a la cámara. Desde Android v0.152.0 (29-oct-2026) es
+   **un botón redondo de la foto junto al «+» de la lista de chats**, del
+   mismo tamaño, que sale solo mientras un PC del grupo graba y se va al
+   acabar (antes era una tira arriba de la lista y una entrada en el clip
+   de adjuntar, que quedaban escondidas). Al móvil solo le importa el
+   anuncio; desde el 29-oct-2026 el PC ya no tiene modos de grabación (ver
+   `grabacion-unica.md`) y anuncia igual cualquier grabación.
 2. **Cámara a pantalla completa**: vista previa, un **disparador grande**
    abajo, a su lado el de **clip** (si `codecs` no está vacío) y arriba
    «● 12:34 grabando en el PC» (el reloj del §3). En pausa: el disparador
@@ -744,3 +747,21 @@ va marcando como tratada mientras se graba, a partir del texto en vivo.
 - **Sin PC (reunión grabada solo con el móvil)**: el móvil hace lo mismo
   que el PC con su servicio en primer plano: ver jev.md, «Android: los
   temas de la reunion en el movil».
+
+## 12. El botón junto al «+» del móvil (29-oct-2026)
+
+Android v0.152.0 pone la cámara para la reunión del PC **junto al «+» de su
+lista de chats** mientras `CamaraDelPc.visto.grabando` (lo que sabe por
+`camara_remota` y por el aviso del PC), y quita la tira de arriba y la
+entrada del clip. **El PC no necesita nada nuevo**: el botón sale con el
+mismo anuncio de siempre (`activa`, `pausa`, el reloj) que el PC ya manda
+al empezar, pausar, seguir y acabar, y que contesta a cada pregunta. La
+sincronización no cambia (ni mensajes ni campos).
+
+**¿Una entrada igual en el PC?** No hace falta: la cámara del móvil la
+enciende o la apaga «📱 Cámara del móvil» de la barra de grabar, que está
+siempre encima y no depende de la lista de chats; y la grabación del móvil
+ya saca en el PC su botón flotante para mandarle capturas (`super::aporte`,
+§ «La grabación del móvil» de `sincronizar/camara.rs`). Un botón junto al
+«+» de la lista del PC solo repetiría la barra.
+

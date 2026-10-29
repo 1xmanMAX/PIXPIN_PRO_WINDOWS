@@ -180,6 +180,23 @@ la camara del movil, §3.4); el PC rescata al leer las lineas escritas con
 - **Android**: hacerla (§9 de la guia). **apple**: el nucleo ya tiene el
   cable.
 
+### 3.5 Una sola grabacion (29-oct-2026, como Android v0.152.0)
+
+- Ya no hay modos al preparar: el sonido siempre y, en la barra, **Foto**
+  (la camara), **Captura** (la pantalla entera; mantenida, una zona),
+  **Pantalla** (el video de la pantalla, encendido y apagado mientras el
+  audio sigue) y **Clip**; el reloj pausa con un clic y termina si se
+  mantiene; y una **pantalla completa** con los temas y la transcripcion en
+  vivo. Ver [grabacion-unica.md](grabacion-unica.md).
+- **Formato**: el mismo (§3, §3.3). El video que empieza con la grabacion
+  es `video` de la nota; cada trozo de la pantalla encendido despues entra
+  como un **clip** en su minuto (`clips`, `enGrabacion {de, ms, duracionMs}`),
+  «Clase … · pantalla N.mp4», **sin `fuente`**; las fotos y clips de la
+  camara siguen con `fuente: "camara"`. En una misma grabacion puede haber de
+  los dos.
+- **Android**: nada que hacer (ya lo hace igual desde v0.152.0). **apple/**:
+  leer `clips` sin `fuente` como trozos de la pantalla (se ven igual).
+
 ## 4. La ficha del chat (la isla al pulsar el nombre)
 
 - Pestanas nuevas en `Seccion` (`crates/pixpin-proyecto/src/cuaderno.rs`):
