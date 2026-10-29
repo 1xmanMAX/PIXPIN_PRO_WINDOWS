@@ -210,6 +210,9 @@ mod papel_de_la_vista;
 mod pensado;
 /// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
 mod quien_llama;
+/// Repasar una clase en voz alta (29-oct-2026, Jev): que puntos clave se
+/// cubren, se dicen mal o faltan. Se abre desde «Estudiar la clase».
+mod repaso_oral;
 use crate::asistente::nube as asistente_nube;
 /// El cursor de la caja de escribir: la rayita, lo seleccionado y que letra
 /// cae bajo el raton (10-oct). Vive en `caja_texto`, comun a toda la app:

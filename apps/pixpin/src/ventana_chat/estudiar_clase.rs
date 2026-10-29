@@ -881,6 +881,8 @@ enum Zona {
     /// Lo que quedo sin tratar: a la proxima reunion, o al Inbox de Tareas.
     TemasProxima,
     TemasATareas,
+    /// «Repasar en voz alta» (`super::repaso_oral`).
+    Repasar,
 }
 
 /// Que se esta viendo en grande: al cambiar, el encuadre vuelve a encajado.
@@ -2270,6 +2272,7 @@ fn pulsar(v: &mut Vista, z: Zona, textos: &Catalogo, vivo: &mut bool) {
             args.set("n", n as i64);
             v.avisar(textos.t_args("clase-temas-anadidos", &args));
         }
+        Zona::Repasar => super::repaso_oral::abrir(&v.raiz, &v.clase.proyecto, &v.clase.id),
         Zona::Tiempo | Zona::ListaTexto | Zona::ListaFotos => {}
     }
     let _ = vivo;
@@ -3447,6 +3450,22 @@ fn pintar_lo_importante(
 ) {
     let tam = 12.0 * e;
     let alto = 22.0 * e;
+    // «Repasar en voz alta» (Jev), el primero por la derecha.
+    let mut derecha = fila_titulo.x + fila_titulo.ancho;
+    let repasar = super::repaso_oral::pintar_boton(
+        p,
+        e,
+        tema,
+        v.raton,
+        fila_titulo,
+        fin_titulo,
+        textos,
+        &v.raiz,
+    );
+    if let Some(r) = repasar {
+        v.zonas.push((r, Zona::Repasar));
+        derecha = r.x + 4.0 * e;
+    }
     let por_apuntar = v.clase.tareas_por_apuntar();
     if por_apuntar > 0 {
         let mut args = fluent_bundle::FluentArgs::new();
@@ -3454,7 +3473,7 @@ fn pintar_lo_importante(
         let rotulo = textos.t_args("clase-importante-tareas", &args);
         let (w, h) = p.medir_texto(&rotulo, tam);
         let boton = RectF {
-            x: fila_titulo.x + fila_titulo.ancho - w - 20.0 * e - 10.0 * e,
+            x: derecha - w - 20.0 * e - 10.0 * e,
             y: fila_titulo.y + (fila_titulo.alto - alto) / 2.0,
             ancho: w + 20.0 * e,
             alto,
