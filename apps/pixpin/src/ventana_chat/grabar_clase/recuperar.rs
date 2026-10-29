@@ -90,7 +90,10 @@ pub(crate) fn al_arrancar(
     aparato: String,
     textos: TextosRecuperar,
 ) {
-    if !a_medias::carpeta_de_diarios(ubicacion.raiz()).is_dir() {
+    // Las notas que esperaban su texto (ver `cola_de_texto`), antes de
+    // recuperar nada: las recuperadas ahora se pasan a texto solas.
+    let sin_texto = super::cola_de_texto::pendientes(ubicacion.raiz());
+    if !a_medias::carpeta_de_diarios(ubicacion.raiz()).is_dir() && sin_texto.is_empty() {
         return;
     }
     let lanzado = std::thread::Builder::new()
@@ -109,6 +112,14 @@ pub(crate) fn al_arrancar(
                 };
                 preguntar(&pedido, &textos, &dir, &d);
             }
+            // Y lo que se quedo sin pasar a texto (PixPin se cerro antes).
+            let pedido = Pedido {
+                ubicacion: ubicacion.clone(),
+                idioma,
+                aparato: aparato.clone(),
+                proyectos: Vec::new(),
+            };
+            super::cola_de_texto::retomar(&pedido, sin_texto);
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el hilo de recuperar grabaciones");
@@ -287,11 +298,13 @@ fn recuperar_una(
         clips = estado.clips_guardados,
         "grabacion cortada recuperada"
     );
-    // Y a texto, de fondo, como al terminar.
-    if let Some(voz) = &voz
-        && let Some(Fase::Texto { id, en_marcha }) = empezar_el_texto(pedido, &d.proyecto, voz)
-    {
-        texto_de_fondo(pedido.clone(), d.proyecto.clone(), id, en_marcha);
+    // Y a texto, de fondo, como al terminar (y a su cola: si no se puede
+    // ahora, la siguiente vez).
+    if let Some(voz) = &voz {
+        super::cola_de_texto::apuntar(raiz, &d.proyecto, &voz.id);
+        if let Some(Fase::Texto { id, en_marcha }) = empezar_el_texto(pedido, &d.proyecto, voz) {
+            texto_de_fondo(pedido.clone(), d.proyecto.clone(), id, en_marcha);
+        }
     }
     Ok(())
 }

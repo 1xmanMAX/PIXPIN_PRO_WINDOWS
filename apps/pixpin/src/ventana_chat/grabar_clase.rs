@@ -131,6 +131,7 @@
 
 mod a_salvo;
 mod camara;
+mod cola_de_texto;
 mod completa;
 mod escucha;
 mod fotografo;
@@ -850,6 +851,9 @@ struct Estado {
     completa: bool,
     letra: f32,
     frases: Vec<(i64, String)>,
+    /// Desde cuando se mantiene el reloj: se va llenando de rojo hasta
+    /// terminar (que se vea que va a terminar, y como).
+    manteniendo: Option<Instant>,
     /// Ya se dijo que el video se corto (se dice una vez).
     video_avisado: bool,
     /// Si el video entro en el chat, para el «Guardada» del final.
@@ -881,8 +885,10 @@ struct Estado {
     pidiendo_zona: Option<(Instant, i64)>,
     tirar_desde: Option<Instant>,
     aviso: Option<(String, Instant)>,
-    /// El ultimo destello de «Captura» (la foto salio).
-    destello: Option<Instant>,
+    /// El ultimo destello: la foto salio (`true`, de la camara o del movil:
+    /// brilla «Foto») o la captura (`false`: brilla «Captura»). Es lo que
+    /// dice, sin mirar la linea de abajo, que se hizo (punto 52 del movil).
+    destello: Option<(Instant, bool)>,
     /// Las capturas guardadas, para el «con N capturas» del final.
     guardadas: usize,
     /// El nombre de la nota (`Clase {fecha}`), con [`HUECO`] en la fecha.
@@ -952,6 +958,7 @@ impl Estado {
             completa: false,
             letra: 1.0,
             frases: Vec::new(),
+            manteniendo: None,
             video_avisado: false,
             video_guardado: false,
             fotografo: fotografo::Fotografo::default(),
@@ -1102,7 +1109,7 @@ impl Estado {
                         de_camara: true,
                         fichero: None,
                     });
-                    self.destello = Some(Instant::now());
+                    self.destello = Some((Instant::now(), true));
                     self.avisar(con(&r.foto_hecha, &minuto(ms)));
                 }
                 camara::Vuelta::Foto(_, Err(f)) => self.avisar(r.de_la_camara(f)),
@@ -1349,13 +1356,16 @@ fn texto_de_fondo(
         .spawn(move || {
             loop {
                 if let Some(salida) = en_marcha.recoger() {
+                    let raiz = pedido.ubicacion.raiz();
                     match salida {
-                        Ok(t) => {
-                            if let Err(e) = escribir_el_texto(&pedido, &proyecto, &id, &t) {
-                                tracing::warn!(?e, "el texto de la clase no se escribio");
-                            }
+                        Ok(t) => match escribir_el_texto(&pedido, &proyecto, &id, &t) {
+                            Ok(()) => cola_de_texto::quitar(raiz, &id),
+                            Err(e) => tracing::warn!(?e, "el texto de la clase no se escribio"),
+                        },
+                        Err(e) => {
+                            tracing::info!(?e, "la clase quedo sin texto");
+                            cola_de_texto::fallo(raiz, &id);
                         }
-                        Err(e) => tracing::info!(?e, "la clase quedo sin texto"),
                     }
                     return;
                 }
@@ -2155,7 +2165,7 @@ fn flotar(
             match hecha {
                 Ok(png) => {
                     estado.anadir_captura(Captura::de_pantalla(ms, png));
-                    estado.destello = Some(Instant::now());
+                    estado.destello = Some((Instant::now(), false));
                     estado.avisar(con(&r.captura_hecha, &minuto(ms)));
                 }
                 Err(e) => {
@@ -2188,7 +2198,7 @@ fn flotar(
                 grabando,
             })
         {
-            estado.destello = Some(Instant::now());
+            estado.destello = Some((Instant::now(), true));
             estado.avisar(aviso);
         }
 
@@ -2269,9 +2279,13 @@ fn flotar(
                         .get(estado.proyecto)
                         .cloned()
                         .unwrap_or_default();
+                    let raiz = pedido.ubicacion.raiz();
                     let con_texto = match salida {
                         Ok(t) => match escribir_el_texto(pedido, &proyecto, &id, &t) {
-                            Ok(()) => true,
+                            Ok(()) => {
+                                cola_de_texto::quitar(raiz, &id);
+                                true
+                            }
                             Err(e) => {
                                 tracing::warn!(?e, "el texto de la clase no se escribio");
                                 false
@@ -2279,6 +2293,7 @@ fn flotar(
                         },
                         Err(e) => {
                             tracing::info!(?e, "la clase quedo sin texto");
+                            cola_de_texto::fallo(raiz, &id);
                             false
                         }
                     };
@@ -2340,6 +2355,10 @@ fn flotar(
             pulsado = None;
         }
 
+        estado.manteniendo = match pulsado {
+            Some((_, _, Some(Accion::Reloj), false, desde)) => Some(desde),
+            _ => None,
+        };
         if let Ok(d) = superficie.empezar(&motor) {
             let _ = motor.dibujar(&d, |p: &Pintor| {
                 pintar(
@@ -2386,6 +2405,9 @@ fn tras_parar(pedido: &Pedido, r: &Rotulos, estado: &mut Estado, parado: Parado)
     }
     if let Some(voz) = &g.voz {
         estado.para_estudiar = Some((proyecto.clone(), voz.id.clone()));
+        // A la cola del texto antes de empezar: si PixPin se cierra antes
+        // de acabar (o se sale sin pasarla), se retoma al volver a abrirlo.
+        cola_de_texto::apuntar(pedido.ubicacion.raiz(), &proyecto, &voz.id);
     }
     // Para salir de PixPin no se pasa a texto: se pide luego en la nota.
     if TERMINAR_YA.load(Ordering::SeqCst) {
@@ -2659,7 +2681,9 @@ fn pulsar(
         }
         // Mientras se pasa a texto, «Sin texto» lo deja: la nota ya esta
         // guardada.
-        (Accion::Tirar, Fase::Texto { en_marcha, .. }) => {
+        (Accion::Tirar, Fase::Texto { id, en_marcha }) => {
+            // El usuario no la quiere con texto: tampoco al volver a abrir.
+            cola_de_texto::quitar(pedido.ubicacion.raiz(), id);
             en_marcha.cancelar();
             let nombre = pedido
                 .proyectos
@@ -3433,7 +3457,7 @@ fn pintar_reloj(
     botones: &mut Botones<Accion>,
     caja: RectF,
     g: Option<&pixpin_audio::Grabadora>,
-    llevado: Duration,
+    (llevado, mantenido): (Duration, Option<Instant>),
     tam: f32,
     e: f32,
 ) {
@@ -3445,6 +3469,18 @@ fn pintar_reloj(
         tema.campo
     };
     p.rellenar_redondeado(caja, 10.0 * e, fondo);
+    // Mantenido, se llena de rojo de izquierda a derecha hasta terminar.
+    if let Some(desde) = mantenido {
+        let parte = (desde.elapsed().as_secs_f32() / MANTENER.as_secs_f32()).clamp(0.0, 1.0);
+        p.rellenar_redondeado(
+            RectF {
+                ancho: (caja.ancho * parte).max(10.0 * e),
+                ..caja
+            },
+            10.0 * e,
+            con_alfa(ROJO_GRABAR, 0.55),
+        );
+    }
     let tiempo = g
         .map(|g| pixpin_audio::duracion_legible(g.llevado_ms()))
         .unwrap_or_else(|| "0:00".into());
@@ -3487,9 +3523,17 @@ fn acciones(
     Color,
 ); 4] {
     let tema = &OSCURO;
-    let destello = estado
-        .destello
-        .is_some_and(|d| d.elapsed() < Duration::from_millis(600));
+    let destello = |de_camara: bool| {
+        estado
+            .destello
+            .is_some_and(|(d, c)| c == de_camara && d.elapsed() < Duration::from_millis(600))
+    };
+    // La foto que se esta haciendo ya se ve en su boton («Foto…»).
+    let foto = if estado.camarografo.pendientes() > 0 {
+        format!("{}…", r.foto)
+    } else {
+        r.foto.clone()
+    };
     // Grabando, en rojo: la pantalla (si no se corto) y el clip, con lo que
     // lleva.
     let pantalla = estado.video_en_marcha();
@@ -3503,15 +3547,15 @@ fn acciones(
         (
             Accion::Foto,
             &mi::PHOTO_CAMERA,
-            r.foto.clone(),
-            if destello { VERDE } else { tema.enviar },
+            foto,
+            if destello(true) { VERDE } else { tema.enviar },
             Color::BLANCO,
         ),
         (
             Accion::Captura,
             &mi::IMAGE,
             r.captura.clone(),
-            if destello { VERDE } else { tema.enviar },
+            if destello(false) { VERDE } else { tema.enviar },
             Color::BLANCO,
         ),
         (
@@ -3577,7 +3621,7 @@ fn pintar_barra(
             alto,
         },
         g,
-        llevado,
+        (llevado, estado.manteniendo),
         18.0 * e,
         e,
     );

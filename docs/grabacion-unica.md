@@ -63,6 +63,27 @@ del móvil), traído a «Grabar clase o reunión» del PC. Las palabras del usua
 - **Disco casi lleno**: se cierra el trozo que vaya y «Pantalla» ya no enciende otro (el audio
   sigue).
 
+## Toda grabación se pasa a texto, aunque PixPin se cierre (punto 47 del móvil)
+
+Android lo hizo el 28-oct con una cola en el disco (`ColaDeTexto`). En el PC
+(`grabar_clase/cola_de_texto.rs`): cada nota de una clase guardada se apunta en
+`voz/textos-pendientes/<id>.json` (`{proyecto, id, intentos}`) **antes** de pasarla a texto, también
+al salir por la bandeja (que termina sin pasar a texto) o sin reconocedor todavía. Se borra al
+escribir el texto o con «Dejarlo sin texto». **Al arrancar**, el hilo que recupera las grabaciones
+cortadas retoma lo que quedó: si la nota ya tiene texto (se pasó a mano desde el chat) o ya no está,
+fuera; si aún no hay reconocedor, a la próxima; tras 3 fallos del reconocedor con ella, se deja (queda
+«Pasar a texto» en la nota). Es local de cada aparato: no viaja.
+
+## Que se note y que se pueda terminar (punto 52 del móvil)
+
+- **Foto** brilla en verde cuando sale la foto (de la cámara o del móvil) y dice «Foto…» mientras se
+  hace; **Captura** brilla con la suya; **Clip** va en rojo con lo que lleva; **Pantalla**, en rojo
+  mientras graba. La línea de abajo dice el minuto («Foto guardada en el 12:34»).
+- **Terminar a la vista**: la barra está siempre encima (no depende de la ventana del chat); el
+  reloj se mantiene para terminar y **se va llenando de rojo** mientras se mantiene, así que se ve
+  que va a terminar y cómo; la pantalla completa tiene «Terminar» con su nombre, y «Salir» de la
+  bandeja termina y guarda. El móvil, además, vibra y suena: en el PC no hay sonido de obturador.
+
 ## Compatibilidad con el móvil
 
 El formato no cambia: la misma nota `grabacion: "clase"` con `capturas`, `video` y `clips`. Lo único

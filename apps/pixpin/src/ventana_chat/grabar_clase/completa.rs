@@ -131,7 +131,7 @@ pub(super) fn pintar(
             alto,
         },
         g,
-        llevado,
+        (llevado, estado.manteniendo),
         30.0 * e,
         e,
     );
