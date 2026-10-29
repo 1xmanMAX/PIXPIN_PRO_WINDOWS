@@ -33,6 +33,16 @@
 //!    manda); cuando la persona marca uno, la escucha deja de preguntar por
 //!    el ([`Escucha::pendientes`]).
 //!
+//! 5. **Lo demas de la reunion** (29-oct-2026, hilo `reunion-jev`, si hay
+//!    alguna idea encendida en `[jev]`, con temas o sin ellos): cada frase
+//!    con texto va a `pixpin_typesafe::en_la_reunion` en **una sola
+//!    peticion** (tareas dichas, urgencia de las que ya existen, decisiones,
+//!    preguntas sin respuesta, fechas al horario, minutos por tema y tema
+//!    olvidado; `crate::jev::en_vivo`). Como mucho una en vuelo: lo que
+//!    llega mientras tanto va junto en la siguiente. Lo que sale
+//!    ([`Vuelta::Reunion`]) lo ensena la barra como propuesta; un fallo no
+//!    propone nada y se dice una vez.
+//!
 //! La grabacion nunca depende de esto: si algo falla, se dice en la barra
 //! y los temas se marcan a mano. Al terminar, la escucha se para en el acto
 //! (Whisper se cancela) y la transcripcion entera de despues es la de
@@ -45,9 +55,12 @@ use std::time::{Duration, Instant};
 
 use pixpin_audio::{Receptor, SinBloque};
 use pixpin_store::{Idioma, Ubicacion};
+use pixpin_typesafe::en_la_reunion::{Mesa as MesaViva, QUIEN_NO_SE, Suceso};
 use pixpin_typesafe::temas::{
     self as jt, Cuando, Dicho, Pendiente, Ritmo, Rollo, Seguimiento, Tratado,
 };
+use pixpin_typesafe::urgencia_viva::TareaViva;
+use pixpin_typesafe::vivo;
 use pixpin_voz::en_vivo::{self, COLA, Cola, Frase, Frasero, Freno, Paso};
 
 use crate::jev::temas::SinJev;
@@ -69,6 +82,8 @@ pub(super) enum Vuelta {
     Tratado(Tratado, Duration),
     /// Como va la escucha (la pista de la barra).
     Aviso(Aviso),
+    /// Lo que salio de una frase para lo demas de la reunion.
+    Reunion(Vec<Suceso>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,6 +96,8 @@ pub(super) enum Aviso {
     JevFalla,
     /// El procesador va cargado: se salto una frase.
     Cargado,
+    /// Jev no contesto a lo demas de la reunion: no se propone nada.
+    ReunionFalla,
 }
 
 /// Por que no se escucha (los temas, a mano).
@@ -103,7 +120,22 @@ struct Mesa {
     pendientes: Vec<Pendiente>,
 }
 
-/// Lo que comparten la barra y los tres hilos.
+/// **Lo demas de la reunion** para la escucha: el cliente y la mesa
+/// (`en_la_reunion`) con las ideas encendidas.
+pub(super) struct Reunion {
+    pub cliente: pixpin_typesafe::Cliente,
+    pub mesa: MesaViva,
+}
+
+/// Lo que comparten el hilo del texto y el de lo demas de la reunion: las
+/// frases que esperan (con cuando se dejo de hablar en ellas, en
+/// milisegundos de la grabacion) y la mesa.
+struct Viva {
+    frases: Vec<(vivo::Frase, i64)>,
+    mesa: MesaViva,
+}
+
+/// Lo que comparten la barra y los hilos.
 struct Compartido {
     /// Las frases que esperan (con cuando se dejo de hablar en ellas, en el
     /// reloj de la escucha), y si el oido ya acabo.
@@ -112,6 +144,11 @@ struct Compartido {
     mesa: Mutex<Mesa>,
     /// Se le avisa al hilo de Jev: texto nuevo, pendientes nuevos, parar.
     para_jev: Condvar,
+    /// Lo demas de la reunion (`None`: apagado) y su aviso.
+    viva: Option<Mutex<Viva>>,
+    para_viva: Condvar,
+    /// Hay hilo de los temas (con agenda y con Jev para los temas).
+    con_temas: bool,
     /// El oido corta con la medida de Whisper (paso de Windows a Whisper).
     para_whisper: AtomicBool,
     /// Acabo el texto (no llegara nada mas).
@@ -139,11 +176,16 @@ enum Motor {
 pub(super) struct Escucha {
     c: Arc<Compartido>,
     vueltas: Receiver<Vuelta>,
+    /// Por que los temas no se marcan solos aunque se escuche (por lo
+    /// demas de la reunion).
+    pub sin_temas: Option<NoSeEscucha>,
 }
 
 impl Escucha {
     /// **Empieza a escuchar** la grabacion `g`. `reunion` es el titulo,
-    /// `agenda` todos los temas y `pendientes` los que Jev tiene que mirar.
+    /// `agenda` todos los temas y `pendientes` los que Jev tiene que mirar;
+    /// `viva`, lo demas de la reunion (o por que no lo hay). Sin temas que
+    /// marcar ni lo demas, no se escucha.
     pub(super) fn empezar(
         g: &pixpin_audio::Grabadora,
         u: &Ubicacion,
@@ -151,8 +193,20 @@ impl Escucha {
         reunion: String,
         agenda: Vec<String>,
         pendientes: Vec<Pendiente>,
+        viva: Result<Reunion, SinJev>,
     ) -> Result<Escucha, NoSeEscucha> {
-        let cliente = crate::jev::temas::cliente(u).map_err(NoSeEscucha::Jev)?;
+        let temas = if agenda.is_empty() {
+            Err(NoSeEscucha::Jev(SinJev::Apagado))
+        } else {
+            crate::jev::temas::cliente(u).map_err(NoSeEscucha::Jev)
+        };
+        let (cliente, viva, sin_temas) = match (temas, viva) {
+            (Ok(c), v) => (Some(c), v.ok(), None),
+            (Err(n), Ok(v)) => (None, Some(v), Some(n)),
+            // Con temas, lo que dicen los temas; sin ellos, lo de la reunion.
+            (Err(n), Err(_)) if !agenda.is_empty() => return Err(n),
+            (Err(_), Err(s)) => return Err(NoSeEscucha::Jev(s)),
+        };
         let raiz = u.raiz().to_path_buf();
         let hay_whisper =
             crate::voz::whisper_posible(u, idioma) && pixpin_voz::whisper::modelo_listo(&raiz);
@@ -173,6 +227,14 @@ impl Escucha {
                 pendientes,
             }),
             para_jev: Condvar::new(),
+            con_temas: cliente.is_some(),
+            viva: viva.as_ref().map(|v| {
+                Mutex::new(Viva {
+                    frases: Vec::new(),
+                    mesa: v.mesa.clone(),
+                })
+            }),
+            para_viva: Condvar::new(),
             para_whisper: AtomicBool::new(motor == Motor::Whisper),
             sin_texto: AtomicBool::new(false),
             parar: AtomicBool::new(false),
@@ -183,6 +245,7 @@ impl Escucha {
             c.parar.store(true, Ordering::SeqCst);
             c.hay.notify_all();
             c.para_jev.notify_all();
+            c.para_viva.notify_all();
         };
         let oido = {
             let c = Arc::clone(&c);
@@ -203,24 +266,45 @@ impl Escucha {
                     pasar_a_texto(&c, &tx, &raiz, &voz, motor, hay_whisper);
                     c.sin_texto.store(true, Ordering::SeqCst);
                     c.para_jev.notify_all();
+                    c.para_viva.notify_all();
                 })
         };
         if texto.is_err() {
             parar(&c);
             return Err(NoSeEscucha::Pcm);
         }
-        let jev = {
-            let c = Arc::clone(&c);
-            std::thread::Builder::new()
+        if let Some(cliente) = cliente {
+            let suyo = Arc::clone(&c);
+            let tx = tx.clone();
+            let jev = std::thread::Builder::new()
                 .name("temas-jev".into())
-                .spawn(move || preguntar_a_jev(&c, &tx, &cliente, &reunion, &agenda))
-        };
-        if jev.is_err() {
-            parar(&c);
-            return Err(NoSeEscucha::Pcm);
+                .spawn(move || preguntar_a_jev(&suyo, &tx, &cliente, &reunion, &agenda));
+            if jev.is_err() {
+                parar(&c);
+                return Err(NoSeEscucha::Pcm);
+            }
         }
-        tracing::info!(?motor, "temas: escuchando en vivo");
-        Ok(Escucha { c, vueltas })
+        if let Some(v) = viva {
+            let suyo = Arc::clone(&c);
+            let lanzado = std::thread::Builder::new()
+                .name("reunion-jev".into())
+                .spawn(move || lo_demas_de_la_reunion(&suyo, &tx, &v.cliente));
+            if lanzado.is_err() {
+                parar(&c);
+                return Err(NoSeEscucha::Pcm);
+            }
+        }
+        tracing::info!(
+            ?motor,
+            con_temas = c.con_temas,
+            con_lo_demas = c.viva.is_some(),
+            "temas: escuchando en vivo"
+        );
+        Ok(Escucha {
+            c,
+            vueltas,
+            sin_temas,
+        })
     }
 
     /// Los temas por los que se pregunta desde ahora.
@@ -231,6 +315,32 @@ impl Escucha {
             .unwrap_or_else(|e| e.into_inner())
             .pendientes = v;
         self.c.para_jev.notify_all();
+    }
+
+    /// Una tarea mas para la urgencia en vivo (una propuesta aceptada), o
+    /// la misma tras un «Deshacer».
+    pub(super) fn tarea(&self, t: TareaViva) {
+        if let Some(v) = &self.c.viva {
+            v.lock().unwrap_or_else(|e| e.into_inner()).mesa.tarea(t);
+        }
+    }
+
+    /// La tarea de la urgencia en vivo con este id, como esta ahora.
+    pub(super) fn tarea_de(&self, id: &str) -> Option<TareaViva> {
+        let v = self.c.viva.as_ref()?;
+        v.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .mesa
+            .tarea_de(id)
+            .cloned()
+    }
+
+    /// Los temas de la agenda que ya se dieron por tratados (por indice):
+    /// el tema olvidado no avisa de ellos.
+    pub(super) fn tratados(&self, v: Vec<usize>) {
+        if let Some(x) = &self.c.viva {
+            x.lock().unwrap_or_else(|e| e.into_inner()).mesa.tratados(v);
+        }
     }
 
     /// Lo que llego desde la ultima vez.
@@ -244,6 +354,7 @@ impl Drop for Escucha {
         self.c.parar.store(true, Ordering::SeqCst);
         self.c.hay.notify_all();
         self.c.para_jev.notify_all();
+        self.c.para_viva.notify_all();
     }
 }
 
@@ -366,11 +477,13 @@ fn pasar_a_texto(
             }
             Paso::SaltarSilencio | Paso::SaltarRetraso => continue,
         }
-        if c.mesa
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .pendientes
-            .is_empty()
+        // Nada que preguntar: ni temas pendientes ni lo demas.
+        if c.viva.is_none()
+            && c.mesa
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .pendientes
+                .is_empty()
         {
             continue;
         }
@@ -453,17 +566,118 @@ fn pasar_a_texto(
         if texto.trim().is_empty() {
             continue;
         }
-        c.mesa
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .rollo
-            .meter(Dicho {
-                ms: frase.ms,
-                fin_ms: frase.fin_voz_ms,
-                texto,
-                reloj_fin,
-            });
-        c.para_jev.notify_all();
+        if let Some(v) = &c.viva {
+            v.lock().unwrap_or_else(|e| e.into_inner()).frases.push((
+                vivo::Frase {
+                    ms: frase.ms,
+                    quien: QUIEN_NO_SE.into(),
+                    dice: texto.clone(),
+                },
+                frase.fin_voz_ms,
+            ));
+            c.para_viva.notify_all();
+        }
+        if c.con_temas {
+            c.mesa
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .rollo
+                .meter(Dicho {
+                    ms: frase.ms,
+                    fin_ms: frase.fin_voz_ms,
+                    texto,
+                    reloj_fin,
+                });
+            c.para_jev.notify_all();
+        }
+    }
+}
+
+/// Las frases que esperan, juntas en una (la primera pone su minuto; el
+/// fin es el de la ultima). `None` si hay que acabar.
+fn frases_que_esperan(c: &Compartido, v: &Mutex<Viva>) -> Option<(vivo::Frase, i64)> {
+    let mut g = v.lock().unwrap_or_else(|e| e.into_inner());
+    loop {
+        if c.parar.load(Ordering::SeqCst) {
+            return None;
+        }
+        if !g.frases.is_empty() {
+            let todas = std::mem::take(&mut g.frases);
+            let fin = todas.last().map_or(0, |(_, fin)| *fin);
+            let mut it = todas.into_iter().map(|(f, _)| f);
+            let mut f = it.next()?;
+            for otra in it {
+                f.dice.push(' ');
+                f.dice.push_str(&otra.dice);
+            }
+            return Some((f, fin));
+        }
+        if c.sin_texto.load(Ordering::SeqCst) {
+            return None;
+        }
+        g = c
+            .para_viva
+            .wait_timeout(g, Duration::from_millis(500))
+            .map(|(g, _)| g)
+            .unwrap_or_else(|e| e.into_inner().0);
+    }
+}
+
+/// **Lo demas de la reunion**: por cada frase (o lo que se junto mientras
+/// la anterior estaba en vuelo), una peticion y sus tablas. La peticion se
+/// arma con el candado y sale sin el: la barra no espera a Jev.
+fn lo_demas_de_la_reunion(c: &Compartido, tx: &Sender<Vuelta>, cliente: &pixpin_typesafe::Cliente) {
+    let Some(v) = &c.viva else {
+        return;
+    };
+    if !pixpin_shell::prioridad::hilo_por_debajo_de_lo_normal() {
+        tracing::debug!("reunion: el hilo de Jev sigue a prioridad normal");
+    }
+    let mut fallo_dicho = false;
+    while let Some((f, fin)) = frases_que_esperan(c, v) {
+        let prep = {
+            let g = v.lock().unwrap_or_else(|e| e.into_inner());
+            g.mesa.vale_la_pena(&f).then(|| g.mesa.preparar(&f))
+        };
+        let respuesta = match prep {
+            None => None,
+            Some(p) => {
+                let empezo = Instant::now();
+                let r = cliente.preguntar(&p.peticion).and_then(|r| p.leer(&r));
+                let jev_ms = empezo.elapsed().as_millis() as u64;
+                match r {
+                    Ok(s) => {
+                        tracing::debug!(
+                            jev_ms,
+                            preguntas = p.peticion.questions.len(),
+                            "reunion: Jev contesto"
+                        );
+                        fallo_dicho = false;
+                        Some((s, p.fechas))
+                    }
+                    // Un fallo no es un «no»: esa frase no propone nada.
+                    Err(e) => {
+                        tracing::warn!(jev_ms, "reunion: Jev no contesto: {e}");
+                        if !fallo_dicho {
+                            fallo_dicho = true;
+                            let _ = tx.send(Vuelta::Aviso(Aviso::ReunionFalla));
+                        }
+                        None
+                    }
+                }
+            }
+        };
+        if c.parar.load(Ordering::SeqCst) {
+            return;
+        }
+        let sucesos =
+            v.lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .mesa
+                .tras_frase(f, respuesta.as_ref(), fin);
+        if !sucesos.is_empty() {
+            let _ = tx.send(Vuelta::Reunion(sucesos));
+        }
     }
 }
 
