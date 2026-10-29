@@ -6,7 +6,7 @@ sentidos:
 
 | Sentido | Enlace | Cuándo |
 |---|---|---|
-| PixPin → Lectura Veloz | `lecturaveloz://pixpin/abrir?v=1&…` | «⚡ Lectura veloz» en el menu ⋮ de los lectores |
+| PixPin → Lectura Veloz | `lecturaveloz://pixpin/abrir?v=1&…` | «⚡ Lectura veloz» en el menú del mensaje del chat y en el ⋮ de la nota |
 | Lectura Veloz → PixPin | `pixpinmax://lectura-veloz?v=1&…` | De fondo, mientras se lee en Lectura Veloz |
 
 Lo puro (armar y mirar los enlaces, qué cambia en lo leído) está en
@@ -20,9 +20,12 @@ cifra o `-_.~`).
 
 ## 1. De PixPin a Lectura Veloz
 
-En el menú ⋮ del **lector de PDF** (`lector_pdf.rs`, también Word/PowerPoint en hojas) y
-del **lector de documentos** (`visor.rs`: Word, EPUB, HTML, Markdown, texto) está
-**«⚡ Lectura veloz»** (`lector-lectura-veloz`). Al pulsarlo:
+En el **menú del mensaje** del chat (un PDF, Word, EPUB, HTML, Markdown, texto… adjunto) y
+en el ⋮ de la **nota** está **«⚡ Lectura veloz»** (`lector-lectura-veloz`), con el % de lo
+leído allí. **Desde el 29-oct-2026 ya no va en el ⋮ de los lectores** (`lector_pdf.rs`,
+`visor.rs`), como en el móvil (442eadf; el usuario, checklist 44: «Lectura veloz se abre
+solo desde el menú del mensaje»). Lo que manda Lectura Veloz de vuelta sigue moviendo el 🟢
+con el lector abierto (§2). Al pulsarlo:
 
 1. Se guarda lo leído (`.pixpin-lectura` y, si es un adjunto del chat, sus `anot-<uid>…`),
    **solo si cambió**: así `t` es la fecha del último cambio de verdad, no la de pulsar.
@@ -155,9 +158,22 @@ Comprobar:
    vista va ahí, sin que el lector pase al frente.
 3. Casos negativos (no cambia nada, sin cuadro, `ERRORLEVEL` 3): `ruta=%5C%5Cservidor%5Cx.pdf`,
    `ruta=C%3A%5CWindows%5Cnotepad.exe`, `pagina=NaN`, sin `doc`.
-4. «⚡ Lectura veloz» en el menú ⋮ de cada lector: con Lectura Veloz instalada se abre en
-   el documento y la página del 🟢; sin ella, el aviso.
+4. «⚡ Lectura veloz» en el menú del mensaje de un PDF y de un EPUB del chat: con Lectura
+   Veloz instalada se abre en el documento y la página del 🟢; sin ella, el aviso. En el ⋮
+   de los lectores ya no está.
 
 Pruebas automáticas: `cargo test -p pixpin-docs lectura_veloz` y `voz_alta` (Linux y
 Windows), `cargo test -p pixpin-motor2d con_una_sola`, y en Windows
 `cargo test -p pixpin-shell lectura_veloz` y `cargo test -p pixpin lectura_veloz`.
+
+## 4. «En PixPin» desde Lectura Veloz
+
+Lectura Veloz ≥ 0.5.0 ya no enseña los documentos en su propio visor: los manda a PixPin
+como cualquier «Abrir con» (en el móvil, `ACTION_VIEW` con el extra
+`com.lecturaveloz.extra.PIXPIN_DOC`, y PixPin abre el mensaje del chat con su verde; Android
+4c57ef0). **En el PC no hace falta nada nuevo**: lo que PixPin le dio es la `ruta=` del
+adjunto dentro de la carpeta del chat, y al abrir esa ruta con PixPin (`Evento::AbrirFicheros`)
+va a su lector, que encuentra el mensaje por la ruta (`anotado_del_adjunto::base_de`) y lee sus
+`anot-<uid>…`: el 🟢 que Lectura Veloz acaba de mover, los marcadores y la tinta. Una nota (que
+se le manda como `.md` de paso en `lectura-veloz\notas\`) se abre como ese `.md`, no como la
+nota del chat.

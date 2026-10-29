@@ -421,3 +421,68 @@ Cómo imprime entero cada visor en Windows:
 El menú lo hacen `marcos_doc::menu_de_imprimir` (las entradas en
 `marcos_doc::entradas_de_imprimir`) y, en el plano y el modelo,
 `pixpin_cad::ventana::menu_de_imprimir` con los mismos textos.
+
+## El menú del mensaje según su tipo
+
+*29-oct-2026, como el móvil (442eadf, `OpcionesDelMensaje.kt`).* El usuario
+(checklist 45): «mantengo pulsado un PDF y me sale "recordatorio", "llamada
+falsa"… es absurdo y solo ocupa espacio; quita lo que no aplica».
+
+El orden del menú (clic derecho sobre una burbuja) ya era el del PC y el
+móvil lo copió. Lo que cambia es **qué sale en cada tipo**; la decisión vive
+en `apps/pixpin/src/ventana_chat/opciones_del_mensaje.rs` (`tipo_de`,
+`recordar`, `leccion`), con pruebas:
+
+| Tipo | Recordármelo / llamada secreta | Hacer lección |
+| --- | --- | --- |
+| Nota, mini-app (lista, tabla) | a la vista | nota: a la vista; mini-app: no |
+| Enlace (nota con una dirección web) | a la vista | en «Más» |
+| Nota de voz | a la vista (es la llamada secreta) | a la vista |
+| Clase o reunión grabada | no | a la vista |
+| Canción | no | no |
+| Foto, hoja (lienzo, página, croquis) | en «Más» | en «Más» |
+| Documento (PDF, Word, libro…), archivo, vídeo | no | no |
+| Carpeta (cuaderno, grabación, proyecto) | no | no |
+| Respuesta del asistente | no | en «Más» |
+
+Con un recordatorio ya puesto (de antes o de otro aparato), «Quitar el
+recordatorio» sale siempre, para que haya por dónde quitarlo.
+
+**Una sola pantalla para una clase** (como el móvil 4e830ea): en la nota de
+una clase grabada ya no sale «Letra» en «Más»; «Estudiar la clase» es su
+pantalla (texto con sus minutos, capturas y marcadores). Una nota de voz y
+una canción siguen con su letra (el karaoke del PC, ver «Música con letra»).
+
+## Compartir un cuaderno
+
+*29-oct-2026, como el móvil (201d327, `CompartirCarpeta.kt`).* El usuario
+(checklist 51): «compartir un cuaderno con todos los formatos (PDF, HTML,
+PixPin, fotos…), con la misma hoja de compartir de siempre».
+
+Un cuaderno (una carpeta de páginas del chat) entra en la hoja de compartir
+de toda la app con sus páginas, cada una con su título («Día 1», «Día 2»),
+todas marcadas al abrir (`apps/pixpin/src/compartir/carpeta.rs`,
+`preparar`):
+
+- **PDF, página web, PNG, JPG y SVG**, con la regla del cuaderno: de un
+  lienzo, lo que va sobre su plantilla o sus marcos (si no, todo); una foto,
+  en una sola página.
+- **Word, Markdown y Texto**, si alguna página lleva texto (una nota, la
+  transcripción de una nota de voz), cada página bajo su título.
+- **Original**: los ficheros de sus páginas tal cual.
+- **PixPin (.pixpin)**: el chat entero, con la carpeta dentro, que se abre
+  en otro PC y en el móvil con su carpeta. Y por Wi‑Fi, el botón de siempre.
+
+Se llega desde tres sitios, y los tres dan la misma hoja:
+
+1. «Compartir» en el menú del mensaje del cuaderno (antes mandaba el JSON
+   de la carpeta como texto).
+2. Lo marcado en el chat: una carpeta marcada junto a otros mensajes va con
+   sus páginas (sin repetir las que ya estén marcadas).
+3. El botón **«Compartir»** de la ventana del cuaderno, junto a «Exportar
+   PDF» (que sigue: guarda el PDF con el índice de títulos sin pasar por la
+   hoja).
+
+La carpeta de una **grabación** se comparte como la grabación entera (la
+página web con el reproductor, el PDF y el Word con las capturas en su
+minuto…). No hay campos nuevos: nada cambia en lo que se sincroniza.
