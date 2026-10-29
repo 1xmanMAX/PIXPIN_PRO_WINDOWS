@@ -152,6 +152,9 @@ pub(crate) mod versiones;
 pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
     figuras::abrir(idioma);
 }
+/// Dictar al chat (29-oct-2026, Jev): «anota en el chat de la obra que…»
+/// al dictar en la caja propone anotarlo en ese chat.
+mod dictado_a_chat;
 /// La ventana de estudiar una clase grabada: el video o la captura del
 /// minuto, el texto y las capturas, que se siguen (25-oct-2026).
 mod estudiar_clase;
@@ -2051,6 +2054,11 @@ pub fn abrir(
                                 Zona::SelFijar => fijar_marcados(ubicacion, a, textos),
                                 Zona::SelReenviar => {
                                     ejecutar(Accion::Reenviar(indices_marcados(a)), a, &cx)
+                                }
+                                Zona::Anotar => ejecutar(Accion::Anotar, a, &cx),
+                                Zona::NoAnotar => {
+                                    a.anotar.propuesta = None;
+                                    Efecto::Nada
                                 }
                                 Zona::SelBorrar => {
                                     let hecho =
@@ -4177,6 +4185,27 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // Dictar al chat: con la chapa a la vista, Intro la anota (o
+                // abre la lista de chats) y Escape la quita.
+                EventoOverlay::Tecla { vk, shift, .. }
+                    if (vk == VK_ENTRAR && !shift || vk == VK_ESCAPE)
+                        && abierto
+                            .as_ref()
+                            .is_some_and(|a| a.anotar.propuesta.is_some()) =>
+                {
+                    if vk == VK_ESCAPE {
+                        if let Some(a) = abierto.as_mut() {
+                            a.anotar.propuesta = None;
+                        }
+                    } else {
+                        let ancla = abierto
+                            .as_ref()
+                            .and_then(|a| dictado_a_chat::ancla(&a.anotar))
+                            .unwrap_or(Punto { x: 0, y: 0 });
+                        hacer_del_menu!(ancla, Some(Accion::Anotar));
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Tecla { vk, shift, .. } if vk == VK_ENTRAR => {
                     if let Some(a) = abierto.as_mut() {
                         if shift {
@@ -4759,6 +4788,12 @@ pub fn abrir(
                         };
                         pintar_menu_abierto(p, &c, m, marco);
                     }
+                    // La chapa de dictar al chat, encima de la caja.
+                    if let Some(a) = abierto_ref
+                        .filter(|a| a.info.is_none() && a.letra.is_none() && a.mini.is_none())
+                    {
+                        dictado_a_chat::pintar(p, &disposicion, tema, escala, alto_caja, a, textos);
+                    }
                     if let Some(t) = aviso_ref {
                         pintar_aviso(p, &disposicion, escala, alto_caja, t);
                     }
@@ -4911,8 +4946,16 @@ pub fn abrir(
         // nadie va a mover el raton para enterarse. Se mira aqui —una vez
         // por vuelta— y no al pintar, porque escribe en el cuaderno.
         if let Some(a) = abierto.as_mut() {
-            let (cambio, fallo) = latido_del_dictado(a, textos);
+            let (cambio, fallo, frases) = latido_del_dictado(a, textos);
             if cambio {
+                hay_que_pintar = true;
+            }
+            // Dictar al chat (Jev, en su hilo; sin clave, nada).
+            for (dicho, antes) in frases {
+                a.anotar
+                    .oir(ubicacion, &dicho, &antes, &fichas, &a.ficha.id);
+            }
+            if a.anotar.latido(ubicacion) {
                 hay_que_pintar = true;
             }
             if let Some(dicho) = fallo {
@@ -4942,7 +4985,7 @@ pub fn abrir(
         // siguiente hipotesis.
         let hasta_el_dictado = abierto
             .as_ref()
-            .and_then(|a| a.dictado.as_ref())
+            .filter(|a| a.dictado.is_some() || a.anotar.espera())
             .map(|_| 100u32);
         // Y con el telepronter abierto hay que volver a mirar su canal: la
         // lectura llega de otro hilo y aqui no entra ningun evento por ella.
@@ -5411,6 +5454,8 @@ struct Abierto {
     transcribiendo: Option<crate::voz::EnMarcha>,
     /// El dictado en curso (clic derecho en el microfono), si hay uno.
     dictado: Option<Dictando>,
+    /// Dictar al chat (Jev): lo que se propone anotar en otro chat.
+    anotar: dictado_a_chat::Anotar,
     /// El telepronter abierto, si hay uno: por aqui llega la lectura cuando
     /// el usuario termina de leer. Se guarda el extremo del canal y no un
     /// manejador de la ventana porque **la ventana vive en su propio hilo**
@@ -9551,6 +9596,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         grabando: None,
         transcribiendo: None,
         dictado: None,
+        anotar: dictado_a_chat::Anotar::default(),
         leyendo: None,
         vivo: None,
         busqueda: None,
@@ -12296,6 +12342,7 @@ fn alternar_dictado(
     if !crate::voz::windows_sabe(idioma) {
         return Some(textos.t("chat-voz-sin-reconocedor"));
     }
+    a.anotar.empezar();
     a.dictado = Some(Dictando {
         oido: pixpin_voz::Dictado::empezar(crate::voz::idioma_de_voz(idioma)),
         provisional: String::new(),
@@ -12306,13 +12353,18 @@ fn alternar_dictado(
 }
 
 /// Recoge lo que haya dicho el dictado desde la ultima vuelta. Devuelve si
-/// hay que repintar y, si fallo, por que.
-fn latido_del_dictado(a: &mut Abierto, textos: &Catalogo) -> (bool, Option<String>) {
+/// hay que repintar, si fallo por que, y las frases cerradas con lo que
+/// habia escrito antes de cada una (para dictar al chat).
+fn latido_del_dictado(
+    a: &mut Abierto,
+    textos: &Catalogo,
+) -> (bool, Option<String>, Vec<(String, String)>) {
     let Some(d) = a.dictado.as_mut() else {
-        return (false, None);
+        return (false, None, Vec::new());
     };
     let mut cambio = false;
     let mut fallo = None;
+    let mut frases = Vec::new();
     for aviso in d.oido.recoger() {
         match aviso {
             pixpin_voz::AvisoDeDictado::Oyendo => {
@@ -12324,6 +12376,7 @@ fn latido_del_dictado(a: &mut Abierto, textos: &Catalogo) -> (bool, Option<Strin
                 cambio = true;
             }
             pixpin_voz::AvisoDeDictado::Frase(t) => {
+                frases.push((t.clone(), a.borrador.clone()));
                 a.borrador = juntar_dictado(&a.borrador, &t);
                 d.provisional.clear();
                 cambio = true;
@@ -12343,7 +12396,7 @@ fn latido_del_dictado(a: &mut Abierto, textos: &Catalogo) -> (bool, Option<Strin
         // La caja puede crecer una linea: se recoloca.
         a.colocado.borrow_mut().ancho = 0;
     }
-    (cambio, fallo)
+    (cambio, fallo, frases)
 }
 
 /// Pega una frase dictada detras de lo escrito, con un espacio si hace
@@ -15473,6 +15526,9 @@ enum Zona {
     SelFijar,
     SelReenviar,
     SelBorrar,
+    /// La chapa de dictar al chat: anotarlo (o elegir el chat) y quitarla.
+    Anotar,
+    NoAnotar,
     /// Compartir lo elegido que tenga fichero, en el panel de Windows.
     SelCompartir,
     // La barra del reproductor, encima de la caja de escribir.
@@ -17277,6 +17333,10 @@ enum Accion {
     Ir(usize),
     Reenviar(Vec<usize>),
     ReenviarA(Vec<usize>, String),
+    /// Dictar al chat: anotar lo propuesto (sin chat, elegirlo antes) y
+    /// anotarlo en el chat elegido de la lista.
+    Anotar,
+    AnotarEn(String),
     Elegir(usize),
     /// Meter el mensaje en las hojas del proyecto, y devolverle la que se le
     /// quito (`UnirAlProyecto` del movil).
@@ -19147,6 +19207,42 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             } else {
                 Efecto::Menu(v)
             }
+        }
+        Accion::Anotar => {
+            let Some(prop) = a.anotar.propuesta.clone() else {
+                return Efecto::Nada;
+            };
+            let Some((id, nombre)) = prop.chat.clone() else {
+                let v = menu_de_proyectos(cx.fichas, &a.ficha.id, Accion::AnotarEn);
+                return if v.is_empty() {
+                    Efecto::Aviso(cx.textos.t("chat-sin-proyectos-otros"))
+                } else {
+                    Efecto::Menu(v)
+                };
+            };
+            match dictado_a_chat::anotar(raiz, cx.identidad, &id, &prop.texto) {
+                Ok(()) => {
+                    a.anotar.propuesta = None;
+                    for t in &prop.quitar {
+                        a.borrador = dictado_a_chat::quitar_dicho(&a.borrador, t);
+                    }
+                    let n = a.borrador.len();
+                    a.cursor.poner(&a.borrador, n, false);
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("chat", nombre);
+                    Efecto::Aviso(cx.textos.t_args("chat-anotado-en", &args))
+                }
+                Err(e) => fallo(&e),
+            }
+        }
+        Accion::AnotarEn(destino) => {
+            let Some(f) = cx.fichas.iter().find(|f| f.id == destino) else {
+                return Efecto::Nada;
+            };
+            if let Some(p) = a.anotar.propuesta.as_mut() {
+                p.chat = Some((f.id.clone(), f.nombre.clone()));
+            }
+            ejecutar(Accion::Anotar, a, cx)
         }
         Accion::ReenviarA(indices, destino) => {
             match reenviar(cx.ubicacion, a, &indices, &destino, cx.identidad) {
