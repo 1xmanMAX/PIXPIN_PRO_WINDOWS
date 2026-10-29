@@ -229,6 +229,7 @@ como hoy viajan las tareas, los eventos y la nota de voz (`importantes`,
 `temas`); las propuestas sin aceptar no viajan. Los guiones y las
 respuestas grabadas sirven también para probar la copia del móvil: la misma
 petición tiene que dar la misma huella.
+
 ## Audio (pixpin-voz)
 
 Dos prototipos en `crates/pixpin-voz/examples/`, con lo comun (leer el
