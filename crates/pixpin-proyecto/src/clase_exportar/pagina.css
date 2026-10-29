@@ -241,4 +241,5 @@ body[data-filtro="examen"] .texto > .linea[data-tipos]:not([data-tipos~="examen"
 .lista-temas .hecho .casilla { background: #22a06b; border-color: #22a06b; }
 .lista-temas .hecho > span:nth-child(2) { color: var(--suave); }
 .lista-temas .pendiente { background: var(--marca-suave); }
+.lista-temas .duracion { margin-left: auto; color: var(--suave); font-size: 0.8rem; white-space: nowrap; }
 .chip.sin-tratar { background: var(--marca); color: #fff; font-size: 0.72rem; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }

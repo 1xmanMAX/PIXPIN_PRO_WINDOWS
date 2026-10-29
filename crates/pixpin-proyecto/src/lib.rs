@@ -27,6 +27,7 @@
 //!
 //! Por eso se guardan las entradas crudas del ZIP y no solo lo interpretado.
 
+pub mod acta_viva;
 pub mod almacen;
 pub mod anotado;
 pub mod avatar;

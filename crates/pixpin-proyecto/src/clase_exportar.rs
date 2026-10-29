@@ -61,6 +61,10 @@ pub struct ClaseParaExportar {
     /// de la agenda: lo tratado con su minuto y lo que quedo sin tratar.
     /// Vacio, la pagina es la de siempre.
     pub temas: Vec<crate::temas::Tema>,
+    /// Lo que Jev saco mientras se grababa (`crate::acta_viva`): los
+    /// minutos de cada tema, las decisiones y las preguntas sin respuesta.
+    /// Vacio, la pagina es la de siempre.
+    pub acta: crate::acta_viva::Acta,
 }
 
 /// Si un mensaje es una grabacion: una nota de voz.
@@ -205,6 +209,7 @@ impl ClaseParaExportar {
             adjuntos,
             importantes: clase::importantes_de(&voz.resto).unwrap_or_default(),
             temas: crate::temas::temas_de(&voz.resto),
+            acta: crate::acta_viva::de(&voz.resto),
         }
     }
 
@@ -349,6 +354,9 @@ pub struct Rotulos {
     /// «Temas de la reunión» y la chapita de lo que quedo sin tratar.
     pub temas: String,
     pub sin_tratar: String,
+    /// «Decisiones» y «Preguntas sin respuesta» (`crate::acta_viva`).
+    pub decisiones: String,
+    pub preguntas_abiertas: String,
 }
 
 impl Default for Rotulos {
@@ -380,6 +388,8 @@ impl Default for Rotulos {
             ],
             temas: "Temas de la reunión".into(),
             sin_tratar: "Sin tratar".into(),
+            decisiones: "Decisiones".into(),
+            preguntas_abiertas: "Preguntas sin respuesta".into(),
         }
     }
 }
@@ -675,7 +685,8 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
     }
     // Al lado: los marcadores y el indice de las capturas. Sin ellos, el
     // texto a lo ancho (una nota de voz sin mas).
-    let con_lado = !c.marcadores.is_empty() || n_capturas > 0 || !c.temas.is_empty();
+    let con_acta = !c.acta.decisiones.is_empty() || !c.acta.preguntas_abiertas.is_empty();
+    let con_lado = !c.marcadores.is_empty() || n_capturas > 0 || !c.temas.is_empty() || con_acta;
     h.push_str(if con_lado {
         "</section>\n<main class=\"cuerpo con-lado\">\n"
     } else {
@@ -685,6 +696,12 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
         h.push_str("<aside class=\"lado\">\n");
         if !c.temas.is_empty() {
             h.push_str(&temas_html(c, r, con_medio));
+        }
+        for (titulo, dichos) in [
+            (&r.decisiones, &c.acta.decisiones),
+            (&r.preguntas_abiertas, &c.acta.preguntas_abiertas),
+        ] {
+            h.push_str(&dichos_html(titulo, dichos, con_medio));
         }
         if !c.marcadores.is_empty() {
             h.push_str(&format!(
@@ -851,16 +868,58 @@ fn temas_html(c: &ClaseParaExportar, r: &Rotulos, con_medio: bool) -> String {
                 t.ms.map(|ms| format!(" data-ms=\"{ms}\""))
                     .unwrap_or_default();
             h.push_str(&format!(
-                "<li class=\"tema hecho\"{data}><span class=\"casilla\" aria-hidden=\"true\">✓</span><span>{}</span>{minuto}</li>\n",
-                escapar(&t.texto)
+                "<li class=\"tema hecho\"{data}><span class=\"casilla\" aria-hidden=\"true\">✓</span><span>{}</span>{minuto}{}</li>\n",
+                escapar(&t.texto),
+                tiempo_html(c, &t.id)
             ));
         } else {
             h.push_str(&format!(
-                "<li class=\"tema pendiente\"><span class=\"casilla\" aria-hidden=\"true\"></span><span>{}</span> <span class=\"chip sin-tratar\">{}</span></li>\n",
+                "<li class=\"tema pendiente\"><span class=\"casilla\" aria-hidden=\"true\"></span><span>{}</span> <span class=\"chip sin-tratar\">{}</span>{}</li>\n",
                 escapar(&t.texto),
-                escapar(&r.sin_tratar)
+                escapar(&r.sin_tratar),
+                tiempo_html(c, &t.id)
             ));
         }
+    }
+    h.push_str("</ol></section>\n");
+    h
+}
+
+/// Lo que llevo un tema («· 6 min»), si se conto y fue algo.
+fn tiempo_html(c: &ClaseParaExportar, id: &str) -> String {
+    match tiempo_de(c, id) {
+        Some(t) => format!(" <span class=\"duracion\">{}</span>", escapar(&t)),
+        None => String::new(),
+    }
+}
+
+fn tiempo_de(c: &ClaseParaExportar, id: &str) -> Option<String> {
+    c.acta
+        .tiempo_por_tema
+        .as_ref()
+        .and_then(|t| t.de(id))
+        .filter(|ms| *ms > 0)
+        .map(crate::acta_viva::duracion_corta)
+}
+
+/// **Las decisiones o las preguntas sin respuesta**, cada una con su minuto
+/// (que salta ahi). Sin nada, nada.
+fn dichos_html(titulo: &str, v: &[crate::acta_viva::Dicho], con_medio: bool) -> String {
+    if v.is_empty() {
+        return String::new();
+    }
+    let mut h = format!(
+        "<section class=\"bloque\"><h2>{} <span class=\"cuenta\">{}</span></h2>\n<ol class=\"lista-marcadores lista-acta\">\n",
+        escapar(titulo),
+        v.len()
+    );
+    for d in v {
+        h.push_str(&format!(
+            "<li data-ms=\"{}\">{} <span>{}</span></li>\n",
+            d.ms,
+            minuto_html(d.ms, con_medio),
+            escapar(d.texto.trim())
+        ));
     }
     h.push_str("</ol></section>\n");
     h
@@ -955,10 +1014,26 @@ pub fn markdown(
             } else {
                 format!(" — *{}*", r.sin_tratar)
             };
+            let tiempo = tiempo_de(c, &t.id)
+                .map(|t| format!(" ({t})"))
+                .unwrap_or_default();
             v.push_str(&format!(
-                "- [{marca}] {}{minuto}{falta}\n",
+                "- [{marca}] {}{minuto}{tiempo}{falta}\n",
                 md_escapar(&t.texto)
             ));
+        }
+        v.push('\n');
+    }
+    for (titulo, dichos) in [
+        (&r.decisiones, &c.acta.decisiones),
+        (&r.preguntas_abiertas, &c.acta.preguntas_abiertas),
+    ] {
+        if dichos.is_empty() {
+            continue;
+        }
+        v.push_str(&format!("## {titulo}\n\n"));
+        for d in dichos {
+            v.push_str(&format!("- {} · {}\n", minuto(d.ms), md_escapar(&d.texto)));
         }
         v.push('\n');
     }
