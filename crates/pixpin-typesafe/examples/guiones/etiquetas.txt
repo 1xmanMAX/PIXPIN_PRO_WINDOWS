@@ -1,0 +1,58 @@
+# Etiquetas solas: las del usuario y, por caso, una nota o el texto de una
+# captura.
+# etiqueta: Facturas
+# etiqueta: Trabajo
+# etiqueta: Universidad
+# etiqueta: Viajes
+# etiqueta: Recetas
+# etiqueta: Salud
+# etiqueta: Ideas
+
+# caso: n01
+# texto: Factura Iberdrola octubre: 63,20 €, se cobra el 5 de noviembre.
+# espera: n01 + facturas
+# espera-no: n01 + viajes
+
+# caso: n02
+# texto: Vuelo Madrid–Lisboa TP1027, 12 de diciembre a las 08:40, localizador XK3P9.
+# espera: n02 + viajes
+
+# caso: n03
+# titulo: Bizcocho de yogur
+# texto: 1 yogur, 3 medidas de harina, 2 de azúcar, 1 de aceite, 3 huevos. Horno a 180 grados 35 minutos.
+# espera: n03 + recetas
+
+# caso: n04
+# texto: Cita con el dermatólogo el martes a las 10; llevar los análisis de sangre.
+# espera: n04 + salud
+
+# caso: n05
+# titulo: Apuntes Cálculo
+# texto: La derivada de x^n es n·x^(n-1). Para el examen, repasar la regla de la cadena.
+# espera: n05 + universidad
+
+# caso: n06
+# texto: Idea para la app: que las capturas se ordenen solas por proyecto según lo que pone en ellas.
+# espera: n06 + ideas
+
+# caso: n07
+# texto: Reembolso de gastos de la feria de Valencia: hotel dos noches y taxis. Mandar las facturas a contabilidad antes del viernes.
+# espera: n07 + trabajo
+# espera-no: n07 + recetas
+
+# caso: n08
+# texto: ok
+# espera: n08 sin etiquetas
+
+# caso: n09
+# texto: Lista de la compra: leche, pan, tomates y detergente.
+# espera: n09 sin etiquetas
+
+# caso: n10
+# texto: Reunión con el cliente de Valencia el jueves: presentar el presupuesto del proyecto web.
+# espera: n10 + trabajo
+
+# caso: n11
+# titulo: Horario 2.º cuatrimestre
+# texto: Lunes: Álgebra 9:00, aula 2.3. Martes: Física 11:00, laboratorio B.
+# espera: n11 + universidad

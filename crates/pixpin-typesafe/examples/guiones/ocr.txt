@@ -1,0 +1,44 @@
+# Que OCR lee cada imagen (Windows o Indra, docs/ocr.md). Imagenes
+# inventadas (fotos/hacer_fotos.py); las lecturas de cada motor estan
+# escritas a mano con los fallos tipicos de cada uno.
+
+# caso: o01
+# imagen: fotos/o01.png
+# windows: Chat - Obra Calle Mayor\nLucía\nHe subido los planos del baño, revisadlos.\nYo\nVale, los miro esta tarde.\nPedro\nEl fontanero viene el jueves a las 9.\nYo\nPerfecto, le abro yo.\nEscribe un mensaje...
+# indra: Chat - Obra Calle Mayor\nLucia\nHe subido los pIanos del bano, revisad1os.\nYo\nVale, los rniro esta tarde.\nPedro\nEl fontanero viene el jueves a las 8.\nYo\nPerfecto, le abro yo.
+# espera: o01 tipo captura_de_pantalla
+# espera: o01 motor windows
+# espera: o01 lectura windows
+
+# caso: o02
+# imagen: fotos/o02.jpg
+# windows: Tema 4. La fotosintesis\nLa fotosintesis es el proceso por el qne\nlas plantas convierten la lnz en energia\nquimica. Ocurre en los cloroplastos v\nlibera oxigeno como prodncto.
+# indra: Tema 4. La fotosíntesis\nLa fotosíntesis es el proceso por el que\nlas plantas convierten la luz en energía\nquímica. Ocurre en los cloroplastos y\nlibera oxígeno como producto.
+# espera: o02 tipo impreso
+# espera: o02 motor windows
+# espera: o02 lectura indra
+
+# caso: o03
+# imagen: fotos/o03.jpg
+# windows: Material Cant. Precio Azulejos Cemento cola Grifo lavabo Silicona 24 6 1 3 312,00 58,20 89,90 14,85
+# indra: Material | Cant. | Precio\nAzulejos | 24 | 312,00\nCemento cola | 6 | 58,20\nGrifo lavabo | 1 | 89,90\nSilicona | 3 | 14,85
+# espera: o03 tipo tabla
+# espera: o03 motor indra
+# espera: o03 lectura indra
+
+# caso: o04
+# imagen: fotos/o04.jpg
+# windows: Cornprar:\npan v lec he\nPi las para el manclo\nIlamar al clentista
+# indra: Comprar:\npan y leche\npilas para el mando\nllamar al dentista
+# espera: o04 tipo manuscrito
+# espera: o04 motor indra
+# espera: o04 lectura indra
+
+# caso: o05
+# imagen: fotos/o05.jpg
+# espera: o05 sin texto
+
+# caso: o06
+# imagen: fotos/rc2_1.jpg
+# espera: o06 tipo impreso
+# espera: o06 motor windows

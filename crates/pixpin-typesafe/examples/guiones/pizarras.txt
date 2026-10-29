@@ -1,0 +1,33 @@
+# Recortar la pizarra o la hoja de cada foto. Fotos inventadas
+# (fotos/hacer_fotos.py); `verdad` es la caja de lo pegado (top bottom left
+# right, en fracciones), la que escribe fotos/verdad.txt.
+
+# caso: p01
+# foto: fotos/p01.jpg
+# verdad: 0.167 0.792 0.148 0.852
+# espera: p01 recorte bien
+
+# caso: p02
+# foto: fotos/p02.jpg
+# verdad: 0.104 0.729 0.334 0.967
+# espera: p02 recorte bien
+
+# caso: p03
+# foto: fotos/p03.jpg
+# verdad: 0.078 0.859 0.070 0.930
+# espera: p03 recorte bien
+
+# caso: p04
+# foto: fotos/p04.jpg
+# verdad: 0.130 1.000 0.293 0.898
+# espera: p04 recorte bien
+
+# caso: p05
+# foto: fotos/p05.jpg
+# verdad: 0.182 0.859 0.391 1.000
+# espera: p05 recorte bien
+# espera: p05 falta trozo
+
+# caso: p06
+# foto: fotos/p06.jpg
+# espera: p06 sin pizarra

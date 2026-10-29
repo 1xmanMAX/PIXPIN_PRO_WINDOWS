@@ -1,0 +1,38 @@
+# Urgencia de tareas, casos de control (no se usaron para ajustar las
+# preguntas).
+
+# caso: u01
+# tarea: Pagar la multa de tráfico con descuento
+# lista: Trámites
+# chat: Personal
+# mensaje: DGT: el descuento del 50 % termina mañana.
+# dias: 1
+# espera: u01 → urgente
+
+# caso: u02
+# tarea: Aprender a tocar el ukelele
+# lista: Ideas
+# chat: Personal
+# espera: u02 → baja
+
+# caso: u03
+# tarea: Revisar el contrato del cliente antes de la firma
+# lista: Trabajo
+# chat: Ventas
+# mensaje: Carlos: el cliente firma el viernes y necesito tu visto bueno antes.
+# dias: 3
+# espera-no: u03 → baja
+# espera-no: u03 → normal
+
+# caso: u04
+# tarea: Limpiar el trastero
+# lista: Casa
+# chat: Personal
+# espera: u04 → baja
+
+# caso: u05
+# tarea: Llevar al perro a vacunar
+# lista: Casa
+# chat: Familia
+# dias: 12
+# espera-no: u05 → urgente

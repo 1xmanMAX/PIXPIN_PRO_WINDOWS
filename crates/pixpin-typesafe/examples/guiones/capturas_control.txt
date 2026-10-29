@@ -1,0 +1,35 @@
+# A que chat va cada captura, casos de control (no se usaron para ajustar
+# las preguntas): otros chats.
+# chat: Club de lectura | el libro del mes y las reuniones del club
+# chat: Mudanza oficina | cajas, camión, proveedores y llaves de la oficina nueva
+# chat: Física 2 | electromagnetismo, prácticas de laboratorio y exámenes
+
+# caso: c01
+# ventana: Casa del Libro - El infinito en un junco
+# texto: El infinito en un junco, Irene Vallejo · 22,90 € · Disponible en tienda
+# espera: c01 → club de lectura
+
+# caso: c02
+# ventana: Mudanzas Rápidas - Presupuesto
+# texto: Camión de 20 m³ con dos operarios, sábado 8:00-14:00. Precio: 640 €.
+# espera: c02 → mudanza oficina
+
+# caso: c03
+# ventana: Práctica 3 - Ley de Faraday.pdf
+# texto: Objetivo: medir la fuerza electromotriz inducida en una bobina al mover un imán.
+# espera: c03 → fisica 2
+
+# caso: c04
+# ventana: YouTube - Los mejores goles de la temporada
+# texto: Los 10 mejores goles de la temporada · 2,3 M de visualizaciones
+# espera: c04 → ninguno
+
+# caso: c05
+# ventana: Correo - Reunión del club: cambio de fecha
+# texto: Hola a todos: la reunión de noviembre pasa al jueves 20, a las 19:00, en la biblioteca.
+# espera: c05 → club de lectura
+
+# caso: c06
+# ventana: Calculadora de hipotecas
+# texto: Cuota mensual: 812,34 € · Plazo: 25 años · Interés fijo 2,9 %
+# espera: c06 → ninguno

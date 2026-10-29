@@ -1,0 +1,21 @@
+# Recortar la pizarra o la hoja, casos de control (no se usaron para
+# ajustar las preguntas).
+
+# caso: p01
+# foto: fotos/pc1.jpg
+# verdad: 0.445 0.997 0.646 0.998
+# espera: p01 recorte bien
+
+# caso: p02
+# foto: fotos/pc2.jpg
+# verdad: 0.263 0.924 0.078 0.785
+# espera: p02 recorte bien
+
+# caso: p03
+# foto: fotos/pc3.jpg
+# verdad: 0.055 0.529 0.041 0.545
+# espera: p03 recorte bien
+
+# caso: p04
+# foto: fotos/pc4.jpg
+# espera: p04 sin pizarra

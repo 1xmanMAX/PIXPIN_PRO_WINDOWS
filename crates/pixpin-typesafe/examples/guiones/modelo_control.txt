@@ -1,0 +1,26 @@
+# Que modelo contesta, casos de control (no se usaron para ajustar las
+# preguntas).
+
+# caso: m01
+# pedido: ¿Cómo se dice «mesa» en francés?
+# espera: m01 → rapido
+
+# caso: m02
+# pedido: Demuestra que la raíz cuadrada de 2 es irracional.
+# espera: m02 → fuerte
+
+# caso: m03
+# pedido: Hazme una lista de la compra para una paella para cuatro.
+# espera: m03 → rapido
+
+# caso: m04
+# pedido: Mi hijo de 2 años pesa 12 kg; ¿cuántos ml de este jarabe de paracetamol de 100 mg/ml le doy?
+# espera: m04 → fuerte
+
+# caso: m05
+# pedido: Analiza estas tres ofertas de hipoteca (fija al 2,9 %, variable euríbor + 0,8 y mixta) para 180.000 € a 25 años y dime cuál me conviene.
+# espera: m05 → fuerte
+
+# caso: m06
+# pedido: Escribe un saludo de cumpleaños corto para mi prima.
+# espera: m06 → rapido

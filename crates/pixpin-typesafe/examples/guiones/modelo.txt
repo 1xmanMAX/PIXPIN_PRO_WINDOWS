@@ -1,0 +1,54 @@
+# Que modelo contesta cada pedido al asistente: el rapido (Haiku, DeepSeek
+# Flash) o el fuerte (Sonnet, DeepSeek V4 Pro). Las ordenes del camino
+# rapido de la app no llegan aqui.
+
+# caso: m01
+# pedido: ¿Cuánto es el 20 % de 150?
+# espera: m01 → rapido
+
+# caso: m02
+# pedido: Resuelve: un coche sale de Madrid a 90 km/h y otro de Zaragoza a 110 km/h por la misma carretera, que tiene 320 km. ¿Dónde y cuándo se cruzan?
+# espera: m02 → fuerte
+
+# caso: m03
+# reciente: usuario: Te pego el capítulo 4 de mi novela (seis páginas) para que lo tengas.
+# reciente: asistente: Recibido, ya tengo el capítulo 4.
+# reciente: usuario: Y este es el capítulo 5 (ocho páginas).
+# pedido: Compara el ritmo y los personajes de los dos capítulos y dime qué incoherencias ves entre ellos.
+# espera: m03 → fuerte
+
+# caso: m04
+# pedido: Dibuja un gato sentado
+# espera: m04 → rapido
+
+# caso: m05
+# pedido: Revisa este contrato de alquiler que firmo mañana y dime si alguna cláusula es abusiva o ilegal: «El inquilino renuncia a la devolución de la fianza en cualquier caso…»
+# espera: m05 → fuerte
+
+# caso: m06
+# pedido: ¿Qué hora es en Tokio ahora?
+# espera: m06 → rapido
+
+# caso: m07
+# pedido: Explícame la fotosíntesis con un esquema sencillo
+# espera: m07 → rapido
+
+# caso: m08
+# pedido: Mañana tengo el examen final de Cálculo: corrígeme paso a paso este desarrollo de la integral por partes de x·e^x, que no me da lo del libro.
+# espera: m08 → fuerte
+
+# caso: m09
+# pedido: Traduce al inglés «gracias por tu ayuda»
+# espera: m09 → rapido
+
+# caso: m10
+# pedido: Planifica la mudanza de la oficina: 25 personas, 3 semanas y 8.000 € de presupuesto, con tareas, responsables y fechas.
+# espera: m10 → fuerte
+
+# caso: m11
+# pedido: Escríbeme un correo corto para pedirle a mi jefa el viernes libre.
+# espera: m11 → rapido
+
+# caso: m12
+# pedido: Tomo Sintrom; ¿puedo tomar ibuprofeno para el dolor de muelas y cuánto?
+# espera: m12 → fuerte

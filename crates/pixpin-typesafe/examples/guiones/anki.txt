@@ -1,0 +1,58 @@
+# Tarjetas de Anki de una clase: cada caso, una tarjeta (minuto y lo dicho
+# en su tramo).
+# clase: Historia 2.º Bachillerato - La Revolución Francesa
+
+# caso: t01
+# minuto: 0:30
+# dicho: Buenos días, abrid el libro por la página cien, que hoy vamos con prisa.
+# espera: t01 sobra
+
+# caso: t02
+# minuto: 2:10
+# dicho: La Revolución Francesa empezó en 1789 con la toma de la Bastilla, el 14 de julio.
+# espera: t02 queda
+
+# caso: t03
+# minuto: 5:40
+# dicho: Como veis en esta imagen, aquí a la izquierda, ¿lo veis? Pues eso, justo ahí.
+# espera: t03 sobra
+
+# caso: t04
+# minuto: 8:15
+# dicho: Los tres estamentos eran el clero, la nobleza y el tercer estado, que pagaba casi todos los impuestos.
+# espera: t04 queda
+
+# caso: t05
+# minuto: 11:00
+# dicho: Esto entra en el examen: la Declaración de los Derechos del Hombre y del Ciudadano es de agosto de 1789.
+# espera: t05 queda
+
+# caso: t06
+# minuto: 13:20
+# dicho: Mi abuelo visitó París una vez y siempre decía que la comida era carísima.
+# espera: t06 sobra
+
+# caso: t07
+# minuto: 15:45
+# dicho: Por ejemplo, imaginad que sois un campesino y os vuelven a subir el precio del pan.
+# espera-no: t07 queda
+
+# caso: t08
+# minuto: 18:30
+# dicho: El Terror fue la etapa de 1793 a 1794 en la que Robespierre mandó ejecutar a miles de opositores.
+# espera: t08 queda
+
+# caso: t09
+# minuto: 20:00
+# dicho: eh
+# espera: t09 se manda
+
+# caso: t10
+# minuto: 21:10
+# dicho: Bueno, ya casi es la hora, el próximo día seguimos con Napoleón.
+# espera: t10 sobra
+
+# espera: t02 se manda
+# espera: t05 se manda
+# espera: t01 no se manda
+# espera: t06 no se manda
