@@ -15,11 +15,19 @@
 //!
 //! Este modulo habla con el sistema operativo: cada bloque `unsafe` lleva
 //! su `// SAFETY:`.
+//!
+//! Fuera de Windows solo quedan las cuentas de tiempo ([`ms_de_muestra`],
+//! [`duracion_ms`]): Whisper las usa y compila tambien en Linux para los
+//! prototipos sin interfaz (`examples/`), que decodifican con `ffmpeg`.
 
+#[cfg(windows)]
 use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
 use std::path::Path;
+#[cfg(windows)]
 use std::sync::Once;
 
+#[cfg(windows)]
 use windows::Win32::Media::MediaFoundation::{
     IMFSample, MF_MT_AUDIO_AVG_BYTES_PER_SECOND, MF_MT_AUDIO_BITS_PER_SAMPLE,
     MF_MT_AUDIO_BLOCK_ALIGNMENT, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND,
@@ -28,9 +36,12 @@ use windows::Win32::Media::MediaFoundation::{
     MFAudioFormat_PCM, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Audio,
     MFSTARTUP_LITE, MFStartup,
 };
+#[cfg(windows)]
 use windows::core::PCWSTR;
 
-use crate::{BYTES_POR_SEGUNDO, ErrorVoz, HERCIOS, en};
+use crate::HERCIOS;
+#[cfg(windows)]
+use crate::{BYTES_POR_SEGUNDO, ErrorVoz, en};
 
 /// Media Foundation se arranca una sola vez por proceso.
 ///
@@ -38,8 +49,10 @@ use crate::{BYTES_POR_SEGUNDO, ErrorVoz, HERCIOS, en};
 /// convive con el del reproductor y el de la grabadora sin pisarse. No se
 /// llama a `MFShutdown`: la plataforma vive lo que viva el proceso, igual
 /// que en `pixpin-audio` y en `pixpin-record`.
+#[cfg(windows)]
 static ARRANQUE: Once = Once::new();
 
+#[cfg(windows)]
 fn arrancar() {
     ARRANQUE.call_once(|| {
         // SAFETY: `MFStartup` no tiene mas precondicion que recibir la
@@ -69,6 +82,7 @@ pub fn duracion_ms(muestras: &[i16]) -> i64 {
 /// escribe uno (`Transcriptor.kt:431`)— porque aqui la nota de voz cabe de
 /// sobra: una hora de audio a 16 kHz son 115 MB, y una nota de voz de un
 /// chat dura minutos, no horas.
+#[cfg(windows)]
 pub fn decodificar(ruta: &Path) -> Result<Vec<i16>, ErrorVoz> {
     arrancar();
 
@@ -204,6 +218,7 @@ mod pruebas {
         assert_eq!(duracion_ms(&vec![0i16; HERCIOS as usize / 2]), 500);
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_fichero_que_no_es_audio_no_se_decodifica() {
         let ruta = std::env::temp_dir().join("pixpin-voz-no-es-audio.m4a");
@@ -216,6 +231,7 @@ mod pruebas {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn un_fichero_que_no_existe_tampoco() {
         let salida = decodificar(Path::new("C:/no/existe/esto.m4a"));

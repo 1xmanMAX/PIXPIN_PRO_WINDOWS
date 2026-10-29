@@ -93,6 +93,88 @@ impl Fichas {
         }
         String::from_utf8_lossy(&b).trim().to_string()
     }
+
+    /// **Los tokens que no son habla**, ordenados: los que abren una
+    /// anotacion (`[Music]`, `(aplausos)`, `♪`…) y no letra cantada. Es la
+    /// lista `non_speech_tokens` de `openai/whisper` (`tokenizer.py`): cada
+    /// simbolo solo o con un blanco delante, y las notas musicales enteras
+    /// o el trozo de sus bytes con que empiezan (no hay letras en ese
+    /// trozo de Unicode). Sirve para las canciones ([`super::Whisper`]):
+    /// con musica debajo, Whisper base escribe «[Music]» en vez de la letra.
+    pub fn sin_habla(&self) -> Vec<i64> {
+        const SIMBOLOS: &[&str] = &[
+            "\"",
+            "#",
+            "(",
+            ")",
+            "*",
+            "+",
+            "/",
+            ":",
+            ";",
+            "<",
+            "=",
+            ">",
+            "@",
+            "[",
+            "\\",
+            "]",
+            "^",
+            "_",
+            "`",
+            "{",
+            "|",
+            "}",
+            "~",
+            "「",
+            "」",
+            "『",
+            "』",
+            "<<",
+            ">>",
+            "<<<",
+            ">>>",
+            "--",
+            "---",
+            "-(",
+            "-[",
+            "('",
+            "(\"",
+            "((",
+            "))",
+            "(((",
+            ")))",
+            "[[",
+            "]]",
+            "{{",
+            "}}",
+            "♪♪",
+            "♪♪♪",
+            "-",
+        ];
+        const NOTAS: &[char] = &['♩', '♪', '♫', '♬', '♭', '♮', '♯'];
+        let mut v: Vec<i64> = self
+            .bytes
+            .iter()
+            .filter(|(_, b)| {
+                let sin_blanco = b.strip_prefix(b" ").unwrap_or(b);
+                let simbolo = SIMBOLOS.iter().any(|s| s.as_bytes() == sin_blanco)
+                    // El guion solo con blanco delante: pegado tambien une
+                    // palabras («e-mail»).
+                    && (sin_blanco != b"-" || b.len() == 2);
+                let nota = NOTAS.iter().any(|c| {
+                    let mut buf = [0u8; 4];
+                    let u = c.encode_utf8(&mut buf).as_bytes();
+                    b.windows(u.len()).any(|w| w == u)
+                        || (sin_blanco.len() >= 2 && u.starts_with(sin_blanco))
+                });
+                simbolo || nota
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        v.sort_unstable();
+        v
+    }
 }
 
 /// Una lista de enteros separados por comas (`"50258,50259,50359"`).
@@ -151,6 +233,51 @@ mod pruebas {
         let tabla = Fichas::leer("IGhvbGE= 5\n");
         assert_eq!(tabla.texto(&[50258, 5, 50257, 99_999]), "hola");
         assert_eq!(tabla.texto(&[]), "");
+    }
+
+    #[test]
+    fn las_anotaciones_y_las_notas_no_son_habla_y_las_palabras_si() {
+        // «[», « [», «(», « -», «♪», « ♪♪», el trozo «e2 99» con que empieza
+        // «♪», y palabras normales (y el «’», que tambien empieza por e2).
+        let b64 = |t: &[u8]| {
+            const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let mut s = String::new();
+            for c in t.chunks(3) {
+                let n = c.len();
+                let x = (u32::from(c[0]) << 16)
+                    | (u32::from(*c.get(1).unwrap_or(&0)) << 8)
+                    | u32::from(*c.get(2).unwrap_or(&0));
+                for k in 0..4 {
+                    s.push(if k <= n {
+                        A[(x >> (18 - 6 * k) & 63) as usize] as char
+                    } else {
+                        '='
+                    });
+                }
+            }
+            s
+        };
+        let tabla: Vec<(&[u8], i64)> = vec![
+            (b"[", 1),
+            (b" [", 2),
+            (b"(", 3),
+            (b" -", 4),
+            ("♪".as_bytes(), 5),
+            (" ♪♪".as_bytes(), 6),
+            (&[0xe2, 0x99], 7),
+            (b" Music", 8),
+            (b"-", 9),
+            (b" hola", 10),
+            (b"]", 11),
+            ("’".as_bytes(), 12),
+        ];
+        let texto: String = tabla
+            .iter()
+            .map(|(t, id)| format!("{} {id}\n", b64(t)))
+            .collect();
+        let f = Fichas::leer(&texto);
+        assert_eq!(f.texto(&[10]), "hola");
+        assert_eq!(f.sin_habla(), vec![1, 2, 3, 4, 5, 6, 7, 11]);
     }
 
     #[test]

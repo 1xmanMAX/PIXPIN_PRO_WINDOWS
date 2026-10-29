@@ -31,10 +31,16 @@
 //!    atras lo que tardan en cantarse las palabras de delante que no
 //!    casaron.
 //! 4. **Las lineas sin ancla** se reparten entre las anclas de alrededor
-//!    segun lo largas que son (en letras), pero nunca mas despacio que el
-//!    ritmo al que se canta en esta cancion: asi un solo de guitarra entre
-//!    dos estrofas no estira las lineas de la primera hasta el final del
-//!    solo, sino que quedan detras de su ancla y el hueco va al final.
+//!    segun lo largas que son (en letras), **sobre el tiempo en que se oye
+//!    cantar** ([`Voz`]: los tramos con palabras oidas, casen o no con la
+//!    letra): asi un solo de guitarra entre dos estrofas no estira las
+//!    lineas de la primera hasta el final del solo, y una estrofa que
+//!    Whisper oyo mal pero oyo se reparte por donde se canto. Donde no se
+//!    oyo nada, como antes: nunca mas despacio que el ritmo al que se canta
+//!    en esta cancion (el hueco va al final, antes del ancla siguiente).
+//!    Detras de la ultima ancla, hasta lo ultimo que se oye cantar; delante
+//!    de la primera, desde lo primero (29-oct-2026, medido con tres
+//!    canciones: ver `docs/probar-ideas-sin-interfaz.md`).
 //!
 //! Salen los tiempos en orden (nunca uno antes que el de la linea de
 //! antes) y una confianza por linea. Sin ninguna ancla no hay nada que
@@ -120,6 +126,84 @@ const RITMO_MIN: f64 = 35.0;
 const RITMO_MAX: f64 = 300.0;
 /// Mas que esto entre dos lineas seguidas ya no es ritmo: es un hueco.
 const HUECO_MS: i64 = 20_000;
+/// Delante de la primera ancla, lo mas despacio que se puede cantar: estas
+/// veces el ritmo de la cancion.
+const LENTO: f64 = 1.5;
+/// Lo que se supone que dura una palabra oida (solo se sabe donde empieza).
+const PALABRA_MS: i64 = 600;
+/// Dos palabras oidas a menos de esto son el mismo tramo cantado.
+const JUNTAR_MS: i64 = 2_500;
+
+/// **Cuando se oye cantar**: los tramos con palabras oidas (casen o no con
+/// la letra), cada palabra de [`PALABRA_MS`] y juntas si las separa menos
+/// de [`JUNTAR_MS`]. Repartir las lineas sin ancla sobre estos tramos, y no
+/// sobre el reloj, salta los solos (alli Whisper no oye palabras).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Voz {
+    tramos: Vec<(i64, i64)>,
+}
+
+impl Voz {
+    pub fn de(oidas: &[PalabraOida]) -> Voz {
+        let mut ms: Vec<i64> = oidas.iter().map(|p| p.ms).collect();
+        ms.sort_unstable();
+        let mut tramos: Vec<(i64, i64)> = Vec::new();
+        for t in ms {
+            match tramos.last_mut() {
+                Some(u) if t - u.1 <= JUNTAR_MS => u.1 = u.1.max(t + PALABRA_MS),
+                _ => tramos.push((t, t + PALABRA_MS)),
+            }
+        }
+        Voz { tramos }
+    }
+
+    /// Lo que se canta entre `a` y `b`.
+    pub fn dentro(&self, a: i64, b: i64) -> i64 {
+        self.tramos
+            .iter()
+            .map(|&(x, y)| (y.min(b) - x.max(a)).max(0))
+            .sum()
+    }
+
+    /// Donde se llega desde `a` tras `d` ms cantados (`None` si no hay
+    /// tanto canto detras de `a`).
+    pub fn avanzar(&self, a: i64, d: i64) -> Option<i64> {
+        let mut falta = d.max(0);
+        for &(x, y) in &self.tramos {
+            let x = x.max(a);
+            if y <= x {
+                continue;
+            }
+            if y - x >= falta {
+                return Some(x + falta);
+            }
+            falta -= y - x;
+        }
+        None
+    }
+
+    /// Donde se llega desde `b` hacia atras tras `d` ms cantados.
+    pub fn retroceder(&self, b: i64, d: i64) -> Option<i64> {
+        let mut falta = d.max(0);
+        for &(x, y) in self.tramos.iter().rev() {
+            let y = y.min(b);
+            if y <= x {
+                continue;
+            }
+            if y - x >= falta {
+                return Some(y - falta);
+            }
+            falta -= y - x;
+        }
+        None
+    }
+
+    /// Donde acaba lo ultimo que se oye cantar.
+    pub fn fin(&self) -> Option<i64> {
+        self.tramos.last().map(|t| t.1)
+    }
+}
+
 /// Un tope de celdas para la tabla (n×m): 2 500 palabras por lado. Una
 /// letra entera tiene unos cientos.
 const CELDAS_MAX: usize = 6_250_000;
@@ -368,7 +452,7 @@ pub fn alinear<S: AsRef<str>>(
         primera[w.linea].get_or_insert(aqui);
         ultima[w.linea] = Some(aqui);
     }
-    let confianza: Vec<f32> = (0..lineas.len())
+    let mut confianza: Vec<f32> = (0..lineas.len())
         .map(|i| {
             if palabras_de[i] == 0 {
                 0.0
@@ -405,19 +489,38 @@ pub fn alinear<S: AsRef<str>>(
         .clamp(RITMO_MIN, RITMO_MAX);
 
     // Las anclas: el minuto de su primera palabra casada, corrido hacia
-    // atras lo de las palabras de delante. Nunca antes que el ancla de antes.
-    let mut tiempos: Vec<Option<i64>> = vec![None; lineas.len()];
+    // atras lo de las palabras de delante.
+    let mut tiempos: Vec<Option<i64>> = (0..lineas.len())
+        .map(|i| {
+            let (antes, t) = primera[i].filter(|_| es_ancla(i))?;
+            Some(t - (antes as f64 * ritmo) as i64)
+        })
+        .collect();
+    // Una linea repetida (un estribillo cantado dos veces seguidas) casa
+    // con cualquiera de sus dos veces: el camino no sabe cual se oyo. Se
+    // queda con la vez que cae donde toca al ritmo desde las anclas de
+    // alrededor.
+    let palabras_de_cada: Vec<Vec<&str>> = (0..lineas.len())
+        .map(|i| {
+            letra
+                .iter()
+                .filter(|w| w.linea == i)
+                .map(|w| w.texto.as_str())
+                .collect()
+        })
+        .collect();
+    gemelas(
+        &mut tiempos,
+        &mut confianza,
+        &palabras_de_cada,
+        &letras,
+        ritmo,
+    );
+    // Nunca antes que el ancla de antes.
     let mut anterior = 0i64;
-    for i in 0..lineas.len() {
-        if !es_ancla(i) {
-            continue;
-        }
-        let Some((antes, t)) = primera[i] else {
-            continue;
-        };
-        let ms = (t - (antes as f64 * ritmo) as i64).max(anterior).max(0);
-        tiempos[i] = Some(ms);
-        anterior = ms;
+    for t in tiempos.iter_mut().flatten() {
+        *t = (*t).max(anterior).max(0);
+        anterior = *t;
     }
     let anclas: Vec<usize> = (0..lineas.len())
         .filter(|&i| tiempos[i].is_some())
@@ -442,11 +545,17 @@ pub fn alinear<S: AsRef<str>>(
             ms[i] = t;
         }
     }
-    // Antes de la primera ancla: hacia atras al ritmo, sin bajar de lo
-    // repartido desde el principio de la cancion.
+    let voz = Voz::de(oidas);
+    // Antes de la primera ancla: sobre lo cantado antes de ella; si no se
+    // oyo nada, hacia atras al ritmo, sin bajar de lo repartido desde el
+    // principio de la cancion.
     {
         let tb = ms[primer_ancla] as f64;
         let total: f64 = peso[..primer_ancla].iter().sum();
+        // Solo lo cantado desde donde podrian empezar estas lineas cantadas
+        // muy despacio: lo que Whisper se invente en la intro no cuenta.
+        let desde = (tb - total * ritmo * LENTO).max(0.0) as i64;
+        let cantado = voz.dentro(desde, ms[primer_ancla]) as f64;
         let mut detras = 0.0; // letras entre la linea y el ancla
         for j in (0..primer_ancla).rev() {
             detras += peso[j];
@@ -456,11 +565,19 @@ pub fn alinear<S: AsRef<str>>(
             } else {
                 tb
             };
-            ms[j] = atras.max(repartido).max(0.0) as i64;
+            let sobre_la_voz = (cantado > 0.0 && total > 0.0)
+                .then(|| voz.retroceder(ms[primer_ancla], (cantado * detras / total) as i64))
+                .flatten();
+            ms[j] = match sobre_la_voz {
+                Some(t) => t.max(desde) as f64,
+                None => atras.max(repartido),
+            }
+            .max(0.0) as i64;
         }
     }
-    // Entre dos anclas: repartido por letras, sin ir mas despacio que el
-    // ritmo (el hueco instrumental se queda al final, antes del ancla).
+    // Entre dos anclas: repartido por letras sobre lo cantado entre ellas;
+    // si no se oyo nada, sin ir mas despacio que el ritmo (el hueco
+    // instrumental se queda al final, antes del ancla).
     for par in anclas.windows(2) {
         let (a, b) = (par[0], par[1]);
         if b == a + 1 {
@@ -468,6 +585,7 @@ pub fn alinear<S: AsRef<str>>(
         }
         let (ta, tb) = (ms[a] as f64, ms[b] as f64);
         let total: f64 = peso[a..b].iter().sum();
+        let cantado = voz.dentro(ms[a], ms[b]) as f64;
         let mut hecho = 0.0;
         for j in a + 1..b {
             hecho += peso[j - 1];
@@ -476,21 +594,38 @@ pub fn alinear<S: AsRef<str>>(
             } else {
                 ta
             };
-            ms[j] = repartido.min(ta + hecho * ritmo) as i64;
+            let sobre_la_voz = (cantado > 0.0 && total > 0.0)
+                .then(|| voz.avanzar(ms[a], (cantado * hecho / total) as i64))
+                .flatten();
+            ms[j] = match sobre_la_voz {
+                Some(t) => (t as f64).min(tb),
+                None => repartido.min(ta + hecho * ritmo),
+            } as i64;
         }
     }
-    // Detras de la ultima: al ritmo, sin pasar del final de la cancion.
+    // Detras de la ultima: sobre lo cantado hasta lo ultimo que se oye; si
+    // no se oye nada, al ritmo. Nunca pasado el final de la cancion.
     {
         let ta = ms[ultima_ancla] as f64;
         let total: f64 = peso[ultima_ancla..].iter().sum();
         let fin = duracion_ms.map(|d| d as f64).filter(|d| *d > ta);
+        let hasta_ms = match (voz.fin(), duracion_ms) {
+            (Some(v), Some(d)) => v.min(d),
+            (Some(v), None) => v,
+            (None, _) => ms[ultima_ancla],
+        };
+        let cantado = voz.dentro(ms[ultima_ancla], hasta_ms) as f64;
         let mut hecho = 0.0;
         for j in ultima_ancla + 1..lineas.len() {
             hecho += peso[j - 1];
             let al_ritmo = ta + hecho * ritmo;
+            let sobre_la_voz = (cantado > 0.0 && total > 0.0)
+                .then(|| voz.avanzar(ms[ultima_ancla], (cantado * hecho / total) as i64))
+                .flatten();
+            let t = sobre_la_voz.map_or(al_ritmo, |t| t as f64);
             ms[j] = match fin {
-                Some(fin) if total > 0.0 => al_ritmo.min(ta + (fin - ta) * hecho / total),
-                _ => al_ritmo,
+                Some(fin) if total > 0.0 => t.min(ta + (fin - ta) * hecho / total),
+                _ => t,
             } as i64;
         }
     }
@@ -524,6 +659,66 @@ pub fn alinear<S: AsRef<str>>(
             })
             .collect(),
     })
+}
+
+/// Lo que tiene que acercarse una gemela a donde toca, frente a la linea
+/// que caso, para quedarse con el ancla: la mitad del error, y al menos
+/// esto.
+const GEMELA_MEJORA_MS: f64 = 3_000.0;
+
+/// **Las anclas de una linea repetida, en la vez que toca** (ver
+/// [`alinear`]). Para cada ancla con gemelas sin ancla (las mismas
+/// palabras) entre las anclas de antes y de despues, donde «tocaria» cada
+/// una al ritmo desde esas anclas; si una gemela cae mucho mas cerca del
+/// minuto oido que la linea que caso, el ancla pasa a la gemela.
+fn gemelas(
+    tiempos: &mut [Option<i64>],
+    confianza: &mut [f32],
+    palabras: &[Vec<&str>],
+    letras: &[usize],
+    ritmo: f64,
+) {
+    let n = tiempos.len();
+    for i in 0..n {
+        let Some(t) = tiempos[i] else {
+            continue;
+        };
+        if palabras[i].is_empty() {
+            continue;
+        }
+        let antes = (0..i).rev().find(|&k| tiempos[k].is_some());
+        let despues = (i + 1..n).find(|&k| tiempos[k].is_some());
+        let desde = antes.map_or(0, |a| a + 1);
+        let hasta = despues.unwrap_or(n);
+        // Donde tocaria la linea `c` al ritmo desde las anclas de alrededor.
+        let toca = |c: usize| -> Option<f64> {
+            let por_antes = antes.map(|a| {
+                tiempos[a].unwrap_or(0) as f64 + letras[a..c].iter().sum::<usize>() as f64 * ritmo
+            });
+            let por_despues = despues.map(|d| {
+                tiempos[d].unwrap_or(0) as f64 - letras[c..d].iter().sum::<usize>() as f64 * ritmo
+            });
+            match (por_antes, por_despues) {
+                (Some(a), Some(d)) => Some((a + d) / 2.0),
+                (a, d) => a.or(d),
+            }
+        };
+        let Some(propio) = toca(i).map(|e| (e - t as f64).abs()) else {
+            continue;
+        };
+        let mejor = (desde..hasta)
+            .filter(|&c| c != i && tiempos[c].is_none() && palabras[c] == palabras[i])
+            .filter_map(|c| Some((c, (toca(c)? - t as f64).abs())))
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        if let Some((c, error)) = mejor
+            && error < propio / 2.0
+            && propio - error >= GEMELA_MEJORA_MS
+        {
+            tiempos[c] = tiempos[i].take();
+            confianza[c] = confianza[i];
+            confianza[i] = 0.0;
+        }
+    }
 }
 
 fn mediana(v: &mut [f64]) -> Option<f64> {
@@ -812,5 +1007,88 @@ mod pruebas {
         let a = alinear(&LETRA, &oido, None).unwrap();
         let t = tiempos(&a);
         assert!(t.windows(2).all(|w| w[0] <= w[1]), "{t:?}");
+    }
+
+    #[test]
+    fn la_voz_son_los_tramos_con_palabras_oidas() {
+        let oidas: Vec<PalabraOida> = [0, 1_000, 2_000, 10_000]
+            .iter()
+            .map(|&ms| PalabraOida::new("x", ms))
+            .collect();
+        let v = Voz::de(&oidas);
+        assert_eq!(v.tramos, [(0, 2_600), (10_000, 10_600)]);
+        assert_eq!(v.dentro(0, 20_000), 3_200);
+        assert_eq!(v.dentro(1_000, 10_300), 1_900);
+        // Lo que no se canta (de 2,6 a 10 s) se salta.
+        assert_eq!(v.avanzar(0, 3_000), Some(10_400));
+        assert_eq!(v.avanzar(0, 9_000), None);
+        assert_eq!(v.retroceder(10_600, 1_000), Some(2_200));
+        assert_eq!(v.fin(), Some(10_600));
+    }
+
+    #[test]
+    fn una_estrofa_mal_oida_se_reparte_por_donde_se_canto() {
+        // Medido con canciones de verdad (29-oct-2026): entre dos anclas,
+        // Whisper oye la estrofa pero mal. Se canto de 10 a 60 s: las lineas
+        // van por ahi, no amontonadas al ritmo detras de la primera ancla.
+        let letra = [
+            "primera linea que se oye bien clara",
+            "segunda linea que nadie entiende",
+            "tercera linea que nadie entiende",
+            "cuarta linea que nadie entiende",
+            "la ultima linea que se oye bien clara",
+        ];
+        let mut oido = cantar(&[(letra[0], 10_000)], 400);
+        for k in 0..30 {
+            oido.push(PalabraOida::new("brrr", 13_000 + k * 1_500));
+        }
+        oido.extend(cantar(&[(letra[4], 60_000)], 400));
+        let a = alinear(&letra, &oido, None).unwrap();
+        let t = tiempos(&a);
+        assert_eq!((t[0], t[4]), (10_000, 60_000));
+        assert!((20_000..=30_000).contains(&t[1]), "{t:?}");
+        assert!((30_000..=40_000).contains(&t[2]), "{t:?}");
+        assert!((40_000..=52_000).contains(&t[3]), "{t:?}");
+    }
+
+    #[test]
+    fn lo_que_whisper_se_invente_en_la_intro_no_adelanta_la_primera_linea() {
+        let letra = [
+            "la primera linea no se entiende",
+            "la segunda tampoco se entiende",
+            "esta si se oye perfectamente bien",
+            "y esta tambien se oye perfectamente",
+        ];
+        // Una intro de 30 s con palabras inventadas, y se canta desde 40 s.
+        let mut oido: Vec<PalabraOida> = (0..20)
+            .map(|k| PalabraOida::new("gracias", k * 1_500))
+            .collect();
+        oido.extend(cantar(&[(letra[2], 50_000), (letra[3], 54_000)], 500));
+        let a = alinear(&letra, &oido, None).unwrap();
+        let t = tiempos(&a);
+        assert!(t[0] > 35_000, "{t:?}");
+        assert!(t[0] < t[1] && t[1] < 50_000, "{t:?}");
+    }
+
+    #[test]
+    fn el_estribillo_repetido_que_se_oyo_una_vez_va_a_la_vez_que_toca() {
+        let estribillo = "ay ay ay canta y no llores que cantando se alegran";
+        let letra = [
+            "una linea que se oye antes de todo",
+            estribillo,
+            estribillo,
+            "la ultima linea que se oye al final",
+        ];
+        // El estribillo solo se oyo la primera vez, justo detras de la
+        // primera linea; la segunda vez, nada.
+        let oido = cantar(
+            &[(letra[0], 10_000), (estribillo, 13_500), (letra[3], 30_000)],
+            400,
+        );
+        let a = alinear(&letra, &oido, None).unwrap();
+        let t = tiempos(&a);
+        assert!(a.lineas[1].anclada && !a.lineas[2].anclada, "{a:?}");
+        assert!((13_000..=14_000).contains(&t[1]), "{t:?}");
+        assert!(t[2] > t[1] && t[2] < 30_000, "{t:?}");
     }
 }

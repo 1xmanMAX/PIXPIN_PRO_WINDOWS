@@ -36,6 +36,7 @@
 //! 4. Los tokens pasan a texto ([`fichas`]) y el texto pasa por
 //!    [`creible`](crate::credibilidad::creible).
 
+#[cfg(windows)]
 pub mod bajar;
 /// Los cortes viven en la raiz del crate (sin Windows): tambien los usa
 /// Qwen3-ASR (ver [`crate::qwen3`]). Se reexportan para no cambiar rutas.
@@ -48,8 +49,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::credibilidad::creible;
 use crate::dos_idiomas::{Idiomas, MINIMO_PARA_ADIVINAR_MS, Tarea};
-use crate::motor::Transcripcion;
 use crate::ort::{Runtime, Sesion, Valor};
+use crate::tiempos::Transcripcion;
 use crate::tiempos::{Segmento, con_tiempos, estado_de, lineas};
 use crate::{ErrorVoz, HERCIOS, pcm};
 
@@ -107,6 +108,7 @@ pub fn runtime_disponible(raiz: &Path, junto_al_exe: Option<&Path>) -> bool {
 
 /// **Baja lo que falte del modelo** a `<datos>/whisper/base/`. `avance` de
 /// 0 a 1 sobre el total de los tres. Tarda: hilo de fondo.
+#[cfg(windows)]
 pub fn bajar_modelo(
     raiz: &Path,
     avance: &mut dyn FnMut(f32),
@@ -281,6 +283,9 @@ pub struct Whisper {
     decoder: Sesion<'static>,
     fichas: Fichas,
     meta: Metadatos,
+    /// Los tokens que no son habla ([`Fichas::sin_habla`]): no se escriben
+    /// al oir una cancion.
+    sin_habla: Vec<i64>,
 }
 
 /// Lo que sale de una tanda.
@@ -345,12 +350,14 @@ impl Whisper {
             return Err(ilegible());
         }
         let meta = Metadatos::leer(&encoder)?;
+        let sin_habla = fichas.sin_habla();
         Ok(Whisper {
             rt,
             encoder,
             decoder,
             fichas,
             meta,
+            sin_habla,
         })
     }
 
@@ -405,6 +412,7 @@ impl Whisper {
             &tandas,
             &idiomas,
             &con_el_principal,
+            &[],
             avance,
             cancelado,
         )?;
@@ -456,11 +464,16 @@ impl Whisper {
                         .map(move |a| a..(a + tope).min(r.end))
                 })
                 .collect();
+        // Sin anotaciones: con musica debajo, Whisper base escribe «[Music]»
+        // o «♪» en vez de la letra en muchas tandas (medido con tres
+        // canciones de 1908-1920, `docs/probar-ideas-sin-interfaz.md`); sin
+        // poder escribirlas, escribe lo que entiende de la letra.
         let (segmentos, _) = self.oir_tandas(
             muestras,
             &tandas,
             &idiomas,
             &con_el_principal,
+            &self.sin_habla,
             avance,
             cancelado,
         )?;
@@ -471,13 +484,16 @@ impl Whisper {
     }
 
     /// Cada tanda por el encoder y el decoder: sus segmentos (uno por tanda
-    /// con algo creible) y cuantas se tiraron por no serlo.
+    /// con algo creible) y cuantas se tiraron por no serlo. `suprimir`: los
+    /// tokens que no se escriben (las anotaciones, en una cancion).
+    #[allow(clippy::too_many_arguments)]
     fn oir_tandas(
         &self,
         muestras: &[i16],
         tandas: &[std::ops::Range<usize>],
         idiomas: &Idiomas,
         con_el_principal: &[i64],
+        suprimir: &[i64],
         avance: &mut dyn FnMut(f32),
         cancelado: &AtomicBool,
     ) -> Result<(Vec<Segmento>, usize), ErrorVoz> {
@@ -491,7 +507,8 @@ impl Whisper {
                 .iter()
                 .map(|&m| m as f32 / 32_768.0)
                 .collect();
-            let (lengua, oido) = self.una_tanda(&audio, idiomas, con_el_principal, cancelado)?;
+            let (lengua, oido) =
+                self.una_tanda(&audio, idiomas, con_el_principal, suprimir, cancelado)?;
             // Lo que hace Whisper con los silencios (`transcribe.py`): si
             // cree que no habla nadie y ademas no esta seguro de lo que
             // escribio, es un silencio, no una frase.
@@ -520,6 +537,7 @@ impl Whisper {
         audio: &[f32],
         idiomas: &Idiomas,
         con_el_principal: &[i64],
+        suprimir: &[i64],
         cancelado: &AtomicBool,
     ) -> Result<(String, Oido), ErrorVoz> {
         let cruz = self.encoder(audio)?;
@@ -538,7 +556,7 @@ impl Whisper {
                 && c != principal
                 && let Some(inicio) = self.meta.inicio(&c)
             {
-                let o = self.decodificar(&cruz, audio.len(), &inicio, cancelado)?;
+                let o = self.decodificar(&cruz, audio.len(), &inicio, suprimir, cancelado)?;
                 if idiomas.acepta(&c, &o.texto) {
                     lengua = c;
                     oido = Some(o);
@@ -547,13 +565,13 @@ impl Whisper {
         }
         let mut oido = match oido {
             Some(o) => o,
-            None => self.decodificar(&cruz, audio.len(), con_el_principal, cancelado)?,
+            None => self.decodificar(&cruz, audio.len(), con_el_principal, suprimir, cancelado)?,
         };
         // **Y si aun asi no se sostiene**, una vez mas con el primero antes
         // de tirarlo. Con lo de arriba no deberia pasar (lo del otro ya se
         // comprobo), pero es la red del movil y no cuesta nada.
         if idiomas.reintentar_con_el_primero(&lengua, &oido.texto) {
-            oido = self.decodificar(&cruz, audio.len(), con_el_principal, cancelado)?;
+            oido = self.decodificar(&cruz, audio.len(), con_el_principal, suprimir, cancelado)?;
             lengua = principal;
         }
         Ok((lengua, oido))
@@ -618,6 +636,7 @@ impl Whisper {
         cruz: &(Valor<'static>, Valor<'static>),
         muestras: usize,
         inicio: &[i64],
+        suprimir: &[i64],
         cancelado: &AtomicBool,
     ) -> Result<Oido, ErrorVoz> {
         let rt = self.rt;
@@ -669,7 +688,7 @@ impl Whisper {
                 sin_voz = probabilidad(&filas[..vocab], m.no_speech);
             }
             let ultima = &filas[filas.len() - vocab..];
-            let (token, log) = elegir(ultima, m, primero);
+            let (token, log) = elegir(ultima, m, primero, suprimir);
             desplazamiento += if primero { inicio.len() as i64 } else { 1 };
             primero = false;
             cache_k = k;
@@ -732,13 +751,19 @@ fn tandas_con(muestras: &[i16], pausa_ms: Option<usize>) -> Vec<std::ops::Range<
 /// sherpa los suprime uno a uno; aqui se suprimen todos de una vez. En el
 /// primer paso tampoco valen el fin ni el blanco suelto: una tanda no
 /// empieza terminando (`suppress_tokens(is_initial=True)`).
-fn elegir(logits: &[f32], m: &Metadatos, primero: bool) -> (i64, f32) {
+///
+/// Los de `suprimir` (ordenados) tampoco: al oir una cancion, las
+/// anotaciones ([`Fichas::sin_habla`]).
+fn elegir(logits: &[f32], m: &Metadatos, primero: bool, suprimir: &[i64]) -> (i64, f32) {
     let hasta = (m.eot as usize).min(logits.len().saturating_sub(1));
     let mut mejor = 0usize;
     let mut valor = f32::NEG_INFINITY;
     for (i, &l) in logits[..=hasta].iter().enumerate() {
         let i64_ = i as i64;
         if primero && (i64_ == m.eot || i64_ == m.blank) {
+            continue;
+        }
+        if suprimir.binary_search(&i64_).is_ok() {
             continue;
         }
         if l > valor {
@@ -791,6 +816,7 @@ pub const TANDA_CANCION_SEGUNDOS: usize = 8;
 
 /// **Lo que se oye cantar en una cancion**, de principio a fin: las tandas
 /// con su texto ([`Whisper::oir_cancion_pcm`]) y lo que dura el audio.
+#[cfg(windows)]
 pub fn oir_cancion(
     audio: &Path,
     raiz: &Path,
@@ -809,6 +835,7 @@ pub fn oir_cancion(
 }
 
 /// **Pasa una nota de voz a texto con Whisper**, de principio a fin.
+#[cfg(windows)]
 pub fn transcribir(
     audio: &Path,
     raiz: &Path,
@@ -830,6 +857,7 @@ pub fn transcribir(
 /// turnos** (B6 y B10). Sin turnos es [`Whisper::transcribir_pcm_con`] de la
 /// nota entera; con turnos, cada turno por su cuenta y con su nombre
 /// delante (ver [`crate::turnos`]).
+#[cfg(windows)]
 pub fn transcribir_con(
     audio: &Path,
     raiz: &Path,
@@ -1004,10 +1032,20 @@ mod pruebas {
         l[m.eot as usize] = 50.0;
         l[m.blank as usize] = 40.0;
         l[7] = 30.0;
-        assert_eq!(elegir(&l, &m, false).0, m.eot);
-        assert_eq!(elegir(&l, &m, true).0, 7);
+        assert_eq!(elegir(&l, &m, false, &[]).0, m.eot);
+        assert_eq!(elegir(&l, &m, true, &[]).0, 7);
         // El logaritmo de la probabilidad es negativo o cero.
-        assert!(elegir(&l, &m, true).1 <= 0.0);
+        assert!(elegir(&l, &m, true, &[]).1 <= 0.0);
+    }
+
+    #[test]
+    fn en_una_cancion_las_anotaciones_no_se_eligen_y_gana_lo_siguiente() {
+        let m = meta();
+        let mut l = vec![0f32; 51_865];
+        l[58] = 60.0; // «[», el de «[Music]»
+        l[7] = 30.0;
+        assert_eq!(elegir(&l, &m, true, &[]).0, 58);
+        assert_eq!(elegir(&l, &m, true, &[3, 58, 90]).0, 7);
     }
 
     #[test]
@@ -1082,6 +1120,7 @@ mod pruebas {
     }
 
     /// Baja el modelo de verdad (unos 160 MB) a `PIXPIN_VOZ_RAIZ`.
+    #[cfg(windows)]
     #[test]
     #[ignore = "baja 160 MB de Hugging Face"]
     fn baja_el_modelo_de_verdad() {
@@ -1107,6 +1146,7 @@ mod pruebas {
     /// Dos idiomas de verdad (B6): `PIXPIN_VOZ_RAIZ`, `PIXPIN_VOZ_AUDIO`,
     /// `PIXPIN_VOZ_SEGUNDO` (p. ej. `en`) y `PIXPIN_VOZ_MODO`
     /// (`cada_uno`/`todo_en_uno`). Imprime el texto y el tiempo.
+    #[cfg(windows)]
     #[test]
     #[ignore = "pide el modelo Whisper bajado y un audio de verdad"]
     fn whisper_dos_idiomas_de_verdad() {
@@ -1147,6 +1187,7 @@ mod pruebas {
     /// `PIXPIN_VOZ_RAIZ` (la carpeta con `whisper/base/`) y
     /// `PIXPIN_VOZ_AUDIO` (un `.m4a`). Se corre a mano con
     /// `cargo test -p pixpin-voz --release -- --ignored whisper_transcribe`.
+    #[cfg(windows)]
     #[test]
     #[ignore = "pide el modelo Whisper bajado y un .m4a de verdad"]
     fn whisper_transcribe_una_nota_real() {
