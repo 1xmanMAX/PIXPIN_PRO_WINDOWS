@@ -425,3 +425,184 @@ probar medidas basta `--rapido`, que tarda 50 s en vez de 3 min. Casi todas
 cortan a los 0,5 s de callarse; las de 1,5-1,7 s son dos frases de menos de
 5 s que esperan a `SILENCIO_LARGO_MS` y dos largas (10 s) cuyo silencio tarda
 en contar (seguramente ruido de sala por encima del umbral de voz, RMS 300).
+
+## Más casos (29-oct-2026)
+
+Lo que faltaba por probar con Jev fuera de la reunión frase a frase: los
+cuatro módulos que ya usaba la app y nunca se habían probado de verdad, y
+siete ideas nuevas. Mismo banco de pruebas (`examples/comun/`), con un
+guion principal y uno **de control** por idea (no se usó para ajustar).
+
+### Guiones de casos sueltos
+
+Una captura, una nota, una ráfaga de fotos o un aviso no son frases de una
+reunión: van como **casos** en la cabecera del guion (`comun/casos.rs`).
+`# caso: c01` empieza uno y las claves que siguen son suyas; las de antes
+del primero son de todos; `\n` en un valor es un salto de línea. Cada
+prototipo apunta «id → lo decidido» y las esperas lo buscan como siempre:
+
+```text
+# chat: Obra Calle Mayor | reforma del piso: planos, presupuestos...
+# caso: c01
+# ventana: Presupuesto_reforma.pdf - Visor de PDF
+# texto: Partida 3: alicatado del baño ..... 312,00 €
+# espera: c01 → obra calle mayor
+```
+
+Las **fotos** son inventadas, dibujadas con Pillow por
+`guiones/fotos/hacer_fotos.py` (personas de dibujo, pizarras, hojas,
+pantallas, una tabla, letra «a mano» letra a letra): ninguna foto de nadie.
+El mismo script escribe `fotos/verdad.txt`, la caja de verdad de cada
+pizarra para medir el recorte. Pillow 13.0; con otra versión pueden salir
+otros bytes y las respuestas grabadas ya no casarían.
+
+```sh
+cargo run -q -p pixpin-typesafe --example mejor_foto -- rafagas.txt --rapido \
+    --grabadas grabadas/mejor_foto.rafagas.jsonl
+```
+
+### Los prototipos
+
+| ejemplo | módulo | guiones | pregunta a Jev | decide el código |
+|---|---|---|---|---|
+| `partes_importantes` | `reunion` (ya en la app: `importantes`) | `importantes`, `importantes_control` | 8 Nouls por renglón | `reunion::decidir` |
+| `tarjetas_anki` | `anki` | `anki`, `anki_control` | Score de utilidad + Noul de examen | `anki::veredicto`, `anki::elegir` |
+| `urgencia_suelta` | `urgencia` (la lista de tareas) | `urgencia`, `urgencia_control` | Score de consecuencia + 3 Nouls | puntos de `urgencia::decidir` (los días los cuenta el código) |
+| `elegir_modelo` | `modelo` (lo de `jev::modelo::segun_jev`) | `modelo`, `modelo_control` | Score de dificultad + 3 Nouls | `modelo::decidir` |
+| `captura_a_chat` | `captura_a_chat` (nuevo) | `capturas`, `capturas_control` | ¿es de algún chat? (Noul) y ¿de cuál? (Choice con nombre y de qué trata) | guardar / sugerir / ninguno |
+| `etiquetas_solas` | `etiquetas` (nuevo) | `etiquetas`, `etiquetas_control` | un Noul por etiqueta del usuario | ≥ 0.7 se pone (3 como mucho); 0.5-0.7 se sugiere si no hay ninguna |
+| `mejor_foto` | `mejor_foto` (nuevo, imágenes) | `rafagas`, `rafagas_control` | por foto: nítida, ojos cerrados, oscura, quemada, torcida; y ¿cuál se quedaría? (Choice) | descarta por motivo, elige la mejor candidata |
+| `recortar_pizarra` | `pizarra` (nuevo, Box) | `pizarras`, `pizarras_control` | ¿hay pizarra u hoja? (Noul), ¿dónde? (Box), ¿se ve entera? (Noul) | recorte con 2 % de margen; «falta un trozo» |
+| `elegir_ocr` | `motor_ocr` (nuevo, imágenes) | `ocr`, `ocr_control` | ¿hay texto?, ¿de qué clase? (captura, impreso, tabla, manuscrito) y, con dos lecturas, ¿cuál copia mejor? | Windows o Indra (`docs/ocr.md`) |
+| `avisos_listos` | `alertas` (nuevo) | `avisos`, `avisos_control` | ¿automático?, ¿pide algo ya?, ¿esperar una hora haría daño?, ¿es de la reunión? | interrumpir / discreto / mostrar / para después / bandeja según lo que hace el usuario (lo sabe la app) |
+| `citas_del_chat` | `horario_de_chat` (nuevo) | `chat_citas`, `chat_citas_control` | ¿pone un momento a una cita?, ¿cuál de las fechas?, ¿acordada o propuesta?, ¿acepta lo pendiente? | pendiente → evento cuando otro lo acepta |
+
+Cada tabla de decisión está en la cabecera de su módulo, con sus pruebas
+(`cargo test -p pixpin-typesafe`), y el texto de las preguntas al final de
+`preguntas.rs` (`captura_a_chat`, `etiquetas`, `mejor_foto`, `pizarra`,
+`ocr`, `alertas`, `horario_de_chat`).
+
+### Resultados con la API de verdad (jev-1.14.0, desde Linux)
+
+Antes = las preguntas como se escribieron; después = tras ajustar (solo con
+el guion principal). Latencia y tokens, los de la última vuelta.
+
+| ejemplo · guion | esperas antes | después | peticiones | p50 / p95 ms | tokens | tokens por petición |
+|---|---|---|---|---|---|---|
+| partes_importantes · importantes | 12/12 | 12/12 | 14 | 167 / 216 | 15 221 | 1 087 |
+| partes_importantes · control | 9/9 | 9/9 | 9 | 167 / 179 | 9 571 | 1 063 |
+| tarjetas_anki · anki | 14/14 | 14/14 | 9 | 182 / 269 | 4 796 | 532 |
+| tarjetas_anki · control | 8/8 | 8/8 | 6 | 174 / 180 | 3 184 | 530 |
+| urgencia_suelta · urgencia | 8/8 | 8/8 | 8 | 186 / 320 | 5 069 | 633 |
+| urgencia_suelta · control | 6/6 | 6/6 | 5 | 179 / 244 | 3 140 | 628 |
+| elegir_modelo · modelo | 11/12 | 12/12 (sin cambiar nada, ver abajo) | 12 | 189 / 362 | 8 880 | 740 |
+| elegir_modelo · control | 5/6 | 5/6 | 6 | 198 / 384 | 4 386 | 731 |
+| captura_a_chat · capturas | 11/11 | 11/11 | 11 | 166 / 223 | 7 563 | 687 |
+| captura_a_chat · control | 6/6 | 6/6 | 6 | 176 / 226 | 3 743 | 623 |
+| etiquetas_solas · etiquetas | 11/13 | 13/13 | 10 | 166 / 217 | 11 449 | 1 144 |
+| etiquetas_solas · control | 5/5 | 5/5 | 5 | 166 / 206 | 4 544 | 908 |
+| mejor_foto · rafagas (16 fotos) | 13/14 | 14/14 | 5 | 230 / 329 | 15 365 | 3 073 |
+| mejor_foto · control (8 fotos) | 8/8 | 8/8 | 3 | 216 / 228 | 8 301 | 2 767 |
+| recortar_pizarra · pizarras | 7/7 | 7/7 | 6 | 238 / 248 | 6 093 | 1 015 |
+| recortar_pizarra · control | 4/4 | 4/4 | 4 | 328 / 435 | 4 061 | 1 015 |
+| elegir_ocr · ocr | 13/15 | 15/15 | 6 | 196 / 202 | 7 080 | 1 180 |
+| elegir_ocr · control | 11/11 | 11/11 | 4 | 193 / 223 | 4 947 | 1 236 |
+| avisos_listos · avisos | 10/11 | 11/11 | 11 | 176 / 203 | 7 072 | 642 |
+| avisos_listos · control | 5/6 | 6/6 (*) | 6 | 168 / 171 | 3 787 | 631 |
+| citas_del_chat · chat_citas | 8/8 | 8/8 | 8 | 175 / 229 | 4 776 | 597 |
+| citas_del_chat · control | 6/7 | 7/7 (*) | 7 | 171 / 178 | 4 033 | 576 |
+
+(*) Lo que falló en estos dos controles se arregló en el código, no en las
+preguntas, y no son ya del todo casos «no vistos»: ver 4 y 6.
+
+**El recorte de la pizarra**: la caja de Jev casa con la verdad con un IoU
+de **0,92-0,98** (media 0,95 en las ocho fotos con pizarra u hoja, también
+torcidas, cortadas por el borde o una hoja pequeña en una esquina); el
+recorte, con su margen del 2 %, 0,86-0,87 de media. «¿Se ve entera?» acierta
+las dos del guion principal que el borde corta (0,07 y 0,16) y no se
+confunde con el cuadro ni con la ventana (`hay_pizarra` 0,07 y 0,08).
+
+**Lo que se ajustó** (solo con el guion principal):
+
+1. `etiquetas`: «¿es «Universidad» uno de los temas principales de la
+   nota?» daba 0,10 con unos apuntes de cálculo y 0,24 con un horario de
+   clases (el tema es el cálculo, no la universidad). Ahora pregunta si el
+   usuario **archivaría** la nota en esa etiqueta, «también cuando la
+   etiqueta nombra una parte de la vida y no el tema» (con un ejemplo que no
+   es de ningún guion: la factura del veterinario en «Mascotas»). → 0,76 y
+   0,74; las demás igual.
+2. `ocr::tipo`: una hoja impresa fotografiada salía «captura de pantalla»
+   (0,75 y 0,85). Las opciones dicen ahora lo que se ve: ventanas, menús,
+   botones o burbujas de chat; una hoja de papel con párrafos sobre una
+   mesa. → impreso 0,87 y 0,68.
+3. `mejor_foto`: «¿está bien expuesta? (ni oscura ni quemada)» daba 0,50
+   con la foto quemada: dos preguntas, `oscura` y `quemada` (la regla de
+   «cuidado con la "o"»). → quemada 0,89.
+4. `alertas` (la tabla, en código): «nuevo inicio de sesión desde Moscú, ¿has
+   sido tú? cambia la contraseña ahora» es automático (0,98) y se iba a la
+   bandeja. **Automático no es sin importancia**: lo automático que pide
+   algo ya (`pide_ya` ≥ 0,7) sigue por las filas de abajo. El control lo
+   había destapado antes (la tarjeta bloqueada del banco: automático 0,88,
+   grave 0,69 → bandeja); se añadió al principal un caso parecido, no el
+   mismo, y el control pasó de 5/6 a 6/6.
+5. `modelo::razonar` (redacción que ya existía): «¿cuánto es el 20 % de
+   150?» salió una vez «razonar» 0,70 (al modelo fuerte) y otra 0,67. Se
+   probó añadir «una sola cuenta no es razonar»: el principal salía bien,
+   pero la dosis de jarabe del control bajaba de 0,89 a 0,55 y se iba al
+   modelo rápido. **Se dejó como estaba.** El fallo que queda en el
+   control es la lista de la compra de una paella: «importa» 0,68-0,72
+   según la vuelta y dificultad en el borde → fuerte por «importante».
+6. `horario_de_chat` (código): «el domingo comemos en casa de la abuela a
+   las 2» salía como dos expresiones de `fechas::buscar` (el domingo sin
+   hora; las 2 de hoy). `horario_de_chat::juntar`: un solo día sin hora y
+   una sola hora suelta en el mismo mensaje son el mismo momento. Lo
+   destapó el control (6/7 → 7/7). Valdría también para `fechas` en la
+   reunión; aquí no se tocó ese módulo.
+
+**Lo que se ve en las respuestas**:
+
+- **Un mismo cuerpo no siempre da el mismo número**: entre dos vueltas,
+  ±0,03-0,05 (razonar 0,70 / 0,67; importa 0,72 / 0,68 / 0,70). Lo que cae
+  justo en 0,7 cambia de fila de una vuelta a otra. Las tablas con una
+  franja dudosa (sugerir, dejar para después) lo aguantan; las de dos
+  salidas (rápido o fuerte) no.
+- **Las imágenes**: ~900 tokens una foto de 512 × 384; una ráfaga de 3-4
+  fotos con 5 preguntas por foto, ~3 000-4 000 tokens y **230 ms** de
+  mediana (frente a 170 ms con solo texto). El Box no tarda más que un
+  Noul.
+- Las fotos son **dibujos**: personas de dibujo, letra «a mano» hecha letra
+  a letra. Que Jev acierte aquí dice que las preguntas están bien hechas,
+  no que acierte con fotos de verdad: antes de encender `mejor_foto`,
+  `pizarra` o `motor_ocr` en la app hay que probarlas con fotos reales
+  (con permiso, o de dominio público) y con más casos de control.
+
+**Coste**: la última vuelta de los 22 guiones, 161 peticiones y ~147 000
+tokens ≈ **0,006 $**; toda la sesión (antes, ajustes y después, ~430
+peticiones) ≈ 0,02 $. En la app: una captura a su chat o una nota a sus
+etiquetas ≈ 0,00003 $; una ráfaga de cuatro fotos ≈ 0,00017 $.
+
+### Cómo se llevaría a la app
+
+- **Captura → chat**: al guardar una captura con texto (el OCR ya corre),
+  `captura_a_chat::elegir` con los chats del usuario y una línea de qué
+  trata cada uno (su descripción o los títulos de lo último). «Guardar»
+  solo con deshacer; «sugerir», dos botones en el aviso de la captura.
+- **Etiquetas**: al crear una nota o al terminar el OCR de una captura,
+  `etiquetas::elegir` con las etiquetas que ya existen (nunca crea una).
+- **Mejor foto**: en la cámara de PixPin y en lo que llega del móvil cuando
+  hay varias fotos en pocos segundos; `mejor_foto::elegir`, las demás a
+  una carpeta «descartadas» (nunca se borran solas).
+- **Pizarra**: botón «recortar lo escrito» en la foto; `pizarra::recortar`
+  y el recorte con su margen; «falta un trozo» como aviso.
+- **OCR**: `motor_ocr::preguntar` antes de leer cuando el usuario no eligió
+  motor, o para quedarse con la mejor de dos lecturas; sin Indra bajado,
+  sugiere bajarlo con manuscritos y tablas.
+- **Avisos**: lo que sincroniza y lo que llega a los chats pasa por
+  `alertas::decidir_aviso` solo mientras se graba, se presenta o hay una
+  reunión en el horario; libre, todo como siempre.
+- **Citas del chat**: por mensaje nuevo con fechas o con una propuesta de
+  otro pendiente, `horario_de_chat::preguntar`; el evento, propuesto al
+  calendario con confirmar (como `citas` en la reunión).
+- Lo de antes (`reunion`, `anki`, `urgencia`, `modelo`) ya está cableado;
+  estos guiones quedan como prueba de evaluación para cuando cambie el
+  modelo (`jev-latest`) o una pregunta.
