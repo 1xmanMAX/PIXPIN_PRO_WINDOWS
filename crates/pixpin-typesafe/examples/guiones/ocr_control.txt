@@ -1,0 +1,34 @@
+# Que OCR lee cada imagen, casos de control (no se usaron para ajustar las
+# preguntas). En oc3 la buena es la de Windows (una tabla de pantalla, bien
+# leida) aunque el tipo diga Indra: la lectura tiene que mirar el texto.
+
+# caso: oc1
+# imagen: fotos/oc1.jpg
+# windows: Mar tes:\nexamen cle fisica\nre pasar ternc 3\nIlevar calcu la dora
+# indra: Martes:\nexamen de física\nrepasar tema 3\nllevar calculadora
+# espera: oc1 tipo manuscrito
+# espera: oc1 motor indra
+# espera: oc1 lectura indra
+
+# caso: oc2
+# imagen: fotos/oc2.png
+# windows: Ajustes - Captura\nFormato de imagen PNG\nCarpeta de capturas Documentos\Capturas\nReconocer texto (OCR) Windows\nCopiar al portapapeles Sí\nSonido al capturar No
+# indra: Ajustes - Captura\nFormato de irnagen PNG\nCarpeta de capturas Docurnentos Capturas\nReconocer texto (OCR) Windows\nCopiar al portapapeles Si
+# espera: oc2 tipo captura_de_pantalla
+# espera: oc2 motor windows
+# espera: oc2 lectura windows
+
+# caso: oc3
+# imagen: fotos/oc3.png
+# windows: Presupuesto.xlsx\nPartida Unidades Total\nFontanería 1 1.250,00\nElectricidad 1 980,00\nPintura 85 m2 722,50\nCarpintería 3 1.410,00
+# indra: Presupuesto.xlsx\nPartida | Unidades | Total\nFontanería | 1 | 1.250,00\nElectricidad | 1 | 98,00\nPintura | 65 m2 | 722,50\nCarpintería | 8 | 1.410,00
+# espera: oc3 tipo tabla
+# espera: oc3 lectura windows
+
+# caso: oc4
+# imagen: fotos/oc4.jpg
+# windows: Querida Marta:\nte escribo para contarte que por fin\nterminamos la reforma de la cocina.\nVen a verla cuando quieras.\nUn abrazo, Elena
+# indra: Querida Marta:\nte escribo para contarte que por fin\nVen a verla cuando quieras.\nUn abrazo, Elena
+# espera: oc4 tipo impreso
+# espera: oc4 motor windows
+# espera: oc4 lectura windows

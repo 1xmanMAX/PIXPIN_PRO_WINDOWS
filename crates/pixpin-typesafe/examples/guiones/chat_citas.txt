@@ -1,0 +1,22 @@
+# Citas de un chat al horario: se propone en un mensaje y se acepta en
+# otro. El 26-oct-2026 es lunes.
+# chat: Obra Calle Mayor
+# fecha: 2026-10-26
+
+[0:00] Lucía: ¿Te va bien el jueves a las 5 para revisar los planos en la obra?
+[0:30] Yo: Vale, allí estaré.
+[1:00] Pedro: El fontanero me mandó la factura el lunes pasado.
+[1:30] Lucía: Mándame el presupuesto nuevo el viernes, porfa.
+[2:00] Pedro: La cena de fin de obra es el sábado a las 9 de la noche en el bar de abajo.
+[2:30] Yo: ¿Podríamos vernos el martes de la semana que viene para elegir los azulejos?
+[3:00] Lucía: Ese día no puedo, mejor el miércoles a las 10.
+[3:30] Yo: Perfecto, el miércoles a las 10 entonces.
+
+# espera: pendiente jue 2026-10-29 17:00
+# espera: evento jue 2026-10-29 17:00 (aceptado)
+# espera-no: evento lun
+# espera-no: evento vie
+# espera: evento sáb 2026-10-31 21:00
+# espera: pendiente mar 2026-11-03
+# espera-no: evento mar 2026-11-03
+# espera: evento mié 2026-10-28 10:00

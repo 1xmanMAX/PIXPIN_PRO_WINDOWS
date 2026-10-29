@@ -1,0 +1,62 @@
+# Urgencia de tareas por su contexto (la lista de tareas, fuera de la
+# reunion). `dias`: cuantos faltan para su hora, lo cuenta el codigo.
+
+# caso: u01
+# tarea: Pagar la matrícula de la universidad
+# lista: Trámites
+# chat: Universidad
+# mensaje: Secretaría: recordad que el plazo de matrícula cierra hoy a las 14:00.
+# dias: 0
+# espera: u01 → urgente
+
+# caso: u02
+# tarea: Ordenar las fotos del verano en carpetas
+# lista: Casa
+# chat: Personal
+# espera: u02 → baja
+
+# caso: u03
+# tarea: Mandar al grupo mi parte del informe de laboratorio
+# lista: Física
+# chat: Grupo de laboratorio
+# mensaje: Ana: ¿alguien tiene ya su parte? Sin ella no puedo juntar el informe.
+# mensaje: Luis: yo la subo esta noche.
+# mensaje: Ana: falta la tuya, que se entrega el jueves.
+# dias: 2
+# espera: u03 → urgente
+
+# caso: u04
+# tarea: Leer «Cien años de soledad»
+# lista: Ocio
+# chat: Personal
+# espera: u04 → baja
+
+# caso: u05
+# tarea: Renovar el DNI antes de que caduque
+# lista: Trámites
+# chat: Personal
+# dias: 5
+# espera: u05 → alta
+
+# caso: u06
+# tarea: Comprar el regalo del cumpleaños de mamá
+# lista: Familia
+# chat: Familia
+# dias: 1
+# espera-no: u06 → baja
+
+# caso: u07
+# tarea: Arreglar el servidor de producción
+# lista: Trabajo
+# chat: Equipo backend
+# mensaje: Laura: los clientes no pueden entrar desde las 9, ¿quién lo mira?
+# mensaje: Laura: esto es prioridad absoluta.
+# dias: 0
+# espera: u07 → urgente
+
+# caso: u08
+# tarea: Regar las plantas
+# lista: Casa
+# chat: Personal
+# marca: muy urgente
+# espera: u08 → urgente

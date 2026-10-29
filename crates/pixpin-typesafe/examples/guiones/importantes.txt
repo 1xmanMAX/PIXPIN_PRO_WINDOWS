@@ -1,0 +1,32 @@
+# Partes importantes de una clase grabada. La transcripcion no sabe quien
+# habla (asi sale de Whisper): «Voz» en todas.
+# clase: Biología 3.º ESO - La célula
+# fecha: 2026-10-26
+
+[0:00] Voz: Buenos días a todos, ¿me oís bien los de atrás?
+[0:10] Voz: Hoy empezamos el tema de la célula, que es la unidad básica de la vida.
+[0:25] Voz: La membrana plasmática es la capa que separa el interior de la célula del exterior y controla lo que entra y sale.
+[0:45] Voz: Esto entra seguro en el examen del viernes, así que apuntadlo bien.
+[1:00] Voz: ¿Y por qué las células vegetales tienen pared celular? Pues porque necesitan rigidez para sostenerse.
+[1:20] Voz: Profe, ¿las bacterias también tienen núcleo?
+[1:30] Voz: No, las bacterias no tienen núcleo, por eso se llaman procariotas.
+[1:45] Voz: Os cuento una anécdota: cuando yo estudiaba, el microscopio del laboratorio se rompió el primer día.
+[2:05] Voz: Para el lunes, haced los ejercicios 3 y 4 de la página 52.
+[2:20] Voz: Hemos decidido que la práctica del laboratorio será por parejas y no individual.
+[2:35] Voz: Marta, tú traes el microscopio de tu casa el jueves.
+[2:50] Voz: Y no os olvidéis de traer la bata la próxima clase.
+[3:05] Voz: Hay que leer el capítulo dos antes de la práctica.
+[3:20] Voz: Venga, recoged, que ya suena el timbre.
+
+# espera-no: en 0:00
+# espera: examen en 0:25
+# espera: examen en 0:45
+# espera-no: pregunta en 1:00
+# espera: pregunta en 1:20
+# espera: examen en 1:30
+# espera-no: en 1:45
+# espera: tarea en 2:05 cuando=si
+# espera: decision en 2:20
+# espera: tarea en 2:35 cuando=si quien=si
+# espera: tarea en 2:50
+# espera: tarea en 3:05 cuando=si quien=no

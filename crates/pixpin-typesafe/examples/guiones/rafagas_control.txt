@@ -1,0 +1,24 @@
+# La mejor foto de cada rafaga, casos de control (no se usaron para
+# ajustar las preguntas).
+
+# caso: r01
+# foto: fotos/rc1_1.jpg
+# foto: fotos/rc1_2.jpg
+# espera: r01 elige foto_2
+# espera: r01 descarta foto_1 (ojos cerrados)
+
+# caso: r02
+# foto: fotos/rc2_1.jpg
+# foto: fotos/rc2_2.jpg
+# foto: fotos/rc2_3.jpg
+# espera: r02 elige foto_1
+# espera: r02 descarta foto_2 (movida)
+# espera: r02 descarta foto_3 (torcida)
+
+# caso: r03
+# foto: fotos/rc3_1.jpg
+# foto: fotos/rc3_2.jpg
+# foto: fotos/rc3_3.jpg
+# espera: r03 elige foto_1
+# espera: r03 descarta foto_2 (ojos cerrados)
+# espera: r03 descarta foto_3 (movida)
