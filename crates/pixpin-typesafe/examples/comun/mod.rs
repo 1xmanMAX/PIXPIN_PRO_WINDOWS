@@ -187,6 +187,32 @@ impl Guion {
         Ok(g)
     }
 
+    /// ¿Es oido (`frases_en_vivo --salida`: el texto llega despues de que
+    /// se deja de hablar)?
+    pub fn oido(&self) -> bool {
+        self.frases.iter().any(|f| f.fin_voz_ms < f.fin_ms)
+    }
+
+    /// **Parte en oraciones** lo que junto la escucha en vivo
+    /// (`vivo::partir`, lo que hara la app): cada trozo llega cuando el
+    /// texto entero y se dejo de decir donde le toca por letras.
+    pub fn partir(&mut self) {
+        let mut v = Vec::new();
+        for f in &self.frases {
+            for (t, fin) in pixpin_typesafe::vivo::partir(&f.vivo(), f.fin_voz_ms) {
+                v.push(FraseGuion {
+                    ms: t.ms,
+                    fin_ms: f.fin_ms,
+                    fin_voz_ms: fin,
+                    quien: t.quien,
+                    dice: t.dice,
+                    linea: f.linea,
+                });
+            }
+        }
+        self.frases = v;
+    }
+
     pub fn valor(&self, k: &str) -> Option<&str> {
         self.cabecera
             .iter()
@@ -278,6 +304,8 @@ pub struct Opciones {
     pub tiempo: Duration,
     pub ver: bool,
     pub latencia_ms: i64,
+    /// Con un guion oido, no partir en oraciones (`--sin-partir`).
+    pub sin_partir: bool,
 }
 
 fn ayuda(nombre: &str) -> String {
@@ -291,6 +319,7 @@ fn ayuda(nombre: &str) -> String {
          \x20 --ver           de verdad, escribe tambien cada peticion\n\
          \x20 --tiempo S      lo que se espera por peticion (10 s)\n\
          \x20 --latencia MS   la latencia simulada en seco o grabado (300 ms)\n\
+         \x20 --sin-partir    un guion oido, sin partir en oraciones\n\
          \nDe verdad: la clave en TYPESAFE_API_KEY o TYPESAFE_API_KEY_FILE."
     )
 }
@@ -312,6 +341,7 @@ pub fn opciones(nombre: &str) -> Opciones {
         tiempo: Duration::from_secs(10),
         ver: false,
         latencia_ms: 300,
+        sin_partir: false,
     };
     while let Some(x) = a.next() {
         let mut valor = |q: &str| a.next().unwrap_or_else(|| salir(&format!("{q} sin valor")));
@@ -319,6 +349,7 @@ pub fn opciones(nombre: &str) -> Opciones {
             "--rapido" => o.rapido = true,
             "--en-seco" => o.modo = Modo::EnSeco,
             "--ver" => o.ver = true,
+            "--sin-partir" => o.sin_partir = true,
             "--grabadas" => {
                 o.modo = Modo::Grabadas;
                 o.grabadas = Some(PathBuf::from(valor("--grabadas")));
@@ -822,7 +853,10 @@ pub struct Sesion {
 /// **Empieza**: lee las opciones y el guion y prepara el cliente.
 pub fn empezar(nombre: &'static str, que_prueba: &str) -> Sesion {
     let op = opciones(nombre);
-    let guion = Guion::leer(&op.guion).unwrap_or_else(|e| salir(&e));
+    let mut guion = Guion::leer(&op.guion).unwrap_or_else(|e| salir(&e));
+    if guion.oido() && !op.sin_partir {
+        guion.partir();
+    }
     let mut repetido = None;
     let (clave, base): (String, Arc<dyn Transporte>) = match op.modo {
         Modo::EnSeco => ("en-seco".into(), Arc::new(EnSeco)),
@@ -960,7 +994,7 @@ impl Sesion {
     /// ¿El guion es oido (`frases_en_vivo --salida`, con la hora en que
     /// se dejo de hablar y la del texto)?
     pub fn oido(&self) -> bool {
-        self.guion.frases.iter().any(|f| f.fin_voz_ms < f.fin_ms)
+        self.guion.oido()
     }
 
     /// Con un guion oido, apunta y escribe lo que tardo lo decidido desde
