@@ -509,6 +509,13 @@ Lo identico sale del cache del proceso y no se paga dos veces.
   pagina), `pixpin-voz` `en_vivo` (las frases: cortar al callarse, la tos,
   quien no para, la medida de Whisper, huecos, 44,1/48 kHz a 16 kHz, la
   cola y el freno).
+- **Sin interfaz y de verdad** (29-oct-2026): los ejemplos de
+  `pixpin-typesafe` corren cada idea sobre un guion inventado, en Linux,
+  Mac o Windows, con la API (`TYPESAFE_API_KEY` o `TYPESAFE_API_KEY_FILE`),
+  en seco o con las respuestas grabadas, y comprueban lo que el guion
+  espera. Los temas en vivo, con el guion de `de_verdad_con_la_api`
+  (`temas_prueba_ignorada.txt`): 4/4, 0,2 s del final de la frase al ✓.
+  Ver [probar-ideas-sin-interfaz.md](probar-ideas-sin-interfaz.md).
 
 Las preguntas se escribieron sin probarlas contra la API (no habia clave el
 28-oct-2026 ni el 29, cuando los temas pasaron a ir en vivo; la prueba de
