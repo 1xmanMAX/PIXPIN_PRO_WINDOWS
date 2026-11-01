@@ -55,6 +55,8 @@ pub mod resaltado;
 pub mod riel_a_la_vista;
 pub mod riel_marcas;
 pub mod tabla;
+/// Lo que no se mueve bajo el raton en Tareas: lo recien tachado y el orden.
+pub mod tareas_quietas;
 /// Las vistas de la ventana de Tareas: Tarjetas, Kanban y Horario.
 pub mod vista_tareas;
 
