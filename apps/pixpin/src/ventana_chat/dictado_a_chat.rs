@@ -20,15 +20,17 @@
 //! dicho («anótalo, que la grua se va el viernes») la chapa pregunta en que
 //! chat, y aceptar abre la lista de chats para elegirlo.
 //!
-//! Sin clave, con `[jev] dictado` apagado o si Jev falla, el dictado es el
-//! de siempre: lo dicho va a la caja y nada mas (un fallo es un error de la
-//! frase, nunca un «no»; se apunta y ya). Una pregunta en vuelo como mucho;
-//! lo que se dicta mientras tanto espera (las tres ultimas).
+//! Sin clave o con `[jev] dictado` apagado, el dictado es el de siempre: lo
+//! dicho va a la caja y nada mas. **Si Jev falla** (1-nov-2026, como el
+//! movil) lo dictado sigue en la caja y encima sale unos segundos por que
+//! no se pudo mirar («Sin conexión: …»): un fallo nunca es un «no», pero
+//! tampoco se calla. Una pregunta en vuelo como mucho; lo que se dicta
+//! mientras tanto espera (las tres ultimas).
 
 use std::cell::Cell;
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use pixpin_geom::{Punto, Rect};
 use pixpin_proyecto::almacen::Ficha;
@@ -49,6 +51,38 @@ const TIEMPO: Duration = Duration::from_secs(4);
 const EN_COLA: usize = 3;
 /// Quien dicta (solo va en el estado: «frase.quien»).
 const QUIEN: &str = "Yo";
+/// Lo que se ve el aviso de un fallo de Jev.
+const AVISO: Duration = Duration::from_secs(5);
+
+/// **Por que Jev no pudo mirar** una frase dictada.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Fallo {
+    /// Sin red (o TypeSafe no llega).
+    SinRed,
+    /// Otro motivo (la clave, un limite…), como lo dice la biblioteca.
+    Otro(String),
+}
+
+impl Fallo {
+    fn de(e: &pixpin_typesafe::Error) -> Fallo {
+        match e {
+            pixpin_typesafe::Error::Red(_) => Fallo::SinRed,
+            otro => Fallo::Otro(otro.to_string()),
+        }
+    }
+
+    /// Lo que se le dice al usuario.
+    pub fn texto(&self, textos: &Catalogo) -> String {
+        match self {
+            Fallo::SinRed => textos.t("chat-anotar-fallo-red"),
+            Fallo::Otro(motivo) => {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("motivo", motivo.clone());
+                textos.t_args("chat-anotar-fallo", &args)
+            }
+        }
+    }
+}
 
 /// **Lo que se propone anotar.**
 #[derive(Debug, Clone, PartialEq)]
@@ -74,8 +108,10 @@ pub(super) struct Anotar {
     /// Las frases dictadas antes (las dos ultimas), para «esto».
     antes: Vec<Frase>,
     cola: VecDeque<PorPreguntar>,
-    en_vuelo: Option<Receiver<Option<Propuesta>>>,
+    en_vuelo: Option<Receiver<Result<Option<Propuesta>, Fallo>>>,
     pub propuesta: Option<Propuesta>,
+    /// El fallo de la ultima pregunta y hasta cuando se ensena.
+    pub aviso: Option<(Fallo, Instant)>,
     /// Donde se pinto la chapa (para colgar de ella la lista de chats).
     pub sitio: Cell<Option<Rect>>,
 }
@@ -87,9 +123,10 @@ impl Anotar {
         self.cola.clear();
     }
 
-    /// Si hay que volver a mirar (algo en vuelo o esperando).
+    /// Si hay que volver a mirar (algo en vuelo o esperando, o un aviso
+    /// que quitar).
     pub fn espera(&self) -> bool {
-        self.en_vuelo.is_some() || !self.cola.is_empty()
+        self.en_vuelo.is_some() || !self.cola.is_empty() || self.aviso.is_some()
     }
 
     /// **Una frase dictada**: `escrito_antes` es lo que habia en la caja
@@ -166,25 +203,38 @@ impl Anotar {
     /// **Recoge lo que dijo Jev** (cada vuelta del bucle, sin bloquear).
     /// Devuelve si hay que repintar.
     pub fn latido(&mut self, u: &Ubicacion) -> bool {
+        // El aviso de un fallo se va solo.
+        let caduco = self
+            .aviso
+            .as_ref()
+            .is_some_and(|(_, hasta)| Instant::now() >= *hasta);
+        if caduco {
+            self.aviso = None;
+        }
         let Some(r) = &self.en_vuelo else {
             if !self.cola.is_empty() {
                 self.lanzar(u);
             }
-            return false;
+            return caduco;
         };
         let llegado = match r.try_recv() {
             Ok(p) => p,
-            Err(TryRecvError::Empty) => return false,
-            Err(TryRecvError::Disconnected) => None,
+            Err(TryRecvError::Empty) => return caduco,
+            Err(TryRecvError::Disconnected) => Ok(None),
         };
         self.en_vuelo = None;
         self.lanzar(u);
         match llegado {
-            Some(p) => {
+            Ok(Some(p)) => {
                 self.propuesta = Some(p);
+                self.aviso = None;
                 true
             }
-            None => false,
+            Ok(None) => caduco,
+            Err(f) => {
+                self.aviso = Some((f, Instant::now() + AVISO));
+                true
+            }
         }
     }
 }
@@ -203,9 +253,12 @@ pub(super) fn chats_para(fichas: &[Ficha], este_chat: &str) -> Vec<(String, Stri
         .collect()
 }
 
-/// Lo de [`Anotar::lanzar`], en su hilo. `None`: nada que proponer, o Jev
-/// fallo (se apunta; el dictado sigue como siempre).
-fn preguntar(cliente: &pixpin_typesafe::Cliente, p: &PorPreguntar) -> Option<Propuesta> {
+/// Lo de [`Anotar::lanzar`], en su hilo. `Ok(None)`: nada que proponer;
+/// `Err`: Jev no contesto (el dictado sigue como siempre y se dice por que).
+fn preguntar(
+    cliente: &pixpin_typesafe::Cliente,
+    p: &PorPreguntar,
+) -> Result<Option<Propuesta>, Fallo> {
     let nombres: Vec<String> = p.chats.iter().map(|(_, n)| n.clone()).collect();
     let hoy = Fecha::de_dias(pixpin_shell::entorno::ahora_local_ms().div_euclid(86_400_000));
     let ctx = vivo::Contexto {
@@ -225,7 +278,7 @@ fn preguntar(cliente: &pixpin_typesafe::Cliente, p: &PorPreguntar) -> Option<Pro
         Ok(s) => s,
         Err(e) => {
             tracing::info!("jev: el dictado al chat no se pregunto: {e}");
-            return None;
+            return Err(Fallo::de(&e));
         }
     };
     let d = senales.dictado.as_ref();
@@ -245,17 +298,17 @@ fn preguntar(cliente: &pixpin_typesafe::Cliente, p: &PorPreguntar) -> Option<Pro
                 quitar.push(a.dice.clone());
             }
             tracing::info!(p = n.p, con_chat = chat.is_some(), "jev: dictado al chat");
-            Some(Propuesta {
+            Ok(Some(Propuesta {
                 chat,
                 texto: n.texto,
                 quitar,
-            })
+            }))
         }
         Resultado::Dudoso(p) => {
             tracing::debug!(p, "jev: dictado al chat dudoso, no se propone");
-            None
+            Ok(None)
         }
-        Resultado::SinTexto | Resultado::Nada => None,
+        Resultado::SinTexto | Resultado::Nada => Ok(None),
     }
 }
 
@@ -336,6 +389,9 @@ pub(super) fn pintar(
     let anotar = &a.anotar;
     anotar.sitio.set(None);
     let Some(prop) = &anotar.propuesta else {
+        if let Some((f, _)) = &anotar.aviso {
+            pintar_aviso(p, d, tema, escala, alto_caja, &f.texto(textos));
+        }
         return;
     };
     let e = escala as f32 / 100.0;
@@ -393,6 +449,41 @@ pub(super) fn pintar(
     let mut zonas = a.zonas.borrow_mut();
     zonas.push((entera, Zona::Anotar));
     zonas.push((rect_de(x), Zona::NoAnotar));
+}
+
+/// **El aviso de un fallo de Jev**, encima de la caja, donde saldria la
+/// chapa: sin zonas (no se pulsa; se va solo).
+fn pintar_aviso(
+    p: &Pintor,
+    d: &Disposicion,
+    tema: &Tema,
+    escala: u32,
+    alto_caja: u32,
+    texto: &str,
+) {
+    let e = escala as f32 / 100.0;
+    let columna = if d.chat.ancho > 0 { d.chat } else { d.lista };
+    let tam = 12.5 * e;
+    let tope = (columna.ancho as f32 - 64.0 * e).max(1.0);
+    let (w, alto) = p.medir_texto_ajustado(texto, tam, tope);
+    let ancho = w + 28.0 * e;
+    let caja = RectF {
+        x: columna.x as f32 + (columna.ancho as f32 - ancho) / 2.0,
+        y: d.redaccion(alto_caja, escala).y as f32 - alto - 14.0 * e - 10.0 * e,
+        ancho,
+        alto: alto + 14.0 * e,
+    };
+    let radio = caja.alto.min(36.0 * e) / 2.0;
+    p.rellenar_redondeado(caja, radio, con_alfa(tema.texto, 0.9));
+    p.parrafo(
+        texto,
+        caja.x + 14.0 * e,
+        caja.y + 7.0 * e,
+        tam,
+        w + 1.0,
+        &[],
+        tema.chat,
+    );
 }
 
 fn rect_de(r: RectF) -> Rect {
@@ -470,6 +561,32 @@ mod pruebas {
     }
 
     #[test]
+    fn si_jev_falla_se_dice_por_que_y_sin_red_aparte() {
+        assert_eq!(
+            Fallo::de(&pixpin_typesafe::Error::Red("dns".into())),
+            Fallo::SinRed
+        );
+        let f = Fallo::de(&pixpin_typesafe::Error::Http {
+            codigo: 401,
+            detalle: String::new(),
+        });
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        assert!(f.texto(&textos).contains("401"), "{}", f.texto(&textos));
+        assert!(Fallo::SinRed.texto(&textos).contains("caja"));
+        // Caso negativo: el aviso caduca solo y entonces ya no hay que mirar.
+        let u = Ubicacion::Instalado {
+            raiz: std::env::temp_dir().join("pixpin-dictado-aviso"),
+        };
+        let mut a = Anotar {
+            aviso: Some((Fallo::SinRed, Instant::now())),
+            ..Default::default()
+        };
+        assert!(a.espera());
+        assert!(a.latido(&u));
+        assert!(a.aviso.is_none() && !a.espera());
+    }
+
+    #[test]
     fn la_propuesta_sale_con_respuestas_grabadas() {
         use pixpin_typesafe::transporte::Grabado;
         use std::sync::Arc;
@@ -493,7 +610,7 @@ mod pruebas {
                 ("2".into(), "Compras".into()),
             ],
         };
-        let prop = preguntar(&c, &p).expect("una propuesta");
+        let prop = preguntar(&c, &p).unwrap().expect("una propuesta");
         assert_eq!(
             prop.chat,
             Some(("1".to_string(), "Obra Calle Lima".to_string()))

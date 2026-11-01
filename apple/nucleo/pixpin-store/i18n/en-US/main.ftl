@@ -3160,3 +3160,20 @@ ajustes2-voz-en-vivo-fallo = Could not download Vosk: { $fallo }. Choose it agai
 ajustes2-voz-vosk-borrar = Delete Vosk
 ajustes2-ayuda-voz-vosk-borrar = Frees what was downloaded (about 100 MB on disk). It downloads again when you choose it.
 clase-temas-bateria = Low battery: not listening live to save it (the recording goes on)
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Listen to the meeting live with
+ajustes2-voz-en-vivo-sistema = Windows or Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = For the meeting topics and the rest of the meeting with Jev. Vosk shows what is being said and closes each sentence a fraction of a second after you stop (Whisper takes about 3 s), offline. Choosing it downloads { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Listening with Vosk, offline: what is being said shows in the recording's full screen. If it ever fails to load, Windows or Whisper is used.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk is downloaded for Spanish and English; in this language Windows or Whisper listens.
+ajustes2-voz-en-vivo-bajando = Downloading Vosk… { $por-ciento } %. Windows or Whisper listens meanwhile.
+ajustes2-voz-en-vivo-fallo = Could not download Vosk: { $fallo }. Choose it again to retry.
+ajustes2-voz-vosk-borrar = Delete Vosk
+ajustes2-ayuda-voz-vosk-borrar = Frees what was downloaded (about 100 MB on disk). It downloads again when you choose it.
+clase-temas-bateria = Low battery: not listening live to save it (the recording goes on)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = No connection: Jev could not check whether to note it in another chat. What you dictated is still in the box.
+chat-anotar-fallo = Jev did not answer ({ $motivo }). What you dictated is still in the box.
