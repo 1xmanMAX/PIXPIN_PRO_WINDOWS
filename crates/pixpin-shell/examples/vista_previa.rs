@@ -68,7 +68,7 @@ fn una_vez(ruta: &std::path::Path, vuelta: &str) -> Option<Estado> {
         ancho: 900,
         alto: 700,
     };
-    let ventana = VentanaOverlay::nueva_llana(area, "PixDesk - vista previa (prueba)").ok()?;
+    let ventana = VentanaOverlay::nueva_llana(area, "PinDesk - vista previa (prueba)").ok()?;
     ventana.poner_siempre_encima(true);
     ventana.mostrar();
     let carteles = Carteles {

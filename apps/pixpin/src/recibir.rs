@@ -175,7 +175,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     ventana.mostrar();
     ventana.enfocar();
 
-    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into());
+    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PinDesk".into());
     let id = pixpin_proyecto::identidad::Identidad::leer_o_crear(ubicacion.raiz(), &nombre)
         .map(|i| i.yo.id)
         .unwrap_or_default();

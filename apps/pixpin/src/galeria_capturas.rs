@@ -1554,7 +1554,7 @@ fn pinear(e: &mut Estado, v: &[usize], textos: &Catalogo) {
     // es la que tiene los pines, las pinea.
     let ok = pixpin_shell::mensajero::enviar_ficheros(&rutas);
     e.avisar(if !ok {
-        fallo(textos, "PixDesk".into())
+        fallo(textos, "PinDesk".into())
     } else if rutas.len() == 1 {
         textos.t("galeria-pineada")
     } else {
@@ -1763,7 +1763,7 @@ pub(crate) fn conservar(
     ruta: &Path,
 ) -> std::io::Result<crate::caducidad_capturas::Registro> {
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into());
+    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PinDesk".into());
     let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, &nombre_equipo)
         .map(|i| i.yo.codigo())
         .unwrap_or_default();

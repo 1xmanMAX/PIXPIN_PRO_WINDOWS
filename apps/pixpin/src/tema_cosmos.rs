@@ -197,7 +197,7 @@ mod pruebas {
     /// columna de proyectos encima sin fondo y el papel del chat a la
     /// derecha, como lo pinta `ventana_chat::pintar`. Y lo que cuesta.
     ///
-    /// `cargo test -p pixpin --bin pixdesk muestra_del_tema_cosmos -- --ignored --nocapture`
+    /// `cargo test -p pixpin --bin pindesk muestra_del_tema_cosmos -- --ignored --nocapture`
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio"]
     fn muestra_del_tema_cosmos_en_el_chat() {

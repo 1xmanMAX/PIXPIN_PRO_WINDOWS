@@ -676,7 +676,7 @@ pub fn pagina(grupos: &[Grupo], o: &OpcionesWeb) -> String {
     );
     s.push_str("<!DOCTYPE html>\n<html lang=\"es\"><head><meta charset=\"utf-8\">\n");
     s.push_str("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n");
-    s.push_str("<meta name=\"generator\" content=\"PixDesk · plano\">\n");
+    s.push_str("<meta name=\"generator\" content=\"PinDesk · plano\">\n");
     s.push_str(&format!("<title>{titulo}</title>\n"));
     s.push_str(ESTILO);
     s.push_str("</head><body class=\"");

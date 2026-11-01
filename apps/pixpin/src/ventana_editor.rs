@@ -735,7 +735,7 @@ fn abrir_en_modo(
     let mut ventana = if pantalla.is_some() {
         VentanaOverlay::nueva(area)
     } else {
-        VentanaOverlay::nueva_normal(area, "PixDesk")
+        VentanaOverlay::nueva_normal(area, "PinDesk")
     }
     .context("no se pudo abrir el editor")?;
     // PIXPIN_TINTA_CLASICA vuelve a la presentacion de antes, para medir la

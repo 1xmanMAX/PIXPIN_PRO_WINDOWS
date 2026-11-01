@@ -1861,7 +1861,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             let hola = r.hola.ok_or_else(|| fallo("El otro aparato no saludó"))?;
             if hola.version != crate::VERSION {
                 return Err(fallo(
-                    "El otro aparato tiene otra versión de PixDesk: actualiza los dos",
+                    "El otro aparato tiene otra versión de PinDesk: actualiza los dos",
                 ));
             }
             let desfase = hola.reloj - (antes + despues) / 2;
@@ -1993,7 +1993,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 .ok_or_else(|| fallo(format!("{} no saludó", persona.nombre)))?;
             if hola.version != crate::VERSION {
                 return Err(fallo(format!(
-                    "{} tiene otra versión de PixDesk: actualizad los dos",
+                    "{} tiene otra versión de PinDesk: actualizad los dos",
                     persona.nombre
                 )));
             }

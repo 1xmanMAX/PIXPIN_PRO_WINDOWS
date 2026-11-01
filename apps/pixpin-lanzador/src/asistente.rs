@@ -356,7 +356,7 @@ pub fn resultados(
     let pendientes = lista.iter().filter(|e| e.pendiente()).count();
     let abrir_chat = Resultado::nuevo(
         "Abrir el chat «Asistente»",
-        "La conversación con el asistente, en PixDesk",
+        "La conversación con el asistente, en PinDesk",
         glifo::CHAT,
         Accion::Pedido(pedido("asistente", json!({}))),
     );

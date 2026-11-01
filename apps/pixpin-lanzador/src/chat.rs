@@ -132,7 +132,7 @@ pub fn en_proyecto(
 
     let mut abrir = Resultado::nuevo(
         "Abrir proyecto en la app",
-        format!("{} · Intro: su chat en PixDesk", p.nombre),
+        format!("{} · Intro: su chat en PinDesk", p.nombre),
         glifo::PIXPIN,
         abrir_proyecto(p),
     );

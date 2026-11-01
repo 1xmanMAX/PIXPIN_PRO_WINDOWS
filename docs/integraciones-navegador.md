@@ -1,15 +1,15 @@
 # La extensión del navegador (Chrome y Edge)
 
-Clic derecho en una página → **PixDesk ▸** y lo que ves va a PixDesk, sin copiar y pegar.
+Clic derecho en una página → **PinDesk ▸** y lo que ves va a PinDesk, sin copiar y pegar.
 También con el atajo **Alt+Mayús+P**, que abre el mismo menú con teclas (1–9).
 
-| Sobre… | Opción | Qué hace en PixDesk | Pedido |
+| Sobre… | Opción | Qué hace en PinDesk | Pedido |
 |---|---|---|---|
 | Texto seleccionado | Nueva tarea | La apunta en el **Inbox**, con la dirección de la página detrás | `anadir_tarea` |
 | | Nueva nota | Nota nueva, abierta, con un enlace `[título](url)` al pie | `nota_nueva` |
 | | Al chat | Mensaje en «Mensajes guardados», con título y dirección | `chat` |
 | | Lección aprendida | La ficha de lección nueva, con «Fuente: …» | `leccion_nueva` |
-| | Leer en voz alta | Lo lee la voz de PixDesk sin abrir nada; se para con los mandos de Windows o las teclas multimedia | `leer_en_voz` (nuevo) |
+| | Leer en voz alta | Lo lee la voz de PinDesk sin abrir nada; se para con los mandos de Windows o las teclas multimedia | `leer_en_voz` (nuevo) |
 | | Preguntar al asistente… | Pide la pregunta (o «Explícame este texto») y se la manda al asistente con el texto | `asistente` |
 | Imagen | Pinear la imagen | La saca a la pantalla como pin | `pinear` |
 | | Imagen al chat | Foto en «Mensajes guardados», con la página de donde salió | `chat` + `imagenes` |
@@ -18,13 +18,13 @@ También con el atajo **Alt+Mayús+P**, que abre el mismo menú con teclas (1–
 | | Enlace al chat | Título y dirección en el chat | `chat` |
 | | Enviar la página al móvil | Una página `.html` con el enlace a todos los móviles del grupo (el móvil la abre y salta a la dirección) | `enviar_al_movil` |
 
-Si PixDesk está cerrada, se abre sola. Un ✓ o ✗ en el icono de la extensión dice cómo fue; lo que
+Si PinDesk está cerrada, se abre sola. Un ✓ o ✗ en el icono de la extensión dice cómo fue; lo que
 falla sale también como notificación del navegador.
 
 ## Instalar
 
 1. **El puente.** `herramientas\instalar.ps1` compila `pixpin-puente.exe`, lo copia junto a
-   `pixdesk.exe` (`%LOCALAPPDATA%\Programs\PixDesk\`) y lo registra para este usuario con
+   `pindesk.exe` (`%LOCALAPPDATA%\Programs\PinDesk\`) y lo registra para este usuario con
    `herramientas\registrar-navegador.ps1`:
    - escribe `pixpin-puente.json` (el manifiesto del host) junto al exe, y
    - pone su ruta en `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.pixpinmax.puente` y en
@@ -50,7 +50,7 @@ falla sale también como notificación del navegador.
 menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("com.pixpinmax.puente", {…})
                                      │  (4 bytes de largo + JSON por la entrada estándar)
                                      ▼
-                              pixpin-puente.exe ─► WM_COPYDATA (pedido v1) ─► PixDesk
+                              pixpin-puente.exe ─► WM_COPYDATA (pedido v1) ─► PinDesk
                                      │  contesta {"ok":true,"aviso":"…"} y se cierra
 ```
 
@@ -61,9 +61,9 @@ menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("co
 - **El puente** (`apps/pixpin-puente`): lee un mensaje, lo traduce a un pedido de
   `docs/protocolo-pedidos.md` (`traducir.rs`, una tabla), deja la imagen en
   `<raíz>\cache\navegador\nav-<ms>-<pid>.<ext>` y manda el pedido con
-  `pixpin_shell::mensajero::enviar_pedido`. Si nadie contesta, arranca `pixdesk.exe` (el de su
+  `pixpin_shell::mensajero::enviar_pedido`. Si nadie contesta, arranca `pindesk.exe` (el de su
   carpeta o el instalado) y reintenta hasta 8 s. Lo de la caché se borra a los 7 días.
-- **Rápido**: el puente no espera a que PixDesk haga nada (OCR, voz, móvil van en hilos de la app);
+- **Rápido**: el puente no espera a que PinDesk haga nada (OCR, voz, móvil van en hilos de la app);
   solo escribe la imagen y manda el pedido.
 
 ### Decisiones
@@ -72,7 +72,7 @@ menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("co
   `captureBeyondViewport`), no desplazando y cosiendo: pinta la página completa sin moverla, así
   que las cabeceras fijas salen una vez, no hay que esperar al límite de `captureVisibleTab` (2 por
   segundo) y no se mueve lo que el usuario está mirando. Se pide en trozos de 4 000 px y se cosen
-  en un `OffscreenCanvas`. Lo que cuesta: mientras captura, el navegador enseña la barra «PixDesk
+  en un `OffscreenCanvas`. Lo que cuesta: mientras captura, el navegador enseña la barra «PinDesk
   está depurando este navegador». No funciona en `chrome://` ni en la tienda (se avisa). Una página
   de más de 30 000 px de imagen se corta ahí (y lo dice el título); si el PNG no cabe en el puente
   (46 MB en base64), va en JPEG.
@@ -96,7 +96,7 @@ menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("co
   mensajes, trozos de la captura, base64, manifiesto y su id; y, si `pixpin-puente.exe` está
   compilado, cada acción por la tubería al exe real en modo en seco).
 - El modo en seco: con la variable `PIXPIN_PUENTE_EN_SECO=<carpeta>`, el puente usa esa carpeta
-  como raíz, **no busca PixDesk** y devuelve el pedido en la respuesta. Solo para pruebas.
+  como raíz, **no busca PinDesk** y devuelve el pedido en la respuesta. Solo para pruebas.
 
 ## Lo que no hace (todavía)
 

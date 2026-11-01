@@ -8,7 +8,7 @@
 //! usuario a sus espaldas es de las cosas que mas molestan de un programa,
 //! y ademas Windows 10 y 11 ya no dejan hacerlo en silencio — devuelven el
 //! valor y ensenan un aviso diciendo que una aplicacion lo intento. Asi que
-//! PixDesk solo se ofrece, y elegirlo es cosa del usuario.
+//! PinDesk solo se ofrece, y elegirlo es cosa del usuario.
 //!
 //! Y siempre en HKEY_CURRENT_USER, nunca en HKEY_LOCAL_MACHINE: no hace
 //! falta ser administrador y no se le toca nada a los demas usuarios del
@@ -178,7 +178,7 @@ pub fn inscribir(ruta_exe: &Path) -> Result<(), ErrorAbrirCon> {
 
     // El nombre que se lee en la lista, en vez del del ejecutable.
     let app = crear(HKEY_CURRENT_USER, &base)?;
-    let escrito = poner_texto(app, Some("FriendlyAppName"), "PixDesk");
+    let escrito = poner_texto(app, Some("FriendlyAppName"), "PinDesk");
     // SAFETY: igual que arriba.
     unsafe {
         let _ = RegCloseKey(app);
@@ -233,9 +233,9 @@ pub fn desinscribir(ruta_exe: &Path) -> Result<(), ErrorAbrirCon> {
     }
 }
 
-/// La inscripcion de antes de PixDesk (`Applications\pixpinmax.exe`)
+/// La inscripcion de antes de PinDesk (`Applications\pixpinmax.exe`)
 /// apunta a un exe que `Instalar.cmd` ya quito: se borra, salvo que el que
-/// corre siga llamandose asi (docs/nombre-pixdesk.md).
+/// corre siga llamandose asi (docs/nombre-pindesk.md).
 fn quitar_la_del_nombre_viejo(nombre_exe: &str) {
     let viejo = crate::entorno::EXE_VIEJO;
     if !nombre_exe.eq_ignore_ascii_case(viejo) {
@@ -253,7 +253,7 @@ mod pruebas {
         // argumentos y el fichero no se encontraria: el programa
         // funcionaria con `foto.png` y no con `mi foto.png`, que es de los
         // fallos mas confusos que puede tener.
-        let orden = orden_de_apertura(Path::new(r"C:\Archivos de programa\PixDesk\pixdesk.exe"));
+        let orden = orden_de_apertura(Path::new(r"C:\Archivos de programa\PinDesk\pindesk.exe"));
         assert!(orden.ends_with("\"%1\""), "{orden}");
         assert!(orden.starts_with('"'), "{orden}");
         assert!(orden.contains(r"Archivos de programa"));

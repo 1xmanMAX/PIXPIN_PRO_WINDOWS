@@ -4,7 +4,7 @@
 //! GPU de verdad.
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixdesk muestra_de_la_foto_con_descripcion -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pindesk muestra_de_la_foto_con_descripcion -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja el PNG en `%TEMP%/pixpin-muestras-descripcion`.

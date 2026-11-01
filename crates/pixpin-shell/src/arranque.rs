@@ -13,11 +13,11 @@ use windows::Win32::System::Registry::{
 };
 use windows::core::{HSTRING, w};
 
-/// El valor de `Run`: `PixDesk` desde nov-2026.
-const VALOR: windows::core::PCWSTR = w!("PixDesk");
+/// El valor de `Run`: `PinDesk` desde nov-2026.
+const VALOR: windows::core::PCWSTR = w!("PinDesk");
 /// El de antes (la app se llamaba PixPin Max): [`establecer`] lo borra en
 /// cada arranque, asi que tras actualizar la entrada pasa sola al nombre
-/// nuevo y nunca arrancan dos (docs/nombre-pixdesk.md).
+/// nuevo y nunca arrancan dos (docs/nombre-pindesk.md).
 const VALOR_VIEJO: windows::core::PCWSTR = w!("PixPinMax");
 
 #[derive(Debug, thiserror::Error)]
@@ -156,7 +156,7 @@ mod pruebas {
     }
 
     /// Este test escribe una entrada real en HKCU\...\Run. Si un `assert!` de
-    /// en medio entra en panico, dejar la entrada puesta haria que PixDesk
+    /// en medio entra en panico, dejar la entrada puesta haria que PinDesk
     /// arrancara solo en esta maquina para siempre. `LimpiarAlSalir` la borra
     /// en su `Drop`, que Rust ejecuta durante el desenrollado del panico
     /// (el perfil de test usa unwind, no abort; `panic = "abort"` solo se fija

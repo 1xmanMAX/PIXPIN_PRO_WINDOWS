@@ -504,12 +504,12 @@ fn caso_negativo_si_pixpin_no_aparece_se_dice() {
             0
         }
         fn arrancar(&mut self) -> Result<(), String> {
-            Err("No se encuentra pixdesk.exe".into())
+            Err("No se encuentra pindesk.exe".into())
         }
     }
     assert_eq!(
         entregar(&mut Nadie, "{}").unwrap_err(),
-        "No se encuentra pixdesk.exe"
+        "No se encuentra pindesk.exe"
     );
 }
 

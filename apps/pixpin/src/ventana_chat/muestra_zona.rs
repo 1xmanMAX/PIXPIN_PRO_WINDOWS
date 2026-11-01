@@ -3,7 +3,7 @@
 //! con las mismas funciones que la ventana y la GPU de verdad.
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixdesk muestra_del_chat_con_la_zona -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pindesk muestra_del_chat_con_la_zona -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja el PNG en `target/muestras-zona`.

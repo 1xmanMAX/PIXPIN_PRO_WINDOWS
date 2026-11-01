@@ -149,7 +149,7 @@ pub fn en_dos(proveedor: Proveedor, base: &str, herramientas: &[Herramienta]) ->
     let base = base.trim();
     let variable = variable.trim();
     let reglas = reglas(herramientas);
-    const ENTORNO: &str = "Vives dentro de PixDesk, en Windows: una app de capturas, pines, notas, chats y lienzo. \
+    const ENTORNO: &str = "Vives dentro de PinDesk, en Windows: una app de capturas, pines, notas, chats y lienzo. \
         Lo que hacen tus herramientas pasa de verdad en la app del usuario, y su resultado te llega como respuesta de la herramienta.";
     match proveedor {
         Proveedor::Claude => {

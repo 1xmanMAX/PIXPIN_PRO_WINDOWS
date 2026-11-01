@@ -400,7 +400,7 @@ fn chat_con_whisper(nombre: &str, de: &Path) -> (Ubicacion, Abierto, PathBuf) {
 }
 
 /// ```text
-/// cargo test -p pixpin --bin pixdesk -- --ignored --test-threads=1 whisper_de_verdad
+/// cargo test -p pixpin --bin pindesk -- --ignored --test-threads=1 whisper_de_verdad
 /// ```
 #[test]
 #[ignore = "pide el modelo de Whisper bajado y la voz castellana de Windows"]
@@ -496,7 +496,7 @@ fn whisper_de_verdad_el_silencio_no_se_envia() {
 /// texto.
 ///
 /// ```text
-/// PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixdesk -- --ignored --test-threads=1 muestra_de_la_voz_del_asistente
+/// PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk -- --ignored --test-threads=1 muestra_de_la_voz_del_asistente
 /// ```
 #[test]
 #[ignore = "necesita GPU; genera PNG para mirarlos"]

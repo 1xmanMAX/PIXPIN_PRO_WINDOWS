@@ -2794,7 +2794,7 @@ mod pruebas {
     /// pegada, la foto de una zona recortada en redondo y la presentacion con
     /// su pastilla y la estela del laser.
     ///
-    /// `cargo test -p pixpin --bin pixdesk muestras_del_lienzo -- --ignored
+    /// `cargo test -p pixpin --bin pindesk muestras_del_lienzo -- --ignored
     /// --nocapture --test-threads=1`. Necesita GPU, por eso va ignorada.
     #[test]
     #[ignore]

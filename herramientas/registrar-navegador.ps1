@@ -18,7 +18,7 @@
 # (ni fichero ni registro). -Quitar: borra las dos claves y el manifiesto.
 
 param(
-    [string]$Puente = (Join-Path $env:LOCALAPPDATA 'Programs\PixDesk\pixpin-puente.exe'),
+    [string]$Puente = (Join-Path $env:LOCALAPPDATA 'Programs\PinDesk\pixpin-puente.exe'),
     [switch]$SoloMostrar,
     [switch]$Quitar
 )
@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Stop'
 # El nombre del host (nucleo.js: HOST) y el id de la extension, que sale de
 # la "key" de extensiones\navegador\manifest.json (la prueba de Node
 # comprueba que coinciden).
-# El nombre del anfitrion es el de antes de PixDesk a proposito: lo lleva
+# El nombre del anfitrion es el de antes de PinDesk a proposito: lo lleva
 # escrito la extension (extensiones/navegador/nucleo.js, HOST).
 $nombre = 'com.pixpinmax.puente'
 $idExtension = 'hcbhbfnjmdofjkdgeljognmjgppdiflo'
@@ -41,7 +41,7 @@ $claves = @(
 
 $contenido = [ordered]@{
     name            = $nombre
-    description     = 'PixDesk: puente de la extension del navegador'
+    description     = 'PinDesk: puente de la extension del navegador'
     path            = $Puente
     type            = 'stdio'
     allowed_origins = @("chrome-extension://$idExtension/")

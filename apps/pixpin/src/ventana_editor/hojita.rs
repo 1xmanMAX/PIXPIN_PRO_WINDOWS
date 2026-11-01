@@ -698,7 +698,7 @@ mod pruebas {
 
     /// **La muestra de la hojita en PNG**: la tarjeta como se ve en el
     /// editor y el recado como sale en el pin. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_hojita --
+    /// `cargo test -p pixpin --bin pindesk muestra_de_la_hojita --
     /// --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

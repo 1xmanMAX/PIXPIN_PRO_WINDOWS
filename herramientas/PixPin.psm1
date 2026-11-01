@@ -1,12 +1,12 @@
-# PixPin.psm1 — pedirle cosas a PixDesk desde PowerShell.
+# PixPin.psm1 — pedirle cosas a PinDesk desde PowerShell.
 #
-#   Import-Module "$env:LOCALAPPDATA\Programs\PixDesk\PixPin.psm1"
+#   Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PixPin.psm1"
 #   New-PixPinTarea "llamar al ingeniero" -Proyecto Obra
 #   Get-ChildItem *.png | Send-PixPinChat -Texto "fotos de hoy"
 #   Get-PixPinTexto .\captura.png | Set-Clipboard
 #   Get-Process | Select-Object Name, CPU -First 10 | Out-PixPin -Tabla "Procesos"
 #
-# Todo va por la linea de ordenes de pixdesk.exe (docs/integraciones.md):
+# Todo va por la linea de ordenes de pindesk.exe (docs/integraciones.md):
 # este modulo no habla con la app por su cuenta. Los pedidos se le pasan por
 # la entrada estandar (`--pedido-archivo -`), asi un texto con comillas,
 # saltos de linea o acentos llega entero sin pelearse con las reglas de
@@ -18,30 +18,30 @@
 # 6 rechazado. Si no es 0, ademas escribe un error (Write-Error).
 #
 # El ejecutable: $env:PIXPIN_EXE, o el que esta junto a este modulo, o el
-# instalado en %LOCALAPPDATA%\Programs\PixDesk (o, si aun no se actualizo,
+# instalado en %LOCALAPPDATA%\Programs\PinDesk (o, si aun no se actualizo,
 # el pixpinmax.exe de cuando se llamaba PixPin Max).
 
 Set-StrictMode -Version 2
 
 function Get-PixPinExe {
-    <# .SYNOPSIS Donde esta pixdesk.exe. #>
+    <# .SYNOPSIS Donde esta pindesk.exe. #>
     if ($env:PIXPIN_EXE -and (Test-Path $env:PIXPIN_EXE)) { return $env:PIXPIN_EXE }
     $sitios = @(
-        (Join-Path $PSScriptRoot 'pixdesk.exe'),
+        (Join-Path $PSScriptRoot 'pindesk.exe'),
         (Join-Path $PSScriptRoot 'pixpinmax.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\PixDesk\pixdesk.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\PinDesk\pindesk.exe'),
         (Join-Path $env:LOCALAPPDATA 'Programs\PixPinMax\pixpinmax.exe')
     )
     foreach ($s in $sitios) { if (Test-Path $s) { return $s } }
-    throw 'No se encuentra pixdesk.exe (pon su ruta en $env:PIXPIN_EXE)'
+    throw 'No se encuentra pindesk.exe (pon su ruta en $env:PIXPIN_EXE)'
 }
 
 function Invoke-PixPin {
     <#
     .SYNOPSIS
-    Corre pixdesk.exe con esos argumentos y espera a que acabe.
+    Corre pindesk.exe con esos argumentos y espera a que acabe.
     .DESCRIPTION
-    pixdesk.exe es una aplicacion de ventanas: lanzada a secas, la consola no
+    pindesk.exe es una aplicacion de ventanas: lanzada a secas, la consola no
     la espera ni ve lo que escribe. Aqui se lanza con su salida redirigida y se
     espera, asi el texto y el codigo de salida llegan.
     .EXAMPLE
@@ -76,7 +76,7 @@ function Invoke-PixPin {
     $global:LASTEXITCODE = $p.ExitCode
     $texto = $salida.Result
     if ($p.ExitCode -ne 0) {
-        $motivo = ($errores.Trim(), "pixdesk salio con $($p.ExitCode)" | Where-Object { $_ } | Select-Object -First 1)
+        $motivo = ($errores.Trim(), "pindesk salio con $($p.ExitCode)" | Where-Object { $_ } | Select-Object -First 1)
         Write-Error -Message $motivo -Category InvalidOperation
     }
     if ($texto) { $texto.TrimEnd("`r", "`n") }

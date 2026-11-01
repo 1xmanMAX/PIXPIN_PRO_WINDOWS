@@ -1,4 +1,4 @@
-//! PixDesk — punto de entrada.
+//! PinDesk — punto de entrada.
 //!
 //! PixPin es marca de DepthPixel. Este proyecto es una implementacion
 //! personal e independiente.
@@ -349,8 +349,8 @@ fn main() -> Result<()> {
         // paso 3), `guardia_registro` sigue en `None` y `tracing::error!`
         // sin un subscriber inicializado simplemente no hace nada, no entra
         // en panico.
-        tracing::error!(?error, "PixDesk no pudo arrancar");
-        pixpin_shell::mostrar_error_fatal("PixDesk", &format!("{error:#}"));
+        tracing::error!(?error, "PinDesk no pudo arrancar");
+        pixpin_shell::mostrar_error_fatal("PinDesk", &format!("{error:#}"));
         return Err(error);
     }
     Ok(())
@@ -430,13 +430,13 @@ fn arrancar(
     tracing::info!(
         portable = ubicacion.es_portable(),
         raiz = ?ubicacion.raiz(),
-        "PixDesk arrancando"
+        "PinDesk arrancando"
     );
     // La identidad de este equipo, en el formato de PixPin Android
     // (`sincro/identidad.json`): de ella sale el codigo de aparato que llevan
     // los tres codigos de todo lo que nazca aqui. Sin ella la app funciona;
     // solo se registra el fallo.
-    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into());
+    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PinDesk".into());
     // El codigo de este equipo: lo lleva cada cosa que nace aqui, y con el
     // se reconoce lo que vuelve del movil.
     let identidad_equipo = match pixpin_proyecto::identidad::Identidad::leer_o_crear(
@@ -508,7 +508,7 @@ fn arrancar(
     // con un boton, y todo se abre como pin.
     if config.abrir_con {
         if let Err(e) = pixpin_shell::asociaciones::registrar(&ruta_exe) {
-            tracing::warn!(?e, "no se pudo registrar PixDesk para imagenes y videos");
+            tracing::warn!(?e, "no se pudo registrar PinDesk para imagenes y videos");
         }
     } else {
         pixpin_shell::asociaciones::quitar();
@@ -659,7 +659,7 @@ fn arrancar(
     let _vista_rapida = vista_rapida::instalar(config.vista_rapida);
     for (id, atajo) in &fallidos {
         // Se registra el problema pero no se aborta: otra aplicacion puede
-        // tener ese atajo y el resto de PixDesk sigue siendo util.
+        // tener ese atajo y el resto de PinDesk sigue siendo util.
         tracing::warn!(id, %atajo, "no se pudo registrar el atajo; otra aplicacion lo tiene");
     }
 
@@ -2008,7 +2008,7 @@ fn arrancar(
     // Los servidores de vista previa de Office que se tuvieran sujetos (el
     // pin de Office), sueltos ya: si no, se quedarian minutos en marcha.
     pixpin_shell::vista_previa::soltar_todo(std::time::Duration::from_millis(800));
-    tracing::info!("PixDesk terminado limpiamente");
+    tracing::info!("PinDesk terminado limpiamente");
     Ok(())
 }
 

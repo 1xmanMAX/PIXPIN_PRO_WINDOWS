@@ -576,7 +576,7 @@ fn leer_automatizaciones(ubicacion: &Ubicacion) -> Vec<crate::automatizaciones::
 
 /// El codigo de este equipo (`K7Q2`), el de las automatizaciones nuevas.
 fn codigo_del_equipo(raiz: &std::path::Path) -> String {
-    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into());
+    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PinDesk".into());
     pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, &nombre)
         .map(|i| i.yo.codigo())
         .unwrap_or_default()
@@ -686,7 +686,7 @@ fn tocar_automatizacion(
             let mut args = FluentArgs::new();
             args.set("nombre", r.nombre.clone());
             let pregunta = cx.t.t_args("ajustes2-automatizacion-borrar", &args);
-            if !pixpin_shell::dialogo::confirmar_destructivo(hwnd, "PixDesk · Asistente", &pregunta)
+            if !pixpin_shell::dialogo::confirmar_destructivo(hwnd, "PinDesk · Asistente", &pregunta)
             {
                 return false;
             }
@@ -2465,7 +2465,7 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
                 && let Some(exe) = ruta_exe()
                 && let Err(e) = pixpin_shell::asociaciones::registrar(&exe)
             {
-                tracing::warn!(?e, "no se pudo registrar PixDesk para imagenes y videos");
+                tracing::warn!(?e, "no se pudo registrar PinDesk para imagenes y videos");
             }
             // ms-settings:defaultapps?registeredAppUser=PixPin%20Max
             pixpin_shell::asociaciones::abrir_configuracion();
@@ -2514,7 +2514,7 @@ fn aplicar_al_cerrar(antes: &Ajustes, a: &Ajustes, ubicacion: &Ubicacion) {
         // Lo mismo que hace `main.rs` al arrancar.
         if a.abrir_con {
             if let Err(e) = pixpin_shell::asociaciones::registrar(&exe) {
-                tracing::warn!(?e, "no se pudo registrar PixDesk para imagenes y videos");
+                tracing::warn!(?e, "no se pudo registrar PinDesk para imagenes y videos");
             }
             if let Err(e) = pixpin_shell::abrir_con::inscribir(&exe) {
                 tracing::warn!(?e, "no se pudo inscribir en «Abrir con»");

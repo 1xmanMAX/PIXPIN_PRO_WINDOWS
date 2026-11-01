@@ -450,8 +450,8 @@ mod pruebas {
         assert_eq!(es.t("comando-salir"), "Salir");
         assert_eq!(en.t("comando-salir"), "Quit");
         // El nombre del producto no se traduce.
-        assert_eq!(es.t("app-nombre"), "PixDesk");
-        assert_eq!(en.t("app-nombre"), "PixDesk");
+        assert_eq!(es.t("app-nombre"), "PinDesk");
+        assert_eq!(en.t("app-nombre"), "PinDesk");
     }
 
     #[test]
@@ -602,7 +602,7 @@ mod pruebas {
         for idioma in Idioma::TODOS {
             let c = Catalogo::nuevo(idioma);
             assert_ne!(c.t("comando-salir"), "comando-salir", "{idioma:?}");
-            assert_eq!(c.t("app-nombre"), "PixDesk", "{idioma:?}");
+            assert_eq!(c.t("app-nombre"), "PinDesk", "{idioma:?}");
         }
     }
 
@@ -770,7 +770,7 @@ mod pruebas {
     #[test]
     fn la_comprobacion_de_variables_ve_selectores_y_funciones() {
         let v = variables_de(
-            "a = { $n ->\n    [one] uno\n   *[other] { $n } de { $total }\n  }\nb = { NUMBER($x) } { -marca }\n-marca = PixDesk\n",
+            "a = { $n ->\n    [one] uno\n   *[other] { $n } de { $total }\n  }\nb = { NUMBER($x) } { -marca }\n-marca = PinDesk\n",
         );
         assert_eq!(
             v["a"],

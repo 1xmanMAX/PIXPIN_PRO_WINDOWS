@@ -434,8 +434,8 @@ mod pruebas {
         assert_eq!(es.t("comando-salir"), "Salir");
         assert_eq!(en.t("comando-salir"), "Quit");
         // El nombre del producto no se traduce.
-        assert_eq!(es.t("app-nombre"), "PixDesk");
-        assert_eq!(en.t("app-nombre"), "PixDesk");
+        assert_eq!(es.t("app-nombre"), "PinDesk");
+        assert_eq!(en.t("app-nombre"), "PinDesk");
     }
 
     #[test]
@@ -586,7 +586,7 @@ mod pruebas {
         for idioma in Idioma::TODOS {
             let c = Catalogo::nuevo(idioma);
             assert_ne!(c.t("comando-salir"), "comando-salir", "{idioma:?}");
-            assert_eq!(c.t("app-nombre"), "PixDesk", "{idioma:?}");
+            assert_eq!(c.t("app-nombre"), "PinDesk", "{idioma:?}");
         }
     }
 

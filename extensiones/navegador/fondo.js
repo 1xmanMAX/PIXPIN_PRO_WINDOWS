@@ -26,7 +26,7 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "pixpin",
-      title: "PixDesk",
+      title: "PinDesk",
       contexts: ["selection", "image", "page"],
     });
     for (const f of MENU) {
@@ -88,7 +88,7 @@ async function hacer(accion, d) {
       if (c.cortada) datos.titulo = `${d.titulo ?? ""} (cortada: la página es muy larga)`.trim();
     }
     const r = await alPuente(mensajeDe(accion, datos));
-    if (!r?.ok) throw new Error(r?.error || "PixDesk no contestó");
+    if (!r?.ok) throw new Error(r?.error || "PinDesk no contestó");
     senal(d.tabId, true);
     return r;
   } catch (e) {
@@ -125,7 +125,7 @@ async function preguntarEnLaPagina(tabId, frameId = 0) {
   try {
     const [r] = await chrome.scripting.executeScript({
       target: { tabId, frameIds: [frameId] },
-      func: () => prompt("¿Qué le pregunto al asistente de PixDesk sobre este texto?", "Explícame este texto"),
+      func: () => prompt("¿Qué le pregunto al asistente de PinDesk sobre este texto?", "Explícame este texto"),
     });
     return r?.result ?? null;
   } catch {
@@ -149,7 +149,7 @@ async function imagenDe(src) {
       blob = await lienzo.convertToBlob({ type: "image/png" });
       tipo = "image/png";
     } catch {
-      throw new Error(`PixDesk no sabe leer imágenes ${tipo || "de este tipo"}`);
+      throw new Error(`PinDesk no sabe leer imágenes ${tipo || "de este tipo"}`);
     }
   }
   const base64 = base64DeBytes(new Uint8Array(await blob.arrayBuffer()));
@@ -165,7 +165,7 @@ async function imagenDe(src) {
  * completa sin desplazarla, asi que las cabeceras fijas salen una vez y no
  * en cada trozo, que es lo que estropea el «desplazar y coser». Se captura
  * por trozos de `ALTO_TROZO` y se cosen en un lienzo. Mientras dura, Chrome
- * enseña la barra «PixDesk está depurando este navegador».
+ * enseña la barra «PinDesk está depurando este navegador».
  */
 async function capturaEntera(tabId) {
   const destino = { tabId };
@@ -247,7 +247,7 @@ function avisar(texto) {
   chrome.notifications.create({
     type: "basic",
     iconUrl: "iconos/pixpin.png",
-    title: "PixDesk",
+    title: "PinDesk",
     message: texto,
   });
 }

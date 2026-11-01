@@ -169,7 +169,7 @@ pub struct VentanaMensajes {
 
 impl VentanaMensajes {
     pub fn nueva() -> WinResult<Self> {
-        // El nombre de antes de PixDesk, a proposito: lo buscan el puente,
+        // El nombre de antes de PinDesk, a proposito: lo buscan el puente,
         // el MCP, Flow e instalar.ps1, tambien los de una version vieja.
         const CLASE: windows::core::PCWSTR = w!("PixPinMaxVentanaMensajes");
 
@@ -203,7 +203,7 @@ impl VentanaMensajes {
             CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 CLASE,
-                w!("PixDesk"),
+                w!("PinDesk"),
                 WINDOW_STYLE(0),
                 0,
                 0,
@@ -629,7 +629,7 @@ mod pruebas {
         let ventana = VentanaMensajes::nueva().expect("deberia poder crearse");
         let hwnd = ventana.handle();
 
-        let bandeja = Bandeja::nueva(hwnd, "PixDesk — prueba de orden").expect("deberia añadirse");
+        let bandeja = Bandeja::nueva(hwnd, "PinDesk — prueba de orden").expect("deberia añadirse");
 
         let raro: Atajo = "Ctrl+Alt+Shift+F21".parse().unwrap();
         let (registrados, fallidos) = atajos::registrar(hwnd, &[(atajos::ID_REGION, raro)]);

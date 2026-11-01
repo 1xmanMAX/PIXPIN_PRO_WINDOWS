@@ -296,12 +296,12 @@ pub fn hacer_con(
         match mandar(&p.to_string()) {
             pixpin_shell::mensajero::respuesta::ACEPTADO => Ok(()),
             pixpin_shell::mensajero::respuesta::NO_SE_ENTIENDE => {
-                Err("PixDesk no entendio el pedido".into())
+                Err("PinDesk no entendio el pedido".into())
             }
             pixpin_shell::mensajero::respuesta::VERSION_NO => {
-                Err("PixDesk no conoce esta version del pedido".into())
+                Err("PinDesk no conoce esta version del pedido".into())
             }
-            _ => Err("PixDesk no contesto".into()),
+            _ => Err("PinDesk no contesto".into()),
         }
     });
     // Una tarea con fecha: que el vigia de recordatorios la tenga ya.

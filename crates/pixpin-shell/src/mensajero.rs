@@ -541,7 +541,7 @@ pub fn enviar_pedidos_o_arrancar(pedidos: &[String], exe: Option<&std::path::Pat
         None => {
             // Con la ventana de prueba nunca se abre la app de verdad.
             let Some(exe) = exe.filter(|_| clase_de_prueba().is_none()) else {
-                return Envio::SinApp("PixDesk no esta abierta".into());
+                return Envio::SinApp("PinDesk no esta abierta".into());
             };
             if let Err(e) = abrir_la_app(exe) {
                 return Envio::SinApp(e);
@@ -556,7 +556,7 @@ pub fn enviar_pedidos_o_arrancar(pedidos: &[String], exe: Option<&std::path::Pat
                     break h;
                 }
                 if inicio.elapsed() > ESPERA_ARRANQUE {
-                    return Envio::SinApp("PixDesk no aparecio en 8 s".into());
+                    return Envio::SinApp("PinDesk no aparecio en 8 s".into());
                 }
             }
         }

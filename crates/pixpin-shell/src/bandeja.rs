@@ -486,12 +486,12 @@ mod pruebas {
     #[ignore = "necesita una sesion de escritorio interactiva con Explorer. cargo test -- --ignored"]
     fn se_anade_y_se_retira_el_icono() {
         let v = VentanaMensajes::nueva().unwrap();
-        let b = Bandeja::nueva(v.handle(), "PixDesk — prueba").expect("deberia añadirse");
+        let b = Bandeja::nueva(v.handle(), "PinDesk — prueba").expect("deberia añadirse");
         drop(b);
 
         // Poder añadir un segundo icono tras retirar el primero demuestra que
         // el Drop hizo su trabajo y no quedo un fantasma en la bandeja.
-        let otra = Bandeja::nueva(v.handle(), "PixDesk — prueba 2").expect("y otra vez");
+        let otra = Bandeja::nueva(v.handle(), "PinDesk — prueba 2").expect("y otra vez");
         drop(otra);
     }
 }

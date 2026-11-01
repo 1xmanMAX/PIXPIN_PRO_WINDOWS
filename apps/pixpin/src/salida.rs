@@ -908,7 +908,7 @@ mod pruebas {
     /// **Muestra de la Salida** fuera de pantalla, con una foto y un PDF de
     /// ejemplo. `PIXPIN_MUESTRAS` dice donde dejar el PNG.
     ///
-    /// `cargo test -p pixpin --bin pixdesk -- --ignored --test-threads=1 muestra_de_la_salida`
+    /// `cargo test -p pixpin --bin pindesk -- --ignored --test-threads=1 muestra_de_la_salida`
     #[test]
     #[ignore = "necesita GPU; deja un PNG para mirarlo"]
     fn muestra_de_la_salida() {

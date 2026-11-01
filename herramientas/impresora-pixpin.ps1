@@ -1,5 +1,5 @@
 # Pone (o quita) la impresora "PixPin": Imprimir -> PixPin desde cualquier
-# programa deja el PDF en la carpeta que vigila PixDesk, que lo abre en su
+# programa deja el PDF en la carpeta que vigila PinDesk, que lo abre en su
 # lector como pin (crates/pixpin-shell/src/impresora.rs).
 #
 # Uso:
@@ -7,7 +7,7 @@
 #   powershell -ExecutionPolicy Bypass -File herramientas\impresora-pixpin.ps1
 #   powershell -ExecutionPolicy Bypass -File herramientas\impresora-pixpin.ps1 -Quitar
 #   ... [-Raiz <carpeta de datos>]   (por defecto %APPDATA%\PixPinMax; en modo
-#                                     portable, la carpeta de pixdesk.exe)
+#                                     portable, la carpeta de pindesk.exe)
 #
 # Como es: el controlador "Microsoft Print To PDF" que ya trae Windows (no se
 # instala ningun controlador) con un PUERTO LOCAL que es un fichero:
@@ -111,7 +111,7 @@ if (-not (Es-Admin)) {
     if ($Quitar) { $argumentos += '-Quitar' }
     $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $argumentos -Verb RunAs -Wait -PassThru
     if ($p.ExitCode -ne 0) { throw "La parte de administrador fallo (codigo $($p.ExitCode))." }
-    Write-Host 'Hecho. Cierra y abre PixDesk para que empiece a vigilar la carpeta.'
+    Write-Host 'Hecho. Cierra y abre PinDesk para que empiece a vigilar la carpeta.'
     return
 }
 

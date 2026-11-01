@@ -332,7 +332,7 @@ fn fuera_de_una_imagen_o_si_no_se_dejo_leer_no_hay_pin_ni_mano() {
 /// **El Word en modo texto con sus imagenes, pintado de verdad**, en PNG
 /// para mirarlo. Necesita GPU y un Word con imagenes (una COPIA):
 /// `PIXPIN_DOCX=<copia.docx> PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin
-/// --bin pixdesk muestra_word_con_imagenes -- --ignored --nocapture`.
+/// --bin pindesk muestra_word_con_imagenes -- --ignored --nocapture`.
 #[test]
 #[ignore = "necesita GPU y un docx; genera PNG para mirarlos"]
 fn muestra_word_con_imagenes() {

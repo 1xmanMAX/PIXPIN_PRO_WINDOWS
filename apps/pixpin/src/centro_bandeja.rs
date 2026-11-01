@@ -851,7 +851,7 @@ fn al_pulsar(panel: &mut Panel, zona: Zona) -> Hacer {
                 if pixpin_shell::mensajero::enviar_ficheros(&[ruta]) {
                     Hacer::Cerrar
                 } else {
-                    panel.fallo("PixDesk".into());
+                    panel.fallo("PinDesk".into());
                     Hacer::Nada
                 }
             }

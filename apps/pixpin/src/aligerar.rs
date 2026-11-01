@@ -992,7 +992,7 @@ fn comprimir_en_su_proceso(
         static DICHO: AtomicBool = AtomicBool::new(false);
         if !DICHO.swap(true, Ordering::Relaxed) {
             tracing::warn!(
-                "no esta {NOMBRE_EXE} junto a pixdesk.exe: los PDF se aligeran con el plan B"
+                "no esta {NOMBRE_EXE} junto a pindesk.exe: los PDF se aligeran con el plan B"
             );
         }
         return Salida::Fallo(format!("falta {NOMBRE_EXE}"));

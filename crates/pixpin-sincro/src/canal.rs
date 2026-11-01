@@ -60,7 +60,7 @@ pub enum ErrorCanal {
     #[error("no se pudo hablar con el otro aparato: {0}")]
     Io(#[from] std::io::Error),
     /// Lo que llego no empieza por `PXS1`: no es PixPin.
-    #[error("eso no es PixDesk")]
+    #[error("eso no es PinDesk")]
     NoEsPixPin,
     /// No descifra. En la practica siempre significa lo mismo.
     #[error("el otro aparato tiene otro codigo de grupo")]

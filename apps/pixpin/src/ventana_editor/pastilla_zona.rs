@@ -274,7 +274,7 @@ mod pruebas {
 
     /// **La pastilla en PNG**, en sus cuatro caras: sin proyecto, con el
     /// interruptor apagado, encendido y tras mandar. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_pastilla_de_zona
+    /// `cargo test -p pixpin --bin pindesk muestra_de_la_pastilla_de_zona
     /// -- --ignored --nocapture`. Deja los PNG en `target/muestras-zona`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

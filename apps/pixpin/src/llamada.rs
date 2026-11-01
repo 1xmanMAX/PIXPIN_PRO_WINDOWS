@@ -985,7 +985,7 @@ mod pruebas {
         assert!(frio < 500, "en frio {frio} ms");
     }
 
-    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_llamada --
+    /// `cargo test -p pixpin --bin pindesk muestra_de_la_llamada --
     /// --ignored --nocapture`: sonando y contestada.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

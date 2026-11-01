@@ -55,7 +55,7 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
     if tipo == "proyecto" {
         v.push(Resultado::nuevo(
             "Abrir en la app",
-            "Su chat en PixDesk",
+            "Su chat en PinDesk",
             glifo::PIXPIN,
             Accion::Pedido(pedido(
                 "abrir",
@@ -154,7 +154,7 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
         if let Some(a) = contexto.get("abrir").and_then(Accion::de_valor) {
             v.push(Resultado::nuevo(
                 "Abrir la ficha",
-                "Como Intro: la lección en PixDesk",
+                "Como Intro: la lección en PinDesk",
                 glifo::ABRIR,
                 a,
             ));
@@ -206,7 +206,7 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
     let ruta = texto_de("ruta");
     if let Some(a) = contexto.get("abrir").and_then(Accion::de_valor) {
         let sub = if ruta.is_some() {
-            "Con PixDesk, como Intro"
+            "Con PinDesk, como Intro"
         } else {
             "Como Intro"
         };
@@ -223,7 +223,7 @@ pub fn menu(contexto: &Value, ctx: &Contexto) -> Vec<Resultado> {
     if let Some(codigo) = texto_de("codigo") {
         v.push(Resultado::nuevo(
             "Ver en el chat",
-            "Abre el chat de PixDesk en este mensaje",
+            "Abre el chat de PinDesk en este mensaje",
             glifo::CHAT,
             Accion::Pedido(pedido(
                 "abrir",

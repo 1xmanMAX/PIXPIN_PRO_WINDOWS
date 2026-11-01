@@ -1,4 +1,4 @@
-//! **PixDesk como app para abrir imagenes y videos** (el usuario, 3-oct:
+//! **PinDesk como app para abrir imagenes y videos** (el usuario, 3-oct:
 //! «que pixpin sea la app predeterminada que abra imagenes y videos, todos en
 //! formato de pin»).
 //!
@@ -8,7 +8,7 @@
 //! Se registra en `HKCU` (sin permisos de administrador) como lo hace
 //! cualquier visor: tres tipos propios (`PixPinMax.Imagen`,
 //! `PixPinMax.Video` y `PixPinMax.Audio`) que abren con
-//! `"pixdesk.exe" "%1"`, la app en
+//! `"pindesk.exe" "%1"`, la app en
 //! «Abrir con» de cada extension y sus capacidades en
 //! `RegisteredApplications`, que es lo que ensena Configuracion →
 //! Aplicaciones predeterminadas.
@@ -17,7 +17,7 @@
 //! eleccion del usuario (`UserChoice`) va firmada y Windows la deshace si la
 //! escribe un programa; la unica forma buena es que el usuario pulse
 //! «Establecer como predeterminada» en Configuracion. [`abrir_configuracion`]
-//! lleva ahi, a la pagina de PixDesk.
+//! lleva ahi, a la pagina de PinDesk.
 //!
 //! En modo portable no se toca, por lo mismo que el arranque con Windows
 //! (`arranque.rs`): cero rastro en el equipo.
@@ -32,11 +32,11 @@ use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify
 use windows::core::HSTRING;
 
 /// El nombre con que sale en Configuracion.
-pub const NOMBRE: &str = "PixDesk";
+pub const NOMBRE: &str = "PinDesk";
 /// El nombre de antes de nov-2026 en `RegisteredApplications`: [`registrar`]
 /// lo borra para que Configuracion no ensene la app dos veces. Los ProgID
 /// (`PixPinMax.Imagen`…) no cambian: la eleccion de app predeterminada del
-/// usuario va atada a ellos (docs/nombre-pixdesk.md).
+/// usuario va atada a ellos (docs/nombre-pindesk.md).
 const NOMBRE_VIEJO: &str = "PixPin Max";
 const IMAGEN: &str = "PixPinMax.Imagen";
 const VIDEO: &str = "PixPinMax.Video";
@@ -70,9 +70,9 @@ pub fn es_audio(ruta: &Path) -> bool {
 
 /// Los tres tipos y sus extensiones, en un solo sitio para escribir y borrar.
 const TIPOS: [(&str, &str, &[&str]); 3] = [
-    (IMAGEN, "Imagen (PixDesk)", &IMAGENES),
-    (VIDEO, "Video (PixDesk)", &VIDEOS),
-    (AUDIO, "Audio (PixDesk)", &AUDIOS),
+    (IMAGEN, "Imagen (PinDesk)", &IMAGENES),
+    (VIDEO, "Video (PinDesk)", &VIDEOS),
+    (AUDIO, "Audio (PinDesk)", &AUDIOS),
 ];
 
 /// Una clave abierta (o creada) para escribir; se cierra al soltarla.
@@ -163,7 +163,7 @@ pub fn entradas(exe: &Path) -> Vec<(String, String, String)> {
     v
 }
 
-/// Registra PixDesk para abrir imagenes y videos con `exe`. Se puede
+/// Registra PinDesk para abrir imagenes y videos con `exe`. Se puede
 /// llamar cada vez que arranca: escribe lo mismo, y si el .exe se movio deja
 /// la ruta nueva.
 pub fn registrar(exe: &Path) -> windows::core::Result<()> {
@@ -216,7 +216,7 @@ fn borrar_valor(ruta: &str, nombre: &str) {
     };
 }
 
-/// Abre Configuracion en la pagina de PixDesk, donde el usuario la hace
+/// Abre Configuracion en la pagina de PinDesk, donde el usuario la hace
 /// predeterminada con un boton.
 pub fn abrir_configuracion() {
     let uri = format!(

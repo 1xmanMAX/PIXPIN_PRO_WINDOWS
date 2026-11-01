@@ -1585,7 +1585,7 @@ mod pruebas {
     /// misma caja con una palabra elegida y otra vacia con su invitacion.
     ///
     /// ```text
-    /// cargo test -p pixpin --bin pixdesk muestra_de_la_caja_de_una_linea -- --ignored --nocapture
+    /// cargo test -p pixpin --bin pindesk muestra_de_la_caja_de_una_linea -- --ignored --nocapture
     /// ```
     /// Deja el PNG en `PIXPIN_MUESTRAS` o en `%TEMP%/pixpin-muestras-caja`.
     #[test]

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/v2/banner.svg" alt="PixDesk: capturas, pines flotantes, lienzo y proyectos para Windows" width="100%">
+  <img src="docs/img/v2/banner.svg" alt="PinDesk: capturas, pines flotantes, lienzo y proyectos para Windows" width="100%">
 </p>
 
 <p align="center">
@@ -15,9 +15,9 @@
 
 ---
 
-**PixDesk** es una app de escritorio para Windows 10 (21H2) y 11. Sirve para capturar la pantalla, dejar cualquier cosa
+**PinDesk** es una app de escritorio para Windows 10 (21H2) y 11. Sirve para capturar la pantalla, dejar cualquier cosa
 flotando **siempre encima** (fotos, vídeos, audios, PDF, listas…), dibujar encima y guardarlo todo
-ordenado en **proyectos con forma de chat**. Es el hermano de escritorio de **PixDesk Android**: lee
+ordenado en **proyectos con forma de chat**. Es el hermano de escritorio de **PinDesk Android**: lee
 y escribe los mismos proyectos y se sincroniza con el móvil por Wi‑Fi, **sin nube y sin cuentas**.
 
 Está escrita en Rust sobre lo que Windows ya trae (Direct2D, DirectWrite, DirectComposition, Media
@@ -26,15 +26,15 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
 
 > [!NOTE]
 > Hasta noviembre de 2026 se llamaba **PixPin Max**. El nombre **PixPin** pertenece a DepthPixel,
-> así que la app pasó a llamarse **PixDesk**; tus datos, tus proyectos `.pixpin` y la
-> sincronización con el móvil siguen igual (ver [docs/nombre-pixdesk.md](docs/nombre-pixdesk.md)).
+> así que la app pasó a llamarse **PinDesk**; tus datos, tus proyectos `.pixpin` y la
+> sincronización con el móvil siguen igual (ver [docs/nombre-pindesk.md](docs/nombre-pindesk.md)).
 > Es una implementación personal e independiente, igual que su versión Android.
 
-## ¿Qué puedo hacer con PixDesk?
+## ¿Qué puedo hacer con PinDesk?
 
 Dicho fácil, para cualquier persona:
 
-| | Quiero… | Con PixDesk… |
+| | Quiero… | Con PinDesk… |
 |:-:|---|---|
 | 📸 | Guardar algo que veo en la pantalla | Pulso `Ctrl Alt X`, elijo la zona y listo: la copio, la dejo flotando o la mando a un proyecto. |
 | 📌 | Tener algo siempre a la vista | Lo «pineo»: una foto, un vídeo, un PDF o una lista se queda encima de todas las ventanas. |
@@ -43,9 +43,9 @@ Dicho fácil, para cualquier persona:
 | 📐 | Ver un plano de AutoCAD sin tener AutoCAD | Abro el `.dwg` y se ve al instante. Mido, marco, anoto e imprimo. |
 | 🏠 | Ver un edificio en 3D (Revit o IFC) | Lo giro con el ratón, lo corto con una caja, veo cada planta y lo que mide cada pieza. |
 | ⛰️ | Ver un terreno o una carretera | Abro el LandXML o los puntos de Civil 3D y salen con colores por altura y curvas de nivel. |
-| 📊 | Abrir Word, Excel y PowerPoint al instante | Sin abrir Office: PixDesk los dibuja él mismo, en una décima de segundo. |
+| 📊 | Abrir Word, Excel y PowerPoint al instante | Sin abrir Office: PinDesk los dibuja él mismo, en una décima de segundo. |
 | 📖 | Leer un PDF o un Word mientras trabajo | Se abre pequeño, como un pin, al lado de lo que hago; o a pantalla completa con `F11`. |
-| 📱 | Tenerlo también en el móvil | Se sincroniza con PixDesk Android por Wi‑Fi, sin nube y sin cuentas. |
+| 📱 | Tenerlo también en el móvil | Se sincroniza con PinDesk Android por Wi‑Fi, sin nube y sin cuentas. |
 | 🤖 | Pedirle cosas a una IA | El chat «Asistente» (Claude Haiku o DeepSeek, si tú los activas) lee tus documentos, apunta tareas, dibuja en el lienzo y busca en tu Google Drive. |
 | 📝 | Pasar una lámina o una captura al lienzo | «Calca esto»: cada recuadro, texto, fórmula y figura sale editable y en su sitio. |
 | 🎓 | Que no se me olvide la clase | Escribo mi horario y antes de cada clase me «llama», con la nota de voz que me dejé. |
@@ -83,9 +83,9 @@ Dicho fácil, para cualquier persona:
 
 ## Un vistazo
 
-| Capturar y anotar sin abrir otra ventana | Buscar en todo PixDesk |
+| Capturar y anotar sin abrir otra ventana | Buscar en todo PinDesk |
 |---|---|
-| ![Captura: después de elegir la zona](docs/img/v2/captura-despues.png) | ![Buscar en PixDesk](docs/img/v2/buscar-resultados.png) |
+| ![Captura: después de elegir la zona](docs/img/v2/captura-despues.png) | ![Buscar en PinDesk](docs/img/v2/buscar-resultados.png) |
 | **Timeline: el día, minuto a minuto** | **Cada momento, como una historia** |
 | ![Timeline: Estado](docs/img/v2/timeline-estado.png) | ![Historia de un momento](docs/img/v2/timeline-historia-sin-foto.png) |
 | **Lecciones aprendidas, dentro del timeline** | **Galería de capturas que caducan** |
@@ -103,7 +103,7 @@ flowchart LR
     C -->|Texto · Ctrl T| G[OCR de Windows]
     C -->|Guardar · Ctrl S| H[Galería<br/>caduca en 7 días]
     H -->|Conservar| F
-    F <-->|Wi‑Fi, sin nube| I[PixDesk Android]
+    F <-->|Wi‑Fi, sin nube| I[PinDesk Android]
 ```
 
 ## Qué hace
@@ -329,7 +329,7 @@ si hay varias, se ven apiladas. Los **emoticonos** de una tarea salen como estad
 ![Tareas en tarjetas](docs/img/v2/tareas-tarjetas.png)
 
 **Galería de capturas**: las capturas hechas en el PC **se borran solas a los 7 días** (van a la
-papelera de PixDesk y se pueden recuperar), salvo las que conservas.
+papelera de PinDesk y se pueden recuperar), salvo las que conservas.
 
 | Al pasar el ratón | Elegir varias |
 |---|---|
@@ -381,7 +381,7 @@ grupo enseña su última herramienta y despliega las demás.
 - **Ángulos** (`W`): un clic junto a un vértice pone la marca con la siguiente letra griega libre
   (α, β, θ…); `W` otra vez, el de 90° con su cuadradito; `↑` `↓` cambian la letra.
 - **Mandar a un lienzo por su nombre**: desde Flow (`p lienzo Obra > texto`, con fotos pegadas) o
-  la consola (`pixdesk al-lienzo Obra foto.png`); se apilan en una columna para ordenarlos luego.
+  la consola (`pindesk al-lienzo Obra foto.png`); se apilan en una columna para ordenarlos luego.
 - **Señalar y tapar**: pasos numerados, foco, lupa, pixelar o desenfocar, láser y marcadores.
 - **Gráficas y tablas**; tablas pegadas de Excel o Sheets con celdas combinadas.
 - **Zona al chat**: un rectángulo del lienzo va al chat con su vínculo de vuelta.
@@ -393,7 +393,7 @@ grupo enseña su última herramienta y despliega las demás.
 
 ### Abrir fotos, vídeos y audios
 
-PixDesk puede ser la **app predeterminada** (el instalador abre la página de Windows para elegirla).
+PinDesk puede ser la **app predeterminada** (el instalador abre la página de Windows para elegirla).
 Al abrir un archivo sale como ventana flotante, en unos 200 ms:
 
 | Tipo | Formatos | Se abre como |
@@ -408,7 +408,7 @@ Al abrir un archivo sale como ventana flotante, en unos 200 ms:
 | Modelos 3D | ifc, rvt (Revit 2023–2025) | El visor 3D |
 | Civil 3D | xml (LandXML), csv y txt de puntos | El visor 3D, como terreno |
 
-\* Necesitan la extensión gratuita de Microsoft Store (HEVC, AV1, VP9 o JPEG XL). Si falta, PixDesk
+\* Necesitan la extensión gratuita de Microsoft Store (HEVC, AV1, VP9 o JPEG XL). Si falta, PinDesk
 dice cuál instalar.
 
 ### Planos de AutoCAD
@@ -417,7 +417,7 @@ Abre un **DWG o DXF** con doble clic, desde el chat o arrastrándolo, y se ve al
 AutoCAD** y sin esperar. Sale como un pin, encima de todo, y se mueve y se estira como cualquier
 ventana.
 
-![Un plano de AutoCAD abierto en PixDesk](docs/img/v2/plano-dwg.png)
+![Un plano de AutoCAD abierto en PinDesk](docs/img/v2/plano-dwg.png)
 
 **Moverse por el plano**: la rueda acerca y aleja hacia donde apunta el ratón; arrastrar mueve el
 plano; doble clic (o `F`) lo enseña entero. Al pasar el ratón sale una barra arriba, fuera del
@@ -445,7 +445,7 @@ plano, con estas herramientas:
 Abre un modelo de **Revit** (`.rvt`) o **IFC** (`.ifc`) y se ve en 3D en una ventana como un pin.
 No hace falta tener Revit.
 
-![Una casa en IFC abierta en PixDesk](docs/img/v2/modelo-3d.png)
+![Una casa en IFC abierta en PinDesk](docs/img/v2/modelo-3d.png)
 
 **Cómo se usa**, con el ratón:
 
@@ -489,7 +489,7 @@ nivel**, ejes de carretera con su perfil, puntos, tuberías y parcelas.
 - **LandXML** (`.xml`): superficies, alineamientos y perfiles, puntos, redes de tuberías y parcelas.
 - **Ficheros de puntos** (`.csv` y `.txt`, en orden PNEZD o ENZ): se unen solos en un terreno.
 - **DWG de Civil 3D**: con el botón `3D` del visor de planos. Si el dibujo se guardó sin sus
-  gráficos (`PROXYGRAPHICS = 0`), PixDesk avisa, porque esa información no viene en el archivo.
+  gráficos (`PROXYGRAPHICS = 0`), PinDesk avisa, porque esa información no viene en el archivo.
 
 ### Leer PDF y Word como un pin
 
@@ -515,13 +515,13 @@ haciendo. Arriba, fuera de la hoja, sale su barra:
   1, 2, 3… llevan a cada marco, y cada botón dice su atajo al pasar el ratón.
 - **Markdown** lleva ver/editar, deshacer, buscar, comentarios y compartir; **HTML**, recargar,
   exportar y abrir en el navegador. La misma barra para todos.
-- **Rápidos**: el navegador interno se prepara solo al arrancar PixDesk, y un HTML se ve en
+- **Rápidos**: el navegador interno se prepara solo al arrancar PinDesk, y un HTML se ve en
   ~0,1 s en vez de ~0,9 s. En Markdown, las tablas se ven siempre como tablas y se escribe
   directamente en sus celdas (pulsar una ya no enseña su código).
 
 ### Word, Excel y PowerPoint al instante
 
-PixDesk **dibuja él mismo** los archivos de Office: no abre Word, Excel ni PowerPoint y no deja
+PinDesk **dibuja él mismo** los archivos de Office: no abre Word, Excel ni PowerPoint y no deja
 nada en segundo plano. Se ven como en Office (páginas, letras, tablas, imágenes, colores del
 tema) y abren en una décima de segundo, aunque el documento tenga cien páginas.
 
@@ -538,7 +538,7 @@ tema) y abren en una décima de segundo, aunque el documento tenga cien páginas
 <img src="docs/img/v2/excel-pin.png" width="420" alt="Un presupuesto de Excel abierto como un pin"> <img src="docs/img/v2/excel-informe.png" width="420" alt="Un informe de ventas con formatos y gráficos">
 
 **Un Word o PowerPoint antiguo** (`.doc`, `.ppt`, RTF, OpenDocument) se abre al momento con la
-vista previa de Office y, mientras, PixDesk lo **convierte una vez** a `.docx`/`.pptx` con tu
+vista previa de Office y, mientras, PinDesk lo **convierte una vez** a `.docx`/`.pptx` con tu
 Office (sin ventana, y Office se cierra al acabar). En unos segundos el pin pasa solo al visor
 propio, donde se anota, se ponen marcos y marcadores, y **todo viaja** con el adjunto del chat
 como el de un `.docx`. La siguiente vez abre directamente en el visor propio:
@@ -566,7 +566,7 @@ pinea desde ahí.
 <img src="docs/img/v2/salida.png" width="420" alt="Ventanita para arrastrar lo exportado">
 
 - **`.pixpin` con todo dentro**: el chat entero (o el fichero suelto) con su tinta, marcos
-  numerados, marcadores con su zoom y lo anotado en planos y modelos 3D. Al abrirlo en otro PixDesk
+  numerados, marcadores con su zoom y lo anotado en planos y modelos 3D. Al abrirlo en otro PinDesk
   o en el móvil, todo vuelve a su sitio; «Crear como nuevo» no lo suelta.
 - **Lo editable de un lienzo es el `.pixpin`**: el `.excalidraw` suelto ya no se ofrece. Los
   `.excalidraw` que tengas se siguen abriendo.
@@ -576,7 +576,7 @@ pinea desde ahí.
 
 ### Flow Launcher
 
-Con [Flow Launcher](https://www.flowlauncher.com/) se usa PixDesk sin abrirla: escribe **`p`**.
+Con [Flow Launcher](https://www.flowlauncher.com/) se usa PinDesk sin abrirla: escribe **`p`**.
 El plugin tiene su propio repositorio:
 [PIXPIN_PRO_PLUGIN_FLOWLAUNCHER](https://github.com/1xmanMAX/PIXPIN_PRO_PLUGIN_FLOWLAUNCHER).
 
@@ -597,7 +597,7 @@ sequenceDiagram
     participant U as Tú
     participant F as Flow Launcher
     participant L as pixpin-lanzador.exe
-    participant P as PixDesk
+    participant P as PinDesk
     U->>F: p t revisar fisura + Ctrl V
     F->>L: JSON-RPC (query)
     L-->>F: resultados (lee el índice en caché)
@@ -618,10 +618,10 @@ seguridad.
 
 ```mermaid
 flowchart LR
-    subgraph PC[PixDesk · Windows]
+    subgraph PC[PinDesk · Windows]
       A[(Proyectos<br/>cuaderno + hojas)]
     end
-    subgraph Movil[PixDesk Android]
+    subgraph Movil[PinDesk Android]
       B[(Proyectos<br/>mismo formato)]
     end
     A <-->|mDNS + cifrado<br/>cambio a cambio| B
@@ -629,7 +629,7 @@ flowchart LR
 ```
 
 - Lo anotado sobre PDF, Word y EPUB viaja en las dos direcciones: tinta, marcadores y espacios
-  para anotar. Hace falta PixDesk Android 0.96 o superior.
+  para anotar. Hace falta PinDesk Android 0.96 o superior.
 - También viajan los **marcos numerados**, los **marcadores con su zoom**, la tinta de Excel, de
   páginas web y notas, y en DWG/BIM los marcadores con toda su vista. Los formatos, para seguir
   desarrollando en otro aparato: [`docs/sincronizar-marcos-vistas-y-tinta.md`](docs/sincronizar-marcos-vistas-y-tinta.md).
@@ -680,12 +680,12 @@ son letras que **solo valen dentro de la ventana abierta**, y cada botón muestr
 ## Instalar
 
 1. Descarga el ZIP de la última versión en [Releases](https://github.com/1xmanMAX/PIXPIN_PRO_WINDOWS/releases).
-2. Descomprímelo y ejecuta `Instalar.cmd` (lo deja en `%LOCALAPPDATA%\Programs\PixDesk` y lo
-   abre) o `pixdesk.exe` directamente. Se queda en la bandeja y arranca con Windows. Si tenías
+2. Descomprímelo y ejecuta `Instalar.cmd` (lo deja en `%LOCALAPPDATA%\Programs\PinDesk` y lo
+   abre) o `pindesk.exe` directamente. Se queda en la bandeja y arranca con Windows. Si tenías
    PixPin Max, `Instalar.cmd` la sustituye y conserva tus datos.
-3. Opcional: en **Ajustes → Apps predeterminadas** elige PixDesk para fotos, vídeos y audios.
+3. Opcional: en **Ajustes → Apps predeterminadas** elige PinDesk para fotos, vídeos y audios.
 
-**Modo portable**: si junto a `pixdesk.exe` hay un `pixpinmax.toml` (el nombre de antes, a propósito), todo se guarda en esa
+**Modo portable**: si junto a `pindesk.exe` hay un `pixpinmax.toml` (el nombre de antes, a propósito), todo se guarda en esa
 carpeta y nada en el registro, así que se puede llevar en un USB.
 
 ## Cómo está hecho
@@ -696,7 +696,7 @@ una capa superior.
 
 ```mermaid
 flowchart TB
-    L5["<b>Capa 5 · la app</b><br/>pixpin → pixdesk.exe"]
+    L5["<b>Capa 5 · la app</b><br/>pixpin → pindesk.exe"]
     L4["<b>Capa 4 · ventanas propias</b><br/>pixpin-notas (editor de notas)"]
     L3["<b>Capa 3 · interfaz</b><br/>pixpin-ui · pixpin-flow · pixpin-plugin"]
     L2["<b>Capa 2 · funciones</b><br/>pixpin-capture · pixpin-pin · pixpin-pila · pixpin-proyecto<br/>pixpin-pdf · pixpin-docs · pixpin-ocr · pixpin-record · pixpin-store<br/>pixpin-lanzador (Flow) · pixpin-aligerar (PDF)<br/>pixpin-cad (planos y 3D) · pixpin-bim (Revit, IFC, Civil 3D)"]
@@ -733,7 +733,7 @@ Hace falta Rust estable (1.85 o superior) en Windows.
 cargo build --release -p pixpin -p pixpin-aligerar -p pixpin-lanzador
 ```
 
-Para dejarlo instalado en `%LOCALAPPDATA%\Programs\PixDesk`, con el acceso del menú Inicio y
+Para dejarlo instalado en `%LOCALAPPDATA%\Programs\PinDesk`, con el acceso del menú Inicio y
 el plugin de Flow Launcher:
 
 ```powershell
@@ -752,7 +752,7 @@ cargo test --workspace --no-fail-fast -- --test-threads=1
 - Nada sale del equipo salvo lo que sincronizas con tu propio móvil en tu Wi‑Fi.
 - **El asistente en la nube es opcional**: solo si pones tu clave de Claude o DeepSeek, y entonces
   le llega lo que le pidas. Las claves y los permisos de Google Drive se guardan cifrados (DPAPI);
-  Drive solo pide leer y subir lo que PixDesk crea, nunca borrar.
+  Drive solo pide leer y subir lo que PinDesk crea, nunca borrar.
 - Sin cuentas, sin nube y sin telemetría. Los registros se quedan en la carpeta de datos.
 - El OCR y la transcripción se hacen en el propio equipo.
 

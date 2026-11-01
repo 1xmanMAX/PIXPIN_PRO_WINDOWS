@@ -329,7 +329,7 @@ impl Repuesto {
             .unwrap_or(1.0);
         let (area_pin, _) = crate::lector_pin::area_inicial();
         let pin = PinLector::nuevo(area_pin, e).con_extension("md");
-        let ventana = VentanaOverlay::nueva_llana(pin.area, "PixDesk")
+        let ventana = VentanaOverlay::nueva_llana(pin.area, "PinDesk")
             .map_err(|e| anyhow::anyhow!("no se pudo hacer la ventana de repuesto: {e:?}"))?;
         let actual = Rc::new(RefCell::new(Destino::Nueva {
             proyecto: String::new(),
@@ -338,7 +338,7 @@ impl Repuesto {
         // Escondida y a destiempo: no le quita el teclado a nadie.
         pixpin_web::no_quitar_el_foco_durante(3000);
         let pagina = Pagina::nueva(OpcionesPagina {
-            titulo: "PixDesk".into(),
+            titulo: "PinDesk".into(),
             area: Some(pin.area_de_la_vista()),
             maximizada: false,
             fondo: fondo(pin.oscuro()),
@@ -1188,7 +1188,7 @@ fn titulo_de_ventana(titulo: &str, t: &Catalogo) -> String {
     if titulo.trim().is_empty() {
         t.t("nota-md-nueva")
     } else {
-        format!("{} — PixDesk", titulo.trim())
+        format!("{} — PinDesk", titulo.trim())
     }
 }
 

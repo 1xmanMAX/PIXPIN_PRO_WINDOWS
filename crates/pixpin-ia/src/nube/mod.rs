@@ -251,7 +251,7 @@ pub fn clasificar(p: Proveedor, codigo: u32, cuerpo: &str) -> (String, bool) {
             false,
         ),
         404 => (
-            format!("{n} ya no ofrece el modelo que usa PixDesk. Actualiza PixDesk."),
+            format!("{n} ya no ofrece el modelo que usa PinDesk. Actualiza PinDesk."),
             false,
         ),
         413 => (

@@ -344,7 +344,7 @@ pub(crate) fn pixpin_nuevo(
     use pixpin_proyecto::cuaderno::{Clase, Mensaje};
     anyhow::ensure!(!apuntes.is_empty(), "no hay nada que poner en el .pixpin");
     let nombre = if titulo.trim().is_empty() {
-        "PixDesk".to_string()
+        "PinDesk".to_string()
     } else {
         titulo.trim().to_string()
     };

@@ -1408,7 +1408,7 @@ mod pruebas {
         assert!(fue_ocupado(pixpin_sincro::mensajes::OCUPADO));
         // Casos negativos: si alguno fallo de verdad, es un fallo.
         assert!(!fue_ocupado(&format!(
-            "{uno}\n\nNo se pudo llegar a Movil. Comprueba que está en la misma Wi-Fi y con PixDesk abierto."
+            "{uno}\n\nNo se pudo llegar a Movil. Comprueba que está en la misma Wi-Fi y con PinDesk abierto."
         )));
         assert!(!fue_ocupado("No se pudo con ninguno."));
         assert!(!fue_ocupado(""));

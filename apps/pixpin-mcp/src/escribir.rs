@@ -83,7 +83,7 @@ fn ventana_de_pixpin() -> Result<HWND, String> {
         return Ok(h);
     }
     let cerrada =
-        || "PixDesk no esta abierta y no se pudo arrancar; pide al usuario que la abra".to_string();
+        || "PinDesk no esta abierta y no se pudo arrancar; pide al usuario que la abra".to_string();
     if clase != CLASE {
         return Err(cerrada());
     }
@@ -168,7 +168,7 @@ pub fn pedido(a: &Accion, args: &Map<String, Value>, respuesta: &Path) -> Value 
 /// Lee una respuesta ya escrita: `Ok` con su texto o `Err` con el motivo.
 pub fn leer_respuesta(texto: &str) -> Result<String, String> {
     let v: Value = serde_json::from_str(texto)
-        .map_err(|_| "PixDesk contesto algo que no se entiende".to_string())?;
+        .map_err(|_| "PinDesk contesto algo que no se entiende".to_string())?;
     let t = v
         .get("texto")
         .and_then(Value::as_str)
@@ -182,7 +182,7 @@ pub fn leer_respuesta(texto: &str) -> Result<String, String> {
         })
     } else {
         Err(if t.trim().is_empty() {
-            "PixDesk no pudo hacerlo".into()
+            "PinDesk no pudo hacerlo".into()
         } else {
             t
         })
@@ -199,12 +199,12 @@ pub fn hacer(a: &'static Accion, args: &Map<String, Value>) -> Result<String, St
     match mensajero::enviar_pedido_a(destino, &json) {
         respuesta::ACEPTADO => {}
         respuesta::NO_SE_ENTIENDE => {
-            return Err("esta PixDesk no entiende el pedido «herramienta»: hay que actualizarla (herramientas\\instalar.ps1)".into());
+            return Err("esta PinDesk no entiende el pedido «herramienta»: hay que actualizarla (herramientas\\instalar.ps1)".into());
         }
         respuesta::VERSION_NO => {
-            return Err("esta PixDesk no conoce la version 1 de los pedidos".into());
+            return Err("esta PinDesk no conoce la version 1 de los pedidos".into());
         }
-        _ => return Err("PixDesk no contesto; puede que se este cerrando".into()),
+        _ => return Err("PinDesk no contesto; puede que se este cerrando".into()),
     }
     let plazo = if crate::herramientas::pregunta(a) {
         PLAZO_CON_PREGUNTA
@@ -225,7 +225,7 @@ pub fn esperar(fichero: &Path, plazo: Duration) -> Result<String, String> {
             return leer_respuesta(&texto);
         }
         if Instant::now() >= hasta {
-            return Err(format!("PixDesk no contesto en {} s", plazo.as_secs()));
+            return Err(format!("PinDesk no contesto en {} s", plazo.as_secs()));
         }
         std::thread::sleep(paso);
         // Rapido al principio (casi todo tarda milisegundos), luego sin

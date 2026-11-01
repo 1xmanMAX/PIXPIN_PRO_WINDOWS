@@ -155,7 +155,7 @@ pub fn resultados(resto: &str, ctx: &Contexto) -> Vec<Resultado> {
     let Some(aparatos) = grupo else {
         return vec![abrir_sincronizar(
             "Este PC no está en un grupo",
-            "Sincronizar en PixDesk: crea o únete al grupo de tu móvil · Intro la abre",
+            "Sincronizar en PinDesk: crea o únete al grupo de tu móvil · Intro la abre",
         )];
     };
     if aparatos.is_empty() {

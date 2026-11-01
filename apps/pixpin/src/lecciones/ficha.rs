@@ -1586,7 +1586,7 @@ mod pruebas {
     }
     /// La ficha de una leccion ya guardada con su tira de fotos y audios (dos
     /// que tenia, una foto y un audio nuevos). `PIXPIN_MUESTRAS` dice donde.
-    /// `cargo test -p pixpin --bin pixdesk -- --ignored muestra_de_la_ficha_con_adjuntos`
+    /// `cargo test -p pixpin --bin pindesk -- --ignored muestra_de_la_ficha_con_adjuntos`
     #[test]
     #[ignore = "pinta la ficha a PNG"]
     fn muestra_de_la_ficha_con_adjuntos() {

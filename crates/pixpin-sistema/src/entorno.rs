@@ -14,13 +14,13 @@
 use std::path::{Path, PathBuf};
 
 /// El ejecutable de la app de Windows. Desde nov-2026 la app se llama
-/// PixDesk; antes era [`EXE_VIEJO`], y quien la tenia instalada puede
-/// tenerlo aun hasta que pase por `Instalar.cmd` (docs/nombre-pixdesk.md).
-pub const EXE: &str = "pixdesk.exe";
+/// PinDesk; antes era [`EXE_VIEJO`], y quien la tenia instalada puede
+/// tenerlo aun hasta que pase por `Instalar.cmd` (docs/nombre-pindesk.md).
+pub const EXE: &str = "pindesk.exe";
 /// El nombre de antes de [`EXE`].
 pub const EXE_VIEJO: &str = "pixpinmax.exe";
 /// La carpeta de `%LOCALAPPDATA%\Programs` donde la deja `Instalar.cmd`.
-pub const CARPETA_PROGRAMA: &str = "PixDesk";
+pub const CARPETA_PROGRAMA: &str = "PinDesk";
 /// La carpeta de antes de [`CARPETA_PROGRAMA`].
 pub const CARPETA_PROGRAMA_VIEJA: &str = "PixPinMax";
 
@@ -56,7 +56,7 @@ pub fn exe_de_la_app(dir: Option<&Path>) -> Option<PathBuf> {
     }
 }
 
-/// Directorio donde vive el ejecutable (`pixdesk.exe` en Windows).
+/// Directorio donde vive el ejecutable (`pindesk.exe` en Windows).
 pub fn directorio_del_ejecutable() -> std::io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
     exe.parent()
@@ -376,9 +376,9 @@ mod pruebas {
         assert_eq!(
             v,
             [
-                dir.join("pixdesk.exe"),
+                dir.join("pindesk.exe"),
                 dir.join("pixpinmax.exe"),
-                local.join("Programs").join("PixDesk").join("pixdesk.exe"),
+                local.join("Programs").join("PinDesk").join("pindesk.exe"),
                 local
                     .join("Programs")
                     .join("PixPinMax")

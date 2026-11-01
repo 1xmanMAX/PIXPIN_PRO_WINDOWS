@@ -317,7 +317,7 @@ pub fn instrucciones(hoja_de_calculo: bool) -> String {
         "el trozo EXACTO del documento al que se refiere, copiado letra por letra del renglon (de 2 a 12 palabras; una palabra sola si es un termino)"
     };
     format!(
-        "Eres el anotador de documentos de PixDesk. Recibes el texto de una o varias paginas renglon a renglon \
+        "Eres el anotador de documentos de PinDesk. Recibes el texto de una o varias paginas renglon a renglon \
          (cada renglon con su numero «L12»{celdas}) y el pedido del usuario. Contestas SOLO con anotaciones, \
          una por linea, cada una un objeto JSON en UNA sola linea; nada de texto antes ni despues, ni ``` ni listas.\n\
          Campos:\n\

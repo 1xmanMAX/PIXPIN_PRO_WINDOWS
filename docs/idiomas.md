@@ -1,6 +1,6 @@
-# Los idiomas de PixDesk
+# Los idiomas de PinDesk
 
-PixDesk habla catorce idiomas (1-nov-2026). Español e inglés son los de siempre y están
+PinDesk habla catorce idiomas (1-nov-2026). Español e inglés son los de siempre y están
 completos; los otros doce pueden estar enteros, a medias o sin empezar: **lo que le falta a un
 idioma se ve en inglés** (y si tampoco está en inglés, en español). Nunca se ve una clave.
 
@@ -66,7 +66,7 @@ En `ajustes.toml` también vale la etiqueta entera (`fr-FR`, `es-ES`); los fiche
 ### Las reglas
 
 - **Las claves no se traducen** (`captura-guardada = …`: solo lo de la derecha).
-- **Las marcas se quedan como están**: PixDesk (antes PixPin Max; ver docs/nombre-pixdesk.md), Jev, TypeSafe, Anki, Excalidraw, Whisper, Vosk,
+- **Las marcas se quedan como están**: PinDesk (antes PixPin Max; ver docs/nombre-pindesk.md), Jev, TypeSafe, Anki, Excalidraw, Whisper, Vosk,
   Claude, DeepSeek, Google Drive, WeChat… y los nombres de teclas y atajos (`Ctrl+Alt+X`).
 - **Las variables, iguales**: `{ $atajo }`, `{ $n }`, `{ $ruta }` van tal cual, con el mismo nombre,
   donde la frase las pida. Cada mensaje tiene que usar **las mismas** variables que en inglés (lo

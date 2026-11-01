@@ -194,7 +194,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "abrir_fichero",
         accion: "abrir",
-        descripcion: "Abre un fichero en PixDesk (PDF, Word, Excel, imagen, plano...), como «Abrir con PixDesk».",
+        descripcion: "Abre un fichero en PinDesk (PDF, Word, Excel, imagen, plano...), como «Abrir con PinDesk».",
         categoria: Categoria::Abrir,
         claves: &[
             "abre",
@@ -587,7 +587,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "abrir_ventana",
         accion: "ventana",
-        descripcion: "Abre una ventana de PixDesk: tareas, galeria (de capturas), lecciones o sincronizar.",
+        descripcion: "Abre una ventana de PinDesk: tareas, galeria (de capturas), lecciones o sincronizar.",
         categoria: Categoria::Abrir,
         claves: &[
             "ventana",
@@ -654,7 +654,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "abrir_otra_ventana",
         accion: "ventana",
-        descripcion: "Abre los ajustes de PixDesk, el timeline o el buscador de PixDesk.",
+        descripcion: "Abre los ajustes de PinDesk, el timeline o el buscador de PinDesk.",
         categoria: Categoria::Abrir,
         claves: &["ajustes", "configuracion", "timeline", "buscador"],
         fijos: "{}",
@@ -802,7 +802,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "borrar_captura",
         accion: "borrar_captura",
-        descripcion: "Manda una captura a la papelera de PixDesk.",
+        descripcion: "Manda una captura a la papelera de PinDesk.",
         categoria: Categoria::Capturas,
         claves: &["borra la captura", "elimina la captura", "papelera"],
         fijos: "{}",
@@ -1000,7 +1000,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "leer_en_voz_alta",
         accion: EN_EL_CHAT,
-        descripcion: "Lee en voz alta un texto o un documento del chat (PDF, Word, nota...) con la voz de PixDesk.",
+        descripcion: "Lee en voz alta un texto o un documento del chat (PDF, Word, nota...) con la voz de PinDesk.",
         categoria: Categoria::Audio,
         claves: &[
             "en voz alta",
@@ -1182,7 +1182,7 @@ pub const ACCIONES: &[Accion] = &[
     Accion {
         herramienta: "resumen_de_actividad",
         accion: EN_EL_CHAT,
-        descripcion: "Cuenta lo hecho en PixDesk hoy, esta semana o este mes: mensajes y notas, fotos, capturas, momentos del timeline y tareas.",
+        descripcion: "Cuenta lo hecho en PinDesk hoy, esta semana o este mes: mensajes y notas, fotos, capturas, momentos del timeline y tareas.",
         categoria: Categoria::Tareas,
         claves: &[
             "cuanto hice",

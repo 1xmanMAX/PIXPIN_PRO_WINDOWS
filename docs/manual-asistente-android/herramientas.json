@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "dibujar_en_lienzo",
-      "description": "Dibuja figuras en el lienzo de PixDesk (800x600, origen arriba a la izquierda). Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». Tipos: rectangulo, elipse, rombo, triangulo, estrella y onda (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); linea, flecha, curva (suave), poligono y lapiz (a mano alzada) (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»); punto (con «x», «y» y su letra en «texto»); instrumento (plano cartesiano con «ejes»:2, recta con 1, espacio con 3; «caja», «unidad» en px y «tabla»:[[x,y],...] de coordenadas). Opcionales: «grosor», «trazo» (solido, discontinuo, punteado), «opacidad» (0-100), «relleno_estilo» (solido, rayado, cruzado), «material» del lapiz (lisa, tiza, grafito) con su «dureza» (4H, 2H, HB, 2B, 4B, 6B, 8B) y «capa» (las mayores van encima). Una figura con «texto» lo lleva escrito dentro (o encima si es flecha). «grupo»: un nombre comun para agrupar varias. Ejemplo, una casa: {\"elementos\":[{\"tipo\":\"rectangulo\",\"caja\":[300,280,200,160],\"color\":\"marron\"},{\"tipo\":\"triangulo\",\"caja\":[280,170,240,110],\"color\":\"rojo\",\"relleno\":\"rojo\"},{\"tipo\":\"rectangulo\",\"caja\":[380,360,40,80],\"color\":\"azul\",\"relleno\":\"azul\"}]}. Un paso de un diagrama: {\"tipo\":\"rectangulo\",\"caja\":[60,260,160,70],\"texto\":\"Inicio\"},{\"tipo\":\"flecha\",\"puntos\":[220,295,320,295]}. Para copiar exacta una foto adjunta usa calcar_imagen; para dibujarla con figuras o a lapiz, interpretala con estas figuras. Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg.",
+      "description": "Dibuja figuras en el lienzo de PinDesk (800x600, origen arriba a la izquierda). Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». Tipos: rectangulo, elipse, rombo, triangulo, estrella y onda (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); linea, flecha, curva (suave), poligono y lapiz (a mano alzada) (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»); punto (con «x», «y» y su letra en «texto»); instrumento (plano cartesiano con «ejes»:2, recta con 1, espacio con 3; «caja», «unidad» en px y «tabla»:[[x,y],...] de coordenadas). Opcionales: «grosor», «trazo» (solido, discontinuo, punteado), «opacidad» (0-100), «relleno_estilo» (solido, rayado, cruzado), «material» del lapiz (lisa, tiza, grafito) con su «dureza» (4H, 2H, HB, 2B, 4B, 6B, 8B) y «capa» (las mayores van encima). Una figura con «texto» lo lleva escrito dentro (o encima si es flecha). «grupo»: un nombre comun para agrupar varias. Ejemplo, una casa: {\"elementos\":[{\"tipo\":\"rectangulo\",\"caja\":[300,280,200,160],\"color\":\"marron\"},{\"tipo\":\"triangulo\",\"caja\":[280,170,240,110],\"color\":\"rojo\",\"relleno\":\"rojo\"},{\"tipo\":\"rectangulo\",\"caja\":[380,360,40,80],\"color\":\"azul\",\"relleno\":\"azul\"}]}. Un paso de un diagrama: {\"tipo\":\"rectangulo\",\"caja\":[60,260,160,70],\"texto\":\"Inicio\"},{\"tipo\":\"flecha\",\"puntos\":[220,295,320,295]}. Para copiar exacta una foto adjunta usa calcar_imagen; para dibujarla con figuras o a lapiz, interpretala con estas figuras. Para ilustraciones con curvas o mucho detalle, mejor dibujar_svg.",
       "parameters": {
         "properties": {
           "elementos": {
@@ -525,7 +525,7 @@
     "type": "function",
     "function": {
       "name": "ayuda_app",
-      "description": "Busca en la ayuda de PixDesk donde esta algo o como se hace (menus, atajos, ventanas). Usala ante cualquier pregunta sobre la app, antes de contestar.",
+      "description": "Busca en la ayuda de PinDesk donde esta algo o como se hace (menus, atajos, ventanas). Usala ante cualquier pregunta sobre la app, antes de contestar.",
       "parameters": {
         "properties": {
           "pregunta": {
@@ -580,7 +580,7 @@
     "type": "function",
     "function": {
       "name": "abrir_fichero",
-      "description": "Abre un fichero en PixDesk (PDF, Word, Excel, imagen, plano...), como «Abrir con PixDesk».",
+      "description": "Abre un fichero en PinDesk (PDF, Word, Excel, imagen, plano...), como «Abrir con PinDesk».",
       "parameters": {
         "properties": {
           "ruta": {
@@ -909,7 +909,7 @@
     "type": "function",
     "function": {
       "name": "abrir_ventana",
-      "description": "Abre una ventana de PixDesk: tareas, galeria (de capturas), lecciones o sincronizar.",
+      "description": "Abre una ventana de PinDesk: tareas, galeria (de capturas), lecciones o sincronizar.",
       "parameters": {
         "properties": {
           "cual": {
@@ -996,7 +996,7 @@
     "type": "function",
     "function": {
       "name": "borrar_captura",
-      "description": "Manda una captura a la papelera de PixDesk.",
+      "description": "Manda una captura a la papelera de PinDesk.",
       "parameters": {
         "properties": {
           "ruta": {
@@ -1169,7 +1169,7 @@
     "type": "function",
     "function": {
       "name": "tabla_de_imagen",
-      "description": "Pasa la tabla de una foto o un PDF (escaneado o no) a una tabla del chat o a un Excel. Las celdas las lee PixDesk; tu solo eliges destino, nombre y si la primera fila es cabecera.",
+      "description": "Pasa la tabla de una foto o un PDF (escaneado o no) a una tabla del chat o a un Excel. Las celdas las lee PinDesk; tu solo eliges destino, nombre y si la primera fila es cabecera.",
       "parameters": {
         "properties": {
           "archivo": {

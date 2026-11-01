@@ -573,7 +573,7 @@ fn la_ayuda_tiene_todos_los_verbos_y_los_codigos() {
     for v in VERBOS {
         assert!(a.contains(v.uso), "{}", v.uso);
     }
-    for n in ["0 aceptado", "4 PixDesk", "6 rechazado"] {
+    for n in ["0 aceptado", "4 PinDesk", "6 rechazado"] {
         assert!(a.contains(n), "{n}");
     }
     // Ningun nombre de verbo esta repetido en dos filas.

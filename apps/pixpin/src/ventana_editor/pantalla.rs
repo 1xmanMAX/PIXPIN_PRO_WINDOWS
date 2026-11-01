@@ -620,7 +620,7 @@ mod pruebas {
     /// hace `abrir_en_modo` antes del primer fotograma; en viva no hay
     /// captura. Cinco vueltas: la primera paga lo que Windows carga una vez
     /// por proceso (DirectWrite, las DLL del controlador).
-    /// `cargo test -p pixpin --release --bin pixdesk banco_de_entrar_en_el_anotador -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --release --bin pindesk banco_de_entrar_en_el_anotador -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y escritorio (crea ventanas ocultas); ejecutar con --ignored --nocapture"]
     fn banco_de_entrar_en_el_anotador() {

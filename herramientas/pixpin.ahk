@@ -1,19 +1,19 @@
-; pixpin.ahk — PixDesk desde AutoHotkey v2.
+; pixpin.ahk — PinDesk desde AutoHotkey v2.
 ;
-;   #Include "C:\Users\<tu>\AppData\Local\Programs\PixDesk\pixpin.ahk"
+;   #Include "C:\Users\<tu>\AppData\Local\Programs\PinDesk\pixpin.ahk"
 ;
 ;   ^!t:: PixPinTarea(InputBox("¿Que hay que hacer?", "PixPin").Value)
 ;   ^!c:: PixPinCapturar()
 ;   ^!o:: MsgBox(PixPinTexto("C:\capturas\factura.png"))
 ;   ^!i:: PixPinAsistente("resume mis tareas de hoy")
 ;
-; Todo va por la linea de ordenes de pixdesk.exe (docs/integraciones.md),
+; Todo va por la linea de ordenes de pindesk.exe (docs/integraciones.md),
 ; que manda el pedido a la PixPin abierta (y la abre si no lo esta). Cada
 ; funcion devuelve el codigo de salida: 0 aceptado, 1 fallo aqui, 2 version,
 ; 3 no se entiende, 4 PixPin no esta abierta, 5 no contesto, 6 rechazado.
 ;
 ; El ejecutable: la variable de entorno PIXPIN_EXE, o el que esta junto a
-; este fichero, o el instalado en %LOCALAPPDATA%\Programs\PixDesk (o el
+; este fichero, o el instalado en %LOCALAPPDATA%\Programs\PinDesk (o el
 ; pixpinmax.exe de cuando se llamaba PixPin Max).
 
 #Requires AutoHotkey v2.0
@@ -23,13 +23,13 @@ PixPinExe() {
     if (exe != "" && FileExist(exe))
         return exe
     SplitPath(A_LineFile, , &dir)
-    for exe in [dir "\pixdesk.exe", dir "\pixpinmax.exe"
-            , EnvGet("LOCALAPPDATA") "\Programs\PixDesk\pixdesk.exe"
+    for exe in [dir "\pindesk.exe", dir "\pixpinmax.exe"
+            , EnvGet("LOCALAPPDATA") "\Programs\PinDesk\pindesk.exe"
             , EnvGet("LOCALAPPDATA") "\Programs\PixPinMax\pixpinmax.exe"] {
         if FileExist(exe)
             return exe
     }
-    return EnvGet("LOCALAPPDATA") "\Programs\PixDesk\pixdesk.exe"
+    return EnvGet("LOCALAPPDATA") "\Programs\PinDesk\pindesk.exe"
 }
 
 ; La linea de ordenes, con cada argumento entre comillas como lo lee Windows

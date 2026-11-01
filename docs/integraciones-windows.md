@@ -2,14 +2,14 @@
 
 15-oct-2026. Los puntos 7 y 8 de `pixpin-v2/integraciones-propuesta.md`. Las dos cosas
 necesitan **un paso del usuario con permiso de administrador** (una vez); el código de la app ya
-está y, sin esos pasos, PixDesk funciona exactamente como antes.
+está y, sin esos pasos, PinDesk funciona exactamente como antes.
 
 ---
 
 ## 1. «Imprimir a PixPin»
 
-**Qué hace.** Aparece una impresora «PixPin» (se llama así desde antes de PixDesk y no cambia: docs/nombre-pixdesk.md). Desde cualquier programa (navegador, AutoCAD,
-una factura, Word) Imprimir → PixPin, y el PDF se abre en el lector de PixDesk como pin (con
+**Qué hace.** Aparece una impresora «PixPin» (se llama así desde antes de PinDesk y no cambia: docs/nombre-pindesk.md). Desde cualquier programa (navegador, AutoCAD,
+una factura, Word) Imprimir → PixPin, y el PDF se abre en el lector de PinDesk como pin (con
 buscar, anotar, OCR, leer en voz alta y mandarlo al chat). Igual que en Android, donde un
 archivo recibido sale como pin (`ShareReceiverActivity`).
 
@@ -19,10 +19,10 @@ Windows, con un **puerto local que es un fichero**:
 | Qué | Dónde |
 |---|---|
 | El puerto escribe | `%APPDATA%\PixPinMax\cache\impresora\PixPin.pdf` |
-| PixDesk lo deja | `%APPDATA%\PixPinMax\impresos\Impreso AAAA-MM-DD HH.MM.SS.pdf` |
+| PinDesk lo deja | `%APPDATA%\PixPinMax\impresos\Impreso AAAA-MM-DD HH.MM.SS.pdf` |
 | Lo que nunca acabó (trabajo cancelado, > 60 s a medias) | `…\cache\impresora\descartados\` |
 
-(En modo portable, cambia `%APPDATA%\PixPinMax` por la carpeta de `pixdesk.exe` y pásala con
+(En modo portable, cambia `%APPDATA%\PixPinMax` por la carpeta de `pindesk.exe` y pásala con
 `-Raiz`.)
 
 **El lado de la app** (`crates/pixpin-shell/src/impresora.rs`, `apps/pixpin/src/recibir_de_windows.rs`):
@@ -58,18 +58,18 @@ Lo que hace como administrador, por si se prefiere a mano:
 ## 2. Paquete de identidad (MSIX con ubicación externa)
 
 **Qué da.**
-- **PixDesk en el panel Compartir** de otras apps (WhatsApp, Teams, Fotos, Edge, el Explorador…):
+- **PinDesk en el panel Compartir** de otras apps (WhatsApp, Teams, Fotos, Edge, el Explorador…):
   texto, enlaces, imágenes y ficheros van al chat **«Mensajes guardados»** con el pedido `chat`
   (texto + enlace en un mensaje, fotos como fotos, el resto como adjuntos).
 - **Menú contextual de primer nivel en Windows 11** (sin «Mostrar más opciones») para los tipos
-  que PixDesk abre: **«Pinear con PixDesk»** y **«Enviar al chat de PixDesk»** (varios ficheros a la
+  que PinDesk abre: **«Pinear con PinDesk»** y **«Enviar al chat de PinDesk»** (varios ficheros a la
   vez en una sola llamada).
 - Identidad de paquete para avisos (ver «AUMID» abajo).
 
 **Cómo es.** Un `.msix` de 13 KB que **no lleva el programa**: solo el manifiesto
 (`herramientas/paquete-identidad/AppxManifest.xml`) y tres logos sacados del icono. Se registra
-con `Add-AppxPackage -ExternalLocation` apuntando a `%LOCALAPPDATA%\Programs\PixDesk` (la
-carpeta fija de `instalar.ps1`). Windows le da la identidad a `pixdesk.exe` porque su
+con `Add-AppxPackage -ExternalLocation` apuntando a `%LOCALAPPDATA%\Programs\PinDesk` (la
+carpeta fija de `instalar.ps1`). Windows le da la identidad a `pindesk.exe` porque su
 manifiesto incrustado (`apps/pixpin/pixpinmax.manifest`) lleva el elemento `<msix>` con el mismo
 editor, paquete y aplicación. El acceso directo, el arranque con Windows y la Jump List no cambian.
 
@@ -84,7 +84,7 @@ editor, paquete y aplicación. El acceso directo, el arranque con Windows y la J
 un servidor COM con `IExplorerCommand`, que en la práctica es un **DLL dentro del Explorador**:
 si falla, cuelga el Explorador (lo mismo que se descartó para las miniaturas). Los verbos de
 `uap3:FileTypeAssociation` salen igual en el menú de primer nivel de Windows 11, lanzan
-`pixdesk.exe` sin nada cargado en el Explorador y **no cambian** qué programa abre cada tipo.
+`pindesk.exe` sin nada cargado en el Explorador y **no cambian** qué programa abre cada tipo.
 Contra: solo aparecen en los tipos de la lista (imágenes, PDF, Office, EPUB, MD/TXT, DWG/DXF/IFC,
 audio, MP4), no en carpetas ni en «cualquier fichero».
 
@@ -96,7 +96,7 @@ audio, MP4), no en carpetas ni en «cualquier fichero».
 - Lo compartido se **copia** a `%APPDATA%\PixPinMax\cache\compartido\<ms>\` antes de contestar a
   Windows (`ReportCompleted`): la otra app puede borrar sus temporales en cuanto se le contesta.
   Si la app manda la foto como fichero y también suelta, va una sola vez.
-- El pedido `chat` va a la PixDesk que corre (si esta copia es la segunda) o a la propia ventana
+- El pedido `chat` va a la PinDesk que corre (si esta copia es la segunda) o a la propia ventana
   al arrancar (si Compartir la abrió), por el mismo camino que la Jump List.
 
 ### Herramientas del SDK
@@ -128,16 +128,16 @@ O paso a paso:
 | 1 | `-Crear` | Copia el manifiesto con la versión, saca los logos del `.ico` y hace `makeappx pack /nv` → `herramientas\paquete-identidad\salida\PixPinMax-identidad.msix` | No |
 | 2 | `-Firmar` | Si no está, crea el certificado de firma de código `CN=PixPin Max Local` (10 años) en `Cert:\CurrentUser\My`; lo exporta a `salida\PixPinMax-identidad.cer`; `signtool sign /fd SHA256` | No |
 | 3 | `-Confiar` | `Import-Certificate` del `.cer` en `Cert:\LocalMachine\TrustedPeople` (Windows solo instala paquetes firmados por alguien de confianza en el **equipo**) | **Sí, una vez** |
-| 4 | `-Registrar` | `Add-AppxPackage -Path <msix> -ExternalLocation %LOCALAPPDATA%\Programs\PixDesk -ForceUpdateFromAnyVersion`; dice el nombre completo y el AUMID del paquete | No |
+| 4 | `-Registrar` | `Add-AppxPackage -Path <msix> -ExternalLocation %LOCALAPPDATA%\Programs\PinDesk -ForceUpdateFromAnyVersion`; dice el nombre completo y el AUMID del paquete | No |
 
-**Comprobar:** en Edge, Compartir una página → «PixDesk» en la lista → el enlace aparece en
-«Mensajes guardados». Clic derecho en un PDF → «Pinear con PixDesk» / «Enviar al chat de PixDesk»
+**Comprobar:** en Edge, Compartir una página → «PinDesk» en la lista → el enlace aparece en
+«Mensajes guardados». Clic derecho en un PDF → «Pinear con PinDesk» / «Enviar al chat de PinDesk»
 en el primer nivel.
 
 **Quitar:** `paquete-identidad.ps1 -Quitar` (desregistra; sin admin). Con
 `-Quitar -BorrarCertificado` también quita el certificado de los dos almacenes (pide admin).
 
-**Al poner una versión nueva de PixDesk** con `instalar.ps1` no hace falta tocar el paquete:
+**Al poner una versión nueva de PinDesk** con `instalar.ps1` no hace falta tocar el paquete:
 apunta a la carpeta, no al fichero. Solo si cambia el manifiesto del paquete: `-Crear -Firmar
 -Registrar` (sin admin; el certificado ya es de confianza).
 

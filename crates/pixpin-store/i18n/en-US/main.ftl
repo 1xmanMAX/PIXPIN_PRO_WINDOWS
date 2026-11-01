@@ -1,6 +1,6 @@
-# PixDesk — English strings.
+# PinDesk — English strings.
 
-app-nombre = PixDesk
+app-nombre = PinDesk
 
 
 resultado-copiar = Copy
@@ -8,7 +8,7 @@ resultado-guardar-como = Save as…
 resultado-guardar = Save
 resultado-descartar = Discard
 
-error-otra-instancia = PixDesk is already running.
+error-otra-instancia = PinDesk is already running.
 error-atajo-ocupado = Could not register { $atajo }: another application is using it.
 
 captura-guardada = Screenshot saved to { $ruta }
@@ -95,7 +95,7 @@ pin-dejar-pasar-clic = Let clicks pass through
 
 # Muting the shortcuts for a while (P1.7).
 comando-silenciar-atajos = Mute the shortcuts
-bandeja-silenciada = PixDesk — shortcuts muted
+bandeja-silenciada = PinDesk — shortcuts muted
 aviso-atajos-silenciados = Shortcuts muted
 aviso-atajos-silenciados-detalle = Turn them back on from this same menu.
 aviso-atajos-activos = Shortcuts active
@@ -250,7 +250,7 @@ chat-no-hay-biblioteca = The audio library does not exist on Windows yet
 chat-ver-dibujo-entero = Show the whole drawing
 chat-no-hay-pagina = Attaching a page from a project does not exist on Windows yet
 chat-no-hay-telepronter = The teleprompter does not exist on Windows yet
-chat-no-se-pudo = It could not be done: check the PixDesk log
+chat-no-se-pudo = It could not be done: check the PinDesk log
 chat-fecha = { $mes } { $dia }
 chat-fecha-con-ano = { $mes } { $dia }, { $ano }
 chat-mes-1 = January
@@ -321,7 +321,7 @@ menu-foto-lienzo = Open in canvas
 menu-foto-pin = Pin it again
 menu-foto-abrir = Open with Windows
 recibir-titulo = Receive from phone
-recibir-como = Scan the code with PixDesk on your phone
+recibir-como = Scan the code with PinDesk on your phone
 recibir-esperando = Waiting for the phone…
 recibir-hecho = { $cuantos } items arrived
 recibir-salir = Escape to close
@@ -349,7 +349,7 @@ foto-chat-sin-imagen = There's no copied image
 foto-chat-error = Couldn't save the chat photo
 proyecto-borrar = Delete project
 proyecto-borrar-varios = Delete selected
-proyecto-borrar-aviso = It will leave the list and its folder will go to the PixDesk bin. Continue?
+proyecto-borrar-aviso = It will leave the list and its folder will go to the PinDesk bin. Continue?
 proyecto-papelera = Deleted projects…
 # Where each project is saved: its chosen folder or the usual place.
 ubicacion-cambiar = Change location…
@@ -364,7 +364,7 @@ ubicacion-movido = Project saved in { $ruta }
 ubicacion-vuelto = The project is back in the usual location
 ubicacion-error-red = Projects can only be saved on a drive of this computer, not on a network drive.
 ubicacion-error-no-es-carpeta = That folder does not exist on this computer.
-ubicacion-error-dentro = That folder is inside the project itself or inside PixDesk's data.
+ubicacion-error-dentro = That folder is inside the project itself or inside PinDesk's data.
 ubicacion-error-mover = The project could not be moved; it is still where it was.
 ubicacion-error-abrir = The project folder could not be opened.
 
@@ -383,14 +383,14 @@ sinc-sincronizar = Sync
 sinc-probar = Try
 sinc-con-todos = Sync with all ({ $n })
 sinc-con-todos-como = Without asking: uses what you chose last time with each one.
-sinc-si-no-aparece = If it does not show up: it needs PixDesk open and this Wi-Fi.
+sinc-si-no-aparece = If it does not show up: it needs PinDesk open and this Wi-Fi.
 sinc-con-direccion = Connect to an address
 sinc-anadir = Add another device
 sinc-anadir-como = On the other device: Sync → “Join with a code”.
 sinc-toca-codigo = Click to see the code
 sinc-salir = Leave the group
 sinc-pasar = Send something to someone
-sinc-pasar-como = Just once, to anyone with PixDesk on your Wi-Fi. No group needed.
+sinc-pasar-como = Just once, to anyone with PinDesk on your Wi-Fi. No group needed.
 sinc-recibir = Receive
 sinc-enviar = Send
 sinc-pasar-tambien = What arrives goes to the project list or to “Saved messages”.
@@ -399,7 +399,7 @@ sinc-escuchando = This computer can be found at { $dir } while this window is op
 sinc-nombre-titulo = Name of this device
 sinc-nombre-como = This is how your other devices will see it.
 sinc-unirme-titulo = Join a group
-sinc-unirme-como = Type the code shown under “Add another device” on a device in the group. That device needs PixDesk open and your same Wi-Fi.
+sinc-unirme-como = Type the code shown under “Add another device” on a device in the group. That device needs PinDesk open and your same Wi-Fi.
 sinc-codigo = Code
 sinc-direccion = Address (only if it is not found)
 sinc-direccion-titulo = Connect to an address
@@ -498,7 +498,7 @@ ew-pegar = Paste the receiver's code
 ew-pegar-como = On the other device: Receive over Wi-Fi → «Show my code so they can send to me». Type its six digits here or paste the text of its QR with Ctrl+V.
 ew-mandar = Send it
 ew-dejar-de-pegar = Stop pasting
-ew-en-el-otro = On the other phone: PixDesk → Sync → Receive
+ew-en-el-otro = On the other phone: PinDesk → Sync → Receive
 ew-o-escribe = or type this code
 ew-misma-wifi = Both on the same Wi-Fi
 ew-misma-wifi-como = If there is no Wi-Fi, one can turn on their hotspot and the other join it. No internet is used.
@@ -509,10 +509,10 @@ ew-cerrar = Close
 ew-grupo = Your devices · no code
 ew-grupo-como = They are in your group: it goes straight there, no scanning. It lands in whatever they have open (a chat; a canvas only takes photos) or in Saved messages.
 ew-grupo-se-ve = On the same Wi-Fi
-ew-grupo-no-se-ve = Not visible now: open PixDesk on that device
+ew-grupo-no-se-ve = Not visible now: open PinDesk on that device
 ew-grupo-enviando = Sending…
 ew-grupo-todos = Send to everyone visible
-ew-grupo-actualiza = Update PixDesk on { $movil }: it can't take direct files yet. Let it use the code below.
+ew-grupo-actualiza = Update PinDesk on { $movil }: it can't take direct files yet. Let it use the code below.
 
 ## «Update mine / Create as new» when receiving (RecibirActivity.kt)
 rw-ya-tienes = You already have «{ $nombre }» with the same codes
@@ -590,14 +590,14 @@ papelera-no-se-pudo = Could not recover «{ $nombre }»: { $motivo }
 papelera-recuperados = Recovered { $n } of { $total } projects
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PixDesk — page
+visor-html-titulo = PinDesk — page
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office preview
 office-abriendo = Opening with the Office preview…
 office-tarda = Office is taking a while (it has to start). You can wait, or choose an app with “Open with…” (the ↗ button on the bar).
 office-fallo = Office couldn't preview this file. Open it in another app with “Open with…” (the ↗ button on the bar).
 office-internet = This file comes from the internet and, for safety, Windows doesn't allow previewing it. Open it in another app with “Open with…” (the ↗ button on the bar), or unblock it in its Properties.
-visor-titulo = PixDesk viewer
+visor-titulo = PinDesk viewer
 visor-marcador = Bookmark here
 visor-ajustes = Reading settings
 visor-tamano = Text size
@@ -623,14 +623,14 @@ lector-grosor-gruesa = Bold
 lector-quitar-tinta = Remove the notes
 lector-tinta-quitada = Notes removed (Ctrl+Z brings them back while you stay here)
 lector-ayuda-docs = Wheel to read · Ctrl+wheel zoom · L listen · A annotate · M bookmark · I contents · +/− size · T type · B weight · Esc to leave
-lector-pdf-titulo = PixDesk PDF reader
+lector-pdf-titulo = PinDesk PDF reader
 lector-pdf-no-se-abre = Could not open the PDF
 lector-pdf-abriendo = Opening the PDF…
 lector-exportando = Saving the annotated PDF… { $hechas } of { $total }
 lector-exportar-pdf = Save the PDF with the notes
 lector-anotado = annotated
 lector-ayuda-pdf = Wheel to turn pages · Ctrl+wheel zoom · Ctrl+[ Ctrl+] space to annotate · L listen · A annotate · M bookmark · Esc to leave
-lector-office-titulo = Word and PowerPoint in PixDesk
+lector-office-titulo = Word and PowerPoint in PinDesk
 lector-ayuda-office = Wheel to turn pages · Ctrl+wheel zoom · drag over text to select · Ctrl+C copy · Ctrl+F find · Ctrl+P print · F5 present · A annotate · N negative · Esc to leave
 lector-presentar = Present (F5)
 lector-modo-lectura = Reading mode (reflowed text)
@@ -801,7 +801,7 @@ chat-biblioteca-notas = Voice notes
 
 # Recording a voice note from the chat.
 chat-voz-muy-corta = Too short: hold it a little longer.
-chat-voz-sin-microfono = No microphone, or PixDesk isn't allowed to use it. Check Settings › Privacy › Microphone.
+chat-voz-sin-microfono = No microphone, or PinDesk isn't allowed to use it. Check Settings › Privacy › Microphone.
 chat-voz-sin-codec = This Windows has no audio encoder (usually an N edition without the media feature pack).
 chat-voz-fallo = The voice note couldn't be recorded.
 
@@ -898,7 +898,7 @@ chat-voz-bajar-whisper = Converting to text needs the Whisper speech model (abou
 chat-voz-bajando-whisper = Downloading the speech model… { $pct }%
 chat-voz-sin-modelo-whisper = The Whisper speech model (about { $megas } MB) is missing: press «Convert to text» again to download it.
 chat-voz-sin-modelo-qwen3 = Qwen3-ASR is not downloaded (about { $megas } MB): choose it in Settings › Voice to download it, or go back to Whisper.
-chat-voz-sin-onnx = This Windows lacks the AI runtime (onnxruntime.dll): copy it into { $donde } or next to PixDesk.
+chat-voz-sin-onnx = This Windows lacks the AI runtime (onnxruntime.dll): copy it into { $donde } or next to PinDesk.
 chat-voz-descarga = The speech model could not be downloaded ({ $que }). Check the connection and press «Convert to text» again.
 chat-voz-onnx = The Whisper speech engine failed: { $detalle }
 chat-dictado-oyendo = Listening… speak, then click the microphone when done
@@ -1023,7 +1023,7 @@ compartir-originales = Originals
 compartir-editable = Editable
 compartir-texto = Text
 compartir-csv = Table (CSV)
-compartir-pixpin = PixDesk (.pixpin)
+compartir-pixpin = PinDesk (.pixpin)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1345,7 +1345,7 @@ grupos-sin-nombre = Group
 grupos-nombre = Window group name
 grupos-guardar-boton = Save
 nota-md-nueva = New note
-nota-md-sufijo = PixDesk note
+nota-md-sufijo = PinDesk note
 nota-md-negrita = Bold
 nota-md-cursiva = Italic
 nota-md-tachado = Strikethrough
@@ -1692,13 +1692,13 @@ pedido-tarea-anadida = “{ $tarea }” added to “{ $lista }”.
 pedido-tarea-hecha = “{ $tarea }” marked as done.
 pedido-tarea-pendiente = “{ $tarea }” is pending again.
 pedido-roto = A request from another program was missing something; nothing was done.
-pedido-sin-proyecto = That project is no longer in PixDesk.
+pedido-sin-proyecto = That project is no longer in PinDesk.
 pedido-sin-mensaje = That message is no longer in the chat.
 pedido-no-es-lista = That message isn't a to-do list.
 pedido-sin-tarea = The list has no task number { $indice }.
 pedido-tarea-vacia = A task with no text isn't added.
 pedido-sin-fichero = That file is no longer on disk.
-pedido-fallo-disco = What was asked couldn't be saved. Check PixDesk's log.
+pedido-fallo-disco = What was asked couldn't be saved. Check PinDesk's log.
 pedido-tarea-movida = “{ $tarea }” moved to “{ $lista }”.
 pedido-tarea-cambio = The list changed while the task was being moved; nothing was touched. Look it up again.
 pedido-tarea-quitada = “{ $tarea }” removed from its list.
@@ -1717,22 +1717,22 @@ pedido-ocr-no-disponible = Windows OCR is not installed: add a language with tex
 pedido-ocr-fallo = Couldn't read the text in the image: { $motivo }
 
 ## Command line and pixpin:// links (Oct 15)
-orden-titulo = PixDesk
-orden-confirmar-cabecera = A link asks PixDesk to:
+orden-titulo = PinDesk
+orden-confirmar-cabecera = A link asks PinDesk to:
 orden-confirmar-pregunta = Do it?
 orden-motivo-ficheros = It opens or sends files from your disk.
-orden-motivo-asistente = It asks the assistant, which can do things in PixDesk.
+orden-motivo-asistente = It asks the assistant, which can do things in PinDesk.
 orden-motivo-microfono = It records with the microphone.
 orden-motivo-otros-aparatos = It sends data to your other devices.
 orden-motivo-automatizacion = It touches an assistant automation.
 orden-motivo-borra = It deletes something.
-orden-motivo-cambia = It changes PixDesk data.
+orden-motivo-cambia = It changes PinDesk data.
 orden-prohibido-ruta-no-local = A link can't open network files or paths outside this computer. Nothing was done.
 orden-prohibido-crear-automatizacion = A link can't create automations. Nothing was done.
-orden-no-se-pudo = PixDesk couldn't do it: { $motivo }
-orden-sin-app = PixDesk isn't open and couldn't be started: { $motivo }
-orden-sin-respuesta = PixDesk didn't answer. If it's stuck, close it and open it again.
-orden-version = This PixDesk is older than the request: update it.
+orden-no-se-pudo = PinDesk couldn't do it: { $motivo }
+orden-sin-app = PinDesk isn't open and couldn't be started: { $motivo }
+orden-sin-respuesta = PinDesk didn't answer. If it's stuck, close it and open it again.
+orden-version = This PinDesk is older than the request: update it.
 orden-preguntar-titulo = Ask the assistant about { $cuantos ->
     [one] { $nombre }
    *[other] { $cuantos } files
@@ -1746,7 +1746,7 @@ galeria-vacia = No captures yet. The ones you copy with Alt + drag will show up 
 galeria-abrir-carpeta = Open folder
 galeria-copiada = Copied to the clipboard
 galeria-pineada = Pinned
-galeria-borrada = Moved to PixDesk's recycle bin
+galeria-borrada = Moved to PinDesk's recycle bin
 galeria-no-se-pudo = Couldn't do it: { $motivo }
 galeria-conservada-aviso = Kept: it is in Saved messages and won't be deleted
 bandeja-galeria-capturas = Capture gallery…
@@ -1820,7 +1820,7 @@ ajustes2-resultados-sub = { $n ->
   }
 ajustes2-sin-resultados = No setting mentions “{ $busqueda }”. Try another word.
 ajustes2-sec-general = General
-ajustes2-sec-general-sub = How PixDesk starts and what it does with PDFs in the chat.
+ajustes2-sec-general-sub = How PinDesk starts and what it does with PDFs in the chat.
 ajustes2-sec-captura = Capture
 ajustes2-sec-captura-sub = How a capture is taken and what happens to it afterwards.
 ajustes2-sec-lienzo = Canvas and tools
@@ -1832,7 +1832,7 @@ ajustes2-sec-atajos-sub = Click a box, then press the keys. Delete leaves it wit
 ajustes2-sec-sincro = Sync
 ajustes2-sec-sincro-sub = How this computer finds the phone.
 ajustes2-sec-apps = Default apps
-ajustes2-sec-apps-sub = Open images and videos with PixDesk from File Explorer.
+ajustes2-sec-apps-sub = Open images and videos with PinDesk from File Explorer.
 ajustes2-sec-apariencia = Appearance
 ajustes2-sec-apariencia-sub = How the chat looks.
 ajustes2-sec-avanzado = Advanced
@@ -1850,7 +1850,7 @@ ajustes2-ayuda-ocr-windows-con-indra = Windows OCR is reading. Indra is still do
 ajustes2-ocr-bajando = Downloading Indra… { $por-ciento } %. Windows OCR reads in the meantime.
 ajustes2-ocr-fallo = Indra could not be downloaded: { $fallo }. Choose it again to retry; Windows OCR reads in the meantime.
 ajustes2-ocr-licencia = Indra license
-ajustes2-ayuda-ocr-licencia = Indra's code is Apache 2.0; its weights, Datalab's modified OpenRAIL-M. PixDesk does not ship them: you download them from Hugging Face when choosing Indra.
+ajustes2-ayuda-ocr-licencia = Indra's code is Apache 2.0; its weights, Datalab's modified OpenRAIL-M. PinDesk does not ship them: you download them from Hugging Face when choosing Indra.
 ajustes2-ocr-corregir = Correct with the dictionary
 ajustes2-ayuda-ocr-corregir = Only with Indra and on Spanish pages: fixes accents and low-confidence letters. Never touches numbers, codes or names.
 ajustes2-ocr-vocabulario = My vocabulary
@@ -1919,7 +1919,7 @@ ajustes2-esquina = Box corner
 ajustes2-ayuda-esquina = On the monitor where the capture was taken.
 ajustes2-icono = Time on screen
 ajustes2-ayuda-icono = How long the unarmed box stays after the last capture.
-ajustes2-ayuda-ignorado = While this one is in front, PixDesk shortcuts do nothing.
+ajustes2-ayuda-ignorado = While this one is in front, PinDesk shortcuts do nothing.
 ajustes2-anadir-programa = Add a program
 ajustes2-ayuda-anadir-programa = Type the executable name and press Enter.
 ajustes2-anadir = Add
@@ -1939,12 +1939,12 @@ ajustes2-ayuda-presencia = The phone sees this computer as soon as it opens Sync
 ajustes2-lo-mio = Mine wins
 ajustes2-ayuda-lo-mio = When syncing, this computer wins: only what does not exist here comes from the other side.
 ajustes2-vista-rapida = Quick look with the space bar
-ajustes2-ayuda-vista-rapida = In File Explorer or on the desktop, select files and press Space: they open right away in PixDesk (photos, videos, PDF, Word, DWG plans, IFC and Revit models…). Space again closes it.
-ajustes2-abrir-con = Offer PixDesk for images and videos
+ajustes2-ayuda-vista-rapida = In File Explorer or on the desktop, select files and press Space: they open right away in PinDesk (photos, videos, PDF, Word, DWG plans, IFC and Revit models…). Space again closes it.
+ajustes2-abrir-con = Offer PinDesk for images and videos
 ajustes2-ayuda-abrir-con = Shows in “Open with” and in Default apps. Turning it off removes what was written to the registry.
 ajustes2-predeterminada = Default app
-ajustes2-ayuda-predeterminada = Windows only lets you choose it in Settings: there, PixDesk → Set default.
-ajustes2-hacer-predeterminada = Make PixDesk the default app…
+ajustes2-ayuda-predeterminada = Windows only lets you choose it in Settings: there, PinDesk → Set default.
+ajustes2-hacer-predeterminada = Make PinDesk the default app…
 ajustes2-ayuda-cosmos = Starry sky behind the chat project list. Applies from the next chat.
 ajustes2-nivel = Performance level
 ajustes2-ayuda-nivel = Automatic measures the computer at startup. Applies from the next start.
@@ -1972,7 +1972,7 @@ ajustes2-nunca = Never
 ajustes2-siempre = Always
 ajustes2-auto = Auto
 ## v2-buscar
-comando-buscar = 🔍 Search PixDesk…
+comando-buscar = 🔍 Search PinDesk…
 comando-grabar-clase = 🎙 Record class or meeting…
 clase-titulo = Record a class or meeting
 clase-sub = Records the audio and puts screenshots at their minute
@@ -2024,10 +2024,10 @@ clase-suspendido = The computer slept for { $minutos } min; the recording contin
 clase-recuperar-titulo = Interrupted recording
 clase-recuperar-pregunta =
     A recording was interrupted ({ $nombre }, { $minutos } min) in “{ $chat }”.
-    Yes: Recover · No: Discard · Cancel: ask again next time PixDesk opens
+    Yes: Recover · No: Discard · Cancel: ask again next time PinDesk opens
 clase-recuperar-sin-nada = Only a video that cannot be opened is left of “{ $nombre }”. Delete it?
 clase-recuperar-descartar = Discard “{ $nombre }”? The recording will be deleted and cannot be recovered.
-clase-recuperar-fallo = “{ $nombre }” could not be recovered. The recording is still safe and will be offered again when PixDesk opens.
+clase-recuperar-fallo = “{ $nombre }” could not be recovered. The recording is still safe and will be offered again when PinDesk opens.
 clase-texto-de-fondo = Close (keeps going)
 clase-modo-pantalla = Screen and sound
 clase-modo-capturas = Audio and screenshots
@@ -2055,7 +2055,7 @@ chat-sin-grabacion = There's no recording in this chat
 chat-colaboradores-todos = Let everyone in the chat add photos
 chat-colaboradores-nadie = Only my photos in this recording
 clase-hora-sin-comprobar = time not verified
-baliza-movil-aislado = Your phone isn’t showing up, though you’re on the same network: this Wi-Fi may keep devices apart (guest, hotel and office networks do) or a firewall may be blocking PixDesk. Connect the PC to the phone’s hotspot, or both to another Wi-Fi. Photos you take wait on the phone and go in at their minute once they find each other.
+baliza-movil-aislado = Your phone isn’t showing up, though you’re on the same network: this Wi-Fi may keep devices apart (guest, hotel and office networks do) or a firewall may be blocking PinDesk. Connect the PC to the phone’s hotspot, or both to another Wi-Fi. Photos you take wait on the phone and go in at their minute once they find each other.
 baliza-movil-otra-red = Your phone is on a different network from this PC. Connect both to the same Wi-Fi (or the PC to the phone’s hotspot). Photos you take wait on the phone and go in at their minute once they find each other.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
 clase-modo-presencial = In person
@@ -2094,7 +2094,7 @@ clase-completa-sin-escucha = The live transcript needs the Jev (TypeSafe) key an
 clase-descartar = Discard
 clase-descartar-otra = Press “Discard” again to delete the recording
 estudiar-clip = Camera video · { $duracion }
-bandeja-grabando = PixDesk — Recording…
+bandeja-grabando = PinDesk — Recording…
 salir-grabando-titulo = A meeting is being recorded
 salir-grabando-mensaje =
     Finish and save the recording before quitting?
@@ -2168,7 +2168,7 @@ grabacion-ir-al-minuto = Go to this moment
 grabacion-cerrar = Close
 grabacion-audio = Audio
 grabacion-video = Video
-buscar-todo-titulo = Search PixDesk
+buscar-todo-titulo = Search PinDesk
 buscar-todo-pista = Search files, tasks, lessons, screenshots… or type a letter
 buscar-todo-pestana-todo = All
 buscar-todo-pestana-archivos = Files
@@ -2334,7 +2334,7 @@ lec2-nueva-etiqueta = tag and Enter
 lec2-relacionadas = Related
 lec2-proximo-repaso = Next review: { $cuando }
 lec2-vacia-titulo = Note what you learn so you don’t repeat mistakes
-lec2-vacia-texto = Write it above in one go: “what happened…, because…, next time…”. PixDesk splits it, sets area, project and severity, and tells you if it happened before.
+lec2-vacia-texto = Write it above in one go: “what happened…, because…, next time…”. PinDesk splits it, sets area, project and severity, and tells you if it happened before.
 lec2-comprobacion = Before you start, check: { $hechas } of { $total }
 lec2-comprobacion-vacia = Nothing under “next time…” yet. It’s the third block of each lesson.
 lec2-nada-que-repasar = Nothing to review today.
@@ -2400,7 +2400,7 @@ galeria-elegidas = { $cuantas ->
 }
 galeria-elegir-todas = All
 galeria-deshacer = Undo
-galeria-borradas = { $cuantas } moved to PixDesk's recycle bin
+galeria-borradas = { $cuantas } moved to PinDesk's recycle bin
 galeria-recuperadas = { $cuantas ->
     [one] Restored
    *[other] { $cuantas } restored
@@ -2538,7 +2538,7 @@ bandeja2-silenciar-sub = for games or talks
 bandeja2-ultimas = Latest captures
 bandeja2-ver-galeria = See the gallery
 bandeja2-sin-capturas = No captures yet
-bandeja2-abrir-pixpin = Open PixDesk
+bandeja2-abrir-pixpin = Open PinDesk
 bandeja2-tareas = Tasks
 bandeja2-lecciones = Lessons
 bandeja2-nueva-leccion = New lesson
@@ -2546,7 +2546,7 @@ bandeja2-galeria = Capture gallery
 bandeja2-documento = Open document…
 bandeja2-grupos = Window groups
 bandeja2-para-hoy = { $n } for today
-bandeja2-salir = Quit PixDesk
+bandeja2-salir = Quit PinDesk
 bandeja2-salir-sub = pins will close
 bandeja2-copiada = Copied
 bandeja2-borrada = Moved to the bin
@@ -2626,7 +2626,7 @@ timeline-tipo-pdf = PDF document
 timeline-nada-que-exportar = Nothing to export there
 timeline-no-exportado = Couldn't save the file
 timeline-exportado = Saved: { $nombre }
-timeline-exportado-pie = Exported with PixDesk · { $fecha }
+timeline-exportado-pie = Exported with PinDesk · { $fecha }
 timeline-pdf-haciendo = Making the PDF…
 timeline-pdf-sin-edge = The PDF needs Microsoft Edge; export as HTML
 timeline-pdf-fallo = Couldn't make the PDF
@@ -2708,7 +2708,7 @@ timeline-guardar-imagen = Save as image…
 timeline-imagen-copiada = Copied as image
 timeline-imagen-fallo = Could not make the image
 timeline-tipo-png = PNG image
-timeline-compartido-pie = PixDesk · Timeline
+timeline-compartido-pie = PinDesk · Timeline
 
 ## tareas-v4
 # The search box hint in the shared top bar: shorter than tareas3-buscar,
@@ -2805,12 +2805,12 @@ al-movil-negados = { $negados ->
     [one] 1 file was not sent: it was not a photo and a canvas is open
    *[other] { $negados } files were not sent: they were not photos and a canvas is open
   }
-al-movil-no-esta = { $movil } is not open: open PixDesk on the phone
-al-movil-actualiza = Update PixDesk on { $movil }: it can't receive direct files yet. Opening «Send over Wi-Fi».
+al-movil-no-esta = { $movil } is not open: open PinDesk on the phone
+al-movil-actualiza = Update PinDesk on { $movil }: it can't receive direct files yet. Opening «Send over Wi-Fi».
 al-movil-ocupado = { $movil } is syncing with another device. Try again in a moment.
-al-movil-otra-version = { $movil } has another version of PixDesk: update both
+al-movil-otra-version = { $movil } has another version of PinDesk: update both
 al-movil-cortado = Couldn't send to { $movil }: { $motivo }
-al-movil-sin-grupo = This PC is not in a group: set it up in PixDesk's Sync
+al-movil-sin-grupo = This PC is not in a group: set it up in PinDesk's Sync
 al-movil-no-es-del-grupo = That device is no longer in this PC's group
 al-movil-sin-imagenes = There was nothing to send
 al-frente-lienzo = { $de } sent you “{ $nombre }”: it's on the open canvas
@@ -2858,7 +2858,7 @@ cc-quitar = Remove
 cc-anadir = Add
 cc-cerrar-invitacion = Close
 cc-sincronizar = Sync
-cc-invitacion-como = On the other device: PixDesk → Join a shared chat. Scan this or type the code.
+cc-invitacion-como = On the other device: PinDesk → Join a shared chat. Scan this or type the code.
 cc-invitacion-vale = Valid while this screen stays open. You must be on the same Wi-Fi.
 cc-salir-del-chat = Leave chat
 cc-salir-titulo = Leave the chat?
@@ -3331,14 +3331,14 @@ aviso-ia-permiso = 🔐 I need your permission: { $pregunta }
 ia-fondo-titulo = 🤖 Assistant
 ia-fondo-sigue = “continue”
 ia-fondo-sigue-fuera = “@assistant continue”
-ia-fondo-otra-vez = ↻ PixDesk closed before I finished. I'm starting over in the reply below.
+ia-fondo-otra-vez = ↻ PinDesk closed before I finished. I'm starting over in the reply below.
 ia-fondo-ya-actuo = Some steps were already done, so I won't repeat it on my own (they'd happen twice). Type { $sigue } and I'll carry on from here.
 ia-fondo-ya-se-retomo = I had already resumed it once and it was cut off again, so I'll stop there. Type { $sigue } if you want me to try again.
 ia-fondo-viejo = Too much time has passed to resume it on my own. Type { $sigue } if you still want it.
 ia-fondo-sin-pregunta = I can't find your request (was it deleted?), so I can't resume it.
 ia-fondo-no-se-pudo = I couldn't resume it: { $aviso }
 ia-fondo-no-empezo = I couldn't start answering.
-ia-fondo-cortado = ⚠️ PixDesk closed before this was finished. { $porque }
+ia-fondo-cortado = ⚠️ PinDesk closed before this was finished. { $porque }
 ia-fondo-sigo-en-el-chat = 💬 I'll continue in the chat.
 ia-fondo-sigo-de-fondo = ⏳ I'm still working on your request even though the chat closed. I'll let you know when I'm done.
 ia-fondo-pregunta = ❓ I need you to answer in the chat: { $pregunta }
@@ -3438,7 +3438,7 @@ cad-letras = Drawing fonts…
 cad-letras-faltan = This drawing asks for fonts that are not here; its texts use similar ones and may not fit their boxes:
 cad-letras-no-falta = No font that the drawing names is missing.
 cad-letras-donde = SHX fonts are usually in C:\Program Files\Autodesk\AutoCAD 20xx\Fonts or next to the drawing you were sent;
-    TrueType ones, in C:\Windows\Fonts. The ones you add here win over AutoCAD's, Windows' and PixDesk's.
+    TrueType ones, in C:\Windows\Fonts. The ones you add here win over AutoCAD's, Windows' and PinDesk's.
 cad-letras-anadir = Add fonts (SHX, TTF, OTF, TTC)…
 cad-letras-quitar = Remove mine ({ $n })
 cad-faltan-letras = { $n } fonts of the drawing are missing: click Aa above to add them
@@ -3527,7 +3527,7 @@ ia-fondo-hecho = ✅ Done.
 ia-hecho = Done.
 croquis-titulo = Sketch { $id }
 # El aviso de donde se abren los ajustes (ventana_chat/asistente.rs; ya estaba en apple/nucleo)
-chat-ajustes-bandeja = Settings open from the PixDesk icon in the tray
+chat-ajustes-bandeja = Settings open from the PinDesk icon in the tray
 # AI status: the little dots next to the chat's sync button (1-nov-2026).
 # «Claude · working · 3 min ago».
 ia-estado-funciona = working
@@ -3546,7 +3546,7 @@ ia-estado-hace-horas = { $n } h ago
 ia-estado-pista = Click: check now or go to the keys
 ia-estado-comprobar = Check now
 ia-estado-claves = Keys in Settings → Assistant
-ia-estado-sin-ajustes = Settings open from the PixDesk icon in the tray
+ia-estado-sin-ajustes = Settings open from the PinDesk icon in the tray
 
 ## The month inside a date («October 5»), separate from the standalone month
 ## (chat-mes-*): Russian and other inflected languages use the genitive here
