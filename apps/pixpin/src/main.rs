@@ -2090,6 +2090,7 @@ fn atender_recordatorios(
             horario::sonar(
                 ubicacion.raiz(),
                 &r,
+                textos,
                 rotulos_de_la_llamada(textos),
                 hwnd.0 as isize,
             );

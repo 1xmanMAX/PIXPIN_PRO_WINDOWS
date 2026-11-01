@@ -3319,3 +3319,87 @@ clase-acta-propuestas = Propuestas sin aceptar
 clase-acta-aceptar = Aceptar
 clase-acta-aceptada = Apuntada en Tareas
 clase-acta-anadidas = { $n } preguntas apuntadas en el Inbox de Tareas
+
+# --- Textos que estaban escritos en el codigo -------------------------------
+# El aviso flotante del asistente (ventana_chat/aviso_asistente.rs)
+aviso-ia-abrir = Abrir
+aviso-ia-si = Sí
+aviso-ia-no = No
+aviso-ia-permiso = 🔐 Necesito tu permiso: { $pregunta }
+    
+    Si no contestas, no lo hago.
+# Los turnos del asistente que siguen con el chat cerrado (asistente/de_fondo.rs)
+ia-fondo-titulo = 🤖 Asistente
+ia-fondo-sigue = «continúa»
+ia-fondo-sigue-fuera = «@asistente continúa»
+ia-fondo-otra-vez = ↻ PixPin se cerró antes de que acabara. Lo retomo desde el principio en la respuesta de abajo.
+ia-fondo-ya-actuo = Algunos pasos ya estaban hechos, así que no lo repito solo (se harían dos veces). Escribe { $sigue } y sigo desde aquí.
+ia-fondo-ya-se-retomo = Ya lo había retomado una vez y volvió a cortarse, así que no insisto. Escribe { $sigue } si quieres que lo intente otra vez.
+ia-fondo-viejo = Ha pasado demasiado para retomarlo solo. Escribe { $sigue } si aún lo quieres.
+ia-fondo-sin-pregunta = No encuentro tu pedido (¿se borró?), así que no puedo retomarlo.
+ia-fondo-no-se-pudo = No he podido retomarlo: { $aviso }
+ia-fondo-no-empezo = no pude empezar a contestar.
+ia-fondo-cortado = ⚠️ PixPin se cerró antes de que acabara esto. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 Lo sigo en el chat.
+ia-fondo-sigo-de-fondo = ⏳ Sigo con tu pedido aunque se cerró el chat. Te aviso al acabar.
+ia-fondo-pregunta = ❓ Necesito que me contestes en el chat: { $pregunta }
+    
+    Pulsa «Abrir». Si no contestas, sigo con lo más seguro.
+# La ficha de una leccion (lecciones/ficha.rs, dictar.rs, adjuntos.rs)
+leccion-ventana = Lección
+leccion-ventana-nueva = Nueva lección
+leccion-titulo = 💡 Lección
+leccion-titulo-nueva = 💡 Nueva lección
+leccion-tipo-leccion = 💡 Lección
+leccion-tipo-error = ⚠️ Error
+leccion-tipo-acierto = ✅ Acierto
+leccion-gravedad-leve = Leve
+leccion-gravedad-importante = Importante
+leccion-gravedad-grave = Grave
+leccion-sin-proyecto = Sin proyecto (chat general)
+leccion-foto-ilegible = No se pudo leer esa foto
+leccion-adjunto-no-esta = Ese archivo aún no está en este equipo
+leccion-galeria = 🖼 Galería
+leccion-guardar = Guardar
+leccion-pista-titulo = ¿Qué aprendiste? Escríbelo o díctalo de corrido
+leccion-se-parece = Se parece a una que ya tienes
+leccion-paso-otra-vez = 🔁 Pasó otra vez
+leccion-area = Área
+leccion-etiquetas = Etiquetas
+leccion-anadir-etiqueta = + etiqueta
+leccion-menos-detalle = ▴  Menos detalle
+leccion-mas-detalle = ▾  Qué pasó, por qué y qué haré distinto
+leccion-que-paso = Qué pasó
+leccion-por-que = Por qué pasó
+leccion-causas = Causas (un toque)
+leccion-proxima = La próxima vez… (si pasa X, haré Y)
+leccion-referencias = Palabras para encontrarla (separadas por comas)
+leccion-relacionadas = Relacionadas
+leccion-volvio-a-pasar = 🔁 Me volvió a pasar
+leccion-volvio-a-pasar-n = 🔁 Me volvió a pasar (van { $veces })
+leccion-mic-escuchando = 🎙️ Te escucho… pulsa el micrófono para terminar
+leccion-mic-sin-dictado = No hay dictado en este equipo: escribe la lección
+leccion-mic-sin-texto = No se entendió nada
+leccion-mic-no-pasa = No se pudo pasar a texto
+leccion-mic-corto = Demasiado corto: mantén el micrófono un poco más
+leccion-audio = 🎙 Audio
+leccion-audio-abriendo = 🎙 Abriendo…
+leccion-audio-guardando = 🎙 Guardando…
+leccion-audio-parar = ⏹ Parar { $duracion }
+leccion-audio-sin-microfono = No se pudo usar el micrófono
+leccion-audio-corto = Muy corto: no se guardó
+leccion-audio-no-guarda = No se pudo guardar el audio
+# El horario: la llamada de una evaluacion y la rejilla (horario.rs, horario/panel.rs)
+horario-evaluacion-en = { $dias ->
+        [1] mañana
+       *[other] en { $dias } días
+    }
+horario-evaluacion-recuerda = Recuerda: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento } en { $lugar }
+horario-dia-0 = Lun
+horario-dia-1 = Mar
+horario-dia-2 = Mié
+horario-dia-3 = Jue
+horario-dia-4 = Vie
+horario-dia-5 = Sáb
+horario-dia-6 = Dom

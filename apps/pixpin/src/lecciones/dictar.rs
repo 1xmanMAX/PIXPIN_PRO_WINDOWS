@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, TryRecvError};
 
-use pixpin_store::{Idioma, Ubicacion};
+use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 pub enum Dictado {
     Nada,
@@ -34,26 +34,35 @@ impl Dictado {
     }
 
     /// Lo que se ensena mientras dura.
-    pub fn estado(&self) -> Option<String> {
+    pub fn estado(&self, textos: &Catalogo) -> Option<String> {
+        let con_por_cien = |clave: &str, v: f32| {
+            let mut a = fluent_bundle::FluentArgs::new();
+            a.set("pc", (v * 100.0).round() as i64);
+            textos.t_args(clave, &a)
+        };
         match self {
             Dictado::Nada => None,
-            Dictado::Abriendo(_) => Some("Abriendo el micrófono…".into()),
-            Dictado::Grabando(_) => Some("🎙️ Te escucho… pulsa el micrófono para terminar".into()),
-            Dictado::Parando(_) => Some("Guardando lo dicho…".into()),
-            Dictado::Pasando(m) if m.bajando() => Some(format!(
-                "Bajando el modelo de voz (una vez)… {:.0} %",
-                m.avance() * 100.0
-            )),
-            Dictado::Pasando(m) => Some(format!("Pasando a texto… {:.0} %", m.avance() * 100.0)),
+            Dictado::Abriendo(_) => Some(textos.t("timeline-mic-abriendo")),
+            Dictado::Grabando(_) => Some(textos.t("leccion-mic-escuchando")),
+            Dictado::Parando(_) => Some(textos.t("timeline-mic-guardando")),
+            Dictado::Pasando(m) if m.bajando() => {
+                Some(con_por_cien("timeline-mic-bajando", m.avance()))
+            }
+            Dictado::Pasando(m) => Some(con_por_cien("timeline-mic-pasando", m.avance())),
         }
     }
 
     /// El clic en el microfono: empezar o parar.
-    pub fn pulsar(&mut self, ubicacion: &Ubicacion, idioma: Idioma) -> Option<String> {
+    pub fn pulsar(
+        &mut self,
+        ubicacion: &Ubicacion,
+        idioma: Idioma,
+        textos: &Catalogo,
+    ) -> Option<String> {
         match std::mem::replace(self, Dictado::Nada) {
             Dictado::Nada => {
                 if !crate::voz::whisper_posible(ubicacion, idioma) {
-                    return Some("No hay dictado en este equipo: escribe la lección".into());
+                    return Some(textos.t("leccion-mic-sin-dictado"));
                 }
                 *self = Dictado::Abriendo(crate::ventanita::abrir_microfono(temporal(ubicacion)));
                 None
@@ -71,16 +80,16 @@ impl Dictado {
     }
 
     /// Mira los hilos. Llamar en cada vuelta del bucle.
-    pub fn avanzar(&mut self, ubicacion: &Ubicacion, idioma: Idioma) -> Salida {
+    pub fn avanzar(&mut self, ubicacion: &Ubicacion, idioma: Idioma, textos: &Catalogo) -> Salida {
         let (siguiente, salida) = match std::mem::replace(self, Dictado::Nada) {
             Dictado::Nada => (Dictado::Nada, Salida::Nada),
             Dictado::Abriendo(rx) => match rx.try_recv() {
                 Ok(Ok(g)) => (Dictado::Grabando(g), Salida::Nada),
-                Ok(Err(e)) => (Dictado::Nada, Salida::Fallo(fallo(&e))),
+                Ok(Err(e)) => (Dictado::Nada, Salida::Fallo(fallo(textos, &e))),
                 Err(TryRecvError::Empty) => (Dictado::Abriendo(rx), Salida::Nada),
                 Err(TryRecvError::Disconnected) => (
                     Dictado::Nada,
-                    Salida::Fallo("No se pudo abrir el micrófono".into()),
+                    Salida::Fallo(textos.t("timeline-mic-no-abre")),
                 ),
             },
             Dictado::Grabando(g) => (Dictado::Grabando(g), Salida::Nada),
@@ -98,12 +107,12 @@ impl Dictado {
                 ),
                 Ok(Err(e)) => {
                     let _ = std::fs::remove_file(temporal(ubicacion));
-                    (Dictado::Nada, Salida::Fallo(fallo(&e)))
+                    (Dictado::Nada, Salida::Fallo(fallo(textos, &e)))
                 }
                 Err(TryRecvError::Empty) => (Dictado::Parando(rx), Salida::Nada),
                 Err(TryRecvError::Disconnected) => (
                     Dictado::Nada,
-                    Salida::Fallo("No se pudo guardar lo dicho".into()),
+                    Salida::Fallo(textos.t("timeline-mic-no-guarda")),
                 ),
             },
             Dictado::Pasando(mut m) => match m.recoger() {
@@ -114,7 +123,10 @@ impl Dictado {
                         Ok(t) => {
                             let texto = crate::voz::sin_marcas(&t.texto).trim().to_string();
                             if texto.is_empty() {
-                                (Dictado::Nada, Salida::Fallo("No se entendió nada".into()))
+                                (
+                                    Dictado::Nada,
+                                    Salida::Fallo(textos.t("leccion-mic-sin-texto")),
+                                )
                             } else {
                                 (Dictado::Nada, Salida::Texto(texto))
                             }
@@ -123,7 +135,7 @@ impl Dictado {
                             tracing::info!(?e, "el dictado de la leccion no se paso a texto");
                             (
                                 Dictado::Nada,
-                                Salida::Fallo("No se pudo pasar a texto".into()),
+                                Salida::Fallo(textos.t("leccion-mic-no-pasa")),
                             )
                         }
                     }
@@ -141,12 +153,14 @@ fn temporal(ubicacion: &Ubicacion) -> PathBuf {
     dir.join("leccion-dictado.m4a")
 }
 
-fn fallo(e: &pixpin_audio::ErrorAudio) -> String {
+fn fallo(textos: &Catalogo, e: &pixpin_audio::ErrorAudio) -> String {
     match e {
-        pixpin_audio::ErrorAudio::SinMicrofono => "No hay micrófono".into(),
-        pixpin_audio::ErrorAudio::DemasiadoCorta { .. } => {
-            "Demasiado corto: mantén el micrófono un poco más".into()
+        pixpin_audio::ErrorAudio::SinMicrofono => textos.t("timeline-mic-sin-microfono"),
+        pixpin_audio::ErrorAudio::DemasiadoCorta { .. } => textos.t("leccion-mic-corto"),
+        otro => {
+            let mut a = fluent_bundle::FluentArgs::new();
+            a.set("error", otro.to_string());
+            textos.t_args("timeline-mic-error", &a)
         }
-        otro => format!("No se pudo grabar: {otro}"),
     }
 }

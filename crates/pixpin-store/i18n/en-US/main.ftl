@@ -3318,3 +3318,87 @@ clase-acta-propuestas = Proposals not accepted
 clase-acta-aceptar = Accept
 clase-acta-aceptada = Added to Tasks
 clase-acta-anadidas = { $n } questions added to the Tasks inbox
+
+# --- Textos que estaban escritos en el codigo -------------------------------
+# El aviso flotante del asistente (ventana_chat/aviso_asistente.rs)
+aviso-ia-abrir = Open
+aviso-ia-si = Yes
+aviso-ia-no = No
+aviso-ia-permiso = 🔐 I need your permission: { $pregunta }
+    
+    If you don't answer, I won't do it.
+# Los turnos del asistente que siguen con el chat cerrado (asistente/de_fondo.rs)
+ia-fondo-titulo = 🤖 Assistant
+ia-fondo-sigue = “continue”
+ia-fondo-sigue-fuera = “@assistant continue”
+ia-fondo-otra-vez = ↻ PixPin closed before I finished. I'm starting over in the reply below.
+ia-fondo-ya-actuo = Some steps were already done, so I won't repeat it on my own (they'd happen twice). Type { $sigue } and I'll carry on from here.
+ia-fondo-ya-se-retomo = I had already resumed it once and it was cut off again, so I'll stop there. Type { $sigue } if you want me to try again.
+ia-fondo-viejo = Too much time has passed to resume it on my own. Type { $sigue } if you still want it.
+ia-fondo-sin-pregunta = I can't find your request (was it deleted?), so I can't resume it.
+ia-fondo-no-se-pudo = I couldn't resume it: { $aviso }
+ia-fondo-no-empezo = I couldn't start answering.
+ia-fondo-cortado = ⚠️ PixPin closed before this was finished. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 I'll continue in the chat.
+ia-fondo-sigo-de-fondo = ⏳ I'm still working on your request even though the chat closed. I'll let you know when I'm done.
+ia-fondo-pregunta = ❓ I need you to answer in the chat: { $pregunta }
+    
+    Press “Open”. If you don't answer, I'll go with the safest option.
+# La ficha de una leccion (lecciones/ficha.rs, dictar.rs, adjuntos.rs)
+leccion-ventana = Lesson
+leccion-ventana-nueva = New lesson
+leccion-titulo = 💡 Lesson
+leccion-titulo-nueva = 💡 New lesson
+leccion-tipo-leccion = 💡 Lesson
+leccion-tipo-error = ⚠️ Mistake
+leccion-tipo-acierto = ✅ Success
+leccion-gravedad-leve = Minor
+leccion-gravedad-importante = Important
+leccion-gravedad-grave = Serious
+leccion-sin-proyecto = No project (general chat)
+leccion-foto-ilegible = Couldn't read that photo
+leccion-adjunto-no-esta = That file isn't on this computer yet
+leccion-galeria = 🖼 Gallery
+leccion-guardar = Save
+leccion-pista-titulo = What did you learn? Type it or dictate it in one go
+leccion-se-parece = It looks like one you already have
+leccion-paso-otra-vez = 🔁 It happened again
+leccion-area = Area
+leccion-etiquetas = Tags
+leccion-anadir-etiqueta = + tag
+leccion-menos-detalle = ▴  Less detail
+leccion-mas-detalle = ▾  What happened, why, and what I'll do differently
+leccion-que-paso = What happened
+leccion-por-que = Why it happened
+leccion-causas = Causes (one tap)
+leccion-proxima = Next time… (if X happens, I'll do Y)
+leccion-referencias = Words to find it (comma-separated)
+leccion-relacionadas = Related
+leccion-volvio-a-pasar = 🔁 It happened to me again
+leccion-volvio-a-pasar-n = 🔁 It happened to me again ({ $veces } so far)
+leccion-mic-escuchando = 🎙️ Listening… press the microphone to finish
+leccion-mic-sin-dictado = Dictation isn't available on this computer: type the lesson
+leccion-mic-sin-texto = Nothing could be understood
+leccion-mic-no-pasa = Couldn't convert it to text
+leccion-mic-corto = Too short: keep the microphone on a little longer
+leccion-audio = 🎙 Audio
+leccion-audio-abriendo = 🎙 Opening…
+leccion-audio-guardando = 🎙 Saving…
+leccion-audio-parar = ⏹ Stop { $duracion }
+leccion-audio-sin-microfono = Couldn't use the microphone
+leccion-audio-corto = Too short: not saved
+leccion-audio-no-guarda = Couldn't save the audio
+# El horario: la llamada de una evaluacion y la rejilla (horario.rs, horario/panel.rs)
+horario-evaluacion-en = { $dias ->
+        [1] tomorrow
+       *[other] in { $dias } days
+    }
+horario-evaluacion-recuerda = Remember: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento } at { $lugar }
+horario-dia-0 = Mon
+horario-dia-1 = Tue
+horario-dia-2 = Wed
+horario-dia-3 = Thu
+horario-dia-4 = Fri
+horario-dia-5 = Sat
+horario-dia-6 = Sun

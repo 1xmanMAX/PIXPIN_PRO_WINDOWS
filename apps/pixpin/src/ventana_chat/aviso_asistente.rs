@@ -253,6 +253,24 @@ struct Vista<'a> {
     pie: Pie,
     medidas: Medidas,
     desplazado: f32,
+    rotulos: &'a Rotulos,
+}
+
+/// Lo que dicen los botones, en el idioma de la app.
+struct Rotulos {
+    abrir: String,
+    si: String,
+    no: String,
+}
+
+impl Rotulos {
+    fn de(t: &pixpin_store::Catalogo) -> Rotulos {
+        Rotulos {
+            abrir: t.t("aviso-ia-abrir"),
+            si: t.t("aviso-ia-si"),
+            no: t.t("aviso-ia-no"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -291,11 +309,10 @@ fn colores(claro: bool) -> Colores {
 }
 
 /// El texto de una pregunta pendiente.
-fn texto_de_la_pregunta(p: &Pregunta) -> String {
-    format!(
-        "🔐 Necesito tu permiso: {}\n\nSi no contestas, no lo hago.",
-        p.texto
-    )
+fn texto_de_la_pregunta(t: &pixpin_store::Catalogo, p: &Pregunta) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("pregunta", p.texto.as_str());
+    t.t_args("aviso-ia-permiso", &args)
 }
 
 fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<()> {
@@ -326,6 +343,8 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
     // El tema del chat: el de Windows (con Cosmos, siempre de noche).
     let claro = pixpin_shell::entorno::tema_claro() && !crate::tema_cosmos::activo();
     let colores = colores(claro);
+    let textos = pixpin_store::Catalogo::nuevo(crate::salida::idioma_actual());
+    let rotulos = Rotulos::de(&textos);
 
     let nacio = Instant::now();
     let mut acabado_en: Option<Instant> = None;
@@ -439,7 +458,7 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
         // Que se ensena, cuanto mide y, si cambio, el alto de la ventana.
         let (texto, pie) = match &pregunta {
             Some(p) => (
-                texto_de_la_pregunta(p),
+                texto_de_la_pregunta(&textos, p),
                 Pie::Permiso {
                     abrir: aviso.chat.is_some(),
                 },
@@ -479,6 +498,7 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
             pie,
             medidas: m,
             desplazado,
+            rotulos: &rotulos,
         };
         if let Ok(d) = superficie.empezar(&motor) {
             let _ = motor.dibujar(&d, |p: &Pintor| {
@@ -640,7 +660,7 @@ fn pintar(
     };
     match v.pie {
         Pie::Nada => {}
-        Pie::Abrir => boton(p, botones, abrir, "Abrir", c.enlace, Accion::Abrir),
+        Pie::Abrir => boton(p, botones, abrir, &v.rotulos.abrir, c.enlace, Accion::Abrir),
         Pie::Permiso { abrir: con_abrir } => {
             let si = RectF {
                 x: 16.0 * e,
@@ -652,10 +672,10 @@ fn pintar(
                 x: si.x + bw + 8.0 * e,
                 ..si
             };
-            boton(p, botones, si, "Sí", tema.texto, Accion::Si);
-            boton(p, botones, no, "No", tema.texto, Accion::No);
+            boton(p, botones, si, &v.rotulos.si, tema.texto, Accion::Si);
+            boton(p, botones, no, &v.rotulos.no, tema.texto, Accion::No);
             if con_abrir {
-                boton(p, botones, abrir, "Abrir", c.enlace, Accion::Abrir);
+                boton(p, botones, abrir, &v.rotulos.abrir, c.enlace, Accion::Abrir);
             }
         }
     }
@@ -778,7 +798,9 @@ mod pruebas {
             .map(|i| format!("{i}. Revisar la partida {i} del presupuesto de la obra\n"))
             .collect();
         let largo = format!("Tienes 31 tareas pendientes:\n{tareas}");
-        let pregunta = texto_de_la_pregunta(&Pregunta {
+        let textos = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let rotulos = Rotulos::de(&textos);
+        let pregunta = texto_de_la_pregunta(&textos, &Pregunta {
             proyecto: "p".into(),
             nota: "n".into(),
             texto: "¿Borro las 3 tareas hechas de «Obra Norte»? No se puede deshacer.".into(),
@@ -808,6 +830,7 @@ mod pruebas {
                             pie,
                             medidas: m,
                             desplazado: 0.0,
+                            rotulos: &rotulos,
                         };
                         let mut b = Botones::default();
                         pintar(p, (ancho, m.alto), e, &colores(claro), &v, &mut b);

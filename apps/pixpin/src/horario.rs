@@ -896,6 +896,7 @@ pub fn fichero_de_voz(nombre: &str) -> String {
 /// las clases y `guardada` dice cuando se grabo (ms locales) cada una: la
 /// nota solo suena si es para esta sesion ([`nota_vigente`]).
 pub fn llamada_de(
+    textos: &pixpin_store::Catalogo,
     h: &Horario,
     a: &Aviso,
     voz: &Path,
@@ -921,18 +922,22 @@ pub fn llamada_de(
         Que::Evaluacion(j, n) => {
             let e = &h.evaluaciones[j];
             let cuando = e.cuando.legible(Momento::de_ms_locales(a.cuando));
-            let en = if n == 1 {
-                "mañana".to_string()
-            } else {
-                format!("en {n} días")
-            };
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("dias", n);
+            let en = textos.t_args("horario-evaluacion-en", &args);
             Llamada {
                 audio: None,
                 nombre: format!("📝 {}", e.que),
                 carpeta: PathBuf::new(),
                 mensaje: a.id.clone(),
                 detalle: format!("{en} · {cuando}"),
-                texto: Some(format!("Recuerda: {}, {en}, {cuando}", e.que)),
+                texto: Some({
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("que", e.que.as_str());
+                    args.set("en", en.as_str());
+                    args.set("cuando", cuando.as_str());
+                    textos.t_args("horario-evaluacion-recuerda", &args)
+                }),
             }
         }
     }
@@ -1038,7 +1043,13 @@ pub fn posponer(raiz: &Path, id: &str, cuando_utc_ms: i64) {
 /// **Suena un aviso del horario** que acaba de vencer: su tarjeta de
 /// llamada. Si el horario cambio y ya no se encuentra, sale igual con lo
 /// que se apunto al ponerlo.
-pub fn sonar(raiz: &Path, r: &Recordatorio, rotulos: crate::llamada::Rotulos, hwnd_app: isize) {
+pub fn sonar(
+    raiz: &Path,
+    r: &Recordatorio,
+    textos: &pixpin_store::Catalogo,
+    rotulos: crate::llamada::Rotulos,
+    hwnd_app: isize,
+) {
     if let Ok(mut p) = POSPUESTOS.lock() {
         p.retain(|x| x.id != r.id);
     }
@@ -1069,10 +1080,13 @@ pub fn sonar(raiz: &Path, r: &Recordatorio, rotulos: crate::llamada::Rotulos, hw
             texto: Some(if e.lugar.is_empty() {
                 e.titulo.clone()
             } else {
-                format!("{} en {}", e.titulo, e.lugar)
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("evento", e.titulo.as_str());
+                args.set("lugar", e.lugar.as_str());
+                textos.t_args("horario-evento-en", &args)
             }),
         },
-        (None, Some(a)) => llamada_de(&h, &a, &carpeta_de_voz(raiz), guardada_en),
+        (None, Some(a)) => llamada_de(textos, &h, &a, &carpeta_de_voz(raiz), guardada_en),
         (None, None) => Llamada {
             audio: None,
             nombre: r.texto.clone(),
@@ -1366,7 +1380,8 @@ Esto no es nada
             .find(|a| matches!(a.que, Que::Clase(0, _)))
             .unwrap();
         let voz = Path::new("C:/voz");
-        let l = llamada_de(&h, &a, voz, |_| Some(ms(14, 9, 30)));
+        let es = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let l = llamada_de(&es, &h, &a, voz, |_| Some(ms(14, 9, 30)));
         assert_eq!(l.nombre, "Geometría");
         assert_eq!(l.audio, Some(voz.join("geometria.m4a")));
         assert!(l.detalle.starts_with("08:00–10:00 · A-12"), "{}", l.detalle);
@@ -1383,9 +1398,9 @@ Esto no es nada
         );
         assert!(l.es_de_horario());
         // Sin nota vigente, solo la voz de la app.
-        let l = llamada_de(&h, &a, voz, |_| Some(ms(1, 9, 0)));
+        let l = llamada_de(&es, &h, &a, voz, |_| Some(ms(1, 9, 0)));
         assert_eq!(l.audio, None);
-        let l = llamada_de(&h, &a, voz, |_| None);
+        let l = llamada_de(&es, &h, &a, voz, |_| None);
         assert_eq!(l.audio, None);
     }
 
