@@ -68,7 +68,9 @@ def leer(ruta: Path) -> tuple[dict[str, Entrada], list[tuple[str, str]]]:
     comentario: list[str] = []
     actual: Entrada | None = None
     for linea in ruta.read_text(encoding="utf-8").splitlines(keepends=True):
-        if actual is not None and linea[:1] in (" ", "\t") and linea.strip():
+        # Continua el mensaje lo sangrado y tambien un `}` en la columna 0,
+        # que cierra un selector (Fluent lo admite).
+        if actual is not None and linea.strip() and (linea[:1] in (" ", "\t", "}")):
             actual.lineas.append(linea)
             continue
         actual = None
