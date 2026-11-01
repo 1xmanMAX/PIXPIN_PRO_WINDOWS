@@ -285,7 +285,7 @@ mod pruebas {
     /// **Lo pixelado sale pixelado en el PNG exportado** y no en claro ni
     /// como una banda gris, con el mismo `atender` que el menu. Deja
     /// `mosaico-exportado-{antes,despues}.png` y `foco-y-pasos-exportado.png`.
-    /// Necesita GPU: `cargo test -p pixpin --bin pixpinmax muestra_del_mosaico_exportado -- --ignored --nocapture`.
+    /// Necesita GPU: `cargo test -p pixpin --bin pixdesk muestra_del_mosaico_exportado -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_del_mosaico_exportado() {

@@ -1,6 +1,6 @@
 # Avisos de terceros
 
-PixPin Max incluye código traducido a Rust de los siguientes proyectos, bajo sus licencias.
+PixDesk (antes PixPin Max) incluye código traducido a Rust de los siguientes proyectos, bajo sus licencias.
 
 ## Excalidraw
 

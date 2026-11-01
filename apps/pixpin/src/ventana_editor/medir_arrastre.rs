@@ -11,7 +11,7 @@
 //! la capa de la interfaz— se deja fuera, y se dice.
 //!
 //! ```text
-//! cargo test --release -p pixpin --bin pixpinmax medir_el_arrastre -- --ignored --nocapture --test-threads=1
+//! cargo test --release -p pixpin --bin pixdesk medir_el_arrastre -- --ignored --nocapture --test-threads=1
 //! ```
 
 use std::time::Instant;
@@ -748,7 +748,7 @@ fn ventana_editor_apunta_con_capa() -> bool {
 // lento» y «al poner los frames pasa lo mismo»).
 //
 // ```text
-// cargo test --release -p pixpin --bin pixpinmax medir_el_arrastre_de_cotas -- --ignored --nocapture --test-threads=1
+// cargo test --release -p pixpin --bin pixdesk medir_el_arrastre_de_cotas -- --ignored --nocapture --test-threads=1
 // ```
 
 /// Una cota de `a` a `b` como las deja la herramienta (rugosa, con semilla).

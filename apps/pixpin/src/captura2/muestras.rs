@@ -4,7 +4,7 @@
 //! `disposicion`) sobre un destino fuera de pantalla y guardan el PNG: asi
 //! se ve la interfaz sin abrir el overlay sobre el escritorio del usuario.
 //!
-//! `cargo test -p pixpin --bin pixpinmax captura2::muestras -- --ignored --nocapture`
+//! `cargo test -p pixpin --bin pixdesk captura2::muestras -- --ignored --nocapture`
 //! (`PIXPIN_MUESTRAS` = carpeta de salida; si no, la temporal).
 
 use pixpin_codec::ImagenRgba;

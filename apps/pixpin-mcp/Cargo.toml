@@ -1,4 +1,4 @@
-# El servidor MCP de PixPin Max (`pixpin-mcp.exe`), en su propio ejecutable.
+# El servidor MCP de PixDesk (`pixpin-mcp.exe`), en su propio ejecutable.
 #
 # Claude Desktop, Claude Code y cualquier cliente MCP lo arrancan y le hablan
 # JSON-RPC 2.0 por stdin/stdout (una linea por mensaje). Va aparte de

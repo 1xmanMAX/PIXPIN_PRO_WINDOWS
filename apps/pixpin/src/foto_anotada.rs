@@ -637,7 +637,7 @@ mod pruebas {
     /// **El lienzo del movil tal cual llega**: papel «Azul noche» arriba en
     /// la escena, la foto girada un cuarto de vuelta y encima tiza blanca y
     /// una elipse roja. Antes: papel blanco (la tiza no se veia) y la foto
-    /// derecha. `cargo test -p pixpin --bin pixpinmax muestra_del_lienzo_del_movil
+    /// derecha. `cargo test -p pixpin --bin pixdesk muestra_del_lienzo_del_movil
     /// -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

@@ -4,7 +4,7 @@
 //! de verdad, sin abrir ninguna ventana.
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixpinmax muestras_de_los_menus_v2 -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pixdesk muestras_de_los_menus_v2 -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja los PNG en la carpeta de `PIXPIN_MUESTRAS` o, si no, en

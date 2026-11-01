@@ -910,7 +910,7 @@ mod pruebas {
     /// anotador; abajo tras editarlo (la goma se llevo el circulo, la flecha
     /// se movio y paso a azul) y volverlo a abrir. Cada elemento lleva su
     /// caja: roja la foto bloqueada, verde lo editable.
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_lienzo_abierto -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_lienzo_abierto -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_del_lienzo_abierto_de_la_pantalla_anotada() {
@@ -1037,7 +1037,7 @@ mod pruebas {
     /// monitores con una flecha que cruza de uno a otro y un trazo, y se
     /// pinta como la pinta la burbuja: la foto y encima lo que devuelve
     /// `dibujo_de_la_foto` leyendo el lienzo guardado.
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_pantalla_anotada -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_pantalla_anotada -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_de_la_pantalla_anotada_en_su_burbuja() {

@@ -19,7 +19,7 @@
 //!
 //! ```text
 //! PIXPIN_OJOS_SALIDA=<carpeta> [PIXPIN_OJOS_MOTOR=claude|deepseek] [PIXPIN_OJOS_CASO=plano]
-//! cargo test -p pixpin --bin pixpinmax -- --ignored --nocapture --test-threads=1 asistente::ojos::banco
+//! cargo test -p pixpin --bin pixdesk -- --ignored --nocapture --test-threads=1 asistente::ojos::banco
 //! ```
 
 use std::path::PathBuf;

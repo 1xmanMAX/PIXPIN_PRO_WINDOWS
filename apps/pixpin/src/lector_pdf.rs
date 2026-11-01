@@ -4800,7 +4800,7 @@ mod pruebas {
     /// **El lector de PDF pintado de verdad**, y el PDF anotado que exporta,
     /// en PNG para mirarlos: dos hojas a la vista con los dos espacios para
     /// anotar, tinta en la hoja y en el margen, una marca y la barra de
-    /// anotar. Necesita GPU: `cargo test -p pixpin --bin pixpinmax
+    /// anotar. Necesita GPU: `cargo test -p pixpin --bin pixdesk
     /// muestra_del_lector_de_pdf -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
@@ -4815,7 +4815,7 @@ mod pruebas {
     /// tal cual (como la leia el PC hasta el 29-sep, dos veces y media mas
     /// grande sin espacios) y en las unidades de la capa del movil con sus
     /// espacios (`PIXPIN_ESPACIOS`, 0 si no hay `.espacios`). Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_del_movil_en_un_pdf -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_tinta_del_movil_en_un_pdf -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una copia de los datos del usuario"]
     fn muestra_de_la_tinta_del_movil_en_un_pdf() {
@@ -4926,7 +4926,7 @@ mod pruebas {
     /// reescrita en otra escala y otro origen con su marco: tiene que caer
     /// en el mismo sitio. Y, como caso negativo, esa ultima sin marco.
     /// Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_marco_de_la_tinta -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_marco_de_la_tinta -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una copia de los datos del usuario"]
     fn muestra_del_marco_de_la_tinta() {
@@ -5075,7 +5075,7 @@ mod pruebas {
     /// hoja oscura sale de la matriz de color al pintar: el bitmap guardado
     /// es el mismo. `PIXPIN_PDF` es el PDF (una copia, nunca el original) y
     /// `PIXPIN_MUESTRAS` la carpeta de los PNG:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_lector_de_pdf_en_oscuro -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_lector_de_pdf_en_oscuro -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y un PDF de muestra"]
     fn muestra_del_lector_de_pdf_en_oscuro() {

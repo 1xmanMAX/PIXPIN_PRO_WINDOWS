@@ -2,7 +2,7 @@
 //! mirarla, con datos de EJEMPLO en una carpeta temporal (nunca los del
 //! usuario). `PIXPIN_MUESTRAS` dice donde dejarlas.
 //!
-//! `cargo test -p pixpin --bin pixpinmax -- --ignored --test-threads=1 muestra_del_timeline`
+//! `cargo test -p pixpin --bin pixdesk -- --ignored --test-threads=1 muestra_del_timeline`
 
 use super::*;
 use pixpin_render::MotorRender;

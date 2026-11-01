@@ -3,7 +3,7 @@
 //! queda en mapas de bits. Es una prueba `#[ignore]`: necesita GPU y
 //! `E:\pixpin-demo\Tesis.pdf` (se copia; el original no se abre):
 //!
-//! `cargo test -p pixpin --bin pixpinmax medir_la_cola_de_hojas -- --ignored --nocapture`
+//! `cargo test -p pixpin --bin pixdesk medir_la_cola_de_hojas -- --ignored --nocapture`
 
 use super::pruebas::{estado, marco};
 use super::*;
@@ -257,7 +257,7 @@ fn a_png(
 /// **El lector de verdad sobre una copia de la tesis**: el hilo de las
 /// hojas real, texto elegido en una hoja con enlaces, y de muy cerca con el
 /// trozo nitido. Saca PNG para mirarlos:
-/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax muestra_del_lector_de_pdf_de_cerca -- --ignored --nocapture`
+/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixdesk muestra_del_lector_de_pdf_de_cerca -- --ignored --nocapture`
 #[test]
 #[ignore = "necesita GPU y la tesis de muestra; genera PNG"]
 fn muestra_del_lector_de_pdf_de_cerca_y_eligiendo() {

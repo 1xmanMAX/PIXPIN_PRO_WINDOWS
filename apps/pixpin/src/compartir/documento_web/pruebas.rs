@@ -656,7 +656,7 @@ fn sin_texto_buscable_las_hojas_van_como_imagen_con_su_texto_invisible_encima() 
 /// **Con copias de los PDF del usuario** (nunca los de verdad): cuanto pesa
 /// la pagina web con «Texto buscable» puesto y quitado, y cuanto tarda. Deja
 /// los `.html` al lado para abrirlos. Se lanza a mano:
-/// `PIXPIN_PDFS=<carpeta con copias> cargo test -p pixpin --bin pixpinmax medir_la_web_de_los_pdf_copiados -- --ignored --nocapture`.
+/// `PIXPIN_PDFS=<carpeta con copias> cargo test -p pixpin --bin pixdesk medir_la_web_de_los_pdf_copiados -- --ignored --nocapture`.
 #[test]
 #[ignore = "necesita copias de los PDF del usuario"]
 fn medir_la_web_de_los_pdf_copiados() {

@@ -1019,7 +1019,7 @@ mod pruebas {
         );
     }
 
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_telepronter --
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_telepronter --
     /// --ignored --nocapture`: grabando, con la raya de lo leido.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

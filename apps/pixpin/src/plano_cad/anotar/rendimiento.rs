@@ -5,7 +5,7 @@
 //! final de cada uno (asi lo que se mide es lo que se ve, no lo que se
 //! encola).
 //!
-//! `PIXPIN_CAD_PLANO=<copia de un dwg> cargo test -p pixpin --bin pixpinmax
+//! `PIXPIN_CAD_PLANO=<copia de un dwg> cargo test -p pixpin --bin pixdesk
 //! medir_zoom_del_plano_anotado -- --ignored --nocapture --test-threads=1`
 
 use std::time::{Duration, Instant};

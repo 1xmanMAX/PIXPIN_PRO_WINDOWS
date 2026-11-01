@@ -1037,7 +1037,7 @@ mod pruebas {
     /// como sale a la impresora, en PNG para mirarlos; y el texto elegido
     /// tal como lo copia Ctrl+C. `PIXPIN_OFFICE` es el `.docx` (por defecto
     /// una muestra publica de `E:\pixpin-office-muestras`). Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_lector_de_office -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_lector_de_office -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y un .docx de muestra"]
     fn muestra_del_lector_de_office() {

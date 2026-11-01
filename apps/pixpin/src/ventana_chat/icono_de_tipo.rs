@@ -210,7 +210,7 @@ mod pruebas {
         assert_eq!(colores("tesis.pdf").1, Color::BLANCO);
     }
 
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_icono_de_tipo --
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_icono_de_tipo --
     /// --ignored --nocapture`: filas de archivo de varias extensiones sobre
     /// el chat claro y el oscuro.
     #[test]

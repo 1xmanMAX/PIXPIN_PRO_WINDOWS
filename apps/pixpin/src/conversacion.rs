@@ -758,7 +758,7 @@ mod pruebas {
         );
     }
 
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_conversacion --
+    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_conversacion --
     /// --ignored --nocapture`: preparar y grabar.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

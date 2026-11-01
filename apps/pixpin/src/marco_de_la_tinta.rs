@@ -435,7 +435,7 @@ mod pruebas {
 /// **Con una copia de los datos del usuario** (nunca los de verdad): tras
 /// la pasada, cada tinta de un mensaje tiene su `.hoja` y todo cae donde
 /// caia. Se lanza a mano:
-/// `PIXPIN_DATOS_COPIA=<copia> cargo test -p pixpin --bin pixpinmax pasada_con_los_datos_copiados -- --ignored --nocapture`.
+/// `PIXPIN_DATOS_COPIA=<copia> cargo test -p pixpin --bin pixdesk pasada_con_los_datos_copiados -- --ignored --nocapture`.
 #[cfg(test)]
 mod con_datos_reales {
     use super::*;

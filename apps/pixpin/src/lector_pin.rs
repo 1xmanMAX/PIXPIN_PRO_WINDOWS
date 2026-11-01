@@ -1753,7 +1753,7 @@ mod muestras {
     use super::*;
 
     /// El recuadro del tipo y la luna/sol como salen en la barra, a PNG:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_barra_del_lector -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_de_la_barra_del_lector -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera un PNG para mirarlo"]
     fn muestra_de_la_barra_del_lector() {

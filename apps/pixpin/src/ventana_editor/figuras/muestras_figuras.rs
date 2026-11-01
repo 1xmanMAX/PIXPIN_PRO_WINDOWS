@@ -1,6 +1,6 @@
 //! **Muestras de las figuras de F12/F14**, antes y despues de arreglarlas:
 //! la grafica entera y estirada, la tabla y los cajetines.
-//! `cargo test -p pixpin --bin pixpinmax muestras_de_las_figuras -- --ignored
+//! `cargo test -p pixpin --bin pixdesk muestras_de_las_figuras -- --ignored
 //! --nocapture`. Necesita GPU; deja los PNG en `PIXPIN_MUESTRAS`, con el
 //! prefijo de `PIXPIN_MUESTRAS_PREFIJO` (por ejemplo «antes-»).
 

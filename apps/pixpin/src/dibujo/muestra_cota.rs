@@ -7,7 +7,7 @@
 //! del movil (escala arriba del todo, cotas `pixpin-measure` con su
 //! `fontSize`, una linea redonda larga).
 //!
-//! `cargo test -p pixpin --bin pixpinmax muestra_de_la_cota -- --ignored
+//! `cargo test -p pixpin --bin pixdesk muestra_de_la_cota -- --ignored
 //! --nocapture --test-threads=1`. Deja `target/muestras-de-cota/*.png`.
 
 use pixpin_render::MotorRender;

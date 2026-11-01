@@ -2,7 +2,7 @@
 //! (Tanda 4): la recta, el plano y el espacio con una serie tecleada encima,
 //! el plano estirado por un lado y por una esquina, el espacio girado, la
 //! pantalla con el eje y el cajetin de la tabla.
-//! `cargo test -p pixpin --bin pixpinmax muestras_de_los_instrumentos --
+//! `cargo test -p pixpin --bin pixdesk muestras_de_los_instrumentos --
 //! --ignored --nocapture`. Necesita GPU; deja los PNG en `PIXPIN_MUESTRAS`.
 
 use super::muestras_figuras::{cajetin_a_png, foto_de, guardar};

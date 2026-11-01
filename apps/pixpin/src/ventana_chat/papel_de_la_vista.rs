@@ -13,7 +13,7 @@
 //! Muestra lado a lado (editor | burbuja | tarjeta de Proyectos):
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixpinmax muestra_del_lienzo_y_su_vista_previa -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pixdesk muestra_del_lienzo_y_su_vista_previa -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja los PNG en `target/muestras-papel-de-la-vista`.

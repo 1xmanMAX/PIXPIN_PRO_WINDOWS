@@ -1769,7 +1769,7 @@ mod pruebas {
     /// **La transicion a mitad y la vista del orador**, pintadas fuera de
     /// pantalla con una presentacion publica de muestra, en PNG para
     /// mirarlas. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_presentar -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pixdesk muestra_de_presentar -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una presentacion de muestra; genera PNG"]
     fn muestra_de_presentar() {

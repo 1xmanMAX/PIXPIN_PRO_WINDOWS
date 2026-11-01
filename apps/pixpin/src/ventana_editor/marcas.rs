@@ -1664,7 +1664,7 @@ mod pruebas {
     }
 
     /// **La muestra del riel en PNG**, para mirarla: necesita GPU.
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_riel -- --ignored
+    /// `cargo test -p pixpin --bin pixdesk muestra_del_riel -- --ignored
     /// --nocapture`. Deja los PNG en `PIXPIN_MUESTRAS` o en la temporal.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

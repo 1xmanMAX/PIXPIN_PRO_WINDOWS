@@ -620,7 +620,7 @@ mod latencia {
     /// **Latencia hasta lo primero visible** del visor de HTML y del de
     /// Markdown, como los abre PixPin. Abre ventanas de verdad unos segundos:
     /// solo a mano,
-    /// `cargo test -p pixpin --bin pixpinmax latencia_de_los_visores_web -- --ignored --nocapture --test-threads=1`.
+    /// `cargo test -p pixpin --bin pixdesk latencia_de_los_visores_web -- --ignored --nocapture --test-threads=1`.
     #[test]
     #[ignore = "abre ventanas; mide la latencia a mano"]
     fn latencia_de_los_visores_web() {
@@ -701,7 +701,7 @@ mod latencia {
     /// **Como se ven** el visor de Markdown y el de HTML como pin, en claro
     /// y en oscuro (la luna/sol no se guarda: en las pruebas no hay datos).
     /// Abre ventanas y fotografia su sitio en la pantalla: solo a mano,
-    /// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax foto_de_los_visores_web -- --ignored --nocapture`.
+    /// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixdesk foto_de_los_visores_web -- --ignored --nocapture`.
     #[test]
     #[ignore = "abre ventanas y fotografia la pantalla; a mano"]
     fn foto_de_los_visores_web() {
@@ -743,7 +743,7 @@ mod latencia {
     /// `PIXPIN_RIEL_MUESTRA` (un `.html` en el visor, un `.md` en el lector de
     /// notas) y espera medio minuto; quien lo lanzo fotografia sus ventanas y
     /// lo cierra. Con `PIXPIN_RIEL_LAPIZ`, el lapiz nace pulsado. A mano:
-    /// `PIXPIN_RIEL_MUESTRA=<fichero> cargo test -p pixpin --bin pixpinmax muestra_del_riel_web -- --ignored`.
+    /// `PIXPIN_RIEL_MUESTRA=<fichero> cargo test -p pixpin --bin pixdesk muestra_del_riel_web -- --ignored`.
     #[test]
     #[ignore = "abre ventanas; para las fotos del riel, a mano"]
     fn muestra_del_riel_web() {
