@@ -576,7 +576,7 @@ fn leer_automatizaciones(ubicacion: &Ubicacion) -> Vec<crate::automatizaciones::
 
 /// El codigo de este equipo (`K7Q2`), el de las automatizaciones nuevas.
 fn codigo_del_equipo(raiz: &std::path::Path) -> String {
-    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into());
+    let nombre = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into());
     pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, &nombre)
         .map(|i| i.yo.codigo())
         .unwrap_or_default()
@@ -2345,7 +2345,7 @@ impl Copia {
 fn ruta_exe() -> Option<std::path::PathBuf> {
     pixpin_shell::entorno::directorio_del_ejecutable()
         .ok()
-        .map(|d| d.join("pixpinmax.exe"))
+        .map(|d| d.join(pixpin_shell::entorno::EXE))
 }
 
 /// Si la fila `i` es la caja de una clave de API (se pinta tapada, no se

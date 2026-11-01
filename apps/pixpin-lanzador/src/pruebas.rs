@@ -688,7 +688,7 @@ fn si_la_app_no_esta_se_avisa_con_showmsg() {
         s[1]["params"][1]
             .as_str()
             .unwrap()
-            .contains("No se pudo abrir PixPin")
+            .contains("No se pudo abrir PixDesk")
     );
 }
 

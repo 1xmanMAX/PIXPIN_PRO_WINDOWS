@@ -5,8 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+# El ejecutable se llama `pixdesk.exe` desde nov-2026 (antes
+# `pixpinmax.exe`); el paquete y el crate siguen siendo `pixpin`
+# (docs/nombre-pixdesk.md).
 [[bin]]
-name = "pixpinmax"
+name = "pixdesk"
 path = "src/main.rs"
 
 [dependencies]

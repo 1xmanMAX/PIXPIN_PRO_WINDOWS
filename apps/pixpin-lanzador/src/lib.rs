@@ -1,4 +1,4 @@
-//! **`pixpin-lanzador.exe`**: PixPin Max desde Flow Launcher (`p`).
+//! **`pixpin-lanzador.exe`**: PixDesk desde Flow Launcher (`p`).
 //!
 //! - Con un JSON como argumento es el plugin de Flow tal como lo usa la 2.1.4
 //!   (`Executable`, un proceso por tecla: [`rpc::una_vez`]). Para que cada
@@ -65,7 +65,7 @@ fn silenciar_panicos() {
 }
 
 /// El icono por defecto de los resultados: `Images\pixpin.png` junto al exe
-/// (la carpeta del plugin) o, si no, el propio `pixpinmax.exe`.
+/// (la carpeta del plugin) o, si no, el propio `pixdesk.exe`.
 fn icono_por_defecto() -> String {
     let junto = std::env::current_exe()
         .ok()

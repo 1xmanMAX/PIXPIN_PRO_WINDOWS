@@ -11,9 +11,52 @@
 //! (`posicion_del_cursor` sigue en `pixpin_shell::entorno`: es del
 //! escritorio, no de la logica.)
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// Directorio donde vive el ejecutable (`pixpinmax.exe` en Windows).
+/// El ejecutable de la app de Windows. Desde nov-2026 la app se llama
+/// PixDesk; antes era [`EXE_VIEJO`], y quien la tenia instalada puede
+/// tenerlo aun hasta que pase por `Instalar.cmd` (docs/nombre-pixdesk.md).
+pub const EXE: &str = "pixdesk.exe";
+/// El nombre de antes de [`EXE`].
+pub const EXE_VIEJO: &str = "pixpinmax.exe";
+/// La carpeta de `%LOCALAPPDATA%\Programs` donde la deja `Instalar.cmd`.
+pub const CARPETA_PROGRAMA: &str = "PixDesk";
+/// La carpeta de antes de [`CARPETA_PROGRAMA`].
+pub const CARPETA_PROGRAMA_VIEJA: &str = "PixPinMax";
+
+/// Donde puede estar la app, en orden, vista desde otro ejecutable suyo (el
+/// puente del navegador, el servidor MCP): junto a `dir` y en la carpeta de
+/// instalacion de `local` (`%LOCALAPPDATA%`), con el nombre nuevo antes que
+/// el viejo. Puro, para probarlo sin disco.
+pub fn sitios_del_exe(dir: Option<&Path>, local: Option<&Path>) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Some(d) = dir {
+        v.push(d.join(EXE));
+        v.push(d.join(EXE_VIEJO));
+    }
+    if let Some(l) = local {
+        let programas = l.join("Programs");
+        v.push(programas.join(CARPETA_PROGRAMA).join(EXE));
+        v.push(programas.join(CARPETA_PROGRAMA_VIEJA).join(EXE_VIEJO));
+    }
+    v
+}
+
+/// El primero de [`sitios_del_exe`] que existe; si no hay ninguno, el de la
+/// instalacion nueva (o el de junto a `dir`), para decir donde se busco.
+pub fn exe_de_la_app(dir: Option<&Path>) -> Option<PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+    let sitios = sitios_del_exe(dir, local.as_deref());
+    if let Some(e) = sitios.iter().find(|e| e.is_file()) {
+        return Some(e.clone());
+    }
+    match local {
+        Some(l) => Some(l.join("Programs").join(CARPETA_PROGRAMA).join(EXE)),
+        None => sitios.into_iter().next(),
+    }
+}
+
+/// Directorio donde vive el ejecutable (`pixdesk.exe` en Windows).
 pub fn directorio_del_ejecutable() -> std::io::Result<PathBuf> {
     let exe = std::env::current_exe()?;
     exe.parent()
@@ -324,6 +367,24 @@ pub fn a_local(utc_ms: i64) -> i64 {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_exe_se_busca_con_el_nombre_nuevo_antes_que_el_viejo() {
+        let dir = Path::new("C:/Apps/x");
+        let local = Path::new("C:/L");
+        let v = sitios_del_exe(Some(dir), Some(local));
+        assert_eq!(
+            v,
+            [
+                dir.join("pixdesk.exe"),
+                dir.join("pixpinmax.exe"),
+                local.join("Programs").join("PixDesk").join("pixdesk.exe"),
+                local.join("Programs").join("PixPinMax").join("pixpinmax.exe"),
+            ]
+        );
+        // Caso negativo: sin carpeta ni %LOCALAPPDATA% no hay donde buscar.
+        assert!(sitios_del_exe(None, None).is_empty());
+    }
 
     #[test]
     fn el_desfase_del_huso_va_en_cuartos_de_hora_y_a_local_lo_suma() {

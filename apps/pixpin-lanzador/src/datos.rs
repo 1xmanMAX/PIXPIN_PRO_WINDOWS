@@ -23,15 +23,19 @@ pub const NOMBRE_GUARDADOS: &str = "Mensajes guardados";
 /// Prefijo de las rutas que llegan del movil.
 const PORTATIL: &str = "pixpin:files/";
 
-/// Donde esta `pixpinmax.exe` instalado (`herramientas/instalar.ps1`).
+/// Donde esta la app instalada (`Instalar.cmd`, `herramientas/instalar.ps1`):
+/// `PixDesk\pixdesk.exe` desde nov-2026 o, si aun no se actualizo, el
+/// `PixPinMax\pixpinmax.exe` de antes (docs/nombre-pixdesk.md). Es la regla
+/// de `pixpin_sistema::entorno::exe_de_la_app`, que este plugin no enlaza.
 pub fn exe_instalado() -> Option<PathBuf> {
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(
-        PathBuf::from(local)
-            .join("Programs")
-            .join("PixPinMax")
-            .join("pixpinmax.exe"),
-    )
+    let programas = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Programs");
+    let nuevo = programas.join("PixDesk").join("pixdesk.exe");
+    let viejo = programas.join("PixPinMax").join("pixpinmax.exe");
+    Some(if !nuevo.is_file() && viejo.is_file() {
+        viejo
+    } else {
+        nuevo
+    })
 }
 
 /// La raiz de datos: la carpeta del exe instalado si a su lado hay un

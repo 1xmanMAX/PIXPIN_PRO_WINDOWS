@@ -206,20 +206,20 @@ fn ninguna_dependencia_sube_de_capa() {
     }
 }
 
-/// **pixpinmax.exe no enlaza el compresor de PDF.** pdfsqueeze y sus codecs
+/// **pixdesk.exe no enlaza el compresor de PDF.** pdfsqueeze y sus codecs
 /// son ~1,8 MB que viven en su propio ejecutable (`pixpin-aligerar`), al que
-/// pixpinmax lanza como proceso. Basta una linea en `[dependencies]` para
+/// pixdesk lanza como proceso. Basta una linea en `[dependencies]` para
 /// volver a meterlos en el programa que se abre en cada arranque de Windows;
 /// en `[dev-dependencies]` si pueden estar, que eso no llega al ejecutable.
 #[test]
-fn pixpinmax_no_enlaza_el_compresor_de_pdf() {
+fn pixdesk_no_enlaza_el_compresor_de_pdf() {
     let texto = fs::read_to_string(raiz().join("apps/pixpin/Cargo.toml")).unwrap();
     let doc: toml::Value = texto.parse().unwrap();
     let deps = doc["dependencies"].as_table().unwrap();
     for prohibida in ["pdfsqueeze-core", "pixpin-aligerar", "lopdf"] {
         assert!(
             !deps.iter().any(|(k, v)| nombre_real(k, v) == prohibida),
-            "`{prohibida}` en [dependencies] de pixpin lo enlazaria en pixpinmax.exe"
+            "`{prohibida}` en [dependencies] de pixpin lo enlazaria en pixdesk.exe"
         );
     }
     // Caso negativo de la propia prueba: el compresor si lo enlaza.

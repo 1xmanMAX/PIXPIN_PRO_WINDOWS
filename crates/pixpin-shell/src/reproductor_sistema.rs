@@ -99,7 +99,7 @@ impl MandosDelSistema {
             CreateWindowExW(
                 WS_EX_TOOLWINDOW,
                 CLASE,
-                w!("PixPin Max"),
+                w!("PixDesk"),
                 WINDOW_STYLE(WS_POPUP.0),
                 0,
                 0,

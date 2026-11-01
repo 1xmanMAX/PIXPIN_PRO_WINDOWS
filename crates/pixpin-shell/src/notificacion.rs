@@ -46,10 +46,13 @@
 
 use std::path::{Path, PathBuf};
 
-/// La identidad de PixPin Max para las notificaciones sin paquete MSIX.
+/// La identidad de PixDesk para las notificaciones sin paquete MSIX. Es la
+/// de cuando se llamaba PixPin Max y no cambia: Windows guarda con ella si
+/// el usuario las silencio, y la usan el paquete de identidad y el acceso
+/// directo del menu Inicio (docs/nombre-pixdesk.md).
 pub const AUMID: &str = "PixPinMax.App";
 /// El nombre que sale en la notificacion.
-pub const NOMBRE: &str = "PixPin Max";
+pub const NOMBRE: &str = "PixDesk";
 /// El esquema que siempre es nuestro y que se registra al arrancar
 /// (`pixpin:` solo si esta libre: [`registrar`]).
 pub const ESQUEMA: &str = "pixpinmax";
@@ -496,7 +499,7 @@ mod pruebas {
                 "DisplayName"
             )
             .as_deref(),
-            Some("PixPin Max")
+            Some("PixDesk")
         );
         assert_eq!(
             valor(r"Software\Classes\AppUserModelId\PixPinMax.App", "IconUri").as_deref(),
@@ -526,11 +529,11 @@ mod pruebas {
         // El exe instalado, no el de la prueba: el protocolo tiene que seguir
         // abriendo la PixPin de verdad.
         let exe = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap())
-            .join(r"Programs\PixPinMax\pixpinmax.exe");
+            .join(r"Programs\PixDesk\pixdesk.exe");
         registrar(&exe, None).unwrap();
         let r = mostrar(&Toast {
             titulo: "Hecho: prueba".into(),
-            texto: "Una notificacion de prueba de PixPin Max".into(),
+            texto: "Una notificacion de prueba de PixDesk".into(),
             botones: vec![Boton::nuevo(
                 "Abrir",
                 json!({"pixpin": 1, "accion": "asistente"}),

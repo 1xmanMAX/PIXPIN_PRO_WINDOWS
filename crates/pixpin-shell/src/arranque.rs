@@ -13,7 +13,12 @@ use windows::Win32::System::Registry::{
 };
 use windows::core::{HSTRING, w};
 
-const VALOR: windows::core::PCWSTR = w!("PixPinMax");
+/// El valor de `Run`: `PixDesk` desde nov-2026.
+const VALOR: windows::core::PCWSTR = w!("PixDesk");
+/// El de antes (la app se llamaba PixPin Max): [`establecer`] lo borra en
+/// cada arranque, asi que tras actualizar la entrada pasa sola al nombre
+/// nuevo y nunca arrancan dos (docs/nombre-pixdesk.md).
+const VALOR_VIEJO: windows::core::PCWSTR = w!("PixPinMax");
 
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorArranque {
@@ -58,6 +63,9 @@ pub fn establecer(activo: bool, es_portable: bool, ruta_exe: &Path) -> Result<()
     }
 
     let clave = abrir(KEY_WRITE)?;
+    // SAFETY: `clave` es un handle valido abierto justo arriba. Que no
+    // exista es lo normal y no es un fallo.
+    let _ = unsafe { RegDeleteValueW(clave, VALOR_VIEJO) };
 
     let resultado = if activo {
         // Las comillas son obligatorias: sin ellas una ruta con espacios
@@ -106,9 +114,13 @@ pub fn esta_activo() -> bool {
     let Ok(clave) = abrir(KEY_READ) else {
         return false;
     };
-    // SAFETY: `clave` es valida; se piden solo los metadatos del valor pasando
-    // None como buffer, que es el uso documentado para comprobar existencia.
-    let existe = unsafe { RegQueryValueExW(clave, VALOR, None, None, None, None).is_ok() };
+    // El nombre viejo cuenta hasta que el siguiente arranque lo cambie.
+    let existe = [VALOR, VALOR_VIEJO].into_iter().any(|v| {
+        // SAFETY: `clave` es valida y `v` un literal UTF-16 terminado en
+        // cero; se piden solo los metadatos del valor pasando None como
+        // buffer, que es el uso documentado para comprobar existencia.
+        unsafe { RegQueryValueExW(clave, v, None, None, None, None).is_ok() }
+    });
     // SAFETY: `clave` viene de RegOpenKeyExW y no se ha cerrado antes.
     unsafe {
         let _ = RegCloseKey(clave);
@@ -144,7 +156,7 @@ mod pruebas {
     }
 
     /// Este test escribe una entrada real en HKCU\...\Run. Si un `assert!` de
-    /// en medio entra en panico, dejar la entrada puesta haria que PixPin Max
+    /// en medio entra en panico, dejar la entrada puesta haria que PixDesk
     /// arrancara solo en esta maquina para siempre. `LimpiarAlSalir` la borra
     /// en su `Drop`, que Rust ejecuta durante el desenrollado del panico
     /// (el perfil de test usa unwind, no abort; `panic = "abort"` solo se fija

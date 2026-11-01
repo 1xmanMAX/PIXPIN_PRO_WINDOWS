@@ -8,7 +8,7 @@
 //! usuario a sus espaldas es de las cosas que mas molestan de un programa,
 //! y ademas Windows 10 y 11 ya no dejan hacerlo en silencio — devuelven el
 //! valor y ensenan un aviso diciendo que una aplicacion lo intento. Asi que
-//! PixPin Max solo se ofrece, y elegirlo es cosa del usuario.
+//! PixDesk solo se ofrece, y elegirlo es cosa del usuario.
 //!
 //! Y siempre en HKEY_CURRENT_USER, nunca en HKEY_LOCAL_MACHINE: no hace
 //! falta ser administrador y no se le toca nada a los demas usuarios del
@@ -165,6 +165,7 @@ pub fn inscribir(ruta_exe: &Path) -> Result<(), ErrorAbrirCon> {
     let Some(nombre_exe) = ruta_exe.file_name().and_then(|n| n.to_str()) else {
         return Ok(());
     };
+    quitar_la_del_nombre_viejo(nombre_exe);
     let base = clave_de(nombre_exe);
 
     let clave = crear(HKEY_CURRENT_USER, &format!(r"{base}\shell\open\command"))?;
@@ -177,7 +178,7 @@ pub fn inscribir(ruta_exe: &Path) -> Result<(), ErrorAbrirCon> {
 
     // El nombre que se lee en la lista, en vez del del ejecutable.
     let app = crear(HKEY_CURRENT_USER, &base)?;
-    let escrito = poner_texto(app, Some("FriendlyAppName"), "PixPin Max");
+    let escrito = poner_texto(app, Some("FriendlyAppName"), "PixDesk");
     // SAFETY: igual que arriba.
     unsafe {
         let _ = RegCloseKey(app);
@@ -219,6 +220,7 @@ pub fn desinscribir(ruta_exe: &Path) -> Result<(), ErrorAbrirCon> {
     let Some(nombre_exe) = ruta_exe.file_name().and_then(|n| n.to_str()) else {
         return Ok(());
     };
+    quitar_la_del_nombre_viejo(nombre_exe);
     let ruta = HSTRING::from(clave_de(nombre_exe));
     // SAFETY: `ruta` vive durante la llamada. RegDeleteTreeW borra la clave
     // y todo lo que cuelga de ella; que no exista devuelve un codigo que se
@@ -228,6 +230,16 @@ pub fn desinscribir(ruta_exe: &Path) -> Result<(), ErrorAbrirCon> {
         Ok(())
     } else {
         Err(ErrorAbrirCon::Registro(r.ok().unwrap_err()))
+    }
+}
+
+/// La inscripcion de antes de PixDesk (`Applications\pixpinmax.exe`)
+/// apunta a un exe que `Instalar.cmd` ya quito: se borra, salvo que el que
+/// corre siga llamandose asi (docs/nombre-pixdesk.md).
+fn quitar_la_del_nombre_viejo(nombre_exe: &str) {
+    let viejo = crate::entorno::EXE_VIEJO;
+    if !nombre_exe.eq_ignore_ascii_case(viejo) {
+        let _ = desinscribir(Path::new(viejo));
     }
 }
 

@@ -73,7 +73,7 @@ impl Cartero for AlaApp {
             .exe
             .as_ref()
             .filter(|e| e.is_file())
-            .ok_or("No se encuentra pixpinmax.exe")?;
+            .ok_or("No se encuentra pixdesk.exe")?;
         let preparar = |c: &mut Command| {
             c.stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -180,22 +180,10 @@ impl Entorno {
     }
 }
 
-/// `pixpinmax.exe`: junto al puente (asi se instala) o en el sitio fijo de
-/// `herramientas/instalar.ps1`.
+/// `pixdesk.exe` (o el `pixpinmax.exe` de antes): junto al puente (asi se
+/// instala) o en el sitio fijo de `Instalar.cmd`.
 pub fn exe_de_pixpin(dir_exe: Option<&Path>) -> Option<PathBuf> {
-    if let Some(e) = dir_exe
-        .map(|d| d.join("pixpinmax.exe"))
-        .filter(|e| e.is_file())
-    {
-        return Some(e);
-    }
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(
-        PathBuf::from(local)
-            .join("Programs")
-            .join("PixPinMax")
-            .join("pixpinmax.exe"),
-    )
+    pixpin_shell::entorno::exe_de_la_app(dir_exe)
 }
 
 /// **Una vuelta del puente**: lee un mensaje, lo hace y contesta. Devuelve

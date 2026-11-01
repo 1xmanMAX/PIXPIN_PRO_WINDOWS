@@ -238,7 +238,7 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
                         let icono = self.icono.clone();
                         self.llamar_a_flow(
                             "ShowMsg",
-                            json!(["PixPin Max", format!("No se pudo abrir {r}"), icono]),
+                            json!(["PixDesk", format!("No se pudo abrir {r}"), icono]),
                         );
                     }
                 }
@@ -331,7 +331,7 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         self.registro.escribir(&format!("pedido {texto} -> {e:?}"));
         if e != Envio::Aceptado {
             let icono = self.icono.clone();
-            self.llamar_a_flow("ShowMsg", json!(["PixPin Max", e.explicacion(), icono]));
+            self.llamar_a_flow("ShowMsg", json!(["PixDesk", e.explicacion(), icono]));
         } else if pedido.get("imagenes").is_some() || pedido.get("archivos").is_some() {
             // Esa tarea (o ese mensaje) ya se llevo sus imagenes y ficheros:
             // lo siguiente empieza de cero.
@@ -360,13 +360,13 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
             // Una imagen, un nombre: la misma no se pega otra vez.
             Pegado::Repetida(n) => {
                 let aviso = format!("Esa imagen ya está como {}", crate::imagenes::ficha(n));
-                self.llamar_a_flow("ShowMsg", json!(["PixPin Max", aviso, icono]));
+                self.llamar_a_flow("ShowMsg", json!(["PixDesk", aviso, icono]));
             }
             Pegado::Nada => {
                 self.llamar_a_flow(
                     "ShowMsg",
                     json!([
-                        "PixPin Max",
+                        "PixDesk",
                         "No hay ninguna imagen en el portapapeles",
                         icono
                     ]),

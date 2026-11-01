@@ -169,6 +169,8 @@ pub struct VentanaMensajes {
 
 impl VentanaMensajes {
     pub fn nueva() -> WinResult<Self> {
+        // El nombre de antes de PixDesk, a proposito: lo buscan el puente,
+        // el MCP, Flow e instalar.ps1, tambien los de una version vieja.
         const CLASE: windows::core::PCWSTR = w!("PixPinMaxVentanaMensajes");
 
         // SAFETY: GetModuleHandleW(None) devuelve el modulo del proceso
@@ -201,7 +203,7 @@ impl VentanaMensajes {
             CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 CLASE,
-                w!("PixPin Max"),
+                w!("PixDesk"),
                 WINDOW_STYLE(0),
                 0,
                 0,

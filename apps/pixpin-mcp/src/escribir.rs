@@ -87,9 +87,10 @@ fn ventana_de_pixpin() -> Result<HWND, String> {
     if clase != CLASE {
         return Err(cerrada());
     }
-    let exe = std::env::current_exe()
+    let junto = std::env::current_exe()
         .ok()
-        .and_then(|e| e.parent().map(|d| d.join("pixpinmax.exe")))
+        .and_then(|e| e.parent().map(Path::to_path_buf));
+    let exe = pixpin_shell::entorno::exe_de_la_app(junto.as_deref())
         .filter(|e| e.is_file())
         .ok_or_else(cerrada)?;
     std::process::Command::new(&exe)

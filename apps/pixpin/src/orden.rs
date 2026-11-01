@@ -1,5 +1,5 @@
 //! **La copia de paso de la linea de ordenes** (15-oct-2026): lo que hace
-//! `pixpinmax.exe` cuando se le llama con un verbo (`pixpinmax tarea "…"`),
+//! `pixdesk.exe` cuando se le llama con un verbo (`pixdesk tarea "…"`),
 //! con `--pedido`, o con un enlace `pixpin://…` (el protocolo registrado por
 //! `herramientas/instalar.ps1`, «Enviar a» y el menu del Explorador).
 //!
@@ -33,7 +33,7 @@ pub fn ejecutar_si_toca() -> Option<i32> {
         args.remove(0);
         if orden::verbo(&args[0]).is_none() {
             decir_fallo(
-                &format!("--juntar: «{}» no es un verbo (pixpinmax ayuda)", args[0]),
+                &format!("--juntar: «{}» no es un verbo (pixdesk ayuda)", args[0]),
                 false,
             );
             return Some(codigo::NO_SE_ENTIENDE);
@@ -58,7 +58,7 @@ pub fn ejecutar_si_toca() -> Option<i32> {
         // Lo de Lectura Veloz llega de fondo mientras se lee alli: ningun
         // cuadro, solo la salida de errores.
         Err(f) if orden::es_de_lectura_veloz(&args) => {
-            pixpin_shell::consola::escribir_error(&format!("pixpinmax: {}\n", f.motivo));
+            pixpin_shell::consola::escribir_error(&format!("pixdesk: {}\n", f.motivo));
             f.codigo
         }
         Err(f) => {
@@ -78,7 +78,7 @@ fn sin_cuadros() -> bool {
 
 fn avisar(titulo: &str, texto: &str) {
     if sin_cuadros() {
-        pixpin_shell::consola::escribir_error(&format!("pixpinmax: {texto}\n"));
+        pixpin_shell::consola::escribir_error(&format!("pixdesk: {texto}\n"));
     } else {
         pixpin_shell::dialogo::avisar_al_frente(titulo, texto);
     }
@@ -87,7 +87,7 @@ fn avisar(titulo: &str, texto: &str) {
 fn confirmar(titulo: &str, texto: &str) -> bool {
     if sin_cuadros() {
         pixpin_shell::consola::escribir_error(&format!(
-            "pixpinmax: sin cuadros, no se confirma:\n{texto}\n"
+            "pixdesk: sin cuadros, no se confirma:\n{texto}\n"
         ));
         return false;
     }
@@ -110,7 +110,7 @@ fn textos() -> Catalogo {
 /// forma de saber por que no paso nada.
 fn decir_fallo(motivo: &str, enlace: bool) {
     if !enlace && pixpin_shell::consola::hay_donde_escribir() {
-        pixpin_shell::consola::escribir_error(&format!("pixpinmax: {motivo}\n"));
+        pixpin_shell::consola::escribir_error(&format!("pixdesk: {motivo}\n"));
         return;
     }
     let t = textos();
@@ -149,7 +149,7 @@ fn lectura_veloz(p: &pixpin_docs::lectura_veloz::Progreso) -> i32 {
     // Lo que no es un fichero de verdad no se le manda a nadie.
     if !Path::new(&p.ruta).is_file() {
         pixpin_shell::consola::escribir_error(&format!(
-            "pixpinmax: lectura-veloz: {} no es un fichero\n",
+            "pixdesk: lectura-veloz: {} no es un fichero\n",
             p.ruta
         ));
         return codigo::FALLO;
@@ -165,7 +165,7 @@ fn lectura_veloz(p: &pixpin_docs::lectura_veloz::Progreso) -> i32 {
     match crate::lectura_veloz::apuntar(p) {
         Ok(()) => codigo::ACEPTADO,
         Err(m) => {
-            pixpin_shell::consola::escribir_error(&format!("pixpinmax: lectura-veloz: {m}\n"));
+            pixpin_shell::consola::escribir_error(&format!("pixdesk: lectura-veloz: {m}\n"));
             codigo::FALLO
         }
     }
@@ -261,7 +261,7 @@ fn mandar(mut pedidos: Vec<Value>, origen: &Origen, sin_arrancar: bool) -> i32 {
             if enlace || !pixpin_shell::consola::hay_donde_escribir() {
                 avisar(&textos().t("orden-titulo"), &m);
             } else {
-                pixpin_shell::consola::escribir_error(&format!("pixpinmax: {m}\n"));
+                pixpin_shell::consola::escribir_error(&format!("pixdesk: {m}\n"));
             }
         }
     }
@@ -324,7 +324,7 @@ fn poner_ids(pedido: &mut Value, proyectos: &[(String, String)]) {
     }
 }
 
-/// `pixpinmax ocr`: el texto de cada imagen, en orden de lectura (el mismo
+/// `pixdesk ocr`: el texto de cada imagen, en orden de lectura (el mismo
 /// camino que «Copiar texto» del pin, `texto_de_imagen`), a la consola y,
 /// con `--copiar`, al portapapeles. Aqui mismo: no hace falta la app.
 fn ocr(rutas: &[PathBuf], copiar: bool) -> i32 {

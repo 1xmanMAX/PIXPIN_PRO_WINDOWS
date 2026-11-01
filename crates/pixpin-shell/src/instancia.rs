@@ -1,4 +1,4 @@
-//! Una sola PixPin Max a la vez.
+//! Una sola PixDesk a la vez.
 //!
 //! Sin esto, dos copias pelearian por los mismos atajos globales: la segunda
 //! fallaria al registrarlos y el usuario veria una aplicacion que "a veces no
@@ -12,14 +12,14 @@ use windows::core::w;
 ///
 /// Se distinguen a proposito dos casos que no tienen nada que ver entre si:
 /// que ya haya otra copia corriendo es el resultado esperado la mayoria de
-/// las veces (el usuario probo a abrir PixPin Max dos veces); que
+/// las veces (el usuario probo a abrir PixDesk dos veces); que
 /// `CreateMutexW` falle por otra razon (permisos, recursos agotados) es un
 /// fallo real que hay que reportar. Confundir el segundo caso con el primero
 /// dejaria a quien depure buscando una segunda copia que no existe.
 #[derive(Debug, thiserror::Error)]
 pub enum ErrorInstanciaUnica {
-    /// Ya hay otra copia de PixPin Max en marcha: no es un fallo.
-    #[error("ya hay otra instancia de PixPin Max en marcha")]
+    /// Ya hay otra copia de PixDesk en marcha: no es un fallo.
+    #[error("ya hay otra instancia de PixDesk en marcha")]
     YaHayOtraInstancia,
 
     /// `CreateMutexW` fallo por una razon distinta a que el mutex ya
@@ -45,7 +45,11 @@ impl Drop for InstanciaUnica {
 
 pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, ErrorInstanciaUnica> {
     // El prefijo Local\ limita el ambito a la sesion del usuario: dos usuarios
-    // distintos en el mismo equipo si pueden tener cada uno su PixPin Max.
+    // distintos en el mismo equipo si pueden tener cada uno su PixDesk.
+    //
+    // El nombre sigue siendo el de cuando la app se llamaba PixPin Max: asi
+    // un `pixdesk.exe` recien instalado ve al `pixpinmax.exe` viejo que aun
+    // corre, y al reves (docs/nombre-pixdesk.md). No cambiarlo.
     adquirir(w!(r"Local\PixPinMax-instancia-unica"))
 }
 

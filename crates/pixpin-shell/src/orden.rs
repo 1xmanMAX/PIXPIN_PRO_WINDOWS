@@ -1,5 +1,5 @@
-//! **La linea de ordenes de PixPin** (15-oct-2026): `pixpinmax <verbo> …`,
-//! `pixpinmax --pedido '<json>'` y los enlaces `pixpin://…`.
+//! **La linea de ordenes de PixPin** (15-oct-2026): `pixdesk <verbo> …`,
+//! `pixdesk --pedido '<json>'` y los enlaces `pixpin://…`.
 //!
 //! Hasta ahora, fuera de Flow Launcher y de un script que supiera mandar un
 //! `WM_COPYDATA`, nadie podia pedirle nada a PixPin: un acceso directo, un
@@ -545,7 +545,7 @@ fn armar_de_consola(
         }
         if !fila.opciones.contains(&clave.as_str()) {
             return Err(Fallo::no_se_entiende(format!(
-                "«{}» no tiene la opcion --{clave} (pixpinmax ayuda)",
+                "«{}» no tiene la opcion --{clave} (pixdesk ayuda)",
                 fila.nombres[0]
             )));
         }
@@ -817,13 +817,23 @@ pub fn esquema_de_la_casa() -> &'static str {
     })
 }
 
-/// Si `pixpin://` esta libre o lo abre un `pixpinmax.exe` (lo mismo que
-/// mira `herramientas/integraciones.ps1` antes de tomarlo).
+/// Si `pixpin://` esta libre o lo abre un `pixdesk.exe` (o el
+/// `pixpinmax.exe` de antes): lo mismo que mira
+/// `herramientas/integraciones.ps1` antes de tomarlo.
 pub fn pixpin_es_nuestro_o_libre() -> bool {
     match orden_del_protocolo("pixpin") {
         None => true,
-        Some(o) => o.to_lowercase().contains("pixpinmax.exe"),
+        Some(o) => es_orden_nuestra(&o),
     }
+}
+
+/// Si la orden de un protocolo abre nuestro exe, con el nombre de ahora o
+/// con el de antes de PixDesk.
+fn es_orden_nuestra(orden: &str) -> bool {
+    let o = orden.to_lowercase();
+    [crate::entorno::EXE, crate::entorno::EXE_VIEJO]
+        .iter()
+        .any(|exe| o.contains(exe))
 }
 
 /// La orden con que Windows abre un protocolo (`HKCU`/`HKLM` combinados,
@@ -1045,9 +1055,9 @@ pub fn describir(pedido: &Value) -> String {
 /// La ayuda de la consola, sacada de la tabla.
 pub fn ayuda() -> String {
     let mut s = String::from(
-        "PixPin Max: pedirle cosas a la PixPin que esta abierta (la abre si no lo esta).\n\n\
-         Uso:\n  pixpinmax <verbo> [argumentos] [--sin-arrancar]\n  pixpinmax --pedido '<json>'\n  \
-         pixpinmax --pedido-archivo <ruta|->\n  pixpinmax --url \"pixpin://<verbo>?campo=valor\"\n\nVerbos:\n",
+        "PixDesk: pedirle cosas a la PixDesk que esta abierta (la abre si no lo esta).\n\n\
+         Uso:\n  pixdesk <verbo> [argumentos] [--sin-arrancar]\n  pixdesk --pedido '<json>'\n  \
+         pixdesk --pedido-archivo <ruta|->\n  pixdesk --url \"pixpin://<verbo>?campo=valor\"\n\nVerbos:\n",
     );
     for v in VERBOS {
         s.push_str(&format!("  {:<52} {}\n", v.uso, v.ayuda));
@@ -1056,7 +1066,7 @@ pub fn ayuda() -> String {
         "\n--proyecto acepta el id o el nombre del proyecto. Sin --proyecto, Mensajes guardados.\n\
          Enlaces: pixpin://tarea?texto=comprar%20yeso, pixpin://proyecto/<id>, pixpin://atajo/capturar (Android).\n\n\
          Codigos de salida: 0 aceptado, 1 fallo aqui (fichero, OCR), 2 version, 3 no se entiende,\n\
-         4 PixPin no esta abierta, 5 no contesto, 6 rechazado (enlace no permitido o dijo que no).\n\
+         4 PixDesk no esta abierta, 5 no contesto, 6 rechazado (enlace no permitido o dijo que no).\n\
          Mas: docs/integraciones.md y docs/protocolo-pedidos.md\n",
     );
     s

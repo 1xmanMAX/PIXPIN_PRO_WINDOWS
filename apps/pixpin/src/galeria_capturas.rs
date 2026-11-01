@@ -1763,7 +1763,7 @@ pub(crate) fn conservar(
     ruta: &Path,
 ) -> std::io::Result<crate::caducidad_capturas::Registro> {
     let ahora = pixpin_shell::entorno::ahora_utc_ms();
-    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into());
+    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into());
     let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, &nombre_equipo)
         .map(|i| i.yo.codigo())
         .unwrap_or_default();

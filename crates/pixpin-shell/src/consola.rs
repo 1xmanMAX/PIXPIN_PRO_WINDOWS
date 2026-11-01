@@ -1,9 +1,9 @@
 //! **Escribir en la consola desde una aplicacion sin consola.**
 //!
-//! `pixpinmax.exe` es del subsistema «windows» (`#![windows_subsystem]`): si
+//! `pixdesk.exe` es del subsistema «windows» (`#![windows_subsystem]`): si
 //! fuera de consola, cada doble clic, cada «Abrir con» y cada enlace
-//! `pixpin://` abriria una ventana negra. Pero `pixpinmax ocr foto.png` y
-//! `pixpinmax ayuda` tienen que escribir algo, y un script tiene que poder
+//! `pixpin://` abriria una ventana negra. Pero `pixdesk ocr foto.png` y
+//! `pixdesk ayuda` tienen que escribir algo, y un script tiene que poder
 //! leerlo. Hay dos casos:
 //!
 //! - **La salida esta redirigida** (una tuberia de PowerShell, `> fichero`,

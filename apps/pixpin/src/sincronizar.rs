@@ -1148,7 +1148,7 @@ fn aceptar_campo(s: &mut Pantalla, tx: &mpsc::Sender<Aviso>, puerto: Option<u16>
 // ------------------------------------------------------------ identidad
 
 fn nombre_del_equipo() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into())
+    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixDesk".into())
 }
 
 fn leer_identidad(raiz: &Path) -> std::io::Result<Identidad> {
