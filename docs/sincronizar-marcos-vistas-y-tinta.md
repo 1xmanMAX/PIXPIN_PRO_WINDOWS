@@ -245,6 +245,41 @@ vuelve a ver eso mismo.
 - Lógica: `VistaDeMarca` en `crates/pindesk-motor2d/src/marcas.rs`; ficheros
   y teclas en `apps/pindesk/src/ventana_editor/marcas.rs`.
 
+### 3.9 Marcas sobre el texto de un PDF, Word o PowerPoint (1-nov-2026)
+
+Leyendo (no con el lápiz), lo elegido con el ratón se puede **resaltar,
+subrayar con raya ondulada, subrayar, tachar o tapar**: la misma herramienta
+que el texto reconocido de los pines. **No hay fichero nuevo**: cada marca es
+dibujo normal de la capa de su hoja (`<doc>.pixpin-anotado/hoja-<n>.excalidraw`
+junto al fichero, o `anot-<uid>-p<n>.excalidraw.gz` + `.hoja` de un adjunto),
+en las mismas unidades y con el mismo marco que la tinta (§3.4–3.5), así que
+viaja, se exporta y se imprime como cualquier trazo. Android, si no hace nada,
+ya las ve y las puede borrar como dibujo.
+
+- **Grupo**: todos los elementos de una marca (uno por renglón, y en todas
+  las hojas por las que pasa) llevan en `groupIds` el mismo
+  `marca-texto-<ms>` (milisegundos UTC de cuando se hizo). Lo que empieza por
+  `marca-texto` es una marca de texto; el resto es tinta a mano.
+- **Formas** (caja del renglón `x, y, w, h` en unidades de la hoja):
+  - Resaltar: `rectangle` en `x − 0,12h, y − 0,12h`, de `w + 0,24h` por
+    `h + 0,24h`, relleno sólido del color, sin borde (`strokeColor`
+    transparente), `opacity` 40.
+  - Tapar: lo mismo con `opacity` 100 (no deja leer; al exportar a PDF la
+    hoja va como imagen, así que lo tapado no queda en el texto).
+  - Subrayar: `line` de dos puntos a `y + h + g`, con `g = max(0,09h, 1,5)`
+    de grosor.
+  - Tachar: `line` de dos puntos a `y + 0,55h`, grosor `g`.
+  - Ondulada: `line` de muchos puntos (una ola cada cuatro pasos de
+    `max(0,09h, 1,5)`, amplitud igual al paso) a `y + h + g`, grosor `0,8g`.
+  - `roughness` 0 en todas.
+- **Colores** (los de la barra del pin): `#F47286`, `#B99CF5`, `#5BA4F5`,
+  `#3FC88C`, `#F5C218` (el amarillo de serie).
+- **Hojas escaneadas**: el texto lo pone el OCR del aparato la primera vez que
+  se pasa el ratón (o con **T**); no se guarda ni viaja, solo las marcas.
+- **Código**: `crates/pindesk-motor2d/src/marcas_texto.rs` (formas, colores,
+  grupo), `crates/pindesk-ui/src/barra_marcar.rs` (la barrita),
+  `apps/pindesk/src/lector_pdf/marcar.rs` (el lector).
+
 ## 4. Lo que NO viaja (a propósito)
 
 - Lo de un documento que **no es un adjunto** de un chat: queda al lado del
@@ -292,6 +327,11 @@ vuelve a ver eso mismo.
 - **Teclas**: I marcos · Supr quita el último · Ctrl+P imprime · Ctrl+M
   marcador · A anotar · G menú ⋮ · Esc sale del modo antes de cerrar. En
   planos: D acotar; en 3D: E aristas.
+- **Marcar texto** leyendo un PDF, Word o PowerPoint: al elegir texto sale
+  encima una barrita con copiar, los cinco colores, resaltar, ondulada,
+  subrayar, tachar, tapar y el círculo tachado de quitar (los dibujitos de la
+  barra del pin). Tocar una marca la elige entera para cambiarla o quitarla;
+  Ctrl+Z la deshace entera. **T** reconoce el texto de una hoja escaneada.
 - **Panel táctil** en planos y modelos: dos dedos mueven; pellizco = zoom.
 - **Audio**: lo grabado bajito se reproduce realzado (pico al −1 dBFS, hasta
   ×16, limitador suave), `crates/pindesk-audio/src/volumen.rs`.
@@ -319,3 +359,5 @@ vuelve a ver eso mismo.
 5. Lienzos: añadir `pins/draw/<d>.vistas.json` al alcance de cada dibujo,
    junto a `<d>.marcas` (§3.8), y guardar/restaurar la vista de cada marca.
 6. La interfaz y las teclas de §5.
+7. Marcas de texto (§3.9): opcional; reconocer el grupo `marca-texto-*` para
+   ofrecer la misma barrita al elegir texto en el lector de PDF.

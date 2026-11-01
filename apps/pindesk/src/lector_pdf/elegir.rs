@@ -48,6 +48,9 @@ const HOJAS_CON_TEXTO: usize = 8;
 pub(super) struct HojaPdf {
     pub(super) texto: PaginaDeTexto,
     pub(super) enlaces: Vec<Enlace>,
+    /// El texto lo puso el OCR (una hoja escaneada, o la T): se elige por
+    /// palabras enteras (`marcar::rango_en_hoja`).
+    pub(super) reconocida: bool,
 }
 
 /// Un clic o un arrastre que empezo sobre texto o sobre un enlace.
@@ -362,8 +365,7 @@ pub(super) fn texto_elegido(e: &Estado) -> String {
         let Some(h) = e.elegir.hojas.get(&i) else {
             continue;
         };
-        let largo = h.texto.texto.chars().count();
-        if let Some(r) = sel.rango_en(i, largo) {
+        if let Some(r) = super::marcar::rango_en_hoja(sel, i, &h.texto, h.reconocida) {
             if !salida.is_empty() && !salida.ends_with('\n') {
                 salida.push('\n');
             }
@@ -397,7 +399,7 @@ pub(super) fn pintar_seleccion(e: &Estado, p: &Pintor, i: usize) {
     let (Some(h), Some(&alto)) = (e.elegir.hojas.get(&i), e.hojas.altos.get(i)) else {
         return;
     };
-    let Some(r) = sel.rango_en(i, h.texto.cajas.len()) else {
+    let Some(r) = super::marcar::rango_en_hoja(sel, i, &h.texto, h.reconocida) else {
         return;
     };
     for c in h.texto.cajas_de(r.start, r.end - r.start) {
@@ -484,7 +486,7 @@ mod pruebas {
         acotar(&mut e, m);
         let mut h = HojaPdf {
             texto: hoja(&[("Hola mundo, adios", 0.1), ("otra linea", 0.2)]),
-            enlaces: Vec::new(),
+            ..Default::default()
         };
         h.enlaces.push(Enlace {
             caja: [0.1, 0.5, 0.3, 0.55],
