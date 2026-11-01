@@ -89,6 +89,23 @@ pub fn fijar_arranque(encender: bool) {
     }
 }
 
+/// «Hacerla predeterminada» de Ajustes, en la Store: la pagina de
+/// Aplicaciones predeterminadas de la app del paquete, sin inscribir nada en
+/// el registro. `false` fuera de la Store (y entonces lo hace `main`).
+pub fn abrir_predeterminadas() -> bool {
+    if !activa() {
+        return false;
+    }
+    let uri = format!(
+        "ms-settings:defaultapps?registeredAUMID={}!PinDesk",
+        paquete::FAMILIA_TIENDA
+    );
+    if let Err(e) = pixpin_shell::abrir::abrir(std::path::Path::new(&uri)) {
+        tracing::warn!(?e, "tienda: no se pudo abrir Aplicaciones predeterminadas");
+    }
+    true
+}
+
 /// La ayuda de una fila de Ajustes: en la Store, las que hablan del registro
 /// o de la red dicen lo que pasa de verdad dentro del paquete.
 pub fn ayuda(clave: &'static str) -> &'static str {

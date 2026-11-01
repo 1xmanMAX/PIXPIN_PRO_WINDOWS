@@ -2458,6 +2458,8 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
             }
             pixpin_shell::abrir::abrir(&ruta)
         }
+        // En la Store: sin registro, a la pagina de la app del paquete.
+        Clave::Predeterminada if crate::tienda::abrir_predeterminadas() => Ok(()),
         Clave::Predeterminada => {
             // Si se acaba de encender «Ofrecer PixPin» y aun no se ha
             // guardado, se inscribe ya: sin eso Configuracion no la lista.
