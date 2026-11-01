@@ -3328,7 +3328,7 @@ aviso-ia-permiso = 🔐 Ich brauche Ihre Erlaubnis: { $pregunta }
     Wenn Sie nicht antworten, tue ich es nicht.
 ia-fondo-titulo = 🤖 Assistent
 ia-fondo-sigue = „weiter“
-ia-fondo-sigue-fuera = „@Assistent weiter“
+ia-fondo-sigue-fuera = „@asistente weiter“
 ia-fondo-otra-vez = ↻ PinDesk wurde geschlossen, bevor ich fertig war. Ich fange in der Antwort unten von vorn an.
 ia-fondo-ya-actuo = Einige Schritte waren schon erledigt, deshalb wiederhole ich es nicht von selbst (sie würden doppelt passieren). Schreiben Sie { $sigue }, dann mache ich hier weiter.
 ia-fondo-ya-se-retomo = Ich hatte es schon einmal wieder aufgenommen, und es wurde erneut unterbrochen, deshalb höre ich hier auf. Schreiben Sie { $sigue }, wenn ich es noch einmal versuchen soll.

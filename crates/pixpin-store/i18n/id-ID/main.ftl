@@ -3285,7 +3285,7 @@ aviso-ia-permiso = 🔐 Saya perlu izin Anda: { $pregunta }
     Jika Anda tidak menjawab, saya tidak akan melakukannya.
 ia-fondo-titulo = 🤖 Asisten
 ia-fondo-sigue = «lanjutkan»
-ia-fondo-sigue-fuera = «@asisten lanjutkan»
+ia-fondo-sigue-fuera = «@asistente lanjutkan»
 ia-fondo-otra-vez = ↻ PinDesk tertutup sebelum saya selesai. Saya mulai lagi dari awal di balasan di bawah.
 ia-fondo-ya-actuo = Beberapa langkah sudah dilakukan, jadi saya tidak akan mengulanginya sendiri (nanti terjadi dua kali). Ketik { $sigue } dan saya lanjutkan dari sini.
 ia-fondo-ya-se-retomo = Saya sudah melanjutkannya sekali dan terputus lagi, jadi saya berhenti di situ. Ketik { $sigue } jika Anda ingin saya mencoba lagi.
