@@ -1,19 +1,19 @@
-# PixPin para Claude: el servidor MCP (`pixpin-mcp.exe`)
+# PixDesk para Claude: el servidor MCP (`pixpin-mcp.exe`)
 
-Con esto, **Claude Desktop** y **Claude Code** (y cualquier cliente MCP) pueden usar PixPin
+Con esto, **Claude Desktop** y **Claude Code** (y cualquier cliente MCP) pueden usar PixDesk
 Max: apuntar y consultar tareas, escribir en un chat, crear notas, listas y lienzos, buscar
 en tus documentos y chats, leer un PDF o un Office, hacer OCR, ver tu pantalla, anotar un
 plano, mandar al móvil… con **las mismas herramientas que ya tiene el asistente** de PixPin.
 
 `pixpin-mcp.exe` es un programa aparte y pequeño: solo existe mientras el cliente lo tiene
-abierto. No cuesta nada a PixPin cuando no se usa.
+abierto. No cuesta nada a PixDesk cuando no se usa.
 
 ## Instalar
 
-`herramientas\instalar.ps1` lo deja junto a `pixpinmax.exe`:
+`herramientas\instalar.ps1` lo deja junto a `pixdesk.exe`:
 
 ```
-%LOCALAPPDATA%\Programs\PixPinMax\pixpin-mcp.exe
+%LOCALAPPDATA%\Programs\PixDesk\pixpin-mcp.exe
 ```
 
 (Si no estaba compilado en la misma carpeta de compilación, lo compila ahí mismo.)
@@ -39,26 +39,26 @@ Reinicia Claude Desktop: en el botón de herramientas aparece «pixpin».
 ### Claude Code
 
 ```powershell
-claude mcp add pixpin -- "$env:LOCALAPPDATA\Programs\PixPinMax\pixpin-mcp.exe"
+claude mcp add pixpin -- "$env:LOCALAPPDATA\Programs\PixDesk\pixpin-mcp.exe"
 ```
 
 Por defecto queda para el proyecto en el que estás; con `--scope user`, para todos:
 
 ```powershell
-claude mcp add --scope user pixpin -- "$env:LOCALAPPDATA\Programs\PixPinMax\pixpin-mcp.exe"
+claude mcp add --scope user pixpin -- "$env:LOCALAPPDATA\Programs\PixDesk\pixpin-mcp.exe"
 ```
 
 `/mcp` dentro de Claude Code dice si está conectado y qué herramientas ve.
 
 ### Modo portable
 
-Si PixPin va en modo portable (un `pixpinmax.toml` junto al exe), copia `pixpin-mcp.exe` a esa
+Si PixDesk va en modo portable (un `pixpinmax.toml` junto al exe), copia `pixpin-mcp.exe` a esa
 misma carpeta: lee los datos de ahí, como la app. `PIXPIN_RAIZ` (variable de entorno) fuerza
 otra carpeta de datos.
 
 ## Qué herramientas hay
 
-### De leer (funcionan con PixPin cerrada, no escriben nada)
+### De leer (funcionan con PixDesk cerrada, no escriben nada)
 
 | Herramienta | Qué hace |
 |---|---|
@@ -70,7 +70,7 @@ otra carpeta de datos.
 | `ver_pantalla` | Captura la pantalla, un monitor o una ventana por su título y la devuelve como imagen (no se guarda) |
 | `listar_ventanas` | Las ventanas que se ven, para `ver_pantalla` |
 
-### De la app (las hace la PixPin abierta)
+### De la app (las hace la PixDesk abierta)
 
 Son **las filas de la tabla del asistente** (`crates/pixpin-ia/src/acciones.rs` y
 `acciones_documentos.rs`), con su mismo nombre, descripción y JSON Schema: `abrir_chat`,
@@ -87,17 +87,17 @@ Una fila nueva en esa tabla sale sola en MCP.
 No están `consultar_tareas` como pedido (se contesta leyendo, arriba) ni `hoja_a_lienzo` (dibuja
 en el lienzo abierto del chat del asistente).
 
-Si PixPin no está abierta, `pixpin-mcp.exe` arranca la que tiene al lado y espera hasta 8 s.
+Si PixDesk no está abierta, `pixpin-mcp.exe` arranca la que tiene al lado y espera hasta 8 s.
 
 ## Seguridad
 
 - **Lo que borra o saca algo del PC** (`quitar_tarea`, `borrar_lista`, `borrar_captura`,
-  `sincronizar_movil`, `enviar_al_movil`, `crear_automatizacion`) **lo pregunta PixPin** antes,
+  `sincronizar_movil`, `enviar_al_movil`, `crear_automatizacion`) **lo pregunta PixDesk** antes,
   como cuando lo pide su asistente: una tarjeta «Necesito tu permiso» en el aviso flotante
   (abajo a la derecha) y en el chat «Asistente», con «Sí»/«No». Sin respuesta en 5 minutos, es
   un no y Claude recibe «el usuario dijo que no».
 - **Lo que cambia algo que ya existe** (`marcar_tarea`, `mover_tarea`, `editar_tarea`,
-  `anotar_documento`) también lo pregunta PixPin cuando lo pide un cliente MCP («Claude pide: …
+  `anotar_documento`) también lo pregunta PixDesk cuando lo pide un cliente MCP («Claude pide: …
   ¿Lo hago?»), aunque al asistente no se lo pregunte.
 - Crear (una tarea, una nota, un mensaje, una tabla, un lienzo) y abrir no preguntan: no se
   pierde nada y cada cosa sale con su aviso.
@@ -113,7 +113,7 @@ Si PixPin no está abierta, `pixpin-mcp.exe` arranca la que tiene al lado y espe
   2025-03-26 y 2024-11-05), `ping`, `tools/list`, `tools/call`. Una herramienta que no existe
   es un error `-32602`; un fallo de la herramienta es un resultado con `isError: true`.
 - Las de la app van por el **pedido `herramienta`** (`docs/protocolo-pedidos.md`):
-  `WM_COPYDATA` a la ventana de PixPin con el nombre de la fila, sus argumentos y un fichero de
+  `WM_COPYDATA` a la ventana de PixDesk con el nombre de la fila, sus argumentos y un fichero de
   respuesta en `%TEMP%\pixpin-mcp\`. La app la hace como el asistente
   (`apps/pixpin/src/asistente/externa.rs`) y escribe ahí `{"ok": …, "texto": "…"}`.
 - Código: `apps/pixpin-mcp` (`protocolo.rs`, `herramientas.rs`, `escribir.rs`, `leer.rs`,

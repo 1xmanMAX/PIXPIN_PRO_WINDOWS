@@ -1,6 +1,6 @@
-# Pedidos a PixPin Max (protocolo v1)
+# Pedidos a PixDesk (protocolo v1)
 
-Cualquier programa del mismo equipo puede pedirle cosas a la PixPin Max que esta abierta:
+Cualquier programa del mismo equipo puede pedirle cosas a la PixDesk que esta abierta:
 abrir un proyecto, escribir en el chat, crear un lienzo, grabar, añadir una tarea... Lo usa
 el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un script propio
 (AutoHotkey, PowerShell, otro lanzador).
@@ -13,10 +13,10 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
   despertar su bucle.
 - Respuesta inmediata (`LRESULT`): `1` aceptado (en cola), `2` version no soportada, `3` JSON
   roto o accion desconocida, `0` no era para nosotros o no hay nadie escuchando.
-- El trabajo de verdad lo hace el bucle principal de PixPin despues: lo que salga mal lo
-  dice PixPin con su aviso, no la respuesta.
-- Si no hay ventana, PixPin no esta abierta: se arranca
-  `%LOCALAPPDATA%\Programs\PixPinMax\pixpinmax.exe` y se espera a la ventana (hasta 8 s).
+- El trabajo de verdad lo hace el bucle principal de PixDesk despues: lo que salga mal lo
+  dice PixDesk con su aviso, no la respuesta.
+- Si no hay ventana, PixDesk no esta abierta: se arranca
+  `%LOCALAPPDATA%\Programs\PixDesk\pixdesk.exe` y se espera a la ventana (hasta 8 s).
 
 ## El pedido
 
@@ -36,7 +36,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `abrir` | `que: {tipo:"mensaje", proyecto, codigo}` | El chat en ese mensaje, resaltado |
 | `abrir` | `que: {tipo:"hoja", proyecto, referencia}` | Ese lienzo u hoja, en el lienzo |
 | `abrir` | `que: {tipo:"nota", proyecto, codigo}` | Esa nota en el editor de notas |
-| `abrir` | `que: {tipo:"fichero", ruta, pagina?, buscar?, zona?}` | Como «Abrir con PixPin» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección. Con `pagina` (desde 1), un PDF, Word o PowerPoint se abre en esa página en vez de donde se dejó (las citas del asistente, `buscar_en_mis_cosas`) Con `buscar` (14-oct), un PDF, Word o PowerPoint se abre con la caja de buscar ya escrita y salta a la primera coincidencia (desde `pagina` si va), marcada como con Ctrl+F. Con `zona: [x, y, ancho]` (coordenadas del dibujo), un plano DWG/DXF se abre mirando ahí en vez de entero: lo usa el asistente para llevar a un texto encontrado («¿dónde dice JR. ANTISUYO?») |
+| `abrir` | `que: {tipo:"fichero", ruta, pagina?, buscar?, zona?}` | Como «Abrir con PixDesk» (lector, editor, pin). Un `.leccion` abre la ficha de esa lección. Con `pagina` (desde 1), un PDF, Word o PowerPoint se abre en esa página en vez de donde se dejó (las citas del asistente, `buscar_en_mis_cosas`) Con `buscar` (14-oct), un PDF, Word o PowerPoint se abre con la caja de buscar ya escrita y salta a la primera coincidencia (desde `pagina` si va), marcada como con Ctrl+F. Con `zona: [x, y, ancho]` (coordenadas del dibujo), un plano DWG/DXF se abre mirando ahí en vez de entero: lo usa el asistente para llevar a un texto encontrado («¿dónde dice JR. ANTISUYO?») |
 | `chat` | `texto`, `proyecto?`, `imagenes?`, `archivos?` | Un mensaje de texto nuevo en ese chat. Con `imagenes` (rutas; `[img 01]` en `texto` = `imagenes[0]`), el texto sin sus fichas va primero y cada imagen detras como una foto del chat (un BMP se guarda como PNG). Con `archivos` (ver abajo), cada fichero va detras como un adjunto
 | `nota_nueva` | `texto?`, `proyecto?`, `imagenes?` | Una nota nueva, abierta en el editor. Con `imagenes`, cada `[img NN]` del texto queda como esa imagen dentro de la nota
 | `lienzo_nuevo` | `nombre?`, `proyecto?` | Un lienzo nuevo, abierto |
@@ -54,7 +54,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `capturar` | `modo?` | Empieza una captura por el mismo camino que su comando de la bandeja, unos 300 ms despues para que el lanzador ya se haya escondido. `modo`: `"zona"` (la del atajo general, con la barra; sin `modo`, esta), `"copiar"` (directa al portapapeles), `"pin"`, `"en_vivo"`, `"anotar"`, `"texto"` (copiar el texto que se lea), `"scroll"` (larga), `"repetir"` (la ultima zona), `"retardo"` (tras la cuenta atras) o `"gif"` (grabar la zona). Otro modo es un pedido roto |
 | `pinear_ultima` | — | Saca a la pantalla como pin la captura mas reciente de la carpeta de capturas (la primera de la galeria), como `pinear` con su `ruta`. Sin capturas, se avisa |
 | `conservar_captura` | `ruta` | Como «Conservar» de la galeria: la captura entra en «Mensajes guardados» y deja de caducar. Solo vale una `ruta` que este en la carpeta de capturas (`<raiz>\capturas\`); otra se rechaza con aviso |
-| `borrar_captura` | `ruta` | Como «Borrar» de la galeria: la captura va a la papelera de PixPin (`<raiz>\papelera\capturas\`) y, si estaba conservada, se olvida. Solo una `ruta` de la carpeta de capturas |
+| `borrar_captura` | `ruta` | Como «Borrar» de la galeria: la captura va a la papelera de PixDesk (`<raiz>\papelera\capturas\`) y, si estaba conservada, se olvida. Solo una `ruta` de la carpeta de capturas |
 | `copiar_imagen` | `ruta` | Pone esa imagen (png, jpg, bmp, webp) en el portapapeles **como imagen**, no como fichero. Un GIF o algo que no es imagen se rechaza con aviso |
 | `ventana_principal` | `proyecto?` | Saca el chat; con `proyecto` (15-oct), abierto en ese chat (si no esta, se avisa) |
 | `pinear` | `ruta` o (`proyecto?`, `codigo`) | Saca ese fichero (o el del mensaje) a la pantalla como pin, como «Sacar a la pantalla» del chat |
@@ -70,7 +70,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `automatizacion` | `operacion: "crear" \| "activar" \| "desactivar" \| "borrar" \| "ejecutar"`, `id?`, `receta?` | Las automatizaciones del asistente (ver abajo). `crear` lleva `receta` (`nombre`, `disparador: {tipo, hora?, dias?}`, `pasos`); las demás, el `id`. Lo hecho se dice en el globo; una receta que no vale no se guarda y se avisa del motivo. `borrar` no pregunta: quien lo manda ya preguntó |
 | `pines` | `operacion: "cerrar" \| "ocultar_mostrar" \| "devolver_ultimo" \| "paso_de_clics"` | (15-oct) Los comandos de los pines de la bandeja, por el mismo camino que `capturar` (`WM_COMMAND` a la ventana del bucle): cerrarlos todos, esconderlos o devolverlos, devolver el último que se cerró o que dejen pasar el clic. `cerrar` no pregunta: quien lo manda ya preguntó |
 | `timeline` | `texto?` | (15-oct) Con `texto`, apunta un momento en el timeline con la hora de ahora (la primera frase es el título, como la caja de su ventana) y lo dice en el globo; sin `texto`, abre el timeline |
-| `leer_en_voz` | `texto?`, `ruta?`, `titulo?`, `parar?` | **Lee en voz alta** (15-oct) con la voz de la app (la de Windows o las de Microsoft, como en los lectores), **sin abrir ninguna ventana**; calla lo que sonara antes. Un `texto` suelto (la selección de una página desde la extensión del navegador): un párrafo por renglón. O un fichero (`ruta`, el asistente: PDF, Word, PowerPoint, Excel, nota o texto): su texto se saca en un hilo. Se pausa, salta y para con los mandos de reproductor de Windows y las teclas multimedia, que enseñan `titulo` (sin él, «PixPin Max» o el nombre del fichero). Con `parar: true`, calla lo que suene, sea de quien sea. Sin nada que leer, o un fichero que no está, se avisa |
+| `leer_en_voz` | `texto?`, `ruta?`, `titulo?`, `parar?` | **Lee en voz alta** (15-oct) con la voz de la app (la de Windows o las de Microsoft, como en los lectores), **sin abrir ninguna ventana**; calla lo que sonara antes. Un `texto` suelto (la selección de una página desde la extensión del navegador): un párrafo por renglón. O un fichero (`ruta`, el asistente: PDF, Word, PowerPoint, Excel, nota o texto): su texto se saca en un hilo. Se pausa, salta y para con los mandos de reproductor de Windows y las teclas multimedia, que enseñan `titulo` (sin él, «PixDesk» o el nombre del fichero). Con `parar: true`, calla lo que suene, sea de quien sea. Sin nada que leer, o un fichero que no está, se avisa |
 | `ocr` | `ruta`, `rutas?` | **El texto de esa imagen al portapapeles** (15-oct, «Texto (OCR)» de la extensión del navegador; con `rutas`, más imágenes detrás de `ruta`, todo en un texto con una línea en blanco entre imagen e imagen: «Copiar texto (OCR)» del menú del Explorador con varias elegidas): el OCR de Windows, en orden de lectura, como «Texto» de la captura. En su hilo; el globo dice lo copiado («Texto copiado (120 caracteres): «…»»), que no había texto o que falta el OCR de Windows. Una `ruta` que no está o no es una imagen se rechaza con aviso |
 | `herramienta` | `nombre`, `args?`, `respuesta?`, `preguntar?`, `origen?` | **Hace una herramienta del asistente con esos argumentos y devuelve lo que salió** (15-oct-2026, el servidor MCP `apps/pixpin-mcp`). `nombre` es una fila de `pixpin_ia::acciones::todas()` (`anadir_tarea`, `borrar_lista`, `anotar_documento`…; no `hoja_a_lienzo`), `args` sus argumentos tal como los describe su JSON Schema. Se hace en su hilo por el mismo camino que el asistente: las tareas por su nombre, los documentos por su nombre o ruta, y **lo que la fila manda preguntar se pregunta** (chat «Asistente» y aviso flotante, «Sí»/«No»; sin respuesta en 5 min, no). `preguntar`: otra pregunta que hacer antes (la usa MCP para lo que cambia algo que ya existe). Al acabar escribe `{"ok": bool, "texto": "…"}` en `respuesta`, que tiene que ser un `.json` **nuevo directamente dentro de `%TEMP%\pixpin-mcp\`** (si no, se hace igual pero no se escribe nada). Se escribe al lado (`.parte`) y se renombra: quien espera puede leerlo en cuanto aparece. `origen` («Claude») sale en el aviso y en la pregunta |
 | `lectura_veloz` | `doc`, `ruta`, `tipo`, `pagina?`, `frac?`, `fraccion?`, `t?`, `v?` | **Lectura Veloz mueve el marcador verde 🟢** de un documento a donde se va leyendo allí (27-oct-2026), **de fondo**: no abre ni trae nada al frente y no dice nada en el globo (lo que sale mal queda en el registro). Los campos (texto o número) se miran como los del enlace `pixpinmax://lectura-veloz?…`: `ruta` local con extensión de documento y que sea un fichero, números finitos y acotados. Por hojas (un PDF, o `tipo: "pdf"`) cambia `pagina` y el 🟢 de las marcas; de corrido, el verde de la voz (`-1:<fraccion>`) y el sitio. Si el lector de ese documento está abierto, lo lleva también en memoria y va ahí. Ver `docs/integracion-lectura-veloz.md` |
@@ -91,7 +91,7 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
   hilo los hace de uno en uno (con el modelo local solo cabe uno cargado, `pixpin_ia::relevo`).
   Se guardan en `<raiz>\asistente-encargos.json`
   (`{"version":1,"encargos":[{id, texto, proyecto?, imagenes, estado: "en_cola"|"haciendo"|"hecha"|"fallo", creado, empezado?, acabado?, resumen, con_fallos?, abrir?: {proyecto, codigo, lienzo?}}]}`):
-  lo que quedó en cola al cerrar PixPin se hace al volver; el que estaba a medias **no se
+  lo que quedó en cola al cerrar PixDesk se hace al volver; el que estaba a medias **no se
   repite** (podría apuntar dos veces lo mismo): queda como fallido y se avisa. Se guardan los
   10 últimos acabados.
 - Al acabar cada uno, **notificación de Windows** (`pixpin_shell::notificacion`): «✅ Hecho: …» /
@@ -107,11 +107,11 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 
 ### Notificaciones con botones (15-oct-2026)
 
-Las notificaciones de Windows de PixPin (asistente, recordatorios, capturas que caducan) llevan
-botones; cada botón es **un pedido de este protocolo**. Como PixPin no está empaquetado, Windows
+Las notificaciones de Windows de PixDesk (asistente, recordatorios, capturas que caducan) llevan
+botones; cada botón es **un pedido de este protocolo**. Como PixDesk no está empaquetado, Windows
 los devuelve por protocolo: `pixpin:pedido?json=<pedido en %-código>` (o `pixpinmax:` si `pixpin:`
-es de otro programa, como el PixPin original; `orden::esquema_de_la_casa`), que abre
-`pixpinmax.exe --url "<seña>"`. Es **el mismo protocolo, traductor y lista blanca** que los enlaces
+es de otro programa, como el PixPin original de DepthPixel; `orden::esquema_de_la_casa`), que abre
+`pixdesk.exe --url "<seña>"`. Es **el mismo protocolo, traductor y lista blanca** que los enlaces
 de `docs/integraciones.md` (`orden::de_enlace`, `orden::seguridad`); los botones van **firmados**
 (`orden::firma`) y se hacen sin preguntar. `--atajo url "<seña>"` (como se registraba antes) es un
 alias de `--url`.
@@ -201,9 +201,9 @@ Excalidraw del móvil (prueba de ida y vuelta: `biblioteca_figuras::pruebas`).
   lienzo abierto, va a su Conversación general. Lo que no es una imagen (`archivos`) va siempre
   a su chat.
 - Lo que pasó se dice en el globo al acabar: «Enviada al lienzo de Pixel», «Pixel la guardó en
-  el chat (no tenía un lienzo abierto)», «Pixel no está abierto: abre PixPin en el móvil» (solo
-  escucha con una pantalla de PixPin a la vista). Un PixPin del móvil anterior a esto contesta
-  «No sé qué es «suelto»»: se dice «Actualiza PixPin en Pixel…» y se abre «Enviar por Wi-Fi» con
+  el chat (no tenía un lienzo abierto)», «Pixel no está abierto: abre PixDesk en el móvil» (solo
+  escucha con una pantalla de PixDesk a la vista). Un PixDesk del móvil anterior a esto contesta
+  «No sé qué es «suelto»»: se dice «Actualiza PixDesk en Pixel…» y se abre «Enviar por Wi-Fi» con
   los mismos ficheros, el envío de siempre.
 - En el lanzador: `p s` (o `sincronizar`, `sync`, `móvil`, `celular`, `enviar`) + Ctrl+V de la imagen (`[img 01]`):
   sale «Todos» (si hay más de uno) y una fila por aparato del grupo, con su estado; Intro manda. Lo escrito detras de las fichas elige el
@@ -222,7 +222,7 @@ este equipo. En `texto`, las fichas `[img 01]`, `[img 02]`… (desde 1, en el or
   "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PixPinMax\\cache\\lanzador-imagenes\\pegada-1.bmp"] }
 ```
 
-- PixPin **copia** cada imagen a `archivos/` del chat de la lista (con nombre propio,
+- PixDesk **copia** cada imagen a `archivos/` del chat de la lista (con nombre propio,
   `tarea-<ms>-<n>.<ext>`; un `.bmp` se guarda como `.png`) y cambia su ficha por
   `![img 01](pixpin:files/guardados/pc/<chat>/archivos/tarea-…png)`. El original no se toca y
   la tarea no depende de el: se puede borrar despues.
@@ -264,7 +264,7 @@ cada uno y se quitan del texto:
 `grabar` no abre el chat: saca un **microfono flotante** siempre encima, con la señal de que
 graba y el tiempo; un clic lo para y lo guarda (con su `nombre`) en el chat pedido. Al
 guardarse ofrece **«Convertir en llamada»** con un selector de hora (la llamada secreta de
-PixPin) y desaparece al acabar (o sola a los 10 s). Esc mientras graba la descarta sin preguntar.
+PixDesk) y desaparece al acabar (o sola a los 10 s). Esc mientras graba la descarta sin preguntar.
 
 ## Donde leer (sin pedir nada)
 
@@ -292,11 +292,11 @@ es `%APPDATA%\PixPinMax` (o la carpeta del exe si al lado hay un `pixpinmax.toml
 
 ## Desde la linea de mandatos
 
-Lo normal es el propio `pixpinmax.exe` (15-oct): `pixpinmax --pedido '<json>'`,
-`pixpinmax --pedido-archivo <ruta|->`, los verbos legibles (`pixpinmax tarea "comprar yeso"`) y
+Lo normal es el propio `pixdesk.exe` (15-oct): `pixdesk --pedido '<json>'`,
+`pixdesk --pedido-archivo <ruta|->`, los verbos legibles (`pixdesk tarea "comprar yeso"`) y
 los enlaces `pixpinmax://…` / `pixpin://…`. Todo en **`docs/integraciones.md`**. Desde Rust, la
 función para reutilizar es `pixpin_shell::mensajero::enviar_pedidos_o_arrancar`.
 
-`pixpin-lanzador.exe pedido '<json>'` manda un pedido (arranca PixPin si hace falta) y
+`pixpin-lanzador.exe pedido '<json>'` manda un pedido (arranca PixDesk si hace falta) y
 `pixpin-lanzador.exe buscar "<texto>"` escribe los resultados, una linea JSON por resultado.
 Sin argumentos es el plugin de Flow Launcher (JSON-RPC por stdin/stdout).

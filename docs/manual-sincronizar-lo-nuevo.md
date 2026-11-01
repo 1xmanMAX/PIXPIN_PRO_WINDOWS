@@ -1,6 +1,6 @@
 # Manualito: sincronizar lo nuevo (23 al 28-oct-2026)
 
-Para los agentes de **PixPin Android** y de **Mac, iPad e iPhone**
+Para los agentes de **PixDesk Android** y de **Mac, iPad e iPhone**
 (`apple/`). Dice, funcion por funcion, que ficheros y campos hay, donde
 viven, con que formato, como se resuelven los choques y que tiene que hacer
 el aparato que lo recibe para ensenarlo. Asi lo que se hace en un aparato
@@ -549,7 +549,7 @@ mensaje mas** con claves de mas y sus propios ficheros
 |---|---|
 | `versionDe` | cadena: el **codigo unico** (`uid`, o el sacado del `id`) del original |
 | `versionN` | entero: 1, 2… Solo una etiqueta («Version 2»); se puede repetir |
-| `respondeA` | el `id` del original: un PixPin que no sepa de versiones la ensena como respuesta |
+| `respondeA` | el `id` del original: un PixDesk que no sepa de versiones la ensena como respuesta |
 | `id`, `uid`, `aparato`, `numero`, `cuando` | nuevos, del que la hace |
 | Fuera | `fijado`, `emoji`, `recuerdaEn`, `enBuzon`, `unido`, `letra`, `origen`, `recibidoDe`, `hojaDelTexto` |
 | Adjunto | copia en otra ruta: `guardados/<hora>_v<n>_<nombre sin el prefijo de hora>` (en el PC, `archivos/` de su carpeta) |

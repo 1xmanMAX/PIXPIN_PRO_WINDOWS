@@ -1,6 +1,6 @@
 # Reconocer texto (OCR): Windows e Indra
 
-PixPin lee el texto de las imágenes en muchos sitios: la captura de texto,
+PixDesk lee el texto de las imágenes en muchos sitios: la captura de texto,
 «Calca esto», los pines (seleccionar texto con el ratón), la galería de
 capturas (buscar por lo que pone), los PDF escaneados y las herramientas del
 asistente (`tabla_de_imagen`, hoja a lienzo, anotar…), además de
@@ -29,7 +29,7 @@ dos: líneas con su caja y sus palabras, en píxeles de la imagen.
   manuscrito latino), orientación (`orient.onnx`), orden de lectura y
   bloques de maquetación (`order.onnx`: título, texto, lista, tabla, pie…) y
   un modelo de lenguaje n-grama (`lm.npz`) para las líneas dudosas. Hay
-  reconocedores aparte para CJK, árabe/hebreo e índicos/tailandés; PixPin,
+  reconocedores aparte para CJK, árabe/hebreo e índicos/tailandés; PixDesk,
   como el escáner, usa solo el latino.
 - **Runtime**: ONNX Runtime en CPU, sin PyTorch ni GPU. El paquete de Python
   añade OpenCV y numpy; aquí no hacen falta (ver más abajo).
@@ -43,7 +43,7 @@ dos: líneas con su caja y sus palabras, en píxeles de la imagen.
 
 ### Licencia (exacta)
 
-- **Código**: Apache-2.0. El puerto de PixPin (`crates/pixpin-indra`) es una
+- **Código**: Apache-2.0. El puerto de PixDesk (`crates/pixpin-indra`) es una
   traducción y lleva su aviso (`THIRD-PARTY-NOTICES.md`,
   `crates/pixpin-indra/LICENCIA-INDRA.txt`).
 - **Pesos**: «AI Pubs Open RAIL-M License (Modified)» v0.1 de Datalab. Lo que
@@ -58,10 +58,10 @@ dos: líneas con su caja y sus palabras, en píxeles de la imagen.
     «en conexión con cualquier salida»; §8 extiende la licencia a la salida.
   - Licencias comerciales más amplias: `datalab.to/pricing`.
 
-  **Por eso PixPin no incluye los pesos**: no los redistribuye, los baja el
+  **Por eso PixDesk no incluye los pesos**: no los redistribuye, los baja el
   propio usuario desde Hugging Face cuando elige Indra, con la licencia dicha
   en la fila de Ajustes y un botón para leerla. Para uso personal (el caso de
-  PixPin Max hoy) es gratis. **Una distribución comercial de PixPin con
+  PixDesk hoy) es gratis. **Una distribución comercial de PixDesk con
   Indra activado de fábrica, o venderlo a empresas grandes, necesitaría
   licencia de Datalab.** El de Windows sigue siendo el de fábrica.
 
@@ -193,7 +193,7 @@ pixpin-mcp                lee [ocr] al arrancar y usa el mismo motor
   | OCR del menú del Explorador | `pedidos::ocr_al_portapapeles` (hilo `pedido-ocr`) |
   | Búsqueda de la galería | `galeria_capturas` (hilo `galeria-texto`) |
   | Herramientas del asistente, automatizaciones | el hilo del turno o del encargo |
-  | `pixpinmax ocr`, `pixpin-mcp` | procesos sin ventana |
+  | `pixdesk ocr`, `pixpin-mcp` | procesos sin ventana |
 
   Lo que llega tarde se tira: cada pedido del pin lleva su boleto y la
   vuelta de lo que se veía (otra página, pin cerrado → no vale), y de dos
@@ -215,13 +215,13 @@ La app del escáner (Escáner Pro Max) **ya lleva Indra** como único OCR:
 `app/src/main/java/com/scannerpromax/ocr/indra/` (puerto de Kotlin con ONNX
 Runtime 1.31.0 para Android, paridad CER 1,3 % frente a Python, con sus
 pruebas en `app/src/test/java/com/scannerpromax/ocr/indra/`)
-y es de donde sale este puerto de Rust. PixPin Android puede usarlo de tres
+y es de donde sale este puerto de Rust. PixDesk Android puede usarlo de tres
 maneras, de menos a más trabajo:
 
 1. **Pedírselo al escáner** (ya hecho para escanear: acción
    `com.scannerpromax.action.SCAN`). Una acción `OCR` que reciba una imagen y
    devuelva las líneas en JSON no cuesta nada a PixPin: ni pesos ni runtime.
-2. **Copiar el paquete `ocr/indra/`** (y `ocr/lexicon/`) a PixPin Android:
+2. **Copiar el paquete `ocr/indra/`** (y `ocr/lexicon/`) a PixDesk Android:
    son ~2 800 líneas sin dependencias de la interfaz. Hace falta
    `com.microsoft.onnxruntime:onnxruntime-android:1.31.0` y, como en el
    escáner, bajar `libonnxruntime.so` aparte (12,9 MB en arm64, solo esa
@@ -230,7 +230,7 @@ maneras, de menos a más trabajo:
    móvil y un PC leen igual. Memoria: ~60 MB de LM y modelos según el escáner,
    que mide ~0,3 s por página en PC (en el móvil no hay medida publicada).
 3. **Llamar a este crate por JNI** (`pixpin-indra` es Rust puro): solo
-   tendría sentido si PixPin Android ya compilara Rust; hoy no.
+   tendría sentido si PixDesk Android ya compilara Rust; hoy no.
 
 La licencia es la misma en el móvil: los pesos los baja el usuario, no van en
 el APK (además el escáner lo descartó por tamaño: el APK pasaría de 30 MB).

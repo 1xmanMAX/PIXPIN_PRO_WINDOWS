@@ -141,7 +141,7 @@ Lo que el PC hace distinto, sin efecto en lo que viaja:
 
 - `id` nuevo (`<hora>-<código>`), `uid` nuevo, `aparato` = el de este PC, `numero` nuevo en el chat
   (uno más que el mayor, nunca menos que cuántos hay), `cuando` = cuando nace;
-- **`respondeA`** = el `id` del original: cualquier PixPin, también uno de antes, la enseña como una
+- **`respondeA`** = el `id` del original: cualquier PixDesk, también uno de antes, la enseña como una
   respuesta que lo cita;
 - **`versionDe`** = el código único del original (`uid`, o el que sale del id), el vínculo que no
   cambia entre aparatos; **`versionN`** = 1 + cuántas versiones de ese original había ya en el chat.
