@@ -154,6 +154,9 @@ mod pin_office;
 mod pin_vivo;
 mod pines;
 mod plano_cad;
+/// Privacidad y datos: lo que sale del PC y adonde, y reportar lo que
+/// escribe la IA (1-nov-2026, lo del movil para las tiendas).
+mod privacidad;
 mod pronunciar;
 mod punto_de_proyecto;
 mod recibir;
@@ -182,6 +185,9 @@ mod vista_rapida;
 mod visor_hoja;
 mod voz;
 mod voz_en_chat;
+/// Con que se escucha en vivo una reunion (`[voz] en_vivo`): lo de
+/// siempre o Vosk (1-nov-2026).
+mod voz_en_vivo;
 /// El motor de pasar a texto (`[voz] motor`): Whisper o Qwen3-ASR (25-oct).
 mod voz_motor;
 mod zona_al_chat;

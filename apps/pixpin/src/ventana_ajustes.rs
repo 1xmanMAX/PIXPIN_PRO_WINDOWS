@@ -34,7 +34,7 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::Atajo;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::ajustes::{
-    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorDeVoz, MotorOcr, NivelPdf,
+    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorDeVoz, MotorEnVivo, MotorOcr, NivelPdf,
     PreferenciaIdioma, PreferenciaNivel, Suavizado,
 };
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
@@ -269,6 +269,18 @@ enum Clave {
     GruposVentanas,
     PdfAligerar,
     PdfNivel,
+    // Privacidad y datos (1-nov-2026, `privacidad`)
+    /// Abrir la politica de privacidad.
+    PrivPolitica,
+    /// Un sitio adonde sale algo (indice en `privacidad::DESTINOS`): su
+    /// boton lleva a la seccion donde se enciende o se apaga.
+    PrivDestino(u8),
+    /// «Sin anuncios, sin analiticas…»: solo se lee.
+    PrivNadaMas,
+    /// Abrir la carpeta de datos (para llevarselos o borrarlos).
+    PrivCarpeta,
+    /// Abrir los reportes de la IA guardados.
+    PrivReportes,
     // Captura
     RetardoCaptura,
     Color,
@@ -327,6 +339,12 @@ enum Clave {
     VozQwen3Licencia,
     /// Borrar Qwen3-ASR bajado.
     VozQwen3Borrar,
+    /// Con que se escucha en vivo una reunion: lo de siempre o Vosk
+    /// (`[voz] en_vivo`, 1-nov-2026). Elegir Vosk sin bajar empieza la
+    /// descarga.
+    VozEnVivo,
+    /// Borrar Vosk bajado.
+    VozVoskBorrar,
     VozSegundo,
     VozModo,
     // Asistente (13-oct-2026)
@@ -410,7 +428,13 @@ impl Clave {
                 | Clave::OcrBorrar
                 | Clave::VozQwen3Licencia
                 | Clave::VozQwen3Borrar
+                | Clave::VozVoskBorrar
                 | Clave::AsistenteBorrarLocales
+                | Clave::PrivPolitica
+                | Clave::PrivDestino(_)
+                | Clave::PrivNadaMas
+                | Clave::PrivCarpeta
+                | Clave::PrivReportes
         )
     }
 
@@ -874,7 +898,99 @@ fn filas_de_motor_de_voz(a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
             Control::Boton(tt("ajustes2-ocr-borrar-boton")),
         ));
     }
+    // Escuchar en vivo (1-nov-2026): lo de siempre o Vosk, que se baja al
+    // elegirlo (`voz_en_vivo`).
+    v.push(op(
+        a,
+        Clave::VozEnVivo,
+        tt("ajustes2-voz-en-vivo"),
+        crate::voz_en_vivo::estado(t, &raiz, a.voz.en_vivo, t.idioma()),
+        opcion(
+            vec![
+                tt("ajustes2-voz-en-vivo-sistema"),
+                tt("ajustes2-voz-en-vivo-vosk"),
+            ],
+            usize::from(a.voz.en_vivo == MotorEnVivo::Vosk),
+        ),
+    ));
+    if crate::voz_en_vivo::algo_bajado(&raiz) {
+        v.push(op(
+            a,
+            Clave::VozVoskBorrar,
+            tt("ajustes2-voz-vosk-borrar"),
+            tt("ajustes2-ayuda-voz-vosk-borrar"),
+            Control::Boton(tt("ajustes2-ocr-borrar-boton")),
+        ));
+    }
     v
+}
+
+/// **Privacidad y datos** (1-nov-2026, lo del movil para las tiendas; al
+/// final de «General»): la politica, lo que sale de este PC y adonde (cada
+/// uno con su boton a donde se enciende o se apaga), donde viven los datos
+/// y los reportes de la IA. Lo dice `privacidad`.
+fn filas_de_privacidad(a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
+    let t = cx.t;
+    let tt = |k: &str| t.t(k);
+    let mut v = vec![
+        grupo(t, "ajustes2-g-privacidad"),
+        op(
+            a,
+            Clave::PrivPolitica,
+            tt("ajustes2-priv-politica"),
+            tt("ajustes2-ayuda-priv-politica"),
+            Control::Boton(tt("ajustes2-abrir")),
+        ),
+        grupo(t, "ajustes2-g-privacidad-sale"),
+    ];
+    for (i, d) in crate::privacidad::DESTINOS.iter().enumerate() {
+        let control = match d.ajustes {
+            Some(_) => Control::Boton(tt("ajustes2-priv-ver-ajustes")),
+            None => Control::Nada,
+        };
+        v.push(op(
+            a,
+            Clave::PrivDestino(i as u8),
+            d.que(t),
+            d.adonde_y_cuando(t),
+            control,
+        ));
+    }
+    v.push(op(
+        a,
+        Clave::PrivNadaMas,
+        tt("ajustes2-priv-nada-mas"),
+        tt("ajustes2-ayuda-priv-nada-mas"),
+        Control::Nada,
+    ));
+    v.push(grupo(t, "ajustes2-g-privacidad-datos"));
+    let raiz = crate::ocr_motor::raiz().unwrap_or_default();
+    let mut args = FluentArgs::new();
+    args.set("carpeta", raiz.display().to_string());
+    v.push(op(
+        a,
+        Clave::PrivCarpeta,
+        tt("ajustes2-priv-carpeta"),
+        t.t_args("ajustes2-ayuda-priv-carpeta", &args),
+        Control::Boton(tt("ajustes2-abrir")),
+    ));
+    let reportes = crate::privacidad::leer(&raiz).len();
+    if reportes > 0 {
+        v.push(op(
+            a,
+            Clave::PrivReportes,
+            tt("ajustes2-priv-reportes"),
+            cx.n("ajustes2-ayuda-priv-reportes", reportes as u32),
+            Control::Boton(tt("ajustes2-abrir")),
+        ));
+    }
+    v
+}
+
+/// La seccion de Ajustes de un destino de `privacidad` («asistente»…).
+fn seccion_de_destino(d: &crate::privacidad::Destino) -> Option<Seccion> {
+    let nombre = d.ajustes?;
+    SECCIONES.into_iter().find(|s| s.nombre() == nombre)
 }
 
 /// Las filas de una seccion, con la clave de lo que hay detras de cada una.
@@ -958,7 +1074,10 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     },
                 ),
             ),
-        ],
+        ]
+        .into_iter()
+        .chain(filas_de_privacidad(a, cx))
+        .collect(),
         Seccion::Captura => {
             let mut v = vec![
                 grupo(t, "ajustes2-g-al-capturar"),
@@ -1881,6 +2000,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
         Clave::VozMotor => a.voz.motor = d.voz.motor,
+        Clave::VozEnVivo => a.voz.en_vivo = d.voz.en_vivo,
         Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteDocsNube => {
@@ -1935,7 +2055,13 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::OcrBorrar
         | Clave::VozQwen3Licencia
         | Clave::VozQwen3Borrar
-        | Clave::AsistenteBorrarLocales => {}
+        | Clave::VozVoskBorrar
+        | Clave::AsistenteBorrarLocales
+        | Clave::PrivPolitica
+        | Clave::PrivDestino(_)
+        | Clave::PrivNadaMas
+        | Clave::PrivCarpeta
+        | Clave::PrivReportes => {}
     }
 }
 
@@ -2191,6 +2317,28 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 }
                 (MotorDeVoz::Whisper, _) if crate::voz_motor::bajando() => {
                     crate::voz_motor::cancelar_descarga()
+                }
+                _ => {}
+            }
+        }
+        Clave::VozEnVivo => {
+            a.voz.en_vivo = if cual == 1 {
+                MotorEnVivo::Vosk
+            } else {
+                MotorEnVivo::Sistema
+            };
+            // Elegir Vosk es pedirlo: si falta, se baja ya (la fila dice antes
+            // cuanto pesa). Volver a lo de siempre corta una descarga a medias.
+            match (a.voz.en_vivo, crate::ocr_motor::raiz()) {
+                (MotorEnVivo::Vosk, Some(r)) => {
+                    let idioma = pixpin_store::resolver_idioma(
+                        &pixpin_shell::entorno::locale_del_sistema(),
+                        a.idioma,
+                    );
+                    crate::voz_en_vivo::empezar_descarga(r, idioma)
+                }
+                (MotorEnVivo::Sistema, _) if crate::voz_en_vivo::bajando() => {
+                    crate::voz_en_vivo::cancelar_descarga()
                 }
                 _ => {}
             }
@@ -2482,6 +2630,28 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
         Clave::VozQwen3Borrar => {
             crate::voz_motor::borrar(ubicacion.raiz());
             Ok(())
+        }
+        Clave::VozVoskBorrar => {
+            crate::voz_en_vivo::borrar(ubicacion.raiz());
+            Ok(())
+        }
+        Clave::PrivPolitica => {
+            pixpin_shell::abrir::abrir(std::path::Path::new(crate::privacidad::URL_POLITICA))
+        }
+        Clave::PrivDestino(i) => {
+            // A la seccion donde se enciende o se apaga (la ventana la toma
+            // en su siguiente vuelta, como `ir_a_las_claves`).
+            let s = crate::privacidad::DESTINOS
+                .get(usize::from(i))
+                .and_then(seccion_de_destino);
+            if let Some(i) = s.and_then(|s| SECCIONES.iter().position(|x| *x == s)) {
+                SECCION_PEDIDA.store(i, Ordering::SeqCst);
+            }
+            Ok(())
+        }
+        Clave::PrivCarpeta => pixpin_shell::abrir::abrir(ubicacion.raiz()),
+        Clave::PrivReportes => {
+            pixpin_shell::abrir::abrir(&crate::privacidad::fichero(ubicacion.raiz()))
         }
         Clave::AsistenteBorrarLocales => {
             if let Err(e) = crate::asistente::modelos_viejos::borrar() {
@@ -4492,6 +4662,7 @@ mod pruebas {
             Clave::ImanRadio,
             Clave::Suavizado,
             Clave::VozMotor,
+            Clave::VozEnVivo,
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteDocsNube,

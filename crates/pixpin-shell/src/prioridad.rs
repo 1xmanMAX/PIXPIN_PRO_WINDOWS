@@ -106,6 +106,30 @@ fn ocupado(antes: (u64, u64), ahora: (u64, u64)) -> Option<f32> {
     Some((1.0 - ocioso as f64 / total as f64).clamp(0.0, 1.0) as f32)
 }
 
+/// Por debajo de esto (en %, desenchufado) la bateria va justa.
+pub const BATERIA_MINIMA: u8 = 20;
+
+/// **Si la bateria va justa** (1-nov-2026, lo que el movil ya hacia en la
+/// escucha en vivo de la reunion: «la grabacion va primero»): un portatil
+/// desenchufado por debajo de [`BATERIA_MINIMA`]. Sin bateria, enchufado o
+/// si Windows no lo sabe, no.
+pub fn bateria_baja() -> bool {
+    use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+    let mut s = SYSTEM_POWER_STATUS::default();
+    // SAFETY: la estructura es nuestra y vive durante la llamada; Windows
+    // solo escribe en ella.
+    if unsafe { GetSystemPowerStatus(&mut s) }.is_err() {
+        return false;
+    }
+    es_bateria_baja(s.ACLineStatus, s.BatteryLifePercent)
+}
+
+/// La cuenta de [`bateria_baja`]: `ac` 0 es desenchufado (1 enchufado, 255
+/// no se sabe) y `por_ciento` 255 es «no se sabe».
+fn es_bateria_baja(ac: u8, por_ciento: u8) -> bool {
+    ac == 0 && por_ciento < BATERIA_MINIMA
+}
+
 /// **Congela o descongela un proceso** (todos sus hilos). Es la pausa del
 /// compresor de PDF cuando la memoria del sistema se acaba: congelado no pide
 /// mas, y Windows puede sacar a disco lo que ya tiene. `false` si no se pudo
@@ -151,6 +175,16 @@ pub fn congelar(pid: u32, congelado: bool) -> bool {
 
 #[cfg(test)]
 mod pruebas {
+
+    #[test]
+    fn la_bateria_va_justa_solo_desenchufada_y_por_debajo_del_minimo() {
+        assert!(super::es_bateria_baja(0, 19));
+        assert!(!super::es_bateria_baja(0, 20));
+        // Enchufado o sin saberlo, nunca.
+        assert!(!super::es_bateria_baja(1, 5));
+        assert!(!super::es_bateria_baja(255, 5));
+        assert!(!super::es_bateria_baja(0, 255));
+    }
     #[test]
     fn lo_ocupado_del_procesador() {
         assert_eq!(super::ocupado((10, 100), (30, 200)), Some(0.8));

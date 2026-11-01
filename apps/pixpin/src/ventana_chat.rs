@@ -17635,6 +17635,12 @@ enum Accion {
     BorrarChat,
     /// Leer en voz alta esa respuesta del asistente (o callarla).
     Escuchar(usize),
+    /// «Reportar respuesta…» de una respuesta de la IA: el menu de los
+    /// motivos (`privacidad`, 1-nov-2026).
+    ReportarIa(usize),
+    /// El reporte, con su motivo (indice en `privacidad::Motivo::TODOS`):
+    /// se guarda y se abre el correo para mandarlo.
+    ReportarIaPor(usize, u8),
 }
 
 /// Una linea de menu: icono, nombre, su tecla y lo que hace. Borrar va en
@@ -18694,6 +18700,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             textos.t("asistente-escuchar"),
             Accion::Escuchar(i),
         ));
+        // Reportar lo que escribe la IA (1-nov-2026, como el movil): en
+        // «Más», que es raro pero tiene que estar a mano.
+        let mut e = entrada(
+            Some(&mi::FLAG),
+            textos.t("reportar-ia"),
+            Accion::ReportarIa(i),
+        );
+        e.en_mas = true;
+        v.push(e);
     }
     // Pinear: el pin se hace de un fichero, y una nota escrita no lo tiene
     // (ofrecerlo para contestar «no hay archivo» seria peor que no
@@ -19751,6 +19766,37 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             Some(t) => Efecto::Aviso(t),
             None => Efecto::Nada,
         },
+        Accion::ReportarIa(i) => Efecto::Menu(
+            crate::privacidad::Motivo::TODOS
+                .into_iter()
+                .enumerate()
+                .map(|(n, m)| entrada(None, m.rotulo(cx.textos), Accion::ReportarIaPor(i, n as u8)))
+                .collect(),
+        ),
+        Accion::ReportarIaPor(i, n) => {
+            use crate::privacidad::{self, Motivo, Reporte};
+            let Some(m) = a.mensajes.get(i) else {
+                return Efecto::Nada;
+            };
+            let motivo = Motivo::TODOS
+                .get(usize::from(n))
+                .copied()
+                .unwrap_or(Motivo::Otro);
+            let r = Reporte::nuevo(
+                "asistente",
+                motivo,
+                &m.texto,
+                pixpin_shell::entorno::ahora_utc_ms(),
+            );
+            if let Err(e) = privacidad::guardar(raiz, &r) {
+                tracing::warn!(?e, "no se pudo guardar el reporte de la IA");
+            }
+            let correo = r.correo(cx.textos);
+            if let Err(e) = pixpin_shell::abrir::abrir(std::path::Path::new(&correo)) {
+                tracing::warn!(?e, "no se pudo abrir el correo del reporte");
+            }
+            Efecto::Aviso(cx.textos.t("reportar-ia-hecho"))
+        }
         Accion::Receta(id, que) => {
             asistente::recetas::cambiar(cx.ubicacion, cx.identidad, a, &id, que, cx.textos)
         }

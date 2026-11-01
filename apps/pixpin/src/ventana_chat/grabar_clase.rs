@@ -304,6 +304,7 @@ pub(crate) struct Rotulos {
     temas_sin_modelo: String,
     temas_jev_fallo: String,
     temas_cargado: String,
+    temas_bateria: String,
     /// «Temas · {nombre}»: el titulo de la lista de tareas de la reunion.
     temas_lista_de: String,
     /// Lo de las fichas de la reunion ([`reunion`]).
@@ -430,6 +431,7 @@ impl Rotulos {
             temas_sin_modelo: t.t("clase-temas-sin-modelo"),
             temas_jev_fallo: t.t("clase-temas-jev-fallo"),
             temas_cargado: t.t("clase-temas-cargado"),
+            temas_bateria: t.t("clase-temas-bateria"),
             temas_lista_de: con("clase-temas-lista-de", "nombre"),
             reunion: reunion::Rotulos::de(t),
         }
@@ -851,6 +853,9 @@ struct Estado {
     completa: bool,
     letra: f32,
     frases: Vec<(i64, String)>,
+    /// Lo que se esta oyendo ahora, a medias (con Vosk, 1-nov-2026): solo
+    /// se ensena, debajo de la ultima frase.
+    parcial: String,
     /// Desde cuando se mantiene el reloj: se va llenando de rojo hasta
     /// terminar (que se vea que va a terminar, y como).
     manteniendo: Option<Instant>,
@@ -958,6 +963,7 @@ impl Estado {
             completa: false,
             letra: 1.0,
             frases: Vec::new(),
+            parcial: String::new(),
             manteniendo: None,
             video_avisado: false,
             video_guardado: false,

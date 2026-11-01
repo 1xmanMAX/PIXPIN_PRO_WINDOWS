@@ -3147,3 +3147,109 @@ ia-estado-pista = Click: check now or go to the keys
 ia-estado-comprobar = Check now
 ia-estado-claves = Keys in Settings → Assistant
 ia-estado-sin-ajustes = Settings open from the PixPin icon in the tray
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Listen to the meeting live with
+ajustes2-voz-en-vivo-sistema = Windows or Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = For the meeting topics and the rest of the meeting with Jev. Vosk shows what is being said and closes each sentence a fraction of a second after you stop (Whisper takes about 3 s), offline. Choosing it downloads { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Listening with Vosk, offline: what is being said shows in the recording's full screen. If it ever fails to load, Windows or Whisper is used.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk is downloaded for Spanish and English; in this language Windows or Whisper listens.
+ajustes2-voz-en-vivo-bajando = Downloading Vosk… { $por-ciento } %. Windows or Whisper listens meanwhile.
+ajustes2-voz-en-vivo-fallo = Could not download Vosk: { $fallo }. Choose it again to retry.
+ajustes2-voz-vosk-borrar = Delete Vosk
+ajustes2-ayuda-voz-vosk-borrar = Frees what was downloaded (about 100 MB on disk). It downloads again when you choose it.
+clase-temas-bateria = Low battery: not listening live to save it (the recording goes on)
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Listen to the meeting live with
+ajustes2-voz-en-vivo-sistema = Windows or Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = For the meeting topics and the rest of the meeting with Jev. Vosk shows what is being said and closes each sentence a fraction of a second after you stop (Whisper takes about 3 s), offline. Choosing it downloads { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Listening with Vosk, offline: what is being said shows in the recording's full screen. If it ever fails to load, Windows or Whisper is used.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk is downloaded for Spanish and English; in this language Windows or Whisper listens.
+ajustes2-voz-en-vivo-bajando = Downloading Vosk… { $por-ciento } %. Windows or Whisper listens meanwhile.
+ajustes2-voz-en-vivo-fallo = Could not download Vosk: { $fallo }. Choose it again to retry.
+ajustes2-voz-vosk-borrar = Delete Vosk
+ajustes2-ayuda-voz-vosk-borrar = Frees what was downloaded (about 100 MB on disk). It downloads again when you choose it.
+clase-temas-bateria = Low battery: not listening live to save it (the recording goes on)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = No connection: Jev could not check whether to note it in another chat. What you dictated is still in the box.
+chat-anotar-fallo = Jev did not answer ({ $motivo }). What you dictated is still in the box.
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Listen to the meeting live with
+ajustes2-voz-en-vivo-sistema = Windows or Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = For the meeting topics and the rest of the meeting with Jev. Vosk shows what is being said and closes each sentence a fraction of a second after you stop (Whisper takes about 3 s), offline. Choosing it downloads { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Listening with Vosk, offline: what is being said shows in the recording's full screen. If it ever fails to load, Windows or Whisper is used.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk is downloaded for Spanish and English; in this language Windows or Whisper listens.
+ajustes2-voz-en-vivo-bajando = Downloading Vosk… { $por-ciento } %. Windows or Whisper listens meanwhile.
+ajustes2-voz-en-vivo-fallo = Could not download Vosk: { $fallo }. Choose it again to retry.
+ajustes2-voz-vosk-borrar = Delete Vosk
+ajustes2-ayuda-voz-vosk-borrar = Frees what was downloaded (about 100 MB on disk). It downloads again when you choose it.
+clase-temas-bateria = Low battery: not listening live to save it (the recording goes on)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = No connection: Jev could not check whether to note it in another chat. What you dictated is still in the box.
+chat-anotar-fallo = Jev did not answer ({ $motivo }). What you dictated is still in the box.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = Privacy and data
+ajustes2-priv-politica = Privacy policy
+ajustes2-ayuda-priv-politica = What PixPin Max does with your data (in Spanish and English): everything stays on this PC except what is listed below, and only when you use it.
+ajustes2-g-privacidad-sale = What leaves this PC and where it goes
+ajustes2-priv-ver-ajustes = Its settings
+ajustes2-priv-nada-mas = Nothing else
+ajustes2-ayuda-priv-nada-mas = No ads, no analytics, no crash reports, no account and no PixPin servers. Dictation and transcription run on this PC, offline.
+ajustes2-g-privacidad-datos = Your data
+ajustes2-priv-carpeta = Your data, on your disk
+ajustes2-ayuda-priv-carpeta = Captures, chats, notes, recordings and settings live in { $carpeta }. To take them with you, copy the folder; to delete them, close PixPin Max and delete it. AI keys are encrypted with your Windows user.
+ajustes2-priv-reportes = Reports of what the AI writes
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] 1 saved in reportes-ia.jsonl (in the data folder).
+   *[other] { $n } saved in reportes-ia.jsonl (in the data folder).
+}
+privacidad-asistente-que = What you ask the assistant, the recent chat and what you attach
+privacidad-asistente-adonde = Anthropic (Claude) or DeepSeek
+privacidad-asistente-cuando = Only if you paste your own key and ask. The key is stored encrypted on this PC.
+privacidad-jev-que = The text for each Jev feature: meeting sentences, class lines, tasks, what you dictate or explain
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Only with your TypeSafe key and that feature turned on. Never the audio.
+privacidad-web-que = What the assistant searches for and the pages it reads to answer you
+privacidad-web-adonde = DuckDuckGo or Brave Search, and the site it reads
+privacidad-web-cuando = When the assistant searches the web. No cookies and not your AI key.
+privacidad-google-que = The Drive files you pick and calendar events
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Only if you connect your Google account in Settings › Assistant; disconnect it there.
+privacidad-voces-que = The text read aloud with a Microsoft voice
+privacidad-voces-adonde = Microsoft (the Edge voices)
+privacidad-voces-cuando = Only if you pick one of those voices in the reader; the Windows voices work offline.
+privacidad-enlace-que = The file you choose to share by link
+privacidad-enlace-adonde = litterbox.catbox.moe or temp.sh
+privacidad-enlace-cuando = Only when you ask for a share link; it deletes itself within hours or days.
+privacidad-modelos-que = Nothing of yours: only the files are requested
+privacidad-modelos-adonde = huggingface.co, github.com and alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = When downloading a speech or text-reading model, when you ask for it.
+privacidad-sincro-que = Your synced captures, notes and chats
+privacidad-sincro-adonde = Your own devices (the phone), over your network
+privacidad-sincro-cuando = When syncing: directly on your network, encrypted, without going through servers.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = Report response…
+reportar-ia-motivo-ofensivo = Offensive
+reportar-ia-motivo-peligroso = Dangerous
+reportar-ia-motivo-falso = False or misleading
+reportar-ia-motivo-otro = Other reason
+reportar-ia-hecho = Report saved in reportes-ia.jsonl; your email opens to send it
+reportar-ia-asunto = Report of an AI response
+reportar-ia-campo-motivo = Reason
+reportar-ia-campo-funcion = Feature
+reportar-ia-campo-fecha = Date
+reportar-ia-campo-version = Version
+reportar-ia-campo-contenido = What the AI wrote
+reportar-ia-comentario = (If you like, tell us here what is wrong.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = No connection.

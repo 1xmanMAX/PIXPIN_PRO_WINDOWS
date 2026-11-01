@@ -242,13 +242,14 @@ petición tiene que dar la misma huella.
 
 ## Audio (pixpin-voz)
 
-Dos prototipos en `crates/pixpin-voz/examples/`, con lo comun (leer el
+Tres prototipos en `crates/pixpin-voz/examples/`, con lo comun (leer el
 audio, encontrar el modelo) en `examples/comun/mod.rs`:
 
 | Prototipo | Lo que prueba | El camino de la app |
 |---|---|---|
 | `alinear_cancion` | «Sincronizar sola»: el minuto de cada linea de una letra pegada | `ventana_chat/musica.rs` → `Whisper::oir_cancion_pcm` → `alinear_letra::palabras_oidas` → `alinear_letra::alinear` |
 | `frases_en_vivo` | La escucha en vivo de una reunion: cortar frases y pasarlas a texto | `grabar_clase/escucha.rs` → `en_vivo::Frasero` + `Cola` + `Freno` → `Whisper::cargar_ligero` + `transcribir_pcm` |
+| `vosk_en_vivo` | La misma escucha con Vosk: de corrido, con lo que se va oyendo | `grabar_clase/escucha.rs` (`oir_con_vosk`) → `vosk_vivo::Corriente` → `libvosk` |
 
 ### Que corre en Linux
 
@@ -436,6 +437,63 @@ probar medidas basta `--rapido`, que tarda 50 s en vez de 3 min. Casi todas
 cortan a los 0,5 s de callarse; las de 1,5-1,7 s son dos frases de menos de
 5 s que esperan a `SILENCIO_LARGO_MS` y dos largas (10 s) cuyo silencio tarda
 en contar (seguramente ruido de sala por encima del umbral de voz, RMS 300).
+
+### `vosk_en_vivo` (1-nov-2026)
+
+La escucha de la reunion con **Vosk** (`vosk_vivo::Corriente`, lo que la app
+usa con Ajustes › Voz › «Escuchar la reunion en vivo con» = Vosk): el mismo
+audio, en los mismos bloques de 10 ms a 48 kHz estereo, entra de corrido en
+el reconocedor (sin `Frasero`), que da **lo que va oyendo** (el parcial,
+cada 200 ms) y cierra cada frase a los 0,5 s de callarse o, pasados 4 s de
+frase, en la primera pausa de 200 ms (`LARGO_MS`, `PAUSA_MS`).
+
+```sh
+# Una vez (fuera del repo): la biblioteca de Linux y el modelo pequeno.
+curl -L -O https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip
+curl -L -O https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip
+unzip vosk-linux-x86_64-0.3.45.zip && unzip vosk-model-small-es-0.42.zip
+cargo run -p pixpin-voz --release --example vosk_en_vivo -- $D/audio/reunion.wav \
+  --vosk vosk-linux-x86_64-0.3.45/libvosk.so --modelo vosk-model-small-es-0.42 \
+  [--tiempo-real] [--salida frases.txt] [--quien Nombre]
+```
+
+Por frase: inicio, fin de la voz, el **primer parcial** (empieza a hablar →
+se ve algo; solo en las que empiezan tras un silencio) y el **retraso** (se
+dejo de hablar → frase cerrada). `--salida` escribe el mismo guion oido que
+`frases_en_vivo`.
+
+#### Medido (1-nov-2026, la misma «reunion» de 186 s, Xeon 2,8 GHz, 4 nucleos)
+
+WER contra lo que oye *large-v3* (448 palabras; sin mayusculas ni
+puntuacion en los dos lados). «Con ruido»: el mismo audio con eco
+(`aecho=0.8:0.5:40:0.25`) y ruido rosa de sala (`anoisesrc` amplitud 0,03).
+
+| | Frases | Duracion media | Primer parcial | Retraso medio / p50 / max | RTF | WER |
+|---|---|---|---|---|---|---|
+| Whisper base (`PARA_WHISPER`, simulado) | 25 | 7,0 s | — | 3,24 / — / 5,28 s | 0,35 | 8,5 % |
+| **Vosk small-es-0.42** | 33 | 5,0 s | 0,66 s (p50 0,61) | **0,40 / 0,23 / 1,40 s** | **0,07** | **7,8 %** |
+| Whisper base, con ruido | 21 | 8,7 s | — | 3,57 / — / 5,26 s | 0,33 | 20,5 % |
+| Vosk, con ruido | 33 | 4,8 s | 0,81 s (p50 0,70) | 0,50 / 0,28 / 1,50 s | 0,12 | 19,2 % |
+
+Lo que se aprendio:
+
+- **Diez veces menos espera** y cinco veces menos procesador, con el mismo
+  WER o mejor. El modelo carga en 0,4-0,6 s y ocupa unos 58 MB en disco
+  (zip de 40 MB, mas 15 MB de la biblioteca para Windows). Lo que pierde: sin
+  mayusculas ni puntuacion (Jev lo lleva igual: `vivo::partir` no tiene
+  donde partir, por eso las frases las corta la pausa).
+- **Las palabras del parcial (`vosk_recognizer_set_partial_words`) se dejan
+  apagadas**: con ellas Vosk rehace el parcial desde el retículo y lo da cada
+  ~1 s con 1,5-2 s de retraso; sin ellas, cada 200-400 ms con 0,4-0,8 s.
+- **Los tiempos de las palabras siguen contando tras
+  `vosk_recognizer_final_result`** (desde que se creo el reconocedor; 0.3.45):
+  la `Corriente` suma su desfase solo en los huecos largos.
+- Quien lee de corrido no se calla medio segundo: sin cortar, Vosk da frases
+  de 20 s (su `rule5`). Con `LARGO_MS` 7/12 s el retraso sube a ~3 s (se
+  partian por el hueco mas largo de lo ya firme); con «cerrar en la primera
+  pausa de 200 ms pasados 4 s» se queda en 0,2-0,4 s y frases de ~5 s.
+- `--frames-per-chunk` en `model.conf` no adelanta el parcial (sube el RTF a
+  0,10 y nada mas).
 
 ## Más casos (29-oct-2026)
 

@@ -16,9 +16,10 @@
 //!   marcarlos a mano (los que marca Jev salen con su ✓ y su minuto).
 //! - **Abajo, lo que se dice**: la transcripcion en vivo de la escucha
 //!   ([`super::escucha`], `Vuelta::Frase`), frase a frase con su minuto, la
-//!   ultima abajo. Solo se ensena: el texto de la nota sale al terminar,
-//!   entero. Sin escucha (sin la clave de Jev o sin reconocedor) se dice
-//!   por que.
+//!   ultima abajo, y con Vosk (1-nov-2026, como el movil) **lo que se esta
+//!   diciendo**, a medias y mas tenue, debajo de todo. Solo se ensena: el
+//!   texto de la nota sale al terminar, entero. Sin escucha (sin la clave
+//!   de Jev o sin reconocedor) se dice por que.
 
 use std::time::Duration;
 
@@ -458,7 +459,7 @@ fn pintar_frases(p: &Pintor, caja: RectF, e: f32, letra: f32, estado: &Estado, r
     );
     let arriba = caja.y + 30.0 * e * letra.min(1.4);
     let tam = 18.0 * e * letra;
-    if estado.frases.is_empty() {
+    if estado.frases.is_empty() && estado.parcial.is_empty() {
         // Sin escucha, por que (la clave de Jev, el reconocedor); con ella,
         // que aun no se oye nada.
         let texto = if estado.escucha.is_some() {
@@ -482,7 +483,25 @@ fn pintar_frases(p: &Pintor, caja: RectF, e: f32, letra: f32, estado: &Estado, r
     let ancho_minuto = p.medir_texto("00:00:00", tam * 0.75).0 + 16.0 * e;
     let ancho_texto = (caja.ancho - ancho_minuto).max(40.0 * e);
     let mut fondo = caja.y + caja.alto;
-    let ultima = estado.frases.len() - 1;
+    // Lo que se esta oyendo, a medias: abajo del todo, entre comillas y
+    // tenue (cambia mientras se habla).
+    if !estado.parcial.is_empty() {
+        let texto = format!("«{}…»", estado.parcial);
+        let (_, th) = p.medir_texto_ajustado(&texto, tam * 0.95, ancho_texto);
+        let alto = th + 10.0 * e;
+        if fondo - alto >= arriba {
+            fondo -= alto;
+            p.texto_ajustado(
+                &texto,
+                caja.x + ancho_minuto,
+                fondo,
+                tam * 0.95,
+                ancho_texto,
+                con_alfa(tema.texto, 0.55),
+            );
+        }
+    }
+    let ultima = estado.frases.len().saturating_sub(1);
     for (i, (ms, texto)) in estado.frases.iter().enumerate().rev() {
         let (_, th) = p.medir_texto_ajustado(texto, tam, ancho_texto);
         let alto = th + 10.0 * e;

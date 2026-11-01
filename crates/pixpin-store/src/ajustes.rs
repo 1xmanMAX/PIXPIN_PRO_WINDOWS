@@ -708,6 +708,21 @@ pub enum MotorDeVoz {
     Qwen3,
 }
 
+/// Con que se escucha en vivo una reunion que se graba (1-nov-2026, los
+/// temas y lo demas de la reunion con Jev).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum MotorEnVivo {
+    /// El reconocedor de Windows si sabe el idioma; si no, Whisper *base*
+    /// (unos 3 s desde que se deja de hablar).
+    #[default]
+    Sistema,
+    /// Vosk (Apache-2.0, unos 55 MB con el modelo del idioma, que se baja
+    /// al elegirlo): lo que se va oyendo mientras se habla y la frase a las
+    /// decimas de callarse. Sin bajar, o si falla, el de `Sistema`.
+    Vosk,
+}
+
 /// Seccion `[voz]`: pasar notas de voz a texto.
 ///
 /// `segundoIdiomaDeVoz` y `modoDeIdiomas` del movil (`SettingsRepository`):
@@ -720,6 +735,8 @@ pub struct Voz {
     pub segundo_idioma: String,
     pub modo_de_idiomas: ModoDeIdiomas,
     pub motor: MotorDeVoz,
+    /// Con que se escucha en vivo (solo del PC).
+    pub en_vivo: MotorEnVivo,
 }
 
 // --- Tareas (18-oct-2026) -------------------------------------------------

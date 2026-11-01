@@ -6,7 +6,9 @@
 //! una aplicacion de escritorio que se pone a descargar sin que se lo pidan
 //! es exactamente lo que este proyecto no quiere ser. Este modulo dice
 //! **que falta, donde va y de donde se saca**; quien pulsa «descargar» es
-//! el usuario, con su navegador.
+//! el usuario, con su navegador. (Desde el 1-nov-2026, para escuchar una
+//! reunion en vivo, elegir Vosk en Ajustes › Voz es pedirlo: entonces lo
+//! baja `vosk_instalar`, con su sha256, a la misma carpeta.)
 //!
 //! Todo aqui es texto y rutas: se prueba sin motor y sin sonido.
 

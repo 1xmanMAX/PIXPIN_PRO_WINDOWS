@@ -319,7 +319,7 @@ enum Accion {
 }
 
 /// Lo que se le pregunto a Jev y aun no contesto.
-type EnVuelo = Receiver<Result<Vec<(String, SenalPunto)>, String>>;
+type EnVuelo = Receiver<Result<Vec<(String, SenalPunto)>, pixpin_typesafe::Error>>;
 
 struct Estado {
     repaso: Repaso,
@@ -368,8 +368,7 @@ impl Estado {
         let lanzado = std::thread::Builder::new()
             .name("jev-repaso".into())
             .spawn(move || {
-                let r = repaso::preguntar(&cliente, &clase, &explicado, &puntos)
-                    .map_err(|e| e.to_string());
+                let r = repaso::preguntar(&cliente, &clase, &explicado, &puntos);
                 let _ = enviar.send(r);
             });
         if lanzado.is_ok() {
@@ -524,7 +523,14 @@ fn ventana(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
                 }
                 Err(err) => {
                     tracing::info!("jev: el repaso no se pregunto: {err}");
-                    e.aviso = Some((textos.t("repaso-jev-fallo"), ahora + 4_000));
+                    // Y por que (1-nov-2026, como el movil): sin red, o el
+                    // motivo.
+                    let motivo = match &err {
+                        pixpin_typesafe::Error::Red(_) => textos.t("repaso-jev-fallo-red"),
+                        otro => format!("({otro})"),
+                    };
+                    let aviso = format!("{} {motivo}", textos.t("repaso-jev-fallo"));
+                    e.aviso = Some((aviso, ahora + 4_000));
                 }
             }
             if e.pendiente {
