@@ -148,13 +148,13 @@ pub(super) fn abrir(ed: Editor<'_>) -> Option<Insertar> {
     // El primer fotograma va entero (la escena, la barra, el riel y la
     // hojita); los siguientes, solo la interfaz si hay capas.
     let mut entero = true;
-    let al_papel = |p: Punto| {
+    let al_papel = |p: Punto, area: pixpin_geom::Rect| {
         Punto2::nuevo(
             (p.x - area.x - hoja.papel.x) as f32 / e,
             (p.y - area.y - hoja.papel.y) as f32 / e,
         )
     };
-    let local = |p: Punto| Punto {
+    let local = |p: Punto, area: pixpin_geom::Rect| Punto {
         x: p.x - area.x,
         y: p.y - area.y,
     };
@@ -167,19 +167,23 @@ pub(super) fn abrir(ed: Editor<'_>) -> Option<Insertar> {
     ventana.poner_cursor(FormaCursorWin::Cruz);
     ventana.invalidar();
 
+    // El sitio de la ventana se sigue en cada vuelta: si otro la mueve, los
+    // clics van a donde esta (docs/ventanas.md).
+    let mut area = area;
     let salida = 'bucle: loop {
         pixpin_shell::overlay::bombear_pendientes();
+        ventana.seguir_sitio(&mut area);
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
                 continue;
             }
             let mut cambio = false;
             match ev {
-                EventoOverlay::BotonPulsado(p) => match hoja.destino(local(p)) {
+                EventoOverlay::BotonPulsado(p) => match hoja.destino(local(p, area)) {
                     DestinoHojita::Papel => {
                         lapiz.evento(
                             EventoGesto::Pulsar {
-                                p: al_papel(p),
+                                p: al_papel(p, area),
                                 shift: false,
                                 alt: false,
                                 presion: None,
@@ -251,7 +255,7 @@ pub(super) fn abrir(ed: Editor<'_>) -> Option<Insertar> {
                     if dibujando {
                         lapiz.evento(
                             EventoGesto::Mover {
-                                p: al_papel(p),
+                                p: al_papel(p, area),
                                 shift: false,
                                 alt: false,
                                 presion: None,
@@ -261,7 +265,7 @@ pub(super) fn abrir(ed: Editor<'_>) -> Option<Insertar> {
                         );
                         cambio = true;
                     } else {
-                        let ahora = hoja.destino(local(p));
+                        let ahora = hoja.destino(local(p, area));
                         cambio = ahora != encima;
                         encima = ahora;
                         ventana.poner_cursor(if ahora == DestinoHojita::Papel {
@@ -273,7 +277,9 @@ pub(super) fn abrir(ed: Editor<'_>) -> Option<Insertar> {
                 }
                 EventoOverlay::BotonSoltado(p) if dibujando => {
                     lapiz.evento(
-                        EventoGesto::Soltar { p: al_papel(p) },
+                        EventoGesto::Soltar {
+                            p: al_papel(p, area),
+                        },
                         &mut anotado,
                         1.0 / e,
                     );

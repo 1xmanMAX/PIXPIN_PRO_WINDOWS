@@ -413,6 +413,10 @@ fn flotar(
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         while let Ok(otras) = cola.try_recv() {
             if let Some((otra, resto)) = partir_fila(otras) {
                 suena.cargar(otra);

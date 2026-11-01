@@ -43,6 +43,20 @@ pub fn es_arrastre(p: Punto, zonas: &[Rect], botones: &[Rect]) -> bool {
     zonas.iter().any(|z| z.contiene(p)) && !botones.iter().any(|b| b.contiene(p))
 }
 
+/// El rectangulo de pixeles enteros que cubre uno con decimales (un boton
+/// pintado con Direct2D): hacia fuera, para que el borde del boton nunca
+/// quede del lado de la zona de arrastre.
+pub fn cubrir(x: f32, y: f32, ancho: f32, alto: f32) -> Rect {
+    let (x0, y0) = (x.floor(), y.floor());
+    let (x1, y1) = ((x + ancho.max(0.0)).ceil(), (y + alto.max(0.0)).ceil());
+    Rect {
+        x: x0 as i32,
+        y: y0 as i32,
+        ancho: (x1 - x0) as u32,
+        alto: (y1 - y0) as u32,
+    }
+}
+
 /// **Lo que hay dentro de una ventana movida por otro.** Quien pone la
 /// ventana a partir de su contenido (un pin: la ventana es el contenido mas
 /// su sombra) espera verla en `esperada`; si esta en `real` con el MISMO
@@ -127,5 +141,13 @@ mod pruebas {
             contenido_seguido(contenido, esperada, r(700, 0, 400, 220)),
             None
         );
+    }
+
+    #[test]
+    fn un_boton_con_decimales_se_cubre_hacia_fuera() {
+        assert_eq!(cubrir(10.4, 20.6, 30.2, 10.0), r(10, 20, 31, 11));
+        assert_eq!(cubrir(0.0, 0.0, 8.0, 8.0), r(0, 0, 8, 8));
+        // Medidas negativas (un boton sin sitio): vacio, no enorme.
+        assert_eq!(cubrir(5.5, 5.5, -3.0, -3.0), r(5, 5, 1, 1));
     }
 }

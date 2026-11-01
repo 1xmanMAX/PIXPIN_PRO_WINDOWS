@@ -196,7 +196,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
     let (w, h) = hc::tamano(&c, escala);
     let (w, h) = (w.ceil() as u32, h.ceil() as u32);
     let util = monitor.area_trabajo;
-    let area = Rect {
+    let mut area = Rect {
         x: util.x + (util.ancho as i32 - w as i32) / 2,
         y: util.abajo() - h as i32 - (16.0 * escala) as i32,
         ancho: w,
@@ -255,6 +255,10 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut area);
         while let Ok(hecho) = rx_hechos.try_recv() {
             if hoja.pedido.as_ref() == Some(&hecho.clave) {
                 hoja.pedido = None;

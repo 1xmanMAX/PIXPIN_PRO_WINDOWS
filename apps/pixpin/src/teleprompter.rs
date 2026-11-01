@@ -226,7 +226,7 @@ fn abrir(
         .context("sin monitor principal")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
-    let marco: Rect = monitor.area;
+    let mut marco: Rect = monitor.area;
 
     let ventana = VentanaOverlay::nueva_normal(marco, &t(textos, Texto::Titulo))
         .context("no se pudo abrir la ventana del telepronter")?;
@@ -264,6 +264,10 @@ fn abrir(
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
                 continue;

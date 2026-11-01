@@ -339,6 +339,10 @@ fn flotar(recursos: &Recursos, mando: &Mando, puesto: usize, id: u64) -> Result<
     let mut cerrada_a_mano = false;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         let mut accion = None;
         let mut rueda = 0;
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {

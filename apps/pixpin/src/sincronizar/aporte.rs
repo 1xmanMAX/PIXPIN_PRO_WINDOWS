@@ -104,7 +104,7 @@ fn flotar(recursos: &Recursos, raiz: &Path) -> Result<()> {
         (ALTO as f32 * escala) as u32,
     );
     let margen = (MARGEN as f32 * escala) as i32;
-    let marco = Rect {
+    let mut marco = Rect {
         x: monitor.area_trabajo.derecha() - w as i32 - margen,
         y: monitor.area_trabajo.y + margen,
         ancho: w,
@@ -126,6 +126,10 @@ fn flotar(recursos: &Recursos, raiz: &Path) -> Result<()> {
     let mut actual = ajena(raiz);
     loop {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         if mirado.elapsed() >= Duration::from_millis(500) {
             mirado = Instant::now();
             actual = ajena(raiz);

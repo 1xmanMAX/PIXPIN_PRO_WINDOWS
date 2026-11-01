@@ -436,6 +436,10 @@ fn flotar(recursos: &Recursos, pedido: &Pedido, rotulos: &Rotulos) -> Result<()>
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         let ahora = pixpin_shell::entorno::ahora_local_ms();
         let mut accion: Option<Accion> = None;
         let mut clic_suelto = false;

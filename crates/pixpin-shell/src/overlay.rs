@@ -495,14 +495,25 @@ impl VentanaOverlay {
         self.hwnd
     }
 
+    /// Lo ultimo que pidio la aplicacion, pero EN EL SITIO donde esta la
+    /// ventana de verdad: si otro la movio (AltSnap, Win+flecha, el
+    /// arrastre por su cabecera), quien reparte los clics con esto los
+    /// reparte bien. El tamano es el pedido; el real, `rect_del_sistema`.
+    /// Minimizada, lo pedido (Windows la tiene en -32000).
     pub fn area(&self) -> Rect {
-        self.area
+        // SAFETY: IsIconic solo consulta el estado de la ventana propia.
+        if unsafe { IsIconic(self.hwnd) }.as_bool() {
+            return self.area;
+        }
+        self.rect_del_sistema()
+            .and_then(|real| pixpin_geom::marco_vivo::al_sitio(self.area, real))
+            .unwrap_or(self.area)
     }
 
     /// El rectangulo que la ventana ocupa DE VERDAD ahora mismo, preguntado
     /// a Windows. `None` si no se puede preguntar.
     ///
-    /// `area()` devuelve lo ULTIMO que pidio la aplicacion, que no siempre es
+    /// `area()` da el TAMANO que pidio la aplicacion, que no siempre es
     /// lo que hay: Windows cambia el tamano por su cuenta al pasar a un
     /// monitor con otro DPI, al ajustar la ventana a un lado con Win+flecha o
     /// al maximizarla desde la barra de tareas. Quedarse con el valor viejo
@@ -532,6 +543,11 @@ impl VentanaOverlay {
     /// de repartir los eventos. Conserva el tamano del `marco`; `true` si lo
     /// movio. Ver `pixpin_geom::marco_vivo` y docs/ventanas.md.
     pub fn seguir_sitio(&self, marco: &mut Rect) -> bool {
+        // Minimizada, Windows la tiene en -32000: no es un sitio.
+        // SAFETY: IsIconic solo consulta el estado de la ventana propia.
+        if unsafe { IsIconic(self.hwnd) }.as_bool() {
+            return false;
+        }
         match self
             .rect_del_sistema()
             .and_then(|real| pixpin_geom::marco_vivo::al_sitio(*marco, real))

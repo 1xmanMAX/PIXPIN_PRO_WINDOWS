@@ -579,6 +579,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
     let mut mirado = std::time::Instant::now();
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         // A que chat va lo que se adjunte: puede cambiar con la ventana
         // abierta (otro «+» → «Figura» desde otro chat).
         let d = destino();
