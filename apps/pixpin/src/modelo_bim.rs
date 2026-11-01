@@ -93,28 +93,27 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo3d::Modelo3d, St
 }
 
 fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
-    match idioma.base() {
-        Idioma::Ingles => pixpin_cad::ventana3d::TextosUi3d {
-            abriendo: "Opening the model…".into(),
-            vacio: "The model has nothing to show".into(),
-            error: "Could not open the model".into(),
-            todo: "Show whole model	F".into(),
-            tema: "Light or dark background	B".into(),
-            corte: "Section box	C".into(),
-            aislar: "Isolate the selected element	I".into(),
-            panel: "Levels and categories	L".into(),
-            niveles: "LEVELS".into(),
-            categorias: "CATEGORIES".into(),
-            sin_nivel: "No level".into(),
-            mostrar_todo: "Show all".into(),
-            aristas: "Edges	E".into(),
-            planta: "Plan view	P".into(),
-            encima: "Always on top	T".into(),
-            cerrar: "Close	Esc".into(),
-            altura_corte: "Section".into(),
-            pista: "Drag: orbit · Right drag: pan · Wheel: zoom · Click: what is it · Click again: isolate".into(),
-        },
-        _ => pixpin_cad::ventana3d::TextosUi3d::default(),
+    let t = pixpin_store::Catalogo::nuevo(idioma);
+    let tecla = |clave: &str, atajo: &str| crate::plano_cad::con_tecla(&t, clave, atajo);
+    pixpin_cad::ventana3d::TextosUi3d {
+        abriendo: t.t("cad-modelo-abriendo"),
+        vacio: t.t("cad-modelo-vacio"),
+        error: t.t("cad-modelo-error"),
+        todo: tecla("cad-modelo-todo", "F"),
+        tema: tecla("cad-tema", "B"),
+        corte: tecla("cad-corte", "C"),
+        aislar: tecla("cad-aislar", "I"),
+        panel: tecla("cad-capas", "L"),
+        niveles: t.t("cad-niveles"),
+        categorias: t.t("cad-categorias"),
+        sin_nivel: t.t("cad-sin-nivel"),
+        mostrar_todo: t.t("cad-mostrar-todo"),
+        aristas: tecla("cad-aristas", "E"),
+        planta: tecla("cad-planta", "P"),
+        encima: tecla("cad-encima", "T"),
+        cerrar: tecla("cad-cerrar", "Esc"),
+        altura_corte: t.t("cad-altura-corte"),
+        pista: t.t("cad-modelo-pista"),
     }
 }
 
@@ -128,19 +127,18 @@ fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
 }
 
 fn textos_marcos_sin_menu(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
-    match idioma.base() {
-        Idioma::Ingles => pixpin_cad::ventana3d::TextosMarcos3d {
-            marcador: "Bookmark here (with the section and what is hidden)\tCtrl+M".into(),
-            marcos: "Frames to print\tI".into(),
-            imprimir: "Print the frames…\tCtrl+P".into(),
-            borrar_marcos: "Clear frames".into(),
-            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · The numbers: go to its view · Esc: exit".into(),
-            pista_anotar: "What you annotate is only seen in this bookmark's view".into(),
-            anotar: "Annotate this view\tA".into(),
-            botones: pixpin_cad::ventana::NombresDeBotones::ingles(),
-            imprimir_menu: pixpin_cad::ventana::TextosImprimir::modelo(),
-        },
-        _ => pixpin_cad::ventana3d::TextosMarcos3d::default(),
+    let t = pixpin_store::Catalogo::nuevo(idioma);
+    let tecla = |clave: &str, atajo: &str| crate::plano_cad::con_tecla(&t, clave, atajo);
+    pixpin_cad::ventana3d::TextosMarcos3d {
+        marcador: tecla("cad-modelo-marcador", "Ctrl+M"),
+        marcos: tecla("cad-marcos", "I"),
+        imprimir: tecla("cad-imprimir-marcos", "Ctrl+P"),
+        borrar_marcos: t.t("cad-borrar-marcos"),
+        pista_marcos: t.t("cad-modelo-pista-marcos"),
+        pista_anotar: t.t("cad-modelo-pista-anotar"),
+        anotar: tecla("cad-modelo-anotar", "A"),
+        botones: crate::plano_cad::nombres_de_botones(&t),
+        imprimir_menu: pixpin_cad::ventana::TextosImprimir::modelo(),
     }
 }
 

@@ -22,20 +22,21 @@ pub fn pedido_del_arranque() -> Option<String> {
 }
 
 fn textos(idioma: Idioma) -> Textos {
-    match idioma.base() {
-        Idioma::Ingles => Textos {
-            capturar: "Capture".into(),
-            capturar_largo: "Capture an area of the screen".into(),
-            mensajes: "Saved messages".into(),
-            mensajes_largo: "Open Saved messages".into(),
-            proyectos: "Projects".into(),
-            proyectos_largo: "See your projects".into(),
-            sincronizar: "Sync".into(),
-            sincronizar_largo: "Sync with your devices".into(),
-            recientes: "Recent projects".into(),
-            proyecto_largo: "Open the project {}".into(),
-        },
-        _ => Textos::default(),
+    let t = pixpin_store::Catalogo::nuevo(idioma);
+    // `jump_list` pone el nombre donde va «{}».
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("nombre", "{}");
+    Textos {
+        capturar: t.t("lista-icono-capturar"),
+        capturar_largo: t.t("lista-icono-capturar-largo"),
+        mensajes: t.t("lista-icono-mensajes"),
+        mensajes_largo: t.t("lista-icono-mensajes-largo"),
+        proyectos: t.t("lista-icono-proyectos"),
+        proyectos_largo: t.t("lista-icono-proyectos-largo"),
+        sincronizar: t.t("lista-icono-sincronizar"),
+        sincronizar_largo: t.t("lista-icono-sincronizar-largo"),
+        recientes: t.t("lista-icono-recientes"),
+        proyecto_largo: t.t_args("lista-icono-proyecto-largo", &args),
     }
 }
 

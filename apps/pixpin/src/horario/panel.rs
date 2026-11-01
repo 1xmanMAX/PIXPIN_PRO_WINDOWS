@@ -956,7 +956,7 @@ impl Panel {
         e.disposicion = Some(disp);
         e.rejilla = Some(r);
         let sem = e.previa().unwrap_or_else(|| e.semana.clone());
-        pintar_rejilla(e, p, &sem, r, s, tareas);
+        pintar_rejilla(e, p, &sem, r, s, tareas, textos);
         pintar_lateral(e, p, disp.lateral, s, textos);
     }
 
@@ -1304,6 +1304,7 @@ fn pintar_rejilla(
     r: Rejilla,
     s: f32,
     tareas: &[TareaConHora],
+    textos: &Catalogo,
 ) {
     let dia_hoy = e.ahora_ms.div_euclid(86_400_000);
     let semana_hoy = fechas::dia_de_la_semana(dia_hoy) as u8;
@@ -1361,7 +1362,7 @@ fn pintar_rejilla(
             p.linea((x, r.y), (x, r.y + r.alto()), 1.0, blanco(0.06));
         }
         let (_, _, dd) = fechas::fecha_de(lunes + i64::from(dia));
-        let t = format!("{} {dd}", semana::DIAS[usize::from(dia)]);
+        let t = format!("{} {dd}", textos.t(&format!("horario-dia-{dia}")));
         let tam = d::LETRA_SECUNDARIO * s;
         let (tw, th) = p.medir_texto(&t, tam);
         let cx = x + r.ancho_dia / 2.0;
@@ -1664,7 +1665,7 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
                 b.nombre.clone(),
                 format!(
                     "{} {}:{:02}–{}:{:02}",
-                    semana::DIAS[usize::from(b.dia.min(6))],
+                    textos.t(&format!("horario-dia-{}", b.dia.min(6))),
                     b.inicio / 60,
                     b.inicio % 60,
                     b.fin / 60,
@@ -1753,7 +1754,8 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
     let by = caja.y + caja.alto - 20.0 * s - d::BOTON * s;
     let guardar = textos.t("horario-guardar");
     let cancelar = textos.t("horario-cancelar");
-    let gw = ui::ancho_de_boton(p, false, &guardar, Some("Intro"), s);
+    let intro = textos.t("tecla-intro");
+    let gw = ui::ancho_de_boton(p, false, &guardar, Some(&intro), s);
     let cw = ui::ancho_de_boton(p, false, &cancelar, Some("Esc"), s);
     let g = RectF {
         x: caja.x + caja.ancho - 20.0 * s - gw,
@@ -1768,7 +1770,7 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
         Accion::Guardar,
         None,
         &guardar,
-        Some("Intro"),
+        Some(&intro),
         Some(d::AZUL_LLENO),
         Color::BLANCO,
         s,

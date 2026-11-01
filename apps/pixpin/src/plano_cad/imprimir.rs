@@ -44,6 +44,36 @@ pub struct Lamina {
     pub titulo: String,
     pub autor: String,
     pub fecha: String,
+    /// Lo que dice cada casilla del membrete, en el idioma de la app.
+    pub rotulos: Rotulos,
+}
+
+/// Los rotulos del membrete.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Rotulos {
+    pub proyecto: String,
+    pub lamina: String,
+    pub titulo: String,
+    pub dibujo: String,
+    pub escala: String,
+    pub sin_escala: String,
+    pub fecha: String,
+    pub unidades: String,
+}
+
+impl Rotulos {
+    pub fn de(t: &pixpin_store::Catalogo) -> Rotulos {
+        Rotulos {
+            proyecto: t.t("lamina-proyecto"),
+            lamina: t.t("lamina-lamina"),
+            titulo: t.t("lamina-titulo"),
+            dibujo: t.t("lamina-dibujo"),
+            escala: t.t("lamina-escala"),
+            sin_escala: t.t("lamina-sin-escala"),
+            fecha: t.t("lamina-fecha"),
+            unidades: t.t("lamina-unidades"),
+        }
+    }
 }
 
 /// Los milimetros que mide una unidad del plano (`$INSUNITS`).
@@ -209,12 +239,13 @@ pub fn hoja(
         let (_, th) = p.medir_texto(&t, t_dato);
         p.texto(&t, x0 + 1.5 * MM, y0 + alto - th - 1.0 * MM, t_dato, negro);
     };
-    celda(mx0, my0, col, "PROYECTO", &lamina.proyecto, fila);
+    let r = &lamina.rotulos;
+    celda(mx0, my0, col, &r.proyecto, &lamina.proyecto, fila);
     celda(
         mx0 + col,
         my0,
         ancho_m - col,
-        "LÁMINA",
+        &r.lamina,
         &format!("{numero} / {total}"),
         fila,
     );
@@ -222,20 +253,34 @@ pub fn hoja(
         mx0,
         my0 + fila,
         ancho_m,
-        "TÍTULO",
+        &r.titulo,
         &lamina.titulo,
         fila * 2.0,
     );
     let unidad = pixpin_cad::ventana::sufijo(m.unidades).trim();
     let unidad = if unidad.is_empty() { "—" } else { unidad };
-    let esc = escala.map_or("Sin escala".to_string(), |(n, _)| format!("1:{n}"));
-    celda(mx0, my0 + 3.0 * fila, cuarto, "DIBUJÓ", &lamina.autor, fila);
-    celda(mx0 + cuarto, my0 + 3.0 * fila, cuarto, "ESCALA", &esc, fila);
+    let esc = escala.map_or(r.sin_escala.clone(), |(n, _)| format!("1:{n}"));
+    celda(
+        mx0,
+        my0 + 3.0 * fila,
+        cuarto,
+        &r.dibujo,
+        &lamina.autor,
+        fila,
+    );
+    celda(
+        mx0 + cuarto,
+        my0 + 3.0 * fila,
+        cuarto,
+        &r.escala,
+        &esc,
+        fila,
+    );
     celda(
         mx0 + 2.0 * cuarto,
         my0 + 3.0 * fila,
         cuarto,
-        "FECHA",
+        &r.fecha,
         &lamina.fecha,
         fila,
     );
@@ -243,7 +288,7 @@ pub fn hoja(
         mx0 + 3.0 * cuarto,
         my0 + 3.0 * fila,
         cuarto,
-        "UNIDADES",
+        &r.unidades,
         unidad,
         fila,
     );
@@ -604,12 +649,14 @@ pub fn imprimir(
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let textos = pixpin_store::Catalogo::nuevo(crate::salida::idioma_actual());
     let lamina = Lamina {
         con_membrete: true,
         proyecto: proyecto_de(ruta),
         titulo: titulo.clone(),
         autor: std::env::var("USERNAME").unwrap_or_default(),
         fecha: hoy(),
+        rotulos: Rotulos::de(&textos),
     };
     let apaisada = marcos[0][2] - marcos[0][0] > marcos[0][3] - marcos[0][1];
     let d = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para imprimir")?;
@@ -619,10 +666,10 @@ pub fn imprimir(
         apaisada,
         opcion: Some(OpcionPropia {
             id: OPCION.into(),
-            titulo: "Lámina".into(),
+            titulo: textos.t("lamina-opcion"),
             elementos: vec![
-                (CON.into(), "Con marco y membrete".into()),
-                (SIN.into(), "Sin marco".into()),
+                (CON.into(), textos.t("lamina-con-membrete")),
+                (SIN.into(), textos.t("lamina-sin-marco")),
             ],
             inicial: CON.into(),
         }),

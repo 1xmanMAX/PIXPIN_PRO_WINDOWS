@@ -69,6 +69,7 @@ pub fn abrir_desde_chat(idioma: Idioma, raiz: &Path, ficha_id: &str, m: &Mensaje
         return false;
     };
     let titulo = titulo_de(
+        &pixpin_store::Catalogo::nuevo(idioma),
         Some(if m.texto.trim().is_empty() {
             m.nombre.as_str()
         } else {
@@ -86,12 +87,16 @@ pub fn abrir_desde_chat(idioma: Idioma, raiz: &Path, ficha_id: &str, m: &Mensaje
     true
 }
 
-fn titulo_de(texto: Option<&str>, id: &str) -> String {
+fn titulo_de(textos: &pixpin_store::Catalogo, texto: Option<&str>, id: &str) -> String {
     texto
         .map(str::trim)
         .filter(|t| !t.is_empty())
         .map(|t| t.lines().next().unwrap_or(t).to_string())
-        .unwrap_or_else(|| format!("Croquis {id}"))
+        .unwrap_or_else(|| {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("id", id);
+            textos.t_args("croquis-titulo", &args)
+        })
 }
 
 /// Abre el `.croquis.gz` de un proyecto. Sus fotos (`pixpin:files/…`) se
@@ -263,41 +268,27 @@ pub fn extras_de(c: &Croquis) -> pixpin_cad::ventana3d::Extras {
 }
 
 fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
-    use pixpin_cad::ventana3d::TextosUi3d;
-    match idioma.base() {
-        Idioma::Ingles => TextosUi3d {
-            abriendo: "Opening the sketch…".into(),
-            vacio: "The sketch is empty".into(),
-            error: "Could not open the sketch".into(),
-            todo: "Show whole sketch\tF".into(),
-            tema: "Light or dark background\tB".into(),
-            corte: "Section box\tC".into(),
-            aislar: "Isolate the selected element\tI".into(),
-            panel: "Layers\tL".into(),
-            niveles: "GROUPS".into(),
-            categorias: "KINDS".into(),
-            sin_nivel: "Everything".into(),
-            mostrar_todo: "Show all".into(),
-            aristas: "Edges\tE".into(),
-            planta: "Plan view\tP".into(),
-            encima: "Always on top\tT".into(),
-            cerrar: "Close\tEsc".into(),
-            altura_corte: "Section".into(),
-            pista: "Drag: orbit · Right drag: pan · Wheel: zoom · 1–9: saved views".into(),
-        },
-        _ => TextosUi3d {
-            abriendo: "Abriendo el croquis…".into(),
-            vacio: "El croquis está vacío".into(),
-            error: "No se pudo abrir el croquis".into(),
-            todo: "Ver todo el croquis\tF".into(),
-            panel: "Capas\tL".into(),
-            niveles: "GRUPOS".into(),
-            categorias: "TIPOS".into(),
-            sin_nivel: "Todo".into(),
-            pista: "Arrastrar: girar · Derecho: mover · Rueda: acercar · 1–9: vistas guardadas"
-                .into(),
-            ..TextosUi3d::default()
-        },
+    let t = pixpin_store::Catalogo::nuevo(idioma);
+    let tecla = |clave: &str, atajo: &str| crate::plano_cad::con_tecla(&t, clave, atajo);
+    pixpin_cad::ventana3d::TextosUi3d {
+        abriendo: t.t("cad-croquis-abriendo"),
+        vacio: t.t("cad-croquis-vacio"),
+        error: t.t("cad-croquis-error"),
+        todo: tecla("cad-croquis-todo", "F"),
+        tema: tecla("cad-tema", "B"),
+        corte: tecla("cad-corte", "C"),
+        aislar: tecla("cad-aislar", "I"),
+        panel: tecla("cad-croquis-capas", "L"),
+        niveles: t.t("cad-croquis-grupos"),
+        categorias: t.t("cad-croquis-tipos"),
+        sin_nivel: t.t("cad-croquis-todo-corto"),
+        mostrar_todo: t.t("cad-mostrar-todo"),
+        aristas: tecla("cad-aristas", "E"),
+        planta: tecla("cad-planta", "P"),
+        encima: tecla("cad-encima", "T"),
+        cerrar: tecla("cad-cerrar", "Esc"),
+        altura_corte: t.t("cad-altura-corte"),
+        pista: t.t("cad-croquis-pista"),
     }
 }
 
@@ -368,8 +359,9 @@ mod pruebas {
 
     #[test]
     fn el_titulo_es_el_texto_del_mensaje_o_el_codigo() {
-        assert_eq!(titulo_de(Some("Escalera\notra"), "cr"), "Escalera");
-        assert_eq!(titulo_de(Some("  "), "cr"), "Croquis cr");
-        assert_eq!(titulo_de(None, "cr"), "Croquis cr");
+        let es = pixpin_store::Catalogo::nuevo(Idioma::Espanol);
+        assert_eq!(titulo_de(&es, Some("Escalera\notra"), "cr"), "Escalera");
+        assert_eq!(titulo_de(&es, Some("  "), "cr"), "Croquis cr");
+        assert_eq!(titulo_de(&es, None, "cr"), "Croquis cr");
     }
 }

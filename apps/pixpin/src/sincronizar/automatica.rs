@@ -952,7 +952,8 @@ fn acabo(reloj: &mut Reloj, fin: Option<Fase>, firma: Firma, ahora: i64) {
     match &fin {
         Some(f @ Fase::Terminado { titulo, trajo, .. }) => {
             presencia::difundir(Novedad::Registro(format!("Automática: {titulo}")));
-            if *trajo && let Some(t) = super::en_fondo::contar(f) {
+            let textos = pixpin_store::Catalogo::nuevo(crate::salida::idioma_actual());
+            if *trajo && let Some(t) = super::en_fondo::contar(f, &textos) {
                 super::al_movil::avisar(t);
             }
         }

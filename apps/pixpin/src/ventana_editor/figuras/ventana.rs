@@ -272,14 +272,15 @@ fn campos_de(clave: &str) -> &'static [Dato] {
 
 /// **El intervalo de los campos** (`None` si estan todos vacios: la de
 /// serie, tal cual). Error en palabras si algo no es un numero.
-fn intervalo_de(campos: &HashMap<Dato, String>) -> Result<Option<Intervalo>, String> {
+fn intervalo_de(campos: &HashMap<Dato, String>, t: &Catalogo) -> Result<Option<Intervalo>, String> {
     let n = |c: Dato| -> Result<Option<u32>, String> {
         match campos.get(&c).map(|s| s.trim()).filter(|s| !s.is_empty()) {
             None => Ok(None),
-            Some(s) => s
-                .parse()
-                .map(Some)
-                .map_err(|_| format!("«{s}» no es un número")),
+            Some(s) => s.parse().map(Some).map_err(|_| {
+                let mut a = fluent_bundle::FluentArgs::new();
+                a.set("texto", s);
+                t.t_args("figuras-ventana-no-es-numero", &a)
+            }),
         }
     };
     let mes = match campos
@@ -288,10 +289,11 @@ fn intervalo_de(campos: &HashMap<Dato, String>) -> Result<Option<Intervalo>, Str
         .filter(|s| !s.is_empty())
     {
         None => None,
-        Some(s) => Some(
-            pixpin_ia::figuras::mes_de(s)
-                .ok_or_else(|| format!("«{s}»: escribe el mes como 2026-11"))?,
-        ),
+        Some(s) => Some(pixpin_ia::figuras::mes_de(s).ok_or_else(|| {
+            let mut a = fluent_bundle::FluentArgs::new();
+            a.set("texto", s);
+            t.t_args("figuras-ventana-mes-mal", &a)
+        })?),
     };
     let semanas = match (n(Dato::SemanasDesde)?, n(Dato::SemanasHasta)?) {
         (None, None) => None,
@@ -460,7 +462,7 @@ impl Estado {
             .iter()
             .map(|c| (*c, self.texto_de(*c)))
             .collect();
-        self.previa = match intervalo_de(&textos) {
+        self.previa = match intervalo_de(&textos, t) {
             Ok(None) => None,
             Ok(Some(iv)) => Some(serie::alargar(&clave, &iv).map(|h| {
                 if h.len() == 1 {
@@ -476,14 +478,14 @@ impl Estado {
     }
 
     /// Lo que hace «Insertar» con la elegida.
-    fn insertar(&mut self) {
+    fn insertar(&mut self, t: &Catalogo) {
         let Some(i) = self.elegida else { return };
         if let Some(clave) = self.alargable() {
             let textos: HashMap<Dato, String> = campos_de(&clave)
                 .iter()
                 .map(|c| (*c, self.texto_de(*c)))
                 .collect();
-            match intervalo_de(&textos) {
+            match intervalo_de(&textos, t) {
                 Ok(Some(iv)) => match serie::alargar(&clave, &iv) {
                     Ok(h) => self.pedido = Some(Pedido::Hojas(h)),
                     Err(e) => self.previa = Some(Err(e)),
@@ -802,10 +804,10 @@ fn clic(
         Accion::Celda(i) => {
             e.elegir(Some(i));
             if doble {
-                e.insertar();
+                e.insertar(t);
             }
         }
-        Accion::Insertar => e.insertar(),
+        Accion::Insertar => e.insertar(t),
         Accion::Campo(c) => e.foco = Some(c),
         Accion::Quitar => {
             e.quitar();
@@ -848,7 +850,7 @@ fn tecla(
             e.renombrar();
             e.rehacer_lista(ancho_rejilla, s);
         }
-        VK_ENTRAR => e.insertar(),
+        VK_ENTRAR => e.insertar(t),
         // Ctrl+F: al buscador.
         0x46 if ctrl => {
             e.foco = None;

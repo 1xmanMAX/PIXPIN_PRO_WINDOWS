@@ -173,15 +173,14 @@ impl Adjuntos {
     }
 
     /// Mira el microfono; devuelve un aviso si algo salio mal.
-    pub fn avanzar(&mut self) -> Option<String> {
+    pub fn avanzar(&mut self, textos: &pixpin_store::Catalogo) -> Option<String> {
         let (sig, aviso) = match std::mem::replace(&mut self.grabar, Grabar::Nada) {
             Grabar::Nada => (Grabar::Nada, None),
             Grabar::Abriendo(rx) => match rx.try_recv() {
                 Ok(Ok(g)) => (Grabar::Grabando(g, Instant::now()), None),
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (
-                    Grabar::Nada,
-                    Some("No se pudo usar el micrófono".to_string()),
-                ),
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
+                    (Grabar::Nada, Some(textos.t("leccion-audio-sin-microfono")))
+                }
                 Err(TryRecvError::Empty) => (Grabar::Abriendo(rx), None),
             },
             g @ Grabar::Grabando(..) => (g, None),
@@ -196,16 +195,15 @@ impl Adjuntos {
                             self.audios.push((nombre, b, gr.duracion_ms));
                             (Grabar::Nada, None)
                         }
-                        _ => (Grabar::Nada, Some("Muy corto: no se guardó".to_string())),
+                        _ => (Grabar::Nada, Some(textos.t("leccion-audio-corto"))),
                     }
                 }
                 Ok(Err(pixpin_audio::ErrorAudio::DemasiadoCorta { .. })) => {
-                    (Grabar::Nada, Some("Muy corto: no se guardó".to_string()))
+                    (Grabar::Nada, Some(textos.t("leccion-audio-corto")))
                 }
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (
-                    Grabar::Nada,
-                    Some("No se pudo guardar el audio".to_string()),
-                ),
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
+                    (Grabar::Nada, Some(textos.t("leccion-audio-no-guarda")))
+                }
                 Err(TryRecvError::Empty) => (Grabar::Parando(rx), None),
             },
         };
@@ -214,15 +212,19 @@ impl Adjuntos {
     }
 
     /// El rotulo del boton de grabar.
-    pub fn rotulo_audio(&self) -> String {
+    pub fn rotulo_audio(&self, textos: &pixpin_store::Catalogo) -> String {
         match &self.grabar {
-            Grabar::Grabando(_, desde) => format!(
-                "⏹ Parar {}",
-                duracion_legible(desde.elapsed().as_millis() as i64)
-            ),
-            Grabar::Abriendo(_) => "🎙 Abriendo…".into(),
-            Grabar::Parando(_) => "🎙 Guardando…".into(),
-            Grabar::Nada => "🎙 Audio".into(),
+            Grabar::Grabando(_, desde) => {
+                let mut a = fluent_bundle::FluentArgs::new();
+                a.set(
+                    "duracion",
+                    duracion_legible(desde.elapsed().as_millis() as i64),
+                );
+                textos.t_args("leccion-audio-parar", &a)
+            }
+            Grabar::Abriendo(_) => textos.t("leccion-audio-abriendo"),
+            Grabar::Parando(_) => textos.t("leccion-audio-guardando"),
+            Grabar::Nada => textos.t("leccion-audio"),
         }
     }
 }

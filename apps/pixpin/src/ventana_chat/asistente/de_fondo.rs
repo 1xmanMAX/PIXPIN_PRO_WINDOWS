@@ -229,27 +229,36 @@ pub(crate) fn sin_lo_vivo(texto: &str) -> String {
 
 /// **El texto de la burbuja cortada**: lo que ya habia escrito y, debajo,
 /// lo que paso y como seguir.
-pub(crate) fn texto_cortado(parcial: &str, r: &Retomar, asistente: bool) -> String {
-    let sigue = if asistente {
-        "«continúa»"
+pub(crate) fn texto_cortado(
+    t: &pixpin_store::Catalogo,
+    parcial: &str,
+    r: &Retomar,
+    asistente: bool,
+) -> String {
+    let sigue = t.t(if asistente {
+        "ia-fondo-sigue"
     } else {
-        "«@asistente continúa»"
-    };
+        "ia-fondo-sigue-fuera"
+    });
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("sigue", sigue);
     let aviso = match r {
-        Retomar::OtraVez => "↻ PixPin se cerró antes de que acabara. Lo retomo desde el principio en la respuesta de abajo.".to_string(),
+        Retomar::OtraVez => t.t("ia-fondo-otra-vez"),
         Retomar::Avisar(m) => {
             let porque = match m {
-                Motivo::YaActuo => format!(
-                    "Algunos pasos ya estaban hechos, así que no lo repito solo (se harían dos veces). Escribe {sigue} y sigo desde aquí."
-                ),
-                Motivo::YaSeRetomo => {
-                    format!("Ya lo había retomado una vez y volvió a cortarse, así que no insisto. Escribe {sigue} si quieres que lo intente otra vez.")
+                Motivo::YaActuo => t.t_args("ia-fondo-ya-actuo", &args),
+                Motivo::YaSeRetomo => t.t_args("ia-fondo-ya-se-retomo", &args),
+                Motivo::Viejo => t.t_args("ia-fondo-viejo", &args),
+                Motivo::SinPregunta => t.t("ia-fondo-sin-pregunta"),
+                Motivo::NoSePudo(aviso) => {
+                    let mut a = fluent_bundle::FluentArgs::new();
+                    a.set("aviso", aviso.as_str());
+                    t.t_args("ia-fondo-no-se-pudo", &a)
                 }
-                Motivo::Viejo => format!("Ha pasado demasiado para retomarlo solo. Escribe {sigue} si aún lo quieres."),
-                Motivo::SinPregunta => "No encuentro tu pedido (¿se borró?), así que no puedo retomarlo.".to_string(),
-                Motivo::NoSePudo(aviso) => format!("No he podido retomarlo: {aviso}"),
             };
-            format!("⚠️ PixPin se cerró antes de que acabara esto. {porque}")
+            let mut a = fluent_bundle::FluentArgs::new();
+            a.set("porque", porque);
+            t.t_args("ia-fondo-cortado", &a)
         }
     };
     let parcial = sin_lo_vivo(parcial);
@@ -261,10 +270,14 @@ pub(crate) fn texto_cortado(parcial: &str, r: &Retomar, asistente: bool) -> Stri
 }
 
 /// Lo que dice la tarjeta flotante al acabar: el principio de la respuesta.
-fn resumen_para_la_tarjeta(texto: &str) -> String {
+fn resumen_para_la_tarjeta(textos: &pixpin_store::Catalogo, texto: &str) -> String {
     let t = sin_lo_vivo(texto);
     let t: String = t.chars().take(400).collect();
-    if t.is_empty() { "✅ Hecho.".into() } else { t }
+    if t.is_empty() {
+        textos.t("ia-fondo-hecho")
+    } else {
+        t
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +334,8 @@ pub(crate) fn recoger() {
     for s in &mut vuelven {
         // Su tarjeta ya no hace falta: se ve en el chat.
         if let Some(f) = s.fuera.take() {
-            f.mando.poner("💬 Lo sigo en el chat.".into(), None);
+            let t = pixpin_store::Catalogo::nuevo(f.chat.idioma);
+            f.mando.poner(t.t("ia-fondo-sigo-en-el-chat"), None);
         }
     }
     SESIONES.with_borrow_mut(|s| s.extend(vuelven));
@@ -391,9 +405,10 @@ fn abrir_de(chat: &Chat, s: &Sesion) -> Abrir {
 }
 
 fn tarjeta(chat: &Chat, s: &Sesion) -> Fuera {
+    let t = pixpin_store::Catalogo::nuevo(chat.idioma);
     let mando = avisar(Aviso {
-        titulo: "🤖 Asistente".into(),
-        texto: "⏳ Sigo con tu pedido aunque se cerró el chat. Te aviso al acabar.".into(),
+        titulo: t.t("ia-fondo-titulo"),
+        texto: t.t("ia-fondo-sigo-de-fondo"),
         abrir: Some(abrir_de(chat, s)),
         acabado: false,
         chat: Some(chat.clone()),
@@ -408,10 +423,10 @@ fn tarjeta(chat: &Chat, s: &Sesion) -> Fuera {
 /// contesta en la burbuja, con «Abrir»).
 pub(super) fn al_preguntar(s: &Sesion, pregunta: &str) {
     if let Some(f) = &s.fuera {
-        f.mando.cambiar_texto(format!(
-            "❓ Necesito que me contestes en el chat: {}\n\nPulsa «Abrir». Si no contestas, sigo con lo más seguro.",
-            pregunta.trim()
-        ));
+        let t = pixpin_store::Catalogo::nuevo(f.chat.idioma);
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("pregunta", pregunta.trim());
+        f.mando.cambiar_texto(t.t_args("ia-fondo-pregunta", &args));
     }
 }
 
@@ -422,7 +437,7 @@ pub(super) fn al_acabar(s: &mut Sesion, texto: &str) {
     if let Some(f) = s.fuera.take() {
         let a = abrir_de(&f.chat, s);
         f.mando.poner(
-            resumen_para_la_tarjeta(texto),
+            resumen_para_la_tarjeta(&pixpin_store::Catalogo::nuevo(f.chat.idioma), texto),
             Some((a.idioma, a.ubicacion, a.opciones, a.proyecto, a.codigo)),
         );
     }
@@ -493,7 +508,7 @@ fn retomar_uno(chat: &Chat, e: &EnMarcha, ahora: i64) -> std::io::Result<Option<
         match super::motor_para(&chat.ubicacion, &e.proyecto, contexto, &pregunta) {
             Ok((motor, pensar, ventana)) => {
                 // La burbuja cortada, antes: la nueva nace debajo.
-                escribir_cortado(&carpeta, e, &parcial, &decision);
+                escribir_cortado(chat, &carpeta, e, &parcial, &decision);
                 match super::lanzar_en(
                     raiz,
                     &e.proyecto,
@@ -515,7 +530,7 @@ fn retomar_uno(chat: &Chat, e: &EnMarcha, ahora: i64) -> std::io::Result<Option<
                             "asistente: no se pudo lanzar otra vez el turno cortado"
                         );
                         decision = Retomar::Avisar(Motivo::NoSePudo(
-                            "no pude empezar a contestar.".into(),
+                            pixpin_store::Catalogo::nuevo(chat.idioma).t("ia-fondo-no-empezo"),
                         ));
                     }
                 }
@@ -524,12 +539,13 @@ fn retomar_uno(chat: &Chat, e: &EnMarcha, ahora: i64) -> std::io::Result<Option<
         }
     }
     if lanzado.is_none() {
-        escribir_cortado(&carpeta, e, &parcial, &decision);
+        escribir_cortado(chat, &carpeta, e, &parcial, &decision);
         // Con el chat cerrado (PixPin arranco sin el), que se sepa igual.
         if estado_del_chat() == 0 {
+            let t = pixpin_store::Catalogo::nuevo(chat.idioma);
             avisar(Aviso {
-                titulo: "🤖 Asistente".into(),
-                texto: texto_cortado("", &decision, e.asistente),
+                titulo: t.t("ia-fondo-titulo"),
+                texto: texto_cortado(&t, "", &decision, e.asistente),
                 abrir: Some(Abrir {
                     idioma: chat.idioma,
                     ubicacion: chat.ubicacion.clone(),
@@ -545,8 +561,9 @@ fn retomar_uno(chat: &Chat, e: &EnMarcha, ahora: i64) -> std::io::Result<Option<
     Ok(lanzado)
 }
 
-fn escribir_cortado(carpeta: &Path, e: &EnMarcha, parcial: &str, r: &Retomar) {
-    let texto = texto_cortado(parcial, r, e.asistente);
+fn escribir_cortado(chat: &Chat, carpeta: &Path, e: &EnMarcha, parcial: &str, r: &Retomar) {
+    let t = pixpin_store::Catalogo::nuevo(chat.idioma);
+    let texto = texto_cortado(&t, parcial, r, e.asistente);
     if let Err(err) = cuaderno::cambiar(carpeta, &e.nota, |m| {
         m.texto = texto.clone();
         true
@@ -654,9 +671,11 @@ mod pruebas {
         // Un texto suyo que acaba en puntos suspensivos se queda.
         assert_eq!(sin_lo_vivo("Y entonces…"), "Y entonces…");
 
-        let t = texto_cortado("💭 Pensando…", &Retomar::OtraVez, true);
+        let c = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let t = texto_cortado(&c, "💭 Pensando…", &Retomar::OtraVez, true);
         assert!(t.starts_with("↻ PixPin se cerró"), "{t}");
         let t = texto_cortado(
+            &c,
             "Ya apunte dos tareas ▍",
             &Retomar::Avisar(Motivo::YaActuo),
             true,
@@ -666,9 +685,10 @@ mod pruebas {
             "{t}"
         );
         assert!(t.contains("«continúa»") && !t.contains("@asistente"), "{t}");
-        let t = texto_cortado("", &Retomar::Avisar(Motivo::Viejo), false);
+        let t = texto_cortado(&c, "", &Retomar::Avisar(Motivo::Viejo), false);
         assert!(t.contains("«@asistente continúa»"), "{t}");
         let t = texto_cortado(
+            &c,
             "",
             &Retomar::Avisar(Motivo::NoSePudo("falta la clave".into())),
             true,

@@ -92,30 +92,35 @@ fn lista_de(raiz: &Path, quiero: impl Fn(&str) -> bool) -> Option<Vec<(String, S
 }
 
 /// Sincroniza con `aparato` (o con todos) en un hilo y lo dice al acabar.
-pub fn lanzar(ubicacion: &Ubicacion, aparato: &str) {
+pub fn lanzar(ubicacion: &Ubicacion, aparato: &str, idioma: pixpin_store::Idioma) {
+    let textos = &pixpin_store::Catalogo::nuevo(idioma);
     let raiz = ubicacion.raiz().to_path_buf();
     let Some(lista) = lista(&raiz, aparato) else {
-        super::al_movil::avisar(if aparato == TODOS {
-            "Este PC no tiene a nadie más en el grupo: únelo en Sincronizar".into()
+        super::al_movil::avisar(textos.t(if aparato == TODOS {
+            "sinc-fondo-solo"
         } else {
-            "Ese aparato ya no está en el grupo".into()
-        });
+            "sinc-fondo-no-es-del-grupo"
+        }));
         return;
     };
-    let quien = if lista.len() == 1 {
-        lista[0].0.clone()
+    let mut args = fluent_bundle::FluentArgs::new();
+    if lista.len() == 1 {
+        args.set("quien", lista[0].0.clone());
     } else {
-        format!("{} aparatos", lista.len())
-    };
-    let arrancada = arrancar(&raiz, lista, None, |fin| {
-        if let Some(texto) = fin.and_then(|f| contar(&f)) {
+        let mut n = fluent_bundle::FluentArgs::new();
+        n.set("n", lista.len());
+        args.set("quien", textos.t_args("sinc-fondo-aparatos", &n));
+    }
+    let arrancada = arrancar(&raiz, lista, None, move |fin| {
+        let textos = pixpin_store::Catalogo::nuevo(idioma);
+        if let Some(texto) = fin.and_then(|f| contar(&f, &textos)) {
             super::al_movil::avisar(texto);
         }
     });
     super::al_movil::avisar(if arrancada {
-        format!("Sincronizando con {quien}…")
+        textos.t_args("sinc-fondo-sincronizando", &args)
     } else {
-        "Ya se está sincronizando: espera a que acabe".into()
+        textos.t("sinc-fondo-ya-en-marcha")
     });
 }
 
@@ -216,7 +221,7 @@ fn arrancar(
 
 /// Lo que se dice en el globo: el titulo y lo hecho; los avisos, solo el
 /// primero (el globo no da para mas; el resto esta en la ventana).
-pub(super) fn contar(f: &Fase) -> Option<String> {
+pub(super) fn contar(f: &Fase, textos: &pixpin_store::Catalogo) -> Option<String> {
     match f {
         Fase::Terminado {
             titulo,
@@ -239,7 +244,11 @@ pub(super) fn contar(f: &Fase) -> Option<String> {
             }
             Some(t)
         }
-        Fase::Fallo(e) => Some(format!("No se pudo sincronizar: {e}")),
+        Fase::Fallo(e) => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("error", e.to_string());
+            Some(textos.t_args("sinc-fondo-fallo", &args))
+        }
         _ => None,
     }
 }
@@ -364,13 +373,27 @@ mod pruebas {
             aviso: Some("Un archivo no llegó\n\nOtro aviso".into()),
         };
         assert_eq!(
-            contar(&f).unwrap(),
+            contar(
+                &f,
+                &pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol)
+            )
+            .unwrap(),
             "Al día con Redmi\n3 mensajes nuevos\nUn archivo no llegó"
         );
         assert_eq!(
-            contar(&Fase::Fallo("No contesta".into())).unwrap(),
+            contar(
+                &Fase::Fallo("No contesta".into()),
+                &pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol)
+            )
+            .unwrap(),
             "No se pudo sincronizar: No contesta"
         );
-        assert_eq!(contar(&Fase::Nada), None);
+        assert_eq!(
+            contar(
+                &Fase::Nada,
+                &pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol)
+            ),
+            None
+        );
     }
 }

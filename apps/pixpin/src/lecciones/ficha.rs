@@ -32,7 +32,7 @@ use pixpin_lecciones::{Leccion, Repaso, dictado};
 use pixpin_render::icono::material as mi;
 use pixpin_render::{Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
-use pixpin_store::{Idioma, Ubicacion};
+use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
 use super::adjuntos::{Adjuntos, Visible};
 use super::almacen::{self, Donde, Entrada};
@@ -140,12 +140,17 @@ enum Accion {
     AbrirAdjunto(usize),
 }
 
+/// El tipo y su clave del catalogo.
 const TIPOS: [(&str, &str); 3] = [
-    (TIPO_LECCION, "💡 Lección"),
-    (TIPO_ERROR, "⚠️ Error"),
-    (TIPO_ACIERTO, "✅ Acierto"),
+    (TIPO_LECCION, "leccion-tipo-leccion"),
+    (TIPO_ERROR, "leccion-tipo-error"),
+    (TIPO_ACIERTO, "leccion-tipo-acierto"),
 ];
-const GRAVEDADES: [(i64, &str); 3] = [(1, "Leve"), (2, "Importante"), (3, "Grave")];
+const GRAVEDADES: [(i64, &str); 3] = [
+    (1, "leccion-gravedad-leve"),
+    (2, "leccion-gravedad-importante"),
+    (3, "leccion-gravedad-grave"),
+];
 
 struct Estado {
     existente: Option<Entrada>,
@@ -185,6 +190,8 @@ struct Estado {
     minis: crate::miniaturas::Miniaturas,
     /// La ventana, para el dialogo de la galeria.
     hwnd: isize,
+    /// Los textos, en el idioma de la app.
+    textos: Catalogo,
 }
 
 impl Estado {
@@ -357,6 +364,12 @@ impl Estado {
         }
     }
 
+    /// Un aviso del catalogo, por su clave.
+    fn avisar_t(&mut self, clave: &str) {
+        let texto = self.textos.t(clave);
+        self.avisar(&texto);
+    }
+
     fn avisar(&mut self, texto: &str) {
         self.aviso = Some((texto.to_string(), Instant::now()));
     }
@@ -393,6 +406,8 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
             areas.push(l.area.clone());
         }
     }
+    let textos = Catalogo::nuevo(pedido.idioma);
+    let sin_proyecto = textos.t("leccion-sin-proyecto");
     let mut e = Estado {
         existente: None,
         de_mensaje: None,
@@ -419,7 +434,7 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
                 (
                     p.0.clone(),
                     if p.3 {
-                        "Sin proyecto (chat general)".to_string()
+                        sin_proyecto.clone()
                     } else {
                         p.1.clone()
                     },
@@ -438,6 +453,7 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
         adjuntos: Adjuntos::nuevos(Vec::new()),
         minis: crate::miniaturas::Miniaturas::nuevo(),
         hwnd: 0,
+        textos,
     };
     let mut dictar_ya = false;
     match &pedido.que {
@@ -483,13 +499,13 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
     let mut marco = centrado(monitor.area_trabajo, 600, 780, monitor.escala_por_cien);
-    let titulo_ventana = if e.existente.is_some() {
-        "Lección"
+    let titulo_ventana = e.textos.t(if e.existente.is_some() {
+        "leccion-ventana"
     } else {
-        "Nueva lección"
-    };
-    let mut ventana =
-        VentanaOverlay::nueva_normal(marco, titulo_ventana).context("no se pudo abrir la ficha")?;
+        "leccion-ventana-nueva"
+    });
+    let mut ventana = VentanaOverlay::nueva_normal(marco, &titulo_ventana)
+        .context("no se pudo abrir la ficha")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
         &motor,
@@ -505,7 +521,11 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
     let hwnd = ventana.handle().0 as isize;
     e.hwnd = hwnd;
     almacen::apuntar_ventana(hwnd);
-    if dictar_ya && let Some(a) = e.dictado.pulsar(&pedido.ubicacion, pedido.idioma) {
+    if dictar_ya
+        && let Some(a) = e
+            .dictado
+            .pulsar(&pedido.ubicacion, pedido.idioma, &e.textos)
+    {
         e.avisar(&a);
     }
 
@@ -620,7 +640,10 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
             break;
         }
 
-        match e.dictado.avanzar(&pedido.ubicacion, pedido.idioma) {
+        match e
+            .dictado
+            .avanzar(&pedido.ubicacion, pedido.idioma, &e.textos)
+        {
             Salida::Nada => {}
             Salida::Texto(dicho) => {
                 let t = e.titulo().trim().to_string();
@@ -648,7 +671,7 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
             pintar = true;
         }
         // El audio que se graba en la ficha (y su reloj).
-        if let Some(m) = e.adjuntos.avanzar() {
+        if let Some(m) = e.adjuntos.avanzar(&e.textos) {
             e.avisar(&m);
         }
         if e.adjuntos.grabando() {
@@ -805,7 +828,10 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
             }
         }
         Accion::Dictar => {
-            if let Some(m) = e.dictado.pulsar(&pedido.ubicacion, pedido.idioma) {
+            if let Some(m) = e
+                .dictado
+                .pulsar(&pedido.ubicacion, pedido.idioma, &e.textos)
+            {
                 e.avisar(&m);
             }
         }
@@ -814,7 +840,7 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
                 e.hwnd as *mut _,
             ));
             if !rutas.is_empty() && e.adjuntos.anadir_fotos(&rutas) == 0 {
-                e.avisar("No se pudo leer esa foto");
+                e.avisar_t("leccion-foto-ilegible");
             }
         }
         Accion::Audio => {
@@ -851,7 +877,7 @@ fn abrir_adjunto(e: &mut Estado, i: usize, pedido: &Pedido) {
         return;
     };
     let Some(ruta) = e.adjuntos.rutas_viejos[k].clone().filter(|r| r.is_file()) else {
-        e.avisar("Ese archivo aún no está en este equipo");
+        e.avisar_t("leccion-adjunto-no-esta");
         return;
     };
     if e.adjuntos.viejos[k].clase == Some(pixpin_proyecto::cuaderno::Clase::Voz) {
@@ -882,13 +908,13 @@ fn pintar_adjuntos(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, s
         &mut e.botones,
         galeria,
         Accion::Galeria,
-        "🖼 Galería",
+        &e.textos.t("leccion-galeria"),
         hex(0x2c2c34),
         TEXTO,
         tam,
         s,
     );
-    let rotulo = e.adjuntos.rotulo_audio();
+    let rotulo = e.adjuntos.rotulo_audio(&e.textos);
     let grabando = e.adjuntos.grabando();
     let w = (p.medir_texto(&rotulo, tam).0 + 32.0 * s).max(110.0 * s);
     let audio = RectF {
@@ -1035,12 +1061,12 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
     };
     p.rellenar(cab, FONDO);
     e.botones.zona(cab, Accion::Mover);
-    let titulo = if e.existente.is_some() {
-        "💡 Lección"
+    let titulo = e.textos.t(if e.existente.is_some() {
+        "leccion-titulo"
     } else {
-        "💡 Nueva lección"
-    };
-    p.texto_color(titulo, m, 15.0 * s, 20.0 * s, TEXTO);
+        "leccion-titulo-nueva"
+    });
+    p.texto_color(&titulo, m, 15.0 * s, 20.0 * s, TEXTO);
     let lado = 36.0 * s;
     let cerrar = RectF {
         x: w - m - lado,
@@ -1088,7 +1114,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32) {
         &mut e.botones,
         boton,
         Accion::Guardar,
-        "Guardar",
+        &e.textos.t("leccion-guardar"),
         if vale { PUESTO } else { hex(0x3a3a42) },
         if vale { hex(0x1a1a1a) } else { APAGADO },
         17.0 * s,
@@ -1107,6 +1133,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
 
     // Lo unico obligatorio, con el microfono dentro.
     let reserva = 44.0 * s;
+    let pista = e.textos.t("leccion-pista-titulo");
     let t = e.campo(CampoId::Titulo);
     let alto = t.alto(p, ancho, 17.0 * s, 2, reserva, s);
     let caja = RectF { x, y, ancho, alto };
@@ -1115,7 +1142,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         caja,
         17.0 * s,
         e.foco == Some(CampoId::Titulo),
-        "¿Qué aprendiste? Escríbelo o díctalo de corrido",
+        &pista,
         reserva,
         s,
     );
@@ -1136,7 +1163,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     p.icono(&mi::MIC, ui::encoger(mic, 8.0 * s), TEXTO);
     e.botones.zona(mic, Accion::Dictar);
     y += alto + 6.0 * s;
-    if let Some(estado) = e.dictado.estado() {
+    if let Some(estado) = e.dictado.estado(&e.textos) {
         p.texto_color(
             &estado,
             x,
@@ -1159,7 +1186,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         let caja = RectF { x, y, ancho, alto };
         p.rellenar_redondeado(caja, 14.0 * s, hex(0x2f3a2c));
         p.texto(
-            "Se parece a una que ya tienes",
+            &e.textos.t("leccion-se-parece"),
             x + 12.0 * s,
             y + 8.0 * s,
             12.5 * s,
@@ -1184,7 +1211,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
             &mut e.botones,
             b,
             Accion::PasoOtraVez,
-            "🔁 Pasó otra vez",
+            &e.textos.t("leccion-paso-otra-vez"),
             hex(0x445a3e),
             TEXTO,
             14.0 * s,
@@ -1198,17 +1225,17 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     let mut fichas: Vec<(String, Accion, bool, bool)> = TIPOS
         .iter()
         .enumerate()
-        .map(|(i, (t, n))| (n.to_string(), Accion::Tipo(i), tipo == *t, false))
+        .map(|(i, (t, n))| (e.textos.t(n), Accion::Tipo(i), tipo == *t, false))
         .collect();
     fichas.extend(
         GRAVEDADES
             .iter()
-            .map(|(g, n)| (n.to_string(), Accion::Gravedad(*g), e.gravedad == *g, false)),
+            .map(|(g, n)| (e.textos.t(n), Accion::Gravedad(*g), e.gravedad == *g, false)),
     );
     y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + hueco;
 
     // Area.
-    y = rotulo(p, "Área", x, y, s);
+    y = rotulo(p, &e.textos.t("leccion-area"), x, y, s);
     let area_final = e.area_final();
     let fichas: Vec<(String, Accion, bool, bool)> = e
         .areas
@@ -1231,7 +1258,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + hueco;
 
     // Etiquetas: las puestas y las propuestas (✨), que se quitan con un toque.
-    y = rotulo(p, "Etiquetas", x, y, s);
+    y = rotulo(p, &e.textos.t("leccion-etiquetas"), x, y, s);
     let mut fichas: Vec<(String, Accion, bool, bool)> = e
         .etiquetas
         .iter()
@@ -1261,7 +1288,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         caja,
         tam,
         e.foco == Some(CampoId::Etiqueta),
-        "+ etiqueta",
+        &e.textos.t("leccion-anadir-etiqueta"),
         0.0,
         s,
     );
@@ -1269,12 +1296,12 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     y += alto + hueco;
 
     // Lo demas, plegado: no estorba a quien solo quiere apuntar la frase.
-    let rot = if e.detalle {
-        "▴  Menos detalle"
+    let rot = e.textos.t(if e.detalle {
+        "leccion-menos-detalle"
     } else {
-        "▾  Qué pasó, por qué y qué haré distinto"
-    };
-    let (rw, _) = p.medir_texto(rot, tam);
+        "leccion-mas-detalle"
+    });
+    let (rw, _) = p.medir_texto(&rot, tam);
     let b = RectF {
         x,
         y,
@@ -1286,7 +1313,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         &mut e.botones,
         b,
         Accion::Detalle,
-        rot,
+        &rot,
         FONDO,
         PUESTO,
         tam,
@@ -1294,13 +1321,14 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
     );
     y += 34.0 * s + hueco;
     if e.detalle {
-        for (id, pista) in [
-            (CampoId::Paso, "Qué pasó"),
-            (CampoId::PorQue, "Por qué pasó"),
+        for (id, clave) in [
+            (CampoId::Paso, "leccion-que-paso"),
+            (CampoId::PorQue, "leccion-por-que"),
         ] {
-            y = campo_con_rotulo(e, p, id, pista, x, y, ancho, s) + hueco;
+            let pista = e.textos.t(clave);
+            y = campo_con_rotulo(e, p, id, &pista, x, y, ancho, s) + hueco;
         }
-        y = rotulo(p, "Causas (un toque)", x, y, s);
+        y = rotulo(p, &e.textos.t("leccion-causas"), x, y, s);
         let elegidas = e.causas_final();
         let fichas: Vec<(String, Accion, bool, bool)> = CAUSAS
             .iter()
@@ -1322,26 +1350,10 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
             })
             .collect();
         y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + hueco;
-        y = campo_con_rotulo(
-            e,
-            p,
-            CampoId::Proxima,
-            "La próxima vez… (si pasa X, haré Y)",
-            x,
-            y,
-            ancho,
-            s,
-        ) + hueco;
-        y = campo_con_rotulo(
-            e,
-            p,
-            CampoId::Referencias,
-            "Palabras para encontrarla (separadas por comas)",
-            x,
-            y,
-            ancho,
-            s,
-        ) + hueco;
+        let pista = e.textos.t("leccion-proxima");
+        y = campo_con_rotulo(e, p, CampoId::Proxima, &pista, x, y, ancho, s) + hueco;
+        let pista = e.textos.t("leccion-referencias");
+        y = campo_con_rotulo(e, p, CampoId::Referencias, &pista, x, y, ancho, s) + hueco;
     }
 
     if e.existente.is_none() {
@@ -1350,7 +1362,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
             .proyectos
             .iter()
             .find(|p| p.0 == e.ficha)
-            .map_or("Sin proyecto (chat general)".to_string(), |p| p.1.clone());
+            .map_or_else(|| e.textos.t("leccion-sin-proyecto"), |p| p.1.clone());
         let fichas = vec![(format!("📁 {nombre}"), Accion::Proyecto, false, false)];
         y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + 6.0 * s;
         if e.eligiendo {
@@ -1392,9 +1404,11 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         // Lo que hace que no se repita: apuntar que paso otra vez.
         let veces = x_e.leccion.veces_que_paso();
         let rot = if x_e.leccion.repeticiones.is_empty() {
-            "🔁 Me volvió a pasar".to_string()
+            e.textos.t("leccion-volvio-a-pasar")
         } else {
-            format!("🔁 Me volvió a pasar (van {veces})")
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("veces", veces);
+            e.textos.t_args("leccion-volvio-a-pasar-n", &args)
         };
         let b = RectF {
             x,
@@ -1416,7 +1430,7 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
         );
         y += 44.0 * s + hueco;
         if !e.relacionadas.is_empty() {
-            y = rotulo(p, "Relacionadas", x, y, s);
+            y = rotulo(p, &e.textos.t("leccion-relacionadas"), x, y, s);
             for (i, l) in e.relacionadas.iter().enumerate() {
                 let r = RectF {
                     x,
@@ -1507,6 +1521,7 @@ mod pruebas {
             adjuntos: Adjuntos::nuevos(Vec::new()),
             minis: crate::miniaturas::Miniaturas::nuevo(),
             hwnd: 0,
+            textos: Catalogo::nuevo(pixpin_store::Idioma::Espanol),
         }
     }
 

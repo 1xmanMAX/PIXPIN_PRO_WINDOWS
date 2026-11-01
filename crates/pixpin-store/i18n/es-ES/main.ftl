@@ -3320,6 +3320,212 @@ clase-acta-aceptar = Aceptar
 clase-acta-aceptada = Apuntada en Tareas
 clase-acta-anadidas = { $n } preguntas apuntadas en el Inbox de Tareas
 
+# --- Textos que estaban escritos en el codigo -------------------------------
+# El aviso flotante del asistente (ventana_chat/aviso_asistente.rs)
+aviso-ia-abrir = Abrir
+aviso-ia-si = Sí
+aviso-ia-no = No
+aviso-ia-permiso = 🔐 Necesito tu permiso: { $pregunta }
+    
+    Si no contestas, no lo hago.
+# Los turnos del asistente que siguen con el chat cerrado (asistente/de_fondo.rs)
+ia-fondo-titulo = 🤖 Asistente
+ia-fondo-sigue = «continúa»
+ia-fondo-sigue-fuera = «@asistente continúa»
+ia-fondo-otra-vez = ↻ PixPin se cerró antes de que acabara. Lo retomo desde el principio en la respuesta de abajo.
+ia-fondo-ya-actuo = Algunos pasos ya estaban hechos, así que no lo repito solo (se harían dos veces). Escribe { $sigue } y sigo desde aquí.
+ia-fondo-ya-se-retomo = Ya lo había retomado una vez y volvió a cortarse, así que no insisto. Escribe { $sigue } si quieres que lo intente otra vez.
+ia-fondo-viejo = Ha pasado demasiado para retomarlo solo. Escribe { $sigue } si aún lo quieres.
+ia-fondo-sin-pregunta = No encuentro tu pedido (¿se borró?), así que no puedo retomarlo.
+ia-fondo-no-se-pudo = No he podido retomarlo: { $aviso }
+ia-fondo-no-empezo = no pude empezar a contestar.
+ia-fondo-cortado = ⚠️ PixPin se cerró antes de que acabara esto. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 Lo sigo en el chat.
+ia-fondo-sigo-de-fondo = ⏳ Sigo con tu pedido aunque se cerró el chat. Te aviso al acabar.
+ia-fondo-pregunta = ❓ Necesito que me contestes en el chat: { $pregunta }
+    
+    Pulsa «Abrir». Si no contestas, sigo con lo más seguro.
+# La ficha de una leccion (lecciones/ficha.rs, dictar.rs, adjuntos.rs)
+leccion-ventana = Lección
+leccion-ventana-nueva = Nueva lección
+leccion-titulo = 💡 Lección
+leccion-titulo-nueva = 💡 Nueva lección
+leccion-tipo-leccion = 💡 Lección
+leccion-tipo-error = ⚠️ Error
+leccion-tipo-acierto = ✅ Acierto
+leccion-gravedad-leve = Leve
+leccion-gravedad-importante = Importante
+leccion-gravedad-grave = Grave
+leccion-sin-proyecto = Sin proyecto (chat general)
+leccion-foto-ilegible = No se pudo leer esa foto
+leccion-adjunto-no-esta = Ese archivo aún no está en este equipo
+leccion-galeria = 🖼 Galería
+leccion-guardar = Guardar
+leccion-pista-titulo = ¿Qué aprendiste? Escríbelo o díctalo de corrido
+leccion-se-parece = Se parece a una que ya tienes
+leccion-paso-otra-vez = 🔁 Pasó otra vez
+leccion-area = Área
+leccion-etiquetas = Etiquetas
+leccion-anadir-etiqueta = + etiqueta
+leccion-menos-detalle = ▴  Menos detalle
+leccion-mas-detalle = ▾  Qué pasó, por qué y qué haré distinto
+leccion-que-paso = Qué pasó
+leccion-por-que = Por qué pasó
+leccion-causas = Causas (un toque)
+leccion-proxima = La próxima vez… (si pasa X, haré Y)
+leccion-referencias = Palabras para encontrarla (separadas por comas)
+leccion-relacionadas = Relacionadas
+leccion-volvio-a-pasar = 🔁 Me volvió a pasar
+leccion-volvio-a-pasar-n = 🔁 Me volvió a pasar (van { $veces })
+leccion-mic-escuchando = 🎙️ Te escucho… pulsa el micrófono para terminar
+leccion-mic-sin-dictado = No hay dictado en este equipo: escribe la lección
+leccion-mic-sin-texto = No se entendió nada
+leccion-mic-no-pasa = No se pudo pasar a texto
+leccion-mic-corto = Demasiado corto: mantén el micrófono un poco más
+leccion-audio = 🎙 Audio
+leccion-audio-abriendo = 🎙 Abriendo…
+leccion-audio-guardando = 🎙 Guardando…
+leccion-audio-parar = ⏹ Parar { $duracion }
+leccion-audio-sin-microfono = No se pudo usar el micrófono
+leccion-audio-corto = Muy corto: no se guardó
+leccion-audio-no-guarda = No se pudo guardar el audio
+# El horario: la llamada de una evaluacion y la rejilla (horario.rs, horario/panel.rs)
+horario-evaluacion-en = { $dias ->
+        [1] mañana
+       *[other] en { $dias } días
+    }
+horario-evaluacion-recuerda = Recuerda: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento } en { $lugar }
+horario-dia-0 = Lun
+horario-dia-1 = Mar
+horario-dia-2 = Mié
+horario-dia-3 = Jue
+horario-dia-4 = Vie
+horario-dia-5 = Sáb
+horario-dia-6 = Dom
+# La Jump List del icono de la barra de tareas (lista_del_icono.rs)
+lista-icono-capturar = Capturar
+lista-icono-capturar-largo = Capturar una zona de la pantalla
+lista-icono-mensajes = Mensajes guardados
+lista-icono-mensajes-largo = Abrir Mensajes guardados
+lista-icono-proyectos = Proyectos
+lista-icono-proyectos-largo = Ver tus proyectos
+lista-icono-sincronizar = Sincronizar
+lista-icono-sincronizar-largo = Sincronizar con tus aparatos
+lista-icono-recientes = Proyectos recientes
+lista-icono-proyecto-largo = Abrir el proyecto { $nombre }
+# Los visores de planos, modelos y croquis 3D (plano_cad.rs, modelo_bim.rs, croquis3d.rs).
+# La tecla de cada menu la pone el codigo detras de un tabulador.
+cad-plano-abriendo = Abriendo el plano…
+cad-plano-vacio = El plano no tiene nada que dibujar
+cad-plano-error = No se pudo abrir el plano
+cad-plano-pista-acotar = Clic en los puntos para medir · Doble clic o Intro: terminar · Esc: salir
+cad-plano-todo = Ver todo el plano
+cad-tema = Fondo claro u oscuro
+cad-acotar = Acotar plano
+cad-borrar-cotas = Borrar las cotas
+cad-encima = Siempre encima
+cad-cerrar = Cerrar
+cad-tres = Ver en 3D
+cad-marcos = Marcos para imprimir
+cad-imprimir = Imprimir…
+cad-exportar = Exportar (HTML, PDF, PNG, DXF…)…
+cad-borrar-marcos = Borrar los marcos
+cad-plano-pista-marcos = Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último · Esc: salir
+cad-plano-marcador = Marcador aquí
+cad-anotar = Anotar
+cad-sin-dibujo-civil = { $n } objetos de Civil 3D se guardaron sin su dibujo: guárdalo con PROXYGRAPHICS = 1 o exporta a LandXML
+cad-letras = Letras del plano…
+cad-letras-faltan = Este plano pide letras que no están; sus textos salen con otras parecidas y pueden no caber en sus recuadros:
+cad-letras-no-falta = No falta ninguna letra que el plano diga por su nombre.
+cad-letras-donde = Las SHX suelen estar en C:\Program Files\Autodesk\AutoCAD 20xx\Fonts o junto al plano que te pasaron;
+    las TrueType, en C:\Windows\Fonts. Las que añadas aquí mandan sobre las de AutoCAD, Windows y PixPin.
+cad-letras-anadir = Añadir letras (SHX, TTF, OTF, TTC)…
+cad-letras-quitar = Quitar las mías ({ $n })
+cad-faltan-letras = Faltan { $n } letras del plano: pulsa Aa arriba para añadirlas
+cad-releyendo = Leyendo el plano con tus letras…
+cad-boton-mover = Mover (arrastrar)
+cad-boton-marcador = Marcador
+cad-boton-anotar = Anotar
+cad-boton-letras = Letras del plano
+cad-corte = Caja de sección
+cad-capas = Niveles y categorías
+cad-boton-pantalla = Pantalla completa
+cad-boton-guardar = Guardar en un chat
+cad-modelo-abriendo = Abriendo el modelo…
+cad-modelo-vacio = El modelo no tiene nada que dibujar
+cad-modelo-error = No se pudo abrir el modelo
+cad-modelo-todo = Ver todo el modelo
+cad-aislar = Aislar lo elegido
+cad-niveles = NIVELES
+cad-categorias = CATEGORÍAS
+cad-sin-nivel = Sin nivel
+cad-mostrar-todo = Mostrar todo
+cad-aristas = Aristas
+cad-planta = Vista en planta
+cad-altura-corte = Corte
+cad-modelo-pista = Arrastrar: girar · Derecho: mover · Rueda: acercar · Clic: ver que es · Otro clic: aislarlo
+cad-modelo-marcador = Marcador aquí (con el corte y lo oculto)
+cad-imprimir-marcos = Imprimir los marcos…
+cad-modelo-pista-marcos = Arrastra para marcar lo que se imprime · Ctrl+P: imprimir · Supr: quitar el último · Los números: ir a su vista · Esc: salir
+cad-modelo-pista-anotar = Lo anotado solo se ve en la vista de este marcador
+cad-modelo-anotar = Anotar sobre esta vista
+cad-croquis-abriendo = Abriendo el croquis…
+cad-croquis-vacio = El croquis está vacío
+cad-croquis-error = No se pudo abrir el croquis
+cad-croquis-todo = Ver todo el croquis
+cad-croquis-capas = Capas
+cad-croquis-grupos = GRUPOS
+cad-croquis-tipos = TIPOS
+cad-croquis-todo-corto = Todo
+cad-croquis-pista = Arrastrar: girar · Derecho: mover · Rueda: acercar · 1–9: vistas guardadas
+# La pagina HTML de un plano exportado (plano_cad/exportar.rs)
+cad-web-todo = Ver todo
+cad-web-tema = Claro / oscuro
+cad-web-capas = Capas
+cad-web-grosores = Grosores
+cad-web-anotaciones = Anotaciones
+cad-web-todas = Todas
+cad-web-ninguna = Ninguna
+cad-web-sin-soporte = Este navegador no sabe descomprimir el plano: ábrelo con Edge, Chrome, Firefox o Safari recientes.
+cad-web-pista = Rueda: acercar · Arrastrar: mover · Doble clic: ver todo · F, B, L
+# El membrete de un plano impreso (plano_cad/imprimir.rs)
+lamina-proyecto = PROYECTO
+lamina-lamina = LÁMINA
+lamina-titulo = TÍTULO
+lamina-dibujo = DIBUJÓ
+lamina-escala = ESCALA
+lamina-sin-escala = Sin escala
+lamina-fecha = FECHA
+lamina-unidades = UNIDADES
+lamina-opcion = Lámina
+lamina-con-membrete = Con marco y membrete
+lamina-sin-marco = Sin marco
+# Sincronizar en segundo plano, pedido desde Flow o el asistente (sincronizar/en_fondo.rs)
+sinc-fondo-solo = Este PC no tiene a nadie más en el grupo: únelo en Sincronizar
+sinc-fondo-no-es-del-grupo = Ese aparato ya no está en el grupo
+sinc-fondo-aparatos = { $n } aparatos
+sinc-fondo-sincronizando = Sincronizando con { $quien }…
+sinc-fondo-ya-en-marcha = Ya se está sincronizando: espera a que acabe
+sinc-fondo-fallo = No se pudo sincronizar: { $error }
+# Leer en voz (leer_en_voz.rs)
+lector-voz-en-linea = en línea
+# Quien pide en el chat cuando lo hace una automatizacion (automatizaciones/motor.rs)
+auto-origen = Automatización
+# El asistente de la nube sin clave (asistente/nube.rs)
+ia-nube-falta-la-clave = Falta la clave de { $proveedor }: pégala en Ajustes → Asistente (se saca en { $pagina }).
+# Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
+figuras-ventana-no-es-numero = «{ $texto }» no es un número
+figuras-ventana-mes-mal = «{ $texto }»: escribe el mes como 2026-11
+# Los nombres de las teclas que se pintan en las chapitas
+tecla-intro = Intro
+tecla-supr = Supr
+# Lo que dicen las tarjetas del asistente al acabar sin texto, y el titulo de un croquis
+ia-fondo-hecho = ✅ Hecho.
+ia-hecho = Hecho.
+croquis-titulo = Croquis { $id }
+# El aviso de donde se abren los ajustes (ventana_chat/asistente.rs; ya estaba en apple/nucleo)
+chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
 # El estado de las IA: los puntitos de junto al boton de sincronizar del chat
 # (1-nov-2026). «Claude · funciona · hace 3 min».
 ia-estado-funciona = funciona

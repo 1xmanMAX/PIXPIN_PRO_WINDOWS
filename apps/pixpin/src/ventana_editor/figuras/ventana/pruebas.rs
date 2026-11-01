@@ -107,6 +107,8 @@ fn en_todas_cada_categoria_lleva_su_titulo_y_las_celdas_no_se_pisan() {
 
 #[test]
 fn el_intervalo_sale_de_los_campos() {
+    let es = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+    let intervalo_de = |c: &HashMap<Dato, String>| super::intervalo_de(c, &es);
     let campos = |v: &[(Dato, &str)]| {
         v.iter()
             .map(|(c, s)| (*c, s.to_string()))
@@ -154,7 +156,7 @@ fn insertar_una_plantilla_con_intervalo_da_sus_hojas_y_sin_el_la_de_serie() {
         .position(|f| f.id == "serie-lista-de-tareas")
         .unwrap();
     e.elegir(Some(i));
-    e.insertar();
+    e.insertar(&Catalogo::nuevo(pixpin_store::Idioma::Espanol));
     assert_eq!(e.pedido, Some(Pedido::Estampar(i)));
     e.pedido = None;
     for (c, s) in [(Dato::Desde, "1"), (Dato::Hasta, "40"), (Dato::DeA, "10")] {
@@ -163,7 +165,7 @@ fn insertar_una_plantilla_con_intervalo_da_sus_hojas_y_sin_el_la_de_serie() {
     let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
     e.rehacer_previa(&t);
     assert_eq!(e.previa, Some(Ok("4 hojas".to_string())));
-    e.insertar();
+    e.insertar(&Catalogo::nuevo(pixpin_store::Idioma::Espanol));
     assert!(matches!(&e.pedido, Some(Pedido::Hojas(h)) if h.len() == 4));
     // Una que no se alarga no lleva intervalo: se estampa tal cual.
     let mut e = estado();
@@ -174,7 +176,7 @@ fn insertar_una_plantilla_con_intervalo_da_sus_hojas_y_sin_el_la_de_serie() {
         .unwrap();
     e.elegir(Some(j));
     assert!(e.alargable().is_none());
-    e.insertar();
+    e.insertar(&Catalogo::nuevo(pixpin_store::Idioma::Espanol));
     assert_eq!(e.pedido, Some(Pedido::Estampar(j)));
 }
 

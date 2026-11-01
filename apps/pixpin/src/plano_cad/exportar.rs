@@ -224,20 +224,18 @@ pub fn html(p: &Plano, idioma: pixpin_store::Idioma) -> Result<String> {
         .map(|c| imagenes(&p.ruta, &c.imagenes, m.origen))
         .unwrap_or_default();
     let u = m.caja_util();
-    let textos = match idioma.base() {
-        pixpin_store::Idioma::Ingles => Some(pixpin_cad::web::TextosWeb {
-            todo: "Fit all".into(),
-            tema: "Light / dark".into(),
-            capas: "Layers".into(),
-            grosores: "Lineweights".into(),
-            anotaciones: "Annotations".into(),
-            todas: "All".into(),
-            ninguna: "None".into(),
-            sin_soporte: "This browser cannot unpack the drawing: open it with a recent Edge, Chrome, Firefox or Safari.".into(),
-            pista: "Wheel: zoom · Drag: pan · Double click: fit · F, B, L".into(),
-        }),
-        _ => None,
-    };
+    let t = pixpin_store::Catalogo::nuevo(idioma);
+    let textos = Some(pixpin_cad::web::TextosWeb {
+        todo: t.t("cad-web-todo"),
+        tema: t.t("cad-web-tema"),
+        capas: t.t("cad-web-capas"),
+        grosores: t.t("cad-web-grosores"),
+        anotaciones: t.t("cad-web-anotaciones"),
+        todas: t.t("cad-web-todas"),
+        ninguna: t.t("cad-web-ninguna"),
+        sin_soporte: t.t("cad-web-sin-soporte"),
+        pista: t.t("cad-web-pista"),
+    });
     let o = pixpin_cad::web::OpcionesWeb {
         titulo: p.titulo(),
         origen: m.origen,

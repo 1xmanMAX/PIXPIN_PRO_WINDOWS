@@ -3319,6 +3319,215 @@ clase-acta-aceptar = Accept
 clase-acta-aceptada = Added to Tasks
 clase-acta-anadidas = { $n } questions added to the Tasks inbox
 
+# --- Textos que estaban escritos en el codigo -------------------------------
+# El aviso flotante del asistente (ventana_chat/aviso_asistente.rs)
+aviso-ia-abrir = Open
+aviso-ia-si = Yes
+aviso-ia-no = No
+aviso-ia-permiso = 🔐 I need your permission: { $pregunta }
+    
+    If you don't answer, I won't do it.
+# Los turnos del asistente que siguen con el chat cerrado (asistente/de_fondo.rs)
+ia-fondo-titulo = 🤖 Assistant
+ia-fondo-sigue = “continue”
+ia-fondo-sigue-fuera = “@assistant continue”
+ia-fondo-otra-vez = ↻ PixPin closed before I finished. I'm starting over in the reply below.
+ia-fondo-ya-actuo = Some steps were already done, so I won't repeat it on my own (they'd happen twice). Type { $sigue } and I'll carry on from here.
+ia-fondo-ya-se-retomo = I had already resumed it once and it was cut off again, so I'll stop there. Type { $sigue } if you want me to try again.
+ia-fondo-viejo = Too much time has passed to resume it on my own. Type { $sigue } if you still want it.
+ia-fondo-sin-pregunta = I can't find your request (was it deleted?), so I can't resume it.
+ia-fondo-no-se-pudo = I couldn't resume it: { $aviso }
+ia-fondo-no-empezo = I couldn't start answering.
+ia-fondo-cortado = ⚠️ PixPin closed before this was finished. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 I'll continue in the chat.
+ia-fondo-sigo-de-fondo = ⏳ I'm still working on your request even though the chat closed. I'll let you know when I'm done.
+ia-fondo-pregunta = ❓ I need you to answer in the chat: { $pregunta }
+    
+    Press “Open”. If you don't answer, I'll go with the safest option.
+# La ficha de una leccion (lecciones/ficha.rs, dictar.rs, adjuntos.rs)
+leccion-ventana = Lesson
+leccion-ventana-nueva = New lesson
+leccion-titulo = 💡 Lesson
+leccion-titulo-nueva = 💡 New lesson
+leccion-tipo-leccion = 💡 Lesson
+leccion-tipo-error = ⚠️ Mistake
+leccion-tipo-acierto = ✅ Success
+leccion-gravedad-leve = Minor
+leccion-gravedad-importante = Important
+leccion-gravedad-grave = Serious
+leccion-sin-proyecto = No project (general chat)
+leccion-foto-ilegible = Couldn't read that photo
+leccion-adjunto-no-esta = That file isn't on this computer yet
+leccion-galeria = 🖼 Gallery
+leccion-guardar = Save
+leccion-pista-titulo = What did you learn? Type it or dictate it in one go
+leccion-se-parece = It looks like one you already have
+leccion-paso-otra-vez = 🔁 It happened again
+leccion-area = Area
+leccion-etiquetas = Tags
+leccion-anadir-etiqueta = + tag
+leccion-menos-detalle = ▴  Less detail
+leccion-mas-detalle = ▾  What happened, why, and what I'll do differently
+leccion-que-paso = What happened
+leccion-por-que = Why it happened
+leccion-causas = Causes (one tap)
+leccion-proxima = Next time… (if X happens, I'll do Y)
+leccion-referencias = Words to find it (comma-separated)
+leccion-relacionadas = Related
+leccion-volvio-a-pasar = 🔁 It happened to me again
+leccion-volvio-a-pasar-n = 🔁 It happened to me again ({ $veces } so far)
+leccion-mic-escuchando = 🎙️ Listening… press the microphone to finish
+leccion-mic-sin-dictado = Dictation isn't available on this computer: type the lesson
+leccion-mic-sin-texto = Nothing could be understood
+leccion-mic-no-pasa = Couldn't convert it to text
+leccion-mic-corto = Too short: keep the microphone on a little longer
+leccion-audio = 🎙 Audio
+leccion-audio-abriendo = 🎙 Opening…
+leccion-audio-guardando = 🎙 Saving…
+leccion-audio-parar = ⏹ Stop { $duracion }
+leccion-audio-sin-microfono = Couldn't use the microphone
+leccion-audio-corto = Too short: not saved
+leccion-audio-no-guarda = Couldn't save the audio
+# El horario: la llamada de una evaluacion y la rejilla (horario.rs, horario/panel.rs)
+horario-evaluacion-en = { $dias ->
+        [1] tomorrow
+       *[other] in { $dias } days
+    }
+horario-evaluacion-recuerda = Remember: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento } at { $lugar }
+horario-dia-0 = Mon
+horario-dia-1 = Tue
+horario-dia-2 = Wed
+horario-dia-3 = Thu
+horario-dia-4 = Fri
+horario-dia-5 = Sat
+horario-dia-6 = Sun
+# La Jump List del icono de la barra de tareas (lista_del_icono.rs)
+lista-icono-capturar = Capture
+lista-icono-capturar-largo = Capture an area of the screen
+lista-icono-mensajes = Saved messages
+lista-icono-mensajes-largo = Open Saved messages
+lista-icono-proyectos = Projects
+lista-icono-proyectos-largo = See your projects
+lista-icono-sincronizar = Sync
+lista-icono-sincronizar-largo = Sync with your devices
+lista-icono-recientes = Recent projects
+lista-icono-proyecto-largo = Open the project { $nombre }
+# Los visores de planos, modelos y croquis 3D (plano_cad.rs, modelo_bim.rs, croquis3d.rs).
+# La tecla de cada menu la pone el codigo detras de un tabulador.
+cad-plano-abriendo = Opening the drawing…
+cad-plano-vacio = The drawing has nothing to show
+cad-plano-error = Could not open the drawing
+cad-plano-pista-acotar = Click points to measure · Double-click or Enter: finish · Esc: exit
+cad-plano-todo = Show whole drawing
+cad-tema = Light or dark background
+cad-acotar = Measure
+cad-borrar-cotas = Clear measurements
+cad-encima = Always on top
+cad-cerrar = Close
+cad-tres = View in 3D
+cad-marcos = Frames to print
+cad-imprimir = Print…
+cad-exportar = Export (HTML, PDF, PNG, DXF…)…
+cad-borrar-marcos = Clear frames
+cad-plano-pista-marcos = Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · Esc: exit
+cad-plano-marcador = Bookmark here
+cad-anotar = Annotate
+cad-sin-dibujo-civil = { $n } Civil 3D objects were saved without their graphics: save with PROXYGRAPHICS = 1 or export to LandXML
+cad-letras = Drawing fonts…
+cad-letras-faltan = This drawing asks for fonts that are not here; its texts use similar ones and may not fit their boxes:
+cad-letras-no-falta = No font that the drawing names is missing.
+cad-letras-donde = SHX fonts are usually in C:\Program Files\Autodesk\AutoCAD 20xx\Fonts or next to the drawing you were sent;
+    TrueType ones, in C:\Windows\Fonts. The ones you add here win over AutoCAD's, Windows' and PixPin's.
+cad-letras-anadir = Add fonts (SHX, TTF, OTF, TTC)…
+cad-letras-quitar = Remove mine ({ $n })
+cad-faltan-letras = { $n } fonts of the drawing are missing: click Aa above to add them
+cad-releyendo = Reading the drawing with your fonts…
+cad-boton-mover = Move (drag)
+cad-boton-marcador = Bookmark
+cad-boton-anotar = Annotate
+cad-boton-letras = Drawing fonts
+cad-corte = Section box
+cad-capas = Levels and categories
+cad-boton-pantalla = Full screen
+cad-boton-guardar = Save to a chat
+cad-modelo-abriendo = Opening the model…
+cad-modelo-vacio = The model has nothing to show
+cad-modelo-error = Could not open the model
+cad-modelo-todo = Show whole model
+cad-aislar = Isolate the selected element
+cad-niveles = LEVELS
+cad-categorias = CATEGORIES
+cad-sin-nivel = No level
+cad-mostrar-todo = Show all
+cad-aristas = Edges
+cad-planta = Plan view
+cad-altura-corte = Section
+cad-modelo-pista = Drag: orbit · Right drag: pan · Wheel: zoom · Click: what is it · Click again: isolate
+cad-modelo-marcador = Bookmark here (with the section and what is hidden)
+cad-imprimir-marcos = Print the frames…
+cad-modelo-pista-marcos = Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · The numbers: go to its view · Esc: exit
+cad-modelo-pista-anotar = What you annotate is only seen in this bookmark's view
+cad-modelo-anotar = Annotate this view
+cad-croquis-abriendo = Opening the sketch…
+cad-croquis-vacio = The sketch is empty
+cad-croquis-error = Could not open the sketch
+cad-croquis-todo = Show whole sketch
+cad-croquis-capas = Layers
+cad-croquis-grupos = GROUPS
+cad-croquis-tipos = KINDS
+cad-croquis-todo-corto = Everything
+cad-croquis-pista = Drag: orbit · Right drag: pan · Wheel: zoom · 1–9: saved views
+# La pagina HTML de un plano exportado (plano_cad/exportar.rs)
+cad-web-todo = Fit all
+cad-web-tema = Light / dark
+cad-web-capas = Layers
+cad-web-grosores = Lineweights
+cad-web-anotaciones = Annotations
+cad-web-todas = All
+cad-web-ninguna = None
+cad-web-sin-soporte = This browser cannot unpack the drawing: open it with a recent Edge, Chrome, Firefox or Safari.
+cad-web-pista = Wheel: zoom · Drag: pan · Double click: fit · F, B, L
+# El membrete de un plano impreso (plano_cad/imprimir.rs)
+lamina-proyecto = PROJECT
+lamina-lamina = SHEET
+lamina-titulo = TITLE
+lamina-dibujo = DRAWN BY
+lamina-escala = SCALE
+lamina-sin-escala = Not to scale
+lamina-fecha = DATE
+lamina-unidades = UNITS
+lamina-opcion = Sheet
+lamina-con-membrete = With border and title block
+lamina-sin-marco = No border
+# Sincronizar en segundo plano, pedido desde Flow o el asistente (sincronizar/en_fondo.rs)
+sinc-fondo-solo = This PC has nobody else in the group: join one in Sync
+sinc-fondo-no-es-del-grupo = That device is no longer in the group
+sinc-fondo-aparatos = { $n ->
+        [one] { $n } device
+       *[other] { $n } devices
+    }
+sinc-fondo-sincronizando = Syncing with { $quien }…
+sinc-fondo-ya-en-marcha = A sync is already running: wait for it to finish
+sinc-fondo-fallo = Couldn't sync: { $error }
+# Leer en voz (leer_en_voz.rs)
+lector-voz-en-linea = online
+# Quien pide en el chat cuando lo hace una automatizacion (automatizaciones/motor.rs)
+auto-origen = Automation
+# El asistente de la nube sin clave (asistente/nube.rs)
+ia-nube-falta-la-clave = The { $proveedor } key is missing: paste it in Settings → Assistant (get one at { $pagina }).
+# Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
+figuras-ventana-no-es-numero = “{ $texto }” is not a number
+figuras-ventana-mes-mal = “{ $texto }”: write the month as 2026-11
+# Los nombres de las teclas que se pintan en las chapitas
+tecla-intro = Enter
+tecla-supr = Del
+# Lo que dicen las tarjetas del asistente al acabar sin texto, y el titulo de un croquis
+ia-fondo-hecho = ✅ Done.
+ia-hecho = Done.
+croquis-titulo = Sketch { $id }
+# El aviso de donde se abren los ajustes (ventana_chat/asistente.rs; ya estaba en apple/nucleo)
+chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
 # AI status: the little dots next to the chat's sync button (1-nov-2026).
 # «Claude · working · 3 min ago».
 ia-estado-funciona = working

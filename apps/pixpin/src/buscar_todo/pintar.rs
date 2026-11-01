@@ -407,12 +407,18 @@ fn icono_de_boton(b: Boton) -> &'static Icono {
     }
 }
 
-fn rotulo_y_tecla(b: Boton, r: &Resultado, textos: &Catalogo) -> (String, &'static str) {
+fn rotulo_y_tecla(b: Boton, r: &Resultado, textos: &Catalogo) -> (String, String) {
     match b {
-        Boton::Principal => (textos.t(modelo::rotulo_principal(&r.accion)), "Intro"),
-        Boton::VerEnChat => (textos.t("buscar-todo-ver-chat"), "Ctrl Intro"),
-        Boton::Copiar => (textos.t("buscar-todo-accion-copiar"), "Ctrl C"),
-        Boton::Mas => (String::new(), ""),
+        Boton::Principal => (
+            textos.t(modelo::rotulo_principal(&r.accion)),
+            textos.t("tecla-intro"),
+        ),
+        Boton::VerEnChat => (
+            textos.t("buscar-todo-ver-chat"),
+            format!("Ctrl {}", textos.t("tecla-intro")),
+        ),
+        Boton::Copiar => (textos.t("buscar-todo-accion-copiar"), "Ctrl C".into()),
+        Boton::Mas => (String::new(), String::new()),
     }
 }
 
@@ -445,7 +451,7 @@ fn ancho_boton(p: &Pintor, b: Boton, r: &Resultado, textos: &Catalogo, e: f32) -
         + 7.0 * e
         + p.medir_texto(&rotulo, 13.0 * e).0
         + 7.0 * e
-        + ancho_tecla(p, t, e)
+        + ancho_tecla(p, &t, e)
         + 10.0 * e
 }
 
@@ -867,10 +873,11 @@ fn pintar_inicio(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dis
                 TAM_SUB * e,
                 pal.apagado,
             );
-            let wt = ancho_tecla(p, "Intro", e);
+            let intro = textos.t("tecla-intro");
+            let wt = ancho_tecla(p, &intro, e);
             tecla(
                 p,
-                "Intro",
+                &intro,
                 xv - 6.0 * e - wt,
                 caja.y + caja.alto / 2.0,
                 e,
@@ -1117,7 +1124,7 @@ fn pintar_lista(
                 p.texto(&rotulo, xr, caja.y + (caja.alto - h) / 2.0, 13.0 * e, color);
                 tecla(
                     p,
-                    t,
+                    &t,
                     xr + w + 7.0 * e,
                     caja.y + caja.alto / 2.0,
                     e,
@@ -1396,7 +1403,8 @@ fn pintar_panel(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Disp
         );
     };
     if modelo::ruta_de_captura(r).is_some() {
-        pista("Supr", "buscar-todo-borrar");
+        let supr = textos.t("tecla-supr");
+        pista(&supr, "buscar-todo-borrar");
     }
     if r.fichero.is_some() {
         pista("Alt Intro", "buscar-todo-abrir-con");
@@ -1431,7 +1439,7 @@ fn pintar_pie(p: &Pintor, v: &Vista, pal: &Paleta, textos: &Catalogo, d: &Dispos
         }
         _ => textos.t("buscar-todo-pie-abrir"),
     };
-    x += tecla(p, "Intro", x, cy, e, pal, false) + 6.0 * e;
+    x += tecla(p, &textos.t("tecla-intro"), x, cy, e, pal, false) + 6.0 * e;
     texto(p, &mut x, &verbo);
     if est.es_inicio() {
         x += tecla(p, "Ctrl V", x, cy, e, pal, false) + 6.0 * e;

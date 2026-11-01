@@ -95,11 +95,11 @@ pub fn nombre_corto(p: Proveedor) -> &'static str {
 
 /// El aviso de que falta la clave de `p`: que hacer y donde se saca.
 pub fn falta_la_clave(p: Proveedor) -> String {
-    format!(
-        "Falta la clave de {}: pégala en Ajustes → Asistente (se saca en {}).",
-        p.nombre(),
-        p.pagina_de_claves()
-    )
+    let textos = pixpin_store::Catalogo::nuevo(crate::salida::idioma_actual());
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("proveedor", p.nombre());
+    args.set("pagina", p.pagina_de_claves());
+    textos.t_args("ia-nube-falta-la-clave", &args)
 }
 
 /// **El motor de la nube** con la clave guardada. `Err`: el aviso para el
