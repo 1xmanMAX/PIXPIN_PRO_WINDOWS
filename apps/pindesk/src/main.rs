@@ -317,6 +317,11 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
 fn main() -> Result<()> {
     // `PIXPIN_*` (antes de PinDesk) valen como `PINDESK_*`.
     pindesk_sistema::nombre::aceptar_variables_de_antes();
+    // En la Store, el MCP y el puente del navegador llegan por el alias
+    // `pindesk.exe` (`tienda::reenviar_si_toca`).
+    if let Some(codigo) = tienda::reenviar_si_toca() {
+        std::process::exit(codigo);
+    }
     // PinDesk llamada para leer un plano DWG en un proceso aparte
     // (`plano_cad`): eso y nada mas.
     if let Some(codigo) = plano_cad::convertir_si_toca() {

@@ -83,16 +83,22 @@ antes `ForgePixPin.PixPinMax`) no cuenta: ese corre desde la carpeta del ZIP.
 
 ### Alias de ejecucion
 
-El manifiesto da tres alias (en `%LOCALAPPDATA%\Microsoft\WindowsApps`, que
-esta en el `PATH`): `pindesk.exe`, `pindesk-mcp.exe` (para la configuracion de
-Claude Desktop u otro cliente MCP; ver `docs/integraciones-mcp.md`) y
-`pindesk-puente.exe` (la ruta estable para registrar el anfitrion
-`com.pindesk.puente` del navegador: `herramientas\registrar-navegador.ps1 -Puente
-"$env:LOCALAPPDATA\Microsoft\WindowsApps\pindesk-puente.exe"`). Los tres van
-en la **unica** `<Application>` del paquete: el WACK falla con mas de una
-(Application count). La ruta real
-dentro de `C:\Program Files\WindowsApps\` cambia con cada version: nunca hay
-que apuntar ahi.
+El paquete da **un solo alias**, `pindesk.exe` (en
+`%LOCALAPPDATA%\Microsoft\WindowsApps`, que esta en el `PATH`): `makeappx`
+solo admite una extension `windows.appExecutionAlias` por app y el WACK pide
+una sola `<Application>`. Los ayudantes se llegan por ese alias
+(`tienda::reenviar_si_toca`):
+
+- **MCP** (Claude Desktop u otro cliente; ver `docs/integraciones-mcp.md`):
+  orden `pindesk.exe` con argumentos `["--mcp"]` → `pindesk-mcp.exe`.
+- **Puente del navegador** (`com.pindesk.puente`): se registra con
+  `herramientas\registrar-navegador.ps1 -Puente "$env:LOCALAPPDATA\Microsoft\WindowsApps\pindesk.exe"`.
+  El navegador lanza el anfitrion con `chrome-extension://…` como primer
+  argumento y PinDesk se lo pasa a `pindesk-puente.exe` con la entrada y la
+  salida heredadas.
+
+La ruta real dentro de `C:\Program Files\WindowsApps\` cambia con cada
+version: nunca hay que apuntar ahi.
 
 `pindesk-lanzador.exe` (Flow Launcher) y `pindesk-aligerar.exe` van en el paquete pero sin alias: el
 plugin se instala en la carpeta de Flow y, desde la Store, todavia no hay un
@@ -237,7 +243,7 @@ las dos ramas, o los ayudantes dejan de encontrar la app.
   red privada.
 - Los datos en `%APPDATA%\PinDesk` (no en `Packages\...\LocalCache`), que
   quien venia con `%APPDATA%\PixPinMax` los encuentra mudados, y que el MCP
-  por el alias `pindesk-mcp.exe` los lee.
+  por `pindesk.exe --mcp` los lee.
 - OCR Indra y Whisper encuentran el `onnxruntime.dll` del paquete y no
   intentan bajarlo.
 - Que nada escribe en `HKCU\Software\Classes` ni en `...\Run`

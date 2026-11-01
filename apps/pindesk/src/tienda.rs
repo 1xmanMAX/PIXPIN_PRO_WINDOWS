@@ -124,6 +124,44 @@ fn ayuda_en_la_tienda(clave: &'static str) -> &'static str {
     }
 }
 
+/// **Los ayudantes por el alias de PinDesk.** Un paquete solo puede dar un
+/// alias de ejecucion (`windows.appExecutionAlias` una vez, y el WACK pide
+/// una sola app), asi que el servidor MCP y el puente del navegador se
+/// llegan por `pindesk.exe`:
+///
+/// - `pindesk.exe --mcp …` → `pindesk-mcp.exe …` (lo que se pone en la
+///   configuracion de Claude Desktop y otros clientes MCP).
+/// - `pindesk.exe chrome-extension://…` (o `--puente …`) → `pindesk-puente.exe`:
+///   el navegador lanza el anfitrion nativo con el origen de la extension
+///   como primer argumento.
+///
+/// El ayudante hereda la entrada y la salida (los dos hablan por ellas) y su
+/// codigo de salida es el de este proceso. Fuera de la Store no hace nada.
+pub fn reenviar_si_toca() -> Option<i32> {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    let primero = args.first()?.to_string_lossy().into_owned();
+    let (exe, resto) = match primero.as_str() {
+        "--mcp" => ("pindesk-mcp.exe", &args[1..]),
+        "--puente" => ("pindesk-puente.exe", &args[1..]),
+        p if p.starts_with("chrome-extension://") => ("pindesk-puente.exe", &args[..]),
+        _ => return None,
+    };
+    if !activa() {
+        return None;
+    }
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let estado = std::process::Command::new(dir.join(exe))
+        .args(resto)
+        .stdin(std::process::Stdio::inherit())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status();
+    Some(match estado {
+        Ok(e) => e.code().unwrap_or(1),
+        Err(_) => 1,
+    })
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

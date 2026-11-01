@@ -267,18 +267,6 @@
           </uap3:FileTypeAssociation>
         </uap3:Extension>
 
-        <!-- El servidor MCP: el alias es la ruta estable para Claude Desktop y otros clientes MCP. -->
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="pindesk-mcp.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="pindesk-mcp.exe" />
-          </uap3:AppExecutionAlias>
-        </uap3:Extension>
-        <!-- El puente del navegador (mensajeria nativa, anfitrion com.pindesk.puente): ruta estable %LOCALAPPDATA%\Microsoft\WindowsApps\pindesk-puente.exe. -->
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="pindesk-puente.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="pindesk-puente.exe" />
-          </uap3:AppExecutionAlias>
-        </uap3:Extension>
       </Extensions>
     </Application>
   </Applications>
