@@ -358,44 +358,69 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
 }
 
 fn textos_sin_menu(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
-    match idioma {
-        Idioma::Ingles => pixpin_cad::ventana::TextosUi {
-            abriendo: "Opening the drawing…".into(),
-            vacio: "The drawing has nothing to show".into(),
-            error: "Could not open the drawing".into(),
-            pista_acotar: "Click points to measure · Double-click or Enter: finish · Esc: exit".into(),
-            todo: "Show whole drawing	F".into(),
-            tema: "Light or dark background	B".into(),
-            acotar: "Measure	D".into(),
-            borrar_cotas: "Clear measurements	Del".into(),
-            encima: "Always on top	T".into(),
-            cerrar: "Close	Esc".into(),
-            tres: "View in 3D	3".into(),
-            marcos: "Frames to print	I".into(),
-            imprimir: "Print…	Ctrl+P".into(),
-            exportar: "Export (HTML, PDF, PNG, DXF…)…	Ctrl+E".into(),
-            borrar_marcos: "Clear frames".into(),
-            pista_marcos: "Drag to frame what is printed · Ctrl+P: print · Del: remove the last one · Esc: exit".into(),
-            marcador: "Bookmark here	Ctrl+M".into(),
-            botones: pixpin_cad::ventana::NombresDeBotones::ingles(),
-            anotar: "Annotate	A".into(),
-            sin_dibujo_civil: "{n} Civil 3D objects were saved without their graphics: save with PROXYGRAPHICS = 1 or export to LandXML".into(),
-            letras: "Drawing fonts…	L".into(),
-            letras_faltan: "This drawing asks for fonts that are not here; its texts use similar ones and may not fit their boxes:".into(),
-            letras_no_falta: "No font that the drawing names is missing.".into(),
-            letras_donde: concat!(
-                r"SHX fonts are usually in C:\Program Files\Autodesk\AutoCAD 20xx\Fonts or next to the drawing you were sent;",
-                "\n",
-                r"TrueType ones, in C:\Windows\Fonts. The ones you add here win over AutoCAD's, Windows' and PixPin's."
-            )
-            .into(),
-            letras_anadir: "Add fonts (SHX, TTF, OTF, TTC)…".into(),
-            letras_quitar: "Remove mine ({n})".into(),
-            faltan_letras: "{n} fonts of the drawing are missing: click Aa above to add them".into(),
-            releyendo: "Reading the drawing with your fonts…".into(),
-            imprimir_menu: pixpin_cad::ventana::TextosImprimir::plano(),
-        },
-        _ => pixpin_cad::ventana::TextosUi::default(),
+    let t = pixpin_store::Catalogo::nuevo(idioma);
+    let tecla = |clave: &str, atajo: &str| con_tecla(&t, clave, atajo);
+    let supr = t.t("v2menus-tecla-supr");
+    // `pixpin-cad` pone el numero donde va «{n}».
+    let mut n = fluent_bundle::FluentArgs::new();
+    n.set("n", "{n}");
+    pixpin_cad::ventana::TextosUi {
+        abriendo: t.t("cad-plano-abriendo"),
+        vacio: t.t("cad-plano-vacio"),
+        error: t.t("cad-plano-error"),
+        pista_acotar: t.t("cad-plano-pista-acotar"),
+        todo: tecla("cad-plano-todo", "F"),
+        tema: tecla("cad-tema", "B"),
+        acotar: tecla("cad-acotar", "D"),
+        borrar_cotas: tecla("cad-borrar-cotas", &supr),
+        encima: tecla("cad-encima", "T"),
+        cerrar: tecla("cad-cerrar", "Esc"),
+        tres: tecla("cad-tres", "3"),
+        marcos: tecla("cad-marcos", "I"),
+        imprimir: tecla("cad-imprimir", "Ctrl+P"),
+        exportar: tecla("cad-exportar", "Ctrl+E"),
+        borrar_marcos: t.t("cad-borrar-marcos"),
+        pista_marcos: t.t("cad-plano-pista-marcos"),
+        marcador: tecla("cad-plano-marcador", "Ctrl+M"),
+        botones: nombres_de_botones(&t),
+        anotar: tecla("cad-anotar", "A"),
+        sin_dibujo_civil: t.t_args("cad-sin-dibujo-civil", &n),
+        letras: tecla("cad-letras", "L"),
+        letras_faltan: t.t("cad-letras-faltan"),
+        letras_no_falta: t.t("cad-letras-no-falta"),
+        letras_donde: t.t("cad-letras-donde"),
+        letras_anadir: t.t("cad-letras-anadir"),
+        letras_quitar: t.t_args("cad-letras-quitar", &n),
+        faltan_letras: t.t_args("cad-faltan-letras", &n),
+        releyendo: t.t("cad-releyendo"),
+        imprimir_menu: pixpin_cad::ventana::TextosImprimir::plano(),
+    }
+}
+
+/// Un rotulo de menu con su tecla a la derecha (`\t`, como en Win32).
+pub(crate) fn con_tecla(t: &pixpin_store::Catalogo, clave: &str, atajo: &str) -> String {
+    format!("{}\t{atajo}", t.t(clave))
+}
+
+/// Los nombres de los botones de la barra de los planos y los modelos.
+pub(crate) fn nombres_de_botones(
+    t: &pixpin_store::Catalogo,
+) -> pixpin_cad::ventana::NombresDeBotones {
+    pixpin_cad::ventana::NombresDeBotones {
+        mover: t.t("cad-boton-mover"),
+        marcador: t.t("cad-boton-marcador"),
+        anotar: t.t("cad-boton-anotar"),
+        marcos: t.t("cad-marcos"),
+        acotar: t.t("cad-acotar"),
+        tres: t.t("cad-tres"),
+        letras: t.t("cad-boton-letras"),
+        corte: t.t("cad-corte"),
+        capas: t.t("cad-capas"),
+        tema: t.t("cad-tema"),
+        pantalla: t.t("cad-boton-pantalla"),
+        fijar: t.t("cad-encima"),
+        cerrar: t.t("cad-cerrar"),
+        guardar: t.t("cad-boton-guardar"),
     }
 }
 
