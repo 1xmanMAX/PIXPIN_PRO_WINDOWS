@@ -3503,7 +3503,7 @@ cad-web-anotaciones = Notlar
 cad-web-todas = Tümü
 cad-web-ninguna = Hiçbiri
 cad-web-sin-soporte = Bu tarayıcı çizimi açamıyor: güncel bir Edge, Chrome, Firefox veya Safari ile aç.
-cad-web-pista = Tekerlek: yakınlaştır · Sürükle: kaydır · Çift tıklama: sığdır · F, B, L
+cad-web-pista = Tekerlek veya iki parmak: kaydır · Ctrl+tekerlek veya kıstırma: yakınlaştır · Çift tıklama: sığdır · F, B, L
 # El membrete de un plano impreso
 lamina-proyecto = PROJE
 lamina-lamina = PAFTA

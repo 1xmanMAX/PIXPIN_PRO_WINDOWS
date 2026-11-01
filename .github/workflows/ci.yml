@@ -35,6 +35,17 @@ jobs:
       - name: Formato
         run: cargo fmt --all --check
 
+  # El JavaScript de las paginas exportadas y de la extension, sin navegador.
+  pruebas-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pruebas con node
+        run: >-
+          node --test
+          crates/pindesk-motor2d/pruebas_js/gestos_vista.test.mjs
+          extensiones/navegador/pruebas/nucleo.test.mjs
+
   clippy:
     runs-on: windows-latest
     steps:

@@ -3452,7 +3452,7 @@ cad-web-anotaciones = 批注
 cad-web-todas = 全部
 cad-web-ninguna = 无
 cad-web-sin-soporte = 此浏览器无法解压图纸：请用较新版本的 Edge、Chrome、Firefox 或 Safari 打开。
-cad-web-pista = 滚轮：缩放 · 拖动：平移 · 双击：全部显示 · F、B、L
+cad-web-pista = 滚轮或双指：平移 · Ctrl+滚轮或捏合：缩放 · 双击：全部显示 · F、B、L
 # El membrete de un plano impreso
 lamina-proyecto = 项目
 lamina-lamina = 图号

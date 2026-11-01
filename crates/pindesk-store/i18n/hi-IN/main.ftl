@@ -3504,7 +3504,7 @@ cad-web-anotaciones = एनोटेशन
 cad-web-todas = सभी
 cad-web-ninguna = कोई नहीं
 cad-web-sin-soporte = यह ब्राउज़र ड्रॉइंग को अनपैक नहीं कर सकता: इसे हाल के Edge, Chrome, Firefox या Safari से खोलें।
-cad-web-pista = व्हील: ज़ूम · खींचें: पैन · डबल क्लिक: फ़िट करें · F, B, L
+cad-web-pista = व्हील या दो उंगलियाँ: पैन · Ctrl+व्हील या पिंच: ज़ूम · डबल क्लिक: फ़िट करें · F, B, L
 # El membrete de un plano impreso
 lamina-proyecto = प्रोजेक्ट
 lamina-lamina = शीट

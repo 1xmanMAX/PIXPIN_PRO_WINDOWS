@@ -385,7 +385,8 @@ grupo enseña su última herramienta y despliega las demás.
 - **Señalar y tapar**: pasos numerados, foco, lupa, pixelar o desenfocar, láser y marcadores.
 - **Gráficas y tablas**; tablas pegadas de Excel o Sheets con celdas combinadas.
 - **Zona al chat**: un rectángulo del lienzo va al chat con su vínculo de vuelta.
-- **Imprimir y exportar** a PNG, JPG, SVG, PDF y una página web que se puede volver a anotar.
+- **Imprimir y exportar** a PNG, JPG, SVG, PDF y una página web que se puede volver a anotar
+  (se mueve con dos dedos en el trackpad y se acerca pellizcando: [cómo](docs/html-exportado.md)).
 
 | Gráfica | Tabla | Pixelar | Lupa |
 |---|---|---|---|
