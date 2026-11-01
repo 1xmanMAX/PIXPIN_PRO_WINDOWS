@@ -3,8 +3,8 @@
 El usuario: «hacer programas pequeños sin interfaz para comprobar si **todas**
 las ideas funcionarían, y luego implementar la misma lógica en la app».
 
-Son **ejemplos de Cargo** de `crates/pixpin-typesafe` (no un paquete nuevo:
-`apps/pixpin/tests/capas.rs` cuenta los paquetes). Corren en Linux, Mac y
+Son **ejemplos de Cargo** de `crates/pindesk-typesafe` (no un paquete nuevo:
+`apps/pindesk/tests/capas.rs` cuenta los paquetes). Corren en Linux, Mac y
 Windows, sin ventana: leen un guion de reunión inventado, lo pasan frase a
 frase en tiempo real simulado y escriben lo que Jev juzgó y lo que el código
 decidió en cada paso, lo que tardó cada petición, los tokens y lo que cuesta.
@@ -21,21 +21,21 @@ reescribir.
 
 ```sh
 # De verdad (la clave en TYPESAFE_API_KEY o en un fichero, TYPESAFE_API_KEY_FILE):
-TYPESAFE_API_KEY=… cargo run -q -p pixpin-typesafe --example temas_en_vivo -- coordinacion.txt --rapido
+TYPESAFE_API_KEY=… cargo run -q -p pindesk-typesafe --example temas_en_vivo -- coordinacion.txt --rapido
 
 # Sin clave: escribe el JSON exacto de cada petición y contesta «no» a todo.
-cargo run -q -p pixpin-typesafe --example tareas_dichas -- tareas.txt --rapido --en-seco
+cargo run -q -p pindesk-typesafe --example tareas_dichas -- tareas.txt --rapido --en-seco
 
 # Sin clave, con las respuestas de verdad grabadas el 29-oct-2026 (jev-1.14.0):
-cargo run -q -p pixpin-typesafe --example tareas_dichas -- tareas.txt --rapido \
+cargo run -q -p pindesk-typesafe --example tareas_dichas -- tareas.txt --rapido \
     --grabadas grabadas/tareas_dichas.tareas.jsonl
 
 # De verdad y grabando para repetirlo luego sin clave:
-TYPESAFE_API_KEY=… cargo run -q -p pixpin-typesafe --example decisiones -- coordinacion.txt --rapido \
+TYPESAFE_API_KEY=… cargo run -q -p pindesk-typesafe --example decisiones -- coordinacion.txt --rapido \
     --grabar /tmp/decisiones.jsonl
 ```
 
-- El guion se busca tal cual o en `crates/pixpin-typesafe/examples/guiones/`
+- El guion se busca tal cual o en `crates/pindesk-typesafe/examples/guiones/`
   (basta el nombre); lo mismo `--grabadas`.
 - `--rapido`: no espera entre frases (el reloj de la reunión avanza solo con
   lo que tarda cada petición). Sin él, las frases llegan a su hora de verdad.
@@ -174,8 +174,8 @@ idea (estos guiones son cortos: no hay que ajustar a ellos), y ver si
 
 ## Dónde está la lógica
 
-Todo en `crates/pixpin-typesafe/src/`, con sus pruebas (`cargo test -p
-pixpin-typesafe`: cada tabla fila a fila y respuestas grabadas):
+Todo en `crates/pindesk-typesafe/src/`, con sus pruebas (`cargo test -p
+pindesk-typesafe`: cada tabla fila a fila y respuestas grabadas):
 
 - `preguntas.rs` — **todo el texto** de las preguntas: `vivo` (las de frase
   a frase) y `repaso`, junto a las que ya había.
@@ -190,8 +190,8 @@ pixpin-typesafe`: cada tabla fila a fila y respuestas grabadas):
 
 ## Cómo se lleva a la app (el cableado)
 
-Lo que ya existe: `pixpin-voz` `en_vivo` da las frases mientras se graba y
-`pixpin_proyecto::temas` cablea los temas en vivo (ver `docs/jev.md` §5).
+Lo que ya existe: `pindesk-voz` `en_vivo` da las frases mientras se graba y
+`pindesk_proyecto::temas` cablea los temas en vivo (ver `docs/jev.md` §5).
 Para lo nuevo:
 
 1. **Un hilo por reunión** junto al de los temas: por cada frase de
@@ -223,9 +223,9 @@ Para lo nuevo:
 siete ideas de la reunion (tareas dichas, urgencia en vivo, tema olvidado,
 tiempo por tema, decisiones, preguntas pendientes y fechas al horario).
 La mesa de `reunion_completa` es ahora biblioteca
-(`pixpin_typesafe::en_la_reunion`) y la usa la escucha de «Grabar clase»
+(`pindesk_typesafe::en_la_reunion`) y la usa la escucha de «Grabar clase»
 (hilo `reunion-jev`, una peticion por frase); las fichas de la barra, el
-acta de la nota (`pixpin_proyecto::acta_viva`) y lo que se ve en «Estudiar
+acta de la nota (`pindesk_proyecto::acta_viva`) y lo que se ve en «Estudiar
 la clase» y en la pagina compartida estan en `docs/jev.md` §8. El dictado
 a chat y el repaso oral van aparte.
 
@@ -240,9 +240,9 @@ como hoy viajan las tareas, los eventos y la nota de voz (`importantes`,
 respuestas grabadas sirven también para probar la copia del móvil: la misma
 petición tiene que dar la misma huella.
 
-## Audio (pixpin-voz)
+## Audio (pindesk-voz)
 
-Tres prototipos en `crates/pixpin-voz/examples/`, con lo comun (leer el
+Tres prototipos en `crates/pindesk-voz/examples/`, con lo comun (leer el
 audio, encontrar el modelo) en `examples/comun/mod.rs`:
 
 | Prototipo | Lo que prueba | El camino de la app |
@@ -269,7 +269,7 @@ audio, encontrar el modelo) en `examples/comun/mod.rs`:
 ### Preparar (una vez; nada de esto va al repositorio)
 
 ```sh
-D=/tmp/pixpin-voz            # cualquier carpeta fuera del repo
+D=/tmp/pindesk-voz            # cualquier carpeta fuera del repo
 mkdir -p $D/raiz/whisper/base $D/ort $D/audio
 # El modelo, los mismos tres ficheros que baja la app (unos 160 MB).
 for f in base-tokens.txt base-encoder.int8.onnx base-decoder.int8.onnx; do
@@ -306,7 +306,7 @@ ffmpeg -f concat -safe 0 -i lista.txt -c:a pcm_s16le reunion.wav
 ### `alinear_cancion`
 
 ```sh
-cargo run -p pixpin-voz --release --example alinear_cancion -- \
+cargo run -p pindesk-voz --release --example alinear_cancion -- \
   $D/audio/cielito.mp3 letra.lrc --raiz $D/raiz --ort $D/ort [--idioma es] \
   [--solo-tiempos] [--oido] [--lrc salida.lrc]
 ```
@@ -394,7 +394,7 @@ Pruebas nuevas en `alinear_letra`: `la_voz_son_los_tramos_con_palabras_oidas`,
 ### `frases_en_vivo`
 
 ```sh
-cargo run -p pixpin-voz --release --example frases_en_vivo -- \
+cargo run -p pindesk-voz --release --example frases_en_vivo -- \
   $D/audio/reunion.wav --raiz $D/raiz --ort $D/ort [--rapido] \
   [--medida whisper|windows] [--salida frases.txt] [--quien Nombre]
 ```
@@ -411,7 +411,7 @@ Por frase: inicio, fin de la voz, **corte** (se dejo de hablar → sale la
 frase), espera en la cola, lo que tarda Whisper, **retraso** (se dejo de
 hablar → texto) y RTF. `--salida` escribe el guion oido
 `[inicio fin_voz texto] Quien: frase` que leen los prototipos de Jev
-(`crates/pixpin-typesafe/examples/`, ver «De punta a punta»); aqui no
+(`crates/pindesk-typesafe/examples/`, ver «De punta a punta»); aqui no
 se sabe quien habla, asi que `Quien` es `--quien` (por omision «Voz»).
 
 #### Medido (la «reunion» de 186 s, cuatro lectores)
@@ -452,7 +452,7 @@ frase, en la primera pausa de 200 ms (`LARGO_MS`, `PAUSA_MS`).
 curl -L -O https://github.com/alphacep/vosk-api/releases/download/v0.3.45/vosk-linux-x86_64-0.3.45.zip
 curl -L -O https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip
 unzip vosk-linux-x86_64-0.3.45.zip && unzip vosk-model-small-es-0.42.zip
-cargo run -p pixpin-voz --release --example vosk_en_vivo -- $D/audio/reunion.wav \
+cargo run -p pindesk-voz --release --example vosk_en_vivo -- $D/audio/reunion.wav \
   --vosk vosk-linux-x86_64-0.3.45/libvosk.so --modelo vosk-model-small-es-0.42 \
   [--tiempo-real] [--salida frases.txt] [--quien Nombre]
 ```
@@ -526,7 +526,7 @@ pizarra para medir el recorte. Pillow 13.0; con otra versión pueden salir
 otros bytes y las respuestas grabadas ya no casarían.
 
 ```sh
-cargo run -q -p pixpin-typesafe --example mejor_foto -- rafagas.txt --rapido \
+cargo run -q -p pindesk-typesafe --example mejor_foto -- rafagas.txt --rapido \
     --grabadas grabadas/mejor_foto.rafagas.jsonl
 ```
 
@@ -547,7 +547,7 @@ cargo run -q -p pixpin-typesafe --example mejor_foto -- rafagas.txt --rapido \
 | `citas_del_chat` | `horario_de_chat` (nuevo) | `chat_citas`, `chat_citas_control` | ¿pone un momento a una cita?, ¿cuál de las fechas?, ¿acordada o propuesta?, ¿acepta lo pendiente? | pendiente → evento cuando otro lo acepta |
 
 Cada tabla de decisión está en la cabecera de su módulo, con sus pruebas
-(`cargo test -p pixpin-typesafe`), y el texto de las preguntas al final de
+(`cargo test -p pindesk-typesafe`), y el texto de las preguntas al final de
 `preguntas.rs` (`captura_a_chat`, `etiquetas`, `mejor_foto`, `pizarra`,
 `ocr`, `alertas`, `horario_de_chat`).
 
@@ -680,7 +680,7 @@ etiquetas ≈ 0,00003 $; una ráfaga de cuatro fotos ≈ 0,00017 $.
 
 Lo que faltaba: los prototipos de Jev se probaron con guiones escritos a
 mano, con quien habla. Aqui se prueba la cadena entera, en vivo: audio de
-una reunion en castellano → `pixpin_voz::en_vivo::Frasero` (con la `Cola`
+una reunion en castellano → `pindesk_voz::en_vivo::Frasero` (con la `Cola`
 y el `Freno`) → Whisper base como en la app (`frases_en_vivo`) → la logica
 de Jev en vivo (`temas_en_vivo` y `reunion_completa`), con el texto de
 Whisper y **sin quien habla** («Voz»).
@@ -688,7 +688,7 @@ Whisper y **sin quien habla** («Voz»).
 ### Las reuniones y el audio
 
 Tres guiones inventados (sin datos de nadie) en
-`crates/pixpin-typesafe/examples/guiones/`, con la misma agenda
+`crates/pindesk-typesafe/examples/guiones/`, con la misma agenda
 («Cotización del viernes», «Paro de transportistas», «Notas de los
 estudiantes», «Compra de proyectores») tratada en otro orden, muletillas
 («eh», «o sea», «mmm»), interrupciones (un «—» delante: pisa 0,35 s la
@@ -726,9 +726,9 @@ for v in es_MX/claude/high/es_MX-claude-high es_ES/davefx/medium/es_ES-davefx-me
   curl -L -O $V/$v.onnx; curl -L -O $V/$v.onnx.json
 done
 # Cada reunion: hablar → oir → Jev (lo oido) → Jev (lo escrito, con y sin nombres).
-PIXPIN_VOZ=$D VOCES=<carpeta de las voces> PYTHON=<python con piper> \
+PINDESK_VOZ=$D VOCES=<carpeta de las voces> PYTHON=<python con piper> \
 TYPESAFE_API_KEY_FILE=… SALIDA=/tmp/punta \
-  crates/pixpin-typesafe/examples/guiones/de_punta_a_punta.sh audio_coordinacion.txt
+  crates/pindesk-typesafe/examples/guiones/de_punta_a_punta.sh audio_coordinacion.txt
 ```
 
 `QUE="jev"` repite solo Jev sobre lo ya oido (`$SALIDA/<guion>.frases.txt`);

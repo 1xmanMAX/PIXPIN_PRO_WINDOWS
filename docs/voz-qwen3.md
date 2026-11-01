@@ -1,6 +1,6 @@
 # Qwen3-ASR-0.6B: pasar grabaciones a texto mejor que con Whisper
 
-*2026-10-25. Código: `crates/pixpin-voz/src/qwen3/`, `apps/pixpin/src/voz_motor.rs`.*
+*2026-10-25. Código: `crates/pindesk-voz/src/qwen3/`, `apps/pindesk/src/voz_motor.rs`.*
 
 ## Qué es y para qué
 
@@ -52,7 +52,7 @@ no trae fichero de licencia propio (riesgo menor: se avisa con un enlace a
 la ficha oficial). El decodificador de Rust está escrito a partir del de
 sherpa-onnx (Apache-2.0), no copiado.
 
-## Cómo corre (`crates/pixpin-voz/src/qwen3/`)
+## Cómo corre (`crates/pindesk-voz/src/qwen3/`)
 
 1. **Tandas** (`guion::tandas`): los mismos cortes por silencios que Whisper
    (`cortes.rs`, el puerto del móvil), frases juntas hasta 20 s y ninguna de
@@ -128,13 +128,13 @@ No se pudo medir en el aparato. Estimación:
 
 ## La app
 
-- `[voz] motor = "whisper" | "qwen3"` (`pixpin-store`), de fábrica Whisper.
+- `[voz] motor = "whisper" | "qwen3"` (`pindesk-store`), de fábrica Whisper.
 - Ajustes › Voz: «Pasar a texto con» (Whisper base / Qwen3-ASR) con la línea
   de estado (MB a bajar, memoria, licencia; avance de la descarga; fallo),
   «Ficha de Qwen3-ASR» y «Borrar Qwen3-ASR». Elegir Qwen3-ASR empieza la
   descarga en un hilo (sha256 y tamaño de cada fichero; uno que no cuadra se
   borra); volver a Whisper la corta.
-- `pixpin_voz::transcribir_con` usa Qwen3-ASR si está elegido y bajado; si
+- `pindesk_voz::transcribir_con` usa Qwen3-ASR si está elegido y bajado; si
   falla (modelo roto, runtime viejo…) cae a Whisper y lo deja en el
   registro. Si Qwen3-ASR va a transcribir, «Pasar a texto» no baja Whisper.
 - Avance por tanda y por token; cancelar se mira en cada token.
@@ -143,12 +143,12 @@ No se pudo medir en el aparato. Estimación:
 
 ```sh
 # Lo puro, en Linux:
-cargo test -p pixpin-voz
+cargo test -p pindesk-voz
 # Con el modelo de verdad (Linux o Windows):
-PIXPIN_QWEN3=<carpeta con los 6 ficheros> PIXPIN_ORT=<carpeta con libonnxruntime.so|onnxruntime.dll> \
-PIXPIN_CLIPS=<carpeta con uNN.wav y meta.json> PIXPIN_SALIDA=salida.json \
-  cargo test -p pixpin-voz --release -- --ignored qwen3_de_verdad --nocapture
-PIXPIN_QWEN3=<carpeta> cargo test -p pixpin-voz -- --ignored el_guion_da_los_numeros_de_tokenizers
+PINDESK_QWEN3=<carpeta con los 6 ficheros> PINDESK_ORT=<carpeta con libonnxruntime.so|onnxruntime.dll> \
+PINDESK_CLIPS=<carpeta con uNN.wav y meta.json> PINDESK_SALIDA=salida.json \
+  cargo test -p pindesk-voz --release -- --ignored qwen3_de_verdad --nocapture
+PINDESK_QWEN3=<carpeta> cargo test -p pindesk-voz -- --ignored el_guion_da_los_numeros_de_tokenizers
 ```
 
 `ort.rs` carga `libonnxruntime.so` con `dlopen` fuera de Windows solo para

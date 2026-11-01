@@ -17,7 +17,7 @@
 #     opciones» en Windows 11): «PinDesk ▸ Al chat / Pinear / Copiar texto
 #     (OCR) / Enviar al movil / Preguntar al asistente». Con varios ficheros
 #     elegidos, Explorer lanza una copia por fichero: `--juntar` hace que
-#     se junten en un solo pedido (pixpin_shell::juntar).
+#     se junten en un solo pedido (pindesk_shell::juntar).
 #  3. «Enviar a» (accesos directos en SendTo): los mismos cinco; ahi
 #     Windows ya pasa todos los ficheros de una vez.
 #  4. El modulo de PowerShell (PinDesk.psm1) y la libreria de AutoHotkey
@@ -38,7 +38,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Las extensiones de imagen (las de pixpin_shell::orden::EXTENSIONES_IMAGEN):
+# Las extensiones de imagen (las de pindesk_shell::orden::EXTENSIONES_IMAGEN):
 # solo con ellas sale «Copiar texto (OCR)».
 $imagenes = @('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'tif')
 

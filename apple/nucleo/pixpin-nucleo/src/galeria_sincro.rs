@@ -1,5 +1,5 @@
 //! **La galeria de capturas que viaja**, del lado del Mac (Android
-//! v0.107.0): lo que `pixpin_sincro::galeria` necesita saber de las capturas
+//! v0.107.0): lo que `pindesk_sincro::galeria` necesita saber de las capturas
 //! de este aparato (`CapturasDelAparato`). Es `sincronizar/galeria.rs` de
 //! Windows (`CapturasDelPc`) linea a linea, sobre los mismos ficheros:
 //!
@@ -12,15 +12,15 @@
 //! - «dias hasta borrar» es `[capturas] dias_caducidad` de `pixpinmax.toml`.
 //!
 //! Las reglas (que se junta, que se trae, que se tira) son las de Android y
-//! viven en `pixpin_sincro::galeria`; aqui solo se lee y se escribe.
+//! viven en `pindesk_sincro::galeria`; aqui solo se lee y se escribe.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use pixpin_sincro::galeria::{Caducidad, CapturasDelAparato, Entrada, Local};
-use pixpin_sincro::protocolo::Resultado;
-use pixpin_store::{Ubicacion, ajustes};
+use pindesk_sincro::galeria::{Caducidad, CapturasDelAparato, Entrada, Local};
+use pindesk_sincro::protocolo::Resultado;
+use pindesk_store::{Ubicacion, ajustes};
 
 use crate::galeria::{self, DIAS_POR_OMISION};
 
@@ -66,7 +66,7 @@ impl CapturasDelAparato for CapturasDelMac {
                 .map(|e| Local {
                     cuando: e.cuando,
                     bytes: e.bytes as i64,
-                    mime: pixpin_sincro::al_lienzo::mime_de(&e.nombre).to_string(),
+                    mime: pindesk_sincro::al_lienzo::mime_de(&e.nombre).to_string(),
                     nombre: e.nombre,
                 })
                 .collect(),
@@ -193,7 +193,7 @@ mod pruebas {
         assert_eq!(std::fs::read_dir(&carpeta).unwrap().count(), 0);
         assert!(
             c.guardar(&e, &mut |_| Err(
-                pixpin_sincro::protocolo::ErrorSincro::Protocolo("cortado".into())
+                pindesk_sincro::protocolo::ErrorSincro::Protocolo("cortado".into())
             ))
             .is_err()
         );

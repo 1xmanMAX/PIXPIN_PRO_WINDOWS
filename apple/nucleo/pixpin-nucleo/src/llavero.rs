@@ -1,6 +1,6 @@
 //! **Las claves del asistente en el Llavero del Mac** (Keychain).
 //!
-//! `pixpin_ia::nube::claves` no guarda una clave en claro nunca: en Windows
+//! `pindesk_ia::nube::claves` no guarda una clave en claro nunca: en Windows
 //! usa DPAPI y fuera de Windows espera a que la app instale su
 //! [`claves::Llavero`]. Aqui ese llavero es un **interfaz que implementa
 //! Swift** ([`LlaveroApp`], un trait de UniFFI con implementacion de fuera)
@@ -8,15 +8,15 @@
 //! una vez al arrancar con [`instalar_llavero`].
 //!
 //! El servicio es [`SERVICIO`] y la cuenta el id del proveedor
-//! (`claude`, `deepseek`), lo que dice el trait de `pixpin-ia`.
+//! (`claude`, `deepseek`), lo que dice el trait de `pindesk-ia`.
 //!
 //! Ni la clave ni un trozo pasan por el registro: para ensenarla,
 //! [`ia_clave_enmascarada`].
 
 use std::sync::Arc;
 
-use pixpin_ia::nube::Proveedor;
-use pixpin_ia::nube::claves;
+use pindesk_ia::nube::Proveedor;
+use pindesk_ia::nube::claves;
 
 use crate::ErrorNucleo;
 
@@ -42,7 +42,7 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for ErrorNucleo {
     }
 }
 
-/// El adaptador al trait de `pixpin-ia`.
+/// El adaptador al trait de `pindesk-ia`.
 struct Adaptador {
     app: Arc<dyn LlaveroApp>,
 }

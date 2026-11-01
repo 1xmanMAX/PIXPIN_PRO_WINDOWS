@@ -33,11 +33,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use pixpin_docs::lectura;
-use pixpin_motor2d::marcas;
-use pixpin_proyecto::anotado::{self as an, Base};
-use pixpin_proyecto::capas_del_pdf;
-use pixpin_sincro::anotado::{MarcoDeLaHoja, huella_coincide};
+use pindesk_docs::lectura;
+use pindesk_motor2d::marcas;
+use pindesk_proyecto::anotado::{self as an, Base};
+use pindesk_proyecto::capas_del_pdf;
+use pindesk_sincro::anotado::{MarcoDeLaHoja, huella_coincide};
 
 use crate::editor::{EditorLienzo, HojaDoc};
 use crate::unidades::{Unidades, hoja_propia};
@@ -87,14 +87,14 @@ pub fn emojis_de_marcas() -> Vec<String> {
 /// El ancho de una hoja en unidades de la tinta (1400).
 #[uniffi::export]
 pub fn ancho_de_hoja() -> f32 {
-    pixpin_docs::vista::ANCHO_HOJA
+    pindesk_docs::vista::ANCHO_HOJA
 }
 
 /// Lo que se abre a cada lado con los espacios `espacios`, en unidades de
 /// la hoja (`vista::espacios_del_pdf`: tres cuartos de la hoja por lado).
 #[uniffi::export]
 pub fn espacios_de_hoja(espacios: u8) -> Vec<f32> {
-    let (i, d) = pixpin_docs::vista::espacios_del_pdf(espacios);
+    let (i, d) = pindesk_docs::vista::espacios_del_pdf(espacios);
     vec![i, d]
 }
 
@@ -485,8 +485,8 @@ fn fijar_lo_viejo(d: &Donde, espacios: u8, altos: &[f32]) -> usize {
 mod pruebas {
     use super::*;
     use crate::editor::FasePuntero;
-    use pixpin_proyecto::almacen::{self, Ficha, Indice};
-    use pixpin_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
+    use pindesk_proyecto::almacen::{self, Ficha, Indice};
+    use pindesk_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
 
     fn raiz(etiqueta: &str) -> PathBuf {
         let r = std::env::temp_dir().join(format!(

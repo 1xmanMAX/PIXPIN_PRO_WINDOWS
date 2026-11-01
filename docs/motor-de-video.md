@@ -2,8 +2,8 @@
 
 El usuario: «un motor de video que grabe a buena resolucion y buena calidad
 pero que pese menos y gaste menos RAM mientras graba … un motor de video y
-uno de audio por separado». Este es el de video: `crates/pixpin-motor-video`.
-El de audio es otro crate (`pixpin-motor-audio`); entre los dos solo hay un
+uno de audio por separado». Este es el de video: `crates/pindesk-motor-video`.
+El de audio es otro crate (`pindesk-motor-audio`); entre los dos solo hay un
 contrato ([El sonido](#el-sonido-el-contrato-con-el-motor-de-audio)).
 
 El equipo de referencia es el del usuario: **Core i3 de tercera generacion
@@ -33,7 +33,7 @@ Windows.Graphics.Capture                                      recv_timeout(ritmo
              ▼ Grafica                   ▼ Software                  ▼ Cpu              │
   textura NV12 del repartidor   NV12 propio ─▶ escenificacion   BGRA baja (Bajada),     │
   (MFCreateVideoSampleAllocatorEx,  ─▶ buffer en memoria        encoge en CPU,          │
-   MFCreateDXGISurfaceBuffer)       (1,5 B/px, no 4)            pixpin-record           │
+   MFCreateDXGISurfaceBuffer)       (1,5 B/px, no 4)            pindesk-record           │
              │                           │                           │                  │
              ▼                           ▼                           ▼                  │
   IMFSinkWriter + IMFDXGIDeviceManager   IMFSinkWriter            IMFSinkWriter RGB32   │
@@ -47,7 +47,7 @@ Windows.Graphics.Capture                                      recv_timeout(ritmo
 Paso a paso:
 
 1. **Captura** (`win/captura.rs`). Windows.Graphics.Capture sobre un
-   dispositivo D3D11 creado con `VIDEO_SUPPORT` (el de `pixpin-capture`, en
+   dispositivo D3D11 creado con `VIDEO_SUPPORT` (el de `pindesk-capture`, en
    la grafica que tiene el monitor que se graba: ver
    [Cuando algo sale mal](#cuando-algo-sale-mal)) y protegido para varios hilos
    (`ID3D11Multithread::SetMultithreadProtected`, el equivalente D3D11 de
@@ -190,7 +190,7 @@ Son cuatro caminos (`cadena::Camino`); los dos primeros se ensenan como
 3. **Software** (`Codificador::Software`): el H.264 de Microsoft; la
    conversion y el encogido siguen en la GPU y solo baja el NV12 (una textura
    de escenificacion pequena).
-4. **CPU** (`Codificador::Cpu`): lo de antes, `pixpin-record::Codificador`
+4. **CPU** (`Codificador::Cpu`): lo de antes, `pindesk-record::Codificador`
    (BGRA baja, se encoge en la CPU con `lienzo.rs`, RGB32 por software),
    siempre a lo de «Ligero». Para cuando la grafica no tiene procesador de
    video (una maquina virtual, un controlador roto).
@@ -289,7 +289,7 @@ video se corta y se guarda lo que habia (`Resumen::cortado`).
   como un `FuenteAudio` (`siguiente(espera) -> Bloque | Nada | Fin`).
 
 Hoy «Grabar clase» usa `CopiaMono`, el adaptador de la copia de la nota de
-voz (`pixpin_audio::Grabadora::empezar_con_copia`, bloques mono sin
+voz (`pindesk_audio::Grabadora::empezar_con_copia`, bloques mono sin
 posicion: la cuenta el adaptador). El motor de audio nuevo solo tiene que dar
 un `FuenteAudio` (o empujar con `poner_audio`).
 
@@ -320,14 +320,14 @@ Las cuentas y el nucleo (con una captura y una tuberia de mentira) se
 prueban en cualquier maquina:
 
 ```text
-cargo test -p pixpin-motor-video
+cargo test -p pindesk-motor-video
 ```
 
 Lo que necesita GPU, escritorio y Media Foundation va en
-`crates/pixpin-motor-video/tests/grabar_pantalla.rs`, con `#[ignore]`:
+`crates/pindesk-motor-video/tests/grabar_pantalla.rs`, con `#[ignore]`:
 
 ```text
-cargo test -p pixpin-motor-video -- --ignored --nocapture
+cargo test -p pindesk-motor-video -- --ignored --nocapture
 ```
 
 - `tres_segundos_de_la_pantalla_con_sonido_dan_un_mp4_con_dos_pistas`: graba
@@ -380,7 +380,7 @@ Windows. Sale de leer AOSP `screenrecord`, yrom/ScreenRecorder y HBRecorder
 
 Todo lo de fuera de `win/` compila para Android sin cambios (no hay nada de
 Windows fuera de `cfg(windows)`; en esta maquina solo se pudo comprobar con
-`cargo check -p pixpin-motor-video` en Linux, el objetivo
+`cargo check -p pindesk-motor-video` en Linux, el objetivo
 `aarch64-linux-android` no esta instalado). Lo que se comparte, por JNI desde
 un crate `cdylib` pequeno que se anadira con la app de Android (no esta en el
 espacio de trabajo):

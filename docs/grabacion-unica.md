@@ -39,7 +39,7 @@ del móvil), traído a «Grabar clase o reunión» del PC. Las palabras del usua
 
 ## Cómo va por dentro
 
-- `apps/pixpin/src/ventana_chat/grabar_clase.rs`: la barra y Preparar sin modos (`Accion::Reloj`,
+- `apps/pindesk/src/ventana_chat/grabar_clase.rs`: la barra y Preparar sin modos (`Accion::Reloj`,
   `Pantalla`, `Completa`, `LetraMenos`/`LetraMas`; mantener en `flotar`, constante `MANTENER`).
 - `grabar_clase/pantalla.rs`: **el reparto del sonido** (`Reparto`). La grabadora manda siempre su
   copia del sonido mezclado (la copia solo se puede pedir al abrirla) y un hilo la da al trozo de
@@ -56,7 +56,7 @@ del móvil), traído a «Grabar clase o reunión» del PC. Las palabras del usua
   fotos y clips de la cámara llevan `fuente: "camara"` como antes. El móvil usa la regla de «en los
   primeros 5 s» porque allí el permiso de la pantalla tarda; en el PC el vídeo del principio empieza
   en el acto.
-- **El diario** (`pixpin_proyecto::grabacion_a_medias`): el vídeo del principio va en `video`,
+- **El diario** (`pindesk_proyecto::grabacion_a_medias`): el vídeo del principio va en `video`,
   como siempre; los demás trozos, en `clips` con `pantalla: true` (campo nuevo, solo en el diario
   local, `#[serde(default)]`: los diarios de antes se leen igual). Si algo se corta, la
   recuperación los mete como clips sin `fuente`.

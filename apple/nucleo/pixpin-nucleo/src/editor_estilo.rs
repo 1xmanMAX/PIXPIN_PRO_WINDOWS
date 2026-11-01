@@ -8,10 +8,10 @@
 //! (`estilo::aplicar_a`), solo a lo que admite ese mando
 //! (`estilo::propiedades_de`, la tabla del movil).
 
-use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo};
-use pixpin_motor2d::estilo::{self, CambioEstilo, NivelGrosor, Propiedad};
-use pixpin_motor2d::relleno::EstiloRelleno;
-use pixpin_motor2d::seleccion::Seleccion;
+use pindesk_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo};
+use pindesk_motor2d::estilo::{self, CambioEstilo, NivelGrosor, Propiedad};
+use pindesk_motor2d::relleno::EstiloRelleno;
+use pindesk_motor2d::seleccion::Seleccion;
 
 use crate::editor::EditorLienzo;
 
@@ -142,7 +142,7 @@ fn relleno_de(r: RellenoEstilo) -> EstiloRelleno {
         RellenoEstilo::Rayado => EstiloRelleno::Rayado,
         RellenoEstilo::Cruzado => EstiloRelleno::Cruzado,
         RellenoEstilo::Zigzag => EstiloRelleno::Zigzag,
-        RellenoEstilo::Lineas => EstiloRelleno::LineasPixpin,
+        RellenoEstilo::Lineas => EstiloRelleno::LineasPindesk,
     }
 }
 
@@ -152,7 +152,7 @@ fn relleno_hacia(r: EstiloRelleno) -> RellenoEstilo {
         EstiloRelleno::Rayado => RellenoEstilo::Rayado,
         EstiloRelleno::Cruzado => RellenoEstilo::Cruzado,
         EstiloRelleno::Zigzag => RellenoEstilo::Zigzag,
-        EstiloRelleno::LineasPixpin => RellenoEstilo::Lineas,
+        EstiloRelleno::LineasPindesk => RellenoEstilo::Lineas,
     }
 }
 

@@ -1,5 +1,5 @@
 # El paquete de la Microsoft Store (solo en la rama `microsoft-store`, ver
-# docs/tienda.md): compila PinDesk con `--features pixpin/tienda`, junta los
+# docs/tienda.md): compila PinDesk con `--features pindesk/tienda`, junta los
 # ejecutables con tienda/AppxManifest.xml y los logos, y deja
 # PinDesk_<version>_x64.msix SIN FIRMAR (la Store lo firma al publicarlo) como
 # artefacto y como version previa `v<version>-store` en Releases. Si el
@@ -35,7 +35,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       # El onnxruntime.dll va dentro del paquete (junto al exe): asi la app
       # nunca baja una DLL (politica 10.2.2 de la Store). El mismo que baja
-      # main, crates/pixpin-indra/src/catalogo.rs (RUNTIME).
+      # main, crates/pindesk-indra/src/catalogo.rs (RUNTIME).
       ORT_URL: https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip
       ORT_SHA256: 0c42dc4e278f0968fdf9ebf1b1e54a74c657a9942e70803e453c91993451cf4c
     steps:
@@ -51,7 +51,7 @@ jobs:
         with:
           key: tienda
       - name: Compilar (release, feature tienda)
-        run: cargo build --release -p pixpin --features pixpin/tienda -p pixpin-aligerar -p pixpin-lanzador -p pixpin-puente -p pixpin-mcp
+        run: cargo build --release -p pindesk --features pindesk/tienda -p pindesk-aligerar -p pindesk-lanzador -p pindesk-puente -p pindesk-mcp
 
       - name: Herramientas del SDK de Windows
         shell: pwsh

@@ -1,6 +1,6 @@
 // Las formulas de las notas, entendidas y compuestas (13-oct-2026): el
 // `object Formulas` de Android (`motormd/Formulas.kt`) y su `FormulaUi.kt`,
-// portados tal cual (el mismo arbol que `crates/pixpin-notas/src/formulas.rs`).
+// portados tal cual (el mismo arbol que `crates/pindesk-notas/src/formulas.rs`).
 //
 // `$x^2$` se lee a un arbol y se compone en HTML: una fraccion con su raya,
 // un exponente pequeño y subido, una raiz con su tejado. Entiende el LaTeX de

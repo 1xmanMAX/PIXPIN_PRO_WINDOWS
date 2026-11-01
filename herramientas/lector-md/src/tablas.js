@@ -1,6 +1,6 @@
 // Las tablas de una nota, dibujadas como tablas: las de barras de Markdown
 // (GFM) y las HTML del movil (`Tablas.aHtml`: celdas combinadas y colores;
-// ver `pixpin-docs/md_tabla_html.rs`). Solo se pinta: el texto no cambia.
+// ver `pindesk-docs/md_tabla_html.rs`). Solo se pinta: el texto no cambia.
 
 /** Si un bloque HTML es una tabla de las del movil. */
 export function esTablaHtml(texto) {

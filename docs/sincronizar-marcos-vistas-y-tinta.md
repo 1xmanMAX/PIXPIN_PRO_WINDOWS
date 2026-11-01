@@ -24,7 +24,7 @@ el 19 y el 20 de octubre de 2026 en PinDesk (PC):
 - Lo que acompaña a un adjunto viaja **solo** si se llama
   `pins/draw/anot-<uid><terminación>` (carpeta plana, sin subcarpetas) y la
   terminación está en la lista blanca `TERMINACIONES`
-  (`crates/pixpin-sincro/src/anotado.rs`). Se borra con su mensaje.
+  (`crates/pindesk-sincro/src/anotado.rs`). Se borra con su mensaje.
 - `<uid>`:
   - un adjunto: el `Codigos.unico` de su mensaje;
   - el PDF de un proyecto: el uid del proyecto;
@@ -131,7 +131,7 @@ formato (se distingue por el tipo del adjunto):
     vertical de 45°.
   - `seccion`: la caja del corte, coordenadas absolutas.
   - **Claves estables (20-oct-2026)**, iguales en todos los aparatos
-    (`Modelo3d::clave_de_elemento` / `clave_de_nivel` en `pixpin-cad`):
+    (`Modelo3d::clave_de_elemento` / `clave_de_nivel` en `pindesk-cad`):
     - elemento: su `GlobalId` del IFC (un Revit se pasa a IFC); sin él,
       `~<tipo IFC>|<nombre>|<k>`, con `k` = cuántos elementos sin `GlobalId`
       del mismo tipo y nombre van antes en el fichero;
@@ -242,8 +242,8 @@ vuelve a ver eso mismo.
   vista acerca o aleja por múltiplos persiguiendo el centro.
 - Fuera de un chat (un `.excalidraw` suelto), la misma vista en
   `<dibujo>.pixpin-vistas` al lado del fichero, que no viaja.
-- Lógica: `VistaDeMarca` en `crates/pixpin-motor2d/src/marcas.rs`; ficheros
-  y teclas en `apps/pixpin/src/ventana_editor/marcas.rs`.
+- Lógica: `VistaDeMarca` en `crates/pindesk-motor2d/src/marcas.rs`; ficheros
+  y teclas en `apps/pindesk/src/ventana_editor/marcas.rs`.
 
 ## 4. Lo que NO viaja (a propósito)
 
@@ -259,7 +259,7 @@ vuelve a ver eso mismo.
   convertir. Un `.doc`/`.ppt`/RTF/OpenDocument se convierte una vez con
   Office a `.docx`/`.pptx` (`office_convertido.rs`, copia en
   `<raíz>/cache/office/`) y se lee en el visor propio **en nombre del
-  original** (`pixpin_proyecto::anotado::suplir`): lo anotado va a los
+  original** (`pindesk_proyecto::anotado::suplir`): lo anotado va a los
   `anot-<uid>…` del adjunto original y viaja como lo de un `.docx`. Android:
   si abre esos formatos por su cuenta, que use el mismo `uid` y las mismas
   terminaciones que para el `.docx`.
@@ -294,18 +294,18 @@ vuelve a ver eso mismo.
   planos: D acotar; en 3D: E aristas.
 - **Panel táctil** en planos y modelos: dos dedos mueven; pellizco = zoom.
 - **Audio**: lo grabado bajito se reproduce realzado (pico al −1 dBFS, hasta
-  ×16, limitador suave), `crates/pixpin-audio/src/volumen.rs`.
+  ×16, limitador suave), `crates/pindesk-audio/src/volumen.rs`.
 
 ## 6. Dónde está el código (PC)
 
 | Pieza | Fichero |
 |---|---|
-| Lista blanca | `crates/pixpin-sincro/src/anotado.rs` (`MARCOS`, `VISTAS`) |
-| Marcos y vistas de documentos | `apps/pixpin/src/marcos_doc.rs` |
-| A qué fichero va cada cosa | `apps/pixpin/src/anotado_del_adjunto.rs` (`del_mensaje_o_junto`, `tinta_de_la_hoja_del_libro`, `tinta_de_la_pagina`) |
-| Planos y modelos | `crates/pixpin-cad/src/marcadores.rs`, `apps/pixpin/src/plano_cad.rs` (`SitioDeMarcadores`) |
-| Imprimir en grupo | `apps/pixpin/src/marco_imprimir.rs` (`imprimir_fotos`) |
-| Prueba de dos PC | `crates/pixpin-proyecto/tests/marcos_vistas_y_tinta_entre_dos_pc.rs` |
+| Lista blanca | `crates/pindesk-sincro/src/anotado.rs` (`MARCOS`, `VISTAS`) |
+| Marcos y vistas de documentos | `apps/pindesk/src/marcos_doc.rs` |
+| A qué fichero va cada cosa | `apps/pindesk/src/anotado_del_adjunto.rs` (`del_mensaje_o_junto`, `tinta_de_la_hoja_del_libro`, `tinta_de_la_pagina`) |
+| Planos y modelos | `crates/pindesk-cad/src/marcadores.rs`, `apps/pindesk/src/plano_cad.rs` (`SitioDeMarcadores`) |
+| Imprimir en grupo | `apps/pindesk/src/marco_imprimir.rs` (`imprimir_fotos`) |
+| Prueba de dos PC | `crates/pindesk-proyecto/tests/marcos_vistas_y_tinta_entre_dos_pc.rs` |
 
 ## 7. Para Android, en orden
 

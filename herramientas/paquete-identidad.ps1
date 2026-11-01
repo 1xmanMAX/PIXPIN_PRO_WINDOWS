@@ -22,7 +22,7 @@
 # Requisitos: Windows 10 2004 o mas nuevo; makeappx.exe y signtool.exe del SDK
 # de Windows (se buscan en "Windows Kits\10\bin\<version>\x64"); y que el
 # pindesk.exe instalado lleve en su manifiesto el elemento <msix> (desde el
-# 15-oct-2026, apps/pixpin/pixpinmax.manifest): sin el, Windows registra el
+# 15-oct-2026, apps/pindesk/pindesk.manifest): sin el, Windows registra el
 # paquete pero el exe no recibe la identidad.
 
 param(
@@ -47,7 +47,7 @@ if (-not $Instalado) { $Instalado = Join-Path $env:LOCALAPPDATA 'Programs\PinDes
 if (-not $Salida) { $Salida = Join-Path $fuente 'salida' }
 # Desde nov-2026 la identidad es PinDesk (paquete PinDesk, editor
 # CN=PinDesk Local, aplicacion PinDesk), la misma que el <msix> de
-# apps/pixpin/pixpinmax.manifest. La de antes se quita al registrar (y su
+# apps/pindesk/pindesk.manifest. La de antes se quita al registrar (y su
 # certificado con -Quitar -BorrarCertificado): docs/formato-pindesk.md.
 $sujeto = 'CN=PinDesk Local'
 $nombrePaquete = 'PinDesk'
@@ -167,7 +167,7 @@ if ($Crear -and -not $Elevado) {
     $m.Save((Join-Path $obra 'AppxManifest.xml'))
     # Los logos, del icono de la app.
     Add-Type -AssemblyName System.Drawing
-    $ico = Join-Path $repo 'apps\pixpin\recursos\pixpinmax.ico'
+    $ico = Join-Path $repo 'apps\pindesk\recursos\pindesk.ico'
     # El icono mas grande del .ico. Los de 256 suelen ir en PNG, que
     # System.Drawing.Icon no lee: se saca cada imagen a mano (cabecera ICO:
     # 6 bytes y 16 por entrada) y se abre como imagen.

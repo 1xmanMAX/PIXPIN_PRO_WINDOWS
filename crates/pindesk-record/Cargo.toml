@@ -1,0 +1,15 @@
+[package]
+name = "pindesk-record"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = "2.0.20"
+
+# Solo en Windows: `escala` (las cuentas del video en vivo) es puro y se
+# prueba en cualquier maquina.
+[target.'cfg(windows)'.dependencies]
+pindesk-codec = { version = "0.1.0", path = "../pindesk-codec" }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com"] }

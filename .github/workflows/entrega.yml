@@ -25,7 +25,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Compilar (release)
-        run: cargo build --release -p pixpin -p pixpin-aligerar -p pixpin-lanzador -p pixpin-puente -p pixpin-mcp
+        run: cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador -p pindesk-puente -p pindesk-mcp
       - name: Empaquetar
         shell: pwsh
         run: |

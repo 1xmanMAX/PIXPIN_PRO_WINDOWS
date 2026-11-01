@@ -73,7 +73,7 @@ En Android lo natural es la voz en `files/voz/` y el resto en
 - `marcadores`: en orden de `ms`, uno por milisegundo, `texto` de 200
   caracteres como mucho sin saltos de linea (puede ir vacio). **Sin
   marcadores la clave se quita** (no `[]`). Las cuentas estan en
-  `crates/pixpin-proyecto/src/clase.rs`.
+  `crates/pindesk-proyecto/src/clase.rs`.
 - `marcas` (`[ms]`, las banderitas) es del esquema de siempre.
 - `transcripcion` es `[m:ss] texto`, un parrafo por trozo y una linea en
   blanco entre trozos. **Llega despues**: Whisper tarda minutos y el PC
@@ -304,7 +304,7 @@ chat detras de ellos. Es una carpeta como las de arriba con campos de mas
   adjunto.
 - Para leerla (Rust): `Carpeta::es_grabacion`, `de_la_grabacion`,
   `capturas`, `adjuntos`, `adjuntar` en
-  `crates/pixpin-proyecto/src/carpeta_de_paginas.rs`.
+  `crates/pindesk-proyecto/src/carpeta_de_paginas.rs`.
 
 ## 6. Lo que no viaja (a proposito)
 
@@ -315,8 +315,8 @@ chat detras de ellos. Es una carpeta como las de arriba con campos de mas
 
 ## 7. Las reglas de fusion nuevas (para copiar en `Fusion.kt`)
 
-Estan en `crates/pixpin-sincro/src/fusion.rs` (y copiadas en
-`apple/nucleo/pixpin-sincro`). El resultado lo calcula quien dirige y lo
+Estan en `crates/pindesk-sincro/src/fusion.rs` (y copiadas en
+`apple/nucleo/pindesk-sincro`). El resultado lo calcula quien dirige y lo
 manda al otro, asi que los dos quedan iguales aunque solo uno sepa la regla;
 pero si dirige un aparato que no la sabe, se pierde lo de uno de los lados.
 
@@ -376,9 +376,9 @@ archivo binario (no entra en `esTexto`).
 
 ### Mac, iPad e iPhone (`apple/`)
 
-- [x] `apple/nucleo/pixpin-sincro`: reglas 7.1, 7.2 y 7.3, copiadas de
-      `crates/` (`cargo test -p pixpin-sincro` en `apple/`).
-- [ ] `apple/nucleo/pixpin-proyecto` aun no tiene `clase.rs` ni
+- [x] `apple/nucleo/pindesk-sincro`: reglas 7.1, 7.2 y 7.3, copiadas de
+      `crates/` (`cargo test -p pindesk-sincro` en `apple/`).
+- [ ] `apple/nucleo/pindesk-proyecto` aun no tiene `clase.rs` ni
       `carpeta_de_paginas.rs`: copiarlos cuando la app quiera ensenar
       marcadores o carpetas (para sincronizar no hacen falta: los campos
       viajan igual). Al copiar `carpeta_de_paginas.rs`, ya trae la carpeta
@@ -388,7 +388,7 @@ archivo binario (no entra en `esTexto`).
 
 ## 9. Donde esta probado
 
-`crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs`, PC contra un
+`crates/pindesk-proyecto/tests/sincronizar_con_el_movil.rs`, PC contra un
 movil de mentira (`DiscoAndroid`) por un socket con el protocolo y el
 cifrado de verdad:
 
@@ -400,7 +400,7 @@ cifrado de verdad:
 - `una_nota_rica_del_pc_llega_al_movil_con_sus_fotos`
 - `las_vistas_de_los_marcadores_de_un_lienzo_viajan_con_sus_marcas` (de antes)
 
-Y las reglas sueltas en `crates/pixpin-sincro/src/fusion.rs` (pruebas
+Y las reglas sueltas en `crates/pindesk-sincro/src/fusion.rs` (pruebas
 `un_marcador_en_cada_aparato_…`, `una_pagina_anadida_a_la_carpeta_…`,
 `la_biblioteca_de_figuras_guardada_en_los_dos_…`).
 
@@ -468,7 +468,7 @@ solo cambio en un lado.
    va **encima**.
 3. Para elegirla, lo mismo que el PC: imagen (de la galeria o pegada, con
    recorte cuadrado que se mueve y se acerca), una rejilla de emojis con
-   buscador, doce fondos (`pixpin_ui::foto_del_chat::FONDOS`, los siete de
+   buscador, doce fondos (`pindesk_ui::foto_del_chat::FONDOS`, los siete de
    Telegram y cinco mas) y «Como siempre».
 
 ### Tareas
@@ -476,11 +476,11 @@ solo cambio en un lado.
 - [x] Android: `avatar` en `Proyecto` (todos los campos opcionales, y lo
       desconocido conservado), pintarlo en la lista y en la cabecera, y la
       hoja para elegirlo desde la ficha del chat.
-- [ ] Mac, iPad e iPhone: el nucleo ya lo tiene (`apple/nucleo/pixpin-proyecto/src/avatar.rs`,
-      `apple/nucleo/pixpin-ui/src/foto_del_chat.rs`); falta pintarlo en Swift
+- [ ] Mac, iPad e iPhone: el nucleo ya lo tiene (`apple/nucleo/pindesk-proyecto/src/avatar.rs`,
+      `apple/nucleo/pindesk-ui/src/foto_del_chat.rs`); falta pintarlo en Swift
       y la hoja de elegirlo.
 
-Probado en `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs`:
+Probado en `crates/pindesk-proyecto/tests/sincronizar_con_el_movil.rs`:
 `la_foto_del_chat_viaja_con_su_imagen_y_vuelve_cambiada_desde_el_movil` y
 `el_logo_de_antes_empieza_a_viajar_como_foto_del_chat`.
 
@@ -535,7 +535,7 @@ corta en un video) y tras sus archivos. Un archivo grande cortado a medias
 
 Codigo: `prioridad::{nivel_de, ordenar, ordenar_chats, grupos_de_archivos}`,
 `PreparadoArchivos::{en_orden, pieza}`, `Sesion::aplicar_pasos`,
-`vuelta::una` (`crates/pixpin-sincro`, copiado en `apple/nucleo/pixpin-sincro`).
+`vuelta::una` (`crates/pindesk-sincro`, copiado en `apple/nucleo/pindesk-sincro`).
 Probado en `prioridad::pruebas` (los vectores de `PrioridadTest`) y en
 `diario_de_verdad::cortada_a_mitad_del_video_las_tareas_y_el_chat_compartido_ya_llegaron`.
 
@@ -587,7 +587,7 @@ hashes). Lo de sincronizar desde el 20-oct:
 | Versiones vinculadas (`versionDe`, `versionN`, copias) | 4d57eb71 | se conservan y viajan (pruebas de hoy); la regla al editar, la ventana del chat | si |
 | Boton de sincronizar que gira (`VueltasEnMarcha`) | a437419a | 0470294 | no viaja |
 | Pantalla de aparatos en tarjetas (e5ae6844) | solo pantalla | — | no viaja |
-| Chats compartidos como conversacion (0486b8d6, `EntrePersonas.kt`) | puerto de `conversacion.rs` | `pixpin_ui::conversacion` | no cambia nada de lo que viaja |
+| Chats compartidos como conversacion (0486b8d6, `EntrePersonas.kt`) | puerto de `conversacion.rs` | `pindesk_ui::conversacion` | no cambia nada de lo que viaja |
 | «Diario de cambios» (checklist 13: `docs/sincronizacion-por-diario.md`, `docs/guia-sincronizacion-para-windows.md`) | 261b67a5 | §13 | si |
 
 ### Lo que Android tiene que hacer
@@ -627,7 +627,7 @@ lo de siempre. Un fallo del diario cuesta tiempo, nunca datos.
 En el PC las rutas del diario son las de este equipo relativas a su raiz
 (`proyectos/<ficha>/lienzos/d1.excalidraw`): el diario no viaja. El **nodo**
 es el indice de archivo de NTFS con el numero de volumen
-(`(vol=…,idx=…)`, `pixpin_sistema::archivos::nodo_de`); en Mac, el inodo.
+(`(vol=…,idx=…)`, `pindesk_sistema::archivos::nodo_de`); en Mac, el inodo.
 
 - **Se apunta despues de escribir**: lo que escribe la sincronizacion
   (`Disco::escribir_archivo_de`, `escribir_reanudable`, marcas, lapidas,
@@ -696,8 +696,8 @@ se ha tocado desde la ultima vez que se miro (`<raiz>/copias/diario.tsv`:
 | La aplicacion murio a mitad | al empezar la vuelta siguiente, fuera los `*.sincro` |
 | Trozo de mas | «Llegó más de lo prometido»: corta sin escribirlo |
 | Tramo repetido o fuera de orden | solo el **primero** que no descifra es «otro codigo de grupo»; los demas, `ErrorCanal::TramoDanado` |
-| Dos a la vez | «ocupado» se reintenta en **1–4 s con azar**; un fallo de verdad a los 5 s, 10 s, 20 s… hasta 5 min (±25 %), sin esperar a los 10 min (las cuentas en `pixpin_sincro::reintentos`; el reloj, `automatica::Reloj` con `reintento`, `acabo` y `no_empezo`) |
-| Al volver la red | Windows avisa del cambio de direccion (`pixpin_shell::red`, `NotifyAddrChange`) y se sondea ya (`presencia::sondear_ya`, `Reloj::volvio_la_red`) |
+| Dos a la vez | «ocupado» se reintenta en **1–4 s con azar**; un fallo de verdad a los 5 s, 10 s, 20 s… hasta 5 min (±25 %), sin esperar a los 10 min (las cuentas en `pindesk_sincro::reintentos`; el reloj, `automatica::Reloj` con `reintento`, `acabo` y `no_empezo`) |
+| Al volver la red | Windows avisa del cambio de direccion (`pindesk_shell::red`, `NotifyAddrChange`) y se sondea ya (`presencia::sondear_ya`, `Reloj::volvio_la_red`) |
 
 ### 13.6 Automatica por defecto
 
@@ -732,9 +732,9 @@ maquina; lo que cuenta es la proporcion):
       lo era) y al volver la red.
 - [x] 7. Versiones vinculadas: ya estaban (§11.3).
 
-Pruebas (`crates/pixpin-sincro/src/diario_de_verdad.rs`,
+Pruebas (`crates/pindesk-sincro/src/diario_de_verdad.rs`,
 `diario::pruebas`, `prioridad::pruebas`, `reintentos::pruebas`,
-`canal::pruebas`, `crates/pixpin-proyecto/tests/sincronizar_por_diario.rs`):
+`canal::pruebas`, `crates/pindesk-proyecto/tests/sincronizar_por_diario.rs`):
 la segunda vuelta no mira nada desde los dos lados, un cambio solo mira su
 chat, lo escrito sin apuntar llega, un lienzo se encuentra por el indice,
 sin diario o con una linea rota no se pierde nada, apagado como antes, la
@@ -747,8 +747,8 @@ compartido, el orden por niveles, lo que no se conoce se contesta, el PC con
 el Android nuevo y con uno de antes en los dos sentidos, y 110 chats sin
 leer ni un cuaderno.
 
-Mac, iPad e iPhone: el nucleo (`apple/nucleo/pixpin-sincro`,
-`pixpin-proyecto`, `pixpin-sistema`) lleva lo mismo.
+Mac, iPad e iPhone: el nucleo (`apple/nucleo/pindesk-sincro`,
+`pindesk-proyecto`, `pindesk-sistema`) lleva lo mismo.
 
 ## 14. Lo importante de una clase o reunion (Jev, 28-oct-2026)
 
@@ -783,7 +783,7 @@ esta en [jev.md](jev.md).
   no hay nada (no se vuelve a preguntar). `importantesDe`: el modelo que lo
   hallo.
 - Las cuentas (leer, escribir, el filtro) estan en
-  `crates/pixpin-proyecto/src/clase.rs` (`importantes_de`,
+  `crates/pindesk-proyecto/src/clase.rs` (`importantes_de`,
   `poner_importantes`, `marcar_en_tareas`, `tipos_en`,
   `se_ve_con_filtro`).
 
@@ -804,5 +804,5 @@ apuntado en Tareas sigue marcado).
   texto del renglon con su nota `💬 🎙 <clase> ⏱ m:ss` y pone `enTareas`.
 - **No hace falta preguntar a Jev** en el movil: si llega con
   `importantes`, ya esta. Un Android con su propia clave puede hacerlo igual
-  (mismas preguntas, `crates/pixpin-typesafe/src/preguntas.rs`).
+  (mismas preguntas, `crates/pindesk-typesafe/src/preguntas.rs`).
 - La pagina compartida (`clase_exportar`) lleva las chapitas y el filtro.

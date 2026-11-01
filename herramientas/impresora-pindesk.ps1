@@ -1,6 +1,6 @@
 # Pone (o quita) la impresora "PinDesk": Imprimir -> PinDesk desde cualquier
 # programa deja el PDF en la carpeta que vigila PinDesk, que lo abre en su
-# lector como pin (crates/pixpin-shell/src/impresora.rs).
+# lector como pin (crates/pindesk-shell/src/impresora.rs).
 #
 # Uso:
 #   powershell -ExecutionPolicy Bypass -File herramientas\impresora-pindesk.ps1 -SoloMostrar

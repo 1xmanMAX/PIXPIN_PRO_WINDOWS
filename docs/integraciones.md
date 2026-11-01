@@ -7,9 +7,9 @@ pantalla: lo que pasa se ve como con Flow Launcher, en el aviso de PinDesk.
 
 | Puerta | Cómo | Dónde vive |
 |---|---|---|
-| Línea de órdenes | `pindesk <verbo> …`, `pindesk --pedido '<json>'` | `crates/pixpin-shell/src/orden.rs` (puro), `apps/pixpin/src/orden.rs` (el proceso) |
+| Línea de órdenes | `pindesk <verbo> …`, `pindesk --pedido '<json>'` | `crates/pindesk-shell/src/orden.rs` (puro), `apps/pindesk/src/orden.rs` (el proceso) |
 | Enlaces | `pindesk://tarea?texto=…`, `pindesk://atajo/…` (Android) | `orden::de_enlace`, `orden::seguridad`, `orden::firma` |
-| Menú del Explorador y «Enviar a» | clic derecho → «Mostrar más opciones» → PinDesk ▸ | `herramientas/integraciones.ps1`, `pixpin_shell::juntar` |
+| Menú del Explorador y «Enviar a» | clic derecho → «Mostrar más opciones» → PinDesk ▸ | `herramientas/integraciones.ps1`, `pindesk_shell::juntar` |
 | PowerShell | `Import-Module …\PinDesk.psm1` | `herramientas/PinDesk.psm1` |
 | AutoHotkey | `#Include …\pindesk.ahk` | `herramientas/pindesk.ahk` |
 | Stream Deck, accesos directos, Programador de tareas | la acción «Abrir» con un enlace o con `pindesk.exe <verbo>` | (nada que instalar) |
@@ -81,7 +81,7 @@ pindesk ayuda
 | 5 | PinDesk no contestó (colgada) |
 | 6 | Rechazado: un enlace que no puede pedir eso, o el usuario dijo que no al confirmar |
 
-0, 2, 3 y 4 son los mismos de `pixpin-lanzador pedido`.
+0, 2, 3 y 4 son los mismos de `pindesk-lanzador pedido`.
 
 ### La consola
 
@@ -96,9 +96,9 @@ Por eso:
   vale si se espera.
 - **Sin consola** (un enlace, el menú del Explorador, un Stream Deck), los fallos se dicen en un
   cuadro.
-- `PIXPIN_ORDEN_SIN_CUADROS=1`: ningún cuadro (scripts desatendidos): lo que se avisaría va a la
+- `PINDESK_ORDEN_SIN_CUADROS=1`: ningún cuadro (scripts desatendidos): lo que se avisaría va a la
   salida de errores y lo que se preguntaría se contesta «no».
-- `PIXPIN_ORDEN_TIEMPO=1`: escribe cuánto tardó PinDesk en aceptar.
+- `PINDESK_ORDEN_TIEMPO=1`: escribe cuánto tardó PinDesk en aceptar.
 
 ### Lo que tarda
 
@@ -107,7 +107,7 @@ registro a fichero, Direct2D, la GPU o el idioma (el catálogo de textos solo se
 enseñar un cuadro). Lo que cuesta es arrancar el proceso: el exe importa estáticamente `d2d1`,
 `d3d11`, `dwrite`, `dxgi`, `mfplat`… y Windows mapea esos DLL al cargarlo aunque no se llamen.
 
-Medido (`apps/pixpin/tests/orden_de_punta_a_punta.rs`, `medir_el_tiempo_hasta_aceptado`,
+Medido (`apps/pindesk/tests/orden_de_punta_a_punta.rs`, `medir_el_tiempo_hasta_aceptado`,
 compilación de depuración, 15 vueltas, de lanzar el proceso a que sale con «aceptado»):
 
 | Orden | Mínimo | Mediana | Máximo |
@@ -122,11 +122,11 @@ de los 0,5 s, así que no se ha tocado el enlazado (cargar `d2d1` y compañía e
 
 ### Para otros programas en Rust
 
-`pixpin_shell::mensajero::enviar_pedidos_o_arrancar(&[json], Some(exe))` manda pedidos a la
+`pindesk_shell::mensajero::enviar_pedidos_o_arrancar(&[json], Some(exe))` manda pedidos a la
 PinDesk que corre y, si no hay ninguna, abre `exe` y la espera (8 s); devuelve `Envio`, con
 `codigo_de_salida()`. Con `None` no abre nada. Es la que usan la línea de órdenes, los enlaces y el
 menú del Explorador, y la que deben usar el servidor MCP, el puente del navegador o los avisos con
-botones si no son ya la propia app. `pixpin_shell::orden` arma los pedidos de los verbos y de los
+botones si no son ya la propia app. `pindesk_shell::orden` arma los pedidos de los verbos y de los
 enlaces (`de_argumentos`, `de_enlace`, `pedido`, `pedido_al_asistente`), dice cuánto se fía de un
 enlace (`seguridad`) y firma los de la casa (`orden::firma::firmar`).
 
@@ -184,7 +184,7 @@ Los avisos con botones (`notificacion`, rama flow-asistente) usan este mismo pro
 
 Los botones de los avisos de la propia app («Hecha», «+10 min», «Conservar») son enlaces, y
 preguntar si de verdad quieres lo que acabas de pulsar en tu propio aviso sería absurdo. La app
-los **firma**: `pixpin_shell::orden::firma::firmar(&url)` añade `&firma=<hex>`, un HMAC-SHA256 con
+los **firma**: `pindesk_shell::orden::firma::firmar(&url)` añade `&firma=<hex>`, un HMAC-SHA256 con
 una clave de 32 bytes al azar de `%LOCALAPPDATA%\PinDesk\enlaces.clave` (se crea la primera
 vez). Se firma la forma canónica (verbo, trozos y campos descodificados y en orden), así que
 reescribir el enlace por el camino no lo invalida. Un enlace con una firma buena se hace sin
@@ -192,8 +192,8 @@ preguntar (salvo una ruta que no sea de este equipo, que nunca). Una firma inven
 clave no vale nada: el enlace pasa por la lista blanca como cualquiera.
 
 ```rust
-let url = pixpin_shell::orden::enlace("pedido", &[("json", &pedido.to_string())]);
-let url = pixpin_shell::orden::firma::firmar(&url)?;   // pindesk://pedido?json=…&firma=…
+let url = pindesk_shell::orden::enlace("pedido", &[("json", &pedido.to_string())]);
+let url = pindesk_shell::orden::firma::firmar(&url)?;   // pindesk://pedido?json=…&firma=…
 ```
 
 ## 3. El menú del Explorador y «Enviar a»
@@ -214,7 +214,7 @@ y los mismos cinco en «Enviar a» (`%APPDATA%\Microsoft\Windows\SendTo\PinDesk 
 verbo de argumento: ahí Windows pasa todos los ficheros en una sola llamada).
 
 **Varios ficheros a la vez.** Un verbo del menú clásico no recibe todos los elegidos: el
-Explorador lanza **una copia por fichero**. `--juntar` (`pixpin_shell::juntar`) hace que cada copia
+Explorador lanza **una copia por fichero**. `--juntar` (`pindesk_shell::juntar`) hace que cada copia
 apunte su ruta en `%TEMP%\pixpin-juntar\<verbo>` y pida un mutex con nombre; la primera espera
 200 ms de silencio, se lleva todas y las demás se van sin hacer nada. Así tres capturas con
 «Copiar texto (OCR)» dan un solo texto con las tres, «Al chat» un solo mensaje y «Preguntar al

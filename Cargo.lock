@@ -1493,7 +1493,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "pixpin"
+name = "pindesk"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1502,43 +1502,43 @@ dependencies = [
  "fluent-bundle",
  "lopdf",
  "pdfsqueeze-core",
- "pixpin-aligerar",
- "pixpin-anki",
- "pixpin-audio",
- "pixpin-bim",
- "pixpin-cad",
- "pixpin-capture",
- "pixpin-codec",
- "pixpin-docs",
- "pixpin-frase",
- "pixpin-geom",
- "pixpin-hojas",
- "pixpin-ia",
- "pixpin-indra",
- "pixpin-lanzador",
- "pixpin-lecciones",
- "pixpin-motor-video",
- "pixpin-motor2d",
- "pixpin-nivel",
- "pixpin-notas",
- "pixpin-ocr",
- "pixpin-office",
- "pixpin-pdf",
- "pixpin-pila",
- "pixpin-pin",
- "pixpin-proyecto",
- "pixpin-record",
- "pixpin-render",
- "pixpin-shell",
- "pixpin-sincro",
- "pixpin-sistema",
- "pixpin-store",
- "pixpin-timeline",
- "pixpin-tinta",
- "pixpin-typesafe",
- "pixpin-ui",
- "pixpin-voz",
- "pixpin-web",
+ "pindesk-aligerar",
+ "pindesk-anki",
+ "pindesk-audio",
+ "pindesk-bim",
+ "pindesk-cad",
+ "pindesk-capture",
+ "pindesk-codec",
+ "pindesk-docs",
+ "pindesk-frase",
+ "pindesk-geom",
+ "pindesk-hojas",
+ "pindesk-ia",
+ "pindesk-indra",
+ "pindesk-lanzador",
+ "pindesk-lecciones",
+ "pindesk-motor-video",
+ "pindesk-motor2d",
+ "pindesk-nivel",
+ "pindesk-notas",
+ "pindesk-ocr",
+ "pindesk-office",
+ "pindesk-pdf",
+ "pindesk-pila",
+ "pindesk-pin",
+ "pindesk-proyecto",
+ "pindesk-record",
+ "pindesk-render",
+ "pindesk-shell",
+ "pindesk-sincro",
+ "pindesk-sistema",
+ "pindesk-store",
+ "pindesk-timeline",
+ "pindesk-tinta",
+ "pindesk-typesafe",
+ "pindesk-ui",
+ "pindesk-voz",
+ "pindesk-web",
  "qrcodegen",
  "serde",
  "serde_json",
@@ -1551,17 +1551,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-aligerar"
+name = "pindesk-aligerar"
 version = "0.1.0"
 dependencies = [
  "lopdf",
  "pdfsqueeze-core",
- "pixpin-shell",
+ "pindesk-shell",
  "rayon",
 ]
 
 [[package]]
-name = "pixpin-anki"
+name = "pindesk-anki"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -1569,11 +1569,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-audio"
+name = "pindesk-audio"
 version = "0.1.0"
 dependencies = [
- "pixpin-motor-audio",
- "pixpin-sistema",
+ "pindesk-motor-audio",
+ "pindesk-sistema",
  "thiserror",
  "tracing",
  "windows",
@@ -1581,25 +1581,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-bim"
+name = "pindesk-bim"
 version = "0.1.0"
 dependencies = [
  "delaunator",
  "ifc-lite-processing",
- "pixpin-cad",
+ "pindesk-cad",
  "roxmltree",
  "rvt",
  "tracing",
 ]
 
 [[package]]
-name = "pixpin-cad"
+name = "pindesk-cad"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "lyon_tessellation",
  "opencadcodec",
- "pixpin-ui",
+ "pindesk-ui",
  "png",
  "serde",
  "serde_json",
@@ -1611,17 +1611,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-capture"
+name = "pindesk-capture"
 version = "0.1.0"
 dependencies = [
- "pixpin-codec",
- "pixpin-geom",
+ "pindesk-codec",
+ "pindesk-geom",
  "thiserror",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-codec"
+name = "pindesk-codec"
 version = "0.1.0"
 dependencies = [
  "image",
@@ -1630,7 +1630,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-docs"
+name = "pindesk-docs"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1640,15 +1640,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-frase"
+name = "pindesk-frase"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-geom"
+name = "pindesk-geom"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-hojas"
+name = "pindesk-hojas"
 version = "0.1.0"
 dependencies = [
  "flate2",
@@ -1657,20 +1657,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-ia"
+name = "pindesk-ia"
 version = "0.1.0"
 dependencies = [
  "image",
- "pixpin-codec",
- "pixpin-frase",
- "pixpin-geom",
- "pixpin-motor2d",
- "pixpin-notas",
- "pixpin-ocr",
- "pixpin-paginas",
- "pixpin-pdf",
- "pixpin-shell",
- "pixpin-sistema",
+ "pindesk-codec",
+ "pindesk-frase",
+ "pindesk-geom",
+ "pindesk-motor2d",
+ "pindesk-notas",
+ "pindesk-ocr",
+ "pindesk-paginas",
+ "pindesk-pdf",
+ "pindesk-shell",
+ "pindesk-sistema",
  "roxmltree",
  "serde_json",
  "sha2 0.10.9",
@@ -1680,7 +1680,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-indra"
+name = "pindesk-indra"
 version = "0.1.0"
 dependencies = [
  "serde_json",
@@ -1688,45 +1688,46 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-lanzador"
+name = "pindesk-lanzador"
 version = "0.1.0"
 dependencies = [
- "pixpin-frase",
- "pixpin-lecciones",
+ "pindesk-frase",
+ "pindesk-lecciones",
  "serde",
  "serde_json",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-lecciones"
+name = "pindesk-lecciones"
 version = "0.1.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
-name = "pixpin-mcp"
+name = "pindesk-mcp"
 version = "0.1.0"
 dependencies = [
- "pixpin-capture",
- "pixpin-codec",
- "pixpin-docs",
- "pixpin-geom",
- "pixpin-hojas",
- "pixpin-ia",
- "pixpin-ocr",
- "pixpin-office",
- "pixpin-pdf",
- "pixpin-proyecto",
- "pixpin-shell",
- "pixpin-store",
+ "pindesk-capture",
+ "pindesk-codec",
+ "pindesk-docs",
+ "pindesk-geom",
+ "pindesk-hojas",
+ "pindesk-ia",
+ "pindesk-ocr",
+ "pindesk-office",
+ "pindesk-pdf",
+ "pindesk-proyecto",
+ "pindesk-shell",
+ "pindesk-sistema",
+ "pindesk-store",
  "serde_json",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-motor-audio"
+name = "pindesk-motor-audio"
 version = "0.1.0"
 dependencies = [
  "thiserror",
@@ -1736,54 +1737,54 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-motor-video"
+name = "pindesk-motor-video"
 version = "0.1.0"
 dependencies = [
- "pixpin-capture",
- "pixpin-record",
- "pixpin-sistema",
+ "pindesk-capture",
+ "pindesk-record",
+ "pindesk-sistema",
  "thiserror",
  "tracing",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-motor2d"
+name = "pindesk-motor2d"
 version = "0.1.0"
 dependencies = [
- "pixpin-geom",
+ "pindesk-geom",
  "serde",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "pixpin-nivel"
+name = "pindesk-nivel"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-notas"
+name = "pindesk-notas"
 version = "0.1.0"
 dependencies = [
- "pixpin-codec",
- "pixpin-docs",
- "pixpin-motor2d",
- "pixpin-render",
- "pixpin-shell",
- "pixpin-ui",
+ "pindesk-codec",
+ "pindesk-docs",
+ "pindesk-motor2d",
+ "pindesk-render",
+ "pindesk-shell",
+ "pindesk-ui",
  "tracing",
  "windows",
  "windows-numerics",
 ]
 
 [[package]]
-name = "pixpin-ocr"
+name = "pindesk-ocr"
 version = "0.1.0"
 dependencies = [
  "flate2",
- "pixpin-geom",
- "pixpin-indra",
- "pixpin-voz",
+ "pindesk-geom",
+ "pindesk-indra",
+ "pindesk-voz",
  "sha2 0.10.9",
  "thiserror",
  "tracing",
@@ -1792,29 +1793,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-office"
+name = "pindesk-office"
 version = "0.1.0"
 dependencies = [
  "memchr",
- "pixpin-docs",
+ "pindesk-docs",
  "zip",
 ]
 
 [[package]]
-name = "pixpin-paginas"
+name = "pindesk-paginas"
 version = "0.1.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
-name = "pixpin-pdf"
+name = "pindesk-pdf"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "memchr",
- "pixpin-codec",
- "pixpin-motor2d",
+ "pindesk-codec",
+ "pindesk-motor2d",
  "serde_json",
  "thiserror",
  "windows",
@@ -1822,26 +1823,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-pila"
+name = "pindesk-pila"
 version = "0.1.0"
 dependencies = [
- "pixpin-codec",
- "pixpin-geom",
- "pixpin-render",
+ "pindesk-codec",
+ "pindesk-geom",
+ "pindesk-render",
  "thiserror",
  "tracing",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-pin"
+name = "pindesk-pin"
 version = "0.1.0"
 dependencies = [
- "pixpin-codec",
- "pixpin-geom",
- "pixpin-motor2d",
- "pixpin-render",
- "pixpin-shell",
+ "pindesk-codec",
+ "pindesk-geom",
+ "pindesk-motor2d",
+ "pindesk-render",
+ "pindesk-shell",
  "thiserror",
  "tracing",
  "windows",
@@ -1850,14 +1851,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-proyecto"
+name = "pindesk-proyecto"
 version = "0.1.0"
 dependencies = [
  "flate2",
- "pixpin-motor2d",
- "pixpin-sincro",
- "pixpin-sistema",
- "pixpin-ui",
+ "pindesk-motor2d",
+ "pindesk-sincro",
+ "pindesk-sistema",
+ "pindesk-ui",
  "serde",
  "serde_json",
  "thiserror",
@@ -1866,35 +1867,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-puente"
+name = "pindesk-puente"
 version = "0.1.0"
 dependencies = [
- "pixpin-shell",
- "pixpin-sistema",
+ "pindesk-shell",
+ "pindesk-sistema",
  "serde",
  "serde_json",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-record"
+name = "pindesk-record"
 version = "0.1.0"
 dependencies = [
- "pixpin-codec",
+ "pindesk-codec",
  "thiserror",
  "windows",
 ]
 
 [[package]]
-name = "pixpin-render"
+name = "pindesk-render"
 version = "0.1.0"
 dependencies = [
  "image",
- "pixpin-codec",
- "pixpin-hojas",
- "pixpin-nivel",
- "pixpin-office",
- "pixpin-pdf",
+ "pindesk-codec",
+ "pindesk-hojas",
+ "pindesk-nivel",
+ "pindesk-office",
+ "pindesk-pdf",
  "serde_json",
  "thiserror",
  "windows",
@@ -1904,14 +1905,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-shell"
+name = "pindesk-shell"
 version = "0.1.0"
 dependencies = [
  "hmac",
- "pixpin-docs",
- "pixpin-geom",
- "pixpin-nivel",
- "pixpin-sistema",
+ "pindesk-docs",
+ "pindesk-geom",
+ "pindesk-nivel",
+ "pindesk-sistema",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1924,7 +1925,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-sincro"
+name = "pindesk-sincro"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
@@ -1934,8 +1935,8 @@ dependencies = [
  "hmac",
  "p256",
  "pbkdf2",
- "pixpin-lecciones",
- "pixpin-sistema",
+ "pindesk-lecciones",
+ "pindesk-sistema",
  "rand_core 0.6.4",
  "serde",
  "serde_json",
@@ -1944,7 +1945,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-sistema"
+name = "pindesk-sistema"
 version = "0.1.0"
 dependencies = [
  "libc",
@@ -1955,14 +1956,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-store"
+name = "pindesk-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
  "fluent-syntax",
- "pixpin-frase",
- "pixpin-motor2d",
- "pixpin-sistema",
+ "pindesk-frase",
+ "pindesk-motor2d",
+ "pindesk-sistema",
  "serde",
  "serde_json",
  "thiserror",
@@ -1973,7 +1974,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-timeline"
+name = "pindesk-timeline"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1981,15 +1982,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-tinta"
+name = "pindesk-tinta"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-typesafe"
+name = "pindesk-typesafe"
 version = "0.1.0"
 dependencies = [
  "base64",
- "pixpin-sistema",
+ "pindesk-sistema",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -1998,15 +1999,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-ui"
+name = "pindesk-ui"
 version = "0.1.0"
 dependencies = [
- "pixpin-geom",
- "pixpin-motor2d",
+ "pindesk-geom",
+ "pindesk-motor2d",
 ]
 
 [[package]]
-name = "pixpin-voz"
+name = "pindesk-voz"
 version = "0.1.0"
 dependencies = [
  "serde_json",
@@ -2018,10 +2019,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-web"
+name = "pindesk-web"
 version = "0.1.0"
 dependencies = [
- "pixpin-geom",
+ "pindesk-geom",
  "thiserror",
  "tracing",
  "webview2-com",

@@ -1,4 +1,4 @@
-# Registra el puente de la extension del navegador (apps/pixpin-puente) como
+# Registra el puente de la extension del navegador (apps/pindesk-puente) como
 # "host" de mensajeria nativa de Chrome y de Edge, solo para este usuario
 # (HKCU, sin administrador). Lo llama herramientas\instalar.ps1; a mano:
 #

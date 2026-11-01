@@ -1,8 +1,8 @@
 //! **Las notas Markdown** (mensaje `NOTA` y hoja `nota` de un proyecto):
 //! guardar el texto donde lo guarda Windows (`notas_md/guardar.rs`) y lo que
 //! el editor necesita para ensenar el Markdown formateado mientras se
-//! escribe (`pixpin_docs::md_vivo`, el puerto de `EditorVivo.kt` del movil)
-//! y las formulas `$…$` (`pixpin_docs::formulas`).
+//! escribe (`pindesk_docs::md_vivo`, el puerto de `EditorVivo.kt` del movil)
+//! y las formulas `$…$` (`pindesk_docs::formulas`).
 //!
 //! **El texto del editor ES el Markdown**, letra a letra: el formato se pone
 //! encima (titulos, negrita, listas, casillas) y las marcas se esconden.
@@ -14,8 +14,8 @@
 //! cien mil letras, unos milisegundos); Swift lo pide tras una pausa al
 //! escribir, no por cada tecla, y solo restila lo que cambio.
 
-use pixpin_docs::{formulas, md_vivo};
-use pixpin_proyecto::{almacen, cuaderno};
+use pindesk_docs::{formulas, md_vivo};
+use pindesk_proyecto::{almacen, cuaderno};
 
 use crate::chats::validar_chat;
 use crate::{ErrorNucleo, MensajeChat, Nucleo};
@@ -212,7 +212,7 @@ pub fn formula_plano(formula: String) -> String {
 }
 
 fn escribir_atomico(ruta: &std::path::Path, datos: &[u8]) -> std::io::Result<()> {
-    pixpin_sincro::disco::escribir_atomico(ruta, datos)
+    pindesk_sincro::disco::escribir_atomico(ruta, datos)
 }
 
 #[uniffi::export]
@@ -266,7 +266,7 @@ impl Nucleo {
         let codigo = m.codigo_unico();
         let pj = carpeta.join("proyecto.json");
         if let Ok(t) = std::fs::read_to_string(&pj)
-            && let Ok(mut p) = serde_json::from_str::<pixpin_proyecto::Proyecto>(&t)
+            && let Ok(mut p) = serde_json::from_str::<pindesk_proyecto::Proyecto>(&t)
             && let Some(h) = p
                 .hojas
                 .iter_mut()

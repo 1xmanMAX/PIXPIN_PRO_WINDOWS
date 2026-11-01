@@ -37,7 +37,7 @@ escribir también el nuevo.
 | Versión del protocolo de pedidos | `{"pixpin": 1, "accion": …}` | `{"pindesk": 1, "accion": …}` | `"pixpin": 1` (si vienen los dos, manda `pindesk`) |
 | Capas de los PDF anotados | `PixPin · hoja N` | `PinDesk · hoja N` | las dos; `cocido.rs` reconoce `PinDesk` y `PixPin` en hexadecimal UTF‑16, mayúsculas y literal |
 | Mazos de Anki | `PixPin::<chat>`, etiqueta `pixpin` | `PinDesk::<chat>`, etiqueta `pindesk` | — (un mazo nuevo en Anki; los de antes se quedan como están) |
-| mDNS: tipos de servicio | `_pixpin._tcp`, `_pixpinenvio._tcp`, `_pixpinrecibe._tcp`, `_pixpinchat._tcp` | `_pindesk._tcp`, `_pindeskenvio._tcp`, `_pindeskrecibe._tcp`, `_pindeskchat._tcp` | **el PC anuncia y busca los dos a la vez** (`pixpin_shell::mdns`: `tipo_de_antes`, `juntar`) |
+| mDNS: tipos de servicio | `_pixpin._tcp`, `_pixpinenvio._tcp`, `_pixpinrecibe._tcp`, `_pixpinchat._tcp` | `_pindesk._tcp`, `_pindeskenvio._tcp`, `_pindeskrecibe._tcp`, `_pindeskchat._tcp` | **el PC anuncia y busca los dos a la vez** (`pindesk_shell::mdns`: `tipo_de_antes`, `juntar`) |
 | mDNS: nombre de la instancia | `PixPin <equipo>` | `PinDesk <equipo>` | cualquiera: se enseña, no se compara (se compara el TXT `g`/`id`) |
 | QR de envío y de chat compartido (lectura) | `pixpin-envio:`, `pixpin-recibe:`, `pixpin-chat:` | se aceptan también `pindesk-envio:`, `pindesk-recibe:`, `pindesk-chat:` | los de antes |
 | Lectura Veloz: enlace de PinDesk a Lectura Veloz | `lecturaveloz://pixpin/abrir?v=1&…` | `lecturaveloz://pindesk/abrir?v=1&…` | **Lectura Veloz tiene que aceptar los dos anfitriones** |
@@ -69,7 +69,7 @@ escribir el nuevo (y se apunta aquí).
 
 ## Solo en el PC: la migración al actualizar
 
-La hace `pindesk.exe` al arrancar (`pixpin_sistema::nombre::migrar_al_arrancar`), antes de abrir
+La hace `pindesk.exe` al arrancar (`pindesk_sistema::nombre::migrar_al_arrancar`), antes de abrir
 ningún fichero, y los instaladores (`Instalar.cmd`, `herramientas/instalar.ps1`):
 
 | Qué | Antes | Ahora | Cómo pasa |
@@ -118,7 +118,7 @@ para que los usuarios actualicen. Entonces, en este orden:
 3. Dejar de registrar `pixpinmax:` en el PC; seguir entendiendo los enlaces viejos que lleguen.
 4. Quitar las ramas de compatibilidad del PC: `CLASE_MENSAJES_VIEJA`, el mutex viejo, `AUMID_VIEJO`,
    `PROGID_VIEJOS`, los alias de `PinDesk.psm1` y `pindesk.ahk`, el `PixPinMax` de
-   `pixpin_sistema::nombre` (solo cuando ya no quede nadie sin migrar), el `pixpin-mcp.exe` de
+   `pindesk_sistema::nombre` (solo cuando ya no quede nadie sin migrar), el `pixpin-mcp.exe` de
    reserva.
 
 Lo de «Lo que no cambia» solo se toca con una versión nueva del protocolo acordada entre todos.

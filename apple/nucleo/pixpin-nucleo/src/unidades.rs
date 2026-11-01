@@ -1,19 +1,19 @@
 //! **Las unidades de la tinta de una hoja** (la de un PDF o un Word del
 //! chat): copia de `Unidades`, `llevar` y `con_resaltadores` de
-//! `por-traducir/pixpin/src/lector_tinta.rs`, sin ventana.
+//! `por-traducir/pindesk/src/lector_tinta.rs`, sin ventana.
 //!
-//! El lector cuenta cada hoja con `pixpin_docs::vista::ANCHO_HOJA` (1400) de
+//! El lector cuenta cada hoja con `pindesk_docs::vista::ANCHO_HOJA` (1400) de
 //! ancho desde su esquina. El fichero `anot-<uid>-p<n>` puede venir en otras
 //! (las de la capa del movil, segun sus espacios) y entonces su marco
 //! (`anot-<uid>-p<n>.hoja`) dice cuales; sin marco, la regla de antes
-//! (`pixpin_docs::vista::capa_del_movil`). Al abrir se trae todo a las del
+//! (`pindesk_docs::vista::capa_del_movil`). Al abrir se trae todo a las del
 //! lector; al guardar se escribe en las del lector con el marco que lo dice,
 //! `0,0,1400,alto`, que es lo que hacen Windows y Android desde v0.98.0.
 
-use pixpin_motor2d::Escena;
-use pixpin_motor2d::elemento::{Elemento, Figura};
-use pixpin_motor2d::vector::Punto2;
-use pixpin_sincro::anotado::MarcoDeLaHoja;
+use pindesk_motor2d::Escena;
+use pindesk_motor2d::elemento::{Elemento, Figura};
+use pindesk_motor2d::vector::Punto2;
+use pindesk_sincro::anotado::MarcoDeLaHoja;
 
 /// El grosor del resaltador del lector: cubre un renglon de texto (ver
 /// `GROSOR_RESALTADOR` de `lector_tinta.rs`). Tambien es lo que lo distingue
@@ -53,7 +53,7 @@ impl Unidades {
 
     /// La de una hoja de PDF del movil con sus espacios puestos.
     pub fn de_la_capa_del_movil(espacios: u8) -> Unidades {
-        let (escala, dx) = pixpin_docs::vista::capa_del_movil(espacios);
+        let (escala, dx) = pindesk_docs::vista::capa_del_movil(espacios);
         Unidades::uniformes(escala, dx)
     }
 
@@ -100,7 +100,7 @@ impl Unidades {
 
 /// La hoja `alto` en unidades del lector: 1400 de ancho desde su esquina.
 pub fn hoja_propia(alto: f32) -> MarcoDeLaHoja {
-    MarcoDeLaHoja::nuevo(0.0, 0.0, pixpin_docs::vista::ANCHO_HOJA, alto)
+    MarcoDeLaHoja::nuevo(0.0, 0.0, pindesk_docs::vista::ANCHO_HOJA, alto)
 }
 
 /// Corre un elemento sin subir su version (correr al leer no es cambiarlo).
@@ -151,7 +151,7 @@ pub fn llevar(e: &mut Elemento, u: Unidades) {
 /// **El trazo gordo y translucido vuelve a ser resaltador** al leer: el
 /// fichero lo guarda como un trazo mas, con su opacidad.
 pub fn con_resaltadores(escena: &mut Escena) {
-    let alfa = pixpin_motor2d::tinta::OPACIDAD_DEL_RESALTADOR;
+    let alfa = pindesk_motor2d::tinta::OPACIDAD_DEL_RESALTADOR;
     for e in escena.elementos.iter_mut() {
         let es_resaltador = e.opacidad <= alfa + 0.01 && e.grosor >= GROSOR_RESALTADOR * 0.5;
         if let (true, Figura::Lapiz { puntos, .. }) = (es_resaltador, &mut e.figura) {

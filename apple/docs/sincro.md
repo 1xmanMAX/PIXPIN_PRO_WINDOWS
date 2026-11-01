@@ -1,6 +1,6 @@
 # Sincronizar en Mac: lo que hace y como
 
-Estado del 15-oct-2026. Es el mismo protocolo (`pixpin-sincro`, version 4) y el mismo
+Estado del 15-oct-2026. Es el mismo protocolo (`pindesk-sincro`, version 4) y el mismo
 formato en disco que Windows y Android: el Mac es un aparato mas del grupo. Aqui va lo que
 el Mac anade por encima (transporte, hilos, Swift) y lo que se decidio.
 
@@ -53,11 +53,11 @@ solo se mandan archivos (no proyectos enteros).
 
 ### Chats compartidos con personas
 
-`pixpin-nucleo/src/compartidos.rs` sobre `pixpin_sincro::compartidos` e `invitacion`:
+`pixpin-nucleo/src/compartidos.rs` sobre `pindesk_sincro::compartidos` e `invitacion`:
 compartir, invitar (codigo de ocho signos + QR `pixpin-chat:1:<codigo>:<ip>:<puerto>`,
 pintado en Swift con `CIQRCodeGenerator`), entrar (`invitacion::entrar` + la primera
 `vuelta_con_persona`), sincronizar con cada persona que este en la Wi-Fi (por su `id` en el
-TXT de `_pixpin._tcp`), quitar y salir. La valla (`pixpin_sincro::valla` y
+TXT de `_pixpin._tcp`), quitar y salir. La valla (`pindesk_sincro::valla` y
 `AccesoDePersona`) la aplica el crate: ningun fichero de otro chat sale ni entra.
 
 Sin grupo pero dentro de algun chat compartido, el Mac escucha y se anuncia igual
@@ -65,10 +65,10 @@ Sin grupo pero dentro de algun chat compartido, el Mac escucha y se anuncia igua
 
 **Las claves.** El par P-256 vive en `<datos>/sincro/persona.json` (publica X.509 y
 privada PKCS#8 en base64), como en Windows y Android. Windows **no** usa DPAPI para este
-fichero (DPAPI es solo para las claves de la nube del asistente, `pixpin_ia::nube::claves`),
+fichero (DPAPI es solo para las claves de la nube del asistente, `pindesk_ia::nube::claves`),
 asi que el Mac tampoco usa el Llavero: mismo fichero, mismas reglas, y una carpeta de datos
 copiada de un aparato a otro sigue funcionando. Si algun dia Windows protege
-`persona.json`, en Mac se haria con el mismo patron que `pixpin_ia::nube::claves::Llavero`:
+`persona.json`, en Mac se haria con el mismo patron que `pindesk_ia::nube::claves::Llavero`:
 un trait que implementa Swift con Keychain (`kSecClassGenericPassword`, servicio
 `PixPin`, cuenta `persona`), instalado al arrancar.
 
@@ -82,7 +82,7 @@ seguro:
 
 - una sola vuelta por carpeta de datos (`protocolo::ocupar`, por raiz): la segunda oye
   «ocupado», tambien si este Mac esta dirigiendo una;
-- cada cuaderno se escribe con el cerrojo de `pixpin_proyecto::cuaderno`;
+- cada cuaderno se escribe con el cerrojo de `pindesk_proyecto::cuaderno`;
 - `compartidos.json`, `capturas-caducidad.json` y `galeria-compartida.json` tienen su cerrojo.
 
 `Escucha::cerrar` despierta a todos los hilos que esperan (una conexion a si misma por hilo).
@@ -118,6 +118,6 @@ cable.** El diseño, compatible hacia atras, esta en `pixpin-nucleo/src/version.
 5. Para pasar a 5: los aparatos nuevos saben 4 y 5; con uno de antes eligen 4, entre nuevos 5.
    Cuando ya no quede ninguno de antes, `version` sube a 5 en el cable.
 
-Encenderlo exige cambiar a la vez `pixpin_sincro::mensajes::Hola` aqui y en `crates/`, y
+Encenderlo exige cambiar a la vez `pindesk_sincro::mensajes::Hola` aqui y en `crates/`, y
 `Hola` de Android, y las comprobaciones `hola.version == VERSION` de `Sesion`,
 `al_lienzo::Conexion` y del PC.

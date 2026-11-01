@@ -1,9 +1,9 @@
 //! **Las lecciones aprendidas**, guardadas igual que en Windows y Android
 //! para que viajen al sincronizar sin tocar el protocolo
-//! (`por-traducir/pixpin/src/lecciones/almacen.rs`, `LeccionesStore.kt`):
+//! (`por-traducir/pindesk/src/lecciones/almacen.rs`, `LeccionesStore.kt`):
 //!
 //! - El archivo es `proyectos/<chat>/android/guardados/lecciones/<id>.leccion`
-//!   (el JSON de `pixpin_lecciones::Leccion`, campo a campo el del movil).
+//!   (el JSON de `pindesk_lecciones::Leccion`, campo a campo el del movil).
 //! - Un mensaje de clase `ARCHIVO` con id `lec-<id>`, nombre «💡 titulo», el
 //!   resumen legible en su texto y la ruta portatil
 //!   `pixpin:files/guardados/lecciones/<id>.leccion` lo senala. Por omision
@@ -24,11 +24,11 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use pixpin_lecciones::leccion::{EXTENSION, Nota, PREFIJO, Repaso, nuevo_id};
-use pixpin_lecciones::{Indice as IndiceLeccion, Leccion, buscador, etiquetador};
-use pixpin_proyecto::almacen::{self, Indice};
-use pixpin_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
-use pixpin_proyecto::vista;
+use pindesk_lecciones::leccion::{EXTENSION, Nota, PREFIJO, Repaso, nuevo_id};
+use pindesk_lecciones::{Indice as IndiceLeccion, Leccion, buscador, etiquetador};
+use pindesk_proyecto::almacen::{self, Indice};
+use pindesk_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
+use pindesk_proyecto::vista;
 
 use crate::chats::{hora_unica, validar_chat};
 use crate::{ErrorNucleo, Nucleo};
@@ -198,7 +198,7 @@ fn es_leccion(m: &Mensaje) -> bool {
     m.clase == Some(Clase::Archivo)
         && m.ruta
             .as_deref()
-            .is_some_and(pixpin_lecciones::leccion::es_ruta_de_leccion)
+            .is_some_and(pindesk_lecciones::leccion::es_ruta_de_leccion)
 }
 
 /// La ruta con que el mensaje nombra la leccion `id`.

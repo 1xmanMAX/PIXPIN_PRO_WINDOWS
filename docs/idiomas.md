@@ -27,7 +27,7 @@ En `ajustes.toml` también vale la etiqueta entera (`fr-FR`, `es-ES`); los fiche
 ## Cómo funciona
 
 - **Los catálogos** son ficheros [Fluent](https://projectfluent.org/) en
-  `crates/pixpin-store/i18n/<etiqueta>/main.ftl`. `crates/pixpin-store/build.rs` mete en el
+  `crates/pindesk-store/i18n/<etiqueta>/main.ftl`. `crates/pindesk-store/build.rs` mete en el
   binario los que existan: para añadir o actualizar una traducción **basta con dejar el fichero y
   compilar**; no hay que tocar código. Español e inglés son obligatorios.
 - **La cadena de red** (`Catalogo`, `src/idioma.rs`): cada texto se busca en el idioma elegido,
@@ -44,12 +44,12 @@ En `ajustes.toml` también vale la etiqueta entera (`fr-FR`, `es-ES`); los fiche
 
 ## Cómo traduce un traductor
 
-1. Copia `crates/pixpin-store/i18n/en-US/main.ftl` a `crates/pixpin-store/i18n/<etiqueta>/main.ftl`
+1. Copia `crates/pindesk-store/i18n/en-US/main.ftl` a `crates/pindesk-store/i18n/<etiqueta>/main.ftl`
    (o parte de él: se puede ir por trozos) y traduce **solo lo que va detrás del `=`**.
 2. Comprueba:
 
    ```sh
-   cargo test -p pixpin-store          # se entiende, no inventa claves, mismas variables
+   cargo test -p pindesk-store          # se entiende, no inventa claves, mismas variables
    python3 herramientas/idiomas.py     # cuánto tiene cada idioma, qué sobra o no cuadra
    ```
 
@@ -102,14 +102,14 @@ En `ajustes.toml` también vale la etiqueta entera (`fr-FR`, `es-ES`); los fiche
 
 ## Apple
 
-`apple/nucleo/pixpin-store` es una copia con un subconjunto de claves (las que usa la app de Apple)
+`apple/nucleo/pindesk-store` es una copia con un subconjunto de claves (las que usa la app de Apple)
 y algunas propias. Sus catálogos de los doce idiomas **no se editan a mano**: salen de los de
 `crates/` con
 
 ```sh
 python3 herramientas/idiomas.py apple              # escribe los que cambien
 python3 herramientas/idiomas.py apple --comprobar  # para CI: falla si no están al día
-cd apple && cargo test -p pixpin-store
+cd apple && cargo test -p pindesk-store
 ```
 
 Se copian las claves de Apple que estén traducidas en `crates/` con las mismas variables que el
@@ -118,8 +118,8 @@ sistema) se quedan en su español e inglés y en los demás idiomas salen en ing
 
 ## Escritura, letras y dirección
 
-- **Letras** (`crates/pixpin-render/src/idioma.rs`): el ejecutable fija al arrancar el locale del
-  idioma (`pixpin_render::idioma::fijar`) y todos los formatos de texto de la interfaz se crean con
+- **Letras** (`crates/pindesk-render/src/idioma.rs`): el ejecutable fija al arrancar el locale del
+  idioma (`pindesk_render::idioma::fijar`) y todos los formatos de texto de la interfaz se crean con
   él. Con el locale, la reserva de letras del sistema de DirectWrite (automática en cada
   `IDWriteTextLayout` desde Windows 8.1) elige la letra de lo que Segoe UI no tiene: Microsoft
   YaHei (chino), Yu Gothic (japonés), Malgun Gothic (coreano), Nirmala UI (devanagari). Los
@@ -130,22 +130,22 @@ sistema) se quedan en su español e inglés y en los demás idiomas salen en ing
   pone quien pinta.
 - **Partir renglones**: lo que dispone DirectWrite ya parte bien el chino y el japonés. Lo que se
   parte a mano en Rust (el PDF de un chat, el texto pegado en el lienzo:
-  `pixpin_motor2d::cortes`) parte también entre ideogramas y kana, sin dejar `。` o `」` al
+  `pindesk_motor2d::cortes`) parte también entre ideogramas y kana, sin dejar `。` o `」` al
   principio de un renglón; y mide un ideograma como un em.
-- **Fechas** (`crates/pixpin-timeline/src/lengua.rs`): los nombres de meses y días y cómo se
+- **Fechas** (`crates/pindesk-timeline/src/lengua.rs`): los nombres de meses y días y cómo se
   escribe una fecha en cada idioma («2026年10月5日月曜日», «Понедельник, 5 октября 2026 г.»), con
   los datos de CLDR. Los «hace 5 min» y los meses del chat ya eran de Fluent.
 
 ## Añadir un idioma más
 
-1. `crates/pixpin-store/src/idioma.rs`: la variante de `Idioma`, en `TODOS`, `nombre_propio`,
+1. `crates/pindesk-store/src/idioma.rs`: la variante de `Idioma`, en `TODOS`, `nombre_propio`,
    `es_rtl` si va de derecha a izquierda y su caso en `idioma_del_locale`.
-2. `crates/pixpin-store/build.rs` y `herramientas/idiomas.py`: la etiqueta en `ETIQUETAS`, en el
+2. `crates/pindesk-store/build.rs` y `herramientas/idiomas.py`: la etiqueta en `ETIQUETAS`, en el
    mismo orden que `TODOS` (un test lo vigila).
-3. `crates/pixpin-store/src/ajustes.rs`: la variante de `PreferenciaIdioma` (con su `rename`), y
+3. `crates/pindesk-store/src/ajustes.rs`: la variante de `PreferenciaIdioma` (con su `rename`), y
    en `idioma()` y `de()`.
-4. `crates/pixpin-timeline/src/lengua.rs`: su tabla de fechas.
-5. Lo mismo en `apple/nucleo/pixpin-store` (es copia: `idioma.rs`, `ajustes.rs`, `build.rs`).
+4. `crates/pindesk-timeline/src/lengua.rs`: su tabla de fechas.
+5. Lo mismo en `apple/nucleo/pindesk-store` (es copia: `idioma.rs`, `ajustes.rs`, `build.rs`).
 6. El catálogo, cuando llegue.
 
 ## Lo que falta
@@ -164,9 +164,9 @@ sistema) se quedan en su español e inglés y en los demás idiomas salen en ing
   francés. Es lo de siempre, y se dejó así para no cambiar lo de español e inglés.
 - **Textos escritos aún en el código** (no en Fluent) en español e inglés: los demás idiomas ven
   el inglés (`Idioma::base`). Otro trabajo los está pasando a los catálogos.
-- La copia de `pixpin-timeline` en `apple/` sigue con las fechas en español e inglés.
+- La copia de `pindesk-timeline` en `apple/` sigue con las fechas en español e inglés.
 - **Frases del dictado del timeline** («con esto pasó…», «y así te lo cuento…»,
-  `pixpin_timeline::frases`): solo en español; por eso `timeline-vacio` las deja en español en
+  `pindesk_timeline::frases`): solo en español; por eso `timeline-vacio` las deja en español en
   todos los catálogos. Para hacerlas por idioma haría falta una lista de frases por idioma.
 - **Buscar tareas por día**: «hoy» y «ayer» se reconocen en los catorce idiomas a la vez (las
   palabras de la pista `tareas3-buscar`, en `tareas::tarjetas::dia_de`). «hier» es ayer en

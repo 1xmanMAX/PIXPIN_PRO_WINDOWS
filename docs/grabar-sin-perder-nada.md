@@ -40,20 +40,20 @@ Lo mismo debe valer en Android (ver el final).
 
 El `.m4a` que escribe Media Foundation solo se puede abrir después de `Finalize`, que escribe su
 índice (`moov`) al final. Por eso, mientras se graba a prueba de cortes
-(`Grabadora::empezar_a_prueba_de_cortes`, en `crates/pixpin-audio/src/entrada.rs`):
+(`Grabadora::empezar_a_prueba_de_cortes`, en `crates/pindesk-audio/src/entrada.rs`):
 
 - el `.m4a` se escribe, como siempre, en `<temporal>.parte` (ver `motor-de-audio.md`);
 - **el mismo PCM** (mono, 16 bits, 48 kHz) va a `<temporal>.respaldo.wav`
-  (`crates/pixpin-motor-audio/src/respaldo.rs`). Un WAV no tiene índice que cerrar: cada muestra
+  (`crates/pindesk-motor-audio/src/respaldo.rs`). Un WAV no tiene índice que cerrar: cada muestra
   escrita ya vale. La cabecera lleva tamaños «sin fin» y se corrige al cerrar; al leer uno
   cortado, el tamaño sale del fichero. Cada 5 s de sonido se vacía el búfer y se pide
   `sync_data`.
 
 **Por qué WAV y no AAC fragmentado o trozos de `.m4a`**: el WAV lo escribe nuestro código, sin
 el escritor de Media Foundation por medio (que es justo lo que muere en un corte); se lee con un
-`read` cualquiera; y al recuperar se vuelve a codificar a `.m4a` (`pixpin_motor_audio::
+`read` cualquiera; y al recuperar se vuelve a codificar a `.m4a` (`pindesk_motor_audio::
 rehacer_m4a`, una hora en pocos segundos), el formato de siempre. El móvil y el transcriptor
-(`pixpin-voz`, que lee con `IMFSourceReader`) no ven nunca otra cosa que el `.m4a` de siempre;
+(`pindesk-voz`, que lee con `IMFSourceReader`) no ven nunca otra cosa que el `.m4a` de siempre;
 un AAC fragmentado lo leen mal el reproductor de Android y el `IMFSourceReader` al saltar.
 Cuesta disco (unos 345 MB por hora, que se borran al cerrar bien) y lo vigila la guarda de
 espacio.
@@ -68,7 +68,7 @@ Al parar:
 | Menos de 700 ms | un resbalón: se borra todo, como siempre |
 | La grabadora se suelta sin parar (un pánico) | se cierra el `.m4a` y **se queda** con el respaldo |
 
-`pixpin_audio::recuperar(temporal)` rehace la nota de lo que quede: el `.parte` si llegó a
+`pindesk_audio::recuperar(temporal)` rehace la nota de lo que quede: el `.parte` si llegó a
 cerrarse (tiene `moov`), si no el respaldo; los picos de la onda salen del respaldo.
 
 ### 2. El vídeo: MP4 fragmentado, rehecho a normal
@@ -80,11 +80,11 @@ antes.
 
 Un fragmentado sin índice de fragmentos (`mfra`/`sidx`) salta mal en Android en un vídeo de una
 hora, así que **al cerrarlo** (si le falta) y **al recuperarlo** se rehace a MP4 normal **sin
-volver a codificar** (`pixpin_motor_video::rehacer_mp4`: `IMFSourceReader` en el formato de
+volver a codificar** (`pindesk_motor_video::rehacer_mp4`: `IMFSourceReader` en el formato de
 origen → `IMFSinkWriter` en ese mismo formato; lo que tarda el disco). Si no se puede, se queda
 fragmentado, que también se abre. La decisión, pura, en `archivo::recuperar_video`.
 
-Lo que queda de un corte se mira con `pixpin_sistema::mp4::mirar` (solo las cabeceras de las
+Lo que queda de un corte se mira con `pindesk_sistema::mp4::mirar` (solo las cabeceras de las
 cajas de arriba: microsegundos): **cerrado** (`moov`), **fragmentado** (`moof`), **sin índice**
 (un MP4 normal cortado: no lo abre nadie) o **nada**. Uno sin índice no se borra: se ofrece
 descartarlo.
@@ -95,7 +95,7 @@ otra vez; ya no existe.
 ### 3. El diario: todo lo demás, en el disco en el acto
 
 Al pulsar «Empezar» se crea `<raíz>/grabaciones-a-medias/<marca>/estado.json`
-(`crates/pixpin-proyecto/src/grabacion_a_medias.rs`, enganchado a la barra en
+(`crates/pindesk-proyecto/src/grabacion_a_medias.rs`, enganchado a la barra en
 `grabar_clase/a_salvo.rs`). Lleva:
 
 - el chat (id y nombre), el **modo**, las fuentes de sonido, el nombre de la nota («Clase 28-10
@@ -140,7 +140,7 @@ queda en la carpeta del chat.
 
 ### 5. El disco
 
-`grabacion_a_medias::espacio`, con `pixpin_sistema::archivos::espacio_libre` de la carpeta del
+`grabacion_a_medias::espacio`, con `pindesk_sistema::archivos::espacio_libre` de la carpeta del
 chat:
 
 - **antes de empezar**: con menos de 500 MB, el vídeo ni empieza (la nota sí);
@@ -174,13 +174,13 @@ la nota del respaldo; si no hay sitio ni para eso, todo se queda para recuperarl
 ## Pruebas
 
 - Puras, en Linux: `respaldo.rs` (WAV cerrado, cortado a mitad de una muestra, volcado al disco
-  sin cerrar, disco lleno con `/dev/full`), `pixpin_sistema::mp4` (cerrado, cortado, fragmentado
+  sin cerrar, disco lleno con `/dev/full`), `pindesk_sistema::mp4` (cerrado, cortado, fragmentado
   con y sin `mfra`, tamaños de 64 bits), `archivo::recuperar_video`, y en
   `grabacion_a_medias`: el diario de ida y vuelta, el `.tmp` que salva un diario roto, el reloj
   con pausas y una suspensión de 30 minutos, la línea de tiempo, el plan desde lo que quedó en el
   disco, «solo la nota», «Descartar» que no se lleva lo ajeno y la guarda de espacio. En
   `camara_del_movil`: la cola que sobrevive a un cierre de golpe y entra en su minuto.
-- En Windows, con micrófono (`cargo test -p pixpin-audio -- --ignored`):
+- En Windows, con micrófono (`cargo test -p pindesk-audio -- --ignored`):
   `una_grabacion_cortada_de_golpe_se_recupera_del_respaldo` se lanza a sí misma como hijo, graba
   3 s y **aborta el proceso** (ni `parar`, ni `Drop`, ni `Finalize`); el padre comprueba que
   queda un `.parte` que no se abre y el respaldo, y que `recuperar` saca una nota cerrada de más
@@ -200,7 +200,7 @@ usuario la cierra desde recientes). Lo mismo, con sus piezas:
   `mediaProjection`) es lo que evita casi todos los cortes; lo demás es para los que quedan.
 - **La nota**: `MediaRecorder`/`MediaMuxer` tampoco escriben el `moov` hasta `stop()`, así que
   vale lo mismo: el PCM del `AudioRecord` a un `.respaldo.wav` al lado (el núcleo de Rust ya
-  compila para Android: `pixpin_motor_audio::respaldo` es puro), volcado con `FileDescriptor.
+  compila para Android: `pindesk_motor_audio::respaldo` es puro), volcado con `FileDescriptor.
   sync()` cada 5 s. Al recuperar, `MediaCodec` (AAC) + `MediaMuxer` rehacen el `.m4a`.
 - **El vídeo**: `MediaMuxer` no hace MP4 fragmentado. O bien se graba en **trozos** de unos
   minutos (`MediaMuxer` nuevo cada N minutos, en un fotograma clave) y al recuperar se juntan sin

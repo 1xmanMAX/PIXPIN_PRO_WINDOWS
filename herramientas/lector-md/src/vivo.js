@@ -1,4 +1,4 @@
-// El Markdown «vivo» del editor de notas, como el de antes (pixpin-notas,
+// El Markdown «vivo» del editor de notas, como el de antes (pindesk-notas,
 // `md_vivo` y `wysiwyg`): las marcas NO se ven nunca, ni en el renglon del
 // cursor (`#`, `**`, `*`, `~~`, `` ` ``, `$`, `[`, `](url)`, `- `, `1. `,
 // `[ ]`, `> `, `---`, las vallas de codigo); el cursor las salta. Lo que

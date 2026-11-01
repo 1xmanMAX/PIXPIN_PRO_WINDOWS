@@ -4,7 +4,7 @@ PinDesk lee el texto de las imágenes en muchos sitios: la captura de texto,
 «Calca esto», los pines (seleccionar texto con el ratón), la galería de
 capturas (buscar por lo que pone), los PDF escaneados y las herramientas del
 asistente (`tabla_de_imagen`, hoja a lienzo, anotar…), además de
-`pindesk-mcp.exe`. **Todos pasan por `pixpin_ocr::reconocer`**, que lee con el
+`pindesk-mcp.exe`. **Todos pasan por `pindesk_ocr::reconocer`**, que lee con el
 motor que el usuario elige en **Ajustes › Captura › Reconocer texto (OCR)**:
 
 | Motor | Qué es | Coste |
@@ -43,9 +43,9 @@ dos: líneas con su caja y sus palabras, en píxeles de la imagen.
 
 ### Licencia (exacta)
 
-- **Código**: Apache-2.0. El puerto de PinDesk (`crates/pixpin-indra`) es una
+- **Código**: Apache-2.0. El puerto de PinDesk (`crates/pindesk-indra`) es una
   traducción y lleva su aviso (`THIRD-PARTY-NOTICES.md`,
-  `crates/pixpin-indra/LICENCIA-INDRA.txt`).
+  `crates/pindesk-indra/LICENCIA-INDRA.txt`).
 - **Pesos**: «AI Pubs Open RAIL-M License (Modified)» v0.1 de Datalab. Lo que
   importa:
   - Anexo A, 2(a)/(b): **no se pueden usar** si tú (o tu empresa) facturaste
@@ -98,7 +98,7 @@ español impreso (MERIT) pasa de 88,8 a 93,0 % de palabras.
 
 ### El puerto a Rust
 
-`crates/pixpin-indra` es el canal entero sin OpenCV: inclinación (la misma
+`crates/pindesk-indra` es el canal entero sin OpenCV: inclinación (la misma
 búsqueda de ±45° que el original, con `warpAffine` reescrito), entrada del
 detector, componentes conexas, recortes de renglón, lotes por ancho,
 decodificación CTC, búsqueda en haz con el LM, cortes de columna, orden de
@@ -149,7 +149,7 @@ Datalab usa otros modelos (Chandra) y es otro servicio de pago.
 ## Cómo está hecho
 
 ```
-pixpin-indra (capa 0, Rust puro, se prueba en cualquier sistema)
+pindesk-indra (capa 0, Rust puro, se prueba en cualquier sistema)
   gris, imagen, prep      la página, la inclinación, los recortes
   deteccion, canal        de det.onnx a renglones; la página entera
   lm, vocab               LM n-grama y búsqueda en haz CTC
@@ -157,18 +157,18 @@ pixpin-indra (capa 0, Rust puro, se prueba en cualquier sistema)
   dudas, lexico, corrector  el afinado del escáner
   catalogo                ficheros, URL fijadas, tamaños y sha256
         │ rasgo Modelos (detectar / reconocer / orientar / ordenar)
-pixpin-ocr (capa 2, Windows)
+pindesk-ocr (capa 2, Windows)
   windows_ocr             Windows.Media.Ocr (de fábrica, respaldo)
   indra                   los modelos con el ONNX Runtime de Windows
-                          (pixpin_voz::ort), descarga con sha256, memoria
+                          (pindesk_voz::ort), descarga con sha256, memoria
   lib                     rasgo Ocr, Config, reconocer / disponible
-        │ pixpin_ocr::configurar(Config)
+        │ pindesk_ocr::configurar(Config)
 pixpin (app)  ocr_motor   [ocr] de los ajustes → Config; la descarga y su
                           avance en la fila de Ajustes
-pixpin-mcp                lee [ocr] al arrancar y usa el mismo motor
+pindesk-mcp                lee [ocr] al arrancar y usa el mismo motor
 ```
 
-- **Descarga**: `pixpin_ocr::indra::bajar` baja los ocho ficheros de
+- **Descarga**: `pindesk_ocr::indra::bajar` baja los ocho ficheros de
   `catalogo::FICHEROS` a `<datos>/indra/` con WinHTTP (el de Whisper), cada
   uno a `.parte` y renombrado al acabar, y comprueba su sha256; uno que no
   cuadra se borra y es un error. Lo ya bajado no se vuelve a bajar.
@@ -193,21 +193,21 @@ pixpin-mcp                lee [ocr] al arrancar y usa el mismo motor
   | OCR del menú del Explorador | `pedidos::ocr_al_portapapeles` (hilo `pedido-ocr`) |
   | Búsqueda de la galería | `galeria_capturas` (hilo `galeria-texto`) |
   | Herramientas del asistente, automatizaciones | el hilo del turno o del encargo |
-  | `pindesk ocr`, `pixpin-mcp` | procesos sin ventana |
+  | `pindesk ocr`, `pindesk-mcp` | procesos sin ventana |
 
   Lo que llega tarde se tira: cada pedido del pin lleva su boleto y la
   vuelta de lo que se veía (otra página, pin cerrado → no vale), y de dos
   capturas de texto seguidas solo copia la última.
 - **Calentar**: con Indra elegido y bajado, abrir una captura o pinear una
   foto carga los modelos en un hilo por debajo de lo normal
-  (`ocr_motor::calentar` → `pixpin_ocr::precargar`), para que la primera
+  (`ocr_motor::calentar` → `pindesk_ocr::precargar`), para que la primera
   lectura no pague el ~0,5-1 s de la carga. No al arrancar (cargar un lector
   que nadie usa para soltarlo a los tres minutos es gastar memoria), y no
   le alarga la vida: si ya está cargado no toca su reloj. Con el de Windows
   no hace nada.
 
 Probar con los pesos de verdad en Windows:
-`PIXPIN_INDRA_PRUEBA=<datos> cargo test -p pixpin-ocr -- --ignored`.
+`PINDESK_INDRA_PRUEBA=<datos> cargo test -p pindesk-ocr -- --ignored`.
 
 ## Android
 
@@ -229,7 +229,7 @@ maneras, de menos a más trabajo:
    ficheros** (`catalogo::FICHEROS`, mismas URL fijadas y sha256), así que un
    móvil y un PC leen igual. Memoria: ~60 MB de LM y modelos según el escáner,
    que mide ~0,3 s por página en PC (en el móvil no hay medida publicada).
-3. **Llamar a este crate por JNI** (`pixpin-indra` es Rust puro): solo
+3. **Llamar a este crate por JNI** (`pindesk-indra` es Rust puro): solo
    tendría sentido si PinDesk Android ya compilara Rust; hoy no.
 
 La licencia es la misma en el móvil: los pesos los baja el usuario, no van en

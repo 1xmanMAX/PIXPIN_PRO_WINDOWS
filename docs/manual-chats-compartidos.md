@@ -87,7 +87,7 @@ mi cuaderno antes de compartirlo y lo de antes lo escribí yo. Quien salió del 
 lista (con `fuera`), así que lo que escribió sigue saliendo con su nombre.
 
 Las decisiones puras (de quién es, a qué lado va, qué número de autor le toca, dónde va el nombre)
-están en `crates/pixpin-ui/src/conversacion.rs` y `historial.rs` (`Entrada::autor`,
+están en `crates/pindesk-ui/src/conversacion.rs` y `historial.rs` (`Entrada::autor`,
 `Entrada::alto_nombre`, `Puesto::nombre`), con sus pruebas. La ventana solo mide y pinta.
 
 ## Versiones vinculadas
@@ -181,8 +181,8 @@ chat. Abrir otra vez lo mismo sin haberlo tocado sigue con el mismo borrador.
   Al volver con cambios: «Se guardó como tu versión; el original no se ha tocado».
 
 La regla, sin ventanas y con las pruebas de `VersionesVinculadasTest.kt`, está en
-`crates/pixpin-proyecto/src/versiones.rs` (`tests/versiones_vinculadas.rs`); la ventana, en
-`apps/pixpin/src/ventana_chat/versiones.rs`.
+`crates/pindesk-proyecto/src/versiones.rs` (`tests/versiones_vinculadas.rs`); la ventana, en
+`apps/pindesk/src/ventana_chat/versiones.rs`.
 
 ## Para Android y el Mac
 
@@ -208,5 +208,5 @@ La regla, sin ventanas y con las pruebas de `VersionesVinculadasTest.kt`, está 
 
 ## Sin probar todavía
 
-- En un Windows de verdad con dos personas: las pruebas son de la lógica (`pixpin-ui`, y
+- En un Windows de verdad con dos personas: las pruebas son de la lógica (`pindesk-ui`, y
   `en_el_chat` en `sincronizar/compartidos_ui.rs`) y el resto compila y pasa clippy.

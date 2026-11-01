@@ -1595,19 +1595,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "pixpin-bim"
+name = "pindesk-bim"
 version = "0.1.0"
 dependencies = [
  "delaunator",
  "ifc-lite-processing",
- "pixpin-cad",
+ "pindesk-cad",
  "roxmltree",
  "rvt",
  "tracing",
 ]
 
 [[package]]
-name = "pixpin-cad"
+name = "pindesk-cad"
 version = "0.1.0"
 dependencies = [
  "flate2",
@@ -1623,7 +1623,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-codec"
+name = "pindesk-codec"
 version = "0.1.0"
 dependencies = [
  "image",
@@ -1632,7 +1632,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-docs"
+name = "pindesk-docs"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1642,11 +1642,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-geom"
+name = "pindesk-geom"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-hojas"
+name = "pindesk-hojas"
 version = "0.1.0"
 dependencies = [
  "flate2",
@@ -1655,13 +1655,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-ia"
+name = "pindesk-ia"
 version = "0.1.0"
 dependencies = [
  "image",
- "pixpin-docs",
- "pixpin-motor2d",
- "pixpin-voz",
+ "pindesk-docs",
+ "pindesk-motor2d",
+ "pindesk-voz",
  "roxmltree",
  "serde_json",
  "sha2 0.10.9",
@@ -1672,75 +1672,47 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-lecciones"
+name = "pindesk-lecciones"
 version = "0.1.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
-name = "pixpin-model"
+name = "pindesk-model"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-motor2d"
+name = "pindesk-motor2d"
 version = "0.1.0"
 dependencies = [
- "pixpin-geom",
+ "pindesk-geom",
  "serde",
  "serde_json",
  "thiserror",
 ]
 
 [[package]]
-name = "pixpin-nivel"
+name = "pindesk-nivel"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-nucleo"
-version = "0.1.0"
-dependencies = [
- "getrandom 0.2.17",
- "pdfsqueeze-core",
- "pixpin-bim",
- "pixpin-cad",
- "pixpin-docs",
- "pixpin-ia",
- "pixpin-lecciones",
- "pixpin-motor2d",
- "pixpin-office",
- "pixpin-proyecto",
- "pixpin-sincro",
- "pixpin-sistema",
- "pixpin-store",
- "pixpin-timeline",
- "rayon",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror",
- "unicode-normalization",
- "uniffi",
- "zip",
-]
-
-[[package]]
-name = "pixpin-office"
+name = "pindesk-office"
 version = "0.1.0"
 dependencies = [
  "memchr",
- "pixpin-docs",
+ "pindesk-docs",
  "zip",
 ]
 
 [[package]]
-name = "pixpin-pdf"
+name = "pindesk-pdf"
 version = "0.1.0"
 dependencies = [
  "flate2",
  "memchr",
- "pixpin-codec",
- "pixpin-motor2d",
+ "pindesk-codec",
+ "pindesk-motor2d",
  "serde_json",
  "thiserror",
  "windows",
@@ -1748,13 +1720,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-proyecto"
+name = "pindesk-proyecto"
 version = "0.1.0"
 dependencies = [
  "flate2",
- "pixpin-motor2d",
- "pixpin-sincro",
- "pixpin-sistema",
+ "pindesk-motor2d",
+ "pindesk-sincro",
+ "pindesk-sistema",
  "serde",
  "serde_json",
  "thiserror",
@@ -1763,7 +1735,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-sincro"
+name = "pindesk-sincro"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
@@ -1773,8 +1745,8 @@ dependencies = [
  "hmac",
  "p256",
  "pbkdf2",
- "pixpin-lecciones",
- "pixpin-sistema",
+ "pindesk-lecciones",
+ "pindesk-sistema",
  "rand_core 0.6.4",
  "serde",
  "serde_json",
@@ -1783,7 +1755,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-sistema"
+name = "pindesk-sistema"
 version = "0.1.0"
 dependencies = [
  "libc",
@@ -1794,13 +1766,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-store"
+name = "pindesk-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
  "fluent-syntax",
- "pixpin-motor2d",
- "pixpin-sistema",
+ "pindesk-motor2d",
+ "pindesk-sistema",
  "serde",
  "serde_json",
  "thiserror",
@@ -1811,7 +1783,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-timeline"
+name = "pindesk-timeline"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -1819,19 +1791,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "pixpin-tinta"
+name = "pindesk-tinta"
 version = "0.1.0"
 
 [[package]]
-name = "pixpin-ui"
+name = "pindesk-ui"
 version = "0.1.0"
 dependencies = [
- "pixpin-geom",
- "pixpin-motor2d",
+ "pindesk-geom",
+ "pindesk-motor2d",
 ]
 
 [[package]]
-name = "pixpin-voz"
+name = "pindesk-voz"
 version = "0.1.0"
 dependencies = [
  "serde_json",
@@ -1839,6 +1811,34 @@ dependencies = [
  "thiserror",
  "tracing",
  "windows",
+]
+
+[[package]]
+name = "pixpin-nucleo"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "pdfsqueeze-core",
+ "pindesk-bim",
+ "pindesk-cad",
+ "pindesk-docs",
+ "pindesk-ia",
+ "pindesk-lecciones",
+ "pindesk-motor2d",
+ "pindesk-office",
+ "pindesk-proyecto",
+ "pindesk-sincro",
+ "pindesk-sistema",
+ "pindesk-store",
+ "pindesk-timeline",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror",
+ "unicode-normalization",
+ "uniffi",
+ "zip",
 ]
 
 [[package]]

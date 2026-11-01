@@ -9,7 +9,7 @@
 # Windows abre siempre la ultima version.
 #
 # Son DOS ficheros: pindesk.exe y pindesk-aligerar.exe, el compresor de PDF
-# que pindesk lanza al meter un PDF al chat (apps/pixpin-aligerar). Van
+# que pindesk lanza al meter un PDF al chat (apps/pindesk-aligerar). Van
 # juntos y de la misma carpeta de compilacion: pindesk lo busca a su lado.
 # Si el compresor no esta compilado, se compila ahi mismo; si aun asi falta,
 # se instala pindesk solo y la app aligera los PDF con su plan B.
@@ -26,15 +26,15 @@
 # ahora son PinDesk.psm1 y pindesk.ahk).
 #
 # Y si esta Flow Launcher (%APPDATA%\FlowLauncher\Plugins), pone al dia su
-# plugin `p` (apps/pixpin-lanzador): compila pindesk-lanzador.exe en la misma
+# plugin `p` (apps/pindesk-lanzador): compila pindesk-lanzador.exe en la misma
 # carpeta, lo copia con plugin.json e Images\ a Plugins\PinDesk\ (quitando
 # cualquier otra carpeta con el mismo ID: con dos, Flow no carga ninguna) y,
 # si Flow estaba abierto, lo reinicia para que lo cargue.
 #
-# Y el puente de la extension del navegador (apps\pixpin-puente): se copia
+# Y el puente de la extension del navegador (apps\pindesk-puente): se copia
 # junto a pindesk.exe y se registra para Chrome y Edge en HKCU
 # (herramientas\registrar-navegador.ps1; ver docs\integraciones-navegador.md).
-# Y el servidor MCP (apps/pixpin-mcp, para Claude Desktop y Claude Code):
+# Y el servidor MCP (apps/pindesk-mcp, para Claude Desktop y Claude Code):
 # pindesk-mcp.exe junto a pindesk.exe. La configuracion de Claude la pone el
 # usuario (docs/integraciones-mcp.md); este script no la toca: si aun nombra
 # el pixpin-mcp.exe de antes, deja ese nombre como copia del nuevo y avisa.
@@ -83,7 +83,7 @@ if (-not (Test-Path $origenCompresor) -or $viejo) {
         # cargo no esta en el PATH de una consola nueva en este equipo.
         $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
         Push-Location $repo
-        & cargo build --release -p pixpin-aligerar
+        & cargo build --release -p pindesk-aligerar
     } catch {
         Write-Warning "No se pudo compilar ${compresor}: $_"
     } finally {
@@ -96,7 +96,7 @@ if (-not (Test-Path $origenCompresor)) {
     $origenCompresor = $null
 }
 
-# El puente de la extension del navegador (apps/pixpin-puente), igual que el
+# El puente de la extension del navegador (apps/pindesk-puente), igual que el
 # compresor: de la misma carpeta de compilacion, compilado si falta o es
 # viejo. Se instala junto a pindesk.exe y se registra en HKCU para Chrome y
 # Edge (herramientas\registrar-navegador.ps1). La extension se carga a mano:
@@ -112,7 +112,7 @@ if (-not (Test-Path $origenPuente) -or $viejoPuente) {
         $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
         $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
         Push-Location $repo
-        & cargo build --release -p pixpin-puente
+        & cargo build --release -p pindesk-puente
     } catch {
         Write-Warning "No se pudo compilar ${puente}: $_"
     } finally {
@@ -137,7 +137,7 @@ function Registrar-Navegador {
 # El plugin de Flow Launcher, de la MISMA carpeta de compilacion. Se compila
 # si falta o si es mas viejo que pindesk.exe o que sus propias fuentes.
 $lanzador = 'pindesk-lanzador.exe'
-$fuenteLanzador = Join-Path $repo 'apps\pixpin-lanzador'
+$fuenteLanzador = Join-Path $repo 'apps\pindesk-lanzador'
 $pluginsFlow = Join-Path $env:APPDATA 'FlowLauncher\Plugins'
 $origenLanzador = Join-Path $origenDir $lanzador
 if (Test-Path $pluginsFlow) {
@@ -153,7 +153,7 @@ if (Test-Path $pluginsFlow) {
             $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
             $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
             Push-Location $repo
-            & cargo build --release -p pixpin-lanzador
+            & cargo build --release -p pindesk-lanzador
         } catch {
             Write-Warning "No se pudo compilar ${lanzador}: $_"
         } finally {
@@ -215,7 +215,7 @@ function Instalar-PluginFlow {
     # La palabra clave guardada en los ajustes de Flow manda sobre la de
     # plugin.json: se pone al dia con Flow cerrado (ya lo esta aqui).
     if (-not (Get-Process Flow.Launcher -ErrorAction SilentlyContinue)) {
-        $palabra = Join-Path $repo 'apps\pixpin-lanzador\instalar-palabra-clave.ps1'
+        $palabra = Join-Path $repo 'apps\pindesk-lanzador\instalar-palabra-clave.ps1'
         if (Test-Path $palabra) {
             & powershell -NoProfile -ExecutionPolicy Bypass -File $palabra
             if ($LASTEXITCODE -ne 0) { Write-Warning "No se pudo poner la palabra clave p en Flow (salida $LASTEXITCODE)" }
@@ -302,7 +302,7 @@ function Crear-Acceso {
 
 function Ofrecer-Predeterminada {
     # PinDesk se registra sola para imagenes y videos al arrancar
-    # (pixpin_shell::asociaciones), pero hacerla LA predeterminada solo lo
+    # (pindesk_shell::asociaciones), pero hacerla LA predeterminada solo lo
     # puede hacer el usuario: Windows deshace lo que escriba un programa. Se
     # le abre la pagina de PinDesk en Configuracion UNA vez por cada
     # tanda de tipos nuevos; si ya lo es, o ya se le ofrecio, no se insiste.
@@ -358,14 +358,14 @@ function Poner-Integraciones {
 Poner-Integraciones
 
 function Instalar-Mcp {
-    # El servidor MCP para Claude Desktop y Claude Code (apps/pixpin-mcp,
+    # El servidor MCP para Claude Desktop y Claude Code (apps/pindesk-mcp,
     # docs/integraciones-mcp.md), junto a pindesk.exe. Se compila en la
     # misma carpeta de compilacion si falta o es mas viejo que sus fuentes.
     # NO toca la configuracion de Claude: eso lo hace el usuario (ver docs).
     $mcp = 'pindesk-mcp.exe'
     $origenMcp = Join-Path $origenDir $mcp
     $destinoMcp = Join-Path $destinoDir $mcp
-    $fuentesMcp = Get-ChildItem (Join-Path $repo 'apps\pixpin-mcp') -Recurse -File |
+    $fuentesMcp = Get-ChildItem (Join-Path $repo 'apps\pindesk-mcp') -Recurse -File |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $viejoMcp = (Test-Path $origenMcp) -and (
         ((Get-Item $origenMcp).LastWriteTime -lt (Get-Item $Origen).LastWriteTime.AddHours(-1)) -or
@@ -377,7 +377,7 @@ function Instalar-Mcp {
             $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
             $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
             Push-Location $repo
-            & cargo build --release -p pixpin-mcp
+            & cargo build --release -p pindesk-mcp
         } catch {
             Write-Warning "No se pudo compilar ${mcp}: $_"
         } finally {

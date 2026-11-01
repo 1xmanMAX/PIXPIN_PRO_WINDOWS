@@ -691,35 +691,35 @@ carpeta y nada en el registro, así que se puede llevar en un USB.
 ## Cómo está hecho
 
 Un espacio de trabajo de Rust con **tres ejecutables** y **33 crates por capas**. Una prueba
-(`apps/pixpin/tests/capas.rs`) comprueba que ningún crate dependa de uno de su misma capa o de
+(`apps/pindesk/tests/capas.rs`) comprueba que ningún crate dependa de uno de su misma capa o de
 una capa superior.
 
 ```mermaid
 flowchart TB
     L5["<b>Capa 5 · la app</b><br/>pixpin → pindesk.exe"]
-    L4["<b>Capa 4 · ventanas propias</b><br/>pixpin-notas (editor de notas)"]
-    L3["<b>Capa 3 · interfaz</b><br/>pixpin-ui · pixpin-flow · pixpin-plugin"]
-    L2["<b>Capa 2 · funciones</b><br/>pixpin-capture · pixpin-pin · pixpin-pila · pixpin-proyecto<br/>pixpin-pdf · pixpin-docs · pixpin-ocr · pixpin-record · pixpin-store<br/>pixpin-lanzador (Flow) · pixpin-aligerar (PDF)<br/>pixpin-cad (planos y 3D) · pixpin-bim (Revit, IFC, Civil 3D)"]
-    L1["<b>Capa 1 · Windows y motores</b><br/>pixpin-shell · pixpin-render · pixpin-gpu · pixpin-codec<br/>pixpin-motor2d · pixpin-tinta · pixpin-sincro · pixpin-audio<br/>pixpin-voz · pixpin-web · pdfsqueeze-core"]
-    L0["<b>Capa 0 · cimientos puros</b><br/>pixpin-geom · pixpin-model · pixpin-nivel · pixpin-lecciones"]
+    L4["<b>Capa 4 · ventanas propias</b><br/>pindesk-notas (editor de notas)"]
+    L3["<b>Capa 3 · interfaz</b><br/>pindesk-ui · pindesk-flow · pindesk-plugin"]
+    L2["<b>Capa 2 · funciones</b><br/>pindesk-capture · pindesk-pin · pindesk-pila · pindesk-proyecto<br/>pindesk-pdf · pindesk-docs · pindesk-ocr · pindesk-record · pindesk-store<br/>pindesk-lanzador (Flow) · pindesk-aligerar (PDF)<br/>pindesk-cad (planos y 3D) · pindesk-bim (Revit, IFC, Civil 3D)"]
+    L1["<b>Capa 1 · Windows y motores</b><br/>pindesk-shell · pindesk-render · pindesk-gpu · pindesk-codec<br/>pindesk-motor2d · pindesk-tinta · pindesk-sincro · pindesk-audio<br/>pindesk-voz · pindesk-web · pdfsqueeze-core"]
+    L0["<b>Capa 0 · cimientos puros</b><br/>pindesk-geom · pindesk-model · pindesk-nivel · pindesk-lecciones"]
     L5 --> L4 --> L3 --> L2 --> L1 --> L0
 ```
 
 | Pieza | Qué hace |
 |---|---|
-| `pixpin-render`, `pixpin-gpu` | Pintar con Direct2D/DirectWrite sobre un dispositivo D3D11 compartido |
-| `pixpin-motor2d`, `pixpin-tinta` | El lienzo (formato de Excalidraw) y el trazo a mano |
-| `pixpin-capture`, `pixpin-record`, `pixpin-pila` | Captura, GIF/MP4 y la pila de capturas de la esquina |
-| `pixpin-pin` | Las ventanas flotantes: imagen, vídeo, PDF, en vivo, herramientas |
-| `pixpin-proyecto`, `pixpin-sincro` | Proyectos en disco (mismo formato que Android) y la sincronización por Wi‑Fi |
-| `pixpin-pdf`, `pixpin-docs`, `pdfsqueeze-core` | Leer y anotar PDF, Word y EPUB, y aligerar PDF |
-| `pixpin-office`, `pixpin-hojas` | Word y PowerPoint maquetados como en Office, y hojas de Excel, sin Office |
-| `pixpin-ocr`, `pixpin-voz`, `pixpin-audio` | Texto de las imágenes, transcripción y audio |
-| `pixpin-codec` | Imágenes: `image` y, para HEIC/AVIF/TIFF/RAW, los decodificadores de Windows (WIC) |
-| `pixpin-lecciones` | Lecciones aprendidas: buscador, etiquetador y repaso, igual que en Android |
-| `pixpin-cad` | El visor de planos DWG/DXF (con su regla, marcos e impresión) y el visor 3D con la GPU |
-| `pixpin-bim` | Leer Revit, IFC, LandXML y puntos de Civil 3D: niveles, medidas y terrenos |
-| `pixpin-lanzador` | El plugin de Flow Launcher |
+| `pindesk-render`, `pindesk-gpu` | Pintar con Direct2D/DirectWrite sobre un dispositivo D3D11 compartido |
+| `pindesk-motor2d`, `pindesk-tinta` | El lienzo (formato de Excalidraw) y el trazo a mano |
+| `pindesk-capture`, `pindesk-record`, `pindesk-pila` | Captura, GIF/MP4 y la pila de capturas de la esquina |
+| `pindesk-pin` | Las ventanas flotantes: imagen, vídeo, PDF, en vivo, herramientas |
+| `pindesk-proyecto`, `pindesk-sincro` | Proyectos en disco (mismo formato que Android) y la sincronización por Wi‑Fi |
+| `pindesk-pdf`, `pindesk-docs`, `pdfsqueeze-core` | Leer y anotar PDF, Word y EPUB, y aligerar PDF |
+| `pindesk-office`, `pindesk-hojas` | Word y PowerPoint maquetados como en Office, y hojas de Excel, sin Office |
+| `pindesk-ocr`, `pindesk-voz`, `pindesk-audio` | Texto de las imágenes, transcripción y audio |
+| `pindesk-codec` | Imágenes: `image` y, para HEIC/AVIF/TIFF/RAW, los decodificadores de Windows (WIC) |
+| `pindesk-lecciones` | Lecciones aprendidas: buscador, etiquetador y repaso, igual que en Android |
+| `pindesk-cad` | El visor de planos DWG/DXF (con su regla, marcos e impresión) y el visor 3D con la GPU |
+| `pindesk-bim` | Leer Revit, IFC, LandXML y puntos de Civil 3D: niveles, medidas y terrenos |
+| `pindesk-lanzador` | El plugin de Flow Launcher |
 
 La interfaz no usa HTML ni un framework: cada ventana se dibuja con Direct2D, con tema claro y
 oscuro según Windows. El diseño de cada parte está en `docs/superpowers/specs/` y las
@@ -730,7 +730,7 @@ investigaciones en `docs/investigacion/`.
 Hace falta Rust estable (1.85 o superior) en Windows.
 
 ```powershell
-cargo build --release -p pixpin -p pixpin-aligerar -p pixpin-lanzador
+cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador
 ```
 
 Para dejarlo instalado en `%LOCALAPPDATA%\Programs\PinDesk`, con el acceso del menú Inicio y
@@ -759,4 +759,4 @@ cargo test --workspace --no-fail-fast -- --test-threads=1
 ## Licencia
 
 MIT. Las letras incluidas llevan su propia licencia (OFL o MIT), en
-`crates/pixpin-render/letras/LICENCIAS.txt`.
+`crates/pindesk-render/letras/LICENCIAS.txt`.

@@ -1,4 +1,4 @@
-// Genera crates/pixpin-render/src/iconos_excalidraw.rs desde
+// Genera crates/pindesk-render/src/iconos_excalidraw.rs desde
 // docs/excalidraw/iconos.json (extraido de packages/excalidraw/components/
 // icons.tsx de Excalidraw, licencia MIT).
 //
@@ -165,6 +165,6 @@ ${partes.join("\n")}
   cuantos++;
 }
 
-const destino = join(raiz, "crates/pixpin-render/src/iconos_excalidraw.rs");
+const destino = join(raiz, "crates/pindesk-render/src/iconos_excalidraw.rs");
 writeFileSync(destino, salida.replace(/\n+$/, "\n"));
 console.log(`${cuantos} iconos -> ${destino}`);

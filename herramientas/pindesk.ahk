@@ -19,7 +19,7 @@
 #Requires AutoHotkey v2.0
 
 PinDeskExe() {
-    for v in ["PINDESK_EXE", "PIXPIN_EXE"] {
+    for v in ["PINDESK_EXE", "PINDESK_EXE"] {
         exe := EnvGet(v)
         if (exe != "" && FileExist(exe))
             return exe

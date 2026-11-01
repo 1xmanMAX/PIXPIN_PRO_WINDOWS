@@ -2,7 +2,7 @@
 //! Windows y Android:
 //!
 //! 1. **«Enviar a…» un aparato del grupo** (`suelto`,
-//!    `pixpin_sincro::al_lienzo`): por el canal cifrado del grupo y el puerto
+//!    `pindesk_sincro::al_lienzo`): por el canal cifrado del grupo y el puerto
 //!    de siempre, sin codigos. Lo que llega va **a lo que el otro tenga
 //!    delante**: el chat abierto recibe cualquier cosa, un lienzo solo fotos
 //!    (y si no es foto, se niega antes de que viaje un byte) y, sin nada
@@ -31,12 +31,12 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering}
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
-use pixpin_proyecto::almacen::{self, Ficha};
-use pixpin_proyecto::vista::DiscoPc;
-use pixpin_sincro::al_lienzo::{self, Conexion, Donde, ErrorAlLienzo, Llegada, Recibe, Suelto};
-use pixpin_sincro::disco::Disco;
-use pixpin_sincro::envio::{self, Elemento, Emisor, Final, Receptor, Remitente};
-use pixpin_sincro::mensajes::Hola;
+use pindesk_proyecto::almacen::{self, Ficha};
+use pindesk_proyecto::vista::DiscoPc;
+use pindesk_sincro::al_lienzo::{self, Conexion, Donde, ErrorAlLienzo, Llegada, Recibe, Suelto};
+use pindesk_sincro::disco::Disco;
+use pindesk_sincro::envio::{self, Elemento, Emisor, Final, Receptor, Remitente};
+use pindesk_sincro::mensajes::Hola;
 
 use crate::red::{conectar, nonce};
 use crate::sincro::{AnuncioBonjour, ParTxt};
@@ -1063,16 +1063,16 @@ fn guardar_proyecto(
     } else {
         ruta.to_path_buf()
     };
-    let paquete = pixpin_proyecto::Paquete::abrir(&ruta).map_err(std::io::Error::other)?;
+    let paquete = pindesk_proyecto::Paquete::abrir(&ruta).map_err(std::io::Error::other)?;
     let mismo = almacen::Indice::leer(raiz)
         .misma(&ficha_que_llega(e))
         .map(|f| f.id.clone());
     let Some(id) = mismo else {
         return almacen::importar_paquete(raiz, &paquete, aparato).map(|f| (f, false));
     };
-    if let Some(chat) = pixpin_proyecto::vista::chat_de_ficha(raiz, &id) {
+    if let Some(chat) = pindesk_proyecto::vista::chat_de_ficha(raiz, &id) {
         let disco = DiscoPc::nuevo(raiz);
-        pixpin_sincro::copias::hacer(
+        pindesk_sincro::copias::hacer(
             &disco,
             &chat,
             &format!("Antes de recibir «{}»", e.nombre),
@@ -1089,7 +1089,7 @@ fn guardar_proyecto(
 fn guardar_lo_recibido(nucleo: &Nucleo, cosas: &[(Elemento, PathBuf)]) -> Vec<RecibidoEnvio> {
     let aparato = nucleo
         .identidad()
-        .map(|i| pixpin_proyecto::codigos::de_aparato(&i.yo.id))
+        .map(|i| pindesk_proyecto::codigos::de_aparato(&i.yo.id))
         .unwrap_or_default();
     let mut salida = Vec::new();
     for (e, ruta) in cosas {

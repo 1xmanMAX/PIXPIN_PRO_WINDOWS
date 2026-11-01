@@ -32,7 +32,7 @@ nombre viejo hasta que todos lean el nuevo (fase B de `formato-pindesk.md`).
 
 - Pasa `%APPDATA%\PixPinMax` y `%LOCALAPPDATA%\PixPinMax` a `PinDesk` (renombrar; si no se puede,
   copiar y dejar la vieja con sus datos y `MOVIDO-A-PINDESK.txt`; si falla, sigue con la vieja) y
-  `pixpinmax.toml` a `pindesk.toml` (`pixpin_sistema::nombre`). Se apunta en `pindesk.log`.
+  `pixpinmax.toml` a `pindesk.toml` (`pindesk_sistema::nombre`). Se apunta en `pindesk.log`.
 - Escribe sus registros de Windows con los nombres nuevos y borra los viejos: `PixPinMax.App`, los
   ProgID `PixPinMax.*`, `Software\PixPinMax`, «PixPin Max» en `RegisteredApplications`, el valor
   `PixPinMax` de `Run`, `Applications\pixpinmax.exe` y, si lo tenía una versión vieja, `pixpin://`.
@@ -78,9 +78,21 @@ mismo `ID`), registra el anfitrión del navegador `com.pindesk.puente` (y quita
 
 Ver «Lo que no cambia» y «fase B» en [`formato-pindesk.md`](formato-pindesk.md): las magias y la sal
 del protocolo de Sincronizar, la entropía de DPAPI de las claves guardadas, los QR que enseña el
-PC, las rutas `pixpin:files/` y los ficheros `.pixpin-*` que leen los otros aparatos. Y, por
-dentro, los nombres de crates y paquetes (`pixpin-*`), los identificadores de Rust y los ficheros
-`pixpinmax.rc/.ico/.manifest` (otro paso, sin efecto para el usuario).
+PC, las rutas `pixpin:files/` y los ficheros `.pixpin-*` que leen los otros aparatos.
+
+## Por dentro
+
+Los crates y paquetes se llaman `pindesk-*` (`crates/pindesk-*`, `apps/pindesk`, `apps/pindesk-*`,
+y la copia de `apple/nucleo/`), con sus rutas `pindesk_*::`, los identificadores de Rust, los
+ficheros `apps/pindesk/pindesk.rc/.manifest` y `recursos/pindesk.ico`, y las variables de
+entorno `PINDESK_*` (`PINDESK_SIN_RECURSOS`, `PINDESK_RAIZ`, `PINDESK_MUESTRAS`…). Los ejecutables
+aceptan las `PIXPIN_*` de antes (`pindesk_sistema::nombre::aceptar_variables_de_antes`), y el
+`build.rs` de la app también `PIXPIN_SIN_RECURSOS`; las pruebas solo miran las nuevas.
+
+Se quedan con el nombre de antes, a propósito: `apple/nucleo/pixpin-nucleo` (su biblioteca
+`pixpin_nucleo` da nombre a los símbolos de UniFFI y al `pixpin_nucleo.swift` que usa la app de
+Swift: lo cambia el agente de Apple cuando regenere los enlaces) y el paquete Swift `PixPinCore`.
+Y, como todo lo que lee otro aparato, los nombres de la fase B.
 
 Los planes, investigaciones y medidas viejas (`docs/superpowers/`, `docs/investigacion/`,
 `medidas/`) son historia: cuentan lo que pasó con el nombre de entonces.

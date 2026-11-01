@@ -28,12 +28,12 @@ edicion se queda en 2021 (la
 de Thesis) y no en la 2024 del workspace de PixPin.
 
 En PixPin solo lo enlaza su propio ejecutable, `pindesk-aligerar.exe`
-(`apps/pixpin-aligerar`), que `pixpinmax.exe` lanza como proceso desde
-`apps/pixpin/src/aligerar.rs`. Asi el programa principal no carga ~1,8 MB en
+(`apps/pindesk-aligerar`), que `pixpinmax.exe` lanza como proceso desde
+`apps/pindesk/src/aligerar.rs`. Asi el programa principal no carga ~1,8 MB en
 cada arranque, y como el perfil release es `panic = "abort"`, un PDF que haga
 entrar en panico al lector de PDF mata al compresor y no a la aplicacion. Es lo
 mismo que hace Android con su proceso `:pdfsqueeze`. Una prueba de
-`apps/pixpin/tests/capas.rs` vigila que `pixpin` no lo enlace.
+`apps/pindesk/tests/capas.rs` vigila que `pixpin` no lo enlace.
 
 ## Como actualizarlo
 
@@ -50,7 +50,7 @@ Despues:
 1. Comparar `crates/core/Cargo.toml` y el `[workspace.dependencies]` de Thesis
    con el `Cargo.toml` de aqui, y copiar a mano cualquier dependencia nueva.
 2. Apuntar el commit nuevo en la tabla de arriba.
-3. `cargo test -p pdfsqueeze-core -p pixpin-aligerar -p pixpin --no-fail-fast -- --test-threads=1`
+3. `cargo test -p pdfsqueeze-core -p pindesk-aligerar -p pindesk --no-fail-fast -- --test-threads=1`
    y `cargo deny check` (una dependencia nueva tiene que tener licencia de la
    lista de `deny.toml`).
 

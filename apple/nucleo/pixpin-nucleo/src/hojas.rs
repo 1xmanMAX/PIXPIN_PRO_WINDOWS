@@ -1,5 +1,5 @@
 //! **Las hojas de calculo del chat**: abrirlas, editarlas celda a celda y
-//! guardarlas donde las guarda Windows (`por-traducir/pixpin/src/hoja_pin.rs`):
+//! guardarlas donde las guarda Windows (`por-traducir/pindesk/src/hoja_pin.rs`):
 //!
 //! - **Una tabla del PC** (mensaje `MINIAPP` con `miniapp = "tabla"`): el
 //!   JSON de `TablaDeCalculo` va en el `texto` del mensaje, y guardar lo
@@ -23,9 +23,9 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use pixpin_proyecto::formula::{self, Valor};
-use pixpin_proyecto::tabla::{self, EstiloDeCelda, Ref, Tabla};
-use pixpin_proyecto::{almacen, cuaderno, vista};
+use pindesk_proyecto::formula::{self, Valor};
+use pindesk_proyecto::tabla::{self, EstiloDeCelda, Ref, Tabla};
+use pindesk_proyecto::{almacen, cuaderno, vista};
 
 use crate::chats::validar_chat;
 use crate::{ErrorNucleo, MensajeChat, Nucleo};
@@ -142,7 +142,7 @@ impl HojaDeCalculo {
                 valores: None,
                 tocada: false,
             }),
-            decimal: pixpin_sistema::entorno::separador_decimal(),
+            decimal: pindesk_sistema::entorno::separador_decimal(),
         }
     }
 }

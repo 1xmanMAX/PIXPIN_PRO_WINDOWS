@@ -1,6 +1,6 @@
 // Construye el editor de notas en UN solo html, sin nada de fuera (ni
 // internet ni ficheros sueltos): el programa, los estilos y las letras de
-// PixPin van dentro. Sale a `apps/pixpin/recursos/lector-md.html`, que el
+// PixPin van dentro. Sale a `apps/pindesk/recursos/lector-md.html`, que el
 // ejecutable lleva puesto (`include_bytes!`). Se corre a mano al cambiar
 // algo de aqui: `npm install` y `npm run build`.
 import { build } from 'esbuild'
@@ -9,8 +9,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const aqui = path.dirname(fileURLToPath(import.meta.url))
-const salida = path.resolve(aqui, '../../apps/pixpin/recursos/lector-md.html')
-const letras = path.resolve(aqui, '../../crates/pixpin-render/letras')
+const salida = path.resolve(aqui, '../../apps/pindesk/recursos/lector-md.html')
+const letras = path.resolve(aqui, '../../crates/pindesk-render/letras')
 
 const js = await build({
   entryPoints: [path.join(aqui, 'src/main.js')],

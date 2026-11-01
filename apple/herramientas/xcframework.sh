@@ -26,11 +26,11 @@ set -euo pipefail
 APPLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$APPLE"
 
-# `PIXPIN_PERFIL` y `PIXPIN_OBJETIVOS` cambian lo de siempre para la CI:
+# `PINDESK_PERFIL` y `PINDESK_OBJETIVOS` cambian lo de siempre para la CI:
 # alli se compila solo el Mac y con el perfil `ffi-rapido` (LTO fino, en
 # paralelo), que tarda una fraccion y sirve igual para probar. Lo que se
 # publica sale con los valores de fabrica.
-PERFIL="${PIXPIN_PERFIL:-ffi}"
+PERFIL="${PINDESK_PERFIL:-ffi}"
 CRATE=pixpin-nucleo
 LIB=libpixpin_nucleo.a
 MODULO=pixpin_nucleoFFI
@@ -43,7 +43,7 @@ XCF="$PAQUETE/PixPinCoreFFI.xcframework"
 export MACOSX_DEPLOYMENT_TARGET=15.0
 export IPHONEOS_DEPLOYMENT_TARGET=18.0
 
-read -r -a OBJETIVOS <<< "${PIXPIN_OBJETIVOS:-aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim}"
+read -r -a OBJETIVOS <<< "${PINDESK_OBJETIVOS:-aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim}"
 tiene() { [[ " ${OBJETIVOS[*]} " == *" $1 "* ]]; }
 
 echo "==> Objetivos de Rust"

@@ -1,5 +1,5 @@
 {
-  "name": "pixpin-lector-md",
+  "name": "pindesk-lector-md",
   "private": true,
   "description": "El lector y editor de notas Markdown de PixPin (WebView2). El motor de lectura es el de md-reader (MIT).",
   "scripts": {

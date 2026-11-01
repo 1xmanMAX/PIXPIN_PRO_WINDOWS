@@ -2,10 +2,10 @@
 //! de ficheros, transcripciones), las tareas y los momentos del timeline.
 //!
 //! El buscador de Windows (`buscar_todo.rs`) usa el del plugin de Flow
-//! Launcher (`pixpin-lanzador`), que aun no compila fuera de Windows (esta
+//! Launcher (`pindesk-lanzador`), que aun no compila fuera de Windows (esta
 //! en `por-adaptar/`). Hasta que pase a `nucleo/`, aqui hay un recorrido
 //! sencillo con las mismas reglas que el resto de buscadores de PixPin
-//! (`pixpin_timeline::buscar`): sin mayusculas ni tildes, y **cada palabra**
+//! (`pindesk_timeline::buscar`): sin mayusculas ni tildes, y **cada palabra**
 //! de la consulta tiene que estar, en cualquier orden.
 //!
 //! # Rendimiento
@@ -22,10 +22,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use pixpin_proyecto::almacen::{self, Indice};
-use pixpin_proyecto::cuaderno::{self, Mensaje};
-use pixpin_proyecto::mini;
-use pixpin_timeline::buscar::normalizar;
+use pindesk_proyecto::almacen::{self, Indice};
+use pindesk_proyecto::cuaderno::{self, Mensaje};
+use pindesk_proyecto::mini;
+use pindesk_timeline::buscar::normalizar;
 
 use crate::chats::{MensajeChat, validar_chat};
 use crate::tareas::{es_lista, nombre_de_lista};
@@ -363,7 +363,7 @@ impl Nucleo {
         // 3. Los momentos del timeline.
         if !r.llena() && !cancelada {
             let momentos = self.momentos();
-            for m in pixpin_timeline::buscar::buscar(&momentos, &consulta) {
+            for m in pindesk_timeline::buscar::buscar(&momentos, &consulta) {
                 if r.llena() {
                     break;
                 }

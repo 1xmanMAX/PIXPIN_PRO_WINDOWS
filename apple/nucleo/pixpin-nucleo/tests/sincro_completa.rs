@@ -449,10 +449,10 @@ fn una_sonda_no_espera_a_una_vuelta() {
     let inicio = Instant::now();
     let mut s = std::net::TcpStream::connect(("127.0.0.1", puerto)).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    s.write_all(pixpin_sincro::SONDA).unwrap();
+    s.write_all(pindesk_sincro::SONDA).unwrap();
     let mut r = [0u8; 4];
     s.read_exact(&mut r).unwrap();
-    assert_eq!(&r, pixpin_sincro::SONDA_RESPUESTA);
+    assert_eq!(&r, pindesk_sincro::SONDA_RESPUESTA);
     assert!(inicio.elapsed() < Duration::from_secs(2));
 
     // Y una vuelta entera tambien, a la vez, con otra sonda durante ella.
@@ -465,9 +465,9 @@ fn una_sonda_no_espera_a_una_vuelta() {
     let vuelta = std::thread::spawn(move || m.sincronizar_con("127.0.0.1".into(), puerto));
     let mut s = std::net::TcpStream::connect(("127.0.0.1", puerto)).unwrap();
     s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    s.write_all(pixpin_sincro::SONDA).unwrap();
+    s.write_all(pindesk_sincro::SONDA).unwrap();
     s.read_exact(&mut r).unwrap();
-    assert_eq!(&r, pixpin_sincro::SONDA_RESPUESTA);
+    assert_eq!(&r, pindesk_sincro::SONDA_RESPUESTA);
     let hecho = vuelta.join().unwrap().unwrap();
     assert_eq!(hecho.enviados, 30);
     drop(lenta);

@@ -19,15 +19,15 @@ Código de referencia (Rust, el mismo cable byte a byte):
 
 | Qué | Dónde |
 | --- | --- |
-| El cable, el reloj de la grabación y el minuto de cada foto | `crates/pixpin-sincro/src/camara.rs` |
-| `suelto` con `destino: "grabacion"`, el «vale» y la reanudación | `crates/pixpin-sincro/src/al_lienzo.rs` (`responder`) |
-| `camara_remota` en el `Respondedor` | `crates/pixpin-sincro/src/protocolo.rs` (`atender_camara`) |
-| Lo que hace el PC con cada foto o clip | `crates/pixpin-proyecto/src/camara_del_movil.rs` |
-| El móvil de mentira (lo que tiene que hacer Android) | `crates/pixpin-proyecto/tests/movil_como_camara.rs` |
-| La barra de «Grabar clase» y los avisos | `apps/pixpin/src/sincronizar/camara.rs` |
-| Fotos por su hora: el reloj de la nota, los desfases, dónde va cada foto, colaboradores (§12, §14) | `crates/pixpin-proyecto/src/por_su_hora.rs` |
-| El repaso tras sincronizar y los desfases medidos (PC) | `apps/pixpin/src/sincronizar/por_su_hora.rs` |
-| El botón «Captura para la grabación del móvil» (§13) | `apps/pixpin/src/sincronizar/aporte.rs` |
+| El cable, el reloj de la grabación y el minuto de cada foto | `crates/pindesk-sincro/src/camara.rs` |
+| `suelto` con `destino: "grabacion"`, el «vale» y la reanudación | `crates/pindesk-sincro/src/al_lienzo.rs` (`responder`) |
+| `camara_remota` en el `Respondedor` | `crates/pindesk-sincro/src/protocolo.rs` (`atender_camara`) |
+| Lo que hace el PC con cada foto o clip | `crates/pindesk-proyecto/src/camara_del_movil.rs` |
+| El móvil de mentira (lo que tiene que hacer Android) | `crates/pindesk-proyecto/tests/movil_como_camara.rs` |
+| La barra de «Grabar clase» y los avisos | `apps/pindesk/src/sincronizar/camara.rs` |
+| Fotos por su hora: el reloj de la nota, los desfases, dónde va cada foto, colaboradores (§12, §14) | `crates/pindesk-proyecto/src/por_su_hora.rs` |
+| El repaso tras sincronizar y los desfases medidos (PC) | `apps/pindesk/src/sincronizar/por_su_hora.rs` |
+| El botón «Captura para la grabación del móvil» (§13) | `apps/pindesk/src/sincronizar/aporte.rs` |
 
 ## 1. Capacidad
 
@@ -162,7 +162,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
      del cuaderno dejaría de leerse;
    - en la nota, en `resto.capturas` (`[{ms, id}]`) o, el clip, en
      `resto.clips` (`[{ms, id, duracionMs}]`), **la misma lista que los clips
-     de la reunión presencial** (`pixpin_proyecto::presencial`);
+     de la reunión presencial** (`pindesk_proyecto::presencial`);
    - dentro de la carpeta de la grabación, **en su minuto** (no al final),
      con título «📱 ⏱ 12:34» (un clip, «📱 ▶ 12:34»).
 4. **Lo que llega tarde** (el móvil se quedó sin red y lo sube después):
@@ -192,7 +192,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 - **Códec**: `HEVC (H.265)` solo si el anuncio trae `"hevc"` en `codecs`
   (el PC tiene «HEVC Video Extensions»; lo mira con Media Foundation,
-  `pixpin_pin::video::sabe_hevc`); si no, **H.264** (Windows lo trae de
+  `pindesk_pin::video::sabe_hevc`); si no, **H.264** (Windows lo trae de
   serie). Sin `codecs`, el PC no recibe clips: el botón de vídeo no sale.
 - **Audio** AAC 96-128 kbit/s; **imagen** 1080p hasta 30 fps, **VBR
   4-6 Mbit/s**: un clip de 2 min pesa unos 60-90 MB y se lee bien la
@@ -287,21 +287,21 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 ### Mac, iPad e iPhone (`apple/`)
 
-- [ ] El núcleo ya tiene el cable (`apple/nucleo/pixpin-sincro`, igual que
-      `crates/`). Para hacer de PC: `Camaras` de `pixpin-proyecto` y decir
+- [ ] El núcleo ya tiene el cable (`apple/nucleo/pindesk-sincro`, igual que
+      `crates/`). Para hacer de PC: `Camaras` de `pindesk-proyecto` y decir
       `CAPACIDADES_CON_CAMARA`.
 
 ## 10. Dónde está probado
 
-- `crates/pixpin-sincro/src/camara.rs`: el reloj con pausas, el desfase
+- `crates/pindesk-sincro/src/camara.rs`: el reloj con pausas, el desfase
   NTP, el minuto con y sin `ms`, lo que llega tarde, los clips, los tipos y
   los bytes de cabecera.
-- `crates/pixpin-proyecto/tests/movil_como_camara.rs`: por TCP y con el
+- `crates/pindesk-proyecto/tests/movil_como_camara.rs`: por TCP y con el
   `Respondedor` de verdad, un móvil 7 s adelantado manda dos fotos y un clip
   durante una grabación con una pausa (una foto sin `ms`), luego una tarde;
   el PC avisa al móvil y mide su reloj; un clip cortado sigue donde se
   quedó; un PC de antes dice «No sé qué es» y sigue.
-- `crates/pixpin-proyecto/src/por_su_hora.rs`: dentro y fuera de la
+- `crates/pindesk-proyecto/src/por_su_hora.rs`: dentro y fuera de la
   ventana, el margen de los bordes, las pausas (al minuto en que se paró),
   la grabación cortada (`vistoEn`) y la viva, el desfase más cercano, el
   EXIF con su zona, la foto de mi móvil con desfase, la del colaborador sin
@@ -336,10 +336,10 @@ empezar a grabar también iba solo a esa última dirección.
 protocolo (sigue la 4) ni el canal: la baliza solo dice *dónde* llamar y
 *si se graba*; todo lo demás va por el canal cifrado de siempre.
 
-Código de referencia: `crates/pixpin-sincro/src/baliza.rs` (formato, firma,
+Código de referencia: `crates/pindesk-sincro/src/baliza.rs` (formato, firma,
 sockets, ritmo, barrido, prioridad, diagnóstico) y
-`apps/pixpin/src/sincronizar/baliza.rs` (lo del PC). Probado con sockets de
-verdad en `crates/pixpin-sincro/src/baliza_de_verdad.rs`.
+`apps/pindesk/src/sincronizar/baliza.rs` (lo del PC). Probado con sockets de
+verdad en `crates/pindesk-sincro/src/baliza_de_verdad.rs`.
 
 ### 11.1 Puertos y destinos
 
@@ -458,7 +458,7 @@ sonda), el PC lo dice una vez (bandeja y «Actividad»):
 
 Mientras **cualquier** aparato del grupo graba (el propio, o uno oído con
 grabando hace menos de 4 s), el orden es
-(`pixpin_sincro::baliza::que_toca`):
+(`pindesk_sincro::baliza::que_toca`):
 
 1. **La cámara**: `camara_remota` y los `suelto` con `destino:"grabacion"`
    (fotos y clips). Es lo único que se hace.
@@ -541,9 +541,9 @@ grabación también guarda su hora, si la hora de la foto está fuera de la
 grabación, que la ignore; si está dentro, que calcule dónde va y la ponga
 ahí».
 
-Código: `crates/pixpin-proyecto/src/por_su_hora.rs` (lógica pura con sus
+Código: `crates/pindesk-proyecto/src/por_su_hora.rs` (lógica pura con sus
 pruebas), `camara_del_movil.rs` (la cámara en directo) y
-`apps/pixpin/src/sincronizar/por_su_hora.rs` (el repaso y los desfases).
+`apps/pindesk/src/sincronizar/por_su_hora.rs` (el repaso y los desfases).
 
 ### 12.1 La grabación guarda su ventana: `resto.reloj`
 
@@ -575,7 +575,7 @@ acabar y **cada 15 s**; al guardarse la clase entra en la nota y el fichero
 se borra.
 
 **Un solo reloj de pared.** El diario de la grabación
-(`grabacion_a_medias::Reloj`, en `crates/pixpin-proyecto/src/grabacion_a_medias.rs`) y este son
+(`grabacion_a_medias::Reloj`, en `crates/pindesk-proyecto/src/grabacion_a_medias.rs`) y este son
 el mismo: `RelojDeGrabacion::del_diario` pasa uno al otro y
 `Diario::ms_en` hace la cuenta de `RelojDeGrabacion::ms_hasta`. **Al
 recuperar una grabación cortada** se pone en su nota el reloj del diario
@@ -697,7 +697,7 @@ al oírlo otra vez. La × lo cierra hasta la grabación siguiente.
 
 **El móvil atiende ese `suelto`** exactamente como el PC atiende los del
 móvil (§2.3-§4): con `ms`, ahí; sin él, por su hora. En Rust es el mismo
-`Camaras` (`crates/pixpin-proyecto/tests/movil_como_camara.rs`,
+`Camaras` (`crates/pindesk-proyecto/tests/movil_como_camara.rs`,
 `el_pc_manda_capturas_a_la_grabacion_del_movil`): el código de «quien
 graba» vale para cualquier aparato. Al guardar la clase en el móvil, cada
 captura del PC va en `capturas` y en su carpeta con `fuente: "pantalla"`.

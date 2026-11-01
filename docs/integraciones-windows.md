@@ -25,7 +25,7 @@ Windows, con un **puerto local que es un fichero**:
 (En modo portable, cambia `%APPDATA%\PinDesk` por la carpeta de `pindesk.exe` y pásala con
 `-Raiz`.)
 
-**El lado de la app** (`crates/pixpin-shell/src/impresora.rs`, `apps/pixpin/src/recibir_de_windows.rs`):
+**El lado de la app** (`crates/pindesk-shell/src/impresora.rs`, `apps/pindesk/src/recibir_de_windows.rs`):
 - Al arrancar, si la carpeta `cache\impresora` existe, un hilo duerme en el aviso de cambios de
   Windows (`vigia_carpeta`). Sin la carpeta, no arranca nada.
 - Un PDF está **terminado** cuando se puede abrir en exclusiva (el administrador de impresión ya
@@ -70,7 +70,7 @@ Lo que hace como administrador, por si se prefiere a mano:
 (`herramientas/paquete-identidad/AppxManifest.xml`) y tres logos sacados del icono. Se registra
 con `Add-AppxPackage -ExternalLocation` apuntando a `%LOCALAPPDATA%\Programs\PinDesk` (la
 carpeta fija de `instalar.ps1`). Windows le da la identidad a `pindesk.exe` porque su
-manifiesto incrustado (`apps/pixpin/pixpinmax.manifest`) lleva el elemento `<msix>` con el mismo
+manifiesto incrustado (`apps/pindesk/pindesk.manifest`) lleva el elemento `<msix>` con el mismo
 editor, paquete y aplicación. El acceso directo, el arranque con Windows y la Jump List no cambian.
 
 | Dato | Valor (igual en los dos manifiestos y en el certificado) |
@@ -88,7 +88,7 @@ si falla, cuelga el Explorador (lo mismo que se descartó para las miniaturas). 
 Contra: solo aparecen en los tipos de la lista (imágenes, PDF, Office, EPUB, MD/TXT, DWG/DXF/IFC,
 audio, MP4), no en carpetas ni en «cualquier fichero».
 
-**El lado de la app** (`crates/pixpin-shell/src/compartido.rs`, `apps/pixpin/src/recibir_de_windows.rs`, `main.rs`):
+**El lado de la app** (`crates/pindesk-shell/src/compartido.rs`, `apps/pindesk/src/recibir_de_windows.rs`, `main.rs`):
 - Antes de la instancia única se mira si el arranque trae algo: `--al-chat <rutas>` (los verbos)
   o, **solo si el proceso tiene identidad** (`GetCurrentPackageFullName`), una activación
   `ShareTarget` (`AppInstance::GetActivatedEventArgs`). Sin identidad no se llama a nada de
@@ -150,13 +150,13 @@ Notas:
 
 ## 3. AUMID (coordinación con `flow-asistente` e `integ-consola`)
 
-- Sin paquete, el AUMID de los toasts es **`PinDesk.App`** (`crates/pixpin-shell/src/notificacion.rs`,
+- Sin paquete, el AUMID de los toasts es **`PinDesk.App`** (`crates/pindesk-shell/src/notificacion.rs`,
   clave `HKCU\Software\Classes\AppUserModelId\PinDesk.App`; el `PixPinMax.App` de antes se
   borra al arrancar).
 - **Con el paquete registrado**, el proceso tiene identidad y su AUMID real pasa a ser
   `PinDesk_<hash del editor>!PinDesk` (lo imprime `-Registrar`). Para los toasts,
   `notificacion.rs` debería usar `ToastNotificationManager::CreateToastNotifier()` (sin id) cuando
-  `pixpin_shell::compartido::tiene_identidad()` sea `true`, y el `CreateToastNotifierWithId` de
+  `pindesk_shell::compartido::tiene_identidad()` sea `true`, y el `CreateToastNotifierWithId` de
   hoy si no. Sin el paquete, todo sigue igual.
 - `--al-chat <rutas>` es la orden que usan los verbos del paquete. Si `integ-consola` define su
   propia orden para lo mismo (p. ej. `chat --archivo`), se puede cambiar el `Parameters` del verbo

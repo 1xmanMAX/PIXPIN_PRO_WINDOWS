@@ -113,7 +113,7 @@ Solo para **ver**: PinDesk pide `calendar.readonly` y no puede crear, cambiar ni
 
 ## Para quien programa: añadir otro servicio (Dropbox, OneDrive…)
 
-Todo está en `crates/pixpin-ia/src/conexiones/` y es un solo componente con variables:
+Todo está en `crates/pindesk-ia/src/conexiones/` y es un solo componente con variables:
 
 1. Una constante `Servicio` (como `drive::GOOGLE_DRIVE`) con sus direcciones de OAuth y de la API, alcances y parámetros extra, añadida a `SERVICIOS`.
 2. Un `impl Almacen` (buscar, archivo, leer, bajar, subir, cuenta) y su línea en `Conexion::almacen`.

@@ -10,8 +10,8 @@ sentidos:
 | Lectura Veloz → PinDesk | `pindesk://lectura-veloz?v=1&…` | De fondo, mientras se lee en Lectura Veloz |
 
 Lo puro (armar y mirar los enlaces, qué cambia en lo leído) está en
-`crates/pixpin-docs/src/lectura_veloz.rs`; lo que toca el disco y las ventanas, en
-`apps/pixpin/src/lectura_veloz.rs`; el verbo, en `crates/pixpin-shell/src/orden.rs`
+`crates/pindesk-docs/src/lectura_veloz.rs`; lo que toca el disco y las ventanas, en
+`apps/pindesk/src/lectura_veloz.rs`; el verbo, en `crates/pindesk-shell/src/orden.rs`
 (`armar_lectura_veloz`). **Los nombres de los parámetros no se cambian**: los usa Lectura
 Veloz tal cual. Un parámetro nuevo opcional no sube `v`; quitar o cambiar uno sí.
 
@@ -33,7 +33,7 @@ con el lector abierto (§2). Al pulsarlo:
    Si no lo está, el lector avisa: «Lectura Veloz no está instalada en este equipo…»
    (`lector-lectura-veloz-no-instalada`). Sin esta comprobación Windows sacaría su cuadro de
    «buscar una aplicación en la Store».
-3. Se abre con `ShellExecuteW` (`pixpin_shell::abrir`):
+3. Se abre con `ShellExecuteW` (`pindesk_shell::abrir`):
 
 ```
 lecturaveloz://pindesk/abrir?v=1&doc=<id>&ruta=<ruta>&nombre=<nombre>&tipo=<pdf|texto>
@@ -43,7 +43,7 @@ lecturaveloz://pindesk/abrir?v=1&doc=<id>&ruta=<ruta>&nombre=<nombre>&tipo=<pdf|
 | Parámetro | Qué es |
 |---|---|
 | `v` | Versión del protocolo: `1` |
-| `doc` | Identidad estable del documento. **El uid del adjunto** si es un adjunto de un chat o de un proyecto (`pixpin_proyecto::anotado::adjunto_de`, el mismo que usan los `anot-<uid>…` que viajan al móvil); si no, **`ruta:` + FNV-1a de 64 bits** (16 cifras hex) de la ruta canónica en minúsculas, con `\` y sin `\\?\` (`lectura_veloz::id_de_ruta`) |
+| `doc` | Identidad estable del documento. **El uid del adjunto** si es un adjunto de un chat o de un proyecto (`pindesk_proyecto::anotado::adjunto_de`, el mismo que usan los `anot-<uid>…` que viajan al móvil); si no, **`ruta:` + FNV-1a de 64 bits** (16 cifras hex) de la ruta canónica en minúsculas, con `\` y sin `\\?\` (`lectura_veloz::id_de_ruta`) |
 | `ruta` | Ruta absoluta del fichero (sin `\\?\`) |
 | `nombre` | Nombre del fichero con su extensión |
 | `tipo` | `pdf` si es un `.pdf`; `texto` para lo demás (también un Word abierto en hojas) |
@@ -72,7 +72,7 @@ También por consola: `pindesk lectura-veloz --ruta <doc> --tipo pdf --pagina 4 
 
 ### Qué se mira (todo, antes de tocar nada)
 
-`pixpin_docs::lectura_veloz::Progreso::de_campos`, la misma regla en el enlace, en la
+`pindesk_docs::lectura_veloz::Progreso::de_campos`, la misma regla en el enlace, en la
 consola y otra vez en la app al recibir el pedido:
 
 - `v`, si viene, es `1`.
@@ -95,7 +95,7 @@ consola y otra vez en la app al recibir el pedido:
 
 - **Por hojas** (un `.pdf`, o `tipo=pdf` en un Word/PowerPoint leído por hojas): `pagina` =
   `pagina + frac`, y en `marcas` **el 🟢 pasa a** `x = 0.5`, `y = pagina + frac` (se quita
-  el que hubiera; las demás marcas no se tocan, `pixpin_motor2d::marcas::con_una_sola`).
+  el que hubiera; las demás marcas no se tocan, `pindesk_motor2d::marcas::con_una_sola`).
 - **De corrido** (`tipo=texto` en lo que no es PDF): `voz = (-1, fraccion)` y
   `sitio = fraccion`. **El párrafo no se calcula** al recibir (habría que abrir y medir el
   documento): se guarda como **`-1:<fraccion>`**, la misma convención que el móvil
@@ -110,7 +110,7 @@ como estaba.
 
 ### Sin ventanas
 
-- La copia de paso que abre Windows por el enlace (`apps/pixpin/src/orden.rs`) **no
+- La copia de paso que abre Windows por el enlace (`apps/pindesk/src/orden.rs`) **no
   arranca PinDesk** ni le da permiso para pasar al frente: le manda el pedido
   `lectura_veloz` (`docs/protocolo-pedidos.md`) con `mensajero::enviar_pedido`. Ese pedido
   no abre ventanas ni globo (`pedidos.rs`).
@@ -162,15 +162,15 @@ Comprobar:
    Veloz instalada se abre en el documento y la página del 🟢; sin ella, el aviso. En el ⋮
    de los lectores ya no está.
 
-Pruebas automáticas: `cargo test -p pixpin-docs lectura_veloz` y `voz_alta` (Linux y
-Windows), `cargo test -p pixpin-motor2d con_una_sola`, y en Windows
-`cargo test -p pixpin-shell lectura_veloz` y `cargo test -p pixpin lectura_veloz`.
+Pruebas automáticas: `cargo test -p pindesk-docs lectura_veloz` y `voz_alta` (Linux y
+Windows), `cargo test -p pindesk-motor2d con_una_sola`, y en Windows
+`cargo test -p pindesk-shell lectura_veloz` y `cargo test -p pindesk lectura_veloz`.
 
 ## 4. «En PinDesk» desde Lectura Veloz
 
 Lectura Veloz ≥ 0.5.0 ya no enseña los documentos en su propio visor: los manda a PinDesk
 como cualquier «Abrir con» (en el móvil, `ACTION_VIEW` con el extra
-`com.lecturaveloz.extra.PIXPIN_DOC`, y PinDesk abre el mensaje del chat con su verde; Android
+`com.lecturaveloz.extra.PINDESK_DOC`, y PinDesk abre el mensaje del chat con su verde; Android
 4c57ef0). **En el PC no hace falta nada nuevo**: lo que PinDesk le dio es la `ruta=` del
 adjunto dentro de la carpeta del chat, y al abrir esa ruta con PinDesk (`Evento::AbrirFicheros`)
 va a su lector, que encuentra el mensaje por la ruta (`anotado_del_adjunto::base_de`) y lee sus

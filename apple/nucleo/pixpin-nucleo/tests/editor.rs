@@ -5,9 +5,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use pixpin_motor2d::excalidraw;
-use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
-use pixpin_motor2d::vector::Punto2;
+use pindesk_motor2d::excalidraw;
+use pindesk_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+use pindesk_motor2d::vector::Punto2;
 use pixpin_nucleo::lienzo::decodificar;
 use pixpin_nucleo::{EditorLienzo, ErrorNucleo, FasePuntero, Nucleo};
 use serde_json::Value;

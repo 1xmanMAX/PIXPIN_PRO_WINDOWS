@@ -2,7 +2,7 @@
 //! herramienta del Mac.
 //!
 //! No hay formato nuevo: el documento es el texto de un mensaje `MINIAPP`
-//! (`pixpin_proyecto::mini`), escrito letra por letra como lo escriben el
+//! (`pindesk_proyecto::mini`), escrito letra por letra como lo escriben el
 //! movil y Windows, y aqui solo se exponen sus funciones. Cada operacion es
 //! **documento entra, documento sale**: Swift no aprende el formato, solo
 //! guarda el texto que le devuelven. Asi lo que el PC o el movil no entienden
@@ -19,9 +19,9 @@
 //! Los documentos son cortos (una lista, una cuenta): cruzan enteros, una
 //! llamada por toque. Nada se queda en memoria en Rust.
 
-use pixpin_proyecto::almacen::{self, Indice};
-use pixpin_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
-use pixpin_proyecto::mini::{self, contador, gastos, ruleta};
+use pindesk_proyecto::almacen::{self, Indice};
+use pindesk_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
+use pindesk_proyecto::mini::{self, contador, gastos, ruleta};
 
 use crate::chats::{MensajeChat, hora_unica, validar_chat};
 use crate::tareas::Tarea;

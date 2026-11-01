@@ -1,0 +1,85 @@
+[package]
+name = "pindesk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pixpinmax"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+fluent-bundle = "0.16.0"
+pindesk-audio = { version = "0.1.0", path = "../../crates/pindesk-audio" }
+pindesk-capture = { version = "0.1.0", path = "../../crates/pindesk-capture" }
+pindesk-ocr = { version = "0.1.0", path = "../../crates/pindesk-ocr" }
+# El asistente local del chat: motor llama.cpp aparte, herramientas y bucle.
+pindesk-ia = { path = "../../crates/pindesk-ia" }
+pindesk-docs = { version = "0.1.0", path = "../../crates/pindesk-docs" }
+# El editor de notas Markdown (H12): el RichEdit de Windows, en su crate
+# porque este ejecutable no admite `unsafe`.
+pindesk-notas = { version = "0.1.0", path = "../../crates/pindesk-notas" }
+pindesk-pdf = { version = "0.1.0", path = "../../crates/pindesk-pdf" }
+# Word y PowerPoint maquetados como en Office (el pin de paginas de Office).
+pindesk-office = { path = "../../crates/pindesk-office" }
+pindesk-proyecto = { version = "0.1.0", path = "../../crates/pindesk-proyecto" }
+pindesk-codec = { version = "0.1.0", path = "../../crates/pindesk-codec" }
+pindesk-geom = { version = "0.1.0", path = "../../crates/pindesk-geom" }
+pindesk-motor2d = { version = "0.1.0", path = "../../crates/pindesk-motor2d" }
+pindesk-nivel = { version = "0.1.0", path = "../../crates/pindesk-nivel" }
+pindesk-pin = { version = "0.1.0", path = "../../crates/pindesk-pin" }
+pindesk-pila = { version = "0.1.0", path = "../../crates/pindesk-pila" }
+pindesk-record = { version = "0.1.0", path = "../../crates/pindesk-record" }
+pindesk-render = { version = "0.1.0", path = "../../crates/pindesk-render" }
+pindesk-shell = { version = "0.1.0", path = "../../crates/pindesk-shell" }
+pindesk-sincro = { version = "0.1.0", path = "../../crates/pindesk-sincro" }
+# Lecciones aprendidas: la logica pura (ficha, repaso, buscador, etiquetas).
+pindesk-lecciones = { path = "../../crates/pindesk-lecciones" }
+pindesk-timeline = { path = "../../crates/pindesk-timeline" }
+pindesk-store = { version = "0.1.0", path = "../../crates/pindesk-store" }
+# Las hojas de Excel (.xlsx) en su visor como pin (`visor_hoja`).
+pindesk-hojas = { path = "../../crates/pindesk-hojas" }
+pindesk-tinta = { version = "0.1.0", path = "../../crates/pindesk-tinta" }
+pindesk-ui = { version = "0.1.0", path = "../../crates/pindesk-ui" }
+pindesk-cad = { path = "../../crates/pindesk-cad" }
+pindesk-bim = { path = "../../crates/pindesk-bim" }
+pindesk-web = { version = "0.1.0", path = "../../crates/pindesk-web" }
+pindesk-voz = { version = "0.1.0", path = "../../crates/pindesk-voz" }
+# El borrador de las imagenes pegadas en Flow (`[img 01]` -> fichero): el
+# mismo modulo que lee el plugin, asi el formato es uno solo. Solo serde y
+# `windows`, que ya estan; el plugin no depende de nada de PixPin.
+pindesk-lanzador = { version = "0.1.0", path = "../pindesk-lanzador" }
+# La huella de los PDF ya aligerados (ver src/aligerar.rs). Ya esta en el
+# arbol. pdfsqueeze NO va aqui: vive en su ejecutable, pindesk-aligerar.
+sha2 = "0.10"
+qrcodegen = "1.8.0"
+# El dialogo de sincronizar viaja en JSON: mismas versiones que pindesk-sincro.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Comprimir el PDF de un plano exportado (`plano_cad::exportar`). Ya esta en el arbol.
+flate2 = "1.1"
+tracing = "0.1.44"
+tracing-appender = "0.2.5"
+tracing-subscriber = "0.3.23"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Direct2D", "Win32_Graphics_Direct3D11"] }
+
+[dev-dependencies]
+toml = "0.8"
+# Las pruebas de aligerar fabrican un PDF cifrado; la misma que pdfsqueeze.
+lopdf = { version = "0.42", default-features = false }
+# El compresor en el propio hilo de las pruebas (no hay pixpin-aligerar.exe
+# al lado del ejecutable de pruebas) y los PDF sinteticos de pdfsqueeze.
+pindesk-aligerar = { workspace = true }
+pdfsqueeze-core = { workspace = true }
+# El «movil» de mentira de las pruebas de sincronizar (planos anotados que
+# viajan, `plano_cad::anotar`) y sus dibujos comprimidos.
+pindesk-sincro = { version = "0.1.0", path = "../../crates/pindesk-sincro", features = ["simulador"] }
+# Ver el plano a PNG en el banco del asistente (`documentos_acciones`).
+pindesk-cad = { path = "../../crates/pindesk-cad", features = ["pintar-png"] }
+flate2 = "1.1"
+windows = { version = "0.62.2", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common"] }
+
+[build-dependencies]
+embed-resource = "3.0.11"

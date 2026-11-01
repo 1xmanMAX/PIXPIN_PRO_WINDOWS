@@ -2,46 +2,46 @@
 //!
 //! No se inventa nada: es lo que hace Windows, con los campos del movil.
 //!
-//! - El audio es un `.m4a` (MPEG-4 con AAC mono, como `pixpin-audio` y el
+//! - El audio es un `.m4a` (MPEG-4 con AAC mono, como `pindesk-audio` y el
 //!   `MediaRecorder` del movil) que graba Swift con AVFoundation. Aqui entra
 //!   con [`Nucleo::adjuntar_voz`]: se copia como cualquier adjunto
 //!   (`guardar_adjunto`, clase `VOZ`) con el nombre `voz_<hora>.m4a` de
 //!   Windows (`ventana_chat::nombre_de_la_voz`), y la misma linea lleva
 //!   `duracionMs` y `picos` (de 0 a 32767, como mucho 256: el contrato de
-//!   `pixpin_audio::picos`). Windows escribe la linea y luego la reescribe
+//!   `pindesk_audio::picos`). Windows escribe la linea y luego la reescribe
 //!   con eso; aqui se escribe una sola vez.
 //! - El texto lo saca Swift (`SFSpeechRecognizer` en el aparato) y lo
 //!   guarda [`Nucleo::poner_transcripcion`] igual que `voz::aplicar` de
 //!   Windows: `transcripcion` con el formato `[1:23] lo dicho` (parrafos de
 //!   hasta 20 s separados por un renglon en blanco,
-//!   `pixpin_voz::tiempos::con_tiempos`) y `estadoDelTexto` en `resto`.
+//!   `pindesk_voz::tiempos::con_tiempos`) y `estadoDelTexto` en `resto`.
 //!
-//! `pixpin-voz` sigue en `por-adaptar/` (SAPI, ONNX), asi que lo poco que
+//! `pindesk-voz` sigue en `por-adaptar/` (SAPI, ONNX), asi que lo poco que
 //! hace falta de el (`con_tiempos`, `marca_de_tiempo`, `estado_de`) esta
 //! copiado aqui **al caracter**: el campo viaja por la sincronizacion y el
-//! movil lo lee para saltar al minuto. Cuando `pixpin-voz` compile fuera de
+//! movil lo lee para saltar al minuto. Cuando `pindesk-voz` compile fuera de
 //! Windows, se usa el suyo y se borra esta copia.
 
-use pixpin_proyecto::almacen;
-use pixpin_proyecto::cuaderno::{self, Clase, Mensaje};
+use pindesk_proyecto::almacen;
+use pindesk_proyecto::cuaderno::{self, Clase, Mensaje};
 
 use crate::chats::validar_chat;
 use crate::{ErrorNucleo, MensajeChat, Nucleo};
 
 /// Cuanto abarca un parrafo del texto con tiempos, como mucho
-/// (`pixpin_voz::tiempos::PARRAFO_MS`, `Transcriptor.kt:100`).
+/// (`pindesk_voz::tiempos::PARRAFO_MS`, `Transcriptor.kt:100`).
 pub const PARRAFO_MS: i64 = 20_000;
 
 /// Cuantos picos se guardan por nota, como mucho
-/// (`pixpin_audio::PICOS_GUARDADOS`, `Onda.kt:96`).
+/// (`pindesk_audio::PICOS_GUARDADOS`, `Onda.kt:96`).
 pub const PICOS_GUARDADOS: usize = 256;
 
 /// Lo mas alto que puede valer un pico: el de una muestra de 16 bits
-/// (`pixpin_audio::PICO_MAXIMO`).
+/// (`pindesk_audio::PICO_MAXIMO`).
 pub const PICO_MAXIMO: i32 = 32767;
 
 /// Un trozo de lo reconocido y en que milisegundo del audio empieza (el
-/// `Segmento` de `pixpin-voz`; Swift lo saca de `SFTranscriptionSegment`).
+/// `Segmento` de `pindesk-voz`; Swift lo saca de `SFTranscriptionSegment`).
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SegmentoVoz {
     pub desde_ms: i64,
@@ -64,7 +64,7 @@ pub fn marca_de_tiempo(ms: i64) -> String {
 
 /// El texto con sus tiempos: una linea por parrafo de hasta [`PARRAFO_MS`],
 /// separadas por un renglon en blanco. Copia de
-/// `pixpin_voz::tiempos::con_tiempos` con el prefijo vacio (una nota normal).
+/// `pindesk_voz::tiempos::con_tiempos` con el prefijo vacio (una nota normal).
 pub fn con_tiempos(segmentos: &[SegmentoVoz]) -> String {
     let mut lineas: Vec<String> = Vec::new();
     let mut desde: i64 = -1;
@@ -92,7 +92,7 @@ pub fn con_tiempos(segmentos: &[SegmentoVoz]) -> String {
 }
 
 /// La palabra de `estadoDelTexto` para un texto reconocido: `bien` si hay
-/// algo aprovechable y `mal` si no (`pixpin_voz::estado_de` sin avisos: el
+/// algo aprovechable y `mal` si no (`pindesk_voz::estado_de` sin avisos: el
 /// reconocedor de Apple no marca trozos sin entender).
 pub fn estado_de(segmentos: &[SegmentoVoz]) -> &'static str {
     if segmentos.iter().any(|s| !s.texto.trim().is_empty()) {
@@ -102,7 +102,7 @@ pub fn estado_de(segmentos: &[SegmentoVoz]) -> &'static str {
     }
 }
 
-/// Junta los picos de dos en dos promediando (`pixpin_audio::picos::a_mitad`).
+/// Junta los picos de dos en dos promediando (`pindesk_audio::picos::a_mitad`).
 fn a_mitad(picos: &[i32]) -> Vec<i32> {
     picos
         .chunks(2)

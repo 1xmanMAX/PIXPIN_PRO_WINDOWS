@@ -22,8 +22,8 @@ Ficheros que acompañan a este manual (`docs/manual-asistente-android/`):
 | `sistema-claude.txt` | Las instrucciones de sistema tal como salen hacia Claude con el catálogo entero. |
 | `casos-del-banco.json` | Los 42 pedidos del banco de pruebas, para medir lo mismo en el móvil. |
 
-Se sacaron con la prueba que ya existe en el PC: `cargo test -p pixpin-ia --test banco -- --ignored --exact volcar_para_haiku`
-(con `PIXPIN_IA_VOLCADO=<carpeta>`). Para regenerarlos después de un cambio en el PC, hay que repetir esa orden.
+Se sacaron con la prueba que ya existe en el PC: `cargo test -p pindesk-ia --test banco -- --ignored --exact volcar_para_haiku`
+(con `PINDESK_IA_VOLCADO=<carpeta>`). Para regenerarlos después de un cambio en el PC, hay que repetir esa orden.
 
 Revisado contra Android `main` en `5683c3b` (v0.124.0, 14-oct-2026).
 
@@ -72,7 +72,7 @@ Revisado contra Android `main` en `5683c3b` (v0.124.0, 14-oct-2026).
 
 | Pieza | Rust | Qué hace |
 |---|---|---|
-| Contrato del motor | `crates/pixpin-ia/src/motor.rs` | `trait Motor { completar(&Peticion, al_trozo) -> Respuesta; soltar(); catalogo_completo() }`. La conversación tiene la forma de la API de chat de OpenAI. |
+| Contrato del motor | `crates/pindesk-ia/src/motor.rs` | `trait Motor { completar(&Peticion, al_trozo) -> Respuesta; soltar(); catalogo_completo() }`. La conversación tiene la forma de la API de chat de OpenAI. |
 | Modelos locales | `modelos.rs`, `descarga.rs`, `servidor.rs` | Qué se baja, con su SHA-256. `llama-server` corre en un proceso aparte. |
 | Relevo | `relevo.rs` | Varios modelos locales, **uno cargado a la vez**. |
 | Nube | `nube/{mod,claude,deepseek,instrucciones,claves,http}.rs` | El mismo `Motor` sobre las API de Claude y DeepSeek. |
@@ -81,10 +81,10 @@ Revisado contra Android `main` en `5683c3b` (v0.124.0, 14-oct-2026).
 | Selección por turno | `seleccion.rs` | Las 6 herramientas que vienen a cuento (solo con el modelo local). |
 | Memoria | `pensar.rs`, `hoja_trabajo.rs`, `contexto.rs` | Pensamiento, petición mejorada, hoja de trabajo y reinicio al 70 %. |
 | Al lienzo | `lienzo.rs`, `calcar.rs`, `svg.rs` | De una llamada validada a elementos de Excalidraw. |
-| App | `apps/pixpin/src/asistente/**` | Ejecutor, chat, burbuja en vivo, lienzo propio, documentos, recetas. |
-| UI | `apps/pixpin/src/ventana_chat/{asistente,pensado,voz_del_asistente,aviso_asistente}.rs` | La ventana. |
-| Automatizaciones | `apps/pixpin/src/automatizaciones*.rs` | Disparadores y pasos. |
-| Figuras | `apps/pixpin/src/biblioteca_figuras.rs` | La biblioteca de figuras, viajando por el chat «Asistente». |
+| App | `apps/pindesk/src/asistente/**` | Ejecutor, chat, burbuja en vivo, lienzo propio, documentos, recetas. |
+| UI | `apps/pindesk/src/ventana_chat/{asistente,pensado,voz_del_asistente,aviso_asistente}.rs` | La ventana. |
+| Automatizaciones | `apps/pindesk/src/automatizaciones*.rs` | Disparadores y pasos. |
+| Figuras | `apps/pindesk/src/biblioteca_figuras.rs` | La biblioteca de figuras, viajando por el chat «Asistente». |
 
 ### 1.2 El contrato (`motor.rs`)
 
@@ -102,7 +102,7 @@ Respuesta{ texto, llamadas, fin: Natural|Herramientas|Longitud|Cortado, pensamie
 ```
 
 - La imagen va **antes** del texto en el mensaje del usuario (lo recomienda Qwen). La foto se reduce
-  antes a unos **768 px** de lado (`apps/pixpin/src/asistente/foto.rs`).
+  antes a unos **768 px** de lado (`apps/pindesk/src/asistente/foto.rs`).
 - El cuerpo que va a llama.cpp (`Peticion::a_json`):
   `temperature 0.7, top_p 0.8, top_k 20, presence_penalty 1.5, stream, chat_template_kwargs.enable_thinking`.
 - **En Android**: una interfaz Kotlin `Motor` con `completar(peticion, alTrozo: (Trozo) -> Seguir): Respuesta`,
@@ -167,7 +167,7 @@ Haiku 5.5 dibujaba figuras sin tamaño ni texto (`{"tipo":"rectangulo","x":0,"y"
 deformes, y el banco caía al **50 %** en los dibujos. Sin `strict`, el **100 %**. La decodificación
 restringida sigue el orden del esquema (alfabético), y tras «tipo» solo le quedaban «x» e «y».
 La validación estricta la hace igual `herramientas::validar` antes de ejecutar. Las grabaciones están
-en `crates/pixpin-ia/src/nube/grabaciones/casa-{con,sin}-strict.sse`, y la prueba es
+en `crates/pindesk-ia/src/nube/grabaciones/casa-{con,sin}-strict.sse`, y la prueba es
 `la_casa_sin_strict_trae_tamanos_y_colores_y_la_de_strict_no`. **Android: no pongas `strict`.**
 
 Otras reglas de la nube que hay que copiar:
@@ -192,7 +192,7 @@ Otras reglas de la nube que hay que copiar:
 
 ### 1.4 Cómo se elige el motor
 
-Los ajustes del PC (`[asistente]` en el TOML, `crates/pixpin-store/src/ajustes.rs::Asistente`):
+Los ajustes del PC (`[asistente]` en el TOML, `crates/pindesk-store/src/ajustes.rs::Asistente`):
 
 | Clave | Valores | Uso |
 |---|---|---|
@@ -281,10 +281,10 @@ produce en datos:
 | `sincronizar_movil`, `enviar_al_movil` | `sincronizar`, `enviar_al_movil` | `enviar_al_movil`, sí (sale del aparato) |
 | `crear_automatizacion` | `automatizacion {operacion:"crear",receta}` | sí |
 
-Para la columna «Confirmar» manda el código: `crates/pixpin-ia/src/acciones.rs`, campo `confirmar`
+Para la columna «Confirmar» manda el código: `crates/pindesk-ia/src/acciones.rs`, campo `confirmar`
 de cada fila de `ACCIONES`. Lo que **borra o saca algo del aparato** pregunta siempre (§4.3).
 
-**Documentos** (`acciones_documentos.rs`, que ejecuta `apps/pixpin/src/asistente/documentos_acciones.rs`):
+**Documentos** (`acciones_documentos.rs`, que ejecuta `apps/pindesk/src/asistente/documentos_acciones.rs`):
 
 | Herramienta | Qué hace en datos |
 |---|---|
@@ -402,7 +402,7 @@ motores; el texto completo es la sección `<rol>` de `sistema-claude.txt`.
 | DeepSeek | base + `# Entorno` + `# Reglas` numeradas y el recordatorio «Recuerda: las herramientas se usan con una llamada de funcion (tool_calls)…» |
 | Local | el base tal cual en el primer `system`, con la hoja y el plan debajo (`contexto::sistema_con_hoja`) |
 
-**Memoria del turno** (`agente::Opciones`, `apps/pixpin/src/asistente/turno.rs::Memoria`):
+**Memoria del turno** (`agente::Opciones`, `apps/pindesk/src/asistente/turno.rs::Memoria`):
 
 - **Planear** (petición mejorada). Hay una vuelta corta antes de actuar:
   - sistema `pensar::instrucciones_del_plan`, que pide cinco líneas `ENTIENDO:` / `HARE:` / `HERRAMIENTAS:` / `DATOS:` / `DECIDIDO:`;
@@ -424,17 +424,17 @@ herramientas de siempre (apuntar en el horario, una nota, el lienzo), citando de
 | Proveedor | Quién hace la web | Herramientas |
 |---|---|---|
 | Claude | **La API de Anthropic** (herramientas de servidor, sin claves de más) | `web_search` (`web_search_20250305`, 5 usos por petición) y `web_fetch` (`web_fetch_20250910`, 3 usos), en `nube/claude.rs::herramientas_web`. Sus bloques vuelven intactos en la vuelta siguiente. |
-| DeepSeek | **PinDesk** (`crates/pixpin-ia/src/web.rs`) | `buscar_en_la_web {consulta, maximo=8}` y `abrir_pagina {url, parte=1}`: filas de la tabla de acciones, solo de la nube. A Claude no se le mandan (`claude::cuerpo` las quita). |
+| DeepSeek | **PinDesk** (`crates/pindesk-ia/src/web.rs`) | `buscar_en_la_web {consulta, maximo=8}` y `abrir_pagina {url, parte=1}`: filas de la tabla de acciones, solo de la nube. A Claude no se le mandan (`claude::cuerpo` las quita). |
 
 `abrir_pagina` baja la página (`nube/http.rs::bajar_web`), la pasa a texto legible
-(`crates/pixpin-paginas`: títulos `#`, listas `- `, **tablas fila a fila `| a | b |`**, enlaces
+(`crates/pindesk-paginas`: títulos `#`, listas `- `, **tablas fila a fila `| a | b |`**, enlaces
 `[n]` listados al final; fuera menús, `nav`, `footer`, anuncios, scripts y lo oculto; si hay
 `<main>`/`<article>` con texto, solo eso) y la devuelve **por partes de 12 000 letras**. También
 lee PDF (con el lector de siempre, OCR incluido) y texto plano; imágenes y binarios, no.
 
 **El buscador** con DeepSeek: **DuckDuckGo** en su página HTML (`html.duckduckgo.com/html/`), sin
 clave ni cuenta. Si el usuario pone una clave de **Brave Search** en la variable de entorno
-`PIXPIN_CLAVE_BRAVE`, se usa su API (más estable) y, si falla, DuckDuckGo. Si DuckDuckGo pide
+`PINDESK_CLAVE_BRAVE`, se usa su API (más estable) y, si falla, DuckDuckGo. Si DuckDuckGo pide
 comprobar que no es un robot, el error lo dice y propone abrir la web directamente.
 
 **Seguridad** (lo mismo tiene que hacer el móvil):
@@ -530,7 +530,7 @@ asistente no se cita a sí mismo.
 ### 3.2 Lo que pensó y la hoja de trabajo: `pins/draw/anot-<uid>.asistente.json`
 
 Uno por respuesta, con el **código único de su nota** (`Codigos.unico(m)` = su `uid`). Es la
-terminación `ASISTENTE = ".asistente.json"` de `crates/pixpin-sincro/src/anotado.rs`, que es la
+terminación `ASISTENTE = ".asistente.json"` de `crates/pindesk-sincro/src/anotado.rs`, que es la
 lista `TERMINACIONES` de `AnotacionesDelAdjunto.kt` más esta. Viaja con su nota y **se borra con
 ella**, igual que `.comentarios.json`. En el PC está en `proyectos/<chat>/android/pins/draw/`;
 en el móvil, en `files/pins/draw/`. Es JSON en claro, sin gzip, escrito de forma atómica.
@@ -575,7 +575,7 @@ respuesta tiene el suyo y solo lo escribe quien la escribió.
 ### 3.3 El chat fijo «Asistente»
 
 - **En el PC** es un proyecto con la marca `asistente: true` en el `resto` de su ficha
-  (`crates/pixpin-proyecto/src/almacen.rs::asegurar_asistente`). Se llama «Asistente», sale arriba
+  (`crates/pindesk-proyecto/src/almacen.rs::asegurar_asistente`). Se llama «Asistente», sale arriba
   en la lista y renombrado sigue siendo él.
 - **Lo que viaja hoy**: el proyecto portátil **no lleva la marca**. `vista::proyecto_local` solo
   pone `id`, `nombre`, `uid`, `creado`, `aparato` y `archivado`, porque Android reescribe el
@@ -593,18 +593,18 @@ respuesta tiene el suyo y solo lo escribe quien la escribió.
 
 - Las coordenadas del modelo son de un lienzo de **800 × 600**, con el origen arriba a la izquierda.
 - `Fabrica` da ids `ia-<semilla hex>-<n>` y grupos `ia-<semilla>-<que>-<n>`. Todo elemento lleva
-  `customData: {"origen":"pixpin-ia"}`, `version: 1`, `roughness: 1`, `strokeWidth: 2`,
+  `customData: {"origen":"pindesk-ia"}`, `version: 1`, `roughness: 1`, `strokeWidth: 2`,
   `fillStyle: "solid"` y `backgroundColor: "transparent"` si no tiene relleno.
 - Los colores con nombre se traducen a la paleta de Excalidraw (`herramientas::color`). Series de
   gráficas: `#1971c2 #e03131 #2f9e44 #f08c00 #6741d9 #0c8599 #c2255c #868e96`.
 - Los puntos van relativos al primero. El PC los escribe como `[x,y]` y, al mandarlos al móvil, los
-  pasa a `{"x":…,"y":…}` (`crates/pixpin-proyecto/src/para_el_movil.rs`). En Android basta con
+  pasa a `{"x":…,"y":…}` (`crates/pindesk-proyecto/src/para_el_movil.rs`). En Android basta con
   escribirlos como los escribe hoy `Element`.
 - Solo se usan `type` que el móvil sabe leer (`TIPOS_DEL_MOVIL`): `rectangle`, `diamond`, `ellipse`,
   `arrow`, `line`, `freedraw`, `text`, `image`, `frame` y los `pixpin-*`. Un `type` desconocido tira
   la escena entera en kotlinx.
 
-**Adónde va lo dibujado** (`apps/pixpin/src/asistente/al_lienzo.rs`):
+**Adónde va lo dibujado** (`apps/pindesk/src/asistente/al_lienzo.rs`):
 
 | Situación | Destino |
 |---|---|
@@ -627,7 +627,7 @@ respuesta tiene el suyo y solo lo escribe quien la escribió.
 | Ruta portátil | `pixpin:files/guardados/asistente/automatizaciones.json` | la misma |
 | Mensaje que lo hace viajar | `ARCHIVO`, **id `auto-automatizaciones`**, `nombre: "automatizaciones.json"`, `ruta` = la portátil, texto «⚙️ Las automatizaciones del asistente (se cambian en Ajustes → Asistente)» | el mismo, **uno solo** (si ya está, no se toca) |
 
-Formato: JSON en camelCase (`apps/pixpin/src/automatizaciones.rs`):
+Formato: JSON en camelCase (`apps/pindesk/src/automatizaciones.rs`):
 
 ```json
 { "version": 1,
@@ -789,7 +789,7 @@ y `archivos`. Se junta celda a celda con `Fusion` (ya funciona).
 
 ## 4. Comportamiento de la UI
 
-Lo que hay que copiar, sacado de `apps/pixpin/src/ventana_chat/*` y `asistente/chat.rs`.
+Lo que hay que copiar, sacado de `apps/pindesk/src/ventana_chat/*` y `asistente/chat.rs`.
 
 ### 4.1 Burbujas a cada lado
 
@@ -920,7 +920,7 @@ modelo local, que busca sin salir del PC».
 Son deterministas y sin Windows, así que dan **el mismo resultado** en los dos aparatos. Copia
 también sus constantes y sus pruebas.
 
-### 5.1 Calcar una imagen: `crates/pixpin-ia/src/calcar.rs`
+### 5.1 Calcar una imagen: `crates/pindesk-ia/src/calcar.rs`
 
 **Manchas de color** (lo normal):
 
@@ -940,7 +940,7 @@ imagen) → cadenas de píxeles (mínimo 14 / 9 / 6) → RDP → suavizado → `
 `colores`, `solo_contornos` y `zona` en fracciones; `ajustar_al_pedido` los afina con las palabras
 del pedido.
 
-### 5.2 SVG → elementos: `crates/pixpin-ia/src/svg.rs`
+### 5.2 SVG → elementos: `crates/pindesk-ia/src/svg.rs`
 
 - **Entiende**: `path` (M L H V C S Q T A Z, absolutos y relativos; las curvas y arcos pasan a
   polilíneas), `rect` (con esquinas redondeadas), `circle`, `ellipse`, `line`, `polyline`,
@@ -952,7 +952,7 @@ del pedido.
   Si se pasa, se rechaza con el motivo.
 - `trazo`: `liso`, `a_mano`, `lapiz` o `grafito` (con `dureza`).
 
-### 5.3 Tabla escaneada: `crates/pixpin-ia/src/tabla_escaneada.rs`
+### 5.3 Tabla escaneada: `crates/pindesk-ia/src/tabla_escaneada.rs`
 
 Recibe palabras con su caja, del OCR o de la capa de texto del PDF. Todo se mide en altos de letra.
 
@@ -967,7 +967,7 @@ El modelo solo decide tabla o Excel, el nombre y si hay cabecera (`parece_cabece
 En Android, el OCR es ML Kit Text Recognition (`Text.TextBlock.lines.elements` con `boundingBox`)
 o el texto del PDF.
 
-### 5.4 Buscar en mis cosas (BM25): `crates/pixpin-ia/src/documentos/`
+### 5.4 Buscar en mis cosas (BM25): `crates/pindesk-ia/src/documentos/`
 
 - **Palabras** (`texto.rs`):
   - minúsculas y sin tildes, y `ñ` → `n`;
@@ -989,7 +989,7 @@ o el texto del PDF.
 - **Resultado al modelo**: numerado `[1]`, `[2]`… y seguido entre búsquedas del mismo turno
   (`Citas`). La respuesta guarda las que el modelo nombró (`fuentesIa`).
 
-### 5.5 Reinicio de contexto al 70 %: `crates/pixpin-ia/src/contexto.rs`
+### 5.5 Reinicio de contexto al 70 %: `crates/pindesk-ia/src/contexto.rs`
 
 - `estimar`: letras / 3,2 + 450 por imagen + 6 por mensaje + las llamadas + el catálogo.
 - Si `tokens + 1536 > 0,70 · ventana`, se reinicia: el turno arranca con sistema (+ hoja + plan) +
@@ -1003,7 +1003,7 @@ o el texto del PDF.
 
 ### 5.6 Intérprete rápido de órdenes simples: **aún no está en `main`**
 
-Está en la rama `ia-rapidez-tareas` (`crates/pixpin-ia/src/rapido.rs`, `tareas.rs`), sin unir.
+Está en la rama `ia-rapidez-tareas` (`crates/pindesk-ia/src/rapido.rs`, `tareas.rs`), sin unir.
 Convierte órdenes cortas («abre la galería», «apunta comprar yeso») en la llamada sin pasar por el
 modelo (< 100 ms). No hace nada si duda, y **nunca** lo que borra. Cuando se una a `main` se añadirá
 aquí. **No lo portes antes.**
@@ -1016,12 +1016,12 @@ aquí. **No lo portes antes.**
 
 | Prueba | Para qué |
 |---|---|
-| `cargo test -p pixpin-ia` | Unitarias: validación, catálogo, agente con `MotorGuionado`, hoja, contexto, calcar, svg, tabla, BM25, nube con un servidor falso y las grabaciones `.sse` |
-| `cargo test -p pixpin-ia --test banco -- --ignored --nocapture` | **Banco** con el modelo de verdad: 42 casos con comprobación automática. `PIXPIN_IA_MOTOR=local,gemma,claude,deepseek` saca una tabla comparativa. |
-| **Modo grabado** | `volcar_para_haiku` escribe `sistema.txt`, `herramientas.json` y `casos.json`. Un «cerebro» contesta en `respuestas.json` (`{"<caso>":{"texto":"…","llamadas":[{"nombre":"…","entrada":{…}}]}}`). Con `PIXPIN_IA_MOTOR=grabado PIXPIN_IA_GRABADO=<respuestas.json>`, el banco lo pasa por la misma validación y ejecución. **Sirve para comprobar el móvil**: graba lo que contesta el modelo en Android, pásalo por el banco del PC y compara. |
-| `apps/pixpin/src/asistente/documentos_acciones/banco.rs` | Tabla escaneada, anotar PDF y plano, buscar en plano, abrir por nombre, exportar |
-| `crates/pixpin-proyecto/tests/sincronizar_con_el_movil.rs` | Un **móvil simulado** que habla el protocolo de verdad |
-| `apps/pixpin/src/plano_cad/anotar/pruebas_con_el_movil.rs` | Capas de plano de ida y vuelta |
+| `cargo test -p pindesk-ia` | Unitarias: validación, catálogo, agente con `MotorGuionado`, hoja, contexto, calcar, svg, tabla, BM25, nube con un servidor falso y las grabaciones `.sse` |
+| `cargo test -p pindesk-ia --test banco -- --ignored --nocapture` | **Banco** con el modelo de verdad: 42 casos con comprobación automática. `PINDESK_IA_MOTOR=local,gemma,claude,deepseek` saca una tabla comparativa. |
+| **Modo grabado** | `volcar_para_haiku` escribe `sistema.txt`, `herramientas.json` y `casos.json`. Un «cerebro» contesta en `respuestas.json` (`{"<caso>":{"texto":"…","llamadas":[{"nombre":"…","entrada":{…}}]}}`). Con `PINDESK_IA_MOTOR=grabado PINDESK_IA_GRABADO=<respuestas.json>`, el banco lo pasa por la misma validación y ejecución. **Sirve para comprobar el móvil**: graba lo que contesta el modelo en Android, pásalo por el banco del PC y compara. |
+| `apps/pindesk/src/asistente/documentos_acciones/banco.rs` | Tabla escaneada, anotar PDF y plano, buscar en plano, abrir por nombre, exportar |
+| `crates/pindesk-proyecto/tests/sincronizar_con_el_movil.rs` | Un **móvil simulado** que habla el protocolo de verdad |
+| `apps/pindesk/src/plano_cad/anotar/pruebas_con_el_movil.rs` | Capas de plano de ida y vuelta |
 | `automatizaciones::pruebas` | `el_formato_va_y_vuelve_sin_perder_lo_que_no_entiende`, `guardar_crea_el_fichero_y_un_solo_mensaje_que_lo_hace_viajar` |
 | `biblioteca_figuras::pruebas` | `la_biblioteca_va_al_movil_y_vuelve_por_el_chat_del_asistente` |
 
@@ -1060,7 +1060,7 @@ concretos.
 - [ ] `anot-<uid>.asistente.json` con `version: 1`; se lee recortando; uno roto se ignora; se borra con su nota.
 - [ ] `automatizaciones.json` y `figuras.json` en sus rutas, con **un** mensaje ARCHIVO de id fijo cada uno, y conservando lo desconocido.
 - [ ] Recetas: `a_mano` + `boton` + `icono` + `orden`, con los topes 40/2000/40.
-- [ ] Lo dibujado: Excalidraw con `customData.origen = "pixpin-ia"`, ids `ia-…`, solo `type` conocidos, en un paso de deshacer, al lienzo propio «Lienzo del asistente» si no hay otro.
+- [ ] Lo dibujado: Excalidraw con `customData.origen = "pindesk-ia"`, ids `ia-…`, solo `type` conocidos, en un paso de deshacer, al lienzo propio «Lienzo del asistente» si no hay otro.
 - [ ] Anotaciones en `anot-<uid>-p<n>` / `anot-<uid>` + `.hoja`, grupo `asistente-anotado`, juntando con el disco.
 - [ ] Tablas: mini-app `tabla` con el JSON de `TablaDeCalculo` en `texto`.
 - [ ] Claves: Keystore, fuera de la copia de seguridad, nunca en el registro.

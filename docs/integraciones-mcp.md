@@ -58,7 +58,7 @@ claude mcp add --scope user pindesk -- "$env:LOCALAPPDATA\Programs\PinDesk\pinde
 ### Modo portable
 
 Si PinDesk va en modo portable (un `pindesk.toml` junto al exe), copia `pindesk-mcp.exe` a esa
-misma carpeta: lee los datos de ahí, como la app. `PIXPIN_RAIZ` (variable de entorno) fuerza
+misma carpeta: lee los datos de ahí, como la app. `PINDESK_RAIZ` (variable de entorno) fuerza
 otra carpeta de datos.
 
 ## Qué herramientas hay
@@ -77,7 +77,7 @@ otra carpeta de datos.
 
 ### De la app (las hace la PinDesk abierta)
 
-Son **las filas de la tabla del asistente** (`crates/pixpin-ia/src/acciones.rs` y
+Son **las filas de la tabla del asistente** (`crates/pindesk-ia/src/acciones.rs` y
 `acciones_documentos.rs`), con su mismo nombre, descripción y JSON Schema: `abrir_chat`,
 `abrir_fichero`, `abrir_mensaje`, `abrir_nota`, `abrir_hoja`, `escribir_en_chat`,
 `nota_nueva`, `lienzo_nuevo`, `grabar_voz`, `reproducir_audio`, `lista_nueva`,
@@ -120,7 +120,7 @@ Si PinDesk no está abierta, `pindesk-mcp.exe` arranca la que tiene al lado y es
 - Las de la app van por el **pedido `herramienta`** (`docs/protocolo-pedidos.md`):
   `WM_COPYDATA` a la ventana de PinDesk con el nombre de la fila, sus argumentos y un fichero de
   respuesta en `%TEMP%\pindesk-mcp\` (o el `%TEMP%\pixpin-mcp\` de un servidor de antes). La app la hace como el asistente
-  (`apps/pixpin/src/asistente/externa.rs`) y escribe ahí `{"ok": …, "texto": "…"}`.
-- Código: `apps/pixpin-mcp` (`protocolo.rs`, `herramientas.rs`, `escribir.rs`, `leer.rs`,
+  (`apps/pindesk/src/asistente/externa.rs`) y escribe ahí `{"ok": …, "texto": "…"}`.
+- Código: `apps/pindesk-mcp` (`protocolo.rs`, `herramientas.rs`, `escribir.rs`, `leer.rs`,
   `documento.rs`, `pantalla.rs`). Prueba de punta a punta por stdio:
-  `cargo test -p pixpin-mcp --test conversacion`.
+  `cargo test -p pindesk-mcp --test conversacion`.

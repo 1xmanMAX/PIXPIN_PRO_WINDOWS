@@ -2,7 +2,7 @@
 //!
 //! Un chat es un proyecto de `proyectos/indice.json` y sus mensajes viven en
 //! `proyectos/<id>/guardados.jsonl`, una linea de JSON por mensaje
-//! (`pixpin_proyecto::cuaderno`). Aqui no se inventa nada de eso: se lee y se
+//! (`pindesk_proyecto::cuaderno`). Aqui no se inventa nada de eso: se lee y se
 //! escribe con las mismas funciones que el chat de Windows.
 //!
 //! # Como se lee una pagina sin leer el chat entero
@@ -26,8 +26,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::SystemTime;
 
-use pixpin_proyecto::almacen::{self, Indice};
-use pixpin_proyecto::cuaderno::{self, Mensaje, Sello};
+use pindesk_proyecto::almacen::{self, Indice};
+use pindesk_proyecto::cuaderno::{self, Mensaje, Sello};
 
 use crate::{ErrorNucleo, Nucleo};
 
@@ -120,7 +120,7 @@ impl From<&almacen::Ficha> for FichaChat {
             es_asistente: f.es_asistente(),
             archivado: f
                 .resto
-                .get(pixpin_proyecto::vista::MARCA_ARCHIVADO)
+                .get(pindesk_proyecto::vista::MARCA_ARCHIVADO)
                 .and_then(|v| v.as_bool())
                 == Some(true),
         }

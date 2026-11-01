@@ -5,7 +5,7 @@
 //
 // La extension NO sabe nada de los pedidos de PinDesk: manda QUE se eligio
 // con lo que habia en la pagina, y el puente lo traduce
-// (`apps/pixpin-puente/src/traducir.rs`). Las dos tablas de acciones tienen
+// (`apps/pindesk-puente/src/traducir.rs`). Las dos tablas de acciones tienen
 // que coincidir; la prueba de Node lo comprueba leyendo la de Rust.
 
 /** El nombre del puente registrado en HKCU (herramientas/registrar-navegador.ps1). */

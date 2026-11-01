@@ -24,9 +24,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
-use pixpin_motor2d::escena::Escena;
-use pixpin_motor2d::relleno::EstiloRelleno;
+use pindesk_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+use pindesk_motor2d::escena::Escena;
+use pindesk_motor2d::relleno::EstiloRelleno;
 
 use crate::ErrorNucleo;
 use crate::editor::EditorLienzo;
@@ -211,7 +211,7 @@ impl EditorLienzo {
             .get_or_insert_with(carpeta_temporal_nueva)
             .clone();
         std::fs::create_dir_all(&carpeta)?;
-        let temporal = carpeta.join(pixpin_motor2d::enlace::id_de_texto(id_objeto));
+        let temporal = carpeta.join(pindesk_motor2d::enlace::id_de_texto(id_objeto));
         std::fs::write(&temporal, &png)?;
         st.gesto.cerrar_texto(&mut st.escena);
         let id = st.escena.anadir(elemento_imagen(
@@ -226,7 +226,7 @@ impl EditorLienzo {
             temporal: temporal.clone(),
         });
         st.gesto
-            .tomar_herramienta(pixpin_motor2d::gesto::Herramienta::Mano);
+            .tomar_herramienta(pindesk_motor2d::gesto::Herramienta::Mano);
         st.gesto.seleccion.poner_todos([id]);
         drop(guarda);
         self.subir_cambios();

@@ -7,12 +7,12 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use pixpin_nucleo::{ClaseDeResultado, ErrorNucleo, Nucleo};
-use pixpin_proyecto::almacen;
-use pixpin_proyecto::cuaderno::{self, Mensaje, Sello};
-use pixpin_proyecto::mini;
-use pixpin_sincro::galeria::{Caducidad, DIA_MS};
-use pixpin_timeline::Momento;
-use pixpin_timeline::almacen::Almacen;
+use pindesk_proyecto::almacen;
+use pindesk_proyecto::cuaderno::{self, Mensaje, Sello};
+use pindesk_proyecto::mini;
+use pindesk_sincro::galeria::{Caducidad, DIA_MS};
+use pindesk_timeline::Momento;
+use pindesk_timeline::almacen::Almacen;
 
 struct Temporal(PathBuf);
 

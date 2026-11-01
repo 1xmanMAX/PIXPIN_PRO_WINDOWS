@@ -7,13 +7,13 @@
 
   - aparecer en el panel COMPARTIR de otras apps (texto, enlaces, imagenes,
     ficheros) -> llega como activacion ShareTarget y va al chat
-    (crates/pixpin-shell/src/compartido.rs);
+    (crates/pindesk-shell/src/compartido.rs);
   - poner verbos en el menu contextual de PRIMER NIVEL de Windows 11 para sus
     tipos de fichero (sin DLL dentro del Explorador);
   - notificaciones con la identidad del paquete.
 
   Editor, nombre y aplicacion tienen que ser IGUALES a los del elemento <msix>
-  de apps/pixpin/pixpinmax.manifest, y el editor igual al sujeto del
+  de apps/pindesk/pindesk.manifest, y el editor igual al sujeto del
   certificado que crea paquete-identidad.ps1. La version la pone el script.
 
   Desde nov-2026 la identidad es la de PinDesk (antes ForgePixPin.PixPinMax,
