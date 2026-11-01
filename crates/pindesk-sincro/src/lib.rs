@@ -69,6 +69,7 @@ pub mod invitacion;
 pub mod kotlin;
 pub mod mensajes;
 pub mod mezcla;
+pub mod nube;
 pub mod prioridad;
 pub mod protocolo;
 pub mod reintentos;
