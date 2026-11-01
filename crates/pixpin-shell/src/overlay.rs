@@ -131,6 +131,42 @@ pub fn simular_raton(hwnd: isize, que: u8, x: i32, y: i32) {
     }
 }
 
+/// **Lo que hace AltSnap, para las pruebas**: lleva la ventana `hwnd` (una
+/// PROPIA) a `x, y` del escritorio por fuera de la aplicacion, con
+/// `SetWindowPos`, sin pasar por `VentanaOverlay::mover`.
+pub fn simular_traslado(hwnd: isize, x: i32, y: i32) {
+    // SAFETY: SetWindowPos sobre una ventana propia; un handle muerto hace
+    // fallar la llamada sin mas.
+    unsafe {
+        let _ = SetWindowPos(
+            HWND(hwnd as *mut _),
+            None,
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
+/// Si `p` (del escritorio) es, para Windows, la barra de titulo de `hwnd`:
+/// lo que contesta su `WM_NCHITTEST`. Para las pruebas de la cabecera.
+pub fn es_barra_de_titulo(hwnd: isize, p: Punto) -> bool {
+    let lparam = ((p.y as u16 as isize) << 16) | (p.x as u16 as isize);
+    // SAFETY: WM_NCHITTEST es una consulta; la ventana es propia y, si ya
+    // no existe, SendMessageW devuelve 0.
+    let r = unsafe {
+        SendMessageW(
+            HWND(hwnd as *mut _),
+            WM_NCHITTEST,
+            Some(WPARAM(0)),
+            Some(LPARAM(lparam)),
+        )
+    };
+    r.0 == HTCAPTION as isize
+}
+
 /// Espera a que el compositor haya presentado lo ultimo que se dibujo.
 /// Dos vueltas: la primera cierra el fotograma en curso, la segunda
 /// garantiza que el nuestro ya esta en pantalla y, por tanto, en la
