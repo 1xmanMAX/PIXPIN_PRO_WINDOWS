@@ -43,6 +43,24 @@ pub fn es_arrastre(p: Punto, zonas: &[Rect], botones: &[Rect]) -> bool {
     zonas.iter().any(|z| z.contiene(p)) && !botones.iter().any(|b| b.contiene(p))
 }
 
+/// **Lo que hay dentro de una ventana movida por otro.** Quien pone la
+/// ventana a partir de su contenido (un pin: la ventana es el contenido mas
+/// su sombra) espera verla en `esperada`; si esta en `real` con el MISMO
+/// tamano y en otro sitio, alguien la llevo (AltSnap, Win+flecha) y el
+/// contenido tiene que ir con ella, el mismo trecho. Con otro tamano no es
+/// un traslado (un zoom, un cambio de DPI) y no se toca: `None`.
+pub fn contenido_seguido(contenido: Rect, esperada: Rect, real: Rect) -> Option<Rect> {
+    if (esperada.ancho, esperada.alto) != (real.ancho, real.alto) {
+        return None;
+    }
+    let (dx, dy) = (real.x - esperada.x, real.y - esperada.y);
+    ((dx, dy) != (0, 0)).then_some(Rect {
+        x: contenido.x + dx,
+        y: contenido.y + dy,
+        ..contenido
+    })
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -89,5 +107,25 @@ mod pruebas {
         // Debajo de la cabecera, el contenido: clic normal.
         assert!(!es_arrastre(Punto { x: 300, y: 90 }, &cabecera, &botones));
         assert!(!es_arrastre(Punto { x: 300, y: 40 }, &[], &botones));
+    }
+
+    #[test]
+    fn el_contenido_de_un_pin_movido_por_otro_va_con_su_ventana() {
+        // Contenido 300x200 con 10 de sombra alrededor.
+        let contenido = r(110, 110, 300, 200);
+        let esperada = r(100, 100, 320, 220);
+        let real = r(700, -50, 320, 220);
+        assert_eq!(
+            contenido_seguido(contenido, esperada, real),
+            Some(r(710, -40, 300, 200))
+        );
+        // Donde se la puso: nada que seguir.
+        assert_eq!(contenido_seguido(contenido, esperada, esperada), None);
+        // Otro tamano (la ventana del zoom, un cambio de DPI): no es un
+        // traslado.
+        assert_eq!(
+            contenido_seguido(contenido, esperada, r(700, 0, 400, 220)),
+            None
+        );
     }
 }
