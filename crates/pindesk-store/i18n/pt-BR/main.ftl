@@ -3494,3 +3494,20 @@ reportar-ia-campo-version = Versão
 reportar-ia-campo-contenido = O que a IA escreveu
 reportar-ia-comentario = (Se quiser, conte aqui o que está errado.)
 repaso-jev-fallo-red = Sem conexão.
+
+## Exportar tarefas: a página, o PDF e o Markdown de uma lista (1-nov-2026)
+tareas-exportar-titulo = Tarefas
+tareas-exportar-exportado = Exportado em { $fecha }
+tareas-exportar-pendientes = Pendentes
+tareas-exportar-hechas = Concluídas
+tareas-exportar-completado = Concluído
+tareas-exportar-pendiente = Pendente
+tareas-exportar-hecha = Concluída
+tareas-exportar-todo-hecho = Tudo feito
+tareas-exportar-vacia = Sem tarefas
+tareas-exportar-recordatorio = Lembrete
+tareas-exportar-pasada = Atrasada
+tareas-exportar-creada = Criada em { $fecha }
+tareas-exportar-de = { $hechas } de { $total }
+tareas-exportar-foto = Foto
+compartir-tipo-tareas = Lista de tarefas

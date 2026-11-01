@@ -3557,3 +3557,20 @@ reportar-ia-campo-version = Versi
 reportar-ia-campo-contenido = Yang ditulis AI
 reportar-ia-comentario = (Jika mau, ceritakan di sini apa yang salah.)
 repaso-jev-fallo-red = Tidak ada koneksi.
+
+## Ekspor tugas: halaman, PDF, dan Markdown sebuah daftar (1-11-2026)
+tareas-exportar-titulo = Tugas
+tareas-exportar-exportado = Diekspor pada { $fecha }
+tareas-exportar-pendientes = Belum selesai
+tareas-exportar-hechas = Selesai
+tareas-exportar-completado = Tuntas
+tareas-exportar-pendiente = Belum selesai
+tareas-exportar-hecha = Selesai
+tareas-exportar-todo-hecho = Semua selesai
+tareas-exportar-vacia = Tidak ada tugas
+tareas-exportar-recordatorio = Pengingat
+tareas-exportar-pasada = Lewat waktu
+tareas-exportar-creada = Dibuat { $fecha }
+tareas-exportar-de = { $hechas } dari { $total }
+tareas-exportar-foto = Foto
+compartir-tipo-tareas = Daftar tugas

@@ -3872,3 +3872,20 @@ reportar-ia-campo-version = الإصدار
 reportar-ia-campo-contenido = ما كتبه الذكاء الاصطناعي
 reportar-ia-comentario = (إن أردت، أخبرنا هنا بما هو خطأ.)
 repaso-jev-fallo-red = لا يوجد اتصال.
+
+## تصدير المهام: صفحة القائمة وملف PDF وMarkdown (1-11-2026)
+tareas-exportar-titulo = المهام
+tareas-exportar-exportado = صُدّرت في { $fecha }
+tareas-exportar-pendientes = معلّقة
+tareas-exportar-hechas = منجزة
+tareas-exportar-completado = مكتمل
+tareas-exportar-pendiente = معلّقة
+tareas-exportar-hecha = منجزة
+tareas-exportar-todo-hecho = كل شيء منجز
+tareas-exportar-vacia = لا توجد مهام
+tareas-exportar-recordatorio = تذكير
+tareas-exportar-pasada = متأخرة
+tareas-exportar-creada = أُنشئت في { $fecha }
+tareas-exportar-de = { $hechas } من { $total }
+tareas-exportar-foto = صورة
+compartir-tipo-tareas = قائمة مهام

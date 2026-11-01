@@ -3640,3 +3640,20 @@ reportar-ia-comentario = (Si quieres, cuenta aquí qué está mal.)
 
 ## Repasar en voz alta: si Jev falla, por que (1-nov-2026, como el movil)
 repaso-jev-fallo-red = Sin conexión.
+
+## Exportar tareas: la página, el PDF y el Markdown de una lista (1-nov-2026)
+tareas-exportar-titulo = Tareas
+tareas-exportar-exportado = Exportado el { $fecha }
+tareas-exportar-pendientes = Pendientes
+tareas-exportar-hechas = Hechas
+tareas-exportar-completado = Completado
+tareas-exportar-pendiente = Pendiente
+tareas-exportar-hecha = Hecha
+tareas-exportar-todo-hecho = Todo hecho
+tareas-exportar-vacia = Sin tareas
+tareas-exportar-recordatorio = Recordatorio
+tareas-exportar-pasada = Pasada
+tareas-exportar-creada = Creada el { $fecha }
+tareas-exportar-de = { $hechas } de { $total }
+tareas-exportar-foto = Foto
+compartir-tipo-tareas = Lista de tareas

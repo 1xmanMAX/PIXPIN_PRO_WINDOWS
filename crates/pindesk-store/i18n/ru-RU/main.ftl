@@ -3707,3 +3707,20 @@ reportar-ia-campo-version = Версия
 reportar-ia-campo-contenido = Что написал ИИ
 reportar-ia-comentario = (Если хотите, расскажите здесь, что не так.)
 repaso-jev-fallo-red = Нет подключения.
+
+## Экспорт задач: страница, PDF и Markdown списка (1.11.2026)
+tareas-exportar-titulo = Задачи
+tareas-exportar-exportado = Экспортировано { $fecha }
+tareas-exportar-pendientes = Осталось
+tareas-exportar-hechas = Сделано
+tareas-exportar-completado = Готово
+tareas-exportar-pendiente = Не сделана
+tareas-exportar-hecha = Сделана
+tareas-exportar-todo-hecho = Всё сделано
+tareas-exportar-vacia = Нет задач
+tareas-exportar-recordatorio = Напоминание
+tareas-exportar-pasada = Просрочена
+tareas-exportar-creada = Создана { $fecha }
+tareas-exportar-de = { $hechas } из { $total }
+tareas-exportar-foto = Фото
+compartir-tipo-tareas = Список задач

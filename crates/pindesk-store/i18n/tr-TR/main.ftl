@@ -3627,3 +3627,20 @@ reportar-ia-campo-version = Sürüm
 reportar-ia-campo-contenido = Yapay zekânın yazdığı
 reportar-ia-comentario = (İsterseniz neyin yanlış olduğunu buraya yazın.)
 repaso-jev-fallo-red = Bağlantı yok.
+
+## Görevleri dışa aktar: bir listenin sayfası, PDF'i ve Markdown'ı (1-11-2026)
+tareas-exportar-titulo = Görevler
+tareas-exportar-exportado = { $fecha } tarihinde dışa aktarıldı
+tareas-exportar-pendientes = Bekleyen
+tareas-exportar-hechas = Yapılan
+tareas-exportar-completado = Tamamlandı
+tareas-exportar-pendiente = Bekliyor
+tareas-exportar-hecha = Yapıldı
+tareas-exportar-todo-hecho = Hepsi yapıldı
+tareas-exportar-vacia = Görev yok
+tareas-exportar-recordatorio = Hatırlatıcı
+tareas-exportar-pasada = Gecikti
+tareas-exportar-creada = { $fecha } tarihinde oluşturuldu
+tareas-exportar-de = { $total } görevden { $hechas }
+tareas-exportar-foto = Fotoğraf
+compartir-tipo-tareas = Görev listesi
