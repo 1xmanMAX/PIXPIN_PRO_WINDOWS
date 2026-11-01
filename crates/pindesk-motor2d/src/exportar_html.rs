@@ -36,6 +36,9 @@ pub use documento::HojaDocumento;
 
 /// La hoja de estilo del movil, con `FONDO` por sustituir.
 const ESTILO: &str = include_str!("exportar_html/estilo.css");
+/// Los gestos de la vista (trackpad, rueda, pellizco de Safari y dedos), que usan el
+/// dibujo y la tabla: `GestosVista`. El plano de `pindesk-cad` lleva una copia.
+const GESTOS: &str = include_str!("exportar_html/gestos_vista.js");
 /// El visor de un dibujo plano (`crearDibujo`).
 const VISOR_DIBUJO: &str = include_str!("exportar_html/visor_dibujo.js");
 /// El armazon: que hoja se mira, la barra, los cajones y guardar.
@@ -662,6 +665,7 @@ pub fn paginas_mixtas(
         s.push_str("</script>\n");
     }
     s.push_str("<script>");
+    s.push_str(&sin_retornos(GESTOS));
     s.push_str(&sin_retornos(VISOR_DIBUJO));
     if hay_tabla {
         s.push_str(&sin_retornos(CALCULO_TABLA));
@@ -789,6 +793,40 @@ mod pruebas {
         }
         // Ningun retorno de carro: la pagina es la del movil.
         assert!(!html.contains('\r'));
+    }
+
+    #[test]
+    fn el_dibujo_y_la_tabla_llevan_los_gestos_del_trackpad() {
+        let t = tabla_web();
+        let h = hoja("");
+        let html = paginas_mixtas(
+            &[HojaDeLaPagina::Dibujo(&h), HojaDeLaPagina::Tabla(&t)],
+            "t",
+            "t",
+            Opciones::default(),
+            None,
+        )
+        .expect("hojas");
+        // El modulo va una vez y antes que los visores, que lo usan.
+        assert_eq!(html.matches("var GestosVista=(function(){").count(), 1);
+        let modulo = html.find("var GestosVista=").unwrap();
+        let dibujo = html
+            .find("GestosVista.conectar(caja,{\n  mover:function(dx,dy){ var k")
+            .unwrap();
+        let tabla = html
+            .find("mover:function(dx,dy){ V.x+=dx; V.y+=dy;")
+            .unwrap();
+        assert!(modulo < dibujo && modulo < tabla);
+        // La rueda no puede ser pasiva (si no, pellizcar amplia la pagina entera), y lleva
+        // las dos direcciones del trackpad, no solo la vertical.
+        assert!(
+            html.contains("caja.addEventListener('wheel',function(e){\n    e.preventDefault();")
+        );
+        assert!(html.contains("},{passive:false});"));
+        assert!(html.contains("e.deltaX") && html.contains("gesturechange"));
+        // Ninguna de las ruedas de antes: la del dibujo solo acercaba.
+        assert!(!html.contains("zoom(e.deltaY>0?1.12:1/1.12"));
+        assert!(!html.contains("Math.exp(-e.deltaY*0.0015)"));
     }
 
     #[test]

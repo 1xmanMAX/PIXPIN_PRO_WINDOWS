@@ -36,6 +36,9 @@ pub use documento::HojaDocumento;
 
 /// La hoja de estilo del movil, con `FONDO` por sustituir.
 const ESTILO: &str = include_str!("exportar_html/estilo.css");
+/// Los gestos de la vista (trackpad, rueda, pellizco de Safari y dedos), que usan el
+/// dibujo y la tabla: `GestosVista`. El plano de `pindesk-cad` lleva una copia.
+const GESTOS: &str = include_str!("exportar_html/gestos_vista.js");
 /// El visor de un dibujo plano (`crearDibujo`).
 const VISOR_DIBUJO: &str = include_str!("exportar_html/visor_dibujo.js");
 /// El armazon: que hoja se mira, la barra, los cajones y guardar.
@@ -662,6 +665,7 @@ pub fn paginas_mixtas(
         s.push_str("</script>\n");
     }
     s.push_str("<script>");
+    s.push_str(&sin_retornos(GESTOS));
     s.push_str(&sin_retornos(VISOR_DIBUJO));
     if hay_tabla {
         s.push_str(&sin_retornos(CALCULO_TABLA));

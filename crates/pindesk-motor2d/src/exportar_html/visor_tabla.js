@@ -491,11 +491,12 @@ function soltarPuntero(e){
 }
 caja.addEventListener('pointerup',soltarPuntero);
 caja.addEventListener('pointercancel',soltarPuntero);
-caja.addEventListener('wheel',function(e){
-  e.preventDefault();
-  if(e.ctrlKey||e.metaKey)zoomEn(e.clientX,e.clientY,Math.exp(-e.deltaY*0.0015));
-  else { V.x-=e.deltaX; V.y-=e.deltaY; aplicarVista(); }
-},{passive:false});
+// El trackpad, la rueda y el pellizco de Safari, como en el resto de la página: ver
+// `gestos_vista.js`.
+GestosVista.conectar(caja,{
+  mover:function(dx,dy){ V.x+=dx; V.y+=dy; aplicarVista(); },
+  ampliar:function(f,x,y){ zoomEn(x,y,f); }
+});
 tabla.addEventListener('dblclick',function(e){ var p=celdaDe(e.target); if(p&&modo==='mano'){ seleccionar(p[0],p[1],false); editar(); } });
 
 // ---- Teclado ----
