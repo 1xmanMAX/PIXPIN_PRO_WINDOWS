@@ -3334,7 +3334,7 @@ aviso-ia-permiso = 🔐 I need your permission: { $pregunta }
 # Los turnos del asistente que siguen con el chat cerrado (asistente/de_fondo.rs)
 ia-fondo-titulo = 🤖 Assistant
 ia-fondo-sigue = “continue”
-ia-fondo-sigue-fuera = “@assistant continue”
+ia-fondo-sigue-fuera = “@asistente continue”
 ia-fondo-otra-vez = ↻ PinDesk closed before I finished. I'm starting over in the reply below.
 ia-fondo-ya-actuo = Some steps were already done, so I won't repeat it on my own (they'd happen twice). Type { $sigue } and I'll carry on from here.
 ia-fondo-ya-se-retomo = I had already resumed it once and it was cut off again, so I'll stop there. Type { $sigue } if you want me to try again.

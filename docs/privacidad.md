@@ -5,7 +5,7 @@ la política para la ficha de la Microsoft Store y es la que abre
 Ajustes › General › «Privacidad y datos» › «Política de privacidad».
 
 Fecha de entrada en vigor: 1 de noviembre de 2026. Última actualización: 1 de
-noviembre de 2026. La versión en inglés está al final ([English](#pixpin-max-privacy-policy-english)).
+noviembre de 2026. La versión en inglés está al final ([English](#pindesk-privacy-policy-english)).
 
 > **En pocas palabras**
 >
