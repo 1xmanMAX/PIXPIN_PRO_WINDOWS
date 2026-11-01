@@ -169,9 +169,10 @@ pub struct VentanaMensajes {
 
 impl VentanaMensajes {
     pub fn nueva() -> WinResult<Self> {
-        // El nombre de antes de PinDesk, a proposito: lo buscan el puente,
-        // el MCP, Flow e instalar.ps1, tambien los de una version vieja.
-        const CLASE: windows::core::PCWSTR = w!("PixPinMaxVentanaMensajes");
+        // `mensajero::CLASE_MENSAJES`: la buscan la linea de ordenes, el
+        // puente, el MCP, Flow e instalar.ps1 (que miran tambien la vieja,
+        // `PixPinMaxVentanaMensajes`, de un `pixpinmax.exe` que aun corra).
+        const CLASE: windows::core::PCWSTR = w!("PinDeskVentanaMensajes");
 
         // SAFETY: GetModuleHandleW(None) devuelve el modulo del proceso
         // actual, que siempre existe mientras el proceso vive.
@@ -491,7 +492,7 @@ mod pruebas {
     /// la prueba: contesta en el acto y deja el JSON en la cola del hilo.
     ///
     /// Se manda con `enviar_pedido_a` a la ventana PROPIA y no con
-    /// `enviar_pedido`, que busca por la clase: con la PixPin del usuario
+    /// `enviar_pedido`, que busca por la clase: con la PinDesk del usuario
     /// abierta, la prueba le escribiria en el chat.
     #[test]
     fn un_pedido_llega_por_copydata_y_queda_en_la_cola() {
@@ -500,15 +501,15 @@ mod pruebas {
         // Lo que hubiera de otra prueba en este hilo no cuenta.
         PENDIENTES.with(|p| p.borrow_mut().clear());
 
-        let bueno = r#"{"pixpin":1,"accion":"chat","texto":"hola ñu"}"#;
+        let bueno = r#"{"pindesk":1,"accion":"chat","texto":"hola ñu"}"#;
         assert_eq!(enviar_pedido_a(v.handle(), bueno), respuesta::ACEPTADO);
         // Casos negativos: se rechazan en el acto y NO llegan al bucle.
         assert_eq!(
-            enviar_pedido_a(v.handle(), r#"{"pixpin":9,"accion":"chat"}"#),
+            enviar_pedido_a(v.handle(), r#"{"pindesk":9,"accion":"chat"}"#),
             respuesta::VERSION_NO
         );
         assert_eq!(
-            enviar_pedido_a(v.handle(), r#"{"pixpin":1,"accion":"nada"}"#),
+            enviar_pedido_a(v.handle(), r#"{"pindesk":1,"accion":"nada"}"#),
             respuesta::NO_SE_ENTIENDE
         );
         assert_eq!(

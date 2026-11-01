@@ -1,8 +1,13 @@
 //! Anunciar y buscar servicios DNS-SD por mDNS en la red local.
 //!
-//! El movil usa el `NsdManager` de Android: anuncia `_pixpin._tcp` con el
-//! nombre `PixPin <nombre>`, su puerto y un TXT (`g`, `id`, `l`, `n`), y
-//! busca ese mismo tipo. Para que el PC y el movil se vean sin que el usuario
+//! El movil usa el `NsdManager` de Android: anuncia `_pindesk._tcp` (antes de
+//! PinDesk, `_pixpin._tcp`) con el nombre `PinDesk <nombre>`, su puerto y un
+//! TXT (`g`, `id`, `l`, `n`), y busca ese mismo tipo.
+//!
+//! **Los dos nombres a la vez** mientras haya aparatos sin actualizar
+//! (docs/formato-pindesk.md): [`anunciar`] un `_pindesk…._tcp` lo anuncia
+//! tambien con su tipo de antes ([`tipo_de_antes`]) y [`buscar`] mira los
+//! dos, con el nuevo delante si un aparato sale en ambos. Para que el PC y el movil se vean sin que el usuario
 //! teclee direcciones, aqui se habla el mismo protocolo con la API nativa de
 //! Windows (`DnsServiceRegister`, `DnsServiceBrowse`, `DnsServiceResolve`).
 //! Se usa la del sistema y no un respondedor propio porque Windows ya tiene
@@ -424,6 +429,81 @@ unsafe fn leer_instancia(instancia: *const DNS_SERVICE_INSTANCE) -> Resuelto {
 
 /// Mientras viva, el servicio esta anunciado; al soltarlo se retira.
 pub struct Anuncio {
+    _ahora: AnuncioUno,
+    /// El mismo con el tipo de antes de PinDesk, si se pudo anunciar.
+    _antes: Option<AnuncioUno>,
+}
+
+impl std::fmt::Debug for Anuncio {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Anuncio")
+            .field("antes", &self._antes.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+/// El tipo de antes de PinDesk de un tipo de ahora: `_pindesk._tcp` →
+/// `_pixpin._tcp`, `_pindeskenvio._tcp` → `_pixpinenvio._tcp`… `None` si no
+/// es uno de los nuestros. Puro, para probarlo sin red.
+pub fn tipo_de_antes(tipo: &str) -> Option<String> {
+    let t = normalizar_tipo(tipo).ok()?;
+    let resto = t.strip_prefix("_pindesk")?;
+    Some(format!("_pixpin{resto}"))
+}
+
+/// Junta lo encontrado con el tipo de ahora y con el de antes: un aparato que
+/// sale en los dos (la misma instancia) queda una vez, con lo del nuevo.
+fn juntar(ahora: Vec<Vecino>, antes: Vec<Vecino>) -> Vec<Vecino> {
+    sin_repetidos(ahora.into_iter().chain(antes).collect())
+}
+
+/// **Anuncia `nombre` como instancia de `tipo`** y, si es uno de los de
+/// PinDesk, tambien con su tipo de antes ([`tipo_de_antes`]), para que lo
+/// vean los aparatos sin actualizar. Si el de antes falla, se sigue con el
+/// nuevo solo (queda en el registro).
+pub fn anunciar(
+    tipo: &str,
+    nombre: &str,
+    puerto: u16,
+    datos: &[(&str, &str)],
+) -> Result<Anuncio, ErrorMdns> {
+    let ahora = anunciar_uno(tipo, nombre, puerto, datos)?;
+    let antes = tipo_de_antes(tipo).and_then(|viejo| {
+        anunciar_uno(&viejo, nombre, puerto, datos)
+            .map_err(
+                |e| tracing::warn!(%viejo, error = %e, "mdns: no se anuncio con el tipo de antes"),
+            )
+            .ok()
+    });
+    Ok(Anuncio {
+        _ahora: ahora,
+        _antes: antes,
+    })
+}
+
+/// **Busca `tipo` y, si es uno de los de PinDesk, tambien su tipo de antes**,
+/// a la vez (tarda lo mismo que una busqueda). Lo del nuevo va delante.
+pub fn buscar(tipo: &str, espera: Duration) -> Result<Vec<Vecino>, ErrorMdns> {
+    let Some(viejo) = tipo_de_antes(tipo) else {
+        return buscar_uno(tipo, espera);
+    };
+    let (ahora, antes) = std::thread::scope(|s| {
+        let antes = s.spawn(|| buscar_uno(&viejo, espera));
+        let ahora = buscar_uno(tipo, espera);
+        (ahora, antes.join().unwrap_or_else(|_| Ok(Vec::new())))
+    });
+    match (ahora, antes) {
+        (Ok(a), Ok(b)) => Ok(juntar(a, b)),
+        (Ok(a), Err(e)) | (Err(e), Ok(a)) => {
+            tracing::debug!(error = %e, "mdns: una de las dos busquedas fallo");
+            Ok(a)
+        }
+        (Err(e), Err(_)) => Err(e),
+    }
+}
+
+/// Un anuncio de un tipo.
+struct AnuncioUno {
     /// La peticion de registro; `DnsServiceDeRegister` pide la misma.
     peticion: Box<DNS_SERVICE_REGISTER_REQUEST>,
     instancia: *mut DNS_SERVICE_INSTANCE,
@@ -434,15 +514,9 @@ pub struct Anuncio {
 }
 
 // SAFETY: los punteros crudos son de Windows o nuestros y no dependen del
-// hilo: desregistrar y liberar desde otro hilo es valido, y `Anuncio` no se
-// comparte (no es `Sync`), solo se mueve.
-unsafe impl Send for Anuncio {}
-
-impl std::fmt::Debug for Anuncio {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Anuncio").finish_non_exhaustive()
-    }
-}
+// hilo: desregistrar y liberar desde otro hilo es valido, y `AnuncioUno` no
+// se comparte (no es `Sync`), solo se mueve.
+unsafe impl Send for AnuncioUno {}
 
 unsafe extern "system" fn al_registrar(
     estado: u32,
@@ -463,15 +537,15 @@ unsafe extern "system" fn al_registrar(
     buzon.anotar(Some(estado), false);
 }
 
-/// Anuncia `nombre` como instancia de `tipo` (`"_pixpin._tcp"`) en
+/// Anuncia `nombre` como instancia de `tipo` (`"_pindesk._tcp"`) en
 /// `puerto`, con `datos` en el TXT. Bloquea hasta que Windows confirma el
 /// anuncio (normalmente menos de un segundo, como mucho 5 s).
-pub fn anunciar(
+fn anunciar_uno(
     tipo: &str,
     nombre: &str,
     puerto: u16,
     datos: &[(&str, &str)],
-) -> Result<Anuncio, ErrorMdns> {
+) -> Result<AnuncioUno, ErrorMdns> {
     let tipo = normalizar_tipo(tipo)?;
     validar_datos(datos)?;
     let instancia = ancho(&nombre_de_instancia(nombre, &tipo)?);
@@ -559,7 +633,7 @@ pub fn anunciar(
             codigo,
         });
     }
-    let anuncio = Anuncio {
+    let anuncio = AnuncioUno {
         peticion,
         instancia: construida,
         contexto,
@@ -574,7 +648,7 @@ pub fn anunciar(
     Ok(anuncio)
 }
 
-impl Drop for Anuncio {
+impl Drop for AnuncioUno {
     fn drop(&mut self) {
         let antes = self
             .buzon
@@ -722,7 +796,7 @@ impl Resolucion {
 ///
 /// Tarda `espera` mas, como mucho, un segundo para terminar de resolver lo
 /// visto al final. Solo devuelve vecinos con direccion IPv4.
-pub fn buscar(tipo: &str, espera: Duration) -> Result<Vec<Vecino>, ErrorMdns> {
+fn buscar_uno(tipo: &str, espera: Duration) -> Result<Vec<Vecino>, ErrorMdns> {
     let tipo = normalizar_tipo(tipo)?;
     let consulta = ancho(&nombre_de_consulta(&tipo));
     let buzon = Buzon::<Vec<String>>::nuevo();
@@ -816,6 +890,52 @@ pub fn buscar(tipo: &str, espera: Duration) -> Result<Vec<Vecino>, ErrorMdns> {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn los_tipos_de_pindesk_tienen_su_tipo_de_antes() {
+        assert_eq!(
+            tipo_de_antes("_pindesk._tcp.").as_deref(),
+            Some("_pixpin._tcp")
+        );
+        assert_eq!(
+            tipo_de_antes("_pindeskenvio._tcp").as_deref(),
+            Some("_pixpinenvio._tcp")
+        );
+        assert_eq!(
+            tipo_de_antes("_pindeskrecibe._tcp.").as_deref(),
+            Some("_pixpinrecibe._tcp")
+        );
+        assert_eq!(
+            tipo_de_antes("_pindeskchat._tcp.").as_deref(),
+            Some("_pixpinchat._tcp")
+        );
+        // Caso negativo: uno de antes u otro cualquiera no tiene otro tipo.
+        assert_eq!(tipo_de_antes("_pixpin._tcp."), None);
+        assert_eq!(tipo_de_antes("_http._tcp"), None);
+        assert_eq!(tipo_de_antes("no es un tipo"), None);
+    }
+
+    #[test]
+    fn un_aparato_que_sale_con_los_dos_tipos_queda_una_vez_con_lo_nuevo() {
+        let v = |instancia: &str, puerto: u16| Vecino {
+            instancia: instancia.into(),
+            host: Ipv4Addr::new(192, 168, 1, 5),
+            puerto,
+            datos: HashMap::new(),
+        };
+        let juntos = juntar(
+            vec![v("PinDesk Casa", 1)],
+            vec![v("pindesk casa", 2), v("PixPin Movil", 3)],
+        );
+        let puertos: Vec<u16> = juntos.iter().map(|x| x.puerto).collect();
+        assert_eq!(
+            puertos,
+            [1, 3],
+            "el del tipo nuevo delante; el viejo solo aparte"
+        );
+        // Caso negativo: sin nada nuevo quedan los de antes tal cual.
+        assert_eq!(juntar(vec![], vec![v("PixPin Movil", 3)]).len(), 1);
+    }
 
     #[test]
     fn el_tipo_de_android_con_punto_final_se_acepta() {

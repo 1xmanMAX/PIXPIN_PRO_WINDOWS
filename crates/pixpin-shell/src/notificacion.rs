@@ -29,8 +29,8 @@
 //! Un programa sin empaquetar no recibe la activacion normal de un toast
 //! (haria falta un servidor COM registrado). La de **protocolo** si: cada
 //! boton lleva `<esquema>:pedido?json=<pedido>` (`pixpin:` si es nuestro,
-//! si no `pixpinmax:`: `orden::esquema_de_la_casa`), que Windows abre con
-//! `"pixpinmax.exe" --url "%1"`. Es **el mismo protocolo** que el de la
+//! si no `pindesk:`: `orden::esquema_de_la_casa`), que Windows abre con
+//! `"pindesk.exe" --url "%1"`. Es **el mismo protocolo** que el de la
 //! linea de ordenes y los enlaces (`orden`, `docs/integraciones.md`): un
 //! solo traductor (`orden::de_enlace`) y una sola lista blanca
 //! (`orden::seguridad`, `orden::SEGURAS`). `--atajo url "%1"`, como se
@@ -46,16 +46,18 @@
 
 use std::path::{Path, PathBuf};
 
-/// La identidad de PinDesk para las notificaciones sin paquete MSIX. Es la
-/// de cuando se llamaba PixPin Max y no cambia: Windows guarda con ella si
-/// el usuario las silencio, y la usan el paquete de identidad y el acceso
-/// directo del menu Inicio (docs/nombre-pindesk.md).
-pub const AUMID: &str = "PixPinMax.App";
+/// La identidad de PinDesk para las notificaciones sin paquete MSIX.
+pub const AUMID: &str = "PinDesk.App";
+/// La de antes de [`AUMID`] (PixPin Max): [`registrar`] la borra.
+pub const AUMID_VIEJO: &str = "PixPinMax.App";
 /// El nombre que sale en la notificacion.
 pub const NOMBRE: &str = "PinDesk";
-/// El esquema que siempre es nuestro y que se registra al arrancar
-/// (`pixpin:` solo si esta libre: [`registrar`]).
-pub const ESQUEMA: &str = "pixpinmax";
+/// El esquema de PinDesk, que se registra al arrancar ([`registrar`]).
+pub const ESQUEMA: &str = "pindesk";
+/// El esquema del PC de antes, que se sigue registrando: lo llevan los
+/// avisos que ya estan en el centro de notificaciones, los enlaces que el
+/// usuario se guardo y las versiones viejas de Lectura Veloz.
+pub const ESQUEMA_VIEJO: &str = "pixpinmax";
 
 /// Un boton: su rotulo y el pedido que manda.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,7 +160,7 @@ pub fn xml(t: &Toast) -> String {
 /// Lo que se escribe en `HKCU`, como (clave, valor, texto): la identidad y
 /// el protocolo. `icono`: un PNG para la notificacion, si hay.
 pub fn entradas(exe: &Path, icono: Option<&Path>) -> Vec<(String, String, String)> {
-    entradas_con(exe, icono, &[ESQUEMA])
+    entradas_con(exe, icono, &[ESQUEMA, ESQUEMA_VIEJO])
 }
 
 /// [`entradas`] con los esquemas que se registran. La orden es la misma de
@@ -193,18 +195,30 @@ pub fn entradas_con(
 }
 
 /// **Da de alta la identidad y el protocolo** (idempotente: se llama en
-/// cada arranque, y si el exe se movio deja la ruta nueva). `pixpinmax:`
-/// siempre; `pixpin:` solo si esta libre o ya es nuestro
-/// (`orden::pixpin_es_nuestro_o_libre`): no se le quita al PixPin original.
+/// cada arranque, y si el exe se movio deja la ruta nueva): `pindesk:` y el
+/// `pixpinmax:` de antes. Borra lo de PixPin Max: la identidad
+/// [`AUMID_VIEJO`] y `pixpin:` si lo habia tomado una version vieja
+/// (`orden::pixpin_es_nuestro`); el de otro programa no se toca.
 pub fn registrar(exe: &Path, icono: Option<&Path>) -> windows::core::Result<()> {
-    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegSetKeyValueW};
-    use windows::core::HSTRING;
-    let esquemas: &[&str] = if crate::orden::pixpin_es_nuestro_o_libre() {
-        &[ESQUEMA, "pixpin"]
-    } else {
-        &[ESQUEMA]
+    use windows::Win32::System::Registry::{
+        HKEY_CURRENT_USER, REG_SZ, RegDeleteTreeW, RegSetKeyValueW,
     };
-    for (clave, nombre, texto) in entradas_con(exe, icono, esquemas) {
+    use windows::core::HSTRING;
+    // SAFETY: claves HSTRING vivas durante la llamada; si no existen, el
+    // error se descarta.
+    unsafe {
+        let _ = RegDeleteTreeW(
+            HKEY_CURRENT_USER,
+            &HSTRING::from(format!(r"Software\Classes\AppUserModelId\{AUMID_VIEJO}")),
+        );
+        if crate::orden::pixpin_es_nuestro() {
+            let _ = RegDeleteTreeW(
+                HKEY_CURRENT_USER,
+                &HSTRING::from(r"Software\Classes\pixpin"),
+            );
+        }
+    }
+    for (clave, nombre, texto) in entradas(exe, icono) {
         let v = HSTRING::from(texto.as_str());
         let bytes = (v.len() + 1) * 2;
         // SAFETY: las cadenas son HSTRING vivas durante la llamada, con su
@@ -314,7 +328,8 @@ pub fn sena_con(esquema: &str, pedido: &serde_json::Value) -> String {
 /// de los enlaces (`orden::seguridad`), que es una sola.
 pub fn permitido(p: &serde_json::Value) -> bool {
     p.is_object()
-        && p.get("pixpin").and_then(|v| v.as_u64()) == Some(crate::mensajero::VERSION_PEDIDO)
+        && crate::mensajero::version_de(p).and_then(|v| v.as_u64())
+            == Some(crate::mensajero::VERSION_PEDIDO)
         && crate::orden::seguridad(p) == crate::orden::Seguridad::Directa
 }
 
@@ -344,7 +359,7 @@ mod pruebas {
     use serde_json::json;
 
     fn abrir() -> serde_json::Value {
-        json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "mensaje", "proyecto": "a b", "codigo": "m&1"}})
+        json!({"pindesk": 1, "accion": "abrir", "que": {"tipo": "mensaje", "proyecto": "a b", "codigo": "m&1"}})
     }
 
     fn toast() -> Toast {
@@ -362,7 +377,7 @@ mod pruebas {
         t.botones = vec![
             Boton::nuevo(
                 "Hecha",
-                json!({"pixpin": 1, "accion": "marcar_tarea", "codigo": "L", "indice": 2, "hecha": true}),
+                json!({"pindesk": 1, "accion": "marcar_tarea", "codigo": "L", "indice": 2, "hecha": true}),
             ),
             Boton::nuevo("Abrir", abrir()),
         ];
@@ -428,13 +443,16 @@ mod pruebas {
     fn la_sena_va_y_vuelve() {
         for p in [
             abrir(),
-            json!({"pixpin": 1, "accion": "asistente"}),
-            json!({"pixpin": 1, "accion": "posponer", "proyecto": "ñu", "mensaje": "m1", "minutos": 10}),
-            json!({"pixpin": 1, "accion": "conservar_captura", "ruta": r"C:\a b\c.png"}),
+            json!({"pindesk": 1, "accion": "asistente"}),
+            json!({"pindesk": 1, "accion": "posponer", "proyecto": "ñu", "mensaje": "m1", "minutos": 10}),
+            json!({"pindesk": 1, "accion": "conservar_captura", "ruta": r"C:\a b\c.png"}),
         ] {
             assert_eq!(pedido_de(&sena(&p)), Some(p.to_string()), "{}", sena(&p));
         }
-        // Lo que dejan los navegadores (`pixpinmax://pedido/?json=`) vale igual.
+        // Lo que dejan los navegadores (`pindesk://pedido/?json=`) vale igual,
+        // y las señas de antes (`pixpinmax:`) de los avisos ya mostrados.
+        let s = sena_con("pindesk", &abrir()).replace("pindesk:pedido", "pindesk://pedido/");
+        assert_eq!(pedido_de(&s), Some(abrir().to_string()));
         let s = sena_con("pixpinmax", &abrir()).replace("pixpinmax:pedido", "pixpinmax://pedido/");
         assert_eq!(pedido_de(&s), Some(abrir().to_string()));
     }
@@ -442,11 +460,11 @@ mod pruebas {
     #[test]
     fn por_el_protocolo_no_pasa_lo_que_borra_envia_o_escribe() {
         for p in [
-            json!({"pixpin": 1, "accion": "borrar_lista", "codigo": "L"}),
-            json!({"pixpin": 1, "accion": "enviar_al_movil", "aparato": "x"}),
-            json!({"pixpin": 1, "accion": "asistente", "texto": "borra todo"}),
-            json!({"pixpin": 1, "accion": "asistente", "automatizacion": "a1"}),
-            json!({"pixpin": 2, "accion": "abrir"}),
+            json!({"pindesk": 1, "accion": "borrar_lista", "codigo": "L"}),
+            json!({"pindesk": 1, "accion": "enviar_al_movil", "aparato": "x"}),
+            json!({"pindesk": 1, "accion": "asistente", "texto": "borra todo"}),
+            json!({"pindesk": 1, "accion": "asistente", "automatizacion": "a1"}),
+            json!({"pindesk": 2, "accion": "abrir"}),
             json!({"accion": "abrir"}),
             json!(["abrir"]),
         ] {
@@ -467,10 +485,10 @@ mod pruebas {
     #[test]
     fn la_copia_que_abre_windows_lo_convierte_en_pedido() {
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        let s = sena(&json!({"pixpin": 1, "accion": "asistente"}));
+        let s = sena(&json!({"pindesk": 1, "accion": "asistente"}));
         assert_eq!(
             crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url", &s])).as_deref(),
-            Some(r#"{"accion":"asistente","pixpin":1}"#)
+            Some(r#"{"accion":"asistente","pindesk":1}"#)
         );
         assert_eq!(
             crate::jump_list::pedido_de_atajo(&args(&["--atajo", "url"])),
@@ -485,7 +503,7 @@ mod pruebas {
     #[test]
     fn el_registro_lleva_identidad_y_protocolo() {
         let v = entradas(
-            Path::new(r"C:\P\pixpinmax.exe"),
+            Path::new(r"C:\P\pindesk.exe"),
             Some(Path::new(r"C:\P\i.png")),
         );
         let valor = |c: &str, n: &str| {
@@ -495,23 +513,37 @@ mod pruebas {
         };
         assert_eq!(
             valor(
-                r"Software\Classes\AppUserModelId\PixPinMax.App",
+                r"Software\Classes\AppUserModelId\PinDesk.App",
                 "DisplayName"
             )
             .as_deref(),
             Some("PinDesk")
         );
         assert_eq!(
-            valor(r"Software\Classes\AppUserModelId\PixPinMax.App", "IconUri").as_deref(),
+            valor(r"Software\Classes\AppUserModelId\PinDesk.App", "IconUri").as_deref(),
             Some(r"C:\P\i.png")
         );
-        assert_eq!(
-            valor(r"Software\Classes\pixpinmax", "URL Protocol").as_deref(),
-            Some("")
-        );
-        assert_eq!(
-            valor(r"Software\Classes\pixpinmax\shell\open\command", "").as_deref(),
-            Some(r#""C:\P\pixpinmax.exe" --url "%1""#)
+        // `pindesk:` y el `pixpinmax:` de antes, los dos al exe nuevo.
+        for esquema in ["pindesk", "pixpinmax"] {
+            assert_eq!(
+                valor(&format!(r"Software\Classes\{esquema}"), "URL Protocol").as_deref(),
+                Some("")
+            );
+            assert_eq!(
+                valor(
+                    &format!(r"Software\Classes\{esquema}\shell\open\command"),
+                    ""
+                )
+                .as_deref(),
+                Some(r#""C:\P\pindesk.exe" --url "%1""#)
+            );
+        }
+        // Caso negativo: ni `pixpin:` (puede ser del PixPin original) ni la
+        // identidad de antes.
+        assert!(
+            v.iter()
+                .all(|(c, _, _)| !c.ends_with(r"Classes\pixpin") && !c.contains("PixPinMax.App")),
+            "{v:?}"
         );
         // Sin icono, no se escribe IconUri.
         assert!(
@@ -536,7 +568,7 @@ mod pruebas {
             texto: "Una notificacion de prueba de PinDesk".into(),
             botones: vec![Boton::nuevo(
                 "Abrir",
-                json!({"pixpin": 1, "accion": "asistente"}),
+                json!({"pindesk": 1, "accion": "asistente"}),
             )],
             ..Default::default()
         });

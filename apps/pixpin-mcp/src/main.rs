@@ -1,4 +1,4 @@
-//! `pixpin-mcp.exe`: ver la cabecera de `lib.rs` y docs/integraciones-mcp.md.
+//! `pindesk-mcp.exe`: ver la cabecera de `lib.rs` y docs/integraciones-mcp.md.
 //!
 //! El bucle: una linea de stdin, una respuesta en stdout. Las llamadas a
 //! herramientas van cada una en su hilo (una puede esperar minutos a que el

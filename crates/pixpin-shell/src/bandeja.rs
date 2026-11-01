@@ -66,13 +66,13 @@ fn duena_del_menu() -> Option<HWND> {
             cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
             lpfnWndProc: Some(proc_duena),
             hInstance: instancia.into(),
-            lpszClassName: w!("PixPinDuenaMenuBandeja"),
+            lpszClassName: w!("PinDeskDuenaMenuBandeja"),
             ..Default::default()
         };
         let _ = RegisterClassExW(&clase);
         CreateWindowExW(
             WS_EX_TOOLWINDOW,
-            w!("PixPinDuenaMenuBandeja"),
+            w!("PinDeskDuenaMenuBandeja"),
             w!(""),
             WS_POPUP,
             0,

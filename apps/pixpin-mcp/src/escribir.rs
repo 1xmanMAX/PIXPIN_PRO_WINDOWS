@@ -6,7 +6,7 @@
 //! hay un pedido propio, `herramienta` (`docs/protocolo-pedidos.md`):
 //!
 //! ```json
-//! {"pixpin":1, "accion":"herramienta", "nombre":"anadir_tarea",
+//! {"pindesk":1, "accion":"herramienta", "nombre":"anadir_tarea",
 //!  "args":{"texto":"pan","fecha":"mañana"},
 //!  "respuesta":"C:\\Users\\…\\Temp\\pixpin-mcp\\1234-1.json",
 //!  "preguntar":"¿…?", "origen":"Claude"}
@@ -36,13 +36,14 @@ use windows::core::HSTRING;
 use pixpin_ia::acciones::{self, Accion};
 use pixpin_shell::mensajero::{self, respuesta};
 
-/// La clase de la ventana de mensajes de PixPin.
-pub const CLASE: &str = "PixPinMaxVentanaMensajes";
-/// Otra clase (pruebas: una ventana de mentira que hace de PixPin). Con
-/// ella no se arranca nunca PixPin.
+/// La clase de la ventana de mensajes de PinDesk (se busca tambien la de
+/// antes, `mensajero::CLASE_MENSAJES_VIEJA`).
+pub const CLASE: &str = mensajero::CLASE_MENSAJES;
+/// Otra clase (pruebas: una ventana de mentira que hace de PinDesk). Con
+/// ella no se arranca nunca PinDesk.
 pub const VAR_VENTANA: &str = "PIXPIN_MCP_VENTANA";
 /// La carpeta de las respuestas, dentro de `%TEMP%`.
-pub const CARPETA: &str = "pixpin-mcp";
+pub const CARPETA: &str = "pindesk-mcp";
 /// Cuanto se espera a la respuesta de algo que no pregunta.
 pub const PLAZO: Duration = Duration::from_secs(150);
 /// Y de algo que pregunta: lo que tarda la pregunta en caducar en la app
@@ -62,6 +63,9 @@ fn clase() -> String {
 /// La ventana de mensajes, arriba o entre las de solo mensajes (como
 /// `mensajero::ventana_de_la_copia`, pero con la clase que toque).
 fn ventana(clase: &str) -> Option<HWND> {
+    if clase == CLASE {
+        return mensajero::ventana_de_la_copia();
+    }
     let c = HSTRING::from(clase);
     // SAFETY: `c` vive durante la llamada; una ventana nula es «no hay».
     if let Ok(h) = unsafe { FindWindowW(&c, None) }
@@ -152,7 +156,7 @@ fn recortar(t: &str, n: usize) -> String {
 /// El pedido `herramienta` para esa fila.
 pub fn pedido(a: &Accion, args: &Map<String, Value>, respuesta: &Path) -> Value {
     let mut p = json!({
-        "pixpin": 1,
+        "pindesk": 1,
         "accion": "herramienta",
         "nombre": a.herramienta,
         "args": args,

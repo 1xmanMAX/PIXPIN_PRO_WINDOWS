@@ -242,7 +242,7 @@ fn candidato_respaldo(p: Punto) -> Option<(isize, Candidato)> {
         // Excluir los propios overlays o el snap se ajustaria a si mismo.
         let mut clase = [0u16; 32];
         let n = GetClassNameW(raiz, &mut clase);
-        if n > 0 && String::from_utf16_lossy(&clase[..n as usize]) == "PixPinOverlay" {
+        if n > 0 && String::from_utf16_lossy(&clase[..n as usize]) == "PinDeskOverlay" {
             return None;
         }
         let mut r = RECT::default();

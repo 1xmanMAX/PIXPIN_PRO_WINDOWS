@@ -33,7 +33,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-const CLASE: windows::core::PCWSTR = w!("PixPinMaxMarcoZona");
+const CLASE: windows::core::PCWSTR = w!("PinDeskMarcoZona");
 const TEMPORIZADOR: usize = 1;
 /// Cada cuanto mira la primera tira a su pin. Un cuarto de segundo de
 /// recuadro de mas tras cerrar el pin no se nota; mirar mas a menudo, si.

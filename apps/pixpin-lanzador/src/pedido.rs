@@ -1,6 +1,6 @@
 //! Mandarle un pedido a la PixPin que esta abierta (docs/protocolo-pedidos.md):
 //! `WM_COPYDATA` con `dwData = 0x5049_5851` y el JSON en UTF-8, a la ventana
-//! `PixPinMaxVentanaMensajes`. Si no esta, se arranca la app y se la espera.
+//! `PinDeskVentanaMensajes` (o la `PixPinMaxVentanaMensajes` de antes). Si no esta, se arranca la app y se la espera.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -160,10 +160,18 @@ fn mandar(destino: HWND, json: &str, espera_ms: u32) -> Envio {
     }
 }
 
+/// La ventana de mensajes de PinDesk o, si no, la de un `pindesk.exe` de
+/// antes que aun corre (`pixpin_shell::mensajero::ventana_de_la_copia`, que
+/// este plugin no enlaza).
 fn ventana() -> Option<HWND> {
+    ventana_de_clase(w!("PinDeskVentanaMensajes"))
+        .or_else(|| ventana_de_clase(w!("PixPinMaxVentanaMensajes")))
+}
+
+fn ventana_de_clase(clase: windows::core::PCWSTR) -> Option<HWND> {
     // SAFETY: la clase es un literal estatico terminado en cero; si no hay
     // ninguna ventana devuelve error o nula, y se descarta.
-    let h = unsafe { FindWindowW(w!("PixPinMaxVentanaMensajes"), None) };
+    let h = unsafe { FindWindowW(clase, None) };
     if let Ok(h) = h {
         if !h.0.is_null() {
             return Some(h);
@@ -171,14 +179,7 @@ fn ventana() -> Option<HWND> {
     }
     // Por si es de solo mensajes (`HWND_MESSAGE`), que FindWindowW no ve.
     // SAFETY: igual que arriba.
-    let h = unsafe {
-        FindWindowExW(
-            Some(HWND_MESSAGE),
-            None,
-            w!("PixPinMaxVentanaMensajes"),
-            None,
-        )
-    };
+    let h = unsafe { FindWindowExW(Some(HWND_MESSAGE), None, clase, None) };
     match h {
         Ok(h) if !h.0.is_null() => Some(h),
         _ => None,

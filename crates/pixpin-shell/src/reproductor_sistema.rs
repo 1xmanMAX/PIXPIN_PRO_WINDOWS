@@ -76,7 +76,7 @@ impl MandosDelSistema {
     /// Windows sin WinRT, o sin escritorio). COM/WinRT tiene que estar
     /// iniciado en el hilo.
     pub fn nuevos() -> Option<MandosDelSistema> {
-        const CLASE: windows::core::PCWSTR = w!("PixPinMaxMandosDeVoz");
+        const CLASE: windows::core::PCWSTR = w!("PinDeskMandosDeVoz");
         // SAFETY: el modulo del proceso existe mientras el proceso vive.
         let instancia = unsafe { GetModuleHandleW(None) }.ok()?;
         let clase = WNDCLASSEXW {

@@ -492,11 +492,14 @@ pub fn de_argumentos(
     Some(r)
 }
 
-/// Los esquemas que se entienden. `pixpin:` es el de Android; en el PC lo
-/// puede tener ya el PixPin original de DepthPixel (que se instala con el),
-/// y entonces el nuestro es `pixpinmax:` (`herramientas/integraciones.ps1`
-/// no le quita el suyo a nadie). Los dos dan lo mismo.
-pub const ESQUEMAS: [&str; 2] = ["pixpinmax:", "pixpin:"];
+/// Los esquemas que se entienden. `pindesk:` es el de ahora (nov-2026), en
+/// todos los aparatos. Los de antes se siguen leyendo: `pixpinmax:` (el del
+/// PC, en avisos ya mostrados y enlaces guardados) y `pixpin:` (el de
+/// Android antes de PinDesk; en el PC ya no se registra, porque puede ser del
+/// PixPin original de DepthPixel). Los tres dan lo mismo
+/// (docs/formato-pindesk.md). `pixpinmax:` va antes que `pixpin:`, que es
+/// su prefijo.
+pub const ESQUEMAS: [&str; 3] = ["pindesk:", "pixpinmax:", "pixpin:"];
 
 /// El largo del esquema si un texto es un enlace nuestro.
 fn esquema(texto: &str) -> Option<usize> {
@@ -510,7 +513,8 @@ fn esquema(texto: &str) -> Option<usize> {
         .map(|e| e.len())
 }
 
-/// Si un texto es un enlace `pixpin:` (o `pixpinmax:`).
+/// Si un texto es un enlace `pindesk:` (o `pindesk:` o `pixpin:`, los de
+/// antes).
 pub fn es_enlace(texto: &str) -> bool {
     esquema(texto).is_some()
 }
@@ -707,7 +711,7 @@ pub fn partir_enlace(url: &str) -> Result<PartesEnlace, Fallo> {
         return Err(Fallo::no_se_entiende("el enlace es demasiado largo"));
     }
     let Some(largo) = esquema(url) else {
-        return Err(Fallo::no_se_entiende("no es un enlace pixpin:"));
+        return Err(Fallo::no_se_entiende("no es un enlace pindesk:"));
     };
     let resto = &url[largo..];
     let resto = resto.split('#').next().unwrap_or("");
@@ -799,32 +803,20 @@ pub fn codificar(t: &str) -> String {
 }
 
 /// **El esquema de la casa**: con el que la app arma sus enlaces
-/// ([`enlace`], los botones de los avisos de `notificacion`). Es `pixpin`
-/// (el de Android) cuando `pixpin://` es nuestro o esta libre; si lo tiene
-/// otro programa —en este PC (15-oct) lo registra el PixPin original de
-/// DepthPixel, `…\Programs\PixPin\PixPin.exe`—, `pixpinmax`, que siempre es
-/// nuestro: un boton con `pixpin://` abriria ese otro programa. Los dos
-/// pasan por el mismo traductor ([`de_enlace`]) y la misma lista blanca
-/// ([`seguridad`]). Se mira el registro una vez por proceso.
+/// ([`enlace`], los botones de los avisos de `notificacion`): `pindesk`,
+/// que siempre es nuestro. Antes era `pixpin` o `pixpinmax` segun quien
+/// tuviera `pixpin://` (el PixPin original de DepthPixel lo registra); los
+/// dos se siguen leyendo con el mismo traductor ([`de_enlace`]) y la misma
+/// lista blanca ([`seguridad`]).
 pub fn esquema_de_la_casa() -> &'static str {
-    static ESQUEMA: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
-    ESQUEMA.get_or_init(|| {
-        if pixpin_es_nuestro_o_libre() {
-            "pixpin"
-        } else {
-            "pixpinmax"
-        }
-    })
+    crate::notificacion::ESQUEMA
 }
 
-/// Si `pixpin://` esta libre o lo abre un `pindesk.exe` (o el
-/// `pixpinmax.exe` de antes): lo mismo que mira
-/// `herramientas/integraciones.ps1` antes de tomarlo.
-pub fn pixpin_es_nuestro_o_libre() -> bool {
-    match orden_del_protocolo("pixpin") {
-        None => true,
-        Some(o) => es_orden_nuestra(&o),
-    }
+/// Si `pixpin://` lo abre un `pindesk.exe` (o el `pixpinmax.exe` de antes):
+/// entonces lo registro una version vieja y hay que soltarlo, para que sea
+/// del PixPin original si esta instalado (`notificacion::registrar`).
+pub fn pixpin_es_nuestro() -> bool {
+    orden_del_protocolo("pixpin").is_some_and(|o| es_orden_nuestra(&o))
 }
 
 /// Si la orden de un protocolo abre nuestro exe, con el nombre de ahora o
@@ -1033,7 +1025,7 @@ pub fn describir(pedido: &Value) -> String {
     }
     if let Some(o) = pedido.as_object() {
         for (k, v) in o {
-            if k == "pixpin" || k == "accion" {
+            if crate::mensajero::es_campo_de_version(k) || k == "accion" {
                 continue;
             }
             let texto = match v {
@@ -1057,14 +1049,15 @@ pub fn ayuda() -> String {
     let mut s = String::from(
         "PinDesk: pedirle cosas a la PinDesk que esta abierta (la abre si no lo esta).\n\n\
          Uso:\n  pindesk <verbo> [argumentos] [--sin-arrancar]\n  pindesk --pedido '<json>'\n  \
-         pindesk --pedido-archivo <ruta|->\n  pindesk --url \"pixpin://<verbo>?campo=valor\"\n\nVerbos:\n",
+         pindesk --pedido-archivo <ruta|->\n  pindesk --url \"pindesk://<verbo>?campo=valor\"\n\nVerbos:\n",
     );
     for v in VERBOS {
         s.push_str(&format!("  {:<52} {}\n", v.uso, v.ayuda));
     }
     s.push_str(
         "\n--proyecto acepta el id o el nombre del proyecto. Sin --proyecto, Mensajes guardados.\n\
-         Enlaces: pixpin://tarea?texto=comprar%20yeso, pixpin://proyecto/<id>, pixpin://atajo/capturar (Android).\n\n\
+         Enlaces: pindesk://tarea?texto=comprar%20yeso, pindesk://proyecto/<id>, pindesk://atajo/capturar\n\
+         (los de antes, pixpinmax:// y pixpin://, valen igual).\n\n\
          Codigos de salida: 0 aceptado, 1 fallo aqui (fichero, OCR), 2 version, 3 no se entiende,\n\
          4 PinDesk no esta abierta, 5 no contesto, 6 rechazado (enlace no permitido o dijo que no).\n\
          Mas: docs/integraciones.md y docs/protocolo-pedidos.md\n",
@@ -1079,7 +1072,7 @@ pub fn ayuda() -> String {
 /// Un pedido v1.
 pub fn pedido(accion: &str, campos: Value) -> Value {
     let mut m = Map::new();
-    m.insert("pixpin".into(), json!(1));
+    m.insert("pindesk".into(), json!(1));
     m.insert("accion".into(), json!(accion));
     if let Value::Object(c) = campos {
         for (k, v) in c {

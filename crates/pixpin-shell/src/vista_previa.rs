@@ -740,13 +740,13 @@ fn registrar_clases() -> bool {
             lpfnWndProc: Some(proc_cartel),
             hInstance: modulo.into(),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-            lpszClassName: w!("PixPinVistaPrevia"),
+            lpszClassName: w!("PinDeskVistaPrevia"),
             ..Default::default()
         };
         let buzon = WNDCLASSW {
             lpfnWndProc: Some(proc_buzon),
             hInstance: modulo.into(),
-            lpszClassName: w!("PixPinVistaPreviaBuzon"),
+            lpszClassName: w!("PinDeskVistaPreviaBuzon"),
             ..Default::default()
         };
         RegisterClassW(&cartel) != 0 && RegisterClassW(&buzon) != 0
@@ -764,7 +764,7 @@ fn bucle(rx: Receiver<Orden>, listo: Sender<isize>) {
     let buzon = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
-            w!("PixPinVistaPreviaBuzon"),
+            w!("PinDeskVistaPreviaBuzon"),
             PCWSTR::null(),
             Default::default(),
             0,
@@ -1042,7 +1042,7 @@ fn abrir_en_el_hilo(
             // Sin avisar al padre (de otro hilo) al nacer y morir: menos
             // esperas cruzadas entre los dos hilos.
             windows::Win32::UI::WindowsAndMessaging::WS_EX_NOPARENTNOTIFY,
-            w!("PixPinVistaPrevia"),
+            w!("PinDeskVistaPrevia"),
             PCWSTR::null(),
             WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN,
             area.x,

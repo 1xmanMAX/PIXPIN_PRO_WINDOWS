@@ -341,7 +341,7 @@ impl VentanaOverlay {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW,
-                w!("PixPinOverlay"),
+                w!("PinDeskOverlay"),
                 w!(""),
                 WS_POPUP,
                 area.x,
@@ -379,7 +379,7 @@ impl VentanaOverlay {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW,
-                w!("PixPinOverlay"),
+                w!("PinDeskOverlay"),
                 windows::core::PCWSTR(titulo.as_ptr()),
                 WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
                 area.x,
@@ -417,7 +417,7 @@ impl VentanaOverlay {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_APPWINDOW,
-                w!("PixPinOverlay"),
+                w!("PinDeskOverlay"),
                 windows::core::PCWSTR(titulo.as_ptr()),
                 WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
                 area.x,
@@ -1303,7 +1303,7 @@ fn registrar_clase() {
             lpfnWndProc: Some(procedimiento_overlay),
             hInstance: instancia,
             hIcon: icono,
-            lpszClassName: w!("PixPinOverlay"),
+            lpszClassName: w!("PinDeskOverlay"),
             ..Default::default()
         };
         RegisterClassW(&clase);

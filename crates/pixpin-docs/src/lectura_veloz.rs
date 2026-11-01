@@ -5,10 +5,10 @@
 //! ventanas:
 //!
 //! - **De PixPin a Lectura Veloz** ([`Salida`]): «⚡ Lectura veloz» de los
-//!   lectores arma `lecturaveloz://pixpin/abrir?v=1&doc=…&ruta=…` con el
+//!   lectores arma `lecturaveloz://pindesk/abrir?v=1&doc=…&ruta=…` con el
 //!   documento y por donde se va (el 🟢 si lo hay).
 //! - **De Lectura Veloz a PixPin** ([`Progreso`]): el verbo
-//!   `pixpinmax://lectura-veloz?v=1&doc=…&ruta=…&tipo=…` mueve el marcador
+//!   `pindesk://lectura-veloz?v=1&doc=…&ruta=…&tipo=…` mueve el marcador
 //!   verde a donde se va leyendo alli. Llega de fuera, asi que aqui se mira
 //!   **todo** antes de tocar nada: una ruta local con extension de
 //!   documento, numeros finitos y acotados, textos cortos. Que la ruta
@@ -28,6 +28,9 @@ pub const VERSION: u32 = 1;
 
 /// El esquema de Lectura Veloz, sin `://`.
 pub const ESQUEMA: &str = "lecturaveloz";
+/// Quien abre: `lecturaveloz://pindesk/abrir`. Hasta nov-2026 era `pixpin`;
+/// Lectura Veloz tiene que aceptar los dos (docs/integracion-lectura-veloz.md).
+pub const ANFITRION: &str = "pindesk";
 
 /// El prefijo del `doc` de un fichero que no es un adjunto del chat: el
 /// resto es una huella estable de su ruta ([`id_de_ruta`]).
@@ -207,7 +210,7 @@ pub struct Salida {
 }
 
 impl Salida {
-    /// **El enlace**: `lecturaveloz://pixpin/abrir?v=1&…`, con cada valor
+    /// **El enlace**: `lecturaveloz://pindesk/abrir?v=1&…`, con cada valor
     /// codificado y los numeros acotados.
     pub fn enlace(&self) -> String {
         let num = |f: f32| {
@@ -237,7 +240,7 @@ impl Salida {
             ("paginas", self.paginas.min(TOPE_PAGINA).to_string()),
             ("t", self.t.to_string()),
         ];
-        let mut s = format!("{ESQUEMA}://pixpin/abrir");
+        let mut s = format!("{ESQUEMA}://{ANFITRION}/abrir");
         for (i, (k, v)) in campos.iter().enumerate() {
             s.push(if i == 0 { '?' } else { '&' });
             s.push_str(k);
@@ -651,7 +654,7 @@ mod pruebas {
         };
         assert_eq!(
             s.enlace(),
-            "lecturaveloz://pixpin/abrir?v=1&doc=a1b2-c3\
+            "lecturaveloz://pindesk/abrir?v=1&doc=a1b2-c3\
              &ruta=C%3A%5CUsers%5CMax%5CMis%20libros%5CA%C3%B1o%201%20%26%20m%C3%A1s.pdf\
              &nombre=A%C3%B1o%201%20%26%20m%C3%A1s.pdf&tipo=pdf&pagina=12&frac=0.5\
              &fraccion=0.25&paginas=50&t=1761562800000"

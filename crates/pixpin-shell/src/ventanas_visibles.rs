@@ -75,7 +75,7 @@ unsafe fn leer(hwnd: HWND) -> Option<VentanaVisible> {
         }
         let mut clase = [0u16; 32];
         let n = GetClassNameW(hwnd, &mut clase);
-        if n > 0 && String::from_utf16_lossy(&clase[..n as usize]) == "PixPinOverlay" {
+        if n > 0 && String::from_utf16_lossy(&clase[..n as usize]) == "PinDeskOverlay" {
             return None;
         }
         let mut encapotada: u32 = 0;

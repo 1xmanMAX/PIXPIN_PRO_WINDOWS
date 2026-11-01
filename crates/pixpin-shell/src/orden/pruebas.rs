@@ -37,86 +37,86 @@ fn valido(p: &Value) {
 #[test]
 fn los_verbos_dan_el_pedido_del_protocolo() {
     let casos: Vec<(Vec<&str>, Value)> = vec![
-        (vec!["capturar"], json!({"pixpin":1,"accion":"capturar"})),
+        (vec!["capturar"], json!({"pindesk":1,"accion":"capturar"})),
         (
             vec!["tarea", "comprar", "yeso"],
-            json!({"pixpin":1,"accion":"anadir_tarea","texto":"comprar yeso"}),
+            json!({"pindesk":1,"accion":"anadir_tarea","texto":"comprar yeso"}),
         ),
         (
             vec!["TAREA", "comprar yeso", "--proyecto", "Obra"],
-            json!({"pixpin":1,"accion":"anadir_tarea","texto":"comprar yeso","proyecto":"Obra"}),
+            json!({"pindesk":1,"accion":"anadir_tarea","texto":"comprar yeso","proyecto":"Obra"}),
         ),
         (
             vec!["tarea"],
-            json!({"pixpin":1,"accion":"ventana","cual":"tareas"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"tareas"}),
         ),
         (
             vec!["nota"],
-            json!({"pixpin":1,"accion":"nota_nueva","proyecto":null}),
+            json!({"pindesk":1,"accion":"nota_nueva","proyecto":null}),
         ),
         (
             vec!["nota", "idea", "--proyecto=pr-1"],
-            json!({"pixpin":1,"accion":"nota_nueva","texto":"idea","proyecto":"pr-1"}),
+            json!({"pindesk":1,"accion":"nota_nueva","texto":"idea","proyecto":"pr-1"}),
         ),
         (
             vec!["chat"],
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
         ),
         (
             vec!["mensajes"],
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
         ),
         (
             vec!["proyectos"],
-            json!({"pixpin":1,"accion":"ventana_principal"}),
+            json!({"pindesk":1,"accion":"ventana_principal"}),
         ),
         (
             vec!["proyecto", "pr-7"],
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"pr-7"}}),
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"pr-7"}}),
         ),
         (
             vec!["pinear-ultima"],
-            json!({"pixpin":1,"accion":"pinear_ultima"}),
+            json!({"pindesk":1,"accion":"pinear_ultima"}),
         ),
         (
             vec!["grabar"],
-            json!({"pixpin":1,"accion":"grabar","nombre":"Nota de voz","proyecto":null}),
+            json!({"pindesk":1,"accion":"grabar","nombre":"Nota de voz","proyecto":null}),
         ),
         (
             vec!["lista"],
-            json!({"pixpin":1,"accion":"lista_nueva","titulo":"Tareas","proyecto":null}),
+            json!({"pindesk":1,"accion":"lista_nueva","titulo":"Tareas","proyecto":null}),
         ),
         (
             vec!["sincronizar"],
-            json!({"pixpin":1,"accion":"ventana","cual":"sincronizar"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"sincronizar"}),
         ),
         (
             vec!["sincronizar", "todos"],
-            json!({"pixpin":1,"accion":"sincronizar","aparato":"todos"}),
+            json!({"pindesk":1,"accion":"sincronizar","aparato":"todos"}),
         ),
         (
             vec!["ventana", "galeria"],
-            json!({"pixpin":1,"accion":"ventana","cual":"galeria"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"galeria"}),
         ),
         (
             vec!["capturas"],
-            json!({"pixpin":1,"accion":"ventana","cual":"galeria"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"galeria"}),
         ),
         (
             vec!["lecciones", "encofrado"],
-            json!({"pixpin":1,"accion":"lecciones","consulta":"encofrado","proyecto":null}),
+            json!({"pindesk":1,"accion":"lecciones","consulta":"encofrado","proyecto":null}),
         ),
         (
             vec!["ia", "resume", "mis", "tareas"],
-            json!({"pixpin":1,"accion":"asistente","texto":"resume mis tareas","proyecto":null}),
+            json!({"pindesk":1,"accion":"asistente","texto":"resume mis tareas","proyecto":null}),
         ),
         (
             vec!["asistente"],
-            json!({"pixpin":1,"accion":"asistente","texto":"","proyecto":null}),
+            json!({"pindesk":1,"accion":"asistente","texto":"","proyecto":null}),
         ),
         (
             vec!["leer", "hola", "mundo", "--titulo", "Web"],
-            json!({"pixpin":1,"accion":"leer_en_voz","texto":"hola mundo","titulo":"Web"}),
+            json!({"pindesk":1,"accion":"leer_en_voz","texto":"hola mundo","titulo":"Web"}),
         ),
     ];
     for (a, esperado) in casos {
@@ -139,7 +139,7 @@ fn los_ficheros_van_como_imagenes_o_archivos() {
     assert_eq!(
         p,
         vec![
-            json!({"pixpin":1,"accion":"chat","texto":"mira","proyecto":"pr-1","imagenes":["C:\\a\\foto.PNG"],"archivos":["C:\\a\\plano.pdf"]})
+            json!({"pindesk":1,"accion":"chat","texto":"mira","proyecto":"pr-1","imagenes":["C:\\a\\foto.PNG"],"archivos":["C:\\a\\plano.pdf"]})
         ]
     );
     // «Enviar a» con varios: un pin por fichero.
@@ -147,13 +147,13 @@ fn los_ficheros_van_como_imagenes_o_archivos() {
     assert_eq!(p.len(), 2);
     assert_eq!(
         p[1],
-        json!({"pixpin":1,"accion":"pinear","ruta":"C:\\a\\dos.pdf"})
+        json!({"pindesk":1,"accion":"pinear","ruta":"C:\\a\\dos.pdf"})
     );
     let p = pedidos_de(&["al-movil", "C:\\a\\uno.jpg", "C:\\a\\dos.docx"]);
     assert_eq!(
         p,
         vec![
-            json!({"pixpin":1,"accion":"enviar_al_movil","aparato":"todos","imagenes":["C:\\a\\uno.jpg"],"archivos":["C:\\a\\dos.docx"]})
+            json!({"pindesk":1,"accion":"enviar_al_movil","aparato":"todos","imagenes":["C:\\a\\uno.jpg"],"archivos":["C:\\a\\dos.docx"]})
         ]
     );
     let p = pedidos_de(&[
@@ -167,13 +167,15 @@ fn los_ficheros_van_como_imagenes_o_archivos() {
     assert_eq!(
         p,
         vec![
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\a\\libro.pdf","pagina":12,"buscar":"losa"}})
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\a\\libro.pdf","pagina":12,"buscar":"losa"}})
         ]
     );
     let p = pedidos_de(&["copiar-texto", "C:\\a\\uno.png", "C:\\a\\dos.jpg"]);
     assert_eq!(
         p,
-        vec![json!({"pixpin":1,"accion":"ocr","ruta":"C:\\a\\uno.png","rutas":["C:\\a\\dos.jpg"]})]
+        vec![
+            json!({"pindesk":1,"accion":"ocr","ruta":"C:\\a\\uno.png","rutas":["C:\\a\\dos.jpg"]})
+        ]
     );
     for x in p {
         valido(&x);
@@ -233,11 +235,11 @@ fn caso_negativo_lo_que_no_se_entiende_sale_con_su_codigo() {
         (vec!["--pedido"], codigo::NO_SE_ENTIENDE),
         (vec!["--pedido", "no es json"], codigo::NO_SE_ENTIENDE),
         (
-            vec!["--pedido", r#"{"pixpin":1,"accion":"borrar_todo"}"#],
+            vec!["--pedido", r#"{"pindesk":1,"accion":"borrar_todo"}"#],
             codigo::NO_SE_ENTIENDE,
         ),
         (
-            vec!["--pedido", r#"{"pixpin":2,"accion":"chat"}"#],
+            vec!["--pedido", r#"{"pindesk":2,"accion":"chat"}"#],
             codigo::VERSION,
         ),
         (
@@ -270,7 +272,7 @@ fn caso_negativo_lo_que_no_es_una_orden_sigue_el_arranque_de_siempre() {
 
 #[test]
 fn un_pedido_a_mano_pasa_tal_cual() {
-    let j = r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#;
+    let j = r#"{"pindesk":1,"accion":"anadir_tarea","texto":"pan"}"#;
     let l = orden(&["--pedido", j, "--sin-arrancar"]).unwrap();
     assert!(l.sin_arrancar);
     assert_eq!(l.origen, Origen::Consola);
@@ -293,33 +295,33 @@ fn un_pedido_a_mano_pasa_tal_cual() {
 fn los_enlaces_dan_los_mismos_pedidos() {
     assert_eq!(
         pedidos_del_enlace("pixpin://tarea?texto=comprar%20yeso&proyecto=pr-1"),
-        vec![json!({"pixpin":1,"accion":"anadir_tarea","texto":"comprar yeso","proyecto":"pr-1"})]
+        vec![json!({"pindesk":1,"accion":"anadir_tarea","texto":"comprar yeso","proyecto":"pr-1"})]
     );
     assert_eq!(
         pedidos_del_enlace("PIXPIN://Capturar/"),
-        vec![json!({"pixpin":1,"accion":"capturar"})]
+        vec![json!({"pindesk":1,"accion":"capturar"})]
     );
     assert_eq!(
         pedidos_del_enlace("pixpin://chat?texto=hola+mundo"),
-        vec![json!({"pixpin":1,"accion":"chat","texto":"hola mundo","proyecto":null})]
+        vec![json!({"pindesk":1,"accion":"chat","texto":"hola mundo","proyecto":null})]
     );
     assert_eq!(
         pedidos_del_enlace("pixpin://abrir?tipo=mensaje&proyecto=pr-1&codigo=m-9"),
         vec![
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"mensaje","proyecto":"pr-1","codigo":"m-9"}})
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"mensaje","proyecto":"pr-1","codigo":"m-9"}})
         ]
     );
     assert_eq!(
         pedidos_del_enlace("pixpin://abrir?ruta=C:%5Cobra%5Cplano.pdf&pagina=3"),
         vec![
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\obra\\plano.pdf","pagina":3}})
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\obra\\plano.pdf","pagina":3}})
         ]
     );
     assert_eq!(
         pedidos_del_enlace(
-            "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22capturar%22%7D"
+            "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22capturar%22%7D"
         ),
-        vec![json!({"pixpin":1,"accion":"capturar"})]
+        vec![json!({"pindesk":1,"accion":"capturar"})]
     );
     // Acentos en UTF-8.
     assert_eq!(
@@ -340,75 +342,75 @@ fn las_senas_de_android_funcionan_en_el_pc() {
     let casos = [
         (
             "pixpin://atajo/capturar",
-            json!({"pixpin":1,"accion":"capturar"}),
+            json!({"pindesk":1,"accion":"capturar"}),
         ),
         (
             "pixpin://atajo/mensajes",
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
         ),
         (
             "pixpin://atajo/proyectos",
-            json!({"pixpin":1,"accion":"ventana_principal"}),
+            json!({"pindesk":1,"accion":"ventana_principal"}),
         ),
         (
             "pixpin://atajo/sincronizar",
-            json!({"pixpin":1,"accion":"ventana","cual":"sincronizar"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"sincronizar"}),
         ),
         (
             "pixpin://atajo/proyecto/pr-1789",
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"pr-1789"}}),
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"pr-1789"}}),
         ),
         (
             "pixpin://atajo/archivo/m%201",
-            json!({"pixpin":1,"accion":"pinear","codigo":"m 1","proyecto":null}),
+            json!({"pindesk":1,"accion":"pinear","codigo":"m 1","proyecto":null}),
         ),
         (
             "pixpin://atajo/grabar",
-            json!({"pixpin":1,"accion":"grabar","nombre":"Nota de voz","proyecto":null}),
+            json!({"pindesk":1,"accion":"grabar","nombre":"Nota de voz","proyecto":null}),
         ),
         (
             "pixpin://atajo/tarea?texto=pan",
-            json!({"pixpin":1,"accion":"anadir_tarea","texto":"pan"}),
+            json!({"pindesk":1,"accion":"anadir_tarea","texto":"pan"}),
         ),
         (
             "pixpin://atajo/tarea",
-            json!({"pixpin":1,"accion":"ventana","cual":"tareas"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"tareas"}),
         ),
         (
             "pixpin://atajo/tareas",
-            json!({"pixpin":1,"accion":"ventana","cual":"tareas"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"tareas"}),
         ),
         (
             "pixpin://atajo/capturas",
-            json!({"pixpin":1,"accion":"ventana","cual":"galeria"}),
+            json!({"pindesk":1,"accion":"ventana","cual":"galeria"}),
         ),
         (
             "pixpin://atajo/soltar?proyecto=pr-1",
-            json!({"pixpin":1,"accion":"soltar","proyecto":"pr-1"}),
+            json!({"pindesk":1,"accion":"soltar","proyecto":"pr-1"}),
         ),
         (
             "pixpin://atajo/chat?texto=hola&proyecto=pr-1",
-            json!({"pixpin":1,"accion":"chat","texto":"hola","proyecto":"pr-1"}),
+            json!({"pindesk":1,"accion":"chat","texto":"hola","proyecto":"pr-1"}),
         ),
         (
             "pixpin://atajo/chat",
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":null}}),
         ),
         (
             "pixpin://atajo/nota?texto=idea",
-            json!({"pixpin":1,"accion":"nota_nueva","texto":"idea","proyecto":null}),
+            json!({"pindesk":1,"accion":"nota_nueva","texto":"idea","proyecto":null}),
         ),
         (
             "pixpin://atajo/lista?titulo=Compra&proyecto=pr-1",
-            json!({"pixpin":1,"accion":"lista_nueva","titulo":"Compra","proyecto":"pr-1"}),
+            json!({"pindesk":1,"accion":"lista_nueva","titulo":"Compra","proyecto":"pr-1"}),
         ),
         (
             "pixpin://atajo/leccion",
-            json!({"pixpin":1,"accion":"leccion_nueva","proyecto":null}),
+            json!({"pindesk":1,"accion":"leccion_nueva","proyecto":null}),
         ),
         (
             "pixpin://atajo/lecciones",
-            json!({"pixpin":1,"accion":"lecciones","proyecto":null}),
+            json!({"pindesk":1,"accion":"lecciones","proyecto":null}),
         ),
     ];
     for (u, esperado) in casos {
@@ -467,7 +469,7 @@ fn caso_negativo_un_enlace_malicioso_no_pasa() {
         "pixpin://abrir?ruta=file:///C:/x.pdf",
         "pixpin://abrir?ruta=..%5C..%5Cx.pdf",
         // Crear una automatizacion que corra sola cada dia.
-        "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22automatizacion%22%2C%22operacion%22%3A%22crear%22%2C%22receta%22%3A%7B%7D%7D",
+        "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22automatizacion%22%2C%22operacion%22%3A%22crear%22%2C%22receta%22%3A%7B%7D%7D",
     ];
     for u in prohibidos {
         let p = pedidos_del_enlace(u);
@@ -478,9 +480,9 @@ fn caso_negativo_un_enlace_malicioso_no_pasa() {
         );
     }
     let a_confirmar = [
-        "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22borrar_lista%22%2C%22codigo%22%3A%221%22%7D",
-        "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22quitar_tarea%22%2C%22codigo%22%3A%221%22%2C%22indice%22%3A0%7D",
-        "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22automatizacion%22%2C%22operacion%22%3A%22ejecutar%22%2C%22id%22%3A%22a%22%7D",
+        "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22borrar_lista%22%2C%22codigo%22%3A%221%22%7D",
+        "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22quitar_tarea%22%2C%22codigo%22%3A%221%22%2C%22indice%22%3A0%7D",
+        "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22automatizacion%22%2C%22operacion%22%3A%22ejecutar%22%2C%22id%22%3A%22a%22%7D",
         "pixpin://sincronizar/todos",
         "pixpin://asistente?texto=borra%20todas%20mis%20tareas",
         "pixpin://pinear?ruta=C:%5Ca%5Cx.png",
@@ -509,7 +511,7 @@ fn toda_accion_del_protocolo_tiene_su_seguridad() {
     // Lo que no esta en la lista blanca pregunta: ninguna accion nueva entra
     // por enlace sin que alguien la ponga a proposito en `SEGURAS`.
     for a in crate::mensajero::ACCIONES {
-        let s = seguridad(&json!({"pixpin":1,"accion":a}));
+        let s = seguridad(&json!({"pindesk":1,"accion":a}));
         if SEGURAS.contains(&a) || a == "asistente" {
             assert_eq!(s, Seguridad::Directa, "{a}");
         } else {
@@ -548,7 +550,8 @@ fn las_rutas_locales_y_las_que_no() {
 #[test]
 fn la_firma_va_y_vuelve_y_no_se_puede_falsificar() {
     let clave = [7u8; 32];
-    let url = firma::firmar_con(&clave, "pixpin://pedido?json=%7B%22pixpin%22%3A1%7D&b=2").unwrap();
+    let url =
+        firma::firmar_con(&clave, "pixpin://pedido?json=%7B%22pindesk%22%3A1%7D&b=2").unwrap();
     let partes = partir_enlace(&url).unwrap();
     let f = partes.firma.clone().unwrap();
     assert!(firma::verificar_con(&clave, &partes.canonico(), &f));
@@ -596,9 +599,11 @@ fn codificar_y_descodificar_van_y_vuelven() {
         assert_eq!(descodificar(&codificar(t), true).unwrap(), t);
     }
     assert_eq!(
-        enlace_con("pixpinmax", "tarea", &[("texto", "a b&c")]),
-        "pixpinmax://tarea?texto=a%20b%26c"
+        enlace_con("pindesk", "tarea", &[("texto", "a b&c")]),
+        "pindesk://tarea?texto=a%20b%26c"
     );
+    // La app arma sus enlaces con `pindesk://`.
+    assert!(enlace("capturar", &[]).starts_with("pindesk://"));
     assert_eq!(
         pedidos_del_enlace(&enlace("tarea", &[("texto", "a b&c")]))[0]["texto"],
         json!("a b&c")
@@ -606,30 +611,44 @@ fn codificar_y_descodificar_van_y_vuelven() {
 }
 
 #[test]
-fn pixpinmax_y_pixpin_son_el_mismo_enlace() {
-    // En el PC, `pixpin:` puede ser del PixPin original: `pixpinmax:` es el
-    // que siempre es nuestro, y los dos dan el mismo pedido.
+fn pindesk_y_los_esquemas_de_antes_son_el_mismo_enlace() {
+    // `pindesk:` es el de ahora; `pixpinmax:` (el del PC) y `pixpin:` (el de
+    // Android) son los de antes de PinDesk y dan el mismo pedido.
     assert_eq!(
-        pedidos_del_enlace("pixpinmax://tarea?texto=pan"),
-        pedidos_del_enlace("pixpin://tarea?texto=pan")
+        pedidos_del_enlace("pindesk://tarea?texto=pan"),
+        pedidos_del_enlace("pixpinmax://tarea?texto=pan")
     );
     assert_eq!(
+        pedidos_del_enlace("pindesk://tarea?texto=pan"),
+        pedidos_del_enlace("pixpin://tarea?texto=pan")
+    );
+    assert!(es_enlace("PinDesk://atajo/capturar") && es_enlace("pindesk:capturar"));
+    assert_eq!(
         pedidos_del_enlace("PixPinMax://atajo/capturar"),
-        vec![json!({"pixpin":1,"accion":"capturar"})]
+        vec![json!({"pindesk":1,"accion":"capturar"})]
     );
     assert!(es_enlace("pixpinmax:capturar") && es_enlace("PIXPIN://x"));
     // Caso negativo: lo que solo se le parece no es nuestro.
     for u in [
         "pixpi://x",
         "pixpinmaxi://x",
+        "pindeskx://x",
+        "pindes://x",
         "xpixpin://x",
         "pixpin",
         "ñpixpin://x",
     ] {
-        assert!(!es_enlace(u) || u.starts_with("pixpinmaxi"), "{u}");
+        assert!(
+            !es_enlace(u) || u.starts_with("pixpinmaxi") || u.starts_with("pindeskx"),
+            "{u}"
+        );
     }
     assert_eq!(
         de_enlace("pixpinmaxi://capturar").unwrap_err().codigo,
+        codigo::NO_SE_ENTIENDE
+    );
+    assert_eq!(
+        de_enlace("pindeskx://capturar").unwrap_err().codigo,
         codigo::NO_SE_ENTIENDE
     );
 }
@@ -638,28 +657,29 @@ fn pixpinmax_y_pixpin_son_el_mismo_enlace() {
 fn una_sola_lista_blanca_para_enlaces_y_botones_de_avisos() {
     // Lo de los botones de los avisos (`notificacion`) pasa directo...
     for p in [
-        json!({"pixpin":1,"accion":"marcar_tarea","codigo":"L","indice":0,"hecha":true}),
-        json!({"pixpin":1,"accion":"posponer","proyecto":"p","mensaje":"m","minutos":10}),
-        json!({"pixpin":1,"accion":"conservar_captura","ruta":r"C:\c\captura-1.png"}),
+        json!({"pindesk":1,"accion":"marcar_tarea","codigo":"L","indice":0,"hecha":true}),
+        json!({"pindesk":1,"accion":"posponer","proyecto":"p","mensaje":"m","minutos":10}),
+        json!({"pindesk":1,"accion":"conservar_captura","ruta":r"C:\c\captura-1.png"}),
     ] {
         assert_eq!(seguridad(&p), Seguridad::Directa, "{p}");
         assert!(crate::notificacion::permitido(&p), "{p}");
     }
     // ...pero conservar una captura de red, no.
-    let red = json!({"pixpin":1,"accion":"conservar_captura","ruta":r"\\srv\c.png"});
+    let red = json!({"pindesk":1,"accion":"conservar_captura","ruta":r"\\srv\c.png"});
     assert!(matches!(seguridad(&red), Seguridad::Prohibida(_)));
     assert!(!crate::notificacion::permitido(&red));
-    // `pixpinmax:pedido?json=` (la sena de los avisos) es un alias del mismo
+    // `pindesk:pedido?json=` (la sena de los avisos) es un alias del mismo
     // traductor, tambien por `--atajo url`.
-    let sena = crate::notificacion::sena_con("pixpinmax", &json!({"pixpin":1,"accion":"capturar"}));
+    let sena =
+        crate::notificacion::sena_con("pixpinmax", &json!({"pindesk":1,"accion":"capturar"}));
     assert_eq!(
         pedidos_del_enlace(&sena),
-        vec![json!({"pixpin":1,"accion":"capturar"})]
+        vec![json!({"pindesk":1,"accion":"capturar"})]
     );
     let l = orden(&["--atajo", "url", &sena]).unwrap();
     assert_eq!(
         l.orden,
-        Orden::Pedidos(vec![json!({"pixpin":1,"accion":"capturar"})])
+        Orden::Pedidos(vec![json!({"pindesk":1,"accion":"capturar"})])
     );
     assert!(matches!(l.origen, Origen::Enlace { .. }));
     // `--atajo capturar` (la Jump List) sigue siendo cosa del arranque.
@@ -681,7 +701,7 @@ fn al_lienzo_manda_texto_y_fotos_al_lienzo_por_su_nombre() {
     assert_eq!(
         p,
         vec![
-            json!({"pixpin":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta","proyecto":"pr-1","imagenes":["C:\\a\\foto.png"]})
+            json!({"pindesk":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta","proyecto":"pr-1","imagenes":["C:\\a\\foto.png"]})
         ]
     );
     valido(&p[0]);
@@ -725,7 +745,13 @@ fn lectura_veloz_por_enlace_se_mira_y_va_de_fondo() {
     assert_eq!(pedido["accion"], json!("lectura_veloz"));
     assert_eq!(pedido["ruta"], json!(r"C:\Libros\Tesis final.pdf"));
     assert_eq!(seguridad(&pedido), Seguridad::Directa);
-    // Y lo mismo por `pixpin:` y con la seña de Android.
+    // Y lo mismo por `pindesk:` y por `pixpin:` con la seña de Android.
+    assert!(matches!(
+        de_enlace(&u.replace("pixpinmax://", "pindesk://"))
+            .unwrap()
+            .orden,
+        Orden::LecturaVeloz(_)
+    ));
     assert!(matches!(
         de_enlace(&u.replace("pixpinmax://", "pixpin://atajo/"))
             .unwrap()

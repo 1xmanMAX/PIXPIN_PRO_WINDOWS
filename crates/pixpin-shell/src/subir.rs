@@ -126,7 +126,7 @@ pub fn subir(
     // llamada, que es sincrona.
     unsafe {
         let mut sesion = Asa(WinHttpOpen(
-            w!("PixPin"),
+            w!("PinDesk"),
             WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
             PCWSTR::null(),
             PCWSTR::null(),
@@ -134,7 +134,7 @@ pub fn subir(
         ));
         if sesion.0.is_null() {
             sesion = Asa(WinHttpOpen(
-                w!("PixPin"),
+                w!("PinDesk"),
                 WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                 PCWSTR::null(),
                 PCWSTR::null(),

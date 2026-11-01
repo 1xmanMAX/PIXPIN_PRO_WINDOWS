@@ -60,7 +60,7 @@ fn nombre_seguro(clave: &str) -> String {
 pub fn juntar(clave: &str, mias: &[String]) -> Option<Vec<String>> {
     juntar_en(
         &carpeta(clave),
-        &format!("Local\\PixPinMax-juntar-{}", nombre_seguro(clave)),
+        &format!("Local\\PinDesk-juntar-{}", nombre_seguro(clave)),
         mias,
         SILENCIO,
     )
@@ -157,7 +157,7 @@ mod pruebas {
     fn varias_copias_a_la_vez_dan_un_solo_lote() {
         let dir = std::env::temp_dir().join(format!("pixpin-juntar-prueba-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let mutex = format!("Local\\PixPinMax-juntar-prueba-{}", std::process::id());
+        let mutex = format!("Local\\PinDesk-juntar-prueba-{}", std::process::id());
         let hilos: Vec<_> = (0..5)
             .map(|i| {
                 let (dir, mutex) = (dir.clone(), mutex.clone());

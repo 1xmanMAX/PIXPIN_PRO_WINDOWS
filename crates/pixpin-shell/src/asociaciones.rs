@@ -1,13 +1,13 @@
 //! **PinDesk como app para abrir imagenes y videos** (el usuario, 3-oct:
-//! «que pixpin sea la app predeterminada que abra imagenes y videos, todos en
+//! «que la app sea la predeterminada que abra imagenes y videos, todos en
 //! formato de pin»).
 //!
 //! Y los audios (el usuario, 3-oct: «fotos de todos los formatos comunes,
 //! videos y AUDIOS»), que suenan en el reproductor flotante sin abrir la app.
 //!
 //! Se registra en `HKCU` (sin permisos de administrador) como lo hace
-//! cualquier visor: tres tipos propios (`PixPinMax.Imagen`,
-//! `PixPinMax.Video` y `PixPinMax.Audio`) que abren con
+//! cualquier visor: tres tipos propios (`PinDesk.Imagen`,
+//! `PinDesk.Video` y `PinDesk.Audio`) que abren con
 //! `"pindesk.exe" "%1"`, la app en
 //! «Abrir con» de cada extension y sus capacidades en
 //! `RegisteredApplications`, que es lo que ensena Configuracion →
@@ -34,14 +34,18 @@ use windows::core::HSTRING;
 /// El nombre con que sale en Configuracion.
 pub const NOMBRE: &str = "PinDesk";
 /// El nombre de antes de nov-2026 en `RegisteredApplications`: [`registrar`]
-/// lo borra para que Configuracion no ensene la app dos veces. Los ProgID
-/// (`PixPinMax.Imagen`…) no cambian: la eleccion de app predeterminada del
-/// usuario va atada a ellos (docs/nombre-pindesk.md).
+/// lo borra para que Configuracion no ensene la app dos veces.
 const NOMBRE_VIEJO: &str = "PixPin Max";
-const IMAGEN: &str = "PixPinMax.Imagen";
-const VIDEO: &str = "PixPinMax.Video";
-const AUDIO: &str = "PixPinMax.Audio";
-const CAPACIDADES: &str = r"Software\PixPinMax\Capabilities";
+const IMAGEN: &str = "PinDesk.Imagen";
+const VIDEO: &str = "PinDesk.Video";
+const AUDIO: &str = "PinDesk.Audio";
+const CAPACIDADES: &str = r"Software\PinDesk\Capabilities";
+/// Los ProgID de antes de PinDesk y su clave de capacidades: [`registrar`]
+/// los borra. La eleccion de app predeterminada del usuario iba atada a
+/// ellos, asi que hay que volver a elegir PinDesk una vez (`instalar.ps1` lo
+/// ofrece; docs/formato-pindesk.md).
+const PROGID_VIEJOS: [&str; 3] = ["PixPinMax.Imagen", "PixPinMax.Video", "PixPinMax.Audio"];
+const RAIZ_VIEJA: &str = r"Software\PixPinMax";
 
 /// Las imagenes que el pin abre (`pixpin_codec::imagen`: las de `image` y,
 /// de reserva, las que lee Windows). HEIC/HEIF/AVIF/JPEG XL van aunque el
@@ -170,8 +174,7 @@ pub fn registrar(exe: &Path) -> windows::core::Result<()> {
     for (clave, valor, texto) in entradas(exe) {
         Clave::crear(&clave)?.texto(&valor, &texto)?;
     }
-    // La entrada con el nombre viejo apunta a las mismas capacidades.
-    borrar_valor(r"Software\RegisteredApplications", NOMBRE_VIEJO);
+    quitar_lo_de_antes();
     // Que el Explorador se entere sin cerrar sesion.
     // SAFETY: sin punteros: avisa de un cambio global de asociaciones.
     unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
@@ -196,11 +199,35 @@ pub fn quitar() {
             valor(&format!(r"Software\Classes\.{ext}\OpenWithProgids"), tipo);
         }
     }
-    arbol(r"Software\PixPinMax");
+    arbol(r"Software\PinDesk");
     valor(r"Software\RegisteredApplications", NOMBRE);
-    valor(r"Software\RegisteredApplications", NOMBRE_VIEJO);
+    quitar_lo_de_antes();
     // SAFETY: sin punteros: avisa de un cambio global de asociaciones.
     unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
+}
+
+/// Lo que registraba PixPin Max: sus ProgID, su «Abrir con» por extension,
+/// sus capacidades y su nombre en `RegisteredApplications`. Lo que ya no
+/// esta no es un fallo.
+fn quitar_lo_de_antes() {
+    use windows::Win32::System::Registry::RegDeleteTreeW;
+    for tipo in PROGID_VIEJOS {
+        // SAFETY: la ruta vive en un HSTRING propio durante la llamada.
+        let _ = unsafe {
+            RegDeleteTreeW(
+                HKEY_CURRENT_USER,
+                &HSTRING::from(format!(r"Software\Classes\{tipo}")),
+            )
+        };
+        for (_, _, exts) in TIPOS {
+            for ext in exts {
+                borrar_valor(&format!(r"Software\Classes\.{ext}\OpenWithProgids"), tipo);
+            }
+        }
+    }
+    // SAFETY: igual que arriba.
+    let _ = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, &HSTRING::from(RAIZ_VIEJA)) };
+    borrar_valor(r"Software\RegisteredApplications", NOMBRE_VIEJO);
 }
 
 /// Borra el valor `nombre` de `HKCU\ruta`; lo que ya no esta no es un fallo.
@@ -234,15 +261,15 @@ mod pruebas {
 
     #[test]
     fn abre_con_el_exe_y_cubre_imagenes_y_videos() {
-        let v = entradas(Path::new(r"C:\Apps\PixPinMax\pixpinmax.exe"));
+        let v = entradas(Path::new(r"C:\Apps\PinDesk\pindesk.exe"));
         let valor = |clave: &str, nombre: &str| {
             v.iter()
                 .find(|(c, n, _)| c == clave && n == nombre)
                 .map(|(_, _, t)| t.as_str())
         };
         assert_eq!(
-            valor(r"Software\Classes\PixPinMax.Imagen\shell\open\command", ""),
-            Some(r#""C:\Apps\PixPinMax\pixpinmax.exe" "%1""#)
+            valor(r"Software\Classes\PinDesk.Imagen\shell\open\command", ""),
+            Some(r#""C:\Apps\PinDesk\pindesk.exe" "%1""#)
         );
         assert_eq!(
             valor(&format!(r"{CAPACIDADES}\FileAssociations"), ".png"),
@@ -255,6 +282,12 @@ mod pruebas {
         assert_eq!(
             valor(r"Software\RegisteredApplications", NOMBRE),
             Some(CAPACIDADES)
+        );
+        // Caso negativo: nada con los nombres de antes de PinDesk.
+        assert!(
+            v.iter()
+                .all(|(c, _, t)| !c.contains("PixPinMax") && !t.contains("PixPinMax")),
+            "{v:?}"
         );
         // Caso negativo: un PDF o un texto no se toman (tienen su programa).
         assert_eq!(
@@ -269,7 +302,7 @@ mod pruebas {
 
     #[test]
     fn los_audios_tienen_su_tipo_y_las_fotos_nuevas_van_con_las_imagenes() {
-        let v = entradas(Path::new(r"C:\Apps\PixPinMax\pixpinmax.exe"));
+        let v = entradas(Path::new(r"C:\Apps\PinDesk\pindesk.exe"));
         let valor = |clave: &str, nombre: &str| {
             v.iter()
                 .find(|(c, n, _)| c == clave && n == nombre)
@@ -285,8 +318,8 @@ mod pruebas {
             );
         }
         assert_eq!(
-            valor(r"Software\Classes\PixPinMax.Audio\shell\open\command", "").as_deref(),
-            Some(r#""C:\Apps\PixPinMax\pixpinmax.exe" "%1""#)
+            valor(r"Software\Classes\PinDesk.Audio\shell\open\command", "").as_deref(),
+            Some(r#""C:\Apps\PinDesk\pindesk.exe" "%1""#)
         );
         for f in [".heic", ".heif", ".avif", ".jfif", ".jxl"] {
             assert_eq!(asociado(f).as_deref(), Some(IMAGEN), "{f}");

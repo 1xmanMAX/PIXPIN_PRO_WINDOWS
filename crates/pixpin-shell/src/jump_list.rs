@@ -27,7 +27,7 @@ pub const MENSAJES: &str = "mensajes";
 pub const PROYECTOS: &str = "proyectos";
 pub const SINCRONIZAR: &str = "sincronizar";
 pub const PROYECTO: &str = "proyecto";
-/// La seña de un protocolo `pixpinmax:` (el «Abrir» de una notificacion).
+/// La seña de un protocolo `pindesk:` (el «Abrir» de una notificacion).
 pub const URL: &str = "url";
 
 /// Cuantos proyectos recientes (los de Android: «con tres, asoman sin echar
@@ -198,20 +198,20 @@ pub fn pedido_de_atajo(args: &[String]) -> Option<String> {
         return crate::notificacion::pedido_de(args.get(i + 2)?);
     }
     let json = match que {
-        CAPTURAR => serde_json::json!({ "pixpin": 1, "accion": "capturar" }),
+        CAPTURAR => serde_json::json!({ "pindesk": 1, "accion": "capturar" }),
         MENSAJES => {
-            serde_json::json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": null } })
+            serde_json::json!({ "pindesk": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": null } })
         }
-        PROYECTOS => serde_json::json!({ "pixpin": 1, "accion": "ventana_principal" }),
+        PROYECTOS => serde_json::json!({ "pindesk": 1, "accion": "ventana_principal" }),
         SINCRONIZAR => {
-            serde_json::json!({ "pixpin": 1, "accion": "ventana", "cual": "sincronizar" })
+            serde_json::json!({ "pindesk": 1, "accion": "ventana", "cual": "sincronizar" })
         }
         PROYECTO => {
             let id = args
                 .get(i + 2)
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())?;
-            serde_json::json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": id } })
+            serde_json::json!({ "pindesk": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": id } })
         }
         _ => return None,
     };

@@ -72,6 +72,7 @@ pub const EXTENSIONES: &[&str] = &[
     ".3gp",
     ".amr",
     // Y el proyecto entero del movil.
+    ".pindesk",
     ".pixpin", // Los documentos con lector propio.
     ".pdf",
     ".docx",

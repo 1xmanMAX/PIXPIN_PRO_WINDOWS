@@ -29,5 +29,5 @@ pub mod pantalla;
 pub mod protocolo;
 
 /// Lo que se dice en `serverInfo`.
-pub const NOMBRE: &str = "pixpin";
+pub const NOMBRE: &str = "pindesk";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

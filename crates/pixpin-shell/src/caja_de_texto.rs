@@ -108,7 +108,7 @@ fn correr(p: &Pedido) -> Option<String> {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento),
             hInstance: instancia.into(),
-            lpszClassName: w!("PixPinCajaDeTexto"),
+            lpszClassName: w!("PinDeskCajaDeTexto"),
             hbrBackground: windows::Win32::Graphics::Gdi::HBRUSH(GetStockObject(WHITE_BRUSH).0),
             ..Default::default()
         };
@@ -118,7 +118,7 @@ fn correr(p: &Pedido) -> Option<String> {
             // Encima: se abre desde ventanas que a veces lo estan (el
             // telepronter a pantalla completa) y quedar detras es perderla.
             WS_EX_TOPMOST,
-            w!("PixPinCajaDeTexto"),
+            w!("PinDeskCajaDeTexto"),
             PCWSTR(titulo.as_ptr()),
             WS_OVERLAPPEDWINDOW,
             CW_USEDEFAULT,

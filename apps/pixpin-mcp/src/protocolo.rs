@@ -186,7 +186,7 @@ mod pruebas {
         assert_eq!(r["id"], 1);
         assert_eq!(r["result"]["protocolVersion"], "2025-06-18");
         assert!(r["result"]["capabilities"]["tools"].is_object());
-        assert_eq!(r["result"]["serverInfo"]["name"], "pixpin");
+        assert_eq!(r["result"]["serverInfo"]["name"], "pindesk");
         // Una version que no se conoce: la nuestra mas nueva.
         let r = contestar(
             r#"{"jsonrpc":"2.0","id":"a","method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#,

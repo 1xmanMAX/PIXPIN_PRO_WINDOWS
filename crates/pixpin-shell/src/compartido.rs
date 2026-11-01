@@ -5,11 +5,11 @@
 //!
 //! ## Como llega
 //!
-//! - **Compartir**: Windows lanza `pixpinmax.exe` con una activacion de tipo
+//! - **Compartir**: Windows lanza `pindesk.exe` con una activacion de tipo
 //!   `ShareTarget`; la lee [`leer_activacion`] (`AppInstance::GetActivatedEventArgs`).
 //!   Sin identidad no hay activacion y no se hace nada: todo sigue como hoy.
 //! - **Menu contextual** (los verbos del paquete, y cualquiera que lance la
-//!   app asi): `pixpinmax.exe --al-chat <rutas…>` ([`de_argumentos`]).
+//!   app asi): `pindesk.exe --al-chat <rutas…>` ([`de_argumentos`]).
 //!
 //! ## A donde va
 //!
@@ -47,7 +47,7 @@ impl Recibido {
     /// El pedido `chat` (sin `proyecto`: «Mensajes guardados").
     pub fn pedido(&self) -> String {
         serde_json::json!({
-            "pixpin": 1,
+            "pindesk": 1,
             "accion": "chat",
             "texto": self.texto,
             "imagenes": self.imagenes,
@@ -76,7 +76,7 @@ pub fn es_foto(ruta: &Path) -> bool {
     matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp")
 }
 
-/// `pixpinmax.exe --al-chat a.pdf b.png`: las rutas que existen, repartidas.
+/// `pindesk.exe --al-chat a.pdf b.png`: las rutas que existen, repartidas.
 /// `None` si la orden no esta o no queda ningun fichero.
 pub fn de_argumentos(args: &[String]) -> Option<Recibido> {
     let i = args.iter().position(|a| a == ORDEN_AL_CHAT)?;

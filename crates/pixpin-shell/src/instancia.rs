@@ -47,23 +47,45 @@ pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, ErrorInstanciaUnica>
     // El prefijo Local\ limita el ambito a la sesion del usuario: dos usuarios
     // distintos en el mismo equipo si pueden tener cada uno su PinDesk.
     //
-    // El nombre sigue siendo el de cuando la app se llamaba PixPin Max: asi
-    // un `pindesk.exe` recien instalado ve al `pixpinmax.exe` viejo que aun
-    // corre, y al reves (docs/nombre-pindesk.md). No cambiarlo.
-    adquirir(w!(r"Local\PixPinMax-instancia-unica"))
+    //
+    // Se mira tambien el de antes, `Local\PixPinMax-instancia-unica`, sin
+    // tomarlo: si lo tiene un `pixpinmax.exe` viejo que aun corre, esta copia
+    // es la segunda y le pasa lo suyo (`mensajero` busca las dos clases de
+    // ventana). Un `pixpinmax.exe` viejo arrancado despues no ve a este, pero
+    // `Instalar.cmd` cierra los dos antes de abrir el nuevo
+    // (docs/formato-pindesk.md).
+    if existe(w!(r"Local\PixPinMax-instancia-unica")) {
+        return Err(ErrorInstanciaUnica::YaHayOtraInstancia);
+    }
+    adquirir(w!(r"Local\PinDesk-instancia-unica"))
 }
 
 /// **Solo para probar** (`PIXPIN_INSTANCIA`, ver `main.rs`): otra instancia
-/// unica con su propio nombre, que no choca con la PixPin del usuario.
+/// unica con su propio nombre, que no choca con la PinDesk del usuario.
 pub fn adquirir_instancia_de_prueba(nombre: &str) -> Result<InstanciaUnica, ErrorInstanciaUnica> {
     let limpio: String = nombre
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
         .take(40)
         .collect();
-    let nombre =
-        windows::core::HSTRING::from(format!(r"Local\PixPinMax-instancia-prueba-{limpio}"));
+    let nombre = windows::core::HSTRING::from(format!(r"Local\PinDesk-instancia-prueba-{limpio}"));
     adquirir(windows::core::PCWSTR(nombre.as_ptr()))
+}
+
+/// Si alguien tiene ya un mutex con ese nombre (sin crearlo ni tomarlo).
+fn existe(nombre: windows::core::PCWSTR) -> bool {
+    use windows::Win32::System::Threading::{OpenMutexW, SYNCHRONIZATION_SYNCHRONIZE};
+    // SAFETY: `nombre` es un literal terminado en cero; el handle que
+    // devuelva se cierra enseguida, una sola vez.
+    unsafe {
+        match OpenMutexW(SYNCHRONIZATION_SYNCHRONIZE, false, nombre) {
+            Ok(h) => {
+                let _ = CloseHandle(h);
+                true
+            }
+            Err(_) => false,
+        }
+    }
 }
 
 fn adquirir(nombre: windows::core::PCWSTR) -> Result<InstanciaUnica, ErrorInstanciaUnica> {

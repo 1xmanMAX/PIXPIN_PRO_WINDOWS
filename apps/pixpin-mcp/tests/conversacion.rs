@@ -1,4 +1,4 @@
-//! **Una conversacion MCP de verdad por stdio** con `pixpin-mcp.exe`:
+//! **Una conversacion MCP de verdad por stdio** con `pindesk-mcp.exe`:
 //! `initialize`, `tools/list`, herramientas de leer sobre datos de prueba en
 //! una carpeta temporal, una herramienta desconocida (error bien formado) y
 //! herramientas de la app contra una **ventana de mentira** que hace de
@@ -162,7 +162,7 @@ struct Servidor {
 
 impl Servidor {
     fn arrancar(raiz: &Path, clase: &str) -> Servidor {
-        let mut hijo = Command::new(env!("CARGO_BIN_EXE_pixpin-mcp"))
+        let mut hijo = Command::new(env!("CARGO_BIN_EXE_pindesk-mcp"))
             .env("PIXPIN_RAIZ", raiz)
             .env("PIXPIN_MCP_VENTANA", clase)
             .stdin(Stdio::piped())
@@ -231,7 +231,7 @@ fn una_conversacion_de_ida_y_vuelta() {
     );
     let arranque = t0.elapsed();
     assert_eq!(r["result"]["protocolVersion"], "2025-06-18");
-    assert_eq!(r["result"]["serverInfo"]["name"], "pixpin");
+    assert_eq!(r["result"]["serverInfo"]["name"], "pindesk");
     s.mandar(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
     assert!(s.pedir("ping", json!({}))["result"].is_object());
 
@@ -384,7 +384,7 @@ fn arranque_y_lista_medidos() {
     let mut listas = Vec::new();
     for _ in 0..8 {
         let t0 = Instant::now();
-        let mut s = Servidor::arrancar(&raiz, "PixPinMcpNadieEscucha");
+        let mut s = Servidor::arrancar(&raiz, "PinDeskMcpNadieEscucha");
         s.pedir("initialize", json!({"protocolVersion": "2025-06-18"}));
         arranques.push(t0.elapsed());
         let t0 = Instant::now();
@@ -414,7 +414,7 @@ fn arranque_y_lista_medidos() {
 fn sin_pixpin_se_dice_y_leer_sigue() {
     let raiz = std::env::temp_dir().join(format!("pixpin-mcp-sin-{}", std::process::id()));
     datos_de_prueba(&raiz);
-    let mut s = Servidor::arrancar(&raiz, "PixPinMcpNadieEscucha");
+    let mut s = Servidor::arrancar(&raiz, "PinDeskMcpNadieEscucha");
     s.pedir("initialize", json!({"protocolVersion": "2025-11-25"}));
     let r = s.llamar("anadir_tarea", json!({"texto": "x"}));
     assert_eq!(r["result"]["isError"], true);

@@ -1,6 +1,6 @@
 //! Pasarle ficheros a la copia que ya esta corriendo.
 //!
-//! PixPin Max solo deja una instancia. Sin esto, abrir una imagen con
+//! PinDesk solo deja una instancia. Sin esto, abrir una imagen con
 //! «Abrir con» no haria nada: la segunda copia veria el mutex tomado y se
 //! iria en silencio, llevandose la ruta que le habian dado. El usuario
 //! veria que no pasa NADA al abrir su fichero, que es lo peor que puede
@@ -18,13 +18,21 @@ use std::path::PathBuf;
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SendMessageW};
-use windows::core::w;
 
 /// El identificador de nuestro mensaje dentro de `WM_COPYDATA`.
 ///
 /// Lo lleva `dwData`, y sirve para que otro programa que le mande
 /// `WM_COPYDATA` a nuestra ventana por error no acabe pineando cosas.
 pub const ABRIR_FICHEROS: usize = 0x5049_5850;
+
+/// La clase de la ventana de mensajes de la app (`ventana::VentanaMensajes`),
+/// por la que la encuentran la linea de ordenes, el puente, el MCP, Flow y
+/// los scripts.
+pub const CLASE_MENSAJES: &str = "PinDeskVentanaMensajes";
+/// La de antes de PinDesk: mientras dure la transicion se busca tambien,
+/// para dar con un `pixpinmax.exe` viejo que aun corre
+/// (docs/formato-pindesk.md).
+pub const CLASE_MENSAJES_VIEJA: &str = "PixPinMaxVentanaMensajes";
 
 /// Las rutas, empaquetadas como texto UTF-16 separado por nulos.
 ///
@@ -60,20 +68,15 @@ use std::os::windows::ffi::OsStrExt;
 /// Devuelve si habia alguien escuchando. `id_comando` es el del catalogo
 /// (`pixpin_store::comandos`), que este crate no conoce: lo pone quien llama.
 ///
-/// Es lo que hace que volver a abrir PixPin lleve al chat en vez de no hacer
+/// Es lo que hace que volver a abrir PinDesk lleve al chat en vez de no hacer
 /// nada. Antes, la segunda copia se iba en silencio —correcto para no abrir
 /// dos— y el usuario pulsaba el icono y no pasaba nada: «cuando abro la app
 /// me lleve ahi directamente», con sus palabras.
 pub fn pedir_ventana_principal(id_comando: u32) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_COMMAND};
-    // SAFETY: la clase es un literal estatico terminado en cero; devuelve
-    // una ventana nula si no hay ninguna, que se descarta abajo.
-    let Ok(destino) = (unsafe { FindWindowW(w!("PixPinMaxVentanaMensajes"), None) }) else {
+    let Some(destino) = ventana_de_la_copia() else {
         return false;
     };
-    if destino.0.is_null() {
-        return false;
-    }
     // `Post` y no `Send`: aqui no viaja memoria prestada (a diferencia de
     // `WM_COPYDATA`), y esta copia se va a morir enseguida; esperar a que la
     // otra termine de abrir una ventana entera seria esperar por nada.
@@ -98,13 +101,9 @@ pub fn enviar_ficheros(rutas: &[PathBuf]) -> bool {
     if rutas.is_empty() {
         return false;
     }
-    // SAFETY: la clase es un literal estatico terminado en cero. Devuelve
-    // una ventana nula si no hay ninguna, que se descarta abajo.
-    let destino = unsafe { FindWindowW(w!("PixPinMaxVentanaMensajes"), None) };
-    let Ok(destino) = destino else { return false };
-    if destino.0.is_null() {
+    let Some(destino) = ventana_de_la_copia() else {
         return false;
-    }
+    };
     let datos = empaquetar(rutas);
     let paquete = COPYDATASTRUCT {
         dwData: ABRIR_FICHEROS,
@@ -137,7 +136,7 @@ pub fn enviar_ficheros(rutas: &[PathBuf]) -> bool {
 
 /// El identificador de los **pedidos** (`docs/protocolo-pedidos.md`): el
 /// siguiente de [`ABRIR_FICHEROS`]. Lo manda cualquier programa del equipo
-/// que quiera que PixPin haga algo (el plugin de Flow Launcher, un script).
+/// que quiera que PinDesk haga algo (el plugin de Flow Launcher, un script).
 pub const PEDIDO_JSON: usize = 0x5049_5851;
 
 /// Lo mas que puede medir un pedido. Un pedido es una orden corta, no un
@@ -145,8 +144,27 @@ pub const PEDIDO_JSON: usize = 0x5049_5851;
 /// en un lanzador, y un tope evita copiar megas que nadie deberia mandar.
 pub const TOPE_PEDIDO: usize = 64 * 1024;
 
-/// La version del protocolo que entiende esta copia (`"pixpin": 1`).
+/// La version del protocolo que entiende esta copia (`"pindesk": 1`).
 pub const VERSION_PEDIDO: u64 = 1;
+
+/// El campo de la version: `"pindesk"`. Hasta nov-2026 era `"pixpin"`
+/// ([`CAMPO_VERSION_VIEJO`]), que se sigue aceptando: lo mandan los scripts
+/// y plugins de los usuarios y las versiones viejas (docs/formato-pindesk.md).
+pub const CAMPO_VERSION: &str = "pindesk";
+/// El campo de la version de antes de [`CAMPO_VERSION`].
+pub const CAMPO_VERSION_VIEJO: &str = "pixpin";
+
+/// La version de un pedido: su `"pindesk"` o, si no lo trae, su `"pixpin"`.
+pub fn version_de(pedido: &serde_json::Value) -> Option<&serde_json::Value> {
+    pedido
+        .get(CAMPO_VERSION)
+        .or_else(|| pedido.get(CAMPO_VERSION_VIEJO))
+}
+
+/// Si `campo` es el de la version (el nuevo o el viejo), no uno de la accion.
+pub fn es_campo_de_version(campo: &str) -> bool {
+    campo == CAMPO_VERSION || campo == CAMPO_VERSION_VIEJO
+}
 
 /// Las respuestas inmediatas a un pedido (el `LRESULT` de `WM_COPYDATA`).
 /// El `0` no esta: es lo que contesta Windows cuando no hay nadie o el
@@ -224,20 +242,21 @@ pub const ACCIONES: [&str; 39] = [
 
 /// Mira un pedido por encima: lo justo para contestar en el acto.
 ///
-/// Solo comprueba que es un objeto JSON con `"pixpin": 1` y una `accion`
+/// Solo comprueba que es un objeto JSON con `"pindesk": 1` (o el `"pixpin": 1`
+/// de antes) y una `accion`
 /// conocida; que los campos de esa accion esten bien lo mira la aplicacion
 /// despues, en su bucle, y si falta algo lo dice con su aviso. Asi el
 /// procedimiento de ventana no hace trabajo de verdad, pero un pedido
 /// escrito a mano con una errata en la accion no se da por bueno.
 ///
 /// Una version que no es un numero (o falta) es un pedido roto, no una
-/// version distinta: sin `pixpin` no es un pedido nuestro.
+/// version distinta: sin `pindesk` (ni `pixpin`) no es un pedido nuestro.
 pub fn validar_pedido(json: &str) -> isize {
-    let Ok(serde_json::Value::Object(pedido)) = serde_json::from_str::<serde_json::Value>(json)
+    let Ok(pedido @ serde_json::Value::Object(_)) = serde_json::from_str::<serde_json::Value>(json)
     else {
         return respuesta::NO_SE_ENTIENDE;
     };
-    match pedido.get("pixpin").and_then(|v| v.as_u64()) {
+    match version_de(&pedido).and_then(|v| v.as_u64()) {
         Some(VERSION_PEDIDO) => {}
         Some(_) => return respuesta::VERSION_NO,
         None => return respuesta::NO_SE_ENTIENDE,
@@ -302,32 +321,34 @@ pub unsafe fn pedido_de_copydata(lparam: LPARAM) -> Option<Result<String, isize>
     Some(leer_pedido(bytes))
 }
 
-/// La ventana de mensajes de la copia que corre, si hay una.
+/// La ventana de mensajes de la copia que corre, si hay una: la de
+/// [`CLASE_MENSAJES`] y, si no, la de [`CLASE_MENSAJES_VIEJA`] (un
+/// `pixpinmax.exe` de antes que aun no se cerro).
+pub fn ventana_de_la_copia() -> Option<windows::Win32::Foundation::HWND> {
+    [CLASE_MENSAJES, CLASE_MENSAJES_VIEJA]
+        .into_iter()
+        .find_map(ventana_de_clase)
+}
+
+/// La ventana de mensajes de una clase.
 ///
 /// Primero `FindWindowW`, que es lo que usa todo lo demas y lo que se midio
 /// en este equipo; si no da nada, se busca entre las ventanas de solo
 /// mensajes (`HWND_MESSAGE`), que es donde Windows dice que viven y donde
 /// `FindWindowW` no tiene por que mirar.
-fn ventana_de_la_copia() -> Option<windows::Win32::Foundation::HWND> {
+fn ventana_de_clase(clase: &str) -> Option<windows::Win32::Foundation::HWND> {
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, HWND_MESSAGE};
-    // SAFETY: la clase es un literal estatico terminado en cero; una
-    // ventana nula significa que no hay ninguna.
-    if let Ok(h) = unsafe { FindWindowW(w!("PixPinMaxVentanaMensajes"), None) }
+    let clase = windows::core::HSTRING::from(clase);
+    // SAFETY: la clase es una HSTRING viva durante la llamada, terminada en
+    // cero; una ventana nula significa que no hay ninguna.
+    if let Ok(h) = unsafe { FindWindowW(&clase, None) }
         && !h.0.is_null()
     {
         return Some(h);
     }
     // SAFETY: igual que arriba; HWND_MESSAGE es el padre valido para buscar
     // entre las ventanas de solo mensajes.
-    let h = unsafe {
-        FindWindowExW(
-            Some(HWND_MESSAGE),
-            None,
-            w!("PixPinMaxVentanaMensajes"),
-            None,
-        )
-    }
-    .ok()?;
+    let h = unsafe { FindWindowExW(Some(HWND_MESSAGE), None, &clase, None) }.ok()?;
     (!h.0.is_null()).then_some(h)
 }
 
@@ -346,7 +367,7 @@ pub fn enviar_pedido(json: &str) -> isize {
 
 /// Lo de [`enviar_pedido`] a una ventana concreta. Aparte para las pruebas,
 /// que mandan a su propia ventana: buscarla por la clase encontraria la de
-/// la PixPin del usuario si esta abierta, y le haria cosas de verdad.
+/// la PinDesk del usuario si esta abierta, y le haria cosas de verdad.
 ///
 /// Es el mismo camino que [`enviar_pedido_con_espera`] (un solo
 /// empaquetado y un solo envio para todos los que mandan): con su espera de
@@ -368,7 +389,7 @@ pub enum Envio {
     VersionNo,
     /// `3`: JSON roto o accion desconocida.
     NoSeEntiende,
-    /// No hay PixPin abierta y no se pudo (o no se quiso) abrir.
+    /// No hay PinDesk abierta y no se pudo (o no se quiso) abrir.
     SinApp(String),
     /// No contesto a tiempo, o contesto algo que no es del protocolo.
     SinRespuesta(isize),
@@ -397,7 +418,7 @@ impl Envio {
     }
 }
 
-/// Cuanto se espera a que aparezca la ventana de una PixPin recien abierta
+/// Cuanto se espera a que aparezca la ventana de una PinDesk recien abierta
 /// (lo mismo que el plugin de Flow).
 pub const ESPERA_ARRANQUE: std::time::Duration = std::time::Duration::from_secs(8);
 
@@ -407,9 +428,9 @@ pub const ESPERA_ARRANQUE: std::time::Duration = std::time::Duration::from_secs(
 pub const ESPERA_RESPUESTA_MS: u32 = 5000;
 
 /// **Solo para pruebas**: con esta variable, los pedidos de fuera buscan la
-/// ventana de esa clase en vez de la de PixPin, y nunca abren la app. Asi
-/// una prueba de punta a punta (`pixpinmax tarea …` contra una ventana de
-/// mentira) no puede tocar la PixPin del usuario.
+/// ventana de esa clase en vez de la de PinDesk, y nunca abren la app. Asi
+/// una prueba de punta a punta (`pindesk tarea …` contra una ventana de
+/// mentira) no puede tocar la PinDesk del usuario.
 pub const VARIABLE_CLASE_DE_PRUEBA: &str = "PIXPIN_PEDIDOS_VENTANA";
 
 fn clase_de_prueba() -> Option<String> {
@@ -482,7 +503,7 @@ pub fn enviar_pedido_con_espera(
 }
 
 /// Abre `exe` sin ventana de consola y fuera del Job de quien nos lanzo (si
-/// no, cerrar el lanzador se llevaria PixPin por delante).
+/// no, cerrar el lanzador se llevaria PinDesk por delante).
 fn abrir_la_app(exe: &std::path::Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
@@ -516,7 +537,7 @@ fn abrir_la_app(exe: &std::path::Path) -> Result<(), String> {
     Err(ultimo)
 }
 
-/// **Manda pedidos a la PixPin que corre, y si no hay ninguna, la abre**
+/// **Manda pedidos a la PinDesk que corre, y si no hay ninguna, la abre**
 /// (`exe`) y la espera (hasta [`ESPERA_ARRANQUE`]). Es la funcion para
 /// reutilizar desde fuera: la usan la linea de ordenes, los enlaces
 /// `pixpin://` y el menu del Explorador, y es la que deberian usar el
@@ -526,7 +547,7 @@ fn abrir_la_app(exe: &std::path::Path) -> Result<(), String> {
 /// - Se mandan en orden y se para en el primero que no se acepte.
 /// - Antes de mandar se le da permiso a la app para pasar al frente
 ///   (`AllowSetForegroundWindow`): quien nos lanzo (el Explorador, un
-///   Stream Deck) tiene el foco, y sin el permiso la ventana que abra PixPin
+///   Stream Deck) tiene el foco, y sin el permiso la ventana que abra PinDesk
 ///   se quedaria detras parpadeando.
 pub fn enviar_pedidos_o_arrancar(pedidos: &[String], exe: Option<&std::path::Path>) -> Envio {
     use windows::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow};
@@ -654,7 +675,7 @@ mod pruebas {
     #[test]
     fn un_pedido_bueno_se_acepta_con_campos_de_mas() {
         // Lo que no se conoce se ignora: un campo nuevo no sube la version.
-        let json = r#"{"pixpin":1,"accion":"chat","texto":"hola","de_futuro":[1,2]}"#;
+        let json = r#"{"pindesk":1,"accion":"chat","texto":"hola","de_futuro":[1,2]}"#;
         assert_eq!(validar_pedido(json), respuesta::ACEPTADO);
         assert_eq!(leer_pedido(json.as_bytes()), Ok(json.to_string()));
     }
@@ -662,15 +683,35 @@ mod pruebas {
     #[test]
     fn todas_las_acciones_de_la_tabla_se_aceptan() {
         for a in ACCIONES {
-            let json = format!(r#"{{"pixpin":1,"accion":"{a}"}}"#);
+            let json = format!(r#"{{"pindesk":1,"accion":"{a}"}}"#);
             assert_eq!(validar_pedido(&json), respuesta::ACEPTADO, "{a}");
         }
     }
 
     #[test]
-    fn otra_version_se_contesta_con_dos() {
+    fn el_campo_de_version_de_antes_vale_igual() {
+        // Los scripts y plugins de antes de PinDesk mandan `"pixpin": 1`.
+        assert_eq!(
+            validar_pedido(r#"{"pixpin":1,"accion":"chat"}"#),
+            respuesta::ACEPTADO
+        );
         assert_eq!(
             validar_pedido(r#"{"pixpin":2,"accion":"chat"}"#),
+            respuesta::VERSION_NO
+        );
+        // Caso negativo: el nuevo manda si vienen los dos.
+        assert_eq!(
+            validar_pedido(r#"{"pindesk":2,"pixpin":1,"accion":"chat"}"#),
+            respuesta::VERSION_NO
+        );
+        assert!(es_campo_de_version("pindesk") && es_campo_de_version("pixpin"));
+        assert!(!es_campo_de_version("accion"));
+    }
+
+    #[test]
+    fn otra_version_se_contesta_con_dos() {
+        assert_eq!(
+            validar_pedido(r#"{"pindesk":2,"accion":"chat"}"#),
             respuesta::VERSION_NO
         );
     }
@@ -685,9 +726,9 @@ mod pruebas {
             "[1,2]",
             r#"{"accion":"chat"}"#,
             r#"{"pixpin":"1","accion":"chat"}"#,
-            r#"{"pixpin":1}"#,
-            r#"{"pixpin":1,"accion":"borrar_todo"}"#,
-            r#"{"pixpin":1,"accion":7}"#,
+            r#"{"pindesk":1}"#,
+            r#"{"pindesk":1,"accion":"borrar_todo"}"#,
+            r#"{"pindesk":1,"accion":7}"#,
         ] {
             assert_eq!(validar_pedido(json), respuesta::NO_SE_ENTIENDE, "{json}");
         }
@@ -695,7 +736,7 @@ mod pruebas {
 
     #[test]
     fn un_pedido_demasiado_grande_o_sin_utf8_no_se_lee() {
-        let mut grande = br#"{"pixpin":1,"accion":"chat","texto":""#.to_vec();
+        let mut grande = br#"{"pindesk":1,"accion":"chat","texto":""#.to_vec();
         grande.extend(std::iter::repeat_n(b'a', TOPE_PEDIDO));
         grande.extend(br#""}"#);
         assert_eq!(leer_pedido(&grande), Err(respuesta::NO_SE_ENTIENDE));
@@ -707,7 +748,7 @@ mod pruebas {
 
     #[test]
     fn el_nulo_final_de_un_script_en_c_no_estorba() {
-        let json = "{\"pixpin\":1,\"accion\":\"ventana_principal\"}\0";
+        let json = "{\"pindesk\":1,\"accion\":\"ventana_principal\"}\0";
         assert_eq!(
             leer_pedido(json.as_bytes()),
             Ok(json.trim_end_matches('\0').to_string())
@@ -716,7 +757,7 @@ mod pruebas {
 
     #[test]
     fn un_texto_con_acentos_llega_entero() {
-        let json = r#"{"pixpin":1,"accion":"anadir_tarea","texto":"comprar pan y ñoquis — 2 kg"}"#;
+        let json = r#"{"pindesk":1,"accion":"anadir_tarea","texto":"comprar pan y ñoquis — 2 kg"}"#;
         assert_eq!(leer_pedido(json.as_bytes()), Ok(json.to_string()));
     }
 
