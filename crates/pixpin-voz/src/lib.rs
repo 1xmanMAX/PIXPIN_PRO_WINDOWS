@@ -133,6 +133,9 @@ pub mod qwen3;
 pub mod telepronter;
 pub mod tiempos;
 pub mod turnos;
+/// Vosk en vivo: lo que se va oyendo y las frases cerradas, de corrido
+/// (1-nov-2026, la escucha de la reunion).
+pub mod vosk_vivo;
 
 #[cfg(windows)]
 pub mod motor;

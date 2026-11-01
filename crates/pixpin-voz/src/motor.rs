@@ -383,7 +383,7 @@ fn apuntar(json: &str, idioma: &str, segmentos: &mut Vec<Segmento>, avisos: &mut
 /// que es ASCII puro; si tampoco sale ASCII —hay equipos con los nombres
 /// cortos desactivados— se dice que mueva la carpeta, que es lo unico
 /// honesto.
-fn ruta_para_kaldi(carpeta: &Path) -> Result<CString, ErrorVoz> {
+pub(crate) fn ruta_para_kaldi(carpeta: &Path) -> Result<CString, ErrorVoz> {
     let texto = carpeta.display().to_string();
     if texto.is_ascii() {
         return CString::new(texto).map_err(|_| ErrorVoz::RutaImposible {

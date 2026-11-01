@@ -61,7 +61,7 @@ pub const CPU_MAXIMA: f32 = 0.85;
 /// Si una frase tardo mas que esta parte de lo que dura, se descansa una.
 pub const TARDANZA_MAXIMA: f32 = 0.8;
 /// Energia (RMS, en i16) por encima de la cual un trozo de 20 ms tiene voz.
-const RMS_VOZ: f64 = 300.0;
+pub(crate) const RMS_VOZ: f64 = 300.0;
 /// Que parte de una frase tiene que tener voz para mirarla.
 const PARTE_CON_VOZ: f64 = 0.1;
 
