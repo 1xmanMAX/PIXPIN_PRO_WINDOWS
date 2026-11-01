@@ -2552,7 +2552,7 @@ mod pruebas {
     }
 
     /// **El panel pintado de verdad**, en PNG, para mirarlo. Necesita GPU y
-    /// sesion de escritorio: `cargo test -p pixpin --bin pixpinmax
+    /// sesion de escritorio: `cargo test -p pixpin --bin pindesk
     /// muestra_del_panel -- --ignored --nocapture`. Deja los PNG en
     /// `PIXPIN_MUESTRAS` o en la carpeta temporal.
     #[test]

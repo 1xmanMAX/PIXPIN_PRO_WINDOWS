@@ -112,7 +112,7 @@ pub fn fondo(oscuro: bool) -> (u8, u8, u8) {
 
 /// El titulo de la ventana (la barra de tareas, Alt+Tab).
 pub fn titulo_de_ventana(nombre_fichero: &str) -> String {
-    format!("{nombre_fichero} — PixPin")
+    format!("{nombre_fichero} — PinDesk")
 }
 
 /// **Abre `ruta` en el visor, en su propio hilo**: quien lo pide (el chat)
@@ -589,7 +589,7 @@ mod pruebas {
 
     #[test]
     fn el_titulo_lleva_el_fichero_y_el_fondo_sigue_al_tema() {
-        assert_eq!(titulo_de_ventana("informe.html"), "informe.html — PixPin");
+        assert_eq!(titulo_de_ventana("informe.html"), "informe.html — PinDesk");
         assert_ne!(fondo(true), fondo(false));
         // Caso negativo: en claro no se pinta oscuro (una pagina sin estilo
         // es blanca y saldria un fogonazo).
@@ -620,7 +620,7 @@ mod latencia {
     /// **Latencia hasta lo primero visible** del visor de HTML y del de
     /// Markdown, como los abre PixPin. Abre ventanas de verdad unos segundos:
     /// solo a mano,
-    /// `cargo test -p pixpin --bin pixpinmax latencia_de_los_visores_web -- --ignored --nocapture --test-threads=1`.
+    /// `cargo test -p pixpin --bin pindesk latencia_de_los_visores_web -- --ignored --nocapture --test-threads=1`.
     #[test]
     #[ignore = "abre ventanas; mide la latencia a mano"]
     fn latencia_de_los_visores_web() {
@@ -660,7 +660,7 @@ mod latencia {
             let ub = pixpin_store::Ubicacion::Portable { raiz: d.clone() };
             crate::notas_md::abrir(idioma, ub, crate::notas_md::Destino::Fichero { ruta: md });
             let t = pixpin_web::esperar_visible(
-                &format!("prueba{vuelta}.md — PixPin"),
+                &format!("prueba{vuelta}.md — PinDesk"),
                 Duration::from_secs(10),
             );
             eprintln!("vuelta {vuelta}: md visible en {t:?}");
@@ -701,7 +701,7 @@ mod latencia {
     /// **Como se ven** el visor de Markdown y el de HTML como pin, en claro
     /// y en oscuro (la luna/sol no se guarda: en las pruebas no hay datos).
     /// Abre ventanas y fotografia su sitio en la pantalla: solo a mano,
-    /// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax foto_de_los_visores_web -- --ignored --nocapture`.
+    /// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk foto_de_los_visores_web -- --ignored --nocapture`.
     #[test]
     #[ignore = "abre ventanas y fotografia la pantalla; a mano"]
     fn foto_de_los_visores_web() {
@@ -743,7 +743,7 @@ mod latencia {
     /// `PIXPIN_RIEL_MUESTRA` (un `.html` en el visor, un `.md` en el lector de
     /// notas) y espera medio minuto; quien lo lanzo fotografia sus ventanas y
     /// lo cierra. Con `PIXPIN_RIEL_LAPIZ`, el lapiz nace pulsado. A mano:
-    /// `PIXPIN_RIEL_MUESTRA=<fichero> cargo test -p pixpin --bin pixpinmax muestra_del_riel_web -- --ignored`.
+    /// `PIXPIN_RIEL_MUESTRA=<fichero> cargo test -p pixpin --bin pindesk muestra_del_riel_web -- --ignored`.
     #[test]
     #[ignore = "abre ventanas; para las fotos del riel, a mano"]
     fn muestra_del_riel_web() {

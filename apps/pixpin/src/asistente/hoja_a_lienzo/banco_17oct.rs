@@ -14,7 +14,7 @@
 //! PIXPIN_CALCAR_SALIDA=<carpeta>              (<dir>\salida)
 //! PIXPIN_CALCAR_SOLO=tiktok                   (solo las que contengan eso)
 //! PIXPIN_CALCAR_SIN_NUBE=1                    (sin modelo: seccionar y montar)
-//! cargo test -p pixpin --bin pixpinmax -- --ignored --nocapture --test-threads=1 banco_17oct
+//! cargo test -p pixpin --bin pindesk -- --ignored --nocapture --test-threads=1 banco_17oct
 //! ```
 
 use std::path::PathBuf;

@@ -375,7 +375,7 @@ pub fn buscar(args: &Map<String, Value>) -> Resultado {
     if ix.tamano().0 == 0 {
         ix = indice_de_chats(&raiz);
         aviso = Some(
-            [aviso.unwrap_or_default(), "(Solo se busco en los chats: el indice de documentos de PixPin aun no esta hecho.)".into()]
+            [aviso.unwrap_or_default(), "(Solo se busco en los chats: el indice de documentos de PinDesk aun no esta hecho.)".into()]
                 .join(" ")
                 .trim()
                 .to_string(),

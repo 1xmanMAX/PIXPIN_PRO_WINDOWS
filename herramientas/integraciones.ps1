@@ -1,13 +1,13 @@
-# Integra PixPin Max con Windows sin pedir administrador (todo en HKCU y en
+# Integra PinDesk con Windows sin pedir administrador (todo en HKCU y en
 # la carpeta del usuario), y lo quita con -Quitar. Lo llama instalar.ps1 en
 # cada instalacion; tambien se puede correr suelto:
 #
-#   powershell -ExecutionPolicy Bypass -File herramientas\integraciones.ps1 [-Exe <pixpinmax.exe>]
+#   powershell -ExecutionPolicy Bypass -File herramientas\integraciones.ps1 [-Exe <pindesk.exe>]
 #       [-Quitar] [-SoloMostrar] [-Raiz <ruta del registro>] [-EnviarA <carpeta>]
 #
 # Lo que pone (docs/integraciones.md):
 #  1. Los protocolos pixpinmax:// y pixpin:// (HKCU\Software\Classes): un
-#     enlace `pixpinmax://tarea?texto=…` abre `pixpinmax.exe --url "<enlace>"`,
+#     enlace `pixpinmax://tarea?texto=…` abre `pindesk.exe --url "<enlace>"`,
 #     que lo convierte en un pedido. Lo que no es inofensivo pregunta antes.
 #     pixpin:// (el de Android) solo si esta libre: el PixPin original de
 #     DepthPixel lo usa, y no se le quita (salvo con -TomarPixpin).
@@ -26,7 +26,7 @@
 # (p. ej. HKCU:\Software\PixPinPrueba) y una carpeta temporal.
 
 param(
-    [string]$Exe = (Join-Path $env:LOCALAPPDATA 'Programs\PixPinMax\pixpinmax.exe'),
+    [string]$Exe = (Join-Path $env:LOCALAPPDATA 'Programs\PinDesk\pindesk.exe'),
     [switch]$Quitar,
     [switch]$SoloMostrar,
     [string]$Raiz = 'HKCU:\Software\Classes',
@@ -44,23 +44,28 @@ $imagenes = @('png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'tif')
 # Las entradas: el verbo de la linea de ordenes y su rotulo. El orden es el
 # del menu (el nombre de la clave lo ordena: 1chat, 2pinear...).
 $entradas = @(
-    @{ Clave = '1chat';      Verbo = 'chat';         Rotulo = 'Al chat';                 Lnk = 'PixPin - al chat' },
-    @{ Clave = '2pinear';    Verbo = 'pinear';       Rotulo = 'Pinear';                  Lnk = 'PixPin - pinear' },
-    @{ Clave = '3ocr';       Verbo = 'copiar-texto'; Rotulo = 'Copiar texto (OCR)';      Lnk = 'PixPin - copiar texto (OCR)'; SoloImagenes = $true },
-    @{ Clave = '4movil';     Verbo = 'al-movil';     Rotulo = 'Enviar al movil';         Lnk = 'PixPin - enviar al movil' },
-    @{ Clave = '5asistente'; Verbo = 'asistente';    Rotulo = 'Preguntar al asistente';  Lnk = 'PixPin - preguntar al asistente' }
+    @{ Clave = '1chat';      Verbo = 'chat';         Rotulo = 'Al chat';                 Lnk = 'PinDesk - al chat' },
+    @{ Clave = '2pinear';    Verbo = 'pinear';       Rotulo = 'Pinear';                  Lnk = 'PinDesk - pinear' },
+    @{ Clave = '3ocr';       Verbo = 'copiar-texto'; Rotulo = 'Copiar texto (OCR)';      Lnk = 'PinDesk - copiar texto (OCR)'; SoloImagenes = $true },
+    @{ Clave = '4movil';     Verbo = 'al-movil';     Rotulo = 'Enviar al movil';         Lnk = 'PinDesk - enviar al movil' },
+    @{ Clave = '5asistente'; Verbo = 'asistente';    Rotulo = 'Preguntar al asistente';  Lnk = 'PinDesk - preguntar al asistente' }
 )
+# Los de «Enviar a» de cuando la app se llamaba PixPin Max: se quitan siempre.
+$lnkViejos = $entradas | ForEach-Object { $_.Lnk -replace '^PinDesk - ', 'PixPin - ' }
 
 $protocolo = Join-Path $Raiz 'pixpin'
 $protocoloMax = Join-Path $Raiz 'pixpinmax'
+# La clave del menu conserva el nombre de antes: asi se sobrescribe y no
+# salen dos submenus tras actualizar.
 $menu = Join-Path $Raiz '*\shell\PixPinMax'
 
 function Protocolo-DeOtro {
-    # La orden de pixpin:// si es de otro programa (no de un pixpinmax.exe).
+    # La orden de pixpin:// si es de otro programa (no de un pindesk.exe ni
+    # del pixpinmax.exe de antes).
     $c = Join-Path $protocolo 'shell\open\command'
     if (-not (Test-Path -LiteralPath $c)) { return $null }
     $orden = (Get-Item -LiteralPath $c).GetValue('')
-    if (-not $orden -or $orden -match 'pixpinmax\.exe') { return $null }
+    if (-not $orden -or $orden -match '(pindesk|pixpinmax)\.exe') { return $null }
     $orden
 }
 
@@ -84,13 +89,13 @@ function Quitar-Clave([string]$clave) {
 function Lnk([string]$nombre) { Join-Path $EnviarA "$nombre.lnk" }
 
 if ($Quitar) {
-    Write-Host 'Quitando las integraciones de PixPin Max:'
+    Write-Host 'Quitando las integraciones de PinDesk:'
     Quitar-Clave $protocoloMax
     # pixpin:// solo si es nuestro: el del PixPin original no se toca.
     if ((Test-Path -LiteralPath $protocolo) -and -not (Protocolo-DeOtro)) { Quitar-Clave $protocolo }
     Quitar-Clave $menu
-    foreach ($e in $entradas) {
-        $l = Lnk $e.Lnk
+    foreach ($n in @($entradas | ForEach-Object { $_.Lnk }) + $lnkViejos) {
+        $l = Lnk $n
         if ($SoloMostrar) { Write-Host "  quitar $l" }
         elseif (Test-Path -LiteralPath $l) { Remove-Item -LiteralPath $l -Force }
     }
@@ -103,7 +108,7 @@ $comillado = '"' + $Exe + '"'
 
 function Poner-Protocolo([string]$clave) {
     Write-Host "Protocolo $(Split-Path -Leaf $clave):// -> $Exe"
-    Poner $clave '' 'URL:PixPin Max'
+    Poner $clave '' 'URL:PinDesk'
     Poner $clave 'URL Protocol' ''
     Poner (Join-Path $clave 'DefaultIcon') '' "$comillado,0"
     Poner (Join-Path $clave 'shell\open\command') '' "$comillado --url `"%1`""
@@ -120,8 +125,8 @@ if ($deOtro -and -not $TomarPixpin) {
     Poner-Protocolo $protocolo
 }
 
-Write-Host 'Menu contextual del Explorador (PixPin >):'
-Poner $menu 'MUIVerb' 'PixPin'
+Write-Host 'Menu contextual del Explorador (PinDesk >):'
+Poner $menu 'MUIVerb' 'PinDesk'
 Poner $menu 'Icon' "$comillado,0"
 Poner $menu 'SubCommands' ''
 Poner $menu 'MultiSelectModel' 'Player'
@@ -137,6 +142,10 @@ foreach ($e in $entradas) {
 }
 
 Write-Host "Enviar a ($EnviarA):"
+foreach ($n in $lnkViejos) {
+    $l = Lnk $n
+    if (-not $SoloMostrar -and (Test-Path -LiteralPath $l)) { Remove-Item -LiteralPath $l -Force }
+}
 foreach ($e in $entradas) {
     $l = Lnk $e.Lnk
     if ($SoloMostrar) { Write-Host "  $l -> $Exe $($e.Verbo)"; continue }
@@ -146,12 +155,12 @@ foreach ($e in $entradas) {
     $s.Arguments = $e.Verbo
     $s.WorkingDirectory = Split-Path -Parent $Exe
     $s.IconLocation = "$Exe,0"
-    $s.Description = "PixPin Max: $($e.Rotulo)"
+    $s.Description = "PinDesk: $($e.Rotulo)"
     $s.Save()
 }
 
 # El modulo de PowerShell y la libreria de AutoHotkey, junto al exe: asi
-# `Import-Module "$env:LOCALAPPDATA\Programs\PixPinMax\PixPin.psm1"` siempre
+# `Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PixPin.psm1"` siempre
 # es el de la version instalada.
 $dirExe = Split-Path -Parent $Exe
 foreach ($f in @('PixPin.psm1', 'pixpin.ahk')) {

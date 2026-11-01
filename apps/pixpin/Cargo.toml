@@ -5,8 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+# El ejecutable se llama `pindesk.exe` desde nov-2026 (antes
+# `pixpinmax.exe`); el paquete y el crate siguen siendo `pixpin`
+# (docs/nombre-pindesk.md).
 [[bin]]
-name = "pixpinmax"
+name = "pindesk"
 path = "src/main.rs"
 
 [dependencies]

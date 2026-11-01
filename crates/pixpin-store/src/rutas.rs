@@ -9,6 +9,10 @@
 use std::path::{Path, PathBuf};
 
 /// Nombre del fichero de ajustes, igual en los dos modos.
+///
+/// La app se llama PinDesk desde nov-2026, pero el fichero y la carpeta de
+/// datos siguen con el nombre viejo: son los datos de quien ya la usaba y
+/// el modo portable se reconoce por este fichero (docs/nombre-pindesk.md).
 pub const NOMBRE_AJUSTES: &str = "pixpinmax.toml";
 
 /// Carpeta dentro de APPDATA en el modo instalado.

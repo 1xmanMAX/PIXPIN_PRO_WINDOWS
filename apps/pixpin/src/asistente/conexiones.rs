@@ -48,7 +48,7 @@ impl Chat for DelChat<'_> {
         }
         match (self.cx.mandar)(&pedido.to_string()) {
             pixpin_shell::mensajero::respuesta::ACEPTADO => Ok(()),
-            _ => Err("PixPin no acepto el archivo en el chat".into()),
+            _ => Err("PinDesk no acepto el archivo en el chat".into()),
         }
     }
 

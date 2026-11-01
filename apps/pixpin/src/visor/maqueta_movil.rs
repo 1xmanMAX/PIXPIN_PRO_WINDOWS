@@ -1419,7 +1419,7 @@ mod pruebas {
 /// y las letras de Android, medido en un Chromium sin cabeza (el mismo motor
 /// que el `WebView`). `PIXPIN_TOPS` es el JSON `{t:[..],h:..}` que deja su
 /// guion `MEDIR` y `PIXPIN_DOCX` el Word. Se lanza a mano:
-/// `cargo test -p pixpin --bin pixpinmax contra_la_pagina_del_movil -- --ignored --nocapture`.
+/// `cargo test -p pixpin --bin pindesk contra_la_pagina_del_movil -- --ignored --nocapture`.
 #[cfg(test)]
 mod contra_el_movil {
     use super::*;

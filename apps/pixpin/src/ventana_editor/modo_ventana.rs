@@ -642,7 +642,7 @@ mod muestras {
     /// tamanos: uno corriente y el minimo (la barra de herramientas en dos
     /// filas y el panel en columnas). Y el mismo lienzo a pantalla completa
     /// con la barra asomando dentro.
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_lienzo_en_ventana -- --ignored --nocapture`
+    /// `cargo test -p pixpin --bin pindesk muestra_del_lienzo_en_ventana -- --ignored --nocapture`
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_del_lienzo_en_ventana() {

@@ -1,6 +1,6 @@
-# Deja instalada la compilacion mas nueva de PixPin Max en un sitio FIJO y la
+# Deja instalada la compilacion mas nueva de PinDesk en un sitio FIJO y la
 # abre. Uso:  powershell -ExecutionPolicy Bypass -File herramientas\instalar.ps1
-#             [-Origen <ruta a pixpinmax.exe>]
+#             [-Origen <ruta a pindesk.exe>]
 #
 # Por que un sitio fijo: la app escribe en HKCU\...\Run su PROPIA ruta cada vez
 # que arranca. Si se abre desde target\entrega-N, el arranque con Windows queda
@@ -8,26 +8,33 @@
 # sola. Copiando siempre al mismo sitio, la entrada del registro no cambia y
 # Windows abre siempre la ultima version.
 #
-# Son DOS ficheros: pixpinmax.exe y pixpin-aligerar.exe, el compresor de PDF
-# que pixpinmax lanza al meter un PDF al chat (apps/pixpin-aligerar). Van
-# juntos y de la misma carpeta de compilacion: pixpinmax lo busca a su lado.
+# Son DOS ficheros: pindesk.exe y pixpin-aligerar.exe, el compresor de PDF
+# que pindesk lanza al meter un PDF al chat (apps/pixpin-aligerar). Van
+# juntos y de la misma carpeta de compilacion: pindesk lo busca a su lado.
 # Si el compresor no esta compilado, se compila ahi mismo; si aun asi falta,
-# se instala pixpinmax solo y la app aligera los PDF con su plan B.
+# se instala pindesk solo y la app aligera los PDF con su plan B.
 #
 # Los datos no se mueven: sin pixpinmax.toml junto al .exe la app va en modo
-# instalado y guarda todo en %APPDATA%\PixPinMax.
+# instalado y guarda todo en %APPDATA%\PixPinMax (la carpeta de datos sigue
+# con el nombre de antes de PinDesk: docs/nombre-pindesk.md).
+#
+# La app se llamaba PixPin Max (pixpinmax.exe en Programs\PixPinMax). Si
+# esta esa instalacion vieja, se migra: se cierra, se quitan sus .exe, su
+# acceso del menu Inicio y su entrada de arranque (pasa a PinDesk), y su
+# PixPin.psm1 y pixpin.ahk se ponen al dia para que sigan encontrando la
+# app en Programs\PinDesk.
 #
 # Y si esta Flow Launcher (%APPDATA%\FlowLauncher\Plugins), pone al dia su
 # plugin `pp` (apps/pixpin-lanzador): compila pixpin-lanzador.exe en la misma
-# carpeta, lo copia con plugin.json e Images\ a Plugins\PixPin Max\ (quitando
+# carpeta, lo copia con plugin.json e Images\ a Plugins\PinDesk\ (quitando
 # cualquier otra carpeta con el mismo ID: con dos, Flow no carga ninguna) y,
 # si Flow estaba abierto, lo reinicia para que lo cargue.
 #
 # Y el puente de la extension del navegador (apps\pixpin-puente): se copia
-# junto a pixpinmax.exe y se registra para Chrome y Edge en HKCU
+# junto a pindesk.exe y se registra para Chrome y Edge en HKCU
 # (herramientas\registrar-navegador.ps1; ver docs\integraciones-navegador.md).
 # Y el servidor MCP (apps/pixpin-mcp, para Claude Desktop y Claude Code):
-# pixpin-mcp.exe junto a pixpinmax.exe. La configuracion de Claude la pone el
+# pixpin-mcp.exe junto a pindesk.exe. La configuracion de Claude la pone el
 # usuario (docs/integraciones-mcp.md); este script no la toca.
 
 #
@@ -40,8 +47,10 @@ param([string]$Origen, [switch]$SinIntegraciones)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
-$destinoDir = Join-Path $env:LOCALAPPDATA 'Programs\PixPinMax'
-$destino = Join-Path $destinoDir 'pixpinmax.exe'
+$destinoDir = Join-Path $env:LOCALAPPDATA 'Programs\PinDesk'
+$destino = Join-Path $destinoDir 'pindesk.exe'
+# La instalacion de cuando se llamaba PixPin Max.
+$viejoDir = Join-Path $env:LOCALAPPDATA 'Programs\PixPinMax'
 $compresor = 'pixpin-aligerar.exe'
 
 if (-not $Origen) {
@@ -49,16 +58,16 @@ if (-not $Origen) {
     # `target\release` es la de `cargo build --release` a secas; las demas,
     # `target\<carpeta>\release` (CARGO_TARGET_DIR = target\<carpeta>).
     $Origen = @((Get-Item (Join-Path $repo 'target'))) + @(Get-ChildItem (Join-Path $repo 'target') -Directory) |
-        ForEach-Object { Join-Path $_.FullName 'release\pixpinmax.exe' } |
+        ForEach-Object { Join-Path $_.FullName 'release\pindesk.exe' } |
         Where-Object { Test-Path $_ } |
         Sort-Object { (Get-Item $_).LastWriteTime } -Descending |
         Select-Object -First 1
 }
-if (-not $Origen -or -not (Test-Path $Origen)) { throw "No hay ningun pixpinmax.exe compilado" }
+if (-not $Origen -or -not (Test-Path $Origen)) { throw "No hay ningun pindesk.exe compilado" }
 Write-Host "Origen:  $Origen ($((Get-Item $Origen).LastWriteTime))"
 
 # El compresor, de la MISMA carpeta de compilacion. Si falta, o es mas viejo
-# que pixpinmax.exe, se compila con esa misma carpeta de destino
+# que pindesk.exe, se compila con esa misma carpeta de destino
 # (target\<carpeta>\release -> CARGO_TARGET_DIR = target\<carpeta>).
 $origenDir = Split-Path -Parent $Origen
 $origenCompresor = Join-Path $origenDir $compresor
@@ -81,13 +90,13 @@ if (-not (Test-Path $origenCompresor) -or $viejo) {
     }
 }
 if (-not (Test-Path $origenCompresor)) {
-    Write-Warning "Falta $origenCompresor : se instala pixpinmax.exe solo y los PDF se aligeran con el plan B"
+    Write-Warning "Falta $origenCompresor : se instala pindesk.exe solo y los PDF se aligeran con el plan B"
     $origenCompresor = $null
 }
 
 # El puente de la extension del navegador (apps/pixpin-puente), igual que el
 # compresor: de la misma carpeta de compilacion, compilado si falta o es
-# viejo. Se instala junto a pixpinmax.exe y se registra en HKCU para Chrome y
+# viejo. Se instala junto a pindesk.exe y se registra en HKCU para Chrome y
 # Edge (herramientas\registrar-navegador.ps1). La extension se carga a mano:
 # docs\integraciones-navegador.md.
 $puente = 'pixpin-puente.exe'
@@ -110,7 +119,7 @@ if (-not (Test-Path $origenPuente) -or $viejoPuente) {
     }
 }
 if (-not (Test-Path $origenPuente)) {
-    Write-Warning "Falta $origenPuente : la extension del navegador no podra hablar con PixPin"
+    Write-Warning "Falta $origenPuente : la extension del navegador no podra hablar con PinDesk"
     $origenPuente = $null
 }
 
@@ -124,7 +133,7 @@ function Registrar-Navegador {
 }
 
 # El plugin de Flow Launcher, de la MISMA carpeta de compilacion. Se compila
-# si falta o si es mas viejo que pixpinmax.exe o que sus propias fuentes.
+# si falta o si es mas viejo que pindesk.exe o que sus propias fuentes.
 $lanzador = 'pixpin-lanzador.exe'
 $fuenteLanzador = Join-Path $repo 'apps\pixpin-lanzador'
 $pluginsFlow = Join-Path $env:APPDATA 'FlowLauncher\Plugins'
@@ -161,7 +170,7 @@ function Instalar-PluginFlow {
     }
     $fuente = Join-Path $fuenteLanzador 'plugin'
     $id = (Get-Content (Join-Path $fuente 'plugin.json') -Raw | ConvertFrom-Json).ID
-    $destinoPlugin = Join-Path $pluginsFlow 'PixPin Max'
+    $destinoPlugin = Join-Path $pluginsFlow 'PinDesk'
     # Todas las carpetas con nuestro ID, se llamen como se llamen.
     $mismas = @(Get-ChildItem $pluginsFlow -Directory | Where-Object {
         $pj = Join-Path $_.FullName 'plugin.json'
@@ -237,20 +246,22 @@ public static extern bool PostMessageW(System.IntPtr h, uint m, System.IntPtr w,
 
 function Cerrar-PixPin {
     # La app vive en la bandeja e ignora el taskkill normal. Se le pide Salir
-    # (WM_COMMAND 25) a su ventana de mensajes, que guarda lo pendiente.
+    # (WM_COMMAND 25) a su ventana de mensajes, que guarda lo pendiente. La
+    # clase es la de siempre, tambien en PinDesk; el proceso puede ser
+    # pindesk o el pixpinmax de antes.
     # [NullString]::Value y no $null: PowerShell pasa $null a un string de
     # C# como "" y Windows buscaba la ventana de TITULO vacio, que no existe;
     # nunca la encontraba y la app acababa siempre cerrada a la fuerza.
     $h = [PixPin.W]::FindWindowExW([IntPtr](-3), [IntPtr]::Zero, 'PixPinMaxVentanaMensajes', [NullString]::Value)
-    if ($h -ne [IntPtr]::Zero) { Write-Host 'Cerrando PixPin con Salir (guarda lo pendiente)...' }
-    else { Write-Warning 'No se encontro la ventana de PixPin: si sigue abierta se cerrara a la fuerza' }
+    if ($h -ne [IntPtr]::Zero) { Write-Host 'Cerrando PinDesk con Salir (guarda lo pendiente)...' }
+    else { Write-Warning 'No se encontro la ventana de PinDesk: si sigue abierta se cerrara a la fuerza' }
     if ($h -ne [IntPtr]::Zero) { [void][PixPin.W]::PostMessageW($h, 0x0111, [IntPtr]25, [IntPtr]::Zero) }
-    for ($i = 0; $i -lt 50 -and (Get-Process pixpinmax -ErrorAction SilentlyContinue); $i++) {
+    for ($i = 0; $i -lt 50 -and (Get-Process pindesk, pixpinmax -ErrorAction SilentlyContinue); $i++) {
         Start-Sleep -Milliseconds 200
     }
     # Ultimo recurso tras 10 s: una copia colgada no puede impedir actualizar.
-    if (Get-Process pixpinmax -ErrorAction SilentlyContinue) { Write-Warning 'PixPin no se cerro en 10 s: se cierra a la fuerza' }
-    Get-Process pixpinmax -ErrorAction SilentlyContinue | Stop-Process -Force
+    if (Get-Process pindesk, pixpinmax -ErrorAction SilentlyContinue) { Write-Warning 'PinDesk no se cerro en 10 s: se cierra a la fuerza' }
+    Get-Process pindesk, pixpinmax -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 
 function Cerrar-Compresor {
@@ -265,16 +276,18 @@ function Cerrar-Compresor {
 
 function Crear-Acceso {
     # El buscador de Windows encuentra las apps por su acceso directo en el
-    # menu Inicio: sin el, escribir "PixPin" no sacaba nada. Se rehace en cada
-    # instalacion (es barato) por si se borro o apunta a otro sitio.
+    # menu Inicio: sin el, escribir "PinDesk" no sacaba nada. Se rehace en
+    # cada instalacion (es barato) por si se borro o apunta a otro sitio. El
+    # de cuando se llamaba PixPin Max se quita.
     $programas = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-    $lnk = Join-Path $programas 'PixPin Max.lnk'
+    $lnk = Join-Path $programas 'PinDesk.lnk'
+    Remove-Item (Join-Path $programas 'PixPin Max.lnk') -Force -ErrorAction SilentlyContinue
     try {
         $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
         $s.TargetPath = $destino
         $s.WorkingDirectory = $destinoDir
         $s.IconLocation = "$destino,0"
-        $s.Description = 'PixPin Max: capturas, pines, chat y lienzo'
+        $s.Description = 'PinDesk: capturas, pines, chat y lienzo'
         $s.Save()
         Write-Host "En el menu Inicio: $lnk"
     } catch {
@@ -286,7 +299,7 @@ function Ofrecer-Predeterminada {
     # PixPin se registra sola para imagenes y videos al arrancar
     # (pixpin_shell::asociaciones), pero hacerla LA predeterminada solo lo
     # puede hacer el usuario: Windows deshace lo que escriba un programa. Se
-    # le abre la pagina de PixPin Max en Configuracion UNA vez por cada
+    # le abre la pagina de PinDesk en Configuracion UNA vez por cada
     # tanda de tipos nuevos; si ya lo es, o ya se le ofrecio, no se insiste.
     #
     # La marca guarda la tanda ofrecida ("tipos=2"). Cuando PixPin aprende
@@ -296,6 +309,9 @@ function Ofrecer-Predeterminada {
     # Una marca vieja (solo traia la fecha) cuenta como tanda 1.
     $tandaDeTipos = 2
     $marca = Join-Path $destinoDir 'predeterminada-ofrecida.txt'
+    # La de la instalacion vieja vale igual: ya se le ofrecio.
+    $marcaVieja = Join-Path $viejoDir 'predeterminada-ofrecida.txt'
+    if (-not (Test-Path $marca) -and (Test-Path $marcaVieja)) { Copy-Item $marcaVieja $marca -ErrorAction SilentlyContinue }
     $exts = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts'
     $elegido = {
         param($ext)
@@ -312,9 +328,9 @@ function Ofrecer-Predeterminada {
     }
     if ($ya -or $ofrecida -ge $tandaDeTipos) { return }
     Start-Sleep -Seconds 2   # que la app recien abierta se registre antes
-    Start-Process 'ms-settings:defaultapps?registeredAppUser=PixPin%20Max'
+    Start-Process 'ms-settings:defaultapps?registeredAppUser=PinDesk'
     Set-Content $marca @("tipos=$tandaDeTipos", (Get-Date -Format s))
-    Write-Host 'Abierta Configuracion: pulsa "Establecer como predeterminada" en PixPin Max (fotos, videos y audios)'
+    Write-Host 'Abierta Configuracion: pulsa "Establecer como predeterminada" en PinDesk (fotos, videos y audios)'
 }
 
 # El plugin de Flow va aparte de la app: se pone al dia aunque PixPin ya sea
@@ -334,7 +350,7 @@ Poner-Integraciones
 
 function Instalar-Mcp {
     # El servidor MCP para Claude Desktop y Claude Code (apps/pixpin-mcp,
-    # docs/integraciones-mcp.md), junto a pixpinmax.exe. Se compila en la
+    # docs/integraciones-mcp.md), junto a pindesk.exe. Se compila en la
     # misma carpeta de compilacion si falta o es mas viejo que sus fuentes.
     # NO toca la configuracion de Claude: eso lo hace el usuario (ver docs).
     $mcp = 'pixpin-mcp.exe'
@@ -381,11 +397,44 @@ function Instalar-Mcp {
 }
 try { Instalar-Mcp } catch { Write-Warning "Servidor MCP: $_" }
 
-$corriendo = Get-Process pixpinmax -ErrorAction SilentlyContinue
+function Migrar-PixPinMax {
+    # La instalacion de cuando la app se llamaba PixPin Max: fuera sus .exe
+    # (ya no se abren: el arranque, Abrir con y el menu Inicio pasan a
+    # PinDesk) y su entrada de arranque con Windows, que pasa a «PinDesk»
+    # (la app tambien lo hace al abrirse). Si en esa carpeta hay un
+    # pixpinmax.toml es una copia PORTABLE con sus datos: no se toca nada.
+    if (-not (Test-Path $viejoDir)) { return }
+    if (Test-Path (Join-Path $viejoDir 'pixpinmax.toml')) {
+        Write-Warning "$viejoDir tiene un pixpinmax.toml (modo portable): se deja como esta"
+        return
+    }
+    $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+    $orden = (Get-ItemProperty $run -Name PixPinMax -ErrorAction SilentlyContinue).PixPinMax
+    if ($orden) {
+        New-ItemProperty $run -Name PinDesk -Value "`"$destino`"" -PropertyType String -Force | Out-Null
+        Remove-ItemProperty $run -Name PixPinMax -ErrorAction SilentlyContinue
+    }
+    foreach ($exe in 'pixpinmax.exe', 'pixpin-aligerar.exe', 'pixpin-lanzador.exe', 'pixpin-puente.exe', 'pixpin-mcp.exe') {
+        $f = Join-Path $viejoDir $exe
+        if (Test-Path $f) {
+            try { Remove-Item $f -Force -ErrorAction Stop } catch { Write-Warning "No se pudo quitar $f (sigue en uso)" }
+        }
+    }
+    # Quien hace `Import-Module ...\Programs\PixPinMax\PixPin.psm1` sigue
+    # pudiendo: la copia nueva busca la app en Programs\PinDesk.
+    foreach ($f in @('PixPin.psm1', 'pixpin.ahk')) {
+        $de = Join-Path $PSScriptRoot $f
+        if ((Test-Path $de) -and (Test-Path (Join-Path $viejoDir $f))) { Copy-Item $de (Join-Path $viejoDir $f) -Force }
+    }
+    Write-Host "Migrada la instalacion de PixPin Max ($viejoDir) a $destinoDir"
+}
+
+$corriendo = Get-Process pindesk, pixpinmax -ErrorAction SilentlyContinue
 $yaEsLaBuena = $igual -and $corriendo -and
     @($corriendo | Where-Object { $_.Path -ne $destino }).Count -eq 0
 if ($yaEsLaBuena) {
     Write-Host "Ya corre la ultima version desde $destino"
+    Migrar-PixPinMax
     Crear-Acceso
     Registrar-Navegador
     Ofrecer-Predeterminada
@@ -412,6 +461,7 @@ if (-not $igual) {
         }
     }
 }
+Migrar-PixPinMax
 Start-Process $destino
 Write-Host "Instalada y abierta: $destino"
 if ($origenCompresor) { Write-Host "Con el compresor de PDF: $(Join-Path $destinoDir $compresor)" }

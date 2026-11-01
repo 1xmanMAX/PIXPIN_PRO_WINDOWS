@@ -513,7 +513,7 @@ mod pruebas {
     /// dueno, aunque el dueno se active al primer clic), que es TOPMOST como
     /// el, que no coge el foco y que el clic a traves del anotador no se la
     /// lleva. Y que cae dentro del area de trabajo del monitor principal.
-    /// `cargo test -p pixpin --bin pixpinmax la_pastilla_es_de_la_ventana_del_anotador -- --ignored`.
+    /// `cargo test -p pixpin --bin pindesk la_pastilla_es_de_la_ventana_del_anotador -- --ignored`.
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio (crea ventanas ocultas)"]
     fn la_pastilla_es_de_la_ventana_del_anotador_y_queda_siempre_encima_de_ella() {
@@ -560,7 +560,7 @@ mod pruebas {
 
     /// **La pastilla del anotador**, sobre un trozo de «pantalla»: dibujando
     /// y con el clic a traves encendido. Rotulos en espanol, del `.ftl`.
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_pastilla_del_anotador -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pindesk muestra_de_la_pastilla_del_anotador -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_de_la_pastilla_del_anotador() {

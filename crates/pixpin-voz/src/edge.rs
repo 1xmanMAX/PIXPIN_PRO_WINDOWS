@@ -1107,7 +1107,7 @@ mod pruebas {
         assert!(voces.len() > 100);
         let f = archivo(
             &carpeta,
-            "Hola, esto es PixPin leyendo en voz alta con Microsoft.",
+            "Hola, esto es PinDesk leyendo en voz alta con Microsoft.",
             "es-ES-ElviraNeural",
             |t| vec![t.to_string()],
         )
@@ -1129,7 +1129,7 @@ mod pruebas {
         // La segunda vez sale de la cache, sin red: el mismo fichero.
         let otra = archivo(
             &carpeta,
-            "Hola, esto es PixPin leyendo en voz alta con Microsoft.",
+            "Hola, esto es PinDesk leyendo en voz alta con Microsoft.",
             "es-ES-ElviraNeural",
             |_| panic!("no tenia que pedirlo otra vez"),
         )

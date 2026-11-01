@@ -1,18 +1,18 @@
-# Integraciones: pedirle cosas a PixPin desde fuera (15-oct-2026)
+# Integraciones: pedirle cosas a PinDesk desde fuera (15-oct-2026)
 
 Todo lo de aquí es **un adaptador fino** sobre los pedidos de siempre
 (`docs/protocolo-pedidos.md`): la orden convierte lo que se le pide en un pedido v1 y lo manda
-por `WM_COPYDATA` a la PixPin que está abierta (y la abre si no lo está). Nada nuevo en
+por `WM_COPYDATA` a la PinDesk que está abierta (y la abre si no lo está). Nada nuevo en
 pantalla: lo que pasa se ve como con Flow Launcher, en el aviso de PixPin.
 
 | Puerta | Cómo | Dónde vive |
 |---|---|---|
-| Línea de órdenes | `pixpinmax <verbo> …`, `pixpinmax --pedido '<json>'` | `crates/pixpin-shell/src/orden.rs` (puro), `apps/pixpin/src/orden.rs` (el proceso) |
+| Línea de órdenes | `pindesk <verbo> …`, `pindesk --pedido '<json>'` | `crates/pixpin-shell/src/orden.rs` (puro), `apps/pixpin/src/orden.rs` (el proceso) |
 | Enlaces | `pixpinmax://tarea?texto=…`, `pixpin://atajo/…` (Android) | `orden::de_enlace`, `orden::seguridad`, `orden::firma` |
-| Menú del Explorador y «Enviar a» | clic derecho → «Mostrar más opciones» → PixPin ▸ | `herramientas/integraciones.ps1`, `pixpin_shell::juntar` |
+| Menú del Explorador y «Enviar a» | clic derecho → «Mostrar más opciones» → PinDesk ▸ | `herramientas/integraciones.ps1`, `pixpin_shell::juntar` |
 | PowerShell | `Import-Module …\PixPin.psm1` | `herramientas/PixPin.psm1` |
 | AutoHotkey | `#Include …\pixpin.ahk` | `herramientas/pixpin.ahk` |
-| Stream Deck, accesos directos, Programador de tareas | la acción «Abrir» con un enlace o con `pixpinmax.exe <verbo>` | (nada que instalar) |
+| Stream Deck, accesos directos, Programador de tareas | la acción «Abrir» con un enlace o con `pindesk.exe <verbo>` | (nada que instalar) |
 
 `herramientas/instalar.ps1` lo pone todo en cada instalación (HKCU, sin administrador), llamando a
 `herramientas/integraciones.ps1 -Exe <instalado>`. Para quitarlo:
@@ -22,11 +22,11 @@ haría sin tocar nada: `-SoloMostrar`. `instalar.ps1 -SinIntegraciones` no las p
 ## 1. La línea de órdenes
 
 ```text
-pixpinmax <verbo> [argumentos] [--sin-arrancar]
-pixpinmax --pedido '<json>'
-pixpinmax --pedido-archivo <ruta|->        (- = la entrada estándar)
-pixpinmax --url "pixpinmax://<verbo>?campo=valor"
-pixpinmax ayuda
+pindesk <verbo> [argumentos] [--sin-arrancar]
+pindesk --pedido '<json>'
+pindesk --pedido-archivo <ruta|->        (- = la entrada estándar)
+pindesk --url "pixpinmax://<verbo>?campo=valor"
+pindesk ayuda
 ```
 
 | Verbo (alias) | Uso | Pedido |
@@ -51,8 +51,8 @@ pixpinmax ayuda
 | `soltar` | `soltar [--proyecto P]` | `soltar` |
 | `sincronizar` (`sync`) | `sincronizar [todos\|<aparato>]` | sin nada, `ventana {cual:"sincronizar"}`; con aparato, `sincronizar` |
 | `al-movil` (`movil`) | `al-movil <fichero>… [--aparato <id>]` | `enviar_al_movil` (a `todos` si no se dice) |
-| `ocr` (`texto`) | `ocr <imagen>… [--copiar]` | **ninguno**: lee el texto aquí mismo y lo escribe en la salida (sin PixPin abierta) |
-| `copiar-texto` | `copiar-texto <imagen>…` | `ocr {ruta, rutas}` (el de la extensión del navegador): PixPin lo lee, lo copia y lo dice en su globo |
+| `ocr` (`texto`) | `ocr <imagen>… [--copiar]` | **ninguno**: lee el texto aquí mismo y lo escribe en la salida (sin PinDesk abierta) |
+| `copiar-texto` | `copiar-texto <imagen>…` | `ocr {ruta, rutas}` (el de la extensión del navegador): PinDesk lo lee, lo copia y lo dice en su globo |
 | `leer` (`leer-en-voz`) | `leer "<texto>" [--titulo T]` | `leer_en_voz` (el de la extensión del navegador) |
 | `asistente` (`ia`, `preguntar`) | `asistente ["pedido"] [fichero…] [--proyecto P]` | `asistente`; con ficheros y sin pedido, pregunta en una caja qué hacer con ellos |
 | `abrir` (`open`) | `abrir <fichero>… [--pagina N] [--buscar T]` | `abrir {tipo:"fichero"}` |
@@ -62,10 +62,10 @@ pixpinmax ayuda
 
 - `--proyecto` acepta el **id o el nombre** (sin mirar mayúsculas; «Mensajes guardados» o
   «guardados» es ese chat). El nombre lo cambia por su id la orden, leyendo
-  `proyectos/indice.json`; uno que no existe se manda tal cual y PixPin lo dice.
+  `proyectos/indice.json`; uno que no existe se manda tal cual y PinDesk lo dice.
 - Las rutas relativas son de la carpeta donde se escribe la orden.
 - Una orden que no conoce una `--opción` no se adivina: sale con 3 y lo dice.
-- `--sin-arrancar`: si PixPin no está abierta, no la abre (sale con 4).
+- `--sin-arrancar`: si PinDesk no está abierta, no la abre (sale con 4).
 - Lo que no es una orden (una ruta de «Abrir con», `--atajo` de la Jump List) sigue el arranque de
   siempre.
 
@@ -73,32 +73,32 @@ pixpinmax ayuda
 
 | Código | Significa |
 |---|---|
-| 0 | Aceptado (en la cola de PixPin), o la orden local (`ocr`, `ayuda`) salió bien |
+| 0 | Aceptado (en la cola de PinDesk), o la orden local (`ocr`, `ayuda`) salió bien |
 | 1 | Fallo aquí mismo: un fichero que no está, una imagen que no lo es, un OCR que no leyó nada |
-| 2 | PixPin no entiende esa versión del protocolo |
+| 2 | PinDesk no entiende esa versión del protocolo |
 | 3 | La orden, el enlace o el JSON no se entienden |
-| 4 | PixPin no está abierta y no se pudo abrir (o `--sin-arrancar`) |
-| 5 | PixPin no contestó (colgada) |
+| 4 | PinDesk no está abierta y no se pudo abrir (o `--sin-arrancar`) |
+| 5 | PinDesk no contestó (colgada) |
 | 6 | Rechazado: un enlace que no puede pedir eso, o el usuario dijo que no al confirmar |
 
 0, 2, 3 y 4 son los mismos de `pixpin-lanzador pedido`.
 
 ### La consola
 
-`pixpinmax.exe` es una aplicación de ventanas (si no, cada doble clic abriría una ventana negra).
+`pindesk.exe` es una aplicación de ventanas (si no, cada doble clic abriría una ventana negra).
 Por eso:
 
 - **Con la salida redirigida** (`| Out-String`, `> fichero`, `Start-Process -Redirect…`, el
   módulo de PowerShell) escribe en ella en UTF-8, y el que llama espera y ve el código.
 - **Escrito a mano en una consola**, se engancha a ella para escribir, pero la consola no le
-  espera: el texto sale después del símbolo del sistema. En `cmd`, `start /wait pixpinmax ocr x.png`;
-  en PowerShell, `pixpinmax ocr x.png | Out-String` (o `Get-PixPinTexto`). `$LASTEXITCODE` solo
+  espera: el texto sale después del símbolo del sistema. En `cmd`, `start /wait pindesk ocr x.png`;
+  en PowerShell, `pindesk ocr x.png | Out-String` (o `Get-PixPinTexto`). `$LASTEXITCODE` solo
   vale si se espera.
 - **Sin consola** (un enlace, el menú del Explorador, un Stream Deck), los fallos se dicen en un
   cuadro.
 - `PIXPIN_ORDEN_SIN_CUADROS=1`: ningún cuadro (scripts desatendidos): lo que se avisaría va a la
   salida de errores y lo que se preguntaría se contesta «no».
-- `PIXPIN_ORDEN_TIEMPO=1`: escribe cuánto tardó PixPin en aceptar.
+- `PIXPIN_ORDEN_TIEMPO=1`: escribe cuánto tardó PinDesk en aceptar.
 
 ### Lo que tarda
 
@@ -112,9 +112,9 @@ compilación de depuración, 15 vueltas, de lanzar el proceso a que sale con «a
 
 | Orden | Mínimo | Mediana | Máximo |
 |---|---|---|---|
-| `pixpinmax capturar` → «aceptado» (proceso entero, contra la ventana de prueba) | 60 ms | 88 ms | 172 ms |
-| `pixpinmax ayuda` (arrancar, escribir y salir) | | 107 ms | |
-| `pixpinmax ocr captura.png` (una captura de 228 letras, OCR de Windows incluido) | | 284 ms | |
+| `pindesk capturar` → «aceptado» (proceso entero, contra la ventana de prueba) | 60 ms | 88 ms | 172 ms |
+| `pindesk ayuda` (arrancar, escribir y salir) | | 107 ms | |
+| `pindesk ocr captura.png` (una captura de 228 letras, OCR de Windows incluido) | | 284 ms | |
 
 Con otras compilaciones corriendo a la vez en el equipo; en `release` es menos. Está por debajo
 de los 0,5 s, así que no se ha tocado el enlazado (cargar `d2d1` y compañía en diferido,
@@ -123,7 +123,7 @@ de los 0,5 s, así que no se ha tocado el enlazado (cargar `d2d1` y compañía e
 ### Para otros programas en Rust
 
 `pixpin_shell::mensajero::enviar_pedidos_o_arrancar(&[json], Some(exe))` manda pedidos a la
-PixPin que corre y, si no hay ninguna, abre `exe` y la espera (8 s); devuelve `Envio`, con
+PinDesk que corre y, si no hay ninguna, abre `exe` y la espera (8 s); devuelve `Envio`, con
 `codigo_de_salida()`. Con `None` no abre nada. Es la que usan la línea de órdenes, los enlaces y el
 menú del Explorador, y la que deben usar el servidor MCP, el puente del navegador o los avisos con
 botones si no son ya la propia app. `pixpin_shell::orden` arma los pedidos de los verbos y de los
@@ -160,7 +160,7 @@ pixpinmax://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22capturar%22%7D
 ### La lista blanca
 
 Un enlace lo puede lanzar cualquier página web (el navegador pregunta antes, pero pregunta
-«¿abrir PixPin?», no «¿borrar tu lista?»). Por eso se mira **el pedido ya armado** (también el de
+«¿abrir PinDesk?», no «¿borrar tu lista?»). Por eso se mira **el pedido ya armado** (también el de
 `pedido?json=`), no el verbo:
 
 | | Qué | Cómo |
@@ -198,11 +198,11 @@ let url = pixpin_shell::orden::firma::firmar(&url)?;   // pixpinmax://pedido?jso
 en Windows 11, bajo «Mostrar más opciones»):
 
 ```text
-PixPin ▸ Al chat               pixpinmax.exe --juntar chat "%1"
-         Pinear                pixpinmax.exe --juntar pinear "%1"
-         Copiar texto (OCR)    pixpinmax.exe --juntar copiar-texto "%1"   (solo imágenes: AppliesTo)
-         Enviar al movil       pixpinmax.exe --juntar al-movil "%1"
-         Preguntar al asistente pixpinmax.exe --juntar asistente "%1"
+PinDesk ▸ Al chat               pindesk.exe --juntar chat "%1"
+         Pinear                pindesk.exe --juntar pinear "%1"
+         Copiar texto (OCR)    pindesk.exe --juntar copiar-texto "%1"   (solo imágenes: AppliesTo)
+         Enviar al movil       pindesk.exe --juntar al-movil "%1"
+         Preguntar al asistente pindesk.exe --juntar asistente "%1"
 ```
 
 y los mismos cinco en «Enviar a» (`%APPDATA%\Microsoft\Windows\SendTo\PixPin - ….lnk`, con el
@@ -218,7 +218,7 @@ asistente» una sola caja.
 ## 4. PowerShell
 
 ```powershell
-Import-Module "$env:LOCALAPPDATA\Programs\PixPinMax\PixPin.psm1"
+Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PixPin.psm1"
 
 New-PixPinTarea "llamar al ingeniero" -Proyecto Obra
 'pan', 'leche' | New-PixPinTarea                          # una tarea por línea
@@ -243,7 +243,7 @@ está junto al módulo o el instalado.
 ## 5. AutoHotkey (v2)
 
 ```autohotkey
-#Include "C:\Users\<tu>\AppData\Local\Programs\PixPinMax\pixpin.ahk"
+#Include "C:\Users\<tu>\AppData\Local\Programs\PinDesk\pixpin.ahk"
 
 ^!t:: PixPinTarea(InputBox("¿Qué hay que hacer?", "PixPin").Value)
 ^!c:: PixPinCapturar()
@@ -266,11 +266,11 @@ Sin plugin:
   Stream Deck lo abre como un enlace; desmarca «Acceder en segundo plano» si lo ofrece). Lo que
   pide confirmar (grabar, sincronizar ya) saca su cuadro.
 - **Stream Deck → Sistema → «Abrir»** con
-  `"%LOCALAPPDATA%\Programs\PixPinMax\pixpinmax.exe" capturar` (o cualquier verbo): no pasa por la
+  `"%LOCALAPPDATA%\Programs\PinDesk\pindesk.exe" capturar` (o cualquier verbo): no pasa por la
   lista blanca, como cualquier orden.
 - **Un acceso directo** (escritorio, barra de tareas, un teclado de macros): destino
-  `…\pixpinmax.exe pinear-ultima`.
-- **Programador de tareas**: acción «Iniciar un programa», `pixpinmax.exe` con argumentos
+  `…\pindesk.exe pinear-ultima`.
+- **Programador de tareas**: acción «Iniciar un programa», `pindesk.exe` con argumentos
   `asistente "resume mis pendientes"`; con `--sin-arrancar` si no debe abrir PixPin.
 
 Un plugin propio (iconos que cambian, p. ej. «sincronizando») solo si se pide.

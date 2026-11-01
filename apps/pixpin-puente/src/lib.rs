@@ -73,7 +73,7 @@ impl Cartero for AlaApp {
             .exe
             .as_ref()
             .filter(|e| e.is_file())
-            .ok_or("No se encuentra pixpinmax.exe")?;
+            .ok_or("No se encuentra pindesk.exe")?;
         let preparar = |c: &mut Command| {
             c.stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -120,7 +120,7 @@ pub fn entregar(cartero: &mut dyn Cartero, json: &str) -> Result<(), String> {
         let inicio = Instant::now();
         while r == 0 {
             if inicio.elapsed() > ESPERA_ARRANQUE {
-                return Err("PixPin no se abrió a tiempo".into());
+                return Err("PinDesk no se abrió a tiempo".into());
             }
             cartero.esperar(Duration::from_millis(100));
             r = cartero.mandar(json);
@@ -130,10 +130,10 @@ pub fn entregar(cartero: &mut dyn Cartero, json: &str) -> Result<(), String> {
     match r {
         respuesta::ACEPTADO => Ok(()),
         respuesta::VERSION_NO => {
-            Err("Esta PixPin es más vieja que la extensión: actualízala".into())
+            Err("Esta PinDesk es más vieja que la extensión: actualízala".into())
         }
-        respuesta::NO_SE_ENTIENDE => Err("Esta PixPin no entiende el pedido: actualízala".into()),
-        otra => Err(format!("PixPin no contestó (respuesta {otra})")),
+        respuesta::NO_SE_ENTIENDE => Err("Esta PinDesk no entiende el pedido: actualízala".into()),
+        otra => Err(format!("PinDesk no contestó (respuesta {otra})")),
     }
 }
 
@@ -180,22 +180,10 @@ impl Entorno {
     }
 }
 
-/// `pixpinmax.exe`: junto al puente (asi se instala) o en el sitio fijo de
-/// `herramientas/instalar.ps1`.
+/// `pindesk.exe` (o el `pixpinmax.exe` de antes): junto al puente (asi se
+/// instala) o en el sitio fijo de `Instalar.cmd`.
 pub fn exe_de_pixpin(dir_exe: Option<&Path>) -> Option<PathBuf> {
-    if let Some(e) = dir_exe
-        .map(|d| d.join("pixpinmax.exe"))
-        .filter(|e| e.is_file())
-    {
-        return Some(e);
-    }
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(
-        PathBuf::from(local)
-            .join("Programs")
-            .join("PixPinMax")
-            .join("pixpinmax.exe"),
-    )
+    pixpin_shell::entorno::exe_de_la_app(dir_exe)
 }
 
 /// **Una vuelta del puente**: lee un mensaje, lo hace y contesta. Devuelve
@@ -232,7 +220,7 @@ fn atender(
         Err(ErrorLectura::Fin) => return Ok(None),
         Err(ErrorLectura::Enorme(n)) => {
             return Err(format!(
-                "Demasiado grande para PixPin ({} MB; el tope es {} MB)",
+                "Demasiado grande para PinDesk ({} MB; el tope es {} MB)",
                 n.div_ceil(1024 * 1024),
                 protocolo::TOPE_ENTRADA / (1024 * 1024)
             ));

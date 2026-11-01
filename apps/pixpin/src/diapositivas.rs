@@ -469,7 +469,7 @@ pub fn presentar_nativa(
         let mut documento = match pixpin_office::Documento::abrir(&ruta) {
             Ok(d) => Some(d),
             Err(err) => {
-                tracing::warn!(%err, ruta = %ruta.display(), "presentacion que PixPin no lee; se pasa por PowerPoint");
+                tracing::warn!(%err, ruta = %ruta.display(), "presentacion que PinDesk no lee; se pasa por PowerPoint");
                 lanzar_con_powerpoint(idioma, ubicacion, &ruta);
                 return;
             }
@@ -1769,7 +1769,7 @@ mod pruebas {
     /// **La transicion a mitad y la vista del orador**, pintadas fuera de
     /// pantalla con una presentacion publica de muestra, en PNG para
     /// mirarlas. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_presentar -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pindesk muestra_de_presentar -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una presentacion de muestra; genera PNG"]
     fn muestra_de_presentar() {

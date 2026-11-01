@@ -124,13 +124,13 @@ export function bytesDeBase64(b64) {
 export function explicarFallo(error) {
   const t = String(error?.message ?? error ?? "");
   if (/native messaging host not found|Specified native messaging host not found/i.test(t)) {
-    return "No está instalado el puente de PixPin: ejecuta herramientas\\instalar.ps1";
+    return "No está instalado el puente de PinDesk: ejecuta herramientas\\instalar.ps1";
   }
   if (/Access to the specified native messaging host is forbidden/i.test(t)) {
-    return "El puente de PixPin no reconoce esta extensión: vuelve a ejecutar herramientas\\instalar.ps1";
+    return "El puente de PinDesk no reconoce esta extensión: vuelve a ejecutar herramientas\\instalar.ps1";
   }
   if (/exited|disconnected/i.test(t)) {
-    return "El puente de PixPin se cerró sin contestar";
+    return "El puente de PinDesk se cerró sin contestar";
   }
   return t || "Algo falló";
 }

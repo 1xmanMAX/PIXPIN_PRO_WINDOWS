@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Paquete de IDENTIDAD de PixPin Max (MSIX "con ubicacion externa", o
+  Paquete de IDENTIDAD de PinDesk (MSIX "con ubicacion externa", o
   "sparse package"). No lleva el programa dentro: apunta a la carpeta donde ya
-  esta instalado (%LOCALAPPDATA%\Programs\PixPinMax, la de instalar.ps1) y le
-  da a pixpinmax.exe una identidad de paquete. Con ella Windows le deja:
+  esta instalado (%LOCALAPPDATA%\Programs\PinDesk, la de instalar.ps1) y le
+  da a pindesk.exe una identidad de paquete. Con ella Windows le deja:
 
   - aparecer en el panel COMPARTIR de otras apps (texto, enlaces, imagenes,
     ficheros) -> llega como activacion ShareTarget y va al chat
@@ -15,6 +15,11 @@
   Editor, nombre y aplicacion tienen que ser IGUALES a los del elemento <msix>
   de apps/pixpin/pixpinmax.manifest, y el editor igual al sujeto del
   certificado que crea paquete-identidad.ps1. La version la pone el script.
+
+  Name, Publisher, el Id de la aplicacion y el nombre de la asociacion son
+  los de cuando la app se llamaba PixPin Max y NO cambian: son la identidad
+  del paquete (y del certificado ya instalado). Lo visible dice PinDesk
+  (docs/nombre-pindesk.md).
 
   Pasos: docs/integraciones-windows.md
 -->
@@ -34,8 +39,8 @@
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>PixPin Max</DisplayName>
-    <PublisherDisplayName>PixPin Max</PublisherDisplayName>
+    <DisplayName>PinDesk</DisplayName>
+    <PublisherDisplayName>PinDesk</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <!-- El programa NO esta en el paquete: esta en la ubicacion externa. -->
     <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
@@ -58,14 +63,14 @@
   <Applications>
     <Application
       Id="PixPinMax"
-      Executable="pixpinmax.exe"
+      Executable="pindesk.exe"
       uap10:TrustLevel="mediumIL"
       uap10:RuntimeBehavior="win32App">
       <!-- AppListEntry="none": el menu Inicio ya tiene el acceso directo de
-           siempre; sin esto saldria PixPin dos veces. -->
+           siempre; sin esto saldria PinDesk dos veces. -->
       <uap:VisualElements
-        DisplayName="PixPin Max"
-        Description="PixPin Max"
+        DisplayName="PinDesk"
+        Description="PinDesk"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"
@@ -74,7 +79,7 @@
       <Extensions>
         <!-- Compartir: lo que mandan otras apps va al chat. -->
         <uap:Extension Category="windows.shareTarget">
-          <uap:ShareTarget Description="Guardar en PixPin">
+          <uap:ShareTarget Description="Guardar en PinDesk">
             <uap:SupportedFileTypes>
               <uap:SupportsAnyFileType />
             </uap:SupportedFileTypes>
@@ -89,9 +94,9 @@
         <!-- Menu contextual de primer nivel en Windows 11: verbos del paquete
              para lo que PixPin sabe abrir. No es una asociacion: no cambia
              que programa abre cada tipo, solo anade las dos entradas. -->
-        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pixpinmax.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:FileTypeAssociation Name="pixpinmax">
-            <uap:DisplayName>PixPin Max</uap:DisplayName>
+            <uap:DisplayName>PinDesk</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.png</uap:FileType>
               <uap:FileType>.jpg</uap:FileType>
@@ -119,11 +124,11 @@
               <uap:FileType>.mp4</uap:FileType>
             </uap:SupportedFileTypes>
             <uap2:SupportedVerbs>
-              <!-- Un fichero suelto a pixpinmax.exe = sacarlo como pin (lo de
+              <!-- Un fichero suelto a pindesk.exe = sacarlo como pin (lo de
                    siempre al abrir con PixPin). -->
-              <uap3:Verb Id="pinear" Parameters="&quot;%1&quot;">Pinear con PixPin</uap3:Verb>
+              <uap3:Verb Id="pinear" Parameters="&quot;%1&quot;">Pinear con PinDesk</uap3:Verb>
               <!-- Varios a la vez en UNA llamada (MultiSelectModel=Player). -->
-              <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PixPin</uap3:Verb>
+              <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PinDesk</uap3:Verb>
             </uap2:SupportedVerbs>
           </uap3:FileTypeAssociation>
         </uap3:Extension>

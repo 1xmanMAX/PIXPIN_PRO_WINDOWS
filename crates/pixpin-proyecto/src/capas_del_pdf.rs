@@ -224,7 +224,7 @@ pub fn al_proyecto(
             "no es un PDF con hojas",
         ));
     }
-    let identidad = crate::identidad::Identidad::leer_o_crear(raiz, "PixPin Max")?;
+    let identidad = crate::identidad::Identidad::leer_o_crear(raiz, "PinDesk")?;
     let aparato = identidad.yo.codigo();
     let mut indice = Indice::leer_si_esta(raiz)?;
     let ficha = almacen::Ficha::nueva(nombre, ahora, &aparato);

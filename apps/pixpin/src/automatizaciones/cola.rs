@@ -212,7 +212,7 @@ impl Lista {
 }
 
 /// El motivo de un encargo cortado por un cierre.
-pub const A_MEDIAS: &str = "PixPin se cerró a medias: pídelo otra vez";
+pub const A_MEDIAS: &str = "PinDesk se cerró a medias: pídelo otra vez";
 
 /// **La cola**: la lista en memoria (y en el disco) y la señal al hilo que
 /// trabaja.

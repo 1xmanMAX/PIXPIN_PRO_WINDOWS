@@ -10,7 +10,7 @@
 //! angulo), el cuadrante con su degradado radial, las rectas, la recta
 //! punteada con flecha, los puntos con su letra y el recuadro.
 //!
-//! `cargo test -p pixpin --bin pixpinmax muestra_de_la_lamina -- --ignored
+//! `cargo test -p pixpin --bin pindesk muestra_de_la_lamina -- --ignored
 //! --nocapture --test-threads=1`. Deja `figura-central.png` (lo dibujado) y
 //! `figura-central-junto.png` (el original a la izquierda) en la carpeta de
 //! `PIXPIN_MUESTRAS`, o en `target/muestras-de-lamina`.

@@ -612,7 +612,7 @@ fn esperar(que: impl Fn() -> bool, tope: Duration) {
 /// Despues, una tabla del chat en ver. Las ordenes van por
 /// `hoja_pin::prueba` (sin teclas ni clics simulados).
 ///
-/// `PIXPIN_XLSX=<libro> PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax hoja_pin::pruebas::pin_de_verdad_en_ver_y_en_editar -- --ignored --nocapture`
+/// `PIXPIN_XLSX=<libro> PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk hoja_pin::pruebas::pin_de_verdad_en_ver_y_en_editar -- --ignored --nocapture`
 #[test]
 #[ignore = "abre la ventana del pin en el escritorio y la fotografia"]
 fn pin_de_verdad_en_ver_y_en_editar() {

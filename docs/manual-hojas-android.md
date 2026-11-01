@@ -331,7 +331,7 @@ Se guarda:
 ## 8. Pruebas de compatibilidad
 
 En el PC (`cargo test -p pixpin-proyecto --lib tabla::` , `cargo test -p pixpin-sincro --lib fusion::`,
-`cargo test -p pixpin --bin pixpinmax hoja_pin::`):
+`cargo test -p pixpin --bin pindesk hoja_pin::`):
 
 | Prueba | Qué asegura |
 |---|---|

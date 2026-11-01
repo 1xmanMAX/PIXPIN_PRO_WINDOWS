@@ -277,7 +277,7 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
             "Última captura",
             "Sincronizar",
             "Asistente",
-            "Abrir PixPin",
+            "Abrir PinDesk",
             "Gestión de proyectos",
             "Thesis",
             "Mensajes guardados",
@@ -688,7 +688,7 @@ fn si_la_app_no_esta_se_avisa_con_showmsg() {
         s[1]["params"][1]
             .as_str()
             .unwrap()
-            .contains("No se pudo abrir PixPin")
+            .contains("No se pudo abrir PinDesk")
     );
 }
 

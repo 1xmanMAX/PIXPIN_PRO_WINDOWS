@@ -1347,7 +1347,7 @@ pub(crate) mod pruebas {
 
 /// **Con una copia de los datos del usuario** (nunca los de verdad): lo que
 /// mando el movil v0.96 se ve en los lectores del PC. Se lanza a mano:
-/// `PIXPIN_DATOS_COPIA=<copia> cargo test -p pixpin --bin pixpinmax con_los_datos_copiados -- --ignored --nocapture`.
+/// `PIXPIN_DATOS_COPIA=<copia> cargo test -p pixpin --bin pindesk con_los_datos_copiados -- --ignored --nocapture`.
 #[cfg(test)]
 mod con_datos_reales {
     use super::*;

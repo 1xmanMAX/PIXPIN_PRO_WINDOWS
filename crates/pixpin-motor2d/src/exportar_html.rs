@@ -560,7 +560,7 @@ pub fn paginas_mixtas(
         "<meta name=\"color-scheme\" content=\"{}\"/>\n",
         if oscuro { "dark" } else { "light" }
     ));
-    s.push_str("<meta name=\"generator\" content=\"PixPin\"/>\n");
+    s.push_str("<meta name=\"generator\" content=\"PinDesk\"/>\n");
     s.push_str(&format!("<title>{}</title>\n", escapar(titulo)));
     s.push_str("<style>");
     let hay_tabla = hojas.iter().any(|h| matches!(h, HojaDeLaPagina::Tabla(_)));

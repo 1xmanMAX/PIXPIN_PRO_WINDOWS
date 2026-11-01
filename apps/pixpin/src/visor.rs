@@ -3783,7 +3783,7 @@ mod pruebas {
     /// **Un PDF leido como texto con la pagina subiendo sola**, en PNG para
     /// mirarlo: la pagina de `como_texto` de un articulo a dos columnas,
     /// abierta en el lector, con la pastilla y la barra de abajo. Necesita
-    /// GPU: `cargo test -p pixpin --bin pixpinmax muestra_del_pdf_como_texto
+    /// GPU: `cargo test -p pixpin --bin pindesk muestra_del_pdf_como_texto
     /// -- --ignored --nocapture`. Deja el PNG en `PIXPIN_MUESTRAS`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlo"]
@@ -4310,7 +4310,7 @@ mod pruebas {
     /// **El lector pintado de verdad**, en PNG, para mirarlo: leyendo con el
     /// indice abierto, y anotando alejado hasta ver la columna con sus
     /// margenes, con tinta en el texto y en el margen. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_lector -- --ignored
+    /// `cargo test -p pixpin --bin pindesk muestra_del_lector -- --ignored
     /// --nocapture`. Deja los PNG en `PIXPIN_MUESTRAS` o en la temporal.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
@@ -4448,7 +4448,7 @@ mod pruebas {
     /// (`PIXPIN_MAQUETA`, `columna,izq,der,t,g,l`), pintados como en el lector
     /// a dos anchos de ventana y dos aumentos, en PNG para mirarlos junto a la
     /// pagina del movil. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_del_movil -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pindesk muestra_de_la_tinta_del_movil -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una copia de los datos del usuario"]
     fn muestra_de_la_tinta_del_movil_en_el_pc() {
@@ -4537,7 +4537,7 @@ mod pruebas {
     /// `.pixpin-lectura` de la version 1 y su `.pixpin-anotado` al lado).
     /// Deja un PNG donde empieza lo anotado para mirar que cada trazo sigue
     /// sobre su renglon. Necesita GPU:
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_de_antes -- --ignored --nocapture`.
+    /// `cargo test -p pixpin --bin pindesk muestra_de_la_tinta_de_antes -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una copia de los datos del usuario"]
     fn muestra_de_la_tinta_de_antes_mudada() {
@@ -4639,7 +4639,7 @@ mod pruebas {
     /// cuesta cada punto. Puerta: cabe en un fotograma de 60 Hz.
     ///
     /// ```text
-    /// cargo test --release -p pixpin --bin pixpinmax fotograma_del_lector_anotando -- --ignored --nocapture --test-threads=1
+    /// cargo test --release -p pixpin --bin pindesk fotograma_del_lector_anotando -- --ignored --nocapture --test-threads=1
     /// ```
     #[test]
     #[ignore = "necesita GPU real; puerta: ejecutar en --release con --ignored --nocapture"]

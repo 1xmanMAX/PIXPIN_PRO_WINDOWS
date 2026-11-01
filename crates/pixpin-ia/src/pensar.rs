@@ -437,7 +437,7 @@ pub fn sin_tildes(s: &str) -> String {
 pub fn instrucciones_del_plan(herramientas: &[Herramienta]) -> String {
     let nombres: Vec<&str> = herramientas.iter().map(|h| h.nombre.as_str()).collect();
     format!(
-        "Eres el planificador del asistente de PixPin. NO contestes al usuario ni hagas la tarea. \
+        "Eres el planificador del asistente de PinDesk. NO contestes al usuario ni hagas la tarea. \
          Lee la hoja de trabajo y el mensaje nuevo, y escribe SOLO estas cinco lineas:\n\
          ENTIENDO: que quiere el usuario, en una frase completa; si dice «eso», «otra vez» o «ahora», \
          di a que se refiere usando la hoja de trabajo.\n\

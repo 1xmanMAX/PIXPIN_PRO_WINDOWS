@@ -106,7 +106,7 @@ fn redondo(v: f32) -> String {
 /// **Las instrucciones del critico** (su mensaje de sistema).
 pub fn instrucciones() -> String {
     format!(
-        "Eres el revisor de un lienzo de PixPin. Tú no hiciste este trabajo: júzgalo con ojos frescos y sin indulgencia.\n\
+        "Eres el revisor de un lienzo de PinDesk. Tú no hiciste este trabajo: júzgalo con ojos frescos y sin indulgencia.\n\
          Recibes lo que pidió el usuario, una imagen del lienzo (cada elemento lleva su #id en una etiqueta amarilla; la rejilla \
          gris y las etiquetas no son del dibujo) y la lista de elementos con su #id, su caja [x, y, ancho, alto] y sus textos.\n\
          Puntúa estos 5 ejes de 1 a 10:\n\

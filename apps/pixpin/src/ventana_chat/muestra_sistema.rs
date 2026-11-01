@@ -5,7 +5,7 @@
 //! la tira … que tapa el chat»; Android 00ac81c2). Y la muestra en PNG:
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixpinmax muestra_del_asistente_sin_franja -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pindesk muestra_del_asistente_sin_franja -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja los PNG en `%TEMP%/pixpin-muestras-sistema` (o en `PIXPIN_MUESTRAS`).

@@ -690,7 +690,7 @@ fn lo_que_llega_del_movil_se_relee_con_el_plano_abierto_si_aqui_no_hay_nada_a_me
 
 /// **El lapiz sobre un plano de verdad, a tres zooms**, antes (la unidad de
 /// la milesima del lado) y ahora (la de la letra): PNG para mirarlos.
-/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax muestra_del_lapiz_sobre_un_plano -- --ignored --nocapture`
+/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk muestra_del_lapiz_sobre_un_plano -- --ignored --nocapture`
 #[test]
 #[ignore = "necesita GPU y una muestra de E:\\pixpin-cad\\muestras; genera PNG"]
 fn muestra_del_lapiz_sobre_un_plano_a_varios_zooms() {

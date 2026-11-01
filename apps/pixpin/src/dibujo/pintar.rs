@@ -987,7 +987,7 @@ pub(crate) fn ordenes_de_las_tablas(
 /// **Las muestras del texto, las letras y el resaltador**, pintadas con las
 /// MISMAS funciones que el lienzo (`pintar_escena` y `pintar_encima`) y el
 /// medidor de verdad, en PNG para mirarlas. Necesita GPU: `cargo test -p
-/// pixpin --bin pixpinmax muestra_de_letras -- --ignored --nocapture`. Deja
+/// pixpin --bin pindesk muestra_de_letras -- --ignored --nocapture`. Deja
 /// los PNG en `PIXPIN_MUESTRAS` o en la carpeta temporal.
 #[cfg(test)]
 mod muestras {
@@ -1219,7 +1219,7 @@ mod muestras {
 
     /// **La raya de resaltador**: a mano (izquierda) y la misma parada hasta
     /// volverse recta (derecha), fino, medio y grueso. Tienen que medir lo
-    /// mismo. `cargo test -p pixpin --bin pixpinmax muestra_del_resaltador_recto
+    /// mismo. `cargo test -p pixpin --bin pindesk muestra_del_resaltador_recto
     /// -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
@@ -1278,7 +1278,7 @@ mod muestras {
     /// **Los pasos numerados y el foco**, con el gesto de verdad: cuatro
     /// clics con Pasos (colores y letras distintas: el numero va en blanco o
     /// negro segun el disco) y un circulo tocado con el Foco, que oscurece
-    /// solo el anillo de su marco. `cargo test -p pixpin --bin pixpinmax
+    /// solo el anillo de su marco. `cargo test -p pixpin --bin pindesk
     /// muestra_de_pasos_y_foco -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

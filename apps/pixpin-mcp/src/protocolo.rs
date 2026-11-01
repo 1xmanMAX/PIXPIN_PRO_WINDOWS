@@ -73,12 +73,12 @@ fn inicio(params: &Value) -> Value {
     json!({
         "protocolVersion": version,
         "capabilities": {"tools": {"listChanged": false}},
-        "serverInfo": {"name": crate::NOMBRE, "title": "PixPin Max", "version": crate::VERSION},
+        "serverInfo": {"name": crate::NOMBRE, "title": "PinDesk", "version": crate::VERSION},
         "instructions": concat!(
-            "PixPin Max es la app de capturas, pines, chats por proyecto, notas, tareas, lienzo y visores del usuario en este PC. ",
+            "PinDesk es la app de capturas, pines, chats por proyecto, notas, tareas, lienzo y visores del usuario en este PC. ",
             "Las herramientas de leer (buscar_en_mis_cosas, consultar_tareas, listar_chats, leer_documento, ocr_imagen, ver_pantalla, listar_ventanas) ",
-            "funcionan sin la app abierta. Las demas las hace la PixPin abierta, como si lo pidiera el usuario; ",
-            "lo que borra, envia al movil o cambia lo que ya existe se lo pregunta PixPin al usuario antes. ",
+            "funcionan sin la app abierta. Las demas las hace la PinDesk abierta, como si lo pidiera el usuario; ",
+            "lo que borra, envia al movil o cambia lo que ya existe se lo pregunta PinDesk al usuario antes. ",
             "Las tareas y listas se nombran por su texto y su titulo, y las fechas como se dicen («mañana a las 10»)."
         ),
     })

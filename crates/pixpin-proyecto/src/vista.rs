@@ -725,7 +725,7 @@ fn ahora() -> i64 {
 }
 
 fn nombre_del_equipo() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into())
+    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PinDesk".into())
 }
 
 fn al_cable(a: &crate::identidad::Aparato) -> Aparato {

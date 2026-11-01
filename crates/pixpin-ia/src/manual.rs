@@ -84,7 +84,7 @@ const SITIOS: &[Sitio] = &[
     },
     Sitio {
         nombre: "Ventanas",
-        que_es: "Abrir ventanas y ficheros de PixPin o del equipo.",
+        que_es: "Abrir ventanas y ficheros de PinDesk o del equipo.",
     },
     Sitio {
         nombre: "Móvil y conexiones",
@@ -92,7 +92,7 @@ const SITIOS: &[Sitio] = &[
     },
     Sitio {
         nombre: "Saber y recordar",
-        que_es: "Cómo se usa PixPin, los documentos del usuario, lo dicho antes en esta conversación, la web y tu memoria entre conversaciones.",
+        que_es: "Cómo se usa PinDesk, los documentos del usuario, lo dicho antes en esta conversación, la web y tu memoria entre conversaciones.",
     },
     Sitio {
         nombre: "Hablar con el usuario",

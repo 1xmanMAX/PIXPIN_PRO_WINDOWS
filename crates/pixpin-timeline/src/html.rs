@@ -663,7 +663,7 @@ mod pruebas {
         Opciones {
             titulo: "Timeline".into(),
             subtitulo: "Últimas 24 horas".into(),
-            pie: "PixPin".into(),
+            pie: "PinDesk".into(),
             nota_de_voz: "Nota de voz".into(),
             desfase: 0,
             lengua: crate::Lengua::Es,

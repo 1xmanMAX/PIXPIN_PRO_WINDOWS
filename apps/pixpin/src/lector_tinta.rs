@@ -1778,7 +1778,7 @@ mod pruebas {
     /// recocerlos. Mide tambien el tiempo por fotograma con 1, 50 y 300
     /// trazos por hoja, y el de antes (todas las hojas con lo calculado de
     /// una sola, que era como iba), que es el caso negativo. Necesita GPU:
-    /// `cargo test --release -p pixpin --bin pixpinmax anotar_no_rehace -- --ignored --nocapture`.
+    /// `cargo test --release -p pixpin --bin pindesk anotar_no_rehace -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU"]
     fn anotar_no_rehace_en_cada_fotograma_lo_que_no_cambio() {

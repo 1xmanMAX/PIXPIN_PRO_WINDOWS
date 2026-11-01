@@ -1,4 +1,4 @@
-# El puente de la extension del navegador (Chrome y Edge) con PixPin Max.
+# El puente de la extension del navegador (Chrome y Edge) con PinDesk.
 #
 # Es el "host" de la mensajeria nativa: el navegador lo arranca en cada clic
 # del menu de la extension, le pasa UN mensaje por la entrada estandar (4

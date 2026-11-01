@@ -315,7 +315,7 @@ fn pensar_en_automatico_es_solo_en_lo_complejo() {
 ///
 /// ```text
 /// PIXPIN_IA_MOTOR=claude|deepseek (la clave guardada)  PIXPIN_IA_PENSAR=1 (por omision)
-/// cargo test -p pixpin --bin pixpinmax de_verdad_conversacion_larga -- --ignored --nocapture --test-threads=1
+/// cargo test -p pixpin --bin pindesk de_verdad_conversacion_larga -- --ignored --nocapture --test-threads=1
 /// ```
 #[test]
 #[ignore = "necesita la clave de la nube (ver la cabecera)"]

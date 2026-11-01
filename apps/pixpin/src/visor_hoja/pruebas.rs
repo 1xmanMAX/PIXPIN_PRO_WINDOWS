@@ -66,7 +66,7 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
 /// entera, Ctrl+Fin, Ctrl+rueda, y cada pestana. Deja PNG en
 /// `PIXPIN_MUESTRAS` con el prefijo `PIXPIN_PREFIJO`.
 ///
-/// `PIXPIN_XLSX=<libro> PIXPIN_MUESTRAS=<carpeta> cargo test --release -p pixpin --bin pixpinmax visor_hoja::pruebas::muestra_fuera_de_pantalla -- --ignored --nocapture`
+/// `PIXPIN_XLSX=<libro> PIXPIN_MUESTRAS=<carpeta> cargo test --release -p pixpin --bin pindesk visor_hoja::pruebas::muestra_fuera_de_pantalla -- --ignored --nocapture`
 #[test]
 #[ignore = "necesita GPU y un libro de Excel"]
 fn muestra_fuera_de_pantalla() {
@@ -186,7 +186,7 @@ fn muestra_fuera_de_pantalla() {
 /// ejecutable de pruebas). Se queda abierta hasta cerrarla (Esc, la X de
 /// su barra o WM_CLOSE).
 ///
-/// `PIXPIN_XLSX=<libro> cargo test --release -p pixpin --bin pixpinmax visor_hoja::pruebas::ventana_de_verdad -- --ignored --nocapture`
+/// `PIXPIN_XLSX=<libro> cargo test --release -p pixpin --bin pindesk visor_hoja::pruebas::ventana_de_verdad -- --ignored --nocapture`
 #[test]
 #[ignore = "abre una ventana y espera a que se cierre"]
 fn ventana_de_verdad() {
@@ -306,7 +306,7 @@ fn el_boton_central_arrastra_la_hoja_sin_elegir() {
 /// pixel), lo tecleado sale encima de su celda, el formato se ve y rehacer
 /// lo que se ve no mueve la hoja. Deja PNG en `PIXPIN_MUESTRAS`.
 ///
-/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax visor_hoja::pruebas::ver_y_editar_tienen_la_misma_cara -- --ignored --nocapture`
+/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk visor_hoja::pruebas::ver_y_editar_tienen_la_misma_cara -- --ignored --nocapture`
 #[test]
 #[ignore = "necesita GPU"]
 fn ver_y_editar_tienen_la_misma_cara() {
@@ -483,7 +483,7 @@ fn ver_y_editar_tienen_la_misma_cara() {
 /// Lo que cuesta rehacer lo que se ve tras un cambio en una tabla grande
 /// (40 000 celdas): pasarla a `.xlsx`, leerlo y abrir su primera pantalla.
 ///
-/// `cargo test -p pixpin --bin pixpinmax visor_hoja::pruebas::mide_rehacer_una_tabla_grande -- --ignored --nocapture`
+/// `cargo test -p pixpin --bin pindesk visor_hoja::pruebas::mide_rehacer_una_tabla_grande -- --ignored --nocapture`
 #[test]
 #[ignore = "mide tiempos"]
 fn mide_rehacer_una_tabla_grande() {
@@ -554,7 +554,7 @@ fn mide_rehacer_por_partes() {
 /// Los botones de la barra al editar, pintados como en la barra del pin
 /// (iconos claros sobre oscuro; encendidos, dorados), para mirarlos.
 ///
-/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax visor_hoja::pruebas::botones_de_editar_pintados -- --ignored`
+/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk visor_hoja::pruebas::botones_de_editar_pintados -- --ignored`
 #[test]
 #[ignore = "necesita GPU"]
 fn botones_de_editar_pintados() {
@@ -898,7 +898,7 @@ fn la_tinta_se_rehace_si_una_fila_cambia_de_alto() {
 /// `.pixpin-marcos` y la impresion en grupo saca una foto por marco, en su
 /// orden y sin el azul de los marcos. Deja las fotos en `PIXPIN_MUESTRAS`.
 ///
-/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pixpinmax visor_hoja::pruebas::los_marcos_en_la_ventana_de_verdad -- --ignored --nocapture --test-threads=1`
+/// `PIXPIN_MUESTRAS=<carpeta> cargo test -p pixpin --bin pindesk visor_hoja::pruebas::los_marcos_en_la_ventana_de_verdad -- --ignored --nocapture --test-threads=1`
 #[test]
 #[ignore = "abre la ventana del visor en el escritorio y la fotografia"]
 fn los_marcos_en_la_ventana_de_verdad() {

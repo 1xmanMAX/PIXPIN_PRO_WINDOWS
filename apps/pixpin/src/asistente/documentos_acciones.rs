@@ -93,7 +93,7 @@ fn proyecto_del_pedido(cx: &Contexto) -> Value {
 fn mandar(cx: &Contexto, pedido: Value) -> Result<(), String> {
     match (cx.mandar)(&pedido.to_string()) {
         pixpin_shell::mensajero::respuesta::ACEPTADO => Ok(()),
-        _ => Err("PixPin no acepto el pedido".into()),
+        _ => Err("PinDesk no acepto el pedido".into()),
     }
 }
 

@@ -340,7 +340,7 @@ mod pruebas {
         Herramienta::nueva(TAREA, texto.to_string())
     }
 
-    /// `cargo test -p pixpin --bin pixpinmax muestra_del_pin_de_tarea --
+    /// `cargo test -p pixpin --bin pindesk muestra_del_pin_de_tarea --
     /// --ignored --nocapture`: el pin quieto y escribiendo la nota.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]

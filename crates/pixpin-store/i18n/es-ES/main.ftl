@@ -1,7 +1,7 @@
-# PixPin Max — textos en español.
+# PinDesk — textos en español.
 # Toda cadena visible al usuario vive aquí, nunca literal en el código.
 
-app-nombre = PixPin Max
+app-nombre = PinDesk
 
 
 resultado-copiar = Copiar
@@ -9,7 +9,7 @@ resultado-guardar-como = Guardar como…
 resultado-guardar = Guardar
 resultado-descartar = Descartar
 
-error-otra-instancia = PixPin Max ya se está ejecutando.
+error-otra-instancia = PinDesk ya se está ejecutando.
 error-atajo-ocupado = No se pudo registrar { $atajo }: otra aplicación lo está usando.
 
 captura-guardada = Captura guardada en { $ruta }
@@ -96,7 +96,7 @@ pin-dejar-pasar-clic = Dejar pasar el clic
 
 # Silenciar los atajos un rato (P1.7).
 comando-silenciar-atajos = Silenciar los atajos
-bandeja-silenciada = PixPin Max — atajos silenciados
+bandeja-silenciada = PinDesk — atajos silenciados
 aviso-atajos-silenciados = Atajos silenciados
 aviso-atajos-silenciados-detalle = Vuelve a activarlos desde este mismo menú.
 aviso-atajos-activos = Atajos activos
@@ -271,7 +271,7 @@ chat-no-hay-biblioteca = La biblioteca de audio todavía no existe en Windows
 chat-ver-dibujo-entero = Ver el dibujo entero
 chat-no-hay-pagina = Adjuntar una página de un proyecto todavía no existe en Windows
 chat-no-hay-telepronter = El teleprónter todavía no existe en Windows
-chat-no-se-pudo = No se pudo: mira el registro de PixPin
+chat-no-se-pudo = No se pudo: mira el registro de PinDesk
 info-galeria = Galería
 info-todo = Todo
 info-fotos = Fotos
@@ -322,7 +322,7 @@ menu-foto-lienzo = Abrir en lienzo
 menu-foto-pin = Volver a pinear
 menu-foto-abrir = Abrir con Windows
 recibir-titulo = Recibir del movil
-recibir-como = Escanea el codigo con PixPin en el movil
+recibir-como = Escanea el codigo con PinDesk en el movil
 recibir-esperando = Esperando al movil…
 recibir-hecho = Llegaron { $cuantos } cosas
 recibir-salir = Escape para cerrar
@@ -350,7 +350,7 @@ foto-chat-sin-imagen = No hay ninguna imagen copiada
 foto-chat-error = No se pudo guardar la foto del chat
 proyecto-borrar = Borrar proyecto
 proyecto-borrar-varios = Borrar los marcados
-proyecto-borrar-aviso = Se quitara de la lista y su carpeta ira a la papelera de PixPin. ¿Seguir?
+proyecto-borrar-aviso = Se quitara de la lista y su carpeta ira a la papelera de PinDesk. ¿Seguir?
 proyecto-papelera = Proyectos borrados…
 # Donde se guarda cada proyecto: su carpeta elegida o la zona habitual.
 ubicacion-cambiar = Cambiar ubicación…
@@ -365,7 +365,7 @@ ubicacion-movido = Proyecto guardado en { $ruta }
 ubicacion-vuelto = El proyecto está otra vez en la ubicación habitual
 ubicacion-error-red = Solo se puede guardar en un disco de este equipo, no en una unidad de red.
 ubicacion-error-no-es-carpeta = Esa carpeta no existe en este equipo.
-ubicacion-error-dentro = Esa carpeta está dentro del propio proyecto o de los datos de PixPin.
+ubicacion-error-dentro = Esa carpeta está dentro del propio proyecto o de los datos de PinDesk.
 ubicacion-error-mover = No se pudo mover el proyecto; sigue donde estaba.
 ubicacion-error-abrir = No se pudo abrir la carpeta del proyecto.
 
@@ -384,14 +384,14 @@ sinc-sincronizar = Sincronizar
 sinc-probar = Probar
 sinc-con-todos = Sincronizar con todos ({ $n })
 sinc-con-todos-como = Sin preguntar nada: va con lo que elegiste la última vez con cada uno.
-sinc-si-no-aparece = Si no aparece: que tenga PixPin abierto y esté en esta Wi-Fi.
+sinc-si-no-aparece = Si no aparece: que tenga PinDesk abierto y esté en esta Wi-Fi.
 sinc-con-direccion = Conectar con una dirección
 sinc-anadir = Añadir otro aparato
 sinc-anadir-como = En el otro aparato: Sincronizar → «Unirme con un código».
 sinc-toca-codigo = Toca para ver el código
 sinc-salir = Salir del grupo
 sinc-pasar = Pasar algo a otra persona
-sinc-pasar-como = Una sola vez, a cualquiera con PixPin en tu misma Wi-Fi. No hace falta grupo.
+sinc-pasar-como = Una sola vez, a cualquiera con PinDesk en tu misma Wi-Fi. No hace falta grupo.
 sinc-recibir = Recibir
 sinc-enviar = Enviar
 sinc-pasar-tambien = Lo que llega va a la lista de proyectos o a «Mensajes guardados».
@@ -400,7 +400,7 @@ sinc-escuchando = Este equipo se deja encontrar en { $dir } mientras esta ventan
 sinc-nombre-titulo = Nombre de este aparato
 sinc-nombre-como = Es como lo verán tus otros aparatos.
 sinc-unirme-titulo = Unirme a un grupo
-sinc-unirme-como = Escribe el código que sale en «Añadir otro aparato» en uno del grupo. Ese aparato tiene que tener PixPin abierto y estar en tu misma Wi-Fi.
+sinc-unirme-como = Escribe el código que sale en «Añadir otro aparato» en uno del grupo. Ese aparato tiene que tener PinDesk abierto y estar en tu misma Wi-Fi.
 sinc-codigo = Código
 sinc-direccion = Dirección (solo si no lo encuentra)
 sinc-direccion-titulo = Conectar con una dirección
@@ -499,7 +499,7 @@ ew-pegar = Pegar el código de quien recibe
 ew-pegar-como = En el otro aparato: Recibir por Wi-Fi → «Enseñar mi código para que me envíen». Escribe aquí sus seis cifras o pega el texto de su QR con Ctrl+V.
 ew-mandar = Mandar
 ew-dejar-de-pegar = Dejar de pegar
-ew-en-el-otro = En el otro teléfono: PixPin → Sincronizar → Recibir
+ew-en-el-otro = En el otro teléfono: PinDesk → Sincronizar → Recibir
 ew-o-escribe = o escribe este código
 ew-misma-wifi = Los dos en la misma Wi-Fi
 ew-misma-wifi-como = Si no hay Wi-Fi, uno puede activar su zona Wi-Fi y el otro conectarse a ella. No se usa internet.
@@ -510,10 +510,10 @@ ew-cerrar = Cerrar
 ew-grupo = Tus aparatos · sin código
 ew-grupo-como = Están en tu grupo: se envía directo, sin escanear. Llega a lo que tengan abierto (un chat; un lienzo solo acepta fotos) o a Mensajes guardados.
 ew-grupo-se-ve = En la misma Wi-Fi
-ew-grupo-no-se-ve = No se ve ahora: abre PixPin en ese aparato
+ew-grupo-no-se-ve = No se ve ahora: abre PinDesk en ese aparato
 ew-grupo-enviando = Enviando…
 ew-grupo-todos = Enviar a todos los que se ven
-ew-grupo-actualiza = Actualiza PixPin en { $movil }: aún no recibe archivos directos. Que use el código de abajo.
+ew-grupo-actualiza = Actualiza PinDesk en { $movil }: aún no recibe archivos directos. Que use el código de abajo.
 
 ## «Actualizar el que tengo / Crear como nuevo» al recibir (RecibirActivity.kt)
 rw-ya-tienes = Ya tienes «{ $nombre }» con los mismos códigos
@@ -591,14 +591,14 @@ papelera-no-se-pudo = No se pudo recuperar «{ $nombre }»: { $motivo }
 papelera-recuperados = Recuperados { $n } de { $total } proyectos
 
 ## El visor de documentos: Word, libros EPUB y páginas (tarea 2.1)
-visor-html-titulo = PixPin — página
+visor-html-titulo = PinDesk — página
 ## El pin de Office: la vista previa de Office como pin (10-oct-2026)
 office-titulo = vista previa de Office
 office-abriendo = Abriendo con la vista previa de Office…
 office-tarda = Office está tardando en abrirlo (tiene que arrancar). Puedes esperar, o elegir con qué abrirlo con «Abrir con…» (el botón ↗ de la barra).
 office-fallo = Office no pudo mostrar la vista previa de este archivo. Ábrelo con otra app con «Abrir con…» (el botón ↗ de la barra).
 office-internet = Este archivo viene de internet y, por seguridad, Windows no deja verlo en vista previa. Ábrelo con otra app con «Abrir con…» (el botón ↗ de la barra), o desbloquéalo en sus Propiedades.
-visor-titulo =Visor de PixPin
+visor-titulo =Visor de PinDesk
 visor-marcador = Marcador aquí
 visor-ajustes = Ajustes de lectura
 visor-tamano = Tamaño de la letra
@@ -624,14 +624,14 @@ lector-grosor-gruesa = Gruesa
 lector-quitar-tinta = Quitar lo anotado
 lector-tinta-quitada = Anotado quitado (Ctrl+Z lo devuelve mientras sigas aquí)
 lector-ayuda-docs = Rueda leer · Ctrl+rueda acercar · L escuchar · A anotar · M marcador · I índice · +/− letra · T tipo · B grosor · Esc salir
-lector-pdf-titulo = Lector de PDF de PixPin
+lector-pdf-titulo = Lector de PDF de PinDesk
 lector-pdf-no-se-abre = No se pudo abrir el PDF
 lector-pdf-abriendo = Abriendo el PDF…
 lector-exportando = Guardando el PDF anotado… { $hechas } de { $total }
 lector-exportar-pdf = Guardar el PDF con lo anotado
 lector-anotado = anotado
 lector-ayuda-pdf = Rueda pasar hojas · Ctrl+rueda acercar · Ctrl+[ Ctrl+] espacio para anotar · L escuchar · A anotar · M marcador · Esc salir
-lector-office-titulo = Word y PowerPoint en PixPin
+lector-office-titulo = Word y PowerPoint en PinDesk
 lector-ayuda-office = Rueda pasar hojas · Ctrl+rueda acercar · arrastrar sobre el texto elegir · Ctrl+C copiar · Ctrl+F buscar · Ctrl+P imprimir · F5 presentar · A anotar · N negativo · Esc salir
 lector-presentar = Presentar (F5)
 lector-modo-lectura = Modo lectura (el texto reflujado)
@@ -802,7 +802,7 @@ chat-biblioteca-notas = Notas de voz
 
 # Grabar una nota de voz desde el chat.
 chat-voz-muy-corta = Demasiado corta: mantén pulsado un poco más.
-chat-voz-sin-microfono = No hay micrófono, o PixPin no tiene permiso para usarlo. Mira en Configuración › Privacidad › Micrófono.
+chat-voz-sin-microfono = No hay micrófono, o PinDesk no tiene permiso para usarlo. Mira en Configuración › Privacidad › Micrófono.
 chat-voz-sin-codec = Este Windows no trae el codificador de audio (suele ser una edición N sin el paquete multimedia).
 chat-voz-fallo = No se pudo grabar la nota de voz.
 
@@ -899,7 +899,7 @@ chat-voz-bajar-whisper = Para pasar a texto hace falta el modelo de voz Whisper 
 chat-voz-bajando-whisper = Bajando el modelo de voz… { $pct } %
 chat-voz-sin-modelo-whisper = Falta el modelo de voz Whisper (unos { $megas } MB): vuelve a pulsar «Pasar a texto» para bajarlo.
 chat-voz-sin-modelo-qwen3 = Falta bajar Qwen3-ASR (unos { $megas } MB): elígelo en Ajustes › Voz para bajarlo, o vuelve a Whisper.
-chat-voz-sin-onnx = Este Windows no trae el motor de IA (onnxruntime.dll): cópialo en { $donde } o junto a PixPin.
+chat-voz-sin-onnx = Este Windows no trae el motor de IA (onnxruntime.dll): cópialo en { $donde } o junto a PinDesk.
 chat-voz-descarga = No se pudo bajar el modelo de voz ({ $que }). Comprueba la conexión y vuelve a pulsar «Pasar a texto».
 chat-voz-onnx = El motor de voz Whisper falló: { $detalle }
 chat-dictado-oyendo = Te escucho… habla y pulsa el micrófono al terminar
@@ -1024,7 +1024,7 @@ compartir-originales = Originales
 compartir-editable = Editable
 compartir-texto = Texto
 compartir-csv = Tabla (CSV)
-compartir-pixpin = PixPin (.pixpin)
+compartir-pixpin = PinDesk (.pixpin)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1346,7 +1346,7 @@ grupos-sin-nombre = Grupo
 grupos-nombre = Nombre del grupo de ventanas
 grupos-guardar-boton = Guardar
 nota-md-nueva = Nota nueva
-nota-md-sufijo = Nota de PixPin
+nota-md-sufijo = Nota de PinDesk
 nota-md-negrita = Negrita
 nota-md-cursiva = Cursiva
 nota-md-tachado = Tachado
@@ -1693,13 +1693,13 @@ pedido-tarea-anadida = «{ $tarea }» añadida a «{ $lista }».
 pedido-tarea-hecha = «{ $tarea }» marcada como hecha.
 pedido-tarea-pendiente = «{ $tarea }» vuelve a estar pendiente.
 pedido-roto = Llegó un pedido de otro programa al que le falta algo; no se hizo nada.
-pedido-sin-proyecto = Ese proyecto ya no está en PixPin.
+pedido-sin-proyecto = Ese proyecto ya no está en PinDesk.
 pedido-sin-mensaje = Ese mensaje ya no está en el chat.
 pedido-no-es-lista = Ese mensaje no es una lista de tareas.
 pedido-sin-tarea = La lista no tiene la tarea número { $indice }.
 pedido-tarea-vacia = Una tarea sin texto no se apunta.
 pedido-sin-fichero = Ese fichero ya no está en el disco.
-pedido-fallo-disco = No se pudo guardar lo que se pidió. Mira el registro de PixPin.
+pedido-fallo-disco = No se pudo guardar lo que se pidió. Mira el registro de PinDesk.
 pedido-tarea-movida = «{ $tarea }» movida a «{ $lista }».
 pedido-tarea-cambio = La lista cambió mientras se movía la tarea; no se tocó nada. Vuelve a buscarla.
 pedido-tarea-quitada = «{ $tarea }» quitada de su lista.
@@ -1718,22 +1718,22 @@ pedido-ocr-no-disponible = El OCR de Windows no está instalado: añade un idiom
 pedido-ocr-fallo = No se pudo leer el texto de la imagen: { $motivo }
 
 ## Linea de ordenes y enlaces pixpin:// (15-oct)
-orden-titulo = PixPin Max
-orden-confirmar-cabecera = Un enlace le pide a PixPin Max:
+orden-titulo = PinDesk
+orden-confirmar-cabecera = Un enlace le pide a PinDesk:
 orden-confirmar-pregunta = ¿Hacerlo?
 orden-motivo-ficheros = Abre o manda ficheros de tu disco.
-orden-motivo-asistente = Le pide algo al asistente, que puede hacer cosas en PixPin.
+orden-motivo-asistente = Le pide algo al asistente, que puede hacer cosas en PinDesk.
 orden-motivo-microfono = Graba con el micrófono.
 orden-motivo-otros-aparatos = Manda datos a tus otros aparatos.
 orden-motivo-automatizacion = Toca una automatización del asistente.
 orden-motivo-borra = Borra algo.
-orden-motivo-cambia = Cambia datos de PixPin.
+orden-motivo-cambia = Cambia datos de PinDesk.
 orden-prohibido-ruta-no-local = Un enlace no puede abrir ficheros de red ni rutas que no sean de este equipo. No se hizo nada.
 orden-prohibido-crear-automatizacion = Un enlace no puede crear automatizaciones. No se hizo nada.
-orden-no-se-pudo = PixPin Max no pudo hacerlo: { $motivo }
-orden-sin-app = PixPin Max no está abierta y no se pudo abrir: { $motivo }
-orden-sin-respuesta = PixPin Max no contestó. Si está colgada, ciérrala y vuelve a abrirla.
-orden-version = Esta PixPin Max es más antigua que el pedido: actualízala.
+orden-no-se-pudo = PinDesk no pudo hacerlo: { $motivo }
+orden-sin-app = PinDesk no está abierta y no se pudo abrir: { $motivo }
+orden-sin-respuesta = PinDesk no contestó. Si está colgada, ciérrala y vuelve a abrirla.
+orden-version = Esta PinDesk es más antigua que el pedido: actualízala.
 orden-preguntar-titulo = Preguntar al asistente sobre { $cuantos ->
     [one] { $nombre }
    *[other] { $cuantos } archivos
@@ -1747,7 +1747,7 @@ galeria-vacia = Todavía no hay capturas. Las que copies con Alt + arrastrar apa
 galeria-abrir-carpeta = Abrir carpeta
 galeria-copiada = Copiada al portapapeles
 galeria-pineada = Pineada
-galeria-borrada = Llevada a la papelera de PixPin
+galeria-borrada = Llevada a la papelera de PinDesk
 galeria-no-se-pudo = No se pudo: { $motivo }
 galeria-conservada-aviso = Conservada: está en Mensajes guardados y ya no se borra
 bandeja-galeria-capturas = Galería de capturas…
@@ -1821,7 +1821,7 @@ ajustes2-resultados-sub = { $n ->
   }
 ajustes2-sin-resultados = Ningún ajuste habla de «{ $busqueda }». Prueba con otra palabra.
 ajustes2-sec-general = General
-ajustes2-sec-general-sub = Cómo arranca PixPin y qué hace con los PDF del chat.
+ajustes2-sec-general-sub = Cómo arranca PinDesk y qué hace con los PDF del chat.
 ajustes2-sec-captura = Captura
 ajustes2-sec-captura-sub = Cómo se hace una captura y qué pasa con ella después.
 ajustes2-sec-lienzo = Lienzo y herramientas
@@ -1833,7 +1833,7 @@ ajustes2-sec-atajos-sub = Pulsa una caja y luego la combinación. Supr la deja s
 ajustes2-sec-sincro = Sincronizar
 ajustes2-sec-sincro-sub = Cómo se encuentra este equipo con el móvil.
 ajustes2-sec-apps = Apps predeterminadas
-ajustes2-sec-apps-sub = Abrir imágenes y vídeos con PixPin desde el Explorador.
+ajustes2-sec-apps-sub = Abrir imágenes y vídeos con PinDesk desde el Explorador.
 ajustes2-sec-apariencia = Apariencia
 ajustes2-sec-apariencia-sub = El aspecto del chat.
 ajustes2-sec-avanzado = Avanzado
@@ -1851,7 +1851,7 @@ ajustes2-ayuda-ocr-windows-con-indra = Lee el OCR de Windows. Indra sigue bajado
 ajustes2-ocr-bajando = Bajando Indra… { $por-ciento } %. Mientras tanto se lee con el de Windows.
 ajustes2-ocr-fallo = No se pudo bajar Indra: { $fallo }. Vuelve a elegirlo para reintentar; mientras, se lee con el de Windows.
 ajustes2-ocr-licencia = Licencia de Indra
-ajustes2-ayuda-ocr-licencia = El código de Indra es Apache 2.0; los pesos, OpenRAIL-M modificada de Datalab. PixPin no los incluye: los bajas tú desde Hugging Face al elegir Indra.
+ajustes2-ayuda-ocr-licencia = El código de Indra es Apache 2.0; los pesos, OpenRAIL-M modificada de Datalab. PinDesk no los incluye: los bajas tú desde Hugging Face al elegir Indra.
 ajustes2-ocr-corregir = Corregir con el diccionario
 ajustes2-ayuda-ocr-corregir = Solo con Indra y en páginas en español: arregla tildes y letras mal leídas con poca confianza. Nunca toca cifras, códigos ni nombres.
 ajustes2-ocr-vocabulario = Mi vocabulario
@@ -1920,7 +1920,7 @@ ajustes2-esquina = Esquina del recuadro
 ajustes2-ayuda-esquina = En el monitor donde se hizo la captura.
 ajustes2-icono = Tiempo a la vista
 ajustes2-ayuda-icono = Lo que se queda el recuadro sin armar después de la última captura.
-ajustes2-ayuda-ignorado = Con este en primer plano, los atajos de PixPin no hacen nada.
+ajustes2-ayuda-ignorado = Con este en primer plano, los atajos de PinDesk no hacen nada.
 ajustes2-anadir-programa = Añadir un programa
 ajustes2-ayuda-anadir-programa = Escribe el nombre del ejecutable y pulsa Intro.
 ajustes2-anadir = Añadir
@@ -1940,12 +1940,12 @@ ajustes2-ayuda-presencia = El móvil ve este equipo en cuanto abre Sincronizar. 
 ajustes2-lo-mio = Lo mío manda
 ajustes2-ayuda-lo-mio = Al sincronizar, lo de este equipo se impone: del otro lado solo llega lo que aquí no existe.
 ajustes2-vista-rapida = Vista rápida con la barra espaciadora
-ajustes2-ayuda-vista-rapida = En el Explorador o el escritorio, elige ficheros y pulsa Espacio: se abren al momento en PixPin (fotos, vídeos, PDF, Word, planos DWG, modelos IFC y Revit…). Otro Espacio lo cierra.
-ajustes2-abrir-con = Ofrecer PixPin para imágenes y vídeos
+ajustes2-ayuda-vista-rapida = En el Explorador o el escritorio, elige ficheros y pulsa Espacio: se abren al momento en PinDesk (fotos, vídeos, PDF, Word, planos DWG, modelos IFC y Revit…). Otro Espacio lo cierra.
+ajustes2-abrir-con = Ofrecer PinDesk para imágenes y vídeos
 ajustes2-ayuda-abrir-con = Sale en «Abrir con» y en Aplicaciones predeterminadas. Apagarlo borra lo escrito en el registro.
 ajustes2-predeterminada = App predeterminada
-ajustes2-ayuda-predeterminada = Windows solo deja elegirla en Configuración: allí, PixPin Max → Establecer como predeterminada.
-ajustes2-hacer-predeterminada = Hacer PixPin la app predeterminada…
+ajustes2-ayuda-predeterminada = Windows solo deja elegirla en Configuración: allí, PinDesk → Establecer como predeterminada.
+ajustes2-hacer-predeterminada = Hacer PinDesk la app predeterminada…
 ajustes2-ayuda-cosmos = Cielo estrellado detrás de la lista de proyectos del chat. Vale desde el siguiente chat.
 ajustes2-nivel = Nivel de rendimiento
 ajustes2-ayuda-nivel = Automático mide el equipo al arrancar. Vale desde el próximo arranque.
@@ -1973,7 +1973,7 @@ ajustes2-nunca = Nunca
 ajustes2-siempre = Siempre
 ajustes2-auto = Auto
 ## v2-buscar
-comando-buscar = 🔍 Buscar en PixPin…
+comando-buscar = 🔍 Buscar en PinDesk…
 comando-grabar-clase = 🎙 Grabar clase o reunión…
 clase-titulo = Grabar clase o reunión
 clase-sub = Graba el audio y pon capturas en su minuto
@@ -2025,10 +2025,10 @@ clase-suspendido = El equipo se suspendió { $minutos } min; la grabación sigui
 clase-recuperar-titulo = Grabación cortada
 clase-recuperar-pregunta =
     Se cortó una grabación ({ $nombre }, { $minutos } min) en «{ $chat }».
-    Sí: Recuperar · No: Descartar · Cancelar: preguntar al volver a abrir PixPin
+    Sí: Recuperar · No: Descartar · Cancelar: preguntar al volver a abrir PinDesk
 clase-recuperar-sin-nada = De la grabación «{ $nombre }» solo quedó un vídeo que no se puede abrir. ¿Borrarlo?
 clase-recuperar-descartar = ¿Descartar «{ $nombre }»? Se borrará lo grabado y no se podrá recuperar.
-clase-recuperar-fallo = No se pudo recuperar «{ $nombre }». Lo grabado sigue a salvo y se volverá a ofrecer al abrir PixPin.
+clase-recuperar-fallo = No se pudo recuperar «{ $nombre }». Lo grabado sigue a salvo y se volverá a ofrecer al abrir PinDesk.
 clase-texto-de-fondo = Cerrar (sigue de fondo)
 clase-modo-pantalla = Pantalla y sonido
 clase-modo-capturas = Audio y capturas
@@ -2056,7 +2056,7 @@ chat-sin-grabacion = No hay ninguna grabación en este chat
 chat-colaboradores-todos = Que todos los del chat aporten fotos
 chat-colaboradores-nadie = Solo mis fotos en esta grabación
 clase-hora-sin-comprobar = hora sin comprobar
-baliza-movil-aislado = No aparece tu móvil, y estáis en la misma red: puede que esta Wi-Fi aísle a los aparatos (las de invitados, hotel o empresa lo hacen) o que un cortafuegos bloquee PixPin. Conecta el PC al punto de acceso del móvil, o los dos a otra Wi-Fi. Las fotos que hagas esperan en el móvil y entran en su minuto al encontrarse.
+baliza-movil-aislado = No aparece tu móvil, y estáis en la misma red: puede que esta Wi-Fi aísle a los aparatos (las de invitados, hotel o empresa lo hacen) o que un cortafuegos bloquee PinDesk. Conecta el PC al punto de acceso del móvil, o los dos a otra Wi-Fi. Las fotos que hagas esperan en el móvil y entran en su minuto al encontrarse.
 baliza-movil-otra-red = Tu móvil está en otra red que este PC. Conéctalos a la misma Wi-Fi (o el PC al punto de acceso del móvil). Las fotos que hagas esperan en el móvil y entran en su minuto al encontrarse.
 # Reunion presencial (27-oct-2026): la camara del equipo, fotos y clips.
 clase-modo-presencial = Presencial
@@ -2095,7 +2095,7 @@ clase-completa-sin-escucha = La transcripción en vivo necesita la clave de Jev 
 clase-descartar = Descartar
 clase-descartar-otra = Pulsa «Descartar» otra vez para borrar la grabación
 estudiar-clip = Vídeo de la cámara · { $duracion }
-bandeja-grabando = PixPin Max — Grabando…
+bandeja-grabando = PinDesk — Grabando…
 salir-grabando-titulo = Se está grabando una reunión
 salir-grabando-mensaje =
     ¿Terminar y guardar la grabación antes de salir?
@@ -2169,7 +2169,7 @@ grabacion-ir-al-minuto = Ir a este minuto
 grabacion-cerrar = Cerrar
 grabacion-audio = Audio
 grabacion-video = Vídeo
-buscar-todo-titulo = Buscar en PixPin
+buscar-todo-titulo = Buscar en PinDesk
 buscar-todo-pista = Busca archivos, tareas, lecciones, capturas… o una letra
 buscar-todo-pestana-todo = Todo
 buscar-todo-pestana-archivos = Archivos
@@ -2335,7 +2335,7 @@ lec2-nueva-etiqueta = etiqueta y Enter
 lec2-relacionadas = Relacionadas
 lec2-proximo-repaso = Próximo repaso: { $cuando }
 lec2-vacia-titulo = Apunta lo que aprendes para no repetir errores
-lec2-vacia-texto = Escríbelo arriba de corrido: «pasó que…, porque…, la próxima vez…». PixPin lo reparte, le pone área, proyecto y gravedad, y te avisa si ya te pasó antes.
+lec2-vacia-texto = Escríbelo arriba de corrido: «pasó que…, porque…, la próxima vez…». PinDesk lo reparte, le pone área, proyecto y gravedad, y te avisa si ya te pasó antes.
 lec2-comprobacion = Antes de empezar, repasa: { $hechas } de { $total }
 lec2-comprobacion-vacia = Aún no hay nada de «la próxima vez…». Se rellena en el tercer bloque de cada lección.
 lec2-nada-que-repasar = Hoy no toca repasar ninguna.
@@ -2401,7 +2401,7 @@ galeria-elegidas = { $cuantas ->
 }
 galeria-elegir-todas = Todas
 galeria-deshacer = Deshacer
-galeria-borradas = { $cuantas } llevadas a la papelera de PixPin
+galeria-borradas = { $cuantas } llevadas a la papelera de PinDesk
 galeria-recuperadas = { $cuantas ->
     [one] Recuperada
    *[other] { $cuantas } recuperadas
@@ -2539,7 +2539,7 @@ bandeja2-silenciar-sub = para jugar o presentar
 bandeja2-ultimas = Últimas capturas
 bandeja2-ver-galeria = Ver la galería
 bandeja2-sin-capturas = Aún no hay capturas
-bandeja2-abrir-pixpin = Abrir PixPin
+bandeja2-abrir-pixpin = Abrir PinDesk
 bandeja2-tareas = Tareas
 bandeja2-lecciones = Lecciones
 bandeja2-nueva-leccion = Nueva lección
@@ -2547,7 +2547,7 @@ bandeja2-galeria = Galería de capturas
 bandeja2-documento = Abrir documento…
 bandeja2-grupos = Grupos de ventanas
 bandeja2-para-hoy = { $n } para hoy
-bandeja2-salir = Salir de PixPin
+bandeja2-salir = Salir de PinDesk
 bandeja2-salir-sub = los pines se cierran
 bandeja2-copiada = Copiada
 bandeja2-borrada = A la papelera
@@ -2627,7 +2627,7 @@ timeline-tipo-pdf = Documento PDF
 timeline-nada-que-exportar = No hay nada que exportar ahí
 timeline-no-exportado = No se pudo guardar el fichero
 timeline-exportado = Guardado: { $nombre }
-timeline-exportado-pie = Exportado con PixPin Max · { $fecha }
+timeline-exportado-pie = Exportado con PinDesk · { $fecha }
 timeline-pdf-haciendo = Haciendo el PDF…
 timeline-pdf-sin-edge = Para el PDF hace falta Microsoft Edge; exporta en HTML
 timeline-pdf-fallo = No se pudo hacer el PDF
@@ -2709,7 +2709,7 @@ timeline-guardar-imagen = Guardar como imagen…
 timeline-imagen-copiada = Copiada como imagen
 timeline-imagen-fallo = No se pudo hacer la imagen
 timeline-tipo-png = Imagen PNG
-timeline-compartido-pie = PixPin Max · Timeline
+timeline-compartido-pie = PinDesk · Timeline
 
 ## tareas-v4
 # La pista del buscador en la barra comun de arriba: mas corta que la de
@@ -2806,12 +2806,12 @@ al-movil-negados = { $negados ->
     [one] 1 archivo no se envió: no era una foto y tiene un lienzo abierto
    *[other] { $negados } archivos no se enviaron: no eran fotos y tiene un lienzo abierto
   }
-al-movil-no-esta = { $movil } no está abierto: abre PixPin en el móvil
-al-movil-actualiza = Actualiza PixPin en { $movil }: aún no recibe archivos directos. Te abro «Enviar por Wi-Fi».
+al-movil-no-esta = { $movil } no está abierto: abre PinDesk en el móvil
+al-movil-actualiza = Actualiza PinDesk en { $movil }: aún no recibe archivos directos. Te abro «Enviar por Wi-Fi».
 al-movil-ocupado = { $movil } está sincronizando con otro aparato. Prueba otra vez en un momento.
-al-movil-otra-version = { $movil } tiene otra versión de PixPin: actualiza los dos
+al-movil-otra-version = { $movil } tiene otra versión de PinDesk: actualiza los dos
 al-movil-cortado = No se pudo enviar a { $movil }: { $motivo }
-al-movil-sin-grupo = Este PC no está en un grupo: ábrelo en Sincronizar de PixPin
+al-movil-sin-grupo = Este PC no está en un grupo: ábrelo en Sincronizar de PinDesk
 al-movil-no-es-del-grupo = Ese aparato ya no está en el grupo de este PC
 al-movil-sin-imagenes = No había nada que enviar
 al-frente-lienzo = { $de } te envió «{ $nombre }»: está en el lienzo abierto
@@ -2859,7 +2859,7 @@ cc-quitar = Quitar
 cc-anadir = Añadir
 cc-cerrar-invitacion = Cerrar
 cc-sincronizar = Sincronizar
-cc-invitacion-como = En el otro aparato: PixPin → Entrar en un chat compartido. Que escanee esto o teclee el código.
+cc-invitacion-como = En el otro aparato: PinDesk → Entrar en un chat compartido. Que escanee esto o teclee el código.
 cc-invitacion-vale = Vale mientras esta pantalla esté abierta. Tenéis que estar en la misma Wi-Fi.
 cc-salir-del-chat = Salir del chat
 cc-salir-titulo = ¿Salir del chat?
@@ -3332,14 +3332,14 @@ aviso-ia-permiso = 🔐 Necesito tu permiso: { $pregunta }
 ia-fondo-titulo = 🤖 Asistente
 ia-fondo-sigue = «continúa»
 ia-fondo-sigue-fuera = «@asistente continúa»
-ia-fondo-otra-vez = ↻ PixPin se cerró antes de que acabara. Lo retomo desde el principio en la respuesta de abajo.
+ia-fondo-otra-vez = ↻ PinDesk se cerró antes de que acabara. Lo retomo desde el principio en la respuesta de abajo.
 ia-fondo-ya-actuo = Algunos pasos ya estaban hechos, así que no lo repito solo (se harían dos veces). Escribe { $sigue } y sigo desde aquí.
 ia-fondo-ya-se-retomo = Ya lo había retomado una vez y volvió a cortarse, así que no insisto. Escribe { $sigue } si quieres que lo intente otra vez.
 ia-fondo-viejo = Ha pasado demasiado para retomarlo solo. Escribe { $sigue } si aún lo quieres.
 ia-fondo-sin-pregunta = No encuentro tu pedido (¿se borró?), así que no puedo retomarlo.
 ia-fondo-no-se-pudo = No he podido retomarlo: { $aviso }
 ia-fondo-no-empezo = no pude empezar a contestar.
-ia-fondo-cortado = ⚠️ PixPin se cerró antes de que acabara esto. { $porque }
+ia-fondo-cortado = ⚠️ PinDesk se cerró antes de que acabara esto. { $porque }
 ia-fondo-sigo-en-el-chat = 💬 Lo sigo en el chat.
 ia-fondo-sigo-de-fondo = ⏳ Sigo con tu pedido aunque se cerró el chat. Te aviso al acabar.
 ia-fondo-pregunta = ❓ Necesito que me contestes en el chat: { $pregunta }
@@ -3439,7 +3439,7 @@ cad-letras = Letras del plano…
 cad-letras-faltan = Este plano pide letras que no están; sus textos salen con otras parecidas y pueden no caber en sus recuadros:
 cad-letras-no-falta = No falta ninguna letra que el plano diga por su nombre.
 cad-letras-donde = Las SHX suelen estar en C:\Program Files\Autodesk\AutoCAD 20xx\Fonts o junto al plano que te pasaron;
-    las TrueType, en C:\Windows\Fonts. Las que añadas aquí mandan sobre las de AutoCAD, Windows y PixPin.
+    las TrueType, en C:\Windows\Fonts. Las que añadas aquí mandan sobre las de AutoCAD, Windows y PinDesk.
 cad-letras-anadir = Añadir letras (SHX, TTF, OTF, TTC)…
 cad-letras-quitar = Quitar las mías ({ $n })
 cad-faltan-letras = Faltan { $n } letras del plano: pulsa Aa arriba para añadirlas
@@ -3525,7 +3525,7 @@ ia-fondo-hecho = ✅ Hecho.
 ia-hecho = Hecho.
 croquis-titulo = Croquis { $id }
 # El aviso de donde se abren los ajustes (ventana_chat/asistente.rs; ya estaba en apple/nucleo)
-chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
+chat-ajustes-bandeja = Los ajustes se abren desde el icono de PinDesk en la bandeja
 # El estado de las IA: los puntitos de junto al boton de sincronizar del chat
 # (1-nov-2026). «Claude · funciona · hace 3 min».
 ia-estado-funciona = funciona
@@ -3544,7 +3544,7 @@ ia-estado-hace-horas = hace { $n } h
 ia-estado-pista = Clic: comprobar ahora o ir a las claves
 ia-estado-comprobar = Comprobar ahora
 ia-estado-claves = Claves en Ajustes → Asistente
-ia-estado-sin-ajustes = Los ajustes se abren desde el icono de PixPin en la bandeja
+ia-estado-sin-ajustes = Los ajustes se abren desde el icono de PinDesk en la bandeja
 
 ## El mes dentro de una fecha («5 de octubre»), aparte del mes suelto (chat-mes-*):
 ## en ruso y otros idiomas con casos va en genitivo («5 октября»). Si un idioma
@@ -3575,51 +3575,24 @@ ajustes2-voz-vosk-borrar = Borrar Vosk
 ajustes2-ayuda-voz-vosk-borrar = Libera lo bajado (unos 100 MB en disco). Se vuelve a bajar al elegirlo.
 clase-temas-bateria = Batería baja: no se escucha en vivo para no gastarla (la grabación sigue)
 
-## Escuchar en vivo con Vosk (1-nov-2026, lo que el movil ya hacia)
-ajustes2-voz-en-vivo = Escuchar la reunión en vivo con
-ajustes2-voz-en-vivo-sistema = Windows o Whisper
-ajustes2-voz-en-vivo-vosk = Vosk
-ajustes2-ayuda-voz-en-vivo = Para los temas y lo demás de la reunión con Jev. Vosk enseña lo que se va diciendo y cierra cada frase a las décimas de callarse (con Whisper, unos 3 s), sin red. Al elegirlo se bajan { $megas } MB (Apache-2.0).
-ajustes2-ayuda-voz-en-vivo-vosk-listo = Se escucha con Vosk, sin red: lo que se va diciendo sale en la pantalla completa de la grabación. Si alguna vez no carga, con Windows o Whisper.
-ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk se baja para castellano e inglés; en este idioma se escucha con Windows o Whisper.
-ajustes2-voz-en-vivo-bajando = Bajando Vosk… { $por-ciento } %. Mientras tanto se escucha con Windows o Whisper.
-ajustes2-voz-en-vivo-fallo = No se pudo bajar Vosk: { $fallo }. Vuelve a elegirlo para reintentar.
-ajustes2-voz-vosk-borrar = Borrar Vosk
-ajustes2-ayuda-voz-vosk-borrar = Libera lo bajado (unos 100 MB en disco). Se vuelve a bajar al elegirlo.
-clase-temas-bateria = Batería baja: no se escucha en vivo para no gastarla (la grabación sigue)
 
 ## Dictar al chat: si Jev falla, se dice (1-nov-2026, como el movil)
 chat-anotar-fallo-red = Sin conexión: Jev no pudo mirar si había que anotarlo en otro chat. Lo dictado sigue en la caja.
 chat-anotar-fallo = Jev no contestó ({ $motivo }). Lo dictado sigue en la caja.
 
-## Escuchar en vivo con Vosk (1-nov-2026, lo que el movil ya hacia)
-ajustes2-voz-en-vivo = Escuchar la reunión en vivo con
-ajustes2-voz-en-vivo-sistema = Windows o Whisper
-ajustes2-voz-en-vivo-vosk = Vosk
-ajustes2-ayuda-voz-en-vivo = Para los temas y lo demás de la reunión con Jev. Vosk enseña lo que se va diciendo y cierra cada frase a las décimas de callarse (con Whisper, unos 3 s), sin red. Al elegirlo se bajan { $megas } MB (Apache-2.0).
-ajustes2-ayuda-voz-en-vivo-vosk-listo = Se escucha con Vosk, sin red: lo que se va diciendo sale en la pantalla completa de la grabación. Si alguna vez no carga, con Windows o Whisper.
-ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk se baja para castellano e inglés; en este idioma se escucha con Windows o Whisper.
-ajustes2-voz-en-vivo-bajando = Bajando Vosk… { $por-ciento } %. Mientras tanto se escucha con Windows o Whisper.
-ajustes2-voz-en-vivo-fallo = No se pudo bajar Vosk: { $fallo }. Vuelve a elegirlo para reintentar.
-ajustes2-voz-vosk-borrar = Borrar Vosk
-ajustes2-ayuda-voz-vosk-borrar = Libera lo bajado (unos 100 MB en disco). Se vuelve a bajar al elegirlo.
-clase-temas-bateria = Batería baja: no se escucha en vivo para no gastarla (la grabación sigue)
 
-## Dictar al chat: si Jev falla, se dice (1-nov-2026, como el movil)
-chat-anotar-fallo-red = Sin conexión: Jev no pudo mirar si había que anotarlo en otro chat. Lo dictado sigue en la caja.
-chat-anotar-fallo = Jev no contestó ({ $motivo }). Lo dictado sigue en la caja.
 
 ## Privacidad y datos (1-nov-2026, lo del movil para las tiendas: Ajustes › General)
 ajustes2-g-privacidad = Privacidad y datos
 ajustes2-priv-politica = Política de privacidad
-ajustes2-ayuda-priv-politica = Qué hace PixPin Max con tus datos (en castellano y en inglés): todo se queda en este PC salvo lo de abajo, y solo cuando tú lo usas.
+ajustes2-ayuda-priv-politica = Qué hace PinDesk con tus datos (en castellano y en inglés): todo se queda en este PC salvo lo de abajo, y solo cuando tú lo usas.
 ajustes2-g-privacidad-sale = Lo que sale de este PC y adónde
 ajustes2-priv-ver-ajustes = Ver sus ajustes
 ajustes2-priv-nada-mas = Nada más
-ajustes2-ayuda-priv-nada-mas = Sin anuncios, sin analíticas, sin informes de fallos, sin cuenta y sin servidores de PixPin. El dictado y pasar a texto van en este PC, sin red.
+ajustes2-ayuda-priv-nada-mas = Sin anuncios, sin analíticas, sin informes de fallos, sin cuenta y sin servidores de PinDesk. El dictado y pasar a texto van en este PC, sin red.
 ajustes2-g-privacidad-datos = Tus datos
 ajustes2-priv-carpeta = Tus datos, en tu disco
-ajustes2-ayuda-priv-carpeta = Capturas, chats, notas, grabaciones y ajustes viven en { $carpeta }. Para llevártelos, copia la carpeta; para borrarlos, cierra PixPin Max y bórrala. Las claves de la IA van cifradas con tu usuario de Windows.
+ajustes2-ayuda-priv-carpeta = Capturas, chats, notas, grabaciones y ajustes viven en { $carpeta }. Para llevártelos, copia la carpeta; para borrarlos, cierra PinDesk y bórrala. Las claves de la IA van cifradas con tu usuario de Windows.
 ajustes2-priv-reportes = Reportes de lo que escribe la IA
 ajustes2-ayuda-priv-reportes = { $n ->
     [one] 1 guardado en reportes-ia.jsonl (en la carpeta de datos).

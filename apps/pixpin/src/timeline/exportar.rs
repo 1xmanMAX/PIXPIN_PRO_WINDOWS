@@ -252,7 +252,7 @@ mod pruebas {
         let op = Opciones {
             titulo: "Timeline".into(),
             subtitulo: "Lunes 5 de octubre de 2026".into(),
-            pie: "Exportado con PixPin Max".into(),
+            pie: "Exportado con PinDesk".into(),
             nota_de_voz: "Nota de voz".into(),
             desfase: 0,
             lengua: pixpin_timeline::Lengua::Es,

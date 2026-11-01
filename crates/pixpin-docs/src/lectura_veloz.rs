@@ -304,7 +304,7 @@ impl Progreso {
             return Err("lectura-veloz: la ruta tiene que ser absoluta y de este equipo".into());
         }
         if !es_documento(Path::new(ruta)) {
-            return Err("lectura-veloz: la ruta no es de un documento que PixPin lea".into());
+            return Err("lectura-veloz: la ruta no es de un documento que PinDesk lea".into());
         }
         let tipo = campo("tipo")
             .ok_or("lectura-veloz: falta tipo")

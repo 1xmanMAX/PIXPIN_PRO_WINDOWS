@@ -97,7 +97,7 @@ fn maquetar(d: &Documento) -> Vec<Pagina> {
             continue;
         }
         if b.clase == Clase::Nota && b.texto() == MARCA_IMAGEN {
-            let aviso = Bloque::nota("[imagen — el PDF de PixPin es solo texto]");
+            let aviso = Bloque::nota("[imagen — el PDF de PinDesk es solo texto]");
             colocar(&aviso, util, &mut y, &mut paginas, &mut nueva_pagina);
             continue;
         }

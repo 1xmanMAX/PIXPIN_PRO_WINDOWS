@@ -40,13 +40,13 @@ pub fn arrancar(
     guardia_registro: &mut Option<tracing_appender::non_blocking::WorkerGuard>,
 ) -> Result<()> {
     let _instancia = pixpin_shell::instancia::adquirir_instancia_de_prueba(nombre)
-        .context("ya corre una PixPin de prueba con ese nombre")?;
+        .context("ya corre una PinDesk de prueba con ese nombre")?;
     let limpio: String = nombre
         .chars()
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
         .collect();
     let raiz = std::env::temp_dir().join(format!("pixpin-instancia-{limpio}"));
-    std::fs::create_dir_all(&raiz).context("sin carpeta para la PixPin de prueba")?;
+    std::fs::create_dir_all(&raiz).context("sin carpeta para la PinDesk de prueba")?;
     let ubicacion = Ubicacion::Portable { raiz };
     *guardia_registro = Some(crate::iniciar_registro(&ubicacion));
     // La luna/sol de los visores, como en la app (`estado.toml` de esta copia).
@@ -57,7 +57,7 @@ pub fn arrancar(
     );
     pixpin_render::idioma::fijar(lengua.etiqueta(), lengua.es_rtl());
     let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
-    tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PixPin de prueba (PIXPIN_INSTANCIA)");
+    tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PinDesk de prueba (PIXPIN_INSTANCIA)");
     for ruta in &rutas {
         // Un lienzo (`.excalidraw`): el editor, en su hilo, como desde el chat.
         if ruta
@@ -71,7 +71,7 @@ pub fn arrancar(
                     .ok()
                     .and_then(|j| pixpin_motor2d::excalidraw::leer(&j).ok())
                 else {
-                    tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: lienzo ilegible");
+                    tracing::warn!(ruta = %ruta.display(), "PinDesk de prueba: lienzo ilegible");
                     return;
                 };
                 let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
@@ -94,7 +94,7 @@ pub fn arrancar(
         }
         if !crate::lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta))
         {
-            tracing::warn!(ruta = %ruta.display(), "PixPin de prueba: no hay lector para esto");
+            tracing::warn!(ruta = %ruta.display(), "PinDesk de prueba: no hay lector para esto");
         }
     }
     // Vive mientras tenga ventanas (y espera un poco a que salga la primera).
@@ -118,6 +118,6 @@ pub fn arrancar(
             break;
         }
     }
-    tracing::info!("PixPin de prueba: sin ventanas, se acaba");
+    tracing::info!("PinDesk de prueba: sin ventanas, se acaba");
     Ok(())
 }

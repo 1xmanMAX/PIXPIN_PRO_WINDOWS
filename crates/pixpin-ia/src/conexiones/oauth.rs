@@ -210,15 +210,15 @@ fn atender(mut flujo: TcpStream, estado: &str, s: &Servicio) -> Option<Result<St
     let (titulo, texto) = match &r {
         Ok(_) => (
             format!("{} conectado", s.nombre),
-            "Listo. Ya puedes cerrar esta pestaña y volver a PixPin.".to_string(),
+            "Listo. Ya puedes cerrar esta pestaña y volver a PinDesk.".to_string(),
         ),
         Err(e) => (
             "No se conecto".to_string(),
-            format!("{e}. Vuelve a PixPin para intentarlo otra vez."),
+            format!("{e}. Vuelve a PinDesk para intentarlo otra vez."),
         ),
     };
     let html = format!(
-        "<!doctype html><meta charset=utf-8><title>PixPin</title>\
+        "<!doctype html><meta charset=utf-8><title>PinDesk</title>\
          <body style=\"font-family:Segoe UI,sans-serif;background:#1e1f22;color:#e8e8e8;display:grid;place-items:center;height:90vh\">\
          <div style=\"text-align:center\"><h2>{}</h2><p>{}</p></div>",
         html_escapar(&titulo),

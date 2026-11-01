@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PixPin Max",
+  "name": "PinDesk",
   "version": "1.0.0",
-  "description": "Manda a PixPin Max lo que ves: texto a tareas, notas, chat o lecciones; imágenes a pines u OCR; la página entera al chat o al móvil.",
+  "description": "Manda a PinDesk lo que ves: texto a tareas, notas, chat o lecciones; imágenes a pines u OCR; la página entera al chat o al móvil.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuM1DpMsVsbiCd+LSCS4fjPRCpShDJsIAN/xlOjNrN6mVdFehxUoMuzsIXZIu6/oT5gvk8v+C7JLdCIuBhEDaZWyPbWJtggp7jwb3rUL9UgJ8ndT9mys6rAYNEFw8wEWUZn/AM6Zjsbs/49wAYJwmbZDiVGs10EwAbAGIUKOIfZQ2NyYjQ9Lc2O1t0hswjRj7C8YRazQEBz3LiJ2HN2UhnNQU0mkn8R4MFGz9lZHl9l98yMRl0JQso53TZJeaBJe+h4rn0M7VbEcxNao+j4q0gzsAHyLNESxa/0cuAo9lh63rHmugfh1PRuCEwkrpPO5qFlNnPCFbmaMB3nHp2ZlHtQIDAQAB",
   "minimum_chrome_version": "116",
   "background": {
@@ -19,7 +19,7 @@
   ],
   "host_permissions": ["<all_urls>"],
   "action": {
-    "default_title": "PixPin Max (Alt+Mayús+P)",
+    "default_title": "PinDesk (Alt+Mayús+P)",
     "default_popup": "menu.html",
     "default_icon": {
       "16": "iconos/pixpin.png",
@@ -34,7 +34,7 @@
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Alt+Shift+P" },
-      "description": "Abrir el menú de PixPin"
+      "description": "Abrir el menú de PinDesk"
     }
   }
 }

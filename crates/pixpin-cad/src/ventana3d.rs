@@ -1108,7 +1108,7 @@ pub fn ver_con_barra(
     };
     // El tema se ha tocado: el fondo propio deja de mandar.
     let mut tema_tocado = false;
-    let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinModelo3d"), &format!("{titulo} — PixPin"))
+    let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinModelo3d"), &format!("{titulo} — PinDesk"))
         .map_err(|e| e.to_string())?;
     let mut gpu = match Gpu::nueva(hwnd, w, h) {
         Ok(g) => g,

@@ -51,11 +51,11 @@ impl Envio {
         match self {
             Envio::Aceptado => "Hecho".into(),
             Envio::VersionNoSoportada => {
-                "Esta PixPin no entiende la version del pedido: actualizala".into()
+                "Esta PinDesk no entiende la version del pedido: actualizala".into()
             }
-            Envio::NoEntendido => "Esta PixPin no entiende el pedido: actualizala".into(),
-            Envio::SinApp(m) => format!("No se pudo abrir PixPin Max: {m}"),
-            Envio::Otro(r) => format!("PixPin no contesto (respuesta {r})"),
+            Envio::NoEntendido => "Esta PinDesk no entiende el pedido: actualizala".into(),
+            Envio::SinApp(m) => format!("No se pudo abrir PinDesk: {m}"),
+            Envio::Otro(r) => format!("PinDesk no contesto (respuesta {r})"),
         }
     }
 }
@@ -185,7 +185,7 @@ fn ventana() -> Option<HWND> {
     }
 }
 
-/// Arranca `pixpinmax.exe` fuera del Job de Flow (si no, Flow se la llevaria
+/// Arranca `pindesk.exe` fuera del Job de Flow (si no, Flow se la llevaria
 /// por delante al cerrarse) y sin heredar sus tuberias.
 fn arrancar(exe: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;

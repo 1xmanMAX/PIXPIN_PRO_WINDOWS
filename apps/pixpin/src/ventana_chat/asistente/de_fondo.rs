@@ -456,7 +456,7 @@ pub(crate) fn retomar_al_arrancar(chat: Chat) {
         if cortados.is_empty() {
             return;
         }
-        tracing::info!(cuantos = cortados.len(), "asistente: turnos que quedaron a medias al cerrarse PixPin");
+        tracing::info!(cuantos = cortados.len(), "asistente: turnos que quedaron a medias al cerrarse PinDesk");
         let ahora = pixpin_shell::entorno::ahora_utc_ms();
         let mut otra_vez = Vec::new();
         for e in &cortados {
@@ -673,7 +673,7 @@ mod pruebas {
 
         let c = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let t = texto_cortado(&c, "💭 Pensando…", &Retomar::OtraVez, true);
-        assert!(t.starts_with("↻ PixPin se cerró"), "{t}");
+        assert!(t.starts_with("↻ PinDesk se cerró"), "{t}");
         let t = texto_cortado(
             &c,
             "Ya apunte dos tareas ▍",
@@ -681,7 +681,7 @@ mod pruebas {
             true,
         );
         assert!(
-            t.starts_with("Ya apunte dos tareas\n\n⚠️ PixPin se cerró"),
+            t.starts_with("Ya apunte dos tareas\n\n⚠️ PinDesk se cerró"),
             "{t}"
         );
         assert!(t.contains("«continúa»") && !t.contains("@asistente"), "{t}");

@@ -11,7 +11,7 @@
 //! Va con `#[ignore]` porque necesita GPU: se ejecuta a mano, en `--release`,
 //!
 //! ```text
-//! cargo test --release -p pixpin --bin pixpinmax medir_fotograma_del_editor -- --ignored --nocapture --test-threads=1
+//! cargo test --release -p pixpin --bin pindesk medir_fotograma_del_editor -- --ignored --nocapture --test-threads=1
 //! ```
 
 use std::time::Instant;
@@ -744,7 +744,7 @@ fn medir_apoyar_el_lapiz_y_trazar_a_3000_por_2000() {
 /// puntos, y dice cuanto crece cada una con el largo.
 ///
 /// ```text
-/// cargo test --release -p pixpin --bin pixpinmax medir_el_trazo_vivo -- --ignored --nocapture --test-threads=1
+/// cargo test --release -p pixpin --bin pindesk medir_el_trazo_vivo -- --ignored --nocapture --test-threads=1
 /// ```
 #[test]
 #[ignore = "necesita GPU real; ejecutar en --release con --ignored --nocapture"]
@@ -908,7 +908,7 @@ fn la_escena_sintetica_trae_de_todo_y_la_mitad_son_trazos() {
 // minuto se apunta cuanto cuesta y cuanto ocupa todo.
 //
 // ```text
-// cargo test --release -p pixpin --bin pixpinmax envejecer_el_editor -- --ignored --nocapture --test-threads=1
+// cargo test --release -p pixpin --bin pindesk envejecer_el_editor -- --ignored --nocapture --test-threads=1
 // ```
 //
 // `PIXPIN_MINUTOS` cambia cuantos (8 por defecto).
@@ -1476,7 +1476,7 @@ fn peso_de(c: &pixpin_render::CacheTinta) -> u64 {
 // vista. Necesitan GPU; son puertas, se ejecutan en `--release`:
 //
 // ```text
-// cargo test --release -p pixpin --bin pixpinmax cuesta_lo_mismo -- --ignored --nocapture --test-threads=1
+// cargo test --release -p pixpin --bin pindesk cuesta_lo_mismo -- --ignored --nocapture --test-threads=1
 // ```
 //
 // Cada una mide el mismo gesto sobre una escena de 50 y otra de 2.000
@@ -1667,7 +1667,7 @@ fn empezar_y_acabar_de_arrastrar_cuesta_lo_mismo_con_dos_mil_elementos_a_la_vist
 /// proceso y la memoria de video: la que crezca es la que retiene.
 ///
 /// ```text
-/// cargo test --release -p pixpin --bin pixpinmax de_donde_sale_la_memoria -- --ignored --nocapture --test-threads=1
+/// cargo test --release -p pixpin --bin pindesk de_donde_sale_la_memoria -- --ignored --nocapture --test-threads=1
 /// ```
 #[test]
 #[ignore = "necesita GPU real; ejecutar en --release con --ignored --nocapture"]
@@ -1821,7 +1821,7 @@ fn de_donde_sale_la_memoria_que_crece_al_dibujar() {
 // El anotador de pantalla en dos monitores
 //
 // ```text
-// cargo test --release -p pixpin --bin pixpinmax anotador_de_pantalla -- --ignored --nocapture --test-threads=1
+// cargo test --release -p pixpin --bin pindesk anotador_de_pantalla -- --ignored --nocapture --test-threads=1
 // ```
 // ---------------------------------------------------------------------------
 

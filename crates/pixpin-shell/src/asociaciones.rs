@@ -1,4 +1,4 @@
-//! **PixPin Max como app para abrir imagenes y videos** (el usuario, 3-oct:
+//! **PinDesk como app para abrir imagenes y videos** (el usuario, 3-oct:
 //! «que pixpin sea la app predeterminada que abra imagenes y videos, todos en
 //! formato de pin»).
 //!
@@ -8,7 +8,7 @@
 //! Se registra en `HKCU` (sin permisos de administrador) como lo hace
 //! cualquier visor: tres tipos propios (`PixPinMax.Imagen`,
 //! `PixPinMax.Video` y `PixPinMax.Audio`) que abren con
-//! `"pixpinmax.exe" "%1"`, la app en
+//! `"pindesk.exe" "%1"`, la app en
 //! «Abrir con» de cada extension y sus capacidades en
 //! `RegisteredApplications`, que es lo que ensena Configuracion →
 //! Aplicaciones predeterminadas.
@@ -17,7 +17,7 @@
 //! eleccion del usuario (`UserChoice`) va firmada y Windows la deshace si la
 //! escribe un programa; la unica forma buena es que el usuario pulse
 //! «Establecer como predeterminada» en Configuracion. [`abrir_configuracion`]
-//! lleva ahi, a la pagina de PixPin Max.
+//! lleva ahi, a la pagina de PinDesk.
 //!
 //! En modo portable no se toca, por lo mismo que el arranque con Windows
 //! (`arranque.rs`): cero rastro en el equipo.
@@ -32,7 +32,12 @@ use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify
 use windows::core::HSTRING;
 
 /// El nombre con que sale en Configuracion.
-pub const NOMBRE: &str = "PixPin Max";
+pub const NOMBRE: &str = "PinDesk";
+/// El nombre de antes de nov-2026 en `RegisteredApplications`: [`registrar`]
+/// lo borra para que Configuracion no ensene la app dos veces. Los ProgID
+/// (`PixPinMax.Imagen`…) no cambian: la eleccion de app predeterminada del
+/// usuario va atada a ellos (docs/nombre-pindesk.md).
+const NOMBRE_VIEJO: &str = "PixPin Max";
 const IMAGEN: &str = "PixPinMax.Imagen";
 const VIDEO: &str = "PixPinMax.Video";
 const AUDIO: &str = "PixPinMax.Audio";
@@ -65,9 +70,9 @@ pub fn es_audio(ruta: &Path) -> bool {
 
 /// Los tres tipos y sus extensiones, en un solo sitio para escribir y borrar.
 const TIPOS: [(&str, &str, &[&str]); 3] = [
-    (IMAGEN, "Imagen (PixPin Max)", &IMAGENES),
-    (VIDEO, "Video (PixPin Max)", &VIDEOS),
-    (AUDIO, "Audio (PixPin Max)", &AUDIOS),
+    (IMAGEN, "Imagen (PinDesk)", &IMAGENES),
+    (VIDEO, "Video (PinDesk)", &VIDEOS),
+    (AUDIO, "Audio (PinDesk)", &AUDIOS),
 ];
 
 /// Una clave abierta (o creada) para escribir; se cierra al soltarla.
@@ -158,13 +163,15 @@ pub fn entradas(exe: &Path) -> Vec<(String, String, String)> {
     v
 }
 
-/// Registra PixPin Max para abrir imagenes y videos con `exe`. Se puede
+/// Registra PinDesk para abrir imagenes y videos con `exe`. Se puede
 /// llamar cada vez que arranca: escribe lo mismo, y si el .exe se movio deja
 /// la ruta nueva.
 pub fn registrar(exe: &Path) -> windows::core::Result<()> {
     for (clave, valor, texto) in entradas(exe) {
         Clave::crear(&clave)?.texto(&valor, &texto)?;
     }
+    // La entrada con el nombre viejo apunta a las mismas capacidades.
+    borrar_valor(r"Software\RegisteredApplications", NOMBRE_VIEJO);
     // Que el Explorador se entere sin cerrar sesion.
     // SAFETY: sin punteros: avisa de un cambio global de asociaciones.
     unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
@@ -175,21 +182,12 @@ pub fn registrar(exe: &Path) -> windows::core::Result<()> {
 /// puede quedar rastro (la misma regla que `abrir_con::desinscribir`). Lo que
 /// ya no esta no es un fallo.
 pub fn quitar() {
-    use windows::Win32::System::Registry::{RegDeleteKeyValueW, RegDeleteTreeW};
+    use windows::Win32::System::Registry::RegDeleteTreeW;
     let arbol = |ruta: &str| {
         // SAFETY: la ruta vive en un HSTRING propio durante la llamada.
         let _ = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, &HSTRING::from(ruta)) };
     };
-    let valor = |ruta: &str, nombre: &str| {
-        // SAFETY: las dos cadenas viven en HSTRING propios durante la llamada.
-        let _ = unsafe {
-            RegDeleteKeyValueW(
-                HKEY_CURRENT_USER,
-                &HSTRING::from(ruta),
-                &HSTRING::from(nombre),
-            )
-        };
-    };
+    let valor = borrar_valor;
     for (tipo, _, _) in TIPOS {
         arbol(&format!(r"Software\Classes\{tipo}"));
     }
@@ -200,11 +198,25 @@ pub fn quitar() {
     }
     arbol(r"Software\PixPinMax");
     valor(r"Software\RegisteredApplications", NOMBRE);
+    valor(r"Software\RegisteredApplications", NOMBRE_VIEJO);
     // SAFETY: sin punteros: avisa de un cambio global de asociaciones.
     unsafe { SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None) };
 }
 
-/// Abre Configuracion en la pagina de PixPin Max, donde el usuario la hace
+/// Borra el valor `nombre` de `HKCU\ruta`; lo que ya no esta no es un fallo.
+fn borrar_valor(ruta: &str, nombre: &str) {
+    use windows::Win32::System::Registry::RegDeleteKeyValueW;
+    // SAFETY: las dos cadenas viven en HSTRING propios durante la llamada.
+    let _ = unsafe {
+        RegDeleteKeyValueW(
+            HKEY_CURRENT_USER,
+            &HSTRING::from(ruta),
+            &HSTRING::from(nombre),
+        )
+    };
+}
+
+/// Abre Configuracion en la pagina de PinDesk, donde el usuario la hace
 /// predeterminada con un boton.
 pub fn abrir_configuracion() {
     let uri = format!(

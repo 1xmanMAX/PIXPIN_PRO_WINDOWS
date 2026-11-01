@@ -5,7 +5,7 @@
 //! GPU de verdad.
 //!
 //! ```text
-//! cargo test -p pixpin --bin pixpinmax muestra_de_pensando -- --ignored --nocapture --test-threads=1
+//! cargo test -p pixpin --bin pindesk muestra_de_pensando -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! Deja los PNG en `%TEMP%/pixpin-muestras-pensado` (o en `PIXPIN_MUESTRAS`).

@@ -2282,7 +2282,7 @@ pub fn ver(
     let mut globo_puesto: Option<usize> = None;
     let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
     let mut anotando = false;
-    let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PixPin"))
+    let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PinDesk"))
         .map_err(|e| e.to_string())?;
     let mut gpu = match Gpu::nueva(hwnd, w, h) {
         Ok(g) => g,
@@ -3537,7 +3537,7 @@ impl Default for TextosUi {
             letras_donde: concat!(
                 r"Las SHX suelen estar en C:\Program Files\Autodesk\AutoCAD 20xx\Fonts o junto al plano que te pasaron;",
                 "\n",
-                r"las TrueType, en C:\Windows\Fonts. Las que añadas aquí mandan sobre las de AutoCAD, Windows y PixPin."
+                r"las TrueType, en C:\Windows\Fonts. Las que añadas aquí mandan sobre las de AutoCAD, Windows y PinDesk."
             )
             .into(),
             letras_anadir: "Añadir letras (SHX, TTF, OTF, TTC)…".into(),

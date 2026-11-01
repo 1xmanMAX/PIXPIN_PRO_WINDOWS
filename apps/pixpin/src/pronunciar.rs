@@ -1286,7 +1286,7 @@ mod pruebas {
         }
     }
 
-    /// `cargo test -p pixpin --bin pixpinmax muestra_de_pronunciar --
+    /// `cargo test -p pixpin --bin pindesk muestra_de_pronunciar --
     /// --ignored --nocapture`: la pantalla sin guia y con texto y toma.
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
@@ -1314,7 +1314,7 @@ mod pruebas {
 
     /// **Lo que corre en el hilo de la ventana, medido** (tope: 50 ms).
     /// Abre el microfono de verdad (sin sonar nada): `cargo test -p pixpin
-    /// --bin pixpinmax mide_lo_que_corre -- --ignored --nocapture`.
+    /// --bin pindesk mide_lo_que_corre -- --ignored --nocapture`.
     #[test]
     #[ignore = "abre el microfono y la tarjeta de sonido"]
     fn mide_lo_que_corre_en_la_ventana_de_pronunciar() {

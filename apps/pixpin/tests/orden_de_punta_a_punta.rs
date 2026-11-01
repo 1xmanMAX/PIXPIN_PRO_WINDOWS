@@ -1,4 +1,4 @@
-//! **La linea de ordenes de punta a punta**: el `pixpinmax.exe` de verdad,
+//! **La linea de ordenes de punta a punta**: el `pindesk.exe` de verdad,
 //! lanzado como lo lanzaria un script, contra una ventana de mentira de
 //! esta prueba que contesta como la de PixPin (`mensajero::leer_pedido`).
 //!
@@ -102,7 +102,7 @@ fn clase() -> &'static str {
 }
 
 fn orden(clase_destino: &str, args: &[&str], entrada: Option<&str>) -> (Output, Duration) {
-    let mut c = Command::new(env!("CARGO_BIN_EXE_pixpinmax"));
+    let mut c = Command::new(env!("CARGO_BIN_EXE_pindesk"));
     c.args(args)
         .env("PIXPIN_PEDIDOS_VENTANA", clase_destino)
         .env("PIXPIN_ORDEN_SIN_CUADROS", "1")
@@ -140,7 +140,7 @@ fn valor(t: &str) -> serde_json::Value {
 }
 
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn un_verbo_llega_como_pedido_y_sale_con_cero() {
     let (c, r, err) = a_la_prueba(&["tarea", "comprar", "yeso"]);
     assert_eq!(c, 0, "{err}");
@@ -168,7 +168,7 @@ fn un_verbo_llega_como_pedido_y_sale_con_cero() {
 }
 
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn los_enlaces_llegan_y_los_de_android_tambien() {
     for u in [
         "pixpin://tarea?texto=pan%20integral",
@@ -184,7 +184,7 @@ fn los_enlaces_llegan_y_los_de_android_tambien() {
 }
 
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn caso_negativo_codigos_de_salida_y_nada_llega() {
     let casos: [(&[&str], i32); 8] = [
         (&["--pedido", r#"{"pixpin":2,"accion":"chat"}"#], 2),
@@ -225,7 +225,7 @@ fn caso_negativo_codigos_de_salida_y_nada_llega() {
 }
 
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn caso_negativo_sin_app_sale_con_cuatro_y_no_la_abre() {
     let inicio = Instant::now();
     let (s, _) = orden(
@@ -243,7 +243,7 @@ fn caso_negativo_sin_app_sale_con_cuatro_y_no_la_abre() {
 }
 
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn ayuda_y_ocr_escriben_en_la_salida() {
     let (s, _) = orden(clase(), &["ayuda"], None);
     assert_eq!(s.status.code(), Some(0));
@@ -279,7 +279,7 @@ fn ayuda_y_ocr_escriben_en_la_salida() {
 }
 
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn las_copias_del_explorador_se_juntan_en_un_pedido() {
     let dir = std::env::temp_dir().join(format!("pixpin-orden-juntar-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -296,7 +296,7 @@ fn las_copias_del_explorador_se_juntan_en_un_pedido() {
     let hijos: Vec<_> = rutas
         .iter()
         .map(|r| {
-            Command::new(env!("CARGO_BIN_EXE_pixpinmax"))
+            Command::new(env!("CARGO_BIN_EXE_pindesk"))
                 .args(["--juntar", "chat", r])
                 .env("PIXPIN_PEDIDOS_VENTANA", &clase)
                 .env("PIXPIN_ORDEN_SIN_CUADROS", "1")
@@ -327,7 +327,7 @@ fn las_copias_del_explorador_se_juntan_en_un_pedido() {
 /// sale con «aceptado». La mediana de varias, para que una vuelta lenta del
 /// disco no cuente.
 #[test]
-#[ignore = "lanza pixpinmax.exe; ver la cabecera"]
+#[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn medir_el_tiempo_hasta_aceptado() {
     let mut tiempos = Vec::new();
     let mut solo = Vec::new();
@@ -342,7 +342,7 @@ fn medir_el_tiempo_hasta_aceptado() {
     tiempos.sort();
     solo.sort();
     println!(
-        "pixpinmax capturar -> aceptado: min {:?}, mediana {:?}, max {:?}; pixpinmax ayuda (solo arrancar y salir): mediana {:?}",
+        "pindesk capturar -> aceptado: min {:?}, mediana {:?}, max {:?}; pindesk ayuda (solo arrancar y salir): mediana {:?}",
         tiempos[0], tiempos[7], tiempos[14], solo[7]
     );
     assert!(tiempos[7] < Duration::from_millis(500), "{:?}", tiempos[7]);

@@ -1,13 +1,13 @@
 # Integración con Lectura Veloz (protocolo v1)
 
 **Lectura Veloz** es la app de lectura rápida del usuario (Tauri, escritorio). Registra el
-esquema `lecturaveloz://`. PixPin y Lectura Veloz se hablan **por enlaces**, en los dos
+esquema `lecturaveloz://`. PinDesk y Lectura Veloz se hablan **por enlaces**, en los dos
 sentidos:
 
 | Sentido | Enlace | Cuándo |
 |---|---|---|
-| PixPin → Lectura Veloz | `lecturaveloz://pixpin/abrir?v=1&…` | «⚡ Lectura veloz» en el menú del mensaje del chat y en el ⋮ de la nota |
-| Lectura Veloz → PixPin | `pixpinmax://lectura-veloz?v=1&…` | De fondo, mientras se lee en Lectura Veloz |
+| PinDesk → Lectura Veloz | `lecturaveloz://pixpin/abrir?v=1&…` | «⚡ Lectura veloz» en el menú del mensaje del chat y en el ⋮ de la nota |
+| Lectura Veloz → PinDesk | `pixpinmax://lectura-veloz?v=1&…` | De fondo, mientras se lee en Lectura Veloz |
 
 Lo puro (armar y mirar los enlaces, qué cambia en lo leído) está en
 `crates/pixpin-docs/src/lectura_veloz.rs`; lo que toca el disco y las ventanas, en
@@ -18,7 +18,7 @@ Veloz tal cual. Un parámetro nuevo opcional no sube `v`; quitar o cambiar uno s
 Todos los valores van **codificados** (`%XX` de los bytes UTF-8; todo lo que no sea letra,
 cifra o `-_.~`).
 
-## 1. De PixPin a Lectura Veloz
+## 1. De PinDesk a Lectura Veloz
 
 En el **menú del mensaje** del chat (un PDF, Word, EPUB, HTML, Markdown, texto… adjunto) y
 en el ⋮ de la **nota** está **«⚡ Lectura veloz»** (`lector-lectura-veloz`), con el % de lo
@@ -60,14 +60,14 @@ lecturaveloz://pixpin/abrir?v=1&doc=<id>&ruta=<ruta>&nombre=<nombre>&tipo=<pdf|t
 - Documento: el verde de la voz (`voz` = `parrafo:fraccion`, se manda su fracción); si no,
   `sitio`.
 
-## 2. De Lectura Veloz a PixPin (progreso de fondo)
+## 2. De Lectura Veloz a PinDesk (progreso de fondo)
 
 ```
 pixpinmax://lectura-veloz?v=1&doc=<id>&ruta=<ruta>&tipo=<pdf|texto>&pagina=<n>&frac=<0..1>&fraccion=<0..1>&t=<ms>
 ```
 
-(`pixpin://` vale igual si ese esquema es de PixPin Max; `pixpinmax://` lo es siempre.)
-También por consola: `pixpinmax lectura-veloz --ruta <doc> --tipo pdf --pagina 4 --frac 0.25`
+(`pixpin://` vale igual si ese esquema es de PinDesk; `pixpinmax://` lo es siempre.)
+También por consola: `pindesk lectura-veloz --ruta <doc> --tipo pdf --pagina 4 --frac 0.25`
 (la ruta puede ir suelta; sin `--doc`, el de la ruta).
 
 ### Qué se mira (todo, antes de tocar nada)
@@ -80,7 +80,7 @@ consola y otra vez en la app al recibir el pedido:
   dónde se escribe lo decide la `ruta` (y `anotado_del_adjunto`, que sabe si es un adjunto).
 - `ruta` obligatoria: **absoluta de una unidad de este equipo** (`C:\…`), ni de red
   (`\\servidor\…`), ni de dispositivo (`\\?\`, `\\.\`), ni relativa, ni con `..`, y con la
-  **extensión de un documento** que PixPin lee: `pdf epub docx docm dotx dotm doc pptx pptm
+  **extensión de un documento** que PinDesk lee: `pdf epub docx docm dotx dotm doc pptx pptm
   ppsx ppsm potx potm html htm xhtml md markdown txt rtf`. Al escribir, además, tiene que
   **existir y ser un fichero normal** (una carpeta o algo que no está se rechaza y no se
   crea nada).
@@ -111,10 +111,10 @@ como estaba.
 ### Sin ventanas
 
 - La copia de paso que abre Windows por el enlace (`apps/pixpin/src/orden.rs`) **no
-  arranca PixPin** ni le da permiso para pasar al frente: le manda el pedido
+  arranca PinDesk** ni le da permiso para pasar al frente: le manda el pedido
   `lectura_veloz` (`docs/protocolo-pedidos.md`) con `mensajero::enviar_pedido`. Ese pedido
   no abre ventanas ni globo (`pedidos.rs`).
-- Si PixPin **no corre** (o es una versión que no lo entiende), la copia de paso lo escribe
+- Si PinDesk **no corre** (o es una versión que no lo entiende), la copia de paso lo escribe
   ella misma y sale, sin enseñar nada.
 - Un enlace mal escrito **no saca ningún cuadro** (los demás enlaces sí): el motivo va a la
   salida de errores y el código de salida es `3` (no se entiende) o `1` (el fichero no está).
@@ -131,7 +131,7 @@ como estaba.
 - Lo peor que puede hacer un enlace malicioso: mover el 🟢 de un documento del usuario (y
   crear su `.pixpin-lectura` al lado si no lo tenía).
 - `t` no se usa para decidir nada en PixPin: **gana lo último que llega**. Si Lectura Veloz
-  quiere «gana lo más nuevo», compara su `t` con el `t` que le manda PixPin al abrir.
+  quiere «gana lo más nuevo», compara su `t` con el `t` que le manda PinDesk al abrir.
 
 ## 3. Cómo probarlo
 
@@ -145,13 +145,13 @@ start "" "pixpinmax://lectura-veloz?v=1&doc=prueba&ruta=C%3A%5CUsers%5CMax%5CDoc
 start "" "pixpinmax://lectura-veloz?v=1&doc=prueba&ruta=C%3A%5CLibros%5Ccuento.epub&tipo=texto&fraccion=0.42&t=0"
 
 :: Lo mismo por consola, viendo el código de salida
-pixpinmax lectura-veloz "C:\Libros\cuento.epub" --tipo texto --fraccion 0.42
+pindesk lectura-veloz "C:\Libros\cuento.epub" --tipo texto --fraccion 0.42
 echo %ERRORLEVEL%
 ```
 
 Comprobar:
 
-1. Con PixPin cerrada: no se abre nada; `C:\Libros\cuento.epub.pixpin-lectura` tiene
+1. Con PinDesk cerrada: no se abre nada; `C:\Libros\cuento.epub.pixpin-lectura` tiene
    `sitio 0.42` y `voz -1:0.42`. Al abrir el libro y escuchar (L), empieza por ese sitio y
    el 🟢 del riel está al 42 %.
 2. Con el lector del PDF abierto y otra ventana delante: el 🟢 salta a la página 5 y la
@@ -166,13 +166,13 @@ Pruebas automáticas: `cargo test -p pixpin-docs lectura_veloz` y `voz_alta` (Li
 Windows), `cargo test -p pixpin-motor2d con_una_sola`, y en Windows
 `cargo test -p pixpin-shell lectura_veloz` y `cargo test -p pixpin lectura_veloz`.
 
-## 4. «En PixPin» desde Lectura Veloz
+## 4. «En PinDesk» desde Lectura Veloz
 
-Lectura Veloz ≥ 0.5.0 ya no enseña los documentos en su propio visor: los manda a PixPin
+Lectura Veloz ≥ 0.5.0 ya no enseña los documentos en su propio visor: los manda a PinDesk
 como cualquier «Abrir con» (en el móvil, `ACTION_VIEW` con el extra
-`com.lecturaveloz.extra.PIXPIN_DOC`, y PixPin abre el mensaje del chat con su verde; Android
-4c57ef0). **En el PC no hace falta nada nuevo**: lo que PixPin le dio es la `ruta=` del
-adjunto dentro de la carpeta del chat, y al abrir esa ruta con PixPin (`Evento::AbrirFicheros`)
+`com.lecturaveloz.extra.PIXPIN_DOC`, y PinDesk abre el mensaje del chat con su verde; Android
+4c57ef0). **En el PC no hace falta nada nuevo**: lo que PinDesk le dio es la `ruta=` del
+adjunto dentro de la carpeta del chat, y al abrir esa ruta con PinDesk (`Evento::AbrirFicheros`)
 va a su lector, que encuentra el mensaje por la ruta (`anotado_del_adjunto::base_de`) y lee sus
 `anot-<uid>…`: el 🟢 que Lectura Veloz acaba de mover, los marcadores y la tinta. Una nota (que
 se le manda como `.md` de paso en `lectura-veloz\notas\`) se abre como ese `.md`, no como la
