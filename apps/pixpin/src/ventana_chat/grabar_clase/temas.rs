@@ -83,6 +83,7 @@ impl Rotulos {
             Aviso::SinModelo => self.temas_sin_modelo.clone(),
             Aviso::JevFalla => self.temas_jev_fallo.clone(),
             Aviso::Cargado => self.temas_cargado.clone(),
+            Aviso::Bateria => self.temas_bateria.clone(),
             Aviso::ReunionFalla => self.reunion.falla(),
         }
     }
@@ -352,6 +353,8 @@ impl Estado {
                 Vuelta::Reunion(sucesos) => self.de_la_reunion(sucesos, pedido, &r.reunion),
                 // La transcripcion en vivo de la pantalla completa.
                 Vuelta::Frase(ms, texto) => self.oida(ms, texto),
+                // Lo que se va oyendo (Vosk): debajo de la ultima frase.
+                Vuelta::Parcial(texto) => self.parcial = texto,
                 // Lo de la reunion no es de los temas: no cambia su cabecera.
                 Vuelta::Aviso(Aviso::ReunionFalla) => self.avisar(r.reunion.falla()),
                 Vuelta::Aviso(a) => {
@@ -377,6 +380,7 @@ impl Estado {
             self.de_la_escucha(pedido, r);
         }
         self.escucha = None;
+        self.parcial.clear();
     }
 }
 

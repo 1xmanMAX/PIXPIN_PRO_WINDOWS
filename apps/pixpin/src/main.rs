@@ -182,6 +182,9 @@ mod vista_rapida;
 mod visor_hoja;
 mod voz;
 mod voz_en_chat;
+/// Con que se escucha en vivo una reunion (`[voz] en_vivo`): lo de
+/// siempre o Vosk (1-nov-2026).
+mod voz_en_vivo;
 /// El motor de pasar a texto (`[voz] motor`): Whisper o Qwen3-ASR (25-oct).
 mod voz_motor;
 mod zona_al_chat;

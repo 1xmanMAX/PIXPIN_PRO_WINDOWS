@@ -3355,3 +3355,16 @@ chat-mes-dia-9 = septiembre
 chat-mes-dia-10 = octubre
 chat-mes-dia-11 = noviembre
 chat-mes-dia-12 = diciembre
+
+## Escuchar en vivo con Vosk (1-nov-2026, lo que el movil ya hacia)
+ajustes2-voz-en-vivo = Escuchar la reunión en vivo con
+ajustes2-voz-en-vivo-sistema = Windows o Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Para los temas y lo demás de la reunión con Jev. Vosk enseña lo que se va diciendo y cierra cada frase a las décimas de callarse (con Whisper, unos 3 s), sin red. Al elegirlo se bajan { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Se escucha con Vosk, sin red: lo que se va diciendo sale en la pantalla completa de la grabación. Si alguna vez no carga, con Windows o Whisper.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk se baja para castellano e inglés; en este idioma se escucha con Windows o Whisper.
+ajustes2-voz-en-vivo-bajando = Bajando Vosk… { $por-ciento } %. Mientras tanto se escucha con Windows o Whisper.
+ajustes2-voz-en-vivo-fallo = No se pudo bajar Vosk: { $fallo }. Vuelve a elegirlo para reintentar.
+ajustes2-voz-vosk-borrar = Borrar Vosk
+ajustes2-ayuda-voz-vosk-borrar = Libera lo bajado (unos 100 MB en disco). Se vuelve a bajar al elegirlo.
+clase-temas-bateria = Batería baja: no se escucha en vivo para no gastarla (la grabación sigue)

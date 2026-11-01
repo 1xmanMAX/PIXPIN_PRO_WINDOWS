@@ -45,7 +45,9 @@ pub fn al_cambiar(f: Despertar) {
     }
 }
 
-fn avisar() {
+/// Despierta a la ventana de ajustes (tambien la descarga de Vosk,
+/// `voz_en_vivo`).
+pub(crate) fn avisar() {
     NOVEDADES.fetch_add(1, Ordering::SeqCst);
     if let Some(f) = DESPERTAR.lock().ok().and_then(|d| d.clone()) {
         f();
@@ -82,6 +84,7 @@ pub fn aplicar(ubicacion: &Ubicacion, a: &Ajustes) {
         "motor de pasar a texto"
     );
     pixpin_voz::fijar_motor_de_notas(m);
+    crate::voz_en_vivo::aplicar(a);
 }
 
 /// Si Qwen3-ASR esta bajado entero.

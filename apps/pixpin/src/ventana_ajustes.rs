@@ -34,7 +34,7 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::Atajo;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::ajustes::{
-    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorDeVoz, MotorOcr, NivelPdf,
+    Ajustes, EsquinaPila, FormatoColor, ModoDeIdiomas, MotorDeVoz, MotorEnVivo, MotorOcr, NivelPdf,
     PreferenciaIdioma, PreferenciaNivel, Suavizado,
 };
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
@@ -327,6 +327,12 @@ enum Clave {
     VozQwen3Licencia,
     /// Borrar Qwen3-ASR bajado.
     VozQwen3Borrar,
+    /// Con que se escucha en vivo una reunion: lo de siempre o Vosk
+    /// (`[voz] en_vivo`, 1-nov-2026). Elegir Vosk sin bajar empieza la
+    /// descarga.
+    VozEnVivo,
+    /// Borrar Vosk bajado.
+    VozVoskBorrar,
     VozSegundo,
     VozModo,
     // Asistente (13-oct-2026)
@@ -410,6 +416,7 @@ impl Clave {
                 | Clave::OcrBorrar
                 | Clave::VozQwen3Licencia
                 | Clave::VozQwen3Borrar
+                | Clave::VozVoskBorrar
                 | Clave::AsistenteBorrarLocales
         )
     }
@@ -871,6 +878,30 @@ fn filas_de_motor_de_voz(a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)> {
             Clave::VozQwen3Borrar,
             tt("ajustes2-voz-qwen3-borrar"),
             tt("ajustes2-ayuda-voz-qwen3-borrar"),
+            Control::Boton(tt("ajustes2-ocr-borrar-boton")),
+        ));
+    }
+    // Escuchar en vivo (1-nov-2026): lo de siempre o Vosk, que se baja al
+    // elegirlo (`voz_en_vivo`).
+    v.push(op(
+        a,
+        Clave::VozEnVivo,
+        tt("ajustes2-voz-en-vivo"),
+        crate::voz_en_vivo::estado(t, &raiz, a.voz.en_vivo, t.idioma()),
+        opcion(
+            vec![
+                tt("ajustes2-voz-en-vivo-sistema"),
+                tt("ajustes2-voz-en-vivo-vosk"),
+            ],
+            usize::from(a.voz.en_vivo == MotorEnVivo::Vosk),
+        ),
+    ));
+    if crate::voz_en_vivo::algo_bajado(&raiz) {
+        v.push(op(
+            a,
+            Clave::VozVoskBorrar,
+            tt("ajustes2-voz-vosk-borrar"),
+            tt("ajustes2-ayuda-voz-vosk-borrar"),
             Control::Boton(tt("ajustes2-ocr-borrar-boton")),
         ));
     }
@@ -1881,6 +1912,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         Clave::VozSegundo => a.voz.segundo_idioma = d.voz.segundo_idioma,
         Clave::VozModo => a.voz.modo_de_idiomas = d.voz.modo_de_idiomas,
         Clave::VozMotor => a.voz.motor = d.voz.motor,
+        Clave::VozEnVivo => a.voz.en_vivo = d.voz.en_vivo,
         Clave::AsistentePensar => a.asistente.pensar = d.asistente.pensar,
         Clave::AsistenteMotor => a.asistente.motor = d.asistente.motor.clone(),
         Clave::AsistenteDocsNube => {
@@ -1935,6 +1967,7 @@ fn restablecer(clave: Clave, a: &mut Ajustes) {
         | Clave::OcrBorrar
         | Clave::VozQwen3Licencia
         | Clave::VozQwen3Borrar
+        | Clave::VozVoskBorrar
         | Clave::AsistenteBorrarLocales => {}
     }
 }
@@ -2191,6 +2224,28 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 }
                 (MotorDeVoz::Whisper, _) if crate::voz_motor::bajando() => {
                     crate::voz_motor::cancelar_descarga()
+                }
+                _ => {}
+            }
+        }
+        Clave::VozEnVivo => {
+            a.voz.en_vivo = if cual == 1 {
+                MotorEnVivo::Vosk
+            } else {
+                MotorEnVivo::Sistema
+            };
+            // Elegir Vosk es pedirlo: si falta, se baja ya (la fila dice antes
+            // cuanto pesa). Volver a lo de siempre corta una descarga a medias.
+            match (a.voz.en_vivo, crate::ocr_motor::raiz()) {
+                (MotorEnVivo::Vosk, Some(r)) => {
+                    let idioma = pixpin_store::resolver_idioma(
+                        &pixpin_shell::entorno::locale_del_sistema(),
+                        a.idioma,
+                    );
+                    crate::voz_en_vivo::empezar_descarga(r, idioma)
+                }
+                (MotorEnVivo::Sistema, _) if crate::voz_en_vivo::bajando() => {
+                    crate::voz_en_vivo::cancelar_descarga()
                 }
                 _ => {}
             }
@@ -2481,6 +2536,10 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
         )),
         Clave::VozQwen3Borrar => {
             crate::voz_motor::borrar(ubicacion.raiz());
+            Ok(())
+        }
+        Clave::VozVoskBorrar => {
+            crate::voz_en_vivo::borrar(ubicacion.raiz());
             Ok(())
         }
         Clave::AsistenteBorrarLocales => {
@@ -4361,6 +4420,7 @@ mod pruebas {
             Clave::ImanRadio,
             Clave::Suavizado,
             Clave::VozMotor,
+            Clave::VozEnVivo,
             Clave::VozSegundo,
             Clave::VozModo,
             Clave::AsistenteDocsNube,

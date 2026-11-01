@@ -49,6 +49,17 @@
 //!    vuelve tambien tal cual ([`Vuelta::Frase`]) para «Lo que se dice» de
 //!    la pantalla completa de la barra (`super::completa`).
 //!
+//! 7. **Con Vosk** (1-nov-2026, `[voz] en_vivo = "vosk"` y bajado; lo que el
+//!    movil ya hacia): el oido no corta frases, le da el PCM de corrido a
+//!    `pixpin_voz::vosk_vivo::Corriente` (en el mismo hilo, por debajo de
+//!    lo normal: Vosk muele a ~0,1 del tiempo real) y lo que va oyendo
+//!    vuelve como [`Vuelta::Parcial`] para la pantalla completa. Cada frase
+//!    cerrada (a las ~0,25 s de callarse, frente a los ~3 s de Whisper) sigue
+//!    el mismo camino de arriba. Si Vosk no carga, lo de siempre.
+//!
+//! **La bateria** (1-nov-2026, como el movil): desenchufado y por debajo
+//! del 20 %, no se pasa a texto (la grabacion va primero) y se dice.
+//!
 //! La grabacion nunca depende de esto: si algo falla, se dice en la barra
 //! y los temas se marcan a mano. Al terminar, la escucha se para en el acto
 //! (Whisper se cancela) y la transcripcion entera de despues es la de
@@ -68,6 +79,7 @@ use pixpin_typesafe::temas::{
 use pixpin_typesafe::urgencia_viva::TareaViva;
 use pixpin_typesafe::vivo;
 use pixpin_voz::en_vivo::{self, COLA, Cola, Frase, Frasero, Freno, Paso};
+use pixpin_voz::vosk_vivo::{Corriente, ModeloVosk, Oido, ReconocedorVosk, Vosk};
 
 use crate::jev::temas::SinJev;
 
@@ -79,6 +91,8 @@ const MEDIR_CPU: Duration = Duration::from_millis(100);
 /// Cuantas frases seguidas puede fallar el reconocedor de Windows antes de
 /// pasar a Whisper.
 const FALLOS_WINDOWS: u32 = 3;
+/// Cada cuanto se mira la bateria con Vosk (con frases, en cada una).
+const MIRAR_BATERIA: Duration = Duration::from_secs(5);
 
 /// Lo que la escucha le cuenta a la barra.
 #[derive(Debug, Clone, PartialEq)]
@@ -94,6 +108,9 @@ pub(super) enum Vuelta {
     /// la transcripcion en vivo de la pantalla completa). Solo se ensena: el
     /// texto de verdad sale al terminar, de la nota entera.
     Frase(i64, String),
+    /// **Lo que se esta oyendo**, a medias (con Vosk); vacio: nada a medias.
+    /// Solo se ensena.
+    Parcial(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +123,8 @@ pub(super) enum Aviso {
     JevFalla,
     /// El procesador va cargado: se salto una frase.
     Cargado,
+    /// La bateria va justa: no se pasa a texto hasta enchufar.
+    Bateria,
     /// Jev no contesto a lo demas de la reunion: no se propone nada.
     ReunionFalla,
 }
@@ -182,6 +201,23 @@ enum Motor {
     Whisper,
 }
 
+/// Lo de Vosk bajado para escuchar de corrido: la biblioteca, el modelo y
+/// el idioma.
+struct VoskBajado {
+    dll: std::path::PathBuf,
+    modelo: std::path::PathBuf,
+    idioma: String,
+}
+
+impl VoskBajado {
+    fn cargar(&self) -> Result<Corriente<ReconocedorVosk>, pixpin_voz::ErrorVoz> {
+        let vosk = Vosk::cargar(&self.dll)?;
+        // El reconocedor se queda con el modelo (Vosk cuenta referencias).
+        let modelo = ModeloVosk::cargar(&vosk, &self.modelo)?;
+        Ok(Corriente::nueva(modelo.reconocedor()?, &self.idioma))
+    }
+}
+
 /// **La escucha en marcha.** Soltarla la para.
 pub(super) struct Escucha {
     c: Arc<Compartido>,
@@ -218,15 +254,27 @@ impl Escucha {
             (Err(_), Err(s)) => return Err(NoSeEscucha::Jev(s)),
         };
         let raiz = u.raiz().to_path_buf();
+        let voz = crate::voz::idioma_de_voz(idioma).to_string();
         let hay_whisper =
             crate::voz::whisper_posible(u, idioma) && pixpin_voz::whisper::modelo_listo(&raiz);
+        // Vosk, si se eligio y esta bajado; lo de siempre queda de reserva.
+        let vosk = crate::voz_en_vivo::con_vosk(&raiz, idioma)
+            .then(|| {
+                Some(VoskBajado {
+                    dll: pixpin_voz::idiomas::buscar_motor(&raiz, None)?,
+                    modelo: pixpin_voz::idiomas::buscar_modelo(&raiz, &voz)?,
+                    idioma: voz.clone(),
+                })
+            })
+            .flatten();
         let motor = if crate::voz::windows_sabe(idioma) {
             Motor::Windows
-        } else if hay_whisper {
+        } else if hay_whisper || vosk.is_some() {
             Motor::Whisper
         } else {
             return Err(NoSeEscucha::Modelo);
         };
+        let con_vosk = vosk.is_some();
         let receptor = g.suscribir_pcm(CAPACIDAD).ok_or(NoSeEscucha::Pcm)?;
         let c = Arc::new(Compartido {
             cola: Mutex::new((Cola::nueva(COLA), false)),
@@ -259,14 +307,14 @@ impl Escucha {
         };
         let oido = {
             let c = Arc::clone(&c);
+            let tx = tx.clone();
             std::thread::Builder::new()
                 .name("temas-oido".into())
-                .spawn(move || oir(&receptor, &c))
+                .spawn(move || oir(&receptor, &c, &tx, vosk))
         };
         if oido.is_err() {
             return Err(NoSeEscucha::Pcm);
         }
-        let voz = crate::voz::idioma_de_voz(idioma).to_string();
         let texto = {
             let c = Arc::clone(&c);
             let tx = tx.clone();
@@ -306,6 +354,7 @@ impl Escucha {
         }
         tracing::info!(
             ?motor,
+            con_vosk,
             con_temas = c.con_temas,
             con_lo_demas = c.viva.is_some(),
             "temas: escuchando en vivo"
@@ -369,8 +418,25 @@ impl Drop for Escucha {
 }
 
 /// **El oido**: del PCM a frases, sin hacer nada pesado (el hilo de la
-/// mezcla no espera, pero la cola de este se llenaria).
-fn oir(receptor: &Receptor, c: &Compartido) {
+/// mezcla no espera, pero la cola de este se llenaria). Con Vosk, de
+/// corrido ([`oir_con_vosk`]); si no carga, frase a frase como siempre.
+fn oir(receptor: &Receptor, c: &Compartido, tx: &Sender<Vuelta>, vosk: Option<VoskBajado>) {
+    if let Some(v) = vosk {
+        let empezo = Instant::now();
+        match v.cargar() {
+            Ok(corriente) => {
+                tracing::info!(
+                    ms = empezo.elapsed().as_millis() as u64,
+                    "temas: Vosk cargado, se escucha de corrido"
+                );
+                oir_con_vosk(receptor, c, tx, corriente);
+                c.cola.lock().unwrap_or_else(|e| e.into_inner()).1 = true;
+                c.hay.notify_all();
+                return;
+            }
+            Err(e) => tracing::warn!(%e, "temas: Vosk no carga; frase a frase como siempre"),
+        }
+    }
     let medida = |whisper: bool| {
         if whisper {
             en_vivo::PARA_WHISPER
@@ -427,6 +493,136 @@ fn oir(receptor: &Receptor, c: &Compartido) {
     c.hay.notify_all();
 }
 
+/// **El oido con Vosk**: el PCM de corrido a la [`Corriente`], y lo que
+/// salga, a la barra (lo a medias) y a Jev (las frases), como las de
+/// [`pasar_a_texto`]. Con la bateria justa no se le da nada (lo que se
+/// salte es un hueco: la frase de antes se cierra ahi).
+fn oir_con_vosk(
+    receptor: &Receptor,
+    c: &Compartido,
+    tx: &Sender<Vuelta>,
+    mut corriente: Corriente<ReconocedorVosk>,
+) {
+    if !pixpin_shell::prioridad::hilo_por_debajo_de_lo_normal() {
+        tracing::debug!("temas: el oido con Vosk sigue a prioridad normal");
+    }
+    let _ = tx.send(Vuelta::Aviso(Aviso::Escuchando));
+    let mut bateria: Option<(Instant, bool)> = None;
+    let mut justo_dicho = false;
+    loop {
+        if c.parar.load(Ordering::SeqCst) {
+            break;
+        }
+        match receptor.recibir_hasta(Duration::from_millis(200)) {
+            Ok(b) => {
+                let justo = match bateria {
+                    Some((cuando, j)) if cuando.elapsed() < MIRAR_BATERIA => j,
+                    _ => {
+                        let j = pixpin_shell::prioridad::bateria_baja();
+                        bateria = Some((Instant::now(), j));
+                        j
+                    }
+                };
+                let oido = if justo {
+                    Vec::new()
+                } else {
+                    corriente.meter(b.posicion, b.muestreo, b.canales, &b.muestras)
+                };
+                receptor.devolver(b);
+                if justo != justo_dicho {
+                    justo_dicho = justo;
+                    let a = if justo {
+                        Aviso::Bateria
+                    } else {
+                        Aviso::Escuchando
+                    };
+                    let _ = tx.send(Vuelta::Aviso(a));
+                }
+                for o in oido {
+                    de_vosk(c, tx, o);
+                }
+            }
+            Err(SinBloque::Vacio) => {}
+            Err(SinBloque::Cerrado) => {
+                for o in corriente.acabar() {
+                    de_vosk(c, tx, o);
+                }
+                break;
+            }
+        }
+    }
+    if corriente.descartadas > 0 {
+        tracing::debug!(
+            descartadas = corriente.descartadas,
+            "temas: frases de Vosk que no eran creibles"
+        );
+    }
+}
+
+/// Lo que oyo Vosk: lo a medias, a la barra; una frase, adonde van todas.
+fn de_vosk(c: &Compartido, tx: &Sender<Vuelta>, o: Oido) {
+    match o {
+        Oido::Parcial(p) => {
+            let _ = tx.send(Vuelta::Parcial(p));
+        }
+        Oido::Frase(f) => {
+            tracing::debug!(
+                n = f.n,
+                palabras = f.texto.split_whitespace().count(),
+                callado_ms = f.callado_al_final_ms,
+                "temas: frase de Vosk"
+            );
+            // Se dejo de hablar lo callado del final antes de ahora.
+            let reloj_fin = c
+                .reloj()
+                .saturating_sub(f.callado_al_final_ms.max(0) as u64);
+            entregar(c, tx, f.ms, f.fin_voz_ms, reloj_fin, f.texto);
+        }
+    }
+}
+
+/// **Una frase con texto**, a la transcripcion en vivo, a lo demas de la
+/// reunion y al rollo de los temas. `reloj_fin`: cuando se dejo de hablar,
+/// en el reloj de la escucha.
+fn entregar(
+    c: &Compartido,
+    tx: &Sender<Vuelta>,
+    ms: i64,
+    fin_voz_ms: i64,
+    reloj_fin: u64,
+    texto: String,
+) {
+    let texto = texto.trim().to_string();
+    if texto.is_empty() {
+        return;
+    }
+    let _ = tx.send(Vuelta::Frase(ms, texto.clone()));
+    if let Some(v) = &c.viva {
+        v.lock().unwrap_or_else(|e| e.into_inner()).frases.push((
+            vivo::Frase {
+                ms,
+                quien: QUIEN_NO_SE.into(),
+                dice: texto.clone(),
+            },
+            fin_voz_ms,
+        ));
+        c.para_viva.notify_all();
+    }
+    if c.con_temas {
+        c.mesa
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .rollo
+            .meter(Dicho {
+                ms,
+                fin_ms: fin_voz_ms,
+                texto,
+                reloj_fin,
+            });
+        c.para_jev.notify_all();
+    }
+}
+
 /// La siguiente frase, esperando, con cuando se dejo de hablar en ella (el
 /// reloj de la escucha); `None` si hay que acabar.
 fn siguiente(c: &Compartido) -> Option<(Frase, u64)> {
@@ -479,10 +675,15 @@ fn pasar_a_texto(
     while let Some((frase, reloj_fin)) = siguiente(c) {
         let _ = cpu.medir();
         std::thread::sleep(MEDIR_CPU);
-        match freno.decidir(&frase, cpu.medir()) {
+        let bateria_baja = pixpin_shell::prioridad::bateria_baja();
+        match freno.decidir_en(&frase, cpu.medir(), bateria_baja) {
             Paso::Pasar => {}
             Paso::SaltarCpu => {
                 let _ = tx.send(Vuelta::Aviso(Aviso::Cargado));
+                continue;
+            }
+            Paso::SaltarBateria => {
+                let _ = tx.send(Vuelta::Aviso(Aviso::Bateria));
                 continue;
             }
             Paso::SaltarSilencio | Paso::SaltarRetraso => continue,
@@ -573,34 +774,7 @@ fn pasar_a_texto(
             palabras = texto.split_whitespace().count(),
             "temas: frase pasada a texto"
         );
-        if texto.trim().is_empty() {
-            continue;
-        }
-        let _ = tx.send(Vuelta::Frase(frase.ms, texto.trim().to_string()));
-        if let Some(v) = &c.viva {
-            v.lock().unwrap_or_else(|e| e.into_inner()).frases.push((
-                vivo::Frase {
-                    ms: frase.ms,
-                    quien: QUIEN_NO_SE.into(),
-                    dice: texto.clone(),
-                },
-                frase.fin_voz_ms,
-            ));
-            c.para_viva.notify_all();
-        }
-        if c.con_temas {
-            c.mesa
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .rollo
-                .meter(Dicho {
-                    ms: frase.ms,
-                    fin_ms: frase.fin_voz_ms,
-                    texto,
-                    reloj_fin,
-                });
-            c.para_jev.notify_all();
-        }
+        entregar(c, tx, frase.ms, frase.fin_voz_ms, reloj_fin, texto);
     }
 }
 
