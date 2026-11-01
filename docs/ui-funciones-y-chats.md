@@ -555,3 +555,69 @@ el cliente HTTP del asistente y el de Jev, y la comprobacion en un
 5 pt con `.help(...)` para el globo y un `Menu` al pulsar; la comprobacion en
 una `Task` de fondo. Las claves de cada aparato son suyas (no se
 sincronizan): cada uno ensena el estado de las suyas.
+
+## Recorrer el historial sin saltos
+
+El usuario (1-nov-2026): «al subir por un chat con muchas cosas no se traba,
+pero *carga*: sale una imagen, puf, crece su sitio y me empuja hacia arriba».
+
+**La causa.** Las fotos ya median bien desde el principio (el tamano sale de
+la cabecera del fichero, `pixpin_codec::imagen::medidas`, sin descomprimir),
+pero:
+
+- Un **PDF** (y una pagina del documento del proyecto) no tenia vista hasta
+  que su hilo pintaba la pagina (`pdf_en_chat::pagina_pintada` devolvia
+  `None`): la burbuja era una fila, llegaba la pagina, se volvia a colocar
+  todo con una hoja de 260x180 encima… y lo de debajo bajaba de golpe. Con la
+  vista por encima de lo que se lee, la pantalla saltaba.
+- Cualquier otra recolocacion (llega un fichero sincronizando, Lectura Veloz,
+  un chat compartido) cambiaba altos por encima de la vista con el mismo
+  efecto: `scroll` cuenta desde arriba y nadie lo corregia.
+- Las vistas previas se leian **en el hilo de la ventana**, cuatro por
+  fotograma y a resolucion completa (`imagen::cargar` + reducir): cada foto
+  nueva que asomaba eran decenas de milisegundos de ventana parada.
+
+**El arreglo**, por piezas:
+
+1. **Alto final desde el principio.** El PDF que se esta pintando lleva una
+   hoja de espera (`hueco_de_pagina`, A4 sin fondo): una vista de lienzo
+   mide siempre lo mismo en su burbuja (`tamano_de_vista`), asi que la pagina
+   llega y aparece encima sin mover nada. Una foto que aun se lee pinta su
+   caja exacta en un tono apagado (`pintar_foto`).
+2. **El ancla** (`pixpin_ui::desliz::ancla`/`reanclar`, el `overflow-anchor`
+   de CSS). Al recolocar, la primera burbuja que asoma entera por arriba se
+   queda en su pixel y el desplazamiento absorbe la diferencia
+   (`Abierto::corrimiento`, que el bucle aplica al acabar el fotograma; los
+   mensajes se reconocen por `id`, porque releer el cuaderno los cambia de
+   sitio). Pegado al final no hace falta: manda lo de abajo.
+3. **Leer en otro hilo y por adelantado** (`miniaturas::en_segundo_plano`).
+   El hilo, por debajo de lo normal, lee primero lo que se ve y luego dos
+   pantallas por cada lado (`PANTALLAS_DE_PRECARGA`), empezando por hacia
+   donde se mueve la vista (`desliz::a_precargar`); lo que queda lejos se
+   cancela antes de leerlo. Lee **a la medida de la vista previa**
+   (`pixpin_codec::vista::cargar_para_ver`: WIC reduce el JPEG en la propia
+   transformada) y despierta a la ventana con cada una.
+4. **Tope de memoria** (`pixpin_ui::cupo::Cupo`, LRU por bytes):
+   `miniaturas::CUPO_BYTES` = 96 MB por juego de miniaturas, contando los
+   pixeles y su copia en la GPU (unas sesenta vistas previas de 520 px).
+   Pasado el tope se suelta lo que hace mas que no se ve; lo del fotograma en
+   curso nunca, aunque no quepa.
+5. **La rueda animada** (`pixpin_ui::desliz::Desliz`). Una muesca mueve el
+   destino y la vista lo persigue frenando (tau 38 ms: llega en ~150 ms);
+   las muescas seguidas se suman. Un panel tactil (deltas que no son
+   multiplos de 120) va tal cual, sin animar. Solo se repinta mientras se
+   mueve (`ms_hasta`); quieta, la ventana duerme. Cada fotograma pinta solo
+   lo que se ve, buscado por busqueda binaria (`historial::visibles`), y la
+   colocacion solo se rehace al cambiar el ancho o los mensajes.
+
+**Donde esta.** `crates/pixpin-ui/src/desliz.rs` y `cupo.rs` (logica pura,
+con pruebas), `apps/pixpin/src/miniaturas.rs` (hilo, cupo),
+`apps/pixpin/src/pdf_en_chat.rs` (`en_camino`) y `ventana_chat.rs`
+(`pintar_historial`, `fotos_a_precargar`, la rueda).
+
+**En Android y en el Mac.** Lo mismo con sus piezas: el `LazyColumn` ya
+ancla por clave si cada elemento lleva `key = mensaje.id`; las imagenes con
+`Modifier.aspectRatio` sacado de la cabecera (o de `BitmapFactory` con
+`inJustDecodeBounds`) para que no crezcan al llegar, y Coil con su cache de
+memoria por bytes. En SwiftUI, el `frame` con la proporcion antes de cargar
+y `scrollPosition(id:)` para anclar.
