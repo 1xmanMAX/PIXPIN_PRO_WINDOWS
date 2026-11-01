@@ -51,7 +51,13 @@ jobs:
         with:
           key: tienda
       - name: Compilar (release, feature tienda)
-        run: cargo build --release -p pindesk --features pindesk/tienda -p pindesk-aligerar -p pindesk-lanzador -p pindesk-puente -p pindesk-mcp
+        shell: pwsh
+        # Los paquetes se llaman pindesk-* desde que la rama tiene el
+        # renombrado de main; antes, pixpin-* (docs/nombre-pindesk.md).
+        run: |
+          $p = if (Test-Path 'apps/pindesk') { 'pindesk' } else { 'pixpin' }
+          cargo build --release -p $p --features "$p/tienda" -p "$p-aligerar" -p "$p-lanzador" -p "$p-puente" -p "$p-mcp"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Herramientas del SDK de Windows
         shell: pwsh

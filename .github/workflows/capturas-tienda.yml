@@ -53,7 +53,12 @@ jobs:
           python-version: "3.12"
 
       - name: Compilar las pruebas de la app
-        run: cargo test -p pindesk --bin pindesk --no-run
+        shell: pwsh
+        # El paquete es pindesk desde el renombrado de main; antes, pixpin.
+        run: |
+          $p = if (Test-Path 'apps/pindesk') { 'pindesk' } else { 'pixpin' }
+          cargo test -p $p --bin pindesk --no-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Pintar las muestras
         shell: pwsh
@@ -68,10 +73,12 @@ jobs:
           # Las pruebas que no miran PINDESK_MUESTRAS dejan el PNG en la
           # temporal: se apunta TEMP a una carpeta propia para recogerlos.
           $env:PINDESK_MUESTRAS = $mu
+          $env:PIXPIN_MUESTRAS = $mu
+          $p = if (Test-Path 'apps/pindesk') { 'pindesk' } else { 'pixpin' }
           $env:TEMP = $tmp
           $env:TMP = $tmp
 
-          $lista = cargo test -p pindesk --bin pindesk -- --ignored --list 2>$null |
+          $lista = cargo test -p $p --bin pindesk -- --ignored --list 2>$null |
             Where-Object { $_ -match ': test$' } |
             ForEach-Object { $_ -replace ': test$', '' }
           "Pruebas #[ignore] en la app: $($lista.Count)"
@@ -86,7 +93,7 @@ jobs:
             }
             foreach ($c in $completas) {
               "::group::$c"
-              cargo test -p pindesk --bin pindesk $c -- --ignored --exact --test-threads=1 --nocapture
+              cargo test -p $p --bin pindesk $c -- --ignored --exact --test-threads=1 --nocapture
               $codigo = $LASTEXITCODE
               "::endgroup::"
               if ($codigo -eq 0) { $estado = 'bien' } else {
