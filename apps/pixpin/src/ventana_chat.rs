@@ -1012,7 +1012,10 @@ pub fn abrir(
     // tiene por que releerlas del disco.
     let mut miniaturas = crate::miniaturas::Miniaturas::nuevo();
     // Las de las burbujas, mas grandes: la vista previa mide 260 px.
-    let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
+    // Leidas en su hilo y a su medida: leerlas aqui eran los tirones al
+    // subir por un chat con muchas fotos (`miniaturas::en_segundo_plano`).
+    let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO)
+        .en_segundo_plano(ventana.handle().0 as isize);
     // Los ficheros que esperan un si o un no. Meter algo en el cuaderno no se
     // deshace, asi que se pregunta antes.
     let mut pendientes: Option<Pendientes> = None;
@@ -3500,6 +3503,21 @@ pub fn abrir(
                         let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
                         let paso = (chat::FILA * 3 / 2 * escala / 100) as i32;
                         let ahora_en = a.scroll.unwrap_or(tope);
+                        // Una rueda con muescas se anima (`desliz`): el bucle
+                        // va moviendo la vista hasta el destino, que cada
+                        // muesca seguida empuja un poco mas. Un panel tactil
+                        // ya es suave de por si: lo suyo va tal cual.
+                        if pixpin_ui::desliz::es_de_muescas(delta) {
+                            a.desliz.empujar(
+                                ahora_en,
+                                -giro_de_rueda(delta, paso),
+                                reloj.elapsed().as_millis() as u64,
+                                pixpin_ui::historial::scroll_minimo(area, a.alto.get()),
+                                tope,
+                            );
+                            continue;
+                        }
+                        a.desliz.parar();
                         let nuevo = pixpin_ui::historial::scroll_ajustado(
                             area,
                             a.alto.get(),
@@ -4620,11 +4638,30 @@ pub fn abrir(
             ventana.poner_posicion_ime(sitio);
         }
 
+        // Las vistas previas que su hilo ya leyo: alguna burbuja tiene foto.
+        if previas.recoger() {
+            hay_que_pintar = true;
+        }
+        // Un paso de la rueda animada del historial, si va en marcha.
+        if let Some(a) = abierto.as_mut().filter(|a| a.desliz.activo()) {
+            let area = area_del_historial(&disposicion, a, escala);
+            let alto = a.alto.get();
+            let tope = pixpin_ui::historial::scroll_maximo(area, alto);
+            let visto = a.scroll.unwrap_or(tope);
+            if let Some(s) = a.desliz.avanzar(visto, reloj.elapsed().as_millis() as u64) {
+                let s = pixpin_ui::historial::scroll_ajustado(area, alto, s);
+                a.scroll = if s >= tope { None } else { Some(s) };
+                hay_que_pintar = true;
+            }
+        }
         if hay_que_pintar {
             hay_que_pintar = false;
             // La barra de responder cuenta como parte de la caja de escribir:
             // se vuelve a repartir con lo que haya cambiado en esta vuelta.
             let disposicion = disponer(marco, escala, ancho_lista, abierto.as_ref());
+            // Otro fotograma para el tope de memoria de las vistas previas:
+            // lo que se pida ahora es lo que se ve.
+            previas.nuevo_fotograma();
             // Las fotos del historial que se ven, igual que las del panel.
             if let Some(a) = abierto.as_ref().filter(|a| a.info.is_none()) {
                 let rutas = fotos_del_historial(a, &disposicion, escala);
@@ -4852,6 +4889,17 @@ pub fn abrir(
                 }
                 let _ = superficie.presentar();
             }
+            // Lo que el ancla corrio al pintar pasa al desplazamiento de
+            // verdad (y a la rueda animada, o devolveria la vista atras).
+            if let Some(a) = abierto.as_mut() {
+                let corrido = a.corrimiento.replace(0);
+                if corrido != 0 {
+                    if let Some(s) = a.scroll.as_mut() {
+                        *s += corrido;
+                    }
+                    a.desliz.correr(corrido);
+                }
+            }
             // La colocacion de las burbujas se hace al pintar, asi que las
             // fotos que se ven solo se conocen DESPUES. Si falta alguna, otra
             // vuelta: sin ella no saldrian hasta mover el raton.
@@ -4859,6 +4907,8 @@ pub fn abrir(
                 hay_que_pintar = fotos_del_historial(a, &disposicion, escala)
                     .iter()
                     .any(|r| previas.pendiente(r));
+                // Y lo que se va a ver, leido ya en su hilo (`desliz`).
+                previas.precargar(&fotos_a_precargar(a, &disposicion, escala));
             }
             hay_que_pintar |= faltan_fondos;
             // Un destino que esperaba a que se midieran las burbujas: ya
@@ -5060,6 +5110,9 @@ pub fn abrir(
             hasta_el_asistente,
             giro.ms_hasta(),
             en_chats.ms_hasta(ms),
+            // La rueda animada: un paso por fotograma mientras se mueve, y
+            // nada en cuanto llega (la ventana quieta no gasta).
+            abierto.as_ref().and_then(|a| a.desliz.ms_hasta()),
         ]
         .into_iter()
         .flatten()
@@ -5466,6 +5519,16 @@ struct Abierto {
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
+    /// La rueda animada del historial (`pixpin_ui::desliz`): cada muesca
+    /// mueve su destino y el bucle va escribiendo `scroll` hasta llegar.
+    desliz: pixpin_ui::desliz::Desliz,
+    /// Lo que el pintado tuvo que correr `scroll` para que lo que se ve no
+    /// saltase al cambiar de alto algo de encima (el ancla). Lo apunta el
+    /// pintado, que no puede tocar `scroll`, y el bucle lo aplica al acabar.
+    corrimiento: std::cell::Cell<i32>,
+    /// El desplazamiento de la ultima precarga y hacia donde iba la vista:
+    /// se precarga primero por ese lado.
+    sentido: std::cell::Cell<(i32, pixpin_ui::desliz::Sentido)>,
     /// Donde se dejo este chat (se vuelve ahi al abrirlo) y lo que queda
     /// sin ver debajo, para la chapa del «↓» (`donde_se_dejo`).
     donde_se_dejo: donde_se_dejo::Recuerdo,
@@ -5613,6 +5676,10 @@ struct Colocado {
     /// paralelo a ESTO y no a los mensajes. Quien pulse una burbuja tiene que
     /// traducir por aqui, o acabara abriendo la que no es.
     visibles: Vec<usize>,
+    /// El `id` de cada mensaje colocado, en el mismo orden. Al volver a
+    /// colocar, los mensajes de antes ya pueden no estar en `Abierto` (se
+    /// releyo el cuaderno): por aqui se sabe cual era el ancla.
+    ids: Vec<String>,
     /// Con que busqueda se filtro, para no rehacerlo en cada fotograma.
     busqueda: String,
     /// Y con que chip de etiqueta. Va en la llave del cache igual que la
@@ -6527,9 +6594,28 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             let de_otro = lados_del_chat_compartido(a, &visibles, &mut entradas, e);
             let (puestos, alto) = h::colocar(area, &entradas, escala);
             a.alto.set(alto);
+            let ids: Vec<String> = visibles.iter().map(|i| a.mensajes[*i].id.clone()).collect();
+            // **El ancla** (`pixpin_ui::desliz`): si algo de encima de lo
+            // que se ve cambio de alto (una pagina de PDF que llega, un
+            // texto que se recoloca), la burbuja de arriba de la vista se
+            // queda en su pixel y el desplazamiento absorbe la diferencia.
+            // Pegado al final no hace falta: lo de abajo manda.
+            if c.busqueda == aguja
+                && c.por_etiqueta == a.por_etiqueta
+                && let Some(s) = a.scroll.map(|s| s + a.corrimiento.get())
+                && let Some((cual, desde_arriba)) =
+                    pixpin_ui::desliz::ancla(&c.puestos, s, area.alto)
+                && let Some(id) = c.ids.get(cual)
+                && let Some(k) = ids.iter().position(|i| i == id)
+                && let Some(nuevo) = pixpin_ui::desliz::reanclar(&puestos, k, desde_arriba)
+            {
+                let nuevo = h::scroll_ajustado(area, alto, nuevo);
+                a.corrimiento.set(a.corrimiento.get() + nuevo - s);
+            }
             *c = Colocado {
                 ancho: ancho_contenido,
                 visibles,
+                ids,
                 busqueda: aguja.clone(),
                 por_etiqueta: a.por_etiqueta.clone(),
                 puestos,
@@ -6556,9 +6642,9 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         return;
     }
     // Sin desplazamiento propio, pegado al final: lo ultimo es lo que importa.
-    let scroll = a
-        .scroll
-        .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
+    // Con lo que haya corrido el ancla, que el bucle aun no ha aplicado.
+    let propio = a.scroll.map(|s| s + a.corrimiento.get());
+    let scroll = propio.unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     // Donde se queda este chat y lo que hay sin ver debajo (`donde_se_dejo`).
     // Buscando, lo que se ve es otra lista: no se apunta.
     if a.busqueda.is_none() && a.por_etiqueta.is_none() {
@@ -6568,7 +6654,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             .map(|i| a.mensajes[*i].id.as_str())
             .collect();
         a.donde_se_dejo
-            .apuntar(area, &c.puestos, a.alto.get(), a.scroll, &ids, escala);
+            .apuntar(area, &c.puestos, a.alto.get(), propio, &ids, escala);
     }
     p.empujar_recorte(rf(area));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
@@ -9511,8 +9597,15 @@ fn pintar_foto(
             if foto_en != dest {
                 p.rellenar(dest, tema.papel);
             }
-            if let Some((b, _, _)) = foto {
-                p.bitmap_con(b, foto_en, None, pixpin_render::Interpolacion::Lineal);
+            match foto {
+                Some((b, _, _)) => {
+                    p.bitmap_con(b, foto_en, None, pixpin_render::Interpolacion::Lineal)
+                }
+                // Mientras su hilo la lee, su sitio exacto en un tono
+                // apagado: la burbuja ya mide lo que medira (el tamano sale
+                // de la cabecera, `leer_vista`) y la foto aparece encima sin
+                // mover nada.
+                None => p.rellenar(foto_en, con_alfa(tema.apagado, 0.14)),
             }
             if !dibujo.is_empty() {
                 pintar_lienzo(
@@ -9629,6 +9722,9 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         resaltado: None,
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
+        desliz: Default::default(),
+        corrimiento: std::cell::Cell::new(0),
+        sentido: Default::default(),
         donde_se_dejo: donde_se_dejo::Recuerdo::nuevo(ubicacion.raiz(), &ficha.id),
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
@@ -10156,6 +10252,40 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         .scroll
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
+    let cuales: Vec<usize> = (primero..primero + cuantos).collect();
+    fotos_de_los_puestos(a, &c, &cuales)
+}
+
+/// Cuantas pantallas por cada lado de la vista se van leyendo por
+/// adelantado. Dos: una rueda rapida recorre una pantalla en un cuarto de
+/// segundo, y lo que se lee en ese rato ya tiene que estar.
+const PANTALLAS_DE_PRECARGA: f32 = 2.0;
+
+/// **Las fotos que se van a ver** (las de [`PANTALLAS_DE_PRECARGA`] por
+/// encima y por debajo), primero las de hacia donde se mueve la vista. Las
+/// que se ven no van: esas son de [`fotos_del_historial`].
+fn fotos_a_precargar(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::path::PathBuf> {
+    use pixpin_ui::{desliz, historial as h};
+    let area = area_del_historial(d, a, escala);
+    let c = a.colocado.borrow();
+    let scroll = a
+        .scroll
+        .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
+    let (antes, llevaba) = a.sentido.get();
+    let sentido = desliz::Sentido::de(antes, scroll, llevaba);
+    a.sentido.set((scroll, sentido));
+    let cuales = desliz::a_precargar(
+        &c.puestos,
+        scroll,
+        area.alto,
+        PANTALLAS_DE_PRECARGA,
+        sentido,
+    );
+    fotos_de_los_puestos(a, &c, &cuales)
+}
+
+/// Las fotos de las burbujas `cuales` (por su posicion en la colocacion).
+fn fotos_de_los_puestos(a: &Abierto, c: &Colocado, cuales: &[usize]) -> Vec<std::path::PathBuf> {
     let foto_de = |i: usize| match a.vistas.get(i) {
         Some(Some(Ojeada::Foto { .. })) => {
             ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
@@ -10167,11 +10297,15 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         _ => None,
     };
     // Las fotos de las notas ricas que se ven, de lo ya medido.
-    let de_notas: Vec<std::path::PathBuf> = (primero..primero + cuantos)
+    let de_notas: Vec<std::path::PathBuf> = cuales
+        .iter()
+        .copied()
         .filter_map(|cual| c.piezas.get(cual)?.rica.as_ref())
         .flat_map(nota_rica::rutas)
         .collect();
-    (primero..primero + cuantos)
+    cuales
+        .iter()
+        .copied()
         .filter_map(|cual| c.mensaje(cual))
         .flat_map(|i| match a.vistas.get(i) {
             // Una carpeta ensena las fotos de sus primeras paginas, que
@@ -10187,7 +10321,9 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         .chain(de_notas)
         // Y las portadas de las canciones que se ven (`musica`).
         .chain(
-            (primero..primero + cuantos)
+            cuales
+                .iter()
+                .copied()
                 .filter_map(|cual| c.mensaje(cual))
                 .filter_map(|i| musica::portada(a, i)),
         )
@@ -10662,12 +10798,21 @@ fn leer_vista(
     // movil. La pinta el hilo de `pdf_en_chat`: hasta que llega, la fila sola.
     if m.clase == Some(Clase::Archivo) && crate::pdf_en_chat::es_pdf(m) {
         let pdf = ruta_del_mensaje(ubicacion.raiz(), proyecto, m).filter(|r| r.is_file())?;
-        let (ruta, w, h) = crate::pdf_en_chat::pagina_pintada(
+        let Some((ruta, w, h)) = crate::pdf_en_chat::pagina_pintada(
             ubicacion.raiz(),
             &pdf,
             0,
             crate::pdf_en_chat::ANCHO_VISTA,
-        )?;
+        ) else {
+            // Aun pintandose: su sitio ya, del tamano que tendra.
+            return crate::pdf_en_chat::en_camino(
+                ubicacion.raiz(),
+                &pdf,
+                0,
+                crate::pdf_en_chat::ANCHO_VISTA,
+            )
+            .then(hueco_de_pagina);
+        };
         return Some(Ojeada::Lienzo(LienzoVisto {
             ordenes: Vec::new(),
             grafitos: Vec::new(),
@@ -10711,7 +10856,20 @@ fn leer_vista(
             });
         let (ruta, w, h) = match propia {
             Some(p) => p,
-            None => pagina_del_pdf(ubicacion.raiz(), proyecto, m.pagina?)?,
+            None => match pagina_del_pdf(ubicacion.raiz(), proyecto, m.pagina?) {
+                Some(p) => p,
+                // Aun pintandose: su sitio ya, como el PDF suelto de arriba.
+                None => {
+                    let pdf = crate::pdf_en_chat::documento_de(ubicacion.raiz(), proyecto)?;
+                    return crate::pdf_en_chat::en_camino(
+                        ubicacion.raiz(),
+                        &pdf,
+                        m.pagina?,
+                        crate::pdf_en_chat::ANCHO_VISTA,
+                    )
+                    .then(hueco_de_pagina);
+                }
+            },
         };
         return Some(Ojeada::Lienzo(LienzoVisto {
             ordenes: Vec::new(),
@@ -15507,6 +15665,25 @@ fn pagina_del_pdf(
     }
     let pdf = crate::pdf_en_chat::documento_de(raiz, proyecto)?;
     crate::pdf_en_chat::pagina_pintada(raiz, &pdf, pagina, crate::pdf_en_chat::ANCHO_VISTA)
+}
+
+/// **El sitio de una pagina de PDF que su hilo aun esta pintando**: una
+/// hoja en blanco (A4) sin fondo. La vista de un lienzo mide siempre lo
+/// mismo en su burbuja (`tamano_de_vista`), asi que con esto la burbuja ya
+/// tiene su alto final y no crece cuando llega la pagina: antes llegaba,
+/// crecia y empujaba hacia arriba lo que se estaba leyendo. Al llegar,
+/// `recoger_lo_de_los_pdf` la cambia por la de verdad (no tiene fondo).
+fn hueco_de_pagina() -> Ojeada {
+    let ancho = crate::pdf_en_chat::ANCHO_PAPEL_PDF;
+    let caja = (0.0, 0.0, ancho, ancho * std::f32::consts::SQRT_2);
+    Ojeada::Lienzo(LienzoVisto {
+        ordenes: Vec::new(),
+        grafitos: Vec::new(),
+        caja,
+        fondo: None,
+        papel: None,
+        giro_del_fondo: 0.0,
+    })
 }
 
 // --- Las piezas de una burbuja, como en el movil -----------------------
