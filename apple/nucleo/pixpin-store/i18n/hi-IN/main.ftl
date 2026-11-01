@@ -220,6 +220,7 @@ chat-lectura-veloz-chapa = स्पीड रीडिंग · { $pct } %
 chat-escaneado = स्कैन किया गया
 chat-sin-origen = वह कैनवस इस प्रोजेक्ट में नहीं है
 chat-sin-proyectos-otros = इसे भेजने के लिए कोई दूसरा प्रोजेक्ट नहीं है
+chat-ajustes-bandeja = सेटिंग्स ट्रे में PinDesk आइकन से खुलती हैं
 chat-proyectos-lista = प्रोजेक्ट बाईं ओर की सूची में हैं
 chat-no-hay-voz = Windows पर अभी वॉइस नोट रिकॉर्ड करने की सुविधा नहीं है
 chat-no-hay-aligerar = Windows पर अभी PDF को हल्का करने की सुविधा नहीं है
@@ -2993,3 +2994,96 @@ clase-acta-propuestas = अस्वीकृत प्रस्ताव
 clase-acta-aceptar = स्वीकार करें
 clase-acta-aceptada = कार्य में जोड़ा गया
 clase-acta-anadidas = { $n } प्रश्न कार्य-इनबॉक्स में जोड़े गए
+ia-estado-funciona = काम कर रहा है
+ia-estado-sin-clave = कोई कुंजी नहीं
+ia-estado-desconocido = अभी जाँचा नहीं गया
+ia-estado-clave-mala = कुंजी मान्य नहीं है ({ $codigo })
+ia-estado-sin-saldo = खाते में क्रेडिट नहीं है
+ia-estado-limite = बहुत अधिक अनुरोध या कोटा खत्म
+ia-estado-red = कोई कनेक्शन नहीं
+ia-estado-servidor = सेवा में खराबी है ({ $codigo })
+ia-estado-otro = ठीक से जवाब नहीं दे रहा ({ $codigo })
+ia-estado-comprobando = जाँच हो रही है…
+ia-estado-hace-nada = अभी-अभी
+ia-estado-hace-min = { $n } मिनट पहले
+ia-estado-hace-horas = { $n } घंटे पहले
+ia-estado-pista = क्लिक: अभी जाँचें या कुंजियों पर जाएँ
+ia-estado-comprobar = अभी जाँचें
+ia-estado-claves = कुंजियाँ सेटिंग्स → असिस्टेंट में
+ia-estado-sin-ajustes = सेटिंग्स ट्रे में PinDesk आइकन से खुलती हैं
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = मीटिंग को लाइव सुनें, इसके साथ
+ajustes2-voz-en-vivo-sistema = Windows या Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev के साथ मीटिंग के विषयों और बाकी मीटिंग सुविधाओं के लिए। Vosk जो कहा जा रहा है उसे दिखाता है और आपके रुकने के एक पल बाद हर वाक्य पूरा करता है (Whisper के साथ लगभग 3 s), ऑफ़लाइन। इसे चुनने पर { $megas } MB डाउनलोड होता है (Apache-2.0)।
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk से ऑफ़लाइन सुना जा रहा है: जो कहा जा रहा है वह रिकॉर्डिंग की पूर्ण स्क्रीन में दिखता है। अगर कभी यह लोड न हो, तो Windows या Whisper का उपयोग होता है।
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk स्पैनिश और अंग्रेज़ी के लिए डाउनलोड होता है; इस भाषा में Windows या Whisper सुनता है।
+ajustes2-voz-en-vivo-bajando = Vosk डाउनलोड हो रहा है… { $por-ciento } %। तब तक Windows या Whisper सुनता है।
+ajustes2-voz-en-vivo-fallo = Vosk डाउनलोड नहीं हो सका: { $fallo }। फिर से कोशिश करने के लिए इसे दोबारा चुनें।
+ajustes2-voz-vosk-borrar = Vosk हटाएँ
+ajustes2-ayuda-voz-vosk-borrar = डाउनलोड की गई चीज़ें हटाकर जगह खाली करता है (डिस्क पर लगभग 100 MB)। इसे चुनने पर यह फिर डाउनलोड होता है।
+clase-temas-bateria = बैटरी कम है: बचाने के लिए लाइव नहीं सुना जा रहा (रिकॉर्डिंग जारी है)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = कोई कनेक्शन नहीं: Jev यह नहीं जाँच सका कि इसे किसी दूसरी चैट में नोट करना है या नहीं। आपने जो बोला वह अभी भी बॉक्स में है।
+chat-anotar-fallo = Jev ने जवाब नहीं दिया ({ $motivo })। आपने जो बोला वह अभी भी बॉक्स में है।
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = गोपनीयता और डेटा
+ajustes2-priv-politica = गोपनीयता नीति
+ajustes2-ayuda-priv-politica = PinDesk आपके डेटा के साथ क्या करता है (स्पैनिश और अंग्रेज़ी में): नीचे दी गई चीज़ों के अलावा सब कुछ इसी PC पर रहता है, और वह भी केवल तब जब आप उनका उपयोग करते हैं।
+ajustes2-g-privacidad-sale = क्या इस PC से बाहर जाता है और कहाँ जाता है
+ajustes2-priv-ver-ajustes = इसकी सेटिंग्स
+ajustes2-priv-nada-mas = और कुछ नहीं
+ajustes2-ayuda-priv-nada-mas = कोई विज्ञापन नहीं, कोई एनालिटिक्स नहीं, कोई क्रैश रिपोर्ट नहीं, कोई खाता नहीं और कोई PinDesk सर्वर नहीं। डिक्टेशन और ट्रांसक्रिप्शन इसी PC पर, ऑफ़लाइन चलते हैं।
+ajustes2-g-privacidad-datos = आपका डेटा
+ajustes2-priv-carpeta = आपका डेटा, आपकी डिस्क पर
+ajustes2-ayuda-priv-carpeta = कैप्चर, चैट, नोट, रिकॉर्डिंग और सेटिंग्स { $carpeta } में रहते हैं। इन्हें साथ ले जाने के लिए फ़ोल्डर कॉपी करें; हटाने के लिए PinDesk बंद करें और फ़ोल्डर हटा दें। AI कुंजियाँ आपके Windows उपयोगकर्ता से एन्क्रिप्ट की जाती हैं।
+ajustes2-priv-reportes = AI जो लिखता है उसकी रिपोर्ट
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] 1 रिपोर्ट reportes-ia.jsonl में सहेजी गई (डेटा फ़ोल्डर में)।
+   *[other] { $n } रिपोर्ट reportes-ia.jsonl में सहेजी गईं (डेटा फ़ोल्डर में)।
+}
+privacidad-asistente-que = आप असिस्टेंट से जो पूछते हैं, हाल की चैट और जो आप अटैच करते हैं
+privacidad-asistente-adonde = Anthropic (Claude) या DeepSeek
+privacidad-asistente-cuando = केवल तब, जब आप अपनी कुंजी पेस्ट करके पूछते हैं। कुंजी इस PC पर एन्क्रिप्ट करके रखी जाती है।
+privacidad-jev-que = Jev की हर सुविधा का टेक्स्ट: मीटिंग के वाक्य, क्लास की पंक्तियाँ, कार्य, आप जो बोलते या समझाते हैं
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = केवल आपकी TypeSafe कुंजी और उस सुविधा के चालू होने पर। ऑडियो कभी नहीं।
+privacidad-web-que = असिस्टेंट जो खोजता है और आपको जवाब देने के लिए जो पेज पढ़ता है
+privacidad-web-adonde = DuckDuckGo या Brave Search, और वह साइट जिसे वह पढ़ता है
+privacidad-web-cuando = जब असिस्टेंट वेब पर खोजता है। बिना कुकीज़ और बिना आपकी AI कुंजी के।
+privacidad-google-que = आपकी चुनी हुई Drive फ़ाइलें और कैलेंडर इवेंट
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = केवल तब, जब आप सेटिंग्स › असिस्टेंट में अपना Google खाता जोड़ते हैं; वहीं से इसे डिस्कनेक्ट करें।
+privacidad-voces-que = Microsoft आवाज़ से ज़ोर से पढ़ा जाने वाला टेक्स्ट
+privacidad-voces-adonde = Microsoft (Edge की आवाज़ें)
+privacidad-voces-cuando = केवल तब, जब आप रीडर में उनमें से कोई आवाज़ चुनते हैं; Windows की आवाज़ें ऑफ़लाइन काम करती हैं।
+privacidad-enlace-que = वह फ़ाइल जिसे आप लिंक से शेयर करना चुनते हैं
+privacidad-enlace-adonde = litterbox.catbox.moe या temp.sh
+privacidad-enlace-cuando = केवल तब, जब आप शेयर लिंक माँगते हैं; यह कुछ घंटों या दिनों में अपने आप हट जाती है।
+privacidad-modelos-que = आपका कुछ नहीं: केवल फ़ाइलें माँगी जाती हैं
+privacidad-modelos-adonde = huggingface.co, github.com और alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = जब आपके कहने पर कोई स्पीच या टेक्स्ट पढ़ने वाला मॉडल डाउनलोड होता है।
+privacidad-sincro-que = आपके सिंक किए गए कैप्चर, नोट और चैट
+privacidad-sincro-adonde = आपके अपने डिवाइस (फ़ोन), आपके नेटवर्क पर
+privacidad-sincro-cuando = सिंक करते समय: सीधे आपके नेटवर्क पर, एन्क्रिप्टेड, बिना किसी सर्वर से गुज़रे।
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = जवाब की रिपोर्ट करें…
+reportar-ia-motivo-ofensivo = आपत्तिजनक
+reportar-ia-motivo-peligroso = खतरनाक
+reportar-ia-motivo-falso = गलत या भ्रामक
+reportar-ia-motivo-otro = कोई और कारण
+reportar-ia-hecho = रिपोर्ट reportes-ia.jsonl में सहेजी गई; इसे भेजने के लिए आपका ईमेल खुलता है
+reportar-ia-asunto = AI के एक जवाब की रिपोर्ट
+reportar-ia-campo-motivo = कारण
+reportar-ia-campo-funcion = सुविधा
+reportar-ia-campo-fecha = तारीख़
+reportar-ia-campo-version = संस्करण
+reportar-ia-campo-contenido = AI ने क्या लिखा
+reportar-ia-comentario = (अगर आप चाहें, तो यहाँ बताएँ कि क्या गलत है।)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = कोई कनेक्शन नहीं।

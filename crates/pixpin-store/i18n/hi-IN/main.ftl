@@ -3318,3 +3318,313 @@ clase-acta-propuestas = अस्वीकृत प्रस्ताव
 clase-acta-aceptar = स्वीकार करें
 clase-acta-aceptada = कार्य में जोड़ा गया
 clase-acta-anadidas = { $n } प्रश्न कार्य-इनबॉक्स में जोड़े गए
+
+# --- Lo nuevo de noviembre ---
+# El aviso flotante del asistente
+aviso-ia-abrir = खोलें
+aviso-ia-si = हाँ
+aviso-ia-no = नहीं
+aviso-ia-permiso = 🔐 मुझे आपकी अनुमति चाहिए: { $pregunta }
+
+    अगर आप जवाब नहीं देंगे, तो मैं यह नहीं करूँगा।
+# Los turnos del asistente que siguen con el chat cerrado
+ia-fondo-titulo = 🤖 असिस्टेंट
+ia-fondo-sigue = “जारी रखो”
+ia-fondo-sigue-fuera = “@asistente जारी रखो”
+ia-fondo-otra-vez = ↻ मेरे काम पूरा करने से पहले PinDesk बंद हो गया। मैं नीचे दिए जवाब में फिर से शुरू से कर रहा हूँ।
+ia-fondo-ya-actuo = कुछ चरण पहले ही हो चुके थे, इसलिए मैं इसे अपने आप नहीं दोहराऊँगा (वे दो बार हो जाते)। { $sigue } लिखें और मैं यहीं से आगे बढ़ूँगा।
+ia-fondo-ya-se-retomo = मैंने इसे एक बार फिर शुरू किया था और यह फिर कट गया, इसलिए मैं यहीं रुकता हूँ। अगर आप चाहते हैं कि मैं फिर कोशिश करूँ, तो { $sigue } लिखें।
+ia-fondo-viejo = अपने आप फिर शुरू करने के लिए बहुत समय बीत चुका है। अगर आपको अब भी चाहिए, तो { $sigue } लिखें।
+ia-fondo-sin-pregunta = मुझे आपका अनुरोध नहीं मिल रहा (क्या वह हटा दिया गया?), इसलिए मैं इसे फिर शुरू नहीं कर सकता।
+ia-fondo-no-se-pudo = मैं इसे फिर शुरू नहीं कर सका: { $aviso }
+ia-fondo-no-empezo = मैं जवाब देना शुरू नहीं कर सका।
+ia-fondo-cortado = ⚠️ यह पूरा होने से पहले PinDesk बंद हो गया। { $porque }
+ia-fondo-sigo-en-el-chat = 💬 मैं चैट में जारी रखूँगा।
+ia-fondo-sigo-de-fondo = ⏳ चैट बंद होने के बावजूद मैं आपके अनुरोध पर काम कर रहा हूँ। पूरा होने पर बताऊँगा।
+ia-fondo-pregunta = ❓ मुझे चाहिए कि आप चैट में जवाब दें: { $pregunta }
+
+    “खोलें” दबाएँ। अगर आप जवाब नहीं देंगे, तो मैं सबसे सुरक्षित विकल्प चुनूँगा।
+# La ficha de una leccion
+leccion-ventana = सबक
+leccion-ventana-nueva = नया सबक
+leccion-titulo = 💡 सबक
+leccion-titulo-nueva = 💡 नया सबक
+leccion-tipo-leccion = 💡 सबक
+leccion-tipo-error = ⚠️ गलती
+leccion-tipo-acierto = ✅ सफलता
+leccion-gravedad-leve = मामूली
+leccion-gravedad-importante = महत्वपूर्ण
+leccion-gravedad-grave = गंभीर
+leccion-sin-proyecto = कोई प्रोजेक्ट नहीं (सामान्य चैट)
+leccion-foto-ilegible = वह फ़ोटो पढ़ी नहीं जा सकी
+leccion-adjunto-no-esta = वह फ़ाइल अभी इस कंप्यूटर पर नहीं है
+leccion-galeria = 🖼 गैलरी
+leccion-guardar = सहेजें
+leccion-pista-titulo = आपने क्या सीखा? एक बार में लिखें या बोलकर लिखवाएँ
+leccion-se-parece = यह आपके पहले से मौजूद एक सबक जैसा लगता है
+leccion-paso-otra-vez = 🔁 फिर से हुआ
+leccion-area = क्षेत्र
+leccion-etiquetas = टैग
+leccion-anadir-etiqueta = + टैग
+leccion-menos-detalle = ▴  कम विवरण
+leccion-mas-detalle = ▾  क्या हुआ, क्यों हुआ, और मैं अगली बार क्या अलग करूँगा
+leccion-que-paso = क्या हुआ
+leccion-por-que = क्यों हुआ
+leccion-causas = कारण (एक टैप)
+leccion-proxima = अगली बार… (अगर X हो, तो मैं Y करूँगा)
+leccion-referencias = इसे ढूँढने के लिए शब्द (अल्पविराम से अलग)
+leccion-relacionadas = संबंधित
+leccion-volvio-a-pasar = 🔁 मेरे साथ फिर हुआ
+leccion-volvio-a-pasar-n = 🔁 मेरे साथ फिर हुआ (अब तक { $veces } बार)
+leccion-mic-escuchando = 🎙️ सुन रहा हूँ… समाप्त करने के लिए माइक्रोफ़ोन दबाएँ
+leccion-mic-sin-dictado = इस कंप्यूटर पर डिक्टेशन उपलब्ध नहीं है: सबक टाइप करें
+leccion-mic-sin-texto = कुछ समझ नहीं आया
+leccion-mic-no-pasa = टेक्स्ट में नहीं बदला जा सका
+leccion-mic-corto = बहुत छोटा: माइक्रोफ़ोन थोड़ी देर और चालू रखें
+leccion-audio = 🎙 ऑडियो
+leccion-audio-abriendo = 🎙 खुल रहा है…
+leccion-audio-guardando = 🎙 सहेजा जा रहा है…
+leccion-audio-parar = ⏹ रोकें { $duracion }
+leccion-audio-sin-microfono = माइक्रोफ़ोन का उपयोग नहीं हो सका
+leccion-audio-corto = बहुत छोटा: सहेजा नहीं गया
+leccion-audio-no-guarda = ऑडियो सहेजा नहीं जा सका
+# El horario
+horario-evaluacion-en = { $dias ->
+        [1] कल
+       *[other] { $dias } दिन में
+    }
+horario-evaluacion-recuerda = याद रखें: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento }, { $lugar } में
+horario-dia-0 = सोम
+horario-dia-1 = मंगल
+horario-dia-2 = बुध
+horario-dia-3 = गुरु
+horario-dia-4 = शुक्र
+horario-dia-5 = शनि
+horario-dia-6 = रवि
+# La Jump List del icono de la barra de tareas
+lista-icono-capturar = कैप्चर करें
+lista-icono-capturar-largo = स्क्रीन का एक हिस्सा कैप्चर करें
+lista-icono-mensajes = सहेजे गए संदेश
+lista-icono-mensajes-largo = “सहेजे गए संदेश” खोलें
+lista-icono-proyectos = प्रोजेक्ट
+lista-icono-proyectos-largo = अपने प्रोजेक्ट देखें
+lista-icono-sincronizar = सिंक करें
+lista-icono-sincronizar-largo = अपने डिवाइस के साथ सिंक करें
+lista-icono-recientes = हाल के प्रोजेक्ट
+lista-icono-proyecto-largo = प्रोजेक्ट { $nombre } खोलें
+# Los visores de planos, modelos y croquis 3D
+cad-plano-abriendo = ड्रॉइंग खुल रही है…
+cad-plano-vacio = ड्रॉइंग में दिखाने के लिए कुछ नहीं है
+cad-plano-error = ड्रॉइंग नहीं खोली जा सकी
+cad-plano-pista-acotar = मापने के लिए बिंदुओं पर क्लिक करें · डबल क्लिक या Enter: समाप्त · Esc: बाहर निकलें
+cad-plano-todo = पूरी ड्रॉइंग दिखाएँ
+cad-tema = हल्की या गहरी पृष्ठभूमि
+cad-acotar = मापें
+cad-borrar-cotas = माप साफ़ करें
+cad-encima = हमेशा ऊपर
+cad-cerrar = बंद करें
+cad-tres = 3D में देखें
+cad-marcos = प्रिंट के लिए फ़्रेम
+cad-imprimir = प्रिंट करें…
+cad-exportar = एक्सपोर्ट करें (HTML, PDF, PNG, DXF…)…
+cad-borrar-marcos = फ़्रेम साफ़ करें
+cad-plano-pista-marcos = जो प्रिंट करना है उसे फ़्रेम करने के लिए खींचें · Ctrl+P: प्रिंट · Del: आख़िरी हटाएँ · Esc: बाहर निकलें
+cad-plano-marcador = यहाँ बुकमार्क करें
+cad-anotar = एनोटेट करें
+cad-sin-dibujo-civil = { $n ->
+        [one] { $n } Civil 3D ऑब्जेक्ट उसके ग्राफ़िक्स के बिना सहेजा गया: PROXYGRAPHICS = 1 के साथ सहेजें या LandXML में एक्सपोर्ट करें
+       *[other] { $n } Civil 3D ऑब्जेक्ट उनके ग्राफ़िक्स के बिना सहेजे गए: PROXYGRAPHICS = 1 के साथ सहेजें या LandXML में एक्सपोर्ट करें
+    }
+cad-letras = ड्रॉइंग के फ़ॉन्ट…
+cad-letras-faltan = यह ड्रॉइंग ऐसे फ़ॉन्ट माँगती है जो यहाँ नहीं हैं; इसके टेक्स्ट मिलते-जुलते फ़ॉन्ट में दिखते हैं और अपने बॉक्स में शायद न समाएँ:
+cad-letras-no-falta = ड्रॉइंग जिन फ़ॉन्ट का नाम लेती है, उनमें से कोई कम नहीं है।
+cad-letras-donde = SHX फ़ॉन्ट आमतौर पर C:\Program Files\Autodesk\AutoCAD 20xx\Fonts में या आपको भेजी गई ड्रॉइंग के पास होते हैं;
+    TrueType फ़ॉन्ट C:\Windows\Fonts में। यहाँ जोड़े गए फ़ॉन्ट AutoCAD, Windows और PinDesk के फ़ॉन्ट से ऊपर माने जाते हैं।
+cad-letras-anadir = फ़ॉन्ट जोड़ें (SHX, TTF, OTF, TTC)…
+cad-letras-quitar = मेरे जोड़े हुए हटाएँ ({ $n })
+cad-faltan-letras = ड्रॉइंग के { $n } फ़ॉन्ट नहीं हैं: उन्हें जोड़ने के लिए ऊपर Aa पर क्लिक करें
+cad-releyendo = आपके फ़ॉन्ट के साथ ड्रॉइंग पढ़ी जा रही है…
+cad-boton-mover = खिसकाएँ (खींचें)
+cad-boton-marcador = बुकमार्क
+cad-boton-anotar = एनोटेट करें
+cad-boton-letras = ड्रॉइंग के फ़ॉन्ट
+cad-corte = सेक्शन बॉक्स
+cad-capas = लेवल और श्रेणियाँ
+cad-boton-pantalla = पूर्ण स्क्रीन
+cad-boton-guardar = किसी चैट में सहेजें
+cad-modelo-abriendo = मॉडल खुल रहा है…
+cad-modelo-vacio = मॉडल में दिखाने के लिए कुछ नहीं है
+cad-modelo-error = मॉडल नहीं खोला जा सका
+cad-modelo-todo = पूरा मॉडल दिखाएँ
+cad-aislar = चुने गए तत्व को अलग करें
+cad-niveles = लेवल
+cad-categorias = श्रेणियाँ
+cad-sin-nivel = कोई लेवल नहीं
+cad-mostrar-todo = सब दिखाएँ
+cad-aristas = किनारे
+cad-planta = प्लान व्यू
+cad-altura-corte = सेक्शन
+cad-modelo-pista = खींचें: घुमाएँ · दायाँ खींचें: पैन · व्हील: ज़ूम · क्लिक: यह क्या है · फिर क्लिक: अलग करें
+cad-modelo-marcador = यहाँ बुकमार्क करें (सेक्शन और छिपी चीज़ों के साथ)
+cad-imprimir-marcos = फ़्रेम प्रिंट करें…
+cad-modelo-pista-marcos = जो प्रिंट करना है उसे फ़्रेम करने के लिए खींचें · Ctrl+P: प्रिंट · Del: आख़िरी हटाएँ · संख्याएँ: उसके व्यू पर जाएँ · Esc: बाहर निकलें
+cad-modelo-pista-anotar = आपके एनोटेशन केवल इस बुकमार्क के व्यू में दिखते हैं
+cad-modelo-anotar = इस व्यू पर एनोटेट करें
+cad-croquis-abriendo = स्केच खुल रहा है…
+cad-croquis-vacio = स्केच खाली है
+cad-croquis-error = स्केच नहीं खोला जा सका
+cad-croquis-todo = पूरा स्केच दिखाएँ
+cad-croquis-capas = लेयर
+cad-croquis-grupos = समूह
+cad-croquis-tipos = प्रकार
+cad-croquis-todo-corto = सब
+cad-croquis-pista = खींचें: घुमाएँ · दायाँ खींचें: पैन · व्हील: ज़ूम · 1–9: सहेजे गए व्यू
+# La pagina HTML de un plano exportado
+cad-web-todo = सब फ़िट करें
+cad-web-tema = हल्का / गहरा
+cad-web-capas = लेयर
+cad-web-grosores = लाइन की मोटाई
+cad-web-anotaciones = एनोटेशन
+cad-web-todas = सभी
+cad-web-ninguna = कोई नहीं
+cad-web-sin-soporte = यह ब्राउज़र ड्रॉइंग को अनपैक नहीं कर सकता: इसे हाल के Edge, Chrome, Firefox या Safari से खोलें।
+cad-web-pista = व्हील: ज़ूम · खींचें: पैन · डबल क्लिक: फ़िट करें · F, B, L
+# El membrete de un plano impreso
+lamina-proyecto = प्रोजेक्ट
+lamina-lamina = शीट
+lamina-titulo = शीर्षक
+lamina-dibujo = बनाने वाला
+lamina-escala = स्केल
+lamina-sin-escala = स्केल के अनुसार नहीं
+lamina-fecha = तारीख़
+lamina-unidades = इकाइयाँ
+lamina-opcion = शीट
+lamina-con-membrete = बॉर्डर और टाइटल ब्लॉक के साथ
+lamina-sin-marco = बिना बॉर्डर
+# Sincronizar en segundo plano
+sinc-fondo-solo = इस PC के समूह में और कोई नहीं है: सिंक में किसी समूह से जुड़ें
+sinc-fondo-no-es-del-grupo = वह डिवाइस अब समूह में नहीं है
+sinc-fondo-aparatos = { $n ->
+        [one] { $n } डिवाइस
+       *[other] { $n } डिवाइस
+    }
+sinc-fondo-sincronizando = { $quien } के साथ सिंक हो रहा है…
+sinc-fondo-ya-en-marcha = सिंक पहले से चल रहा है: इसके पूरा होने की प्रतीक्षा करें
+sinc-fondo-fallo = सिंक नहीं हो सका: { $error }
+# Leer en voz
+lector-voz-en-linea = ऑनलाइन
+# Automatizaciones
+auto-origen = ऑटोमेशन
+# El asistente de la nube sin clave
+ia-nube-falta-la-clave = { $proveedor } की कुंजी नहीं है: इसे सेटिंग्स → असिस्टेंट में पेस्ट करें ({ $pagina } पर एक पाएँ)।
+# Los campos de una figura que se alarga
+figuras-ventana-no-es-numero = “{ $texto }” कोई संख्या नहीं है
+figuras-ventana-mes-mal = “{ $texto }”: महीना 2026-11 की तरह लिखें
+# Las teclas
+tecla-intro = Enter
+tecla-supr = Del
+ia-fondo-hecho = ✅ हो गया।
+ia-hecho = हो गया।
+croquis-titulo = स्केच { $id }
+chat-ajustes-bandeja = सेटिंग्स ट्रे में PinDesk आइकन से खुलती हैं
+# El estado de la IA
+ia-estado-funciona = काम कर रहा है
+ia-estado-sin-clave = कोई कुंजी नहीं
+ia-estado-desconocido = अभी जाँचा नहीं गया
+ia-estado-clave-mala = कुंजी मान्य नहीं है ({ $codigo })
+ia-estado-sin-saldo = खाते में क्रेडिट नहीं है
+ia-estado-limite = बहुत अधिक अनुरोध या कोटा खत्म
+ia-estado-red = कोई कनेक्शन नहीं
+ia-estado-servidor = सेवा में खराबी है ({ $codigo })
+ia-estado-otro = ठीक से जवाब नहीं दे रहा ({ $codigo })
+ia-estado-comprobando = जाँच हो रही है…
+ia-estado-hace-nada = अभी-अभी
+ia-estado-hace-min = { $n } मिनट पहले
+ia-estado-hace-horas = { $n } घंटे पहले
+ia-estado-pista = क्लिक: अभी जाँचें या कुंजियों पर जाएँ
+ia-estado-comprobar = अभी जाँचें
+ia-estado-claves = कुंजियाँ सेटिंग्स → असिस्टेंट में
+ia-estado-sin-ajustes = सेटिंग्स ट्रे में PinDesk आइकन से खुलती हैं
+# El mes dentro de una fecha
+chat-mes-dia-1 = जनवरी
+chat-mes-dia-2 = फ़रवरी
+chat-mes-dia-3 = मार्च
+chat-mes-dia-4 = अप्रैल
+chat-mes-dia-5 = मई
+chat-mes-dia-6 = जून
+chat-mes-dia-7 = जुलाई
+chat-mes-dia-8 = अगस्त
+chat-mes-dia-9 = सितंबर
+chat-mes-dia-10 = अक्टूबर
+chat-mes-dia-11 = नवंबर
+chat-mes-dia-12 = दिसंबर
+# Escuchar la reunion en vivo
+ajustes2-voz-en-vivo = मीटिंग को लाइव सुनें, इसके साथ
+ajustes2-voz-en-vivo-sistema = Windows या Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev के साथ मीटिंग के विषयों और बाकी मीटिंग सुविधाओं के लिए। Vosk जो कहा जा रहा है उसे दिखाता है और आपके रुकने के एक पल बाद हर वाक्य पूरा करता है (Whisper के साथ लगभग 3 s), ऑफ़लाइन। इसे चुनने पर { $megas } MB डाउनलोड होता है (Apache-2.0)।
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk से ऑफ़लाइन सुना जा रहा है: जो कहा जा रहा है वह रिकॉर्डिंग की पूर्ण स्क्रीन में दिखता है। अगर कभी यह लोड न हो, तो Windows या Whisper का उपयोग होता है।
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk स्पैनिश और अंग्रेज़ी के लिए डाउनलोड होता है; इस भाषा में Windows या Whisper सुनता है।
+ajustes2-voz-en-vivo-bajando = Vosk डाउनलोड हो रहा है… { $por-ciento } %। तब तक Windows या Whisper सुनता है।
+ajustes2-voz-en-vivo-fallo = Vosk डाउनलोड नहीं हो सका: { $fallo }। फिर से कोशिश करने के लिए इसे दोबारा चुनें।
+ajustes2-voz-vosk-borrar = Vosk हटाएँ
+ajustes2-ayuda-voz-vosk-borrar = डाउनलोड की गई चीज़ें हटाकर जगह खाली करता है (डिस्क पर लगभग 100 MB)। इसे चुनने पर यह फिर डाउनलोड होता है।
+clase-temas-bateria = बैटरी कम है: बचाने के लिए लाइव नहीं सुना जा रहा (रिकॉर्डिंग जारी है)
+chat-anotar-fallo-red = कोई कनेक्शन नहीं: Jev यह नहीं जाँच सका कि इसे किसी दूसरी चैट में नोट करना है या नहीं। आपने जो बोला वह अभी भी बॉक्स में है।
+chat-anotar-fallo = Jev ने जवाब नहीं दिया ({ $motivo })। आपने जो बोला वह अभी भी बॉक्स में है।
+# Privacidad y datos
+ajustes2-g-privacidad = गोपनीयता और डेटा
+ajustes2-priv-politica = गोपनीयता नीति
+ajustes2-ayuda-priv-politica = PinDesk आपके डेटा के साथ क्या करता है (स्पैनिश और अंग्रेज़ी में): नीचे दी गई चीज़ों के अलावा सब कुछ इसी PC पर रहता है, और वह भी केवल तब जब आप उनका उपयोग करते हैं।
+ajustes2-g-privacidad-sale = क्या इस PC से बाहर जाता है और कहाँ जाता है
+ajustes2-priv-ver-ajustes = इसकी सेटिंग्स
+ajustes2-priv-nada-mas = और कुछ नहीं
+ajustes2-ayuda-priv-nada-mas = कोई विज्ञापन नहीं, कोई एनालिटिक्स नहीं, कोई क्रैश रिपोर्ट नहीं, कोई खाता नहीं और कोई PinDesk सर्वर नहीं। डिक्टेशन और ट्रांसक्रिप्शन इसी PC पर, ऑफ़लाइन चलते हैं।
+ajustes2-g-privacidad-datos = आपका डेटा
+ajustes2-priv-carpeta = आपका डेटा, आपकी डिस्क पर
+ajustes2-ayuda-priv-carpeta = कैप्चर, चैट, नोट, रिकॉर्डिंग और सेटिंग्स { $carpeta } में रहते हैं। इन्हें साथ ले जाने के लिए फ़ोल्डर कॉपी करें; हटाने के लिए PinDesk बंद करें और फ़ोल्डर हटा दें। AI कुंजियाँ आपके Windows उपयोगकर्ता से एन्क्रिप्ट की जाती हैं।
+ajustes2-priv-reportes = AI जो लिखता है उसकी रिपोर्ट
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] 1 रिपोर्ट reportes-ia.jsonl में सहेजी गई (डेटा फ़ोल्डर में)।
+   *[other] { $n } रिपोर्ट reportes-ia.jsonl में सहेजी गईं (डेटा फ़ोल्डर में)।
+}
+privacidad-asistente-que = आप असिस्टेंट से जो पूछते हैं, हाल की चैट और जो आप अटैच करते हैं
+privacidad-asistente-adonde = Anthropic (Claude) या DeepSeek
+privacidad-asistente-cuando = केवल तब, जब आप अपनी कुंजी पेस्ट करके पूछते हैं। कुंजी इस PC पर एन्क्रिप्ट करके रखी जाती है।
+privacidad-jev-que = Jev की हर सुविधा का टेक्स्ट: मीटिंग के वाक्य, क्लास की पंक्तियाँ, कार्य, आप जो बोलते या समझाते हैं
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = केवल आपकी TypeSafe कुंजी और उस सुविधा के चालू होने पर। ऑडियो कभी नहीं।
+privacidad-web-que = असिस्टेंट जो खोजता है और आपको जवाब देने के लिए जो पेज पढ़ता है
+privacidad-web-adonde = DuckDuckGo या Brave Search, और वह साइट जिसे वह पढ़ता है
+privacidad-web-cuando = जब असिस्टेंट वेब पर खोजता है। बिना कुकीज़ और बिना आपकी AI कुंजी के।
+privacidad-google-que = आपकी चुनी हुई Drive फ़ाइलें और कैलेंडर इवेंट
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = केवल तब, जब आप सेटिंग्स › असिस्टेंट में अपना Google खाता जोड़ते हैं; वहीं से इसे डिस्कनेक्ट करें।
+privacidad-voces-que = Microsoft आवाज़ से ज़ोर से पढ़ा जाने वाला टेक्स्ट
+privacidad-voces-adonde = Microsoft (Edge की आवाज़ें)
+privacidad-voces-cuando = केवल तब, जब आप रीडर में उनमें से कोई आवाज़ चुनते हैं; Windows की आवाज़ें ऑफ़लाइन काम करती हैं।
+privacidad-enlace-que = वह फ़ाइल जिसे आप लिंक से शेयर करना चुनते हैं
+privacidad-enlace-adonde = litterbox.catbox.moe या temp.sh
+privacidad-enlace-cuando = केवल तब, जब आप शेयर लिंक माँगते हैं; यह कुछ घंटों या दिनों में अपने आप हट जाती है।
+privacidad-modelos-que = आपका कुछ नहीं: केवल फ़ाइलें माँगी जाती हैं
+privacidad-modelos-adonde = huggingface.co, github.com और alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = जब आपके कहने पर कोई स्पीच या टेक्स्ट पढ़ने वाला मॉडल डाउनलोड होता है।
+privacidad-sincro-que = आपके सिंक किए गए कैप्चर, नोट और चैट
+privacidad-sincro-adonde = आपके अपने डिवाइस (फ़ोन), आपके नेटवर्क पर
+privacidad-sincro-cuando = सिंक करते समय: सीधे आपके नेटवर्क पर, एन्क्रिप्टेड, बिना किसी सर्वर से गुज़रे।
+# Reportar lo que escribe la IA
+reportar-ia = जवाब की रिपोर्ट करें…
+reportar-ia-motivo-ofensivo = आपत्तिजनक
+reportar-ia-motivo-peligroso = खतरनाक
+reportar-ia-motivo-falso = गलत या भ्रामक
+reportar-ia-motivo-otro = कोई और कारण
+reportar-ia-hecho = रिपोर्ट reportes-ia.jsonl में सहेजी गई; इसे भेजने के लिए आपका ईमेल खुलता है
+reportar-ia-asunto = AI के एक जवाब की रिपोर्ट
+reportar-ia-campo-motivo = कारण
+reportar-ia-campo-funcion = सुविधा
+reportar-ia-campo-fecha = तारीख़
+reportar-ia-campo-version = संस्करण
+reportar-ia-campo-contenido = AI ने क्या लिखा
+reportar-ia-comentario = (अगर आप चाहें, तो यहाँ बताएँ कि क्या गलत है।)
+repaso-jev-fallo-red = कोई कनेक्शन नहीं।

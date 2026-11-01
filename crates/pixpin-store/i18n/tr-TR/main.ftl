@@ -3317,3 +3317,313 @@ clase-acta-propuestas = Kabul edilmeyen öneriler
 clase-acta-aceptar = Kabul et
 clase-acta-aceptada = Görevler'e eklendi
 clase-acta-anadidas = Görevler gelen kutusuna { $n } soru eklendi
+
+# --- Lo nuevo de noviembre ---
+# El aviso flotante del asistente
+aviso-ia-abrir = Aç
+aviso-ia-si = Evet
+aviso-ia-no = Hayır
+aviso-ia-permiso = 🔐 İzninize ihtiyacım var: { $pregunta }
+
+    Yanıt vermezseniz yapmayacağım.
+# Los turnos del asistente que siguen con el chat cerrado
+ia-fondo-titulo = 🤖 Asistan
+ia-fondo-sigue = “devam et”
+ia-fondo-sigue-fuera = “@asistente devam et”
+ia-fondo-otra-vez = ↻ Ben bitirmeden PinDesk kapandı. Aşağıdaki yanıtta baştan başlıyorum.
+ia-fondo-ya-actuo = Bazı adımlar zaten yapılmıştı, bu yüzden kendiliğimden tekrarlamayacağım (iki kez yapılırdı). { $sigue } yazın, buradan devam edeyim.
+ia-fondo-ya-se-retomo = Bir kez yeniden başlatmıştım ve yine kesildi, bu yüzden burada duruyorum. Yeniden denememi isterseniz { $sigue } yazın.
+ia-fondo-viejo = Kendiliğimden sürdürmek için çok zaman geçti. Hâlâ istiyorsanız { $sigue } yazın.
+ia-fondo-sin-pregunta = İsteğinizi bulamıyorum (silindi mi?), bu yüzden sürdüremiyorum.
+ia-fondo-no-se-pudo = Sürdüremedim: { $aviso }
+ia-fondo-no-empezo = Yanıtlamaya başlayamadım.
+ia-fondo-cortado = ⚠️ Bu bitmeden PinDesk kapandı. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 Sohbette devam edeceğim.
+ia-fondo-sigo-de-fondo = ⏳ Sohbet kapansa da isteğiniz üzerinde çalışmaya devam ediyorum. Bitince haber vereceğim.
+ia-fondo-pregunta = ❓ Sohbette yanıt vermeniz gerekiyor: { $pregunta }
+
+    “Aç”a basın. Yanıt vermezseniz en güvenli seçenekle devam edeceğim.
+# La ficha de una leccion
+leccion-ventana = Ders
+leccion-ventana-nueva = Yeni ders
+leccion-titulo = 💡 Ders
+leccion-titulo-nueva = 💡 Yeni ders
+leccion-tipo-leccion = 💡 Ders
+leccion-tipo-error = ⚠️ Hata
+leccion-tipo-acierto = ✅ Başarı
+leccion-gravedad-leve = Hafif
+leccion-gravedad-importante = Önemli
+leccion-gravedad-grave = Ciddi
+leccion-sin-proyecto = Proje yok (genel sohbet)
+leccion-foto-ilegible = O fotoğraf okunamadı
+leccion-adjunto-no-esta = O dosya henüz bu bilgisayarda değil
+leccion-galeria = 🖼 Galeri
+leccion-guardar = Kaydet
+leccion-pista-titulo = Ne öğrendiniz? Tek seferde yazın veya dikte edin
+leccion-se-parece = Zaten sahip olduğunuz bir derse benziyor
+leccion-paso-otra-vez = 🔁 Yine oldu
+leccion-area = Alan
+leccion-etiquetas = Etiketler
+leccion-anadir-etiqueta = + etiket
+leccion-menos-detalle = ▴  Daha az ayrıntı
+leccion-mas-detalle = ▾  Ne oldu, neden oldu ve neyi farklı yapacağım
+leccion-que-paso = Ne oldu
+leccion-por-que = Neden oldu
+leccion-causas = Nedenler (tek dokunuş)
+leccion-proxima = Bir dahaki sefere… (X olursa Y yapacağım)
+leccion-referencias = Bulmak için kelimeler (virgülle ayrılmış)
+leccion-relacionadas = İlgili
+leccion-volvio-a-pasar = 🔁 Yine başıma geldi
+leccion-volvio-a-pasar-n = 🔁 Yine başıma geldi (şimdiye kadar { $veces } kez)
+leccion-mic-escuchando = 🎙️ Dinliyorum… bitirmek için mikrofona basın
+leccion-mic-sin-dictado = Bu bilgisayarda dikte yok: dersi yazın
+leccion-mic-sin-texto = Hiçbir şey anlaşılamadı
+leccion-mic-no-pasa = Metne dönüştürülemedi
+leccion-mic-corto = Çok kısa: mikrofonu biraz daha uzun açık tutun
+leccion-audio = 🎙 Ses
+leccion-audio-abriendo = 🎙 Açılıyor…
+leccion-audio-guardando = 🎙 Kaydediliyor…
+leccion-audio-parar = ⏹ Durdur { $duracion }
+leccion-audio-sin-microfono = Mikrofon kullanılamadı
+leccion-audio-corto = Çok kısa: kaydedilmedi
+leccion-audio-no-guarda = Ses kaydedilemedi
+# El horario
+horario-evaluacion-en = { $dias ->
+        [1] yarın
+       *[other] { $dias } gün sonra
+    }
+horario-evaluacion-recuerda = Unutma: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento } · yer: { $lugar }
+horario-dia-0 = Pzt
+horario-dia-1 = Sal
+horario-dia-2 = Çar
+horario-dia-3 = Per
+horario-dia-4 = Cum
+horario-dia-5 = Cmt
+horario-dia-6 = Paz
+# La Jump List del icono de la barra de tareas
+lista-icono-capturar = Yakala
+lista-icono-capturar-largo = Ekranın bir alanını yakala
+lista-icono-mensajes = Kayıtlı mesajlar
+lista-icono-mensajes-largo = Kayıtlı mesajları aç
+lista-icono-proyectos = Projeler
+lista-icono-proyectos-largo = Projelerinizi görün
+lista-icono-sincronizar = Eşitle
+lista-icono-sincronizar-largo = Cihazlarınızla eşitle
+lista-icono-recientes = Son projeler
+lista-icono-proyecto-largo = Projeyi aç: { $nombre }
+# Los visores de planos, modelos y croquis 3D
+cad-plano-abriendo = Çizim açılıyor…
+cad-plano-vacio = Çizimde gösterilecek bir şey yok
+cad-plano-error = Çizim açılamadı
+cad-plano-pista-acotar = Ölçmek için noktalara tıklayın · Çift tıklama veya Enter: bitir · Esc: çık
+cad-plano-todo = Çizimin tamamını göster
+cad-tema = Açık veya koyu arka plan
+cad-acotar = Ölç
+cad-borrar-cotas = Ölçüleri temizle
+cad-encima = Her zaman üstte
+cad-cerrar = Kapat
+cad-tres = 3B görüntüle
+cad-marcos = Yazdırma çerçeveleri
+cad-imprimir = Yazdır…
+cad-exportar = Dışa aktar (HTML, PDF, PNG, DXF…)…
+cad-borrar-marcos = Çerçeveleri temizle
+cad-plano-pista-marcos = Yazdırılacak alanı çerçevelemek için sürükleyin · Ctrl+P: yazdır · Del: sonuncuyu kaldır · Esc: çık
+cad-plano-marcador = Buraya yer imi koy
+cad-anotar = Not ekle
+cad-sin-dibujo-civil = { $n ->
+        [one] { $n } Civil 3D nesnesi grafiği olmadan kaydedilmiş: PROXYGRAPHICS = 1 ile kaydedin veya LandXML'e aktarın
+       *[other] { $n } Civil 3D nesnesi grafikleri olmadan kaydedilmiş: PROXYGRAPHICS = 1 ile kaydedin veya LandXML'e aktarın
+    }
+cad-letras = Çizim yazı tipleri…
+cad-letras-faltan = Bu çizim burada olmayan yazı tipleri istiyor; metinleri benzer yazı tipleriyle gösterilir ve kutularına sığmayabilir:
+cad-letras-no-falta = Çizimin adıyla belirttiği yazı tiplerinden hiçbiri eksik değil.
+cad-letras-donde = SHX yazı tipleri genellikle C:\Program Files\Autodesk\AutoCAD 20xx\Fonts içinde veya size gönderilen çizimin yanında olur;
+    TrueType olanlar C:\Windows\Fonts içinde. Buraya eklediğiniz yazı tipleri AutoCAD, Windows ve PinDesk yazı tiplerine göre önceliklidir.
+cad-letras-anadir = Yazı tipi ekle (SHX, TTF, OTF, TTC)…
+cad-letras-quitar = Benimkileri kaldır ({ $n })
+cad-faltan-letras = Çizimin { $n } yazı tipi eksik: eklemek için yukarıdaki Aa'ya tıklayın
+cad-releyendo = Çizim sizin yazı tiplerinizle okunuyor…
+cad-boton-mover = Taşı (sürükle)
+cad-boton-marcador = Yer imi
+cad-boton-anotar = Not ekle
+cad-boton-letras = Çizim yazı tipleri
+cad-corte = Kesit kutusu
+cad-capas = Kotlar ve kategoriler
+cad-boton-pantalla = Tam ekran
+cad-boton-guardar = Bir sohbete kaydet
+cad-modelo-abriendo = Model açılıyor…
+cad-modelo-vacio = Modelde gösterilecek bir şey yok
+cad-modelo-error = Model açılamadı
+cad-modelo-todo = Modelin tamamını göster
+cad-aislar = Seçili öğeyi yalıt
+cad-niveles = KOTLAR
+cad-categorias = KATEGORİLER
+cad-sin-nivel = Kot yok
+cad-mostrar-todo = Tümünü göster
+cad-aristas = Kenarlar
+cad-planta = Plan görünümü
+cad-altura-corte = Kesit
+cad-modelo-pista = Sürükle: döndür · Sağ sürükle: kaydır · Tekerlek: yakınlaştır · Tıkla: nedir · Tekrar tıkla: yalıt
+cad-modelo-marcador = Buraya yer imi koy (kesit ve gizlenenlerle birlikte)
+cad-imprimir-marcos = Çerçeveleri yazdır…
+cad-modelo-pista-marcos = Yazdırılacak alanı çerçevelemek için sürükleyin · Ctrl+P: yazdır · Del: sonuncuyu kaldır · Sayılar: görünümüne git · Esc: çık
+cad-modelo-pista-anotar = Eklediğiniz notlar yalnızca bu yer iminin görünümünde görünür
+cad-modelo-anotar = Bu görünüme not ekle
+cad-croquis-abriendo = Kroki açılıyor…
+cad-croquis-vacio = Kroki boş
+cad-croquis-error = Kroki açılamadı
+cad-croquis-todo = Krokinin tamamını göster
+cad-croquis-capas = Katmanlar
+cad-croquis-grupos = GRUPLAR
+cad-croquis-tipos = TÜRLER
+cad-croquis-todo-corto = Tümü
+cad-croquis-pista = Sürükle: döndür · Sağ sürükle: kaydır · Tekerlek: yakınlaştır · 1–9: kayıtlı görünümler
+# La pagina HTML de un plano exportado
+cad-web-todo = Tümünü sığdır
+cad-web-tema = Açık / koyu
+cad-web-capas = Katmanlar
+cad-web-grosores = Çizgi kalınlıkları
+cad-web-anotaciones = Notlar
+cad-web-todas = Tümü
+cad-web-ninguna = Hiçbiri
+cad-web-sin-soporte = Bu tarayıcı çizimi açamıyor: güncel bir Edge, Chrome, Firefox veya Safari ile aç.
+cad-web-pista = Tekerlek: yakınlaştır · Sürükle: kaydır · Çift tıklama: sığdır · F, B, L
+# El membrete de un plano impreso
+lamina-proyecto = PROJE
+lamina-lamina = PAFTA
+lamina-titulo = BAŞLIK
+lamina-dibujo = ÇİZEN
+lamina-escala = ÖLÇEK
+lamina-sin-escala = Ölçeksiz
+lamina-fecha = TARİH
+lamina-unidades = BİRİMLER
+lamina-opcion = Pafta
+lamina-con-membrete = Çerçeve ve antetle
+lamina-sin-marco = Çerçevesiz
+# Sincronizar en segundo plano
+sinc-fondo-solo = Bu bilgisayarın grubunda başka kimse yok: Eşitleme'den bir gruba katılın
+sinc-fondo-no-es-del-grupo = O cihaz artık grupta değil
+sinc-fondo-aparatos = { $n ->
+        [one] { $n } cihaz
+       *[other] { $n } cihaz
+    }
+sinc-fondo-sincronizando = Eşitleniyor: { $quien }…
+sinc-fondo-ya-en-marcha = Zaten bir eşitleme sürüyor: bitmesini bekleyin
+sinc-fondo-fallo = Eşitlenemedi: { $error }
+# Leer en voz
+lector-voz-en-linea = çevrimiçi
+# Automatizaciones
+auto-origen = Otomasyon
+# El asistente de la nube sin clave
+ia-nube-falta-la-clave = { $proveedor } anahtarı eksik: Ayarlar → Asistan'a yapıştırın ({ $pagina } adresinden alabilirsiniz).
+# Los campos de una figura que se alarga
+figuras-ventana-no-es-numero = “{ $texto }” bir sayı değil
+figuras-ventana-mes-mal = “{ $texto }”: ayı 2026-11 biçiminde yazın
+# Las teclas
+tecla-intro = Enter
+tecla-supr = Del
+ia-fondo-hecho = ✅ Tamam.
+ia-hecho = Tamam.
+croquis-titulo = Kroki { $id }
+chat-ajustes-bandeja = Ayarlar, sistem tepsisindeki PinDesk simgesinden açılır
+# El estado de la IA
+ia-estado-funciona = çalışıyor
+ia-estado-sin-clave = anahtar yok
+ia-estado-desconocido = henüz denetlenmedi
+ia-estado-clave-mala = anahtar geçerli değil ({ $codigo })
+ia-estado-sin-saldo = hesapta bakiye yok
+ia-estado-limite = çok fazla istek veya kota doldu
+ia-estado-red = bağlantı yok
+ia-estado-servidor = hizmet hata veriyor ({ $codigo })
+ia-estado-otro = düzgün yanıt vermiyor ({ $codigo })
+ia-estado-comprobando = denetleniyor…
+ia-estado-hace-nada = az önce
+ia-estado-hace-min = { $n } dk önce
+ia-estado-hace-horas = { $n } sa önce
+ia-estado-pista = Tıkla: şimdi denetle veya anahtarlara git
+ia-estado-comprobar = Şimdi denetle
+ia-estado-claves = Anahtarlar: Ayarlar → Asistan
+ia-estado-sin-ajustes = Ayarlar, sistem tepsisindeki PinDesk simgesinden açılır
+# El mes dentro de una fecha
+chat-mes-dia-1 = Ocak
+chat-mes-dia-2 = Şubat
+chat-mes-dia-3 = Mart
+chat-mes-dia-4 = Nisan
+chat-mes-dia-5 = Mayıs
+chat-mes-dia-6 = Haziran
+chat-mes-dia-7 = Temmuz
+chat-mes-dia-8 = Ağustos
+chat-mes-dia-9 = Eylül
+chat-mes-dia-10 = Ekim
+chat-mes-dia-11 = Kasım
+chat-mes-dia-12 = Aralık
+# Escuchar la reunion en vivo
+ajustes2-voz-en-vivo = Toplantıyı canlı dinleyen
+ajustes2-voz-en-vivo-sistema = Windows veya Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev ile toplantı konuları ve toplantının geri kalanı için. Vosk söyleneni anında gösterir ve siz sustuktan saniyenin onda birkaçı sonra her cümleyi kapatır (Whisper ile yaklaşık 3 sn), çevrimdışı. Seçince { $megas } MB indirilir (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk ile çevrimdışı dinleniyor: söylenenler kaydın tam ekranında görünür. Bir gün yüklenmezse Windows veya Whisper kullanılır.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk yalnızca İspanyolca ve İngilizce için indirilir; bu dilde Windows veya Whisper dinler.
+ajustes2-voz-en-vivo-bajando = Vosk indiriliyor… %{ $por-ciento }. Bu sırada Windows veya Whisper dinler.
+ajustes2-voz-en-vivo-fallo = Vosk indirilemedi: { $fallo }. Yeniden denemek için tekrar seçin.
+ajustes2-voz-vosk-borrar = Vosk'u sil
+ajustes2-ayuda-voz-vosk-borrar = İndirileni siler (diskte yaklaşık 100 MB). Seçince yeniden indirilir.
+clase-temas-bateria = Pil zayıf: tasarruf için canlı dinlenmiyor (kayıt sürüyor)
+chat-anotar-fallo-red = Bağlantı yok: Jev bunun başka bir sohbete not edilmesi gerekip gerekmediğine bakamadı. Dikte ettiğiniz hâlâ kutuda.
+chat-anotar-fallo = Jev yanıt vermedi ({ $motivo }). Dikte ettiğiniz hâlâ kutuda.
+# Privacidad y datos
+ajustes2-g-privacidad = Gizlilik ve veriler
+ajustes2-priv-politica = Gizlilik politikası
+ajustes2-ayuda-priv-politica = PinDesk verilerinizle ne yapar (İspanyolca ve İngilizce): aşağıda listelenenler dışında her şey bu bilgisayarda kalır, onlar da yalnızca siz kullandığınızda.
+ajustes2-g-privacidad-sale = Bu bilgisayardan ne çıkar ve nereye gider
+ajustes2-priv-ver-ajustes = Ayarları
+ajustes2-priv-nada-mas = Başka bir şey yok
+ajustes2-ayuda-priv-nada-mas = Reklam yok, analiz yok, çökme raporu yok, hesap yok ve PinDesk sunucusu yok. Dikte ve metne dökme bu bilgisayarda, çevrimdışı çalışır.
+ajustes2-g-privacidad-datos = Verileriniz
+ajustes2-priv-carpeta = Verileriniz, kendi diskinizde
+ajustes2-ayuda-priv-carpeta = Yakalamalar, sohbetler, notlar, kayıtlar ve ayarlar { $carpeta } içinde durur. Yanında götürmek için klasörü kopyalayın; silmek için PinDesk'i kapatın ve klasörü silin. Yapay zekâ anahtarları Windows kullanıcınızla şifrelenir.
+ajustes2-priv-reportes = Yapay zekânın yazdıklarına ilişkin bildirimler
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] 1 bildirim reportes-ia.jsonl dosyasına kaydedildi (veri klasöründe).
+   *[other] { $n } bildirim reportes-ia.jsonl dosyasına kaydedildi (veri klasöründe).
+}
+privacidad-asistente-que = Asistana sorduğunuz, sohbetin son kısmı ve eklediğiniz dosyalar
+privacidad-asistente-adonde = Anthropic (Claude) veya DeepSeek
+privacidad-asistente-cuando = Yalnızca kendi anahtarınızı yapıştırıp soru sorarsanız. Anahtar bu bilgisayarda şifreli saklanır.
+privacidad-jev-que = Her Jev özelliğinin metni: toplantı cümleleri, ders satırları, görevler, dikte ettiğiniz veya anlattığınız şeyler
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Yalnızca TypeSafe anahtarınızla ve o özellik açıkken. Ses asla gönderilmez.
+privacidad-web-que = Asistanın aradığı şeyler ve size yanıt vermek için okuduğu sayfalar
+privacidad-web-adonde = DuckDuckGo veya Brave Search ve okuduğu site
+privacidad-web-cuando = Asistan web'de arama yaptığında. Çerez yok, yapay zekâ anahtarınız da yok.
+privacidad-google-que = Seçtiğiniz Drive dosyaları ve takvim etkinlikleri
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Yalnızca Google hesabınızı Ayarlar › Asistan'dan bağlarsanız; bağlantıyı da oradan kesebilirsiniz.
+privacidad-voces-que = Bir Microsoft sesiyle sesli okunan metin
+privacidad-voces-adonde = Microsoft (Edge sesleri)
+privacidad-voces-cuando = Yalnızca okuyucuda bu seslerden birini seçerseniz; Windows sesleri çevrimdışı çalışır.
+privacidad-enlace-que = Bağlantıyla paylaşmayı seçtiğiniz dosya
+privacidad-enlace-adonde = litterbox.catbox.moe veya temp.sh
+privacidad-enlace-cuando = Yalnızca paylaşım bağlantısı istediğinizde; saatler veya günler içinde kendiliğinden silinir.
+privacidad-modelos-que = Size ait hiçbir şey: yalnızca dosyalar istenir
+privacidad-modelos-adonde = huggingface.co, github.com ve alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = İstediğinizde bir konuşma veya metin okuma modeli indirilirken.
+privacidad-sincro-que = Eşitlenen yakalamalarınız, notlarınız ve sohbetleriniz
+privacidad-sincro-adonde = Kendi cihazlarınız (telefon), kendi ağınız üzerinden
+privacidad-sincro-cuando = Eşitlerken: doğrudan kendi ağınızda, şifreli, sunuculardan geçmeden.
+# Reportar lo que escribe la IA
+reportar-ia = Yanıtı bildir…
+reportar-ia-motivo-ofensivo = Saldırgan
+reportar-ia-motivo-peligroso = Tehlikeli
+reportar-ia-motivo-falso = Yanlış veya yanıltıcı
+reportar-ia-motivo-otro = Başka bir neden
+reportar-ia-hecho = Bildirim reportes-ia.jsonl dosyasına kaydedildi; göndermek için e-postanız açılıyor
+reportar-ia-asunto = Bir yapay zekâ yanıtının bildirimi
+reportar-ia-campo-motivo = Neden
+reportar-ia-campo-funcion = Özellik
+reportar-ia-campo-fecha = Tarih
+reportar-ia-campo-version = Sürüm
+reportar-ia-campo-contenido = Yapay zekânın yazdığı
+reportar-ia-comentario = (İsterseniz neyin yanlış olduğunu buraya yazın.)
+repaso-jev-fallo-red = Bağlantı yok.

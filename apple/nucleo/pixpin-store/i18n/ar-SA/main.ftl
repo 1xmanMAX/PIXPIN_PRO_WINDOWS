@@ -232,6 +232,7 @@ chat-lectura-veloz-chapa = القراءة السريعة · { $pct } %
 chat-escaneado = ممسوح ضوئيًا
 chat-sin-origen = تلك اللوحة ليست في هذا المشروع
 chat-sin-proyectos-otros = لا يوجد مشروع آخر لإرساله إليه
+chat-ajustes-bandeja = تُفتح الإعدادات من أيقونة PinDesk في علبة النظام
 chat-proyectos-lista = المشاريع هي القائمة على اليسار
 chat-no-hay-voz = تسجيل الملاحظات الصوتية غير متاح على Windows بعد
 chat-no-hay-aligerar = تخفيف ملفات PDF غير متاح على Windows بعد
@@ -3189,3 +3190,114 @@ clase-acta-propuestas = مقترحات لم تُقبل
 clase-acta-aceptar = قبول
 clase-acta-aceptada = أُضيف إلى المهام
 clase-acta-anadidas = أُضيفت أسئلة ({ $n }) إلى وارد المهام
+ia-estado-funciona = يعمل
+ia-estado-sin-clave = بلا مفتاح
+ia-estado-desconocido = لم يُتحقَّق بعد
+ia-estado-clave-mala = المفتاح غير صالح ({ $codigo })
+ia-estado-sin-saldo = لا يوجد رصيد في الحساب
+ia-estado-limite = طلبات كثيرة جدًا أو نفدت الحصة
+ia-estado-red = لا يوجد اتصال
+ia-estado-servidor = الخدمة تتعطل ({ $codigo })
+ia-estado-otro = لا يستجيب كما ينبغي ({ $codigo })
+ia-estado-comprobando = جارٍ التحقق…
+ia-estado-hace-nada = الآن
+ia-estado-hace-min = { $n ->
+        [zero] منذ { $n } دقيقة
+        [one] منذ دقيقة
+        [two] منذ دقيقتين
+        [few] منذ { $n } دقائق
+        [many] منذ { $n } دقيقة
+       *[other] منذ { $n } دقيقة
+    }
+ia-estado-hace-horas = { $n ->
+        [zero] منذ { $n } ساعة
+        [one] منذ ساعة
+        [two] منذ ساعتين
+        [few] منذ { $n } ساعات
+        [many] منذ { $n } ساعة
+       *[other] منذ { $n } ساعة
+    }
+ia-estado-pista = نقر: التحقق الآن أو الانتقال إلى المفاتيح
+ia-estado-comprobar = التحقق الآن
+ia-estado-claves = المفاتيح في الإعدادات ← المساعد
+ia-estado-sin-ajustes = تُفتح الإعدادات من أيقونة PinDesk في علبة النظام
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = الاستماع إلى الاجتماع مباشرةً باستخدام
+ajustes2-voz-en-vivo-sistema = Windows أو Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = لموضوعات الاجتماع وبقية ميزات الاجتماع مع Jev. يعرض Vosk ما يُقال أولًا بأول ويُنهي كل جملة بعد جزء من الثانية من سكوتك (مع Whisper نحو 3 ثوانٍ)، دون اتصال. عند اختياره يُنزَّل { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = يجري الاستماع باستخدام Vosk دون اتصال: يظهر ما يُقال في وضع ملء الشاشة للتسجيل. إن لم يُحمَّل يومًا، يُستخدم Windows أو Whisper.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = يُنزَّل Vosk للإسبانية والإنجليزية فقط؛ في هذه اللغة يستمع Windows أو Whisper.
+ajustes2-voz-en-vivo-bajando = جارٍ تنزيل Vosk… { $por-ciento } %. في الأثناء يستمع Windows أو Whisper.
+ajustes2-voz-en-vivo-fallo = تعذّر تنزيل Vosk: { $fallo }. اختره مرة أخرى لإعادة المحاولة.
+ajustes2-voz-vosk-borrar = حذف Vosk
+ajustes2-ayuda-voz-vosk-borrar = يحرّر ما نُزِّل (نحو 100 MB على القرص). يُنزَّل مجددًا عند اختياره.
+clase-temas-bateria = البطارية منخفضة: لا يجري الاستماع المباشر توفيرًا لها (يستمر التسجيل)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = لا يوجد اتصال: لم يتمكن Jev من التحقق مما إذا كان يجب تدوينه في دردشة أخرى. ما أمليته لا يزال في المربع.
+chat-anotar-fallo = لم يستجب Jev ({ $motivo }). ما أمليته لا يزال في المربع.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = الخصوصية والبيانات
+ajustes2-priv-politica = سياسة الخصوصية
+ajustes2-ayuda-priv-politica = ما يفعله PinDesk ببياناتك (بالإسبانية والإنجليزية): يبقى كل شيء على هذا الكمبيوتر باستثناء ما هو مذكور أدناه، وفقط عندما تستخدمه.
+ajustes2-g-privacidad-sale = ما يخرج من هذا الكمبيوتر وإلى أين يذهب
+ajustes2-priv-ver-ajustes = إعداداته
+ajustes2-priv-nada-mas = لا شيء آخر
+ajustes2-ayuda-priv-nada-mas = لا إعلانات، ولا تحليلات، ولا تقارير أعطال، ولا حساب، ولا خوادم لـ PinDesk. يعمل الإملاء والتفريغ النصي على هذا الكمبيوتر دون اتصال.
+ajustes2-g-privacidad-datos = بياناتك
+ajustes2-priv-carpeta = بياناتك على قرصك
+ajustes2-ayuda-priv-carpeta = توجد اللقطات والدردشات والملاحظات والتسجيلات والإعدادات في { $carpeta }. لأخذها معك، انسخ المجلد؛ ولحذفها، أغلق PinDesk ثم احذفه. مفاتيح الذكاء الاصطناعي مشفّرة بمستخدم Windows الخاص بك.
+ajustes2-priv-reportes = بلاغات عمّا يكتبه الذكاء الاصطناعي
+ajustes2-ayuda-priv-reportes = { $n ->
+    [zero] لا بلاغات محفوظة في reportes-ia.jsonl (في مجلد البيانات).
+    [one] بلاغ واحد محفوظ في reportes-ia.jsonl (في مجلد البيانات).
+    [two] بلاغان محفوظان في reportes-ia.jsonl (في مجلد البيانات).
+    [few] { $n } بلاغات محفوظة في reportes-ia.jsonl (في مجلد البيانات).
+    [many] { $n } بلاغًا محفوظًا في reportes-ia.jsonl (في مجلد البيانات).
+   *[other] { $n } بلاغ محفوظ في reportes-ia.jsonl (في مجلد البيانات).
+}
+privacidad-asistente-que = ما تسأل عنه المساعد، وأحدث ما في الدردشة، وما ترفقه
+privacidad-asistente-adonde = Anthropic (Claude) أو DeepSeek
+privacidad-asistente-cuando = فقط إذا لصقت مفتاحك الخاص وسألت. يُحفظ المفتاح مشفّرًا على هذا الكمبيوتر.
+privacidad-jev-que = نصوص كل ميزة من ميزات Jev: جمل الاجتماع، وأسطر الدرس، والمهام، وما تمليه أو تشرحه
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = فقط مع مفتاح TypeSafe الخاص بك وتشغيل تلك الميزة. ولا يُرسل الصوت أبدًا.
+privacidad-web-que = ما يبحث عنه المساعد والصفحات التي يقرؤها ليجيبك
+privacidad-web-adonde = DuckDuckGo أو Brave Search، والموقع الذي يقرؤه
+privacidad-web-cuando = عندما يبحث المساعد في الويب. بلا ملفات تعريف الارتباط ولا مفتاح الذكاء الاصطناعي الخاص بك.
+privacidad-google-que = ملفات Drive التي تختارها وأحداث التقويم
+privacidad-google-adonde = Google (Drive، Calendar)
+privacidad-google-cuando = فقط إذا ربطت حساب Google في الإعدادات › المساعد؛ ويُفصل من هناك.
+privacidad-voces-que = النص الذي يُقرأ بصوت عالٍ بصوت من Microsoft
+privacidad-voces-adonde = Microsoft (أصوات Edge)
+privacidad-voces-cuando = فقط إذا اخترت أحد تلك الأصوات في القارئ؛ أصوات Windows تعمل دون اتصال.
+privacidad-enlace-que = الملف الذي تختار مشاركته عبر رابط
+privacidad-enlace-adonde = litterbox.catbox.moe أو temp.sh
+privacidad-enlace-cuando = فقط عندما تطلب رابط مشاركة؛ يُحذف تلقائيًا خلال ساعات أو أيام.
+privacidad-modelos-que = لا شيء يخصك: تُطلب الملفات فقط
+privacidad-modelos-adonde = huggingface.co وgithub.com وalphacephei.com (Whisper، Qwen3-ASR، Vosk، Indra)
+privacidad-modelos-cuando = عند تنزيل نموذج للكلام أو لقراءة النصوص، حين تطلب ذلك.
+privacidad-sincro-que = لقطاتك وملاحظاتك ودردشاتك المتزامنة
+privacidad-sincro-adonde = أجهزتك الخاصة (الهاتف)، عبر شبكتك
+privacidad-sincro-cuando = عند المزامنة: مباشرةً على شبكتك، مشفّرة، دون المرور بخوادم.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = الإبلاغ عن الرد…
+reportar-ia-motivo-ofensivo = مسيء
+reportar-ia-motivo-peligroso = خطير
+reportar-ia-motivo-falso = خاطئ أو مضلل
+reportar-ia-motivo-otro = سبب آخر
+reportar-ia-hecho = حُفظ البلاغ في reportes-ia.jsonl؛ يُفتح بريدك لإرساله
+reportar-ia-asunto = بلاغ عن رد من الذكاء الاصطناعي
+reportar-ia-campo-motivo = السبب
+reportar-ia-campo-funcion = الميزة
+reportar-ia-campo-fecha = التاريخ
+reportar-ia-campo-version = الإصدار
+reportar-ia-campo-contenido = ما كتبه الذكاء الاصطناعي
+reportar-ia-comentario = (إن أردت، أخبرنا هنا بما هو خطأ.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = لا يوجد اتصال.

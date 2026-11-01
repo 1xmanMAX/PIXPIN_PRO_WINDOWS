@@ -3517,3 +3517,358 @@ clase-acta-propuestas = مقترحات لم تُقبل
 clase-acta-aceptar = قبول
 clase-acta-aceptada = أُضيف إلى المهام
 clase-acta-anadidas = أُضيفت أسئلة ({ $n }) إلى وارد المهام
+
+# --- Lo nuevo de noviembre ---
+# El aviso flotante del asistente
+aviso-ia-abrir = فتح
+aviso-ia-si = نعم
+aviso-ia-no = لا
+aviso-ia-permiso = 🔐 أحتاج إلى إذنك: { $pregunta }
+
+    إن لم تُجب، فلن أفعل ذلك.
+# Los turnos del asistente que siguen con el chat cerrado
+ia-fondo-titulo = 🤖 المساعد
+ia-fondo-sigue = «تابِع»
+ia-fondo-sigue-fuera = «@asistente تابِع»
+ia-fondo-otra-vez = ↻ أُغلق PinDesk قبل أن أنتهي. سأبدأ من جديد في الرد أدناه.
+ia-fondo-ya-actuo = بعض الخطوات نُفّذت بالفعل، لذا لن أكررها من تلقاء نفسي (كانت ستحدث مرتين). اكتب { $sigue } وسأكمل من هنا.
+ia-fondo-ya-se-retomo = سبق أن استأنفته مرة وانقطع مجددًا، لذا سأتوقف هنا. اكتب { $sigue } إن أردت أن أحاول مرة أخرى.
+ia-fondo-viejo = مضى وقت طويل جدًا لأستأنفه من تلقاء نفسي. اكتب { $sigue } إن كنت لا تزال تريده.
+ia-fondo-sin-pregunta = لا أجد طلبك (هل حُذف؟)، لذا لا أستطيع استئنافه.
+ia-fondo-no-se-pudo = تعذّر عليّ استئنافه: { $aviso }
+ia-fondo-no-empezo = لم أتمكن من بدء الإجابة.
+ia-fondo-cortado = ⚠️ أُغلق PinDesk قبل أن ينتهي هذا. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 سأكمل في الدردشة.
+ia-fondo-sigo-de-fondo = ⏳ ما زلت أعمل على طلبك رغم إغلاق الدردشة. سأخبرك عند الانتهاء.
+ia-fondo-pregunta = ❓ أحتاج أن تجيبني في الدردشة: { $pregunta }
+
+    اضغط «فتح». إن لم تُجب، سأختار الخيار الأكثر أمانًا.
+# La ficha de una leccion
+leccion-ventana = درس
+leccion-ventana-nueva = درس جديد
+leccion-titulo = 💡 درس
+leccion-titulo-nueva = 💡 درس جديد
+leccion-tipo-leccion = 💡 درس
+leccion-tipo-error = ⚠️ خطأ
+leccion-tipo-acierto = ✅ نجاح
+leccion-gravedad-leve = بسيط
+leccion-gravedad-importante = مهم
+leccion-gravedad-grave = خطير
+leccion-sin-proyecto = بلا مشروع (دردشة عامة)
+leccion-foto-ilegible = تعذّرت قراءة تلك الصورة
+leccion-adjunto-no-esta = ذلك الملف ليس على هذا الكمبيوتر بعد
+leccion-galeria = 🖼 المعرض
+leccion-guardar = حفظ
+leccion-pista-titulo = ماذا تعلّمت؟ اكتبه أو أمْلِه دفعة واحدة
+leccion-se-parece = يشبه درسًا لديك بالفعل
+leccion-paso-otra-vez = 🔁 حدث مرة أخرى
+leccion-area = المجال
+leccion-etiquetas = الوسوم
+leccion-anadir-etiqueta = + وسم
+leccion-menos-detalle = ▴  تفاصيل أقل
+leccion-mas-detalle = ▾  ماذا حدث، ولماذا، وما الذي سأفعله بشكل مختلف
+leccion-que-paso = ماذا حدث
+leccion-por-que = لماذا حدث
+leccion-causas = الأسباب (بلمسة واحدة)
+leccion-proxima = في المرة القادمة… (إذا حدث X، سأفعل Y)
+leccion-referencias = كلمات للعثور عليه (مفصولة بفواصل)
+leccion-relacionadas = ذات صلة
+leccion-volvio-a-pasar = 🔁 حدث لي مرة أخرى
+leccion-volvio-a-pasar-n = { $veces ->
+        [zero] 🔁 حدث لي مرة أخرى ({ $veces } مرة حتى الآن)
+        [one] 🔁 حدث لي مرة أخرى (مرة واحدة حتى الآن)
+        [two] 🔁 حدث لي مرة أخرى (مرتان حتى الآن)
+        [few] 🔁 حدث لي مرة أخرى ({ $veces } مرات حتى الآن)
+        [many] 🔁 حدث لي مرة أخرى ({ $veces } مرة حتى الآن)
+       *[other] 🔁 حدث لي مرة أخرى ({ $veces } مرة حتى الآن)
+    }
+leccion-mic-escuchando = 🎙️ أستمع إليك… اضغط الميكروفون للإنهاء
+leccion-mic-sin-dictado = الإملاء غير متاح على هذا الكمبيوتر: اكتب الدرس
+leccion-mic-sin-texto = لم يُفهم شيء
+leccion-mic-no-pasa = تعذّر تحويله إلى نص
+leccion-mic-corto = قصير جدًا: أبقِ الميكروفون مفتوحًا لمدة أطول قليلًا
+leccion-audio = 🎙 صوت
+leccion-audio-abriendo = 🎙 جارٍ الفتح…
+leccion-audio-guardando = 🎙 جارٍ الحفظ…
+leccion-audio-parar = ⏹ إيقاف { $duracion }
+leccion-audio-sin-microfono = تعذّر استخدام الميكروفون
+leccion-audio-corto = قصير جدًا: لم يُحفظ
+leccion-audio-no-guarda = تعذّر حفظ الصوت
+# El horario
+horario-evaluacion-en = { $dias ->
+        [1] غدًا
+        [zero] اليوم
+        [one] غدًا
+        [two] بعد يومين
+        [few] بعد { $dias } أيام
+        [many] بعد { $dias } يومًا
+       *[other] بعد { $dias } يوم
+    }
+horario-evaluacion-recuerda = تذكير: { $que }، { $en }، { $cuando }
+horario-evento-en = { $evento } في { $lugar }
+horario-dia-0 = الإثنين
+horario-dia-1 = الثلاثاء
+horario-dia-2 = الأربعاء
+horario-dia-3 = الخميس
+horario-dia-4 = الجمعة
+horario-dia-5 = السبت
+horario-dia-6 = الأحد
+# La Jump List del icono de la barra de tareas
+lista-icono-capturar = التقاط
+lista-icono-capturar-largo = التقاط منطقة من الشاشة
+lista-icono-mensajes = الرسائل المحفوظة
+lista-icono-mensajes-largo = فتح «الرسائل المحفوظة»
+lista-icono-proyectos = المشاريع
+lista-icono-proyectos-largo = عرض مشاريعك
+lista-icono-sincronizar = مزامنة
+lista-icono-sincronizar-largo = المزامنة مع أجهزتك
+lista-icono-recientes = المشاريع الأخيرة
+lista-icono-proyecto-largo = فتح المشروع { $nombre }
+# Los visores de planos, modelos y croquis 3D
+cad-plano-abriendo = جارٍ فتح المخطط…
+cad-plano-vacio = لا يحتوي المخطط على ما يُعرض
+cad-plano-error = تعذّر فتح المخطط
+cad-plano-pista-acotar = انقر النقاط للقياس · نقر مزدوج أو Enter: إنهاء · Esc: خروج
+cad-plano-todo = عرض المخطط كاملًا
+cad-tema = خلفية فاتحة أو داكنة
+cad-acotar = قياس
+cad-borrar-cotas = مسح القياسات
+cad-encima = دائمًا في المقدمة
+cad-cerrar = إغلاق
+cad-tres = عرض ثلاثي الأبعاد
+cad-marcos = إطارات للطباعة
+cad-imprimir = طباعة…
+cad-exportar = تصدير (HTML، PDF، PNG، DXF…)…
+cad-borrar-marcos = مسح الإطارات
+cad-plano-pista-marcos = اسحب لتأطير ما سيُطبع · Ctrl+P: طباعة · Del: إزالة الأخير · Esc: خروج
+cad-plano-marcador = إضافة علامة هنا
+cad-anotar = تعليق توضيحي
+cad-sin-dibujo-civil = { $n ->
+        [zero] حُفظ { $n } كائن من Civil 3D دون رسوماته: احفظ باستخدام PROXYGRAPHICS = 1 أو صدّر إلى LandXML
+        [one] حُفظ كائن واحد من Civil 3D دون رسوماته: احفظ باستخدام PROXYGRAPHICS = 1 أو صدّر إلى LandXML
+        [two] حُفظ كائنان من Civil 3D دون رسوماتهما: احفظ باستخدام PROXYGRAPHICS = 1 أو صدّر إلى LandXML
+        [few] حُفظت { $n } كائنات من Civil 3D دون رسوماتها: احفظ باستخدام PROXYGRAPHICS = 1 أو صدّر إلى LandXML
+        [many] حُفظ { $n } كائنًا من Civil 3D دون رسوماتها: احفظ باستخدام PROXYGRAPHICS = 1 أو صدّر إلى LandXML
+       *[other] حُفظ { $n } كائن من Civil 3D دون رسوماتها: احفظ باستخدام PROXYGRAPHICS = 1 أو صدّر إلى LandXML
+    }
+cad-letras = خطوط المخطط…
+cad-letras-faltan = يطلب هذا المخطط خطوطًا غير موجودة هنا؛ تظهر نصوصه بخطوط مشابهة وقد لا تتسع لمربعاتها:
+cad-letras-no-falta = لا ينقص أي خط يذكره المخطط باسمه.
+cad-letras-donde = توجد خطوط SHX عادةً في C:\Program Files\Autodesk\AutoCAD 20xx\Fonts أو بجانب المخطط الذي أُرسل إليك؛
+    وخطوط TrueType في C:\Windows\Fonts. الخطوط التي تضيفها هنا لها الأولوية على خطوط AutoCAD وWindows وPinDesk.
+cad-letras-anadir = إضافة خطوط (SHX، TTF، OTF، TTC)…
+cad-letras-quitar = إزالة خطوطي ({ $n })
+cad-faltan-letras = { $n ->
+        [zero] لا ينقص المخطط أي خط
+        [one] ينقص المخطط خط واحد: انقر Aa في الأعلى لإضافته
+        [two] ينقص المخطط خطان: انقر Aa في الأعلى لإضافتهما
+        [few] تنقص المخطط { $n } خطوط: انقر Aa في الأعلى لإضافتها
+        [many] ينقص المخطط { $n } خطًا: انقر Aa في الأعلى لإضافتها
+       *[other] ينقص المخطط { $n } خط: انقر Aa في الأعلى لإضافتها
+    }
+cad-releyendo = جارٍ قراءة المخطط بخطوطك…
+cad-boton-mover = تحريك (اسحب)
+cad-boton-marcador = علامة
+cad-boton-anotar = تعليق توضيحي
+cad-boton-letras = خطوط المخطط
+cad-corte = صندوق المقطع
+cad-capas = المستويات والفئات
+cad-boton-pantalla = ملء الشاشة
+cad-boton-guardar = حفظ في دردشة
+cad-modelo-abriendo = جارٍ فتح النموذج…
+cad-modelo-vacio = لا يحتوي النموذج على ما يُعرض
+cad-modelo-error = تعذّر فتح النموذج
+cad-modelo-todo = عرض النموذج كاملًا
+cad-aislar = عزل العنصر المحدد
+cad-niveles = المستويات
+cad-categorias = الفئات
+cad-sin-nivel = بلا مستوى
+cad-mostrar-todo = إظهار الكل
+cad-aristas = الحواف
+cad-planta = عرض المسقط الأفقي
+cad-altura-corte = المقطع
+cad-modelo-pista = سحب: تدوير · سحب بالزر الأيمن: تحريك · العجلة: تكبير · نقر: ما هذا · نقر مجددًا: عزل
+cad-modelo-marcador = إضافة علامة هنا (مع المقطع وما هو مخفي)
+cad-imprimir-marcos = طباعة الإطارات…
+cad-modelo-pista-marcos = اسحب لتأطير ما سيُطبع · Ctrl+P: طباعة · Del: إزالة الأخير · الأرقام: الانتقال إلى عرضه · Esc: خروج
+cad-modelo-pista-anotar = ما تعلّق عليه لا يظهر إلا في عرض هذه العلامة
+cad-modelo-anotar = التعليق على هذا العرض
+cad-croquis-abriendo = جارٍ فتح الرسم التخطيطي…
+cad-croquis-vacio = الرسم التخطيطي فارغ
+cad-croquis-error = تعذّر فتح الرسم التخطيطي
+cad-croquis-todo = عرض الرسم التخطيطي كاملًا
+cad-croquis-capas = الطبقات
+cad-croquis-grupos = المجموعات
+cad-croquis-tipos = الأنواع
+cad-croquis-todo-corto = الكل
+cad-croquis-pista = سحب: تدوير · سحب بالزر الأيمن: تحريك · العجلة: تكبير · 1–9: العروض المحفوظة
+# La pagina HTML de un plano exportado
+cad-web-todo = ملاءمة الكل
+cad-web-tema = فاتح / داكن
+cad-web-capas = الطبقات
+cad-web-grosores = سماكات الخطوط
+cad-web-anotaciones = التعليقات التوضيحية
+cad-web-todas = الكل
+cad-web-ninguna = لا شيء
+cad-web-sin-soporte = لا يستطيع هذا المتصفح فك ضغط المخطط: افتحه بإصدار حديث من Edge أو Chrome أو Firefox أو Safari.
+cad-web-pista = العجلة: تكبير · سحب: تحريك · نقر مزدوج: ملاءمة · F، B، L
+# El membrete de un plano impreso
+lamina-proyecto = المشروع
+lamina-lamina = اللوحة
+lamina-titulo = العنوان
+lamina-dibujo = الرسّام
+lamina-escala = المقياس
+lamina-sin-escala = بلا مقياس
+lamina-fecha = التاريخ
+lamina-unidades = الوحدات
+lamina-opcion = اللوحة
+lamina-con-membrete = مع إطار وخانة عنوان
+lamina-sin-marco = بلا إطار
+# Sincronizar en segundo plano
+sinc-fondo-solo = لا يوجد أحد آخر في مجموعة هذا الكمبيوتر: انضم إلى مجموعة من «المزامنة»
+sinc-fondo-no-es-del-grupo = ذلك الجهاز لم يعد في المجموعة
+sinc-fondo-aparatos = { $n ->
+        [zero] لا أجهزة
+        [one] جهاز واحد
+        [two] جهازان
+        [few] { $n } أجهزة
+        [many] { $n } جهازًا
+       *[other] { $n } جهاز
+    }
+sinc-fondo-sincronizando = جارٍ المزامنة مع { $quien }…
+sinc-fondo-ya-en-marcha = هناك مزامنة جارية بالفعل: انتظر حتى تنتهي
+sinc-fondo-fallo = تعذّرت المزامنة: { $error }
+# Leer en voz
+lector-voz-en-linea = متصل
+# Automatizaciones
+auto-origen = الأتمتة
+# El asistente de la nube sin clave
+ia-nube-falta-la-clave = مفتاح { $proveedor } مفقود: الصقه في الإعدادات ← المساعد (احصل على واحد من { $pagina }).
+# Los campos de una figura que se alarga
+figuras-ventana-no-es-numero = «{ $texto }» ليس رقمًا
+figuras-ventana-mes-mal = «{ $texto }»: اكتب الشهر هكذا 2026-11
+# Las teclas
+tecla-intro = Enter
+tecla-supr = Del
+ia-fondo-hecho = ✅ تم.
+ia-hecho = تم.
+croquis-titulo = رسم تخطيطي { $id }
+chat-ajustes-bandeja = تُفتح الإعدادات من أيقونة PinDesk في علبة النظام
+# El estado de la IA
+ia-estado-funciona = يعمل
+ia-estado-sin-clave = بلا مفتاح
+ia-estado-desconocido = لم يُتحقَّق بعد
+ia-estado-clave-mala = المفتاح غير صالح ({ $codigo })
+ia-estado-sin-saldo = لا يوجد رصيد في الحساب
+ia-estado-limite = طلبات كثيرة جدًا أو نفدت الحصة
+ia-estado-red = لا يوجد اتصال
+ia-estado-servidor = الخدمة تتعطل ({ $codigo })
+ia-estado-otro = لا يستجيب كما ينبغي ({ $codigo })
+ia-estado-comprobando = جارٍ التحقق…
+ia-estado-hace-nada = الآن
+ia-estado-hace-min = { $n ->
+        [zero] منذ { $n } دقيقة
+        [one] منذ دقيقة
+        [two] منذ دقيقتين
+        [few] منذ { $n } دقائق
+        [many] منذ { $n } دقيقة
+       *[other] منذ { $n } دقيقة
+    }
+ia-estado-hace-horas = { $n ->
+        [zero] منذ { $n } ساعة
+        [one] منذ ساعة
+        [two] منذ ساعتين
+        [few] منذ { $n } ساعات
+        [many] منذ { $n } ساعة
+       *[other] منذ { $n } ساعة
+    }
+ia-estado-pista = نقر: التحقق الآن أو الانتقال إلى المفاتيح
+ia-estado-comprobar = التحقق الآن
+ia-estado-claves = المفاتيح في الإعدادات ← المساعد
+ia-estado-sin-ajustes = تُفتح الإعدادات من أيقونة PinDesk في علبة النظام
+# El mes dentro de una fecha
+chat-mes-dia-1 = يناير
+chat-mes-dia-2 = فبراير
+chat-mes-dia-3 = مارس
+chat-mes-dia-4 = أبريل
+chat-mes-dia-5 = مايو
+chat-mes-dia-6 = يونيو
+chat-mes-dia-7 = يوليو
+chat-mes-dia-8 = أغسطس
+chat-mes-dia-9 = سبتمبر
+chat-mes-dia-10 = أكتوبر
+chat-mes-dia-11 = نوفمبر
+chat-mes-dia-12 = ديسمبر
+# Escuchar la reunion en vivo
+ajustes2-voz-en-vivo = الاستماع إلى الاجتماع مباشرةً باستخدام
+ajustes2-voz-en-vivo-sistema = Windows أو Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = لموضوعات الاجتماع وبقية ميزات الاجتماع مع Jev. يعرض Vosk ما يُقال أولًا بأول ويُنهي كل جملة بعد جزء من الثانية من سكوتك (مع Whisper نحو 3 ثوانٍ)، دون اتصال. عند اختياره يُنزَّل { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = يجري الاستماع باستخدام Vosk دون اتصال: يظهر ما يُقال في وضع ملء الشاشة للتسجيل. إن لم يُحمَّل يومًا، يُستخدم Windows أو Whisper.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = يُنزَّل Vosk للإسبانية والإنجليزية فقط؛ في هذه اللغة يستمع Windows أو Whisper.
+ajustes2-voz-en-vivo-bajando = جارٍ تنزيل Vosk… { $por-ciento } %. في الأثناء يستمع Windows أو Whisper.
+ajustes2-voz-en-vivo-fallo = تعذّر تنزيل Vosk: { $fallo }. اختره مرة أخرى لإعادة المحاولة.
+ajustes2-voz-vosk-borrar = حذف Vosk
+ajustes2-ayuda-voz-vosk-borrar = يحرّر ما نُزِّل (نحو 100 MB على القرص). يُنزَّل مجددًا عند اختياره.
+clase-temas-bateria = البطارية منخفضة: لا يجري الاستماع المباشر توفيرًا لها (يستمر التسجيل)
+chat-anotar-fallo-red = لا يوجد اتصال: لم يتمكن Jev من التحقق مما إذا كان يجب تدوينه في دردشة أخرى. ما أمليته لا يزال في المربع.
+chat-anotar-fallo = لم يستجب Jev ({ $motivo }). ما أمليته لا يزال في المربع.
+# Privacidad y datos
+ajustes2-g-privacidad = الخصوصية والبيانات
+ajustes2-priv-politica = سياسة الخصوصية
+ajustes2-ayuda-priv-politica = ما يفعله PinDesk ببياناتك (بالإسبانية والإنجليزية): يبقى كل شيء على هذا الكمبيوتر باستثناء ما هو مذكور أدناه، وفقط عندما تستخدمه.
+ajustes2-g-privacidad-sale = ما يخرج من هذا الكمبيوتر وإلى أين يذهب
+ajustes2-priv-ver-ajustes = إعداداته
+ajustes2-priv-nada-mas = لا شيء آخر
+ajustes2-ayuda-priv-nada-mas = لا إعلانات، ولا تحليلات، ولا تقارير أعطال، ولا حساب، ولا خوادم لـ PinDesk. يعمل الإملاء والتفريغ النصي على هذا الكمبيوتر دون اتصال.
+ajustes2-g-privacidad-datos = بياناتك
+ajustes2-priv-carpeta = بياناتك على قرصك
+ajustes2-ayuda-priv-carpeta = توجد اللقطات والدردشات والملاحظات والتسجيلات والإعدادات في { $carpeta }. لأخذها معك، انسخ المجلد؛ ولحذفها، أغلق PinDesk ثم احذفه. مفاتيح الذكاء الاصطناعي مشفّرة بمستخدم Windows الخاص بك.
+ajustes2-priv-reportes = بلاغات عمّا يكتبه الذكاء الاصطناعي
+ajustes2-ayuda-priv-reportes = { $n ->
+    [zero] لا بلاغات محفوظة في reportes-ia.jsonl (في مجلد البيانات).
+    [one] بلاغ واحد محفوظ في reportes-ia.jsonl (في مجلد البيانات).
+    [two] بلاغان محفوظان في reportes-ia.jsonl (في مجلد البيانات).
+    [few] { $n } بلاغات محفوظة في reportes-ia.jsonl (في مجلد البيانات).
+    [many] { $n } بلاغًا محفوظًا في reportes-ia.jsonl (في مجلد البيانات).
+   *[other] { $n } بلاغ محفوظ في reportes-ia.jsonl (في مجلد البيانات).
+}
+privacidad-asistente-que = ما تسأل عنه المساعد، وأحدث ما في الدردشة، وما ترفقه
+privacidad-asistente-adonde = Anthropic (Claude) أو DeepSeek
+privacidad-asistente-cuando = فقط إذا لصقت مفتاحك الخاص وسألت. يُحفظ المفتاح مشفّرًا على هذا الكمبيوتر.
+privacidad-jev-que = نصوص كل ميزة من ميزات Jev: جمل الاجتماع، وأسطر الدرس، والمهام، وما تمليه أو تشرحه
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = فقط مع مفتاح TypeSafe الخاص بك وتشغيل تلك الميزة. ولا يُرسل الصوت أبدًا.
+privacidad-web-que = ما يبحث عنه المساعد والصفحات التي يقرؤها ليجيبك
+privacidad-web-adonde = DuckDuckGo أو Brave Search، والموقع الذي يقرؤه
+privacidad-web-cuando = عندما يبحث المساعد في الويب. بلا ملفات تعريف الارتباط ولا مفتاح الذكاء الاصطناعي الخاص بك.
+privacidad-google-que = ملفات Drive التي تختارها وأحداث التقويم
+privacidad-google-adonde = Google (Drive، Calendar)
+privacidad-google-cuando = فقط إذا ربطت حساب Google في الإعدادات › المساعد؛ ويُفصل من هناك.
+privacidad-voces-que = النص الذي يُقرأ بصوت عالٍ بصوت من Microsoft
+privacidad-voces-adonde = Microsoft (أصوات Edge)
+privacidad-voces-cuando = فقط إذا اخترت أحد تلك الأصوات في القارئ؛ أصوات Windows تعمل دون اتصال.
+privacidad-enlace-que = الملف الذي تختار مشاركته عبر رابط
+privacidad-enlace-adonde = litterbox.catbox.moe أو temp.sh
+privacidad-enlace-cuando = فقط عندما تطلب رابط مشاركة؛ يُحذف تلقائيًا خلال ساعات أو أيام.
+privacidad-modelos-que = لا شيء يخصك: تُطلب الملفات فقط
+privacidad-modelos-adonde = huggingface.co وgithub.com وalphacephei.com (Whisper، Qwen3-ASR، Vosk، Indra)
+privacidad-modelos-cuando = عند تنزيل نموذج للكلام أو لقراءة النصوص، حين تطلب ذلك.
+privacidad-sincro-que = لقطاتك وملاحظاتك ودردشاتك المتزامنة
+privacidad-sincro-adonde = أجهزتك الخاصة (الهاتف)، عبر شبكتك
+privacidad-sincro-cuando = عند المزامنة: مباشرةً على شبكتك، مشفّرة، دون المرور بخوادم.
+# Reportar lo que escribe la IA
+reportar-ia = الإبلاغ عن الرد…
+reportar-ia-motivo-ofensivo = مسيء
+reportar-ia-motivo-peligroso = خطير
+reportar-ia-motivo-falso = خاطئ أو مضلل
+reportar-ia-motivo-otro = سبب آخر
+reportar-ia-hecho = حُفظ البلاغ في reportes-ia.jsonl؛ يُفتح بريدك لإرساله
+reportar-ia-asunto = بلاغ عن رد من الذكاء الاصطناعي
+reportar-ia-campo-motivo = السبب
+reportar-ia-campo-funcion = الميزة
+reportar-ia-campo-fecha = التاريخ
+reportar-ia-campo-version = الإصدار
+reportar-ia-campo-contenido = ما كتبه الذكاء الاصطناعي
+reportar-ia-comentario = (إن أردت، أخبرنا هنا بما هو خطأ.)
+repaso-jev-fallo-red = لا يوجد اتصال.
