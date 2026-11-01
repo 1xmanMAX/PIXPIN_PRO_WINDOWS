@@ -19,7 +19,7 @@
 
 use std::cell::Cell;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 
 use windows::Win32::Foundation::HWND;
 
@@ -2581,6 +2581,29 @@ pub fn lanzar(idioma: Idioma, actual: Ajustes, ubicacion: Ubicacion, app: isize)
     }
 }
 
+/// La seccion que se pidio desde fuera, para la proxima vez que la ventana
+/// mire (al abrirse o en su siguiente vuelta); `usize::MAX`: ninguna.
+static SECCION_PEDIDA: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+/// **Abrir en las claves de la IA** (1-nov-2026, los puntitos del estado de
+/// las IA del chat): la proxima vez que se abra la ventana, o ya si esta
+/// abierta, ensena «Asistente», donde van las claves de Claude, DeepSeek y
+/// TypeSafe (Jev). Quien llama pide despues abrir los ajustes como siempre.
+pub fn ir_a_las_claves() {
+    if let Some(i) = SECCIONES.iter().position(|s| *s == Seccion::Asistente) {
+        SECCION_PEDIDA.store(i, Ordering::SeqCst);
+    }
+    let ya = ABIERTA.load(Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
+}
+
+fn tomar_seccion_pedida() -> Option<usize> {
+    let i = SECCION_PEDIDA.swap(usize::MAX, Ordering::SeqCst);
+    (i < SECCIONES.len()).then_some(i)
+}
+
 /// Los ajustes que dejo la ventana al cerrarse con cambios, una sola vez.
 /// Lo mira el hilo principal en cada vuelta de su bucle.
 pub fn tomar_cambios() -> Option<Ajustes> {
@@ -2669,6 +2692,9 @@ fn abrir(
         historial: Vec::new(),
     };
     let mut estado = Estado::default();
+    if let Some(i) = tomar_seccion_pedida() {
+        estado.seccion = i;
+    }
     // Las dos cajas de escribir (el buscador y la de la fila con el foco),
     // con el componente comun de la app. `Estado` (de `pixpin-ui`) sigue
     // guardando el texto como `String` para su logica; ver `Cajas`.
@@ -3106,6 +3132,12 @@ fn abrir(
                 }
                 version += 1;
             }
+        }
+        // Los puntitos del estado de las IA del chat piden ir a las claves.
+        if let Some(i) = tomar_seccion_pedida() {
+            estado.seccion = i;
+            estado.busqueda.clear();
+            estado.desplazamiento = 0;
         }
         GRABANDO.store(estado.capturando.is_some(), Ordering::SeqCst);
         if cerrar {
