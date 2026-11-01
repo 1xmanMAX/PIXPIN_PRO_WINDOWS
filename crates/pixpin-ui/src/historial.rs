@@ -245,17 +245,15 @@ pub fn mensaje_en(area: Rect, puestos: &[Puesto], scroll: i32, punto: Punto) -> 
 
 /// Cuales de los puestos se ven con este desplazamiento, para pintar solo
 /// esos. `scroll` cuenta desde arriba, ya ajustado.
+///
+/// Por busqueda binaria: los puestos van de arriba abajo, asi que sus
+/// bordes crecen, y en un chat de miles de mensajes recorrerlos todos en
+/// cada fotograma de la rueda animada se notaria.
 pub fn visibles(area: Rect, puestos: &[Puesto], scroll: i32) -> (usize, usize) {
     let arriba = scroll;
     let abajo = scroll + area.alto as i32;
-    let primero = puestos
-        .iter()
-        .position(|p| p.burbuja.abajo() >= arriba)
-        .unwrap_or(puestos.len());
-    let cuantos = puestos[primero..]
-        .iter()
-        .position(|p| p.arriba() > abajo)
-        .unwrap_or(puestos.len() - primero);
+    let primero = puestos.partition_point(|p| p.burbuja.abajo() < arriba);
+    let cuantos = puestos[primero..].partition_point(|p| p.arriba() <= abajo);
     (primero, cuantos)
 }
 
