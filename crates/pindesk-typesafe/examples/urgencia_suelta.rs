@@ -3,7 +3,9 @@
 //! lista, su chat, los mensajes recientes, los dias que faltan para su hora
 //! (los cuenta el codigo) y la marca del usuario; Jev da la consecuencia
 //! (Score) y tres Nouls, y la tabla de puntos de `urgencia::decidir` la
-//! prioridad.
+//! prioridad. Sin `dias`, los de la fecha del titulo de su lista
+//! (`urgencia::dias_de_la_lista`), con la lista creada el dia `creada` y
+//! contados desde `hoy` (del caso o de la cabecera del guion), como Tareas.
 //!
 //! `cargo run -q -p pindesk-typesafe --example urgencia_suelta -- urgencia.txt --rapido`
 //!
@@ -12,6 +14,7 @@
 mod comun;
 
 use comun::casos::{self, p};
+use pindesk_typesafe::fechas::Fecha;
 use pindesk_typesafe::urgencia::{self, Contexto, Marca};
 
 fn main() -> std::process::ExitCode {
@@ -26,7 +29,12 @@ fn main() -> std::process::ExitCode {
             chat: c.texto("chat"),
             recientes: c.valores("mensaje"),
         };
-        let dias = c.numero("dias").map(|d| d as i64);
+        let dia = |k: &str| c.valor(k).or(s.guion.valor(k)).and_then(Fecha::de_texto);
+        let de_la_lista = match (dia("creada"), dia("hoy")) {
+            (Some(creada), Some(hoy)) => urgencia::dias_de_la_lista(&ctx.lista, creada, hoy),
+            _ => None,
+        };
+        let dias = c.numero("dias").map(|d| d as i64).or(de_la_lista);
         let marca = match c.valor("marca") {
             Some("urgente") => Marca::Urgente,
             Some("muy urgente") => Marca::MuyUrgente,
