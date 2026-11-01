@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  El paquete MSIX de PinDesk para la Microsoft Store (solo en la rama
+  `microsoft-store`; ver docs/tienda.md y docs/ramas.md).
+
+  A diferencia de herramientas/paquete-identidad/AppxManifest.xml (que solo da
+  identidad a la carpeta instalada con el ZIP), este paquete LLEVA DENTRO el
+  programa: pindesk.exe y sus ayudantes en la raiz, y los logos en Assets\.
+  Lo arma .github/workflows/tienda.yml: pone la version (Identity/@Version,
+  cuatro numeros y el ultimo 0) y lo empaqueta sin firmar; la Store lo firma.
+
+  Identidad, editor y nombre: los de Partner Center (Productos › PinDesk ›
+  Identidad del producto). Si no coinciden, la subida se rechaza.
+
+  Lo que main hace escribiendo en el registro, aqui lo declara el manifiesto
+  (y la app, compilada con la feature `tienda`, ya no lo escribe):
+    HKCU\...\Run                         -> desktop:StartupTask (PinDeskInicio)
+    asociaciones.rs / abrir_con.rs        -> uap3:FileTypeAssociation
+    notificacion.rs (AUMID + pixpinmax:)  -> la identidad del paquete + uap:Protocol
+    paquete-identidad (Compartir, verbos) -> windows.shareTarget + uap2:SupportedVerbs
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap2="http://schemas.microsoft.com/appx/manifest/uap/windows10/2"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap2 uap3 desktop desktop6 rescap">
+
+  <Identity
+    Name="MingXuan.PinDesk"
+    Publisher="CN=6973A70C-69AD-469C-8C2B-2A0DC3118CCC"
+    Version="1.0.0.0"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>PinDesk</DisplayName>
+    <PublisherDisplayName>Ming Xuan</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Capturas, pines flotantes, notas y chat con tus documentos.</Description>
+    <!-- Sin virtualizar: los datos se quedan en %APPDATA%\PixPinMax de
+         verdad, donde los leen los ayudantes que corren FUERA del paquete
+         (el plugin de Flow Launcher, el MCP de Claude, el puente del
+         navegador) y donde siguen los de quien venia del ZIP. Pide la
+         capacidad restringida unvirtualizedResources (justificarla en Partner
+         Center). Windows 10 1903 o mas nuevo; en 1809 se ignora y lo escrito
+         se virtualiza (ver docs/tienda.md). -->
+    <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
+    <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+    <!-- vcruntime140.dll y compania (Rust con el CRT dinamico, y el
+         onnxruntime.dll que va dentro). La Store lo instala sola. -->
+    <PackageDependency
+      Name="Microsoft.VCLibs.140.00.UWPDesktop"
+      MinVersion="14.0.30704.0"
+      Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="es-es" />
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <!-- Sincronizar con el movil por la Wi-Fi (TCP 47474, baliza UDP 47475). -->
+    <Capability Name="internetClientServer" />
+    <Capability Name="privateNetworkClientServer" />
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+    <!-- Notas de voz, grabar clase y el teleprompter. -->
+    <DeviceCapability Name="microphone" />
+    <DeviceCapability Name="webcam" />
+  </Capabilities>
+
+  <Applications>
+    <Application Id="PinDesk" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="PinDesk"
+        Description="Capturas, pines flotantes, notas y chat con tus documentos."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile
+          Wide310x150Logo="Assets\Wide310x150Logo.png"
+          Square71x71Logo="Assets\Square71x71Logo.png"
+          Square310x310Logo="Assets\Square310x310Logo.png"
+          ShortName="PinDesk" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- Arrancar con Windows: APAGADA de fabrica. La enciende el
+             interruptor de Ajustes (StartupTask.RequestEnableAsync en
+             crates/pixpin-shell/src/tienda.rs, con este mismo TaskId) y el
+             usuario la ve en Configuracion › Aplicaciones › Inicio. -->
+        <desktop:Extension Category="windows.startupTask" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="PinDeskInicio" Enabled="false" DisplayName="PinDesk" />
+        </desktop:Extension>
+
+        <!-- `pindesk` desde la consola o Ejecutar (Win+R). -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="pindesk.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+
+        <!-- Los enlaces de la app (botones de los avisos, `orden.rs`):
+             `pixpinmax:` siempre es nuestro; `pixpin:` es el de Android. Si
+             el PixPin original tambien lo tiene, Windows pregunta cual. -->
+        <uap:Extension Category="windows.protocol" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap:Protocol Name="pixpinmax" Parameters="--url &quot;%1&quot;">
+            <uap:DisplayName>PinDesk</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <uap:Extension Category="windows.protocol" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap:Protocol Name="pixpin" Parameters="--url &quot;%1&quot;">
+            <uap:DisplayName>PinDesk</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!-- Compartir: lo que mandan otras apps va al chat
+             (crates/pixpin-shell/src/compartido.rs). -->
+        <uap:Extension Category="windows.shareTarget">
+          <uap:ShareTarget Description="Guardar en PinDesk">
+            <uap:SupportedFileTypes>
+              <uap:SupportsAnyFileType />
+            </uap:SupportedFileTypes>
+            <uap:DataFormat>Text</uap:DataFormat>
+            <uap:DataFormat>URI</uap:DataFormat>
+            <uap:DataFormat>WebLink</uap:DataFormat>
+            <uap:DataFormat>Bitmap</uap:DataFormat>
+            <uap:DataFormat>StorageItems</uap:DataFormat>
+          </uap:ShareTarget>
+        </uap:Extension>
+
+        <!-- Los proyectos de PinDesk: doble clic los abre (main.rs mira la
+             extension .pixpin del primer argumento). -->
+        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:FileTypeAssociation Name="pindesk.proyecto" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Proyecto de PinDesk</uap:DisplayName>
+            <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.pixpin</uap:FileType>
+            </uap:SupportedFileTypes>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
+
+        <!-- Imagenes, videos y audios: los de crates/pixpin-shell/src/asociaciones.rs
+             (IMAGENES, VIDEOS, AUDIOS). Solo se OFRECE en «Abrir con» y en
+             Aplicaciones predeterminadas; no se queda con nada. -->
+        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:FileTypeAssociation Name="pindesk.imagen" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Imagen (PinDesk)</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.png</uap:FileType>
+              <uap:FileType>.jpg</uap:FileType>
+              <uap:FileType>.jpeg</uap:FileType>
+              <uap:FileType>.jfif</uap:FileType>
+              <uap:FileType>.gif</uap:FileType>
+              <uap:FileType>.bmp</uap:FileType>
+              <uap:FileType>.webp</uap:FileType>
+              <uap:FileType>.tif</uap:FileType>
+              <uap:FileType>.tiff</uap:FileType>
+              <uap:FileType>.ico</uap:FileType>
+              <uap:FileType>.heic</uap:FileType>
+              <uap:FileType>.heif</uap:FileType>
+              <uap:FileType>.avif</uap:FileType>
+              <uap:FileType>.jxl</uap:FileType>
+              <uap:FileType>.jxr</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PinDesk</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
+        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:FileTypeAssociation Name="pindesk.video" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Video (PinDesk)</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.mp4</uap:FileType>
+              <uap:FileType>.mkv</uap:FileType>
+              <uap:FileType>.webm</uap:FileType>
+              <uap:FileType>.mov</uap:FileType>
+              <uap:FileType>.avi</uap:FileType>
+              <uap:FileType>.m4v</uap:FileType>
+              <uap:FileType>.wmv</uap:FileType>
+              <uap:FileType>.mpg</uap:FileType>
+              <uap:FileType>.mpeg</uap:FileType>
+              <uap:FileType>.ts</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PinDesk</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
+        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:FileTypeAssociation Name="pindesk.audio" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Audio (PinDesk)</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.mp3</uap:FileType>
+              <uap:FileType>.m4a</uap:FileType>
+              <uap:FileType>.wav</uap:FileType>
+              <uap:FileType>.aac</uap:FileType>
+              <uap:FileType>.flac</uap:FileType>
+              <uap:FileType>.ogg</uap:FileType>
+              <uap:FileType>.opus</uap:FileType>
+              <uap:FileType>.wma</uap:FileType>
+              <uap:FileType>.3gp</uap:FileType>
+              <uap:FileType>.amr</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PinDesk</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
+        <!-- Documentos: los que el paquete de identidad ya ofrecia en el
+             menu contextual (PDF, Office, libros, texto, planos). -->
+        <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:FileTypeAssociation Name="pindesk.documento" Parameters="&quot;%1&quot;">
+            <uap:DisplayName>Documento (PinDesk)</uap:DisplayName>
+            <uap:SupportedFileTypes>
+              <uap:FileType>.pdf</uap:FileType>
+              <uap:FileType>.docx</uap:FileType>
+              <uap:FileType>.doc</uap:FileType>
+              <uap:FileType>.xlsx</uap:FileType>
+              <uap:FileType>.xls</uap:FileType>
+              <uap:FileType>.csv</uap:FileType>
+              <uap:FileType>.pptx</uap:FileType>
+              <uap:FileType>.ppt</uap:FileType>
+              <uap:FileType>.epub</uap:FileType>
+              <uap:FileType>.md</uap:FileType>
+              <uap:FileType>.txt</uap:FileType>
+              <uap:FileType>.dwg</uap:FileType>
+              <uap:FileType>.dxf</uap:FileType>
+              <uap:FileType>.ifc</uap:FileType>
+            </uap:SupportedFileTypes>
+            <uap2:SupportedVerbs>
+              <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PinDesk</uap3:Verb>
+            </uap2:SupportedVerbs>
+          </uap3:FileTypeAssociation>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+
+    <!-- El servidor MCP (Claude Desktop y otros clientes MCP). Sin entrada en
+         Inicio: solo el alias, para poner `pixpin-mcp.exe` como orden en la
+         configuracion del cliente (la ruta dentro de WindowsApps cambia con
+         cada version; el alias no). -->
+    <Application Id="PinDeskMcp" Executable="pixpin-mcp.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="PinDesk MCP"
+        Description="Servidor MCP de PinDesk"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="pixpin-mcp.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="pixpin-mcp.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+
+    <!-- El puente del navegador (mensajeria nativa de la extension). Igual:
+         solo el alias, que es la ruta estable que se registra en el
+         navegador (%LOCALAPPDATA%\Microsoft\WindowsApps\pixpin-puente.exe). -->
+    <Application Id="PinDeskPuente" Executable="pixpin-puente.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="PinDesk (puente del navegador)"
+        Description="Puente entre la extension del navegador y PinDesk"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="pixpin-puente.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="pixpin-puente.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>
