@@ -324,7 +324,7 @@ pub fn lista_json(resultados: &[Resultado], icono: &str) -> Vec<Value> {
 
 /// Un pedido del protocolo v1.
 pub fn pedido(accion: &str, campos: Value) -> Value {
-    let mut p = json!({ "pixpin": 1, "accion": accion });
+    let mut p = json!({ "pindesk": 1, "accion": accion });
     if let (Some(p), Value::Object(c)) = (p.as_object_mut(), campos) {
         p.extend(c);
     }
@@ -437,12 +437,12 @@ impl Contexto {
 
     /// **Lo que se entiende de una tarea escrita** (18-oct-2026), con el
     /// mismo parser que la app (`pixpin_frase::tarea`) y las palabras de
-    /// urgencia de su `pixpinmax.toml` (`[tareas]`); sin fichero, las de
+    /// urgencia de su `pindesk.toml` (`[tareas]`); sin fichero, las de
     /// fabrica. Al pulsar, la app lo vuelve a entender con las suyas.
     pub(crate) fn entender_tarea(&self, texto: &str) -> pixpin_frase::tarea::Frase {
         let palabras = self
             .raiz_de_datos()
-            .and_then(|r| std::fs::read_to_string(r.join(crate::datos::NOMBRE_AJUSTES)).ok())
+            .and_then(|r| std::fs::read_to_string(crate::datos::ajustes_en(&r)).ok())
             .map(|t| pixpin_frase::tarea::Palabras::de_toml(&t))
             .unwrap_or_default();
         pixpin_frase::tarea::leer(texto, self.momento_local(), &palabras)

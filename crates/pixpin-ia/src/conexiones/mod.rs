@@ -194,7 +194,7 @@ pub fn sin_conectar(s: &Servicio) -> String {
 }
 
 impl Conexion {
-    /// La de siempre (`%LOCALAPPDATA%\PixPinMax\claves`).
+    /// La de siempre (`%LOCALAPPDATA%\PinDesk\claves`).
     pub fn abrir(s: &'static Servicio) -> Result<Conexion, String> {
         let carpeta = guardado::carpeta().ok_or("no se encuentra LOCALAPPDATA")?;
         Conexion::abrir_en(s, s.extremos(), &carpeta)

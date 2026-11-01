@@ -3,7 +3,7 @@
 //! El asistente contesta solo con la nube desde ese dia (como en Android):
 //! el motor llama.cpp y los modelos (Qwen3.5 2B/0.8B, Gemma 4 E2B) ya no se
 //! usan, pero quien los bajo los tiene en
-//! `%LOCALAPPDATA%\PixPinMax\modelos`: de 1 a 7 GB. Android los borra solo
+//! `%LOCALAPPDATA%\PinDesk\modelos`: de 1 a 7 GB. Android los borra solo
 //! al arrancar; aqui, por si acaso, **se pregunta una vez**: la tarjeta del
 //! chat «Asistente» dice cuanto ocupan y ofrece liberarlo
 //! ([`por_avisar`], [`borrar`], [`no_avisar`]), y Ajustes → Asistente tiene
@@ -21,15 +21,14 @@ use std::time::{Duration, Instant};
 /// carpeta: si se borra la carpeta, se va con ella.
 const NO_AVISAR: &str = "no-avisar-pixpin.txt";
 
-/// `%LOCALAPPDATA%\PixPinMax\modelos`, donde la app bajaba el asistente
+/// `%LOCALAPPDATA%\PinDesk\modelos`, donde la app bajaba el asistente
 /// local. Las pruebas la apuntan a otra con [`carpeta_de_prueba`].
 pub fn carpeta() -> Option<PathBuf> {
     #[cfg(test)]
     if let Some(r) = DE_PRUEBA.with_borrow(Clone::clone) {
         return Some(r);
     }
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(PathBuf::from(local).join("PixPinMax").join("modelos"))
+    Some(pixpin_sistema::nombre::carpeta_local()?.join("modelos"))
 }
 
 /// Lo que ocupa todo lo que hay debajo de `c` (sin seguir enlaces).

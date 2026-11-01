@@ -27,8 +27,8 @@ use pixpin_proyecto::{almacen, mini};
 use crate::herramientas::{Contenido, Resultado};
 
 /// Otra raiz de datos (pruebas). Sin ella, la de PixPin: la carpeta de este
-/// exe si a su lado hay un `pixpinmax.toml` (portable), si no
-/// `%APPDATA%\PixPinMax`, igual que decide la app.
+/// exe si a su lado hay un `pindesk.toml` (portable), si no
+/// `%APPDATA%\PinDesk`, igual que decide la app.
 pub const VAR_RAIZ: &str = "PIXPIN_RAIZ";
 
 /// **Donde estan los datos.**

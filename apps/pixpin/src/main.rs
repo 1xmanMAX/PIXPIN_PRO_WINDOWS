@@ -9,7 +9,7 @@
 //! 2. Rutas, porque el registro a fichero necesita saber donde escribir.
 //! 3. Registro a fichero, antes de leer los ajustes: con
 //!    `#![windows_subsystem = "windows"]` no hay stderr, asi que si el
-//!    usuario edito `pixpinmax.toml` a mano y se equivoco, el fallo tiene
+//!    usuario edito `pindesk.toml` a mano y se equivoco, el fallo tiene
 //!    que quedar escrito en algun sitio en vez de perderse en silencio.
 //! 4. Ajustes.
 //! 5. Arranque con Windows, que solo depende de los ajustes.
@@ -32,7 +32,7 @@
 //! soltaria (cerrando el hilo de escritura no bloqueante) al salir con
 //! `Err`, *antes* de que `main` pudiera registrar el error -- ese fue
 //! exactamente el fallo que la re-revision encontro ejecutando el
-//! programa con un `pixpinmax.toml` corrupto: el `tracing::error!` de
+//! programa con un `pindesk.toml` corrupto: el `tracing::error!` de
 //! `main` se ejecutaba, pero el escritor ya estaba cerrado y la linea
 //! nunca llegaba al fichero.
 
@@ -322,7 +322,7 @@ fn main() -> Result<()> {
     if let Some(codigo) = modelo_bim::convertir_si_toca() {
         std::process::exit(codigo);
     }
-    // Una orden de fuera (`pixpinmax tarea "…"`, `--pedido`, un enlace
+    // Una orden de fuera (`pindesk tarea "…"`, `--pedido`, un enlace
     // `pixpin://`): se manda a la copia que corre y se sale, sin cargar nada
     // de lo de abajo (`orden`).
     if let Some(codigo) = orden::ejecutar_si_toca() {
@@ -419,6 +419,15 @@ fn arrancar(
     // 2. Donde vivimos.
     let dir_exe = entorno::directorio_del_ejecutable().context("no se pudo localizar el .exe")?;
     let appdata = entorno::appdata().context("no se pudo localizar APPDATA")?;
+    // Una sola vez: `%APPDATA%\PixPinMax` y `%LOCALAPPDATA%\PixPinMax` pasan
+    // a `PinDesk` (y el `pixpinmax.toml` a `pindesk.toml`). Va antes de que
+    // nadie abra un fichero de ahi, y si no se puede, se sigue con la vieja
+    // (docs/formato-pindesk.md). Se apunta en el registro mas abajo.
+    let local = std::env::var_os("LOCALAPPDATA")
+        .filter(|l| !l.is_empty())
+        .map(std::path::PathBuf::from);
+    let migracion =
+        pixpin_sistema::nombre::migrar_al_arrancar(&appdata, local.as_deref(), &dir_exe);
     let ubicacion = rutas::resolver(&dir_exe, &appdata);
     // El modo oscuro de los visores (luna/sol), recordado en `estado.toml`.
     oscuro::iniciar(&ubicacion);
@@ -438,6 +447,17 @@ fn arrancar(
         raiz = ?ubicacion.raiz(),
         "PinDesk arrancando"
     );
+    for (carpeta, m) in &migracion {
+        match m {
+            pixpin_sistema::nombre::Migracion::NadaQueHacer => {}
+            pixpin_sistema::nombre::Migracion::Fallo(e) => {
+                tracing::warn!(?carpeta, error = %e, "no se pudo pasar la carpeta vieja a PinDesk; se sigue usando la vieja")
+            }
+            otra => {
+                tracing::info!(?carpeta, resultado = ?otra, "datos de PixPin Max pasados a PinDesk")
+            }
+        }
+    }
     // La identidad de este equipo, en el formato de PixPin Android
     // (`sincro/identidad.json`): de ella sale el codigo de aparato que llevan
     // los tres codigos de todo lo que nazca aqui. Sin ella la app funciona;
@@ -2432,10 +2452,7 @@ fn destino_con(
         || pines::tarea::tarea_de_ruta(ruta).is_some()
     {
         DestinoDeFichero::ListaDelChat
-    } else if ruta
-        .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
-    {
+    } else if pixpin_proyecto::es_paquete(ruta) {
         DestinoDeFichero::Proyecto
     } else if notas_md::es_texto_para_nota(ruta) {
         // Un texto, un CSV, un JSON, codigo...: al lector de notas, como un
@@ -2981,7 +2998,7 @@ fn ruta_captura_libre(ubicacion: &Ubicacion) -> Result<std::path::PathBuf> {
 fn iniciar_registro(ubicacion: &Ubicacion) -> tracing_appender::non_blocking::WorkerGuard {
     let dir = ubicacion.raiz().join("registros");
     let _ = std::fs::create_dir_all(&dir);
-    let fichero = tracing_appender::rolling::daily(dir, "pixpinmax.log");
+    let fichero = tracing_appender::rolling::daily(dir, "pindesk.log");
     let (escritor, guardia) = tracing_appender::non_blocking(fichero);
     tracing_subscriber::fmt()
         .with_writer(escritor)

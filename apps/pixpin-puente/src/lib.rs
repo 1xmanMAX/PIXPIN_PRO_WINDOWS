@@ -1,4 +1,4 @@
-//! **`pixpin-puente.exe`: la extension del navegador habla con PixPin.**
+//! **`pindesk-puente.exe`: la extension del navegador habla con PixPin.**
 //!
 //! Chrome y Edge no dejan que una extension mande `WM_COPYDATA`; si dejan
 //! que arranque un programa registrado («host» de mensajeria nativa) y le
@@ -55,7 +55,7 @@ pub trait Cartero {
 
 /// El cartero de verdad: `WM_COPYDATA` a la PixPin abierta.
 pub struct AlaApp {
-    /// `pixpinmax.exe`, para arrancarla si no esta.
+    /// `pindesk.exe`, para arrancarla si no esta.
     pub exe: Option<PathBuf>,
 }
 
@@ -150,8 +150,9 @@ pub struct Entorno {
 
 impl Entorno {
     /// El de verdad: la regla de `pixpin_store::rutas::resolver` (portable si
-    /// junto al exe hay un `pixpinmax.toml`, si no `%APPDATA%\PixPinMax`), o
-    /// la carpeta de `PIXPIN_PUENTE_EN_SECO` en las pruebas.
+    /// junto al exe hay un `pindesk.toml` o el `pixpinmax.toml` de antes, si
+    /// no `%APPDATA%\PinDesk` o el `PixPinMax` aun sin mover), o la carpeta de
+    /// `PIXPIN_PUENTE_EN_SECO` en las pruebas.
     pub fn del_equipo(dir_exe: Option<&Path>, en_seco: Option<PathBuf>) -> Option<Entorno> {
         let sello = format!(
             "{}-{}",
@@ -163,9 +164,11 @@ impl Entorno {
         );
         let raiz = match en_seco {
             Some(r) => r,
-            None => match dir_exe.filter(|d| d.join("pixpinmax.toml").is_file()) {
+            None => match dir_exe.filter(|d| pixpin_sistema::nombre::es_portable(d)) {
                 Some(d) => d.to_path_buf(),
-                None => PathBuf::from(std::env::var_os("APPDATA")?).join("PixPinMax"),
+                None => pixpin_sistema::nombre::carpeta_de_datos(Path::new(&std::env::var_os(
+                    "APPDATA",
+                )?)),
             },
         };
         Some(Entorno {

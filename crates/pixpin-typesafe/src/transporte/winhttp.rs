@@ -86,7 +86,7 @@ fn abrir(segura: bool, servidor: &str, puerto: u16) -> Result<Arc<Abierta>, Stri
     // cierra en todos los caminos.
     let a = unsafe {
         let mut sesion = Asa(WinHttpOpen(
-            w!("PixPin"),
+            w!("PinDesk"),
             if segura {
                 WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
             } else {
@@ -98,7 +98,7 @@ fn abrir(segura: bool, servidor: &str, puerto: u16) -> Result<Arc<Abierta>, Stri
         ));
         if sesion.0.is_null() && segura {
             sesion = Asa(WinHttpOpen(
-                w!("PixPin"),
+                w!("PinDesk"),
                 WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                 PCWSTR::null(),
                 PCWSTR::null(),

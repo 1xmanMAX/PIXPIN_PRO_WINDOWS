@@ -12,6 +12,8 @@ license.workspace = true
 # PixPin. Portable: la red de Windows (WinHTTP, la misma que usa el
 # asistente) y DPAPI solo en Windows; en las pruebas, un transporte grabado.
 [dependencies]
+# Donde estan las claves (`%LOCALAPPDATA%\PinDesk`, o la vieja sin mover).
+pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # La huella de cada peticion para el cache. Ya esta en el arbol.

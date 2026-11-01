@@ -16,7 +16,21 @@ use std::time::{Duration, Instant, SystemTime};
 
 /// El fichero de ajustes cuya presencia junto al exe activa el modo portable
 /// (`pixpin_store::rutas`).
-pub(crate) const NOMBRE_AJUSTES: &str = "pixpinmax.toml";
+pub(crate) const NOMBRE_AJUSTES: &str = "pindesk.toml";
+/// El de antes de [`NOMBRE_AJUSTES`] (hasta nov-2026), que se sigue leyendo.
+pub(crate) const NOMBRE_AJUSTES_VIEJO: &str = "pixpinmax.toml";
+
+/// El fichero de ajustes de `dir`: el nuevo, o el viejo si solo esta ese
+/// (`pixpin_sistema::nombre::ajustes_en`, que este plugin no enlaza).
+pub(crate) fn ajustes_en(dir: &Path) -> PathBuf {
+    let nuevo = dir.join(NOMBRE_AJUSTES);
+    let viejo = dir.join(NOMBRE_AJUSTES_VIEJO);
+    if !nuevo.is_file() && viejo.is_file() {
+        viejo
+    } else {
+        nuevo
+    }
+}
 /// Lo que ensena la app para el proyecto de `guardados: true`
 /// (`almacen::NOMBRE_GUARDADOS`), se llame como se llame en el indice.
 pub const NOMBRE_GUARDADOS: &str = "Mensajes guardados";
@@ -39,16 +53,28 @@ pub fn exe_instalado() -> Option<PathBuf> {
 }
 
 /// La raiz de datos: la carpeta del exe instalado si a su lado hay un
-/// `pixpinmax.toml` (portable), si no `%APPDATA%\PixPinMax`. Es la regla de
-/// `pixpin_store::rutas::resolver`.
+/// `pindesk.toml` o `pindesk.toml` (portable), si no `%APPDATA%\PinDesk`
+/// o, si aun no se movio, el `%APPDATA%\PixPinMax` de antes. Es la regla de
+/// `pixpin_store::rutas::resolver` y `pixpin_sistema::nombre`.
 pub fn raiz_de_datos() -> Option<PathBuf> {
     if let Some(dir) = exe_instalado().as_deref().and_then(Path::parent) {
-        if dir.join(NOMBRE_AJUSTES).is_file() {
+        if dir.join(NOMBRE_AJUSTES).is_file() || dir.join(NOMBRE_AJUSTES_VIEJO).is_file() {
             return Some(dir.to_path_buf());
         }
     }
-    let appdata = std::env::var_os("APPDATA")?;
-    Some(PathBuf::from(appdata).join("PixPinMax"))
+    Some(carpeta_de_datos(Path::new(&std::env::var_os("APPDATA")?)))
+}
+
+/// `base\PinDesk`, o `base\PixPinMax` si solo esta esa y no es la que dejo
+/// la app al mudarse (con `MOVIDO-A-PINDESK.txt`).
+pub(crate) fn carpeta_de_datos(base: &Path) -> PathBuf {
+    let nueva = base.join("PinDesk");
+    let vieja = base.join("PixPinMax");
+    if !nueva.is_dir() && vieja.is_dir() && !vieja.join("MOVIDO-A-PINDESK.txt").is_file() {
+        vieja
+    } else {
+        nueva
+    }
 }
 
 // --- Lo que se lee -------------------------------------------------------

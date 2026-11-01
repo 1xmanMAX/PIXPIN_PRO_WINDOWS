@@ -8,22 +8,22 @@
 
 use std::path::{Path, PathBuf};
 
+use pixpin_sistema::nombre;
+
 /// Nombre del fichero de ajustes, igual en los dos modos.
 ///
-/// La app se llama PinDesk desde nov-2026, pero el fichero y la carpeta de
-/// datos siguen con el nombre viejo: son los datos de quien ya la usaba y
-/// el modo portable se reconoce por este fichero (docs/nombre-pindesk.md).
-pub const NOMBRE_AJUSTES: &str = "pixpinmax.toml";
-
-/// Carpeta dentro de APPDATA en el modo instalado.
-const CARPETA_APPDATA: &str = "PixPinMax";
+/// Hasta nov-2026 era `pixpinmax.toml` (y la carpeta, `PixPinMax`): se sigue
+/// leyendo el viejo si no hay nuevo, y la app lo renombra al arrancar
+/// (`pixpin_sistema::nombre`, docs/formato-pindesk.md).
+pub const NOMBRE_AJUSTES: &str = nombre::AJUSTES;
 
 /// Donde estan los datos de la aplicacion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ubicacion {
     /// Todo junto al ejecutable. Cero rastro en el registro.
     Portable { raiz: PathBuf },
-    /// Bajo `%APPDATA%\PixPinMax`.
+    /// Bajo `%APPDATA%\PinDesk` (o el `PixPinMax` de antes, si aun no se
+    /// ha movido).
     Instalado { raiz: PathBuf },
 }
 
@@ -36,8 +36,10 @@ impl Ubicacion {
     }
 
     /// Ruta completa del fichero de ajustes.
+    ///
+    /// `pindesk.toml`, o el `pixpinmax.toml` de antes si solo esta ese.
     pub fn fichero_ajustes(&self) -> PathBuf {
-        self.raiz().join(NOMBRE_AJUSTES)
+        nombre::ajustes_en(self.raiz())
     }
 
     pub fn es_portable(&self) -> bool {
@@ -50,13 +52,13 @@ impl Ubicacion {
 /// Ambas rutas se pasan como parametro en vez de consultarlas aqui para que
 /// esto sea logica pura y se pueda probar sin tocar el entorno real.
 pub fn resolver(dir_exe: &Path, appdata: &Path) -> Ubicacion {
-    if dir_exe.join(NOMBRE_AJUSTES).is_file() {
+    if nombre::es_portable(dir_exe) {
         Ubicacion::Portable {
             raiz: dir_exe.to_path_buf(),
         }
     } else {
         Ubicacion::Instalado {
-            raiz: appdata.join(CARPETA_APPDATA),
+            raiz: nombre::carpeta_de_datos(appdata),
         }
     }
 }
@@ -68,7 +70,7 @@ mod pruebas {
 
     /// Crea un directorio temporal propio del test, sin dependencias externas.
     fn temporal(etiqueta: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("pixpin-pruebas-{etiqueta}"));
+        let dir = std::env::temp_dir().join(format!("pindesk-pruebas-{etiqueta}"));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -96,19 +98,39 @@ mod pruebas {
         assert_eq!(
             u,
             Ubicacion::Instalado {
-                raiz: appdata.join("PixPinMax")
+                raiz: appdata.join("PinDesk")
             }
         );
         assert!(!u.es_portable());
         assert_eq!(
             u.fichero_ajustes(),
-            appdata.join("PixPinMax").join(NOMBRE_AJUSTES)
+            appdata.join("PinDesk").join(NOMBRE_AJUSTES)
         );
     }
 
     #[test]
+    fn el_toml_y_la_carpeta_de_antes_se_siguen_leyendo() {
+        // Portable con el `pixpinmax.toml` de antes junto al exe.
+        let exe = temporal("portable-viejo");
+        fs::write(exe.join("pixpinmax.toml"), "").unwrap();
+        let u = resolver(&exe, Path::new(r"C:\NoUsado"));
+        assert!(u.es_portable());
+        assert_eq!(u.fichero_ajustes(), exe.join("pixpinmax.toml"));
+
+        // Instalado sin migrar aun: la carpeta vieja con sus datos.
+        let exe = temporal("instalado-viejo");
+        let appdata = temporal("appdata-viejo");
+        fs::create_dir_all(appdata.join("PixPinMax")).unwrap();
+        let u = resolver(&exe, &appdata);
+        assert_eq!(u.raiz(), appdata.join("PixPinMax"));
+        // Caso negativo: en cuanto hay carpeta nueva, la vieja no se mira.
+        fs::create_dir_all(appdata.join("PinDesk")).unwrap();
+        assert_eq!(resolver(&exe, &appdata).raiz(), appdata.join("PinDesk"));
+    }
+
+    #[test]
     fn un_directorio_con_ese_nombre_no_cuenta_como_portable() {
-        // Si alguien crea por error una CARPETA llamada pixpinmax.toml, no debe
+        // Si alguien crea por error una CARPETA llamada pindesk.toml, no debe
         // activarse el modo portable: se buscaria un fichero de ajustes que no
         // existe y la app arrancaria con un estado incoherente.
         let exe = temporal("directorio");

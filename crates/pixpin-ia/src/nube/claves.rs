@@ -7,7 +7,7 @@
 //!   (solo esta cuenta en este equipo la descifra; otra cuenta, otro PC o
 //!   una copia del disco no), con una entropia propia de PixPin para que otro
 //!   programa que use DPAPI sin ella no la saque por descuido.
-//! - Vive en su **fichero propio** en `%LOCALAPPDATA%\PixPinMax\claves`:
+//! - Vive en su **fichero propio** en `%LOCALAPPDATA%\PinDesk\claves`:
 //!   nunca en el TOML de ajustes (que el usuario abre, copia y comparte),
 //!   nunca en la carpeta de datos que se sincroniza o se exporta, y
 //!   `LOCALAPPDATA` no viaja con el perfil movil de Windows.
@@ -27,13 +27,16 @@ use windows::core::w;
 
 use super::Proveedor;
 
-/// Mezclada con la clave al cifrar: sin ella no se descifra.
+/// Mezclada con la clave al cifrar: sin ella no se descifra. Lleva el nombre
+/// de antes (PixPin Max) y asi se queda: cambiarla dejaria sin descifrar las
+/// claves ya guardadas. No depende de la carpeta, asi que moverla a
+/// `PinDesk` no cambia nada (docs/formato-pindesk.md).
 const ENTROPIA: &[u8] = b"PixPinMax/asistente/nube/v1";
 
-/// `%LOCALAPPDATA%\PixPinMax\claves`.
+/// `%LOCALAPPDATA%\PinDesk\claves` (o la de `PixPinMax`, si aun no se ha
+/// movido: `pixpin_sistema::nombre::carpeta_local`).
 pub fn carpeta() -> Option<PathBuf> {
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(PathBuf::from(local).join("PixPinMax").join("claves"))
+    Some(pixpin_sistema::nombre::carpeta_local()?.join("claves"))
 }
 
 /// El fichero de la clave de un proveedor.
@@ -80,7 +83,7 @@ pub fn cifrar(claro: &[u8]) -> Result<Vec<u8>, String> {
     unsafe {
         CryptProtectData(
             &entrada,
-            w!("PixPin Max"),
+            w!("PinDesk"),
             Some(&entropia),
             None,
             None,

@@ -2,7 +2,7 @@
 //! DeepSeek (`pixpin_ia::nube::claves`):
 //!
 //! - cifrada con `CryptProtectData` en el ambito del usuario de Windows y una
-//!   entropia propia, en `%LOCALAPPDATA%\PixPinMax\claves\typesafe.clave`;
+//!   entropia propia, en `%LOCALAPPDATA%\PinDesk\claves\typesafe.clave`;
 //! - **nunca** en el TOML de ajustes ni en la carpeta de datos que se
 //!   sincroniza o se exporta (`LOCALAPPDATA` tampoco viaja con el perfil);
 //! - ni la clave ni un trozo pasan por `tracing`: se ensena con
@@ -19,10 +19,10 @@ use std::path::{Path, PathBuf};
 /// El nombre del fichero de la clave.
 pub const FICHERO: &str = "typesafe.clave";
 
-/// `%LOCALAPPDATA%\PixPinMax\claves` (la de las demas claves).
+/// `%LOCALAPPDATA%\PinDesk\claves` (la de las demas claves; la vieja de
+/// `PixPinMax` si aun no se ha movido).
 pub fn carpeta() -> Option<PathBuf> {
-    let local = std::env::var_os("LOCALAPPDATA")?;
-    Some(PathBuf::from(local).join("PixPinMax").join("claves"))
+    Some(pixpin_sistema::nombre::carpeta_local()?.join("claves"))
 }
 
 /// Lo que se ensena: el principio y los cuatro ultimos caracteres.
@@ -51,7 +51,9 @@ mod dpapi {
     };
     use windows::core::w;
 
-    /// Mezclada con la clave al cifrar: sin ella no se descifra.
+    /// Mezclada con la clave al cifrar: sin ella no se descifra. Se queda
+    /// con el nombre de antes: cambiarla dejaria sin descifrar las claves ya
+    /// guardadas (no depende de la carpeta, que si se mueve a `PinDesk`).
     const ENTROPIA: &[u8] = b"PixPinMax/typesafe/v1";
 
     fn blob(b: &[u8]) -> CRYPT_INTEGER_BLOB {
@@ -86,7 +88,7 @@ mod dpapi {
         unsafe {
             CryptProtectData(
                 &entrada,
-                w!("PixPin Max"),
+                w!("PinDesk"),
                 Some(&entropia),
                 None,
                 None,

@@ -6,6 +6,8 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Donde estan las claves (`%LOCALAPPDATA%\PinDesk`, o la vieja sin mover).
+pixpin-sistema = { version = "0.1.0", path = "../pixpin-sistema" }
 thiserror = "2.0.20"
 tracing = "0.1.44"
 # El protocolo con el modelo es JSON de punta a punta (peticiones al estilo

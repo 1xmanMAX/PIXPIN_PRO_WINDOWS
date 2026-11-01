@@ -8,7 +8,7 @@
 //! quiere lo que acaba de pulsar en su propio aviso seria absurdo.
 //!
 //! Asi que la app firma los suyos: HMAC-SHA256 con una clave de 32 bytes
-//! al azar que vive en `%LOCALAPPDATA%\PixPinMax\enlaces.clave` y que una
+//! al azar que vive en `%LOCALAPPDATA%\PinDesk\enlaces.clave` y que una
 //! web no puede conocer. Lo que se firma no es el texto del enlace sino su
 //! forma canonica (`PartesEnlace::canonico`: ya descodificado y con los
 //! campos en orden), para que un programa que reescriba el enlace por el
@@ -31,8 +31,7 @@ pub const CAMPO: &str = "firma";
 /// Donde vive la clave. `LOCALAPPDATA` y no `APPDATA`: es de este equipo y
 /// no debe viajar con un perfil movil.
 pub fn ruta_de_la_clave() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA")
-        .map(|d| PathBuf::from(d).join("PixPinMax").join("enlaces.clave"))
+    Some(pixpin_sistema::nombre::carpeta_local()?.join("enlaces.clave"))
 }
 
 /// La firma de un texto canonico con una clave, en hexadecimal.

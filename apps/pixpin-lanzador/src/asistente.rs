@@ -300,7 +300,7 @@ pub fn filas_de_encargos(lista: &[Encargo], ahora: i64) -> Vec<Resultado> {
 
 // --- El motor ---------------------------------------------------------------
 
-/// **El motor que contestara**, leido de `[asistente]` de `pixpinmax.toml`
+/// **El motor que contestara**, leido de `[asistente]` de `pindesk.toml`
 /// (sin cargar un lector de TOML: una clave de texto). Vacio o `local` (de
 /// cuando habia modelo en este PC, quitado el 27-oct-2026) es la nube que
 /// tenga clave, Claude si ninguna (`asistente::nube::eleccion` en la app).
@@ -332,9 +332,9 @@ pub fn motor_de_toml(toml: &str) -> String {
     }
 }
 
-/// El motor de los ajustes de PixPin (`<raiz>/pixpinmax.toml`).
+/// El motor de los ajustes de PixPin (`<raiz>/pindesk.toml`, o el `pixpinmax.toml` de antes).
 pub fn motor(raiz: &Path) -> String {
-    motor_de_toml(&std::fs::read_to_string(raiz.join("pixpinmax.toml")).unwrap_or_default())
+    motor_de_toml(&std::fs::read_to_string(crate::datos::ajustes_en(raiz)).unwrap_or_default())
 }
 
 /// **Las filas de `p asistente …`**. `destino_id`/`destino`: el chat de la

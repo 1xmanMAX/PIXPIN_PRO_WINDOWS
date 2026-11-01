@@ -7,7 +7,7 @@
 //!
 //! - va cifrado con `CryptProtectData` del usuario y la entropia de PixPin
 //!   (se reutiliza [`claves::cifrar`], no hay un segundo cifrado);
-//! - vive en su fichero en `%LOCALAPPDATA%\PixPinMax\claves`
+//! - vive en su fichero en `%LOCALAPPDATA%\PinDesk\claves`
 //!   (`conexion-<servicio>.cifrado`): nunca en el TOML de ajustes, nunca en
 //!   la carpeta de datos que se sincroniza, nunca en un registro;
 //! - el `Debug` de estos tipos no ensena ni el token ni el secreto.
@@ -90,7 +90,7 @@ impl Guardado {
     }
 }
 
-/// `%LOCALAPPDATA%\PixPinMax\claves`, la misma de las claves de las API.
+/// `%LOCALAPPDATA%\PinDesk\claves`, la misma de las claves de las API.
 pub fn carpeta() -> Option<PathBuf> {
     claves::carpeta()
 }

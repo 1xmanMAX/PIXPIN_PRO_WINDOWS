@@ -1670,6 +1670,7 @@ dependencies = [
  "pixpin-paginas",
  "pixpin-pdf",
  "pixpin-shell",
+ "pixpin-sistema",
  "roxmltree",
  "serde_json",
  "sha2 0.10.9",
@@ -1869,6 +1870,7 @@ name = "pixpin-puente"
 version = "0.1.0"
 dependencies = [
  "pixpin-shell",
+ "pixpin-sistema",
  "serde",
  "serde_json",
  "windows",
@@ -1987,6 +1989,7 @@ name = "pixpin-typesafe"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "pixpin-sistema",
  "serde",
  "serde_json",
  "sha2 0.10.9",
