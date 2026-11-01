@@ -77,6 +77,7 @@ use crate::v2::geom::encoger;
 use crate::v2::pegar::{self, Pegada};
 use crate::v2::{ACENTO, FONDO, GRIS, TEXTO};
 use crate::ventanita::{Botones, centrado, dentro};
+use pindesk_ui::tareas_quietas::Quietas;
 
 // Los colores, radios y piezas son los del sistema de diseno v2
 // (`crate::v2`), los mismos de la galeria y el timeline. Aqui solo lo que es
@@ -162,9 +163,6 @@ const CASILLA: f32 = 40.0;
 /// el boton de icono del v2.
 const ASPA: f32 = crate::v2::BOTON;
 
-/// Cuanto se queda arriba, tachada, una tarea recien marcada.
-const SE_QUEDA: Duration = Duration::from_secs(5);
-
 /// La ventana abierta (su HWND), -1 mientras nace, 0 sin ventana: una sola
 /// a la vez, y pedirla otra vez la trae delante.
 static ABIERTA: AtomicIsize = AtomicIsize::new(0);
@@ -205,6 +203,11 @@ pub(super) fn abrir_horario(idioma: Idioma, ubicacion: Ubicacion, aparato: Strin
 /// fecha del cuaderno). Ver [`refrescar`].
 static LLEGO: AtomicBool = AtomicBool::new(false);
 
+/// Se volvio a pedir la ventana estando abierta (el boton, el atajo, una
+/// lista pulsada en el chat): es volver a Tareas, y lo tachado mientras se
+/// estaba fuera ya no se queda arriba (`Estado::quietas`).
+static VOLVER: AtomicBool = AtomicBool::new(false);
+
 /// **Releer al momento** lo llegado de otro aparato (lo llama la
 /// sincronizacion cada vez que escribe, de los dos lados). Sin ventana
 /// abierta solo queda la marca, que se borra al abrir.
@@ -219,6 +222,7 @@ pub(super) fn refrescar() {
 fn lanzar(idioma: Idioma, ubicacion: Ubicacion, aparato: String) {
     let ya = ABIERTA.load(Ordering::SeqCst);
     if ya > 0 {
+        VOLVER.store(true, Ordering::SeqCst);
         VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
         pindesk_shell::overlay::despertar(ya);
         return;
@@ -745,9 +749,11 @@ struct Estado {
     /// Las listas con las hechas a la vista (por su clave). Empiezan todas
     /// plegadas; buscando se abren todas, para ver lo encontrado.
     abiertas: HashSet<String>,
-    /// Las recien tachadas (clave de la lista y texto crudo) y cuando: se
-    /// quedan arriba hasta [`SE_QUEDA`].
-    recien: HashMap<(String, String), Instant>,
+    /// Lo que no se mueve bajo el raton mientras se mira (1-nov-2026): lo
+    /// recien tachado se queda arriba, tachado, y el orden que se ve no
+    /// cambia hasta salir de Tareas (cerrar, minimizar, volver a pedirla,
+    /// otra vista u otra busqueda). Ver `pindesk_ui::tareas_quietas`.
+    quietas: Quietas,
     hoy: pindesk_proyecto::mini::Fecha,
     scroll: f32,
     alto_contenido: f32,
@@ -831,7 +837,7 @@ impl Estado {
             buscar: ui::Campo::default(),
             foco: Foco::Apuntar,
             abiertas: HashSet::new(),
-            recien: HashMap::new(),
+            quietas: Quietas::default(),
             hoy: super::hoy(),
             scroll: 0.0,
             alto_contenido: 0.0,
@@ -1166,6 +1172,8 @@ fn bucle(
         "ventana de tareas abierta"
     );
     let mut mirado = Instant::now();
+    let mut minimizada = false;
+    VOLVER.store(false, Ordering::SeqCst);
     let mut vivo = true;
     let mut pintar = true;
     while vivo {
@@ -1408,11 +1416,14 @@ fn bucle(
                 pintar = true;
             }
         }
-        let antes = e.recien.len();
-        e.recien.retain(|_, t| t.elapsed() < SE_QUEDA);
-        if e.recien.len() != antes {
+        // Minimizada (o pedida otra vez estando abierta) es haber salido de
+        // Tareas: lo tachado se va a «Hechas» y todo se vuelve a ordenar.
+        let ahora_minimizada = ventana.minimizada();
+        if (ahora_minimizada && !minimizada) | VOLVER.swap(false, Ordering::SeqCst) {
+            e.quietas.soltar();
             pintar = true;
         }
+        minimizada = ahora_minimizada;
         if e.aviso.as_ref().is_some_and(Aviso::caducado) {
             // Ido el aviso, ya no se ofrece deshacer: lo quitado, quitado.
             e.aviso = None;
@@ -1457,7 +1468,7 @@ fn bucle(
             .map_or((false, false), |h| (h.arrastrando(), h.con_aviso()));
         let espera = if faltan_minis || arrastrando {
             16
-        } else if e.aviso.is_some() || !e.recien.is_empty() || con_aviso {
+        } else if e.aviso.is_some() || con_aviso {
             250
         } else {
             1_000
@@ -1827,6 +1838,8 @@ fn hacer(
         Accion::Vista(v) => {
             if e.vista != v {
                 e.vista = v;
+                // Otra vista es mirar de otra manera: lo tachado, a «Hechas».
+                e.quietas.soltar();
                 v.guardar(raiz);
                 // La tarjeta con el foco sigue a la vista en su nuevo sitio.
                 e.seguir_foco = true;
@@ -2149,12 +2162,8 @@ fn hacer(
             let hecha = !fila.hecha;
             match super::marcar(raiz, &lista, &fila, hecha) {
                 Ok(true) => {
-                    let clave = (lista.clave(), fila.crudo.clone());
-                    if hecha {
-                        e.recien.insert(clave, Instant::now());
-                    } else {
-                        e.recien.remove(&clave);
-                    }
+                    // Se guarda ya; lo que se queda quieto es la vista.
+                    e.quietas.marcar(&lista.clave(), &fila.crudo, hecha);
                     crate::ventana_chat::refrescar();
                 }
                 Ok(false) => e.decir(textos.t("tareas-cambio")),
@@ -2210,7 +2219,7 @@ fn hacer(
                         indice: fila.indice,
                         tarea,
                     });
-                    e.recien.remove(&(lista.clave(), fila.crudo.clone()));
+                    e.quietas.quitar(&lista.clave(), &fila.crudo);
                     crate::ventana_chat::refrescar();
                 }
                 Ok(None) => e.decir(textos.t("tareas3-cambio-quitar")),
@@ -2427,6 +2436,29 @@ fn pintar_horario(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Cata
     hor.pintar_encima(p, w, h, s, textos);
 }
 
+/// Los grupos que se ensenan, **quietos** (1-nov-2026): lo recien tachado
+/// sigue arriba en su sitio, lo recien destachado sigue en «Hechas», y las
+/// listas y sus tareas en el orden en que ya se veian (`Estado::quietas`).
+/// Lo de todas las vistas: tarjetas, cuadrados y tablero salen de aqui.
+fn grupos_quietos(e: &mut Estado, palabras: &[String]) -> Vec<tarjetas::Grupo> {
+    let quietas = &mut e.quietas;
+    let listas = &e.listas;
+    let mut grupos = tarjetas::agrupar(listas, palabras, e.hoy, &|l, f| {
+        quietas.sigue_arriba(&l.clave(), &f.crudo)
+    });
+    for g in &mut grupos {
+        let Some(l) = listas.get(g.lista) else {
+            continue;
+        };
+        let crudo = |i: &usize| l.filas.get(*i).map(|f| f.crudo.clone()).unwrap_or_default();
+        quietas.ordenar_tareas(&l.clave(), &mut g.arriba, &mut g.hechas, crudo);
+    }
+    quietas.ordenar_listas(&mut grupos, |g| {
+        listas.get(g.lista).map(Lista::clave).unwrap_or_default()
+    });
+    grupos
+}
+
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
     if e.vista == Vista::Horario && e.horario.is_some() {
         return pintar_horario(e, p, marco, s, textos);
@@ -2449,12 +2481,8 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     // grupos son los mismos en las dos vistas; solo cambia como se colocan.
     let palabras = tarjetas::palabras(e.buscar.texto());
     let buscando = !palabras.is_empty();
-    let grupos = {
-        let recien = &e.recien;
-        tarjetas::agrupar(&e.listas, &palabras, e.hoy, &|l, f| {
-            recien.contains_key(&(l.clave(), f.crudo.clone()))
-        })
-    };
+    e.quietas.buscar(e.buscar.texto());
+    let grupos = grupos_quietos(e, &palabras);
     let mut columnas = Vec::new();
     let (colocadas, celdas, total) = {
         let abierta = |li: usize| {
