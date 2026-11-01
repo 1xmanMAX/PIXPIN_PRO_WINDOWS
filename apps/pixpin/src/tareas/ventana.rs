@@ -3068,7 +3068,8 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         } else {
             "tareas-apuntar-boton"
         });
-        let bw = ui::ancho_de_boton(p, false, &rotulo, Some("Intro"), s);
+        let intro = textos.t("tecla-intro");
+        let bw = ui::ancho_de_boton(p, false, &rotulo, Some(&intro), s);
         let b = RectF {
             x: fin - bw,
             y: y + 4.0 * s,
@@ -3082,7 +3083,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             Accion::Apuntar,
             None,
             &rotulo,
-            Some("Intro"),
+            Some(&intro),
             Some(crate::v2::AZUL_LLENO),
             Color::BLANCO,
             s,
@@ -3297,11 +3298,14 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
     let yc = caja.y + caja.alto - pie / 2.0;
     let mut xx = caja.x + pad;
     for (t, rotulo) in [
-        ("↑↓", None),
-        ("Intro", Some(textos.t("tareas3-mover-intro"))),
-        ("Esc", Some(textos.t("tareas3-mover-esc"))),
+        ("↑↓".to_string(), None),
+        (
+            textos.t("tecla-intro"),
+            Some(textos.t("tareas3-mover-intro")),
+        ),
+        ("Esc".to_string(), Some(textos.t("tareas3-mover-esc"))),
     ] {
-        xx += ui::chapa(p, t, xx, yc, crate::v2::CUERPO, hex(0x2E2E31), s) + 6.0 * s;
+        xx += ui::chapa(p, &t, xx, yc, crate::v2::CUERPO, hex(0x2E2E31), s) + 6.0 * s;
         if let Some(r) = rotulo {
             let (rw, rh) = p.medir_texto(&r, 12.5 * s);
             p.texto(&r, xx, yc - rh / 2.0, 12.5 * s, GRIS);

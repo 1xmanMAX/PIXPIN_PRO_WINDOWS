@@ -1754,7 +1754,8 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
     let by = caja.y + caja.alto - 20.0 * s - d::BOTON * s;
     let guardar = textos.t("horario-guardar");
     let cancelar = textos.t("horario-cancelar");
-    let gw = ui::ancho_de_boton(p, false, &guardar, Some("Intro"), s);
+    let intro = textos.t("tecla-intro");
+    let gw = ui::ancho_de_boton(p, false, &guardar, Some(&intro), s);
     let cw = ui::ancho_de_boton(p, false, &cancelar, Some("Esc"), s);
     let g = RectF {
         x: caja.x + caja.ancho - 20.0 * s - gw,
@@ -1769,7 +1770,7 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
         Accion::Guardar,
         None,
         &guardar,
-        Some("Intro"),
+        Some(&intro),
         Some(d::AZUL_LLENO),
         Color::BLANCO,
         s,

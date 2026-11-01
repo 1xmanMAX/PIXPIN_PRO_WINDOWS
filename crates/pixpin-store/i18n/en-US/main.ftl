@@ -3519,3 +3519,6 @@ ia-nube-falta-la-clave = The { $proveedor } key is missing: paste it in Settings
 # Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
 figuras-ventana-no-es-numero = “{ $texto }” is not a number
 figuras-ventana-mes = “{ $texto }”: write the month as 2026-11
+# Los nombres de las teclas que se pintan en las chapitas
+tecla-intro = Enter
+tecla-supr = Del

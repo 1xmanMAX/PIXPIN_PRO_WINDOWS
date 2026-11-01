@@ -3517,3 +3517,6 @@ ia-nube-falta-la-clave = Falta la clave de { $proveedor }: pégala en Ajustes �
 # Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
 figuras-ventana-no-es-numero = «{ $texto }» no es un número
 figuras-ventana-mes = «{ $texto }»: escribe el mes como 2026-11
+# Los nombres de las teclas que se pintan en las chapitas
+tecla-intro = Intro
+tecla-supr = Supr
