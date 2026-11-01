@@ -113,7 +113,7 @@ fn el_recordatorio_dice_hoy_manana_y_el_dia_con_su_fecha() {
 fn la_pagina_lleva_el_resumen_las_listas_y_lo_hecho_plegado_al_final() {
     let r = Rotulos::default();
     let h = html(&listas(), "Mis tareas", &r, ahora(), &foto);
-    assert!(h.starts_with("<!doctype html>"));
+    assert!(h.starts_with("<!DOCTYPE html>"));
     assert!(h.contains("<html lang=\"es\">"));
     assert!(h.contains("<title>Mis tareas</title>"));
     assert!(h.contains("prefers-color-scheme: dark"));

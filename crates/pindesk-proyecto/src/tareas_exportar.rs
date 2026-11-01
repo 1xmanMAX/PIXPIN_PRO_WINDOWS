@@ -455,10 +455,10 @@ pub fn html(
     let varias = listas.len() > 1;
     let mut h = String::with_capacity(16 * 1024);
     h.push_str(&format!(
-        "<!doctype html>\n<html lang=\"{}\">\n<head>\n<meta charset=\"utf-8\">\n\
+        "<!DOCTYPE html>\n<html lang=\"{}\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
          <meta name=\"color-scheme\" content=\"light dark\">\n\
-         <meta name=\"generator\" content=\"PinDesk\">\n<title>{}</title>\n<style>\n{CSS}</style>\n</head>\n<body>\n<main class=\"hoja\">\n",
+         <meta name=\"generator\" content=\"PinDesk\">\n<title>{}</title>\n<style>\n{CSS}</style>\n</head>\n<body>\n<main class=\"pagina\">\n",
         escapar(&r.idioma),
         escapar(&titulo)
     ));
@@ -878,6 +878,10 @@ fn casilla(o: &mut Vec<Orden>, x: f32, y: f32, hecha: bool, tinta: ColorRgba) {
     }
 }
 
+/// De una foto de una tarea (su enlace), el id de su imagen en las hojas y
+/// sus medidas.
+pub type FotoDeHoja<'a> = dyn FnMut(&str) -> Option<(u64, f32, f32)> + 'a;
+
 /// **Las listas en hojas A4**: el titulo con la fecha, el resumen con su
 /// barrita y cada lista con sus tareas en filas (casilla, titulo, chapitas,
 /// nota y fotos), lo hecho al final y tachado. `foto` da, de cada enlace,
@@ -887,7 +891,7 @@ pub fn hojas(
     titulo: &str,
     r: &Rotulos,
     ahora: Momento,
-    foto: &mut dyn FnMut(&str) -> Option<(u64, f32, f32)>,
+    foto: &mut FotoDeHoja<'_>,
 ) -> Vec<Hoja> {
     let ancho = ANCHO_A4 - 2.0 * MARGEN;
     let titulo = if titulo.trim().is_empty() {
@@ -1026,7 +1030,7 @@ fn fila_hoja(
     ahora: Momento,
     ancho: f32,
     raya_encima: bool,
-    foto: &mut dyn FnMut(&str) -> Option<(u64, f32, f32)>,
+    foto: &mut FotoDeHoja<'_>,
 ) {
     let x = MARGEN + SANGRIA;
     let ancho_texto = ancho - SANGRIA;

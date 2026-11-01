@@ -34,6 +34,8 @@ pub(crate) mod enlace;
 pub(crate) mod exportable;
 mod pdf;
 pub(crate) mod pdf_anotado;
+/// Una lista de tareas, con su pagina propia y sus hojas (1-nov-2026).
+mod tareas;
 pub(crate) mod ventana;
 /// Una nota como Word (H12, 1-oct).
 mod word;
@@ -195,6 +197,12 @@ pub(crate) struct Preparado {
     /// paginas sino la pagina con el reproductor y la transcripcion (ver
     /// [`clase`]).
     pub clase: Option<Arc<clase::Grabacion>>,
+    /// **Las listas de tareas**, por la clave de su fila: su «Pagina web» no
+    /// son dibujos de sus hojas sino la pagina de las tareas (ver
+    /// [`tareas`]).
+    pub tareas: HashMap<String, tareas::ListaPreparada>,
+    /// Lo que dice esa pagina, en el idioma de la app.
+    pub rotulos_tareas: pindesk_proyecto::tareas_exportar::Rotulos,
     siguiente_imagen: u64,
 }
 
@@ -213,6 +221,8 @@ impl Preparado {
             adjuntos: Vec::new(),
             rotulo_adjuntos: String::new(),
             clase: None,
+            tareas: HashMap::new(),
+            rotulos_tareas: Default::default(),
             // El cero lo reserva el escritor de PDF para «sin imagen».
             siguiente_imagen: 1,
         }
@@ -919,6 +929,9 @@ fn anadir_mensaje(
                     });
                 }
                 return true;
+            }
+            if tareas::es_lista(m) {
+                return tareas::anadir(p, raiz, proyecto, &clave, &nombre, m, solo, t);
             }
             let texto = texto_de_miniapp(&m.texto);
             let titulo = pindesk_proyecto::mini::titulo(&m.texto);
@@ -2065,6 +2078,11 @@ pub(crate) fn generar(
         }
         WEB | WEB_IMAGEN | PDF | PDF_LIMPIO if piezas.is_empty() => {
             anyhow::bail!("no hay paginas marcadas")
+        }
+        // Solo listas de tareas: su pagina, con el resumen y lo hecho
+        // plegado (entre otras cosas van dibujadas, como las demas).
+        WEB | WEB_IMAGEN if tareas::todas_son_listas(p, &piezas) => {
+            tareas::web(p, &piezas, &base, carpeta)?
         }
         // Un PDF que se lee: el original con lo anotado encima en vectores
         // (o limpio), no fotos de sus hojas. Si no se deja (cifrado), como
